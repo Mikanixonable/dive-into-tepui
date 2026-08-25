@@ -209,7 +209,7 @@ export class ZeroVelocityLines {
         } as Vec3;
       });
       const lineOrigin = points3d[0]!;
-      entry.curve.setSampler(lineOrigin, polylineSampler(points3d, lineOrigin, entry.shape.closed));
+      entry.curve.setAnalytic(lineOrigin, polylineSampler(points3d, lineOrigin, entry.shape.closed));
     }
   }
 

@@ -4,7 +4,7 @@
 // 描画原点への追随だけを持つ。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
-import { Curve, CurveColorSampler, CurveSampler } from '../../render/curve';
+import { Curve, CurveColorSampler, CurveKnots, CurveSampler } from '../../render/curve';
 import { LineStyle } from '../../render/line-style';
 import { FloatingOrigin } from '../floating-origin';
 
@@ -13,10 +13,14 @@ export class GuideCurve {
   public readonly line: THREE.Object3D;
   // 頂点を相対化する基準点(ECI [m])。sample はこの点からの相対を返す。
   private origin: Vec3 | null = null;
-  private sampler: CurveSampler | null = null;
+  // 直近に渡された曲線。Curve へどう渡すかは種類で分かれるので、種類ごとに保つ。
+  private analytic: CurveSampler | null = null;
+  private knots: CurveKnots | null = null;
   private revision: object = {};
   // 頂点カラーの焼き直し待ち。曲線が変わらなくても色だけ変わることがある。
   private colorsDirty = false;
+  private initialSegments: number | undefined = undefined;
+  private readonly scratch = new THREE.Vector3();
 
   // maxVertices は1本の折れ線が持てる頂点数の上限。
   public constructor(style: LineStyle, maxVertices: number) {
@@ -24,45 +28,62 @@ export class GuideCurve {
     this.line = this.curve.object;
   }
 
-  // 描く曲線を差し替える。origin は頂点を相対化する基準点(ECI [m])、sample は t∈[0,1] で
-  // origin からの相対位置を返す関数。
-  public setSampler(origin: Vec3, sample: CurveSampler): void {
+  // 閉じた式で書ける曲線を描く。origin は頂点を相対化する基準点(ECI [m])、sample は
+  // t∈[0,1] で origin からの相対位置を返す。initialSegments の意味は Curve 側と同じ。
+  public setAnalytic(origin: Vec3, sample: CurveSampler, initialSegments?: number): void {
     this.origin = origin;
-    this.sampler = sample;
+    this.analytic = sample;
+    this.knots = null;
+    this.initialSegments = initialSegments;
+    this.revision = {};
+  }
+
+  // 離散サンプルしか無い曲線を、節点の位置と接線から描く。節点は origin からの相対。
+  public setHermite(origin: Vec3, knots: CurveKnots): void {
+    this.origin = origin;
+    this.analytic = null;
+    this.knots = knots;
     this.revision = {};
   }
 
   // 曲線を持たない状態(非表示)へ戻す。
   public clear(): void {
     this.origin = null;
-    this.sampler = null;
+    this.analytic = null;
+    this.knots = null;
     this.revision = {};
+  }
+
+  // 曲線上の t∈[0,1] の点を ECI 絶対座標で返す。曲線を持たない間は原点。
+  // sync を通ったあとにだけ意味のある値を返す(描かれている曲線をそのまま読むため)。
+  public pointAt(t: number): Vec3 {
+    const origin = this.origin;
+    if (!origin) return { x: 0, y: 0, z: 0 } as Vec3;
+    this.curve.sampleAt(t, this.scratch);
+    return {
+      x: origin.x + this.scratch.x, y: origin.y + this.scratch.y, z: origin.z + this.scratch.z,
+    } as Vec3;
   }
 
   // 曲線上の count+1 点を ECI 絶対座標で返す(両端を含む)。曲線を持たない間は空。
   public samplePoints(count: number): readonly Vec3[] {
-    const origin = this.origin;
-    const sample = this.sampler;
-    if (!origin || !sample) return [];
-    const scratch = new THREE.Vector3();
+    if (!this.origin) return [];
     const points: Vec3[] = [];
-    for (let i = 0; i <= count; i++) {
-      sample(i / count, scratch);
-      points.push({ x: origin.x + scratch.x, y: origin.y + scratch.y, z: origin.z + scratch.z } as Vec3);
-    }
+    for (let i = 0; i <= count; i++) points.push(this.pointAt(i / count));
     return points;
   }
 
   // 描画原点の移動へ追随させ、colorAt が指定されていれば頂点カラーで焼く。
   public sync(fo: FloatingOrigin, camera: THREE.Camera, colorAt?: CurveColorSampler): void {
     const origin = this.origin;
-    const sample = this.sampler;
-    if (!origin || !sample) {
+    if (!origin) {
       this.curve.setVisible(false);
       return;
     }
     this.curve.setTransform(fo.RtoThreeV3(origin));
-    this.curve.setAnalyticCurve(sample, { revision: this.revision, camera, colorAt });
+    const opts = { revision: this.revision, camera, colorAt, initialSegments: this.initialSegments };
+    if (this.analytic) this.curve.setAnalyticCurve(this.analytic, opts);
+    else if (this.knots) this.curve.setHermiteCurve(this.knots, opts);
     if (this.colorsDirty && colorAt) {
       this.curve.setColors(colorAt);
       this.colorsDirty = false;

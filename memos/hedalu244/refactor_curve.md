@@ -177,45 +177,21 @@ private にすれば、**任意のサンプラと任意の初期頂点列の組�
 - `TrajectoryLine` は `setHermiteCurve` へ移り、節点は描画区間の bake 済み状態(両端は区間端で
   内挿)。節点が `MAX_VERTICES` を超える長さになるときは一様に間引く — 間引きの判断は、
   どこに細部があるかを知っている呼び出し側が持つ。
-- `OrbitLine` と `tools/render-lab/cases.ts` は `setAnalyticCurve`。`GuideCurve` は当面
-  `polylineSampler` を `setAnalyticCurve` へ流している(手順5・6 でエルミートへ移る)。
+- `OrbitLine` と `tools/render-lab/cases.ts` は `setAnalyticCurve`。
+- `GuideLoop` は点列ではなく曲線を持つ: `shape` が `{kind:'analytic', positionAt}` か
+  `{kind:'knots', count, at, position, tangent}`、`revolutions` が周回数。
+  `GuideCurve` は `setAnalytic` / `setHermite` / `pointAt` / `samplePoints` を持つ。
+  変換は `orbit-guide-lines.ts` の `applyLoop` 1箇所。
+- 参照軌道4種とリサジューは解析サンプラ。焼き込み族は節点列で、接線は隣接点の中心差分
+  (**手順5 で焼き込みの速度へ差し替える**)。
+- 進行方向マーカーは `GuideCurve.pointAt` で描かれている曲線を読む。個数は
+  `MANY_MARKERS_PER_REVOLUTION`(周回数あたり6個、上限12個)で、サンプル数から導かない。
+- ゼロ速度曲線だけが `polylineSampler` を `setAnalytic` へ流している。
+  **手順6 でエルミートへ移し、`polylineSampler` ごと削除する。**
 - 線のマテリアル色は `styleFor` が毎フレーム組む。頂点カラー(`colorAt`)を持つのは族の
   グラデーション線だけで、単色の線は `colorAt` を渡さない。
 
 ## 手順
-
-### 手順4. 参照軌道4種とリサジューを解析サンプラへ移す
-
-**目的**
-
-`elementsLoop` と `lissajousLoop` は解析関数を固定点数へ焼いてから渡している。点列を経由せず
-解析関数をそのままサンプラにし、サンプル数の定数を消す。ここが `49441125` / `cbda467d` と
-同じ回帰の最も起きやすい箇所である。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/orbit-guide.ts` | `GuideLoop`(22-30行目) から `points` / `times` を外し、`sample: CurveSampler`（u は周期に対する経過時刻の割合）・`initialSegments`・`closed` / `period` / `jacobi` / `stability` を持つ形にする。`elementsLoop`(275-286行目) の `REFERENCE_ORBIT_SAMPLES` ループを廃止し、`positionOnOrbit(el, trueAnomalyFromMean(2πu, e))` を直に返す（`initialSegments` は省略でよい）。`lissajousLoop`(235-267行目) の `samples` 引数とループを廃止し、`richardsonState` を u から直に評価する。**`initialSegments` は `ceil(cycles * 2)`** — 1区間が半周を超えないための下限であって、細かさではない |
-| `src/game/celestial/orbit-guide-lines.ts` | `LISSAJOUS_POINTS_PER_CYCLE`(27行目) / `LISSAJOUS_VERTEX_BUDGET`(29行目) を削除し、頂点予算は `CATALOG_LINE_VERTEX_BUDGET` へ統一する。`computeLoop`(287-320行目) の `lissajousLoop` 呼び出しから `samples` 引数を外す（`cycles` は既に渡しているので、初期頂点数は `orbit-guide.ts` 側で閉じる） |
-| `src/game/celestial/direction-markers.ts` | `placeMarker`(116-135行目) の `times` 二分探索を廃止し、`GuideCurve.pointAt(phase)` と `pointAt(phase ± ε)` から位置と接線を取る（**描かれている曲線そのものを読む**）。`addLoop`(96行目) は `GuideLoop` ではなく `GuideCurve` と描き方を受け取る。`MANY_MARKER_STRIDE`(17行目) は点数から個数を導いているので、固定個数（現状と同じ 4〜8 個相当）へ置き換える |
-| `src/game/celestial/guide-curve.ts` | `setSampler` の隣に `setAnalytic(origin, sample, initialSegments?)` を足し、リサジュー・参照軌道はこちらを通す。`samplePoints` を `Curve.sampleAt` 経由の `pointAt(u, out)` + `samplePoints(count)` にする（当たり判定とマーカーが同じ曲線を読む） |
-| `tests/physics/orbit-catalog.test.ts` | `loop.points.length`(120行目) を使う検査を、`GuideLoop` の新しい形（解析サンプラ / 節点）に合わせて書き換える |
-
-描画サンプラは**離心近点角 E で媒介変数化する**（`src/game/orbit-line.ts:65-77` と同じ形）。
-`trueAnomalyFromMean` は Newton 反復を含むので、頂点1つごとに解かせない。時刻の割合が要るのは
-マーカー（1本あたり最大12個）だけなので、Kepler を解くのはそちらだけになる。
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run test:physics` が通る。
-- `grep -rn "REFERENCE_ORBIT_SAMPLES|LISSAJOUS_POINTS_PER_CYCLE|LISSAJOUS_VERTEX_BUDGET" src/`
-  が 0 件。
-- `npm run render-lab:shot` が通る。
-- マップビューで参照軌道の「モルニヤ」を ON にし、近点へズームインして**多角形に割れないこと**
-  を目で見る（達成目標9）。リサジューを ON にし、周回数スライダーを最大にしても線が角ばらない
-  ことを目で見る。進行方向マーカーが近点で速く・遠点で遅く動くことを目で見る
-  （`times` を廃止したあとも保たれること）。
 
 ### 手順5. 焼き込みカタログに速度を持たせ、エルミートサンプラへ移す
 

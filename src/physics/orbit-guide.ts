@@ -17,12 +17,25 @@ import { Vec3, add, cross, len, norm, scale, sub } from './vec3';
 
 export type GuidePoint = 'L1' | 'L2' | 'L3';
 
-// 軌道1本ぶんのガイド線。点列は ECI [m]、times は各点の「周期に対する経過時刻の割合」で、
-// 進行方向マーカーを実際の軌道速度に比例して動かすのに使う。
+// ガイド線の曲線の渡し方。閉じた式で書けるものは関数、焼き込みの離散サンプルしか無いものは
+// 節点列(位置と、その点での d(位置)/d(パラメータ))で渡す。どちらもパラメータ u は
+// 「周期に対する経過時刻の割合」で、進行方向マーカーが実際の軌道速度に比例して動く。
+export type GuideShape =
+  | { readonly kind: 'analytic'; readonly positionAt: (u: number) => Vec3 }
+  | {
+    readonly kind: 'knots';
+    readonly count: number;
+    readonly at: (i: number) => number;
+    readonly position: (i: number) => Vec3;
+    readonly tangent: (i: number) => Vec3;
+  };
+
+// 軌道1本ぶんのガイド線。位置は ECI [m]。
 export interface GuideLoop {
-  readonly points: readonly Vec3[];
-  readonly times: readonly number[];
+  readonly shape: GuideShape;
   readonly closed: boolean;
+  // u∈[0,1] の間に軌道を回る周回数。閉じた1周の軌道は 1、リサジューは指定した周回数。
+  readonly revolutions: number;
   // 焼き込みメンバーの諸元(リサジューのように族を持たない軌道では undefined)。
   readonly period?: number;
   readonly jacobi?: number;
@@ -188,7 +201,8 @@ export function catalogLoop(
   const base = lo * samples * CATALOG_STRIDE;
   const other = hi * samples * CATALOG_STRIDE;
 
-  // 隣り合う2メンバーを同じ添字の点どうしで混ぜてから ECI へ移す。
+  // 隣り合う2メンバーを同じ添字の点どうしで混ぜてから ECI へ移す。閉じた輪なので、
+  // 末尾に始点を u=1 として足し、節点列が u∈[0,1] を覆うようにする。
   const points: Vec3[] = [];
   const times: number[] = [];
   for (let i = 0; i < samples; i++) {
@@ -202,16 +216,40 @@ export function catalogLoop(
     points.push(toEci(frame, local));
     times.push(mix(values, a, b, 3, f));
   }
+  points.push(points[0]!);
+  times.push(1);
 
   const memberLo = family.members[lo];
   const memberHi = family.members[hi];
   return {
-    points,
-    times,
+    shape: closedLoopKnots(points, times),
     closed: true,
+    revolutions: 1,
     period: lerp(memberLo?.period ?? 0, memberHi?.period ?? 0, f),
     jacobi: lerp(memberLo?.jacobi ?? 0, memberHi?.jacobi ?? 0, f),
     stability: lerp(memberLo?.stability ?? 1, memberHi?.stability ?? 1, f),
+  };
+}
+
+// 閉じた輪の点列(末尾 = 先頭、times は 0 から 1)を節点列に組む。接線は隣接点の中心差分で、
+// 両端は輪を跨いで隣を取る — 始点だけ折れ角が残ると、そこにだけ角が立って見える。
+function closedLoopKnots(points: readonly Vec3[], times: readonly number[]): GuideShape {
+  const count = points.length;
+  const last = count - 1;
+  const tangents: Vec3[] = [];
+  for (let i = 0; i < count; i++) {
+    const prev = i === 0 ? last - 1 : i - 1;
+    const next = i === last ? 1 : i + 1;
+    // 輪を跨ぐぶんパラメータは 1 ずれるので、差分の分母もそのぶん足し戻す。
+    const dt = (times[next]! - times[prev]!) + (i === 0 || i === last ? 1 : 0);
+    tangents.push(scale(sub(points[next]!, points[prev]!), 1 / dt));
+  }
+  return {
+    kind: 'knots',
+    count,
+    at: (i) => times[i]!,
+    position: (i) => points[i]!,
+    tangent: (i) => tangents[i]!,
   };
 }
 
@@ -235,7 +273,7 @@ function lerp(a: number, b: number, f: number): number {
 export function lissajousLoop(
   t: number, ephemeris: Ephemeris, system: CatalogSystemId, point: GuidePoint,
   inPlane: number, outOfPlane: number, inPlanePhase: number, outOfPlanePhase: number,
-  cycles: number, samples: number,
+  cycles: number,
 ): GuideLoop | null {
   const secondary = SYSTEM_BODIES[system][1];
   if (ephemeris.registry[secondary] === undefined) return null;
@@ -247,42 +285,32 @@ export function lissajousLoop(
   const axHat = inPlane;
   const azHat = outOfPlane;
   const zRatio = frame.omegaZ / frame.lambda;
+  const omegaCorrection = 1 + coeffs.s1 * axHat * axHat + coeffs.s2 * azHat * azHat;
 
-  const points: Vec3[] = [];
-  const times: number[] = [];
-  for (let i = 0; i < samples; i++) {
-    const u = i / (samples - 1);
+  const positionAt = (u: number): Vec3 => {
     const phase = 2 * Math.PI * cycles * u;
-    const omegaCorrection = 1 + coeffs.s1 * axHat * axHat + coeffs.s2 * azHat * azHat;
     const theta1 = omegaCorrection * (phase + inPlanePhase);
     const psiZ = omegaCorrection * (zRatio * phase + outOfPlanePhase);
     const { x, y, z } = richardsonState(coeffs, frame.kappa, deltaN, axHat, azHat, theta1, 1, psiZ, 1);
-    const local: Vec3Tuple = [x * unit, y * unit, z * unit];
-    points.push(add(frame.origin, add(
-      add(scale(frame.xHat, local[0]), scale(frame.yHat, local[1])),
-      scale(frame.zHat, local[2]),
-    )));
-    times.push(u);
-  }
-  return { points, times, closed: false };
+    return add(frame.origin, add(
+      add(scale(frame.xHat, x * unit), scale(frame.yHat, y * unit)),
+      scale(frame.zHat, z * unit),
+    ));
+  };
+  return { shape: { kind: 'analytic', positionAt }, closed: false, revolutions: cycles };
 }
 
-// 地球専用の参照軌道(軌道ガイドタブ「基本」群、静止軌道を除く4種類)を1周ぶんの点数で
-// 打った折れ線。points/times は真近点角ではなく平均近点角(=経過時間)で等間隔に取るため、
-// 進行方向マーカーが実際の軌道速度どおり近点で速く・遠点で遅く動く。
-const REFERENCE_ORBIT_SAMPLES = 128;
-
+// 地球専用の参照軌道(軌道ガイドタブ「基本」群、静止軌道を除く4種類)。パラメータは
+// 平均近点角(=経過時間)なので、進行方向マーカーが実際の軌道速度どおり近点で速く・
+// 遠点で遅く動く。
 function elementsLoop(elements: OrbitalElements | null, centerEci: Vec3): GuideLoop | null {
   if (elements === null) return null;
-  const points: Vec3[] = [];
-  const times: number[] = [];
-  for (let i = 0; i < REFERENCE_ORBIT_SAMPLES; i++) {
-    const u = i / REFERENCE_ORBIT_SAMPLES;
-    const nu = trueAnomalyFromMean(u * 2 * Math.PI, elements.e);
-    points.push(add(centerEci, positionOnOrbit(elements, nu)));
-    times.push(u);
-  }
-  return { points, times, closed: true, period: elements.period };
+  const positionAt = (u: number): Vec3 => add(
+    centerEci, positionOnOrbit(elements, trueAnomalyFromMean(u * 2 * Math.PI, elements.e)),
+  );
+  return {
+    shape: { kind: 'analytic', positionAt }, closed: true, revolutions: 1, period: elements.period,
+  };
 }
 
 // 太陽同期準回帰軌道のガイド線。地球がレジストリに無ければ null。
