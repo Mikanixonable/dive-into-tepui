@@ -26,7 +26,8 @@ import type { FloatNode, Vec3Node } from './tsl-types';
 // 環粒子の代表アルベド色(線形 RGB)。氷と岩の混合で、可視域では中性よりわずかに黄色い。
 const RING_COLOR: readonly [number, number, number] = [0.72, 0.68, 0.58];
 
-const RING_TILT = -Math.PI / 2;
+// 環の見た目は XY 平面で組み、この回転で環面(モデル座標の XZ 平面)へ寝かせる。
+export const RING_TILT = -Math.PI / 2;
 const D2R = Math.PI / 180;
 const FOUR_PI = 4 * Math.PI;
 const MU_MIN = 0.015;
