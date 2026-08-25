@@ -15,6 +15,7 @@ import { CelestialSurface } from '../../render/celestial-surface';
 import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { RenderStyle } from '../../render/render-style';
 import { RingView } from './ring-view';
 import { bondAlbedoOf } from '../../render/celestial-albedo';
 import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
@@ -100,7 +101,7 @@ export class PointView extends CelestialView {
   // 輝点も出さない)。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettingsData,
+    graphics: GraphicsSettingsData, _style: RenderStyle,
   ): void {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
@@ -133,6 +134,7 @@ export class PointView extends CelestialView {
         cameraSystem.activeCameraScale,
         sunDirection,
         this.sunIrradianceAt(ephemeris, pos, displayTime),
+        _style,
       );
     }
   }

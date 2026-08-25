@@ -11,6 +11,7 @@ import { FrameSections } from './frame-sections';
 import { GpuTimings } from './gpu-timings';
 import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-settings';
 import { RenderPipeline } from './render/pipeline/render-pipeline';
+import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
 import { PauseMenu, SettingsView, SaveBrowser } from './game/hud/windows';
 import { AudioEngine } from './audio/audio-engine';
@@ -41,7 +42,8 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, graphics: GraphicsSettings, perf: PerfMeter, sections: FrameSections,
+  launcher: Launcher, graphics: GraphicsSettings, renderStyle: RenderStyleSetting,
+  perf: PerfMeter, sections: FrameSections,
   gpu: GpuTimings, autoSave: AutoSave,
   snapshotControls: SnapshotControls,
 ): void {
@@ -74,9 +76,9 @@ function startAnimationLoop(
       autoSave.update(game);
       launcher.update();
       const t1 = perf.on ? performance.now() : 0;
-      game.sync(graphics.current);
+      game.sync(graphics.current, renderStyle.current);
       const t2 = perf.on ? performance.now() : 0;
-      game.render();
+      game.render(renderStyle.current);
       const t3 = perf.on ? performance.now() : 0;
       // 時刻印クエリを溜めないため、窓の開閉によらず毎フレーム解決させる。計測自身の費用が
       // render 区間へ混ざらないよう、区間の外で呼ぶ。
@@ -109,11 +111,11 @@ function startAnimationLoop(
 // pauseMenu も同様に main.ts が所有し、開閉に応じた一時停止の反映
 // (launcher.current?.pause()/resume())も持ち主である main.ts がここで配線する。
 // pipeline はここで組む SettingsView の描画面(GraphicsPanel)がデバッグ表示の選択を書き込む先。
-function initHud(graphics: GraphicsSettings, pipeline: RenderPipeline): {
+function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting, pipeline: RenderPipeline): {
   hud: Hud; audioEngine: AudioEngine; bgm: Bgm; worldSfx: WorldSfx; uiSfx: UiSfx;
   pauseMenu: PauseMenu; settingsView: SettingsView;
 } {
-  const hud = new Hud();
+  const hud = new Hud(renderStyle);
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine);
   const worldSfx = new WorldSfx(audioEngine);
@@ -142,12 +144,13 @@ async function main() {
   const slots = initSaveSlots(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const graphics = new GraphicsSettings();
+  const renderStyle = new RenderStyleSetting();
   const gs = await initScene(graphics.current);
   // 解像度倍率の押し出し先の登録は、設定を持っている側の配線。
   graphics.bindResolutionTarget(gs);
   const gpu = new GpuTimings(gs.renderer);
   const pipeline = new RenderPipeline(gs.renderer, graphics.current, gpu);
-  const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, pipeline);
+  const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, renderStyle, pipeline);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
@@ -193,7 +196,7 @@ async function main() {
 
   await launcher.start();
 
-  startAnimationLoop(launcher, graphics, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
+  startAnimationLoop(launcher, graphics, renderStyle, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
 }
 
 main().catch((err) => {

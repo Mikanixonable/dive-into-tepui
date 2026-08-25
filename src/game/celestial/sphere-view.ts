@@ -11,6 +11,7 @@ import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { RenderStyle } from '../../render/render-style';
 import { RingView } from './ring-view';
 
 export class SphereView extends CelestialView {
@@ -59,7 +60,7 @@ export class SphereView extends CelestialView {
   // displayTime 時点の位置へ同期する。見かけ直径が閾値未満なら球自体(と環)を描かない。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettingsData,
+    graphics: GraphicsSettingsData, _style: RenderStyle,
   ): void {
     if (!this.group.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
@@ -89,6 +90,7 @@ export class SphereView extends CelestialView {
         cameraSystem.activeCameraScale,
         sunDirection,
         this.sunIrradianceAt(ephemeris, pos, displayTime),
+        _style,
       );
     } else if (this.ring !== undefined) {
       this.ring.group.visible = false;

@@ -1,6 +1,7 @@
 // RingSystemDefの物理データを、マップビューと戦闘ビューで共通のRingVisualへ同期する。
 // 環の姿勢は極軸だけで決まり、非軸対称アークは本体の自転位相には追従させない。
 import * as THREE from 'three/webgpu';
+import type { RenderStyle } from '../../render/render-style';
 import { spinOrientation } from '../../physics/body-orientation';
 import { RingBandDef, RingSystemDef } from '../../physics/solar-system';
 import { Vec3 } from '../../physics/vec3';
@@ -73,6 +74,7 @@ export class RingView {
     metersPerPixelAt: ScaleFn,
     sunDirection: Vec3,
     sunIrradiance: number,
+    _style: RenderStyle,
   ): void {
     this.group.position.copy(pos);
     this.group.scale.setScalar(this.bodyRadius);
