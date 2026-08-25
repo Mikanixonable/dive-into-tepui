@@ -65,6 +65,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       title: 'dive-into-tepui',
       template: './public/index.html',
+      favicon: './public/favicon.svg',
     }),
   ],
   devServer: {
