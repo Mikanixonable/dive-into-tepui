@@ -382,7 +382,7 @@ export function register(): void {
       z: active.position[2] * asset.coordinateScale,
     });
     runtime.updateVisual(12.5);
-    assert.ok(Array.from(runtime.motionBinding.residueOffsets.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
+    assert.ok(Array.from(runtime.motionBinding.coefficients.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
     assert.deepEqual(root.position, baseRootPosition);
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);
@@ -402,7 +402,7 @@ export function register(): void {
     assert.deepEqual(root.scale, baseRootScale);
     runtime.rebuildVisuals();
     runtime.updateVisual(12.5);
-    assert.ok(Array.from(runtime.motionBinding.residueOffsets.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
+    assert.ok(Array.from(runtime.motionBinding.coefficients.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
     assert.equal(root.rotation.z, 0.47);
     runtime.dispose();
   });

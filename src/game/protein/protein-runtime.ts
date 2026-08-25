@@ -50,6 +50,8 @@ export class ProteinRuntime {
   private readonly baseModificationPositions = new Map<string, THREE.Vector3>();
   private readonly siteResidueGroups = new Map<string, readonly number[]>();
   private readonly modificationResidueGroups = new Map<string, readonly number[]>();
+  private trackedResidues: readonly number[] = [];
+  private readonly trackedResidueOffsets: Float32Array;
   private readonly bondVisuals: ProteinBondVisual[] = [];
   private readonly bondMaterial: THREE.LineBasicMaterial;
   private currentLod: ProteinMotionLod = 'near';
@@ -78,6 +80,7 @@ export class ProteinRuntime {
     if (this.motionBinding.residueCount !== motion.residueCount) {
       throw new RangeError('Protein motion binding and asset residue counts must match');
     }
+    this.trackedResidueOffsets = new Float32Array(motion.residueCount * 4);
     this.bondMaterial = new THREE.LineBasicMaterial({ color: 0x60d9ff, transparent: true, opacity: 0.42 });
     this.rebuildVisuals();
   }
@@ -165,9 +168,13 @@ export class ProteinRuntime {
       this.root.add(line);
       this.bondVisuals.push({ line, fromSiteId: bond.from, toSiteId: bond.to });
     }
+    this.trackedResidues = [...new Set([
+      ...this.siteResidueGroups.values(),
+      ...this.modificationResidueGroups.values(),
+    ].flat())];
   }
 
-  /** Update deterministic OU coefficients and upload the shared GPU residue buffer. */
+  /** モード係数を更新して GPU へ送り、アンカーが使う残基だけを CPU 側で投影する。 */
   updateVisual(displayTime: number, projectedDiameterPx = Number.POSITIVE_INFINITY): void {
     const cpuStart = performance.now();
     this.currentLod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.currentLod);
@@ -183,6 +190,7 @@ export class ProteinRuntime {
     } else {
       this.lastUploadBytes = 0;
     }
+    this.controller.projectResidues(this.trackedResidues, this.trackedResidueOffsets);
     this.lastCpuMs = performance.now() - cpuStart;
     const scale = this.asset.coordinateScale;
     const state = this.combat;
@@ -191,7 +199,7 @@ export class ProteinRuntime {
       const base = this.baseSitePositions.get(site.id);
       const siteState = state.siteState(site.id);
       if (!mesh || !base || !siteState) continue;
-      setProteinAnchorPosition(mesh, base, this.siteResidueGroups.get(site.id) ?? [], this.controller.residueOffsets, this.motion.residueCount, scale);
+      setProteinAnchorPosition(mesh, base, this.siteResidueGroups.get(site.id) ?? [], this.trackedResidueOffsets, this.motion.residueCount, scale);
       mesh.visible = true;
       const material = mesh.material as THREE.MeshStandardMaterial;
       const ratio = siteState.maxHp > 0 ? Math.max(0, Math.min(1, siteState.hp / siteState.maxHp)) : 0;
@@ -203,7 +211,7 @@ export class ProteinRuntime {
       const mesh = this.modificationMeshes.get(slot.id);
       const base = this.baseModificationPositions.get(slot.id);
       if (!mesh || !base) continue;
-      setProteinAnchorPosition(mesh, base, this.modificationResidueGroups.get(slot.id) ?? [], this.controller.residueOffsets, this.motion.residueCount, scale);
+      setProteinAnchorPosition(mesh, base, this.modificationResidueGroups.get(slot.id) ?? [], this.trackedResidueOffsets, this.motion.residueCount, scale);
       const active = state.modificationState(slot.id) !== 'empty';
       mesh.visible = active;
       mesh.scale.setScalar(active ? 1 + 0.12 * Math.sin(displayTime * 2.4) : 0.001);
@@ -232,7 +240,7 @@ export class ProteinRuntime {
     return proteinSiteWorldPosition(
       site,
       site ? this.siteResidueGroups.get(site.id) ?? [] : [],
-      this.controller.residueOffsets,
+      this.trackedResidueOffsets,
       this.motion.residueCount,
       this.asset.coordinateScale,
       this.root.scale.x,
