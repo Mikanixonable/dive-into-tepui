@@ -22,9 +22,14 @@ const assetsDir = join(repoRoot, 'src', 'assets', 'orbits');
 // 表示時に遅延ロードする前提で分ける。
 const BUNDLED_SYSTEMS = ['earth-moon', 'sun-earth'];
 
-// 1メンバーあたりの点数。バンドルがサイズ目標を超えたときだけ FALLBACK へ落とす。
-const SAMPLES_DEFAULT = 96;
-const SAMPLES_FALLBACK = 64;
+// 1メンバーあたりの点数。点と点の間は速度を接線とするエルミート補間で埋まるので、位置だけを
+// 線形に繋いでいた頃の半分で同じ滑らかさが出る。バンドルがサイズ目標を超えたときだけ
+// FALLBACK へ落とす。
+const SAMPLES_DEFAULT = 48;
+const SAMPLES_FALLBACK = 32;
+// 1点あたりの値の数([x, y, z, tFrac, vx, vy, vz]、src/physics/orbit-catalog.ts の
+// CATALOG_STRIDE と一致させること)。
+const STRIDE = 7;
 // バンドルへ埋める2系合計のサイズ目標(計画書 3.4 / 8.1)。
 const BUNDLE_SIZE_TARGET = 4.9 * 1024 * 1024;
 // 1周期積分の刻み数。閉合判定と弧長サンプリングの両方に使う。RK4 は刻みを半分にすると
@@ -115,8 +120,8 @@ function bakeSystem(cache, samples, excluded) {
         stability: baked.stability,
       });
       collidesFlags.push(baked.perilune < cache.secondaryRadius || baked.periapsis < primaryRadius);
-      const chunk = new Float32Array(samples * 4);
-      baked.points.forEach((p, j) => chunk.set(p, j * 4));
+      const chunk = new Float32Array(samples * STRIDE);
+      baked.points.forEach((p, j) => chunk.set(p, j * STRIDE));
       pointChunks.push(chunk);
     });
 
@@ -154,7 +159,7 @@ function bakeSystem(cache, samples, excluded) {
       const sizeOf = (chunk) => {
         const points = [];
         for (let i = 0; i < samples; i++) {
-          const o = i * 4;
+          const o = i * STRIDE;
           points.push([chunk[o], chunk[o + 1], chunk[o + 2]]);
         }
         return orbitSize(points);
@@ -170,8 +175,8 @@ function bakeSystem(cache, samples, excluded) {
     const kept = records.length;
     records.forEach((record, i) => { record.s = kept > 1 ? i / (kept - 1) : 0; });
 
-    const merged = new Float32Array(records.length * samples * 4);
-    pointChunks.forEach((chunk, i) => merged.set(chunk, i * samples * 4));
+    const merged = new Float32Array(records.length * samples * STRIDE);
+    pointChunks.forEach((chunk, i) => merged.set(chunk, i * samples * STRIDE));
     families[familyKey] = {
       members: records,
       samples,
