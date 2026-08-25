@@ -5,8 +5,8 @@
 // 持たない列(計画軌道の各区間など)ではこの継ぎ足しは起きない。
 // 頂点の解像度そのものの決定(画面上のサジッタに応じた適応分割)は render/curve.ts の Curve に
 // 委ねる。このモジュールの責務は、DynamicTrajectory の保持区間(+ 外挿ぶん)から描画対象の
-// 時刻範囲を切り出し、連続な曲線関数(t∈[0,1])として Curve へ渡すことと、その曲線が描かれる
-// 座標系の管理。時刻から状態への内挿そのものは physics/state-queue.ts の StateQueue.at に委ねる。
+// 時刻範囲を切り出し、位置と接線を持つ節点列として Curve へ渡すことと、その曲線が描かれる
+// 座標系の管理。節点の間をどう埋めるかは Curve が持つ。
 //
 // 座標変換は physics/frame.ts / physics/ephemeris.ts へ委譲する二段構え:
 //  - bake(点列・frame が変わったときだけ, syncGeometry): 各サンプルの KinematicState を
@@ -81,9 +81,9 @@ export class TrajectoryLine {
   private revision: object = {};
   private readonly unbakeQuat = new THREE.Quaternion();
 
-  // bake 済みの frame 相対状態列。sampler はこの列に時刻を渡すだけ。
+  // bake 済みの frame 相対状態列。節点はここから取り、描画区間の端だけ内挿する。
   private baked = new StateQueue();
-  // bake 済み列の時刻(昇順)。initialTs を組み直すのに使う。
+  // bake 済み列の時刻(昇順)。節点列を組み直すのに使う。
   private bakedTimes: readonly number[] = [];
   // Curve へ渡す節点列。描画区間が変わったときだけ buildKnots が組み直す。
   private knots: CurveKnots | null = null;
@@ -127,7 +127,7 @@ export class TrajectoryLine {
         ? extrapolatedTailStates(tip!, center!, to!, trajectory!.sampleInterval, ephemeris)
         : [];
       const combined = tail.length > 0 ? [...samples, ...tail] : samples;
-      // hermiteInterpolate は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
+      // エルミート補間は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
       // 位置と速度をそのまま KinematicState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
       // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
       const queue = new StateQueue(Math.max(1, combined.length));
