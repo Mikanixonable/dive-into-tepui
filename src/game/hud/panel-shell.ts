@@ -6,6 +6,7 @@ import {
   COLLAPSE_EXPANDED_GLYPH,
   buildCollapseToggle,
   syncCollapseToggle,
+  type CollapseToggleLabels,
 } from './widgets';
 
 export type HudWorldView = 'combat' | 'map';
@@ -106,6 +107,35 @@ export function savePanelCollapsed(id: string, collapsed: boolean): void {
   const state = loadCollapsedState();
   state[currentView][id] = collapsed;
   saveCollapsedState(state);
+}
+
+export interface PanelCollapseWiring {
+  readonly toggleRoot: HTMLElement;
+  readonly toggleId: string;
+  readonly toggleClassName: string;
+  readonly target: HTMLElement;
+  readonly labels: CollapseToggleLabels;
+  readonly storageId: string;
+  readonly defaultCollapsed?: boolean;
+  readonly extraHitEls?: readonly HTMLElement[];
+}
+
+// 折りたたみトグルの配線一式(生成・保存状態の復元・ビュー切替の購読・クリック時の保存)を
+// 1回で行う。PanelShell 自身と同じ形の配線を、独自の外枠を持つパネル(タイトル行やラップ要素が
+// PanelShell と異なる)からも使えるよう、対象要素・ラベル・保存 id を引数化してある。
+// 戻り値は onPanelCollapsedViewChange の購読解除関数 — 呼び出し側の dispose() でそのまま呼ぶ。
+export function wirePanelCollapse(params: PanelCollapseWiring): () => void {
+  const { toggleRoot, toggleId, toggleClassName, target, labels, storageId, defaultCollapsed = false, extraHitEls = [] } = params;
+  const toggle = buildCollapseToggle(toggleRoot, toggleId, toggleClassName, target, labels, extraHitEls);
+  const applyCollapsedState = (): void => {
+    const collapsed = loadPanelCollapsed(storageId) ?? defaultCollapsed;
+    target.classList.toggle('collapsed', collapsed);
+    syncCollapseToggle(toggle, target, labels);
+  };
+  applyCollapsedState();
+  const unsubscribe = onPanelCollapsedViewChange(applyCollapsedState);
+  toggle.addEventListener('click', () => savePanelCollapsed(storageId, target.classList.contains('collapsed')));
+  return unsubscribe;
 }
 
 export class PanelShell {
