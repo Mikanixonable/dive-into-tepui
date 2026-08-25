@@ -7,8 +7,8 @@ export interface GameScene {
   scene: THREE.Scene;
   renderer: WebGPURenderer;
   resize: () => void;
-  // 描画解像度を devicePixelRatio の倍率で与える。リサイズをまたいでも維持される。
-  setResolutionScale: (scale: number) => void;
+  // 描画解像度の倍率を設定から取り直す。リサイズをまたいでも維持される。
+  applyGraphics: (graphics: GraphicsSettingsData) => void;
 }
 
 // 描画は自機中心のフローティングオリジン(単位: m)。宇宙船(数m)から
@@ -32,11 +32,11 @@ export async function createGameScene(canvas: HTMLCanvasElement, graphics: Graph
   renderer.setOpaqueSort(reversedOpaqueSort);
   renderer.setTransparentSort(reversedTransparentSort);
   // devicePixelRatio は表示先の切り替えで変わるので、倍率だけを覚えて掛け直す。
-  let resolutionScale = 1;
-  // 描画解像度を devicePixelRatio の何倍にするかを与える。
-  const setResolutionScale = (scale: number) => {
-    resolutionScale = scale;
-    renderer.setPixelRatio(window.devicePixelRatio * scale);
+  let resolutionScale = graphics.resolutionScale;
+  // 描画解像度の倍率を設定から取り直す。
+  const applyGraphics = (next: GraphicsSettingsData) => {
+    resolutionScale = next.resolutionScale;
+    renderer.setPixelRatio(window.devicePixelRatio * resolutionScale);
   };
   // 画面サイズへ追従する。倍率は覚えているものを掛け直す。
   const resize = () => {
@@ -44,11 +44,11 @@ export async function createGameScene(canvas: HTMLCanvasElement, graphics: Graph
     renderer.setSize(window.innerWidth, window.innerHeight);
   };
 
-  setResolutionScale(1);
+  applyGraphics(graphics);
   renderer.setSize(window.innerWidth, window.innerHeight);
   await renderer.init();
 
   window.addEventListener('resize', resize);
 
-  return { scene, renderer, resize, setResolutionScale };
+  return { scene, renderer, resize, applyGraphics };
 }
