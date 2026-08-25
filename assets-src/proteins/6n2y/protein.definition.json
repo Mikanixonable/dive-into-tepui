@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "pdb-6n2y-atp-synthase",
+  "displayName": "ATPシンテターゼ",
   "source": {
     "pdbId": "6N2Y",
     "structureFile": "src/assets/models/atpSynthase6n2yBackbone.json",

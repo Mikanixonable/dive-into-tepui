@@ -175,6 +175,19 @@ function collisionTubeColors(
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 }
 
+// 頂点色だけで見た目が決まる固定マテリアルで、呼び出し元やタンパク質ごとに変わらないため
+// モジュール全体で1つを使い回す。破棄しないので所有権(ownsMaterial)は与えない。
+let sharedCollisionMaterial: THREE.MeshStandardMaterial | null = null;
+
+function collisionMaterial(): THREE.MeshStandardMaterial {
+  if (!sharedCollisionMaterial) {
+    sharedCollisionMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff, vertexColors: true, roughness: 0.42, metalness: 0.24, side: THREE.DoubleSide,
+    });
+  }
+  return sharedCollisionMaterial;
+}
+
 /** 固定衝突 geometry をタンパク質用タグ付き Mesh として追加する。 */
 function addCollisionMesh(
   group: THREE.Group,
@@ -183,16 +196,13 @@ function addCollisionMesh(
   run: CollisionRun,
 ): void {
   // 衝突形状の走査契約に必要な所有権・構造・component タグをまとめて付ける。
-  const material = new THREE.MeshStandardMaterial({
-    color: 0xffffff, vertexColors: true, roughness: 0.42, metalness: 0.24, side: THREE.DoubleSide,
-  });
-  const mesh = new THREE.Mesh(geometry, material);
+  const mesh = new THREE.Mesh(geometry, collisionMaterial());
   mesh.userData.proteinComponent = source.backbone.backboneChains[run.startIndex] ?? 'A';
   mesh.userData.proteinRibbon = true;
   mesh.userData.proteinSecondary = run.kind;
   mesh.userData.proteinSecondaryKind = run.kind;
   mesh.userData.ownsGeometry = true;
-  mesh.userData.ownsMaterial = true;
+  mesh.userData.ownsMaterial = false;
   group.add(mesh);
 }
 

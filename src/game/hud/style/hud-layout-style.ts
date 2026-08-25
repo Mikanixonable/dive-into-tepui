@@ -1,5 +1,8 @@
 // HUD のレイアウト骨格 CSS: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レール。
 import { OVERLAY_LAYER_STYLE } from '../overlay-layer';
+import { THEME_PRESETS } from '../../theme';
+
+const LIGHT_PALETTE = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
 export const HUD_LAYOUT_STYLE = `
 #hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -41,6 +44,17 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .hud-world-root { position: absolute; inset: 0; display: none; pointer-events: none; }
 #hud .hud-world-root.active { display: block; }
 
+/* 模式図では3D世界の背景が白くなり、ガラス地が白を透かして文字が読みにくくなるため、
+   ガラストークンだけ不透明寄りへ差し替える(参照側はどこも var(--glass-*) 経由なので
+   ここ1箇所で全パネル/ウィンドウへ効く)。 */
+#hud[data-render-style="schematic"] {
+  --glass-quiet: color-mix(in srgb, var(--surface-1) 94%, transparent);
+  --glass-focus: color-mix(in srgb, var(--surface-1) 97%, transparent);
+  --space-label-background: transparent;
+  --space-label-text: ${LIGHT_PALETTE.title};
+  --space-label-subtext: ${LIGHT_PALETTE.muted};
+}
+
 /* Panel 外枠 */
 #hud .panel {
   position: absolute; background: var(--glass-quiet);
@@ -56,7 +70,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 }
 /* PanelShell 共通ヘッド */
 #hud .panel-shell-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
-#hud .panel-shell-head h3 { flex: 1 1 auto; min-width: 0; }
+#hud .panel-shell-head h3 { flex: 1 1 auto; min-width: 0; cursor: pointer; }
 #hud .panel-shell-collapse {
   flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
   border-radius: var(--radius-micro); color: var(--muted); font: inherit; cursor: pointer; pointer-events: auto;
@@ -71,7 +85,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 /* 左右レール */
 #hud .hud-rail {
-  position: absolute; top: 48px; bottom: 12px;
+  position: absolute; top: 78px; bottom: 12px;
   display: flex; flex-direction: column; align-items: stretch; gap: 7px;
   pointer-events: none; min-height: 0; overflow-x: hidden; overflow-y: auto;
   scrollbar-width: thin; overscroll-behavior: contain;

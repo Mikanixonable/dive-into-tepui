@@ -22,6 +22,15 @@ module.exports = {
         type: 'asset/resource',
       },
       {
+        // タンパク質の構造・モーション JSON(数十MB)はバンドルへインライン化せず、
+        // 別ファイルとして書き出して import 元へは URL 文字列を渡す(起動時ダウンロード量を
+        // 抑えるため)。semantic/backbone など他の JSON は既定どおりバンドルへ含める。
+        test: /(Structure|Motion)\.json$/,
+        include: path.resolve(__dirname, 'src/assets/models'),
+        type: 'asset/resource',
+        generator: { filename: 'assets/[hash][ext]' },
+      },
+      {
         test: /\.css$/,
         use: ['style-loader', 'css-loader'],
       },
@@ -56,6 +65,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       title: 'dive-into-tepui',
       template: './public/index.html',
+      favicon: './public/favicon.svg',
     }),
   ],
   devServer: {

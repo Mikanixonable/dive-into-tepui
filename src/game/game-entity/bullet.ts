@@ -82,10 +82,15 @@ export class Bullet extends GameEntity {
         this.alive = false;
     }
 
-    // 寿命切れの絶対時刻を返す。すでに過ぎていれば null。
+    // 寿命切れの絶対時刻。nextSimulationEventTime と checkLoss の両方がこの1箇所だけを
+    // 参照する — 別々に bornSim+lifetime を計算すると丸め誤差でイベント予告と実際の
+    // 消滅判定がずれかねない。
+    private get expiresAt(): number {
+        return this.bornSim + this.lifetime;
+    }
+
     nextSimulationEventTime(simTime: number): number | null {
-        const expiresAt = this.bornSim + this.lifetime;
-        return expiresAt >= simTime ? expiresAt : null;
+        return this.expiresAt >= simTime ? this.expiresAt : null;
     }
 
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。敵弾が自機の至近を通過した瞬間の
@@ -102,7 +107,7 @@ export class Bullet extends GameEntity {
         }
         // 至近通過音は消滅判定より先に評価する — 同じ substep で寿命が尽きる弾でも通過音は鳴らす。
         if (lenSq(sub(this.state.r, playerPos)) > C.BULLET_MAX_DIST * C.BULLET_MAX_DIST) { this.alive = false; return; }
-        if (simTime - this.bornSim >= this.lifetime) this.alive = false;
+        if (simTime >= this.expiresAt) this.alive = false;
     }
 
     // 姿勢を持たないため、att.q ではなく射手に対する相対速度方向を向く。

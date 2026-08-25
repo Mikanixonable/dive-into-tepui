@@ -18,6 +18,16 @@ const componentRoleLookups = new WeakMap<object, {
   byChain: ReadonlyMap<string, number>;
 }>();
 
+/** 三角形の3頂点が指す成分から多数決で1つを選ぶ。頂点の成分がすべて異なる場合は最初を採る。 */
+export function triangleComponent(components: readonly string[], a: number, b: number, c: number): string {
+  const first = components[a] ?? 'A';
+  const second = components[b] ?? first;
+  const third = components[c] ?? first;
+  if (first === second || first === third) return first;
+  if (second === third) return second;
+  return first;
+}
+
 /** PDB の二次構造表記を Ribbon の3分類へ正規化する。 */
 export function proteinSecondaryKind(value: string | undefined): ProteinSecondaryKind {
   const normalized = value?.toLowerCase();

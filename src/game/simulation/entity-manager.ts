@@ -10,7 +10,8 @@ import { GameEntity } from '../game-entity/game-entity';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { RcsFuelPickup } from '../game-entity/rcs-fuel-pickup';
 import { DebrisPiece } from '../game-entity/debris-piece';
-import { Enemy } from '../game-entity/enemy';
+import { Enemy, proteinAssetIdForEnemyKind } from '../game-entity/enemy';
+import { isProteinAssetReady, type ProteinAssetId } from '../protein/protein-asset-loader';
 import { Bullet } from '../game-entity/bullet';
 import { Base } from '../game-entity/base';
 import { DetachedBooster } from '../game-entity/detached-booster';
@@ -22,6 +23,7 @@ import type { Input } from '../input/input';
 import type { CombatTarget } from '../targeter';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { CameraSystem } from '../camera/camera-system';
+import type { RenderStyle } from '../../render/render-style';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save-data';
@@ -91,7 +93,10 @@ export class EntityManager {
       this.addPlayer(new Player(hud, worldSfx, scene, this.effects, markerManager, { saved: data, simTime }));
     }
     for (const data of save.enemies) {
-      this.addEnemy(new Enemy({ saved: data, simTime }, hud, worldSfx, this.effects, scene));
+      this.spawnEnemyWhenReady(
+        proteinAssetIdForEnemyKind(data.enemyKind),
+        () => new Enemy({ saved: data, simTime }, hud, worldSfx, this.effects, scene),
+      );
     }
     for (const data of save.ammoPickups) {
       this.addAmmoPickup(new AmmoPickup({ saved: data, simTime }, scene));
@@ -129,6 +134,34 @@ export class EntityManager {
   addEnemy(enemy: Enemy): void {
     this.enemies.push(enemy);
     this.invalidateCaches();
+  }
+
+  // 生成に fetch 未完了のタンパク質アセットが要る敵は、準備が整うまで実体化(Enemy の
+  // 生成そのもの)を遅らせる。SPEC/PROTEIN.md「出現」節: 準備中はentities.enemies は
+  // もちろん保有しない。通常スポーン・セーブ復元の双方がここを通る。
+  private readonly pendingEnemySpawns: { readonly assetId: ProteinAssetId; readonly build: () => Enemy; readonly onSpawned?: () => void }[] = [];
+
+  spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, onSpawned?: () => void): void {
+    if (assetId === null || isProteinAssetReady(assetId)) {
+      this.addEnemy(build());
+      onSpawned?.();
+      return;
+    }
+    this.pendingEnemySpawns.push({ assetId, build, onSpawned });
+  }
+
+  private processPendingEnemySpawns(): void {
+    if (this.pendingEnemySpawns.length === 0) return;
+    let w = 0;
+    for (const pending of this.pendingEnemySpawns) {
+      if (isProteinAssetReady(pending.assetId)) {
+        this.addEnemy(pending.build());
+        pending.onSpawned?.();
+      } else {
+        this.pendingEnemySpawns[w++] = pending;
+      }
+    }
+    this.pendingEnemySpawns.length = w;
   }
 
   // 自機を登録する。
@@ -276,6 +309,7 @@ export class EntityManager {
     dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
     atmosphereBodies: readonly CelestialBody[],
   ): void {
+    this.processPendingEnemySpawns();
     for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
     this.prune(this.enemies);
     this.prune(this.bullets);
@@ -352,11 +386,11 @@ export class EntityManager {
   // ものなので、どれが操作対象かを各艦へ渡す。
   syncPlayers(
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, visibilityPolicy: MapVisibilityPolicy | null, orbitRef?: OrbitReference,
+    displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null, orbitRef?: OrbitReference,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
-        fo, cameraSystem, displayTime, ship === activePlayer,
+        fo, cameraSystem, displayTime, ship === activePlayer, style,
         visibilityPolicy?.entity('player', ship === activePlayer) ?? null, orbitRef,
       );
     }
@@ -364,24 +398,24 @@ export class EntityManager {
 
   // 分離済みブースターは通常メッシュに加えて個別ノズル位置のプルームも同期する。
   syncDetachedBoosters(
-    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
+    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number, style: RenderStyle,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const categoryVisible = visibilityPolicy?.entity('ship').category ?? true;
     for (const booster of this.detachedBoosters) {
-      booster.syncBooster(fo, displayTime, cameraSystem, categoryVisible);
+      booster.syncBooster(fo, displayTime, cameraSystem, categoryVisible, style);
     }
   }
 
   // 全基地のメッシュ・エフェクト(推力プルーム・RCS音・パフ)を同期する。
   syncBases(
     controlledBase: Base | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, visibilityPolicy: MapVisibilityPolicy | null,
+    displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     for (const base of this.bases) {
       if (!base.alive) continue;
       base.syncBase(
-        fo, cameraSystem, displayTime, base === controlledBase,
+        fo, cameraSystem, displayTime, base === controlledBase, style,
         visibilityPolicy?.entity('base') ?? null,
       );
     }
@@ -430,9 +464,9 @@ export class EntityManager {
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
   // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
   // 破片(fragment)の変換は各エンティティの renderObject に同期された後、InstancedPool へ push する。
-  sync(fo: FloatingOrigin, displayTime: number, viewer?: Viewpoint): void {
+  sync(fo: FloatingOrigin, displayTime: number, viewer?: Viewpoint, proteinVibrationEnabled = true): void {
     for (const e of this.otherEntities()) {
-      if (!(e instanceof DetachedBooster)) e.sync(fo, displayTime, viewer);
+      if (!(e instanceof DetachedBooster)) e.sync(fo, displayTime, viewer, proteinVibrationEnabled);
     }
 
     this.bulletBodyPool.beginFrame();

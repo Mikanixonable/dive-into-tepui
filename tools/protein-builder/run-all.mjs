@@ -10,7 +10,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, '../..');
 const proteinRoot = join(repositoryRoot, 'assets-src/proteins');
 const builderRoot = scriptDirectory;
-const supportedActions = new Set(['generate', 'validate', 'generate-motion', 'validate-motion', 'generate-structure', 'validate-structure']);
+const supportedActions = new Set(['generate', 'validate', 'generate-motion', 'validate-motion', 'fetch-source', 'generate-structure', 'validate-structure', 'backbone']);
 const [action = 'validate', ...extraArguments] = process.argv.slice(2);
 
 if (!supportedActions.has(action)) {
@@ -40,8 +40,10 @@ if (!supportedActions.has(action)) {
       case 'validate': return ['validate-protein.mjs', config.semanticAsset, ...extraArguments];
       case 'generate-motion': return ['generate-protein-motion.py', relativeConfigPath, ...extraArguments];
       case 'validate-motion': return ['validate-protein-motion.mjs', config.motionAsset, relativeConfigPath, ...extraArguments];
+      case 'fetch-source': return ['fetch-source-structure.mjs', relativeConfigPath, ...extraArguments];
       case 'generate-structure': return ['generate-protein-structure.mjs', relativeConfigPath, ...extraArguments];
       case 'validate-structure': return ['validate-protein-structure.mjs', config.structureAsset, ...extraArguments];
+      case 'backbone': return ['generate-protein-backbone.mjs', relativeConfigPath, ...extraArguments];
       default: throw new Error(`unsupported action: ${action}`);
     }
   }

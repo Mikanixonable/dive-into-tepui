@@ -1,5 +1,9 @@
 // HUD 3D スクリーン投影マーカー CSS (.mk, 各種マーカーシンボル, ラベル, 重なり順).
 import * as C from '../../const';
+import { FILL_4, THEME_PRESETS } from '../../theme';
+
+// 模式図(白背景)向けの上書き色は、選択中のテーマに関わらず theme.ts の light 側パレットから取る。
+const LIGHT_PALETTE = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
 export const MARKER_STYLE = `
 /* マーカー層 Z-Index トークン定義 */
@@ -18,7 +22,7 @@ export const MARKER_STYLE = `
 }
 
 #hud .mk { z-index: var(--z-mk-base); }
-#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: var(--z-mk-node); }
+#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight, #hud .mk-protein-site { z-index: var(--z-mk-node); }
 #hud .mk-ammo { z-index: var(--z-mk-ammo); }
 #hud .mk-fuel { z-index: var(--z-mk-ammo); }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-ally { z-index: var(--z-mk-enemy); }
@@ -83,8 +87,11 @@ export const MARKER_STYLE = `
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-impact { color: var(--color-error); }
 .mk-plantick { color: var(--text-dim); }
+.mk-protein-site { color: var(--text-dim); }
+.mk-protein-site .sym { font-size: calc(var(--glyph-base) * 0.25); }
+.mk-protein-site .lbl { font-size: var(--font-xxs); }
 
-.mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }
+.mk-poi { color: var(--text-strong); }
 .mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-poi)); }
 .mk-poi.mk-lagrange .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-lagrange)); }
 .mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); white-space: pre; line-height: 1.25; text-align: center; display: inline-flex; flex-direction: column; align-items: flex-start; }
@@ -112,4 +119,42 @@ export const MARKER_STYLE = `
 
 .mk-longpress { width: 40px; height: 40px; }
 .mk-longpress .sym { border: 2px solid var(--color-primary); border-radius: 50%; box-sizing: border-box; }
+
+/* 模式図では 3D 世界が白背景になるため、暗い背景前提の var(--bg) 基準の影はどのマーカーでも
+   縁取りが浮く。マーカー種を問わず一括で打ち消す(.mk 自身ではなく実際に文字を描く .sym/.lbl
+   へ直接指定し、.mk-base のような個別の text-shadow 指定より必ず勝つようにする)。 */
+[data-render-style="schematic"] .mk .sym,
+[data-render-style="schematic"] .mk .lbl { text-shadow: none; }
+
+/* 暗い背景向けの色のまま白背景に置かれるマーカーは、選択中テーマに関わらず theme.ts の
+   light パレットの文字色へ差し替える。写実スタイルでは各々の識別色(計画・拠点・衝突予測
+   など)のままだが、模式図では他の輪郭線・グリッドと同じく黒一色で統一する。 */
+[data-render-style="schematic"] .mk-self,
+[data-render-style="schematic"] .mk-enemy,
+[data-render-style="schematic"] .mk-ally,
+[data-render-style="schematic"] .mk-boardpass,
+[data-render-style="schematic"] .mk-dir,
+[data-render-style="schematic"] .mk-boresight,
+[data-render-style="schematic"] .mk-poi,
+[data-render-style="schematic"] .mk-geolabel,
+[data-render-style="schematic"] .mk-plantick,
+[data-render-style="schematic"] .mk-planned,
+[data-render-style="schematic"] .mk-apsis,
+[data-render-style="schematic"] .mk-impact,
+[data-render-style="schematic"] .mk-mnode,
+[data-render-style="schematic"] .mk-burn,
+[data-render-style="schematic"] .mk-base { color: ${LIGHT_PALETTE.title}; }
+
+/* ラベルの引き出し線。色をここへ置くことで、模式図の白背景でも読める値へ差し替えられる。 */
+.mk-lead { stroke: ${FILL_4}; }
+[data-render-style="schematic"] .mk-lead { stroke: ${LIGHT_PALETTE.muted}; }
+
+/* 天体ラベルの札。模式図では白背景の上に文字だけで読ませるため、地を落とす。
+   マップビューでの背景・文字色は --space-label-* トークン経由で上書きされる
+   (map-view-style.ts が var(--space-label-background) 等を参照するため)。
+   .lbl-main/.lbl-sub は上の一括ルールより詳細度が高い個別の色を持つため、ここで
+   改めて上書きする。 */
+[data-render-style="schematic"] .mk-poi .lbl { background: none; }
+[data-render-style="schematic"] .mk-poi:not(.mk-lagrange) .lbl .lbl-main,
+[data-render-style="schematic"] .mk-poi:not(.mk-lagrange) .lbl .lbl-sub { color: ${LIGHT_PALETTE.title}; }
 `;
