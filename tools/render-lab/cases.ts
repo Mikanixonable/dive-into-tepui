@@ -6,6 +6,7 @@ import { rec709Luminance, type Albedo } from '../../src/render/celestial-albedo'
 import { createEarth } from '../../src/render/earth';
 import { R_EARTH } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
+import { createAnnulusRing } from '../../src/render/ring';
 import { buildPlayerShip } from '../../src/render/ships';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
@@ -13,7 +14,7 @@ import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
-import { bodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
 import { textureOf } from '../../src/render/celestial-textures';
 import { v3 } from '../../src/physics/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
@@ -33,12 +34,14 @@ const SATURN_RINGS = (() => {
   return def.rings;
 })();
 
-// 土星の環を遮蔽パスへ渡す形へ直したもの。RingView が描く帯と同じ表から引く。
-const SATURN_OCCLUSION_BANDS: readonly RingBand[] = SATURN_RINGS.bands.map((band) => ({
-  innerRadius: band.innerRadius,
-  outerRadius: band.outerRadius,
-  normalOpticalDepth: band.optics.normalOpticalDepth,
-}));
+// 環の帯を遮蔽パスへ渡す形へ直す。半径は描画座標と同じメートルのまま。
+function occlusionBands(bands: readonly RingBandDef[]): readonly RingBand[] {
+  return bands.map((band) => ({
+    innerRadius: band.innerRadius,
+    outerRadius: band.outerRadius,
+    normalOpticalDepth: band.optics.normalOpticalDepth,
+  }));
+}
 
 // 全ケース共通の恒星方向。球の陰影と、呼び出し側が置く光源が同じ向きを使う。
 export const SUN_DIR = new THREE.Vector3(1, 0.35, 0.5).normalize();
@@ -94,7 +97,7 @@ function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Ob
   group.scale.setScalar(radius);
   const surface = CelestialSurface.solid(albedo);
   surface.addTo(group);
-  // 見かけ直径は画面の高さぶんとみなす(ケースの球はおおむね画面いっぱいに写る)。
+  // 見かけ直径は画面の高さぶんとみなす。
   surface.syncLod(VIEW_HEIGHT);
   return group;
 }
@@ -123,10 +126,43 @@ function shipAt(position: THREE.Vector3, rotation?: THREE.Euler): THREE.Object3D
   return group;
 }
 
-// 斜光のケースで使う恒星の向きと、機体の姿勢。カメラは −Z を見るので、恒星を左上手前へ置き、
-// 機体を上面と左舷が見える向きへ回すと、突起の影が見えている面を横切る。
+// 環の面のローカル法線。帯のメッシュはこの向きが環軸へ重なる姿勢で組まれる。
+const RING_LOCAL_AXIS = new THREE.Vector3(0, 1, 0);
+// 環の帯を本体より後に描くための描画順。
+const RING_RENDER_ORDER = 1;
+
+// 環の帯を面として組み、中心 center・軸 axis(どちらも描画座標)の姿勢へ置く。帯の半径は
+// 天体の中心から測ったメートルで受ける。
+function ringDisc(
+  bands: readonly RingBandDef[], bodyRadius: number, center: THREE.Vector3, axis: THREE.Vector3,
+  sunOcclusion: SunOcclusion, sunLight: SunLight,
+): THREE.Object3D {
+  const group = new THREE.Group();
+  group.position.copy(center);
+  group.scale.setScalar(bodyRadius);
+  group.quaternion.setFromUnitVectors(RING_LOCAL_AXIS, axis);
+  for (const band of bands) {
+    // 半径は「本体半径 = 1」の単位へ直して渡す。被覆率 1 は、帯が画面上 1px より広く写ること。
+    const visual = createAnnulusRing(
+      band.optics, band.innerRadius / bodyRadius, band.outerRadius / bodyRadius, sunOcclusion, sunLight,
+    );
+    visual.sync({ ringAxis: axis, coverage: 1 });
+    visual.object.traverse((object) => {
+      object.renderOrder = RING_RENDER_ORDER;
+      object.userData.ownsGeometry = true;
+      object.userData.ownsMaterial = true;
+    });
+    group.add(visual.object);
+  }
+  return group;
+}
+
+// 斜光のケースで使う恒星の向き。カメラは −Z を見るので、左上手前から差す。
 const OBLIQUE_SUN_DIR = new THREE.Vector3(-0.70, 0.20, 0.68).normalize();
-const OBLIQUE_SHIP_ROTATION = new THREE.Euler(-0.5, 0.6, 0.12);
+// 上面と左舷の両方が見える機体の姿勢。突起の影が見えている面を横切る。
+const SHIP_ROTATION_PORT = new THREE.Euler(-0.5, 0.6, 0.12);
+// 上面と右舷の両方が見える機体の姿勢。右手から差す恒星のもとで、突起の影が見えている面を横切る。
+const SHIP_ROTATION_STARBOARD = new THREE.Euler(-0.5, -0.6, -0.12);
 
 // 小片 1 個の一辺 [m] と、散らばる範囲の半幅 [m]。
 const DEBRIS_SIZE = 0.12;
@@ -172,7 +208,7 @@ function debrisPool(center: THREE.Vector3, count: number): THREE.Object3D {
 function shipSelfShadow(): LabCase {
   const shipPosition = new THREE.Vector3(0, -1, -10);
   return {
-    objects: [shipAt(shipPosition, OBLIQUE_SHIP_ROTATION)],
+    objects: [shipAt(shipPosition, SHIP_ROTATION_PORT)],
     camera: labCamera(6e7),
     sunDirection: OBLIQUE_SUN_DIR,
     viewTarget: shipPosition,
@@ -188,7 +224,7 @@ function shipCluster(): LabCase {
     new THREE.Vector3(3, -7, -24),
   ];
   return {
-    objects: positions.map((position) => shipAt(position, OBLIQUE_SHIP_ROTATION)),
+    objects: positions.map((position) => shipAt(position, SHIP_ROTATION_PORT)),
     camera: labCamera(6e7),
     sunDirection: OBLIQUE_SUN_DIR,
     viewTarget: positions[0]!,
@@ -209,7 +245,7 @@ function shipCrowd(): LabCase {
     new THREE.Vector3(-2, 9, -42),
   ];
   return {
-    objects: positions.map((position) => shipAt(position, OBLIQUE_SHIP_ROTATION)),
+    objects: positions.map((position) => shipAt(position, SHIP_ROTATION_PORT)),
     camera: labCamera(6e7),
     sunDirection: OBLIQUE_SUN_DIR,
     viewTarget: positions[0]!,
@@ -223,8 +259,8 @@ function shipFarShadow(): LabCase {
   const receiver = new THREE.Vector3(0, 0, -10);
   return {
     objects: [
-      shipAt(receiver, OBLIQUE_SHIP_ROTATION),
-      shipAt(new THREE.Vector3(3000, 0, -10), OBLIQUE_SHIP_ROTATION),
+      shipAt(receiver, SHIP_ROTATION_PORT),
+      shipAt(new THREE.Vector3(3000, 0, -10), SHIP_ROTATION_PORT),
     ],
     camera: labCamera(6e7),
     sunDirection: new THREE.Vector3(1, 0, 0),
@@ -236,10 +272,83 @@ function shipFarShadow(): LabCase {
 function shipInDebris(): LabCase {
   const shipPosition = new THREE.Vector3(0, -1, -10);
   return {
-    objects: [shipAt(shipPosition, OBLIQUE_SHIP_ROTATION), debrisPool(shipPosition, 512)],
+    objects: [shipAt(shipPosition, SHIP_ROTATION_PORT), debrisPool(shipPosition, 512)],
     camera: labCamera(6e7),
     sunDirection: OBLIQUE_SUN_DIR,
     viewTarget: shipPosition,
+  };
+}
+
+// 小天体のケースの寸法 [m]。艦(差し渡し 8.5 m)と天体が同じ画面へ収まる大きさに取る。
+const SMALL_BODY_RADIUS = 30;
+const SMALL_BODY_DISTANCE = 130;
+
+// 小天体の環の帯。半径は天体の中心から [m]。**帯の影は環軸と恒星のなす角の余弦(0.55)ぶんへ
+// 縮む**ので、内縁 40 m の帯の影は中心から 22 m — 天体の半径 30 m の内側 — へ落ちる。
+const SMALL_BODY_RING_BANDS: readonly RingBandDef[] = [
+  {
+    innerRadius: 40, outerRadius: 48, thickness: 0,
+    optics: { normalOpticalDepth: 0.8, singleScatteringAlbedo: 0.6, phaseG: 0.3 },
+  },
+  {
+    innerRadius: 52, outerRadius: 58, thickness: 0,
+    optics: { normalOpticalDepth: 1.6, singleScatteringAlbedo: 0.6, phaseG: 0.3 },
+  },
+];
+
+// 小天体のケースの恒星の向き。カメラ側の成分を 0.55 に取ると、昼面が画面へ大きく入りつつ
+// 昼夜境界も残る。
+const SMALL_BODY_SUN_DIR = new THREE.Vector3(0.479, 0.684, 0.550).normalize();
+
+// 環の軸を恒星から傾ける角 [rad]。**倒す向きをカメラ側へ取ると環面が「視線と恒星の両方に
+// 直交する向き」を含む**ので、その向きへ寄せた艦は環の帯の影から外れ、天体の球の影だけを受ける。
+const SMALL_BODY_RING_TILT = 0.9885;
+
+// 影を落とす艦を浮かべる高さ [m] と、その直下点の太陽天頂角・方位 [rad](方位 0 がカメラ側)。
+// 天頂角 0 の直下点はカメラから見て縁へ寄るので倒し、方位は帯の影を避ける側へ振る。
+const SMALL_BODY_SHIP_ALTITUDE = 20;
+const SMALL_BODY_SHIP_ZENITH = 0.7;
+const SMALL_BODY_SHIP_AZIMUTH = 0.68;
+
+// 影を受ける艦を天体の後方へ置く距離 [m]。
+const SMALL_BODY_SHADOW_DISTANCE = 100;
+
+// 小天体と艦: 環を持つ半径 30 m の天体のまわりへ艦を 2 隻置き、**影の 2 つの経路を同じ絵で
+// 読む**。昼面へ浮かべた艦は影の深度マップを通って天体の表面へ影を落とし、後方へ置いた艦は
+// 天体の球が解析式で解く影の柱の縁をまたぐ。環の帯の影は昼面を横切る縞として出る。
+function shipBodyShadow(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+  const camera = labCamera(6e7);
+  const center = new THREE.Vector3(0, 0, -SMALL_BODY_DISTANCE);
+  const sun = SMALL_BODY_SUN_DIR;
+  // 恒星に直交する 2 つの向き。lateral はカメラ側を向き、edge は視線にも直交するので画面内で真横。
+  const toCamera = new THREE.Vector3().subVectors(camera.position, center).normalize();
+  const lateral = toCamera.clone().addScaledVector(sun, -toCamera.dot(sun)).normalize();
+  const edge = new THREE.Vector3().crossVectors(toCamera, sun).normalize();
+  const axis = sun.clone().multiplyScalar(Math.cos(SMALL_BODY_RING_TILT))
+    .addScaledVector(lateral, -Math.sin(SMALL_BODY_RING_TILT));
+  // 影を落とす艦は、直下点を天頂角・方位で決めてから恒星方向へ浮かせる。
+  const subShip = sun.clone().multiplyScalar(Math.cos(SMALL_BODY_SHIP_ZENITH))
+    .addScaledVector(lateral, Math.sin(SMALL_BODY_SHIP_ZENITH) * Math.cos(SMALL_BODY_SHIP_AZIMUTH))
+    .addScaledVector(edge, Math.sin(SMALL_BODY_SHIP_ZENITH) * Math.sin(SMALL_BODY_SHIP_AZIMUTH));
+  const caster = center.clone()
+    .addScaledVector(subShip, SMALL_BODY_RADIUS)
+    .addScaledVector(sun, SMALL_BODY_SHIP_ALTITUDE);
+  // 影を受ける艦は、影の柱の縁(軸から天体の半径ぶん)へ重ねる。
+  const receiver = center.clone()
+    .addScaledVector(sun, -SMALL_BODY_SHADOW_DISTANCE)
+    .addScaledVector(edge, SMALL_BODY_RADIUS);
+  return {
+    objects: [
+      sphere(GREY_SPHERE_ALBEDO, SMALL_BODY_RADIUS, center),
+      ringDisc(SMALL_BODY_RING_BANDS, SMALL_BODY_RADIUS, center, axis, sunOcclusion, sunLight),
+      shipAt(caster, SHIP_ROTATION_STARBOARD),
+      shipAt(receiver, SHIP_ROTATION_STARBOARD),
+    ],
+    camera,
+    sunDirection: sun,
+    viewTarget: center,
+    occluders: [{ center, radius: SMALL_BODY_RADIUS }],
+    rings: { center, axis, bands: occlusionBands(SMALL_BODY_RING_BANDS) },
   };
 }
 
@@ -429,7 +538,7 @@ function saturn(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
     rings: {
       center,
       axis: new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
-      bands: SATURN_OCCLUSION_BANDS,
+      bands: occlusionBands(SATURN_RINGS.bands),
     },
   };
 }
@@ -460,7 +569,7 @@ function saturnShadow(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
     occluders: [{ center, radius }],
-    rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: SATURN_OCCLUSION_BANDS },
+    rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: occlusionBands(SATURN_RINGS.bands) },
   };
 }
 
@@ -487,6 +596,7 @@ export const CASES = {
   'ship-crowd': shipCrowd,
   'ship-far-shadow': shipFarShadow,
   'ship-in-debris': shipInDebris,
+  'ship-body-shadow': shipBodyShadow,
   'order': order,
   'depth-1e4': () => depthProbe(1e4, 6e7),
   'depth-1e6': () => depthProbe(1e6, 6e7),
