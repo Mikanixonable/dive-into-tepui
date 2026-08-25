@@ -1,5 +1,6 @@
 // DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプの表示と、
 // root/svgOverlay の公開・常設パネル群の所有を担う。
+import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
 import type { HudWorldView } from './panel-shell';
 import { VesselPanel } from './panels/vessel-panel';
@@ -42,10 +43,10 @@ export class Hud {
   private toastUntil = 0;
 
   // HUD の DOM を構築する。
-  constructor() {
+  constructor(renderStyle: RenderStyleSetting) {
     const {
       root, layers, combatRoot, mapRoot, svgOverlay, overlayManager, helpPanel, els,
-    } = buildHudDom();
+    } = buildHudDom(renderStyle);
     this.root = root;
     this.layers = layers;
     this.combatRoot = combatRoot.element;
@@ -88,6 +89,7 @@ export class Hud {
   setWorldView(view: HudWorldView): void {
     const map = view === 'map';
     this.helpPanel.setWorldView(view);
+    const style = this.root.querySelector<HTMLElement>('#hud-style');
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
     const burnManagement = this.root.querySelector<HTMLElement>('#burn-management-panel');
     const leftRail = (map ? this.mapRoot : this.combatRoot)
@@ -102,6 +104,8 @@ export class Hud {
         leftRail.appendChild(orbit);
         leftRail.appendChild(burnManagement);
       }
+      // Style は常に左レールの先頭に置く。
+      if (style) leftRail.insertBefore(style, leftRail.firstChild);
     }
     this.combatRoot.classList.toggle('active', !map);
     this.mapRoot.classList.toggle('active', map);
