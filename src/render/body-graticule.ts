@@ -16,17 +16,18 @@ const CIRCLE_SEGMENTS = 128;
 let sharedGeometry: THREE.BufferGeometry | null = null;
 let sharedMaterial: THREE.LineBasicMaterial | null = null;
 
-// 緯度・経度から、半径 GRATICULE_RADIUS_RATIO の球面上の点(モデル座標)を返す。
-function latLonPoint(latDeg: number, lonDeg: number): THREE.Vector3 {
+// 緯度・経度から、半径 radiusRatio の球面上の点(モデル座標)を返す。他の天体表面ライン
+// (earth-coastline.ts の海岸線など)も、経度 0 を +Z へ置くこの規約(celestial-surface.ts と
+// 同じ)に合わせるためここから import して使う。
+export function latLonPoint(latDeg: number, lonDeg: number, radiusRatio: number): THREE.Vector3 {
   const latRad = (latDeg * Math.PI) / 180;
   const lonRad = (lonDeg * Math.PI) / 180;
-  const c = GRATICULE_RADIUS_RATIO * Math.cos(latRad);
-  return new THREE.Vector3(
-    c * Math.sin(lonRad), GRATICULE_RADIUS_RATIO * Math.sin(latRad), c * Math.cos(lonRad));
+  const c = radiusRatio * Math.cos(latRad);
+  return new THREE.Vector3(c * Math.sin(lonRad), radiusRatio * Math.sin(latRad), c * Math.cos(lonRad));
 }
 
 // 2点ぶんの座標を LineSegments 用の頂点配列へ追記する。
-function pushSegment(points: number[], a: THREE.Vector3, b: THREE.Vector3): void {
+export function pushSegment(points: number[], a: THREE.Vector3, b: THREE.Vector3): void {
   points.push(a.x, a.y, a.z, b.x, b.y, b.z);
 }
 
@@ -35,7 +36,7 @@ function pushMeridian(points: number[], lonDeg: number): void {
   for (let i = 0; i < CIRCLE_SEGMENTS; i++) {
     const lat0 = -90 + (180 * i) / CIRCLE_SEGMENTS;
     const lat1 = -90 + (180 * (i + 1)) / CIRCLE_SEGMENTS;
-    pushSegment(points, latLonPoint(lat0, lonDeg), latLonPoint(lat1, lonDeg));
+    pushSegment(points, latLonPoint(lat0, lonDeg, GRATICULE_RADIUS_RATIO), latLonPoint(lat1, lonDeg, GRATICULE_RADIUS_RATIO));
   }
 }
 
@@ -45,7 +46,7 @@ function pushParallel(points: number[], latDeg: number): void {
   for (let i = 0; i < CIRCLE_SEGMENTS; i++) {
     const lon0 = (360 * i) / CIRCLE_SEGMENTS;
     const lon1 = (360 * (i + 1)) / CIRCLE_SEGMENTS;
-    pushSegment(points, latLonPoint(latDeg, lon0), latLonPoint(latDeg, lon1));
+    pushSegment(points, latLonPoint(latDeg, lon0, GRATICULE_RADIUS_RATIO), latLonPoint(latDeg, lon1, GRATICULE_RADIUS_RATIO));
   }
 }
 
