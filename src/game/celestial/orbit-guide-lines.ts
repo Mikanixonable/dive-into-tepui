@@ -21,8 +21,10 @@ import { DirectionMarkers } from './direction-markers';
 // 族の折れ線1本ぶんの頂点予算。焼き込みは全族96点(orbit-catalog.ts)で統一されているので、
 // 適応分割による追加ぶんを見込んでも十分な余裕を持たせる。
 const CATALOG_LINE_VERTEX_BUDGET = 256;
-const LISSAJOUS_VERTEX_BUDGET = 512;
-const LISSAJOUS_SAMPLES = 512;
+// リサジューは1周あたりこれだけの点を打つ。周回数を増やすほど総点数も増える。
+const LISSAJOUS_POINTS_PER_CYCLE = 64;
+// 折れ線の頂点予算。適応分割のぶんも見込んで、最大周回数ぶんの点を確保しておく。
+const LISSAJOUS_VERTEX_BUDGET = 2048;
 // マーカーの InstancedPool 容量。指定本数がこれを超える組み合わせでは、画面に出す線自体は
 // 指定どおり描くが(8の#9)マーカーは古いものから溢れて描かれなくなる。
 const MARKER_POOL_CAPACITY = 3000;
@@ -268,7 +270,8 @@ export class OrbitGuideLines {
       const l = settings.lissajous;
       return lissajousLoop(
         t, this.ephemeris, entry.system, entry.point as GuidePoint,
-        l.inPlane, l.outOfPlane, l.inPlanePhase, l.outOfPlanePhase, l.cycles, LISSAJOUS_SAMPLES,
+        l.inPlane, l.outOfPlane, l.inPlanePhase, l.outOfPlanePhase, l.cycles,
+      Math.min(LISSAJOUS_VERTEX_BUDGET, Math.max(64, Math.round(l.cycles * LISSAJOUS_POINTS_PER_CYCLE))),
       );
     }
     const kind = settings.kinds[entry.familyId];
@@ -336,6 +339,9 @@ export class OrbitGuideLines {
       if (group === null) continue; // 未知の族 id(壊れた保存データ)は無視
       const point = pointOf(familyId);
       for (const system of activeSystemsForGroup(settings, group)) {
+        // その系に存在しない族は線を作らない。作っても何も描かれないうえ、線数の警告だけが
+        // 膨らんでしまう(どの系にどの族があるかは焼き込みの索引が持つ)。
+        if (!this.catalog.hasFamily(system, familyId)) continue;
         for (let i = 0; i < kind.count; i++) this.addCatalogLine(familyId, system, point, i, kind.count);
       }
     }
