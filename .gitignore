@@ -8,3 +8,5 @@ docs/
 .claude/settings.local.json
 .bgm-lab/
 .render-lab/
+.venv-protein-builder/
+__pycache__/

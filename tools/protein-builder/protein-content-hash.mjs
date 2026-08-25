@@ -17,6 +17,7 @@ export function structureContentPayload(asset) {
     atoms: asset.atoms,
     bonds: asset.bonds,
     surface: { mesh: asset.surface?.mesh },
+    ribbon: { mesh: asset.ribbon?.mesh },
   };
 }
 

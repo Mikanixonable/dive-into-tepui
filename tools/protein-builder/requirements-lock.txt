@@ -1,2 +1,6 @@
+# pymol-open-source-whl==3.2.0.1 が numpy==1.26.4 を過剰に固定しているが、実際には numpy 2 系
+# (numpy==2.3.3)で動作することを検証済みのため、このファイルは必ず `pip install --no-deps -r` で
+# 入れること。Python 3.12 で検証済み。
 numpy==2.3.3
 scipy==1.16.3
+pymol-open-source-whl==3.2.0.1

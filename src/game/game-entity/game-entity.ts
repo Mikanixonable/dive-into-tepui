@@ -477,7 +477,7 @@ export class GameEntity {
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
-  sync(fo: FloatingOrigin, displayTime: number, _viewer?: Viewpoint): void {
+  sync(fo: FloatingOrigin, displayTime: number, _viewer?: Viewpoint, _proteinVibrationEnabled = true): void {
     const s = this.displayState(displayTime);
     if (s === null) {
       this.renderObject.visible = false;

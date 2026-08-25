@@ -219,11 +219,6 @@ export function generatePointField(seed: number = ASTEROID_SEED): PointField {
   }));
 }
 
-// 生成結果を1本の配列に均す。
-export function allPoints(field: PointField): readonly PointElements[] {
-  return field.flatMap((group) => group.points);
-}
-
 // 時刻 t の太陽中心位置 [m]。ECI 化(太陽の ECI 位置を足す)は呼び出し側の仕事。
 export function pointPositionAt(el: PointElements, t: number): Vec3 {
   const m = el.l0 + el.meanMotion * t - el.lonPeri;

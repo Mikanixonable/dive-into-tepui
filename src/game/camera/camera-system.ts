@@ -3,6 +3,7 @@ import { Hud } from '../hud/hud';
 import { CombatCameraSystem } from './combat-camera-system';
 import { MapCamera } from './map-camera';
 import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
+import { catalogFamilyIndex } from '../celestial/orbit-guide-catalog';
 import { FocusMarkers } from './focus-markers';
 import { applyBodyClassDisplayMode, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
 import { MapPickable } from '../map-pickable';
@@ -155,7 +156,7 @@ export class CameraSystem {
     this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
     this.mapCamera = new MapCamera(_hud, ephemeris, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
-    this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot);
+    this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot, catalogFamilyIndex());
     this.viewOptionsPanel.onBodyClassModeChange = (key, mode) => {
       this._bodyClassToggles = applyBodyClassDisplayMode(this._bodyClassToggles, key, mode);
       saveBodyClassToggles(this._bodyClassToggles);

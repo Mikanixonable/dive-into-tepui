@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "pdb-5i4r",
+  "displayName": "CDI複合体",
   "source": {
     "pdbId": "5I4R",
     "structureFile": "src/assets/models/pdb5i4rBackbone.json",
@@ -76,6 +77,7 @@
   "sites": [
     {
       "id": "primary-active-site",
+      "label": "CdiA毒素ドメイン",
       "type": "active",
       "source": "game",
       "residues": [],
@@ -100,6 +102,7 @@
     },
     {
       "id": "secondary-active-site",
+      "label": "CdiI免疫ドメイン",
       "type": "active",
       "source": "game",
       "residues": [],
@@ -124,6 +127,7 @@
     },
     {
       "id": "tertiary-active-site",
+      "label": "EF-Tu(2) GTP結合部位",
       "type": "active",
       "source": "game",
       "residues": [],
@@ -148,6 +152,7 @@
     },
     {
       "id": "complex-interface",
+      "label": "CdiA-EF-Tu界面",
       "type": "interface",
       "source": "game",
       "residues": [],
@@ -170,6 +175,7 @@
     },
     {
       "id": "structural-core",
+      "label": "EF-Tu(1)コア",
       "type": "core",
       "source": "game",
       "residues": [],
