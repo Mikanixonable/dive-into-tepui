@@ -41,6 +41,14 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .hud-world-root { position: absolute; inset: 0; display: none; pointer-events: none; }
 #hud .hud-world-root.active { display: block; }
 
+/* 模式図では3D世界の背景が白くなり、ガラス地が白を透かして文字が読みにくくなるため、
+   ガラストークンだけ不透明寄りへ差し替える(参照側はどこも var(--glass-*) 経由なので
+   ここ1箇所で全パネル/ウィンドウへ効く)。 */
+#hud[data-render-style="schematic"] {
+  --glass-quiet: color-mix(in srgb, var(--surface-1) 94%, transparent);
+  --glass-focus: color-mix(in srgb, var(--surface-1) 97%, transparent);
+}
+
 /* Panel 外枠 */
 #hud .panel {
   position: absolute; background: var(--glass-quiet);
