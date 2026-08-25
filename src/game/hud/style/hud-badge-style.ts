@@ -89,6 +89,22 @@ export const HUD_BADGE_STYLE = `
   #hud-chase-reset { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
 
+#hud-help-badge {
+  position: absolute; top: var(--space-5); right: var(--space-5);
+  pointer-events: auto; cursor: pointer;
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; justify-content: center; align-items: center;
+  padding: 0;
+  border: 0; background: var(--glass-quiet); color: var(--text-dim);
+  font: inherit; font-size: var(--font-l); font-weight: 700;
+  backdrop-filter: blur(14px) saturate(82%);
+}
+#hud-help-badge:hover { background: var(--surface-2); color: var(--color-primary-hover); }
+#hud-help-badge:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+@media ${MQ_COARSE} {
+  #hud-help-badge { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
+}
+
 #hud-toast {
   position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
   background: var(--glass-focus); border: 0; border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
