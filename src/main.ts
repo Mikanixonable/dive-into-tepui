@@ -79,7 +79,7 @@ function startAnimationLoop(
       const t1 = perf.on ? performance.now() : 0;
       game.sync(graphics.current, renderStyle.current);
       const t2 = perf.on ? performance.now() : 0;
-      game.render(renderStyle.current, graphics.current.meshShadow);
+      game.render(renderStyle.current);
       const t3 = perf.on ? performance.now() : 0;
       // 時刻印クエリを溜めないため、窓の開閉によらず毎フレーム解決させる。計測自身の費用が
       // render 区間へ混ざらないよう、区間の外で呼ぶ。
@@ -149,10 +149,11 @@ async function main() {
   const graphics = new GraphicsSettings();
   const renderStyle = new RenderStyleSetting();
   const gs = await initScene(graphics.current);
-  // 解像度倍率の押し出し先の登録は、設定を持っている側の配線。
-  graphics.bindResolutionTarget(gs);
   const gpu = new GpuTimings(gs.renderer);
   const pipeline = new RenderPipeline(gs.renderer, graphics.current, gpu);
+  // 描画品質設定の押し出し先の登録は、設定を持っている側の配線。
+  graphics.bind(gs);
+  graphics.bind(pipeline);
   const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
 
