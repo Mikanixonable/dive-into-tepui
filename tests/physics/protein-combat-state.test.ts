@@ -13,8 +13,9 @@ import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import { collisionDamageFraction } from '../../src/game/game-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
-import { PROTEIN_ASSET_IDS, proteinAssetFor, proteinMotionAssetFor } from '../../src/game/protein/protein-asset-loader';
-import { proteinEnemyDefinitionFor } from '../../src/game/protein/protein-enemy-registry';
+import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';
+import { createProteinEnemyDefinition } from '../../src/game/protein/protein-enemy-registry';
+import { testProteinAssetBundleFor } from './protein-test-assets';
 import type { ProteinDisplayAsset } from '../../src/game/protein/protein-display-asset';
 import {
   buildProteinEnemyShip, buildProteinRibbonShip, type ProteinBackboneAsset, type ProteinRenderSource,
@@ -140,7 +141,7 @@ export function register(): void {
   test('protein assets: every registered enemy uses residue-bound ANM modes', () => {
     for (const id of PROTEIN_ASSET_IDS) {
       const candidate = proteinAssetFor(id)!;
-      const motionAsset = proteinMotionAssetFor(id);
+      const motionAsset = testProteinAssetBundleFor(id).motion;
       assert.ok(motionAsset);
       assert.equal(motionAsset.model, 'c-alpha-anm-overdamped');
       assert.equal(motionAsset.modes.length, 24);
@@ -153,7 +154,7 @@ export function register(): void {
 
   test('protein assets: every generated catalog entry has an enemy definition', () => {
     for (const id of PROTEIN_ASSET_IDS) {
-      const definition = proteinEnemyDefinitionFor(id);
+      const definition = createProteinEnemyDefinition(id, testProteinAssetBundleFor(id));
       assert.ok(definition, `missing enemy definition for ${id}`);
       assert.equal(definition.assetId, id);
       assert.equal(definition.asset, proteinAssetFor(id));
