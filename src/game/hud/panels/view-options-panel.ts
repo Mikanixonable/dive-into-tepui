@@ -231,7 +231,7 @@ export class ViewOptionsPanel {
       titleRow, 'hud-view-options-toggle', 'view-options-collapse', body, VIEW_OPTIONS_COLLAPSE_LABELS, [title],
     );
     const applyCollapsedState = (): void => {
-      const collapsed = loadPanelCollapsed('hud-view-options') ?? true;
+      const collapsed = loadPanelCollapsed('hud-view-options') ?? false;
       body.classList.toggle('collapsed', collapsed);
       syncCollapseToggle(collapseToggle, body, VIEW_OPTIONS_COLLAPSE_LABELS);
     };
