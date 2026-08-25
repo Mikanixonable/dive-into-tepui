@@ -43,7 +43,7 @@ export class TrajectoryFramePanel {
     // 描く線は必ずどこかの座標系に焼き込まれるので「どこにも固定しない」状態が無く、
     // 太陽系空間への固定はプルダウンの恒星そのものにあたる。
     this.planCenterZone = new AnchorZone(popupRoot, '基準', ephemeris, null, overlayManager);
-    this.planCenterZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-origin-zone');
+    this.planCenterZone.element.classList.add('hud-frame-origin-zone');
     this.planCenterZone.onSelect = (id) => {
       if (id === null) return;
       this.displayWindow.frame = ephemeris.frameOf(id, this.displayWindow.frame.rotatingWith);
@@ -51,7 +51,7 @@ export class TrajectoryFramePanel {
     this.panel.appendChild(this.planCenterZone.element);
 
     this.planRotationZone = new RotationZone('回転フレーム', ephemeris);
-    this.planRotationZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-rotation-zone');
+    this.planRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.planRotationZone.onSelect = (rotatingWith) => {
       this.displayWindow.frame = ephemeris.frameOf(this.displayWindow.frame.center, rotatingWith);
     };
