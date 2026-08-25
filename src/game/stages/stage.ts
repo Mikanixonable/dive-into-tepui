@@ -63,7 +63,9 @@ export type StageDeps = [
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
   readonly id: StageId;
-  createEphemeris(phaseOffsets: Partial<Record<CelestialBodyId, number>>): Promise<Ephemeris>;
+  createEphemeris(
+    phaseOffsets: Partial<Record<CelestialBodyId, number>>, onProgress?: (ratio: number) => void,
+  ): Promise<Ephemeris>;
   // 選択画面が読む項目。
   readonly selectLabel: string;
   readonly selectSub: string;
@@ -94,9 +96,13 @@ export type StageResult = {
 
 export abstract class Stage {
   // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、精密暦パックを読み込む。
-  static async createEphemeris(phaseOffsets: Partial<Record<CelestialBodyId, number>>): Promise<Ephemeris> {
+  static async createEphemeris(
+    phaseOffsets: Partial<Record<CelestialBodyId, number>>, onProgress?: (ratio: number) => void,
+  ): Promise<Ephemeris> {
     const profile = profileAt(SIM_EPOCH_JD_TDB);
-    const pack = await loadAbsoluteEphemeris(profile.id, SIM_EPOCH_JD_TDB, SIM_EPOCH_JD_TDB + 10 * 365.25);
+    const pack = await loadAbsoluteEphemeris(
+      profile.id, SIM_EPOCH_JD_TDB, SIM_EPOCH_JD_TDB + 10 * 365.25, onProgress,
+    );
     return new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, pack, SIM_EPOCH_JD_TDB);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
