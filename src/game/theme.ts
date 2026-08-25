@@ -48,37 +48,49 @@ const LIGHT_SEMANTIC = {
 // モックアップ §4.3 のプリセット。初期値は既存ランタイムの Fluorescent red / blue を保つ。
 export const THEME_PRESETS: readonly ThemePalette[] = [
   {
-    id: 'orbital-orange', name: 'Orbital orange', description: '暖色の主役とエメラルド Signal', tone: 'dark',
+    id: 'orbital-orange', name: 'Solar Flare', description: '暖色の主役とエメラルド Signal', tone: 'dark',
     ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff5a00', accentNear: '#ff8b52', signal: '#19f5c2',
   },
   {
-    id: 'red-lime', name: 'Red / lime', description: '赤とライムの蛍光対比', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff334e', accentNear: '#ff6a78', signal: '#c7ff38',
-  },
-  {
-    id: 'red-orange-emerald', name: 'Red-orange / emerald', description: '赤寄りオレンジと深いエメラルド', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff4b1f', accentNear: '#ff7652', signal: '#19e6b3',
-  },
-  {
-    id: 'red-orange-turquoise', name: 'Red-orange / turquoise', description: '暖色と青緑の明快な Signal', tone: 'dark',
+    id: 'red-orange-turquoise', name: 'Heat Shield', description: '暖色と青緑の明快な Signal', tone: 'dark',
     ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff4a20', accentNear: '#ff8060', signal: '#1ee7d2',
   },
   {
-    id: 'fluorescent-red-blue', name: 'Fluorescent red / blue', description: '赤と青の強い電気的対比', tone: 'dark',
+    id: 'fluorescent-red-blue', name: 'Arcade Pulse', description: '赤と青の強い電気的対比', tone: 'dark',
     ...DARK_SURFACE, ...DARK_SEMANTIC, page: '#08090d', accent: '#ff3155', accentNear: '#ff6b82', signal: '#3478ff',
   },
   {
-    id: 'fluorescent-pink-dawn-blue', name: 'Fluorescent pink / dawn blue', description: '朱色寄りの蛍光ピンクと夜明けの淡い青', tone: 'dark',
+    id: 'fluorescent-pink-dawn-blue', name: 'Daybreak', description: '朱色寄りの蛍光ピンクと夜明けの淡い青', tone: 'dark',
     ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff2d6c', accentNear: '#ff6f96', signal: '#bfe0ff',
   },
   {
-    id: 'repository-mono', name: 'Repository mono', description: 'ダークグレーと白、Signalは最小限', tone: 'dark',
+    id: 'driftwood', name: 'Driftwood', description: '褐色に寒色を差した落ち着いた色調', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#a97a5b', accentNear: '#c49a7c', signal: '#6f8fa0',
+  },
+  {
+    id: 'amber-field', name: 'Amber Field', description: '琥珀色を主役に深いティールで締める', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#e8b23a', accentNear: '#f0cc75', signal: '#3fae8f',
+  },
+  {
+    id: 'sagebrush', name: 'Sagebrush', description: 'テラコッタとセージグリーンのくすみ配色', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#c1694a', accentNear: '#d98f72', signal: '#8ea88a',
+  },
+  {
+    id: 'dusk-rose', name: 'Dusk Rose', description: 'くすみローズと深いティールの対比', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#d98a94', accentNear: '#e8aab1', signal: '#2f6f6b',
+  },
+  {
+    id: 'glacier-mint', name: 'Glacier Mint', description: 'ラベンダーとミントの淡いペア', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#9b8cff', accentNear: '#bfb3ff', signal: '#7de0c8',
+  },
+  {
+    id: 'repository-mono', name: 'Terminal', description: 'ダークグレーと白、Signalは最小限', tone: 'dark',
     page: '#0d1117', surface0: '#0d1117', surface1: '#161b22', surface2: '#21262d', surface3: '#30363d',
     title: '#f0f6fc', body: '#c9d1d9', muted: '#8b949e', faint: '#6e7681', bright: '#ffffff',
     ...DARK_SEMANTIC, accent: '#c9d1d9', accentNear: '#8b949e', signal: '#58a6ff',
   },
   {
-    id: 'matte-red', name: 'Matte red', description: '暖かい灰白地とマットな赤', tone: 'light',
+    id: 'matte-red', name: 'Sunbaked', description: '暖かい灰白地とマットな赤', tone: 'light',
     page: '#d9d7d2', surface0: '#efede8', surface1: '#f8f6f1', surface2: '#e5e2dc', surface3: '#cac6bf',
     title: '#252525', body: '#494949', muted: '#625e59', faint: '#96928c', bright: '#111111',
     ...LIGHT_SEMANTIC, accent: '#873b35', accentNear: '#a95d54', signal: '#4e545a',
