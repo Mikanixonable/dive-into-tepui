@@ -114,9 +114,10 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   margin-left: auto;
 }
 
-#hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); overflow-y: auto; }
-/* パネルの padding 分だけ食い込ませて幅いっぱいに広げ、スクロール中も先頭に張り付かせる */
-#hud-physical-object-list .physical-object-list-head { position: sticky; top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0; padding: var(--space-4) var(--space-5) 0; background: var(--surface-opaque); z-index: 1; }
+#hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); display: flex; flex-direction: column; overflow: hidden; }
+/* 上半分(検索・フィルタ)と下半分(項目一覧)を独立してスクロールさせ、互いに重ならないようにする */
+#hud-physical-object-list .physical-object-list-head { flex: 1 1 50%; overflow-y: auto; }
+#hud-physical-object-list .physical-object-list-body { flex: 1 1 50%; overflow-y: auto; }
 #hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
 #hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
 #hud-physical-object-list .physical-object-list-head .w-group { padding: var(--space-1) var(--space-2); }
