@@ -1,6 +1,8 @@
 const path = require('path');
+const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
+const { version } = require('./package.json');
 
 module.exports = {
   entry: './src/main.ts',
@@ -66,6 +68,9 @@ module.exports = {
       title: 'dive-into-tepui',
       template: './public/index.html',
       favicon: './public/favicon.svg',
+    }),
+    new webpack.DefinePlugin({
+      __APP_VERSION__: JSON.stringify(version),
     }),
   ],
   devServer: {

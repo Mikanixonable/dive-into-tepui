@@ -1,3 +1,4 @@
+import faviconUrl from '../../../../public/favicon.svg';
 import type { Bgm } from '../../../audio/bgm/bgm';
 import { BGM_TRACKS } from '../../../audio/bgm/tracks/tracks';
 import type { GraphicsSettings } from '../../../render/graphics-settings';
@@ -38,6 +39,26 @@ export class SettingsView implements OverlayHandle {
     this.panel.setAttribute('role', 'dialog');
     this.panel.setAttribute('aria-modal', 'true');
     this.panel.setAttribute('aria-labelledby', 'hud-settings-title');
+
+    const brand = document.createElement('div');
+    brand.className = 'sv-brand';
+    const brandLogo = document.createElement('img');
+    brandLogo.className = 'sv-brand-logo';
+    brandLogo.src = faviconUrl;
+    brandLogo.alt = '';
+    brand.appendChild(brandLogo);
+    const brandText = document.createElement('div');
+    brandText.className = 'sv-brand-text';
+    const brandTitle = document.createElement('span');
+    brandTitle.className = 'sv-brand-title';
+    brandTitle.textContent = 'Dive into Tepui';
+    brandText.appendChild(brandTitle);
+    const brandVersion = document.createElement('span');
+    brandVersion.className = 'sv-brand-version';
+    brandVersion.textContent = `v${__APP_VERSION__}`;
+    brandText.appendChild(brandVersion);
+    brand.appendChild(brandText);
+    this.panel.appendChild(brand);
 
     const header = document.createElement('div');
     header.className = 'sv-header';

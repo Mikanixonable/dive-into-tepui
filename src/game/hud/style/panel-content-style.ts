@@ -511,6 +511,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 #hud-settings-view.settings-dock .sv-header { padding-bottom: var(--space-3); }
 #hud-settings-view.settings-dock .sv-header h2 { font-size: var(--font-l); }
+#hud-settings-view.settings-dock .sv-brand,
 #hud-settings-view.settings-dock .sv-eyebrow,
 #hud-settings-view.settings-dock .sv-description { display: none; }
 #hud-settings-view.settings-dock .sv-tabs { margin-top: var(--space-4); }
@@ -518,9 +519,18 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-settings-view.settings-dock .sv-section { margin-top: var(--space-4); padding: var(--space-4); }
 #hud-settings-view.settings-dock .sv-theme-options { grid-template-columns: 1fr; }
 #hud-settings-view.settings-dock .sv-theme-button { min-height: var(--hit-target-min); padding-inline: var(--space-3); }
+#hud-settings-view .sv-brand,
 #hud-settings-view .sv-header,
 #hud-settings-view .sv-description,
 #hud-settings-view .sv-section { width: min(100%, 760px); margin-inline: auto; }
+#hud-settings-view .sv-brand {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  padding-bottom: var(--space-4);
+}
+#hud-settings-view .sv-brand-logo { width: 2.5rem; height: 2.5rem; border-radius: var(--radius-control); }
+#hud-settings-view .sv-brand-text { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+#hud-settings-view .sv-brand-title { color: var(--title); font-size: var(--font-m); letter-spacing: 0.08em; }
+#hud-settings-view .sv-brand-version { color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 0.06em; }
 #hud-settings-view .sv-header {
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4);
   border-bottom: 1px solid var(--edge); padding-bottom: var(--space-5);
