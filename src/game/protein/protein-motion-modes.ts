@@ -3,13 +3,11 @@ import type { ProteinMotionAsset } from './protein-schema';
 const modeDisplacementCache = new WeakMap<ProteinMotionAsset, Float32Array>();
 
 /**
- * Flattens an asset's ANM mode displacements into one GPU-ready buffer.
+ * asset のモード変位を、GPU がそのまま読める1本のバッファへ平坦化する。
  *
- * Layout is `modeIndex * residueCount + residueIndex`, one vec4 (xyz +
- * reserved w) per entry, so the GPU can index it as `mode[m * residueCount + i]`.
- * The result is cached per asset — assets are shared across every enemy body
- * of that kind, and duplicating this buffer per body would cost 1.8MB each
- * for the largest protein (4713 residues × 24 modes × 16 bytes).
+ * 並びは `modeIndex * residueCount + residueIndex`、1要素が vec4(xyz と予約の w)。
+ * 結果は asset 単位でキャッシュする — 最大のタンパク質では 1.8MB あり、敵の体数ぶん
+ * 複製する価値がない。
  */
 export function proteinMotionModeDisplacements(asset: ProteinMotionAsset): Float32Array {
   const cached = modeDisplacementCache.get(asset);

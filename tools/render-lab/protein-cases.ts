@@ -138,7 +138,7 @@ function proteinCase(
       }
       return {
         cpuMs: performance.now() - startedAt,
-        uploadBytes: source.motion.residueCount * 4 * Float32Array.BYTES_PER_ELEMENT * count,
+        uploadBytes: source.motion.modes.length * Float32Array.BYTES_PER_ELEMENT * count,
         lodCounts: { near: count },
       };
     },
@@ -220,7 +220,7 @@ function publicationCase(asset: ProteinLabAsset): LabCase {
       updateProteinMotionCoefficients(binding, controller.effectiveModeCoefficients);
       return {
         cpuMs: performance.now() - startedAt,
-        uploadBytes: source.motion.residueCount * 4 * Float32Array.BYTES_PER_ELEMENT,
+        uploadBytes: source.motion.modes.length * Float32Array.BYTES_PER_ELEMENT,
         lodCounts: { near: 1 },
       };
     },
