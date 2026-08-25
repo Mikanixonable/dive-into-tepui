@@ -21,10 +21,11 @@ import {
   proteinMotionLodForProjectedSize,
   type ProteinMotionLod,
 } from './protein-motion-controller';
+import { proteinMotionModeDisplacements } from './protein-motion-modes';
 import {
   createProteinMotionBinding,
   disposeProteinMotionBinding,
-  updateProteinMotionBinding,
+  updateProteinMotionCoefficients,
   type ProteinMotionBinding,
 } from '../../render/protein-motion-material';
 
@@ -71,7 +72,9 @@ export class ProteinRuntime {
     this.combat = new ProteinCombatState(asset, saved, legacyHealth);
     this.motion = motion;
     this.controller = new ProteinMotionController(motion, seedKey);
-    this.motionBinding = motionBinding ?? createProteinMotionBinding(motion.residueCount);
+    this.motionBinding = motionBinding ?? createProteinMotionBinding(
+      motion.residueCount, proteinMotionModeDisplacements(motion), motion.modes.length,
+    );
     if (this.motionBinding.residueCount !== motion.residueCount) {
       throw new RangeError('Protein motion binding and asset residue counts must match');
     }
@@ -168,14 +171,15 @@ export class ProteinRuntime {
   updateVisual(displayTime: number, projectedDiameterPx = Number.POSITIVE_INFINITY): void {
     const cpuStart = performance.now();
     this.currentLod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.currentLod);
-    const offsets = this.controller.update(displayTime, this.currentLod, this.combat.phase);
+    this.controller.update(displayTime, this.currentLod, this.combat.phase);
     if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
       || this.uploadedPhase !== this.combat.phase) {
-      updateProteinMotionBinding(this.motionBinding, offsets);
+      const coefficients = this.controller.effectiveModeCoefficients;
+      updateProteinMotionCoefficients(this.motionBinding, coefficients);
       this.uploadedLod = this.currentLod;
       this.uploadedSampleTime = this.controller.sampleTime;
       this.uploadedPhase = this.combat.phase;
-      this.lastUploadBytes = offsets.byteLength;
+      this.lastUploadBytes = coefficients.byteLength;
     } else {
       this.lastUploadBytes = 0;
     }

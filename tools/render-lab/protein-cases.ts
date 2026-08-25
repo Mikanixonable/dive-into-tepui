@@ -5,7 +5,8 @@ import { proteinAssetBundleFor, type ProteinAssetId } from '../../src/game/prote
 import type { ProteinDisplaySettings, ProteinRepresentation } from '../../src/game/protein/protein-display';
 import { buildProteinEnemyShip, type ProteinRenderSource } from '../../src/render/protein-enemy-ship';
 import { ProteinMotionController } from '../../src/game/protein/protein-motion-controller';
-import { createProteinMotionBinding, disposeProteinMotionBinding, updateProteinMotionBinding, type ProteinMotionBinding } from '../../src/render/protein-motion-material';
+import { proteinMotionModeDisplacements } from '../../src/game/protein/protein-motion-modes';
+import { createProteinMotionBinding, disposeProteinMotionBinding, updateProteinMotionCoefficients, type ProteinMotionBinding } from '../../src/render/protein-motion-material';
 import type { LabCase } from './cases';
 
 const VIEW_WIDTH = 960;
@@ -106,9 +107,10 @@ function proteinCase(
   // 全個体に同じ表示設定を適用し、指定グリッドへ並べる。
   const controllers: ProteinMotionController[] = [];
   const bindings: ProteinMotionBinding[] = [];
+  const modeDisplacements = proteinMotionModeDisplacements(source.motion);
   for (let index = 0; index < count; index++) {
     const controller = new ProteinMotionController(source.motion, `render-lab-${asset}-${index}`);
-    const binding = createProteinMotionBinding(source.motion.residueCount);
+    const binding = createProteinMotionBinding(source.motion.residueCount, modeDisplacements, source.motion.modes.length);
     const object = buildProteinEnemyShip(source, display, binding);
     controllers.push(controller);
     bindings.push(binding);
@@ -131,7 +133,8 @@ function proteinCase(
     updateProteinMotion(displayTime) {
       const startedAt = performance.now();
       for (let index = 0; index < controllers.length; index++) {
-        updateProteinMotionBinding(bindings[index]!, controllers[index]!.update(displayTime, 'near'));
+        controllers[index]!.update(displayTime, 'near');
+        updateProteinMotionCoefficients(bindings[index]!, controllers[index]!.effectiveModeCoefficients);
       }
       return {
         cpuMs: performance.now() - startedAt,
@@ -164,7 +167,9 @@ function publicationCase(asset: ProteinLabAsset): LabCase {
   const definition = ASSETS[asset];
   const source = sourceFor(definition.assetId);
   const controller = new ProteinMotionController(source.motion, `render-lab-${asset}-publication`);
-  const binding = createProteinMotionBinding(source.motion.residueCount);
+  const binding = createProteinMotionBinding(
+    source.motion.residueCount, proteinMotionModeDisplacements(source.motion), source.motion.modes.length,
+  );
   const object = buildProteinEnemyShip(source, PUBLICATION_DISPLAY, binding);
   object.rotation.copy(PUBLICATION_ROTATION);
   object.updateMatrixWorld(true);
@@ -211,7 +216,8 @@ function publicationCase(asset: ProteinLabAsset): LabCase {
     },
     updateProteinMotion(displayTime) {
       const startedAt = performance.now();
-      updateProteinMotionBinding(binding, controller.update(displayTime, 'near'));
+      controller.update(displayTime, 'near');
+      updateProteinMotionCoefficients(binding, controller.effectiveModeCoefficients);
       return {
         cpuMs: performance.now() - startedAt,
         uploadBytes: source.motion.residueCount * 4 * Float32Array.BYTES_PER_ELEMENT,

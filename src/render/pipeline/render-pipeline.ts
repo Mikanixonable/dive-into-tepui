@@ -26,7 +26,7 @@ import { OverlayPass } from './overlay-pass';
 import { ProteinShadowPass } from './protein-shadow-pass';
 import { SunLight } from './sun-light';
 import { viewPositionAt } from './view-ray';
-import { registerProteinMotionRenderer } from '../protein-motion-material';
+import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 
 // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
 // 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
@@ -175,6 +175,9 @@ export class RenderPipeline implements DebugTargetHost {
     const width = this.drawingBufferSize.x;
     const height = this.drawingBufferSize.y;
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+
+    // 影パスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
+    flushProteinMotionComputes(this.renderer);
 
     // シルエット外殻を遮蔽器、内部リボンを影の受け手として先に描く。対象が無いフレームは
     // パス自身が inactive に戻るので、通常の敵・他のリボン表現へ影響しない。

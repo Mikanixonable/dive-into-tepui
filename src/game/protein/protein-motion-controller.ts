@@ -131,6 +131,7 @@ export class ProteinMotionController {
   private readonly modes: readonly ProteinMotionAsset['modes'][number][];
   private readonly sampler: ProteinBrownianSampler;
   private readonly modeCoefficientsBuffer: Float64Array;
+  private readonly effectiveCoefficientsBuffer: Float32Array;
   private readonly residueOffsetsBuffer: Float32Array;
   private readonly rawTargetBuffer: Float32Array;
   private readonly fadeFromBuffer: Float32Array;
@@ -172,6 +173,7 @@ export class ProteinMotionController {
       proteinBrownianSeedFor(enemyId),
     );
     this.modeCoefficientsBuffer = new Float64Array(this.modeCount);
+    this.effectiveCoefficientsBuffer = new Float32Array(this.modeCount);
     this.residueOffsetsBuffer = new Float32Array(this.residueCount * 4);
     this.rawTargetBuffer = new Float32Array(this.residueCount * 4);
     this.fadeFromBuffer = new Float32Array(this.residueCount * 4);
@@ -190,6 +192,17 @@ export class ProteinMotionController {
   /** The xyz displacement plus reserved w buffer is stable for every update. */
   get residueOffsets(): Float32Array {
     return this.residueOffsetsBuffer;
+  }
+
+  /**
+   * Per-mode coefficients with gain, phase gain, and LOD mode-count
+   * truncation already folded in (zero past the active mode count) — the
+   * same values `computeRawInto` projects into `residueOffsets`. A GPU
+   * compute pass can multiply these against the asset's mode displacements
+   * to reproduce the same raw projection.
+   */
+  get effectiveModeCoefficients(): Float32Array {
+    return this.effectiveCoefficientsBuffer;
   }
 
   get activeModeCount(): number {
@@ -256,11 +269,13 @@ export class ProteinMotionController {
   /** Projects the sampled modal coefficients into `target` as residue xyz offsets. */
   private computeRawInto(target: Float32Array, sampleTime: number, activeModeCount: number, phase: ProteinPhase): void {
     target.fill(0);
+    this.effectiveCoefficientsBuffer.fill(0);
     if (activeModeCount === 0) return;
     this.sampler.sampleAt(sampleTime, this.modeCoefficientsBuffer);
     const phaseGain = PROTEIN_MOTION_PHASE_GAINS[phase];
     for (let modeIndex = 0; modeIndex < activeModeCount; modeIndex += 1) {
       const coefficient = this.modeCoefficientsBuffer[modeIndex]! * this.modeGains[modeIndex]! * phaseGain;
+      this.effectiveCoefficientsBuffer[modeIndex] = coefficient;
       if (coefficient === 0) continue;
       const displacements = this.modes[modeIndex]!.displacements;
       for (let residueIndex = 0; residueIndex < this.residueCount; residueIndex += 1) {

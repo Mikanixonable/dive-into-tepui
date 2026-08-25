@@ -10,13 +10,21 @@ export const PROTEIN_RESIDUE_T_ATTRIBUTE = 'proteinResidueT';
  * The StorageBufferAttribute intentionally keeps the controller's Float32Array
  * as its backing array. A controller can update that array in place, set
  * `needsUpdate`, and every material made from this binding observes the same
- * GPU buffer. No runtime/controller import is required here.
+ * GPU buffer. No runtime/controller import is required here — mode
+ * displacements and coefficients arrive as plain typed arrays.
  */
 export interface ProteinMotionBinding {
   readonly residueCount: number;
+  readonly modeCount: number;
   readonly residueOffsets: THREE.StorageBufferAttribute;
+  readonly modeDisplacements: THREE.StorageBufferAttribute;
+  readonly coefficients: THREE.StorageBufferAttribute;
+  /** Lazily built on the first flush so headless callers never need a renderer. */
+  computeNode?: THREE.Node;
   disposed?: boolean;
 }
+
+const dirtyBindings = new Set<ProteinMotionBinding>();
 
 interface ProteinMotionRendererInternals {
   readonly _attributes: {
@@ -38,20 +46,63 @@ function assertResidueCount(residueCount: number): void {
   }
 }
 
-/** Create a binding from a controller-compatible xyz+w residue buffer. */
+/**
+ * Create a binding for one enemy body: a residue offset buffer the compute
+ * pass writes into, plus the asset's flattened mode displacements (shared,
+ * read-only) and a per-instance mode coefficient buffer.
+ */
 export function createProteinMotionBinding(
   residueCount: number,
-  offsets: ArrayLike<number> = new Float32Array(residueCount * 4),
+  modeDisplacements: Float32Array = new Float32Array(0),
+  modeCount = 0,
 ): ProteinMotionBinding {
   assertResidueCount(residueCount);
-  if (offsets.length !== residueCount * 4) {
-    throw new RangeError('Protein motion offsets must contain four scalars per residue');
+  if (modeDisplacements.length !== modeCount * residueCount * 4) {
+    throw new RangeError('Protein motion mode displacements must contain one vec4 per mode per residue');
   }
-  const array = offsets instanceof Float32Array ? offsets : Float32Array.from(offsets);
   return {
     residueCount,
-    residueOffsets: new THREE.StorageBufferAttribute(array, 4),
+    modeCount,
+    residueOffsets: new THREE.StorageBufferAttribute(new Float32Array(residueCount * 4), 4),
+    modeDisplacements: new THREE.StorageBufferAttribute(modeDisplacements, 4),
+    coefficients: new THREE.StorageBufferAttribute(new Float32Array(modeCount), 1),
   };
+}
+
+/** Write this frame's mode coefficients and mark the binding for the next compute flush. */
+export function updateProteinMotionCoefficients(binding: ProteinMotionBinding, coefficients: ArrayLike<number>): void {
+  if (coefficients.length !== binding.modeCount) {
+    throw new RangeError('Protein motion coefficients must contain one value per mode');
+  }
+  const target = binding.coefficients.array as Float32Array;
+  for (let index = 0; index < target.length; index += 1) target[index] = coefficients[index] ?? 0;
+  binding.coefficients.needsUpdate = true;
+  dirtyBindings.add(binding);
+}
+
+function proteinMotionComputeNode(binding: ProteinMotionBinding): THREE.Node {
+  const { Fn, Loop, storage, instanceIndex, uint } = THREE.TSL;
+  const modeDisplacements = storage(binding.modeDisplacements, 'vec4', binding.modeCount * binding.residueCount);
+  const coefficients = storage(binding.coefficients, 'float', binding.modeCount);
+  const residueOffsets = storage(binding.residueOffsets, 'vec4', binding.residueCount);
+  const residueCount = uint(binding.residueCount);
+  return Fn(() => {
+    const total = THREE.TSL.vec3(0, 0, 0).toVar();
+    Loop({ start: uint(0), end: uint(binding.modeCount), type: 'uint' }, ({ i }) => {
+      const modeOffset = i.mul(residueCount).add(instanceIndex);
+      total.addAssign(modeDisplacements.element(modeOffset).xyz.mul(coefficients.element(i)));
+    });
+    residueOffsets.element(instanceIndex).xyz.assign(total);
+  })().compute(binding.residueCount) as THREE.Node;
+}
+
+/** Dispatch a compute pass for every binding whose coefficients changed this frame. */
+export function flushProteinMotionComputes(renderer: THREE.WebGPURenderer): void {
+  for (const binding of dirtyBindings) {
+    if (!binding.computeNode) binding.computeNode = proteinMotionComputeNode(binding);
+    renderer.compute(binding.computeNode as THREE.ComputeNode, binding.residueCount);
+  }
+  dirtyBindings.clear();
 }
 
 /** Copy a controller's latest residue offsets into an existing shared buffer. */
@@ -88,16 +139,29 @@ export function registerProteinMotionRenderer(renderer: THREE.WebGPURenderer): (
   };
 }
 
-/** Release every renderer-owned GPU buffer before dropping the CPU array. */
+/**
+ * Release every renderer-owned GPU buffer before dropping the CPU arrays.
+ *
+ * The mode displacement buffer's Float32Array is asset-owned and cached by
+ * `proteinMotionModeDisplacements`, so only this binding's GPU-side storage
+ * buffer is released — the shared source array is left untouched.
+ */
 export function disposeProteinMotionBinding(binding: ProteinMotionBinding): void {
   if (binding.disposed) return;
   binding.disposed = true;
+  dirtyBindings.delete(binding);
   for (const renderer of proteinMotionRenderers.keys()) {
     const attributes = renderer._attributes;
-    if (attributes?.has(binding.residueOffsets)) attributes.delete(binding.residueOffsets);
+    for (const attribute of [binding.residueOffsets, binding.modeDisplacements, binding.coefficients]) {
+      if (attributes?.has(attribute)) attributes.delete(attribute);
+    }
   }
   binding.residueOffsets.array = new Float32Array(0);
   binding.residueOffsets.needsUpdate = true;
+  binding.modeDisplacements.array = new Float32Array(0);
+  binding.modeDisplacements.needsUpdate = true;
+  binding.coefficients.array = new Float32Array(0);
+  binding.coefficients.needsUpdate = true;
 }
 
 function assertBinding(binding: ProteinMotionBinding): void {
