@@ -89,13 +89,12 @@ function applyLoop(curve: GuideCurve, loop: GuideLoop): void {
     return;
   }
   // 節点列は位置だけを基準点相対にする(接線は差分なので平行移動を受けない)。
-  const origin = shape.position(0);
-  curve.setHermite(origin, {
-    count: shape.count,
-    at: shape.at,
-    position: (i, out) => { const p = shape.position(i); out.set(p.x - origin.x, p.y - origin.y, p.z - origin.z); },
-    tangent: (i, out) => { const m = shape.tangent(i); out.set(m.x, m.y, m.z); },
-  });
+  const origin = shape.positions[0]!;
+  const positions: number[] = [];
+  const tangents: number[] = [];
+  for (const p of shape.positions) positions.push(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+  for (const m of shape.tangents) tangents.push(m.x, m.y, m.z);
+  curve.setHermite(origin, { ts: shape.us, positions, tangents });
 }
 
 // 族 id からその種類が属する群を判定する。「軸方向軌道」「垂直軌道」は共線点(L1-L3)と
