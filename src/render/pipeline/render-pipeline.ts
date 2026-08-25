@@ -13,7 +13,7 @@
 // 普通に深度テストするだけで不透明物の奥へ隠れる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { float, log, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { float, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
@@ -26,7 +26,7 @@ import { OcclusionPass } from './occlusion';
 import { SunOcclusion } from './sun-occlusion';
 import { OverlayPass } from './overlay-pass';
 import { SunLight } from './sun-light';
-import { SunShadowMaps } from './sun-shadow-maps';
+import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { registerProteinMotionRenderer } from '../protein-motion-material';
 
@@ -174,8 +174,11 @@ export class RenderPipeline implements DebugTargetHost {
     const left = screenUV.x.lessThan(0.5);
     // screenUV は上端が原点なので、y の小さいほうが画面の上段。
     const top = screenUV.y.lessThan(0.5);
-    const topRow = select(left, texture(slots[0]!.texture, tileUV).r, texture(slots[1]!.texture, tileUV).r);
-    const bottomRow = select(left, texture(slots[2]!.texture, tileUV).r, texture(slots[3]!.texture, tileUV).r);
+    // 深度マップはメートルで持っているので、スロットごとの深度の幅で割って濃淡へ直す。
+    const tile = (slot: SunShadowSlot): FloatNode => texture(slot.texture, tileUV).r
+      .div(max(slot.far.sub(slot.near), 1e-6));
+    const topRow = select(left, tile(slots[0]!), tile(slots[1]!));
+    const bottomRow = select(left, tile(slots[2]!), tile(slots[3]!));
     return select(top, topRow, bottomRow);
   }
 

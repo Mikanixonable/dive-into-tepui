@@ -6,7 +6,7 @@
 // 答えが得られる。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
-import { clamp, positionView, uniform, vec3, vec4 } from 'three/tsl';
+import { positionView, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { metersPerPixelAtDepth } from '../../physics/projection';
 import { apparentSizePx } from '../screen-lod';
@@ -24,6 +24,11 @@ const SLOT_MARGIN = 1.05;
 // 画面上でこの直径 [px] を下回る遮蔽器は捨てる。ここを下回ると影の構造が画面側でも見えず、
 // スロットを 1 枚使う価値が無い。**太陽系全体を見る視点で塊が 0 個になるのはこの足切り。**
 const MIN_CASTER_PX = 4;
+
+// 遮蔽器が 1 つも写らなかった texel を埋める深度 [m]。**受け手のライト空間深度がこれを超える
+// ことはない**ので、受け手はそのまま「自分より奥に遮蔽器が居る = 遮られていない」と読める。
+// 正規化した深度で空を 1.0 と表すと、枠の far より遠い受け手を区別できない。
+const EMPTY_DEPTH = 1e30;
 
 // 大量の個体を 1 本のメッシュで描く枝が、自分の広がりを影パスへ渡す口。個体が毎フレーム動く枝は
 // メッシュ自身の外接箱が当てにならないので、userData.sunShadowExtent にこれを置く。
@@ -67,9 +72,8 @@ export class SunShadowMaps {
   private readonly depthMaterial: THREE.MeshBasicNodeMaterial;
   private readonly lightCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
   private readonly slotUniforms: readonly SunShadowSlot[];
-  // 深度マテリアルが読む near/far。スロットを 1 枚ずつ描くので、その都度書き換える。
+  // 深度マテリアルが引く、いま描いているスロットの near。深度はここからのメートルで書く。
   private readonly drawNear: FloatUniform;
-  private readonly drawFar: FloatUniform;
   private readonly casters: Caster[] = [];
   // collectCasters が枝ごとに拾う、その枝の単一個体の差し渡し [m](0 なら見つからなかった)。
   private branchInstanceSize = 0;
@@ -86,9 +90,11 @@ export class SunShadowMaps {
   private readonly cameraForward = new THREE.Vector3();
   private readonly cameraToTarget = new THREE.Vector3();
   private readonly clearColor = new THREE.Color();
-  // 前フレームに中身を書いたスロットの数。塊が 0 個になったフレームで 1 度だけ空へ戻すために持つ
-  // — 戻さないと、デバッグ表示「影」に前フレームの深度マップが残って読み手を欺く。
-  private drawnSlots = 0;
+  private readonly emptyDepth = new THREE.Color().setScalar(EMPTY_DEPTH);
+  // 前フレームに中身を書いたスロットの数。使わなくなったスロットを 1 度だけ空へ戻すために持つ
+  // — 戻さないと、デバッグ表示「影」に前フレームの深度マップが残って読み手を欺く。**確保直後の
+  // 深度マップはゼロ埋めなので、初回も空へ戻す対象に入れる。**
+  private drawnSlots = SHADOW_SLOT_COUNT;
 
   // スロット 4 枚ぶんの深度マップと、そこへライト空間の線形深度を書く override マテリアルを組む。
   constructor(private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings) {
@@ -105,7 +111,6 @@ export class SunShadowMaps {
     });
 
     this.drawNear = uniform(0.1);
-    this.drawFar = uniform(10);
     this.slotUniforms = this.targets.map((target) => ({
       texture: target.texture,
       lightViewProjection: uniform(new THREE.Matrix4()),
@@ -118,9 +123,9 @@ export class SunShadowMaps {
       active: uniform(0),
     }));
 
-    const linearDepth: FloatNode = clamp(
-      positionView.z.negate().sub(this.drawNear).div(this.drawFar.sub(this.drawNear)), 0, 1,
-    );
+    // near からのメートルで書く。**正規化しない** — 空の texel を EMPTY_DEPTH で埋めることで、
+    // 枠の far より遠い受け手も「遮蔽器が居ない」を区別して読めるようにする。
+    const linearDepth: FloatNode = positionView.z.negate().sub(this.drawNear);
     this.depthMaterial = new MeshBasicNodeMaterial({
       depthTest: true, depthWrite: true, transparent: false,
       blending: THREE.NoBlending, side: THREE.DoubleSide,
@@ -155,8 +160,8 @@ export class SunShadowMaps {
       this.renderer.autoClear = true;
       scene.overrideMaterial = this.depthMaterial;
       this.lightCamera.layers.set(SUN_SHADOW_CASTER_LAYER);
-      // 空の texel は「最も遠い」= 1 で埋める。遮蔽器の居ない範囲が影にならないための初期値。
-      this.renderer.setClearColor(0xffffff, 1);
+      // 遮蔽器の居ない範囲が影にならないよう、空の texel はどの受け手よりも遠い深度で埋める。
+      this.renderer.setClearColor(this.emptyDepth, 1);
       // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
       this.gpu.beginPass(GPU_PASS.shadow);
       for (const [index, cluster] of this.clusters.entries()) this.drawSlot(scene, sun, index, cluster);
@@ -178,9 +183,8 @@ export class SunShadowMaps {
   private drawSlot(scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3): void {
     const slot = this.slotUniforms[index]!;
     if (!this.configureSlot(slot, box, sun)) return;
-    // 深度マテリアルはスロット共有なので、正規化に使う near/far をこのスロットのものへ差し替える。
+    // 深度マテリアルはスロット共有なので、深度の原点をこのスロットの near へ差し替える。
     this.drawNear.value = slot.near.value;
-    this.drawFar.value = slot.far.value;
     this.renderer.setRenderTarget(this.targets[index]!);
     this.renderer.clear(true, true, false);
     this.renderer.render(scene, this.lightCamera);

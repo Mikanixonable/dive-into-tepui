@@ -305,23 +305,22 @@ export class SunOcclusion {
     const nDotL = clamp(dot(normal, sunDir), 1e-3, 1);
     const slope = sqrt(float(1).sub(nDotL.mul(nDotL))).div(nDotL);
     const offsetPos = worldPos.add(normal.mul(texel.mul(NORMAL_OFFSET_TEXELS)));
-    const depthRange = max(slot.far.sub(slot.near), 1e-6);
-    const depthBias = min(texel.mul(slope).mul(2), texel.mul(MAX_SLOPE_BIAS_TEXELS)).div(depthRange);
+    const depthBias = min(texel.mul(slope).mul(2), texel.mul(MAX_SLOPE_BIAS_TEXELS));
 
     const clip = slot.lightViewProjection.mul(vec4(offsetPos, 1));
     // **深度マップの v は上端が 0。** 描いたとき NDC y=+1 の画素がテクスチャの 0 行目へ落ちるので、
     // x と揃えて 0.5·y+0.5 にすると鏡像になり、遮蔽器のシルエットが鏡に映した位置へ出る。
     const ndc = clip.xyz.div(clip.w);
     const uvBase = vec2(ndc.x.mul(0.5).add(0.5), ndc.y.mul(-0.5).add(0.5));
-    const receiverDepth = slot.lightView.mul(vec4(offsetPos, 1)).z.negate()
-      .sub(slot.near).div(depthRange);
+    // 深度マップと同じ単位 — スロットの near からのメートル。
+    const receiverDepth = slot.lightView.mul(vec4(offsetPos, 1)).z.negate().sub(slot.near);
 
     // 半影の幅を物理から出す。遮蔽器までの距離 (receiver − blocker) に恒星の視半径を掛けた
     // ものが world 空間での半径で、それを texel へ直す。**1 タップの探索は探索半径の外の
     // 遮蔽器を見逃す**(PCSS の既知の限界)ので、細い部材の影の縁は硬いまま残る — 半影が
     // 数 texel の範囲では画面上 2px の差にしかならないので許容する。
     const blockerDepth = texture(slot.texture, uvBase).r;
-    const blockerDistance = max(receiverDepth.sub(blockerDepth), 0).mul(depthRange);
+    const blockerDistance = max(receiverDepth.sub(blockerDepth), 0);
     const radiusTexels = clamp(sunAngRadius.mul(blockerDistance).div(texel), PCF_MIN_TEXELS, PCF_MAX_TEXELS);
 
     const step = radiusTexels.mul(1 / SHADOW_SLOT_SIZE);
@@ -336,9 +335,10 @@ export class SunOcclusion {
     }
     // 枠の外は遮られないものとして返す。**箱の判定は法線オフセットぶん枠より広い**ので、
     // 縁の外へわずかに出た点がテクスチャの縁の値を引き延ばして帯状の影を作る経路がある。
+    // 深度の下限だけを見る。**上限は無い** — 枠の far より遠い受け手にも影は伸びる。
     const outside = uvBase.x.lessThan(0).or(uvBase.x.greaterThan(1))
       .or(uvBase.y.lessThan(0)).or(uvBase.y.greaterThan(1))
-      .or(receiverDepth.lessThan(0)).or(receiverDepth.greaterThan(1));
+      .or(receiverDepth.lessThan(0));
     return select(outside, float(1), lit.div(PCF_TAPS));
   }
 }
