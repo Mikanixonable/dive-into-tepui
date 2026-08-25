@@ -185,11 +185,9 @@ export class GraphicsSettings {
     target.applyGraphics(this.data);
   }
 
-  // 項目1つを差し替える。**設定パネルは項目名を実行時に持つ**ので、キーと値の対応を型では
-  // 結べない — 表の選択肢に含まれない値はここで捨てる。
+  // 項目1つを差し替える。
   public setOption(key: GraphicsOptionKey, value: boolean | number): void {
-    const accepted = acceptValue(GRAPHICS_OPTIONS[key], value, this.data[key]);
-    this.apply({ ...this.data, [key]: accepted } as GraphicsSettingsData);
+    this.apply(withGraphicsOption(this.data, key, value));
   }
 
   // プリセットの各項目へ丸ごと揃える。
@@ -216,6 +214,14 @@ export class GraphicsSettings {
     }
     return null;
   }
+}
+
+// 項目1つを差し替えた値一式を返す。**操作する UI は項目名を実行時に持つ**ので、キーと値の
+// 対応を型では結べない — 表の選択肢に含まれない値はここで捨てる。
+export function withGraphicsOption(
+  data: GraphicsSettingsData, key: GraphicsOptionKey, value: boolean | number,
+): GraphicsSettingsData {
+  return { ...data, [key]: acceptValue(GRAPHICS_OPTIONS[key], value, data[key]) } as GraphicsSettingsData;
 }
 
 // 群1つに属する項目を、表へ書いた順で返す。設定パネルの並びはこれが決める。

@@ -2,6 +2,8 @@
 // 描画経路で描く。
 import { startProteinAssetPreload } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
+import { PIPELINE_GRAPHICS_KEYS } from '../../src/render/pipeline/render-pipeline';
+import { GRAPHICS_OPTIONS } from '../../src/render/graphics-settings';
 import { CASE_NAMES, type CaseName } from './cases';
 import { LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM, type LabMeasurement, type LabViewAngles } from './lab';
 
@@ -34,6 +36,43 @@ function buildButtonRow<T extends string>(
   }
   return (active) => {
     for (const [value, button] of buttons) button.classList.toggle('active', value === active);
+  };
+}
+
+// row の中に、見出しを添えた排他選択を1組足す。返り値で選択の見た目を更新する。
+function buildChoiceField<T>(
+  rowId: string, label: string, entries: readonly (readonly [T, string])[], select: (value: T) => void,
+): (active: T) => void {
+  const field = document.createElement('div');
+  field.className = 'field';
+  const name = document.createElement('span');
+  name.textContent = label;
+  field.appendChild(name);
+  // 選択肢は entries の順に並べる。値そのものを鍵に持ち、点灯はここから引き直す。
+  const buttons = new Map<T, HTMLButtonElement>();
+  for (const [value, text] of entries) {
+    const button = document.createElement('button');
+    button.textContent = text;
+    button.addEventListener('click', () => select(value));
+    field.appendChild(button);
+    buttons.set(value, button);
+  }
+  document.getElementById(rowId)!.appendChild(field);
+  return (active) => {
+    for (const [value, button] of buttons) button.classList.toggle('active', value === active);
+  };
+}
+
+// row の中に、押すたびに裏返るボタンを1つ足す。ボタンの文字がそのまま見出しになる。
+function buildToggleField(rowId: string, label: string, select: (on: boolean) => void): (on: boolean) => void {
+  const button = document.createElement('button');
+  button.textContent = label;
+  let on = false;
+  button.addEventListener('click', () => select(!on));
+  document.getElementById(rowId)!.appendChild(button);
+  return (next) => {
+    on = next;
+    button.classList.toggle('active', on);
   };
 }
 
@@ -105,6 +144,34 @@ async function init(): Promise<void> {
     markTarget(target);
     view.showDebugTarget(target);
   });
+
+  // 描画品質設定は、パイプラインが読む項目だけを設定の表から起こす。点灯の正本は LabView 側に
+  // あるので、どの操作のあとも全項目を引き直す。
+  const graphicsMarks: (() => void)[] = [];
+  // 全項目の点灯を現在値へ合わせ直す。
+  const syncGraphics = (): void => {
+    for (const mark of graphicsMarks) mark();
+  };
+  for (const key of PIPELINE_GRAPHICS_KEYS) {
+    const option = GRAPHICS_OPTIONS[key];
+    if (option.kind === 'toggle') {
+      const mark = buildToggleField('graphics', option.label, (on) => {
+        view.setGraphicsOption(key, on);
+        syncGraphics();
+      });
+      graphicsMarks.push(() => mark(view.graphics[key] === true));
+      continue;
+    }
+    const mark = buildChoiceField<number>('graphics', option.label, option.items, (value) => {
+      view.setGraphicsOption(key, value);
+      syncGraphics();
+    });
+    graphicsMarks.push(() => {
+      const value = view.graphics[key];
+      if (typeof value === 'number') mark(value);
+    });
+  }
+  syncGraphics();
 
   markCase(CASE_NAMES[0]!);
   markTarget('off');
