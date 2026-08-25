@@ -218,7 +218,7 @@
   ],
   "generated": {
     "backend": "existing-backbone",
-    "backboneCount": 1113,
+    "backboneCount": 1123,
     "secondaryKinds": [
       "coil",
       "sheet",
@@ -226,13 +226,13 @@
     ],
     "chains": [
       "A",
+      "B",
       "C",
       "D",
-      "B",
       "E",
+      "F",
       "G",
-      "H",
-      "F"
+      "H"
     ],
     "entities": [
       1,
