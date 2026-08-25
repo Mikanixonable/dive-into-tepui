@@ -36,10 +36,6 @@ const RECOMPUTE_INTERVAL = 300;
 // zeroVelocityCurves が実際に一周した成分は始点と終点が完全に一致する(浮動小数の丸め
 // ぶんだけ僅かに異なりうる)ので、格子の1辺よりずっと小さい値で十分。
 const CLOSE_EPSILON = 1e-9;
-// 1本の折れ線に許す頂点数を、抽出した点数の何倍にするか。等高線の複雑さは点数に表れるので、
-// 単純な輪には少ない頂点を、入り組んだ輪には多い頂点を配る。
-const VERTEX_BUDGET_PER_POINT = 1.5;
-
 type Point2 = readonly [number, number];
 
 // 断面の定義。系と面の組は4つで固定。
@@ -199,7 +195,6 @@ export class ZeroVelocityLines {
     this.lines = this.shapes.map((shape) => {
       const curve = new GuideCurve(
         { color: C.COLOR_ZERO_VELOCITY_LINE, opacity: settings.opacity, renderOrder: LINE_RENDER_ORDER.reference },
-        Math.ceil(shape.points2d.length * VERTEX_BUDGET_PER_POINT),
       );
       this.scene.add(curve.line);
       return { shape, curve };
