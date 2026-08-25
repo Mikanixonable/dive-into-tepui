@@ -22,7 +22,7 @@ if (!Number.isInteger(residueCount) || residueCount <= 0) errors.push('residueCo
 for (const [name, expected] of [['chains', residueCount], ['residueNumbers', residueCount], ['bFactors', residueCount], ['centers', residueCount * 3]]) {
   if (!Array.isArray(motion.residues?.[name]) || motion.residues[name].length !== expected) errors.push(`residues.${name} length mismatch`);
 }
-for (const name of ['atomResidues', 'backboneResidues', 'surfaceResidues', 'siteResidues', 'modificationResidues']) {
+for (const name of ['atomResidues', 'backboneResidues', 'surfaceResidues', 'ribbonResidues', 'siteResidues', 'modificationResidues']) {
   const values = motion.bindings?.[name];
   if (!Array.isArray(values)) errors.push(`bindings.${name} must be an array`);
   else for (const index of values) if (!Number.isInteger(index) || index < 0 || index >= residueCount) errors.push(`bindings.${name} index out of range: ${index}`);
@@ -34,6 +34,7 @@ const expectedBindingLengths = {
   atomResidues: structure.atoms.count,
   backboneResidues: backbone.backboneCount,
   surfaceResidues: structure.surface.mesh.position.length / 3,
+  ribbonResidues: structure.ribbon.mesh.position.length / 3,
   siteResidues: semantic.sites.length,
   modificationResidues: semantic.modificationSlots.length,
 };
@@ -69,6 +70,7 @@ let chainBindingErrors = 0;
 for (let index = 0; index < chainAtAtom.length; index++) if (chainAtAtom[index] !== residueChains[motion.bindings.atomResidues[index]]) chainBindingErrors++;
 for (let index = 0; index < backbone.backboneCount; index++) if (backbone.backboneChains[index] !== residueChains[motion.bindings.backboneResidues[index]]) chainBindingErrors++;
 for (let index = 0; index < structure.surface.mesh.component.length; index++) if (structure.surface.mesh.component[index] !== residueChains[motion.bindings.surfaceResidues[index]]) chainBindingErrors++;
+for (let index = 0; index < structure.ribbon.mesh.chain.length; index++) if (structure.ribbon.mesh.chain[index] !== residueChains[motion.bindings.ribbonResidues[index]]) chainBindingErrors++;
 const componentChains = new Map(semantic.components.map((component) => [component.id, new Set(component.chains)]));
 for (const [index, site] of semantic.sites.entries()) if (!componentChains.get(site.componentId)?.has(residueChains[motion.bindings.siteResidues[index]])) chainBindingErrors++;
 for (const [index, slot] of semantic.modificationSlots.entries()) if (!componentChains.get(slot.componentId)?.has(residueChains[motion.bindings.modificationResidues[index]])) chainBindingErrors++;

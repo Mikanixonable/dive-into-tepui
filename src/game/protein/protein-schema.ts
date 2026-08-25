@@ -82,6 +82,7 @@ export interface ProteinMotionAsset {
     readonly atomResidues: readonly number[];
     readonly backboneResidues: readonly number[];
     readonly surfaceResidues: readonly number[];
+    readonly ribbonResidues: readonly number[];
     readonly siteResidues: readonly number[];
     readonly modificationResidues: readonly number[];
   };
@@ -106,6 +107,7 @@ export interface ProteinMotionExpectedCounts {
   readonly atomResidues: number;
   readonly backboneResidues: number;
   readonly surfaceResidues: number;
+  readonly ribbonResidues: number;
   readonly siteResidues: number;
   readonly modificationResidues: number;
 }
@@ -229,7 +231,7 @@ export function validateProteinMotionAsset(asset: ProteinMotionAsset, expectedPd
     if (!Array.isArray(asset.residues?.[name]) || asset.residues[name].length !== length) issues.push(`motion residues.${name} must have length ${length}`);
   }
   const bindings = asset.bindings;
-  const bindingNames = ['atomResidues', 'backboneResidues', 'surfaceResidues', 'siteResidues', 'modificationResidues'] as const;
+  const bindingNames = ['atomResidues', 'backboneResidues', 'surfaceResidues', 'ribbonResidues', 'siteResidues', 'modificationResidues'] as const;
   for (const name of bindingNames) {
     const values = bindings?.[name];
     if (!Array.isArray(values)) issues.push(`motion bindings.${name} must be an array`);
