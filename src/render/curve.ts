@@ -1,7 +1,8 @@
 // THREE で折れ線(曲線)を描く機構だけを担う。
 //
 // **Curve が決めること**: 頂点を t のどこに何個置くか。画面上のサジッタと折れ角を見て
-// 必要なだけ細かく分割し、ズーム・視線の変化に応じて焼き直す。呼び出し側はここへ関与しない。
+// 必要なだけ細かく分割し、ズーム・視線の変化に応じて焼き直す。呼び出し側が調整できるのは
+// 「どこまで曲線へ寄せるか」(maxSagittaPx)だけで、頂点の置き方そのものには関与しない。
 //
 // **サンプラが満たすべきこと**: t∈[0,1] で滑らか(少なくとも C¹)であること。
 // **折れ線を返せば描かれるのも折れ線で、適応分割は入力を超える精度を作らない。**
@@ -27,6 +28,9 @@ export type CurveOptions = {
   // 頂点バッファの束縛をキャッシュしており、ジオメトリや属性ごと差し替えても新しい頂点は
   // 反映されない)ので、曲線を知る前に上限を決める必要がある。
   readonly maxVertices?: number;
+  // 弦に対する曲線の膨らみ(サジッタ)の目標値 [px]。**線の細かさを調整する唯一の入口。**
+  // 小さくすれば頂点を増やして曲線へ寄せ、大きくすれば粗く済ませる。
+  readonly maxSagittaPx?: number;
 };
 
 // t∈[0,1] の位置における曲線上の点を out へ書く。sample(0) と sample(1) が一致する(周期的
@@ -55,10 +59,10 @@ export type SetCurveOptions = {
   readonly colorAt?: CurveColorSampler;
 };
 
-// 弦に対する曲線の膨らみ(サジッタ)の目標値 [px]。画面上のサジッタをこの値以下に抑える
-// ように分割する。世界空間の許容量を固定にすると、寄るほど画面上のずれが線形に増えてしまう
-// (ズームに連動しない歯止めはこの後の MAX_EDGE_TURN が担う)。
-const MAX_EDGE_SAG_PX = 0.5;
+// 既定のサジッタ目標 [px]。画面上のサジッタをこの値以下に抑えるように分割する。世界空間の
+// 許容量を固定にすると、寄るほど画面上のずれが線形に増えてしまう(ズームに連動しない歯止めは
+// この後の MAX_EDGE_TURN が担う)。1px を下回っていれば、隣り合う画素の間に収まる。
+const DEFAULT_MAX_SAGITTA_PX = 0.5;
 
 // 1辺あたりに許す折れ角の上限。サジッタ目標だけに従うと、遠ズームで1区間が際限なく粗くなる
 // (画面上のサジッタが縮まないぶん実距離の許容量が際限なく伸びる)ため、その歯止めとして残す。
@@ -112,9 +116,9 @@ const CAM_DIR_REBAKE_COS = Math.cos((5 * Math.PI) / 180);
 // 基準点(pivot)からの差分だけを書き、その基準点をカメラの動きに追従させることでこれを防ぐ。
 const F32_RELATIVE_EPS = 2 ** -24;
 
-// pivot の更新を許す画面上の誤差上限 [px]。MAX_EDGE_SAG_PX(適応分割のサジッタ目標)より
-// 十分小さい値にして、量子化誤差が分割の粗さに埋もれて見えなくなるようにする。
-const PIVOT_MAX_ERROR_PX = 0.1;
+// pivot の更新を許す画面上の誤差上限を、サジッタ目標に対する比で表した値。量子化誤差が
+// 分割の粗さに埋もれて見えなくなるよう、目標より十分小さく取る。
+const PIVOT_MAX_ERROR_RATIO = 0.2;
 
 // 離散サンプルとしてしか手に入らない曲線の節点列。節点の格納形は呼び出し側ごとに違うので、
 // 配列ではなくアクセサで受け取る。count は節点数(2以上)、at(i) は節点 i の曲線パラメータ
@@ -266,10 +270,14 @@ export class Curve {
   // 初期頂点に置ける頂点数の上限。
   private readonly maxInitialVertices: number;
 
+  // 画面上のサジッタ目標 [px]。分割をどこで止めるかを決める。
+  private readonly maxSagittaPx: number;
+
   // style はマテリアルと描画順、maxVertices は確保する頂点バッファの上限。style.dash が
   // あれば破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。
   constructor(opts: CurveOptions) {
-    const { style, maxVertices = DEFAULT_MAX_VERTICES } = opts;
+    const { style, maxVertices = DEFAULT_MAX_VERTICES, maxSagittaPx = DEFAULT_MAX_SAGITTA_PX } = opts;
+    this.maxSagittaPx = maxSagittaPx;
     const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
     this.maxInitialVertices = Math.max(INITIAL_SEGMENTS + 1, Math.floor(maxVertices * MAX_INITIAL_VERTEX_RATIO));
@@ -432,7 +440,7 @@ export class Curve {
       ? Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by + az * bz) / (aLen * bLen))))
       : 0;
 
-    return Math.max(sagittaPx / MAX_EDGE_SAG_PX, turn / MAX_EDGE_TURN);
+    return Math.max(sagittaPx / this.maxSagittaPx, turn / MAX_EDGE_TURN);
   }
 
   // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても、残った
@@ -516,7 +524,7 @@ export class Curve {
     let pivotChanged = rebaked || !this.hasPivot;
     if (!pivotChanged) {
       const drift = localCam.distanceTo(this.pivot);
-      pivotChanged = (drift * F32_RELATIVE_EPS) / scaleNow > PIVOT_MAX_ERROR_PX;
+      pivotChanged = (drift * F32_RELATIVE_EPS) / scaleNow > this.maxSagittaPx * PIVOT_MAX_ERROR_RATIO;
     }
     if (pivotChanged) {
       this.pivot.copy(localCam);
