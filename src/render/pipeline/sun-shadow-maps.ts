@@ -8,7 +8,7 @@ import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { positionView, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import { castsOnto, extentForTexel, requiredTexel } from '../shadow-demand';
+import { anchorAxis, castsOnto, extentForTexel, insideBox, requiredTexel } from '../shadow-demand';
 import type { FloatNode, FloatUniform, Mat4Uniform } from '../tsl-types';
 import { SUN_SHADOW_CASTER_LAYER } from './lit-layer';
 import type { SunLight } from './sun-light';
@@ -320,14 +320,17 @@ export class SunShadowMaps {
   // box の中でカメラにいちばん近い点を、枝の代表点の候補として拾う。toWorld は box の座標系から
   // 描画座標への変換で、box が既に描画座標なら null を渡す。
   private takeBoxAnchor(box: THREE.Box3, toWorld: THREE.Matrix4 | null): void {
-    this.scratchCorner.copy(this.cameraPosition);
-    if (toWorld !== null) this.scratchCorner.applyMatrix4(this.scratchMatrix.copy(toWorld).invert());
-    // **カメラが box の内側にあるときは箱の中心へ退避する。** 最近点はカメラ位置そのものに
-    // なるが、そこにメッシュは無いので、窓の中心にすると必ず空を撮る。
-    if (box.containsPoint(this.scratchCorner)) box.getCenter(this.scratchCorner);
-    else box.clampPoint(this.scratchCorner, this.scratchCorner);
-    if (toWorld !== null) this.scratchCorner.applyMatrix4(toWorld);
-    this.takeAnchor(this.scratchCorner, this.scratchCorner.distanceTo(this.cameraPosition));
+    const point = this.scratchCorner.copy(this.cameraPosition);
+    if (toWorld !== null) point.applyMatrix4(this.scratchMatrix.copy(toWorld).invert());
+    const { min, max } = box;
+    const retreat = insideBox(point.x, point.y, point.z, min.x, min.y, min.z, max.x, max.y, max.z);
+    point.set(
+      anchorAxis(point.x, min.x, max.x, retreat),
+      anchorAxis(point.y, min.y, max.y, retreat),
+      anchorAxis(point.z, min.z, max.z, retreat),
+    );
+    if (toWorld !== null) point.applyMatrix4(toWorld);
+    this.takeAnchor(point, point.distanceTo(this.cameraPosition));
   }
 
   // カメラにより近い代表点が来たら、枝の代表点を差し替える。
