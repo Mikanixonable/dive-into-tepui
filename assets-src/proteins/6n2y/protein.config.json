@@ -3,11 +3,12 @@
   "pdbId": "6N2Y",
   "source": "src/assets/models/atpSynthase6n2yBackbone.json",
   "sourceStructureUrl": "https://files.rcsb.org/download/6N2Y.cif",
+  "sourceStructureFile": "assets-src/proteins/6n2y/6N2Y.cif",
   "structureAsset": "src/assets/models/atpSynthase6n2yStructure.json",
   "motionAsset": "src/assets/models/atpSynthase6n2yMotion.json",
   "glbOutput": "src/assets/models/atpSynthase6n2y.glb",
   "coordinateScale": 0.025,
-  "surfaceGridSpacingAngstrom": 1.5,
+  "surfaceQuality": 0,
   "amplitudeCalibration": "uncalibrated-display",
   "representation": "cartoon",
   "molecularNodes": {

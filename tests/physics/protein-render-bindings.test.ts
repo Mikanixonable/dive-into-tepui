@@ -88,8 +88,6 @@ const source: ProteinRenderSource = {
         hydrophobicity: [0, 0, 0],
         component: ['A', 'A', 'A'],
       },
-      hydrophobicity: [0, 0, 0],
-      surfaceCharge: [0, 0, 0],
     },
     generator: { name: 'test' },
   },
