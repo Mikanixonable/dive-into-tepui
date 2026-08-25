@@ -181,6 +181,25 @@ interface LineVisualStyle {
   readonly colorAt: CurveColorSampler;
 }
 
+// 点列の形を決める設定だけを並べた識別子。色・不透明度・進行方向・安定度は含めないので、
+// スライダーを掴んでいる間じゅう全線を焼き直すことがない。
+function geometrySignature(settings: OrbitGuideSettings): string {
+  const parts: string[] = [];
+  for (const [id, kind] of Object.entries(settings.kinds)) {
+    if (!kind.on) continue;
+    parts.push(`${id}:${kind.count}:${kind.rangeMin}:${kind.rangeMax}`);
+  }
+  const l = settings.lissajous;
+  if (l.on) {
+    parts.push(`lissajous:${l.inPlane}:${l.outOfPlane}:${l.inPlanePhase}:${l.outOfPlanePhase}:${l.cycles}:${l.l1}${l.l2}${l.l3}`);
+  }
+  for (const [group, systems] of Object.entries(settings.systems)) {
+    const on = Object.entries(systems).filter(([, enabled]) => enabled).map(([id]) => id).join(',');
+    parts.push(`${group}:${on}`);
+  }
+  return parts.sort().join('|');
+}
+
 // 本数・族範囲・系選択の直積が変わったとき(rebuildLines を要するとき)だけ変わる識別子。
 // 色・透明度・進行方向・安定度・振幅など、点列や本数を変えない設定は含めない。
 function structuralKey(settings: OrbitGuideSettings): string {
@@ -204,7 +223,7 @@ export class OrbitGuideLines {
   private readonly markers: DirectionMarkers;
   private settings: OrbitGuideSettings | null = null;
   private structureKey = '';
-  private computedSettings: OrbitGuideSettings | null = null;
+  private geometryKey = '';
   private lastComputedTime: number | null = null;
   private lastCatalogGeneration = -1;
   private onLineCountChange: ((count: number) => void) | null = null;
@@ -226,6 +245,9 @@ export class OrbitGuideLines {
   public sync(displayTime: number, overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera): void {
     if (!overviewMode || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
+      // マーカーは InstancedPool が前のフレームの行列を保つので、空のフレームを1つ流して消す。
+      this.markers.beginFrame();
+      this.markers.endFrame();
       return;
     }
     const settings = this.settings;
@@ -240,13 +262,14 @@ export class OrbitGuideLines {
     const catalogGeneration = this.catalog.generation;
     const timeMoved = this.lastComputedTime === null
       || Math.abs(displayTime - this.lastComputedTime) >= RECOMPUTE_INTERVAL;
-    if (settings !== this.computedSettings || timeMoved || catalogGeneration !== this.lastCatalogGeneration) {
+    const geometryKey = geometrySignature(settings);
+    if (geometryKey !== this.geometryKey || timeMoved || catalogGeneration !== this.lastCatalogGeneration) {
       for (const entry of this.lines) {
         const loop = this.computeLoop(entry, displayTime, settings);
         entry.lastLoop = loop;
         entry.curve.setPoints(loop?.points ?? null);
       }
-      this.computedSettings = settings;
+      this.geometryKey = geometryKey;
       this.lastComputedTime = displayTime;
       this.lastCatalogGeneration = catalogGeneration;
     }
@@ -262,7 +285,7 @@ export class OrbitGuideLines {
       entry.curve.sync(fo, camera, style.colorAt);
       entry.curve.setOpacity(style.opacity);
       if (entry.lastLoop) {
-        this.markers.addLoop(entry.lastLoop, style.direction, style.animate, displayTime, style.markerColor, fo);
+        this.markers.addLoop(entry.lastLoop, style.direction, style.animate, style.markerColor, fo);
       }
     }
     this.markers.endFrame();
@@ -275,7 +298,7 @@ export class OrbitGuideLines {
       const points = entry.curve.worldPoints();
       if (points.length < 2) continue;
       visible.push({
-        key: `${entry.familyId}:${entry.system}:${entry.index}`,
+        key: `${entry.familyId}:${entry.system}:${entry.point ?? '-'}:${entry.index}`,
         familyId: entry.familyId, system: entry.system, point: entry.point, points,
       });
     }
