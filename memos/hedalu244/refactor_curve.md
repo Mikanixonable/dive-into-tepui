@@ -162,59 +162,18 @@ private にすれば、**任意のサンプラと任意の初期頂点列の組�
 12. マップビューでモルニヤ軌道の近点へズームインしたとき、近点が多角形に割れない。
 13. `npm run typecheck` / `npm run test:physics` / `npm run render-lab:shot` が通る。
 
+## 前提(実施済みの手順が確定させたこと)
+
+- `GuideCurve` は `setSampler(origin, sample)` / `clear()` / `samplePoints(count)` を持ち、
+  `Curve` へ `initialTs` を渡さない。曲線の中身は呼び出し側が組む。
+- 点列の線形補間は `guide-curve.ts` の `polylineSampler(points, origin, closed)` 1箇所だけに
+  ある。**手順5・手順6 で両方の呼び出し側がエルミートへ移ったら、この関数ごと削除する。**
+- `OrbitGuideLines.visibleLines(sampleCount)` は当たり判定用の点列を曲線から引き直す。
+  輪を閉じるかどうかは `GuideLoop.closed` が決める。
+- 線のマテリアル色は `styleFor` が毎フレーム組む。頂点カラー(`colorAt`)を持つのは族の
+  グラデーション線だけで、単色の線は `colorAt` を渡さない。
+
 ## 手順
-
-### 手順1. 色の契約を是正する
-
-**目的**
-
-単色の線が頂点カラー経路を通り、マテリアル色と二重に掛かって黒く潰れているのを直す。
-併せて、色だけの変更で幾何を焼き直さずに済む経路を `Curve` へ足す。`Curve` の適応分割には
-まだ触れない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/curve.ts` | `CurveColorSampler`(26行目) のコメントへ「頂点カラーはマテリアル色に乗算される。単色ならこれを渡さず `setColor` を使うこと」を明記する。焼いた頂点の t を使って色だけ焼き直す `setColors(colorAt)` を新設し、`enableVertexColors`(426行目) と `writePositions`(434行目) の色書き込みをそこから再利用する |
-| `src/game/celestial/guide-curve.ts` | `setStyle` / `invalidateColors`(78-88行目) から `this.revision = {}` を外し、`invalidateColors` は `Curve.setColors` を呼ぶ形にする |
-| `src/game/celestial/orbit-guide-lines.ts` | `styleFor`(323-372行目) の返り値の `colorAt` を optional にし、リサジュー・参照軌道4種・模式図では返さない（単色なので `GuideCurve.setStyle` のマテリアル色だけで足りる）。族のグラデーション線だけが `colorAt` を持つ。`applyStyle`(263-270行目) の realistic 側で、模式図で書き換えたマテリアル色を白へ戻す |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -n "revision = {}" src/game/celestial/guide-curve.ts` が `setPoints` の中の1件だけ。
-- `npm run render-lab:shot` が通る。
-- マップビューで表示パネル → 軌道ガイドタブを開き、リサジューと参照軌道4種を ON にする。
-  模式図へ切り替えて線が見えること（黒く潰れない）、realistic へ戻して元の色に戻ることを目で見る。
-
-### 手順2. `GuideCurve` を「ECI サンプラの器」に作り直す
-
-**目的**
-
-`GuideCurve` が点列の線形補間まで抱えているせいで、呼び出し側は「点列を渡す」以外の選択肢を
-持てない。サンプラの中身を呼び出し側の責務へ移し、`GuideCurve` は
-「ECI 絶対座標のサンプラを、描画原点へ追随させながら `Curve` へ流す」だけにする。
-**この時点で描かれる形は変えない** — 各呼び出し側は今と同じ線形補間サンプラを渡す。
-併せて `initialTs` の受け渡しをやめる（決定1を安全に入れるための前提でもある）。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/guide-curve.ts` | `points` / `origin` / `closed` と `sampler`(34-50行目) を削除。`setSampler(origin: Vec3, sample: CurveSampler)`（`origin` は頂点を相対化する基準点、`sample` は `origin` 相対を返す）を新設し、`revision` はここでだけ差し替える。`initialTsCache` / `initialTsFor`(9-17行目) を削除し、`setCurve` へ `initialTs` を渡さない。`worldPoints`(61行目) は当たり判定用の `samplePoints(count)` へ置き換える |
-| `src/game/celestial/zero-velocity-lines.ts` | `reembed`(186-211行目) が作る `points3d` を閉じ込めた線形補間サンプラを組んで `setSampler` へ渡す（**この手順では見た目を変えないための暫定**。エルミート補間への移行は手順6）。`VERTEX_BUDGET`(40行目) の扱いも手順6 |
-| `src/game/celestial/orbit-guide-lines.ts` | `entry.curve.setPoints(loop?.points ?? null)`(227行目) を、`loop.points` を閉じ込めた線形補間サンプラの `setSampler` 呼び出しへ置き換える。`visibleLines`(272行目) は `curve.samplePoints(...)` を使う |
-| `src/game/orbit-pickables.ts` | `guide.points`(56行目) の供給元が変わる。`ORBIT_PICK_SAMPLES` を `VisibleGuideLine` の生成側へ渡す |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -rn "initialTs" src/game/` が 0 件。`grep -rn "initialTsCache" src/` が 0 件。
-- `npm run render-lab:shot` が通る。
-- マップビューで軌道ガイドとゼロ速度曲線を ON にし、**手順1 の時点と線の形が変わっていない**
-  ことを目で見る（この手順は見た目を変えない）。右クリックでガイド線のプロパティウィンドウが
-  今までどおり開くことを確認する。
 
 ### 手順3. `Curve` の契約を確定させ、2種類の利用をヘルパーとして提供する
 
