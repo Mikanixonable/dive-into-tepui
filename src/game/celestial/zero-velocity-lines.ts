@@ -99,10 +99,13 @@ export class ZeroVelocityLines {
 
   public constructor(private readonly scene: THREE.Scene, private readonly ephemeris: Ephemeris) {}
 
+  // ゲーム側配線用の setter。sync はここで受けた最新値を読む。
   public setSettings(settings: ZeroVelocitySettings): void {
     this.settings = settings;
   }
 
+  // マップビューのときだけ曲線を同期する。等高線の抽出(格子走査)は断面やヤコビ定数が
+  // 変わったときだけ、ECI への埋め込みは回転基底が目に見えて回ったときだけ走る。
   public sync(displayTime: number, overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera): void {
     if (!overviewMode || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
@@ -210,6 +213,7 @@ export class ZeroVelocityLines {
     }
   }
 
+  // 全ての折れ線をシーンから外して破棄する。
   public dispose(): void {
     for (const entry of this.lines) {
       entry.curve.line.removeFromParent();

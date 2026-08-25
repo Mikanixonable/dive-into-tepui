@@ -20,28 +20,12 @@ import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import type { LagrangeLabel } from '../../../physics/zero-velocity';
 import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../celestial/orbit-guide-settings';
+import { OrbitGuideTab, lagrangePointJacobi } from './orbit-guide-tab';
 import {
-  JACOBI_MAPPING, OrbitGuideTab, buildValueField, lagrangePointJacobi, syncValueField, type ValueMapping,
-} from './orbit-guide-tab';
-import { DEFAULT_ORBIT_GUIDE_SETTINGS, MAX_ZERO_VELOCITY_CURVES } from '../../celestial/orbit-guide-settings';
+  JACOBI_MAPPING, OPACITY_MAPPING, ZERO_VELOCITY_COUNT_MAPPING, buildValueField, syncValueField,
+} from './guide-value-field';
+import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../celestial/orbit-guide-settings';
 import { loadPanelCollapsed, onPanelCollapsedViewChange, savePanelCollapsed } from '../panel-shell';
-
-function clamp01(value: number): number {
-  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-}
-const OPACITY_MAPPING: ValueMapping = {
-  sliderMin: 0, sliderMax: 100, sliderStep: 1,
-  toSlider: (v) => Math.round(v * 100), fromSlider: (raw) => raw / 100,
-  format: (v) => v.toFixed(2), parse: (text) => clamp01(Number(text)),
-  inputMin: 0, inputMax: 1, inputStep: 0.01,
-};
-const ZERO_VELOCITY_COUNT_MAPPING: ValueMapping = {
-  sliderMin: 1, sliderMax: MAX_ZERO_VELOCITY_CURVES, sliderStep: 1,
-  toSlider: (v) => Math.round(v), fromSlider: (raw) => Math.round(raw),
-  format: (v) => String(Math.round(v)),
-  parse: (text) => Math.round(Math.min(MAX_ZERO_VELOCITY_CURVES, Math.max(1, Number(text)))),
-  inputMin: 1, inputMax: MAX_ZERO_VELOCITY_CURVES, inputStep: 1,
-};
 
 const ZERO_VELOCITY_SECTION_ROWS: readonly (readonly [keyof ZeroVelocitySettings, string])[] = [
   ['earthMoonXY', '月軌道面'],
