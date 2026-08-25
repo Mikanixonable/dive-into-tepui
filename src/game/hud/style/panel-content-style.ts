@@ -262,16 +262,29 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   --orbit-guide-slider-min-w: 60px;
   --orbit-guide-value-w: 60px;
 }
-.orbit-guide-section { margin-bottom: var(--space-4); }
-.orbit-guide-heading { margin-bottom: var(--space-2); }
-.orbit-guide-heading-btn { width: 100%; text-align: left; }
-.orbit-guide-section.category-off { opacity: var(--toggle-off-opacity); }
+.orbit-guide-tab .panel-shell { margin-bottom: var(--space-3); }
+.orbit-guide-tab .panel-shell .panel-shell { margin: var(--space-2) 0 0; }
+.orbit-guide-system-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+.orbit-guide-kind-row { margin-bottom: var(--space-2); }
+.orbit-guide-kind-heading { margin-bottom: var(--space-1); }
+.orbit-guide-kind-heading-btn { width: 100%; text-align: left; }
+.orbit-guide-kind-config { display: flex; flex-direction: column; gap: var(--space-2); padding-left: var(--space-3); border-left: 1px solid var(--line-subtle); }
+.orbit-guide-kind-config.hidden { display: none; }
 .orbit-guide-toggle-row { flex-wrap: wrap; }
 .orbit-guide-value-row { flex-wrap: nowrap; align-items: center; }
 .orbit-guide-value-row .slider-col { flex: 1 1 var(--orbit-guide-slider-min-w); min-width: var(--orbit-guide-slider-min-w); }
 .orbit-guide-value-row .w-slider { width: 100%; }
 .orbit-guide-value-row .w-input { width: var(--orbit-guide-value-w); }
+.orbit-guide-value-row.hidden { display: none; }
 .orbit-guide-value-unit { color: var(--text-dim); font-size: var(--font-xs); }
+.orbit-guide-color-row { align-items: center; }
+.orbit-guide-color-row .w-input { width: 44px; height: 24px; padding: 2px; }
+.orbit-guide-color-row.hidden { display: none; }
+.orbit-guide-line-count-warning { color: var(--color-error); font-size: var(--font-xs); margin-top: var(--space-2); }
+.orbit-guide-line-count-warning.hidden { display: none; }
+.orbit-guide-zero-velocity-range { display: flex; flex-direction: column; gap: var(--space-2); }
+.orbit-guide-zero-velocity-range.hidden { display: none; }
+.orbit-guide-section-divider-wrap { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
 #hud-stage-controls { width: 100%; pointer-events: auto; }
 #hud-stage-controls .stage-controls-body { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
 #hud-stage-controls .stage-control-enemy-tabs { display: flex; gap: var(--space-2); }

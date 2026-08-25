@@ -136,22 +136,31 @@ for (const samples of [SAMPLES_DEFAULT, SAMPLES_FALLBACK]) {
   process.stderr.write(`バンドル2系が ${(bytes / 1024 / 1024).toFixed(2)}MB で目標超過。点数を落として焼き直す\n`);
 }
 
-const bundlePath = join(assetsDir, 'lagrange-orbits.json');
-writeFileSync(bundlePath, `${JSON.stringify(bundleDocument)}\n`, 'utf8');
-process.stderr.write(
-  `${bundlePath} を書き出した(1メンバー ${bundleSamples} 点、${(bundleBytes / 1024 / 1024).toFixed(2)}MB)\n`,
-);
-
 // 残る系は遅延ロード用に系ごと1ファイルへ分ける。点数はバンドルと独立にデフォルトを使う。
 const lazyKeys = systemKeys.filter((key) => !BUNDLED_SYSTEMS.includes(key));
 const lazyReport = [];
+const familyIndex = {};
+for (const [key, system] of Object.entries(bundleDocument.systems)) {
+  familyIndex[key] = Object.keys(system.families);
+}
 for (const key of lazyKeys) {
-  const systemDoc = { systems: { [key]: bakeSystem(loadCache(key), SAMPLES_DEFAULT, excluded) } };
+  const baked = bakeSystem(loadCache(key), SAMPLES_DEFAULT, excluded);
+  const systemDoc = { systems: { [key]: baked } };
   const outPath = join(assetsDir, `lagrange-orbits-${key}.json`);
   const bytes = Buffer.byteLength(JSON.stringify(systemDoc), 'utf8');
   writeFileSync(outPath, `${JSON.stringify(systemDoc)}\n`, 'utf8');
   lazyReport.push(`${outPath}: ${(bytes / 1024 / 1024).toFixed(2)}MB`);
+  familyIndex[key] = Object.keys(baked.families);
 }
+
+// 遅延ロードする系の族一覧もバンドルへ索引として入れる。UI は起動時に全系の選択肢を組める。
+const bundlePath = join(assetsDir, 'lagrange-orbits.json');
+const bundleWithIndex = { ...bundleDocument, familyIndex };
+const bundleFinalBytes = Buffer.byteLength(JSON.stringify(bundleWithIndex), 'utf8');
+writeFileSync(bundlePath, `${JSON.stringify(bundleWithIndex)}\n`, 'utf8');
+process.stderr.write(
+  `${bundlePath} を書き出した(1メンバー ${bundleSamples} 点、${(bundleFinalBytes / 1024 / 1024).toFixed(2)}MB)\n`,
+);
 
 physics.dispose();
 
