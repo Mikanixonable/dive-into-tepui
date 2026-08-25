@@ -95,8 +95,8 @@ def encode_bonds(object_name: str) -> dict:
     }
 
 
-def read_surface_triangles(path: pathlib.Path) -> tuple[np.ndarray, np.ndarray]:
-    """書き出された表面から、三角形ごとの頂点座標と面の並びを読む。"""
+def read_obj_triangles(path: pathlib.Path) -> tuple[np.ndarray, np.ndarray]:
+    """書き出された OBJ から、三角形ごとの頂点座標と面の並びを読む。"""
     positions: list[tuple[float, float, float]] = []
     corners: list[int] = []
     with path.open(encoding="utf-8") as handle:
@@ -126,7 +126,7 @@ def encode_surface(config: dict, source: pymol_source.Source) -> dict:
 
     exported = pathlib.Path(tempfile.mkdtemp()) / "surface.obj"
     cmd.save(str(exported), source.object_name)
-    raw_positions, corners = read_surface_triangles(exported)
+    raw_positions, corners = read_obj_triangles(exported)
     exported.unlink()
     exported.parent.rmdir()
 
@@ -162,6 +162,42 @@ def encode_surface(config: dict, source: pymol_source.Source) -> dict:
     }
 
 
+def encode_ribbon(source: pymol_source.Source) -> dict:
+    """カートゥーン表現を焼き込み、頂点ごとに最も近い原子の鎖を添えたメッシュへ符号化する。
+
+    リガンドは分子模型表示が別途描くため、主鎖(polymer)だけをカートゥーンへ含める。
+    """
+    from pymol import cmd
+
+    cmd.show_as("cartoon", f"{source.object_name} and polymer")
+    cmd.hide("everything", f"{source.object_name} and not polymer")
+    cmd.set_view(IDENTITY_VIEW)
+    cmd.refresh()
+
+    exported = pathlib.Path(tempfile.mkdtemp()) / "ribbon.obj"
+    cmd.save(str(exported), source.object_name)
+    raw_positions, corners = read_obj_triangles(exported)
+    exported.unlink()
+    exported.parent.rmdir()
+
+    vertices, inverse = np.unique(raw_positions, axis=0, return_inverse=True)
+    triangles = inverse[corners].reshape((-1, 3))
+    degenerate = (triangles[:, 0] == triangles[:, 1]) | (triangles[:, 1] == triangles[:, 2]) | (triangles[:, 2] == triangles[:, 0])
+    triangles = triangles[~degenerate]
+    _, first_occurrence = np.unique(np.sort(triangles, axis=1), axis=0, return_index=True)
+    triangles = triangles[np.sort(first_occurrence)]
+
+    atom_positions = np.asarray([atom.coord for atom in source.atoms], dtype=np.float64)
+    nearest = cKDTree(atom_positions).query(vertices, k=1)[1]
+    return {
+        "mesh": {
+            "position": [round(float(value), SURFACE_DIGITS) for value in vertices.reshape(-1)],
+            "index": [int(value) for value in triangles.reshape(-1)],
+            "chain": [source.atoms[index].chain for index in nearest],
+        },
+    }
+
+
 def main() -> int:
     arguments = parse_args()
     config = pymol_source.read_config(arguments.config)
@@ -169,6 +205,7 @@ def main() -> int:
     atoms = encode_atoms(source)
     bonds = encode_bonds(source.object_name)
     surface = encode_surface(config, source)
+    ribbon = encode_ribbon(source)
     output = {
         "schemaVersion": 1,
         "id": f"{config['assetId']}-structure",
@@ -179,10 +216,11 @@ def main() -> int:
         "atoms": atoms,
         "bonds": bonds,
         "surface": surface,
-        "generator": {"name": "extract-structure.py", "version": 4},
+        "ribbon": ribbon,
+        "generator": {"name": "extract-structure.py", "version": 5},
     }
     pymol_source.write_json(pathlib.Path(arguments.output), output)
-    print(f"extracted {atoms['count']} atoms, {bonds['count']} bonds, {len(surface['mesh']['index']) // 3} surface triangles")
+    print(f"extracted {atoms['count']} atoms, {bonds['count']} bonds, {len(surface['mesh']['index']) // 3} surface triangles, {len(ribbon['mesh']['index']) // 3} ribbon triangles")
     return 0
 
 
