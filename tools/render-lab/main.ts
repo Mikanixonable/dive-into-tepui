@@ -14,6 +14,8 @@ declare global {
       setView: (changes: Partial<LabViewAngles>) => void;
       setTarget: (target: DebugTargetId) => void;
       slots: () => readonly { texelWorld: number; frame: number; near: number; far: number; active: number }[];
+      captureB: () => Promise<string>;
+      slotsB: () => readonly { texelWorld: number; frame: number; near: number; far: number; active: number }[];
       measure: (name: CaseName) => Promise<LabMeasurement>;
     };
   }
@@ -68,21 +70,27 @@ function buildSlider(
 
 async function init(): Promise<void> {
   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement);
+  // **A/B 比較用の一時的な 2 枚目。** 同じ操作で「窓なし」の枠の配り方を並べて描く。
+  const viewB = await LabView.create(document.getElementById('view-b') as HTMLCanvasElement, false);
 
   // つまみの位置は表示だけを担い、値の正本は LabView が持つ。**つまみの刻みへ丸めた値を
   // 書き戻さない** — ケース既定の向きが刻みに乗っていないので、丸めると絵が変わる。
   const degrees = (value: number) => `${value.toFixed(1)}°`;
+  const setAngles = (changes: Partial<LabViewAngles>): void => {
+    view.setViewAngles(changes);
+    viewB.setViewAngles(changes);
+  };
   const setSunAzimuth = buildSlider('view-angles', '恒星 方位', -180, 180, 0.5,
-    () => degrees(view.viewAngles.sunAzimuthDeg), (v) => view.setViewAngles({ sunAzimuthDeg: v }));
+    () => degrees(view.viewAngles.sunAzimuthDeg), (v) => setAngles({ sunAzimuthDeg: v }));
   const setSunElevation = buildSlider('view-angles', '仰角', -90, 90, 0.5,
-    () => degrees(view.viewAngles.sunElevationDeg), (v) => view.setViewAngles({ sunElevationDeg: v }));
+    () => degrees(view.viewAngles.sunElevationDeg), (v) => setAngles({ sunElevationDeg: v }));
   const setCameraAzimuth = buildSlider('view-angles', 'カメラ 方位', -180, 180, 0.5,
-    () => degrees(view.viewAngles.cameraAzimuthDeg), (v) => view.setViewAngles({ cameraAzimuthDeg: v }));
+    () => degrees(view.viewAngles.cameraAzimuthDeg), (v) => setAngles({ cameraAzimuthDeg: v }));
   const setCameraElevation = buildSlider('view-angles', '仰角',
     -MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ELEVATION_DEG, 0.5,
-    () => degrees(view.viewAngles.cameraElevationDeg), (v) => view.setViewAngles({ cameraElevationDeg: v }));
+    () => degrees(view.viewAngles.cameraElevationDeg), (v) => setAngles({ cameraElevationDeg: v }));
   const setCameraZoom = buildSlider('view-angles', '距離', -MAX_CAMERA_ZOOM, MAX_CAMERA_ZOOM, 0.02,
-    () => `${view.cameraDistance.toExponential(2)} m`, (v) => view.setViewAngles({ cameraZoom: v }));
+    () => `${view.cameraDistance.toExponential(2)} m`, (v) => setAngles({ cameraZoom: v }));
 
   const syncAngles = (): void => {
     const current = view.viewAngles;
@@ -97,25 +105,30 @@ async function init(): Promise<void> {
   const markCase = buildButtonRow<CaseName>('cases', caseEntries, (name) => {
     markCase(name);
     view.show(name);
+    viewB.show(name);
     syncAngles();
   });
   const markTarget = buildButtonRow<DebugTargetId>('targets', DEBUG_TARGETS, (target) => {
     markTarget(target);
     view.showDebugTarget(target);
+    viewB.showDebugTarget(target);
   });
 
   markCase(CASE_NAMES[0]!);
   markTarget('off');
   view.show(CASE_NAMES[0]!);
+  viewB.show(CASE_NAMES[0]!);
   syncAngles();
 
   window.renderLab = {
     cases: CASE_NAMES,
-    shoot: async (name) => { const png = await view.shoot(name); syncAngles(); return png; },
+    shoot: async (name) => { const png = await view.shoot(name); viewB.show(name); syncAngles(); return png; },
     capture: () => view.capture(),
-    setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
-    setTarget: (target) => { markTarget(target); view.showDebugTarget(target); },
+    setView: (changes) => { setAngles(changes); syncAngles(); },
+    setTarget: (target) => { markTarget(target); view.showDebugTarget(target); viewB.showDebugTarget(target); },
     slots: () => view.shadowSlots,
+    captureB: () => viewB.capture(),
+    slotsB: () => viewB.shadowSlots,
     measure: (name) => view.measure(name),
   };
 }
