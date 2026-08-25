@@ -20,11 +20,20 @@ export const SHADOW_SLOT_COUNT = 4;
 // スロットのフィルタの足が枠からはみ出さない。
 const SLOT_MARGIN_TEXELS = 10;
 
-// 柱の長さを枠の 1 辺の何倍に取るか。差し渡し S の遮蔽器の本影は太陽の視半径から
-// S/(2·4.65e-3) = 107.5·S で消え、そこから先の遮蔽率は (107.5·S/D)² で落ちる。ここで打ち切ると
-// 残る遮蔽率は 1.2 % で、縁は段差にならない。**この打ち切りが深度の値域も K·S へ抑える** —
-// 深度の数値精度はここから従属して決まり、この値でも float32 に 24 倍の余裕がある。
+// 本影が消えるまでの距離を枠の 1 辺の何倍に取るか。差し渡し S の遮蔽器の本影は太陽の視半径
+// θ☉ = 4.65e-3 から D = S/(2·θ☉) = 107.5·S で消え、そこから先の遮蔽率は (107.5·S/D)² で落ちる。
+// **枠から見てここより手前に居る遮蔽器は、近層の深度テストへ参加させない**(下の farTargets)。
+const UMBRA_SPAN = 107.5;
+
+// 柱の長さを枠の 1 辺の何倍に取るか。UMBRA_SPAN の先も遮蔽率 (107.5·S/D)² は残るので、
+// ここまで撮る。打ち切り位置に残る遮蔽率は 1.2 % で、縁は段差にならない。**この打ち切りが
+// 深度の値域も K·S へ抑える** — 深度の数値精度はここから従属して決まり、この値でも float32 に
+// 24 倍の余裕がある。
 const COLUMN_SPAN = 1000;
+
+// 遠層の 1 辺 [texel]。遠層に写る遮蔽器は本影を失っていて、半影の幅は枠の 1 辺以上ある
+// (2·θ☉·D ≥ S)。**枠の 1 辺より広くぼけた影に、近層と同じ細かさは要らない。**
+const SHADOW_FAR_SLOT_SIZE = 256;
 
 // 遮蔽器が 1 つも写らなかった texel を埋める深度 [m]。**受け手のライト空間深度がこれを超える
 // ことはない**ので、受け手はそのまま「自分より奥に遮蔽器が居る = 遮られていない」と読める。
@@ -40,8 +49,11 @@ export type SunShadowExtent = {
 
 // スロット 1 枚ぶんの、受け手が引く値。SunOcclusion がこれを読んでグラフを組む。
 export type SunShadowSlot = {
-  // このスロットの深度マップ。
+  // このスロットの近層の深度マップ。枠から見て本影が残る距離にある遮蔽器だけが写る。
   readonly texture: THREE.Texture;
+  // 同じ枠・同じ uv の遠層の深度マップ。本影を失った遮蔽器だけが写る。**近層と写る遮蔽器が
+  // 排他なので、2 枚から出した透過率はそのまま掛けられる。**
+  readonly farTexture: THREE.Texture;
   // 描画座標 → ライト空間クリップ。UV は xy だけを使う。
   readonly lightViewProjection: Mat4Uniform;
   // 描画座標 → ライト空間 view。深度は射影の規約(反転深度)に依らないこちらから測る。
@@ -75,8 +87,23 @@ type Caster = {
   requiredTexel: number;
 };
 
+// ライト空間の線形深度を書く 1 辺 size のレンダーターゲット。
+//
+// **r32float はレンダーターゲットとしては描けるがフィルタできない。** サンプラを明示して
+// おかないと three が線形フィルタを要求し、パイプライン生成が落ちて画面が丸ごと黒くなる。
+function createDepthTarget(size: number, name: string): THREE.RenderTarget {
+  const target = new THREE.RenderTarget(size, size, {
+    format: THREE.RedFormat, type: THREE.FloatType, depthBuffer: true, samples: 0,
+    magFilter: THREE.NearestFilter, minFilter: THREE.NearestFilter,
+  });
+  target.texture.name = name;
+  target.depthTexture = new THREE.DepthTexture(size, size, THREE.FloatType);
+  return target;
+}
+
 export class SunShadowMaps {
   private readonly targets: readonly THREE.RenderTarget[];
+  private readonly farTargets: readonly THREE.RenderTarget[];
   private readonly depthMaterial: THREE.MeshBasicNodeMaterial;
   private readonly lightCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
   private readonly slotUniforms: readonly SunShadowSlot[];
@@ -100,6 +127,13 @@ export class SunShadowMaps {
   private readonly clusterCaps: number[] = [];
   private readonly scratchBox = new THREE.Box3();
   private readonly scratchCorner = new THREE.Vector3();
+  // measureLightSpaceBox が書く、直前に測った箱のライト空間での範囲。x/y は枠、front/back は
+  // 深度で、どちらもメートル。
+  private readonly lightSpaceBox = { minX: 0, maxX: 0, minY: 0, maxY: 0, front: 0, back: 0 };
+  // いま構えているスロットの、近層と遠層を分ける深度 [m]。ライトカメラの near/far だけを
+  // ここで切り替え、スロットの uniform は柱ぜんたいのまま置く。
+  private bandSplit = -Infinity;
+  private nearBandFar = 0;
   private readonly scratchMatrix = new THREE.Matrix4();
   private readonly size = new THREE.Vector3();
   private readonly center = new THREE.Vector3();
@@ -112,23 +146,22 @@ export class SunShadowMaps {
   // 深度マップはゼロ埋めなので、初回も空へ戻す対象に入れる。**
   private drawnSlots = SHADOW_SLOT_COUNT;
 
-  // スロット 4 枚ぶんの深度マップと、そこへライト空間の線形深度を書く override マテリアルを組む。
+  // スロット 4 枚ぶんの近層・遠層の深度マップと、そこへライト空間の線形深度を書く override
+  // マテリアルを組む。
   constructor(private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings) {
-    this.targets = Array.from({ length: SHADOW_SLOT_COUNT }, (_slot, index) => {
-      // r32float はレンダーターゲットとしては描けるがフィルタできない。**サンプラを明示して
-      // おかないと three が線形フィルタを要求し、パイプライン生成が落ちて画面が丸ごと黒くなる。**
-      const target = new THREE.RenderTarget(SHADOW_SLOT_SIZE, SHADOW_SLOT_SIZE, {
-        format: THREE.RedFormat, type: THREE.FloatType, depthBuffer: true, samples: 0,
-        magFilter: THREE.NearestFilter, minFilter: THREE.NearestFilter,
-      });
-      target.texture.name = `sun-shadow-${index}`;
-      target.depthTexture = new THREE.DepthTexture(SHADOW_SLOT_SIZE, SHADOW_SLOT_SIZE, THREE.FloatType);
-      return target;
-    });
+    this.targets = Array.from(
+      { length: SHADOW_SLOT_COUNT },
+      (_slot, index) => createDepthTarget(SHADOW_SLOT_SIZE, `sun-shadow-${index}`),
+    );
+    this.farTargets = Array.from(
+      { length: SHADOW_SLOT_COUNT },
+      (_slot, index) => createDepthTarget(SHADOW_FAR_SLOT_SIZE, `sun-shadow-far-${index}`),
+    );
 
     this.drawNear = uniform(0.1);
-    this.slotUniforms = this.targets.map((target) => ({
+    this.slotUniforms = this.targets.map((target, index) => ({
       texture: target.texture,
+      farTexture: this.farTargets[index]!.texture,
       lightViewProjection: uniform(new THREE.Matrix4()),
       lightView: uniform(new THREE.Matrix4()),
       near: uniform(0.1),
@@ -186,8 +219,10 @@ export class SunShadowMaps {
       }
       // 前フレームに使っていて今フレームは使わないスロットを空へ戻す。
       for (let index = this.clusters.length; index < this.drawnSlots; index++) {
-        this.renderer.setRenderTarget(this.targets[index]!);
-        this.renderer.clear(true, true, false);
+        for (const target of [this.targets[index]!, this.farTargets[index]!]) {
+          this.renderer.setRenderTarget(target);
+          this.renderer.clear(true, true, false);
+        }
       }
       this.drawnSlots = this.clusters.length;
     } finally {
@@ -199,17 +234,36 @@ export class SunShadowMaps {
   }
 
   // 枠 1 つをスロット index へ描く。**枠に入る遮蔽器はすべて描く** — 枠の外は平行投影が落とす。
+  //
+  // 撮るのは 2 枚。**本影が残る距離に居る遮蔽器と、本影を失った遮蔽器を、別の深度マップへ分ける**
+  // — 1 枚に混ぜると、光源にいちばん近いものが勝つ深度テストで、遠くて淡い遮蔽器が至近の濃い
+  // 遮蔽器を追い出してしまう。遠層に写るものが 1 つも無いときは空のまま残す。
   private drawSlot(
     scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3, extentCap: number,
   ): void {
     const slot = this.slotUniforms[index]!;
+    this.renderer.setRenderTarget(this.farTargets[index]!);
+    this.renderer.clear(true, true, false);
     if (!this.configureSlot(slot, box, extentCap, sun)) return;
     // 深度マテリアルはスロット共有なので、深度の原点をこのスロットの near へ差し替える。
     this.drawNear.value = slot.near.value;
+    if (this.bandSplit > slot.near.value) {
+      this.setLightDepthRange(slot.near.value, this.bandSplit);
+      this.renderer.render(scene, this.lightCamera);
+    }
+    this.setLightDepthRange(Math.max(slot.near.value, this.bandSplit), this.nearBandFar);
     this.renderer.setRenderTarget(this.targets[index]!);
     this.renderer.clear(true, true, false);
     this.renderer.render(scene, this.lightCamera);
     slot.active.value = 1;
+  }
+
+  // ライトカメラが撮る深度の範囲を差し替える。**枠(left/right/top/bottom)は動かさない** —
+  // 平行投影の uv は near/far に依らないので、層を撮り分けても受け手が引く uv は 1 つで足りる。
+  private setLightDepthRange(near: number, far: number): void {
+    this.lightCamera.near = near;
+    this.lightCamera.far = far;
+    this.lightCamera.updateProjectionMatrix();
   }
 
   // シーン直下の枝ごとに、SUN_SHADOW_CASTER_LAYER のメッシュを包む描画座標の AABB を作る。
@@ -420,18 +474,34 @@ export class SunShadowMaps {
     this.pushFrame(this.scratchBox, this.frameSize(this.scratchBox), Infinity);
   }
 
-  // いま構えているライトカメラから見た box の枠の半径 [m]。等方な texel を保つため長辺で
-  // 揃え、フィルタの足のぶんだけ広げる。
-  private frameExtent(box: THREE.Box3): number {
-    let half = 0;
+  // box の 8 頂点をいま構えているライトカメラの空間へ写し、その範囲を lightSpaceBox へ書く。
+  // **世界軸の広がりで代用しない** — 箱がライト基底に対して回っているぶんだけ範囲が足りず、
+  // 縁の受け手が枠から外れて影を失う。
+  private measureLightSpaceBox(box: THREE.Box3): void {
+    const measured = this.lightSpaceBox;
+    measured.minX = Infinity; measured.maxX = -Infinity;
+    measured.minY = Infinity; measured.maxY = -Infinity;
+    measured.front = Infinity; measured.back = -Infinity;
     for (let corner = 0; corner < 8; corner++) {
-      this.scratchCorner.set(
+      const point = this.scratchCorner.set(
         (corner & 1) === 0 ? box.min.x : box.max.x,
         (corner & 2) === 0 ? box.min.y : box.max.y,
         (corner & 4) === 0 ? box.min.z : box.max.z,
       ).applyMatrix4(this.lightCamera.matrixWorldInverse);
-      half = Math.max(half, Math.abs(this.scratchCorner.x), Math.abs(this.scratchCorner.y));
+      measured.minX = Math.min(measured.minX, point.x);
+      measured.maxX = Math.max(measured.maxX, point.x);
+      measured.minY = Math.min(measured.minY, point.y);
+      measured.maxY = Math.max(measured.maxY, point.y);
+      measured.front = Math.min(measured.front, -point.z);
+      measured.back = Math.max(measured.back, -point.z);
     }
+  }
+
+  // 直前に測った箱を収める枠の半径 [m]。等方な texel を保つため長辺で揃え、フィルタの足の
+  // ぶんだけ広げる。
+  private frameExtent(): number {
+    const { minX, maxX, minY, maxY } = this.lightSpaceBox;
+    const half = Math.max(Math.abs(minX), Math.abs(maxX), Math.abs(minY), Math.abs(maxY));
     return half / (1 - 2 * SLOT_MARGIN_TEXELS / SHADOW_SLOT_SIZE);
   }
 
@@ -466,27 +536,29 @@ export class SunShadowMaps {
     this.lightCamera.lookAt(this.center);
     this.lightCamera.updateMatrixWorld(true);
 
-    // **枠は箱の 8 頂点をライト空間へ射影して測る。** 世界軸の広がりで代用すると、箱がライト
-    // 基底に対して回っているぶんだけ枠が足りず、縁の受け手が枠から外れて影を失う。
     // **上限で縛ると枠は箱より小さくなりうる。** はみ出した受け手は被覆の枠が拾う。
-    const extent = Math.min(this.frameExtent(box), extentCap);
+    this.measureLightSpaceBox(box);
+    const frameFront = this.lightSpaceBox.front;
+    const extent = Math.min(this.frameExtent(), extentCap);
     this.lightCamera.left = -extent;
     this.lightCamera.right = extent;
     this.lightCamera.top = extent;
     this.lightCamera.bottom = -extent;
 
     // **near も far も枠から導出する。** 枠に交わる遮蔽器を光源寄りの端から遠い端まで漏れなく
-    // 撮ることで、この 1 枚だけで枠の中の答えが完結する。far は柱の終端で頭打ちにする — その先
+    // 撮ることで、この 1 組だけで枠の中の答えが完結する。far は柱の終端で頭打ちにする — その先
     // にある遮蔽器が影を落とす相手は、もうこのスロットの被覆の外に居る。
     const span = COLUMN_SPAN * 2 * extent;
     const depths = this.casterDepthRange(extent);
     if (depths === null) return false;
-    this.lightCamera.near = depths.near;
-    this.lightCamera.far = Math.min(Math.max(depths.far, eyeDistance + extent), depths.near + span);
-    this.lightCamera.updateProjectionMatrix();
+    const far = Math.min(Math.max(depths.far, eyeDistance + extent), depths.near + span);
+    // 枠から見て本影が残るのはここまで。これより光源寄りの遮蔽器は遠層が受け持つ。
+    this.bandSplit = frameFront - UMBRA_SPAN * 2 * extent;
+    this.nearBandFar = far;
+    this.setLightDepthRange(depths.near, far);
 
-    slot.near.value = this.lightCamera.near;
-    slot.far.value = this.lightCamera.far;
+    slot.near.value = depths.near;
+    slot.far.value = far;
     slot.coverDepth.value = span;
     slot.lightView.value.copy(this.lightCamera.matrixWorldInverse);
     slot.lightViewProjection.value.multiplyMatrices(
@@ -502,22 +574,9 @@ export class SunShadowMaps {
     let near = Infinity;
     let far = -Infinity;
     for (const caster of this.casters) {
-      let left = Infinity, right = -Infinity, bottom = Infinity, top = -Infinity;
-      let front = Infinity, back = -Infinity;
-      for (let corner = 0; corner < 8; corner++) {
-        this.scratchCorner.set(
-          (corner & 1) === 0 ? caster.box.min.x : caster.box.max.x,
-          (corner & 2) === 0 ? caster.box.min.y : caster.box.max.y,
-          (corner & 4) === 0 ? caster.box.min.z : caster.box.max.z,
-        ).applyMatrix4(this.lightCamera.matrixWorldInverse);
-        left = Math.min(left, this.scratchCorner.x);
-        right = Math.max(right, this.scratchCorner.x);
-        bottom = Math.min(bottom, this.scratchCorner.y);
-        top = Math.max(top, this.scratchCorner.y);
-        front = Math.min(front, -this.scratchCorner.z);
-        back = Math.max(back, -this.scratchCorner.z);
-      }
-      if (left > extent || right < -extent || bottom > extent || top < -extent) continue;
+      this.measureLightSpaceBox(caster.box);
+      const { minX, maxX, minY, maxY, front, back } = this.lightSpaceBox;
+      if (minX > extent || maxX < -extent || minY > extent || maxY < -extent) continue;
       near = Math.min(near, front);
       far = Math.max(far, back);
     }
@@ -526,7 +585,7 @@ export class SunShadowMaps {
 
   // 保持している GPU 資源を解放する。
   dispose(): void {
-    for (const target of this.targets) target.dispose();
+    for (const target of [...this.targets, ...this.farTargets]) target.dispose();
     this.depthMaterial.dispose();
   }
 }
