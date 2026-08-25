@@ -20,16 +20,21 @@ const TICK_INTERVALS_SEC = [
 
 export type DisplayTick = { readonly t: number; readonly label: string };
 
-// durationSec の目盛り本数(0番目を含む)が maxTicks を超えない最小の間隔を選ぶ。
-// どの候補でも超えるなら最大の候補を返す。
-export function chooseTickInterval(durationSec: number, maxTicks: number): number {
-  let interval: number = TICK_INTERVALS_SEC[0];
-  if (!isFinite(durationSec) || durationSec <= 0) return interval;
-  for (const candidate of TICK_INTERVALS_SEC) {
+// span の目盛り本数(0番目を含む)が maxTicks を超えない最小の間隔を candidates(小さい順)
+// から選ぶ。どの候補でも超えるなら最大の候補を返す。
+export function chooseTickIntervalFrom(span: number, maxTicks: number, candidates: readonly number[]): number {
+  let interval = candidates[0] ?? 0;
+  if (!isFinite(span) || span <= 0) return interval;
+  for (const candidate of candidates) {
     interval = candidate;
-    if (Math.floor(durationSec / candidate) + 1 <= maxTicks) break;
+    if (Math.floor(span / candidate) + 1 <= maxTicks) break;
   }
   return interval;
+}
+
+// 時間軸の目盛り間隔 [秒] を選ぶ。候補ラダーは TICK_INTERVALS_SEC 固定。
+export function chooseTickInterval(durationSec: number, maxTicks: number): number {
+  return chooseTickIntervalFrom(durationSec, maxTicks, TICK_INTERVALS_SEC);
 }
 
 // [0, durationSec] を chooseTickInterval が選ぶ間隔の倍数で刻んだ目盛り列を返す。
