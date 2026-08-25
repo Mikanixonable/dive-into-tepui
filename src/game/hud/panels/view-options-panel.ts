@@ -227,7 +227,9 @@ export class ViewOptionsPanel {
     const body = document.createElement('div');
     body.className = 'view-options-body';
     this.panel.appendChild(body);
-    const collapseToggle = buildCollapseToggle(titleRow, 'hud-view-options-toggle', 'view-options-collapse', body, VIEW_OPTIONS_COLLAPSE_LABELS);
+    const collapseToggle = buildCollapseToggle(
+      titleRow, 'hud-view-options-toggle', 'view-options-collapse', body, VIEW_OPTIONS_COLLAPSE_LABELS, [title],
+    );
     const applyCollapsedState = (): void => {
       const collapsed = loadPanelCollapsed('hud-view-options') ?? true;
       body.classList.toggle('collapsed', collapsed);

@@ -139,7 +139,9 @@ export class PanelShell {
       expandedTitle: `${title}を折りたたむ`,
       collapsedTitle: `${title}を開く`,
     };
-    const toggle = buildCollapseToggle(head, `${id}-collapse`, 'panel-shell-collapse', this.body, labels);
+    const toggle = buildCollapseToggle(
+      head, `${id}-collapse`, 'panel-shell-collapse', this.body, labels, [this.titleEl],
+    );
     const applyCollapsedState = (): void => {
       const collapsed = loadPanelCollapsed(id)
         ?? (typeof defaultCollapsed === 'function' ? defaultCollapsed(currentView) : defaultCollapsed);
