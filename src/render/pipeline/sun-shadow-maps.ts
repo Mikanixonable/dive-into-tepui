@@ -299,7 +299,7 @@ export class SunShadowMaps {
       const limit = 2 * extentForTexel(receiver.requiredTexel, SHADOW_SLOT_SIZE);
       if (this.shareFrame(receiver, limit)) continue;
       if (this.clusters.length >= windowSlots) break;
-      this.openFrame(receiver, limit, cameraPosition);
+      this.openFrames(receiver, limit, cameraPosition, windowSlots);
     }
     this.addCoverageFrame();
   }
@@ -317,20 +317,29 @@ export class SunShadowMaps {
     return false;
   }
 
-  // 受け手 1 つぶんの枠を開く。要求が箱より細かいときは、**カメラにいちばん近い点へ枠を寄せて
-  // そこだけを撮る** — 覆いきれない残りは被覆の枠が拾う。
-  private openFrame(receiver: Caster, limit: number, cameraPosition: THREE.Vector3): void {
+  // 受け手 1 つぶんの枠を開く。要求が箱より細かいときは、カメラにいちばん近い点へ寄せた窓を
+  // 開き、**続けて箱ぜんたいの枠も開く。** 窓からはみ出した部分が最後の被覆枠(全受け手の和)
+  // まで落ちると、そこだけ極端に粗くなる — 至近の艦の胴体に、遠くの艦まで含めた枠の texel が
+  // 出てしまう。以後の受け手は箱ぜんたいの枠のほうへ相乗りする。
+  private openFrames(
+    receiver: Caster, limit: number, cameraPosition: THREE.Vector3, budget: number,
+  ): void {
     const boxSize = this.frameSize(receiver.box);
     const size = shadowNearWindow.enabled ? Math.min(boxSize, limit) : boxSize;
     if (size < boxSize) {
       receiver.box.clampPoint(cameraPosition, this.center);
       this.scratchBox.setFromCenterAndSize(this.center, this.size.setScalar(size)).intersect(receiver.box);
-    } else {
-      this.scratchBox.copy(receiver.box);
+      this.pushFrame(this.scratchBox, size, size * 0.5);
+      if (this.clusters.length >= budget) return;
     }
+    this.pushFrame(receiver.box, boxSize, Infinity);
+  }
+
+  // 枠を 1 枚積む。cap は枠の半径の上限で、Infinity なら箱に密着させる。
+  private pushFrame(box: THREE.Box3, size: number, cap: number): void {
     this.clusterSizes.push(size);
-    this.clusterCaps.push(size * 0.5);
-    this.clusters.push(this.scratchBox.clone());
+    this.clusterCaps.push(cap);
+    this.clusters.push(box.clone());
   }
 
   // 最後の 1 枚へ、影を要求する受け手をすべて包む枠を置く。**縮めた枠がこぼした部分と、枠が
@@ -342,9 +351,12 @@ export class SunShadowMaps {
       this.scratchBox.union(receiver.box);
     }
     if (this.scratchBox.isEmpty()) return;
-    this.clusterSizes.push(this.frameSize(this.scratchBox));
-    this.clusterCaps.push(Infinity);
-    this.clusters.push(this.scratchBox.clone());
+    // 箱に密着した枠が既に全体を包んでいるなら、同じ絵をもう 1 枚描くだけになる。
+    const covered = this.clusters.some(
+      (cluster, index) => this.clusterCaps[index] === Infinity && cluster.containsBox(this.scratchBox),
+    );
+    if (covered) return;
+    this.pushFrame(this.scratchBox, this.frameSize(this.scratchBox), Infinity);
   }
 
   // いま構えているライトカメラから見た box の枠の半径 [m]。等方な texel を保つため長辺で
