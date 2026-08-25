@@ -150,16 +150,12 @@ export class TrajectoryLine {
   }
 
   // 描画区間 [startTime, endTime] に入る状態を、Curve へ渡す節点列に組む。両端は区間端で
-  // 内挿した状態、間は bake 済みサンプルそのもの。節点は Curve の初期頂点になるので、
-  // 頂点予算を超える長さの列は一様な間引きで収める — 節点間はエルミートで埋まるため、
-  // 間引いても曲線は C¹ のまま緩やかに粗くなる。
+  // 内挿した状態、間は bake 済みサンプルそのもの。
   private buildKnots(): CurveKnots | null {
     const start = this.startTime;
     const end = this.endTime;
     if (start === null || end === null || end <= start) return null;
-    const inner = this.bakedTimes.filter((t) => t > start && t < end);
-    const stride = Math.max(1, Math.ceil((inner.length + 2) / MAX_VERTICES));
-    const times = [start, ...inner.filter((_, i) => i % stride === 0), end];
+    const times = [start, ...this.bakedTimes.filter((t) => t > start && t < end), end];
     const states = times.map((t) => this.baked.at(t)).filter((s): s is KinematicState => s !== null);
     if (states.length < 2) return null;
     const span = end - start;

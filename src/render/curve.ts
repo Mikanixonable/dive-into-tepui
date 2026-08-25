@@ -116,6 +116,21 @@ export type CurveKnots = {
   readonly tangent: (i: number, out: THREE.Vector3) => void;
 };
 
+// 節点を maxCount 個以下へ間引く。等間隔に抜き、両端の節点は必ず残す(曲線の定義域が
+// 縮まないため)。収まっているなら何もしない — 渡された節点は本来すべて頂点にする。
+function thinToBudget(knots: CurveKnots, maxCount: number): CurveKnots {
+  if (knots.count <= maxCount) return knots;
+  const stride = Math.ceil(knots.count / maxCount);
+  const count = Math.floor((knots.count - 1) / stride) + 1;
+  const source = (i: number): number => (i === count - 1 ? knots.count - 1 : i * stride);
+  return {
+    count,
+    at: (i) => knots.at(source(i)),
+    position: (i, out) => knots.position(source(i), out),
+    tangent: (i, out) => knots.tangent(source(i), out),
+  };
+}
+
 // 節点間を3次エルミート(両端の位置を通り、両端の接線を持つ)で埋めるサンプラと、節点自身の
 // パラメータ列を組む。パラメータ列が昇順でなければ、どの区間へ落ちるかが決まらないので弾く。
 function hermiteSampler(knots: CurveKnots): { sample: CurveSampler; ts: readonly number[] } {
@@ -436,22 +451,17 @@ export class Curve {
   }
 
   // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数。
-  // 初期区間は頂点予算を食うので、その数だけで予算を超える要求は受け付けない。
+  // 初期区間はそのまま頂点になるので、予算に収まる数まで抑える。
   setAnalyticCurve(sample: CurveSampler, opts: SetCurveOptions): void {
-    const segments = Math.max(INITIAL_SEGMENTS, opts.initialSegments ?? 0);
-    if (segments + 1 > this.maxVertices) {
-      throw new Error(`Curve: 初期区間 ${segments} が頂点予算 ${this.maxVertices} に収まらない`);
-    }
-    this.setCurve(sample, uniformTs(segments), opts);
+    const requested = Math.max(INITIAL_SEGMENTS, opts.initialSegments ?? 0);
+    this.setCurve(sample, uniformTs(Math.min(requested, this.maxVertices - 1)), opts);
   }
 
   // 離散サンプルとしてしか手に入らない曲線を、節点間を3次エルミートで埋めて描く。
-  // 節点そのものが初期頂点になるので、節点の個数は maxVertices 以下でなければならない。
+  // 節点が予算を超えるなら収まるまで間引く(サンプラ自体が粗くなるので、曲線は C¹ のまま
+  // 全体が一様に粗くなる)。
   setHermiteCurve(knots: CurveKnots, opts: SetCurveOptions): void {
-    if (knots.count > this.maxVertices) {
-      throw new Error(`Curve: 節点 ${knots.count} 個が頂点予算 ${this.maxVertices} を超えている`);
-    }
-    const { sample, ts } = hermiteSampler(knots);
+    const { sample, ts } = hermiteSampler(thinToBudget(knots, this.maxVertices));
     this.setCurve(sample, ts, opts);
   }
 
