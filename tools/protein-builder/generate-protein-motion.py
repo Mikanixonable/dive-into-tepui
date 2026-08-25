@@ -277,6 +277,12 @@ def binding_data(config: dict[str, Any], semantic: dict[str, Any], structure: di
     surface_residues, surface_distances = nearest_indices_by_chain(surface_coordinates, surface_chains, centers, center_chains)
     if float(np.max(surface_distances)) > 20.0:
         raise RuntimeError("surface-to-residue binding exceeds 20 Å")
+    ribbon_coordinates = np.asarray(structure["ribbon"]["mesh"]["position"], dtype=np.float64).reshape((-1, 3))
+    ribbon_coordinates -= np.asarray(structure["coordinateFrame"]["centeredAt"], dtype=np.float64)
+    ribbon_chains = [str(value) for value in structure["ribbon"]["mesh"]["chain"]]
+    ribbon_residues, ribbon_distances = nearest_indices_by_chain(ribbon_coordinates, ribbon_chains, centers, center_chains)
+    if float(np.max(ribbon_distances)) > 20.0:
+        raise RuntimeError("ribbon-to-residue binding exceeds 20 Å")
 
     def site_residues(items: list[dict[str, Any]]) -> list[int]:
         if len(items) == 0: return []
@@ -296,6 +302,7 @@ def binding_data(config: dict[str, Any], semantic: dict[str, Any], structure: di
         "atomResidues": [int(value) for value in atom_residues],
         "backboneResidues": list(range(len(centers))),
         "surfaceResidues": [int(value) for value in surface_residues],
+        "ribbonResidues": [int(value) for value in ribbon_residues],
         "siteResidues": site_residues(semantic.get("sites", [])),
         "modificationResidues": site_residues(semantic.get("modificationSlots", [])),
     }

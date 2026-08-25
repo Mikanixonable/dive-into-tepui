@@ -43,7 +43,7 @@ function assetFor(residueCount: number, modeCount = 24): ProteinMotionAsset {
       bFactors: Array.from({ length: residueCount }, () => 1),
     },
     bindings: {
-      atomResidues: [], backboneResidues: [], surfaceResidues: [], siteResidues: [], modificationResidues: [],
+      atomResidues: [], backboneResidues: [], surfaceResidues: [], ribbonResidues: [], siteResidues: [], modificationResidues: [],
     },
     modes,
     display: { sampleHz: 60, collectiveGain: 0.5, localGain: 0.2 },

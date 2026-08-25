@@ -44,6 +44,7 @@ const motion = {
     atomResidues: [0, 0, 1, 1, 2, 2],
     backboneResidues: [0, 1, 2],
     surfaceResidues: [0, 1, 2],
+    ribbonResidues: [0, 1, 2],
     siteResidues: [],
     modificationResidues: [],
   },
@@ -87,6 +88,13 @@ const source: ProteinRenderSource = {
         charge: [0, 0, 0],
         hydrophobicity: [0, 0, 0],
         component: ['A', 'A', 'A'],
+      },
+    },
+    ribbon: {
+      mesh: {
+        position: [0, 0, 0, 3, 0, 0, 6, 0, 0],
+        index: [0, 1, 2],
+        chain: ['A', 'A', 'A'],
       },
     },
     generator: { name: 'test' },

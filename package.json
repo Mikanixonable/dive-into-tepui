@@ -13,7 +13,7 @@
     "smoke:browser": "node tools/browser-smoke.mjs",
     "ci": "node tools/check-three-pin.mjs && npm run verify:source && npm run verify:theme && npm run typecheck && npm run protein:generate:check && npm run protein:validate && npm run protein:validate-structure && npm run protein:catalog:check && npm run test:physics && npm run build && npm run verify:release && npm run smoke:browser",
     "typecheck": "tsc --noEmit",
-    "test:physics": "tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
+    "test:physics": "NODE_OPTIONS=--max-old-space-size=8192 tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
     "export-assets": "node tools/export-models.mjs",
     "export-lagrange-orbits": "node tools/export-lagrange-orbits.mjs",
     "protein:author": "python3 tools/protein-builder/build-protein.py --require-blender",

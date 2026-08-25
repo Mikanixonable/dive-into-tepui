@@ -120,6 +120,7 @@ function render(configs) {
     '    atomResidues: structure.atoms.count,',
     '    backboneResidues: backbone.backboneCount,',
     '    surfaceResidues: structure.surface.mesh.position.length / 3,',
+    '    ribbonResidues: structure.ribbon.mesh.position.length / 3,',
     '    siteResidues: semantic.sites.length,',
     '    modificationResidues: semantic.modificationSlots.length,',
     '  });',

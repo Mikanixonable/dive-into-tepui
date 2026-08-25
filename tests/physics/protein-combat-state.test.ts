@@ -19,7 +19,7 @@ import type { ProteinDisplayAsset } from '../../src/game/protein/protein-display
 import {
   buildProteinEnemyShip, buildProteinRibbonShip, type ProteinBackboneAsset, type ProteinRenderSource,
 } from '../../src/render/protein-enemy-ship';
-import { ribbonChainLayout } from '../../src/render/protein-ribbon';
+import { proteinSecondaryKind } from '../../src/render/protein-ribbon-color';
 import {
   LIT_OPAQUE_LAYER, PROTEIN_SHADOW_OCCLUDER_LAYER, PROTEIN_SHADOW_RECEIVER_LAYER,
 } from '../../src/render/pipeline/lit-layer';
@@ -44,18 +44,9 @@ const sourceFor = (
   structure: structure as ProteinDisplayAsset,
 });
 
-/** buildProteinRibbonShip が生成する Ribbon に含まれる二次構造の種類を返す。 */
+/** 主鎖に含まれる二次構造の種類を返す。 */
 function ribbonKinds(source: ProteinRenderSource): Set<string> {
-  const kinds = new Set<string>();
-  for (const runs of ribbonChainLayout(source).values()) {
-    for (const run of runs) {
-      for (const section of run) {
-        if (!section.transition) kinds.add(section.kind);
-        else { kinds.add(section.fromKind); kinds.add(section.toKind); }
-      }
-    }
-  }
-  return kinds;
+  return new Set(source.backbone.backboneSecondary.map(proteinSecondaryKind));
 }
 
 export function register(): void {
