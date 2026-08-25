@@ -134,9 +134,62 @@ export interface HaloParams {
   readonly phase?: number; // 面内位相 [rad]、既定 0
 }
 
-// L点局所基底での線形解(無次元、位相 phase/psi での位置・速度)から ECI の KinematicState を
-// 組み立てる。回転フレーム相対速度から ECI 速度への変換は frame.ts の toInertialState と
-// 同じ関係 v = v_rel + ω×r(r は原点=地球からの絶対位置)による。
+// Richardson (1980) 三次近似の位置・速度(無次元、γスケール局所座標、τ1=位相引数での微分)。
+// axHat/azHat は gamma 単位(下記 centerManifoldState/lissajousLoop の呼び出し側で
+// R*gamma により無次元化して渡す)。deltaN は L1/L3 で 1、L2 で -1(Richardson の
+// δn=2-n の符号規約、n=1: L1/L3、n=2: L2。共線点の局所 x 軸はどの点でも主天体→副天体
+// 向きに統一されているため、L2 だけ z 方向の符号が反転する)。
+// theta1/rate1 は面内(x,y)の位相とその角速度(dτ1/dτ)、psiZ/rateZ は面外(z)の位相と
+// その角速度 — ハロー軌道では面内と同じ位相・角速度(呼び出し側で theta1 に π/2 を
+// 足したものを渡す)、リサジューでは独立な値になる。
+export function richardsonState(
+  coeffs: RichardsonCoefficients,
+  kappa: number,
+  deltaN: number,
+  axHat: number,
+  azHat: number,
+  theta1: number,
+  rate1: number,
+  psiZ: number,
+  rateZ: number,
+): { x: number; y: number; z: number; xDot: number; yDot: number; zDot: number } {
+  const { a21, a22, a23, a24, a31, a32, b21, b22, b31, b32, d21, d31, d32 } = coeffs;
+  const c1 = Math.cos(theta1);
+  const s1 = Math.sin(theta1);
+  const c2 = Math.cos(2 * theta1);
+  const s2 = Math.sin(2 * theta1);
+  const c3 = Math.cos(3 * theta1);
+  const s3 = Math.sin(3 * theta1);
+  const cz1 = Math.cos(psiZ);
+  const sz1 = Math.sin(psiZ);
+  const cz2 = Math.cos(2 * psiZ);
+  const sz2 = Math.sin(2 * psiZ);
+  const cz3 = Math.cos(3 * psiZ);
+  const sz3 = Math.sin(3 * psiZ);
+
+  const ax2 = axHat * axHat;
+  const az2 = azHat * azHat;
+  const ax3 = ax2 * axHat;
+  const term23 = a23 * ax2 - a24 * az2;
+  const term31 = a31 * ax3 - a32 * axHat * az2;
+  const termB2 = b21 * ax2 - b22 * az2;
+  const termB3 = b31 * ax3 - b32 * axHat * az2;
+  const termD3 = d32 * azHat * ax2 - d31 * azHat * az2;
+
+  const x = a21 * ax2 + a22 * az2 - axHat * c1 + term23 * c2 + term31 * c3;
+  const y = kappa * axHat * s1 + termB2 * s2 + termB3 * s3;
+  const z = deltaN * (azHat * cz1 + d21 * axHat * azHat * (cz2 - 3) + termD3 * cz3);
+
+  const xDot = rate1 * (axHat * s1 - 2 * term23 * s2 - 3 * term31 * s3);
+  const yDot = rate1 * (kappa * axHat * c1 + 2 * termB2 * c2 + 3 * termB3 * c3);
+  const zDot = -deltaN * rateZ * (azHat * sz1 + 2 * d21 * axHat * azHat * sz2 + 3 * termD3 * sz3);
+
+  return { x, y, z, xDot, yDot, zDot };
+}
+
+// L点局所基底での三次近似解(gamma単位、位相 phase/psi での位置・速度)から ECI の
+// KinematicState を組み立てる。回転フレーム相対速度から ECI 速度への変換は frame.ts の
+// toInertialState と同じ関係 v = v_rel + ω×r(r は原点=地球からの絶対位置)による。
 function centerManifoldState(
   t: number,
   frame: CollinearFrame,
@@ -146,25 +199,32 @@ function centerManifoldState(
   psi: number,
   zFreq: number,
 ): KinematicState {
-  const { lambda, kappa, r: R, omega } = frame;
+  const { lambda, kappa, r: R, gamma, omega, point } = frame;
   const n = len(omega); // 回転フレームの角速度(無次元時間 τ=n·t の単位)
+  const unit = R * gamma; // Richardson の係数が前提とするγスケール無次元単位への換算長。
 
-  const axN = ax / R;
-  const azN = az / R;
+  const axHat = ax / unit;
+  const azHat = az / unit;
+  const deltaN = point === 'L2' ? -1 : 1;
 
-  // 面内(x,y)は λ で振動し、面外(z)はハロー軌道なら同じ λ、リサジューなら独立な zFreq で振動する。
-  const x = axN * Math.cos(phase);
-  const y = kappa * axN * Math.sin(phase);
-  const z = azN * Math.sin(psi);
-  const xDot = -axN * lambda * Math.sin(phase);
-  const yDot = kappa * axN * lambda * Math.cos(phase);
-  const zDot = azN * zFreq * Math.cos(psi);
+  // 振幅依存の振動数補正(ω=1+s1·Ax²+s2·Az²)を面内位相へ適用し、面外位相にも同じ係数を
+  // 掛けて面内・面外の位相関係を保つ。
+  const coeffs = richardsonCoefficients(frame);
+  const omegaCorrection = 1 + coeffs.s1 * axHat * axHat + coeffs.s2 * azHat * azHat;
+  const theta1 = omegaCorrection * phase;
+  const rate1 = omegaCorrection * lambda;
+  const psiZ = omegaCorrection * psi;
+  const rateZ = omegaCorrection * zFreq;
 
-  // フレーム基底で組んだ無次元の位置・速度を、実長さ R でスケールして ECI 軸へ戻す。
-  const relPos = add(add(scale(frame.xHat, x * R), scale(frame.yHat, y * R)), scale(frame.zHat, z * R));
+  const { x, y, z, xDot, yDot, zDot } = richardsonState(
+    coeffs, kappa, deltaN, axHat, azHat, theta1, rate1, psiZ, rateZ,
+  );
+
+  // フレーム基底で組んだ無次元の位置・速度を、実長さ unit でスケールして ECI 軸へ戻す。
+  const relPos = add(add(scale(frame.xHat, x * unit), scale(frame.yHat, y * unit)), scale(frame.zHat, z * unit));
   const relVel = add(
-    add(scale(frame.xHat, xDot * R * n), scale(frame.yHat, yDot * R * n)),
-    scale(frame.zHat, zDot * R * n),
+    add(scale(frame.xHat, xDot * unit * n), scale(frame.yHat, yDot * unit * n)),
+    scale(frame.zHat, zDot * unit * n),
   );
 
   // 回転フレーム相対の状態を絶対位置へ平行移動し、フレームの角速度ぶんを足して ECI 速度にする。
