@@ -82,6 +82,24 @@ function bakeSystem(cache, samples, excluded) {
       excluded.push(`${cache.system} ${familyKey}: 閉合するメンバーが1件も無いため出力しない`);
       continue;
     }
+    // s=0 を必ず「小さい側」に揃える。JPL が族を返す向きは族によって違うので、両端の広がりを
+    // 比べて必要なら反転する。こうしないと、同じ 0 が族によって小振幅だったり大振幅だったり
+    // して、族範囲スライダーの意味が族ごとに変わってしまう。
+    if (records.length > 1) {
+      const spread = (chunk) => {
+        let max = 0;
+        for (let i = 0; i < samples; i++) {
+          const o = i * 4;
+          max = Math.max(max, Math.hypot(chunk[o], chunk[o + 1], chunk[o + 2]));
+        }
+        return max;
+      };
+      if (spread(pointChunks[0]) > spread(pointChunks[pointChunks.length - 1])) {
+        records.reverse();
+        pointChunks.reverse();
+      }
+    }
+
     // s は「焼けた族に沿った位置」なので、閉合しないメンバーを落とし終えてから 0..1 へ割り振る。
     // 除外前の添字で振ると、端が落ちた族の s が 0 や 1 から始まらなくなる。
     const kept = records.length;
