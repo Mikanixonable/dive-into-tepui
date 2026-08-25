@@ -2,24 +2,15 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { proteinAssetBundleFor } from '../../src/game/protein/protein-asset-loader';
 import { validateGeometry } from '../../src/render/geometry-validator';
-import { buildProteinRibbon, type ProteinBackboneAsset, type ProteinRenderSource } from '../../src/render/protein-ribbon';
+import {
+  buildProteinRibbon,
+  ribbonChainLayout,
+  type ProteinBackboneAsset,
+  type ProteinRenderSource,
+  type RibbonChainSection,
+} from '../../src/render/protein-ribbon';
 import { proteinSecondaryKind, type ProteinSecondaryKind } from '../../src/render/protein-ribbon-color';
 import { test } from './harness';
-
-interface RibbonMeshInfo {
-  readonly mesh: THREE.Mesh;
-  readonly kind: ProteinSecondaryKind;
-  readonly transition: boolean;
-}
-
-interface RibbonBoundary {
-  readonly startCenter: THREE.Vector3;
-  readonly startDirection: THREE.Vector3;
-  readonly startVertices: number;
-  readonly endCenter: THREE.Vector3;
-  readonly endDirection: THREE.Vector3;
-  readonly endVertices: number;
-}
 
 const SAMPLES_PER_RESIDUE = 12;
 const SECTION_VERTICES: Readonly<Record<ProteinSecondaryKind, number>> = {
@@ -35,12 +26,6 @@ const SET2 = [
 /** THREE.Mesh へ型を絞り込む。 */
 function isMesh(object: THREE.Object3D): object is THREE.Mesh {
   return object instanceof THREE.Mesh;
-}
-
-/** userData の値を二次構造型として検証する。 */
-function secondaryKind(value: unknown): ProteinSecondaryKind {
-  if (value === 'coil' || value === 'helix' || value === 'sheet') return value;
-  throw new Error(`Invalid protein secondary kind: ${String(value)}`);
 }
 
 /** 生成済み asset を描画 source として返す。 */
@@ -72,24 +57,22 @@ function straightSource(
   };
 }
 
-/** Ribbon タグを持つ mesh を構築順に集める。 */
-function ribbonMeshes(object: THREE.Object3D): RibbonMeshInfo[] {
-  const meshes: RibbonMeshInfo[] = [];
+/** Ribbon タグを持つ mesh を、鎖の構築順(ribbonChainLayout と同じ順)で集める。 */
+function ribbonMeshes(object: THREE.Object3D): THREE.Mesh[] {
+  const meshes: THREE.Mesh[] = [];
   object.traverse((child) => {
-    if (!isMesh(child) || child.userData.proteinRibbon !== true) return;
-    const value = child.userData.proteinSecondary;
-    if (value === 'coil' || value === 'helix' || value === 'sheet') {
-      meshes.push({ mesh: child, kind: value, transition: child.userData.proteinRibbonTransition === true });
-    }
+    if (isMesh(child) && child.userData.proteinRibbon === true) meshes.push(child);
   });
   return meshes;
 }
 
-/** 指定した二次構造の最初の mesh を返す。 */
-function meshForKind(object: THREE.Object3D, kind: ProteinSecondaryKind): THREE.Mesh {
-  const found = ribbonMeshes(object).find((entry) => entry.kind === kind && !entry.transition);
-  if (!found) throw new Error(`Ribbon has no ${kind} mesh`);
-  return found.mesh;
+/** 唯一の Ribbon mesh を返す。単一鎖・単一区間の合成 source でのみ使う。 */
+function soleRibbonMesh(object: THREE.Object3D): THREE.Mesh {
+  const meshes = ribbonMeshes(object);
+  if (meshes.length !== 1) throw new Error(`Expected exactly one ribbon mesh, found ${meshes.length}`);
+  const mesh = meshes[0];
+  if (!mesh) throw new Error('Expected exactly one ribbon mesh');
+  return mesh;
 }
 
 /** 断面 ring の中心を頂点平均から求める。 */
@@ -120,20 +103,10 @@ function geometryPoint(mesh: THREE.Mesh, vertex: number): THREE.Vector3 {
   return new THREE.Vector3().fromBufferAttribute(mesh.geometry.getAttribute('position'), vertex);
 }
 
-/** 断面の幅方向を頂点配置から復元する。 */
-function ringWidthDirection(mesh: THREE.Mesh, kind: ProteinSecondaryKind, ring: number): THREE.Vector3 {
-  const vertices = SECTION_VERTICES[kind];
-  return vertexRangeWidthDirection(mesh, kind, ring * vertices, vertices);
-}
-
-/** 連続する断面頂点から幅方向を復元する。 */
-function vertexRangeWidthDirection(
-  mesh: THREE.Mesh, kind: ProteinSecondaryKind, start: number, vertices: number,
-): THREE.Vector3 {
+/** 連続する断面頂点から幅方向を復元する。sheet(4頂点)だけ対辺中点差で求める。 */
+function vertexRangeWidthDirection(mesh: THREE.Mesh, vertices: number, start: number): THREE.Vector3 {
   const center = vertexRangeCenter(mesh, start, vertices);
-  if (kind !== 'sheet') {
-    return geometryPoint(mesh, start).sub(center).normalize();
-  }
+  if (vertices !== 4) return geometryPoint(mesh, start).sub(center).normalize();
   const positive = geometryPoint(mesh, start).add(geometryPoint(mesh, start + 3));
   const negative = geometryPoint(mesh, start + 1).add(geometryPoint(mesh, start + 2));
   return positive.sub(negative).normalize();
@@ -165,7 +138,7 @@ function assertNear(actual: number, expected: number, tolerance = 1e-3): void {
 }
 
 /** geometry の有限性、法線、縮退面、材質を検査する。 */
-function assertMeshQuality({ mesh }: { readonly mesh: THREE.Mesh }): void {
+function assertMeshQuality(mesh: THREE.Mesh): void {
   const positions = mesh.geometry.getAttribute('position');
   const normals = mesh.geometry.getAttribute('normal');
   const colors = mesh.geometry.getAttribute('color');
@@ -209,80 +182,69 @@ function assertOnlyEndRingsOpen(mesh: THREE.Mesh, kind: ProteinSecondaryKind): v
   assert.equal(validation.coplanarOverlapCount, 0);
 }
 
-/** 生成した Ribbon の所有リソースを破棄する。 */
+/** 生成した Ribbon の所有リソースを破棄する。material は最初の mesh だけが持つ。 */
 function disposeRibbon(object: THREE.Object3D): void {
   object.traverse((child) => {
     if (!isMesh(child)) return;
-    child.geometry.dispose();
-    if (Array.isArray(child.material)) {
-      for (const material of child.material) material.dispose();
-    } else {
-      child.material.dispose();
+    if (child.userData.ownsGeometry) child.geometry.dispose();
+    if (child.userData.ownsMaterial) {
+      if (Array.isArray(child.material)) {
+        for (const material of child.material) material.dispose();
+      } else {
+        child.material.dispose();
+      }
     }
   });
 }
 
-/** 通常区間または遷移区間の両端断面を返す。 */
-function meshBoundary({ mesh, kind, transition }: RibbonMeshInfo): RibbonBoundary {
-  if (transition) {
-    const fromKind = secondaryKind(mesh.userData.proteinTransitionFromKind);
-    const toKind = secondaryKind(mesh.userData.proteinTransitionToKind);
-    const fromVertices = Number(mesh.userData.proteinTransitionFromVertices);
-    const toVertices = Number(mesh.userData.proteinTransitionToVertices);
-    return {
-      startCenter: vertexRangeCenter(mesh, 0, fromVertices),
-      startDirection: vertexRangeWidthDirection(mesh, fromKind, 0, fromVertices),
-      startVertices: fromVertices,
-      endCenter: vertexRangeCenter(mesh, fromVertices, toVertices),
-      endDirection: vertexRangeWidthDirection(mesh, toKind, fromVertices, toVertices),
-      endVertices: toVertices,
-    };
-  }
-  const vertices = SECTION_VERTICES[kind];
-  const rings = mesh.geometry.getAttribute('position').count / vertices;
-  return {
-    startCenter: ringCenter(mesh, 0, vertices),
-    startDirection: ringWidthDirection(mesh, kind, 0),
-    startVertices: vertices,
-    endCenter: ringCenter(mesh, rings - 1, vertices),
-    endDirection: ringWidthDirection(mesh, kind, rings - 1),
-    endVertices: vertices,
-  };
+/** 区間・遷移それぞれの、統合バッファ上での開始頂点数・終了頂点数を返す。 */
+function sectionEdgeVertices(section: RibbonChainSection): { start: number; end: number } {
+  if (section.transition) return { start: section.fromVertices, end: section.toVertices };
+  return { start: section.ringVertices, end: section.ringVertices };
 }
 
-/** 断面が全 sample と SSE 境界で180°反転しないことを検査する。 */
-function assertFrameContinuity(object: THREE.Object3D): number {
-  const meshes = ribbonMeshes(object);
+/**
+ * 鎖ごとの mesh を ribbonChainLayout の区間列と突き合わせ、ring 単位の断面反転・
+ * 区間境界の連続性を検査する。継続した境界の数を返す。
+ */
+function assertChainMeshLayout(mesh: THREE.Mesh, runs: readonly RibbonChainSection[][]): number {
+  let offset = 0;
   let continuousBoundaries = 0;
-  let previous: { readonly info: RibbonMeshInfo; readonly boundary: RibbonBoundary } | null = null;
-  for (const current of meshes) {
-    if (!current.transition) {
-      const vertices = SECTION_VERTICES[current.kind];
-      const rings = current.mesh.geometry.getAttribute('position').count / vertices;
-      for (let ring = 1; ring < rings; ring++) {
-        assert.ok(
-          ringWidthDirection(current.mesh, current.kind, ring - 1)
-            .dot(ringWidthDirection(current.mesh, current.kind, ring)) >= 0,
-        );
+  for (const run of runs) {
+    let previous: { readonly endCenter: THREE.Vector3; readonly endDirection: THREE.Vector3 } | null = null;
+    for (const section of run) {
+      if (!section.transition) {
+        for (let ring = 1; ring < section.ringCount; ring++) {
+          assert.ok(
+            vertexRangeWidthDirection(mesh, section.ringVertices, offset + (ring - 1) * section.ringVertices)
+              .dot(vertexRangeWidthDirection(mesh, section.ringVertices, offset + ring * section.ringVertices)) >= 0,
+          );
+        }
       }
-    }
+      const startVertices = section.transition ? section.fromVertices : section.ringVertices;
+      const endVertices = section.transition ? section.toVertices : section.ringVertices;
+      const startCenter = vertexRangeCenter(mesh, offset, startVertices);
+      const startDirection = vertexRangeWidthDirection(mesh, startVertices, offset);
+      const endOffset = section.transition ? offset + startVertices : offset + (section.ringCount - 1) * section.ringVertices;
+      const endCenter = vertexRangeCenter(mesh, endOffset, endVertices);
+      const endDirection = vertexRangeWidthDirection(mesh, endVertices, endOffset);
 
-    const boundary = meshBoundary(current);
-    if (current.transition) {
-      const transitionLength = boundary.startCenter.distanceTo(boundary.endCenter);
-      assert.ok(transitionLength > 0 && transitionLength <= 8);
-      assert.ok(boundary.startDirection.dot(boundary.endDirection) >= 0);
-    }
-    if (previous && previous.info.mesh.userData.proteinComponent === current.mesh.userData.proteinComponent) {
-      const distance: number = previous.boundary.endCenter.distanceTo(boundary.startCenter);
-      assert.ok(distance <= 1e-5 || distance > 8);
-      if (distance <= 1e-5) {
-        continuousBoundaries++;
-        assert.ok(previous.boundary.endDirection.dot(boundary.startDirection) >= 0);
+      if (section.transition) {
+        const transitionLength = startCenter.distanceTo(endCenter);
+        assert.ok(transitionLength > 0 && transitionLength <= 8);
+        assert.ok(startDirection.dot(endDirection) >= 0);
       }
+      if (previous) {
+        const distance = previous.endCenter.distanceTo(startCenter);
+        assertNear(distance, 0, 1e-5);
+        assert.ok(previous.endDirection.dot(startDirection) >= 0);
+        continuousBoundaries++;
+      }
+      previous = { endCenter, endDirection };
+      offset += section.transition ? startVertices + endVertices : section.ringCount * section.ringVertices;
     }
-    previous = { info: current, boundary };
   }
+  assert.equal(offset, mesh.geometry.getAttribute('position').count);
   return continuousBoundaries;
 }
 
@@ -290,7 +252,7 @@ function assertFrameContinuity(object: THREE.Object3D): number {
 function combinedRibbonGeometry(object: THREE.Object3D): THREE.BufferGeometry {
   const positions: number[] = [];
   const indices: number[] = [];
-  for (const { mesh } of ribbonMeshes(object)) {
+  for (const mesh of ribbonMeshes(object)) {
     const position = mesh.geometry.getAttribute('position');
     const index = mesh.geometry.getIndex();
     const vertexOffset = positions.length / 3;
@@ -309,22 +271,16 @@ function combinedRibbonGeometry(object: THREE.Object3D): THREE.BufferGeometry {
 }
 
 /** 鎖端と8 Å超の欠損だけが open edge であることを検査する。 */
-function assertOnlyChainEndsOpen(object: THREE.Object3D): void {
-  const meshes = ribbonMeshes(object);
+function assertOnlyChainEndsOpen(object: THREE.Object3D, layout: ReadonlyMap<string, RibbonChainSection[][]>): void {
   let expectedOpenEdges = 0;
-  let previous: { readonly info: RibbonMeshInfo; readonly boundary: RibbonBoundary } | null = null;
-  for (const info of meshes) {
-    const boundary = meshBoundary(info);
-    const connected = previous
-      && previous.info.mesh.userData.proteinComponent === info.mesh.userData.proteinComponent
-      && previous.boundary.endCenter.distanceTo(boundary.startCenter) <= 1e-5;
-    if (!connected) {
-      if (previous) expectedOpenEdges += previous.boundary.endVertices;
-      expectedOpenEdges += boundary.startVertices;
+  for (const runs of layout.values()) {
+    for (const run of runs) {
+      const first = run[0];
+      const last = run[run.length - 1];
+      if (!first || !last) continue;
+      expectedOpenEdges += sectionEdgeVertices(first).start + sectionEdgeVertices(last).end;
     }
-    previous = { info, boundary };
   }
-  if (previous) expectedOpenEdges += previous.boundary.endVertices;
 
   const geometry = combinedRibbonGeometry(object);
   const validation = validateGeometry(geometry, { checkCoplanarOverlap: false });
@@ -376,16 +332,16 @@ export function register(): void {
     const helixObject = buildProteinRibbon(straightSource(Array<ProteinSecondaryKind>(5).fill('helix')), 'publication');
     const sheetObject = buildProteinRibbon(straightSource(Array<ProteinSecondaryKind>(5).fill('sheet')), 'publication');
     const coilObject = buildProteinRibbon(straightSource(Array<ProteinSecondaryKind>(5).fill('coil')), 'publication');
-    const helix = meshForKind(helixObject, 'helix');
-    const sheet = meshForKind(sheetObject, 'sheet');
-    const coil = meshForKind(coilObject, 'coil');
+    const helix = soleRibbonMesh(helixObject);
+    const sheet = soleRibbonMesh(sheetObject);
+    const coil = soleRibbonMesh(coilObject);
 
     for (const entry of [
       { mesh: helix, kind: 'helix' },
       { mesh: sheet, kind: 'sheet' },
       { mesh: coil, kind: 'coil' },
     ] as const) {
-      assertMeshQuality(entry);
+      assertMeshQuality(entry.mesh);
       assertOnlyEndRingsOpen(entry.mesh, entry.kind);
     }
 
@@ -417,25 +373,53 @@ export function register(): void {
     disposeRibbon(coilObject);
   });
 
-  test('protein ribbon geometry: real assets keep every interval finite and frame-continuous', () => {
+  test('protein ribbon geometry: real assets keep every interval finite and frame-continuous, one mesh per chain', () => {
+    for (const id of ['pdb-5i4r', 'pdb-1mbn-myoglobin'] as const) {
+      const source = sourceFor(id);
+      const object = buildProteinRibbon(source, 'publication');
+      const layout = ribbonChainLayout(source);
+      const meshes = ribbonMeshes(object);
+      assert.equal(meshes.length, layout.size);
+
+      const kinds = new Set<ProteinSecondaryKind>();
+      let continuousBoundaries = 0;
+      let index = 0;
+      for (const runs of layout.values()) {
+        const mesh = meshes[index]!;
+        index++;
+        assertMeshQuality(mesh);
+        for (const run of runs) {
+          for (const section of run) {
+            if (!section.transition) kinds.add(section.kind);
+            else { kinds.add(section.fromKind); kinds.add(section.toKind); }
+          }
+        }
+        continuousBoundaries += assertChainMeshLayout(mesh, runs);
+      }
+      assert.ok(kinds.has('helix'));
+      assert.ok(kinds.has('coil'));
+      if (id === 'pdb-5i4r') assert.ok(kinds.has('sheet'));
+      assert.ok(continuousBoundaries > 0);
+      assertOnlyChainEndsOpen(object, layout);
+
+      const triangles = meshes.reduce((sum, mesh) => sum + (mesh.geometry.getIndex()?.count ?? 0) / 3, 0);
+      assert.equal(triangles, expectedTriangleCount(source.backbone));
+      if (id === 'pdb-5i4r') assert.ok(triangles <= 260_000);
+      disposeRibbon(object);
+    }
+  });
+
+  test('protein ribbon geometry: mesh count matches chain count, material is shared', () => {
     for (const id of ['pdb-5i4r', 'pdb-1mbn-myoglobin'] as const) {
       const source = sourceFor(id);
       const object = buildProteinRibbon(source, 'publication');
       const meshes = ribbonMeshes(object);
-      const kinds = new Set(meshes.map((entry) => entry.kind));
-      assert.ok(kinds.has('helix'));
-      assert.ok(kinds.has('coil'));
-      if (id === 'pdb-5i4r') assert.ok(kinds.has('sheet'));
-      for (const entry of meshes) assertMeshQuality(entry);
-      assert.ok(assertFrameContinuity(object) > 0);
-      assertOnlyChainEndsOpen(object);
-
-      const triangles = meshes.reduce(
-        (sum, entry) => sum + (entry.mesh.geometry.getIndex()?.count ?? 0) / 3,
-        0,
-      );
-      assert.equal(triangles, expectedTriangleCount(source.backbone));
-      if (id === 'pdb-5i4r') assert.ok(triangles <= 260_000);
+      const chainCount = new Set(source.backbone.backboneChains).size;
+      assert.equal(meshes.length, chainCount);
+      const materials = new Set(meshes.map((mesh) => mesh.material));
+      assert.equal(materials.size, 1);
+      const owners = meshes.filter((mesh) => mesh.userData.ownsMaterial === true);
+      assert.equal(owners.length, 1);
       disposeRibbon(object);
     }
   });
@@ -448,14 +432,15 @@ export function register(): void {
     const source = straightSource(secondary, chains);
     const first = buildProteinRibbon(source, 'publication');
     const second = buildProteinRibbon(source, 'publication');
+    const chainOrder = [...ribbonChainLayout(source).keys()];
+    const firstMeshes = ribbonMeshes(first);
+    assert.equal(firstMeshes.length, chainOrder.length);
+
     const firstColors = new Map<string, THREE.Color>();
-    for (const { mesh } of ribbonMeshes(first)) {
-      const color = mesh.geometry.getAttribute('color');
-      firstColors.set(
-        String(mesh.userData.proteinComponent),
-        new THREE.Color(color.getX(0), color.getY(0), color.getZ(0)),
-      );
-    }
+    chainOrder.forEach((chain, index) => {
+      const color = firstMeshes[index]!.geometry.getAttribute('color');
+      firstColors.set(chain, new THREE.Color(color.getX(0), color.getY(0), color.getZ(0)));
+    });
     assert.equal(firstColors.size, 9);
     for (let index = 0; index < SET2.length; index++) {
       const chain = String.fromCharCode(65 + index);
@@ -468,8 +453,9 @@ export function register(): void {
     }
     assert.deepEqual(firstColors.get('I'), firstColors.get('A'));
 
-    const firstKeys = ribbonMeshes(first).map(({ mesh }) => mesh.geometry.getAttribute('color').getX(0));
-    const secondKeys = ribbonMeshes(second).map(({ mesh }) => mesh.geometry.getAttribute('color').getX(0));
+    const secondMeshes = ribbonMeshes(second);
+    const firstKeys = firstMeshes.map((mesh) => mesh.geometry.getAttribute('color').getX(0));
+    const secondKeys = secondMeshes.map((mesh) => mesh.geometry.getAttribute('color').getX(0));
     assert.deepEqual(secondKeys, firstKeys);
     disposeRibbon(first);
     disposeRibbon(second);
@@ -487,7 +473,7 @@ export function register(): void {
     ] as const;
     for (const [mode, expected] of expectations) {
       const object = buildProteinRibbon(source, mode);
-      assertFirstColor(meshForKind(object, 'helix'), expected);
+      assertFirstColor(soleRibbonMesh(object), expected);
       disposeRibbon(object);
     }
   });

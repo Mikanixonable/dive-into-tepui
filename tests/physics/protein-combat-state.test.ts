@@ -19,6 +19,7 @@ import type { ProteinDisplayAsset } from '../../src/game/protein/protein-display
 import {
   buildProteinEnemyShip, buildProteinRibbonShip, type ProteinBackboneAsset, type ProteinRenderSource,
 } from '../../src/render/protein-enemy-ship';
+import { ribbonChainLayout } from '../../src/render/protein-ribbon';
 import {
   LIT_OPAQUE_LAYER, PROTEIN_SHADOW_OCCLUDER_LAYER, PROTEIN_SHADOW_RECEIVER_LAYER,
 } from '../../src/render/pipeline/lit-layer';
@@ -43,13 +44,17 @@ const sourceFor = (
   structure: structure as ProteinDisplayAsset,
 });
 
-function ribbonKinds(object: THREE.Object3D): Set<string> {
+/** buildProteinRibbonShip が生成する Ribbon に含まれる二次構造の種類を返す。 */
+function ribbonKinds(source: ProteinRenderSource): Set<string> {
   const kinds = new Set<string>();
-  object.traverse((child) => {
-    if (child.userData.proteinRibbon && typeof child.userData.proteinSecondary === 'string') {
-      kinds.add(child.userData.proteinSecondary);
+  for (const runs of ribbonChainLayout(source).values()) {
+    for (const run of runs) {
+      for (const section of run) {
+        if (!section.transition) kinds.add(section.kind);
+        else { kinds.add(section.fromKind); kinds.add(section.toKind); }
+      }
     }
-  });
+  }
   return kinds;
 }
 
@@ -202,15 +207,15 @@ export function register(): void {
   });
 
   test('protein ribbon: shared renderer preserves each asset secondary structures', () => {
-    const myoglobin = buildProteinRibbonShip(sourceFor(
-      myoglobinAsset, rawMyoglobinBackbone, rawMyoglobinStructure,
-    ), 'secondary-structure');
-    assert.deepEqual(ribbonKinds(myoglobin), new Set(['coil', 'helix']));
+    const myoglobinSource = sourceFor(myoglobinAsset, rawMyoglobinBackbone, rawMyoglobinStructure);
+    buildProteinRibbonShip(myoglobinSource, 'secondary-structure');
+    assert.deepEqual(ribbonKinds(myoglobinSource), new Set(['coil', 'helix']));
 
-    const complex = buildProteinRibbonShip(sourceFor(asset, rawBackbone, rawStructure), 'secondary-structure');
-    assert.ok(ribbonKinds(complex).has('helix'));
-    assert.ok(ribbonKinds(complex).has('sheet'));
-    assert.ok(ribbonKinds(complex).has('coil'));
+    const complexSource = sourceFor(asset, rawBackbone, rawStructure);
+    buildProteinRibbonShip(complexSource, 'secondary-structure');
+    assert.ok(ribbonKinds(complexSource).has('helix'));
+    assert.ok(ribbonKinds(complexSource).has('sheet'));
+    assert.ok(ribbonKinds(complexSource).has('coil'));
   });
 
   test('protein silhouette: internal ribbon is white while the ligand remains visible', () => {
