@@ -146,21 +146,22 @@ function loadStored(): GraphicsSettingsData {
   }
 }
 
-// 解像度倍率の反映先。描画解像度を持つのはレンダラだが、設定はレンダラ生成より前に要る。
-export interface ResolutionTarget {
-  setResolutionScale(scale: number): void;
+// 設定値の押し出し先。**値が変わった瞬間に何かを作り直す必要がある項目**(描画解像度、GPU
+// 資源の確保を伴う項目)はここで受け取る。毎フレームの分岐で足りる項目は current を読む。
+export interface GraphicsTarget {
+  applyGraphics(graphics: GraphicsSettingsData): void;
 }
 
 export class GraphicsSettings {
   private data: GraphicsSettingsData = loadStored();
-  private resolutionTarget: ResolutionTarget | null = null;
+  private readonly targets: GraphicsTarget[] = [];
 
   public get current(): GraphicsSettingsData { return this.data; }
 
-  // 解像度の押し出し先を登録し、現在値を一度反映する。
-  public bindResolutionTarget(target: ResolutionTarget): void {
-    this.resolutionTarget = target;
-    target.setResolutionScale(this.data.resolutionScale);
+  // 押し出し先を登録し、現在値を一度反映する。
+  public bind(target: GraphicsTarget): void {
+    this.targets.push(target);
+    target.applyGraphics(this.data);
   }
 
   // 項目1つを差し替える。**設定パネルは項目名を実行時に持つ**ので、キーと値の対応を型では
@@ -175,10 +176,10 @@ export class GraphicsSettings {
     this.apply(QUALITY_PRESETS[preset]);
   }
 
-  // 新しい値一式を正本にし、保存と解像度の反映まで行う。
+  // 新しい値一式を正本にし、押し出しと保存まで行う。
   private apply(data: GraphicsSettingsData): void {
     this.data = data;
-    this.resolutionTarget?.setResolutionScale(this.data.resolutionScale);
+    for (const target of this.targets) target.applyGraphics(data);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
     } catch {
