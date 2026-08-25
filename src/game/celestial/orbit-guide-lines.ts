@@ -110,7 +110,10 @@ interface LineVisualStyle {
   readonly direction: GuideKindSettings['direction'];
   readonly animate: boolean;
   readonly markerColor: number;
-  readonly colorAt: CurveColorSampler;
+  // 線のマテリアル色。頂点カラーはこれに乗算されるので、colorAt を持つ線は白にする。
+  readonly color: number;
+  // 線の中で色が変わる線だけが持つ。単色の線は color だけで塗る。
+  readonly colorAt?: CurveColorSampler;
 }
 
 // 色に効く設定だけを並べた識別子。これが変われば頂点カラーを焼き直す。
@@ -247,8 +250,8 @@ export class OrbitGuideLines {
         entry.curve.hide();
         continue;
       }
+      entry.curve.setStyle(style.color, style.opacity);
       entry.curve.sync(fo, camera, style.colorAt);
-      entry.curve.setOpacity(style.opacity);
       if (entry.lastLoop) {
         this.markers.addLoop(entry.lastLoop, style.direction, style.animate, style.markerColor, fo);
       }
@@ -256,16 +259,13 @@ export class OrbitGuideLines {
     this.markers.endFrame();
   }
 
-  // 模式図では線の色分けに意味を持たせず、不透明な一色へ統一する。realistic へ戻したときは
-  // 次のフレームで通常の色が焼き直されるよう、色の署名を捨てる。
+  // 模式図では線の色分けに意味を持たせず、不透明な一色へ統一する。色そのものは styleFor が
+  // 毎フレーム組むので、ここは焼いてある頂点カラーを捨てさせるだけでよい。
   private applyStyle(style: RenderStyle): void {
     this.currentStyle = style;
     if (!this.styleGate.changed(style)) return;
     this.styleKey = '';
-    for (const entry of this.lines) {
-      if (style === 'schematic') entry.curve.setStyle(SCHEMATIC_LINE, 1);
-      else entry.curve.invalidateColors();
-    }
+    for (const entry of this.lines) entry.curve.invalidateColors();
   }
 
   // 表示中のガイド線を、当たり判定向けの識別情報付きで返す(マップ視点外・0本の間は空)。
@@ -328,28 +328,25 @@ export class OrbitGuideLines {
       const on = entry.familyId === 'lissajous' ? settings.lissajous.on
         : referenceKind ? settings[referenceKind].on : settings.kinds[entry.familyId]?.on;
       if (!on) return null;
-      const schematic = new THREE.Color(SCHEMATIC_LINE);
       const kindDirection = entry.familyId === 'lissajous' ? settings.lissajous
         : referenceKind ? settings[referenceKind] : settings.kinds[entry.familyId]!;
       return {
         opacity: 1, direction: kindDirection.direction, animate: kindDirection.animate,
-        markerColor: SCHEMATIC_LINE, colorAt: (_t, out) => out.copy(schematic),
+        markerColor: SCHEMATIC_LINE, color: SCHEMATIC_LINE,
       };
     }
     if (entry.familyId === 'lissajous') {
       const l = settings.lissajous;
-      const color = new THREE.Color(l.colorStart);
       return {
-        opacity: l.opacity, direction: l.direction, animate: l.animate, markerColor: l.colorStart,
-        colorAt: (_t, out) => out.copy(color),
+        opacity: l.opacity, direction: l.direction, animate: l.animate,
+        markerColor: l.colorStart, color: l.colorStart,
       };
     }
     if (referenceKind) {
       const r = settings[referenceKind];
-      const color = new THREE.Color(r.colorStart);
       return {
-        opacity: r.opacity, direction: r.direction, animate: r.animate, markerColor: r.colorStart,
-        colorAt: (_t, out) => out.copy(color),
+        opacity: r.opacity, direction: r.direction, animate: r.animate,
+        markerColor: r.colorStart, color: r.colorStart,
       };
     }
     const kind = settings.kinds[entry.familyId];
@@ -367,6 +364,7 @@ export class OrbitGuideLines {
 
     return {
       opacity, direction: kind.direction, animate: kind.animate, markerColor: base.getHex(),
+      color: 0xffffff,
       // 族位置(gradientT)で線ごとの色を決めたうえで、線の中でも始点→終点でわずかに明度を
       // 振り、Curve の頂点カラー機構を実際に使ったグラデーションにする。
       colorAt: (curveT, out) => out.copy(base).offsetHSL(0, 0, (curveT - 0.5) * 0.08),

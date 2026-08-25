@@ -25,6 +25,8 @@ export class GuideCurve {
   private points: readonly Vec3[] | null = null;
   private origin: Vec3 = { x: 0, y: 0, z: 0 } as Vec3;
   private revision: object = {};
+  // 頂点カラーの焼き直し待ち。点列が変わらなくても色だけ変わることがある。
+  private colorsDirty = false;
 
   public constructor(style: LineStyle, samples: number, private readonly closed: boolean) {
     this.curve = new Curve({ style, maxVertices: samples });
@@ -71,19 +73,22 @@ export class GuideCurve {
     this.curve.setTransform(fo.RtoThreeV3(this.origin));
     const span = this.closed ? this.points.length : this.points.length - 1;
     this.curve.setCurve(this.sampler, { revision: this.revision, camera, initialTs: initialTsFor(span), colorAt });
+    if (this.colorsDirty && colorAt) {
+      this.curve.setColors(colorAt);
+      this.colorsDirty = false;
+    }
     this.curve.setVisible(true);
   }
 
-  // 線の色と不透明度を差し替える。頂点カラーを使っている線は、次の sync で色を焼き直させる。
+  // 線の色と不透明度を差し替える。
   public setStyle(color: number, opacity: number): void {
     this.curve.setColor(color);
     this.curve.setOpacity(opacity);
-    this.revision = {};
   }
 
-  // 頂点カラーだけが変わったことを伝え、次の sync で焼き直させる。
+  // 頂点カラーだけが変わったことを伝え、次の sync で色を焼き直させる。
   public invalidateColors(): void {
-    this.revision = {};
+    this.colorsDirty = true;
   }
 
   public setOpacity(opacity: number): void {
