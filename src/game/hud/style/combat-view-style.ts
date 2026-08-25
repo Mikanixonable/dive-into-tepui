@@ -273,23 +273,7 @@ export const COMBAT_VIEW_STYLE = `
 }
 #hud:not(.base-mode) #hud-topbar .k { color: var(--text-dim); }
 #hud:not(.base-mode) #hud-topbar .gs-sep { color: var(--fill-4); }
-#hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset {
-  border: 0;
-  border-radius: var(--radius-control, 11px);
-  background: var(--glass-quiet, var(--surface));
-  color: var(--text-dim);
-  backdrop-filter: blur(14px) saturate(82%);
-  -webkit-backdrop-filter: blur(14px) saturate(82%);
-  box-shadow: 0 8px 22px var(--shade-1);
-  transition: color 140ms, background 140ms;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset { border-radius: 50%; }
-#hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset:hover {
-  background: var(--fill-2);
-  color: var(--color-primary-hover);
-}
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:focus-visible,
-#hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset:focus-visible,
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .w-btn:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
@@ -299,8 +283,7 @@ export const COMBAT_VIEW_STYLE = `
   #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status,
   #hud:not(.base-mode) .hud-combat-root.active #hud-orbit,
   #hud:not(.base-mode) .hud-combat-root.active #hud-enemies,
-  #hud:not(.base-mode) .hud-combat-root.active #hud-target,
-  #hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset {
+  #hud:not(.base-mode) .hud-combat-root.active #hud-target {
     background: var(--surface);
   }
   #hud:not(.base-mode) #hud-topbar {
@@ -316,15 +299,13 @@ export const COMBAT_VIEW_STYLE = `
   }
 }
 @media ${MQ_COARSE} {
-  #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse,
-  #hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset {
+  #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse {
     min-width: var(--hit-target-min);
     min-height: var(--hit-target-min);
   }
 }
 @media (prefers-reduced-motion: reduce) {
   #hud:not(.base-mode) .hud-combat-root.active .combat-panel *,
-  #hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset,
   #hud:not(.base-mode) #hud-topbar {
     transition-duration: 0.001ms !important;
   }
