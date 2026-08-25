@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { Vec3 } from '../../physics/vec3';
-import { catalogLoop, GuideLoop, GuidePoint, lissajousLoop } from '../../physics/orbit-guide';
+import { catalogLoop, familyVisualS, GuideLoop, GuidePoint, lissajousLoop } from '../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
 import { FloatingOrigin } from '../floating-origin';
 import { CurveColorSampler } from '../../render/curve';
@@ -13,7 +13,7 @@ import { RenderStyleGate, type RenderStyle } from '../../render/render-style';
 import { SCHEMATIC_LINE } from '../../render/schematic-style';
 import { GuideCurve } from './guide-curve';
 import {
-  GUIDE_GROUPS, GuideGroupId, GuideKindSettings, OrbitGuideSettings,
+  GuideGroupId, GuideKindSettings, OrbitGuideSettings,
 } from './orbit-guide-settings';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import { DirectionMarkers } from './direction-markers';
@@ -85,9 +85,8 @@ function pointOf(familyId: string): string | null {
   return /L[1-5]/.exec(familyId)?.[0] ?? null;
 }
 
-function activeSystemsForGroup(settings: OrbitGuideSettings, group: GuideGroupId): readonly CatalogSystemId[] {
-  const flags = settings.systems[group];
-  return ALL_SYSTEMS.filter((id) => flags[id] === true);
+function activeSystems(settings: OrbitGuideSettings): readonly CatalogSystemId[] {
+  return ALL_SYSTEMS.filter((id) => settings.systems[id] === true);
 }
 
 function sValueFor(kind: GuideKindSettings, index: number, count: number): number {
@@ -128,10 +127,7 @@ function geometrySignature(settings: OrbitGuideSettings): string {
   if (l.on) {
     parts.push(`lissajous:${l.inPlane}:${l.outOfPlane}:${l.inPlanePhase}:${l.outOfPlanePhase}:${l.cycles}:${l.l1}${l.l2}${l.l3}`);
   }
-  for (const [group, systems] of Object.entries(settings.systems)) {
-    const on = Object.entries(systems).filter(([, enabled]) => enabled).map(([id]) => id).join(',');
-    parts.push(`${group}:${on}`);
-  }
+  parts.push(`systems:${activeSystems(settings).join(',')}`);
   return parts.sort().join('|');
 }
 
@@ -144,9 +140,7 @@ function structuralKey(settings: OrbitGuideSettings): string {
       return `${id}:${k.on}:${k.on ? k.count : 0}`;
     })
     .join(',');
-  const systemsKey = GUIDE_GROUPS
-    .map((g) => `${g}=${ALL_SYSTEMS.filter((s) => settings.systems[g][s] === true).join('+')}`)
-    .join(',');
+  const systemsKey = activeSystems(settings).join('+');
   const l = settings.lissajous;
   return `${kindsKey}|${systemsKey}|lissajous:${l.on}:${l.l1}:${l.l2}:${l.l3}`;
 }
@@ -266,6 +260,8 @@ export class OrbitGuideLines {
     return visible;
   }
 
+  // 族の位置設定(0〜1)は画面上の間隔が均等に見える弧長パラメータとして扱い、カタログの
+  // 実際のメンバー選択に使う s へ familyVisualS で変換してから catalogLoop へ渡す。
   private computeLoop(entry: GuideLineEntry, t: number, settings: OrbitGuideSettings): GuideLoop | null {
     if (entry.familyId === 'lissajous') {
       const l = settings.lissajous;
@@ -279,7 +275,10 @@ export class OrbitGuideLines {
     if (!kind) return null;
     const system = this.catalog.systemFor(entry.system);
     if (!system) return null;
-    return catalogLoop(t, this.ephemeris, system, entry.system, entry.familyId, sValueFor(kind, entry.index, entry.count));
+    const family = system.families[entry.familyId];
+    if (!family) return null;
+    const s = familyVisualS(family, sValueFor(kind, entry.index, entry.count));
+    return catalogLoop(t, this.ephemeris, system, entry.system, entry.familyId, s);
   }
 
   // その線をいま描くべき色・不透明度・進行方向マーカーの出し方を、現在の設定から組む。
@@ -339,7 +338,7 @@ export class OrbitGuideLines {
       const group = groupOf(familyId);
       if (group === null) continue; // 未知の族 id(壊れた保存データ)は無視
       const point = pointOf(familyId);
-      for (const system of activeSystemsForGroup(settings, group)) {
+      for (const system of activeSystems(settings)) {
         // その系に存在しない族は線を作らない。作っても何も描かれないうえ、線数の警告だけが
         // 膨らんでしまう(どの系にどの族があるかは焼き込みの索引が持つ)。
         if (!this.catalog.hasFamily(system, familyId)) continue;
@@ -349,7 +348,7 @@ export class OrbitGuideLines {
 
     if (settings.lissajous.on) {
       const points: readonly ['l1' | 'l2' | 'l3', GuidePoint][] = [['l1', 'L1'], ['l2', 'L2'], ['l3', 'L3']];
-      for (const system of activeSystemsForGroup(settings, 'collinear')) {
+      for (const system of activeSystems(settings)) {
         for (const [flag, point] of points) {
           if (settings.lissajous[flag]) this.addLissajousLine(system, point);
         }
