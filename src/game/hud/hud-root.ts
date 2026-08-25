@@ -4,7 +4,6 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { injectThemeVariables } from '../theme';
 import { buildOverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
-import { StylePanel } from './panels/style-panel';
 import { HelpPanel } from './windows/help-panel';
 import {
   PanelShell,
@@ -154,12 +153,9 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   return svgOverlay;
 }
 
-// 常設の情報パネル(STYLE/VESSEL/ORBIT/TARGET/CONTACTS)を左右のドックへ組む。左右レールの
+// 常設の情報パネル(VESSEL/ORBIT/TARGET/CONTACTS)を左右のドックへ組む。左右レールの
 // 収納トグルと各 PanelShell の折りたたみは、現在ビューの永続状態を利用する。
-function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement, renderStyle: RenderStyleSetting): void {
-  const style = new StylePanel(leftRail, renderStyle);
-  configureCombatPanel(style.panel);
-
+function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   const status = new PanelShell(rightRail, 'hud-vessel-status', 'Vessel');
   configureCombatPanel(status);
   status.body.innerHTML = `
@@ -379,7 +375,7 @@ export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
   const mapRoot = buildWorldRoot(layers.panel, 'hud-map-root', 'map');
 
   // 常設パネル群を組む。
-  buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail, renderStyle);
+  buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);
   buildGlobalStatus(layers.panel);
   buildChaseReset(combatRoot.element);
   buildMapScale(mapRoot.element);
