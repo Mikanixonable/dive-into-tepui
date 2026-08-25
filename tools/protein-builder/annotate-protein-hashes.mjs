@@ -4,6 +4,7 @@ import { readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { backboneContentHash, structureContentHash } from './protein-content-hash.mjs';
+import { serializeProteinAsset } from './protein-asset-format.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const proteinRoot = join(root, 'assets-src/proteins');
@@ -43,7 +44,7 @@ for (const entry of entries.filter((candidate) => candidate.isDirectory()).sort(
   if (!backbone.backboneResidueNumbers) backbone.backboneResidueNumbers = nearestResidues(backbone, structure);
   structure.generator = { ...structure.generator, contentHash: structureContentHash(structure) };
   backbone.contentHash = backboneContentHash(backbone);
-  await writeFile(structurePath, `${JSON.stringify(structure, null, 2)}\n`);
-  await writeFile(backbonePath, `${JSON.stringify(backbone, null, 2)}\n`);
+  await writeFile(structurePath, serializeProteinAsset(structure));
+  await writeFile(backbonePath, serializeProteinAsset(backbone));
   console.log(`annotated ${config.pdbId}: structure=${structure.generator.contentHash}, backbone=${backbone.contentHash}`);
 }
