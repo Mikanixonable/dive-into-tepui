@@ -20,8 +20,8 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['atmosphere', '大気'],
 ];
 
-// デバッグ表示の選択を書き込む先。game/hud/ が render/pipeline/ の具象クラス(RenderPipeline)を
-// import せずに済むよう、この狭い形だけを共有する。
+// デバッグ表示の選択を書き込む先。選択欄を持つ側が render/pipeline/ の具象クラス
+// (RenderPipeline)を import せずに済むよう、この狭い形だけを共有する。
 export interface DebugTargetHost {
   debugTarget: DebugTargetId;
 }

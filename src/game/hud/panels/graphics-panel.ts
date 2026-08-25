@@ -3,8 +3,6 @@ import {
   GraphicsSettings, LOD_BIAS, RESOLUTION_SCALES,
   type GraphicsToggleKey, type LodBias, type QualityPreset, type ResolutionScale,
 } from '../../../render/graphics-settings';
-import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../../../render/pipeline/debug-target';
-import type { RenderStyleSetting } from '../../../render/render-style';
 import { SegmentedControl, ToggleSwitch } from '../widgets';
 
 const PRESET_ITEMS: readonly (readonly [QualityPreset, string])[] = [
@@ -25,15 +23,10 @@ export class GraphicsPanel {
   private readonly resolution: SegmentedControl<ResolutionScale>;
   private readonly lod: SegmentedControl<LodBias>;
   private readonly toggles: readonly (readonly [ToggleSwitch, GraphicsToggleKey])[];
-  private readonly debugTarget: SegmentedControl<DebugTargetId>;
 
-  // プリセット・解像度・詳細度・各トグル・デバッグ表示選択を縦に並べる。どの操作も graphics/host
-  // へ書いてから sync() で全コントロールの点灯を引き直すので、点灯の正本は常にそちら側にある。
-  // デバッグ表示は模式図スタイルでは選べない(DEVELOP/SPEC/RENDERING.md)ので、renderStyle の
-  // 変化に合わせて選択欄の有効/無効を切り替える。
-  constructor(
-    private readonly graphics: GraphicsSettings, private readonly host: DebugTargetHost, renderStyle: RenderStyleSetting,
-  ) {
+  // プリセット・解像度・詳細度・各トグルを縦に並べる。どの操作も graphics へ書いてから
+  // sync() で全コントロールの点灯を引き直すので、点灯の正本は常にそちら側にある。
+  constructor(private readonly graphics: GraphicsSettings) {
     this.element = document.createElement('div');
     this.element.className = 'gp-body';
 
@@ -65,14 +58,6 @@ export class GraphicsPanel {
       [this.addToggle('アンチエイリアス(次回起動から)', 'antialias'), 'antialias'],
     ];
 
-    this.debugTarget = new SegmentedControl('デバッグ表示', DEBUG_TARGETS, (id) => {
-      this.host.debugTarget = id;
-      this.sync();
-    });
-    this.element.appendChild(this.debugTarget.element);
-
-    renderStyle.subscribe((style) => this.debugTarget.setEnabled(style !== 'schematic'));
-
     this.sync();
   }
 
@@ -93,6 +78,5 @@ export class GraphicsPanel {
     this.resolution.setSelected(data.resolutionScale);
     this.lod.setSelected(data.lodBias);
     for (const [toggle, key] of this.toggles) toggle.setOn(data[key]);
-    this.debugTarget.setSelected(this.host.debugTarget);
   }
 }

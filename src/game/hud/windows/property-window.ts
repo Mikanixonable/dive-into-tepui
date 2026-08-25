@@ -1,6 +1,7 @@
 // マップ上のオブジェクトを右クリックして開く、プロパティ表示付きの小窓。外枠(ドラッグ移動・
 // クリップ・ヘッダ・OverlayManager 登録)は DraggableWindow に委譲し、このクラスはプロパティ行 /
-// 操作項目の2段と改名 UI だけを持つ。表示専用で、プロパティの値をどう導出するかは呼び出し側の責務。
+// 操作項目の2段と改名 UI、そして呼び出し側が組んだ操作ウィジェットを載せる欄だけを持つ。
+// 表示専用で、プロパティの値をどう導出するかは呼び出し側の責務。
 // 複数存続できる想定のため ContextMenu と異なり呼び出しごとに個別のインスタンスを持つ。
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
@@ -34,6 +35,13 @@ const STYLE = `
   padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
 #hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
+#hud .prop-window-controls {
+  padding: var(--space-4) var(--space-5);
+  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
+}
+/* .w-btn の padding は #hud 修飾を持たないため、#hud 側のリセットに詳細度で負ける。
+   詰まったボタンにならないよう、#hud 修飾つきで既定の余白へ戻す。 */
+#hud .prop-window-controls .w-btn { padding: var(--space-4) var(--space-5); }
 #hud .prop-window-items {
   padding: var(--space-2);
   background: color-mix(in srgb, var(--surface-0) 28%, transparent);
@@ -144,6 +152,7 @@ export class PropertyWindow<A extends string = string> {
   private readonly win: DraggableWindow;
   private readonly rowsEl: HTMLDivElement;
   private readonly itemsEl: HTMLDivElement;
+  private readonly controlsEl: HTMLDivElement;
   private readonly relatedEl: HTMLDivElement;
   private readonly expandedPanelEl: HTMLDivElement;
   private titleMainEl: HTMLElement;
@@ -209,6 +218,8 @@ export class PropertyWindow<A extends string = string> {
     this.rowsEl.className = 'prop-window-rows';
     this.itemsEl = document.createElement('div');
     this.itemsEl.className = 'prop-window-items';
+    this.controlsEl = document.createElement('div');
+    this.controlsEl.className = 'prop-window-controls';
     this.relatedEl = document.createElement('div');
     this.relatedEl.className = 'prop-window-related';
     this.expandedPanelEl = document.createElement('div');
@@ -504,6 +515,19 @@ export class PropertyWindow<A extends string = string> {
 
   public get clipped(): boolean {
     return this.win.clipped;
+  }
+
+  // 呼び出し側が組んだ操作ウィジェットを本文の先頭へ載せる。プロパティ行が伸びても押しに行ける
+  // 位置に置くため、行より上に入る。ウィジェット本体の所有権は呼び出し側に残し、null で外す。
+  public setControls(controls: HTMLElement | null): void {
+    this.controlsEl.replaceChildren();
+    if (controls === null) {
+      this.controlsEl.remove();
+    } else {
+      this.controlsEl.appendChild(controls);
+      if (!this.controlsEl.parentElement) this.win.body.insertBefore(this.controlsEl, this.win.body.firstChild);
+    }
+    this.reclamp();
   }
 
   // プロパティウィンドウの操作項目から展開する補助パネルを本文末尾へ接続する。
