@@ -125,8 +125,7 @@ function ringOpticsNodes(
 function physicalMaterial(
   baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusion: SunOcclusion, sunLight: SunLight,
 ): { material: THREE.MeshBasicNodeMaterial; sync: (state: RingVisualState) => void } {
-  const nodes = ringOpticsNodes(baseColor, optics, sunOcclusion, sunLight);
-  const { colorNode: color, opacityNode, sync } = nodes;
+  const { colorNode: color, opacityNode, sync } = ringOpticsNodes(baseColor, optics, sunOcclusion, sunLight);
   const mat = new THREE.MeshBasicNodeMaterial({
     transparent: true,
     side: THREE.DoubleSide,
@@ -143,8 +142,7 @@ function physicalMaterial(
 function lineOpticsMaterial(
   baseColor: Vec3Node, optics: RingOpticsDef, sunOcclusion: SunOcclusion, sunLight: SunLight,
 ): { material: THREE.LineBasicNodeMaterial; sync: (state: RingVisualState) => void } {
-  const nodes = ringOpticsNodes(baseColor, optics, sunOcclusion, sunLight);
-  const { colorNode: color, opacityNode, sync } = nodes;
+  const { colorNode: color, opacityNode, sync } = ringOpticsNodes(baseColor, optics, sunOcclusion, sunLight);
   const mat = new THREE.LineBasicNodeMaterial({
     transparent: true,
     depthWrite: false,
