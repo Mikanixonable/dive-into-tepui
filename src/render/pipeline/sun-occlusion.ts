@@ -10,7 +10,7 @@ import {
   lessThan, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
-import { SHADOW_SLOT_SIZE, type SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
+import type { SunShadowMaps, SunShadowSlot } from './sun-shadow-maps';
 import type { SunLight } from './sun-light';
 
 export const MAX_OCCLUDERS = 4;
@@ -236,12 +236,13 @@ export class SunOcclusion {
   // 枠はフィルタの足のぶんだけ狭めて判定する。**選んだ時点で、法線オフセットぶんずらした位置も
   // PCF の円盤も枠の内側に収まる**ので、引く側は縁の判定を持たなくてよい。
   private slotCovers(slot: SunShadowSlot, worldPos: Vec3Node): BoolNode {
-    const margin = (NORMAL_OFFSET_TEXELS + PCF_MAX_TEXELS) / SHADOW_SLOT_SIZE;
+    const margin = this.shadowMaps.uvPerTexel.mul(NORMAL_OFFSET_TEXELS + PCF_MAX_TEXELS);
+    const inner = float(1).sub(margin);
     const uv = this.slotUv(slot, worldPos);
     const depth = this.slotDepth(slot, worldPos);
     return greaterThan(slot.active, 0.5)
-      .and(uv.x.greaterThan(margin)).and(uv.x.lessThan(1 - margin))
-      .and(uv.y.greaterThan(margin)).and(uv.y.lessThan(1 - margin))
+      .and(uv.x.greaterThan(margin)).and(uv.x.lessThan(inner))
+      .and(uv.y.greaterThan(margin)).and(uv.y.lessThan(inner))
       .and(depth.greaterThan(0)).and(depth.lessThan(slot.coverDepth));
   }
 
@@ -339,11 +340,11 @@ export class SunOcclusion {
     // 遮られる面積比は (遮蔽器の角半径 / 恒星の角半径)² で落ちる。**PCF は半影の広がりを
     // PCF_MAX_TEXELS で頭打ちにするのでこの減衰を再現できない** — 解析で掛ける。遮蔽器の
     // 差し渡しは枠の 1 辺で代用する(枠は遮蔽器の箱へ密着しているので、単独の枠では実寸に近い)。
-    const casterSize = texel.mul(SHADOW_SLOT_SIZE);
+    const casterSize = texel.mul(this.shadowMaps.texelsPerSlot);
     const shrink = casterSize.div(max(sunAngRadius.mul(blockerDistance).mul(2), 1e-9));
     const umbraFade = min(shrink.mul(shrink), 1);
 
-    const step = radiusTexels.mul(1 / SHADOW_SLOT_SIZE);
+    const step = radiusTexels.mul(this.shadowMaps.uvPerTexel);
     const lit = float(0).toVar();
     for (let i = 0; i < PCF_TAPS; i++) {
       // Vogel disk: 黄金角で回しながら sqrt で半径を振ると、円盤上へ均等に散る。

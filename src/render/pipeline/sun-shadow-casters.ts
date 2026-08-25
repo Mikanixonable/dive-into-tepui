@@ -61,6 +61,7 @@ export class ShadowCasters {
   // ルートに当たり、Box3.expandByObject が子を再帰して天体ごと箱に入れてしまう。
   collect(
     scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight,
+    texelsPerPixel: number,
   ): readonly ShadowCaster[] {
     this.casters.length = 0;
     camera.getWorldPosition(this.cameraPosition);
@@ -83,7 +84,7 @@ export class ShadowCasters {
         requiredTexel: Infinity,
       });
     }
-    this.scoreCasters(camera, viewportHeight, sun);
+    this.scoreCasters(camera, viewportHeight, sun, texelsPerPixel);
     // 要求が厳しい(= texel が細かい)ものから枠を起こせるよう、昇順に並べる。
     this.casters.sort((a, b) => a.requiredTexel - b.requiredTexel);
     return this.casters;
@@ -91,7 +92,9 @@ export class ShadowCasters {
 
   // 遮蔽器を受け手として見たときの要求 texel を書き込む。**画面に写らない受け手と、誰の影も
   // 落ちてこない受け手は要求を持たない** — 枠を 1 枚使う理由が無い。
-  private scoreCasters(camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
+  private scoreCasters(
+    camera: THREE.Camera, viewportHeight: number, sun: SunLight, texelsPerPixel: number,
+  ): void {
     if (!(camera instanceof THREE.PerspectiveCamera)) return;
     this.frustum.setFromProjectionMatrix(
       this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
@@ -103,7 +106,7 @@ export class ShadowCasters {
       // **実体までの距離で測る。** 外接箱までの距離だと、細長い部材を持つ艦はカメラが箱の
       // 内側へ入った時点で 0 へ潰れ、どれも同じ最優先になって順位が付かない。
       receiver.requiredTexel = requiredTexel(
-        receiver.anchorDistance, camera.near, camera.fov, viewportHeight,
+        receiver.anchorDistance, camera.near, camera.fov, viewportHeight, texelsPerPixel,
       );
     }
   }

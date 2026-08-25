@@ -19,8 +19,10 @@ import { SUN_SHADOW_CASTER_LAYER } from './lit-layer';
 import { COLUMN_SPAN, ShadowCasters, type ShadowCaster } from './sun-shadow-casters';
 import type { SunLight } from './sun-light';
 
-export const SHADOW_SLOT_SIZE = 1024;
-const SHADOW_SLOT_COUNT = 4;
+// 深度マップを確保するスロットの上限。設定で選べる枚数の上限でもある。**受け手が引くグラフは
+// この数だけ静的に展開される**ので、上限を上げると、少ない枚数を選んだ受け手のグラフまで
+// 大きくなる — 実際に使う枚数はそこから動的分岐で絞るだけである。
+const MAX_SHADOW_SLOTS = 4;
 
 // 枠の縁へ取る余白 [texel]。受け手を法線方向へずらす量と PCF の半径ぶんあれば、選ばれた
 // スロットのフィルタの足が枠からはみ出さない。
@@ -81,6 +83,16 @@ function createDepthTarget(size: number, name: string): THREE.RenderTarget {
 export class SunShadowMaps {
   private readonly targets: readonly THREE.RenderTarget[];
   private readonly farTargets: readonly THREE.RenderTarget[];
+  // メッシュの影を描くか。
+  private enabled = false;
+  // このフレームに使うスロットの数と、その 1 辺 [texel]。
+  private slotCount = 0;
+  private slotSize = 0;
+  // 画面 1 px あたり何 texel を要求するか。
+  private texelsPerPixel = 1;
+  // 受け手が texel を単位に幅を組むために引く、スロットの 1 辺 [texel] とその逆数。
+  private readonly slotTexels: FloatUniform;
+  private readonly slotTexelUv: FloatUniform;
   private readonly depthMaterial: THREE.MeshBasicNodeMaterial;
   private readonly lightCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
   private readonly slotUniforms: readonly SunShadowSlot[];
@@ -112,21 +124,24 @@ export class SunShadowMaps {
   // 前フレームに中身を書いたスロットの数。使わなくなったスロットを 1 度だけ空へ戻すために持つ
   // — 戻さないと、デバッグ表示「影」に前フレームの深度マップが残って読み手を欺く。**確保直後の
   // 深度マップはゼロ埋めなので、初回も空へ戻す対象に入れる。**
-  private drawnSlots = SHADOW_SLOT_COUNT;
-  // メッシュの影を描くか。描画品質設定から受け取る。
-  private enabled = false;
+  private drawnSlots = MAX_SHADOW_SLOTS;
 
-  // スロット 4 枚ぶんの近層・遠層の深度マップと、そこへライト空間の線形深度を書く override
-  // マテリアルを組む。
-  constructor(private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings) {
+  // 上限ぶんの近層・遠層の深度マップと、そこへライト空間の線形深度を書く override マテリアルを
+  // 組む。深度マップの実寸は品質が決めるので、確保は最小で起こして setQuality が広げる。
+  constructor(
+    private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings,
+    enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number,
+  ) {
     this.targets = Array.from(
-      { length: SHADOW_SLOT_COUNT },
-      (_slot, index) => createDepthTarget(SHADOW_SLOT_SIZE, `sun-shadow-${index}`),
+      { length: MAX_SHADOW_SLOTS },
+      (_slot, index) => createDepthTarget(1, `sun-shadow-${index}`),
     );
     this.farTargets = Array.from(
-      { length: SHADOW_SLOT_COUNT },
-      (_slot, index) => createDepthTarget(SHADOW_FAR_SLOT_SIZE, `sun-shadow-far-${index}`),
+      { length: MAX_SHADOW_SLOTS },
+      (_slot, index) => createDepthTarget(1, `sun-shadow-far-${index}`),
     );
+    this.slotTexels = uniform(1);
+    this.slotTexelUv = uniform(1);
 
     this.drawNear = uniform(0.1);
     this.slotUniforms = this.targets.map((target, index) => ({
@@ -149,13 +164,40 @@ export class SunShadowMaps {
       blending: THREE.NoBlending, side: THREE.DoubleSide,
     });
     this.depthMaterial.colorNode = vec4(vec3(linearDepth), 1);
+
+    this.setQuality(enabled, slotCount, slotSize, texelsPerPixel);
   }
 
   get slots(): readonly SunShadowSlot[] { return this.slotUniforms; }
 
-  // 影を描くかどうかを設定から受け取る。
-  setQuality(enabled: boolean): void {
+  // 受け手が texel を単位に幅を組むために引く、スロットの 1 辺 [texel]。
+  get texelsPerSlot(): FloatNode { return this.slotTexels; }
+
+  // 同じく、1 texel ぶんの uv 幅。
+  get uvPerTexel(): FloatNode { return this.slotTexelUv; }
+
+  // 影の品質を設定から受け取る。枠の数か 1 辺が変わったときだけ深度マップを張り直す —
+  // **使わない枠は 1×1 へ縮めて確保を返す。** 張り直しはテクスチャの実体を差し替えないので、
+  // 受け手が既に組んだグラフはそのまま生きる。
+  setQuality(enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number): void {
     this.enabled = enabled;
+    this.texelsPerPixel = texelsPerPixel;
+    const count = Math.min(slotCount, MAX_SHADOW_SLOTS);
+    if (count === this.slotCount && slotSize === this.slotSize) return;
+    this.slotCount = count;
+    this.slotSize = slotSize;
+    this.slotTexels.value = slotSize;
+    this.slotTexelUv.value = 1 / slotSize;
+    for (const [index, target] of this.targets.entries()) {
+      const used = index < count;
+      target.setSize(used ? slotSize : 1, used ? slotSize : 1);
+      const far = used ? SHADOW_FAR_SLOT_SIZE : 1;
+      this.farTargets[index]!.setSize(far, far);
+    }
+    // 張り直した深度マップの中身は不定なので、全枠を空にし、次のフレームの空戻しを上限まで
+    // 走らせる — 縮めた枠にも前フレームの絵が残ったままだと、デバッグ表示が読み手を欺く。
+    for (const slot of this.slotUniforms) slot.active.value = 0;
+    this.drawnSlots = MAX_SHADOW_SLOTS;
   }
 
   // 遮蔽器を枠へまとめ、枠ごとに 1 スロットを描く。影が切られているか、影を要求する受け手が
@@ -169,7 +211,7 @@ export class SunShadowMaps {
       // 遮蔽器の箱は親の変換込みで測る必要がある。**Box3.expandByObject は親の行列を更新しない**
       // ので、このパスがフレームの先頭で走る限り、ここで確定させないと箱が前フレームの位置で作られる。
       scene.updateMatrixWorld();
-      this.casters = this.shadowCasters.collect(scene, camera, viewportHeight, sun);
+      this.casters = this.shadowCasters.collect(scene, camera, viewportHeight, sun, this.texelsPerPixel);
       this.buildClusters();
     } else {
       this.casters = NO_CASTERS;
@@ -250,10 +292,10 @@ export class SunShadowMaps {
   // **最後の 1 枚は被覆に取っておく。** 要求どおりに縮めた枠は遮蔽器を覆いきれないので、
   // はみ出した部分を拾う粗い枠が要る。
   private buildClusters(): void {
-    const windowSlots = SHADOW_SLOT_COUNT - 1;
+    const windowSlots = this.slotCount - 1;
     for (const receiver of this.casters) {
       if (!Number.isFinite(receiver.requiredTexel)) break; // 昇順なので、以降はすべて要求が無い
-      const limit = 2 * extentForTexel(receiver.requiredTexel, SHADOW_SLOT_SIZE);
+      const limit = 2 * extentForTexel(receiver.requiredTexel, this.slotSize);
       if (this.shareFrame(receiver, limit)) continue;
       if (this.clusters.length >= windowSlots) break;
       this.openFrames(receiver, limit, windowSlots);
@@ -341,7 +383,7 @@ export class SunShadowMaps {
   private frameExtent(): number {
     const { minX, maxX, minY, maxY } = this.lightSpaceBox;
     const half = Math.max(Math.abs(minX), Math.abs(maxX), Math.abs(minY), Math.abs(maxY));
-    return half / (1 - 2 * SLOT_MARGIN_TEXELS / SHADOW_SLOT_SIZE);
+    return half / (1 - 2 * SLOT_MARGIN_TEXELS / this.slotSize);
   }
 
   // 箱を 1 枚へ収める枠の 1 辺 [m]。**世界軸ではなく対角で測る** — 計画の段では光の向きが
@@ -405,7 +447,7 @@ export class SunShadowMaps {
     slot.lightViewProjection.value.multiplyMatrices(
       this.lightCamera.projectionMatrix, this.lightCamera.matrixWorldInverse,
     );
-    slot.texelWorld.value = (2 * extent) / SHADOW_SLOT_SIZE;
+    slot.texelWorld.value = (2 * extent) / this.slotSize;
     return true;
   }
 

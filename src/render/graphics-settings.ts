@@ -15,6 +15,7 @@ export type QualityPreset = 'low' | 'medium' | 'high';
 export const GRAPHICS_GROUPS = [
   ['basic', '基本'],
   ['element', '表示する要素'],
+  ['shadow', '影の詳細'],
 ] as const;
 export type GraphicsGroup = (typeof GRAPHICS_GROUPS)[number][0];
 
@@ -78,15 +79,35 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: '大気',
     presets: { low: false, medium: true, high: true },
   },
-  // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
-  meshShadow: {
-    kind: 'toggle', group: 'element', label: 'メッシュの影',
-    presets: { low: false, medium: true, high: true },
-  },
   // タンパク質型の敵の構造の揺らぎ。
   proteinVibration: {
     kind: 'toggle', group: 'element', label: 'タンパク質の敵の揺らぎ',
     presets: { low: false, medium: true, high: true },
+  },
+  // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
+  meshShadow: {
+    kind: 'toggle', group: 'shadow', label: 'メッシュの影',
+    presets: { low: false, medium: true, high: true },
+  },
+  // 細かい影を同時に落とせる箇所の数。減らすほど影パスの描画命令が減り、要求の緩い受け手から
+  // 粗い影で妥協させられる。**上限は受け手が引くグラフの形が決めるので、増やす段は無い。**
+  shadowSlotCount: {
+    kind: 'choice', group: 'shadow', label: '影の枠の数',
+    items: [[1, '1'], [2, '2'], [4, '4']],
+    presets: { low: 2, medium: 4, high: 4 },
+  },
+  // 1 箇所あたりの影の解像度 [texel]。確保する深度マップの実寸がこの2乗で決まる。
+  shadowSlotSize: {
+    kind: 'choice', group: 'shadow', label: '影の解像度',
+    items: [[512, '512'], [1024, '1024'], [2048, '2048']],
+    presets: { low: 512, medium: 1024, high: 1024 },
+  },
+  // 画面 1 px あたり何 texel の細かさを影へ要求するか。大きいほど枠が狭く細かくなり、
+  // 1 枚の枠で覆える受け手が減る。
+  shadowTexelsPerPixel: {
+    kind: 'choice', group: 'shadow', label: '影の精細さ',
+    items: [[0.5, '粗'], [1, '標準'], [2, '精細']],
+    presets: { low: 0.5, medium: 1, high: 1 },
   },
 } as const satisfies Readonly<Record<string, GraphicsOption>>;
 
