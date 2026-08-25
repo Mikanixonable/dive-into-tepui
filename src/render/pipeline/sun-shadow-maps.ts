@@ -101,6 +101,7 @@ export class SunShadowMaps {
   private readonly clusterCaps: number[] = [];
   private readonly scratchBox = new THREE.Box3();
   private readonly scratchCorner = new THREE.Vector3();
+  private readonly scratchMatrix = new THREE.Matrix4();
   private readonly size = new THREE.Vector3();
   private readonly center = new THREE.Vector3();
   private readonly lightDirection = new THREE.Vector3();
@@ -289,17 +290,7 @@ export class SunShadowMaps {
       const extent = mesh.userData.sunShadowExtent as SunShadowExtent | undefined;
       if (extent === undefined) {
         this.scratchBox.expandByObject(mesh);
-        // 部材 1 つの外接球の表面を、実体の在りかの代表点として拾う。**中心を代表点にすると、
-        // 距離だけが表面で測られて位置が半径ぶん奥へずれ、窓が実体から外れる。**
-        if (mesh.geometry.boundingSphere === null) mesh.geometry.computeBoundingSphere();
-        const sphere = mesh.geometry.boundingSphere;
-        if (sphere !== null) {
-          this.meshSphere.copy(sphere).applyMatrix4(mesh.matrixWorld);
-          const distance = this.meshSphere.center.distanceTo(this.cameraPosition);
-          this.scratchCorner.copy(this.cameraPosition).sub(this.meshSphere.center);
-          if (distance > 1e-6) this.scratchCorner.multiplyScalar(this.meshSphere.radius / distance);
-          this.takeAnchor(this.scratchCorner.add(this.meshSphere.center), distance - this.meshSphere.radius);
-        }
+        this.takeMeshAnchor(mesh);
       } else if (!extent.worldBounds.isEmpty()) {
         this.scratchBox.union(extent.worldBounds);
         this.branchDiffuse = true;
@@ -309,6 +300,35 @@ export class SunShadowMaps {
       }
     }
     for (const child of object.children) this.expandVisibleCasters(child);
+  }
+
+  // メッシュ 1 本ぶんの実体の在りかを、枝の代表点の候補として拾う。個体が散らばる
+  // InstancedMesh は、名指しできる 1 点を持たない枝として branchDiffuse を立てる。
+  private takeMeshAnchor(mesh: THREE.Mesh): void {
+    const instanced = mesh as THREE.InstancedMesh;
+    if (instanced.isInstancedMesh) {
+      // 1 個体ぶんの geometry.boundingSphere は、どの個体の在りかでもない点を指す。個体の
+      // 変換を数えた箱の、カメラに最も近い点を代表点にする。
+      if (instanced.boundingBox === null) instanced.computeBoundingBox();
+      const bounds = instanced.boundingBox;
+      if (bounds === null) return;
+      this.branchDiffuse = true;
+      this.scratchMatrix.copy(mesh.matrixWorld).invert();
+      this.scratchCorner.copy(this.cameraPosition).applyMatrix4(this.scratchMatrix);
+      bounds.clampPoint(this.scratchCorner, this.scratchCorner).applyMatrix4(mesh.matrixWorld);
+      this.takeAnchor(this.scratchCorner, this.scratchCorner.distanceTo(this.cameraPosition));
+      return;
+    }
+    // 外接球の表面を代表点にする。**中心を代表点にすると、距離だけが表面で測られて位置が
+    // 半径ぶん奥へずれ、窓が実体から外れる。**
+    if (mesh.geometry.boundingSphere === null) mesh.geometry.computeBoundingSphere();
+    const sphere = mesh.geometry.boundingSphere;
+    if (sphere === null) return;
+    this.meshSphere.copy(sphere).applyMatrix4(mesh.matrixWorld);
+    const distance = this.meshSphere.center.distanceTo(this.cameraPosition);
+    this.scratchCorner.copy(this.cameraPosition).sub(this.meshSphere.center);
+    if (distance > 1e-6) this.scratchCorner.multiplyScalar(this.meshSphere.radius / distance);
+    this.takeAnchor(this.scratchCorner.add(this.meshSphere.center), distance - this.meshSphere.radius);
   }
 
   // カメラにより近い代表点が来たら、枝の代表点を差し替える。
