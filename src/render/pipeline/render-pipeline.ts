@@ -15,7 +15,7 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { float, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import type { GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
+import type { GraphicsOptionKey, GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
@@ -39,6 +39,12 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 function toneMapped(color: Vec3Node): Vec3Node {
   return neutralToneMapping(color, float(1)) as Vec3Node;
 }
+
+// applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
+// 駆動する呼び出し側(描画テスト環境)は、この並びを操作の対象にする。
+export const PIPELINE_GRAPHICS_KEYS = [
+  'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
+] as const satisfies readonly GraphicsOptionKey[];
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly renderer: WebGPURenderer;
