@@ -3,7 +3,7 @@ import * as C from '../../const';
 import { FILL_4, THEME_PRESETS } from '../../theme';
 
 // 模式図(白背景)向けの上書き色は、選択中のテーマに関わらず theme.ts の light 側パレットから取る。
-const LIGHT_PALETTE = THEME_PRESETS.find((palette) => palette.tone === 'light')!;
+const LIGHT_PALETTE = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
 export const MARKER_STYLE = `
 /* マーカー層 Z-Index トークン定義 */
