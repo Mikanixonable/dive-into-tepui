@@ -1,8 +1,6 @@
 import type { Bgm } from '../../../audio/bgm/bgm';
 import { BGM_TRACKS } from '../../../audio/bgm/tracks/tracks';
 import type { GraphicsSettings } from '../../../render/graphics-settings';
-import type { DebugTargetHost } from '../../../render/pipeline/debug-target';
-import type { RenderStyleSetting } from '../../../render/render-style';
 import {
   applyThemePalette, currentThemePalette, THEME_PRESETS,
 } from '../../theme';
@@ -26,8 +24,7 @@ export class SettingsView implements OverlayHandle {
   onOpenChange: ((open: boolean) => void) | null = null;
 
   constructor(
-    root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm,
-    graphics: GraphicsSettings, debugTargetHost: DebugTargetHost, renderStyle: RenderStyleSetting,
+    root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm, graphics: GraphicsSettings,
   ) {
     this.overlayManager = overlayManager;
     this.bgm = bgm;
@@ -117,7 +114,7 @@ export class SettingsView implements OverlayHandle {
     this.panel.appendChild(themePanel);
 
     const graphicsSection = addTabPanel('graphics', '描画');
-    const graphicsPanel = new GraphicsPanel(graphics, debugTargetHost, renderStyle);
+    const graphicsPanel = new GraphicsPanel(graphics);
     graphicsSection.appendChild(graphicsPanel.element);
     this.panel.appendChild(graphicsSection);
 
