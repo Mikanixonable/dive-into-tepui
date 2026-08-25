@@ -22,7 +22,7 @@ function titleCase(s: string): string {
   return s.replace(/\S+/g, (w) => (w[0] ?? '').toUpperCase() + w.slice(1).toLowerCase());
 }
 
-// グローバルステータスバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)・
+// トップバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)・
 // 画面全体の見せ方(写実/模式図)を切り替えるトグル。
 export class ViewBadge {
   private readonly el: HTMLElement;
@@ -36,7 +36,7 @@ export class ViewBadge {
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
   private readonly unsubscribeRenderStyle: () => void;
 
-  // container(グローバルステータスバー1行目の行)へバッジの中身を、遷移メニューを popupLayer へ組み立てて配線する。
+  // container(トップバー1行目の行)へバッジの中身を、遷移メニューを popupLayer へ組み立てて配線する。
   public constructor(
     container: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
     overlayManager: OverlayManager, renderStyle: RenderStyleSetting,
