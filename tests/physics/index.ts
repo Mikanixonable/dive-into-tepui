@@ -32,7 +32,8 @@ import { register as registerStateQueue } from './state-queue.test';
 import { register as registerDynamicTrajectory } from './dynamic-trajectory.test';
 import { register as registerKeplerExtrapolation } from './kepler-extrapolation.test';
 import { register as registerHalo } from './halo.test';
-import { register as registerHaloGuide } from './halo-guide.test';
+import { register as registerCollinearAnalytic } from './collinear-analytic.test';
+import { register as registerOrbitCatalog } from './orbit-catalog.test';
 import { register as registerPlan } from './plan.test';
 import { register as registerHudLayout } from './hud-layout.test';
 import { register as registerMapScale } from './map-scale.test';
@@ -72,6 +73,7 @@ import { register as registerProteinRenderBindings } from './protein-render-bind
 import { register as registerGameEntityDispose } from './game-entity-dispose.test';
 import { register as registerBoosterStack } from './booster-stack.test';
 import { register as registerBoosterSeparation } from './booster-separation.test';
+import { register as registerZeroVelocity } from './zero-velocity.test';
 
 registerVec3();
 registerKinematicState();
@@ -104,7 +106,8 @@ registerStateQueue();
 registerDynamicTrajectory();
 registerKeplerExtrapolation();
 registerHalo();
-registerHaloGuide();
+registerCollinearAnalytic();
+registerOrbitCatalog();
 registerPlan();
 registerHudLayout();
 registerMapScale();
@@ -143,6 +146,7 @@ registerProteinRenderBindings();
 registerGameEntityDispose();
 registerBoosterStack();
 registerBoosterSeparation();
+registerZeroVelocity();
 
 runAll().catch((error) => {
   console.error(error);
