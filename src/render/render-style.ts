@@ -49,3 +49,17 @@ export class RenderStyleSetting {
     return () => this.listeners.delete(listener);
   }
 }
+
+// 毎フレーム渡される style から「前回の適用値と変わったか」だけを判定する。3D UI オブジェクトが
+// 模式図/写実で見た目を差し替えるとき、変化していないフレームでの再適用を省くために使う。
+export class RenderStyleGate {
+  private applied: RenderStyle | null = null;
+
+  // 変化していれば true を返し、直近の適用値をこの style で更新する。呼び出し側は true が
+  // 返ったときだけ見た目を差し替えればよい。
+  changed(style: RenderStyle): boolean {
+    if (style === this.applied) return false;
+    this.applied = style;
+    return true;
+  }
+}
