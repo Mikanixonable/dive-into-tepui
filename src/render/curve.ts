@@ -21,10 +21,12 @@ import { markOverlay } from './pipeline/lit-layer';
 
 export type CurveOptions = {
   readonly style: LineStyle;
-  // 生成時に確保する頂点数の上限。バッファは生成時に1回だけ確保し、以後は差し替えない
-  // (WebGPURenderer は描画対象ごとに頂点バッファの束縛をキャッシュしており、ジオメトリや
-  // 属性ごと差し替えても新しい頂点は反映されない)。INITIAL_SEGMENTS の2倍以上を渡すこと。
-  readonly maxVertices: number;
+  // 適応分割が収束しない曲線(1本に何周ぶんも入るもの)でだけ、描画コストの打ち切りとして
+  // 渡す。**形の細かさのために渡す値ではない** — それは適応分割が決める。
+  // バッファは生成時に1回だけ確保し、以後は差し替えない(WebGPURenderer は描画対象ごとに
+  // 頂点バッファの束縛をキャッシュしており、ジオメトリや属性ごと差し替えても新しい頂点は
+  // 反映されない)ので、曲線を知る前に上限を決める必要がある。
+  readonly maxVertices?: number;
 };
 
 // t∈[0,1] の位置における曲線上の点を out へ書く。sample(0) と sample(1) が一致する(周期的
@@ -69,6 +71,10 @@ const INITIAL_SEGMENTS = 8;
 // 頂点予算のうち初期頂点へ回してよい割合。残りは適応分割が逸脱の大きい区間へ配るので、
 // ここを埋め切るより少し余らせたほうが、細部の要る場所に頂点が集まる。
 const MAX_INITIAL_VERTEX_RATIO = 0.5;
+
+// 頂点数の既定の上限。1周ぶんの閉曲線はサジッタ目標を満たして 360 頂点ほどで自ら収束するので、
+// それに余裕を足した値を採る。1本に何周ぶんも入る曲線だけが、これを超えて要求しうる。
+const DEFAULT_MAX_VERTICES = 512;
 
 const uniformTsCache = new Map<number, readonly number[]>();
 
@@ -263,7 +269,7 @@ export class Curve {
   // style はマテリアルと描画順、maxVertices は確保する頂点バッファの上限。style.dash が
   // あれば破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。
   constructor(opts: CurveOptions) {
-    const { style, maxVertices } = opts;
+    const { style, maxVertices = DEFAULT_MAX_VERTICES } = opts;
     const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
     this.maxInitialVertices = Math.max(INITIAL_SEGMENTS + 1, Math.floor(maxVertices * MAX_INITIAL_VERTEX_RATIO));
