@@ -17,7 +17,7 @@ export const MAX_OCCLUDERS = 4;
 
 // 環の帯の上限。登録上の最大は天王星の 13 帯(physics/solar-system.ts)なので、それを超える
 // スロットは常に空になる — グラフは静的に展開されるので、空きスロットも毎画素の演算を食う。
-export const MAX_RING_BANDS = 13;
+const MAX_RING_BANDS = 13;
 
 // 環の帯 1 本。半径は描画座標と同じメートル、tau は環面に垂直な光学的深さ。
 export type RingBand = {
