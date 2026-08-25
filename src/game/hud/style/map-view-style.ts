@@ -1,6 +1,8 @@
 // マップビュー固有の視覚階層。骨格配置は skeleton-style.ts、共通コントロールは
 // widgets/widget-style.ts が持ち、ここでは Quiet / Focus Glass とマップ内の意味色だけを上書きする。
-import { MQ_COMPACT, MQ_MEDIUM_DOWN } from '../breakpoints';
+import {
+  MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
+} from '../breakpoints';
 
 export const MAP_VIEW_STYLE = `
 /* マップでは戦闘固有の棚とターゲット計器を外し、計画用のレールへ視線を集中させる。 */
@@ -38,6 +40,33 @@ export const MAP_VIEW_STYLE = `
   width: 100%;
   max-height: min(260px, 36dvh);
   overflow-y: auto;
+}
+/* 軌道ガイドタブは項目数に応じて際限なく伸びうるため、他のレールパネル同様に自身の高さへ
+   上限をかける——無いと下に続くカメラパネルをレールの下方へ押し出し、隠れて見える。
+   タブによって内容量が変わるため、内容が少ないタブでも隣の常設レールパネルより著しく
+   縮まないよう最小高さも持つ。スクロールはタイトル行・タブ切替を巻き込まないよう、
+   本文側(view-options-body 以下、panel-content-style.ts)へ付ける。 */
+#hud .hud-map-root.active .hud-rail-left > #hud-view-options {
+  display: flex;
+  flex-direction: column;
+  min-height: min(260px, 36dvh);
+  max-height: min(420px, 56dvh);
+}
+@media ${MQ_COARSE}, ${MQ_SHORT} {
+  #hud .hud-map-root.active .hud-rail-left > #hud-orbit,
+  #hud .hud-map-root.active .hud-rail-left > #burn-management-panel,
+  #hud .hud-map-root.active .hud-rail-left > #hud-view-options,
+  #hud .hud-map-root.active .hud-rail-left > .hud-frame-controls,
+  #hud .hud-map-root.active #hud-physical-object-list {
+    max-height: var(--rail-panel-max-h);
+  }
+  /* min-height は他の同格レールパネルとの見た目の釣り合いを取るためのものなので、
+     全パネルが --rail-panel-max-h まで縮む画面幅ではこの下限自体が矛盾を起こす
+     (max-height より大きい min-height は常に min-height 側が勝つ)——ここでは
+     外す。 */
+  #hud .hud-map-root.active .hud-rail-left > #hud-view-options {
+    min-height: 0;
+  }
 }
 
 /* Focus Glass: 時間スクラブと座標系編集は、意思決定中だけ一段密度を上げる。 */
@@ -138,7 +167,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:hover { color: var(--color-primary-hover); background: var(--surface-2); }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .hud-map-root.active #hud-physical-object-list .erow {
-  min-height: 28px;
+  min-height: var(--row-min-h-s);
   border-radius: var(--radius-control);
   color: var(--muted);
   transition: color var(--transition-fast), background var(--transition-fast);

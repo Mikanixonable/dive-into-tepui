@@ -221,7 +221,9 @@ export class PhysicalObjectListPanel {
     const body = document.createElement('div');
     body.className = 'physical-object-list-body';
     this.panel.appendChild(body);
-    const collapseToggle = buildCollapseToggle(titleRow, 'hud-physical-object-list-toggle', 'physical-object-list-collapse', body, COLLAPSE_LABELS);
+    const collapseToggle = buildCollapseToggle(
+      titleRow, 'hud-physical-object-list-toggle', 'physical-object-list-collapse', body, COLLAPSE_LABELS, [title],
+    );
     const applyCollapsedState = (): void => {
       const collapsed = loadPanelCollapsed('hud-physical-object-list') ?? false;
       body.classList.toggle('collapsed', collapsed);
