@@ -1,89 +1,122 @@
-// ECI 絶対座標の点列を1本の折れ線として描く共通ラッパー。軌道ガイド線もゼロ速度曲線も、
-// 「実座標の点列を持ち、描画原点の移動へ追随しながら Curve へ流す」という同じ形をしている。
+// ECI 絶対座標の曲線を1本の折れ線として描く。曲線を基準点からの相対で保って Curve へ流し、
+// 描画原点の移動へ毎フレーム追随させる。描かれている曲線上の点を ECI 絶対座標で引く口も
+// 持つので、進行方向マーカーと当たり判定は線と同じ曲線を読める。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
-import { Curve, CurveColorSampler, CurveSampler } from '../../render/curve';
+import { Curve, CurveColorSampler, CurveKnots, CurveSampler } from '../../render/curve';
 import { LineStyle } from '../../render/line-style';
 import { FloatingOrigin } from '../floating-origin';
 
-// initialTs(t の等分割列)は点数だけで決まるので、点数ごとに1回作って使い回す。
-const initialTsCache = new Map<number, readonly number[]>();
-function initialTsFor(span: number): readonly number[] {
-  const cached = initialTsCache.get(span);
-  if (cached) return cached;
-  const ts = Array.from({ length: span + 1 }, (_, i) => i / span);
-  initialTsCache.set(span, ts);
-  return ts;
-}
-
-// ECI 絶対座標 [m] の点列を1本の折れ線として描く。closed なら points[末尾]→points[0] を
-// 結んで輪を閉じる。頂点は points[0] を原点とした相対値で焼く(f32 精度は Curve 側の
-// pivot 追従に任せる)。
 export class GuideCurve {
   private readonly curve: Curve;
   public readonly line: THREE.Object3D;
-  private points: readonly Vec3[] | null = null;
-  private origin: Vec3 = { x: 0, y: 0, z: 0 } as Vec3;
+  // 頂点を相対化する基準点(ECI [m])。sample はこの点からの相対を返す。
+  private origin: Vec3 | null = null;
+  // 直近に渡された曲線。Curve へどう渡すかは種類で分かれるので、種類ごとに保つ。
+  private analytic: CurveSampler | null = null;
+  private knots: CurveKnots | null = null;
   private revision: object = {};
+  // sync で Curve へ渡し終えた曲線の revision。曲線を持たない間は null。
+  private syncedRevision: object | null = null;
+  // 直近に samplePoints が返した点列と、それを引いた曲線・分割数。
+  private sampledPoints: readonly Vec3[] = [];
+  private sampledRevision: object | null = null;
+  private sampledCount = 0;
+  // 頂点カラーの焼き直し待ち。曲線が変わらなくても色だけ変わることがある。
+  private colorsDirty = false;
+  private initialSegments: number | undefined = undefined;
+  private readonly scratch = new THREE.Vector3();
 
-  public constructor(style: LineStyle, samples: number, private readonly closed: boolean) {
-    this.curve = new Curve({ style, maxVertices: samples });
+  // maxVertices の意味は Curve と同じ(収束しない曲線の打ち切り)。
+  public constructor(style: LineStyle, maxVertices?: number) {
+    this.curve = new Curve({ style, maxVertices });
     this.line = this.curve.object;
   }
 
-  private readonly sampler: CurveSampler = (t, out) => {
-    const points = this.points;
-    if (!points || points.length === 0) {
-      out.set(0, 0, 0);
-      return;
-    }
-    const n = points.length;
-    const span = this.closed ? n : n - 1;
-    const f = Math.min(span, Math.max(0, t * span));
-    const i0 = Math.min(span - 1, Math.floor(f));
-    const frac = f - i0;
-    const p0 = points[i0]!;
-    const p1 = points[this.closed ? (i0 + 1) % n : i0 + 1]!;
-    out.set(
-      p0.x - this.origin.x + frac * (p1.x - p0.x),
-      p0.y - this.origin.y + frac * (p1.y - p0.y),
-      p0.z - this.origin.z + frac * (p1.z - p0.z),
-    );
-  };
-
-  // 新しい点列を設定する。null / 2点未満は非表示。
-  public setPoints(points: readonly Vec3[] | null): void {
-    this.points = points && points.length >= 2 ? points : null;
-    if (this.points) this.origin = this.points[0]!;
+  // 閉じた式で書ける曲線を描く。origin は頂点を相対化する基準点(ECI [m])、sample は
+  // t∈[0,1] で origin からの相対位置を返す。initialSegments の意味は Curve 側と同じ。
+  public setAnalytic(origin: Vec3, sample: CurveSampler, initialSegments?: number): void {
+    this.origin = origin;
+    this.analytic = sample;
+    this.knots = null;
+    this.initialSegments = initialSegments;
     this.revision = {};
   }
 
-  public worldPoints(): readonly Vec3[] {
-    return this.points ?? [];
+  // 離散サンプルしか無い曲線を、節点の位置と接線から描く。節点は origin からの相対。
+  public setHermite(origin: Vec3, knots: CurveKnots): void {
+    this.origin = origin;
+    this.analytic = null;
+    this.knots = knots;
+    this.revision = {};
+  }
+
+  // 曲線を持たない状態(非表示)へ戻す。
+  public clear(): void {
+    this.origin = null;
+    this.analytic = null;
+    this.knots = null;
+    this.revision = {};
+    this.syncedRevision = null;
+  }
+
+  // 曲線上の t∈[0,1] の点を ECI 絶対座標で返す。曲線を持たない間は原点。
+  // sync を通ったあとにだけ意味のある値を返す(描かれている曲線をそのまま読むため)。
+  public pointAt(t: number): Vec3 {
+    const origin = this.origin;
+    if (!origin) return { x: 0, y: 0, z: 0 } as Vec3;
+    this.curve.sampleAt(t, this.scratch);
+    return {
+      x: origin.x + this.scratch.x, y: origin.y + this.scratch.y, z: origin.z + this.scratch.z,
+    } as Vec3;
+  }
+
+  // 曲線上の count+1 点を ECI 絶対座標で返す(両端を含む)。sync を通っていない間は空。
+  // 曲線が変わるまでは同じ配列を返す(毎フレーム呼ばれても引き直さない)。
+  public samplePoints(count: number): readonly Vec3[] {
+    const revision = this.syncedRevision;
+    if (revision === null) return [];
+    if (revision !== this.sampledRevision || count !== this.sampledCount) {
+      const points: Vec3[] = [];
+      for (let i = 0; i <= count; i++) points.push(this.pointAt(i / count));
+      this.sampledPoints = points;
+      this.sampledRevision = revision;
+      this.sampledCount = count;
+    }
+    return this.sampledPoints;
   }
 
   // 描画原点の移動へ追随させ、colorAt が指定されていれば頂点カラーで焼く。
   public sync(fo: FloatingOrigin, camera: THREE.Camera, colorAt?: CurveColorSampler): void {
-    if (!this.points) {
+    const origin = this.origin;
+    if (!origin) {
+      this.syncedRevision = null;
       this.curve.setVisible(false);
       return;
     }
-    this.curve.setTransform(fo.RtoThreeV3(this.origin));
-    const span = this.closed ? this.points.length : this.points.length - 1;
-    this.curve.setCurve(this.sampler, { revision: this.revision, camera, initialTs: initialTsFor(span), colorAt });
+    this.curve.setTransform(fo.RtoThreeV3(origin));
+    // 基準点の描画位置は毎フレーム動くが、曲線そのものは revision が変わるまで焼き直さない。
+    const opts = { revision: this.revision, camera, colorAt, initialSegments: this.initialSegments };
+    if (this.analytic) this.curve.setAnalyticCurve(this.analytic, opts);
+    else if (this.knots) this.curve.setHermiteCurve(this.knots, opts);
+    this.syncedRevision = this.revision;
+    // 焼き直しが起きなかったフレームでも、色だけの変更はここで反映する。
+    if (this.colorsDirty && colorAt) {
+      this.curve.setColors(colorAt);
+      this.colorsDirty = false;
+    }
     this.curve.setVisible(true);
   }
 
-  // 線の色と不透明度を差し替える。頂点カラーを使っている線は、次の sync で色を焼き直させる。
+  // 線の色と不透明度を差し替える。
   public setStyle(color: number, opacity: number): void {
     this.curve.setColor(color);
     this.curve.setOpacity(opacity);
-    this.revision = {};
   }
 
-  // 頂点カラーだけが変わったことを伝え、次の sync で焼き直させる。
+  // 頂点カラーだけが変わったことを伝え、次の sync で色を焼き直させる。
   public invalidateColors(): void {
-    this.revision = {};
+    this.colorsDirty = true;
   }
 
   public setOpacity(opacity: number): void {
