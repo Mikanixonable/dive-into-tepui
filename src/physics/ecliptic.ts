@@ -39,7 +39,6 @@ export function eciToEcl(v: Vec3): Vec3 {
 
 // 黄道座標系の基底軸(成分は黄道座標での値)。
 export const ECL_VERNAL = v3(1, 0, 0); // 春分点方向
-export const ECL_POLE = v3(0, 0, 1); // 黄道北極
 export const ECL_POLE_ECI = eclToEci(0, 0, 1); // 黄道北極を ECI で表したもの
 
 // Z 上向きの黄道基底(x,y=黄道面内, z=黄道北極)→ ECI。回転基準系の姿勢

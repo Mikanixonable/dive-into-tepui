@@ -21,6 +21,10 @@ export type CurveOptions = {
 // である)なら、その曲線は自然に閉じた輪として描かれる。
 export type CurveSampler = (t: number, out: THREE.Vector3) => void;
 
+// t∈[0,1] の位置における頂点色を out へ書く。適応分割は頂点位置だけを見て区間を切るため、
+// この関数は分割結果に影響しない — 頂点が確定したあとに、その t で1回だけ呼ばれる。
+export type CurveColorSampler = (t: number, out: THREE.Color) => void;
+
 export type SetCurveOptions = {
   // 再サンプリングの要否を決める不透明な値。前回と === で異なるときだけ焼き直す — sample の
   // 中身が変わったことを表す値を呼び出し側が用意する(例: 元データの参照が変わったときだけ
@@ -34,6 +38,10 @@ export type SetCurveOptions = {
   // 分割済みと誤判定して区間まるごとが直線に化ける。2点未満なら t の等分割へフォールバックする。
   // 焼き直すかどうかは revision だけで決まるので、この列を変えたなら revision も変えること。
   readonly initialTs?: readonly number[];
+  // 頂点ごとに色を変えたいときだけ渡す。省略すれば従来どおり setStyle/setColor の単色のまま
+  // (マテリアルの vertexColors は一度も有効化されない)。一度でも渡すと以後は頂点カラーが
+  // 有効なままになる — 単色へ戻したいなら呼び出し側は再び単色を返す colorAt を渡し続けること。
+  readonly colorAt?: CurveColorSampler;
 };
 
 // 弦に対する曲線の膨らみ(サジッタ)の目標値 [px]。画面上のサジッタをこの値以下に抑える
@@ -124,6 +132,9 @@ export class Curve {
   // pivot 自体の精度を落とさないため — GPU へ渡す positions(f32)は常にこの配列から pivot
   // を差し引いた差分として書く。並びは生成順で、t の昇順は nextVertex が持つ。
   private readonly bakedLocal: Float64Array;
+  // 頂点ごとの色(colorAt が指定されたときだけ埋める)。位置と同じ生成順。
+  private readonly bakedColor: Float32Array;
+  private hasVertexColors = false;
   // 各頂点の曲線上の位置 t。分割は区間の両端の t から中点を求めるので、頂点と対で要る。
   private readonly ts: Float64Array;
   // 焼いた頂点を t 昇順に繋ぐ連結リスト(終端は -1)。分割は t の途中へ頂点を挿し込むため、
@@ -149,6 +160,7 @@ export class Curve {
 
   private readonly scratchA = new THREE.Vector3();
   private readonly scratchM = new THREE.Vector3();
+  private readonly scratchColor = new THREE.Color();
   private readonly scratchWorld = new THREE.Vector3();
   private readonly scratchLocalCam = new THREE.Vector3();
   private readonly scratchInvQuat = new THREE.Quaternion();
@@ -175,6 +187,7 @@ export class Curve {
     this.maxSegments = Math.max(0, maxVertices - 1);
     this.positions = new Float32Array(maxVertices * 3);
     this.bakedLocal = new Float64Array(maxVertices * 3);
+    this.bakedColor = new Float32Array(maxVertices * 3);
     this.ts = new Float64Array(maxVertices);
     this.nextVertex = new Int32Array(maxVertices);
     this.pending = new MaxHeap(maxVertices);
@@ -280,14 +293,21 @@ export class Curve {
     this.line.position.copy(this.reqPosition).add(this.scratchPivotWorld);
   }
 
-  // 位置 t の頂点を積み、その番号を返す。連結リストへの接続は呼び出し側が行う。
-  private pushVertex(t: number, x: number, y: number, z: number): number {
+  // 位置 t の頂点を積み、その番号を返す。連結リストへの接続は呼び出し側が行う。colorAt が
+  // あれば同じ t で色も評価して積む。
+  private pushVertex(t: number, x: number, y: number, z: number, colorAt?: CurveColorSampler): number {
     const i = this.bakedCount++;
     this.ts[i] = t;
     const o = i * 3;
     this.bakedLocal[o] = x;
     this.bakedLocal[o + 1] = y;
     this.bakedLocal[o + 2] = z;
+    if (colorAt) {
+      colorAt(t, this.scratchColor);
+      this.bakedColor[o] = this.scratchColor.r;
+      this.bakedColor[o + 1] = this.scratchColor.g;
+      this.bakedColor[o + 2] = this.scratchColor.b;
+    }
     return i;
   }
 
@@ -329,7 +349,7 @@ export class Curve {
   // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても、残った
   // 区間の逸脱はすべて最後に分割した区間以下 — 一箇所だけが粗いまま取り残されることはなく、
   // 曲線全体が一様に粗くなる方向へ劣化する。
-  private rebake(sample: CurveSampler, ts: readonly number[]): void {
+  private rebake(sample: CurveSampler, ts: readonly number[], colorAt?: CurveColorSampler): void {
     this.bakedCount = 0;
     this.pending.clear();
     const last = ts.length - 1;
@@ -338,7 +358,7 @@ export class Curve {
     for (let i = 0; i <= segmentCount; i++) {
       const t = ts[Math.min(last, i * stride)]!;
       sample(t, this.scratchA);
-      this.pushVertex(t, this.scratchA.x, this.scratchA.y, this.scratchA.z);
+      this.pushVertex(t, this.scratchA.x, this.scratchA.y, this.scratchA.z, colorAt);
       this.nextVertex[i] = i < segmentCount ? i + 1 : -1;
     }
     for (let i = 0; i < segmentCount; i++) this.pending.push(this.segmentError(i, sample), i);
@@ -348,7 +368,7 @@ export class Curve {
       const right = this.nextVertex[left]!;
       const tm = (this.ts[left]! + this.ts[right]!) / 2;
       sample(tm, this.scratchM);
-      const mid = this.pushVertex(tm, this.scratchM.x, this.scratchM.y, this.scratchM.z);
+      const mid = this.pushVertex(tm, this.scratchM.x, this.scratchM.y, this.scratchM.z, colorAt);
       this.nextVertex[mid] = right;
       this.nextVertex[left] = mid;
       this.pending.push(this.segmentError(left, sample), left);
@@ -359,18 +379,23 @@ export class Curve {
   // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケール・カメラ視線
   // 方向のいずれも前回と実質同じであれば焼き直しも GPU への再アップロードも省く。
   setCurve(sample: CurveSampler, opts: SetCurveOptions): void {
-    const { revision, camera, initialTs } = opts;
+    const { revision, camera, initialTs, colorAt } = opts;
     const ts = initialTs && initialTs.length >= 2 ? initialTs : DEFAULT_INITIAL_TS;
     this.cacheCameraFrame(camera);
     const scaleNow = this.representativeScale(sample, ts);
     const scaleChanged = this.bakedScale === null
       || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO;
     const camDirChanged = this.camFwd.dot(this.bakedCamFwd) < CAM_DIR_REBAKE_COS;
+    // 色を後から使い始めたときは、焼いてある頂点に色が入っていないので必ず焼き直す
+    // (そうしないと色属性が 0 のまま束縛されて線が黒くなる)。
+    const colorsTurnedOn = colorAt !== undefined && !this.hasVertexColors;
+    if (colorsTurnedOn) this.enableVertexColors();
+
     const revisionChanged = !this.hasBaked || revision !== this.lastRevision;
-    const rebaked = revisionChanged || scaleChanged || camDirChanged;
+    const rebaked = revisionChanged || scaleChanged || camDirChanged || colorsTurnedOn;
 
     if (rebaked) {
-      this.rebake(sample, ts);
+      this.rebake(sample, ts, colorAt);
       this.hasBaked = true;
       this.lastRevision = revision;
       this.bakedScale = scaleNow;
@@ -396,6 +421,15 @@ export class Curve {
     this.writePositions();
   }
 
+  // マテリアルの頂点カラーを有効にし、色属性をジオメトリへ足す。一度有効にしたら無効化は
+  // しない(色を指定しない呼び出し元は最初から colorAt を渡さないので、ここへは来ない)。
+  private enableVertexColors(): void {
+    this.hasVertexColors = true;
+    this.geom.setAttribute('color', new THREE.BufferAttribute(this.bakedColor, 3));
+    (this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial).vertexColors = true;
+    this.mat.needsUpdate = true;
+  }
+
   // 焼いた頂点(pivot 差し引き後)と描画範囲を GPU へ反映する。
   private writePositions(): void {
     const n = this.bakedCount;
@@ -407,6 +441,7 @@ export class Curve {
     }
     this.vertexCount = n;
     (this.geom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    if (this.hasVertexColors) (this.geom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
     const segments = this.writeSegments();
     (this.geom.getIndex() as THREE.BufferAttribute).needsUpdate = true;
     this.geom.setDrawRange(0, segments * 2);

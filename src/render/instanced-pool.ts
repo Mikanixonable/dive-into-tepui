@@ -1,6 +1,6 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
-import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
+import { markLitOpaque, markOverlay, markSunShadowCaster } from './pipeline/lit-layer';
 
 // three の InstanceNode は instanceMatrix の受け渡し方を InstancedMesh.count から決め、
 // その判断とバッファ長を最初の描画時に一度だけ確定する。よって count は容量に固定した
@@ -11,6 +11,7 @@ const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 // 毎フレーム呼び、その間に push した Object3D の変換をまとめて描画する。
 export class InstancedPool {
   private readonly mesh: THREE.InstancedMesh;
+
   private readonly capacity: number;
   private count = 0;
   // 前フレームに使った枠数。今フレームで余った枠だけをゼロ行列へ戻すために持つ。
@@ -46,6 +47,11 @@ export class InstancedPool {
     this.instanceRadius = geometry.boundingSphere?.radius ?? 0;
     for (let i = 0; i < this.capacity; i++) this.mesh.setMatrixAt(i, PARKED);
     scene.add(this.mesh);
+  }
+
+  // 参照線と同じオーバーレイ層へ載せる。天体に遮られず、トーンマップも通さない見え方になる。
+  markAsOverlay(): void {
+    markOverlay(this.mesh);
   }
 
   beginFrame(): void {

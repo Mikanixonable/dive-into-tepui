@@ -34,6 +34,7 @@
 | ユーザーが検査した計画ファイルのステップを実施する | `/run-plan` |
 | サブエージェントへ作業を配る | `/delegate`(配る前に) |
 | 機能の追加・変更・削除を要求された | `/modify-feature`(書き始める前に) |
+| 調査(コードベース・文献)を要する大規模な機能追加を任された | `/add-feature`(要件定義書/実装計画書を書く。書き始める前に) |
 | HUD/UI/DOM/CSS に触れる | `/ui-design`(書き始める前に) |
 | 描画(`src/render/`・シェーダ)に触れる / 見た目を目で確かめる | `/rendering-workflow` |
 | 大きな変更を終えた / 規約からの逸脱が疑わしい | `/refactor` |
@@ -103,15 +104,27 @@
 
 ### タンパク質を1体追加する
 
-1. `assets-src/proteins/<id>/` に `protein.config.json` と `protein.definition.json` を置き、PDB ID・
-   各出力先・coordinate scale・機能部位・構成要素を定義する。
-2. `node tools/protein-builder/fetch-pdb-backbone.mjs assets-src/proteins/<id>/protein.config.json` で
-   PDB の Cα・カルボニル酸素・二次構造・B-factor を取り込む。
-3. `npm run protein:generate-structure -- --network` で構造資産を生成する(論文調の GLB が要る場合は
-   config の外部 exporter を実行する)。
-4. `npm run protein:generate` で semantic asset と残基 motion asset を生成し、`npm run protein:catalog`
-   で登録カタログを更新する。
-5. `npm run protein:validate`(`-structure` / `-motion` も)・`npm run typecheck`・
-   `npm run render-lab:shot` を通す。生成されたアセットはクリエイティブステージの一覧へ自動的に現れる。
+初回だけ Python の仮想環境が要る。`python3 -m venv .venv-protein-builder` のあと、
+`.venv-protein-builder/bin/pip install --no-deps -r tools/protein-builder/requirements-lock.txt`
+で入れる。**`--no-deps` が要る**: PyMOL の wheel は numpy を過剰に固定しているが、実際には新しい
+numpy でも動く。使う Python は `PROTEIN_PYTHON` 環境変数で差し替えられる。
+
+1. `assets-src/proteins/<id>/` に `protein.config.json` と `protein.definition.json` を置く。config
+   には `pdbId`・`sourceStructureUrl`(RCSB の `.cif` の URL)・`sourceStructureFile`(取り込み先の
+   リポジトリ相対パス)・`source`(backbone アセットの出力先)・`structureAsset`・`motionAsset`・
+   `semanticAsset`・`definitionAsset`・`coordinateScale`・`surfaceQuality` を書く。
+2. `npm run protein:fetch-source` で原構造 mmCIF を `sourceStructureFile` へ取り込む。
+3. `npm run protein:backbone` で Cα 主鎖アセットを生成する。
+4. `npm run protein:generate-structure` で全原子・共有結合・分子表面のアセットを生成する。
+5. `npm run protein:generate` で semantic asset と残基 motion asset を生成する。backbone / structure
+   を作り直したときは、motion が両者の内容ハッシュを参照しているため、**motion アセットも必ず
+   作り直す**。作り直さないと読み込み時に不整合で落ちる。
+6. `npm run protein:catalog` で登録カタログを更新する。
+7. `npm run protein:validate`・`npm run protein:validate-structure`・`npm run protein:motion:validate`・
+   `npm run typecheck`・`npm run render-lab:shot` を通す。生成されたアセットはクリエイティブステージの
+   一覧へ自動的に現れる。
+
+原構造を更新するときだけ `npm run protein:fetch-source` を走らせる。`npm run protein:fetch-source:check`
+で寄託側の改訂を検出できる。
 
 **どう見せるか・どう振舞うかは `DEVELOP/SPEC/PROTEIN.md`。** ここにあるのは生成の手順だけ。

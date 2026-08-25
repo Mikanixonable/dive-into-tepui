@@ -1,6 +1,7 @@
 // ゲームバランス・チューニング定数
 import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
 import { v3 } from '../physics/vec3';
+import type { GuideGroupId } from './celestial/orbit-guide-settings';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -228,9 +229,11 @@ export const LOGISTICS_MAX_DIST = 1250; // 同上限 [m]
 export const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
 export const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
 export const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
-// pointer:coarse(タッチ等)向けの上記2定数の緩和版。~44px半径。
+export const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
+// pointer:coarse(タッチ等)向けの上記3定数の緩和版。~44px半径。
 export const TARGET_LOCK_PICK_PX_SQ_COARSE = 1936;
 export const MAP_PICK_PX_SQ_COARSE = 1936;
+export const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 export const CLICK_MOVE_THRESHOLD = 6; // これ未満の累積移動量ならドラッグではなくクリック扱い [px]
 // 右ドラッグ後でもクリック扱いを許す、意図的に CLICK_MOVE_THRESHOLD より緩い閾値。
 export const RIGHT_CLICK_MOVE_THRESHOLD = 50; // [px]
@@ -294,6 +297,12 @@ export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simu
 // 同じ高度で大気抵抗が実際に削る 14 km/日 の 3% — 艦が焼ける時期は高ワープでも変わらない。
 // 1周27歩(K=32)まで粗くすると数値減衰が実ドラッグと同等になり、待つだけで艦が倍の速さで落ちる。
 export const SUBSTEP_MAX_COUNT = 64;
+
+// ゼロ長サブステップ(丸めで刻みが0になったイベント消費)が連続してこの回数を超えたら
+// Simulator.advance が simTime を強制前進させる。イベント予告と実際の消滅判定が
+// 丸め誤差でずれた個体が残ると刻みが0のまま進まなくなるための保険で、正常時は1回で
+// 収まる(同時刻の複数イベントの消費に数回使う程度)。
+export const SIMULATION_STALL_MAX_ZERO_STEPS = 8;
 
 // 大気の中で刻みを縛る2つの上限(game/simulation/time-step.ts の atmosphericMaxStep)。
 // 抗力は陽的 RK4 にとって剛い項で、逆時定数 λ = ½ρ·s·bcInv が刻みに対して大きくなると、
@@ -364,7 +373,10 @@ export const MARKER_PRIORITY = {
   AMMO: 300,
   MANEUVER_NODE: 150,
   ORBITAL_NODE: 100,
+  PROTEIN_SITE: 50,
 } as const;
+
+export const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
 
 // 共線点(L1/L2/L3)を持たせる下限。副天体の半径を単位とした L1 までの距離で、これを下回る系は
 // L1 が表面すれすれに来てハロー軌道の振幅が収まらない(フォボス 1.5・イオ 5.8 が落ちる)。
@@ -372,9 +384,6 @@ export const LAGRANGE_MIN_CLEARANCE_RATIO = 10;
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 export const MARKER_BEARING_RING_RATIO = 0.8;
 export const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
-export const MARKER_HEADING_PROBE_PX = 20; // 進行方向を測るための投影プローブ距離 [px]
-// 投影差がこれ未満なら視線とほぼ平行とみなし、進行方向を定めない [px]
-export const MARKER_HEADING_DEGENERATE_PX = 4;
 export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
 // --- 軌道計画モード([M]) ---
@@ -442,11 +451,6 @@ export const NODE_TOL_PLANE_DEG = 2.0 / 3; // 軌道面の角度差 [deg]
 export const NODE_APPROACH_LEAD = 10;
 // 実行時刻をこれだけ過ぎたノードは計画から落とす [s]。多少の遅れなら噴射できる猶予。
 export const NODE_EXPIRE_GRACE = 60;
-
-// --- 軌道計画の自動実行(plan-executor.ts) ---
-export const PLAN_EXECUTOR_DV_EPS = 0.05; // これ未満のΔvは燃焼不要とみなす [m/s]
-export const PLAN_EXECUTOR_ARM_ANGLE_DEG = 2.0; // 姿勢誤差がこれを切ったら点火を許可する [deg]
-export const PLAN_EXECUTOR_TRIM_DV = 5.0; // 残り射影がこれを下回ったら最低出力段へ落とす [m/s]
 
 // --- 未来表示の時刻(display-window-manager.ts のスライダー) ---
 export const DISPLAY_DUR_DAY = 86400; // 1日
@@ -598,7 +602,6 @@ export const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s
 export const STAGE00_WAVE_BASE_SHIPS = 5; // 第1波の機数
 export const STAGE00_WAVE_SHIPS_PER_WAVE = 2; // 波が進むごとに増える機数
 export const STAGE00_WAVE_MAX_SHIPS = 30; // 1ウェーブの最大機数上限
-export const STAGE00_PLACEMENT_JITTER = 1000; // 編隊配置の位置ばらつき [m]
 export const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距離下限 [m]
 export const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
 export const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]
@@ -648,6 +651,9 @@ export const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
 export const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
+// ゼロ速度曲線(ガイドタブ5.3節)。軌道ガイド線の青・橙・緑・紫、静止軌道リングの灰色と
+// 見分けがつく控えめな薔薇色。
+export const COLOR_ZERO_VELOCITY_LINE = 0xd97a94;
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
@@ -665,10 +671,31 @@ export const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 // 参照軌道線が完全表示のときの不透明度。
 export const REFERENCE_LINE_OPACITY = 0.3;
 
-// マップのハロー軌道ガイド(halo-guide-lines.ts)の線色。静止軌道リング(0x8b93a0)と同じ
-// 控えめな系統だが、ファミリーごとに色相を変えて重なっても見分けられるようにする。
-export const COLOR_HALO_GUIDE_LINE = 0x6fa3c9; // ハロー族(s に沿った不透明度グラデーションの基準色)
-export const COLOR_PLANAR_LYAPUNOV_LINE = 0x7fb88a;
-export const COLOR_VERTICAL_LYAPUNOV_LINE = 0xc9a969;
-export const COLOR_LISSAJOUS_LINE = 0xb08bc9;
-export const COLOR_DRO_LINE = 0x6fc9b8;
+// 軌道ガイド(orbit-guide-lines.ts)の群ごとの基準色相。群の中の種類は明度違いで分ける
+// (guideKindDefaultColors)。静止軌道リング(0x8b93a0)と同じ控えめな系統でまとめる。
+export const GUIDE_GROUP_HUE: Readonly<Record<GuideGroupId, number>> = {
+  collinear: 0x6fa3c9, // 青(旧ハロー色を踏襲)
+  triangular: 0xc9a969, // 橙
+  secondary: 0x6fc9b8, // 緑(DRO/DPO/LPO)
+  resonant: 0xb08bc9, // 紫
+};
+
+// color を towards との線形補間で t(0..1)だけ明るく/暗くした 0xRRGGBB を返す。
+function lerpColor(color: number, towards: number, t: number): number {
+  const r0 = (color >> 16) & 0xff, g0 = (color >> 8) & 0xff, b0 = color & 0xff;
+  const r1 = (towards >> 16) & 0xff, g1 = (towards >> 8) & 0xff, b1 = towards & 0xff;
+  return (Math.round(r0 + (r1 - r0) * t) << 16) | (Math.round(g0 + (g1 - g0) * t) << 8) | Math.round(b0 + (b1 - b0) * t);
+}
+
+// 群の色相を、群内での種類の並び順(index/count)に応じた明度違いへ展開する。
+export function guideKindShade(group: GuideGroupId, index: number, count: number): number {
+  const base = GUIDE_GROUP_HUE[group];
+  if (count <= 1) return base;
+  return lerpColor(base, 0xffffff, 0.15 + 0.5 * (index / (count - 1)));
+}
+
+// GuideKindSettings の既定色(始・終)。始は上の shade、終はそこからさらに明るい側を採る。
+export function guideKindDefaultColors(group: GuideGroupId, index: number, count: number): readonly [number, number] {
+  const start = guideKindShade(group, index, count);
+  return [start, lerpColor(start, 0xffffff, 0.35)];
+}

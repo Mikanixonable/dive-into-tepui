@@ -532,7 +532,7 @@ export class SunShadowMaps {
     const radius = this.size.length() * 0.5;
     const eyeDistance = radius * 2;
     this.lightCamera.position.copy(this.center).addScaledVector(this.lightDirection, eyeDistance);
-    // 視線と平行な up は姿勢を決められない。protein-shadow-pass.ts と同じ切り替えで避ける。
+    // 視線と平行な up は姿勢を決められないので、光の向きが縦に近いときだけ up を倒す。
     this.lightCamera.up.set(
       Math.abs(this.lightDirection.y) < 0.9 ? 0 : 1,
       Math.abs(this.lightDirection.y) < 0.9 ? 1 : 0,

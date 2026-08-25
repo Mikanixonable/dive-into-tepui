@@ -21,10 +21,11 @@ import {
   proteinMotionLodForProjectedSize,
   type ProteinMotionLod,
 } from './protein-motion-controller';
+import { proteinMotionModeDisplacements } from './protein-motion-modes';
 import {
   createProteinMotionBinding,
   disposeProteinMotionBinding,
-  updateProteinMotionBinding,
+  updateProteinMotionCoefficients,
   type ProteinMotionBinding,
 } from '../../render/protein-motion-material';
 
@@ -49,6 +50,8 @@ export class ProteinRuntime {
   private readonly baseModificationPositions = new Map<string, THREE.Vector3>();
   private readonly siteResidueGroups = new Map<string, readonly number[]>();
   private readonly modificationResidueGroups = new Map<string, readonly number[]>();
+  private trackedResidues: readonly number[] = [];
+  private readonly trackedResidueOffsets: Float32Array;
   private readonly bondVisuals: ProteinBondVisual[] = [];
   private readonly bondMaterial: THREE.LineBasicMaterial;
   private currentLod: ProteinMotionLod = 'near';
@@ -71,10 +74,13 @@ export class ProteinRuntime {
     this.combat = new ProteinCombatState(asset, saved, legacyHealth);
     this.motion = motion;
     this.controller = new ProteinMotionController(motion, seedKey);
-    this.motionBinding = motionBinding ?? createProteinMotionBinding(motion.residueCount);
+    this.motionBinding = motionBinding ?? createProteinMotionBinding(
+      motion.residueCount, proteinMotionModeDisplacements(motion), motion.modes.length,
+    );
     if (this.motionBinding.residueCount !== motion.residueCount) {
       throw new RangeError('Protein motion binding and asset residue counts must match');
     }
+    this.trackedResidueOffsets = new Float32Array(motion.residueCount * 4);
     this.bondMaterial = new THREE.LineBasicMaterial({ color: 0x60d9ff, transparent: true, opacity: 0.42 });
     this.rebuildVisuals();
   }
@@ -162,23 +168,41 @@ export class ProteinRuntime {
       this.root.add(line);
       this.bondVisuals.push({ line, fromSiteId: bond.from, toSiteId: bond.to });
     }
+    this.trackedResidues = [...new Set([
+      ...this.siteResidueGroups.values(),
+      ...this.modificationResidueGroups.values(),
+    ].flat())];
   }
 
-  /** Update deterministic OU coefficients and upload the shared GPU residue buffer. */
-  updateVisual(displayTime: number, projectedDiameterPx = Number.POSITIVE_INFINITY): void {
-    const cpuStart = performance.now();
+  /** 投影サイズから LOD をヒステリシス付きで更新する。marker になったフレームは
+   * 重い更新をしないので、CPU/upload の計測も正直に 0 へ戻す。 */
+  updateLod(projectedDiameterPx: number): ProteinMotionLod {
     this.currentLod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.currentLod);
-    const offsets = this.controller.update(displayTime, this.currentLod, this.combat.phase);
+    if (this.currentLod === 'marker') {
+      this.lastCpuMs = 0;
+      this.lastUploadBytes = 0;
+    }
+    return this.currentLod;
+  }
+
+  /** モード係数を更新して GPU へ送り、アンカーが使う残基だけを CPU 側で投影する。
+   * `vibrationEnabled` が false の間は marker LOD 相当のモード係数(全ゼロ)を使い、
+   * 静止した構造で表示する。 */
+  updateVisual(displayTime: number, vibrationEnabled = true): void {
+    const cpuStart = performance.now();
+    this.controller.update(displayTime, vibrationEnabled ? this.currentLod : 'marker', this.combat.phase);
     if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
       || this.uploadedPhase !== this.combat.phase) {
-      updateProteinMotionBinding(this.motionBinding, offsets);
+      const coefficients = this.controller.effectiveModeCoefficients;
+      updateProteinMotionCoefficients(this.motionBinding, coefficients);
       this.uploadedLod = this.currentLod;
       this.uploadedSampleTime = this.controller.sampleTime;
       this.uploadedPhase = this.combat.phase;
-      this.lastUploadBytes = offsets.byteLength;
+      this.lastUploadBytes = coefficients.byteLength;
     } else {
       this.lastUploadBytes = 0;
     }
+    this.controller.projectResidues(this.trackedResidues, this.trackedResidueOffsets);
     this.lastCpuMs = performance.now() - cpuStart;
     const scale = this.asset.coordinateScale;
     const state = this.combat;
@@ -187,7 +211,7 @@ export class ProteinRuntime {
       const base = this.baseSitePositions.get(site.id);
       const siteState = state.siteState(site.id);
       if (!mesh || !base || !siteState) continue;
-      setProteinAnchorPosition(mesh, base, this.siteResidueGroups.get(site.id) ?? [], this.controller.residueOffsets, this.motion.residueCount, scale);
+      setProteinAnchorPosition(mesh, base, this.siteResidueGroups.get(site.id) ?? [], this.trackedResidueOffsets, this.motion.residueCount, scale);
       mesh.visible = true;
       const material = mesh.material as THREE.MeshStandardMaterial;
       const ratio = siteState.maxHp > 0 ? Math.max(0, Math.min(1, siteState.hp / siteState.maxHp)) : 0;
@@ -199,7 +223,7 @@ export class ProteinRuntime {
       const mesh = this.modificationMeshes.get(slot.id);
       const base = this.baseModificationPositions.get(slot.id);
       if (!mesh || !base) continue;
-      setProteinAnchorPosition(mesh, base, this.modificationResidueGroups.get(slot.id) ?? [], this.controller.residueOffsets, this.motion.residueCount, scale);
+      setProteinAnchorPosition(mesh, base, this.modificationResidueGroups.get(slot.id) ?? [], this.trackedResidueOffsets, this.motion.residueCount, scale);
       const active = state.modificationState(slot.id) !== 'empty';
       mesh.visible = active;
       mesh.scale.setScalar(active ? 1 + 0.12 * Math.sin(displayTime * 2.4) : 0.001);
@@ -224,11 +248,15 @@ export class ProteinRuntime {
     return this.siteWorldPosition(this.combat.nextAttackSite(), origin, attitude);
   }
 
+  siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
+    return this.siteWorldPosition(this.combat.site(id), origin, attitude);
+  }
+
   private siteWorldPosition(site: ProteinSiteDefinition | null, origin: Vec3, attitude: Quat): Vec3 {
     return proteinSiteWorldPosition(
       site,
       site ? this.siteResidueGroups.get(site.id) ?? [] : [],
-      this.controller.residueOffsets,
+      this.trackedResidueOffsets,
       this.motion.residueCount,
       this.asset.coordinateScale,
       this.root.scale.x,

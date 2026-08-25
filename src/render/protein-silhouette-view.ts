@@ -7,6 +7,7 @@ import {
 } from './protein-motion-material';
 import { buildProteinLigands, proteinResidueBindingLookup } from './protein-atom-view';
 import { buildProteinRibbon, type ProteinRenderSource } from './protein-ribbon';
+import { triangleComponent } from './protein-ribbon-color';
 
 function surfaceColor(value: number, mode: ProteinSilhouetteColorMode): THREE.Color {
   const t = Math.max(0, Math.min(1, (value + 127) / 254));
@@ -16,15 +17,6 @@ function surfaceColor(value: number, mode: ProteinSilhouetteColorMode): THREE.Co
   }
   return new THREE.Color(0x4575b4).lerp(new THREE.Color(0xf7f7f7), Math.min(1, t * 2))
     .lerp(new THREE.Color(0xd95f02), Math.max(0, (t - 0.5) * 2));
-}
-
-function triangleComponent(components: readonly string[], a: number, b: number, c: number): string {
-  const first = components[a] ?? 'A';
-  const second = components[b] ?? first;
-  const third = components[c] ?? first;
-  if (first === second || first === third) return first;
-  if (second === third) return second;
-  return first;
 }
 
 interface ProteinSurfacePart {
