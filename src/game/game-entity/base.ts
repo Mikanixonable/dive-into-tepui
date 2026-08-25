@@ -33,6 +33,7 @@ import { ThrustEffects } from '../player/thrust-effects';
 import { RcsEffects } from '../player/rcs-effects';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../floating-origin';
+import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibility } from '../celestial/map-visibility';
 import { currentThemePalette } from '../theme';
 
@@ -291,6 +292,7 @@ export class Base extends GameEntity implements Controllable {
     camera: CameraSystem,
     displayTime: number,
     isControlled: boolean,
+    style: RenderStyle,
     visibility: MapVisibility | null = null,
   ): void {
     const displayState = this.displayState(displayTime);
@@ -304,7 +306,7 @@ export class Base extends GameEntity implements Controllable {
     const effectState = displayState ?? this.state;
     const effectVisible = displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
-    this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isControlled, camera, 6.0);
+    this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isControlled, camera, style, 6.0);
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
   }
 

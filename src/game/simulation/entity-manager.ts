@@ -22,6 +22,7 @@ import type { Input } from '../input/input';
 import type { CombatTarget } from '../targeter';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { CameraSystem } from '../camera/camera-system';
+import type { RenderStyle } from '../../render/render-style';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save-data';
@@ -352,11 +353,11 @@ export class EntityManager {
   // ものなので、どれが操作対象かを各艦へ渡す。
   syncPlayers(
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, visibilityPolicy: MapVisibilityPolicy | null, orbitRef?: OrbitReference,
+    displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null, orbitRef?: OrbitReference,
   ): void {
     for (const ship of this.players) {
       ship.syncPlayer(
-        fo, cameraSystem, displayTime, ship === activePlayer,
+        fo, cameraSystem, displayTime, ship === activePlayer, style,
         visibilityPolicy?.entity('player', ship === activePlayer) ?? null, orbitRef,
       );
     }
@@ -364,24 +365,24 @@ export class EntityManager {
 
   // 分離済みブースターは通常メッシュに加えて個別ノズル位置のプルームも同期する。
   syncDetachedBoosters(
-    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
+    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number, style: RenderStyle,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const categoryVisible = visibilityPolicy?.entity('ship').category ?? true;
     for (const booster of this.detachedBoosters) {
-      booster.syncBooster(fo, displayTime, cameraSystem, categoryVisible);
+      booster.syncBooster(fo, displayTime, cameraSystem, categoryVisible, style);
     }
   }
 
   // 全基地のメッシュ・エフェクト(推力プルーム・RCS音・パフ)を同期する。
   syncBases(
     controlledBase: Base | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, visibilityPolicy: MapVisibilityPolicy | null,
+    displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     for (const base of this.bases) {
       if (!base.alive) continue;
       base.syncBase(
-        fo, cameraSystem, displayTime, base === controlledBase,
+        fo, cameraSystem, displayTime, base === controlledBase, style,
         visibilityPolicy?.entity('base') ?? null,
       );
     }

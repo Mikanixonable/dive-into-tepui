@@ -19,6 +19,7 @@ import {
   type BoosterStage as BoosterStageModel,
 } from '../../render/booster';
 import { GameEntity } from './game-entity';
+import type { RenderStyle } from '../../render/render-style';
 
 export type DetachedBoosterInit =
   | {
@@ -128,7 +129,7 @@ export class DetachedBooster extends GameEntity {
   }
 
   syncBooster(
-    fo: FloatingOrigin, displayTime: number, camera: CameraSystem, categoryVisible: boolean,
+    fo: FloatingOrigin, displayTime: number, camera: CameraSystem, categoryVisible: boolean, style: RenderStyle,
   ): void {
     super.sync(fo, displayTime);
     this.renderObject.visible &&= categoryVisible;
@@ -148,7 +149,7 @@ export class DetachedBooster extends GameEntity {
       direction: new THREE.Vector3(tailDirection.x, tailDirection.y, tailDirection.z),
       intensity: Math.max(0.25, this.lastBurnRatio),
       visible: true,
-    }, camera.activeCamera.quaternion);
+    }, camera.activeCamera.quaternion, style);
   }
 
   serialize(): DetachedBoosterSaveData {
