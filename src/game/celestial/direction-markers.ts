@@ -4,7 +4,6 @@
 // 経過時刻の割合)に沿って進める — パラメータが時刻なので、等速で進めるだけで
 // 「近点で速く・遠点で遅く」の動きになる。
 import * as THREE from 'three/webgpu';
-import { GuideLoop } from '../../physics/orbit-guide';
 import { GuideCurve } from './guide-curve';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../../physics/projection';
 import { InstancedPool } from '../../render/instanced-pool';
@@ -96,15 +95,16 @@ export class DirectionMarkers {
     }
   }
 
-  // 1本の軌道ぶんのマーカーを積む。mode が 'none' か点列が短すぎるなら何もしない。
+  // 1本の軌道ぶんのマーカーを積む。mode が 'none' なら何もしない。revolutions は曲線1本に
+  // 入る周回数で、'many' モードで並べる個数を決める。
   public addLoop(
-    curve: GuideCurve, loop: GuideLoop, mode: DirectionMarkerMode, animate: boolean,
+    curve: GuideCurve, revolutions: number, mode: DirectionMarkerMode, animate: boolean,
     colorHex: number, fo: FloatingOrigin,
   ): void {
     if (mode === 'none') return;
     const offset = animate ? animationPhase() : 0;
     this.color.setHex(colorHex);
-    const phases = mode === 'single' ? 1 : this.manyCount(loop.revolutions);
+    const phases = mode === 'single' ? 1 : this.manyCount(revolutions);
     for (let i = 0; i < phases; i++) {
       const phase = (i / phases + offset) % 1;
       this.placeMarker(curve, phase, fo);
