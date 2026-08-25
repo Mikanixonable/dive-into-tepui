@@ -39,6 +39,12 @@ export const MAP_VIEW_STYLE = `
   max-height: min(260px, 36dvh);
   overflow-y: auto;
 }
+/* 軌道ガイドタブは項目数に応じて際限なく伸びうるため、他のレールパネル同様に自身の高さへ
+   上限をかける——無いと下に続くカメラパネルをレールの下方へ押し出し、隠れて見える。 */
+#hud .hud-map-root.active .hud-rail-left > #hud-view-options {
+  max-height: min(420px, 56dvh);
+  overflow-y: auto;
+}
 
 /* Focus Glass: 時間スクラブと座標系編集は、意思決定中だけ一段密度を上げる。 */
 #hud .hud-map-root.active #hud-predict,
