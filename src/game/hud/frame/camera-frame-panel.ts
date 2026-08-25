@@ -8,26 +8,14 @@ import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../widgets';
 import { celestialBodyName, frameRoleName, rotationSourceLabel } from './frame-labels';
-import { hudRail } from '../hud-root';
 import type { MapPickable } from '../../map-pickable';
 import type { OverlayManager } from '../overlay-manager';
+import { buildPanel } from './frame-controls';
 
 const ANGLE_COLUMNS = [
   { description: '面', items: [['ecliptic', '黄道面'], ['equator', '赤道面'], ['moonOrbit', '月軌道面']] },
   { description: '視点', items: [['above', '真上'], ['side', '真横']] },
 ] as const satisfies readonly [PulldownColumn<CameraReferencePlane>, PulldownColumn<CameraReferenceView>];
-
-function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
-  const panel = document.createElement('div');
-  panel.id = id;
-  panel.className = 'panel hidden hud-frame-controls';
-  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-  const title = document.createElement('h3');
-  title.textContent = titleText;
-  panel.appendChild(title);
-  hudRail(root, 'left').appendChild(panel);
-  return panel;
-}
 
 export class CameraFramePanel {
   private readonly panel: HTMLElement;
