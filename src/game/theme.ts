@@ -68,6 +68,10 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
     ...DARK_SURFACE, ...DARK_SEMANTIC, page: '#08090d', accent: '#ff3155', accentNear: '#ff6b82', signal: '#3478ff',
   },
   {
+    id: 'fluorescent-pink-dawn-blue', name: 'Fluorescent pink / dawn blue', description: '朱色寄りの蛍光ピンクと夜明けの淡い青', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff2d6c', accentNear: '#ff6f96', signal: '#bfe0ff',
+  },
+  {
     id: 'repository-mono', name: 'Repository mono', description: 'ダークグレーと白、Signalは最小限', tone: 'dark',
     page: '#0d1117', surface0: '#0d1117', surface1: '#161b22', surface2: '#21262d', surface3: '#30363d',
     title: '#f0f6fc', body: '#c9d1d9', muted: '#8b949e', faint: '#6e7681', bright: '#ffffff',
