@@ -205,7 +205,10 @@ export class Enemy extends Ship {
       )
       : undefined;
     const renderObject = buildEnemyRenderObject(enemyKind, accent, motionBinding);
-    super(name, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
+    // 保存データからの復元は保存済みの名前をそのまま使う。新規生成のときだけ、タンパク質固有の
+    // 名称を陣形役割・識別番号などの既存識別子の前へ冠する。
+    const displayName = !('saved' in init) && proteinDefinition ? `${proteinDefinition.asset.displayName} ${name}` : name;
+    super(displayName, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
     this._worldSfx = worldSfx;
     this._fx = fx;
     this.enemyKind = enemyKind;
@@ -302,6 +305,25 @@ export class Enemy extends Ship {
 
   get proteinHudSnapshot() {
     return this.proteinRuntime?.hudSnapshot ?? null;
+  }
+
+  // 3km 以内マーカー用に、各機能部位の投影元位置と HUD 表示情報を並べる。displayPos は
+  // markerItem と同じ表示時刻の位置(displayState 経由)を渡すこと。
+  proteinSiteMarkers(displayPos: Vec3): readonly {
+    readonly id: string; readonly worldPos: Vec3; readonly label: string;
+    readonly hp: number; readonly maxHp: number; readonly disabled: boolean; readonly attackable: boolean;
+  }[] {
+    const runtime = this.proteinRuntime;
+    if (!runtime) return [];
+    return runtime.hudSnapshot.sites.map((site) => ({
+      id: site.id,
+      worldPos: runtime.siteWorldPositionById(site.id, displayPos, this.att.q),
+      label: site.label,
+      hp: site.hp,
+      maxHp: site.maxHp,
+      disabled: site.disabled,
+      attackable: site.attackable,
+    }));
   }
 
   override sync(
