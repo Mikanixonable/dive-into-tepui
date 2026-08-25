@@ -164,6 +164,9 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 /* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud span.body-class-icon-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
+@media ${MQ_COARSE} {
+  #hud span.body-class-icon-btn { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
+}
 #hud .body-class-row.category-off .body-class-icon-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
 /* 太陽系パネルの左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-view-options { width: 100%; pointer-events: auto; }
@@ -372,6 +375,9 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 1px solid var(--edge);
   border-radius: var(--radius-control); background: var(--surface-2); color: var(--text-dim);
   font: inherit; font-size: var(--font-l); line-height: 1; cursor: pointer;
+}
+@media ${MQ_COARSE} {
+  #hud-help .help-close-button { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
 #hud-help .help-close-button:hover, #hud-help .help-close-button:focus-visible { color: var(--color-primary-hover); border-color: var(--color-primary); }
 #hud-help .help-mode-status { margin-top: var(--space-2); color: var(--color-primary-hover); font-size: var(--font-xxs); letter-spacing: .04em; }
