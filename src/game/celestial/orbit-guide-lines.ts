@@ -77,6 +77,7 @@ interface GuideLineEntry {
 // 周回数から決まる(細かさは Curve が決める)。
 function applyLoop(curve: GuideCurve, loop: GuideLoop): void {
   const shape = loop.shape;
+  // 解析曲線は、基準点を差し引くぶんだけ包んで渡す。
   if (shape.kind === 'analytic') {
     const origin = shape.positionAt(0);
     curve.setAnalytic(
@@ -89,6 +90,7 @@ function applyLoop(curve: GuideCurve, loop: GuideLoop): void {
     );
     return;
   }
+  // 節点列は位置だけを基準点相対にする(接線は差分なので平行移動を受けない)。
   const origin = shape.position(0);
   curve.setHermite(origin, {
     count: shape.count,
