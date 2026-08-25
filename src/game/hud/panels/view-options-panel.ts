@@ -9,7 +9,7 @@ import {
   hudRail,
   type CollapseToggleLabels,
 } from '../hud-root';
-import { Button, TabBar, syncCollapseToggle } from '../widgets';
+import { Button, TabBar, ToggleSwitch, syncCollapseToggle } from '../widgets';
 import {
   bodyClassDisplayMode,
   nextBodyClassDisplayMode,
@@ -17,9 +17,38 @@ import {
   type BodyClassToggles,
 } from '../../celestial/body-visibility';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
-import type { OrbitGuideSettings } from '../../celestial/orbit-guide-settings';
-import { OrbitGuideTab } from './orbit-guide-tab';
+import type { CatalogSystemId } from '../../../physics/orbit-catalog';
+import type { LagrangeLabel } from '../../../physics/zero-velocity';
+import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../celestial/orbit-guide-settings';
+import {
+  JACOBI_MAPPING, OrbitGuideTab, buildValueField, lagrangePointJacobi, syncValueField, type ValueMapping,
+} from './orbit-guide-tab';
+import { DEFAULT_ORBIT_GUIDE_SETTINGS, MAX_ZERO_VELOCITY_CURVES } from '../../celestial/orbit-guide-settings';
 import { loadPanelCollapsed, onPanelCollapsedViewChange, savePanelCollapsed } from '../panel-shell';
+
+function clamp01(value: number): number {
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+}
+const OPACITY_MAPPING: ValueMapping = {
+  sliderMin: 0, sliderMax: 100, sliderStep: 1,
+  toSlider: (v) => Math.round(v * 100), fromSlider: (raw) => raw / 100,
+  format: (v) => v.toFixed(2), parse: (text) => clamp01(Number(text)),
+  inputMin: 0, inputMax: 1, inputStep: 0.01,
+};
+const ZERO_VELOCITY_COUNT_MAPPING: ValueMapping = {
+  sliderMin: 1, sliderMax: MAX_ZERO_VELOCITY_CURVES, sliderStep: 1,
+  toSlider: (v) => Math.round(v), fromSlider: (raw) => Math.round(raw),
+  format: (v) => String(Math.round(v)),
+  parse: (text) => Math.round(Math.min(MAX_ZERO_VELOCITY_CURVES, Math.max(1, Number(text)))),
+  inputMin: 1, inputMax: MAX_ZERO_VELOCITY_CURVES, inputStep: 1,
+};
+
+const ZERO_VELOCITY_SECTION_ROWS: readonly (readonly [keyof ZeroVelocitySettings, string])[] = [
+  ['earthMoonXY', '月軌道面'],
+  ['earthMoonXZ', '地球と月を通る垂直な断面'],
+  ['sunEarthXY', '地球公転面'],
+  ['sunEarthXZ', '太陽と地球を通る垂直な断面'],
+];
 
 export type ViewOptionsTab = 'target' | 'guide' | 'orbit';
 
@@ -164,11 +193,22 @@ export class ViewOptionsPanel {
   public onBodyClassModeChange: ((key: keyof BodyClassToggles, mode: BodyClassDisplayMode) => void) | null = null;
   public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
   public onOrbitGuideChange: ((settings: OrbitGuideSettings) => void) | null = null;
+  public onZeroVelocityChange: ((settings: ZeroVelocitySettings) => void) | null = null;
 
   private readonly tabBar: TabBar<ViewOptionsTab>;
   private readonly tabBodies: ReadonlyMap<ViewOptionsTab, HTMLElement>;
   private selectedTab: ViewOptionsTab;
   private readonly orbitGuideTab: OrbitGuideTab;
+  private readonly zeroVelocitySwitches: readonly (readonly [keyof ZeroVelocitySettings, ToggleSwitch])[];
+  private readonly zeroVelocityMultipleSwitch: ToggleSwitch;
+  private readonly zeroVelocityJacobiField: ReturnType<typeof buildValueField>;
+  private readonly zeroVelocityJacobiRangeRow: HTMLElement;
+  private readonly zeroVelocityJacobiMinField: ReturnType<typeof buildValueField>;
+  private readonly zeroVelocityJacobiMaxField: ReturnType<typeof buildValueField>;
+  private readonly zeroVelocityCountRow: HTMLElement;
+  private readonly zeroVelocityCountField: ReturnType<typeof buildValueField>;
+  private readonly zeroVelocityOpacityField: ReturnType<typeof buildValueField>;
+  private zeroVelocityCurrent: ZeroVelocitySettings;
 
   private readonly bodyClassModeButtons: readonly (readonly [BodyClassRow, Button, HTMLElement])[];
   // 各ボタンの現在状態の鏡映し。正本は setBodyClassToggles が受け取る boolean 組にあり、
@@ -183,7 +223,11 @@ export class ViewOptionsPanel {
   private readonly panel: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
-  public constructor(root: HTMLElement) {
+  public constructor(
+    root: HTMLElement,
+    availableFamilies: ReadonlyMap<CatalogSystemId, readonly string[]> = new Map(),
+  ) {
+    this.zeroVelocityCurrent = DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity;
     // パネル本体とタイトル
     this.panel = document.createElement('div');
     this.panel.id = 'hud-view-options';
@@ -293,11 +337,55 @@ export class ViewOptionsPanel {
     starsRow.appendChild(this.starsButton.element);
     guideBody.appendChild(starsRow);
 
-    // 軌道ガイドタブ: 参照として描く軌道のガイド線(静止軌道・ハロー軌道・平面/垂直リヤプノフ・
-    // リサジュー・DRO)。
+    // ゼロ速度曲線: 天球グリッドの「月軌道面」「月赤道面」の縮尺グリッド行と名前が紛れないよう、
+    // 独立した節見出しを付ける(計画書 4.3)。
+    const zeroVelocitySection = document.createElement('div');
+    zeroVelocitySection.className = 'orbit-guide-section-divider-wrap';
+    appendSectionDivider(zeroVelocitySection, 'ゼロ速度曲線');
+
+    const zeroVelocitySwitches: (readonly [keyof ZeroVelocitySettings, ToggleSwitch])[] = [];
+    for (const [key, label] of ZERO_VELOCITY_SECTION_ROWS) {
+      const sw = new ToggleSwitch(label, (on) => this.commitZeroVelocity({ [key]: on }));
+      zeroVelocitySection.appendChild(sw.element);
+      zeroVelocitySwitches.push([key, sw]);
+    }
+    this.zeroVelocitySwitches = zeroVelocitySwitches;
+
+    this.zeroVelocityMultipleSwitch = new ToggleSwitch('多数の曲線を表示', (multiple) => this.commitZeroVelocity({ multiple }));
+    zeroVelocitySection.appendChild(this.zeroVelocityMultipleSwitch.element);
+
+    this.zeroVelocityJacobiField = buildValueField('ヤコビ定数', JACOBI_MAPPING, (jacobi) => this.commitZeroVelocity({ jacobi }));
+    zeroVelocitySection.appendChild(this.zeroVelocityJacobiField.row);
+
+    const lagrangeRow = document.createElement('div');
+    lagrangeRow.className = 'w-group orbit-guide-toggle-row';
+    for (const point of ['L1', 'L2', 'L3', 'L4', 'L5'] as const) {
+      const btn = new Button(point, () => this.snapZeroVelocityToLagrange(point));
+      lagrangeRow.appendChild(btn.element);
+    }
+    zeroVelocitySection.appendChild(lagrangeRow);
+
+    this.zeroVelocityJacobiRangeRow = document.createElement('div');
+    this.zeroVelocityJacobiRangeRow.className = 'orbit-guide-zero-velocity-range';
+    this.zeroVelocityJacobiMinField = buildValueField('ヤコビ定数(下限)', JACOBI_MAPPING, (v) => this.commitZeroVelocityRange(v, this.zeroVelocityCurrent.jacobiMax));
+    this.zeroVelocityJacobiMaxField = buildValueField('ヤコビ定数(上限)', JACOBI_MAPPING, (v) => this.commitZeroVelocityRange(this.zeroVelocityCurrent.jacobiMin, v));
+    this.zeroVelocityCountField = buildValueField('本数', ZERO_VELOCITY_COUNT_MAPPING, (count) => this.commitZeroVelocity({ count: Math.round(count) }));
+    this.zeroVelocityJacobiRangeRow.appendChild(this.zeroVelocityJacobiMinField.row);
+    this.zeroVelocityJacobiRangeRow.appendChild(this.zeroVelocityJacobiMaxField.row);
+    this.zeroVelocityJacobiRangeRow.appendChild(this.zeroVelocityCountField.row);
+    this.zeroVelocityCountRow = this.zeroVelocityCountField.row;
+    zeroVelocitySection.appendChild(this.zeroVelocityJacobiRangeRow);
+
+    this.zeroVelocityOpacityField = buildValueField('透明度', OPACITY_MAPPING, (opacity) => this.commitZeroVelocity({ opacity }));
+    zeroVelocitySection.appendChild(this.zeroVelocityOpacityField.row);
+
+    guideBody.appendChild(zeroVelocitySection);
+    this.syncZeroVelocity();
+
+    // 軌道ガイドタブ: CR3BP の周期軌道族(約37種)を群ごとに折りたたんで選ぶ。
     const orbitBody = buildTabBody('orbit');
     body.appendChild(orbitBody);
-    this.orbitGuideTab = new OrbitGuideTab();
+    this.orbitGuideTab = new OrbitGuideTab(availableFamilies);
     this.orbitGuideTab.onSettingsChange = (settings) => this.onOrbitGuideChange?.(settings);
     orbitBody.appendChild(this.orbitGuideTab.element);
 
@@ -394,5 +482,48 @@ export class ViewOptionsPanel {
   // 軌道ガイドタブの表示状態を現在値へ合わせる。
   public setOrbitGuideSettings(settings: OrbitGuideSettings): void {
     this.orbitGuideTab.setSettings(settings);
+  }
+
+  // 描いている軌道ガイド線の総数を軌道ガイドタブへ中継する(300本目安の警告に使う)。
+  public setOrbitGuideLineCount(total: number): void {
+    this.orbitGuideTab.setLineCount(total);
+  }
+
+  // ゼロ速度曲線(ガイドタブ)の表示状態を現在値へ合わせる。
+  public setZeroVelocitySettings(settings: ZeroVelocitySettings): void {
+    this.zeroVelocityCurrent = settings;
+    this.syncZeroVelocity();
+  }
+
+  private commitZeroVelocity(patch: Partial<ZeroVelocitySettings>): void {
+    this.zeroVelocityCurrent = { ...this.zeroVelocityCurrent, ...patch };
+    this.syncZeroVelocity();
+    this.onZeroVelocityChange?.(this.zeroVelocityCurrent);
+  }
+
+  private commitZeroVelocityRange(min: number, max: number): void {
+    this.commitZeroVelocity({ jacobiMin: Math.min(min, max), jacobiMax: Math.max(min, max) });
+  }
+
+  // 断面が実際に開いている系(地球-月/太陽-地球)のラグランジュ点の値へヤコビ定数を合わせる。
+  // 両方または片方も開いていなければ地球-月を既定にする。
+  private snapZeroVelocityToLagrange(point: LagrangeLabel): void {
+    const s = this.zeroVelocityCurrent;
+    const sunEarthOnly = (s.sunEarthXY || s.sunEarthXZ) && !(s.earthMoonXY || s.earthMoonXZ);
+    this.commitZeroVelocity({ jacobi: lagrangePointJacobi(sunEarthOnly ? 'sun-earth' : 'earth-moon', point) });
+  }
+
+  private syncZeroVelocity(): void {
+    const s = this.zeroVelocityCurrent;
+    for (const [key, sw] of this.zeroVelocitySwitches) sw.setOn(Boolean(s[key]));
+    this.zeroVelocityMultipleSwitch.setOn(s.multiple);
+    syncValueField(this.zeroVelocityJacobiField, JACOBI_MAPPING, s.jacobi);
+    syncValueField(this.zeroVelocityJacobiMinField, JACOBI_MAPPING, s.jacobiMin);
+    syncValueField(this.zeroVelocityJacobiMaxField, JACOBI_MAPPING, s.jacobiMax);
+    syncValueField(this.zeroVelocityCountField, ZERO_VELOCITY_COUNT_MAPPING, s.count);
+    syncValueField(this.zeroVelocityOpacityField, OPACITY_MAPPING, s.opacity);
+    this.zeroVelocityJacobiField.row.classList.toggle('hidden', s.multiple);
+    this.zeroVelocityJacobiRangeRow.classList.toggle('hidden', !s.multiple);
+    this.zeroVelocityCountRow.classList.toggle('hidden', !s.multiple);
   }
 }
