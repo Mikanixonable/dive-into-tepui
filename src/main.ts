@@ -28,6 +28,7 @@ import { SnapshotControls } from './snapshot-controls';
 import { Launcher } from './launcher';
 import { showLoading, hideLoading } from './loading-overlay';
 import { showFatalError } from './fatal-error';
+import { startProteinAssetPreload } from './game/protein/protein-asset-loader';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
@@ -139,6 +140,9 @@ function initSaveSlots(store: LocalStorageSaveStore): SaveSlots {
 }
 
 async function main() {
+  // シーン初期化と並行して、タンパク質アセット(構造・モーション)の fetch を非同期に始める。
+  // 完了前にタンパク質型の敵を生成する側(EntityManager.spawnEnemyWhenReady)が待つ。
+  startProteinAssetPreload();
   const unlockmanager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
   const slots = initSaveSlots(saveStore);
