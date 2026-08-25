@@ -9,6 +9,7 @@ import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
 import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialSurface } from '../../render/celestial-surface';
+import { BodyGraticule } from '../../render/body-graticule';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
@@ -23,6 +24,8 @@ export class SphereView extends CelestialView {
   // 環がまだ画面に見える大きさのまま球体ごと隠してしまう。
   private readonly outerRadius: number;
   private ring?: RingView;
+  // 模式図スタイルでだけ見せる経緯度グリッド。姿勢は group の子として自然に追従する。
+  private readonly graticule = new BodyGraticule();
 
   // radius は実半径 [m]、shape は歪みの形状データ(省略時は radius による真球)。
   // rings を渡すと環を持つ天体になる(ring-view.ts 参照)。
@@ -45,6 +48,7 @@ export class SphereView extends CelestialView {
   // 表面メッシュと環をシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
     this.surface.addTo(this.group);
+    this.graticule.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== undefined) {
       this.ring = new RingView(this.rings, this.radius, this.group.renderOrder + 1);
@@ -60,7 +64,7 @@ export class SphereView extends CelestialView {
   // displayTime 時点の位置へ同期する。見かけ直径が閾値未満なら球自体(と環)を描かない。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettingsData, _style: RenderStyle,
+    graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.group.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
@@ -71,6 +75,7 @@ export class SphereView extends CelestialView {
       return;
     }
     this.surface.syncLod(apparentDiameterPx);
+    this.graticule.setVisible(style === 'schematic');
     const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
     this.group.position.copy(fo.RtoThreeV3(pos));
     // 歪んだ天体は3軸それぞれの半軸を使う。環へ渡すのは一様スケール(赤道半径)の方で、
@@ -90,7 +95,7 @@ export class SphereView extends CelestialView {
         cameraSystem.activeCameraScale,
         sunDirection,
         this.sunIrradianceAt(ephemeris, pos, displayTime),
-        _style,
+        style,
       );
     } else if (this.ring !== undefined) {
       this.ring.group.visible = false;
@@ -100,13 +105,15 @@ export class SphereView extends CelestialView {
   // 見かけ直径が閾値未満のときの共通後始末: 表面と環を隠す。
   private hidePhysical(): void {
     this.surface.hide();
+    this.graticule.setVisible(false);
     if (this.ring !== undefined) this.ring.group.visible = false;
   }
 
-  // 表面と環を解放し、group を親から外す。
+  // 表面とグリッドと環を解放し、group を親から外す。
   dispose(): void {
     this.group.removeFromParent();
     this.surface.dispose();
+    this.graticule.dispose();
     this.ring?.dispose();
   }
 }
