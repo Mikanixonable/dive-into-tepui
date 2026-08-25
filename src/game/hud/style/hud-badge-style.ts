@@ -86,7 +86,7 @@ export const HUD_BADGE_STYLE = `
 #hud-chase-reset:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 #hud-toast {
-  position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
+  position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
   background: var(--glass-focus); border: 0; border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
   color: var(--text); font-size: var(--font-xl); text-align: center;
   box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
