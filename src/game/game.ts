@@ -175,7 +175,7 @@ export class Game {
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.entities);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(
-      this._scene, this.ephemeris, pipeline.sunLight, pipeline.occlusion, pipeline.atmosphere, earthSpinPhase0);
+      this._scene, this.ephemeris, pipeline.sunLight, pipeline.sunOcclusion, pipeline.atmosphere, earthSpinPhase0);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._environment.setOrbitGuideSettings(settings);
     this._environment.setOrbitGuideSettings(this.navball.orbitGuideSettings);
     // 線が増えすぎたときの警告を UI へ戻す。
@@ -622,8 +622,8 @@ export class Game {
 
   // ------------------------------------------------------------------ render
 
-  render(style: RenderStyle): void {
-    this.pipeline.render(this._scene, this.cameraSystem.activeCamera, style);
+  render(style: RenderStyle, meshShadow: boolean): void {
+    this.pipeline.render(this._scene, this.cameraSystem.activeCamera, style, meshShadow);
   }
 
   // ------------------------------------------------------------------ debug
