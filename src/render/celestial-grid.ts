@@ -5,7 +5,7 @@ import { Q_ECL_TO_ECI } from '../physics/ecliptic';
 import { STAR_SHELL_RADIUS } from './stars';
 import { markOverlay } from './pipeline/lit-layer';
 import { SCHEMATIC_LINE } from './schematic-style';
-import type { RenderStyle } from './render-style';
+import { RenderStyleGate, type RenderStyle } from './render-style';
 
 export interface CelestialGridVisibility {
   readonly stars: boolean;
@@ -199,7 +199,7 @@ class GridPlane {
   private readonly initialBasis: PlaneBasis;
   private readonly basisRotation = new THREE.Quaternion();
   private readonly realisticColor: string;
-  private appliedStyle: RenderStyle | null = null;
+  private readonly styleGate = new RenderStyleGate();
 
   constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
     this.basis = basis;
@@ -288,8 +288,7 @@ class GridPlane {
 
   // 模式図では区別の意味を持たない黒へ固定し、写実では元の色へ戻す。
   private applyStyle(style: RenderStyle): void {
-    if (style === this.appliedStyle) return;
-    this.appliedStyle = style;
+    if (!this.styleGate.changed(style)) return;
     const color = style === 'schematic' ? `#${SCHEMATIC_LINE.toString(16).padStart(6, '0')}` : this.realisticColor;
     for (const line of [this.planeLine, this.gridLine, this.poleLine]) {
       (line.material as THREE.LineBasicMaterial).color.set(color);

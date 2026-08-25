@@ -13,7 +13,7 @@ import { FloatingOrigin } from '../floating-origin';
 import { Curve, CurveSampler } from '../../render/curve';
 import { LINE_RENDER_ORDER, LineStyle } from '../../render/line-style';
 import { GuideAxes, OrbitGuideSettings } from './orbit-guide-settings';
-import type { RenderStyle } from '../../render/render-style';
+import { RenderStyleGate, type RenderStyle } from '../../render/render-style';
 import { SCHEMATIC_LINE } from '../../render/schematic-style';
 import * as C from '../const';
 
@@ -184,7 +184,8 @@ export class OrbitGuideLines {
   private structureKey = '';
   private computedSettings: OrbitGuideSettings | null = null;
   private lastComputedTime: number | null = null;
-  private appliedStyle: RenderStyle | null = null;
+  private readonly styleGate = new RenderStyleGate();
+  private currentStyle: RenderStyle = 'realistic';
 
   public constructor(private readonly scene: THREE.Scene, private readonly ephemeris: Ephemeris) {}
 
@@ -246,7 +247,7 @@ export class OrbitGuideLines {
     kind: OrbitGuideKind, system: GuideSystem, point: GuidePoint | null, hemisphere: Hemisphere | null,
     compute: (t: number, ephemeris: Ephemeris, settings: OrbitGuideSettings) => Vec3[] | null,
   ): void {
-    const useSchematic = this.appliedStyle === 'schematic';
+    const useSchematic = this.currentStyle === 'schematic';
     const curve = new PointsCurve(
       { color: useSchematic ? SCHEMATIC_LINE : color, opacity: useSchematic ? 1 : opacity, renderOrder: LINE_RENDER_ORDER.reference },
       samples, closed,
@@ -258,8 +259,8 @@ export class OrbitGuideLines {
   // 系ごとの本来の色は族の不透明度グラデーション等で区別する意味を持つが、模式図では
   // 区別の意味を持たせず不透明な黒で統一する。
   private applyStyle(style: RenderStyle): void {
-    if (style === this.appliedStyle) return;
-    this.appliedStyle = style;
+    this.currentStyle = style;
+    if (!this.styleGate.changed(style)) return;
     for (const entry of this.lines) {
       if (style === 'schematic') entry.curve.setStyle(SCHEMATIC_LINE, 1);
       else entry.curve.setStyle(entry.realisticColor, entry.realisticOpacity);
