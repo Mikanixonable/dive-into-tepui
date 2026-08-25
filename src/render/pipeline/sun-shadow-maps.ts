@@ -84,6 +84,9 @@ export class SunShadowMaps {
   private readonly clusters: THREE.Box3[] = [];
   // 枠を起こした受け手が許す枠の 1 辺 [m]。枠を広げてよいかの上限になる。
   private readonly seedLimits: number[] = [];
+  // 枠の半径の上限 [m]。**被覆の枠は箱ぜんたいを覆う必要があるので上限を持たない**(Infinity)。
+  // 細かい窓だけが、要求から決まる半径でここを縛る。
+  private readonly clusterCaps: number[] = [];
   private readonly scratchBox = new THREE.Box3();
   private readonly scratchCorner = new THREE.Vector3();
   private readonly size = new THREE.Vector3();
@@ -143,12 +146,13 @@ export class SunShadowMaps {
     for (const slot of this.slotUniforms) slot.active.value = 0;
     this.clusters.length = 0;
     this.seedLimits.length = 0;
+    this.clusterCaps.length = 0;
     if (enabled) {
       // 遮蔽器の箱は親の変換込みで測る必要がある。**Box3.expandByObject は親の行列を更新しない**
       // ので、このパスがフレームの先頭で走る限り、ここで確定させないと箱が前フレームの位置で作られる。
       scene.updateMatrixWorld();
       this.collectCasters(scene, camera, viewportHeight, sun);
-      this.buildClusters();
+      this.buildClusters(this.cameraPosition);
     }
     if (this.clusters.length === 0 && this.drawnSlots === 0) return;
 
@@ -165,7 +169,9 @@ export class SunShadowMaps {
       this.renderer.setClearColor(this.emptyDepth, 1);
       // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
       this.gpu.beginPass(GPU_PASS.shadow);
-      for (const [index, cluster] of this.clusters.entries()) this.drawSlot(scene, sun, index, cluster);
+      for (const [index, cluster] of this.clusters.entries()) {
+        this.drawSlot(scene, sun, index, cluster, this.clusterCaps[index]!);
+      }
       // 前フレームに使っていて今フレームは使わないスロットを空へ戻す。
       for (let index = this.clusters.length; index < this.drawnSlots; index++) {
         this.renderer.setRenderTarget(this.targets[index]!);
@@ -181,9 +187,11 @@ export class SunShadowMaps {
   }
 
   // 枠 1 つをスロット index へ描く。**枠に入る遮蔽器はすべて描く** — 枠の外は平行投影が落とす。
-  private drawSlot(scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3): void {
+  private drawSlot(
+    scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3, extentCap: number,
+  ): void {
     const slot = this.slotUniforms[index]!;
-    if (!this.configureSlot(slot, box, sun)) return;
+    if (!this.configureSlot(slot, box, extentCap, sun)) return;
     // 深度マテリアルはスロット共有なので、深度の原点をこのスロットの near へ差し替える。
     this.drawNear.value = slot.near.value;
     this.renderer.setRenderTarget(this.targets[index]!);
@@ -273,7 +281,7 @@ export class SunShadowMaps {
   // 既存の枠が覆っていて十分に細かいなら何もしない。覆っていない枠へ足せるのは、**足したあとも
   // その枠を起こした受け手の要求を満たせるとき**だけ。どれも駄目なら新しい枠を起こし、枠が
   // 尽きていればその受け手は諦める(要求の緩い側から捨てられる)。
-  private buildClusters(): void {
+  private buildClusters(cameraPosition: THREE.Vector3): void {
     for (const receiver of this.casters) {
       if (!Number.isFinite(receiver.requiredTexel)) break; // 昇順なので、以降はすべて要求が無い
       const limit = 2 * extentForTexel(receiver.requiredTexel, SHADOW_SLOT_SIZE);
@@ -291,6 +299,7 @@ export class SunShadowMaps {
       if (placed) continue;
       if (this.clusters.length < SHADOW_SLOT_COUNT) {
         this.seedLimits.push(limit);
+        this.clusterCaps.push(Infinity);
         this.clusters.push(receiver.box.clone());
         continue;
       }
@@ -298,6 +307,26 @@ export class SunShadowMaps {
       // 動かすたびに点滅する。最後の枠を起こしたのは残りの中でいちばん要求が緩い受け手なので、
       // 粗くなるのはもともと粗くてよかった側だけで、手前の枠は巻き添えにならない。
       this.clusters[SHADOW_SLOT_COUNT - 1]!.union(receiver.box);
+    }
+    this.refineClusters(cameraPosition);
+  }
+
+  // 余った枠を、いちばん粗く見えている受け手の細かい窓へ回す。**窓は受け手より小さくてよい** —
+  // 覆いきれなかった部分は被覆の枠が拾い、受け手は画素ごとに細かいほうを選ぶ。被覆の枠は
+  // 遮蔽器の箱に密着していて、カメラが寄っても縮まない。窓だけがカメラ距離に追随する。
+  private refineClusters(cameraPosition: THREE.Vector3): void {
+    for (const receiver of this.casters) {
+      if (this.clusters.length >= SHADOW_SLOT_COUNT) return;
+      if (!Number.isFinite(receiver.requiredTexel)) return; // 昇順なので、以降はすべて要求が無い
+      const limit = 2 * extentForTexel(receiver.requiredTexel, SHADOW_SLOT_SIZE);
+      if (this.frameSize(receiver.box) <= limit) continue; // 被覆の枠だけで足りている
+      // 窓はカメラにいちばん近い点へ寄せる。そこが最も細かさを要求する場所である。
+      receiver.box.clampPoint(cameraPosition, this.center);
+      this.scratchBox.setFromCenterAndSize(this.center, this.size.setScalar(limit));
+      this.scratchBox.intersect(receiver.box);
+      this.seedLimits.push(limit);
+      this.clusterCaps.push(limit * 0.5);
+      this.clusters.push(this.scratchBox.clone());
     }
   }
 
@@ -324,7 +353,9 @@ export class SunShadowMaps {
   }
 
   // 箱へ平行投影のライトカメラを合わせ、スロットの uniform を書く。恒星方向が取れなければ偽。
-  private configureSlot(slot: SunShadowSlot, box: THREE.Box3, sun: SunLight): boolean {
+  private configureSlot(
+    slot: SunShadowSlot, box: THREE.Box3, extentCap: number, sun: SunLight,
+  ): boolean {
     box.getCenter(this.center);
     box.getSize(this.size);
     this.lightDirection.copy(sun.position.value).sub(this.center);
@@ -347,7 +378,8 @@ export class SunShadowMaps {
 
     // **枠は箱の 8 頂点をライト空間へ射影して測る。** 世界軸の広がりで代用すると、箱がライト
     // 基底に対して回っているぶんだけ枠が足りず、縁の受け手が枠から外れて影を失う。
-    const extent = this.frameExtent(box);
+    // **上限で縛ると枠は箱より小さくなりうる。** はみ出した受け手は被覆の枠が拾う。
+    const extent = Math.min(this.frameExtent(box), extentCap);
     this.lightCamera.left = -extent;
     this.lightCamera.right = extent;
     this.lightCamera.top = extent;
