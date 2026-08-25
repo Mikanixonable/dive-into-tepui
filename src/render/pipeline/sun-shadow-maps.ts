@@ -87,7 +87,6 @@ export class SunShadowMaps {
   private readonly viewProjection = new THREE.Matrix4();
   private readonly boundingSphere = new THREE.Sphere();
   private readonly lightForward = new THREE.Vector3();
-  private readonly meshSphere = new THREE.Sphere();
   // expandVisibleCasters が枝ごとに拾う、カメラにいちばん近い実体の点とその距離。
   private readonly branchAnchor = new THREE.Vector3();
   private branchDistance = Infinity;
@@ -294,9 +293,7 @@ export class SunShadowMaps {
       } else if (!extent.worldBounds.isEmpty()) {
         this.scratchBox.union(extent.worldBounds);
         this.branchDiffuse = true;
-        // 個体が箱いっぱいに散らばる枝は、箱の最近点がそのまま実体の在りかになる。
-        extent.worldBounds.clampPoint(this.cameraPosition, this.scratchCorner);
-        this.takeAnchor(this.scratchCorner, this.scratchCorner.distanceTo(this.cameraPosition));
+        this.takeBoxAnchor(extent.worldBounds, null);
       }
     }
     for (const child of object.children) this.expandVisibleCasters(child);
@@ -307,28 +304,30 @@ export class SunShadowMaps {
   private takeMeshAnchor(mesh: THREE.Mesh): void {
     const instanced = mesh as THREE.InstancedMesh;
     if (instanced.isInstancedMesh) {
-      // 1 個体ぶんの geometry.boundingSphere は、どの個体の在りかでもない点を指す。個体の
-      // 変換を数えた箱の、カメラに最も近い点を代表点にする。
+      // 1 個体ぶんの geometry の箱は、どの個体の在りかでもない場所を指す。個体の変換を
+      // 数えた箱を使う。
       if (instanced.boundingBox === null) instanced.computeBoundingBox();
-      const bounds = instanced.boundingBox;
-      if (bounds === null) return;
+      if (instanced.boundingBox === null) return;
       this.branchDiffuse = true;
-      this.scratchMatrix.copy(mesh.matrixWorld).invert();
-      this.scratchCorner.copy(this.cameraPosition).applyMatrix4(this.scratchMatrix);
-      bounds.clampPoint(this.scratchCorner, this.scratchCorner).applyMatrix4(mesh.matrixWorld);
-      this.takeAnchor(this.scratchCorner, this.scratchCorner.distanceTo(this.cameraPosition));
+      this.takeBoxAnchor(instanced.boundingBox, mesh.matrixWorld);
       return;
     }
-    // 外接球の表面を代表点にする。**中心を代表点にすると、距離だけが表面で測られて位置が
-    // 半径ぶん奥へずれ、窓が実体から外れる。**
-    if (mesh.geometry.boundingSphere === null) mesh.geometry.computeBoundingSphere();
-    const sphere = mesh.geometry.boundingSphere;
-    if (sphere === null) return;
-    this.meshSphere.copy(sphere).applyMatrix4(mesh.matrixWorld);
-    const distance = this.meshSphere.center.distanceTo(this.cameraPosition);
-    this.scratchCorner.copy(this.cameraPosition).sub(this.meshSphere.center);
-    if (distance > 1e-6) this.scratchCorner.multiplyScalar(this.meshSphere.radius / distance);
-    this.takeAnchor(this.scratchCorner.add(this.meshSphere.center), distance - this.meshSphere.radius);
+    if (mesh.geometry.boundingBox === null) mesh.geometry.computeBoundingBox();
+    if (mesh.geometry.boundingBox === null) return;
+    this.takeBoxAnchor(mesh.geometry.boundingBox, mesh.matrixWorld);
+  }
+
+  // box の中でカメラにいちばん近い点を、枝の代表点の候補として拾う。toWorld は box の座標系から
+  // 描画座標への変換で、box が既に描画座標なら null を渡す。
+  private takeBoxAnchor(box: THREE.Box3, toWorld: THREE.Matrix4 | null): void {
+    this.scratchCorner.copy(this.cameraPosition);
+    if (toWorld !== null) this.scratchCorner.applyMatrix4(this.scratchMatrix.copy(toWorld).invert());
+    // **カメラが box の内側にあるときは箱の中心へ退避する。** 最近点はカメラ位置そのものに
+    // なるが、そこにメッシュは無いので、窓の中心にすると必ず空を撮る。
+    if (box.containsPoint(this.scratchCorner)) box.getCenter(this.scratchCorner);
+    else box.clampPoint(this.scratchCorner, this.scratchCorner);
+    if (toWorld !== null) this.scratchCorner.applyMatrix4(toWorld);
+    this.takeAnchor(this.scratchCorner, this.scratchCorner.distanceTo(this.cameraPosition));
   }
 
   // カメラにより近い代表点が来たら、枝の代表点を差し替える。
