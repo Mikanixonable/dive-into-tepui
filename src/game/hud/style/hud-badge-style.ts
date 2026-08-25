@@ -1,4 +1,5 @@
 // HUD の固定バッジ・ステータスバー・通知 CSS (視点バッジ、シミュレーションステータス、スケール定規、ヒント、トースト、カメラリセット)。
+import { MQ_COARSE } from '../breakpoints';
 
 export const HUD_BADGE_STYLE = `
 #hud-topbar {
@@ -74,7 +75,7 @@ export const HUD_BADGE_STYLE = `
   transition: opacity var(--transition-slow); opacity: 0; text-align: center;
 }
 #hud-chase-reset {
-  position: absolute; top: 64px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(64px + var(--space-5)); left: 50%; transform: translateX(-50%);
   pointer-events: auto; cursor: pointer;
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
@@ -84,6 +85,9 @@ export const HUD_BADGE_STYLE = `
 }
 #hud-chase-reset:hover { background: var(--surface-2); color: var(--color-primary-hover); }
 #hud-chase-reset:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+@media ${MQ_COARSE} {
+  #hud-chase-reset { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
+}
 
 #hud-toast {
   position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
