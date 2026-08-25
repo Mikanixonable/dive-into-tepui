@@ -15,7 +15,7 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { float, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import type { GraphicsSettingsData } from '../graphics-settings';
+import type { GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
@@ -40,7 +40,7 @@ function toneMapped(color: Vec3Node): Vec3Node {
   return neutralToneMapping(color, float(1)) as Vec3Node;
 }
 
-export class RenderPipeline implements DebugTargetHost {
+export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly renderer: WebGPURenderer;
   private readonly gbuffer: GBufferPass;
   private readonly occlusionPass: OcclusionPass;
@@ -159,6 +159,8 @@ export class RenderPipeline implements DebugTargetHost {
     this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
 
     this.quad = new QuadMesh(this.compositeMaterials.off);
+
+    this.applyGraphics(graphics);
   }
 
   // depthTest/depthWrite/transparent の共通設定を1箇所へまとめた、composite 用マテリアルの
@@ -208,12 +210,17 @@ export class RenderPipeline implements DebugTargetHost {
     return log(dist.div(this.depthDebugNear)).div(log(this.depthDebugFar.div(this.depthDebugNear)));
   }
 
+  // 描画品質設定のうち、GPU 資源の確保を伴うものを各パスへ配る。値が変わった時点で1回呼ばれる。
+  applyGraphics(graphics: GraphicsSettingsData): void {
+    this.sunShadowMaps.setQuality(graphics.meshShadow);
+  }
+
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
-  // world → 合成 → 3D UI の順に発行する。Game.render() から毎フレーム 1回呼ぶ。meshShadow が
-  // 偽ならメッシュの影だけを描かない。模式図スタイルではマテリアル・大気・world の3段を飛ばす。
+  // world → 合成 → 3D UI の順に発行する。Game.render() から毎フレーム 1回呼ぶ。
+  // 模式図スタイルではマテリアル・大気・world の3段を飛ばす。
   // デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが実際に
   // 生成した中身であるべきため。
-  render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, meshShadow: boolean): void {
+  render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
     const height = this.drawingBufferSize.y;
@@ -224,7 +231,7 @@ export class RenderPipeline implements DebugTargetHost {
 
     // 太陽光の影パス。G バッファを必要としないので、その前に置く。設定で切られているフレームは
     // スロットが空のまま返り、遮蔽関数側も 1 を返す。
-    this.sunShadowMaps.render(scene, camera, height, this._sunLight, meshShadow);
+    this.sunShadowMaps.render(scene, camera, height, this._sunLight);
 
     // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
     this.gbuffer.render(scene, camera, width, height);
