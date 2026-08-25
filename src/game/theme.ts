@@ -56,12 +56,12 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
     ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff4a20', accentNear: '#ff8060', signal: '#1ee7d2',
   },
   {
-    id: 'fluorescent-red-blue', name: 'Arcade Pulse', description: 'マゼンタと青の強い電気的対比', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, page: '#08090d', accent: '#ff0090', accentNear: '#ff59b7', signal: '#3478ff',
+    id: 'fluorescent-red-blue', name: 'Arcade Pulse', description: '赤と青の強い電気的対比', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, page: '#08090d', accent: '#ff3155', accentNear: '#ff6b82', signal: '#3478ff',
   },
   {
-    id: 'fluorescent-pink-dawn-blue', name: 'Daybreak', description: '蛍光ピンクと夜明けの淡い青', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff0080', accentNear: '#ff59ac', signal: '#bfe0ff',
+    id: 'fluorescent-pink-dawn-blue', name: 'Daybreak', description: '朱色寄りの蛍光ピンクと夜明けの淡い青', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff2d6c', accentNear: '#ff6f96', signal: '#bfe0ff',
   },
   {
     id: 'driftwood', name: 'Driftwood', description: '褐色に寒色を差した落ち着いた色調', tone: 'dark',
