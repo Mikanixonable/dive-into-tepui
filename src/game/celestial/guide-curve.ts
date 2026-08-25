@@ -17,6 +17,12 @@ export class GuideCurve {
   private analytic: CurveSampler | null = null;
   private knots: CurveKnots | null = null;
   private revision: object = {};
+  // sync で Curve へ渡し終えた曲線の revision。曲線を持たない間は null。
+  private syncedRevision: object | null = null;
+  // 直近に samplePoints が返した点列と、それを引いた曲線・分割数。
+  private sampledPoints: readonly Vec3[] = [];
+  private sampledRevision: object | null = null;
+  private sampledCount = 0;
   // 頂点カラーの焼き直し待ち。曲線が変わらなくても色だけ変わることがある。
   private colorsDirty = false;
   private initialSegments: number | undefined = undefined;
@@ -52,6 +58,7 @@ export class GuideCurve {
     this.analytic = null;
     this.knots = null;
     this.revision = {};
+    this.syncedRevision = null;
   }
 
   // 曲線上の t∈[0,1] の点を ECI 絶対座標で返す。曲線を持たない間は原点。
@@ -65,18 +72,26 @@ export class GuideCurve {
     } as Vec3;
   }
 
-  // 曲線上の count+1 点を ECI 絶対座標で返す(両端を含む)。曲線を持たない間は空。
+  // 曲線上の count+1 点を ECI 絶対座標で返す(両端を含む)。sync を通っていない間は空。
+  // 曲線が変わるまでは同じ配列を返す(毎フレーム呼ばれても引き直さない)。
   public samplePoints(count: number): readonly Vec3[] {
-    if (!this.origin) return [];
-    const points: Vec3[] = [];
-    for (let i = 0; i <= count; i++) points.push(this.pointAt(i / count));
-    return points;
+    const revision = this.syncedRevision;
+    if (revision === null) return [];
+    if (revision !== this.sampledRevision || count !== this.sampledCount) {
+      const points: Vec3[] = [];
+      for (let i = 0; i <= count; i++) points.push(this.pointAt(i / count));
+      this.sampledPoints = points;
+      this.sampledRevision = revision;
+      this.sampledCount = count;
+    }
+    return this.sampledPoints;
   }
 
   // 描画原点の移動へ追随させ、colorAt が指定されていれば頂点カラーで焼く。
   public sync(fo: FloatingOrigin, camera: THREE.Camera, colorAt?: CurveColorSampler): void {
     const origin = this.origin;
     if (!origin) {
+      this.syncedRevision = null;
       this.curve.setVisible(false);
       return;
     }
@@ -85,6 +100,7 @@ export class GuideCurve {
     const opts = { revision: this.revision, camera, colorAt, initialSegments: this.initialSegments };
     if (this.analytic) this.curve.setAnalyticCurve(this.analytic, opts);
     else if (this.knots) this.curve.setHermiteCurve(this.knots, opts);
+    this.syncedRevision = this.revision;
     // 焼き直しが起きなかったフレームでも、色だけの変更はここで反映する。
     if (this.colorsDirty && colorAt) {
       this.curve.setColors(colorAt);
