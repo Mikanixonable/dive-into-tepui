@@ -23,6 +23,8 @@ export type CurveSampler = (t: number, out: THREE.Vector3) => void;
 
 // t∈[0,1] の位置における頂点色を out へ書く。適応分割は頂点位置だけを見て区間を切るため、
 // この関数は分割結果に影響しない — 頂点が確定したあとに、その t で1回だけ呼ばれる。
+// **書いた色はマテリアル色に乗算される。** 線全体が単色なら渡さず setColor を使うこと
+// (渡すと単色がマテリアル色と二重に掛かって暗くなる)。
 export type CurveColorSampler = (t: number, out: THREE.Color) => void;
 
 export type SetCurveOptions = {
@@ -38,9 +40,7 @@ export type SetCurveOptions = {
   // 分割済みと誤判定して区間まるごとが直線に化ける。2点未満なら t の等分割へフォールバックする。
   // 焼き直すかどうかは revision だけで決まるので、この列を変えたなら revision も変えること。
   readonly initialTs?: readonly number[];
-  // 頂点ごとに色を変えたいときだけ渡す。省略すれば従来どおり setStyle/setColor の単色のまま
-  // (マテリアルの vertexColors は一度も有効化されない)。一度でも渡すと以後は頂点カラーが
-  // 有効なままになる — 単色へ戻したいなら呼び出し側は再び単色を返す colorAt を渡し続けること。
+  // 線の中で色が変わるときだけ渡す。省略すれば setStyle/setColor の単色で塗られる。
   readonly colorAt?: CurveColorSampler;
 };
 
@@ -161,6 +161,7 @@ export class Curve {
   private readonly scratchA = new THREE.Vector3();
   private readonly scratchM = new THREE.Vector3();
   private readonly scratchColor = new THREE.Color();
+  private readonly scratchStyleColor = new THREE.Color();
   private readonly scratchWorld = new THREE.Vector3();
   private readonly scratchLocalCam = new THREE.Vector3();
   private readonly scratchInvQuat = new THREE.Quaternion();
@@ -194,6 +195,9 @@ export class Curve {
     this.indices = new Uint32Array(this.maxSegments * 2);
     this.geom = new THREE.BufferGeometry();
     this.geom.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    // 色属性は使う前から束縛しておく。頂点カラーを後から使い始めるときに属性を足すと、
+    // 束縛済みのジオメトリに対する差し替えになって新しいバッファが描画へ反映されない。
+    this.geom.setAttribute('color', new THREE.BufferAttribute(this.bakedColor, 3));
     this.geom.setIndex(new THREE.BufferAttribute(this.indices, 1));
     this.geom.setDrawRange(0, 0);
 
@@ -302,13 +306,17 @@ export class Curve {
     this.bakedLocal[o] = x;
     this.bakedLocal[o + 1] = y;
     this.bakedLocal[o + 2] = z;
-    if (colorAt) {
-      colorAt(t, this.scratchColor);
-      this.bakedColor[o] = this.scratchColor.r;
-      this.bakedColor[o + 1] = this.scratchColor.g;
-      this.bakedColor[o + 2] = this.scratchColor.b;
-    }
+    if (colorAt) this.bakeColor(i, t, colorAt);
     return i;
+  }
+
+  // 頂点 i の色を、その t で colorAt を評価して色バッファへ書く。
+  private bakeColor(i: number, t: number, colorAt: CurveColorSampler): void {
+    colorAt(t, this.scratchColor);
+    const o = i * 3;
+    this.bakedColor[o] = this.scratchColor.r;
+    this.bakedColor[o + 1] = this.scratchColor.g;
+    this.bakedColor[o + 2] = this.scratchColor.b;
   }
 
   // 左端が頂点 seg の区間について、その区間を弦で代用したときの逸脱を返す。画面上のサジッタと
@@ -421,13 +429,20 @@ export class Curve {
     this.writePositions();
   }
 
-  // マテリアルの頂点カラーを有効にし、色属性をジオメトリへ足す。一度有効にしたら無効化は
-  // しない(色を指定しない呼び出し元は最初から colorAt を渡さないので、ここへは来ない)。
+  // マテリアルの頂点カラーを有効にする。
   private enableVertexColors(): void {
     this.hasVertexColors = true;
-    this.geom.setAttribute('color', new THREE.BufferAttribute(this.bakedColor, 3));
     (this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial).vertexColors = true;
     this.mat.needsUpdate = true;
+  }
+
+  // 焼いてある頂点の色だけを colorAt で評価し直して GPU へ送る。頂点の位置と分割は動かさない。
+  // まだ一度も焼いていなければ何もしない。
+  setColors(colorAt: CurveColorSampler): void {
+    if (!this.hasBaked) return;
+    if (!this.hasVertexColors) this.enableVertexColors();
+    for (let i = 0; i < this.bakedCount; i++) this.bakeColor(i, this.ts[i]!, colorAt);
+    (this.geom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
   }
 
   // 焼いた頂点(pivot 差し引き後)と描画範囲を GPU へ反映する。
@@ -503,9 +518,12 @@ export class Curve {
   }
 
   // マテリアルを作り直さず色だけ更新する。テーマ切替時も GPU の頂点バッファを維持できる。
+  // 既に同じ色なら何もしない — 毎フレーム呼ばれても needsUpdate を立てないため。
   setColor(color: THREE.ColorRepresentation): void {
     const material = this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial;
-    material.color.set(color);
+    this.scratchStyleColor.set(color);
+    if (material.color.equals(this.scratchStyleColor)) return;
+    material.color.copy(this.scratchStyleColor);
     material.needsUpdate = true;
     this.appliedStyle = null;
   }
