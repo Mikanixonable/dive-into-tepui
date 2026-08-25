@@ -248,6 +248,10 @@ export class ProteinRuntime {
     return this.siteWorldPosition(this.combat.nextAttackSite(), origin, attitude);
   }
 
+  siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
+    return this.siteWorldPosition(this.combat.site(id), origin, attitude);
+  }
+
   private siteWorldPosition(site: ProteinSiteDefinition | null, origin: Vec3, attitude: Quat): Vec3 {
     return proteinSiteWorldPosition(
       site,
