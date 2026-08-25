@@ -33,7 +33,7 @@ export class EarthView extends CelestialView {
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーション・地表LODへ同期する。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettingsData, _style: RenderStyle,
+    graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.earth.group.visible) return;
     const pos = ephemeris.positionOf('earth', displayTime);
@@ -41,6 +41,7 @@ export class EarthView extends CelestialView {
     this.earth.setRotation(this.phase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
     const metersPerPixel = cameraSystem.activeCameraScale(pos);
     this.earth.setAuroraVisible(graphics.aurora);
+    this.earth.setGraticuleVisible(style === 'schematic');
     this.earth.syncSurfaceLod(this.lodApparentDiameterPx(2 * R_EARTH, metersPerPixel, graphics));
     this.earth.tick(displayTime);
   }
