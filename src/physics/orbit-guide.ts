@@ -265,7 +265,7 @@ function lerp(a: number, b: number, f: number): number {
   return a + f * (b - a);
 }
 
-// リサジュー軌道の軌跡。面内・面外の振幅と位相を独立に取り、cycles 周ぶんの開いた折れ線を返す。
+// リサジュー軌道の軌跡。面内・面外の振幅と位相を独立に取り、cycles 周ぶんの開いた曲線を返す。
 // 面内は振動数 λ、面外は ωz で振動し両者が噛み合わないので閉じない。形状には Richardson
 // (1980) の三次近似(halo.ts の richardsonState)を使い、振幅による軌道面の歪みを反映する。
 // inPlane/outOfPlane は無次元(L点局所γ単位 frame.r*frame.gamma に対する比)。系ごとに
@@ -279,6 +279,7 @@ export function lissajousLoop(
   const secondary = SYSTEM_BODIES[system][1];
   if (ephemeris.registry[secondary] === undefined) return null;
   if (primaryOf(ephemeris.registry, secondary) === null) return null;
+  // 振幅に依らない係数は1度だけ求め、位相だけを u から動かす。
   const frame: CollinearFrame = collinearFrame(secondary, point, t, ephemeris);
   const coeffs = richardsonCoefficients(frame);
   const deltaN = point === 'L2' ? -1 : 1;
@@ -288,6 +289,7 @@ export function lissajousLoop(
   const zRatio = frame.omegaZ / frame.lambda;
   const omegaCorrection = 1 + coeffs.s1 * axHat * axHat + coeffs.s2 * azHat * azHat;
 
+  // u∈[0,1] を cycles 周ぶんの位相へ写し、局所γ単位の Richardson 解を ECI [m] へ戻す。
   const positionAt = (u: number): Vec3 => {
     const phase = 2 * Math.PI * cycles * u;
     const theta1 = omegaCorrection * (phase + inPlanePhase);
