@@ -1,7 +1,9 @@
 // 折れ線グラフの描き手。渡された点列と軸をそのまま canvas 2D へ描く。何をプロットするかは知らない。
-import { ACCENT, ACCENT_SOFT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED, TEXT_STRONG } from '../../theme';
+import { ACCENT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED } from '../../theme';
 import { fmtDuration } from '../utils';
-import { chooseTickInterval } from './tick-scale';
+import { injectOnce } from '../widgets/inject-style';
+import { drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore, type BackingStoreState } from './chart-canvas';
+import { chooseTickInterval, chooseTickIntervalFrom } from './tick-scale';
 
 export interface ChartPoint {
   readonly x: number;
@@ -56,16 +58,6 @@ const STYLE = `
 #hud .orbit-chart.panzoom:active { cursor: grabbing; }
 `;
 
-let styleInjected = false;
-
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
-
 // 値域 [min, max] を長さ span の画面区間 [origin, origin+span] へ写す。min === max なら中央に固定する。
 function scaleValue(value: number, min: number, max: number, origin: number, span: number, invert: boolean): number {
   const range = max - min;
@@ -77,12 +69,10 @@ function scaleValue(value: number, min: number, max: number, origin: number, spa
 export class OrbitChart {
   public readonly element: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
-  private lastCssWidth = 0;
-  private lastCssHeight = 0;
-  private lastDpr = 0;
+  private readonly backing: BackingStoreState = { cssWidth: 0, cssHeight: 0, dpr: 0 };
 
   public constructor() {
-    ensureStyle();
+    injectOnce('orbit-chart', STYLE);
     this.element = document.createElement('canvas');
     this.element.className = 'orbit-chart';
     const ctx = this.element.getContext('2d');
@@ -96,16 +86,16 @@ export class OrbitChart {
   // 直近の draw() が描いたプロット領域のピクセル寸法。まだ描いていない/寸法0なら null
   // ——呼び出し側がドラッグ移動量を軸の値へ換算する変換係数として使う。
   public plotPixelSize(): { width: number; height: number } | null {
-    const width = this.lastCssWidth - PADDING_LEFT - PADDING_RIGHT;
-    const height = this.lastCssHeight - PADDING_TOP - PADDING_BOTTOM;
+    const width = this.backing.cssWidth - PADDING_LEFT - PADDING_RIGHT;
+    const height = this.backing.cssHeight - PADDING_TOP - PADDING_BOTTOM;
     return width > 0 && height > 0 ? { width, height } : null;
   }
 
   public draw(spec: ChartSpec): void {
-    this.resizeBackingStoreIfNeeded();
+    resizeCanvasBackingStore(this.element, this.ctx, this.backing);
     const ctx = this.ctx;
-    const cssWidth = this.lastCssWidth;
-    const cssHeight = this.lastCssHeight;
+    const cssWidth = this.backing.cssWidth;
+    const cssHeight = this.backing.cssHeight;
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     if (cssWidth <= 0 || cssHeight <= 0) return;
 
@@ -136,19 +126,6 @@ export class OrbitChart {
     this.drawLine(spec, plotLeft, plotTop, plotWidth, plotHeight);
     for (const mark of spec.marks) this.drawMark(mark, spec, plotLeft, plotTop, plotWidth, plotHeight);
     ctx.restore();
-  }
-
-  private resizeBackingStoreIfNeeded(): void {
-    const dpr = window.devicePixelRatio || 1;
-    const cssWidth = this.element.clientWidth;
-    const cssHeight = this.element.clientHeight;
-    if (cssWidth === this.lastCssWidth && cssHeight === this.lastCssHeight && dpr === this.lastDpr) return;
-    this.lastCssWidth = cssWidth;
-    this.lastCssHeight = cssHeight;
-    this.lastDpr = dpr;
-    this.element.width = Math.max(1, Math.round(cssWidth * dpr));
-    this.element.height = Math.max(1, Math.round(cssHeight * dpr));
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   private drawGrid(spec: ChartSpec, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
@@ -204,23 +181,11 @@ export class OrbitChart {
   }
 
   private drawLine(spec: ChartSpec, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
-    const ctx = this.ctx;
-    ctx.strokeStyle = ACCENT;
-    ctx.lineWidth = CHART_LINE_WIDTH;
-    ctx.beginPath();
-    let penDown = false;
-    for (const point of spec.points) {
-      if (point === null) {
-        penDown = false;
-        continue;
-      }
-      const px = scaleValue(point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false);
-      const py = scaleValue(point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true);
-      if (penDown) ctx.lineTo(px, py);
-      else ctx.moveTo(px, py);
-      penDown = true;
-    }
-    ctx.stroke();
+    const toPx = (point: ChartPoint): { x: number; y: number } => ({
+      x: scaleValue(point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false),
+      y: scaleValue(point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true),
+    });
+    drawPolylineWithGaps(this.ctx, spec.points, toPx, ACCENT, CHART_LINE_WIDTH);
   }
 
   private drawMark(
@@ -231,20 +196,9 @@ export class OrbitChart {
     plotWidth: number,
     plotHeight: number,
   ): void {
-    const ctx = this.ctx;
     const px = scaleValue(mark.point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false);
     const py = scaleValue(mark.point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true);
-    ctx.beginPath();
-    ctx.arc(px, py, MARK_RADIUS, 0, Math.PI * 2);
-    if (mark.style === 'current') {
-      ctx.fillStyle = ACCENT_SOFT;
-      ctx.fill();
-      ctx.strokeStyle = ACCENT;
-    } else {
-      ctx.strokeStyle = TEXT_STRONG;
-    }
-    ctx.lineWidth = MARK_RING_WIDTH;
-    ctx.stroke();
+    drawPointMarker(this.ctx, px, py, mark.style === 'current', MARK_RADIUS, MARK_RING_WIDTH);
   }
 }
 
@@ -267,13 +221,7 @@ const DISTANCE_TICK_INTERVALS_KM = [
 
 // spanKm の目盛り本数が maxTicks を超えない最小の間隔 [km] を選ぶ。どの候補でも超えるなら最大の候補を返す。
 function chooseDistanceTickIntervalKm(spanKm: number, maxTicks: number): number {
-  let interval: number = DISTANCE_TICK_INTERVALS_KM[0];
-  if (!isFinite(spanKm) || spanKm <= 0) return interval;
-  for (const candidate of DISTANCE_TICK_INTERVALS_KM) {
-    interval = candidate;
-    if (Math.floor(spanKm / candidate) + 1 <= maxTicks) break;
-  }
-  return interval;
+  return chooseTickIntervalFrom(spanKm, maxTicks, DISTANCE_TICK_INTERVALS_KM);
 }
 
 // 軸目盛り専用の距離表記。目盛り値は常に km ラダーの丸い数なので、fmtDist の小数

@@ -6,6 +6,7 @@ import { Ephemeris } from '../../../physics/ephemeris';
 import { FRAME_ROLES } from '../../../physics/frame';
 import type { MapPickable } from '../../map-pickable';
 import { SegmentedControl } from '../widgets';
+import { injectOnce } from '../widgets/inject-style';
 import { frameRoleAnchorId, frameRoleName } from './frame-labels';
 import { groupPickables, LAGRANGE_ID, lagrangeParentId } from '../object-groups';
 import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
@@ -22,16 +23,6 @@ const STYLE = `
 #hud .hud-anchor-zone { display: flex; flex-direction: column; gap: var(--space-2); }
 `;
 
-let styleInjected = false;
-// ゾーンのスタイルシートを document.head へ一度だけ挿入する。
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
-
 export class AnchorZone {
   readonly element: HTMLElement;
   // null は「固定を解除」= releaseLabel が表す選択を表す。
@@ -47,7 +38,7 @@ export class AnchorZone {
     popupRoot: HTMLElement, title: string, ephemeris: Ephemeris, private readonly releaseLabel: string | null,
     overlayManager: OverlayManager,
   ) {
-    ensureStyle();
+    injectOnce('anchor-zone', STYLE);
     this.ephemeris = ephemeris;
 
     this.element = document.createElement('div');
