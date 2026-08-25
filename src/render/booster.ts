@@ -95,13 +95,13 @@ export class BoosterStage extends THREE.Group {
       metalness: 1,
     });
     const darkMetalMaterial = new THREE.MeshStandardMaterial({
-      color: options.nozzleColor ?? 0x252c35,
+      color: options.nozzleColor ?? 0xd9702e,
       flatShading: true,
       roughness: 0.58,
       metalness: 0.9,
     });
     const gasketMaterial = new THREE.MeshStandardMaterial({
-      color: 0x17202b,
+      color: 0xa64e1e,
       flatShading: true,
       roughness: 0.7,
       metalness: 0.35,
