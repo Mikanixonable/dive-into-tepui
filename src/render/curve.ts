@@ -66,6 +66,10 @@ const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 // 弦が縮退するため、最低限これだけ分けてから適応分割に入る。
 const INITIAL_SEGMENTS = 8;
 
+// 頂点予算のうち初期頂点へ回してよい割合。残りは適応分割が逸脱の大きい区間へ配るので、
+// ここを埋め切るより少し余らせたほうが、細部の要る場所に頂点が集まる。
+const MAX_INITIAL_VERTEX_RATIO = 0.5;
+
 const uniformTsCache = new Map<number, readonly number[]>();
 
 // t を segments 等分した昇順の列(両端を含む)。区間数ごとに1回だけ作って使い回す。
@@ -116,15 +120,14 @@ export type CurveKnots = {
   readonly tangent: (i: number, out: THREE.Vector3) => void;
 };
 
-// 節点を maxCount 個以下へ間引く。等間隔に抜き、両端の節点は必ず残す(曲線の定義域が
-// 縮まないため)。収まっているなら何もしない — 渡された節点は本来すべて頂点にする。
-function thinToBudget(knots: CurveKnots, maxCount: number): CurveKnots {
+// 節点が maxCount 個を超えるなら、その数へ均した節点列を返す。抜く位置は元の並びの上で
+// 等間隔に取り、両端の節点は必ず残す(曲線の定義域が縮まないため)。
+function thinKnots(knots: CurveKnots, maxCount: number): CurveKnots {
   if (knots.count <= maxCount) return knots;
-  const stride = Math.ceil(knots.count / maxCount);
-  const count = Math.floor((knots.count - 1) / stride) + 1;
-  const source = (i: number): number => (i === count - 1 ? knots.count - 1 : i * stride);
+  const last = knots.count - 1;
+  const source = (i: number): number => Math.round((i * last) / (maxCount - 1));
   return {
-    count,
+    count: maxCount,
     at: (i) => knots.at(source(i)),
     position: (i, out) => knots.position(source(i), out),
     tangent: (i, out) => knots.tangent(source(i), out),
@@ -254,12 +257,16 @@ export class Curve {
   // 右端は nextVertex から辿る。
   private readonly pending: MaxHeap;
 
+  // 初期頂点に置ける頂点数の上限。
+  private readonly maxInitialVertices: number;
+
   // style はマテリアルと描画順、maxVertices は確保する頂点バッファの上限。style.dash が
   // あれば破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。
   constructor(opts: CurveOptions) {
     const { style, maxVertices } = opts;
     const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
+    this.maxInitialVertices = Math.max(INITIAL_SEGMENTS + 1, Math.floor(maxVertices * MAX_INITIAL_VERTEX_RATIO));
     this.maxSegments = Math.max(0, maxVertices - 1);
     this.positions = new Float32Array(maxVertices * 3);
     this.bakedLocal = new Float64Array(maxVertices * 3);
@@ -451,17 +458,16 @@ export class Curve {
   }
 
   // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数。
-  // 初期区間はそのまま頂点になるので、予算に収まる数まで抑える。
   setAnalyticCurve(sample: CurveSampler, opts: SetCurveOptions): void {
     const requested = Math.max(INITIAL_SEGMENTS, opts.initialSegments ?? 0);
-    this.setCurve(sample, uniformTs(Math.min(requested, this.maxVertices - 1)), opts);
+    this.setCurve(sample, uniformTs(Math.min(requested, this.maxInitialVertices - 1)), opts);
   }
 
   // 離散サンプルとしてしか手に入らない曲線を、節点間を3次エルミートで埋めて描く。
-  // 節点が予算を超えるなら収まるまで間引く(サンプラ自体が粗くなるので、曲線は C¹ のまま
-  // 全体が一様に粗くなる)。
+  // 節点は初期頂点になるので、多すぎるぶんは均して減らす(節点間はエルミートで埋まるため、
+  // 減らしても曲線は C¹ のまま一様に粗くなる)。
   setHermiteCurve(knots: CurveKnots, opts: SetCurveOptions): void {
-    const { sample, ts } = hermiteSampler(thinToBudget(knots, this.maxVertices));
+    const { sample, ts } = hermiteSampler(thinKnots(knots, this.maxInitialVertices));
     this.setCurve(sample, ts, opts);
   }
 
