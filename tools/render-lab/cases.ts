@@ -195,6 +195,27 @@ function shipCluster(): LabCase {
   };
 }
 
+// スロットより遮蔽器が多い群: 艦をスロット数より多く並べ、カメラの背後にも置く。**枠が尽きた
+// ときに何が捨てられるか**を見るためのケースなので、艦の数はスロット数を上回っていなければ
+// 意味がない。
+function shipCrowd(): LabCase {
+  const positions = [
+    new THREE.Vector3(0, -1, -10),
+    new THREE.Vector3(9, 3, -18),
+    new THREE.Vector3(-8, 2, -16),
+    new THREE.Vector3(3, -7, -24),
+    new THREE.Vector3(-11, -5, -30),
+    new THREE.Vector3(14, 6, -34),
+    new THREE.Vector3(-2, 9, -42),
+  ];
+  return {
+    objects: positions.map((position) => shipAt(position, OBLIQUE_SHIP_ROTATION)),
+    camera: labCamera(6e7),
+    sunDirection: OBLIQUE_SUN_DIR,
+    viewTarget: positions[0]!,
+  };
+}
+
 // 小片群のなかの自己影: 自己影のケースへ、広く散らばった小片群を 1 本の枝として足す。
 function shipInDebris(): LabCase {
   const shipPosition = new THREE.Vector3(0, -1, -10);
@@ -447,6 +468,7 @@ export const CASES = {
   'leo': leo,
   'ship-selfshadow': shipSelfShadow,
   'ship-cluster': shipCluster,
+  'ship-crowd': shipCrowd,
   'ship-in-debris': shipInDebris,
   'order': order,
   'depth-1e4': () => depthProbe(1e4, 6e7),

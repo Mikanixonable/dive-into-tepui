@@ -12,6 +12,7 @@ declare global {
       shoot: (name: CaseName) => Promise<string>;
       capture: () => Promise<string>;
       setView: (changes: Partial<LabViewAngles>) => void;
+      setTarget: (target: DebugTargetId) => void;
       measure: (name: CaseName) => Promise<LabMeasurement>;
     };
   }
@@ -112,6 +113,7 @@ async function init(): Promise<void> {
     shoot: async (name) => { const png = await view.shoot(name); syncAngles(); return png; },
     capture: () => view.capture(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
+    setTarget: (target) => { markTarget(target); view.showDebugTarget(target); },
     measure: (name) => view.measure(name),
   };
 }
