@@ -39,8 +39,8 @@ export interface GuideKindSettings {
 // リサジュー軌道だけは連続な族として焼き込まないので、振幅と位相を直に指定する。
 export interface LissajousSettings {
   readonly on: boolean;
-  readonly inPlane: number; // [m]
-  readonly outOfPlane: number; // [m]
+  readonly inPlane: number; // 無次元(L点局所γ単位に対する比)
+  readonly outOfPlane: number; // 無次元(L点局所γ単位に対する比)
   readonly inPlanePhase: number; // [rad]
   readonly outOfPlanePhase: number; // [rad]
   readonly cycles: number;
@@ -111,8 +111,8 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
   kinds: {},
   lissajous: {
     on: false,
-    inPlane: 15_000_000,
-    outOfPlane: 30_000_000,
+    inPlane: 0.1,
+    outOfPlane: 0.2,
     inPlanePhase: 0,
     outOfPlanePhase: 0,
     cycles: 4,
@@ -162,7 +162,14 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
   return {
     ...settings,
     kinds,
-    lissajous: { ...settings.lissajous, cycles: Math.max(1, Math.round(settings.lissajous.cycles)) },
+    lissajous: {
+      ...settings.lissajous,
+      cycles: Math.max(1, Math.round(settings.lissajous.cycles)),
+      // Richardson近似の妥当域(目安 0〜0.3)へクランプする。旧保存データはメートル単位
+      // だったため、無次元比として読み直すとこの範囲を大きく外れて安全に丸められる。
+      inPlane: clamp(settings.lissajous.inPlane, 0.01, 0.3),
+      outOfPlane: clamp(settings.lissajous.outOfPlane, 0.01, 0.3),
+    },
     zeroVelocity: {
       ...zv,
       jacobiMin: Math.min(zv.jacobiMin, zv.jacobiMax),

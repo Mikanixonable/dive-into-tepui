@@ -165,6 +165,9 @@ function lerp(a: number, b: number, f: number): number {
 // リサジュー軌道の軌跡。面内・面外の振幅と位相を独立に取り、cycles 周ぶんの開いた折れ線を返す。
 // 面内は振動数 λ、面外は ωz で振動し両者が噛み合わないので閉じない。形状には Richardson
 // (1980) の三次近似(halo.ts の richardsonState)を使い、振幅による軌道面の歪みを反映する。
+// inPlane/outOfPlane は無次元(L点局所γ単位 frame.r*frame.gamma に対する比)。系ごとに
+// R*gamma が数桁違うため、メートルではなく比で受け取ることでどの系でも同じ値が Richardson
+// 近似の妥当域(目安 0〜0.5)に収まる。
 export function lissajousLoop(
   t: number, ephemeris: Ephemeris, system: CatalogSystemId, point: GuidePoint,
   inPlane: number, outOfPlane: number, inPlanePhase: number, outOfPlanePhase: number,
@@ -177,8 +180,8 @@ export function lissajousLoop(
   const coeffs = richardsonCoefficients(frame);
   const deltaN = point === 'L2' ? -1 : 1;
   const unit = frame.r * frame.gamma;
-  const axHat = inPlane / unit;
-  const azHat = outOfPlane / unit;
+  const axHat = inPlane;
+  const azHat = outOfPlane;
   const zRatio = frame.omegaZ / frame.lambda;
 
   const points: Vec3[] = [];
