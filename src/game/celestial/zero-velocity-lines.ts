@@ -148,8 +148,8 @@ export class ZeroVelocityLines {
       if (settings[section.key] !== true) continue;
       const mu = this.muFor(section.system);
       if (mu === null) continue;
-      for (const jacobi of jacobis) {
-        const components = zeroVelocityCurves(mu, jacobi, section.plane, HALF, RESOLUTION);
+      // 断面ごとに 2Ω の格子を1度だけ組み、全てのヤコビ定数の等高線をそこから引く。
+      for (const components of zeroVelocityCurveSet(mu, jacobis, section.plane, HALF, RESOLUTION)) {
         for (const points of components) {
           if (points.length < 2) continue;
           const first = points[0]!;

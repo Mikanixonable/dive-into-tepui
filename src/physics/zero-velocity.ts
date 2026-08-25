@@ -85,22 +85,36 @@ function interpolateCrossing(fa: number, fb: number, pa: Point, pb: Point): Poin
 export function zeroVelocityCurves(
   mu: number, jacobi: number, plane: SectionPlane, half: number, resolution: number,
 ): readonly (readonly (readonly [number, number])[])[] {
+  return zeroVelocityCurveSet(mu, [jacobi], plane, half, resolution)[0] ?? [];
+}
+
+// 複数のヤコビ定数について、同じ断面の等高線をまとめて求める。2Ω の格子は C に依存しないので
+// 一度だけ計算し、C ごとに符号だけを見る — C を1つずつ渡して呼び直すより格段に軽い。
+export function zeroVelocityCurveSet(
+  mu: number, jacobis: readonly number[], plane: SectionPlane, half: number, resolution: number,
+): (readonly Point[])[][] {
   const n = resolution * 2;
   const step = half / resolution;
-
-  // 格子点の座標と f = 2Ω − C の値を先に埋める。
   const coords: number[] = [];
   for (let i = 0; i <= n; i++) coords.push(-half + i * step);
-  const f: number[][] = [];
+
+  // 2Ω の格子。C ごとの f はここから引き算だけで作れる。
+  const twoOmega: number[][] = [];
   for (let i = 0; i <= n; i++) {
     const row: number[] = [];
     const u = coords[i] as number;
-    for (let j = 0; j <= n; j++) {
-      const v = coords[j] as number;
-      row.push(2 * sectionValue(mu, plane, u, v) - jacobi);
-    }
-    f.push(row);
+    for (let j = 0; j <= n; j++) row.push(2 * sectionValue(mu, plane, u, coords[j] as number));
+    twoOmega.push(row);
   }
+
+  return jacobis.map((jacobi) => traceOneLevel(twoOmega, coords, n, jacobi));
+}
+
+// 1つのヤコビ定数について、2Ω の格子から f = 2Ω − C の等高線を追う。
+function traceOneLevel(
+  twoOmega: readonly number[][], coords: readonly number[], n: number, jacobi: number,
+): (readonly Point[])[] {
+  const f: number[][] = twoOmega.map((row) => row.map((value) => value - jacobi));
 
   // (id, 位置) のペアをグラフのノードとして蓄積し、セグメントを (idA, idB) の対で集める。
   const positions = new Map<string, Point>();

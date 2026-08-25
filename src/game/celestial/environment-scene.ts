@@ -225,7 +225,7 @@ export class EnvironmentScene {
     this.syncGeoLabels(
       displayTime, cameraSystem.overviewMode, geostationaryOrbitVisible,
       cameraSystem, markerManager, celestialBodies);
-    this.orbitGuideLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
+    this.orbitGuideLines.sync(style, displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.zeroVelocityLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,

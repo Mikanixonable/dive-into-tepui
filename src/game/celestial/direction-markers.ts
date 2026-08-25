@@ -66,6 +66,9 @@ export class DirectionMarkers {
 
   public constructor(scene: THREE.Scene, capacity: number, renderOrder: number) {
     this.pool = new InstancedPool(scene, this.geometry, this.material, capacity, true, renderOrder);
+    // マーカーは軌道ガイド線に添えるものなので、線と同じオーバーレイ層に載せる
+    // (世界パスに置くと天体に隠れ、線だけが手前に残って見える)。
+    this.pool.markAsOverlay();
   }
 
   public beginFrame(): void { this.pool.beginFrame(); }

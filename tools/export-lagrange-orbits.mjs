@@ -86,15 +86,17 @@ function bakeSystem(cache, samples, excluded) {
     // 比べて必要なら反転する。こうしないと、同じ 0 が族によって小振幅だったり大振幅だったり
     // して、族範囲スライダーの意味が族ごとに変わってしまう。
     if (records.length > 1) {
-      const spread = (chunk) => {
-        let max = 0;
+      // 軌道そのものの大きさで比べる。重心からの距離で測ると、副天体を回る小さな軌道でも
+      // 重心から遠ければ「大きい」と誤判定してしまう。
+      const sizeOf = (chunk) => {
+        const points = [];
         for (let i = 0; i < samples; i++) {
           const o = i * 4;
-          max = Math.max(max, Math.hypot(chunk[o], chunk[o + 1], chunk[o + 2]));
+          points.push([chunk[o], chunk[o + 1], chunk[o + 2]]);
         }
-        return max;
+        return orbitSize(points);
       };
-      if (spread(pointChunks[0]) > spread(pointChunks[pointChunks.length - 1])) {
+      if (sizeOf(pointChunks[0]) > sizeOf(pointChunks[pointChunks.length - 1])) {
         records.reverse();
         pointChunks.reverse();
       }
