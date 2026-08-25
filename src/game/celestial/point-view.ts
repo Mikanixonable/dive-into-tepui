@@ -16,6 +16,8 @@ import { BodyGraticule } from '../../render/body-graticule';
 import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { SunLight } from '../../render/pipeline/sun-light';
+import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../render/render-style';
 import { RingView } from './ring-view';
 import { bondAlbedoOf } from '../../render/celestial-albedo';
@@ -62,10 +64,12 @@ export class PointView extends CelestialView {
 
   // surface はマップビューで見せる実体、radius は実半径 [m]、shape は歪みの形状データ
   // (省略時は radius による真球)。rings を渡すとマップビューでのみ環を持つ(戦闘ビューの
-  // 輝点に環はない — ring-view.ts 参照)。
+  // 輝点に環はない)。sunOcclusion と sunLight はその環が直射散乱の遮蔽と明るさを引くために要る。
   constructor(
     id: OrbitingId,
     private readonly surface: CelestialSurface,
+    private readonly sunOcclusion: SunOcclusion,
+    private readonly sunLight: SunLight,
     private readonly radius: number,
     shape?: ShapeDef,
     private readonly rings?: RingSystemDef,
@@ -88,7 +92,9 @@ export class PointView extends CelestialView {
     this.graticule.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== undefined) {
-      this.ring = new RingView(this.rings, this.radius, this.group.renderOrder + 1);
+      this.ring = new RingView(
+        this.rings, this.radius, this.group.renderOrder + 1, this.sunOcclusion, this.sunLight,
+      );
       scene.add(this.ring.group);
     }
     scene.add(this.billboard.mesh);
@@ -122,7 +128,6 @@ export class PointView extends CelestialView {
     }
     this.surface.syncLod(apparentDiameterPx);
     this.graticule.setVisible(style === 'schematic');
-    const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
     const orientation = ephemeris.poleAt(this.id, displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     const rings = graphics.rings ? this.rings : undefined;
@@ -137,8 +142,6 @@ export class PointView extends CelestialView {
         orientation === null ? null : orientation.axis,
         pos,
         cameraSystem.activeCameraScale,
-        sunDirection,
-        this.sunIrradianceAt(ephemeris, pos, displayTime),
         style,
       );
     }
