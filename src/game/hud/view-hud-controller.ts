@@ -9,7 +9,7 @@ export class CombatHudController {
 
   public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
     this.hud.syncBurnManagement(game.player?.boosterManagementViewModel() ?? null);
-    this.hud.simulationStatusBar.sync(game);
+    this.hud.topBar.sync(game);
     this.hud.vesselPanel.sync(game);
     this.hud.orbitPanel.sync(game, celestialBodies);
     this.hud.targetPanel.sync(game, celestialBodies);
@@ -23,7 +23,7 @@ export class MapHudController {
 
   public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
     this.hud.syncBurnManagement(game.player?.boosterManagementViewModel() ?? null);
-    this.hud.simulationStatusBar.sync(game);
+    this.hud.topBar.sync(game);
     this.hud.mapScaleBadge.sync(game);
     this.hud.orbitPanel.sync(game, celestialBodies, false);
     this.hud.syncOrbitAnalysis(game, celestialBodies);

@@ -315,10 +315,10 @@ function buildMapScale(root: HTMLElement): void {
     </div>`;
 }
 
-// 画面全体のグローバルステータスを組む。1行目はビュー切替と現在の対象バッジ(ViewBadge が中身を組む)、
+// 画面全体のトップバーを組む。1行目はビュー切替と現在の対象バッジ(ViewBadge が中身を組む)、
 // 2行目は MET・時間加速・NODE WARP。
-function buildGlobalStatus(root: HTMLElement): void {
-  const bar = createHudElement('section', 'hud-simulation-status', root);
+function buildTopBar(root: HTMLElement): void {
+  const bar = createHudElement('section', 'hud-topbar', root);
   bar.setAttribute('aria-label', 'Mission status');
   bar.innerHTML = `
     <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
@@ -376,8 +376,8 @@ export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
 
   // 常設パネル群を組む。
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);
-  buildGlobalStatus(layers.panel);
-  buildChaseReset(combatRoot.element);
+  buildTopBar(layers.panel);
+  buildChaseReset(layers.panel);
   buildMapScale(mapRoot.element);
   const overlayShield = createHudElement('div', 'hud-overlay-shield', layers.gate);
   const overlayManager = new OverlayManager(overlayShield, layers.gate);

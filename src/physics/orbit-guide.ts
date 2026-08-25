@@ -5,10 +5,14 @@ import { Ephemeris } from './ephemeris';
 import { primaryOf } from './solar-system';
 import { OrbitingId } from './celestial-body';
 import { Vec3Tuple } from './cr3bp';
-import { CollinearFrame, collinearFrame } from './halo';
+import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
 import {
   CATALOG_STRIDE, CatalogFamily, CatalogSystem, CatalogSystemId, decodeCatalogPoints,
 } from './orbit-catalog';
+import {
+  LocalTime, dawnDuskElements, molniyaElements, sunSyncRepeatGroundTrackElements, tundraElements,
+} from './earth-reference-orbits';
+import { OrbitalElements, positionOnOrbit, trueAnomalyFromMean } from './elements';
 import { Vec3, add, cross, len, norm, scale, sub } from './vec3';
 
 export type GuidePoint = 'L1' | 'L2' | 'L3';
@@ -94,17 +98,77 @@ function familyPoints(family: CatalogFamily): Float32Array {
   return values;
 }
 
-// 族の s∈[0,1] を挟む2メンバーの添字と内分比。範囲外は端で頭打ちにする。
-function bracketMember(family: CatalogFamily, s: number): { lo: number; hi: number; f: number } {
-  const members = family.members;
-  const last = members.length - 1;
+// 単調増加列 valueAt(0..count-1) の中で target を挟む2添字と内分比。範囲外は端で頭打ちにする。
+function bracketAt(count: number, valueAt: (i: number) => number, target: number): { lo: number; hi: number; f: number } {
+  const last = count - 1;
   if (last <= 0) return { lo: 0, hi: 0, f: 0 };
   let i = 0;
-  while (i < last - 1 && (members[i + 1]?.s ?? 1) < s) i++;
-  const sLo = members[i]?.s ?? 0;
-  const sHi = members[i + 1]?.s ?? 1;
-  const span = sHi - sLo;
-  return { lo: i, hi: i + 1, f: span > 0 ? Math.min(1, Math.max(0, (s - sLo) / span)) : 0 };
+  while (i < last - 1 && valueAt(i + 1) < target) i++;
+  const lo = valueAt(i);
+  const hi = valueAt(i + 1);
+  const span = hi - lo;
+  return { lo: i, hi: i + 1, f: span > 0 ? Math.min(1, Math.max(0, (target - lo) / span)) : 0 };
+}
+
+// 族の s∈[0,1] を挟む2メンバーの添字と内分比。範囲外は端で頭打ちにする。
+function bracketMember(family: CatalogFamily, s: number): { lo: number; hi: number; f: number } {
+  return bracketAt(family.members.length, (i) => family.members[i]?.s ?? 0, s);
+}
+
+// 族に沿った弧長パラメータ u∈[0,1](0=族の始端、1=終端)に対応する、members と同じ添字の
+// 累積弧長の表。周期・ヤコビ定数をそれぞれ族内の範囲で正規化し、そのユークリッド距離を隣接
+// メンバー間で足し合わせて弧長とする — 焼き込み元データ(CatalogMember.s)の並び順の疎密に
+// よらず、族に沿った位置を「見た目の変化量」で測るため。
+interface FamilyArcLength {
+  readonly u: readonly number[];
+}
+
+const familyArcLengths = new WeakMap<CatalogFamily, FamilyArcLength>();
+
+// 族ごとに一度だけ弧長の表を組み、WeakMap へ憶えておく。
+function familyArcLength(family: CatalogFamily): FamilyArcLength {
+  const cached = familyArcLengths.get(family);
+  if (cached !== undefined) return cached;
+
+  const members = family.members;
+  const last = members.length - 1;
+  if (last <= 0) {
+    const result: FamilyArcLength = { u: members.map(() => 0) };
+    familyArcLengths.set(family, result);
+    return result;
+  }
+
+  let periodMin = Infinity; let periodMax = -Infinity;
+  let jacobiMin = Infinity; let jacobiMax = -Infinity;
+  for (const m of members) {
+    periodMin = Math.min(periodMin, m.period); periodMax = Math.max(periodMax, m.period);
+    jacobiMin = Math.min(jacobiMin, m.jacobi); jacobiMax = Math.max(jacobiMax, m.jacobi);
+  }
+  const periodSpan = periodMax - periodMin || 1;
+  const jacobiSpan = jacobiMax - jacobiMin || 1;
+
+  const cumulative: number[] = [0];
+  for (let i = 1; i <= last; i++) {
+    const dp = (members[i]!.period - members[i - 1]!.period) / periodSpan;
+    const dj = (members[i]!.jacobi - members[i - 1]!.jacobi) / jacobiSpan;
+    cumulative.push(cumulative[i - 1]! + Math.hypot(dp, dj));
+  }
+  const total = cumulative[last]! || 1;
+  const result: FamilyArcLength = { u: cumulative.map((c) => c / total) };
+  familyArcLengths.set(family, result);
+  return result;
+}
+
+// 族に沿った弧長パラメータ u∈[0,1] から、カタログの実際のメンバー選択に使う s
+// (CatalogMember.s、焼き込み元データの並び順基準の位置)を求める。複数本を u で等間隔に
+// 選べば、画面上の線の間隔が(周期・ヤコビ定数の変化量で測って)均等に見える。
+export function familyVisualS(family: CatalogFamily, u: number): number {
+  const { u: table } = familyArcLength(family);
+  const target = Math.min(1, Math.max(0, u));
+  const { lo, hi, f } = bracketAt(table.length, (i) => table[i] ?? 0, target);
+  const sLo = family.members[lo]?.s ?? 0;
+  const sHi = family.members[hi]?.s ?? 1;
+  return sLo + f * (sHi - sLo);
 }
 
 // 族の s の位置にある軌道を、ECI [m] のガイド線として返す。s は 0 が族の始端、1 が終端で、
@@ -163,7 +227,11 @@ function lerp(a: number, b: number, f: number): number {
 }
 
 // リサジュー軌道の軌跡。面内・面外の振幅と位相を独立に取り、cycles 周ぶんの開いた折れ線を返す。
-// 面内は振動数 λ、面外は ωz で振動するので、両者が噛み合わず閉じない。
+// 面内は振動数 λ、面外は ωz で振動し両者が噛み合わないので閉じない。形状には Richardson
+// (1980) の三次近似(halo.ts の richardsonState)を使い、振幅による軌道面の歪みを反映する。
+// inPlane/outOfPlane は無次元(L点局所γ単位 frame.r*frame.gamma に対する比)。系ごとに
+// R*gamma が数桁違うため、メートルではなく比で受け取ることでどの系でも同じ値が Richardson
+// 近似の妥当域(目安 0〜0.5)に収まる。
 export function lissajousLoop(
   t: number, ephemeris: Ephemeris, system: CatalogSystemId, point: GuidePoint,
   inPlane: number, outOfPlane: number, inPlanePhase: number, outOfPlanePhase: number,
@@ -173,18 +241,23 @@ export function lissajousLoop(
   if (ephemeris.registry[secondary] === undefined) return null;
   if (primaryOf(ephemeris.registry, secondary) === null) return null;
   const frame: CollinearFrame = collinearFrame(secondary, point, t, ephemeris);
+  const coeffs = richardsonCoefficients(frame);
+  const deltaN = point === 'L2' ? -1 : 1;
+  const unit = frame.r * frame.gamma;
+  const axHat = inPlane;
+  const azHat = outOfPlane;
+  const zRatio = frame.omegaZ / frame.lambda;
 
-  const ratio = frame.omegaZ / frame.lambda;
   const points: Vec3[] = [];
   const times: number[] = [];
   for (let i = 0; i < samples; i++) {
     const u = i / (samples - 1);
     const phase = 2 * Math.PI * cycles * u;
-    const local: Vec3Tuple = [
-      -Math.cos(phase + inPlanePhase) * inPlane,
-      frame.kappa * Math.sin(phase + inPlanePhase) * inPlane,
-      Math.sin(ratio * phase + outOfPlanePhase) * outOfPlane,
-    ];
+    const omegaCorrection = 1 + coeffs.s1 * axHat * axHat + coeffs.s2 * azHat * azHat;
+    const theta1 = omegaCorrection * (phase + inPlanePhase);
+    const psiZ = omegaCorrection * (zRatio * phase + outOfPlanePhase);
+    const { x, y, z } = richardsonState(coeffs, frame.kappa, deltaN, axHat, azHat, theta1, 1, psiZ, 1);
+    const local: Vec3Tuple = [x * unit, y * unit, z * unit];
     points.push(add(frame.origin, add(
       add(scale(frame.xHat, local[0]), scale(frame.yHat, local[1])),
       scale(frame.zHat, local[2]),
@@ -192,4 +265,54 @@ export function lissajousLoop(
     times.push(u);
   }
   return { points, times, closed: false };
+}
+
+// 地球専用の参照軌道(軌道ガイドタブ「基本」群、静止軌道を除く4種類)を1周ぶんの点数で
+// 打った折れ線。points/times は真近点角ではなく平均近点角(=経過時間)で等間隔に取るため、
+// 進行方向マーカーが実際の軌道速度どおり近点で速く・遠点で遅く動く。
+const REFERENCE_ORBIT_SAMPLES = 128;
+
+function elementsLoop(elements: OrbitalElements | null, centerEci: Vec3): GuideLoop | null {
+  if (elements === null) return null;
+  const points: Vec3[] = [];
+  const times: number[] = [];
+  for (let i = 0; i < REFERENCE_ORBIT_SAMPLES; i++) {
+    const u = i / REFERENCE_ORBIT_SAMPLES;
+    const nu = trueAnomalyFromMean(u * 2 * Math.PI, elements.e);
+    points.push(add(centerEci, positionOnOrbit(elements, nu)));
+    times.push(u);
+  }
+  return { points, times, closed: true, period: elements.period };
+}
+
+// 太陽同期準回帰軌道のガイド線。地球がレジストリに無ければ null。
+export function sunSyncRepeatGroundTrackLoop(
+  t: number, ephemeris: Ephemeris, repeatDays: number, revsPerRepeat: number,
+): GuideLoop | null {
+  if (!('earth' in ephemeris.registry)) return null;
+  return elementsLoop(sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat), ephemeris.positionOf('earth', t));
+}
+
+// 太陽方向の昇交点赤経(elements.ts の orbitPlaneBasis の規約: raan=0 で昇交点は +X 方向、
+// raan を Y 軸まわりに正転すると昇交点は -Z 側へ回る)を、その瞬間の太陽方向から逆算する。
+export function dawnDuskGuideLoop(
+  t: number, ephemeris: Ephemeris, repeatDays: number, revsPerRepeat: number, localTime: LocalTime,
+): GuideLoop | null {
+  if (!('earth' in ephemeris.registry)) return null;
+  const earthPos = ephemeris.positionOf('earth', t);
+  const sunDir = ephemeris.sunDirFrom(earthPos, t);
+  const sunRaanDeg = (Math.atan2(-sunDir.z, sunDir.x) * 180) / Math.PI;
+  return elementsLoop(dawnDuskElements(repeatDays, revsPerRepeat, localTime, sunRaanDeg), earthPos);
+}
+
+// モルニヤ軌道のガイド線。地球がレジストリに無ければ null。
+export function molniyaGuideLoop(t: number, ephemeris: Ephemeris, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
+  if (!('earth' in ephemeris.registry)) return null;
+  return elementsLoop(molniyaElements(perigeeAltitude, raanDeg), ephemeris.positionOf('earth', t));
+}
+
+// ツンドラ軌道のガイド線。地球がレジストリに無ければ null。
+export function tundraGuideLoop(t: number, ephemeris: Ephemeris, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
+  if (!('earth' in ephemeris.registry)) return null;
+  return elementsLoop(tundraElements(perigeeAltitude, raanDeg), ephemeris.positionOf('earth', t));
 }

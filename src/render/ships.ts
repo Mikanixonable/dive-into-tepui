@@ -52,12 +52,6 @@ export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
 // 蛇腹の折り畳みが解消された1枚の板とみなせるごく小さい値を残す。
 export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
 
-// ラジエーター折り目 Group 名(ヒンジ Group の子孫として入れ子)。
-// tools/export-models.mjs の命名(`${radiatorUp/Down}Fold${i}`)と一致させる。
-export function radiatorFoldName(side: 'up' | 'down', fold: number): string {
-  return `${RADIATOR_OBJECT_NAMES[side]}Fold${fold}`;
-}
-
 export { RADIATOR_HINGE } from './radiator-hinge';
 
 // マガジン寸法(機体座標系)。ベルト連結間隔(MAG_BELT_PITCH)は game.ts が

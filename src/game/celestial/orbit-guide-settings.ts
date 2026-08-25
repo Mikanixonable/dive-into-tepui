@@ -39,14 +39,45 @@ export interface GuideKindSettings {
 // リサジュー軌道だけは連続な族として焼き込まないので、振幅と位相を直に指定する。
 export interface LissajousSettings {
   readonly on: boolean;
-  readonly inPlane: number; // [m]
-  readonly outOfPlane: number; // [m]
+  readonly inPlane: number; // 無次元(L点局所γ単位に対する比)
+  readonly outOfPlane: number; // 無次元(L点局所γ単位に対する比)
   readonly inPlanePhase: number; // [rad]
   readonly outOfPlanePhase: number; // [rad]
   readonly cycles: number;
   readonly l1: boolean;
   readonly l2: boolean;
   readonly l3: boolean;
+  readonly colorStart: number;
+  readonly opacity: number;
+  readonly direction: DirectionMarkerMode;
+  readonly animate: boolean;
+}
+
+// 太陽同期準回帰軌道・ドーンダスク軌道の表示設定。族を持たない単一軌道なので、
+// GuideKindSettings とは別の形を持つ(リサジューと同じ扱い)。
+export interface SunSyncSettings {
+  readonly on: boolean;
+  readonly repeatDays: number; // 回帰日数
+  readonly revsPerRepeat: number; // 回帰日数の間に周回する回数
+  readonly colorStart: number;
+  readonly opacity: number;
+  readonly direction: DirectionMarkerMode;
+  readonly animate: boolean;
+}
+
+export type LocalTime = 'dawn' | 'dusk';
+
+// ドーンダスク軌道は太陽同期準回帰軌道と同じパラメータに加え、昇交点の地方太陽時を持つ。
+export interface DawnDuskSettings extends SunSyncSettings {
+  readonly localTime: LocalTime;
+}
+
+// モルニヤ軌道・ツンドラ軌道の表示設定。傾斜角・近点引数・周期は理論値に固定するため
+// 持たず、近地点高度・昇交点赤経だけを持つ。
+export interface CriticalInclinationSettings {
+  readonly on: boolean;
+  readonly perigeeAltitude: number; // [m]
+  readonly raan: number; // 昇交点赤経 [deg]
   readonly colorStart: number;
   readonly opacity: number;
   readonly direction: DirectionMarkerMode;
@@ -70,11 +101,15 @@ export interface ZeroVelocitySettings {
 
 export interface OrbitGuideSettings {
   readonly geostationary: boolean;
-  // 群ごとの系トグル。焼き込みカタログに無い系は UI に出さない。
-  readonly systems: Readonly<Record<GuideGroupId, Readonly<Partial<Record<CatalogSystemId, boolean>>>>>;
+  // 系トグル。全群に共通で効く。焼き込みカタログに無い系は UI に出さない。
+  readonly systems: Readonly<Partial<Record<CatalogSystemId, boolean>>>;
   // 焼き込みカタログの族 id → その種類の表示設定。カタログに無い族の設定は無視される。
   readonly kinds: Readonly<Record<string, GuideKindSettings>>;
   readonly lissajous: LissajousSettings;
+  readonly sunSync: SunSyncSettings;
+  readonly dawnDusk: DawnDuskSettings;
+  readonly molniya: CriticalInclinationSettings;
+  readonly tundra: CriticalInclinationSettings;
   readonly zeroVelocity: ZeroVelocitySettings;
 }
 
@@ -95,24 +130,17 @@ export function defaultKindSettings(colorStart: number, colorEnd: number): Guide
   };
 }
 
-const DEFAULT_SYSTEMS: Readonly<Partial<Record<CatalogSystemId, boolean>>> = {
-  'earth-moon': true,
-  'sun-earth': false,
-};
-
 export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
   geostationary: true,
   systems: {
-    collinear: DEFAULT_SYSTEMS,
-    triangular: DEFAULT_SYSTEMS,
-    secondary: DEFAULT_SYSTEMS,
-    resonant: DEFAULT_SYSTEMS,
+    'earth-moon': true,
+    'sun-earth': false,
   },
   kinds: {},
   lissajous: {
     on: false,
-    inPlane: 15_000_000,
-    outOfPlane: 30_000_000,
+    inPlane: 0.1,
+    outOfPlane: 0.2,
     inPlanePhase: 0,
     outOfPlanePhase: 0,
     cycles: 4,
@@ -120,6 +148,45 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
     l2: true,
     l3: false,
     colorStart: 0xb08bc9,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+  },
+  // 太陽同期準回帰軌道の既定値: 回帰14日・98周は高度約800kmの太陽同期軌道に相当する。
+  sunSync: {
+    on: false,
+    repeatDays: 14,
+    revsPerRepeat: 98,
+    colorStart: 0x8bc9a8,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+  },
+  dawnDusk: {
+    on: false,
+    repeatDays: 14,
+    revsPerRepeat: 98,
+    localTime: 'dawn',
+    colorStart: 0xc9b08b,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+  },
+  // モルニヤ軌道の既定値: 近地点高度600kmは実際の運用に近い値。
+  molniya: {
+    on: false,
+    perigeeAltitude: 600e3,
+    raan: 0,
+    colorStart: 0xc98b8b,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+  },
+  tundra: {
+    on: false,
+    perigeeAltitude: 600e3,
+    raan: 0,
+    colorStart: 0x8b96c9,
     opacity: 0.4,
     direction: 'none',
     animate: false,
@@ -159,10 +226,27 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
     };
   }
   const zv = settings.zeroVelocity;
+  const clampSunSync = <T extends SunSyncSettings>(s: T): T => ({
+    ...s,
+    repeatDays: Math.max(1, Math.round(s.repeatDays)),
+    revsPerRepeat: Math.max(1, Math.round(s.revsPerRepeat)),
+    opacity: clamp(s.opacity, 0, 1),
+  });
   return {
     ...settings,
     kinds,
-    lissajous: { ...settings.lissajous, cycles: Math.max(1, Math.round(settings.lissajous.cycles)) },
+    lissajous: {
+      ...settings.lissajous,
+      cycles: Math.max(1, Math.round(settings.lissajous.cycles)),
+      // Richardson近似の妥当域(目安 0〜0.3)へクランプする。旧保存データはメートル単位
+      // だったため、無次元比として読み直すとこの範囲を大きく外れて安全に丸められる。
+      inPlane: clamp(settings.lissajous.inPlane, 0.01, 0.3),
+      outOfPlane: clamp(settings.lissajous.outOfPlane, 0.01, 0.3),
+    },
+    sunSync: clampSunSync(settings.sunSync),
+    dawnDusk: clampSunSync(settings.dawnDusk),
+    molniya: { ...settings.molniya, perigeeAltitude: Math.max(0, settings.molniya.perigeeAltitude), raan: ((settings.molniya.raan % 360) + 360) % 360, opacity: clamp(settings.molniya.opacity, 0, 1) },
+    tundra: { ...settings.tundra, perigeeAltitude: Math.max(0, settings.tundra.perigeeAltitude), raan: ((settings.tundra.raan % 360) + 360) % 360, opacity: clamp(settings.tundra.opacity, 0, 1) },
     zeroVelocity: {
       ...zv,
       jacobiMin: Math.min(zv.jacobiMin, zv.jacobiMax),
@@ -186,6 +270,10 @@ export function loadOrbitGuideSettings(): OrbitGuideSettings {
       systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...stored.systems },
       kinds: { ...stored.kinds },
       lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...stored.lissajous },
+      sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...stored.sunSync },
+      dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...stored.dawnDusk },
+      molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, ...stored.molniya },
+      tundra: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.tundra, ...stored.tundra },
       zeroVelocity: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity, ...stored.zeroVelocity },
     });
   } catch {

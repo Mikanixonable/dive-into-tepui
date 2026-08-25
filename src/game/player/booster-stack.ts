@@ -199,13 +199,3 @@ export class BoosterStack {
     return new BoosterStack(data.stages);
   }
 }
-
-/** BoosterStack.exportData の関数版。保存層からクラスへ依存したくない場合に使う。 */
-export function exportBoosterStack(stack: BoosterStack): BoosterStackData {
-  return stack.exportData();
-}
-
-/** BoosterStack.importData の関数版。 */
-export function importBoosterStack(data: BoosterStackData): BoosterStack {
-  return BoosterStack.importData(data);
-}

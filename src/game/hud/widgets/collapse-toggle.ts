@@ -29,19 +29,26 @@ export function syncCollapseToggle(button: HTMLElement, target: HTMLElement, lab
 }
 
 // target の表示/非表示を collapsed クラスで切り替えるボタンを1つ組み、root へ追加して返す。
+// extraHitEls は、button 自身に加えて同じ切り替えを受け付ける要素(見出しテキストなど) —
+// button の祖先ではなく兄弟であることが呼び出し側の前提。root がボタンの置き場を兼ねる
+// だけの広い要素(画面全体・パネル全体など)の呼び出しでは渡さない。
 export function buildCollapseToggle(
   root: HTMLElement, id: string, className: string, target: HTMLElement, labels: CollapseToggleLabels,
+  extraHitEls: readonly HTMLElement[] = [],
 ): HTMLElement {
   const button = document.createElement('button');
   button.id = id;
   if (className) button.className = className;
   root.appendChild(button);
-  button.addEventListener('pointerdown', (event) => event.stopPropagation());
   // クリックのたびに collapsed を反転し、その結果へ見た目を合わせ直す。
-  button.addEventListener('click', () => {
+  const toggle = (): void => {
     target.classList.toggle('collapsed');
     syncCollapseToggle(button, target, labels);
-  });
+  };
+  for (const el of [button, ...extraHitEls]) {
+    el.addEventListener('pointerdown', (event) => event.stopPropagation());
+    el.addEventListener('click', toggle);
+  }
   syncCollapseToggle(button, target, labels);
   return button;
 }

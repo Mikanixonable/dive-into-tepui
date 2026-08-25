@@ -49,22 +49,33 @@ export class UnsupportedEphemerisEpochError extends RangeError {
   }
 }
 
+// jdTdb を高精度に扱えるプロファイル。無ければ null(この時代は CELESTIAL.md 2.2 の
+// とおり解析暦だけで扱う、正常な状態)。有効期間は重ならない。将来重なるプロファイルを
+// 追加するときは、暗黙の優先順位ではなく呼び出し側に requestedProfile を要求するよう変更する。
+export function profileAtOrNull(jdTdb: number): EphemerisProfile | null {
+  if (!Number.isFinite(jdTdb)) throw new TypeError(`JD_TDB は有限値でなければならない: ${jdTdb}`);
+  for (const profile of Object.values(EPHEMERIS_PROFILES)) {
+    if (jdTdb >= profile.validStartJdTdb && jdTdb <= profile.validEndJdTdb) return profile;
+  }
+  return null;
+}
+
+// jdTdb を高精度に扱えるプロファイル。無ければ例外(requestedProfile を指定すれば、
+// その1つが範囲を覆っているかだけを問う)。
 export function profileAt(
   jdTdb: number,
   requestedProfile?: EphemerisProfileId,
 ): EphemerisProfile {
-  if (!Number.isFinite(jdTdb)) throw new TypeError(`JD_TDB は有限値でなければならない: ${jdTdb}`);
   if (requestedProfile !== undefined) {
+    // その1つのプロファイルが覆っているかだけを問う(他のプロファイルへは回さない)。
+    if (!Number.isFinite(jdTdb)) throw new TypeError(`JD_TDB は有限値でなければならない: ${jdTdb}`);
     const profile = EPHEMERIS_PROFILES[requestedProfile];
     if (jdTdb < profile.validStartJdTdb || jdTdb > profile.validEndJdTdb) {
       throw new UnsupportedEphemerisEpochError(jdTdb, requestedProfile);
     }
     return profile;
   }
-  // 有効期間は重ならない。将来重なるプロファイルを追加するときは、暗黙の優先順位ではなく
-  // 呼び出し側に requestedProfile を要求するようこの関数を変更する。
-  for (const profile of Object.values(EPHEMERIS_PROFILES)) {
-    if (jdTdb >= profile.validStartJdTdb && jdTdb <= profile.validEndJdTdb) return profile;
-  }
-  throw new UnsupportedEphemerisEpochError(jdTdb);
+  const profile = profileAtOrNull(jdTdb);
+  if (profile === null) throw new UnsupportedEphemerisEpochError(jdTdb);
+  return profile;
 }
