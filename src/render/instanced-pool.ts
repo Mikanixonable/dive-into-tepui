@@ -1,6 +1,7 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque, markOverlay, markSunShadowCaster } from './pipeline/lit-layer';
+import type { SunShadowExtent } from './pipeline/sun-shadow-casters';
 
 // three の InstanceNode は instanceMatrix の受け渡し方を InstancedMesh.count から決め、
 // その判断とバッファ長を最初の描画時に一度だけ確定する。よって count は容量に固定した
@@ -21,9 +22,7 @@ export class InstancedPool {
   private readonly instanceRadius: number;
   // 今フレームに push された個体を包む描画座標の AABB。endFrame で公開用の箱へ移す。
   private readonly pending = new THREE.Box3();
-  private readonly extent: { worldBounds: THREE.Box3 } = {
-    worldBounds: new THREE.Box3(),
-  };
+  private readonly extent: SunShadowExtent = { worldBounds: new THREE.Box3() };
   private readonly scratchCenter = new THREE.Vector3();
   private readonly scratchCorner = new THREE.Vector3();
 
