@@ -82,8 +82,8 @@ export class SunShadowMaps {
   private readonly lightForward = new THREE.Vector3();
   // このフレームにスロットを与えた塊の枠(描画座標の AABB)。
   private readonly clusters: THREE.Box3[] = [];
-  // 枠を起こした受け手が許す枠の 1 辺 [m]。枠を広げてよいかの上限になる。
-  private readonly seedLimits: number[] = [];
+  // 枠の 1 辺 [m]。相乗りの可否をこれで測る — **枠はこの大きさのまま平行移動するだけ。**
+  private readonly clusterSizes: number[] = [];
   // 枠の半径の上限 [m]。**被覆の枠は箱ぜんたいを覆う必要があるので上限を持たない**(Infinity)。
   // 細かい窓だけが、要求から決まる半径でここを縛る。
   private readonly clusterCaps: number[] = [];
@@ -145,7 +145,7 @@ export class SunShadowMaps {
   ): void {
     for (const slot of this.slotUniforms) slot.active.value = 0;
     this.clusters.length = 0;
-    this.seedLimits.length = 0;
+    this.clusterSizes.length = 0;
     this.clusterCaps.length = 0;
     if (enabled) {
       // 遮蔽器の箱は親の変換込みで測る必要がある。**Box3.expandByObject は親の行列を更新しない**
@@ -241,9 +241,10 @@ export class SunShadowMaps {
       this.boundingSphere.set(receiver.center, receiver.radius);
       if (!this.frustum.intersectsSphere(this.boundingSphere)) continue;
       if (!this.casters.some((caster) => this.castsOnto(caster, receiver, sun))) continue;
+      // **箱までの距離で測る。** 外接球の表面までにすると、広がった枝(散らばった小片の雲)は
+      // 半径が大きすぎて距離が 0 へ潰れ、どれも同じ最優先になって順位が付かない。
       receiver.requiredTexel = requiredTexel(
-        this.cameraPosition.distanceTo(receiver.center), receiver.radius,
-        camera.near, camera.fov, viewportHeight,
+        receiver.box.distanceToPoint(this.cameraPosition), camera.near, camera.fov, viewportHeight,
       );
     }
   }
@@ -281,53 +282,65 @@ export class SunShadowMaps {
   // 既存の枠が覆っていて十分に細かいなら何もしない。覆っていない枠へ足せるのは、**足したあとも
   // その枠を起こした受け手の要求を満たせるとき**だけ。どれも駄目なら新しい枠を起こし、枠が
   // 尽きていればその受け手は諦める(要求の緩い側から捨てられる)。
+  // 要求の厳しい受け手から順に枠を配る。**枠は要求どおりの大きさで開き、低い要求のために
+  // 広げない** — 広げるとその枠を起こした受け手まで一緒に粗くなる。既存の枠へ相乗りできるのは、
+  // 枠の大きさを変えずに平行移動して収まるときだけ。
+  //
+  // **最後の 1 枚は被覆に取っておく。** 要求どおりに縮めた枠は遮蔽器を覆いきれないので、
+  // はみ出した部分を拾う粗い枠が要る。
   private buildClusters(cameraPosition: THREE.Vector3): void {
+    const windowSlots = SHADOW_SLOT_COUNT - 1;
     for (const receiver of this.casters) {
       if (!Number.isFinite(receiver.requiredTexel)) break; // 昇順なので、以降はすべて要求が無い
       const limit = 2 * extentForTexel(receiver.requiredTexel, SHADOW_SLOT_SIZE);
-      // **粗い枠から順に試す。** seedLimits は昇順に積まれるので、後ろの枠ほど要求が緩い。
-      // 細かい枠へ足すと、その枠を起こした近くの受け手まで一緒に粗くなる。
-      let placed = false;
-      for (let index = this.clusters.length - 1; index >= 0; index--) {
-        const cluster = this.clusters[index]!;
-        this.scratchBox.copy(cluster).union(receiver.box);
-        if (this.frameSize(this.scratchBox) > Math.min(limit, this.seedLimits[index]!)) continue;
-        cluster.copy(this.scratchBox);
-        placed = true;
-        break;
-      }
-      if (placed) continue;
-      if (this.clusters.length < SHADOW_SLOT_COUNT) {
-        this.seedLimits.push(limit);
-        this.clusterCaps.push(Infinity);
-        this.clusters.push(receiver.box.clone());
-        continue;
-      }
-      // 枠が尽きた。**最後の 1 枚へ無条件に飲ませる** — 捨てると影がまるごと消え、カメラを
-      // 動かすたびに点滅する。最後の枠を起こしたのは残りの中でいちばん要求が緩い受け手なので、
-      // 粗くなるのはもともと粗くてよかった側だけで、手前の枠は巻き添えにならない。
-      this.clusters[SHADOW_SLOT_COUNT - 1]!.union(receiver.box);
+      if (this.shareFrame(receiver, limit)) continue;
+      if (this.clusters.length >= windowSlots) break;
+      this.openFrame(receiver, limit, cameraPosition);
     }
-    this.refineClusters(cameraPosition);
+    this.addCoverageFrame();
   }
 
-  // 余った枠を、いちばん粗く見えている受け手の細かい窓へ回す。**窓は受け手より小さくてよい** —
-  // 覆いきれなかった部分は被覆の枠が拾い、受け手は画素ごとに細かいほうを選ぶ。被覆の枠は
-  // 遮蔽器の箱に密着していて、カメラが寄っても縮まない。窓だけがカメラ距離に追随する。
-  private refineClusters(cameraPosition: THREE.Vector3): void {
-    for (const receiver of this.casters) {
-      if (this.clusters.length >= SHADOW_SLOT_COUNT) return;
-      if (!Number.isFinite(receiver.requiredTexel)) return; // 昇順なので、以降はすべて要求が無い
-      const limit = 2 * extentForTexel(receiver.requiredTexel, SHADOW_SLOT_SIZE);
-      if (this.frameSize(receiver.box) <= limit) continue; // 被覆の枠だけで足りている
-      // 窓はカメラにいちばん近い点へ寄せる。そこが最も細かさを要求する場所である。
-      receiver.box.clampPoint(cameraPosition, this.center);
-      this.scratchBox.setFromCenterAndSize(this.center, this.size.setScalar(limit));
-      this.scratchBox.intersect(receiver.box);
-      this.seedLimits.push(limit);
-      this.clusterCaps.push(limit * 0.5);
-      this.clusters.push(this.scratchBox.clone());
+  // 既存の枠へ相乗りさせる。**枠の大きさは変えない** — 中身の和が今の大きさに収まるときだけ、
+  // 枠をずらして両方を入れる。粗い枠から試すのは、細かい枠をできるだけ手つかずで残すため。
+  private shareFrame(receiver: Caster, limit: number): boolean {
+    for (let index = this.clusters.length - 1; index >= 0; index--) {
+      if (this.clusterSizes[index]! > limit) continue; // その枠では要求を満たせない
+      this.scratchBox.copy(this.clusters[index]!).union(receiver.box);
+      if (this.frameSize(this.scratchBox) > this.clusterSizes[index]!) continue;
+      this.clusters[index]!.copy(this.scratchBox);
+      return true;
     }
+    return false;
+  }
+
+  // 受け手 1 つぶんの枠を開く。要求が箱より細かいときは、**カメラにいちばん近い点へ枠を寄せて
+  // そこだけを撮る** — 覆いきれない残りは被覆の枠が拾う。
+  private openFrame(receiver: Caster, limit: number, cameraPosition: THREE.Vector3): void {
+    const boxSize = this.frameSize(receiver.box);
+    const size = Math.min(boxSize, limit);
+    if (size < boxSize) {
+      receiver.box.clampPoint(cameraPosition, this.center);
+      this.scratchBox.setFromCenterAndSize(this.center, this.size.setScalar(size)).intersect(receiver.box);
+    } else {
+      this.scratchBox.copy(receiver.box);
+    }
+    this.clusterSizes.push(size);
+    this.clusterCaps.push(size * 0.5);
+    this.clusters.push(this.scratchBox.clone());
+  }
+
+  // 最後の 1 枚へ、影を要求する受け手をすべて包む枠を置く。**縮めた枠がこぼした部分と、枠が
+  // 尽きて配れなかった受け手を、まとめてここが拾う。**
+  private addCoverageFrame(): void {
+    this.scratchBox.makeEmpty();
+    for (const receiver of this.casters) {
+      if (!Number.isFinite(receiver.requiredTexel)) break;
+      this.scratchBox.union(receiver.box);
+    }
+    if (this.scratchBox.isEmpty()) return;
+    this.clusterSizes.push(this.frameSize(this.scratchBox));
+    this.clusterCaps.push(Infinity);
+    this.clusters.push(this.scratchBox.clone());
   }
 
   // いま構えているライトカメラから見た box の枠の半径 [m]。等方な texel を保つため長辺で
