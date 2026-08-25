@@ -139,6 +139,7 @@ export function syncSunSyncRow(row: RepeatGroundTrackRow, s: SunSyncSettings): v
   syncValueField(row.revsPerRepeatField, REVS_PER_REPEAT_MAPPING, s.revsPerRepeat);
 }
 
+// buildDawnDuskRow が作った行を、現在の設定値へ合わせる。
 export function syncDawnDuskRow(row: DawnDuskRow, s: DawnDuskSettings): void {
   syncSunSyncRow(row, s);
   row.localTime.setSelected(s.localTime);
