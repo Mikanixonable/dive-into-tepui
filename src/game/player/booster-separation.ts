@@ -1,4 +1,4 @@
-import { Vec3, addScaled, scale } from '../../physics/vec3';
+import { Vec3, addScaled } from '../../physics/vec3';
 
 export interface BoosterSeparationVelocities {
   readonly player: Vec3;
@@ -25,20 +25,4 @@ export function boosterSeparationVelocities(
     player: addScaled(baseVelocity, forward, playerDelta),
     booster: addScaled(baseVelocity, forward, boosterDelta),
   };
-}
-
-// 分離後の相対速度を返すテスト/診断用ヘルパー。
-export function boosterRelativeVelocity(
-  velocities: BoosterSeparationVelocities,
-): Vec3 {
-  return addScaled(velocities.booster, velocities.player, -1);
-}
-
-// 分離前後の並進運動量を比較するテスト/診断用ヘルパー。
-export function boosterSeparationMomentum(
-  velocities: BoosterSeparationVelocities,
-  playerMass: number,
-  boosterMass: number,
-): Vec3 {
-  return addScaled(scale(velocities.player, playerMass), velocities.booster, boosterMass);
 }

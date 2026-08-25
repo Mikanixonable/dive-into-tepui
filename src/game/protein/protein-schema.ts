@@ -163,11 +163,6 @@ export interface ProteinHudSnapshot {
   }[];
 }
 
-export interface ProteinLegacyState {
-  readonly health?: number;
-  readonly protein?: ProteinSaveData;
-}
-
 export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
   const issues: string[] = [];
   if (asset.schemaVersion !== 1) issues.push(`unsupported schemaVersion: ${asset.schemaVersion}`);
