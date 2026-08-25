@@ -33,6 +33,7 @@ import type { EnemySaveData } from '../save-data';
 import { currentThemePalette } from '../theme';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import { proteinEnemyDefinitionFor } from '../protein/protein-enemy-registry';
+import { proteinMotionModeDisplacements } from '../protein/protein-motion-modes';
 import { ProteinRuntime } from '../protein/protein-runtime';
 import { ProteinRibbonCollisionGeometry } from '../protein/protein-ribbon-collision';
 import { createProteinMotionBinding, type ProteinMotionBinding } from '../../render/protein-motion-material';
@@ -197,10 +198,17 @@ export class Enemy extends Ship {
       throw new Error(`No protein enemy definition registered for ${proteinId}`);
     }
     const motionBinding = proteinDefinition
-      ? createProteinMotionBinding(proteinDefinition.motion.residueCount)
+      ? createProteinMotionBinding(
+        proteinDefinition.motion.residueCount,
+        proteinMotionModeDisplacements(proteinDefinition.motion),
+        proteinDefinition.motion.modes.length,
+      )
       : undefined;
     const renderObject = buildEnemyRenderObject(enemyKind, accent, motionBinding);
-    super(name, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
+    // 保存データからの復元は保存済みの名前をそのまま使う。新規生成のときだけ、タンパク質固有の
+    // 名称を陣形役割・識別番号などの既存識別子の前へ冠する。
+    const displayName = !('saved' in init) && proteinDefinition ? `${proteinDefinition.asset.displayName} ${name}` : name;
+    super(displayName, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
     this._worldSfx = worldSfx;
     this._fx = fx;
     this.enemyKind = enemyKind;
@@ -299,14 +307,40 @@ export class Enemy extends Ship {
     return this.proteinRuntime?.hudSnapshot ?? null;
   }
 
-  override sync(fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint): void {
+  // 3km 以内マーカー用に、各機能部位の投影元位置と HUD 表示情報を並べる。displayPos は
+  // markerItem と同じ表示時刻の位置(displayState 経由)を渡すこと。
+  proteinSiteMarkers(displayPos: Vec3): readonly {
+    readonly id: string; readonly worldPos: Vec3; readonly label: string;
+    readonly hp: number; readonly maxHp: number; readonly disabled: boolean; readonly attackable: boolean;
+  }[] {
+    const runtime = this.proteinRuntime;
+    if (!runtime) return [];
+    return runtime.hudSnapshot.sites.map((site) => ({
+      id: site.id,
+      worldPos: runtime.siteWorldPositionById(site.id, displayPos, this.att.q),
+      label: site.label,
+      hp: site.hp,
+      maxHp: site.maxHp,
+      disabled: site.disabled,
+      attackable: site.attackable,
+    }));
+  }
+
+  override sync(
+    fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint,
+    proteinVibrationEnabled = true,
+  ): void {
     super.sync(fo, displayTime);
     if (this.proteinRuntime && this.renderObject.visible) {
       const displayed = this.displayState(displayTime);
       const projectedDiameterPx = viewer && displayed
         ? apparentSizePx(this.radius * 2, metersPerPixel(viewer, displayed.r, window.innerHeight))
         : Number.POSITIVE_INFINITY;
-      this.proteinRuntime.updateVisual(displayTime, projectedDiameterPx);
+      // marker LOD(投影サイズがゆらぎを描かない大きさ)まで落ちた敵は、部位・修飾・
+      // 結合線の更新と残基投影を止める。LOD 判定自体は ProteinRuntime に一本化してある。
+      if (this.proteinRuntime.updateLod(projectedDiameterPx) !== 'marker') {
+        this.proteinRuntime.updateVisual(displayTime, proteinVibrationEnabled);
+      }
     }
   }
 

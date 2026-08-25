@@ -20,7 +20,7 @@ import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { RcsFuelPickup } from '../game-entity/rcs-fuel-pickup';
 import { Base } from '../game-entity/base';
-import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy, generateProteinFormation } from './spawner/enemy-generator';
+import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy, proteinFormationSpawns } from './spawner/enemy-generator';
 import { PROTEIN_ASSET_IDS, type ProteinAssetId } from '../protein/protein-asset-loader';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,
@@ -338,15 +338,22 @@ export class CreativeStage extends Stage {
     const name = `MANUAL-${++this.manualEnemyCount}`;
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return;
-    const enemy = shapeDefinition.kind === 'drifting'
-      ? generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._hud, this._worldSfx, this._fx, this._scene)
-      : shapeDefinition.kind === 'protein'
-        ? generateProteinEnemy(name, state, shapeDefinition.assetId, this.proteinDisplay, this._hud, this._worldSfx, this._fx, this._scene)
-      : generateApproachingEnemy(
-        name, state, C.STAGE0_ENEMY_HP, color, color, shapeDefinition.typeIndex, undefined,
-        this._hud, this._worldSfx, this._fx, this._scene,
+    if (shapeDefinition.kind === 'drifting') {
+      this.addEnemy(generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._hud, this._worldSfx, this._fx, this._scene), this._entities);
+      return;
+    }
+    if (shapeDefinition.kind === 'protein') {
+      this.spawnEnemyWhenReady(
+        shapeDefinition.assetId,
+        () => generateProteinEnemy(name, state, shapeDefinition.assetId, this.proteinDisplay, this._hud, this._worldSfx, this._fx, this._scene),
+        this._entities,
       );
-    this.addEnemy(enemy, this._entities);
+      return;
+    }
+    this.addEnemy(generateApproachingEnemy(
+      name, state, C.STAGE0_ENEMY_HP, color, color, shapeDefinition.typeIndex, undefined,
+      this._hud, this._worldSfx, this._fx, this._scene,
+    ), this._entities);
   }
 
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
@@ -361,8 +368,8 @@ export class CreativeStage extends Stage {
     const state = kinematicState(player.state.t, position, player.state.v);
     const name = `FORMATION-${++this.manualFormationCount}`;
     const formationId = name;
-    for (const enemy of generateProteinFormation(name, state, player.state.r, this.proteinDisplay, formationId, this._hud, this._worldSfx, this._fx, this._scene)) {
-      this.addEnemy(enemy, this._entities);
+    for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._hud, this._worldSfx, this._fx, this._scene)) {
+      this.spawnEnemyWhenReady(assetId, build, this._entities);
     }
   }
 

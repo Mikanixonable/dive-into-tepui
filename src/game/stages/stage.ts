@@ -2,6 +2,7 @@
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../game-entity/enemy';
+import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import { Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
@@ -25,7 +26,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { CelestialBodyId } from '../../physics/celestial-body';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
-import { profileAt } from '../../physics/ephemeris-profile';
+import { profileAtOrNull } from '../../physics/ephemeris-profile';
 import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../sim-epoch';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
@@ -63,7 +64,10 @@ export type StageDeps = [
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
   readonly id: StageId;
-  createEphemeris(phaseOffsets: Partial<Record<CelestialBodyId, number>>): Promise<Ephemeris>;
+  createEphemeris(
+    phaseOffsets: Partial<Record<CelestialBodyId, number>>, onProgress?: (ratio: number) => void,
+    startSimTime?: number,
+  ): Promise<Ephemeris>;
   // 選択画面が読む項目。
   readonly selectLabel: string;
   readonly selectSub: string;
@@ -93,10 +97,19 @@ export type StageResult = {
 };
 
 export abstract class Stage {
-  // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、精密暦パックを読み込む。
-  static async createEphemeris(phaseOffsets: Partial<Record<CelestialBodyId, number>>): Promise<Ephemeris> {
-    const profile = profileAt(SIM_EPOCH_JD_TDB);
-    const pack = await loadAbsoluteEphemeris(profile.id, SIM_EPOCH_JD_TDB, SIM_EPOCH_JD_TDB + 10 * 365.25);
+  // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、開始時刻(startSimTime、省略時は
+  // ゲーム既定のエポック)が近未来/遠未来いずれかの高精度期間に入っていれば精密暦パックを
+  // 読み込み、どちらにも入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
+  static async createEphemeris(
+    phaseOffsets: Partial<Record<CelestialBodyId, number>>, onProgress?: (ratio: number) => void,
+    startSimTime = 0,
+  ): Promise<Ephemeris> {
+    const startJdTdb = SIM_EPOCH_JD_TDB + startSimTime / 86400;
+    const profile = profileAtOrNull(startJdTdb);
+    if (profile === null) return new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets);
+    const pack = await loadAbsoluteEphemeris(
+      profile.id, profile.validStartJdTdb, profile.validEndJdTdb, onProgress,
+    );
     return new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, pack, SIM_EPOCH_JD_TDB);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
@@ -217,6 +230,12 @@ export abstract class Stage {
   protected addEnemy(enemy: Enemy, entities: EntityManager): void {
     entities.addEnemy(enemy);
     this.scoreCounter.recordSpawnEnemy();
+  }
+
+  // タンパク質アセットの fetch 待ちで実体化を遅らせうる敵を登録する。準備が整い次第
+  // entities へ登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
+  protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, entities: EntityManager): void {
+    entities.spawnEnemyWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。

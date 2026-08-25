@@ -1,7 +1,8 @@
 // HUD の固定バッジ・ステータスバー・通知 CSS (視点バッジ、シミュレーションステータス、スケール定規、ヒント、トースト、カメラリセット)。
+import { MQ_COARSE } from '../breakpoints';
 
 export const HUD_BADGE_STYLE = `
-#hud-simulation-status {
+#hud-topbar {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   pointer-events: auto;
   padding: var(--space-3) var(--space-5); border-radius: 0 0 var(--radius-panel) var(--radius-panel);
@@ -11,21 +12,21 @@ export const HUD_BADGE_STYLE = `
   display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
   max-width: calc(100vw - var(--space-6) * 2);
 }
-#hud-simulation-status .gs-row {
+#hud-topbar .gs-row {
   display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
   max-width: 100%; overflow-x: auto; scrollbar-width: none;
 }
-#hud-simulation-status .v { color: var(--text); }
-#hud-simulation-status .gs-speed-select {
+#hud-topbar .v { color: var(--text); }
+#hud-topbar .gs-speed-select {
   min-width: 76px; padding: var(--space-1) var(--space-5) var(--space-1) var(--space-2);
   border: 1px solid var(--edge); border-radius: var(--radius-micro);
   background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--font-s);
   font-variant-numeric: tabular-nums; cursor: pointer;
 }
-#hud-simulation-status .gs-speed-select:hover,
-#hud-simulation-status .gs-speed-select:focus { border-color: var(--color-primary); background: var(--surface-3); }
-#hud-simulation-status .gs-speed-select.sim-speed-hot { color: var(--color-primary); }
-#hud-simulation-status .gs-sep { color: var(--edge); }
+#hud-topbar .gs-speed-select:hover,
+#hud-topbar .gs-speed-select:focus { border-color: var(--color-primary); background: var(--surface-3); }
+#hud-topbar .gs-speed-select.sim-speed-hot { color: var(--color-primary); }
+#hud-topbar .gs-sep { color: var(--edge); }
 
 #hud-viewbadge {
   gap: var(--space-3);
@@ -66,7 +67,7 @@ export const HUD_BADGE_STYLE = `
 #hud-map-scale .map-scale-tick.end { right: 0; }
 
 #hud-hint {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%);
   background: var(--glass-focus); border: 0; border-radius: var(--radius-panel);
   padding: var(--space-4) var(--space-6);
   color: var(--color-primary-hover); font-size: var(--font-xl);
@@ -74,7 +75,7 @@ export const HUD_BADGE_STYLE = `
   transition: opacity var(--transition-slow); opacity: 0; text-align: center;
 }
 #hud-chase-reset {
-  position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(64px + var(--space-5)); left: 50%; transform: translateX(-50%);
   pointer-events: auto; cursor: pointer;
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
@@ -84,9 +85,12 @@ export const HUD_BADGE_STYLE = `
 }
 #hud-chase-reset:hover { background: var(--surface-2); color: var(--color-primary-hover); }
 #hud-chase-reset:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+@media ${MQ_COARSE} {
+  #hud-chase-reset { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
+}
 
 #hud-toast {
-  position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
+  position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
   background: var(--glass-focus); border: 0; border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
   color: var(--text); font-size: var(--font-xl); text-align: center;
   box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);

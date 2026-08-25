@@ -530,6 +530,7 @@ function saturn(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
     axis,
     v3(center.x, center.y, center.z),
     () => distance / VIEW_HEIGHT,
+    'realistic',
   );
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
@@ -564,7 +565,7 @@ function saturnShadow(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   camera.updateMatrixWorld(true);
   const axis = v3(0, 1, 0);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT);
+  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, 'realistic');
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,

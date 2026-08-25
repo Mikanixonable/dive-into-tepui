@@ -19,6 +19,7 @@ import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { CelestialBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
+import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibility } from '../celestial/map-visibility';
 import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
@@ -649,6 +650,7 @@ export class Player extends Ship {
     camera: CameraSystem,
     displayTime: number,
     isActive: boolean,
+    style: RenderStyle,
     visibility: MapVisibility | null = null,
     orbitRef?: OrbitReference,
   ): void {
@@ -667,7 +669,7 @@ export class Player extends Ship {
     const effectState = displayState ?? this.state;
     const effectVisible = displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
-    this.thrustEffects.sync(fo, effectState.r, this.rcsThrust, maxAccel, effectVisible, false, camera);
+    this.thrustEffects.sync(fo, effectState.r, this.rcsThrust, maxAccel, effectVisible, false, camera, style);
     const activeIndex = this.boosters.stages.length - 1;
     const boosterEffectAtCurrentTime = Math.abs(displayTime - this.state.t) <= 1e-6;
     if (activeIndex >= 0 && this.boosterThrust !== null && effectVisible
@@ -682,9 +684,9 @@ export class Player extends Ship {
         direction: new THREE.Vector3(tail.x, tail.y, tail.z),
         intensity: Math.max(0.25, this.lastBoosterBurnRatio),
         visible: true,
-      }], camera.activeCamera.quaternion);
+      }], camera.activeCamera.quaternion, style);
     } else {
-      this.boosterPlumes.sync([], camera.activeCamera.quaternion);
+      this.boosterPlumes.sync([], camera.activeCamera.quaternion, style);
     }
     if (isActive) {
       this._worldSfx.setThrust(effectVisible && (this.rcsThrust !== null || this.boosterThrust !== null));

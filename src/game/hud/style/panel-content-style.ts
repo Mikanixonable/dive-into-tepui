@@ -114,9 +114,10 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   margin-left: auto;
 }
 
-#hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); overflow-y: auto; }
-/* パネルの padding 分だけ食い込ませて幅いっぱいに広げ、スクロール中も先頭に張り付かせる */
-#hud-physical-object-list .physical-object-list-head { position: sticky; top: calc(var(--space-4) * -1); margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0; padding: var(--space-4) var(--space-5) 0; background: var(--surface-opaque); z-index: 1; }
+#hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); display: flex; flex-direction: column; overflow: hidden; }
+/* 上半分(検索・フィルタ)は要素数ぶんの高さに縮め、下半分(項目一覧)が残りを占有する。互いに重ならないよう独立してスクロールさせる */
+#hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: 50%; overflow-y: auto; }
+#hud-physical-object-list .physical-object-list-body { flex: 1 1 auto; overflow-y: auto; }
 #hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
 #hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
 #hud-physical-object-list .physical-object-list-head .w-group { padding: var(--space-1) var(--space-2); }
@@ -125,7 +126,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-physical-object-list .physical-object-list-collapse {
   margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
-#hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); }
+#hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 #hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
 #hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
 #hud-physical-object-list .physical-object-list-section-header {
@@ -166,8 +167,12 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud .body-class-row.category-off .body-class-icon-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
 /* 太陽系パネルの左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-view-options { width: 100%; pointer-events: auto; }
-#hud-view-options .view-options-title { display: flex; align-items: center; gap: var(--space-2); }
+#hud-view-options .view-options-title { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 #hud-view-options .view-options-collapse { margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto; }
+/* タブ切替(.w-tabs)は常に見えたまま、選択中のタブ本文だけをスクロールさせる——
+   タイトル行・タブ切替をスクロールへ巻き込むと、下までスクロールした状態でタブへ
+   手が届かなくなる。 */
+#hud-view-options .view-options-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 #hud-view-options .view-options-body.collapsed { display: none !important; }
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
    トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
@@ -224,9 +229,9 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   position: absolute;
   font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
 }
-#hud .hud-frame-controls { width: 100%; pointer-events: auto; }
-#hud .hud-frame-controls .hud-frame-scroll-zone {
-  max-height: min(240px, 30vh); max-height: min(240px, 30dvh); overflow-y: auto;
+#hud .hud-frame-controls {
+  width: 100%; pointer-events: auto;
+  max-height: min(360px, 48vh); max-height: min(360px, 48dvh); overflow-y: auto;
   scrollbar-width: thin;
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
@@ -249,8 +254,12 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 /* 「角度」プルダウン: 見出しを独立行にし、次の行へ選択欄とセットボタンを並べる。 */
 #hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
-/* 表示パネルのタブ列と、選択中以外のタブ本体を隠す。 */
-#hud-view-options .w-tabs { margin-bottom: var(--space-3); }
+/* 表示パネルのタブ列と、選択中以外のタブ本体を隠す。選択中のタブ本体だけが
+   view-options-body の残り高さを占めてスクロールする。 */
+#hud-view-options .w-tabs { flex: 0 0 auto; margin-bottom: var(--space-3); }
+#hud-view-options .view-options-tab-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin;
+}
 #hud-view-options .view-options-tab-body.hidden { display: none !important; }
 /* 軌道ガイドタブ: 種類ごとの区画(見出し+軸行+値行)。独立トグル行(系/点/南北)は
    見出し+ボタン列を折り返す。 */
@@ -259,16 +268,29 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   --orbit-guide-slider-min-w: 60px;
   --orbit-guide-value-w: 60px;
 }
-.orbit-guide-section { margin-bottom: var(--space-4); }
-.orbit-guide-heading { margin-bottom: var(--space-2); }
-.orbit-guide-heading-btn { width: 100%; text-align: left; }
-.orbit-guide-section.category-off { opacity: var(--toggle-off-opacity); }
+.orbit-guide-tab .w-tabs { margin-bottom: var(--space-3); }
+.orbit-guide-group-body.hidden { display: none; }
+.orbit-guide-system-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+.orbit-guide-kind-row { margin-bottom: var(--space-2); }
+.orbit-guide-kind-heading { margin-bottom: var(--space-1); }
+.orbit-guide-kind-heading-btn { width: 100%; text-align: left; }
+.orbit-guide-kind-config { display: flex; flex-direction: column; gap: var(--space-2); padding-left: var(--space-3); border-left: 1px solid var(--line-subtle); }
+.orbit-guide-kind-config.hidden { display: none; }
 .orbit-guide-toggle-row { flex-wrap: wrap; }
 .orbit-guide-value-row { flex-wrap: nowrap; align-items: center; }
 .orbit-guide-value-row .slider-col { flex: 1 1 var(--orbit-guide-slider-min-w); min-width: var(--orbit-guide-slider-min-w); }
 .orbit-guide-value-row .w-slider { width: 100%; }
 .orbit-guide-value-row .w-input { width: var(--orbit-guide-value-w); }
+.orbit-guide-value-row.hidden { display: none; }
 .orbit-guide-value-unit { color: var(--text-dim); font-size: var(--font-xs); }
+.orbit-guide-color-row { align-items: center; }
+.orbit-guide-color-row .w-input { width: 44px; height: 24px; padding: 2px; }
+.orbit-guide-color-row.hidden { display: none; }
+.orbit-guide-line-count-warning { color: var(--color-error); font-size: var(--font-xs); margin-top: var(--space-2); }
+.orbit-guide-line-count-warning.hidden { display: none; }
+.orbit-guide-zero-velocity-range { display: flex; flex-direction: column; gap: var(--space-2); }
+.orbit-guide-zero-velocity-range.hidden { display: none; }
+.orbit-guide-section-divider-wrap { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
 #hud-stage-controls { width: 100%; pointer-events: auto; }
 #hud-stage-controls .stage-controls-body { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
 #hud-stage-controls .stage-control-enemy-tabs { display: flex; gap: var(--space-2); }
@@ -357,7 +379,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-help .help-toolbar-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 #hud-help .help-toolbar-label { color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .06em; }
 #hud-help .help-tab {
-  min-height: 28px; padding: var(--space-2) var(--space-3); border: 1px solid var(--edge); border-radius: var(--radius-control);
+  min-height: var(--row-min-h-s); padding: var(--space-2) var(--space-3); border: 1px solid var(--edge); border-radius: var(--radius-control);
   background: var(--surface-2); color: var(--text-dim); font: inherit; font-size: var(--font-xxs); cursor: pointer;
 }
 #hud-help .help-tab:hover, #hud-help .help-tab:focus-visible { color: var(--text); border-color: var(--color-primary-edge); }
@@ -583,11 +605,11 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   background: transparent; box-shadow: none;
 }
 #hud-settings-view .sv-theme-button:not(.on) {
-  background: color-mix(in srgb, var(--sv-theme-title) 8%, var(--surface-0));
+  background: color-mix(in srgb, var(--sv-theme-title) 8%, var(--sv-theme-page));
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button:not(.on):hover {
-  background: color-mix(in srgb, var(--sv-theme-title) 16%, var(--surface-0));
+  background: color-mix(in srgb, var(--sv-theme-title) 16%, var(--sv-theme-page));
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button.on {

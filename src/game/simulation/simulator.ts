@@ -43,6 +43,8 @@ export class Simulator {
   // 今フレームに予測列から消費した(積分を省いた)延べ数。
   lastFollowedSteps = 0;
   private readonly nextEventTime = new NextEventTime();
+  // ゼロ長サブステップが連続した回数。simTime が実際に進んだら 0 へ戻す。
+  private consecutiveZeroSteps = 0;
   private readonly contactEntitiesScratch: GameEntity[] = [];
   // このサブステップを1歩で渡った個体。区間が揃っているので、天体接触をまとめて解ける。
   private readonly sharedIntervalScratch: GameEntity[] = [];
@@ -84,11 +86,23 @@ export class Simulator {
       const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
+        this.consecutiveZeroSteps++;
+        // イベント予告(nextSimulationEventTime)と消滅判定(checkLoss)が丸め誤差でずれた
+        // 個体が残ると、消費してもイベントが尽きずゼロ刻みが終わらない。simTime を人為的に
+        // 進めて事態を打ち切り、無音のフリーズではなく検知できる形にする。
+        if (this.consecutiveZeroSteps > C.SIMULATION_STALL_MAX_ZERO_STEPS) {
+          console.error(
+            `[Simulator] ゼロ刻みが${this.consecutiveZeroSteps}回連続。simTime=${this.simTime} `
+            + `eventTime=${eventTime} entities=${this.entities.all().length} — simTime を強制前進`);
+          this.simTime += 1e-6;
+          this.consecutiveZeroSteps = 0;
+        }
         activeStage.applySimulationEvents(this.simTime);
         this.entities.cleanup(
           0, this.simTime, activeStage, player?.state.r ?? v3(), this.atmosphereBodies());
         continue;
       }
+      this.consecutiveZeroSteps = 0;
 
       this.sections.enter(SECTION.orbit);
       // 天体の窓も、表面へ触れうる相手の絞り込みも、このサブステップで1組だけ組んで全個体で

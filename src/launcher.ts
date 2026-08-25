@@ -21,7 +21,7 @@ import type { RenderPipeline } from './render/pipeline/render-pipeline';
 import type { FrameSections } from './frame-sections';
 import type { Ephemeris } from './physics/ephemeris';
 import type { CelestialBodyId } from './physics/celestial-body';
-import { showLoading, hideLoading } from './loading-overlay';
+import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 
 // アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
@@ -42,11 +42,11 @@ function fallbackResult(phase: GamePhase): StageResult {
 
 // ローディング表示の下で、このステージの天体暦を組む。
 async function initEphemeris(
-  stageClass: StageClass, phaseOffsets: Partial<Record<CelestialBodyId, number>>,
+  stageClass: StageClass, phaseOffsets: Partial<Record<CelestialBodyId, number>>, startSimTime?: number,
 ): Promise<Ephemeris> {
   showLoading();
   try {
-    return await stageClass.createEphemeris(phaseOffsets);
+    return await stageClass.createEphemeris(phaseOffsets, setLoadingProgress, startSimTime);
   } finally {
     hideLoading();
   }
@@ -131,8 +131,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 現在の周回を畳んだ上で、天体暦の構築から Game の生成までを行い、起動をスロットへ記録する。
   private async startRun(stageClass: StageClass, snapshotId?: string, startSimTime?: number): Promise<void> {
     this.endRun();
-    const initialSave = this.initialSaveFor(stageClass, snapshotId);
-    const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {});
+    const initialSave = this.initialSaveFor(stageClass, snapshotId, startSimTime);
+    const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {}, startSimTime);
     // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
     const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
     this.game = new Game(
@@ -151,12 +151,16 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // snapshotId を最優先で使う。無ければ、起動するステージがアクティブスロットの直前起動と
   // 同じ場合(=そのスロットで進行中だった周回の再開)に限り、そのステージの最新スナップショット
-  // を自動で復元する。noteLaunched は Game 構築後に呼ばれるため、この時点の lastStageId は
-  // 今回の起動より前の値を指している。本体の欠損・バージョン不一致・ステージ不一致は
-  // SnapshotService.load() に判定させ、復元できない場合は通常の新規起動状態をそのまま使う。
-  private initialSaveFor(stageClass: StageClass, snapshotId?: string): GameSaveData | undefined {
+  // を自動で復元する。startSimTime が明示されている(クリエイティブモードの開始日時指定画面で
+  // 選んだ)場合は、その日時を新規開始の起点として使うべきなので自動復元の対象から外す —
+  // 外さないと直前セッションのスナップショットの simTime が指定日時を上書きしてしまう。
+  // noteLaunched は Game 構築後に呼ばれるため、この時点の lastStageId は今回の起動より前の
+  // 値を指している。本体の欠損・バージョン不一致・ステージ不一致は SnapshotService.load() に
+  // 判定させ、復元できない場合は通常の新規起動状態をそのまま使う。
+  private initialSaveFor(stageClass: StageClass, snapshotId?: string, startSimTime?: number): GameSaveData | undefined {
     const activeSlotId = this.slots.activeSlotId;
-    const resumesLastLaunchedStage = activeSlotId !== null && this.slots.activeSlot()?.lastStageId === stageClass.id;
+    const resumesLastLaunchedStage = startSimTime === undefined
+      && activeSlotId !== null && this.slots.activeSlot()?.lastStageId === stageClass.id;
     const initialSnapshotId = snapshotId
       ?? (resumesLastLaunchedStage ? this.slots.latestSnapshot(activeSlotId, stageClass.id)?.id ?? null : null);
     const initialSave = initialSnapshotId !== null

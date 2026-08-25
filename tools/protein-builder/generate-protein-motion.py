@@ -11,6 +11,7 @@ import sys
 from typing import Any
 
 import numpy as np
+import scipy.linalg
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
@@ -21,6 +22,8 @@ MODE_COUNT = 24
 CUTOFF_ANGSTROM = 13.0
 ZERO_MODE_COUNT = 6
 ZERO_TOLERANCE = 1.0e-7
+# 密行列として解く自由度の上限。3辺分の作業領域を確保しても数百 MB に収まる大きさ。
+DENSE_SOLVER_SIZE = 4000
 
 
 def parse_args() -> argparse.Namespace:
@@ -195,10 +198,23 @@ def canonicalize_modes(eigenvalues: np.ndarray, vectors: np.ndarray) -> tuple[np
     return values, result
 
 
+def lowest_eigenpairs(hessian: coo_matrix, requested: int) -> tuple[np.ndarray, np.ndarray]:
+    """最も低い側の固有対を requested 個返す。
+
+    小さい系では厳密に解く。反復解法のシフト反転はゼロモードの近傍で条件が悪く、
+    最小の正固有値に対する残差が許容量を超えることがある。
+    """
+    size = hessian.shape[0]
+    if size <= DENSE_SOLVER_SIZE:
+        eigenvalues, eigenvectors = scipy.linalg.eigh(hessian.toarray())
+        return eigenvalues[:requested], eigenvectors[:, :requested]
+    return eigsh(hessian, k=requested, sigma=1.0e-9, which="LM", tol=1.0e-10, maxiter=1_000_000, v0=np.ones(size, dtype=np.float64))
+
+
 def solve_modes(hessian: coo_matrix, centers: np.ndarray, mode_count: int) -> tuple[np.ndarray, np.ndarray]:
     size = hessian.shape[0]
     requested = min(size - 2, ZERO_MODE_COUNT + mode_count + 4)
-    eigenvalues, eigenvectors = eigsh(hessian, k=requested, sigma=1.0e-9, which="LM", tol=1.0e-10, maxiter=1_000_000, v0=np.ones(size, dtype=np.float64))
+    eigenvalues, eigenvectors = lowest_eigenpairs(hessian, requested)
     eigenvalues, eigenvectors = canonicalize_modes(np.asarray(eigenvalues), np.asarray(eigenvectors))
     scale = max(float(np.max(np.abs(eigenvalues))), 1.0)
     zero_count = int(np.count_nonzero(np.abs(eigenvalues) <= ZERO_TOLERANCE * scale))
@@ -261,6 +277,12 @@ def binding_data(config: dict[str, Any], semantic: dict[str, Any], structure: di
     surface_residues, surface_distances = nearest_indices_by_chain(surface_coordinates, surface_chains, centers, center_chains)
     if float(np.max(surface_distances)) > 20.0:
         raise RuntimeError("surface-to-residue binding exceeds 20 Å")
+    ribbon_coordinates = np.asarray(structure["ribbon"]["mesh"]["position"], dtype=np.float64).reshape((-1, 3))
+    ribbon_coordinates -= np.asarray(structure["coordinateFrame"]["centeredAt"], dtype=np.float64)
+    ribbon_chains = [str(value) for value in structure["ribbon"]["mesh"]["chain"]]
+    ribbon_residues, ribbon_distances = nearest_indices_by_chain(ribbon_coordinates, ribbon_chains, centers, center_chains)
+    if float(np.max(ribbon_distances)) > 20.0:
+        raise RuntimeError("ribbon-to-residue binding exceeds 20 Å")
 
     def site_residues(items: list[dict[str, Any]]) -> list[int]:
         if len(items) == 0: return []
@@ -280,6 +302,7 @@ def binding_data(config: dict[str, Any], semantic: dict[str, Any], structure: di
         "atomResidues": [int(value) for value in atom_residues],
         "backboneResidues": list(range(len(centers))),
         "surfaceResidues": [int(value) for value in surface_residues],
+        "ribbonResidues": [int(value) for value in ribbon_residues],
         "siteResidues": site_residues(semantic.get("sites", [])),
         "modificationResidues": site_residues(semantic.get("modificationSlots", [])),
     }

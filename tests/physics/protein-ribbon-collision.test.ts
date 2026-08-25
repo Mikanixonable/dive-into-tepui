@@ -1,12 +1,13 @@
 import * as assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import * as THREE from 'three/webgpu';
-import { proteinAssetBundleFor, type ProteinAssetId } from '../../src/game/protein/protein-asset-loader';
+import type { ProteinAssetId } from '../../src/game/protein/protein-asset-loader';
 import { ProteinRibbonCollisionGeometry } from '../../src/game/protein/protein-ribbon-collision';
 import type { ProteinRenderSource } from '../../src/render/protein-enemy-ship';
 import { buildProteinCollisionRibbon } from '../../src/render/protein-ribbon';
 import { v3 } from '../../src/physics/vec3';
 import { test } from './harness';
+import { testProteinAssetBundleFor } from './protein-test-assets';
 
 interface RibbonCharacterization {
   readonly assetId: ProteinAssetId;
@@ -20,27 +21,25 @@ interface RibbonCharacterization {
 const RIBBON_CHARACTERIZATIONS: readonly RibbonCharacterization[] = [
   {
     assetId: 'pdb-5i4r',
-    triangles: 139932,
-    fingerprint: '209d215e15de3e62e0201223a2d5dfd0665571293b990428082341b45f599ebd',
-    outerRadius: 65.6861769962617,
-    representativePoint: [0.4531032542387643, 16.84963417053222, -41.489982604980455],
-    representativeNormal: [-0.01757874371673807, 0.2780117806869385, 0.9604168040848823],
+    triangles: 145788,
+    fingerprint: '88e5504f9656d111ddfe5ab05ea2dc79da72c60e5ad5f406abf93f4aae93cbb3',
+    outerRadius: 65.50115811221157,
+    representativePoint: [0.45506499210993434, 16.848959604899083, -41.489799499511705],
+    representativeNormal: [-0.017157254603796024, 0.2778925277004757, 0.9604589380409246],
   },
   {
     assetId: 'pdb-1mbn-myoglobin',
-    triangles: 18840,
-    fingerprint: 'd5fa28e65e05c99586390c1871290fbadd5b1e184329e23b286fff8dfe9e8963',
-    outerRadius: 23.668641777876882,
-    representativePoint: [-17.425394694010414, -4.5192445119222, 7.836565017700195],
-    representativeNormal: [-0.10213145028472966, 0.4269975732886829, 0.8984666044257369],
+    triangles: 17312,
+    fingerprint: '88321ae2ccdd33e187bcd955971b3d2583f96289080917b15b85be94ca4c4017',
+    outerRadius: 23.556818522249703,
+    representativePoint: [-17.416152318318684, -4.518124103546143, 7.83454688390096],
+    representativeNormal: [-0.08705777272643374, 0.4140586810736896, 0.9060774541039133],
   },
 ];
 
 // 指定したアセットの生成済みデータをリボン入力へまとめる。
 function sourceFor(assetId: ProteinAssetId): ProteinRenderSource {
-  const bundle = proteinAssetBundleFor(assetId);
-  if (!bundle) throw new Error(`Missing protein asset bundle: ${assetId}`);
-  return bundle;
+  return testProteinAssetBundleFor(assetId);
 }
 
 // typed array の実バイト列をハッシュ入力として返す。

@@ -1,4 +1,5 @@
 // HUD の静的 DOM/スタイル構築。
+import type { RenderStyleSetting } from '../../render/render-style';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { injectThemeVariables } from '../theme';
 import { buildOverlayLayers } from './overlay-layer';
@@ -314,10 +315,10 @@ function buildMapScale(root: HTMLElement): void {
     </div>`;
 }
 
-// 画面全体のグローバルステータスを組む。1行目はビュー切替と現在の対象バッジ(ViewBadge が中身を組む)、
+// 画面全体のトップバーを組む。1行目はビュー切替と現在の対象バッジ(ViewBadge が中身を組む)、
 // 2行目は MET・時間加速・NODE WARP。
-function buildGlobalStatus(root: HTMLElement): void {
-  const bar = createHudElement('section', 'hud-simulation-status', root);
+function buildTopBar(root: HTMLElement): void {
+  const bar = createHudElement('section', 'hud-topbar', root);
   bar.setAttribute('aria-label', 'Mission status');
   bar.innerHTML = `
     <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
@@ -360,11 +361,14 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
 }
 
 // HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを構築し、DOM 参照をまとめて返す。
-export function buildHudDom(): HudDomRefs {
+export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
   injectThemeVariables();
   injectStyle();
   startViewportTracking();
   const root = createHudElement('div', 'hud', document.body);
+  // 模式図では白背景になるため、マーカー配色をそれに合わせて切り替える手掛かりとして
+  // 現在のスタイルをルート要素の属性で公開する。
+  renderStyle.subscribe((style) => { root.dataset['renderStyle'] = style; });
   const layers = buildOverlayLayers(root);
   const svgOverlay = buildSvgOverlay(layers.marker);
   const combatRoot = buildWorldRoot(layers.panel, 'hud-combat-root', 'combat');
@@ -372,8 +376,8 @@ export function buildHudDom(): HudDomRefs {
 
   // 常設パネル群を組む。
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);
-  buildGlobalStatus(layers.panel);
-  buildChaseReset(combatRoot.element);
+  buildTopBar(layers.panel);
+  buildChaseReset(layers.panel);
   buildMapScale(mapRoot.element);
   const overlayShield = createHudElement('div', 'hud-overlay-shield', layers.gate);
   const overlayManager = new OverlayManager(overlayShield, layers.gate);

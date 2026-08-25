@@ -20,6 +20,7 @@ import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { RenderStyle } from '../../render/render-style';
 import { AMBIENT_IRRADIANCE, SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
@@ -31,6 +32,7 @@ import { EarthView } from './earth-view';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
 import { OrbitGuideLines } from './orbit-guide-lines';
+import { ZeroVelocityLines } from './zero-velocity-lines';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-settings';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
@@ -109,6 +111,8 @@ export class EnvironmentScene {
   private readonly referenceLines: Map<OrbitingId, OrbitLine>;
   // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
   private readonly orbitGuideLines: OrbitGuideLines;
+  // ゼロ速度曲線(ガイドタブ5.3節)。
+  private readonly zeroVelocityLines: ZeroVelocityLines;
   // 軌道ガイドタブの正本の鏡映し。静止軌道リング・ラベルの表示可否だけをここから読む。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
 
@@ -134,6 +138,7 @@ export class EnvironmentScene {
     // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
     this.referenceLines = new Map();
     this.orbitGuideLines = new OrbitGuideLines(scene, ephemeris);
+    this.zeroVelocityLines = new ZeroVelocityLines(scene, ephemeris);
     this.lightingAnchor = new THREE.AmbientLight();
     scene.add(this.lightingAnchor);
     // レンダラーは光源自身の layers とカメラの layers が重ならないと光源をそのカメラの描画対象
@@ -165,7 +170,14 @@ export class EnvironmentScene {
   setOrbitGuideSettings(settings: OrbitGuideSettings): void {
     this.orbitGuideSettings = settings;
     this.orbitGuideLines.setSettings(settings);
+    this.zeroVelocityLines.setSettings(settings.zeroVelocity);
   }
+
+  // 公転天体1体につき1本の参照軌道線(右クリックの当たり判定向け)。
+  get referenceOrbitLines(): ReadonlyMap<OrbitingId, OrbitLine> { return this.referenceLines; }
+
+  // ラグランジュ点まわりの軌道ガイド線(右クリックの当たり判定向け)。
+  get orbitGuide(): OrbitGuideLines { return this.orbitGuideLines; }
 
   // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
   earthSpinPhase0(): number | undefined {
@@ -179,6 +191,7 @@ export class EnvironmentScene {
     displayTime: number,
     cameraSystem: CameraSystem,
     graphics: GraphicsSettingsData,
+    style: RenderStyle,
     gridVisibility: CelestialGridVisibility,
     sharedVisibilityPolicy: MapVisibilityPolicy | null = null,
     markerManager: MarkerManager | null = null,
@@ -198,7 +211,7 @@ export class EnvironmentScene {
       : null;
     for (const body of this.bodies) {
       body.setVisible(!cameraSystem.overviewMode || visibilityPolicy!.body(body.id).category);
-      body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, graphics);
+      body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, graphics, style);
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。
@@ -229,9 +242,10 @@ export class EnvironmentScene {
     this.syncGeoLabels(
       displayTime, cameraSystem.overviewMode, geostationaryOrbitVisible,
       cameraSystem, markerManager, celestialBodies);
-    this.orbitGuideLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
+    this.orbitGuideLines.sync(style, displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
+    this.zeroVelocityLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
-      gridVisibility, cameraSystem.activeCamera,
+      style, gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
   }
@@ -482,6 +496,7 @@ export class EnvironmentScene {
     this.geoLine.dispose();
     for (const id of [...this.referenceLines.keys()]) this.removeReferenceLine(id);
     this.orbitGuideLines.dispose();
+    this.zeroVelocityLines.dispose();
     // ライティングモデルを組ませるためだけの光源。
     this.lightingAnchor.removeFromParent();
     this.lightingAnchor.dispose();

@@ -30,10 +30,13 @@ export type GraphicsSettingsData = {
   readonly meshShadow: boolean;
   // マルチサンプリング。レンダラ生成時にしか渡せないので、変更は次回起動から効く。
   readonly antialias: boolean;
+  // タンパク質型の敵の構造の揺らぎ。
+  readonly proteinVibration: boolean;
 };
 
 // 真偽で持つ項目。オフにするとその要素が絵から消える。
-export type GraphicsToggleKey = 'pointField' | 'rings' | 'aurora' | 'atmosphere' | 'meshShadow' | 'antialias';
+export type GraphicsToggleKey =
+  'pointField' | 'rings' | 'aurora' | 'atmosphere' | 'meshShadow' | 'antialias' | 'proteinVibration';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
 
@@ -41,14 +44,17 @@ export const QUALITY_PRESETS: Readonly<Record<QualityPreset, GraphicsSettingsDat
   low: {
     resolutionScale: 0.5, lodBias: LOD_BIAS.low,
     pointField: false, rings: false, aurora: false, atmosphere: false, meshShadow: false, antialias: false,
+    proteinVibration: false,
   },
   medium: {
     resolutionScale: 0.75, lodBias: LOD_BIAS.normal,
     pointField: true, rings: true, aurora: false, atmosphere: true, meshShadow: true, antialias: true,
+    proteinVibration: true,
   },
   high: {
     resolutionScale: 1, lodBias: LOD_BIAS.high,
     pointField: true, rings: true, aurora: true, atmosphere: true, meshShadow: true, antialias: true,
+    proteinVibration: true,
   },
 };
 
@@ -70,6 +76,7 @@ function loadStored(): GraphicsSettingsData {
       atmosphere: saved.atmosphere ?? DEFAULTS.atmosphere,
       meshShadow: saved.meshShadow ?? DEFAULTS.meshShadow,
       antialias: saved.antialias ?? DEFAULTS.antialias,
+      proteinVibration: saved.proteinVibration ?? DEFAULTS.proteinVibration,
     };
   } catch {
     return DEFAULTS;

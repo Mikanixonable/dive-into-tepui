@@ -29,6 +29,11 @@ export class SegmentedControl<T> {
     for (const [v, btn] of this.buttons) btn.setOn(v === value);
   }
 
+  // 全ボタンを一括で無効化/有効化する。
+  setEnabled(enabled: boolean): void {
+    for (const btn of this.buttons.values()) btn.setEnabled(enabled);
+  }
+
   // ボタン列を items へ丸ごと差し替える(見出しはそのまま)。選べない選択肢を出してから
   // 拒否するのではなく、状況によって選択肢自体を絞りたい呼び出し側のために用意する。
   setItems(items: readonly (readonly [T, string, string?])[]): void {

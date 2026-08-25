@@ -67,21 +67,33 @@ function generateFreeEnemy(
   );
 }
 
-// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)を、共通の epoch・速度で一括生成する。
-// centerState を中心に、攻撃担当(5I4R)はその場、盾役(ルビスコ)はプレイヤー方向へ 450 m、
-// エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離して置く。以後の隊列維持操舵はしない。
-export function generateProteinFormation(
+// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)を、共通の epoch・速度で組む配置と
+// 生成関数を返す。centerState を中心に、攻撃担当(5I4R)はその場、盾役(ルビスコ)はプレイヤー
+// 方向へ 450 m、エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離す。以後の隊列維持操舵はしない。
+// 各役は asset ごとに実体化タイミングが異なりうるため(SPEC/PROTEIN.md「出現」節)、呼び出し側が
+// 個別に準備完了を待てるよう、即座には構築せず assetId と build を役ごとに返す。
+export function proteinFormationSpawns(
   name: string, centerState: KinematicState, playerPosition: Vec3, display: ProteinDisplaySettings, formationId: string,
   hud: Hud, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
-): readonly [Enemy, Enemy, Enemy] {
+): readonly { assetId: ProteinAssetId; build: () => Enemy }[] {
   const towardPlayer = norm(v3(playerPosition.x - centerState.r.x, playerPosition.y - centerState.r.y, playerPosition.z - centerState.r.z));
   const offset = 450;
   const shieldState = kinematicState(centerState.t, addScaled(centerState.r, towardPlayer, offset), centerState.v);
   const energyState = kinematicState(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
-  const attacker = generateFreeEnemy(`${name}-ATTACKER`, centerState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-5i4r', display }, hud, worldSfx, fx, scene, formationId, 'attacker');
-  const shield = generateFreeEnemy(`${name}-SHIELD`, shieldState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-8ruc-rubisco', display }, hud, worldSfx, fx, scene, formationId, 'shield');
-  const energy = generateFreeEnemy(`${name}-ENERGY`, energyState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-6n2y-atp-synthase', display }, hud, worldSfx, fx, scene, formationId, 'energy');
-  return [attacker, shield, energy];
+  return [
+    {
+      assetId: 'pdb-5i4r',
+      build: () => generateFreeEnemy(`${name}-ATTACKER`, centerState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-5i4r', display }, hud, worldSfx, fx, scene, formationId, 'attacker'),
+    },
+    {
+      assetId: 'pdb-8ruc-rubisco',
+      build: () => generateFreeEnemy(`${name}-SHIELD`, shieldState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-8ruc-rubisco', display }, hud, worldSfx, fx, scene, formationId, 'shield'),
+    },
+    {
+      assetId: 'pdb-6n2y-atp-synthase',
+      build: () => generateFreeEnemy(`${name}-ENERGY`, energyState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-6n2y-atp-synthase', display }, hud, worldSfx, fx, scene, formationId, 'energy'),
+    },
+  ];
 }
 
 // base から dAlong だけ進んだ位置に漂う敵を生成する。

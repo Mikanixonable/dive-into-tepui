@@ -1,169 +1,210 @@
-// マップビューのガイドとして描く、ラグランジュ点まわりの周期・準周期軌道の折れ線群
-// (表示パネルの軌道ガイドタブ、静止軌道を除く5種)。OrbitGuideSettings が種類ごとに
-// 独立して持つ軸(系×点×南北)の直積ごとに halo-guide.ts の点列 API を呼び、回転基底に
-// 載った ECI [m] の点列を折れ線として表示・毎フレーム同期する。
+// マップビューのガイドとして描く、CR3BP 周期軌道族(ハロー・リヤプノフ・DRO 等)と
+// リサジュー軌道の折れ線群(表示パネルの軌道ガイドタブ、静止軌道を除く)。設定の kinds
+// (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
-import { v3, Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../physics/vec3';
 import {
-  droLoop, GuidePoint, GuideSystem, haloGuideLoop, Hemisphere, lissajousPath,
-  planarLyapunovLoop, verticalLyapunovLoop,
-} from '../../physics/halo-guide';
+  catalogLoop, dawnDuskGuideLoop, familyVisualS, GuideLoop, GuidePoint, lissajousLoop,
+  molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
+} from '../../physics/orbit-guide';
+import type { CatalogSystemId } from '../../physics/orbit-catalog';
 import { FloatingOrigin } from '../floating-origin';
-import { Curve, CurveSampler } from '../../render/curve';
-import { LINE_RENDER_ORDER, LineStyle } from '../../render/line-style';
-import { GuideAxes, OrbitGuideSettings } from './orbit-guide-settings';
-import * as C from '../const';
+import { CurveColorSampler } from '../../render/curve';
+import { LINE_RENDER_ORDER } from '../../render/line-style';
+import { RenderStyleGate, type RenderStyle } from '../../render/render-style';
+import { SCHEMATIC_LINE } from '../../render/schematic-style';
+import { GuideCurve } from './guide-curve';
+import {
+  GuideGroupId, GuideKindSettings, OrbitGuideSettings,
+} from './orbit-guide-settings';
+import { OrbitGuideCatalog } from './orbit-guide-catalog';
+import { DirectionMarkers } from './direction-markers';
 
-const HALO_SAMPLES = 128;
-const LISSAJOUS_SAMPLES = 512;
-const LISSAJOUS_CYCLES = 4;
-const HALO_FAMILY_COUNT = 5;
-const EVOLVED_OPACITY = 0.4;
-const HALO_OPACITY_MIN = 0.15;
-const HALO_OPACITY_MAX = 0.55;
+// 族の折れ線1本ぶんの頂点予算。焼き込みは全族96点(orbit-catalog.ts)で統一されているので、
+// 適応分割による追加ぶんを見込んでも十分な余裕を持たせる。
+const CATALOG_LINE_VERTEX_BUDGET = 256;
+// リサジューは1周あたりこれだけの点を打つ。周回数を増やすほど総点数も増える。
+const LISSAJOUS_POINTS_PER_CYCLE = 64;
+// 折れ線の頂点予算。適応分割のぶんも見込んで、最大周回数ぶんの点を確保しておく。
+const LISSAJOUS_VERTEX_BUDGET = 2048;
+// マーカーの InstancedPool 容量。指定本数がこれを超える組み合わせでは、画面に出す線自体は
+// 指定どおり描くが(8の#9)マーカーは古いものから溢れて描かれなくなる。
+const MARKER_POOL_CAPACITY = 3000;
 // 点列を引き直す表示時刻の間隔 [s]。ガイド線は回転系で静止しているので、時刻の効果は基底の
 // 回転だけに現れる。最も速い地球-月系(周期 27.3 日)でもこの間に 0.05° しか回らない。
 const RECOMPUTE_INTERVAL = 300;
+// 安定性指数(1 が中立の下限、離れるほど不安定)がこの値以下なら「安定」として太く見せる。
+// 実測データでの境界確定は物理側の担当だが、族の大半が1.0〜数十まで広く分布する中で、
+// 中立に近い区間だけを拾う値として1.5を採る。
+const STABILITY_NEUTRAL_THRESHOLD = 1.5;
+// three.js の LineBasicMaterial.linewidth は多くの環境(特に WebGPU バックエンド)で効かない
+// ため、安定な軌道は太さの代わりに不透明度を上げて見分けをつける。
+const STABLE_OPACITY_BOOST = 1.8;
 
-const GUIDE_SYSTEMS: readonly GuideSystem[] = ['sun-earth', 'earth-moon'];
-const GUIDE_POINTS: readonly GuidePoint[] = ['L1', 'L2', 'L3'];
-const HEMISPHERES: readonly Hemisphere[] = ['north', 'south'];
+const ALL_SYSTEMS: readonly CatalogSystemId[] = [
+  'earth-moon', 'sun-earth', 'sun-mars', 'jupiter-europa', 'saturn-titan', 'saturn-enceladus', 'mars-phobos',
+];
 
-// initialTs(t の等分割列)は点数だけで決まるので、点数ごとに1回作って使い回す。
-const initialTsCache = new Map<number, readonly number[]>();
-// span 区間を等分する t の列。同じ点数の折れ線どうしで使い回す。
-function initialTsFor(span: number): readonly number[] {
-  const cached = initialTsCache.get(span);
-  if (cached) return cached;
-  const ts = Array.from({ length: span + 1 }, (_, i) => i / span);
-  initialTsCache.set(span, ts);
-  return ts;
+// 「基本」群の地球専用参照軌道(静止軌道は environment-scene.ts が別枠で描くのでここには
+// 含まない)。族を持たない単一軌道で、CR3BP の系トグルの対象外。
+export type ReferenceOrbitKind = 'sunSync' | 'dawnDusk' | 'molniya' | 'tundra';
+const REFERENCE_ORBIT_KINDS: readonly ReferenceOrbitKind[] = ['sunSync', 'dawnDusk', 'molniya', 'tundra'];
+
+// 当たり判定向けに、表示中の1本のガイド線をその識別情報・ECI 点列とともに表す。
+export interface VisibleGuideLine {
+  readonly key: string;
+  // カタログの族 id、リサジューは 'lissajous'、地球専用参照軌道は ReferenceOrbitKind。
+  readonly familyId: string;
+  // 地球専用参照軌道は系を持たないので null。
+  readonly system: CatalogSystemId | null;
+  // 族 id に含まれるラグランジュ点(L1〜L5)。持たない族(dro/dpo/lpo/resonant/参照軌道)は null。
+  readonly point: string | null;
+  readonly points: readonly Vec3[];
 }
 
-// ECI 絶対座標 [m] の点列を1本の折れ線として描く。closed なら points[末尾]→points[0] を
-// 結んで輪を閉じる。頂点は points[0] を原点とした相対値で焼く(f32 精度は Curve 側の
-// pivot 追従に任せる)。
-class PointsCurve {
-  private readonly curve: Curve;
-  public readonly line: THREE.Object3D;
-  private points: readonly Vec3[] | null = null;
-  private origin: Vec3 = v3();
-  private revision: object = {};
+// 表示中の1本ぶん。family の位置(index/count)は色のグラデーションと族範囲の内分に使う。
+interface GuideLineEntry {
+  readonly curve: GuideCurve;
+  readonly familyId: string;
+  readonly system: CatalogSystemId | null;
+  readonly point: string | null;
+  readonly index: number;
+  readonly count: number;
+  lastLoop: GuideLoop | null;
+}
 
-  public constructor(style: LineStyle, samples: number, private readonly closed: boolean) {
-    this.curve = new Curve({ style, maxVertices: samples + 1 });
-    this.line = this.curve.object;
+// 族 id からその種類が属する群を判定する。「軸方向軌道」「垂直軌道」は共線点(L1-L3)と
+// 三角点(L4/L5)の双方にあるので、末尾のラグランジュ点で見分ける。
+function groupOf(familyId: string): GuideGroupId | null {
+  if (familyId.startsWith('resonant-')) return 'resonant';
+  if (familyId === 'dro' || familyId === 'dpo' || familyId.startsWith('lpo-')) return 'secondary';
+  if (familyId.startsWith('short-') || familyId.startsWith('longp-')) return 'triangular';
+  if (familyId.startsWith('axial-') || familyId.startsWith('vertical-')) {
+    return /L[45]/.test(familyId) ? 'triangular' : 'collinear';
   }
+  if (
+    familyId.startsWith('lyapunov-') || familyId.startsWith('halo-')
+    || familyId.startsWith('butterfly-') || familyId.startsWith('dragonfly-')
+  ) return 'collinear';
+  return null;
+}
 
-  // t∈[0,1] を points 上の弧長索引へ写す。closed は points[n-1]→points[0] の帰り辺を含む。
-  private readonly sampler: CurveSampler = (t, out) => {
-    const points = this.points;
-    if (!points || points.length === 0) {
-      out.set(0, 0, 0);
-      return;
-    }
-    const n = points.length;
-    const span = this.closed ? n : n - 1;
-    const f = Math.min(span, Math.max(0, t * span));
-    const i0 = Math.min(span - 1, Math.floor(f));
-    const frac = f - i0;
-    const p0 = points[i0]!;
-    const p1 = points[this.closed ? (i0 + 1) % n : i0 + 1]!;
-    out.set(
-      p0.x - this.origin.x + frac * (p1.x - p0.x),
-      p0.y - this.origin.y + frac * (p1.y - p0.y),
-      p0.z - this.origin.z + frac * (p1.z - p0.z),
-    );
-  };
+function pointOf(familyId: string): string | null {
+  return /L[1-5]/.exec(familyId)?.[0] ?? null;
+}
 
-  // 新しい点列を設定する。null / 2点未満は非表示。
-  public setPoints(points: readonly Vec3[] | null): void {
-    this.points = points && points.length >= 2 ? points : null;
-    if (this.points) this.origin = this.points[0]!;
-    this.revision = {};
+function activeSystems(settings: OrbitGuideSettings): readonly CatalogSystemId[] {
+  return ALL_SYSTEMS.filter((id) => settings.systems[id] === true);
+}
+
+function sValueFor(kind: GuideKindSettings, index: number, count: number): number {
+  if (count <= 1) return kind.rangeMin;
+  return kind.rangeMin + ((kind.rangeMax - kind.rangeMin) * index) / (count - 1);
+}
+
+// 本数・族範囲・両端の色・進行方向・安定度の見せ方など、1本の折れ線をいまどう描くべきかを
+// まとめた値。styleFor が現在の設定から毎フレーム組み直す(重い計算は含まない)。
+interface LineVisualStyle {
+  readonly opacity: number;
+  readonly direction: GuideKindSettings['direction'];
+  readonly animate: boolean;
+  readonly markerColor: number;
+  readonly colorAt: CurveColorSampler;
+}
+
+// 色に効く設定だけを並べた識別子。これが変われば頂点カラーを焼き直す。
+function colorSignature(s: OrbitGuideSettings, style: RenderStyle): string {
+  const parts: string[] = [style];
+  for (const [id, kind] of Object.entries(s.kinds)) {
+    if (!kind.on) continue;
+    parts.push(`${id}:${kind.colorStart}:${kind.colorEnd}:${kind.reversed}:${kind.showStability}`);
   }
-
-  // 描画原点の移動へ追随させる。頂点は setPoints で設定済みの点列から焼く。
-  public sync(fo: FloatingOrigin, camera: THREE.Camera): void {
-    if (!this.points) {
-      this.curve.setVisible(false);
-      return;
-    }
-    this.curve.setTransform(fo.RtoThreeV3(this.origin));
-    const span = this.closed ? this.points.length : this.points.length - 1;
-    this.curve.setCurve(this.sampler, { revision: this.revision, camera, initialTs: initialTsFor(span) });
-    this.curve.setVisible(true);
+  if (s.lissajous.on) parts.push(`lissajous:${s.lissajous.colorStart}`);
+  for (const kind of REFERENCE_ORBIT_KINDS) {
+    const r = s[kind];
+    if (r.on) parts.push(`${kind}:${r.colorStart}`);
   }
+  return parts.sort().join('|');
+}
 
-  public hide(): void {
-    this.curve.setVisible(false);
+// 点列の形を決める設定だけを並べた識別子。色・不透明度・進行方向・安定度は含めないので、
+// スライダーを掴んでいる間じゅう全線を焼き直すことがない。
+function geometrySignature(settings: OrbitGuideSettings): string {
+  const parts: string[] = [];
+  for (const [id, kind] of Object.entries(settings.kinds)) {
+    if (!kind.on) continue;
+    parts.push(`${id}:${kind.count}:${kind.rangeMin}:${kind.rangeMax}`);
   }
-
-  public dispose(): void {
-    this.curve.dispose();
+  const l = settings.lissajous;
+  if (l.on) {
+    parts.push(`lissajous:${l.inPlane}:${l.outOfPlane}:${l.inPlanePhase}:${l.outOfPlanePhase}:${l.cycles}:${l.l1}${l.l2}${l.l3}`);
   }
+  const ss = settings.sunSync;
+  if (ss.on) parts.push(`sunSync:${ss.repeatDays}:${ss.revsPerRepeat}`);
+  const dd = settings.dawnDusk;
+  if (dd.on) parts.push(`dawnDusk:${dd.repeatDays}:${dd.revsPerRepeat}:${dd.localTime}`);
+  const mo = settings.molniya;
+  if (mo.on) parts.push(`molniya:${mo.perigeeAltitude}:${mo.raan}`);
+  const tu = settings.tundra;
+  if (tu.on) parts.push(`tundra:${tu.perigeeAltitude}:${tu.raan}`);
+  parts.push(`systems:${activeSystems(settings).join(',')}`);
+  return parts.sort().join('|');
 }
 
-// 表示中の1本ぶん: 描画オブジェクトと、現在の設定・時刻から点列を求める関数。
-interface GuideLine {
-  readonly curve: PointsCurve;
-  readonly compute: (t: number, ephemeris: Ephemeris, settings: OrbitGuideSettings) => Vec3[] | null;
-}
-
-// 系×点(L1/L2/L3)の軸を持つ種類が共通して使う、ON な系・点の列。
-function activeSystems(axes: GuideAxes): readonly GuideSystem[] {
-  return GUIDE_SYSTEMS.filter((system) => (system === 'sun-earth' ? axes.sunEarth : axes.earthMoon));
-}
-function activePoints(axes: GuideAxes): readonly GuidePoint[] {
-  return GUIDE_POINTS.filter((point) => (point === 'L1' ? axes.l1 : point === 'L2' ? axes.l2 : axes.l3));
-}
-
-// ガイド線の本数・組み合わせを決める設定だけを抜いた識別子。振幅・族範囲の値は含めない
-// (それらが変わっても本数は変わらないため、点列の再計算だけで足りる)。種類ごとに軸が
-// 独立しているため、全種類の on と軸を漏れなく含める。
-function axesKey(axes: GuideAxes): string {
-  return `${axes.sunEarth},${axes.earthMoon},${axes.l1},${axes.l2},${axes.l3}`;
-}
-function structuralKey(s: OrbitGuideSettings): string {
-  return [
-    'halo', s.halo.on, axesKey(s.halo), s.halo.north, s.halo.south,
-    'planar', s.planarLyapunov.on, axesKey(s.planarLyapunov),
-    'vertical', s.verticalLyapunov.on, axesKey(s.verticalLyapunov),
-    'lissajous', s.lissajous.on, axesKey(s.lissajous),
-    'dro', s.dro.on, s.dro.sunEarth, s.dro.earthMoon,
-  ].join('|');
-}
-
-// 表示範囲を等間隔に割った index 番目のハロー族の位置。
-function haloSValue(settings: OrbitGuideSettings, index: number): number {
-  const { rangeMin, rangeMax } = settings.halo;
-  return rangeMin + ((rangeMax - rangeMin) * index) / (HALO_FAMILY_COUNT - 1);
-}
-
-function haloOpacity(index: number): number {
-  return HALO_OPACITY_MIN + ((HALO_OPACITY_MAX - HALO_OPACITY_MIN) * index) / (HALO_FAMILY_COUNT - 1);
+// 本数・族範囲・系選択の直積が変わったとき(rebuildLines を要するとき)だけ変わる識別子。
+// 色・透明度・進行方向・安定度・振幅など、点列や本数を変えない設定は含めない。
+function structuralKey(settings: OrbitGuideSettings): string {
+  const kindsKey = Object.keys(settings.kinds).sort()
+    .map((id) => {
+      const k = settings.kinds[id]!;
+      return `${id}:${k.on}:${k.on ? k.count : 0}`;
+    })
+    .join(',');
+  const systemsKey = activeSystems(settings).join('+');
+  const l = settings.lissajous;
+  const referenceKey = REFERENCE_ORBIT_KINDS.map((kind) => `${kind}:${settings[kind].on}`).join(',');
+  return `${kindsKey}|${systemsKey}|lissajous:${l.on}:${l.l1}:${l.l2}:${l.l3}|${referenceKey}`;
 }
 
 export class OrbitGuideLines {
-  private lines: GuideLine[] = [];
+  private lines: GuideLineEntry[] = [];
+  private readonly catalog = new OrbitGuideCatalog();
+
+  private readonly markers: DirectionMarkers;
   private settings: OrbitGuideSettings | null = null;
   private structureKey = '';
-  private computedSettings: OrbitGuideSettings | null = null;
+  private geometryKey = '';
+  private styleKey = '';
+  private readonly styleGate = new RenderStyleGate();
+  private currentStyle: RenderStyle = 'realistic';
   private lastComputedTime: number | null = null;
+  private lastCatalogGeneration = -1;
+  private onLineCountChange: ((count: number) => void) | null = null;
 
-  public constructor(private readonly scene: THREE.Scene, private readonly ephemeris: Ephemeris) {}
+  public constructor(private readonly scene: THREE.Scene, private readonly ephemeris: Ephemeris) {
+    this.markers = new DirectionMarkers(scene, MARKER_POOL_CAPACITY, LINE_RENDER_ORDER.reference);
+  }
 
-  // ゲーム側配線用の setter。sync はここで受けた最新値を読む。
   public setSettings(settings: OrbitGuideSettings): void {
     this.settings = settings;
   }
 
-  // マップビューのときだけガイド線を同期する。表示可否のゲートは種類ごとの on に移っている
-  // ため、visible の引数は持たない(rebuildLines が0本にすることで非表示を表す)。
-  public sync(displayTime: number, overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera): void {
+  // 総線数が変わるたび(rebuildLines のたび)に呼ばれる。UI が MAX_LINES_PER_KIND 超過の
+  // 警告を出すためのフック。
+  public setOnLineCountChange(cb: ((count: number) => void) | null): void {
+    this.onLineCountChange = cb;
+  }
+
+  public sync(
+    style: RenderStyle, displayTime: number, overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera,
+  ): void {
+    this.applyStyle(style);
     if (!overviewMode || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
+      // マーカーは InstancedPool が前のフレームの行列を保つので、空のフレームを1つ流して消す。
+      this.markers.beginFrame();
+      this.markers.endFrame();
       return;
     }
     const settings = this.settings;
@@ -172,34 +213,168 @@ export class OrbitGuideLines {
     if (structureKey !== this.structureKey) {
       this.rebuildLines(settings);
       this.structureKey = structureKey;
-      this.lastComputedTime = null; // 本数を作り直した以上、点列も必ず引き直す
+      this.lastComputedTime = null;
     }
 
-    // 点列は回転基底の向きにしか時刻依存しない。設定が差し替わったときと、基底が目に見えて
-    // 回ったときにだけ引き直す。
+    const catalogGeneration = this.catalog.generation;
     const timeMoved = this.lastComputedTime === null
       || Math.abs(displayTime - this.lastComputedTime) >= RECOMPUTE_INTERVAL;
-    if (settings !== this.computedSettings || timeMoved) {
-      for (const entry of this.lines) entry.curve.setPoints(entry.compute(displayTime, this.ephemeris, settings));
-      this.computedSettings = settings;
+    const geometryKey = geometrySignature(settings);
+    if (geometryKey !== this.geometryKey || timeMoved || catalogGeneration !== this.lastCatalogGeneration) {
+      for (const entry of this.lines) {
+        const loop = this.computeLoop(entry, displayTime, settings);
+        entry.lastLoop = loop;
+        entry.curve.setPoints(loop?.points ?? null);
+      }
+      this.geometryKey = geometryKey;
       this.lastComputedTime = displayTime;
+      this.lastCatalogGeneration = catalogGeneration;
     }
 
-    for (const entry of this.lines) entry.curve.sync(fo, camera);
+    // 色は点列と違って毎フレーム読み直せるが、頂点カラーは焼いた頂点に載るので、色が変わった
+    // ときは焼き直しを促す(そうしないと色の変更が次のカメラ移動まで画面に出ない)。
+    const styleKey = colorSignature(settings, this.currentStyle);
+    if (styleKey !== this.styleKey) {
+      for (const entry of this.lines) entry.curve.invalidateColors();
+      this.styleKey = styleKey;
+    }
+
+    this.markers.beginFrame();
+    this.markers.cacheCamera(camera);
+    for (const entry of this.lines) {
+      const style = this.styleFor(entry, settings);
+      if (!style) {
+        entry.curve.hide();
+        continue;
+      }
+      entry.curve.sync(fo, camera, style.colorAt);
+      entry.curve.setOpacity(style.opacity);
+      if (entry.lastLoop) {
+        this.markers.addLoop(entry.lastLoop, style.direction, style.animate, style.markerColor, fo);
+      }
+    }
+    this.markers.endFrame();
   }
 
-  // ガイド線を1本組んでシーンへ加える。compute はその線の点列を設定・時刻から求める。
-  private addLine(
-    closed: boolean, samples: number, color: number, opacity: number,
-    compute: (t: number, ephemeris: Ephemeris, settings: OrbitGuideSettings) => Vec3[] | null,
-  ): void {
-    const curve = new PointsCurve({ color, opacity, renderOrder: LINE_RENDER_ORDER.reference }, samples, closed);
-    this.scene.add(curve.line);
-    this.lines.push({ curve, compute });
+  // 模式図では線の色分けに意味を持たせず、不透明な一色へ統一する。realistic へ戻したときは
+  // 次のフレームで通常の色が焼き直されるよう、色の署名を捨てる。
+  private applyStyle(style: RenderStyle): void {
+    this.currentStyle = style;
+    if (!this.styleGate.changed(style)) return;
+    this.styleKey = '';
+    for (const entry of this.lines) {
+      if (style === 'schematic') entry.curve.setStyle(SCHEMATIC_LINE, 1);
+      else entry.curve.invalidateColors();
+    }
   }
 
-  // 種類ごとの on と軸から折れ線オブジェクトを作り直す。トグルの直積が変わったとき
-  // (本数が変わるとき)だけ呼ぶ — 振幅・族範囲だけの変更では呼ばない。
+  // 表示中のガイド線を、当たり判定向けの識別情報付きで返す(マップ視点外・0本の間は空)。
+  public visibleLines(): readonly VisibleGuideLine[] {
+    const visible: VisibleGuideLine[] = [];
+    for (const entry of this.lines) {
+      const points = entry.curve.worldPoints();
+      if (points.length < 2) continue;
+      visible.push({
+        key: `${entry.familyId}:${entry.system}:${entry.point ?? '-'}:${entry.index}`,
+        familyId: entry.familyId, system: entry.system, point: entry.point, points,
+      });
+    }
+    return visible;
+  }
+
+  // 族の位置設定(0〜1)は画面上の間隔が均等に見える弧長パラメータとして扱い、カタログの
+  // 実際のメンバー選択に使う s へ familyVisualS で変換してから catalogLoop へ渡す。
+  private computeLoop(entry: GuideLineEntry, t: number, settings: OrbitGuideSettings): GuideLoop | null {
+    if (entry.familyId === 'lissajous') {
+      const l = settings.lissajous;
+      return lissajousLoop(
+        t, this.ephemeris, entry.system as CatalogSystemId, entry.point as GuidePoint,
+        l.inPlane, l.outOfPlane, l.inPlanePhase, l.outOfPlanePhase, l.cycles,
+      Math.min(LISSAJOUS_VERTEX_BUDGET, Math.max(64, Math.round(l.cycles * LISSAJOUS_POINTS_PER_CYCLE))),
+      );
+    }
+    if (entry.familyId === 'sunSync') {
+      const s = settings.sunSync;
+      return sunSyncRepeatGroundTrackLoop(t, this.ephemeris, s.repeatDays, s.revsPerRepeat);
+    }
+    if (entry.familyId === 'dawnDusk') {
+      const d = settings.dawnDusk;
+      return dawnDuskGuideLoop(t, this.ephemeris, d.repeatDays, d.revsPerRepeat, d.localTime);
+    }
+    if (entry.familyId === 'molniya') {
+      const m = settings.molniya;
+      return molniyaGuideLoop(t, this.ephemeris, m.perigeeAltitude, m.raan);
+    }
+    if (entry.familyId === 'tundra') {
+      const u = settings.tundra;
+      return tundraGuideLoop(t, this.ephemeris, u.perigeeAltitude, u.raan);
+    }
+    const kind = settings.kinds[entry.familyId];
+    if (!kind || entry.system === null) return null;
+    const system = this.catalog.systemFor(entry.system);
+    if (!system) return null;
+    const family = system.families[entry.familyId];
+    if (!family) return null;
+    const s = familyVisualS(family, sValueFor(kind, entry.index, entry.count));
+    return catalogLoop(t, this.ephemeris, system, entry.system, entry.familyId, s);
+  }
+
+  // その線をいま描くべき色・不透明度・進行方向マーカーの出し方を、現在の設定から組む。
+  // 設定に対応するエントリが既に消えている(保存データの不整合)なら null(非表示)。
+  private styleFor(entry: GuideLineEntry, settings: OrbitGuideSettings): LineVisualStyle | null {
+    const referenceKind = REFERENCE_ORBIT_KINDS.find((k) => k === entry.familyId);
+    if (this.currentStyle === 'schematic') {
+      // 模式図では色分けに意味を持たせない。表示の有無だけは通常どおり設定に従う。
+      const on = entry.familyId === 'lissajous' ? settings.lissajous.on
+        : referenceKind ? settings[referenceKind].on : settings.kinds[entry.familyId]?.on;
+      if (!on) return null;
+      const schematic = new THREE.Color(SCHEMATIC_LINE);
+      const kindDirection = entry.familyId === 'lissajous' ? settings.lissajous
+        : referenceKind ? settings[referenceKind] : settings.kinds[entry.familyId]!;
+      return {
+        opacity: 1, direction: kindDirection.direction, animate: kindDirection.animate,
+        markerColor: SCHEMATIC_LINE, colorAt: (_t, out) => out.copy(schematic),
+      };
+    }
+    if (entry.familyId === 'lissajous') {
+      const l = settings.lissajous;
+      const color = new THREE.Color(l.colorStart);
+      return {
+        opacity: l.opacity, direction: l.direction, animate: l.animate, markerColor: l.colorStart,
+        colorAt: (_t, out) => out.copy(color),
+      };
+    }
+    if (referenceKind) {
+      const r = settings[referenceKind];
+      const color = new THREE.Color(r.colorStart);
+      return {
+        opacity: r.opacity, direction: r.direction, animate: r.animate, markerColor: r.colorStart,
+        colorAt: (_t, out) => out.copy(color),
+      };
+    }
+    const kind = settings.kinds[entry.familyId];
+    if (!kind) return null;
+
+    let gradientT = entry.count <= 1 ? 0 : entry.index / (entry.count - 1);
+    if (kind.reversed) gradientT = 1 - gradientT;
+    const start = new THREE.Color(kind.colorStart);
+    const end = new THREE.Color(kind.colorEnd);
+    const base = new THREE.Color().lerpColors(start, end, gradientT);
+
+    const stability = entry.lastLoop?.stability;
+    const stable = kind.showStability && stability !== undefined && Math.abs(stability) <= STABILITY_NEUTRAL_THRESHOLD;
+    const opacity = stable ? Math.min(1, kind.opacity * STABLE_OPACITY_BOOST) : kind.opacity;
+
+    return {
+      opacity, direction: kind.direction, animate: kind.animate, markerColor: base.getHex(),
+      // 族位置(gradientT)で線ごとの色を決めたうえで、線の中でも始点→終点でわずかに明度を
+      // 振り、Curve の頂点カラー機構を実際に使ったグラデーションにする。
+      colorAt: (curveT, out) => out.copy(base).offsetHSL(0, 0, (curveT - 0.5) * 0.08),
+    };
+  }
+
+  // 種類ごとの on と系選択から折れ線オブジェクトを作り直す。本数が変わるとき(structuralKey
+  // が変わったとき)だけ呼ぶ — 色・範囲・透明度だけの変更では呼ばない。
   private rebuildLines(settings: OrbitGuideSettings): void {
     for (const entry of this.lines) {
       entry.curve.line.removeFromParent();
@@ -207,67 +382,64 @@ export class OrbitGuideLines {
     }
     this.lines = [];
 
-    // ハロー: 系×点×南北 の直積 × 族5本。
-    if (settings.halo.on) {
-      const systems = activeSystems(settings.halo);
-      const points = activePoints(settings.halo);
-      const hemispheres = HEMISPHERES.filter((h) => (h === 'north' ? settings.halo.north : settings.halo.south));
-      for (const system of systems) {
-        for (const point of points) {
-          for (const hemisphere of hemispheres) {
-            for (let i = 0; i < HALO_FAMILY_COUNT; i++) {
-              this.addLine(true, HALO_SAMPLES, C.COLOR_HALO_GUIDE_LINE, haloOpacity(i), (t, ephemeris, s) =>
-                haloGuideLoop(t, ephemeris, system, point, haloSValue(s, i), hemisphere, HALO_SAMPLES));
-            }
-          }
-        }
+    for (const [familyId, kind] of Object.entries(settings.kinds)) {
+      if (!kind.on) continue;
+      const group = groupOf(familyId);
+      if (group === null) continue; // 未知の族 id(壊れた保存データ)は無視
+      const point = pointOf(familyId);
+      for (const system of activeSystems(settings)) {
+        // その系に存在しない族は線を作らない。作っても何も描かれないうえ、線数の警告だけが
+        // 膨らんでしまう(どの系にどの族があるかは焼き込みの索引が持つ)。
+        if (!this.catalog.hasFamily(system, familyId)) continue;
+        for (let i = 0; i < kind.count; i++) this.addCatalogLine(familyId, system, point, i, kind.count);
       }
     }
 
-    // 平面リヤプノフ・垂直リヤプノフ・リサジュー: いずれも系×点。
-    if (settings.planarLyapunov.on) {
-      for (const system of activeSystems(settings.planarLyapunov)) {
-        for (const point of activePoints(settings.planarLyapunov)) {
-          this.addLine(true, HALO_SAMPLES, C.COLOR_PLANAR_LYAPUNOV_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
-            planarLyapunovLoop(t, ephemeris, system, point, s.planarLyapunov.amplitude, HALO_SAMPLES));
-        }
-      }
-    }
-    if (settings.verticalLyapunov.on) {
-      for (const system of activeSystems(settings.verticalLyapunov)) {
-        for (const point of activePoints(settings.verticalLyapunov)) {
-          this.addLine(true, HALO_SAMPLES, C.COLOR_VERTICAL_LYAPUNOV_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
-            verticalLyapunovLoop(t, ephemeris, system, point, s.verticalLyapunov.amplitude, HALO_SAMPLES));
-        }
-      }
-    }
     if (settings.lissajous.on) {
-      for (const system of activeSystems(settings.lissajous)) {
-        for (const point of activePoints(settings.lissajous)) {
-          this.addLine(false, LISSAJOUS_SAMPLES, C.COLOR_LISSAJOUS_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
-            lissajousPath(
-              t, ephemeris, system, point, s.lissajous.inPlane, s.lissajous.outOfPlane,
-              LISSAJOUS_CYCLES, LISSAJOUS_SAMPLES,
-            ));
+      const points: readonly ['l1' | 'l2' | 'l3', GuidePoint][] = [['l1', 'L1'], ['l2', 'L2'], ['l3', 'L3']];
+      for (const system of activeSystems(settings)) {
+        for (const [flag, point] of points) {
+          if (settings.lissajous[flag]) this.addLissajousLine(system, point);
         }
       }
     }
 
-    // DRO: ラグランジュ点を持たず、系のみ。
-    if (settings.dro.on) {
-      const systems = GUIDE_SYSTEMS.filter((system) => (system === 'sun-earth' ? settings.dro.sunEarth : settings.dro.earthMoon));
-      for (const system of systems) {
-        this.addLine(true, HALO_SAMPLES, C.COLOR_DRO_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
-          droLoop(t, ephemeris, system, s.dro.amplitude, HALO_SAMPLES));
-      }
+    for (const kind of REFERENCE_ORBIT_KINDS) {
+      if (settings[kind].on) this.addReferenceOrbitLine(kind);
     }
+
+    this.onLineCountChange?.(this.lines.length);
   }
 
+  // 焼き込み族の1本ぶんを組んでシーンへ加える。
+  private addCatalogLine(familyId: string, system: CatalogSystemId, point: string | null, index: number, count: number): void {
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET, true);
+    this.scene.add(curve.line);
+    this.lines.push({ curve, familyId, system, point, index, count, lastLoop: null });
+  }
+
+  // リサジュー軌道の1本ぶんを組んでシーンへ加える。
+  private addLissajousLine(system: CatalogSystemId, point: GuidePoint): void {
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, LISSAJOUS_VERTEX_BUDGET, false);
+    this.scene.add(curve.line);
+    this.lines.push({ curve, familyId: 'lissajous', system, point, index: 0, count: 1, lastLoop: null });
+  }
+
+  // 地球専用参照軌道(基本群、太陽同期準回帰・ドーンダスク・モルニヤ・ツンドラ)の1本を
+  // 組んでシーンへ加える。系トグルの対象外なので system は null。
+  private addReferenceOrbitLine(kind: ReferenceOrbitKind): void {
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET, true);
+    this.scene.add(curve.line);
+    this.lines.push({ curve, familyId: kind, system: null, point: null, index: 0, count: 1, lastLoop: null });
+  }
+
+  // 全てのガイド線とマーカーをシーンから外して破棄する。
   public dispose(): void {
     for (const entry of this.lines) {
       entry.curve.line.removeFromParent();
       entry.curve.dispose();
     }
     this.lines = [];
+    this.markers.dispose();
   }
 }

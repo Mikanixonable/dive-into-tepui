@@ -1,5 +1,6 @@
 // DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプの表示と、
 // root/svgOverlay の公開・常設パネル群の所有を担う。
+import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
 import type { HudWorldView } from './panel-shell';
 import { VesselPanel } from './panels/vessel-panel';
@@ -7,7 +8,7 @@ import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
 import { EnemiesPanel } from './panels/enemies-panel';
 import { BurnManagementPanel, type BurnManagementViewModel } from './panels/burn-management-panel';
-import { SimulationStatusBar } from './panels/simulation-status-bar';
+import { TopBar } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
 import type { Input } from '../input/input';
@@ -29,7 +30,7 @@ export class Hud {
   readonly svgOverlay: SVGSVGElement;
   readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
-  readonly simulationStatusBar: SimulationStatusBar;
+  readonly topBar: TopBar;
   readonly viewBadgeRow: HTMLElement;
   readonly mapScaleBadge: MapScaleBadge;
   readonly vesselPanel: VesselPanel;
@@ -42,10 +43,10 @@ export class Hud {
   private toastUntil = 0;
 
   // HUD の DOM を構築する。
-  constructor() {
+  constructor(readonly renderStyle: RenderStyleSetting) {
     const {
       root, layers, combatRoot, mapRoot, svgOverlay, overlayManager, helpPanel, els,
-    } = buildHudDom();
+    } = buildHudDom(renderStyle);
     this.root = root;
     this.layers = layers;
     this.combatRoot = combatRoot.element;
@@ -53,7 +54,7 @@ export class Hud {
     this.svgOverlay = svgOverlay;
     this.overlayManager = overlayManager;
     this.helpPanel = helpPanel;
-    this.simulationStatusBar = new SimulationStatusBar(els);
+    this.topBar = new TopBar(els);
     this.viewBadgeRow = els.get('gs-viewrow')!;
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);

@@ -13,12 +13,14 @@ import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import { collisionDamageFraction } from '../../src/game/game-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
-import { PROTEIN_ASSET_IDS, proteinAssetFor, proteinMotionAssetFor } from '../../src/game/protein/protein-asset-loader';
-import { proteinEnemyDefinitionFor } from '../../src/game/protein/protein-enemy-registry';
+import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';
+import { createProteinEnemyDefinition } from '../../src/game/protein/protein-enemy-registry';
+import { testProteinAssetBundleFor } from './protein-test-assets';
 import type { ProteinDisplayAsset } from '../../src/game/protein/protein-display-asset';
 import {
   buildProteinEnemyShip, buildProteinRibbonShip, type ProteinBackboneAsset, type ProteinRenderSource,
 } from '../../src/render/protein-enemy-ship';
+import { proteinSecondaryKind } from '../../src/render/protein-ribbon-color';
 import { LIT_OPAQUE_LAYER, SUN_SHADOW_CASTER_LAYER } from '../../src/render/pipeline/lit-layer';
 import { v3 } from '../../src/physics/vec3';
 import {
@@ -41,14 +43,9 @@ const sourceFor = (
   structure: structure as ProteinDisplayAsset,
 });
 
-function ribbonKinds(object: THREE.Object3D): Set<string> {
-  const kinds = new Set<string>();
-  object.traverse((child) => {
-    if (child.userData.proteinRibbon && typeof child.userData.proteinSecondary === 'string') {
-      kinds.add(child.userData.proteinSecondary);
-    }
-  });
-  return kinds;
+/** 主鎖に含まれる二次構造の種類を返す。 */
+function ribbonKinds(source: ProteinRenderSource): Set<string> {
+  return new Set(source.backbone.backboneSecondary.map(proteinSecondaryKind));
 }
 
 export function register(): void {
@@ -142,7 +139,7 @@ export function register(): void {
   test('protein assets: every registered enemy uses residue-bound ANM modes', () => {
     for (const id of PROTEIN_ASSET_IDS) {
       const candidate = proteinAssetFor(id)!;
-      const motionAsset = proteinMotionAssetFor(id);
+      const motionAsset = testProteinAssetBundleFor(id).motion;
       assert.ok(motionAsset);
       assert.equal(motionAsset.model, 'c-alpha-anm-overdamped');
       assert.equal(motionAsset.modes.length, 24);
@@ -155,7 +152,7 @@ export function register(): void {
 
   test('protein assets: every generated catalog entry has an enemy definition', () => {
     for (const id of PROTEIN_ASSET_IDS) {
-      const definition = proteinEnemyDefinitionFor(id);
+      const definition = createProteinEnemyDefinition(id, testProteinAssetBundleFor(id));
       assert.ok(definition, `missing enemy definition for ${id}`);
       assert.equal(definition.assetId, id);
       assert.equal(definition.asset, proteinAssetFor(id));
@@ -200,15 +197,15 @@ export function register(): void {
   });
 
   test('protein ribbon: shared renderer preserves each asset secondary structures', () => {
-    const myoglobin = buildProteinRibbonShip(sourceFor(
-      myoglobinAsset, rawMyoglobinBackbone, rawMyoglobinStructure,
-    ), 'secondary-structure');
-    assert.deepEqual(ribbonKinds(myoglobin), new Set(['coil', 'helix']));
+    const myoglobinSource = sourceFor(myoglobinAsset, rawMyoglobinBackbone, rawMyoglobinStructure);
+    buildProteinRibbonShip(myoglobinSource, 'secondary-structure');
+    assert.deepEqual(ribbonKinds(myoglobinSource), new Set(['coil', 'helix']));
 
-    const complex = buildProteinRibbonShip(sourceFor(asset, rawBackbone, rawStructure), 'secondary-structure');
-    assert.ok(ribbonKinds(complex).has('helix'));
-    assert.ok(ribbonKinds(complex).has('sheet'));
-    assert.ok(ribbonKinds(complex).has('coil'));
+    const complexSource = sourceFor(asset, rawBackbone, rawStructure);
+    buildProteinRibbonShip(complexSource, 'secondary-structure');
+    assert.ok(ribbonKinds(complexSource).has('helix'));
+    assert.ok(ribbonKinds(complexSource).has('sheet'));
+    assert.ok(ribbonKinds(complexSource).has('coil'));
   });
 
   test('protein silhouette: internal ribbon is white while the ligand remains visible', () => {
@@ -379,7 +376,7 @@ export function register(): void {
       z: active.position[2] * asset.coordinateScale,
     });
     runtime.updateVisual(12.5);
-    assert.ok(Array.from(runtime.motionBinding.residueOffsets.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
+    assert.ok(Array.from(runtime.motionBinding.coefficients.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
     assert.deepEqual(root.position, baseRootPosition);
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);
@@ -399,7 +396,7 @@ export function register(): void {
     assert.deepEqual(root.scale, baseRootScale);
     runtime.rebuildVisuals();
     runtime.updateVisual(12.5);
-    assert.ok(Array.from(runtime.motionBinding.residueOffsets.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
+    assert.ok(Array.from(runtime.motionBinding.coefficients.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
     assert.equal(root.rotation.z, 0.47);
     runtime.dispose();
   });

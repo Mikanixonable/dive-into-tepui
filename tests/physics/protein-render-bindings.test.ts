@@ -4,7 +4,8 @@ import { runAll, test } from './harness';
 import type { ProteinAssetDefinition, ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import type { ProteinRenderSource } from '../../src/render/protein-enemy-ship';
 import { buildProteinEnemyShip } from '../../src/render/protein-enemy-ship';
-import { PROTEIN_ASSET_BUNDLES } from '../../src/game/protein/protein-asset-catalog.generated';
+import { proteinMotionModeDisplacements } from '../../src/game/protein/protein-motion-modes';
+import { testProteinAssetBundles } from './protein-test-assets';
 import {
   PROTEIN_RESIDUE_A_ATTRIBUTE,
   PROTEIN_RESIDUE_B_ATTRIBUTE,
@@ -12,8 +13,15 @@ import {
   createProteinMotionBinding,
   disposeProteinMotionBinding,
   registerProteinMotionRenderer,
-  updateProteinMotionBinding,
+  updateProteinMotionCoefficients,
 } from '../../src/render/protein-motion-material';
+
+const TEST_MODE_COUNT = 2;
+
+/** A throwaway ANM basis sized for a given residue count, used only to satisfy binding construction. */
+function testModeDisplacements(residueCount: number, modeCount = TEST_MODE_COUNT): Float32Array {
+  return new Float32Array(modeCount * residueCount * 4).map((_, index) => index + 1);
+}
 
 const semantic = {
   schemaVersion: 1,
@@ -35,6 +43,7 @@ const motion = {
     atomResidues: [0, 0, 1, 1, 2, 2],
     backboneResidues: [0, 1, 2],
     surfaceResidues: [0, 1, 2],
+    ribbonResidues: [0, 1, 2],
     siteResidues: [],
     modificationResidues: [],
   },
@@ -79,8 +88,13 @@ const source: ProteinRenderSource = {
         hydrophobicity: [0, 0, 0],
         component: ['A', 'A', 'A'],
       },
-      hydrophobicity: [0, 0, 0],
-      surfaceCharge: [0, 0, 0],
+    },
+    ribbon: {
+      mesh: {
+        position: [0, 0, 0, 3, 0, 0, 6, 0, 0],
+        index: [0, 1, 2],
+        chain: ['A', 'A', 'A'],
+      },
     },
     generator: { name: 'test' },
   },
@@ -120,11 +134,12 @@ export function register(): void {
   });
 
   test('protein render: rejects mismatched bindings and accepts both catalog assets', () => {
-    const bad = createProteinMotionBinding(2);
+    const bad = createProteinMotionBinding(2, testModeDisplacements(2), TEST_MODE_COUNT);
     assert.throws(() => buildProteinEnemyShip(source, { representation: 'molecular', colorMode: 'element' }, bad), /residueCount/);
     disposeProteinMotionBinding(bad);
-    for (const bundle of Object.values(PROTEIN_ASSET_BUNDLES)) {
-      const binding = createProteinMotionBinding(bundle.motion.residueCount);
+    for (const bundle of testProteinAssetBundles()) {
+      const modeDisplacements = proteinMotionModeDisplacements(bundle.motion);
+      const binding = createProteinMotionBinding(bundle.motion.residueCount, modeDisplacements, bundle.motion.modes.length);
       const root = buildProteinEnemyShip(bundle, { representation: 'ribbon', colorMode: 'chain' }, binding);
       assert.equal(root.children[0]?.scale.x, bundle.semantic.coordinateScale);
       disposeObject(root);
@@ -132,7 +147,7 @@ export function register(): void {
     }
   });
   test('protein render: all representations expose residue bindings and shared position nodes', () => {
-    const binding = createProteinMotionBinding(3, new Float32Array(12));
+    const binding = createProteinMotionBinding(3, testModeDisplacements(3), TEST_MODE_COUNT);
     const displays = [
       { representation: 'molecular', colorMode: 'element' },
       { representation: 'ribbon', colorMode: 'chain' },
@@ -163,23 +178,22 @@ export function register(): void {
     }
   });
 
-  test('protein render: controller-shaped updates reuse one shared storage array', () => {
-    const initial = new Float32Array(12);
-    const binding = createProteinMotionBinding(3, initial);
+  test('protein render: coefficient updates reuse one shared storage array', () => {
+    const binding = createProteinMotionBinding(3, testModeDisplacements(3), TEST_MODE_COUNT);
     const root = buildProteinEnemyShip(source, { representation: 'molecular', colorMode: 'element' }, binding);
     const atom = root.getObjectByProperty('isInstancedMesh', true) as THREE.InstancedMesh;
-    const before = binding.residueOffsets.array;
-    updateProteinMotionBinding(binding, [1, 0, 0, 0, 0, 2, 0, 0, 0, 0, 3, 0]);
-    assert.strictEqual(binding.residueOffsets.array, before);
-    assert.equal((before as Float32Array)[1], 0);
-    assert.equal((before as Float32Array)[5], 2);
+    const before = binding.coefficients.array;
+    updateProteinMotionCoefficients(binding, [1, 2]);
+    assert.strictEqual(binding.coefficients.array, before);
+    assert.equal((before as Float32Array)[0], 1);
+    assert.equal((before as Float32Array)[1], 2);
     assert.equal(atom.geometry.userData.proteinResidueBinding, true);
     disposeObject(root);
   });
 
   test('protein render: binding disposal releases each registered renderer storage buffer once', () => {
-    const binding = createProteinMotionBinding(3);
-    const ownedAttributes = new Set<THREE.StorageBufferAttribute>([binding.residueOffsets]);
+    const binding = createProteinMotionBinding(3, testModeDisplacements(3), TEST_MODE_COUNT);
+    const ownedAttributes = new Set<THREE.StorageBufferAttribute>([binding.residueOffsets, binding.modeDisplacements]);
     let deleteCount = 0;
     const renderer = {
       _attributes: {
@@ -194,7 +208,7 @@ export function register(): void {
 
     disposeProteinMotionBinding(binding);
     disposeProteinMotionBinding(binding);
-    assert.equal(deleteCount, 1);
+    assert.equal(deleteCount, 2);
     assert.equal(binding.residueOffsets.array.length, 0);
     unregister();
   });

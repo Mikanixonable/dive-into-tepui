@@ -4,6 +4,7 @@ import {
   type GraphicsToggleKey, type LodBias, type QualityPreset, type ResolutionScale,
 } from '../../../render/graphics-settings';
 import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../../../render/pipeline/debug-target';
+import type { RenderStyleSetting } from '../../../render/render-style';
 import { SegmentedControl, ToggleSwitch } from '../widgets';
 
 const PRESET_ITEMS: readonly (readonly [QualityPreset, string])[] = [
@@ -28,7 +29,11 @@ export class GraphicsPanel {
 
   // プリセット・解像度・詳細度・各トグル・デバッグ表示選択を縦に並べる。どの操作も graphics/host
   // へ書いてから sync() で全コントロールの点灯を引き直すので、点灯の正本は常にそちら側にある。
-  constructor(private readonly graphics: GraphicsSettings, private readonly host: DebugTargetHost) {
+  // デバッグ表示は模式図スタイルでは選べない(DEVELOP/SPEC/RENDERING.md)ので、renderStyle の
+  // 変化に合わせて選択欄の有効/無効を切り替える。
+  constructor(
+    private readonly graphics: GraphicsSettings, private readonly host: DebugTargetHost, renderStyle: RenderStyleSetting,
+  ) {
     this.element = document.createElement('div');
     this.element.className = 'gp-body';
 
@@ -56,6 +61,7 @@ export class GraphicsPanel {
       [this.addToggle('オーロラ', 'aurora'), 'aurora'],
       [this.addToggle('大気', 'atmosphere'), 'atmosphere'],
       [this.addToggle('メッシュの影', 'meshShadow'), 'meshShadow'],
+      [this.addToggle('タンパク質の敵の揺らぎ', 'proteinVibration'), 'proteinVibration'],
       [this.addToggle('アンチエイリアス(次回起動から)', 'antialias'), 'antialias'],
     ];
 
@@ -64,6 +70,8 @@ export class GraphicsPanel {
       this.sync();
     });
     this.element.appendChild(this.debugTarget.element);
+
+    renderStyle.subscribe((style) => this.debugTarget.setEnabled(style !== 'schematic'));
 
     this.sync();
   }

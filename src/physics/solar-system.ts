@@ -2026,7 +2026,6 @@ export const SOLAR_SYSTEM = {
 // 保たれる — CELESTIAL_VIEWS(game/celestial/celestial-registry.ts)はこれを Record の
 // キーに使うことで、天体を1体追加すると表示名の欠落がコンパイルエラーになる。
 export type SolarSystemId = keyof typeof SOLAR_SYSTEM;
-export type SolarSystemOrbitingId = { [K in SolarSystemId]: (typeof SOLAR_SYSTEM)[K]['kind'] extends 'star' ? never : K }[SolarSystemId];
 
 // id を registry から引く。registry に無い id を渡すと例外になる。
 export function bodyDef(registry: CelestialRegistry, id: CelestialBodyId): CelestialBodyDef {

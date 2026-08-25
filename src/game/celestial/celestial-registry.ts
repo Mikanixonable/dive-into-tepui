@@ -10,6 +10,7 @@ import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import { albedoOf, DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { textureOf } from '../../render/celestial-textures';
+import { MoonSurfaceMarkings } from '../../render/moon-surface-markings';
 import { CelestialView } from './celestial-view';
 import { EarthView } from './earth-view';
 import { SphereView } from './sphere-view';
@@ -95,7 +96,14 @@ export type CelestialViewDef = {
 
 export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   earth: { name: '地球', create: () => new EarthView() },
-  moon: texturedSatelliteEntry('moon', '月'),
+  moon: {
+    name: '月',
+    create: (sunOcclusion, sunLight) => new SphereView(
+      'moon', texturedSurface('moon'), sunOcclusion, sunLight,
+      bodyDef(SOLAR_SYSTEM, 'moon').radius, shapeOf('moon'),
+      undefined, () => new MoonSurfaceMarkings(),
+    ),
+  },
   mercury: planetEntry('mercury', '水星'),
   venus: planetEntry('venus', '金星'),
   mars: planetEntry('mars', '火星'),

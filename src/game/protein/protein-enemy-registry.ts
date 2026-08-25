@@ -4,7 +4,7 @@ import {
 } from '../../render/protein-enemy-ship';
 import { buildProteinCollisionRibbon } from '../../render/protein-ribbon';
 import {
-  PROTEIN_ASSET_IDS, proteinAssetBundleFor, proteinAssetFor, type ProteinAssetId,
+  proteinAssetBundleFor, proteinAssetFor, type ProteinAssetId,
 } from './protein-asset-loader';
 import type { ProteinAssetDefinition, ProteinMotionAsset } from './protein-schema';
 import type { ProteinDisplaySettings } from './protein-display';
@@ -20,15 +20,8 @@ export interface ProteinEnemyDefinition {
 
 const PROTEIN_INTERNAL_RIBBON_COLOR = new THREE.Color(0xffffff);
 
-/** 登録済み asset ID から描画用 source を取得する。 */
-function proteinRenderSourceFor(id: ProteinAssetId): ProteinRenderSource {
-  const bundle = proteinAssetBundleFor(id);
-  if (!bundle) throw new Error(`Unknown protein asset bundle: ${id}`);
-  return bundle;
-}
-
 /** 描画と固定衝突形状を共有 asset へ束ねた敵定義を作る。 */
-function createProteinEnemyDefinition(
+export function createProteinEnemyDefinition(
   assetId: ProteinAssetId,
   source: ProteinRenderSource,
 ): ProteinEnemyDefinition {
@@ -47,13 +40,19 @@ function createProteinEnemyDefinition(
   };
 }
 
-const PROTEIN_ENEMY_DEFINITIONS = Object.fromEntries(PROTEIN_ASSET_IDS.map((assetId) => [
-  assetId,
-  createProteinEnemyDefinition(assetId, proteinRenderSourceFor(assetId)),
-])) as Readonly<Record<ProteinAssetId, ProteinEnemyDefinition>>;
+// asset の fetch 完了(protein-asset-loader.startProteinAssetPreload)を待ってから作るため、
+// 事前に全件は構築できない。id ごとに初回アクセス時に組み、以降は使い回す。
+const proteinEnemyDefinitionCache = new Map<ProteinAssetId, ProteinEnemyDefinition>();
 
-/** 任意の文字列から登録済みタンパク質敵定義を検索する。 */
+/** 任意の文字列から登録済みタンパク質敵定義を検索する。asset 未取得なら null。 */
 export function proteinEnemyDefinitionFor(id: string): ProteinEnemyDefinition | null {
   if (!proteinAssetFor(id)) return null;
-  return PROTEIN_ENEMY_DEFINITIONS[id as ProteinAssetId] ?? null;
+  const assetId = id as ProteinAssetId;
+  const cached = proteinEnemyDefinitionCache.get(assetId);
+  if (cached) return cached;
+  const bundle = proteinAssetBundleFor(assetId);
+  if (!bundle) return null;
+  const definition = createProteinEnemyDefinition(assetId, bundle);
+  proteinEnemyDefinitionCache.set(assetId, definition);
+  return definition;
 }

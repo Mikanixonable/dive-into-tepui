@@ -12,11 +12,13 @@ import { spinOrientation } from '../../physics/body-orientation';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
 import { Billboard } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
+import { BodyGraticule } from '../../render/body-graticule';
 import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
+import type { RenderStyle } from '../../render/render-style';
 import { RingView } from './ring-view';
 import { bondAlbedoOf } from '../../render/celestial-albedo';
 import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
@@ -57,6 +59,8 @@ export class PointView extends CelestialView {
   private readonly outerRadius: number;
   // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
   private readonly axes: THREE.Vector3;
+  // 模式図スタイルでだけ見せる経緯度グリッド。姿勢は group の子として自然に追従する。
+  private readonly graticule = new BodyGraticule();
 
   // surface はマップビューで見せる実体、radius は実半径 [m]、shape は歪みの形状データ
   // (省略時は radius による真球)。rings を渡すとマップビューでのみ環を持つ(戦闘ビューの
@@ -85,6 +89,7 @@ export class PointView extends CelestialView {
   // マップビュー用の実体表面と輝点用ビルボードをシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
     this.surface.addTo(this.group);
+    this.graticule.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== undefined) {
       this.ring = new RingView(
@@ -106,7 +111,7 @@ export class PointView extends CelestialView {
   // 輝点も出さない)。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettingsData,
+    graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
     const pos = ephemeris.positionOf(this.id, displayTime);
@@ -122,6 +127,7 @@ export class PointView extends CelestialView {
       return;
     }
     this.surface.syncLod(apparentDiameterPx);
+    this.graticule.setVisible(style === 'schematic');
     const orientation = ephemeris.poleAt(this.id, displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     const rings = graphics.rings ? this.rings : undefined;
@@ -136,6 +142,7 @@ export class PointView extends CelestialView {
         orientation === null ? null : orientation.axis,
         pos,
         cameraSystem.activeCameraScale,
+        style,
       );
     }
   }
@@ -143,6 +150,7 @@ export class PointView extends CelestialView {
   // 見かけ直径が閾値未満のときの共通後始末: 実体メッシュと環を隠す。
   private hidePhysical(): void {
     this.surface.hide();
+    this.graticule.setVisible(false);
     if (this.ring !== undefined) this.ring.group.visible = false;
   }
 
@@ -176,6 +184,7 @@ export class PointView extends CelestialView {
   dispose(): void {
     this.group.removeFromParent();
     this.surface.dispose();
+    this.graticule.dispose();
     this.ring?.dispose();
     this.billboard.mesh.removeFromParent();
     this.billboard.dispose();
