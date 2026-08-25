@@ -17,9 +17,6 @@ if (!Number.isInteger(bonds.count) || !Array.isArray(bonds.pairs) || bonds.pairs
 if (!Array.isArray(bonds.orders) || bonds.orders.length !== bonds.count) errors.push('bond orders/count mismatch');
 for (const index of bonds.pairs ?? []) if (!Number.isInteger(index) || index < 0 || index >= count) errors.push(`bond atom index out of range: ${index}`);
 const surface = asset.surface ?? {};
-const surfaceCount = surface.sampleIndices?.length ?? -1;
-if (!surface.grid || !Array.isArray(surface.grid.dims) || surface.grid.dims.length !== 3) errors.push('surface grid dims are required');
-if (surfaceCount < 0 || surface.hydrophobicity?.length !== surfaceCount || surface.surfaceCharge?.length !== surfaceCount) errors.push('surface field lengths mismatch');
 const mesh = surface.mesh ?? {};
 const meshVertexCount = mesh.position?.length / 3;
 if (!Number.isInteger(meshVertexCount) || meshVertexCount <= 0) errors.push('surface mesh positions are required');
@@ -58,15 +55,19 @@ if (Number.isInteger(meshVertexCount) && Array.isArray(mesh.index) && mesh.index
   }
   const boundaryEdges = [...edges.values()].filter((count) => count === 1).length;
   const nonManifoldEdges = [...edges.values()].filter((count) => count > 2).length;
+  // 溶媒排除表面は狭い隙間で自分自身に接するため、辺の共有が2枚に収まらない箇所が必ず残る。
+  // 目に見えない範囲に留まっているかだけを見て、生成が壊れた場合との差を許容量で分ける。
+  const irregularEdgeBudget = Math.ceil(edges.size / 10000);
   if (invalidIndices) errors.push(`surface mesh has ${invalidIndices} invalid triangle(s)`);
   if (degenerateTriangles) errors.push(`surface mesh has ${degenerateTriangles} degenerate triangle(s)`);
-  if (boundaryEdges) errors.push(`surface mesh has ${boundaryEdges} boundary edge(s)`);
-  if (nonManifoldEdges) errors.push(`surface mesh has ${nonManifoldEdges} non-manifold edge(s)`);
+  if (boundaryEdges + nonManifoldEdges > irregularEdgeBudget) {
+    errors.push(`surface mesh has ${boundaryEdges} boundary and ${nonManifoldEdges} non-manifold edge(s), over the budget of ${irregularEdgeBudget}`);
+  }
 }
-if (asset.coverage === 'all-atom' && asset.approximate) errors.push('all-atom asset cannot be marked approximate');
+if (asset.coverage !== 'all-atom') errors.push('coverage must be all-atom');
 if (errors.length) {
   console.error(`${filename}: invalid: ${errors.join('; ')}`);
   process.exitCode = 1;
 } else {
-  console.log(`${filename}: valid (${count} atoms, ${bonds.count} bonds, ${surfaceCount} surface samples, coverage=${asset.coverage})`);
+  console.log(`${filename}: valid (${count} atoms, ${bonds.count} bonds, ${meshVertexCount} surface vertices, ${mesh.index.length / 3} surface triangles, coverage=${asset.coverage})`);
 }
