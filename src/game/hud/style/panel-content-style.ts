@@ -26,23 +26,6 @@ export const PANEL_CONTENT_STYLE = `
   gap: 6px;
   width: 128px;
 }
-#hud-vessel-status .vessel-meter {
-  height: 6px;
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--bar-bg);
-}
-#hud-vessel-status .vessel-meter-fill {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--color-primary);
-  transition: width 180ms;
-}
-#hud-vessel-status .vessel-meter.critical .vessel-meter-fill {
-  background: var(--color-error);
-}
 #hud-vessel-status .vessel-meter-value {
   min-width: 48px;
   color: var(--text);
@@ -55,14 +38,6 @@ export const PANEL_CONTENT_STYLE = `
   display: inline-grid; grid-template-columns: minmax(64px, 1fr) auto;
   align-items: center; gap: 6px; width: 128px;
 }
-#burn-management-panel .burn-fuel-meter {
-  height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--bar-bg);
-}
-#burn-management-panel .burn-fuel-fill {
-  display: block; width: 0; height: 100%; border-radius: inherit;
-  background: var(--color-primary); transition: width 180ms;
-}
-#burn-management-panel .burn-fuel-meter.critical .burn-fuel-fill { background: var(--color-error); }
 #burn-management-panel .burn-fuel-value {
   min-width: 48px; color: var(--text); font-size: var(--font-xxs);
   text-align: right; white-space: nowrap;

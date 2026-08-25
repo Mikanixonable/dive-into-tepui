@@ -11,6 +11,7 @@ import { celestialBodyName } from '../frame/frame-labels';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import { findStageClass } from '../../stages/stage-dictionary';
 import { Button, CloseButton, Meter, TabBar } from '../widgets';
+import { injectOnce } from '../widgets/inject-style';
 import { MQ_COMPACT } from '../breakpoints';
 
 const STYLE = `
@@ -108,16 +109,6 @@ const STYLE = `
 }
 `;
 
-let styleInjected = false;
-// セーブブラウザのスタイルシートを document.head へ一度だけ挿入する。
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
-
 // ステージ id を選択画面と同じ表示名にする。登録の無い id はそのまま出す。
 function stageLabel(stageId: string): string {
   return findStageClass(stageId)?.selectLabel ?? stageId;
@@ -163,7 +154,7 @@ export class SaveBrowser implements OverlayHandle {
     private readonly gameSource: CurrentGameSource,
     private readonly overlayManager: OverlayManager,
   ) {
-    ensureStyle();
+    injectOnce('save-browser', STYLE);
     this.el = document.createElement('div');
     this.el.id = 'save-browser';
     this.el.style.display = 'none';

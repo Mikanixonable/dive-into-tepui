@@ -73,12 +73,12 @@ export class VesselPanel {
     const readout = this.els.get(readoutId);
     if (!readout) return null;
     const meter = document.createElement('span');
-    meter.className = 'vessel-meter';
+    meter.className = 'vessel-meter w-meter-track';
     meter.setAttribute('role', 'progressbar');
     meter.setAttribute('aria-label', label);
     meter.setAttribute('aria-valuemin', '0');
     const fill = document.createElement('span');
-    fill.className = 'vessel-meter-fill';
+    fill.className = 'w-meter-fill';
     const value = document.createElement('output');
     value.className = 'vessel-meter-value';
     value.textContent = '—';
@@ -243,7 +243,6 @@ export class VesselPanel {
 
     const fuelMeter = this.els.get('rcs-fuel-meter');
     if (fuelMeter) {
-      fuelMeter.classList.toggle('critical', maxFuel > 0 && clampedFuel < maxFuel * 0.2);
       fuelMeter.setAttribute('aria-valuemax', String(maxFuel));
       fuelMeter.setAttribute('aria-valuenow', String(clampedFuel));
       fuelMeter.setAttribute('aria-valuetext', fuelValueText);
@@ -251,6 +250,7 @@ export class VesselPanel {
     const fuelFill = this.els.get('rcs-fuel-fill');
     if (fuelFill) {
       fuelFill.style.width = `${fuelPercent.toFixed(1)}%`;
+      fuelFill.classList.toggle('danger', maxFuel > 0 && clampedFuel < maxFuel * 0.2);
     }
     this.setText('rcs-fuel-value', fuelValueText);
 
@@ -278,7 +278,7 @@ export class VesselPanel {
     if (!dom) return;
     const clampedRatio = Math.max(0, Math.min(1, ratio));
     dom.fill.style.width = `${(clampedRatio * 100).toFixed(1)}%`;
-    dom.meter.classList.toggle('critical', critical);
+    dom.fill.classList.toggle('danger', critical);
     dom.meter.setAttribute('aria-valuemax', String(max));
     dom.meter.setAttribute('aria-valuenow', String(now));
     dom.meter.setAttribute('aria-valuetext', label);

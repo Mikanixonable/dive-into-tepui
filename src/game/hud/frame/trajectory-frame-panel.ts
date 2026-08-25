@@ -5,22 +5,10 @@ import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../widgets';
 import { celestialBodyName, frameRoleName, rotationSourceLabel } from './frame-labels';
-import { hudRail } from '../hud-root';
 import type { MapPickable } from '../../map-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../overlay-manager';
-
-function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
-  const panel = document.createElement('div');
-  panel.id = id;
-  panel.className = 'panel hidden hud-frame-controls';
-  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-  const title = document.createElement('h3');
-  title.textContent = titleText;
-  panel.appendChild(title);
-  hudRail(root, 'left').appendChild(panel);
-  return panel;
-}
+import { buildPanel } from './frame-controls';
 
 export class TrajectoryFramePanel {
   private readonly panel: HTMLElement;

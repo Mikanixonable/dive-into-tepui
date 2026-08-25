@@ -31,8 +31,8 @@ export interface ApproachSeries {
 }
 
 // 接近タブのターゲット側の伝播経路は種別ごとに違う(艦・基地は predicted、天体は
-// ephemeris.stateOf)ので、呼び出し側がどちらかを選んで渡す。ラグランジュ点など質量を持たない
-// 対象は period が求まらず approachSeries が null を返すので、この union に含めない。
+// ephemeris.stateOf)。ラグランジュ点など質量を持たない対象は period が求まらず
+// approachSeries が null を返すので、この union に含めない。
 export type ApproachTargetSource =
   | { readonly kind: 'entity'; readonly entity: GameEntity }
   | { readonly kind: 'celestialBody'; readonly body: CelestialBody };
