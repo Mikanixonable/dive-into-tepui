@@ -356,6 +356,23 @@ export class SunOcclusion {
     }
     // 法線オフセットが受け手を光源側へ押し出し、柱の手前へ抜けることがある。そこは遮られない。
     const visibility = float(1).sub(float(1).sub(lit.div(PCF_TAPS)).mul(umbraFade));
-    return select(receiverDepth.lessThan(0), float(1), visibility);
+    const distantVisibility = this.distantVisibility(slot, uvBase, receiverDepth.sub(depthBias), casterSize, sunAngRadius);
+    return select(receiverDepth.lessThan(0), float(1), visibility.mul(distantVisibility));
+  }
+
+  // 遠層に写った遮蔽器が残す可視率。**近層と遠層に同じ遮蔽器が写ることはない**ので、2 つの
+  // 可視率はそのまま掛けられる。
+  //
+  // 遠層に居るのは本影を失った遮蔽器だけで、半影の幅は枠の 1 辺以上ある。**縁は元から硬くない
+  // ので PCF は要らず、遮られる面積比 (遮蔽器の角半径 / 恒星の角半径)² を 1 タップから返す。**
+  private distantVisibility(
+    slot: SunShadowSlot, uv: Vec2Node, receiverDepth: FloatNode, casterSize: FloatNode,
+    sunAngRadius: FloatNode,
+  ): FloatNode {
+    const blockerDepth = texture(slot.farTexture, uv).r;
+    const blockerDistance = receiverDepth.sub(blockerDepth);
+    const shrink = casterSize.div(max(sunAngRadius.mul(blockerDistance).mul(2), 1e-9));
+    // 遮蔽器の居ない texel は受け手より奥の深度で埋まっているので、そのまま素通しになる。
+    return select(blockerDistance.greaterThan(0), float(1).sub(min(shrink.mul(shrink), 1)), float(1));
   }
 }
