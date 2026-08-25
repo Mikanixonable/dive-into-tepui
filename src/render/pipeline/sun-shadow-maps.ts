@@ -61,6 +61,13 @@ export type SunShadowSlot = {
 type Caster = {
   readonly box: THREE.Box3;
   readonly center: THREE.Vector3;
+  // 枝の中でカメラにいちばん近い実体の点と、そこまでの距離 [m]。**窓の中心と要求精度はこれで
+  // 決める** — 外接箱の最近点は、細長い部材を持つ艦では実体の無い空間を指す。
+  readonly anchor: THREE.Vector3;
+  readonly anchorDistance: number;
+  // 個体が箱いっぱいに散らばる枝(薬莢・破片のプール)か。**実体が箱のどこにあるか名指しできない
+  // ので、箱より小さい窓を置いても当たらない** — この枝には窓を作らない。
+  readonly diffuse: boolean;
   // 箱の外接球の半径 [m]。柱の判定と要求精度をこれで測る。
   readonly radius: number;
   // 受け手としての要求 texel [m]。**Infinity なら枠は要らない** — 画面に写らないか、
@@ -80,6 +87,11 @@ export class SunShadowMaps {
   private readonly viewProjection = new THREE.Matrix4();
   private readonly boundingSphere = new THREE.Sphere();
   private readonly lightForward = new THREE.Vector3();
+  private readonly meshSphere = new THREE.Sphere();
+  // expandVisibleCasters が枝ごとに拾う、カメラにいちばん近い実体の点とその距離。
+  private readonly branchAnchor = new THREE.Vector3();
+  private branchDistance = Infinity;
+  private branchDiffuse = false;
   // このフレームにスロットを与えた塊の枠(描画座標の AABB)。
   private readonly clusters: THREE.Box3[] = [];
   // 枠の 1 辺 [m]。相乗りの可否をこれで測る — **枠はこの大きさのまま平行移動するだけ。**
@@ -152,7 +164,7 @@ export class SunShadowMaps {
       // ので、このパスがフレームの先頭で走る限り、ここで確定させないと箱が前フレームの位置で作られる。
       scene.updateMatrixWorld();
       this.collectCasters(scene, camera, viewportHeight, sun);
-      this.buildClusters(this.cameraPosition);
+      this.buildClusters();
     }
     if (this.clusters.length === 0 && this.drawnSlots === 0) return;
 
@@ -210,9 +222,12 @@ export class SunShadowMaps {
     scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight,
   ): void {
     this.casters.length = 0;
+    camera.getWorldPosition(this.cameraPosition);
     for (const root of scene.children) {
       if (!root.visible) continue;
       this.scratchBox.makeEmpty();
+      this.branchDistance = Infinity;
+      this.branchDiffuse = false;
       this.expandVisibleCasters(root);
       if (this.scratchBox.isEmpty()) continue;
       const box = this.scratchBox.clone();
@@ -221,6 +236,9 @@ export class SunShadowMaps {
         box,
         center: this.boundingSphere.center.clone(),
         radius: this.boundingSphere.radius,
+        anchor: this.branchAnchor.clone(),
+        anchorDistance: this.branchDistance,
+        diffuse: this.branchDiffuse,
         requiredTexel: Infinity,
       });
     }
@@ -233,7 +251,6 @@ export class SunShadowMaps {
   // 落ちてこない受け手は要求を持たない** — 枠を 1 枚使う理由が無い。
   private scoreCasters(camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
     if (!(camera instanceof THREE.PerspectiveCamera)) return;
-    camera.getWorldPosition(this.cameraPosition);
     this.frustum.setFromProjectionMatrix(
       this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
     );
@@ -241,10 +258,10 @@ export class SunShadowMaps {
       this.boundingSphere.set(receiver.center, receiver.radius);
       if (!this.frustum.intersectsSphere(this.boundingSphere)) continue;
       if (!this.casters.some((caster) => this.castsOnto(caster, receiver, sun))) continue;
-      // **箱までの距離で測る。** 外接球の表面までにすると、広がった枝(散らばった小片の雲)は
-      // 半径が大きすぎて距離が 0 へ潰れ、どれも同じ最優先になって順位が付かない。
+      // **実体までの距離で測る。** 外接箱までの距離だと、細長い部材を持つ艦はカメラが箱の
+      // 内側へ入った時点で 0 へ潰れ、どれも同じ最優先になって順位が付かない。
       receiver.requiredTexel = requiredTexel(
-        receiver.box.distanceToPoint(this.cameraPosition), camera.near, camera.fov, viewportHeight,
+        receiver.anchorDistance, camera.near, camera.fov, viewportHeight,
       );
     }
   }
@@ -270,10 +287,32 @@ export class SunShadowMaps {
     const mesh = object as THREE.Mesh;
     if (mesh.isMesh && mesh.layers.isEnabled(SUN_SHADOW_CASTER_LAYER)) {
       const extent = mesh.userData.sunShadowExtent as SunShadowExtent | undefined;
-      if (extent === undefined) this.scratchBox.expandByObject(mesh);
-      else if (!extent.worldBounds.isEmpty()) this.scratchBox.union(extent.worldBounds);
+      if (extent === undefined) {
+        this.scratchBox.expandByObject(mesh);
+        // 部材 1 つの外接球の中心を、実体の在りかの代表点として拾う。
+        if (mesh.geometry.boundingSphere === null) mesh.geometry.computeBoundingSphere();
+        const sphere = mesh.geometry.boundingSphere;
+        if (sphere !== null) {
+          this.meshSphere.copy(sphere).applyMatrix4(mesh.matrixWorld);
+          this.takeAnchor(this.meshSphere.center, this.meshSphere.center.distanceTo(this.cameraPosition) - this.meshSphere.radius);
+        }
+      } else if (!extent.worldBounds.isEmpty()) {
+        this.scratchBox.union(extent.worldBounds);
+        this.branchDiffuse = true;
+        // 個体が箱いっぱいに散らばる枝は、箱の最近点がそのまま実体の在りかになる。
+        extent.worldBounds.clampPoint(this.cameraPosition, this.scratchCorner);
+        this.takeAnchor(this.scratchCorner, this.scratchCorner.distanceTo(this.cameraPosition));
+      }
     }
     for (const child of object.children) this.expandVisibleCasters(child);
+  }
+
+  // カメラにより近い代表点が来たら、枝の代表点を差し替える。
+  private takeAnchor(point: THREE.Vector3, distance: number): void {
+    const clamped = Math.max(distance, 0);
+    if (clamped >= this.branchDistance) return;
+    this.branchDistance = clamped;
+    this.branchAnchor.copy(point);
   }
 
   // 要求の厳しい受け手から順に枠を起こす。**枠は受け手のまわりに置く** — 影を落とす遮蔽器は
@@ -288,14 +327,14 @@ export class SunShadowMaps {
   //
   // **最後の 1 枚は被覆に取っておく。** 要求どおりに縮めた枠は遮蔽器を覆いきれないので、
   // はみ出した部分を拾う粗い枠が要る。
-  private buildClusters(cameraPosition: THREE.Vector3): void {
+  private buildClusters(): void {
     const windowSlots = SHADOW_SLOT_COUNT - 1;
     for (const receiver of this.casters) {
       if (!Number.isFinite(receiver.requiredTexel)) break; // 昇順なので、以降はすべて要求が無い
       const limit = 2 * extentForTexel(receiver.requiredTexel, SHADOW_SLOT_SIZE);
       if (this.shareFrame(receiver, limit)) continue;
       if (this.clusters.length >= windowSlots) break;
-      this.openFrames(receiver, limit, cameraPosition, windowSlots);
+      this.openFrames(receiver, limit, windowSlots);
     }
     this.addCoverageFrame();
   }
@@ -317,14 +356,11 @@ export class SunShadowMaps {
   // 開き、**続けて箱ぜんたいの枠も開く。** 窓からはみ出した部分が最後の被覆枠(全受け手の和)
   // まで落ちると、そこだけ極端に粗くなる — 至近の艦の胴体に、遠くの艦まで含めた枠の texel が
   // 出てしまう。以後の受け手は箱ぜんたいの枠のほうへ相乗りする。
-  private openFrames(
-    receiver: Caster, limit: number, cameraPosition: THREE.Vector3, budget: number,
-  ): void {
+  private openFrames(receiver: Caster, limit: number, budget: number): void {
     const boxSize = this.frameSize(receiver.box);
-    const size = Math.min(boxSize, limit);
+    const size = receiver.diffuse ? boxSize : Math.min(boxSize, limit);
     if (size < boxSize) {
-      receiver.box.clampPoint(cameraPosition, this.center);
-      this.scratchBox.setFromCenterAndSize(this.center, this.size.setScalar(size)).intersect(receiver.box);
+      this.scratchBox.setFromCenterAndSize(receiver.anchor, this.size.setScalar(size)).intersect(receiver.box);
       this.pushFrame(this.scratchBox, size, size * 0.5);
       if (this.clusters.length >= budget) return;
     }
