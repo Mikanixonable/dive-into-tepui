@@ -82,6 +82,18 @@ function toEci(frame: RotatingFrame, local: Vec3Tuple): Vec3 {
   ));
 }
 
+// デコード済みの点列。族ごとに base64 を毎回ほどくと、1本引くたびに族まるごとのバイト列を
+// 走査することになる(1族=数十万バイト)。族の中身は焼き込みなので変わらない。
+const decodedPoints = new WeakMap<CatalogFamily, Float32Array>();
+
+function familyPoints(family: CatalogFamily): Float32Array {
+  const cached = decodedPoints.get(family);
+  if (cached !== undefined) return cached;
+  const values = decodeCatalogPoints(family.points);
+  decodedPoints.set(family, values);
+  return values;
+}
+
 // 族の s∈[0,1] を挟む2メンバーの添字と内分比。範囲外は端で頭打ちにする。
 function bracketMember(family: CatalogFamily, s: number): { lo: number; hi: number; f: number } {
   const members = family.members;
@@ -106,7 +118,7 @@ export function catalogLoop(
   const frame = rotatingFrame(t, ephemeris, system, catalog.mu);
   if (frame === null) return null;
 
-  const values = decodeCatalogPoints(family.points);
+  const values = familyPoints(family);
   const { lo, hi, f } = bracketMember(family, s);
   const samples = family.samples;
   const base = lo * samples * CATALOG_STRIDE;

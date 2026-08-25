@@ -76,10 +76,14 @@ export const CYCLES_MAPPING: ValueMapping = {
 // ゼロ速度曲線のヤコビ定数。地球-月系(L1≈3.19)から太陽-地球系(L1≈3.0000009)まで跨ぐので、
 // 実務上使う範囲を広めに取る。
 export const JACOBI_MAPPING: ValueMapping = {
-  sliderMin: 0, sliderMax: 4000, sliderStep: 1,
-  toSlider: (v) => Math.round((v - 2.5) * 1000), fromSlider: (raw) => 2.5 + raw / 1000,
-  format: (v) => v.toFixed(4), parse: (text) => clamp(Number(text), 2.5, 6.5),
-  inputMin: 2.5, inputMax: 6.5, inputStep: 0.0001,
+  // 太陽-地球系の C(L1)〜C(L5) は 3.0000 付近へ 10⁻⁵ の幅で密集するので、スライダーも表示も
+  // その差が見える刻みにする(地球-月系は 3.0〜3.2 に広がるので同じ刻みで足りる)。
+  sliderMin: 0, sliderMax: 40000, sliderStep: 1,
+  toSlider: (v) => Math.round((clamp(v, 2.5, 6.5) - 2.5) * 10000),
+  fromSlider: (raw) => 2.5 + raw / 10000,
+  format: (v) => v.toFixed(5),
+  parse: (text) => clamp(Number(text), 2.5, 6.5),
+  inputMin: 2.5, inputMax: 6.5, inputStep: 0.00001,
 };
 
 export interface ValueField {

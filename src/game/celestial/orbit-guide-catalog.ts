@@ -47,6 +47,11 @@ export class OrbitGuideCatalog {
     return null;
   }
 
+  // その系にその族があるか。焼き込みの索引を見るので、遅延ロード前でも判定できる。
+  public hasFamily(system: CatalogSystemId, familyId: string): boolean {
+    return STATIC_CATALOG.familyIndex[system]?.includes(familyId) ?? false;
+  }
+
   private startLoad(id: CatalogSystemId): void {
     const loader = LAZY_IMPORTS[id];
     if (!loader) {
