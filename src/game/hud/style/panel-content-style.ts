@@ -623,11 +623,11 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   background: transparent; box-shadow: none;
 }
 #hud-settings-view .sv-theme-button:not(.on) {
-  background: color-mix(in srgb, var(--sv-theme-title) 8%, var(--surface-0));
+  background: color-mix(in srgb, var(--sv-theme-title) 8%, var(--sv-theme-page));
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button:not(.on):hover {
-  background: color-mix(in srgb, var(--sv-theme-title) 16%, var(--surface-0));
+  background: color-mix(in srgb, var(--sv-theme-title) 16%, var(--sv-theme-page));
   color: var(--sv-theme-title);
 }
 #hud-settings-view .sv-theme-button.on {
