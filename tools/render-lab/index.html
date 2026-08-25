@@ -4,33 +4,37 @@
 <meta charset="utf-8">
 <title>Render Lab</title>
 <style>
-  :root { --bg: #0b0d10; --panel: #14181d; --edge: #2a3038; --text: #d7dde5; --dim: #7d8894; }
+  :root { --bg: #0b0d10; --panel: #14181d; --edge: #2a3038; --text: #d7dde5; --accent: #ff6a00; }
   * { box-sizing: border-box; }
   body {
     margin: 0; padding: 16px; background: var(--bg); color: var(--text);
     font: 13px/1.6 "JetBrains Mono", ui-monospace, monospace;
   }
   h1 { font-size: 15px; margin: 0 0 12px; font-weight: 600; letter-spacing: .04em; }
-  #cases { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-  #cases button {
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .row button {
     background: #1c2229; color: var(--text); border: 1px solid var(--edge);
     border-radius: 4px; padding: 5px 14px; font: inherit; cursor: pointer;
   }
-  #cases button:hover { border-color: #3d4650; }
-  #cases button.active { background: #ff6a00; border-color: #ff6a00; color: #12151a; font-weight: 600; }
+  .row button:hover { border-color: #3d4650; }
+  .row button.active { background: var(--accent); border-color: var(--accent); color: #12151a; font-weight: 600; }
+  .row .field { display: flex; align-items: center; gap: 6px; }
+  .row .field span { opacity: .7; }
+  .row .field input[type=range] { width: 116px; accent-color: var(--accent); }
+  .row .field output { min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
   #views { display: flex; gap: 12px; flex-wrap: wrap; }
   #views figure { margin: 0; background: var(--panel); border: 1px solid var(--edge); padding: 8px; }
-  #views figcaption { color: var(--dim); margin-bottom: 6px; }
   #views canvas { display: block; width: 960px; height: 540px; background: #000; }
   #error { color: #ff8a5c; white-space: pre-wrap; }
 </style>
 </head>
 <body>
   <h1>Render Lab</h1>
-  <div id="cases"></div>
+  <div class="row" id="cases"></div>
+  <div class="row" id="targets"></div>
+  <div class="row" id="view-angles"></div>
   <div id="views">
-    <figure><figcaption>light prepass</figcaption><canvas id="prepass"></canvas></figure>
-    <figure><figcaption>forward</figcaption><canvas id="forward"></canvas></figure>
+    <figure><canvas id="view"></canvas></figure>
   </div>
   <p id="error"></p>
 </body>

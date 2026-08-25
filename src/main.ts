@@ -79,7 +79,7 @@ function startAnimationLoop(
       const t1 = perf.on ? performance.now() : 0;
       game.sync(graphics.current, renderStyle.current);
       const t2 = perf.on ? performance.now() : 0;
-      game.render(renderStyle.current);
+      game.render(renderStyle.current, graphics.current.meshShadow);
       const t3 = perf.on ? performance.now() : 0;
       // 時刻印クエリを溜めないため、窓の開閉によらず毎フレーム解決させる。計測自身の費用が
       // render 区間へ混ざらないよう、区間の外で呼ぶ。

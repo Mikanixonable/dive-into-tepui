@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../physics/random';
-import { markLitOpaque } from './pipeline/lit-layer';
+import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -87,6 +87,7 @@ export function cloneIndependent<T extends THREE.Object3D>(template: T): T {
     }
   });
   markLitOpaque(clone);
+  markSunShadowCaster(clone);
   return clone;
 }
 
@@ -232,6 +233,7 @@ export function buildRcsFuelPickup(): THREE.Group {
   beacon.position.x = 1.15;
   g.add(beacon);
   markLitOpaque(g);
+  markSunShadowCaster(g);
   return g;
 }
 
@@ -533,5 +535,6 @@ export function buildBarrelMesh(): THREE.Group {
   // layers.mask は Object3D.clone(true) が子孫までコピーするため、テンプレートへ一度だけ
   // 設定すれば以降の複製全てへ引き継がれる。
   markLitOpaque(g);
+  markSunShadowCaster(g);
   return g;
 }

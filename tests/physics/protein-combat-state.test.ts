@@ -21,9 +21,7 @@ import {
   buildProteinEnemyShip, buildProteinRibbonShip, type ProteinBackboneAsset, type ProteinRenderSource,
 } from '../../src/render/protein-enemy-ship';
 import { proteinSecondaryKind } from '../../src/render/protein-ribbon-color';
-import {
-  LIT_OPAQUE_LAYER, PROTEIN_SHADOW_OCCLUDER_LAYER, PROTEIN_SHADOW_RECEIVER_LAYER,
-} from '../../src/render/pipeline/lit-layer';
+import { LIT_OPAQUE_LAYER, SUN_SHADOW_CASTER_LAYER } from '../../src/render/pipeline/lit-layer';
 import { v3 } from '../../src/physics/vec3';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, PROTEIN_COLOR_LABELS,
@@ -219,16 +217,15 @@ export function register(): void {
     let shellFound = false;
     object.traverse((child) => {
       ligandFound ||= child.userData.proteinLigand === true;
-      if (child.userData.proteinShadowOccluder === true) {
+      if (child.userData.proteinTranslucentShell === true) {
         shellFound = true;
         assert.equal(child.layers.isEnabled(0), true);
         assert.equal(child.layers.isEnabled(LIT_OPAQUE_LAYER), false);
-        assert.equal(child.layers.isEnabled(PROTEIN_SHADOW_OCCLUDER_LAYER), true);
+        assert.equal(child.layers.isEnabled(SUN_SHADOW_CASTER_LAYER), false);
       }
       if (!child.userData.proteinRibbon) return;
       ribbons += 1;
       assert.equal(child.layers.isEnabled(LIT_OPAQUE_LAYER), true);
-      assert.equal(child.layers.isEnabled(PROTEIN_SHADOW_RECEIVER_LAYER), true);
       const mesh = child as THREE.Mesh;
       const colors = mesh.geometry.getAttribute('color');
       assert.ok(colors, 'silhouette ribbon should expose vertex colors');
@@ -250,7 +247,7 @@ export function register(): void {
     );
     const shellComponents = new Set<string>();
     object.traverse((child) => {
-      if (child.userData.proteinShadowOccluder === true) {
+      if (child.userData.proteinTranslucentShell === true) {
         shellComponents.add(String(child.userData.proteinComponent));
       }
     });

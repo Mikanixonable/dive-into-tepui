@@ -78,7 +78,7 @@ export function buildProteinSilhouette(
     }, motion));
     mesh.renderOrder = 2;
     mesh.userData.proteinComponent = component;
-    mesh.userData.proteinShadowOccluder = true;
+    mesh.userData.proteinTranslucentShell = true;
     mesh.userData.ownsGeometry = true;
     mesh.userData.ownsMaterial = true;
     group.add(mesh);
