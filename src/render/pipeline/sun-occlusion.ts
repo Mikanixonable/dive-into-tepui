@@ -354,8 +354,6 @@ export class SunOcclusion {
       const stored = texture(slot.texture, uv).r;
       lit.addAssign(select(receiverDepth.sub(depthBias).greaterThan(stored), float(0), float(1)));
     }
-    // 枠の外は遮られないものとして返す。**箱の判定は法線オフセットぶん枠より広い**ので、
-    // 縁の外へわずかに出た点がテクスチャの縁の値を引き延ばして帯状の影を作る経路がある。
     // 法線オフセットが受け手を光源側へ押し出し、柱の手前へ抜けることがある。そこは遮られない。
     const visibility = float(1).sub(float(1).sub(lit.div(PCF_TAPS)).mul(umbraFade));
     return select(receiverDepth.lessThan(0), float(1), visibility);
