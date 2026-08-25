@@ -1,15 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#0b0b0d" />
-  <path d="M15 47 C 20 40, 24 34, 30 30 C 36 26, 40 21, 44 15"
-        fill="none" stroke="#3c4258" stroke-width="10" stroke-linecap="round" />
-  <path d="M30 30 C 35 33, 39 37, 45 41"
-        fill="none" stroke="#3c4258" stroke-width="7" stroke-linecap="round" />
-  <path d="M15 47 C 20 40, 24 34, 30 30 C 36 26, 40 21, 44 15"
-        fill="none" stroke="#aab0c4" stroke-width="6" stroke-linecap="round" />
-  <path d="M30 30 C 35 33, 39 37, 45 41"
-        fill="none" stroke="#aab0c4" stroke-width="4" stroke-linecap="round" />
-  <path d="M16 45.5 C 21 39, 25 33.5, 30.5 29.8"
-        fill="none" stroke="#f1edf0" stroke-width="2" stroke-linecap="round" opacity="0.8" />
-  <circle cx="44" cy="15" r="3.4" fill="#ff5a00" />
-  <circle cx="45" cy="41" r="2.6" fill="#ff8b52" />
+  <defs>
+    <linearGradient id="strand" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f1edf0" />
+      <stop offset="1" stop-color="#7d84a0" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#08090d" />
+
+  <g fill="none" stroke="url(#strand)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 10 C 47 10, 47 26, 32 32 C 17 38, 17 54, 32 54 C 40 54, 44 49, 44 44"
+          stroke="#08090d" stroke-width="13" />
+    <path d="M32 10 C 17 10, 17 26, 32 32 C 47 38, 47 54, 32 54 C 24 54, 20 49, 20 44"
+          stroke="#08090d" stroke-width="13" />
+    <path d="M32 10 C 47 10, 47 26, 32 32 C 17 38, 17 54, 32 54 C 40 54, 44 49, 44 44" />
+    <path d="M32 10 C 17 10, 17 26, 32 32 C 47 38, 47 54, 32 54 C 24 54, 20 49, 20 44" />
+  </g>
+
+  <circle cx="32" cy="10" r="3.2" fill="#ff3155" />
+  <circle cx="32" cy="54" r="3.2" fill="#3478ff" />
 </svg>
