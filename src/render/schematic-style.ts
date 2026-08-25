@@ -24,5 +24,9 @@ export const GRATICULE_RADIUS_RATIO = 1.002;
 export const OUTLINE_CIRCLE_COLOR = SCHEMATIC_LINE;
 
 // 3D UI パス(軌道線・軌跡線・天球グリッド・縮尺グリッド・Δv ギズモ)を白背景へ合成するときの
-// 明度反転の基準値。暗背景向けの色をそのまま `SCHEMATIC_OVERLAY_INVERT_MAX - c` で反転させる。
-export const SCHEMATIC_OVERLAY_INVERT_MAX = 1;
+// 色の落とし方。暗背景向けの明るい色をそのまま反転すると色相まで裏返り、線の色が持つ区別
+// (参照/自機/ターゲット/計画/予測)が別の意味の色になる。色相と彩度を保ったまま暗くする。
+export const SCHEMATIC_OVERLAY_DARKEN = 0.45;
+// 同じ合成でアルファに掛ける倍率。暗背景では薄い線でも光って見えるが、白地では同じ薄さだと
+// 消えるため、濃さの側で補う。
+export const SCHEMATIC_OVERLAY_ALPHA_GAIN = 1.6;
