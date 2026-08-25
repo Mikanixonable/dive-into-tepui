@@ -117,10 +117,19 @@ export function register(): void {
         const family: CatalogFamily = system.families[id]!;
         const loop = catalogLoop(t, ephemeris, system, systemId, id, 0.5);
         assert.ok(loop !== null, `${id}: ガイド線が組めない`);
-        assert.equal(loop.points.length, family.samples);
-        assert.ok(loop.points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)));
-        // 軌道の広がりは両天体間距離の数倍を超えない(重心から極端に離れた点が無い)。
-        for (const p of loop.points) {
+        assert.ok(loop.shape.kind === 'knots', `${id}: 焼き込み族は節点列で返るはず`);
+        const shape = loop.shape;
+        // 閉じた輪なので、末尾に始点を u=1 として足したぶんが1点多い。
+        assert.equal(shape.count, family.samples + 1);
+        assert.equal(shape.at(0), 0);
+        assert.equal(shape.at(shape.count - 1), 1);
+        for (let i = 0; i < shape.count; i++) {
+          const p = shape.position(i);
+          const m = shape.tangent(i);
+          assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z));
+          assert.ok(Number.isFinite(m.x) && Number.isFinite(m.y) && Number.isFinite(m.z));
+          if (i > 0) assert.ok(shape.at(i) > shape.at(i - 1), `${id}: パラメータが昇順でない`);
+          // 軌道の広がりは両天体間距離の数倍を超えない(重心から極端に離れた点が無い)。
           assert.ok(len(sub(p, frame.origin)) < 6 * frame.unit, `${id}: 重心から離れすぎた点がある`);
         }
       }
