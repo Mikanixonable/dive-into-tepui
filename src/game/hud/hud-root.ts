@@ -351,6 +351,16 @@ function buildChaseReset(root: HTMLElement): void {
   });
 }
 
+// H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
+function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
+  const badge = createHudElement('button', 'hud-help-badge', root);
+  badge.setAttribute('type', 'button');
+  badge.setAttribute('aria-label', '操作ガイドを開く');
+  badge.setAttribute('title', '操作ガイドを開く');
+  badge.textContent = '?';
+  badge.addEventListener('click', () => helpPanel.open());
+}
+
 // data-id 属性を持つ要素を、その id をキーにした Map にまとめて返す。
 function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   const els = new Map<string, HTMLElement>();
@@ -386,6 +396,7 @@ export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
   createHudElement('div', 'hud-toast', layers.notify);
 
   const helpPanel = new HelpPanel(layers.system, overlayManager);
+  buildHelpBadge(layers.panel, helpPanel);
 
   createHudElement('div', 'hud-result', layers.system);
 
