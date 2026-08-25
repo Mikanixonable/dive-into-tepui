@@ -147,7 +147,7 @@ export class BurnManagementPanel {
     this.dom.totalMass.textContent = formatMass(view.totalMass);
     this.dom.fuelValue.textContent = fuelText;
     this.dom.fuelFill.style.width = `${(fuelRatio * 100).toFixed(1)}%`;
-    this.dom.fuelMeter.classList.toggle('critical', fuelRatio <= 0.2);
+    this.dom.fuelFill.classList.toggle('danger', fuelRatio <= 0.2);
     this.dom.fuelMeter.setAttribute('aria-valuemin', '0');
     this.dom.fuelMeter.setAttribute('aria-valuemax', String(activeFuelMax));
     this.dom.fuelMeter.setAttribute('aria-valuenow', String(activeFuel));

@@ -163,9 +163,9 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       <div class="row metric">
         <dt class="k">RCS燃料</dt>
         <dd class="v vessel-meter-readout">
-          <span class="vessel-meter" data-id="rcs-fuel-meter" role="progressbar"
+          <span class="vessel-meter w-meter-track" data-id="rcs-fuel-meter" role="progressbar"
             aria-label="RCS燃料" aria-valuemin="0">
-            <span class="vessel-meter-fill" data-id="rcs-fuel-fill"></span>
+            <span class="w-meter-fill" data-id="rcs-fuel-fill"></span>
           </span>
           <output class="vessel-meter-value" data-id="rcs-fuel-value">—</output>
         </dd>
@@ -240,9 +240,9 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       <div class="row metric">
         <dt class="k">最後尾燃料</dt>
         <dd class="v burn-fuel-readout">
-          <span class="burn-fuel-meter" data-id="burn-active-fuel-meter" role="progressbar"
+          <span class="burn-fuel-meter w-meter-track" data-id="burn-active-fuel-meter" role="progressbar"
             aria-label="最後尾ブースター燃料" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
-            <span class="burn-fuel-fill" data-id="burn-active-fuel-fill"></span>
+            <span class="w-meter-fill" data-id="burn-active-fuel-fill"></span>
           </span>
           <output class="burn-fuel-value" data-id="burn-active-fuel-value">—</output>
         </dd>
@@ -275,9 +275,9 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
           <dt class="k">相対速度</dt><dd class="v"><output data-id="tgt-relative-speed">—</output></dd>
         </div>
         <div class="row metric"><dt class="k">装甲</dt><dd class="v armor-readout">
-          <span class="armor-meter" data-id="tgt-armor-meter" role="progressbar"
+          <span class="armor-meter w-meter-track" data-id="tgt-armor-meter" role="progressbar"
             aria-label="ターゲットの装甲" aria-valuemin="0">
-            <span class="armor-meter-fill" data-id="tgt-armor-fill"></span>
+            <span class="w-meter-fill" data-id="tgt-armor-fill"></span>
           </span>
           <output class="armor-value" data-id="tgt-armor-value">—</output>
         </dd></div>
