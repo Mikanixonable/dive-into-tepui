@@ -45,6 +45,9 @@ export interface CatalogSystem {
 
 export interface OrbitCatalog {
   readonly systems: Readonly<Partial<Record<CatalogSystemId, CatalogSystem>>>;
+  // 遅延ロードする系も含めた、系ごとの族 id 一覧。UI は起動時にこれを見て選択肢を組めるので、
+  // まだ読み込んでいない系の種類が後から現れることがない。
+  readonly familyIndex: Readonly<Partial<Record<CatalogSystemId, readonly string[]>>>;
 }
 
 // 1点あたりの値の数([x, y, z, tFrac])。

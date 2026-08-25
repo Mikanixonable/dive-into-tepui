@@ -3,6 +3,8 @@
 // ここは「いまフレームにどの軌道線が表示されているか」を集めるだけ。
 import type { Ephemeris } from '../physics/ephemeris';
 import type { FrameAnchorSource, ReferenceFrame } from '../physics/frame';
+import { guideSecondary } from '../physics/orbit-guide';
+import { primaryOf } from '../physics/solar-system';
 import type { Vec3 } from '../physics/vec3';
 import type { DisplayWindow } from './display-window-manager';
 import type { EntityManager } from './simulation/entity-manager';
@@ -46,8 +48,8 @@ export class OrbitPickables {
     for (const base of this.entities.bases) this.addShipOrbit('base', base, frame, displayTime, frameAnchors);
 
     for (const guide of this.environment.orbitGuide.visibleLines()) {
-      const secondary = guide.system === 'sun-earth' ? 'earth' : 'moon';
-      const primary = guide.system === 'sun-earth' ? 'sun' : 'earth';
+      const secondary = guideSecondary(guide.system);
+      const primary = primaryOf(this.ephemeris.registry, secondary) ?? secondary;
       const ownerKeys = guide.point
         ? [`body:${secondary}-l${guide.point.slice(1)}`, `body:${primary}`, `body:${secondary}`]
         : [`body:${primary}`, `body:${secondary}`];

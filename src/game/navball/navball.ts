@@ -66,5 +66,14 @@ export class Navball {
       this.onOrbitGuideSettingsChange?.(this.orbitGuideSettings);
     };
     viewOptionsPanel.setOrbitGuideSettings(this.orbitGuideSettings);
+
+    // ゼロ速度曲線はガイドタブに置くが、値は軌道ガイド設定の一部として同じ正本が持つ。
+    viewOptionsPanel.onZeroVelocityChange = (zeroVelocity) => {
+      this.orbitGuideSettings = normalizeOrbitGuideSettings({ ...this.orbitGuideSettings, zeroVelocity });
+      saveOrbitGuideSettings(this.orbitGuideSettings);
+      viewOptionsPanel.setZeroVelocitySettings(this.orbitGuideSettings.zeroVelocity);
+      this.onOrbitGuideSettingsChange?.(this.orbitGuideSettings);
+    };
+    viewOptionsPanel.setZeroVelocitySettings(this.orbitGuideSettings.zeroVelocity);
   }
 }
