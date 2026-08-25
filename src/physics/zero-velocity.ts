@@ -146,14 +146,15 @@ export function zeroVelocityCurves(
         // 曖昧セル。対角 (f00,f11) と (f10,f01) が互いに逆符号のときに起こる。
         const center = (f00 + f10 + f11 + f01) / 4;
         const diag00Inside = f00 >= 0;
+        // 中心の符号が (f00,f11) の対角と同じなら、その対角側が中心を通って繋がっている。
+        // すると曲線は残る2隅(f10 と f01)をそれぞれ切り離す向きに走るので、左辺-上辺と
+        // 右辺-下辺の組になる。中心が逆符号なら、繋がる対角が入れ替わって組も入れ替わる。
         if ((center >= 0) === diag00Inside) {
-          // 中心が (f00,f11) 側と同じ判定 → 到達可能な2隅を繋げる(左-下・右-上)。
+          segments.push([idLeft, idTop]);
+          segments.push([idRight, idBottom]);
+        } else {
           segments.push([idLeft, idBottom]);
           segments.push([idRight, idTop]);
-        } else {
-          // 中心が逆 → 各隅を切り離す(下-右・上-左)。
-          segments.push([idBottom, idRight]);
-          segments.push([idTop, idLeft]);
         }
       }
       // crossings === 0 はこのセルに曲線が通らないので何もしない。
