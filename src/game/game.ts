@@ -257,7 +257,10 @@ export class Game {
     this.dockingGuide = new DockingGuide(
       this._scene, this.markerManager, this.entities, this.docking, this.viewManager,
     );
-    this.viewBadge = new ViewBadge(this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager);
+    this.viewBadge = new ViewBadge(
+      this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager,
+      this._hud.renderStyle,
+    );
 
     // ロード復元時の focus は MapCamera が直接持つだけで frameControls.setFocus() を経由しないため、
     // ここで明示的に同期しないと軌道表示の基準系がフォーカス天体に追随しない。
