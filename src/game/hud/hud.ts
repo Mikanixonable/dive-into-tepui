@@ -43,8 +43,7 @@ export class Hud {
   private toastUntil = 0;
 
   // HUD の DOM を構築する。
-  // スタイル設定は左レールのスタイルパネルが書き込み先として持ち、HUD の配色もこれに従う。
-  constructor(readonly renderStyle: RenderStyleSetting) {
+  constructor(renderStyle: RenderStyleSetting) {
     const {
       root, layers, combatRoot, mapRoot, svgOverlay, overlayManager, helpPanel, els,
     } = buildHudDom(renderStyle);
