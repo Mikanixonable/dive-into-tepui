@@ -21,8 +21,8 @@ import {
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import { DirectionMarkers } from './direction-markers';
 
-// 族の折れ線1本ぶんの頂点予算。焼き込みは全族96点(orbit-catalog.ts)で統一されているので、
-// 適応分割による追加ぶんを見込んでも十分な余裕を持たせる。
+// 族の折れ線1本ぶんの頂点予算。1周ぶんの閉曲線なので、サジッタ目標を満たす頂点数は
+// 数百で収束する。参照軌道4種もこれを使う。
 const CATALOG_LINE_VERTEX_BUDGET = 256;
 // リサジューの頂点予算。周回数を増やすほど長い経路になるので、族の線より多く取る。
 const LISSAJOUS_VERTEX_BUDGET = 2048;
