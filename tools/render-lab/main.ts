@@ -1,5 +1,6 @@
 // 描画テスト環境の画面。ケースと、画面へ出す中間バッファを選ぶと、その絵をゲーム本体と同じ
 // 描画経路で描く。
+import { startProteinAssetPreload } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { CASE_NAMES, type CaseName } from './cases';
 import { LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM, type LabMeasurement, type LabViewAngles } from './lab';
@@ -66,6 +67,8 @@ function buildSlider(
 }
 
 async function init(): Promise<void> {
+  // タンパク質のケースは fetch で来る構造・motion を同期的に読むので、器を組む前に待つ。
+  await startProteinAssetPreload();
   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement);
 
   // つまみの位置は表示だけを担い、値の正本は LabView が持つ。**つまみの刻みへ丸めた値を
