@@ -10,7 +10,8 @@ import {
   AMBIENT_COLOR, AMBIENT_IRRADIANCE, SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY,
 } from '../../src/render/pipeline/sun-light';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
+import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
+import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
@@ -102,6 +103,9 @@ export class LabView {
     sunAzimuthDeg: 0, sunElevationDeg: 0,
     cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraZoom: 0,
   };
+  // 描画品質設定のうち、パイプラインが読むものだけを操作の対象にする。ゲーム本体と保存先を
+  // 分けるため、ここが値の正本を持つ(ブラウザへは残さない)。
+  private graphicsData: GraphicsSettingsData = QUALITY_PRESETS.high;
   private readonly scratchBox = new THREE.Box3();
   private readonly caseCenterVector = new THREE.Vector3();
   private readonly scratchVector = new THREE.Vector3();
@@ -150,6 +154,15 @@ export class LabView {
     this.scene.add(...built.objects);
     this.current = built;
     this.resetView(built);
+    this.render();
+  }
+
+  get graphics(): GraphicsSettingsData { return this.graphicsData; }
+
+  // 描画品質設定の項目を1つ差し替え、パイプラインへ押し出してその場で描き直す。
+  setGraphicsOption(key: GraphicsOptionKey, value: boolean | number): void {
+    this.graphicsData = withGraphicsOption(this.graphicsData, key, value);
+    this.pipeline.applyGraphics(this.graphicsData);
     this.render();
   }
 
