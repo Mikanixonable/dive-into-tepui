@@ -44,11 +44,13 @@ export const MAP_VIEW_STYLE = `
 /* 軌道ガイドタブは項目数に応じて際限なく伸びうるため、他のレールパネル同様に自身の高さへ
    上限をかける——無いと下に続くカメラパネルをレールの下方へ押し出し、隠れて見える。
    タブによって内容量が変わるため、内容が少ないタブでも隣の常設レールパネルより著しく
-   縮まないよう最小高さも持つ。 */
+   縮まないよう最小高さも持つ。スクロールはタイトル行・タブ切替を巻き込まないよう、
+   本文側(view-options-body 以下、panel-content-style.ts)へ付ける。 */
 #hud .hud-map-root.active .hud-rail-left > #hud-view-options {
+  display: flex;
+  flex-direction: column;
   min-height: min(260px, 36dvh);
   max-height: min(420px, 56dvh);
-  overflow-y: auto;
 }
 @media ${MQ_COARSE}, ${MQ_SHORT} {
   #hud .hud-map-root.active .hud-rail-left > #hud-orbit,

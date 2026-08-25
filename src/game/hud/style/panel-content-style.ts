@@ -167,8 +167,12 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud .body-class-row.category-off .body-class-icon-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
 /* 太陽系パネルの左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-view-options { width: 100%; pointer-events: auto; }
-#hud-view-options .view-options-title { display: flex; align-items: center; gap: var(--space-2); }
+#hud-view-options .view-options-title { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); }
 #hud-view-options .view-options-collapse { margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto; }
+/* タブ切替(.w-tabs)は常に見えたまま、選択中のタブ本文だけをスクロールさせる——
+   タイトル行・タブ切替をスクロールへ巻き込むと、下までスクロールした状態でタブへ
+   手が届かなくなる。 */
+#hud-view-options .view-options-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 #hud-view-options .view-options-body.collapsed { display: none !important; }
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
    トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
@@ -250,8 +254,12 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 /* 「角度」プルダウン: 見出しを独立行にし、次の行へ選択欄とセットボタンを並べる。 */
 #hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
-/* 表示パネルのタブ列と、選択中以外のタブ本体を隠す。 */
-#hud-view-options .w-tabs { margin-bottom: var(--space-3); }
+/* 表示パネルのタブ列と、選択中以外のタブ本体を隠す。選択中のタブ本体だけが
+   view-options-body の残り高さを占めてスクロールする。 */
+#hud-view-options .w-tabs { flex: 0 0 auto; margin-bottom: var(--space-3); }
+#hud-view-options .view-options-tab-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin;
+}
 #hud-view-options .view-options-tab-body.hidden { display: none !important; }
 /* 軌道ガイドタブ: 種類ごとの区画(見出し+軸行+値行)。独立トグル行(系/点/南北)は
    見出し+ボタン列を折り返す。 */
