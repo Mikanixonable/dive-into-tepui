@@ -470,6 +470,7 @@ export function selectStage(
     const readSimTime = (): number | null => {
       if (inputs.some((input) => input.element.value.trim() === '' || !isFinite(Number(input.element.value)))) return null;
       const [year, month, day, hour, minute] = inputs.map((input) => Number(input.element.value)) as [number, number, number, number, number];
+      if (year < 0) return null;
       const iso = `${String(year).padStart(4, '0')}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}:00`;
       return dateStringToSimTime(iso);
     };
