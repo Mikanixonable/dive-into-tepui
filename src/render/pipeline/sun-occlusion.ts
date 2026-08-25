@@ -291,8 +291,9 @@ export class SunOcclusion {
     })();
   }
 
-  // シャドウアトラスへ描かれたメッシュが落とす影。**選んだ 1 枚だけを引く** — 透過率は恒星
-  // 円盤の遮られずに残る面積比なので、複数の答えを掛け合わせると重なった半影が二重に濃くなる。
+  // シャドウアトラスへ描かれたメッシュが落とす影。**選んだ 1 スロットだけを引く** — 透過率は
+  // 恒星円盤の遮られずに残る面積比なので、枠の重なったスロットの答えを掛け合わせると、同じ
+  // 遮蔽器の半影が二重に濃くなる。
   //
   // 判定は select ではなく If で書く。select は両辺を評価するので、画面のほとんどを占める
   // 虚空の画素からもテクスチャフェッチが消えない。**選ぶ段と引く段を分けるのも同じ理由** —
@@ -312,8 +313,8 @@ export class SunOcclusion {
     })();
   }
 
-  // スロット 1 枚ぶんの可視率。ブロッカー探索 1 タップで半影の幅を決め、その半径の
-  // Vogel disk で PCF する。
+  // スロット 1 つぶんの可視率。近層はブロッカー探索 1 タップで半影の幅を決め、その半径の
+  // Vogel disk で PCF する。遠層のぶんは distantVisibility が返す。
   private slotVisibility(
     slot: SunShadowSlot, worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node, sunAngRadius: FloatNode,
   ): FloatNode {
