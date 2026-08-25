@@ -33,12 +33,9 @@ export type GuideShape =
 // 軌道1本ぶんのガイド線。位置は ECI [m]。
 export interface GuideLoop {
   readonly shape: GuideShape;
-  readonly closed: boolean;
   // u∈[0,1] の間に軌道を回る周回数。閉じた1周の軌道は 1、リサジューは指定した周回数。
   readonly revolutions: number;
-  // 焼き込みメンバーの諸元(リサジューのように族を持たない軌道では undefined)。
-  readonly period?: number;
-  readonly jacobi?: number;
+  // 焼き込みメンバーの安定性指数(リサジューのように族を持たない軌道では undefined)。
   readonly stability?: number;
 }
 
@@ -236,8 +233,6 @@ export function catalogLoop(
   tangents.push(tangents[0]!);
   times.push(1);
 
-  const memberLo = family.members[lo];
-  const memberHi = family.members[hi];
   return {
     shape: {
       kind: 'knots',
@@ -246,11 +241,8 @@ export function catalogLoop(
       position: (i) => points[i]!,
       tangent: (i) => tangents[i]!,
     },
-    closed: true,
     revolutions: 1,
-    period: lerp(memberLo?.period ?? 0, memberHi?.period ?? 0, f),
-    jacobi: lerp(memberLo?.jacobi ?? 0, memberHi?.jacobi ?? 0, f),
-    stability: lerp(memberLo?.stability ?? 1, memberHi?.stability ?? 1, f),
+    stability: lerp(family.members[lo]?.stability ?? 1, family.members[hi]?.stability ?? 1, f),
   };
 }
 
@@ -300,7 +292,7 @@ export function lissajousLoop(
       scale(frame.zHat, z * unit),
     ));
   };
-  return { shape: { kind: 'analytic', positionAt }, closed: false, revolutions: cycles };
+  return { shape: { kind: 'analytic', positionAt }, revolutions: cycles };
 }
 
 // 地球専用の参照軌道(軌道ガイドタブ「基本」群、静止軌道を除く4種類)。パラメータは
@@ -311,9 +303,7 @@ function elementsLoop(elements: OrbitalElements | null, centerEci: Vec3): GuideL
   const positionAt = (u: number): Vec3 => add(
     centerEci, positionOnOrbit(elements, trueAnomalyFromMean(u * 2 * Math.PI, elements.e)),
   );
-  return {
-    shape: { kind: 'analytic', positionAt }, closed: true, revolutions: 1, period: elements.period,
-  };
+  return { shape: { kind: 'analytic', positionAt }, revolutions: 1 };
 }
 
 // 太陽同期準回帰軌道のガイド線。地球がレジストリに無ければ null。
