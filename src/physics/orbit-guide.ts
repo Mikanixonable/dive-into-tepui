@@ -305,11 +305,13 @@ export function dawnDuskGuideLoop(
   return elementsLoop(dawnDuskElements(repeatDays, revsPerRepeat, localTime, sunRaanDeg), earthPos);
 }
 
+// モルニヤ軌道のガイド線。地球がレジストリに無ければ null。
 export function molniyaGuideLoop(t: number, ephemeris: Ephemeris, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
   if (!('earth' in ephemeris.registry)) return null;
   return elementsLoop(molniyaElements(perigeeAltitude, raanDeg), ephemeris.positionOf('earth', t));
 }
 
+// ツンドラ軌道のガイド線。地球がレジストリに無ければ null。
 export function tundraGuideLoop(t: number, ephemeris: Ephemeris, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
   if (!('earth' in ephemeris.registry)) return null;
   return elementsLoop(tundraElements(perigeeAltitude, raanDeg), ephemeris.positionOf('earth', t));
