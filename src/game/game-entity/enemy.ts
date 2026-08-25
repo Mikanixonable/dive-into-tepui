@@ -304,7 +304,10 @@ export class Enemy extends Ship {
     return this.proteinRuntime?.hudSnapshot ?? null;
   }
 
-  override sync(fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint): void {
+  override sync(
+    fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint,
+    proteinVibrationEnabled = true,
+  ): void {
     super.sync(fo, displayTime);
     if (this.proteinRuntime && this.renderObject.visible) {
       const displayed = this.displayState(displayTime);
@@ -314,7 +317,7 @@ export class Enemy extends Ship {
       // marker LOD(投影サイズがゆらぎを描かない大きさ)まで落ちた敵は、部位・修飾・
       // 結合線の更新と残基投影を止める。LOD 判定自体は ProteinRuntime に一本化してある。
       if (this.proteinRuntime.updateLod(projectedDiameterPx) !== 'marker') {
-        this.proteinRuntime.updateVisual(displayTime);
+        this.proteinRuntime.updateVisual(displayTime, proteinVibrationEnabled);
       }
     }
   }

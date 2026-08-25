@@ -185,10 +185,12 @@ export class ProteinRuntime {
     return this.currentLod;
   }
 
-  /** モード係数を更新して GPU へ送り、アンカーが使う残基だけを CPU 側で投影する。 */
-  updateVisual(displayTime: number): void {
+  /** モード係数を更新して GPU へ送り、アンカーが使う残基だけを CPU 側で投影する。
+   * `vibrationEnabled` が false の間は marker LOD 相当のモード係数(全ゼロ)を使い、
+   * 静止した構造で表示する。 */
+  updateVisual(displayTime: number, vibrationEnabled = true): void {
     const cpuStart = performance.now();
-    this.controller.update(displayTime, this.currentLod, this.combat.phase);
+    this.controller.update(displayTime, vibrationEnabled ? this.currentLod : 'marker', this.combat.phase);
     if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
       || this.uploadedPhase !== this.combat.phase) {
       const coefficients = this.controller.effectiveModeCoefficients;

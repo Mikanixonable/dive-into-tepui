@@ -553,7 +553,7 @@ export class Game {
     this.entities.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
     );
-    this.entities.sync(fo, displayTime, this.cameraSystem.activeViewpoint);
+    this.entities.sync(fo, displayTime, this.cameraSystem.activeViewpoint, graphics.proteinVibration);
     this.entities.applyVisibility(visibilityPolicy, player);
 
     this.entities.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
