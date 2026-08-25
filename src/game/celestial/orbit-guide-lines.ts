@@ -21,10 +21,8 @@ import {
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import { DirectionMarkers } from './direction-markers';
 
-// 族の折れ線1本ぶんの頂点予算。1周ぶんの閉曲線なので、サジッタ目標を満たす頂点数は
-// 数百で収束する。参照軌道4種もこれを使う。
-const CATALOG_LINE_VERTEX_BUDGET = 256;
-// リサジューの頂点予算。周回数を増やすほど長い経路になるので、族の線より多く取る。
+// リサジューの頂点数の打ち切り。周回数ぶんだけ経路が伸びるので、1周ぶんの曲線と違って
+// 適応分割は収束しない。最大周回数(30)でも1周あたり数十頂点は残る水準を採る。
 const LISSAJOUS_VERTEX_BUDGET = 2048;
 // マーカーの InstancedPool 容量。指定本数がこれを超える組み合わせでは、画面に出す線自体は
 // 指定どおり描くが(8の#9)マーカーは古いものから溢れて描かれなくなる。
@@ -439,7 +437,7 @@ export class OrbitGuideLines {
 
   // 焼き込み族の1本ぶんを組んでシーンへ加える。
   private addCatalogLine(familyId: string, system: CatalogSystemId, point: string | null, index: number, count: number): void {
-    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET);
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference });
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId, system, point, index, count, lastLoop: null });
   }
@@ -454,7 +452,7 @@ export class OrbitGuideLines {
   // 地球専用参照軌道(基本群、太陽同期準回帰・ドーンダスク・モルニヤ・ツンドラ)の1本を
   // 組んでシーンへ加える。系トグルの対象外なので system は null。
   private addReferenceOrbitLine(kind: ReferenceOrbitKind): void {
-    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET);
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference });
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId: kind, system: null, point: null, index: 0, count: 1, lastLoop: null });
   }

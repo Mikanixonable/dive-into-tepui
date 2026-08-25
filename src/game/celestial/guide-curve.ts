@@ -22,8 +22,8 @@ export class GuideCurve {
   private initialSegments: number | undefined = undefined;
   private readonly scratch = new THREE.Vector3();
 
-  // maxVertices は1本の折れ線が持てる頂点数の上限。
-  public constructor(style: LineStyle, maxVertices: number) {
+  // maxVertices の意味は Curve と同じ(収束しない曲線の打ち切り)。
+  public constructor(style: LineStyle, maxVertices?: number) {
     this.curve = new Curve({ style, maxVertices });
     this.line = this.curve.object;
   }
