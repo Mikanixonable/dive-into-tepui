@@ -297,14 +297,6 @@ export function buildBoosterStage(options: BoosterStageOptions = {}): BoosterSta
   return new BoosterStage(options);
 }
 
-/** 呼び出し側が「モデル」と呼ぶ場合にも分かりやすい別名。 */
-export const buildBoosterModel = buildBoosterStage;
-
-/** THREE.Object3D.clone(true) の資源共有を避けた独立複製。 */
-export function cloneBoosterStage(options: BoosterStageOptions = {}): BoosterStage {
-  return buildBoosterStage(options);
-}
-
 /** 接続中にデカプラー側面を覆うパネル。分離時は DebrisPiece として再生成する。 */
 export function buildBoosterInterstageCoverPanelMesh(segment: number): THREE.Mesh {
   const angle = (segment * Math.PI * 2) / BOOSTER_INTERSTAGE_COVER_SEGMENTS;

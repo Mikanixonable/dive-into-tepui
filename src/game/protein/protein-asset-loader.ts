@@ -36,12 +36,6 @@ export function proteinAssetFor(id: string): ProteinAssetDefinition | null {
   return PROTEIN_ASSETS[id as ProteinAssetId] ?? null;
 }
 
-export function requireProteinAsset(id: string): ProteinAssetDefinition {
-  const asset = proteinAssetFor(id);
-  if (!asset) throw new Error(`Unknown protein asset: ${id}`);
-  return asset;
-}
-
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to fetch protein asset payload: ${url} (${response.status})`);
@@ -115,8 +109,4 @@ export function isProteinAssetReady(id: string): boolean {
 // 準備が整っている bundle だけを同期的に返す。未取得・取得中は null。
 export function proteinAssetBundleFor(id: string): ProteinAssetBundle | null {
   return resolvedProteinAssetBundles.get(id as ProteinAssetId) ?? null;
-}
-
-export function proteinMotionAssetFor(id: string): ProteinMotionAsset | null {
-  return proteinAssetBundleFor(id)?.motion ?? null;
 }

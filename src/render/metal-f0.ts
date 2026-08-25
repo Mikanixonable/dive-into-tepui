@@ -7,7 +7,3 @@
 export const F0_BURNT_STEEL = 0xa2a6ad;
 // 鋼・ステンレス(構造フレーム・リング・機構部品)。
 export const F0_STEEL = 0xc4c8cd;
-// アルミ・銀めっき(最も明るい金属面)。
-export const F0_ALUMINIUM = 0xf4f5f6;
-// 真鍮(薬莢・弾頭部)。
-export const F0_BRASS = 0xf2e6b0;

@@ -22,13 +22,6 @@ export function pseudoPotential(mu: number, x: number, y: number, z: number): nu
   return (x * x + y * y) / 2 + (1 - mu) / r1 + mu / r2;
 }
 
-// ヤコビ定数 C = 2Ω − v²。
-export function jacobiConstant(
-  mu: number, x: number, y: number, z: number, vx: number, vy: number, vz: number,
-): number {
-  return 2 * pseudoPotential(mu, x, y, z) - (vx * vx + vy * vy + vz * vz);
-}
-
 // ラグランジュ点でのヤコビ定数。L1〜L3 は共線点の位置(y=z=0)を Ω に代入する。
 // L4/L5 は正三角配置(距離1)の閉じた式 3−μ+μ² で、速度0の点なので C=2Ω と一致する。
 export function lagrangeJacobi(mu: number, point: LagrangeLabel): number {

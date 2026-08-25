@@ -26,8 +26,6 @@ export interface CalendarFields {
 
 export type CalendarDate<S extends TimeScale = TimeScale> = CalendarFields & { readonly scale: S };
 export type UtcCalendarDate = CalendarDate<'UTC'>;
-export type TtCalendarDate = CalendarDate<'TT'>;
-export type TdbCalendarDate = CalendarDate<'TDB'>;
 
 export interface JulianDate<S extends TimeScale = TimeScale> {
   readonly value: number;
@@ -115,9 +113,6 @@ export function createCalendarDate<S extends TimeScale>(scale: S, fields: Calend
   assertScale(scale);
   return validateCalendarDate({ ...fields, scale });
 }
-
-/** Alias with the argument order commonly used by call sites. */
-export const calendarDate = createCalendarDate;
 
 export function createJulianDate<S extends TimeScale>(scale: S, value: number): JulianDate<S> {
   assertScale(scale);
@@ -220,15 +215,10 @@ export function j2000EphemerisSeconds(date: JulianDate<EphemerisScale> | Calenda
 
 /** Short name for the J2000-relative ephemeris-time quantity. */
 export const ephemerisSeconds = j2000EphemerisSeconds;
-export const j2000Seconds = j2000EphemerisSeconds;
 
 export function ephemerisSecondsToJulianDate<S extends EphemerisScale>(seconds: number, scale: S): JulianDate<S> {
   assertFinite(seconds, 'J2000 ephemeris seconds');
   return createJulianDate(scale, J2000_JULIAN_DATE + seconds / SECONDS_PER_DAY);
-}
-
-export function ephemerisSecondsToCalendarDate<S extends EphemerisScale>(seconds: number, scale: S): CalendarDate<S> {
-  return julianDateToCalendarDate(ephemerisSecondsToJulianDate(seconds, scale));
 }
 
 function offsetSeconds(value: number, name: string): number {
@@ -316,13 +306,4 @@ export function convertJulianDate(
   const tdb = createJulianDate('TDB', input.value);
   if (targetScale === 'TT') return tdbToTt(tdb, provider);
   return tdbToUtc(tdb, provider);
-}
-
-export function convertCalendarDate(
-  input: CalendarDate,
-  targetScale: TimeScale,
-  provider?: AstronomicalTimeOffsetProvider,
-): CalendarDate {
-  if (input.scale === targetScale) return createCalendarDate(targetScale, input);
-  return julianDateToCalendarDate(convertJulianDate(calendarDateToJulianDate(input), targetScale, provider));
 }
