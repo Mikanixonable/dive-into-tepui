@@ -5,7 +5,7 @@ import { Ephemeris } from './ephemeris';
 import { primaryOf } from './solar-system';
 import { OrbitingId } from './celestial-body';
 import { Vec3Tuple } from './cr3bp';
-import { CollinearFrame, collinearFrame } from './halo';
+import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
 import {
   CATALOG_STRIDE, CatalogFamily, CatalogSystem, CatalogSystemId, decodeCatalogPoints,
 } from './orbit-catalog';
@@ -163,7 +163,8 @@ function lerp(a: number, b: number, f: number): number {
 }
 
 // リサジュー軌道の軌跡。面内・面外の振幅と位相を独立に取り、cycles 周ぶんの開いた折れ線を返す。
-// 面内は振動数 λ、面外は ωz で振動するので、両者が噛み合わず閉じない。
+// 面内は振動数 λ、面外は ωz で振動し両者が噛み合わないので閉じない。形状には Richardson
+// (1980) の三次近似(halo.ts の richardsonState)を使い、振幅による軌道面の歪みを反映する。
 export function lissajousLoop(
   t: number, ephemeris: Ephemeris, system: CatalogSystemId, point: GuidePoint,
   inPlane: number, outOfPlane: number, inPlanePhase: number, outOfPlanePhase: number,
@@ -173,18 +174,23 @@ export function lissajousLoop(
   if (ephemeris.registry[secondary] === undefined) return null;
   if (primaryOf(ephemeris.registry, secondary) === null) return null;
   const frame: CollinearFrame = collinearFrame(secondary, point, t, ephemeris);
+  const coeffs = richardsonCoefficients(frame);
+  const deltaN = point === 'L2' ? -1 : 1;
+  const unit = frame.r * frame.gamma;
+  const axHat = inPlane / unit;
+  const azHat = outOfPlane / unit;
+  const zRatio = frame.omegaZ / frame.lambda;
 
-  const ratio = frame.omegaZ / frame.lambda;
   const points: Vec3[] = [];
   const times: number[] = [];
   for (let i = 0; i < samples; i++) {
     const u = i / (samples - 1);
     const phase = 2 * Math.PI * cycles * u;
-    const local: Vec3Tuple = [
-      -Math.cos(phase + inPlanePhase) * inPlane,
-      frame.kappa * Math.sin(phase + inPlanePhase) * inPlane,
-      Math.sin(ratio * phase + outOfPlanePhase) * outOfPlane,
-    ];
+    const omegaCorrection = 1 + coeffs.s1 * axHat * axHat + coeffs.s2 * azHat * azHat;
+    const theta1 = omegaCorrection * (phase + inPlanePhase);
+    const psiZ = omegaCorrection * (zRatio * phase + outOfPlanePhase);
+    const { x, y, z } = richardsonState(coeffs, frame.kappa, deltaN, axHat, azHat, theta1, 1, psiZ, 1);
+    const local: Vec3Tuple = [x * unit, y * unit, z * unit];
     points.push(add(frame.origin, add(
       add(scale(frame.xHat, local[0]), scale(frame.yHat, local[1])),
       scale(frame.zHat, local[2]),
