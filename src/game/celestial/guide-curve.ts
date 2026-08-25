@@ -1,78 +1,68 @@
-// ECI 絶対座標の点列を1本の折れ線として描く共通ラッパー。軌道ガイド線もゼロ速度曲線も、
-// 「実座標の点列を持ち、描画原点の移動へ追随しながら Curve へ流す」という同じ形をしている。
+// ECI 絶対座標の曲線を1本の折れ線として描く共通ラッパー。軌道ガイド線もゼロ速度曲線も、
+// 「曲線を1つ持ち、描画原点の移動へ追随しながら Curve へ流す」という同じ形をしている。
+// 曲線そのもの(どう補間するか)は呼び出し側が決め、ここは基準点・焼き直しの鍵・
+// 描画原点への追随だけを持つ。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
 import { Curve, CurveColorSampler, CurveSampler } from '../../render/curve';
 import { LineStyle } from '../../render/line-style';
 import { FloatingOrigin } from '../floating-origin';
 
-// initialTs(t の等分割列)は点数だけで決まるので、点数ごとに1回作って使い回す。
-const initialTsCache = new Map<number, readonly number[]>();
-function initialTsFor(span: number): readonly number[] {
-  const cached = initialTsCache.get(span);
-  if (cached) return cached;
-  const ts = Array.from({ length: span + 1 }, (_, i) => i / span);
-  initialTsCache.set(span, ts);
-  return ts;
-}
-
-// ECI 絶対座標 [m] の点列を1本の折れ線として描く。closed なら points[末尾]→points[0] を
-// 結んで輪を閉じる。頂点は points[0] を原点とした相対値で焼く(f32 精度は Curve 側の
-// pivot 追従に任せる)。
 export class GuideCurve {
   private readonly curve: Curve;
   public readonly line: THREE.Object3D;
-  private points: readonly Vec3[] | null = null;
-  private origin: Vec3 = { x: 0, y: 0, z: 0 } as Vec3;
+  // 頂点を相対化する基準点(ECI [m])。sample はこの点からの相対を返す。
+  private origin: Vec3 | null = null;
+  private sampler: CurveSampler | null = null;
   private revision: object = {};
-  // 頂点カラーの焼き直し待ち。点列が変わらなくても色だけ変わることがある。
+  // 頂点カラーの焼き直し待ち。曲線が変わらなくても色だけ変わることがある。
   private colorsDirty = false;
 
-  public constructor(style: LineStyle, samples: number, private readonly closed: boolean) {
-    this.curve = new Curve({ style, maxVertices: samples });
+  // maxVertices は1本の折れ線が持てる頂点数の上限。
+  public constructor(style: LineStyle, maxVertices: number) {
+    this.curve = new Curve({ style, maxVertices });
     this.line = this.curve.object;
   }
 
-  private readonly sampler: CurveSampler = (t, out) => {
-    const points = this.points;
-    if (!points || points.length === 0) {
-      out.set(0, 0, 0);
-      return;
-    }
-    const n = points.length;
-    const span = this.closed ? n : n - 1;
-    const f = Math.min(span, Math.max(0, t * span));
-    const i0 = Math.min(span - 1, Math.floor(f));
-    const frac = f - i0;
-    const p0 = points[i0]!;
-    const p1 = points[this.closed ? (i0 + 1) % n : i0 + 1]!;
-    out.set(
-      p0.x - this.origin.x + frac * (p1.x - p0.x),
-      p0.y - this.origin.y + frac * (p1.y - p0.y),
-      p0.z - this.origin.z + frac * (p1.z - p0.z),
-    );
-  };
-
-  // 新しい点列を設定する。null / 2点未満は非表示。
-  public setPoints(points: readonly Vec3[] | null): void {
-    this.points = points && points.length >= 2 ? points : null;
-    if (this.points) this.origin = this.points[0]!;
+  // 描く曲線を差し替える。origin は頂点を相対化する基準点(ECI [m])、sample は t∈[0,1] で
+  // origin からの相対位置を返す関数。
+  public setSampler(origin: Vec3, sample: CurveSampler): void {
+    this.origin = origin;
+    this.sampler = sample;
     this.revision = {};
   }
 
-  public worldPoints(): readonly Vec3[] {
-    return this.points ?? [];
+  // 曲線を持たない状態(非表示)へ戻す。
+  public clear(): void {
+    this.origin = null;
+    this.sampler = null;
+    this.revision = {};
+  }
+
+  // 曲線上の count+1 点を ECI 絶対座標で返す(両端を含む)。曲線を持たない間は空。
+  public samplePoints(count: number): readonly Vec3[] {
+    const origin = this.origin;
+    const sample = this.sampler;
+    if (!origin || !sample) return [];
+    const scratch = new THREE.Vector3();
+    const points: Vec3[] = [];
+    for (let i = 0; i <= count; i++) {
+      sample(i / count, scratch);
+      points.push({ x: origin.x + scratch.x, y: origin.y + scratch.y, z: origin.z + scratch.z } as Vec3);
+    }
+    return points;
   }
 
   // 描画原点の移動へ追随させ、colorAt が指定されていれば頂点カラーで焼く。
   public sync(fo: FloatingOrigin, camera: THREE.Camera, colorAt?: CurveColorSampler): void {
-    if (!this.points) {
+    const origin = this.origin;
+    const sample = this.sampler;
+    if (!origin || !sample) {
       this.curve.setVisible(false);
       return;
     }
-    this.curve.setTransform(fo.RtoThreeV3(this.origin));
-    const span = this.closed ? this.points.length : this.points.length - 1;
-    this.curve.setCurve(this.sampler, { revision: this.revision, camera, initialTs: initialTsFor(span), colorAt });
+    this.curve.setTransform(fo.RtoThreeV3(origin));
+    this.curve.setCurve(sample, { revision: this.revision, camera, colorAt });
     if (this.colorsDirty && colorAt) {
       this.curve.setColors(colorAt);
       this.colorsDirty = false;
@@ -104,3 +94,22 @@ export class GuideCurve {
   }
 }
 
+// 点列を線形補間する CurveSampler。closed なら points[末尾]→points[0] を結んで輪を閉じる。
+// 折れ線そのものが曲線であるデータ用で、滑らかな曲線の標本には使わない
+// (適応分割は入力の折れ線を超える精度を作れない)。
+export function polylineSampler(points: readonly Vec3[], origin: Vec3, closed: boolean): CurveSampler {
+  const n = points.length;
+  const span = closed ? n : n - 1;
+  return (t, out) => {
+    const f = Math.min(span, Math.max(0, t * span));
+    const i0 = Math.min(span - 1, Math.floor(f));
+    const frac = f - i0;
+    const p0 = points[i0]!;
+    const p1 = points[closed ? (i0 + 1) % n : i0 + 1]!;
+    out.set(
+      p0.x - origin.x + frac * (p1.x - p0.x),
+      p0.y - origin.y + frac * (p1.y - p0.y),
+      p0.z - origin.z + frac * (p1.z - p0.z),
+    );
+  };
+}
