@@ -65,7 +65,7 @@ export class OrbitGuideTab {
   private current: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
   private readonly kindDefs: ReadonlyMap<GuideGroupId, readonly KindDef[]>;
   private readonly kindRows = new Map<string, KindRow>();
-  private readonly systemSwitches = new Map<GuideGroupId, Map<CatalogSystemId, ToggleSwitch>>();
+  private readonly systemSwitches = new Map<CatalogSystemId, ToggleSwitch>();
   private readonly geostationaryButton: Button;
   private lissajousRow!: {
     readonly heading: Button;
@@ -89,6 +89,8 @@ export class OrbitGuideTab {
     this.element = document.createElement('div');
     this.element.className = 'orbit-guide-tab';
 
+    this.buildSystemRow(this.element);
+
     // 基本群: 静止軌道だけ。軸(系)を持たない。
     const basicShell = new PanelShell(this.element, 'orbit-guide-group-basic', '基本', false);
     const basicRow = document.createElement('div');
@@ -104,7 +106,6 @@ export class OrbitGuideTab {
     // 共線点/三角点/副天体周回/共鳴の4群。
     for (const group of GUIDE_GROUPS) {
       const shell = new PanelShell(this.element, `orbit-guide-group-${group}`, GROUP_LABEL[group], group !== 'collinear');
-      this.buildSystemRow(shell.body, group);
       for (const def of this.kindDefs.get(group) ?? []) this.buildKindRow(shell.body, def);
       if (group === 'collinear') this.lissajousRow = this.buildLissajousRow(shell.body);
     }
@@ -114,32 +115,20 @@ export class OrbitGuideTab {
     this.element.appendChild(this.lineCountEl);
   }
 
-  // 群の先頭に置く系トグル。地球-月・太陽-地球を前に出し、残り5系は折りたたみへ収める。
-  private buildSystemRow(parent: HTMLElement, group: GuideGroupId): void {
+  // タブ上部に置く系トグル。全群に共通で効くので折りたたみは設けず7系すべてを並べる。
+  private buildSystemRow(parent: HTMLElement): void {
     const row = document.createElement('div');
     row.className = 'orbit-guide-system-row';
-    const switches = new Map<CatalogSystemId, ToggleSwitch>();
-    for (const system of PRIMARY_SYSTEMS) {
-      const sw = new ToggleSwitch(SYSTEM_LABEL[system], (on) => this.setSystem(group, system, on));
+    for (const system of ALL_SYSTEMS) {
+      const sw = new ToggleSwitch(SYSTEM_LABEL[system], (on) => this.setSystem(system, on));
       row.appendChild(sw.element);
-      switches.set(system, sw);
+      this.systemSwitches.set(system, sw);
     }
     parent.appendChild(row);
-
-    const otherShell = new PanelShell(parent, `orbit-guide-group-${group}-other-systems`, '他の系', true);
-    for (const system of OTHER_SYSTEMS) {
-      const sw = new ToggleSwitch(SYSTEM_LABEL[system], (on) => this.setSystem(group, system, on));
-      otherShell.body.appendChild(sw.element);
-      switches.set(system, sw);
-    }
-    this.systemSwitches.set(group, switches);
   }
 
-  private setSystem(group: GuideGroupId, system: CatalogSystemId, on: boolean): void {
-    this.commit({
-      ...this.current,
-      systems: { ...this.current.systems, [group]: { ...this.current.systems[group], [system]: on } },
-    });
+  private setSystem(system: CatalogSystemId, on: boolean): void {
+    this.commit({ ...this.current, systems: { ...this.current.systems, [system]: on } });
   }
 
   // 種類1行(見出し+設定パネル)を組む。見出しの表示トグルが on のときだけ設定パネルを見せる。
@@ -314,9 +303,7 @@ export class OrbitGuideTab {
 
   private syncAll(): void {
     this.geostationaryButton.setOn(this.current.geostationary);
-    for (const [group, switches] of this.systemSwitches) {
-      for (const [system, sw] of switches) sw.setOn(this.current.systems[group]?.[system] ?? false);
-    }
+    for (const [system, sw] of this.systemSwitches) sw.setOn(this.current.systems[system] ?? false);
     for (const [id, row] of this.kindRows) {
       const kind = this.current.kinds[id] ?? this.defaultKindFor(id);
       row.heading.setOn(kind.on);
@@ -373,8 +360,9 @@ const GROUP_LABEL: Readonly<Record<GuideGroupId, string>> = {
   collinear: '共線点', triangular: '三角点', secondary: '副天体周回', resonant: '共鳴',
 };
 
-const PRIMARY_SYSTEMS: readonly CatalogSystemId[] = ['earth-moon', 'sun-earth'];
-const OTHER_SYSTEMS: readonly CatalogSystemId[] = ['sun-mars', 'jupiter-europa', 'saturn-titan', 'saturn-enceladus', 'mars-phobos'];
+const ALL_SYSTEMS: readonly CatalogSystemId[] = [
+  'earth-moon', 'sun-earth', 'sun-mars', 'jupiter-europa', 'saturn-titan', 'saturn-enceladus', 'mars-phobos',
+];
 const SYSTEM_LABEL: Readonly<Record<CatalogSystemId, string>> = {
   'earth-moon': '地球-月系', 'sun-earth': '太陽-地球系', 'sun-mars': '太陽-火星系',
   'jupiter-europa': '木星-エウロパ系', 'saturn-titan': '土星-タイタン系',
