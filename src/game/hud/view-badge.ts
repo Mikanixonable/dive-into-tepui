@@ -1,7 +1,8 @@
 import type { ViewId, ViewManager } from '../view-manager';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from './overlay-manager';
-import { Button } from './widgets';
+import { Button, ToggleSwitch } from './widgets';
+import type { RenderStyleSetting } from '../../render/render-style';
 import packageJson from '../../../package.json';
 
 const GAME_TITLE = 'Dive into Tepui';
@@ -21,21 +22,24 @@ function titleCase(s: string): string {
   return s.replace(/\S+/g, (w) => (w[0] ?? '').toUpperCase() + w.slice(1).toLowerCase());
 }
 
-// グローバルステータスバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)。
+// グローバルステータスバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)・
+// 画面全体の見せ方(写実/模式図)を切り替えるトグル。
 export class ViewBadge {
   private readonly el: HTMLElement;
   private readonly modeEl: HTMLElement;
   private readonly viewButton: Button;
+  private readonly styleToggle: ToggleSwitch;
   private readonly contextEls: Record<keyof ViewBadgeContext, HTMLElement>;
   // ContextMenu は target !== null であることを onSelect 発火の条件にしているので、
   // 対象を持たないこのメニューでも null 以外のダミー値を渡す。
   private readonly menu: ContextMenu<true, string>;
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
+  private readonly unsubscribeRenderStyle: () => void;
 
   // container(グローバルステータスバー1行目の行)へバッジの中身を、遷移メニューを popupLayer へ組み立てて配線する。
   public constructor(
     container: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
-    overlayManager: OverlayManager,
+    overlayManager: OverlayManager, renderStyle: RenderStyleSetting,
   ) {
     this.menu = new ContextMenu<true, string>(popupLayer, overlayManager);
     // タイトル・モード名・ビュー切替ボタンと、現在の対象コンテキストを横に並べる。
@@ -53,6 +57,11 @@ export class ViewBadge {
     this.viewButton.element.setAttribute('aria-haspopup', 'menu');
     this.viewButton.element.setAttribute('aria-label', '表示するビューを選ぶ');
     this.viewButton.element.setAttribute('aria-expanded', 'false');
+
+    this.styleToggle = new ToggleSwitch(
+      '模式図', (on) => renderStyle.set(on ? 'schematic' : 'realistic'),
+    );
+    this.styleToggle.element.classList.add('vb-style-toggle');
 
     const contextEls = {} as Record<keyof ViewBadgeContext, HTMLElement>;
     const contextLabels: Record<keyof ViewBadgeContext, string> = {
@@ -74,7 +83,7 @@ export class ViewBadge {
     }
     this.contextEls = contextEls;
 
-    container.append(title, this.modeEl, this.viewButton.element);
+    container.append(title, this.modeEl, this.viewButton.element, this.styleToggle.element);
     for (const part of contextParts) {
       const separator = document.createElement('span');
       separator.className = 'vb-sep';
@@ -89,11 +98,13 @@ export class ViewBadge {
       if (item) this.viewManager.selectMenuItem(item);
     };
     this.menu.onClose = () => this.viewButton.element.setAttribute('aria-expanded', 'false');
+    this.unsubscribeRenderStyle = renderStyle.subscribe((style) => this.styleToggle.setOn(style === 'schematic'));
   }
 
   // 遷移メニューを片付け、container(Hud が持ち続ける行)から自分が足した中身だけを取り除く。
   public dispose(): void {
     this.menu.dispose();
+    this.unsubscribeRenderStyle();
     this.el.removeEventListener('pointerdown', this.stopPointerDown);
     this.el.replaceChildren();
   }
