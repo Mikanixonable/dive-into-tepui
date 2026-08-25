@@ -90,7 +90,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.unregisterProteinMotionRenderer = registerProteinMotionRenderer(renderer);
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
-    this.sunShadowMaps = new SunShadowMaps(renderer, gpu);
+    this.sunShadowMaps = new SunShadowMaps(
+      renderer, gpu, graphics.meshShadow,
+      graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
+    );
     this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
@@ -159,8 +162,6 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
 
     this.quad = new QuadMesh(this.compositeMaterials.off);
-
-    this.applyGraphics(graphics);
   }
 
   // depthTest/depthWrite/transparent の共通設定を1箇所へまとめた、composite 用マテリアルの
@@ -212,7 +213,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
 
   // 描画品質設定のうち、GPU 資源の確保を伴うものを各パスへ配る。値が変わった時点で1回呼ばれる。
   applyGraphics(graphics: GraphicsSettingsData): void {
-    this.sunShadowMaps.setQuality(graphics.meshShadow);
+    this.sunShadowMaps.setQuality(
+      graphics.meshShadow,
+      graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
+    );
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →

@@ -6,19 +6,18 @@
 // 遮蔽器も受け手も外接球で近似する — 偽陽性は「余分に細かい枠を作る」側へ倒れるので安全。
 import { metersPerPixelAtDepth } from '../physics/projection';
 
-// 画面 1 px あたり何 texel を目標にするか。1 なら「影の texel が画面 1 px を超えない」。
-const TEXELS_PER_PIXEL = 1;
-
 /**
- * 受け手が要求する texel の実寸 [m]。小さいほど厳しい。surfaceDistance はカメラから受け手の
- * 表面までの**真の距離**で、カメラ前方への射影距離ではない — 射影距離だと背後や真横の受け手が
- * 0 へ潰れ、要求が無限に厳しくなる。
+ * 受け手が要求する texel の実寸 [m]。小さいほど厳しい。texelsPerPixel は画面 1 px あたり何 texel
+ * を目標にするかで、1 なら「影の texel が画面 1 px を超えない」。surfaceDistance はカメラから
+ * 受け手の表面までの**真の距離**で、カメラ前方への射影距離ではない — 射影距離だと背後や真横の
+ * 受け手が 0 へ潰れ、要求が無限に厳しくなる。
  */
 export function requiredTexel(
   surfaceDistance: number, cameraNear: number, fovDeg: number, viewportHeight: number,
+  texelsPerPixel: number,
 ): number {
   const surface = Math.max(surfaceDistance, cameraNear);
-  return metersPerPixelAtDepth(fovDeg, surface, Math.max(1, viewportHeight)) / TEXELS_PER_PIXEL;
+  return metersPerPixelAtDepth(fovDeg, surface, Math.max(1, viewportHeight)) / texelsPerPixel;
 }
 
 /**
