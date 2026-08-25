@@ -8,6 +8,7 @@ import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { RenderStyle } from '../../render/render-style';
 
 export class SunView extends CelestialView {
   readonly id: CelestialBodyId;
@@ -34,7 +35,7 @@ export class SunView extends CelestialView {
   // 十分に近づけるマップビューでは画面を埋め尽くしてしまうので出さない。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    _graphics: GraphicsSettingsData,
+    _graphics: GraphicsSettingsData, _style: RenderStyle,
   ): void {
     if (!this.sun.billboard.mesh.visible && !this.sun.mesh.visible) return;
     const p = fo.RtoThreeV3(ephemeris.positionOf(this.id, displayTime));
