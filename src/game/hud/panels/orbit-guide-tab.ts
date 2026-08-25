@@ -1,7 +1,7 @@
 // 表示パネル(マップモード左レール)の軌道ガイドタブ。CR3BP の周期軌道族(約37種、
-// DEVELOP/SPEC/MAP.md 4.1 の表が正本)を、基本/共線点/三角点/副天体周回/共鳴の5群へ分け、
-// 群ごとに折りたためる(PanelShell を流用)。種類の見出しはその種類の表示トグルを兼ね、
-// ON の種類だけ本数・族範囲・色・進行方向などの設定行を下に出す。状態の正本は持たず、
+// DEVELOP/SPEC/MAP.md 4.1 の表が正本)と地球専用の参照軌道4種を、基本/共線点/三角点/
+// 副天体周回/共鳴の5群へ分け、群を横並びタブで切り替える(TabBar を流用)。種類の見出しは
+// その種類の表示トグルを兼ね、ON の種類だけ設定行を下に出す。状態の正本は持たず、
 // 操作のたびに現在の鏡映しから次の OrbitGuideSettings を組んで onSettingsChange へ渡す。
 //
 // 族 id(焼き込みカタログのキー)から画面に出す群・表示名を導く対応表は、実在する族を
@@ -9,32 +9,35 @@
 import lagrangeOrbits from '../../../assets/orbits/lagrange-orbits.json';
 import type { OrbitCatalog, CatalogSystemId } from '../../../physics/orbit-catalog';
 import { lagrangeJacobi, type LagrangeLabel } from '../../../physics/zero-velocity';
-import { Button, SegmentedControl, ToggleSwitch, ValueInput } from '../widgets';
+import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../widgets';
 import {
-  AMPLITUDE_MAPPING, COUNT_MAPPING, CYCLES_MAPPING, JACOBI_MAPPING, OPACITY_MAPPING,
+  AMPLITUDE_MAPPING, COUNT_MAPPING, CYCLES_MAPPING, DIRECTION_ITEMS, JACOBI_MAPPING, OPACITY_MAPPING,
   PHASE_MAPPING, RANGE_MAPPING,
   buildColorField, buildValueField, hexColorString, syncValueField,
   type ValueField, type ValueMapping,
 } from './guide-value-field';
-import { PanelShell } from '../panel-shell';
 import { buildKindDefs, defaultColorsFor, type KindDef } from './guide-kind-def';
+import {
+  buildCriticalInclinationRow, buildDawnDuskRow, buildSunSyncRow,
+  syncCriticalInclinationRow, syncDawnDuskRow, syncSunSyncRow,
+  type CriticalInclinationRow, type DawnDuskRow, type RepeatGroundTrackRow,
+} from './reference-orbit-rows';
 import {
   DEFAULT_ORBIT_GUIDE_SETTINGS,
   defaultKindSettings,
   GUIDE_GROUPS,
+  type CriticalInclinationSettings,
+  type DawnDuskSettings,
   type DirectionMarkerMode,
   type GuideGroupId,
   type GuideKindSettings,
   type LissajousSettings,
   type OrbitGuideSettings,
+  type SunSyncSettings,
 } from '../../celestial/orbit-guide-settings';
 
 // 線数がこれを超えたら警告を出す(指定は曲げない、計画書 8 の #9)。
 const LINE_COUNT_WARNING_THRESHOLD = 300;
-
-const DIRECTION_ITEMS: readonly (readonly [DirectionMarkerMode, string])[] = [
-  ['none', '表示しない'], ['single', '1周に1つ'], ['many', '多数'],
-];
 
 // ---- 種類1行ぶんの構成 -------------------------------------------------------------------
 
@@ -56,6 +59,30 @@ interface KindRow {
   readonly direction: SegmentedControl<DirectionMarkerMode>;
   readonly animateSwitch: ToggleSwitch;
   readonly stabilitySwitch: ToggleSwitch;
+}
+
+// 軌道ガイドタブの群タブ。GuideGroupId(データ分類)に「基本」を加えた UI 専用の型。
+type GroupTab = 'basic' | GuideGroupId;
+const GROUP_TABS: readonly GroupTab[] = ['basic', ...GUIDE_GROUPS];
+const GROUP_TAB_STORAGE_KEY = 'tepui.orbitGuideGroupTab';
+
+// 直前に選んでいた群タブ。壊れた保存データ・localStorage 不可では 'basic' へ戻す。
+function loadGroupTab(): GroupTab {
+  try {
+    const raw = localStorage.getItem(GROUP_TAB_STORAGE_KEY);
+    if (raw !== null && (GROUP_TABS as readonly string[]).includes(raw)) return raw as GroupTab;
+  } catch {
+    /* localStorage 不可なら既定へ */
+  }
+  return 'basic';
+}
+
+function saveGroupTab(tab: GroupTab): void {
+  try {
+    localStorage.setItem(GROUP_TAB_STORAGE_KEY, tab);
+  } catch {
+    /* localStorage 不可なら保存しない */
+  }
 }
 
 export class OrbitGuideTab {
@@ -81,6 +108,13 @@ export class OrbitGuideTab {
     readonly direction: SegmentedControl<DirectionMarkerMode>;
     readonly animateSwitch: ToggleSwitch;
   };
+  private sunSyncRow!: RepeatGroundTrackRow;
+  private dawnDuskRow!: DawnDuskRow;
+  private molniyaRow!: CriticalInclinationRow;
+  private tundraRow!: CriticalInclinationRow;
+  private readonly groupTabBar: TabBar<GroupTab>;
+  private readonly groupTabBodies: ReadonlyMap<GroupTab, HTMLElement>;
+  private selectedGroupTab: GroupTab;
   private readonly lineCountEl: HTMLElement;
 
   public constructor(availableFamilies: ReadonlyMap<CatalogSystemId, readonly string[]>) {
@@ -91,8 +125,16 @@ export class OrbitGuideTab {
 
     this.buildSystemRow(this.element);
 
-    // 基本群: 静止軌道だけ。軸(系)を持たない。
-    const basicShell = new PanelShell(this.element, 'orbit-guide-group-basic', '基本', false);
+    this.groupTabBar = new TabBar<GroupTab>(
+      GROUP_TABS.map((tab) => [tab, GROUP_TAB_LABEL[tab]] as const), (tab) => this.selectGroupTab(tab),
+    );
+    this.groupTabBar.element.setAttribute('aria-label', '軌道の種類の群');
+    this.element.appendChild(this.groupTabBar.element);
+
+    const groupTabBodies = new Map<GroupTab, HTMLElement>();
+
+    // 基本群: 静止軌道と、地球専用の参照軌道4種。いずれも軸(系)を持たない。
+    const basicBody = this.buildGroupTabBody('basic');
     const basicRow = document.createElement('div');
     basicRow.className = 'orbit-guide-kind-heading';
     this.geostationaryButton = new Button('静止軌道', () => {
@@ -101,18 +143,55 @@ export class OrbitGuideTab {
       this.commit({ ...this.current, geostationary: on });
     });
     basicRow.appendChild(this.geostationaryButton.element);
-    basicShell.body.appendChild(basicRow);
+    basicBody.appendChild(basicRow);
+    this.sunSyncRow = buildSunSyncRow(basicBody, () => this.commitSunSync({ on: !this.current.sunSync.on }), (patch) => this.commitSunSync(patch));
+    this.dawnDuskRow = buildDawnDuskRow(basicBody, () => this.commitDawnDusk({ on: !this.current.dawnDusk.on }), (patch) => this.commitDawnDusk(patch));
+    this.molniyaRow = buildCriticalInclinationRow(
+      basicBody, 'モルニヤ軌道(Molniya)', () => this.commitMolniya({ on: !this.current.molniya.on }), (patch) => this.commitMolniya(patch),
+    );
+    this.tundraRow = buildCriticalInclinationRow(
+      basicBody, 'ツンドラ軌道(Tundra)', () => this.commitTundra({ on: !this.current.tundra.on }), (patch) => this.commitTundra(patch),
+    );
+    groupTabBodies.set('basic', basicBody);
 
     // 共線点/三角点/副天体周回/共鳴の4群。
     for (const group of GUIDE_GROUPS) {
-      const shell = new PanelShell(this.element, `orbit-guide-group-${group}`, GROUP_LABEL[group], group !== 'collinear');
-      for (const def of this.kindDefs.get(group) ?? []) this.buildKindRow(shell.body, def);
-      if (group === 'collinear') this.lissajousRow = this.buildLissajousRow(shell.body);
+      const body = this.buildGroupTabBody(group);
+      for (const def of this.kindDefs.get(group) ?? []) this.buildKindRow(body, def);
+      if (group === 'collinear') this.lissajousRow = this.buildLissajousRow(body);
+      groupTabBodies.set(group, body);
     }
+    this.groupTabBodies = groupTabBodies;
+
+    for (const tab of GROUP_TABS) this.groupTabBar.buttonFor(tab)?.setAttribute('aria-controls', `orbit-guide-group-${tab}`);
+    this.selectedGroupTab = loadGroupTab();
+    this.groupTabBar.setSelected(this.selectedGroupTab);
+    this.applyGroupTabVisibility();
 
     this.lineCountEl = document.createElement('p');
     this.lineCountEl.className = 'orbit-guide-line-count-warning hidden';
     this.element.appendChild(this.lineCountEl);
+  }
+
+  // 群タブ1枚ぶんの本体。選択中の群だけが表示される。
+  private buildGroupTabBody(tab: GroupTab): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'orbit-guide-group-body';
+    el.id = `orbit-guide-group-${tab}`;
+    el.setAttribute('role', 'tabpanel');
+    this.element.appendChild(el);
+    return el;
+  }
+
+  private selectGroupTab(tab: GroupTab): void {
+    this.selectedGroupTab = tab;
+    saveGroupTab(tab);
+    this.groupTabBar.setSelected(tab);
+    this.applyGroupTabVisibility();
+  }
+
+  private applyGroupTabVisibility(): void {
+    for (const [tab, el] of this.groupTabBodies) el.classList.toggle('hidden', tab !== this.selectedGroupTab);
   }
 
   // タブ上部に置く系トグル。全群に共通で効くので折りたたみは設けず7系すべてを並べる。
@@ -294,6 +373,22 @@ export class OrbitGuideTab {
     this.commit({ ...this.current, lissajous: { ...this.current.lissajous, ...patch } });
   }
 
+  private commitSunSync(patch: Partial<SunSyncSettings>): void {
+    this.commit({ ...this.current, sunSync: { ...this.current.sunSync, ...patch } });
+  }
+
+  private commitDawnDusk(patch: Partial<DawnDuskSettings>): void {
+    this.commit({ ...this.current, dawnDusk: { ...this.current.dawnDusk, ...patch } });
+  }
+
+  private commitMolniya(patch: Partial<CriticalInclinationSettings>): void {
+    this.commit({ ...this.current, molniya: { ...this.current.molniya, ...patch } });
+  }
+
+  private commitTundra(patch: Partial<CriticalInclinationSettings>): void {
+    this.commit({ ...this.current, tundra: { ...this.current.tundra, ...patch } });
+  }
+
   // 正本を差し替え、見た目を鏡映しへ合わせて呼び出し側へ通知する。
   private commit(next: OrbitGuideSettings): void {
     this.current = next;
@@ -340,6 +435,11 @@ export class OrbitGuideTab {
     syncValueField(lr.opacityField, OPACITY_MAPPING, lissajous.opacity);
     lr.direction.setSelected(lissajous.direction);
     lr.animateSwitch.setOn(lissajous.animate);
+
+    syncSunSyncRow(this.sunSyncRow, this.current.sunSync);
+    syncDawnDuskRow(this.dawnDuskRow, this.current.dawnDusk);
+    syncCriticalInclinationRow(this.molniyaRow, this.current.molniya);
+    syncCriticalInclinationRow(this.tundraRow, this.current.tundra);
   }
 
   // 正本からの鏡映し反映。
@@ -356,8 +456,8 @@ export class OrbitGuideTab {
   }
 }
 
-const GROUP_LABEL: Readonly<Record<GuideGroupId, string>> = {
-  collinear: '共線点', triangular: '三角点', secondary: '副天体周回', resonant: '共鳴',
+const GROUP_TAB_LABEL: Readonly<Record<GroupTab, string>> = {
+  basic: '基本', collinear: '共線点', triangular: '三角点', secondary: '副天体周回', resonant: '共鳴',
 };
 
 const ALL_SYSTEMS: readonly CatalogSystemId[] = [

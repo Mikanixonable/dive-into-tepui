@@ -9,6 +9,10 @@ import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState
 import {
   CATALOG_STRIDE, CatalogFamily, CatalogSystem, CatalogSystemId, decodeCatalogPoints,
 } from './orbit-catalog';
+import {
+  LocalTime, dawnDuskElements, molniyaElements, sunSyncRepeatGroundTrackElements, tundraElements,
+} from './earth-reference-orbits';
+import { OrbitalElements, positionOnOrbit, trueAnomalyFromMean } from './elements';
 import { Vec3, add, cross, len, norm, scale, sub } from './vec3';
 
 export type GuidePoint = 'L1' | 'L2' | 'L3';
@@ -261,4 +265,52 @@ export function lissajousLoop(
     times.push(u);
   }
   return { points, times, closed: false };
+}
+
+// 地球専用の参照軌道(軌道ガイドタブ「基本」群、静止軌道を除く4種類)を1周ぶんの点数で
+// 打った折れ線。points/times は真近点角ではなく平均近点角(=経過時間)で等間隔に取るため、
+// 進行方向マーカーが実際の軌道速度どおり近点で速く・遠点で遅く動く。
+const REFERENCE_ORBIT_SAMPLES = 128;
+
+function elementsLoop(elements: OrbitalElements | null, centerEci: Vec3): GuideLoop | null {
+  if (elements === null) return null;
+  const points: Vec3[] = [];
+  const times: number[] = [];
+  for (let i = 0; i < REFERENCE_ORBIT_SAMPLES; i++) {
+    const u = i / REFERENCE_ORBIT_SAMPLES;
+    const nu = trueAnomalyFromMean(u * 2 * Math.PI, elements.e);
+    points.push(add(centerEci, positionOnOrbit(elements, nu)));
+    times.push(u);
+  }
+  return { points, times, closed: true, period: elements.period };
+}
+
+// 太陽同期準回帰軌道のガイド線。地球がレジストリに無ければ null。
+export function sunSyncRepeatGroundTrackLoop(
+  t: number, ephemeris: Ephemeris, repeatDays: number, revsPerRepeat: number,
+): GuideLoop | null {
+  if (!('earth' in ephemeris.registry)) return null;
+  return elementsLoop(sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat), ephemeris.positionOf('earth', t));
+}
+
+// 太陽方向の昇交点赤経(elements.ts の orbitPlaneBasis の規約: raan=0 で昇交点は +X 方向、
+// raan を Y 軸まわりに正転すると昇交点は -Z 側へ回る)を、その瞬間の太陽方向から逆算する。
+export function dawnDuskGuideLoop(
+  t: number, ephemeris: Ephemeris, repeatDays: number, revsPerRepeat: number, localTime: LocalTime,
+): GuideLoop | null {
+  if (!('earth' in ephemeris.registry)) return null;
+  const earthPos = ephemeris.positionOf('earth', t);
+  const sunDir = ephemeris.sunDirFrom(earthPos, t);
+  const sunRaanDeg = (Math.atan2(-sunDir.z, sunDir.x) * 180) / Math.PI;
+  return elementsLoop(dawnDuskElements(repeatDays, revsPerRepeat, localTime, sunRaanDeg), earthPos);
+}
+
+export function molniyaGuideLoop(t: number, ephemeris: Ephemeris, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
+  if (!('earth' in ephemeris.registry)) return null;
+  return elementsLoop(molniyaElements(perigeeAltitude, raanDeg), ephemeris.positionOf('earth', t));
+}
+
+export function tundraGuideLoop(t: number, ephemeris: Ephemeris, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
+  if (!('earth' in ephemeris.registry)) return null;
+  return elementsLoop(tundraElements(perigeeAltitude, raanDeg), ephemeris.positionOf('earth', t));
 }

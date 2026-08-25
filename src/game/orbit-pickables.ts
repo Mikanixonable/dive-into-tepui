@@ -10,6 +10,7 @@ import type { DisplayWindow } from './display-window-manager';
 import type { EntityManager } from './simulation/entity-manager';
 import type { CameraSystem } from './camera/camera-system';
 import type { EnvironmentScene } from './celestial/environment-scene';
+import type { VisibleGuideLine } from './celestial/orbit-guide-lines';
 import type { GameEntity } from './game-entity/game-entity';
 import { OrbitCalcMethod, OrbitPickable } from './orbit-pickable';
 
@@ -48,15 +49,22 @@ export class OrbitPickables {
     for (const base of this.entities.bases) this.addShipOrbit('base', base, frame, displayTime, frameAnchors);
 
     for (const guide of this.environment.orbitGuide.visibleLines()) {
-      const secondary = guideSecondary(guide.system);
-      const primary = primaryOf(this.ephemeris.registry, secondary) ?? secondary;
-      const ownerKeys = guide.point
-        ? [`body:${secondary}-l${guide.point.slice(1)}`, `body:${primary}`, `body:${secondary}`]
-        : [`body:${primary}`, `body:${secondary}`];
       this.items.push({
-        key: `orbit-guide:${guide.key}`, kind: 'orbit-guide', method: 'guide', ownerKeys, points: guide.points,
+        key: `orbit-guide:${guide.key}`, kind: 'orbit-guide', method: 'guide',
+        ownerKeys: this.guideOwnerKeys(guide), points: guide.points,
       });
     }
+  }
+
+  // ガイド線1本の当たり判定の所有者。地球専用参照軌道(system が無い)は系トグルの対象外
+  // なので地球1つだけ、CR3BP の族・リサジューは主星・副星(・ラグランジュ点)になる。
+  private guideOwnerKeys(guide: VisibleGuideLine): readonly string[] {
+    if (guide.system === null) return ['body:earth'];
+    const secondary = guideSecondary(guide.system);
+    const primary = primaryOf(this.ephemeris.registry, secondary) ?? secondary;
+    return guide.point
+      ? [`body:${secondary}-l${guide.point.slice(1)}`, `body:${primary}`, `body:${secondary}`]
+      : [`body:${primary}`, `body:${secondary}`];
   }
 
   // 船(自艦・敵・基地)1隻ぶんの軌道線を候補へ積む。表示方式(解析楕円 or 予測線・過去線)は

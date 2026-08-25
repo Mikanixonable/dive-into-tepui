@@ -1,7 +1,14 @@
 // 軌道ガイドの設定行に使う「スライダー+数値入力」と色入力の部品。値そのものの意味(0〜1 の
 // 族範囲、対数の振幅、位相のラジアン)は写像として持ち、行の組み立てと同期を1箇所へ集約する。
 import { Slider, ValueInput } from '../widgets';
-import { MAX_LINES_PER_KIND, MAX_ZERO_VELOCITY_CURVES } from '../../celestial/orbit-guide-settings';
+import {
+  MAX_LINES_PER_KIND, MAX_ZERO_VELOCITY_CURVES, type DirectionMarkerMode,
+} from '../../celestial/orbit-guide-settings';
+
+// 進行方向マーカーの出し方(SegmentedControl の選択肢)。族・地球専用参照軌道の双方が使う。
+export const DIRECTION_ITEMS: readonly (readonly [DirectionMarkerMode, string])[] = [
+  ['none', '表示しない'], ['single', '1周に1つ'], ['many', '多数'],
+];
 
 
 export interface ValueMapping {
@@ -150,6 +157,40 @@ export function buildColorField(label: string, value: number, onCommit: (value: 
 export function hexColorString(value: number): string {
   return `#${value.toString(16).padStart(6, '0')}`;
 }
+
+// 太陽同期準回帰軌道・ドーンダスク軌道の回帰日数(整数日)。実用域の1〜30日を取る。
+export const REPEAT_DAYS_MAPPING: ValueMapping = {
+  sliderMin: 1, sliderMax: 30, sliderStep: 1,
+  toSlider: (v) => Math.round(v), fromSlider: (raw) => Math.round(raw),
+  format: (v) => String(Math.round(v)), parse: (text) => Math.round(clamp(Number(text), 1, 30)),
+  inputMin: 1, inputMax: 30, inputStep: 1,
+};
+
+// 回帰日数の間に周回する回数(整数)。高度200km前後で1日16周弱になるので、30日ぶんまで
+// 動かせるよう上限を広めに取る。太陽同期条件を満たさない組み合わせはガイド線が消えるだけで
+// 範囲自体は曲げない(計画書 8 の #9 と同じ方針)。
+export const REVS_PER_REPEAT_MAPPING: ValueMapping = {
+  sliderMin: 1, sliderMax: 480, sliderStep: 1,
+  toSlider: (v) => Math.round(v), fromSlider: (raw) => Math.round(raw),
+  format: (v) => String(Math.round(v)), parse: (text) => Math.round(clamp(Number(text), 1, 480)),
+  inputMin: 1, inputMax: 480, inputStep: 1,
+};
+
+// 近地点高度 [m]。モルニヤ・ツンドラ軌道の実用域(数百 km)を UI 上は km で見せる。
+export const PERIGEE_ALTITUDE_MAPPING: ValueMapping = {
+  sliderMin: 200, sliderMax: 2000, sliderStep: 10,
+  toSlider: (v) => Math.round(clamp(v / 1000, 200, 2000)), fromSlider: (raw) => raw * 1000,
+  format: (v) => (v / 1000).toFixed(0), parse: (text) => clamp(Number(text), 200, 2000) * 1000,
+  inputMin: 200, inputMax: 2000, inputStep: 10, unit: 'km',
+};
+
+// 昇交点赤経 [deg]。
+export const RAAN_MAPPING: ValueMapping = {
+  sliderMin: 0, sliderMax: 3600, sliderStep: 1,
+  toSlider: (v) => Math.round(v * 10), fromSlider: (raw) => raw / 10,
+  format: (v) => v.toFixed(1), parse: (text) => clamp(Number(text), 0, 360),
+  inputMin: 0, inputMax: 360, inputStep: 0.1, unit: '°',
+};
 
 // ゼロ速度曲線を何本描くか。上限は設定モジュールが持つ。
 export const ZERO_VELOCITY_COUNT_MAPPING: ValueMapping = {
