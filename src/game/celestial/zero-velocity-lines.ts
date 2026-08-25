@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { Vec3 } from '../../physics/vec3';
 import { rotatingFrame } from '../../physics/orbit-guide';
-import { zeroVelocityCurves, SectionPlane } from '../../physics/zero-velocity';
+import { zeroVelocityCurveSet, SectionPlane } from '../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
 import { FloatingOrigin } from '../floating-origin';
 import { GuideCurve } from './guide-curve';
