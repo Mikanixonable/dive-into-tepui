@@ -26,7 +26,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { CelestialBodyId } from '../../physics/celestial-body';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
-import { profileAt } from '../../physics/ephemeris-profile';
+import { profileAtOrNull } from '../../physics/ephemeris-profile';
 import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../sim-epoch';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
@@ -66,6 +66,7 @@ export interface StageClass {
   readonly id: StageId;
   createEphemeris(
     phaseOffsets: Partial<Record<CelestialBodyId, number>>, onProgress?: (ratio: number) => void,
+    startSimTime?: number,
   ): Promise<Ephemeris>;
   // 選択画面が読む項目。
   readonly selectLabel: string;
@@ -96,13 +97,18 @@ export type StageResult = {
 };
 
 export abstract class Stage {
-  // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、精密暦パックを読み込む。
+  // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、開始時刻(startSimTime、省略時は
+  // ゲーム既定のエポック)が近未来/遠未来いずれかの高精度期間に入っていれば精密暦パックを
+  // 読み込み、どちらにも入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
   static async createEphemeris(
     phaseOffsets: Partial<Record<CelestialBodyId, number>>, onProgress?: (ratio: number) => void,
+    startSimTime = 0,
   ): Promise<Ephemeris> {
-    const profile = profileAt(SIM_EPOCH_JD_TDB);
+    const startJdTdb = SIM_EPOCH_JD_TDB + startSimTime / 86400;
+    const profile = profileAtOrNull(startJdTdb);
+    if (profile === null) return new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets);
     const pack = await loadAbsoluteEphemeris(
-      profile.id, SIM_EPOCH_JD_TDB, SIM_EPOCH_JD_TDB + 10 * 365.25, onProgress,
+      profile.id, profile.validStartJdTdb, profile.validEndJdTdb, onProgress,
     );
     return new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, pack, SIM_EPOCH_JD_TDB);
   }

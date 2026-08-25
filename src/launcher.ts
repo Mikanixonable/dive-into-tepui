@@ -42,11 +42,11 @@ function fallbackResult(phase: GamePhase): StageResult {
 
 // ローディング表示の下で、このステージの天体暦を組む。
 async function initEphemeris(
-  stageClass: StageClass, phaseOffsets: Partial<Record<CelestialBodyId, number>>,
+  stageClass: StageClass, phaseOffsets: Partial<Record<CelestialBodyId, number>>, startSimTime?: number,
 ): Promise<Ephemeris> {
   showLoading();
   try {
-    return await stageClass.createEphemeris(phaseOffsets, setLoadingProgress);
+    return await stageClass.createEphemeris(phaseOffsets, setLoadingProgress, startSimTime);
   } finally {
     hideLoading();
   }
@@ -132,7 +132,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   private async startRun(stageClass: StageClass, snapshotId?: string, startSimTime?: number): Promise<void> {
     this.endRun();
     const initialSave = this.initialSaveFor(stageClass, snapshotId);
-    const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {});
+    const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {}, startSimTime);
     // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
     const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
     this.game = new Game(
