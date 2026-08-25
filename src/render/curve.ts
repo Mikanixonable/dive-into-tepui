@@ -502,9 +502,11 @@ export class Curve {
       || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO;
     const camDirChanged = this.camFwd.dot(this.bakedCamFwd) < CAM_DIR_REBAKE_COS;
     // 色を後から使い始めたときは、焼いてある頂点に色が入っていないので必ず焼き直す
-    // (そうしないと色属性が 0 のまま束縛されて線が黒くなる)。
-    const colorsTurnedOn = colorAt !== undefined && !this.hasVertexColors;
-    if (colorsTurnedOn) this.enableVertexColors();
+    // (そうしないと色属性が 0 のまま束縛されて線が黒くなる)。使うのをやめたときは、
+    // 焼いてある色がマテリアル色に掛かり続けないよう頂点カラーを外す。
+    const wantsVertexColors = colorAt !== undefined;
+    const colorsTurnedOn = wantsVertexColors && !this.hasVertexColors;
+    if (wantsVertexColors !== this.hasVertexColors) this.useVertexColors(wantsVertexColors);
 
     const revisionChanged = !this.hasBaked || revision !== this.lastRevision;
     const rebaked = revisionChanged || scaleChanged || camDirChanged || colorsTurnedOn;
@@ -536,10 +538,10 @@ export class Curve {
     this.writePositions();
   }
 
-  // マテリアルの頂点カラーを有効にする。
-  private enableVertexColors(): void {
-    this.hasVertexColors = true;
-    (this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial).vertexColors = true;
+  // マテリアルが頂点カラーを乗算するかどうかを切り替える。
+  private useVertexColors(enabled: boolean): void {
+    this.hasVertexColors = enabled;
+    (this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial).vertexColors = enabled;
     this.mat.needsUpdate = true;
   }
 
@@ -547,7 +549,7 @@ export class Curve {
   // まだ一度も焼いていなければ何もしない。
   setColors(colorAt: CurveColorSampler): void {
     if (!this.hasBaked) return;
-    if (!this.hasVertexColors) this.enableVertexColors();
+    if (!this.hasVertexColors) this.useVertexColors(true);
     for (let i = 0; i < this.bakedCount; i++) this.bakeColor(i, this.ts[i]!, colorAt);
     (this.geom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
   }
