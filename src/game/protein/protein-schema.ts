@@ -13,6 +13,8 @@ export interface ProteinComponentDefinition {
 
 export interface ProteinSiteDefinition {
   readonly id: string;
+  /** Biological name (residue/domain-based) shown in HUD/markers, distinct from the internal id. */
+  readonly label: string;
   readonly componentId: string;
   readonly type: ProteinSiteType;
   readonly source: ProteinSource;
@@ -115,6 +117,8 @@ export interface ProteinMotionExpectedCounts {
 export interface ProteinAssetDefinition {
   readonly schemaVersion: number;
   readonly id: string;
+  /** The protein's own name (e.g. "ルビスコ"), prefixed onto the enemy's display name. */
+  readonly displayName: string;
   readonly source: {
     readonly pdbId: string;
     readonly structureFile: string;
@@ -168,6 +172,7 @@ export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
   const issues: string[] = [];
   if (asset.schemaVersion !== 1) issues.push(`unsupported schemaVersion: ${asset.schemaVersion}`);
   if (!asset.id) issues.push('id is empty');
+  if (!asset.displayName) issues.push('displayName is empty');
   if (!Number.isFinite(asset.coordinateScale) || asset.coordinateScale <= 0) issues.push('coordinateScale must be positive');
   if (!Number.isFinite(asset.integrity.maxHp) || asset.integrity.maxHp <= 0) issues.push('integrity.maxHp must be positive');
   const componentIds = new Set<string>();
@@ -186,6 +191,7 @@ export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
   for (const site of asset.sites) {
     if (ids.has(site.id)) issues.push(`duplicate site id: ${site.id}`);
     ids.add(site.id);
+    if (!site.label) issues.push(`site ${site.id} label is empty`);
     if (!componentIds.has(site.componentId)) issues.push(`site ${site.id} references unknown component: ${site.componentId}`);
     if (!Number.isFinite(site.radius) || site.radius <= 0) issues.push(`site ${site.id} radius must be positive`);
     if (!Number.isFinite(site.maxHp) || site.maxHp <= 0) issues.push(`site ${site.id} maxHp must be positive`);

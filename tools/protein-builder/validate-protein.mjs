@@ -6,6 +6,7 @@ const asset = JSON.parse(await readFile(filename, 'utf8'));
 const errors = [];
 if (asset.schemaVersion !== 1) errors.push('schemaVersion must be 1');
 if (!asset.id) errors.push('id is required');
+if (!asset.displayName) errors.push('displayName is required');
 if (!Number.isFinite(asset.coordinateScale) || asset.coordinateScale <= 0) errors.push('coordinateScale must be positive');
 if (!Number.isFinite(asset.integrity?.maxHp) || asset.integrity.maxHp <= 0) errors.push('integrity.maxHp must be positive');
 const componentIds = new Set();
@@ -25,6 +26,7 @@ const siteIds = new Set();
 for (const site of asset.sites ?? []) {
   if (siteIds.has(site.id)) errors.push(`duplicate site id: ${site.id}`);
   siteIds.add(site.id);
+  if (!site.label) errors.push(`site ${site.id} label is required`);
   if (!componentIds.has(site.componentId)) errors.push(`site ${site.id} references unknown component: ${site.componentId}`);
   if (!Array.isArray(site.position) || site.position.length !== 3) errors.push(`invalid position: ${site.id}`);
   if (!Array.isArray(site.position) || site.position.some((value) => !Number.isFinite(value))) errors.push(`non-finite position: ${site.id}`);
