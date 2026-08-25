@@ -275,7 +275,16 @@ export function correctPlanarOrbit(
 
 // 折れ線を弧長等間隔の samples 点へ引き直す。closeLoop なら末尾から先頭へ戻る辺も曲線の一部と
 // みなし、返す点列は一巡して終点が始点と重ならない。closeLoop でなければ先頭から末尾までを等分する。
-export function resamplePolyline(path: readonly Vec3Tuple[], samples: number, closeLoop: boolean): Vec3Tuple[] {
+// 折れ線を弧長で等分したときの、各サンプル点が乗る辺と、その辺上の内分比。位置も時刻も
+// この同じ割り当てから作れるので、弧長の累積は1度しか計算しない。
+interface ResampleSpot {
+  readonly edge: number;
+  readonly frac: number;
+}
+
+// 折れ線を弧長等間隔の samples 点へ割り当てる。closeLoop なら末尾から先頭へ戻る辺も曲線の
+// 一部とみなす。返す点は始点から等間隔で、終点は始点と重ならない。
+function resampleSpots(path: readonly Vec3Tuple[], samples: number, closeLoop: boolean): ResampleSpot[] {
   const edges = closeLoop ? path.length : path.length - 1;
   // 各頂点までの累積弧長。閉じる場合は戻る辺のぶんだけ末尾が1つ伸びる。
   const cumulative: number[] = [0];
@@ -285,25 +294,31 @@ export function resamplePolyline(path: readonly Vec3Tuple[], samples: number, cl
     cumulative.push(el(cumulative, i - 1) + Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]));
   }
 
-  // 累積弧長を等分する位置を、折れ線上の内分点として拾い直す。
   const total = el(cumulative, edges);
-  const out: Vec3Tuple[] = [];
+  const out: ResampleSpot[] = [];
   let cursor = 0;
   for (let i = 0; i < samples; i++) {
     const target = (total * i) / samples;
     while (cursor < edges - 1 && el(cumulative, cursor + 1) < target) cursor++;
     const s0 = el(cumulative, cursor);
     const s1 = el(cumulative, cursor + 1);
-    const f = s1 > s0 ? (target - s0) / (s1 - s0) : 0;
-    const p0 = pointAt(path, cursor);
-    const p1 = pointAt(path, (cursor + 1) % path.length);
-    out.push([
-      p0[0] + f * (p1[0] - p0[0]),
-      p0[1] + f * (p1[1] - p0[1]),
-      p0[2] + f * (p1[2] - p0[2]),
-    ]);
+    out.push({ edge: cursor, frac: s1 > s0 ? (target - s0) / (s1 - s0) : 0 });
   }
   return out;
+}
+
+// 折れ線を弧長等間隔の samples 点へ引き直す。closeLoop なら末尾から先頭へ戻る辺も曲線の一部と
+// みなし、返す点列は一巡して終点が始点と重ならない。closeLoop でなければ先頭から末尾までを等分する。
+export function resamplePolyline(path: readonly Vec3Tuple[], samples: number, closeLoop: boolean): Vec3Tuple[] {
+  return resampleSpots(path, samples, closeLoop).map(({ edge, frac }) => {
+    const p0 = pointAt(path, edge);
+    const p1 = pointAt(path, (edge + 1) % path.length);
+    return [
+      p0[0] + frac * (p1[0] - p0[0]),
+      p0[1] + frac * (p1[1] - p0[1]),
+      p0[2] + frac * (p1[2] - p0[2]),
+    ] as Vec3Tuple;
+  });
 }
 
 // 折れ線の頂点の取り出し。範囲外は呼び出し側の索引計算の破綻なので投げる。
@@ -318,6 +333,20 @@ function pointAt(path: readonly Vec3Tuple[], i: number): Vec3Tuple {
 export function sampleOrbitByArcLength(
   mu: number, s: Cr3bpState, period: number, samples: number, steps = 4000,
 ): Vec3Tuple[] {
+  return sampleOrbitByArcLengthWithTime(mu, s, period, samples, steps)
+    .map(([x, y, z]) => [x, y, z]);
+}
+
+// 位置 [x, y, z] と、その点までの経過時刻を周期で割った割合 [0, 1) を並べた4要素。
+export type Vec3TimeTuple = readonly [number, number, number, number];
+
+// sampleOrbitByArcLength と同じく弧長等間隔の点列を作るが、各点に「その点までの経過時刻 ÷ 周期」
+// (0..1)を併記する。進行方向マーカーを実際の軌道速度に比例して動かすために使う — 弧長等間隔の
+// 点は近点付近で間引かれるため、点の添字を時刻の代わりに使うと近点で速く・遠点で遅く動く表現が
+// できない。steps は1周を追う積分の刻み数。
+export function sampleOrbitByArcLengthWithTime(
+  mu: number, s: Cr3bpState, period: number, samples: number, steps = 4000,
+): Vec3TimeTuple[] {
   // 細かい刻みで1周を追う。終端は始点へ戻ってくるので、閉じる辺を足さずに等分する。
   const dt = period / steps;
   let state = s;
@@ -326,6 +355,18 @@ export function sampleOrbitByArcLength(
     state = rk4StateStep(mu, state, dt);
     path.push([state[0], state[1], state[2]]);
   }
-  return resamplePolyline(path, samples, false);
+
+  // 位置と時刻は同じ弧長の割り当てから作る。i 番目の頂点の時刻は i*dt なので、辺と内分比が
+  // 決まれば時刻もそのまま内分できる。
+  return resampleSpots(path, samples, false).map(({ edge, frac }) => {
+    const p0 = pointAt(path, edge);
+    const p1 = pointAt(path, edge + 1);
+    return [
+      p0[0] + frac * (p1[0] - p0[0]),
+      p0[1] + frac * (p1[1] - p0[1]),
+      p0[2] + frac * (p1[2] - p0[2]),
+      ((edge + frac) * dt) / period,
+    ] as Vec3TimeTuple;
+  });
 }
 

@@ -2,7 +2,7 @@
 // 打鍵ごとの clamp や通知は行わない(編集途中の値を黙って書き換えないため)。
 import { expandHitTarget, stopDragPropagation } from './widget-base';
 
-export type ValueInputType = 'text' | 'number' | 'search';
+export type ValueInputType = 'text' | 'number' | 'search' | 'color';
 
 // Escape で編集をどう破棄するか。既定は 'revert'(確定済みの値へ戻す)。'clear'(空にする)を
 // 渡してよいのは検索フィールドに限る — 「なんとなく Escape でクリア」が他所へ広がらないよう、
@@ -62,6 +62,9 @@ export class ValueInput {
       }
       this.commit();
     });
+    // ネイティブの色選択ダイアログは Enter/Escape を発火せず blur も遅れがちなので、
+    // 確定を示す change でも commit する。
+    if (options.type === 'color') this.element.addEventListener('change', () => this.commit());
   }
 
   // 表示値を確定済みの値として設定する(onCommit は呼ばれない)。

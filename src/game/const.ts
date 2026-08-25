@@ -1,6 +1,7 @@
 // ゲームバランス・チューニング定数
 import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
 import { v3 } from '../physics/vec3';
+import type { GuideGroupId } from './celestial/orbit-guide-settings';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -653,6 +654,9 @@ export const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
 export const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
+// ゼロ速度曲線(ガイドタブ5.3節)。軌道ガイド線の青・橙・緑・紫、静止軌道リングの灰色と
+// 見分けがつく控えめな薔薇色。
+export const COLOR_ZERO_VELOCITY_LINE = 0xd97a94;
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
@@ -670,10 +674,31 @@ export const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 // 参照軌道線が完全表示のときの不透明度。
 export const REFERENCE_LINE_OPACITY = 0.3;
 
-// マップのハロー軌道ガイド(halo-guide-lines.ts)の線色。静止軌道リング(0x8b93a0)と同じ
-// 控えめな系統だが、ファミリーごとに色相を変えて重なっても見分けられるようにする。
-export const COLOR_HALO_GUIDE_LINE = 0x6fa3c9; // ハロー族(s に沿った不透明度グラデーションの基準色)
-export const COLOR_PLANAR_LYAPUNOV_LINE = 0x7fb88a;
-export const COLOR_VERTICAL_LYAPUNOV_LINE = 0xc9a969;
-export const COLOR_LISSAJOUS_LINE = 0xb08bc9;
-export const COLOR_DRO_LINE = 0x6fc9b8;
+// 軌道ガイド(orbit-guide-lines.ts)の群ごとの基準色相。群の中の種類は明度違いで分ける
+// (guideKindDefaultColors)。静止軌道リング(0x8b93a0)と同じ控えめな系統でまとめる。
+export const GUIDE_GROUP_HUE: Readonly<Record<GuideGroupId, number>> = {
+  collinear: 0x6fa3c9, // 青(旧ハロー色を踏襲)
+  triangular: 0xc9a969, // 橙
+  secondary: 0x6fc9b8, // 緑(DRO/DPO/LPO)
+  resonant: 0xb08bc9, // 紫
+};
+
+// color を towards との線形補間で t(0..1)だけ明るく/暗くした 0xRRGGBB を返す。
+function lerpColor(color: number, towards: number, t: number): number {
+  const r0 = (color >> 16) & 0xff, g0 = (color >> 8) & 0xff, b0 = color & 0xff;
+  const r1 = (towards >> 16) & 0xff, g1 = (towards >> 8) & 0xff, b1 = towards & 0xff;
+  return (Math.round(r0 + (r1 - r0) * t) << 16) | (Math.round(g0 + (g1 - g0) * t) << 8) | Math.round(b0 + (b1 - b0) * t);
+}
+
+// 群の色相を、群内での種類の並び順(index/count)に応じた明度違いへ展開する。
+export function guideKindShade(group: GuideGroupId, index: number, count: number): number {
+  const base = GUIDE_GROUP_HUE[group];
+  if (count <= 1) return base;
+  return lerpColor(base, 0xffffff, 0.15 + 0.5 * (index / (count - 1)));
+}
+
+// GuideKindSettings の既定色(始・終)。始は上の shade、終はそこからさらに明るい側を採る。
+export function guideKindDefaultColors(group: GuideGroupId, index: number, count: number): readonly [number, number] {
+  const start = guideKindShade(group, index, count);
+  return [start, lerpColor(start, 0xffffff, 0.35)];
+}
