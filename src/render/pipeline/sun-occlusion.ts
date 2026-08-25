@@ -336,6 +336,13 @@ export class SunOcclusion {
     const blockerDepth = texture(slot.texture, uvBase).r;
     const blockerDistance = max(receiverDepth.sub(blockerDepth), 0);
     const radiusTexels = clamp(sunAngRadius.mul(blockerDistance).div(texel), PCF_MIN_TEXELS, PCF_MAX_TEXELS);
+    // 遮蔽器から遠ざかるほど本影は細り、遮蔽器の角半径が恒星の角半径を下回ると影は消える。
+    // 遮られる面積比は (遮蔽器の角半径 / 恒星の角半径)² で落ちる。**PCF は半影の広がりを
+    // PCF_MAX_TEXELS で頭打ちにするのでこの減衰を再現できない** — 解析で掛ける。遮蔽器の
+    // 差し渡しは枠の 1 辺で代用する(枠は遮蔽器の箱へ密着しているので、単独の枠では実寸に近い)。
+    const casterSize = texel.mul(SHADOW_SLOT_SIZE);
+    const shrink = casterSize.div(max(sunAngRadius.mul(blockerDistance).mul(2), 1e-9));
+    const umbraFade = min(shrink.mul(shrink), 1);
 
     const step = radiusTexels.mul(1 / SHADOW_SLOT_SIZE);
     const lit = float(0).toVar();
@@ -350,6 +357,7 @@ export class SunOcclusion {
     // 枠の外は遮られないものとして返す。**箱の判定は法線オフセットぶん枠より広い**ので、
     // 縁の外へわずかに出た点がテクスチャの縁の値を引き延ばして帯状の影を作る経路がある。
     // 法線オフセットが受け手を光源側へ押し出し、柱の手前へ抜けることがある。そこは遮られない。
-    return select(receiverDepth.lessThan(0), float(1), lit.div(PCF_TAPS));
+    const visibility = float(1).sub(float(1).sub(lit.div(PCF_TAPS)).mul(umbraFade));
+    return select(receiverDepth.lessThan(0), float(1), visibility);
   }
 }
