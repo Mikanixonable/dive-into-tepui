@@ -268,11 +268,12 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   --orbit-guide-slider-min-w: 60px;
   --orbit-guide-value-w: 60px;
 }
-/* PanelShell はレール直下のパネルを前提に position:relative へ上書きされる(hud-layout-style.ts)。
-   ここでは表示パネルの奥深くに入れ子で使うため、その前提から外れ position:absolute のまま
-   重なって表示される——ここで打ち消し、他のタブと同じ「見出し+ぶら下がる本文」の軽い
-   区画として扱う(ガラス地・影は表示パネル自身が既に持つので、入れ子側では持たない)。 */
-.orbit-guide-tab .panel-shell {
+/* PanelShell はレール直下のパネルを前提に position:relative へ上書きされる(#hud .hud-rail
+   > .panel、hud-layout-style.ts)。ここでは表示パネルの奥深くに入れ子で使うため、その前提から
+   外れ position:absolute のまま重なって表示される——#hud を含めて詳細度を揃えたうえで打ち消し、
+   他のタブと同じ「見出し+ぶら下がる本文」の軽い区画として扱う(ガラス地・影は表示パネル自身が
+   既に持つので、入れ子側では持たない)。 */
+#hud .orbit-guide-tab .panel-shell {
   position: relative;
   margin-bottom: var(--space-3);
   padding: 0;
@@ -282,7 +283,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-.orbit-guide-tab .panel-shell .panel-shell {
+#hud .orbit-guide-tab .panel-shell .panel-shell {
   margin: var(--space-2) 0 0;
   padding-left: var(--space-3);
   border-left: 1px solid var(--line-subtle);
