@@ -9,6 +9,7 @@ import { shortcutKeyLabel } from './shortcut-hint';
 import { bringToFront } from '../overlay-layer';
 import { onViewportChange } from '../viewport';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
+import { injectOnce } from '../widgets/inject-style';
 
 const STYLE = `
 #hud .ctx-menu {
@@ -38,16 +39,6 @@ const STYLE = `
   font-weight: normal;
 }
 `;
-
-let styleInjected = false;
-// メニューのスタイルシートを document.head へ一度だけ挿入する。
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
 
 export interface MenuItem<A extends string = string> {
   type?: 'item' | 'header';
@@ -80,7 +71,7 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   // 要素外へのポインタ操作での自動クローズは overlayManager への登録を通じて配送される。
   public constructor(popupLayer: HTMLElement, private readonly overlayManager: OverlayManager) {
     this.overlayId = `ctx-menu-${ContextMenu.nextId++}`;
-    ensureStyle();
+    injectOnce('ctx-menu', STYLE);
     this.el = document.createElement('div');
     this.el.className = 'ctx-menu';
     this.el.setAttribute('role', 'menu');

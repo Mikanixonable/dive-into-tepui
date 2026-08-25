@@ -1,12 +1,12 @@
 // マップ上のオブジェクトを右クリックして開く、プロパティ表示付きの小窓。外枠(ドラッグ移動・
 // クリップ・ヘッダ・OverlayManager 登録)は DraggableWindow に委譲し、このクラスはプロパティ行 /
 // 操作項目の2段と改名 UI だけを持つ。表示専用で、プロパティの値をどう導出するかは呼び出し側の責務。
-// 複数存続できる想定のため ContextMenu と異なり呼び出しごとに個別のインスタンスを持つ。
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import { shortcutKeyLabel } from './shortcut-hint';
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../hud-root';
 import { Button, ValueInput } from '../widgets';
+import { injectOnce } from '../widgets/inject-style';
 import type { OverlayManager } from '../overlay-manager';
 import { DraggableWindow } from './draggable-window';
 
@@ -83,20 +83,11 @@ const STYLE = `
 }
 `;
 
-let styleInjected = false;
 // 行グループ見出しの文字列を組む。
 function groupToggleLabel(name: string, rowCount: number, expanded: boolean): string {
   return expanded
     ? `${COLLAPSE_EXPANDED_GLYPH} ${name}`
     : `${COLLAPSE_COLLAPSED_GLYPH} ${name} (${rowCount})`;
-}
-
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
 }
 
 export interface PropertyRow {
@@ -186,7 +177,7 @@ export class PropertyWindow<A extends string = string> {
     root: HTMLElement, clientX: number, clientY: number, content: PropertyWindowContent<A>,
     overlayManager: OverlayManager, tempWindowGroup?: string,
   ) {
-    ensureStyle();
+    injectOnce('property-window', STYLE);
     this.lastTitle = content.title;
     this.win = new DraggableWindow(root, clientX, clientY, {
       title: content.title, subtitle: content.subtitle, icon: content.icon, tempWindowGroup,
@@ -527,8 +518,7 @@ export class PropertyWindow<A extends string = string> {
     this.moveTo(this.win.element.offsetLeft, this.win.element.offsetTop);
   }
 
-  // 要求座標をビューポート内へクランプして配置する。既存ウィンドウを右クリック位置へ
-  // 動かす呼び出し元から呼ぶ。
+  // 要求座標をビューポート内へクランプして配置する。
   public moveTo(clientX: number, clientY: number): void {
     this.win.moveTo(clientX, clientY);
   }

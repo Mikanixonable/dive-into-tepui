@@ -11,6 +11,7 @@ import { bringToFront as bringOverlayToFront } from '../overlay-layer';
 import { onViewportChange } from '../viewport';
 import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
 import { Button, CloseButton } from '../widgets';
+import { injectOnce } from '../widgets/inject-style';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
 
 const STYLE = `
@@ -62,16 +63,6 @@ const STYLE = `
 #hud .dg-window.tgt { background: color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus)); }
 #hud .dg-window.on { background: color-mix(in srgb, var(--color-signal) 16%, var(--glass-focus)); }
 `;
-
-let styleInjected = false;
-
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
 
 export interface DraggableWindowOptions {
   readonly title: string;
@@ -128,7 +119,7 @@ export class DraggableWindow implements OverlayHandle {
   ) {
     this.overlayId = `dg-window-${DraggableWindow.nextId++}`;
     this._clipped = options.initiallyClipped ?? false;
-    ensureStyle();
+    injectOnce('dg-window', STYLE);
     this.element = document.createElement('div');
     this.element.className = 'dg-window';
     this.element.setAttribute('role', 'dialog');
