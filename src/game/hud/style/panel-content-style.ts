@@ -225,9 +225,9 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   position: absolute;
   font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
 }
-#hud .hud-frame-controls { width: 100%; pointer-events: auto; }
-#hud .hud-frame-controls .hud-frame-scroll-zone {
-  max-height: min(240px, 30vh); max-height: min(240px, 30dvh); overflow-y: auto;
+#hud .hud-frame-controls {
+  width: 100%; pointer-events: auto;
+  max-height: min(360px, 48vh); max-height: min(360px, 48dvh); overflow-y: auto;
   scrollbar-width: thin;
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
