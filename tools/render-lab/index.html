@@ -24,7 +24,6 @@
   .row .field output { min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
   #views { display: flex; gap: 12px; flex-wrap: wrap; }
   #views figure { margin: 0; background: var(--panel); border: 1px solid var(--edge); padding: 8px; }
-  #views figcaption { margin-bottom: 6px; opacity: .75; }
   #views canvas { display: block; width: 960px; height: 540px; background: #000; }
   #error { color: #ff8a5c; white-space: pre-wrap; }
 </style>
@@ -35,8 +34,7 @@
   <div class="row" id="targets"></div>
   <div class="row" id="view-angles"></div>
   <div id="views">
-    <figure><figcaption>窓あり(枠を要求精度まで縮める)</figcaption><canvas id="view"></canvas></figure>
-    <figure><figcaption>窓なし(枠は常に箱ぜんたい)</figcaption><canvas id="view-b"></canvas></figure>
+    <figure><canvas id="view"></canvas></figure>
   </div>
   <p id="error"></p>
 </body>
