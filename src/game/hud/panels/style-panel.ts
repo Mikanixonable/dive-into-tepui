@@ -8,7 +8,6 @@ import { Button } from '../widgets';
 export class StylePanel {
   readonly panel: PanelShell;
   private readonly buttons: ReadonlyMap<RenderStyle, Button>;
-  private readonly unsubscribe: () => void;
 
   // parent(左レール)へパネルを組み込み、renderStyle の現在値と変更を追従する。
   constructor(parent: HTMLElement, renderStyle: RenderStyleSetting) {
@@ -32,7 +31,7 @@ export class StylePanel {
     this.buttons = buttons;
     this.panel.body.appendChild(list);
 
-    this.unsubscribe = renderStyle.subscribe((style) => this.syncSelection(style));
+    renderStyle.subscribe((style) => this.syncSelection(style));
   }
 
   // 選択中の style だけを点灯させる。
@@ -43,11 +42,5 @@ export class StylePanel {
       button.element.removeAttribute('aria-pressed');
       button.element.setAttribute('aria-checked', String(selected));
     }
-  }
-
-  // パネルを取り除き、選択状態変化の購読を解く。
-  dispose(): void {
-    this.unsubscribe();
-    this.panel.el.remove();
   }
 }
