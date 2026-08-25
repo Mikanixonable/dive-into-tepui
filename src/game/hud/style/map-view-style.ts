@@ -54,6 +54,7 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active .hud-rail-left > #hud-orbit,
   #hud .hud-map-root.active .hud-rail-left > #burn-management-panel,
   #hud .hud-map-root.active .hud-rail-left > #hud-view-options,
+  #hud .hud-map-root.active .hud-rail-left > .hud-frame-controls,
   #hud .hud-map-root.active #hud-physical-object-list {
     max-height: var(--rail-panel-max-h);
   }
