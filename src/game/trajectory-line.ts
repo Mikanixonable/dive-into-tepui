@@ -20,13 +20,13 @@
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../physics/kinematic-state';
-import { FrameAnchorSource, ReferenceFrame, toFrameState } from '../physics/frame';
+import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../physics/frame';
 import { CelestialBody } from '../physics/celestial-body';
 import type { Ephemeris } from '../physics/ephemeris';
 import { DynamicTrajectory } from '../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../physics/kepler-extrapolation';
 import { StateQueue } from '../physics/state-queue';
-import { add } from '../physics/vec3';
+import { add, Vec3 } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
 import { LineStyle } from '../render/line-style';
@@ -229,6 +229,24 @@ export class TrajectoryLine {
 
   setRenderOrder(renderOrder: number): void {
     this.curve.setRenderOrder(renderOrder);
+  }
+
+  // 直近に bake した描画区間から、当たり判定向けの ECI 絶対座標のサンプル点列を返す。
+  // 座標系相対 → 慣性系の変換は表示時刻の剛体運動(syncTransform の un-bake と同じ変換)で行う。
+  samplePoints(
+    count: number, frame: ReferenceFrame, displayTime: number, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+  ): readonly Vec3[] {
+    const start = this.startTime;
+    const end = this.endTime;
+    if (this.baked.size < 2 || start === null || end === null || start >= end) return [];
+    const tf = ephemeris.frameTransformAt(frame, displayTime, frameAnchors);
+    const points: Vec3[] = [];
+    const scratch = new THREE.Vector3();
+    for (let i = 0; i <= count; i++) {
+      this.sampler(i / count, scratch);
+      points.push(toInertialPoint(tf, framePoint(scratch.x, scratch.y, scratch.z)));
+    }
+    return points;
   }
 
   dispose(): void {

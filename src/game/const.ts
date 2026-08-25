@@ -228,9 +228,11 @@ export const LOGISTICS_MAX_DIST = 1250; // 同上限 [m]
 export const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
 export const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
 export const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
-// pointer:coarse(タッチ等)向けの上記2定数の緩和版。~44px半径。
+export const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
+// pointer:coarse(タッチ等)向けの上記3定数の緩和版。~44px半径。
 export const TARGET_LOCK_PICK_PX_SQ_COARSE = 1936;
 export const MAP_PICK_PX_SQ_COARSE = 1936;
+export const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 export const CLICK_MOVE_THRESHOLD = 6; // これ未満の累積移動量ならドラッグではなくクリック扱い [px]
 // 右ドラッグ後でもクリック扱いを許す、意図的に CLICK_MOVE_THRESHOLD より緩い閾値。
 export const RIGHT_CLICK_MOVE_THRESHOLD = 50; // [px]
