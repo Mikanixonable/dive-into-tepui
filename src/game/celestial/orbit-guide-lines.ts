@@ -278,7 +278,9 @@ export class OrbitGuideLines {
       entry.curve.setStyle(style.color, style.opacity);
       entry.curve.sync(fo, camera, style.colorAt);
       if (entry.lastLoop) {
-        this.markers.addLoop(entry.curve, entry.lastLoop, style.direction, style.animate, style.markerColor, fo);
+        this.markers.addLoop(
+          entry.curve, entry.lastLoop.revolutions, style.direction, style.animate, style.markerColor, fo,
+        );
       }
     }
     this.markers.endFrame();
