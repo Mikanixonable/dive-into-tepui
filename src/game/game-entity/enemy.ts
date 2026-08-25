@@ -311,7 +311,11 @@ export class Enemy extends Ship {
       const projectedDiameterPx = viewer && displayed
         ? apparentSizePx(this.radius * 2, metersPerPixel(viewer, displayed.r, window.innerHeight))
         : Number.POSITIVE_INFINITY;
-      this.proteinRuntime.updateVisual(displayTime, projectedDiameterPx);
+      // marker LOD(投影サイズがゆらぎを描かない大きさ)まで落ちた敵は、部位・修飾・
+      // 結合線の更新と残基投影を止める。LOD 判定自体は ProteinRuntime に一本化してある。
+      if (this.proteinRuntime.updateLod(projectedDiameterPx) !== 'marker') {
+        this.proteinRuntime.updateVisual(displayTime);
+      }
     }
   }
 

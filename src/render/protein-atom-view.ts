@@ -181,6 +181,9 @@ export function buildProteinAtoms(
   const structure = source.structure;
   const bindings = proteinResidueBindingLookup(source);
   const group = new THREE.Group();
+  // 色は元素と ligand の別だけで決まり、chain には依存しないので、
+  // 同じ呼び出し内で chain をまたいでマテリアルを共有する。
+  const atomMaterialsByElement = new Map<string, THREE.MeshStandardNodeMaterial>();
   const byChain = new Map<string, Map<string, number[]>>();
   for (let atom = 0; atom < structure.atoms.count; atom++) {
     if (selected && !selected.has(atom)) continue;
@@ -200,7 +203,13 @@ export function buildProteinAtoms(
       const radiusCode = structure.atoms.radiusCodes[atoms[0]!] ?? 1;
       const baseRadius = structure.atoms.radiusTable[radiusCode] ?? 1.7;
       const radius = ligand && element === 'FE' ? baseRadius * 1.35 : baseRadius * (ligand ? 0.72 : 1);
-      const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(radius, 10, 8), atomMaterial(element, ligand, motion), atoms.length);
+      let material = atomMaterialsByElement.get(element);
+      const ownsMaterial = !material;
+      if (!material) {
+        material = atomMaterial(element, ligand, motion);
+        atomMaterialsByElement.set(element, material);
+      }
+      const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(radius, 10, 8), material, atoms.length);
       const matrix = new THREE.Matrix4();
       atoms.forEach((atom, instance) => {
         const offset = atom * 3;
@@ -215,7 +224,7 @@ export function buildProteinAtoms(
       mesh.userData.proteinElement = element;
       mesh.userData.proteinLigand = ligand;
       mesh.userData.ownsGeometry = true;
-      mesh.userData.ownsMaterial = true;
+      mesh.userData.ownsMaterial = ownsMaterial;
       chainGroup.add(mesh);
     }
     group.add(chainGroup);
@@ -240,18 +249,24 @@ export function buildProteinAtoms(
     bondResidues.push(bindings.atomResidues[first] ?? 0, bindings.atomResidues[second] ?? 0);
     bondResiduesByChain.set(chain, bondResidues);
   }
+  // 結合線の色は ligand の別だけで決まるので、chain をまたいで1つのマテリアルを共有する。
+  let bondMaterial: THREE.LineBasicNodeMaterial | null = null;
   for (const [chain, bondPositions] of bondPositionsByChain) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(bondPositions, 3));
     const bondResidues = bondResiduesByChain.get(chain) ?? [];
     attachProteinResidueBinding(geometry, bondResidues);
-    const bonds = new THREE.LineSegments(geometry, proteinLineMaterial({
-      color: ligand ? 0xffb45e : 0x778899, transparent: true, opacity: ligand ? 0.9 : 0.65,
-    }, motion));
+    const ownsBondMaterial = !bondMaterial;
+    if (!bondMaterial) {
+      bondMaterial = proteinLineMaterial({
+        color: ligand ? 0xffb45e : 0x778899, transparent: true, opacity: ligand ? 0.9 : 0.65,
+      }, motion);
+    }
+    const bonds = new THREE.LineSegments(geometry, bondMaterial);
     bonds.userData.proteinComponent = chain;
     bonds.userData.proteinLigand = ligand;
     bonds.userData.ownsGeometry = true;
-    bonds.userData.ownsMaterial = true;
+    bonds.userData.ownsMaterial = ownsBondMaterial;
     group.add(bonds);
   }
   return group;

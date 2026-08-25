@@ -11,6 +11,9 @@ import {
 import {
   attachProteinResidueBinding,
   proteinStandardMaterial,
+  PROTEIN_RESIDUE_A_ATTRIBUTE,
+  PROTEIN_RESIDUE_B_ATTRIBUTE,
+  PROTEIN_RESIDUE_T_ATTRIBUTE,
   type ProteinMotionBinding,
 } from './protein-motion-material';
 export interface ProteinBackboneAsset {
@@ -273,8 +276,6 @@ function ribbonGeometry(
   geometry.setIndex(indices);
   attachProteinResidueBinding(geometry, residueA, residueB, residueT);
   geometry.computeVertexNormals();
-  geometry.userData.proteinSecondary = kind;
-  geometry.userData.proteinSecondaryKind = kind;
   return geometry;
 }
 
@@ -339,13 +340,6 @@ function transitionGeometry(
   geometry.setIndex(indices);
   attachProteinResidueBinding(geometry, residueA, residueB, residueT);
   geometry.computeVertexNormals();
-  geometry.userData.proteinSecondary = to.kind;
-  geometry.userData.proteinSecondaryKind = to.kind;
-  geometry.userData.proteinRibbonTransition = true;
-  geometry.userData.proteinTransitionFromKind = from.kind;
-  geometry.userData.proteinTransitionToKind = to.kind;
-  geometry.userData.proteinTransitionFromVertices = fromCount;
-  geometry.userData.proteinTransitionToVertices = toCount;
   return geometry;
 }
 
@@ -360,45 +354,125 @@ function ribbonMaterial(motion?: ProteinMotionBinding): THREE.MeshStandardNodeMa
   }, motion);
 }
 
-/** geometry をタンパク質用タグ付き Mesh として group へ追加する。 */
-function addRibbonMesh(
+type ChainAttribute = THREE.BufferAttribute | THREE.InterleavedBufferAttribute;
+
+/** 連結対象の geometry が持つべき属性一式。無ければ即座に例外を投げる。 */
+function requiredChainAttributes(part: THREE.BufferGeometry): {
+  readonly position: ChainAttribute; readonly color: ChainAttribute; readonly normal: ChainAttribute;
+  readonly residueA: ChainAttribute; readonly residueB: ChainAttribute; readonly residueT: ChainAttribute;
+  readonly index: THREE.BufferAttribute;
+} {
+  const position = part.getAttribute('position');
+  const color = part.getAttribute('color');
+  const normal = part.getAttribute('normal');
+  const residueA = part.getAttribute(PROTEIN_RESIDUE_A_ATTRIBUTE);
+  const residueB = part.getAttribute(PROTEIN_RESIDUE_B_ATTRIBUTE);
+  const residueT = part.getAttribute(PROTEIN_RESIDUE_T_ATTRIBUTE);
+  const index = part.index;
+  if (!position || !color || !normal || !residueA || !residueB || !residueT || !index) {
+    throw new Error('Ribbon geometry parts must share position/color/normal/residue attributes and an index');
+  }
+  return { position, color, normal, residueA, residueB, residueT, index };
+}
+
+/**
+ * 区間ごとの geometry を頂点属性を連結して1つへまとめる。頂点数・index 数を先に数えて
+ * typed array を1回だけ確保し、各パートの既存 typed array を `set` で書き写す — スポーン時に
+ * 数十万頂点を扱うため、頂点ごとの getX/push は避ける。index にだけ頂点オフセットを足す。
+ * 残基インデックス属性(頂点ではなく残基そのものを指す)にはオフセットを足さない。
+ */
+function mergeChainGeometry(parts: readonly THREE.BufferGeometry[]): THREE.BufferGeometry {
+  let vertexCount = 0;
+  let indexCount = 0;
+  for (const part of parts) {
+    const { position, index } = requiredChainAttributes(part);
+    vertexCount += position.count;
+    indexCount += index.count;
+  }
+  const positions = new Float32Array(vertexCount * 3);
+  const colors = new Float32Array(vertexCount * 3);
+  const normals = new Float32Array(vertexCount * 3);
+  const residueA = new Uint32Array(vertexCount);
+  const residueB = new Uint32Array(vertexCount);
+  const residueT = new Float32Array(vertexCount);
+  const indices = new Uint32Array(indexCount);
+  let vertexOffset = 0;
+  let indexOffset = 0;
+  for (const part of parts) {
+    const attributes = requiredChainAttributes(part);
+    positions.set(attributes.position.array as Float32Array, vertexOffset * 3);
+    colors.set(attributes.color.array as Float32Array, vertexOffset * 3);
+    normals.set(attributes.normal.array as Float32Array, vertexOffset * 3);
+    residueA.set(attributes.residueA.array as Uint32Array, vertexOffset);
+    residueB.set(attributes.residueB.array as Uint32Array, vertexOffset);
+    residueT.set(attributes.residueT.array as Float32Array, vertexOffset);
+    const partIndex = attributes.index.array;
+    for (let i = 0; i < partIndex.length; i++) indices[indexOffset + i] = partIndex[i]! + vertexOffset;
+    vertexOffset += attributes.position.count;
+    indexOffset += partIndex.length;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
+  attachProteinResidueBinding(geometry, residueA, residueB, residueT);
+  return geometry;
+}
+
+/** 鎖1本ぶんの連結済み geometry を、衝突判定と影が読むタグ付き Mesh として group へ追加する。material の dispose は最初の Mesh だけが持つ。 */
+function addChainMesh(
   group: THREE.Group,
   geometry: THREE.BufferGeometry,
-  source: ProteinRenderSource,
-  startIndex: number,
-  kind: ProteinSecondaryKind,
-  motion?: ProteinMotionBinding,
+  material: THREE.MeshStandardNodeMaterial,
+  ownsMaterial: boolean,
 ): void {
-  // 表示更新と component 運動が読む共通タグを各区間へ付ける。
-  const mesh = new THREE.Mesh(geometry, ribbonMaterial(motion));
-  mesh.userData.proteinComponent = source.backbone.backboneChains[startIndex] ?? 'A';
+  const mesh = new THREE.Mesh(geometry, material);
   mesh.userData.proteinRibbon = true;
-  mesh.userData.proteinSecondary = kind;
-  mesh.userData.proteinSecondaryKind = kind;
-  if (geometry.userData.proteinRibbonTransition === true) {
-    mesh.userData.proteinRibbonTransition = true;
-    mesh.userData.proteinTransitionFromKind = geometry.userData.proteinTransitionFromKind;
-    mesh.userData.proteinTransitionToKind = geometry.userData.proteinTransitionToKind;
-    mesh.userData.proteinTransitionFromVertices = geometry.userData.proteinTransitionFromVertices;
-    mesh.userData.proteinTransitionToVertices = geometry.userData.proteinTransitionToVertices;
-  }
   mesh.userData.proteinShadowReceiver = true;
   mesh.userData.ownsGeometry = true;
-  mesh.userData.ownsMaterial = true;
+  mesh.userData.ownsMaterial = ownsMaterial;
   group.add(mesh);
 }
 
-/** 論文図向けの断面と連続フレームで全主鎖を構築する。 */
-function buildPublicationRibbon(
-  source: ProteinRenderSource,
-  mode: ProteinRibbonColorMode,
-  fixedColor: THREE.Color | null,
-  motion?: ProteinMotionBinding,
-): THREE.Group {
-  const group = new THREE.Group();
-  // フレームは鎖全体で共有し、二次構造境界では断面だけを切り替える。
+export interface RibbonChainSpan {
+  readonly transition: false;
+  readonly kind: ProteinSecondaryKind;
+  readonly ringVertices: number;
+  readonly ringCount: number;
+}
+export interface RibbonChainTransition {
+  readonly transition: true;
+  readonly fromKind: ProteinSecondaryKind;
+  readonly toKind: ProteinSecondaryKind;
+  readonly fromVertices: number;
+  readonly toVertices: number;
+}
+export type RibbonChainSection = RibbonChainSpan | RibbonChainTransition;
+
+interface PlannedRibbonSpan extends RibbonChainSpan {
+  readonly samples: readonly RibbonSample[];
+  readonly sheetEnd: number;
+}
+interface PlannedRibbonTransition extends RibbonChainTransition {
+  readonly from: { readonly sample: RibbonSample; readonly kind: ProteinSecondaryKind; readonly sheetEnd: number };
+  readonly to: { readonly sample: RibbonSample; readonly kind: ProteinSecondaryKind; readonly sheetEnd: number };
+}
+type PlannedRibbonSection = PlannedRibbonSpan | PlannedRibbonTransition;
+
+/**
+ * 主鎖を鎖ごとの run・区間・遷移へ計画する、Ribbon 構築の唯一の走査。断面を作る側
+ * (buildPublicationRibbon)と、断面頂点数だけを見る側(ribbonChainLayout)の両方がこれを消費する。
+ */
+function planRibbonChains(source: ProteinRenderSource): Map<string, PlannedRibbonSection[][]> {
+  const planned = new Map<string, PlannedRibbonSection[][]>();
   for (const run of backboneRuns(source.backbone)) {
     if (run.points.length < 2) continue;
+    const chain = source.backbone.backboneChains[run.startIndex] ?? 'A';
+    const runs = planned.get(chain) ?? [];
+    planned.set(chain, runs);
+    const sections: PlannedRibbonSection[] = [];
+    runs.push(sections);
     const curve = new THREE.CatmullRomCurve3(run.points, false, 'centripetal', 0.35);
     const frames = sampleFrames(source, run, curve, RIBBON_SUBDIVISIONS);
     const spans = secondarySpans(source.backbone, run);
@@ -409,21 +483,80 @@ function buildPublicationRibbon(
       const last = span.end * RIBBON_SUBDIVISIONS;
       const previousSpan = spans[spanIndex - 1];
       if (previousSpan && last > first) {
-        addRibbonMesh(group, transitionGeometry(
-          source,
-          { sample: frames[first]!, kind: previousSpan.kind, sheetEnd: previousSpan.end },
-          { sample: frames[first + 1]!, kind: span.kind, sheetEnd: span.end },
-          mode,
-          fixedColor,
-        ), source, run.startIndex + span.start, span.kind, motion);
+        sections.push({
+          transition: true,
+          fromKind: previousSpan.kind,
+          toKind: span.kind,
+          fromVertices: sectionVertices(previousSpan.kind),
+          toVertices: sectionVertices(span.kind),
+          from: { sample: frames[first]!, kind: previousSpan.kind, sheetEnd: previousSpan.end },
+          to: { sample: frames[first + 1]!, kind: span.kind, sheetEnd: span.end },
+        });
       }
       const meshFirst = previousSpan ? first + 1 : first;
-      const boundarySamples = frames.slice(meshFirst, last + 1);
-      if (boundarySamples.length < 2) continue;
-      addRibbonMesh(group, ribbonGeometry(
-        source, boundarySamples, span.kind, span.end, mode, fixedColor,
-      ), source, run.startIndex + span.start, span.kind, motion);
+      const samples = frames.slice(meshFirst, last + 1);
+      if (samples.length < 2) continue;
+      sections.push({
+        transition: false, kind: span.kind, ringVertices: sectionVertices(span.kind), ringCount: samples.length,
+        samples, sheetEnd: span.end,
+      });
     }
+  }
+  return planned;
+}
+
+/** 計画済み区間から、断面頂点数の情報だけを取り出す。 */
+function describeSection(section: PlannedRibbonSection): RibbonChainSection {
+  if (section.transition) {
+    return {
+      transition: true,
+      fromKind: section.fromKind,
+      toKind: section.toKind,
+      fromVertices: section.fromVertices,
+      toVertices: section.toVertices,
+    };
+  }
+  return { transition: false, kind: section.kind, ringVertices: section.ringVertices, ringCount: section.ringCount };
+}
+
+/**
+ * 鎖ごとに、統合 mesh の頂点バッファへ並ぶ区間・遷移の順序と断面頂点数を、欠損で分かれる
+ * run 単位の入れ子配列で返す。
+ */
+export function ribbonChainLayout(source: ProteinRenderSource): Map<string, RibbonChainSection[][]> {
+  const layout = new Map<string, RibbonChainSection[][]>();
+  for (const [chain, runs] of planRibbonChains(source)) {
+    layout.set(chain, runs.map((sections) => sections.map(describeSection)));
+  }
+  return layout;
+}
+
+/** 論文図向けの断面と連続フレームで全主鎖を構築する。 */
+function buildPublicationRibbon(
+  source: ProteinRenderSource,
+  mode: ProteinRibbonColorMode,
+  fixedColor: THREE.Color | null,
+  motion?: ProteinMotionBinding,
+): THREE.Group {
+  const group = new THREE.Group();
+  // 材質は最初の mesh を作る直前まで遅らせる — 鎖が1本も成立しない source では誰にも
+  // 所有されない材質を残さない。
+  let material: THREE.MeshStandardNodeMaterial | null = null;
+  for (const runs of planRibbonChains(source).values()) {
+    const parts: THREE.BufferGeometry[] = [];
+    for (const sections of runs) {
+      for (const section of sections) {
+        parts.push(section.transition
+          ? transitionGeometry(source, section.from, section.to, mode, fixedColor)
+          : ribbonGeometry(source, section.samples, section.kind, section.sheetEnd, mode, fixedColor));
+      }
+    }
+    if (parts.length === 0) continue;
+    const merged = mergeChainGeometry(parts);
+    for (const part of parts) part.dispose();
+    const ownsMaterial = material === null;
+    material ??= ribbonMaterial(motion);
+    addChainMesh(group, merged, material, ownsMaterial);
   }
   return group;
 }

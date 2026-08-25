@@ -82,7 +82,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunLight, gpu);
-    this.proteinShadowPass = new ProteinShadowPass(renderer);
+    this.proteinShadowPass = new ProteinShadowPass(renderer, gpu);
     this.lightPrepass = new LightPrepass(
       renderer, this.gbuffer, this.occlusionPass, this._sunLight, this.proteinShadowPass, gpu,
     );
