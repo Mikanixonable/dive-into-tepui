@@ -199,6 +199,7 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
     '--fill-2': rgba(palette.title, 0.09),
     '--fill-3': rgba(palette.title, 0.16),
     '--fill-4': rgba(palette.title, 0.32),
+    '--bar-bg': palette.surface3,
   };
 }
 
@@ -252,7 +253,7 @@ export const FILL_4 = rgba(TEXT, 0.32);
 
 export const SHADE_1 = 'rgba(0, 0, 0, 0.18)'; // 弱い落とし影
 export const SCRIM = 'rgba(6, 7, 9, 0.82)'; // 全画面表示の背後を覆う膜
-export const BAR_BG = '#222222'; // ゲージ類の不透明な地(背後を透かさない)
+export const BAR_BG = ACTIVE_THEME.surface3; // ゲージ類の不透明な地(背後を透かさない)
 
 // グロー(text-shadow)を任意の色から作るための混合率。
 // `color-mix(in srgb, <色> ${GLOW_STRONG}, transparent)` の形で使う。
