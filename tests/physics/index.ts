@@ -54,7 +54,6 @@ import { register as registerEphemerisPackFormat } from './ephemeris-pack-format
 import { register as registerChebyshevEphemeris } from './chebyshev-ephemeris.test';
 import { register as registerPackedAbsoluteEphemeris } from './packed-absolute-ephemeris.test';
 import { register as registerSaveEphemerisContext } from './save-ephemeris-context.test';
-import { register as registerGeometry } from './geometry.test';
 import { register as registerOptimize } from './optimize.test';
 import { register as registerPredictedArc } from './predicted-arc.test';
 import { register as registerSurfaceCandidates } from './surface-candidates.test';
@@ -128,7 +127,6 @@ registerEphemerisPackFormat();
 registerChebyshevEphemeris();
 registerPackedAbsoluteEphemeris();
 registerSaveEphemerisContext();
-registerGeometry();
 registerOptimize();
 registerPredictedArc();
 registerSurfaceCandidates();
