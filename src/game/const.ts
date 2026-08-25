@@ -366,7 +366,10 @@ export const MARKER_PRIORITY = {
   AMMO: 300,
   MANEUVER_NODE: 150,
   ORBITAL_NODE: 100,
+  PROTEIN_SITE: 50,
 } as const;
+
+export const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
 
 // 共線点(L1/L2/L3)を持たせる下限。副天体の半径を単位とした L1 までの距離で、これを下回る系は
 // L1 が表面すれすれに来てハロー軌道の振幅が収まらない(フォボス 1.5・イオ 5.8 が落ちる)。

@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "pdb-1mbn-myoglobin",
+  "displayName": "ミオグロビン",
   "source": {
     "pdbId": "1MBN",
     "structureFile": "src/assets/models/myoglobin1mbnBackbone.json",
@@ -47,6 +48,7 @@
   "sites": [
     {
       "id": "heme-iron",
+      "label": "ヘム鉄",
       "type": "active",
       "source": "author",
       "residues": [
@@ -73,6 +75,7 @@
     },
     {
       "id": "proximal-histidine",
+      "label": "近位ヒスチジン(His93)",
       "type": "interface",
       "source": "author",
       "residues": [
@@ -97,6 +100,7 @@
     },
     {
       "id": "globin-core",
+      "label": "グロビン核",
       "type": "core",
       "source": "computed",
       "residues": [],
