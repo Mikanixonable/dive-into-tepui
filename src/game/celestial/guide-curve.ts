@@ -81,9 +81,11 @@ export class GuideCurve {
       return;
     }
     this.curve.setTransform(fo.RtoThreeV3(origin));
+    // 基準点の描画位置は毎フレーム動くが、曲線そのものは revision が変わるまで焼き直さない。
     const opts = { revision: this.revision, camera, colorAt, initialSegments: this.initialSegments };
     if (this.analytic) this.curve.setAnalyticCurve(this.analytic, opts);
     else if (this.knots) this.curve.setHermiteCurve(this.knots, opts);
+    // 焼き直しが起きなかったフレームでも、色だけの変更はここで反映する。
     if (this.colorsDirty && colorAt) {
       this.curve.setColors(colorAt);
       this.colorsDirty = false;

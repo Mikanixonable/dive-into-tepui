@@ -66,8 +66,9 @@ const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 // 弦が縮退するため、最低限これだけ分けてから適応分割に入る。
 const INITIAL_SEGMENTS = 8;
 
-// t を等分した初期頂点列。区間数ごとに1回だけ作って使い回す。
 const uniformTsCache = new Map<number, readonly number[]>();
+
+// t を segments 等分した昇順の列(両端を含む)。区間数ごとに1回だけ作って使い回す。
 function uniformTs(segments: number): readonly number[] {
   const cached = uniformTsCache.get(segments);
   if (cached) return cached;
