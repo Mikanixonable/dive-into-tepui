@@ -298,6 +298,12 @@ export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simu
 // 1周27歩(K=32)まで粗くすると数値減衰が実ドラッグと同等になり、待つだけで艦が倍の速さで落ちる。
 export const SUBSTEP_MAX_COUNT = 64;
 
+// ゼロ長サブステップ(丸めで刻みが0になったイベント消費)が連続してこの回数を超えたら
+// Simulator.advance が simTime を強制前進させる。イベント予告と実際の消滅判定が
+// 丸め誤差でずれた個体が残ると刻みが0のまま進まなくなるための保険で、正常時は1回で
+// 収まる(同時刻の複数イベントの消費に数回使う程度)。
+export const SIMULATION_STALL_MAX_ZERO_STEPS = 8;
+
 // 大気の中で刻みを縛る2つの上限(game/simulation/time-step.ts の atmosphericMaxStep)。
 // 抗力は陽的 RK4 にとって剛い項で、逆時定数 λ = ½ρ·s·bcInv が刻みに対して大きくなると、
 // 段ごとの抗力が増幅して1歩で発散する(抗力は速さの2乗なので振動ではなく暴走になる)。
@@ -378,9 +384,6 @@ export const LAGRANGE_MIN_CLEARANCE_RATIO = 10;
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 export const MARKER_BEARING_RING_RATIO = 0.8;
 export const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
-export const MARKER_HEADING_PROBE_PX = 20; // 進行方向を測るための投影プローブ距離 [px]
-// 投影差がこれ未満なら視線とほぼ平行とみなし、進行方向を定めない [px]
-export const MARKER_HEADING_DEGENERATE_PX = 4;
 export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
 // --- 軌道計画モード([M]) ---
@@ -448,11 +451,6 @@ export const NODE_TOL_PLANE_DEG = 2.0 / 3; // 軌道面の角度差 [deg]
 export const NODE_APPROACH_LEAD = 10;
 // 実行時刻をこれだけ過ぎたノードは計画から落とす [s]。多少の遅れなら噴射できる猶予。
 export const NODE_EXPIRE_GRACE = 60;
-
-// --- 軌道計画の自動実行(plan-executor.ts) ---
-export const PLAN_EXECUTOR_DV_EPS = 0.05; // これ未満のΔvは燃焼不要とみなす [m/s]
-export const PLAN_EXECUTOR_ARM_ANGLE_DEG = 2.0; // 姿勢誤差がこれを切ったら点火を許可する [deg]
-export const PLAN_EXECUTOR_TRIM_DV = 5.0; // 残り射影がこれを下回ったら最低出力段へ落とす [m/s]
 
 // --- 未来表示の時刻(display-window-manager.ts のスライダー) ---
 export const DISPLAY_DUR_DAY = 86400; // 1日
@@ -604,7 +602,6 @@ export const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s
 export const STAGE00_WAVE_BASE_SHIPS = 5; // 第1波の機数
 export const STAGE00_WAVE_SHIPS_PER_WAVE = 2; // 波が進むごとに増える機数
 export const STAGE00_WAVE_MAX_SHIPS = 30; // 1ウェーブの最大機数上限
-export const STAGE00_PLACEMENT_JITTER = 1000; // 編隊配置の位置ばらつき [m]
 export const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距離下限 [m]
 export const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
 export const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]

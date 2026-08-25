@@ -4,7 +4,6 @@
 import type { CelestialBody } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
-import { getApsisLabelSpec } from '../game/hud/orbit/orbit-labels';
 
 export interface OrbitalElements {
   a: number; // 軌道長半径 [m] (双曲線では負)
@@ -77,11 +76,6 @@ export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } 
     pe: el.p / (1 + el.e) - centerRadius,
     ap: el.e < 1 && isFinite(el.a) ? el.a * (1 + el.e) - centerRadius : NaN,
   };
-}
-
-// 中心天体の ID に応じた近点・遠点の日本語・英語正式名称 (例: 近地点 Perigee / 遠地点 Apogee, 近月点 Perilune / 遠月点 Apolune 等)
-export function fmtApsisName(type: 'pe' | 'ap', centerId: string): string {
-  return getApsisLabelSpec(type, centerId).full;
 }
 
 // 平均近点角 M → 離心近点角 E(ケプラー方程式 M = E − e sin E をニュートン法で解く。楕円のみ)。
@@ -160,14 +154,27 @@ export function velocityOnOrbit(el: OrbitalElements, nu: number): Vec3 {
   return addScaled(scale(el.pHat, -k * Math.sin(nu)), el.qHat, k * (el.e + Math.cos(nu)));
 }
 
-// 軌道面の基底(近点方向 pHat と、軌道面内でそれに直交する qHat)を昇交点黄経・傾斜角・
+// 軌道面の基底(近点方向 pHat・それと直交する qHat・軌道面法線 hHat)を昇交点黄経・傾斜角・
 // 近点引数から組む(Y = 北極)。角度はすべて [rad]。
-function orbitPlaneBasis(inc: number, raan: number, argp: number): { pHat: Vec3; qHat: Vec3 } {
+function orbitPlaneBasis(inc: number, raan: number, argp: number): { pHat: Vec3; qHat: Vec3; hHat: Vec3 } {
   const Y = v3(0, 1, 0);
   const node = rotateAxis(v3(1, 0, 0), Y, raan); // 昇交点方向
   const hHat = rotateAxis(Y, node, inc); // 軌道面法線
   const pHat = rotateAxis(node, hHat, argp); // 近点方向
-  return { pHat, qHat: cross(hHat, pHat) };
+  return { pHat, qHat: cross(hHat, pHat), hHat };
+}
+
+// 古典的軌道要素(長半径・離心率・傾斜角・昇交点赤経・近点引数)から OrbitalElements を組む
+// (Y = 北極)。角度はすべて [deg]。中心天体まわりの円〜楕円軌道を、状態ベクトルを介さず
+// 直接指定したいとき(地球専用の参照軌道など)に使う。
+export function orbitalElementsFromClassical(
+  a: number, e: number, incDeg: number, raanDeg: number, argpDeg: number, center: CelestialBody,
+): OrbitalElements {
+  const deg = Math.PI / 180;
+  const { pHat, qHat, hHat } = orbitPlaneBasis(incDeg * deg, raanDeg * deg, argpDeg * deg);
+  return {
+    a, e, p: a * (1 - e * e), incDeg, period: keplerPeriod(a, center.mu), pHat, qHat, hHat, center,
+  };
 }
 
 // 古典的軌道要素 → 時刻 t の位置(Y = 北極)。角度はすべて [rad]。主天体中心の相対位置で、
