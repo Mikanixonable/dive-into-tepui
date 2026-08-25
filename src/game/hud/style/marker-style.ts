@@ -22,7 +22,7 @@ export const MARKER_STYLE = `
 }
 
 #hud .mk { z-index: var(--z-mk-base); }
-#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: var(--z-mk-node); }
+#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight, #hud .mk-protein-site { z-index: var(--z-mk-node); }
 #hud .mk-ammo { z-index: var(--z-mk-ammo); }
 #hud .mk-fuel { z-index: var(--z-mk-ammo); }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-ally { z-index: var(--z-mk-enemy); }
@@ -87,6 +87,9 @@ export const MARKER_STYLE = `
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-impact { color: var(--color-error); }
 .mk-plantick { color: var(--text-dim); }
+.mk-protein-site { color: var(--text-dim); }
+.mk-protein-site .sym { font-size: calc(var(--glyph-base) * 0.25); }
+.mk-protein-site .lbl { font-size: var(--font-xxs); }
 
 .mk-poi { color: var(--text-strong); }
 .mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-poi)); }
