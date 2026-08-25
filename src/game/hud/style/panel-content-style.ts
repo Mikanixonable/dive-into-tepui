@@ -169,6 +169,9 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-view-options .view-options-title { display: flex; align-items: center; gap: var(--space-2); }
 #hud-view-options .view-options-collapse { margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto; }
 #hud-view-options .view-options-body.collapsed { display: none !important; }
+/* スタイルパネル: 写実/模式図を縦一列の単一選択で並べる。 */
+#hud-style .style-panel-list { display: flex; flex-direction: column; gap: var(--space-2); }
+#hud-style .style-panel-option { display: block; width: 100%; text-align: left; }
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
    トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
    #hud-stagestatus は常に非表示なので、他の下端揃えパネル(.hud-rail 等)と同じ bottom まで詰める。

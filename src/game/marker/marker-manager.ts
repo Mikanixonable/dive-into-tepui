@@ -10,7 +10,6 @@
 import { Vec3, addScaled, len, norm, sub, v3 } from '../../physics/vec3';
 import { Projected } from '../../physics/projection';
 import * as C from '../const';
-import { FILL_4 } from '../theme';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
@@ -603,7 +602,7 @@ export class MarkerManager {
         line.setAttribute('y1', (a.oy - 12 - a.h / 2).toString());
         line.setAttribute('x2', (a.ox + a.dx).toString());
         line.setAttribute('y2', (a.oy + a.dy - a.h / 2).toString());
-        line.setAttribute('stroke', FILL_4);
+        line.setAttribute('class', 'mk-lead');
         line.setAttribute('stroke-width', '1');
         const opacity = a.m.root.style.opacity;
         if (opacity) {

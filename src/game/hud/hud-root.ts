@@ -1,8 +1,10 @@
 // HUD の静的 DOM/スタイル構築。
+import type { RenderStyleSetting } from '../../render/render-style';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { injectThemeVariables } from '../theme';
 import { buildOverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
+import { StylePanel } from './panels/style-panel';
 import { HelpPanel } from './windows/help-panel';
 import {
   PanelShell,
@@ -152,9 +154,12 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   return svgOverlay;
 }
 
-// 常設の情報パネル(VESSEL/ORBIT/TARGET/CONTACTS)を左右のドックへ組む。左右レールの
+// 常設の情報パネル(STYLE/VESSEL/ORBIT/TARGET/CONTACTS)を左右のドックへ組む。左右レールの
 // 収納トグルと各 PanelShell の折りたたみは、現在ビューの永続状態を利用する。
-function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
+function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement, renderStyle: RenderStyleSetting): void {
+  const style = new StylePanel(leftRail, renderStyle);
+  configureCombatPanel(style.panel);
+
   const status = new PanelShell(rightRail, 'hud-vessel-status', 'Vessel');
   configureCombatPanel(status);
   status.body.innerHTML = `
@@ -360,18 +365,21 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
 }
 
 // HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを構築し、DOM 参照をまとめて返す。
-export function buildHudDom(): HudDomRefs {
+export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
   injectThemeVariables();
   injectStyle();
   startViewportTracking();
   const root = createHudElement('div', 'hud', document.body);
+  // 模式図では白背景になるため、マーカー配色をそれに合わせて切り替える手掛かりとして
+  // 現在のスタイルをルート要素の属性で公開する。
+  renderStyle.subscribe((style) => { root.dataset['renderStyle'] = style; });
   const layers = buildOverlayLayers(root);
   const svgOverlay = buildSvgOverlay(layers.marker);
   const combatRoot = buildWorldRoot(layers.panel, 'hud-combat-root', 'combat');
   const mapRoot = buildWorldRoot(layers.panel, 'hud-map-root', 'map');
 
   // 常設パネル群を組む。
-  buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);
+  buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail, renderStyle);
   buildGlobalStatus(layers.panel);
   buildChaseReset(combatRoot.element);
   buildMapScale(mapRoot.element);
