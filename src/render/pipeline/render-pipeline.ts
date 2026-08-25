@@ -25,6 +25,7 @@ import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
 import { OverlayPass } from './overlay-pass';
 import { ProteinShadowPass } from './protein-shadow-pass';
+import { SchematicComposite } from './schematic-composite';
 import { SunLight } from './sun-light';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
@@ -50,6 +51,8 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
+  private readonly schematicComposite: SchematicComposite;
+  private readonly schematicMaterial: THREE.MeshBasicNodeMaterial;
   // 深度デバッグ表示が使う uniform。composite パスは QuadMesh 自前の固定直交カメラ
   // (near=0/far=1)で描かれるため、TSL の cameraNear/cameraFar/cameraProjectionMatrix
   // 組み込みノードはここでは実カメラの値を返さない — render() が毎フレーム実カメラの
@@ -139,6 +142,11 @@ export class RenderPipeline implements DebugTargetHost {
         vec4(toneMapped(texture(this.atmospherePass.texture, screenUV).rgb), 1),
       ),
     };
+    // 模式図用の合成マテリアルは compositeMaterials とは別に1枚だけ持つ。debugTarget の選択肢
+    // (DebugTargetId)には含まれない、表示スタイルそのものの切り替えのため。
+    this.schematicComposite = new SchematicComposite(this.gbuffer, this.depthDebugProjInv);
+    this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
+
     this.quad = new QuadMesh(this.compositeMaterials.off);
   }
 
@@ -193,27 +201,37 @@ export class RenderPipeline implements DebugTargetHost {
     // ライティングパス。G バッファと遮蔽度だけを読むので scene は渡さない。
     this.lightPrepass.render(camera, width, height);
 
-    // マテリアルパス。LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを this.target(このあとの
-    // world パスと共有 — 最初の書き込みなのでクリアする)へ描く。「マテリアル」デバッグ表示を選んでいる
-    // ときだけ、自前のターゲットへも同じジオメトリをもう一度描く。
-    this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
+    // 模式図は G バッファの深度・法線だけから輪郭を出すため、マテリアルパス・大気パス・world
+    // パスを経ない。星野・大気・オーロラ・環の質感・小天体の点群・ビルボードは、この3段が
+    // 描いていたものなので、呼ばないだけで画面から消える。
+    if (style === 'schematic') {
+      this.schematicComposite.update(width, height);
+      this.quad.material = this.schematicMaterial;
+    } else {
+      // マテリアルパス。LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを this.target(このあとの
+      // world パスと共有 — 最初の書き込みなのでクリアする)へ描く。「マテリアル」デバッグ表示を選んでいる
+      // ときだけ、自前のターゲットへも同じジオメトリをもう一度描く。
+      this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
 
-    // 大気パス。不透明の絵の上へ画面空間で重ねる。G バッファ深度と視線だけを読むので scene は渡さない。
-    this.atmospherePass.render(camera, this.target, width, height, this.debugTarget === 'atmosphere');
+      // 大気パス。不透明の絵の上へ画面空間で重ねる。G バッファ深度と視線だけを読むので scene は渡さない。
+      this.atmospherePass.render(camera, this.target, width, height, this.debugTarget === 'atmosphere');
 
-    // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
-    // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
-    // マテリアルパスの描画(色・深度とも)を残したまま重ね描きする — world パスは透明物
-    // (オービットライン・プルーム・ビルボードなど)を自分の描画順の最後に描くため、不透明な
-    // 自艦の深度がその前に書き込まれていないと、自艦の手前にある透明物がそれで上書きされて
-    // しまう。beginPass はそのパスが発行する renderer.render() の直前に呼び、GPU 所要時間の
-    // 計測先を申告する。
-    this.renderer.setRenderTarget(this.target);
-    this.renderer.autoClear = false;
-    this.gpu.beginPass(GPU_PASS.world);
-    this.renderer.render(scene, camera);
-    this.renderer.autoClear = true;
-    this.renderer.setRenderTarget(null);
+      // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
+      // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
+      // マテリアルパスの描画(色・深度とも)を残したまま重ね描きする — world パスは透明物
+      // (オービットライン・プルーム・ビルボードなど)を自分の描画順の最後に描くため、不透明な
+      // 自艦の深度がその前に書き込まれていないと、自艦の手前にある透明物がそれで上書きされて
+      // しまう。beginPass はそのパスが発行する renderer.render() の直前に呼び、GPU 所要時間の
+      // 計測先を申告する。
+      this.renderer.setRenderTarget(this.target);
+      this.renderer.autoClear = false;
+      this.gpu.beginPass(GPU_PASS.world);
+      this.renderer.render(scene, camera);
+      this.renderer.autoClear = true;
+      this.renderer.setRenderTarget(null);
+
+      this.quad.material = this.compositeMaterials[this.debugTarget];
+    }
 
     // composite パス。QuadMesh.render も内部で renderer.render() を呼ぶので、world パスとは
     // 別の GPU 計測枠が付く。
@@ -222,7 +240,6 @@ export class RenderPipeline implements DebugTargetHost {
       this.depthDebugNear.value = camera.near;
       this.depthDebugFar.value = camera.far;
     }
-    this.quad.material = this.compositeMaterials[this.debugTarget];
     this.gpu.beginPass(GPU_PASS.composite);
     this.quad.render(this.renderer);
 
@@ -240,7 +257,9 @@ export class RenderPipeline implements DebugTargetHost {
     this.lightPrepass.dispose();
     this.materialPass.dispose();
     this.atmospherePass.dispose();
+    this.overlayPass.dispose();
     this.target.dispose();
     for (const material of Object.values(this.compositeMaterials)) material.dispose();
+    this.schematicMaterial.dispose();
   }
 }

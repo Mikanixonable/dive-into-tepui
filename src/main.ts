@@ -121,7 +121,7 @@ function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting, pi
   const worldSfx = new WorldSfx(audioEngine);
   const uiSfx = new UiSfx(audioEngine);
   const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager);
-  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm, graphics, pipeline);
+  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm, graphics, pipeline, renderStyle);
   pauseMenu.setBgmVolume(bgm.getVolume());
   pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
   return { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView };

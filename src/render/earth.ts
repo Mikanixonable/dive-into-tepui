@@ -7,6 +7,7 @@ import { texture as textureNode, mix, uv, vec2, vec3 } from 'three/tsl';
 import { R_EARTH } from '../physics/solar-system';
 import { EARTH_TEXTURES } from './celestial-textures';
 import { CelestialSurface } from './celestial-surface';
+import { BodyGraticule } from './body-graticule';
 
 import { Aurora } from './aurora';
 
@@ -41,6 +42,8 @@ function buildSurfaceMaterial(): SurfaceMaterial {
 export interface Earth {
   group: THREE.Group;
   setRotation(angleRad: number): void;
+  // 経緯度グリッドを出すかどうか。
+  setGraticuleVisible(visible: boolean): void;
   // オーロラのカーテンを出すかどうか。
   setAuroraVisible(visible: boolean): void;
   // 見かけ直径[px]に応じた地表メッシュのLOD段を選ぶ。
@@ -61,6 +64,8 @@ export function createEarth(): Earth {
   const surfaceScale = new THREE.Group();
   surfaceScale.scale.setScalar(R_EARTH);
   surface.addTo(surfaceScale);
+  const graticule = new BodyGraticule();
+  graticule.addTo(surfaceScale);
   spin.add(surfaceScale);
 
   // オーロラは磁気極に固定なので自転と一緒に回す
@@ -79,6 +84,9 @@ export function createEarth(): Earth {
     setRotation(angleRad: number) {
       spin.rotation.y = angleRad;
     },
+    setGraticuleVisible(visible: boolean) {
+      graticule.setVisible(visible);
+    },
     setAuroraVisible(visible: boolean) {
       for (const a of auroras) a.mesh.visible = visible;
     },
@@ -95,6 +103,7 @@ export function createEarth(): Earth {
     dispose() {
       group.removeFromParent();
       surface.dispose();
+      graticule.dispose();
       earthMap.dispose();
       cloudsMap.dispose();
       for (const a of auroras) a.dispose();

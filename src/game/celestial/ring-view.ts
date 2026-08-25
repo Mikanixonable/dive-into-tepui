@@ -5,7 +5,9 @@ import type { RenderStyle } from '../../render/render-style';
 import { spinOrientation } from '../../physics/body-orientation';
 import { RingBandDef, RingSystemDef } from '../../physics/solar-system';
 import { Vec3 } from '../../physics/vec3';
+import { createOutlineCircle, OutlineCircle } from '../../render/outline-circle';
 import {
+  RING_TILT,
   createAnnulusRing,
   createRingLine,
   createTorusRing,
@@ -30,6 +32,9 @@ export class RingView {
   readonly group = new THREE.Group();
   private readonly coverageBands: CoverageBand[] = [];
   private readonly visuals: RingVisual[] = [];
+  // 模式図で環の代わりに出す、環全体の最内・最外半径の輪郭円。
+  private readonly outlineInner: OutlineCircle = createOutlineCircle();
+  private readonly outlineOuter: OutlineCircle = createOutlineCircle();
 
   // rings は物理データ(半径は [m])、bodyRadius は本体メッシュと同じ「半径 1」単位への換算元、
   // renderOrder は半透明の環を本体より後に描くための値。THREE の描画順は Object3D ごとに独立
@@ -45,6 +50,17 @@ export class RingView {
       this.group.add(built.object);
       this.visuals.push(built);
     }
+    // 模式図で出す輪郭円は帯ごとではなく環全体の最内・最外の2本だけとする。
+    const innerRadius = Math.min(...rings.bands.map((band) => band.innerRadius)) / bodyRadius;
+    const outerRadius = Math.max(...rings.bands.map((band) => band.outerRadius)) / bodyRadius;
+    // 輪郭円は環メッシュと同じ回転で環面へ寝かせる — 単位円は XY 平面に組まれている。
+    this.outlineInner.line.rotation.x = RING_TILT;
+    this.outlineOuter.line.rotation.x = RING_TILT;
+    this.outlineInner.line.scale.setScalar(innerRadius);
+    this.outlineOuter.line.scale.setScalar(outerRadius);
+    this.outlineInner.line.visible = false;
+    this.outlineOuter.line.visible = false;
+    this.group.add(this.outlineInner.line, this.outlineOuter.line);
   }
 
   // 帯1本ぶんの RingVisual を組む。半径は「本体半径 = 1」単位へ換算して渡す。厚みのある帯は
@@ -74,8 +90,13 @@ export class RingView {
     metersPerPixelAt: ScaleFn,
     sunDirection: Vec3,
     sunIrradiance: number,
-    _style: RenderStyle,
+    style: RenderStyle,
   ): void {
+    // 模式図では環メッシュを隠し、輪郭円だけを見せる。
+    const schematic = style === 'schematic';
+    this.outlineInner.line.visible = schematic;
+    this.outlineOuter.line.visible = schematic;
+    for (const visual of this.visuals) visual.object.visible = !schematic;
     this.group.position.copy(pos);
     this.group.scale.setScalar(this.bodyRadius);
     const ringAxis = axis === null
@@ -101,9 +122,11 @@ export class RingView {
     }
   }
 
-  // 全帯の RingVisual を解放し、group を親から外す。
+  // 全帯の RingVisual と輪郭円を解放し、group を親から外す。
   dispose(): void {
     this.group.removeFromParent();
     for (const visual of this.visuals) visual.dispose();
+    this.outlineInner.dispose();
+    this.outlineOuter.dispose();
   }
 }

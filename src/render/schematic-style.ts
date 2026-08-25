@@ -22,3 +22,7 @@ export const GRATICULE_RADIUS_RATIO = 1.002;
 
 // 環・太陽の輪郭円の色。
 export const OUTLINE_CIRCLE_COLOR = SCHEMATIC_LINE;
+
+// 3D UI パス(軌道線・軌跡線・天球グリッド・縮尺グリッド・Δv ギズモ)を白背景へ合成するときの
+// 明度反転の基準値。暗背景向けの色をそのまま `SCHEMATIC_OVERLAY_INVERT_MAX - c` で反転させる。
+export const SCHEMATIC_OVERLAY_INVERT_MAX = 1;
