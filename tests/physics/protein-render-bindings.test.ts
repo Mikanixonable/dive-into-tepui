@@ -26,6 +26,7 @@ function testModeDisplacements(residueCount: number, modeCount = TEST_MODE_COUNT
 const semantic = {
   schemaVersion: 1,
   id: 'render-test',
+  displayName: 'レンダーテスト',
   source: { pdbId: 'TEST', structureFile: 'test' },
   coordinateScale: 1,
   integrity: { maxHp: 1 },
