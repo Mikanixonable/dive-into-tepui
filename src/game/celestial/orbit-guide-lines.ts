@@ -13,6 +13,8 @@ import { FloatingOrigin } from '../floating-origin';
 import { Curve, CurveSampler } from '../../render/curve';
 import { LINE_RENDER_ORDER, LineStyle } from '../../render/line-style';
 import { GuideAxes, OrbitGuideSettings } from './orbit-guide-settings';
+import type { RenderStyle } from '../../render/render-style';
+import { SCHEMATIC_LINE } from '../../render/schematic-style';
 import * as C from '../const';
 
 const HALO_SAMPLES = 512;
@@ -105,6 +107,12 @@ class PointsCurve {
     this.curve.setVisible(false);
   }
 
+  // 色・不透明度だけを書き換える(模式図の不透明黒への切替に使う)。
+  public setStyle(color: THREE.ColorRepresentation, opacity: number): void {
+    this.curve.setColor(color);
+    this.curve.setOpacity(opacity);
+  }
+
   public dispose(): void {
     this.curve.dispose();
   }
@@ -132,6 +140,8 @@ interface GuideLine {
   readonly system: GuideSystem;
   readonly point: GuidePoint | null;
   readonly hemisphere: Hemisphere | null;
+  readonly realisticColor: number;
+  readonly realisticOpacity: number;
 }
 
 // 系×点(L1/L2/L3)の軸を持つ種類が共通して使う、ON な系・点の列。
@@ -174,6 +184,7 @@ export class OrbitGuideLines {
   private structureKey = '';
   private computedSettings: OrbitGuideSettings | null = null;
   private lastComputedTime: number | null = null;
+  private appliedStyle: RenderStyle | null = null;
 
   public constructor(private readonly scene: THREE.Scene, private readonly ephemeris: Ephemeris) {}
 
@@ -184,7 +195,10 @@ export class OrbitGuideLines {
 
   // マップビューのときだけガイド線を同期する。表示可否のゲートは種類ごとの on に移っている
   // ため、visible の引数は持たない(rebuildLines が0本にすることで非表示を表す)。
-  public sync(displayTime: number, overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera): void {
+  public sync(
+    style: RenderStyle, displayTime: number, overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera,
+  ): void {
+    this.applyStyle(style);
     if (!overviewMode || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
       return;
@@ -232,9 +246,24 @@ export class OrbitGuideLines {
     kind: OrbitGuideKind, system: GuideSystem, point: GuidePoint | null, hemisphere: Hemisphere | null,
     compute: (t: number, ephemeris: Ephemeris, settings: OrbitGuideSettings) => Vec3[] | null,
   ): void {
-    const curve = new PointsCurve({ color, opacity, renderOrder: LINE_RENDER_ORDER.reference }, samples, closed);
+    const useSchematic = this.appliedStyle === 'schematic';
+    const curve = new PointsCurve(
+      { color: useSchematic ? SCHEMATIC_LINE : color, opacity: useSchematic ? 1 : opacity, renderOrder: LINE_RENDER_ORDER.reference },
+      samples, closed,
+    );
     this.scene.add(curve.line);
-    this.lines.push({ curve, compute, kind, system, point, hemisphere });
+    this.lines.push({ curve, compute, kind, system, point, hemisphere, realisticColor: color, realisticOpacity: opacity });
+  }
+
+  // 系ごとの本来の色は族の不透明度グラデーション等で区別する意味を持つが、模式図では
+  // 区別の意味を持たせず不透明な黒で統一する。
+  private applyStyle(style: RenderStyle): void {
+    if (style === this.appliedStyle) return;
+    this.appliedStyle = style;
+    for (const entry of this.lines) {
+      if (style === 'schematic') entry.curve.setStyle(SCHEMATIC_LINE, 1);
+      else entry.curve.setStyle(entry.realisticColor, entry.realisticOpacity);
+    }
   }
 
   // 種類ごとの on と軸から折れ線オブジェクトを作り直す。トグルの直積が変わったとき
