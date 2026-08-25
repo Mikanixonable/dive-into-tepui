@@ -43,7 +43,8 @@ function tabItems(approachAvailable: boolean, projectionAvailable: boolean): rea
   return tabs.map((tab) => [tab, TAB_LABELS[tab]] as const);
 }
 
-// 投影タブは常に全球(経度±180°・緯度±90°)を映すためスケール入力欄・パン・ズームを持たない。
+// 投影タブは平行移動・ズームはできるが、スケール入力欄は持たない(OrbitProjectionChart が
+// 中心経緯度・ズーム倍率を自分で保持する)。
 type ScaleTab = 'altitude' | 'approach';
 
 interface TabScale { yKm: number; x: number }
@@ -88,6 +89,8 @@ export class OrbitAnalysisWindow {
   private readonly relIncRow: HTMLElement;
   private readonly relIncValue: HTMLElement;
   private readonly scalesRow: HTMLElement;
+  private readonly yField: HTMLElement;
+  private readonly xField: HTMLElement;
   private readonly yInput: ValueInput;
   private readonly xInput: ValueInput;
   private readonly xUnitEl: HTMLElement;
@@ -137,9 +140,16 @@ export class OrbitAnalysisWindow {
     this.win.body.appendChild(this.tabBar.element);
     this.win.body.appendChild(this.chart.element);
     this.chart.element.classList.add('panzoom');
-    this.attachChartPanZoom();
+    this.attachChartPanZoom(
+      this.chart.element, (dx, dy) => this.applyPan(dx, dy), (wd) => this.applyZoom(wd),
+    );
     this.win.body.appendChild(this.projectionTab.chart.element);
-    this.projectionTab.chart.element.classList.add('hidden');
+    this.projectionTab.chart.element.classList.add('hidden', 'panzoom');
+    this.attachChartPanZoom(
+      this.projectionTab.chart.element,
+      (dx, dy) => this.projectionTab.chart.pan(dx, dy),
+      (wd) => this.projectionTab.chart.zoom(wd),
+    );
 
     const relIncLabel = document.createElement('span');
     relIncLabel.className = 'orbit-analysis-relinc-label';
@@ -157,12 +167,14 @@ export class OrbitAnalysisWindow {
       '縦軸', 'km', () => this.scales[this.tab as ScaleTab].yKm, (v) => { this.commitScale('yKm', v); },
     );
     this.yInput = yField.input;
+    this.yField = yField.element;
     this.scalesRow.appendChild(yField.element);
     const xField = this.buildScaleField(
       '横軸', this.xUnitLabel(), () => this.scales[this.tab as ScaleTab].x, (v) => { this.commitScale('x', v); },
     );
     this.xInput = xField.input;
     this.xUnitEl = xField.unitEl;
+    this.xField = xField.element;
     this.scalesRow.appendChild(xField.element);
     this.resetBtn = new Button('リセット', () => this.resetView());
     this.resetBtn.element.classList.add('orbit-analysis-reset');
@@ -265,12 +277,13 @@ export class OrbitAnalysisWindow {
     this.resetView();
     this.tabBar.setSelected(tab);
     this.relIncRow.classList.toggle('hidden', tab !== 'approach');
-    this.scalesRow.classList.toggle('hidden', tab === 'projection');
+    this.yField.classList.toggle('hidden', tab === 'projection');
+    this.xField.classList.toggle('hidden', tab === 'projection');
   }
 
   // 選択中タブのドラッグ/ズームを、開いた/タブを選び直した時点の状態(パン0・直近に確定した
-  // スケール)へ戻す。高度タブは縦軸(中心・スケール)だけを、接近タブは縦横両方を戻す。
-  // 投影タブは常に全球表示でスケールを持たないため何もしない。
+  // スケール)へ戻す。高度タブは縦軸(中心・スケール)だけを、接近タブは縦横両方を、投影タブは
+  // 全球表示(中心経緯度0・最大縮小)を戻す。
   private resetView(): void {
     if (this.tab === 'altitude') {
       this.altitudeCenterM = null;
@@ -279,12 +292,14 @@ export class OrbitAnalysisWindow {
       this.approachPan.x = 0;
       this.approachPan.y = 0;
       this.scales.approach = { ...this.approachBaselineScale };
+    } else {
+      this.projectionTab.chart.resetView();
     }
     this.refreshScaleInputs();
   }
 
-  // 選択中タブのスケール値・単位を入力欄へ反映する。タブ切替のたびに呼ぶ。投影タブでは
-  // scalesRow 自体が隠れるので何もしない。
+  // 選択中タブのスケール値・単位を入力欄へ反映する。タブ切替のたびに呼ぶ。投影タブは
+  // 入力欄自体を隠すので何もしない。
   private refreshScaleInputs(): void {
     if (this.tab === 'projection') return;
     this.yInput.setValue(String(this.scales[this.tab].yKm));
@@ -377,11 +392,12 @@ export class OrbitAnalysisWindow {
     return { points, x: axes.x, y: axes.y, marks };
   }
 
-  // チャートへドラッグ(パン)・ホイール/ピンチ(ズーム)を配線する。両タブで使うが、
-  // どの軸が動くかは applyPan/applyZoom がタブごとに決める。パネルの canvas に閉じた
-  // 操作なので、Input クラスの画面全体入力管理は経由しない。
-  private attachChartPanZoom(): void {
-    const el = this.chart.element;
+  // チャートへドラッグ(パン)・ホイール/ピンチ(ズーム)を配線する。どのタブ/チャートに
+  // 対しても同じ配線を使い、実際にどの状態が動くかは onPan/onZoom へ渡す。パネルの canvas に
+  // 閉じた操作なので、Input クラスの画面全体入力管理は経由しない。
+  private attachChartPanZoom(
+    el: HTMLElement, onPan: (dxPx: number, dyPx: number) => void, onZoom: (wheelDelta: number) => void,
+  ): void {
     el.addEventListener('pointerdown', (e) => {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       el.setPointerCapture(e.pointerId);
@@ -391,7 +407,7 @@ export class OrbitAnalysisWindow {
     el.addEventListener('pointermove', (e) => {
       if (!this.pointers.has(e.pointerId)) return;
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      this.handlePanZoomMove();
+      this.handlePanZoomMove(onPan, onZoom);
     });
     const release = (e: PointerEvent): void => {
       this.pointers.delete(e.pointerId);
@@ -404,25 +420,25 @@ export class OrbitAnalysisWindow {
       // ページスクロールへ渡さない。ブラウザ既定の passive では効かないため、
       // このリスナー自体を { passive: false } で登録している。
       e.preventDefault();
-      this.applyZoom(e.deltaY * WHEEL_ZOOM_SENSITIVITY);
+      onZoom(e.deltaY * WHEEL_ZOOM_SENSITIVITY);
     }, { passive: false });
   }
 
   // 押されている全ポインタの重心の移動をパンへ、2本のときの距離の変化をズームへ変換する。
-  private handlePanZoomMove(): void {
+  private handlePanZoomMove(onPan: (dxPx: number, dyPx: number) => void, onZoom: (wheelDelta: number) => void): void {
     const points = [...this.pointers.values()];
     const centroid = {
       x: points.reduce((s, p) => s + p.x, 0) / points.length,
       y: points.reduce((s, p) => s + p.y, 0) / points.length,
     };
-    if (this.lastPanPoint) this.applyPan(centroid.x - this.lastPanPoint.x, centroid.y - this.lastPanPoint.y);
+    if (this.lastPanPoint) onPan(centroid.x - this.lastPanPoint.x, centroid.y - this.lastPanPoint.y);
     this.lastPanPoint = centroid;
 
     // 3本目以降が触れても先頭2本の距離だけを見る — Map の挿入順で決まる。
     const [a, b] = points;
     if (a && b && points.length >= 2) {
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      if (this.lastPinchDist !== null) this.applyZoom(-(dist - this.lastPinchDist) * PINCH_ZOOM_SENSITIVITY);
+      if (this.lastPinchDist !== null) onZoom(-(dist - this.lastPinchDist) * PINCH_ZOOM_SENSITIVITY);
       this.lastPinchDist = dist;
     } else {
       this.lastPinchDist = null;
