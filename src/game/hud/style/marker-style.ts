@@ -1,5 +1,9 @@
 // HUD 3D スクリーン投影マーカー CSS (.mk, 各種マーカーシンボル, ラベル, 重なり順).
 import * as C from '../../const';
+import { FILL_4, THEME_PRESETS } from '../../theme';
+
+// 模式図(白背景)向けの上書き色は、選択中のテーマに関わらず theme.ts の light 側パレットから取る。
+const LIGHT_PALETTE = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
 export const MARKER_STYLE = `
 /* マーカー層 Z-Index トークン定義 */
@@ -112,4 +116,18 @@ export const MARKER_STYLE = `
 
 .mk-longpress { width: 40px; height: 40px; }
 .mk-longpress .sym { border: 2px solid var(--color-primary); border-radius: 50%; box-sizing: border-box; }
+
+/* 模式図では 3D 世界が白背景になるため、白/ほぼ白のグリフはそのままだと読めない。
+   選択中テーマに関わらず theme.ts の light パレットの文字色へ差し替える。 */
+[data-render-style="schematic"] .mk-self,
+[data-render-style="schematic"] .mk-enemy,
+[data-render-style="schematic"] .mk-ally,
+[data-render-style="schematic"] .mk-boardpass,
+[data-render-style="schematic"] .mk-dir,
+[data-render-style="schematic"] .mk-boresight,
+[data-render-style="schematic"] .mk-poi { color: ${LIGHT_PALETTE.title}; }
+
+/* ラベルの引き出し線。色をここへ置くことで、模式図の白背景でも読める値へ差し替えられる。 */
+.mk-lead { stroke: ${FILL_4}; }
+[data-render-style="schematic"] .mk-lead { stroke: ${LIGHT_PALETTE.muted}; }
 `;
