@@ -1,8 +1,18 @@
-// THREE で折れ線(曲線)を描く機構だけを担う。頂点をどこに置くかは t∈[0,1] を評価する
-// sample 関数から画面上のサジッタ・折れ角を見て自前で決める(適応分割) — 呼び出し側は
-// 「t を渡すと曲線上の点が返る」関数(と、細部の位置を知っているならその t の列)だけを
-// 渡せばよく、それが楕円かエルミート補間かは知らない。座標変換前の値も座標型
-// (Vec3/KinematicState/…)も知らず、受け取るのは THREE.Vector3/THREE.Camera と数値だけ。
+// THREE で折れ線(曲線)を描く機構だけを担う。
+//
+// **Curve が決めること**: 頂点を t のどこに何個置くか。画面上のサジッタと折れ角を見て
+// 必要なだけ細かく分割し、ズーム・視線の変化に応じて焼き直す。呼び出し側はここへ関与しない。
+//
+// **サンプラが満たすべきこと**: t∈[0,1] で滑らか(少なくとも C¹)であること。
+// **折れ線を返せば描かれるのも折れ線で、適応分割は入力を超える精度を作らない。**
+// 線が角ばるときに直すのはサンプラであって、分割数ではない。
+//
+// **入口は2つだけ**: 曲線が閉じた式で書けるなら setAnalyticCurve、離散サンプルとしてしか
+// 手に入らないなら位置と接線を渡す setHermiteCurve。どちらにも当てはまらないサンプラを
+// 書いているなら、それは間違っている。
+//
+// 座標変換前の値も座標型(Vec3/KinematicState/…)も知らず、受け取るのは
+// THREE.Vector3/THREE.Camera と数値だけ。
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../physics/max-heap';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
@@ -34,12 +44,11 @@ export type SetCurveOptions = {
   readonly revision: unknown;
   // 画面上のサジッタ目標を実距離に換算するための、現在の描画カメラ。
   readonly camera: THREE.Camera;
-  // 適応分割を始める前に必ず頂点を置く t の列(昇順、両端の 0 と 1 を含む)。曲線の細部が
-  // どこにあるかを知っているのは呼び出し側だけなので、知っているならここで渡す — 適応分割は
-  // 弦の中点しか見ないため、1区間に何周ぶんも入るような曲線では中点がたまたま曲線上に乗り、
-  // 分割済みと誤判定して区間まるごとが直線に化ける。2点未満なら t の等分割へフォールバックする。
-  // 焼き直すかどうかは revision だけで決まるので、この列を変えたなら revision も変えること。
-  readonly initialTs?: readonly number[];
+  // 適応分割を始める区間数(setAnalyticCurve のみ)。適応分割は弦の中点しか見ないため、
+  // 1区間に何周ぶんも入る曲線では中点がたまたま曲線上に乗り、分割済みと誤判定して区間
+  // まるごとが直線に化ける。それを防ぐために「1区間が曲線の半周を超えない」下限を渡す。
+  // **細かさを決める値ではない。** 1周ぶんの曲線なら省略してよい。
+  readonly initialSegments?: number;
   // 線の中で色が変わるときだけ渡す。省略すれば setStyle/setColor の単色で塗られる。
   readonly colorAt?: CurveColorSampler;
 };
@@ -53,18 +62,19 @@ const MAX_EDGE_SAG_PX = 0.5;
 // (画面上のサジッタが縮まないぶん実距離の許容量が際限なく伸びる)ため、その歯止めとして残す。
 const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 
-// initialTs を省いたときの初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で弦が
-// 縮退するため、最低限これだけ分けてから適応分割に入る。
+// initialSegments を省いたときの初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で
+// 弦が縮退するため、最低限これだけ分けてから適応分割に入る。
 const INITIAL_SEGMENTS = 8;
 
-// initialTs を省略したときの初期頂点列(t を INITIAL_SEGMENTS 等分したもの)。
-const DEFAULT_INITIAL_TS: readonly number[] = Array.from(
-  { length: INITIAL_SEGMENTS + 1 }, (_, i) => i / INITIAL_SEGMENTS,
-);
-
-// 頂点予算のうち初期頂点列へ回してよい割合。initialTs が長いと初期列だけで予算を使い切りうるので、
-// 逸脱の大きいところへ回す分をここで残す。
-const INITIAL_SEGMENT_BUDGET_RATIO = 0.5;
+// t を等分した初期頂点列。区間数ごとに1回だけ作って使い回す。
+const uniformTsCache = new Map<number, readonly number[]>();
+function uniformTs(segments: number): readonly number[] {
+  const cached = uniformTsCache.get(segments);
+  if (cached) return cached;
+  const ts = Array.from({ length: segments + 1 }, (_, i) => i / segments);
+  uniformTsCache.set(segments, ts);
+  return ts;
+}
 
 // 焼き直しの要否を決める代表スケールを測る点数。曲線上でカメラに最も寄っている点を拾うのが
 // 目的なので初期頂点列の長さとは無関係でよく、毎フレーム走るぶんここは固定にしておく。
@@ -94,6 +104,53 @@ const F32_RELATIVE_EPS = 2 ** -24;
 // pivot の更新を許す画面上の誤差上限 [px]。MAX_EDGE_SAG_PX(適応分割のサジッタ目標)より
 // 十分小さい値にして、量子化誤差が分割の粗さに埋もれて見えなくなるようにする。
 const PIVOT_MAX_ERROR_PX = 0.1;
+
+// 離散サンプルとしてしか手に入らない曲線の節点列。節点の格納形は呼び出し側ごとに違うので、
+// 配列ではなくアクセサで受け取る。count は節点数(2以上)、at(i) は節点 i の曲線パラメータ
+// (昇順、at(0)=0・at(count-1)=1)、position/tangent は節点 i の位置と d(位置)/d(パラメータ)。
+export type CurveKnots = {
+  readonly count: number;
+  readonly at: (i: number) => number;
+  readonly position: (i: number, out: THREE.Vector3) => void;
+  readonly tangent: (i: number, out: THREE.Vector3) => void;
+};
+
+// 節点間を3次エルミート(両端の位置を通り、両端の接線を持つ)で埋めるサンプラと、節点自身の
+// パラメータ列を組む。パラメータ列が昇順でなければ、どの区間へ落ちるかが決まらないので弾く。
+function hermiteSampler(knots: CurveKnots): { sample: CurveSampler; ts: readonly number[] } {
+  const { count, at, position, tangent } = knots;
+  if (count < 2) throw new Error(`Curve: 節点が ${count} 個では曲線にならない`);
+  const ts: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = at(i);
+    if (i > 0 && t <= ts[i - 1]!) throw new Error(`Curve: 節点のパラメータが昇順でない (i=${i}, t=${t})`);
+    ts.push(t);
+  }
+
+  const p0 = new THREE.Vector3(), p1 = new THREE.Vector3();
+  const m0 = new THREE.Vector3(), m1 = new THREE.Vector3();
+  const sample: CurveSampler = (t, out) => {
+    // t を含む区間 [i, i+1] を二分探索で引く。両端の外は端の区間へ寄せる。
+    let lo = 0, hi = count - 2;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (ts[mid]! <= t) lo = mid; else hi = mid - 1;
+    }
+    const h = ts[lo + 1]! - ts[lo]!;
+    const s = Math.max(0, Math.min(1, (t - ts[lo]!) / h));
+    position(lo, p0); position(lo + 1, p1);
+    tangent(lo, m0); tangent(lo + 1, m1);
+    const s2 = s * s, s3 = s2 * s;
+    const w0 = 2 * s3 - 3 * s2 + 1, w1 = (s3 - 2 * s2 + s) * h;
+    const w2 = -2 * s3 + 3 * s2, w3 = (s3 - s2) * h;
+    out.set(
+      w0 * p0.x + w1 * m0.x + w2 * p1.x + w3 * m1.x,
+      w0 * p0.y + w1 * m0.y + w2 * p1.y + w3 * m1.y,
+      w0 * p0.z + w1 * m0.z + w2 * p1.z + w3 * m1.z,
+    );
+  };
+  return { sample, ts };
+}
 
 // 点 p から線分 ab への最短距離の2乗。
 function distanceSqPointToSegment(
@@ -142,6 +199,8 @@ export class Curve {
   // 生成順に置いたまま動かさない。
   private readonly nextVertex: Int32Array;
   private bakedCount = 0;
+  // 直近に渡された曲線。sampleAt が読む。
+  private sampler: CurveSampler | null = null;
   private hasBaked = false;
   private lastRevision: unknown = undefined;
   private bakedScale: number | null = null;
@@ -347,24 +406,15 @@ export class Curve {
     return Math.max(sagittaPx / MAX_EDGE_SAG_PX, turn / MAX_EDGE_TURN);
   }
 
-  // 初期頂点列を、予算のうち初期分割へ回してよい分に収まるよう間引いて使う。先頭から順に
-  // 積んで打ち切ると曲線の後半がまるごと描かれなくなるので、間引くのは一様にする。
-  private seedStride(ts: readonly number[]): number {
-    const maxSeed = Math.max(2, Math.floor(this.maxVertices * INITIAL_SEGMENT_BUDGET_RATIO));
-    return Math.max(1, Math.ceil((ts.length - 1) / (maxSeed - 1)));
-  }
-
   // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても、残った
   // 区間の逸脱はすべて最後に分割した区間以下 — 一箇所だけが粗いまま取り残されることはなく、
   // 曲線全体が一様に粗くなる方向へ劣化する。
   private rebake(sample: CurveSampler, ts: readonly number[], colorAt?: CurveColorSampler): void {
     this.bakedCount = 0;
     this.pending.clear();
-    const last = ts.length - 1;
-    const stride = this.seedStride(ts);
-    const segmentCount = Math.ceil(last / stride);
+    const segmentCount = ts.length - 1;
     for (let i = 0; i <= segmentCount; i++) {
-      const t = ts[Math.min(last, i * stride)]!;
+      const t = ts[i]!;
       sample(t, this.scratchA);
       this.pushVertex(t, this.scratchA.x, this.scratchA.y, this.scratchA.z, colorAt);
       this.nextVertex[i] = i < segmentCount ? i + 1 : -1;
@@ -384,11 +434,37 @@ export class Curve {
     }
   }
 
+  // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数。
+  // 初期区間は頂点予算を食うので、その数だけで予算を超える要求は受け付けない。
+  setAnalyticCurve(sample: CurveSampler, opts: SetCurveOptions): void {
+    const segments = Math.max(INITIAL_SEGMENTS, opts.initialSegments ?? 0);
+    if (segments + 1 > this.maxVertices) {
+      throw new Error(`Curve: 初期区間 ${segments} が頂点予算 ${this.maxVertices} に収まらない`);
+    }
+    this.setCurve(sample, uniformTs(segments), opts);
+  }
+
+  // 離散サンプルとしてしか手に入らない曲線を、節点間を3次エルミートで埋めて描く。
+  // 節点そのものが初期頂点になるので、節点の個数は maxVertices 以下でなければならない。
+  setHermiteCurve(knots: CurveKnots, opts: SetCurveOptions): void {
+    if (knots.count > this.maxVertices) {
+      throw new Error(`Curve: 節点 ${knots.count} 個が頂点予算 ${this.maxVertices} を超えている`);
+    }
+    const { sample, ts } = hermiteSampler(knots);
+    this.setCurve(sample, ts, opts);
+  }
+
+  // いま描いている曲線を t∈[0,1] で評価する。曲線をまだ渡されていなければ原点を返す。
+  sampleAt(t: number, out: THREE.Vector3): void {
+    if (this.sampler) this.sampler(t, out);
+    else out.set(0, 0, 0);
+  }
+
   // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケール・カメラ視線
   // 方向のいずれも前回と実質同じであれば焼き直しも GPU への再アップロードも省く。
-  setCurve(sample: CurveSampler, opts: SetCurveOptions): void {
-    const { revision, camera, initialTs, colorAt } = opts;
-    const ts = initialTs && initialTs.length >= 2 ? initialTs : DEFAULT_INITIAL_TS;
+  private setCurve(sample: CurveSampler, ts: readonly number[], opts: SetCurveOptions): void {
+    const { revision, camera, colorAt } = opts;
+    this.sampler = sample;
     this.cacheCameraFrame(camera);
     const scaleNow = this.representativeScale(sample, ts);
     const scaleChanged = this.bakedScale === null
@@ -494,6 +570,7 @@ export class Curve {
   // 曲線を持たない状態へ戻す。表示要求に関わらず何も描かれなくなる。
   clear(): void {
     this.bakedCount = 0;
+    this.sampler = null;
     this.vertexCount = 0;
     this.hasBaked = false;
     this.bakedScale = null;

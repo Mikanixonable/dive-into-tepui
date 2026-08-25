@@ -103,7 +103,7 @@ export class OrbitLine {
       this.snap = el;
     }
 
-    this.curve.setCurve(this.sampler, { revision: this.revision, camera });
+    this.curve.setAnalyticCurve(this.sampler, { revision: this.revision, camera });
     this.curve.setVisible(true);
   }
 
