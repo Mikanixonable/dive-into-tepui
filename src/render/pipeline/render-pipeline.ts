@@ -75,6 +75,8 @@ export class RenderPipeline implements DebugTargetHost {
   // 恒星の直射光の遮蔽。EnvironmentScene が遮蔽器と環の帯を毎フレーム書き込む。
   get sunOcclusion(): SunOcclusion { return this._sunOcclusion; }
 
+  get sunShadowSlots(): readonly SunShadowSlot[] { return this.sunShadowMaps.slots; }
+
   // 大気パス。EnvironmentScene が大気を持つ天体を毎フレーム書き込む。
   get atmosphere(): AtmospherePass { return this.atmospherePass; }
 

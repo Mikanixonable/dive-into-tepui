@@ -153,6 +153,17 @@ export class LabView {
     this.render();
   }
 
+  // いまのフレームで影のスロットが取っている枠。texelWorld は 1 texel の実寸 [m]。
+  get shadowSlots(): readonly { texelWorld: number; frame: number; near: number; far: number; active: number }[] {
+    return this.pipeline.sunShadowSlots.map((slot) => ({
+      texelWorld: slot.texelWorld.value,
+      frame: slot.texelWorld.value * 1024,
+      near: slot.near.value,
+      far: slot.far.value,
+      active: slot.active.value,
+    }));
+  }
+
   // 画面へ出す中間バッファを選び、その場で描き直す。
   showDebugTarget(target: DebugTargetId): void {
     this.pipeline.debugTarget = target;
