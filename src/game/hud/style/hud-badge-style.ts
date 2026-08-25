@@ -74,7 +74,7 @@ export const HUD_BADGE_STYLE = `
   transition: opacity var(--transition-slow); opacity: 0; text-align: center;
 }
 #hud-chase-reset {
-  position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: 64px; left: 50%; transform: translateX(-50%);
   pointer-events: auto; cursor: pointer;
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
