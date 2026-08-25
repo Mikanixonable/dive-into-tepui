@@ -32,6 +32,7 @@ import { UiSfx } from '../audio/sfx/ui-sfx';
 import { GameScene } from '../render/scene';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
+import type { RenderStyle } from '../render/render-style';
 import { EnvironmentScene } from './celestial/environment-scene';
 import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
@@ -509,7 +510,7 @@ export class Game {
     };
   }
 
-  sync(graphics: GraphicsSettingsData): void {
+  sync(graphics: GraphicsSettingsData, style: RenderStyle): void {
     const activeControllable = this.activeControllableEntity;
     const player = this.player;
     // update() と sync() は同一の animate() 呼び出し内で同期的に実行されるため、
@@ -545,7 +546,7 @@ export class Game {
 
     this._environment.sync(
       fo, displayTime,
-      this.cameraSystem, graphics, this.navball.gridVisibility, visibilityPolicy,
+      this.cameraSystem, graphics, style, this.navball.gridVisibility, visibilityPolicy,
       this.markerManager,
     );
 
@@ -614,8 +615,8 @@ export class Game {
 
   // ------------------------------------------------------------------ render
 
-  render(): void {
-    this.pipeline.render(this._scene, this.cameraSystem.activeCamera);
+  render(style: RenderStyle): void {
+    this.pipeline.render(this._scene, this.cameraSystem.activeCamera, style);
   }
 
   // ------------------------------------------------------------------ debug
