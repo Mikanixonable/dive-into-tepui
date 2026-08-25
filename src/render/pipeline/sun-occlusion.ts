@@ -9,7 +9,7 @@ import {
   Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
   lessThan, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
-import type { BoolNode, FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
+import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import { SHADOW_SLOT_SIZE, type SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import type { SunLight } from './sun-light';
 
@@ -231,15 +231,34 @@ export class SunOcclusion {
     return transmittance;
   }
 
-  // 描画座標の点が、そのスロットの覆う範囲に入っているか。**遮蔽の合成とデバッグ表示が
-  // 同じ判定を読む** — 別々に持つと、塗り分けは正しいのに影が出ない絵が作れてしまう。
+  // 描画座標の点が、そのスロットの柱(枠 × [near, near + coverDepth])に入っているか。
+  // **遮蔽の合成とデバッグ表示が同じ判定を読む** — 別々に持つと、塗り分けは正しいのに影が
+  // 出ない絵が作れてしまう。
+  //
+  // 枠はフィルタの足のぶんだけ狭めて判定する。**選んだ時点で、法線オフセットぶんずらした位置も
+  // PCF の円盤も枠の内側に収まる**ので、引く側は縁の判定を持たなくてよい。
   private slotCovers(slot: SunShadowSlot, worldPos: Vec3Node): BoolNode {
-    const lo = slot.boundsMin;
-    const hi = slot.boundsMax;
+    const margin = (NORMAL_OFFSET_TEXELS + PCF_MAX_TEXELS) / SHADOW_SLOT_SIZE;
+    const uv = this.slotUv(slot, worldPos);
+    const depth = this.slotDepth(slot, worldPos);
     return greaterThan(slot.active, 0.5)
-      .and(worldPos.x.greaterThan(lo.x)).and(worldPos.x.lessThan(hi.x))
-      .and(worldPos.y.greaterThan(lo.y)).and(worldPos.y.lessThan(hi.y))
-      .and(worldPos.z.greaterThan(lo.z)).and(worldPos.z.lessThan(hi.z));
+      .and(uv.x.greaterThan(margin)).and(uv.x.lessThan(1 - margin))
+      .and(uv.y.greaterThan(margin)).and(uv.y.lessThan(1 - margin))
+      .and(depth.greaterThan(0)).and(depth.lessThan(slot.coverDepth));
+  }
+
+  // 描画座標の点を、そのスロットの深度マップの UV へ写す。**深度マップの v は上端が 0** —
+  // 描いたとき NDC y=+1 の画素がテクスチャの 0 行目へ落ちるので、x と揃えて 0.5·y+0.5 に
+  // すると鏡像になり、遮蔽器のシルエットが鏡に映した位置へ出る。
+  private slotUv(slot: SunShadowSlot, worldPos: Vec3Node): Vec2Node {
+    const clip = slot.lightViewProjection.mul(vec4(worldPos, 1));
+    const ndc = clip.xyz.div(clip.w);
+    return vec2(ndc.x.mul(0.5).add(0.5), ndc.y.mul(-0.5).add(0.5));
+  }
+
+  // 描画座標の点の、そのスロットの near から測ったライト空間深度 [m]。深度マップの値と同じ単位。
+  private slotDepth(slot: SunShadowSlot, worldPos: Vec3Node): FloatNode {
+    return slot.lightView.mul(vec4(worldPos, 1)).z.negate().sub(slot.near);
   }
 
   // 描画座標の点を覆うスロットのうち、texel がいちばん細かいものの番号。どれも覆っていなければ
@@ -307,13 +326,8 @@ export class SunOcclusion {
     const offsetPos = worldPos.add(normal.mul(texel.mul(NORMAL_OFFSET_TEXELS)));
     const depthBias = min(texel.mul(slope).mul(2), texel.mul(MAX_SLOPE_BIAS_TEXELS));
 
-    const clip = slot.lightViewProjection.mul(vec4(offsetPos, 1));
-    // **深度マップの v は上端が 0。** 描いたとき NDC y=+1 の画素がテクスチャの 0 行目へ落ちるので、
-    // x と揃えて 0.5·y+0.5 にすると鏡像になり、遮蔽器のシルエットが鏡に映した位置へ出る。
-    const ndc = clip.xyz.div(clip.w);
-    const uvBase = vec2(ndc.x.mul(0.5).add(0.5), ndc.y.mul(-0.5).add(0.5));
-    // 深度マップと同じ単位 — スロットの near からのメートル。
-    const receiverDepth = slot.lightView.mul(vec4(offsetPos, 1)).z.negate().sub(slot.near);
+    const uvBase = this.slotUv(slot, offsetPos);
+    const receiverDepth = this.slotDepth(slot, offsetPos);
 
     // 半影の幅を物理から出す。遮蔽器までの距離 (receiver − blocker) に恒星の視半径を掛けた
     // ものが world 空間での半径で、それを texel へ直す。**1 タップの探索は探索半径の外の
@@ -335,10 +349,7 @@ export class SunOcclusion {
     }
     // 枠の外は遮られないものとして返す。**箱の判定は法線オフセットぶん枠より広い**ので、
     // 縁の外へわずかに出た点がテクスチャの縁の値を引き延ばして帯状の影を作る経路がある。
-    // 深度の下限だけを見る。**上限は無い** — 枠の far より遠い受け手にも影は伸びる。
-    const outside = uvBase.x.lessThan(0).or(uvBase.x.greaterThan(1))
-      .or(uvBase.y.lessThan(0)).or(uvBase.y.greaterThan(1))
-      .or(receiverDepth.lessThan(0));
-    return select(outside, float(1), lit.div(PCF_TAPS));
+    // 法線オフセットが受け手を光源側へ押し出し、柱の手前へ抜けることがある。そこは遮られない。
+    return select(receiverDepth.lessThan(0), float(1), lit.div(PCF_TAPS));
   }
 }
