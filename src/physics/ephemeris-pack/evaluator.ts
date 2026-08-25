@@ -85,14 +85,6 @@ export function evaluateChebyshevWithDerivative(
   };
 }
 
-export function evaluateChebyshev(coefficients: ReadonlyNumberArray, x: number): number {
-  return evaluateChebyshevWithDerivative(coefficients, x).value;
-}
-
-export function evaluateChebyshevDerivative(coefficients: ReadonlyNumberArray, x: number): number {
-  return evaluateChebyshevWithDerivative(coefficients, x).derivative;
-}
-
 // Segments are half-open except that the final segment includes its end. At a
 // shared boundary the later segment is selected, making the lookup deterministic.
 export function findChebyshevSegmentIndex(segments: readonly ChebyshevSegment[], time: number): number {
@@ -302,5 +294,3 @@ export class ChebyshevEphemeris {
     return this.evaluate(bodyId, time).state.v;
   }
 }
-
-export const ChebyshevEphemerisEvaluator = ChebyshevEphemeris;

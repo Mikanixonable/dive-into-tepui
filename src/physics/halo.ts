@@ -17,8 +17,7 @@ import { OrbitingId } from './celestial-body';
 import { bodyDef, primaryOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from './vec3';
-import { Cr3bpState, Vec3Tuple } from './cr3bp';
-import { collinearGamma } from './lagrange';
+import { Vec3Tuple } from './cr3bp';
 
 export type CollinearPoint = 'L1' | 'L2' | 'L3';
 
@@ -71,12 +70,6 @@ export interface CollinearParams {
   readonly kappa: number;
 }
 
-// 質量比から共線点の無次元パラメータを解く。
-export function collinearParams(point: CollinearPoint, mu: number): CollinearParams {
-  const gamma = collinearGamma(mu, point);
-  return { point, mu, gamma, ...linearParams(cn(point, mu, gamma, 2)) };
-}
-
 // CR3BP 回転系(重心原点、両天体間距離を 1)での共線点の x 座標。
 function collinearBarycentricX(params: CollinearParams): number {
   const { mu, gamma, point } = params;
@@ -89,12 +82,6 @@ function collinearBarycentricX(params: CollinearParams): number {
 export function collinearLocalToBarycentric(params: CollinearParams, local: Vec3Tuple): Vec3Tuple {
   const xL = collinearBarycentricX(params);
   return [xL + params.gamma * local[0], params.gamma * local[1], params.gamma * local[2]];
-}
-
-// CR3BP 回転系の位置を L点局所座標(gamma 単位)へ移す。
-export function collinearBarycentricToLocal(params: CollinearParams, bary: Vec3Tuple): Vec3Tuple {
-  const xL = collinearBarycentricX(params);
-  return [(bary[0] - xL) / params.gamma, bary[1] / params.gamma, bary[2] / params.gamma];
 }
 
 // 指定した副天体・L点における共線点まわりの回転局所基底と線形化パラメータを組み立てる。
@@ -251,52 +238,10 @@ export function richardsonCoefficients(params: CollinearParams): RichardsonCoeff
   };
 }
 
-// Richardson 三次近似の軌道上の1点。位相 tau=ωτ、振幅 ax/az は gamma 単位の無次元量で、
-// northern が真なら面外の突出が公転面法線側(北)を向く。返す位置は L点局所座標(gamma 単位)。
-// ax=0 なら垂直リヤプノフ的な8の字、az=0 なら平面リヤプノフ的な閉曲線になる。
-export function richardsonPoint(
-  c: RichardsonCoefficients, ax: number, az: number, northern: boolean, tau: number,
-): Vec3Tuple {
-  // 面内 x は cos、y は sin、面外 z は cos の級数で、いずれも 3τ までを取る。
-  const dn = northern ? 1 : -1;
-  const x = c.a21 * ax * ax + c.a22 * az * az - ax * Math.cos(tau)
-    + (c.a23 * ax * ax - c.a24 * az * az) * Math.cos(2 * tau)
-    + (c.a31 * ax ** 3 - c.a32 * ax * az * az) * Math.cos(3 * tau);
-  const y = c.k * ax * Math.sin(tau)
-    + (c.b21 * ax * ax - c.b22 * az * az) * Math.sin(2 * tau)
-    + (c.b31 * ax ** 3 - c.b32 * ax * az * az) * Math.sin(3 * tau);
-  const z = dn * (az * Math.cos(tau) + c.d21 * ax * az * (Math.cos(2 * tau) - 3)
-    + (c.d32 * az * ax * ax - c.d31 * az ** 3) * Math.cos(3 * tau));
-  return [x, y, z];
-}
-
 // 面外振幅 az(gamma 単位)に対応する面内振幅(gamma 単位)。az=0 での値が、平面リアプノフ
 // 軌道からハローが分岐する下限になる。
 export function richardsonAmplitudeX(c: RichardsonCoefficients, az: number): number {
   return Math.sqrt(-(c.delta + c.l2 * az * az) / c.l1);
-}
-
-// Richardson 三次近似での軌道周期(τ=n·t 単位)。
-export function richardsonPeriod(c: RichardsonCoefficients, ax: number, az: number): number {
-  return (2 * Math.PI) / (c.lambda * (1 + c.s1 * ax * ax + c.s2 * az * az));
-}
-
-// 面外振幅 az(gamma 単位)のハロー軌道について、CR3BP 回転系(重心原点)で xz 面を横切る
-// 瞬間の状態と周期の見積り。微分修正の初期推定として使う。振幅拘束を満たす ax が無ければ null。
-export function richardsonHaloSeed(
-  params: CollinearParams, az: number,
-): { state: Cr3bpState; period: number } | null {
-  const c = richardsonCoefficients(params);
-  const ax = richardsonAmplitudeX(c, az);
-  if (!Number.isFinite(ax)) return null;
-  const period = richardsonPeriod(c, ax, az);
-  // 横断の瞬間は面内 y 方向の速度だけが 0 でないので、位相を微小に進めた点との差から取る。
-  const dtau = 1e-6;
-  const pointAt = (tau: number): Vec3Tuple =>
-    collinearLocalToBarycentric(params, richardsonPoint(c, ax, az, true, tau));
-  const p0 = pointAt(0);
-  const vy = ((pointAt(dtau)[1] - p0[1]) / dtau) * ((2 * Math.PI) / period);
-  return { state: [p0[0], 0, p0[2], 0, vy, 0], period };
 }
 
 // 指定したラグランジュ点(副天体 secondary の L1/L2)まわりのリサジュー軌道初期状態。
