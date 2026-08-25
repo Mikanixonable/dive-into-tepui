@@ -8,8 +8,7 @@ import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { positionView, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import { metersPerPixelAtDepth } from '../../physics/projection';
-import { apparentSizePx } from '../screen-lod';
+import { castsOnto, extentForTexel, requiredTexel } from '../shadow-demand';
 import type { FloatNode, FloatUniform, Mat4Uniform } from '../tsl-types';
 import { SUN_SHADOW_CASTER_LAYER } from './lit-layer';
 import type { SunLight } from './sun-light';
@@ -17,13 +16,9 @@ import type { SunLight } from './sun-light';
 export const SHADOW_SLOT_SIZE = 1024;
 export const SHADOW_SLOT_COUNT = 4;
 
-// 遮蔽器の外接球へ対して平行投影の枠をどれだけ広げるか。ライトカメラの向きによって箱の
-// 見かけが回るので、外接球ぶんの余裕が要る。
-const SLOT_MARGIN = 1.05;
-
-// 画面上でこの直径 [px] を下回る遮蔽器は捨てる。ここを下回ると影の構造が画面側でも見えず、
-// スロットを 1 枚使う価値が無い。**太陽系全体を見る視点で塊が 0 個になるのはこの足切り。**
-const MIN_CASTER_PX = 4;
+// 枠の縁へ取る余白 [texel]。受け手を法線方向へずらす量と PCF の半径ぶんあれば、選ばれた
+// スロットのフィルタの足が枠からはみ出さない。
+const SLOT_MARGIN_TEXELS = 10;
 
 // 柱の長さを枠の 1 辺の何倍に取るか。差し渡し S の遮蔽器の本影は太陽の視半径から
 // S/(2·4.65e-3) = 107.5·S で消えるので、それより遠くを覆っても影は残っていない。
@@ -40,8 +35,6 @@ const EMPTY_DEPTH = 1e30;
 export type SunShadowExtent = {
   // 今フレームの全個体を包む描画座標の AABB。
   readonly worldBounds: THREE.Box3;
-  // 個体 1 つぶんの差し渡し [m]。見かけの大きさはこちらで測る。
-  readonly instanceWorldSize: number;
 };
 
 // スロット 1 枚ぶんの、受け手が引く値。SunOcclusion がこれを読んでグラフを組む。
@@ -62,13 +55,16 @@ export type SunShadowSlot = {
   readonly active: FloatUniform;
 };
 
-// シーン直下の 1 単位ぶんの遮蔽器(艦 1 隻・基地 1 つ・インスタンスプール 1 本)。
+// シーン直下の 1 単位ぶんの遮蔽器(艦 1 隻・基地 1 つ・インスタンスプール 1 本)。**遮蔽器で
+// あると同時に受け手の代理でもある** — 艦も基地もデブリも、影を落とすと同時に受ける。
 type Caster = {
   readonly box: THREE.Box3;
-  // その枝が持つ単一個体の差し渡し [m]。艦や基地は枝ぜんたいで 1 個体なので箱の対角に等しい。
-  readonly individualSize: number;
-  // 単一個体の見かけの直径 [px]。
-  readonly apparentPx: number;
+  readonly center: THREE.Vector3;
+  // 箱の外接球の半径 [m]。柱の判定と要求精度をこれで測る。
+  readonly radius: number;
+  // 受け手としての要求 texel [m]。**Infinity なら枠は要らない** — 画面に写らないか、
+  // 誰の影も落ちてこない。
+  requiredTexel: number;
 };
 
 export class SunShadowMaps {
@@ -79,18 +75,20 @@ export class SunShadowMaps {
   // 深度マテリアルが引く、いま描いているスロットの near。深度はここからのメートルで書く。
   private readonly drawNear: FloatUniform;
   private readonly casters: Caster[] = [];
-  // collectCasters が枝ごとに拾う、その枝の単一個体の差し渡し [m](0 なら見つからなかった)。
-  private branchInstanceSize = 0;
+  private readonly frustum = new THREE.Frustum();
+  private readonly viewProjection = new THREE.Matrix4();
+  private readonly boundingSphere = new THREE.Sphere();
+  private readonly lightForward = new THREE.Vector3();
   // このフレームにスロットを与えた塊の枠(描画座標の AABB)。
   private readonly clusters: THREE.Box3[] = [];
+  // 枠を起こした受け手が許す枠の 1 辺 [m]。枠を広げてよいかの上限になる。
+  private readonly seedLimits: number[] = [];
   private readonly scratchBox = new THREE.Box3();
   private readonly scratchCorner = new THREE.Vector3();
   private readonly size = new THREE.Vector3();
   private readonly center = new THREE.Vector3();
   private readonly lightDirection = new THREE.Vector3();
   private readonly cameraPosition = new THREE.Vector3();
-  private readonly cameraForward = new THREE.Vector3();
-  private readonly cameraToTarget = new THREE.Vector3();
   private readonly clearColor = new THREE.Color();
   private readonly emptyDepth = new THREE.Color().setScalar(EMPTY_DEPTH);
   // 前フレームに中身を書いたスロットの数。使わなくなったスロットを 1 度だけ空へ戻すために持つ
@@ -136,19 +134,20 @@ export class SunShadowMaps {
 
   get slots(): readonly SunShadowSlot[] { return this.slotUniforms; }
 
-  // 遮蔽器を塊へまとめ、塊ごとに 1 スロットを描く。enabled が偽か、どの遮蔽器も画面上
-  // MIN_CASTER_PX に満たないフレームは、GPU 側の仕事がまったく発生しない。
+  // 遮蔽器を枠へまとめ、枠ごとに 1 スロットを描く。enabled が偽か、影を要求する受け手が
+  // 1 つも無いフレームは、GPU 側の仕事がまったく発生しない。
   render(
     scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight, enabled: boolean,
   ): void {
     for (const slot of this.slotUniforms) slot.active.value = 0;
     this.clusters.length = 0;
+    this.seedLimits.length = 0;
     if (enabled) {
       // 遮蔽器の箱は親の変換込みで測る必要がある。**Box3.expandByObject は親の行列を更新しない**
       // ので、このパスがフレームの先頭で走る限り、ここで確定させないと箱が前フレームの位置で作られる。
       scene.updateMatrixWorld();
-      this.collectCasters(scene, camera, viewportHeight);
-      this.buildClusters(camera, viewportHeight);
+      this.collectCasters(scene, camera, viewportHeight, sun);
+      this.buildClusters();
     }
     if (this.clusters.length === 0 && this.drawnSlots === 0) return;
 
@@ -198,25 +197,60 @@ export class SunShadowMaps {
   // **層を見るだけでは足りず、Mesh であることまで見る。** シーンルートは全チャンネルを持つ
   // (レンダラがカメラのチャンネルを絞る間も子を辿れるようにするため)ので、層だけで拾うと
   // ルートに当たり、Box3.expandByObject が子を再帰して天体ごと箱に入れてしまう。
-  private collectCasters(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number): void {
+  private collectCasters(
+    scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight,
+  ): void {
     this.casters.length = 0;
     for (const root of scene.children) {
       if (!root.visible) continue;
       this.scratchBox.makeEmpty();
-      this.branchInstanceSize = 0;
       this.expandVisibleCasters(root);
       if (this.scratchBox.isEmpty()) continue;
       const box = this.scratchBox.clone();
-      box.getSize(this.size);
-      box.getCenter(this.center);
-      // **見かけは箱の対角ではなく単一個体で測る。** 散らばった小片の雲は、箱で測ると常に最大の
-      // 遮蔽器として先頭へ来てしまい、実際には影を何も落とせないままスロットを奪う。
-      const individualSize = this.branchInstanceSize > 0 ? this.branchInstanceSize : this.size.length();
-      const mpp = this.metersPerPixelAt(camera, viewportHeight, this.center);
-      this.casters.push({ box, individualSize, apparentPx: apparentSizePx(individualSize, mpp) });
+      box.getBoundingSphere(this.boundingSphere);
+      this.casters.push({
+        box,
+        center: this.boundingSphere.center.clone(),
+        radius: this.boundingSphere.radius,
+        requiredTexel: Infinity,
+      });
     }
-    // 大きく写るものから順に塊を起こす。小さいものは枠が尽きた時点で捨ててよい。
-    this.casters.sort((a, b) => b.apparentPx - a.apparentPx);
+    this.scoreCasters(camera, viewportHeight, sun);
+    // 要求が厳しい(= texel が細かい)ものから枠を起こす。
+    this.casters.sort((a, b) => a.requiredTexel - b.requiredTexel);
+  }
+
+  // 遮蔽器を受け手として見たときの要求 texel を書き込む。**画面に写らない受け手と、誰の影も
+  // 落ちてこない受け手は要求を持たない** — 枠を 1 枚使う理由が無い。
+  private scoreCasters(camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
+    if (!(camera instanceof THREE.PerspectiveCamera)) return;
+    camera.getWorldPosition(this.cameraPosition);
+    this.frustum.setFromProjectionMatrix(
+      this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+    );
+    for (const receiver of this.casters) {
+      this.boundingSphere.set(receiver.center, receiver.radius);
+      if (!this.frustum.intersectsSphere(this.boundingSphere)) continue;
+      if (!this.casters.some((caster) => this.castsOnto(caster, receiver, sun))) continue;
+      receiver.requiredTexel = requiredTexel(
+        this.cameraPosition.distanceTo(receiver.center), receiver.radius,
+        camera.near, camera.fov, viewportHeight,
+      );
+    }
+  }
+
+  // caster の影が receiver へ届くか。光の向きは遮蔽器ごとに取り直す — 恒星は点光源なので、
+  // 共通の向きで代用すると重心から離れた遮蔽器の柱が逸れる。
+  private castsOnto(caster: Caster, receiver: Caster, sun: SunLight): boolean {
+    this.lightForward.copy(caster.center).sub(sun.position.value);
+    const distance = this.lightForward.length();
+    if (!(distance > 1e-6)) return false;
+    this.lightForward.multiplyScalar(1 / distance);
+    return castsOnto(
+      receiver.center.x - caster.center.x, receiver.center.y - caster.center.y,
+      receiver.center.z - caster.center.z, caster.radius, receiver.radius,
+      this.lightForward.x, this.lightForward.y, this.lightForward.z, COLUMN_SPAN,
+    );
   }
 
   // 見えている枝だけを辿って scratchBox を広げる。traverse は visible を見ずに全体を辿るので、
@@ -226,63 +260,66 @@ export class SunShadowMaps {
     const mesh = object as THREE.Mesh;
     if (mesh.isMesh && mesh.layers.isEnabled(SUN_SHADOW_CASTER_LAYER)) {
       const extent = mesh.userData.sunShadowExtent as SunShadowExtent | undefined;
-      if (extent === undefined) {
-        this.scratchBox.expandByObject(mesh);
-      } else if (!extent.worldBounds.isEmpty()) {
-        this.scratchBox.union(extent.worldBounds);
-        this.branchInstanceSize = Math.max(this.branchInstanceSize, extent.instanceWorldSize);
-      }
+      if (extent === undefined) this.scratchBox.expandByObject(mesh);
+      else if (!extent.worldBounds.isEmpty()) this.scratchBox.union(extent.worldBounds);
     }
     for (const child of object.children) this.expandVisibleCasters(child);
   }
 
-  // 遮蔽器を塊へまとめる。**広がりの上限は「吸収してよいか」だけを決める** — 上限は
-  // 「スロットの遠端で 1 texel/px」を満たす条件、すなわち SHADOW_SLOT_SIZE ×
-  // metersPerPixel(塊のカメラ距離)で、カメラ 12m なら 11.8m 角、カメラ 1km なら 983m 角。
-  // これを超える吸収を断ることで、近い遮蔽器のために遠い遮蔽器の解像度を落とさずに済む。
+  // 要求の厳しい受け手から順に枠を起こす。**枠は受け手のまわりに置く** — 影を落とす遮蔽器は
+  // 平行投影でちょうどその枠に重なるものなので、枠が受け手を覆えば必要な遮蔽器だけが入る。
   //
-  // **単独で上限を超える遮蔽器は、個体が 1 texel を埋められるならそのまま 1 スロットを取る。**
-  // 大きな艦へ寄ったときに影が丸ごと消えるのは、粗い影よりはるかに悪い。
-  private buildClusters(camera: THREE.Camera, viewportHeight: number): void {
-    for (const caster of this.casters) {
-      if (caster.apparentPx < MIN_CASTER_PX) break; // 降順なので、以降はすべて小さい
-      const absorbed = this.clusters.find((cluster) => {
-        this.scratchBox.copy(cluster).union(caster.box);
-        return this.fitsSlot(camera, viewportHeight, this.scratchBox);
-      });
-      if (absorbed !== undefined) {
-        absorbed.union(caster.box);
+  // 既存の枠が覆っていて十分に細かいなら何もしない。覆っていない枠へ足せるのは、**足したあとも
+  // その枠を起こした受け手の要求を満たせるとき**だけ。どれも駄目なら新しい枠を起こし、枠が
+  // 尽きていればその受け手は諦める(要求の緩い側から捨てられる)。
+  private buildClusters(): void {
+    for (const receiver of this.casters) {
+      if (!Number.isFinite(receiver.requiredTexel)) break; // 昇順なので、以降はすべて要求が無い
+      const limit = 2 * extentForTexel(receiver.requiredTexel, SHADOW_SLOT_SIZE);
+      // **粗い枠から順に試す。** seedLimits は昇順に積まれるので、後ろの枠ほど要求が緩い。
+      // 細かい枠へ足すと、その枠を起こした近くの受け手まで一緒に粗くなる。
+      let placed = false;
+      for (let index = this.clusters.length - 1; index >= 0; index--) {
+        const cluster = this.clusters[index]!;
+        this.scratchBox.copy(cluster).union(receiver.box);
+        if (this.frameSize(this.scratchBox) > Math.min(limit, this.seedLimits[index]!)) continue;
+        cluster.copy(this.scratchBox);
+        placed = true;
+        break;
+      }
+      if (placed) continue;
+      if (this.clusters.length < SHADOW_SLOT_COUNT) {
+        this.seedLimits.push(limit);
+        this.clusters.push(receiver.box.clone());
         continue;
       }
-      if (this.clusters.length >= SHADOW_SLOT_COUNT) continue;
-      if (!this.resolvesInSlot(caster)) continue;
-      this.clusters.push(caster.box.clone());
+      // 枠が尽きた。**最後の 1 枚へ無条件に飲ませる** — 捨てると影がまるごと消え、カメラを
+      // 動かすたびに点滅する。最後の枠を起こしたのは残りの中でいちばん要求が緩い受け手なので、
+      // 粗くなるのはもともと粗くてよかった側だけで、手前の枠は巻き添えにならない。
+      this.clusters[SHADOW_SLOT_COUNT - 1]!.union(receiver.box);
     }
   }
 
-  // 1 スロットを与えたとき、その塊の個体が 1 texel 以上を埋めるか。**埋められない塊にスロットを
-  // 与えても、深度マップには何も写らないまま 1 枚が消える。**
-  private resolvesInSlot(caster: Caster): boolean {
-    caster.box.getSize(this.size);
-    return caster.individualSize * SHADOW_SLOT_SIZE >= this.size.length();
+  // いま構えているライトカメラから見た box の枠の半径 [m]。等方な texel を保つため長辺で
+  // 揃え、フィルタの足のぶんだけ広げる。
+  private frameExtent(box: THREE.Box3): number {
+    let half = 0;
+    for (let corner = 0; corner < 8; corner++) {
+      this.scratchCorner.set(
+        (corner & 1) === 0 ? box.min.x : box.max.x,
+        (corner & 2) === 0 ? box.min.y : box.max.y,
+        (corner & 4) === 0 ? box.min.z : box.max.z,
+      ).applyMatrix4(this.lightCamera.matrixWorldInverse);
+      half = Math.max(half, Math.abs(this.scratchCorner.x), Math.abs(this.scratchCorner.y));
+    }
+    return half / (1 - 2 * SLOT_MARGIN_TEXELS / SHADOW_SLOT_SIZE);
   }
 
-  // box をスロット 1 枚へ収めても 1 texel/px を保てるか。カメラから遠い塊ほど広く取れる。
-  private fitsSlot(camera: THREE.Camera, viewportHeight: number, box: THREE.Box3): boolean {
+  // 箱を 1 枚へ収める枠の 1 辺 [m]。**世界軸ではなく対角で測る** — 計画の段では光の向きが
+  // 枠ごとに決まっていないので、どう回っても収まる側へ倒す。
+  private frameSize(box: THREE.Box3): number {
     box.getSize(this.size);
-    box.getCenter(this.center);
-    return this.size.length() <= SHADOW_SLOT_SIZE * this.metersPerPixelAt(camera, viewportHeight, this.center);
-  }
-
-  // worldPos の位置で画面 1px が描画座標で何メートルにあたるか。平行投影では位置に依らない。
-  private metersPerPixelAt(camera: THREE.Camera, viewportHeight: number, worldPos: THREE.Vector3): number {
-    const height = Math.max(1, viewportHeight);
-    if (camera instanceof THREE.OrthographicCamera) return (camera.top - camera.bottom) / height;
-    if (!(camera instanceof THREE.PerspectiveCamera)) return 0;
-    camera.getWorldPosition(this.cameraPosition);
-    camera.getWorldDirection(this.cameraForward);
-    const depth = this.cameraForward.dot(this.cameraToTarget.subVectors(worldPos, this.cameraPosition));
-    return metersPerPixelAtDepth(camera.fov, depth, height);
+    return this.size.length();
   }
 
   // 箱へ平行投影のライトカメラを合わせ、スロットの uniform を書く。恒星方向が取れなければ偽。
@@ -294,16 +331,9 @@ export class SunShadowMaps {
     if (!(distance > 1e-6) || !Number.isFinite(distance)) return false;
     this.lightDirection.multiplyScalar(1 / distance);
 
-    const radius = Math.max(this.size.length() * 0.5, 1);
-    const extent = radius * SLOT_MARGIN;
-    // カメラは箱の外へ、半径の 2 倍だけ引く。near/far を塊へ密着させるので、深度の分解能は
-    // 塊の差し渡しだけで決まる — 983m の塊でも 1cm を分けるのに必要なのは相対精度 1e-5 で、
-    // float32 の線形深度には桁が余る。
+    // カメラは箱の外へ、外接球の半径の 2 倍だけ引く。
+    const radius = this.size.length() * 0.5;
     const eyeDistance = radius * 2;
-    this.lightCamera.left = -extent;
-    this.lightCamera.right = extent;
-    this.lightCamera.top = extent;
-    this.lightCamera.bottom = -extent;
     this.lightCamera.position.copy(this.center).addScaledVector(this.lightDirection, eyeDistance);
     // 視線と平行な up は姿勢を決められない。protein-shadow-pass.ts と同じ切り替えで避ける。
     this.lightCamera.up.set(
@@ -313,6 +343,14 @@ export class SunShadowMaps {
     );
     this.lightCamera.lookAt(this.center);
     this.lightCamera.updateMatrixWorld(true);
+
+    // **枠は箱の 8 頂点をライト空間へ射影して測る。** 世界軸の広がりで代用すると、箱がライト
+    // 基底に対して回っているぶんだけ枠が足りず、縁の受け手が枠から外れて影を失う。
+    const extent = this.frameExtent(box);
+    this.lightCamera.left = -extent;
+    this.lightCamera.right = extent;
+    this.lightCamera.top = extent;
+    this.lightCamera.bottom = -extent;
 
     // **near も far も枠から導出する。** 枠に交わる遮蔽器を光源寄りの端から遠い端まで漏れなく
     // 撮ることで、この 1 枚だけで枠の中の答えが完結する。far は柱の終端で頭打ちにする — その先
