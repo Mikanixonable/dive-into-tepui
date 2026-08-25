@@ -92,7 +92,7 @@ export class RenderPipeline implements DebugTargetHost {
     );
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(renderer, this.gbuffer, this._sunLight, gpu);
-    this.overlayPass = new OverlayPass(renderer, gpu);
+    this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
     // antialias はレンダラ生成時にしか渡せず(scene.ts 参照)、キャンバスへの直描きは
     // それでマルチサンプルされていた。オフスクリーンの HDR ターゲットは自前で samples を
@@ -244,7 +244,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.quad.render(this.renderer);
 
     // 3D UI パス。合成パスが複製した深度に対して深度テストしながら、キャンバスへ重ね描きする。
-    this.overlayPass.render(scene, camera, style, this.gbuffer.depthTexture);
+    this.overlayPass.render(scene, camera, style);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
