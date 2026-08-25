@@ -1,7 +1,7 @@
 // HUD の固定バッジ・ステータスバー・通知 CSS (視点バッジ、シミュレーションステータス、スケール定規、ヒント、トースト、カメラリセット)。
 
 export const HUD_BADGE_STYLE = `
-#hud-simulation-status {
+#hud-topbar {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   pointer-events: auto;
   padding: var(--space-3) var(--space-5); border-radius: 0 0 var(--radius-panel) var(--radius-panel);
@@ -11,21 +11,21 @@ export const HUD_BADGE_STYLE = `
   display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
   max-width: calc(100vw - var(--space-6) * 2);
 }
-#hud-simulation-status .gs-row {
+#hud-topbar .gs-row {
   display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
   max-width: 100%; overflow-x: auto; scrollbar-width: none;
 }
-#hud-simulation-status .v { color: var(--text); }
-#hud-simulation-status .gs-speed-select {
+#hud-topbar .v { color: var(--text); }
+#hud-topbar .gs-speed-select {
   min-width: 76px; padding: var(--space-1) var(--space-5) var(--space-1) var(--space-2);
   border: 1px solid var(--edge); border-radius: var(--radius-micro);
   background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--font-s);
   font-variant-numeric: tabular-nums; cursor: pointer;
 }
-#hud-simulation-status .gs-speed-select:hover,
-#hud-simulation-status .gs-speed-select:focus { border-color: var(--color-primary); background: var(--surface-3); }
-#hud-simulation-status .gs-speed-select.sim-speed-hot { color: var(--color-primary); }
-#hud-simulation-status .gs-sep { color: var(--edge); }
+#hud-topbar .gs-speed-select:hover,
+#hud-topbar .gs-speed-select:focus { border-color: var(--color-primary); background: var(--surface-3); }
+#hud-topbar .gs-speed-select.sim-speed-hot { color: var(--color-primary); }
+#hud-topbar .gs-sep { color: var(--edge); }
 
 #hud-viewbadge {
   gap: var(--space-3);
