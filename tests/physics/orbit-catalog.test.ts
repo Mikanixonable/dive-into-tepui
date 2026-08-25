@@ -57,6 +57,13 @@ export function register(): void {
         const expected = family.members.length * family.samples * CATALOG_STRIDE;
         assert.equal(values.length, expected, `${id}: 点列の長さが宣言と合わない`);
         assert.ok(values.every((v) => Number.isFinite(v)), `${id}: 有限でない値がある`);
+        // 各点の速度。点と点の間はこれを接線とするエルミート補間で埋まるので、
+        // 焼き込みで落ちていると曲線が節点の間で潰れる。
+        for (let i = 0; i * CATALOG_STRIDE < values.length; i++) {
+          const o = i * CATALOG_STRIDE + 4;
+          const speed = Math.hypot(values[o] ?? 0, values[o + 1] ?? 0, values[o + 2] ?? 0);
+          assert.ok(speed > 0, `${id}: 速度が 0 の点がある (点 ${i})`);
+        }
       }
     });
 
