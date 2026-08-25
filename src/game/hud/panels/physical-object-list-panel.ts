@@ -4,13 +4,12 @@ import { baseMarkerSvg, shipMarkerSvg } from '../../marker/marker-shapes';
 import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
-  buildCollapseToggle,
   hudRail,
   type CollapseToggleLabels,
 } from '../hud-root';
 import { LAGRANGE_ID } from '../object-groups';
-import { SegmentedControl, ValueInput, syncCollapseToggle } from '../widgets';
-import { loadPanelCollapsed, onPanelCollapsedViewChange, savePanelCollapsed } from '../panel-shell';
+import { SegmentedControl, ValueInput } from '../widgets';
+import { wirePanelCollapse } from '../panel-shell';
 import type { CelestialRegistry } from '../../../physics/solar-system';
 import type { BodyClass } from '../../celestial/body-class';
 import type { MapPickable, MapPickKind } from '../../map-pickable';
@@ -221,17 +220,15 @@ export class PhysicalObjectListPanel {
     const body = document.createElement('div');
     body.className = 'physical-object-list-body';
     this.panel.appendChild(body);
-    const collapseToggle = buildCollapseToggle(
-      titleRow, 'hud-physical-object-list-toggle', 'physical-object-list-collapse', body, COLLAPSE_LABELS, [title],
-    );
-    const applyCollapsedState = (): void => {
-      const collapsed = loadPanelCollapsed('hud-physical-object-list') ?? false;
-      body.classList.toggle('collapsed', collapsed);
-      syncCollapseToggle(collapseToggle, body, COLLAPSE_LABELS);
-    };
-    applyCollapsedState();
-    this.unsubscribeCollapsedView = onPanelCollapsedViewChange(applyCollapsedState);
-    collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-physical-object-list', body.classList.contains('collapsed')));
+    this.unsubscribeCollapsedView = wirePanelCollapse({
+      toggleRoot: titleRow,
+      toggleId: 'hud-physical-object-list-toggle',
+      toggleClassName: 'physical-object-list-collapse',
+      target: body,
+      labels: COLLAPSE_LABELS,
+      storageId: 'hud-physical-object-list',
+      extraHitEls: [title],
+    });
     this.breadcrumb = document.createElement('div');
     this.breadcrumb.className = 'physical-object-list-breadcrumb';
     body.appendChild(this.breadcrumb);

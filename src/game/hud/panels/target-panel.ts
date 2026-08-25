@@ -78,12 +78,14 @@ export class TargetPanel {
     const armorPercent = target.maxHp > 0 ? clampedHp / target.maxHp * 100 : 0;
     const armorValue = `${Math.floor(clampedHp)} / ${target.maxHp}`;
     const armorMeter = this.els.get('tgt-armor-meter');
-    armorMeter?.classList.toggle('critical', target.hp <= target.maxHp * 0.3);
     armorMeter?.setAttribute('aria-valuemax', String(target.maxHp));
     armorMeter?.setAttribute('aria-valuenow', String(clampedHp));
     armorMeter?.setAttribute('aria-valuetext', armorValue);
     const armorFill = this.els.get('tgt-armor-fill');
-    if (armorFill) armorFill.style.width = `${armorPercent}%`;
+    if (armorFill) {
+      armorFill.style.width = `${armorPercent}%`;
+      armorFill.classList.toggle('danger', target.hp <= target.maxHp * 0.3);
+    }
     this.setText('tgt-armor-value', armorValue);
     const proteinPanel = this.els.get('tgt-protein');
     if (proteinPanel) {

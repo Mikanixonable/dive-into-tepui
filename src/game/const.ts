@@ -645,6 +645,7 @@ export const COLOR_MARKER_NODE = '#8b93a0';
 export const COLOR_MARKER_BOARDPASS = '#ffffff';
 export const COLOR_MARKER_SELF = '#dfe3e8';
 export const COLOR_MARKER_PLANNED = '#8fd0ff';
+export const COLOR_MARKER_FUEL = '#ffcf70';
 export const COLOR_MARKER_ALLY = '#ffffff';
 export const COLOR_MARKER_ENEMY = '#ffffff';
 export const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';

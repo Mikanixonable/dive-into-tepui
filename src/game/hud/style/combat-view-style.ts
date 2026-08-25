@@ -47,7 +47,7 @@ export const COMBAT_VIEW_STYLE = `
   background: transparent;
   color: var(--text-dim);
   line-height: 1;
-  transition: color 140ms, background 140ms;
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:hover {
   background: var(--fill-1);
@@ -182,22 +182,9 @@ export const COMBAT_VIEW_STYLE = `
   gap: 6px;
   width: 128px;
 }
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter {
-  height: 6px;
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--bar-bg);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter-fill {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
+/* w-meter-fill の既定色(--color-primary)より、ターゲット固有の signal 色を優先する。 */
+#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter .w-meter-fill {
   background: var(--color-signal);
-  transition: width 180ms;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter.critical .armor-meter-fill {
-  background: var(--color-error);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-value {
   min-width: 48px;
@@ -271,8 +258,8 @@ export const COMBAT_VIEW_STYLE = `
   -webkit-backdrop-filter: blur(14px) saturate(82%);
   box-shadow: 0 10px 28px var(--shade-1);
 }
-#hud:not(.base-mode) #hud-topbar .k { color: var(--text-dim); }
-#hud:not(.base-mode) #hud-topbar .gs-sep { color: var(--fill-4); }
+#hud:not(.base-mode) #hud-simulation-status .k { color: var(--text-dim); }
+#hud:not(.base-mode) #hud-simulation-status .gs-sep { color: var(--fill-4); }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:focus-visible,
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .w-btn:focus-visible {
   outline: 2px solid var(--color-focus);

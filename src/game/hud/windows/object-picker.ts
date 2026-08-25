@@ -4,6 +4,7 @@
 // 複数列のグリッドへ並べる(百件規模を縦一列に積むと画面高をはみ出すため)。
 import { clampOverlayPosition } from '../layout';
 import { Button } from '../widgets';
+import { injectOnce } from '../widgets/inject-style';
 import { bringToFront } from '../overlay-layer';
 import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
@@ -46,16 +47,6 @@ const STYLE = `
 #hud .object-picker-pop .op-empty { grid-column: 1 / -1; padding: var(--space-4) var(--space-5); opacity: 0.5; }
 `;
 
-let styleInjected = false;
-// ポップアップのスタイルシートを document.head へ一度だけ挿入する。
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
-
 // 見出しつきの候補のまとまり。label が空の group は見出しを出さない。
 export type ObjectPickerGroup<T> = {
   readonly label: string;
@@ -96,7 +87,7 @@ export class ObjectPicker<T> implements OverlayHandle {
     private readonly overlayManager: OverlayManager,
   ) {
     this.overlayId = `object-picker-${ObjectPicker.nextId++}`;
-    ensureStyle();
+    injectOnce('obj-picker', STYLE);
     this.onSelect = onSelect;
 
     this.element = document.createElement('div');
