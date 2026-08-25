@@ -9,11 +9,11 @@ export const HUD_LAYOUT_STYLE = `
 #hud {
   position: fixed; inset: 0; pointer-events: none; overflow: hidden;
   font-family: var(--font-family);
-  color: var(--text); color-scheme: var(--theme-tone); user-select: text; z-index: 10;
+  color: var(--text); color-scheme: var(--theme-tone); user-select: text; z-index: var(--z-hud);
   font-size: var(--font-l);
 }
 /* ステージ選択画面より前面に出す既存の一時停止メニュー */
-#hud.title-menu-open { z-index: 110; }
+#hud.title-menu-open { z-index: var(--z-hud-title-menu); }
 
 /* DADS-style persistent focus treatment: a bright keyline plus a dark contrast edge. */
 #hud :focus-visible, #touch-ui :focus-visible {
@@ -101,7 +101,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 }
 #hud .rail-toggle:hover { color: var(--color-primary-hover); background: var(--surface-3); }
 #hud .rail-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-#hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: 20; }
+#hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: var(--z-hud-rail-toggle); }
 #hud:not(.base-mode) .rail-toggle { display: block; }
 #hud .hud-world-root .rail-toggle-left { left: 8px; }
 #hud .hud-world-root .rail-toggle-right { right: 8px; }
