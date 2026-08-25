@@ -289,12 +289,16 @@ export class SunShadowMaps {
       const extent = mesh.userData.sunShadowExtent as SunShadowExtent | undefined;
       if (extent === undefined) {
         this.scratchBox.expandByObject(mesh);
-        // 部材 1 つの外接球の中心を、実体の在りかの代表点として拾う。
+        // 部材 1 つの外接球の表面を、実体の在りかの代表点として拾う。**中心を代表点にすると、
+        // 距離だけが表面で測られて位置が半径ぶん奥へずれ、窓が実体から外れる。**
         if (mesh.geometry.boundingSphere === null) mesh.geometry.computeBoundingSphere();
         const sphere = mesh.geometry.boundingSphere;
         if (sphere !== null) {
           this.meshSphere.copy(sphere).applyMatrix4(mesh.matrixWorld);
-          this.takeAnchor(this.meshSphere.center, this.meshSphere.center.distanceTo(this.cameraPosition) - this.meshSphere.radius);
+          const distance = this.meshSphere.center.distanceTo(this.cameraPosition);
+          this.scratchCorner.copy(this.cameraPosition).sub(this.meshSphere.center);
+          if (distance > 1e-6) this.scratchCorner.multiplyScalar(this.meshSphere.radius / distance);
+          this.takeAnchor(this.scratchCorner.add(this.meshSphere.center), distance - this.meshSphere.radius);
         }
       } else if (!extent.worldBounds.isEmpty()) {
         this.scratchBox.union(extent.worldBounds);
