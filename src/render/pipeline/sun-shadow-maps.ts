@@ -291,6 +291,7 @@ export class SunShadowMaps {
         this.scratchBox.expandByObject(mesh);
         this.takeMeshAnchor(mesh);
       } else if (!extent.worldBounds.isEmpty()) {
+        // 個体が箱いっぱいに散らばる枝は、箱の最近点がそのまま実体の在りかになる。
         this.scratchBox.union(extent.worldBounds);
         this.branchDiffuse = true;
         this.takeBoxAnchor(extent.worldBounds, null);
@@ -320,6 +321,8 @@ export class SunShadowMaps {
   // box の中でカメラにいちばん近い点を、枝の代表点の候補として拾う。toWorld は box の座標系から
   // 描画座標への変換で、box が既に描画座標なら null を渡す。
   private takeBoxAnchor(box: THREE.Box3, toWorld: THREE.Matrix4 | null): void {
+    // カメラを box の座標系へ落として解く。行列 2 回で OBB に対する最近点が出るので、
+    // ワールドへ開いた AABB を相手にするより締まる。
     const point = this.scratchCorner.copy(this.cameraPosition);
     if (toWorld !== null) point.applyMatrix4(this.scratchMatrix.copy(toWorld).invert());
     const { min, max } = box;
