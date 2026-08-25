@@ -20,6 +20,10 @@ export const GRATICULE_OPACITY = 0.7;
 // 球面のどれだけ外側へ浮かせて描くか(球半径に対する比)。深度テストで面に食い込ませないための余裕。
 export const GRATICULE_RADIUS_RATIO = 1.002;
 
+// 地表へ貼る海岸線・月の海/クレーターの輪郭線を、経緯度グリッド(1.002)より内側の
+// どれだけ外側へ浮かせて描くか(球半径に対する比)。グリッドと重なって Z-fighting しないため。
+export const SURFACE_LINE_RADIUS_RATIO = 1.0015;
+
 // 環・太陽の輪郭円の色。
 export const OUTLINE_CIRCLE_COLOR = SCHEMATIC_LINE;
 

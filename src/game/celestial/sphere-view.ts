@@ -10,6 +10,7 @@ import { spinOrientation } from '../../physics/body-orientation';
 import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { BodyGraticule } from '../../render/body-graticule';
+import type { LineOverlay } from '../../render/line-overlay';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
@@ -26,15 +27,20 @@ export class SphereView extends CelestialView {
   private ring?: RingView;
   // 模式図スタイルでだけ見せる経緯度グリッド。姿勢は group の子として自然に追従する。
   private readonly graticule = new BodyGraticule();
+  // 模式図スタイルでだけ見せる、天体固有の表面ライン(月の海・クレーターなど)。持たない天体では
+  // undefined のまま。
+  private readonly surfaceMarkings?: LineOverlay;
 
   // radius は実半径 [m]、shape は歪みの形状データ(省略時は radius による真球)。
-  // rings を渡すと環を持つ天体になる(ring-view.ts 参照)。
+  // rings を渡すと環を持つ天体になる(ring-view.ts 参照)。surfaceMarkings は表面ラインの
+  // LineOverlay を作るファクトリ(その天体固有のデータを持つ具象クラスを呼び出し側が渡す)。
   constructor(
     id: OrbitingId,
     private readonly surface: CelestialSurface,
     private readonly radius: number,
     shape?: ShapeDef,
     private readonly rings?: RingSystemDef,
+    surfaceMarkings?: () => LineOverlay,
   ) {
     super();
     this.id = id;
@@ -43,12 +49,14 @@ export class SphereView extends CelestialView {
     this.outerRadius = rings === undefined
       ? radius
       : rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), radius);
+    this.surfaceMarkings = surfaceMarkings?.();
   }
 
   // 表面メッシュと環をシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
     this.surface.addTo(this.group);
     this.graticule.addTo(this.group);
+    this.surfaceMarkings?.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== undefined) {
       this.ring = new RingView(this.rings, this.radius, this.group.renderOrder + 1);
@@ -76,6 +84,7 @@ export class SphereView extends CelestialView {
     }
     this.surface.syncLod(apparentDiameterPx);
     this.graticule.setVisible(style === 'schematic');
+    this.surfaceMarkings?.setVisible(style === 'schematic');
     const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
     this.group.position.copy(fo.RtoThreeV3(pos));
     // 歪んだ天体は3軸それぞれの半軸を使う。環へ渡すのは一様スケール(赤道半径)の方で、
@@ -106,14 +115,16 @@ export class SphereView extends CelestialView {
   private hidePhysical(): void {
     this.surface.hide();
     this.graticule.setVisible(false);
+    this.surfaceMarkings?.setVisible(false);
     if (this.ring !== undefined) this.ring.group.visible = false;
   }
 
-  // 表面とグリッドと環を解放し、group を親から外す。
+  // 表面とグリッドと表面ラインと環を解放し、group を親から外す。
   dispose(): void {
     this.group.removeFromParent();
     this.surface.dispose();
     this.graticule.dispose();
+    this.surfaceMarkings?.dispose();
     this.ring?.dispose();
   }
 }
