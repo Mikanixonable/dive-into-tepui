@@ -9,6 +9,7 @@ import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
 import {
   AMBIENT_COLOR, AMBIENT_IRRADIANCE, SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY,
 } from '../../src/render/pipeline/sun-light';
+import { shadowNearWindow } from '../../src/render/pipeline/sun-shadow-maps';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import { AU } from '../../src/physics/planet-orbit';
@@ -111,6 +112,8 @@ export class LabView {
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
     private readonly gpu: GpuTimings,
+    // **A/B 比較用の一時的な設定。** 描画のたびに shadowNearWindow へ書き込む。
+    private readonly nearWindow: boolean,
   ) {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
@@ -123,7 +126,7 @@ export class LabView {
     this.scene.add(this.sun, ambient);
   }
 
-  static async create(canvas: HTMLCanvasElement): Promise<LabView> {
+  static async create(canvas: HTMLCanvasElement, nearWindow = true): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
@@ -136,7 +139,7 @@ export class LabView {
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, QUALITY_PRESETS.high, gpu);
-    return new LabView(renderer, pipeline, gpu);
+    return new LabView(renderer, pipeline, gpu, nearWindow);
   }
 
   // ケースを組み直して描く。前のケースはシーンから外すだけで解放しない — 球の単位ジオメトリは
@@ -225,6 +228,7 @@ export class LabView {
   // 動くものが無いので、描くのはケースを差し替えたときと、表示を切り替えたときと、撮影のとき。
   render(): void {
     if (this.current === null) return;
+    shadowNearWindow.enabled = this.nearWindow;
     // 恒星の位置とシーン光源の向きは、必ず同じ向きから引く。片方だけを更新すると、影の向きと
     // 明暗の境界の向きが食い違ったまま「それらしく」写る。
     const sunDirection = directionFromAngles(
