@@ -11,11 +11,6 @@ import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
 import { LineStyle } from '../render/line-style';
 
-// Curve の頂点予算。描くのは常に1周ぶんの楕円なので、離心率・ズーム・見る向きを振っても
-// 適応分割は 360 頂点ほどで収束する(サジッタ目標 0.5px を満たして自ら止まる)。それを超える
-// 曲線を渡されても、逸脱の大きい区間から順に分割するぶん全体が少し粗くなるだけで済む。
-const MAX_VERTICES = 512;
-
 // 再生成の閾値: これを超えて要素が動いたときだけ楕円を作り直す
 const TOL_SMA = 3e-4; // 長半径の相対変化
 const TOL_ECC = 3e-4; // 離心率の変化
@@ -37,7 +32,7 @@ export class OrbitLine {
   // style.renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
   // 透明描画どうしの前後は描画順でしか決まらない。
   constructor(style: LineStyle) {
-    this.curve = new Curve({ style, maxVertices: MAX_VERTICES });
+    this.curve = new Curve({ style });
     this.line = this.curve.object;
   }
 
