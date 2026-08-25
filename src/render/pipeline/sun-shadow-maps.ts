@@ -26,10 +26,6 @@ const SLOT_MARGIN_TEXELS = 10;
 // 深度の数値精度はここから従属して決まり、この値でも float32 に 24 倍の余裕がある。
 const COLUMN_SPAN = 1000;
 
-// **A/B 比較用の一時的な切り替え。** false なら枠を要求精度まで縮めず、常に受け手の箱ぜんたい
-// を撮る。どちらへ寄せるかが決まったら、この定数と openFrame の分岐ごと消す。
-export const shadowNearWindow = { enabled: true };
-
 // 遮蔽器が 1 つも写らなかった texel を埋める深度 [m]。**受け手のライト空間深度がこれを超える
 // ことはない**ので、受け手はそのまま「自分より奥に遮蔽器が居る = 遮られていない」と読める。
 // 正規化した深度で空を 1.0 と表すと、枠の far より遠い受け手を区別できない。
@@ -325,7 +321,7 @@ export class SunShadowMaps {
     receiver: Caster, limit: number, cameraPosition: THREE.Vector3, budget: number,
   ): void {
     const boxSize = this.frameSize(receiver.box);
-    const size = shadowNearWindow.enabled ? Math.min(boxSize, limit) : boxSize;
+    const size = Math.min(boxSize, limit);
     if (size < boxSize) {
       receiver.box.clampPoint(cameraPosition, this.center);
       this.scratchBox.setFromCenterAndSize(this.center, this.size.setScalar(size)).intersect(receiver.box);
