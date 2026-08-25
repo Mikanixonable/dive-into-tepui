@@ -64,15 +64,15 @@ export class DirectionMarkers {
   private orthoHalfHeight = 0;
   private camNear = 0;
 
-  constructor(scene: THREE.Scene, capacity: number, renderOrder: number) {
+  public constructor(scene: THREE.Scene, capacity: number, renderOrder: number) {
     this.pool = new InstancedPool(scene, this.geometry, this.material, capacity, true, renderOrder);
   }
 
-  beginFrame(): void { this.pool.beginFrame(); }
-  endFrame(): void { this.pool.endFrame(); }
+  public beginFrame(): void { this.pool.beginFrame(); }
+  public endFrame(): void { this.pool.endFrame(); }
 
   // カメラの画角・位置をこのフレーム用に読み直す。addLoop の前に1回呼べば足りる。
-  cacheCamera(camera: THREE.Camera): void {
+  public cacheCamera(camera: THREE.Camera): void {
     this.camPos.setFromMatrixPosition(camera.matrixWorld);
     if (camera instanceof THREE.PerspectiveCamera) {
       this.tanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
@@ -90,7 +90,7 @@ export class DirectionMarkers {
   }
 
   // 1本の軌道ぶんのマーカーを積む。mode が 'none' か点列が短すぎるなら何もしない。
-  addLoop(
+  public addLoop(
     loop: GuideLoop, mode: DirectionMarkerMode, animate: boolean,
     colorHex: number, fo: FloatingOrigin,
   ): void {
@@ -169,7 +169,7 @@ export class DirectionMarkers {
     return MARKER_HEIGHT_PX * mpp;
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.pool.dispose();
     this.geometry.dispose();
     this.material.dispose();

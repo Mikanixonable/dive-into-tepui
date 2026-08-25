@@ -303,18 +303,21 @@ export class OrbitGuideLines {
     this.onLineCountChange?.(this.lines.length);
   }
 
+  // 焼き込み族の1本ぶんを組んでシーンへ加える。
   private addCatalogLine(familyId: string, system: CatalogSystemId, point: string | null, index: number, count: number): void {
     const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET, true);
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId, system, point, index, count, lastLoop: null });
   }
 
+  // リサジュー軌道の1本ぶんを組んでシーンへ加える。
   private addLissajousLine(system: CatalogSystemId, point: GuidePoint): void {
     const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, LISSAJOUS_VERTEX_BUDGET, false);
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId: 'lissajous', system, point, index: 0, count: 1, lastLoop: null });
   }
 
+  // 全てのガイド線とマーカーをシーンから外して破棄する。
   public dispose(): void {
     for (const entry of this.lines) {
       entry.curve.line.removeFromParent();
