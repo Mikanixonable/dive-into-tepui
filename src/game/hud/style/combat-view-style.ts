@@ -263,7 +263,7 @@ export const COMBAT_VIEW_STYLE = `
   font-size: var(--font-xs);
 }
 
-#hud:not(.base-mode) #hud-simulation-status {
+#hud:not(.base-mode) #hud-topbar {
   border: 0;
   border-radius: 0 0 var(--radius-panel, 16px) var(--radius-panel, 16px);
   background: var(--glass-quiet, var(--surface));
@@ -271,8 +271,8 @@ export const COMBAT_VIEW_STYLE = `
   -webkit-backdrop-filter: blur(14px) saturate(82%);
   box-shadow: 0 10px 28px var(--shade-1);
 }
-#hud:not(.base-mode) #hud-simulation-status .k { color: var(--text-dim); }
-#hud:not(.base-mode) #hud-simulation-status .gs-sep { color: var(--fill-4); }
+#hud:not(.base-mode) #hud-topbar .k { color: var(--text-dim); }
+#hud:not(.base-mode) #hud-topbar .gs-sep { color: var(--fill-4); }
 #hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset {
   border: 0;
   border-radius: var(--radius-control, 11px);
@@ -303,7 +303,7 @@ export const COMBAT_VIEW_STYLE = `
   #hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset {
     background: var(--surface);
   }
-  #hud:not(.base-mode) #hud-simulation-status {
+  #hud:not(.base-mode) #hud-topbar {
     background: var(--surface);
   }
 }
@@ -325,7 +325,7 @@ export const COMBAT_VIEW_STYLE = `
 @media (prefers-reduced-motion: reduce) {
   #hud:not(.base-mode) .hud-combat-root.active .combat-panel *,
   #hud:not(.base-mode) .hud-combat-root.active #hud-chase-reset,
-  #hud:not(.base-mode) #hud-simulation-status {
+  #hud:not(.base-mode) #hud-topbar {
     transition-duration: 0.001ms !important;
   }
 }
