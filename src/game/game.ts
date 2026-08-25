@@ -556,10 +556,10 @@ export class Game {
     const orbitRef = player
       ? this.orbitReference.resolve(player.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, player.state.t)
       : undefined;
-    this.entities.syncPlayers(player, fo, this.cameraSystem, displayTime, visibilityPolicy, orbitRef);
-    this.entities.syncDetachedBoosters(fo, this.cameraSystem, displayTime, visibilityPolicy);
+    this.entities.syncPlayers(player, fo, this.cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
+    this.entities.syncDetachedBoosters(fo, this.cameraSystem, displayTime, style, visibilityPolicy);
     this.entities.syncBases(
-      this.controlledBase, fo, this.cameraSystem, displayTime, visibilityPolicy,
+      this.controlledBase, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
     );
     this.entities.sync(fo, displayTime, this.cameraSystem.activeViewpoint, graphics.proteinVibration);
     this.entities.applyVisibility(visibilityPolicy, player);
