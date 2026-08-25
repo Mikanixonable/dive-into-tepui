@@ -116,9 +116,8 @@ function gainForBand(
 }
 
 /**
- * Samples modal OU coefficients and projects them into a reusable residue
- * displacement buffer. It deliberately knows nothing about Three.js or the
- * eventual atom/ribbon/surface bindings.
+ * OU 過程からモードごとの振幅を取り出し、求められたときだけ、指定された残基の小集合について
+ * xyz 変位へ投影する。Three.js や原子・リボン・表面の binding のことは意図的に何も知らない。
  */
 export class ProteinMotionController {
   readonly enemyId: string;
@@ -132,9 +131,8 @@ export class ProteinMotionController {
   private readonly sampler: ProteinBrownianSampler;
   private readonly modeCoefficientsBuffer: Float64Array;
   private readonly effectiveCoefficientsBuffer: Float32Array;
-  private readonly residueOffsetsBuffer: Float32Array;
-  private readonly rawTargetBuffer: Float32Array;
-  private readonly fadeFromBuffer: Float32Array;
+  private readonly rawCoefficientsBuffer: Float32Array;
+  private readonly fadeFromCoefficientsBuffer: Float32Array;
   private readonly modeGains: Float64Array;
   private currentLod: ProteinMotionLod = 'near';
   private currentModeCount = 0;
@@ -174,9 +172,8 @@ export class ProteinMotionController {
     );
     this.modeCoefficientsBuffer = new Float64Array(this.modeCount);
     this.effectiveCoefficientsBuffer = new Float32Array(this.modeCount);
-    this.residueOffsetsBuffer = new Float32Array(this.residueCount * 4);
-    this.rawTargetBuffer = new Float32Array(this.residueCount * 4);
-    this.fadeFromBuffer = new Float32Array(this.residueCount * 4);
+    this.rawCoefficientsBuffer = new Float32Array(this.modeCount);
+    this.fadeFromCoefficientsBuffer = new Float32Array(this.modeCount);
     this.modeGains = new Float64Array(this.modeCount);
     for (let modeIndex = 0; modeIndex < this.modeCount; modeIndex += 1) {
       const mode = this.modes[modeIndex]!;
@@ -189,46 +186,61 @@ export class ProteinMotionController {
     return this.modeCoefficientsBuffer;
   }
 
-  /** The xyz displacement plus reserved w buffer is stable for every update. */
-  get residueOffsets(): Float32Array {
-    return this.residueOffsetsBuffer;
-  }
-
   /**
-   * Per-mode coefficients with gain, phase gain, and LOD mode-count
-   * truncation already folded in (zero past the active mode count) — the
-   * same values `computeRawInto` projects into `residueOffsets`. A GPU
-   * compute pass can multiply these against the asset's mode displacements
-   * to reproduce the same raw projection.
+   * gain・phase gain・LOD によるモード数の打ち切り・LOD 切替の fade を折り込んだモード係数
+   * (打ち切られたモードは 0)。GPU の compute pass はこれと asset のモード変位を掛けて残基変位を
+   * 作る。`projectResidues` は同じことを CPU 側で、残基の小集合についてだけ行う。
    */
   get effectiveModeCoefficients(): Float32Array {
     return this.effectiveCoefficientsBuffer;
+  }
+
+  /**
+   * いまのモード係数を、列挙された残基についてだけ `target`(残基あたり vec4)へ投影する。
+   * 列挙されなかった残基の要素は書き換えない。範囲外・非整数の残基インデックスは無視する。
+   */
+  projectResidues(residues: readonly number[], target: Float32Array): void {
+    for (const residue of residues) {
+      if (!Number.isInteger(residue) || residue < 0 || residue >= this.residueCount) continue;
+      const sourceOffset = residue * 3;
+      const outputOffset = residue * 4;
+      let x = 0; let y = 0; let z = 0;
+      for (let modeIndex = 0; modeIndex < this.modeCount; modeIndex += 1) {
+        const coefficient = this.effectiveCoefficientsBuffer[modeIndex]!;
+        if (coefficient === 0) continue;
+        const displacements = this.modes[modeIndex]!.displacements;
+        x += coefficient * (displacements[sourceOffset] ?? 0);
+        y += coefficient * (displacements[sourceOffset + 1] ?? 0);
+        z += coefficient * (displacements[sourceOffset + 2] ?? 0);
+      }
+      target[outputOffset] = x;
+      target[outputOffset + 1] = y;
+      target[outputOffset + 2] = z;
+    }
   }
 
   get activeModeCount(): number {
     return this.currentModeCount;
   }
 
-  /** Quantized display time represented by the reusable residue buffer. */
+  /** いまのモード係数が表している、量子化済みの表示時刻。 */
   get sampleTime(): number {
     return this.lastSampleTime;
   }
 
   /**
-   * Update at a display time and return the same residue buffer each time.
-   * `sampleAt` and `seek` are aliases so callers can describe their intent
-   * without changing the deterministic sampling semantics. A LOD change
-   * blends from the previously returned buffer into the new target over
-   * `PROTEIN_MOTION_LOD_FADE_DURATION_SEC` of display time instead of
-   * popping, so callers may keep calling `update` every frame through a
-   * LOD transition without special-casing it.
+   * 表示時刻を与えて更新し、毎回同じモード係数バッファを返す。`sampleAt` と `seek` は別名で、
+   * 呼び出し側が意図を書き分けるためだけにあり、決定的なサンプリングの意味は変わらない。
+   * LOD が変わったときは、それまでの係数から新しい係数へ表示時刻で
+   * `PROTEIN_MOTION_LOD_FADE_DURATION_SEC` かけて混ぜる — 変位は係数の線形結合なので、
+   * これは変位そのものを混ぜるのと同じ結果になる。切替中も毎フレーム `update` を呼ぶだけでよい。
    */
   update(
     time: number,
     lod: ProteinMotionLod = 'near',
     phase: ProteinPhase = this.currentPhase,
   ): Float32Array {
-    const output = this.residueOffsetsBuffer;
+    const output = this.effectiveCoefficientsBuffer;
     const nextModeCount = modeCountFor(lod, this.modeCount);
     const rawSampleTime = nextModeCount === 0 ? 0 : this.sampleTimeFor(time, lod);
     const safeTime = safeDisplayTime(time);
@@ -239,7 +251,7 @@ export class ProteinMotionController {
 
     if (inputsChanged) {
       if (lod !== this.currentLod) {
-        this.fadeFromBuffer.set(output);
+        this.fadeFromCoefficientsBuffer.set(output);
         this.fading = true;
         this.fadeStartTime = safeTime;
       }
@@ -247,44 +259,33 @@ export class ProteinMotionController {
       this.currentModeCount = nextModeCount;
       this.currentPhase = phase;
       this.lastRawSampleTime = rawSampleTime;
-      this.computeRawInto(this.rawTargetBuffer, rawSampleTime, nextModeCount, phase);
+      this.computeCoefficients(this.rawCoefficientsBuffer, rawSampleTime, nextModeCount, phase);
     }
 
     if (!this.fading) {
-      output.set(this.rawTargetBuffer);
+      output.set(this.rawCoefficientsBuffer);
       this.lastSampleTime = rawSampleTime;
       return output;
     }
 
     const fadeT = Math.min(1, Math.max(0, (safeTime - this.fadeStartTime) / PROTEIN_MOTION_LOD_FADE_DURATION_SEC));
     for (let index = 0; index < output.length; index += 1) {
-      const from = this.fadeFromBuffer[index]!;
-      output[index] = from + (this.rawTargetBuffer[index]! - from) * fadeT;
+      const from = this.fadeFromCoefficientsBuffer[index]!;
+      output[index] = from + (this.rawCoefficientsBuffer[index]! - from) * fadeT;
     }
     this.lastSampleTime = safeTime;
     if (fadeT >= 1) this.fading = false;
     return output;
   }
 
-  /** Projects the sampled modal coefficients into `target` as residue xyz offsets. */
-  private computeRawInto(target: Float32Array, sampleTime: number, activeModeCount: number, phase: ProteinPhase): void {
+  /** OU 過程を標本化し、gain・phase gain・LOD によるモード数の打ち切りを掛けて `target` へ書く。 */
+  private computeCoefficients(target: Float32Array, sampleTime: number, activeModeCount: number, phase: ProteinPhase): void {
     target.fill(0);
-    this.effectiveCoefficientsBuffer.fill(0);
     if (activeModeCount === 0) return;
     this.sampler.sampleAt(sampleTime, this.modeCoefficientsBuffer);
     const phaseGain = PROTEIN_MOTION_PHASE_GAINS[phase];
     for (let modeIndex = 0; modeIndex < activeModeCount; modeIndex += 1) {
-      const coefficient = this.modeCoefficientsBuffer[modeIndex]! * this.modeGains[modeIndex]! * phaseGain;
-      this.effectiveCoefficientsBuffer[modeIndex] = coefficient;
-      if (coefficient === 0) continue;
-      const displacements = this.modes[modeIndex]!.displacements;
-      for (let residueIndex = 0; residueIndex < this.residueCount; residueIndex += 1) {
-        const sourceOffset = residueIndex * 3;
-        const outputOffset = residueIndex * 4;
-        target[outputOffset] = target[outputOffset]! + coefficient * (displacements[sourceOffset] ?? 0);
-        target[outputOffset + 1] = target[outputOffset + 1]! + coefficient * (displacements[sourceOffset + 1] ?? 0);
-        target[outputOffset + 2] = target[outputOffset + 2]! + coefficient * (displacements[sourceOffset + 2] ?? 0);
-      }
+      target[modeIndex] = this.modeCoefficientsBuffer[modeIndex]! * this.modeGains[modeIndex]! * phaseGain;
     }
   }
 

@@ -5,13 +5,12 @@ export const PROTEIN_RESIDUE_B_ATTRIBUTE = 'proteinResidueB';
 export const PROTEIN_RESIDUE_T_ATTRIBUTE = 'proteinResidueT';
 
 /**
- * The render-side handle for a controller-owned residue offset buffer.
+ * 敵1体ぶんの残基変形を、描画側から扱うための持ち手。
  *
- * The StorageBufferAttribute intentionally keeps the controller's Float32Array
- * as its backing array. A controller can update that array in place, set
- * `needsUpdate`, and every material made from this binding observes the same
- * GPU buffer. No runtime/controller import is required here — mode
- * displacements and coefficients arrive as plain typed arrays.
+ * `modeDisplacements` は asset 由来の不変なモード基底(残基×モードの vec4)、
+ * `coefficients` はそのフレームのモード振幅で、compute pass が両者を掛け合わせて
+ * `residueOffsets` を埋める。この binding から作ったマテリアルはみなそれを読む。
+ * game 層を import せずに済むよう、受け取るのは素の typed array だけにしている。
  */
 export interface ProteinMotionBinding {
   readonly residueCount: number;
@@ -19,12 +18,40 @@ export interface ProteinMotionBinding {
   readonly residueOffsets: THREE.StorageBufferAttribute;
   readonly modeDisplacements: THREE.StorageBufferAttribute;
   readonly coefficients: THREE.StorageBufferAttribute;
-  /** Lazily built on the first flush so headless callers never need a renderer. */
+  /** 初回の flush まで作らない — renderer を持たない呼び出し側でも binding を作れるようにするため。 */
   computeNode?: THREE.Node;
   disposed?: boolean;
 }
 
 const dirtyBindings = new Set<ProteinMotionBinding>();
+
+interface SharedModeDisplacementBuffer {
+  readonly attribute: THREE.StorageBufferAttribute;
+  refCount: number;
+}
+
+/** asset 単位で共有するモード変位の GPU バッファ。鍵は、その asset の binding が共通で指す CPU 配列。 */
+const sharedModeDisplacementBuffers = new WeakMap<Float32Array, SharedModeDisplacementBuffer>();
+
+function acquireModeDisplacements(modeDisplacements: Float32Array): THREE.StorageBufferAttribute {
+  const existing = sharedModeDisplacementBuffers.get(modeDisplacements);
+  if (existing) {
+    existing.refCount += 1;
+    return existing.attribute;
+  }
+  const attribute = new THREE.StorageBufferAttribute(modeDisplacements, 4);
+  sharedModeDisplacementBuffers.set(modeDisplacements, { attribute, refCount: 1 });
+  return attribute;
+}
+
+function releaseModeDisplacements(modeDisplacements: Float32Array): SharedModeDisplacementBuffer | null {
+  const shared = sharedModeDisplacementBuffers.get(modeDisplacements);
+  if (!shared) return null;
+  shared.refCount -= 1;
+  if (shared.refCount > 0) return null;
+  sharedModeDisplacementBuffers.delete(modeDisplacements);
+  return shared;
+}
 
 interface ProteinMotionRendererInternals {
   readonly _attributes: {
@@ -47,14 +74,15 @@ function assertResidueCount(residueCount: number): void {
 }
 
 /**
- * Create a binding for one enemy body: a residue offset buffer the compute
- * pass writes into, plus the asset's flattened mode displacements (shared,
- * read-only) and a per-instance mode coefficient buffer.
+ * 敵1体ぶんの binding を作る。compute pass の書き込み先である残基変位バッファと、
+ * 体ごとのモード係数バッファを持つ。モード変位の GPU バッファは、同じ
+ * `modeDisplacements`(= 同じ asset)から作った binding どうしで共有し、参照数が
+ * 尽きたときだけ解放する。
  */
 export function createProteinMotionBinding(
   residueCount: number,
-  modeDisplacements: Float32Array = new Float32Array(0),
-  modeCount = 0,
+  modeDisplacements: Float32Array,
+  modeCount: number,
 ): ProteinMotionBinding {
   assertResidueCount(residueCount);
   if (modeDisplacements.length !== modeCount * residueCount * 4) {
@@ -64,12 +92,12 @@ export function createProteinMotionBinding(
     residueCount,
     modeCount,
     residueOffsets: new THREE.StorageBufferAttribute(new Float32Array(residueCount * 4), 4),
-    modeDisplacements: new THREE.StorageBufferAttribute(modeDisplacements, 4),
+    modeDisplacements: acquireModeDisplacements(modeDisplacements),
     coefficients: new THREE.StorageBufferAttribute(new Float32Array(modeCount), 1),
   };
 }
 
-/** Write this frame's mode coefficients and mark the binding for the next compute flush. */
+/** そのフレームのモード係数を書き込み、次の flush で compute を発行する対象に加える。 */
 export function updateProteinMotionCoefficients(binding: ProteinMotionBinding, coefficients: ArrayLike<number>): void {
   if (coefficients.length !== binding.modeCount) {
     throw new RangeError('Protein motion coefficients must contain one value per mode');
@@ -80,6 +108,7 @@ export function updateProteinMotionCoefficients(binding: ProteinMotionBinding, c
   dirtyBindings.add(binding);
 }
 
+/** 残基ごとに全モードの寄与を足し込んで `residueOffsets` を埋める compute ノードを組む。 */
 function proteinMotionComputeNode(binding: ProteinMotionBinding): THREE.Node {
   const { Fn, Loop, storage, instanceIndex, uint } = THREE.TSL;
   const modeDisplacements = storage(binding.modeDisplacements, 'vec4', binding.modeCount * binding.residueCount);
@@ -96,26 +125,13 @@ function proteinMotionComputeNode(binding: ProteinMotionBinding): THREE.Node {
   })().compute(binding.residueCount) as THREE.Node;
 }
 
-/** Dispatch a compute pass for every binding whose coefficients changed this frame. */
+/** 係数が更新された binding それぞれへ compute pass を発行する。影パスより前に呼ぶ。 */
 export function flushProteinMotionComputes(renderer: THREE.WebGPURenderer): void {
   for (const binding of dirtyBindings) {
     if (!binding.computeNode) binding.computeNode = proteinMotionComputeNode(binding);
     renderer.compute(binding.computeNode as THREE.ComputeNode, binding.residueCount);
   }
   dirtyBindings.clear();
-}
-
-/** Copy a controller's latest residue offsets into an existing shared buffer. */
-export function updateProteinMotionBinding(
-  binding: ProteinMotionBinding,
-  offsets: ArrayLike<number>,
-): void {
-  if (offsets.length !== binding.residueCount * 4) {
-    throw new RangeError('Protein motion offsets must contain four scalars per residue');
-  }
-  const target = binding.residueOffsets.array as Float32Array;
-  for (let index = 0; index < target.length; index += 1) target[index] = offsets[index] ?? 0;
-  binding.residueOffsets.needsUpdate = true;
 }
 
 /**
@@ -140,28 +156,32 @@ export function registerProteinMotionRenderer(renderer: THREE.WebGPURenderer): (
 }
 
 /**
- * Release every renderer-owned GPU buffer before dropping the CPU arrays.
- *
- * The mode displacement buffer's Float32Array is asset-owned and cached by
- * `proteinMotionModeDisplacements`, so only this binding's GPU-side storage
- * buffer is released — the shared source array is left untouched.
+ * CPU 配列を手放す前に、この binding が持つ GPU バッファを renderer から解放する。
+ * モード変位のバッファは同じ asset の binding で共有しているので、参照数が尽きたときだけ
+ * 解放する — まだ使っている binding があるのに解放すると画面がまるごと黒くなる。
+ * 共有元の `Float32Array` はどちらの場合も壊さない。
  */
 export function disposeProteinMotionBinding(binding: ProteinMotionBinding): void {
   if (binding.disposed) return;
   binding.disposed = true;
   dirtyBindings.delete(binding);
+  const releasedModeDisplacements = releaseModeDisplacements(binding.modeDisplacements.array as Float32Array);
+  const releasedAttributes = [binding.residueOffsets, binding.coefficients];
+  if (releasedModeDisplacements) releasedAttributes.push(releasedModeDisplacements.attribute);
   for (const renderer of proteinMotionRenderers.keys()) {
     const attributes = renderer._attributes;
-    for (const attribute of [binding.residueOffsets, binding.modeDisplacements, binding.coefficients]) {
+    for (const attribute of releasedAttributes) {
       if (attributes?.has(attribute)) attributes.delete(attribute);
     }
   }
   binding.residueOffsets.array = new Float32Array(0);
   binding.residueOffsets.needsUpdate = true;
-  binding.modeDisplacements.array = new Float32Array(0);
-  binding.modeDisplacements.needsUpdate = true;
   binding.coefficients.array = new Float32Array(0);
   binding.coefficients.needsUpdate = true;
+  if (releasedModeDisplacements) {
+    releasedModeDisplacements.attribute.array = new Float32Array(0);
+    releasedModeDisplacements.attribute.needsUpdate = true;
+  }
 }
 
 function assertBinding(binding: ProteinMotionBinding): void {
