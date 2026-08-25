@@ -20,12 +20,11 @@ const MAX_MARKERS_PER_LOOP = 12;
 // 差分が f64 の丸めに埋もれ、大きすぎると弦の向きが接線から外れる。
 const TANGENT_PROBE_SPAN = 1e-3;
 
-// アニメーションが1周(t: 0→1)にかける実時間 [s]。この値そのものに物理的意味は無く、
-// 「近点で速く・遠点で遅く」という相対関係だけが times の内挿から出る。
+// アニメーションが1周(パラメータ 0→1)にかける実時間 [s]。
 const ANIMATION_PERIOD_SEC = 20;
 
 // アニメーションの位相を進める実時刻 [s]。表示時刻(ゲーム内時間)で進めると、タイムワープ中に
-// マーカーが飛び、一時停止中に止まってしまう — 動きの速さは times の内挿だけが担う。
+// マーカーが飛び、一時停止中に止まってしまう。
 function animationPhase(): number {
   return (performance.now() / 1000 / ANIMATION_PERIOD_SEC) % 1;
 }
