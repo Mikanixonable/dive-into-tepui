@@ -14,7 +14,7 @@ import { CurveColorSampler } from '../../render/curve';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { RenderStyleGate, type RenderStyle } from '../../render/render-style';
 import { SCHEMATIC_LINE } from '../../render/schematic-style';
-import { GuideCurve } from './guide-curve';
+import { GuideCurve, polylineSampler } from './guide-curve';
 import {
   GuideGroupId, GuideKindSettings, OrbitGuideSettings,
 } from './orbit-guide-settings';
@@ -227,7 +227,12 @@ export class OrbitGuideLines {
       for (const entry of this.lines) {
         const loop = this.computeLoop(entry, displayTime, settings);
         entry.lastLoop = loop;
-        entry.curve.setPoints(loop?.points ?? null);
+        if (loop && loop.points.length >= 2) {
+          const origin = loop.points[0]!;
+          entry.curve.setSampler(origin, polylineSampler(loop.points, origin, loop.closed));
+        } else {
+          entry.curve.clear();
+        }
       }
       this.geometryKey = geometryKey;
       this.lastComputedTime = displayTime;
@@ -269,10 +274,12 @@ export class OrbitGuideLines {
   }
 
   // 表示中のガイド線を、当たり判定向けの識別情報付きで返す(マップ視点外・0本の間は空)。
-  public visibleLines(): readonly VisibleGuideLine[] {
+  // sampleCount は1本を何分割して点列に落とすか — クリック位置を拾う細かさを決めるだけで、
+  // 描かれる線の細かさとは無関係。
+  public visibleLines(sampleCount: number): readonly VisibleGuideLine[] {
     const visible: VisibleGuideLine[] = [];
     for (const entry of this.lines) {
-      const points = entry.curve.worldPoints();
+      const points = entry.curve.samplePoints(sampleCount);
       if (points.length < 2) continue;
       visible.push({
         key: `${entry.familyId}:${entry.system}:${entry.point ?? '-'}:${entry.index}`,
@@ -411,14 +418,14 @@ export class OrbitGuideLines {
 
   // 焼き込み族の1本ぶんを組んでシーンへ加える。
   private addCatalogLine(familyId: string, system: CatalogSystemId, point: string | null, index: number, count: number): void {
-    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET, true);
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET);
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId, system, point, index, count, lastLoop: null });
   }
 
   // リサジュー軌道の1本ぶんを組んでシーンへ加える。
   private addLissajousLine(system: CatalogSystemId, point: GuidePoint): void {
-    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, LISSAJOUS_VERTEX_BUDGET, false);
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, LISSAJOUS_VERTEX_BUDGET);
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId: 'lissajous', system, point, index: 0, count: 1, lastLoop: null });
   }
@@ -426,7 +433,7 @@ export class OrbitGuideLines {
   // 地球専用参照軌道(基本群、太陽同期準回帰・ドーンダスク・モルニヤ・ツンドラ)の1本を
   // 組んでシーンへ加える。系トグルの対象外なので system は null。
   private addReferenceOrbitLine(kind: ReferenceOrbitKind): void {
-    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET, true);
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET);
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId: kind, system: null, point: null, index: 0, count: 1, lastLoop: null });
   }
