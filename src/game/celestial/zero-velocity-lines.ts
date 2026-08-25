@@ -66,30 +66,28 @@ interface LineEntry {
   readonly curve: GuideCurve;
 }
 
-// 等高線の点列を節点列に組む。等高線は滑らかな関数 2Ω の等位集合なので、隣接点の中心差分を
-// 接線にすれば節点の間をエルミートで埋められる。closed なら末尾に始点を足して輪を閉じ、
-// 端の接線も輪を跨いで取る。
-function contourKnots(points: readonly Vec3[], closed: boolean): CurveKnots {
+// 等高線の点列を、origin からの相対位置を持つ節点列に組む。等高線は滑らかな関数 2Ω の等位
+// 集合なので、隣接点の中心差分を接線にすれば節点の間をエルミートで埋められる。closed なら
+// 末尾に始点を足して輪を閉じ、端の接線も輪を跨いで取る。
+function contourKnots(points: readonly Vec3[], closed: boolean, origin: Vec3): CurveKnots {
   const ring = closed ? [...points, points[0]!] : points;
-  const count = ring.length;
-  const last = count - 1;
-  const span = last;
-  const tangents = ring.map((_, i) => {
+  const last = ring.length - 1;
+  const ts: number[] = [];
+  const positions: number[] = [];
+  const tangents: number[] = [];
+  for (let i = 0; i <= last; i++) {
+    const p = ring[i]!;
+    ts.push(i / last);
+    positions.push(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+    // 端では輪を跨いで隣を取る。閉じていない線の端だけが片側差分(1区間ぶんの幅)になる。
     const prev = i === 0 ? (closed ? last - 1 : 0) : i - 1;
     const next = i === last ? (closed ? 1 : last) : i + 1;
-    // 中心差分は2区間ぶんの幅で割る。端で片側差分になるときは1区間ぶん。
-    const width = (next - prev + (i === 0 && closed ? count - 1 : 0) + (i === last && closed ? count - 1 : 0)) / span;
+    const width = ((i === 0 || i === last) && !closed ? 1 : 2) / last;
     const a = ring[prev]!;
     const b = ring[next]!;
-    return { x: (b.x - a.x) / width, y: (b.y - a.y) / width, z: (b.z - a.z) / width } as Vec3;
-  });
-  const origin = ring[0]!;
-  return {
-    count,
-    at: (i) => i / span,
-    position: (i, out) => { const p = ring[i]!; out.set(p.x - origin.x, p.y - origin.y, p.z - origin.z); },
-    tangent: (i, out) => { const m = tangents[i]!; out.set(m.x, m.y, m.z); },
-  };
+    tangents.push((b.x - a.x) / width, (b.y - a.y) / width, (b.z - a.z) / width);
+  }
+  return { ts, positions, tangents };
 }
 
 // multiple の設定からヤコビ定数の列を組む。1本なら jacobi 単体、多数なら
@@ -227,7 +225,9 @@ export class ZeroVelocityLines {
           z: origin.z + (u * xHat.z + v * second.z) * unit,
         } as Vec3;
       });
-      entry.curve.setHermite(points3d[0]!, contourKnots(points3d, entry.shape.closed));
+      // 頂点を相対化する基準点は曲線上の1点でよいので、成分の先頭を採る。
+      const base = points3d[0]!;
+      entry.curve.setHermite(base, contourKnots(points3d, entry.shape.closed, base));
     }
   }
 

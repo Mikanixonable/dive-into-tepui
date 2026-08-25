@@ -120,47 +120,38 @@ const F32_RELATIVE_EPS = 2 ** -24;
 // 分割の粗さに埋もれて見えなくなるよう、目標より十分小さく取る。
 const PIVOT_MAX_ERROR_RATIO = 0.2;
 
-// 離散サンプルとしてしか手に入らない曲線の節点列。節点の格納形は呼び出し側ごとに違うので、
-// 配列ではなくアクセサで受け取る。count は節点数(2以上)、at(i) は節点 i の曲線パラメータ
-// (昇順、at(0)=0・at(count-1)=1)、position/tangent は節点 i の位置と d(位置)/d(パラメータ)。
+// 離散サンプルとしてしか手に入らない曲線の節点列。ts は節点の曲線パラメータ(昇順、先頭 0・
+// 末尾 1)、positions と tangents は各節点の位置と d(位置)/d(パラメータ) を [x, y, z] の順に
+// 並べた長さ ts.length * 3 の列。
 export type CurveKnots = {
-  readonly count: number;
-  readonly at: (i: number) => number;
-  readonly position: (i: number, out: THREE.Vector3) => void;
-  readonly tangent: (i: number, out: THREE.Vector3) => void;
+  readonly ts: readonly number[];
+  readonly positions: readonly number[];
+  readonly tangents: readonly number[];
 };
 
-// 節点が maxCount 個を超えるなら、その数へ均した節点列を返す。抜く位置は元の並びの上で
-// 等間隔に取り、両端の節点は必ず残す(曲線の定義域が縮まないため)。
-function thinKnots(knots: CurveKnots, maxCount: number): CurveKnots {
-  if (knots.count <= maxCount) return knots;
-  const last = knots.count - 1;
-  const source = (i: number): number => Math.round((i * last) / (maxCount - 1));
-  return {
-    count: maxCount,
-    at: (i) => knots.at(source(i)),
-    position: (i, out) => knots.position(source(i), out),
-    tangent: (i, out) => knots.tangent(source(i), out),
-  };
-}
-
 // 節点列から組んだ曲線。ts は節点自身のパラメータ列で、そのまま初期頂点の位置になる。
-type HermiteCurve = { readonly sample: CurveSampler; readonly ts: readonly number[] };
+type HermiteCurve = { readonly sample: CurveSampler; readonly ts: ArrayLike<number> };
 
-// 節点間を3次エルミート(両端の位置を通り、両端の接線を持つ)で埋めるサンプラと、節点自身の
-// パラメータ列を組む。パラメータ列が昇順でなければ、どの区間へ落ちるかが決まらないので弾く。
-function hermiteSampler(knots: CurveKnots): HermiteCurve {
-  const { count, at, position, tangent } = knots;
-  if (count < 2) throw new Error(`Curve: 節点が ${count} 個では曲線にならない`);
-  const ts: number[] = [];
+// 節点間を3次エルミート(両端の位置を通り、両端の接線を持つ)で埋めた曲線を組む。節点が
+// maxCount 個を超えるぶんは元の並びの上で等間隔に間引く(両端は残すので定義域は縮まない)。
+function buildHermiteCurve(knots: CurveKnots, maxCount: number): HermiteCurve {
+  const source = knots.ts;
+  if (source.length < 2) throw new Error(`Curve: 節点が ${source.length} 個では曲線にならない`);
+  const last = source.length - 1;
+  const count = Math.min(source.length, maxCount);
+  const ts = new Float64Array(count);
+  const positions = new Float64Array(count * 3);
+  const tangents = new Float64Array(count * 3);
   for (let i = 0; i < count; i++) {
-    const t = at(i);
-    if (i > 0 && t <= ts[i - 1]!) throw new Error(`Curve: 節点のパラメータが昇順でない (i=${i}, t=${t})`);
-    ts.push(t);
+    const j = count === source.length ? i : Math.round((i * last) / (count - 1));
+    ts[i] = source[j]!;
+    if (i > 0 && ts[i]! <= ts[i - 1]!) throw new Error(`Curve: 節点のパラメータが昇順でない (i=${j})`);
+    for (let k = 0; k < 3; k++) {
+      positions[i * 3 + k] = knots.positions[j * 3 + k]!;
+      tangents[i * 3 + k] = knots.tangents[j * 3 + k]!;
+    }
   }
 
-  const p0 = new THREE.Vector3(), p1 = new THREE.Vector3();
-  const m0 = new THREE.Vector3(), m1 = new THREE.Vector3();
   const sample: CurveSampler = (t, out) => {
     // t を含む区間 [i, i+1] を二分探索で引く。両端の外は端の区間へ寄せる。
     let lo = 0, hi = count - 2;
@@ -170,15 +161,14 @@ function hermiteSampler(knots: CurveKnots): HermiteCurve {
     }
     const h = ts[lo + 1]! - ts[lo]!;
     const s = Math.max(0, Math.min(1, (t - ts[lo]!) / h));
-    position(lo, p0); position(lo + 1, p1);
-    tangent(lo, m0); tangent(lo + 1, m1);
     const s2 = s * s, s3 = s2 * s;
     const w0 = 2 * s3 - 3 * s2 + 1, w1 = (s3 - 2 * s2 + s) * h;
     const w2 = -2 * s3 + 3 * s2, w3 = (s3 - s2) * h;
+    const a = lo * 3, b = a + 3;
     out.set(
-      w0 * p0.x + w1 * m0.x + w2 * p1.x + w3 * m1.x,
-      w0 * p0.y + w1 * m0.y + w2 * p1.y + w3 * m1.y,
-      w0 * p0.z + w1 * m0.z + w2 * p1.z + w3 * m1.z,
+      w0 * positions[a]! + w1 * tangents[a]! + w2 * positions[b]! + w3 * tangents[b]!,
+      w0 * positions[a + 1]! + w1 * tangents[a + 1]! + w2 * positions[b + 1]! + w3 * tangents[b + 1]!,
+      w0 * positions[a + 2]! + w1 * tangents[a + 2]! + w2 * positions[b + 2]! + w3 * tangents[b + 2]!,
     );
   };
   return { sample, ts };
@@ -374,7 +364,7 @@ export class Curve {
   // その点が視点面をまたぐ曲線で値が乱高下し、SCALE_REBAKE_RATIO を毎フレーム跨いでしまう。
   // 分割の粗さを決めるのは曲線上で最もカメラに寄っている点なので、初期頂点列 ts から等間隔に
   // 抜いた SCALE_PROBE_POINTS+1 点の中の最小値を代表値とする。cacheCameraFrame を先に呼んでおくこと。
-  private representativeScale(sample: CurveSampler, ts: readonly number[]): number {
+  private representativeScale(sample: CurveSampler, ts: ArrayLike<number>): number {
     let minScale = Infinity;
     const last = ts.length - 1;
     for (let i = 0; i <= SCALE_PROBE_POINTS; i++) {
@@ -453,7 +443,7 @@ export class Curve {
   // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても、残った
   // 区間の逸脱はすべて最後に分割した区間以下 — 一箇所だけが粗いまま取り残されることはなく、
   // 曲線全体が一様に粗くなる方向へ劣化する。
-  private rebake(sample: CurveSampler, ts: readonly number[], colorAt?: CurveColorSampler): void {
+  private rebake(sample: CurveSampler, ts: ArrayLike<number>, colorAt?: CurveColorSampler): void {
     this.bakedCount = 0;
     this.pending.clear();
     const segmentCount = ts.length - 1;
@@ -484,13 +474,12 @@ export class Curve {
     this.setCurve(sample, uniformTs(Math.min(requested, this.maxInitialVertices - 1)), opts);
   }
 
-  // 離散サンプルとしてしか手に入らない曲線を、節点間を3次エルミートで埋めて描く。
-  // 節点は初期頂点になるので、多すぎるぶんは均して減らす(節点間はエルミートで埋まるため、
-  // 減らしても曲線は C¹ のまま一様に粗くなる)。
+  // 離散サンプルとしてしか手に入らない曲線を、節点間を3次エルミートで埋めて描く。節点は
+  // そのまま初期頂点になる。
   setHermiteCurve(knots: CurveKnots, opts: SetCurveOptions): void {
     let hermite = this.hermite;
     if (hermite === null || knots !== this.hermiteKnots) {
-      hermite = hermiteSampler(thinKnots(knots, this.maxInitialVertices));
+      hermite = buildHermiteCurve(knots, this.maxInitialVertices);
       this.hermite = hermite;
       this.hermiteKnots = knots;
     }
@@ -505,7 +494,7 @@ export class Curve {
 
   // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケール・カメラ視線
   // 方向のいずれも前回と実質同じであれば焼き直しも GPU への再アップロードも省く。
-  private setCurve(sample: CurveSampler, ts: readonly number[], opts: SetCurveOptions): void {
+  private setCurve(sample: CurveSampler, ts: ArrayLike<number>, opts: SetCurveOptions): void {
     const { revision, camera, colorAt } = opts;
     this.sampler = sample;
     this.cacheCameraFrame(camera);
