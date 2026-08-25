@@ -12,7 +12,7 @@ import { rotatingFrame } from '../../physics/orbit-guide';
 import { zeroVelocityCurveSet, SectionPlane } from '../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
 import { FloatingOrigin } from '../floating-origin';
-import { GuideCurve } from './guide-curve';
+import { GuideCurve, polylineSampler } from './guide-curve';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { ZeroVelocitySettings } from './orbit-guide-settings';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
@@ -176,7 +176,6 @@ export class ZeroVelocityLines {
       const curve = new GuideCurve(
         { color: C.COLOR_ZERO_VELOCITY_LINE, opacity: settings.opacity, renderOrder: LINE_RENDER_ORDER.reference },
         VERTEX_BUDGET,
-        shape.closed,
       );
       this.scene.add(curve.line);
       return { shape, curve };
@@ -197,7 +196,7 @@ export class ZeroVelocityLines {
         frames.set(system, frame);
       }
       if (!frame) {
-        entry.curve.setPoints([]);
+        entry.curve.clear();
         continue;
       }
       const { origin, xHat, yHat, zHat, unit } = frame;
@@ -209,7 +208,8 @@ export class ZeroVelocityLines {
           z: origin.z + (u * xHat.z + v * second.z) * unit,
         } as Vec3;
       });
-      entry.curve.setPoints(points3d);
+      const lineOrigin = points3d[0]!;
+      entry.curve.setSampler(lineOrigin, polylineSampler(points3d, lineOrigin, entry.shape.closed));
     }
   }
 
