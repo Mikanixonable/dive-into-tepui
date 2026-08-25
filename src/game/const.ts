@@ -298,6 +298,12 @@ export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simu
 // 1周27歩(K=32)まで粗くすると数値減衰が実ドラッグと同等になり、待つだけで艦が倍の速さで落ちる。
 export const SUBSTEP_MAX_COUNT = 64;
 
+// ゼロ長サブステップ(丸めで刻みが0になったイベント消費)が連続してこの回数を超えたら
+// Simulator.advance が simTime を強制前進させる。イベント予告と実際の消滅判定が
+// 丸め誤差でずれた個体が残ると刻みが0のまま進まなくなるための保険で、正常時は1回で
+// 収まる(同時刻の複数イベントの消費に数回使う程度)。
+export const SIMULATION_STALL_MAX_ZERO_STEPS = 8;
+
 // 大気の中で刻みを縛る2つの上限(game/simulation/time-step.ts の atmosphericMaxStep)。
 // 抗力は陽的 RK4 にとって剛い項で、逆時定数 λ = ½ρ·s·bcInv が刻みに対して大きくなると、
 // 段ごとの抗力が増幅して1歩で発散する(抗力は速さの2乗なので振動ではなく暴走になる)。

@@ -116,15 +116,21 @@ export class DebrisPiece extends GameEntity {
     if (this.debrisKind.kind === 'casing' && other instanceof Player) this._worldSfx.clank();
   }
 
-  // 寿命を持つ薬莢・段間ハードウェアの次の絶対時刻を返す。
+  // 寿命を持つ薬莢・段間ハードウェアの期限切れ絶対時刻。無ければ null。
+  // nextSimulationEventTime と checkLoss の両方がこの1箇所だけを参照する — 別々に
+  // bornSim+寿命を計算すると丸め誤差でイベント予告と実際の消滅判定がずれかねない。
+  private get expiresAt(): number | null {
+    switch (this.debrisKind.kind) {
+      case 'casing': return this.debrisKind.bornSim + C.CASING_LIFETIME;
+      case 'boosterCover':
+      case 'boosterBolt': return this.debrisKind.bornSim + C.BOOSTER_HARDWARE_LIFETIME;
+      default: return null;
+    }
+  }
+
   nextSimulationEventTime(simTime: number): number | null {
-    if (this.debrisKind.kind !== 'casing'
-      && this.debrisKind.kind !== 'boosterCover'
-      && this.debrisKind.kind !== 'boosterBolt') return null;
-    const expiresAt = this.debrisKind.bornSim + (this.debrisKind.kind === 'casing'
-      ? C.CASING_LIFETIME
-      : C.BOOSTER_HARDWARE_LIFETIME);
-    return expiresAt >= simTime ? expiresAt : null;
+    const expiresAt = this.expiresAt;
+    return expiresAt !== null && expiresAt >= simTime ? expiresAt : null;
   }
 
   // 再突入判定に加え、寿命を持つデブリは表示時間の超過でも消す。
@@ -134,18 +140,7 @@ export class DebrisPiece extends GameEntity {
   ): void {
     super.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
     if (!this.alive) return;
-    const expires = this.debrisKind.kind === 'casing'
-      ? C.CASING_LIFETIME
-      : this.debrisKind.kind === 'boosterCover' || this.debrisKind.kind === 'boosterBolt'
-        ? C.BOOSTER_HARDWARE_LIFETIME
-        : null;
-    const bornSim = this.debrisKind.kind === 'casing'
-      || this.debrisKind.kind === 'boosterCover'
-      || this.debrisKind.kind === 'boosterBolt'
-      ? this.debrisKind.bornSim
-      : null;
-    if (expires !== null && bornSim !== null && simTime - bornSim >= expires) {
-      this.alive = false;
-    }
+    const expiresAt = this.expiresAt;
+    if (expiresAt !== null && simTime >= expiresAt) this.alive = false;
   }
 }
