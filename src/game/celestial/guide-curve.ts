@@ -1,7 +1,6 @@
-// ECI 絶対座標の曲線を1本の折れ線として描く共通ラッパー。軌道ガイド線もゼロ速度曲線も、
-// 「曲線を1つ持ち、描画原点の移動へ追随しながら Curve へ流す」という同じ形をしている。
-// 曲線そのもの(どう補間するか)は呼び出し側が決め、ここは基準点・焼き直しの鍵・
-// 描画原点への追随だけを持つ。
+// ECI 絶対座標の曲線を1本の折れ線として描く。曲線を基準点からの相対で保って Curve へ流し、
+// 描画原点の移動へ毎フレーム追随させる。描かれている曲線上の点を ECI 絶対座標で引く口も
+// 持つので、進行方向マーカーと当たり判定は線と同じ曲線を読める。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../physics/vec3';
 import { Curve, CurveColorSampler, CurveKnots, CurveSampler } from '../../render/curve';
