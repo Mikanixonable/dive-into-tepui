@@ -113,6 +113,8 @@ export class SunShadowMaps {
   // — 戻さないと、デバッグ表示「影」に前フレームの深度マップが残って読み手を欺く。**確保直後の
   // 深度マップはゼロ埋めなので、初回も空へ戻す対象に入れる。**
   private drawnSlots = SHADOW_SLOT_COUNT;
+  // メッシュの影を描くか。描画品質設定から受け取る。
+  private enabled = false;
 
   // スロット 4 枚ぶんの近層・遠層の深度マップと、そこへライト空間の線形深度を書く override
   // マテリアルを組む。
@@ -151,16 +153,19 @@ export class SunShadowMaps {
 
   get slots(): readonly SunShadowSlot[] { return this.slotUniforms; }
 
-  // 遮蔽器を枠へまとめ、枠ごとに 1 スロットを描く。enabled が偽か、影を要求する受け手が
+  // 影を描くかどうかを設定から受け取る。
+  setQuality(enabled: boolean): void {
+    this.enabled = enabled;
+  }
+
+  // 遮蔽器を枠へまとめ、枠ごとに 1 スロットを描く。影が切られているか、影を要求する受け手が
   // 1 つも無いフレームは、GPU 側の仕事がまったく発生しない。
-  render(
-    scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight, enabled: boolean,
-  ): void {
+  render(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
     for (const slot of this.slotUniforms) slot.active.value = 0;
     this.clusters.length = 0;
     this.clusterSizes.length = 0;
     this.clusterCaps.length = 0;
-    if (enabled) {
+    if (this.enabled) {
       // 遮蔽器の箱は親の変換込みで測る必要がある。**Box3.expandByObject は親の行列を更新しない**
       // ので、このパスがフレームの先頭で走る限り、ここで確定させないと箱が前フレームの位置で作られる。
       scene.updateMatrixWorld();

@@ -622,8 +622,8 @@ export class Game {
 
   // ------------------------------------------------------------------ render
 
-  render(style: RenderStyle, meshShadow: boolean): void {
-    this.pipeline.render(this._scene, this.cameraSystem.activeCamera, style, meshShadow);
+  render(style: RenderStyle): void {
+    this.pipeline.render(this._scene, this.cameraSystem.activeCamera, style);
   }
 
   // ------------------------------------------------------------------ debug

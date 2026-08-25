@@ -235,7 +235,7 @@ export class LabView {
     const atmosphere = this.current.atmosphere;
     this.pipeline.atmosphere.setBody(atmosphere?.center ?? ORIGIN, atmosphere?.surfaceRadius ?? 0);
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, camera, 'realistic', QUALITY_PRESETS.high.meshShadow);
+    this.pipeline.render(this.scene, camera, 'realistic');
     this.lastRenderCpuMs = performance.now() - startedAt;
     this.gpu.resolve();
   }
