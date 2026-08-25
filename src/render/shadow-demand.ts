@@ -1,5 +1,5 @@
-// 影のスロットに要る細かさを、受け手の側から決める純関数群。THREE にも game/・physics/ の
-// 座標型にも依存しない(引数はスカラーのみ)。
+// 影のスロットに要る細かさと、その枠を置く場所を、受け手の側から決める純関数群。THREE にも
+// game/・physics/ の座標型にも依存しない(引数はスカラーのみ)。
 //
 // **粗が見えるのは受け手がカメラに近いときであって、遮蔽器が近いときではない。** 平行投影では
 // 影の実寸は遮蔽器の実寸に等しいので、画面上の粗さは影が落ちる面までの距離だけで決まる。
@@ -42,4 +42,25 @@ export function castsOnto(
 /** 要求 texel [m] を満たす枠の半径 [m]。平行投影なので深度は要らない。 */
 export function extentForTexel(texel: number, slotSize: number): number {
   return (slotSize * texel) / 2;
+}
+
+/**
+ * 点 (px, py, pz) が箱の内側にあるか。境界上は内側と数える。
+ */
+export function insideBox(
+  px: number, py: number, pz: number,
+  minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number,
+): boolean {
+  return px >= minX && px <= maxX && py >= minY && py <= maxY && pz >= minZ && pz <= maxZ;
+}
+
+/**
+ * 窓の中心の 1 軸ぶん。retreat が真なら [min, max] の中点、偽なら p を [min, max] へ丸めた値。
+ *
+ * **カメラが箱の内側にあるときは retreat を立てる** — 丸めた値はカメラ位置そのものになるが、
+ * そこに遮蔽器は無いので、窓の中心にすると必ず空を撮る。
+ */
+export function anchorAxis(p: number, min: number, max: number, retreat: boolean): number {
+  if (retreat) return (min + max) / 2;
+  return Math.min(Math.max(p, min), max);
 }
