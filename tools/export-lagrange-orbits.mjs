@@ -34,8 +34,27 @@ const PROPAGATE_STEPS = 16000;
 // 周期軌道として認める閉合残差(軌道の広がりに対する比)。超えたメンバーは除外する。
 const CLOSURE_TOLERANCE = 1e-3;
 
-const physics = loadPhysicsModules(['cr3bp']);
-const { cr3bp } = physics;
+const physics = loadPhysicsModules(['cr3bp', 'solar-system']);
+const { cr3bp, solarSystem } = physics;
+
+// 系の主天体 id(src/physics/solar-system.ts の SOLAR_SYSTEM キーと対応)。JPL の族データは
+// 副天体の半径しか返さないため、主天体への衝突判定にはゲームのレジストリの半径を使う。
+const PRIMARY_BODY = {
+  'earth-moon': 'earth',
+  'sun-earth': 'sun',
+  'sun-mars': 'sun',
+  'jupiter-europa': 'jupiter',
+  'saturn-titan': 'saturn',
+  'saturn-enceladus': 'saturn',
+  'mars-phobos': 'mars',
+};
+
+// 系の主天体の半径 [km]。
+function primaryRadiusKm(system) {
+  const bodyId = PRIMARY_BODY[system];
+  const body = solarSystem.SOLAR_SYSTEM[bodyId];
+  return body.radius / 1000;
+}
 
 // 点列の中心から最も離れた点までの距離。閉合残差を測る物差しにする。
 function orbitSize(points) {
@@ -44,9 +63,20 @@ function orbitSize(points) {
   return Math.max(...points.map((p) => Math.hypot(p[0] - center[0], p[1] - center[1], p[2] - center[2])));
 }
 
-// メンバー1件を積分し、弧長等間隔+時刻割合つきの点列と閉合残差を求める。
-// 残差が許容を超えたら null(呼び出し側が除外して報告する)。
-function bakeMember(mu, raw, samples) {
+// centerX(CR3BP 無次元座標での中心天体の x、重心原点)までの最近接距離 [km]。CR3BP は天体を
+// 質点として扱うため、周期軌道として成り立つ点列でも実際の天体半径より近づくことがある。
+function closestApproachKm(centerX, lunit, points) {
+  let min = Infinity;
+  for (const p of points) {
+    const d = Math.hypot(p[0] - centerX, p[1], p[2]) * lunit;
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+// メンバー1件を積分し、弧長等間隔+時刻割合つきの点列・閉合残差・主天体/副天体への最近接距離を
+// 求める。残差が許容を超えたら ok:false(呼び出し側が除外して報告する)。
+function bakeMember(mu, lunit, raw, samples) {
   const state = raw.state;
   const sampled = cr3bp.sampleOrbitByArcLengthWithTime(mu, state, raw.period, samples, PROPAGATE_STEPS);
   const end = cr3bp.cr3bpPropagate(mu, state, raw.period, PROPAGATE_STEPS);
@@ -54,17 +84,27 @@ function bakeMember(mu, raw, samples) {
   const size = orbitSize(sampled);
   const residual = size > 0 ? gap / size : Infinity;
   if (!(residual < CLOSURE_TOLERANCE)) return { ok: false, residual };
-  return { ok: true, points: sampled, jacobi: raw.jacobi, period: raw.period, stability: raw.stability };
+  return {
+    ok: true,
+    points: sampled,
+    jacobi: raw.jacobi,
+    period: raw.period,
+    stability: raw.stability,
+    periapsis: closestApproachKm(-mu, lunit, sampled),
+    perilune: closestApproachKm(1 - mu, lunit, sampled),
+  };
 }
 
 // 1系ぶんのキャッシュを焼き込む。excluded に除外したメンバーの報告を積む。
 function bakeSystem(cache, samples, excluded) {
+  const primaryRadius = primaryRadiusKm(cache.system);
   const families = {};
   for (const [familyKey, family] of Object.entries(cache.families)) {
-    const records = [];
-    const pointChunks = [];
+    let records = [];
+    let pointChunks = [];
+    let collidesFlags = [];
     family.members.forEach((raw, i) => {
-      const baked = bakeMember(cache.mu, raw, samples);
+      const baked = bakeMember(cache.mu, cache.lunit, raw, samples);
       if (!baked.ok) {
         excluded.push(`${cache.system} ${familyKey}[${i}]: 閉合残差 ${baked.residual.toExponential(2)}`);
         return;
@@ -74,12 +114,35 @@ function bakeSystem(cache, samples, excluded) {
         jacobi: baked.jacobi,
         stability: baked.stability,
       });
+      collidesFlags.push(baked.perilune < cache.secondaryRadius || baked.periapsis < primaryRadius);
       const chunk = new Float32Array(samples * 4);
       baked.points.forEach((p, j) => chunk.set(p, j * 4));
       pointChunks.push(chunk);
     });
+
+    // 主天体・副天体いずれかに衝突する(近点距離が半径未満の)メンバーを族の端から連続して
+    // 落とす。族は振幅について連続な列なので、途中に穴を開けないよう両端からだけ削る。
+    let start = 0;
+    while (start < records.length && collidesFlags[start]) start++;
+    let end = records.length - 1;
+    while (end >= start && collidesFlags[end]) end--;
+    const trimmedCount = start + (records.length - 1 - end);
+    if (trimmedCount > 0) {
+      excluded.push(`${cache.system} ${familyKey}: 主星または副星に衝突するメンバーを族の端から ${trimmedCount} 件除外`);
+    }
+    records = records.slice(start, end + 1);
+    pointChunks = pointChunks.slice(start, end + 1);
+    collidesFlags = collidesFlags.slice(start, end + 1);
+    // 端を落としてもなお内部に衝突メンバーが残っていれば(通常は起きない)個別に除外する。
+    const innerCollisions = collidesFlags.filter(Boolean).length;
+    if (innerCollisions > 0) {
+      excluded.push(`${cache.system} ${familyKey}: 族の端以外で主星または副星に衝突するメンバーが ${innerCollisions} 件見つかったため個別に除外`);
+      records = records.filter((_, i) => !collidesFlags[i]);
+      pointChunks = pointChunks.filter((_, i) => !collidesFlags[i]);
+    }
+
     if (records.length === 0) {
-      excluded.push(`${cache.system} ${familyKey}: 閉合するメンバーが1件も無いため出力しない`);
+      excluded.push(`${cache.system} ${familyKey}: 閉合し主星・副星に衝突しないメンバーが1件も無いため出力しない`);
       continue;
     }
     // s=0 を必ず「小さい側」に揃える。JPL が族を返す向きは族によって違うので、両端の広がりを

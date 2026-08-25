@@ -8,6 +8,7 @@ import { CelestialBodyId } from '../../physics/celestial-body';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { albedoOf, DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { textureOf } from '../../render/celestial-textures';
+import { MoonSurfaceMarkings } from '../../render/moon-surface-markings';
 import { CelestialView } from './celestial-view';
 import { EarthView } from './earth-view';
 import { SphereView } from './sphere-view';
@@ -81,7 +82,13 @@ export type CelestialViewDef = { readonly name: string; create(): CelestialView 
 
 export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   earth: { name: '地球', create: () => new EarthView() },
-  moon: texturedSatelliteEntry('moon', '月'),
+  moon: {
+    name: '月',
+    create: () => new SphereView(
+      'moon', texturedSurface('moon'), bodyDef(SOLAR_SYSTEM, 'moon').radius, shapeOf('moon'),
+      undefined, () => new MoonSurfaceMarkings(),
+    ),
+  },
   mercury: planetEntry('mercury', '水星'),
   venus: planetEntry('venus', '金星'),
   mars: planetEntry('mars', '火星'),

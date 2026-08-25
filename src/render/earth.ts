@@ -8,6 +8,7 @@ import { R_EARTH } from '../physics/solar-system';
 import { EARTH_TEXTURES } from './celestial-textures';
 import { CelestialSurface } from './celestial-surface';
 import { BodyGraticule } from './body-graticule';
+import { EarthCoastline } from './earth-coastline';
 
 import { Aurora } from './aurora';
 
@@ -44,6 +45,8 @@ export interface Earth {
   setRotation(angleRad: number): void;
   // 経緯度グリッドを出すかどうか。
   setGraticuleVisible(visible: boolean): void;
+  // 海岸線(模式図スタイル用)を出すかどうか。
+  setCoastlineVisible(visible: boolean): void;
   // オーロラのカーテンを出すかどうか。
   setAuroraVisible(visible: boolean): void;
   // 見かけ直径[px]に応じた地表メッシュのLOD段を選ぶ。
@@ -66,6 +69,8 @@ export function createEarth(): Earth {
   surface.addTo(surfaceScale);
   const graticule = new BodyGraticule();
   graticule.addTo(surfaceScale);
+  const coastline = new EarthCoastline();
+  coastline.addTo(surfaceScale);
   spin.add(surfaceScale);
 
   // オーロラは磁気極に固定なので自転と一緒に回す
@@ -87,6 +92,9 @@ export function createEarth(): Earth {
     setGraticuleVisible(visible: boolean) {
       graticule.setVisible(visible);
     },
+    setCoastlineVisible(visible: boolean) {
+      coastline.setVisible(visible);
+    },
     setAuroraVisible(visible: boolean) {
       for (const a of auroras) a.mesh.visible = visible;
     },
@@ -104,6 +112,7 @@ export function createEarth(): Earth {
       group.removeFromParent();
       surface.dispose();
       graticule.dispose();
+      coastline.dispose();
       earthMap.dispose();
       cloudsMap.dispose();
       for (const a of auroras) a.dispose();

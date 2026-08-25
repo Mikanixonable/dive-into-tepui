@@ -14,7 +14,6 @@ import { Player } from '../../player/player';
 import type { RadiatorSide } from '../../player/radiator';
 import type { SolarSide } from '../../player/power';
 import { Base } from '../../game-entity/base';
-import { DANGER } from '../../theme';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -301,7 +300,7 @@ export class VesselPanel {
     dom.button.setOn(deployed);
 
     const fillWidth = `${100 - wearPct}%`;
-    const fillColor = highWear ? DANGER : 'transparent';
+    const fillColor = highWear ? 'var(--color-error)' : 'transparent';
     if (dom.lastFillWidth !== fillWidth) {
       dom.fill.style.width = fillWidth;
       dom.lastFillWidth = fillWidth;
