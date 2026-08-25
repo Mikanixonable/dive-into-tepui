@@ -88,7 +88,7 @@ export const MARKER_STYLE = `
 .mk-impact { color: var(--color-error); }
 .mk-plantick { color: var(--text-dim); }
 
-.mk-poi { color: var(--text-strong); text-shadow: 0 0 4px var(--bg); }
+.mk-poi { color: var(--text-strong); }
 .mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-poi)); }
 .mk-poi.mk-lagrange .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-lagrange)); }
 .mk-poi .lbl { font-size: var(--font-s); border-radius: var(--radius-s); background: var(--surface-weak); white-space: pre; line-height: 1.25; text-align: center; display: inline-flex; flex-direction: column; align-items: flex-start; }
@@ -130,4 +130,12 @@ export const MARKER_STYLE = `
 /* ラベルの引き出し線。色をここへ置くことで、模式図の白背景でも読める値へ差し替えられる。 */
 .mk-lead { stroke: ${FILL_4}; }
 [data-render-style="schematic"] .mk-lead { stroke: ${LIGHT_PALETTE.muted}; }
+
+/* 天体ラベルの札。模式図では白背景の上に文字だけで読ませるため、地と影を落とす。
+   マップビューでの背景・文字色は --space-label-* トークン経由で上書きされる
+   (map-view-style.ts が var(--space-label-background) 等を参照するため)。 */
+[data-render-style="schematic"] .mk-poi .lbl { background: none; text-shadow: none; }
+[data-render-style="schematic"] .mk-poi:not(.mk-lagrange) .lbl .lbl-main,
+[data-render-style="schematic"] .mk-poi:not(.mk-lagrange) .lbl .lbl-sub,
+[data-render-style="schematic"] .mk-poi.mk-lagrange .lbl { color: ${LIGHT_PALETTE.title}; }
 `;

@@ -1,5 +1,8 @@
 // HUD のレイアウト骨格 CSS: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レール。
 import { OVERLAY_LAYER_STYLE } from '../overlay-layer';
+import { THEME_PRESETS } from '../../theme';
+
+const LIGHT_PALETTE = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
 export const HUD_LAYOUT_STYLE = `
 #hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -47,6 +50,9 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud[data-render-style="schematic"] {
   --glass-quiet: color-mix(in srgb, var(--surface-1) 94%, transparent);
   --glass-focus: color-mix(in srgb, var(--surface-1) 97%, transparent);
+  --space-label-background: transparent;
+  --space-label-text: ${LIGHT_PALETTE.title};
+  --space-label-subtext: ${LIGHT_PALETTE.muted};
 }
 
 /* Panel 外枠 */
@@ -79,7 +85,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 /* 左右レール */
 #hud .hud-rail {
-  position: absolute; top: 48px; bottom: 12px;
+  position: absolute; top: 78px; bottom: 12px;
   display: flex; flex-direction: column; align-items: stretch; gap: 7px;
   pointer-events: none; min-height: 0; overflow-x: hidden; overflow-y: auto;
   scrollbar-width: thin; overscroll-behavior: contain;
