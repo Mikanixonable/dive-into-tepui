@@ -4,6 +4,8 @@ import * as THREE from 'three/webgpu';
 import { Q_ECL_TO_ECI } from '../physics/ecliptic';
 import { STAR_SHELL_RADIUS } from './stars';
 import { markOverlay } from './pipeline/lit-layer';
+import { SCHEMATIC_LINE } from './schematic-style';
+import type { RenderStyle } from './render-style';
 
 export interface CelestialGridVisibility {
   readonly stars: boolean;
@@ -196,10 +198,13 @@ class GridPlane {
   private basis: PlaneBasis;
   private readonly initialBasis: PlaneBasis;
   private readonly basisRotation = new THREE.Quaternion();
+  private readonly realisticColor: string;
+  private appliedStyle: RenderStyle | null = null;
 
   constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
     this.basis = basis;
     this.initialBasis = basis;
+    this.realisticColor = `#${color.toString(16).padStart(6, '0')}`;
     this.labelLayer = document.createElement('div');
     this.labelLayer.className = 'celestial-grid-labels';
     Object.assign(this.labelLayer.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '8' });
@@ -242,7 +247,7 @@ class GridPlane {
     const addLabel = (text: string, cls = '') => {
       const el = document.createElement('div');
       el.textContent = text; el.className = `celestial-grid-label ${cls}`;
-      Object.assign(el.style, { position: 'fixed', color: `#${color.toString(16).padStart(6, '0')}`, opacity: '0.72', font: '10px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
+      Object.assign(el.style, { position: 'fixed', color: this.realisticColor, opacity: '0.72', font: '10px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
       this.labelLayer.appendChild(el); this.labels.push(el); return el;
     };
     addLabel(`${name} PLANE`, 'plane');
@@ -281,7 +286,25 @@ class GridPlane {
     for (const obj of [this.planeLine, this.gridLine, this.poleLine]) obj.quaternion.copy(this.basisRotation);
   }
 
-  sync(planeVisible: boolean, poleVisible: boolean, gridVisible: boolean, scale: number, camera: THREE.Camera): void {
+  // 模式図では区別の意味を持たない黒へ固定し、写実では元の色へ戻す。
+  private applyStyle(style: RenderStyle): void {
+    if (style === this.appliedStyle) return;
+    this.appliedStyle = style;
+    const color = style === 'schematic' ? `#${SCHEMATIC_LINE.toString(16).padStart(6, '0')}` : this.realisticColor;
+    for (const line of [this.planeLine, this.gridLine, this.poleLine]) {
+      (line.material as THREE.LineBasicMaterial).color.set(color);
+    }
+    for (const el of this.labels) {
+      el.style.color = color;
+      el.style.textShadow = style === 'schematic' ? 'none' : '0 0 4px #000';
+    }
+  }
+
+  sync(
+    style: RenderStyle, planeVisible: boolean, poleVisible: boolean, gridVisible: boolean,
+    scale: number, camera: THREE.Camera,
+  ): void {
+    this.applyStyle(style);
     this.planeLine.visible = planeVisible;
     this.gridLine.visible = gridVisible;
     this.poleLine.visible = poleVisible;
@@ -357,9 +380,13 @@ export class CelestialGrid {
   // 星殻と同じく描画原点(= カメラ)に固定した半径殻として、2 面ぶんの可視状態を反映する。
   // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(広範囲視点では呼び出し側が
   // CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS を渡す)。
-  sync(visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {
-    this.equator.sync(visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole, visibility.equator && visibility.equatorGrid, scale, cam);
-    this.ecliptic.sync(visibility.ecliptic && visibility.eclipticPlane, visibility.ecliptic && visibility.eclipticPole, visibility.ecliptic && visibility.eclipticGrid, scale, cam);
+  sync(style: RenderStyle, visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {
+    this.equator.sync(
+      style, visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole,
+      visibility.equator && visibility.equatorGrid, scale, cam);
+    this.ecliptic.sync(
+      style, visibility.ecliptic && visibility.eclipticPlane, visibility.ecliptic && visibility.eclipticPole,
+      visibility.ecliptic && visibility.eclipticGrid, scale, cam);
   }
 
   // 2面ぶんの GridPlane を解放する。

@@ -222,7 +222,7 @@ export class EnvironmentScene {
       cameraSystem, markerManager, celestialBodies);
     this.orbitGuideLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
-      gridVisibility, cameraSystem.activeCamera,
+      style, gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
   }
