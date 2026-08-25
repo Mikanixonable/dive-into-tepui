@@ -67,6 +67,14 @@ function rk4StateStep(mu: number, s: Cr3bpState, dt: number): Cr3bpState {
   return [combine(0), combine(1), combine(2), combine(3), combine(4), combine(5)];
 }
 
+// 状態を時間 duration だけ進める。steps は固定刻みの段数。
+export function cr3bpPropagate(mu: number, s: Cr3bpState, duration: number, steps: number): Cr3bpState {
+  let state = s;
+  const dt = duration / steps;
+  for (let i = 0; i < steps; i++) state = rk4StateStep(mu, state, dt);
+  return state;
+}
+
 // 折れ線を弧長で等分したときの、各サンプル点が乗る辺と、その辺上の内分比。位置も時刻も
 // この同じ割り当てから作れるので、弧長の累積は1度しか計算しない。
 interface ResampleSpot {

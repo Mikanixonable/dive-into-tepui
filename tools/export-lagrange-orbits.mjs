@@ -44,9 +44,20 @@ function orbitSize(points) {
   return Math.max(...points.map((p) => Math.hypot(p[0] - center[0], p[1] - center[1], p[2] - center[2])));
 }
 
-// メンバー1件を積分し、弧長等間隔+時刻割合つきの点列と閉合残差を求める。
-// 残差が許容を超えたら null(呼び出し側が除外して報告する)。
-function bakeMember(mu, raw, samples) {
+// 副天体中心(CR3BP 無次元座標で (1-mu, 0, 0))までの最近接距離 [km]。CR3BP は天体を質点として
+// 扱うため、周期軌道として成り立つ点列でも実際の副天体半径より近づくことがある。
+function periluneKm(mu, lunit, points) {
+  let min = Infinity;
+  for (const p of points) {
+    const d = Math.hypot(p[0] - (1 - mu), p[1], p[2]) * lunit;
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+// メンバー1件を積分し、弧長等間隔+時刻割合つきの点列・閉合残差・副天体への最近接距離を求める。
+// 残差が許容を超えたら ok:false(呼び出し側が除外して報告する)。
+function bakeMember(mu, lunit, raw, samples) {
   const state = raw.state;
   const sampled = cr3bp.sampleOrbitByArcLengthWithTime(mu, state, raw.period, samples, PROPAGATE_STEPS);
   const end = cr3bp.cr3bpPropagate(mu, state, raw.period, PROPAGATE_STEPS);
@@ -54,17 +65,25 @@ function bakeMember(mu, raw, samples) {
   const size = orbitSize(sampled);
   const residual = size > 0 ? gap / size : Infinity;
   if (!(residual < CLOSURE_TOLERANCE)) return { ok: false, residual };
-  return { ok: true, points: sampled, jacobi: raw.jacobi, period: raw.period, stability: raw.stability };
+  return {
+    ok: true,
+    points: sampled,
+    jacobi: raw.jacobi,
+    period: raw.period,
+    stability: raw.stability,
+    perilune: periluneKm(mu, lunit, sampled),
+  };
 }
 
 // 1系ぶんのキャッシュを焼き込む。excluded に除外したメンバーの報告を積む。
 function bakeSystem(cache, samples, excluded) {
   const families = {};
   for (const [familyKey, family] of Object.entries(cache.families)) {
-    const records = [];
-    const pointChunks = [];
+    let records = [];
+    let pointChunks = [];
+    let collidesFlags = [];
     family.members.forEach((raw, i) => {
-      const baked = bakeMember(cache.mu, raw, samples);
+      const baked = bakeMember(cache.mu, cache.lunit, raw, samples);
       if (!baked.ok) {
         excluded.push(`${cache.system} ${familyKey}[${i}]: 閉合残差 ${baked.residual.toExponential(2)}`);
         return;
@@ -74,12 +93,35 @@ function bakeSystem(cache, samples, excluded) {
         jacobi: baked.jacobi,
         stability: baked.stability,
       });
+      collidesFlags.push(baked.perilune < cache.secondaryRadius);
       const chunk = new Float32Array(samples * 4);
       baked.points.forEach((p, j) => chunk.set(p, j * 4));
       pointChunks.push(chunk);
     });
+
+    // 副天体に衝突する(近点距離が半径未満の)メンバーを族の端から連続して落とす。族は振幅に
+    // ついて連続な列なので、途中に穴を開けないよう両端からだけ削る。
+    let start = 0;
+    while (start < records.length && collidesFlags[start]) start++;
+    let end = records.length - 1;
+    while (end >= start && collidesFlags[end]) end--;
+    const trimmedCount = start + (records.length - 1 - end);
+    if (trimmedCount > 0) {
+      excluded.push(`${cache.system} ${familyKey}: 副天体に衝突するメンバーを族の端から ${trimmedCount} 件除外`);
+    }
+    records = records.slice(start, end + 1);
+    pointChunks = pointChunks.slice(start, end + 1);
+    collidesFlags = collidesFlags.slice(start, end + 1);
+    // 端を落としてもなお内部に衝突メンバーが残っていれば(通常は起きない)個別に除外する。
+    const innerCollisions = collidesFlags.filter(Boolean).length;
+    if (innerCollisions > 0) {
+      excluded.push(`${cache.system} ${familyKey}: 族の端以外で副天体に衝突するメンバーが ${innerCollisions} 件見つかったため個別に除外`);
+      records = records.filter((_, i) => !collidesFlags[i]);
+      pointChunks = pointChunks.filter((_, i) => !collidesFlags[i]);
+    }
+
     if (records.length === 0) {
-      excluded.push(`${cache.system} ${familyKey}: 閉合するメンバーが1件も無いため出力しない`);
+      excluded.push(`${cache.system} ${familyKey}: 閉合し副天体に衝突しないメンバーが1件も無いため出力しない`);
       continue;
     }
     // s=0 を必ず「小さい側」に揃える。JPL が族を返す向きは族によって違うので、両端の広がりを
