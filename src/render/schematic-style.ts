@@ -10,8 +10,8 @@ export const SCHEMATIC_LINE = 0x101014;
 export const SCHEMATIC_DEPTH_RATIO = 0.02;
 // 隣接画素との法線の内積がこれを下回ったら稜線とみなす(cos 40° ≈ 0.766)。
 export const SCHEMATIC_NORMAL_DOT = 0.766;
-// 輪郭を探す近傍までの距離 [px]。
-export const SCHEMATIC_EDGE_WIDTH_PX = 1;
+// 輪郭を探す近傍までの距離 [px]。写実の輪郭相当(1px)の2倍。
+export const SCHEMATIC_EDGE_WIDTH_PX = 2;
 
 // 天体へ貼る経緯度グリッドの刻み [deg] と色。
 export const GRATICULE_STEP_DEG = 15;
@@ -22,6 +22,11 @@ export const GRATICULE_RADIUS_RATIO = 1.002;
 
 // 環・太陽の輪郭円の色。
 export const OUTLINE_CIRCLE_COLOR = SCHEMATIC_LINE;
+
+// 3D UI パスを合成するとき、中心画素の上下左右へこの半径 [px] だけオフセットした4点も
+// 最大値でまとめて拾うダイレート半径。ネイティブ線は WebGPU で太さ制御を持たないため、
+// これで写実相当(1px)の2倍の太さへ底上げする。
+export const SCHEMATIC_OVERLAY_DILATE_PX = 0.5;
 
 // 3D UI パス(軌道線・軌跡線・天球グリッド・縮尺グリッド・Δv ギズモ)を白背景へ合成するときの
 // 色の落とし方。暗背景向けの明るい色をそのまま反転すると色相まで裏返り、線の色が持つ区別

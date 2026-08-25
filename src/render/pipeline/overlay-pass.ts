@@ -11,11 +11,14 @@
 // まま暗くして画面へ合成する。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { max, min, screenUV, texture, vec4 } from 'three/tsl';
+import { max, min, screenUV, texture, uniform, vec2, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import { SCHEMATIC_OVERLAY_ALPHA_GAIN, SCHEMATIC_OVERLAY_DARKEN } from '../schematic-style';
+import {
+  SCHEMATIC_OVERLAY_ALPHA_GAIN, SCHEMATIC_OVERLAY_DARKEN, SCHEMATIC_OVERLAY_DILATE_PX,
+} from '../schematic-style';
 import { setOverlayPassLayers } from './lit-layer';
 import type { RenderStyle } from '../render-style';
+import type { Vec2Node, Vec4Node } from '../tsl-types';
 
 export class OverlayPass {
   // 模式図スタイルで 3D UI レイヤーを描く RGBA ターゲット。アルファはプリマルチプライドとして
@@ -25,6 +28,8 @@ export class OverlayPass {
   private readonly compositeMaterial: THREE.MeshBasicNodeMaterial;
   // G バッファの深度を専用ターゲットへ写しつつ、色を透明で塗り潰す材質。
   private readonly depthCopyMaterial: THREE.MeshBasicNodeMaterial;
+  // ダイレートで拾う上下左右オフセット [screenUV]。解像度が変わるたびに render() 側が書き込む。
+  private readonly dilateOffset: THREE.UniformNode<'vec2', THREE.Vector2>;
   private static readonly sizeScratch = new THREE.Vector2();
 
   // 模式図スタイルが使う専用ターゲットと、それを暗くして画面へ合成するマテリアルを構築する。
@@ -42,6 +47,7 @@ export class OverlayPass {
     });
     this.target.texture.name = 'overlay-schematic';
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
+    this.dilateOffset = uniform(new THREE.Vector2());
 
     // 深度は G バッファのものを共有せず複製する — テクスチャを共有すると、リサイズや解放の際に
     // 一方の後始末がもう一方の描画中のテクスチャを破棄してしまう。全画素へ透明を書き込みながら
@@ -67,10 +73,21 @@ export class OverlayPass {
       blendSrcAlpha: THREE.OneFactor,
       blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
     });
+    // ネイティブ線は太さ制御を持たないため、中心と上下左右の4点をダイレート半径ぶん
+    // オフセットしてサンプルし、成分ごとの最大値を採って線を太らせる。
+    const sampleAt = (uv: Vec2Node): Vec4Node => texture(this.target.texture, uv);
+    const neighbors: readonly Vec4Node[] = [
+      sampleAt(screenUV.add(vec2(this.dilateOffset.x, 0))),
+      sampleAt(screenUV.sub(vec2(this.dilateOffset.x, 0))),
+      sampleAt(screenUV.add(vec2(0, this.dilateOffset.y))),
+      sampleAt(screenUV.sub(vec2(0, this.dilateOffset.y))),
+    ];
+    const dilated = neighbors.reduce((acc: Vec4Node, n) => max(acc, n), sampleAt(screenUV));
+
     // ターゲットの rgb はアルファを掛けた後の値。色を触るにはいったんアルファを外し、
     // 暗くしてから掛け直す — 掛かったまま暗くすると、線の縁(半透明な画素)だけ余計に
     // 変換されてアンチエイリアスの縁が背景へ溶ける。
-    const sample = texture(this.target.texture, screenUV);
+    const sample = dilated;
     const unpremultiplied = sample.rgb.div(max(sample.a, 1e-4));
     const alpha = min(sample.a.mul(SCHEMATIC_OVERLAY_ALPHA_GAIN), 1);
     this.compositeMaterial.colorNode = vec4(
@@ -106,6 +123,7 @@ export class OverlayPass {
     const width = OverlayPass.sizeScratch.x;
     const height = OverlayPass.sizeScratch.y;
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    this.dilateOffset.value.set(SCHEMATIC_OVERLAY_DILATE_PX / width, SCHEMATIC_OVERLAY_DILATE_PX / height);
 
     this.renderer.setRenderTarget(this.target);
     this.renderer.autoClear = false;
