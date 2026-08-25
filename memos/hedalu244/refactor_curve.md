@@ -182,73 +182,17 @@ private にすれば、**任意のサンプラと任意の初期頂点列の組�
   `{kind:'knots', count, at, position, tangent}`、`revolutions` が周回数。
   `GuideCurve` は `setAnalytic` / `setHermite` / `pointAt` / `samplePoints` を持つ。
   変換は `orbit-guide-lines.ts` の `applyLoop` 1箇所。
-- 参照軌道4種とリサジューは解析サンプラ。焼き込み族は節点列で、接線は隣接点の中心差分
-  (**手順5 で焼き込みの速度へ差し替える**)。
+- 参照軌道4種とリサジューは解析サンプラ。焼き込み族は節点列で、接線は焼き込みの速度
+  (`CATALOG_STRIDE = 7`、1メンバー48点)。
 - 進行方向マーカーは `GuideCurve.pointAt` で描かれている曲線を読む。個数は
   `MANY_MARKERS_PER_REVOLUTION`(周回数あたり6個、上限12個)で、サンプル数から導かない。
-- ゼロ速度曲線だけが `polylineSampler` を `setAnalytic` へ流している。
-  **手順6 でエルミートへ移し、`polylineSampler` ごと削除する。**
+- ゼロ速度曲線は等高線の点列を中心差分の接線で節点列にして `setHermite` へ流す
+  (`contourKnots`)。頂点予算は抽出した点数の 1.5 倍。
+  **点列を線形補間するサンプラは `src/` から無くなった。**
 - 線のマテリアル色は `styleFor` が毎フレーム組む。頂点カラー(`colorAt`)を持つのは族の
   グラデーション線だけで、単色の線は `colorAt` を渡さない。
 
 ## 手順
-
-### 手順5. 焼き込みカタログに速度を持たせ、エルミートサンプラへ移す
-
-**目的**
-
-カタログの点列は本当に離散データだが、焼き込み時には速度が手元にある。これを持たせて
-エルミート補間で埋め、点数を半分にする。これで4種類のガイド線すべてが C¹ のサンプラになる。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/cr3bp.ts` | `sampleOrbitByArcLengthWithTime`(133-157行目) が位置・時刻に加えて速度も返すようにする（`path` に6次元状態を持ち、辺の内分で速度も内挿する）。返り値の型 `Vec3TimeTuple`(127行目) を差し替える |
-| `tools/export-lagrange-orbits.mjs` | `SAMPLES_DEFAULT`(26行目) を 96→48、`SAMPLES_FALLBACK`(27行目) を 64→32。`bakeMember`(79行目) / `bakeSystem`(99行目) の `chunk` を1点7値で書く |
-| `src/physics/orbit-catalog.ts` | `CATALOG_STRIDE`(54行目) を 4→7。`CatalogFamily.points`(33行目) のコメントを `[x, y, z, tFrac, vx, vy, vz]` へ直す |
-| `src/physics/orbit-guide.ts` | `catalogLoop`(176-215行目) が `CurveKnots` を返すようにする（`GuideLoop` は解析サンプラか節点かの直和になる）。節点アクセサは焼き込みの `Float32Array` をストライド 7 で直に読む（詰め替えない）。パラメータは tFrac、接線は 速度 × 周期。メンバー間の内分(`mix`)は速度成分にも掛ける |
-| `src/game/celestial/guide-curve.ts` | `setHermite(origin, knots)` を足し、焼き込み族の線はこちらを通す |
-| `src/assets/orbits/*.json` | `npm run export-lagrange-orbits` で全6ファイルを焼き直す |
-| `tests/physics/orbit-catalog.test.ts` | `CATALOG_STRIDE` 依存の添字(57 / 70-73 / 89-102行目)を 7 前提へ直し、速度成分の健全性（有限・非ゼロ）を検査に足す |
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run test:physics` が通る。
-- `npm run export-lagrange-orbits` の出力ログで、バンドル2系が `BUNDLE_SIZE_TARGET`(4.9MB) 以内
-  かつ「点数を落として焼き直す」の警告が出ないこと。
-- `ls -la src/assets/orbits/` で `lagrange-orbits.json` が 4.14MB → 3.6〜3.8MB になっていること。
-- `npm run render-lab:shot` が通る。
-- マップビューで地球-月系のハロー軌道族を ON にし、線へズームインして**角ばらないこと**を
-  目で見る（`49441125` が 128→512 で対処しようとした症状）。
-
-### 手順6. ゼロ速度曲線を種類Bへ移し、頂点予算を実データ量から決める
-
-**目的**
-
-ゼロ速度曲線は滑らかな関数 2Ω の等位集合であり、マーチングスクエアの出力はその数値サンプルに
-すぎない。手順2で残した線形補間サンプラを、隣接点の中心差分を接線とするエルミート補間へ移す。
-これで `Curve` へ渡るサンプラが**すべて種類Aか種類Bのどちらか**になる（達成目標5）。
-併せて `VERTEX_BUDGET = 2000` を実点数から決める。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/zero-velocity-lines.ts` | `reembed`(186-211行目) で組むサンプラを、`GuideCurve.setHermite` へ `points3d` の節点アクセサを渡す形へ置き換える。パラメータは点の添字を [0,1] へ正規化した値、接線は隣接点の中心差分（`closed` なら端は巻き戻して取る、開いた成分の端は片側差分） |
-| `src/game/celestial/zero-velocity-lines.ts` | `VERTEX_BUDGET`(40行目) を削除し、`rebuildShapes`(143-183行目) で `GuideCurve` を作るときに `shape.points2d.length` から予算を決める |
-| `src/game/celestial/zero-velocity-lines.ts` | `RESOLUTION`(29行目) のコメントから「見た目」の根拠を落とす。エルミート補間へ移したあと、この値が決めるのは連結成分の判定（ネックが偽って閉じないか）だけになる |
-| `src/game/celestial/zero-velocity-lines.ts` | 67-69行目の孤児コメント（共通化後に取り残された「読み取り専用ファイルにある実装をここで複製している」）を削除する |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -n "VERTEX_BUDGET" src/game/celestial/zero-velocity-lines.ts` が 0 件。
-- `grep -n "複製している" src/game/celestial/zero-velocity-lines.ts` が 0 件。
-- マップビューでゼロ速度曲線を ON にし、ヤコビ定数を臨界値付近（地球-月系で L1 のネックが
-  開閉するあたり）へ動かして、ネックの形が今までどおり出ることを目で見る。
-  **ネックの尖った角が丸まっていないこと**を併せて確認する（中心差分の接線が角を1格子ぶん
-  丸めるため。丸まるなら、その成分だけ接線を片側差分へ落とすか、`RESOLUTION` を上げる）。
 
 ## 見積り
 
