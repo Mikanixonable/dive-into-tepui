@@ -16,7 +16,7 @@ const outPath = join(repoRoot, 'src', 'assets', 'orbits', 'lagrange-orbits.json'
 // 族に沿って保存するメンバー数と、1メンバーあたりの点数。
 const HALO_MEMBERS = 21;
 const DRO_MEMBERS = 20;
-const POINTS_PER_ORBIT = 72;
+const POINTS_PER_ORBIT = 720;
 const COORD_DIGITS = 5;
 // 重心からこれ以上広がった軌道はガイド線として読めないので、そこを族末端とする。
 const FAMILY_EXTENT_LIMIT = 2.5;
