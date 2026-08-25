@@ -199,9 +199,7 @@ export class ProteinCombatState {
       sites: this.siteStates.map((site) => {
         const attackActionId = this.attackAction?.id;
         const attackable = attackActionId !== undefined && site.definition.actions.includes(attackActionId);
-        const label = attackable
-          ? `攻撃部位${++attackOrdinal}`
-          : site.definition.type === 'interface' ? '結合界面' : site.definition.type === 'core' ? '核心部' : '修飾部位';
+        const label = attackable ? `${site.definition.label}(攻撃部位${++attackOrdinal})` : site.definition.label;
         return {
         id: site.definition.id,
         label,

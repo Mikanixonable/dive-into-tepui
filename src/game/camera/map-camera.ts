@@ -374,7 +374,8 @@ export class MapCamera {
     return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, bodyDef(this.ephemeris.registry, this._focus.id).radius);
   }
 
-  // カメラのロールのみを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻す。
+  // ロールを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻し、パンでフォーカスから
+  // ずれていた注視点もフォーカス位置へ戻す。
   reset(): void {
     const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const offset = qRotate(this.rotationQ, FRAME_FORWARD);
@@ -382,7 +383,8 @@ export class MapCamera {
     const up = norm(frameDirVector(toFrameDir(tf, upAxisEci)));
     const projectedUp = norm(this.projectOntoPlane(up, offset));
     this.setRotationBasis(offset, projectedUp);
-    this._hud.hint('マップ視点のロールをリセット');
+    this.resetPan();
+    this._hud.hint('マップ視点をリセット');
   }
 
   // パン変位をゼロに戻す。

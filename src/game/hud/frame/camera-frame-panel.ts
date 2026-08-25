@@ -53,12 +53,12 @@ export class CameraFramePanel {
     this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
 
     this.cameraCenterZone = new AnchorZone(popupRoot, '基準', ephemeris, '固定を解除', overlayManager);
-    this.cameraCenterZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-origin-zone');
+    this.cameraCenterZone.element.classList.add('hud-frame-origin-zone');
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
     this.panel.appendChild(this.cameraCenterZone.element);
 
     this.cameraRotationZone = new RotationZone('回転追従', ephemeris);
-    this.cameraRotationZone.element.classList.add('hud-frame-scroll-zone', 'hud-frame-rotation-zone');
+    this.cameraRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.cameraRotationZone.onSelect = (rotatingWith) => mapCamera.setCameraRotation(rotatingWith);
     this.panel.appendChild(this.cameraRotationZone.element);
 

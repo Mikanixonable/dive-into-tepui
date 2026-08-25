@@ -16,6 +16,7 @@ import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { float, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { GraphicsSettingsData } from '../graphics-settings';
+import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
@@ -25,10 +26,11 @@ import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
 import { SunOcclusion } from './sun-occlusion';
 import { OverlayPass } from './overlay-pass';
+import { SchematicComposite } from './schematic-composite';
 import { SunLight } from './sun-light';
 import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
-import { registerProteinMotionRenderer } from '../protein-motion-material';
+import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 
 // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
 // 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
@@ -52,6 +54,8 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
+  private readonly schematicComposite: SchematicComposite;
+  private readonly schematicMaterial: THREE.MeshBasicNodeMaterial;
   // 深度デバッグ表示が使う uniform。composite パスは QuadMesh 自前の固定直交カメラ
   // (near=0/far=1)で描かれるため、TSL の cameraNear/cameraFar/cameraProjectionMatrix
   // 組み込みノードはここでは実カメラの値を返さない — render() が毎フレーム実カメラの
@@ -94,7 +98,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.atmospherePass = new AtmospherePass(
       renderer, this.gbuffer, this._sunLight, this._sunOcclusion, this.occlusionPass, gpu,
     );
-    this.overlayPass = new OverlayPass(renderer, gpu);
+    this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
     // antialias はレンダラ生成時にしか渡せず(scene.ts 参照)、キャンバスへの直描きは
     // それでマルチサンプルされていた。オフスクリーンの HDR ターゲットは自前で samples を
@@ -149,6 +153,11 @@ export class RenderPipeline implements DebugTargetHost {
         vec4(toneMapped(texture(this.atmospherePass.texture, screenUV).rgb), 1),
       ),
     };
+    // 模式図用の合成マテリアルは compositeMaterials とは別に1枚だけ持つ。debugTarget の選択肢
+    // (DebugTargetId)には含まれない、表示スタイルそのものの切り替えのため。
+    this.schematicComposite = new SchematicComposite(this.gbuffer, this.depthDebugProjInv);
+    this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
+
     this.quad = new QuadMesh(this.compositeMaterials.off);
   }
 
@@ -200,14 +209,18 @@ export class RenderPipeline implements DebugTargetHost {
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
-  // world → 合成 → 3D UI の順に発行する。meshShadow が偽ならメッシュの影だけを描かない。
+  // world → 合成 → 3D UI の順に発行する。Game.render() から毎フレーム 1回呼ぶ。meshShadow が
+  // 偽ならメッシュの影だけを描かない。模式図スタイルではマテリアル・大気・world の3段を飛ばす。
   // デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが実際に
   // 生成した中身であるべきため。
-  render(scene: THREE.Scene, camera: THREE.Camera, meshShadow: boolean): void {
+  render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, meshShadow: boolean): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
     const height = this.drawingBufferSize.y;
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+
+    // 影パスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
+    flushProteinMotionComputes(this.renderer);
 
     // 太陽光の影パス。G バッファを必要としないので、その前に置く。設定で切られているフレームは
     // スロットが空のまま返り、遮蔽関数側も 1 を返す。
@@ -222,27 +235,37 @@ export class RenderPipeline implements DebugTargetHost {
     // ライティングパス。G バッファと遮蔽度だけを読むので scene は渡さない。
     this.lightPrepass.render(camera, width, height);
 
-    // マテリアルパス。LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを this.target(このあとの
-    // world パスと共有 — 最初の書き込みなのでクリアする)へ描く。「マテリアル」デバッグ表示を選んでいる
-    // ときだけ、自前のターゲットへも同じジオメトリをもう一度描く。
-    this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
+    // 模式図は G バッファの深度・法線だけから輪郭を出すため、マテリアルパス・大気パス・world
+    // パスを経ない。星野・大気・オーロラ・環の質感・小天体の点群・ビルボードは、この3段が
+    // 描いていたものなので、呼ばないだけで画面から消える。
+    if (style === 'schematic') {
+      this.schematicComposite.update(width, height);
+      this.quad.material = this.schematicMaterial;
+    } else {
+      // マテリアルパス。LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを this.target(このあとの
+      // world パスと共有 — 最初の書き込みなのでクリアする)へ描く。「マテリアル」デバッグ表示を選んでいる
+      // ときだけ、自前のターゲットへも同じジオメトリをもう一度描く。
+      this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
 
-    // 大気パス。不透明の絵の上へ画面空間で重ねる。G バッファ深度と視線だけを読むので scene は渡さない。
-    this.atmospherePass.render(camera, this.target, width, height, this.debugTarget === 'atmosphere');
+      // 大気パス。不透明の絵の上へ画面空間で重ねる。G バッファ深度と視線だけを読むので scene は渡さない。
+      this.atmospherePass.render(camera, this.target, width, height, this.debugTarget === 'atmosphere');
 
-    // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
-    // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
-    // マテリアルパスの描画(色・深度とも)を残したまま重ね描きする — world パスは透明物
-    // (オービットライン・プルーム・ビルボードなど)を自分の描画順の最後に描くため、不透明な
-    // 自艦の深度がその前に書き込まれていないと、自艦の手前にある透明物がそれで上書きされて
-    // しまう。beginPass はそのパスが発行する renderer.render() の直前に呼び、GPU 所要時間の
-    // 計測先を申告する。
-    this.renderer.setRenderTarget(this.target);
-    this.renderer.autoClear = false;
-    this.gpu.beginPass(GPU_PASS.world);
-    this.renderer.render(scene, camera);
-    this.renderer.autoClear = true;
-    this.renderer.setRenderTarget(null);
+      // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
+      // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
+      // マテリアルパスの描画(色・深度とも)を残したまま重ね描きする — world パスは透明物
+      // (オービットライン・プルーム・ビルボードなど)を自分の描画順の最後に描くため、不透明な
+      // 自艦の深度がその前に書き込まれていないと、自艦の手前にある透明物がそれで上書きされて
+      // しまう。beginPass はそのパスが発行する renderer.render() の直前に呼び、GPU 所要時間の
+      // 計測先を申告する。
+      this.renderer.setRenderTarget(this.target);
+      this.renderer.autoClear = false;
+      this.gpu.beginPass(GPU_PASS.world);
+      this.renderer.render(scene, camera);
+      this.renderer.autoClear = true;
+      this.renderer.setRenderTarget(null);
+
+      this.quad.material = this.compositeMaterials[this.debugTarget];
+    }
 
     // composite パス。QuadMesh.render も内部で renderer.render() を呼ぶので、world パスとは
     // 別の GPU 計測枠が付く。
@@ -252,12 +275,11 @@ export class RenderPipeline implements DebugTargetHost {
       this.depthDebugNear.value = camera.near;
       this.depthDebugFar.value = camera.far;
     }
-    this.quad.material = this.compositeMaterials[this.debugTarget];
     this.gpu.beginPass(GPU_PASS.composite);
     this.quad.render(this.renderer);
 
     // 3D UI パス。合成パスが複製した深度に対して深度テストしながら、キャンバスへ重ね描きする。
-    this.overlayPass.render(scene, camera);
+    this.overlayPass.render(scene, camera, style);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
@@ -270,7 +292,9 @@ export class RenderPipeline implements DebugTargetHost {
     this.lightPrepass.dispose();
     this.materialPass.dispose();
     this.atmospherePass.dispose();
+    this.overlayPass.dispose();
     this.target.dispose();
     for (const material of Object.values(this.compositeMaterials)) material.dispose();
+    this.schematicMaterial.dispose();
   }
 }

@@ -48,33 +48,49 @@ const LIGHT_SEMANTIC = {
 // モックアップ §4.3 のプリセット。初期値は既存ランタイムの Fluorescent red / blue を保つ。
 export const THEME_PRESETS: readonly ThemePalette[] = [
   {
-    id: 'orbital-orange', name: 'Orbital orange', description: '暖色の主役とエメラルド Signal', tone: 'dark',
+    id: 'orbital-orange', name: 'Solar Flare', description: '暖色の主役とエメラルド Signal', tone: 'dark',
     ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff5a00', accentNear: '#ff8b52', signal: '#19f5c2',
   },
   {
-    id: 'red-lime', name: 'Red / lime', description: '赤とライムの蛍光対比', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff334e', accentNear: '#ff6a78', signal: '#c7ff38',
-  },
-  {
-    id: 'red-orange-emerald', name: 'Red-orange / emerald', description: '赤寄りオレンジと深いエメラルド', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff4b1f', accentNear: '#ff7652', signal: '#19e6b3',
-  },
-  {
-    id: 'red-orange-turquoise', name: 'Red-orange / turquoise', description: '暖色と青緑の明快な Signal', tone: 'dark',
+    id: 'red-orange-turquoise', name: 'Heat Shield', description: '暖色と青緑の明快な Signal', tone: 'dark',
     ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff4a20', accentNear: '#ff8060', signal: '#1ee7d2',
   },
   {
-    id: 'fluorescent-red-blue', name: 'Fluorescent red / blue', description: '赤と青の強い電気的対比', tone: 'dark',
+    id: 'fluorescent-red-blue', name: 'Arcade Pulse', description: '赤と青の強い電気的対比', tone: 'dark',
     ...DARK_SURFACE, ...DARK_SEMANTIC, page: '#08090d', accent: '#ff3155', accentNear: '#ff6b82', signal: '#3478ff',
   },
   {
-    id: 'repository-mono', name: 'Repository mono', description: 'ダークグレーと白、Signalは最小限', tone: 'dark',
+    id: 'fluorescent-pink-dawn-blue', name: 'Daybreak', description: '朱色寄りの蛍光ピンクと夜明けの淡い青', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff2d6c', accentNear: '#ff6f96', signal: '#bfe0ff',
+  },
+  {
+    id: 'driftwood', name: 'Driftwood', description: '褐色に寒色を差した落ち着いた色調', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#a97a5b', accentNear: '#c49a7c', signal: '#6f8fa0',
+  },
+  {
+    id: 'amber-field', name: 'Amber Field', description: '琥珀色を主役に深いティールで締める', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#e8b23a', accentNear: '#f0cc75', signal: '#3fae8f',
+  },
+  {
+    id: 'sagebrush', name: 'Sagebrush', description: 'テラコッタとセージグリーンのくすみ配色', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#c1694a', accentNear: '#d98f72', signal: '#8ea88a',
+  },
+  {
+    id: 'dusk-rose', name: 'Dusk Rose', description: 'くすみローズと深いティールの対比', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#d98a94', accentNear: '#e8aab1', signal: '#2f6f6b',
+  },
+  {
+    id: 'glacier-mint', name: 'Glacier Mint', description: 'ラベンダーとミントの淡いペア', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#9b8cff', accentNear: '#bfb3ff', signal: '#7de0c8',
+  },
+  {
+    id: 'repository-mono', name: 'Terminal', description: 'ダークグレーと白、Signalは最小限', tone: 'dark',
     page: '#0d1117', surface0: '#0d1117', surface1: '#161b22', surface2: '#21262d', surface3: '#30363d',
     title: '#f0f6fc', body: '#c9d1d9', muted: '#8b949e', faint: '#6e7681', bright: '#ffffff',
     ...DARK_SEMANTIC, accent: '#c9d1d9', accentNear: '#8b949e', signal: '#58a6ff',
   },
   {
-    id: 'matte-red', name: 'Matte red', description: '暖かい灰白地とマットな赤', tone: 'light',
+    id: 'matte-red', name: 'Sunbaked', description: '暖かい灰白地とマットな赤', tone: 'light',
     page: '#d9d7d2', surface0: '#efede8', surface1: '#f8f6f1', surface2: '#e5e2dc', surface3: '#cac6bf',
     title: '#252525', body: '#494949', muted: '#625e59', faint: '#96928c', bright: '#111111',
     ...LIGHT_SEMANTIC, accent: '#873b35', accentNear: '#a95d54', signal: '#4e545a',
@@ -98,7 +114,6 @@ function readStoredThemeId(): string | null {
 }
 
 export const ACTIVE_THEME = findThemePalette(readStoredThemeId());
-export const ACTIVE_THEME_ID = ACTIVE_THEME.id;
 
 let activePalette: ThemePalette = ACTIVE_THEME;
 
@@ -109,18 +124,6 @@ export function currentThemePalette(): ThemePalette {
 
 export function getThemePalette(id: string): ThemePalette | undefined {
   return THEME_PRESETS.find((palette) => palette.id === id);
-}
-
-// 互換用の保存 API。現在の画面へ即時反映する場合は applyThemePalette を使う。
-export function persistThemePalette(id: string): boolean {
-  if (!getThemePalette(id)) return false;
-  if (typeof window === 'undefined') return false;
-  try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, id);
-  } catch {
-    return false;
-  }
-  return true;
 }
 
 function rgba(hex: string, alpha: number): string {
@@ -196,6 +199,7 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
     '--fill-2': rgba(palette.title, 0.09),
     '--fill-3': rgba(palette.title, 0.16),
     '--fill-4': rgba(palette.title, 0.32),
+    '--bar-bg': palette.surface3,
   };
 }
 
@@ -249,7 +253,7 @@ export const FILL_4 = rgba(TEXT, 0.32);
 
 export const SHADE_1 = 'rgba(0, 0, 0, 0.18)'; // 弱い落とし影
 export const SCRIM = 'rgba(6, 7, 9, 0.82)'; // 全画面表示の背後を覆う膜
-export const BAR_BG = '#222222'; // ゲージ類の不透明な地(背後を透かさない)
+export const BAR_BG = ACTIVE_THEME.surface3; // ゲージ類の不透明な地(背後を透かさない)
 
 // グロー(text-shadow)を任意の色から作るための混合率。
 // `color-mix(in srgb, <色> ${GLOW_STRONG}, transparent)` の形で使う。
@@ -273,8 +277,6 @@ export const FONT_3XL = '34px';
 
 // 世界座標マーカーの字形に合わせた調整値。UI の文字スケール(FONT_*)とは独立。
 export const GLYPH_BASE = '22px'; // .mk .sym の基準
-export const GLYPH_2_3 = `calc(${GLYPH_BASE} * 2 / 3)`; // .mk-bearing-triangle
-export const GLYPH_1_3 = `calc(${GLYPH_BASE} / 3)`; // .mk-ally-dir
 export const GLYPH_POI = '5px'; // 天体ラベルの点(.mk-poi)
 export const GLYPH_BORESIGHT = '36px'; // .mk-boresight
 
@@ -423,54 +425,6 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--safe-l': SAFE_AREA_LEFT,
   '--font-family': FONT_FAMILY,
 };
-
-function relativeLuminance(hex: string): number {
-  const value = Number.parseInt(hex.slice(1), 16);
-  const channels = [value >> 16, value >> 8, value].map((channel) => (channel & 0xff) / 255);
-  const linear = channels.map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
-  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
-}
-
-export function contrastRatio(foreground: string, background: string): number {
-  const foregroundLuminance = relativeLuminance(foreground);
-  const backgroundLuminance = relativeLuminance(background);
-  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
-  const darker = Math.min(foregroundLuminance, backgroundLuminance);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-export interface ThemeContrastIssue {
-  readonly themeId: string;
-  readonly pair: string;
-  readonly ratio: number;
-  readonly minimum: number;
-}
-
-/** WCAG-oriented checks for the semantic text and non-text pairs of every preset. */
-export function themeContrastIssues(palette: ThemePalette): readonly ThemeContrastIssue[] {
-  const textPairs = [
-    ['text', palette.title, palette.surface1],
-    ['body', palette.body, palette.surface1],
-    ['muted', palette.muted, palette.surface1],
-    ['primary', palette.accent, palette.page],
-    ['signal', palette.signal, palette.page],
-    ['success', palette.success, palette.page],
-    ['warning', palette.warning, palette.page],
-    ['error', palette.error, palette.page],
-    ['info', palette.info, palette.page],
-  ] as const;
-  const issues: ThemeContrastIssue[] = textPairs.flatMap(([pair, foreground, background]) => {
-    const ratio = contrastRatio(foreground, background);
-    return ratio >= 4.5 ? [] : [{ themeId: palette.id, pair, ratio, minimum: 4.5 }];
-  });
-  const focusRatio = contrastRatio(palette.focus, palette.focusContrast);
-  if (focusRatio < 3) issues.push({ themeId: palette.id, pair: 'focus-keyline', ratio: focusRatio, minimum: 3 });
-  return issues;
-}
-
-export function allThemeContrastIssues(): readonly ThemeContrastIssue[] {
-  return THEME_PRESETS.flatMap(themeContrastIssues);
-}
 
 let injected = false;
 

@@ -7,6 +7,8 @@
 import * as THREE from 'three/webgpu';
 import { Billboard } from './billboard';
 import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
+import { SchematicThrustCone } from './schematic-thrust-cone';
+import type { RenderStyle } from './render-style';
 
 /** 一段の外形寸法。すべて描画単位(ゲーム内の m)で、前端から船尾へは負 Z。 */
 export const BOOSTER_STAGE_DIMENSIONS = Object.freeze({
@@ -93,13 +95,13 @@ export class BoosterStage extends THREE.Group {
       metalness: 1,
     });
     const darkMetalMaterial = new THREE.MeshStandardMaterial({
-      color: options.nozzleColor ?? 0x252c35,
+      color: options.nozzleColor ?? 0xd9702e,
       flatShading: true,
       roughness: 0.58,
       metalness: 0.9,
     });
     const gasketMaterial = new THREE.MeshStandardMaterial({
-      color: 0x17202b,
+      color: 0xa64e1e,
       flatShading: true,
       roughness: 0.7,
       metalness: 0.35,
@@ -296,14 +298,6 @@ export function buildBoosterStage(options: BoosterStageOptions = {}): BoosterSta
   return new BoosterStage(options);
 }
 
-/** 呼び出し側が「モデル」と呼ぶ場合にも分かりやすい別名。 */
-export const buildBoosterModel = buildBoosterStage;
-
-/** THREE.Object3D.clone(true) の資源共有を避けた独立複製。 */
-export function cloneBoosterStage(options: BoosterStageOptions = {}): BoosterStage {
-  return buildBoosterStage(options);
-}
-
 /** 接続中にデカプラー側面を覆うパネル。分離時は DebrisPiece として再生成する。 */
 export function buildBoosterInterstageCoverPanelMesh(segment: number): THREE.Mesh {
   const angle = (segment * Math.PI * 2) / BOOSTER_INTERSTAGE_COVER_SEGMENTS;
@@ -373,6 +367,7 @@ export class BoosterPlume {
   readonly outer = new THREE.Object3D();
   private readonly coreBillboard = new Billboard(BOOSTER_PLUME_CORE_COLOR);
   private readonly outerBillboard = new Billboard(BOOSTER_PLUME_OUTER_COLOR);
+  private readonly schematicCone = new SchematicThrustCone();
   private disposed = false;
 
   constructor(scene?: THREE.Scene) {
@@ -386,10 +381,11 @@ export class BoosterPlume {
   }
 
   private addToScene(scene: THREE.Scene): void {
-    scene.add(this.core, this.outer);
+    scene.add(this.core, this.outer, this.schematicCone.mesh);
   }
 
-  sync(sample: BoosterPlumeSample, cameraQuaternion: THREE.Quaternion): void {
+  // style が模式図なら、ビルボードの代わりに輪郭抽出へ拾われるコーンを出す。
+  sync(sample: BoosterPlumeSample, cameraQuaternion: THREE.Quaternion, style: RenderStyle): void {
     if (this.disposed) return;
     if (sample.visible === false || sample.direction.lengthSq() < 1e-12) {
       this.hide();
@@ -398,6 +394,15 @@ export class BoosterPlume {
     const direction = sample.direction.clone().normalize();
     const intensity = Math.max(0, sample.intensity ?? 1);
     const scale = Math.max(0, sample.scale ?? 1);
+
+    if (style === 'schematic') {
+      this.coreBillboard.hide();
+      this.outerBillboard.hide();
+      this.schematicCone.sync(sample.position, direction, Math.min(1, intensity), scale);
+      return;
+    }
+    this.schematicCone.hide();
+
     const corePosition = sample.position.clone().addScaledVector(direction, BOOSTER_PLUME_CORE_OFFSET);
     const outerPosition = sample.position.clone().addScaledVector(direction, BOOSTER_PLUME_OUTER_OFFSET);
     this.coreBillboard.sync(corePosition, BOOSTER_PLUME_CORE_SIZE * scale, intensity, cameraQuaternion);
@@ -407,15 +412,17 @@ export class BoosterPlume {
   hide(): void {
     this.coreBillboard.hide();
     this.outerBillboard.hide();
+    this.schematicCone.hide();
   }
 
   dispose(scene?: THREE.Scene): void {
     if (this.disposed) return;
     this.disposed = true;
-    if (scene) scene.remove(this.core, this.outer);
+    if (scene) scene.remove(this.core, this.outer, this.schematicCone.mesh);
     // scene 引数が生成時の scene と違っても、現在の親から必ず外す。
     this.core.removeFromParent();
     this.outer.removeFromParent();
+    this.schematicCone.dispose();
     this.coreBillboard.dispose();
     this.outerBillboard.dispose();
     this.core.clear();
@@ -430,7 +437,7 @@ export class BoosterPlumeSet {
 
   constructor(private readonly scene?: THREE.Scene) {}
 
-  sync(samples: readonly BoosterPlumeSample[], cameraQuaternion: THREE.Quaternion): void {
+  sync(samples: readonly BoosterPlumeSample[], cameraQuaternion: THREE.Quaternion, style: RenderStyle): void {
     if (this.disposed) return;
     while (this.plumes.length < samples.length) {
       const plume = new BoosterPlume(this.scene);
@@ -438,7 +445,7 @@ export class BoosterPlumeSet {
     }
     for (let i = 0; i < this.plumes.length; i++) {
       const sample = samples[i];
-      if (sample) this.plumes[i]!.sync(sample, cameraQuaternion);
+      if (sample) this.plumes[i]!.sync(sample, cameraQuaternion, style);
       else this.plumes[i]!.hide();
     }
   }
