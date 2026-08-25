@@ -74,6 +74,18 @@ export class GuideCurve {
     this.curve.setVisible(true);
   }
 
+  // 線の色と不透明度を差し替える。頂点カラーを使っている線は、次の sync で色を焼き直させる。
+  public setStyle(color: number, opacity: number): void {
+    this.curve.setColor(color);
+    this.curve.setOpacity(opacity);
+    this.revision = {};
+  }
+
+  // 頂点カラーだけが変わったことを伝え、次の sync で焼き直させる。
+  public invalidateColors(): void {
+    this.revision = {};
+  }
+
   public setOpacity(opacity: number): void {
     this.curve.setOpacity(opacity);
   }
