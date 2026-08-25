@@ -9,7 +9,7 @@ import { CollinearFrame, collinearFrame } from './halo';
 import {
   CATALOG_STRIDE, CatalogFamily, CatalogSystem, CatalogSystemId, decodeCatalogPoints,
 } from './orbit-catalog';
-import { Vec3, add, cross, len, norm, scale, sub, v3 } from './vec3';
+import { Vec3, add, cross, len, norm, scale, sub } from './vec3';
 
 export type GuidePoint = 'L1' | 'L2' | 'L3';
 
@@ -36,7 +36,7 @@ const SYSTEM_BODIES: Readonly<Record<CatalogSystemId, readonly [OrbitingId | 'su
   'mars-phobos': ['mars', 'phobos'],
 };
 
-// 系の副天体 id。レジストリに無ければ null。
+// 系の副天体 id。
 export function guideSecondary(system: CatalogSystemId): OrbitingId {
   return SYSTEM_BODIES[system][1];
 }
@@ -139,6 +139,7 @@ export function catalogLoop(
   };
 }
 
+// 2メンバーの同じ添字・同じ成分を内分する。
 function mix(values: Float32Array, a: number, b: number, offset: number, f: number): number {
   const va = values[a + offset] ?? 0;
   const vb = values[b + offset] ?? 0;
@@ -179,17 +180,4 @@ export function lissajousLoop(
     times.push(u);
   }
   return { points, times, closed: false };
-}
-
-// 静止軌道のリング。地球の赤道面上・恒星日周期の高度を通る円を ECI [m] で返す。
-export function geostationaryLoop(center: Vec3, radius: number, samples: number): GuideLoop {
-  const points: Vec3[] = [];
-  const times: number[] = [];
-  for (let i = 0; i < samples; i++) {
-    const u = i / samples;
-    const a = 2 * Math.PI * u;
-    points.push(add(center, v3(radius * Math.cos(a), 0, -radius * Math.sin(a))));
-    times.push(u);
-  }
-  return { points, times, closed: true };
 }
