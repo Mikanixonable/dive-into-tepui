@@ -70,7 +70,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 }
 /* PanelShell 共通ヘッド */
 #hud .panel-shell-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
-#hud .panel-shell-head h3 { flex: 1 1 auto; min-width: 0; }
+#hud .panel-shell-head h3 { flex: 1 1 auto; min-width: 0; cursor: pointer; }
 #hud .panel-shell-collapse {
   flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
   border-radius: var(--radius-micro); color: var(--muted); font: inherit; cursor: pointer; pointer-events: auto;

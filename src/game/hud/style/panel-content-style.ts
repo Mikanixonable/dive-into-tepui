@@ -126,7 +126,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-physical-object-list .physical-object-list-collapse {
   margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
-#hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); }
+#hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 #hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
 #hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
 #hud-physical-object-list .physical-object-list-section-header {
@@ -167,7 +167,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud .body-class-row.category-off .body-class-icon-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
 /* 太陽系パネルの左列は navball ウィンドウの右に置き、重なりを避ける。 */
 #hud-view-options { width: 100%; pointer-events: auto; }
-#hud-view-options .view-options-title { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); }
+#hud-view-options .view-options-title { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 #hud-view-options .view-options-collapse { margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto; }
 /* タブ切替(.w-tabs)は常に見えたまま、選択中のタブ本文だけをスクロールさせる——
    タイトル行・タブ切替をスクロールへ巻き込むと、下までスクロールした状態でタブへ
