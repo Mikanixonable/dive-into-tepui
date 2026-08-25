@@ -24,7 +24,7 @@ export const RESPONSIVE_SKELETON_STYLE = `
     top: calc(50% - 40px); transform: translateX(-50%); max-height: 72px;
     overflow-y: auto; padding: var(--space-3) var(--space-5); font-size: var(--font-s);
   }
-  #hud-chase-reset { top: 40px; width: 28px; height: 28px; }
+  #hud-chase-reset { top: 60px; width: 28px; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
   #hud-map-scale { right: 8px; bottom: 8px; font-size: var(--font-xxs); }
   #hud .hud-rail { top: 40px; }
@@ -39,7 +39,7 @@ export const RESPONSIVE_SKELETON_STYLE = `
 }
 @media ${MQ_COARSE_SHORT} {
   #hud .hud-rail { bottom: 52px; }
-  #hud-chase-reset { top: 34px; }
+  #hud-chase-reset { top: 40px; }
 }
 @media ${MQ_SHORT} {
   #hud-map-scale { bottom: 52px; }
