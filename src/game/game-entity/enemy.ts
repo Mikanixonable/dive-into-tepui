@@ -33,6 +33,7 @@ import type { EnemySaveData } from '../save-data';
 import { currentThemePalette } from '../theme';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import { proteinEnemyDefinitionFor } from '../protein/protein-enemy-registry';
+import { proteinMotionModeDisplacements } from '../protein/protein-motion-modes';
 import { ProteinRuntime } from '../protein/protein-runtime';
 import { ProteinRibbonCollisionGeometry } from '../protein/protein-ribbon-collision';
 import { createProteinMotionBinding, type ProteinMotionBinding } from '../../render/protein-motion-material';
@@ -197,7 +198,11 @@ export class Enemy extends Ship {
       throw new Error(`No protein enemy definition registered for ${proteinId}`);
     }
     const motionBinding = proteinDefinition
-      ? createProteinMotionBinding(proteinDefinition.motion.residueCount)
+      ? createProteinMotionBinding(
+        proteinDefinition.motion.residueCount,
+        proteinMotionModeDisplacements(proteinDefinition.motion),
+        proteinDefinition.motion.modes.length,
+      )
       : undefined;
     const renderObject = buildEnemyRenderObject(enemyKind, accent, motionBinding);
     super(name, state, renderObject, att, C.ENEMY_RADIUS, C.ENEMY_MAX_HP, scene, id);
