@@ -19,6 +19,8 @@ import { bodyClassOf } from './celestial/body-class';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH, bodyEntityGlyph } from './marker/marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from './marker/marker-shapes';
 import { MapPickable, pickNearest } from './map-pickable';
+import { OrbitPickable, pickNearestOrbit } from './orbit-pickable';
+import type { OrbitPickables } from './orbit-pickables';
 import { focusTargetId } from './camera/focus-target';
 import { PhysicalObjectListPanel } from './hud/panels/physical-object-list-panel';
 import type { Input } from './input/input';
@@ -69,6 +71,18 @@ interface PartWindowEntry {
   readonly partId: string;
 }
 
+interface OrbitWindowEntry {
+  readonly win: PropertyWindow<MenuAction>;
+  readonly orbitKey: string;
+}
+
+const ORBIT_PICK_KIND_LABEL: Record<OrbitPickable['kind'], string> = {
+  'orbit-body': '公転軌道', 'orbit-ship': '船の軌道', 'orbit-guide': '軌道ガイド',
+};
+const ORBIT_CALC_METHOD_LABEL: Record<OrbitPickable['method'], string> = {
+  analytic: '解析軌道', predicted: '予測軌道', guide: '軌道ガイド',
+};
+
 export class MapContextActions {
   // 'empty-space' は宇宙空間そのものでプロパティを持たないので、従来どおり ContextMenu を使う。
   private readonly menu: ContextMenu<MapPickable, MenuAction>;
@@ -76,6 +90,7 @@ export class MapContextActions {
   // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
   private readonly partWindows = new Map<string, PartWindowEntry>();
+  private readonly orbitWindows = new Map<string, OrbitWindowEntry>();
   private readonly physicalObjectListPanel: PhysicalObjectListPanel;
   private expandedBaseWindowKey: string | null = null;
 
@@ -105,6 +120,7 @@ export class MapContextActions {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly pauseMenu: PauseMenu,
     private readonly pickables: MapPickables,
+    private readonly orbitPickables: OrbitPickables,
     private readonly activePlayers: ActivePlayerController,
     private readonly frameControls: FrameControls,
     private readonly activeStage: Stage,
@@ -154,6 +170,23 @@ export class MapContextActions {
       );
       if (!target) return false;
       this.openPropertyWindow(p.x, p.y, target, simTime);
+      return true;
+    });
+  }
+
+  // 被選択物・ノードハンドルのどちらにも当たらなかった右クリックに対し、表示中の軌道線
+  // (公転軌道・船の軌道・軌道ガイド)への当たり判定を試みる。当たれば軌道のプロパティ
+  // ウィンドウを開いて消費する。handleEmptySpaceRightClick より前、editor.handleMapPointer
+  // より後に呼ぶ(11節の判定順序)。
+  handleOrbitLineRightClick(input: Input): void {
+    if (!this.cameraSystem.overviewMode) return;
+    input.takeRightClicks((p) => {
+      const orbit = pickNearestOrbit(
+        this.orbitPickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
+        pickRadiusSq(C.ORBIT_LINE_PICK_PX_SQ, C.ORBIT_LINE_PICK_PX_SQ_COARSE),
+      );
+      if (!orbit) return false;
+      this.openOrbitPropertyWindow(p.x, p.y, orbit);
       return true;
     });
   }
@@ -227,6 +260,57 @@ export class MapContextActions {
       this.setPartDeployment(currentShip, currentPart, act === 'deployPart');
     };
     w.onClose = () => this.partWindows.delete(key);
+  }
+
+  // openPartPropertyWindow と同じパターン: 専用 Map で管理し、排他グループを持たせず
+  // メインのプロパティウィンドウと共存させる。操作項目は持たない(12.1節)。
+  private openOrbitPropertyWindow(clientX: number, clientY: number, orbit: OrbitPickable): void {
+    const existing = this.orbitWindows.get(orbit.key);
+    if (existing) {
+      existing.win.moveTo(clientX, clientY);
+      existing.win.bringToFront();
+      return;
+    }
+    const w = new PropertyWindow<MenuAction>(
+      this.hud.layers.window, clientX, clientY, this.orbitWindowContent(orbit), this.hud.overlayManager,
+    );
+    const entry: OrbitWindowEntry = { win: w, orbitKey: orbit.key };
+    this.orbitWindows.set(orbit.key, entry);
+    w.onClose = () => this.orbitWindows.delete(orbit.key);
+  }
+
+  private orbitWindowContent(orbit: OrbitPickable): PropertyWindowContent<MenuAction> {
+    return {
+      title: ORBIT_PICK_KIND_LABEL[orbit.kind],
+      rows: [{ key: 'method', label: '計算方法', value: ORBIT_CALC_METHOD_LABEL[orbit.method] }],
+      items: [],
+      relatedItems: this.relatedItemsForOrbit(orbit),
+      relatedTitle: '所属',
+    };
+  }
+
+  // 軌道の所属先(周回天体・船自身・ラグランジュ点/主星/副星)を、既存の MapPickable 候補列から
+  // 引き直して関連項目にする。候補列に現れていない(表示・選択の対象から外れている)所属は
+  // その回だけ出さない。
+  private relatedItemsForOrbit(orbit: OrbitPickable): readonly PropertyWindowRelatedItem[] {
+    const items: PropertyWindowRelatedItem[] = [];
+    for (const ownerKey of orbit.ownerKeys) {
+      const target = this.pickables.pickables.find((candidate) => this.windowKey(candidate) === ownerKey);
+      if (!target) continue;
+      items.push({
+        id: ownerKey,
+        label: target.name,
+        onFocus: () => {
+          this.frameControls.setFocus({ kind: 'object', id: target.id });
+          this.hud.hint(`${target.name} にフォーカス`);
+        },
+        onContextMenu: (clientX, clientY) => {
+          const current = this.pickables.pickables.find((candidate) => this.windowKey(candidate) === ownerKey);
+          if (current) this.openPropertyWindow(clientX, clientY, current, this.pickables.lastSimTime);
+        },
+      });
+    }
+    return items;
   }
 
   private closePartWindowsForShip(shipId: string): void {
@@ -461,7 +545,7 @@ export class MapContextActions {
     this.physicalObjectListPanel.setVisible(overviewMode);
     // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
     // 戦闘中は候補列を更新せず、ウィンドウもないため、毎フレームの Map 生成と行導出を省く。
-    if (!overviewMode && this.windows.size === 0 && this.partWindows.size === 0) return;
+    if (!overviewMode && this.windows.size === 0 && this.partWindows.size === 0 && this.orbitWindows.size === 0) return;
     const items = this.pickables.pickables;
     if (overviewMode) {
       // ラグランジュ点は自分を持つ天体(衛星ならその衛星自身)、それ以外の天体は主星/主天体を
@@ -504,6 +588,11 @@ export class MapContextActions {
       ]);
       entry.win.syncItems(this.partWindowContent(ship, part).items);
     }
+    for (const [key, entry] of [...this.orbitWindows]) {
+      const orbit = this.orbitPickables.pickables.find((candidate) => candidate.key === key);
+      if (!orbit) { entry.win.close(); continue; }
+      entry.win.syncRelatedItems(this.relatedItemsForOrbit(orbit), '所属');
+    }
   }
 
   // ウィンドウの対象そのものが消滅したかどうか。生きている実体を指す種別は alive を直接見て、
@@ -529,6 +618,7 @@ export class MapContextActions {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
     for (const entry of [...this.partWindows.values()]) entry.win.close();
+    for (const entry of [...this.orbitWindows.values()]) entry.win.close();
   }
 
   // 開いているメニュー・ウィンドウを畳んだうえで、常設の一覧パネルと自身のメニューを取り除く。

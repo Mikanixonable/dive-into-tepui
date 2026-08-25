@@ -84,6 +84,11 @@ class PointsCurve {
     this.revision = {};
   }
 
+  // 直近に設定した点列(ECI 絶対座標)。当たり判定などその形状を読みたい呼び出し側向け。
+  public worldPoints(): readonly Vec3[] {
+    return this.points ?? [];
+  }
+
   // 描画原点の移動へ追随させる。頂点は setPoints で設定済みの点列から焼く。
   public sync(fo: FloatingOrigin, camera: THREE.Camera): void {
     if (!this.points) {
@@ -105,10 +110,28 @@ class PointsCurve {
   }
 }
 
-// 表示中の1本ぶん: 描画オブジェクトと、現在の設定・時刻から点列を求める関数。
+// 軌道ガイドの種類(5.2節、静止軌道を除く)。
+export type OrbitGuideKind = 'halo' | 'planarLyapunov' | 'verticalLyapunov' | 'lissajous' | 'dro';
+
+// 当たり判定向けに、表示中の1本のガイド線をその識別情報・ECI 点列とともに表す。
+export interface VisibleGuideLine {
+  readonly key: string;
+  readonly kind: OrbitGuideKind;
+  readonly system: GuideSystem;
+  readonly point: GuidePoint | null;
+  readonly hemisphere: Hemisphere | null;
+  readonly points: readonly Vec3[];
+}
+
+// 表示中の1本ぶん: 描画オブジェクトと、現在の設定・時刻から点列を求める関数、および
+// その線がどの系・ラグランジュ点・半球に属するかの識別情報(DRO は系のみ)。
 interface GuideLine {
   readonly curve: PointsCurve;
   readonly compute: (t: number, ephemeris: Ephemeris, settings: OrbitGuideSettings) => Vec3[] | null;
+  readonly kind: OrbitGuideKind;
+  readonly system: GuideSystem;
+  readonly point: GuidePoint | null;
+  readonly hemisphere: Hemisphere | null;
 }
 
 // 系×点(L1/L2/L3)の軸を持つ種類が共通して使う、ON な系・点の列。
@@ -188,14 +211,30 @@ export class OrbitGuideLines {
     for (const entry of this.lines) entry.curve.sync(fo, camera);
   }
 
+  // 表示中のガイド線を、当たり判定向けの識別情報付きで返す(マップ視点外・0本の間は空)。
+  public visibleLines(): readonly VisibleGuideLine[] {
+    const visible: VisibleGuideLine[] = [];
+    for (let i = 0; i < this.lines.length; i++) {
+      const entry = this.lines[i]!;
+      const points = entry.curve.worldPoints();
+      if (points.length < 2) continue;
+      visible.push({
+        key: `${entry.kind}-${i}`, kind: entry.kind, system: entry.system, point: entry.point,
+        hemisphere: entry.hemisphere, points,
+      });
+    }
+    return visible;
+  }
+
   // ガイド線を1本組んでシーンへ加える。compute はその線の点列を設定・時刻から求める。
   private addLine(
     closed: boolean, samples: number, color: number, opacity: number,
+    kind: OrbitGuideKind, system: GuideSystem, point: GuidePoint | null, hemisphere: Hemisphere | null,
     compute: (t: number, ephemeris: Ephemeris, settings: OrbitGuideSettings) => Vec3[] | null,
   ): void {
     const curve = new PointsCurve({ color, opacity, renderOrder: LINE_RENDER_ORDER.reference }, samples, closed);
     this.scene.add(curve.line);
-    this.lines.push({ curve, compute });
+    this.lines.push({ curve, compute, kind, system, point, hemisphere });
   }
 
   // 種類ごとの on と軸から折れ線オブジェクトを作り直す。トグルの直積が変わったとき
@@ -216,8 +255,11 @@ export class OrbitGuideLines {
         for (const point of points) {
           for (const hemisphere of hemispheres) {
             for (let i = 0; i < HALO_FAMILY_COUNT; i++) {
-              this.addLine(true, HALO_SAMPLES, C.COLOR_HALO_GUIDE_LINE, haloOpacity(i), (t, ephemeris, s) =>
-                haloGuideLoop(t, ephemeris, system, point, haloSValue(s, i), hemisphere, HALO_SAMPLES));
+              this.addLine(
+                true, HALO_SAMPLES, C.COLOR_HALO_GUIDE_LINE, haloOpacity(i), 'halo', system, point, hemisphere,
+                (t: number, ephemeris: Ephemeris, s: OrbitGuideSettings) =>
+                  haloGuideLoop(t, ephemeris, system, point, haloSValue(s, i), hemisphere, HALO_SAMPLES),
+              );
             }
           }
         }
@@ -228,27 +270,36 @@ export class OrbitGuideLines {
     if (settings.planarLyapunov.on) {
       for (const system of activeSystems(settings.planarLyapunov)) {
         for (const point of activePoints(settings.planarLyapunov)) {
-          this.addLine(true, HALO_SAMPLES, C.COLOR_PLANAR_LYAPUNOV_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
-            planarLyapunovLoop(t, ephemeris, system, point, s.planarLyapunov.amplitude, HALO_SAMPLES));
+          this.addLine(
+            true, HALO_SAMPLES, C.COLOR_PLANAR_LYAPUNOV_LINE, EVOLVED_OPACITY, 'planarLyapunov', system, point, null,
+            (t: number, ephemeris: Ephemeris, s: OrbitGuideSettings) =>
+              planarLyapunovLoop(t, ephemeris, system, point, s.planarLyapunov.amplitude, HALO_SAMPLES),
+          );
         }
       }
     }
     if (settings.verticalLyapunov.on) {
       for (const system of activeSystems(settings.verticalLyapunov)) {
         for (const point of activePoints(settings.verticalLyapunov)) {
-          this.addLine(true, HALO_SAMPLES, C.COLOR_VERTICAL_LYAPUNOV_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
-            verticalLyapunovLoop(t, ephemeris, system, point, s.verticalLyapunov.amplitude, HALO_SAMPLES));
+          this.addLine(
+            true, HALO_SAMPLES, C.COLOR_VERTICAL_LYAPUNOV_LINE, EVOLVED_OPACITY, 'verticalLyapunov', system, point, null,
+            (t: number, ephemeris: Ephemeris, s: OrbitGuideSettings) =>
+              verticalLyapunovLoop(t, ephemeris, system, point, s.verticalLyapunov.amplitude, HALO_SAMPLES),
+          );
         }
       }
     }
     if (settings.lissajous.on) {
       for (const system of activeSystems(settings.lissajous)) {
         for (const point of activePoints(settings.lissajous)) {
-          this.addLine(false, LISSAJOUS_SAMPLES, C.COLOR_LISSAJOUS_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
-            lissajousPath(
-              t, ephemeris, system, point, s.lissajous.inPlane, s.lissajous.outOfPlane,
-              LISSAJOUS_CYCLES, LISSAJOUS_SAMPLES,
-            ));
+          this.addLine(
+            false, LISSAJOUS_SAMPLES, C.COLOR_LISSAJOUS_LINE, EVOLVED_OPACITY, 'lissajous', system, point, null,
+            (t: number, ephemeris: Ephemeris, s: OrbitGuideSettings) =>
+              lissajousPath(
+                t, ephemeris, system, point, s.lissajous.inPlane, s.lissajous.outOfPlane,
+                LISSAJOUS_CYCLES, LISSAJOUS_SAMPLES,
+              ),
+          );
         }
       }
     }
@@ -257,8 +308,11 @@ export class OrbitGuideLines {
     if (settings.dro.on) {
       const systems = GUIDE_SYSTEMS.filter((system) => (system === 'sun-earth' ? settings.dro.sunEarth : settings.dro.earthMoon));
       for (const system of systems) {
-        this.addLine(true, HALO_SAMPLES, C.COLOR_DRO_LINE, EVOLVED_OPACITY, (t, ephemeris, s) =>
-          droLoop(t, ephemeris, system, s.dro.amplitude, HALO_SAMPLES));
+        this.addLine(
+          true, HALO_SAMPLES, C.COLOR_DRO_LINE, EVOLVED_OPACITY, 'dro', system, null, null,
+          (t: number, ephemeris: Ephemeris, s: OrbitGuideSettings) =>
+            droLoop(t, ephemeris, system, s.dro.amplitude, HALO_SAMPLES),
+        );
       }
     }
   }

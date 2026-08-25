@@ -40,6 +40,7 @@ import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
 import { OrbitReferenceSelector } from './orbit-reference';
 import { MapPickables } from './map-pickables';
+import { OrbitPickables } from './orbit-pickables';
 import { MapContextActions } from './map-context-actions';
 import { Navball } from './navball/navball';
 import { GameSaveData } from './save-data';
@@ -81,6 +82,7 @@ export class Game {
   private readonly guide: PlanGuide;
   readonly viewManager: ViewManager;
   private readonly mapPickables: MapPickables;
+  private readonly orbitPickables: OrbitPickables;
   private readonly mapActions: MapContextActions;
 
   readonly activeStage: Stage;
@@ -224,9 +226,10 @@ export class Game {
       this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor, this.markerManager,
       this.frameAnchors,
     );
+    this.orbitPickables = new OrbitPickables(this.entities, this._environment, this.ephemeris, this.cameraSystem);
     this.mapActions = new MapContextActions(
       this._hud, this.entities, this.ephemeris, this.navTarget,
-      this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables,
+      this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.orbitPickables,
       this.activePlayers, this.frameControls, this.activeStage, this.targeter,
     );
 
@@ -456,6 +459,7 @@ export class Game {
     this.mapActions.handleLeftClick(this.input);
     this.mapActions.handleDoubleClick(this.input);
     this.editor.handleMapPointer(this.input);
+    this.mapActions.handleOrbitLineRightClick(this.input);
     this.mapActions.handleEmptySpaceRightClick(this.input, simTime);
   }
 
@@ -584,6 +588,9 @@ export class Game {
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris);
+    // 軌道線の右クリック当たり判定向けの候補列。各軌道線が今フレーム焼いたサンプルを読むため、
+    // environment.sync/entityLines.sync の後に組む。
+    this.orbitPickables.refresh(displayWindow, this.frameAnchors);
 
     if (player) {
       this.touchControls?.syncModeButtons(

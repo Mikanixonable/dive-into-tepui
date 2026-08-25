@@ -6,6 +6,7 @@
 // 天体メッシュは不透明・深度書き込み有りで先に描かれるため、深度テストだけで天体が手前に残る。
 import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../physics/elements';
+import { add, v3, Vec3 } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
 import { LineStyle } from '../render/line-style';
@@ -29,6 +30,9 @@ export class OrbitLine {
   private snap: OrbitalElements | null = null;
   // Curve へ渡す revision。楕円を作り直すたびに新しいオブジェクトへ差し替える。
   private revision: object = {};
+  // 直近の sync が渡した中心天体の ECI 位置。楕円の平行移動は毎フレーム最新の位置を使うため、
+  // 再生成の有無に関わらず(snap とは独立に)常に最新へ更新する。
+  private center: Vec3 | null = null;
 
   // style.renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
   // 透明描画どうしの前後は描画順でしか決まらない。
@@ -83,9 +87,11 @@ export class OrbitLine {
     const { force = false } = opts;
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.snap = null;
+      this.center = null;
       this.curve.setVisible(false);
       return;
     }
+    this.center = el.center.state.r;
 
     // OrbitLineの頂点はECI相対、シーンもECI基準なので、回転クォータニオンは恒等にする。
     // 回転座標系はMapCameraの視点・姿勢で表現する。ここへ現在時刻のフレーム回転を掛けると、
@@ -119,6 +125,21 @@ export class OrbitLine {
       return true;
     }
     return false;
+  }
+
+  // 現在描いている楕円上のサンプル点列を ECI 絶対座標で返す(右クリックの当たり判定向け)。
+  // 要素を持たない(非表示)間は空配列。
+  samplePoints(count: number): readonly Vec3[] {
+    const el = this.snap;
+    const center = this.center;
+    if (!el || !center) return [];
+    const points: Vec3[] = [];
+    const scratch = new THREE.Vector3();
+    for (let i = 0; i <= count; i++) {
+      this.sampler(i / count, scratch);
+      points.push(add(center, v3(scratch.x, scratch.y, scratch.z)));
+    }
+    return points;
   }
 
   dispose(): void {

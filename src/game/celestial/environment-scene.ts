@@ -150,6 +150,12 @@ export class EnvironmentScene {
     this.orbitGuideLines.setSettings(settings);
   }
 
+  // 公転天体1体につき1本の参照軌道線(右クリックの当たり判定向け)。
+  get referenceOrbitLines(): ReadonlyMap<OrbitingId, OrbitLine> { return this.referenceLines; }
+
+  // ラグランジュ点まわりの軌道ガイド線(右クリックの当たり判定向け)。
+  get orbitGuide(): OrbitGuideLines { return this.orbitGuideLines; }
+
   // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
   earthSpinPhase0(): number | undefined {
     const earth = this.bodies.find((b): b is EarthView => b instanceof EarthView);
