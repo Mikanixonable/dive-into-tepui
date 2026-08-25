@@ -5,11 +5,10 @@ import { DIRECTION_GLYPH } from '../../marker/marker-glyphs';
 import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
-  buildCollapseToggle,
   hudRail,
   type CollapseToggleLabels,
 } from '../hud-root';
-import { Button, TabBar, ToggleSwitch, syncCollapseToggle } from '../widgets';
+import { Button, TabBar, ToggleSwitch } from '../widgets';
 import {
   bodyClassDisplayMode,
   nextBodyClassDisplayMode,
@@ -25,7 +24,7 @@ import {
   JACOBI_MAPPING, OPACITY_MAPPING, ZERO_VELOCITY_COUNT_MAPPING, buildValueField, syncValueField,
 } from './guide-value-field';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../celestial/orbit-guide-settings';
-import { loadPanelCollapsed, onPanelCollapsedViewChange, savePanelCollapsed } from '../panel-shell';
+import { wirePanelCollapse } from '../panel-shell';
 
 const ZERO_VELOCITY_SECTION_ROWS: readonly (readonly [keyof ZeroVelocitySettings, string])[] = [
   ['earthMoonXY', '月軌道面'],
@@ -227,15 +226,15 @@ export class ViewOptionsPanel {
     const body = document.createElement('div');
     body.className = 'view-options-body';
     this.panel.appendChild(body);
-    const collapseToggle = buildCollapseToggle(titleRow, 'hud-view-options-toggle', 'view-options-collapse', body, VIEW_OPTIONS_COLLAPSE_LABELS);
-    const applyCollapsedState = (): void => {
-      const collapsed = loadPanelCollapsed('hud-view-options') ?? true;
-      body.classList.toggle('collapsed', collapsed);
-      syncCollapseToggle(collapseToggle, body, VIEW_OPTIONS_COLLAPSE_LABELS);
-    };
-    applyCollapsedState();
-    this.unsubscribeCollapsedView = onPanelCollapsedViewChange(applyCollapsedState);
-    collapseToggle.addEventListener('click', () => savePanelCollapsed('hud-view-options', body.classList.contains('collapsed')));
+    this.unsubscribeCollapsedView = wirePanelCollapse({
+      toggleRoot: titleRow,
+      toggleId: 'hud-view-options-toggle',
+      toggleClassName: 'view-options-collapse',
+      target: body,
+      labels: VIEW_OPTIONS_COLLAPSE_LABELS,
+      storageId: 'hud-view-options',
+      defaultCollapsed: true,
+    });
 
     this.tabBar = new TabBar<ViewOptionsTab>(TAB_ITEMS, (tab) => this.selectTab(tab));
     this.tabBar.element.setAttribute('aria-label', '表示するものの種類');
