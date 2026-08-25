@@ -216,6 +216,22 @@ function shipCrowd(): LabCase {
   };
 }
 
+// 遠くから伸びてくる影: 恒星方向へ 3 km 離した艦が、手前の艦へ影を落とす。**本影は艦の
+// 差し渡しの 107.5 倍(約 915 m)で消える**ので、3 km 先では遮蔽率が (915/3000)² まで落ちて
+// いなければならない。遠方の半影の減衰を見るためのケース。
+function shipFarShadow(): LabCase {
+  const receiver = new THREE.Vector3(0, 0, -10);
+  return {
+    objects: [
+      shipAt(receiver, OBLIQUE_SHIP_ROTATION),
+      shipAt(new THREE.Vector3(3000, 0, -10), OBLIQUE_SHIP_ROTATION),
+    ],
+    camera: labCamera(6e7),
+    sunDirection: new THREE.Vector3(1, 0, 0),
+    viewTarget: receiver,
+  };
+}
+
 // 小片群のなかの自己影: 自己影のケースへ、広く散らばった小片群を 1 本の枝として足す。
 function shipInDebris(): LabCase {
   const shipPosition = new THREE.Vector3(0, -1, -10);
@@ -469,6 +485,7 @@ export const CASES = {
   'ship-selfshadow': shipSelfShadow,
   'ship-cluster': shipCluster,
   'ship-crowd': shipCrowd,
+  'ship-far-shadow': shipFarShadow,
   'ship-in-debris': shipInDebris,
   'order': order,
   'depth-1e4': () => depthProbe(1e4, 6e7),
