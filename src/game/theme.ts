@@ -304,6 +304,19 @@ export const TRANSITION_SLOW = '0.24s';
 
 export const HIT_TARGET_MIN = '44px'; // タップ最小寸法
 
+// ページ直下(body の子)の要素間の重なり順。#hud の子(パネル/ウィンドウ/ポップアップ等)の
+// 重なりはここではなく overlay-layer.ts の8層(OverlayLayerName、z-index 10〜17)が持つ——
+// Z_HUD が同じ「10」に見えるのは別のスタッキング文脈(ページ直下 vs #hud 内部)だからで、衝突ではない。
+export const Z_TOUCH_UI = 9;
+export const Z_HUD = 10;
+export const Z_HUD_NODE_GIZMO = 5; // #hud 内部だが overlay-layer の層を経由しない特例
+export const Z_HUD_RAIL_TOGGLE = 20; // 同上
+export const Z_HUD_TITLE_MENU = 110;
+export const Z_STAGE_SELECT = 100;
+export const Z_RESOURCE_TRANSFER_DIALOG = 100;
+export const Z_LOADING_OVERLAY = 200;
+export const Z_FATAL_ERROR = 1000;
+
 // ノッチ・ホームインジケータ等が占める領域の幅。env() は CSS 側でしか評価できないため、
 // 計算済みの値ではなく env() 呼び出し自体を注入する。
 export const SAFE_AREA_TOP = 'env(safe-area-inset-top, 0px)';
@@ -419,6 +432,10 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--transition-fast': TRANSITION_FAST,
   '--transition-slow': TRANSITION_SLOW,
   '--hit-target-min': HIT_TARGET_MIN,
+  '--z-hud': String(Z_HUD),
+  '--z-hud-title-menu': String(Z_HUD_TITLE_MENU),
+  '--z-hud-rail-toggle': String(Z_HUD_RAIL_TOGGLE),
+  '--z-resource-transfer-dialog': String(Z_RESOURCE_TRANSFER_DIALOG),
   '--safe-t': SAFE_AREA_TOP,
   '--safe-r': SAFE_AREA_RIGHT,
   '--safe-b': SAFE_AREA_BOTTOM,
