@@ -48,7 +48,7 @@ export class OrbitPickables {
     for (const enemy of this.entities.enemies) this.addShipOrbit('ship', enemy, frame, displayTime, frameAnchors);
     for (const base of this.entities.bases) this.addShipOrbit('base', base, frame, displayTime, frameAnchors);
 
-    for (const guide of this.environment.orbitGuide.visibleLines()) {
+    for (const guide of this.environment.orbitGuide.visibleLines(ORBIT_PICK_SAMPLES)) {
       this.items.push({
         key: `orbit-guide:${guide.key}`, kind: 'orbit-guide', method: 'guide',
         ownerKeys: this.guideOwnerKeys(guide), points: guide.points,

@@ -28,9 +28,9 @@ export interface CatalogFamily {
   readonly members: readonly CatalogMember[];
   // 1メンバーあたりの点数。
   readonly samples: number;
-  // 全メンバーの点列を連結した Float32 配列の base64。1点は [x, y, z, tFrac] の4値で、
-  // tFrac はその点までの経過時刻を周期で割った 0..1 の値(進行方向マーカーを軌道速度に
-  // 比例して動かすために持つ)。並びは members の順、各メンバー内は弧長等間隔。
+  // 全メンバーの点列を連結した Float32 配列の base64。1点は [x, y, z, tFrac, vx, vy, vz] の
+  // 7値で、tFrac はその点までの経過時刻を周期で割った 0..1 の値、速度は無次元時間に対する
+  // 値。並びは members の順、各メンバー内は弧長等間隔。
   readonly points: string;
 }
 
@@ -50,8 +50,8 @@ export interface OrbitCatalog {
   readonly familyIndex: Readonly<Partial<Record<CatalogSystemId, readonly string[]>>>;
 }
 
-// 1点あたりの値の数([x, y, z, tFrac])。
-export const CATALOG_STRIDE = 4;
+// 1点あたりの値の数([x, y, z, tFrac, vx, vy, vz])。
+export const CATALOG_STRIDE = 7;
 
 // base64 の点列を Float32Array へ戻す。
 export function decodeCatalogPoints(points: string): Float32Array {
