@@ -55,6 +55,7 @@ export class GraphicsPanel {
       [this.addToggle('惑星の環', 'rings'), 'rings'],
       [this.addToggle('オーロラ', 'aurora'), 'aurora'],
       [this.addToggle('大気', 'atmosphere'), 'atmosphere'],
+      [this.addToggle('タンパク質の敵の揺らぎ', 'proteinVibration'), 'proteinVibration'],
       [this.addToggle('アンチエイリアス(次回起動から)', 'antialias'), 'antialias'],
     ];
 
