@@ -175,8 +175,7 @@ export class ZeroVelocityLines {
           const dx = first[0] - last[0];
           const dy = first[1] - last[1];
           const closed = dx * dx + dy * dy < CLOSE_EPSILON * CLOSE_EPSILON;
-          // 閉じた輪は最後の点(始点と重複)を落とす。閉じ方はサンプラ側(closed=true)が
-          // 末尾→先頭を結んで担う。
+          // 閉じた輪は最後の点(始点と重複)を落とし、閉じているという事実だけを持たせる。
           const points2d = closed ? points.slice(0, -1) : points;
           shapes.push({ system: section.system, plane: section.plane, points2d, closed });
         }
