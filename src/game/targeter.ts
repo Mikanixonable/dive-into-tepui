@@ -164,6 +164,13 @@ export class Targeter {
           : 1;
       this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
     }
+    // 生死・距離にかかわらず全タンパク質敵を辿ってマーカーの表示/非表示を確定する
+    // (上のループは生存個体しか通らないため、撃破直後に部位マーカーが残るのを防ぐ)。
+    for (const tgt of targets) {
+      if (!(tgt instanceof Enemy)) continue;
+      const ds = tgt.alive ? tgt.displayState(displayTime) : null;
+      this.syncProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, overviewMode, project, cameraSystem.activeCameraPos);
+    }
     for (const ammo of ammoPickups) {
       if (!ammo.alive) continue;
       const visibility = visibilityPolicy?.entity('ammo');
@@ -202,6 +209,22 @@ export class Targeter {
       opacity,
       occluded,
     } : { ...item, opacity, occluded });
+  }
+
+  // タンパク質敵が自機から PROTEIN_SITE_MARKER_RANGE 以内にある間、通常の敵マーカーへ加えて
+  // 各機能部位の HP・名称マーカーを表示する。ロック中ターゲット情報とは独立して出す。
+  private syncProteinSiteMarkers(
+    enemy: Enemy, displayPos: Vec3 | null, viewerPos: Vec3, overviewMode: boolean, project: ProjectFn, cameraPos: Vec3,
+  ): void {
+    const inRange = !overviewMode && displayPos !== null && len(sub(displayPos, viewerPos)) <= C.PROTEIN_SITE_MARKER_RANGE;
+    const sites = enemy.proteinSiteMarkers(displayPos ?? enemy.state.r);
+    for (const site of sites) {
+      const key = `psite-${enemy.id}-${site.id}`;
+      if (!inRange) { this.markerManager.hide(key); continue; }
+      const label = `${site.label} ${Math.max(0, Math.round(site.hp))}/${site.maxHp}`;
+      const color = site.disabled ? 'var(--text-dim)' : site.attackable ? C.COLOR_MARKER_ENEMY : undefined;
+      this.markerManager.setPosition(key, 'mk-protein-site', '●', site.worldPos, project, label, 1, color, undefined, false, false, C.MARKER_PRIORITY.PROTEIN_SITE, cameraPos);
+    }
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
