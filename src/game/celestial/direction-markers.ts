@@ -21,6 +21,12 @@ const MAX_MARKERS_PER_LOOP = 12;
 // 「近点で速く・遠点で遅く」という相対関係だけが times の内挿から出る。
 const ANIMATION_PERIOD_SEC = 20;
 
+// アニメーションの位相を進める実時刻 [s]。表示時刻(ゲーム内時間)で進めると、タイムワープ中に
+// マーカーが飛び、一時停止中に止まってしまう — 動きの速さは times の内挿だけが担う。
+function animationPhase(): number {
+  return (performance.now() / 1000 / ANIMATION_PERIOD_SEC) % 1;
+}
+
 // マーカー1個ぶんの三角形ジオメトリ(単位サイズ、+Y が進行方向)。
 function buildTriangleGeometry(): THREE.BufferGeometry {
   const geom = new THREE.BufferGeometry();
@@ -85,11 +91,11 @@ export class DirectionMarkers {
 
   // 1本の軌道ぶんのマーカーを積む。mode が 'none' か点列が短すぎるなら何もしない。
   addLoop(
-    loop: GuideLoop, mode: DirectionMarkerMode, animate: boolean, simTime: number,
+    loop: GuideLoop, mode: DirectionMarkerMode, animate: boolean,
     colorHex: number, fo: FloatingOrigin,
   ): void {
     if (mode === 'none' || loop.points.length < 2 || loop.times.length !== loop.points.length) return;
-    const offset = animate ? ((simTime / ANIMATION_PERIOD_SEC) % 1 + 1) % 1 : 0;
+    const offset = animate ? animationPhase() : 0;
     this.color.setHex(colorHex);
     const phases = mode === 'single' ? 1 : this.manyCount(loop.points.length);
     for (let i = 0; i < phases; i++) {
