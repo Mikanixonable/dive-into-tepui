@@ -128,7 +128,11 @@ export const MARKER_STYLE = `
 [data-render-style="schematic"] .mk-boardpass,
 [data-render-style="schematic"] .mk-dir,
 [data-render-style="schematic"] .mk-boresight,
-[data-render-style="schematic"] .mk-poi { color: ${LIGHT_PALETTE.title}; }
+[data-render-style="schematic"] .mk-poi { color: ${LIGHT_PALETTE.title}; text-shadow: none; }
+
+/* 静止軌道ラベル。模式図では他のマーカーと同じく白背景の上に文字だけで読ませる。 */
+[data-render-style="schematic"] .mk-geolabel { color: ${LIGHT_PALETTE.title}; }
+[data-render-style="schematic"] .mk-geolabel .sym { text-shadow: none; }
 
 /* ラベルの引き出し線。色をここへ置くことで、模式図の白背景でも読める値へ差し替えられる。 */
 .mk-lead { stroke: ${FILL_4}; }
