@@ -26,8 +26,6 @@ export interface ProteinDisplayAsset {
       readonly hydrophobicity: readonly number[];
       readonly component: readonly string[];
     };
-    readonly hydrophobicity: readonly number[];
-    readonly surfaceCharge: readonly number[];
   };
   readonly generator: { readonly name: string };
 }
