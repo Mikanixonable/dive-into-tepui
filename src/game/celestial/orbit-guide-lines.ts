@@ -15,7 +15,7 @@ import { LINE_RENDER_ORDER, LineStyle } from '../../render/line-style';
 import { GuideAxes, OrbitGuideSettings } from './orbit-guide-settings';
 import * as C from '../const';
 
-const HALO_SAMPLES = 128;
+const HALO_SAMPLES = 512;
 const LISSAJOUS_SAMPLES = 512;
 const LISSAJOUS_CYCLES = 4;
 const HALO_FAMILY_COUNT = 5;
