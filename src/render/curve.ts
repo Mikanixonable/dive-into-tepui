@@ -31,6 +31,9 @@ export type CurveOptions = {
   // 弦に対する曲線の膨らみ(サジッタ)の目標値 [px]。**線の細かさを調整する唯一の入口。**
   // 小さくすれば頂点を増やして曲線へ寄せ、大きくすれば粗く済ませる。
   readonly maxSagittaPx?: number;
+  // 1辺あたりに許す折れ角の上限 [deg]。サジッタと並ぶもう一つの品質の入口で、こちらは画面上の
+  // 大きさに依らず効くため、遠ズームでの粗さを決める。
+  readonly maxEdgeTurnDeg?: number;
 };
 
 // t∈[0,1] の位置における曲線上の点を out へ書く。sample(0) と sample(1) が一致する(周期的
@@ -64,9 +67,9 @@ export type SetCurveOptions = {
 // この後の MAX_EDGE_TURN が担う)。1px を下回っていれば、隣り合う画素の間に収まる。
 const DEFAULT_MAX_SAGITTA_PX = 0.5;
 
-// 1辺あたりに許す折れ角の上限。サジッタ目標だけに従うと、遠ズームで1区間が際限なく粗くなる
-// (画面上のサジッタが縮まないぶん実距離の許容量が際限なく伸びる)ため、その歯止めとして残す。
-const MAX_EDGE_TURN = (5 * Math.PI) / 180;
+// 折れ角上限の既定値 [deg]。サジッタ目標だけに従うと、遠ズームで1区間が際限なく粗くなる
+// (画面上のサジッタが縮まないぶん実距離の許容量が際限なく伸びる)ため、その歯止めになる。
+const DEFAULT_MAX_EDGE_TURN_DEG = 5;
 
 // initialSegments を省いたときの初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で
 // 弦が縮退するため、最低限これだけ分けてから適応分割に入る。
@@ -103,12 +106,6 @@ const MIN_T_SPAN = 2 ** -24;
 // スケール変化に対する焼き直し抑制の遊び幅。毎フレームの微小なズーム変化のたびに
 // 焼き直さないための遊び。
 const SCALE_REBAKE_RATIO = 1.2;
-
-// カメラ視線方向の変化に対する焼き直し閾値(なす角の余弦)。適応分割は焼いた瞬間の視線方向を
-// 基準に「手前だけ細かく、奥は MAX_EDGE_TURN 相当に粗く」焼くため、距離が変わらず向きだけ
-// 変わる周回でも粗い区間が手前に回り込み得る。その回り込みが目立たない角度に MAX_EDGE_TURN と
-// 同程度の値を採る。
-const CAM_DIR_REBAKE_COS = Math.cos((5 * Math.PI) / 180);
 
 // f32 の相対量子化幅(仮数23bit)。sample の座標系は LEO スケールの絶対座標を含みうるため、
 // これをそのまま頂点バッファ(f32)へ書くと、その大きさに応じた量子化ノイズが生じ、近距離の
@@ -267,14 +264,24 @@ export class Curve {
   // 初期頂点に置ける頂点数の上限。
   private readonly maxInitialVertices: number;
 
-  // 画面上のサジッタ目標 [px]。分割をどこで止めるかを決める。
+  // 分割をどこで止めるかを決める2つの目標。画面上のサジッタ [px] と1辺の折れ角 [rad]。
   private readonly maxSagittaPx: number;
+  private readonly maxEdgeTurn: number;
+  // 焼き直しを起こす視線方向の変化(なす角の余弦)。適応分割は焼いた瞬間の視線を基準に
+  // 手前だけ細かく焼くため、向きだけ変わっても粗い区間が手前へ回り込む。それが折れ角の
+  // 上限を超えて見えない角度で焼き直す。
+  private readonly camDirRebakeCos: number;
 
   // style はマテリアルと描画順、maxVertices は確保する頂点バッファの上限。style.dash が
   // あれば破線(LineDashedMaterial、頂点ごとの累積距離を焼く)。
   constructor(opts: CurveOptions) {
-    const { style, maxVertices = DEFAULT_MAX_VERTICES, maxSagittaPx = DEFAULT_MAX_SAGITTA_PX } = opts;
+    const {
+      style, maxVertices = DEFAULT_MAX_VERTICES, maxSagittaPx = DEFAULT_MAX_SAGITTA_PX,
+      maxEdgeTurnDeg = DEFAULT_MAX_EDGE_TURN_DEG,
+    } = opts;
     this.maxSagittaPx = maxSagittaPx;
+    this.maxEdgeTurn = (maxEdgeTurnDeg * Math.PI) / 180;
+    this.camDirRebakeCos = Math.cos(this.maxEdgeTurn);
     const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
     this.maxInitialVertices = Math.max(INITIAL_SEGMENTS + 1, Math.floor(maxVertices * MAX_INITIAL_VERTEX_RATIO));
@@ -437,7 +444,7 @@ export class Curve {
       ? Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by + az * bz) / (aLen * bLen))))
       : 0;
 
-    return Math.max(sagittaPx / this.maxSagittaPx, turn / MAX_EDGE_TURN);
+    return Math.max(sagittaPx / this.maxSagittaPx, turn / this.maxEdgeTurn);
   }
 
   // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても、残った
@@ -501,7 +508,7 @@ export class Curve {
     const scaleNow = this.representativeScale(sample, ts);
     const scaleChanged = this.bakedScale === null
       || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO;
-    const camDirChanged = this.camFwd.dot(this.bakedCamFwd) < CAM_DIR_REBAKE_COS;
+    const camDirChanged = this.camFwd.dot(this.bakedCamFwd) < this.camDirRebakeCos;
     // 色を後から使い始めたときは、焼いてある頂点に色が入っていないので必ず焼き直す
     // (そうしないと色属性が 0 のまま束縛されて線が黒くなる)。使うのをやめたときは、
     // 焼いてある色がマテリアル色に掛かり続けないよう頂点カラーを外す。
