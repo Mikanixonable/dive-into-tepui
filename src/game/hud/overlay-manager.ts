@@ -2,10 +2,7 @@
 // 重なり順(最前面が誰か)・ESC の配送先・項目ショートカットの配送先・外側クリックでの
 // 自動クローズ・入力ゲートを一元的に決める。層(#hud-layer-*)自体の前後関係は
 // overlay-layer.ts が持つ — このクラスが持つのは登録されたオーバーレイどうしの論理的な順序だけ。
-// ESC・項目ショートカット・外側クリックとも、このクラス自身は window/document への
-// 直付けリスナを増やさない(ESC・項目ショートカットは Game.handleInput が Input のエッジ
-// キュー経由で取った edge をそのまま渡す。外側クリックは下の1箇所のキャプチャリスナへ
-// 集約し、各オーバーレイはここへ登録するだけにする)。
+// 外側クリックは1箇所のキャプチャリスナへ集約し、各オーバーレイはここへ登録するだけにする。
 
 export type OverlayKind = 'modal' | 'popup' | 'window';
 
@@ -108,8 +105,7 @@ export class OverlayManager {
     }
   }
 
-  // 最前面から順に、ESC で閉じられるオーバーレイを1つだけ閉じる。閉じるものが無ければ false
-  // — 呼び出し側(Game.handleInput)はこれを見て「何も無ければ一時停止メニューを開く」へ倒す。
+  // 最前面から順に、ESC で閉じられるオーバーレイを1つだけ閉じる。閉じるものが無ければ false を返す。
   closeTopmostOnEscape(): boolean {
     for (let i = this.stack.length - 1; i >= 0; i--) {
       const entry = this.stack[i]!;
