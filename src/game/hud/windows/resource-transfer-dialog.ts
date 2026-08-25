@@ -13,7 +13,7 @@ const STYLE = `
   display: flex; align-items: center; justify-content: center;
   background: var(--scrim); backdrop-filter: blur(3px);
   font-family: var(--font-neutral, var(--font-family));
-  pointer-events: auto; z-index: 100;
+  pointer-events: auto; z-index: var(--z-resource-transfer-dialog);
 }
 #resource-transfer-dialog .rt-panel {
   width: min(900px, 94vw); max-height: min(720px, 90vh);

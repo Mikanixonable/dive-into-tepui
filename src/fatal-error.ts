@@ -2,6 +2,7 @@
 // 壊れた Game/renderer を同一ページ内で再利用せず、復旧はページ全体の再読込だけにする。
 import {
   ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
+  Z_FATAL_ERROR,
 } from './game/theme';
 import { hideLoading } from './loading-overlay';
 
@@ -17,7 +18,7 @@ export function showFatalError(title: string, message: string, error: unknown): 
   overlay.setAttribute('aria-modal', 'true');
   overlay.style.cssText =
     'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;' +
-    `color:${TEXT};background:${BG};font-family:${FONT_FAMILY};font-size:${FONT_XL};text-align:center;line-height:2;z-index:1000`;
+    `color:${TEXT};background:${BG};font-family:${FONT_FAMILY};font-size:${FONT_XL};text-align:center;line-height:2;z-index:${Z_FATAL_ERROR}`;
 
   const panel = document.createElement('div');
   panel.style.cssText =
