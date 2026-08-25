@@ -62,7 +62,7 @@ export class GuideCurve {
       return;
     }
     this.curve.setTransform(fo.RtoThreeV3(origin));
-    this.curve.setCurve(sample, { revision: this.revision, camera, colorAt });
+    this.curve.setAnalyticCurve(sample, { revision: this.revision, camera, colorAt });
     if (this.colorsDirty && colorAt) {
       this.curve.setColors(colorAt);
       this.colorsDirty = false;

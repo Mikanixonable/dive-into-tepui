@@ -109,7 +109,7 @@ function circle(
   style: LineStyle, camera: THREE.Camera,
 ): THREE.Object3D {
   const curve = new Curve({ style, maxVertices: 2048 });
-  curve.setCurve((t, out) => {
+  curve.setAnalyticCurve((t, out) => {
     const theta = 2 * Math.PI * t;
     out.copy(center)
       .addScaledVector(u, radius * Math.cos(theta))
