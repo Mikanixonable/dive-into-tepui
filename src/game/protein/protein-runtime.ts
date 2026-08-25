@@ -174,10 +174,20 @@ export class ProteinRuntime {
     ].flat())];
   }
 
-  /** モード係数を更新して GPU へ送り、アンカーが使う残基だけを CPU 側で投影する。 */
-  updateVisual(displayTime: number, projectedDiameterPx = Number.POSITIVE_INFINITY): void {
-    const cpuStart = performance.now();
+  /** 投影サイズから LOD をヒステリシス付きで更新する。marker になったフレームは
+   * 重い更新をしないので、CPU/upload の計測も正直に 0 へ戻す。 */
+  updateLod(projectedDiameterPx: number): ProteinMotionLod {
     this.currentLod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.currentLod);
+    if (this.currentLod === 'marker') {
+      this.lastCpuMs = 0;
+      this.lastUploadBytes = 0;
+    }
+    return this.currentLod;
+  }
+
+  /** モード係数を更新して GPU へ送り、アンカーが使う残基だけを CPU 側で投影する。 */
+  updateVisual(displayTime: number): void {
+    const cpuStart = performance.now();
     this.controller.update(displayTime, this.currentLod, this.combat.phase);
     if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
       || this.uploadedPhase !== this.combat.phase) {
