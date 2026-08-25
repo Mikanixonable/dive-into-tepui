@@ -14,7 +14,7 @@ import { CurveColorSampler } from '../../render/curve';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { RenderStyleGate, type RenderStyle } from '../../render/render-style';
 import { SCHEMATIC_LINE } from '../../render/schematic-style';
-import { GuideCurve, polylineSampler } from './guide-curve';
+import { GuideCurve } from './guide-curve';
 import {
   GuideGroupId, GuideKindSettings, OrbitGuideSettings,
 } from './orbit-guide-settings';
@@ -24,9 +24,7 @@ import { DirectionMarkers } from './direction-markers';
 // 族の折れ線1本ぶんの頂点予算。焼き込みは全族96点(orbit-catalog.ts)で統一されているので、
 // 適応分割による追加ぶんを見込んでも十分な余裕を持たせる。
 const CATALOG_LINE_VERTEX_BUDGET = 256;
-// リサジューは1周あたりこれだけの点を打つ。周回数を増やすほど総点数も増える。
-const LISSAJOUS_POINTS_PER_CYCLE = 64;
-// 折れ線の頂点予算。適応分割のぶんも見込んで、最大周回数ぶんの点を確保しておく。
+// リサジューの頂点予算。周回数を増やすほど長い経路になるので、族の線より多く取る。
 const LISSAJOUS_VERTEX_BUDGET = 2048;
 // マーカーの InstancedPool 容量。指定本数がこれを超える組み合わせでは、画面に出す線自体は
 // 指定どおり描くが(8の#9)マーカーは古いものから溢れて描かれなくなる。
@@ -72,6 +70,32 @@ interface GuideLineEntry {
   readonly index: number;
   readonly count: number;
   lastLoop: GuideLoop | null;
+}
+
+// ガイド線の曲線を GuideCurve へ流す。頂点を相対化する基準点は曲線上の1点でよいので、
+// パラメータ 0 の位置を採る。解析曲線の初期区間は「1区間が半周を超えない」下限で、
+// 周回数から決まる(細かさは Curve が決める)。
+function applyLoop(curve: GuideCurve, loop: GuideLoop): void {
+  const shape = loop.shape;
+  if (shape.kind === 'analytic') {
+    const origin = shape.positionAt(0);
+    curve.setAnalytic(
+      origin,
+      (t, out) => {
+        const p = shape.positionAt(t);
+        out.set(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+      },
+      Math.ceil(loop.revolutions * 2),
+    );
+    return;
+  }
+  const origin = shape.position(0);
+  curve.setHermite(origin, {
+    count: shape.count,
+    at: shape.at,
+    position: (i, out) => { const p = shape.position(i); out.set(p.x - origin.x, p.y - origin.y, p.z - origin.z); },
+    tangent: (i, out) => { const m = shape.tangent(i); out.set(m.x, m.y, m.z); },
+  });
 }
 
 // 族 id からその種類が属する群を判定する。「軸方向軌道」「垂直軌道」は共線点(L1-L3)と
@@ -227,12 +251,8 @@ export class OrbitGuideLines {
       for (const entry of this.lines) {
         const loop = this.computeLoop(entry, displayTime, settings);
         entry.lastLoop = loop;
-        if (loop && loop.points.length >= 2) {
-          const origin = loop.points[0]!;
-          entry.curve.setSampler(origin, polylineSampler(loop.points, origin, loop.closed));
-        } else {
-          entry.curve.clear();
-        }
+        if (loop) applyLoop(entry.curve, loop);
+        else entry.curve.clear();
       }
       this.geometryKey = geometryKey;
       this.lastComputedTime = displayTime;
@@ -258,7 +278,7 @@ export class OrbitGuideLines {
       entry.curve.setStyle(style.color, style.opacity);
       entry.curve.sync(fo, camera, style.colorAt);
       if (entry.lastLoop) {
-        this.markers.addLoop(entry.lastLoop, style.direction, style.animate, style.markerColor, fo);
+        this.markers.addLoop(entry.curve, entry.lastLoop, style.direction, style.animate, style.markerColor, fo);
       }
     }
     this.markers.endFrame();
@@ -297,7 +317,6 @@ export class OrbitGuideLines {
       return lissajousLoop(
         t, this.ephemeris, entry.system as CatalogSystemId, entry.point as GuidePoint,
         l.inPlane, l.outOfPlane, l.inPlanePhase, l.outOfPlanePhase, l.cycles,
-      Math.min(LISSAJOUS_VERTEX_BUDGET, Math.max(64, Math.round(l.cycles * LISSAJOUS_POINTS_PER_CYCLE))),
       );
     }
     if (entry.familyId === 'sunSync') {
