@@ -150,9 +150,10 @@ private にすれば、**任意のサンプラと任意の初期頂点列の組�
    （色・不透明度の変更では呼ばれない）。
 7. `src/render/curve.ts` のモジュール先頭コメントに、「Curve が決めること」と
    「サンプラが満たすべきこと」が分けて書かれている。
-8. 3次エルミート補間の実装が `src/render/curve.ts` の `setHermiteCurve` の1箇所だけになる
-   （`src/physics/kinematic-state.ts` の `hermiteInterpolate` は `KinematicState` 用の別物として
-   残る）。t を等分した初期頂点列を組むコードも `Curve` の中の1箇所だけになる。
+8. 描画側の3次エルミート補間が `src/render/curve.ts` の `hermiteSampler` の1箇所だけになる。
+   `src/physics/kinematic-state.ts` の `hermiteInterpolate` は `KinematicState` を扱う物理側の
+   別実装として残る（`render/` は物理の座標型を知らないので、層をまたいで共有しない）。
+   t を等分した初期頂点列を組むコードも `Curve` の中の1箇所だけになる。
 9. `Curve` の公開された曲線の入口が `setAnalyticCurve` / `setHermiteCurve` の2つだけになり、
    `setCurve` が private になっている。**サンプラと初期頂点列を任意に組み合わせた呼び出しが、
    型として書けない。**
@@ -170,59 +171,18 @@ private にすれば、**任意のサンプラと任意の初期頂点列の組�
   ある。**手順5・手順6 で両方の呼び出し側がエルミートへ移ったら、この関数ごと削除する。**
 - `OrbitGuideLines.visibleLines(sampleCount)` は当たり判定用の点列を曲線から引き直す。
   輪を閉じるかどうかは `GuideLoop.closed` が決める。
+- `Curve` の曲線の入口は `setAnalyticCurve` / `setHermiteCurve` の2つだけ(`setCurve` は
+  private)。`sampleAt(t, out)` がいま描いている曲線を返す。初期頂点列は `Curve` の外へ出ない。
+- 節点数・初期区間数が頂点予算を超える要求は throw する。
+- `TrajectoryLine` は `setHermiteCurve` へ移り、節点は描画区間の bake 済み状態(両端は区間端で
+  内挿)。節点が `MAX_VERTICES` を超える長さになるときは一様に間引く — 間引きの判断は、
+  どこに細部があるかを知っている呼び出し側が持つ。
+- `OrbitLine` と `tools/render-lab/cases.ts` は `setAnalyticCurve`。`GuideCurve` は当面
+  `polylineSampler` を `setAnalyticCurve` へ流している(手順5・6 でエルミートへ移る)。
 - 線のマテリアル色は `styleFor` が毎フレーム組む。頂点カラー(`colorAt`)を持つのは族の
   グラデーション線だけで、単色の線は `colorAt` を渡さない。
 
 ## 手順
-
-### 手順3. `Curve` の契約を確定させ、2種類の利用をヘルパーとして提供する
-
-**目的**
-
-呼び出し側が渡した `initialTs` を間引くのをやめ、Curve の責務分担
-（何を Curve が決め、何をサンプラが満たすべきか）をモジュールコメントに書く。併せて、
-正しい2種類の利用（種類A / 種類B）に名前を与え、以降の手順が寄せる先を作る。
-**再発防止の本体はこの手順にある。** この時点では呼び出し側を移さないので、
-**描かれる形は変わらない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/curve.ts` | `INITIAL_SEGMENT_BUDGET_RATIO`(67行目) と `seedStride`(344-347行目) を削除。`rebake`(352行目) は初期頂点列の全点を頂点として積む。モジュール先頭コメント(1-5行目)・`CurveSampler`(22行目) のコメントを下記の内容へ書き直す |
-| `src/render/curve.ts` | `setAnalyticCurve(sample, opts)` を新設。`SetCurveOptions` から `initialTs`(40行目) を外し、代わりに `initialSegments?: number`（省略時 `INITIAL_SEGMENTS`）を持たせる。初期頂点列は t の等分で内部に組む（区間数ごとのキャッシュを持ち、`DEFAULT_INITIAL_TS`(61-63行目) もこれに寄せる） |
-| `src/render/curve.ts` | `setHermiteCurve(knots, opts)` を新設。`CurveKnots` は `{ count, at(i), position(i, out), tangent(i, out) }`。`at` は昇順かつ [0,1] の両端を含むこと、`count <= maxVertices` であることを事前条件とし、破れば throw する |
-| `src/render/curve.ts` | `sampleAt(t, out)` を新設し、直近に渡されたサンプラをそのまま評価する。`setCurve`(381行目) は private にせず残す（手順7で閉じる） |
-
-書くべき内容（責務の内側だけを書く。呼び出し側の事情は書かない）:
-
-- **Curve が決めること**: 頂点を t のどこに何個置くか。画面上のサジッタ・折れ角の目標、
-  ズーム／視線変化に対する焼き直しの要否、f32 の量子化を避ける基準点。
-  **呼び出し側はこれらに一切関与しない。**
-- **サンプラが満たすべきこと**: t∈[0,1] で連続かつ滑らか（少なくとも C¹）であること。
-  **サンプラが折れ線を返せば、描かれるのも折れ線である** — 適応分割は入力を超える精度を
-  作らない。**線が角ばるときに直すのはサンプラであって、初期分割数ではない。**
-- **入口が2つしかないこと**: 解析関数を渡す（`setAnalyticCurve`）か、節点の位置と接線を渡す
-  （`setHermiteCurve`）か。**どちらにも当てはまらないサンプラを書いているなら、それは
-  間違っている。**
-- **`initialSegments` の意味**: 適応分割は弦の中点しか見ないので、1区間に何周ぶんも入る曲線では
-  中点がたまたま曲線上に乗り、分割済みと誤判定して区間まるごとが直線に化ける。
-  **これを防ぐためだけの値で、細かさを決めるためではない。** 1周ぶんの曲線なら省略してよい。
-- **初期区間数の決め方はサンプラ側の話であること**: 種類Aなら「1区間が曲線の半周を超えない」
-  下限、種類Bなら節点そのもの。**どちらも「何 px 曲がって見えるか」とは無関係で、
-  そこは Curve が決める。**
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -rn "INITIAL_SEGMENT_BUDGET_RATIO|seedStride" src/` が 0 件。
-- 着手前に `grep -rn "initialTs" src/game/` が `trajectory-line.ts` だけであることを確認する。
-- `setHermiteCurve` に、節点が2個・節点間隔が不均等・パラメータが降順（throw する）・
-  `count > maxVertices`（throw する）の4ケースを当てて手元で1度確認する
-  （`src/render/` は THREE 依存でテスト対象外なので、テストファイルは残さない）。
-- `npm run render-lab:shot` が通る（`tools/render-lab/cases.ts:111` の円が今までどおり出る）。
-- マップビューで自艦の予測線を 28 日表示にし、線が途中で直線に化けないことを目で見る
-  （`trajectory-line.ts` の `initialTs` が間引かれずに効くようになる箇所）。
 
 ### 手順4. 参照軌道4種とリサジューを解析サンプラへ移す
 
@@ -313,37 +273,6 @@ private にすれば、**任意のサンプラと任意の初期頂点列の組�
   開閉するあたり）へ動かして、ネックの形が今までどおり出ることを目で見る。
   **ネックの尖った角が丸まっていないこと**を併せて確認する（中心差分の接線が角を1格子ぶん
   丸めるため。丸まるなら、その成分だけ接線を片側差分へ落とすか、`RESOLUTION` を上げる）。
-
-### 手順7. 元祖2つを新しい入口へ寄せ、`setCurve` を閉じる
-
-**目的**
-
-種類A・種類Bの元祖である2つが、まだ個別実装のまま残っている。新しい入口へ寄せて、
-3次エルミートと等分初期頂点列の実装を1箇所ずつにする（達成目標8）。すべての呼び出し側が
-移り終わるので、**`Curve.setCurve` を private にして入口を2つに閉じる**（達成目標9）。
-**この時点で描かれる形は変えない** — 同じ多項式・同じ節点なので、頂点は一致する。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/trajectory-line.ts` | `sampler`(104-115行目) と `buildInitialTs`(170-183行目) を `setHermiteCurve` の呼び出しへ置き換える。節点は bake 済みの座標系相対状態のうち描画区間 `[startTime, endTime]` に入るもの（両端は区間端でクランプした節点を1つずつ足す）。パラメータは時刻を [0,1] へ写した値、接線は速度 × (end − start)。`StateQueue`(85行目/149行目) は描画のためには不要になるので、`combined` を座標系相対へ写した平配列を持つ形にする |
-| `src/game/orbit-line.ts` | `sampler`(65-77行目) は解析式のままでよい。`setCurve`(107行目) を `setAnalyticCurve` へ差し替える（`initialSegments` は省略 = 1周ぶんの閉曲線）。`samplePoints`(136-148行目) は `Curve.sampleAt` 経由にし、当たり判定が描かれている線と一致するようにする |
-| `src/game/celestial/guide-curve.ts` | 手順2で入れた暫定の `setSampler` を削除する（残る呼び出し側は `setAnalytic` / `setHermite` だけ） |
-| `tools/render-lab/cases.ts` | `setCurve`(112行目) を `setAnalyticCurve` へ差し替える |
-| `src/render/curve.ts` | `setCurve` を private にする |
-| `src/physics/state-queue.ts` | 変更しない（`DynamicTrajectory` が引き続き使う） |
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run test:physics` が通る。
-- `grep -rn "\.setCurve(" src/ tools/` が 0 件（外から呼べる曲線の入口が2つだけになったこと）。
-- `grep -rn "hermiteInterpolate" src/game/` が 0 件（描画側の3次エルミートが
-  `setHermiteCurve` に一本化されたこと）。
-- `grep -n "StateQueue" src/game/trajectory-line.ts` が 0 件。
-- マップビューで自艦の予測線・過去線を出し、**手順6 の時点と線が一致している**ことを目で見る。
-  28日表示で線が途中で直線に化けないこと、回転座標系（月固定など）へ切り替えても線が
-  歪まないことを確認する。
 
 ## 見積り
 
