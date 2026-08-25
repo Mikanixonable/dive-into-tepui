@@ -13,6 +13,7 @@ declare global {
       capture: () => Promise<string>;
       setView: (changes: Partial<LabViewAngles>) => void;
       setTarget: (target: DebugTargetId) => void;
+      slots: () => readonly { texelWorld: number; frame: number; near: number; far: number; active: number }[];
       measure: (name: CaseName) => Promise<LabMeasurement>;
     };
   }
@@ -114,6 +115,7 @@ async function init(): Promise<void> {
     capture: () => view.capture(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setTarget: (target) => { markTarget(target); view.showDebugTarget(target); },
+    slots: () => view.shadowSlots,
     measure: (name) => view.measure(name),
   };
 }

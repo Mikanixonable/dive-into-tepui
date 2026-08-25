@@ -10,14 +10,14 @@ import { metersPerPixelAtDepth } from '../physics/projection';
 const TEXELS_PER_PIXEL = 1;
 
 /**
- * 受け手が要求する texel の実寸 [m]。小さいほど厳しい。distance はカメラから外接球の中心まで
- * の**真の距離**で、カメラ前方への射影距離ではない — 射影距離だと背後や真横の受け手が 0 へ
- * 潰れ、要求が無限に厳しくなる。
+ * 受け手が要求する texel の実寸 [m]。小さいほど厳しい。surfaceDistance はカメラから受け手の
+ * 表面までの**真の距離**で、カメラ前方への射影距離ではない — 射影距離だと背後や真横の受け手が
+ * 0 へ潰れ、要求が無限に厳しくなる。
  */
 export function requiredTexel(
-  distance: number, radius: number, cameraNear: number, fovDeg: number, viewportHeight: number,
+  surfaceDistance: number, cameraNear: number, fovDeg: number, viewportHeight: number,
 ): number {
-  const surface = Math.max(distance - radius, cameraNear);
+  const surface = Math.max(surfaceDistance, cameraNear);
   return metersPerPixelAtDepth(fovDeg, surface, Math.max(1, viewportHeight)) / TEXELS_PER_PIXEL;
 }
 
