@@ -19,6 +19,7 @@ import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { RenderStyle } from '../../render/render-style';
 import { AMBIENT_IRRADIANCE, SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
 import { MAX_OCCLUDERS, type Occluder, type OcclusionPass } from '../../render/pipeline/occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
@@ -168,6 +169,7 @@ export class EnvironmentScene {
     displayTime: number,
     cameraSystem: CameraSystem,
     graphics: GraphicsSettingsData,
+    style: RenderStyle,
     gridVisibility: CelestialGridVisibility,
     sharedVisibilityPolicy: MapVisibilityPolicy | null = null,
     markerManager: MarkerManager | null = null,
@@ -187,7 +189,7 @@ export class EnvironmentScene {
       : null;
     for (const body of this.bodies) {
       body.setVisible(!cameraSystem.overviewMode || visibilityPolicy!.body(body.id).category);
-      body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, graphics);
+      body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, graphics, style);
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。

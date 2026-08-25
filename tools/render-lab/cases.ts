@@ -262,6 +262,7 @@ function saturn(): LabCase {
     () => distance / VIEW_HEIGHT,
     v3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z),
     sunIrradianceAtDistance(sunDistance),
+    'realistic',
   );
   return { objects: [sphere(SATURN_ALBEDO, radius, center), view.group], camera };
 }

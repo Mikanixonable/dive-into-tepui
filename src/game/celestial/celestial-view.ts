@@ -10,6 +10,7 @@ import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeli
 import { len, sub } from '../../physics/vec3';
 import type { Vec3 } from '../../physics/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { RenderStyle } from '../../render/render-style';
 
 export abstract class CelestialView {
   abstract readonly id: CelestialBodyId;
@@ -17,7 +18,7 @@ export abstract class CelestialView {
   abstract setVisible(visible: boolean): void;
   abstract sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    graphics: GraphicsSettingsData,
+    graphics: GraphicsSettingsData, style: RenderStyle,
   ): void;
   // build(scene) で登録した自分のメッシュ一式をシーンから外し、GPU 資源を解放する。
   abstract dispose(): void;

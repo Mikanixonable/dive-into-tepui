@@ -9,7 +9,7 @@
 // 近平面の深度が 1・遠平面が 0 なのは反転深度(render/scene.ts)の約束。
 import * as THREE from 'three/webgpu';
 import { float, getViewPosition, normalize, screenUV, texture } from 'three/tsl';
-import type { Mat4Uniform, Vec3Node } from '../tsl-types';
+import type { Mat4Uniform, Vec2Node, Vec3Node } from '../tsl-types';
 
 // その画素を通る視線。origin は近平面上の点、direction はカメラから遠ざかる単位ベクトル。
 export type ViewRay = {
@@ -17,13 +17,16 @@ export type ViewRay = {
   readonly direction: Vec3Node;
 };
 
-// 深度テクスチャの生値から復元した、その画素が写している面の view 空間位置。
+// 深度テクスチャの生値から復元した、その画素が写している面の view 空間位置。uv を渡せば
+// 隣接画素の位置も同じ式で引ける。
 //
 // WGSL では screenUV の原点が上端(NodeBuilder.isFlipY が WGSL のとき偽で、fragCoord が
 // そのまま使われる)。getViewPosition はその向きを前提に上下を反転して NDC を組むので、
 // 深度テクスチャのサンプルと同じ screenUV をそのまま渡してよい。
-export function viewPositionAt(depthTexture: THREE.Texture, projectionMatrixInverse: Mat4Uniform): Vec3Node {
-  return getViewPosition(screenUV, texture(depthTexture, screenUV).r, projectionMatrixInverse);
+export function viewPositionAt(
+  depthTexture: THREE.Texture, projectionMatrixInverse: Mat4Uniform, uv: Vec2Node = screenUV,
+): Vec3Node {
+  return getViewPosition(uv, texture(depthTexture, uv).r, projectionMatrixInverse);
 }
 
 // その画素を通る視線。透視投影では起点がカメラ原点から視線に沿ってずれるだけで、直線そのものは
