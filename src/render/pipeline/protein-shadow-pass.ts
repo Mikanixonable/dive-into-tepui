@@ -4,6 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { clamp, positionView, uniform, vec3, vec4 } from 'three/tsl';
+import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { FloatNode, FloatUniform, Mat4Uniform } from '../tsl-types';
 import {
   PROTEIN_SHADOW_OCCLUDER_LAYER, PROTEIN_SHADOW_RECEIVER_LAYER,
@@ -30,7 +31,7 @@ export class ProteinShadowPass {
   private readonly lightDirection = new THREE.Vector3();
   private readonly clearColor = new THREE.Color();
 
-  constructor(private readonly renderer: WebGPURenderer) {
+  constructor(private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings) {
     this.shadowTarget = new THREE.RenderTarget(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, {
       format: THREE.RGBAFormat,
       type: THREE.HalfFloatType,
@@ -112,6 +113,7 @@ export class ProteinShadowPass {
       this.renderer.setClearColor(0xffffff, 1);
       this.renderer.setRenderTarget(this.shadowTarget);
       this.renderer.clear(true, true, false);
+      this.gpu.beginPass(GPU_PASS.proteinShadowOccluder);
       this.renderer.render(scene, this.lightCamera);
 
       scene.overrideMaterial = this.receiverMaterial;
@@ -119,6 +121,7 @@ export class ProteinShadowPass {
       this.renderer.setClearColor(0x000000, 1);
       this.renderer.setRenderTarget(this.receiverTarget);
       this.renderer.clear(true, true, false);
+      this.gpu.beginPass(GPU_PASS.proteinShadowReceiver);
       this.renderer.render(scene, camera);
       this.activeUniform.value = 1;
     } finally {

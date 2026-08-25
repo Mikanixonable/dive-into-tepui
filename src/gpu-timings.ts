@@ -7,20 +7,25 @@ import { InspectorBase, TimestampQuery, type WebGPURenderer } from 'three/webgpu
 
 // パスの識別子。並びは描画フェーズでの実行順。
 export const GPU_PASS = {
-  gbuffer: 0,
-  occlusion: 1,
-  lighting: 2,
-  material: 3,
-  atmosphere: 4,
-  world: 5,
-  composite: 6,
-  overlay: 7,
+  proteinShadowOccluder: 0,
+  proteinShadowReceiver: 1,
+  gbuffer: 2,
+  occlusion: 3,
+  lighting: 4,
+  material: 5,
+  atmosphere: 6,
+  world: 7,
+  composite: 8,
+  overlay: 9,
 } as const;
 
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
 
 // 表示名。並びは GPU_PASS の値の順。
-export const GPU_PASS_LABELS: readonly string[] = ['Gバッファ', '遮蔽', 'ライティング', 'マテリアル', '大気', 'ワールド', '合成', '3D UI'];
+export const GPU_PASS_LABELS: readonly string[] = [
+  'タンパク質影(遮蔽器)', 'タンパク質影(受け手)',
+  'Gバッファ', '遮蔽', 'ライティング', 'マテリアル', '大気', 'ワールド', '合成', '3D UI',
+];
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
 
