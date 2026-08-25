@@ -651,6 +651,9 @@ export const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
 export const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 export const COLOR_BASE_ORBIT_LINE = '#4f8f7d'; // 拠点(味方施設)の軌道線。落ち着いた緑がかった色で他線と区別
+// ゼロ速度曲線(ガイドタブ5.3節)。軌道ガイド線の青・橙・緑・紫、静止軌道リングの灰色と
+// 見分けがつく控えめな薔薇色。
+export const COLOR_ZERO_VELOCITY_LINE = 0xd97a94;
 export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。

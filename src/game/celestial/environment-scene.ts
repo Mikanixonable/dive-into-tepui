@@ -31,6 +31,7 @@ import { EarthView } from './earth-view';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
 import { OrbitGuideLines } from './orbit-guide-lines';
+import { ZeroVelocityLines } from './zero-velocity-lines';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-settings';
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
@@ -95,6 +96,8 @@ export class EnvironmentScene {
   private readonly referenceLines: Map<OrbitingId, OrbitLine>;
   // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
   private readonly orbitGuideLines: OrbitGuideLines;
+  // ゼロ速度曲線(ガイドタブ5.3節)。
+  private readonly zeroVelocityLines: ZeroVelocityLines;
   // 軌道ガイドタブの正本の鏡映し。静止軌道リング・ラベルの表示可否だけをここから読む。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
 
@@ -120,6 +123,7 @@ export class EnvironmentScene {
     // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
     this.referenceLines = new Map();
     this.orbitGuideLines = new OrbitGuideLines(scene, ephemeris);
+    this.zeroVelocityLines = new ZeroVelocityLines(scene, ephemeris);
     this.lightingAnchor = new THREE.AmbientLight();
     scene.add(this.lightingAnchor);
     // レンダラーは光源自身の layers とカメラの layers が重ならないと光源をそのカメラの描画対象
@@ -149,6 +153,7 @@ export class EnvironmentScene {
   setOrbitGuideSettings(settings: OrbitGuideSettings): void {
     this.orbitGuideSettings = settings;
     this.orbitGuideLines.setSettings(settings);
+    this.zeroVelocityLines.setSettings(settings.zeroVelocity);
   }
 
   // 公転天体1体につき1本の参照軌道線(右クリックの当たり判定向け)。
@@ -221,6 +226,7 @@ export class EnvironmentScene {
       displayTime, cameraSystem.overviewMode, geostationaryOrbitVisible,
       cameraSystem, markerManager, celestialBodies);
     this.orbitGuideLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
+    this.zeroVelocityLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
@@ -464,6 +470,7 @@ export class EnvironmentScene {
     this.geoLine.dispose();
     for (const id of [...this.referenceLines.keys()]) this.removeReferenceLine(id);
     this.orbitGuideLines.dispose();
+    this.zeroVelocityLines.dispose();
     // ライティングモデルを組ませるためだけの光源。
     this.lightingAnchor.removeFromParent();
     this.lightingAnchor.dispose();
