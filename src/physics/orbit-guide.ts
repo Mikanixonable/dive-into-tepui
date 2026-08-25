@@ -18,16 +18,16 @@ import { Vec3, add, cross, len, norm, scale, sub } from './vec3';
 export type GuidePoint = 'L1' | 'L2' | 'L3';
 
 // ガイド線の曲線の渡し方。閉じた式で書けるものは関数、焼き込みの離散サンプルしか無いものは
-// 節点列(位置と、その点での d(位置)/d(パラメータ))で渡す。どちらもパラメータ u は
-// 「周期に対する経過時刻の割合」で、進行方向マーカーが実際の軌道速度に比例して動く。
+// 節点列で渡す。どちらもパラメータ u は「周期に対する経過時刻の割合」で、進行方向マーカーが
+// 実際の軌道速度に比例して動く。
 export type GuideShape =
   | { readonly kind: 'analytic'; readonly positionAt: (u: number) => Vec3 }
   | {
     readonly kind: 'knots';
-    readonly count: number;
-    readonly at: (i: number) => number;
-    readonly position: (i: number) => Vec3;
-    readonly tangent: (i: number) => Vec3;
+    // 節点のパラメータ(昇順、先頭 0・末尾 1)と、同じ添字の位置・d(位置)/du。
+    readonly us: readonly number[];
+    readonly positions: readonly Vec3[];
+    readonly tangents: readonly Vec3[];
   };
 
 // 軌道1本ぶんのガイド線。位置は ECI [m]。
@@ -208,7 +208,7 @@ export function catalogLoop(
   // 末尾に始点を u=1 として足し、節点列が u∈[0,1] を覆うようにする。速度は無次元時間に
   // 対する値なので、パラメータ(周期に対する割合)の接線にするには周期を掛ける。
   const points: Vec3[] = [];
-  const times: number[] = [];
+  const us: number[] = [];
   const tangents: Vec3[] = [];
   const period = lerp(family.members[lo]?.period ?? 0, family.members[hi]?.period ?? 0, f);
   for (let i = 0; i < samples; i++) {
@@ -227,20 +227,14 @@ export function catalogLoop(
     points.push(toEci(frame, local));
     // 速度は原点の平行移動を受けないので、回転基底だけで写す。
     tangents.push(rotateToEci(frame, velocity));
-    times.push(mix(values, a, b, 3, f));
+    us.push(mix(values, a, b, 3, f));
   }
   points.push(points[0]!);
   tangents.push(tangents[0]!);
-  times.push(1);
+  us.push(1);
 
   return {
-    shape: {
-      kind: 'knots',
-      count: points.length,
-      at: (i) => times[i]!,
-      position: (i) => points[i]!,
-      tangent: (i) => tangents[i]!,
-    },
+    shape: { kind: 'knots', us, positions: points, tangents },
     revolutions: 1,
     stability: lerp(family.members[lo]?.stability ?? 1, family.members[hi]?.stability ?? 1, f),
   };

@@ -159,13 +159,16 @@ export class TrajectoryLine {
     const states = times.map((t) => this.baked.at(t)).filter((s): s is KinematicState => s !== null);
     if (states.length < 2) return null;
     const span = end - start;
-    return {
-      count: states.length,
-      at: (i) => (states[i]!.t - start) / span,
-      position: (i, out) => { const r = states[i]!.r; out.set(r.x, r.y, r.z); },
+    const ts: number[] = [];
+    const positions: number[] = [];
+    const tangents: number[] = [];
+    for (const s of states) {
+      ts.push((s.t - start) / span);
+      positions.push(s.r.x, s.r.y, s.r.z);
       // パラメータは時刻を span で割った値なので、その微分は速度の span 倍。
-      tangent: (i, out) => { const v = states[i]!.v; out.set(v.x * span, v.y * span, v.z * span); },
-    };
+      tangents.push(s.v.x * span, s.v.y * span, s.v.z * span);
+    }
+    return { ts, positions, tangents };
   }
 
   // 適応分割を実行し GPU バッファへ反映する。camera = 画面上のサジッタを実距離へ換算するための
