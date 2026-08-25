@@ -70,8 +70,8 @@ export interface ZeroVelocitySettings {
 
 export interface OrbitGuideSettings {
   readonly geostationary: boolean;
-  // 群ごとの系トグル。焼き込みカタログに無い系は UI に出さない。
-  readonly systems: Readonly<Record<GuideGroupId, Readonly<Partial<Record<CatalogSystemId, boolean>>>>>;
+  // 系トグル。全群に共通で効く。焼き込みカタログに無い系は UI に出さない。
+  readonly systems: Readonly<Partial<Record<CatalogSystemId, boolean>>>;
   // 焼き込みカタログの族 id → その種類の表示設定。カタログに無い族の設定は無視される。
   readonly kinds: Readonly<Record<string, GuideKindSettings>>;
   readonly lissajous: LissajousSettings;
@@ -95,18 +95,11 @@ export function defaultKindSettings(colorStart: number, colorEnd: number): Guide
   };
 }
 
-const DEFAULT_SYSTEMS: Readonly<Partial<Record<CatalogSystemId, boolean>>> = {
-  'earth-moon': true,
-  'sun-earth': false,
-};
-
 export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
   geostationary: true,
   systems: {
-    collinear: DEFAULT_SYSTEMS,
-    triangular: DEFAULT_SYSTEMS,
-    secondary: DEFAULT_SYSTEMS,
-    resonant: DEFAULT_SYSTEMS,
+    'earth-moon': true,
+    'sun-earth': false,
   },
   kinds: {},
   lissajous: {
