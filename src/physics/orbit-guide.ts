@@ -92,11 +92,17 @@ export function rotatingFrame(t: number, ephemeris: Ephemeris, system: CatalogSy
 
 // 無次元の回転系座標を ECI [m] へ移す。
 function toEci(frame: RotatingFrame, local: Vec3Tuple): Vec3 {
-  const { origin, xHat, yHat, zHat, unit } = frame;
-  return add(origin, add(
+  return add(frame.origin, rotateToEci(frame, local));
+}
+
+// 無次元回転系のベクトルを ECI [m] のベクトルへ写す(原点の平行移動を伴わない、速度や
+// 接線のための変換)。
+function rotateToEci(frame: RotatingFrame, local: Vec3Tuple): Vec3 {
+  const { xHat, yHat, zHat, unit } = frame;
+  return add(
     add(scale(xHat, local[0] * unit), scale(yHat, local[1] * unit)),
     scale(zHat, local[2] * unit),
-  ));
+  );
 }
 
 // デコード済みの点列。族ごとに base64 を毎回ほどくと、1本引くたびに族まるごとのバイト列を
@@ -202,9 +208,12 @@ export function catalogLoop(
   const other = hi * samples * CATALOG_STRIDE;
 
   // 隣り合う2メンバーを同じ添字の点どうしで混ぜてから ECI へ移す。閉じた輪なので、
-  // 末尾に始点を u=1 として足し、節点列が u∈[0,1] を覆うようにする。
+  // 末尾に始点を u=1 として足し、節点列が u∈[0,1] を覆うようにする。速度は無次元時間に
+  // 対する値なので、パラメータ(周期に対する割合)の接線にするには周期を掛ける。
   const points: Vec3[] = [];
   const times: number[] = [];
+  const tangents: Vec3[] = [];
+  const period = lerp(family.members[lo]?.period ?? 0, family.members[hi]?.period ?? 0, f);
   for (let i = 0; i < samples; i++) {
     const a = base + i * CATALOG_STRIDE;
     const b = other + i * CATALOG_STRIDE;
@@ -213,43 +222,35 @@ export function catalogLoop(
       mix(values, a, b, 1, f),
       mix(values, a, b, 2, f),
     ];
+    const velocity: Vec3Tuple = [
+      mix(values, a, b, 4, f) * period,
+      mix(values, a, b, 5, f) * period,
+      mix(values, a, b, 6, f) * period,
+    ];
     points.push(toEci(frame, local));
+    // 速度は原点の平行移動を受けないので、回転基底だけで写す。
+    tangents.push(rotateToEci(frame, velocity));
     times.push(mix(values, a, b, 3, f));
   }
   points.push(points[0]!);
+  tangents.push(tangents[0]!);
   times.push(1);
 
   const memberLo = family.members[lo];
   const memberHi = family.members[hi];
   return {
-    shape: closedLoopKnots(points, times),
+    shape: {
+      kind: 'knots',
+      count: points.length,
+      at: (i) => times[i]!,
+      position: (i) => points[i]!,
+      tangent: (i) => tangents[i]!,
+    },
     closed: true,
     revolutions: 1,
     period: lerp(memberLo?.period ?? 0, memberHi?.period ?? 0, f),
     jacobi: lerp(memberLo?.jacobi ?? 0, memberHi?.jacobi ?? 0, f),
     stability: lerp(memberLo?.stability ?? 1, memberHi?.stability ?? 1, f),
-  };
-}
-
-// 閉じた輪の点列(末尾 = 先頭、times は 0 から 1)を節点列に組む。接線は隣接点の中心差分で、
-// 両端は輪を跨いで隣を取る — 始点だけ折れ角が残ると、そこにだけ角が立って見える。
-function closedLoopKnots(points: readonly Vec3[], times: readonly number[]): GuideShape {
-  const count = points.length;
-  const last = count - 1;
-  const tangents: Vec3[] = [];
-  for (let i = 0; i < count; i++) {
-    const prev = i === 0 ? last - 1 : i - 1;
-    const next = i === last ? 1 : i + 1;
-    // 輪を跨ぐぶんパラメータは 1 ずれるので、差分の分母もそのぶん足し戻す。
-    const dt = (times[next]! - times[prev]!) + (i === 0 || i === last ? 1 : 0);
-    tangents.push(scale(sub(points[next]!, points[prev]!), 1 / dt));
-  }
-  return {
-    kind: 'knots',
-    count,
-    at: (i) => times[i]!,
-    position: (i) => points[i]!,
-    tangent: (i) => tangents[i]!,
   };
 }
 

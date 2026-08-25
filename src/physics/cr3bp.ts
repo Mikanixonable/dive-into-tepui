@@ -123,36 +123,43 @@ export function sampleOrbitByArcLength(
     .map(([x, y, z]) => [x, y, z]);
 }
 
-// 位置 [x, y, z] と、その点までの経過時刻を周期で割った割合 [0, 1) を並べた4要素。
-export type Vec3TimeTuple = readonly [number, number, number, number];
+// 位置 [x, y, z]、その点までの経過時刻を周期で割った割合 [0, 1)、速度 [vx, vy, vz] を並べた
+// 7要素。速度は無次元時間に対する値で、周期を掛ければ割合パラメータに対する接線になる。
+export type Vec3TimeStateTuple = readonly [number, number, number, number, number, number, number];
 
 // sampleOrbitByArcLength と同じく弧長等間隔の点列を作るが、各点に「その点までの経過時刻 ÷ 周期」
-// (0..1)を併記する。進行方向マーカーを実際の軌道速度に比例して動かすために使う — 弧長等間隔の
-// 点は近点付近で間引かれるため、点の添字を時刻の代わりに使うと近点で速く・遠点で遅く動く表現が
-// できない。steps は1周を追う積分の刻み数。
+// (0..1)と速度を併記する。時刻は進行方向マーカーを実際の軌道速度に比例して動かすために、
+// 速度は点と点の間をエルミート補間で埋めるために使う。steps は1周を追う積分の刻み数。
 export function sampleOrbitByArcLengthWithTime(
   mu: number, s: Cr3bpState, period: number, samples: number, steps = 4000,
-): Vec3TimeTuple[] {
+): Vec3TimeStateTuple[] {
   // 細かい刻みで1周を追う。終端は始点へ戻ってくるので、閉じる辺を足さずに等分する。
   const dt = period / steps;
   let state = s;
   const path: Vec3Tuple[] = [[s[0], s[1], s[2]]];
+  const velocities: Vec3Tuple[] = [[s[3], s[4], s[5]]];
   for (let i = 0; i < steps; i++) {
     state = rk4StateStep(mu, state, dt);
     path.push([state[0], state[1], state[2]]);
+    velocities.push([state[3], state[4], state[5]]);
   }
 
-  // 位置と時刻は同じ弧長の割り当てから作る。i 番目の頂点の時刻は i*dt なので、辺と内分比が
-  // 決まれば時刻もそのまま内分できる。
+  // 位置・時刻・速度は同じ弧長の割り当てから作る。i 番目の頂点の時刻は i*dt なので、辺と
+  // 内分比が決まれば時刻も速度もそのまま内分できる(刻みが十分細かいので線形で足りる)。
   return resampleSpots(path, samples, false).map(({ edge, frac }) => {
     const p0 = pointAt(path, edge);
     const p1 = pointAt(path, edge + 1);
+    const v0 = pointAt(velocities, edge);
+    const v1 = pointAt(velocities, edge + 1);
     return [
       p0[0] + frac * (p1[0] - p0[0]),
       p0[1] + frac * (p1[1] - p0[1]),
       p0[2] + frac * (p1[2] - p0[2]),
       ((edge + frac) * dt) / period,
-    ] as Vec3TimeTuple;
+      v0[0] + frac * (v1[0] - v0[0]),
+      v0[1] + frac * (v1[1] - v0[1]),
+      v0[2] + frac * (v1[2] - v0[2]),
+    ] as Vec3TimeStateTuple;
   });
 }
 
