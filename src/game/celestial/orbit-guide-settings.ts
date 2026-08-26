@@ -133,7 +133,7 @@ export interface OrbitGuideSettings {
 export function defaultKindSettings(colorStart: number, colorEnd: number): GuideKindSettings {
   return {
     on: false,
-    count: 5,
+    count: 1,
     rangeMin: 0.15,
     rangeMax: 0.6,
     colorStart,
@@ -150,7 +150,7 @@ export function defaultKindSettings(colorStart: number, colorEnd: number): Guide
 export function defaultCombinedKindSettings(colorStart: number, colorEnd: number): CombinedKindSettings {
   return {
     axisValues: {},
-    count: 5,
+    count: 1,
     rangeMin: 0.15,
     rangeMax: 0.6,
     colorStart,

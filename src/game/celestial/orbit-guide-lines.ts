@@ -16,9 +16,9 @@ import { RenderStyleGate, type RenderStyle } from '../../render/render-style';
 import { SCHEMATIC_LINE } from '../../render/schematic-style';
 import { GuideCurve } from './guide-curve';
 import {
-  CombinedKindSettings, GuideGroupId, GuideKindSettings, OrbitGuideSettings,
+  GuideGroupId, GuideKindSettings, OrbitGuideSettings,
 } from './orbit-guide-settings';
-import { combinedCandidateIds, parseGuideKindId, type ParsedGuideKindId } from './orbit-guide-kind-ids';
+import { combinedCandidateIds, parseGuideKindId } from './orbit-guide-kind-ids';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import { DirectionMarkers } from './direction-markers';
 
@@ -106,25 +106,17 @@ function pointOf(familyId: string): string | null {
   return parseGuideKindId(familyId)?.point ?? null;
 }
 
-// combinedKey を持つ族(点/南北/東西/区間の軸ボタンで束ねた小題)が、選ばれている軸値の組み合わせを
-// 満たすかどうか。その族が持つ軸だけを見る(持たない軸は判定に関わらない)。
-function isMemberOn(combined: CombinedKindSettings, parsed: ParsedGuideKindId): boolean {
-  if (parsed.point !== undefined && !(combined.axisValues[parsed.point] ?? false)) return false;
-  if (parsed.branch !== undefined && !(combined.axisValues[parsed.branch] ?? false)) return false;
-  if (parsed.ew !== undefined && !(combined.axisValues[parsed.ew] ?? false)) return false;
-  if (parsed.axes?.segment === true && !(combined.axisValues[String(parsed.segment)] ?? false)) return false;
-  return true;
-}
-
-// 族 id の表示設定を1つに解決する。小題(combinedKey)に属する族は on を axisValues から導出し、
-// 他のフィールドは小題の共有設定を使う。属さない族(蝶形・トンボ形・共鳴・DRO)は settings.kinds
-// をそのまま使う。
+// 族 id の表示設定を1つに解決する。小題(combinedKey)に属する族は on を
+// combinedCandidateIds(押されている軸値から実際に表示される族id集合を組む関数、軸の自動補完も
+// ここに1本化されている)への所属で決め、他のフィールドは小題の共有設定を使う。属さない族
+// (蝶形・トンボ形・共鳴・DRO)は settings.kinds をそのまま使う。
 function effectiveKind(settings: OrbitGuideSettings, familyId: string): GuideKindSettings | undefined {
   const parsed = parseGuideKindId(familyId);
   if (parsed === null || parsed.combinedKey === null) return settings.kinds[familyId];
   const combined = settings.combinedKinds[parsed.combinedKey];
   if (combined === undefined) return undefined;
-  return { ...combined, on: isMemberOn(combined, parsed) };
+  const on = combinedCandidateIds(parsed.combinedKey, combined.axisValues).includes(familyId);
+  return { ...combined, on };
 }
 
 // 表示設定を持ちうる族 id の全体(kinds のキー全部+小題ごとに押されている軸値から組める候補id)。

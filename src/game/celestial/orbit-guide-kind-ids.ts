@@ -105,38 +105,59 @@ export function axesFor(combinedKey: string): CombinedKindAxes | null {
   return COMBINED_BASE_AXES[base] ?? null;
 }
 
-const POINT_VALUES = new Set(['L1', 'L2', 'L3', 'L4', 'L5']);
+const POINT_VALUES: readonly string[] = ['L1', 'L2', 'L3', 'L4', 'L5'];
+const BRANCH_VALUES: readonly ('N' | 'S')[] = ['N', 'S'];
+const EW_VALUES: readonly ('E' | 'W')[] = ['E', 'W'];
 
-// axisValues(押されている軸値の集合)から、その小題が持つ軸だけを直積して候補 id を組む。
-// 実在するかどうかは呼び出し側がカタログで確かめる。軸が実在する族の組み合わせを1つも
-// 選べていなければ(その軸の押下が0個なら)候補は無い。
-export function combinedCandidateIds(combinedKey: string, axisValues: Readonly<Record<string, boolean>>): readonly string[] {
-  const axes = axesFor(combinedKey);
-  if (axes === null) return [];
-  const base = combinedKey.slice(combinedKey.indexOf('-') + 1);
+interface PressedAxisValues {
+  readonly points: readonly string[];
+  readonly branches: readonly ('N' | 'S')[];
+  readonly ews: readonly ('E' | 'W')[];
+  readonly segments: readonly number[];
+}
 
+// axisValues(キーは軸値の生コード)を軸の種類ごとに仕分ける。
+function pressedAxisValues(axisValues: Readonly<Record<string, boolean>>): PressedAxisValues {
   const points: string[] = [];
   const branches: ('N' | 'S')[] = [];
   const ews: ('E' | 'W')[] = [];
   const segments: number[] = [];
   for (const [value, on] of Object.entries(axisValues)) {
     if (!on) continue;
-    if (POINT_VALUES.has(value)) points.push(value);
+    if ((POINT_VALUES as readonly string[]).includes(value)) points.push(value);
     else if (value === 'N' || value === 'S') branches.push(value);
     else if (value === 'E' || value === 'W') ews.push(value);
     else if (/^\d+$/.test(value)) segments.push(Number(value));
   }
+  return { points, branches, ews, segments };
+}
 
-  if (axes.point && points.length === 0) return [];
-  if (axes.branch && branches.length === 0) return [];
-  if (axes.ew && ews.length === 0) return [];
-  if (axes.segment && segments.length === 0) return [];
+// axisValues(押されている軸値の集合)から、その小題が持つ軸だけを直積して候補 id を組む。
+// 実在するかどうかは呼び出し側がカタログで確かめる。何も押されていなければ候補は無い。
+// 点・南北・東西は、他の軸を1つでも押していれば、自分が空でも「その軸の全値」を対象にする
+// (例: ハローで南北だけ押すと L1〜L3 すべての南北が対象になる)。区間だけは物理的に別系統の
+// 族なので、この自動補完の対象にしない(押した区間だけが対象)。
+export function combinedCandidateIds(combinedKey: string, axisValues: Readonly<Record<string, boolean>>): readonly string[] {
+  const axes = axesFor(combinedKey);
+  if (axes === null) return [];
+  const base = combinedKey.slice(combinedKey.indexOf('-') + 1);
+  const pressed = pressedAxisValues(axisValues);
+
+  const anyPressed = pressed.points.length > 0 || pressed.branches.length > 0
+    || pressed.ews.length > 0 || pressed.segments.length > 0;
+  if (!anyPressed) return [];
+  if (axes.segment && pressed.segments.length === 0) return [];
+
+  const points = axes.point ? (pressed.points.length > 0 ? pressed.points : POINT_VALUES) : [undefined];
+  const branches = axes.branch ? (pressed.branches.length > 0 ? pressed.branches : BRANCH_VALUES) : [undefined];
+  const ews = axes.ew ? (pressed.ews.length > 0 ? pressed.ews : EW_VALUES) : [undefined];
+  const segments = axes.segment ? pressed.segments : [0];
 
   const ids: string[] = [];
-  for (const point of axes.point ? points : [undefined]) {
-    for (const branch of axes.branch ? branches : [undefined]) {
-      for (const ew of axes.ew ? ews : [undefined]) {
-        for (const segment of axes.segment ? segments : [0]) {
+  for (const point of points) {
+    for (const branch of branches) {
+      for (const ew of ews) {
+        for (const segment of segments) {
           ids.push(buildCombinedId(base, { point, branch, ew, segment }));
         }
       }
