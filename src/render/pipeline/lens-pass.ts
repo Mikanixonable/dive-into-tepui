@@ -22,6 +22,19 @@ const LEVELS = 5;
 // レンズが本来の道から外す光の割合。実在のレンズの veiling glare が 1〜3%。
 const GLARE_FRACTION = 0.03;
 
+// 条を作る段。**1 テクセル刻みのタップを積むので、条の長さは段の解像度が決める** — 細かい段から
+// 引くと同じタップ数で届く距離が短くなり、粗い段から引くと条が太くなる。1/8 でその釣り合いを取る。
+const STREAK_LEVEL = 2;
+// 軸の数。1 本の軸が両側へ伸びるので、条は 6 本になる。
+const STREAK_AXES = 3;
+// 片側のタップ数 [STREAK_LEVEL のテクセル]。**間隔は 1 テクセル固定** — 間隔を空けると、
+// タップの 1 つ 1 つが光源の複製として点々に見えてしまい、条にならない。
+const STREAK_TAPS = 28;
+// 条の減衰長 [STREAK_LEVEL のテクセル]。
+const STREAK_FALLOFF = 10;
+// 核のうち条へ回す割合。**滲みの重みから引く**ので、核の総和は 1 のまま動かない。
+const STREAK_SHARE = 0.2;
+
 // 1 段ぶんの器。読み元のテクセル寸法だけが段ごとに違うので、そこを uniform で持つ。
 type Stage = {
   readonly target: THREE.RenderTarget;
@@ -30,6 +43,20 @@ type Stage = {
   // オフセットを測る単位。**読み元**のテクセル寸法であって、書き込み先のではない。
   readonly sourceTexel: Vec2Uniform;
 };
+
+// ノードの和。**平衡木で畳む** — 左畳みにすると括弧が項数ぶん深く入れ子になり、WGSL の
+// パーサが再帰の上限に当たってシェーダの生成ごと落ちる(例外ではなく検証エラーとして出る)。
+function sumOf(terms: readonly Vec3Node[]): Vec3Node {
+  let level = terms;
+  while (level.length > 1) {
+    const merged: Vec3Node[] = [];
+    for (let i = 0; i < level.length; i += 2) {
+      merged.push(i + 1 < level.length ? level[i]!.add(level[i + 1]!) : level[i]!);
+    }
+    level = merged;
+  }
+  return level[0]!;
+}
 
 // source の (x, y) テクセルぶんずれた点を読む。
 function tapAt(source: THREE.Texture, texel: Vec2Uniform, x: number, y: number): Vec3Node {
@@ -40,15 +67,36 @@ function tapAt(source: THREE.Texture, texel: Vec2Uniform, x: number, y: number):
 // 4 点がそのまま 4x4 の箱平均になる。
 function boxDownsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
   const tap = (x: number, y: number): Vec3Node => tapAt(source, texel, x, y);
-  return tap(-0.5, -0.5).add(tap(0.5, -0.5)).add(tap(-0.5, 0.5)).add(tap(0.5, 0.5)).mul(0.25);
+  return sumOf([tap(-0.5, -0.5), tap(0.5, -0.5), tap(-0.5, 0.5), tap(0.5, 0.5)]).mul(0.25);
 }
 
 // 総和 1 の拡大((1,2,1 / 2,4,2 / 1,2,1) / 16 のテント)。
 function tentUpsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
   const tap = (x: number, y: number): Vec3Node => tapAt(source, texel, x, y);
-  const corners = tap(-1, -1).add(tap(1, -1)).add(tap(-1, 1)).add(tap(1, 1));
-  const edges = tap(0, -1).add(tap(-1, 0)).add(tap(1, 0)).add(tap(0, 1));
-  return corners.add(edges.mul(2)).add(tap(0, 0).mul(4)).mul(1 / 16);
+  const corners = sumOf([tap(-1, -1), tap(1, -1), tap(-1, 1), tap(1, 1)]);
+  const edges = sumOf([tap(0, -1), tap(-1, 0), tap(1, 0), tap(0, 1)]);
+  return sumOf([corners, edges.mul(2), tap(0, 0).mul(4)]).mul(1 / 16);
+}
+
+// 総和 1 の放射状の条。画面に固定した向きへ、指数減衰のタップを両側へ積む。**向きは
+// 光源ではなく画面が決める** — カメラを回しても条は光源に貼り付いて回らない。
+function radialStreak(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
+  const taps: Vec3Node[] = [];
+  let total = 0;
+  for (let axis = 0; axis < STREAK_AXES; axis++) {
+    const angle = (Math.PI * axis) / STREAK_AXES;
+    for (let step = 0; step < STREAK_TAPS; step++) {
+      const distance = step + 1;
+      const weight = Math.exp(-distance / STREAK_FALLOFF);
+      for (const side of [1, -1]) {
+        const x = side * Math.cos(angle) * distance;
+        const y = side * Math.sin(angle) * distance;
+        taps.push(tapAt(source, texel, x, y).mul(weight));
+        total += weight;
+      }
+    }
+  }
+  return sumOf(taps).mul(1 / total);
 }
 
 // 描画先と、そこへ描く色を作るシェーダを 1 組にする。色は総和 1 でなければならない。
@@ -73,6 +121,8 @@ export class LensPass {
   private readonly down: readonly Stage[];
   // 拡大チェーン。up[i] は down[i] と同じ解像度で、1 段粗いほうを混ぜ込んだもの。
   private readonly up: readonly Stage[];
+  // 条。滲みとは別の核なので別の段で作り、読む側が滲みと配分を分け合う。
+  private readonly streak: Stage;
   private width = 0;
   private height = 0;
 
@@ -101,6 +151,7 @@ export class LensPass {
     }
     this.down = down;
     this.up = up;
+    this.streak = createStage((texel) => radialStreak(down[STREAK_LEVEL]!.target.texture, texel));
   }
 
   // 下地へレンズ効果を掛けた色。**滲みが受け取ったぶんだけ元の光点が暗くなる**ので、
@@ -114,16 +165,20 @@ export class LensPass {
     return this.redistributed(GLARE_FRACTION);
   }
 
-  // 配り直された像。出力は半解像度なので、読む側は screenUV の線形補間に任せる
-  // (ぼけた像なのでそれで足りる)。
+  // 配り直された像。滲みと条は**足し合わせず、割合で分け合う** — どちらも総和 1 の核なので、
+  // 混ぜた結果もまた総和 1 になる。出力は縮小された段なので、読む側は screenUV の線形補間に
+  // 任せる(ぼけた像なのでそれで足りる)。
   private redistributed(scale: number): Vec3Node {
-    return texture(this.up[0]!.target.texture, screenUV).rgb.mul(scale);
+    const glare = texture(this.up[0]!.target.texture, screenUV).rgb;
+    const streak = texture(this.streak.target.texture, screenUV).rgb;
+    return mix(glare, streak, STREAK_SHARE).mul(scale);
   }
 
   // 1 フレームぶんのレンズ効果を発行する。呼ぶのは world パスの後・合成パスの前。
   render(width: number, height: number): void {
     this.resize(width, height);
     for (const stage of this.down) this.draw(stage);
+    this.draw(this.streak);
     for (let i = LEVELS - 2; i >= 0; i--) this.draw(this.up[i]!);
     this.renderer.setRenderTarget(null);
   }
@@ -158,12 +213,15 @@ export class LensPass {
       const coarser = this.down[i + 1]!.target;
       stage.sourceTexel.value.set(1 / coarser.width, 1 / coarser.height);
     }
+    const streakSource = this.down[STREAK_LEVEL]!.target;
+    this.streak.target.setSize(streakSource.width, streakSource.height);
+    this.streak.sourceTexel.value.set(1 / streakSource.width, 1 / streakSource.height);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
   dispose(): void {
-    for (const stage of [...this.down, ...this.up]) {
+    for (const stage of [...this.down, ...this.up, this.streak]) {
       stage.target.dispose();
       stage.material.dispose();
     }
