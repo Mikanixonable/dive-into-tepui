@@ -52,7 +52,8 @@
 
 ## 4. ここではないもの
 
-- **レンズフレア・スミア** → [`lens.md`](lens.md)。スクリーンスペースの技術を共有するが、
+- **レンズフレア・スミア** → 実装済み([`pipeline.md`](pipeline.md) §2-5)。残件は
+  [`lens_backlog.md`](lens_backlog.md)。スクリーンスペースの技術を共有するが、
   由来(レンズ/センサ)も入力(明るい点の位置)も別。
 - **グロー** → [`atmosphere.md`](atmosphere.md)(ミー散乱由来)。
 - **太陽光の遮蔽** → 実装済み。残件は [`shadow_backlog.md`](shadow_backlog.md)。
