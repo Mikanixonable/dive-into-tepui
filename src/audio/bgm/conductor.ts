@@ -4,6 +4,7 @@
 import { BGM_TRACKS } from './tracks/tracks';
 import { createComposer } from './composer-factory';
 import { TrackPlayback } from './track-playback';
+import { stepAtTime, trackCycleDurationSec } from './track-cycle';
 
 const START_DELAY_SEC = 0.15; // 再生開始から最初のステップまでの余裕
 const FADE_IN_SEC = 4;
@@ -40,6 +41,14 @@ export class Conductor {
     return this.playback !== null;
   }
 
+  // 現在の曲の一巡の中での経過秒数。一巡という概念を持たない曲(antipode)では 0。
+  get elapsedSec(): number {
+    const duration = trackCycleDurationSec(BGM_TRACKS[this.trackIdx]!);
+    if (duration <= 0) return 0;
+    const elapsed = this.ctx.currentTime - this.trackStartTime;
+    return ((elapsed % duration) + duration) % duration;
+  }
+
   // 曲を開いて刻み始める。trackIdx を省くと無作為に選ぶ。
   start(trackIdx?: number): void {
     if (BGM_TRACKS.length === 0) return;
@@ -66,6 +75,15 @@ export class Conductor {
     this.stop(fadeSec);
     const waitSec = Math.max(0, quietAt - this.ctx.currentTime);
     setTimeout(() => this.gain.disconnect(), waitSec * 1000);
+  }
+
+  // 鳴らしたまま、一巡の中の timeSec 秒の位置へ飛ぶ。
+  seek(timeSec: number): void {
+    if (!this.playback) return;
+    const track = BGM_TRACKS[this.trackIdx]!;
+    const atTime = this.ctx.currentTime + START_DELAY_SEC;
+    this.playback.seek(stepAtTime(track, timeSec), atTime);
+    this.trackStartTime = this.ctx.currentTime - timeSec;
   }
 
   // この線を無音へ伏せる。刻みは進み続けるので、戻したときは伏せていた間に進んだ位置から聞こえる。
