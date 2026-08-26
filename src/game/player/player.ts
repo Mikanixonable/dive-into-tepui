@@ -234,6 +234,11 @@ export class Player extends Ship {
     this.fire.onPickup(mags);
   }
 
+  // 弾薬を初期積載の状態まで満タンにする。
+  refillAmmo(): void {
+    this.fire.refillFull();
+  }
+
   // 暫定の燃焼管理パネルから標準ブースターを最後尾へ追加する。
   attachBooster(): boolean {
     if (this.boosters.stages.length >= C.BOOSTER_MAX_ATTACHED) {
