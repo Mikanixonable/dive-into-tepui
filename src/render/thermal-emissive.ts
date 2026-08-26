@@ -23,6 +23,7 @@ interface ThermalUserData {
   thermalEmissivity: number;
 }
 
+// 描画中のオブジェクトの userData から 1 つの値を読むノード。
 function objectValue(property: keyof ThermalUserData): FloatNode {
   return THREE.TSL.reference(`userData.${property}`, 'float', null) as unknown as FloatNode;
 }
@@ -30,6 +31,7 @@ function objectValue(property: keyof ThermalUserData): FloatNode {
 // source に応じた、その画素の温度 [K] と輻射率。shaped ならジオメトリに焼いた形を
 // 局所的な過熱の振幅へ掛けて足す。
 function thermalState(source: ThermalSource, shaped: boolean): { temperature: FloatNode; emissivity: FloatNode } {
+  // 平均温度・局所的な過熱の振幅・輻射率をどこから読むか。
   let average: FloatNode;
   let deviation: FloatNode;
   let emissivity: FloatNode;
@@ -43,6 +45,7 @@ function thermalState(source: ThermalSource, shaped: boolean): { temperature: Fl
     deviation = packed.y as FloatNode;
     emissivity = packed.z as FloatNode;
   }
+  // 焼いた形の上では、平均から離れた場所ほど過熱の振幅が乗る。
   if (!shaped) return { temperature: average, emissivity };
   const shape = THREE.TSL.attribute(THERMAL_SHAPE_ATTRIBUTE, 'float') as FloatNode;
   return { temperature: average.add(deviation.mul(shape)) as FloatNode, emissivity };
@@ -52,6 +55,7 @@ function thermalState(source: ThermalSource, shaped: boolean): { temperature: Fl
 // 何枚あってもシェーダは 1 本で済む。
 const emissiveNodes = new Map<string, Vec3Node>();
 
+// source と shaped の組に対応するシェーダグラフ。同じ組には同じものを返す。
 function emissiveNode(source: ThermalSource, shaped: boolean): Vec3Node {
   const key = `${source}:${shaped}`;
   const cached = emissiveNodes.get(key);
@@ -74,6 +78,7 @@ export function attachThermalEmissive<T extends THREE.MeshStandardNodeMaterial>(
 // root 配下の標準マテリアルを、Mesh ごとの温度で自照する Node 版へ持ち替える。
 // 熱の状態は 0 で初期化するので、最初の syncThermalState までは光らない。
 export function makeThermallyEmissive<T extends THREE.Object3D>(root: T): T {
+  // 温度差の分布を持つジオメトリかどうかで、読むシェーダグラフが変わる。
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;

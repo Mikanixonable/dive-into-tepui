@@ -64,6 +64,7 @@ export class PlayerFire {
   wasEmptyClick = false;
   muzzleIdx = 0; // 縦二連砲口の交互発射用
 
+  // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
   constructor(
     private readonly player: Player,
     private readonly _hud: Hud,
@@ -90,6 +91,7 @@ export class PlayerFire {
 
   get left(): boolean { return this.rounds > 0 || this.mags > 0; }
 
+  // 弾薬・砲身の状態をスナップショットへ落とす。
   serialize(): FireSaveData {
     return {
       mags: this.mags,
@@ -331,6 +333,7 @@ export class PlayerFire {
   // 装着している砲身の温度を dt だけ進める。発砲で入った熱は刻みの分け方に依らず一度だけ
   // 温度へ変わり、薬室側には平均の 2 倍の温度上昇として乗る(SPEC/FLIGHT.md「熱管理」)。
   stepBarrelThermal(dt: number): void {
+    // 放射で冷え、温度差は薄まる。
     const cooling = radiativeCooling(
       this.barrelTemperature, C.ENV_TEMP, C.HULL_EMISS, C.BARREL_RADIATING_AREA_PER_MASS,
       C.BARREL_SPECIFIC_HEAT, dt);
@@ -339,6 +342,7 @@ export class PlayerFire {
     this.barrelDeviation = stepThermalDeviation(
       this.barrelDeviation, this.barrelTemperature, C.HULL_EMISS,
       C.BARREL_RADIATING_AREA_PER_MASS, C.BARREL_SPECIFIC_HEAT, dt);
+    // 溜まっていた発射ガスの熱を、この区間で一度だけ温度へ変える。
     if (this.pendingBarrelJoules === 0) return;
     const rise = this.pendingBarrelJoules / (C.BARREL_MASS * C.BARREL_SPECIFIC_HEAT);
     this.barrelTemperature += rise;
