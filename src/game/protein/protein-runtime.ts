@@ -45,11 +45,8 @@ export class ProteinRuntime {
   readonly motionBinding: ProteinMotionBinding;
   private readonly root: THREE.Object3D;
   private readonly siteMeshes = new Map<string, THREE.Mesh>();
-  private readonly modificationMeshes = new Map<string, THREE.Mesh>();
   private readonly baseSitePositions = new Map<string, THREE.Vector3>();
-  private readonly baseModificationPositions = new Map<string, THREE.Vector3>();
   private readonly siteResidueGroups = new Map<string, readonly number[]>();
-  private readonly modificationResidueGroups = new Map<string, readonly number[]>();
   private trackedResidues: readonly number[] = [];
   private readonly trackedResidueOffsets: Float32Array;
   private readonly bondVisuals: ProteinBondVisual[] = [];
@@ -107,11 +104,8 @@ export class ProteinRuntime {
       this.root.remove(child);
     }
     this.siteMeshes.clear();
-    this.modificationMeshes.clear();
     this.baseSitePositions.clear();
-    this.baseModificationPositions.clear();
     this.siteResidueGroups.clear();
-    this.modificationResidueGroups.clear();
     this.bondVisuals.length = 0;
   }
 
@@ -138,21 +132,6 @@ export class ProteinRuntime {
       this.baseSitePositions.set(site.id, position);
       this.siteResidueGroups.set(site.id, proteinAnchorResidues(site, index, this.motion, this.motion.bindings.siteResidues));
     }
-    for (let index = 0; index < this.asset.modificationSlots.length; index += 1) {
-      const slot = this.asset.modificationSlots[index]!;
-      const [x, y, z] = slot.position;
-      const material = new THREE.MeshStandardMaterial({
-        color: 0xffd84a, emissive: 0xff6a00, emissiveIntensity: 1.1,
-        roughness: 0.18, metalness: 0.7,
-      });
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.75, 12, 8), material);
-      mesh.position.set(x * scale, y * scale, z * scale);
-      mesh.userData[RUNTIME_VISUAL] = true;
-      this.root.add(mesh);
-      this.modificationMeshes.set(slot.id, mesh);
-      this.baseModificationPositions.set(slot.id, mesh.position.clone());
-      this.modificationResidueGroups.set(slot.id, proteinAnchorResidues(slot, index, this.motion, this.motion.bindings.modificationResidues));
-    }
     for (const bond of this.asset.bonds) {
       const from = this.combat.site(bond.from);
       const to = this.combat.site(bond.to);
@@ -168,10 +147,7 @@ export class ProteinRuntime {
       this.root.add(line);
       this.bondVisuals.push({ line, fromSiteId: bond.from, toSiteId: bond.to });
     }
-    this.trackedResidues = [...new Set([
-      ...this.siteResidueGroups.values(),
-      ...this.modificationResidueGroups.values(),
-    ].flat())];
+    this.trackedResidues = [...new Set([...this.siteResidueGroups.values()].flat())];
   }
 
   /** 投影サイズから LOD をヒステリシス付きで更新する。marker になったフレームは
@@ -218,15 +194,6 @@ export class ProteinRuntime {
       material.opacity = siteState.disabled ? 0.18 : 0.32 + ratio * 0.68;
       material.emissiveIntensity = (siteState.disabled ? 0.05 : 0.25 + ratio * 0.5) + (state.phase === 'critical' ? 0.35 : 0);
       mesh.scale.setScalar(0.55 + ratio * 0.45);
-    }
-    for (const slot of this.asset.modificationSlots) {
-      const mesh = this.modificationMeshes.get(slot.id);
-      const base = this.baseModificationPositions.get(slot.id);
-      if (!mesh || !base) continue;
-      setProteinAnchorPosition(mesh, base, this.modificationResidueGroups.get(slot.id) ?? [], this.trackedResidueOffsets, this.motion.residueCount, scale);
-      const active = state.modificationState(slot.id) !== 'empty';
-      mesh.visible = active;
-      mesh.scale.setScalar(active ? 1 + 0.12 * Math.sin(displayTime * 2.4) : 0.001);
     }
     for (const bond of this.bondVisuals) {
       const from = this.siteMeshes.get(bond.fromSiteId);
