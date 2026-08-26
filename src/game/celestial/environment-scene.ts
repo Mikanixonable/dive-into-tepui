@@ -362,6 +362,7 @@ export class EnvironmentScene {
   private rankedAtmospheres(
     fo: FloatingOrigin, displayTime: number, cameraPos: Vec3,
   ): readonly { readonly body: AtmosphereBody; readonly strength: number }[] {
+    // 光学パラメータを持つ天体だけを、カメラの高度から引いた濃さと一緒に集める。
     const candidates: { body: AtmosphereBody; strength: number }[] = [];
     for (const id of this.referenceIds) {
       const optics = atmosphereOpticsOf(id);
