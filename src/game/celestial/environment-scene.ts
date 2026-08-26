@@ -24,6 +24,7 @@ import type { RenderStyle } from '../../render/render-style';
 import {
   AMBIENT_IRRADIANCE, AMBIENT_REFERENCE_DISTANCE, SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight,
 } from '../../render/pipeline/sun-light';
+import type { Exposure } from '../../render/pipeline/exposure';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
@@ -126,6 +127,7 @@ export class EnvironmentScene {
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
     private readonly sunLight: SunLight,
+    private readonly exposure: Exposure,
     private readonly sunOcclusion: SunOcclusion,
     private readonly atmosphere: AtmospherePass,
     earthSpinPhase0: number,
@@ -222,10 +224,10 @@ export class EnvironmentScene {
     const sunPos = starId === null
       ? this.toThreeNormal(this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
       : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
-    // 環境光をどこの明るさへ合わせるかの基準点。カメラ位置ではなく注視点から取る —
-    // マップビューではカメラが対象から遠く離れていることがあり、そこを基準にすると
-    // 写っている場所の明るさにならない。
+    // 露出と環境光をどこの明るさへ合わせるかの基準点。カメラ位置ではなく注視点から取る —
+    // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
+    this.exposure.setReference(reference, sunPos);
     this.sunLight.set(
       sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY,
       this.ambientIrradianceAt(reference, floatingOrigin, displayTime),
@@ -233,14 +235,15 @@ export class EnvironmentScene {
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, graphics);
 
+    const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
       this.ensurePointField().sync(
-        floatingOrigin, true, cameraSystem.bodyClassToggles.smallBodyVisible,
+        floatingOrigin, true, cameraSystem.bodyClassToggles.smallBodyVisible, fixedBrightnessScale,
       );
     } else {
-      this.pointFieldView?.sync(floatingOrigin, false, true);
+      this.pointFieldView?.sync(floatingOrigin, false, true, fixedBrightnessScale);
     }
-    this.syncStars(cameraSystem, gridVisibility.stars);
+    this.syncStars(cameraSystem, fixedBrightnessScale, gridVisibility.stars);
     const celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(
@@ -334,10 +337,11 @@ export class EnvironmentScene {
 
   // 星球は描画原点(= カメラ)に固定した半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで
   // 拡大する(far は dist に連動して毎フレーム変わるため、殻の拡大率はそこから独立させる)。
-  private syncStars(cameraSystem: CameraSystem, visible = true): void {
+  private syncStars(cameraSystem: CameraSystem, fixedBrightnessScale: number, visible: boolean): void {
     this.stars.mesh.position.set(0, 0, 0);
     this.stars.mesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
     this.stars.mesh.visible = visible;
+    this.stars.setExposureScale(fixedBrightnessScale);
   }
 
   private toThreeNormal(normal: Vec3): THREE.Vector3 {

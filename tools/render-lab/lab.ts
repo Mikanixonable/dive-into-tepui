@@ -261,6 +261,9 @@ export class LabView {
       SUN_POSITION.copy(sunDirection).multiplyScalar(this.current.sunDistance ?? AU),
       R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, ambientIrradiance,
     );
+    // 順応の基準点は描画原点。**ケースの sunDistance はここから恒星までの距離**なので、
+    // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
+    this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION);
     const camera = this.current.camera;
     directionFromAngles(this.angles.cameraAzimuthDeg, this.angles.cameraElevationDeg, CAMERA_OFFSET);
     camera.position.copy(this.pivot).addScaledVector(CAMERA_OFFSET, this.cameraDistance);
