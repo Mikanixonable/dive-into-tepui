@@ -170,26 +170,29 @@ export class AtmospherePass {
     // 視点に近い天体から順に重ねる。手前の層が奥の層の内部散乱も減衰させるので、透過率を
     // 累積しながら足していく。**先頭だけが積分の対象**で、残りは単層表現。
     //
-    // 重みが 0 のフレームでは積分ごと飛ばす。**この分岐は uniform だけで決まるので画面全体で
-    // 揃っており、分岐した側だけを実行できる** — select で混ぜると、積分は捨てるぶんまで
-    // 毎画素走ってしまう。
+    // **重い側はすべて分岐の中に置く。** 大気に掛からない視線と空きスロットは区間の判定だけで
+    // 抜け、積分の細かさは uniform で選ぶ — select で混ぜると、捨てるぶんまで毎画素走る。
     const composited = Fn(() => {
       const transmittance = vec3(1, 1, 1).toVar();
       const inscatter = vec3(0, 0, 0).toVar();
       for (const [index, slot] of this.slots.entries()) {
         const segment = this.raySegment(slot, rayOrigin, rayDir, opaqueDist);
-        const single = this.singleLayer(slot, segment, rayOrigin, rayDir);
-        const layerTransmittance = single.transmittance.toVar();
-        const layerInscatter = single.inscatter.toVar();
-        if (index === 0) {
-          const blendDense = (steps: number) => (): void => {
-            const dense = this.integrated(slot, segment, rayOrigin, rayDir, steps);
-            layerTransmittance.assign(mix(layerTransmittance, dense.transmittance, this.denseWeight));
-            layerInscatter.assign(mix(layerInscatter, dense.inscatter, this.denseWeight));
-          };
-          If(this.denseDetail.equal(ATMOSPHERE_DETAIL.fine), blendDense(FINE_STEPS))
-            .ElseIf(this.denseDetail.equal(ATMOSPHERE_DETAIL.coarse), blendDense(COARSE_STEPS));
-        }
+        const layerTransmittance = vec3(1, 1, 1).toVar();
+        const layerInscatter = vec3(0, 0, 0).toVar();
+        If(segment.hitsAtmosphere, () => {
+          const single = this.singleLayer(slot, segment, rayOrigin, rayDir);
+          layerTransmittance.assign(single.transmittance);
+          layerInscatter.assign(single.inscatter);
+          if (index === 0) {
+            const blendDense = (steps: number) => (): void => {
+              const dense = this.integrated(slot, segment, rayOrigin, rayDir, steps);
+              layerTransmittance.assign(mix(layerTransmittance, dense.transmittance, this.denseWeight));
+              layerInscatter.assign(mix(layerInscatter, dense.inscatter, this.denseWeight));
+            };
+            If(this.denseDetail.equal(ATMOSPHERE_DETAIL.fine), blendDense(FINE_STEPS))
+              .ElseIf(this.denseDetail.equal(ATMOSPHERE_DETAIL.coarse), blendDense(COARSE_STEPS));
+          }
+        });
         inscatter.addAssign(layerInscatter.mul(transmittance));
         transmittance.mulAssign(layerTransmittance);
       }
@@ -258,7 +261,7 @@ export class AtmospherePass {
   }
 
   // 区間を 1 枚の層として解いた透過率と内部散乱。光学的厚みは区間の両端から解析で出し、
-  // 太陽の当たり方は区間で最も濃い 1 点だけで代表させる。
+  // 太陽の当たり方は区間で最も濃い 1 点だけで代表させる。区間が空でないことは呼び出し側が保証する。
   private singleLayer(
     slot: BodySlot, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
   ): LayerContribution {
@@ -276,9 +279,7 @@ export class AtmospherePass {
     const opticalDepth: Vec3Node = slot.rayleigh.mul(depthOf(slot.rayleighScaleHeight))
       .add(vec3(slot.mie.mul(depthOf(slot.mieScaleHeight))));
 
-    const transmittance: Vec3Node = select(
-      segment.hitsAtmosphere, exp(opticalDepth.negate()), vec3(1, 1, 1),
-    );
+    const transmittance: Vec3Node = exp(opticalDepth.negate());
     const densest = rayOrigin.add(rayDir.mul(segment.densest));
     return {
       transmittance,
@@ -288,6 +289,7 @@ export class AtmospherePass {
 
   // 区間を視線に沿って積分した透過率と内部散乱。サンプル点は最も濃い点の周りへ寄せる —
   // 大気の濃さは高度に対して指数で変わるので、等間隔に取ると濃い側を数点で済ませてしまう。
+  // 区間が空でないことは呼び出し側が保証する。
   private integrated(
     slot: BodySlot, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node, steps: number,
   ): LayerContribution {
@@ -304,10 +306,7 @@ export class AtmospherePass {
     const march = rayMarch(
       steps, distanceAt, (distance) => this.mediumAt(slot, rayOrigin.add(rayDir.mul(distance)), rayDir),
     );
-    return {
-      transmittance: select(segment.hitsAtmosphere, march.transmittance, vec3(1, 1, 1)),
-      inscatter: select(segment.hitsAtmosphere, march.radiance, vec3(0, 0, 0)),
-    };
+    return { transmittance: march.transmittance, inscatter: march.radiance };
   }
 
   // 視線上の 1 点の媒質。消散はレイリーとミーの和で、視線へ足す量は「散乱が消散に占める割合 ×
