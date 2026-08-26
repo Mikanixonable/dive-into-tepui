@@ -52,15 +52,43 @@ function buildDebrisRenderObject(debrisKind: DebrisKind): THREE.Object3D {
   }
 }
 
+// 材質ごとの熱的な性質。比熱・材質の密度・輻射面積の比・耐えられる温度の上限。
+interface DebrisThermal {
+  readonly specificHeat: number;
+  readonly bulkDensity: number;
+  readonly radiatingAreaPerMass: number;
+  readonly maxTemperature: number;
+}
+
+const ALUMINIUM_DEBRIS: DebrisThermal = {
+  specificHeat: C.SMALL_DEBRIS_SPECIFIC_HEAT,
+  bulkDensity: C.SMALL_DEBRIS_BULK_DENSITY,
+  radiatingAreaPerMass: C.SMALL_DEBRIS_RADIATING_AREA_PER_MASS,
+  maxTemperature: C.SMALL_DEBRIS_MAX_TEMP,
+};
+
+const STEEL_BARREL: DebrisThermal = {
+  specificHeat: C.BARREL_SPECIFIC_HEAT,
+  bulkDensity: C.BARREL_BULK_DENSITY,
+  radiatingAreaPerMass: C.BARREL_RADIATING_AREA_PER_MASS,
+  maxTemperature: C.BARREL_MAX_TEMP,
+};
+
+// 種別ごとの材質。砲身だけが鋼で、赤熱する温度でも構造を保つ。
+function debrisThermal(kind: DebrisKind['kind']): DebrisThermal {
+  return kind === 'barrel' ? STEEL_BARREL : ALUMINIUM_DEBRIS;
+}
+
 export class DebrisPiece extends GameEntity {
   override readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
-  protected readonly specificHeat = C.SMALL_DEBRIS_SPECIFIC_HEAT;
-  protected readonly bulkDensity = C.SMALL_DEBRIS_BULK_DENSITY;
+  protected readonly specificHeat: number;
+  protected readonly bulkDensity: number;
   protected override get radiatingAreaPerMass(): number {
-    return C.SMALL_DEBRIS_RADIATING_AREA_PER_MASS;
+    return this.thermal.radiatingAreaPerMass;
   }
-  protected readonly maxTemperature = C.SMALL_DEBRIS_MAX_TEMP;
+  protected readonly maxTemperature: number;
+  private readonly thermal: DebrisThermal;
 
   // fragment のみ意味を持つ: どのバリアントジオメトリを使うか、InstancedPool の
   // per-instance color へ渡す色。EntityManager.sync が variant ごとのプールへ push する。
@@ -87,6 +115,10 @@ export class DebrisPiece extends GameEntity {
       undefined,
       debrisKind.kind !== 'casing' && debrisKind.kind !== 'fragment',
     );
+    this.thermal = debrisThermal(debrisKind.kind);
+    this.specificHeat = this.thermal.specificHeat;
+    this.bulkDensity = this.thermal.bulkDensity;
+    this.maxTemperature = this.thermal.maxTemperature;
     this.radius = radius ?? 0;
     this.collides = debrisKind.kind !== 'fragment'
       && debrisKind.kind !== 'boosterCover'
