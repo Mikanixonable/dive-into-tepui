@@ -405,25 +405,33 @@ export function register(): void {
     assert.deepEqual(proteinColorModesFor('molecular'), ['element']);
     assert.deepEqual(proteinColorModesFor('silhouette'), ['surface-charge', 'hydrophobicity']);
     assert.deepEqual(proteinColorModesFor('ribbon'), [
-      'publication', 'chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role',
+      'chain', 'b-factor', 'rainbow', 'secondary-structure', 'component',
     ]);
-    assert.equal(PROTEIN_COLOR_LABELS.publication, '論文調（鎖別）');
+    assert.equal(PROTEIN_COLOR_LABELS.chain, 'Chain');
+    assert.equal(PROTEIN_COLOR_LABELS.component, 'Component');
     assert.ok(isProteinDisplaySettings(DEFAULT_PROTEIN_DISPLAY));
-    assert.deepEqual(DEFAULT_PROTEIN_DISPLAY, { representation: 'ribbon', colorMode: 'publication' });
+    assert.deepEqual(DEFAULT_PROTEIN_DISPLAY, { representation: 'ribbon', colorMode: 'chain' });
     assert.ok(isProteinDisplaySettings(defaultProteinDisplayFor('molecular')));
-    assert.deepEqual(defaultProteinDisplayFor('ribbon'), { representation: 'ribbon', colorMode: 'publication' });
+    assert.deepEqual(defaultProteinDisplayFor('ribbon'), { representation: 'ribbon', colorMode: 'chain' });
     assert.ok(!isProteinDisplaySettings({ representation: 'molecular', colorMode: 'chain' }));
   });
 
   test('protein display: legacy color modes restore without losing valid ribbon choices', () => {
     assert.deepEqual(proteinDisplayFromLegacyColorMode(undefined), { representation: 'ribbon', colorMode: 'chain' });
     for (const colorMode of [
-      'chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role', 'publication',
+      'chain', 'b-factor', 'rainbow', 'secondary-structure', 'component',
     ] as const) {
       assert.deepEqual(proteinDisplayFromLegacyColorMode(colorMode), {
         representation: 'ribbon',
         colorMode,
       });
+    }
+    // 未知の着色モードは鎖別着色として復元する。
+    for (const unknownMode of ['publication', 'entity', 'component-role'] as const) {
+      assert.deepEqual(
+        proteinDisplayFromLegacyColorMode(unknownMode as unknown as Parameters<typeof proteinDisplayFromLegacyColorMode>[0]),
+        { representation: 'ribbon', colorMode: 'chain' },
+      );
     }
   });
 }
