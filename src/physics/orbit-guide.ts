@@ -114,77 +114,18 @@ function familyPoints(family: CatalogFamily): Float32Array {
   return values;
 }
 
-// 単調増加列 valueAt(0..count-1) の中で target を挟む2添字と内分比。範囲外は端で頭打ちにする。
-function bracketAt(count: number, valueAt: (i: number) => number, target: number): { lo: number; hi: number; f: number } {
-  const last = count - 1;
-  if (last <= 0) return { lo: 0, hi: 0, f: 0 };
-  let i = 0;
-  while (i < last - 1 && valueAt(i + 1) < target) i++;
-  const lo = valueAt(i);
-  const hi = valueAt(i + 1);
-  const span = hi - lo;
-  return { lo: i, hi: i + 1, f: span > 0 ? Math.min(1, Math.max(0, (target - lo) / span)) : 0 };
-}
-
 // 族の s∈[0,1] を挟む2メンバーの添字と内分比。範囲外は端で頭打ちにする。
 function bracketMember(family: CatalogFamily, s: number): { lo: number; hi: number; f: number } {
-  return bracketAt(family.members.length, (i) => family.members[i]?.s ?? 0, s);
-}
-
-// 族に沿った弧長パラメータ u∈[0,1](0=族の始端、1=終端)に対応する、members と同じ添字の
-// 累積弧長の表。周期・ヤコビ定数をそれぞれ族内の範囲で正規化し、そのユークリッド距離を隣接
-// メンバー間で足し合わせて弧長とする — 焼き込み元データ(CatalogMember.s)の並び順の疎密に
-// よらず、族に沿った位置を「見た目の変化量」で測るため。
-interface FamilyArcLength {
-  readonly u: readonly number[];
-}
-
-const familyArcLengths = new WeakMap<CatalogFamily, FamilyArcLength>();
-
-// 族ごとに一度だけ弧長の表を組み、WeakMap へ憶えておく。
-function familyArcLength(family: CatalogFamily): FamilyArcLength {
-  const cached = familyArcLengths.get(family);
-  if (cached !== undefined) return cached;
-
   const members = family.members;
   const last = members.length - 1;
-  if (last <= 0) {
-    const result: FamilyArcLength = { u: members.map(() => 0) };
-    familyArcLengths.set(family, result);
-    return result;
-  }
-
-  let periodMin = Infinity; let periodMax = -Infinity;
-  let jacobiMin = Infinity; let jacobiMax = -Infinity;
-  for (const m of members) {
-    periodMin = Math.min(periodMin, m.period); periodMax = Math.max(periodMax, m.period);
-    jacobiMin = Math.min(jacobiMin, m.jacobi); jacobiMax = Math.max(jacobiMax, m.jacobi);
-  }
-  const periodSpan = periodMax - periodMin || 1;
-  const jacobiSpan = jacobiMax - jacobiMin || 1;
-
-  const cumulative: number[] = [0];
-  for (let i = 1; i <= last; i++) {
-    const dp = (members[i]!.period - members[i - 1]!.period) / periodSpan;
-    const dj = (members[i]!.jacobi - members[i - 1]!.jacobi) / jacobiSpan;
-    cumulative.push(cumulative[i - 1]! + Math.hypot(dp, dj));
-  }
-  const total = cumulative[last]! || 1;
-  const result: FamilyArcLength = { u: cumulative.map((c) => c / total) };
-  familyArcLengths.set(family, result);
-  return result;
-}
-
-// 族に沿った弧長パラメータ u∈[0,1] から、カタログの実際のメンバー選択に使う s
-// (CatalogMember.s、焼き込み元データの並び順基準の位置)を求める。複数本を u で等間隔に
-// 選べば、画面上の線の間隔が(周期・ヤコビ定数の変化量で測って)均等に見える。
-export function familyVisualS(family: CatalogFamily, u: number): number {
-  const { u: table } = familyArcLength(family);
-  const target = Math.min(1, Math.max(0, u));
-  const { lo, hi, f } = bracketAt(table.length, (i) => table[i] ?? 0, target);
-  const sLo = family.members[lo]?.s ?? 0;
-  const sHi = family.members[hi]?.s ?? 1;
-  return sLo + f * (sHi - sLo);
+  if (last <= 0) return { lo: 0, hi: 0, f: 0 };
+  const target = Math.min(1, Math.max(0, s));
+  let i = 0;
+  while (i < last - 1 && (members[i + 1]?.s ?? 0) < target) i++;
+  const lo = members[i]?.s ?? 0;
+  const hi = members[i + 1]?.s ?? 0;
+  const span = hi - lo;
+  return { lo: i, hi: i + 1, f: span > 0 ? Math.min(1, Math.max(0, (target - lo) / span)) : 0 };
 }
 
 // 族の s の位置にある軌道を、ECI [m] のガイド線として返す。s は 0 が族の始端、1 が終端で、
