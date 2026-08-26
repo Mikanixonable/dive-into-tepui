@@ -40,6 +40,10 @@ type ChoiceOption = {
 
 export type GraphicsOption = ToggleOption | ChoiceOption;
 
+// 大気の描き方の段。段が上がるほど、カメラのいる場所の大気を最も強く作っている天体の大気が
+// 精細になる。それ以外の大気天体の見え方は段によらない。
+export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
+
 export const GRAPHICS_OPTIONS = {
   // devicePixelRatio へ掛ける描画解像度の倍率。
   resolutionScale: {
@@ -80,9 +84,16 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: 'オーロラ',
     presets: { low: false, medium: false, high: true },
   },
-  // 地球の大気。
+  // 大気の描き方の段。**値は保存された設定を読む鍵なので、段を足すときも既存の値を動かさない**
+  // — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
   atmosphere: {
-    kind: 'toggle', group: 'element', label: '大気',
+    kind: 'choice', group: 'element', label: '大気',
+    items: [[ATMOSPHERE_QUALITY.off, 'オフ'], [ATMOSPHERE_QUALITY.low, '低'], [ATMOSPHERE_QUALITY.high, '高']],
+    presets: { low: ATMOSPHERE_QUALITY.low, medium: ATMOSPHERE_QUALITY.low, high: ATMOSPHERE_QUALITY.high },
+  },
+  // 地表へ合成する雲と、雲が地表へ落とす影。
+  clouds: {
+    kind: 'toggle', group: 'element', label: '雲',
     presets: { low: false, medium: true, high: true },
   },
   // レンズ効果(滲み・条・ゴースト)。

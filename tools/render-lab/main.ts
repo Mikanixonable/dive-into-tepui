@@ -4,7 +4,7 @@ import { startProteinAssetPreload } from '../../src/game/protein/protein-asset-l
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { PIPELINE_GRAPHICS_KEYS } from '../../src/render/pipeline/render-pipeline';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
-import { GRAPHICS_OPTIONS } from '../../src/render/graphics-settings';
+import { GRAPHICS_OPTIONS, type GraphicsOptionKey } from '../../src/render/graphics-settings';
 import { CASE_NAMES, sunDiameterPx, type CaseName } from './cases';
 import {
   LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
@@ -22,6 +22,7 @@ declare global {
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
+      setGraphicsOption: (key: GraphicsOptionKey, value: boolean | number) => void;
       measure: (name: CaseName) => Promise<LabMeasurement>;
     };
   }
@@ -215,6 +216,7 @@ async function init(): Promise<void> {
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setStyle: selectStyle,
     setTarget: (target) => { markTarget(target); view.showDebugTarget(target); },
+    setGraphicsOption: (key, value) => { view.setGraphicsOption(key, value); syncGraphics(); },
     measure: (name) => view.measure(name),
   };
 }
