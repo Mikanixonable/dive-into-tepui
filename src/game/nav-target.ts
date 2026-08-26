@@ -2,7 +2,6 @@
 // 自機軌道との相対 AN/DN(昇交点・降交点)・再接近点の算出・マーカー表示・被選択物としての公開。
 // ターゲットが敵・自艦・基地(CombatTarget)の場合は、Targeter の射撃・照準補助の基準にもなる。
 import { Vec3, v3, add, len, sub } from '../physics/vec3';
-import { KinematicState } from '../physics/kinematic-state';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { CelestialBody, OrbitingId, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
 import type { LagrangePoints } from '../physics/lagrange';
@@ -23,6 +22,7 @@ import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { CameraSystem } from './camera/camera-system';
 import { MapPickable } from './map-pickable';
 import type { GameEntity } from './game-entity/game-entity';
+import type { OrbitReference } from './orbit-reference';
 
 const Z_HAT: Vec3 = v3(0, 0, 1);
 
@@ -239,28 +239,35 @@ export class NavTarget {
 
   // 現在のターゲットの時刻 t における位置・速度。天体は CelestialBody.state、ラグランジュ点は
   // ephemeris.lagrangeStateAt、船・基地は entity.displayState(t) から得る。天体以外は重力中心
-  // ではないため hasMass=false を返す。ターゲット未設定・解決不能なら null。
+  // ではないため hasMass=false を返す。船・基地は軌道線を相対軌跡に切り替えられるよう entity
+  // 自身も添えて返す。ターゲット未設定・解決不能なら null。
   resolveState(
     entities: EntityManager, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[], t: number,
-  ): { id: string; state: KinematicState; hasMass: boolean; attractor: CelestialBody | null } | null {
+  ): OrbitReference | null {
     const id = this.targetId;
     if (id === null) return null;
     const registry = ephemeris.registry;
     if (id in registry && bodyDef(registry, id).kind !== 'star') {
       const attractor = celestialBodies.find((a) => a.id === id);
-      if (attractor) return { id, state: attractor.state, hasMass: true, attractor };
+      if (attractor) return { id, state: attractor.state, hasMass: true, attractor, entity: null, fixed: true };
     }
     const match = /^(.+)-l([1-5])$/.exec(id);
     if (match) {
       const secondary = match[1]!;
       if (secondary in registry && bodyDef(registry, secondary).kind !== 'star') {
         const point = `L${match[2]}` as keyof LagrangePoints;
-        return { id, state: ephemeris.lagrangeStateAt(secondary as OrbitingId, point, t), hasMass: false, attractor: null };
+        return {
+          id, state: ephemeris.lagrangeStateAt(secondary as OrbitingId, point, t), hasMass: false,
+          attractor: null, entity: null, fixed: true,
+        };
       }
     }
     const entity = this.resolveEntity(id, entities);
     if (!entity) return null;
-    return { id, state: entity.displayState(t, ephemeris) ?? entity.state, hasMass: false, attractor: null };
+    return {
+      id, state: entity.displayState(t, ephemeris) ?? entity.state, hasMass: false,
+      attractor: null, entity, fixed: true,
+    };
   }
 
   // id がターゲットになれる(軌道面が定まる)かどうか。

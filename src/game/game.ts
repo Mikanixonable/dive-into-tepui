@@ -557,8 +557,13 @@ export class Game {
       this.markerManager,
     );
 
-    const orbitRef = player
-      ? this.orbitReference.resolve(player.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, player.state.t)
+    // 基地操作中もその基地を基準に軌道パネルが解決するのと揃える(orbit-panel.ts も同じ
+    // activeControllableEntity を使う) — player だけを見ると、基地操作中は常に undefined になり
+    // 軌道パネルの表示と3D軌道線の基準がずれる。
+    const orbitRef = activeControllable
+      ? this.orbitReference.resolve(
+        activeControllable.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, activeControllable.state.t,
+      )
       : undefined;
     this.entities.syncPlayers(player, fo, this.cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
     this.entities.syncDetachedBoosters(fo, this.cameraSystem, displayTime, style, visibilityPolicy);
@@ -595,7 +600,7 @@ export class Game {
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris);
+    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris, orbitRef);
     // 軌道線の右クリック当たり判定向けの候補列。各軌道線が今フレーム焼いたサンプルを読むため、
     // environment.sync/entityLines.sync の後に組む。
     this.orbitPickables.refresh(displayWindow, this.frameAnchors);
