@@ -44,7 +44,6 @@ export interface OrbitLineSyncContext {
   readonly displayTime: number;
   readonly ephemeris: Ephemeris;
   readonly frameAnchors: FrameAnchorSource;
-  readonly force?: boolean;
 }
 
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
@@ -237,16 +236,14 @@ export class GameEntity {
     fo: FloatingOrigin, camera: THREE.Camera, context: OrbitLineSyncContext,
   ): void {
     if (this.orbitLine === null) return;
-    const { displayTime, ephemeris, frameAnchors, force = false } = context;
+    const { displayTime, ephemeris, frameAnchors } = context;
     const state = this.displayState(displayTime, ephemeris);
     if (state === null) {
       this.orbitLine.sync(null, fo, camera);
       return;
     }
     const center = strongestAttractor(state.r, frameAnchors.bodies);
-    this.orbitLine.sync(
-      orbitalElementsOf(state, center), fo, camera, { force },
-    );
+    this.orbitLine.sync(orbitalElementsOf(state, center), fo, camera);
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
