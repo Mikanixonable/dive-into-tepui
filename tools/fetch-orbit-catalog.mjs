@@ -117,6 +117,19 @@ function chainSteps(rows, order) {
   return steps;
 }
 
+// rows をいまの並びのまま見たときの、隣接ステップ距離。
+function neighborSteps(rows) {
+  return chainSteps(rows, rows.map((_, index) => index));
+}
+
+// 値の中央値。空なら 0。
+function median(values) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
 // 大きなステップと見なす倍率(中央値に対する比)。
 const LARGE_STEP_FACTOR = 8;
 // 大きなステップがこの本数以下だけ連続していたら、刻みの粗い区間ではなくデータの断絶と見なす。
@@ -127,15 +140,13 @@ const BREAK_RUN_LIMIT = 2;
 // JPL の刻みが疎な区間では大きなステップが何十本も続くが、それは並びが正しくても起きるので
 // 断絶ではない。逆に、繋がらない枝どうしの境目では大きなステップが1〜2本だけ孤立して現れる。
 function chainBreaks(steps) {
-  const sorted = [...steps].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-  if (!(median > 0)) return [];
+  const typical = median(steps);
+  if (!(typical > 0)) return [];
 
   const breaks = [];
   let runStart = -1;
   for (let i = 0; i <= steps.length; i++) {
-    const large = i < steps.length && steps[i] > LARGE_STEP_FACTOR * median;
+    const large = i < steps.length && steps[i] > LARGE_STEP_FACTOR * typical;
     if (large && runStart < 0) runStart = i;
     if (!large && runStart >= 0) {
       if (i - runStart <= BREAK_RUN_LIMIT) breaks.push(runStart / steps.length);
@@ -143,6 +154,27 @@ function chainBreaks(steps) {
     }
   }
   return breaks;
+}
+
+// 鎖の両端にぶら下がった孤立メンバーを落とす。JPL の族には、族の他のどことも繋がらない
+// メンバーが端に数件だけ混じっていることがある。間引きは先頭と末尾を必ず含めるため、残すと
+// 族の位置 0(または 1)に形の違う軌道が現れる。
+// 落とすのは chainBreaks と同じ「短い塊」の判定に当てはまる端だけで、大きなステップが長く
+// 続く端(刻みが疎なだけの区間)には手を出さない。
+function trimDetachedEnds(rows) {
+  const steps = neighborSteps(rows);
+  const typical = median(steps);
+  if (!(typical > 0)) return rows;
+  const large = (i) => steps[i] > LARGE_STEP_FACTOR * typical;
+
+  let leading = 0;
+  while (leading < steps.length && large(leading)) leading++;
+  let trailing = 0;
+  while (trailing < steps.length && large(steps.length - 1 - trailing)) trailing++;
+
+  const start = leading <= BREAK_RUN_LIMIT ? leading : 0;
+  const end = rows.length - 1 - (trailing <= BREAK_RUN_LIMIT ? trailing : 0);
+  return start === 0 && end === rows.length - 1 ? rows : rows.slice(start, end + 1);
 }
 
 // 並びに沿った総弦長。並べ替えが元の順より良くなっていることの確認に使う。
@@ -155,14 +187,19 @@ function totalChainLength(rows, order) {
 // もともと C について単調で並べ替えるまでもない場合か、データに構造が無い場合)。
 // 断絶が残ったときは、並びは採ったうえでその位置を呼び出し側へ返し、警告させる。
 function orderFamilyByContinuity(rows) {
-  if (rows.length < 3) return { rows, breaks: [] };
+  if (rows.length < 3) return { rows, detached: 0, breaks: [] };
 
   const identity = rows.map((_, index) => index);
   const chain = buildNearestNeighborChain(rows, 0);
-  if (totalChainLength(rows, chain) > totalChainLength(rows, identity)) {
-    return { rows, breaks: chainBreaks(chainSteps(rows, identity)) };
-  }
-  return { rows: chain.map((index) => rows[index]), breaks: chainBreaks(chainSteps(rows, chain)) };
+  const ordered = totalChainLength(rows, chain) > totalChainLength(rows, identity)
+    ? rows
+    : chain.map((index) => rows[index]);
+  const trimmed = trimDetachedEnds(ordered);
+  return {
+    rows: trimmed,
+    detached: ordered.length - trimmed.length,
+    breaks: chainBreaks(neighborSteps(trimmed)),
+  };
 }
 
 // 族に沿って、6次元状態ベクトルの累積弦長が等間隔になる位置に最も近い count 件を選ぶ。
@@ -176,22 +213,26 @@ function thinAlongFamily(rows, count) {
   }
   const total = cumulative[n - 1];
 
+  // 選ぶ添字は必ず前回より後ろへ進め、かつ残りの本数を確保できる範囲に収める。単純に
+  // 「目標にいちばん近い行」を選ぶと、族に大きな断絶があるとき目標の多くが隙間の中に落ちて
+  // 同じ行に丸まり、count 件に届かなくなる。
   const picked = [];
-  const seen = new Set();
+  let previous = -1;
   for (let i = 0; i < count; i++) {
     const target = total === 0 ? (i * (n - 1)) / (count - 1) : (i * total) / (count - 1);
-    let bestIndex = 0;
+    const lowest = previous + 1;
+    const highest = n - (count - i);
+    let bestIndex = lowest;
     let bestDiff = Infinity;
-    for (let j = 0; j < n; j++) {
+    for (let j = lowest; j <= highest; j++) {
       const diff = Math.abs((total === 0 ? j : cumulative[j]) - target);
       if (diff < bestDiff) {
         bestDiff = diff;
         bestIndex = j;
       }
     }
-    if (seen.has(bestIndex)) continue;
-    seen.add(bestIndex);
     picked.push(rows[bestIndex]);
+    previous = bestIndex;
   }
   return picked;
 }
@@ -281,7 +322,8 @@ async function main() {
         const result = await fetchCombo(sys, combo.family, combo.libr, combo.branch);
         if (result === null) return; // 無効・空の組み合わせ。この系にこの族は無い。
         systemMeta ??= result.system;
-        const { rows: orderedRows, breaks } = orderFamilyByContinuity(result.rows);
+        const { rows: orderedRows, breaks, detached } = orderFamilyByContinuity(result.rows);
+        if (detached > 0) warnings.push(`${sys} ${key}: 族の端にぶら下がった ${detached} 件を除外`);
         if (breaks.length > 0) {
           const positions = breaks.map((at) => `${(at * 100).toFixed(1)}%`).join('、');
           warnings.push(`${sys} ${key}: 族が繋がらない箇所 ${breaks.length} 件(族に沿った位置 ${positions})`);
