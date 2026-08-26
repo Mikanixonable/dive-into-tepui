@@ -1,6 +1,6 @@
-// 個々のパネルの中身の CSS: SHIP STATUS/ORBIT/TARGET/CONTACTS の行、軌道物体一覧、
-// 軌道計画、表示設定、表示時刻、カメラ・軌道、物体配置、ナビボール、ステージステータス、
-// 設定・ヘルプ・終了画面。骨格(層・レール・シェルフ・バッジ)は skeleton-style.ts が持つ。
+// 個々のパネルの中身の CSS: SHIP STATUS/ORBIT/TARGET/CONTACTS の行、軌道計画、表示設定、
+// 表示時刻、カメラ・軌道、物体配置、ナビボール、ステージステータス、設定・ヘルプ・終了画面。
+// 骨格(層・レール・シェルフ・バッジ)は skeleton-style.ts が持つ。
 import * as C from '../../const';
 import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../breakpoints';
 
@@ -89,40 +89,6 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   align-self: flex-end;
   margin-left: auto;
 }
-
-#hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); display: flex; flex-direction: column; overflow: hidden; }
-/* 上半分(検索・フィルタ)は要素数ぶんの高さに縮め、下半分(項目一覧)が残りを占有する。互いに重ならないよう独立してスクロールさせる */
-#hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: 50%; overflow-y: auto; }
-#hud-physical-object-list .physical-object-list-body { flex: 1 1 auto; overflow-y: auto; }
-#hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
-#hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
-#hud-physical-object-list .physical-object-list-head .w-group { padding: var(--space-1) var(--space-2); }
-#hud-physical-object-list .physical-object-list-head .w-group-title { flex: 1 0 100%; }
-#hud-physical-object-list .physical-object-list-head .w-btn { font-size: var(--font-xxs); }
-#hud-physical-object-list .physical-object-list-collapse {
-  margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
-}
-#hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
-#hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
-#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
-#hud-physical-object-list .physical-object-list-section-header {
-  display: block; width: 100%; text-align: left; margin: var(--space-2) 0 var(--space-1);
-  padding: var(--space-2) var(--space-4); font-size: var(--font-xs); letter-spacing: 1px;
-}
-#hud-physical-object-list .physical-object-list-section-body { padding-left: var(--space-2); }
-#hud-physical-object-list .physical-object-list-section-body.collapsed { display: none !important; }
-#hud-physical-object-list .physical-object-list-tree-controls { display: flex; gap: var(--space-2); padding: 0 var(--space-4) var(--space-1); }
-#hud-physical-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
-#hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
-#hud-physical-object-list .erow:hover { color: var(--text); }
-#hud-physical-object-list .erow.tgt {
-  color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-}
-#hud-physical-object-list .erow.cluster { opacity: .55; }
-#hud-physical-object-list .physical-object-list-toggle { width: 10px; text-align: center; flex: none; }
-#hud-physical-object-list .physical-object-list-children { padding-left: var(--space-5); }
-#hud-physical-object-list .physical-object-list-children.collapsed { display: none !important; }
-#hud-physical-object-list .physical-object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
 
 #hud-plan { min-width: 0; width: 100%; max-width: 300px; overflow-wrap: anywhere; }
 #hud .w-group { margin-bottom: var(--space-3); }
