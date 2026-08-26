@@ -61,7 +61,6 @@ const STYLE = `
 #hud .dg-window-btn:hover { background: var(--surface-3); color: var(--color-primary-hover); }
 #hud .dg-window-btn.clipped { background: var(--color-primary-fill); color: var(--color-primary); }
 #hud .dg-window.tgt { background: color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus)); }
-#hud .dg-window.on { background: color-mix(in srgb, var(--color-signal) 16%, var(--glass-focus)); }
 `;
 
 export interface DraggableWindowOptions {
@@ -226,11 +225,10 @@ export class DraggableWindow implements OverlayHandle {
     }
   }
 
-  // 対象が現在のターゲット/操作対象であることを示す帯び色。物体一覧パネルの erow.tgt/.on
+  // 対象が現在のターゲットであることを示す帯び色。物体一覧パネルの erow.tgt
   // と同じ字面のクラスを、ウィンドウのルート要素に付け替える。
-  public setBadge(kind: 'tgt' | 'on' | null): void {
-    this.element.classList.toggle('tgt', kind === 'tgt');
-    this.element.classList.toggle('on', kind === 'on');
+  public setBadge(isTarget: boolean): void {
+    this.element.classList.toggle('tgt', isTarget);
   }
 
   public get clipped(): boolean {
