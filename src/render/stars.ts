@@ -21,6 +21,9 @@ export const SUN_GLOW_RADIANCE = SUN_SURFACE_RADIANCE * Math.PI / (4 * STAR_GLOW
 
 export interface Stars {
   readonly mesh: THREE.Mesh;
+  // 順応ぶんを打ち消す倍率を材質色へ掛ける。星殻は実写写真をそのまま貼ったもので物理的な
+  // 輝度の目盛りに載っていないため、どこから見ても同じ明るさで写らなければならない。
+  setExposureScale(scale: number): void;
   dispose(): void;
 }
 
@@ -48,6 +51,10 @@ export function createStars(): Stars {
   mesh.renderOrder = -10;
   return {
     mesh,
+    // 材質色は白のままなので、倍率をそのまま置けば写真の輝度へ掛かる。
+    setExposureScale(scale: number): void {
+      mat.color.setScalar(scale);
+    },
     // ジオメトリ・マテリアル・テクスチャを解放する。mesh をシーンから外すのは呼び出し側。
     dispose(): void {
       geo.dispose();
