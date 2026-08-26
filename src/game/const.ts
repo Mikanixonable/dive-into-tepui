@@ -235,8 +235,8 @@ export const RCS_FUEL_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m
 export const LOGISTICS_LOW_FUEL_RATIO = 0.3; // この割合未満になると燃料補給を投入
 export const MAX_ACTIVE_RCS_FUEL_PICKUPS = 3; // 同時に存在する燃料補給の最大数
 export const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
-export const LOGISTICS_MIN_DIST = 625; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
-export const LOGISTICS_MAX_DIST = 1250; // 同上限 [m]
+export const LOGISTICS_MIN_DIST = 312.5; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
+export const LOGISTICS_MAX_DIST = 625; // 同上限 [m]
 export const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
 export const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
 export const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
@@ -585,8 +585,8 @@ export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m
 // 生成されるので、変更すればどちらも自動的に追随する。
 export const STAGE0_TIME_LIMIT = 120;
 export const STAGE0_LOGISTICS_INITIAL_AMMO = 4; // 開始時に浮かべておく補給の数
-export const STAGE0_LOGISTICS_MIN_DIST = 150; // 補給の配置距離 [m](自機から)
-export const STAGE0_LOGISTICS_MAX_DIST = 450;
+export const STAGE0_LOGISTICS_MIN_DIST = 75; // 補給の配置距離 [m](自機から)
+export const STAGE0_LOGISTICS_MAX_DIST = 225;
 // 5グループの配置: 各グループ中心を安全半径(STAGE0_MAX_RANGE * SAFE_RANGE_FACTOR)
 // の CENTER_DIST_MIN〜+RANGE の位置に置き、各機はそこから ALONG/NORMAL/RADIAL
 // 方向にランダムに散らす
@@ -600,8 +600,8 @@ export const STAGE0_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m
 
 // --- ステージ00(無限耐久サバイバル) ---
 export const STAGE00_MAX_RANGE = 30000; // 自機からの配置半径の上限(デスポーン距離) [m]
-export const STAGE00_LOGISTICS_MIN_DIST = 25; // 補給の配置距離 [m](自機から)
-export const STAGE00_LOGISTICS_MAX_DIST = 100;
+export const STAGE00_LOGISTICS_MIN_DIST = 12.5; // 補給の配置距離 [m](自機から)
+export const STAGE00_LOGISTICS_MAX_DIST = 50;
 export const STAGE00_SPAWN_DELAY = 10; // 弾取得からスポーンまでの遅延 [s]
 export const STAGE00_FORMATION_SPACING = 200; // 編隊の機体間隔 [m]
 export const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くするか [m]
