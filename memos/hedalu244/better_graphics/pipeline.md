@@ -10,9 +10,10 @@
 - **書くときの手順は `.claude/skills/rendering-workflow`**(踏む地雷と目視の仕方)。
   three を上げるときは `how_to_update_three.md`。
 
-各計画ファイル: [`arealight.md`](arealight.md)(エリアライト) / [`atmosphere.md`](atmosphere.md)
+各計画ファイル: [`atmosphere.md`](atmosphere.md)
 (大気散乱) / [`volume.md`](volume.md)(大気以外の半透明) /
 [`screenspace.md`](screenspace.md)(AO と GI) / [`shadow_backlog.md`](shadow_backlog.md)(影の残件) /
+[`arealight_backlog.md`](arealight_backlog.md)(エリアライトの残件) /
 [`blackbody_backlog.md`](blackbody_backlog.md)(固体の黒体放射の残件) /
 [`exposure_backlog.md`](exposure_backlog.md)(露出の残件) /
 [`lens_backlog.md`](lens_backlog.md)(点像のちらつき、レンズ像の見た目の残件)。
@@ -90,9 +91,15 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 
 - **放射照度の単位は「1 天文単位で π」**(`SUN_IRRADIANCE_1AU`)。ランバート BRDF の 1/π と
   打ち消し合うので、**太陽へ正対したアルベド A の完全拡散面は 1 天文単位で表示値 A になる。**
-- **環境光は地球照の代用**(`AMBIENT_IRRADIANCE`、低軌道での明るさに合わせた手書きの定数)で、
-  **基準点と地球の距離の二乗で薄れる。** 方向も位相も遮蔽も持たない。**地球が無いレジストリでは
-  0** — 本影の中を埋めるぶんは恒星光側(直射に対する割合)が別に持つので、0 でも真っ黒にはならない。
+- **不透明物に完全に遮られた画素の太陽直射は 0。** 影の中に届くのは天体照(§2-7)だけで、
+  天体照の光源モデルを「なし」にすると影の中は真っ黒になる。
+- **天体照は、恒星以外の天体を一様な放射輝度の球光源として扱う**(最大 2 スロット)。放射輝度は
+  `L̄ = (2/3)·A·E_b·Φ(α)/π` — `A` は色つきボンドアルベド(`lightSourceAlbedoOf()`。実写
+  テクスチャ天体は実測平均色 × ボンドアルベド)、`E_b` はその天体の場所の太陽放射照度に天体の食
+  (`sunlitFactor`)を掛けたもの、`Φ(α)` はランバート球の位相関数。**どの天体を載せるかは
+  `game/celestial/planet-light.ts` が決める** — 露出まで通した表示値が 8bit sRGB の 1 LSB
+  (線形 3.0e-4)を動かせない天体を式で捨てるので、チューニング値もヒステリシスも無い。
+  地球が無いレジストリでも天体照は出る。
 - トーンマッピングは **Khronos PBR Neutral**(0.08 未満を `x → 6.25x²` で潰すトウを持つ)。
   曲線の最終決定は [`exposure_backlog.md`](exposure_backlog.md)。
 - **天体が持つのはボンドアルベドだけで、輝度は持たない。** 輝度はアルベドと
@@ -104,8 +111,8 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 - 艦艇モデルの金属度は 0 か 1 の 2 値。金属度 1 の面ではベース色がそのまま F0 として読まれる。
 - **熱い物体の自照も同じ目盛りに乗る。** 太陽面(5772 K の黒体)の輝度がこの目盛りで 46244
   になるので、赤熱の表示値はそこからの比で決まる(§2-4)。
-- **較正は `render-lab` で読む** — `albedo` ケース(アルベド 1 の白球を 1 天文単位)の最も明るい
-  画素が sRGB (241, 231, 215)、`saturn` ケースで環と本体の比が 0.20。
+- **較正は `render-lab` で読む** — `albedo` ケース(アルベド 1 の白球を 1 天文単位、天体照なし)
+  の最も明るい画素が sRGB (240, 229, 210)、`saturn` ケースで環と本体の比が 0.2。
 
 ### 1-6. 露出
 
@@ -121,7 +128,7 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
   1 / 5.2 / 9.6 / 30 天文単位で sRGB 139 / 100 / 83 / 59(`render-lab` の `outer-*` ケース)。
 - **基準点はカメラの注視点**(`activeViewpoint.lookTarget`)であって、カメラ位置ではない —
   マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
-  環境光の減衰も同じ基準点から引く。
+  天体照の光源選定(§1-5)も同じ基準点から引く。
 - **時間追従を持たない。** 位置の関数なので**同じ場所は常に同じ絵**になり、撮影が決定的に保たれる。
   段差になるのはマップビューのフォーカスを切り替えた瞬間だけ。
 - **露出補正**は描画設定(`exposureCompensation`)の 5 段で、1 段が EV 1 段(2 倍)。順応へ掛かる。
@@ -144,7 +151,7 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 | 1 | `sun-shadow-maps.ts` | 恒星方向の平行投影で、メッシュの遮蔽器をスロットごとの線形深度マップへ | 4 枚 × 1024²(遠層 256²) |
 | 2 | `gbuffer.ts` | 深度 + 法線 + 粗さ(MRT)。**位置復元の唯一の供給元** | depth32float(反転)/ oct 符号化 rg16f / r8unorm。サンプル 1 |
 | 3 | `occlusion.ts` | 恒星の直達光の透過率。天体の球・環の帯・影の深度マップの積 | r16float |
-| 4 | `light-prepass.ts` | 拡散照度 + 鏡面照度(MRT) | rgba16float × 2(a は未使用) |
+| 4 | `light-prepass.ts` | 照度バッファを 0 でクリアし、光源 1 本につきフルスクリーン 1 枚を加算合成で積む(§2-7) | rgba16float × 2(a は未使用) |
 | 5 | `material-pass.ts` | `LIT_OPAQUE_LAYER` + 背景を再描画。照度を読み BRDF を掛ける | HDR 共有ターゲット(`antialias` 時 4 サンプル)をクリアして書く |
 | 6 | `atmosphere-pass.ts` | 大気。前乗算アルファで不透明の絵の上へ | 同上へ重ね描き |
 | 7 | (world) | 残りのシーン。半透明ごと前方描画のまま | 同上へ重ね描き |
@@ -180,7 +187,7 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 **world は「シーンの光を受けないもの」の受け皿**であり、分類の意図があって置かれたものと、
 行き場が無いだけのものが混ざっている。行き先の候補は §4。
 
-**天体と艦艇は同じ 1 つの光源・同じ BRDF で描かれる。** 自前 Lambert も `NIGHT_AMBIENT` も
+**天体と艦艇は同じ光源の列(§2-7)・同じ BRDF で描かれる。** 自前 Lambert も `NIGHT_AMBIENT` も
 `sunDirection` uniform も無い。**どの天体もどのビューでも実 ECI 位置・実半径で描く**
 (距離圧縮は全廃)ので、遮蔽パスへ渡る中心も半径も真の値。
 
@@ -205,15 +212,22 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
   「巨大な遮蔽器には巨大なシャドウマップが要る」は成り立たない。枚数も解像度も固定。
 - **遮蔽器を捨ててよい物理的な基準がある** — 最大遮蔽率 `min(1, (β/α)²)` が閾値を下回る遮蔽器は
   どう表現しても画面に出ない。チューニング値ではない。
+- **受け手が乗っている天体自身は遮蔽器から外す**(遮蔽パスだけ。中心距離が半径に一致する
+  遮蔽器を、位置復元誤差由来の公差 `max(radius·1e-6, 視距離·1e-5)` で判定)。表面の自己遮蔽は
+  N·L と光源の積分が表すので、ここでも数えると終端が二重に暗くなる。環・大気の受け手は外さない。
 
 **残件は [`shadow_backlog.md`](shadow_backlog.md)。**
 
 ### 2-3. CPU 側の日照率とは別物
 
-`physics/shadow.ts` の `sunlitFactor` は熱・電力・SRP のために残り、**描画はこれを読まない。**
-問いが違う — 前者は**ある 1 点の日照率**、後者は**画素ごとの遮蔽度**(艦は点ではなく自己影を持つ)。
-`physics/` は THREE に依存できず TSL は TS 関数を呼べないので共有は物理的に不可能。
-**全件走査は、GPU 側が遮蔽器を打ち切ることの誤差を測るオラクルになる。**
+`physics/shadow.ts` の `sunlitFactor` は熱・電力・SRP のために残り、**画素ごとの遮蔽は
+これを読まない。** 問いが違う — 前者は**ある 1 点の日照率**、後者は**画素ごとの遮蔽度**
+(艦は点ではなく自己影を持つ)。`physics/` は THREE に依存できず TSL は TS 関数を呼べないので
+共有は物理的に不可能。**全件走査は、GPU 側が遮蔽器を打ち切ることの誤差を測るオラクルになる。**
+
+例外は天体照の光源選定(`game/celestial/planet-light.ts`)— **光源になる天体の食**を
+`sunlitFactor` で天体中心の 1 点で評価し、放射輝度へ掛ける。これは CPU 側の選定であって
+画素ごとの遮蔽ではない。
 
 ### 2-4. 温度による自照
 
@@ -299,6 +313,34 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
 明るさへ持ち上げる応答」(`POINT_DISPLAY_GAIN`)は太陽には掛けない** — 掛けると球の
 3×10⁵ 倍になる。**残っている振れは [`lens_backlog.md`](lens_backlog.md)。**
 
+### 2-7. 光源の構成
+
+**ライティングパスは器で、光源 1 本が描画命令 1 本**(`render/pipeline/lighting/`)。照度バッファ
+(拡散・鏡面の MRT)を 0 でクリアし、寄与のある光源だけをフルスクリーン 1 枚ずつ加算合成で積む
+(`lighting/light-source.ts` の形を満たすものが 1 本)。全光源が共有するシェーディング入力
+(G バッファの読み・位置復元)は `lighting/shading-sample.ts`。**光源の種類を足すことは、
+ファイルを足して描画命令を 1 本増やすこと**であって、1 つのシェーダを太らせることではない。
+
+- **加算合成は `material.mrtNode` + `CustomBlending`(One/One)で書く。** `renderer.setMRT` を
+  使うと MRT 側のブレンド既定が NoBlending になり、加算が効かない。
+- **太陽**(`lighting/sun-source.ts`): 描画設定 `sunLightModel` で「点光源 + GGX」と
+  「一様球の閉じた解 + LTC」を選ぶ(モードごとにマテリアル 1 枚を遅延生成)。球光源の拡散は
+  Snyder の解析解(`lighting/sphere-light.ts`)で、視半径 → 0 で点光源の N·L へ連続に縮退する
+  (分岐なし)。鏡面は太陽を面積の一致する正 8 角形へ写して LTC で積分する(`lighting/ltc.ts`)。
+  遮蔽パスの透過率は拡散・鏡面の両方に掛かる。
+- **LTC の係数表は生成物**(`lighting/ltc-table.ts`、`npm run export-ltc-table` が
+  `three/addons` から半精度で焼く)。実行時に `three/addons` を読んではならない — 素の three が
+  バンドルへ丸ごと入る。**⚠ 8 角形の頂点は受け手から見て反時計回り**(基底 `(u,v,axis)`
+  右手系で φ を負に回す)。逆に巻くと形状係数が地平線上の光源で 0 になり、**拡散は正常なまま
+  鏡面だけが静かに消える。**
+- **天体照**(`lighting/planet-light-source.ts`): スロット 2 本で、1 本が光源 1 つ。
+  それぞれ一様球光源として拡散は同じ閉じた解、鏡面は点光源近似の GGX(`lighting/ggx.ts`、
+  太陽の点光源モードと共有)。遮蔽は受けない(天体照の遮蔽は
+  [`screenspace.md`](screenspace.md))。描画設定は `planetLightModel`(なし / 球光源)。
+  スロットへ何を載せるかとその放射輝度は §1-5(`game/celestial/planet-light.ts`)。
+- **GPU 計測は描画命令ごとに `beginPass(GPU_PASS.lighting)` を申告**し、計測側が同一パスの
+  複数回ぶんを足し合わせる — 負荷確認ウィンドウの行は 1 行のまま。
+
 ---
 
 ## 3. 確かめる器
@@ -306,7 +348,10 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
 - **`render-lab`**(`npm run render-lab` / `render-lab:shot`)。960×540 固定、near=2、球は半径 =
   距離/10。ケースは `tools/render-lab/cases.ts` の表で、**増やすのは表への追記だけ。**
   較正ケースは `albedo` / `saturn`、描画順は `order`、深度は `depth-1e4`〜`depth-1e11`、
-  1px を切った光点は `sun-1au` / `sun-5au` / `sun-30au`。**観察のつまみは恒星の向きと距離・
+  1px を切った光点は `sun-1au` / `sun-5au` / `sun-30au`、光源モデルは `sun-close` /
+  `metal-highlight` / `earthshine` / `crescent`。**天体照の光源はケースが `planetLights`
+  (中心・半径・色つきアルベド)で直に置く** — game 側の選定(閾値・食)は通らないので、
+  そちらの検証は実機でしか出来ない。**観察のつまみは恒星の向きと距離・
   カメラの向きと距離**で、恒星距離は天文単位の常用対数(`setView({ sunDistanceLogAu })`)。
   `window.renderLab` の `shoot` / `setView` / `capture` / `measure` から CDP で駆動できる。
   **画素一致の画像回帰は採らない** — 基準を過去の自分に取ると、いま入っているバグごと固定する。
@@ -331,11 +376,12 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
 
 戦闘ビューで draw calls 約 165(ライトプリパスのジオメトリ 2 回描きを含めた実測は約 324)、
 triangles 約 33 万。マップビューで draw calls 約 198。パス別 GPU 時間の実測は
-G バッファ 0.6ms / ライティング 0.5ms / マテリアル 0.6ms / ワールド 2.6ms / 合成 0.4ms。
-**影・遮蔽・大気・レンズは未実測**(見積り: 遮蔽 0.22ms、大気 0.2〜0.5ms。実機で読んで外れて
-いたらここへ書き戻す)。レンズ段は全画面 quad を 22 回発行し、`render-lab` で測った CPU 側の
-差は +1.59ms だが、**この環境は GPU タイムスタンプが未対応(`gpuSupported: false`)で絶対値が
-本番より膨らむため真に受けられない**
+G バッファ 0.6ms / マテリアル 0.6ms / ワールド 2.6ms / 合成 0.4ms。
+**影・遮蔽・ライティング・大気・レンズは未実測**(見積り: 遮蔽 0.22ms、大気 0.2〜0.5ms、
+ライティングは光源 1 本の描画命令 +0.3ms と LTC +0.16ms/本で最も重い設定 約 1.1ms。
+実機で読んで外れていたらここへ書き戻す)。レンズ段は全画面 quad を 22 回発行し、`render-lab` で
+測った CPU 側の差は +1.59ms だが、**この環境は GPU タイムスタンプが未対応
+(`gpuSupported: false`)で絶対値が本番より膨らむため真に受けられない**
 ボトルネックは描画ではなく update フェーズ(約 18〜19ms)にあり、これはこのディレクトリの
 外側の課題。
 
@@ -353,8 +399,8 @@ instanceMatrix の受け渡し経路を `count` から決め、最初の描画�
 
 | 穴 | 引き取り先 |
 |---|---|
-| 光源が「位置と半径を持つ点」のままで、有限の立体角を持たない | [`arealight.md`](arealight.md) |
-| `AMBIENT_IRRADIANCE`(地球からの距離でしか変わらず、方向も位相も遮蔽も持たない)が地球照・星明かり・多重散乱を兼ねている | [`arealight.md`](arealight.md) |
+| 天体照の光の向きが天体の中心を指したまま(三日月でも中心から来る)。接触極限で真値の 2/3。衝効果が無い | [`arealight_backlog.md`](arealight_backlog.md) |
+| 天体照が lit-opaque チャンネルにしか届かず、環・大気の夜側が真っ黒。露出の順応が天体照を見ない | [`arealight_backlog.md`](arealight_backlog.md) |
 | 大気が Beer–Lambert 一本のもやで、散乱の積分になっていない | [`atmosphere.md`](atmosphere.md) |
 | トーンカーブが選び直されていない。順応が場所の関数のままで、眼順応も星野の物理化も無い | [`exposure_backlog.md`](exposure_backlog.md) |
 | レンズ像の見た目(ゴーストの分布・条の色分散・発行コスト)が詰め切れていない | [`lens_backlog.md`](lens_backlog.md) |
