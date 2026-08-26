@@ -2,7 +2,6 @@
 // (pipeline の SUN_IRRADIANCE_1AU)へ写したものを返す。表は起動時に一度だけ組み、
 // CPU 側の照合と TSL 側の表引きが同じ 1 つの中身を読む。
 import * as THREE from 'three/webgpu';
-import { clamp, float, texture, vec2 } from 'three/tsl';
 import { STEFAN_BOLTZMANN } from '../physics/thermal';
 import { SOLAR_CONSTANT } from '../physics/srp';
 import type { FloatNode, Vec3Node } from './tsl-types';
@@ -109,14 +108,16 @@ function lutTexture(): THREE.DataTexture {
 
 // 温度 [K] を表の段の中心を突く横位置(0..1)へ写す。表の外は両端へ張り付く。
 function lutCoord(temperature: FloatNode): FloatNode {
-  const t = clamp(
-    temperature.sub(MIN_TEMPERATURE).div(MAX_TEMPERATURE - MIN_TEMPERATURE), float(0), float(1));
-  return t.mul((STEPS - 1) / STEPS).add(0.5 / STEPS);
+  const t = THREE.TSL.clamp(
+    temperature.sub(MIN_TEMPERATURE).div(MAX_TEMPERATURE - MIN_TEMPERATURE),
+    THREE.TSL.float(0), THREE.TSL.float(1)) as FloatNode;
+  return t.mul((STEPS - 1) / STEPS).add(0.5 / STEPS) as FloatNode;
 }
 
 // 温度 temperature [K]・輻射率 emissivity の面が自ら放つ光を、放射量の目盛りの表示値で返す。
 export function blackbodyEmissiveNode(temperature: FloatNode, emissivity: FloatNode): Vec3Node {
-  return texture(lutTexture(), vec2(lutCoord(temperature), 0.5)).rgb.mul(emissivity) as Vec3Node;
+  const uv = THREE.TSL.vec2(lutCoord(temperature), 0.5);
+  return THREE.TSL.texture(lutTexture(), uv).rgb.mul(emissivity) as Vec3Node;
 }
 
 // 同じ表を CPU 側から引く。較正の照合に使う値で、成分は 1 を超えうる。
