@@ -4,10 +4,11 @@ import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
-import { R_EARTH } from '../../src/physics/solar-system';
+import { R_EARTH, R_SUN } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
+import { createSun, STAR_GLOW_SIZE_RATIO, SUN_GLOW_RADIANCE } from '../../src/render/stars';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
@@ -21,6 +22,7 @@ import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
 import { textureOf } from '../../src/render/celestial-textures';
 import { v3 } from '../../src/physics/vec3';
+import { AU } from '../../src/physics/planet-orbit';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
 import type { ProteinLabCaseMetadata } from './protein-cases';
@@ -72,6 +74,8 @@ export type LabCase = {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
+  // 恒星を置く距離 [m]。省略すると 1 天文単位。
+  readonly sunDistance?: number;
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
   // 大気パスへ渡す天体。中心は描画座標。
@@ -703,6 +707,39 @@ function far(): LabCase {
   };
 }
 
+// 太陽: 恒星の実球体を画面へ入れ、距離だけを変えた 3 つ。**遠ざかると見かけ径が 1px を切り**、
+// 総光量がラスタライズの被覆率へ量子化される — サブピクセルの移動に対して画面がどれだけ
+// ちらつくかを、この構図で測る。
+//
+// **太陽は画面中心から外して置く。** 中心に置くとカメラ方位を回しても画面上で動かず
+// (視線が注視点へ固定されるため)、サブピクセルの移動そのものが作れない。**注視点は手前
+// 10m の艦**なので、カメラはその近点を軸に回り、遠くの太陽は方位の変化ぶんそのまま画面上を
+// 動く。艦の縁で太陽が隠れる様子も同じ絵で読める。
+const SUN_CASE_DIR = new THREE.Vector3(0.2563, 0.1392, -0.9565).normalize();
+const SUN_CASE_SHIP_POSITION = new THREE.Vector3(0, -1, -10);
+
+function sunAt(distance: number): LabCase {
+  const camera = labCamera(1e13);
+  const center = SUN_CASE_DIR.clone().multiplyScalar(distance);
+  const sun = createSun();
+  sun.mesh.position.copy(center);
+  sun.mesh.scale.setScalar(R_SUN);
+  // グローは土星ケースの環と同じく、組み立て時に 1 回だけケースのカメラへ正対させる。測定で
+  // 使う回転は 0.1° 未満なので、正対のずれは絵に出ない。
+  sun.billboard.sync(center, R_SUN * STAR_GLOW_SIZE_RATIO, SUN_GLOW_RADIANCE, camera.quaternion);
+  for (const mesh of [sun.mesh, sun.billboard.mesh]) {
+    mesh.userData.ownsGeometry = true;
+    mesh.userData.ownsMaterial = true;
+  }
+  return {
+    objects: [sun.mesh, sun.billboard.mesh, shipAt(SUN_CASE_SHIP_POSITION)],
+    camera,
+    sunDirection: SUN_CASE_DIR,
+    sunDistance: distance,
+    viewTarget: SUN_CASE_SHIP_POSITION,
+  };
+}
+
 export const CASES = {
   'leo': leo,
   'ship-selfshadow': shipSelfShadow,
@@ -724,6 +761,9 @@ export const CASES = {
   'saturn': saturn,
   'saturn-shadow': saturnShadow,
   'albedo': albedo,
+  'sun-1au': () => sunAt(AU),
+  'sun-5au': () => sunAt(5.2 * AU),
+  'sun-30au': () => sunAt(30 * AU),
   'blackbody': blackbody,
   ...PROTEIN_CASES,
 } as const satisfies Record<string, (sunOcclusion: SunOcclusion, sunLight: SunLight) => LabCase>;
