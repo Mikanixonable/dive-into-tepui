@@ -13,7 +13,7 @@
 // 普通に深度テストするだけで不透明物の奥へ隠れる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { float, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { GraphicsOptionKey, GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
@@ -27,18 +27,11 @@ import { OcclusionPass } from './occlusion';
 import { SunOcclusion } from './sun-occlusion';
 import { OverlayPass } from './overlay-pass';
 import { SchematicComposite } from './schematic-composite';
+import { Exposure } from './exposure';
 import { SunLight } from './sun-light';
 import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
-
-// 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
-// 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
-// そのまま読み取れる。明るさの基準は放射照度の単位そのもの(sun-light.ts の
-// SUN_IRRADIANCE_1AU)が決めているので、出力段の露出には 1 を渡す。
-function toneMapped(color: Vec3Node): Vec3Node {
-  return neutralToneMapping(color, float(1)) as Vec3Node;
-}
 
 // applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
 // 駆動する呼び出し側(描画テスト環境)は、この並びを操作の対象にする。
@@ -57,6 +50,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
   private readonly _sunLight: SunLight;
+  private readonly _exposure: Exposure;
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
@@ -82,6 +76,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // ライティングパスが読む恒星光。EnvironmentScene がここへ毎フレーム書き込む。
   get sunLight(): SunLight { return this._sunLight; }
 
+  // 合成パスが掛ける露出。EnvironmentScene が順応の基準点を毎フレーム書き込む。
+  get exposure(): Exposure { return this._exposure; }
+
   // 恒星の直射光の遮蔽。EnvironmentScene が遮蔽器と環の帯を毎フレーム書き込む。
   get sunOcclusion(): SunOcclusion { return this._sunOcclusion; }
 
@@ -96,6 +93,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.unregisterProteinMotionRenderer = registerProteinMotionRenderer(renderer);
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
+    this._exposure = new Exposure();
     this.sunShadowMaps = new SunShadowMaps(
       renderer, gpu, graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
@@ -132,7 +130,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // マテリアルをユニフォーム分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを
     // bind/sample することになるため、表示ごとに別マテリアルを構築する。
     this.compositeMaterials = {
-      off: this.buildCompositeMaterial(vec4(toneMapped(texture(this.target.texture, screenUV).rgb), 1)),
+      off: this.buildCompositeMaterial(vec4(this.toneMapped(texture(this.target.texture, screenUV).rgb), 1)),
       normal: this.buildCompositeMaterial(
         vec4(octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1),
       ),
@@ -150,16 +148,16 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       // 照度・陰影は 1 を超え得る HDR 値なので、通常表示と同じトーンマッピングを通してから
       // 画面へ出す(1 天文単位の放射照度は π を超えるため、通さないと全面白になる)。
       diffuse: this.buildCompositeMaterial(
-        vec4(toneMapped(texture(this.lightPrepass.diffuseTexture, screenUV).rgb), 1),
+        vec4(this.toneMapped(texture(this.lightPrepass.diffuseTexture, screenUV).rgb), 1),
       ),
       specular: this.buildCompositeMaterial(
-        vec4(toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
+        vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
       material: this.buildCompositeMaterial(
-        vec4(toneMapped(texture(this.materialPass.texture, screenUV).rgb), 1),
+        vec4(this.toneMapped(texture(this.materialPass.texture, screenUV).rgb), 1),
       ),
       atmosphere: this.buildCompositeMaterial(
-        vec4(toneMapped(texture(this.atmospherePass.texture, screenUV).rgb), 1),
+        vec4(this.toneMapped(texture(this.atmospherePass.texture, screenUV).rgb), 1),
       ),
     };
     // 模式図用の合成マテリアルは compositeMaterials とは別に1枚だけ持つ。debugTarget の選択肢
@@ -168,6 +166,14 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
 
     this.quad = new QuadMesh(this.compositeMaterials.off);
+  }
+
+  // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
+  // 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
+  // そのまま読み取れる。明るさの基準は放射照度の単位そのもの(sun-light.ts の
+  // SUN_IRRADIANCE_1AU)が決めていて、そこからいまいる場所へ合わせ直すぶんが露出係数になる。
+  private toneMapped(color: Vec3Node): Vec3Node {
+    return neutralToneMapping(color, this._exposure.factor) as Vec3Node;
   }
 
   // depthTest/depthWrite/transparent の共通設定を1箇所へまとめた、composite 用マテリアルの
