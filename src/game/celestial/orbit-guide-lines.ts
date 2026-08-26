@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { Vec3 } from '../../physics/vec3';
 import {
-  catalogLoop, dawnDuskGuideLoop, familyVisualS, GuideLoop, GuidePoint, lissajousLoop,
+  catalogLoop, dawnDuskGuideLoop, GuideLoop, GuidePoint, lissajousLoop,
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
 } from '../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
@@ -310,8 +310,8 @@ export class OrbitGuideLines {
     return visible;
   }
 
-  // 族の位置設定(0〜1)は画面上の間隔が均等に見える弧長パラメータとして扱い、カタログの
-  // 実際のメンバー選択に使う s へ familyVisualS で変換してから catalogLoop へ渡す。
+  // 族の位置設定(0〜1)は、焼き込み側で幾何的に等間隔へ間引いてあるため、そのまま
+  // catalogLoop が使うメンバー添字基準の s として渡せる。
   private computeLoop(entry: GuideLineEntry, t: number, settings: OrbitGuideSettings): GuideLoop | null {
     if (entry.familyId === 'lissajous') {
       const l = settings.lissajous;
@@ -340,9 +340,7 @@ export class OrbitGuideLines {
     if (!kind || entry.system === null) return null;
     const system = this.catalog.systemFor(entry.system);
     if (!system) return null;
-    const family = system.families[entry.familyId];
-    if (!family) return null;
-    const s = familyVisualS(family, sValueFor(kind, entry.index, entry.count));
+    const s = sValueFor(kind, entry.index, entry.count);
     return catalogLoop(t, this.ephemeris, system, entry.system, entry.familyId, s);
   }
 
