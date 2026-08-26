@@ -9,13 +9,10 @@ import * as THREE from 'three/webgpu';
 import { and, greaterThan, lessThan, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
 import type { Vec2Node, Vec2Uniform, Vec3Node } from '../tsl-types';
 
-// 条の軸の数。1 本の軸が両側へ伸びるので、条は 6 本になる。
-const STREAK_AXES = 3;
-// 片側のタップ数 [読み元のテクセル]。**間隔は 1 テクセル固定** — 間隔を空けると、タップの
-// 1 つ 1 つが光源の複製として点々に見えてしまい、条にならない。
-const STREAK_TAPS = 28;
+// 条の 1 パスあたりのタップ数。**パスをまたぐ刻みをこの数と同じにする。**
+const STREAK_TAPS = 12;
 // 条の減衰長 [読み元のテクセル]。
-const STREAK_FALLOFF = 10;
+const STREAK_FALLOFF = 50;
 
 // 絞りの反射像 [倍率, 重み, 色み]。**倍率が負なので像は画面中心を挟んだ反対側へ出る。**
 // **絶対値は 1 未満に留める** — 1 を超えると読む位置が画面の外へ出て、縁の画素が引き伸ばされる。
@@ -97,24 +94,36 @@ export function tentUpsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Nod
   return sumOf([corners, edges.mul(2), tap(0, 0).mul(4)]).mul(1 / 16);
 }
 
-// 放射状の条。画面に固定した向きへ、指数減衰のタップを両側へ積む。**向きは光源ではなく画面が
-// 決める** — カメラを回しても条は光源に貼り付いて回らない。条の長さと太さは読み元の解像度が
-// 決めるので、どの段から引くかは呼び出し側が選ぶ。
-export function radialStreak(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
+// 条の 1 パス。angle の向きへ、パス番号で決まる刻みのタップを**片側だけ**積む。**向きは光源
+// ではなく画面が決める** — カメラを回しても条は光源に貼り付いて回らない。
+//
+// **1 つのパスの中では刻みを空けない。** 空けるとタップ 1 つ 1 つが光源の複製として点々に見え、
+// 条にならない。代わりに**パスをまたいで刻みをタップ数倍する** — 前のパスの出力が既にタップ数
+// ぶんの幅を持っているので、次のパスが同じ数だけ刻みを空けても間がちょうど埋まる。
+// **これで条の長さと太さの結合が切れる**: 長さはパス数に対して指数で伸び、太さは読み元の段だけが
+// 決める。1 テクセル刻みで積んでいたときは、長さを稼ぐには粗い段から引くしかなかった。
+//
+// **タップを片側だけにするのが要。** 両側にすると、距離 d に届く経路が複数でき(たとえば
+// 12 進んで 3 戻る)、そのどれもが「進んだ総量」ぶん減衰した重みを持つ。結果として核は
+// exp(-d/減衰長) から周期的に凹み、**刻みの周期で明暗の縞が見える。** 片側だけなら、タップ距離の
+// 組み合わせは d のタップ数進法の表現そのものになって一意に決まり、合成した核は距離に対する
+// 素直な指数になる。**条 1 本につき 1 本の鎖**が要り、6 本の条なら 6 本の鎖になる。
+//
+// **鎖どうしを混ぜないこと。** 1 つのパスで複数の向きをまとめて処理すると、次のパスがその結果を
+// さらに別の向きへ広げて「星の星」になる。
+export function streakPass(
+  source: THREE.Texture, texel: Vec2Uniform, angle: number, pass: number,
+): Vec3Node {
+  const stride = STREAK_TAPS ** pass;
   const taps: Vec3Node[] = [];
   let total = 0;
-  for (let axis = 0; axis < STREAK_AXES; axis++) {
-    const angle = (Math.PI * axis) / STREAK_AXES;
-    for (let step = 0; step < STREAK_TAPS; step++) {
-      const distance = step + 1;
-      const weight = Math.exp(-distance / STREAK_FALLOFF);
-      for (const side of [1, -1]) {
-        const x = side * Math.cos(angle) * distance;
-        const y = side * Math.sin(angle) * distance;
-        taps.push(spreadAt(source, texel, x, y).mul(weight));
-        total += weight;
-      }
-    }
+  for (let step = 0; step < STREAK_TAPS; step++) {
+    const distance = step * stride;
+    const weight = Math.exp(-distance / STREAK_FALLOFF);
+    const x = Math.cos(angle) * distance;
+    const y = Math.sin(angle) * distance;
+    taps.push(spreadAt(source, texel, x, y).mul(weight));
+    total += weight;
   }
   return sumOf(taps).mul(1 / total);
 }
