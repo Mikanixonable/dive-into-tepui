@@ -77,8 +77,6 @@ export class TrajectoryLine {
   // 直近に焼き込んだ外挿区間の to。外挿を持たない bake では null に戻す — 次に外挿区間が
   // 必要になったフレームで必ず焼き直させるため。
   private lastExtrapolatedTo: number | null = null;
-  // Curve へ渡す revision。(samples, frame, from) の組が変わったときだけ新しいオブジェクトへ差し替える。
-  private revision: object = {};
   private readonly unbakeQuat = new THREE.Quaternion();
 
   // bake 済みの frame 相対状態列。節点はここから取り、描画区間の端だけ内挿する。
@@ -144,7 +142,6 @@ export class TrajectoryLine {
     if (rebaked || from !== this.lastFrom || to !== this.lastTo) {
       this.lastFrom = from;
       this.lastTo = to;
-      this.revision = {};
       this.knots = this.buildKnots();
     }
   }
@@ -181,7 +178,7 @@ export class TrajectoryLine {
       this.curve.clear();
       return;
     }
-    this.curve.setHermiteCurve(this.knots, { revision: this.revision, camera });
+    this.curve.setHermiteCurve(this.knots, { camera });
   }
 
   // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点)。
