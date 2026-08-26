@@ -28,7 +28,7 @@ import {
 // DebrisPiece の見た目・振る舞いの種別。
 export type DebrisKind =
   | { kind: 'fragment'; accent: string | number; size: number; }
-  | { kind: 'barrel'; }
+  | { kind: 'barrel'; bornTemperature: number; bornThermalDeviation: number; }
   | { kind: 'magazineFrame'; }
   | { kind: 'casing'; bornSim: number; }
   | { kind: 'boosterCover'; segment: number; bornSim: number; }
@@ -52,12 +52,12 @@ function buildDebrisRenderObject(debrisKind: DebrisKind): THREE.Object3D {
   }
 }
 
-// 材質ごとの熱的な性質。比熱・材質の密度・輻射面積の比・耐えられる温度の上限。
+// 材質ごとの熱的な性質。
 interface DebrisThermal {
-  readonly specificHeat: number;
-  readonly bulkDensity: number;
-  readonly radiatingAreaPerMass: number;
-  readonly maxTemperature: number;
+  readonly specificHeat: number; // [J/(kg·K)]
+  readonly bulkDensity: number; // [kg/m^3]
+  readonly radiatingAreaPerMass: number; // [m^2/kg]
+  readonly maxTemperature: number; // これを超えると焼失する温度 [K]
 }
 
 const ALUMINIUM_DEBRIS: DebrisThermal = {
@@ -84,11 +84,12 @@ export class DebrisPiece extends GameEntity {
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
   protected readonly specificHeat: number;
   protected readonly bulkDensity: number;
-  protected override get radiatingAreaPerMass(): number {
-    return this.thermal.radiatingAreaPerMass;
-  }
   protected readonly maxTemperature: number;
-  private readonly thermal: DebrisThermal;
+  // 輻射面積の比 [m^2/kg]。
+  private readonly materialRadiatingAreaPerMass: number;
+  protected override get radiatingAreaPerMass(): number {
+    return this.materialRadiatingAreaPerMass;
+  }
 
   // fragment のみ意味を持つ: どのバリアントジオメトリを使うか、InstancedPool の
   // per-instance color へ渡す色。EntityManager.sync が variant ごとのプールへ push する。
@@ -115,15 +116,20 @@ export class DebrisPiece extends GameEntity {
       undefined,
       debrisKind.kind !== 'casing' && debrisKind.kind !== 'fragment',
     );
-    this.thermal = debrisThermal(debrisKind.kind);
-    this.specificHeat = this.thermal.specificHeat;
-    this.bulkDensity = this.thermal.bulkDensity;
-    this.maxTemperature = this.thermal.maxTemperature;
+    const thermal = debrisThermal(debrisKind.kind);
+    this.specificHeat = thermal.specificHeat;
+    this.bulkDensity = thermal.bulkDensity;
+    this.maxTemperature = thermal.maxTemperature;
+    this.materialRadiatingAreaPerMass = thermal.radiatingAreaPerMass;
     this.radius = radius ?? 0;
     this.collides = debrisKind.kind !== 'fragment'
       && debrisKind.kind !== 'boosterCover'
       && debrisKind.kind !== 'boosterBolt';
     this.contactDamageWeight = 0;
+    if (debrisKind.kind === 'barrel') {
+      this.temperature = debrisKind.bornTemperature;
+      this.thermalDeviation = debrisKind.bornThermalDeviation;
+    }
     if (debrisKind.kind === 'fragment') {
       this.fragmentVariant = Math.floor(Math.random() * DEBRIS_FRAGMENT_VARIANT_COUNT);
       const dark = Math.random() < 0.30;
