@@ -34,7 +34,7 @@ const STREAK_PASSES = 2;
 const STREAK_SHARE = 0.2;
 
 // ゴーストのいちばん締まった読み元の段。この段の解像度がそのままゴーストの出力の解像度になり、
-// **1 枚ごとの硬さの選択肢としてここから 3 段ぶんを読む。**
+// **1 枚ごとのぼけ量の選択肢として、ここから 3 段ぶんの縮小段と、同じ段の滲みの像を読む。**
 const GHOST_LEVEL = 2;
 // 核のうちゴーストへ回す割合。条と同じく滲みの重みから引く。
 const GHOST_SHARE = 0.08;
@@ -135,7 +135,8 @@ export class LensPass {
       });
     });
     this.ghosts = createStage(() => apertureGhosts([
-      down[GHOST_LEVEL]!.target.texture, down[GHOST_LEVEL + 1]!.target.texture, down[GHOST_LEVEL + 2]!.target.texture,
+      down[GHOST_LEVEL]!.target.texture, down[GHOST_LEVEL + 1]!.target.texture,
+      down[GHOST_LEVEL + 2]!.target.texture, up[GHOST_LEVEL]!.target.texture,
     ]));
   }
 
@@ -172,8 +173,8 @@ export class LensPass {
         this.draw(filter, last ? this.streakTarget : this.streakScratch[pass]!, !last || direction === 0);
       }
     }
-    this.draw(this.ghosts, this.ghosts.target);
     for (let i = LEVELS - 2; i >= 0; i--) this.draw(this.up[i]!, this.up[i]!.target);
+    this.draw(this.ghosts, this.ghosts.target);
     this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);
   }
