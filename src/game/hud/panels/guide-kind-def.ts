@@ -22,6 +22,10 @@ const BASE_LABELS: Readonly<Record<string, string>> = {
   lpo: '低高度順行軌道(LPO)',
 };
 
+// 区間つき族 id の区切り。正本は tools/orbit-family.mjs の SEGMENT_MARK(`'#'`)。
+// tools/ は TypeScript のビルド対象外のため import せず、ここに複製する。
+const SEGMENT_MARK = '#';
+
 const POINT_ORDER: Readonly<Record<string, number>> = { L1: 0, L2: 1, L3: 2, L4: 3, L5: 4 };
 const BRANCH_ORDER: Readonly<Record<string, number>> = { N: 0, S: 1 };
 const EW_ORDER: Readonly<Record<string, number>> = { E: 0, W: 1 };
@@ -43,25 +47,42 @@ export interface KindDef {
 // 族 id を base/point/branch(または東西/比)へ分解し、群・表示名・並び順を決める。
 // short/longp は L4/L5、axial/vertical/halo/lyapunov/butterfly/dragonfly は点で群が変わる。
 function defineKind(id: string): KindDef | null {
-  const parts = id.split('-');
+  // 区間番号を切り離してから、残りを base/point/branch へ分解する。区間の無い id は
+  // segmentLabel が空文字・segment が 0 のままになり、表示・sortKey とも従来どおりになる。
+  const markIndex = id.indexOf(SEGMENT_MARK);
+  const bodyId = markIndex < 0 ? id : id.slice(0, markIndex);
+  const segmentText = markIndex < 0 ? '' : id.slice(markIndex + SEGMENT_MARK.length);
+  let segment = 0;
+  let segmentLabel = '';
+  if (segmentText !== '') {
+    const parsed = Number(segmentText);
+    if (!Number.isInteger(parsed) || parsed < 1) return null; // 規約に合わない区間番号は無視する。
+    segment = parsed;
+    segmentLabel = ` 区間${parsed}`;
+  }
+
+  const parts = bodyId.split('-');
   const base = parts[0] as string;
 
   if (base === 'resonant') {
     const ratio = parts[1] ?? '';
     const order = RESONANT_ORDER.indexOf(ratio);
-    return { id, group: 'resonant', label: `${ratio[0]}:${ratio[1]} 共鳴軌道`, sortKey: order < 0 ? 99 : order, index: 0 };
+    return { id, group: 'resonant', label: `${ratio[0]}:${ratio[1]} 共鳴軌道${segmentLabel}`, sortKey: (order < 0 ? 99 : order) * 10 + segment, index: 0 };
   }
 
   if (base === 'lpo') {
     const ew = parts[1] ?? '';
     const ewLabel = ew === 'E' ? '東' : ew === 'W' ? '西' : ew;
     return {
-      id, group: 'secondary', label: `${BASE_LABELS['lpo']} ${ewLabel}`,
-      sortKey: BASE_ORDER_SECONDARY.indexOf('lpo') * 10 + (EW_ORDER[ew] ?? 9), index: 0,
+      id, group: 'secondary', label: `${BASE_LABELS['lpo']} ${ewLabel}${segmentLabel}`,
+      sortKey: BASE_ORDER_SECONDARY.indexOf('lpo') * 100 + (EW_ORDER[ew] ?? 9) * 10 + segment, index: 0,
     };
   }
   if (base === 'dro' || base === 'dpo') {
-    return { id, group: 'secondary', label: BASE_LABELS[base] as string, sortKey: BASE_ORDER_SECONDARY.indexOf(base) * 10, index: 0 };
+    return {
+      id, group: 'secondary', label: `${BASE_LABELS[base] as string}${segmentLabel}`,
+      sortKey: BASE_ORDER_SECONDARY.indexOf(base) * 100 + segment, index: 0,
+    };
   }
 
   const baseLabel = BASE_LABELS[base];
@@ -86,8 +107,8 @@ function defineKind(id: string): KindDef | null {
   const branchLabel = branch === 'N' ? ' 北' : branch === 'S' ? ' 南' : '';
   const branchOrder = branch === '' ? 0 : (BRANCH_ORDER[branch] ?? 9);
   return {
-    id, group, label: `${baseLabel} ${point}${branchLabel}`,
-    sortKey: baseOrder * 100 + pointIndex * 10 + branchOrder, index: 0,
+    id, group, label: `${baseLabel} ${point}${branchLabel}${segmentLabel}`,
+    sortKey: baseOrder * 1000 + pointIndex * 100 + branchOrder * 10 + segment, index: 0,
   };
 }
 
