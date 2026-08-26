@@ -168,7 +168,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
         vec4(this.toneMapped(texture(this.materialPass.texture, screenUV).rgb), 1),
       ),
       atmosphere: this.buildCompositeMaterial(
-        vec4(this.toneMapped(texture(this.atmospherePass.texture, screenUV).rgb), 1),
+        vec4(this.toneMapped(this.atmospherePass.scatteredLight()), 1),
       ),
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
     };
@@ -252,7 +252,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // world → レンズ → 合成 → 3D UI の順に発行する。Game.render() から毎フレーム 1回呼ぶ。
   // 模式図スタイルではマテリアル・大気・world・レンズの4段を飛ばす。
   // デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが実際に
-  // 生成した中身であるべきため。
+  // 生成した中身であるべきため。設定で切られている段(影・レンズ)を選べば、そのフレームが
+  // 何も作っていないことがそのまま空として見える。**見せるために描き足すのはマテリアルだけ**
+  // — あの段の出力は共有ターゲットの上で大気と world に上書きされて残らず、かつ MSAA を
+  // 落とさずに残す方法が無いため(material-pass.ts の showDebugTarget)。
   render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
@@ -288,7 +291,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
 
       // 大気パス。不透明の絵の上へ画面空間で重ねる。G バッファ深度と視線だけを読むので scene は渡さない。
-      this.atmospherePass.render(camera, this.target, width, height, this.debugTarget === 'atmosphere');
+      this.atmospherePass.render(camera, this.target);
 
       // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
       // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
@@ -304,9 +307,11 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.renderer.autoClear = true;
       this.renderer.setRenderTarget(null);
 
-      // レンズ効果パス。world パスまでの絵だけを読むので scene も camera も渡さない。
-      // デバッグ表示で「レンズ」を選んでいる間は、設定で切られていても中身を出すために回す。
-      if (this.lensEnabled || this.debugTarget === 'lens') this.lensPass.render(width, height);
+      // レンズ効果パス。world パスまでの絵だけを読むので scene も camera も渡さない。設定で
+      // 切られているフレームは回さず、切り替わった最初の 1 フレームだけ出力を空へ戻す
+      // — 「レンズ」デバッグ表示にも、そのフレームが実際に何も作っていないことがそのまま出る。
+      if (this.lensEnabled) this.lensPass.render(width, height);
+      else this.lensPass.clear(width, height);
 
       this.quad.material = this.debugTarget === 'off' && this.lensEnabled
         ? this.lensCompositeMaterial
