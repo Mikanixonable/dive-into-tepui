@@ -10,9 +10,10 @@ import {
 import { LAGRANGE_ID } from '../object-groups';
 import { Button, SegmentedControl, ValueInput } from '../widgets';
 import { wirePanelCollapse } from '../panel-shell';
+import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialRegistry } from '../../../physics/solar-system';
-import type { BodyClass } from '../../celestial/body-class';
 import type { MapPickable, MapPickKind } from '../../map-pickable';
+import type { PhysicalObjectListFilter, PhysicalObjectListSort } from './physical-object-list-order';
 
 const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'body', label: '天体' },
@@ -25,7 +26,7 @@ const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
 
 // 1区画ぶんの表示順と親子構造を id で持つ。表示値(距離・詳細)は毎フレーム
 // 引き渡される MapPickable から読み直すため、ここには id しか置かない。
-interface SectionOrder {
+export interface SectionOrder {
   readonly ids: string[];
   readonly rootIds: string[];
   readonly childIds: Map<string, string[]>;
@@ -51,18 +52,6 @@ const HEADER_SUMMARY: Partial<Record<MapPickKind, { readonly needle: string; rea
 
 const EMPTY_IDS: readonly string[] = [];
 
-type PhysicalObjectListFilter = 'artifact' | 'enemy' | 'lagrange' | Exclude<BodyClass, 'star'>;
-
-const FILTERS: readonly (readonly [PhysicalObjectListFilter, string])[] = [
-  ['planet', '惑星'],
-  ['satellite', '衛星'],
-  ['dwarf', '準惑星'],
-  ['smallBody', '小天体'],
-  ['lagrange', 'ラグランジュ点'],
-  ['artifact', '人工物'],
-  ['enemy', '敵'],
-];
-
 // このパネル自身の折りたたみトグルの見た目。
 const COLLAPSE_LABELS: CollapseToggleLabels = {
   expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
@@ -70,21 +59,6 @@ const COLLAPSE_LABELS: CollapseToggleLabels = {
   expandedTitle: '軌道物体一覧を閉じる',
   collapsedTitle: '軌道物体一覧を開く',
 };
-
-type PhysicalObjectListSort = 'solar' | 'distance' | 'name';
-
-const SORTS: readonly (readonly [PhysicalObjectListSort, string])[] = [
-  ['solar', '太陽系順'],
-  ['distance', '近さ'],
-  ['name', '名前'],
-];
-
-type LagrangeSortKey = { readonly parentId: string; readonly point: number };
-
-function lagrangeSortKey(id: string): LagrangeSortKey | null {
-  const match = /^(.+)-l([1-5])$/.exec(id);
-  return match ? { parentId: match[1]!, point: Number(match[2]) } : null;
-}
 
 // 色が消えても種別を判別できる、マップ用の小さな形態記号。名称と常に並べて表示する。
 // body は恒星・衛星・ラグランジュ点で字形が変わるため、この表ではなく bodyGlyph() で選ぶ。
@@ -135,19 +109,13 @@ export class PhysicalObjectListPanel {
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
   private readonly registry: CelestialRegistry;
-  private query = '';
-  private filter: PhysicalObjectListFilter | null = null;
-  private sort: PhysicalObjectListSort = 'solar';
+  private readonly order: PhysicalObjectListOrder;
   private lastFocusId: string | undefined = undefined;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
   private readonly namesScratch = new Map<string, string>();
   private readonly itemsByIdScratch = new Map<string, MapPickable>();
   private readonly crumbsScratch: string[] = [];
-  private readonly matchedScratch: MapPickable[] = [];
-  private readonly displayIdsScratch: string[] = [];
-  private readonly idsInSectionScratch = new Set<string>();
-  private readonly clusterParentSeenScratch = new Set<string>();
   private readonly focusAncestorsScratch = new Set<string>();
   private readonly matchAncestorsScratch = new Set<string>();
   private readonly seenScratch = new Set<string>();
@@ -156,20 +124,13 @@ export class PhysicalObjectListPanel {
   private prevAutoExpandQuery = '';
   private prevAutoExpandFilter: PhysicalObjectListFilter | null = null;
   private wasFilteringActive = false;
-  // 並べ替え・親子構造の入力を前フレームぶん保持し、変化した時だけ組み直す。
-  private readonly prevIds: string[] = [];
-  private readonly prevNames: string[] = [];
-  private readonly prevKinds: MapPickKind[] = [];
-  private readonly prevParents: (string | undefined)[] = [];
-  private readonly prevMatches: boolean[] = [];
-  private prevSort: PhysicalObjectListSort | null = null;
-  private prevFilter: PhysicalObjectListFilter | null | undefined = undefined;
   private readonly breadcrumb: HTMLElement;
   private readonly emptyState: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
   public constructor(root: HTMLElement, registry: CelestialRegistry) {
     this.registry = registry;
+    this.order = new PhysicalObjectListOrder(registry);
     this.panel = document.createElement('div');
     this.panel.id = 'hud-physical-object-list';
     this.panel.className = 'panel';
@@ -187,11 +148,11 @@ export class PhysicalObjectListPanel {
     const searchWrap = document.createElement('div');
     searchWrap.className = 'physical-object-list-search';
     // Escape は「破棄」ではなく「絞り込み解除」に読めるので、検索欄だけは 'clear' を渡す(§7-9)。
-    const updateQuery = (value: string) => { this.query = value.trim().toLocaleLowerCase(); };
+    const updateQuery = (value: string) => { this.order.query = value.trim().toLocaleLowerCase(); };
     const search = new ValueInput(
       { type: 'search', placeholder: '検索', escapeBehavior: 'clear' },
       updateQuery,
-      () => { this.query = ''; },
+      () => { this.order.query = ''; },
     );
     search.element.setAttribute('aria-label', '軌道物体を検索');
     // 確定を待たず、打鍵のたびに絞り込みへ反映する。
@@ -200,18 +161,18 @@ export class PhysicalObjectListPanel {
     head.appendChild(searchWrap);
 
     const filterControl = new SegmentedControl<PhysicalObjectListFilter | null>('分類', FILTERS, (key) => {
-      this.filter = this.filter === key ? null : key;
-      filterControl.setSelected(this.filter);
+      this.order.filter = this.order.filter === key ? null : key;
+      filterControl.setSelected(this.order.filter);
     });
-    filterControl.setSelected(this.filter);
+    filterControl.setSelected(this.order.filter);
     head.appendChild(filterControl.element);
 
     // 並び順はフィルタとは別行 — 絞り込みと並べ替えは独立な操作であることを見た目でも分ける。
     const sortControl = new SegmentedControl<PhysicalObjectListSort>('並び順', SORTS, (key) => {
-      this.sort = key;
+      this.order.sort = key;
       sortControl.setSelected(key);
     });
-    sortControl.setSelected(this.sort);
+    sortControl.setSelected(this.order.sort);
     head.appendChild(sortControl.element);
     this.panel.appendChild(head);
     // 見出し以外をまとめて畳める区画にする — 一覧は常時表示で画面右を大きく占有するため。
@@ -300,7 +261,7 @@ export class PhysicalObjectListPanel {
     this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
     const focusChanged = focusId !== this.lastFocusId;
     this.lastFocusId = focusId;
-    const inputsChanged = this.refreshInputs(items, parentOf);
+    const inputsChanged = this.order.refreshInputs(items, parentOf);
 
     // フォーカスが切り替わった瞬間だけ、そこへ至る枝を自動展開する対象として渡す
     // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
@@ -311,10 +272,10 @@ export class PhysicalObjectListPanel {
     // 検索語・クラスフィルタが変わった瞬間だけ、その回に一致した行の祖先を自動展開する
     // 対象として渡す(focusAncestors と同じ「変化した回だけ」の考え方)。絞り込みが解除された
     // 瞬間は逆に、その自動展開で開いた分だけをプレイヤーの元の畳み状態へ戻す。
-    const filteringActive = this.query !== '' || this.filter !== null;
-    const filterChanged = this.query !== this.prevAutoExpandQuery || this.filter !== this.prevAutoExpandFilter;
-    this.prevAutoExpandQuery = this.query;
-    this.prevAutoExpandFilter = this.filter;
+    const filteringActive = this.order.filteringActive;
+    const filterChanged = this.order.query !== this.prevAutoExpandQuery || this.order.filter !== this.prevAutoExpandFilter;
+    this.prevAutoExpandQuery = this.order.query;
+    this.prevAutoExpandFilter = this.order.filter;
     const filteringJustDeactivated = !filteringActive && this.wasFilteringActive;
     this.wasFilteringActive = filteringActive;
 
@@ -322,7 +283,7 @@ export class PhysicalObjectListPanel {
     matchAncestors.clear();
     if (filteringActive && filterChanged) {
       for (const item of items) {
-        if (!this.matches(item)) continue;
+        if (!this.order.matches(item)) continue;
         for (let cur: string | undefined = item.id; cur !== undefined; cur = parentOf.get(cur)) matchAncestors.add(cur);
       }
     }
@@ -338,8 +299,8 @@ export class PhysicalObjectListPanel {
       const section = this.sections.get(kind)!;
       // 距離順では距離が動くだけで正しい並びが変わりうるので、保持している順序が
       // 今フレームの値でも整列条件を満たすかを確かめ、崩れた時だけ組み直す。
-      const reordered = inputsChanged || !this.orderStillSorted(section.order.ids);
-      if (reordered) this.rebuildOrder(kind, section.order, items, parentOf);
+      const reordered = inputsChanged || !this.order.orderStillSorted(section.order.ids, this.itemsByIdScratch);
+      if (reordered) this.order.rebuildOrder(kind, section.order, items, parentOf, this.itemsByIdScratch);
       // 一致行を持つ区画自体が畳まれていれば、絞り込みの変化に合わせて開く。
       if (filteringActive && filterChanged && section.order.ids.length > 0 && !section.expanded) {
         if (section.savedExpanded === null) section.savedExpanded = section.expanded;
@@ -406,134 +367,10 @@ export class PhysicalObjectListPanel {
     section.header.textContent = `${label} (${ids.length})${state} ${section.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH}`;
   }
 
-  // 並べ替え・親子構造を決める入力(候補の顔ぶれ・表示名・種別・親・絞り込みの通過可否と
-  // 絞り込み/並び順の選択)を前フレームと突き合わせ、変化していれば真を返して記録を更新する。
-  private refreshInputs(items: readonly MapPickable[], parentOf: ReadonlyMap<string, string>): boolean {
-    let changed = this.prevIds.length !== items.length || this.prevSort !== this.sort || this.prevFilter !== this.filter;
-    let i = 0;
-    for (const item of items) {
-      const parent = parentOf.get(item.id);
-      const matched = this.matches(item);
-      if (!changed && (this.prevIds[i] !== item.id || this.prevNames[i] !== item.name
-        || this.prevKinds[i] !== item.kind || this.prevParents[i] !== parent || this.prevMatches[i] !== matched)) changed = true;
-      this.prevIds[i] = item.id;
-      this.prevNames[i] = item.name;
-      this.prevKinds[i] = item.kind;
-      this.prevParents[i] = parent;
-      this.prevMatches[i] = matched;
-      i++;
-    }
-    // 候補が減ったフレームでは末尾に前フレームの記録が残るので、長さも合わせておく。
-    this.prevIds.length = items.length;
-    this.prevNames.length = items.length;
-    this.prevKinds.length = items.length;
-    this.prevParents.length = items.length;
-    this.prevMatches.length = items.length;
-    this.prevSort = this.sort;
-    this.prevFilter = this.filter;
-    return changed;
-  }
-
-  // 保持している並び ids が、今フレームの値でも比較関数の順序を満たしているか。
-  private orderStillSorted(ids: readonly string[]): boolean {
-    let prev: MapPickable | null = null;
-    for (const id of ids) {
-      const item = this.itemsByIdScratch.get(id);
-      if (!item) return false;
-      if (prev !== null && this.compare(prev, item) > 0) return false;
-      prev = item;
-    }
-    return true;
-  }
-
-  // 現在の並び順での a と b の前後関係。負なら a が先。
-  private compare(a: MapPickable, b: MapPickable): number {
-    if (this.sort === 'name') return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
-    const priority = (a.priority ?? 0) - (b.priority ?? 0);
-    if (priority !== 0) return priority;
-
-    // 同じ親天体の L4/L5 は理論上同じ太陽距離にある。浮動小数点誤差で距離の大小を
-    // 比較すると毎フレーム順序が反転するため、ラグランジュ点同士は点番号を正本にする。
-    const aLagrange = lagrangeSortKey(a.id);
-    const bLagrange = lagrangeSortKey(b.id);
-    if (aLagrange !== null && bLagrange !== null && aLagrange.parentId === bLagrange.parentId) {
-      return aLagrange.point - bLagrange.point;
-    }
-
-    // 太陽系順は恒星からの距離。恒星の無いレジストリでは distanceFromStar が undefined の
-    // ままなので、自機からの距離(近さ順)へ自然に委譲される。
-    const aDistance = this.sort === 'solar' ? (a.distanceFromStar ?? a.distance ?? 0) : (a.distance ?? 0);
-    const bDistance = this.sort === 'solar' ? (b.distanceFromStar ?? b.distance ?? 0) : (b.distance ?? 0);
-    const dist = aDistance - bDistance;
-    const scale = Math.max(1, Math.abs(aDistance), Math.abs(bDistance));
-    const distanceTie = Math.abs(dist) <= scale * 1e-12;
-    return (distanceTie ? 0 : dist) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
-  }
-
-  // kind の区画に出す行を選び直し、表示順・根・親ごとの子を order へ書き直す。
-  private rebuildOrder(
-    kind: MapPickKind, order: SectionOrder, items: readonly MapPickable[], parentOf: ReadonlyMap<string, string>,
-  ): void {
-    const matched = this.matchedScratch;
-    matched.length = 0;
-    for (const item of items) if (item.kind === kind && this.matches(item)) matched.push(item);
-    matched.sort((a, b) => this.compare(a, b));
-    order.ids.length = 0;
-    for (const item of matched) order.ids.push(item.id);
-    // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(bodyClassOf が
-    // 'planet' のため)。親を惑星ごとのクラスタ見出しとして拾い出す — フィルタの一致件数
-    // (ヘッダーの (N))には含めないので、ids へ積んだ後に足す。
-    const displayIds = kind === 'body' && this.filter === 'satellite'
-      ? this.withClusterParents(order.ids, parentOf) : order.ids;
-
-    const idsInSection = this.idsInSectionScratch;
-    idsInSection.clear();
-    for (const id of displayIds) idsInSection.add(id);
-    for (const list of order.childIds.values()) list.length = 0;
-    order.rootIds.length = 0;
-    for (const id of displayIds) {
-      const parent = parentOf.get(id);
-      // 親が今フレーム同じ区画に見当たらない(遮蔽等で一時的に消えた等)行は根として扱う —
-      // 親が現れないせいで子ごと画面から消えてしまうより、ひとまず出す方に倒す。
-      if (parent === undefined || !idsInSection.has(parent)) { order.rootIds.push(id); continue; }
-      const list = order.childIds.get(parent);
-      if (list) list.push(id); else order.childIds.set(parent, [id]);
-    }
-  }
-
-  // ids の各要素の親(未登場なら)を補った並びを返す — 親自身はフィルタを通っていなくても、
-  // 親子ツリーにそのままクラスタ見出しとして乗せる。
-  private withClusterParents(ids: readonly string[], parentOf: ReadonlyMap<string, string>): string[] {
-    const seenIds = this.clusterParentSeenScratch;
-    seenIds.clear();
-    for (const id of ids) seenIds.add(id);
-    const result = this.displayIdsScratch;
-    result.length = 0;
-    for (const id of ids) result.push(id);
-    for (const id of ids) {
-      const parentId = parentOf.get(id);
-      if (parentId === undefined || seenIds.has(parentId) || !this.itemsByIdScratch.has(parentId)) continue;
-      seenIds.add(parentId);
-      result.push(parentId);
-    }
-    return result;
-  }
-
   // 天体の字形。マップ実マーカーと同じ選び方(ラグランジュ点は専用字形、それ以外は
   // 恒星/衛星/その他で bodyEntityGlyph())をする。
   private bodyGlyph(id: string): string {
     return LAGRANGE_ID.test(id) ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(this.registry, id));
-  }
-
-  private matches(item: MapPickable): boolean {
-    if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().includes(this.query)) return false;
-    if (this.filter === null) return true;
-    if (this.filter === 'artifact') {
-      return (item.kind === 'player' || item.kind === 'ammo' || item.kind === 'fuel' || item.kind === 'base') && item.inFocusedSystem !== false;
-    }
-    if (this.filter === 'enemy') return item.kind === 'ship' && item.inFocusedSystem !== false;
-    if (this.filter === 'lagrange') return item.kind === 'body' && LAGRANGE_ID.test(item.id);
-    return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.registry, item.id) === this.filter;
   }
 
   // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
@@ -576,7 +413,7 @@ export class PhysicalObjectListPanel {
     node.row.classList.toggle('tgt', item.id === focusId);
     node.row.classList.toggle('related-orbit', item.id === focusId);
     // 衛星フィルタで添えたクラスタ見出し(親惑星自身はフィルタを通っていない)を淡色化する。
-    node.row.classList.toggle('cluster', !this.matches(item));
+    node.row.classList.toggle('cluster', !this.order.matches(item));
     node.row.setAttribute('aria-label', [item.name, detailText].filter(Boolean).join('、'));
 
     const children = childrenOf.get(item.id) ?? EMPTY_IDS;
