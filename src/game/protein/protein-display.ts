@@ -2,13 +2,11 @@ export type ProteinRepresentation = 'molecular' | 'ribbon' | 'silhouette';
 
 export type ProteinMolecularColorMode = 'element';
 export type ProteinRibbonColorMode =
-  | 'publication'
   | 'chain'
   | 'b-factor'
-  | 'entity'
   | 'rainbow'
   | 'secondary-structure'
-  | 'component-role';
+  | 'component';
 export type ProteinSilhouetteColorMode = 'surface-charge' | 'hydrophobicity';
 export type ProteinColorMode = ProteinMolecularColorMode | ProteinRibbonColorMode | ProteinSilhouetteColorMode;
 
@@ -19,7 +17,7 @@ export type ProteinDisplaySettings =
 
 export const DEFAULT_PROTEIN_DISPLAY: ProteinDisplaySettings = {
   representation: 'ribbon',
-  colorMode: 'publication',
+  colorMode: 'chain',
 };
 
 export const PROTEIN_DISPLAY_LABELS: Readonly<Record<ProteinRepresentation, string>> = {
@@ -30,13 +28,11 @@ export const PROTEIN_DISPLAY_LABELS: Readonly<Record<ProteinRepresentation, stri
 
 export const PROTEIN_COLOR_LABELS: Readonly<Record<ProteinColorMode, string>> = {
   element: '元素',
-  publication: '論文調（鎖別）',
   chain: 'Chain',
   'b-factor': 'B-Factor',
-  entity: 'Entity',
   rainbow: 'Rainbow',
   'secondary-structure': '二次構造',
-  'component-role': '構成要素',
+  component: 'Component',
   'surface-charge': '表面電荷（近似）',
   hydrophobicity: '疎水性',
 };
@@ -45,14 +41,14 @@ export const PROTEIN_COLOR_LABELS: Readonly<Record<ProteinColorMode, string>> = 
 export function proteinColorModesFor(representation: ProteinRepresentation): readonly ProteinColorMode[] {
   if (representation === 'molecular') return ['element'];
   if (representation === 'silhouette') return ['surface-charge', 'hydrophobicity'];
-  return ['publication', 'chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role'];
+  return ['chain', 'b-factor', 'rainbow', 'secondary-structure', 'component'];
 }
 
 /** 表示形態を選び直したときの新規設定を返す。 */
 export function defaultProteinDisplayFor(representation: ProteinRepresentation): ProteinDisplaySettings {
   if (representation === 'molecular') return { representation, colorMode: 'element' };
   if (representation === 'silhouette') return { representation, colorMode: 'surface-charge' };
-  return { representation, colorMode: 'publication' };
+  return { representation, colorMode: 'chain' };
 }
 
 /** 表示形態を持たない保存値を互換な表示設定へ変換する。 */
@@ -62,9 +58,8 @@ export function proteinDisplayFromLegacyColorMode(colorMode: ProteinColorMode | 
   if (colorMode === 'surface-charge' || colorMode === 'hydrophobicity') return { representation: 'silhouette', colorMode };
   return {
     representation: 'ribbon',
-    colorMode: colorMode === 'publication' || colorMode === 'chain' || colorMode === 'b-factor'
-      || colorMode === 'entity' || colorMode === 'rainbow' || colorMode === 'secondary-structure'
-      || colorMode === 'component-role'
+    colorMode: colorMode === 'b-factor' || colorMode === 'rainbow' || colorMode === 'secondary-structure'
+      || colorMode === 'component'
       ? colorMode
       : 'chain',
   };
