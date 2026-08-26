@@ -120,9 +120,8 @@ export class GpuTimings {
           // 読みをそのまま残す。0 で塗り潰すのはここで初めて書き込むときだけ。
           if (this.enabled && matches.length > 0) {
             this.elapsedMs.fill(0);
-            // 1 つのパスが複数回 render() を呼ぶことがある(レンズ段は 9 回)。上書きだと
-            // 最後の 1 回しか残らないので足し合わせる。デバッグ表示中の二重描画も足されるが、
-            // それは実際に GPU がやった仕事なので正しい。
+            // 1 つのパスが 1 フレームに何度も render() を呼ぶことがあるので、上書きではなく
+            // 足し合わせる。
             for (const [pass, duration] of matches) this.elapsedMs[pass]! += duration;
           }
           // three は resolve のたびにここへ足すだけで自分では空にしないので、消費済みかどうかに
