@@ -116,7 +116,7 @@ export class GameEntity {
   // 現在の平均温度 [K]。
   temperature = C.ENV_TEMP;
   // 局所的に過熱した部分が平均より高い温度差 [K]。0 = 全体が等温。
-  thermalDeviation = 0;
+  protected thermalDeviation = 0;
   // 比熱 [J/(kg·K)]。**0 = 熱を蓄えない種別**で、温度は動かない。
   protected readonly specificHeat: number = 0;
   // 材質の密度 [kg/m^3]。よどみ点の曲率半径を bcInv から戻すのに使う。
@@ -496,7 +496,7 @@ export class GameEntity {
     this.syncThermalAppearance();
   }
 
-  // いまの温度と局所的な過熱をメッシュへ配る。熱を蓄えない種別は温度を持たないので何もしない。
+  // いまの温度と局所的な過熱をメッシュへ配る。
   protected syncThermalAppearance(): void {
     if (this.specificHeat <= 0) return;
     syncThermalState(
