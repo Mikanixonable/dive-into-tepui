@@ -10,7 +10,7 @@ import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
-import { Billboard } from '../../render/billboard';
+import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { BodyGraticule } from '../../render/body-graticule';
 import { showsPhysicalSphere } from '../../render/screen-lod';
@@ -24,9 +24,8 @@ import { bondAlbedoOf } from '../../render/celestial-albedo';
 import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
 import type { Vec3 } from '../../physics/vec3';
 
-// 輝点スプライトの一辺 [m](星殻上での長さ)。**点像の広がりは光源の大きさではなく目/レンズの
-// 応答なので、天体ごとには変えない。**
-const POINT_SPRITE_SIZE = 1.3e5;
+// 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
+const POINT_SPRITE_SIZE = POINT_IMAGE_ANGULAR_SIZE * STAR_SHELL_RADIUS;
 
 // 太陽の視等級。ここから任意の視等級の放射照度が引ける。
 const SUN_APPARENT_MAGNITUDE = -26.74;

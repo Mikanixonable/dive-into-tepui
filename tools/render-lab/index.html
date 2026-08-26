@@ -18,6 +18,8 @@
   }
   .row button:hover { border-color: #3d4650; }
   .row button.active { background: var(--accent); border-color: var(--accent); color: #12151a; font-weight: 600; }
+  .row button:disabled { opacity: .35; cursor: default; }
+  .row button:disabled:hover { border-color: var(--edge); }
   .row .field { display: flex; align-items: center; gap: 6px; }
   .row .field span { opacity: .7; }
   .row .field input[type=range] { width: 116px; accent-color: var(--accent); }
@@ -31,6 +33,7 @@
 <body>
   <h1>Render Lab</h1>
   <div class="row" id="cases"></div>
+  <div class="row" id="styles"></div>
   <div class="row" id="targets"></div>
   <div class="row" id="graphics"></div>
   <div class="row" id="view-angles"></div>

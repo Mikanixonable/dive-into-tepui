@@ -36,9 +36,10 @@ const HAZE_TAU0 = 0.34;
 const HAZE_MIN_COS = 0.05;
 
 export class AtmospherePass {
-  private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
+  // 下地と合成する前の、大気が足す内部散乱だけ(前乗算アルファの色そのもの)。
+  private readonly scattered: Vec3Node;
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と view→描画座標の行列は
   // 毎フレーム自前で書き込む(light-prepass.ts の逆射影行列と同じ理由)。
   private readonly projMatrixInverse: Mat4Uniform;
@@ -56,9 +57,6 @@ export class AtmospherePass {
     occlusion: OcclusionPass,
     private readonly gpu: GpuTimings,
   ) {
-    this.target = new THREE.RenderTarget(1, 1, {
-      type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
-    });
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
     this.bodyCenter = uniform(new THREE.Vector3());
@@ -135,12 +133,16 @@ export class AtmospherePass {
     });
     // 前乗算アルファ: 色は既に割合を掛けた内部散乱、アルファは大気が下地から奪う割合。
     // リム光は下地(宇宙空間)から奪うものが無いので、アルファには入らず加算だけになる。
-    this.material.colorNode = color.mul(rim).add(hazeColor.mul(haze));
+    this.scattered = color.mul(rim).add(hazeColor.mul(haze));
+    this.material.colorNode = this.scattered;
     this.material.opacityNode = haze;
     this.quad = new QuadMesh(this.material);
   }
 
-  get texture(): THREE.Texture { return this.target.texture; }
+  // 下地と合成する前の、大気が重ねる内部散乱だけ。「大気」デバッグ表示の合成パスがこのノードを
+  // 組み直して映す — このパスは共有ターゲットへ直接重ねるので、単独で見せるための絵はどこにも
+  // 残っておらず、**それを残すためだけの描画は足さない**(lens-pass.ts の redistributedLight と同じ)。
+  scatteredLight(): Vec3Node { return this.scattered; }
 
   // 大気を持つ天体の中心(描画座標)と地表半径。radius に 0 を渡すと大気を描かない。
   setBody(center: THREE.Vector3, surfaceRadius: number): void {
@@ -148,25 +150,10 @@ export class AtmospherePass {
     this.surfaceRadius.value = surfaceRadius;
   }
 
-  // 不透明の絵が入った共有ターゲットへ大気を重ねる。showDebugTarget が立っているときだけ、
-  // 同じフィルタを専用のターゲットへも単独で描く。
-  render(
-    camera: THREE.Camera,
-    sharedTarget: THREE.RenderTarget,
-    width: number,
-    height: number,
-    showDebugTarget: boolean,
-  ): void {
+  // 不透明の絵が入った共有ターゲットへ大気を重ねる。
+  render(camera: THREE.Camera, sharedTarget: THREE.RenderTarget): void {
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
     this.viewToWorld.value.copy(camera.matrixWorld);
-
-    if (showDebugTarget) {
-      if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
-      this.renderer.setRenderTarget(this.target);
-      this.renderer.autoClear = true;
-      this.gpu.beginPass(GPU_PASS.atmosphere);
-      this.quad.render(this.renderer);
-    }
 
     this.renderer.setRenderTarget(sharedTarget);
     this.renderer.autoClear = false;
@@ -180,7 +167,6 @@ export class AtmospherePass {
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
   dispose(): void {
-    this.target.dispose();
     this.material.dispose();
   }
 }

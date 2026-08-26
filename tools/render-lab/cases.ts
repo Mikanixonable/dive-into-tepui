@@ -1,15 +1,19 @@
 // 描画テスト環境が描くケースの表。ゲーム本体と同じ球・艦・線を組んでカメラと一緒に返すだけで、
 // シーンへ足すのもチャンネルを振るのも呼び出し側の仕事。ケースを増やすのはこの表への追記で済む。
+// 表示スタイルで組み方が変わるケース(環・地球)は、受け取った style をゲーム本体と同じ
+// sync / setVisible へそのまま流す — スタイルの切り替えは呼び出し側がケースを組み直して行う。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
-import { R_EARTH } from '../../src/physics/solar-system';
+import { R_EARTH, R_SUN } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
+import { createSun, type Sun } from '../../src/render/stars';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
+import { apparentSizePx } from '../../src/render/screen-lod';
 import {
   attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
 } from '../../src/render/thermal-emissive';
@@ -17,7 +21,9 @@ import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
-import type { SunLight } from '../../src/render/pipeline/sun-light';
+import type { RenderStyle } from '../../src/render/render-style';
+import { AMBIENT_REFERENCE_DISTANCE, type SunLight } from '../../src/render/pipeline/sun-light';
+import { AU } from '../../src/physics/planet-orbit';
 import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
 import { textureOf } from '../../src/render/celestial-textures';
 import { v3 } from '../../src/physics/vec3';
@@ -72,6 +78,15 @@ export type LabCase = {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
+  // 恒星を置く距離 [m]。省略すると 1 天文単位。つまみで上書きできるので、ここに書くのは既定値。
+  readonly sunDistance?: number;
+  // 恒星の見た目。持たせると、恒星の向きと距離のつまみに合わせて毎フレーム同期される
+  // (持たないケースでは、つまみは光源と露出だけを動かす)。
+  readonly star?: Sun;
+  // 基準点(描画原点)から地球中心までの距離 [m]。ここへ届く環境光の強さがこれで決まる。
+  // **恒星までの距離から引いているケースは関数で渡す** — つまみで恒星を動かしたときに追随する。
+  // 省略すると低軌道。
+  readonly earthDistance?: number | ((sunDistance: number) => number);
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
   // 大気パスへ渡す天体。中心は描画座標。
@@ -334,7 +349,7 @@ const SMALL_BODY_SHADOW_DISTANCE = 100;
 // 小天体と艦: 環を持つ半径 30 m の天体のまわりへ艦を 2 隻置き、**影の 2 つの経路を同じ絵で
 // 読む**。昼面へ浮かべた艦は影の深度マップを通って天体の表面へ影を落とし、後方へ置いた艦は
 // 天体の球が解析式で解く影の柱の縁をまたぐ。環の帯の影は昼面を横切る縞として出る。
-function shipBodyShadow(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function shipBodyShadow(_style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   const camera = labCamera(6e7);
   const center = new THREE.Vector3(0, 0, -SMALL_BODY_DISTANCE);
   const sun = SMALL_BODY_SUN_DIR;
@@ -389,6 +404,36 @@ function leo(): LabCase {
     ],
     camera,
     viewTarget: shipPosition,
+  };
+}
+
+// 恒星から sunDistance [m] にいる場所の地心距離。地球も恒星から 1 天文単位にいるので、外側では
+// その差がそのまま地球までの距離になる。**1 天文単位より内側は低軌道を返す** — 地球と同じ距離に
+// いるケースは地球のそばに置き、既定と同じ明るさの環境光で照らす。
+function earthDistanceAtSunDistance(sunDistance: number): number {
+  return Math.max(sunDistance - AU, AMBIENT_REFERENCE_DISTANCE);
+}
+
+// 典型的な天体表面・艦の外殻の反射率。
+const OUTER_ALBEDO: Albedo = [0.3, 0.3, 0.3];
+// 灰色球の半径 [m]。
+const OUTER_BODY_RADIUS = 6.371e6;
+
+// 外惑星圏: 恒星を sunDistance [m] まで遠ざけ、灰色球と艦を1隻置いて、**太陽に正対した面が
+// 黒へ潰れていないか**を読む。球の最も明るい画素が太陽に正対した面にあたるので、距離ごとの
+// 表示値はそこで測る。
+function outer(sunDistance: number): LabCase {
+  const camera = labCamera(6e7);
+  const center = new THREE.Vector3(0, -0.5 * OUTER_BODY_RADIUS, -3 * OUTER_BODY_RADIUS);
+  // 艦は太陽に正対する面(球の右上)へ重ならない位置へ置く — 重なるとそこの画素が艦の
+  // 鏡面反射に置き換わって読めない。
+  const shipPosition = new THREE.Vector3(-30, -12, -100);
+  return {
+    objects: [sphere(OUTER_ALBEDO, OUTER_BODY_RADIUS, center), shipAt(shipPosition)],
+    camera,
+    viewTarget: shipPosition,
+    sunDistance,
+    earthDistance: earthDistanceAtSunDistance,
   };
 }
 
@@ -447,7 +492,7 @@ const ECLIPSE_OCCLUDER_RADIUS = 2e5;
 const ECLIPSE_OCCLUDER_DISTANCE = 3e7;
 
 // 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもやを見る。
-function earth(): LabCase {
+function earth(style: RenderStyle): LabCase {
   const camera = labCamera(6e7);
   // 地平線が画面中央へ来る向きへ地球を置く — 視線が地球へ接する角だけ、カメラから見た
   // 中心の向きを視線から傾ける。
@@ -457,6 +502,8 @@ function earth(): LabCase {
   const built = createEarth();
   built.group.position.copy(center);
   built.setAuroraVisible(false);
+  built.setGraticuleVisible(style === 'schematic');
+  built.setCoastlineVisible(style === 'schematic');
   built.syncSurfaceLod(6e4);
   built.tick(0);
   return { objects: [built.group], camera, atmosphere: { center, surfaceRadius: R_EARTH } };
@@ -465,8 +512,8 @@ function earth(): LabCase {
 // 日食下の地球: earth と同じ構図へ、地球自身と食を起こす球を遮蔽器として足す。**大気の明暗は
 // 入射角だけでなく遮蔽度にも比例する**ので、リムともやの両方へ影の落ちた斑が出る。遮蔽器の
 // 視半径は太陽よりわずかに大きく取ってあり、本影(半径 60km)を半影(340km)が縁取る。
-function earthEclipse(): LabCase {
-  const base = earth();
+function earthEclipse(style: RenderStyle): LabCase {
+  const base = earth(style);
   const center = base.atmosphere!.center;
   // 影を落とす地表点。カメラ直下と地平線(地表距離 2,255km)の中間へ来るよう、直下の向きを
   // 視線側へ回す。
@@ -631,20 +678,14 @@ function albedo(): LabCase {
 //
 // 本体を遮蔽器に、環の帯を遮蔽する環に登録するので、**環が本体の影へ入る境界と、本体表面に
 // 落ちる環の影の境界の両方**が同じ 1 つの遮蔽関数から出る。どちらもぼけていることを見る。
-function saturn(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   const camera = labCamera(1e13);
   const radius = 6.0268e7;
   const distance = 1.2e9;
   const center = new THREE.Vector3(0, -0.15 * distance, -distance);
   const axis = v3(0.3, 0.9, 0.32);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(
-    center,
-    axis,
-    v3(center.x, center.y, center.z),
-    () => distance / VIEW_HEIGHT,
-    'realistic',
-  );
+  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, style);
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -664,7 +705,7 @@ function saturn(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
 // - **本体表面に落ちる環の影**: カッシーニの間隙が明るい帯として出る。恒星が円盤である以上、
 //   その帯の縁は硬くならない(半影 4px 対 帯 19px)。
 // - **環が本体の影へ入る境界**: 環の帯を横切る影の縁も、天体の球の半影ぶんだけぼける。
-function saturnShadow(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   const distance = 1.9e8;
   const radius = 6.0268e7;
   // カメラは環面から 20° 傾けて、**恒星とは反対側**へ置く — 同じ側だと影が落ちる面は
@@ -678,7 +719,7 @@ function saturnShadow(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   camera.updateMatrixWorld(true);
   const axis = v3(0, 1, 0);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, 'realistic');
+  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, style);
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -703,8 +744,41 @@ function far(): LabCase {
   };
 }
 
+// 太陽の向き。**画面中心から外して置く** — 中心だと、注視点へ視線が固定されるぶんカメラ方位を
+// 回しても画面上で動かず、サブピクセルの移動そのものが作れない。
+const SUN_CASE_DIR = new THREE.Vector3(0.2563, 0.1392, -0.9565).normalize();
+// 注視点に据える艦の位置。カメラはこの近点を軸に回るので、遠くの太陽は方位の変化ぶんそのまま
+// 画面上を動く。艦の縁で太陽が隠れる様子も同じ絵で読める。
+const SUN_CASE_SHIP_POSITION = new THREE.Vector3(0, -1, -10);
+
+// 恒星までの距離 [m] に対する、画面上での太陽の見かけ直径 [px]。**LOD の閾値判定と同じ
+// 換算を通す** — つまみの脇に出る数と、球/点像の切り替わる距離が食い違ってはならない。
+export function sunDiameterPx(distance: number): number {
+  const metersPerPixel = 2 * Math.tan((FOV_DEG / 2) * Math.PI / 180) * distance / VIEW_HEIGHT;
+  return apparentSizePx(2 * R_SUN, metersPerPixel);
+}
+
+// 太陽: 恒星の実球体を distance [m] に置く。**遠ざかると見かけ径が 1px を切り**、総光量が
+// ラスタライズの被覆率へ量子化される — サブピクセルの移動に対する画面のちらつきを、この構図で測る。
+// 距離はここで決めるのは既定値だけで、球を実際に置くのは恒星のつまみを読む側(lab.ts)。
+function sunAt(distance: number): LabCase {
+  const camera = labCamera(1e13);
+  return {
+    objects: [shipAt(SUN_CASE_SHIP_POSITION)],
+    camera,
+    sunDirection: SUN_CASE_DIR,
+    sunDistance: distance,
+    star: createSun(),
+    earthDistance: earthDistanceAtSunDistance,
+    viewTarget: SUN_CASE_SHIP_POSITION,
+  };
+}
+
 export const CASES = {
   'leo': leo,
+  'outer-5au': () => outer(5 * AU),
+  'outer-10au': () => outer(10 * AU),
+  'outer-30au': () => outer(30 * AU),
   'ship-selfshadow': shipSelfShadow,
   'ship-backlit': shipBacklit,
   'ship-cluster': shipCluster,
@@ -724,9 +798,14 @@ export const CASES = {
   'saturn': saturn,
   'saturn-shadow': saturnShadow,
   'albedo': albedo,
+  'sun-1au': () => sunAt(AU),
+  'sun-5au': () => sunAt(5.2 * AU),
+  'sun-30au': () => sunAt(30 * AU),
   'blackbody': blackbody,
   ...PROTEIN_CASES,
-} as const satisfies Record<string, (sunOcclusion: SunOcclusion, sunLight: SunLight) => LabCase>;
+} as const satisfies Record<
+  string, (style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight) => LabCase
+>;
 
 export type CaseName = keyof typeof CASES;
 export const CASE_NAMES = Object.keys(CASES) as readonly CaseName[];
