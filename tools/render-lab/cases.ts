@@ -13,7 +13,6 @@ import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
 import { createSun, type Sun } from '../../src/render/stars';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
-import { apparentSizePx } from '../../src/render/screen-lod';
 import {
   attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
 } from '../../src/render/thermal-emissive';
@@ -26,6 +25,7 @@ import { AMBIENT_REFERENCE_DISTANCE, type SunLight } from '../../src/render/pipe
 import { AU } from '../../src/physics/planet-orbit';
 import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
 import { textureOf } from '../../src/render/celestial-textures';
+import { apparentSizePx, metersPerPixelAtDepth } from '../../src/physics/projection';
 import { v3 } from '../../src/physics/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
@@ -122,18 +122,18 @@ function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Ob
 }
 
 // 中心 center、半径 radius、平面 (u, v) の円を1本。分割はカメラで決まるので、カメラを作った
-// あとに呼ぶ。revision は焼き直しの鍵で、ケースの間は変えない(毎フレーム変えると線がちらつく)。
+// あとに呼ぶ。
 function circle(
   center: THREE.Vector3, radius: number, u: THREE.Vector3, v: THREE.Vector3,
   style: LineStyle, camera: THREE.Camera,
 ): THREE.Object3D {
-  const curve = new Curve({ style });
+  const curve = new Curve(style);
   curve.setAnalyticCurve((t, out) => {
     const theta = 2 * Math.PI * t;
     out.copy(center)
       .addScaledVector(u, radius * Math.cos(theta))
       .addScaledVector(v, radius * Math.sin(theta));
-  }, { revision: 'lab', camera });
+  }, camera);
   return curve.object;
 }
 
@@ -754,8 +754,7 @@ const SUN_CASE_SHIP_POSITION = new THREE.Vector3(0, -1, -10);
 // 恒星までの距離 [m] に対する、画面上での太陽の見かけ直径 [px]。**LOD の閾値判定と同じ
 // 換算を通す** — つまみの脇に出る数と、球/点像の切り替わる距離が食い違ってはならない。
 export function sunDiameterPx(distance: number): number {
-  const metersPerPixel = 2 * Math.tan((FOV_DEG / 2) * Math.PI / 180) * distance / VIEW_HEIGHT;
-  return apparentSizePx(2 * R_SUN, metersPerPixel);
+  return apparentSizePx(2 * R_SUN, metersPerPixelAtDepth(FOV_DEG, distance, VIEW_HEIGHT));
 }
 
 // 太陽: 恒星の実球体を distance [m] に置く。**遠ざかると見かけ径が 1px を切り**、総光量が
