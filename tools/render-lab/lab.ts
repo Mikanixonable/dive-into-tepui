@@ -10,6 +10,7 @@ import {
   SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY, sunIrradianceAtDistance,
 } from '../../src/render/pipeline/sun-light';
 import { lambertPhase, planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
+import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
@@ -156,6 +157,7 @@ export class LabView {
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, QUALITY_PRESETS.high, gpu);
+    pipeline.ambient.setFraction(AMBIENT_WEAK);
     return new LabView(renderer, pipeline, gpu);
   }
 
@@ -196,6 +198,15 @@ export class LabView {
   setGraphicsOption(key: GraphicsOptionKey, value: boolean | number): void {
     this.graphicsData = withGraphicsOption(this.graphicsData, key, value);
     this.pipeline.applyGraphics(this.graphicsData);
+    this.render();
+  }
+
+  // 一様な環境光の割合。ゲーム本体はビューの種別から強弱を決めるが、ここには種別が無いので
+  // 直に選ぶ。起動時は弱(戦闘ビュー)。
+  get ambientFraction(): number { return this.pipeline.ambient.fraction; }
+
+  setAmbientFraction(fraction: number): void {
+    this.pipeline.ambient.setFraction(fraction);
     this.render();
   }
 

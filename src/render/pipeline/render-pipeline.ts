@@ -23,6 +23,7 @@ import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
+import { AmbientSource } from './lighting/ambient-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
@@ -54,6 +55,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // 光源モデルの設定を受けるため、光源の列とは別に太陽光源だけ手元にも持つ。
   private readonly sunSource: SunSource;
   private readonly _planetLight: PlanetLightSource;
+  private readonly _ambient: AmbientSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
@@ -98,6 +100,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // 天体照の光源スロット。EnvironmentScene が選んだ天体を毎フレーム書き込む。
   get planetLight(): PlanetLightSource { return this._planetLight; }
 
+  // 一様な環境光。EnvironmentScene が割合を毎フレーム書き込む。
+  get ambient(): AmbientSource { return this._ambient; }
+
   // 大気パス。EnvironmentScene が大気を持つ天体を毎フレーム書き込む。
   get atmosphere(): AtmospherePass { return this.atmospherePass; }
 
@@ -118,8 +123,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
     this.sunSource = new SunSource(this._sunLight, this.occlusionPass, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(graphics.planetLightCount);
+    this._ambient = new AmbientSource(this._sunLight);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
-      this.sunSource, ...this._planetLight.lightSources,
+      this.sunSource, ...this._planetLight.lightSources, this._ambient,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(

@@ -3,6 +3,7 @@
 import { startProteinAssetPreload } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { PIPELINE_GRAPHICS_KEYS } from '../../src/render/pipeline/render-pipeline';
+import { AMBIENT_STRONG, AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import { GRAPHICS_OPTIONS } from '../../src/render/graphics-settings';
 import { CASE_NAMES, sunDiameterPx, type CaseName } from './cases';
@@ -201,6 +202,15 @@ async function init(): Promise<void> {
     });
   }
   syncGraphics();
+
+  // 一様な環境光。ゲーム本体はビューの種別から強弱を決めるが、ここには種別が無いので直に選ぶ。
+  const markAmbient = buildChoiceField<number>('graphics', '環境光', [
+    [0, 'オフ'], [AMBIENT_WEAK, '弱(戦闘ビュー)'], [AMBIENT_STRONG, '強(マップビュー)'],
+  ], (fraction) => {
+    view.setAmbientFraction(fraction);
+    markAmbient(fraction);
+  });
+  markAmbient(view.ambientFraction);
 
   markCase(CASE_NAMES[0]!);
   markTarget('off');
