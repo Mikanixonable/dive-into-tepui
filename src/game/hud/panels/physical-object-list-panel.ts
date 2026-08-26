@@ -126,7 +126,7 @@ interface RowNode {
 }
 
 // マップビュー右部に常設の軌道物体一覧ウィンドウ。種別ごとの区画にタブ見出しで
-// 開閉し、行クリックで選択状態をトグル、ダブルクリックでフォーカスを移動する。天体区画は衛星・ラグランジュ点を親の下の
+// 開閉し、ダブルクリックでフォーカスを移動する。天体区画は衛星・ラグランジュ点を親の下の
 // トグル子メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
 export class PhysicalObjectListPanel {
   public onFocus: ((id: string) => void) | null = null;
@@ -136,7 +136,6 @@ export class PhysicalObjectListPanel {
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
   private readonly registry: CelestialRegistry;
-  private selectedId: string | null = null;
   private query = '';
   private filter: PhysicalObjectListFilter | null = null;
   private sort: PhysicalObjectListSort = 'solar';
@@ -271,16 +270,8 @@ export class PhysicalObjectListPanel {
     this.panel.classList.toggle('hidden', !visible);
   }
 
-  public select(id: string | null): void { this.selectedId = id; }
-
-  // プロパティウィンドウが自身の対象の行帯び色(.tgt/.on)を揃えるための問い合わせ。
+  // プロパティウィンドウが自身の対象の行帯び色(.tgt)を揃えるための問い合わせ。
   public isTarget(id: string): boolean { return id === this.lastFocusId; }
-  public isSelected(id: string): boolean { return id === this.selectedId; }
-
-  // 行クリック用。同じ行を再度クリックしたときは選択を解除する。
-  private toggleSelect(id: string): void {
-    this.selectedId = this.selectedId === id ? null : id;
-  }
 
   // パネルを取り除き、折りたたみ状態変化の購読を解く。
   public dispose(): void {
@@ -369,7 +360,6 @@ export class PhysicalObjectListPanel {
       this.pruneRows(section.rows, seen);
     }
     this.emptyState.classList.toggle('hidden', !(filteringActive && totalMatched === 0));
-    if (this.selectedId !== null && !items.some((i) => i.id === this.selectedId && this.matches(i))) this.selectedId = null;
   }
 
   // 絞り込みが強制的に開いた分の畳み状態を、記録してあるプレイヤーの元の値へ戻す。
@@ -563,10 +553,8 @@ export class PhysicalObjectListPanel {
     node.detail.classList.toggle('hidden', item.kind === 'body');
     node.row.classList.toggle('tgt', item.id === focusId);
     node.row.classList.toggle('related-orbit', item.id === focusId);
-    node.row.classList.toggle('on', item.id === this.selectedId);
     // 衛星フィルタで添えたクラスタ見出し(親惑星自身はフィルタを通っていない)を淡色化する。
     node.row.classList.toggle('cluster', !this.matches(item));
-    node.row.setAttribute('aria-pressed', String(item.id === this.selectedId));
     node.row.setAttribute('aria-label', [item.name, detailText].filter(Boolean).join('、'));
 
     const children = childrenOf.get(item.id) ?? EMPTY_IDS;
@@ -619,15 +607,13 @@ export class PhysicalObjectListPanel {
 
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
-    row.setAttribute('aria-keyshortcuts', 'Enter Space F T');
-    row.title = 'Enter / Space: 選択 · ダブルクリック / F: フォーカス · T: ナビ対象';
-    row.addEventListener('click', () => this.toggleSelect(id));
+    row.setAttribute('aria-keyshortcuts', 'F T');
+    row.title = 'ダブルクリック / F: フォーカス · T: ナビ対象';
     row.addEventListener('dblclick', (e) => {
       e.preventDefault();
       this.onFocus?.(id);
     });
     row.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggleSelect(id); }
       if (e.key.toLowerCase() === 'f') { e.preventDefault(); this.onFocus?.(id); }
       if (e.key.toLowerCase() === 't') { e.preventDefault(); this.onNavTarget?.(id); }
     });

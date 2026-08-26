@@ -66,9 +66,6 @@ function findClosestApproach(
 }
 
 export class NavTarget {
-  // ターゲットが変わるたびに通知する — 物体一覧パネルのハイライトを追随させる用途。
-  onSelect: ((id: string | null) => void) | null = null;
-
   private targetId: string | null = null;
   private targetName: string | null = null;
   private ownerName: string | null = null;
@@ -109,7 +106,6 @@ export class NavTarget {
     // 対象を切り替えた時点で即座に降ろす — 次の update までターゲットが変わらない前提の
     // 個体に、外れたあとも未来予測の負担を残さない。
     this.setReaderEntity(null);
-    this.onSelect?.(id);
   }
 
   // 旧対象のフラグを降ろし、新対象に立て直す。

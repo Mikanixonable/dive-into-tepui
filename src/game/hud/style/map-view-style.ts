@@ -176,11 +176,6 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-physical-object-list .erow.related-orbit {
   color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
-#hud .hud-map-root.active #hud-physical-object-list .erow.on {
-  outline: 0;
-  color: var(--color-signal);
-  background: color-mix(in srgb, var(--color-signal) 12%, transparent);
-}
 #hud .hud-map-root.active #hud-physical-object-list .erow:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-glyph {
   flex: 0 0 16px;
