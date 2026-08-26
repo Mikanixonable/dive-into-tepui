@@ -39,10 +39,10 @@ interface ProteinBondVisual {
 
 /** Owns gameplay state and display-only ANM/OU deformation for one enemy. */
 export class ProteinRuntime {
-  readonly combat: ProteinCombatState;
-  readonly motion: ProteinMotionAsset;
-  readonly controller: ProteinMotionController;
-  readonly motionBinding: ProteinMotionBinding;
+  public readonly combat: ProteinCombatState;
+  private readonly motion: ProteinMotionAsset;
+  private readonly controller: ProteinMotionController;
+  public readonly motionBinding: ProteinMotionBinding;
   private readonly root: THREE.Object3D;
   private readonly baseSitePositions = new Map<string, THREE.Vector3>();
   private readonly siteResidueGroups = new Map<string, readonly number[]>();
@@ -57,7 +57,7 @@ export class ProteinRuntime {
   private lastCpuMs = 0;
   private lastUploadBytes = 0;
 
-  constructor(
+  public constructor(
     root: THREE.Object3D,
     asset: ProteinAssetDefinition,
     motion: ProteinMotionAsset,
@@ -81,13 +81,13 @@ export class ProteinRuntime {
     this.rebuildVisuals();
   }
 
-  get asset(): ProteinAssetDefinition { return this.combat.asset; }
-  get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
-  get lod(): ProteinMotionLod { return this.currentLod; }
-  get cpuMs(): number { return this.lastCpuMs; }
-  get uploadBytes(): number { return this.lastUploadBytes; }
+  private get asset(): ProteinAssetDefinition { return this.combat.asset; }
+  public get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
+  public get lod(): ProteinMotionLod { return this.currentLod; }
+  public get cpuMs(): number { return this.lastCpuMs; }
+  public get uploadBytes(): number { return this.lastUploadBytes; }
 
-  clearVisuals(): void {
+  public clearVisuals(): void {
     for (const child of [...this.root.children]) {
       if (child.userData[RUNTIME_VISUAL] !== true) continue;
       child.traverse((nested) => {
@@ -107,7 +107,7 @@ export class ProteinRuntime {
     this.bondVisuals.length = 0;
   }
 
-  rebuildVisuals(): void {
+  public rebuildVisuals(): void {
     this.clearVisuals();
     const scale = this.asset.coordinateScale;
     for (let index = 0; index < this.asset.sites.length; index += 1) {
@@ -136,7 +136,7 @@ export class ProteinRuntime {
 
   /** 投影サイズから LOD をヒステリシス付きで更新する。marker になったフレームは
    * 重い更新をしないので、CPU/upload の計測も正直に 0 へ戻す。 */
-  updateLod(projectedDiameterPx: number): ProteinMotionLod {
+  public updateLod(projectedDiameterPx: number): ProteinMotionLod {
     this.currentLod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.currentLod);
     if (this.currentLod === 'marker') {
       this.lastCpuMs = 0;
@@ -148,7 +148,7 @@ export class ProteinRuntime {
   /** モード係数を更新して GPU へ送り、アンカーが使う残基だけを CPU 側で投影する。
    * `vibrationEnabled` が false の間は marker LOD 相当のモード係数(全ゼロ)を使い、
    * 静止した構造で表示する。 */
-  updateVisual(displayTime: number, vibrationEnabled = true): void {
+  public updateVisual(displayTime: number, vibrationEnabled = true): void {
     const cpuStart = performance.now();
     this.controller.update(displayTime, vibrationEnabled ? this.currentLod : 'marker', this.combat.phase);
     if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
@@ -180,15 +180,15 @@ export class ProteinRuntime {
     this.bondMaterial.opacity = state.phase === 'intact' ? 0.42 : state.phase === 'critical' ? 0.12 : 0.68;
   }
 
-  activeSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
+  public activeSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
     return this.siteWorldPosition(this.combat.activeSite, origin, attitude);
   }
 
-  nextAttackSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
+  public nextAttackSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
     return this.siteWorldPosition(this.combat.nextAttackSite(), origin, attitude);
   }
 
-  siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
+  public siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
     return this.siteWorldPosition(this.combat.site(id), origin, attitude);
   }
 
@@ -205,11 +205,11 @@ export class ProteinRuntime {
     );
   }
 
-  localImpactPoint(worldPoint: Vec3, origin: Vec3, attitude: Quat): Vec3 {
+  public localImpactPoint(worldPoint: Vec3, origin: Vec3, attitude: Quat): Vec3 {
     return proteinLocalImpactPoint(worldPoint, origin, attitude, this.root.scale.x);
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.clearVisuals();
     this.bondMaterial.dispose();
     disposeProteinMotionBinding(this.motionBinding);

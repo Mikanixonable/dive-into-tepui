@@ -15,7 +15,7 @@ export const PROTEIN_MOTION_LOD_MODE_COUNTS: Readonly<Record<ProteinMotionLod, n
   marker: 0,
 };
 
-/** Display-only phase gains; physical ANM amplitudes remain unchanged. */
+/** 表示専用の phase gain。物理的な ANM 振幅は変えない。 */
 export const PROTEIN_MOTION_PHASE_GAINS: Readonly<Record<ProteinPhase, number>> = {
   intact: 1,
   exposed: 1,
@@ -67,7 +67,7 @@ const UINT32_SCALE = 0x1_0000_0000;
 export const PROTEIN_MOTION_LOD_FADE_DURATION_SEC = 0.25;
 
 export interface ProteinMotionControllerOptions {
-  /** Optional display-only overrides; physical modal amplitudes remain asset data. */
+  /** 表示専用の任意上書き値。物理的なモード振幅は asset のデータのままとする。 */
   readonly collectiveGain?: number;
   readonly localGain?: number;
 }
@@ -83,7 +83,7 @@ function mix32(value: number): number {
   return (mixed ^ (mixed >>> 16)) >>> 0;
 }
 
-/** Stable [0, 1) phase used to stagger coarse LOD update boundaries. */
+/** 粗い LOD の更新境界をずらすための、安定した [0, 1) の位相。 */
 export function proteinMotionUpdatePhaseFor(enemyId: string): number {
   const seed = proteinBrownianSeedFor(enemyId);
   return mix32(seed ^ 0xa511e9b3) / UINT32_SCALE;
@@ -120,12 +120,12 @@ function gainForBand(
  * xyz 変位へ投影する。Three.js や原子・リボン・表面の binding のことは意図的に何も知らない。
  */
 export class ProteinMotionController {
-  readonly enemyId: string;
-  readonly residueCount: number;
-  readonly modeCount: number;
-  readonly updatePhase: number;
-  readonly collectiveGain: number;
-  readonly localGain: number;
+  public readonly enemyId: string;
+  public readonly residueCount: number;
+  public readonly modeCount: number;
+  public readonly updatePhase: number;
+  public readonly collectiveGain: number;
+  public readonly localGain: number;
 
   private readonly modes: readonly ProteinMotionAsset['modes'][number][];
   private readonly sampler: ProteinBrownianSampler;
@@ -142,7 +142,7 @@ export class ProteinMotionController {
   private fading = false;
   private fadeStartTime = 0;
 
-  constructor(
+  public constructor(
     asset: ProteinMotionAsset,
     enemyId: string,
     options: ProteinMotionControllerOptions = {},
@@ -181,8 +181,8 @@ export class ProteinMotionController {
     }
   }
 
-  /** The coefficient buffer is stable for the lifetime of this controller. */
-  get modeCoefficients(): Float64Array {
+  /** この係数バッファは、このコントローラーの生存期間中ずっと同じインスタンスを指す。 */
+  public get modeCoefficients(): Float64Array {
     return this.modeCoefficientsBuffer;
   }
 
@@ -191,7 +191,7 @@ export class ProteinMotionController {
    * (打ち切られたモードは 0)。GPU の compute pass はこれと asset のモード変位を掛けて残基変位を
    * 作る。`projectResidues` は同じことを CPU 側で、残基の小集合についてだけ行う。
    */
-  get effectiveModeCoefficients(): Float32Array {
+  public get effectiveModeCoefficients(): Float32Array {
     return this.effectiveCoefficientsBuffer;
   }
 
@@ -199,7 +199,7 @@ export class ProteinMotionController {
    * いまのモード係数を、列挙された残基についてだけ `target`(残基あたり vec4)へ投影する。
    * 列挙されなかった残基の要素は書き換えない。範囲外・非整数の残基インデックスは無視する。
    */
-  projectResidues(residues: readonly number[], target: Float32Array): void {
+  public projectResidues(residues: readonly number[], target: Float32Array): void {
     for (const residue of residues) {
       if (!Number.isInteger(residue) || residue < 0 || residue >= this.residueCount) continue;
       const sourceOffset = residue * 3;
@@ -219,12 +219,12 @@ export class ProteinMotionController {
     }
   }
 
-  get activeModeCount(): number {
+  public get activeModeCount(): number {
     return this.currentModeCount;
   }
 
   /** いまのモード係数が表している、量子化済みの表示時刻。 */
-  get sampleTime(): number {
+  public get sampleTime(): number {
     return this.lastSampleTime;
   }
 
@@ -235,7 +235,7 @@ export class ProteinMotionController {
    * `PROTEIN_MOTION_LOD_FADE_DURATION_SEC` かけて混ぜる — 変位は係数の線形結合なので、
    * これは変位そのものを混ぜるのと同じ結果になる。切替中も毎フレーム `update` を呼ぶだけでよい。
    */
-  update(
+  public update(
     time: number,
     lod: ProteinMotionLod = 'near',
     phase: ProteinPhase = this.currentPhase,
@@ -289,11 +289,11 @@ export class ProteinMotionController {
     }
   }
 
-  sampleAt(time: number, lod: ProteinMotionLod = this.currentLod, phase: ProteinPhase = this.currentPhase): Float32Array {
+  public sampleAt(time: number, lod: ProteinMotionLod = this.currentLod, phase: ProteinPhase = this.currentPhase): Float32Array {
     return this.update(time, lod, phase);
   }
 
-  seek(time: number, lod: ProteinMotionLod = this.currentLod, phase: ProteinPhase = this.currentPhase): Float32Array {
+  public seek(time: number, lod: ProteinMotionLod = this.currentLod, phase: ProteinPhase = this.currentPhase): Float32Array {
     return this.update(time, lod, phase);
   }
 
@@ -301,9 +301,8 @@ export class ProteinMotionController {
     const safeTime = safeDisplayTime(time);
     const updateHz = updateHzFor(lod);
     if (!Number.isFinite(updateHz)) return safeTime;
-    // Quantizing the time from the absolute clock makes coarse updates
-    // independent of frame rate. The enemy phase staggers the quantization
-    // boundary while the sampler seed keeps each enemy's path independent.
+    // 絶対時刻を量子化することで、粗い更新をフレームレートに依存させない。
+    // enemy の phase が量子化の境界をずらし、sampler の seed が各 enemy の軌跡を独立させる。
     return Math.floor(safeTime * updateHz + this.updatePhase) / updateHz;
   }
 }
