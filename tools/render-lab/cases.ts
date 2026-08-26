@@ -566,6 +566,16 @@ function earth(style: RenderStyle): LabCase {
   };
 }
 
+// 昼夜境界の地球: earth と同じ構図で、恒星を視線の先の地平線上へ置く。**太陽光が最も長く
+// 大気を通って届く向き**なので、波長ごとの減衰だけで縁と霞が橙へ寄っていなければならない。
+// 前方散乱が効く向きでもあるので、太陽のまわりのグローもここで読む。
+function earthTerminator(style: RenderStyle): LabCase {
+  const base = earth(style);
+  const up = base.atmosphere!.center.clone().negate().normalize();
+  const ahead = AHEAD.clone().projectOnPlane(up).normalize();
+  return { ...base, sunDirection: ahead };
+}
+
 // 日食下の地球: earth と同じ構図へ、地球自身と食を起こす球を遮蔽器として足す。**大気の明暗は
 // 入射角だけでなく遮蔽度にも比例する**ので、リムともやの両方へ影の落ちた斑が出る。遮蔽器の
 // 視半径は太陽よりわずかに大きく取ってあり、本影(半径 60km)を半影(340km)が縁取る。
@@ -851,6 +861,7 @@ export const CASES = {
   'eclipse': eclipse,
   'march-slab': marchSlab,
   'earth': earth,
+  'earth-terminator': earthTerminator,
   'earth-eclipse': earthEclipse,
   'far': far,
   'saturn': saturn,
