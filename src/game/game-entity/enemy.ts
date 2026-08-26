@@ -25,7 +25,6 @@ import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
 import type { EnemyDeathCause, Stage } from '../stages/stage';
-import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
@@ -112,7 +111,7 @@ function buildEnemyRenderObject(enemyKind: EnemyKind, accent: string | number, m
 }
 
 // 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime の
-// epoch で展開する(accent/orbitLineColor は保存された accent 1つから両方導く)。
+// epoch で展開する。orbitLineColor は旧セーブデータには無いため、無ければ accent から導く。
 export type EnemyInit =
   | {
     readonly name: string;
@@ -131,8 +130,8 @@ export type EnemyInit =
 export class Enemy extends Ship {
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
   protected readonly maxTemperature = C.ENEMY_MAX_TEMP;
-  accent: string | number; // マーカー色・集団識別。全敵が保持する
-  waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
+  readonly accent: string | number; // マーカー色・集団識別。全敵が保持する
+  readonly waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly formationId?: string;
   readonly formationRole?: FormationRole;
   readonly orbitLineColor: string | number;
@@ -172,7 +171,6 @@ export class Enemy extends Ship {
   // init の enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
     init: EnemyInit,
-    _hud: Hud,
     worldSfx: WorldSfx,
     fx: EffectsSystem,
     scene?: THREE.Scene,
@@ -184,7 +182,7 @@ export class Enemy extends Ship {
         enemyKind: init.saved.enemyKind,
         att: { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: inertiaForEnemyKind(init.saved.enemyKind) } as Attitude,
         accent: init.saved.accent,
-        orbitLineColor: init.saved.accent,
+        orbitLineColor: init.saved.orbitLineColor ?? init.saved.accent,
         waveId: init.saved.waveId,
         id: init.saved.id || undefined,
         formationId: init.saved.formationId,
@@ -361,7 +359,7 @@ export class Enemy extends Ship {
     // 代表選出の優先度: ターゲット > 距離が近い順 (天体 > 船・エンティティ)
     const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
-      key: `enemy-${this.name}`,
+      key: `enemy-${this.id}`,
       cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
       sym: overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
@@ -499,7 +497,7 @@ export class Enemy extends Ship {
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
-  behave(_dt: number, simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager, ephemeris: Ephemeris): void {
+  behave(simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager, ephemeris: Ephemeris): void {
     // 射撃間隔はsimulation timeで統一する。wall dtを混ぜると×4時だけバースト間隔が
     // 4倍に引き伸ばされ、同じゲーム内時間でもwarp段によって弾数が変わっていた。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
@@ -612,6 +610,7 @@ export class Enemy extends Ship {
       alive: this.alive,
       health: this.hp,
       accent: this.accent,
+      orbitLineColor: this.orbitLineColor,
       waveId: this.waveId,
       ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
       ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),

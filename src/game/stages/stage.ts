@@ -239,9 +239,9 @@ export abstract class Stage {
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。
-  protected behaveAllEnemies(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  protected behaveAllEnemies(player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     for (const e of entities.enemies) {
-      if (e.alive) e.behave(dt, simTime, player, entities, simSpeed, this._ephemeris);
+      if (e.alive) e.behave(simTime, player, entities, simSpeed, this._ephemeris);
     }
   }
 
