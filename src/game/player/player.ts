@@ -429,6 +429,7 @@ export class Player extends Ship {
   ): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
+    this.fire.stepBarrelThermal(dt);
     this.aero.update(this.state.r, this.state.v, atmosphereBody);
     this.altitudeAlarm.update(dt, this.state.r, atmosphereBody);
     this.power.update(dt, sunlit, sunDir, this.att, this);
