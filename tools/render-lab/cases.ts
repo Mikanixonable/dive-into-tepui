@@ -410,6 +410,31 @@ function leo(): LabCase {
   };
 }
 
+// 地球照: 低軌道の艦を、満相の地球が下から照らす。恒星は真上から差すので、艦の上面だけが
+// 直射を受け、下面は地球照だけで照らされる。横を向いた面はどちらの光も受けず桁で暗い。
+function earthshine(): LabCase {
+  const camera = labCamera(6e7);
+  const center = new THREE.Vector3(0, -6.791e6, 0);
+  const shipPosition = new THREE.Vector3(0, -1, -10);
+  return {
+    objects: [sphere(BLUE_SPHERE_ALBEDO, R_EARTH, center), shipAt(shipPosition, SHIP_ROTATION_PORT)],
+    camera,
+    sunDirection: new THREE.Vector3(0, 1, 0),
+    viewTarget: shipPosition,
+    planetLights: [{ center, radius: R_EARTH, albedo: lightSourceAlbedoOf('earth') }],
+  };
+}
+
+// 三日月: earthshine と同じ低軌道で、恒星を横へ倒して位相角 120°(地球が三日月形に見える
+// 位置)にする。天体照は満相の Φ(0)=1 から Φ(120°)≈0.11 まで弱まる。
+function crescent(): LabCase {
+  const base = earthshine();
+  return {
+    ...base,
+    sunDirection: new THREE.Vector3(Math.sin((Math.PI * 2) / 3), Math.cos((Math.PI * 2) / 3), 0),
+  };
+}
+
 // 典型的な天体表面・艦の外殻の反射率。
 const OUTER_ALBEDO: Albedo = [0.3, 0.3, 0.3];
 // 灰色球の半径 [m]。
@@ -788,6 +813,8 @@ function sunAt(distance: number): LabCase {
 
 export const CASES = {
   'leo': leo,
+  'earthshine': earthshine,
+  'crescent': crescent,
   // 水星近日点。視半径 0.86° の太陽で、終端の幅が球光源のときだけ広がる。
   'sun-close': () => outer(0.31 * AU),
   'outer-5au': () => outer(5 * AU),

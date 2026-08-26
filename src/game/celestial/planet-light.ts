@@ -5,9 +5,11 @@
 import { CelestialBody } from '../../physics/celestial-body';
 import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
-import { len, sub, Vec3 } from '../../physics/vec3';
+import { dot, len, sub, Vec3 } from '../../physics/vec3';
 import { lightSourceAlbedoOf, rec709Luminance, type Albedo } from '../../render/celestial-albedo';
-import { PLANET_LIGHT_SLOTS, planetRadiance } from '../../render/pipeline/lighting/planet-light-source';
+import {
+  PLANET_LIGHT_SLOTS, lambertPhase, planetRadiance,
+} from '../../render/pipeline/lighting/planet-light-source';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
 
 // 8bit sRGB の最小段(符号値 1/255 → 線形 3.04e-4)。トーンカーブ(Khronos PBR Neutral)の
@@ -18,7 +20,7 @@ const MIN_DISPLAY_STEP = 3.0e-4;
 // 光源として選ばれた天体 1 体。位置・半径は body(ECI)から読む。
 export type PlanetLight = {
   readonly body: CelestialBody;
-  // 一様球としての放射輝度(色つき)。天体の食(sunlitFactor)も掛けてある。
+  // 一様球としての放射輝度(色つき)。位相(満ち欠け)と天体の食(sunlitFactor)も掛けてある。
   readonly radiance: Albedo;
 };
 
@@ -34,21 +36,26 @@ export function selectPlanetLights(
   for (const body of bodies) {
     if (body.isStar || body.radius <= 0) continue;
     const albedo = lightSourceAlbedoOf(body.id);
-    // 主星の無いレジストリでは、全天体が 1 天文単位相当の明るさで照らされているとみなす
-    // (environment-scene.ts が恒星方向へ置く仮の光源と同じ目盛り)。
-    const sunIrradiance = star === null
-      ? SUN_IRRADIANCE_1AU : sunIrradianceAtDistance(len(sub(star.state.r, body.state.r)));
-    const radiance = planetRadiance(albedo, sunIrradiance);
-    const dist = Math.max(len(sub(body.state.r, reference)), body.radius);
+    // 主星の無いレジストリでは、全天体が 1 天文単位相当の明るさで満相のまま照らされていると
+    // みなす(environment-scene.ts が恒星方向へ置く仮の光源と同じ目盛り)。
+    const toSun = star === null ? null : sub(star.state.r, body.state.r);
+    const sunIrradiance = toSun === null ? SUN_IRRADIANCE_1AU : sunIrradianceAtDistance(len(toSun));
+    const toReference = sub(reference, body.state.r);
+    const dist = Math.max(len(toReference), body.radius);
+    // 位相角: 天体から見た太陽と基準点のなす角。
+    const phase = toSun === null
+      ? 1 : lambertPhase(Math.acos(Math.min(1, Math.max(-1, dot(toSun, toReference) / (len(toSun) * dist)))));
+    const base = planetRadiance(albedo, sunIrradiance);
     const sinSqr = (body.radius / dist) ** 2;
     // まず食を見ない上限で当てる。食は減らす一方なので、ここで落ちる天体の食は見なくてよい。
-    const bound = Math.PI * rec709Luminance(radiance) * sinSqr;
+    const bound = Math.PI * rec709Luminance(base) * phase * sinSqr;
     if (bound < threshold) continue;
     const sunlit = star === null ? 1 : sunlitFactor(body.state.r, star, bodies.filter((b) => b !== body));
     const irradiance = bound * sunlit;
     if (irradiance < threshold) continue;
+    const scale = phase * sunlit;
     candidates.push({
-      light: { body, radiance: [radiance[0] * sunlit, radiance[1] * sunlit, radiance[2] * sunlit] },
+      light: { body, radiance: [base[0] * scale, base[1] * scale, base[2] * scale] },
       irradiance,
     });
   }
