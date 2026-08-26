@@ -3,7 +3,7 @@
 //
 // 'world' は無い — composite パスの通常表示が既に world 色ターゲットをそのまま画面へ出しており、
 // 'off' と 'world' は同じ絵になるため。
-export type DebugTargetId = 'off' | 'normal' | 'roughness' | 'depth' | 'shadow' | 'shadow-slot' | 'occlusion' | 'diffuse' | 'specular' | 'material' | 'atmosphere';
+export type DebugTargetId = 'off' | 'normal' | 'roughness' | 'depth' | 'shadow' | 'shadow-slot' | 'occlusion' | 'diffuse' | 'specular' | 'material' | 'atmosphere' | 'lens';
 
 // 選べる値と表示ラベルの組。並びがそのまま UI 上の並び順になる。
 export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
@@ -18,6 +18,7 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['specular', '鏡面照度'],
   ['material', 'マテリアル'],
   ['atmosphere', '大気'],
+  ['lens', 'レンズ'],
 ];
 
 // デバッグ表示の選択を書き込む先。選択欄を持つ側が render/pipeline/ の具象クラス

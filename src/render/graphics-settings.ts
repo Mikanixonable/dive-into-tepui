@@ -29,7 +29,7 @@ type ToggleOption = {
   readonly presets: PresetValues<boolean>;
 };
 
-// 数値の選択肢を持つ項目。items は [値, 表示ラベル] を、粗いほうから順に並べる。
+// 数値の選択肢を持つ項目。items は [値, 表示ラベル] を、値の小さいほうから順に並べる。
 type ChoiceOption = {
   readonly kind: 'choice';
   readonly group: GraphicsGroup;
@@ -54,6 +54,12 @@ export const GRAPHICS_OPTIONS = {
     items: [[0.5, '低'], [1, '標準'], [2, '高']],
     presets: { low: 0.5, medium: 1, high: 2 },
   },
+  // 露出へ掛ける倍率。1 段が EV 1 段(明るさ 2 倍)。
+  exposureCompensation: {
+    kind: 'choice', group: 'basic', label: '露出補正',
+    items: [[0.25, '−2'], [0.5, '−1'], [1, '±0'], [2, '+1'], [4, '+2']],
+    presets: { low: 1, medium: 1, high: 1 },
+  },
   // マルチサンプリング。レンダラ生成時にしか渡せないので、変更は次回起動から効く。
   antialias: {
     kind: 'toggle', group: 'basic', label: 'アンチエイリアス(次回起動から)',
@@ -77,6 +83,11 @@ export const GRAPHICS_OPTIONS = {
   // 地球の大気。
   atmosphere: {
     kind: 'toggle', group: 'element', label: '大気',
+    presets: { low: false, medium: true, high: true },
+  },
+  // レンズ効果(滲み・条・ゴースト)。
+  lens: {
+    kind: 'toggle', group: 'element', label: 'レンズ効果',
     presets: { low: false, medium: true, high: true },
   },
   // タンパク質型の敵の構造の揺らぎ。
