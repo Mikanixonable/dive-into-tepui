@@ -16,8 +16,9 @@ import { RenderStyleGate, type RenderStyle } from '../../render/render-style';
 import { SCHEMATIC_LINE } from '../../render/schematic-style';
 import { GuideCurve } from './guide-curve';
 import {
-  GuideGroupId, GuideKindSettings, OrbitGuideSettings,
+  CombinedKindSettings, GuideGroupId, GuideKindSettings, OrbitGuideSettings,
 } from './orbit-guide-settings';
+import { combinedCandidateIds, parseGuideKindId, type ParsedGuideKindId } from './orbit-guide-kind-ids';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import { DirectionMarkers } from './direction-markers';
 
@@ -117,6 +118,37 @@ function pointOf(familyId: string): string | null {
   return /L[1-5]/.exec(familyId)?.[0] ?? null;
 }
 
+// combinedKey を持つ族(点/南北/東西/区間の軸ボタンで束ねた小題)が、選ばれている軸値の組み合わせを
+// 満たすかどうか。その族が持つ軸だけを見る(持たない軸は判定に関わらない)。
+function isMemberOn(combined: CombinedKindSettings, parsed: ParsedGuideKindId): boolean {
+  if (parsed.point !== undefined && !(combined.axisValues[parsed.point] ?? false)) return false;
+  if (parsed.branch !== undefined && !(combined.axisValues[parsed.branch] ?? false)) return false;
+  if (parsed.ew !== undefined && !(combined.axisValues[parsed.ew] ?? false)) return false;
+  if (parsed.axes?.segment === true && !(combined.axisValues[String(parsed.segment)] ?? false)) return false;
+  return true;
+}
+
+// 族 id の表示設定を1つに解決する。小題(combinedKey)に属する族は on を axisValues から導出し、
+// 他のフィールドは小題の共有設定を使う。属さない族(蝶形・トンボ形・共鳴・DRO)は settings.kinds
+// をそのまま使う。
+function effectiveKind(settings: OrbitGuideSettings, familyId: string): GuideKindSettings | undefined {
+  const parsed = parseGuideKindId(familyId);
+  if (parsed === null || parsed.combinedKey === null) return settings.kinds[familyId];
+  const combined = settings.combinedKinds[parsed.combinedKey];
+  if (combined === undefined) return undefined;
+  return { ...combined, on: isMemberOn(combined, parsed) };
+}
+
+// 表示設定を持ちうる族 id の全体(kinds のキー全部+小題ごとに押されている軸値から組める候補id)。
+// effectiveKind と組み合わせて、蝶形/共鳴等の standalone 族と小題の族を同じループで扱える。
+function activeFamilyIds(settings: OrbitGuideSettings): readonly string[] {
+  const ids = new Set<string>(Object.keys(settings.kinds));
+  for (const [key, combined] of Object.entries(settings.combinedKinds)) {
+    for (const id of combinedCandidateIds(key, combined.axisValues)) ids.add(id);
+  }
+  return [...ids];
+}
+
 function activeSystems(settings: OrbitGuideSettings): readonly CatalogSystemId[] {
   return ALL_SYSTEMS.filter((id) => settings.systems[id] === true);
 }
@@ -142,8 +174,9 @@ interface LineVisualStyle {
 // 色に効く設定だけを並べた識別子。これが変われば頂点カラーを焼き直す。
 function colorSignature(s: OrbitGuideSettings, style: RenderStyle): string {
   const parts: string[] = [style];
-  for (const [id, kind] of Object.entries(s.kinds)) {
-    if (!kind.on) continue;
+  for (const id of activeFamilyIds(s)) {
+    const kind = effectiveKind(s, id);
+    if (!kind?.on) continue;
     parts.push(`${id}:${kind.colorStart}:${kind.colorEnd}:${kind.reversed}:${kind.showStability}`);
   }
   if (s.lissajous.on) parts.push(`lissajous:${s.lissajous.colorStart}`);
@@ -158,8 +191,9 @@ function colorSignature(s: OrbitGuideSettings, style: RenderStyle): string {
 // スライダーを掴んでいる間じゅう全線を焼き直すことがない。
 function geometrySignature(settings: OrbitGuideSettings): string {
   const parts: string[] = [];
-  for (const [id, kind] of Object.entries(settings.kinds)) {
-    if (!kind.on) continue;
+  for (const id of activeFamilyIds(settings)) {
+    const kind = effectiveKind(settings, id);
+    if (!kind?.on) continue;
     parts.push(`${id}:${kind.count}:${kind.rangeMin}:${kind.rangeMax}`);
   }
   const l = settings.lissajous;
@@ -181,10 +215,10 @@ function geometrySignature(settings: OrbitGuideSettings): string {
 // 本数・族範囲・系選択の直積が変わったとき(rebuildLines を要するとき)だけ変わる識別子。
 // 色・透明度・進行方向・安定度・振幅など、点列や本数を変えない設定は含めない。
 function structuralKey(settings: OrbitGuideSettings): string {
-  const kindsKey = Object.keys(settings.kinds).sort()
+  const kindsKey = [...activeFamilyIds(settings)].sort()
     .map((id) => {
-      const k = settings.kinds[id]!;
-      return `${id}:${k.on}:${k.on ? k.count : 0}`;
+      const k = effectiveKind(settings, id);
+      return `${id}:${k?.on ?? false}:${k?.on ? k.count : 0}`;
     })
     .join(',');
   const systemsKey = activeSystems(settings).join('+');
@@ -336,7 +370,7 @@ export class OrbitGuideLines {
       const u = settings.tundra;
       return tundraGuideLoop(t, this.ephemeris, u.perigeeAltitude, u.raan);
     }
-    const kind = settings.kinds[entry.familyId];
+    const kind = effectiveKind(settings, entry.familyId);
     if (!kind || entry.system === null) return null;
     const system = this.catalog.systemFor(entry.system);
     if (!system) return null;
@@ -351,10 +385,10 @@ export class OrbitGuideLines {
     if (this.currentStyle === 'schematic') {
       // 模式図では色分けに意味を持たせない。表示の有無だけは通常どおり設定に従う。
       const on = entry.familyId === 'lissajous' ? settings.lissajous.on
-        : referenceKind ? settings[referenceKind].on : settings.kinds[entry.familyId]?.on;
+        : referenceKind ? settings[referenceKind].on : effectiveKind(settings, entry.familyId)?.on;
       if (!on) return null;
       const kindDirection = entry.familyId === 'lissajous' ? settings.lissajous
-        : referenceKind ? settings[referenceKind] : settings.kinds[entry.familyId]!;
+        : referenceKind ? settings[referenceKind] : effectiveKind(settings, entry.familyId)!;
       return {
         opacity: 1, direction: kindDirection.direction, animate: kindDirection.animate,
         markerColor: SCHEMATIC_LINE, color: SCHEMATIC_LINE,
@@ -374,7 +408,7 @@ export class OrbitGuideLines {
         markerColor: r.colorStart, color: r.colorStart,
       };
     }
-    const kind = settings.kinds[entry.familyId];
+    const kind = effectiveKind(settings, entry.familyId);
     if (!kind) return null;
 
     let gradientT = entry.count <= 1 ? 0 : entry.index / (entry.count - 1);
@@ -405,8 +439,9 @@ export class OrbitGuideLines {
     }
     this.lines = [];
 
-    for (const [familyId, kind] of Object.entries(settings.kinds)) {
-      if (!kind.on) continue;
+    for (const familyId of activeFamilyIds(settings)) {
+      const kind = effectiveKind(settings, familyId);
+      if (!kind?.on) continue;
       const group = groupOf(familyId);
       if (group === null) continue; // 未知の族 id(壊れた保存データ)は無視
       const point = pointOf(familyId);
