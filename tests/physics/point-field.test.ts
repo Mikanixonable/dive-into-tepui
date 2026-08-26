@@ -4,11 +4,16 @@
 import assert from 'node:assert/strict';
 import { test } from './harness';
 import {
-  PointField, allPoints, generatePointField, jupiterMeanLongitude, pointPositionAt,
+  PointElements, PointField, generatePointField, jupiterMeanLongitude, pointPositionAt,
 } from '../../src/game/celestial/point-field';
 import { AU } from '../../src/physics/planet-orbit';
 
 const DEG = Math.PI / 180;
+
+// 群の区別を捨てて全点を1列に並べる。同じ種から同じ点群が出ることを見るための形。
+function allPoints(field: PointField): readonly PointElements[] {
+  return field.flatMap((group) => group.points);
+}
 
 // 角を [-π, π] へ畳む。
 function wrapPi(x: number): number {
