@@ -7,7 +7,7 @@ import { createEarth } from '../../src/render/earth';
 import { R_EARTH } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
-import { buildPlayerShip } from '../../src/render/ships';
+import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import { attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource } from '../../src/render/thermal-emissive';
@@ -521,6 +521,9 @@ const BLACKBODY_GRADIENT_DEVIATION = 550;
 const BLACKBODY_SHIP_TEMPERATURE = 1400;
 // 1 本の InstancedMesh へ積む枝の温度 [K]。
 const BLACKBODY_INSTANCE_TEMPERATURES = [1200, 1300, 1400, 1500, 1600, 1700];
+// 96 発を撃ち切って排出された直後の砲身。平均温度 [K] と、薬室側が平均より高い温度差 [K]。
+const BLACKBODY_BARREL_TEMPERATURE = 887;
+const BLACKBODY_BARREL_DEVIATION = 619;
 
 // 赤熱を読むための、暗くつや消しの試験体マテリアル。反射で自照が埋もれないアルベドに取る。
 function blackbodyMaterial(shaped: boolean, source: ThermalSource = 'object'): THREE.MeshStandardNodeMaterial {
@@ -587,6 +590,12 @@ function blackbody(): LabCase {
   markLitOpaque(bar);
   objects.push(bar);
   objects.push(blackbodyInstancedRow(new THREE.Vector3(-14, -8, -BLACKBODY_DEPTH), 3));
+  // 排出直後の砲身。**赤熱が薬室から砲口へ向かって連続して落ちる**ことを見る。
+  const barrel = buildBarrelMesh();
+  barrel.position.set(0, 6, -20);
+  barrel.rotation.set(0, Math.PI / 2, 0.06);
+  syncThermalState(barrel, BLACKBODY_BARREL_TEMPERATURE, BLACKBODY_BARREL_DEVIATION, HULL_EMISS);
+  objects.push(barrel);
   // 艦 1 隻を同じ絵へ。**モデルから読んだマテリアルにも温度が届く**ことを見る。
   const ship = shipAt(new THREE.Vector3(14, -8, -30), SHIP_ROTATION_PORT);
   syncThermalState(ship, BLACKBODY_SHIP_TEMPERATURE, 0, HULL_EMISS);
