@@ -1,11 +1,17 @@
-// 焼き込みカタログの族 id(`lyapunov-L1` `halo-L2-N` `resonant-12` など)を、画面に出す群・
-// 表示名・並び順へ写す。名前は DEVELOP/SPEC/MAP.md 5.2 の表が正本で、日本語訳に英語を添える。
-// 族の集合そのものは推測せず、呼び出し側から渡された実在の id だけを解釈する。
+// 焼き込みカタログの族 id を、画面に出す群・表示名・並び順へ写す。名前は DEVELOP/SPEC/MAP.md
+// 5.2 の表が正本で、日本語訳に英語を添える。族の集合そのものは推測せず、呼び出し側から渡された
+// 実在の id だけを解釈する。
+//
+// 蝶形・トンボ形・共鳴・DRO は族 id ごとに独立した KindDef のまま(buildKindRow が1行ずつ作る)。
+// それ以外(リヤプノフ・垂直・軸方向・ハロー・短周期・長周期・DPO・LPO)は、点/南北/東西/区間の
+// 軸を持つ小題としてまとめた CombinedKindDef になる(buildCombinedKindRow が軸ボタン+共有設定
+// パネルを1つだけ作る)。
 import { guideKindDefaultColors } from '../../const';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import { GUIDE_GROUPS, type GuideGroupId } from '../../celestial/orbit-guide-settings';
-
-// ---- 族 id → 画面表示の対応 -------------------------------------------------------------
+import {
+  parseGuideKindId, type CombinedKindAxes, type ParsedGuideKindId,
+} from '../../celestial/orbit-guide-kind-ids';
 
 // 4.1 の表の日本語訳+英語併記。族の base 名(id の先頭要素)をキーにする。
 const BASE_LABELS: Readonly<Record<string, string>> = {
@@ -22,16 +28,14 @@ const BASE_LABELS: Readonly<Record<string, string>> = {
   lpo: '低高度順行軌道(LPO)',
 };
 
-// 区間つき族 id の区切り。正本は tools/orbit-family.mjs の SEGMENT_MARK(`'#'`)。
-// tools/ は TypeScript のビルド対象外のため import せず、ここに複製する。
-const SEGMENT_MARK = '#';
-
 const POINT_ORDER: Readonly<Record<string, number>> = { L1: 0, L2: 1, L3: 2, L4: 3, L5: 4 };
 const BRANCH_ORDER: Readonly<Record<string, number>> = { N: 0, S: 1 };
 const EW_ORDER: Readonly<Record<string, number>> = { E: 0, W: 1 };
-const BASE_ORDER_COLLINEAR: readonly string[] = ['lyapunov', 'vertical', 'halo', 'axial', 'butterfly', 'dragonfly'];
-const BASE_ORDER_TRIANGULAR: readonly string[] = ['short', 'longp', 'vertical', 'axial'];
-const BASE_ORDER_SECONDARY: readonly string[] = ['dro', 'dpo', 'lpo'];
+// 群内での小題・standalone種類の並び順。
+const COMBINED_BASE_ORDER: readonly string[] = [
+  'lyapunov', 'vertical', 'axial', 'halo', 'short', 'longp', 'dpo', 'lpo',
+];
+const STANDALONE_BASE_ORDER: readonly string[] = ['butterfly', 'dragonfly', 'dro', 'resonant'];
 const RESONANT_ORDER: readonly string[] = ['12', '21', '31', '23', '43', '34'];
 
 export interface KindDef {
@@ -39,96 +43,129 @@ export interface KindDef {
   readonly group: GuideGroupId;
   readonly label: string;
   readonly sortKey: number;
-  // 群内での並び順(0始まり)。guideKindDefaultColors の明度分けに使う。buildKindDefs が
-  // ソート後に埋める。
   index: number;
 }
 
-// 族 id を base/point/branch(または東西/比)へ分解し、群・表示名・並び順を決める。
-// short/longp は L4/L5、axial/vertical/halo/lyapunov/butterfly/dragonfly は点で群が変わる。
-function defineKind(id: string): KindDef | null {
-  // 区間番号を切り離してから、残りを base/point/branch へ分解する。区間の無い id は
-  // segmentLabel が空文字・segment が 0 のままになり、表示・sortKey とも従来どおりになる。
-  const markIndex = id.indexOf(SEGMENT_MARK);
-  const bodyId = markIndex < 0 ? id : id.slice(0, markIndex);
-  const segmentText = markIndex < 0 ? '' : id.slice(markIndex + SEGMENT_MARK.length);
-  let segment = 0;
-  let segmentLabel = '';
-  if (segmentText !== '') {
-    const parsed = Number(segmentText);
-    if (!Number.isInteger(parsed) || parsed < 1) return null; // 規約に合わない区間番号は無視する。
-    segment = parsed;
-    segmentLabel = ` 区間${parsed}`;
-  }
-
-  const parts = bodyId.split('-');
-  const base = parts[0] as string;
-
-  if (base === 'resonant') {
-    const ratio = parts[1] ?? '';
-    const order = RESONANT_ORDER.indexOf(ratio);
-    return { id, group: 'resonant', label: `${ratio[0]}:${ratio[1]} 共鳴軌道${segmentLabel}`, sortKey: (order < 0 ? 99 : order) * 10 + segment, index: 0 };
-  }
-
-  if (base === 'lpo') {
-    const ew = parts[1] ?? '';
-    const ewLabel = ew === 'E' ? '東' : ew === 'W' ? '西' : ew;
-    return {
-      id, group: 'secondary', label: `${BASE_LABELS['lpo']} ${ewLabel}${segmentLabel}`,
-      sortKey: BASE_ORDER_SECONDARY.indexOf('lpo') * 100 + (EW_ORDER[ew] ?? 9) * 10 + segment, index: 0,
-    };
-  }
-  if (base === 'dro' || base === 'dpo') {
-    return {
-      id, group: 'secondary', label: `${BASE_LABELS[base] as string}${segmentLabel}`,
-      sortKey: BASE_ORDER_SECONDARY.indexOf(base) * 100 + segment, index: 0,
-    };
-  }
-
-  const baseLabel = BASE_LABELS[base];
-  if (baseLabel === undefined) return null; // 未知の族 id は静かに無視する。
-  const point = parts[1] ?? '';
-  const branch = parts[2] ?? '';
-  const pointIndex = POINT_ORDER[point];
-  if (pointIndex === undefined) return null;
-  const isTriangularPoint = point === 'L4' || point === 'L5';
-  let group: GuideGroupId;
-  let baseOrder: number;
-  if (base === 'short' || base === 'longp') {
-    group = 'triangular';
-    baseOrder = BASE_ORDER_TRIANGULAR.indexOf(base);
-  } else if (isTriangularPoint) {
-    group = 'triangular';
-    baseOrder = BASE_ORDER_TRIANGULAR.indexOf(base);
-  } else {
-    group = 'collinear';
-    baseOrder = BASE_ORDER_COLLINEAR.indexOf(base);
-  }
-  const branchLabel = branch === 'N' ? ' 北' : branch === 'S' ? ' 南' : '';
-  const branchOrder = branch === '' ? 0 : (BRANCH_ORDER[branch] ?? 9);
-  return {
-    id, group, label: `${baseLabel} ${point}${branchLabel}${segmentLabel}`,
-    sortKey: baseOrder * 1000 + pointIndex * 100 + branchOrder * 10 + segment, index: 0,
-  };
+export interface CombinedKindMember {
+  readonly id: string;
+  readonly point?: string;
+  readonly branch?: 'N' | 'S';
+  readonly ew?: 'E' | 'W';
+  readonly segment: number;
 }
 
-// availableFamilies(系ごとの族 id 一覧)の和から、種類の行一覧を群ごとに組む。並び順が
-// 決まった時点で index を振り、既定色(guideKindDefaultColors)の明度分けに使えるようにする。
-export function buildKindDefs(availableFamilies: ReadonlyMap<CatalogSystemId, readonly string[]>): ReadonlyMap<GuideGroupId, readonly KindDef[]> {
+export interface CombinedKindDef {
+  readonly key: string; // `${group}-${base}`。settings.combinedKinds のキーと一致する。
+  readonly group: GuideGroupId;
+  readonly label: string;
+  readonly axes: CombinedKindAxes;
+  readonly members: readonly CombinedKindMember[]; // 実在するメンバーのみ、軸の順で整列済み
+  readonly pointValues: readonly string[];
+  readonly branchValues: readonly ('N' | 'S')[];
+  readonly ewValues: readonly ('E' | 'W')[];
+  readonly segmentValues: readonly number[];
+  index: number;
+}
+
+function standaloneLabel(p: ParsedGuideKindId): string {
+  const segmentLabel = p.segment > 0 ? ` 区間${p.segment}` : '';
+  if (p.base === 'resonant') {
+    const ratio = p.id.slice('resonant-'.length);
+    return `${ratio[0]}:${ratio[1]}${segmentLabel}`;
+  }
+  if (p.base === 'dro') return `${BASE_LABELS['dro']}${segmentLabel}`;
+  const branchLabel = p.branch === 'N' ? ' 北' : p.branch === 'S' ? ' 南' : '';
+  return `${BASE_LABELS[p.base]} ${p.point ?? ''}${branchLabel}${segmentLabel}`;
+}
+
+function standaloneSortKey(p: ParsedGuideKindId): number {
+  if (p.base === 'resonant') {
+    const ratio = p.id.slice('resonant-'.length);
+    const order = RESONANT_ORDER.indexOf(ratio);
+    return (order < 0 ? 99 : order) * 10 + p.segment;
+  }
+  const baseOrder = STANDALONE_BASE_ORDER.indexOf(p.base);
+  const pointIndex = p.point ? (POINT_ORDER[p.point] ?? 9) : 0;
+  const branchOrder = p.branch ? (BRANCH_ORDER[p.branch] ?? 9) : 0;
+  return baseOrder * 1000 + pointIndex * 100 + branchOrder * 10 + p.segment;
+}
+
+function memberSortKey(m: CombinedKindMember): number {
+  const pointIndex = m.point ? (POINT_ORDER[m.point] ?? 9) : 0;
+  const branchOrder = m.branch ? (BRANCH_ORDER[m.branch] ?? 9) : 0;
+  const ewOrder = m.ew ? (EW_ORDER[m.ew] ?? 9) : 0;
+  return pointIndex * 1000 + branchOrder * 100 + ewOrder * 10 + m.segment;
+}
+
+function uniqueSorted<T>(values: readonly T[], order: Readonly<Record<string, number>>): readonly T[] {
+  return [...new Set(values)].sort((a, b) => (order[a as string] ?? 9) - (order[b as string] ?? 9));
+}
+
+// availableFamilies(系ごとの族 id 一覧)の和から、種類の行一覧を組む。並び順が決まった時点で
+// index を振り、既定色(guideKindDefaultColors)の明度分けに使えるようにする。
+export function buildKindDefs(availableFamilies: ReadonlyMap<CatalogSystemId, readonly string[]>): {
+  readonly kinds: ReadonlyMap<GuideGroupId, readonly KindDef[]>;
+  readonly combined: ReadonlyMap<GuideGroupId, readonly CombinedKindDef[]>;
+} {
   const ids = new Set<string>();
   for (const list of availableFamilies.values()) for (const id of list) ids.add(id);
-  const byGroup = new Map<GuideGroupId, KindDef[]>();
-  for (const group of GUIDE_GROUPS) byGroup.set(group, []);
-  for (const id of ids) {
-    const def = defineKind(id);
-    if (def === null) continue;
-    (byGroup.get(def.group) as KindDef[]).push(def);
+
+  const kindsByGroup = new Map<GuideGroupId, KindDef[]>();
+  for (const group of GUIDE_GROUPS) kindsByGroup.set(group, []);
+
+  interface CombinedAccum {
+    readonly group: GuideGroupId;
+    readonly base: string;
+    readonly axes: CombinedKindAxes;
+    readonly members: CombinedKindMember[];
   }
-  for (const list of byGroup.values()) {
+  const combinedByKey = new Map<string, CombinedAccum>();
+
+  for (const id of ids) {
+    const parsed = parseGuideKindId(id);
+    if (parsed === null) continue;
+    if (parsed.combinedKey === null) {
+      (kindsByGroup.get(parsed.group) as KindDef[]).push({
+        id, group: parsed.group, label: standaloneLabel(parsed), sortKey: standaloneSortKey(parsed), index: 0,
+      });
+      continue;
+    }
+    let accum = combinedByKey.get(parsed.combinedKey);
+    if (accum === undefined) {
+      accum = { group: parsed.group, base: parsed.base, axes: parsed.axes as CombinedKindAxes, members: [] };
+      combinedByKey.set(parsed.combinedKey, accum);
+    }
+    accum.members.push({ id, point: parsed.point, branch: parsed.branch, ew: parsed.ew, segment: parsed.segment });
+  }
+
+  for (const list of kindsByGroup.values()) {
     list.sort((a, b) => a.sortKey - b.sortKey);
     list.forEach((def, i) => { def.index = i; });
   }
-  return byGroup;
+
+  const combinedByGroup = new Map<GuideGroupId, CombinedKindDef[]>();
+  for (const group of GUIDE_GROUPS) combinedByGroup.set(group, []);
+  for (const [key, accum] of combinedByKey) {
+    accum.members.sort((a, b) => memberSortKey(a) - memberSortKey(b));
+    (combinedByGroup.get(accum.group) as CombinedKindDef[]).push({
+      key, group: accum.group, label: BASE_LABELS[accum.base] as string, axes: accum.axes, members: accum.members,
+      pointValues: uniqueSorted(accum.members.map((m) => m.point).filter((v): v is string => v !== undefined), POINT_ORDER),
+      branchValues: uniqueSorted(accum.members.map((m) => m.branch).filter((v): v is 'N' | 'S' => v !== undefined), BRANCH_ORDER),
+      ewValues: uniqueSorted(accum.members.map((m) => m.ew).filter((v): v is 'E' | 'W' => v !== undefined), EW_ORDER),
+      segmentValues: [...new Set(accum.members.map((m) => m.segment))].sort((a, b) => a - b),
+      index: 0,
+    });
+  }
+  for (const list of combinedByGroup.values()) {
+    list.sort((a, b) => COMBINED_BASE_ORDER.indexOf(baseOfKey(a.key)) - COMBINED_BASE_ORDER.indexOf(baseOfKey(b.key)));
+    list.forEach((def, i) => { def.index = i; });
+  }
+
+  return { kinds: kindsByGroup, combined: combinedByGroup };
+}
+
+function baseOfKey(key: string): string {
+  return key.slice(key.indexOf('-') + 1);
 }
 
 // 種類の既定色(始・終)。群の色相・群内の明度分けは const.ts の guideKindDefaultColors

@@ -4,6 +4,7 @@ import { Slider, ValueInput } from '../widgets';
 import {
   MAX_LINES_PER_KIND, MAX_ZERO_VELOCITY_CURVES, type DirectionMarkerMode,
 } from '../../celestial/orbit-guide-settings';
+import { SUN_SYNC_REVS_PER_DAY_RANGE } from '../../../physics/earth-reference-orbits';
 
 // 進行方向マーカーの出し方(SegmentedControl の選択肢)。族・地球専用参照軌道の双方が使う。
 export const DIRECTION_ITEMS: readonly (readonly [DirectionMarkerMode, string])[] = [
@@ -167,7 +168,7 @@ export const REPEAT_DAYS_MAPPING: ValueMapping = {
 };
 
 // 回帰日数の間に周回する回数(整数)。高度200km前後で1日16周弱になるので、30日ぶんまで
-// 動かせるよう上限を広めに取る。太陽同期条件を満たさない組み合わせはガイド線が消えるだけで
+// 動かせるよう上限を広めに取る。太陽同期条件を満たさない組み合わせはスライダーの色で示すだけで、
 // 範囲自体は曲げない(計画書 8 の #9 と同じ方針)。
 export const REVS_PER_REPEAT_MAPPING: ValueMapping = {
   sliderMin: 1, sliderMax: 480, sliderStep: 1,
@@ -175,6 +176,26 @@ export const REVS_PER_REPEAT_MAPPING: ValueMapping = {
   format: (v) => String(Math.round(v)), parse: (text) => Math.round(clamp(Number(text), 1, 480)),
   inputMin: 1, inputMax: 480, inputStep: 1,
 };
+
+function sliderRatio(mapping: ValueMapping, value: number): number {
+  return (mapping.toSlider(value) - mapping.sliderMin) / (mapping.sliderMax - mapping.sliderMin);
+}
+
+// 回帰日数・周回数スライダーのトラックへ、もう一方の現在値に対して太陽同期条件を満たす範囲を
+// 色分けして示す(可動範囲自体は変えない)。
+export function syncSunSyncValidRange(
+  repeatDaysField: ValueField, revsPerRepeatField: ValueField, repeatDays: number, revsPerRepeat: number,
+): void {
+  const { min, max } = SUN_SYNC_REVS_PER_DAY_RANGE;
+  repeatDaysField.slider.setValidRange(
+    sliderRatio(REPEAT_DAYS_MAPPING, revsPerRepeat / max),
+    sliderRatio(REPEAT_DAYS_MAPPING, revsPerRepeat / min),
+  );
+  revsPerRepeatField.slider.setValidRange(
+    sliderRatio(REVS_PER_REPEAT_MAPPING, repeatDays * min),
+    sliderRatio(REVS_PER_REPEAT_MAPPING, repeatDays * max),
+  );
+}
 
 // 近地点高度 [m]。モルニヤ・ツンドラ軌道の実用域(数百 km)を UI 上は km で見せる。
 export const PERIGEE_ALTITUDE_MAPPING: ValueMapping = {

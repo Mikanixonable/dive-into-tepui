@@ -16,7 +16,7 @@ import {
   buildColorField, buildValueField, hexColorString, syncValueField,
   type ValueField, type ValueMapping,
 } from './guide-value-field';
-import { buildKindDefs, defaultColorsFor, type KindDef } from './guide-kind-def';
+import { buildKindDefs, defaultColorsFor, type CombinedKindDef, type KindDef } from './guide-kind-def';
 import {
   buildCriticalInclinationRow, buildDawnDuskRow, buildSunSyncRow,
   syncCriticalInclinationRow, syncDawnDuskRow, syncSunSyncRow,
@@ -24,13 +24,16 @@ import {
 } from './reference-orbit-rows';
 import {
   DEFAULT_ORBIT_GUIDE_SETTINGS,
+  defaultCombinedKindSettings,
   defaultKindSettings,
   GUIDE_GROUPS,
+  type CombinedKindSettings,
   type CriticalInclinationSettings,
   type DawnDuskSettings,
   type DirectionMarkerMode,
   type GuideGroupId,
   type GuideKindSettings,
+  type GuideKindSharedSettings,
   type LissajousSettings,
   type OrbitGuideSettings,
   type SunSyncSettings,
@@ -41,11 +44,9 @@ const LINE_COUNT_WARNING_THRESHOLD = 300;
 
 // ---- 種類1行ぶんの構成 -------------------------------------------------------------------
 
-// 種類1行(見出しトグル+設定パネル)。設定パネルは on の間だけ .hidden を外す。
-interface KindRow {
-  readonly root: HTMLElement;
-  readonly heading: Button;
-  readonly configPanel: HTMLElement;
+// 本数・族範囲・色・進行方向・安定度の見せ方。種類1行(KindRow)と小題1行(CombinedKindRow)の
+// 双方が持つ共有設定パネルのフィールド一式。
+interface SharedKindFields {
   readonly rangeMaxRow: HTMLElement;
   readonly colorEndRow: HTMLElement;
   readonly reversedRow: HTMLElement;
@@ -59,6 +60,21 @@ interface KindRow {
   readonly direction: SegmentedControl<DirectionMarkerMode>;
   readonly animateSwitch: ToggleSwitch;
   readonly stabilitySwitch: ToggleSwitch;
+}
+
+// 種類1行(見出しトグル+設定パネル)。設定パネルは on の間だけ .hidden を外す。
+interface KindRow extends SharedKindFields {
+  readonly root: HTMLElement;
+  readonly heading: Button;
+  readonly configPanel: HTMLElement;
+}
+
+// 小題1行(軸ボタン+共有設定パネル)。設定パネルは軸値の組み合わせが1つでも表示中の間だけ
+// .hidden を外す。
+interface CombinedKindRow extends SharedKindFields {
+  readonly root: HTMLElement;
+  readonly configPanel: HTMLElement;
+  readonly axisButtons: ReadonlyMap<string, Button>;
 }
 
 // 軌道ガイドタブの群タブ。GuideGroupId(データ分類)に「基本」を加えた UI 専用の型。
@@ -91,7 +107,9 @@ export class OrbitGuideTab {
 
   private current: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
   private readonly kindDefs: ReadonlyMap<GuideGroupId, readonly KindDef[]>;
+  private readonly combinedDefs: ReadonlyMap<GuideGroupId, readonly CombinedKindDef[]>;
   private readonly kindRows = new Map<string, KindRow>();
+  private readonly combinedRows = new Map<string, CombinedKindRow>();
   private readonly systemSwitches = new Map<CatalogSystemId, ToggleSwitch>();
   private readonly geostationaryButton: Button;
   private lissajousRow!: {
@@ -118,7 +136,9 @@ export class OrbitGuideTab {
   private readonly lineCountEl: HTMLElement;
 
   public constructor(availableFamilies: ReadonlyMap<CatalogSystemId, readonly string[]>) {
-    this.kindDefs = buildKindDefs(availableFamilies);
+    const defs = buildKindDefs(availableFamilies);
+    this.kindDefs = defs.kinds;
+    this.combinedDefs = defs.combined;
 
     this.element = document.createElement('div');
     this.element.className = 'orbit-guide-tab';
@@ -137,7 +157,7 @@ export class OrbitGuideTab {
     const basicBody = this.buildGroupTabBody('basic');
     const basicRow = document.createElement('div');
     basicRow.className = 'orbit-guide-kind-heading';
-    this.geostationaryButton = new Button('静止軌道', () => {
+    this.geostationaryButton = new Button('静止軌道(geostationary)', () => {
       const on = !this.current.geostationary;
       this.geostationaryButton.setOn(on);
       this.commit({ ...this.current, geostationary: on });
@@ -154,9 +174,11 @@ export class OrbitGuideTab {
     );
     groupTabBodies.set('basic', basicBody);
 
-    // 共線点/三角点/副天体周回/共鳴の4群。
+    // 共線点/三角点/副天体周回/共鳴の4群。小題(CombinedKindDef)を先に、族idごとに独立した
+    // 種類(蝶形・トンボ形・共鳴・DRO)をその後に並べる。
     for (const group of GUIDE_GROUPS) {
       const body = this.buildGroupTabBody(group);
+      for (const def of this.combinedDefs.get(group) ?? []) this.buildCombinedKindRow(body, def);
       for (const def of this.kindDefs.get(group) ?? []) this.buildKindRow(body, def);
       if (group === 'collinear') this.lissajousRow = this.buildLissajousRow(body);
       groupTabBodies.set(group, body);
@@ -210,6 +232,65 @@ export class OrbitGuideTab {
     this.commit({ ...this.current, systems: { ...this.current.systems, [system]: on } });
   }
 
+  // 本数・族範囲・色・進行方向・安定度の見せ方を並べた共有設定パネル(種類1行・小題1行の
+  // 双方が使う)。getCurrent は族範囲・反転ボタンが「今の値」を読むためのもの。
+  private buildSharedKindFields(
+    configPanel: HTMLElement, getCurrent: () => GuideKindSharedSettings,
+    onCommit: (patch: Partial<GuideKindSharedSettings>) => void, onResetColor: () => void,
+  ): SharedKindFields {
+    const countField = buildValueField('本数', COUNT_MAPPING, (v) => onCommit({ count: Math.round(v) }));
+    configPanel.appendChild(countField.row);
+    const rangeMinField = buildValueField('族の下限', RANGE_MAPPING, (v) => {
+      const rangeMax = getCurrent().rangeMax;
+      onCommit({ rangeMin: Math.min(v, rangeMax), rangeMax: Math.max(v, rangeMax) });
+    });
+    configPanel.appendChild(rangeMinField.row);
+    const rangeMaxField = buildValueField('族の上限', RANGE_MAPPING, (v) => {
+      const rangeMin = getCurrent().rangeMin;
+      onCommit({ rangeMin: Math.min(rangeMin, v), rangeMax: Math.max(rangeMin, v) });
+    });
+    configPanel.appendChild(rangeMaxField.row);
+
+    const colorStart = buildColorField('色(始)', 0, (v) => onCommit({ colorStart: v }));
+    configPanel.appendChild(colorStart.row);
+    const colorEnd = buildColorField('色(終)', 0, (v) => onCommit({ colorEnd: v }));
+    configPanel.appendChild(colorEnd.row);
+
+    const reversedButton = new Button('反転', () => {
+      const next = !getCurrent().reversed;
+      reversedButton.setOn(next);
+      onCommit({ reversed: next });
+    });
+    const reversedRow = document.createElement('div');
+    reversedRow.className = 'w-group orbit-guide-toggle-row';
+    reversedRow.appendChild(reversedButton.element);
+    configPanel.appendChild(reversedRow);
+
+    const opacityField = buildValueField('透明度', OPACITY_MAPPING, (v) => onCommit({ opacity: v }));
+    configPanel.appendChild(opacityField.row);
+
+    const direction = new SegmentedControl<DirectionMarkerMode>('進行方向', DIRECTION_ITEMS, (mode) => onCommit({ direction: mode }));
+    configPanel.appendChild(direction.element);
+
+    const animateSwitch = new ToggleSwitch('進行方向のアニメーション', (on) => onCommit({ animate: on }));
+    configPanel.appendChild(animateSwitch.element);
+
+    const stabilitySwitch = new ToggleSwitch('安定度を示す', (on) => onCommit({ showStability: on }));
+    configPanel.appendChild(stabilitySwitch.element);
+
+    const resetButton = new Button('色をリセット', onResetColor);
+    const resetRow = document.createElement('div');
+    resetRow.className = 'w-group orbit-guide-toggle-row';
+    resetRow.appendChild(resetButton.element);
+    configPanel.appendChild(resetRow);
+
+    return {
+      rangeMaxRow: rangeMaxField.row, colorEndRow: colorEnd.row, reversedRow, countField, rangeMinField, rangeMaxField,
+      colorStartInput: colorStart.input, colorEndInput: colorEnd.input, reversedButton, opacityField, direction,
+      animateSwitch, stabilitySwitch,
+    };
+  }
+
   // 種類1行(見出し+設定パネル)を組む。見出しの表示トグルが on のときだけ設定パネルを見せる。
   private buildKindRow(parent: HTMLElement, def: KindDef): void {
     const root = document.createElement('div');
@@ -217,6 +298,7 @@ export class OrbitGuideTab {
 
     const heading = new Button(def.label, () => this.toggleKind(def.id));
     heading.element.classList.add('orbit-guide-kind-heading-btn');
+    if (def.group === 'resonant') heading.element.classList.add('orbit-guide-kind-heading-btn-resonant');
     const headingRow = document.createElement('div');
     headingRow.className = 'orbit-guide-kind-heading';
     headingRow.appendChild(heading.element);
@@ -226,57 +308,18 @@ export class OrbitGuideTab {
     configPanel.className = 'orbit-guide-kind-config hidden';
     root.appendChild(configPanel);
 
-    const countField = buildValueField('本数', COUNT_MAPPING, (v) => this.commitKind(def.id, { count: Math.round(v) }));
-    configPanel.appendChild(countField.row);
-    const rangeMinField = buildValueField('族の下限', RANGE_MAPPING, (v) => this.commitKindRange(def.id, v, this.current.kinds[def.id]?.rangeMax ?? 1));
-    configPanel.appendChild(rangeMinField.row);
-    const rangeMaxField = buildValueField('族の上限', RANGE_MAPPING, (v) => this.commitKindRange(def.id, this.current.kinds[def.id]?.rangeMin ?? 0, v));
-    configPanel.appendChild(rangeMaxField.row);
-
-    const colorStart = buildColorField('色(始)', 0, (v) => this.commitKind(def.id, { colorStart: v }));
-    configPanel.appendChild(colorStart.row);
-    const colorEnd = buildColorField('色(終)', 0, (v) => this.commitKind(def.id, { colorEnd: v }));
-    configPanel.appendChild(colorEnd.row);
-
-    const reversedButton = new Button('反転', () => {
-      const kind = this.current.kinds[def.id];
-      const next = !(kind?.reversed ?? false);
-      reversedButton.setOn(next);
-      this.commitKind(def.id, { reversed: next });
-    });
-    const reversedRow = document.createElement('div');
-    reversedRow.className = 'w-group orbit-guide-toggle-row';
-    reversedRow.appendChild(reversedButton.element);
-    configPanel.appendChild(reversedRow);
-
-    const opacityField = buildValueField('透明度', OPACITY_MAPPING, (v) => this.commitKind(def.id, { opacity: v }));
-    configPanel.appendChild(opacityField.row);
-
-    const direction = new SegmentedControl<DirectionMarkerMode>('進行方向', DIRECTION_ITEMS, (mode) => this.commitKind(def.id, { direction: mode }));
-    configPanel.appendChild(direction.element);
-
-    const animateSwitch = new ToggleSwitch('進行方向のアニメーション', (on) => this.commitKind(def.id, { animate: on }));
-    configPanel.appendChild(animateSwitch.element);
-
-    const stabilitySwitch = new ToggleSwitch('安定度を示す', (on) => this.commitKind(def.id, { showStability: on }));
-    configPanel.appendChild(stabilitySwitch.element);
-
-    const resetButton = new Button('色をリセット', () => {
-      const count = this.kindDefs.get(def.group)?.length ?? 1;
-      const colors = defaultColorsFor(def.group, def.index, count);
-      this.commitKind(def.id, { colorStart: colors.start, colorEnd: colors.end });
-    });
-    const resetRow = document.createElement('div');
-    resetRow.className = 'w-group orbit-guide-toggle-row';
-    resetRow.appendChild(resetButton.element);
-    configPanel.appendChild(resetRow);
+    const shared = this.buildSharedKindFields(
+      configPanel, () => this.current.kinds[def.id] ?? this.defaultKindFor(def.id),
+      (patch) => this.commitKind(def.id, patch),
+      () => {
+        const count = this.kindDefs.get(def.group)?.length ?? 1;
+        const colors = defaultColorsFor(def.group, def.index, count);
+        this.commitKind(def.id, { colorStart: colors.start, colorEnd: colors.end });
+      },
+    );
 
     parent.appendChild(root);
-    this.kindRows.set(def.id, {
-      root, heading, configPanel, rangeMaxRow: rangeMaxField.row, colorEndRow: colorEnd.row, reversedRow,
-      countField, rangeMinField, rangeMaxField, colorStartInput: colorStart.input, colorEndInput: colorEnd.input,
-      reversedButton, opacityField, direction, animateSwitch, stabilitySwitch,
-    });
+    this.kindRows.set(def.id, { root, heading, configPanel, ...shared });
   }
 
   private toggleKind(id: string): void {
@@ -300,14 +343,92 @@ export class OrbitGuideTab {
     this.commit({ ...this.current, kinds: { ...this.current.kinds, [id]: { ...base, ...patch } } });
   }
 
-  private commitKindRange(id: string, min: number, max: number): void {
-    const rangeMin = Math.min(min, max);
-    const rangeMax = Math.max(min, max);
-    this.commitKind(id, { rangeMin, rangeMax });
-    const row = this.kindRows.get(id);
-    if (row === undefined) return;
-    syncValueField(row.rangeMinField, RANGE_MAPPING, rangeMin);
-    syncValueField(row.rangeMaxField, RANGE_MAPPING, rangeMax);
+  // 小題1行(軸ボタン+共有設定パネル)を組む。軸ボタンは表示ON/OFFの複数選択トグルで、押した
+  // 軸値すべての積を満たす族だけが表示される。押されている組み合わせが1つも無い間は共有設定
+  // パネルを隠す(種類1行が on の間だけ設定を見せるのと同じ考え方)。
+  private buildCombinedKindRow(parent: HTMLElement, def: CombinedKindDef): void {
+    const root = document.createElement('div');
+    root.className = 'orbit-guide-kind-row';
+
+    const heading = document.createElement('div');
+    heading.className = 'orbit-guide-kind-heading orbit-guide-combined-heading';
+    heading.textContent = def.label;
+    root.appendChild(heading);
+
+    // value は settings.combinedKinds[key].axisValues のキー(orbit-guide-lines.ts の
+    // parseGuideKindId が返す point/branch/ew/区間の生値と一致させる)。displayLabel はボタンの
+    // 表示文字列だけに使い、判定には使わない。
+    const axisButtons = new Map<string, Button>();
+    const buildAxisRow = (label: string, entries: readonly (readonly [string, string])[]): void => {
+      if (entries.length === 0) return;
+      const row = document.createElement('div');
+      row.className = 'w-group orbit-guide-toggle-row';
+      const rowLabel = document.createElement('span');
+      rowLabel.className = 'w-group-title';
+      rowLabel.textContent = label;
+      row.appendChild(rowLabel);
+      for (const [value, displayLabel] of entries) {
+        const btn = new Button(displayLabel, () => this.commitCombinedAxis(def.key, value, !this.isAxisValueOn(def.key, value)));
+        row.appendChild(btn.element);
+        axisButtons.set(value, btn);
+      }
+      root.appendChild(row);
+    };
+    buildAxisRow('点', def.pointValues.map((v) => [v, v] as const));
+    buildAxisRow('南北', def.branchValues.map((v) => [v, v === 'N' ? '北' : '南'] as const));
+    buildAxisRow('東西', def.ewValues.map((v) => [v, v === 'E' ? '東' : '西'] as const));
+    buildAxisRow('区間', def.segmentValues.map((v) => [String(v), v === 0 ? '基本' : `区間${v}`] as const));
+
+    const configPanel = document.createElement('div');
+    configPanel.className = 'orbit-guide-kind-config hidden';
+    root.appendChild(configPanel);
+
+    const shared = this.buildSharedKindFields(
+      configPanel, () => this.current.combinedKinds[def.key] ?? this.defaultCombinedFor(def),
+      (patch) => this.commitCombined(def.key, patch),
+      () => {
+        const count = this.combinedDefs.get(def.group)?.length ?? 1;
+        const colors = defaultColorsFor(def.group, def.index, count);
+        this.commitCombined(def.key, { colorStart: colors.start, colorEnd: colors.end });
+      },
+    );
+
+    parent.appendChild(root);
+    this.combinedRows.set(def.key, { root, configPanel, axisButtons, ...shared });
+  }
+
+  // 軸値表示ラベル('北'/'南'/'区間1'/'基本' 等)と axisValues のキーは一致させている
+  // (buildAxisRow が渡す value がそのままキーになる)。
+  private isAxisValueOn(key: string, axisValue: string): boolean {
+    return this.current.combinedKinds[key]?.axisValues[axisValue] ?? false;
+  }
+
+  private defaultCombinedFor(def: CombinedKindDef | null): CombinedKindSettings {
+    if (def === null) return defaultCombinedKindSettings(0x808080, 0xc0c0c0);
+    const count = this.combinedDefs.get(def.group)?.length ?? 1;
+    const colors = defaultColorsFor(def.group, def.index, count);
+    return defaultCombinedKindSettings(colors.start, colors.end);
+  }
+
+  private findCombinedDef(key: string): CombinedKindDef | null {
+    for (const defs of this.combinedDefs.values()) {
+      const def = defs.find((d) => d.key === key);
+      if (def !== undefined) return def;
+    }
+    return null;
+  }
+
+  private commitCombinedAxis(key: string, axisValue: string, on: boolean): void {
+    const base = this.current.combinedKinds[key] ?? this.defaultCombinedFor(this.findCombinedDef(key));
+    this.commit({
+      ...this.current,
+      combinedKinds: { ...this.current.combinedKinds, [key]: { ...base, axisValues: { ...base.axisValues, [axisValue]: on } } },
+    });
+  }
+
+  private commitCombined(key: string, patch: Partial<GuideKindSharedSettings>): void {
+    const base = this.current.combinedKinds[key] ?? this.defaultCombinedFor(this.findCombinedDef(key));
+    this.commit({ ...this.current, combinedKinds: { ...this.current.combinedKinds, [key]: { ...base, ...patch } } });
   }
 
   // リサジュー軌道の行(族を持たないので専用の設定項目を並べる)。
@@ -415,6 +536,30 @@ export class OrbitGuideTab {
       row.stabilitySwitch.setOn(kind.showStability);
       // 本数が1のときは族範囲の上限・色(終)・反転が意味を持たないので隠す。
       const single = kind.count <= 1;
+      row.rangeMaxRow.classList.toggle('hidden', single);
+      row.colorEndRow.classList.toggle('hidden', single);
+      row.reversedRow.classList.toggle('hidden', single);
+    }
+    for (const [key, row] of this.combinedRows) {
+      const combined = this.current.combinedKinds[key] ?? this.defaultCombinedFor(this.findCombinedDef(key));
+      let anyOn = false;
+      for (const [value, btn] of row.axisButtons) {
+        const on = combined.axisValues[value] ?? false;
+        btn.setOn(on);
+        anyOn ||= on;
+      }
+      row.configPanel.classList.toggle('hidden', !anyOn);
+      syncValueField(row.countField, COUNT_MAPPING, combined.count);
+      syncValueField(row.rangeMinField, RANGE_MAPPING, combined.rangeMin);
+      syncValueField(row.rangeMaxField, RANGE_MAPPING, combined.rangeMax);
+      row.colorStartInput.setValue(hexColorString(combined.colorStart));
+      row.colorEndInput.setValue(hexColorString(combined.colorEnd));
+      row.reversedButton.setOn(combined.reversed);
+      syncValueField(row.opacityField, OPACITY_MAPPING, combined.opacity);
+      row.direction.setSelected(combined.direction);
+      row.animateSwitch.setOn(combined.animate);
+      row.stabilitySwitch.setOn(combined.showStability);
+      const single = combined.count <= 1;
       row.rangeMaxRow.classList.toggle('hidden', single);
       row.colorEndRow.classList.toggle('hidden', single);
       row.reversedRow.classList.toggle('hidden', single);
