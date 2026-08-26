@@ -21,12 +21,8 @@ import {
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import { DirectionMarkers } from './direction-markers';
 
-// 族の折れ線1本ぶんの頂点予算。焼き込みは全族96点(orbit-catalog.ts)で統一されているので、
-// 適応分割による追加ぶんを見込んでも十分な余裕を持たせる。
-const CATALOG_LINE_VERTEX_BUDGET = 256;
-// リサジューは1周あたりこれだけの点を打つ。周回数を増やすほど総点数も増える。
-const LISSAJOUS_POINTS_PER_CYCLE = 64;
-// 折れ線の頂点予算。適応分割のぶんも見込んで、最大周回数ぶんの点を確保しておく。
+// リサジューの頂点数の打ち切り。周回数ぶんだけ経路が伸びるので、1周ぶんの曲線と違って
+// 適応分割は収束しない。最大周回数(30)でも1周あたり数十頂点は残る水準を採る。
 const LISSAJOUS_VERTEX_BUDGET = 2048;
 // マーカーの InstancedPool 容量。指定本数がこれを超える組み合わせでは、画面に出す線自体は
 // 指定どおり描くが(8の#9)マーカーは古いものから溢れて描かれなくなる。
@@ -74,6 +70,33 @@ interface GuideLineEntry {
   lastLoop: GuideLoop | null;
 }
 
+// ガイド線の曲線を GuideCurve へ流す。頂点を相対化する基準点は曲線上の1点でよいので、
+// パラメータ 0 の位置を採る。解析曲線の初期区間は「1区間が半周を超えない」下限で、
+// 周回数から決まる(細かさは Curve が決める)。
+function applyLoop(curve: GuideCurve, loop: GuideLoop): void {
+  const shape = loop.shape;
+  // 解析曲線は、基準点を差し引くぶんだけ包んで渡す。
+  if (shape.kind === 'analytic') {
+    const origin = shape.positionAt(0);
+    curve.setAnalytic(
+      origin,
+      (t, out) => {
+        const p = shape.positionAt(t);
+        out.set(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+      },
+      Math.ceil(loop.revolutions * 2),
+    );
+    return;
+  }
+  // 節点列は位置だけを基準点相対にする(接線は差分なので平行移動を受けない)。
+  const origin = shape.positions[0]!;
+  const positions: number[] = [];
+  const tangents: number[] = [];
+  for (const p of shape.positions) positions.push(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+  for (const m of shape.tangents) tangents.push(m.x, m.y, m.z);
+  curve.setHermite(origin, { ts: shape.us, positions, tangents });
+}
+
 // 族 id からその種類が属する群を判定する。「軸方向軌道」「垂直軌道」は共線点(L1-L3)と
 // 三角点(L4/L5)の双方にあるので、末尾のラグランジュ点で見分ける。
 function groupOf(familyId: string): GuideGroupId | null {
@@ -110,7 +133,10 @@ interface LineVisualStyle {
   readonly direction: GuideKindSettings['direction'];
   readonly animate: boolean;
   readonly markerColor: number;
-  readonly colorAt: CurveColorSampler;
+  // 線のマテリアル色。頂点カラーはこれに乗算されるので、colorAt を持つ線は白にする。
+  readonly color: number;
+  // 線の中で色が変わる線だけが持つ。単色の線は color だけで塗る。
+  readonly colorAt?: CurveColorSampler;
 }
 
 // 色に効く設定だけを並べた識別子。これが変われば頂点カラーを焼き直す。
@@ -224,7 +250,8 @@ export class OrbitGuideLines {
       for (const entry of this.lines) {
         const loop = this.computeLoop(entry, displayTime, settings);
         entry.lastLoop = loop;
-        entry.curve.setPoints(loop?.points ?? null);
+        if (loop) applyLoop(entry.curve, loop);
+        else entry.curve.clear();
       }
       this.geometryKey = geometryKey;
       this.lastComputedTime = displayTime;
@@ -247,32 +274,33 @@ export class OrbitGuideLines {
         entry.curve.hide();
         continue;
       }
+      entry.curve.setStyle(style.color, style.opacity);
       entry.curve.sync(fo, camera, style.colorAt);
-      entry.curve.setOpacity(style.opacity);
       if (entry.lastLoop) {
-        this.markers.addLoop(entry.lastLoop, style.direction, style.animate, style.markerColor, fo);
+        this.markers.addLoop(
+          entry.curve, entry.lastLoop.revolutions, style.direction, style.animate, style.markerColor, fo,
+        );
       }
     }
     this.markers.endFrame();
   }
 
-  // 模式図では線の色分けに意味を持たせず、不透明な一色へ統一する。realistic へ戻したときは
-  // 次のフレームで通常の色が焼き直されるよう、色の署名を捨てる。
+  // 模式図では線の色分けに意味を持たせず、不透明な一色へ統一する。色そのものは styleFor が
+  // 毎フレーム組むので、ここは焼いてある頂点カラーを捨てさせるだけでよい。
   private applyStyle(style: RenderStyle): void {
     this.currentStyle = style;
     if (!this.styleGate.changed(style)) return;
     this.styleKey = '';
-    for (const entry of this.lines) {
-      if (style === 'schematic') entry.curve.setStyle(SCHEMATIC_LINE, 1);
-      else entry.curve.invalidateColors();
-    }
+    for (const entry of this.lines) entry.curve.invalidateColors();
   }
 
   // 表示中のガイド線を、当たり判定向けの識別情報付きで返す(マップ視点外・0本の間は空)。
-  public visibleLines(): readonly VisibleGuideLine[] {
+  // sampleCount は1本を何分割して点列に落とすか — クリック位置を拾う細かさを決めるだけで、
+  // 描かれる線の細かさとは無関係。
+  public visibleLines(sampleCount: number): readonly VisibleGuideLine[] {
     const visible: VisibleGuideLine[] = [];
     for (const entry of this.lines) {
-      const points = entry.curve.worldPoints();
+      const points = entry.curve.samplePoints(sampleCount);
       if (points.length < 2) continue;
       visible.push({
         key: `${entry.familyId}:${entry.system}:${entry.point ?? '-'}:${entry.index}`,
@@ -290,7 +318,6 @@ export class OrbitGuideLines {
       return lissajousLoop(
         t, this.ephemeris, entry.system as CatalogSystemId, entry.point as GuidePoint,
         l.inPlane, l.outOfPlane, l.inPlanePhase, l.outOfPlanePhase, l.cycles,
-      Math.min(LISSAJOUS_VERTEX_BUDGET, Math.max(64, Math.round(l.cycles * LISSAJOUS_POINTS_PER_CYCLE))),
       );
     }
     if (entry.familyId === 'sunSync') {
@@ -328,28 +355,25 @@ export class OrbitGuideLines {
       const on = entry.familyId === 'lissajous' ? settings.lissajous.on
         : referenceKind ? settings[referenceKind].on : settings.kinds[entry.familyId]?.on;
       if (!on) return null;
-      const schematic = new THREE.Color(SCHEMATIC_LINE);
       const kindDirection = entry.familyId === 'lissajous' ? settings.lissajous
         : referenceKind ? settings[referenceKind] : settings.kinds[entry.familyId]!;
       return {
         opacity: 1, direction: kindDirection.direction, animate: kindDirection.animate,
-        markerColor: SCHEMATIC_LINE, colorAt: (_t, out) => out.copy(schematic),
+        markerColor: SCHEMATIC_LINE, color: SCHEMATIC_LINE,
       };
     }
     if (entry.familyId === 'lissajous') {
       const l = settings.lissajous;
-      const color = new THREE.Color(l.colorStart);
       return {
-        opacity: l.opacity, direction: l.direction, animate: l.animate, markerColor: l.colorStart,
-        colorAt: (_t, out) => out.copy(color),
+        opacity: l.opacity, direction: l.direction, animate: l.animate,
+        markerColor: l.colorStart, color: l.colorStart,
       };
     }
     if (referenceKind) {
       const r = settings[referenceKind];
-      const color = new THREE.Color(r.colorStart);
       return {
-        opacity: r.opacity, direction: r.direction, animate: r.animate, markerColor: r.colorStart,
-        colorAt: (_t, out) => out.copy(color),
+        opacity: r.opacity, direction: r.direction, animate: r.animate,
+        markerColor: r.colorStart, color: r.colorStart,
       };
     }
     const kind = settings.kinds[entry.familyId];
@@ -367,6 +391,7 @@ export class OrbitGuideLines {
 
     return {
       opacity, direction: kind.direction, animate: kind.animate, markerColor: base.getHex(),
+      color: 0xffffff,
       // 族位置(gradientT)で線ごとの色を決めたうえで、線の中でも始点→終点でわずかに明度を
       // 振り、Curve の頂点カラー機構を実際に使ったグラデーションにする。
       colorAt: (curveT, out) => out.copy(base).offsetHSL(0, 0, (curveT - 0.5) * 0.08),
@@ -413,14 +438,14 @@ export class OrbitGuideLines {
 
   // 焼き込み族の1本ぶんを組んでシーンへ加える。
   private addCatalogLine(familyId: string, system: CatalogSystemId, point: string | null, index: number, count: number): void {
-    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET, true);
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference });
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId, system, point, index, count, lastLoop: null });
   }
 
   // リサジュー軌道の1本ぶんを組んでシーンへ加える。
   private addLissajousLine(system: CatalogSystemId, point: GuidePoint): void {
-    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, LISSAJOUS_VERTEX_BUDGET, false);
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, LISSAJOUS_VERTEX_BUDGET);
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId: 'lissajous', system, point, index: 0, count: 1, lastLoop: null });
   }
@@ -428,7 +453,7 @@ export class OrbitGuideLines {
   // 地球専用参照軌道(基本群、太陽同期準回帰・ドーンダスク・モルニヤ・ツンドラ)の1本を
   // 組んでシーンへ加える。系トグルの対象外なので system は null。
   private addReferenceOrbitLine(kind: ReferenceOrbitKind): void {
-    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, CATALOG_LINE_VERTEX_BUDGET, true);
+    const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference });
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId: kind, system: null, point: null, index: 0, count: 1, lastLoop: null });
   }

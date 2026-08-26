@@ -95,7 +95,18 @@ export const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める�
 export const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度になる動圧 [Pa]
 
 // --- 射撃による発熱 ---
-export const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりの投入熱量 [J]
+export const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
+// 1発あたりに砲身へ入る熱量 [J]。発射ガスの熱の大半は砲身の側が受け取る。
+export const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
+
+// --- 砲身。鋼の砲身1本ぶんで、外殻とは別に温度を持つ ---
+export const BARREL_MASS = 300; // [kg]
+// BARREL_MASS と掛けて砲身の熱容量 0.15 MJ/K。射撃発熱はこれを基準に決めてある。
+export const BARREL_SPECIFIC_HEAT = 500; // [J/(kg·K)]
+export const BARREL_BULK_DENSITY = 7850; // [kg/m^3]
+// 砲身の表面積 14 m² を BARREL_MASS で割った値。
+export const BARREL_RADIATING_AREA_PER_MASS = 0.047; // [m^2/kg]
+export const BARREL_MAX_TEMP = 1700; // 鋼の融点 [K]
 
 // --- ラジエーター(上下2枚、個別展開) ---
 export const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)

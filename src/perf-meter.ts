@@ -1,7 +1,10 @@
-// 負荷確認ウィンドウ: フレーム時間の計測・集計と、その表示。
-// 窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
+// 負荷確認ウィンドウ: フレーム時間の計測・集計と、その表示、そして描画パスの中間結果を映す
+// デバッグ表示の選択。窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
 import { PropertyRow, PropertyWindow } from './game/hud/windows/property-window';
+import { SegmentedControl } from './game/hud/widgets';
+import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from './render/pipeline/debug-target';
+import type { RenderStyleSetting } from './render/render-style';
 import { fmtDuration } from './game/hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from './frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from './gpu-timings';
@@ -97,19 +100,29 @@ export class PerfMeter {
   private lastTimeMisses = 0;
   // 直近フラッシュで組んだ行。窓を開き直したときに空の窓を出さないために持つ。
   private rows: readonly PropertyRow[] = [];
+  // デバッグ表示の選択欄。窓へ載せ替えるだけなので、開閉をまたいで同じものを使い回す。
+  private readonly debugTarget: SegmentedControl<DebugTargetId>;
   private readonly proteinMotion = new ProteinMotionMetricsRecorder();
 
   // 計測が走っているか。窓が開いている間だけ真になる。
   get on(): boolean { return this.win !== null; }
 
-  // ?perf=1 が付いていれば起動直後から窓を開く。
+  // デバッグ表示は模式図スタイルでは選べない(DEVELOP/SPEC/RENDERING.md)ので、renderStyle の
+  // 変化に合わせて選択欄の有効/無効を切り替える。?perf=1 が付いていれば起動直後から窓を開く。
   constructor(
     private readonly root: HTMLElement,
     private readonly renderer: WebGPURenderer,
     private readonly sections: FrameSections,
     private readonly gpu: GpuTimings,
     private readonly overlayManager: OverlayManager,
+    private readonly debugTargetHost: DebugTargetHost,
+    renderStyle: RenderStyleSetting,
   ) {
+    this.debugTarget = new SegmentedControl('デバッグ表示', DEBUG_TARGETS, (id) => {
+      this.debugTargetHost.debugTarget = id;
+      this.debugTarget.setSelected(id);
+    });
+    renderStyle.subscribe((style) => this.debugTarget.setEnabled(style !== 'schematic'));
     if (new URLSearchParams(location.search).get('perf') === '1') this.open();
   }
 
@@ -143,6 +156,9 @@ export class PerfMeter {
       this.sections.enabled = false;
       this.gpu.enabled = false;
     };
+    // 選択は窓を閉じている間も pipeline 側に残るので、開くたびにそちらから引き直す。
+    this.debugTarget.setSelected(this.debugTargetHost.debugTarget);
+    this.win.setControls(this.debugTarget.element);
   }
 
   // 窓を閉じ、計測も止める。

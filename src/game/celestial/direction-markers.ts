@@ -1,10 +1,10 @@
 // 軌道ガイド線の進行方向マーカー。頂点が進行方向を向いた小さな正三角形を、InstancedPool で
 // まとめて描く。画面上の大きさはズームによらず一定に保ち(scaleAtLocal と同じ考え方で
-// カメラからの距離を m/px へ換算する)、animate ON のときは GuideLoop.times(周期に対する
-// 経過時刻の割合)に沿って進める — 元の点列が弧長等間隔である一方 times は実際の軌道速度で
-// 進むぶんが不均等なので、時刻の等速内挿がそのまま「近点で速く・遠点で遅く」の動きになる。
+// カメラからの距離を m/px へ換算する)、animate ON のときは曲線のパラメータ(周期に対する
+// 経過時刻の割合)に沿って進める — パラメータが時刻なので、等速で進めるだけで
+// 「近点で速く・遠点で遅く」の動きになる。
 import * as THREE from 'three/webgpu';
-import { GuideLoop } from '../../physics/orbit-guide';
+import { GuideCurve } from './guide-curve';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../../physics/projection';
 import { InstancedPool } from '../../render/instanced-pool';
 import { FloatingOrigin } from '../floating-origin';
@@ -12,17 +12,19 @@ import type { DirectionMarkerMode } from './orbit-guide-settings';
 
 // 画面上のマーカーの高さ [px](頂点から底辺まで)。
 const MARKER_HEIGHT_PX = 10;
-// 'many' モードの間隔の目安([点列の点数] / この値 が配置数になる)。族の焼き込み点数
-// (96点、orbit-catalog 参照)を基準に、軌道1周に4〜8個程度並ぶ値を選んだ。
-const MANY_MARKER_STRIDE = 16;
+// 'many' モードで軌道1周あたりに並べるマーカーの数。
+const MANY_MARKERS_PER_REVOLUTION = 6;
 // 1本の軌道あたりに置く 'many' マーカー数の上限。
 const MAX_MARKERS_PER_LOOP = 12;
-// アニメーションが1周(t: 0→1)にかける実時間 [s]。この値そのものに物理的意味は無く、
-// 「近点で速く・遠点で遅く」という相対関係だけが times の内挿から出る。
+// 接線を取るためにパラメータをずらす幅。曲線1本ぶんの長さに対する割合で、小さすぎると
+// 差分が f64 の丸めに埋もれ、大きすぎると弦の向きが接線から外れる。
+const TANGENT_PROBE_SPAN = 1e-3;
+
+// アニメーションが1周(パラメータ 0→1)にかける実時間 [s]。
 const ANIMATION_PERIOD_SEC = 20;
 
 // アニメーションの位相を進める実時刻 [s]。表示時刻(ゲーム内時間)で進めると、タイムワープ中に
-// マーカーが飛び、一時停止中に止まってしまう — 動きの速さは times の内挿だけが担う。
+// マーカーが飛び、一時停止中に止まってしまう。
 function animationPhase(): number {
   return (performance.now() / 1000 / ANIMATION_PERIOD_SEC) % 1;
 }
@@ -92,47 +94,35 @@ export class DirectionMarkers {
     }
   }
 
-  // 1本の軌道ぶんのマーカーを積む。mode が 'none' か点列が短すぎるなら何もしない。
+  // 1本の軌道ぶんのマーカーを積む。mode が 'none' なら何もしない。revolutions は曲線1本に
+  // 入る周回数で、'many' モードで並べる個数を決める。
   public addLoop(
-    loop: GuideLoop, mode: DirectionMarkerMode, animate: boolean,
+    curve: GuideCurve, revolutions: number, mode: DirectionMarkerMode, animate: boolean,
     colorHex: number, fo: FloatingOrigin,
   ): void {
-    if (mode === 'none' || loop.points.length < 2 || loop.times.length !== loop.points.length) return;
+    if (mode === 'none') return;
     const offset = animate ? animationPhase() : 0;
     this.color.setHex(colorHex);
-    const phases = mode === 'single' ? 1 : this.manyCount(loop.points.length);
+    const phases = mode === 'single' ? 1 : this.manyCount(revolutions);
     for (let i = 0; i < phases; i++) {
       const phase = (i / phases + offset) % 1;
-      this.placeMarker(loop, phase, fo);
+      this.placeMarker(curve, phase, fo);
     }
   }
 
-  private manyCount(pointCount: number): number {
-    return Math.max(1, Math.min(MAX_MARKERS_PER_LOOP, Math.floor(pointCount / MANY_MARKER_STRIDE)));
+  private manyCount(revolutions: number): number {
+    const count = Math.round(revolutions * MANY_MARKERS_PER_REVOLUTION);
+    return Math.max(1, Math.min(MAX_MARKERS_PER_LOOP, count));
   }
 
-  // 周期に対する経過時刻の割合 phase(0..1)における位置・進行方向(接線)を、隣り合う
-  // 焼き込み点2つの内挿から求めてマーカーを1個置く。
-  private placeMarker(loop: GuideLoop, phase: number, fo: FloatingOrigin): void {
-    const { points, times, closed } = loop;
-    const n = points.length;
-    // times は単調増加(0始まり)。phase 以下の最大の添字を二分探索する。
-    let lo = 0, hi = n - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if ((times[mid] ?? 0) <= phase) lo = mid; else hi = mid - 1;
-    }
-    const i = lo;
-    const j = closed ? (i + 1) % n : Math.min(n - 1, i + 1);
-    const t0 = times[i] ?? 0;
-    const t1 = j === 0 && closed ? 1 : (times[j] ?? 1);
-    const span = t1 - t0;
-    const f = span > 1e-9 ? Math.max(0, Math.min(1, (phase - t0) / span)) : 0;
-    const p0 = points[i]!, p1 = points[j]!;
-
-    const w0 = fo.RtoThreeV3(p0);
-    const w1 = fo.RtoThreeV3(p1);
-    this.pos.copy(w0).lerp(w1, f);
+  // 周期に対する経過時刻の割合 phase(0..1)における位置・進行方向(接線)を、描かれている
+  // 曲線から直に引いてマーカーを1個置く。接線は少し先の点との差で取る。
+  private placeMarker(curve: GuideCurve, phase: number, fo: FloatingOrigin): void {
+    const ahead = Math.min(1, phase + TANGENT_PROBE_SPAN);
+    const behind = ahead - TANGENT_PROBE_SPAN;
+    const w0 = fo.RtoThreeV3(curve.pointAt(behind));
+    const w1 = fo.RtoThreeV3(curve.pointAt(ahead));
+    this.pos.copy(w0).lerp(w1, (phase - behind) / TANGENT_PROBE_SPAN);
     this.tangent.copy(w1).sub(w0);
     if (this.tangent.lengthSq() < 1e-12) this.tangent.set(0, 0, 1);
     this.tangent.normalize();

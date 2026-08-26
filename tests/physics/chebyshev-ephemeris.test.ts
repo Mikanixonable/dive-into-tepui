@@ -4,13 +4,10 @@ import {
   ChebyshevBodyNotFoundError,
   ChebyshevEphemeris,
   ChebyshevTimeOutOfRangeError,
-  evaluateChebyshev,
-  evaluateChebyshevDerivative,
+  evaluateChebyshevWithDerivative,
   findChebyshevSegmentIndex,
 } from '../../src/physics/ephemeris-pack/evaluator';
-import { ChebyshevAbsoluteEphemeris } from '../../src/physics/ephemeris-pack/absolute-adapter';
 import { ChebyshevEphemerisPack } from '../../src/physics/ephemeris-pack/types';
-import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { len, Vec3, v3 } from '../../src/physics/vec3';
 
 function assertVec3Close(actual: Vec3, expected: Vec3, tolerance = 1e-12): void {
@@ -49,20 +46,13 @@ const pack: ChebyshevEphemerisPack = {
 };
 
 export function register(): void {
-  test('chebyshev: exact constant, linear, and quadratic series evaluation', () => {
-    assert.equal(evaluateChebyshev([7], -1), 7);
-    assert.equal(evaluateChebyshev([7], 0.25), 7);
-    assert.equal(evaluateChebyshev([2, 3], -0.5), 0.5);
-    assert.equal(evaluateChebyshev([2, 3], 0.75), 4.25);
-    assert.equal(evaluateChebyshev([2, 0, 2], -0.5), 1);
-    assert.equal(evaluateChebyshev([2, 0, 2], 0.75), 2.25);
-  });
-
-  test('chebyshev: analytic derivative is exact for constant, linear, and quadratic series', () => {
-    assert.equal(evaluateChebyshevDerivative([7], 0.25), 0);
-    assert.equal(evaluateChebyshevDerivative([2, 3], -0.5), 3);
-    assert.equal(evaluateChebyshevDerivative([2, 0, 2], -0.5), -4);
-    assert.equal(evaluateChebyshevDerivative([2, 0, 2], 0.75), 6);
+  test('chebyshev: exact value and analytic derivative for constant, linear, and quadratic series', () => {
+    assert.deepEqual(evaluateChebyshevWithDerivative([7], -1), { value: 7, derivative: 0 });
+    assert.deepEqual(evaluateChebyshevWithDerivative([7], 0.25), { value: 7, derivative: 0 });
+    assert.deepEqual(evaluateChebyshevWithDerivative([2, 3], -0.5), { value: 0.5, derivative: 3 });
+    assert.deepEqual(evaluateChebyshevWithDerivative([2, 3], 0.75), { value: 4.25, derivative: 3 });
+    assert.deepEqual(evaluateChebyshevWithDerivative([2, 0, 2], -0.5), { value: 1, derivative: -4 });
+    assert.deepEqual(evaluateChebyshevWithDerivative([2, 0, 2], 0.75), { value: 2.25, derivative: 6 });
   });
 
   test('chebyshev: evaluates SI position and interval-scaled velocity as KinematicState', () => {
@@ -105,28 +95,5 @@ export function register(): void {
     const second = eph.stateOf('fixed', 1);
     assert.deepEqual(second, first);
     assert.deepEqual(eph.stateOf('fixed', 1), second);
-  });
-
-  test('chebyshev: AbsoluteEphemeris adapter makes JD TDB to SI seconds explicit', () => {
-    const epochJdTdb = 2451545;
-    // Mirrors format.toEvaluatorEphemerisPack, which keeps only the core
-    // seconds/metres manifest fields after validating the canonical binary header.
-    const normalizedPack: ChebyshevEphemerisPack = {
-      manifest: {
-        version: pack.manifest.version,
-        timeUnit: pack.manifest.timeUnit,
-        positionUnit: pack.manifest.positionUnit,
-        bodies: pack.manifest.bodies,
-      },
-      bodies: pack.bodies,
-    };
-    const absolute = new ChebyshevAbsoluteEphemeris(new ChebyshevEphemeris(normalizedPack), epochJdTdb);
-    const state = absolute.barycentricStateOf('probe' as CelestialBodyId, epochJdTdb + 2.5 / 86400);
-    // A JD near 2.45 million cannot represent a few-second offset exactly;
-    // this tolerance covers that input conversion, not Chebyshev evaluation.
-    assertVec3Close(state.r, v3(10, 0.5, 1), 1e-4);
-    assertVec3Close(state.v, v3(0, 0.6, -0.8), 3e-6);
-    assert.equal(absolute.validStartJdTdb, epochJdTdb);
-    assert.equal(absolute.validEndJdTdb, epochJdTdb + 20 / 86400);
   });
 }

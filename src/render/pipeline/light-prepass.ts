@@ -4,19 +4,43 @@
 //
 // マテリアル固有の F0(反射率の色)を持たないため、鏡面照度は F0=1 で仮に評価した値になる —
 // フレネル項をマテリアルパス側で掛け直す前提の、ライトプリパスという構成そのものが持つ制約。
+//
+// 面が写っていない画素の照度は 0 になる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
-  D_GGX, F_Schlick, V_GGX_SmithCorrelated, dot, float, mrt, normalize, saturate, select,
-  screenUV, texture, uniform, vec4,
+  D_GGX, F_Schlick, V_GGX_SmithCorrelated, dot, float, mrt, normalize, saturate,
+  screenSize, screenUV, select, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import type { FloatNode, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
+import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import type { OcclusionPass } from './occlusion';
 import { SHADOW_MIN_SUN, type SunLight } from './sun-light';
-import type { ProteinShadowPass } from './protein-shadow-pass';
 import { viewPositionAt, viewRayAt } from './view-ray';
+
+// その画素の G バッファに面が写っているか。反転深度では遠平面が 0 なので、そのままの値は虚空を表す。
+function isCovered(depthTexture: THREE.Texture, uv: Vec2Node): BoolNode {
+  return texture(depthTexture, uv).r.greaterThan(0);
+}
+
+// 照度を組み立てる画素の uv。面が写っている画素はそのまま、虚空の画素は十字に隣接する面へ寄せる。
+//
+// **寄せるのはマルチサンプルとの辻褄合わせである。** 照度を読む側はマルチサンプルされた被覆で
+// 断片を出すため、画素の中心が面の外に落ちた断片が縁に生じる。その断片が読む先へ隣の面の照度を
+// 置いておかないと、材質だけが面から来て照度が虚空のものになり、縁が1画素だけ別の明るさになる。
+function shadingUV(depthTexture: THREE.Texture, uv: Vec2Node): Vec2Node {
+  const texel: Vec2Node = vec2(1).div(screenSize);
+  const candidates: readonly Vec2Node[] = [
+    uv,
+    uv.sub(vec2(texel.x, 0)), uv.add(vec2(texel.x, 0)),
+    uv.sub(vec2(0, texel.y)), uv.add(vec2(0, texel.y)),
+  ];
+  return candidates.reduceRight(
+    (rest, candidate) => select(isCovered(depthTexture, candidate), candidate, rest),
+    uv,
+  );
+}
 
 export class LightPrepass {
   private readonly renderer: WebGPURenderer;
@@ -32,7 +56,6 @@ export class LightPrepass {
   // 恒星の位置は描画座標(SunLight.position)で保持されるので、G バッファの法線・復元位置と
   // 同じ view 空間へ移した値を毎フレーム CPU 側で用意する — シェーダ内で行列を組むより単純。
   private readonly sunPositionView: Vec3Uniform;
-  private readonly viewToWorld: Mat4Uniform;
   private readonly scratchPosition = new THREE.Vector3();
 
   constructor(
@@ -40,7 +63,6 @@ export class LightPrepass {
     private readonly gbuffer: GBufferPass,
     occlusion: OcclusionPass,
     private readonly sunLight: SunLight,
-    private readonly proteinShadow: ProteinShadowPass,
     private readonly gpu: GpuTimings,
   ) {
     this.renderer = renderer;
@@ -58,15 +80,21 @@ export class LightPrepass {
 
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.sunPositionView = uniform(new THREE.Vector3(0, 1, 0));
-    this.viewToWorld = uniform(new THREE.Matrix4());
 
-    const normal = octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg);
-    const roughnessValue = texture(this.gbuffer.roughnessTexture, screenUV).r;
+    // 法線・粗さ・深度・遮蔽度は同じ1つの面から揃って引く必要があるので、読み出しはすべて
+    // この uv を通す。
+    const shadeUV = shadingUV(this.gbuffer.depthTexture, screenUV);
+    // 十字の隣まで探しても面が無ければ虚空で、照らす面が存在しない。ここへ計算値を書くと、
+    // 遠平面に置いた架空の面の明るさが縁へ滲む。
+    const lit = isCovered(this.gbuffer.depthTexture, shadeUV);
 
-    const viewPos = viewPositionAt(this.gbuffer.depthTexture, this.projMatrixInverse);
+    const normal = octDecodeNormal(texture(this.gbuffer.normalTexture, shadeUV).rg);
+    const roughnessValue = texture(this.gbuffer.roughnessTexture, shadeUV).r;
+
+    const viewPos = viewPositionAt(this.gbuffer.depthTexture, this.projMatrixInverse, shadeUV);
     // 面から視点へ向かう向き = 視線の逆向き。「復元位置の逆向き」は透視投影でしか成り立たない
     // ので、投影方式に依らない形(view-ray.ts)から取る。
-    const viewDir = viewRayAt(this.projMatrixInverse).direction.negate();
+    const viewDir = viewRayAt(this.projMatrixInverse, shadeUV).direction.negate();
     // 恒星は点光源。画素ごとに差分ベクトルを取るので、方向も逆二乗の減衰もその画素のものになる。
     const toSun = this.sunPositionView.sub(viewPos);
     const lightDir = normalize(toSun);
@@ -75,30 +103,10 @@ export class LightPrepass {
     // 恒星から届く放射照度(遮蔽込み)。拡散・鏡面の両方がこれを基準に BRDF を掛ける。
     // 恒星の直射は遮蔽パスの透過率で落ち、本影では 0 になる。そこへ足す SHADOW_MIN_SUN は、
     // 影の中にも届く星明かり・地球照ぶんを「恒星と同じ向きから来る一定量」で代用したもので、
-    // 基準強度のうちその割合を直射から分けて持つ。
-    const direct = texture(occlusion.texture, screenUV).r.mul(1 - SHADOW_MIN_SUN);
-    const worldPos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
-    const lightClip = this.proteinShadow.lightViewProjection.mul(vec4(worldPos, 1));
-    const lightNdc = lightClip.xyz.div(lightClip.w);
-    const shadowUV = lightNdc.xy.mul(0.5).add(0.5);
-    const inShadowMap = shadowUV.x.greaterThan(0).and(shadowUV.x.lessThan(1))
-      .and(shadowUV.y.greaterThan(0)).and(shadowUV.y.lessThan(1));
-    const lightViewPosition = this.proteinShadow.lightView.mul(vec4(worldPos, 1)).xyz;
-    const pointDepth = lightViewPosition.z.negate()
-      .sub(this.proteinShadow.near)
-      .div(this.proteinShadow.far.sub(this.proteinShadow.near))
-      .clamp(0, 1);
-    const storedDepth = texture(this.proteinShadow.shadowTexture, shadowUV).r;
-    const shadowed = pointDepth.greaterThan(storedDepth.add(this.proteinShadow.bias));
-    const shadowVisibility = select(shadowed, float(0), float(1));
-    const receiver = texture(this.proteinShadow.receiverTexture, screenUV).r;
-    const proteinReceiver = this.proteinShadow.active.greaterThan(0.5).and(receiver.greaterThan(0.5));
-    const proteinVisibility = select(
-      proteinReceiver, select(inShadowMap, shadowVisibility, float(1)), float(1),
-    );
-    // SHADOW_MIN_SUN は環境光相当の微弱な星明かり。本影でも完全な黒にはせず、外殻による
-    // 直射光だけを落とす。
-    const sunlit = direct.mul(proteinVisibility).add(SHADOW_MIN_SUN);
+    // 基準強度のうちその割合を直射から分けて持つ。遮られる源が何か(天体・環・メッシュ)は
+    // sun-occlusion.ts が畳み込み済みで、このパスはその 1 枚だけを読む。
+    const direct = texture(occlusion.texture, shadeUV).r.mul(1 - SHADOW_MIN_SUN);
+    const sunlit = direct.add(SHADOW_MIN_SUN);
     const irradiance: Vec3Node = this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
       .mul(dotNL).mul(sunlit);
@@ -118,7 +126,10 @@ export class LightPrepass {
     const ggx = fresnel.mul(visibility).mul(distribution);
     const specular: Vec3Node = irradiance.mul(ggx);
 
-    this.mrtNode = mrt({ diffuse: vec4(diffuse, 1), specular: vec4(specular, 1) });
+    this.mrtNode = mrt({
+      diffuse: vec4(select(lit, diffuse, vec3(0)), 1),
+      specular: vec4(select(lit, specular, vec3(0)), 1),
+    });
 
     this.material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
     this.quad = new QuadMesh(this.material);
@@ -133,7 +144,6 @@ export class LightPrepass {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
 
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
-    this.viewToWorld.value.copy(camera.matrixWorld);
     this.scratchPosition.copy(this.sunLight.position.value).applyMatrix4(camera.matrixWorldInverse);
     this.sunPositionView.value.copy(this.scratchPosition);
 

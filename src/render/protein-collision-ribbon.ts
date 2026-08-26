@@ -201,7 +201,6 @@ function addCollisionMesh(
   mesh.userData.proteinRibbon = true;
   mesh.userData.proteinSecondary = run.kind;
   mesh.userData.proteinSecondaryKind = run.kind;
-  mesh.userData.proteinShadowReceiver = true;
   mesh.userData.ownsGeometry = true;
   mesh.userData.ownsMaterial = false;
   group.add(mesh);

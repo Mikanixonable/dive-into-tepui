@@ -37,7 +37,7 @@ function ribbonMaterial(motion?: ProteinMotionBinding): THREE.MeshStandardNodeMa
   }, motion);
 }
 
-/** 鎖1本ぶんの geometry を、衝突判定と影が読むタグ付き Mesh として group へ追加する。material の dispose は最初の Mesh だけが持つ。 */
+/** 鎖1本ぶんの geometry を、衝突判定が読むタグ付き Mesh として group へ追加する。material の dispose は最初の Mesh だけが持つ。 */
 function addChainMesh(
   group: THREE.Group,
   geometry: THREE.BufferGeometry,
@@ -46,7 +46,6 @@ function addChainMesh(
 ): void {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.userData.proteinRibbon = true;
-  mesh.userData.proteinShadowReceiver = true;
   mesh.userData.ownsGeometry = true;
   mesh.userData.ownsMaterial = ownsMaterial;
   group.add(mesh);

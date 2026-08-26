@@ -84,10 +84,14 @@ async function loadProteinAssetBundle(source: ProteinAssetSource): Promise<Prote
 const proteinAssetBundlePromises = new Map<ProteinAssetId, Promise<ProteinAssetBundle>>();
 const resolvedProteinAssetBundles = new Map<ProteinAssetId, ProteinAssetBundle>();
 
-// 起動時に main.ts から一度呼び、全タンパク質アセットの fetch を非同期に開始する。失敗した
-// asset は isProteinAssetReady が false のまま残り、それを使う敵の実体化だけが止まり続ける。
-export function startProteinAssetPreload(): void {
-  for (const id of PROTEIN_ASSET_IDS) loadProteinAssetBundlePromise(id).catch((error: unknown) => console.error(error));
+// 全タンパク質アセットの fetch を非同期に開始し、全件が決着したときに解決する promise を返す。
+// 失敗した asset は isProteinAssetReady が false のまま残り、それを使う敵の実体化だけが
+// 止まり続ける。待たずに投げっぱなしにしてよい。
+export function startProteinAssetPreload(): Promise<void> {
+  const loads = PROTEIN_ASSET_IDS.map(
+    (id) => loadProteinAssetBundlePromise(id).catch((error: unknown) => { console.error(error); }),
+  );
+  return Promise.all(loads).then(() => undefined);
 }
 
 function loadProteinAssetBundlePromise(id: ProteinAssetId): Promise<ProteinAssetBundle> {

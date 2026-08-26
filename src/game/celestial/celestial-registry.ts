@@ -6,6 +6,8 @@
 import { bodyDef, CelestialRegistry, RingSystemDef, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
 import { CelestialBodyId } from '../../physics/celestial-body';
 import { CelestialSurface } from '../../render/celestial-surface';
+import type { SunLight } from '../../render/pipeline/sun-light';
+import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import { albedoOf, DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { textureOf } from '../../render/celestial-textures';
 import { MoonSurfaceMarkings } from '../../render/moon-surface-markings';
@@ -35,7 +37,9 @@ function planetEntry(id: SolarSystemId, name: string): CelestialViewDef {
   const def = bodyDef(SOLAR_SYSTEM, id);
   return {
     name,
-    create: () => new PointView(id, texturedSurface(id), def.radius, shapeOf(id), ringsOf(id)),
+    create: (sunOcclusion, sunLight) => new PointView(
+      id, texturedSurface(id), sunOcclusion, sunLight, def.radius, shapeOf(id), ringsOf(id),
+    ),
   };
 }
 
@@ -55,7 +59,9 @@ function shapeOf(id: SolarSystemId): ShapeDef | undefined {
 function satelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
   return {
     name,
-    create: () => new SphereView(id, solidSurface(id), bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id)),
+    create: (sunOcclusion, sunLight) => new SphereView(
+      id, solidSurface(id), sunOcclusion, sunLight, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id),
+    ),
   };
 }
 
@@ -64,7 +70,9 @@ function satelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
 function texturedSatelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
   return {
     name,
-    create: () => new SphereView(id, texturedSurface(id), bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id)),
+    create: (sunOcclusion, sunLight) => new SphereView(
+      id, texturedSurface(id), sunOcclusion, sunLight, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id),
+    ),
   };
 }
 
@@ -72,20 +80,27 @@ function texturedSatelliteEntry(id: SolarSystemId, name: string): CelestialViewD
 function solidPlanetEntry(id: SolarSystemId, name: string): CelestialViewDef {
   return {
     name,
-    create: () => new SphereView(
-      id, solidSurface(id), bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id), ringsOf(id),
+    create: (sunOcclusion, sunLight) => new SphereView(
+      id, solidSurface(id), sunOcclusion, sunLight, bodyDef(SOLAR_SYSTEM, id).radius, shapeOf(id), ringsOf(id),
     ),
   };
 }
 
-export type CelestialViewDef = { readonly name: string; create(): CelestialView };
+// create が恒星光と遮蔽を受けるのは、環がそこから明るさと直射散乱の遮蔽を引くため。**引数を
+// 使わない closure(太陽・地球)も受け取れてしまうが、環を持ちうる SphereView / PointView が
+// これを必須の構築引数にしているので、渡し忘れは型検査で落ちる。**
+export type CelestialViewDef = {
+  readonly name: string;
+  create(sunOcclusion: SunOcclusion, sunLight: SunLight): CelestialView;
+};
 
 export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   earth: { name: '地球', create: () => new EarthView() },
   moon: {
     name: '月',
-    create: () => new SphereView(
-      'moon', texturedSurface('moon'), bodyDef(SOLAR_SYSTEM, 'moon').radius, shapeOf('moon'),
+    create: (sunOcclusion, sunLight) => new SphereView(
+      'moon', texturedSurface('moon'), sunOcclusion, sunLight,
+      bodyDef(SOLAR_SYSTEM, 'moon').radius, shapeOf('moon'),
       undefined, () => new MoonSurfaceMarkings(),
     ),
   },
@@ -190,13 +205,17 @@ export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
 // CELESTIAL_VIEWS に手作りエントリを持たない id(カスタムレジストリの架空天体)向けの見た目。
 // 恒星は SunView を汎用の id/半径で構築し、それ以外は単色球にする。表示名は呼び出し側
 // (frame-labels.ts の celestialBodyName)が id からフォールバックする。
-export function fallbackCelestialView(registry: CelestialRegistry, id: CelestialBodyId): CelestialView {
+export function fallbackCelestialView(
+  registry: CelestialRegistry, id: CelestialBodyId, sunOcclusion: SunOcclusion, sunLight: SunLight,
+): CelestialView {
   const def = bodyDef(registry, id);
   return def.kind === 'star'
     ? new SunView(id, def.radius)
     : new SphereView(
       id,
       CelestialSurface.solid(DEFAULT_ALBEDO),
+      sunOcclusion,
+      sunLight,
       def.radius,
     );
 }

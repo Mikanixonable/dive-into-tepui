@@ -5,8 +5,8 @@
 // 持たない列(計画軌道の各区間など)ではこの継ぎ足しは起きない。
 // 頂点の解像度そのものの決定(画面上のサジッタに応じた適応分割)は render/curve.ts の Curve に
 // 委ねる。このモジュールの責務は、DynamicTrajectory の保持区間(+ 外挿ぶん)から描画対象の
-// 時刻範囲を切り出し、連続な曲線関数(t∈[0,1])として Curve へ渡すことと、その曲線が描かれる
-// 座標系の管理。時刻から状態への内挿そのものは physics/state-queue.ts の StateQueue.at に委ねる。
+// 時刻範囲を切り出し、位置と接線を持つ節点列として Curve へ渡すことと、その曲線が描かれる
+// 座標系の管理。節点の間をどう埋めるかは Curve が持つ。
 //
 // 座標変換は physics/frame.ts / physics/ephemeris.ts へ委譲する二段構え:
 //  - bake(点列・frame が変わったときだけ, syncGeometry): 各サンプルの KinematicState を
@@ -28,11 +28,11 @@ import { extrapolatedRelativeStates } from '../physics/kepler-extrapolation';
 import { StateQueue } from '../physics/state-queue';
 import { add, Vec3 } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
-import { Curve, CurveSampler } from '../render/curve';
+import { Curve, CurveKnots } from '../render/curve';
 import { LineStyle } from '../render/line-style';
 
-// 1本の折れ線が持てる頂点数。数周ぶんの軌跡なら数百頂点で収束するが、28日表示のように
-// 数百周が重なる区間は何頂点あっても収束しないので、ここは「どこで頭打ちにするか」の値。
+// 頂点数の打ち切り。数周ぶんの軌跡なら数百頂点で収束するが、28日表示のように数百周が
+// 重なる区間は何頂点あっても収束しないので、どこで頭打ちにするかをここで決める。
 // マップの通常のズームで残留誤差が 99% の区間でサジッタ目標(0.5px)を下回る水準を採る
 // (400周ぶんの軌跡の内側にカメラを置くと 1.4px ほどまで上がるが、その視点では軌跡自体が
 // 画面を埋める網目になっていて見分けられない)。
@@ -81,13 +81,12 @@ export class TrajectoryLine {
   private revision: object = {};
   private readonly unbakeQuat = new THREE.Quaternion();
 
-  // bake 済みの frame 相対状態列。sampler はこの列に時刻を渡すだけ。
+  // bake 済みの frame 相対状態列。節点はここから取り、描画区間の端だけ内挿する。
   private baked = new StateQueue();
-  // bake 済み列の時刻(昇順)。initialTs を組み直すのに使う。
+  // bake 済み列の時刻(昇順)。節点列を組み直すのに使う。
   private bakedTimes: readonly number[] = [];
-  // Curve の適応分割へ渡す初期頂点の t 列。サンプル自身の位置を必ず頂点にするためのもので、
-  // 中身は buildInitialTs が組む。
-  private initialTs: readonly number[] = [];
+  // Curve へ渡す節点列。描画区間が変わったときだけ buildKnots が組み直す。
+  private knots: CurveKnots | null = null;
   // 描画区間の下限(bake 済み区間の先頭へクランプ済み)。null は下限なし(保持区間全体を描く)。
   private startTime: number | null = null;
   // 描画区間の上限(bake 済み区間の末尾へクランプ済み)。null は上限なし。
@@ -98,21 +97,6 @@ export class TrajectoryLine {
     this.curve = new Curve({ style, maxVertices: MAX_VERTICES });
     this.line = this.curve.object;
   }
-
-  // t∈[0,1] を [startTime, endTime] の時刻範囲へ線形に写して列から引く。内挿そのものは
-  // StateQueue.at が持つ — このクロージャの責務は時刻への写像だけ。
-  private readonly sampler: CurveSampler = (t, out) => {
-    const oldest = this.baked.oldest;
-    const newest = this.baked.newest;
-    if (oldest === null || newest === null) return;
-    const start = this.startTime ?? oldest.t;
-    const end = this.endTime ?? newest.t;
-    // 写した時刻が丸めで保持範囲をわずかに外れることがあるので、引く前に列の端へ寄せる。
-    const time = Math.min(newest.t, Math.max(oldest.t, start + (end - start) * t));
-    const s = this.baked.at(time);
-    if (s === null) return;
-    out.set(s.r.x, s.r.y, s.r.z);
-  };
 
   // trajectory の保持区間のうち [from, to] を描く対象にする。trajectory が null なら曲線を
   // 持たない状態にする。from/to はそれぞれ描画の下限/上限時刻で、null ならその側は無制限。
@@ -143,7 +127,7 @@ export class TrajectoryLine {
         ? extrapolatedTailStates(tip!, center!, to!, trajectory!.sampleInterval, ephemeris)
         : [];
       const combined = tail.length > 0 ? [...samples, ...tail] : samples;
-      // hermiteInterpolate は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
+      // エルミート補間は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
       // 位置と速度をそのまま KinematicState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
       // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
       const queue = new StateQueue(Math.max(1, combined.length));
@@ -161,25 +145,30 @@ export class TrajectoryLine {
       this.lastFrom = from;
       this.lastTo = to;
       this.revision = {};
-      this.initialTs = this.buildInitialTs();
+      this.knots = this.buildKnots();
     }
   }
 
-  // 描画区間に入る bake 済みサンプル自身の時刻を t∈[0,1] へ写した、適応分割の初期頂点列
-  // (両端を含む)。Curve は弦の中点しか見ないので、何周ぶんも入りうるこの列を等分割の初期区間
-  // だけに任せると、中点がたまたま曲線に乗った区間が直線のまま残る — どこに細部があるかを
-  // 知っているのは点列を持つこちら側だけなので、その位置をそのまま渡す。
-  private buildInitialTs(): readonly number[] {
+  // 描画区間 [startTime, endTime] に入る状態を、Curve へ渡す節点列に組む。両端は区間端で
+  // 内挿した状態、間は bake 済みサンプルそのもの。
+  private buildKnots(): CurveKnots | null {
     const start = this.startTime;
     const end = this.endTime;
-    if (start === null || end === null || end <= start) return [];
-    const ts: number[] = [0];
-    for (const t of this.bakedTimes) {
-      const u = (t - start) / (end - start);
-      if (u > 0 && u < 1) ts.push(u);
+    if (start === null || end === null || end <= start) return null;
+    const times = [start, ...this.bakedTimes.filter((t) => t > start && t < end), end];
+    const states = times.map((t) => this.baked.at(t)).filter((s): s is KinematicState => s !== null);
+    if (states.length < 2) return null;
+    const span = end - start;
+    const ts: number[] = [];
+    const positions: number[] = [];
+    const tangents: number[] = [];
+    for (const s of states) {
+      ts.push((s.t - start) / span);
+      positions.push(s.r.x, s.r.y, s.r.z);
+      // パラメータは時刻を span で割った値なので、その微分は速度の span 倍。
+      tangents.push(s.v.x * span, s.v.y * span, s.v.z * span);
     }
-    ts.push(1);
-    return ts;
+    return { ts, positions, tangents };
   }
 
   // 適応分割を実行し GPU バッファへ反映する。camera = 画面上のサジッタを実距離へ換算するための
@@ -188,11 +177,11 @@ export class TrajectoryLine {
   sync(camera: THREE.Camera): void {
     const start = this.startTime;
     const end = this.endTime;
-    if (this.baked.size < 2 || start === null || end === null || start >= end) {
+    if (this.baked.size < 2 || start === null || end === null || start >= end || !this.knots) {
       this.curve.clear();
       return;
     }
-    this.curve.setCurve(this.sampler, { revision: this.revision, camera, initialTs: this.initialTs });
+    this.curve.setHermiteCurve(this.knots, { revision: this.revision, camera });
   }
 
   // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点)。
@@ -243,7 +232,7 @@ export class TrajectoryLine {
     const points: Vec3[] = [];
     const scratch = new THREE.Vector3();
     for (let i = 0; i <= count; i++) {
-      this.sampler(i / count, scratch);
+      this.curve.sampleAt(i / count, scratch);
       points.push(toInertialPoint(tf, framePoint(scratch.x, scratch.y, scratch.z)));
     }
     return points;

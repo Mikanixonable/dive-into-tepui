@@ -57,6 +57,13 @@ export function register(): void {
         const expected = family.members.length * family.samples * CATALOG_STRIDE;
         assert.equal(values.length, expected, `${id}: 点列の長さが宣言と合わない`);
         assert.ok(values.every((v) => Number.isFinite(v)), `${id}: 有限でない値がある`);
+        // 各点の速度。点と点の間はこれを接線とするエルミート補間で埋まるので、
+        // 焼き込みで落ちていると曲線が節点の間で潰れる。
+        for (let i = 0; i * CATALOG_STRIDE < values.length; i++) {
+          const o = i * CATALOG_STRIDE + 4;
+          const speed = Math.hypot(values[o] ?? 0, values[o + 1] ?? 0, values[o + 2] ?? 0);
+          assert.ok(speed > 0, `${id}: 速度が 0 の点がある (点 ${i})`);
+        }
       }
     });
 
@@ -117,10 +124,19 @@ export function register(): void {
         const family: CatalogFamily = system.families[id]!;
         const loop = catalogLoop(t, ephemeris, system, systemId, id, 0.5);
         assert.ok(loop !== null, `${id}: ガイド線が組めない`);
-        assert.equal(loop.points.length, family.samples);
-        assert.ok(loop.points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)));
-        // 軌道の広がりは両天体間距離の数倍を超えない(重心から極端に離れた点が無い)。
-        for (const p of loop.points) {
+        assert.ok(loop.shape.kind === 'knots', `${id}: 焼き込み族は節点列で返るはず`);
+        const { us, positions, tangents } = loop.shape;
+        // 閉じた輪なので、末尾に始点を u=1 として足したぶんが1点多い。
+        assert.equal(us.length, family.samples + 1);
+        assert.equal(us[0], 0);
+        assert.equal(us[us.length - 1], 1);
+        for (let i = 0; i < us.length; i++) {
+          const p = positions[i]!;
+          const m = tangents[i]!;
+          assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z));
+          assert.ok(Number.isFinite(m.x) && Number.isFinite(m.y) && Number.isFinite(m.z));
+          if (i > 0) assert.ok(us[i]! > us[i - 1]!, `${id}: パラメータが昇順でない`);
+          // 軌道の広がりは両天体間距離の数倍を超えない(重心から極端に離れた点が無い)。
           assert.ok(len(sub(p, frame.origin)) < 6 * frame.unit, `${id}: 重心から離れすぎた点がある`);
         }
       }

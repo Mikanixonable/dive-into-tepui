@@ -1,26 +1,21 @@
-// 同じケースをライトプリパスとフォワードの 2 経路で描く。違いは「メッシュとライトがどの
-// チャンネルに居るか」だけで、HDR ターゲット・トーンマッピング・合成・色空間変換はどちらも
-// 同じ RenderPipeline を通る。だから画面に出る差はシェーディング経路の差そのものになる。
-//
-// 例外が 1 つある: フォワード経路は G バッファを空にするので、合成パスがキャンバスの深度
-// バッファへ複製する深度も空になり、3D UI パスの線が不透明物に隠れない。**差分画像で線が
-// 不透明物を横切る箇所だけは、2 経路が食い違うのが正しい。**
+// 描画テスト環境の 1 ビュー。ケースを組み、ゲーム本体と同じ RenderPipeline でキャンバスへ描く。
+// 絵の撮影(PNG)と、CPU / GPU それぞれの所要時間の計測もここが担う。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/gpu-timings';
 import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '../../src/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
-import { LIT_OPAQUE_LAYER, OVERLAY_LAYER } from '../../src/render/pipeline/lit-layer';
+import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
 import {
   AMBIENT_COLOR, AMBIENT_IRRADIANCE, SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY,
 } from '../../src/render/pipeline/sun-light';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
+import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
+import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
+import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
-
-export type LabPath = 'prepass' | 'forward';
 
 export interface LabDistribution {
   readonly avg: number;
@@ -31,7 +26,6 @@ export interface LabDistribution {
 
 export interface LabMeasurement {
   readonly caseName: CaseName;
-  readonly path: LabPath;
   readonly frames: number;
   readonly cpuRenderMs: LabDistribution;
   readonly gpuSupported: boolean;
@@ -44,11 +38,52 @@ const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
 // 恒星は 1 天文単位の位置に置く。ゲーム本体と同じ放射強度を渡すので、そこで受ける放射照度も
-// ゲーム本体の 1 天文単位と一致する。
-const SUN_POSITION = SUN_DIR.clone().multiplyScalar(AU);
+// ゲーム本体の 1 天文単位と一致する。ケースごとの向きを毎フレーム書き込む。
+const SUN_POSITION = new THREE.Vector3();
+
+// シーン光源(平行光)を置く距離 [m]。向きだけが意味を持つので、ケースの広がりより十分遠ければよい。
+const SUN_LIGHT_DISTANCE = 1e5;
+
+// 恒星方向とカメラ位置を毎フレーム組み立てる書き込み先。
+const SUN_DIRECTION = new THREE.Vector3();
+const CAMERA_OFFSET = new THREE.Vector3();
+
+// カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
+export const MAX_CAMERA_ELEVATION_DEG = 89;
+
+// カメラの距離の倍率の常用対数の限界。0 がケース既定の距離。
+export const MAX_CAMERA_ZOOM = 1;
+
+// 観察の向き。角度は度、cameraZoom はケース既定の距離に対する倍率の常用対数。
+export type LabViewAngles = {
+  readonly sunAzimuthDeg: number;
+  readonly sunElevationDeg: number;
+  readonly cameraAzimuthDeg: number;
+  readonly cameraElevationDeg: number;
+  readonly cameraZoom: number;
+};
+
+// 方位角・仰角 [deg] から単位ベクトルを組む。方位角 0 が +Z、+90 度が +X。
+function directionFromAngles(azimuthDeg: number, elevationDeg: number, out: THREE.Vector3): THREE.Vector3 {
+  const azimuth = THREE.MathUtils.degToRad(azimuthDeg);
+  const elevation = THREE.MathUtils.degToRad(elevationDeg);
+  const horizontal = Math.cos(elevation);
+  return out.set(Math.sin(azimuth) * horizontal, Math.sin(elevation), Math.cos(azimuth) * horizontal);
+}
+
+// directionFromAngles の逆写像。長さ 0 でない任意のベクトルを受ける。
+function anglesFromDirection(v: THREE.Vector3): { azimuthDeg: number; elevationDeg: number } {
+  const unitY = THREE.MathUtils.clamp(v.y / Math.max(v.length(), 1e-12), -1, 1);
+  return {
+    azimuthDeg: THREE.MathUtils.radToDeg(Math.atan2(v.x, v.z)),
+    elevationDeg: THREE.MathUtils.radToDeg(Math.asin(unitY)),
+  };
+}
 
 export class LabView {
   private readonly scene = new THREE.Scene();
+  // ケースの太陽方向へ向け直すために持つ。恒星の位置と同じ向きを指す。
+  private readonly sun = new THREE.DirectionalLight(SUN_COLOR.getHex(), SUN_IRRADIANCE_1AU);
   // 撮影先。合成パスが既に sRGB へ変換した値を書くので、素の RGBA8 で受ける
   // (-srgb フォーマットにすると二重変換になり、撮った PNG だけが白っぽくなる)。
   // 深度は 3D UI パスが要る — 合成パスが G バッファの深度をここへ複製し、線はそれに対して
@@ -60,9 +95,23 @@ export class LabView {
   });
   private current: LabCase | null = null;
   private lastRenderCpuMs = 0;
+  // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
+  private readonly pivot = new THREE.Vector3();
+  // ケース既定のカメラ距離 [m]。cameraZoom の基準になる。
+  private defaultCameraDistance = 1;
+  private angles: LabViewAngles = {
+    sunAzimuthDeg: 0, sunElevationDeg: 0,
+    cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraZoom: 0,
+  };
+  // 描画品質設定のうち、パイプラインが読むものだけを操作の対象にする。ゲーム本体と保存先を
+  // 分けるため、ここが値の正本を持つ(ブラウザへは残さない)。
+  private graphicsData: GraphicsSettingsData = QUALITY_PRESETS.high;
+  private readonly scratchBox = new THREE.Box3();
+  private readonly caseCenterVector = new THREE.Vector3();
+  private readonly scratchVector = new THREE.Vector3();
+  private readonly forward = new THREE.Vector3();
 
   private constructor(
-    private readonly path: LabPath,
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
     private readonly gpu: GpuTimings,
@@ -70,19 +119,15 @@ export class LabView {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
-    const sun = new THREE.DirectionalLight(SUN_COLOR.getHex(), SUN_IRRADIANCE_1AU);
-    sun.position.copy(SUN_DIR).multiplyScalar(1e5);
     const ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_IRRADIANCE);
     // NodeMaterial はカメラのチャンネルと重なる光源が1つも無いと照明モデルを組まない。
-    // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、その経路の光源は同チャンネルにも属させる。
-    if (path === 'prepass') {
-      sun.layers.enable(LIT_OPAQUE_LAYER);
-      ambient.layers.enable(LIT_OPAQUE_LAYER);
-    }
-    this.scene.add(sun, ambient);
+    // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、光源も同チャンネルへ属させる。
+    this.sun.layers.enable(LIT_OPAQUE_LAYER);
+    ambient.layers.enable(LIT_OPAQUE_LAYER);
+    this.scene.add(this.sun, ambient);
   }
 
-  static async create(canvas: HTMLCanvasElement, path: LabPath): Promise<LabView> {
+  static async create(canvas: HTMLCanvasElement): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
@@ -95,7 +140,7 @@ export class LabView {
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, QUALITY_PRESETS.high, gpu);
-    return new LabView(path, renderer, pipeline, gpu);
+    return new LabView(renderer, pipeline, gpu);
   }
 
   // ケースを組み直して描く。前のケースはシーンから外すだけで解放しない — 球の単位ジオメトリは
@@ -105,31 +150,105 @@ export class LabView {
       this.scene.remove(...this.current.objects);
       disposeCaseObjects(this.current);
     }
-    const built = CASES[name]();
-    for (const object of built.objects) {
-      // フォワード経路では buildPlayerShip() が内部で付けた LIT_OPAQUE_LAYER を打ち消す。
-      // 呼ばないのではなく、呼ばれたあとに戻す。3D UI チャンネルはシェーディング経路と無関係
-      // (どちらの経路でも合成後に同じ 3D UI パスが描く)なので、そこは戻さない。
-      if (this.path === 'forward') {
-        object.traverse((o) => { if (!o.layers.isEnabled(OVERLAY_LAYER)) o.layers.set(0); });
-      }
-    }
+    const built = CASES[name](this.pipeline.sunOcclusion, this.pipeline.sunLight);
     this.scene.add(...built.objects);
     this.current = built;
+    this.resetView(built);
     this.render();
   }
 
-  // 動くものが無いので、描くのはケースを差し替えたときと撮影のときだけ。
+  get graphics(): GraphicsSettingsData { return this.graphicsData; }
+
+  // 描画品質設定の項目を1つ差し替え、パイプラインへ押し出してその場で描き直す。
+  setGraphicsOption(key: GraphicsOptionKey, value: boolean | number): void {
+    this.graphicsData = withGraphicsOption(this.graphicsData, key, value);
+    this.pipeline.applyGraphics(this.graphicsData);
+    this.render();
+  }
+
+  // 画面へ出す中間バッファを選び、その場で描き直す。
+  showDebugTarget(target: DebugTargetId): void {
+    this.pipeline.debugTarget = target;
+    this.render();
+  }
+
+  // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
+  get viewAngles(): LabViewAngles { return this.angles; }
+
+  // 現在のカメラ距離 [m]。cameraZoom は倍率の対数なので、実寸はここから読む。
+  get cameraDistance(): number { return this.defaultCameraDistance * 10 ** this.angles.cameraZoom; }
+
+  // 観察の向きを部分的に差し替え、その場で描き直す。仰角は姿勢が決まる範囲へ丸める。
+  setViewAngles(changes: Partial<LabViewAngles>): void {
+    const merged = { ...this.angles, ...changes };
+    this.angles = {
+      ...merged,
+      cameraElevationDeg: THREE.MathUtils.clamp(
+        merged.cameraElevationDeg, -MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ELEVATION_DEG,
+      ),
+    };
+    this.render();
+  }
+
+  // ケースのカメラと注視点から、観察の向きの既定値を引き直す。**注視点はカメラの視線上へ
+  // 落としてから使う** — 視線から外れた点を注視させると、向きへ触れていないのに絵が回る。
+  private resetView(built: LabCase): void {
+    const camera = built.camera;
+    camera.updateMatrixWorld(true);
+    camera.getWorldDirection(this.forward);
+    const pivot = built.viewTarget ?? this.caseCenter(built);
+    const depth = this.forward.dot(this.scratchVector.subVectors(pivot, camera.position));
+    this.defaultCameraDistance = Math.max(depth, camera.near);
+    this.pivot.copy(camera.position).addScaledVector(this.forward, this.defaultCameraDistance);
+    const sun = anglesFromDirection(built.sunDirection ?? SUN_DIR);
+    const eye = anglesFromDirection(this.scratchVector.copy(this.forward).negate());
+    this.angles = {
+      sunAzimuthDeg: sun.azimuthDeg,
+      sunElevationDeg: sun.elevationDeg,
+      cameraAzimuthDeg: eye.azimuthDeg,
+      cameraElevationDeg: eye.elevationDeg,
+      cameraZoom: 0,
+    };
+  }
+
+  // ケースの物体をすべて包む箱の中心。viewTarget を持たないケースの注視点になる。
+  private caseCenter(built: LabCase): THREE.Vector3 {
+    this.scratchBox.makeEmpty();
+    for (const root of built.objects) {
+      root.updateWorldMatrix(true, true);
+      this.scratchBox.expandByObject(root);
+    }
+    if (this.scratchBox.isEmpty()) {
+      return this.caseCenterVector.copy(built.camera.position).addScaledVector(this.forward, 1);
+    }
+    return this.scratchBox.getCenter(this.caseCenterVector);
+  }
+
+  // 動くものが無いので、描くのはケースを差し替えたときと、表示を切り替えたときと、撮影のとき。
   render(): void {
     if (this.current === null) return;
-    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE);
-    this.pipeline.occlusion.setOccluders(this.current.occluders ?? []);
+    // 恒星の位置とシーン光源の向きは、必ず同じ向きから引く。片方だけを更新すると、影の向きと
+    // 明暗の境界の向きが食い違ったまま「それらしく」写る。
+    const sunDirection = directionFromAngles(
+      this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,
+    );
+    this.sun.position.copy(sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE);
+    this.pipeline.sunLight.set(
+      SUN_POSITION.copy(sunDirection).multiplyScalar(AU),
+      R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE,
+    );
+    const camera = this.current.camera;
+    directionFromAngles(this.angles.cameraAzimuthDeg, this.angles.cameraElevationDeg, CAMERA_OFFSET);
+    camera.position.copy(this.pivot).addScaledVector(CAMERA_OFFSET, this.cameraDistance);
+    camera.lookAt(this.pivot);
+    camera.updateMatrixWorld(true);
+    this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
-    this.pipeline.occlusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
+    this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     const atmosphere = this.current.atmosphere;
     this.pipeline.atmosphere.setBody(atmosphere?.center ?? ORIGIN, atmosphere?.surfaceRadius ?? 0);
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, this.current.camera, 'realistic');
+    this.pipeline.render(this.scene, camera, 'realistic');
     this.lastRenderCpuMs = performance.now() - startedAt;
     this.gpu.resolve();
   }
@@ -161,7 +280,6 @@ export class LabView {
 
     return {
       caseName: name,
-      path: this.path,
       frames: sampleFrames,
       cpuRenderMs: distribution(cpuSamples),
       gpuSupported: this.gpu.snapshot().supported,
@@ -171,21 +289,25 @@ export class LabView {
     };
   }
 
-  // キャンバスへ出るのと同じ絵を画素で受け取る。合成パスが「キャンバスへ」と書いた出力先が
-  // 撮影ターゲットへ差し替わるだけなので、トーンマッピングも sRGB 変換も同じに掛かる —
-  // WebGPU キャンバスの提示・合成・スクリーンショットはどこも通らない。
-  async capture(name: CaseName): Promise<Uint8Array> {
+  // キャンバスへ出るのと同じ絵を PNG のデータ URL で返す。合成パスが「キャンバスへ」と書いた
+  // 出力先が撮影ターゲットへ差し替わるだけなので、トーンマッピングも sRGB 変換も同じに掛かる。
+  async shoot(name: CaseName): Promise<string> {
     this.show(name);
+    this.current?.updateProteinMotion?.(1);
+    return this.capture();
+  }
+
+  // いま画面に出ているものを、ケースも観察の向きも変えずに撮る。
+  async capture(): Promise<string> {
     this.renderer.setOutputRenderTarget(this.captureTarget);
     try {
-      this.current?.updateProteinMotion?.(1);
       this.render();
     } finally {
       // 戻し忘れると以後キャンバスに何も出なくなる(撮影だけは通るので気付きにくい)。
       this.renderer.setOutputRenderTarget(null);
     }
     const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
-    return new Uint8Array(pixels.buffer);
+    return toPng(new Uint8Array(pixels.buffer));
   }
 }
 
@@ -221,23 +343,7 @@ function distribution(values: readonly number[]): LabDistribution {
   };
 }
 
-export type LabViews = { readonly prepass: LabView; readonly forward: LabView };
-export type Shot = { readonly prepass: string; readonly forward: string; readonly diff: string };
-
-// 差分の増幅率。1/255 の丸め差は見えず、実質的な差は見える倍率。
-const DIFF_GAIN = 8;
-
-// 2 経路の画素差。レンダラーが 2 台=デバイスも 2 つなので、GPU 上でテクスチャを突き合わせられない。
-// 読み出したあとの引き算で出す。
-function diffPixels(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const out = new Uint8Array(a.length);
-  for (let i = 0; i < a.length; i += 4) {
-    for (let c = 0; c < 3; c++) out[i + c] = Math.min(255, Math.abs(a[i + c]! - b[i + c]!) * DIFF_GAIN);
-    out[i + 3] = 255;
-  }
-  return out;
-}
-
+// 読み出した RGBA 画素を PNG のデータ URL にする。
 function toPng(pixels: Uint8Array): string {
   const canvas = document.createElement('canvas');
   canvas.width = VIEW_WIDTH;
@@ -245,11 +351,4 @@ function toPng(pixels: Uint8Array): string {
   const context = canvas.getContext('2d')!;
   context.putImageData(new ImageData(new Uint8ClampedArray(pixels), VIEW_WIDTH, VIEW_HEIGHT), 0, 0);
   return canvas.toDataURL('image/png');
-}
-
-// ケース1つを 3 枚の PNG(2 経路と差分)にする。撮影の駆動(tools/render-lab-shot.mjs)が呼ぶ。
-export async function shootCase(views: LabViews, name: CaseName): Promise<Shot> {
-  const prepass = await views.prepass.capture(name);
-  const forward = await views.forward.capture(name);
-  return { prepass: toPng(prepass), forward: toPng(forward), diff: toPng(diffPixels(prepass, forward)) };
 }
