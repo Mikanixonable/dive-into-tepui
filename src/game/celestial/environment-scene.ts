@@ -22,7 +22,7 @@ import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import {
-  AMBIENT_IRRADIANCE, AMBIENT_REFERENCE_DISTANCE, SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight,
+  SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight, ambientIrradianceAtDistance,
 } from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
@@ -262,13 +262,12 @@ export class EnvironmentScene {
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
   }
 
-  // 基準点へ届く環境光の放射照度。環境光は地球照の代用なので、**地球から遠ざかれば距離の
-  // 二乗で薄れる。** 地球が無いレジストリでは届く光そのものが無いので 0 — 本影の中を埋める
-  // ぶんは恒星光側(SHADOW_MIN_SUN)が別に持っている。
+  // 基準点へ届く環境光の放射照度。環境光は地球照の代用なので、地球が無いレジストリでは届く光
+  // そのものが無く 0 — 本影の中を埋めるぶんは恒星光側(SHADOW_MIN_SUN)が別に持っている。
   private ambientIrradianceAt(reference: THREE.Vector3, fo: FloatingOrigin, displayTime: number): number {
     if (!('earth' in this.ephemeris.registry)) return 0;
     const earth = fo.RtoThreeV3(this.ephemeris.positionOf('earth', displayTime));
-    return AMBIENT_IRRADIANCE * (AMBIENT_REFERENCE_DISTANCE / reference.distanceTo(earth)) ** 2;
+    return ambientIrradianceAtDistance(reference.distanceTo(earth));
   }
 
   // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。まず最大遮蔽率が閾値を切る天体を落とし、
