@@ -1,20 +1,20 @@
-// 方向を持たない環境光の寄与。地球照の代用の暫定値で、向きを持たないので遮蔽も受けない。
+// 方向を持たない環境光の寄与。強さは天体照のスロットの総和から取る(向きはまだ持たない)。
 import * as THREE from 'three/webgpu';
 import { vec3 } from 'three/tsl';
-import type { SunLight } from '../sun-light';
 import { contributionMaterial, type LightSource } from './light-source';
+import type { PlanetLightSource } from './planet-light-source';
 import type { ShadingSample } from './shading-sample';
 
 export class AmbientSource implements LightSource {
   private cached: THREE.MeshBasicNodeMaterial | null = null;
 
-  constructor(private readonly sunLight: SunLight) {}
+  constructor(private readonly planetLight: PlanetLightSource) {}
 
   hasContribution(): boolean { return true; }
 
   material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
     this.cached ??= contributionMaterial(sample, {
-      diffuse: vec3(this.sunLight.ambientColor.mul(this.sunLight.ambientIntensity)),
+      diffuse: this.planetLight.ambientIrradiance(sample),
       specular: vec3(0),
     });
     return this.cached;
