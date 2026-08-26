@@ -146,7 +146,7 @@ export class NavTarget {
     const wasEntityId = entities.findEnemy(data.id) !== null
       || entities.players.some((p) => p.id === data.id)
       || entities.bases.some((b) => b.id === data.id);
-    if (wasEntityId && !this.resolveEntity(data.id, entities)) return;
+    if (wasEntityId && !entities.findAliveCombatTarget(data.id)) return;
     this.setInternal(data.id, data.name);
   }
 
@@ -154,7 +154,7 @@ export class NavTarget {
   // など戦闘対象になれない対象がターゲットの場合は null。
   resolveCombatTarget(entities: EntityManager): CombatTarget | null {
     if (this.targetId === null) return null;
-    const entity = this.resolveEntity(this.targetId, entities);
+    const entity = entities.findAliveCombatTarget(this.targetId);
     return entity && entity.alive ? entity : null;
   }
 
@@ -187,7 +187,7 @@ export class NavTarget {
     this.celestialBodies = frameAnchors.bodies;
     if (!this.targetId) { this.setReaderEntity(null); return; }
     // ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
-    const target = this.resolveEntity(this.targetId, entities);
+    const target = entities.findAliveCombatTarget(this.targetId);
     this.setReaderEntity(target);
     const timeLabel = { mode: this.labelMode, show: this.showElementTimes, nowSimTime: simTime };
     target?.ensureEquatorNodes(this.markerManager).updateOnEllipse(displayTime, ephemeris, frameAnchors, timeLabel);
@@ -258,7 +258,7 @@ export class NavTarget {
         };
       }
     }
-    const entity = this.resolveEntity(id, entities);
+    const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
     return {
       id, state: entity.displayState(t, ephemeris) ?? entity.state, hasMass: false,
@@ -285,19 +285,10 @@ export class NavTarget {
     if (secondary !== undefined && secondary in registry && bodyDef(registry, secondary).kind !== 'star') {
       return qRotate(ephemeris.orbitFrameRotationAt(secondary as OrbitingId, t).q, Z_HAT);
     }
-    const entity = this.resolveEntity(id, entities);
+    const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
     const center = strongestAttractor(entity.state.r, ephemeris.celestialBodiesAt(t));
     return entity.orbitalElementsAround(center)?.hHat ?? null;
-  }
-
-  // id を生存中の敵・自機・基地として引く。天体・ラグランジュ点は実体を持たないので null。
-  private resolveEntity(id: string, entities: EntityManager): CombatTarget | null {
-    const enemy = entities.findEnemy(id);
-    return (enemy?.alive ? enemy : null)
-      ?? entities.players.find((p) => p.id === id)
-      ?? entities.bases.find((b) => b.id === id && b.alive)
-      ?? null;
   }
 
   // 右クリック対象として公開する AN/DN・再接近点アイコン。計算できているぶんだけ返す。

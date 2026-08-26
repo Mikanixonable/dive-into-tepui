@@ -57,6 +57,7 @@ import {
   type BoosterStage as BoosterStageModel,
 } from '../../render/booster';
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
+import type { GroupedMarkerItem } from '../marker/grouped-markers';
 
 // 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
 export type PlanExecutionMode = 'off' | 'instant';
@@ -715,11 +716,7 @@ export class Player extends Ship {
 
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
   // isActive はこの艦が操作対象かどうか(マップ上の自艦マーカーを他の僚艦と塗り分けるため)。
-  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean, isActive: boolean): {
-    key: string; cls: string; sym: string; pos: Vec3; vel: Vec3; priority: number;
-    name: string; detail: string; bearingColor: string; bearingSym: string; bearingClass: string;
-    bearingVisible: boolean; color: string; symMarkup: boolean;
-  } {
+  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean, isActive: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.PLAYER;
     const kindCls = isActive ? 'mk-self' : 'mk-ally';

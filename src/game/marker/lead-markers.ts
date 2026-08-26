@@ -7,7 +7,7 @@ import type { MarkerManager } from './marker-manager';
 import type { CombatTarget } from '../targeter';
 import { Player } from '../player/player';
 
-const markerKey = (target: CombatTarget): string => target instanceof Player ? `lead-p-${target.id}` : `lead-e-${target.name}`;
+const markerKey = (target: CombatTarget): string => `lead-${target.id}`;
 
 export class LeadMarkers {
   private shownKeys: readonly string[] = [];
