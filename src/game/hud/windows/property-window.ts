@@ -247,8 +247,8 @@ export class PropertyWindow<A extends string = string> {
     this.win.setHeader(title, subtitle);
   }
 
-  public syncBadge(kind: 'tgt' | 'on' | null): void {
-    this.win.setBadge(kind);
+  public syncBadge(isTarget: boolean): void {
+    this.win.setBadge(isTarget);
   }
 
   // タイトルを編集用の入力欄へ差し替え、確定(Enter/blur)で renameCallback へ通知して表示へ戻す。
