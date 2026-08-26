@@ -1,18 +1,17 @@
-import { bodyClassOf } from '../../celestial/body-class';
-import { bodyEntityGlyph, ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../../marker/marker-glyphs';
-import { baseMarkerSvg, shipMarkerSvg } from '../../marker/marker-shapes';
 import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
   hudRail,
   type CollapseToggleLabels,
 } from '../hud-root';
-import { LAGRANGE_ID } from '../object-groups';
 import { Button, SegmentedControl, ValueInput } from '../widgets';
+import { injectOnce } from '../widgets/inject-style';
 import { wirePanelCollapse } from '../panel-shell';
+import { PhysicalObjectListTree } from './physical-object-list-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialRegistry } from '../../../physics/solar-system';
 import type { MapPickable, MapPickKind } from '../../map-pickable';
+import type { RowNode } from './physical-object-list-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
 
 const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
@@ -42,8 +41,6 @@ const HEADER_SUMMARY: Partial<Record<MapPickKind, { readonly needle: string; rea
   fuel: { needle: '回収可能', label: '回収可' },
 };
 
-const EMPTY_IDS: readonly string[] = [];
-
 // このパネル自身の折りたたみトグルの見た目。
 const COLLAPSE_LABELS: CollapseToggleLabels = {
   expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
@@ -52,43 +49,41 @@ const COLLAPSE_LABELS: CollapseToggleLabels = {
   collapsedTitle: '軌道物体一覧を開く',
 };
 
-// 色が消えても種別を判別できる、マップ用の小さな形態記号。名称と常に並べて表示する。
-// body は恒星・衛星・ラグランジュ点で字形が変わるため、この表ではなく bodyGlyph() で選ぶ。
-const OBJECT_GLYPHS: Readonly<Record<Exclude<MapPickKind, 'body'>, string>> = {
-  player: ENTITY_GLYPH.ship,
-  ship: ENTITY_GLYPH.enemyShip,
-  ammo: ENTITY_GLYPH.ammo,
-  fuel: ENTITY_GLYPH.fuel,
-  base: ENTITY_GLYPH.base,
-  apsis: ORBIT_POINT_GLYPH.apsis,
-  relnode: ORBIT_POINT_GLYPH.ascendingNode,
-  eqnode: ORBIT_POINT_GLYPH.descendingNode,
-  'empty-space': '·',
-};
-
-// player/ship/base はマップ実マーカーと同じ SVG 形状を凡例にも使う。それ以外は Unicode 文字のまま。
-const OBJECT_GLYPH_SVGS: Partial<Readonly<Record<MapPickKind, string>>> = {
-  player: shipMarkerSvg(true),
-  ship: shipMarkerSvg(false),
-  base: baseMarkerSvg(),
-};
-
-// 1件ぶんの行 + その子を畳めるトグル区画。子を持たない行(自艦/敵/弾薬/基地、および
-// 子のない天体)でも toggle/childrenContainer 自体は生成しておき、可視性だけ切り替える
-// (子の有無はフレームごとに変わりうるため、生成を後から差し込むより組み替えが少ない)。
-interface RowNode {
-  readonly row: HTMLElement;
-  readonly toggle: HTMLElement;
-  readonly glyph: HTMLElement;
-  readonly label: HTMLElement;
-  readonly detail: HTMLElement;
-  readonly childrenContainer: HTMLElement;
-  readonly children: Map<string, RowNode>;
-  expanded: boolean;
-  // Section.savedExpanded と同じ役割 — この行の子リストを絞り込みが強制的に開いた際の
-  // 直前の畳み状態。
-  savedExpanded: boolean | null;
+const STYLE = `
+#hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); display: flex; flex-direction: column; overflow: hidden; }
+/* 上半分(検索・フィルタ)は要素数ぶんの高さに縮め、下半分(項目一覧)が残りを占有する。互いに重ならないよう独立してスクロールさせる */
+#hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: 50%; overflow-y: auto; }
+#hud-physical-object-list .physical-object-list-body { flex: 1 1 auto; overflow-y: auto; }
+#hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
+#hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
+#hud-physical-object-list .physical-object-list-head .w-group { padding: var(--space-1) var(--space-2); }
+#hud-physical-object-list .physical-object-list-head .w-group-title { flex: 1 0 100%; }
+#hud-physical-object-list .physical-object-list-head .w-btn { font-size: var(--font-xxs); }
+#hud-physical-object-list .physical-object-list-collapse {
+  margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
+#hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+#hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
+#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
+#hud-physical-object-list .physical-object-list-section-header {
+  display: block; width: 100%; text-align: left; margin: var(--space-2) 0 var(--space-1);
+  padding: var(--space-2) var(--space-4); font-size: var(--font-xs); letter-spacing: 1px;
+}
+#hud-physical-object-list .physical-object-list-section-body { padding-left: var(--space-2); }
+#hud-physical-object-list .physical-object-list-section-body.collapsed { display: none !important; }
+#hud-physical-object-list .physical-object-list-tree-controls { display: flex; gap: var(--space-2); padding: 0 var(--space-4) var(--space-1); }
+#hud-physical-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
+#hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
+#hud-physical-object-list .erow:hover { color: var(--text); }
+#hud-physical-object-list .erow.tgt {
+  color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+#hud-physical-object-list .erow.cluster { opacity: .55; }
+#hud-physical-object-list .physical-object-list-toggle { width: 10px; text-align: center; flex: none; }
+#hud-physical-object-list .physical-object-list-children { padding-left: var(--space-5); }
+#hud-physical-object-list .physical-object-list-children.collapsed { display: none !important; }
+#hud-physical-object-list .physical-object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
+`;
 
 // マップビュー右部に常設の軌道物体一覧ウィンドウ。種別ごとの区画にタブ見出しで
 // 開閉し、ダブルクリックでフォーカスを移動する。天体区画は衛星・ラグランジュ点を親の下の
@@ -100,8 +95,8 @@ export class PhysicalObjectListPanel {
 
   private readonly panel: HTMLElement;
   private readonly sections = new Map<MapPickKind, Section>();
-  private readonly registry: CelestialRegistry;
   private readonly order: PhysicalObjectListOrder;
+  private readonly rowTree: PhysicalObjectListTree;
   private lastFocusId: string | undefined = undefined;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
@@ -121,8 +116,9 @@ export class PhysicalObjectListPanel {
   private readonly unsubscribeCollapsedView: () => void;
 
   public constructor(root: HTMLElement, registry: CelestialRegistry) {
-    this.registry = registry;
+    injectOnce('physical-object-list-panel', STYLE);
     this.order = new PhysicalObjectListOrder(registry);
+    this.rowTree = new PhysicalObjectListTree(registry, this.order, this.itemsByIdScratch, this);
     this.panel = document.createElement('div');
     this.panel.id = 'hud-physical-object-list';
     this.panel.className = 'panel';
@@ -282,7 +278,7 @@ export class PhysicalObjectListPanel {
     if (filteringJustDeactivated) {
       for (const section of this.sections.values()) {
         if (section.savedExpanded !== null) { section.expanded = section.savedExpanded; section.savedExpanded = null; this.applyExpanded(section); }
-        this.restoreSavedExpanded(section.rows);
+        this.rowTree.restoreSavedExpanded(section.rows);
       }
     }
 
@@ -306,9 +302,9 @@ export class PhysicalObjectListPanel {
       seen.clear();
       for (const id of section.order.rootIds) {
         seen.add(id);
-        this.syncRow(section.rows, id, section.order.childIds, focusId, section.body, focusAncestors, matchAncestors, reordered);
+        this.rowTree.syncRow(section.rows, id, section.order.childIds, focusId, section.body, focusAncestors, matchAncestors, reordered);
       }
-      this.pruneRows(section.rows, seen);
+      this.rowTree.pruneRows(section.rows, seen);
     }
     this.emptyState.classList.toggle('hidden', !(filteringActive && totalMatched === 0));
 
@@ -320,29 +316,10 @@ export class PhysicalObjectListPanel {
   // id に対応する行要素を全区画から再帰的に探す。見当たらなければ null。
   private findRowElement(id: string): HTMLElement | null {
     for (const section of this.sections.values()) {
-      const found = this.findRowElementIn(section.rows, id);
+      const found = this.rowTree.findRowElementIn(section.rows, id);
       if (found) return found;
     }
     return null;
-  }
-
-  // rows 直下に無ければ、各行の子リストへ再帰する。
-  private findRowElementIn(rows: ReadonlyMap<string, RowNode>, id: string): HTMLElement | null {
-    const node = rows.get(id);
-    if (node) return node.row;
-    for (const child of rows.values()) {
-      const found = this.findRowElementIn(child.children, id);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  // 絞り込みが強制的に開いた分の畳み状態を、記録してあるプレイヤーの元の値へ戻す。
-  private restoreSavedExpanded(rows: ReadonlyMap<string, RowNode>): void {
-    for (const node of rows.values()) {
-      if (node.savedExpanded !== null) { node.expanded = node.savedExpanded; node.savedExpanded = null; }
-      this.restoreSavedExpanded(node.children);
-    }
   }
 
   // 区画見出しへ件数と状況の内訳を書き出す。表示行が無い区画は見出しごと隠す。
@@ -359,160 +336,12 @@ export class PhysicalObjectListPanel {
     section.header.textContent = `${label} (${ids.length})${state} ${section.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH}`;
   }
 
-  // 天体の字形。マップ実マーカーと同じ選び方(ラグランジュ点は専用字形、それ以外は
-  // 恒星/衛星/その他で bodyEntityGlyph())をする。
-  private bodyGlyph(id: string): string {
-    return LAGRANGE_ID.test(id) ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(this.registry, id));
-  }
-
-  // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
-  // id が今フレームの候補に無ければ何もしない。reorder は呼び出し元の区画の並びがこのフレームで
-  // 組み直されたか — 真なら既存行も並び順どおりの位置へ移す。
-  private syncRow(
-    rows: Map<string, RowNode>, id: string,
-    childrenOf: ReadonlyMap<string, string[]>, focusId: string | undefined, container: HTMLElement,
-    focusAncestors: ReadonlySet<string>, matchAncestors: ReadonlySet<string>, reorder: boolean,
-  ): void {
-    const item = this.itemsByIdScratch.get(id);
-    if (!item) return;
-    let node = rows.get(item.id);
-    const isNew = !node;
-    if (!node) {
-      node = this.createRowNode(item.id);
-      rows.set(item.id, node);
-    }
-    if (isNew || reorder) {
-      container.appendChild(node.row);
-      container.appendChild(node.childrenContainer);
-    }
-    const svgGlyph = OBJECT_GLYPH_SVGS[item.kind];
-    if (svgGlyph !== undefined) {
-      if (node.glyph.dataset.svgGlyph !== svgGlyph) {
-        node.glyph.innerHTML = svgGlyph;
-        node.glyph.dataset.svgGlyph = svgGlyph;
-      }
-    } else {
-      const glyph = item.kind === 'body' ? this.bodyGlyph(item.id) : OBJECT_GLYPHS[item.kind];
-      if (node.glyph.textContent !== glyph) {
-        node.glyph.textContent = glyph;
-        delete node.glyph.dataset.svgGlyph;
-      }
-    }
-    if (node.label.textContent !== item.name) node.label.textContent = item.name;
-    const detailText = item.kind === 'body' ? '' : (item.detail ?? '');
-    if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
-    node.detail.classList.toggle('hidden', item.kind === 'body');
-    node.row.classList.toggle('tgt', item.id === focusId);
-    node.row.classList.toggle('related-orbit', item.id === focusId);
-    // 衛星フィルタで添えたクラスタ見出し(親惑星自身はフィルタを通っていない)を淡色化する。
-    node.row.classList.toggle('cluster', !this.order.matches(item));
-    node.row.setAttribute('aria-label', [item.name, detailText].filter(Boolean).join('、'));
-
-    const children = childrenOf.get(item.id) ?? EMPTY_IDS;
-    if (focusAncestors.has(item.id)) node.expanded = true;
-    if (matchAncestors.has(item.id)) {
-      if (node.savedExpanded === null) node.savedExpanded = node.expanded;
-      node.expanded = true;
-    }
-    node.toggle.style.visibility = children.length > 0 ? 'visible' : 'hidden';
-    this.applyRowExpanded(node);
-
-    const seen = new Set<string>();
-    for (const childId of children) {
-      seen.add(childId);
-      this.syncRow(node.children, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors, reorder);
-    }
-    this.pruneRows(node.children, seen);
-  }
-
-  private pruneRows(rows: Map<string, RowNode>, seen: ReadonlySet<string>): void {
-    for (const [id, node] of rows) {
-      if (seen.has(id)) continue;
-      node.row.remove();
-      node.childrenContainer.remove();
-      rows.delete(id);
-    }
-  }
-
-  // 行 + トグルボタン + 子コンテナを1組生成する。子を持つかどうかはフレームごとに
-  // 変わりうるので、トグルボタンと子コンテナは常に作っておき可視性だけ切り替える。
-  // 既定は畳んだ状態 — 衛星・ラグランジュ点は候補数が多く、常に見る必要は薄いため。
-  private createRowNode(id: string): RowNode {
-    const row = document.createElement('div');
-    row.className = 'erow';
-    const toggle = document.createElement('span');
-    toggle.className = 'physical-object-list-toggle';
-    const glyph = document.createElement('span');
-    glyph.className = 'physical-object-list-glyph';
-    glyph.setAttribute('aria-hidden', 'true');
-    const label = document.createElement('span');
-    label.className = 'physical-object-list-name';
-    const detail = document.createElement('small');
-    detail.className = 'physical-object-list-detail';
-    row.appendChild(toggle);
-    row.appendChild(glyph);
-    row.appendChild(label);
-    row.appendChild(detail);
-    const childrenContainer = document.createElement('div');
-    childrenContainer.className = 'physical-object-list-children';
-
-    row.tabIndex = 0;
-    row.setAttribute('role', 'button');
-    row.setAttribute('aria-keyshortcuts', 'F T');
-    row.title = 'ダブルクリック / F: フォーカス · T: ナビ対象';
-    row.addEventListener('dblclick', (e) => {
-      e.preventDefault();
-      this.onFocus?.(id);
-    });
-    row.addEventListener('keydown', (e) => {
-      if (e.key.toLowerCase() === 'f') { e.preventDefault(); this.onFocus?.(id); }
-      if (e.key.toLowerCase() === 't') { e.preventDefault(); this.onNavTarget?.(id); }
-    });
-    row.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      this.onSelectRight?.(id, e.clientX, e.clientY);
-    });
-
-    const node: RowNode = {
-      row,
-      toggle,
-      glyph,
-      label,
-      detail,
-      childrenContainer,
-      children: new Map(),
-      expanded: false,
-      savedExpanded: null,
-    };
-    toggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      node.expanded = !node.expanded;
-      this.applyRowExpanded(node);
-    });
-    return node;
-  }
-
-  private applyRowExpanded(node: RowNode): void {
-    node.toggle.textContent = node.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH;
-    node.childrenContainer.classList.toggle('collapsed', !node.expanded);
-  }
-
-  // section.rows 以下の全ての入れ子を一括で展開/折りたたむ。手動での開閉と同じ状態として
-  // 扱うので savedExpanded には触れない。
-  private setAllRowsExpanded(rows: ReadonlyMap<string, RowNode>, expanded: boolean): void {
-    for (const node of rows.values()) {
-      node.expanded = expanded;
-      this.applyRowExpanded(node);
-      this.setAllRowsExpanded(node.children, expanded);
-    }
-  }
-
   // 天体区画の見出しに添える「全展開」「全折りたたむ」ボタンの組。
   private buildTreeControls(section: Section): HTMLElement {
     const controls = document.createElement('div');
     controls.className = 'physical-object-list-tree-controls';
-    const expandAll = new Button('全展開', () => this.setAllRowsExpanded(section.rows, true));
-    const collapseAll = new Button('全折りたたむ', () => this.setAllRowsExpanded(section.rows, false));
+    const expandAll = new Button('全展開', () => this.rowTree.setAllRowsExpanded(section.rows, true));
+    const collapseAll = new Button('全折りたたむ', () => this.rowTree.setAllRowsExpanded(section.rows, false));
     controls.appendChild(expandAll.element);
     controls.appendChild(collapseAll.element);
     return controls;
