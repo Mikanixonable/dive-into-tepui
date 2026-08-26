@@ -8,7 +8,7 @@ import { R_EARTH, R_SUN } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
-import { createSun, STAR_GLOW_SIZE_RATIO, SUN_GLOW_RADIANCE } from '../../src/render/stars';
+import { createSun } from '../../src/render/stars';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
@@ -724,15 +724,10 @@ function sunAt(distance: number): LabCase {
   const sun = createSun();
   sun.mesh.position.copy(center);
   sun.mesh.scale.setScalar(R_SUN);
-  // グローは土星ケースの環と同じく、組み立て時に 1 回だけケースのカメラへ正対させる。測定で
-  // 使う回転は 0.1° 未満なので、正対のずれは絵に出ない。
-  sun.billboard.sync(center, R_SUN * STAR_GLOW_SIZE_RATIO, SUN_GLOW_RADIANCE, camera.quaternion);
-  for (const mesh of [sun.mesh, sun.billboard.mesh]) {
-    mesh.userData.ownsGeometry = true;
-    mesh.userData.ownsMaterial = true;
-  }
+  sun.mesh.userData.ownsGeometry = true;
+  sun.mesh.userData.ownsMaterial = true;
   return {
-    objects: [sun.mesh, sun.billboard.mesh, shipAt(SUN_CASE_SHIP_POSITION)],
+    objects: [sun.mesh, shipAt(SUN_CASE_SHIP_POSITION)],
     camera,
     sunDirection: SUN_CASE_DIR,
     sunDistance: distance,
