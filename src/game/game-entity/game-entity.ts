@@ -475,7 +475,14 @@ export class GameEntity {
   // 予測列で答えられない未来時刻を、先端を中心天体まわりの二体軌道とみなして外挿した値で
   // 答える(外挿もできなければ null)。
   displayState(t: number, ephemeris?: Ephemeris): KinematicState | null {
-    if (t <= this.actual.state.t) return this.actual.at(t);
+    if (t <= this.actual.state.t) {
+      const past = this.actual.at(t);
+      if (past !== null) return past;
+      // 履歴を持たない種別(弾・薬莢・破片)の保持列は先端1件だけなので、at() は t が先端時刻
+      // と完全に一致したときしか答えられない。積分の刻みの積み方や simTime の強制前進で先端が
+      // 丸め1つぶん外れただけで非表示になってしまうため、その1件をそのまま答えにする。
+      return this.historyDuration > 0 ? null : this.actual.state;
+    }
     const predicted = this.predicted;
     const normal = predicted?.at(t) ?? null;
     if (normal !== null || ephemeris === undefined) return normal;
