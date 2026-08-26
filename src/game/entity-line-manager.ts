@@ -6,6 +6,7 @@ import type { FrameAnchorSource } from '../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
 import * as C from './const';
 import { FloatingOrigin } from './floating-origin';
+import type { GameEntity } from './game-entity/game-entity';
 import { Player } from './player/player';
 import { currentThemePalette } from './theme';
 import type { CombatTarget } from './targeter';
@@ -101,23 +102,18 @@ export class EntityLineManager {
     frameAnchors: FrameAnchorSource, ephemeris: Ephemeris,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
-    for (const ship of this.entities.players) {
-      const predictedTo = ship.predictionTruncated ? null : simTime + duration;
-      ship.syncTrajectoryLines(
-        frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
-      ship.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris });
+    for (const group of this.lineOwners) {
+      for (const entity of group) {
+        const predictedTo = entity.predictionTruncated ? null : simTime + duration;
+        entity.syncTrajectoryLines(
+          frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
+        entity.syncOrbitLine(displayTime, ephemeris, fo, camera, frameAnchors);
+      }
     }
-    for (const enemy of this.entities.enemies) {
-      const predictedTo = enemy.predictionTruncated ? null : simTime + duration;
-      enemy.syncTrajectoryLines(
-        frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
-      enemy.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris });
-    }
-    for (const base of this.entities.bases) {
-      const predictedTo = base.predictionTruncated ? null : simTime + duration;
-      base.syncTrajectoryLines(
-        frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
-      base.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris });
-    }
+  }
+
+  // 線を持ちうるエンティティ。sync は種別を問わず同じ呼び出しで済むので、まとめて辿る。
+  private get lineOwners(): readonly (readonly GameEntity[])[] {
+    return [this.entities.players, this.entities.enemies, this.entities.bases];
   }
 }
