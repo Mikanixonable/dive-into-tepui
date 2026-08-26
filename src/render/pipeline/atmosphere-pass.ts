@@ -268,6 +268,7 @@ export class AtmospherePass {
     const surface = slot.surfaceRadius;
     // 最接近点を区間の内側に含む視線だけ、降る脚と昇る脚に分かれる。
     const straddles = and(lessThan(segment.nearMu, 0), greaterThan(segment.farMu, 0));
+    // 成分 1 つぶんの、区間の光学的厚み(散乱係数を除いた形)。
     const depthOf = (scaleHeight: FloatUniform): FloatNode => {
       const ends = signedDepth(segment.nearRadius, segment.nearMu, surface, scaleHeight)
         .sub(signedDepth(segment.farRadius, segment.farMu, surface, scaleHeight));
@@ -313,6 +314,7 @@ export class AtmospherePass {
   // 位相関数 × そこへ届く太陽光」。散乱と消散が等しい(吸収を持たない)ので、割合は位相関数の
   // 重みそのものになる。
   private mediumAt(slot: BodySlot, point: Vec3Node, rayDir: Vec3Node): MediumSample {
+    // 高度から成分ごとの散乱係数を引く。消散はその和で、吸収を持たないので散乱と等しい。
     const offset = sub(point, slot.center);
     const radius = max(length(offset), max(slot.surfaceRadius, 1));
     const altitude = slot.surfaceRadius.sub(radius);
@@ -320,6 +322,7 @@ export class AtmospherePass {
     const mie = slot.mie.mul(exp(altitude.div(slot.mieScaleHeight)));
     const extinction: Vec3Node = rayleigh.add(vec3(mie));
 
+    // 視線へ向かう散乱は、成分ごとの散乱係数に位相関数を掛けて重みを付けた和。
     const sunDir = normalize(sub(this.sunLight.position, point));
     const cosTheta = dot(rayDir, sunDir);
     const scattered: Vec3Node = rayleigh.mul(rayleighPhase(cosTheta))
@@ -338,6 +341,7 @@ export class AtmospherePass {
   // 目盛りは拡散面と揃える(放射照度を π で割る)。散乱した割合をアルベドと見なすので、
   // 太陽へ正対した濃い大気は、同じ場所のアルベド 1 の拡散面と同じ表示値になる。
   private sunRadianceAt(slot: BodySlot, point: Vec3Node): Vec3Node {
+    // 太陽光がその点まで通ってきた大気の光学的厚み。天頂角の余弦だけで決まる。
     const offset = sub(point, slot.center);
     const radius = max(length(offset), max(slot.surfaceRadius, 1));
     const toSun = sub(this.sunLight.position, point);
@@ -362,6 +366,7 @@ export class AtmospherePass {
   setBodies(bodies: readonly AtmosphereBody[], detail: AtmosphereDetail, denseWeight: number): void {
     this.denseDetail.value = detail;
     this.denseWeight.value = denseWeight;
+    // 空きスロットは半径 0 で塞ぐ。区間の判定がそこで落ちて、以降の式は走らない。
     for (const [index, slot] of this.slots.entries()) {
       const body = bodies[index];
       slot.surfaceRadius.value = body === undefined ? 0 : body.surfaceRadius;
