@@ -16,7 +16,7 @@ import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import type { OcclusionPass } from './occlusion';
-import { SHADOW_MIN_SUN, type SunLight } from './sun-light';
+import type { SunLight } from './sun-light';
 import { viewPositionAt, viewRayAt } from './view-ray';
 
 // その画素の G バッファに面が写っているか。反転深度では遠平面が 0 なので、そのままの値は虚空を表す。
@@ -101,15 +101,11 @@ export class LightPrepass {
 
     const dotNL: FloatNode = saturate(dot(normal, lightDir));
     // 恒星から届く放射照度(遮蔽込み)。拡散・鏡面の両方がこれを基準に BRDF を掛ける。
-    // 恒星の直射は遮蔽パスの透過率で落ち、本影では 0 になる。そこへ足す SHADOW_MIN_SUN は、
-    // 影の中にも届く星明かり・地球照ぶんを「恒星と同じ向きから来る一定量」で代用したもので、
-    // 基準強度のうちその割合を直射から分けて持つ。遮られる源が何か(天体・環・メッシュ)は
-    // sun-occlusion.ts が畳み込み済みで、このパスはその 1 枚だけを読む。
-    const direct = texture(occlusion.texture, shadeUV).r.mul(1 - SHADOW_MIN_SUN);
-    const sunlit = direct.add(SHADOW_MIN_SUN);
+    // 恒星の直射は遮蔽パスの透過率で落ち、本影では 0 になる。遮られる源が何か(天体・環・
+    // メッシュ)は sun-occlusion.ts が畳み込み済みで、このパスはその 1 枚だけを読む。
     const irradiance: Vec3Node = this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
-      .mul(dotNL).mul(sunlit);
+      .mul(dotNL).mul(texture(occlusion.texture, shadeUV).r);
     const diffuse: Vec3Node = irradiance.add(this.sunLight.ambientColor.mul(this.sunLight.ambientIntensity));
 
     const alpha = roughnessValue.mul(roughnessValue);

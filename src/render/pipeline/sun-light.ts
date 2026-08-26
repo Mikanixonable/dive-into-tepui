@@ -48,10 +48,6 @@ export function ambientIrradianceAtDistance(distance: number): number {
   return AMBIENT_IRRADIANCE * (AMBIENT_REFERENCE_DISTANCE / Math.max(distance, R_EARTH)) ** 2;
 }
 
-// 本影の中にも届く光の量(星明かり・地球照ぶん)を、恒星と同じ向きから来る一定量で代用した
-// もの。恒星の放射照度に対する割合で、ライティングパスが直射ぶんと分け合う。
-export const SHADOW_MIN_SUN = 0.04;
-
 export class SunLight {
   private readonly positionUniform: Vec3Uniform;
   private readonly radiusUniform: FloatUniform;
