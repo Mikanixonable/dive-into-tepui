@@ -269,9 +269,6 @@ export class PhysicalObjectListPanel {
     this.panel.classList.toggle('hidden', !visible);
   }
 
-  // プロパティウィンドウが自身の対象の行帯び色(.tgt)を揃えるための問い合わせ。
-  public isTarget(id: string): boolean { return id === this.lastFocusId; }
-
   // パネルを取り除き、折りたたみ状態変化の購読を解く。
   public dispose(): void {
     this.unsubscribeCollapsedView();
