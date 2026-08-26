@@ -3,7 +3,7 @@ import { Vec3, v3, sub, len } from '../../physics/vec3';
 import { CelestialBody, CelestialBodyId, OrbitingId, strongestAttractor } from '../../physics/celestial-body';
 import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
-import { MarkerManager } from '../marker/marker-manager';
+import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { celestialBodyName } from '../hud/frame/frame-labels';
 import { occlusionOpacity } from '../../physics/occlusion';
@@ -66,14 +66,17 @@ function lagrangeMarkerLabel(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
   return `L${n}\n${celestialBodyName(id)}`;
 }
 
+// 陣営種別ごとのサブ行記号。mk-ally には専用の記号を持たせず、item.sym からの
+// フォールバックに委ねる。
+const SUB_LABEL_GLYPH_BY_KIND: Partial<Record<CombatMarkerKind, string>> = {
+  self: '▲', base: '⬡', enemy: '△', ammo: '▣', fuel: '◈',
+};
+
 // サブ行テキスト用のクリーンな Unicode 記号を取得する(SVG タグ文字列を避ける)。
 function cleanSubLabelGlyph(item: GroupedMarkerItem): string {
-  const cls = item.cls;
-  if (cls.includes('mk-self')) return '▲';
-  if (cls.includes('mk-base')) return '⬡';
-  if (cls.includes('mk-enemy')) return '△';
-  if (cls.includes('mk-ammo')) return '▣';
-  if (cls.includes('mk-fuel')) return '◈';
+  const kind = combatMarkerKindOf(item.cls);
+  const glyph = kind ? SUB_LABEL_GLYPH_BY_KIND[kind] : undefined;
+  if (glyph) return glyph;
   if (item.sym && !item.sym.trim().startsWith('<')) return item.sym.trim();
   return '▲';
 }
@@ -542,11 +545,11 @@ export class FocusMarkers {
         let nFuel = 0;
 
         for (const entry of entries) {
-          const item = entry.item;
-          if (item.cls.includes('mk-enemy')) nEnemy++;
-          else if (item.cls.includes('mk-base')) nBase++;
-          else if (item.cls.includes('mk-ammo')) nAmmo++;
-          else if (item.cls.includes('mk-fuel')) nFuel++;
+          const kind = combatMarkerKindOf(entry.item.cls);
+          if (kind === 'enemy') nEnemy++;
+          else if (kind === 'base') nBase++;
+          else if (kind === 'ammo') nAmmo++;
+          else if (kind === 'fuel') nFuel++;
           else nAlly++;
         }
 
