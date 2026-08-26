@@ -26,7 +26,9 @@ import {
 } from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
-import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
+import {
+  MAX_ATMOSPHERE_BODIES, type AtmosphereBody, type AtmospherePass,
+} from '../../render/pipeline/atmosphere-pass';
 import { atmosphereOpticsOf, logExtinctionAt } from '../../render/atmosphere-params';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
@@ -82,9 +84,6 @@ function castsVisibleShadow(
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
-
-// 大気を描く対象として選ばれた天体。中心は ECI。
-type AtmosphereBody = { readonly center: Vec3; readonly surfaceRadius: number };
 
 // 恒星以外の全公転天体の id(registry の宣言順)。天体が増えれば参照線もここから自動で増える。
 function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
@@ -332,31 +331,36 @@ export class EnvironmentScene {
   private syncAtmosphere(
     fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, graphics: GraphicsSettingsData,
   ): void {
-    const dominant = graphics.atmosphere ? this.dominantAtmosphere(displayTime, cameraPos) : null;
-    if (dominant === null) {
-      this.atmosphere.setBody(ZERO_VECTOR, 0);
-      return;
-    }
-    this.atmosphere.setBody(fo.RtoThreeV3(dominant.center), dominant.surfaceRadius);
+    this.atmosphere.setBodies(
+      graphics.atmosphere ? this.atmosphereBodies(fo, displayTime, cameraPos) : [],
+    );
   }
 
-  // カメラのいる場所の大気を最も強く作っている天体(中心は ECI)。どの天体も大気を持たない
-  // レジストリでは null。**カメラの向きは見ない** — 地表から空を見上げて地面が視錐台に
-  // 入っていなくても、空は大気の色でなければならない。
-  private dominantAtmosphere(displayTime: number, cameraPos: Vec3): AtmosphereBody | null {
-    let dominant: AtmosphereBody | null = null;
-    let strongest = -Infinity;
+  // 大気を描く天体を、視点に近い順に最大 MAX_ATMOSPHERE_BODIES 体。**どれを描くかは
+  // カメラのいる場所の大気の濃さで選び、カメラの向きは見ない** — 地表から空を見上げて地面が
+  // 視錐台に入っていなくても、空は大気の色でなければならない。並べ替えるのは、画面で
+  // 重なったときの前後を決めるためだけ。
+  private atmosphereBodies(
+    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3,
+  ): readonly AtmosphereBody[] {
+    const candidates: { body: AtmosphereBody; strength: number; distance: number }[] = [];
     for (const id of this.referenceIds) {
       const optics = atmosphereOpticsOf(id);
       if (optics === null) continue;
       const surfaceRadius = bodyDef(this.ephemeris.registry, id).radius;
       const center = this.ephemeris.positionOf(id, displayTime);
-      const strength = logExtinctionAt(optics, len(sub(cameraPos, center)) - surfaceRadius);
-      if (strength <= strongest) continue;
-      strongest = strength;
-      dominant = { center, surfaceRadius };
+      const distance = len(sub(cameraPos, center));
+      candidates.push({
+        body: { center: fo.RtoThreeV3(center), surfaceRadius, optics },
+        strength: logExtinctionAt(optics, distance - surfaceRadius),
+        distance,
+      });
     }
-    return dominant;
+    return candidates
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, MAX_ATMOSPHERE_BODIES)
+      .sort((a, b) => a.distance - b.distance)
+      .map(({ body }) => body);
   }
 
   // 星球は描画原点(= カメラ)に固定した半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで

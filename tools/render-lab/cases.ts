@@ -19,6 +19,8 @@ import {
 } from '../../src/render/thermal-emissive';
 import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
+import type { AtmosphereBody } from '../../src/render/pipeline/atmosphere-pass';
+import { ATMOSPHERE_OPTICS } from '../../src/render/atmosphere-params';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
@@ -90,7 +92,7 @@ export type LabCase = {
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
   // 大気パスへ渡す天体。中心は描画座標。
-  readonly atmosphere?: { readonly center: THREE.Vector3; readonly surfaceRadius: number };
+  readonly atmosphere?: AtmosphereBody;
   // 遮蔽パスへ渡す球。中心は描画座標。
   readonly occluders?: readonly Occluder[];
   // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
@@ -491,7 +493,12 @@ const ECLIPSE_GROUND_ANGLE = 0.25;
 const ECLIPSE_OCCLUDER_RADIUS = 2e5;
 const ECLIPSE_OCCLUDER_DISTANCE = 3e7;
 
-// 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもやを見る。
+// 大気の外に置く試験球の位置と半径。カメラと同じ高度帯(403km)に居るので、**カメラとの間に
+// 大気が無く、地表と違って霞んではならない。** 地平線を背にした輪郭で読む。
+const ABOVE_ATMOSPHERE_CENTER = new THREE.Vector3(0, 0, -5e4);
+const ABOVE_ATMOSPHERE_RADIUS = 1e3;
+
+// 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもや、大気の外に居る物体を見る。
 function earth(style: RenderStyle): LabCase {
   const camera = labCamera(6e7);
   // 地平線が画面中央へ来る向きへ地球を置く — 視線が地球へ接する角だけ、カメラから見た
@@ -506,7 +513,14 @@ function earth(style: RenderStyle): LabCase {
   built.setCoastlineVisible(style === 'schematic');
   built.syncSurfaceLod(6e4);
   built.tick(0);
-  return { objects: [built.group], camera, atmosphere: { center, surfaceRadius: R_EARTH } };
+  return {
+    objects: [
+      built.group,
+      sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER),
+    ],
+    camera,
+    atmosphere: { center, surfaceRadius: R_EARTH, optics: ATMOSPHERE_OPTICS.earth! },
+  };
 }
 
 // 日食下の地球: earth と同じ構図へ、地球自身と食を起こす球を遮蔽器として足す。**大気の明暗は
