@@ -11,8 +11,8 @@ import { contributionMaterial, type LightContribution, type LightSource } from '
 import type { ShadingSample } from './shading-sample';
 import { sphereIrradianceFactor } from './sphere-light';
 
-// 同時に扱う天体光源の本数。表示に効く閾値(planet-light.ts)を上回る天体が 3 体以上並ぶ
-// 構図は、低いイオ周回軌道(イオ本体 + 木星)のような場合に限られる。
+// 同時に扱う天体光源の本数。3 体目が絵に効くほど明るい構図は、低いイオ周回軌道
+// (イオ本体 + 木星)のような場合に限られる。
 export const PLANET_LIGHT_SLOTS = 2;
 
 // 光源モデルの選択値。graphics-settings.ts の planetLightModel の選択肢と対応する。
