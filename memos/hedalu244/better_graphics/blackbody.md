@@ -122,12 +122,14 @@ RGB_code(T)_i = ε × 46244 × ∫B_λ(T)·c̄_i(λ)dλ / ∫B_λ(5772)·c̄_i(�
 採らない。**`reference` は共有マテリアルのまま個体ごとに更新される** ので、
 `cloneIndependent` にも `ownsMaterial` にも触らずに済む。
 
-**インスタンスへ温度を送るのは難しくない。** 同じことを既に
-`render/protein-motion-material.ts` の `attachProteinInstancedResidueBinding` がやっている
-(`mesh.geometry.setAttribute(name, new THREE.InstancedBufferAttribute(...))` を
-`InstancedMesh` へ足し、TSL の `attribute()` で読む)。**`InstancedPool` は
-`instanceColor` で既に「毎フレーム値を積んで `needsUpdate` を立てる」形を持っている**ので、
-そこへ 1 本足すだけになる。
+**Mesh ごとの経路は実装済み**(`render/thermal-emissive.ts`)。エンティティのメッシュは
+`makeThermallyEmissive` を通って Node 版マテリアルへ持ち替わり、`GameEntity.sync` が
+同期のたびに温度・過熱・輻射率を配る。**この持ち替えで既存の render-lab の絵は 1 バイトも
+変わっていない。**
+
+**インスタンスの経路も実装済み。** `InstancedPool` が個体ごとの温度・過熱・輻射率を属性へ
+転写し(値が動いたフレームだけ転送)、薬莢と破片のマテリアルがそれを読む。**上限温度の高い
+デブリを足せば、書き足しなしで赤熱する。**
 
 ### 5. 実際に赤熱するのは、いまはバレルと上限近くの自機だけ。**仕組みは温度だけで閉じる**
 
@@ -150,8 +152,10 @@ RGB_code(T)_i = ε × 46244 × ∫B_λ(T)·c̄_i(λ)dλ / ∫B_λ(5772)·c̄_i(�
 
 - バレルへ入る熱 **1.0 MJ/発**、バレルの熱容量 **0.15 MJ/K**(約 6.7 K/発)。
 - **薬室側の温度上昇は平均の 2 倍** — 1 発ごとに平均温度と偏差の振幅へ同じ量を積む。
-- 96 発を連射(連射間隔 0.112 s で約 11 秒)し切った時点の見込みは平均 880 K・偏差 595 K
-  → **薬室側 1475 K。** 較正表の目標帯(1450〜1550 K)に入る。
+- **実装済み。実測(同じ式を 0.112 s 刻みで回した値):** 96 発を連射し切った直後で
+  平均 887 K・偏差 619 K → **薬室側 1506 K**(目標帯 1450〜1550 K に入る)。
+  10 秒後 1409 K、60 秒後 1103 K、120 秒後 914 K。**1 秒に 1 発でゆっくり撃った場合でも
+  薬室側 1323 K** に達する。平均温度は上限(1700 K)に遠く、焼失しない。
 - **温度の上限に当てるのは平均の温度**(局所的な過熱では焼失しない)。
 
 ---
@@ -204,102 +208,10 @@ RGB_code(T)_i = ε × 46244 × ∫B_λ(T)·c̄_i(λ)dλ / ∫B_λ(5772)·c̄_i(�
 5. **バレルが発砲した弾数ぶんだけ熱くなり、排出後に冷えて暗くなる。** 撃ち切って排出した
    直後の発光部が 1450〜1550 K、60 秒後に 1200 K 未満。
 6. **赤熱がメッシュの境界で切れず、勾配として出る。**
-7. **絵が退行していない。** `npm run render-lab:shot` の `ship-in-debris` と新設ケース
-   `blackbody` を見て、排出直後のバレルの赤熱が現状と同等以上に読める。
+7. **絵が退行していない。** `npm run render-lab:shot` の `blackbody` ケース(排出直後の状態の
+   バレルが置いてある)で、薬室側の画素が置き換え前の固定グロー(線形 R = 0.48)と同じ
+   明るさに来ている。他のケースの絵は 1 バイトも変わらない。
 8. `npm run typecheck` と `npm run test:physics` が通る。
-
----
-
-## 手順
-
-### 手順 4. `GameEntity` と描画物を配線する(オブジェクトごとの温度)
-
-**目的** — 温度を毎フレーム emissive へ流す経路を通す。**偏差はまだ全部 0** なので、
-この時点で絵が変わるのは**上限近くまで焼けた自機だけ**(1300 K で影の中に赤く出る)。
-
-**責務の分け目**(`pipeline.md` §1-3): **`game/` が渡すのは温度と偏差の振幅という物理量だけ。**
-色も表も `render/` が決める。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/standard-node-material.ts`(新規) | `material-pass.ts` の `standardMaterialParams`(値だけの `MeshStandardMaterial` から `MeshStandardNodeMaterial` へ移す params)をここへ移して両者で共有する。**マテリアルパスの `upgrade` は変換のときにノードを引き継がないので、赤熱するマテリアルは先に `MeshStandardNodeMaterial` にしておく必要がある** |
-| `src/render/pipeline/material-pass.ts` | 上の関数を import へ差し替える(挙動は変えない) |
-| `src/render/ships.ts` | 艦・敵機・バレル・弾薬などのマテリアルを `MeshStandardNodeMaterial` にし、`attachThermalEmissive(..., 'object')` を通す。**組み立て時に `initThermalState` を通す**(`reference` が `undefined` を読むと値が壊れる) |
-| `src/game/game-entity/game-entity.ts` | `thermalDeviation = 0` を追加(公開フィールド)。`stepThermal`(404 行)の末尾で `stepThermalDeviation` を掛ける。`sync`(480 行)から `syncThermalState(this.renderObject, this.temperature, this.thermalDeviation, this.emissivity)` を呼ぶ |
-| `src/game/player/player.ts` | `syncPlayer` は `sync` を経由しないので、同じ呼び出しを足す |
-
-**達成条件と検証** — `npm run typecheck`。`npm run render-lab:shot` の `ship-in-debris` が
-現状と同じ絵(まだ誰も見える温度に達しない)。`npm run dev` で自機の温度を上限付近まで上げ、
-影の中で艦が赤くなること・冷えると戻ることを見る。
-
-### 手順 5. `InstancedPool` に個体ごとの温度を通す
-
-**目的** — 薬莢・破片にも温度を届ける。**この時点で絵は変わらない**(どれも 933 K で焼失する)。
-**将来、融点の高いデブリを足したときに書き足しが要らない状態にするための手順。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/instanced-pool.ts` | コンストラクタへ `perInstanceThermal` を追加。立っていれば `geometry.setAttribute(INSTANCE_THERMAL_ATTRIBUTE, new THREE.InstancedBufferAttribute(new Float32Array(capacity*3), 3))` を `DynamicDrawUsage` で置く(温度・偏差・輻射率)。`push` で書き、`endFrame` で **値が変わったフレームだけ** `needsUpdate` を立てる |
-| `src/render/ships.ts` | `casingBodyResources` / `debrisFragmentResources` のマテリアルを `MeshStandardNodeMaterial` にし、`attachThermalEmissive(..., 'instance')` を通す |
-| `src/game/simulation/entity-manager.ts` | 薬莢・破片のプールを `perInstanceThermal` 付きで作り、`sync`(467 行)の `push` で `温度・偏差` を渡す |
-
-**⚠ プールへ渡すジオメトリを、インスタンス描画しないメッシュと共有していないか確かめる。**
-薬莢の `DebrisPiece` は Mesh を持つがシーンへ入らない(プールが描く)ので現状は安全。
-
-**達成条件と検証** — `npm run typecheck`。**`SMALL_DEBRIS_MAX_TEMP` を一時的に 2000 K へ上げ、
-大気圏へ突っ込んで破片が赤熱することを見る**(これが per-instance 配線の唯一の確かめ方)。
-確認したら戻す。`npm run render-lab:shot` の `ship-in-debris` が現状と同じ絵。
-
-### 手順 6. バレルの熱を熱シミュレーションで正しく扱う
-
-**目的** — バレルの温度を、発砲した弾数と経過時間から決まる本物にする。
-**この時点でもまだ絵は変わらない**(旧グローが乗ったまま、`thermalShape` は未設定)。
-
-バレルは鋼で、いま `DebrisPiece` が持っているアルミ合金相当の定数(密度 2700、比熱 900、
-上限 933 K)では**赤熱する温度に達した時点で焼失する。** 種別ごとの熱定数が要る。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/const.ts` | `BARREL_*`(密度 7850、比熱 500、輻射面積比 0.047 m²/kg、上限 1700 K、質量 300 kg)と `GUN_BARREL_HEAT_PER_ROUND` を追加。**後者は「96 発(`MAG_ROUNDS` × `MAGS_PER_BARREL`)撃ち切ったバレルの発光部が 1500 K」から逆算する**(手順 7 で較正) |
-| `src/game/game-entity/debris-piece.ts` | 熱定数(56〜63 行)を `DebrisKind` ごとの表から引く。`barrel` だけが鋼、他は現状のまま |
-| `src/game/player/player-fire.ts` | 装着中のバレルの温度と偏差を持つ。`fireGun`(259 行)で**刻みに依らない投入熱**として溜め、`stepBarrelThermal(dt)` で 1 度だけ温度へ変換して放射冷却と偏差の減衰を掛ける。`dropBarrel`(319 行)が温度と偏差を `spawnBarrel` へ渡し、交換後は初期値へ戻す。**手動リロード(`manualReload`)でもバレルは落ちる**ので、そちらも通る |
-| `src/game/player/player.ts` | `stepEnvironment`(427 行)から `stepBarrelThermal(dt)` を呼ぶ(表示フレームではなく simulation clock で進める) |
-| `src/game/vfx/effects-system.ts` | `spawnBarrel`(225 行)が温度と偏差を受け取り、`DebrisPiece` へ渡す |
-| `src/game/save-data.ts` | `FireSaveData`(43 行)に `barrelTemp?` / `barrelDeviation?` を追加(**旧セーブには無いので任意**。無ければ `ENV_TEMP` と 0) |
-| `DEVELOP/SPEC/SAVE.md` | 保存項目に追記 |
-
-**達成条件と検証** — `npm run typecheck` と `npm run test:physics`。
-`npm run dev` で 96 発撃ち切り、**ステータスウィンドウの艦体温度が現状と変わっていない**
-(艦体ぶんの発熱を動かしていないことの確認)。排出されたバレルが焼失せずに飛んでいく。
-
-### 手順 7. 旧グローを置き換え、勾配を焼いて較正する
-
-**目的** — 固定色の加算グローを消し、偏差の形を頂点へ焼いて、温度から出る赤熱へ入れ替える。
-**絵が変わるのはここだけ。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/ships.ts` | `heatMat`(515 行)と赤熱グローの円筒を削除する(**スリーブは残さない** — 勾配で表すので別メッシュは要らない)。バレルを構成する各ジオメトリへ `thermalShape` 属性を焼く。**形は薬室からの指数減衰** `s(z) = exp(−(z − z_breech)/L)`、`z_breech = −2.3`、`L = 1.2 m`(砲口 z = +2.3 で 0.02)。発射ガスが銃身に沿って熱を置いていく形を表す |
-| `src/game/const.ts` | `GUN_BARREL_HEAT_PER_ROUND` を較正で確定させる |
-
-**達成条件と検証**
-
-- `grep -n "AdditiveBlending" src/render/ships.ts` が 0 件。
-- `npm run render-lab:shot` の `ship-in-debris`。**バレル後端の赤熱が現状と同等以上に読め、
-  メッシュの継ぎ目ではなく勾配として終わっている。**
-- `npm run dev` で 96 発を通しで撃ち切って排出し、**排出直後の発光部が現状のグローと同等の
-  明るさで、60 秒ほどで暗くなる。** 温度が 1450〜1550 K に来ていなければ
-  `GUN_BARREL_HEAT_PER_ROUND` を動かす(較正表から逆算できるので試行錯誤にはならない)。
-- **2 本以上のバレルを同時に浮かべ、温度の違うバレルが違う明るさで光ることを見る。**
-- `npm run test:physics`(`tests/physics/game-entity-dispose.test.ts` がマテリアルの所有権を見る)。
 
 ---
 
@@ -367,3 +279,6 @@ G バッファパスは法線と粗さしか出力しないので、そちらで
   なら足りない。使う側が決まった時点で伸ばす(半精度の表現域は 5900 K まで持つ)。
 - **融点の高いデブリ。** 配線は手順 5 で通しておくので、`SMALL_DEBRIS_MAX_TEMP` に相当する
   値を種別ごとに持たせるだけで赤熱するようになる。
+- **分離ブースターは温度の経路へ載せていない。** 爆砕ボルトが手で置いた emissive を持って
+  いて、温度から引く自照へ置き換えるとその光が消える。ボルトの光を何から出すかを決めてから
+  載せる(`render/booster.ts`)。
