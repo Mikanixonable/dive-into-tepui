@@ -44,7 +44,7 @@ const ALL_SYSTEMS: readonly CatalogSystemId[] = [
 
 // 「基本」群の地球専用参照軌道(静止軌道は environment-scene.ts が別枠で描くのでここには
 // 含まない)。族を持たない単一軌道で、CR3BP の系トグルの対象外。
-export type ReferenceOrbitKind = 'sunSync' | 'dawnDusk' | 'molniya' | 'tundra';
+type ReferenceOrbitKind = 'sunSync' | 'dawnDusk' | 'molniya' | 'tundra';
 const REFERENCE_ORBIT_KINDS: readonly ReferenceOrbitKind[] = ['sunSync', 'dawnDusk', 'molniya', 'tundra'];
 
 // 当たり判定向けに、表示中の1本のガイド線をその識別情報・ECI 点列とともに表す。
@@ -186,9 +186,6 @@ export class OrbitGuideLines {
   private settings: OrbitGuideSettings | null = null;
   private structureKey = '';
   private geometryKey = '';
-  // 選ばれている描画様式。模式図では線の色分けに意味を持たせないので、styleFor が毎フレーム
-  // これを読んで不透明な一色へ統一する。
-  private currentStyle: RenderStyle = 'realistic';
   private lastComputedTime: number | null = null;
   private lastCatalogGeneration = -1;
   private onLineCountChange: ((count: number) => void) | null = null;
@@ -210,7 +207,6 @@ export class OrbitGuideLines {
   public sync(
     style: RenderStyle, displayTime: number, overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera,
   ): void {
-    this.currentStyle = style;
     if (!overviewMode || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
       // マーカーは InstancedPool が前のフレームの行列を保つので、空のフレームを1つ流して消す。
@@ -246,16 +242,16 @@ export class OrbitGuideLines {
     this.markers.beginFrame();
     this.markers.cacheCamera(camera);
     for (const entry of this.lines) {
-      const style = this.styleFor(entry, settings);
-      if (!style) {
+      const visual = this.styleFor(entry, settings, style);
+      if (!visual) {
         entry.curve.hide();
         continue;
       }
-      entry.curve.setStyle(style.color, style.opacity);
-      entry.curve.sync(fo, camera, style.colorAt);
+      entry.curve.setStyle(visual.color, visual.opacity);
+      entry.curve.sync(fo, camera, visual.colorAt);
       if (entry.lastLoop) {
         this.markers.addLoop(
-          entry.curve, entry.lastLoop.revolutions, style.direction, style.animate, style.markerColor, fo,
+          entry.curve, entry.lastLoop.revolutions, visual.direction, visual.animate, visual.markerColor, fo,
         );
       }
     }
@@ -316,9 +312,11 @@ export class OrbitGuideLines {
 
   // その線をいま描くべき色・不透明度・進行方向マーカーの出し方を、現在の設定から組む。
   // 設定に対応するエントリが既に消えている(保存データの不整合)なら null(非表示)。
-  private styleFor(entry: GuideLineEntry, settings: OrbitGuideSettings): LineVisualStyle | null {
+  private styleFor(
+    entry: GuideLineEntry, settings: OrbitGuideSettings, style: RenderStyle,
+  ): LineVisualStyle | null {
     const referenceKind = REFERENCE_ORBIT_KINDS.find((k) => k === entry.familyId);
-    if (this.currentStyle === 'schematic') {
+    if (style === 'schematic') {
       // 模式図では色分けに意味を持たせない。表示の有無だけは通常どおり設定に従う。
       const on = entry.familyId === 'lissajous' ? settings.lissajous.on
         : referenceKind ? settings[referenceKind].on : settings.kinds[entry.familyId]?.on;
