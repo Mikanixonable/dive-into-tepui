@@ -40,7 +40,7 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 // applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
 // 駆動する呼び出し側(描画テスト環境)は、この並びを操作の対象にする。
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'exposureCompensation', 'sunLightModel', 'planetLightModel',
+  'lens', 'exposureCompensation', 'sunLightModel', 'planetLightCount',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 
@@ -117,7 +117,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
     this.sunSource = new SunSource(this._sunLight, this.occlusionPass, graphics.sunLightModel);
-    this._planetLight = new PlanetLightSource(graphics.planetLightModel);
+    this._planetLight = new PlanetLightSource(graphics.planetLightCount);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources,
     ], gpu);
@@ -259,7 +259,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this._exposure.setCompensation(graphics.exposureCompensation);
     this.sunSource.setModel(graphics.sunLightModel);
-    this._planetLight.setModel(graphics.planetLightModel);
+    this._planetLight.count = graphics.planetLightCount;
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →

@@ -11,12 +11,10 @@ import { contributionMaterial, type LightContribution, type LightSource } from '
 import type { ShadingSample } from './shading-sample';
 import { sphereIrradianceFactor } from './sphere-light';
 
-// 同時に扱う天体光源の本数。3 体目が絵に効くほど明るい構図は、低いイオ周回軌道
-// (イオ本体 + 木星)のような場合に限られる。
-export const PLANET_LIGHT_SLOTS = 2;
-
-// 光源モデルの選択値。graphics-settings.ts の planetLightModel の選択肢と対応する。
-export const PLANET_LIGHT_MODEL = { none: 0, sphere: 1 } as const;
+// 用意するスロットの本数。同時に使う本数は描画設定 planetLightCount(0〜この値)で決まる。
+// 3 体目が絵に効くほど明るい構図は、低いイオ周回軌道(イオ本体 + 木星)のような場合に
+// 限られる。
+export const MAX_PLANET_LIGHT_SLOTS = 2;
 
 // スロット 1 本の値。中心・半径は描画座標、放射輝度は色つき(SUN_IRRADIANCE_1AU の目盛り)。
 export type PlanetLightValue = {
@@ -52,11 +50,12 @@ class PlanetLightSlot implements LightSource {
 
   constructor(
     private readonly slot: SlotUniforms,
+    private readonly index: number,
     private readonly host: PlanetLightSource,
   ) {}
 
   hasContribution(): boolean {
-    return this.host.sphereModelEnabled && this.slot.radius.value > 0;
+    return this.index < this.host.count && this.slot.radius.value > 0;
   }
 
   material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
@@ -84,24 +83,18 @@ class PlanetLightSlot implements LightSource {
 
 export class PlanetLightSource {
   private readonly slots: readonly SlotUniforms[] = Array.from(
-    { length: PLANET_LIGHT_SLOTS },
+    { length: MAX_PLANET_LIGHT_SLOTS },
     () => ({ center: uniform(new THREE.Vector3()), radius: uniform(0), radiance: uniform(new THREE.Color(0, 0, 0)) }),
   );
-  private readonly slotSources: readonly PlanetLightSlot[];
+  private readonly slotSources = this.slots.map((slot, i) => new PlanetLightSlot(slot, i, this));
 
-  constructor(private model: number) {
-    this.slotSources = this.slots.map((slot) => new PlanetLightSlot(slot, this));
-  }
-
-  // 描画設定 planetLightModel の値をそのまま受ける。次のフレームから効く。
-  setModel(model: number): void { this.model = model; }
-
-  get sphereModelEnabled(): boolean { return this.model === PLANET_LIGHT_MODEL.sphere; }
+  // 同時に使うスロットの本数。描画設定 planetLightCount の値をそのまま受ける。
+  constructor(public count: number) {}
 
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。
   get lightSources(): readonly LightSource[] { return this.slotSources; }
 
-  // このフレームの光源の列。PLANET_LIGHT_SLOTS を超えたぶんは捨て、足りないスロットは消灯する。
+  // このフレームの光源の列。スロット本数を超えたぶんは捨て、足りないスロットは消灯する。
   set(lights: readonly PlanetLightValue[]): void {
     for (const [i, slot] of this.slots.entries()) {
       const light = lights[i];

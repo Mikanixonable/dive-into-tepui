@@ -103,11 +103,12 @@ export const GRAPHICS_OPTIONS = {
     items: [[0, '点光源'], [1, '球光源']],
     presets: { low: 0, medium: 1, high: 1 },
   },
-  // 天体照の光源モデル。「なし」では影の中が太陽の直射だけになる。
-  planetLightModel: {
-    kind: 'choice', group: 'light', label: '天体照の光源モデル',
-    items: [[0, 'なし'], [1, '球光源']],
-    presets: { low: 0, medium: 1, high: 1 },
+  // 同時に照らす天体の数。1 本が描画命令 1 本。「なし」では影の中が太陽の直射だけになり、
+  // 減らすと光源になる天体の入れ替わりが絵に出うる。最大値は MAX_PLANET_LIGHT_SLOTS。
+  planetLightCount: {
+    kind: 'choice', group: 'light', label: '天体照の光源の数',
+    items: [[0, 'なし'], [1, '1'], [2, '2']],
+    presets: { low: 0, medium: 2, high: 2 },
   },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {

@@ -6,7 +6,7 @@ import { sunlitFactor } from '../../physics/shadow';
 import { dot, len, sub, Vec3 } from '../../physics/vec3';
 import { lightSourceAlbedoOf, rec709Luminance, type Albedo } from '../../render/celestial-albedo';
 import {
-  PLANET_LIGHT_SLOTS, lambertPhase, planetRadiance,
+  MAX_PLANET_LIGHT_SLOTS, lambertPhase, planetRadiance,
 } from '../../render/pipeline/lighting/planet-light-source';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
 
@@ -18,7 +18,7 @@ export type PlanetLight = {
 };
 
 // 表示時刻 displayTime に、基準点 reference(ECI)へ強く届く順に天体光源を
-// PLANET_LIGHT_SLOTS 体まで返す。
+// MAX_PLANET_LIGHT_SLOTS 体まで返す。
 export function selectPlanetLights(
   ephemeris: Ephemeris, displayTime: number, reference: Vec3,
 ): readonly PlanetLight[] {
@@ -48,6 +48,6 @@ export function selectPlanetLights(
   }
   return candidates
     .sort((a, b) => b.irradiance - a.irradiance)
-    .slice(0, PLANET_LIGHT_SLOTS)
+    .slice(0, MAX_PLANET_LIGHT_SLOTS)
     .map(({ light }) => light);
 }
