@@ -7,7 +7,8 @@
 ここにあるのは「これから何を足しうるか」だけ。
 
 **環境光をどう物理的な表現へ置き換えるかは扱わない** — [`arealight.md`](arealight.md) が
-丸ごと引き取る。レンズ由来の滲みは [`lens.md`](lens.md)。
+丸ごと引き取る。レンズ由来の滲みは [`pipeline.md`](pipeline.md) §2-5(残件は
+[`lens_backlog.md`](lens_backlog.md)).
 
 ---
 
