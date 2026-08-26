@@ -4,6 +4,7 @@ import { qRotate, randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
 import { randSym } from '../../physics/random';
+import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../physics/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
@@ -51,11 +52,19 @@ export class PlayerFire {
   mags = C.INITIAL_MAGS - 1;
   barrel = C.MAGS_PER_BARREL;
 
+  // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。交換で切り離すときに
+  // そのまま排出されるデブリへ移る。
+  private barrelTemperature = C.ENV_TEMP;
+  private barrelDeviation = 0;
+  // 刻みに依らない砲身への投入熱 [J]。次の熱計算で一度だけ温度へ変換する。
+  private pendingBarrelJoules = 0;
+
   cooldown = 0;
   wasFiring = false;
   wasEmptyClick = false;
   muzzleIdx = 0; // 縦二連砲口の交互発射用
 
+  // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
   constructor(
     private readonly player: Player,
     private readonly _hud: Hud,
@@ -68,6 +77,8 @@ export class PlayerFire {
       this.mags = init.saved.mags;
       this.rounds = init.saved.rounds;
       this.barrel = init.saved.barrel;
+      this.barrelTemperature = init.saved.barrelTemperature ?? C.ENV_TEMP;
+      this.barrelDeviation = init.saved.barrelDeviation ?? 0;
       this.cooldown = init.saved.cooldown;
       this.muzzleIdx = init.saved.muzzleIdx;
     } else if (init.ammo) {
@@ -80,11 +91,14 @@ export class PlayerFire {
 
   get left(): boolean { return this.rounds > 0 || this.mags > 0; }
 
+  // 弾薬・砲身の状態をスナップショットへ落とす。
   serialize(): FireSaveData {
     return {
       mags: this.mags,
       rounds: this.rounds,
       barrel: this.barrel,
+      barrelTemperature: this.barrelTemperature,
+      barrelDeviation: this.barrelDeviation,
       cooldown: this.cooldown,
       muzzleIdx: this.muzzleIdx,
     };
@@ -257,6 +271,7 @@ export class PlayerFire {
 
     activeStage.scoreCounter.recordShot();
     this.player.absorbHeat(C.GUN_HEAT_PER_ROUND / C.PLAYER_MASS);
+    this.pendingBarrelJoules += C.GUN_BARREL_HEAT_PER_ROUND;
     this._worldSfx.fire();
   }
 
@@ -315,7 +330,28 @@ export class PlayerFire {
     this._fx.spawnMuzzleFlash(kinematicState(ship.state.t, addScaled(muzzle, fwd, 1.2), ship.state.v));
   }
 
-  // バレル交換時に円柱アイテムをデブリとして放出する。
+  // 装着している砲身の温度を dt だけ進める。発砲で入った熱は刻みの分け方に依らず一度だけ
+  // 温度へ変わり、薬室側には平均の 2 倍の温度上昇として乗る(SPEC/FLIGHT.md「熱管理」)。
+  stepBarrelThermal(dt: number): void {
+    // 放射で冷え、温度差は薄まる。
+    const cooling = radiativeCooling(
+      this.barrelTemperature, C.ENV_TEMP, C.HULL_EMISS, C.BARREL_RADIATING_AREA_PER_MASS,
+      C.BARREL_SPECIFIC_HEAT, dt);
+    this.barrelTemperature = stepTemperature(
+      this.barrelTemperature, -cooling, C.BARREL_SPECIFIC_HEAT, dt);
+    this.barrelDeviation = stepThermalDeviation(
+      this.barrelDeviation, this.barrelTemperature, C.HULL_EMISS,
+      C.BARREL_RADIATING_AREA_PER_MASS, C.BARREL_SPECIFIC_HEAT, dt);
+    // 溜まっていた発射ガスの熱を、この区間で一度だけ温度へ変える。
+    if (this.pendingBarrelJoules === 0) return;
+    const rise = this.pendingBarrelJoules / (C.BARREL_MASS * C.BARREL_SPECIFIC_HEAT);
+    this.barrelTemperature += rise;
+    this.barrelDeviation += rise;
+    this.pendingBarrelJoules = 0;
+  }
+
+  // バレル交換時に円柱アイテムをデブリとして放出する。装着していた砲身の温度は、そのまま
+  // 排出されたデブリへ移る。
   dropBarrel(ship: Ship): void {
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.att.q, v3(0, -1, 0));
@@ -330,7 +366,12 @@ export class PlayerFire {
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
+      this.barrelTemperature,
+      this.barrelDeviation,
     );
+    this.barrelTemperature = C.ENV_TEMP;
+    this.barrelDeviation = 0;
+    this.pendingBarrelJoules = 0;
   }
 
   // マガジン1個を撃ち尽くした瞬間、-X 側(薬莢と同じ側)の位置から
