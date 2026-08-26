@@ -3,6 +3,7 @@
 // 表示スタイルで組み方が変わるケース(環・地球)は、受け取った style をゲーム本体と同じ
 // sync / setVisible へそのまま流す — スタイルの切り替えは呼び出し側がケースを組み直して行う。
 import * as THREE from 'three/webgpu';
+import { exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
@@ -20,6 +21,7 @@ import {
 import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import type { AtmosphereBody } from '../../src/render/pipeline/atmosphere-pass';
+import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import { ATMOSPHERE_OPTICS } from '../../src/render/atmosphere-params';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
@@ -498,6 +500,47 @@ const ECLIPSE_OCCLUDER_DISTANCE = 3e7;
 const ABOVE_ATMOSPHERE_CENTER = new THREE.Vector3(0, 0, -5e4);
 const ABOVE_ATMOSPHERE_RADIUS = 1e3;
 
+// 検証用の板の置き方。画角(50°)いっぱいに広がる大きさを距離から出す。
+const SLAB_PLANE_DISTANCE = 100;
+const SLAB_PLANE_HEIGHT = 2 * SLAB_PLANE_DISTANCE * Math.tan(THREE.MathUtils.degToRad(FOV_DEG / 2));
+const SLAB_PLANE_WIDTH = (SLAB_PLANE_HEIGHT * VIEW_WIDTH) / VIEW_HEIGHT;
+
+// 積分ヘルパの検証に使う一様媒質の板。消散係数 × 基準の厚みで光学的厚み 1 になる。
+const SLAB_EXTINCTION = 2e-4; // [1/m]
+const SLAB_LENGTH = 5e3; // [m]
+const SLAB_STEPS = 24;
+// 板の見かけの誤差を読むための拡大率。1% の食い違いが中間の灰色として出る。
+const SLAB_ERROR_GAIN = 100;
+
+// 積分ヘルパ: 一様な媒質を、サンプル点の刻みを変えて2通りに積分し、解析解と並べて映す。
+// 上から順に 解析解 / 等間隔の刻み / 前へ寄せた刻み / 解析解との差 ×100 の4帯。
+// **上3帯が同じ濃さで、最下段が黒なら、刻みが不均等でも同じ答えが出ている。**
+// 光学的厚みは画面の左から右へ 0.2 から 1.8 まで変える。
+function marchSlab(): LabCase {
+  const camera = labCamera(1e3);
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(SLAB_PLANE_WIDTH, SLAB_PLANE_HEIGHT),
+    new THREE.MeshBasicNodeMaterial(),
+  );
+  plane.position.set(0, 0, -SLAB_PLANE_DISTANCE);
+  const thickness = float(SLAB_LENGTH).mul(uv().x.mul(1.6).add(0.2));
+  const medium = (): MediumSample => ({
+    extinction: vec3(SLAB_EXTINCTION, SLAB_EXTINCTION, SLAB_EXTINCTION),
+    source: vec3(0, 0, 0),
+  });
+  const analytic = exp(thickness.mul(-SLAB_EXTINCTION));
+  const even = rayMarch(SLAB_STEPS, (f) => thickness.mul(f), medium).transmittance.x;
+  const bunched = rayMarch(SLAB_STEPS, (f) => thickness.mul(f * f), medium).transmittance.x;
+  const error = max(even.sub(analytic).abs(), bunched.sub(analytic).abs()).mul(SLAB_ERROR_GAIN);
+  const band = uv().y.mul(4).floor();
+  const value = select(
+    band.lessThan(1), error,
+    select(band.lessThan(2), bunched, select(band.lessThan(3), even, analytic)),
+  );
+  (plane.material as THREE.MeshBasicNodeMaterial).colorNode = vec3(value, value, value);
+  return { objects: [plane], camera };
+}
+
 // 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもや、大気の外に居る物体を見る。
 function earth(style: RenderStyle): LabCase {
   const camera = labCamera(6e7);
@@ -806,6 +849,7 @@ export const CASES = {
   'depth-1e8': () => depthProbe(1e8, 1e13),
   'depth-1e11': () => depthProbe(1e11, 1e13),
   'eclipse': eclipse,
+  'march-slab': marchSlab,
   'earth': earth,
   'earth-eclipse': earthEclipse,
   'far': far,
