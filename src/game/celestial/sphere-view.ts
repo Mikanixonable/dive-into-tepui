@@ -13,6 +13,8 @@ import { BodyGraticule } from '../../render/body-graticule';
 import type { LineOverlay } from '../../render/line-overlay';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { SunLight } from '../../render/pipeline/sun-light';
+import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../render/render-style';
 import { RingView } from './ring-view';
 
@@ -32,11 +34,15 @@ export class SphereView extends CelestialView {
   private readonly surfaceMarkings?: LineOverlay;
 
   // radius は実半径 [m]、shape は歪みの形状データ(省略時は radius による真球)。
-  // rings を渡すと環を持つ天体になる(ring-view.ts 参照)。surfaceMarkings は表面ラインの
-  // LineOverlay を作るファクトリ(その天体固有のデータを持つ具象クラスを呼び出し側が渡す)。
+  // rings を渡すと環を持つ天体になる。sunOcclusion と sunLight は環が直射散乱の遮蔽と
+  // 明るさを引くために要る — 環を持たない天体でも、持ちうる形として構築時に受ける。
+  // surfaceMarkings は表面ラインの LineOverlay を作るファクトリ(その天体固有のデータを持つ
+  // 具象クラスを呼び出し側が渡す)。
   constructor(
     id: OrbitingId,
     private readonly surface: CelestialSurface,
+    private readonly sunOcclusion: SunOcclusion,
+    private readonly sunLight: SunLight,
     private readonly radius: number,
     shape?: ShapeDef,
     private readonly rings?: RingSystemDef,
@@ -59,7 +65,9 @@ export class SphereView extends CelestialView {
     this.surfaceMarkings?.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== undefined) {
-      this.ring = new RingView(this.rings, this.radius, this.group.renderOrder + 1);
+      this.ring = new RingView(
+        this.rings, this.radius, this.group.renderOrder + 1, this.sunOcclusion, this.sunLight,
+      );
       scene.add(this.ring.group);
     }
   }
@@ -85,7 +93,6 @@ export class SphereView extends CelestialView {
     this.surface.syncLod(apparentDiameterPx);
     this.graticule.setVisible(style === 'schematic');
     this.surfaceMarkings?.setVisible(style === 'schematic');
-    const sunDirection = ephemeris.sunDirFrom(pos, displayTime);
     this.group.position.copy(fo.RtoThreeV3(pos));
     // 歪んだ天体は3軸それぞれの半軸を使う。環へ渡すのは一様スケール(赤道半径)の方で、
     // 扁平は乗せない。
@@ -102,8 +109,6 @@ export class SphereView extends CelestialView {
         orientation === null ? null : orientation.axis,
         pos,
         cameraSystem.activeCameraScale,
-        sunDirection,
-        this.sunIrradianceAt(ephemeris, pos, displayTime),
         style,
       );
     } else if (this.ring !== undefined) {

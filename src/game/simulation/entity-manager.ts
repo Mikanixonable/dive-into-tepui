@@ -77,9 +77,10 @@ export class EntityManager {
     this.bulletBodyPool = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, C.MAX_BULLETS * 3);
     this.bulletHaloPool = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, C.MAX_BULLETS * 3);
     this.plasmaPool = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, C.MAX_BULLETS * 3);
-    this.casingPool = new InstancedPool(scene, casingBody.geometry, casingBody.material, C.MAX_CASINGS);
+    this.casingPool = new InstancedPool(
+      scene, casingBody.geometry, casingBody.material, C.MAX_CASINGS, false, 0, true);
     this.debrisFragmentPools = debrisFragment.geometries.map(
-      (geo) => new InstancedPool(scene, geo, debrisFragment.material, C.MAX_DEBRIS, true));
+      (geo) => new InstancedPool(scene, geo, debrisFragment.material, C.MAX_DEBRIS, true, 0, true));
     this.effects = new EffectsSystem(scene, this, worldSfx);
     if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
   }

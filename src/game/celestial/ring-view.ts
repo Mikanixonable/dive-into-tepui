@@ -15,6 +15,8 @@ import {
   RingVisualState,
 } from '../../render/ring';
 import { ringPixelCoverage } from '../../render/screen-lod';
+import type { SunLight } from '../../render/pipeline/sun-light';
+import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import { ScaleFn } from '../camera/camera-system';
 
 // thickness===0 の帯を annulus(面)/line(線)どちらで表すかの分かれ目[m]。土星の主環群や
@@ -43,9 +45,11 @@ export class RingView {
     rings: RingSystemDef,
     private readonly bodyRadius: number,
     renderOrder: number,
+    sunOcclusion: SunOcclusion,
+    sunLight: SunLight,
   ) {
     for (const band of rings.bands) {
-      const built = this.buildBand(band, bodyRadius);
+      const built = this.buildBand(band, bodyRadius, sunOcclusion, sunLight);
       built.object.traverse((o) => { o.renderOrder = renderOrder; });
       this.group.add(built.object);
       this.visuals.push(built);
@@ -65,31 +69,28 @@ export class RingView {
 
   // 帯1本ぶんの RingVisual を組む。半径は「本体半径 = 1」単位へ換算して渡す。厚みのある帯は
   // 拡散した雲なので扁平トーラス、厚み0の帯は実幅で annulus/line を選び、選んだ側だけを控える。
-  private buildBand(band: RingBandDef, bodyRadius: number): RingVisual {
+  private buildBand(
+    band: RingBandDef, bodyRadius: number, sunOcclusion: SunOcclusion, sunLight: SunLight,
+  ): RingVisual {
     const inner = band.innerRadius / bodyRadius;
     const outer = band.outerRadius / bodyRadius;
     if (band.thickness > 0) {
-      return createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius);
+      return createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius, sunOcclusion, sunLight);
     }
     const widthMeters = band.outerRadius - band.innerRadius;
     const visual = widthMeters >= RING_LINE_WIDTH_THRESHOLD_M
-      ? createAnnulusRing(band.optics, inner, outer, band.arcs)
-      : createRingLine(band.optics, (inner + outer) / 2, band.arcs);
+      ? createAnnulusRing(band.optics, inner, outer, sunOcclusion, sunLight, band.arcs)
+      : createRingLine(band.optics, (inner + outer) / 2, sunOcclusion, sunLight, band.arcs);
     this.coverageBands.push({ widthMeters, visual });
     return visual;
   }
 
-  // pos/axis は本体メッシュ(SphereView/PointView)と揃える。bodyPos/metersPerPixelAt は
-  // 帯の被覆率減光専用で、sunDirection と sunIrradiance は環自身の光学計算用。放射照度は
-  // 呼び出し側が計算済みのスカラで受け取る — render/ は ECI を知らないという不変条件を
-  // 環でも崩さないため。
+  // pos/axis は本体メッシュと揃える。bodyPos/metersPerPixelAt は帯の被覆率減光に使う。
   sync(
     pos: THREE.Vector3,
     axis: Vec3 | null,
     bodyPos: Vec3,
     metersPerPixelAt: ScaleFn,
-    sunDirection: Vec3,
-    sunIrradiance: number,
     style: RenderStyle,
   ): void {
     // 模式図では環メッシュを隠し、輪郭円だけを見せる。
@@ -106,14 +107,7 @@ export class RingView {
       const q = spinOrientation(axis, 0);
       if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     }
-    const state: RingVisualState = {
-      bodyCenter: pos,
-      bodyRadius: this.bodyRadius,
-      sunDirection: new THREE.Vector3(sunDirection.x, sunDirection.y, sunDirection.z).normalize(),
-      ringAxis,
-      coverage: 1,
-      sunIrradiance,
-    };
+    const state: RingVisualState = { ringAxis, coverage: 1 };
     for (const visual of this.visuals) visual.sync(state);
     if (this.coverageBands.length === 0) return;
     const mpp = metersPerPixelAt(bodyPos);
