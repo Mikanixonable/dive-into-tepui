@@ -93,6 +93,9 @@ export class MapContextActions {
   private readonly orbitWindows = new Map<string, OrbitWindowEntry>();
   private readonly physicalObjectListPanel: PhysicalObjectListPanel;
   private expandedBaseWindowKey: string | null = null;
+  // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
+  // 最後にマップ視点だった時点の値のまま据え置く。
+  private lastFocusId: string | undefined = undefined;
 
   // Docking は MapContextActions より後に生成されるので、生成後に登録する。
   setDocking(docking: Docking): void {
@@ -553,7 +556,8 @@ export class MapContextActions {
         const parent = l.isLagrange ? lagrangeParentId(l.id) : primaryOf(registry, l.id);
         if (parent !== null) parentOf.set(l.id, parent);
       }
-      this.physicalObjectListPanel.sync(items, focusTargetId(this.cameraSystem.mapCamera.focus), parentOf);
+      this.lastFocusId = focusTargetId(this.cameraSystem.mapCamera.focus);
+      this.physicalObjectListPanel.sync(items, this.lastFocusId, parentOf);
     }
 
     const byKey = new Map(items.map((i) => [this.windowKey(i), i]));
@@ -567,7 +571,7 @@ export class MapContextActions {
       entry.win.syncRelatedItems(this.relatedItemsFor(entry.target, celestialBodies), this.relatedTitleFor(entry.target));
       entry.win.syncRows(this.buildRows(entry.target, celestialBodies, player, simTime));
       entry.win.syncItems(menuItems);
-      entry.win.syncBadge(this.physicalObjectListPanel.isTarget(entry.target.id));
+      entry.win.syncBadge(entry.target.id === this.lastFocusId);
     }
     for (const entry of [...this.partWindows.values()]) {
       const ship = this.entities.findPlayer(entry.shipId);
