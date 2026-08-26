@@ -600,7 +600,13 @@ export class Game {
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris, orbitRef);
+    // 軌道線(3D描画)は戦闘ビューだけ orbitRef の固定設定に従う。マップビューは軌道情報パネルの
+    // 設定に関わらず常に自動選択のまま描く(orbit-info.ts の数値表示・軌道要素アイコンは
+    // syncPlayers 側で orbitRef をそのまま使うので、この絞り込みの影響を受けない)。
+    this.entityLines.sync(
+      displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris,
+      overviewMode ? undefined : orbitRef,
+    );
     // 軌道線の右クリック当たり判定向けの候補列。各軌道線が今フレーム焼いたサンプルを読むため、
     // environment.sync/entityLines.sync の後に組む。
     this.orbitPickables.refresh(displayWindow, this.frameAnchors);
