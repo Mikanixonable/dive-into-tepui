@@ -16,8 +16,11 @@ export type LightContribution = {
 export interface LightSource {
   // このフレームに寄与があるか。無い光源の描画命令はパスが発行しない。
   hasContribution(): boolean;
-  // 照度バッファへ加算合成で描くマテリアル。パスが構築時に 1 回だけ呼んで持つ。
+  // 照度バッファへ加算合成で描くマテリアル。パスが描画のたびに呼ぶので、実体は光源側が
+  // 遅延生成して使い回す(設定でモードを持つ光源は、モードごとに 1 枚を持つ)。
   material(sample: ShadingSample): THREE.MeshBasicNodeMaterial;
+  // 生成したマテリアルなどの GPU 資源を解放する。パスの dispose から呼ばれる。
+  dispose(): void;
 }
 
 // 寄与を照度バッファ(diffuse/specular の MRT)へ加算で積むマテリアルに包む。
