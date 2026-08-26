@@ -172,7 +172,7 @@ export class EffectsSystem {
 
   // DebrisPiece を組み立てて追加する共通処理。fragment/barrel/magazineFrame/casing の
   // 各 spawnXxx はすべてこれの薄いラッパー — kind ごとの見た目・寿命判定の違いは
-  // DebrisPiece/DebrisKind(game-entity.ts)側の責務。
+  // DebrisPiece/DebrisKind(debris-piece.ts)側の責務。
   private spawnDebrisPiece(state: KinematicState, kind: DebrisKind, att: Attitude, radius?: number): void {
     this.entities.addDebris(new DebrisPiece(state, kind, att, this._worldSfx, this, radius, this._scene));
   }
@@ -221,9 +221,13 @@ export class EffectsSystem {
     this.spawnDebrisPiece(state, { kind: 'casing', bornSim }, att, 0.2);
   }
 
-  // マガジン撃ち尽くし時に排出されるバレル。
-  spawnBarrel(state: KinematicState, att: Attitude): void {
-    this.spawnDebrisPiece(state, { kind: 'barrel' }, att, 0.8);
+  // マガジン撃ち尽くし時に排出されるバレル。temperature は排出時の平均温度 [K]、
+  // thermalDeviation は薬室側が平均より高い温度差 [K]。
+  spawnBarrel(
+    state: KinematicState, att: Attitude, temperature: number, thermalDeviation: number,
+  ): void {
+    this.spawnDebrisPiece(
+      state, { kind: 'barrel', bornTemperature: temperature, bornThermalDeviation: thermalDeviation }, att, 0.8);
   }
 
   // マガジン撃ち尽くし時に排出される空マガジンの外枠。

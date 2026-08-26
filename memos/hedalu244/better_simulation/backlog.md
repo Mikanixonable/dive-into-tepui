@@ -76,8 +76,8 @@ NaN そのものが直ったという意味ではない。** 「個体の前進�
   自力ではそこへ到達せず、置いた場合だけ起きる。地表へ到達すれば従来どおり失われる。
 - 接地した物体の熱は未定。`design_landing_simulation.md` 2-3 案A(接地状態)が入ると、接地中は
   積分しないので熱の進め方も決め直しになる。
-- 焼失の見た目は `better_graphics/` へ送った — 固体の赤熱は `blackbody.md`、周囲の空気の発光は
-  `volume.md`。
+- 焼失の見た目は `better_graphics/` へ送った — 固体の赤熱は `pipeline.md` §2-4(残件は
+  `blackbody_backlog.md`)、周囲の空気の発光は `volume.md`。
 
 17. 日照率の遮蔽体を区間ごとに絞り込む
 `sunlitFactor` は遮蔽体の窓を素通しで走る。予測弧だけが `ArcBodies` の成員で絞っており、

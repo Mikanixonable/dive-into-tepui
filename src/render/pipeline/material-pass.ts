@@ -20,6 +20,7 @@ import { WebGPURenderer, PhysicalLightingModel } from 'three/webgpu';
 import { BRDF_Lambert, diffuseColor, metalness, mix, screenUV, texture, vec3 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { LIT_OPAQUE_LAYER, isStandardMaterial, setOpaquePassLayers } from './lit-layer';
+import { toStandardNodeMaterial } from '../standard-node-material';
 import type { LightPrepass } from './light-prepass';
 import type { Vec3Node } from '../tsl-types';
 
@@ -59,37 +60,6 @@ class MaterialPassLightingModel extends PhysicalLightingModel {
   }
 }
 
-// 素材の色/マップ一式のうち MeshStandardNodeMaterial のコンストラクタが受けるものだけを
-// 元の MeshStandardMaterial から拾う。プロパティ名は両クラスで共通。
-function standardMaterialParams(src: THREE.MeshStandardMaterial): THREE.MeshStandardNodeMaterialParameters {
-  return {
-    color: src.color,
-    map: src.map,
-    roughness: src.roughness,
-    roughnessMap: src.roughnessMap,
-    metalness: src.metalness,
-    metalnessMap: src.metalnessMap,
-    normalMap: src.normalMap,
-    normalScale: src.normalScale,
-    emissive: src.emissive,
-    emissiveMap: src.emissiveMap,
-    emissiveIntensity: src.emissiveIntensity,
-    alphaMap: src.alphaMap,
-    transparent: src.transparent,
-    opacity: src.opacity,
-    side: src.side,
-    vertexColors: src.vertexColors,
-    depthTest: src.depthTest,
-    depthWrite: src.depthWrite,
-    alphaTest: src.alphaTest,
-    flatShading: src.flatShading,
-    wireframe: src.wireframe,
-    wireframeLinewidth: src.wireframeLinewidth,
-    dithering: src.dithering,
-    premultipliedAlpha: src.premultipliedAlpha,
-  };
-}
-
 const LIT_OPAQUE_TEST = new THREE.Layers();
 LIT_OPAQUE_TEST.set(LIT_OPAQUE_LAYER);
 
@@ -117,9 +87,7 @@ export class MaterialPass {
 
   get texture(): THREE.Texture { return this.target.texture; }
 
-  // 標準マテリアルへ上のライティングモデルを据える。値だけの MeshStandardMaterial は同じ見た目の
-  // 値を持つ MeshStandardNodeMaterial へ置き換え、アルベドをノードで組んである
-  // MeshStandardNodeMaterial はそのまま使う。mesh.material が既に済みならなにもしない。
+  // 標準マテリアルへ上のライティングモデルを据える。mesh.material が既に済みならなにもしない。
   // 呼び出し元がメッシュを組み立てる時点では、ライティングモデルが読む2枚の照度テクスチャ
   // (ライトプリパスの出力)がまだ存在しない — このクラス自身の構築より前には作りようがない —
   // ため、構築時ではなく毎フレームこの呼び出しで据える。
@@ -127,18 +95,10 @@ export class MaterialPass {
     const material = mesh.material as THREE.Material;
     if (this.upgraded.has(material) || !isStandardMaterial(material)) return;
 
-    const setupLightingModel = () => new MaterialPassLightingModel(this.diffuseNode, this.specularNode);
-    if ((material as THREE.MeshStandardNodeMaterial).isMeshStandardNodeMaterial) {
-      (material as THREE.MeshStandardNodeMaterial).setupLightingModel = setupLightingModel;
-      this.upgraded.add(material);
-      return;
-    }
-    const src = material as THREE.MeshStandardMaterial;
-    const upgraded = new THREE.MeshStandardNodeMaterial(standardMaterialParams(src));
-    upgraded.setupLightingModel = setupLightingModel;
+    const upgraded = toStandardNodeMaterial(material);
+    upgraded.setupLightingModel = () => new MaterialPassLightingModel(this.diffuseNode, this.specularNode);
     this.upgraded.add(upgraded);
     mesh.material = upgraded;
-    src.dispose();
   }
 
   // LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを、world パスと共有する HDR ターゲットへ

@@ -1,6 +1,7 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque, markOverlay, markSunShadowCaster } from './pipeline/lit-layer';
+import { INSTANCE_THERMAL_ATTRIBUTE, writeThermalState } from './thermal-emissive';
 import type { SunShadowExtent } from './pipeline/sun-shadow-casters';
 
 // three の InstanceNode は instanceMatrix の受け渡し方を InstancedMesh.count から決め、
@@ -23,10 +24,22 @@ export class InstancedPool {
   // 今フレームに push された個体を包む描画座標の AABB。endFrame で公開用の箱へ移す。
   private readonly pending = new THREE.Box3();
   private readonly extent: SunShadowExtent = { worldBounds: new THREE.Box3() };
+  // 個体ごとの熱の状態(温度・局所的な過熱・輻射率)。持たないプールでは null。
+  private readonly thermal: THREE.InstancedBufferAttribute | null = null;
+  // 今フレームに積んだ熱の状態が前フレームと違ったか。同じなら転送し直さない。
+  private thermalChanged = false;
   private readonly scratchCenter = new THREE.Vector3();
   private readonly scratchCorner = new THREE.Vector3();
 
-  constructor(scene: THREE.Scene, geometry: THREE.BufferGeometry, material: THREE.Material, capacity: number, perInstanceColor = false, renderOrder = 0) {
+  constructor(
+    scene: THREE.Scene,
+    geometry: THREE.BufferGeometry,
+    material: THREE.Material,
+    capacity: number,
+    perInstanceColor = false,
+    renderOrder = 0,
+    perInstanceThermal = false,
+  ) {
     this.capacity = capacity;
     this.mesh = new THREE.InstancedMesh(geometry, material, this.capacity);
     this.mesh.renderOrder = renderOrder;
@@ -34,6 +47,11 @@ export class InstancedPool {
     if (perInstanceColor) {
       this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3);
       this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    }
+    if (perInstanceThermal) {
+      this.thermal = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3);
+      this.thermal.setUsage(THREE.DynamicDrawUsage);
+      geometry.setAttribute(INSTANCE_THERMAL_ATTRIBUTE, this.thermal);
     }
     // 個体が広い空間へ散らばるため、原点周りの外接球によるフラスタムカリングは意味を持たない。
     this.mesh.frustumCulled = false;
@@ -63,6 +81,10 @@ export class InstancedPool {
     renderObject.updateMatrixWorld();
     this.mesh.setMatrixAt(this.count, renderObject.matrixWorld);
     if (color && this.mesh.instanceColor) this.mesh.setColorAt(this.count, color);
+    if (this.thermal !== null
+      && writeThermalState(renderObject, this.thermal.array as Float32Array, this.count * 3)) {
+      this.thermalChanged = true;
+    }
     const reach = this.instanceRadius * renderObject.matrixWorld.getMaxScaleOnAxis();
     this.scratchCenter.setFromMatrixPosition(renderObject.matrixWorld);
     this.pending.expandByPoint(this.scratchCorner.copy(this.scratchCenter).addScalar(reach));
@@ -76,6 +98,10 @@ export class InstancedPool {
     this.lastCount = this.count;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    if (this.thermal !== null && this.thermalChanged) {
+      this.thermal.needsUpdate = true;
+      this.thermalChanged = false;
+    }
     this.extent.worldBounds.copy(this.pending);
   }
 

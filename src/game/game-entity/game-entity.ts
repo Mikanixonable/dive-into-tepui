@@ -8,6 +8,7 @@ import { CelestialBody, orbitalElementsOf, localOrbitPeriod, strongestAttractor 
 import { airflow } from '../../physics/atmosphere';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
+  stepThermalDeviation,
 } from '../../physics/thermal';
 import { sunlitFactor } from '../../physics/shadow';
 import { SOLAR_CONSTANT } from '../../physics/srp';
@@ -31,6 +32,7 @@ import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { MarkerManager } from '../marker/marker-manager';
 import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
+import { syncThermalState } from '../../render/thermal-emissive';
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -42,7 +44,6 @@ export interface OrbitLineSyncContext {
   readonly displayTime: number;
   readonly ephemeris: Ephemeris;
   readonly frameAnchors: FrameAnchorSource;
-  readonly force?: boolean;
 }
 
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
@@ -111,8 +112,10 @@ export class GameEntity {
   protected readonly srpCoeff: number = 0;
 
   // --- 熱(physics/thermal.ts の比量モデル) ---
-  // 現在の温度 [K]。
+  // 現在の平均温度 [K]。
   temperature = C.ENV_TEMP;
+  // 局所的に過熱した部分が平均より高い温度差 [K]。0 = 全体が等温。
+  protected thermalDeviation = 0;
   // 比熱 [J/(kg·K)]。**0 = 熱を蓄えない種別**で、温度は動かない。
   protected readonly specificHeat: number = 0;
   // 材質の密度 [kg/m^3]。よどみ点の曲率半径を bcInv から戻すのに使う。
@@ -233,16 +236,14 @@ export class GameEntity {
     fo: FloatingOrigin, camera: THREE.Camera, context: OrbitLineSyncContext,
   ): void {
     if (this.orbitLine === null) return;
-    const { displayTime, ephemeris, frameAnchors, force = false } = context;
+    const { displayTime, ephemeris, frameAnchors } = context;
     const state = this.displayState(displayTime, ephemeris);
     if (state === null) {
       this.orbitLine.sync(null, fo, camera);
       return;
     }
     const center = strongestAttractor(state.r, frameAnchors.bodies);
-    this.orbitLine.sync(
-      orbitalElementsOf(state, center), fo, camera, { force },
-    );
+    this.orbitLine.sync(orbitalElementsOf(state, center), fo, camera);
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
@@ -420,6 +421,9 @@ export class GameEntity {
     this.temperature = stepTemperature(this.temperature, heating - cooling, this.specificHeat, dt)
       + this.pendingSpecificHeat / this.specificHeat;
     this.pendingSpecificHeat = 0;
+    this.thermalDeviation = stepThermalDeviation(
+      this.thermalDeviation, this.temperature, this.emissivity, this.radiatingAreaPerMass,
+      this.specificHeat, dt);
     if (this.temperature > this.maxTemperature) this.burnUp(activeStage);
   }
 
@@ -486,6 +490,14 @@ export class GameEntity {
     this.renderObject.visible = true;
     this.renderObject.position.copy(fo.RtoThreeV3(s.r));
     this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+    this.syncThermalAppearance();
+  }
+
+  // いまの温度と局所的な過熱をメッシュへ配る。
+  protected syncThermalAppearance(): void {
+    if (this.specificHeat <= 0) return;
+    syncThermalState(
+      this.renderObject, this.temperature, this.thermalDeviation, this.emissivity);
   }
 
   // 種別ごとの自然死。大気による焼失は温度が決めるので(stepSimulation)、ここに残るのは

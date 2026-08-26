@@ -142,13 +142,14 @@ export function tofBetween(el: OrbitalElements, nu0: number, nu1: number): numbe
   return ((t % el.period) + el.period) % el.period;
 }
 
-// 軌道上の真近点角 nu における ECI 位置
+// 軌道上の真近点角 nu における中心天体相対の位置(ECI 軸)。絶対 ECI 化は呼び出し側が
+// 中心天体の位置を加えて行う。
 export function positionOnOrbit(el: OrbitalElements, nu: number): Vec3 {
   const r = el.p / (1 + el.e * Math.cos(nu));
   return addScaled(scale(el.pHat, r * Math.cos(nu)), el.qHat, r * Math.sin(nu));
 }
 
-// 軌道上の真近点角 nu における ECI 速度
+// 軌道上の真近点角 nu における中心天体相対の速度(ECI 軸)。
 export function velocityOnOrbit(el: OrbitalElements, nu: number): Vec3 {
   const k = Math.sqrt(el.center.mu / el.p);
   return addScaled(scale(el.pHat, -k * Math.sin(nu)), el.qHat, k * (el.e + Math.cos(nu)));
