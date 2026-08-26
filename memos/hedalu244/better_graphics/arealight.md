@@ -177,60 +177,18 @@ E     = π · L̄ · sin²θ · (立体角のクリップ項)   (θ = asin(R/d))
 
 ## 手順
 
-### 手順 1. 影の床を捨てる
+手順 1(影の床を捨てる)は実施済み(commit f61a03c3)。`ship-selfshadow` で自己影の
+太陽向き面が下がり(R 29→5 など、暖色の床ぶんが消えた)、`saturn-shadow` の環の影の帯でも
+床が消えた。`albedo` は前後で完全一致。本影内の本体表面には描画テスト環境の既定の環境光
+(2〜4 LSB)だけが残り、環境光を受けない環との差はその環境光ぶん — 手順 5-1 で消える。
 
-**目的.** 不透明物に遮られた画素の恒星直射を 0 まで落とし、本体表面と環とで食い違っている
-影の中の暗さを揃える。**天体照はまだ無いので、この時点で影の中は方向を持たない環境光だけに
-なる**(D1)。
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/sun-light.ts:51-53` | `SHADOW_MIN_SUN` とその説明コメントを削除する |
-| `src/render/pipeline/light-prepass.ts:19` | `SHADOW_MIN_SUN` の import を外す |
-| `src/render/pipeline/light-prepass.ts:103-112` | `direct` / `sunlit` の 2 行を畳み、透過率をそのまま放射照度へ掛ける。コメントから床の説明を落とす |
-| `DEVELOP/SPEC/RENDERING.md:270` | 「太陽光は最低でも概ね4%が残り、完全な暗闇にはならない。」を「不透明物に完全に遮られた画素では、太陽の直射光は 0 になる。」へ差し替える(後段の「夜側には方向を持たない環境光も残る」は手順 5-1 まで残す) |
-| `DEVELOP/SPEC/RENDERING.md:281` | 環の影の「(夜側にも残る最低限の明るさには影響しない)」を、環境光だけを指す文へ直す |
-
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `grep -rn "SHADOW_MIN_SUN" src/ tools/` が 0 件。
-- `npm run render-lab:shot` の `ship-selfshadow`。**自己影に入っていて、かつ太陽を向いている面**の
-  画素値が下がる。低軌道・アルベド 1・法線が太陽正対の面なら、表示値は `0.133 → 0.093`
-  (sRGB で約 102/255 → 86/255、**16 LSB の低下**)。落ちていなければ床が残っている。
-- 同じく `earth-eclipse` / `saturn-shadow`。**本影の内側で、本体表面と環の帯の暗さが一致する。**
-
----
-
-### 手順 2. ライティング段を光源ごとの描画命令へ割る
-
-**目的.** 光源の種類を足すたびに 1 つのシェーダが太る形をやめ、種類ごとに独立したファイルと
-描画命令へ分ける(D2)。**この時点で絵は変えない。**
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/lighting/shading-sample.ts`(新規) | `light-prepass.ts:22-43, 86-97` の `isCovered` / `shadingUV` / 法線・粗さ・復元位置・視線方向・被覆フラグを、光源から共有する 1 つの値へ切り出す |
-| `src/render/pipeline/lighting/light-source.ts`(新規) | 光源 1 種が満たす形。`{ hasContribution(): boolean; material(sample): THREE.MeshBasicNodeMaterial }` と、返す寄与の型 `{ diffuse: Vec3Node; specular: Vec3Node }` |
-| `src/render/pipeline/lighting/sun-source.ts`(新規) | いまの太陽の寄与(点光源 + GGX)をそのまま移す。`light-prepass.ts:98-127` の中身 |
-| `src/render/pipeline/lighting/ambient-source.ts`(新規) | いまの環境光の寄与(`light-prepass.ts:113` の加算項)をそのまま移す。**手順 5-1 でファイルごと消える** |
-| `src/render/pipeline/light-prepass.ts` | MRT を 0 でクリアし、光源の列を順に加算合成で描くだけの器にする。`GPU_PASS.lighting` の申告は 1 回のまま |
-| `src/render/pipeline/render-pipeline.ts:111` | `LightPrepass` の構築に光源の列を渡す |
-
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `npm run render-lab:shot` を手順 1 の直後と手順 2 の直後で撮り、**`leo` / `albedo` / `saturn` /
-  `ship-selfshadow` / `earth` の 5 枚が一致する。** これは**この 1 回きりの突き合わせ**であって、
-  基準画像として残さない(基準を過去の自分に取ると、いま入っているバグごと固定する)。
-- 実機の負荷確認ウィンドウで「ライティング」の行が 1 行のまま、パスの行数が 10 のまま。
-- `grep -n "D_GGX\|F_Schlick\|V_GGX" src/render/pipeline/light-prepass.ts` が 0 件
-  (BRDF が器から出ていること)。
-
----
+手順 2(ライティング段を光源ごとの描画命令へ割る)は実施済み(commit 22d40d93)。
+5 ケースの突き合わせは最大 ±1 LSB(和を fp16 へ丸める回数が 1 回増えたぶんの量子化)で一致。
+MRT の加算合成は両添付に効いている(効いていなければ艦の鏡面か夜側が丸ごと崩れる)。
+実装上の形: 光源のマテリアルは `material.mrtNode` を持ち、`renderer.setMRT` は使わない
+(renderer 側 MRT はブレンド既定が NoBlending になり加算が effかないため)。加算は
+`CustomBlending` の One/One(lens-pass.ts と同じ)。`GPU_PASS.lighting` は描画命令ごとに
+申告し、計測側が同一パスの複数回ぶんを足し合わせる(行は 1 行のまま)。
 
 ### 手順 3. 太陽を一様球光源にし、描画設定へ載せる
 

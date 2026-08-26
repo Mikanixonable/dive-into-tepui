@@ -18,9 +18,6 @@ export class LightPrepass {
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   private readonly sample: ShadingSample;
-  // sources と同じ並びの構築済みマテリアル。quad.material は Mesh 由来の Material|Material[]
-  // 型で dispose を持たないため、構築した具体型のまま別途保持する。
-  private readonly materials: readonly THREE.MeshBasicNodeMaterial[];
   // クリア色の退避先。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
@@ -44,7 +41,6 @@ export class LightPrepass {
     specularTex!.type = THREE.HalfFloatType;
 
     this.sample = new ShadingSample(gbuffer);
-    this.materials = sources.map((source) => source.material(this.sample));
     this.quad = new QuadMesh();
   }
 
@@ -63,9 +59,9 @@ export class LightPrepass {
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.setRenderTarget(this.target);
     let cleared = false;
-    for (const [i, source] of this.sources.entries()) {
+    for (const source of this.sources) {
       if (!source.hasContribution()) continue;
-      this.quad.material = this.materials[i]!;
+      this.quad.material = source.material(this.sample);
       this.renderer.autoClear = !cleared;
       cleared = true;
       // beginPass は render() 呼び出しごとに申告する。同じパスの複数回ぶんは計測側が足し合わせる。
@@ -83,6 +79,6 @@ export class LightPrepass {
   // 共有する単一の板なので、ここでは解放しない。
   dispose(): void {
     this.target.dispose();
-    for (const material of this.materials) material.dispose();
+    for (const source of this.sources) source.dispose();
   }
 }
