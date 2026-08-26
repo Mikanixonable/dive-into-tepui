@@ -1,6 +1,6 @@
 // 軌道ガイドの設定行に使う「スライダー+数値入力」と色入力の部品。値そのものの意味(0〜1 の
 // 族範囲、対数の振幅、位相のラジアン)は写像として持ち、行の組み立てと同期を1箇所へ集約する。
-import { Slider, ValueInput } from '../widgets';
+import { Button, Slider, ValueInput } from '../widgets';
 import {
   MAX_LINES_PER_KIND, MAX_ZERO_VELOCITY_CURVES, type DirectionMarkerMode,
 } from '../../celestial/orbit-guide-settings';
@@ -140,6 +140,27 @@ export function buildValueField(label: string, mapping: ValueMapping, onCommit: 
 export function syncValueField(field: ValueField, mapping: ValueMapping, value: number): void {
   if (document.activeElement !== field.input.element) field.input.setValue(mapping.format(value));
   field.slider.setValue(mapping.toSlider(value));
+}
+
+// 種類1行の見出し(トグルボタン)+設定パネルの骨組み。設定パネルは呼び出し側が中身を積んだ後、
+// 表示トグルに応じて .hidden を付け外しする。
+export function buildKindRowHeading(
+  parent: HTMLElement, label: string, onToggle: () => void, extraHeadingClass?: string,
+): { readonly heading: Button; readonly configPanel: HTMLElement } {
+  const root = document.createElement('div');
+  root.className = 'orbit-guide-kind-row';
+  const heading = new Button(label, onToggle);
+  heading.element.classList.add('orbit-guide-kind-heading-btn');
+  if (extraHeadingClass !== undefined) heading.element.classList.add(extraHeadingClass);
+  const headingRow = document.createElement('div');
+  headingRow.className = 'orbit-guide-kind-heading';
+  headingRow.appendChild(heading.element);
+  root.appendChild(headingRow);
+  const configPanel = document.createElement('div');
+  configPanel.className = 'orbit-guide-kind-config hidden';
+  root.appendChild(configPanel);
+  parent.appendChild(root);
+  return { heading, configPanel };
 }
 
 export function buildColorField(label: string, value: number, onCommit: (value: number) => void): { readonly row: HTMLElement; readonly input: ValueInput } {
