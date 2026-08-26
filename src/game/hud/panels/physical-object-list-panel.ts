@@ -13,7 +13,7 @@ import { wirePanelCollapse } from '../panel-shell';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialRegistry } from '../../../physics/solar-system';
 import type { MapPickable, MapPickKind } from '../../map-pickable';
-import type { PhysicalObjectListFilter, PhysicalObjectListSort } from './physical-object-list-order';
+import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
 
 const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'body', label: '天体' },
@@ -23,14 +23,6 @@ const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'fuel', label: 'RCS燃料' },
   { kind: 'base', label: '基地' },
 ];
-
-// 1区画ぶんの表示順と親子構造を id で持つ。表示値(距離・詳細)は毎フレーム
-// 引き渡される MapPickable から読み直すため、ここには id しか置かない。
-export interface SectionOrder {
-  readonly ids: string[];
-  readonly rootIds: string[];
-  readonly childIds: Map<string, string[]>;
-}
 
 interface Section {
   readonly header: HTMLElement;
