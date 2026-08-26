@@ -27,7 +27,8 @@ import {
 import type { Exposure } from '../../render/pipeline/exposure';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import {
-  MAX_ATMOSPHERE_BODIES, type AtmosphereBody, type AtmospherePass,
+  ATMOSPHERE_DETAIL, MAX_ATMOSPHERE_BODIES,
+  type AtmosphereBody, type AtmosphereDetail, type AtmospherePass,
 } from '../../render/pipeline/atmosphere-pass';
 import { atmosphereOpticsOf, denseWeightFromGap, logExtinctionAt } from '../../render/atmosphere-params';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
@@ -81,6 +82,14 @@ function castsVisibleShadow(
   if (maxOccludedFraction(cameraPos, star, body) >= MIN_OCCLUDED_FRACTION) return true;
   return focusPos !== null && maxOccludedFraction(focusPos, star, body) >= MIN_OCCLUDED_FRACTION;
 }
+
+// 大気の品質の段と、主天体へ足す濃い表現の細かさの対応。
+const ATMOSPHERE_DETAIL_OF_QUALITY: Readonly<Record<GraphicsSettingsData['atmosphere'], AtmosphereDetail>> = {
+  [ATMOSPHERE_QUALITY.off]: ATMOSPHERE_DETAIL.none,
+  [ATMOSPHERE_QUALITY.low]: ATMOSPHERE_DETAIL.none,
+  [ATMOSPHERE_QUALITY.medium]: ATMOSPHERE_DETAIL.coarse,
+  [ATMOSPHERE_QUALITY.high]: ATMOSPHERE_DETAIL.fine,
+};
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
@@ -332,14 +341,17 @@ export class EnvironmentScene {
     fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, graphics: GraphicsSettingsData,
   ): void {
     if (graphics.atmosphere === ATMOSPHERE_QUALITY.off) {
-      this.atmosphere.setBodies([], 0);
+      this.atmosphere.setBodies([], ATMOSPHERE_DETAIL.none, 0);
       return;
     }
     const ranked = this.rankedAtmospheres(fo, displayTime, cameraPos);
     // 候補が 1 体しか無いなら、その天体が場を独占している。
     const gap = ranked.length < 2 ? Infinity : ranked[0]!.strength - ranked[1]!.strength;
-    const dense = graphics.atmosphere === ATMOSPHERE_QUALITY.high ? denseWeightFromGap(gap) : 0;
-    this.atmosphere.setBodies(ranked.slice(0, MAX_ATMOSPHERE_BODIES).map(({ body }) => body), dense);
+    const detail = ATMOSPHERE_DETAIL_OF_QUALITY[graphics.atmosphere];
+    this.atmosphere.setBodies(
+      ranked.slice(0, MAX_ATMOSPHERE_BODIES).map(({ body }) => body),
+      detail, detail === ATMOSPHERE_DETAIL.none ? 0 : denseWeightFromGap(gap),
+    );
   }
 
   // 大気を持つ天体を、カメラのいる場所の大気を強く作っている順に。**カメラの向きは見ない** —
