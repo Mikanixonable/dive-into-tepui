@@ -1,7 +1,5 @@
-// 「どの天体を光源として扱うか」を決める。基準点へ届ける放射照度が、露出まで通しても
-// 8bit sRGB の最小段を動かせない天体を捨て、残りを強い順にスロット本数まで返す。
-// 閾値を割った瞬間の切り替わりが 1 LSB 未満であることは式そのものが保証するので、
-// ヒステリシスは持たない。
+// 「どの天体を光源として扱うか」を決める。基準点へ届ける放射照度が強い順にスロット本数まで
+// 返す。天体が枠から外れるのは、より明るい天体に追い越されたときだけ。
 import { CelestialBody } from '../../physics/celestial-body';
 import { Ephemeris } from '../../physics/ephemeris';
 import { sunlitFactor } from '../../physics/shadow';
@@ -12,11 +10,6 @@ import {
 } from '../../render/pipeline/lighting/planet-light-source';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
 
-// 8bit sRGB の最小段(符号値 1/255 → 線形 3.04e-4)。トーンカーブ(Khronos PBR Neutral)の
-// 傾きは全域で 1 以下なので、露出後の放射照度の増分がこれを下回る光源は、アルベド 1 の面でも
-// 画面のどの画素も 1 LSB 動かせない。
-const MIN_DISPLAY_STEP = 3.0e-4;
-
 // 光源として選ばれた天体 1 体。位置・半径は body(ECI)から読む。
 export type PlanetLight = {
   readonly body: CelestialBody;
@@ -24,14 +17,13 @@ export type PlanetLight = {
   readonly radiance: Albedo;
 };
 
-// 表示時刻 displayTime に、基準点 reference(ECI)から見て絵に効く天体光源を強い順に
-// PLANET_LIGHT_SLOTS 体まで返す。exposureFactor は露出係数(順応 × 露出補正)の数値。
+// 表示時刻 displayTime に、基準点 reference(ECI)へ強く届く順に天体光源を
+// PLANET_LIGHT_SLOTS 体まで返す。
 export function selectPlanetLights(
-  ephemeris: Ephemeris, displayTime: number, reference: Vec3, exposureFactor: number,
+  ephemeris: Ephemeris, displayTime: number, reference: Vec3,
 ): readonly PlanetLight[] {
   const bodies = ephemeris.celestialBodiesAt(displayTime);
   const star = bodies.find((body) => body.isStar) ?? null;
-  const threshold = (MIN_DISPLAY_STEP * SUN_IRRADIANCE_1AU) / exposureFactor;
   const candidates: { readonly light: PlanetLight; readonly irradiance: number }[] = [];
   for (const body of bodies) {
     if (body.isStar || body.radius <= 0) continue;
@@ -45,15 +37,10 @@ export function selectPlanetLights(
     // 位相角: 天体から見た太陽と基準点のなす角。
     const phase = toSun === null
       ? 1 : lambertPhase(Math.acos(Math.min(1, Math.max(-1, dot(toSun, toReference) / (len(toSun) * dist)))));
-    const base = planetRadiance(albedo, sunIrradiance);
-    const sinSqr = (body.radius / dist) ** 2;
-    // まず食を見ない上限で当てる。食は減らす一方なので、ここで落ちる天体の食は見なくてよい。
-    const bound = Math.PI * rec709Luminance(base) * phase * sinSqr;
-    if (bound < threshold) continue;
     const sunlit = star === null ? 1 : sunlitFactor(body.state.r, star, bodies.filter((b) => b !== body));
-    const irradiance = bound * sunlit;
-    if (irradiance < threshold) continue;
+    const base = planetRadiance(albedo, sunIrradiance);
     const scale = phase * sunlit;
+    const irradiance = Math.PI * rec709Luminance(base) * (body.radius / dist) ** 2 * scale;
     candidates.push({
       light: { body, radiance: [base[0] * scale, base[1] * scale, base[2] * scale] },
       irradiance,
