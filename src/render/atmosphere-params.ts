@@ -39,9 +39,30 @@ export function atmosphereOpticsOf(id: string): AtmosphereOptics | null {
   return ATMOSPHERE_OPTICS[id] ?? null;
 }
 
+// 絵に出ないと見なす光学的厚み。地平線方向の視線がこれを下回る高度から上は描かない。
+const MIN_VISIBLE_OPTICAL_DEPTH = 1e-5;
+
 // レイリー散乱係数の3成分の平均 [1/m]。濃さを1つの数で比べるためだけの量。
 function meanRayleigh(optics: AtmosphereOptics): number {
   return (optics.rayleigh.x + optics.rayleigh.y + optics.rayleigh.z) / 3;
+}
+
+// 散乱係数 beta [1/m]・スケールハイト scaleHeight [m] の成分だけを見たときの打ち切り高度 [m]。
+// 高度 h を最接近点とする地平線方向の視線が通る光学的厚みは beta·exp(−h/H)·√(2πRH) で
+// 近似できるので、これが閾値を切る h を解く。
+function speciesCutoff(beta: number, scaleHeight: number, surfaceRadius: number): number {
+  const limbPath = Math.sqrt(2 * Math.PI * surfaceRadius * scaleHeight);
+  return Math.max(scaleHeight * Math.log((beta * limbPath) / MIN_VISIBLE_OPTICAL_DEPTH), 0);
+}
+
+// 大気の裾を打ち切る高度 [m]。**密度はここまで連続に薄れているので、打ち切りは界面として
+// 見えない** — 積分区間とサンプル点の密度を有限に保つためだけの境界である。
+export function cutoffAltitude(optics: AtmosphereOptics, surfaceRadius: number): number {
+  const rayleigh = Math.max(optics.rayleigh.x, optics.rayleigh.y, optics.rayleigh.z);
+  return Math.max(
+    speciesCutoff(rayleigh, optics.rayleighScaleHeight, surfaceRadius),
+    speciesCutoff(optics.mie, optics.mieScaleHeight, surfaceRadius),
+  );
 }
 
 // 高度 altitude [m] における消散係数の自然対数。**天体どうしの「その場の大気の濃さ」は
