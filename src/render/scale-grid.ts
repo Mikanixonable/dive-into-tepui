@@ -3,6 +3,7 @@
 // 月軌道面・月赤道面は毎フレーム法線を受け取る。
 import * as THREE from 'three/webgpu';
 import { Q_ECL_TO_ECI } from '../physics/ecliptic';
+import { CameraScale } from './camera-scale';
 import { markOverlay } from './pipeline/lit-layer';
 
 // 4面ぶんの表示可否。
@@ -156,11 +157,7 @@ class ScaleGridPlane {
     camera: THREE.Camera, cameraDistance: number,
   ): void {
     this.setBasis(basis);
-    const metersPerPixel = camera instanceof THREE.OrthographicCamera
-      ? (camera.top - camera.bottom) / Math.max(1, window.innerHeight)
-      : camera instanceof THREE.PerspectiveCamera
-        ? 2 * cameraDistance * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) / Math.max(1, window.innerHeight)
-        : cameraDistance / Math.max(1, window.innerHeight);
+    const metersPerPixel = new CameraScale(camera).atDepth(cameraDistance);
     let bestLevel: GridLevel | null = null;
     let bestOpacity = 0;
     for (const level of this.levels) {
