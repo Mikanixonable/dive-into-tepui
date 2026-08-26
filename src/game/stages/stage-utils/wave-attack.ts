@@ -29,10 +29,10 @@ export class WaveAttack {
   private spawnTimer: number;
   private _waveCount: number;
 
-  get waveCount(): number { return this._waveCount; }
+  public get waveCount(): number { return this._waveCount; }
 
   // saved があればその状態(フェーズ・タイマー・ウェーブ数)から始める。
-  constructor(
+  public constructor(
     private readonly hud: Hud,
     private readonly worldSfx: WorldSfx,
     private readonly fx: EffectsSystem,
@@ -46,14 +46,14 @@ export class WaveAttack {
   }
 
   // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。
-  spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
+  public spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this._waveCount;
     const enemies = generateWave(player.state, wave, this.ephemeris, this.worldSfx, this.fx, this.scene, forcedPattern);
     for (const enemy of enemies) addEnemy(enemy);
   }
 
   // フェーズ機械を1フレーム分進める。
-  update(
+  public update(
     dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
     activeStage: Stage, addEnemy: (enemy: Enemy) => void,
   ): void {
@@ -99,7 +99,7 @@ export class WaveAttack {
     this.hud.toast(`波状攻撃 第${this._waveCount}波 接近中！`, 3000);
   }
 
-  serialize(): WaveAttackSaveData {
+  public serialize(): WaveAttackSaveData {
     return { waveState: this.waveState, spawnTimer: this.spawnTimer, waveCount: this._waveCount };
   }
 }
