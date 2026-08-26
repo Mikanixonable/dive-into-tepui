@@ -262,11 +262,9 @@ export class EnvironmentScene {
   }
 
   // 天体照の光源を選び、描画座標へ移してライティング側のスロットへ渡す。基準点は露出と
-  // 同じ注視点で、選定は露出係数を要るので exposure.setReference のあとに呼ぶ。
+  // 同じ注視点。
   private syncPlanetLights(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem): void {
-    const lights = selectPlanetLights(
-      this.ephemeris, displayTime, cameraSystem.activeViewpoint.lookTarget, this.exposure.factorValue,
-    );
+    const lights = selectPlanetLights(this.ephemeris, displayTime, cameraSystem.activeViewpoint.lookTarget);
     this.planetLight.set(lights.map((light) => ({
       center: fo.RtoThreeV3(light.body.state.r),
       radius: light.body.radius,

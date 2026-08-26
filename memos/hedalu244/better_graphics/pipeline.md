@@ -97,9 +97,11 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
   `L̄ = (2/3)·A·E_b·Φ(α)/π` — `A` は色つきボンドアルベド(`lightSourceAlbedoOf()`。実写
   テクスチャ天体は実測平均色 × ボンドアルベド)、`E_b` はその天体の場所の太陽放射照度に天体の食
   (`sunlitFactor`)を掛けたもの、`Φ(α)` はランバート球の位相関数。**どの天体を載せるかは
-  `game/celestial/planet-light.ts` が決める** — 露出まで通した表示値が 8bit sRGB の 1 LSB
-  (線形 3.0e-4)を動かせない天体を式で捨てるので、チューニング値もヒステリシスも無い。
-  地球が無いレジストリでも天体照は出る。
+  `game/celestial/planet-light.ts` が決める** — 基準点へ届ける放射照度の強い順にスロット
+  本数まで採るだけで、閾値もヒステリシスも無い。**露出には依存しない** — 表示値で打ち切る閾値を
+  置くと露出係数(順応 × 露出補正)を読むことになり、露出設定でライティング段が変わってしまう。
+  天体が枠から外れるのは、より明るい天体に追い越されたときだけ。地球が無いレジストリでも
+  天体照は出る。
 - トーンマッピングは **Khronos PBR Neutral**(0.08 未満を `x → 6.25x²` で潰すトウを持つ)。
   曲線の最終決定は [`exposure_backlog.md`](exposure_backlog.md)。
 - **天体が持つのはボンドアルベドだけで、輝度は持たない。** 輝度はアルベドと
@@ -350,7 +352,7 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
   較正ケースは `albedo` / `saturn`、描画順は `order`、深度は `depth-1e4`〜`depth-1e11`、
   1px を切った光点は `sun-1au` / `sun-5au` / `sun-30au`、光源モデルは `sun-close` /
   `metal-highlight` / `earthshine` / `crescent`。**天体照の光源はケースが `planetLights`
-  (中心・半径・色つきアルベド)で直に置く** — game 側の選定(閾値・食)は通らないので、
+  (中心・半径・色つきアルベド)で直に置く** — game 側の選定(順位付け・食)は通らないので、
   そちらの検証は実機でしか出来ない。**観察のつまみは恒星の向きと距離・
   カメラの向きと距離**で、恒星距離は天文単位の常用対数(`setView({ sunDistanceLogAu })`)。
   `window.renderLab` の `shoot` / `setView` / `capture` / `measure` から CDP で駆動できる。
