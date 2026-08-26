@@ -1,7 +1,6 @@
 // 露出係数の正本。**いま見ている場所の明るさへ画面をどれだけ合わせるか**を1つの数で持つ。
-// 出力段(render-pipeline.ts)がトーンマッパへ渡し、順応してはならない描画物(星野・小天体の
-// 点群)は fixedBrightnessScale を自分の色へ掛けて順応ぶんを打ち消す。
-// RenderPipeline がインスタンスを所有し、基準点は毎フレーム setReference で書き込まれる。
+// 順応(場所の明るさへ合わせるぶん)と露出補正の積をトーンマッパへ渡し、固定した明るさで描く
+// ものには順応ぶんだけを打ち消す倍率を答える。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from './sun-light';
