@@ -10,6 +10,8 @@ import { createAnnulusRing } from '../../src/render/ring';
 import { buildPlayerShip } from '../../src/render/ships';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
+import { attachThermalEmissive, initThermalState, syncThermalState, THERMAL_SHAPE_ATTRIBUTE } from '../../src/render/thermal-emissive';
+import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
@@ -506,6 +508,60 @@ function eclipse(): LabCase {
   };
 }
 
+// 温度による自照を読むケース。**球はすべて同じ 1 つのマテリアルを共有し、温度だけが個体ごとに
+// 違う** — 明るさが球ごとに違って見えることが、個体ごとの温度が届いていることの唯一の印で、
+// 全部同じ明るさなら配線が死んでいる。恒星は斜めから差すので、反射に埋もれる昼側と自照だけの
+// 夜側が同じ球の上に並ぶ。**円柱は頂点ごとの温度勾配**(左端が平均温度、右端が +550 K)で、
+// 赤熱が部品の切れ目ではなく勾配として終わることを見る。
+const BLACKBODY_TEMPERATURES = [900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000];
+const BLACKBODY_DEPTH = 30;
+const BLACKBODY_GRADIENT_AVERAGE = 950;
+const BLACKBODY_GRADIENT_DEVIATION = 550;
+
+// 赤熱を読むための、暗くつや消しの試験体マテリアル。反射で自照が埋もれないアルベドに取る。
+function blackbodyMaterial(shaped: boolean): THREE.MeshStandardNodeMaterial {
+  const material = new THREE.MeshStandardNodeMaterial({ color: 0x14161a, roughness: 0.85, metalness: 0 });
+  return attachThermalEmissive(material, 'object', shaped);
+}
+
+// 温度勾配を焼いた円柱。軸は画面の横方向で、shape は左端 0・右端 1。
+function blackbodyGradientBar(material: THREE.Material, length: number, radius: number): THREE.Mesh {
+  const geometry = new THREE.CylinderGeometry(radius, radius, length, 24, 96);
+  const position = geometry.getAttribute('position');
+  const shape = new Float32Array(position.count);
+  for (let i = 0; i < position.count; i++) shape[i] = position.getY(i) / length + 0.5;
+  geometry.setAttribute(THERMAL_SHAPE_ATTRIBUTE, new THREE.Float32BufferAttribute(shape, 1));
+  geometry.rotateZ(-Math.PI / 2);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.userData.ownsGeometry = true;
+  return mesh;
+}
+
+function blackbody(): LabCase {
+  const sphereGeometry = new THREE.SphereGeometry(1.1, 32, 16);
+  const sphereMaterial = blackbodyMaterial(false);
+  const objects: THREE.Object3D[] = [];
+  const spacing = 2.8;
+  for (const [i, temperature] of BLACKBODY_TEMPERATURES.entries()) {
+    const mesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    mesh.position.set((i - (BLACKBODY_TEMPERATURES.length - 1) / 2) * spacing, 2.2, -BLACKBODY_DEPTH);
+    mesh.userData.ownsGeometry = i === 0;
+    mesh.userData.ownsMaterial = i === 0;
+    syncThermalState(mesh, temperature, 0, HULL_EMISS);
+    markLitOpaque(mesh);
+    objects.push(mesh);
+  }
+  const barMaterial = blackbodyMaterial(true);
+  const bar = blackbodyGradientBar(barMaterial, 30, 1.0);
+  bar.position.set(0, -3.4, -BLACKBODY_DEPTH);
+  bar.userData.ownsMaterial = true;
+  initThermalState(bar, HULL_EMISS);
+  syncThermalState(bar, BLACKBODY_GRADIENT_AVERAGE, BLACKBODY_GRADIENT_DEVIATION, HULL_EMISS);
+  markLitOpaque(bar);
+  objects.push(bar);
+  return { objects, camera: labCamera(6e7), sunDirection: OBLIQUE_SUN_DIR };
+}
+
 // 較正: アルベド 1 の完全拡散面を 1 天文単位に置く。**放射照度の単位が「1 AU で π」に取れて
 // いれば、太陽へ正対した面のトーンマッピング前の線形値は 1.0 になる** — ランバート BRDF の
 // 1/π が単位を打ち消すため。ここが動いたら光の単位か BRDF のどちらかが崩れている。
@@ -625,6 +681,7 @@ export const CASES = {
   'saturn': saturn,
   'saturn-shadow': saturnShadow,
   'albedo': albedo,
+  'blackbody': blackbody,
   ...PROTEIN_CASES,
 } as const satisfies Record<string, (sunOcclusion: SunOcclusion, sunLight: SunLight) => LabCase>;
 
