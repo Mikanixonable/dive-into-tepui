@@ -661,6 +661,7 @@ export class Player extends Ship {
     if (displayState !== null) {
       this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
       this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+      this.syncThermalAppearance();
     }
 
     // 推力/RCS エフェクトとベルト。機体メッシュと同じ displayState に載せる —
