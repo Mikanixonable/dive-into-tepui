@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
   Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, length, lessThan, max, min, mix,
-  normalize, select, sqrt, sub, uniform, vec3, vec4,
+  normalize, select, smoothstep, sqrt, sub, uniform, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
@@ -97,7 +97,9 @@ const signedDepth = Fn((
 
 // 半径 radius・天頂角余弦 mu の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。
 // 降る向き(mu<0)の経路は、最接近点で折り返す2本の上向きの経路として組む。最接近点が地表より
-// 内側へ落ちる向きでは地表で止まるので、そこで打ち切る。
+// 内側へ落ちる向きでは地表で止まるので、そこで打ち切る。**打ち切った値を「そこまで光が来る」
+// と読んではいけない** — 経路が天体を貫いているので直射は届かず、遮るのは horizonVisibility の
+// 仕事である。ここが返すのは、地平線を掠める経路の厚みの続きでしかない。
 //
 // **どちらの枝も outwardDepth へ渡す余弦を非負に保つ** — select は選ばれない枝も評価するので、
 // 負の余弦を通すと Chapman 近似の分母が 0 を跨ぎ、選ばれない側で無限大が湧く。
@@ -350,8 +352,30 @@ export class AtmospherePass {
       .mul(depthToSpace(radius, sunMu, slot.surfaceRadius, slot.rayleighScaleHeight))
       .add(vec3(slot.mie.mul(depthToSpace(radius, sunMu, slot.surfaceRadius, slot.mieScaleHeight))));
     const irradiance = this.sunLight.intensity.div(max(dot(toSun, toSun), 1));
-    const occlusion = this.sunOcclusion.transmittance(point, { rings: false, meshNormal: null });
+    const occlusion = this.sunOcclusion.transmittance(point, { rings: false, meshNormal: null })
+      .mul(this.horizonVisibility(slot, radius, sunMu, toSun));
     return exp(sunDepth.negate()).mul(irradiance.div(PI)).mul(occlusion).mul(this.sunLight.color);
+  }
+
+  // 大気の中の 1 点から見て、恒星がその天体自身の地平線の上に出ている割合 0..1。
+  //
+  // **この天体が遮蔽器の一覧に載っている保証は無い。** 一覧はカメラから見て恒星面を一定以上
+  // 隠せる天体だけを採るので、遠くに写っているだけの大気天体はそこから落ちる。落ちたままだと
+  // 夜側でも depthToSpace が地表で打ち切った有限の厚みを返し、**真夜中の半球ぜんぶが夕焼け色に
+  // 光る** — 光路が天体を貫いている以上、そこへ直射は届かない。
+  //
+  // 恒星は点ではないので、境目は縁を掠める帯の中で滑らかに変わる。帯の幅は恒星の視半径を
+  // 地平線の傾き sin で天頂角余弦へ直したもの。打ち切った厚みは、この帯の中で「まだ見えている
+  // 縁の一片が通ってくる経路の厚み」として意味を持つので、そのまま掛けてよい。
+  private horizonVisibility(
+    slot: BodySlot, radius: FloatNode, sunMu: FloatNode, toSun: Vec3Node,
+  ): FloatNode {
+    const sinHorizon = slot.surfaceRadius.div(radius);
+    const cosHorizon = sqrt(max(float(1).sub(sinHorizon.mul(sinHorizon)), 0)).negate();
+    // **幅には床を張る** — 空きスロットは半径 0 で sin も 0 になり、床が無いと smoothstep の
+    // 下限と上限が一致する。
+    const halfWidth = max(sinHorizon.mul(this.sunLight.radius.div(max(length(toSun), 1))), 1e-9);
+    return smoothstep(halfWidth.negate(), halfWidth, sunMu.sub(cosHorizon));
   }
 
   // 下地と合成する前の、大気が重ねる内部散乱だけ。「大気」デバッグ表示の合成パスがこのノードを
