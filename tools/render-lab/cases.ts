@@ -10,7 +10,7 @@ import { createAnnulusRing } from '../../src/render/ring';
 import { buildPlayerShip } from '../../src/render/ships';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
-import { attachThermalEmissive, initThermalState, syncThermalState, THERMAL_SHAPE_ATTRIBUTE } from '../../src/render/thermal-emissive';
+import { attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE } from '../../src/render/thermal-emissive';
 import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import type { LineStyle } from '../../src/render/line-style';
@@ -517,6 +517,8 @@ const BLACKBODY_TEMPERATURES = [900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1
 const BLACKBODY_DEPTH = 30;
 const BLACKBODY_GRADIENT_AVERAGE = 950;
 const BLACKBODY_GRADIENT_DEVIATION = 550;
+// 艦が喪失する温度(1,300 K)の少し上。夜側で赤熱として読める明るさになる。
+const BLACKBODY_SHIP_TEMPERATURE = 1400;
 
 // 赤熱を読むための、暗くつや消しの試験体マテリアル。反射で自照が埋もれないアルベドに取る。
 function blackbodyMaterial(shaped: boolean): THREE.MeshStandardNodeMaterial {
@@ -555,10 +557,13 @@ function blackbody(): LabCase {
   const bar = blackbodyGradientBar(barMaterial, 30, 1.0);
   bar.position.set(0, -3.4, -BLACKBODY_DEPTH);
   bar.userData.ownsMaterial = true;
-  initThermalState(bar, HULL_EMISS);
   syncThermalState(bar, BLACKBODY_GRADIENT_AVERAGE, BLACKBODY_GRADIENT_DEVIATION, HULL_EMISS);
   markLitOpaque(bar);
   objects.push(bar);
+  // 艦 1 隻を同じ絵へ。**モデルから読んだマテリアルにも温度が届く**ことを見る。
+  const ship = shipAt(new THREE.Vector3(0, -9, -34), SHIP_ROTATION_PORT);
+  syncThermalState(ship, BLACKBODY_SHIP_TEMPERATURE, 0, HULL_EMISS);
+  objects.push(ship);
   return { objects, camera: labCamera(6e7), sunDirection: OBLIQUE_SUN_DIR };
 }
 
