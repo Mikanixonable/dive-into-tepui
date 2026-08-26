@@ -127,13 +127,13 @@ function circle(
   center: THREE.Vector3, radius: number, u: THREE.Vector3, v: THREE.Vector3,
   style: LineStyle, camera: THREE.Camera,
 ): THREE.Object3D {
-  const curve = new Curve({ style });
+  const curve = new Curve(style);
   curve.setAnalyticCurve((t, out) => {
     const theta = 2 * Math.PI * t;
     out.copy(center)
       .addScaledVector(u, radius * Math.cos(theta))
       .addScaledVector(v, radius * Math.sin(theta));
-  }, { camera });
+  }, camera);
   return curve.object;
 }
 
