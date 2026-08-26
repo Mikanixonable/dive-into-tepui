@@ -2,22 +2,16 @@
 // 星は小さな三角形をまとめた単一ジオメトリで描く(レンダラー非依存で確実)。
 import * as THREE from 'three/webgpu';
 import starsTextureUrl from '../assets/8k_stars.jpg';
-import { Billboard } from './billboard';
 import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
 import { AU } from '../physics/planet-orbit';
 import { R_SUN } from '../physics/solar-system';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
-// 恒星のグローの一辺を実半径の何倍にするか。肉眼で見た太陽は視直径そのものより大きく滲む。
-export const STAR_GLOW_SIZE_RATIO = 12.3;
 
 // 太陽面の輝度(render/pipeline/sun-light.ts の単位)。1 天文単位での放射照度 π は太陽円盤が
 // 張る立体角 π(R/d)² を通して届くので、面の輝度は (d/R)² になる。5772 K の黒体として
 // σT⁴/太陽定数 を計算しても同じ 4.62e4 が出る。
 export const SUN_SURFACE_RADIANCE = (AU / R_SUN) ** 2;
-// グローの輝度。太陽円盤の放射束を、円盤より広いスプライト面へ広げ直したもの — グローは
-// 光を増やす演出ではなく、目やレンズの中で同じ光が滲む現象を表す。
-export const SUN_GLOW_RADIANCE = SUN_SURFACE_RADIANCE * Math.PI / (4 * STAR_GLOW_SIZE_RATIO ** 2);
 
 export interface Stars {
   readonly mesh: THREE.Mesh;
@@ -58,20 +52,17 @@ export function createStars(): Stars {
 }
 
 export interface Sun {
-  readonly billboard: Billboard;
   readonly mesh: THREE.Mesh;
   dispose(): void;
 }
 
+// 太陽の周りの滲みはこの球が持たない — レンズ効果(render/pipeline/lens-pass.ts)が作る。
 export function createSun(): Sun {
-  const billboard = new Billboard(0xfff3d0, -9);
   const mesh = createSunMesh();
   return {
-    billboard,
     mesh,
-    // billboard とメッシュのジオメトリ・マテリアルを解放する。両方をシーンから外すのは呼び出し側。
+    // メッシュのジオメトリ・マテリアルを解放する。シーンから外すのは呼び出し側。
     dispose(): void {
-      billboard.dispose();
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
     },
