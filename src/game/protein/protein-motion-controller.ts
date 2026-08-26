@@ -1,6 +1,8 @@
 import {
+  mix32,
   ProteinBrownianSampler,
   proteinBrownianSeedFor,
+  UINT32_SCALE,
 } from './protein-brownian-motion';
 import type { ProteinMotionAsset, ProteinPhase } from './protein-schema';
 
@@ -62,7 +64,6 @@ export function proteinMotionLodForProjectedSize(diameterPx: number, previous: P
 const MAX_MOTION_MODES = PROTEIN_MOTION_LOD_MODE_COUNTS.near;
 const MEDIUM_UPDATE_HZ = 30;
 const FAR_UPDATE_HZ = 15;
-const UINT32_SCALE = 0x1_0000_0000;
 /** LOD 切替時、旧 LOD の変位から新 LOD の変位へ表示上ブレンドする時間 [s]。 */
 export const PROTEIN_MOTION_LOD_FADE_DURATION_SEC = 0.25;
 
@@ -74,13 +75,6 @@ export interface ProteinMotionControllerOptions {
 
 function finiteNonNegative(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
-}
-
-function mix32(value: number): number {
-  let mixed = value >>> 0;
-  mixed = Math.imul(mixed ^ (mixed >>> 16), 0x45d9f3b);
-  mixed = Math.imul(mixed ^ (mixed >>> 16), 0x45d9f3b);
-  return (mixed ^ (mixed >>> 16)) >>> 0;
 }
 
 /** Stable [0, 1) phase used to stagger coarse LOD update boundaries. */
