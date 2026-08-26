@@ -47,7 +47,6 @@ const HEADER_SUMMARY: Partial<Record<MapPickKind, { readonly needle: string; rea
   ship: { needle: '接近', label: '接近' },
   ammo: { needle: '回収可能', label: '回収可' },
   fuel: { needle: '回収可能', label: '回収可' },
-  base: { needle: 'ドック', label: 'ドック候補' },
 };
 
 const EMPTY_IDS: readonly string[] = [];
