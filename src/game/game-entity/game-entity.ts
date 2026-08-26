@@ -18,7 +18,9 @@ import type { Viewpoint } from '../../physics/projection';
 import type { SphereHit } from '../../physics/base-collision';
 import { FloatingOrigin } from '../floating-origin';
 import { OrbitLine } from '../orbit-line';
+import { RelativeOrbitLine } from '../relative-orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
+import type { OrbitReference } from '../orbit-reference';
 import { LineStyle } from '../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -45,6 +47,9 @@ export interface OrbitLineSyncContext {
   readonly ephemeris: Ephemeris;
   readonly frameAnchors: FrameAnchorSource;
   readonly force?: boolean;
+  // 軌道パネルで固定された表示基準。非質量の艦・基地に固定中は、軌道楕円の代わりに
+  // relativeOrbitLine で相対軌跡を描く。
+  readonly orbitRef?: OrbitReference;
 }
 
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
@@ -99,6 +104,12 @@ export class GameEntity {
   torque: Vec3 = v3();
   // 自身の軌道楕円を描く線。null = 持たない。
   orbitLine: OrbitLine | null = null;
+  // 非質量の艦・基地に表示基準を固定中、orbitLine の代わりに相対軌跡を描く線。null = 持たない。
+  relativeOrbitLine: RelativeOrbitLine | null = null;
+  // showOrbitLine で渡された style。relativeOrbitLine を遅延生成するときに使い回す。
+  private orbitLineStyle: LineStyle | null = null;
+  // relativeOrbitLine を描くために自身の未来予測を要求しているか。syncOrbitLine が立てる。
+  private relativeOrbitLineReader = false;
   // 自身の予測軌道を描く線。null = 持たない。
   predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
@@ -165,7 +176,8 @@ export class GameEntity {
   // 動けるかどうかを引数で受け取る。
   hasFutureReader(canDisplayFuture: boolean): boolean {
     return (this.predictedForGhost && canDisplayFuture)
-      || this.predictedLine !== null || this.analysisPanelReader || this.navTargetReader;
+      || this.predictedLine !== null || this.analysisPanelReader || this.navTargetReader
+      || this.relativeOrbitLineReader;
   }
 
   // 予測列を持ちうる種別か。上の理由のどれか1つでも立ちうれば持つ。
@@ -212,41 +224,86 @@ export class GameEntity {
     return orbitalElementsOf(this.state, center);
   }
 
-  // 軌道楕円の線を style で出す。既に出ていれば style を塗り直す。
+  // 軌道楕円(または非質量ターゲット固定中の相対軌跡)の線を style で出す。既に出ていれば
+  // style を塗り直す。
   showOrbitLine(style: LineStyle): void {
+    this.orbitLineStyle = style;
     if (this.orbitLine !== null) {
       this.orbitLine.setStyle(style);
-      return;
+    } else {
+      const line = new OrbitLine(style);
+      this.scene?.add(line.line);
+      this.orbitLine = line;
     }
-    const line = new OrbitLine(style);
-    this.scene?.add(line.line);
-    this.orbitLine = line;
+    this.relativeOrbitLine?.setStyle(style);
   }
 
-  // 軌道楕円の線を消す。出し直すと作り直しになる。
+  // 軌道楕円・相対軌跡の線を消す。出し直すと作り直しになる。
   hideOrbitLine(): void {
-    if (this.orbitLine === null) return;
-    this.scene?.remove(this.orbitLine.line);
-    this.orbitLine.dispose();
-    this.orbitLine = null;
+    this.orbitLineStyle = null;
+    this.relativeOrbitLineReader = false;
+    if (this.orbitLine !== null) {
+      this.scene?.remove(this.orbitLine.line);
+      this.orbitLine.dispose();
+      this.orbitLine = null;
+    }
+    if (this.relativeOrbitLine !== null) {
+      this.scene?.remove(this.relativeOrbitLine.line);
+      this.relativeOrbitLine.dispose();
+      this.relativeOrbitLine = null;
+    }
   }
 
-  // orbitLine を表示時刻の状態で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ
-  // 何もしない。displayTime が現在時刻より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。
+  // 軌道楕円を隠す(相対軌跡モードへ切り替える/状態が求まらないときに使う)。
+  private hideOrbitEllipse(fo: FloatingOrigin, camera: THREE.Camera): void {
+    this.orbitLine?.sync(null, fo, camera);
+  }
+
+  // 相対軌跡を隠す(楕円モードへ切り替える/状態が求まらないときに使う)。当たり判定向けの
+  // サンプル点も一緒に消す(hide)ので、非表示中に古い点列を拾わせない。
+  private hideRelativeOrbitLine(): void {
+    this.relativeOrbitLineReader = false;
+    this.relativeOrbitLine?.hide();
+  }
+
+  // orbitLine を表示時刻の状態に合わせる。線を持たなければ何もしない。displayTime が現在時刻
+  // より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。
   syncOrbitLine(
     fo: FloatingOrigin, camera: THREE.Camera, context: OrbitLineSyncContext,
   ): void {
-    if (this.orbitLine === null) return;
-    const { displayTime, ephemeris, frameAnchors, force = false } = context;
+    if (this.orbitLine === null && this.relativeOrbitLine === null) return;
+    const { displayTime, ephemeris, frameAnchors, force = false, orbitRef } = context;
     const state = this.displayState(displayTime, ephemeris);
     if (state === null) {
-      this.orbitLine.sync(null, fo, camera);
+      // 表示時刻の状態が求まらない: 両方隠す。
+      this.hideOrbitEllipse(fo, camera);
+      this.hideRelativeOrbitLine();
       return;
     }
-    const center = strongestAttractor(state.r, frameAnchors.bodies);
-    this.orbitLine.sync(
-      orbitalElementsOf(state, center), fo, camera, { force },
-    );
+    // 非質量の艦・基地に固定中で、自分自身がその対象でなければ相対軌跡モード。
+    const relativeTarget = orbitRef?.fixed && !orbitRef.hasMass ? orbitRef.entity : null;
+    if (relativeTarget !== null && relativeTarget !== this) {
+      this.relativeOrbitLineReader = true;
+      this.hideOrbitEllipse(fo, camera);
+      if (this.relativeOrbitLine === null && this.orbitLineStyle !== null) {
+        const line = new RelativeOrbitLine(this.orbitLineStyle);
+        this.scene?.add(line.line);
+        this.relativeOrbitLine = line;
+      }
+      this.relativeOrbitLine?.sync(this, relativeTarget, fo, camera, frameAnchors, ephemeris);
+      return;
+    }
+    this.hideRelativeOrbitLine();
+    // 艦・基地以外の非質量対象(ラグランジュ点など)、または自分自身が対象のときは楕円も出さない。
+    if (orbitRef?.fixed && !orbitRef.hasMass) {
+      this.hideOrbitEllipse(fo, camera);
+      return;
+    }
+    // 質量天体に固定中はその天体中心、自動選択(未固定)なら自身にとって最も強く引く天体を中心に描く。
+    const center = orbitRef?.fixed && orbitRef.attractor
+      ? orbitRef.attractor
+      : strongestAttractor(state.r, frameAnchors.bodies);
+    this.orbitLine?.sync(orbitalElementsOf(state, center), fo, camera, { force });
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
