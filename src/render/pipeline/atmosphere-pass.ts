@@ -296,15 +296,24 @@ export class AtmospherePass {
   private integrated(
     slot: BodySlot, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node, steps: number,
   ): LayerContribution {
-    // 手前半分は最も濃い点へ向かって細かく、奥半分はそこから離れるほど粗く。境目で刻みが
-    // 途切れないよう、どちらの半分も最も濃い点を端に持つ。
+    // 手前側は最も濃い点へ向かって細かく、奥側はそこから離れるほど粗く。境目で刻みが
+    // 途切れないよう、どちらの側も最も濃い点を端に持つ。
+    //
+    // **段を分ける位置は、最も濃い点が区間のどこに在るかで決める。** 段数を機械的に半分ずつ
+    // 配ると、地表で終わる視線(= 天体が写る画素すべて)は最も濃い点が区間の奥端に重なるので、
+    // 奥側へ配った段が長さ 0 に潰れ、**サンプル点の半分が同じ 1 点に積まれて捨てられる。**
+    // 分割の位置は uniform 由来の値なのでグラフを組む時点では決まらず、段ごとに select で選ぶ。
+    const span = max(segment.far.sub(segment.near), 1);
+    const split = clamp(segment.densest.sub(segment.near).div(span), 0, 1);
     const distanceAt = (fraction: number): FloatNode => {
-      if (fraction <= 0.5) {
-        const eased = 1 - (1 - 2 * fraction) ** 2;
-        return segment.near.add(segment.densest.sub(segment.near).mul(eased));
-      }
-      const eased = (2 * fraction - 1) ** 2;
-      return segment.densest.add(segment.far.sub(segment.densest).mul(eased));
+      // **どちらの枝も 0 除算を踏まないよう分母に床を張る** — select は選ばれない枝も評価する。
+      const nearFraction = clamp(float(fraction).div(max(split, 1e-6)), 0, 1);
+      const farFraction = clamp(float(fraction).sub(split).div(max(float(1).sub(split), 1e-6)), 0, 1);
+      const nearRest = float(1).sub(nearFraction);
+      const nearSide = segment.near
+        .add(segment.densest.sub(segment.near).mul(float(1).sub(nearRest.mul(nearRest))));
+      const farSide = segment.densest.add(segment.far.sub(segment.densest).mul(farFraction.mul(farFraction)));
+      return select(lessThan(float(fraction), split), nearSide, farSide);
     };
     const march = rayMarch(
       steps, distanceAt, (distance) => this.mediumAt(slot, rayOrigin.add(rayDir.mul(distance)), rayDir),
