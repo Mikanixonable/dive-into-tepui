@@ -15,7 +15,7 @@ import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { Vec2Uniform, Vec3Node } from '../tsl-types';
-import { apertureGhosts, boxDownsample, radialStreak, tentUpsample } from './lens-kernels';
+import { apertureGhosts, downsample, radialStreak, tentUpsample } from './lens-kernels';
 
 // 縮小チェーンの段数。いちばん粗い段の 1 テクセルが画面の 1/32 を覆う。
 const LEVELS = 5;
@@ -80,7 +80,7 @@ export class LensPass {
     const down: Stage[] = [];
     for (let i = 0; i < LEVELS; i++) {
       const from = i === 0 ? source : down[i - 1]!.target.texture;
-      down.push(createStage((texel) => boxDownsample(from, texel)));
+      down.push(createStage((texel) => downsample(from, texel)));
     }
     // 粗いほうから順に組む。**各段の重みは「その下に何段積んであるか」で決まり**、
     // 全体として 5 段が均等な 1/5 ずつを持つ — 1 オクターブあたり等エネルギー、つまり
