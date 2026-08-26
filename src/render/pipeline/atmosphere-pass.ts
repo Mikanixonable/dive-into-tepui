@@ -236,8 +236,9 @@ export class AtmospherePass {
   // 残っておらず、**それを残すためだけの描画は足さない**(lens-pass.ts の redistributedLight と同じ)。
   scatteredLight(): Vec3Node { return this.scattered; }
 
-  // このフレームで大気を描く天体を、視点に近い順に渡す。MAX_ATMOSPHERE_BODIES を超えた分と、
-  // 空きスロットは描かれない。
+  // このフレームで大気を描く天体を、カメラのいる場所の大気を強く作っている順に渡す。
+  // **先頭が主天体であり、同時に視点へ最も近い**ので、合成の前後もこの並びで決まる。
+  // MAX_ATMOSPHERE_BODIES を超えた分と、空きスロットは描かれない。
   setBodies(bodies: readonly AtmosphereBody[]): void {
     for (const [index, slot] of this.slots.entries()) {
       const body = bodies[index];
