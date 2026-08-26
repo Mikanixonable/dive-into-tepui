@@ -35,10 +35,10 @@ import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 
-// applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
-// 駆動する呼び出し側(描画テスト環境)は、この並びを操作の対象にする。
+// パイプラインだけを駆動する呼び出し側(描画テスト環境)が操作の対象にする項目。
+// **ここを変えたときだけ、パイプラインが描くものが変わる。**
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'exposureCompensation',
+  'lens', 'exposureCompensation', 'atmosphere',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 

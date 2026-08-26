@@ -3,7 +3,8 @@
 // 数十〜数百km に浮かぶジオメトリは、水平線に近い視線では地表との深度差が量子化幅を
 // 下回ってちらつくため。
 import * as THREE from 'three/webgpu';
-import { texture as textureNode, mix, uv, vec2, vec3 } from 'three/tsl';
+import { texture as textureNode, mix, uniform, uv, vec2, vec3 } from 'three/tsl';
+import type { FloatUniform } from './tsl-types';
 import { R_EARTH } from '../physics/solar-system';
 import { EARTH_TEXTURES } from './celestial-textures';
 import { CelestialSurface } from './celestial-surface';
@@ -16,6 +17,8 @@ interface SurfaceMaterial {
   readonly material: THREE.MeshStandardNodeMaterial;
   readonly earthMap: THREE.Texture;
   readonly cloudsMap: THREE.Texture;
+  // 雲と雲影の濃さに掛かる 0..1。0 で雲の無い地表になる。
+  readonly cloudAmount: FloatUniform;
 }
 
 // 地表のアルベド(地表テクスチャ・雲・雲影)だけを持つマテリアルを組む(全LOD段で共有)。
@@ -30,14 +33,15 @@ function buildSurfaceMaterial(): SurfaceMaterial {
 
   const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
 
+  const cloudAmount = uniform(1);
   const earthSample = textureNode(earthMap, uv());
   // 雲そのものと、雲を太陽方向へずらして参照した地表側の影。
-  const cloudAlpha = textureNode(cloudsMap, uv()).r;
-  const cloudShadowAlpha = textureNode(cloudsMap, uv().add(vec2(0.001, 0.0))).r;
+  const cloudAlpha = textureNode(cloudsMap, uv()).r.mul(cloudAmount);
+  const cloudShadowAlpha = textureNode(cloudsMap, uv().add(vec2(0.001, 0.0))).r.mul(cloudAmount);
   const shadowColor = mix(earthSample, earthSample.mul(0.2), cloudShadowAlpha.mul(0.8));
   mat.colorNode = mix(shadowColor, vec3(1, 1, 1), cloudAlpha).mul(EARTH_TEXTURES.albedoScale);
 
-  return { material: mat, earthMap, cloudsMap };
+  return { material: mat, earthMap, cloudsMap, cloudAmount };
 }
 
 export interface Earth {
@@ -49,6 +53,8 @@ export interface Earth {
   setCoastlineVisible(visible: boolean): void;
   // オーロラのカーテンを出すかどうか。
   setAuroraVisible(visible: boolean): void;
+  // 地表へ合成する雲と、雲が地表へ落とす影を出すかどうか。
+  setCloudsVisible(visible: boolean): void;
   // 見かけ直径[px]に応じた地表メッシュのLOD段を選ぶ。
   syncSurfaceLod(apparentDiameterPx: number): void;
   tick(simTime: number): void; // オーロラの明滅アニメーション
@@ -60,7 +66,7 @@ export function createEarth(): Earth {
   const group = new THREE.Group();
   const spin = new THREE.Group();
 
-  const { material: surfaceMaterial, earthMap, cloudsMap } = buildSurfaceMaterial();
+  const { material: surfaceMaterial, earthMap, cloudsMap, cloudAmount } = buildSurfaceMaterial();
   const surface = CelestialSurface.withMaterial(surfaceMaterial);
   // 実半径への拡大は地表だけへ掛ける — オーロラは実寸 [m] の頂点を持つので、spin ごと
   // 拡大すると地球半径倍に膨らむ。
@@ -97,6 +103,9 @@ export function createEarth(): Earth {
     },
     setAuroraVisible(visible: boolean) {
       for (const a of auroras) a.mesh.visible = visible;
+    },
+    setCloudsVisible(visible: boolean) {
+      cloudAmount.value = visible ? 1 : 0;
     },
     // 見かけ直径[px]から地表LOD段を選ぶ。
     syncSurfaceLod(apparentDiameterPx: number) {

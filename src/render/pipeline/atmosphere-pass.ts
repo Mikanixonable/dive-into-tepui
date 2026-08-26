@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, PI, abs, and, clamp, dot, exp, float, greaterThan, length, lessThan, max, min, mix,
+  Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, length, lessThan, max, min, mix,
   normalize, select, sqrt, sub, uniform, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
@@ -159,19 +159,35 @@ export class AtmospherePass {
     const rayDir: Vec3Node = this.viewToWorld.mul(vec4(ray.direction, 0)).xyz;
     const opaqueDist = length(sub(opaquePos, rayOrigin));
 
-    // 視点に近い天体から順に重ねる。手前の層が奥の層の内部散乱も減衰させるので、
-    // 透過率を累積しながら足していく。**先頭だけが積分の対象**で、残りは単層表現。
-    let transmittance: Vec3Node = vec3(1, 1, 1);
-    let inscatter: Vec3Node = vec3(0, 0, 0);
-    for (const [index, slot] of this.slots.entries()) {
-      const segment = this.raySegment(slot, rayOrigin, rayDir, opaqueDist);
-      const single = this.singleLayer(slot, segment, rayOrigin, rayDir);
-      const layer = index === 0
-        ? this.blendDense(single, this.integrated(slot, segment, rayOrigin, rayDir))
-        : single;
-      inscatter = inscatter.add(layer.inscatter.mul(transmittance));
-      transmittance = transmittance.mul(layer.transmittance);
-    }
+    // 視点に近い天体から順に重ねる。手前の層が奥の層の内部散乱も減衰させるので、透過率を
+    // 累積しながら足していく。**先頭だけが積分の対象**で、残りは単層表現。
+    //
+    // 重みが 0 のフレームでは積分ごと飛ばす。**この分岐は uniform だけで決まるので画面全体で
+    // 揃っており、分岐した側だけを実行できる** — select で混ぜると、積分は捨てるぶんまで
+    // 毎画素走ってしまう。
+    const composited = Fn(() => {
+      const transmittance = vec3(1, 1, 1).toVar();
+      const inscatter = vec3(0, 0, 0).toVar();
+      for (const [index, slot] of this.slots.entries()) {
+        const segment = this.raySegment(slot, rayOrigin, rayDir, opaqueDist);
+        const single = this.singleLayer(slot, segment, rayOrigin, rayDir);
+        const layerTransmittance = single.transmittance.toVar();
+        const layerInscatter = single.inscatter.toVar();
+        if (index === 0) {
+          If(greaterThan(this.denseWeight, 0), () => {
+            const dense = this.integrated(slot, segment, rayOrigin, rayDir);
+            layerTransmittance.assign(mix(layerTransmittance, dense.transmittance, this.denseWeight));
+            layerInscatter.assign(mix(layerInscatter, dense.inscatter, this.denseWeight));
+          });
+        }
+        inscatter.addAssign(layerInscatter.mul(transmittance));
+        transmittance.mulAssign(layerTransmittance);
+      }
+      // 大気が下地から奪う割合は、**アルファが1つしか無いので波長ごとの透過率を平均で
+      // 代表させる** — 下地が波長ごとに違う減り方をすることは表せない。内部散乱の色は
+      // 波長ごとのまま出る。
+      return vec4(inscatter, transmittance.x.add(transmittance.y).add(transmittance.z).div(3));
+    })();
 
     this.material = new THREE.MeshBasicNodeMaterial({
       depthTest: false,
@@ -182,11 +198,9 @@ export class AtmospherePass {
       blendDst: THREE.OneMinusSrcAlphaFactor,
     });
     // 前乗算アルファ: 色は既に透過率を掛けた内部散乱、アルファは大気が下地から奪う割合。
-    // **アルファは1つしか無いので、波長ごとに違う透過率を平均で代表させる** — 下地が
-    // 波長ごとに違う減り方をすることは表せない。内部散乱の色は波長ごとのまま出る。
-    this.scattered = inscatter;
+    this.scattered = composited.xyz;
     this.material.colorNode = this.scattered;
-    this.material.opacityNode = float(1).sub(transmittance.x.add(transmittance.y).add(transmittance.z).div(3));
+    this.material.opacityNode = float(1).sub(composited.w);
     this.quad = new QuadMesh(this.material);
   }
 
@@ -325,14 +339,6 @@ export class AtmospherePass {
     const irradiance = this.sunLight.intensity.div(max(dot(toSun, toSun), 1));
     const occlusion = this.sunOcclusion.transmittance(point, { rings: false, meshNormal: null });
     return exp(sunDepth.negate()).mul(irradiance.div(PI)).mul(occlusion).mul(this.sunLight.color);
-  }
-
-  // 単層表現と積分を重み denseWeight で混ぜる。重みが 0 なら単層表現そのもの。
-  private blendDense(single: LayerContribution, dense: LayerContribution): LayerContribution {
-    return {
-      transmittance: mix(single.transmittance, dense.transmittance, this.denseWeight),
-      inscatter: mix(single.inscatter, dense.inscatter, this.denseWeight),
-    };
   }
 
   // 下地と合成する前の、大気が重ねる内部散乱だけ。「大気」デバッグ表示の合成パスがこのノードを
