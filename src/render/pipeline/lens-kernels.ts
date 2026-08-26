@@ -6,8 +6,8 @@
 // **半精度浮動小数点の上限(65504)を跨がないのも、総和が 1 であることに掛かっている** —
 // 出力が入力の最大値(太陽面の 4.62e4)を超えないので、Inf も NaN も構造的に起きない。
 import * as THREE from 'three/webgpu';
-import { screenUV, texture, vec2, vec3 } from 'three/tsl';
-import type { Vec2Uniform, Vec3Node } from '../tsl-types';
+import { and, greaterThan, lessThan, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
+import type { Vec2Node, Vec2Uniform, Vec3Node } from '../tsl-types';
 
 // 条の軸の数。1 本の軸が両側へ伸びるので、条は 6 本になる。
 const STREAK_AXES = 3;
@@ -41,21 +41,43 @@ function sumOf(terms: readonly Vec3Node[]): Vec3Node {
   return level[0]!;
 }
 
-// source の (x, y) テクセルぶんずれた点を読む。
-function tapAt(source: THREE.Texture, texel: Vec2Uniform, x: number, y: number): Vec3Node {
+// **画面の外は黒として読む。** WebGPU にはボーダー色が無いので、クランプで縁の画素が引き伸ばされる
+// のはシェーダ側で打ち消すしかない。**明るさではなく位置だけで決まる重み**なので、入力に対する
+// 線形性は崩れない(この段が閾値を持たないという規則には触れない)。
+//
+// **画面の端では核の総和が 1 を下回るが、それでよい** — 画面の外へ出た光は戻ってこない。
+// 正規化し直すと端だけが明るくなる。総和が 1 を**超えない**ことは保たれるので、半精度の上限の
+// 担保も崩れない。
+function sampleInside(source: THREE.Texture, uv: Vec2Node): Vec3Node {
+  const inside = and(
+    and(greaterThan(uv.x, 0), lessThan(uv.x, 1)),
+    and(greaterThan(uv.y, 0), lessThan(uv.y, 1)),
+  );
+  return select(inside, texture(source, uv).rgb, vec3(0));
+}
+
+// 光を広げる側のタップ。(x, y) は読み元のテクセル数で測る。
+function spreadAt(source: THREE.Texture, texel: Vec2Uniform, x: number, y: number): Vec3Node {
+  return sampleInside(source, screenUV.add(vec2(x, y).mul(texel)));
+}
+
+// **縮小のタップはマスクを通さない。** 縮小がしているのは「画面の中を平均する」再サンプリング
+// であって、画面の外の光を作っているのではない。ゼロ埋めすると各段の縁のテクセルが本来より
+// 暗くなり、画面の縁に暗いふちが出る。
+function resampleAt(source: THREE.Texture, texel: Vec2Uniform, x: number, y: number): Vec3Node {
   return texture(source, screenUV.add(vec2(x, y).mul(texel))).rgb;
 }
 
 // 縮小。書き込み先が読み元のちょうど半分の解像度なので、半テクセルずらした双一次の 4 点が
 // そのまま 4x4 の箱平均になる。
 export function boxDownsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
-  const tap = (x: number, y: number): Vec3Node => tapAt(source, texel, x, y);
+  const tap = (x: number, y: number): Vec3Node => resampleAt(source, texel, x, y);
   return sumOf([tap(-0.5, -0.5), tap(0.5, -0.5), tap(-0.5, 0.5), tap(0.5, 0.5)]).mul(0.25);
 }
 
 // 拡大((1,2,1 / 2,4,2 / 1,2,1) / 16 のテント)。
 export function tentUpsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
-  const tap = (x: number, y: number): Vec3Node => tapAt(source, texel, x, y);
+  const tap = (x: number, y: number): Vec3Node => spreadAt(source, texel, x, y);
   const corners = sumOf([tap(-1, -1), tap(1, -1), tap(-1, 1), tap(1, 1)]);
   const edges = sumOf([tap(0, -1), tap(-1, 0), tap(1, 0), tap(0, 1)]);
   return sumOf([corners, edges.mul(2), tap(0, 0).mul(4)]).mul(1 / 16);
@@ -75,7 +97,7 @@ export function radialStreak(source: THREE.Texture, texel: Vec2Uniform): Vec3Nod
       for (const side of [1, -1]) {
         const x = side * Math.cos(angle) * distance;
         const y = side * Math.sin(angle) * distance;
-        taps.push(tapAt(source, texel, x, y).mul(weight));
+        taps.push(spreadAt(source, texel, x, y).mul(weight));
         total += weight;
       }
     }
@@ -96,6 +118,6 @@ export function apertureGhosts(source: THREE.Texture): Vec3Node {
     const balanced = vec3(
       (tint[0] / meanTint[0]!) * gain, (tint[1] / meanTint[1]!) * gain, (tint[2] / meanTint[2]!) * gain,
     );
-    return texture(source, center.add(screenUV.sub(center).mul(scale))).rgb.mul(balanced);
+    return sampleInside(source, center.add(screenUV.sub(center).mul(scale))).mul(balanced);
   }));
 }
