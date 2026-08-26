@@ -107,7 +107,7 @@ function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Ob
 }
 
 // 中心 center、半径 radius、平面 (u, v) の円を1本。分割はカメラで決まるので、カメラを作った
-// あとに呼ぶ。revision は焼き直しの鍵で、ケースの間は変えない(毎フレーム変えると線がちらつく)。
+// あとに呼ぶ。
 function circle(
   center: THREE.Vector3, radius: number, u: THREE.Vector3, v: THREE.Vector3,
   style: LineStyle, camera: THREE.Camera,
@@ -118,7 +118,7 @@ function circle(
     out.copy(center)
       .addScaledVector(u, radius * Math.cos(theta))
       .addScaledVector(v, radius * Math.sin(theta));
-  }, { revision: 'lab', camera });
+  }, { camera });
   return curve.object;
 }
 
