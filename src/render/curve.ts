@@ -3,8 +3,8 @@
 // setAnalyticCurve: 曲線の解析的な式を直接受け取り、曲線として描く。
 // setHermiteCurve: 節点列を受け取り、節点間を3次エルミートで埋めた滑らかな曲線として描く。
 //
-// いずれの用途でも、頂点を t のどこに何個置くかは画面上のサジッタと折れ角を見て決め、
-// ズーム・視線の変化に応じて焼き直す。
+// いずれの用途でも、頂点を t のどこに何個置くかは画面上のサジッタと折れ角を見て毎フレーム
+// 決め直す。頂点の配り方はカメラに依存するので、据え置いてよい条件が Curve 側にはない。
 
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../physics/max-heap';
@@ -33,8 +33,6 @@ export type CurveSampler = (t: number, out: THREE.Vector3) => void;
 export type CurveColorSampler = (t: number, out: THREE.Color) => void;
 
 export type SetCurveOptions = {
-  // 曲線の中身が変わったことを表す不透明な値。前回と === で異なるときだけ焼き直す。
-  readonly revision: unknown;
   // 画面上の目標を実距離へ換算するための、現在の描画カメラ。
   readonly camera: THREE.Camera;
   // 適応分割を始める区間数(setAnalyticCurve のみ)。適応分割は弦の中点しか見ないので、
@@ -74,24 +72,9 @@ function uniformTs(segments: number): readonly number[] {
   return ts;
 }
 
-// 代表スケールを測るために曲線上から等間隔に抜く点数。
-const SCALE_PROBE_POINTS = 8;
-
 // 1区間に許す t 幅の下限。同じ点を返し続ける sample では逸脱が分割しても下がらないので、
 // その区間へ頂点予算を吸わせないための安全弁。
 const MIN_T_SPAN = 2 ** -24;
-
-// 焼き直しを起こす画面スケールの変化比。毎フレームの微小なズーム変化で焼き直さないための遊び。
-const SCALE_REBAKE_RATIO = 1.2;
-
-// f32 の相対量子化幅(仮数23bit)。sample の座標系は LEO スケールの絶対座標を含みうるので、
-// そのまま頂点バッファ(f32)へ書くと座標の大きさに応じた量子化ノイズが画面上のずれとして
-// 見えてしまう。頂点バッファへはカメラ近傍の基準点(pivot)からの差分だけを書いてこれを防ぐ。
-const F32_RELATIVE_EPS = 2 ** -24;
-
-// pivot の更新を許す画面上の誤差上限を、サジッタ目標に対する比で表した値。量子化誤差が
-// 分割の粗さに埋もれて見えなくなるよう、目標より十分小さく取る。
-const PIVOT_MAX_ERROR_RATIO = 0.2;
 
 // 離散サンプルとしてしか手に入らない曲線の節点列。ts は節点の曲線パラメータ(昇順、先頭 0・
 // 末尾 1)、positions と tangents は各節点の位置と d(位置)/d(パラメータ) を [x, y, z] の順に
@@ -198,15 +181,14 @@ export class Curve {
   // 組み直さない。
   private hermiteKnots: CurveKnots | null = null;
   private hermite: HermiteCurve | null = null;
-  private hasBaked = false;
-  private lastRevision: unknown = undefined;
-  private bakedScale: number | null = null;
-  private readonly bakedCamFwd = new THREE.Vector3();
 
   // 頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から差し引く基準点。sample の座標系の
-  // まま、カメラの現在位置に追従させる。
+  // まま、カメラの現在位置に置く。sample の座標系は LEO スケールの絶対座標を含みうるので、
+  // そのまま f32 へ落とすと座標の大きさに応じた量子化ノイズが画面上のずれとして見えてしまう。
+  // カメラからの差分だけを書けば、残る誤差は「カメラからの距離 × f32相対精度」で頭打ちになり、
+  // 距離によらず常にサブピクセルへ収まる — フローティングオリジンと同じ理屈であり、pivot を
+  // カメラから離した距離は、そのまま画面上のずれとして出る。
   private readonly pivot = new THREE.Vector3();
-  private hasPivot = false;
 
   // setTransform が要求した sample→ワールドの変換。line.position/quaternion へはこれに pivot
   // 分を補って書き込むので、sample の座標系を扱う計算はこちらを読む。
@@ -233,10 +215,6 @@ export class Curve {
   // 分割をどこで止めるかを決める2つの目標。画面上のサジッタ [px] と1辺の折れ角 [rad]。
   private readonly maxSagittaPx: number;
   private readonly maxEdgeTurn: number;
-  // 焼き直しを起こす視線方向の変化(なす角の余弦)。適応分割は焼いた瞬間の視線を基準に
-  // 手前だけ細かく焼くため、向きだけ変わっても粗い区間が手前へ回り込む。それが折れ角の
-  // 上限を超えて見えない角度で焼き直す。
-  private readonly camDirRebakeCos: number;
 
   // 頂点バッファは maxVertices ぶんを生成時に1回だけ確保する。style.dash があれば破線になる。
   constructor(opts: CurveOptions) {
@@ -246,7 +224,6 @@ export class Curve {
     } = opts;
     this.maxSagittaPx = maxSagittaPx;
     this.maxEdgeTurn = (maxEdgeTurnDeg * Math.PI) / 180;
-    this.camDirRebakeCos = Math.cos(this.maxEdgeTurn);
     const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
     this.maxInitialVertices = Math.max(INITIAL_SEGMENTS + 1, Math.floor(maxVertices * MAX_INITIAL_VERTEX_RATIO));
@@ -297,20 +274,6 @@ export class Curve {
   private scaleAtLocal(cam: CameraScale, lx: number, ly: number, lz: number): number {
     this.scratchWorld.set(lx, ly, lz).applyQuaternion(this.reqQuaternion).add(this.reqPosition);
     return cam.at(this.scratchWorld.x, this.scratchWorld.y, this.scratchWorld.z);
-  }
-
-  // 曲線を代表する m/px。分割の粗さを決めるのは最もカメラに寄っている点なので、曲線上から
-  // 抜いた数点の最小値を採る(1点だけ見ると、その点が視点面をまたぐ曲線で値が乱高下して
-  // 毎フレーム焼き直しになる)。
-  private representativeScale(sample: CurveSampler, ts: ArrayLike<number>, cam: CameraScale): number {
-    let minScale = Infinity;
-    const last = ts.length - 1;
-    for (let i = 0; i <= SCALE_PROBE_POINTS; i++) {
-      sample(ts[Math.round((i * last) / SCALE_PROBE_POINTS)]!, this.scratchA);
-      const s = this.scaleAtLocal(cam, this.scratchA.x, this.scratchA.y, this.scratchA.z);
-      if (s < minScale) minScale = s;
-    }
-    return minScale;
   }
 
   // カメラのワールド位置を sample の座標系へ戻す。
@@ -425,49 +388,20 @@ export class Curve {
     else out.set(0, 0, 0);
   }
 
-  // 曲線を(必要なら)焼き直し、GPU バッファへ反映する。revision・画面スケール・視線方向の
-  // いずれも前回と実質同じなら、焼き直しも再アップロードも省く。
+  // 曲線を焼き、GPU バッファへ反映する。頂点の配り方も pivot もカメラに依存するので毎フレーム
+  // 焼き直す — 据え置けば、据え置いた間に動いたぶんがそのまま画面上のずれとして出る。省いて
+  // よいかどうかは曲線の意味を知っている呼び出し側にしか測れないので、渡された曲線は必ず焼く。
   private setCurve(sample: CurveSampler, ts: ArrayLike<number>, opts: SetCurveOptions): void {
-    const { revision, camera, colorAt } = opts;
+    const { camera, colorAt } = opts;
     this.sampler = sample;
     const cam = new CameraScale(camera);
-    const scaleNow = this.representativeScale(sample, ts, cam);
-    const scaleChanged = this.bakedScale === null
-      || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO;
-    const camDirChanged = cam.forward.dot(this.bakedCamFwd) < this.camDirRebakeCos;
-    // 色を後から使い始めたときは、焼いてある頂点に色が入っていないので必ず焼き直す
-    // (そうしないと色属性が 0 のまま束縛されて線が黒くなる)。使うのをやめたときは、
-    // 焼いてある色がマテリアル色に掛かり続けないよう頂点カラーを外す。
+    // 頂点カラーを使うのをやめたときは、焼いてある色がマテリアル色に掛かり続けないよう外す。
     const wantsVertexColors = colorAt !== undefined;
-    const colorsTurnedOn = wantsVertexColors && !this.hasVertexColors;
     if (wantsVertexColors !== this.hasVertexColors) this.useVertexColors(wantsVertexColors);
 
-    const revisionChanged = !this.hasBaked || revision !== this.lastRevision;
-    const rebaked = revisionChanged || scaleChanged || camDirChanged || colorsTurnedOn;
-
-    if (rebaked) {
-      this.rebake(sample, ts, cam, colorAt);
-      this.hasBaked = true;
-      this.lastRevision = revision;
-      this.bakedScale = scaleNow;
-      this.bakedCamFwd.copy(cam.forward);
-    }
-
-    // pivot はカメラ近傍に据え続ける。焼き直した直後は必ず、それ以外はカメラが pivot から
-    // 離れて量子化誤差が画面上で無視できなくなったときだけ据え直す。
-    const localCam = this.localCameraPos(cam, this.scratchLocalCam);
-    let pivotChanged = rebaked || !this.hasPivot;
-    if (!pivotChanged) {
-      const drift = localCam.distanceTo(this.pivot);
-      pivotChanged = (drift * F32_RELATIVE_EPS) / scaleNow > this.maxSagittaPx * PIVOT_MAX_ERROR_RATIO;
-    }
-    if (pivotChanged) {
-      this.pivot.copy(localCam);
-      this.hasPivot = true;
-      this.applyTransform();
-    }
-
-    if (!rebaked && !pivotChanged) return;
+    this.rebake(sample, ts, cam, colorAt);
+    this.pivot.copy(this.localCameraPos(cam, this.scratchLocalCam));
+    this.applyTransform();
     this.writePositions();
   }
 
@@ -476,15 +410,6 @@ export class Curve {
     this.hasVertexColors = enabled;
     (this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial).vertexColors = enabled;
     this.mat.needsUpdate = true;
-  }
-
-  // 焼いてある頂点の色だけを colorAt で評価し直して GPU へ送る。まだ一度も焼いていなければ
-  // 何もしない。
-  setColors(colorAt: CurveColorSampler): void {
-    if (!this.hasBaked) return;
-    if (!this.hasVertexColors) this.useVertexColors(true);
-    for (let i = 0; i < this.bakedCount; i++) this.bakeColor(i, this.ts[i]!, colorAt);
-    (this.geom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
   }
 
   // 焼いた頂点(pivot 差し引き後)と描画範囲を GPU へ反映する。
@@ -540,9 +465,6 @@ export class Curve {
     this.hermiteKnots = null;
     this.hermite = null;
     this.vertexCount = 0;
-    this.hasBaked = false;
-    this.bakedScale = null;
-    this.lastRevision = undefined;
     this.geom.setDrawRange(0, 0);
     this.applyVisible();
   }
