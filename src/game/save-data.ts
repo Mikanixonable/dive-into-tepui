@@ -44,6 +44,9 @@ export interface FireSaveData {
   mags: number;
   rounds: number;
   barrel: number;
+  // 旧セーブデータには無いフィールドなので任意。無ければ環境温度・過熱なしで始める。
+  barrelTemperature?: number;
+  barrelDeviation?: number;
   cooldown: number;
   muzzleIdx: number;
 }
