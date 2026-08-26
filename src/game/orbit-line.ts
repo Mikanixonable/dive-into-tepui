@@ -1,22 +1,19 @@
-// OrbitalElements から軌道楕円を描画する。頂点は中心天体(OrbitalElements.center)相対座標のまま保持し、
-// フローティングオリジンによる Object3D 平行移動でその天体の ECI 位置へ置く。どの天体を
-// 中心に描くかは OrbitalElements 自身が持つため、呼び出し側が外側で選び直すことはできない。
+// OrbitalElements から軌道楕円を描画する。頂点は中心天体(OrbitalElements.center)相対座標のまま
+// 保持し、フローティングオリジンによる Object3D 平行移動でその天体の ECI 位置へ置く。
 // 焼き直すかどうかは「いま描かれている楕円が、いまの軌道要素の楕円から画面上何 px ずれて
-// 見えるか」で決める。解像度そのものの決定(画面上のサジッタに応じた適応分割)は Curve に
-// 委ねる。楕円は天体自身の現在位置を貫くが、天体メッシュは不透明・深度書き込み有りで先に
-// 描かれるため、深度テストだけで天体が手前に残る。
+// 見えるか」で決める。線の解像度そのものは Curve が決める。
 import * as THREE from 'three/webgpu';
 import { OrbitalElements, positionOnOrbit, trueAnomalyAt, velocityOnOrbit } from '../physics/elements';
 import { apparentSizePx } from '../physics/projection';
 import { add, len, sub, v3, Vec3 } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
-import { Curve, CurveSampler } from '../render/curve';
+import { Curve, CurveSampler, MAX_SAGITTA_PX } from '../render/curve';
 import { CameraScale } from '../render/camera-scale';
 import { LineStyle } from '../render/line-style';
 
-// 焼き直しを迫るずれ [px]。Curve の適応分割が目標にしている画面上のサジッタと同じ値にして、
-// 焼いた楕円が古いことによるずれが、分割の粗さによるずれを上回らないようにする。
-const MAX_STALE_PX = 0.5;
+// 焼き直しを迫るずれ [px]。適応分割が目標にしているサジッタへ揃え、焼いた楕円が古いことに
+// よるずれが、分割の粗さによるずれを上回らないようにする。
+const MAX_STALE_PX = MAX_SAGITTA_PX;
 
 // ずれを測る真近点角の数。楕円1周を等分して測るので、遠点側だけが動く形も直接拾える。
 const PROBE_COUNT = 8;
@@ -72,14 +69,13 @@ function stalenessPx(
 export class OrbitLine {
   private readonly curve: Curve;
   readonly line: THREE.Object3D;
-  // いま描いている楕円の軌道要素。sync だけが書き換える。samplePoints もこれを読むので、
-  // 当たり判定は描かれている線と必ず同じ形になる。
+  // いま描いている楕円の軌道要素。sync だけが書き換える。
   private baked: OrbitalElements | null = null;
 
   // style.renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
   // 透明描画どうしの前後は描画順でしか決まらない。
   constructor(style: LineStyle) {
-    this.curve = new Curve({ style });
+    this.curve = new Curve(style);
     this.line = this.curve.object;
   }
 
@@ -124,7 +120,7 @@ export class OrbitLine {
       : el;
     this.baked = baked;
 
-    this.curve.setAnalyticCurve(ellipseSampler(baked), { camera });
+    this.curve.setAnalyticCurve(ellipseSampler(baked), camera);
     this.curve.setVisible(true);
   }
 
