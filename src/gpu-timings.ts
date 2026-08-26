@@ -14,14 +14,15 @@ export const GPU_PASS = {
   material: 4,
   atmosphere: 5,
   world: 6,
-  composite: 7,
-  overlay: 8,
+  lens: 7,
+  composite: 8,
+  overlay: 9,
 } as const;
 
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
 
 // 表示名。並びは GPU_PASS の値の順。
-export const GPU_PASS_LABELS: readonly string[] = ['影', 'Gバッファ', '遮蔽', 'ライティング', 'マテリアル', '大気', 'ワールド', '合成', '3D UI'];
+export const GPU_PASS_LABELS: readonly string[] = ['影', 'Gバッファ', '遮蔽', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成', '3D UI'];
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
 
@@ -119,7 +120,9 @@ export class GpuTimings {
           // 読みをそのまま残す。0 で塗り潰すのはここで初めて書き込むときだけ。
           if (this.enabled && matches.length > 0) {
             this.elapsedMs.fill(0);
-            for (const [pass, duration] of matches) this.elapsedMs[pass] = duration;
+            // 1 つのパスが 1 フレームに何度も render() を呼ぶことがあるので、上書きではなく
+            // 足し合わせる。
+            for (const [pass, duration] of matches) this.elapsedMs[pass]! += duration;
           }
           // three は resolve のたびにここへ足すだけで自分では空にしないので、消費済みかどうかに
           // 関わらず毎フレームここで空にする(さもないと無限に肥大化する)。
