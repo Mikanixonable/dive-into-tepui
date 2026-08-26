@@ -356,6 +356,30 @@ export class PhysicalObjectListPanel {
       this.pruneRows(section.rows, seen);
     }
     this.emptyState.classList.toggle('hidden', !(filteringActive && totalMatched === 0));
+
+    // 対象行の展開が全区画へ反映された後でないと、祖先が畳まれたままの位置へスクロール
+    // してしまう。
+    if (focusChanged && focusId !== undefined) this.findRowElement(focusId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // id に対応する行要素を全区画から再帰的に探す。見当たらなければ null。
+  private findRowElement(id: string): HTMLElement | null {
+    for (const section of this.sections.values()) {
+      const found = this.findRowElementIn(section.rows, id);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  // rows 直下に無ければ、各行の子リストへ再帰する。
+  private findRowElementIn(rows: ReadonlyMap<string, RowNode>, id: string): HTMLElement | null {
+    const node = rows.get(id);
+    if (node) return node.row;
+    for (const child of rows.values()) {
+      const found = this.findRowElementIn(child.children, id);
+      if (found) return found;
+    }
+    return null;
   }
 
   // 絞り込みが強制的に開いた分の畳み状態を、記録してあるプレイヤーの元の値へ戻す。
