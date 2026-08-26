@@ -21,7 +21,9 @@ import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
-import { AMBIENT_IRRADIANCE, SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
+import {
+  AMBIENT_IRRADIANCE, AMBIENT_REFERENCE_DISTANCE, SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight,
+} from '../../render/pipeline/sun-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
@@ -220,7 +222,14 @@ export class EnvironmentScene {
     const sunPos = starId === null
       ? this.toThreeNormal(this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
       : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
-    this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE);
+    // 環境光をどこの明るさへ合わせるかの基準点。カメラ位置ではなく注視点から取る —
+    // マップビューではカメラが対象から遠く離れていることがあり、そこを基準にすると
+    // 写っている場所の明るさにならない。
+    const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
+    this.sunLight.set(
+      sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY,
+      this.ambientIrradianceAt(reference, floatingOrigin, displayTime),
+    );
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, graphics);
 
@@ -248,6 +257,15 @@ export class EnvironmentScene {
       style, gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
+  }
+
+  // 基準点へ届く環境光の放射照度。環境光は地球照の代用なので、**地球から遠ざかれば距離の
+  // 二乗で薄れる。** 地球が無いレジストリでは届く光そのものが無いので 0 — 本影の中を埋める
+  // ぶんは恒星光側(SHADOW_MIN_SUN)が別に持っている。
+  private ambientIrradianceAt(reference: THREE.Vector3, fo: FloatingOrigin, displayTime: number): number {
+    if (!('earth' in this.ephemeris.registry)) return 0;
+    const earth = fo.RtoThreeV3(this.ephemeris.positionOf('earth', displayTime));
+    return AMBIENT_IRRADIANCE * (AMBIENT_REFERENCE_DISTANCE / reference.distanceTo(earth)) ** 2;
   }
 
   // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。まず最大遮蔽率が閾値を切る天体を落とし、
