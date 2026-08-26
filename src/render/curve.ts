@@ -3,26 +3,13 @@
 // setAnalyticCurve: 曲線の解析的な式を直接受け取り、曲線として描く。
 // setHermiteCurve: 節点列を受け取り、節点間を3次エルミートで埋めた滑らかな曲線として描く。
 //
-// いずれの用途でも、頂点を t のどこに何個置くかは画面上のサジッタと折れ角を見て毎フレーム
-// 決め直す。頂点の配り方はカメラに依存するので、据え置いてよい条件が Curve 側にはない。
+// 頂点を t のどこに何個置くかは、画面上のサジッタと折れ角を見て毎フレーム決め直す。
 
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../physics/max-heap';
 import { CameraScale } from './camera-scale';
 import type { LineStyle } from './line-style';
 import { markOverlay } from './pipeline/lit-layer';
-
-export type CurveOptions = {
-  readonly style: LineStyle;
-  // 適応分割が収束しない可能性がある時に、最悪描画コストの打ち切りとして渡す
-  readonly maxVertices?: number;
-  // 弦に対する曲線の膨らみ(サジッタ)の目標値 [px]。線の品質を調整する入口。
-  // 小さくすれば頂点を増やして曲線へ寄せ、大きくすれば粗く済ませる。
-  readonly maxSagittaPx?: number;
-  // 1辺あたりに許す折れ角の上限 [deg]。サジッタと並ぶもう一つの品質の入口で、こちらは画面上の
-  // 大きさに依らず効くため、遠ズームでの粗さを決める。
-  readonly maxEdgeTurnDeg?: number;
-};
 
 // t∈[0,1] における曲線上の点を out へ書く。sample(0) と sample(1) が一致するなら、その曲線は
 // 閉じた輪として描かれる。
@@ -32,22 +19,13 @@ export type CurveSampler = (t: number, out: THREE.Vector3) => void;
 // 書いた色はマテリアル色に乗算される。
 export type CurveColorSampler = (t: number, out: THREE.Color) => void;
 
-export type SetCurveOptions = {
-  // 画面上の目標を実距離へ換算するための、現在の描画カメラ。
-  readonly camera: THREE.Camera;
-  // 適応分割を始める区間数(setAnalyticCurve のみ)。適応分割は弦の中点しか見ないので、
-  // 1区間に何周ぶんも入る曲線では中点がたまたま曲線上に乗り、区間まるごとが直線に化ける。
-  // 「1区間が曲線の半周を超えない」下限を渡してそれを防ぐ。
-  readonly initialSegments?: number;
-  // 線の中で色が変わるときだけ渡す。省略すれば setStyle/setColor の単色で塗られる。
-  readonly colorAt?: CurveColorSampler;
-};
+// 適応分割が目標にする、弦に対する曲線の膨らみ(サジッタ)の上限 [px]。1px を下回っていれば、
+// 隣り合う画素の間に収まる。
+export const MAX_SAGITTA_PX = 0.5;
 
-// サジッタ目標の既定値 [px]。1px を下回っていれば、隣り合う画素の間に収まる。
-const DEFAULT_MAX_SAGITTA_PX = 0.5;
-
-// 折れ角上限の既定値 [deg]。
-const DEFAULT_MAX_EDGE_TURN_DEG = 5;
+// 1辺あたりに許す折れ角の上限 [rad]。サジッタと並ぶもう一つの分割基準で、こちらは画面上の
+// 大きさに依らず効くため、遠ズームでの粗さを決める。
+const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 
 // initialSegments を省いたときの初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で
 // 弦が縮退するため、最低限これだけ分けてから適応分割に入る。
@@ -183,11 +161,8 @@ export class Curve {
   private hermite: HermiteCurve | null = null;
 
   // 頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から差し引く基準点。sample の座標系の
-  // まま、カメラの現在位置に置く。sample の座標系は LEO スケールの絶対座標を含みうるので、
-  // そのまま f32 へ落とすと座標の大きさに応じた量子化ノイズが画面上のずれとして見えてしまう。
-  // カメラからの差分だけを書けば、残る誤差は「カメラからの距離 × f32相対精度」で頭打ちになり、
-  // 距離によらず常にサブピクセルへ収まる — フローティングオリジンと同じ理屈であり、pivot を
-  // カメラから離した距離は、そのまま画面上のずれとして出る。
+  // まま、カメラの現在位置に置く。f32 の量子化ノイズは基準点からの距離に比例するので、
+  // 基準点をカメラから離した距離が、そのまま画面上のずれとして出る。
   private readonly pivot = new THREE.Vector3();
 
   // setTransform が要求した sample→ワールドの変換。line.position/quaternion へはこれに pivot
@@ -204,7 +179,6 @@ export class Curve {
   private readonly scratchInvQuat = new THREE.Quaternion();
   private readonly scratchPivotWorld = new THREE.Vector3();
 
-
   // 未分割の区間を逸脱の大きい順に取り出す待ち行列。区間はその左端の頂点番号で表し、
   // 右端は nextVertex から辿る。
   private readonly pending: MaxHeap;
@@ -212,18 +186,9 @@ export class Curve {
   // 初期頂点に置ける頂点数の上限。
   private readonly maxInitialVertices: number;
 
-  // 分割をどこで止めるかを決める2つの目標。画面上のサジッタ [px] と1辺の折れ角 [rad]。
-  private readonly maxSagittaPx: number;
-  private readonly maxEdgeTurn: number;
-
-  // 頂点バッファは maxVertices ぶんを生成時に1回だけ確保する。style.dash があれば破線になる。
-  constructor(opts: CurveOptions) {
-    const {
-      style, maxVertices = DEFAULT_MAX_VERTICES, maxSagittaPx = DEFAULT_MAX_SAGITTA_PX,
-      maxEdgeTurnDeg = DEFAULT_MAX_EDGE_TURN_DEG,
-    } = opts;
-    this.maxSagittaPx = maxSagittaPx;
-    this.maxEdgeTurn = (maxEdgeTurnDeg * Math.PI) / 180;
+  // 頂点バッファは maxVertices ぶんを生成時に1回だけ確保する。maxVertices は、適応分割が
+  // 収束しない曲線に対する最悪描画コストの打ち切り。style.dash があれば破線になる。
+  constructor(style: LineStyle, maxVertices: number = DEFAULT_MAX_VERTICES) {
     const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
     this.maxInitialVertices = Math.max(INITIAL_SEGMENTS + 1, Math.floor(maxVertices * MAX_INITIAL_VERTEX_RATIO));
@@ -334,7 +299,7 @@ export class Curve {
       ? Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by + az * bz) / (aLen * bLen))))
       : 0;
 
-    return Math.max(sagittaPx / this.maxSagittaPx, turn / this.maxEdgeTurn);
+    return Math.max(sagittaPx / MAX_SAGITTA_PX, turn / MAX_EDGE_TURN);
   }
 
   // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても残りの
@@ -364,22 +329,28 @@ export class Curve {
     }
   }
 
-  // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数。
-  setAnalyticCurve(sample: CurveSampler, opts: SetCurveOptions): void {
-    const requested = Math.max(INITIAL_SEGMENTS, opts.initialSegments ?? 0);
-    this.setCurve(sample, uniformTs(Math.min(requested, this.maxInitialVertices - 1)), opts);
+  // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数、camera は
+  // 画面上の目標を実距離へ換算するための現在の描画カメラ。initialSegments は適応分割を始める
+  // 区間数 — 適応分割は弦の中点しか見ないので、1区間に何周ぶんも入る曲線では中点がたまたま
+  // 曲線上に乗り、区間まるごとが直線に化ける。「1区間が曲線の半周を超えない」下限を渡して
+  // それを防ぐ。colorAt は線の中で色が変わるときだけ渡す。
+  setAnalyticCurve(
+    sample: CurveSampler, camera: THREE.Camera, initialSegments?: number, colorAt?: CurveColorSampler,
+  ): void {
+    const requested = Math.max(INITIAL_SEGMENTS, initialSegments ?? 0);
+    this.setCurve(sample, uniformTs(Math.min(requested, this.maxInitialVertices - 1)), camera, colorAt);
   }
 
   // 離散サンプルとしてしか手に入らない曲線を、節点間を3次エルミートで埋めて描く。節点は
-  // そのまま初期頂点になる。
-  setHermiteCurve(knots: CurveKnots, opts: SetCurveOptions): void {
+  // そのまま初期頂点になる。camera と colorAt の意味は setAnalyticCurve と同じ。
+  setHermiteCurve(knots: CurveKnots, camera: THREE.Camera, colorAt?: CurveColorSampler): void {
     let hermite = this.hermite;
     if (hermite === null || knots !== this.hermiteKnots) {
       hermite = buildHermiteCurve(knots, this.maxInitialVertices);
       this.hermite = hermite;
       this.hermiteKnots = knots;
     }
-    this.setCurve(hermite.sample, hermite.ts, opts);
+    this.setCurve(hermite.sample, hermite.ts, camera, colorAt);
   }
 
   // いま描いている曲線を t∈[0,1] で評価する。曲線をまだ渡されていなければ原点を返す。
@@ -388,11 +359,11 @@ export class Curve {
     else out.set(0, 0, 0);
   }
 
-  // 曲線を焼き、GPU バッファへ反映する。頂点の配り方も pivot もカメラに依存するので毎フレーム
-  // 焼き直す — 据え置けば、据え置いた間に動いたぶんがそのまま画面上のずれとして出る。省いて
-  // よいかどうかは曲線の意味を知っている呼び出し側にしか測れないので、渡された曲線は必ず焼く。
-  private setCurve(sample: CurveSampler, ts: ArrayLike<number>, opts: SetCurveOptions): void {
-    const { camera, colorAt } = opts;
+  // 渡された曲線を焼き、GPU バッファへ反映する。頂点の配り方も pivot もカメラに依存するので、
+  // 呼ぶたびに焼き直す。
+  private setCurve(
+    sample: CurveSampler, ts: ArrayLike<number>, camera: THREE.Camera, colorAt?: CurveColorSampler,
+  ): void {
     this.sampler = sample;
     const cam = new CameraScale(camera);
     // 頂点カラーを使うのをやめたときは、焼いてある色がマテリアル色に掛かり続けないよう外す。
