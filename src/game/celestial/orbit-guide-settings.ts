@@ -16,9 +16,9 @@ export const MAX_LINES_PER_KIND = 40;
 // ゼロ速度曲線を一度に描ける本数の上限。
 export const MAX_ZERO_VELOCITY_CURVES = 20;
 
-// 軌道の種類1つぶんの表示設定。
-export interface GuideKindSettings {
-  readonly on: boolean;
+// GuideKindSettings と CombinedKindSettings に共通する、本数・族範囲・色・進行方向・安定度の
+// 見せ方。表示ON/OFFの持ち方(単一の on か、軸値の組み合わせ axisValues か)だけが両者で違う。
+export interface GuideKindSharedSettings {
   // 族から描く本数。1 なら族ではなく範囲の下限にあたる1本だけを描く。
   readonly count: number;
   // 族に沿った表示範囲。0 が族の始端、1 が終端。
@@ -34,6 +34,20 @@ export interface GuideKindSettings {
   readonly animate: boolean;
   // 安定な軌道を太く描く。
   readonly showStability: boolean;
+}
+
+// 軌道の種類1つぶんの表示設定。
+export interface GuideKindSettings extends GuideKindSharedSettings {
+  readonly on: boolean;
+}
+
+// 点/南北/東西/区間の軸を持つ小題1つぶんの表示設定(共線点のリヤプノフ・垂直・軸方向・ハロー、
+// 三角点の短周期・長周期・垂直・軸方向、副天体周回の DPO・LPO)。表示ON/OFFは軸値の組み合わせ
+// (axisValues。例 {L1:true, N:true} なら「点L1」かつ「北」を満たす族だけを表示)で決まり、
+// 他のフィールドは選んだ組み合わせすべてに共有して適用される(リサジュー軌道の L1/L2/L3ボタン+
+// 共有設定と同じ方式)。存在しない組み合わせ(例 L2×区間2)は静かに無視される。
+export interface CombinedKindSettings extends GuideKindSharedSettings {
+  readonly axisValues: Readonly<Record<string, boolean>>;
 }
 
 // リサジュー軌道だけは連続な族として焼き込まないので、振幅と位相を直に指定する。
@@ -105,6 +119,8 @@ export interface OrbitGuideSettings {
   readonly systems: Readonly<Partial<Record<CatalogSystemId, boolean>>>;
   // 焼き込みカタログの族 id → その種類の表示設定。カタログに無い族の設定は無視される。
   readonly kinds: Readonly<Record<string, GuideKindSettings>>;
+  // 小題 id(`${group}-${base}`)→ その小題の表示設定。カタログに無い小題の設定は無視される。
+  readonly combinedKinds: Readonly<Record<string, CombinedKindSettings>>;
   readonly lissajous: LissajousSettings;
   readonly sunSync: SunSyncSettings;
   readonly dawnDusk: DawnDuskSettings;
@@ -130,6 +146,23 @@ export function defaultKindSettings(colorStart: number, colorEnd: number): Guide
   };
 }
 
+// 小題の設定の既定値。全軸とも未選択(=何も表示しない)から始まる。
+export function defaultCombinedKindSettings(colorStart: number, colorEnd: number): CombinedKindSettings {
+  return {
+    axisValues: {},
+    count: 5,
+    rangeMin: 0.15,
+    rangeMax: 0.6,
+    colorStart,
+    colorEnd,
+    reversed: false,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+    showStability: false,
+  };
+}
+
 export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
   geostationary: true,
   systems: {
@@ -137,6 +170,7 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
     'sun-earth': false,
   },
   kinds: {},
+  combinedKinds: {},
   lissajous: {
     on: false,
     inPlane: 0.1,
@@ -225,6 +259,18 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
       opacity: clamp(kind.opacity, 0, 1),
     };
   }
+  const combinedKinds: Record<string, CombinedKindSettings> = {};
+  for (const [key, combined] of Object.entries(settings.combinedKinds)) {
+    const lo = clamp(combined.rangeMin, 0, 1);
+    const hi = clamp(combined.rangeMax, 0, 1);
+    combinedKinds[key] = {
+      ...combined,
+      count: Math.max(1, Math.round(clamp(combined.count, 1, MAX_LINES_PER_KIND))),
+      rangeMin: Math.min(lo, hi),
+      rangeMax: Math.max(lo, hi),
+      opacity: clamp(combined.opacity, 0, 1),
+    };
+  }
   const zv = settings.zeroVelocity;
   const clampSunSync = <T extends SunSyncSettings>(s: T): T => ({
     ...s,
@@ -235,6 +281,7 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
   return {
     ...settings,
     kinds,
+    combinedKinds,
     lissajous: {
       ...settings.lissajous,
       cycles: Math.max(1, Math.round(settings.lissajous.cycles)),
@@ -269,6 +316,7 @@ export function loadOrbitGuideSettings(): OrbitGuideSettings {
       ...stored,
       systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...stored.systems },
       kinds: { ...stored.kinds },
+      combinedKinds: { ...stored.combinedKinds },
       lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...stored.lissajous },
       sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...stored.sunSync },
       dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...stored.dawnDusk },
