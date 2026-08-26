@@ -21,13 +21,6 @@ const MAX_STALE_PX = 0.5;
 // ずれを測る真近点角の数。楕円1周を等分して測るので、遠点側だけが動く形も直接拾える。
 const PROBE_COUNT = 8;
 
-// 焼いてある楕円と、その頂点を指す revision。2つは常に同時に差し替える — 片方だけ取り残すと、
-// 焼いた頂点と古さ判定の基準が食い違う。
-type BakedEllipse = {
-  readonly el: OrbitalElements;
-  readonly revision: object;
-};
-
 // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。頂点は中心天体相対の ECI
 // オフセットで、表示座標系の回転はカメラ側が担う。これにより回転座標系でも楕円が慣性空間上の
 // 同じ軌道を保つ。
@@ -79,9 +72,9 @@ function stalenessPx(
 export class OrbitLine {
   private readonly curve: Curve;
   readonly line: THREE.Object3D;
-  // 焼いてある楕円。sync だけが書き換える。samplePoints もこれを読むので、当たり判定は
-  // 描かれている線と必ず同じ形になる。
-  private baked: BakedEllipse | null = null;
+  // いま描いている楕円の軌道要素。sync だけが書き換える。samplePoints もこれを読むので、
+  // 当たり判定は描かれている線と必ず同じ形になる。
+  private baked: OrbitalElements | null = null;
 
   // style.renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
   // 透明描画どうしの前後は描画順でしか決まらない。
@@ -125,13 +118,13 @@ export class OrbitLine {
     // 基準に焼いた形状をそのまま新しい中心へ動かすことになるので、ずれを測らずに焼き直す。
     const kept = this.baked;
     const baked = kept !== null
-      && kept.el.center.id === el.center.id
-      && stalenessPx(kept.el, el, fo, new CameraScale(camera)) <= MAX_STALE_PX
+      && kept.center.id === el.center.id
+      && stalenessPx(kept, el, fo, new CameraScale(camera)) <= MAX_STALE_PX
       ? kept
-      : { el, revision: {} };
+      : el;
     this.baked = baked;
 
-    this.curve.setAnalyticCurve(ellipseSampler(baked.el), { revision: baked.revision, camera });
+    this.curve.setAnalyticCurve(ellipseSampler(baked), { camera });
     this.curve.setVisible(true);
   }
 
@@ -140,12 +133,12 @@ export class OrbitLine {
   samplePoints(count: number): readonly Vec3[] {
     const baked = this.baked;
     if (!baked) return [];
-    const sampler = ellipseSampler(baked.el);
+    const sampler = ellipseSampler(baked);
     const points: Vec3[] = [];
     const scratch = new THREE.Vector3();
     for (let i = 0; i <= count; i++) {
       sampler(i / count, scratch);
-      points.push(add(baked.el.center.state.r, v3(scratch.x, scratch.y, scratch.z)));
+      points.push(add(baked.center.state.r, v3(scratch.x, scratch.y, scratch.z)));
     }
     return points;
   }

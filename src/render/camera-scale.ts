@@ -8,8 +8,7 @@ import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 const FALLBACK_FOV_DEG = 50;
 
 export class CameraScale {
-  // ワールド空間でのカメラの前方向と視点位置。焼き直しの要否をカメラの向きで決める側や、
-  // カメラ近傍へ基準点を寄せる側が読む。
+  // ワールド空間でのカメラの前方向と視点位置。カメラ近傍へ基準点を寄せる側が視点位置を読む。
   readonly forward = new THREE.Vector3();
   readonly position = new THREE.Vector3();
 
