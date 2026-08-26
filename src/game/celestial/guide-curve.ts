@@ -28,7 +28,7 @@ export class GuideCurve {
 
   // maxVertices の意味は Curve と同じ(収束しない曲線の打ち切り)。
   public constructor(style: LineStyle, maxVertices?: number) {
-    this.curve = new Curve({ style, maxVertices });
+    this.curve = new Curve(style, maxVertices);
     this.line = this.curve.object;
   }
 
@@ -94,9 +94,8 @@ export class GuideCurve {
       return;
     }
     this.curve.setTransform(fo.RtoThreeV3(origin));
-    const opts = { camera, colorAt, initialSegments: this.initialSegments };
-    if (this.analytic) this.curve.setAnalyticCurve(this.analytic, opts);
-    else if (this.knots) this.curve.setHermiteCurve(this.knots, opts);
+    if (this.analytic) this.curve.setAnalyticCurve(this.analytic, camera, this.initialSegments, colorAt);
+    else if (this.knots) this.curve.setHermiteCurve(this.knots, camera, colorAt);
     this.syncedRevision = this.revision;
     this.curve.setVisible(true);
   }
