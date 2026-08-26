@@ -301,7 +301,7 @@ export class Curve {
 
   // 曲線を代表する m/px。分割の粗さを決めるのは最もカメラに寄っている点なので、曲線上から
   // 抜いた数点の最小値を採る(1点だけ見ると、その点が視点面をまたぐ曲線で値が乱高下して
-  // 毎フレーム焼き直しになる)。cacheCameraFrame を先に呼んでおくこと。
+  // 毎フレーム焼き直しになる)。
   private representativeScale(sample: CurveSampler, ts: ArrayLike<number>, cam: CameraScale): number {
     let minScale = Infinity;
     const last = ts.length - 1;
@@ -313,7 +313,7 @@ export class Curve {
     return minScale;
   }
 
-  // カメラのワールド位置を sample の座標系へ戻す。cacheCameraFrame を先に呼んでおくこと。
+  // カメラのワールド位置を sample の座標系へ戻す。
   private localCameraPos(cam: CameraScale, out: THREE.Vector3): THREE.Vector3 {
     this.scratchInvQuat.copy(this.reqQuaternion).invert();
     return out.copy(cam.position).sub(this.reqPosition).applyQuaternion(this.scratchInvQuat);
