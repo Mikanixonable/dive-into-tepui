@@ -1,4 +1,4 @@
-// HUD の固定バッジ・ステータスバー・通知 CSS (視点バッジ、シミュレーションステータス、スケール定規、ヒント、トースト、カメラリセット)。
+// HUD の固定バッジ・ステータスバー・通知 CSS (視点バッジ、シミュレーションステータス、スケール定規、トースト、カメラリセット)。
 import { MQ_COARSE } from '../breakpoints';
 
 export const HUD_BADGE_STYLE = `
@@ -66,14 +66,6 @@ export const HUD_BADGE_STYLE = `
 #hud-map-scale .map-scale-tick.q3 { left: 75%; }
 #hud-map-scale .map-scale-tick.end { right: 0; }
 
-#hud-hint {
-  position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%);
-  background: var(--glass-focus); border: 0; border-radius: var(--radius-panel);
-  padding: var(--space-4) var(--space-6);
-  color: var(--color-primary-hover); font-size: var(--font-xl);
-  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
-  transition: opacity var(--transition-slow); opacity: 0; text-align: center;
-}
 #hud-chase-reset {
   position: absolute; top: calc(64px + var(--space-5)); left: 50%; transform: translateX(-50%);
   pointer-events: auto; cursor: pointer;
@@ -106,7 +98,7 @@ export const HUD_BADGE_STYLE = `
 }
 
 #hud-toast {
-  position: absolute; top: calc(64px + var(--space-5) + 32px + var(--space-3)); left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(64px + var(--space-5) + 32px + var(--space-1)); left: 50%; transform: translateX(-50%);
   background: var(--glass-focus); border: 0; border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
   color: var(--text); font-size: var(--font-xl); text-align: center;
   box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
