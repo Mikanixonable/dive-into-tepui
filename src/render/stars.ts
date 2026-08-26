@@ -56,7 +56,7 @@ export interface Sun {
   dispose(): void;
 }
 
-// 太陽の周りの滲みはこの球が持たない — レンズ効果(render/pipeline/lens-pass.ts)が作る。
+// 太陽本体の球を構築する。単位球なので、実位置・実半径へ置くのは呼び出し側。
 export function createSun(): Sun {
   const mesh = createSunMesh();
   return {
