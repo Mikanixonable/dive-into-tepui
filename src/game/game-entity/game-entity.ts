@@ -104,12 +104,11 @@ export class GameEntity {
   torque: Vec3 = v3();
   // 自身の軌道楕円を描く線。null = 持たない。
   orbitLine: OrbitLine | null = null;
-  // 非質量の艦・基地に表示基準を固定中、orbitLine の代わりに相対軌跡を描く線。null = 持たない。
+  // 戦闘ビューで非質量の艦・基地に表示基準を固定中、orbitLine の代わりに対象との直線を描く線。
+  // null = 持たない。
   relativeOrbitLine: RelativeOrbitLine | null = null;
   // showOrbitLine で渡された style。relativeOrbitLine を遅延生成するときに使い回す。
   private orbitLineStyle: LineStyle | null = null;
-  // relativeOrbitLine を描くために自身の未来予測を要求しているか。syncOrbitLine が立てる。
-  private relativeOrbitLineReader = false;
   // 自身の予測軌道を描く線。null = 持たない。
   predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
@@ -176,8 +175,7 @@ export class GameEntity {
   // 動けるかどうかを引数で受け取る。
   hasFutureReader(canDisplayFuture: boolean): boolean {
     return (this.predictedForGhost && canDisplayFuture)
-      || this.predictedLine !== null || this.analysisPanelReader || this.navTargetReader
-      || this.relativeOrbitLineReader;
+      || this.predictedLine !== null || this.analysisPanelReader || this.navTargetReader;
   }
 
   // 予測列を持ちうる種別か。上の理由のどれか1つでも立ちうれば持つ。
@@ -224,8 +222,8 @@ export class GameEntity {
     return orbitalElementsOf(this.state, center);
   }
 
-  // 軌道楕円(または非質量ターゲット固定中の相対軌跡)の線を style で出す。既に出ていれば
-  // style を塗り直す。
+  // 軌道楕円(または戦闘ビューで非質量ターゲット固定中の対象への直線)の線を style で出す。
+  // 既に出ていれば style を塗り直す。
   showOrbitLine(style: LineStyle): void {
     this.orbitLineStyle = style;
     if (this.orbitLine !== null) {
@@ -238,10 +236,9 @@ export class GameEntity {
     this.relativeOrbitLine?.setStyle(style);
   }
 
-  // 軌道楕円・相対軌跡の線を消す。出し直すと作り直しになる。
+  // 軌道楕円・対象への直線を消す。出し直すと作り直しになる。
   hideOrbitLine(): void {
     this.orbitLineStyle = null;
-    this.relativeOrbitLineReader = false;
     if (this.orbitLine !== null) {
       this.scene?.remove(this.orbitLine.line);
       this.orbitLine.dispose();
@@ -259,15 +256,10 @@ export class GameEntity {
     this.orbitLine?.sync(null, fo, camera);
   }
 
-  // 相対軌跡を隠す(楕円モードへ切り替える/状態が求まらないときに使う)。当たり判定向けの
-  // サンプル点も一緒に消す(hide)ので、非表示中に古い点列を拾わせない。
-  private hideRelativeOrbitLine(): void {
-    this.relativeOrbitLineReader = false;
-    this.relativeOrbitLine?.hide();
-  }
-
   // orbitLine を表示時刻の状態に合わせる。線を持たなければ何もしない。displayTime が現在時刻
-  // より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。
+  // より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。orbitRef が非質量の艦・基地
+  // ターゲットを指すのは戦闘ビューだけ(EntityLineManager がマップビューでは orbitRef を渡さない)
+  // ので、context.orbitRef の有無だけで戦闘ビュー/マップビューを判別できる。
   syncOrbitLine(
     fo: FloatingOrigin, camera: THREE.Camera, context: OrbitLineSyncContext,
   ): void {
@@ -277,23 +269,23 @@ export class GameEntity {
     if (state === null) {
       // 表示時刻の状態が求まらない: 両方隠す。
       this.hideOrbitEllipse(fo, camera);
-      this.hideRelativeOrbitLine();
+      this.relativeOrbitLine?.hide();
       return;
     }
-    // 非質量の艦・基地に固定中で、自分自身がその対象でなければ相対軌跡モード。
+    // 非質量の艦・基地に固定中で、自分自身がその対象でなければ対象への直線モード。
     const relativeTarget = orbitRef?.fixed && !orbitRef.hasMass ? orbitRef.entity : null;
     if (relativeTarget !== null && relativeTarget !== this) {
-      this.relativeOrbitLineReader = true;
       this.hideOrbitEllipse(fo, camera);
       if (this.relativeOrbitLine === null && this.orbitLineStyle !== null) {
         const line = new RelativeOrbitLine(this.orbitLineStyle);
         this.scene?.add(line.line);
         this.relativeOrbitLine = line;
       }
-      this.relativeOrbitLine?.sync(this, relativeTarget, fo, camera, frameAnchors, ephemeris);
+      const targetPos = relativeTarget.displayState(displayTime, ephemeris)?.r ?? relativeTarget.state.r;
+      this.relativeOrbitLine?.sync(state.r, targetPos, fo, camera);
       return;
     }
-    this.hideRelativeOrbitLine();
+    this.relativeOrbitLine?.hide();
     // 艦・基地以外の非質量対象(ラグランジュ点など)、または自分自身が対象のときは楕円も出さない。
     if (orbitRef?.fixed && !orbitRef.hasMass) {
       this.hideOrbitEllipse(fo, camera);
