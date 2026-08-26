@@ -54,8 +54,8 @@ export class PlayerFire {
 
   // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。交換で切り離すときに
   // そのまま排出されるデブリへ移る。
-  barrelTemperature = C.ENV_TEMP;
-  barrelDeviation = 0;
+  private barrelTemperature = C.ENV_TEMP;
+  private barrelDeviation = 0;
   // 刻みに依らない砲身への投入熱 [J]。次の熱計算で一度だけ温度へ変換する。
   private pendingBarrelJoules = 0;
 

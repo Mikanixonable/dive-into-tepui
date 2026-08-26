@@ -44,7 +44,8 @@ export interface FireSaveData {
   mags: number;
   rounds: number;
   barrel: number;
-  // 旧セーブデータには無いフィールドなので任意。無ければ環境温度・過熱なしで始める。
+  // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。
+  // 欠けているときは環境温度の等温な砲身として復元する。
   barrelTemperature?: number;
   barrelDeviation?: number;
   cooldown: number;
