@@ -74,6 +74,8 @@ export type LabCase = {
   readonly sunDirection?: THREE.Vector3;
   // 恒星を置く距離 [m]。省略すると 1 天文単位。
   readonly sunDistance?: number;
+  // 基準点へ届く環境光の放射照度。省略すると低軌道の値(AMBIENT_IRRADIANCE)。
+  readonly ambientIrradiance?: number;
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
   // 大気パスへ渡す天体。中心は描画座標。
@@ -411,6 +413,8 @@ function outer(sunDistance: number): LabCase {
     camera,
     viewTarget: shipPosition,
     sunDistance,
+    // 地球照は地球から遠ざかれば薄れるので、外惑星圏では届かない。
+    ambientIrradiance: 0,
   };
 }
 
