@@ -39,7 +39,7 @@ export const AMBIENT_COLOR = new THREE.Color(0x8899bb);
 export const AMBIENT_IRRADIANCE = SUN_IRRADIANCE_1AU * 0.093;
 
 // AMBIENT_IRRADIANCE がそのままの強さで成り立つ地心距離 [m]。低軌道(高度 420km)。
-const AMBIENT_REFERENCE_DISTANCE = R_EARTH + 420e3;
+export const AMBIENT_REFERENCE_DISTANCE = R_EARTH + 420e3;
 
 // 地心距離 distance [m] の点が受ける環境光の放射照度。地球が反射した光なので距離の二乗で薄れる。
 // **地表より内側では減衰を止める** — 地球は点ではなく半径 R_EARTH の球で、届く光は表面へ

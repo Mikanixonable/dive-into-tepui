@@ -21,7 +21,7 @@ import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
-import type { SunLight } from '../../src/render/pipeline/sun-light';
+import { AMBIENT_REFERENCE_DISTANCE, type SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
 import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
 import { textureOf } from '../../src/render/celestial-textures';
@@ -79,8 +79,9 @@ export type LabCase = {
   readonly sunDirection?: THREE.Vector3;
   // 恒星を置く距離 [m]。省略すると 1 天文単位。
   readonly sunDistance?: number;
-  // 基準点へ届く環境光の放射照度。省略すると低軌道の値(AMBIENT_IRRADIANCE)。
-  readonly ambientIrradiance?: number;
+  // 基準点(描画原点)から地球中心までの距離 [m]。ここへ届く環境光の強さがこれで決まる。
+  // 省略すると低軌道。
+  readonly earthDistance?: number;
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
   // 大気パスへ渡す天体。中心は描画座標。
@@ -401,6 +402,13 @@ function leo(): LabCase {
   };
 }
 
+// 恒星から sunDistance [m] にいる場所の地心距離。地球も恒星から 1 天文単位にいるので、外側では
+// その差がそのまま地球までの距離になる。**1 天文単位より内側は低軌道を返す** — 地球と同じ距離に
+// いるケースは地球のそばに置き、既定と同じ明るさの環境光で照らす。
+function earthDistanceAtSunDistance(sunDistance: number): number {
+  return Math.max(sunDistance - AU, AMBIENT_REFERENCE_DISTANCE);
+}
+
 // 典型的な天体表面・艦の外殻の反射率。
 const OUTER_ALBEDO: Albedo = [0.3, 0.3, 0.3];
 // 灰色球の半径 [m]。
@@ -420,8 +428,7 @@ function outer(sunDistance: number): LabCase {
     camera,
     viewTarget: shipPosition,
     sunDistance,
-    // 地球照は地球から遠ざかれば薄れるので、外惑星圏では届かない。
-    ambientIrradiance: 0,
+    earthDistance: earthDistanceAtSunDistance(sunDistance),
   };
 }
 
@@ -754,6 +761,7 @@ function sunAt(distance: number): LabCase {
     camera,
     sunDirection: SUN_CASE_DIR,
     sunDistance: distance,
+    earthDistance: earthDistanceAtSunDistance(distance),
     viewTarget: SUN_CASE_SHIP_POSITION,
   };
 }

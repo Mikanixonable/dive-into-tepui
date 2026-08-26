@@ -7,7 +7,8 @@ import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '.
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
 import {
-  AMBIENT_COLOR, AMBIENT_IRRADIANCE, SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY,
+  AMBIENT_COLOR, AMBIENT_IRRADIANCE, AMBIENT_REFERENCE_DISTANCE, SUN_COLOR, SUN_IRRADIANCE_1AU,
+  SUN_RADIANT_INTENSITY, ambientIrradianceAtDistance,
 } from '../../src/render/pipeline/sun-light';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
@@ -259,7 +260,9 @@ export class LabView {
     this.sun.position.copy(sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE);
     // 環境光の強さは、フォワード経路の光源とライティングパスの両方が同じ値を読む —
     // 片方だけ直すと陰影の辻褄が合わない。
-    const ambientIrradiance = this.current.ambientIrradiance ?? AMBIENT_IRRADIANCE;
+    const ambientIrradiance = ambientIrradianceAtDistance(
+      this.current.earthDistance ?? AMBIENT_REFERENCE_DISTANCE,
+    );
     this.ambient.intensity = ambientIrradiance;
     this.pipeline.sunLight.set(
       SUN_POSITION.copy(sunDirection).multiplyScalar(this.current.sunDistance ?? AU),
