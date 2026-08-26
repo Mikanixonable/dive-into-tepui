@@ -29,7 +29,7 @@ import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pi
 import {
   MAX_ATMOSPHERE_BODIES, type AtmosphereBody, type AtmospherePass,
 } from '../../render/pipeline/atmosphere-pass';
-import { atmosphereOpticsOf, logExtinctionAt } from '../../render/atmosphere-params';
+import { atmosphereOpticsOf, denseWeightFromGap, logExtinctionAt } from '../../render/atmosphere-params';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CelestialView } from './celestial-view';
@@ -327,24 +327,30 @@ export class EnvironmentScene {
     );
   }
 
-  // 大気パスへ、このフレームの大気を描く天体を渡す。
+  // 大気パスへ、このフレームの大気を描く天体と、先頭へ足す積分の重みを渡す。
   private syncAtmosphere(
     fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, graphics: GraphicsSettingsData,
   ): void {
+    if (!graphics.atmosphere) {
+      this.atmosphere.setBodies([], 0);
+      return;
+    }
+    const ranked = this.rankedAtmospheres(fo, displayTime, cameraPos);
+    // 候補が 1 体しか無いなら、その天体が場を独占している。
+    const gap = ranked.length < 2 ? Infinity : ranked[0]!.strength - ranked[1]!.strength;
     this.atmosphere.setBodies(
-      graphics.atmosphere ? this.atmosphereBodies(fo, displayTime, cameraPos) : [],
+      ranked.slice(0, MAX_ATMOSPHERE_BODIES).map(({ body }) => body), denseWeightFromGap(gap),
     );
   }
 
-  // 大気を描く天体を、カメラのいる場所の大気を強く作っている順に最大 MAX_ATMOSPHERE_BODIES 体。
-  // **カメラの向きは見ない** — 地表から空を見上げて地面が視錐台に入っていなくても、空は大気の
-  // 色でなければならない。
+  // 大気を持つ天体を、カメラのいる場所の大気を強く作っている順に。**カメラの向きは見ない** —
+  // 地表から空を見上げて地面が視錐台に入っていなくても、空は大気の色でなければならない。
   //
   // **この並びは視点に近い順でもある。** 濃さは高度に対して指数で落ちるので、遠い天体が
   // 近い天体を上回るのは近い側の大気がそもそも見えないときだけ。合成の前後はこの並びが決める。
-  private atmosphereBodies(
+  private rankedAtmospheres(
     fo: FloatingOrigin, displayTime: number, cameraPos: Vec3,
-  ): readonly AtmosphereBody[] {
+  ): readonly { readonly body: AtmosphereBody; readonly strength: number }[] {
     const candidates: { body: AtmosphereBody; strength: number }[] = [];
     for (const id of this.referenceIds) {
       const optics = atmosphereOpticsOf(id);
@@ -357,10 +363,7 @@ export class EnvironmentScene {
         strength: logExtinctionAt(optics, altitude),
       });
     }
-    return candidates
-      .sort((a, b) => b.strength - a.strength)
-      .slice(0, MAX_ATMOSPHERE_BODIES)
-      .map(({ body }) => body);
+    return candidates.sort((a, b) => b.strength - a.strength);
   }
 
   // 星球は描画原点(= カメラ)に固定した半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで
