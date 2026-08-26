@@ -103,6 +103,12 @@ export const GRAPHICS_OPTIONS = {
     items: [[0, '点光源'], [1, '球光源']],
     presets: { low: 0, medium: 1, high: 1 },
   },
+  // 天体照の光源モデル。「なし」では影の中が太陽の直射だけになる。
+  planetLightModel: {
+    kind: 'choice', group: 'light', label: '天体照の光源モデル',
+    items: [[0, 'なし'], [1, '球光源']],
+    presets: { low: 0, medium: 1, high: 1 },
+  },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
