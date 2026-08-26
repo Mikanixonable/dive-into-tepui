@@ -174,5 +174,3 @@ export function defaultColorsFor(group: GuideGroupId, index: number, count: numb
   const [start, end] = guideKindDefaultColors(group, index, count);
   return { start, end };
 }
-
-// ---- 値入力の写像(スライダー⇔数値⇔設定値) ----------------------------------------------

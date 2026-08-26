@@ -19,7 +19,8 @@ import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import type { LagrangeLabel } from '../../../physics/zero-velocity';
 import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../celestial/orbit-guide-settings';
-import { OrbitGuideTab, lagrangePointJacobi } from './orbit-guide-tab';
+import { lagrangePointJacobi } from '../../celestial/orbit-guide-catalog';
+import { OrbitGuideTab } from './orbit-guide-tab';
 import {
   JACOBI_MAPPING, OPACITY_MAPPING, ZERO_VELOCITY_COUNT_MAPPING, buildValueField, syncValueField,
 } from './guide-value-field';

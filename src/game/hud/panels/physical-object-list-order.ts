@@ -3,7 +3,14 @@ import { LAGRANGE_ID } from '../object-groups';
 import type { CelestialRegistry } from '../../../physics/solar-system';
 import type { BodyClass } from '../../celestial/body-class';
 import type { MapPickable, MapPickKind } from '../../map-pickable';
-import type { SectionOrder } from './physical-object-list-panel';
+
+// 1区画ぶんの表示順と親子構造を id で持つ。表示値(距離・詳細)は毎フレーム
+// 引き渡される MapPickable から読み直すため、ここには id しか置かない。
+export interface SectionOrder {
+  readonly ids: string[];
+  readonly rootIds: string[];
+  readonly childIds: Map<string, string[]>;
+}
 
 export type PhysicalObjectListFilter = 'artifact' | 'enemy' | 'lagrange' | Exclude<BodyClass, 'star'>;
 

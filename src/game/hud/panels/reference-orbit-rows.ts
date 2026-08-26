@@ -5,7 +5,8 @@ import { Button, SegmentedControl, ToggleSwitch, ValueInput } from '../widgets';
 import {
   DIRECTION_ITEMS, OPACITY_MAPPING, PERIGEE_ALTITUDE_MAPPING, RAAN_MAPPING,
   REPEAT_DAYS_MAPPING, REVS_PER_REPEAT_MAPPING,
-  buildColorField, buildValueField, hexColorString, syncSunSyncValidRange, syncValueField, type ValueField,
+  buildColorField, buildKindRowHeading, buildValueField, hexColorString, syncSunSyncValidRange, syncValueField,
+  type ValueField,
 } from './guide-value-field';
 import type {
   CriticalInclinationSettings, DawnDuskSettings, DirectionMarkerMode, LocalTime, SunSyncSettings,
@@ -32,25 +33,6 @@ export interface DawnDuskRow extends RepeatGroundTrackRow {
 export interface CriticalInclinationRow extends ReferenceOrbitRow {
   readonly perigeeAltitudeField: ValueField;
   readonly raanField: ValueField;
-}
-
-// 見出し+設定パネルの骨組み(種類1行に共通する部分)を組む。
-function buildHeading(
-  parent: HTMLElement, label: string, onToggle: () => void,
-): { readonly heading: Button; readonly configPanel: HTMLElement } {
-  const root = document.createElement('div');
-  root.className = 'orbit-guide-kind-row';
-  const heading = new Button(label, onToggle);
-  heading.element.classList.add('orbit-guide-kind-heading-btn');
-  const headingRow = document.createElement('div');
-  headingRow.className = 'orbit-guide-kind-heading';
-  headingRow.appendChild(heading.element);
-  root.appendChild(headingRow);
-  const configPanel = document.createElement('div');
-  configPanel.className = 'orbit-guide-kind-config hidden';
-  root.appendChild(configPanel);
-  parent.appendChild(root);
-  return { heading, configPanel };
 }
 
 // 色・透明度・進行方向・アニメーションの4行(全ての参照軌道に共通)。
@@ -85,7 +67,7 @@ function buildRepeatGroundTrackFields(
 export function buildSunSyncRow(
   parent: HTMLElement, onToggle: () => void, onCommit: (patch: Partial<SunSyncSettings>) => void,
 ): RepeatGroundTrackRow {
-  const { heading, configPanel } = buildHeading(parent, '太陽同期準回帰軌道(sun-synchronous)', onToggle);
+  const { heading, configPanel } = buildKindRowHeading(parent,'太陽同期準回帰軌道(sun-synchronous)', onToggle);
   const { repeatDaysField, revsPerRepeatField } = buildRepeatGroundTrackFields(configPanel, onCommit);
   const common = buildCommonFields(configPanel, onCommit);
   return { heading, configPanel, repeatDaysField, revsPerRepeatField, ...common };
@@ -96,7 +78,7 @@ export function buildDawnDuskRow(
   parent: HTMLElement, onToggle: () => void,
   onCommit: (patch: Partial<SunSyncSettings> & { localTime?: LocalTime }) => void,
 ): DawnDuskRow {
-  const { heading, configPanel } = buildHeading(parent, 'ドーンダスク軌道(dawn-dusk)', onToggle);
+  const { heading, configPanel } = buildKindRowHeading(parent,'ドーンダスク軌道(dawn-dusk)', onToggle);
   const localTime = new SegmentedControl<LocalTime>(
     '昇交点の地方時', [['dawn', '朝(6時)'], ['dusk', '夕(18時)']], (v) => onCommit({ localTime: v }),
   );
@@ -110,7 +92,7 @@ export function buildDawnDuskRow(
 export function buildCriticalInclinationRow(
   parent: HTMLElement, label: string, onToggle: () => void, onCommit: (patch: Partial<CriticalInclinationSettings>) => void,
 ): CriticalInclinationRow {
-  const { heading, configPanel } = buildHeading(parent, label, onToggle);
+  const { heading, configPanel } = buildKindRowHeading(parent,label, onToggle);
   const perigeeAltitudeField = buildValueField('近地点高度', PERIGEE_ALTITUDE_MAPPING, (v) => onCommit({ perigeeAltitude: v }));
   configPanel.appendChild(perigeeAltitudeField.row);
   const raanField = buildValueField('昇交点赤経', RAAN_MAPPING, (v) => onCommit({ raan: v }));
