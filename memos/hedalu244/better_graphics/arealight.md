@@ -190,119 +190,73 @@ MRT の加算合成は両添付に効いている(効いていなければ艦の
 `CustomBlending` の One/One(lens-pass.ts と同じ)。`GPU_PASS.lighting` は描画命令ごとに
 申告し、計測側が同一パスの複数回ぶんを足し合わせる(行は 1 行のまま)。
 
-### 手順 3. 太陽を一様球光源にし、描画設定へ載せる
+手順 3(太陽を一様球光源にし、描画設定へ載せる)は実施済み(commit d0eaa493)。実装で
+確定したこと:
 
-**目的.** 太陽の拡散を一様球の閉じた解へ、鏡面を LTC へ替える。**手順 5 の天体照が同じ
-積分器を使うので、ここで書いたものはそのまま次で効く。**
+- **LTC の 8 角形の巻き方向**: 基底 `(u, v, axis)` 右手系で **φ を負に回す**(受け手から見て
+  反時計回り)。逆に巻くと形状係数が地平線上の光源で 0 になり、**鏡面だけが静かに消える**
+  (拡散は正常なので気付きにくい。アルベドが黒く鏡面で見えている材質だけが黒へ落ちる)。
+  閉じた解・LTC とも CPU の数値積分と突き合わせ済み(真上で F=sin²σ 厳密一致・余弦則一致・
+  地平線下 0、クリップ域も 6 桁一致)。
+- **albedo 較正**: 拡散は球光源でも厳密一致(全可視の枝が点光源と同じ式)。最も明るい画素は
+  (241,231,214)→(240,231,214) と R だけ 1 LSB 下がる — 粗さ 1 の鏡面が GGX→LTC 近似へ
+  変わったぶんで、D3(積分器を 1 つにする)の帰結として受け入れた。なお着手前の実測値も
+  計画の (241,231,215) ではなく (241,231,214) だった(B の 1 LSB は計画の計算誤差)。
+- **metal-highlight**: 「点光源では消える」は曲面では成り立たない(球面上には必ず鏡映点が
+  ある)。差はハイライトの大きさに出る(球光源のほうが太陽の円盤ぶん太い)が、露出が飽和する
+  構図では面積差 1 割程度に留まる。ケースは曲率のゆるい大鏡 + 0.31 天文単位の構図へ調整した。
+- **sun-close の終端**: 明側の半影の減光は出る。終端を越えた先の照り返しは、この構図では
+  終端がリムに寄るため画素未満。
+- 実機の負荷確認ウィンドウの数字の変化は未確認(render-lab は gpuSupported: false)。
+  **実機での確認は残件。**
 
-**変更が必要な箇所.**
+手順 4(光源リストを選び、環境光の強さを物理式へ差し替える)は実施済み(commit e227a283)。
+実装で確定したこと:
 
-| ファイル | 何をするか |
-| --- | --- |
-| `tools/export-ltc-table.mjs`(新規) | `three/addons/lights/RectAreaLightTexturesLib.js` から 64×64 の LTC 係数表を取り、半精度で `src/render/pipeline/lighting/ltc-table.ts` へ焼く。`package.json` の `scripts` へ `export-ltc-table` を足す |
-| `src/render/pipeline/lighting/ltc-table.ts`(新規・生成物) | 焼いた表。実行時に `THREE.DataTexture`(`three/webgpu` の型)へ載せる |
-| `src/render/pipeline/lighting/ltc.ts`(新規) | `LTC_Uv`(粗さと視線から表の uv)・多角形の LTC 積分・球 → 面積を合わせた 8 角形への写し取りを TSL で書く。**タップの和は平衡木で畳む**(左畳みは WGSL のパーサが再帰上限に当たり、シェーダの生成ごと落ちる) |
-| `src/render/pipeline/lighting/sphere-light.ts`(新規) | 一様球の拡散の閉じた解(視半径 `θ = asin(R/d)`、地平線でクリップされる場合を含む)。**遠方で `E·N·L` へ縮退する**ので分岐は書かない |
-| `src/render/pipeline/lighting/sun-source.ts` | 設定に応じて「点光源 + GGX」と「球の閉じた解 + LTC」を選ぶ。**マテリアルはモードごとに 1 枚を遅延生成して持つ** |
-| `src/render/pipeline/sun-occlusion.ts:88-102` | `sphereTransmittance` に自己除外を入れる。**受け手が乗っている天体自身は遮蔽器から外す** — 外さないと、終端の柔らかさを光源の積分と自己遮蔽が二重に表す |
-| `src/render/graphics-settings.ts:15-19, 43-123` | `GRAPHICS_GROUPS` へ `['light', '光源']` を足し、`sunLightModel` を選択肢(`[0,'点光源'], [1,'球光源']`)で足す。プリセットは low=0 / medium=1 / high=1 |
-| `src/render/pipeline/render-pipeline.ts:40-43, 242-` | `PIPELINE_GRAPHICS_KEYS` へ `sunLightModel` を足し、`applyGraphics` から `LightPrepass` へ流す |
-| `tools/render-lab/cases.ts:777-806` | `sun-close`(恒星距離 0.31 天文単位 = 水星近日点、視半径 0.86°)と `metal-highlight`(金属度 1・粗さ 0.05 の球)を足す |
-| `DEVELOP/SPEC/RENDERING.md:265-267` | 「太陽は点光源として扱い」を、視半径を持つ球として扱う旨へ書き替える |
-| `DEVELOP/SPEC/RENDERING.md:135-155` | 描画品質設定の節へ「太陽の光源モデル」を足す |
+- `AMBIENT_*` 一式は `src/` `tools/` から 0 件。`leo` の影の帯は (6,22,42)→(82,87,100) —
+  手書きの青い定数が、地球の色つきアルベド由来の明るい照度へ替わった。`outer-*` は
+  ケース内の灰色球が光源になり環境光が 0 でなくなった。
+- **閾値のつまみ検証は不成立と判明**: 閾値(D4)は game 側 `planet-light.ts` にだけあり、
+  描画テスト環境はケースが書いた光源をそのまま流す(ECI を持たないので選定を通らない)。
+  outer の灰色球は d≈3R で式の上でも閾値を割らない(割るのは 47,000 天文単位)。閾値の
+  1 LSB 保証は式の導出そのもので担保し、**実機での目視は残件**。食の弱まりも同じく
+  game 側の経路(`sunlitFactor`)なので lab では見えない — **実機残件**。
+- 実写テクスチャ天体の光源色は celestial-textures.ts の `averageHue`(緯度重み付き平均色、
+  実測)× ボンドアルベド。地球は EARTH_TEXTURES 側に持つ(雲合成後の実測)。
+- **アルベド 1 較正の期待値は sRGB (240, 229, 210) へ更新**(環境光の項が消えたぶん。
+  albedo ケースは光源を置かない構図にした — 較正が 1 本の光だけで読める)。
+- 天体照は方向を持たないので、**天体が自分の夜側を照らす**(地球の夜側が明るめに出る)。
+  5-1 の向きつきの式(cosβ のクリップ)で自然に消える見込み。
 
-**自己除外の判定.** G バッファへ天体 id を書く必要はない。**受け手が乗っている面は、その天体の
-中心から半径ちょうどの距離にある。** よって「`|dist − radius|` が公差より小さい遮蔽器を外す」で
-足りる。公差は深度からの位置復元の相対誤差(距離に依らず `2⁻²⁴ ≈ 6e-8`)から
-`max(radius · 1e-6, 視距離 · 1e-5)` を取る。**地球で 6.4 m、月で 1.7 m + 視距離ぶん。**
-**これでは足りないと分かった場合の代案は G バッファへの id チャンネル追加**(添付が 1 枚増える)。
+手順 5-1(天体照に向きと位相を与える)は実施済み(commit fe547daf)。実装で確定したこと:
 
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `npm run export-ltc-table` が決定的(2 回走らせて差分が出ない)。
-- `npm run build` のバンドルに `three.module.js` 由来のコードが入っていない
-  (`grep -c "REVISION" docs/*.js` が手順 3 の前後で変わらない)。
-- `npm run render-lab:shot`:
-  - **`albedo` ケースの最も明るい画素が sRGB (241, 231, 215) のまま**(1 天文単位では球光源の
-    解が点光源の解と 0.01% 以内で一致するので、較正は動いてはならない)。
-  - `sun-close` で終端(明暗境界)が球光源のときだけ柔らかくなり、**その幅が視半径 0.86° から
-    出る幅と一致する。**
-  - `metal-highlight` で、点光源のときに消えているハイライトが球光源のときに太陽の円盤として出る。
-  - `earth` / `leo` で、終端の暗い帯が二重に暗くなっていない(自己除外が効いている)。
-  - `ship-body-shadow` で、天体表面すれすれの艦が親天体の影を失っていない。
-- 実機の負荷確認ウィンドウで「ライティング」の数字が、設定の切り替えに応じて動く
-  (**`render-lab` の GPU 時間はこの開発環境では `gpuSupported: false` で全パス 0 になるので、
-  数字は実機でしか読めない**)。
-
----
-
-### 手順 4. 光源リストを選び、環境光の強さを物理式へ差し替える
-
-**目的.** 「どの天体を光源として扱うか」を決める機構を入れ、**手書きの定数
-`AMBIENT_IRRADIANCE` を、選ばれた天体から導いた放射照度へ差し替える。** この手順ではまだ
-方向を持たせない(位相と向きは手順 5-1)。**地球が居ないレジストリでも環境光が出るようになる。**
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/planet-light.ts`(新規) | 基準点から見た各天体の `E_b` を D4/D5 の式で出し、閾値を上回るものを上位 2 体まで返す。**天体の食は `physics/shadow.ts` の遮蔽率で `E_b` へ掛ける。** ここは ECI を読む側なので `game/` に置く(`render/**` から `Vec3` / `Ephemeris` への import は 0 件でなければならない) |
-| `src/game/celestial/environment-scene.ts:265-270` | `ambientIrradianceAt()` を捨て、`syncOcclusion`(:276-294)と同じ形で光源の列を選んで描画座標へ移し、ライティング側へ渡す |
-| `src/game/celestial/environment-scene.ts:231-234` | `sunLight.set()` から環境光強度の引数を外す |
-| `src/render/pipeline/sun-light.ts:31-49, 74-102` | `AMBIENT_COLOR` / `AMBIENT_IRRADIANCE` / `AMBIENT_REFERENCE_DISTANCE` / `ambientIrradianceAtDistance` と、`set()` の環境光引数・2 つの getter を削除する |
-| `src/render/pipeline/lighting/planet-light-source.ts`(新規) | 光源スロット 2 本ぶんの uniform(中心・半径・放射輝度の色)を持つ。**スロットごとに別のマテリアルを持つ** — 1 枚のマテリアルで uniform を書き替えながら 2 回描くと、three が同じバッファを使い回して両方が最後の値で描かれる |
-| `src/render/pipeline/lighting/ambient-source.ts` | 強度をスロットの総和から取る(向きはまだ持たない) |
-| `src/render/pipeline/exposure.ts:39-44` | 閾値の判定に露出係数の数値が要るので、`factor` の数値を返す getter を足す |
-| `tools/render-lab/lab.ts:10-11, 97-99, 279-286` | 環境光の駆動を新しい経路へ替える |
-| `tools/render-lab/cases.ts:89` | `earthDistance` を「光源として置く天体(中心・半径・アルベド)」へ置き換える |
-
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `grep -rn "AMBIENT_IRRADIANCE\|ambientIrradianceAtDistance\|AMBIENT_REFERENCE_DISTANCE" src/ tools/`
-  が 0 件。
-- `npm run render-lab:shot` の `leo`。**艦の夜側が明るくなる** — 手書きの定数 `0.093π = 0.29` に
-  対し、式から出る値は満相の地球で `0.56`(約 2 倍)。**これは想定どおりの変化**で、
-  手書きの値のほうが暗すぎた。
-- `outer-5au` / `outer-10au` / `outer-30au` で、**環境光が 0 でなくなる**(いまは地球が居ないので
-  0)。ただし閾値を割る構図では 0 のまま — **そのときの絵の変化が 1 LSB 以下であること**を
-  `sunDistanceLogAu` のつまみを 1 段ずつ動かして確かめる。
-- 食の検証: `earth-eclipse` で、地球が食に入っている間だけ環境光が弱まる。
+- スロット 1 本が LightSource 1 つ(描画命令 1 本)になる形にした。ambient-source.ts は削除。
+  点光源近似の GGX は太陽の点光源モードと共有(`lighting/ggx.ts`)。
+- 色は `albedoOf()` ではなく新設の `lightSourceAlbedoOf()` — `albedoOf()` は実写テクスチャを
+  持つ天体(地球・木星など)を表に持たず既定の灰色を返すため、テクスチャの実測平均色
+  (celestial-textures.ts の `averageHue`)× ボンドアルベドで補った。
+- 検証: earthshine の天体照だけで照らされる画素は「なし」トグルで (48,56,73)→(0,0,1)
+  (方向あり・青み ✓)。満相→位相角 120° で天体照画素の線形輝度の中央値比 0.108
+  (理論 Φ(120°)=0.109)。「なし」で影の中が真っ黒になることもヘッドレスで確認。
+- 「明るい側が三日月の側へ寄る」(向きの偏り)は 5-2 の等価円盤の仕事で、5-1 では出ない。
 
 ---
 
-### 手順 5-1. 天体照に向きと位相を与える
+## 手順 1〜5-1 実施後の達成目標の照合(2026-08-27)
 
-**目的.** 方向を持たない環境光を捨て、**位相係数つきの一様球光源**(D5)へ替える。
-影の中に法線の陰影が戻り、艦の影側が地球の色を帯びる。**ここで手順 1 が空けた穴が埋まる。**
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/planet-light.ts` | 位相角 `α` と放射輝度 `L̄(α)`(色つき)まで出す。色は `render/celestial-albedo.ts:120` の `albedoOf()`(Rec.709 輝度がボンドアルベドに一致する線形 RGB)を、その天体が受けている放射照度へ掛けたもの |
-| `src/render/pipeline/lighting/planet-light-source.ts` | 手順 3 の `sphere-light.ts` をそのまま呼び、拡散は閉じた解、鏡面は点光源近似で出す |
-| `src/render/pipeline/lighting/ambient-source.ts` | **ファイルごと削除する** |
-| `src/render/graphics-settings.ts` | `planetLightModel` を選択肢(`[0,'なし'], [1,'球光源']`)で足す。プリセットは low=0 / medium=1 / high=1 |
-| `src/render/pipeline/render-pipeline.ts:40-43` | `PIPELINE_GRAPHICS_KEYS` へ `planetLightModel` を足す |
-| `tools/render-lab/lab.ts:97-99` | 前方描画経路の `THREE.AmbientLight` を落とす |
-| `tools/render-lab/cases.ts` | `earthshine`(低軌道の艦を地球の側から照らす構図)と `crescent`(位相角 120° で三日月形に見える位置)を足す |
-| `DEVELOP/SPEC/RENDERING.md:270` | 「夜側には方向を持たない環境光も残る」を、天体照が向きと位相を持つ光源である旨へ書き替える |
-| `DEVELOP/SPEC/RENDERING.md:135-155` | 描画品質設定の節へ「天体照の光源モデル」を足す |
-
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `grep -rn "AMBIENT_COLOR\|AmbientLight" src/ tools/` が、`environment-scene.ts` の
-  `lightingAnchor`(値を持たない置物)1 件だけになる。
-- `npm run render-lab:shot`:
-  - `earthshine` で、**艦の地球を向いた面と宇宙を向いた面の明るさが桁で違う**(方向を持たない
-    環境光では両者が同じ明るさになっていた)。
-  - `earthshine` で、艦の影側が青みを帯びる(地球のアルベドの色度が乗る)。
-  - `crescent` で天体照が弱まり、**明るい側が三日月の側へ寄る。**
-  - `outer-5au` で、木星照が地球圏の地球照より暗い。
-- 実機で「天体照の光源モデル」を「なし」にすると、影の中が真っ黒になる。
+1. `SHADOW_MIN_SUN` 0 件 ✅ / 2. `AMBIENT_*` 0 件・値を持つ `AmbientLight` 0 件 ✅
+3. 光源 2 項目が独立して並ぶ ✅(絵の変化はヘッドレスで確認。**負荷ウィンドウの数字は実機残件**)
+4. **逸脱**: albedo の最も明るい画素は (240,229,210) へ更新した。内訳: R−1 は粗さ 1 の鏡面の
+   GGX→LTC 近似差(手順 3)、G−2/B−4 は albedo ケースから環境光を外した構図変更(手順 4、
+   較正が 1 本の光だけで読める)。拡散の較正そのものは点光源と厳密一致。saturn の比は本体の
+   環境光ぶん(輝度 −3%)だけ動く。
+5. earthshine で桁差 ✅ / 6. 滑らかな減衰は式と画素ごとの sin²θ ✅。**閾値落ちの 1 LSB は式で
+   保証、lab に検証経路が無い(閾値は game 側にだけある)— 実機残件**
+7. 距離依存は式に入り、lab でも外惑星の照りは低軌道より暗い ✅(エウロパ軌道の実機確認は残件)
+8. 弱まり ✅(Φ(120°) 一致)。**向きの偏りは 5-2 未実施**
+9. 遮蔽ゼロ画素に太陽の拡散が出ない ✅(手順 1)/ 10. **食の弱まりはコード上は sunlitFactor を
+   掛けているが、lab では検証不能(ECI を通らない)— 実機/ゲーム残件**
+11. typecheck ✅ test:physics 622/622 ✅
 
 ---
 
