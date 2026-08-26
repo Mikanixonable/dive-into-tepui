@@ -11,10 +11,10 @@
   three を上げるときは `how_to_update_three.md`。
 
 各計画ファイル: [`arealight.md`](arealight.md)(エリアライト) / [`atmosphere.md`](atmosphere.md)
-(大気散乱) / [`exposure.md`](exposure.md)(露出) / [`lens.md`](lens.md)(レンズ由来の像) /
-[`volume.md`](volume.md)(大気以外の半透明) /
+(大気散乱) / [`lens.md`](lens.md)(レンズ由来の像) / [`volume.md`](volume.md)(大気以外の半透明) /
 [`screenspace.md`](screenspace.md)(AO と GI) / [`blackbody.md`](blackbody.md)(固体の黒体放射) /
-[`shadow_backlog.md`](shadow_backlog.md)(影の残件)。
+[`shadow_backlog.md`](shadow_backlog.md)(影の残件) /
+[`exposure_backlog.md`](exposure_backlog.md)(露出の残件)。
 **パイプラインが疎結合になったので、これらは直列の手順ではなく任意順に消化できる TODO である。**
 
 **適用範囲の前提(全計画に掛かる)**: LEO で優れた性能が出ることは最低要件だが、
@@ -89,8 +89,11 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 
 - **放射照度の単位は「1 天文単位で π」**(`SUN_IRRADIANCE_1AU`)。ランバート BRDF の 1/π と
   打ち消し合うので、**太陽へ正対したアルベド A の完全拡散面は 1 天文単位で表示値 A になる。**
-  出力段に露出係数は無い(1 を渡す)。
-- トーンマッピングは **Khronos PBR Neutral**。曲線の最終決定は [`exposure.md`](exposure.md)。
+- **環境光は地球照の代用**(`AMBIENT_IRRADIANCE`、低軌道での明るさに合わせた手書きの定数)で、
+  **基準点と地球の距離の二乗で薄れる。** 方向も位相も遮蔽も持たない。**地球が無いレジストリでは
+  0** — 本影の中を埋めるぶんは恒星光側(直射に対する割合)が別に持つので、0 でも真っ黒にはならない。
+- トーンマッピングは **Khronos PBR Neutral**(0.08 未満を `x → 6.25x²` で潰すトウを持つ)。
+  曲線の最終決定は [`exposure_backlog.md`](exposure_backlog.md)。
 - **天体が持つのはボンドアルベドだけで、輝度は持たない。** 輝度はアルベドと
   「その天体がいまいる場所で受けている放射照度」から毎フレーム引く。
   **この分離を崩すとエリアライトが成立しない**(同じアルベドでも太陽から遠い天体は暗い光源に
@@ -100,6 +103,31 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 - 艦艇モデルの金属度は 0 か 1 の 2 値。金属度 1 の面ではベース色がそのまま F0 として読まれる。
 - **較正は `render-lab` で読む** — `albedo` ケース(アルベド 1 の白球を 1 天文単位)の最も明るい
   画素が sRGB (241, 231, 215)、`saturn` ケースで環と本体の比が 0.20。
+
+### 1-6. 露出
+
+**出力段(`render-pipeline.ts`)がトーンマッパへ渡す係数は「順応 × 露出補正」**
+(`render/pipeline/exposure.ts` が正本)。
+
+- **順応は、基準点が受けている放射照度 `E` から `max(1, (E₀/E)^0.8)`**(`E₀` は 1 天文単位での
+  放射照度)。距離で書けば `(d/AU)^1.6`。指数 0.8 は**「太陽に正対したアルベド 0.3 の面が
+  30 天文単位でも sRGB 50/255 を下回らない」から出た下限**で、趣味の値ではない。
+- **1 天文単位より内側では 1 で止まる。** 較正(表示値 = アルベド)はそこで不変のままで、
+  太陽へ寄っても係数が発散しない — ゼロ除算も上限クランプも構造的に要らない。
+- **完全順応ではないので、遠いほど暗いことは画面に残る。** アルベド 0.3 の面の最も明るい画素は
+  1 / 5.2 / 9.6 / 30 天文単位で sRGB 139 / 100 / 83 / 59(`render-lab` の `outer-*` ケース)。
+- **基準点はカメラの注視点**(`activeViewpoint.lookTarget`)であって、カメラ位置ではない —
+  マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
+  環境光の減衰も同じ基準点から引く。
+- **時間追従を持たない。** 位置の関数なので**同じ場所は常に同じ絵**になり、撮影が決定的に保たれる。
+  段差になるのはマップビューのフォーカスを切り替えた瞬間だけ。
+- **露出補正**は描画設定(`exposureCompensation`)の 5 段で、1 段が EV 1 段(2 倍)。順応へ掛かる。
+
+**順応してはならない描画物は `fixedBrightnessScale`(= 1/順応)を自分の色へ掛けて打ち消す** —
+星野(`render/stars.ts`)と小天体の点群(`game/celestial/point-field-view.ts`)の 2 つだけで、
+**露出補正には従う。** 惑星の輝点は打ち消さない: 見かけ直径 2px で実体の球と入れ替わるので、
+片方だけ順応から外すと**切り替えの瞬間に明るさが飛ぶ。** この食い違いの残件は
+[`exposure_backlog.md`](exposure_backlog.md)。
 
 ---
 
@@ -232,9 +260,9 @@ instanceMatrix の受け渡し経路を `count` から決め、最初の描画�
 | 穴 | 引き取り先 |
 |---|---|
 | 光源が「位置と半径を持つ点」のままで、有限の立体角を持たない | [`arealight.md`](arealight.md) |
-| `AMBIENT_IRRADIANCE`(方向も距離も位相も持たない定数)が地球照・星明かり・多重散乱を兼ねている | [`arealight.md`](arealight.md) |
+| `AMBIENT_IRRADIANCE`(地球からの距離でしか変わらず、方向も位相も遮蔽も持たない)が地球照・星明かり・多重散乱を兼ねている | [`arealight.md`](arealight.md) |
 | 大気が Beer–Lambert 一本のもやで、散乱の積分になっていない | [`atmosphere.md`](atmosphere.md) |
-| 露出が固定のままで、遠方天体圏が黒へ落ちる | [`exposure.md`](exposure.md) |
+| トーンカーブが選び直されていない。順応が場所の関数のままで、眼順応も星野の物理化も無い | [`exposure_backlog.md`](exposure_backlog.md) |
 | レンズ由来の滲み・条・ゴーストが無い | [`lens.md`](lens.md) |
 | オーロラ・プルーム等が板ポリゴンのまま。手置きの明るさが残っている | [`volume.md`](volume.md) |
 | AO / GI が無い。二次反射の遮蔽を表せない | [`screenspace.md`](screenspace.md) |
