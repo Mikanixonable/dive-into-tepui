@@ -302,7 +302,7 @@ export class LabView {
     const rings = this.current.rings;
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     const atmosphere = this.current.atmosphere;
-    this.pipeline.atmosphere.setBodies(atmosphere === undefined ? [] : [atmosphere]);
+    this.pipeline.atmosphere.setBodies(atmosphere === undefined ? [] : [atmosphere], 1);
     const startedAt = performance.now();
     this.pipeline.render(this.scene, camera, this.style);
     this.lastRenderCpuMs = performance.now() - startedAt;

@@ -12,6 +12,8 @@ export type AtmosphereOptics = {
   // ミー散乱係数 [1/m]。粒径が波長より大きく波長依存がほぼ無いので1成分で持つ。
   readonly mie: number;
   readonly mieScaleHeight: number; // [m]
+  // ミー散乱の非対称因子 0..1。大きいほど前方へ強く散り、太陽のまわりのグローが締まる。
+  readonly mieAnisotropy: number;
 };
 
 // 大気を持つ天体の光学パラメータ。**ここに載っている天体だけが大気を持つ。**
@@ -22,6 +24,7 @@ export const ATMOSPHERE_OPTICS: Readonly<Record<string, AtmosphereOptics>> = {
     rayleighScaleHeight: 8.0e3,
     mie: 3.996e-6,
     mieScaleHeight: 1.2e3,
+    mieAnisotropy: 0.8,
   },
   // 地球の 1/166 の柱密度へ CO2 の散乱断面積を掛けた分子散乱と、光学的厚み 0.3 の浮遊塵。
   // **塵が分子散乱を2桁上回る**ので、空の色は青ではなく塵の色になる。塵は地球のエーロゾルと
@@ -31,8 +34,20 @@ export const ATMOSPHERE_OPTICS: Readonly<Record<string, AtmosphereOptics>> = {
     rayleighScaleHeight: 11.1e3,
     mie: 2.7e-5,
     mieScaleHeight: 11.1e3,
+    mieAnisotropy: 0.65,
   },
 };
+
+// 主天体へ足す濃い表現が、単層表現へ薄まりきる対数消散係数の差。1 桁の開きがあれば、
+// その天体の大気が場を支配していると見なす。
+const DENSE_WEIGHT_GAP = Math.LN10;
+
+// 主天体へ足す濃い表現の重み 0..1。gap は第 1 候補と第 2 候補の対数消散係数の差で、候補が
+// 1 体しか無いなら Infinity を渡す。**順位が入れ替わる点では gap が 0 になり、どちらが
+// 主天体でも重みが 0 で一致する**ので、入れ替わりそのものは絵に出ない。
+export function denseWeightFromGap(gap: number): number {
+  return THREE.MathUtils.smoothstep(gap, 0, DENSE_WEIGHT_GAP);
+}
 
 // 天体 id の大気。大気を持たない天体では null。
 export function atmosphereOpticsOf(id: string): AtmosphereOptics | null {
