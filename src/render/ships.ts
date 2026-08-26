@@ -242,11 +242,8 @@ export function buildRcsFuelPickup(): THREE.Group {
   return g;
 }
 
-// 敵機: プレースホルダの基本色で焼き出されたテンプレートのうち、
 // userData.role === 'accent' が付与されたマテリアルだけを accent 色へ塗り替える。
-export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group {
-  const g = parseEnemy();
-  // accent ロールが付いたマテリアルだけ塗り替える
+function tintAccentMaterials(g: THREE.Group, accent: string | number): void {
   g.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -255,6 +252,13 @@ export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group 
       mat.color.set(accent);
     }
   });
+}
+
+// 敵機: プレースホルダの基本色で焼き出されたテンプレートのうち、
+// userData.role === 'accent' が付与されたマテリアルだけを accent 色へ塗り替える。
+export function buildEnemyShip(accent: string | number = 0xff4a3d): THREE.Group {
+  const g = parseEnemy();
+  tintAccentMaterials(g, accent);
   return g;
 }
 
@@ -266,15 +270,7 @@ export function buildStage0EnemyShip(accent: string | number = 0x3dc6ff, typeInd
   else if (typeIndex === 2) g = parseStage0EnemyC();
   else g = parseStage0EnemyA();
 
-  // accent ロールが付いたマテリアルだけ塗り替える
-  g.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const mat = mesh.material as THREE.Material & { color?: THREE.Color };
-    if (mat && mat.userData && mat.userData.role === 'accent' && mat.color) {
-      mat.color.set(accent);
-    }
-  });
+  tintAccentMaterials(g, accent);
   return g;
 }
 
