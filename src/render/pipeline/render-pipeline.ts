@@ -111,7 +111,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(
-      renderer, this.gbuffer, this._sunLight, this._sunOcclusion, this.occlusionPass, gpu,
+      renderer, this.gbuffer, this._sunLight, this._sunOcclusion, gpu,
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
