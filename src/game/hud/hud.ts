@@ -1,4 +1,4 @@
-// DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプの表示と、
+// DOM オーバーレイの HUD のシェル。トースト・ヘルプの表示と、
 // root/svgOverlay の公開・常設パネル群の所有を担う。
 import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
@@ -39,7 +39,6 @@ export class Hud {
   readonly enemiesPanel: EnemiesPanel;
   readonly burnManagementPanel: BurnManagementPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
-  private hintUntil = 0;
   private toastUntil = 0;
 
   // HUD の DOM を構築する。
@@ -116,17 +115,18 @@ export class Hud {
     this.burnManagementPanel.sync(view);
   }
 
-  // ヒントテキストを durationMs だけ表示する。
+  // 見出しを持たないメッセージのみ型トーストを durationMs だけ表示する。
   hint(text: string, durationMs = 1800): void {
-    const e = document.getElementById('hud-hint');
-    if (!e) return;
-    e.textContent = text;
-    e.style.opacity = '1';
-    this.hintUntil = performance.now() + durationMs;
+    this.showToast(text, durationMs);
   }
 
-  // トースト(HTML)を durationMs だけ表示する。
+  // 見出し+本文を持つタイトル-説明型トースト(HTML)を durationMs だけ表示する。
   toast(html: string, durationMs = 8000): void {
+    this.showToast(html, durationMs);
+  }
+
+  // トースト DOM の内容と表示期限を差し替える(hint/toast 共通の下請け)。
+  private showToast(html: string, durationMs: number): void {
     const e = document.getElementById('hud-toast');
     if (!e) return;
     e.innerHTML = html;
@@ -139,16 +139,9 @@ export class Hud {
     this.helpPanel.handleInput(input);
   }
 
-  // 表示期限を過ぎたヒント・トーストをフェードアウトさせる。
+  // 表示期限を過ぎたトーストをフェードアウトさせる。
   tick(): void {
     const now = performance.now();
-    // ヒントの期限切れ
-    const hint = document.getElementById('hud-hint');
-    if (hint && this.hintUntil && now > this.hintUntil) {
-      hint.style.opacity = '0';
-      this.hintUntil = 0;
-    }
-    // トーストの期限切れ
     const toast = document.getElementById('hud-toast');
     if (toast && this.toastUntil && now > this.toastUntil) {
       toast.style.opacity = '0';
