@@ -1,11 +1,5 @@
-// 画面上のスケール(metersPerPixel)から詳細度を決める純関数群。THREE にも
-// game/・physics/ の座標型にも依存しない(引数はスカラーのみ)。
-
-/** 世界空間の寸法 [m] が、その位置の metersPerPixel の下で画面上何 px になるか。 */
-export function apparentSizePx(worldSize: number, metersPerPixel: number): number {
-  if (!(metersPerPixel > 0)) return 0;
-  return worldSize / metersPerPixel;
-}
+// 見かけの大きさ [px] から詳細度を決める純関数群。THREE にも game/・physics/ の座標型にも
+// 依存しない(引数はスカラーのみ)。m → px の換算は physics/projection.ts の apparentSizePx。
 
 export interface SphereLodLevel {
   readonly widthSegments: number;
