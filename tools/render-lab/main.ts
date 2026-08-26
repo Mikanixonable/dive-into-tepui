@@ -5,8 +5,12 @@ import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/deb
 import { PIPELINE_GRAPHICS_KEYS } from '../../src/render/pipeline/render-pipeline';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import { GRAPHICS_OPTIONS } from '../../src/render/graphics-settings';
-import { CASE_NAMES, type CaseName } from './cases';
-import { LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM, type LabMeasurement, type LabViewAngles } from './lab';
+import { CASE_NAMES, sunDiameterPx, type CaseName } from './cases';
+import {
+  LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
+  type LabMeasurement, type LabViewAngles,
+} from './lab';
+import { AU } from '../../src/physics/planet-orbit';
 
 declare global {
   interface Window {
@@ -126,6 +130,12 @@ async function init(): Promise<void> {
     () => degrees(view.viewAngles.sunAzimuthDeg), (v) => view.setViewAngles({ sunAzimuthDeg: v }));
   const setSunElevation = buildSlider('view-angles', '仰角', -90, 90, 0.5,
     () => degrees(view.viewAngles.sunElevationDeg), (v) => view.setViewAngles({ sunElevationDeg: v }));
+  // 恒星までの距離。**見かけ径を併記する** — 太陽が 1px を切るあたりの挙動を読むためのつまみ
+  // なので、AU だけでは判断の材料にならない。
+  const setSunDistance = buildSlider('view-angles', '距離',
+    MIN_SUN_DISTANCE_LOG_AU, MAX_SUN_DISTANCE_LOG_AU, 0.01,
+    () => `${(view.sunDistance / AU).toPrecision(3)} AU / ${sunDiameterPx(view.sunDistance).toPrecision(2)} px`,
+    (v) => view.setViewAngles({ sunDistanceLogAu: v }));
   const setCameraAzimuth = buildSlider('view-angles', 'カメラ 方位', -180, 180, 0.5,
     () => degrees(view.viewAngles.cameraAzimuthDeg), (v) => view.setViewAngles({ cameraAzimuthDeg: v }));
   const setCameraElevation = buildSlider('view-angles', '仰角',
@@ -138,6 +148,7 @@ async function init(): Promise<void> {
     const current = view.viewAngles;
     setSunAzimuth(current.sunAzimuthDeg);
     setSunElevation(current.sunElevationDeg);
+    setSunDistance(current.sunDistanceLogAu);
     setCameraAzimuth(current.cameraAzimuthDeg);
     setCameraElevation(current.cameraElevationDeg);
     setCameraZoom(current.cameraZoom);
