@@ -85,6 +85,8 @@ export class LabView {
   private readonly scene = new THREE.Scene();
   // ケースの太陽方向へ向け直すために持つ。恒星の位置と同じ向きを指す。
   private readonly sun = new THREE.DirectionalLight(SUN_COLOR.getHex(), SUN_IRRADIANCE_1AU);
+  // ケースごとの環境光。恒星光と同じく、強度は render() が毎フレーム書き込む。
+  private readonly ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_IRRADIANCE);
   // 撮影先。合成パスが既に sRGB へ変換した値を書くので、素の RGBA8 で受ける
   // (-srgb フォーマットにすると二重変換になり、撮った PNG だけが白っぽくなる)。
   // 深度は 3D UI パスが要る — 合成パスが G バッファの深度をここへ複製し、線はそれに対して
@@ -124,12 +126,11 @@ export class LabView {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
-    const ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_IRRADIANCE);
     // NodeMaterial はカメラのチャンネルと重なる光源が1つも無いと照明モデルを組まない。
     // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、光源も同チャンネルへ属させる。
     this.sun.layers.enable(LIT_OPAQUE_LAYER);
-    ambient.layers.enable(LIT_OPAQUE_LAYER);
-    this.scene.add(this.sun, ambient);
+    this.ambient.layers.enable(LIT_OPAQUE_LAYER);
+    this.scene.add(this.sun, this.ambient);
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<LabView> {
@@ -252,9 +253,13 @@ export class LabView {
       this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,
     );
     this.sun.position.copy(sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE);
+    // 環境光の強さは、フォワード経路の光源とライティングパスの両方が同じ値を読む —
+    // 片方だけ直すと陰影の辻褄が合わない。
+    const ambientIrradiance = this.current.ambientIrradiance ?? AMBIENT_IRRADIANCE;
+    this.ambient.intensity = ambientIrradiance;
     this.pipeline.sunLight.set(
       SUN_POSITION.copy(sunDirection).multiplyScalar(this.current.sunDistance ?? AU),
-      R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE,
+      R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, ambientIrradiance,
     );
     const camera = this.current.camera;
     directionFromAngles(this.angles.cameraAzimuthDeg, this.angles.cameraElevationDeg, CAMERA_OFFSET);
