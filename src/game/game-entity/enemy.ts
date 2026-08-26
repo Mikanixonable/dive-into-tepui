@@ -310,7 +310,7 @@ export class Enemy extends Ship {
   // 3km 以内マーカー用に、各機能部位の投影元位置と HUD 表示情報を並べる。displayPos は
   // markerItem と同じ表示時刻の位置(displayState 経由)を渡すこと。
   proteinSiteMarkers(displayPos: Vec3): readonly {
-    readonly id: string; readonly worldPos: Vec3; readonly label: string;
+    readonly id: string; readonly worldPos: Vec3; readonly abbreviation: string;
     readonly hp: number; readonly maxHp: number; readonly disabled: boolean; readonly attackable: boolean;
   }[] {
     const runtime = this.proteinRuntime;
@@ -318,7 +318,7 @@ export class Enemy extends Ship {
     return runtime.hudSnapshot.sites.map((site) => ({
       id: site.id,
       worldPos: runtime.siteWorldPositionById(site.id, displayPos, this.att.q),
-      label: site.label,
+      abbreviation: site.abbreviation,
       hp: site.hp,
       maxHp: site.maxHp,
       disabled: site.disabled,
