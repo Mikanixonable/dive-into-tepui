@@ -14,9 +14,9 @@ const STREAK_TAPS = 12;
 // 条の減衰長 [読み元のテクセル]。
 const STREAK_FALLOFF = 50;
 
-// 倍率と指数を測る基準の半径 [画面の高さ]。半径写像はここで倍率そのものになる。
+// scale と power を測る基準の半径 [画面の高さ]。半径写像はここで scale そのものになる。
 const GHOST_REFERENCE_RADIUS = 0.5;
-// 半径写像を丸める芯の半径 [画面の高さ]。指数が 1 未満の枚は中心へ寄るほど光を集めるので、
+// 半径写像を丸める芯の半径 [画面の高さ]。power が 1 未満の枚は中心へ寄るほど光を集めるので、
 // **この芯で頭打ちにしないと画面中心の 1 画素だけが際限なく明るくなる。**
 const GHOST_CORE_RADIUS = 0.12;
 
@@ -28,21 +28,22 @@ const GHOST_TAP_RADIUS = 0.85;
 const GHOST_TAPS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 // ゴーストの読み元。**締まったものから順に、1 段ずつ粗くなる縮小段を 3 枚と、滲みの像を 1 枚。**
-// 滲みの像は画面いっぱいに広がっているので、倍率を上げて光軸へ寄せても大きく薄いままでいる。
+// 滲みの像は、解像度は 1 枚目と同じまま中身が画面いっぱいへ広がっているので、倍率を上げて光軸へ
+// 寄せても大きく薄いままでいる。
 export type GhostSources = readonly [THREE.Texture, THREE.Texture, THREE.Texture, THREE.Texture];
-// 読み元 1 テクセルが、ゴーストの出力の何テクセルにあたるか。
+// 読み元 1 テクセルが、ゴーストの出力の何テクセルにあたるか。**ぼけ具合ではなく解像度の比**で、
+// タップの間隔をこれに合わせることが、像が 4 つへ割れないことを担保している。
 const GHOST_SOURCE_TEXELS: readonly [number, number, number, number] = [1, 2, 4, 1];
 
 // 絞りの反射像 1 枚。**どのパラメータも光軸(画面中心)まわりの回転と可換**で、それが像を光点と
 // 中心を結ぶ直線の上へ並べる。
 type Ghost = {
-  // 基準半径での倍率。**負なら中心を挟んだ反対側**へ出て、絶対値が小さいほど遠く、大きく写る。
+  // GHOST_REFERENCE_RADIUS での倍率。**読む位置に掛かる**ので、像はこの逆数に拡大される。
+  // 負なら中心を挟んだ反対側。
   readonly scale: number;
-  // 半径写像の指数。1 で純粋な拡大縮小。**放射方向の伸びが周方向の 1/指数 になる**ので、
-  // 1 より大きいと像は軸を横切る弧に、小さいと軸に沿う筋になる。
+  // 半径写像の指数。1 なら純粋な拡大縮小になる。
   readonly power: number;
-  // 読み元。GhostSources の並びを指す。**倍率とは独立に選べる**ので、光軸の近くに大きく薄い像を、
-  // 遠くに締まった像を置ける。
+  // 読み元。GhostSources の並びを指す。
   readonly softness: 0 | 1 | 2 | 3;
   // 核のうちこの 1 枚が持つ配分。**表の総和で正規化してから使う。**
   readonly weight: number;
@@ -53,9 +54,19 @@ type Ghost = {
   readonly dispersion: number;
 };
 
-// 絞りの反射像。**配分を総和で正規化するので、枚数を増やせば 1 枚あたりは薄くなる。**
+// 絞りの反射像。1 行が 1 枚で、絵としては次のように読む。半径はどれも画面の高さを 1 として測る。
 //
-// **写像が光を集める度合い(ヤコビアン)の重み付き総和を 1 以下に保つ。** 倍率の絶対値が 1 を
+// - **scale と power が、像の位置と大きさを決める。** 中心から rp にある光点の像は、
+//   `R × (rp / (R × scale))^(1/power)`(R は GHOST_REFERENCE_RADIUS)に出る。**scale の絶対値が
+//   小さいほど遠く、大きく写り**、power を上げるほど像は R へ引き寄せられる — **scale だけで
+//   位置が決まるのは power が 1 のときだけ。**
+// - **power が、像の形を決める。** 放射方向の伸びが周方向の 1/power になるので、1 より大きい枚は
+//   軸を横切る弧に、小さい枚は軸に沿う筋になる。
+// - **softness が、ぼけ具合を決める。** scale と独立に選べるので、光軸の近くに大きく薄い像を、
+//   遠くに締まった像を置ける。
+// - **weight を総和で正規化する**ので、枚数を増やせば 1 枚あたりは薄くなる。
+//
+// **写像が光を集める度合い(ヤコビアン)の weight つき総和を 1 以下に保つ。** scale の絶対値が 1 を
 // 超える枚は同じ光を狭い面積へ集めるので、総和が 1 を超えると画素が入力の最大値を跨ぎ、半精度
 // 浮動小数点の余裕(太陽面 4.62e4 に対し上限 65504)を食い潰す。
 const GHOSTS: readonly Ghost[] = [
@@ -179,8 +190,9 @@ export function streakPass(
   return sumOf(taps).mul(1 / total);
 }
 
-// 1 枚ぶんの像。**倍率を半径だけの関数にする**ので、写像は光軸まわりの回転と可換になり、像は
-// 光点と中心を結ぶ直線の上へ出る。share は正規化済みの配分、meanTint は色みの加重平均。
+// 1 枚ぶんの像。**読む位置への倍率を半径だけの関数にする**ので、写像は光軸まわりの回転と可換に
+// なり、像は光点と中心を結ぶ直線の上へ出る。share は正規化済みの weight、meanTint は tint の
+// 加重平均。
 function ghostSheet(
   sources: GhostSources, ghost: Ghost, share: number, meanTint: readonly [number, number, number],
 ): Vec3Node {
@@ -195,9 +207,9 @@ function ghostSheet(
   const reach = GHOST_TAP_RADIUS * GHOST_SOURCE_TEXELS[ghost.softness];
   const spread = vec2(reach, reach).div(screenSize);
   const channel = (index: 0 | 1 | 2): Vec3Node => {
-    // 中央のチャンネルが表の倍率そのもので、両端がその前後へずれる。
+    // 中央のチャンネルが表の scale そのもので、両端がその前後へずれる。
     const scale = ghost.scale * (1 + (index - 1) * ghost.dispersion);
-    // 周方向の伸びは倍率そのもの、放射方向はその微分なので指数倍になる。
+    // 周方向の伸びは scale そのもの、放射方向はその微分なので power 倍になる。
     const tangential = shape.mul(scale);
     const radial = tangential.mul(ghost.power);
     const uv = center.add(local.mul(tangential).div(stretch));
