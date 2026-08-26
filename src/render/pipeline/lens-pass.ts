@@ -12,9 +12,10 @@
 // 固定の割合なので、**広がりは画面上の角度で決まり、光源までの距離では変わらない。**
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { mix, screenUV, texture, uniform, vec2, vec4 } from 'three/tsl';
+import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { Vec2Uniform, Vec3Node } from '../tsl-types';
+import { apertureGhosts, boxDownsample, radialStreak, tentUpsample } from './lens-kernels';
 
 // 縮小チェーンの段数。いちばん粗い段の 1 テクセルが画面の 1/32 を覆う。
 const LEVELS = 5;
@@ -22,18 +23,16 @@ const LEVELS = 5;
 // レンズが本来の道から外す光の割合。実在のレンズの veiling glare が 1〜3%。
 const GLARE_FRACTION = 0.03;
 
-// 条を作る段。**1 テクセル刻みのタップを積むので、条の長さは段の解像度が決める** — 細かい段から
+// 条を引く段。**1 テクセル刻みのタップを積むので、条の長さは段の解像度が決める** — 細かい段から
 // 引くと同じタップ数で届く距離が短くなり、粗い段から引くと条が太くなる。1/8 でその釣り合いを取る。
 const STREAK_LEVEL = 2;
-// 軸の数。1 本の軸が両側へ伸びるので、条は 6 本になる。
-const STREAK_AXES = 3;
-// 片側のタップ数 [STREAK_LEVEL のテクセル]。**間隔は 1 テクセル固定** — 間隔を空けると、
-// タップの 1 つ 1 つが光源の複製として点々に見えてしまい、条にならない。
-const STREAK_TAPS = 28;
-// 条の減衰長 [STREAK_LEVEL のテクセル]。
-const STREAK_FALLOFF = 10;
 // 核のうち条へ回す割合。**滲みの重みから引く**ので、核の総和は 1 のまま動かない。
 const STREAK_SHARE = 0.2;
+
+// ゴーストを引く段。像そのものを縮めて置き直すだけなので、細かい段から引く意味は無い。
+const GHOST_LEVEL = 2;
+// 核のうちゴーストへ回す割合。条と同じく滲みの重みから引く。
+const GHOST_SHARE = 0.08;
 
 // 1 段ぶんの器。読み元のテクセル寸法だけが段ごとに違うので、そこを uniform で持つ。
 type Stage = {
@@ -44,69 +43,13 @@ type Stage = {
   readonly sourceTexel: Vec2Uniform;
 };
 
-// ノードの和。**平衡木で畳む** — 左畳みにすると括弧が項数ぶん深く入れ子になり、WGSL の
-// パーサが再帰の上限に当たってシェーダの生成ごと落ちる(例外ではなく検証エラーとして出る)。
-function sumOf(terms: readonly Vec3Node[]): Vec3Node {
-  let level = terms;
-  while (level.length > 1) {
-    const merged: Vec3Node[] = [];
-    for (let i = 0; i < level.length; i += 2) {
-      merged.push(i + 1 < level.length ? level[i]!.add(level[i + 1]!) : level[i]!);
-    }
-    level = merged;
-  }
-  return level[0]!;
-}
-
-// source の (x, y) テクセルぶんずれた点を読む。
-function tapAt(source: THREE.Texture, texel: Vec2Uniform, x: number, y: number): Vec3Node {
-  return texture(source, screenUV.add(vec2(x, y).mul(texel))).rgb;
-}
-
-// 総和 1 の縮小。書き込み先が読み元のちょうど半分の解像度なので、半テクセルずらした双一次の
-// 4 点がそのまま 4x4 の箱平均になる。
-function boxDownsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
-  const tap = (x: number, y: number): Vec3Node => tapAt(source, texel, x, y);
-  return sumOf([tap(-0.5, -0.5), tap(0.5, -0.5), tap(-0.5, 0.5), tap(0.5, 0.5)]).mul(0.25);
-}
-
-// 総和 1 の拡大((1,2,1 / 2,4,2 / 1,2,1) / 16 のテント)。
-function tentUpsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
-  const tap = (x: number, y: number): Vec3Node => tapAt(source, texel, x, y);
-  const corners = sumOf([tap(-1, -1), tap(1, -1), tap(-1, 1), tap(1, 1)]);
-  const edges = sumOf([tap(0, -1), tap(-1, 0), tap(1, 0), tap(0, 1)]);
-  return sumOf([corners, edges.mul(2), tap(0, 0).mul(4)]).mul(1 / 16);
-}
-
-// 総和 1 の放射状の条。画面に固定した向きへ、指数減衰のタップを両側へ積む。**向きは
-// 光源ではなく画面が決める** — カメラを回しても条は光源に貼り付いて回らない。
-function radialStreak(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
-  const taps: Vec3Node[] = [];
-  let total = 0;
-  for (let axis = 0; axis < STREAK_AXES; axis++) {
-    const angle = (Math.PI * axis) / STREAK_AXES;
-    for (let step = 0; step < STREAK_TAPS; step++) {
-      const distance = step + 1;
-      const weight = Math.exp(-distance / STREAK_FALLOFF);
-      for (const side of [1, -1]) {
-        const x = side * Math.cos(angle) * distance;
-        const y = side * Math.sin(angle) * distance;
-        taps.push(tapAt(source, texel, x, y).mul(weight));
-        total += weight;
-      }
-    }
-  }
-  return sumOf(taps).mul(1 / total);
-}
-
 // 描画先と、そこへ描く色を作るシェーダを 1 組にする。色は総和 1 でなければならない。
 function createStage(colorOf: (sourceTexel: Vec2Uniform) => Vec3Node): Stage {
   const sourceTexel: Vec2Uniform = uniform(new THREE.Vector2());
   const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false, transparent: false });
   material.colorNode = vec4(colorOf(sourceTexel), 1);
   return {
-    // 深度は要らない。半精度浮動小数点の上限は 65504 だが、核の総和が 1 なので出力が入力の
-    // 最大値(太陽面の 4.62e4)を超えることはない。
+    // 深度は要らない。
     target: new THREE.RenderTarget(1, 1, {
       type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
     }),
@@ -123,6 +66,8 @@ export class LensPass {
   private readonly up: readonly Stage[];
   // 条。滲みとは別の核なので別の段で作り、読む側が滲みと配分を分け合う。
   private readonly streak: Stage;
+  // ゴースト。同じく別の核。
+  private readonly ghosts: Stage;
   private width = 0;
   private height = 0;
 
@@ -152,6 +97,7 @@ export class LensPass {
     this.down = down;
     this.up = up;
     this.streak = createStage((texel) => radialStreak(down[STREAK_LEVEL]!.target.texture, texel));
+    this.ghosts = createStage(() => apertureGhosts(down[GHOST_LEVEL]!.target.texture));
   }
 
   // 下地へレンズ効果を掛けた色。**滲みが受け取ったぶんだけ元の光点が暗くなる**ので、
@@ -171,7 +117,8 @@ export class LensPass {
   private redistributed(scale: number): Vec3Node {
     const glare = texture(this.up[0]!.target.texture, screenUV).rgb;
     const streak = texture(this.streak.target.texture, screenUV).rgb;
-    return mix(glare, streak, STREAK_SHARE).mul(scale);
+    const ghosts = texture(this.ghosts.target.texture, screenUV).rgb;
+    return mix(mix(glare, streak, STREAK_SHARE), ghosts, GHOST_SHARE).mul(scale);
   }
 
   // 1 フレームぶんのレンズ効果を発行する。呼ぶのは world パスの後・合成パスの前。
@@ -179,6 +126,7 @@ export class LensPass {
     this.resize(width, height);
     for (const stage of this.down) this.draw(stage);
     this.draw(this.streak);
+    this.draw(this.ghosts);
     for (let i = LEVELS - 2; i >= 0; i--) this.draw(this.up[i]!);
     this.renderer.setRenderTarget(null);
   }
@@ -216,12 +164,14 @@ export class LensPass {
     const streakSource = this.down[STREAK_LEVEL]!.target;
     this.streak.target.setSize(streakSource.width, streakSource.height);
     this.streak.sourceTexel.value.set(1 / streakSource.width, 1 / streakSource.height);
+    const ghostSource = this.down[GHOST_LEVEL]!.target;
+    this.ghosts.target.setSize(ghostSource.width, ghostSource.height);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
   dispose(): void {
-    for (const stage of [...this.down, ...this.up, this.streak]) {
+    for (const stage of [...this.down, ...this.up, this.streak, this.ghosts]) {
       stage.target.dispose();
       stage.material.dispose();
     }
