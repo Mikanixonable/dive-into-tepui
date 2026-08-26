@@ -429,6 +429,7 @@ export class Player extends Ship {
   ): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
+    this.fire.stepBarrelThermal(dt);
     this.aero.update(this.state.r, this.state.v, atmosphereBody);
     this.altitudeAlarm.update(dt, this.state.r, atmosphereBody);
     this.power.update(dt, sunlit, sunDir, this.att, this);
@@ -661,6 +662,7 @@ export class Player extends Ship {
     if (displayState !== null) {
       this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
       this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+      this.syncThermalAppearance();
     }
 
     // 推力/RCS エフェクトとベルト。機体メッシュと同じ displayState に載せる —
