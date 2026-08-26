@@ -16,13 +16,14 @@ import type { OrbitingId } from '../../physics/celestial-body';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { Ephemeris } from '../../physics/ephemeris';
+import type { ObjectType } from '../random-name';
 import * as C from '../const';
 import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, sunSyncInclinationDeg } from './orbit-form-fields';
 import {
   SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
 } from './slider-field';
 
-export type ObjectType = 'player' | 'enemy' | 'ammo' | 'fuel' | 'base';
+export type { ObjectType };
 export type ReferenceCelestialBody = CelestialBodyId;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'lagrange';
