@@ -7,7 +7,7 @@ import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../physics/random';
 import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
-import { makeThermallyEmissive } from './thermal-emissive';
+import { attachThermalEmissive, makeThermallyEmissive } from './thermal-emissive';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -134,7 +134,7 @@ const parseDebrisRod = memoParse<THREE.Mesh>(debrisRodData);
 // geometry はテンプレートを一度だけ deep clone して全長補正を焼き込み、material は
 // parseCasing() がテンプレートから一度だけ複製したものを不変リソースとして共有する。
 let casingGeometry: THREE.BufferGeometry | null = null;
-let casingMaterial: THREE.MeshStandardMaterial | null = null;
+let casingMaterial: THREE.MeshStandardNodeMaterial | null = null;
 
 function initCasingResources(): void {
   if (casingGeometry && casingMaterial) return;
@@ -142,10 +142,12 @@ function initCasingResources(): void {
   const template = parseCasing();
   casingGeometry = deepCloneGeometry(template.geometry);
   casingGeometry.scale(1, 2, 1);
-  casingMaterial = template.material as THREE.MeshStandardMaterial;
+  casingMaterial = template.material as THREE.MeshStandardNodeMaterial;
   casingMaterial.color.setHex(0xFF9F5E);
   casingMaterial.metalness = 0.8;
   casingMaterial.roughness = 0.3;
+  // 個体は 1 本の InstancedMesh へ積まれるので、温度は個体ごとの属性から読む。
+  attachThermalEmissive(casingMaterial, 'instance');
 }
 
 // 自機のメッシュを生成する。
@@ -434,7 +436,7 @@ function buildDebrisFragmentGeometry(rand: () => number): THREE.BufferGeometry {
 }
 
 let debrisFragmentGeometries: THREE.BufferGeometry[] | null = null;
-let debrisFragmentMaterial: THREE.MeshStandardMaterial | null = null;
+let debrisFragmentMaterial: THREE.MeshStandardNodeMaterial | null = null;
 
 // 破片(fragment)全個体が共有するジオメトリ群(バリアント)と単一マテリアルを返す。
 // バリアントは初回呼び出し時に一度だけ構築する。
@@ -443,7 +445,9 @@ export function debrisFragmentResources(): { geometries: readonly THREE.BufferGe
     const rand = mulberry32(DEBRIS_FRAGMENT_SEED);
     debrisFragmentGeometries = [];
     for (let i = 0; i < DEBRIS_FRAGMENT_VARIANT_COUNT; i++) debrisFragmentGeometries.push(buildDebrisFragmentGeometry(rand));
-    debrisFragmentMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.65, metalness: 0 });
+    debrisFragmentMaterial = attachThermalEmissive(
+      new THREE.MeshStandardNodeMaterial({ color: 0xffffff, flatShading: true, roughness: 0.65, metalness: 0 }),
+      'instance');
   }
   return { geometries: debrisFragmentGeometries, material: debrisFragmentMaterial! };
 }
