@@ -40,7 +40,7 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 // applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
 // 駆動する呼び出し側(描画テスト環境)は、この並びを操作の対象にする。
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'exposureCompensation',
+  'lens', 'exposureCompensation', 'sunLightModel',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 
@@ -51,6 +51,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly _sunOcclusion: SunOcclusion;
   private readonly sunShadowMaps: SunShadowMaps;
   private readonly lightPrepass: LightPrepass;
+  // 光源モデルの設定を受けるため、光源の列とは別に太陽光源だけ手元にも持つ。
+  private readonly sunSource: SunSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
@@ -110,8 +112,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
+    this.sunSource = new SunSource(this._sunLight, this.occlusionPass, graphics.sunLightModel);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
-      new SunSource(this._sunLight, this.occlusionPass),
+      this.sunSource,
       new AmbientSource(this._sunLight),
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
@@ -251,6 +254,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
     this._exposure.setCompensation(graphics.exposureCompensation);
+    this.sunSource.setModel(graphics.sunLightModel);
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →

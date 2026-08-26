@@ -6,14 +6,21 @@ import { contributionMaterial, type LightSource } from './light-source';
 import type { ShadingSample } from './shading-sample';
 
 export class AmbientSource implements LightSource {
+  private cached: THREE.MeshBasicNodeMaterial | null = null;
+
   constructor(private readonly sunLight: SunLight) {}
 
   hasContribution(): boolean { return true; }
 
   material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
-    return contributionMaterial(sample, {
+    this.cached ??= contributionMaterial(sample, {
       diffuse: vec3(this.sunLight.ambientColor.mul(this.sunLight.ambientIntensity)),
       specular: vec3(0),
     });
+    return this.cached;
+  }
+
+  dispose(): void {
+    this.cached?.dispose();
   }
 }

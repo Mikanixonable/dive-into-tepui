@@ -671,6 +671,20 @@ function albedo(): LabCase {
   return { objects: [surface], camera };
 }
 
+// 金属のハイライト: 金属度 1・粗さ 0.05 の球に太陽の円盤が映るか。曲率のゆるい大きな球を
+// 水星近日点(視半径 0.86°)の太陽で照らすと、球光源では太陽の円盤が幅十数 px の像として
+// 映り、点光源の GGX では粗さぶんの数 px の点に潰れる。
+function metalHighlight(): LabCase {
+  const camera = labCamera(6e7);
+  const surface = new THREE.Mesh(
+    new THREE.SphereGeometry(2000, 128, 96),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 1 }),
+  );
+  surface.position.set(0, -1500, -3000);
+  markLitOpaque(surface);
+  return { objects: [surface], camera, sunDistance: 0.31 * AU };
+}
+
 // 土星: 本体の球と実データの環を並べ、**環だけが本体より桁で明るくないか**を見る。恒星の
 // 放射照度は本体(ライティングパスが画素ごとに逆二乗を掛ける)にも環(sync が受け取る)にも
 // 同じだけ掛かる。**恒星は他のケースと同じ 1 天文単位に置く** — 本体だけが位置によらない
@@ -775,6 +789,8 @@ function sunAt(distance: number): LabCase {
 
 export const CASES = {
   'leo': leo,
+  // 水星近日点。視半径 0.86° の太陽で、終端の幅が球光源のときだけ広がる。
+  'sun-close': () => outer(0.31 * AU),
   'outer-5au': () => outer(5 * AU),
   'outer-10au': () => outer(10 * AU),
   'outer-30au': () => outer(30 * AU),
@@ -797,6 +813,7 @@ export const CASES = {
   'saturn': saturn,
   'saturn-shadow': saturnShadow,
   'albedo': albedo,
+  'metal-highlight': metalHighlight,
   'sun-1au': () => sunAt(AU),
   'sun-5au': () => sunAt(5.2 * AU),
   'sun-30au': () => sunAt(30 * AU),
