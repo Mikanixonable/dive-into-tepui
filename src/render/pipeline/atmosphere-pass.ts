@@ -1,66 +1,116 @@
 // 大気を、幾何形状ではなく画面空間のフィルタとして不透明の絵の上へ重ねる。G バッファの深度から
-// 復元した位置と視線で大気シェルとの交差を解き、内部散乱と透過率を求めて前乗算アルファで合成する
-// (色は乗算済み、アルファは 1 − 透過率)。天体本体による遮蔽も同じ視線のレイ・スフィア交差で
-// 解くので、深度テストの精度には依存しない。
+// 復元した位置と視線で、指数分布の大気を通る区間の光学的厚みを解き、透過率と内部散乱を前乗算
+// アルファで合成する(色は乗算済み、アルファは 1 − 透過率)。天体本体による遮蔽も同じ視線の
+// レイ・スフィア交差で解くので、深度テストの精度には依存しない。
 //
-// 大気を持つ天体は 1 体ぶんだけ受ける。
+// 大気を持つ天体を同時に MAX_ATMOSPHERE_BODIES 体まで受け、視点に近い順に重ねる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
-  and, clamp, dot, exp, float, greaterThan, length, lessThan, max, mix, normalize,
-  screenUV, select, smoothstep, sqrt, sub, texture, uniform, vec3, vec4,
+  Fn, PI, abs, and, clamp, dot, exp, float, greaterThan, length, lessThan, max, min,
+  normalize, select, sqrt, sub, uniform, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
+import { type AtmosphereOptics, cutoffAltitude } from '../atmosphere-params';
 import type { GBufferPass } from './gbuffer';
-import type { OcclusionPass } from './occlusion';
 import type { SunOcclusion } from './sun-occlusion';
 import type { SunLight } from './sun-light';
 import { viewPositionAt, viewRayAt } from './view-ray';
 
-// 昼側の大気の色と、昼夜境界で寄っていく夕焼けの色。
-const ATMO_COLOR = vec3(0.36, 0.62, 0.91);
-const SUNSET_COLOR = vec3(1.0, 0.4, 0.1);
-// リム光の可視上限高度・下限高度・指数減衰のスケールハイト [m]。
-const RIM_MAX_H = 340e3;
-const RIM_MIN_H = 20e3;
-const RIM_SCALE_H = 90e3;
-// 天体本体による遮蔽境界をぼかす幅 [m](視線の最接近高度で測る)。地表すれすれの視線では
-// 奥行きが高度に対して急峻に変化するため、奥行きで測るとぼかし幅が画素未満に潰れる。
-const RIM_EDGE_SOFTEN = 25e3;
-// リム光の明るさ。下地(宇宙空間)から奪うものが無い加算ぶんなので、透過率ではなく輝度に掛かる。
-const RIM_BRIGHTNESS = 0.6;
-// 地表付近のもやの濃さ(視線が真上からのときの光学的厚み)。
-const HAZE_TAU0 = 0.34;
-// 視線が地平線と平行に近づいたときの光路長の上限(cosθ の下限)。
-const HAZE_MIN_COS = 0.05;
+// 同時に大気を描ける天体の数。**TSL のグラフは静的に展開されるので、実行時には増やせない。**
+export const MAX_ATMOSPHERE_BODIES = 4;
+
+// 大気を描く天体 1 体。中心は描画座標、半径は [m]。
+export type AtmosphereBody = {
+  readonly center: THREE.Vector3;
+  readonly surfaceRadius: number;
+  readonly optics: AtmosphereOptics;
+};
+
+// 天体 1 体ぶんの uniform。cutoffRadius は大気の裾を打ち切る半径(天体半径 + 打ち切り高度)。
+type BodySlot = {
+  readonly center: Vec3Uniform;
+  readonly surfaceRadius: FloatUniform;
+  readonly cutoffRadius: FloatUniform;
+  readonly rayleigh: Vec3Uniform;
+  readonly rayleighScaleHeight: FloatUniform;
+  readonly mie: FloatUniform;
+  readonly mieScaleHeight: FloatUniform;
+};
+
+// 半径 r の点から天頂角余弦 mu(0 以上)の向きへ大気の外まで抜けるまでの、散乱係数 1 あたりの
+// 光学的厚み。Chapman 関数を Ch0/((Ch0−1)·mu+1) で近似する — mu=1 で 1、mu=0 で √(πr/2H) と
+// 両端で厳密値に一致し、その間を単調に埋める。
+const outwardDepth = Fn((
+  [radius, mu, surfaceRadius, scaleHeight]: readonly FloatNode[],
+) => {
+  const chapmanZero = sqrt(PI.mul(radius!).div(scaleHeight!).mul(0.5));
+  const chapman = chapmanZero.div(chapmanZero.sub(1).mul(mu!).add(1));
+  return scaleHeight!.mul(exp(surfaceRadius!.sub(radius!).div(scaleHeight!))).mul(chapman);
+});
+
+// outwardDepth に、視線が降っている(mu<0)ぶんの符号を付けたもの。区間の光学的厚みは
+// 両端のこの値の差で出る。
+const signedDepth = Fn((
+  [radius, mu, surfaceRadius, scaleHeight]: readonly FloatNode[],
+) => {
+  const depth = outwardDepth(radius!, abs(mu!), surfaceRadius!, scaleHeight!);
+  return select(lessThan(mu!, 0), depth.negate(), depth);
+});
+
+// 半径 radius・天頂角余弦 mu の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。
+// 降る向き(mu<0)の経路は、最接近点で折り返す2本の上向きの経路として組む。最接近点が地表より
+// 内側へ落ちる向きでは地表で止まるので、そこで打ち切る。
+//
+// **どちらの枝も outwardDepth へ渡す余弦を非負に保つ** — select は選ばれない枝も評価するので、
+// 負の余弦を通すと Chapman 近似の分母が 0 を跨ぎ、選ばれない側で無限大が湧く。
+const depthToSpace = Fn((
+  [radius, mu, surfaceRadius, scaleHeight]: readonly FloatNode[],
+) => {
+  const perigee = max(radius!.mul(sqrt(max(float(1).sub(mu!.mul(mu!)), 0))), surfaceRadius!);
+  const descending = outwardDepth(perigee, float(0), surfaceRadius!, scaleHeight!).mul(2)
+    .sub(outwardDepth(radius!, abs(mu!), surfaceRadius!, scaleHeight!));
+  return select(greaterThan(mu!, 0), outwardDepth(radius!, abs(mu!), surfaceRadius!, scaleHeight!), descending);
+});
+
+// 天体 1 体ぶんの、視線区間の透過率と内部散乱。
+type LayerContribution = {
+  readonly transmittance: Vec3Node;
+  readonly inscatter: Vec3Node;
+};
 
 export class AtmospherePass {
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
+  private readonly slots: readonly BodySlot[];
   // 下地と合成する前の、大気が足す内部散乱だけ(前乗算アルファの色そのもの)。
   private readonly scattered: Vec3Node;
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と view→描画座標の行列は
   // 毎フレーム自前で書き込む(light-prepass.ts の逆射影行列と同じ理由)。
   private readonly projMatrixInverse: Mat4Uniform;
   private readonly viewToWorld: Mat4Uniform;
-  private readonly bodyCenter: Vec3Uniform;
-  private readonly surfaceRadius: FloatUniform;
 
   // 大気の合成先は world パスと共有する HDR ターゲットで、前乗算アルファで重ねる。
-  // 大気を持つ天体が画面に無いフレームは surfaceRadius が 0 になり、何も足さない。
+  // 大気を持つ天体が画面に無いフレームは全スロットの半径が 0 になり、何も足さない。
   constructor(
     private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
-    sunLight: SunLight,
-    sunOcclusion: SunOcclusion,
-    occlusion: OcclusionPass,
+    private readonly sunLight: SunLight,
+    private readonly sunOcclusion: SunOcclusion,
     private readonly gpu: GpuTimings,
   ) {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
-    this.bodyCenter = uniform(new THREE.Vector3());
-    this.surfaceRadius = uniform(0);
+    this.slots = Array.from({ length: MAX_ATMOSPHERE_BODIES }, (): BodySlot => ({
+      center: uniform(new THREE.Vector3()),
+      surfaceRadius: uniform(0),
+      cutoffRadius: uniform(0),
+      rayleigh: uniform(new THREE.Vector3()),
+      rayleighScaleHeight: uniform(1),
+      mie: uniform(0),
+      mieScaleHeight: uniform(1),
+    }));
 
     const viewPos = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse);
     const opaquePos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
@@ -71,57 +121,15 @@ export class AtmospherePass {
     const rayDir: Vec3Node = this.viewToWorld.mul(vec4(ray.direction, 0)).xyz;
     const opaqueDist = length(sub(opaquePos, rayOrigin));
 
-    const surface = this.surfaceRadius;
-    const shell = surface.add(RIM_MAX_H);
-    const toOrigin = sub(rayOrigin, this.bodyCenter);
-    const b = dot(toOrigin, rayDir);
-    const centerDistSq = dot(toOrigin, toOrigin);
-
-    // 視線と大気シェルの交差のうち奥側。ここが、加算シェルを裏面で描いていたときの面にあたる。
-    const shellDisc = b.mul(b).sub(centerDistSq.sub(shell.mul(shell)));
-    const shellFar = b.negate().add(sqrt(max(shellDisc, 0)));
-    const shellPoint: Vec3Node = rayOrigin.add(rayDir.mul(shellFar));
-
-    // 天体本体による遮蔽。視線が本体を貫くなら、最接近高度で測った幅で縁をぼかして落とす。
-    const bodyDisc = b.mul(b).sub(centerDistSq.sub(surface.mul(surface)));
-    const bodyNear = b.negate().sub(sqrt(max(bodyDisc, 0)));
-    const rayMinDist = sqrt(max(centerDistSq.sub(b.mul(b)), 0));
-    const edgeVisible = smoothstep(surface, surface.add(RIM_EDGE_SOFTEN), rayMinDist);
-    const occluded = and(greaterThan(bodyDisc, 0), and(greaterThan(bodyNear, 0), lessThan(bodyNear, shellFar)));
-    const bodyVisible = select(occluded, edgeVisible, float(1));
-
-    // 大気シェル上の高度による指数減衰と、その点での太陽の当たり方。奥側の交点で測る法線は
-    // カメラを向く側 — 地球を背にした視線ほどリムが強く出る、逆光の縁光りになる。
-    const inward = normalize(sub(this.bodyCenter, shellPoint));
-    const altitudeExcess = max(shell.sub(surface.add(RIM_MIN_H)), 0);
-    const falloff = exp(altitudeExcess.div(-RIM_SCALE_H));
-    const sunDot = dot(inward, normalize(sub(sunLight.position, shellPoint)));
-    // 大気も遮蔽を受ける。**シェル上の点は G バッファの画素位置とは別の点**なので、遮蔽パスが
-    // 書いた 1 枚は引けない — 同じ遮蔽関数をこの点で評価し直す。日食のとき月の影が大気にも落ちる。
-    const sunFactor: FloatNode = clamp(sunDot, 0, 1)
-      .mul(sunOcclusion.transmittance(shellPoint, { rings: false, meshNormal: null }));
-    const color: Vec3Node = mix(SUNSET_COLOR, ATMO_COLOR, smoothstep(0, 0.2, sunDot));
-
-    // シェルに当たらない・視線の起点より後ろ・不透明面の方が手前・大気を持つ天体が無いフレーム。
-    const inShell = and(greaterThan(shellDisc, 0), greaterThan(shellFar, 0));
-    const hasAtmosphere = and(inShell, greaterThan(surface, 0));
-    const rim = select(and(hasAtmosphere, lessThan(shellFar, opaqueDist)), falloff.mul(sunFactor).mul(bodyVisible).mul(RIM_BRIGHTNESS), float(0));
-
-    // もや(aerial perspective): 大気層の内側にある不透明面は、視線が地平線に近いほど長い
-    // 光路を通って見える。Beer-Lambert 則で haze = 1 − exp(−τ₀/cosθ)。
-    const surfaceNormal = normalize(sub(opaquePos, this.bodyCenter));
-    const cosTheta = clamp(dot(surfaceNormal, rayDir.negate()), HAZE_MIN_COS, 1);
-    const hazeDepth = float(1).sub(exp(float(HAZE_TAU0).div(cosTheta).negate()));
-    const hazeSunDot = dot(surfaceNormal, normalize(sub(sunLight.position, opaquePos)));
-    const insideShell = lessThan(length(sub(opaquePos, this.bodyCenter)), shell);
-    // もやが評価する点は G バッファ深度から復元した位置そのものなので、遮蔽パスが同じ点で
-    // 書いた 1 枚をそのまま読む。
-    const hazeSunFactor: FloatNode = clamp(hazeSunDot, 0, 1).mul(texture(occlusion.texture, screenUV).r);
-    // 奪う割合にも戻る量にも、その空気柱への日の当たり方を掛ける。太陽の高度が低いほど
-    // 太陽光自身がより長い大気を通ってくることの近似で、厳密な光路長は Phase 10 の課題。
-    const haze = select(and(hasAtmosphere, insideShell), hazeDepth.mul(hazeSunFactor), float(0));
-    const hazeColor: Vec3Node = mix(SUNSET_COLOR, ATMO_COLOR, smoothstep(0, 0.2, hazeSunDot))
-      .mul(hazeSunFactor);
+    // 視点に近い天体から順に重ねる。手前の層が奥の層の内部散乱も減衰させるので、
+    // 透過率を累積しながら足していく。
+    let transmittance: Vec3Node = vec3(1, 1, 1);
+    let inscatter: Vec3Node = vec3(0, 0, 0);
+    for (const slot of this.slots) {
+      const layer = this.layerContribution(slot, rayOrigin, rayDir, opaqueDist);
+      inscatter = inscatter.add(layer.inscatter.mul(transmittance));
+      transmittance = transmittance.mul(layer.transmittance);
+    }
 
     this.material = new THREE.MeshBasicNodeMaterial({
       depthTest: false,
@@ -131,12 +139,96 @@ export class AtmospherePass {
       blendSrc: THREE.OneFactor,
       blendDst: THREE.OneMinusSrcAlphaFactor,
     });
-    // 前乗算アルファ: 色は既に割合を掛けた内部散乱、アルファは大気が下地から奪う割合。
-    // リム光は下地(宇宙空間)から奪うものが無いので、アルファには入らず加算だけになる。
-    this.scattered = color.mul(rim).add(hazeColor.mul(haze));
+    // 前乗算アルファ: 色は既に透過率を掛けた内部散乱、アルファは大気が下地から奪う割合。
+    // **アルファは1つしか無いので、波長ごとに違う透過率を平均で代表させる** — 下地が
+    // 波長ごとに違う減り方をすることは表せない。内部散乱の色は波長ごとのまま出る。
+    this.scattered = inscatter;
     this.material.colorNode = this.scattered;
-    this.material.opacityNode = haze;
+    this.material.opacityNode = float(1).sub(transmittance.x.add(transmittance.y).add(transmittance.z).div(3));
     this.quad = new QuadMesh(this.material);
+  }
+
+  // 天体 1 体が視線へ与える透過率と内部散乱。半径 0 のスロットは素通し(透過率 1・散乱 0)。
+  private layerContribution(
+    slot: BodySlot, rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode,
+  ): LayerContribution {
+    const toOrigin = sub(rayOrigin, slot.center);
+    const alongRay = dot(toOrigin, rayDir);
+    const centerDistSq = dot(toOrigin, toOrigin);
+
+    // 大気の裾を打ち切る球との交差。ここから外は積分しない。
+    const cutoff = slot.cutoffRadius;
+    const cutoffDisc = alongRay.mul(alongRay).sub(centerDistSq.sub(cutoff.mul(cutoff)));
+    const cutoffSpan = sqrt(max(cutoffDisc, 0));
+    const nearT = max(alongRay.negate().sub(cutoffSpan), 0);
+    // 区間の奥は、大気の裾・不透明面・地表のうち最も手前で止まる。**地表を解析で解くのは、
+    // 地平線すれすれの視線で深度の量子化が縁を刻むため。**
+    const surface = slot.surfaceRadius;
+    const surfaceDisc = alongRay.mul(alongRay).sub(centerDistSq.sub(surface.mul(surface)));
+    const surfaceT = alongRay.negate().sub(sqrt(max(surfaceDisc, 0)));
+    const opaqueOrSurface = select(
+      and(greaterThan(surfaceDisc, 0), greaterThan(surfaceT, nearT)), min(surfaceT, opaqueDist), opaqueDist,
+    );
+    // **区間は空でも順序を保つ** — 奥が手前より手前へ回ると、この先の clamp が下限と上限を
+    // 逆に受け、値が未定義になる。大気に掛からない視線はここで長さ 0 の区間になる。
+    const farT = max(min(alongRay.negate().add(cutoffSpan), opaqueOrSurface), nearT);
+
+    // 区間の両端と、視線が天体へ最も近づく半径。**半径には 1m の床を張る** — 空きスロットは
+    // 半径 0 なので、床が無いと動径方向の単位ベクトルが 0/0 になる。
+    const floorRadius = max(surface, 1);
+    const nearPoint = rayOrigin.add(rayDir.mul(nearT));
+    const farPoint = rayOrigin.add(rayDir.mul(farT));
+    const nearOffset = sub(nearPoint, slot.center);
+    const farOffset = sub(farPoint, slot.center);
+    const nearRadius = max(length(nearOffset), floorRadius);
+    const farRadius = max(length(farOffset), floorRadius);
+    const nearMu = dot(nearOffset.div(nearRadius), rayDir);
+    const farMu = dot(farOffset.div(farRadius), rayDir);
+    const perigeeRadius = max(sqrt(max(centerDistSq.sub(alongRay.mul(alongRay)), 0)), floorRadius);
+    // 最接近点を区間の内側に含む視線だけ、降る脚と昇る脚に分かれる。
+    const straddles = and(lessThan(nearMu, 0), greaterThan(farMu, 0));
+
+    const segment = (scaleHeight: FloatUniform): FloatNode => {
+      const ends = signedDepth(nearRadius, nearMu, surface, scaleHeight)
+        .sub(signedDepth(farRadius, farMu, surface, scaleHeight));
+      const turn = select(straddles, outwardDepth(perigeeRadius, float(0), surface, scaleHeight).mul(2), float(0));
+      return max(ends.add(turn), 0);
+    };
+    const opticalDepth: Vec3Node = slot.rayleigh.mul(segment(slot.rayleighScaleHeight))
+      .add(vec3(slot.mie.mul(segment(slot.mieScaleHeight))));
+
+    // 視線が大気に掛からないフレーム・画素では、素通しへ倒す。
+    const lit = and(greaterThan(surface, 0), and(greaterThan(cutoffDisc, 0), greaterThan(farT, nearT)));
+    const transmittance: Vec3Node = select(lit, exp(opticalDepth.negate()), vec3(1, 1, 1));
+    const scattered: Vec3Node = vec3(1, 1, 1).sub(transmittance);
+    return {
+      transmittance,
+      inscatter: scattered.mul(this.sunlight(slot, rayOrigin, rayDir, nearT, farT, alongRay)),
+    };
+  }
+
+  // 区間のうち最も濃い点へ届く太陽光の輝度。太陽光自身が通ってきた大気の透過率と、他の天体に
+  // よる遮蔽の両方が掛かる。**遮蔽はこの点で評価し直す** — G バッファの画素位置とは別の点
+  // なので、遮蔽パスが書いた 1 枚は引けない。日食のとき月の影が大気にも落ちる。
+  private sunlight(
+    slot: BodySlot, rayOrigin: Vec3Node, rayDir: Vec3Node,
+    nearT: FloatNode, farT: FloatNode, alongRay: FloatNode,
+  ): Vec3Node {
+    const densestT = clamp(alongRay.negate(), nearT, farT);
+    const densest = rayOrigin.add(rayDir.mul(densestT));
+    const offset = sub(densest, slot.center);
+    const radius = max(length(offset), max(slot.surfaceRadius, 1));
+    const toSun = sub(this.sunLight.position, densest);
+    const sunDir = normalize(toSun);
+    const sunMu = dot(offset.div(radius), sunDir);
+    const sunDepth: Vec3Node = slot.rayleigh
+      .mul(depthToSpace(radius, sunMu, slot.surfaceRadius, slot.rayleighScaleHeight))
+      .add(vec3(slot.mie.mul(depthToSpace(radius, sunMu, slot.surfaceRadius, slot.mieScaleHeight))));
+    // 目盛りは拡散面と揃える(放射照度を π で割る)。散乱した割合をアルベドと見なすので、
+    // 太陽へ正対した濃い大気は、同じ場所のアルベド 1 の拡散面と同じ表示値になる。
+    const irradiance = this.sunLight.intensity.div(max(dot(toSun, toSun), 1));
+    const occlusion = this.sunOcclusion.transmittance(densest, { rings: false, meshNormal: null });
+    return exp(sunDepth.negate()).mul(irradiance.div(PI)).mul(occlusion).mul(this.sunLight.color);
   }
 
   // 下地と合成する前の、大気が重ねる内部散乱だけ。「大気」デバッグ表示の合成パスがこのノードを
@@ -144,10 +236,20 @@ export class AtmospherePass {
   // 残っておらず、**それを残すためだけの描画は足さない**(lens-pass.ts の redistributedLight と同じ)。
   scatteredLight(): Vec3Node { return this.scattered; }
 
-  // 大気を持つ天体の中心(描画座標)と地表半径。radius に 0 を渡すと大気を描かない。
-  setBody(center: THREE.Vector3, surfaceRadius: number): void {
-    this.bodyCenter.value.copy(center);
-    this.surfaceRadius.value = surfaceRadius;
+  // このフレームで大気を描く天体を、視点に近い順に渡す。MAX_ATMOSPHERE_BODIES を超えた分と、
+  // 空きスロットは描かれない。
+  setBodies(bodies: readonly AtmosphereBody[]): void {
+    for (const [index, slot] of this.slots.entries()) {
+      const body = bodies[index];
+      slot.surfaceRadius.value = body === undefined ? 0 : body.surfaceRadius;
+      if (body === undefined) continue;
+      slot.center.value.copy(body.center);
+      slot.cutoffRadius.value = body.surfaceRadius + cutoffAltitude(body.optics, body.surfaceRadius);
+      slot.rayleigh.value.copy(body.optics.rayleigh);
+      slot.rayleighScaleHeight.value = body.optics.rayleighScaleHeight;
+      slot.mie.value = body.optics.mie;
+      slot.mieScaleHeight.value = body.optics.mieScaleHeight;
+    }
   }
 
   // 不透明の絵が入った共有ターゲットへ大気を重ねる。
