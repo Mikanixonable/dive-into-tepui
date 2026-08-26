@@ -39,6 +39,9 @@ export class Exposure {
   // トーンマッパへ渡す露出係数。物理量として描くものはこれをそのまま受ける。
   get factor(): FloatNode { return this.factorUniform; }
 
+  // 露出係数の数値。表示値の見積り(光源リストの打ち切りなど)を CPU 側で行うのに使う。
+  get factorValue(): number { return this.factorUniform.value; }
+
   // 固定した明るさで描くものが自分の色へ掛ける倍率。順応ぶんをちょうど打ち消すので、
   // どこから見ても同じ明るさで写る。
   get fixedBrightnessScale(): number { return 1 / this.adaptation; }

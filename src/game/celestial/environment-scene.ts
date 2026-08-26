@@ -21,10 +21,10 @@ import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
-import {
-  SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight, ambientIrradianceAtDistance,
-} from '../../render/pipeline/sun-light';
+import { SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
+import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
+import { selectPlanetLights } from './planet-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
@@ -129,6 +129,7 @@ export class EnvironmentScene {
     private readonly sunLight: SunLight,
     private readonly exposure: Exposure,
     private readonly sunOcclusion: SunOcclusion,
+    private readonly planetLight: PlanetLightSource,
     private readonly atmosphere: AtmospherePass,
     earthSpinPhase0: number,
   ) {
@@ -228,10 +229,8 @@ export class EnvironmentScene {
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
     this.exposure.setReference(reference, sunPos);
-    this.sunLight.set(
-      sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY,
-      this.ambientIrradianceAt(reference, floatingOrigin, displayTime),
-    );
+    this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY);
+    this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, graphics);
 
@@ -262,11 +261,17 @@ export class EnvironmentScene {
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
   }
 
-  // 基準点へ届く環境光の放射照度。環境光は地球照の代用なので、地球が無いレジストリでは 0。
-  private ambientIrradianceAt(reference: THREE.Vector3, fo: FloatingOrigin, displayTime: number): number {
-    if (!('earth' in this.ephemeris.registry)) return 0;
-    const earth = fo.RtoThreeV3(this.ephemeris.positionOf('earth', displayTime));
-    return ambientIrradianceAtDistance(reference.distanceTo(earth));
+  // 天体照の光源を選び、描画座標へ移してライティング側のスロットへ渡す。基準点は露出と
+  // 同じ注視点で、選定は露出係数を要るので exposure.setReference のあとに呼ぶ。
+  private syncPlanetLights(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem): void {
+    const lights = selectPlanetLights(
+      this.ephemeris, displayTime, cameraSystem.activeViewpoint.lookTarget, this.exposure.factorValue,
+    );
+    this.planetLight.set(lights.map((light) => ({
+      center: fo.RtoThreeV3(light.body.state.r),
+      radius: light.body.radius,
+      radiance: light.radiance,
+    })));
   }
 
   // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。まず最大遮蔽率が閾値を切る天体を落とし、
