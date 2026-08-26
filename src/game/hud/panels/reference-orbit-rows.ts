@@ -5,7 +5,7 @@ import { Button, SegmentedControl, ToggleSwitch, ValueInput } from '../widgets';
 import {
   DIRECTION_ITEMS, OPACITY_MAPPING, PERIGEE_ALTITUDE_MAPPING, RAAN_MAPPING,
   REPEAT_DAYS_MAPPING, REVS_PER_REPEAT_MAPPING,
-  buildColorField, buildValueField, hexColorString, syncValueField, type ValueField,
+  buildColorField, buildValueField, hexColorString, syncSunSyncValidRange, syncValueField, type ValueField,
 } from './guide-value-field';
 import type {
   CriticalInclinationSettings, DawnDuskSettings, DirectionMarkerMode, LocalTime, SunSyncSettings,
@@ -137,6 +137,7 @@ export function syncSunSyncRow(row: RepeatGroundTrackRow, s: SunSyncSettings): v
   syncCommon(row, s);
   syncValueField(row.repeatDaysField, REPEAT_DAYS_MAPPING, s.repeatDays);
   syncValueField(row.revsPerRepeatField, REVS_PER_REPEAT_MAPPING, s.revsPerRepeat);
+  syncSunSyncValidRange(row.repeatDaysField, row.revsPerRepeatField, s.repeatDays, s.revsPerRepeat);
 }
 
 // buildDawnDuskRow が作った行を、現在の設定値へ合わせる。

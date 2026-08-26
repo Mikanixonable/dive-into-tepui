@@ -44,4 +44,19 @@ export class Slider {
     this.element.style.background =
       `linear-gradient(to right, var(--fill-4) 0%, var(--fill-4) ${r}%, var(--fill-2) ${r}%, var(--fill-2) 100%)`;
   }
+
+  // [minRatio, maxRatio](0..1)の区間だけ通常色にし、区間外は減光したトラック背景を描く。
+  // 全域が有効/無効なら単色トラックへ戻す。
+  setValidRange(minRatio: number, maxRatio: number): void {
+    const lo = Math.max(0, minRatio) * 100;
+    const hi = Math.min(1, maxRatio) * 100;
+    if (lo <= 0 && hi >= 100) {
+      this.element.style.background = '';
+    } else if (lo >= hi) {
+      this.element.style.background = 'var(--fill-2)';
+    } else {
+      this.element.style.background =
+        `linear-gradient(to right, var(--fill-2) 0%, var(--fill-2) ${lo}%, var(--fill-4) ${lo}%, var(--fill-4) ${hi}%, var(--fill-2) ${hi}%, var(--fill-2) 100%)`;
+    }
+  }
 }
