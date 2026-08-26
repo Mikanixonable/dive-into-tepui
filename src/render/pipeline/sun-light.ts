@@ -34,12 +34,19 @@ export const SUN_COLOR = new THREE.Color(0xfff4e0);
 export const AMBIENT_COLOR = new THREE.Color(0x8899bb);
 
 // 環境光の放射照度。地球照(地球が反射して物体を照らす光)の代用で置いた暫定値で、方向を
-// 持たないので遮蔽も受けない。**低軌道での明るさに合わせた手書きの定数**なので、
-// AMBIENT_REFERENCE_DISTANCE から離れるぶんの減衰は set() を呼ぶ側が掛ける。
+// 持たないので遮蔽も受けない。**低軌道での明るさに合わせた手書きの定数**で、そこから離れる
+// ぶんの減衰は ambientIrradianceAtDistance() が掛ける。
 export const AMBIENT_IRRADIANCE = SUN_IRRADIANCE_1AU * 0.093;
 
 // AMBIENT_IRRADIANCE がそのままの強さで成り立つ地心距離 [m]。低軌道(高度 420km)。
-export const AMBIENT_REFERENCE_DISTANCE = R_EARTH + 420e3;
+const AMBIENT_REFERENCE_DISTANCE = R_EARTH + 420e3;
+
+// 地心距離 distance [m] の点が受ける環境光の放射照度。地球が反射した光なので距離の二乗で薄れる。
+// **地表より内側では減衰を止める** — 地球は点ではなく半径 R_EARTH の球で、届く光は表面へ
+// 近づくほど半球ぶんへ漸近して頭打ちになる(点として扱うと地心距離 0 で発散する)。
+export function ambientIrradianceAtDistance(distance: number): number {
+  return AMBIENT_IRRADIANCE * (AMBIENT_REFERENCE_DISTANCE / Math.max(distance, R_EARTH)) ** 2;
+}
 
 // 本影の中にも届く光の量(星明かり・地球照ぶん)を、恒星と同じ向きから来る一定量で代用した
 // もの。恒星の放射照度に対する割合で、ライティングパスが直射ぶんと分け合う。
