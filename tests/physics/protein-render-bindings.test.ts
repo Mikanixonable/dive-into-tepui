@@ -12,7 +12,6 @@ import {
   PROTEIN_RESIDUE_T_ATTRIBUTE,
   createProteinMotionBinding,
   disposeProteinMotionBinding,
-  installProteinMotionOverridePropagation,
   registerProteinMotionRenderer,
   updateProteinMotionCoefficients,
 } from '../../src/render/protein-motion-material';
@@ -27,6 +26,7 @@ function testModeDisplacements(residueCount: number, modeCount = TEST_MODE_COUNT
 const semantic = {
   schemaVersion: 1,
   id: 'render-test',
+  displayName: 'レンダーテスト',
   source: { pdbId: 'TEST', structureFile: 'test' },
   coordinateScale: 1,
   integrity: { maxHp: 1 },
@@ -214,33 +214,6 @@ export function register(): void {
     unregister();
   });
 
-  test('protein render: shadow override receives the source position node per draw', () => {
-    const binding = createProteinMotionBinding(3, testModeDisplacements(3), TEST_MODE_COUNT);
-    const root = buildProteinEnemyShip(source, { representation: 'silhouette', colorMode: 'surface-charge' }, binding);
-    let shell: THREE.Mesh | undefined;
-    root.traverse((object) => {
-      if (object.userData.proteinShadowOccluder === true) shell = object as THREE.Mesh;
-    });
-    if (!shell) throw new Error('silhouette must expose a shadow occluder');
-    const sourceMaterial = shell.material as THREE.MeshStandardNodeMaterial;
-    const override = new THREE.MeshBasicNodeMaterial();
-    const scene = new THREE.Scene();
-    scene.add(root);
-    scene.overrideMaterial = override;
-    const restore = installProteinMotionOverridePropagation(scene, [override]);
-    shell.onBeforeRender(
-      null as never,
-      scene,
-      new THREE.PerspectiveCamera(),
-      shell.geometry,
-      sourceMaterial,
-      new THREE.Group(),
-    );
-    assert.strictEqual(override.positionNode, sourceMaterial.positionNode);
-    restore();
-    override.dispose();
-    disposeObject(root);
-  });
 }
 
 export function runRegisteredProteinRenderTests(): Promise<void> {

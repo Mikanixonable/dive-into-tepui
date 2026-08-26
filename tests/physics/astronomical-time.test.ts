@@ -3,7 +3,7 @@ import {
   J2000_JULIAN_DATE,
   calendarDateToJulianDate,
   createCalendarDate,
-  ephemerisSecondsToCalendarDate,
+  ephemerisSecondsToJulianDate,
   isGregorianLeapYear,
   j2000EphemerisSeconds,
   julianDateToCalendarDate,
@@ -36,7 +36,7 @@ export function register(): void {
     const roundTrip = julianDateToCalendarDate(calendarDateToJulianDate(date));
     assert.deepEqual({ ...roundTrip, second: 0 }, { ...date, second: 0 });
     assert.ok(Math.abs(roundTrip.second - date.second) < 1e-3, `fractional-second round-trip error: ${roundTrip.second - date.second}`);
-    const fromSeconds = ephemerisSecondsToCalendarDate(j2000EphemerisSeconds(date), 'TDB');
+    const fromSeconds = julianDateToCalendarDate(ephemerisSecondsToJulianDate(j2000EphemerisSeconds(date), 'TDB'));
     assert.deepEqual({ ...fromSeconds, second: 0 }, { ...date, second: 0 });
     assert.ok(Math.abs(fromSeconds.second - date.second) < 1e-3, `ET fractional-second round-trip error: ${fromSeconds.second - date.second}`);
   });

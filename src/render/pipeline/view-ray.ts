@@ -31,8 +31,9 @@ export function viewPositionAt(
 
 // その画素を通る視線。透視投影では起点がカメラ原点から視線に沿ってずれるだけで、直線そのものは
 // 変わらない。向きを近平面と遠平面の 2 点から引くので、面が近平面に乗っていても退化しない。
-export function viewRayAt(projectionMatrixInverse: Mat4Uniform): ViewRay {
-  const nearPoint = getViewPosition(screenUV, float(1), projectionMatrixInverse);
-  const farPoint = getViewPosition(screenUV, float(0), projectionMatrixInverse);
+// uv を渡せば隣接画素の視線も同じ式で引ける。
+export function viewRayAt(projectionMatrixInverse: Mat4Uniform, uv: Vec2Node = screenUV): ViewRay {
+  const nearPoint = getViewPosition(uv, float(1), projectionMatrixInverse);
+  const farPoint = getViewPosition(uv, float(0), projectionMatrixInverse);
   return { origin: nearPoint, direction: normalize(farPoint.sub(nearPoint)) };
 }
