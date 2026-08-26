@@ -23,7 +23,6 @@ import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
-import { AmbientSource } from './lighting/ambient-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
@@ -41,7 +40,7 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 // applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
 // 駆動する呼び出し側(描画テスト環境)は、この並びを操作の対象にする。
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'exposureCompensation', 'sunLightModel',
+  'lens', 'exposureCompensation', 'sunLightModel', 'planetLightModel',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 
@@ -118,10 +117,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
     this.sunSource = new SunSource(this._sunLight, this.occlusionPass, graphics.sunLightModel);
-    this._planetLight = new PlanetLightSource();
+    this._planetLight = new PlanetLightSource(graphics.planetLightModel);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
-      this.sunSource,
-      new AmbientSource(this._planetLight),
+      this.sunSource, ...this._planetLight.lightSources,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(
@@ -261,6 +259,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this._exposure.setCompensation(graphics.exposureCompensation);
     this.sunSource.setModel(graphics.sunLightModel);
+    this._planetLight.setModel(graphics.planetLightModel);
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
