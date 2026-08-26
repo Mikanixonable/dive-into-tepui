@@ -111,8 +111,7 @@ function startAnimationLoop(
 // 使えるべきなので、Game より先に main.ts が生成して所有し、Launcher には参照として渡す。
 // pauseMenu も同様に main.ts が所有し、開閉に応じた一時停止の反映
 // (launcher.current?.pause()/resume())も持ち主である main.ts がここで配線する。
-// pipeline はここで組む SettingsView の描画面(GraphicsPanel)がデバッグ表示の選択を書き込む先。
-function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting, pipeline: RenderPipeline): {
+function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting): {
   hud: Hud; audioEngine: AudioEngine; bgm: Bgm; worldSfx: WorldSfx; uiSfx: UiSfx;
   pauseMenu: PauseMenu; settingsView: SettingsView;
 } {
@@ -122,7 +121,7 @@ function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting, pi
   const worldSfx = new WorldSfx(audioEngine);
   const uiSfx = new UiSfx(audioEngine);
   const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager);
-  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm, graphics, pipeline, renderStyle);
+  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm, graphics);
   pauseMenu.setBgmVolume(bgm.getVolume());
   pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
   return { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView };
@@ -150,11 +149,12 @@ async function main() {
   const graphics = new GraphicsSettings();
   const renderStyle = new RenderStyleSetting();
   const gs = await initScene(graphics.current);
-  // 解像度倍率の押し出し先の登録は、設定を持っている側の配線。
-  graphics.bindResolutionTarget(gs);
   const gpu = new GpuTimings(gs.renderer);
   const pipeline = new RenderPipeline(gs.renderer, graphics.current, gpu);
-  const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, renderStyle, pipeline);
+  // 描画品質設定の押し出し先の登録は、設定を持っている側の配線。
+  graphics.bind(gs);
+  graphics.bind(pipeline);
+  const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
@@ -188,7 +188,10 @@ async function main() {
     saveBrowser.open();
   };
 
-  const perf = new PerfMeter(hud.layers.window, gs.renderer, sections, gpu, hud.overlayManager);
+  // pipeline は負荷確認ウィンドウのデバッグ表示の選択欄が書き込む先。
+  const perf = new PerfMeter(
+    hud.layers.window, gs.renderer, sections, gpu, hud.overlayManager, pipeline, renderStyle,
+  );
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   pauseMenu.onOpenPerfWindow = () => {
     pauseMenu.toggle(false);

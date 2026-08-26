@@ -6,6 +6,7 @@
 // 回転基底が進んだときは後者だけをやり直す(orbit-guide-lines.ts の RECOMPUTE_INTERVAL と
 // 同じ考え方)。
 import * as THREE from 'three/webgpu';
+import { CurveKnots } from '../../render/curve';
 import { Ephemeris } from '../../physics/ephemeris';
 import { Vec3 } from '../../physics/vec3';
 import { rotatingFrame } from '../../physics/orbit-guide';
@@ -25,7 +26,8 @@ import * as C from '../const';
 // 無次元値なので、断面4つ(地球-月・太陽-地球 × xy/xz)すべてで共通に使える。
 const HALF = 1.6;
 // 片側の格子分割数。臨界ヤコビ定数付近でネックが偽って閉じない(=解像度不足で連結成分の
-// 判定を誤る)のを避けるため、見た目と負荷の兼ね合いでやや高めの300を採る。
+// 判定を誤る)のを避けるため、負荷との兼ね合いでやや高めの300を採る。曲線の滑らかさは
+// 節点間のエルミート補間と Curve の適応分割が決めるので、この値には依らない。
 const RESOLUTION = 300;
 // 点列を引き直す表示時刻の間隔 [s]。orbit-guide-lines.ts と同じ値・同じ理由
 // (回転系は静止しているので、時刻の効果は基底の回転だけに現れる)。
@@ -34,11 +36,6 @@ const RECOMPUTE_INTERVAL = 300;
 // zeroVelocityCurves が実際に一周した成分は始点と終点が完全に一致する(浮動小数の丸め
 // ぶんだけ僅かに異なりうる)ので、格子の1辺よりずっと小さい値で十分。
 const CLOSE_EPSILON = 1e-9;
-// 1本の折れ線の頂点予算。実際の連結成分の長さは形に依存するため上限を大きめに取る
-// (片側300分割の格子で1成分が総辺数の大半を占めることは実用上ほぼ無いが、保険として
-// 格子1辺あたり数点分の余裕を見込む)。
-const VERTEX_BUDGET = 2000;
-
 type Point2 = readonly [number, number];
 
 // 断面の定義。系と面の組は4つで固定。
@@ -64,12 +61,33 @@ interface ShapeEntry {
   readonly closed: boolean;
 }
 
-// ECI 絶対座標 [m] の点列を1本の折れ線として描く(orbit-guide-lines.ts の GuideCurve と
-// 同じ流儀の小さなラッパー。読み取り専用ファイルにある実装をここで複製している)。
-
 interface LineEntry {
   readonly shape: ShapeEntry;
   readonly curve: GuideCurve;
+}
+
+// 等高線の点列を、origin からの相対位置を持つ節点列に組む。等高線は滑らかな関数 2Ω の等位
+// 集合なので、隣接点の中心差分を接線にすれば節点の間をエルミートで埋められる。closed なら
+// 末尾に始点を足して輪を閉じ、端の接線も輪を跨いで取る。
+function contourKnots(points: readonly Vec3[], closed: boolean, origin: Vec3): CurveKnots {
+  const ring = closed ? [...points, points[0]!] : points;
+  const last = ring.length - 1;
+  const ts: number[] = [];
+  const positions: number[] = [];
+  const tangents: number[] = [];
+  for (let i = 0; i <= last; i++) {
+    const p = ring[i]!;
+    ts.push(i / last);
+    positions.push(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+    // 端では輪を跨いで隣を取る。閉じていない線の端だけが片側差分(1区間ぶんの幅)になる。
+    const prev = i === 0 ? (closed ? last - 1 : 0) : i - 1;
+    const next = i === last ? (closed ? 1 : last) : i + 1;
+    const width = ((i === 0 || i === last) && !closed ? 1 : 2) / last;
+    const a = ring[prev]!;
+    const b = ring[next]!;
+    tangents.push((b.x - a.x) / width, (b.y - a.y) / width, (b.z - a.z) / width);
+  }
+  return { ts, positions, tangents };
 }
 
 // multiple の設定からヤコビ定数の列を組む。1本なら jacobi 単体、多数なら
@@ -157,8 +175,7 @@ export class ZeroVelocityLines {
           const dx = first[0] - last[0];
           const dy = first[1] - last[1];
           const closed = dx * dx + dy * dy < CLOSE_EPSILON * CLOSE_EPSILON;
-          // 閉じた輪は最後の点(始点と重複)を落とす。閉じ方はサンプラ側(closed=true)が
-          // 末尾→先頭を結んで担う。
+          // 閉じた輪は最後の点(始点と重複)を落とし、閉じているという事実だけを持たせる。
           const points2d = closed ? points.slice(0, -1) : points;
           shapes.push({ system: section.system, plane: section.plane, points2d, closed });
         }
@@ -175,8 +192,6 @@ export class ZeroVelocityLines {
     this.lines = this.shapes.map((shape) => {
       const curve = new GuideCurve(
         { color: C.COLOR_ZERO_VELOCITY_LINE, opacity: settings.opacity, renderOrder: LINE_RENDER_ORDER.reference },
-        VERTEX_BUDGET,
-        shape.closed,
       );
       this.scene.add(curve.line);
       return { shape, curve };
@@ -197,7 +212,7 @@ export class ZeroVelocityLines {
         frames.set(system, frame);
       }
       if (!frame) {
-        entry.curve.setPoints([]);
+        entry.curve.clear();
         continue;
       }
       const { origin, xHat, yHat, zHat, unit } = frame;
@@ -209,7 +224,9 @@ export class ZeroVelocityLines {
           z: origin.z + (u * xHat.z + v * second.z) * unit,
         } as Vec3;
       });
-      entry.curve.setPoints(points3d);
+      // 頂点を相対化する基準点は曲線上の1点でよいので、成分の先頭を採る。
+      const base = points3d[0]!;
+      entry.curve.setHermite(base, contourKnots(points3d, entry.shape.closed, base));
     }
   }
 

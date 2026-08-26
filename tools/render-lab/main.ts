@@ -1,51 +1,190 @@
-// 描画テスト環境の画面。ケースを選ぶと、ライトプリパスとフォワードの 2 経路を並べて描く。
+// 描画テスト環境の画面。ケースと、画面へ出す中間バッファを選ぶと、その絵をゲーム本体と同じ
+// 描画経路で描く。
+import { startProteinAssetPreload } from '../../src/game/protein/protein-asset-loader';
+import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
+import { PIPELINE_GRAPHICS_KEYS } from '../../src/render/pipeline/render-pipeline';
+import { GRAPHICS_OPTIONS } from '../../src/render/graphics-settings';
 import { CASE_NAMES, type CaseName } from './cases';
-import { LabView, type LabMeasurement, type LabViews, type Shot, shootCase } from './lab';
+import { LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM, type LabMeasurement, type LabViewAngles } from './lab';
 
 declare global {
   interface Window {
     // 撮影の駆動(tools/render-lab-shot.mjs)が CDP から読む入口。
     renderLab?: {
       cases: readonly CaseName[];
-      shoot: (name: CaseName) => Promise<Shot>;
-      measure: (name: CaseName) => Promise<{ readonly prepass: LabMeasurement; readonly forward: LabMeasurement }>;
+      shoot: (name: CaseName) => Promise<string>;
+      capture: () => Promise<string>;
+      setView: (changes: Partial<LabViewAngles>) => void;
+      setTarget: (target: DebugTargetId) => void;
+      measure: (name: CaseName) => Promise<LabMeasurement>;
     };
   }
 }
 
-function canvasById(id: string): HTMLCanvasElement {
-  return document.getElementById(id) as HTMLCanvasElement;
+// row の中に選択肢ぶんのボタンを並べ、押されたら select を呼ぶ。返り値で選択の見た目を更新する。
+function buildButtonRow<T extends string>(
+  rowId: string, entries: readonly (readonly [T, string])[], select: (value: T) => void,
+): (active: T) => void {
+  const row = document.getElementById(rowId)!;
+  const buttons = new Map<T, HTMLButtonElement>();
+  for (const [value, label] of entries) {
+    const button = document.createElement('button');
+    button.textContent = label;
+    button.addEventListener('click', () => select(value));
+    row.appendChild(button);
+    buttons.set(value, button);
+  }
+  return (active) => {
+    for (const [value, button] of buttons) button.classList.toggle('active', value === active);
+  };
+}
+
+// row の中に、見出しを添えた排他選択を1組足す。返り値で選択の見た目を更新する。
+function buildChoiceField<T>(
+  rowId: string, label: string, entries: readonly (readonly [T, string])[], select: (value: T) => void,
+): (active: T) => void {
+  const field = document.createElement('div');
+  field.className = 'field';
+  const name = document.createElement('span');
+  name.textContent = label;
+  field.appendChild(name);
+  // 選択肢は entries の順に並べる。値そのものを鍵に持ち、点灯はここから引き直す。
+  const buttons = new Map<T, HTMLButtonElement>();
+  for (const [value, text] of entries) {
+    const button = document.createElement('button');
+    button.textContent = text;
+    button.addEventListener('click', () => select(value));
+    field.appendChild(button);
+    buttons.set(value, button);
+  }
+  document.getElementById(rowId)!.appendChild(field);
+  return (active) => {
+    for (const [value, button] of buttons) button.classList.toggle('active', value === active);
+  };
+}
+
+// row の中に、押すたびに裏返るボタンを1つ足す。ボタンの文字がそのまま見出しになる。
+function buildToggleField(rowId: string, label: string, select: (on: boolean) => void): (on: boolean) => void {
+  const button = document.createElement('button');
+  button.textContent = label;
+  let on = false;
+  button.addEventListener('click', () => select(!on));
+  document.getElementById(rowId)!.appendChild(button);
+  return (next) => {
+    on = next;
+    button.classList.toggle('active', on);
+  };
+}
+
+// row の中にスライダーを1本足す。動かすと change を呼び、そのあと format() が返す文字を隣へ出す
+// (呼ぶ順は逆にできない — 値の正本は change の書き込み先にあるため)。返り値でつまみを合わせる。
+function buildSlider(
+  rowId: string, label: string, min: number, max: number, step: number,
+  format: () => string, change: (value: number) => void,
+): (value: number) => void {
+  const row = document.getElementById(rowId)!;
+  const field = document.createElement('label');
+  field.className = 'field';
+  const name = document.createElement('span');
+  name.textContent = label;
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.min = String(min);
+  input.max = String(max);
+  input.step = String(step);
+  const readout = document.createElement('output');
+  input.addEventListener('input', () => {
+    change(Number(input.value));
+    readout.textContent = format();
+  });
+  field.append(name, input, readout);
+  row.appendChild(field);
+  return (value) => {
+    input.value = String(value);
+    readout.textContent = format();
+  };
 }
 
 async function init(): Promise<void> {
-  const views: LabViews = {
-    prepass: await LabView.create(canvasById('prepass'), 'prepass'),
-    forward: await LabView.create(canvasById('forward'), 'forward'),
+  // タンパク質のケースは fetch で来る構造・motion を同期的に読むので、器を組む前に待つ。
+  await startProteinAssetPreload();
+  const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement);
+
+  // つまみの位置は表示だけを担い、値の正本は LabView が持つ。**つまみの刻みへ丸めた値を
+  // 書き戻さない** — ケース既定の向きが刻みに乗っていないので、丸めると絵が変わる。
+  const degrees = (value: number) => `${value.toFixed(1)}°`;
+  const setSunAzimuth = buildSlider('view-angles', '恒星 方位', -180, 180, 0.5,
+    () => degrees(view.viewAngles.sunAzimuthDeg), (v) => view.setViewAngles({ sunAzimuthDeg: v }));
+  const setSunElevation = buildSlider('view-angles', '仰角', -90, 90, 0.5,
+    () => degrees(view.viewAngles.sunElevationDeg), (v) => view.setViewAngles({ sunElevationDeg: v }));
+  const setCameraAzimuth = buildSlider('view-angles', 'カメラ 方位', -180, 180, 0.5,
+    () => degrees(view.viewAngles.cameraAzimuthDeg), (v) => view.setViewAngles({ cameraAzimuthDeg: v }));
+  const setCameraElevation = buildSlider('view-angles', '仰角',
+    -MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ELEVATION_DEG, 0.5,
+    () => degrees(view.viewAngles.cameraElevationDeg), (v) => view.setViewAngles({ cameraElevationDeg: v }));
+  const setCameraZoom = buildSlider('view-angles', '距離', -MAX_CAMERA_ZOOM, MAX_CAMERA_ZOOM, 0.02,
+    () => `${view.cameraDistance.toExponential(2)} m`, (v) => view.setViewAngles({ cameraZoom: v }));
+
+  const syncAngles = (): void => {
+    const current = view.viewAngles;
+    setSunAzimuth(current.sunAzimuthDeg);
+    setSunElevation(current.sunElevationDeg);
+    setCameraAzimuth(current.cameraAzimuthDeg);
+    setCameraElevation(current.cameraElevationDeg);
+    setCameraZoom(current.cameraZoom);
   };
 
-  const row = document.getElementById('cases')!;
-  const buttons = new Map<CaseName, HTMLButtonElement>();
-  const select = (name: CaseName) => {
-    for (const [key, button] of buttons) button.classList.toggle('active', key === name);
-    views.prepass.show(name);
-    views.forward.show(name);
+  const caseEntries = CASE_NAMES.map((name) => [name, name] as const);
+  const markCase = buildButtonRow<CaseName>('cases', caseEntries, (name) => {
+    markCase(name);
+    view.show(name);
+    syncAngles();
+  });
+  const markTarget = buildButtonRow<DebugTargetId>('targets', DEBUG_TARGETS, (target) => {
+    markTarget(target);
+    view.showDebugTarget(target);
+  });
+
+  // 描画品質設定は、パイプラインが読む項目だけを設定の表から起こす。点灯の正本は LabView 側に
+  // あるので、どの操作のあとも全項目を引き直す。
+  const graphicsMarks: (() => void)[] = [];
+  // 全項目の点灯を現在値へ合わせ直す。
+  const syncGraphics = (): void => {
+    for (const mark of graphicsMarks) mark();
   };
-  for (const name of CASE_NAMES) {
-    const button = document.createElement('button');
-    button.textContent = name;
-    button.addEventListener('click', () => select(name));
-    row.appendChild(button);
-    buttons.set(name, button);
+  for (const key of PIPELINE_GRAPHICS_KEYS) {
+    const option = GRAPHICS_OPTIONS[key];
+    if (option.kind === 'toggle') {
+      const mark = buildToggleField('graphics', option.label, (on) => {
+        view.setGraphicsOption(key, on);
+        syncGraphics();
+      });
+      graphicsMarks.push(() => mark(view.graphics[key] === true));
+      continue;
+    }
+    const mark = buildChoiceField<number>('graphics', option.label, option.items, (value) => {
+      view.setGraphicsOption(key, value);
+      syncGraphics();
+    });
+    graphicsMarks.push(() => {
+      const value = view.graphics[key];
+      if (typeof value === 'number') mark(value);
+    });
   }
-  select(CASE_NAMES[0]!);
+  syncGraphics();
+
+  markCase(CASE_NAMES[0]!);
+  markTarget('off');
+  view.show(CASE_NAMES[0]!);
+  syncAngles();
 
   window.renderLab = {
     cases: CASE_NAMES,
-    shoot: (name) => shootCase(views, name),
-    measure: async (name) => ({
-      prepass: await views.prepass.measure(name),
-      forward: await views.forward.measure(name),
-    }),
+    shoot: async (name) => { const png = await view.shoot(name); syncAngles(); return png; },
+    capture: () => view.capture(),
+    setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
+    setTarget: (target) => { markTarget(target); view.showDebugTarget(target); },
+    measure: (name) => view.measure(name),
   };
 }
 
