@@ -530,7 +530,7 @@ function marchSlab(): LabCase {
   });
   const analytic = exp(thickness.mul(-SLAB_EXTINCTION));
   const even = rayMarch(SLAB_STEPS, (f) => thickness.mul(f), medium).transmittance.x;
-  const bunched = rayMarch(SLAB_STEPS, (f) => thickness.mul(f * f), medium).transmittance.x;
+  const bunched = rayMarch(SLAB_STEPS, (f) => thickness.mul(f.mul(f)), medium).transmittance.x;
   const error = max(even.sub(analytic).abs(), bunched.sub(analytic).abs()).mul(SLAB_ERROR_GAIN);
   const band = uv().y.mul(4).floor();
   const value = select(

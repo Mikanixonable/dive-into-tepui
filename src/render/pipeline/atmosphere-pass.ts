@@ -14,7 +14,7 @@ import {
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import { type AtmosphereOptics, cutoffAltitude } from '../atmosphere-params';
-import { rayMarch, type MediumSample } from '../ray-march';
+import { rayMarch, screenJitter, type MediumSample } from '../ray-march';
 import type { GBufferPass } from './gbuffer';
 import type { SunOcclusion } from './sun-occlusion';
 import type { SunLight } from './sun-light';
@@ -305,18 +305,19 @@ export class AtmospherePass {
     // 分割の位置は uniform 由来の値なのでグラフを組む時点では決まらず、段ごとに select で選ぶ。
     const span = max(segment.far.sub(segment.near), 1);
     const split = clamp(segment.densest.sub(segment.near).div(span), 0, 1);
-    const distanceAt = (fraction: number): FloatNode => {
+    const distanceAt = (fraction: FloatNode): FloatNode => {
       // **どちらの枝も 0 除算を踏まないよう分母に床を張る** — select は選ばれない枝も評価する。
-      const nearFraction = clamp(float(fraction).div(max(split, 1e-6)), 0, 1);
-      const farFraction = clamp(float(fraction).sub(split).div(max(float(1).sub(split), 1e-6)), 0, 1);
+      const nearFraction = clamp(fraction.div(max(split, 1e-6)), 0, 1);
+      const farFraction = clamp(fraction.sub(split).div(max(float(1).sub(split), 1e-6)), 0, 1);
       const nearRest = float(1).sub(nearFraction);
       const nearSide = segment.near
         .add(segment.densest.sub(segment.near).mul(float(1).sub(nearRest.mul(nearRest))));
       const farSide = segment.densest.add(segment.far.sub(segment.densest).mul(farFraction.mul(farFraction)));
-      return select(lessThan(float(fraction), split), nearSide, farSide);
+      return select(lessThan(fraction, split), nearSide, farSide);
     };
     const march = rayMarch(
       steps, distanceAt, (distance) => this.mediumAt(slot, rayOrigin.add(rayDir.mul(distance)), rayDir),
+      screenJitter(),
     );
     return { transmittance: march.transmittance, inscatter: march.radiance };
   }
