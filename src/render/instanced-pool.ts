@@ -25,13 +25,21 @@ export class InstancedPool {
   private readonly pending = new THREE.Box3();
   private readonly extent: SunShadowExtent = { worldBounds: new THREE.Box3() };
   // 個体ごとの熱の状態(温度・局所的な過熱・輻射率)。持たないプールでは null。
-  private thermal: THREE.InstancedBufferAttribute | null = null;
+  private readonly thermal: THREE.InstancedBufferAttribute | null = null;
   // 今フレームに積んだ熱の状態が前フレームと違ったか。同じなら転送し直さない。
   private thermalChanged = false;
   private readonly scratchCenter = new THREE.Vector3();
   private readonly scratchCorner = new THREE.Vector3();
 
-  constructor(scene: THREE.Scene, geometry: THREE.BufferGeometry, material: THREE.Material, capacity: number, perInstanceColor = false, renderOrder = 0, perInstanceThermal = false) {
+  constructor(
+    scene: THREE.Scene,
+    geometry: THREE.BufferGeometry,
+    material: THREE.Material,
+    capacity: number,
+    perInstanceColor = false,
+    renderOrder = 0,
+    perInstanceThermal = false,
+  ) {
     this.capacity = capacity;
     this.mesh = new THREE.InstancedMesh(geometry, material, this.capacity);
     this.mesh.renderOrder = renderOrder;

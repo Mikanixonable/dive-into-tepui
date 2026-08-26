@@ -87,9 +87,7 @@ export class MaterialPass {
 
   get texture(): THREE.Texture { return this.target.texture; }
 
-  // 標準マテリアルへ上のライティングモデルを据える。値だけの MeshStandardMaterial は同じ見た目の
-  // 値を持つ MeshStandardNodeMaterial へ置き換え、アルベドをノードで組んである
-  // MeshStandardNodeMaterial はそのまま使う。mesh.material が既に済みならなにもしない。
+  // 標準マテリアルへ上のライティングモデルを据える。mesh.material が既に済みならなにもしない。
   // 呼び出し元がメッシュを組み立てる時点では、ライティングモデルが読む2枚の照度テクスチャ
   // (ライトプリパスの出力)がまだ存在しない — このクラス自身の構築より前には作りようがない —
   // ため、構築時ではなく毎フレームこの呼び出しで据える。
@@ -97,14 +95,8 @@ export class MaterialPass {
     const material = mesh.material as THREE.Material;
     if (this.upgraded.has(material) || !isStandardMaterial(material)) return;
 
-    const setupLightingModel = () => new MaterialPassLightingModel(this.diffuseNode, this.specularNode);
-    if ((material as THREE.MeshStandardNodeMaterial).isMeshStandardNodeMaterial) {
-      (material as THREE.MeshStandardNodeMaterial).setupLightingModel = setupLightingModel;
-      this.upgraded.add(material);
-      return;
-    }
     const upgraded = toStandardNodeMaterial(material);
-    upgraded.setupLightingModel = setupLightingModel;
+    upgraded.setupLightingModel = () => new MaterialPassLightingModel(this.diffuseNode, this.specularNode);
     this.upgraded.add(upgraded);
     mesh.material = upgraded;
   }

@@ -1,6 +1,6 @@
 // 温度から自照の色と明るさを引く表。灰色体の熱放射を、描画が扱う放射量の目盛り
 // (pipeline の SUN_IRRADIANCE_1AU)へ写したものを返す。表は起動時に一度だけ組み、
-// CPU 側の照合と TSL 側の表引きが同じ 1 つの中身を読む。
+// CPU 側の表引きと TSL 側の表引きが同じ 1 つの中身を読む。
 import * as THREE from 'three/webgpu';
 import { STEFAN_BOLTZMANN } from '../physics/thermal';
 import { SOLAR_CONSTANT } from '../physics/srp';
@@ -17,8 +17,9 @@ const STEPS = 256;
 // 正規化する — 描画の白色点が太陽光であることと揃える。
 const SUN_TEMPERATURE = 5772;
 
-// 太陽面の輝度を放射量の目盛りへ写した値。目盛りの 1 単位は 1 天文単位で受ける放射照度
-// SOLAR_CONSTANT なので、σT⁴/π をそれで割ると、正規化した等色関数の応答へ掛ける係数になる。
+// 太陽面の輝度を放射量の目盛りへ写した値。目盛りの 1 は 1 天文単位で SOLAR_CONSTANT を受ける
+// アルベド 1 の完全拡散面の明るさ — 輝度で言えば SOLAR_CONSTANT/π なので、灰色体の輝度
+// σT⁴/π をそれで割った σT⁴/SOLAR_CONSTANT が、正規化した等色関数の応答へ掛ける係数になる。
 const SUN_SURFACE_VALUE = (STEFAN_BOLTZMANN * SUN_TEMPERATURE ** 4) / SOLAR_CONSTANT;
 
 const PLANCK_C1 = 3.741771852e-16; // 2πhc² [W·m²]
@@ -123,7 +124,7 @@ export function blackbodyEmissiveNode(temperature: FloatNode, emissivity: FloatN
   return THREE.TSL.texture(lutTexture(), uv).rgb.mul(emissivity) as Vec3Node;
 }
 
-// 同じ表を CPU 側から引く。較正の照合に使う値で、成分は 1 を超えうる。
+// 同じ表を CPU 側から引き、out へ書いて返す。成分は 1 を超えうる。
 export function blackbodyEmissive(
   temperature: number, emissivity: number, out: THREE.Color,
 ): THREE.Color {
