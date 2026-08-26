@@ -1,16 +1,32 @@
 // OrbitalElements から軌道楕円を描画する。頂点は中心天体(OrbitalElements.center)相対座標のまま保持し、
 // フローティングオリジンによる Object3D 平行移動でその天体の ECI 位置へ置く。どの天体を
 // 中心に描くかは OrbitalElements 自身が持つため、呼び出し側が外側で選び直すことはできない。
-// 楕円はそのフレームに渡された軌道要素だけから組み立てるので、要素が動けば楕円も遅れずに動く。
-// 解像度そのものの決定(画面上のサジッタに応じた適応分割)は Curve に委ねる。楕円は天体自身の
-// 現在位置を貫くが、天体メッシュは不透明・深度書き込み有りで先に描かれるため、深度テストだけで
-// 天体が手前に残る。
+// 焼き直すかどうかは「いま描かれている楕円が、いまの軌道要素の楕円から画面上何 px ずれて
+// 見えるか」で決める。解像度そのものの決定(画面上のサジッタに応じた適応分割)は Curve に
+// 委ねる。楕円は天体自身の現在位置を貫くが、天体メッシュは不透明・深度書き込み有りで先に
+// 描かれるため、深度テストだけで天体が手前に残る。
 import * as THREE from 'three/webgpu';
-import { OrbitalElements } from '../physics/elements';
-import { add, v3, Vec3 } from '../physics/vec3';
+import { OrbitalElements, positionOnOrbit, trueAnomalyAt, velocityOnOrbit } from '../physics/elements';
+import { apparentSizePx } from '../physics/projection';
+import { add, len, sub, v3, Vec3 } from '../physics/vec3';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler } from '../render/curve';
+import { CameraScale } from '../render/camera-scale';
 import { LineStyle } from '../render/line-style';
+
+// 焼き直しを迫るずれ [px]。Curve の適応分割が目標にしている画面上のサジッタと同じ値にして、
+// 焼いた楕円が古いことによるずれが、分割の粗さによるずれを上回らないようにする。
+const MAX_STALE_PX = 0.5;
+
+// ずれを測る真近点角の数。楕円1周を等分して測るので、遠点側だけが動く形も直接拾える。
+const PROBE_COUNT = 8;
+
+// 焼いてある楕円と、その頂点を指す revision。2つは常に同時に差し替える — 片方だけ取り残すと、
+// 焼いた頂点と古さ判定の基準が食い違う。
+type BakedEllipse = {
+  readonly el: OrbitalElements;
+  readonly revision: object;
+};
 
 // 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。頂点は中心天体相対の ECI
 // オフセットで、表示座標系の回転はカメラ側が担う。これにより回転座標系でも楕円が慣性空間上の
@@ -29,11 +45,43 @@ function ellipseSampler(el: OrbitalElements): CurveSampler {
   };
 }
 
+// 焼いてある楕円が、いまの軌道要素の楕円から画面上どれだけずれて見えるか [px]。
+//
+// 真近点角を PROBE_COUNT 等分した点でいまの楕円の位置・速度を取り、焼いた楕円の同じ向きの点と
+// 比べる。真近点角を合わせることで軌道に沿った進みぶんが差から落ち、線の形が変わったぶんだけが
+// 残る。頂点はどちらも中心天体相対で、平行移動は毎フレーム同じ値を使うので、ここで測った距離は
+// そのまま画面上の距離になる。ずれはまず 3 次元空間の m で求め、その点の距離と画角で px へ直す
+// — 先に画面座標へ落とすと、カメラの前後方向のずれ(深度テストで露呈する)が消えてしまう。
+//
+// 速度のずれは、そこから長半径が δa = Δv·T/π 変わることを通じて軌道の反対側が動く量になる。
+// probe と probe の間で形が食い違っている場合をこれで捕まえる。
+function stalenessPx(
+  baked: OrbitalElements, el: OrbitalElements, fo: FloatingOrigin, cam: CameraScale,
+): number {
+  let worst = 0;
+  for (let i = 0; i < PROBE_COUNT; i++) {
+    const nu = (i / PROBE_COUNT) * Math.PI * 2;
+    const probe = positionOnOrbit(el, nu);
+    const nuBaked = trueAnomalyAt(baked, probe);
+    const posError = len(sub(probe, positionOnOrbit(baked, nuBaked)));
+    const velError = len(sub(velocityOnOrbit(el, nu), velocityOnOrbit(baked, nuBaked)));
+    const world = fo.RtoThreeV3(add(el.center.state.r, probe));
+    const mpp = cam.at(world.x, world.y, world.z);
+    worst = Math.max(
+      worst,
+      apparentSizePx(posError, mpp),
+      apparentSizePx((velError * baked.period) / Math.PI, mpp),
+    );
+  }
+  return worst;
+}
+
 export class OrbitLine {
   private readonly curve: Curve;
   readonly line: THREE.Object3D;
-  // 直近の sync が描いた軌道要素。samplePoints が描かれている楕円と同じ点列を返すために持つ。
-  private drawn: OrbitalElements | null = null;
+  // 焼いてある楕円。sync だけが書き換える。samplePoints もこれを読むので、当たり判定は
+  // 描かれている線と必ず同じ形になる。
+  private baked: BakedEllipse | null = null;
 
   // style.renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
   // 透明描画どうしの前後は描画順でしか決まらない。
@@ -63,7 +111,7 @@ export class OrbitLine {
   // 換算するための描画カメラ。el が null なら軌道要素を持たない状態として非表示にする。
   sync(el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera): void {
     if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
-      this.drawn = null;
+      this.baked = null;
       this.curve.setVisible(false);
       return;
     }
@@ -72,26 +120,32 @@ export class OrbitLine {
     // 回転座標系はMapCameraの視点・姿勢で表現する。ここへ現在時刻のフレーム回転を掛けると、
     // 焼いた軌道形状だけが回転し続け、船の現在位置から外れていく。
     this.curve.setTransform(fo.RtoThreeV3(el.center.state.r));
-    this.drawn = el;
 
-    // サンプラはこのフレームの要素を閉じ込めた新しいクロージャなので、それ自身が
-    // 「曲線の中身が変わった」ことを表す revision になる。
-    const sampler = ellipseSampler(el);
-    this.curve.setAnalyticCurve(sampler, { revision: sampler, camera });
+    // 頂点は中心天体相対、平行移動は毎フレームの中心天体位置。中心が入れ替われば、別の天体を
+    // 基準に焼いた形状をそのまま新しい中心へ動かすことになるので、ずれを測らずに焼き直す。
+    const kept = this.baked;
+    const baked = kept !== null
+      && kept.el.center.id === el.center.id
+      && stalenessPx(kept.el, el, fo, new CameraScale(camera)) <= MAX_STALE_PX
+      ? kept
+      : { el, revision: {} };
+    this.baked = baked;
+
+    this.curve.setAnalyticCurve(ellipseSampler(baked.el), { revision: baked.revision, camera });
     this.curve.setVisible(true);
   }
 
   // 現在描いている楕円上のサンプル点列を ECI 絶対座標で返す(右クリックの当たり判定向け)。
   // 要素を持たない(非表示)間は空配列。
   samplePoints(count: number): readonly Vec3[] {
-    const el = this.drawn;
-    if (!el) return [];
-    const sampler = ellipseSampler(el);
+    const baked = this.baked;
+    if (!baked) return [];
+    const sampler = ellipseSampler(baked.el);
     const points: Vec3[] = [];
     const scratch = new THREE.Vector3();
     for (let i = 0; i <= count; i++) {
       sampler(i / count, scratch);
-      points.push(add(el.center.state.r, v3(scratch.x, scratch.y, scratch.z)));
+      points.push(add(baked.el.center.state.r, v3(scratch.x, scratch.y, scratch.z)));
     }
     return points;
   }
