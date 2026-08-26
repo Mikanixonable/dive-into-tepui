@@ -93,6 +93,11 @@ export class LensPass {
   private readonly ghosts: Stage;
   private width = 0;
   private height = 0;
+  // 直前のフレームで出力を書いたか。設定で切られたあと 1 度だけ空へ戻すために持つ
+  // (sun-shadow-maps.ts のスロットの空戻しと同じ)。
+  private drawn = false;
+  // clear が退避する描画先の消去色。毎フレーム確保しないよう 1 つだけ持つ。
+  private readonly clearColor = new THREE.Color();
 
   // source は world パスまでが描き終えた HDR の絵。
   constructor(
@@ -178,6 +183,25 @@ export class LensPass {
     this.draw(this.ghosts, this.ghosts.target);
     this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);
+    this.drawn = true;
+  }
+
+  // 設定でレンズ効果が切られている間、render の代わりに呼ぶ。**切り替わった最初の 1 フレーム
+  // だけ**、読まれる 3 枚を空へ戻す — 残しておくと「レンズ」デバッグ表示に切る直前の像が凍った
+  // まま出る。中間の縮小段・条の作業用は誰も読まないので触らない。
+  clear(width: number, height: number): void {
+    if (!this.drawn) return;
+    this.resize(width, height);
+    const savedColor = this.renderer.getClearColor(this.clearColor).clone();
+    const savedAlpha = this.renderer.getClearAlpha();
+    this.renderer.setClearColor(0x000000, 0);
+    for (const target of [this.up[0]!.target, this.streakTarget, this.ghosts.target]) {
+      this.renderer.setRenderTarget(target);
+      this.renderer.clear(true, false, false);
+    }
+    this.renderer.setRenderTarget(null);
+    this.renderer.setClearColor(savedColor, savedAlpha);
+    this.drawn = false;
   }
 
   // フィルタ 1 枚を target へ描く。clear を落とすと、既に入っている絵の上へ積む。
