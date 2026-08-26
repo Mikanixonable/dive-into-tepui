@@ -7,7 +7,7 @@ import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../physics/random';
 import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
-import { attachThermalEmissive, makeThermallyEmissive } from './thermal-emissive';
+import { attachThermalEmissive, makeThermallyEmissive, THERMAL_SHAPE_ATTRIBUTE } from './thermal-emissive';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -454,7 +454,30 @@ export function debrisFragmentResources(): { geometries: readonly THREE.BufferGe
 
 
 // リロード時に放出される砲身（バレル）メッシュ
-// 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + 赤熱グロー + ガスポート
+// 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + ガスポート
+
+// 薬室の位置 [m] と、そこから砲口へ向かって温度差が落ちる長さ [m]。発射ガスは銃身に沿って
+// 熱を置いていくので、薬室側がいちばん熱く、砲口へ向かって指数で下がる。
+const BARREL_BREECH_Z = -2.3;
+const BARREL_HEAT_FALLOFF = 1.2;
+
+// 砲身の各メッシュへ、平均温度からの温度差の分布(薬室側 1、砲口側 0)を焼く。
+function bakeBarrelThermalShape(root: THREE.Object3D): void {
+  const vertex = new THREE.Vector3();
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.updateMatrix();
+    const position = mesh.geometry.getAttribute('position');
+    const shape = new Float32Array(position.count);
+    for (let i = 0; i < position.count; i++) {
+      vertex.fromBufferAttribute(position, i).applyMatrix4(mesh.matrix);
+      shape[i] = Math.min(1, Math.exp(-(vertex.z - BARREL_BREECH_Z) / BARREL_HEAT_FALLOFF));
+    }
+    mesh.geometry.setAttribute(THERMAL_SHAPE_ATTRIBUTE, new THREE.Float32BufferAttribute(shape, 1));
+  });
+}
+
 let barrelTemplate: THREE.Group | null = null;
 
 export function buildBarrelMesh(): THREE.Group {
@@ -518,18 +541,7 @@ export function buildBarrelMesh(): THREE.Group {
   bore.position.z = 2.28;
   g.add(bore);
 
-  // --- 赤熱グロー(後端・発射熱を表現) ---
-  const heatMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(0xff3c00).multiplyScalar(0.48),
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  const heat = new THREE.Mesh(new THREE.CylinderGeometry(0.70 * S, 0.70 * S, 0.95, 10), heatMat);
-  heat.rotation.x = Math.PI / 2;
-  heat.position.z = -2.1;
-  g.add(heat);
-
+  bakeBarrelThermalShape(g);
   makeThermallyEmissive(g);
   barrelTemplate = g;
   // 子 mesh の geometry/material は上のテンプレートを全個体で共有する。flags は未設定でも
