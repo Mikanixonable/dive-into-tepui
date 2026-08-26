@@ -7,9 +7,9 @@ import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '.
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
 import {
-  AMBIENT_COLOR, AMBIENT_IRRADIANCE, AMBIENT_REFERENCE_DISTANCE, SUN_COLOR, SUN_IRRADIANCE_1AU,
-  SUN_RADIANT_INTENSITY, ambientIrradianceAtDistance,
+  SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY, sunIrradianceAtDistance,
 } from '../../src/render/pipeline/sun-light';
+import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
@@ -95,8 +95,8 @@ export class LabView {
   private readonly scene = new THREE.Scene();
   // ケースの太陽方向へ向け直すために持つ。恒星の位置と同じ向きを指す。
   private readonly sun = new THREE.DirectionalLight(SUN_COLOR.getHex(), SUN_IRRADIANCE_1AU);
-  // ケースごとの環境光。恒星光と同じく、強度は render() が毎フレーム書き込む。
-  private readonly ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_IRRADIANCE);
+  // ケースごとの環境光(天体照の総和)。恒星光と同じく、色は render() が毎フレーム書き込む。
+  private readonly ambient = new THREE.AmbientLight(0x000000, 1);
   // 撮影先。合成パスが既に sRGB へ変換した値を書くので、素の RGBA8 で受ける
   // (-srgb フォーマットにすると二重変換になり、撮った PNG だけが白っぽくなる)。
   // 深度は 3D UI パスが要る — 合成パスが G バッファの深度をここへ複製し、線はそれに対して
@@ -273,17 +273,26 @@ export class LabView {
     );
     this.sun.position.copy(sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE);
     const sunDistance = this.sunDistance;
-    // 環境光の強さは、フォワード経路の光源とライティングパスの両方が同じ値を読む —
-    // 片方だけ直すと陰影の辻褄が合わない。
-    const earthDistance = this.current.earthDistance ?? AMBIENT_REFERENCE_DISTANCE;
-    const ambientIrradiance = ambientIrradianceAtDistance(
-      typeof earthDistance === 'function' ? earthDistance(sunDistance) : earthDistance,
-    );
-    this.ambient.intensity = ambientIrradiance;
     SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
-    this.pipeline.sunLight.set(
-      SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, ambientIrradiance,
-    );
+    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY);
+    // 天体照。ケースが置いた光源をスロットへ書き、フォワード経路の環境光も同じ総和を読む —
+    // 片方だけ直すと陰影の辻褄が合わない。放射輝度は恒星のつまみの距離に追随する。
+    const planetLights = (this.current.planetLights ?? []).map((light) => ({
+      center: light.center,
+      radius: light.radius,
+      radiance: planetRadiance(
+        light.albedo, sunIrradianceAtDistance(SUN_POSITION.distanceTo(light.center)),
+      ),
+    }));
+    this.pipeline.planetLight.set(planetLights);
+    this.ambient.color.setRGB(0, 0, 0);
+    for (const light of planetLights) {
+      const distance = Math.max(ORIGIN.distanceTo(light.center), light.radius);
+      const sinSqr = (light.radius / distance) ** 2;
+      this.ambient.color.r += Math.PI * light.radiance[0] * sinSqr;
+      this.ambient.color.g += Math.PI * light.radiance[1] * sinSqr;
+      this.ambient.color.b += Math.PI * light.radiance[2] * sinSqr;
+    }
     // 順応の基準点は描画原点。**ケースの sunDistance はここから恒星までの距離**なので、
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
     this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION);
