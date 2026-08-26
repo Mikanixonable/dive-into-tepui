@@ -44,7 +44,9 @@ emissive テクスチャでもなく、平均温度からの偏差として持�
 - **`shape(x)`** — 0..1 の無次元の形。**どこが熱くなりやすいかという物体の形の性質**なので、
   メッシュを組む `render/` が持つ。バレル以外はすべて 0。
 - **`D`** — 偏差の振幅 [K]。**物理量なので `GameEntity` が持ち、時間で減衰する。**
-  減衰は手で置いた時定数ではなく、**高温部が低温部より速く放射することから出す**(手順 2)。
+  減衰は手で置いた時定数ではなく、**高温部が低温部より速く放射することから出す** —
+  `physics/thermal.ts` の `stepThermalDeviation`(実装済み)。減衰の定数は 4εσ(A/m)T³/c で、
+  **A/m = 0.047 m²/kg・c = 500 J/(kg·K) のバレルでは 1500 K で τ = 26 秒、1000 K で 88 秒。**
 
 **`shape` は頂点属性(`thermalShape`、float 1 本)として持ち、フラグメントで補間する。**
 メッシュ単位の定数では、**伝導で周囲へ広がっていくはずの熱がメッシュの境界で切れる。**
@@ -72,7 +74,17 @@ emissive テクスチャでもなく、平均温度からの偏差として持�
 **あちらは同じ表を読む側になる。**
 
 **頂点ごとに温度が違う以上、色を引くのはフラグメントシェーダである。** CPU で
-`material.emissive` へ書く道は取れない。したがって:
+`material.emissive` へ書く道は取れない。**`render/blackbody.ts` と `render/thermal-emissive.ts`
+は実装済みで、render-lab の `blackbody` ケースで次を確かめてある:**
+
+- **同じ 1 つのマテリアルを共有する球が、`userData` の温度だけで違う明るさになる**
+  (`reference` が個体ごとに更新される)。
+- **頂点属性の勾配が段にならず連続する。**
+- **画素値が表と一致する** — 1500 K・輻射率 0.85 の面の夜側が sRGB (183, 79, 0)、
+  1300 K で (59, 15, 0)。どちらも表の値をトーンマッピング(PBR Neutral)に通した計算値と
+  1/255 以内で合う。
+
+したがって:
 
 - **CPU は表(`Float32Array`)を 1 度だけ組み、`DataTexture` として GPU へ渡す。**
 - **TSL 側は 1 次元の表引き 1 回。** 温度を [800 K, 3000 K] へ正規化して線形補間で読む。
@@ -134,11 +146,20 @@ RGB_code(T)_i = ε × 46244 × ∫B_λ(T)·c̄_i(λ)dλ / ∫B_λ(5772)·c̄_i(�
 **ここから引くと過熱の釣り合いが動く。** 砲の発熱の全量はもともとこれより桁で大きく、
 その大半はバレル壁と発射ガスが持つ — **`GUN_BARREL_HEAT_PER_ROUND` を新設して別に積む。**
 
+**仕様として確定済み(手順 1 で `DEVELOP/SPEC/FLIGHT.md` へ記載):**
+
+- バレルへ入る熱 **1.0 MJ/発**、バレルの熱容量 **0.15 MJ/K**(約 6.7 K/発)。
+- **薬室側の温度上昇は平均の 2 倍** — 1 発ごとに平均温度と偏差の振幅へ同じ量を積む。
+- 96 発を連射(連射間隔 0.112 s で約 11 秒)し切った時点の見込みは平均 880 K・偏差 595 K
+  → **薬室側 1475 K。** 較正表の目標帯(1450〜1550 K)に入る。
+- **温度の上限に当てるのは平均の温度**(局所的な過熱では焼失しない)。
+
 ---
 
 ## 温度と表示値(較正表)
 
-**この表がこの計画の判断材料のすべて。** ε = 0.85 として上の式を数値積分した値。
+**この表がこの計画の判断材料のすべて。** 上の式を **輻射率 1** で数値積分した値で、実際の
+表示値はこれに輻射率(0.85)が掛かる。
 
 | T [K] | R | G | 見え方 |
 | ---: | ---: | ---: | --- |
@@ -158,7 +179,8 @@ RGB_code(T)_i = ε × 46244 × ∫B_λ(T)·c̄_i(λ)dλ / ∫B_λ(5772)·c̄_i(�
 **比較の基準:** 日照下(1 天文単位)のアルベド 0.3 の面 = **0.30**。影の中(`AMBIENT_IRRADIANCE`
 = 0.093π)の同じ面 = **0.028**。
 
-**いまの固定グローは線形で R = 0.48、G = 0.022。** 表と突き合わせると **約 1470 K 相当**で、
+**いまの固定グローは線形で R = 0.48、G = 0.022。** 輻射率 0.85 を織り込んで表と突き合わせると
+**約 1500 K 相当**で、
 彩度だけが黒体より高い(同じ R なら黒体の G は 2〜3 倍)。**したがって、排出直後のバレルの
 発光部が 1450〜1550 K に来るように熱の収支を組めば、絵は退行しない** — わずかに橙へ寄る。
 
@@ -190,69 +212,6 @@ RGB_code(T)_i = ε × 46244 × ∫B_λ(T)·c̄_i(λ)dλ / ∫B_λ(5772)·c̄_i(�
 
 ## 手順
 
-### 手順 1. 仕様を書く
-
-**目的** — 「どう振舞うべきか」を先に確定させる。**この時点でコードは変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `DEVELOP/SPEC/ORBIT.md`「熱と焼失」 | 温度が**平均温度と偏差の振幅の 2 つ**であること、偏差は高温部が速く放射することで薄まること、偏差を持つのはバレルだけであることを追記する |
-| `DEVELOP/SPEC/FLIGHT.md`「射撃発熱」 | 1 発ぶんの発熱が**外殻へ入るぶんとバレルへ入るぶんに分かれる**こと、バレルの温度は装着中も冷え続けること、交換で排出したバレルがその温度を持って飛んでいくことを追記する。**外殻へ入る 0.55 MJ/発は動かさない**と明記する |
-| `DEVELOP/SPEC/RENDERING.md`「露出とトーン」の後 | 「温度による自照」の節を新設。**赤熱の色と明るさは温度と輻射率だけから決まる**こと、目盛りは 1 天文単位の太陽光を白と置いた黒体放射であること、**物体は等温ではなく、部分的に熱い場所は連続的な勾配として赤熱する**こと、その結果として実際に赤熱するのはバレルと上限近くの自機だけであることを書く |
-
-**達成条件と検証** — 上の 3 ファイルに追記があり、コードの差分が 0。
-`git diff --stat` が `DEVELOP/SPEC/` の 3 ファイルだけを出す。
-
-### 手順 2. 偏差の減衰を `physics/` へ足す
-
-**目的** — 偏差 `D` を時間で薄める式を、手で置いた時定数ではなく放射から出す。
-**この時点で絵は変わらない**(まだ誰も呼ばない)。
-
-高温部は低温部より速く放射する。放射冷却 εσ(A/m)T⁴/c を温度で微分すると、偏差 D に対して
-
-```
-dD/dt = −4εσ(A/m)T³/c × D      →      D(t+dt) = D·exp(−k·dt),  k = 4εσ(A/m)T³/c
-```
-
-**指数で厳密に積む** — `radiativeCooling` が頭打ちを持つのと同じ理由で、線形に引くと粗い刻みで
-符号が反転して発散する。**A/m = 0.047 m²/kg、c = 500 J/(kg·K) のバレルでは 1500 K で
-τ = 1/k = 26 秒、1000 K で 88 秒。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/thermal.ts` | `stepThermalDeviation(deviation, temperature, emissivity, radiatingAreaPerMass, specificHeat, dt)` を追加(比量で閉じる純関数。THREE/DOM 非依存) |
-| `tests/physics/thermal.test.ts` | 温度が高いほど速く薄まること、dt を 2 分割しても同じ値になること、dt を大きく取っても 0 へ収束して負にならないこと |
-
-**達成条件と検証** — `npm run typecheck` と `npm run test:physics` が通る。
-新しいテストが 3 件増えている。
-
-### 手順 3. 温度 → 表示値のサンプラーと TSL ノードを作る
-
-**目的** — 較正表を出す変換を 1 箇所に置き、**GPU 側で温度から色を引けるようにする。**
-**この時点で絵は変わらない**(まだどのマテリアルにも刺さない)。ただし
-**render-lab のケースだけは先に立てて、per-object と per-vertex の 2 経路をここで確かめる。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/blackbody.ts`(新規) | プランクの式 × CIE 1931 等色関数を起動時に 1 度だけ数値積分して 800〜3000 K の 256 段の表を組み、`RGBA16F` の `DataTexture`(256×1、`LinearFilter`、`ClampToEdgeWrapping`)にする。`blackbodyEmissiveNode(temperatureNode): Node<'vec3'>` を公開。**CPU 側の `blackbodyEmissive(T, ε)` も公開する** — 較正の突き合わせに要る |
-| `tools/render-lab/cases.ts` | ケース `blackbody` を追加。**(a) 同じ 1 つのマテリアルを共有する球を 900〜2000 K で並べ、`userData` の値だけで違う明るさになることを見る。(b) 頂点属性の `thermalShape` を 0→1 で振った円柱を 1 本置き、勾配が連続していることを見る。** どちらも日照下と影の中に 1 列ずつ |
-
-**達成条件と検証**
-
-- `npm run render-lab:shot` で `blackbody` を撮る。
-- **(a) 球ごとに明るさが違う。** 全部同じ明るさなら `reference` が per-object に更新されて
-  いない(そのときは個体ごとのマテリアルを**複製ではなく生成**する道へ切り替える)。
-- **(b) 円柱の赤熱が段にならず連続している。**
-- 画素値を較正表と突き合わせる。1500 K の球の最も明るい画素がトーンマッピング後の sRGB で
-  およそ (255, 150, 60)、1000 K の球が背景と区別できない。
-  **画素一致の画像回帰は採らない** — 基準は表(物理)の側にある。
-
 ### 手順 4. `GameEntity` と描画物を配線する(オブジェクトごとの温度)
 
 **目的** — 温度を毎フレーム emissive へ流す経路を通す。**偏差はまだ全部 0** なので、
@@ -267,9 +226,8 @@ dD/dt = −4εσ(A/m)T³/c × D      →      D(t+dt) = D·exp(−k·dt),  k = 4
 | --- | --- |
 | `src/render/standard-node-material.ts`(新規) | `material-pass.ts` の `standardMaterialParams`(値だけの `MeshStandardMaterial` から `MeshStandardNodeMaterial` へ移す params)をここへ移して両者で共有する。**マテリアルパスの `upgrade` は変換のときにノードを引き継がないので、赤熱するマテリアルは先に `MeshStandardNodeMaterial` にしておく必要がある** |
 | `src/render/pipeline/material-pass.ts` | 上の関数を import へ差し替える(挙動は変えない) |
-| `src/render/thermal-emissive.ts`(新規) | `attachThermalEmissive(material, source)` — `source` が `'object'` なら `reference('userData.thermalTemperature'/'thermalDeviation')`、`'instance'` なら `attribute('instanceThermal','vec2')` から温度と偏差を取り、`thermalShape` 属性があれば足して `blackbodyEmissiveNode` を `material.emissiveNode` へ据える。`syncThermalState(root, temperature, deviation)` — 配下の Mesh の `userData` へ 2 つの数値を書く |
-| `src/render/ships.ts` | 艦・敵機・バレル・弾薬などのマテリアルを `MeshStandardNodeMaterial` にし、`attachThermalEmissive(..., 'object')` を通す。**`userData` の 2 値を組み立て時に 0 で初期化する**(`reference` が `undefined` を読むと値が壊れる) |
-| `src/game/game-entity/game-entity.ts` | `thermalDeviation = 0` を追加(公開フィールド)。`stepThermal`(404 行)の末尾で `stepThermalDeviation` を掛ける。`sync`(480 行)から `syncThermalState` を呼ぶ |
+| `src/render/ships.ts` | 艦・敵機・バレル・弾薬などのマテリアルを `MeshStandardNodeMaterial` にし、`attachThermalEmissive(..., 'object')` を通す。**組み立て時に `initThermalState` を通す**(`reference` が `undefined` を読むと値が壊れる) |
+| `src/game/game-entity/game-entity.ts` | `thermalDeviation = 0` を追加(公開フィールド)。`stepThermal`(404 行)の末尾で `stepThermalDeviation` を掛ける。`sync`(480 行)から `syncThermalState(this.renderObject, this.temperature, this.thermalDeviation, this.emissivity)` を呼ぶ |
 | `src/game/player/player.ts` | `syncPlayer` は `sync` を経由しないので、同じ呼び出しを足す |
 
 **達成条件と検証** — `npm run typecheck`。`npm run render-lab:shot` の `ship-in-debris` が
@@ -285,7 +243,7 @@ dD/dt = −4εσ(A/m)T³/c × D      →      D(t+dt) = D·exp(−k·dt),  k = 4
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/render/instanced-pool.ts` | コンストラクタへ `perInstanceThermal` を追加。立っていれば `geometry.setAttribute('instanceThermal', new THREE.InstancedBufferAttribute(new Float32Array(capacity*2), 2))` を `DynamicDrawUsage` で置く。`push(renderObject, color?, thermal?)` で書き、`endFrame` で **値が変わったフレームだけ** `needsUpdate` を立てる |
+| `src/render/instanced-pool.ts` | コンストラクタへ `perInstanceThermal` を追加。立っていれば `geometry.setAttribute(INSTANCE_THERMAL_ATTRIBUTE, new THREE.InstancedBufferAttribute(new Float32Array(capacity*3), 3))` を `DynamicDrawUsage` で置く(温度・偏差・輻射率)。`push` で書き、`endFrame` で **値が変わったフレームだけ** `needsUpdate` を立てる |
 | `src/render/ships.ts` | `casingBodyResources` / `debrisFragmentResources` のマテリアルを `MeshStandardNodeMaterial` にし、`attachThermalEmissive(..., 'instance')` を通す |
 | `src/game/simulation/entity-manager.ts` | 薬莢・破片のプールを `perInstanceThermal` 付きで作り、`sync`(467 行)の `push` で `温度・偏差` を渡す |
 
@@ -362,8 +320,8 @@ G バッファパスは法線と粗さしか出力しないので、そちらで
 消えるだけで、ドローコールもポリゴン数も減る。**半透明が 1 つ減る。**
 
 **メモリ** — 表 256 × 4 成分 × 2 byte = 2 KB。per-instance 属性は
-(薬莢 260 + 破片 18 変種 × 600)× 2 float = **88 KB**(同じプールが既に持つ変換行列
-691 KB の 1/8)。頂点属性 `thermalShape` はバレルのジオメトリの頂点数 × 4 byte で 1 KB 未満。
+(薬莢 260 + 破片 18 変種 × 600)× 3 float = **133 KB**(同じプールが既に持つ変換行列
+691 KB の 1/5)。頂点属性 `thermalShape` はバレルのジオメトリの頂点数 × 4 byte で 1 KB 未満。
 
 ---
 
