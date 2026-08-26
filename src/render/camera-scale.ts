@@ -1,6 +1,6 @@
 // THREE.Camera から「その点における画面1ピクセル相当の実距離 [m]」を求める。カメラの基底と
-// 画角換算値は構築時に1度だけ取り出すので、同じカメラで多数の点を評価する呼び出し(適応分割など)
-// は1つ作って使い回す。換算式そのものは physics/projection.ts が持つ。
+// 画角換算値は構築時に1度だけ取り出すので、同じカメラで多数の点を評価するなら1つ作って
+// 使い回す。
 import * as THREE from 'three/webgpu';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 
@@ -8,7 +8,7 @@ import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
 const FALLBACK_FOV_DEG = 50;
 
 export class CameraScale {
-  // ワールド空間でのカメラの前方向と視点位置。カメラ近傍へ基準点を寄せる側が視点位置を読む。
+  // ワールド空間でのカメラの前方向と視点位置。
   readonly forward = new THREE.Vector3();
   readonly position = new THREE.Vector3();
 
@@ -17,6 +17,7 @@ export class CameraScale {
   private readonly near: number;
   private readonly viewportHeight: number;
 
+  // カメラの姿勢と画角換算値をこの時点の値で読み取る。以降 camera は参照しない。
   constructor(camera: THREE.Camera) {
     camera.getWorldDirection(this.forward);
     this.position.setFromMatrixPosition(camera.matrixWorld);

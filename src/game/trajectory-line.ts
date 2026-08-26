@@ -92,7 +92,7 @@ export class TrajectoryLine {
 
   // 単色の折れ線を構築する。style.dash があれば破線になる。
   constructor(style: LineStyle) {
-    this.curve = new Curve({ style, maxVertices: MAX_VERTICES });
+    this.curve = new Curve(style, MAX_VERTICES);
     this.line = this.curve.object;
   }
 
@@ -178,7 +178,7 @@ export class TrajectoryLine {
       this.curve.clear();
       return;
     }
-    this.curve.setHermiteCurve(this.knots, { camera });
+    this.curve.setHermiteCurve(this.knots, camera);
   }
 
   // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点)。
