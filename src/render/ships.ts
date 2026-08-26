@@ -7,6 +7,7 @@ import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../physics/random';
 import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
+import { makeThermallyEmissive } from './thermal-emissive';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -86,6 +87,7 @@ export function cloneIndependent<T extends THREE.Object3D>(template: T): T {
       mesh.userData.ownsMaterial = true;
     }
   });
+  makeThermallyEmissive(clone);
   markLitOpaque(clone);
   markSunShadowCaster(clone);
   return clone;
@@ -232,6 +234,7 @@ export function buildRcsFuelPickup(): THREE.Group {
   ));
   beacon.position.x = 1.15;
   g.add(beacon);
+  makeThermallyEmissive(g);
   markLitOpaque(g);
   markSunShadowCaster(g);
   return g;
@@ -523,6 +526,7 @@ export function buildBarrelMesh(): THREE.Group {
   heat.position.z = -2.1;
   g.add(heat);
 
+  makeThermallyEmissive(g);
   barrelTemplate = g;
   // 子 mesh の geometry/material は上のテンプレートを全個体で共有する。flags は未設定でも
   // 共有扱いだが、破棄側の契約を明示して将来の個別変更で誤って解放しないようにする。
