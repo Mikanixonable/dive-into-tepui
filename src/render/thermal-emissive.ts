@@ -2,7 +2,6 @@
 // 個体ごとの値として受け取る — Mesh 1 個ずつなら userData から、インスタンス描画なら
 // 頂点属性から。物体のどこが熱くなりやすいかは、ジオメトリに焼いた形が持つ。
 import * as THREE from 'three/webgpu';
-import { attribute, reference } from 'three/tsl';
 import { blackbodyEmissiveNode } from './blackbody';
 import { isStandardMaterial } from './pipeline/lit-layer';
 import { toStandardNodeMaterial } from './standard-node-material';
@@ -25,7 +24,7 @@ interface ThermalUserData {
 }
 
 function objectValue(property: keyof ThermalUserData): FloatNode {
-  return reference(`userData.${property}`, 'float', null) as unknown as FloatNode;
+  return THREE.TSL.reference(`userData.${property}`, 'float', null) as unknown as FloatNode;
 }
 
 // source に応じた、その画素の温度 [K] と輻射率。shaped ならジオメトリに焼いた形を
@@ -39,13 +38,13 @@ function thermalState(source: ThermalSource, shaped: boolean): { temperature: Fl
     deviation = objectValue('thermalDeviation');
     emissivity = objectValue('thermalEmissivity');
   } else {
-    const packed = attribute(INSTANCE_THERMAL_ATTRIBUTE, 'vec3') as THREE.Node<'vec3'>;
+    const packed = THREE.TSL.attribute(INSTANCE_THERMAL_ATTRIBUTE, 'vec3') as THREE.Node<'vec3'>;
     average = packed.x as FloatNode;
     deviation = packed.y as FloatNode;
     emissivity = packed.z as FloatNode;
   }
   if (!shaped) return { temperature: average, emissivity };
-  const shape = attribute(THERMAL_SHAPE_ATTRIBUTE, 'float') as FloatNode;
+  const shape = THREE.TSL.attribute(THERMAL_SHAPE_ATTRIBUTE, 'float') as FloatNode;
   return { temperature: average.add(deviation.mul(shape)) as FloatNode, emissivity };
 }
 
