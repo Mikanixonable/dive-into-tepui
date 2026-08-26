@@ -9,9 +9,13 @@ import { createEarth } from '../../src/render/earth';
 import { R_EARTH } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
-import { buildPlayerShip } from '../../src/render/ships';
+import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
+import {
+  attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
+} from '../../src/render/thermal-emissive';
+import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
@@ -111,7 +115,7 @@ function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Ob
 }
 
 // 中心 center、半径 radius、平面 (u, v) の円を1本。分割はカメラで決まるので、カメラを作った
-// あとに呼ぶ。revision は焼き直しの鍵で、ケースの間は変えない(毎フレーム変えると線がちらつく)。
+// あとに呼ぶ。
 function circle(
   center: THREE.Vector3, radius: number, u: THREE.Vector3, v: THREE.Vector3,
   style: LineStyle, camera: THREE.Camera,
@@ -122,7 +126,7 @@ function circle(
     out.copy(center)
       .addScaledVector(u, radius * Math.cos(theta))
       .addScaledVector(v, radius * Math.sin(theta));
-  }, { revision: 'lab', camera });
+  }, { camera });
   return curve.object;
 }
 
@@ -540,6 +544,101 @@ function eclipse(): LabCase {
   };
 }
 
+// 温度による自照を読むケース。**球はすべて同じ 1 つのマテリアルを共有し、温度だけが個体ごとに
+// 違う** — 明るさが球ごとに違って見えることが、個体ごとの温度が届いていることの唯一の印で、
+// 全部同じ明るさなら配線が死んでいる。恒星は斜めから差すので、反射に埋もれる昼側と自照だけの
+// 夜側が同じ球の上に並ぶ。**円柱は頂点ごとの温度勾配**(左端が平均温度、右端が +550 K)で、
+// 赤熱が部品の切れ目ではなく勾配として終わることを見る。
+const BLACKBODY_TEMPERATURES = [900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000];
+const BLACKBODY_DEPTH = 30;
+const BLACKBODY_GRADIENT_AVERAGE = 950;
+const BLACKBODY_GRADIENT_DEVIATION = 550;
+// 艦が喪失する温度(1,300 K)の少し上。夜側で赤熱として読める明るさになる。
+const BLACKBODY_SHIP_TEMPERATURE = 1400;
+// 1 本の InstancedMesh へ積む枝の温度 [K]。
+const BLACKBODY_INSTANCE_TEMPERATURES = [1200, 1300, 1400, 1500, 1600, 1700];
+// 96 発を撃ち切って排出された直後の砲身。平均温度 [K] と、薬室側が平均より高い温度差 [K]。
+const BLACKBODY_BARREL_TEMPERATURE = 887;
+const BLACKBODY_BARREL_DEVIATION = 619;
+
+// 赤熱を読むための、暗くつや消しの試験体マテリアル。反射で自照が埋もれないアルベドに取る。
+function blackbodyMaterial(shaped: boolean, source: ThermalSource = 'object'): THREE.MeshStandardNodeMaterial {
+  const material = new THREE.MeshStandardNodeMaterial({ color: 0x14161a, roughness: 0.85, metalness: 0 });
+  return attachThermalEmissive(material, source, shaped);
+}
+
+// 温度勾配を焼いた円柱。軸は画面の横方向で、shape は左端 0・右端 1。
+function blackbodyGradientBar(material: THREE.Material, length: number, radius: number): THREE.Mesh {
+  const geometry = new THREE.CylinderGeometry(radius, radius, length, 24, 96);
+  const position = geometry.getAttribute('position');
+  const shape = new Float32Array(position.count);
+  for (let i = 0; i < position.count; i++) shape[i] = position.getY(i) / length + 0.5;
+  geometry.setAttribute(THERMAL_SHAPE_ATTRIBUTE, new THREE.Float32BufferAttribute(shape, 1));
+  geometry.rotateZ(-Math.PI / 2);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.userData.ownsGeometry = true;
+  return mesh;
+}
+
+// 個体ごとの温度を持つ枝を 1 本の InstancedMesh へ積んで返す。**同じ 1 本の描画に積まれた
+// 個体が、それぞれ違う明るさで光ること**が、個体ごとの温度が属性として届いている印。
+function blackbodyInstancedRow(center: THREE.Vector3, spacing: number): THREE.Object3D {
+  const host = new THREE.Scene();
+  const geometry = new THREE.BoxGeometry(1.6, 1.6, 1.6);
+  const material = blackbodyMaterial(false, 'instance');
+  const count = BLACKBODY_INSTANCE_TEMPERATURES.length;
+  const pool = new InstancedPool(host, geometry, material, count, false, 0, true);
+  const piece = new THREE.Object3D();
+  pool.beginFrame();
+  for (const [i, temperature] of BLACKBODY_INSTANCE_TEMPERATURES.entries()) {
+    piece.position.copy(center).setX(center.x + (i - (count - 1) / 2) * spacing);
+    piece.rotation.set(0.42, 0.62, 0);
+    syncThermalState(piece, temperature, 0, HULL_EMISS);
+    pool.push(piece);
+  }
+  pool.endFrame();
+  const mesh = host.children[0]!;
+  host.remove(mesh);
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
+  return mesh;
+}
+
+function blackbody(): LabCase {
+  const sphereGeometry = new THREE.SphereGeometry(1.1, 32, 16);
+  const sphereMaterial = blackbodyMaterial(false);
+  const objects: THREE.Object3D[] = [];
+  const spacing = 2.8;
+  for (const [i, temperature] of BLACKBODY_TEMPERATURES.entries()) {
+    const mesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    mesh.position.set((i - (BLACKBODY_TEMPERATURES.length - 1) / 2) * spacing, 2.2, -BLACKBODY_DEPTH);
+    mesh.userData.ownsGeometry = i === 0;
+    mesh.userData.ownsMaterial = i === 0;
+    syncThermalState(mesh, temperature, 0, HULL_EMISS);
+    markLitOpaque(mesh);
+    objects.push(mesh);
+  }
+  const barMaterial = blackbodyMaterial(true);
+  const bar = blackbodyGradientBar(barMaterial, 30, 1.0);
+  bar.position.set(0, -3.4, -BLACKBODY_DEPTH);
+  bar.userData.ownsMaterial = true;
+  syncThermalState(bar, BLACKBODY_GRADIENT_AVERAGE, BLACKBODY_GRADIENT_DEVIATION, HULL_EMISS);
+  markLitOpaque(bar);
+  objects.push(bar);
+  objects.push(blackbodyInstancedRow(new THREE.Vector3(-14, -8, -BLACKBODY_DEPTH), 3));
+  // 排出直後の砲身。**赤熱が薬室から砲口へ向かって連続して落ちる**ことを見る。
+  const barrel = buildBarrelMesh();
+  barrel.position.set(0, 6, -20);
+  barrel.rotation.set(0, Math.PI / 2, 0.06);
+  syncThermalState(barrel, BLACKBODY_BARREL_TEMPERATURE, BLACKBODY_BARREL_DEVIATION, HULL_EMISS);
+  objects.push(barrel);
+  // 艦 1 隻を同じ絵へ。**モデルから読んだマテリアルにも温度が届く**ことを見る。
+  const ship = shipAt(new THREE.Vector3(14, -8, -30), SHIP_ROTATION_PORT);
+  syncThermalState(ship, BLACKBODY_SHIP_TEMPERATURE, 0, HULL_EMISS);
+  objects.push(ship);
+  return { objects, camera: labCamera(6e7), sunDirection: OBLIQUE_SUN_DIR };
+}
+
 // 較正: アルベド 1 の完全拡散面を 1 天文単位に置く。**放射照度の単位が「1 AU で π」に取れて
 // いれば、太陽へ正対した面のトーンマッピング前の線形値は 1.0 になる** — ランバート BRDF の
 // 1/π が単位を打ち消すため。ここが動いたら光の単位か BRDF のどちらかが崩れている。
@@ -656,6 +755,7 @@ export const CASES = {
   'saturn': saturn,
   'saturn-shadow': saturnShadow,
   'albedo': albedo,
+  'blackbody': blackbody,
   ...PROTEIN_CASES,
 } as const satisfies Record<
   string, (style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight) => LabCase
