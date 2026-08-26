@@ -12,6 +12,7 @@ import {
 } from '../../src/render/pipeline/sun-light';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { ATMOSPHERE_QUALITY, QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
+import { ATMOSPHERE_DETAIL, type AtmosphereDetail } from '../../src/render/pipeline/atmosphere-pass';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
@@ -35,6 +36,14 @@ export interface LabMeasurement {
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
 }
+
+// 大気の品質の段と、主天体へ足す濃い表現の細かさの対応(ゲーム本体では game/ が持つ)。
+const LAB_ATMOSPHERE_DETAIL: Readonly<Record<number, AtmosphereDetail>> = {
+  [ATMOSPHERE_QUALITY.off]: ATMOSPHERE_DETAIL.none,
+  [ATMOSPHERE_QUALITY.low]: ATMOSPHERE_DETAIL.none,
+  [ATMOSPHERE_QUALITY.medium]: ATMOSPHERE_DETAIL.coarse,
+  [ATMOSPHERE_QUALITY.high]: ATMOSPHERE_DETAIL.fine,
+};
 
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
@@ -304,8 +313,9 @@ export class LabView {
     // 大気の段はゲーム本体では game/ が解くので、ここでは同じ対応をこのビューが持つ。
     const quality = this.graphicsData.atmosphere;
     const atmosphere = quality === ATMOSPHERE_QUALITY.off ? undefined : this.current.atmosphere;
+    const detail = LAB_ATMOSPHERE_DETAIL[quality] ?? ATMOSPHERE_DETAIL.none;
     this.pipeline.atmosphere.setBodies(
-      atmosphere === undefined ? [] : [atmosphere], quality === ATMOSPHERE_QUALITY.high ? 1 : 0,
+      atmosphere === undefined ? [] : [atmosphere], detail, detail === ATMOSPHERE_DETAIL.none ? 0 : 1,
     );
     const startedAt = performance.now();
     this.pipeline.render(this.scene, camera, this.style);

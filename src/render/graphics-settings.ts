@@ -88,8 +88,11 @@ export const GRAPHICS_OPTIONS = {
   // — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
   atmosphere: {
     kind: 'choice', group: 'element', label: '大気',
-    items: [[ATMOSPHERE_QUALITY.off, 'オフ'], [ATMOSPHERE_QUALITY.low, '低'], [ATMOSPHERE_QUALITY.high, '高']],
-    presets: { low: ATMOSPHERE_QUALITY.low, medium: ATMOSPHERE_QUALITY.low, high: ATMOSPHERE_QUALITY.high },
+    items: [
+      [ATMOSPHERE_QUALITY.off, 'オフ'], [ATMOSPHERE_QUALITY.low, '低'],
+      [ATMOSPHERE_QUALITY.medium, '中'], [ATMOSPHERE_QUALITY.high, '高'],
+    ],
+    presets: { low: ATMOSPHERE_QUALITY.low, medium: ATMOSPHERE_QUALITY.medium, high: ATMOSPHERE_QUALITY.high },
   },
   // 地表へ合成する雲と、雲が地表へ落とす影。
   clouds: {

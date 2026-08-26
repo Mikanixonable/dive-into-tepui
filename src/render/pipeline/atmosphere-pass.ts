@@ -3,7 +3,8 @@
 // 合成する。天体本体による遮蔽も同じ視線のレイ・スフィア交差で解くので、深度テストの精度には
 // 依存しない。大気を持つ天体を同時に MAX_ATMOSPHERE_BODIES 体まで受け、視点に近い順に重ねる。
 //
-// 先頭の天体だけは視線に沿った散乱の積分でも解き、重み denseWeight で単層表現と混ぜる。
+// 先頭の天体だけは視線に沿った散乱の積分でも解き、単層表現と混ぜる。積分の細かさは
+// 呼び出し側が段で選ぶ。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
@@ -22,8 +23,13 @@ import { viewPositionAt, viewRayAt } from './view-ray';
 // 同時に大気を描ける天体の数。**TSL のグラフは静的に展開されるので、実行時には増やせない。**
 export const MAX_ATMOSPHERE_BODIES = 4;
 
-// 主天体の積分に使うサンプル点の数。
-const MARCH_STEPS = 16;
+// 主天体へ足す濃い表現の細かさ。積分のサンプル点の数がこれで決まる。
+export const ATMOSPHERE_DETAIL = { none: 0, coarse: 1, fine: 2 } as const;
+export type AtmosphereDetail = (typeof ATMOSPHERE_DETAIL)[keyof typeof ATMOSPHERE_DETAIL];
+
+// 細かさごとの積分のサンプル点の数。
+const COARSE_STEPS = 6;
+const FINE_STEPS = 16;
 
 // 消散係数の下限 [1/m]。散乱の割合を消散で割るときの 0/0 を塞ぐ。
 const MIN_EXTINCTION = 1e-30;
@@ -119,6 +125,7 @@ export class AtmospherePass {
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
   private readonly slots: readonly BodySlot[];
+  private readonly denseDetail: FloatUniform;
   private readonly denseWeight: FloatUniform;
   // 下地と合成する前の、大気が足す内部散乱だけ(前乗算アルファの色そのもの)。
   private readonly scattered: Vec3Node;
@@ -138,6 +145,7 @@ export class AtmospherePass {
   ) {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
+    this.denseDetail = uniform(ATMOSPHERE_DETAIL.none);
     this.denseWeight = uniform(0);
     this.slots = Array.from({ length: MAX_ATMOSPHERE_BODIES }, (): BodySlot => ({
       center: uniform(new THREE.Vector3()),
@@ -174,11 +182,13 @@ export class AtmospherePass {
         const layerTransmittance = single.transmittance.toVar();
         const layerInscatter = single.inscatter.toVar();
         if (index === 0) {
-          If(greaterThan(this.denseWeight, 0), () => {
-            const dense = this.integrated(slot, segment, rayOrigin, rayDir);
+          const blendDense = (steps: number) => (): void => {
+            const dense = this.integrated(slot, segment, rayOrigin, rayDir, steps);
             layerTransmittance.assign(mix(layerTransmittance, dense.transmittance, this.denseWeight));
             layerInscatter.assign(mix(layerInscatter, dense.inscatter, this.denseWeight));
-          });
+          };
+          If(this.denseDetail.equal(ATMOSPHERE_DETAIL.fine), blendDense(FINE_STEPS))
+            .ElseIf(this.denseDetail.equal(ATMOSPHERE_DETAIL.coarse), blendDense(COARSE_STEPS));
         }
         inscatter.addAssign(layerInscatter.mul(transmittance));
         transmittance.mulAssign(layerTransmittance);
@@ -279,7 +289,7 @@ export class AtmospherePass {
   // 区間を視線に沿って積分した透過率と内部散乱。サンプル点は最も濃い点の周りへ寄せる —
   // 大気の濃さは高度に対して指数で変わるので、等間隔に取ると濃い側を数点で済ませてしまう。
   private integrated(
-    slot: BodySlot, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
+    slot: BodySlot, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node, steps: number,
   ): LayerContribution {
     // 手前半分は最も濃い点へ向かって細かく、奥半分はそこから離れるほど粗く。境目で刻みが
     // 途切れないよう、どちらの半分も最も濃い点を端に持つ。
@@ -292,7 +302,7 @@ export class AtmospherePass {
       return segment.densest.add(segment.far.sub(segment.densest).mul(eased));
     };
     const march = rayMarch(
-      MARCH_STEPS, distanceAt, (distance) => this.mediumAt(slot, rayOrigin.add(rayDir.mul(distance)), rayDir),
+      steps, distanceAt, (distance) => this.mediumAt(slot, rayOrigin.add(rayDir.mul(distance)), rayDir),
     );
     return {
       transmittance: select(segment.hitsAtmosphere, march.transmittance, vec3(1, 1, 1)),
@@ -348,9 +358,10 @@ export class AtmospherePass {
 
   // このフレームで大気を描く天体を、カメラのいる場所の大気を強く作っている順に渡す。
   // **先頭が主天体であり、同時に視点へ最も近い**ので、合成の前後もこの並びで決まる。
-  // denseWeight は先頭の天体へ足す積分の重み 0..1。MAX_ATMOSPHERE_BODIES を超えた分と、
-  // 空きスロットは描かれない。
-  setBodies(bodies: readonly AtmosphereBody[], denseWeight: number): void {
+  // detail は先頭の天体へ足す濃い表現の細かさ、denseWeight はそれを単層表現と混ぜる重み 0..1。
+  // MAX_ATMOSPHERE_BODIES を超えた分と、空きスロットは描かれない。
+  setBodies(bodies: readonly AtmosphereBody[], detail: AtmosphereDetail, denseWeight: number): void {
+    this.denseDetail.value = detail;
     this.denseWeight.value = denseWeight;
     for (const [index, slot] of this.slots.entries()) {
       const body = bodies[index];
