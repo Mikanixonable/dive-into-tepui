@@ -336,30 +336,30 @@ export class EnvironmentScene {
     );
   }
 
-  // 大気を描く天体を、視点に近い順に最大 MAX_ATMOSPHERE_BODIES 体。**どれを描くかは
-  // カメラのいる場所の大気の濃さで選び、カメラの向きは見ない** — 地表から空を見上げて地面が
-  // 視錐台に入っていなくても、空は大気の色でなければならない。並べ替えるのは、画面で
-  // 重なったときの前後を決めるためだけ。
+  // 大気を描く天体を、カメラのいる場所の大気を強く作っている順に最大 MAX_ATMOSPHERE_BODIES 体。
+  // **カメラの向きは見ない** — 地表から空を見上げて地面が視錐台に入っていなくても、空は大気の
+  // 色でなければならない。
+  //
+  // **この並びは視点に近い順でもある。** 濃さは高度に対して指数で落ちるので、遠い天体が
+  // 近い天体を上回るのは近い側の大気がそもそも見えないときだけ。合成の前後はこの並びが決める。
   private atmosphereBodies(
     fo: FloatingOrigin, displayTime: number, cameraPos: Vec3,
   ): readonly AtmosphereBody[] {
-    const candidates: { body: AtmosphereBody; strength: number; distance: number }[] = [];
+    const candidates: { body: AtmosphereBody; strength: number }[] = [];
     for (const id of this.referenceIds) {
       const optics = atmosphereOpticsOf(id);
       if (optics === null) continue;
       const surfaceRadius = bodyDef(this.ephemeris.registry, id).radius;
       const center = this.ephemeris.positionOf(id, displayTime);
-      const distance = len(sub(cameraPos, center));
+      const altitude = len(sub(cameraPos, center)) - surfaceRadius;
       candidates.push({
         body: { center: fo.RtoThreeV3(center), surfaceRadius, optics },
-        strength: logExtinctionAt(optics, distance - surfaceRadius),
-        distance,
+        strength: logExtinctionAt(optics, altitude),
       });
     }
     return candidates
       .sort((a, b) => b.strength - a.strength)
       .slice(0, MAX_ATMOSPHERE_BODIES)
-      .sort((a, b) => a.distance - b.distance)
       .map(({ body }) => body);
   }
 
