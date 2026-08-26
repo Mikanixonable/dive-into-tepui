@@ -11,7 +11,7 @@ import {
   SUN_RADIANT_INTENSITY, ambientIrradianceAtDistance,
 } from '../../src/render/pipeline/sun-light';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
+import { ATMOSPHERE_QUALITY, QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
@@ -301,8 +301,12 @@ export class LabView {
     this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    const atmosphere = this.current.atmosphere;
-    this.pipeline.atmosphere.setBodies(atmosphere === undefined ? [] : [atmosphere], 1);
+    // 大気の段はゲーム本体では game/ が解くので、ここでは同じ対応をこのビューが持つ。
+    const quality = this.graphicsData.atmosphere;
+    const atmosphere = quality === ATMOSPHERE_QUALITY.off ? undefined : this.current.atmosphere;
+    this.pipeline.atmosphere.setBodies(
+      atmosphere === undefined ? [] : [atmosphere], quality === ATMOSPHERE_QUALITY.high ? 1 : 0,
+    );
     const startedAt = performance.now();
     this.pipeline.render(this.scene, camera, this.style);
     this.lastRenderCpuMs = performance.now() - startedAt;
