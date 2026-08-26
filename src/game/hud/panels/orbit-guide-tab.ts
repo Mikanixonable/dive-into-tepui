@@ -6,15 +6,13 @@
 //
 // 族 id(焼き込みカタログのキー)から画面に出す群・表示名を導く対応表は、実在する族を
 // 呼び出し側から受け取った availableFamilies から作る——族の集合を推測でここへ書き写さない。
-import lagrangeOrbits from '../../../assets/orbits/lagrange-orbits.json';
-import type { OrbitCatalog, CatalogSystemId } from '../../../physics/orbit-catalog';
-import { lagrangeJacobi, type LagrangeLabel } from '../../../physics/zero-velocity';
+import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../widgets';
 import {
-  AMPLITUDE_MAPPING, COUNT_MAPPING, CYCLES_MAPPING, DIRECTION_ITEMS, JACOBI_MAPPING, OPACITY_MAPPING,
+  AMPLITUDE_MAPPING, COUNT_MAPPING, CYCLES_MAPPING, DIRECTION_ITEMS, OPACITY_MAPPING,
   PHASE_MAPPING, RANGE_MAPPING,
-  buildColorField, buildValueField, hexColorString, syncValueField,
-  type ValueField, type ValueMapping,
+  buildColorField, buildKindRowHeading, buildValueField, hexColorString, syncValueField,
+  type ValueField,
 } from './guide-value-field';
 import { buildKindDefs, defaultColorsFor, type CombinedKindDef, type KindDef } from './guide-kind-def';
 import {
@@ -64,7 +62,6 @@ interface SharedKindFields {
 
 // 種類1行(見出しトグル+設定パネル)。設定パネルは on の間だけ .hidden を外す。
 interface KindRow extends SharedKindFields {
-  readonly root: HTMLElement;
   readonly heading: Button;
   readonly configPanel: HTMLElement;
 }
@@ -72,7 +69,6 @@ interface KindRow extends SharedKindFields {
 // 小題1行(軸ボタン+共有設定パネル)。設定パネルは軸値の組み合わせが1つでも表示中の間だけ
 // .hidden を外す。
 interface CombinedKindRow extends SharedKindFields {
-  readonly root: HTMLElement;
   readonly configPanel: HTMLElement;
   readonly axisButtons: ReadonlyMap<string, Button>;
 }
@@ -293,20 +289,10 @@ export class OrbitGuideTab {
 
   // 種類1行(見出し+設定パネル)を組む。見出しの表示トグルが on のときだけ設定パネルを見せる。
   private buildKindRow(parent: HTMLElement, def: KindDef): void {
-    const root = document.createElement('div');
-    root.className = 'orbit-guide-kind-row';
-
-    const heading = new Button(def.label, () => this.toggleKind(def.id));
-    heading.element.classList.add('orbit-guide-kind-heading-btn');
-    if (def.group === 'resonant') heading.element.classList.add('orbit-guide-kind-heading-btn-resonant');
-    const headingRow = document.createElement('div');
-    headingRow.className = 'orbit-guide-kind-heading';
-    headingRow.appendChild(heading.element);
-    root.appendChild(headingRow);
-
-    const configPanel = document.createElement('div');
-    configPanel.className = 'orbit-guide-kind-config hidden';
-    root.appendChild(configPanel);
+    const { heading, configPanel } = buildKindRowHeading(
+      parent, def.label, () => this.toggleKind(def.id),
+      def.group === 'resonant' ? 'orbit-guide-kind-heading-btn-resonant' : undefined,
+    );
 
     const shared = this.buildSharedKindFields(
       configPanel, () => this.current.kinds[def.id] ?? this.defaultKindFor(def.id),
@@ -318,8 +304,7 @@ export class OrbitGuideTab {
       },
     );
 
-    parent.appendChild(root);
-    this.kindRows.set(def.id, { root, heading, configPanel, ...shared });
+    this.kindRows.set(def.id, { heading, configPanel, ...shared });
   }
 
   private toggleKind(id: string): void {
@@ -394,7 +379,7 @@ export class OrbitGuideTab {
     );
 
     parent.appendChild(root);
-    this.combinedRows.set(def.key, { root, configPanel, axisButtons, ...shared });
+    this.combinedRows.set(def.key, { configPanel, axisButtons, ...shared });
   }
 
   // 軸値表示ラベル('北'/'南'/'区間1'/'基本' 等)と axisValues のキーは一致させている
@@ -433,21 +418,10 @@ export class OrbitGuideTab {
 
   // リサジュー軌道の行(族を持たないので専用の設定項目を並べる)。
   private buildLissajousRow(parent: HTMLElement): OrbitGuideTab['lissajousRow'] {
-    const root = document.createElement('div');
-    root.className = 'orbit-guide-kind-row';
-    const heading = new Button('リサジュー軌道', () => {
+    const { heading, configPanel } = buildKindRowHeading(parent, 'リサジュー軌道', () => {
       const on = !this.current.lissajous.on;
       this.commit({ ...this.current, lissajous: { ...this.current.lissajous, on } });
     });
-    heading.element.classList.add('orbit-guide-kind-heading-btn');
-    const headingRow = document.createElement('div');
-    headingRow.className = 'orbit-guide-kind-heading';
-    headingRow.appendChild(heading.element);
-    root.appendChild(headingRow);
-
-    const configPanel = document.createElement('div');
-    configPanel.className = 'orbit-guide-kind-config hidden';
-    root.appendChild(configPanel);
 
     const pointRow = document.createElement('div');
     pointRow.className = 'w-group orbit-guide-toggle-row';
@@ -483,7 +457,6 @@ export class OrbitGuideTab {
     const animateSwitch = new ToggleSwitch('進行方向のアニメーション', (on) => this.commitLissajous({ animate: on }));
     configPanel.appendChild(animateSwitch.element);
 
-    parent.appendChild(root);
     return {
       heading, configPanel, pointButtons, inPlaneField, outOfPlaneField, inPlanePhaseField, outOfPlanePhaseField,
       cyclesField, colorInput: colorField.input, opacityField, direction, animateSwitch,
@@ -613,16 +586,3 @@ const SYSTEM_LABEL: Readonly<Record<CatalogSystemId, string>> = {
   'jupiter-europa': '木星-エウロパ系', 'saturn-titan': '土星-タイタン系',
   'saturn-enceladus': '土星-エンケラドス系', 'mars-phobos': '火星-フォボス系',
 };
-
-// ゼロ速度曲線(ガイドタブ側)が使う質量比。焼き込みカタログの mu をそのまま使う——
-// L1〜L5 のヤコビ定数は系ごとの mu で決まるため、ここだけ例外的にカタログを import する。
-export function zeroVelocityMu(system: 'earth-moon' | 'sun-earth'): number {
-  const catalog = lagrangeOrbits as OrbitCatalog;
-  return catalog.systems[system]?.mu ?? (system === 'earth-moon' ? 0.012150585 : 3.003e-6);
-}
-
-export function lagrangePointJacobi(system: 'earth-moon' | 'sun-earth', point: LagrangeLabel): number {
-  return lagrangeJacobi(zeroVelocityMu(system), point);
-}
-
-export { JACOBI_MAPPING, type ValueMapping, buildValueField, syncValueField };
