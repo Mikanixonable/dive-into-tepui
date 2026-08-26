@@ -10,7 +10,7 @@ import { createAnnulusRing } from '../../src/render/ring';
 import { buildPlayerShip } from '../../src/render/ships';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
-import { attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE } from '../../src/render/thermal-emissive';
+import { attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource } from '../../src/render/thermal-emissive';
 import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import type { LineStyle } from '../../src/render/line-style';
@@ -519,11 +519,13 @@ const BLACKBODY_GRADIENT_AVERAGE = 950;
 const BLACKBODY_GRADIENT_DEVIATION = 550;
 // 艦が喪失する温度(1,300 K)の少し上。夜側で赤熱として読める明るさになる。
 const BLACKBODY_SHIP_TEMPERATURE = 1400;
+// 1 本の InstancedMesh へ積む枝の温度 [K]。
+const BLACKBODY_INSTANCE_TEMPERATURES = [1200, 1300, 1400, 1500, 1600, 1700];
 
 // 赤熱を読むための、暗くつや消しの試験体マテリアル。反射で自照が埋もれないアルベドに取る。
-function blackbodyMaterial(shaped: boolean): THREE.MeshStandardNodeMaterial {
+function blackbodyMaterial(shaped: boolean, source: ThermalSource = 'object'): THREE.MeshStandardNodeMaterial {
   const material = new THREE.MeshStandardNodeMaterial({ color: 0x14161a, roughness: 0.85, metalness: 0 });
-  return attachThermalEmissive(material, 'object', shaped);
+  return attachThermalEmissive(material, source, shaped);
 }
 
 // 温度勾配を焼いた円柱。軸は画面の横方向で、shape は左端 0・右端 1。
@@ -536,6 +538,30 @@ function blackbodyGradientBar(material: THREE.Material, length: number, radius: 
   geometry.rotateZ(-Math.PI / 2);
   const mesh = new THREE.Mesh(geometry, material);
   mesh.userData.ownsGeometry = true;
+  return mesh;
+}
+
+// 個体ごとの温度を持つ枝を 1 本の InstancedMesh へ積んで返す。**同じ 1 本の描画に積まれた
+// 個体が、それぞれ違う明るさで光ること**が、個体ごとの温度が属性として届いている印。
+function blackbodyInstancedRow(center: THREE.Vector3, spacing: number): THREE.Object3D {
+  const host = new THREE.Scene();
+  const geometry = new THREE.BoxGeometry(1.6, 1.6, 1.6);
+  const material = blackbodyMaterial(false, 'instance');
+  const count = BLACKBODY_INSTANCE_TEMPERATURES.length;
+  const pool = new InstancedPool(host, geometry, material, count, false, 0, true);
+  const piece = new THREE.Object3D();
+  pool.beginFrame();
+  for (const [i, temperature] of BLACKBODY_INSTANCE_TEMPERATURES.entries()) {
+    piece.position.copy(center).setX(center.x + (i - (count - 1) / 2) * spacing);
+    piece.rotation.set(0.42, 0.62, 0);
+    syncThermalState(piece, temperature, 0, HULL_EMISS);
+    pool.push(piece);
+  }
+  pool.endFrame();
+  const mesh = host.children[0]!;
+  host.remove(mesh);
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
   return mesh;
 }
 
@@ -560,8 +586,9 @@ function blackbody(): LabCase {
   syncThermalState(bar, BLACKBODY_GRADIENT_AVERAGE, BLACKBODY_GRADIENT_DEVIATION, HULL_EMISS);
   markLitOpaque(bar);
   objects.push(bar);
+  objects.push(blackbodyInstancedRow(new THREE.Vector3(-14, -8, -BLACKBODY_DEPTH), 3));
   // 艦 1 隻を同じ絵へ。**モデルから読んだマテリアルにも温度が届く**ことを見る。
-  const ship = shipAt(new THREE.Vector3(0, -9, -34), SHIP_ROTATION_PORT);
+  const ship = shipAt(new THREE.Vector3(14, -8, -30), SHIP_ROTATION_PORT);
   syncThermalState(ship, BLACKBODY_SHIP_TEMPERATURE, 0, HULL_EMISS);
   objects.push(ship);
   return { objects, camera: labCamera(6e7), sunDirection: OBLIQUE_SUN_DIR };

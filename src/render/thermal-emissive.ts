@@ -88,17 +88,32 @@ export function makeThermallyEmissive<T extends THREE.Object3D>(root: T): T {
   return root;
 }
 
-// root 配下の Mesh へ、いまの熱の状態を配る。温度と過熱の振幅は [K]。
+// root と、その配下すべてへいまの熱の状態を配る。温度と過熱の振幅は [K]。
 export function syncThermalState(
   root: THREE.Object3D, temperature: number, deviation: number, emissivity: number,
 ): void {
   root.traverse((obj) => {
-    if (!(obj as THREE.Mesh).isMesh) return;
     const data = obj.userData as ThermalUserData;
     data.thermalTemperature = temperature;
     data.thermalDeviation = deviation;
     data.thermalEmissivity = emissivity;
   });
+}
+
+// object が運んでいる熱の状態を out の offset から 3 つぶん書き、値が動いたなら true を返す。
+// 熱の状態を受け取っていない object は 0 として書かれる。
+export function writeThermalState(
+  object: THREE.Object3D, out: Float32Array, offset: number,
+): boolean {
+  const data = object.userData as Partial<ThermalUserData>;
+  const values = [data.thermalTemperature ?? 0, data.thermalDeviation ?? 0, data.thermalEmissivity ?? 0];
+  let changed = false;
+  for (let i = 0; i < values.length; i++) {
+    if (out[offset + i] === values[i]) continue;
+    out[offset + i] = values[i]!;
+    changed = true;
+  }
+  return changed;
 }
 
 // 熱の状態をまだ受け取っていない Mesh を、光らない状態へ据える。
