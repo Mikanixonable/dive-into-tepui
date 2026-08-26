@@ -33,7 +33,8 @@ const STREAK_PASSES = 2;
 // 核のうち条へ回す割合。**滲みの重みから引く**ので、核の総和は 1 のまま動かない。
 const STREAK_SHARE = 0.2;
 
-// ゴーストを引く段。像そのものを縮めて置き直すだけなので、細かい段から引く意味は無い。
+// ゴーストのいちばん締まった読み元の段。この段の解像度がそのままゴーストの出力の解像度になり、
+// **1 枚ごとの硬さの選択肢としてここから 3 段ぶんを読む。**
 const GHOST_LEVEL = 2;
 // 核のうちゴーストへ回す割合。条と同じく滲みの重みから引く。
 const GHOST_SHARE = 0.08;
@@ -133,7 +134,9 @@ export class LensPass {
         );
       });
     });
-    this.ghosts = createStage(() => apertureGhosts(down[GHOST_LEVEL]!.target.texture));
+    this.ghosts = createStage(() => apertureGhosts([
+      down[GHOST_LEVEL]!.target.texture, down[GHOST_LEVEL + 1]!.target.texture, down[GHOST_LEVEL + 2]!.target.texture,
+    ]));
   }
 
   // 下地へレンズ効果を掛けた色。**滲みが受け取ったぶんだけ元の光点が暗くなる**ので、

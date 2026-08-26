@@ -6,7 +6,7 @@
 // **半精度浮動小数点の上限(65504)を跨がないのも、総和が 1 であることに掛かっている** —
 // 出力が入力の最大値(太陽面の 4.62e4)を超えないので、Inf も NaN も構造的に起きない。
 import * as THREE from 'three/webgpu';
-import { and, greaterThan, lessThan, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
+import { and, greaterThan, lessThan, screenSize, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
 import type { Vec2Node, Vec2Uniform, Vec3Node } from '../tsl-types';
 
 // 条の 1 パスあたりのタップ数。**パスをまたぐ刻みをこの数と同じにする。**
@@ -14,14 +14,54 @@ const STREAK_TAPS = 12;
 // 条の減衰長 [読み元のテクセル]。
 const STREAK_FALLOFF = 50;
 
-// 絞りの反射像 [倍率, 重み, 色み]。**倍率が負なので像は画面中心を挟んだ反対側へ出る。**
-// **絶対値は 1 未満に留める** — 1 を超えると読む位置が画面の外へ出て、縁の画素が引き伸ばされる。
-// 重みの和は 1 で、色みは加重平均が白になるよう正規化してから使う(そうしないとゴーストが
-// 光量を色ごとに増減させてしまう)。
-const GHOSTS: readonly (readonly [number, number, readonly [number, number, number]])[] = [
-  [-0.30, 0.40, [1.00, 0.78, 0.55]],
-  [-0.55, 0.35, [0.60, 0.90, 1.00]],
-  [-0.80, 0.25, [0.85, 1.00, 0.80]],
+// ゴースト 1 枚を読むタップの間隔 [読み元のテクセル] と、その配り方。縮小段の核は支持が四角いので、
+// 1 点で読むと光点が角ばった板として写る。**四方へ散らしてから平均すると角が取れて丸い像になる。**
+const GHOST_TAP_RADIUS = 0.65;
+const GHOST_TAPS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// ゴーストの読み元。**1 段ずつ粗くなる縮小段を、細かいほうから並べる**(タップの間隔が段の粗さに
+// 比例することが、この並びに掛かっている)。
+export type GhostSources = readonly [THREE.Texture, THREE.Texture, THREE.Texture];
+
+// 絞りの反射像 1 枚。
+type Ghost = {
+  // 画面中心を基準に像へ掛かる倍率 [横, 縦]。**負なら中心を挟んだ反対側**へ出て、絶対値が
+  // 小さいほど遠く、大きく写る。
+  readonly scale: readonly [number, number];
+  // 倍率を掛ける前に像を回す角 [rad]。
+  readonly angle: number;
+  // 放射軸からのずらし [画面の高さに対する割合]。
+  readonly offset: readonly [number, number];
+  // 読み元。GhostSources の並びを指し、大きいほど輪郭の緩い像になる。
+  readonly softness: 0 | 1 | 2;
+  // 核のうちこの 1 枚が持つ配分。**表の総和で正規化してから使う。**
+  readonly weight: number;
+  // コーティングの干渉による色み。**加重平均が白になるよう正規化してから使う**(そうしないと
+  // ゴーストが光量を色ごとに増減させてしまう)。
+  readonly tint: readonly [number, number, number];
+  // 色収差。チャンネルごとに倍率をこの割合だけずらす。
+  readonly dispersion: number;
+};
+
+// 絞りの反射像。**配分を総和で正規化するので、枚数を増やせば 1 枚あたりは薄くなる。**
+//
+// **倍率の積の絶対値は 1 以下に留める。** 1 を超える枚は同じ光を狭い面積へ集めるので、その画素が
+// 入力の最大値を超える — 半精度浮動小数点の余裕は太陽面(4.62e4)と上限(65504)の 1.4 倍しかない。
+const GHOSTS: readonly Ghost[] = [
+  { scale: [-0.17, -0.18], angle: 0.1, offset: [0, 0], softness: 2, weight: 0.05, tint: [1.00, 0.74, 0.45], dispersion: 0.012 },
+  { scale: [-0.24, -0.23], angle: -0.14, offset: [0, 0], softness: 2, weight: 0.05, tint: [0.95, 0.68, 1.00], dispersion: 0.014 },
+  { scale: [0.28, 0.30], angle: 0.12, offset: [0, 0], softness: 2, weight: 0.05, tint: [1.00, 0.62, 0.48], dispersion: 0.012 },
+  { scale: [-0.34, -0.32], angle: -0.08, offset: [0, 0], softness: 1, weight: 0.07, tint: [0.48, 0.84, 1.00], dispersion: 0.012 },
+  { scale: [-0.42, -0.45], angle: 0.16, offset: [0, 0], softness: 1, weight: 0.07, tint: [0.60, 1.00, 0.68], dispersion: 0.01 },
+  { scale: [-0.52, -0.50], angle: -0.12, offset: [0, 0], softness: 1, weight: 0.08, tint: [0.84, 0.56, 1.00], dispersion: 0.012 },
+  { scale: [-0.62, -0.60], angle: 0.06, offset: [0.015, -0.008], softness: 1, weight: 0.08, tint: [1.00, 0.88, 0.62], dispersion: 0.008 },
+  { scale: [-0.75, -0.72], angle: -0.18, offset: [0, 0], softness: 1, weight: 0.08, tint: [0.55, 0.74, 1.00], dispersion: 0.01 },
+  { scale: [-0.88, -0.85], angle: 0.1, offset: [0, 0], softness: 0, weight: 0.07, tint: [1.00, 0.95, 0.82], dispersion: 0.006 },
+  { scale: [-1.02, -0.95], angle: -0.05, offset: [0, 0], softness: 0, weight: 0.06, tint: [0.78, 0.62, 1.00], dispersion: 0.006 },
+  { scale: [-1.30, -0.72], angle: 0.34, offset: [0, 0], softness: 1, weight: 0.05, tint: [0.66, 1.00, 0.92], dispersion: 0.008 },
+  { scale: [0.55, 0.58], angle: -0.1, offset: [0, 0], softness: 1, weight: 0.06, tint: [0.72, 0.88, 1.00], dispersion: 0.008 },
+  { scale: [0.80, 0.75], angle: 0.14, offset: [0.012, 0.01], softness: 0, weight: 0.05, tint: [0.70, 1.00, 0.74], dispersion: 0.008 },
+  { scale: [1.15, 0.62], angle: -0.4, offset: [0, 0], softness: 1, weight: 0.05, tint: [1.00, 0.72, 0.95], dispersion: 0.01 },
 ];
 
 // ノードの和。**平衡木で畳む** — 左畳みにすると括弧が項数ぶん深く入れ子になり、WGSL の
@@ -128,19 +168,45 @@ export function streakPass(
   return sumOf(taps).mul(1 / total);
 }
 
-// 絞りの反射像。画面中心を軸に像を縮めて反対側へ置き直したものを、色みを変えて数枚重ねる。
-// **縮めた像は同じ光が狭い面積へ集まる**ので、倍率の 2 乗を掛けて光量を戻す。ずらし幅は画面に
-// 対する割合なので、読み元のテクセル寸法は要らない。
-export function apertureGhosts(source: THREE.Texture): Vec3Node {
+// 1 枚ぶんの像。**チャンネルごとに倍率をわずかにずらして 3 回読む**ので、輪郭に色収差の縁が出る。
+// share は正規化済みの配分、meanTint は色みの加重平均。
+function ghostSheet(
+  source: THREE.Texture, ghost: Ghost, share: number, meanTint: readonly [number, number, number],
+): Vec3Node {
   const center = vec2(0.5, 0.5);
-  const meanTint = [0, 1, 2].map(
-    (channel) => GHOSTS.reduce((sum, [, weight, tint]) => sum + weight * tint[channel]!, 0),
-  );
-  return sumOf(GHOSTS.map(([scale, weight, tint]) => {
-    const gain = weight * scale * scale;
-    const balanced = vec3(
-      (tint[0] / meanTint[0]!) * gain, (tint[1] / meanTint[1]!) * gain, (tint[2] / meanTint[2]!) * gain,
-    );
-    return sampleInside(source, center.add(screenUV.sub(center).mul(scale))).mul(balanced);
-  }));
+  // 回転と非等方な倍率が縦横で歪まないよう、画素が正方になる座標へ直してから掛ける。
+  const stretch = vec2(screenSize.x.div(screenSize.y), 1);
+  const local = screenUV.sub(center).mul(stretch);
+  const [scaleX, scaleY] = ghost.scale;
+  const cos = Math.cos(ghost.angle);
+  const sin = Math.sin(ghost.angle);
+  const channel = (index: 0 | 1 | 2): Vec3Node => {
+    // 中央のチャンネルが表の倍率そのもので、両端がその前後へずれる。
+    const dispersed = 1 + (index - 1) * ghost.dispersion;
+    const x = scaleX * dispersed;
+    const y = scaleY * dispersed;
+    const warped = vec2(
+      local.x.mul(cos * x).add(local.y.mul(-sin * y)),
+      local.x.mul(sin * x).add(local.y.mul(cos * y)),
+    ).add(vec2(ghost.offset[0], ghost.offset[1]));
+    // 広がった像は同じ光が広い面積へ散るので、倍率の行列式で光量を戻す。
+    const gain = share * Math.abs(x * y) * (ghost.tint[index] / meanTint[index]);
+    const uv = center.add(warped.div(stretch));
+    const reach = GHOST_TAP_RADIUS * 2 ** ghost.softness;
+    const spread = vec2(reach, reach).div(screenSize);
+    const ring = GHOST_TAPS.map(([dx, dy]) => sampleInside(source, uv.add(vec2(dx, dy).mul(spread))));
+    return sumOf(ring).mul(gain / GHOST_TAPS.length);
+  };
+  return vec3(channel(0).r, channel(1).g, channel(2).b);
+}
+
+// 絞りの反射像。像をアフィン変換で置き直したものを、色み・硬さ・向きを変えて重ねる。
+export function apertureGhosts(sources: GhostSources): Vec3Node {
+  const totalWeight = GHOSTS.reduce((sum, ghost) => sum + ghost.weight, 0);
+  const meanOf = (index: 0 | 1 | 2): number =>
+    GHOSTS.reduce((sum, ghost) => sum + ghost.weight * ghost.tint[index], 0) / totalWeight;
+  const meanTint: readonly [number, number, number] = [meanOf(0), meanOf(1), meanOf(2)];
+  return sumOf(GHOSTS.map(
+    (ghost) => ghostSheet(sources[ghost.softness], ghost, ghost.weight / totalWeight, meanTint),
+  ));
 }
