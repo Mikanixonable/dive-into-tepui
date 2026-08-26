@@ -98,24 +98,12 @@ function applyLoop(curve: GuideCurve, loop: GuideLoop): void {
   curve.setHermite(origin, { ts: shape.us, positions, tangents });
 }
 
-// 族 id からその種類が属する群を判定する。「軸方向軌道」「垂直軌道」は共線点(L1-L3)と
-// 三角点(L4/L5)の双方にあるので、末尾のラグランジュ点で見分ける。
 function groupOf(familyId: string): GuideGroupId | null {
-  if (familyId.startsWith('resonant-')) return 'resonant';
-  if (familyId === 'dro' || familyId === 'dpo' || familyId.startsWith('lpo-')) return 'secondary';
-  if (familyId.startsWith('short-') || familyId.startsWith('longp-')) return 'triangular';
-  if (familyId.startsWith('axial-') || familyId.startsWith('vertical-')) {
-    return /L[45]/.test(familyId) ? 'triangular' : 'collinear';
-  }
-  if (
-    familyId.startsWith('lyapunov-') || familyId.startsWith('halo-')
-    || familyId.startsWith('butterfly-') || familyId.startsWith('dragonfly-')
-  ) return 'collinear';
-  return null;
+  return parseGuideKindId(familyId)?.group ?? null;
 }
 
 function pointOf(familyId: string): string | null {
-  return /L[1-5]/.exec(familyId)?.[0] ?? null;
+  return parseGuideKindId(familyId)?.point ?? null;
 }
 
 // combinedKey を持つ族(点/南北/東西/区間の軸ボタンで束ねた小題)が、選ばれている軸値の組み合わせを
