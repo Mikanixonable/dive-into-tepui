@@ -68,11 +68,25 @@ function resampleAt(source: THREE.Texture, texel: Vec2Uniform, x: number, y: num
   return texture(source, screenUV.add(vec2(x, y).mul(texel))).rgb;
 }
 
-// 縮小。書き込み先が読み元のちょうど半分の解像度なので、半テクセルずらした双一次の 4 点が
-// そのまま 4x4 の箱平均になる。
-export function boxDownsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
+// 縮小。**2x2 の平均だと核が角ばる。** 箱は可分なので等高線が四角く、それが 5 段ぶん積み上がって
+// ハローの角として残る。13 タップ(2x2 の群を、中央に 1 つと四隅に 4 つ)へ広げると 1 段あたりの
+// 核が丸みを帯び、ハローが滑らかで広くなる。
+//
+// 中央の群が 1/2、四隅の群が 1/8 ずつで**総和 1**。タップ位置が中心について対称なので、核の
+// 重心は動かない。**明るさで分岐する外れ値除去(Karis average)は入れない** — 非線形なので、
+// この段が閾値を持たないという規則に触れる。
+//
+// **サブピクセル移動に対するちらつきは、これでは減らない(実測)。** この場面のちらつきは
+// 太陽自身のラスタライズ — 1px を切った円盤の被覆率が量子化されること — が支配していて、
+// 縮小より上流にある。
+export function downsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
   const tap = (x: number, y: number): Vec3Node => resampleAt(source, texel, x, y);
-  return sumOf([tap(-0.5, -0.5), tap(0.5, -0.5), tap(-0.5, 0.5), tap(0.5, 0.5)]).mul(0.25);
+  // 中央の 2x2(読み元の 1 テクセル刻み)と、それを囲む 3x3 の格子(2 テクセル刻み)。
+  const inner = sumOf([tap(-1, -1), tap(1, -1), tap(-1, 1), tap(1, 1)]);
+  const corner = (x: number, y: number): Vec3Node =>
+    sumOf([tap(x, y), tap(0, y), tap(x, 0), tap(0, 0)]);
+  const outer = sumOf([corner(-2, -2), corner(2, -2), corner(-2, 2), corner(2, 2)]);
+  return sumOf([inner.mul(0.125), outer.mul(0.03125)]);
 }
 
 // 拡大((1,2,1 / 2,4,2 / 1,2,1) / 16 のテント)。
