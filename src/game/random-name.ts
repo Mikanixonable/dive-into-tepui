@@ -2,7 +2,7 @@
 // ポリネシア語（航海・星・自然）、広東語（星海・勇猛・天空）、フランス語（天体・要塞・航海）の
 // 単語群からランダムに選定し、ランダムな識別番号(10〜99)を付与する。
 
-export type EntityCategory = 'player' | 'base' | 'enemy' | 'ammo' | 'fuel';
+export type ObjectType = 'player' | 'enemy' | 'ammo' | 'fuel' | 'base';
 
 const POLYNESIAN_SHIPS = [
   'Moana', 'Matariki', 'Matangi', 'Kapehu', 'Hoku', 'Mahina', 'Tawhiri', 'Nalu', 'Waka', 'Moerani', 'Aotearoa',
@@ -35,7 +35,7 @@ const FRENCH_ENEMIES = [
 ];
 
 // 均等確率でポリネシア語(0)・広東語(1)・フランス語(2)のプールを選択し、単語+2桁番号を返す
-export function generateRandomName(category: EntityCategory): string {
+export function generateRandomName(category: ObjectType): string {
   if (category === 'ammo' || category === 'fuel') {
     const num = Math.floor(Math.random() * 90) + 10;
     return `${category === 'fuel' ? 'RCS-Fuel' : 'Ammo'}-${num}`;
