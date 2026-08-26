@@ -14,13 +14,27 @@ const ADAPTATION_EXPONENT = 0.8;
 
 export class Exposure {
   private readonly factorUniform: FloatUniform = uniform(1);
+  // 順応ぶん。固定した明るさで描くものが打ち消すのはここだけで、露出補正には従う。
+  private adaptation = 1;
+  private compensation = 1;
 
   // 順応の基準点と恒星の位置(どちらも描画座標)を1フレーム分書く。**1 天文単位より内側へは
   // 順応しない** — 較正(表示値 = アルベド)をそのまま残すためで、太陽へ寄っても係数が 1 で
   // 止まるので画面が黒く沈むこともない。
   setReference(reference: THREE.Vector3, sunPosition: THREE.Vector3): void {
     const irradiance = sunIrradianceAtDistance(reference.distanceTo(sunPosition));
-    this.factorUniform.value = Math.max(1, (SUN_IRRADIANCE_1AU / irradiance) ** ADAPTATION_EXPONENT);
+    this.adaptation = Math.max(1, (SUN_IRRADIANCE_1AU / irradiance) ** ADAPTATION_EXPONENT);
+    this.refreshFactor();
+  }
+
+  // 露出補正の倍率(EV 1 段で 2 倍)を書く。描画設定が変わった時点で1回呼ばれる。
+  setCompensation(compensation: number): void {
+    this.compensation = compensation;
+    this.refreshFactor();
+  }
+
+  private refreshFactor(): void {
+    this.factorUniform.value = this.adaptation * this.compensation;
   }
 
   // トーンマッパへ渡す露出係数。物理量として描くものはこれをそのまま受ける。
@@ -28,5 +42,5 @@ export class Exposure {
 
   // 固定した明るさで描くものが自分の色へ掛ける倍率。順応ぶんをちょうど打ち消すので、
   // どこから見ても同じ明るさで写る。
-  get fixedBrightnessScale(): number { return 1 / this.factorUniform.value; }
+  get fixedBrightnessScale(): number { return 1 / this.adaptation; }
 }

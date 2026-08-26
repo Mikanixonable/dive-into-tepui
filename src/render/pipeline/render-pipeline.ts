@@ -36,6 +36,7 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 // applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
 // 駆動する呼び出し側(描画テスト環境)は、この並びを操作の対象にする。
 export const PIPELINE_GRAPHICS_KEYS = [
+  'exposureCompensation',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 
@@ -229,6 +230,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
+    this._exposure.setCompensation(graphics.exposureCompensation);
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
