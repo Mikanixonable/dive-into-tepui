@@ -17,6 +17,7 @@ import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
+import { AU } from '../../src/physics/planet-orbit';
 import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
 import { textureOf } from '../../src/render/celestial-textures';
 import { v3 } from '../../src/physics/vec3';
@@ -71,6 +72,8 @@ export type LabCase = {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
+  // 恒星を置く距離 [m]。省略すると 1 天文単位。
+  readonly sunDistance?: number;
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
   // 大気パスへ渡す天体。中心は描画座標。
@@ -391,6 +394,26 @@ function leo(): LabCase {
   };
 }
 
+// 外惑星圏の距離ぶんだけ恒星を遠ざけた絵。アルベド 0.3 の灰色球(典型的な天体表面・艦の外殻の
+// 反射率)と艦を1隻置き、**太陽に正対した面が黒へ潰れていないか**を距離ごとに読む。球の最も
+// 明るい画素が太陽に正対した面にあたるので、距離ごとの表示値はそこで測る。
+const OUTER_ALBEDO: Albedo = [0.3, 0.3, 0.3];
+const OUTER_BODY_RADIUS = 6.371e6;
+
+function outer(sunDistance: number): LabCase {
+  const camera = labCamera(6e7);
+  const center = new THREE.Vector3(0, -0.5 * OUTER_BODY_RADIUS, -3 * OUTER_BODY_RADIUS);
+  // 艦は太陽に正対する面(球の右上)へ重ならない位置へ置く — 重なるとそこの画素が艦の
+  // 鏡面反射に置き換わって読めない。
+  const shipPosition = new THREE.Vector3(-30, -12, -100);
+  return {
+    objects: [sphere(OUTER_ALBEDO, OUTER_BODY_RADIUS, center), shipAt(shipPosition)],
+    camera,
+    viewTarget: shipPosition,
+    sunDistance,
+  };
+}
+
 // 描画順: 同じ深度に置いた 5 本の円が LINE_RENDER_ORDER の順に重なるか。
 // 交差点でどちらが上に出るかがそのまま答えになる。
 const ORDER_COLORS = [0x5a6572, 0x4f8fd0, 0x59c3a5, 0xd8c24a, 0xff6a00] as const;
@@ -605,6 +628,9 @@ function far(): LabCase {
 
 export const CASES = {
   'leo': leo,
+  'outer-5au': () => outer(5 * AU),
+  'outer-10au': () => outer(10 * AU),
+  'outer-30au': () => outer(30 * AU),
   'ship-selfshadow': shipSelfShadow,
   'ship-backlit': shipBacklit,
   'ship-cluster': shipCluster,
