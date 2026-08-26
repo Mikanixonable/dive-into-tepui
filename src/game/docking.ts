@@ -44,9 +44,6 @@ const alignmentErrorDeg = (alignment: number): number =>
   Math.acos(Math.max(-1, Math.min(1, alignment))) * 180 / Math.PI;
 
 export class Docking {
-  // アクティブな基地が変わるたびに通知する — 物体一覧パネルのハイライトを追随させる用途。
-  onSelect: ((id: string | null) => void) | null = null;
-
   readonly basePanel: BasePanel;
   readonly transferDialog: ResourceTransferDialog;
   // 選択中/基地パネルの対象基地。
@@ -197,7 +194,6 @@ export class Docking {
 
   private setActiveBase(base: Base | null): void {
     this._activeBase = base;
-    this.onSelect?.(base?.id ?? null);
   }
 
   // 基地を選択し、プロパティウィンドウへ埋め込むパネルを開く。

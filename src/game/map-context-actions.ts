@@ -97,7 +97,6 @@ export class MapContextActions {
   // Docking は MapContextActions より後に生成されるので、生成後に登録する。
   setDocking(docking: Docking): void {
     this.docking = docking;
-    docking.onSelect = (id) => this.physicalObjectListPanel.select(id);
     docking.basePanel.onClose = () => this.collapseBasePanel();
   }
   private docking: Docking | null = null;
@@ -132,7 +131,6 @@ export class MapContextActions {
       if (handler) handler.run(act, target);
     };
     this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, ephemeris.registry);
-    this.navTarget.onSelect = (id) => this.physicalObjectListPanel.select(id);
     this.physicalObjectListPanel.onFocus = (id) => {
       this.frameControls.setFocus({ kind: 'object', id });
       this.hud.hint(`${this.pickables.pickables.find((i) => i.id === id)?.name ?? id} にフォーカス`);
@@ -425,7 +423,6 @@ export class MapContextActions {
   // (プロパティウィンドウ)かダブルクリックに限る。
   private selectPickable(target: MapPickable, clientX: number, clientY: number): void {
     if (target.kind === 'player') {
-      this.physicalObjectListPanel.select(target.id);
       this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
     } else if (target.kind === 'base') {
       const base = this.entities.findBase(target.id);
@@ -570,8 +567,7 @@ export class MapContextActions {
       entry.win.syncRelatedItems(this.relatedItemsFor(entry.target, celestialBodies), this.relatedTitleFor(entry.target));
       entry.win.syncRows(this.buildRows(entry.target, celestialBodies, player, simTime));
       entry.win.syncItems(menuItems);
-      entry.win.syncBadge(this.physicalObjectListPanel.isSelected(entry.target.id) ? 'on'
-        : this.physicalObjectListPanel.isTarget(entry.target.id) ? 'tgt' : null);
+      entry.win.syncBadge(this.physicalObjectListPanel.isTarget(entry.target.id));
     }
     for (const entry of [...this.partWindows.values()]) {
       const ship = this.entities.findPlayer(entry.shipId);
