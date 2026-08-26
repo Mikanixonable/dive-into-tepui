@@ -159,6 +159,8 @@ function ringDisc(
 
 // 斜光のケースで使う恒星の向き。カメラは −Z を見るので、左上手前から差す。
 const OBLIQUE_SUN_DIR = new THREE.Vector3(-0.70, 0.20, 0.68).normalize();
+// 逆光のケースで使う恒星の向き。カメラは −Z を見るので、被写体の向こう側から差す。
+const BACKLIT_SUN_DIR = new THREE.Vector3(0, 0.09, -1).normalize();
 // 上面と左舷の両方が見える機体の姿勢。突起の影が見えている面を横切る。
 const SHIP_ROTATION_PORT = new THREE.Euler(-0.5, 0.6, 0.12);
 // 上面と右舷の両方が見える機体の姿勢。右手から差す恒星のもとで、突起の影が見えている面を横切る。
@@ -211,6 +213,18 @@ function shipSelfShadow(): LabCase {
     objects: [shipAt(shipPosition, SHIP_ROTATION_PORT)],
     camera: labCamera(6e7),
     sunDirection: OBLIQUE_SUN_DIR,
+    viewTarget: shipPosition,
+  };
+}
+
+// 逆光: 艦 1 隻を向こう側から照らし、暗い船体の縁が背景の虚空と接する 1 画素を見る。**照度は
+// 画素の中心でしか求まらない**ので、縁を跨ぐ画素の材質と照度が食い違うと、ここに輪郭が浮く。
+function shipBacklit(): LabCase {
+  const shipPosition = new THREE.Vector3(0, -1, -10);
+  return {
+    objects: [shipAt(shipPosition, SHIP_ROTATION_PORT)],
+    camera: labCamera(6e7),
+    sunDirection: BACKLIT_SUN_DIR,
     viewTarget: shipPosition,
   };
 }
@@ -593,6 +607,7 @@ function far(): LabCase {
 export const CASES = {
   'leo': leo,
   'ship-selfshadow': shipSelfShadow,
+  'ship-backlit': shipBacklit,
   'ship-cluster': shipCluster,
   'ship-crowd': shipCrowd,
   'ship-far-shadow': shipFarShadow,
