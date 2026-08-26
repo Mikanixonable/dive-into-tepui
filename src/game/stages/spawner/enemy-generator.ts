@@ -18,7 +18,8 @@ import { addScaled, len, norm, rotateAxis, scale, v3, type Vec3 } from '../../..
 import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy, inertiaForEnemyKind, type EnemyKind, type FormationRole } from '../../game-entity/enemy';
+import { Enemy, inertiaForEnemyKind, type EnemyKind } from '../../game-entity/enemy';
+import type { FormationRole } from '../../game-entity/enemy-formation';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 
