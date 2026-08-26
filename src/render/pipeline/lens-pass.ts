@@ -8,8 +8,7 @@
 // 一致するので、将来この段の入力から太陽を抜いて解析式で足し直しても、他の画素の絵は
 // 1 ビットも変わらない。**この段が線形であることだけが、その拡張性を担保している。**
 //
-// 広がりは、半分ずつ縮む段のチェーンを昇って降りることで作る。段の解像度が画面解像度に対する
-// 固定の割合なので、**広がりは画面上の角度で決まり、光源までの距離では変わらない。**
+// **広がりは画面上の角度で決まり、光源までの距離では変わらない。**
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
@@ -26,8 +25,8 @@ const GLARE_FRACTION = 0.03;
 // 条を引く段。**この段のテクセル寸法がそのまま条の太さになる。** 長さはパス数が別に稼ぐので、
 // ここは太さだけで選んでよい(1/4 なら 4 画面px)。
 const STREAK_LEVEL = 1;
-// 条の向きの数。**1 方向につき 1 本の鎖**が要る(タップが片側だけなので — lens-kernels.ts)。
-// 中心を通る条 1 本が正反対の 2 方向を占めるので、見た目の本数はこの半分になる。
+// 条の向きの数。**1 方向につき 1 本の鎖**が要る。中心を通る条 1 本が正反対の 2 方向を占めるので、
+// 見た目の本数はこの半分になる。
 const STREAK_DIRECTIONS = 10;
 // 条を伸ばすパスの数。刻みがパスごとにタップ数倍になるので、到達距離はこれに対して指数で伸びる。
 const STREAK_PASSES = 2;
@@ -41,7 +40,7 @@ const GHOST_LEVEL = 2;
 const GHOST_SHARE = 0.08;
 
 // 1 回の全画面描画。読み元のテクセル寸法だけが違うので、そこを uniform で持つ。**書き込み先は
-// 持たない** — 条の鎖のように、複数のフィルタが同じ 2 枚を往復して使うことがある。
+// 描く側が選ぶ** — 条の鎖のように、複数のフィルタが同じ 2 枚を往復して使うことがある。
 type Filter = {
   readonly quad: QuadMesh;
   readonly material: THREE.MeshBasicNodeMaterial;
@@ -75,6 +74,7 @@ function createTarget(): THREE.RenderTarget {
   });
 }
 
+// フィルタと、そのフィルタだけが書き込む描画先を組にする。
 function createStage(colorOf: (sourceTexel: Vec2Uniform) => Vec3Node): Stage {
   return { ...createFilter(colorOf), target: createTarget() };
 }
@@ -147,7 +147,7 @@ export class LensPass {
     return mix(base, this.redistributed(1), GLARE_FRACTION);
   }
 
-  // レンズが配り直した光だけ。デバッグ表示が下地と合成せず単独で映す。
+  // 下地と合成する前の、レンズが配り直した光だけ。blendedWith が下地へ混ぜるのと同じ強さで返す。
   redistributedLight(): Vec3Node {
     return this.redistributed(GLARE_FRACTION);
   }
@@ -180,11 +180,11 @@ export class LensPass {
     this.renderer.setRenderTarget(null);
   }
 
+  // フィルタ 1 枚を target へ描く。clear を落とすと、既に入っている絵の上へ積む。
   private draw(filter: Filter, target: THREE.RenderTarget, clear = true): void {
     this.renderer.setRenderTarget(target);
     this.renderer.autoClear = clear;
-    // beginPass はこのあとの renderer.render() 呼び出しの直前に呼ぶ。1 パスで何度も呼ぶので、
-    // 計測側は同じパスへ届いた時間を足し合わせる。
+    // beginPass は、そのフィルタが発行する renderer.render() の直前に呼ぶ。
     this.gpu.beginPass(GPU_PASS.lens);
     filter.quad.render(this.renderer);
   }

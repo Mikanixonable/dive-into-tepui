@@ -1,4 +1,4 @@
-// 太陽の見た目: 実位置・実半径の自発光球体。周りの滲みはレンズ効果が作るので、ここは持たない。
+// 太陽の見た目: 実位置・実半径の自発光球体と、模式図で代わりに出す輪郭円。
 import * as THREE from 'three/webgpu';
 import { createSun, Sun } from '../../render/stars';
 import { createOutlineCircle, OutlineCircle } from '../../render/outline-circle';
