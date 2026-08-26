@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 
 // 標準マテリアルの見た目一式のうち、Node 版のコンストラクタが受け取れるものを写す。
-export function standardMaterialParams(
+function standardMaterialParams(
   src: THREE.MeshStandardMaterial,
 ): THREE.MeshStandardNodeMaterialParameters {
   return {
