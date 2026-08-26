@@ -73,6 +73,13 @@ export function metersPerPixelAtDepth(fovDeg: number, depth: number, viewportHei
   return metersPerPixelFromTanHalfFov(Math.tan((fovDeg * Math.PI) / 360), depth, viewportHeight);
 }
 
+// 世界空間の寸法 [m] が、その位置の metersPerPixel の下で画面上何 px になるか。
+// 見かけの大きさにも、画面上どれだけずれて見えるかにも同じ換算を使う。
+export function apparentSizePx(worldSize: number, metersPerPixel: number): number {
+  if (!(metersPerPixel > 0)) return 0;
+  return worldSize / metersPerPixel;
+}
+
 // worldPos の位置における画面1ピクセル相当の実距離 [m]。画面上で一定に見せたい長さに
 // 掛けると、その位置での実距離が得られる。
 export function metersPerPixel(view: Viewpoint, worldPos: Vec3, viewportHeight: number): number {
