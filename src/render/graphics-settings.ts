@@ -85,6 +85,11 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: '大気',
     presets: { low: false, medium: true, high: true },
   },
+  // レンズ効果(滲み・条・ゴースト)。
+  lens: {
+    kind: 'toggle', group: 'element', label: 'レンズ効果',
+    presets: { low: false, medium: true, high: true },
+  },
   // タンパク質型の敵の構造の揺らぎ。
   proteinVibration: {
     kind: 'toggle', group: 'element', label: 'タンパク質の敵の揺らぎ',

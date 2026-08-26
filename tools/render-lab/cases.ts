@@ -6,10 +6,11 @@ import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
-import { R_EARTH } from '../../src/physics/solar-system';
+import { R_EARTH, R_SUN } from '../../src/physics/solar-system';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
+import { createSun, type Sun } from '../../src/render/stars';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
@@ -20,10 +21,11 @@ import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
-import type { SunLight } from '../../src/render/pipeline/sun-light';
+import { AMBIENT_REFERENCE_DISTANCE, type SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
 import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
 import { textureOf } from '../../src/render/celestial-textures';
+import { apparentSizePx, metersPerPixelAtDepth } from '../../src/physics/projection';
 import { v3 } from '../../src/physics/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
@@ -76,10 +78,15 @@ export type LabCase = {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
-  // 恒星を置く距離 [m]。省略すると 1 天文単位。
+  // 恒星を置く距離 [m]。省略すると 1 天文単位。つまみで上書きできるので、ここに書くのは既定値。
   readonly sunDistance?: number;
-  // 基準点へ届く環境光の放射照度。省略すると低軌道の値(AMBIENT_IRRADIANCE)。
-  readonly ambientIrradiance?: number;
+  // 恒星の見た目。持たせると、恒星の向きと距離のつまみに合わせて毎フレーム同期される
+  // (持たないケースでは、つまみは光源と露出だけを動かす)。
+  readonly star?: Sun;
+  // 基準点(描画原点)から地球中心までの距離 [m]。ここへ届く環境光の強さがこれで決まる。
+  // **恒星までの距離から引いているケースは関数で渡す** — つまみで恒星を動かしたときに追随する。
+  // 省略すると低軌道。
+  readonly earthDistance?: number | ((sunDistance: number) => number);
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
   // 大気パスへ渡す天体。中心は描画座標。
@@ -400,6 +407,13 @@ function leo(): LabCase {
   };
 }
 
+// 恒星から sunDistance [m] にいる場所の地心距離。地球も恒星から 1 天文単位にいるので、外側では
+// その差がそのまま地球までの距離になる。**1 天文単位より内側は低軌道を返す** — 地球と同じ距離に
+// いるケースは地球のそばに置き、既定と同じ明るさの環境光で照らす。
+function earthDistanceAtSunDistance(sunDistance: number): number {
+  return Math.max(sunDistance - AU, AMBIENT_REFERENCE_DISTANCE);
+}
+
 // 典型的な天体表面・艦の外殻の反射率。
 const OUTER_ALBEDO: Albedo = [0.3, 0.3, 0.3];
 // 灰色球の半径 [m]。
@@ -419,8 +433,7 @@ function outer(sunDistance: number): LabCase {
     camera,
     viewTarget: shipPosition,
     sunDistance,
-    // 地球照は地球から遠ざかれば薄れるので、外惑星圏では届かない。
-    ambientIrradiance: 0,
+    earthDistance: earthDistanceAtSunDistance,
   };
 }
 
@@ -731,6 +744,35 @@ function far(): LabCase {
   };
 }
 
+// 太陽の向き。**画面中心から外して置く** — 中心だと、注視点へ視線が固定されるぶんカメラ方位を
+// 回しても画面上で動かず、サブピクセルの移動そのものが作れない。
+const SUN_CASE_DIR = new THREE.Vector3(0.2563, 0.1392, -0.9565).normalize();
+// 注視点に据える艦の位置。カメラはこの近点を軸に回るので、遠くの太陽は方位の変化ぶんそのまま
+// 画面上を動く。艦の縁で太陽が隠れる様子も同じ絵で読める。
+const SUN_CASE_SHIP_POSITION = new THREE.Vector3(0, -1, -10);
+
+// 恒星までの距離 [m] に対する、画面上での太陽の見かけ直径 [px]。**LOD の閾値判定と同じ
+// 換算を通す** — つまみの脇に出る数と、球/点像の切り替わる距離が食い違ってはならない。
+export function sunDiameterPx(distance: number): number {
+  return apparentSizePx(2 * R_SUN, metersPerPixelAtDepth(FOV_DEG, distance, VIEW_HEIGHT));
+}
+
+// 太陽: 恒星の実球体を distance [m] に置く。**遠ざかると見かけ径が 1px を切り**、総光量が
+// ラスタライズの被覆率へ量子化される — サブピクセルの移動に対する画面のちらつきを、この構図で測る。
+// 距離はここで決めるのは既定値だけで、球を実際に置くのは恒星のつまみを読む側(lab.ts)。
+function sunAt(distance: number): LabCase {
+  const camera = labCamera(1e13);
+  return {
+    objects: [shipAt(SUN_CASE_SHIP_POSITION)],
+    camera,
+    sunDirection: SUN_CASE_DIR,
+    sunDistance: distance,
+    star: createSun(),
+    earthDistance: earthDistanceAtSunDistance,
+    viewTarget: SUN_CASE_SHIP_POSITION,
+  };
+}
+
 export const CASES = {
   'leo': leo,
   'outer-5au': () => outer(5 * AU),
@@ -755,6 +797,9 @@ export const CASES = {
   'saturn': saturn,
   'saturn-shadow': saturnShadow,
   'albedo': albedo,
+  'sun-1au': () => sunAt(AU),
+  'sun-5au': () => sunAt(5.2 * AU),
+  'sun-30au': () => sunAt(30 * AU),
   'blackbody': blackbody,
   ...PROTEIN_CASES,
 } as const satisfies Record<
