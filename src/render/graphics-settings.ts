@@ -29,8 +29,7 @@ type ToggleOption = {
   readonly presets: PresetValues<boolean>;
 };
 
-// 数値の選択肢を持つ項目。items は [値, 表示ラベル] を、粗いほうから順に並べる。粗い/細かいが
-// 無い項目(露出補正)は、弱いほうから順に並べる。
+// 数値の選択肢を持つ項目。items は [値, 表示ラベル] を、値の小さいほうから順に並べる。
 type ChoiceOption = {
   readonly kind: 'choice';
   readonly group: GraphicsGroup;
@@ -55,7 +54,7 @@ export const GRAPHICS_OPTIONS = {
     items: [[0.5, '低'], [1, '標準'], [2, '高']],
     presets: { low: 0.5, medium: 1, high: 2 },
   },
-  // 露出へ掛ける段。1 段が EV 1 段(明るさ2倍)で、暗いほうから順に並べる。
+  // 露出へ掛ける倍率。1 段が EV 1 段(明るさ 2 倍)。
   exposureCompensation: {
     kind: 'choice', group: 'basic', label: '露出補正',
     items: [[0.25, '−2'], [0.5, '−1'], [1, '±0'], [2, '+1'], [4, '+2']],
