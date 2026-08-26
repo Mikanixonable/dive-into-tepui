@@ -1,5 +1,7 @@
 // 描画テスト環境が描くケースの表。ゲーム本体と同じ球・艦・線を組んでカメラと一緒に返すだけで、
 // シーンへ足すのもチャンネルを振るのも呼び出し側の仕事。ケースを増やすのはこの表への追記で済む。
+// 表示スタイルで組み方が変わるケース(環・地球)は、受け取った style をゲーム本体と同じ
+// sync / setVisible へそのまま流す — スタイルの切り替えは呼び出し側がケースを組み直して行う。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
@@ -13,6 +15,7 @@ import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
+import type { RenderStyle } from '../../src/render/render-style';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
 import { textureOf } from '../../src/render/celestial-textures';
@@ -330,7 +333,7 @@ const SMALL_BODY_SHADOW_DISTANCE = 100;
 // 小天体と艦: 環を持つ半径 30 m の天体のまわりへ艦を 2 隻置き、**影の 2 つの経路を同じ絵で
 // 読む**。昼面へ浮かべた艦は影の深度マップを通って天体の表面へ影を落とし、後方へ置いた艦は
 // 天体の球が解析式で解く影の柱の縁をまたぐ。環の帯の影は昼面を横切る縞として出る。
-function shipBodyShadow(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function shipBodyShadow(_style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   const camera = labCamera(6e7);
   const center = new THREE.Vector3(0, 0, -SMALL_BODY_DISTANCE);
   const sun = SMALL_BODY_SUN_DIR;
@@ -443,7 +446,7 @@ const ECLIPSE_OCCLUDER_RADIUS = 2e5;
 const ECLIPSE_OCCLUDER_DISTANCE = 3e7;
 
 // 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもやを見る。
-function earth(): LabCase {
+function earth(style: RenderStyle): LabCase {
   const camera = labCamera(6e7);
   // 地平線が画面中央へ来る向きへ地球を置く — 視線が地球へ接する角だけ、カメラから見た
   // 中心の向きを視線から傾ける。
@@ -453,6 +456,8 @@ function earth(): LabCase {
   const built = createEarth();
   built.group.position.copy(center);
   built.setAuroraVisible(false);
+  built.setGraticuleVisible(style === 'schematic');
+  built.setCoastlineVisible(style === 'schematic');
   built.syncSurfaceLod(6e4);
   built.tick(0);
   return { objects: [built.group], camera, atmosphere: { center, surfaceRadius: R_EARTH } };
@@ -461,8 +466,8 @@ function earth(): LabCase {
 // 日食下の地球: earth と同じ構図へ、地球自身と食を起こす球を遮蔽器として足す。**大気の明暗は
 // 入射角だけでなく遮蔽度にも比例する**ので、リムともやの両方へ影の落ちた斑が出る。遮蔽器の
 // 視半径は太陽よりわずかに大きく取ってあり、本影(半径 60km)を半影(340km)が縁取る。
-function earthEclipse(): LabCase {
-  const base = earth();
+function earthEclipse(style: RenderStyle): LabCase {
+  const base = earth(style);
   const center = base.atmosphere!.center;
   // 影を落とす地表点。カメラ直下と地平線(地表距離 2,255km)の中間へ来るよう、直下の向きを
   // 視線側へ回す。
@@ -532,20 +537,14 @@ function albedo(): LabCase {
 //
 // 本体を遮蔽器に、環の帯を遮蔽する環に登録するので、**環が本体の影へ入る境界と、本体表面に
 // 落ちる環の影の境界の両方**が同じ 1 つの遮蔽関数から出る。どちらもぼけていることを見る。
-function saturn(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   const camera = labCamera(1e13);
   const radius = 6.0268e7;
   const distance = 1.2e9;
   const center = new THREE.Vector3(0, -0.15 * distance, -distance);
   const axis = v3(0.3, 0.9, 0.32);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(
-    center,
-    axis,
-    v3(center.x, center.y, center.z),
-    () => distance / VIEW_HEIGHT,
-    'realistic',
-  );
+  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, style);
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -565,7 +564,7 @@ function saturn(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
 // - **本体表面に落ちる環の影**: カッシーニの間隙が明るい帯として出る。恒星が円盤である以上、
 //   その帯の縁は硬くならない(半影 4px 対 帯 19px)。
 // - **環が本体の影へ入る境界**: 環の帯を横切る影の縁も、天体の球の半影ぶんだけぼける。
-function saturnShadow(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   const distance = 1.9e8;
   const radius = 6.0268e7;
   // カメラは環面から 20° 傾けて、**恒星とは反対側**へ置く — 同じ側だと影が落ちる面は
@@ -579,7 +578,7 @@ function saturnShadow(sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   camera.updateMatrixWorld(true);
   const axis = v3(0, 1, 0);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, 'realistic');
+  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, style);
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -626,7 +625,9 @@ export const CASES = {
   'saturn-shadow': saturnShadow,
   'albedo': albedo,
   ...PROTEIN_CASES,
-} as const satisfies Record<string, (sunOcclusion: SunOcclusion, sunLight: SunLight) => LabCase>;
+} as const satisfies Record<
+  string, (style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight) => LabCase
+>;
 
 export type CaseName = keyof typeof CASES;
 export const CASE_NAMES = Object.keys(CASES) as readonly CaseName[];

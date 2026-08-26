@@ -15,6 +15,7 @@ import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/g
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
+import type { RenderStyle } from '../../src/render/render-style';
 import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
 
 export interface LabDistribution {
@@ -94,6 +95,10 @@ export class LabView {
     depthBuffer: true,
   });
   private current: LabCase | null = null;
+  // スタイルを差し替えるとケースを組み直すので、いま出ているケースの名前も持つ。
+  private currentName: CaseName | null = null;
+  // 画面全体の見せ方。ゲーム本体と違い保存はせず、起動のたびに写実から始める。
+  private style: RenderStyle = 'realistic';
   private lastRenderCpuMs = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
@@ -143,18 +148,32 @@ export class LabView {
     return new LabView(renderer, pipeline, gpu);
   }
 
-  // ケースを組み直して描く。前のケースはシーンから外すだけで解放しない — 球の単位ジオメトリは
-  // LOD 段ごとに全利用元で共有されていて、ここで捨てると次のケースが壊れる。
+  // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
   show(name: CaseName): void {
+    this.currentName = name;
+    this.resetView(this.build(name));
+    this.render();
+  }
+
+  // 表示スタイルを差し替え、いま出ているケースをそのスタイルで組み直す。**観察の向きは戻さない**
+  // — 写実と模式図を同じ構図で見比べるための切り替えなので、既定へ戻すと見比べられない。
+  setStyle(style: RenderStyle): void {
+    this.style = style;
+    if (this.currentName !== null) this.build(this.currentName);
+    this.render();
+  }
+
+  // ケースを組み直してシーンへ載せる。前のケースはシーンから外すだけで解放しない — 球の単位
+  // ジオメトリは LOD 段ごとに全利用元で共有されていて、ここで捨てると次のケースが壊れる。
+  private build(name: CaseName): LabCase {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
       disposeCaseObjects(this.current);
     }
-    const built = CASES[name](this.pipeline.sunOcclusion, this.pipeline.sunLight);
+    const built = CASES[name](this.style, this.pipeline.sunOcclusion, this.pipeline.sunLight);
     this.scene.add(...built.objects);
     this.current = built;
-    this.resetView(built);
-    this.render();
+    return built;
   }
 
   get graphics(): GraphicsSettingsData { return this.graphicsData; }
@@ -248,7 +267,7 @@ export class LabView {
     const atmosphere = this.current.atmosphere;
     this.pipeline.atmosphere.setBody(atmosphere?.center ?? ORIGIN, atmosphere?.surfaceRadius ?? 0);
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, camera, 'realistic');
+    this.pipeline.render(this.scene, camera, this.style);
     this.lastRenderCpuMs = performance.now() - startedAt;
     this.gpu.resolve();
   }
