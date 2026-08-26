@@ -11,7 +11,8 @@
   three を上げるときは `how_to_update_three.md`。
 
 各計画ファイル: [`arealight.md`](arealight.md)(エリアライト) / [`atmosphere.md`](atmosphere.md)
-(大気散乱) / [`lens.md`](lens.md)(露出とレンズ) / [`volume.md`](volume.md)(大気以外の半透明) /
+(大気散乱) / [`exposure.md`](exposure.md)(露出) / [`lens.md`](lens.md)(レンズ由来の像) /
+[`volume.md`](volume.md)(大気以外の半透明) /
 [`screenspace.md`](screenspace.md)(AO と GI) / [`blackbody.md`](blackbody.md)(固体の黒体放射) /
 [`shadow_backlog.md`](shadow_backlog.md)(影の残件)。
 **パイプラインが疎結合になったので、これらは直列の手順ではなく任意順に消化できる TODO である。**
@@ -89,7 +90,7 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 - **放射照度の単位は「1 天文単位で π」**(`SUN_IRRADIANCE_1AU`)。ランバート BRDF の 1/π と
   打ち消し合うので、**太陽へ正対したアルベド A の完全拡散面は 1 天文単位で表示値 A になる。**
   出力段に露出係数は無い(1 を渡す)。
-- トーンマッピングは **Khronos PBR Neutral**。曲線の最終決定は [`lens.md`](lens.md)。
+- トーンマッピングは **Khronos PBR Neutral**。曲線の最終決定は [`exposure.md`](exposure.md)。
 - **天体が持つのはボンドアルベドだけで、輝度は持たない。** 輝度はアルベドと
   「その天体がいまいる場所で受けている放射照度」から毎フレーム引く。
   **この分離を崩すとエリアライトが成立しない**(同じアルベドでも太陽から遠い天体は暗い光源に
@@ -233,7 +234,8 @@ instanceMatrix の受け渡し経路を `count` から決め、最初の描画�
 | 光源が「位置と半径を持つ点」のままで、有限の立体角を持たない | [`arealight.md`](arealight.md) |
 | `AMBIENT_IRRADIANCE`(方向も距離も位相も持たない定数)が地球照・星明かり・多重散乱を兼ねている | [`arealight.md`](arealight.md) |
 | 大気が Beer–Lambert 一本のもやで、散乱の積分になっていない | [`atmosphere.md`](atmosphere.md) |
-| 露出が固定のままで、遠方天体圏が黒へ落ちる | [`lens.md`](lens.md) |
+| 露出が固定のままで、遠方天体圏が黒へ落ちる | [`exposure.md`](exposure.md) |
+| レンズ由来の滲み・条・ゴーストが無い | [`lens.md`](lens.md) |
 | オーロラ・プルーム等が板ポリゴンのまま。手置きの明るさが残っている | [`volume.md`](volume.md) |
 | AO / GI が無い。二次反射の遮蔽を表せない | [`screenspace.md`](screenspace.md) |
 | 赤熱が固定色 + 固定 opacity | [`blackbody.md`](blackbody.md) |
