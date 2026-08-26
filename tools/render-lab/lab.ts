@@ -37,8 +37,9 @@ export interface LabMeasurement {
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
-// 恒星は 1 天文単位の位置に置く。ゲーム本体と同じ放射強度を渡すので、そこで受ける放射照度も
-// ゲーム本体の 1 天文単位と一致する。ケースごとの向きを毎フレーム書き込む。
+// 恒星を置く位置。距離はケースの sunDistance(既定は 1 天文単位)で、ゲーム本体と同じ放射強度を
+// 渡すので、そこで受ける放射照度もゲーム本体の同じ距離と一致する。ケースごとの向きを毎フレーム
+// 書き込む。
 const SUN_POSITION = new THREE.Vector3();
 
 // シーン光源(平行光)を置く距離 [m]。向きだけが意味を持つので、ケースの広がりより十分遠ければよい。
@@ -234,7 +235,7 @@ export class LabView {
     );
     this.sun.position.copy(sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE);
     this.pipeline.sunLight.set(
-      SUN_POSITION.copy(sunDirection).multiplyScalar(AU),
+      SUN_POSITION.copy(sunDirection).multiplyScalar(this.current.sunDistance ?? AU),
       R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE,
     );
     const camera = this.current.camera;
