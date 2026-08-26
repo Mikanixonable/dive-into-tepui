@@ -8,8 +8,8 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, length, lessThan, max, min, mix,
-  normalize, select, smoothstep, sqrt, sub, uniform, vec3, vec4,
+  Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, greaterThanEqual, length, lessThan,
+  max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, uniform, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
@@ -290,29 +290,49 @@ export class AtmospherePass {
     };
   }
 
-  // 区間を視線に沿って積分した透過率と内部散乱。サンプル点は最も濃い点の周りへ寄せる —
-  // 大気の濃さは高度に対して指数で変わるので、等間隔に取ると濃い側を数点で済ませてしまう。
+  // 区間を視線に沿って積分した透過率と内部散乱。サンプル点は区間の中の「山」へ寄せる —
+  // 被積分関数は高度と日照に対して指数で変わるので、等間隔に取ると山を数点で済ませてしまう。
   // 区間が空でないことは呼び出し側が保証する。
+  //
+  // **山は 1 つだけ選び、鋭いものを優先する。** 候補は 3 つあるが、鋭さが桁で違う:
+  // 地表(または不透明面)での打ち切りと日没境界は**被積分関数がそこで断ち切られる**のに対し、
+  // 最接近点はただの滑らかな極大でしかない。鋭い側を外すと、その遷移が丸ごと 1 段の中へ
+  // 収まってしまい、絵に帯が立つ(段を増やすと消えるので、絵ではなく刻みの問題)。
+  //
+  // **最接近点しか無い視線では、寄せずに等間隔で取る。** 密度は高度の指数だが、高度は最接近点
+  // から距離の 2 乗でしか増えないので、そこに特異な振舞いは無い。寄せた分だけ山から離れた側が
+  // 粗くなる害のほうが勝ち、実測では 3 つの構図すべてで等間隔が最も良かった。
   private integrated(
     slot: BodySlot, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node, steps: number,
   ): LayerContribution {
-    // 手前側は最も濃い点へ向かって細かく、奥側はそこから離れるほど粗く。境目で刻みが
-    // 途切れないよう、どちらの側も最も濃い点を端に持つ。
+    // 奥端が地表や不透明面で切れている視線では、最も濃い点がその奥端に重なる — 打ち切りが
+    // いちばん鋭いので、これを最優先の山に採る。切れていない視線でだけ日没境界を見て、それも
+    // 区間の中に無ければ最接近点へ落ちる。
+    const truncated = greaterThanEqual(segment.densest, segment.far);
+    const sunset = this.sunsetDistance(slot, segment, rayOrigin, rayDir);
+    const crossesSunset = and(greaterThan(sunset, segment.near), lessThan(sunset, segment.far));
+    const takesSunset = and(crossesSunset, not(truncated));
+    const peak = select(takesSunset, sunset, segment.densest);
+    const sharpness = select(or(truncated, takesSunset), float(1), float(0));
+
+    // 手前側は山へ向かって細かく、奥側はそこから離れるほど粗く。境目で刻みが途切れないよう、
+    // どちらの側も山を端に持つ。
     //
-    // **段を分ける位置は、最も濃い点が区間のどこに在るかで決める。** 段数を機械的に半分ずつ
-    // 配ると、地表で終わる視線(= 天体が写る画素すべて)は最も濃い点が区間の奥端に重なるので、
-    // 奥側へ配った段が長さ 0 に潰れ、**サンプル点の半分が同じ 1 点に積まれて捨てられる。**
+    // **段を分ける位置は、山が区間のどこに在るかで決める。** 段数を機械的に半分ずつ配ると、
+    // 山が区間の端に重なる視線(地表で終わる視線 = 天体が写る画素すべて)では片側へ配った段が
+    // 長さ 0 に潰れ、**サンプル点の半分が同じ 1 点に積まれて捨てられる。**
     // 分割の位置は uniform 由来の値なのでグラフを組む時点では決まらず、段ごとに select で選ぶ。
     const span = max(segment.far.sub(segment.near), 1);
-    const split = clamp(segment.densest.sub(segment.near).div(span), 0, 1);
+    const split = clamp(peak.sub(segment.near).div(span), 0, 1);
     const distanceAt = (fraction: FloatNode): FloatNode => {
       // **どちらの枝も 0 除算を踏まないよう分母に床を張る** — select は選ばれない枝も評価する。
       const nearFraction = clamp(fraction.div(max(split, 1e-6)), 0, 1);
       const farFraction = clamp(fraction.sub(split).div(max(float(1).sub(split), 1e-6)), 0, 1);
       const nearRest = float(1).sub(nearFraction);
-      const nearSide = segment.near
-        .add(segment.densest.sub(segment.near).mul(float(1).sub(nearRest.mul(nearRest))));
-      const farSide = segment.densest.add(segment.far.sub(segment.densest).mul(farFraction.mul(farFraction)));
+      const nearEase = float(1).sub(mix(nearRest, nearRest.mul(nearRest), sharpness));
+      const farEase = mix(farFraction, farFraction.mul(farFraction), sharpness);
+      const nearSide = segment.near.add(peak.sub(segment.near).mul(nearEase));
+      const farSide = peak.add(segment.far.sub(peak).mul(farEase));
       return select(lessThan(fraction, split), nearSide, farSide);
     };
     const march = rayMarch(
@@ -320,6 +340,29 @@ export class AtmospherePass {
       screenJitter(),
     );
     return { transmittance: march.transmittance, inscatter: march.radiance };
+  }
+
+  // 視線上で、太陽がその天体の地平線へ沈む距離。**区間の外に落ちることも、区間を跨がない視線で
+  // 発散に近い値になることもある** — 呼び出し側が区間の中に在るかを見てから使う。
+  //
+  // 高度 r の点から見た日没は、天体中心から測って恒星方向の座標が −√(r²−R²) の面で起きる
+  // (地平線が高度のぶん下がる)。高度は最も濃い点のもので代表させる。恒星は十分遠いので、
+  // 向きは天体中心から見た 1 本で足りる。
+  private sunsetDistance(
+    slot: BodySlot, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
+  ): FloatNode {
+    const sunDir = normalize(sub(this.sunLight.position, slot.center));
+    const densestOffset = sub(rayOrigin.add(rayDir.mul(segment.densest)), slot.center);
+    const densestRadius = max(length(densestOffset), max(slot.surfaceRadius, 1));
+    const sunsetOffset = sqrt(
+      max(densestRadius.mul(densestRadius).sub(slot.surfaceRadius.mul(slot.surfaceRadius)), 0),
+    );
+    // **分母には符号を保ったまま床を張る** — 視線が恒星方向と直交すると 0 になる。そのとき解は
+    // 区間の遥か外へ飛ぶので、呼び出し側の判定がそのまま弾く。
+    const alongSun = dot(rayDir, sunDir);
+    const towardSun = select(greaterThan(alongSun, 0), float(1), float(-1));
+    return sunsetOffset.negate().sub(dot(sub(rayOrigin, slot.center), sunDir))
+      .div(towardSun.mul(max(abs(alongSun), 1e-6)));
   }
 
   // 視線上の 1 点の媒質。消散はレイリーとミーの和で、視線へ足す量は「散乱が消散に占める割合 ×
