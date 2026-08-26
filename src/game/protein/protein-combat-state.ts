@@ -185,7 +185,6 @@ export class ProteinCombatState {
   }
 
   hudSnapshot(): ProteinHudSnapshot {
-    let attackOrdinal = 0;
     return {
       phase: this.phase,
       integrityHp: this.integrityHp,
@@ -194,14 +193,13 @@ export class ProteinCombatState {
       sites: this.siteStates.map((site) => {
         const attackActionId = this.attackAction?.id;
         const attackable = attackActionId !== undefined && site.definition.actions.includes(attackActionId);
-        const label = attackable ? `${site.definition.label}(攻撃部位${++attackOrdinal})` : site.definition.label;
         return {
-        id: site.definition.id,
-        label,
-        hp: site.hp,
-        maxHp: site.definition.maxHp,
-        disabled: site.disabled,
-        attackable,
+          id: site.definition.id,
+          abbreviation: site.definition.abbreviation,
+          hp: site.hp,
+          maxHp: site.definition.maxHp,
+          disabled: site.disabled,
+          attackable,
         };
       }),
     };

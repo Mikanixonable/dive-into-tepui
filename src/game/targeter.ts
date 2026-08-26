@@ -221,7 +221,7 @@ export class Targeter {
     for (const site of sites) {
       const key = `psite-${enemy.id}-${site.id}`;
       if (!inRange) { this.markerManager.hide(key); continue; }
-      const label = `${site.label} ${Math.max(0, Math.round(site.hp))}/${site.maxHp}`;
+      const label = `${site.abbreviation} ${Math.max(0, Math.round(site.hp))}/${site.maxHp}`;
       const color = site.disabled ? 'var(--text-dim)' : site.attackable ? C.COLOR_MARKER_ENEMY : undefined;
       this.markerManager.setPosition(key, 'mk-protein-site', '●', site.worldPos, project, label, 1, color, undefined, false, false, C.MARKER_PRIORITY.PROTEIN_SITE, cameraPos);
     }

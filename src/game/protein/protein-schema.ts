@@ -13,8 +13,10 @@ export interface ProteinComponentDefinition {
 
 export interface ProteinSiteDefinition {
   readonly id: string;
-  /** Biological name (residue/domain-based) shown in HUD/markers, distinct from the internal id. */
+  /** Biological name (residue/domain-based), distinct from the internal id. Not shown in HUD/markers. */
   readonly label: string;
+  /** Unique English abbreviation (e.g. residue-based "His93") shown in HUD/markers instead of label. */
+  readonly abbreviation: string;
   readonly componentId: string;
   readonly type: ProteinSiteType;
   readonly source: ProteinSource;
@@ -155,7 +157,7 @@ export interface ProteinHudSnapshot {
   readonly selectedSiteId: string | null;
   readonly sites: readonly {
     readonly id: string;
-    readonly label: string;
+    readonly abbreviation: string;
     readonly hp: number;
     readonly maxHp: number;
     readonly disabled: boolean;
@@ -183,10 +185,14 @@ export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
     actionIds.add(action.id);
   }
   const ids = new Set<string>();
+  const abbreviations = new Set<string>();
   for (const site of asset.sites) {
     if (ids.has(site.id)) issues.push(`duplicate site id: ${site.id}`);
     ids.add(site.id);
     if (!site.label) issues.push(`site ${site.id} label is empty`);
+    if (!site.abbreviation) issues.push(`site ${site.id} abbreviation is empty`);
+    if (abbreviations.has(site.abbreviation)) issues.push(`duplicate site abbreviation: ${site.abbreviation}`);
+    abbreviations.add(site.abbreviation);
     if (!componentIds.has(site.componentId)) issues.push(`site ${site.id} references unknown component: ${site.componentId}`);
     if (!Number.isFinite(site.radius) || site.radius <= 0) issues.push(`site ${site.id} radius must be positive`);
     if (!Number.isFinite(site.maxHp) || site.maxHp <= 0) issues.push(`site ${site.id} maxHp must be positive`);

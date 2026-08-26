@@ -27,6 +27,7 @@ for (const site of asset.sites ?? []) {
   if (siteIds.has(site.id)) errors.push(`duplicate site id: ${site.id}`);
   siteIds.add(site.id);
   if (!site.label) errors.push(`site ${site.id} label is required`);
+  if (!site.abbreviation) errors.push(`site ${site.id} abbreviation is required`);
   if (!componentIds.has(site.componentId)) errors.push(`site ${site.id} references unknown component: ${site.componentId}`);
   if (!Array.isArray(site.position) || site.position.length !== 3) errors.push(`invalid position: ${site.id}`);
   if (!Array.isArray(site.position) || site.position.some((value) => !Number.isFinite(value))) errors.push(`non-finite position: ${site.id}`);

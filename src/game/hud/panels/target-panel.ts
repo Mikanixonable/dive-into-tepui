@@ -4,6 +4,7 @@
 // 整理し、同じ値を二重の書式で表示しない）。
 import { fmtDist, fmtSpeed } from '../utils';
 import { relativeInfo } from '../orbit/orbit-info';
+import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
@@ -93,10 +94,11 @@ export class TargetPanel {
       if (target.protein) {
         this.setText('tgt-protein-phase', target.protein.phase.toUpperCase());
         const rows = target.protein.sites.map((site) => {
-          const ratio = site.maxHp > 0 ? Math.max(0, Math.min(1, site.hp / site.maxHp)) * 100 : 0;
+          const ratio = site.maxHp > 0 ? Math.max(0, Math.min(1, site.hp / site.maxHp)) : 0;
           const status = site.disabled ? '停止' : `${Math.floor(site.hp)} / ${site.maxHp}`;
           const glyph = site.disabled ? '▽' : site.attackable ? '▲' : '△';
-          return `<div class="protein-site-row${site.disabled ? ' disabled' : ''}" style="--protein-site-hp:${(ratio / 100).toFixed(3)}"><span class="protein-site-glyph" aria-hidden="true">${glyph}</span><span class="protein-site-label">${site.label}</span><span class="protein-site-meter"><i style="width:${ratio}%"></i></span><output>${status}</output></div>`;
+          const hpIcon = triangleHpMarkerSvg(site.hp, site.maxHp);
+          return `<div class="protein-site-row${site.disabled ? ' disabled' : ''}" style="--protein-site-hp:${ratio.toFixed(3)}"><span class="protein-site-glyph" aria-hidden="true">${glyph}</span><span class="protein-site-label">${site.abbreviation}</span><span class="protein-site-hp-icon">${hpIcon}</span><output>${status}</output></div>`;
         }).join('');
         const siteRows = this.els.get('tgt-protein-sites');
         if (siteRows && siteRows.innerHTML !== rows) siteRows.innerHTML = rows;

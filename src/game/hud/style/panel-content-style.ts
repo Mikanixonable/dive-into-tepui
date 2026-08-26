@@ -11,8 +11,9 @@ export const PANEL_CONTENT_STYLE = `
   .protein-site-glyph { color: var(--color-signal); font-size: var(--font-xs); line-height: 1; opacity: calc(.25 + var(--protein-site-hp) * .75); }
   .protein-site-row.disabled .protein-site-glyph { color: var(--text-dim); }
   .protein-site-label { min-width: 0; }
-  .protein-site-meter { height: 4px; background: var(--line-subtle); overflow: hidden; }
-  .protein-site-meter i { display: block; height: 100%; background: var(--signal); }
+  .protein-site-hp-icon { color: var(--color-signal); font-size: var(--font-xs); line-height: 1; }
+  .protein-site-hp-icon svg { display: block; width: 1em; height: 1em; }
+  .protein-site-row.disabled .protein-site-hp-icon { color: var(--text-dim); }
 #hud-vessel-status h3 { font-size: var(--font-xxs); }
 /* 通常のマップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
    SHIP STATUS は畳んでパネル占有面積を減らす。クリエイティブでは配置後の操作用に表示する。 */
