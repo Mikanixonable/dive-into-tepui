@@ -151,8 +151,8 @@ export class LabView {
 
   // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
   show(name: CaseName): void {
-    this.currentName = name;
-    this.resetView(this.build(name));
+    this.build(name);
+    this.resetView();
     this.render();
   }
 
@@ -164,9 +164,10 @@ export class LabView {
     this.render();
   }
 
-  // ケースを組み直してシーンへ載せる。前のケースはシーンから外すだけで解放しない — 球の単位
-  // ジオメトリは LOD 段ごとに全利用元で共有されていて、ここで捨てると次のケースが壊れる。
-  private build(name: CaseName): LabCase {
+  // ケースをいまのスタイルで組み直してシーンへ載せ、それを現在のケースにする。前のケースは
+  // シーンから外すだけで解放しない — 球の単位ジオメトリは LOD 段ごとに全利用元で共有されて
+  // いて、ここで捨てると次のケースが壊れる。
+  private build(name: CaseName): void {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
       disposeCaseObjects(this.current);
@@ -174,7 +175,7 @@ export class LabView {
     const built = CASES[name](this.style, this.pipeline.sunOcclusion, this.pipeline.sunLight);
     this.scene.add(...built.objects);
     this.current = built;
-    return built;
+    this.currentName = name;
   }
 
   get graphics(): GraphicsSettingsData { return this.graphicsData; }
@@ -212,7 +213,9 @@ export class LabView {
 
   // ケースのカメラと注視点から、観察の向きの既定値を引き直す。**注視点はカメラの視線上へ
   // 落としてから使う** — 視線から外れた点を注視させると、向きへ触れていないのに絵が回る。
-  private resetView(built: LabCase): void {
+  private resetView(): void {
+    const built = this.current;
+    if (built === null) return;
     const camera = built.camera;
     camera.updateMatrixWorld(true);
     camera.getWorldDirection(this.forward);

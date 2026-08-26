@@ -35,7 +35,8 @@ class PointFieldGroupView {
   // 太陽中心の位置。ECI 化に要る太陽位置は毎フレーム変わるので、ここには太陽中心のまま持つ。
   private readonly positions: Vec3[];
   private readonly mesh: THREE.InstancedMesh;
-  // 露出の順応を打ち消す前の色。sync がこれへ倍率を掛けて材質色を書く。
+  private readonly material: THREE.MeshBasicMaterial;
+  // 順応を打ち消す前の色。sync がこれへ倍率を掛けて材質色を書く。
   private readonly baseColor: THREE.Color;
   private readonly matrix = new THREE.Matrix4();
   // update で位置を再評価したインスタンスだけを sync で GPU へ書き戻す。
@@ -55,9 +56,9 @@ class PointFieldGroupView {
     // 正四面体を使うのは、全インスタンスが同じ姿勢で並ぶため — 平板だと視線方向によっては
     // 群全体が同時に消える。
     const geom = new THREE.TetrahedronGeometry(view.drawRadius);
-    const mat = new THREE.MeshBasicMaterial({ color: view.color, depthWrite: false });
-    this.baseColor = mat.color.clone();
-    this.mesh = new THREE.InstancedMesh(geom, mat, this.points.length);
+    this.material = new THREE.MeshBasicMaterial({ color: view.color, depthWrite: false });
+    this.baseColor = new THREE.Color(view.color);
+    this.mesh = new THREE.InstancedMesh(geom, this.material, this.points.length);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     // 個体が群の軌道全域(main-belt〜kuiper-belt は AU スケール)へ散らばるため、
     // 原点周りの外接球によるフラスタムカリングは意味を持たない。
@@ -89,13 +90,10 @@ class PointFieldGroupView {
   // update が求めた位置へ、再評価されたインスタンスだけを置く。点群の太陽中心からの位置は
   // InstancedMesh のローカル座標に残し、太陽の ECI 位置と FloatingOrigin の差分は mesh の
   // 親位置へ移す。これにより浮動原点が毎フレーム変わっても全インスタンスを更新せずに済む。
-  // exposureScale は順応ぶんを打ち消す倍率で、読ませるために選んだ明るさをどこから見ても
-  // 同じに保つ。
-  sync(fo: FloatingOrigin, visible: boolean, exposureScale: number): void {
+  sync(fo: FloatingOrigin, visible: boolean, fixedBrightnessScale: number): void {
     this.mesh.visible = visible;
     if (!visible) return;
-    (this.mesh.material as THREE.MeshBasicMaterial).color
-      .copy(this.baseColor).multiplyScalar(exposureScale);
+    this.material.color.copy(this.baseColor).multiplyScalar(fixedBrightnessScale);
     this.mesh.position.copy(fo.RtoThreeV3(this.sunPos));
     for (const idx of this.dirtyIndices) {
       const p = this.positions[idx]!;
@@ -113,7 +111,7 @@ class PointFieldGroupView {
     this.mesh.removeFromParent();
     this.mesh.dispose();
     this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
+    this.material.dispose();
   }
 }
 
@@ -149,10 +147,11 @@ export class PointFieldView {
   }
 
   // update が求めた位置へ各インスタンスを置く。太陽の平行移動は mesh.position、個々の点の
-  // 更新は instanceMatrix に分担させる。exposureScale は露出の順応を打ち消す倍率。
-  sync(fo: FloatingOrigin, overviewMode: boolean, smallBodyVisible: boolean, exposureScale: number): void {
+  // 更新は instanceMatrix に分担させる。fixedBrightnessScale は露出の順応を打ち消す倍率で、
+  // 読ませるために選んだ明るさをどこから見ても同じに保つ。
+  sync(fo: FloatingOrigin, overviewMode: boolean, smallBodyVisible: boolean, fixedBrightnessScale: number): void {
     const visible = overviewMode && this.hasStar && smallBodyVisible;
-    for (const group of this.groups) group.sync(fo, visible, exposureScale);
+    for (const group of this.groups) group.sync(fo, visible, fixedBrightnessScale);
   }
 
   // 全群の InstancedMesh を解放する。

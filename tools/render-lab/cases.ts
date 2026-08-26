@@ -396,12 +396,14 @@ function leo(): LabCase {
   };
 }
 
-// 外惑星圏の距離ぶんだけ恒星を遠ざけた絵。アルベド 0.3 の灰色球(典型的な天体表面・艦の外殻の
-// 反射率)と艦を1隻置き、**太陽に正対した面が黒へ潰れていないか**を距離ごとに読む。球の最も
-// 明るい画素が太陽に正対した面にあたるので、距離ごとの表示値はそこで測る。
+// 典型的な天体表面・艦の外殻の反射率。
 const OUTER_ALBEDO: Albedo = [0.3, 0.3, 0.3];
+// 灰色球の半径 [m]。
 const OUTER_BODY_RADIUS = 6.371e6;
 
+// 外惑星圏: 恒星を sunDistance [m] まで遠ざけ、灰色球と艦を1隻置いて、**太陽に正対した面が
+// 黒へ潰れていないか**を読む。球の最も明るい画素が太陽に正対した面にあたるので、距離ごとの
+// 表示値はそこで測る。
 function outer(sunDistance: number): LabCase {
   const camera = labCamera(6e7);
   const center = new THREE.Vector3(0, -0.5 * OUTER_BODY_RADIUS, -3 * OUTER_BODY_RADIUS);

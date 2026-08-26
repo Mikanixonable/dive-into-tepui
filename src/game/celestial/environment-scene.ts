@@ -262,8 +262,7 @@ export class EnvironmentScene {
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
   }
 
-  // 基準点へ届く環境光の放射照度。環境光は地球照の代用なので、地球が無いレジストリでは届く光
-  // そのものが無く 0 — 本影の中を埋めるぶんは恒星光側(SHADOW_MIN_SUN)が別に持っている。
+  // 基準点へ届く環境光の放射照度。環境光は地球照の代用なので、地球が無いレジストリでは 0。
   private ambientIrradianceAt(reference: THREE.Vector3, fo: FloatingOrigin, displayTime: number): number {
     if (!('earth' in this.ephemeris.registry)) return 0;
     const earth = fo.RtoThreeV3(this.ephemeris.positionOf('earth', displayTime));
@@ -340,7 +339,7 @@ export class EnvironmentScene {
     this.stars.mesh.position.set(0, 0, 0);
     this.stars.mesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
     this.stars.mesh.visible = visible;
-    this.stars.setExposureScale(fixedBrightnessScale);
+    this.stars.setFixedBrightnessScale(fixedBrightnessScale);
   }
 
   private toThreeNormal(normal: Vec3): THREE.Vector3 {
