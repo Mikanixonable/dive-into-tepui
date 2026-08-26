@@ -24,6 +24,7 @@ import type { RenderStyle } from '../../render/render-style';
 import { SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
 import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
+import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from './planet-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
@@ -87,6 +88,13 @@ function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
   return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star');
 }
 
+// 一様な環境光の割合。マップビューでは読みやすさのため強く、戦闘ビューでは弱く、どちらも
+// 描画設定で切れる。
+function ambientFraction(overviewMode: boolean, graphics: GraphicsSettingsData): number {
+  if (overviewMode) return graphics.overviewAmbient ? AMBIENT_STRONG : 0;
+  return graphics.combatAmbient ? AMBIENT_WEAK : 0;
+}
+
 export class EnvironmentScene {
   private readonly scene: THREE.Scene;
   // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
@@ -130,6 +138,7 @@ export class EnvironmentScene {
     private readonly exposure: Exposure,
     private readonly sunOcclusion: SunOcclusion,
     private readonly planetLight: PlanetLightSource,
+    private readonly ambient: AmbientSource,
     private readonly atmosphere: AtmospherePass,
     earthSpinPhase0: number,
   ) {
@@ -230,6 +239,7 @@ export class EnvironmentScene {
     const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
     this.exposure.setReference(reference, sunPos);
     this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY);
+    this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, graphics);
