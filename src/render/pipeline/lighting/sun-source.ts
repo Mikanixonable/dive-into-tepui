@@ -1,13 +1,11 @@
 // 恒星の直射光の寄与。光源モデルの設定で「点光源 + GGX」と「一様球の閉じた解 + LTC」を
 // 選ぶ。どちらも遮蔽パスの透過率を掛けて出す。
 import * as THREE from 'three/webgpu';
-import {
-  D_GGX, F_Schlick, PI, V_GGX_SmithCorrelated, clamp, dot, float, length, max, normalize,
-  saturate, texture,
-} from 'three/tsl';
+import { PI, clamp, dot, length, max, normalize, saturate, texture } from 'three/tsl';
 import type { FloatNode, Vec3Node } from '../../tsl-types';
 import type { OcclusionPass } from '../occlusion';
 import type { SunLight } from '../sun-light';
+import { ggxSpecularFactor } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import { createLtcTables } from './ltc-table';
 import { ltcEvaluate, ltcInverseTransform, ltcUv, sphereOctagonPoints } from './ltc';
@@ -55,20 +53,7 @@ export class SunSource implements LightSource {
     const irradiance: Vec3Node = this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
       .mul(dotNL).mul(texture(this.occlusion.texture, sample.uv).r);
-
-    const alpha = sample.roughness.mul(sample.roughness);
-    const halfDir = normalize(lightDir.add(sample.viewDir));
-    const dotNH = saturate(dot(sample.normal, halfDir));
-    const dotNV = saturate(dot(sample.normal, sample.viewDir));
-    const dotVH = saturate(dot(sample.viewDir, halfDir));
-    // D_GGX/V_GGX_SmithCorrelated/F_Schlick の @types/three 上の戻り値型 OperatorNode は
-    // メソッドチェインを持たない(実体は他の TSL ノードと同じプロキシで、型定義側の欠落)ため、
-    // FloatNode へ読み替えてから掛け合わせる。
-    const fresnel = F_Schlick({ f0: float(1), f90: float(1), dotVH }) as unknown as FloatNode;
-    const visibility = V_GGX_SmithCorrelated({ alpha, dotNL, dotNV }) as unknown as FloatNode;
-    const distribution = D_GGX({ alpha, dotNH }) as unknown as FloatNode;
-    const ggx = fresnel.mul(visibility).mul(distribution);
-    return { diffuse: irradiance, specular: irradiance.mul(ggx) };
+    return { diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)) };
   }
 
   // 恒星を視半径を持つ一様球として扱う寄与。拡散は閉じた解(sphere-light.ts)、鏡面は
