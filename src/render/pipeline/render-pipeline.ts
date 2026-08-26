@@ -23,6 +23,8 @@ import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
+import { AmbientSource } from './lighting/ambient-source';
+import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
 import { SunOcclusion } from './sun-occlusion';
@@ -108,7 +110,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
-    this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
+    this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
+      new SunSource(this._sunLight, this.occlusionPass),
+      new AmbientSource(this._sunLight),
+    ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(
       renderer, this.gbuffer, this._sunLight, this._sunOcclusion, this.occlusionPass, gpu,
