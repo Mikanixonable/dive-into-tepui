@@ -12,6 +12,7 @@ import type { CombatTarget } from './targeter';
 import type { EntityManager } from './simulation/entity-manager';
 import type { DisplayWindow } from './display-window-manager';
 import type { MapVisibilityPolicy } from './celestial/map-visibility';
+import type { OrbitReference } from './orbit-reference';
 
 // ターゲットの軌道はほぼ自機の軌道と重なることが多く(近傍ランデブーを狙うため)、
 // 埋もれて見えなくならないよう不透明度を上げる。
@@ -98,7 +99,7 @@ export class EntityLineManager {
   // ここでは全個体へ一律に呼ぶ。
   sync(
     displayWindow: DisplayWindow, fo: FloatingOrigin, camera: THREE.Camera,
-    frameAnchors: FrameAnchorSource, ephemeris: Ephemeris,
+    frameAnchors: FrameAnchorSource, ephemeris: Ephemeris, orbitRef: OrbitReference | undefined,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     for (const ship of this.entities.players) {
@@ -106,19 +107,19 @@ export class EntityLineManager {
       ship.syncTrajectoryLines(
         frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
       // 噴射中は軌道要素が動き続けるので、閾値を待たずに焼き直す。
-      ship.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris, force: ship.thrust !== null });
+      ship.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris, force: ship.thrust !== null, orbitRef });
     }
     for (const enemy of this.entities.enemies) {
       const predictedTo = enemy.predictionTruncated ? null : simTime + duration;
       enemy.syncTrajectoryLines(
         frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
-      enemy.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris, force: enemy.thrust !== null });
+      enemy.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris, force: enemy.thrust !== null, orbitRef });
     }
     for (const base of this.entities.bases) {
       const predictedTo = base.predictionTruncated ? null : simTime + duration;
       base.syncTrajectoryLines(
         frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
-      base.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris, force: base.thrust !== null });
+      base.syncOrbitLine(fo, camera, { frameAnchors, displayTime, ephemeris, force: base.thrust !== null, orbitRef });
     }
   }
 }
