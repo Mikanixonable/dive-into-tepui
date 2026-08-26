@@ -12,7 +12,7 @@ export interface ProteinBrownianModeParameters {
   readonly rmsAmplitude: number;
 }
 
-const UINT32_SCALE = 0x1_0000_0000;
+export const UINT32_SCALE = 0x1_0000_0000;
 const TWO_PI = Math.PI * 2;
 const DEFAULT_SAMPLE_HZ = 30;
 const DEFAULT_RELAXATION_RATE = 1;
@@ -31,7 +31,8 @@ export function proteinBrownianSeedFor(key: string): number {
   return hash >>> 0;
 }
 
-function mix32(value: number): number {
+/** 32bit の値を、一様に近い32bit ハッシュへ混ぜ込む finalizer。 */
+export function mix32(value: number): number {
   let mixed = value >>> 0;
   mixed = Math.imul(mixed ^ (mixed >>> 16), 0x45d9f3b);
   mixed = Math.imul(mixed ^ (mixed >>> 16), 0x45d9f3b);
