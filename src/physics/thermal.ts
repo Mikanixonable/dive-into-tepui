@@ -81,6 +81,26 @@ export function radiativeCooling(
   return power > 0 ? Math.min(power, toEquilibrium) : Math.max(power, toEquilibrium);
 }
 
+// 局所的に過熱した部分が平均より高い温度差 deviation [K] を、dt だけ薄めた値 [K]。
+// temperature は物体の平均温度、他は radiativeCooling と同じ比量。
+//
+// 高温部は低温部より速く放射するので、温度差そのものが放射で潰れていく。潰れる速さは
+// 放射冷却を温度で微分した 4εσ(A/m)T³/c で、これを減衰の定数とみなして指数で積む。
+// **線形に引いてはならない** — 刻みが比熱に対して広いと符号が反転し、温度差が振動しながら育つ。
+export function stepThermalDeviation(
+  deviation: number,
+  temperature: number,
+  emissivity: number,
+  radiatingAreaPerMass: number,
+  specificHeat: number,
+  dt: number,
+): number {
+  if (!(specificHeat > 0) || !(dt > 0) || temperature <= 0) return deviation;
+  const t3 = temperature * temperature * temperature;
+  const rate = (4 * emissivity * STEFAN_BOLTZMANN * radiatingAreaPerMass * t3) / specificHeat;
+  return deviation * Math.exp(-rate * dt);
+}
+
 // 正味の比パワー netPower [W/kg] で温度を dt だけ進めた値 [K]。
 // specificHeat = 0 は熱を蓄えない物体を表し、温度は動かない。
 export function stepTemperature(

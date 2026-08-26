@@ -7,7 +7,7 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import {
   STEFAN_BOLTZMANN, aeroHeating, dragDissipation, radiativeCooling, solarHeating,
-  sphereNoseRadius, stepTemperature,
+  sphereNoseRadius, stepTemperature, stepThermalDeviation,
 } from '../../src/physics/thermal';
 import { SOLAR_CONSTANT } from '../../src/physics/srp';
 import { AU } from '../../src/physics/planet-orbit';
@@ -146,6 +146,30 @@ export function register(): void {
       assert.ok(t < c.maxTemp, `${c.name}: 日照の平衡 ${t.toFixed(0)} K が限界 ${c.maxTemp} K に達する`);
       assert.ok(t > ENV_TEMP, `${c.name}: 日照で環境温度より暖まらない`);
     }
+  });
+
+  test('thermal: 局所的な過熱は温度が高いほど速く薄まる', () => {
+    const hot = stepThermalDeviation(600, 1500, HULL_EMISS, 0.047, 500, 10);
+    const cool = stepThermalDeviation(600, 1000, HULL_EMISS, 0.047, 500, 10);
+    assert.ok(hot < cool, `1500 K で ${hot.toFixed(1)} K、1000 K で ${cool.toFixed(1)} K`);
+    assert.ok(hot < 600 && cool < 600, '薄まっていない');
+    assert.equal(stepThermalDeviation(600, 1500, 0, 0.047, 500, 10), 600, '輻射率0なら薄まらない');
+  });
+
+  test('thermal: 局所的な過熱の薄まりは刻みの分け方に依らない', () => {
+    const once = stepThermalDeviation(600, 1500, HULL_EMISS, 0.047, 500, 20);
+    let split = 600;
+    for (let i = 0; i < 4; i++) split = stepThermalDeviation(split, 1500, HULL_EMISS, 0.047, 500, 5);
+    assert.ok(Math.abs(once - split) < 1e-9 * once, `1歩 ${once} に対し4分割 ${split}`);
+  });
+
+  test('thermal: 刻みがどれだけ広くても、局所的な過熱は0へ収束して符号を変えない', () => {
+    for (const dt of [1, 100, 1e4, 1e8]) {
+      const next = stepThermalDeviation(600, 1500, HULL_EMISS, 0.047, 500, dt);
+      assert.ok(next >= 0, `dt=${dt}: ${next} K まで落ちた`);
+      assert.ok(next <= 600, `dt=${dt}: 薄まらずに育った`);
+    }
+    assert.ok(stepThermalDeviation(600, 1500, HULL_EMISS, 0.047, 500, 1e8) < 1e-9, '十分な時間で消えない');
   });
 
   test('thermal: 比熱0の物体は温度が動かない', () => {
