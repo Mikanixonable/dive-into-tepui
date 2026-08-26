@@ -83,12 +83,13 @@ export function makeThermallyEmissive<T extends THREE.Object3D>(root: T): T {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
     const shaped = mesh.geometry.getAttribute(THERMAL_SHAPE_ATTRIBUTE) !== undefined;
-    const upgrade = (material: THREE.Material): THREE.Material =>
-      isStandardMaterial(material) ? attachThermalEmissive(toStandardNodeMaterial(material), 'object', shaped) : material;
+    const upgrade = (material: THREE.Material): THREE.Material => isStandardMaterial(material)
+      ? attachThermalEmissive(toStandardNodeMaterial(material), 'object', shaped)
+      : material;
     mesh.material = Array.isArray(mesh.material)
       ? mesh.material.map(upgrade) : upgrade(mesh.material);
   });
-  initThermalState(root);
+  syncThermalState(root, 0, 0, 0);
   return root;
 }
 
@@ -110,17 +111,12 @@ export function writeThermalState(
   object: THREE.Object3D, out: Float32Array, offset: number,
 ): boolean {
   const data = object.userData as Partial<ThermalUserData>;
-  const values = [data.thermalTemperature ?? 0, data.thermalDeviation ?? 0, data.thermalEmissivity ?? 0];
-  let changed = false;
-  for (let i = 0; i < values.length; i++) {
-    if (out[offset + i] === values[i]) continue;
-    out[offset + i] = values[i]!;
-    changed = true;
-  }
-  return changed;
-}
-
-// 熱の状態をまだ受け取っていない Mesh を、光らない状態へ据える。
-export function initThermalState(root: THREE.Object3D): void {
-  syncThermalState(root, 0, 0, 0);
+  const temperature = data.thermalTemperature ?? 0;
+  const deviation = data.thermalDeviation ?? 0;
+  const emissivity = data.thermalEmissivity ?? 0;
+  if (out[offset] === temperature && out[offset + 1] === deviation && out[offset + 2] === emissivity) return false;
+  out[offset] = temperature;
+  out[offset + 1] = deviation;
+  out[offset + 2] = emissivity;
+  return true;
 }
