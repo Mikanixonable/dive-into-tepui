@@ -7,6 +7,7 @@ import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../physics/random';
 import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
+import { attachThermalEmissive, makeThermallyEmissive, THERMAL_SHAPE_ATTRIBUTE } from './thermal-emissive';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -86,6 +87,7 @@ export function cloneIndependent<T extends THREE.Object3D>(template: T): T {
       mesh.userData.ownsMaterial = true;
     }
   });
+  makeThermallyEmissive(clone);
   markLitOpaque(clone);
   markSunShadowCaster(clone);
   return clone;
@@ -132,7 +134,7 @@ const parseDebrisRod = memoParse<THREE.Mesh>(debrisRodData);
 // geometry はテンプレートを一度だけ deep clone して全長補正を焼き込み、material は
 // parseCasing() がテンプレートから一度だけ複製したものを不変リソースとして共有する。
 let casingGeometry: THREE.BufferGeometry | null = null;
-let casingMaterial: THREE.MeshStandardMaterial | null = null;
+let casingMaterial: THREE.MeshStandardNodeMaterial | null = null;
 
 function initCasingResources(): void {
   if (casingGeometry && casingMaterial) return;
@@ -140,10 +142,12 @@ function initCasingResources(): void {
   const template = parseCasing();
   casingGeometry = deepCloneGeometry(template.geometry);
   casingGeometry.scale(1, 2, 1);
-  casingMaterial = template.material as THREE.MeshStandardMaterial;
+  casingMaterial = template.material as THREE.MeshStandardNodeMaterial;
   casingMaterial.color.setHex(0xFF9F5E);
   casingMaterial.metalness = 0.8;
   casingMaterial.roughness = 0.3;
+  // 個体は 1 本の InstancedMesh へ積まれるので、温度は個体ごとの属性から読む。
+  attachThermalEmissive(casingMaterial, 'instance');
 }
 
 // 自機のメッシュを生成する。
@@ -232,6 +236,7 @@ export function buildRcsFuelPickup(): THREE.Group {
   ));
   beacon.position.x = 1.15;
   g.add(beacon);
+  makeThermallyEmissive(g);
   markLitOpaque(g);
   markSunShadowCaster(g);
   return g;
@@ -431,7 +436,7 @@ function buildDebrisFragmentGeometry(rand: () => number): THREE.BufferGeometry {
 }
 
 let debrisFragmentGeometries: THREE.BufferGeometry[] | null = null;
-let debrisFragmentMaterial: THREE.MeshStandardMaterial | null = null;
+let debrisFragmentMaterial: THREE.MeshStandardNodeMaterial | null = null;
 
 // 破片(fragment)全個体が共有するジオメトリ群(バリアント)と単一マテリアルを返す。
 // バリアントは初回呼び出し時に一度だけ構築する。
@@ -440,14 +445,39 @@ export function debrisFragmentResources(): { geometries: readonly THREE.BufferGe
     const rand = mulberry32(DEBRIS_FRAGMENT_SEED);
     debrisFragmentGeometries = [];
     for (let i = 0; i < DEBRIS_FRAGMENT_VARIANT_COUNT; i++) debrisFragmentGeometries.push(buildDebrisFragmentGeometry(rand));
-    debrisFragmentMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.65, metalness: 0 });
+    debrisFragmentMaterial = attachThermalEmissive(
+      new THREE.MeshStandardNodeMaterial({ color: 0xffffff, flatShading: true, roughness: 0.65, metalness: 0 }),
+      'instance');
   }
   return { geometries: debrisFragmentGeometries, material: debrisFragmentMaterial! };
 }
 
 
 // リロード時に放出される砲身（バレル）メッシュ
-// 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + 赤熱グロー + ガスポート
+// 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + ガスポート
+
+// 薬室の位置 [m] と、そこから砲口へ向かって温度差が落ちる長さ [m]。発射ガスは銃身に沿って
+// 熱を置いていくので、薬室側がいちばん熱く、砲口へ向かって指数で下がる。
+const BARREL_BREECH_Z = -2.3;
+const BARREL_HEAT_FALLOFF = 1.2;
+
+// 砲身の各メッシュへ、平均温度からの温度差の分布(薬室側 1、砲口側 0)を焼く。
+function bakeBarrelThermalShape(root: THREE.Object3D): void {
+  const vertex = new THREE.Vector3();
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.updateMatrix();
+    const position = mesh.geometry.getAttribute('position');
+    const shape = new Float32Array(position.count);
+    for (let i = 0; i < position.count; i++) {
+      vertex.fromBufferAttribute(position, i).applyMatrix4(mesh.matrix);
+      shape[i] = Math.min(1, Math.exp(-(vertex.z - BARREL_BREECH_Z) / BARREL_HEAT_FALLOFF));
+    }
+    mesh.geometry.setAttribute(THERMAL_SHAPE_ATTRIBUTE, new THREE.Float32BufferAttribute(shape, 1));
+  });
+}
+
 let barrelTemplate: THREE.Group | null = null;
 
 export function buildBarrelMesh(): THREE.Group {
@@ -511,18 +541,8 @@ export function buildBarrelMesh(): THREE.Group {
   bore.position.z = 2.28;
   g.add(bore);
 
-  // --- 赤熱グロー(後端・発射熱を表現) ---
-  const heatMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(0xff3c00).multiplyScalar(0.48),
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  const heat = new THREE.Mesh(new THREE.CylinderGeometry(0.70 * S, 0.70 * S, 0.95, 10), heatMat);
-  heat.rotation.x = Math.PI / 2;
-  heat.position.z = -2.1;
-  g.add(heat);
-
+  bakeBarrelThermalShape(g);
+  makeThermallyEmissive(g);
   barrelTemplate = g;
   // 子 mesh の geometry/material は上のテンプレートを全個体で共有する。flags は未設定でも
   // 共有扱いだが、破棄側の契約を明示して将来の個別変更で誤って解放しないようにする。

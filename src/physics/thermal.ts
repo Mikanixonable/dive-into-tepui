@@ -1,6 +1,7 @@
 // 物体の熱収支を**比量(単位質量あたり)**で表す純関数。質量も半径もここには現れない —
 // 弾道係数の逆数 bcInv = Cd·A/m が既に比量なので、抗力による散逸も空力加熱も比量で閉じる。
-// 温度は物体を等温の1点とみなして扱う。THREE/DOM 非依存。
+// 温度は物体全体の平均と、局所的に過熱した部分が平均からどれだけ高いかの2つで表す。
+// THREE/DOM 非依存。
 //
 // **大気から入る熱は、その区間に散逸した力学エネルギーを超えない。** 加熱の相関式は流れの
 // 局所量から熱流束を出すだけで収支を知らないので、超えないことは受け取る側で保証する。
@@ -79,6 +80,26 @@ export function radiativeCooling(
   // 温度差をちょうど埋めるパワー。符号は power と揃うので、絶対値の小さいほうを採ればよい。
   const toEquilibrium = ((temperature - envTemp) * specificHeat) / dt;
   return power > 0 ? Math.min(power, toEquilibrium) : Math.max(power, toEquilibrium);
+}
+
+// 局所的に過熱した部分が平均より高い温度差 deviation [K] を、dt だけ薄めた値 [K]。
+// temperature は物体の平均温度、他は radiativeCooling と同じ比量。
+//
+// 高温部は低温部より速く放射するので、温度差そのものが放射で潰れていく。潰れる速さは
+// 放射冷却を温度で微分した 4εσ(A/m)T³/c で、これを減衰の定数とみなして指数で積む。
+// **線形に引いてはならない** — 刻みが比熱に対して広いと符号が反転し、温度差が振動しながら育つ。
+export function stepThermalDeviation(
+  deviation: number,
+  temperature: number,
+  emissivity: number,
+  radiatingAreaPerMass: number,
+  specificHeat: number,
+  dt: number,
+): number {
+  if (!(specificHeat > 0) || !(dt > 0) || temperature <= 0) return deviation;
+  const t3 = temperature * temperature * temperature;
+  const rate = (4 * emissivity * STEFAN_BOLTZMANN * radiatingAreaPerMass * t3) / specificHeat;
+  return deviation * Math.exp(-rate * dt);
 }
 
 // 正味の比パワー netPower [W/kg] で温度を dt だけ進めた値 [K]。
