@@ -11,10 +11,10 @@ import type {
 } from './protein-schema';
 import { ProteinCombatState } from './protein-combat-state';
 import {
+  proteinAnchorOffset,
   proteinAnchorResidues,
   proteinLocalImpactPoint,
   proteinSiteWorldPosition,
-  setProteinAnchorPosition,
 } from './protein-anchors';
 import {
   ProteinMotionController,
@@ -44,7 +44,6 @@ export class ProteinRuntime {
   readonly controller: ProteinMotionController;
   readonly motionBinding: ProteinMotionBinding;
   private readonly root: THREE.Object3D;
-  private readonly siteMeshes = new Map<string, THREE.Mesh>();
   private readonly baseSitePositions = new Map<string, THREE.Vector3>();
   private readonly siteResidueGroups = new Map<string, readonly number[]>();
   private trackedResidues: readonly number[] = [];
@@ -103,7 +102,6 @@ export class ProteinRuntime {
       });
       this.root.remove(child);
     }
-    this.siteMeshes.clear();
     this.baseSitePositions.clear();
     this.siteResidueGroups.clear();
     this.bondVisuals.length = 0;
@@ -115,21 +113,7 @@ export class ProteinRuntime {
     for (let index = 0; index < this.asset.sites.length; index += 1) {
       const site = this.asset.sites[index]!;
       const [x, y, z] = site.position;
-      const position = new THREE.Vector3(x * scale, y * scale, z * scale);
-      const material = new THREE.MeshStandardMaterial({
-        color: site.type === 'active' ? 0x55eaff : site.type === 'interface' ? 0x887cff : 0xffbb55,
-        emissive: site.type === 'active' ? 0x007caa : 0x25104c,
-        emissiveIntensity: 0.55, roughness: 0.22, metalness: 0.5,
-        transparent: true, opacity: 0.9, side: THREE.DoubleSide,
-      });
-      const mesh = new THREE.Mesh(new THREE.ConeGeometry(Math.max(0.36, site.radius * scale * 0.18), 0.16, 3), material);
-      mesh.position.copy(position);
-      mesh.renderOrder = 4;
-      mesh.userData[RUNTIME_VISUAL] = true;
-      mesh.userData.proteinSiteId = site.id;
-      this.root.add(mesh);
-      this.siteMeshes.set(site.id, mesh);
-      this.baseSitePositions.set(site.id, position);
+      this.baseSitePositions.set(site.id, new THREE.Vector3(x * scale, y * scale, z * scale));
       this.siteResidueGroups.set(site.id, proteinAnchorResidues(site, index, this.motion, this.motion.bindings.siteResidues));
     }
     for (const bond of this.asset.bonds) {
@@ -182,26 +166,15 @@ export class ProteinRuntime {
     this.lastCpuMs = performance.now() - cpuStart;
     const scale = this.asset.coordinateScale;
     const state = this.combat;
-    for (const site of this.asset.sites) {
-      const mesh = this.siteMeshes.get(site.id);
-      const base = this.baseSitePositions.get(site.id);
-      const siteState = state.siteState(site.id);
-      if (!mesh || !base || !siteState) continue;
-      setProteinAnchorPosition(mesh, base, this.siteResidueGroups.get(site.id) ?? [], this.trackedResidueOffsets, this.motion.residueCount, scale);
-      mesh.visible = true;
-      const material = mesh.material as THREE.MeshStandardMaterial;
-      const ratio = siteState.maxHp > 0 ? Math.max(0, Math.min(1, siteState.hp / siteState.maxHp)) : 0;
-      material.opacity = siteState.disabled ? 0.18 : 0.32 + ratio * 0.68;
-      material.emissiveIntensity = (siteState.disabled ? 0.05 : 0.25 + ratio * 0.5) + (state.phase === 'critical' ? 0.35 : 0);
-      mesh.scale.setScalar(0.55 + ratio * 0.45);
-    }
     for (const bond of this.bondVisuals) {
-      const from = this.siteMeshes.get(bond.fromSiteId);
-      const to = this.siteMeshes.get(bond.toSiteId);
-      if (!from || !to) continue;
+      const fromBase = this.baseSitePositions.get(bond.fromSiteId);
+      const toBase = this.baseSitePositions.get(bond.toSiteId);
+      if (!fromBase || !toBase) continue;
+      const fromOffset = proteinAnchorOffset(this.siteResidueGroups.get(bond.fromSiteId) ?? [], this.trackedResidueOffsets, this.motion.residueCount);
+      const toOffset = proteinAnchorOffset(this.siteResidueGroups.get(bond.toSiteId) ?? [], this.trackedResidueOffsets, this.motion.residueCount);
       const positions = bond.line.geometry.getAttribute('position') as THREE.BufferAttribute;
-      positions.setXYZ(0, from.position.x, from.position.y, from.position.z);
-      positions.setXYZ(1, to.position.x, to.position.y, to.position.z);
+      positions.setXYZ(0, fromBase.x + fromOffset[0] * scale, fromBase.y + fromOffset[1] * scale, fromBase.z + fromOffset[2] * scale);
+      positions.setXYZ(1, toBase.x + toOffset[0] * scale, toBase.y + toOffset[1] * scale, toBase.z + toOffset[2] * scale);
       positions.needsUpdate = true;
     }
     this.bondMaterial.opacity = state.phase === 'intact' ? 0.42 : state.phase === 'critical' ? 0.12 : 0.68;

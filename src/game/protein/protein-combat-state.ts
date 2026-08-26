@@ -105,11 +105,6 @@ export class ProteinCombatState {
     return this.siteStates.find((site) => site.definition.id === id)?.definition ?? null;
   }
 
-  siteState(id: string): { readonly hp: number; readonly maxHp: number; readonly disabled: boolean } | null {
-    const site = this.siteStates.find((entry) => entry.definition.id === id);
-    return site ? { hp: site.hp, maxHp: site.definition.maxHp, disabled: site.disabled } : null;
-  }
-
   modificationState(id: string): string | null { return this.modifications.get(id) ?? null; }
 
   setModification(id: string, state: string): boolean {
