@@ -11,6 +11,26 @@ import { Button, CloseButton, Slider, TabBar } from '../widgets';
 
 type SettingsTab = 'theme' | 'graphics' | 'bgm';
 
+const OPEN_STORAGE_KEY = 'tepui.settingsViewOpen';
+
+// localStorage から開閉状態を読む。ステージ復元(SaveSlots の lastStageId)とは別の、
+// このビュー専用の永続化——ステージ進行の記録に UI 表示状態を混ぜない。
+function loadSettingsViewOpen(): boolean {
+  try {
+    return localStorage.getItem(OPEN_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveSettingsViewOpen(open: boolean): void {
+  try {
+    localStorage.setItem(OPEN_STORAGE_KEY, open ? '1' : '0');
+  } catch {
+    /* localStorage 不可なら保存しない */
+  }
+}
+
 // タイトル画面とゲーム中の両方から開く、システム設定の共通ビュー。
 // 3D の ViewManager とは独立した DOM ビューなので、閉じると開く前のワールドビューへ戻る。
 export class SettingsView implements OverlayHandle {
@@ -208,6 +228,11 @@ export class SettingsView implements OverlayHandle {
     return this.panel.contains(target);
   }
 
+  // 起動シーケンスの配線(onOpenChange 等)が終わったあとに、呼び出し側から一度だけ呼ぶ。
+  restorePersistedOpenState(): void {
+    if (loadSettingsViewOpen()) this.toggle(true);
+  }
+
   close(): void {
     this.toggle(false);
   }
@@ -216,6 +241,7 @@ export class SettingsView implements OverlayHandle {
     const show = force !== undefined ? force : !this._isOpen;
     if (show === this._isOpen) return;
     this._isOpen = show;
+    saveSettingsViewOpen(show);
     this.panel.style.display = show ? 'block' : 'none';
     this.panel.closest<HTMLElement>('#hud')?.classList.toggle(
       'title-menu-open', show && document.getElementById('stage-select') !== null,
