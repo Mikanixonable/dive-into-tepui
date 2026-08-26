@@ -19,7 +19,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import { ATMOSPHERE_QUALITY, type GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import {
   SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight, ambientIrradianceAtDistance,
@@ -331,16 +331,15 @@ export class EnvironmentScene {
   private syncAtmosphere(
     fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, graphics: GraphicsSettingsData,
   ): void {
-    if (!graphics.atmosphere) {
+    if (graphics.atmosphere === ATMOSPHERE_QUALITY.off) {
       this.atmosphere.setBodies([], 0);
       return;
     }
     const ranked = this.rankedAtmospheres(fo, displayTime, cameraPos);
     // 候補が 1 体しか無いなら、その天体が場を独占している。
     const gap = ranked.length < 2 ? Infinity : ranked[0]!.strength - ranked[1]!.strength;
-    this.atmosphere.setBodies(
-      ranked.slice(0, MAX_ATMOSPHERE_BODIES).map(({ body }) => body), denseWeightFromGap(gap),
-    );
+    const dense = graphics.atmosphere === ATMOSPHERE_QUALITY.high ? denseWeightFromGap(gap) : 0;
+    this.atmosphere.setBodies(ranked.slice(0, MAX_ATMOSPHERE_BODIES).map(({ body }) => body), dense);
   }
 
   // 大気を持つ天体を、カメラのいる場所の大気を強く作っている順に。**カメラの向きは見ない** —
