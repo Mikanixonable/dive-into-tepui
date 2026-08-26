@@ -252,7 +252,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 .orbit-guide-kind-heading { margin-bottom: var(--space-1); }
 .orbit-guide-kind-heading-btn { width: 100%; text-align: left; }
 .orbit-guide-kind-heading-btn-resonant { padding: 10.5px calc(var(--space-5) * 1.5); font-size: calc(var(--font-s) * 1.5); text-align: center; }
-.orbit-guide-combined-heading { font-weight: 600; padding: var(--space-2) 0; }
+.orbit-guide-combined-heading { font-size: var(--font-xxs); font-weight: 600; padding: var(--space-2) 0; }
 .orbit-guide-kind-config { display: flex; flex-direction: column; gap: var(--space-2); padding-left: var(--space-3); border-left: 1px solid var(--line-subtle); }
 .orbit-guide-kind-config.hidden { display: none; }
 .orbit-guide-toggle-row { flex-wrap: wrap; }
