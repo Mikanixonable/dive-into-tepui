@@ -1,6 +1,7 @@
-// 太陽の見た目: 実位置・実半径の自発光球体と、戦闘視点でその周りへ重ねるグロー。
+// 太陽の見た目: 実位置・実半径の自発光球体(遠くて球として描けないときは点像)と、
+// 模式図で代わりに出す輪郭円。
 import * as THREE from 'three/webgpu';
-import { createSun, Sun, STAR_GLOW_SIZE_RATIO, SUN_GLOW_RADIANCE } from '../../render/stars';
+import { createSun, Sun } from '../../render/stars';
 import { createOutlineCircle, OutlineCircle } from '../../render/outline-circle';
 import { Ephemeris } from '../../physics/ephemeris';
 import { CelestialBodyId } from '../../physics/celestial-body';
@@ -24,35 +25,29 @@ export class SunView extends CelestialView {
     this.id = id;
   }
 
-  // ビルボードと実球体メッシュをシーンへ一度だけ登録する。
+  // 実球体・点像・輪郭円をシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
-    scene.add(this.sun.billboard.mesh);
-    scene.add(this.sun.mesh);
+    this.sun.addTo(scene);
     scene.add(this.outline.line);
   }
 
-  // 球体・グロー・輪郭円をまとめて表示/非表示にする。
+  // 恒星の見た目と輪郭円をまとめて表示/非表示にする。
   setVisible(visible: boolean): void {
-    this.sun.billboard.mesh.visible = visible;
-    this.sun.mesh.visible = visible;
+    this.sun.setVisible(visible);
     this.outline.line.visible = visible;
   }
 
-  // displayTime 時点の実位置へ球体を置き、戦闘視点でだけグローを重ねる。グローは太陽へ
-  // 十分に近づけるマップビューでは画面を埋め尽くしてしまうので出さない。
+  // displayTime 時点の実位置へ恒星を置く。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
-    _graphics: GraphicsSettingsData, style: RenderStyle,
+    graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
-    if (!this.sun.billboard.mesh.visible && !this.sun.mesh.visible && !this.outline.line.visible) return;
-    const p = fo.RtoThreeV3(ephemeris.positionOf(this.id, displayTime));
-    const schematic = style === 'schematic';
-    this.sun.mesh.position.copy(p);
-    this.sun.mesh.scale.setScalar(this.radius);
-    this.sun.mesh.visible = !schematic;
-    if (schematic) {
+    if (!this.sun.visible && !this.outline.line.visible) return;
+    const pos = ephemeris.positionOf(this.id, displayTime);
+    const p = fo.RtoThreeV3(pos);
+    if (style === 'schematic') {
+      this.sun.hide();
       // 円は姿勢を持たないので、球のシルエットとして見せるには毎フレームカメラへ正対させる。
-      this.sun.billboard.hide();
       this.outline.line.visible = true;
       this.outline.line.position.copy(p);
       this.outline.line.scale.setScalar(this.radius);
@@ -60,22 +55,21 @@ export class SunView extends CelestialView {
       return;
     }
     this.outline.line.visible = false;
+    // マップビューでは実球体だけを使う。**点像を置く星殻がカメラの近平面より手前にあるとは
+    // 限らない** — 引いたマップビューでは近平面が星殻より遠く、置いても写らない。
     if (cameraSystem.overviewMode) {
-      this.sun.billboard.hide();
-    } else {
-      this.sun.billboard.sync(
-        p,
-        this.radius * STAR_GLOW_SIZE_RATIO,
-        SUN_GLOW_RADIANCE,
-        cameraSystem.activeCamera.quaternion,
-      );
+      this.sun.syncSphere(p, this.radius);
+      return;
     }
+    this.sun.sync(
+      p, this.radius,
+      this.lodApparentDiameterPx(2 * this.radius, cameraSystem.activeCameraScale(pos), graphics),
+      cameraSystem.activeCamera.quaternion,
+    );
   }
 
-  // ビルボード・実球体メッシュ・輪郭円を親から外し、解放する。
+  // 恒星の見た目と輪郭円を親から外し、解放する。
   dispose(): void {
-    this.sun.billboard.mesh.removeFromParent();
-    this.sun.mesh.removeFromParent();
     this.outline.line.removeFromParent();
     this.sun.dispose();
     this.outline.dispose();
