@@ -8,7 +8,7 @@
 
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../physics/max-heap';
-import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
+import { CameraScale } from './camera-scale';
 import type { LineStyle } from './line-style';
 import { markOverlay } from './pipeline/lit-layer';
 
@@ -222,12 +222,6 @@ export class Curve {
   private readonly scratchInvQuat = new THREE.Quaternion();
   private readonly scratchPivotWorld = new THREE.Vector3();
 
-  // cacheCameraFrame が求め直す、カメラのワールド前方向・位置・画角換算値・ニアプレーン距離。
-  private readonly camFwd = new THREE.Vector3();
-  private readonly camPos = new THREE.Vector3();
-  private camTanHalfFov = 0;
-  private camOrthoHalfHeight = 0;
-  private camNear = 0;
 
   // 未分割の区間を逸脱の大きい順に取り出す待ち行列。区間はその左端の頂点番号で表し、
   // 右端は nextVertex から辿る。
@@ -298,59 +292,31 @@ export class Curve {
     this.appliedStyle = style;
   }
 
-  // カメラの向き・位置・画角換算値をこのフレーム用に読み直す。
-  private cacheCameraFrame(camera: THREE.Camera): void {
-    camera.getWorldDirection(this.camFwd);
-    this.camPos.setFromMatrixPosition(camera.matrixWorld);
-    if (camera instanceof THREE.PerspectiveCamera) {
-      this.camTanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
-      this.camOrthoHalfHeight = 0;
-      this.camNear = camera.near;
-    } else if (camera instanceof THREE.OrthographicCamera) {
-      this.camTanHalfFov = 0;
-      this.camOrthoHalfHeight = (camera.top - camera.bottom) * 0.5;
-      this.camNear = camera.near;
-    } else {
-      this.camTanHalfFov = Math.tan((50 * Math.PI) / 360);
-      this.camOrthoHalfHeight = 0;
-      this.camNear = MIN_DEPTH;
-    }
-  }
-
-  // sample の座標系の点における m/px。cacheCameraFrame を先に呼んでおくこと。
-  // 視点より手前の点は前方奥行きが潰れて m/px が下限へ張り付き、背後へ回り込んだ区間だけが
-  // サジッタ判定を常に外して頂点予算を使い切るので、そこではカメラからの距離を尺度にする。
-  private scaleAtLocal(lx: number, ly: number, lz: number): number {
+  // sample の座標系の点における m/px。要求された変換でワールドへ写してから換算する — pivot は
+  // カメラの動きに追従するだけの GPU バッファ上の便宜なので、ここでは読まない。
+  private scaleAtLocal(cam: CameraScale, lx: number, ly: number, lz: number): number {
     this.scratchWorld.set(lx, ly, lz).applyQuaternion(this.reqQuaternion).add(this.reqPosition);
-    const dx = this.scratchWorld.x - this.camPos.x;
-    const dy = this.scratchWorld.y - this.camPos.y;
-    const dz = this.scratchWorld.z - this.camPos.z;
-    const depth = dx * this.camFwd.x + dy * this.camFwd.y + dz * this.camFwd.z;
-    const effective = depth >= this.camNear
-      ? depth
-      : Math.max(this.camNear, Math.sqrt(dx * dx + dy * dy + dz * dz));
-    if (this.camOrthoHalfHeight > 0) return (2 * this.camOrthoHalfHeight) / window.innerHeight;
-    return metersPerPixelFromTanHalfFov(this.camTanHalfFov, effective, window.innerHeight);
+    return cam.at(this.scratchWorld.x, this.scratchWorld.y, this.scratchWorld.z);
   }
 
   // 曲線を代表する m/px。分割の粗さを決めるのは最もカメラに寄っている点なので、曲線上から
   // 抜いた数点の最小値を採る(1点だけ見ると、その点が視点面をまたぐ曲線で値が乱高下して
   // 毎フレーム焼き直しになる)。cacheCameraFrame を先に呼んでおくこと。
-  private representativeScale(sample: CurveSampler, ts: ArrayLike<number>): number {
+  private representativeScale(sample: CurveSampler, ts: ArrayLike<number>, cam: CameraScale): number {
     let minScale = Infinity;
     const last = ts.length - 1;
     for (let i = 0; i <= SCALE_PROBE_POINTS; i++) {
       sample(ts[Math.round((i * last) / SCALE_PROBE_POINTS)]!, this.scratchA);
-      const s = this.scaleAtLocal(this.scratchA.x, this.scratchA.y, this.scratchA.z);
+      const s = this.scaleAtLocal(cam, this.scratchA.x, this.scratchA.y, this.scratchA.z);
       if (s < minScale) minScale = s;
     }
     return minScale;
   }
 
   // カメラのワールド位置を sample の座標系へ戻す。cacheCameraFrame を先に呼んでおくこと。
-  private localCameraPos(out: THREE.Vector3): THREE.Vector3 {
+  private localCameraPos(cam: CameraScale, out: THREE.Vector3): THREE.Vector3 {
     this.scratchInvQuat.copy(this.reqQuaternion).invert();
-    return out.copy(this.camPos).sub(this.reqPosition).applyQuaternion(this.scratchInvQuat);
+    return out.copy(cam.position).sub(this.reqPosition).applyQuaternion(this.scratchInvQuat);
   }
 
   // 要求された変換と現在の pivot から、line の実際の position/quaternion を書き直す。
@@ -383,7 +349,7 @@ export class Curve {
 
   // 左端が頂点 seg の区間を弦で代用したときの逸脱。サジッタと折れ角をそれぞれ目標との比に
   // して大きい方を採るので、単位の違う2つの基準が1つの順序に乗り、1 を超える区間が分割に値する。
-  private segmentError(seg: number, sample: CurveSampler): number {
+  private segmentError(seg: number, sample: CurveSampler, cam: CameraScale): number {
     const right = this.nextVertex[seg]!;
     const t0 = this.ts[seg]!, t1 = this.ts[right]!;
     if (t1 - t0 <= MIN_T_SPAN) return 0;
@@ -395,7 +361,7 @@ export class Curve {
     const mx = this.scratchM.x, my = this.scratchM.y, mz = this.scratchM.z;
 
     const sagSq = distanceSqPointToSegment(mx, my, mz, x0, y0, z0, x1, y1, z1);
-    const mpp = this.scaleAtLocal(mx, my, mz);
+    const mpp = this.scaleAtLocal(cam, mx, my, mz);
     const sagittaPx = mpp > 0 ? Math.sqrt(sagSq) / mpp : 0;
 
     const ax = mx - x0, ay = my - y0, az = mz - z0;
@@ -410,7 +376,7 @@ export class Curve {
 
   // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても残りの
   // 区間の逸脱は最後に分割した区間以下なので、劣化は曲線全体が一様に粗くなる方向へ向かう。
-  private rebake(sample: CurveSampler, ts: ArrayLike<number>, colorAt?: CurveColorSampler): void {
+  private rebake(sample: CurveSampler, ts: ArrayLike<number>, cam: CameraScale, colorAt?: CurveColorSampler): void {
     this.bakedCount = 0;
     this.pending.clear();
     const segmentCount = ts.length - 1;
@@ -420,7 +386,7 @@ export class Curve {
       this.pushVertex(t, this.scratchA.x, this.scratchA.y, this.scratchA.z, colorAt);
       this.nextVertex[i] = i < segmentCount ? i + 1 : -1;
     }
-    for (let i = 0; i < segmentCount; i++) this.pending.push(this.segmentError(i, sample), i);
+    for (let i = 0; i < segmentCount; i++) this.pending.push(this.segmentError(i, sample, cam), i);
 
     while (this.pending.topScore > 1 && this.bakedCount < this.maxVertices) {
       const left = this.pending.pop();
@@ -430,8 +396,8 @@ export class Curve {
       const mid = this.pushVertex(tm, this.scratchM.x, this.scratchM.y, this.scratchM.z, colorAt);
       this.nextVertex[mid] = right;
       this.nextVertex[left] = mid;
-      this.pending.push(this.segmentError(left, sample), left);
-      this.pending.push(this.segmentError(mid, sample), mid);
+      this.pending.push(this.segmentError(left, sample, cam), left);
+      this.pending.push(this.segmentError(mid, sample, cam), mid);
     }
   }
 
@@ -464,11 +430,11 @@ export class Curve {
   private setCurve(sample: CurveSampler, ts: ArrayLike<number>, opts: SetCurveOptions): void {
     const { revision, camera, colorAt } = opts;
     this.sampler = sample;
-    this.cacheCameraFrame(camera);
-    const scaleNow = this.representativeScale(sample, ts);
+    const cam = new CameraScale(camera);
+    const scaleNow = this.representativeScale(sample, ts, cam);
     const scaleChanged = this.bakedScale === null
       || scaleNow / this.bakedScale > SCALE_REBAKE_RATIO || this.bakedScale / scaleNow > SCALE_REBAKE_RATIO;
-    const camDirChanged = this.camFwd.dot(this.bakedCamFwd) < this.camDirRebakeCos;
+    const camDirChanged = cam.forward.dot(this.bakedCamFwd) < this.camDirRebakeCos;
     // 色を後から使い始めたときは、焼いてある頂点に色が入っていないので必ず焼き直す
     // (そうしないと色属性が 0 のまま束縛されて線が黒くなる)。使うのをやめたときは、
     // 焼いてある色がマテリアル色に掛かり続けないよう頂点カラーを外す。
@@ -480,16 +446,16 @@ export class Curve {
     const rebaked = revisionChanged || scaleChanged || camDirChanged || colorsTurnedOn;
 
     if (rebaked) {
-      this.rebake(sample, ts, colorAt);
+      this.rebake(sample, ts, cam, colorAt);
       this.hasBaked = true;
       this.lastRevision = revision;
       this.bakedScale = scaleNow;
-      this.bakedCamFwd.copy(this.camFwd);
+      this.bakedCamFwd.copy(cam.forward);
     }
 
     // pivot はカメラ近傍に据え続ける。焼き直した直後は必ず、それ以外はカメラが pivot から
     // 離れて量子化誤差が画面上で無視できなくなったときだけ据え直す。
-    const localCam = this.localCameraPos(this.scratchLocalCam);
+    const localCam = this.localCameraPos(cam, this.scratchLocalCam);
     let pivotChanged = rebaked || !this.hasPivot;
     if (!pivotChanged) {
       const drift = localCam.distanceTo(this.pivot);
