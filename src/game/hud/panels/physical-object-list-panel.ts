@@ -8,7 +8,7 @@ import {
   type CollapseToggleLabels,
 } from '../hud-root';
 import { LAGRANGE_ID } from '../object-groups';
-import { SegmentedControl, ValueInput } from '../widgets';
+import { Button, SegmentedControl, ValueInput } from '../widgets';
 import { wirePanelCollapse } from '../panel-shell';
 import type { CelestialRegistry } from '../../../physics/solar-system';
 import type { BodyClass } from '../../celestial/body-class';
@@ -252,6 +252,8 @@ export class PhysicalObjectListPanel {
       });
       this.sections.set(kind, section);
       body.appendChild(header);
+      // 入れ子を持つのは天体区画だけなので、一括開閉ボタンもここにだけ添える。
+      if (kind === 'body') body.appendChild(this.buildTreeControls(section));
       body.appendChild(sectionBody);
       this.applyExpanded(section);
     }
@@ -664,6 +666,27 @@ export class PhysicalObjectListPanel {
   private applyRowExpanded(node: RowNode): void {
     node.toggle.textContent = node.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH;
     node.childrenContainer.classList.toggle('collapsed', !node.expanded);
+  }
+
+  // section.rows 以下の全ての入れ子を一括で展開/折りたたむ。手動での開閉と同じ状態として
+  // 扱うので savedExpanded には触れない。
+  private setAllRowsExpanded(rows: ReadonlyMap<string, RowNode>, expanded: boolean): void {
+    for (const node of rows.values()) {
+      node.expanded = expanded;
+      this.applyRowExpanded(node);
+      this.setAllRowsExpanded(node.children, expanded);
+    }
+  }
+
+  // 天体区画の見出しに添える「全展開」「全折りたたむ」ボタンの組。
+  private buildTreeControls(section: Section): HTMLElement {
+    const controls = document.createElement('div');
+    controls.className = 'physical-object-list-tree-controls';
+    const expandAll = new Button('全展開', () => this.setAllRowsExpanded(section.rows, true));
+    const collapseAll = new Button('全折りたたむ', () => this.setAllRowsExpanded(section.rows, false));
+    controls.appendChild(expandAll.element);
+    controls.appendChild(collapseAll.element);
+    return controls;
   }
 
   private applyExpanded(section: Section): void {

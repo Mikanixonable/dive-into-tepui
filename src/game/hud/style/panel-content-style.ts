@@ -111,6 +111,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 }
 #hud-physical-object-list .physical-object-list-section-body { padding-left: var(--space-2); }
 #hud-physical-object-list .physical-object-list-section-body.collapsed { display: none !important; }
+#hud-physical-object-list .physical-object-list-tree-controls { display: flex; gap: var(--space-2); padding: 0 var(--space-4) var(--space-1); }
 #hud-physical-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
 #hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
 #hud-physical-object-list .erow:hover { color: var(--text); }
