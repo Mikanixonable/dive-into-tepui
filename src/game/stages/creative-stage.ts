@@ -129,7 +129,8 @@ export class CreativeStage extends Stage {
     this.begin();
   }
 
-  // 補給の自動投入・敵の波状攻撃のトグルを載せたステージ操作パネルを組み立て、右ドックへ追加して返す。
+  // 補給・RCS燃料の自動投入・敵の波状攻撃のトグルと、弾薬/RCS燃料の即時満タン化ボタンを載せた
+  // ステージ操作パネルを組み立て、右ドックへ追加して返す。
   private buildStageControlsPanel(hudRoot: HTMLElement): HTMLElement {
     const panel = document.createElement('div');
     panel.id = 'hud-stage-controls';
@@ -155,6 +156,10 @@ export class CreativeStage extends Stage {
     const waveAttackToggle = new ToggleSwitch('敵の波状攻撃', (on) => { this.waveAttackEnabled = on; });
     waveAttackToggle.setOn(this.waveAttackEnabled);
     body.appendChild(waveAttackToggle.element);
+    const refillAmmoButton = new Button('弾薬を満タンにする', () => this.refillActivePlayerAmmo());
+    body.appendChild(refillAmmoButton.element);
+    const refillFuelButton = new Button('RCS燃料を満タンにする', () => this.refillActivePlayerRcsFuel());
+    body.appendChild(refillFuelButton.element);
 
     const spawnDistanceWrapper = document.createElement('label');
     spawnDistanceWrapper.className = 'stage-control-select';
@@ -323,6 +328,24 @@ export class CreativeStage extends Stage {
 
   private applyProteinDisplay(display: ProteinDisplaySettings): void {
     for (const enemy of this._entities.enemies) enemy.setProteinDisplay(display);
+  }
+
+  private refillActivePlayerAmmo(): void {
+    const player = this.activePlayer;
+    if (player === null || !player.alive) {
+      this._hud.hint('操作艦がいないため弾薬を補充できません');
+      return;
+    }
+    player.refillAmmo();
+  }
+
+  private refillActivePlayerRcsFuel(): void {
+    const player = this.activePlayer;
+    if (player === null || !player.alive) {
+      this._hud.hint('操作艦がいないためRCS燃料を補充できません');
+      return;
+    }
+    player.refuelFuel(player.totalMaxFuel);
   }
 
   private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {

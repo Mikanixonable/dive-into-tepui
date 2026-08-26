@@ -113,6 +113,13 @@ export class PlayerFire {
     }
   }
 
+  // 装填中の残弾・予備マガジン・バレル寿命を初期積載の状態まで満タンにする。
+  refillFull(): void {
+    this.rounds = C.MAG_ROUNDS;
+    this.mags = C.INITIAL_MAGS - 1;
+    this.barrel = C.MAGS_PER_BARREL;
+  }
+
   // 発射状態を強制的に解除する。
   stopFiring(): void {
     this.wasFiring = false;
