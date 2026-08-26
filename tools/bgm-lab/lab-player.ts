@@ -58,6 +58,16 @@ export class LabPlayer {
     this.loop = loop;
   }
 
+  // 鳴らしたままステップ位置だけを飛ばす。予約済みの音は取り消せないので、そのぶんは
+  // 鳴り終わるに任せる(直前の音が短く重なるのは STOP_FADE_SEC 相当の許容範囲)。
+  seek(toStep: number): void {
+    if (!this.composer) return;
+    this.step = toStep;
+    this.nextTime = this.ctx.currentTime + START_DELAY_SEC;
+    this.sounding = { step: toStep, notes: 0 };
+    this.queue = [];
+  }
+
   // 曲を組み直して fromStep から鳴らす。すでに鳴っていれば作り直す。
   play(track: BgmTrack, fromStep: number): void {
     this.stop();

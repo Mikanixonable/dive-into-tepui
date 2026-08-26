@@ -12,6 +12,14 @@ import { Button, CloseButton, Slider, TabBar } from '../widgets';
 type SettingsTab = 'theme' | 'graphics' | 'bgm';
 
 const OPEN_STORAGE_KEY = 'tepui.settingsViewOpen';
+const SEEK_REFRESH_MS = 100;
+
+// シークバー横の経過時間表示を "分:秒" にする。
+function fmtSeekTime(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 // localStorage から開閉状態を読む。ステージ復元(SaveSlots の lastStageId)とは別の、
 // このビュー専用の永続化——ステージ進行の記録に UI 表示状態を混ぜない。
@@ -41,6 +49,10 @@ export class SettingsView implements OverlayHandle {
   private activeTrack: number | null = null;
   private readonly stopButton: Button;
   private readonly trackButtons: Button[] = [];
+  private readonly seekSlider: Slider;
+  private readonly seekTimeLabel: HTMLSpanElement;
+  private seeking = false;
+  private seekRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   onOpenChange: ((open: boolean) => void) | null = null;
 
@@ -182,6 +194,37 @@ export class SettingsView implements OverlayHandle {
     volumeRow.appendChild(volumeValue);
     bgmSection.appendChild(volumeRow);
 
+    const seekRow = document.createElement('div');
+    seekRow.className = 'sv-volume-row';
+    const seekLabel = document.createElement('span');
+    seekLabel.className = 'sv-label';
+    seekLabel.textContent = '再生位置';
+    seekRow.appendChild(seekLabel);
+    this.seekSlider = new Slider({ min: 0, max: 1, step: 1 }, (value) => {
+      this.seekTimeLabel.textContent = fmtSeekTime(value);
+      this.bgm.seekAudition(value);
+    });
+    // ドラッグ中は自動追従(refreshSeekPosition)で値を上書きしない。ポインタが要素の外へ
+    // 出ても離した瞬間を取りこぼさないよう、pointer capture で握ったまま追う。
+    this.seekSlider.element.addEventListener('pointerdown', (e) => {
+      this.seeking = true;
+      this.seekSlider.element.setPointerCapture(e.pointerId);
+    });
+    // pointerup/pointercancel のどちらでもドラッグを終える。
+    const endSeeking = (e: PointerEvent): void => {
+      this.seeking = false;
+      this.seekSlider.element.releasePointerCapture(e.pointerId);
+    };
+    this.seekSlider.element.addEventListener('pointerup', endSeeking);
+    this.seekSlider.element.addEventListener('pointercancel', endSeeking);
+    this.seekSlider.element.disabled = true;
+    seekRow.appendChild(this.seekSlider.element);
+    this.seekTimeLabel = document.createElement('span');
+    this.seekTimeLabel.className = 'sv-volume-value';
+    this.seekTimeLabel.textContent = '0:00';
+    seekRow.appendChild(this.seekTimeLabel);
+    bgmSection.appendChild(seekRow);
+
     const trackList = document.createElement('div');
     trackList.className = 'sv-track-list';
     for (const [index, track] of BGM_TRACKS.entries()) {
@@ -211,6 +254,7 @@ export class SettingsView implements OverlayHandle {
       this.bgm.stopAudition();
       this.activeTrack = null;
       this.updateTrackButtons();
+      this.updateSeekControls();
     });
     trackActions.appendChild(this.stopButton.element);
     bgmSection.appendChild(trackActions);
@@ -259,6 +303,7 @@ export class SettingsView implements OverlayHandle {
       this.bgm.endAudition();
       this.activeTrack = null;
       this.updateTrackButtons();
+      this.updateSeekControls();
     }
     this.onOpenChange?.(show);
   }
@@ -267,6 +312,7 @@ export class SettingsView implements OverlayHandle {
     this.bgm.playAudition(index);
     this.activeTrack = index;
     this.updateTrackButtons();
+    this.updateSeekControls();
   }
 
   private updateTrackButtons(): void {
@@ -276,5 +322,29 @@ export class SettingsView implements OverlayHandle {
       button.setLabel(active ? '再生中' : '試聴');
     }
     this.stopButton.setEnabled(this.activeTrack !== null);
+  }
+
+  // シークバーの可動域を試聴中の曲へ合わせ、無ければ操作できなくする。
+  private updateSeekControls(): void {
+    const duration = this.activeTrack !== null ? this.bgm.auditionDurationSec(this.activeTrack) : 0;
+    this.seekSlider.element.max = String(duration);
+    this.seekSlider.setValue(0);
+    this.seekSlider.element.disabled = duration <= 0;
+    this.seekTimeLabel.textContent = fmtSeekTime(0);
+    if (this.seekRefreshTimer !== null) {
+      clearInterval(this.seekRefreshTimer);
+      this.seekRefreshTimer = null;
+    }
+    if (duration > 0) {
+      this.seekRefreshTimer = setInterval(() => this.refreshSeekPosition(), SEEK_REFRESH_MS);
+    }
+  }
+
+  // 試聴の再生位置を追う。ドラッグ中はユーザーの操作を優先し、上書きしない。
+  private refreshSeekPosition(): void {
+    if (this.seeking) return;
+    const elapsed = this.bgm.auditionElapsedSec();
+    this.seekSlider.setValue(elapsed);
+    this.seekTimeLabel.textContent = fmtSeekTime(elapsed);
   }
 }
