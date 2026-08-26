@@ -3,6 +3,16 @@ import * as THREE from 'three/webgpu';
 // ソフトグローテクスチャ。呼ぶたびに再生成すると(特に被弾フラッシュのような高頻度発生元で)
 // canvas 生成 + GPU アップロードが繰り返されるので、単一インスタンスをキャッシュして使い回す。
 let glowTexture: THREE.CanvasTexture | null = null;
+// getGlowTexture() が生成のついでに測る、テクスチャ全面の平均不透明度。
+let glowAlphaMean = 0;
+
+// グローテクスチャの平均不透明度。加算合成での寄与は「板の面積 × この平均」に比例するので、
+// **総光量を決めてから板の明るさを逆算する側**がこれを要る。実際の画素から測るので、
+// グラデーションを描き変えても値が付いてくる。
+export function glowMeanAlpha(): number {
+  getGlowTexture();
+  return glowAlphaMean;
+}
 
 // キャッシュ済みならそれを返し、なければ生成してキャッシュする。
 export function getGlowTexture(): THREE.CanvasTexture {
@@ -20,6 +30,10 @@ export function getGlowTexture(): THREE.CanvasTexture {
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
+  const pixels = ctx.getImageData(0, 0, size, size).data;
+  let alphaSum = 0;
+  for (let i = 3; i < pixels.length; i += 4) alphaSum += pixels[i]!;
+  glowAlphaMean = alphaSum / (255 * size * size);
   glowTexture = new THREE.CanvasTexture(canvas);
   return glowTexture;
 }

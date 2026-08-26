@@ -8,6 +8,11 @@
 import * as THREE from 'three/webgpu';
 import { getGlowTexture } from './glow-texture';
 
+// 点像(球として描くには小さすぎる光源)が画面上に持つ角の広がり [rad]。**光源の大きさでは
+// なく目/レンズの応答なので、天体ごとにも距離によっても変えない。** 星殻の上へ置く板の一辺は、
+// この角へ星殻半径を掛けて求める。戦闘視点(55°/1080px)で概ね 4px。
+export const POINT_IMAGE_ANGULAR_SIZE = 3.7e-3;
+
 export class Billboard {
   readonly mesh: THREE.Mesh;
   // 明るさ 1 のときの色。sync がこれへ明るさを掛けてマテリアルの色を書く。
