@@ -392,7 +392,6 @@ export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
   const overlayShield = createHudElement('div', 'hud-overlay-shield', layers.gate);
   const overlayManager = new OverlayManager(overlayShield, layers.gate);
 
-  createHudElement('div', 'hud-hint', layers.notify);
   createHudElement('div', 'hud-toast', layers.notify);
 
   const helpPanel = new HelpPanel(layers.system, overlayManager);
