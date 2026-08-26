@@ -4,7 +4,6 @@ import type { Base } from '../../game-entity/base';
 import type { Player } from '../../player/player';
 import { CloseButton, TabBar } from '../widgets';
 import { MQ_COMPACT, MQ_SHORT } from '../breakpoints';
-import type { BasePanelContext } from './base-view-context';
 import { VesselsTabController } from './base-view-vessels-tab';
 import { PartsTabController } from './base-view-parts-tab';
 import { ShopTabController } from './base-view-shop-tab';
@@ -255,7 +254,7 @@ function ensureStyle(): void {
   document.head.appendChild(style);
 }
 
-export type DockTab = 'ships' | 'parts' | 'shop';
+type DockTab = 'ships' | 'parts' | 'shop';
 
 const TAB_ITEMS: readonly (readonly [DockTab, string])[] = [
   ['ships', '格納艦艇'],
@@ -270,9 +269,11 @@ export class BasePanel {
   private readonly bodyEl: HTMLElement;
   private _visible = false;
   private currentBase: Base | null = null;
-  private currentVessel: Player | null = null;
   private currentTab: DockTab = 'ships';
-  private freeProcurement = false;
+  private _freeProcurement = false;
+
+  // 選択中の艦。書き換えたら refresh を呼ぶ。
+  public vessel: Player | null = null;
 
   private readonly vesselsTab: VesselsTabController;
   private readonly partsTab: PartsTabController;
@@ -286,23 +287,14 @@ export class BasePanel {
 
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
+  public get freeProcurement(): boolean { return this._freeProcurement; }
 
   public constructor() {
     ensureStyle();
 
-    const ctx: BasePanelContext = {
-      base: () => this.currentBase!,
-      freeProcurement: () => this.freeProcurement,
-      vessel: () => this.currentVessel,
-      selectVessel: (v) => { this.currentVessel = v; },
-      switchToPartsTab: () => { this.currentTab = 'parts'; this.refresh(); },
-      refresh: () => this.refresh(),
-      notifyLaunch: (ship, base) => this.onLaunchVessel?.(ship, base),
-      notifyBuildVessel: (base) => this.onBuildVessel?.(base),
-    };
-    this.vesselsTab = new VesselsTabController(ctx);
-    this.partsTab = new PartsTabController(ctx);
-    this.shopTab = new ShopTabController(ctx);
+    this.vesselsTab = new VesselsTabController(this);
+    this.partsTab = new PartsTabController(this);
+    this.shopTab = new ShopTabController(this);
 
     this.el = document.createElement('div');
     this.el.id = 'base-view';
@@ -373,12 +365,12 @@ export class BasePanel {
   // 基地パネルを開く。
   public open(base: Base, inspectShip: Player | null, freeProcurement: boolean): void {
     this.currentBase = base;
-    this.freeProcurement = freeProcurement;
+    this._freeProcurement = freeProcurement;
     // inspectShip が基地に格納されていれば選択状態にする
     if (inspectShip && base.baseState.dockedVessels.some((s) => s.id === inspectShip.id)) {
-      this.currentVessel = inspectShip;
+      this.vessel = inspectShip;
     } else {
-      this.currentVessel = null;
+      this.vessel = null;
     }
     this.currentTab = 'ships';
     this.refresh();
@@ -391,7 +383,13 @@ export class BasePanel {
     this.el.style.display = 'none';
     this._visible = false;
     this.currentBase = null;
-    this.currentVessel = null;
+    this.vessel = null;
+  }
+
+  // 部品タブへ切り替え、その場で組み直す。
+  public switchToPartsTab(): void {
+    this.currentTab = 'parts';
+    this.refresh();
   }
 
   private focusEntry(): void {
@@ -399,20 +397,23 @@ export class BasePanel {
     (selectedTab ?? this.bodyEl).focus({ preventScroll: true });
   }
 
-  private refresh(): void {
-    if (!this.currentBase) return;
+  // 開いている基地の現在値で中身を組み直す。閉じている間は何もしない。
+  public refresh(): void {
+    const base = this.currentBase;
+    if (!base) return;
 
-    this.moneyLabel.textContent = this.freeProcurement
-      ? `${this.currentBase.name} · 調達コストなし`
-      : `${this.currentBase.name} · ${this.currentBase.baseState.money.toLocaleString()} Cr 利用可能`;
+    this.moneyLabel.textContent = this._freeProcurement
+      ? `${base.name} · 調達コストなし`
+      : `${base.name} · ${base.baseState.money.toLocaleString()} Cr 利用可能`;
     this.tabBar.setSelected(this.currentTab);
     this.bodyEl.setAttribute('aria-labelledby', `dock-tab-${this.currentTab}`);
 
+    // タブが組んだ DOM は次の refresh で捨てるので、基地はここで渡した1つに固定される。
     this.bodyEl.innerHTML = '';
     switch (this.currentTab) {
-      case 'ships': this.bodyEl.appendChild(this.vesselsTab.build()); break;
-      case 'parts': this.bodyEl.appendChild(this.partsTab.build()); break;
-      case 'shop': this.bodyEl.appendChild(this.shopTab.build()); break;
+      case 'ships': this.bodyEl.appendChild(this.vesselsTab.build(base)); break;
+      case 'parts': this.bodyEl.appendChild(this.partsTab.build(base)); break;
+      case 'shop': this.bodyEl.appendChild(this.shopTab.build(base)); break;
     }
     // 操作した行を再構築してフォーカス要素がDOMから外れた場合も、背面HUDへ落とさない。
     if (this._visible && !this.el.contains(document.activeElement)) this.focusEntry();
