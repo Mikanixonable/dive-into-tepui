@@ -31,6 +31,7 @@ export class CameraFramePanel {
 
   public onSelectCenter: ((id: string | null) => void) | null = null;
 
+  // panelRoot はパネル自身の設置先、popupRoot は AnchorZone のポップアップの親。
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
@@ -101,6 +102,7 @@ export class CameraFramePanel {
     this.panel.appendChild(this.cameraSummary);
   }
 
+  // パネル下部に表示するサマリ行の文字列を組み立てる。
   private cameraSummaryText(): string {
     const camId = focusTargetId(this.mapCamera.focus);
     const camRole = camId === undefined ? null : frameRoleOf(camId);
@@ -111,6 +113,7 @@ export class CameraFramePanel {
     return `基準: ${camCenter}・${rotationSourceLabel(camRot)} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
   }
 
+  // パネルの表示と各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
   public sync(
     pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
     validRoles: readonly FrameRole[], isVisible: boolean,
@@ -122,9 +125,13 @@ export class CameraFramePanel {
     this.cameraCenterZone.setItems(pickables, true);
     this.cameraCenterZone.setNearby(members, pickables);
     this.cameraCenterZone.setSelected(focusTargetId(this.mapCamera.focus) ?? null);
+
+    // 回転追従の選択肢と、クオータニオン/オイラーの操作モード表示を合わせる。
     this.cameraRotationZone.setNearby(members, displayTime, validRoles);
     this.cameraRotationZone.setSelected(this.mapCamera.cameraFrame.rotatingWith);
     this.cameraRotationModeToggle.setOn(this.mapCamera.cameraRotationMode === 'quaternion');
+
+    // 平行投影は画角という概念自体を欠くため、画角の操作系一式を無効化して案内を出す。
     const isOrthographic = this.mapCamera.projection === 'orthographic';
     this.projectionToggle.setOn(isOrthographic);
     this.fovSlider.element.disabled = isOrthographic;
@@ -136,10 +143,13 @@ export class CameraFramePanel {
     if (document.activeElement !== this.fovInput.element) {
       this.fovInput.setValue(this.mapCamera.fov.toFixed(0));
     }
+
+    // 角度プルダウンの選択表示とサマリ行を最後に合わせる。
     this.angleControl.setSelected(0, this.mapCamera.referencePlane);
     this.cameraSummary.textContent = this.cameraSummaryText();
   }
 
+  // 保持しているゾーンとパネル要素を片付ける。
   public dispose(): void {
     this.cameraCenterZone.dispose();
     this.panel.remove();
