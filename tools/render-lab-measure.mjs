@@ -1,7 +1,8 @@
 // 描画テスト環境の計測。ヘッドレス Chrome で .render-lab/ を開き、構図 × 大気の段の組ごとに
 // window.renderLab.measure() を呼んで、パス別 GPU 時間の「大気」行を表にする。
 //
-// 熱によるドリフトを差と切り分けるため、同じ組を 2 巡し、2 巡目は逆順で回す。
+// 熱によるドリフトを差と切り分けるため、同じ組を複数回巡り、偶数回目は逆順で回す。巡る回数は
+// 第 1 引数(既定 2)。結果は巡ごとの平均と、その中央値で出す。
 import path from 'node:path';
 import { openChromeSession, sleep } from './chrome-session.mjs';
 
@@ -42,7 +43,10 @@ async function main() {
     const rows = new Map();
     const combos = [];
     for (const framing of FRAMINGS) for (const [qLabel, q] of QUALITIES) combos.push({ framing, qLabel, q });
-    for (const pass of [combos, [...combos].reverse()]) {
+    const passes = Math.max(1, Number(process.argv[2] ?? 2));
+    for (const pass of Array.from(
+      { length: passes }, (_, index) => (index % 2 === 0 ? combos : [...combos].reverse()),
+    )) {
       for (const { framing, qLabel, q } of pass) {
         await devTools.evaluate(`window.renderLab.setGraphicsOption('atmosphere', ${q})`);
         const result = await devTools.evaluate(
@@ -57,11 +61,14 @@ async function main() {
       }
     }
 
-    console.log('\n| 構図 / 段 | 大気 GPU avg [ms] | 同 p95 | 2巡目 avg | フレーム CPU avg [ms] |');
-    console.log('| --- | --- | --- | --- | --- |');
+    console.log('\n| 構図 / 段 | 大気 GPU 中央値 [ms] | 巡ごとの avg |');
+    console.log('| --- | --- | --- |');
     for (const [key, { runs }] of rows) {
-      const [first, second] = runs;
-      console.log(`| ${key} | ${first.gpu.avg.toFixed(3)} | ${first.gpu.p95.toFixed(3)} | ${second.gpu.avg.toFixed(3)} | ${first.cpu.avg.toFixed(3)} |`);
+      const avgs = runs.map((run) => run.gpu.avg).sort((a, b) => a - b);
+      const median = avgs.length % 2 === 1
+        ? avgs[(avgs.length - 1) / 2]
+        : (avgs[avgs.length / 2 - 1] + avgs[avgs.length / 2]) / 2;
+      console.log(`| ${key} | ${median.toFixed(3)} | ${runs.map((run) => run.gpu.avg.toFixed(2)).join(' / ')} |`);
     }
     console.log(`\ngpuSupported: ${[...rows.values()].every((r) => r.supported)}`);
   } finally {
