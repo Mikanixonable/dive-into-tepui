@@ -1,5 +1,4 @@
-// 天体(CelestialBodyId)の日本語表示名の引き当て。表示名自体は
-// game/celestial/celestial-registry.ts が唯一の定義元で、ここは参照するだけ。
+// 天体ID・役割・回転ゾーンの選択から、パネルへ表示する日本語ラベルを引き当てる。
 import { CelestialBodyId } from '../../../physics/celestial-body';
 import { FrameAnchorId, frameRoleOf, FrameRole, FrameRotationSource } from '../../../physics/frame';
 import { SolarSystemId } from '../../../physics/solar-system';
@@ -21,7 +20,7 @@ export function frameRoleAnchorId(role: FrameRole): FrameAnchorId {
   return `@${role}`;
 }
 
-// 回転ゾーンの選択(サマリ行の rotText)を日本語表記へ変換する。
+// 回転ゾーンの選択を日本語表記へ変換する。
 export function rotationSourceLabel(source: FrameRotationSource | null): string {
   if (source === null) return '慣性系';
   if (source.kind === 'spin') return `${celestialBodyName(source.id)}自転系`;

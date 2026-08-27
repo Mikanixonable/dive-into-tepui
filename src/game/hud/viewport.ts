@@ -42,7 +42,7 @@ function handleViewportChange(): void {
 let started = false;
 
 // visualViewport(無ければ window)の resize/scroll と orientationchange を購読し、
-// 初回の更新も行う。buildHudDom から一度だけ呼ぶ。
+// 初回の更新も行う。呼び出しは冪等 — 2回目以降は購読を積み増さない。
 export function startViewportTracking(): void {
   if (started) return;
   started = true;
