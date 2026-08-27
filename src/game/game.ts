@@ -176,7 +176,7 @@ export class Game {
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._environment = new EnvironmentScene(
       this._scene, this.ephemeris, pipeline.sunLight, pipeline.exposure,
-      pipeline.sunOcclusion, pipeline.atmosphere, earthSpinPhase0);
+      pipeline.sunOcclusion, pipeline.planetLight, pipeline.ambient, pipeline.atmosphere, earthSpinPhase0);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._environment.setOrbitGuideSettings(settings);
     this._environment.setOrbitGuideSettings(this.navball.orbitGuideSettings);
     // 線が増えすぎたときの警告を UI へ戻す。
