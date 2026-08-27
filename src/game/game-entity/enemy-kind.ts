@@ -1,9 +1,10 @@
 import { v3, type Vec3 } from '../../physics/vec3';
-import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import {
   isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type ProteinColorMode, type ProteinDisplaySettings,
 } from '../protein/protein-display';
+import type { ProteinAssetId } from '../protein/protein-asset-loader';
 
+// 敵の外見・生成方法を表す種別と、そこから導かれる値。
 type LegacyPdb5i4rEnemyKind = {
   kind: 'pdb-5i4r';
   colorMode?: ProteinColorMode;
@@ -16,12 +17,14 @@ export type EnemyKind =
   | { kind: 'protein'; assetId: ProteinAssetId; display?: ProteinDisplaySettings }
   | LegacyPdb5i4rEnemyKind;
 
+// タンパク質型の敵が使うタンパク質アセットの id。タンパク質型でなければ null。
 export function proteinAssetIdForEnemyKind(enemyKind: EnemyKind): ProteinAssetId | null {
   if (enemyKind.kind === 'protein') return enemyKind.assetId;
   if (enemyKind.kind === 'pdb-5i4r') return 'pdb-5i4r';
   return null;
 }
 
+// 旧セーブデータの 'pdb-5i4r' 種別を、現行の 'protein' 種別へ読み替える。
 export function normalizeEnemyKind(enemyKind: EnemyKind): EnemyKind {
   if (enemyKind.kind !== 'pdb-5i4r') return enemyKind;
   return {

@@ -55,6 +55,8 @@ export interface RowNode {
   // 絞り込みが一致行を見せるために強制的に開いた場合の、直前のプレイヤー操作による
   // 畳み状態。null は「絞り込みによる強制展開はしていない」。絞り込み解除時にここへ戻す。
   savedExpanded: boolean | null;
+  // syncRow が今フレーム生存確認済みの子 id を集めるスクラッチ。フレームごとに使い回す。
+  readonly childSeenScratch: Set<string>;
 }
 
 // 軌道物体一覧の入れ子行ツリーを、既存 DOM を使い回しながら id 差分だけで同期・剪定する。
@@ -124,12 +126,12 @@ export class PhysicalObjectListTree {
     node.toggle.style.visibility = children.length > 0 ? 'visible' : 'hidden';
     this.applyRowExpanded(node);
 
-    const seen = new Set<string>();
+    node.childSeenScratch.clear();
     for (const childId of children) {
-      seen.add(childId);
+      node.childSeenScratch.add(childId);
       this.syncRow(node.children, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors, reorder);
     }
-    this.pruneRows(node.children, seen);
+    this.pruneRows(node.children, node.childSeenScratch);
   }
 
   public pruneRows(rows: Map<string, RowNode>, seen: ReadonlySet<string>): void {
@@ -219,6 +221,7 @@ export class PhysicalObjectListTree {
       children: new Map(),
       expanded: false,
       savedExpanded: null,
+      childSeenScratch: new Set(),
     };
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();

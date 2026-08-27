@@ -1,5 +1,5 @@
 import { AnyPart } from './game-entity/parts';
-import type { EnemyKind } from './game-entity/enemy';
+import type { EnemyKind } from './game-entity/enemy-kind';
 import type { FormationRole } from './game-entity/enemy-formation';
 import { CelestialBodyId } from '../physics/celestial-body';
 import type { GamePhase } from './stages/stage';

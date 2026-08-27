@@ -35,7 +35,6 @@ import {
   ENEMY_DESTROY_FRAG_COLOR,
 } from '../../render/vfx-style';
 import { proteinAssetIdForEnemyKind, normalizeEnemyKind, inertiaForEnemyKind, type EnemyKind } from './enemy-kind';
-export { proteinAssetIdForEnemyKind, inertiaForEnemyKind, type EnemyKind } from './enemy-kind';
 import { buildEnemyRenderObject } from './enemy-render';
 import { isFormationEnergyAvailable, type FormationRole } from './enemy-formation';
 import { sunGlareSpreadScale } from './enemy-sun-glare';
