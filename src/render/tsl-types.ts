@@ -8,6 +8,7 @@ export type Vec2Node = THREE.Node<'vec2'>;
 export type Vec3Node = THREE.Node<'vec3'>;
 export type Vec4Node = THREE.Node<'vec4'>;
 export type BoolNode = THREE.Node<'bool'>;
+export type Mat3Node = THREE.Node<'mat3'>;
 
 // CPU 側から毎フレーム値を書き込めるノード。`value` への代入がそのまま uniform 更新になる。
 export type FloatUniform = THREE.UniformNode<'float', number>;
