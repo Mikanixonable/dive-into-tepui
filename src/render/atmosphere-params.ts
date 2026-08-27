@@ -38,15 +38,15 @@ export const ATMOSPHERE_OPTICS: Readonly<Record<string, AtmosphereOptics>> = {
   },
 };
 
-// 主天体へ足す濃い表現が、単層表現へ薄まりきる対数消散係数の差。1 桁の開きがあれば、
-// その天体の大気が場を支配していると見なす。
-const DENSE_WEIGHT_GAP = Math.LN10;
+// 主天体を細かく描く重みが、他の天体と同じ細かさへ薄まりきる対数消散係数の差。1 桁の開きが
+// あれば、その天体の大気が場を支配していると見なす。
+const DETAIL_WEIGHT_GAP = Math.LN10;
 
-// 主天体へ足す濃い表現の重み 0..1。gap は第 1 候補と第 2 候補の対数消散係数の差で、候補が
+// 主天体を細かく描く重み 0..1。gap は第 1 候補と第 2 候補の対数消散係数の差で、候補が
 // 1 体しか無いなら Infinity を渡す。**順位が入れ替わる点では gap が 0 になり、どちらが
 // 主天体でも重みが 0 で一致する**ので、入れ替わりそのものは絵に出ない。
-function denseWeightFromGap(gap: number): number {
-  return THREE.MathUtils.smoothstep(gap, 0, DENSE_WEIGHT_GAP);
+function detailWeightFromGap(gap: number): number {
+  return THREE.MathUtils.smoothstep(gap, 0, DETAIL_WEIGHT_GAP);
 }
 
 // 天体 id の大気。大気を持たない天体では null。
@@ -103,7 +103,7 @@ function rankStrength(optics: AtmosphereOptics, surfaceRadius: number, altitude:
     - Math.max(altitude - cutoff, 0) / VACUUM_RANK_SCALE_HEIGHT;
 }
 
-// 大気を持つ天体を、視点のいる場所の大気を強く作っている順に並べ、先頭へ足す濃い表現の重み 0..1
+// 大気を持つ天体を、視点のいる場所の大気を強く作っている順に並べ、先頭を細かく描く重み 0..1
 // を添えて返す。altitude は視点のその天体からの高度 [m]。**視線の向きは見ない** — 地表から空を
 // 見上げて地面が視錐台に入っていなくても、空は大気の色でなければならない。
 //
@@ -112,11 +112,11 @@ function rankStrength(optics: AtmosphereOptics, surfaceRadius: number, altitude:
 // 比べるので、近い順そのものになる。
 export function rankAtmospheres<T extends { readonly optics: AtmosphereOptics; readonly surfaceRadius: number }>(
   candidates: readonly { readonly body: T; readonly altitude: number }[],
-): { readonly bodies: readonly T[]; readonly denseWeight: number } {
+): { readonly bodies: readonly T[]; readonly detailWeight: number } {
   const ranked = candidates
     .map(({ body, altitude }) => ({ body, strength: rankStrength(body.optics, body.surfaceRadius, altitude) }))
     .sort((a, b) => b.strength - a.strength);
   // 候補が 1 体しか無いなら、その天体が場を独占している。
   const gap = ranked.length < 2 ? Infinity : ranked[0]!.strength - ranked[1]!.strength;
-  return { bodies: ranked.map(({ body }) => body), denseWeight: denseWeightFromGap(gap) };
+  return { bodies: ranked.map(({ body }) => body), detailWeight: detailWeightFromGap(gap) };
 }
