@@ -5,9 +5,9 @@ import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/deb
 import { PIPELINE_GRAPHICS_KEYS } from '../../src/render/pipeline/render-pipeline';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import { GRAPHICS_OPTIONS, type GraphicsOptionKey } from '../../src/render/graphics-settings';
-import { CASE_NAMES, sunDiameterPx, type CaseName } from './cases';
+import { CASE_NAMES, MAX_CAMERA_DISTANCE_LOG, sunDiameterPx, type CaseName } from './cases';
 import {
-  LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
+  LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM_LOG, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
   type LabMeasurement, type LabViewAngles,
 } from './lab';
 import { AU } from '../../src/physics/planet-orbit';
@@ -135,15 +135,26 @@ async function init(): Promise<void> {
   // なので、AU だけでは判断の材料にならない。
   const setSunDistance = buildSlider('view-angles', '距離',
     MIN_SUN_DISTANCE_LOG_AU, MAX_SUN_DISTANCE_LOG_AU, 0.01,
-    () => `${(view.sunDistance / AU).toPrecision(3)} AU / ${sunDiameterPx(view.sunDistance).toPrecision(2)} px`,
+    () => `${(view.sunDistance / AU).toPrecision(3)} AU / `
+      + `${sunDiameterPx(view.sunDistance, view.cameraFovDeg).toPrecision(2)} px`,
     (v) => view.setViewAngles({ sunDistanceLogAu: v }));
   const setCameraAzimuth = buildSlider('view-angles', 'カメラ 方位', -180, 180, 0.5,
     () => degrees(view.viewAngles.cameraAzimuthDeg), (v) => view.setViewAngles({ cameraAzimuthDeg: v }));
   const setCameraElevation = buildSlider('view-angles', '仰角',
     -MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ELEVATION_DEG, 0.5,
     () => degrees(view.viewAngles.cameraElevationDeg), (v) => view.setViewAngles({ cameraElevationDeg: v }));
-  const setCameraZoom = buildSlider('view-angles', '距離', -MAX_CAMERA_ZOOM, MAX_CAMERA_ZOOM, 0.02,
-    () => `${view.cameraDistance.toExponential(2)} m`, (v) => view.setViewAngles({ cameraZoom: v }));
+  const setCameraDistance = buildSlider('view-angles', '距離',
+    -MAX_CAMERA_DISTANCE_LOG, MAX_CAMERA_DISTANCE_LOG, 0.02,
+    () => `${view.cameraDistance.toExponential(2)} m`, (v) => view.setViewAngles({ cameraDistanceLog: v }));
+  // ズームは画角を狭める倍率。**倍率と画角を併記する** — 遠くの天体をどこまで拡大したかは倍率で、
+  // その絵がどれだけ狭い画角を切り出したものかは画角でしか読めない。
+  const setCameraZoom = buildSlider('view-angles', 'ズーム', 0, MAX_CAMERA_ZOOM_LOG, 0.02,
+    () => `×${(10 ** view.viewAngles.cameraZoomLog).toPrecision(3)} / ${view.cameraFovDeg.toPrecision(3)}°`,
+    (v) => {
+      view.setViewAngles({ cameraZoomLog: v });
+      // 恒星の見かけ径は画角で変わるので、そちらの表示も引き直す。
+      setSunDistance(view.viewAngles.sunDistanceLogAu);
+    });
 
   const syncAngles = (): void => {
     const current = view.viewAngles;
@@ -152,7 +163,8 @@ async function init(): Promise<void> {
     setSunDistance(current.sunDistanceLogAu);
     setCameraAzimuth(current.cameraAzimuthDeg);
     setCameraElevation(current.cameraElevationDeg);
-    setCameraZoom(current.cameraZoom);
+    setCameraDistance(current.cameraDistanceLog);
+    setCameraZoom(current.cameraZoomLog);
   };
 
   const caseEntries = CASE_NAMES.map((name) => [name, name] as const);

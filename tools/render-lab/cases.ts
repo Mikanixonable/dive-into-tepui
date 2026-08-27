@@ -29,7 +29,7 @@ import type { RenderStyle } from '../../src/render/render-style';
 import { AMBIENT_REFERENCE_DISTANCE, type SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
 import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
-import { textureOf } from '../../src/render/celestial-textures';
+import { textureOf, type CelestialTexture } from '../../src/render/celestial-textures';
 import { v3 } from '../../src/physics/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
@@ -40,6 +40,10 @@ import type { ProteinMotionFrameSample } from '../../src/protein-motion-metrics'
 export const VIEW_WIDTH = 960;
 export const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
+
+// カメラの距離を、ケース既定の距離の何桁ぶんまで伸縮できるか(倍率の常用対数の絶対値の上限)。
+// **寄り切った先へ物体を置くケースは、この値から距離を逆算する。**
+export const MAX_CAMERA_DISTANCE_LOG = 2;
 
 // 土星ケースが使う実データの環。planet 以外は rings を持たないので、ここで判別を閉じる。
 const SATURN_RINGS = (() => {
@@ -93,8 +97,9 @@ export type LabCase = {
   readonly earthDistance?: number | ((sunDistance: number) => number);
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
-  // 大気パスへ渡す天体。中心は描画座標。
-  readonly atmosphere?: AtmosphereBody;
+  // 大気パスへ渡す天体。中心は描画座標。並べ替えと濃い表現の重みは、カメラの位置から
+  // 引き直される。
+  readonly atmospheres?: readonly AtmosphereBody[];
   // 遮蔽パスへ渡す球。中心は描画座標。
   readonly occluders?: readonly Occluder[];
   // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
@@ -122,6 +127,23 @@ function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Ob
   surface.addTo(group);
   // 見かけ直径は画面の高さぶんとみなす。
   surface.syncLod(VIEW_HEIGHT);
+  return group;
+}
+
+// 寄り切ったときの見かけ直径 [px] として天体へ渡す値。分割段ラダーの最上段が選ばれる。
+const CLOSE_UP_DIAMETER_PX = 6e4;
+
+// 実写テクスチャを貼った天体の球。apparentDiameterPx は分割段を選ぶ見かけ直径で、寄れる
+// ケースでは寄り切った大きさを渡す。
+function texturedSphere(
+  texture: CelestialTexture, radius: number, center: THREE.Vector3, apparentDiameterPx: number,
+): THREE.Object3D {
+  const group = new THREE.Group();
+  group.position.copy(center);
+  group.scale.setScalar(radius);
+  const surface = CelestialSurface.textured(texture);
+  surface.addTo(group);
+  surface.syncLod(apparentDiameterPx);
   return group;
 }
 
@@ -541,28 +563,37 @@ function marchSlab(): LabCase {
   return { objects: [plane], camera };
 }
 
-// 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもや、大気の外に居る物体を見る。
-function earth(style: RenderStyle): LabCase {
-  const camera = labCamera(6e7);
-  // 地平線が画面中央へ来る向きへ地球を置く — 視線が地球へ接する角だけ、カメラから見た
-  // 中心の向きを視線から傾ける。
-  const dist = R_EARTH + 420e3;
-  const tilt = Math.asin(R_EARTH / dist);
-  const center = new THREE.Vector3(0, -Math.sin(tilt), -Math.cos(tilt)).multiplyScalar(dist);
+// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。線の表示はスタイルへ従う。
+function earthAt(center: THREE.Vector3, style: RenderStyle): THREE.Object3D {
   const built = createEarth();
   built.group.position.copy(center);
   built.setAuroraVisible(false);
   built.setGraticuleVisible(style === 'schematic');
   built.setCoastlineVisible(style === 'schematic');
-  built.syncSurfaceLod(6e4);
+  built.syncSurfaceLod(CLOSE_UP_DIAMETER_PX);
   built.tick(0);
+  return built.group;
+}
+
+// カメラ(原点)から見て、地球の地平線が視線から margin [rad] だけ下へ来る向きの地球中心。
+// 高度 altitude [m] のカメラから地球へ接する視線の角が、そのまま中心の向きの傾きになる。
+function earthCenterBelowHorizon(altitude: number, margin: number): THREE.Vector3 {
+  const dist = R_EARTH + altitude;
+  const tilt = Math.asin(R_EARTH / dist) + margin;
+  return new THREE.Vector3(0, -Math.sin(tilt), -Math.cos(tilt)).multiplyScalar(dist);
+}
+
+// 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもや、大気の外に居る物体を見る。
+function earth(style: RenderStyle): LabCase {
+  const camera = labCamera(6e7);
+  const center = earthCenterBelowHorizon(420e3, 0);
   return {
     objects: [
-      built.group,
+      earthAt(center, style),
       sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER),
     ],
     camera,
-    atmosphere: { center, surfaceRadius: R_EARTH, optics: ATMOSPHERE_OPTICS.earth! },
+    atmospheres: [{ center, surfaceRadius: R_EARTH, optics: ATMOSPHERE_OPTICS.earth! }],
   };
 }
 
@@ -571,7 +602,7 @@ function earth(style: RenderStyle): LabCase {
 // 前方散乱が効く向きでもあるので、太陽のまわりのグローもここで読む。
 function earthTerminator(style: RenderStyle): LabCase {
   const base = earth(style);
-  const up = base.atmosphere!.center.clone().negate().normalize();
+  const up = base.atmospheres![0]!.center.clone().negate().normalize();
   const ahead = AHEAD.clone().projectOnPlane(up).normalize();
   return { ...base, sunDirection: ahead };
 }
@@ -581,7 +612,7 @@ function earthTerminator(style: RenderStyle): LabCase {
 // 視半径は太陽よりわずかに大きく取ってあり、本影(半径 60km)を半影(340km)が縁取る。
 function earthEclipse(style: RenderStyle): LabCase {
   const base = earth(style);
-  const center = base.atmosphere!.center;
+  const center = base.atmospheres![0]!.center;
   // 影を落とす地表点。カメラ直下と地平線(地表距離 2,255km)の中間へ来るよう、直下の向きを
   // 視線側へ回す。
   const groundDir = center.clone().negate().normalize()
@@ -592,6 +623,39 @@ function earthEclipse(style: RenderStyle): LabCase {
     occluders: [
       { center: ground.clone().addScaledVector(SUN_DIR, ECLIPSE_OCCLUDER_DISTANCE), radius: ECLIPSE_OCCLUDER_RADIUS },
       { center, radius: R_EARTH },
+    ],
+  };
+}
+
+// 地球と火星のケースの寸法 [m]。**距離のつまみを縮め切った位置が火星の大気の中**へ来るよう、
+// 火星までの距離を到達高度から逆算する。カメラの高度は地球の大気の裾(高度 116km)の内側。
+const MARS_RADIUS = bodyDef(SOLAR_SYSTEM, 'mars').radius;
+const MARS_ARRIVAL_ALTITUDE = 4e4;
+const EARTH_MARS_DISTANCE = (MARS_RADIUS + MARS_ARRIVAL_ALTITUDE) * 10 ** MAX_CAMERA_DISTANCE_LOG;
+const EARTH_MARS_CAMERA_ALTITUDE = 1e5;
+// 火星の円盤を地球の地平線から離す角。視半径のこの倍だけ持ち上げると、円盤の下縁が最も厚い
+// 大気を、上縁が薄い大気を通って見える構図になる。
+const EARTH_MARS_HORIZON_CLEARANCE = 1.25;
+
+// 地球と火星: 大気を持つ天体が2体ある構図。カメラは地球の大気の中から、地平線のすぐ上へ出た
+// 火星を見る。**火星の円盤は下縁ほど厚い地球の大気越しに見える**ので、主天体の大気の下で遠くの
+// 大気天体がどう保たれるかが1枚の中の階調として出る。距離のつまみを縮めると火星の大気の中まで
+// 移動でき、その途中で主天体が入れ替わる。
+function earthMars(style: RenderStyle): LabCase {
+  const camera = labCamera(1e13);
+  const marsCenter = new THREE.Vector3(0, 0, -EARTH_MARS_DISTANCE);
+  const margin = EARTH_MARS_HORIZON_CLEARANCE * Math.asin(MARS_RADIUS / EARTH_MARS_DISTANCE);
+  const earthCenter = earthCenterBelowHorizon(EARTH_MARS_CAMERA_ALTITUDE, margin);
+  return {
+    objects: [
+      earthAt(earthCenter, style),
+      texturedSphere(textureOf('mars')!, MARS_RADIUS, marsCenter, CLOSE_UP_DIAMETER_PX),
+    ],
+    camera,
+    viewTarget: marsCenter,
+    atmospheres: [
+      { center: earthCenter, surfaceRadius: R_EARTH, optics: ATMOSPHERE_OPTICS.earth! },
+      { center: marsCenter, surfaceRadius: MARS_RADIUS, optics: ATMOSPHERE_OPTICS.mars! },
     ],
   };
 }
@@ -818,10 +882,10 @@ const SUN_CASE_DIR = new THREE.Vector3(0.2563, 0.1392, -0.9565).normalize();
 // 画面上を動く。艦の縁で太陽が隠れる様子も同じ絵で読める。
 const SUN_CASE_SHIP_POSITION = new THREE.Vector3(0, -1, -10);
 
-// 恒星までの距離 [m] に対する、画面上での太陽の見かけ直径 [px]。**LOD の閾値判定と同じ
-// 換算を通す** — つまみの脇に出る数と、球/点像の切り替わる距離が食い違ってはならない。
-export function sunDiameterPx(distance: number): number {
-  const metersPerPixel = 2 * Math.tan((FOV_DEG / 2) * Math.PI / 180) * distance / VIEW_HEIGHT;
+// 恒星までの距離 [m] と画角 [deg] に対する、画面上での太陽の見かけ直径 [px]。**LOD の閾値判定と
+// 同じ換算を通す** — つまみの脇に出る数と、球/点像の切り替わる距離が食い違ってはならない。
+export function sunDiameterPx(distance: number, fovDeg: number): number {
+  const metersPerPixel = 2 * Math.tan((fovDeg / 2) * Math.PI / 180) * distance / VIEW_HEIGHT;
   return apparentSizePx(2 * R_SUN, metersPerPixel);
 }
 
@@ -863,6 +927,7 @@ export const CASES = {
   'earth': earth,
   'earth-terminator': earthTerminator,
   'earth-eclipse': earthEclipse,
+  'earth-mars': earthMars,
   'far': far,
   'saturn': saturn,
   'saturn-shadow': saturnShadow,
