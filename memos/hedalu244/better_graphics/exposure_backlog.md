@@ -6,8 +6,9 @@
 **いまどう動いているかは [`pipeline.md`](pipeline.md) §1-6(露出)と §1-5(明るさの目盛り)。**
 ここにあるのは「これから何を足しうるか」だけ。
 
-**環境光をどう物理的な表現へ置き換えるかは扱わない** — [`arealight.md`](arealight.md) が
-丸ごと引き取る。レンズ由来の滲みは [`pipeline.md`](pipeline.md) §2-5(残件は
+**天体照そのものは扱わない** — 現在の形は [`pipeline.md`](pipeline.md) §2-7、残件は
+[`arealight_backlog.md`](arealight_backlog.md)(露出の順応が天体照を見ない件もそちらに
+開いたままの判断として置いてある)。レンズ由来の滲みは [`pipeline.md`](pipeline.md) §2-5(残件は
 [`lens_backlog.md`](lens_backlog.md)).
 
 ---
