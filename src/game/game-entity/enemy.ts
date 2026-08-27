@@ -19,7 +19,6 @@ import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
 import type { EnemyDeathCause, Stage } from '../stages/stage';
-import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../sim-speed-manager';
@@ -44,7 +43,7 @@ import { buildEnemyMarkerItem } from './enemy-marker';
 import { serializeEnemy } from './enemy-save';
 
 // 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime の
-// epoch で展開する(accent/orbitLineColor は保存された accent 1つから両方導く)。
+// epoch で展開する。orbitLineColor は旧セーブデータには無いため、無ければ accent から導く。
 export type EnemyInit =
   | {
     readonly name: string;
@@ -63,8 +62,8 @@ export type EnemyInit =
 export class Enemy extends Ship {
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
   protected readonly maxTemperature = C.ENEMY_MAX_TEMP;
-  accent: string | number; // マーカー色・集団識別。全敵が保持する
-  waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
+  readonly accent: string | number; // マーカー色・集団識別。全敵が保持する
+  readonly waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly formationId?: string;
   readonly formationRole?: FormationRole;
   readonly orbitLineColor: string | number;
@@ -104,7 +103,6 @@ export class Enemy extends Ship {
   // init の enemyKind に応じたメッシュで Ship を初期化し、専用の軌道線をシーンへ追加する。
   constructor(
     init: EnemyInit,
-    _hud: Hud,
     worldSfx: WorldSfx,
     fx: EffectsSystem,
     scene?: THREE.Scene,
@@ -116,7 +114,7 @@ export class Enemy extends Ship {
         enemyKind: init.saved.enemyKind,
         att: { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: inertiaForEnemyKind(init.saved.enemyKind) } as Attitude,
         accent: init.saved.accent,
-        orbitLineColor: init.saved.accent,
+        orbitLineColor: init.saved.orbitLineColor ?? init.saved.accent,
         waveId: init.saved.waveId,
         id: init.saved.id || undefined,
         formationId: init.saved.formationId,
@@ -279,7 +277,7 @@ export class Enemy extends Ship {
   // overviewMode では進行方向へ回るヘッダーアイコンを、戦闘ビューでは従来の切り欠き三角形を使う。
   markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     const sym = overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg();
-    return buildEnemyMarkerItem(this.name, role, viewerPos, pos, vel, overviewMode, sym);
+    return buildEnemyMarkerItem(this.id, this.name, role, viewerPos, pos, vel, overviewMode, sym);
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
@@ -403,7 +401,7 @@ export class Enemy extends Ship {
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
-  behave(_dt: number, simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager, ephemeris: Ephemeris): void {
+  behave(simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager, ephemeris: Ephemeris): void {
     // 射撃間隔はsimulation timeで統一する。wall dtを混ぜると×4時だけバースト間隔が
     // 4倍に引き伸ばされ、同じゲーム内時間でもwarp段によって弾数が変わっていた。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);

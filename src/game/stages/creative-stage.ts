@@ -154,20 +154,20 @@ export class CreativeStage extends Stage {
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return;
     if (shapeDefinition.kind === 'drifting') {
-      this.addEnemy(generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._hud, this._worldSfx, this._fx, this._scene), this._entities);
+      this.addEnemy(generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._worldSfx, this._fx, this._scene), this._entities);
       return;
     }
     if (shapeDefinition.kind === 'protein') {
       this.spawnEnemyWhenReady(
         shapeDefinition.assetId,
-        () => generateProteinEnemy(name, state, shapeDefinition.assetId, this.proteinDisplay, this._hud, this._worldSfx, this._fx, this._scene),
+        () => generateProteinEnemy(name, state, shapeDefinition.assetId, this.proteinDisplay, this._worldSfx, this._fx, this._scene),
         this._entities,
       );
       return;
     }
     this.addEnemy(generateApproachingEnemy(
       name, state, C.STAGE0_ENEMY_HP, color, color, shapeDefinition.typeIndex, undefined,
-      this._hud, this._worldSfx, this._fx, this._scene,
+      this._worldSfx, this._fx, this._scene,
     ), this._entities);
   }
 
@@ -183,7 +183,7 @@ export class CreativeStage extends Stage {
     const state = kinematicState(player.state.t, position, player.state.v);
     const name = `FORMATION-${++this.manualFormationCount}`;
     const formationId = name;
-    for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._hud, this._worldSfx, this._fx, this._scene)) {
+    for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._worldSfx, this._fx, this._scene)) {
       this.spawnEnemyWhenReady(assetId, build, this._entities);
     }
   }
@@ -318,7 +318,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
         const finalName = name.trim() || generateRandomName('enemy');
-        const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._hud, this._worldSfx, this._fx, this._scene);
+        const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._worldSfx, this._fx, this._scene);
         this._entities.addEnemy(enemy);
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {
@@ -416,7 +416,7 @@ export class CreativeStage extends Stage {
   update(dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
-      this.behaveAllEnemies(dt, player, this._entities, simTime, simSpeed);
+      this.behaveAllEnemies(player, this._entities, simTime, simSpeed);
       if (this.waveAttackEnabled) {
         this.waveAttack.update(dt, player, this._entities.enemies, simTime, this, (enemy) => this.addEnemy(enemy, this._entities));
       }

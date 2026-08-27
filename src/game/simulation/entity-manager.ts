@@ -96,7 +96,7 @@ export class EntityManager {
     for (const data of save.enemies) {
       this.spawnEnemyWhenReady(
         proteinAssetIdForEnemyKind(data.enemyKind),
-        () => new Enemy({ saved: data, simTime }, hud, worldSfx, this.effects, scene),
+        () => new Enemy({ saved: data, simTime }, worldSfx, this.effects, scene),
       );
     }
     for (const data of save.ammoPickups) {
@@ -222,6 +222,16 @@ export class EntityManager {
   // id で名指しされた敵を返す。見つからなければ null。
   findEnemy(id: string): Enemy | null {
     return this.enemies.find((e) => e.id === id) ?? null;
+  }
+
+  // id で名指しされた、生存中の戦闘対象(敵・自機・基地)を返す。天体・ラグランジュ点は
+  // 実体を持たないため対象外。
+  findAliveCombatTarget(id: string): CombatTarget | null {
+    const enemy = this.findEnemy(id);
+    return (enemy?.alive ? enemy : null)
+      ?? this.findPlayer(id)
+      ?? this.bases.find((b) => b.id === id && b.alive)
+      ?? null;
   }
 
   // 弾を登録する。上限を超えた分は古いものから破棄する。
