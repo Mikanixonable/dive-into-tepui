@@ -5,7 +5,7 @@ import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/deb
 import { PIPELINE_GRAPHICS_KEYS } from '../../src/render/pipeline/render-pipeline';
 import { AMBIENT_STRONG, AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
-import { GRAPHICS_OPTIONS, type GraphicsOptionKey } from '../../src/render/graphics-settings';
+import { GRAPHICS_OPTIONS, type ChoiceValue, type GraphicsOptionKey } from '../../src/render/graphics-settings';
 import { CASE_NAMES, MAX_CAMERA_DISTANCE_LOG, sunDiameterPx, type CaseName } from './cases';
 import {
   LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM_LOG, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
@@ -23,7 +23,7 @@ declare global {
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
-      setGraphicsOption: (key: GraphicsOptionKey, value: boolean | number) => void;
+      setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       measure: (name: CaseName) => Promise<LabMeasurement>;
     };
   }
@@ -75,6 +75,34 @@ function buildChoiceField<T>(
   document.getElementById(rowId)!.appendChild(field);
   return (active) => {
     for (const [value, button] of buttons) button.classList.toggle('active', value === active);
+  };
+}
+
+// row の中に、見出しを添えたドロップダウン選択を1組足す。選択肢が buildChoiceField のボタン列に
+// 収まらないほど多い/長いときに使う。返り値で選択位置を合わせる。
+function buildSelectField<T>(
+  rowId: string, label: string, entries: readonly (readonly [T, string])[], select: (value: T) => void,
+): (active: T) => void {
+  const field = document.createElement('div');
+  field.className = 'field';
+  const name = document.createElement('span');
+  name.textContent = label;
+  field.appendChild(name);
+  const dropdown = document.createElement('select');
+  for (const [, text] of entries) {
+    const option = document.createElement('option');
+    option.textContent = text;
+    dropdown.appendChild(option);
+  }
+  dropdown.addEventListener('change', () => {
+    const entry = entries[dropdown.selectedIndex];
+    if (entry !== undefined) select(entry[0]);
+  });
+  field.appendChild(dropdown);
+  document.getElementById(rowId)!.appendChild(field);
+  return (active) => {
+    const index = entries.findIndex(([value]) => value === active);
+    if (index >= 0) dropdown.selectedIndex = index;
   };
 }
 
@@ -205,13 +233,14 @@ async function init(): Promise<void> {
       graphicsMarks.push(() => mark(view.graphics[key] === true));
       continue;
     }
-    const mark = buildChoiceField<number>('graphics', option.label, option.items, (value) => {
+    const build = option.kind === 'select' ? buildSelectField<ChoiceValue> : buildChoiceField<ChoiceValue>;
+    const mark = build('graphics', option.label, option.items, (value) => {
       view.setGraphicsOption(key, value);
       syncGraphics();
     });
     graphicsMarks.push(() => {
       const value = view.graphics[key];
-      if (typeof value === 'number') mark(value);
+      if (typeof value !== 'boolean') mark(value);
     });
   }
   syncGraphics();
