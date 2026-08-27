@@ -8,6 +8,8 @@ import {
   Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider,
 } from '../widgets';
 
+// 一時停止 / 設定パネル(#hud-pause-menu)。BGM 音量調整、セーブ、セーブデータ管理、負荷表示、
+// 設定ビューの呼び出し、タイトルへの復帰を提供し、ヘッダーのドラッグ移動と最小化を持つ。
 export class PauseMenu implements OverlayHandle {
   private readonly panel: HTMLElement;
   private readonly body: HTMLElement;
@@ -16,13 +18,13 @@ export class PauseMenu implements OverlayHandle {
   private minimized = false;
   private hasCustomPosition = false;
 
-  onPauseMenuOpenChange: ((open: boolean) => void) | null = null;
-  onQuitToTitle: (() => void) | null = null;
-  onBgmVolumeChange: ((vol: number) => void) | null = null;
-  onSave: (() => void) | null = null;
-  onOpenSaveBrowser: (() => void) | null = null;
-  onOpenPerfWindow: (() => void) | null = null;
-  onOpenSettings: (() => void) | null = null;
+  public onPauseMenuOpenChange: ((open: boolean) => void) | null = null;
+  public onQuitToTitle: (() => void) | null = null;
+  public onBgmVolumeChange: ((vol: number) => void) | null = null;
+  public onSave: (() => void) | null = null;
+  public onOpenSaveBrowser: (() => void) | null = null;
+  public onOpenPerfWindow: (() => void) | null = null;
+  public onOpenSettings: (() => void) | null = null;
 
   private readonly overlayManager: OverlayManager;
   private readonly bgmSlider: Slider;
@@ -35,14 +37,15 @@ export class PauseMenu implements OverlayHandle {
   private dragStartClient: Point2 | null = null;
   private dragStartWindowPos: Point2 = { x: 0, y: 0 };
 
-  // BGM・セーブ・セーブデータの管理・負荷表示・設定ビューを開く・タイトルへ戻るのイベントを
-  // 配線したパネル DOM を組み立てる。ヘッダーはドラッグ移動と最小化トグルを持つ。
-  constructor(root: HTMLElement, overlayManager: OverlayManager) {
+  // パネル DOM を組み立てて root へ追加する。各操作のコールバックは onXxx フィールドへ
+  // 後から代入する。
+  public constructor(root: HTMLElement, overlayManager: OverlayManager) {
     this.overlayManager = overlayManager;
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel';
 
+    // ヘッダー: 見出し・最小化トグル・✕ ボタンと、ドラッグ移動の配線。
     const header = document.createElement('div');
     header.className = 'pm-header';
     const heading = document.createElement('h3');
@@ -70,6 +73,7 @@ export class PauseMenu implements OverlayHandle {
     this.panel.appendChild(this.body);
     this.syncMinimizeToggle();
 
+    // BGM 音量行: スライダーと消音ボタン。
     const bgmRow = document.createElement('div');
     bgmRow.className = 'pm-row';
     const bgmLabel = document.createElement('span');
@@ -89,6 +93,7 @@ export class PauseMenu implements OverlayHandle {
     bgmRow.appendChild(this.bgmMute.element);
     this.body.appendChild(bgmRow);
 
+    // 以降の各行はセーブ・セーブデータ管理・負荷表示・設定ビューへの導線となる単一ボタン。
     const saveRow = document.createElement('div');
     saveRow.className = 'pm-row';
     saveRow.style.marginTop = SPACE_4;
@@ -130,6 +135,7 @@ export class PauseMenu implements OverlayHandle {
     this.body.appendChild(quitBtn.element);
 
     root.appendChild(this.panel);
+    // ビューポート変化のたびに現在位置を収め直す。
     onViewportChange(() => this.reclamp());
   }
 
@@ -150,7 +156,7 @@ export class PauseMenu implements OverlayHandle {
     this.bgmMute.setOn(vol <= 0);
   }
 
-  // 最小化状態を切り替える。永続化はせず、開き直すたびに展開状態へ戻る。
+  // 最小化状態を切り替える。パネルを閉じて再び開くと展開状態から始まる。
   private setMinimized(minimized: boolean): void {
     this.minimized = minimized;
     this.body.classList.toggle('hidden', minimized);
@@ -158,23 +164,25 @@ export class PauseMenu implements OverlayHandle {
     this.reclamp();
   }
 
+  // 最小化トグルボタンの絵文字・aria-expanded・title を現在の折りたたみ状態に合わせる。
   private syncMinimizeToggle(): void {
     this.minimizeToggle.textContent = this.minimized ? COLLAPSE_COLLAPSED_GLYPH : COLLAPSE_EXPANDED_GLYPH;
     this.minimizeToggle.setAttribute('aria-expanded', String(!this.minimized));
     this.minimizeToggle.title = this.minimized ? '展開する' : '最小化する';
   }
 
-  contains(target: Node): boolean {
+  // OverlayHandle 実装。target がパネル要素の内部かどうかを返す。
+  public contains(target: Node): boolean {
     return this.panel.contains(target);
   }
 
   // OverlayHandle 実装。ESC で閉じる際も toggle(false) と等価に扱う。
-  close(): void {
+  public close(): void {
     this.toggle(false);
   }
 
   // パネルの開閉を切り替える。force を渡すと開閉状態を明示的に指定する。
-  toggle(force?: boolean): void {
+  public toggle(force?: boolean): void {
     const show = force !== undefined ? force : !this._isOpen;
     if (show === this._isOpen) return;
     this._isOpen = show;
@@ -197,7 +205,7 @@ export class PauseMenu implements OverlayHandle {
     this.onPauseMenuOpenChange?.(show);
   }
 
-  // 画面中央へ配置する。初回表示時のみ呼ぶ — 以降はドラッグした位置を維持する。
+  // 画面中央へ配置する。
   private centerPanel(): void {
     const rect = this.panel.getBoundingClientRect();
     this.moveTo((window.innerWidth - rect.width) / 2, (window.innerHeight - rect.height) / 2);
@@ -215,13 +223,13 @@ export class PauseMenu implements OverlayHandle {
     this.panel.style.top = `${pos.y}px`;
   }
 
-  // 現在位置をビューポート内へ収め直す。ウィンドウリサイズと最小化(サイズ変化)の両方から呼ぶ。
+  // 現在位置をビューポート内へ収め直す。
   private reclamp(): void {
     if (!this._isOpen) return;
     this.moveTo(this.panel.offsetLeft, this.panel.offsetTop);
   }
 
-  // ボタン上からは開始せず、ドラッグ開始点とポインタキャプチャだけ確保する。
+  // ヘッダー上のボタン以外を掴んだときに、ドラッグ開始点とポインタキャプチャを確保する。
   private handleHeaderPointerDown = (e: PointerEvent): void => {
     if (e.target instanceof Element && e.target.closest('button')) return;
     this.dragPointerId = e.pointerId;
@@ -249,7 +257,7 @@ export class PauseMenu implements OverlayHandle {
   };
 
   // BGM スライダーの表示を更新する。
-  setBgmVolume(vol: number): void {
+  public setBgmVolume(vol: number): void {
     this.bgmSlider.setValue(vol);
     this.updateMuteState(vol);
   }
