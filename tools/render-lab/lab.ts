@@ -9,11 +9,12 @@ import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
 import {
   SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY, sunIrradianceAtDistance,
 } from '../../src/render/pipeline/sun-light';
-import { lambertPhase, planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
+import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';

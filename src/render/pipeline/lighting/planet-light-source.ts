@@ -4,6 +4,7 @@
 // 選定は game/celestial/planet-light.ts が行う。
 import * as THREE from 'three/webgpu';
 import { PI, clamp, dot, length, max, uniform } from 'three/tsl';
+import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';
 import type { Albedo } from '../../celestial-albedo';
 import type { ColorUniform, FloatUniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import { ggxSpecularFactor } from './ggx';
@@ -24,17 +25,12 @@ export type PlanetLightValue = {
 };
 
 // 一様球としての放射輝度(色つき)。albedo は輝度がボンドアルベドに一致する線形 RGB、
-// sunIrradiance はその天体の場所の太陽放射照度。遠方でランバート球の全放射強度と一致する
-// 取り方(L̄ = (2/3)·A·E_b/π)なので、距離とともに点光源へ連続に縮退する。
+// sunIrradiance はその天体の場所の太陽放射照度。満相のランバート球の全放射強度と一致する
+// 取り方(L̄ = (2/3)·A·E_b/π)なので、距離とともに点光源へ連続に縮退する。満ち欠けは
+// physics/lambert-sphere.ts の位相関数を別途掛ける。
 export function planetRadiance(albedo: Albedo, sunIrradiance: number): Albedo {
-  const scale = (2 / 3) * sunIrradiance / Math.PI;
+  const scale = LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO * sunIrradiance / Math.PI;
   return [albedo[0] * scale, albedo[1] * scale, albedo[2] * scale];
-}
-
-// ランバート球の位相関数 Φ(α)。α [rad] は天体から見た太陽と受け手のなす角で、Φ(0) = 1。
-// 放射輝度へ掛けると、満ち欠けぶんの明るさの変調になる。
-export function lambertPhase(alpha: number): number {
-  return (Math.sin(alpha) + (Math.PI - alpha) * Math.cos(alpha)) / Math.PI;
 }
 
 type SlotUniforms = {
