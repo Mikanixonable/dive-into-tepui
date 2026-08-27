@@ -23,6 +23,9 @@ import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
+import { AmbientSource } from './lighting/ambient-source';
+import { PlanetLightSource } from './lighting/planet-light-source';
+import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
 import { SunOcclusion } from './sun-occlusion';
@@ -38,7 +41,7 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 // パイプラインだけを駆動する呼び出し側(描画テスト環境)が操作の対象にする項目。
 // **ここを変えたときだけ、パイプラインが描くものが変わる。**
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'exposureCompensation', 'atmosphere',
+  'lens', 'exposureCompensation', 'atmosphere', 'sunLightModel', 'planetLightCount',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 
@@ -49,6 +52,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly _sunOcclusion: SunOcclusion;
   private readonly sunShadowMaps: SunShadowMaps;
   private readonly lightPrepass: LightPrepass;
+  // 光源モデルの設定を受けるため、光源の列とは別に太陽光源だけ手元にも持つ。
+  private readonly sunSource: SunSource;
+  private readonly _planetLight: PlanetLightSource;
+  private readonly _ambient: AmbientSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
@@ -81,16 +88,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // に戻るセッション限定の状態で、永続化しない。
   debugTarget: DebugTargetId = 'off';
 
-  // ライティングパスが読む恒星光。EnvironmentScene がここへ毎フレーム書き込む。
+  // 以下は、シーン側が毎フレームの値(恒星の位置・順応の基準点・遮蔽器・光源になる天体・
+  // 環境光の割合・大気を持つ天体)を書き込む先。パイプライン自身はこれらの値を決めない。
   get sunLight(): SunLight { return this._sunLight; }
-
-  // 合成パスが掛ける露出。EnvironmentScene が順応の基準点を毎フレーム書き込む。
   get exposure(): Exposure { return this._exposure; }
-
-  // 恒星の直射光の遮蔽。EnvironmentScene が遮蔽器と環の帯を毎フレーム書き込む。
   get sunOcclusion(): SunOcclusion { return this._sunOcclusion; }
-
-  // 大気パス。EnvironmentScene が大気を持つ天体を毎フレーム書き込む。
+  get planetLight(): PlanetLightSource { return this._planetLight; }
+  get ambient(): AmbientSource { return this._ambient; }
   get atmosphere(): AtmospherePass { return this.atmospherePass; }
 
   // G バッファパス・ライティングパス・マテリアルパスと、world パスの描画先である HDR
@@ -108,7 +112,12 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
-    this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
+    this.sunSource = new SunSource(this._sunLight, this.occlusionPass, graphics.sunLightModel);
+    this._planetLight = new PlanetLightSource(graphics.planetLightCount);
+    this._ambient = new AmbientSource(this._sunLight);
+    this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
+      this.sunSource, ...this._planetLight.lightSources, this._ambient,
+    ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(
       renderer, this.gbuffer, this._sunLight, this._sunOcclusion, gpu,
@@ -246,6 +255,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
     this._exposure.setCompensation(graphics.exposureCompensation);
+    this.sunSource.setModel(graphics.sunLightModel);
+    this._planetLight.setCount(graphics.planetLightCount);
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →

@@ -1,6 +1,6 @@
 # 大気散乱 — 残件
 
-**現在の実装は [`pipeline.md`](pipeline.md) §2-7。**
+**現在の実装は [`pipeline.md`](pipeline.md) §2-8。**
 
 ---
 

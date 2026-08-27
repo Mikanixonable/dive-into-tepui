@@ -15,6 +15,7 @@ export class GuideCurve {
   // 直近に渡された曲線。Curve へどう渡すかは種類で分かれるので、種類ごとに保つ。
   private analytic: CurveSampler | null = null;
   private knots: CurveKnots | null = null;
+  // いま持っている曲線の識別子。曲線を差し替えるたびに新しくして、samplePoints に引き直させる。
   private revision: object = {};
   // sync で Curve へ渡し終えた曲線の revision。曲線を持たない間は null。
   private syncedRevision: object | null = null;
@@ -22,14 +23,12 @@ export class GuideCurve {
   private sampledPoints: readonly Vec3[] = [];
   private sampledRevision: object | null = null;
   private sampledCount = 0;
-  // 頂点カラーの焼き直し待ち。曲線が変わらなくても色だけ変わることがある。
-  private colorsDirty = false;
   private initialSegments: number | undefined = undefined;
   private readonly scratch = new THREE.Vector3();
 
   // maxVertices の意味は Curve と同じ(収束しない曲線の打ち切り)。
   public constructor(style: LineStyle, maxVertices?: number) {
-    this.curve = new Curve({ style, maxVertices });
+    this.curve = new Curve(style, maxVertices);
     this.line = this.curve.object;
   }
 
@@ -95,16 +94,9 @@ export class GuideCurve {
       return;
     }
     this.curve.setTransform(fo.RtoThreeV3(origin));
-    // 基準点の描画位置は毎フレーム動くが、曲線そのものは revision が変わるまで焼き直さない。
-    const opts = { revision: this.revision, camera, colorAt, initialSegments: this.initialSegments };
-    if (this.analytic) this.curve.setAnalyticCurve(this.analytic, opts);
-    else if (this.knots) this.curve.setHermiteCurve(this.knots, opts);
+    if (this.analytic) this.curve.setAnalyticCurve(this.analytic, camera, this.initialSegments, colorAt);
+    else if (this.knots) this.curve.setHermiteCurve(this.knots, camera, colorAt);
     this.syncedRevision = this.revision;
-    // 焼き直しが起きなかったフレームでも、色だけの変更はここで反映する。
-    if (this.colorsDirty && colorAt) {
-      this.curve.setColors(colorAt);
-      this.colorsDirty = false;
-    }
     this.curve.setVisible(true);
   }
 
@@ -112,11 +104,6 @@ export class GuideCurve {
   public setStyle(color: number, opacity: number): void {
     this.curve.setColor(color);
     this.curve.setOpacity(opacity);
-  }
-
-  // 頂点カラーだけが変わったことを伝え、次の sync で色を焼き直させる。
-  public invalidateColors(): void {
-    this.colorsDirty = true;
   }
 
   public setOpacity(opacity: number): void {

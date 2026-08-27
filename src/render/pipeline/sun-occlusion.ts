@@ -1,9 +1,6 @@
 // 恒星の直射光がどれだけ届くかを答える唯一の場。transmittance() が描画座標の点に対する透過率の
 // TSL グラフを返す。遮蔽するのは天体の球・惑星の環の帯・シャドウアトラスへ描かれたメッシュで、
 // 複数の遮蔽は透過率の積で合成する。遮蔽器と環の帯は毎フレーム呼び出し側が渡す。
-//
-// TODO: 受け手が乗っている天体自身も遮蔽器に数えるため、昼夜境界では N·L と幾何遮蔽が二重に
-// 効く(差は恒星の視半径ぶんの帯で、地球なら直径の 0.2 %)。仕様に根拠が無い。
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
@@ -39,6 +36,11 @@ export type OcclusionSources = {
   // 艦艇・基地・デブリなどのメッシュ。**真偽ではなく受け手の法線で選ぶ** — バイアスを法線方向の
   // オフセットで入れるので法線が要り、型の側で「法線を持たずにこの源を選ぶ」を塞ぐ。
   readonly meshNormal: Vec3Node | null;
+  // 受け手がその表面に乗っている天体(中心距離が半径に一致する遮蔽器)を外すための、受け手
+  // までの視距離。表面の自己遮蔽は N·L と光源の積分が表すので、ここでも数えると終端が二重に
+  // 暗くなる。一致の公差を深度からの位置復元の誤差から取るために視距離が要る。null なら
+  // 外さない(環・大気の受け手は天体表面の陰影を持たない)。
+  readonly selfViewDistance: FloatNode | null;
 };
 
 type OccluderUniforms = { readonly center: Vec3Uniform; readonly radius: FloatUniform };
@@ -85,9 +87,10 @@ const circleOverlapArea = Fn(([r1, r2, d]: readonly FloatNode[]) => {
 
 // 点 p から見た恒星円盤のうち、球 (center, radius) に遮られずに残る面積比 0..1。
 // physics/shadow.ts の occludedFraction と同じ式で、本影・金環・半影・完全日照が
-// 場合分け無しに1つの閉じた形から出る。
+// 場合分け無しに1つの閉じた形から出る。selfTolerance は「受け手がこの球の表面に乗って
+// いる」と見なす中心距離と半径の差の公差で、0 なら乗っていても外さない。
 const sphereTransmittance = Fn((
-  [p, sunDir, sunDist, sunAngRadius, center, radius]: readonly [Vec3Node, Vec3Node, FloatNode, FloatNode, Vec3Node, FloatNode],
+  [p, sunDir, sunDist, sunAngRadius, center, radius, selfTolerance]: readonly [Vec3Node, Vec3Node, FloatNode, FloatNode, Vec3Node, FloatNode, FloatNode],
 ) => {
   const toCenter = center.sub(p);
   const along = dot(toCenter, sunDir);
@@ -96,8 +99,9 @@ const sphereTransmittance = Fn((
   const separation = acos(clamp(along.div(dist), -1, 1));
   const overlap = circleOverlapArea(sunAngRadius, occAngRadius, separation);
   const lit = clamp(float(1).sub(overlap.div(PI.mul(sunAngRadius).mul(sunAngRadius))), 0, 1);
-  // 半径 0 の空きスロット、恒星より遠い側/背後にある天体、視点が天体の内側にある場合。
-  const outOfPlay = lessThan(radius, 1).or(lessThan(along, 0)).or(greaterThan(along, sunDist));
+  // 半径 0 の空きスロット、恒星より遠い側/背後にある天体、受け手がその表面に乗っている天体。
+  const outOfPlay = lessThan(radius, 1).or(lessThan(along, 0)).or(greaterThan(along, sunDist))
+    .or(lessThan(abs(dist.sub(radius)), selfTolerance));
   return select(outOfPlay, float(1), select(lessThan(dist, radius), float(0), lit));
 });
 
@@ -209,8 +213,15 @@ export class SunOcclusion {
 
     let transmittance: FloatNode = float(1);
     for (const occluder of this.occluders) {
+      // 公差は深度からの位置復元の相対誤差(2⁻²⁴)から視距離の 1e-5、半径の桁落ちから
+      // 半径の 1e-6 を取る。
+      const selfTolerance = sources.selfViewDistance === null
+        ? float(0)
+        : max(occluder.radius.mul(1e-6), sources.selfViewDistance.mul(1e-5));
       transmittance = transmittance.mul(
-        sphereTransmittance(worldPos, sunDir, sunDist, sunAngRadius, occluder.center, occluder.radius),
+        sphereTransmittance(
+          worldPos, sunDir, sunDist, sunAngRadius, occluder.center, occluder.radius, selfTolerance,
+        ),
       );
     }
     if (sources.rings) {

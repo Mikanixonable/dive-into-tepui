@@ -15,6 +15,7 @@ export type QualityPreset = 'low' | 'medium' | 'high';
 export const GRAPHICS_GROUPS = [
   ['basic', '基本'],
   ['element', '表示する要素'],
+  ['light', '光源'],
   ['shadow', '影の詳細'],
 ] as const;
 export type GraphicsGroup = (typeof GRAPHICS_GROUPS)[number][0];
@@ -109,6 +110,30 @@ export const GRAPHICS_OPTIONS = {
   proteinVibration: {
     kind: 'toggle', group: 'element', label: 'タンパク質の敵の揺らぎ',
     presets: { low: false, medium: true, high: true },
+  },
+  // 太陽の光源モデル。球光源では明暗の終端が視半径ぶん柔らかくなり、粗さの小さい金属面に
+  // 太陽の円盤が映る。
+  sunLightModel: {
+    kind: 'choice', group: 'light', label: '太陽の光源モデル',
+    items: [[0, '点光源'], [1, '球光源']],
+    presets: { low: 0, medium: 1, high: 1 },
+  },
+  // 同時に照らす天体の数。1 本が描画命令 1 本。「なし」では影の中が太陽の直射だけになり、
+  // 減らすと光源になる天体の入れ替わりが絵に出うる。最大値は MAX_PLANET_LIGHT_SLOTS。
+  planetLightCount: {
+    kind: 'choice', group: 'light', label: '天体照の光源の数',
+    items: [[0, 'なし'], [1, '1'], [2, '2']],
+    presets: { low: 0, medium: 2, high: 2 },
+  },
+  // 面の向きによらない一様な環境光を、マップビューで足すか。読みやすさのため強い。
+  overviewAmbient: {
+    kind: 'toggle', group: 'light', label: '環境光(マップビュー)',
+    presets: { low: true, medium: true, high: true },
+  },
+  // 同じく戦闘ビューで足すか。物理に近い暗さのため弱い。
+  combatAmbient: {
+    kind: 'toggle', group: 'light', label: '環境光(戦闘ビュー)',
+    presets: { low: true, medium: true, high: true },
   },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {

@@ -3,8 +3,8 @@
 //
 // **入れるのはボンドアルベド $A_B$(全方向・全波長へ返す割合)であって幾何アルベド $p$ では
 // ない。** ランバート球の $A_B$ は拡散アルベド $\rho$ そのもので、同じ球の $p$ は $\tfrac23\rho$
-// にしかならない。$p$ をそのまま入れると天体が受けた光より多く返し、Phase 8 で天体を光源に
-// したときのエネルギーが $1/q$ 倍(天体によっては 2〜3 倍)過大になる。
+// にしかならない。$p$ をそのまま入れると天体が受けた光より多く返し、天体を光源にしたときの
+// エネルギーが $1/q$ 倍(天体によっては 2〜3 倍)過大になる。
 //
 // **値の出どころ。** 公表されたボンドアルベドがある天体はそれを直に入れる。幾何アルベドしか
 // 公表されていない天体は、位相積分 $q$ を掛けて $A_B = p q$ へ直してから入れる。$q$ は H–G 系
@@ -23,7 +23,7 @@
 // **衝効果(opposition surge)はモデル化していない。** 満月に近い構図で写真より暗く写るのは
 // その正しい帰結で、アルベドを盛って埋めてはならない(埋めるなら再帰反射項を足す)。
 
-import { textureOf } from './celestial-textures';
+import { texturePhotometryOf } from './celestial-textures';
 
 // 線形 RGB の拡散アルベド。各成分は 0..1。
 export type Albedo = readonly [number, number, number];
@@ -129,6 +129,20 @@ export function rec709Luminance(albedo: Albedo): number {
 // id のボンドアルベドをスカラ1つで。実写テクスチャを持つ天体はその倍率の導出元
 // (celestial-textures.ts)を、それ以外は単色アルベドの輝度を返す。
 export function bondAlbedoOf(id: string): number {
-  const texture = textureOf(id);
-  return texture !== null ? texture.bondAlbedo : rec709Luminance(albedoOf(id));
+  const photometry = texturePhotometryOf(id);
+  return photometry !== null ? photometry.bondAlbedo : rec709Luminance(albedoOf(id));
+}
+
+// hue の色みを保ったまま、Rec.709 輝度を bondAlbedo へ合わせた線形 RGB。
+function scaledToBondAlbedo(hue: readonly [number, number, number], bondAlbedo: number): Albedo {
+  const k = bondAlbedo / rec709Luminance(hue);
+  return [hue[0] * k, hue[1] * k, hue[2] * k];
+}
+
+// id を光源として扱うときの色つきアルベド(輝度がボンドアルベドに一致する線形 RGB)。
+// 実写テクスチャを持つ天体は平均色の色みへボンドアルベドを掛け、それ以外は単色アルベドのまま。
+export function lightSourceAlbedoOf(id: string): Albedo {
+  const photometry = texturePhotometryOf(id);
+  if (photometry !== null) return scaledToBondAlbedo(photometry.averageHue, photometry.bondAlbedo);
+  return albedoOf(id);
 }
