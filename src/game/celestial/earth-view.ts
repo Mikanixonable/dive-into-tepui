@@ -41,6 +41,7 @@ export class EarthView extends CelestialView {
     this.earth.setRotation(this.phase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
     const metersPerPixel = cameraSystem.activeCameraScale(pos);
     this.earth.setAuroraVisible(graphics.aurora);
+    this.earth.setCloudsVisible(graphics.clouds);
     this.earth.setGraticuleVisible(style === 'schematic');
     this.earth.setCoastlineVisible(style === 'schematic');
     this.earth.syncSurfaceLod(this.lodApparentDiameterPx(2 * R_EARTH, metersPerPixel, graphics));
