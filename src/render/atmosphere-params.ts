@@ -63,11 +63,6 @@ const STEPS_OF_QUALITY: Readonly<Record<AtmosphereQuality, AtmosphereSteps>> = {
 // 絵に出ないと見なす光学的厚み。地平線方向の視線がこれを下回る高度から上は描かない。
 const MIN_VISIBLE_OPTICAL_DEPTH = 1e-5;
 
-// レイリー散乱係数の3成分の平均 [1/m]。濃さを1つの数で比べるためだけの量。
-function meanRayleigh(optics: AtmosphereOptics): number {
-  return (optics.rayleigh.x + optics.rayleigh.y + optics.rayleigh.z) / 3;
-}
-
 // 散乱係数 beta [1/m]・スケールハイト scaleHeight [m] の成分だけを見たときの打ち切り高度 [m]。
 // 高度 h を最接近点とする地平線方向の視線が通る光学的厚みは beta·exp(−h/H)·√(2πRH) で
 // 近似できるので、これが閾値を切る h を解く。
@@ -86,32 +81,24 @@ export function cutoffAltitude(optics: AtmosphereOptics, surfaceRadius: number):
   );
 }
 
-// 高度 altitude [m] における消散係数の自然対数。**天体どうしの「その場の大気の濃さ」は
-// この量で比べる** — 素の指数は惑星間距離で単精度の下限を割り込み、どの天体も 0 になって
-// 比較が付かなくなる。2成分の和の対数は、大きいほうを括り出して求める。
-function logExtinctionAt(optics: AtmosphereOptics, altitude: number): number {
-  const rayleigh = Math.log(meanRayleigh(optics)) - altitude / optics.rayleighScaleHeight;
-  const mie = Math.log(optics.mie) - altitude / optics.mieScaleHeight;
-  const larger = Math.max(rayleigh, mie);
-  return larger + Math.log1p(Math.exp(Math.min(rayleigh, mie) - larger));
-}
+// 裾の中にいる天体を、外から眺めている天体の上へ出す下駄。**物理ではなく、予算をどこへ寄せるかの
+// 方針である** — 地表まで潜れば、視半径が3桁大きく見える天体より優先される。
+const INSIDE_ATMOSPHERE_PRIORITY = 3 * Math.LN10;
 
-// 裾の外の視点で強さを落とす、全天体共通のスケールハイト [m]。典型的な大気のスケールハイトの桁。
-const VACUUM_RANK_SCALE_HEIGHT = 1e4;
-
-// 並び替えに使う、その天体の大気が視点の場所を作っている強さ。裾の中では視点の消散係数の対数。
-// **裾の外では天体ごとのスケールハイトで外挿を続けない** — どの大気も絵に出ない高度なのに、
-// 遠方ではスケールハイトの大きい天体が距離によらず勝ってしまう。裾から先は全天体共通の減衰率で
-// 落とし、裾の外の天体どうしの比較を「どちらの大気に近いか」の比較にする。
-function rankStrength(optics: AtmosphereOptics, surfaceRadius: number, altitude: number): number {
+// 品質を落としたときに絵が崩れる度合いの推定。distance は視点から天体中心までの距離 [m]。
+// 基は**大気の裾球の視半径の対数**で、天体の大きさと距離の両方が効く。裾の中では大気が全天を
+// 覆って視半径では差が付かなくなるので、そこにいる濃さ(絵に出ない下限から地表までを 0..1 で
+// 測ったもの。密度は高度の指数なので、高度に比例させると対数の目盛りになる)を下駄として足す。
+function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, distance: number): number {
   const cutoff = cutoffAltitude(optics, surfaceRadius);
-  return logExtinctionAt(optics, Math.min(altitude, cutoff))
-    - Math.max(altitude - cutoff, 0) / VACUUM_RANK_SCALE_HEIGHT;
+  const depth = THREE.MathUtils.smoothstep(cutoff - (distance - surfaceRadius), 0, cutoff);
+  return Math.log((surfaceRadius + cutoff) / Math.max(distance, 1))
+    + INSIDE_ATMOSPHERE_PRIORITY * depth;
 }
 
-// 細かく描く天体への寄せが、残りと同じ細かさへ薄まりきる順位の強さの差。1 桁の開きがあれば、
-// その天体の大気が場を支配していると見なす。
-const DETAIL_WEIGHT_GAP = Math.LN10;
+// 細かく描く天体への寄せが、残りと同じ細かさへ薄まりきる推定値の差。視半径が2倍あれば、
+// その天体の大気が画面を支配していると見なす。
+const DETAIL_WEIGHT_GAP = Math.LN2;
 
 // 大気の広がりを決めるもの。
 type AtmosphereExtent = {
@@ -141,16 +128,13 @@ export function atmosphereDraws<T extends AtmosphereExtent>(
   const ranked = candidates
     .map((candidate) => ({
       ...candidate,
-      strength: rankStrength(
-        candidate.body.optics, candidate.body.surfaceRadius,
-        candidate.distance - candidate.body.surfaceRadius,
-      ),
+      impact: screenImpact(candidate.body.optics, candidate.body.surfaceRadius, candidate.distance),
     }))
-    .sort((a, b) => b.strength - a.strength)
+    .sort((a, b) => b.impact - a.impact)
     .slice(0, MAX_ATMOSPHERE_BODIES);
   // 先頭へ寄せる予算は、2 位との開きで決める。**開きが 0 の場所では残りと同じ細かさになる**ので、
   // 順位が入れ替わっても絵が飛ばない。候補が 1 体なら、その天体が場を独占している。
-  const gap = ranked.length < 2 ? Infinity : ranked[0]!.strength - ranked[1]!.strength;
+  const gap = ranked.length < 2 ? Infinity : ranked[0]!.impact - ranked[1]!.impact;
   const detailed = THREE.MathUtils.lerp(
     ATMOSPHERE_STEPS.low, STEPS_OF_QUALITY[quality],
     THREE.MathUtils.smoothstep(gap, 0, DETAIL_WEIGHT_GAP),
