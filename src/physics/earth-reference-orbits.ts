@@ -60,7 +60,7 @@ export type LocalTime = 'dawn' | 'dusk';
 export function dawnDuskElements(
   repeatDays: number, revsPerRepeat: number, localTime: LocalTime, sunRaanDeg: number,
 ): OrbitalElements | null {
-  return sunSynchronousElements(repeatDays, revsPerRepeat, sunRaanDeg + (localTime === 'dawn' ? 90 : -90));
+  return sunSynchronousElements(repeatDays, revsPerRepeat, sunRaanDeg + (localTime === 'dawn' ? -90 : 90));
 }
 
 // 傾斜角・近地点引数を臨界値(63.4°・270°)に固定し、周期 period から長半径を、近地点高度から
