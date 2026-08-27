@@ -1,14 +1,17 @@
-// 常設 TARGET パネル(#hud-target)の同期: ロック中ターゲットの名前・装甲・距離・
-// 接近速度・相対速度だけを表示する。軌道要素・相対傾斜角はプロパティウィンドウが持ち、
-// ここには出さない（戦闘=自艦の軌道要素は OrbitPanel、対象側は PropertyWindow の2系統に
-// 整理し、同じ値を二重の書式で表示しない）。
+// 常設 TARGET パネル(#hud-target)の同期。ロック中ターゲットの名前・装甲・距離・
+// 接近速度・相対速度を、ターゲットが固定されている間だけ表示する。
 import { fmtDist, fmtSpeed, setElementText } from '../utils';
 import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../orbit/orbit-info';
+import { Ship } from '../../game-entity/ship';
+import { Enemy } from '../../game-entity/enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
+
+// 基地は装甲を持たないため、ロック時の装甲バーへ出す満タン相当の目安値。
+const BASE_ARMOR_PLACEHOLDER = 1000;
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -26,7 +29,7 @@ export class TargetPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
 
   // ロック中ターゲットの右クリック。ターゲットが無いときは呼ばれない。
-  onSelectRight: ((clientX: number, clientY: number) => void) | null = null;
+  public onSelectRight: ((clientX: number, clientY: number) => void) | null = null;
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
     this.els.get('tgtbody')?.addEventListener('contextmenu', (e) => {
@@ -53,11 +56,10 @@ export class TargetPanel {
       distanceM: relative.dist,
       closingMps: relative.closing,
       relativeSpeedMps: relative.relSpeed,
-      hp: 'hp' in target ? (target as { hp: number }).hp : 1000,
-      maxHp: 'maxHp' in target ? (target as { maxHp: number }).maxHp : 1000,
-      protein: 'proteinHudSnapshot' in target
-        ? (target as { proteinHudSnapshot: TargetPanelData['protein'] }).proteinHudSnapshot
-        : null,
+      // 基地は装甲を持たないので、ロック中は満タン相当の目安値を出す。
+      hp: target instanceof Ship ? target.hp : BASE_ARMOR_PLACEHOLDER,
+      maxHp: target instanceof Ship ? target.maxHp : BASE_ARMOR_PLACEHOLDER,
+      protein: target instanceof Enemy ? target.proteinHudSnapshot : null,
     });
   }
 
