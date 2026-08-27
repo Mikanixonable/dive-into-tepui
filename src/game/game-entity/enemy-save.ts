@@ -15,6 +15,7 @@ export function serializeEnemy(enemy: Enemy): EnemySaveData {
     alive: enemy.alive,
     health: enemy.hp,
     accent: enemy.accent,
+    orbitLineColor: enemy.orbitLineColor,
     waveId: enemy.waveId,
     ...(enemy.formationId === undefined ? {} : { formationId: enemy.formationId }),
     ...(enemy.formationRole === undefined ? {} : { formationRole: enemy.formationRole }),
