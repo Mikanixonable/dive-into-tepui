@@ -118,7 +118,11 @@ export class PhysicalObjectListPanel {
   public constructor(root: HTMLElement, registry: CelestialRegistry) {
     injectOnce('physical-object-list-panel', STYLE);
     this.order = new PhysicalObjectListOrder(registry);
-    this.rowTree = new PhysicalObjectListTree(registry, this.order, this.itemsByIdScratch, this);
+    this.rowTree = new PhysicalObjectListTree(registry, this.order, this.itemsByIdScratch, {
+      onFocus: (id) => this.onFocus?.(id),
+      onNavTarget: (id) => this.onNavTarget?.(id),
+      onSelectRight: (id, clientX, clientY) => this.onSelectRight?.(id, clientX, clientY),
+    });
     this.panel = document.createElement('div');
     this.panel.id = 'hud-physical-object-list';
     this.panel.className = 'panel';
