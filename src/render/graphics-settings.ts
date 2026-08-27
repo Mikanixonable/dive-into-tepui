@@ -61,9 +61,9 @@ export const GRAPHICS_OPTIONS = {
     items: [[0.25, '−2'], [0.5, '−1'], [1, '±0'], [2, '+1'], [4, '+2']],
     presets: { low: 1, medium: 1, high: 1 },
   },
-  // マルチサンプリング。レンダラ生成時にしか渡せないので、変更は次回起動から効く。
+  // 描画の最終段で、物体の縁と 3D UI の線のギザギザを均すか。
   antialias: {
-    kind: 'toggle', group: 'basic', label: 'アンチエイリアス(次回起動から)',
+    kind: 'toggle', group: 'basic', label: 'アンチエイリアス',
     presets: { low: false, medium: true, high: true },
   },
   // 小惑星帯・カイパー帯などの点群。
