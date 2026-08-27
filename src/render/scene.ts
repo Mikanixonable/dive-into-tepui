@@ -22,12 +22,11 @@ export async function createGameScene(canvas: HTMLCanvasElement, graphics: Graph
   // layer 0 だけだと、その時点で子要素の走査まで止まるため、コンテナとして全レイヤーを受ける。
   scene.layers.enableAll();
 
-  // antialias も trackTimestamp も reversedDepthBuffer もレンダラ生成時にしか渡せない。
-  // 前者2つは設定変更が次回起動から効く理由とデバイスの要求機能に載る理由で、最後のものは
-  // 深度比較関数が構築時の値だけを読むため — あとから代入すると投影行列とクリア値だけが
-  // 反転し、比較関数が非反転のまま取り残される。
+  // trackTimestamp も reversedDepthBuffer もレンダラ生成時にしか渡せない。前者はデバイスの
+  // 要求機能に載るため、後者は深度比較関数が構築時の値だけを読むため — あとから代入すると
+  // 投影行列とクリア値だけが反転し、比較関数が非反転のまま取り残される。
   const renderer = new WebGPURenderer({
-    canvas, antialias: graphics.antialias, trackTimestamp: true, reversedDepthBuffer: true,
+    canvas, trackTimestamp: true, reversedDepthBuffer: true,
   });
   renderer.setOpaqueSort(reversedOpaqueSort);
   renderer.setTransparentSort(reversedTransparentSort);
