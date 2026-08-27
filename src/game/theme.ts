@@ -97,6 +97,9 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
   },
 ] as const;
 
+// 模式図での固定色上書きに使う、選択中の配色によらない light パレット。
+export const LIGHT_PALETTE: ThemePalette = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
+
 const THEME_STORAGE_KEY = 'tepui.theme-palette';
 const DEFAULT_THEME_ID = 'fluorescent-red-blue';
 
