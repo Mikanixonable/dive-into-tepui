@@ -51,11 +51,14 @@ export class Slider {
   public setValidRange(minRatio: number, maxRatio: number): void {
     const lo = Math.max(0, minRatio) * 100;
     const hi = Math.min(1, maxRatio) * 100;
+    // 全域が有効なら単色トラックへ戻す。
     if (lo <= 0 && hi >= 100) {
       this.element.style.background = '';
     } else if (lo >= hi) {
+      // 全域が無効なら減光した単色トラックにする。
       this.element.style.background = 'var(--fill-2)';
     } else {
+      // 区間の内外で色を切り替えたグラデーションを描く。
       this.element.style.background =
         `linear-gradient(to right, var(--fill-2) 0%, var(--fill-2) ${lo}%, var(--fill-4) ${lo}%, var(--fill-4) ${hi}%, var(--fill-2) ${hi}%, var(--fill-2) 100%)`;
     }

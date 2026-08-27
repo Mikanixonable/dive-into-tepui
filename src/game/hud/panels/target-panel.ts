@@ -31,6 +31,7 @@ export class TargetPanel {
   // ロック中ターゲットの右クリック。ターゲットが無いときは呼ばれない。
   public onSelectRight: ((clientX: number, clientY: number) => void) | null = null;
 
+  // els を保持し、パネル本体の右クリックを onSelectRight へ橋渡しする。
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
     this.els.get('tgtbody')?.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -38,6 +39,8 @@ export class TargetPanel {
     });
   }
 
+  // 固定対象の有無を毎フレーム反映し、値の更新は間引く。celestialBodies は相対距離・速度の
+  // 算出に使う。
   public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
     const player = game.player;
     const target = player ? game.targeter.aliveTarget : null;
@@ -71,11 +74,13 @@ export class TargetPanel {
       return;
     }
 
+    // 名前・距離・速度系の基本値。
     setElementText(this.els, 'tgtname', target.name);
     setElementText(this.els, 'tgt-dist', fmtDist(target.distanceM));
     setElementText(this.els, 'tgt-closing', fmtSpeed(target.closingMps));
     setElementText(this.els, 'tgt-relative-speed', fmtSpeed(target.relativeSpeedMps));
 
+    // 装甲メーターと数値表示。
     const clampedHp = Math.max(0, Math.min(target.maxHp, target.hp));
     const armorPercent = target.maxHp > 0 ? clampedHp / target.maxHp * 100 : 0;
     const armorValue = `${Math.floor(clampedHp)} / ${target.maxHp}`;
@@ -89,6 +94,7 @@ export class TargetPanel {
       armorFill.classList.toggle('danger', target.hp <= target.maxHp * 0.3);
     }
     setElementText(this.els, 'tgt-armor-value', armorValue);
+    // タンパク質構造を持つ標的なら、フェーズと部位ごとの状態も表示する。
     const proteinPanel = this.els.get('tgt-protein');
     if (proteinPanel) {
       proteinPanel.classList.toggle('hidden', target.protein === null);
