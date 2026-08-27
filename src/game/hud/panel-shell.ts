@@ -116,19 +116,20 @@ export interface PanelCollapseWiring {
   readonly target: HTMLElement;
   readonly labels: CollapseToggleLabels;
   readonly storageId: string;
-  readonly defaultCollapsed?: boolean;
+  readonly defaultCollapsed?: PanelDefaultCollapsed;
   readonly extraHitEls?: readonly HTMLElement[];
 }
 
 // 折りたたみトグルの配線一式(生成・保存状態の復元・ビュー切替の購読・クリック時の保存)を
-// 1回で行う。PanelShell 自身と同じ形の配線を、独自の外枠を持つパネル(タイトル行やラップ要素が
-// PanelShell と異なる)からも使えるよう、対象要素・ラベル・保存 id を引数化してある。
-// 戻り値は onPanelCollapsedViewChange の購読解除関数 — 呼び出し側の dispose() でそのまま呼ぶ。
+// 1回で行う。対象要素・ラベル・保存 id を引数で受けるので、外枠の形が違うパネルからも使える。
+// defaultCollapsed に関数を渡すと、ビューが切り替わるたびに現在のビューで再評価する。
+// 戻り値は onPanelCollapsedViewChange の購読解除関数。
 export function wirePanelCollapse(params: PanelCollapseWiring): () => void {
   const { toggleRoot, toggleId, toggleClassName, target, labels, storageId, defaultCollapsed = false, extraHitEls = [] } = params;
   const toggle = buildCollapseToggle(toggleRoot, toggleId, toggleClassName, target, labels, extraHitEls);
   const applyCollapsedState = (): void => {
-    const collapsed = loadPanelCollapsed(storageId) ?? defaultCollapsed;
+    const fallback = typeof defaultCollapsed === 'function' ? defaultCollapsed(currentView) : defaultCollapsed;
+    const collapsed = loadPanelCollapsed(storageId) ?? fallback;
     target.classList.toggle('collapsed', collapsed);
     syncCollapseToggle(toggle, target, labels);
   };
@@ -164,25 +165,20 @@ export class PanelShell {
     this.body.className = 'panel-shell-body';
     this.el.appendChild(this.body);
 
-    const labels = {
-      expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
-      collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-      expandedTitle: `${title}を折りたたむ`,
-      collapsedTitle: `${title}を開く`,
-    };
-    const toggle = buildCollapseToggle(
-      head, `${id}-collapse`, 'panel-shell-collapse', this.body, labels, [this.titleEl],
-    );
-    const applyCollapsedState = (): void => {
-      const collapsed = loadPanelCollapsed(id)
-        ?? (typeof defaultCollapsed === 'function' ? defaultCollapsed(currentView) : defaultCollapsed);
-      this.body.classList.toggle('collapsed', collapsed);
-      syncCollapseToggle(toggle, this.body, labels);
-    };
-    applyCollapsedState();
-    onPanelCollapsedViewChange(applyCollapsedState);
-    toggle.addEventListener('click', () => {
-      savePanelCollapsed(id, this.body.classList.contains('collapsed'));
+    wirePanelCollapse({
+      toggleRoot: head,
+      toggleId: `${id}-collapse`,
+      toggleClassName: 'panel-shell-collapse',
+      target: this.body,
+      labels: {
+        expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+        collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
+        expandedTitle: `${title}を折りたたむ`,
+        collapsedTitle: `${title}を開く`,
+      },
+      storageId: id,
+      defaultCollapsed,
+      extraHitEls: [this.titleEl],
     });
 
     parent.appendChild(this.el);
