@@ -39,7 +39,7 @@ import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 
 // applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
-// 駆動する呼び出し側(描画テスト環境)は、この並びを操作の対象にする。
+// 駆動する側は、この並びを操作の対象にする。
 export const PIPELINE_GRAPHICS_KEYS = [
   'lens', 'exposureCompensation', 'sunLightModel', 'planetLightCount',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
@@ -88,22 +88,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // に戻るセッション限定の状態で、永続化しない。
   debugTarget: DebugTargetId = 'off';
 
-  // ライティングパスが読む恒星光。EnvironmentScene がここへ毎フレーム書き込む。
+  // 以下は、シーン側が毎フレームの値(恒星の位置・順応の基準点・遮蔽器・光源になる天体・
+  // 環境光の割合・大気を持つ天体)を書き込む先。パイプライン自身はこれらの値を決めない。
   get sunLight(): SunLight { return this._sunLight; }
-
-  // 合成パスが掛ける露出。EnvironmentScene が順応の基準点を毎フレーム書き込む。
   get exposure(): Exposure { return this._exposure; }
-
-  // 恒星の直射光の遮蔽。EnvironmentScene が遮蔽器と環の帯を毎フレーム書き込む。
   get sunOcclusion(): SunOcclusion { return this._sunOcclusion; }
-
-  // 天体照の光源スロット。EnvironmentScene が選んだ天体を毎フレーム書き込む。
   get planetLight(): PlanetLightSource { return this._planetLight; }
-
-  // 一様な環境光。EnvironmentScene が割合を毎フレーム書き込む。
   get ambient(): AmbientSource { return this._ambient; }
-
-  // 大気パス。EnvironmentScene が大気を持つ天体を毎フレーム書き込む。
   get atmosphere(): AtmospherePass { return this.atmospherePass; }
 
   // G バッファパス・ライティングパス・マテリアルパスと、world パスの描画先である HDR
