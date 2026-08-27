@@ -39,20 +39,14 @@ type SlotUniforms = {
   readonly radiance: ColorUniform;
 };
 
-// スロット 1 本ぶんの光源。拡散は一様球の閉じた解(sphere-light.ts)、鏡面は点光源近似の
-// GGX で、太陽と違って遮蔽は受けない(天体照の遮蔽はこの計画の範囲外)。
+// スロット 1 本ぶんの光源。拡散は一様球の閉じた解(sphere-light.ts)、鏡面は点光源近似の GGX。
+// TODO: 遮蔽を受けない — 受け手と天体の間に別の天体や艦の構造があっても届く。
 class PlanetLightSlot implements LightSource {
   private cached: THREE.MeshBasicNodeMaterial | null = null;
 
-  constructor(
-    private readonly slot: SlotUniforms,
-    private readonly index: number,
-    private readonly host: PlanetLightSource,
-  ) {}
+  constructor(private readonly slot: SlotUniforms) {}
 
-  hasContribution(): boolean {
-    return this.index < this.host.count && this.slot.radius.value > 0;
-  }
+  hasContribution(): boolean { return this.slot.radius.value > 0; }
 
   material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
     this.cached ??= contributionMaterial(sample, this.contribution(sample));
@@ -82,18 +76,22 @@ export class PlanetLightSource {
     { length: MAX_PLANET_LIGHT_SLOTS },
     () => ({ center: uniform(new THREE.Vector3()), radius: uniform(0), radiance: uniform(new THREE.Color(0, 0, 0)) }),
   );
-  private readonly slotSources = this.slots.map((slot, i) => new PlanetLightSlot(slot, i, this));
+  private readonly slotSources = this.slots.map((slot) => new PlanetLightSlot(slot));
 
-  // 同時に使うスロットの本数。描画設定 planetLightCount の値をそのまま受ける。
-  constructor(public count: number) {}
+  // count は同時に使うスロットの本数。描画設定 planetLightCount の値をそのまま受ける。
+  constructor(private count: number) {}
+
+  // 同時に使うスロットの本数を差し替える。次の set() から効く。
+  setCount(count: number): void { this.count = count; }
 
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。
   get lightSources(): readonly LightSource[] { return this.slotSources; }
 
-  // このフレームの光源の列。スロット本数を超えたぶんは捨て、足りないスロットは消灯する。
+  // このフレームの光源の列。本数を超えたぶんは捨て、足りないスロットは消灯する。
   set(lights: readonly PlanetLightValue[]): void {
+    const used = lights.slice(0, this.count);
     for (const [i, slot] of this.slots.entries()) {
-      const light = lights[i];
+      const light = used[i];
       slot.radius.value = light === undefined ? 0 : light.radius;
       if (light === undefined) continue;
       slot.center.value.copy(light.center);
