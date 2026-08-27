@@ -1,6 +1,8 @@
+// 画面座標に関する DOM/カメラ非依存の幾何計算。オーバーレイの再配置に使う。
+
 export interface Point2 {
-  x: number;
-  y: number;
+  readonly x: number;
+  readonly y: number;
 }
 
 // requested 位置に overlay を置いたとき viewport をはみ出さないよう、margin ぶん内側へ収めた座標を返す。
