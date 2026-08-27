@@ -235,14 +235,19 @@ export class AtmospherePass {
   ): RaySegment {
     const toOrigin = sub(rayOrigin, slot.center);
     const alongRay = dot(toOrigin, rayDir);
-    const centerDistSq = dot(toOrigin, toOrigin);
 
+    // **判別式は「半径² − 最接近距離²」の形で解く。** 教科書の b² − c の形は、天体を惑星間
+    // 距離から見る視線で ~1e19 同士の引き算になり、f32 の桁落ちが交点距離に数十 km(スケール
+    // ハイトの桁上)のノイズを載せる — 円盤全面が z-fighting 様の縞になる。最接近点への垂線
+    // ベクトルは成分ごとの引き算なので、この桁落ちを持たない。
+    const perpOffset = sub(toOrigin, rayDir.mul(alongRay));
+    const perpSq = dot(perpOffset, perpOffset);
     const cutoff = slot.cutoffRadius;
-    const cutoffDisc = alongRay.mul(alongRay).sub(centerDistSq.sub(cutoff.mul(cutoff)));
+    const cutoffDisc = cutoff.mul(cutoff).sub(perpSq);
     const cutoffSpan = sqrt(max(cutoffDisc, 0));
     const near = max(alongRay.negate().sub(cutoffSpan), 0);
     const surface = slot.surfaceRadius;
-    const surfaceDisc = alongRay.mul(alongRay).sub(centerDistSq.sub(surface.mul(surface)));
+    const surfaceDisc = surface.mul(surface).sub(perpSq);
     const surfaceT = alongRay.negate().sub(sqrt(max(surfaceDisc, 0)));
     const opaqueOrSurface = select(
       and(greaterThan(surfaceDisc, 0), greaterThan(surfaceT, near)), min(surfaceT, opaqueDist), opaqueDist,
@@ -266,7 +271,7 @@ export class AtmospherePass {
       farRadius,
       nearMu: dot(nearOffset.div(nearRadius), rayDir),
       farMu: dot(farOffset.div(farRadius), rayDir),
-      perigeeRadius: max(sqrt(max(centerDistSq.sub(alongRay.mul(alongRay)), 0)), floorRadius),
+      perigeeRadius: max(sqrt(perpSq), floorRadius),
       hitsAtmosphere: and(greaterThan(surface, 0), and(greaterThan(cutoffDisc, 0), greaterThan(far, near))),
     };
   }
