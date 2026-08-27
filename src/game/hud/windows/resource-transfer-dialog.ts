@@ -313,8 +313,8 @@ export class ResourceTransferDialog {
     const subtitleEl = this.rootEl.querySelector<HTMLElement>('[data-role="subtitle"]');
     if (subtitleEl) subtitleEl.textContent = `${a.name} 🔗 ${bName}`;
 
-    this.rootEl.querySelectorAll<HTMLElement>('[data-role="entity-a-name"]').forEach((el) => { el.textContent = a.name; });
-    this.rootEl.querySelectorAll<HTMLElement>('[data-role="entity-b-name"]').forEach((el) => { el.textContent = bName; });
+    for (const el of Array.from(this.rootEl.querySelectorAll<HTMLElement>('[data-role="entity-a-name"]'))) el.textContent = a.name;
+    for (const el of Array.from(this.rootEl.querySelectorAll<HTMLElement>('[data-role="entity-b-name"]'))) el.textContent = bName;
 
     if (!isBBase) return;
     const partsTitleEl = this.rootEl.querySelector<HTMLElement>('[data-role="parts-a-name"]');
