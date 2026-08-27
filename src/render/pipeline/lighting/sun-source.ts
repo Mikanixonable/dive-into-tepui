@@ -33,6 +33,7 @@ export class SunSource implements LightSource {
 
   hasContribution(): boolean { return true; }
 
+  // 現在の光源モデルのマテリアル。モードごとに初回だけ組む。
   material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
     const cached = this.materials.get(this.model);
     if (cached !== undefined) return cached;
@@ -49,8 +50,7 @@ export class SunSource implements LightSource {
     const lightDir = normalize(toSun);
     const dotNL: FloatNode = saturate(dot(sample.normal, lightDir));
     // 恒星から届く放射照度(遮蔽込み)。拡散・鏡面の両方がこれを基準に BRDF を掛ける。
-    // 恒星の直射は遮蔽パスの透過率で落ち、本影では 0 になる。遮られる源が何か(天体・環・
-    // メッシュ)は sun-occlusion.ts が畳み込み済みで、ここはその 1 枚だけを読む。
+    // 恒星の直射は遮蔽パスの透過率で落ち、本影では 0 になる。
     const irradiance: Vec3Node = this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
       .mul(dotNL).mul(texture(this.occlusion.texture, sample.uv).r);
@@ -89,6 +89,7 @@ export class SunSource implements LightSource {
     return { diffuse, specular };
   }
 
+  // 組んだマテリアルと係数表を解放する。
   dispose(): void {
     for (const material of this.materials.values()) material.dispose();
     this.ltcTables?.ltc1.dispose();

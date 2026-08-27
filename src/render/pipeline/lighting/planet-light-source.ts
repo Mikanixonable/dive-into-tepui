@@ -1,7 +1,6 @@
 // 天体照の光源。恒星以外の天体が反射して届ける光を、一様な放射輝度の球光源として
 // スロット本数ぶん持ち、スロット 1 本がライティングパスの描画命令 1 本になる。
-// 値は毎フレーム呼び出し側(EnvironmentScene / 描画テスト環境)が書き、どの天体を載せるかの
-// 選定は game/celestial/planet-light.ts が行う。
+// どの天体を載せるかは決めず、毎フレーム set() で渡された値をそのまま照らす。
 import * as THREE from 'three/webgpu';
 import { PI, clamp, dot, length, max, uniform } from 'three/tsl';
 import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';
@@ -53,6 +52,7 @@ class PlanetLightSlot implements LightSource {
     return this.cached;
   }
 
+  // このスロットの球光源がシェーディング点へ届ける照度。
   private contribution(sample: ShadingSample): LightContribution {
     const toCenter = sample.viewPositionOf(this.slot.center).sub(sample.position);
     const lightDir = toCenter.div(max(length(toCenter), 1));
