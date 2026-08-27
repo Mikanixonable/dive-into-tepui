@@ -70,3 +70,10 @@ export const EARTH_TEXTURES = {
 export function textureOf(id: string): CelestialTexture | null {
   return CELESTIAL_TEXTURES[id] ?? null;
 }
+
+// id の実写テクスチャから測った測光値(ボンドアルベドと平均色の色み)。地球も含む。
+// 実写テクスチャを持たない天体では null。
+export function texturePhotometryOf(id: string): Pick<CelestialTexture, 'bondAlbedo' | 'averageHue'> | null {
+  if (id === 'earth') return EARTH_TEXTURES;
+  return CELESTIAL_TEXTURES[id] ?? null;
+}
