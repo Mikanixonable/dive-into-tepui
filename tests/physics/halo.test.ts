@@ -72,13 +72,13 @@ export function register(): void {
   }
 
   // 文献値との突き合わせ。Sun-Earth L1 の線形化パラメータは γ≈0.01、c2≈4.0611、
-  // λ≈2.0864、ωz≈2.0152、|κ|≈3.2293。
+  // λ≈2.0864、ωz≈2.0152、κ≈+3.2293(符号込み)。
   test('halo: Sun-Earth L1 linear parameters match the published values', () => {
     const frame = collinearFrame('earth', 'L1', t, ephemeris);
     assert.ok(Math.abs(frame.gamma - 0.01) < 5e-4, `gamma: ${frame.gamma}`);
     assert.ok(Math.abs(frame.lambda - 2.0864) < 2e-3, `lambda: ${frame.lambda}`);
     assert.ok(Math.abs(frame.omegaZ - 2.0152) < 2e-3, `omegaZ: ${frame.omegaZ}`);
-    assert.ok(Math.abs(Math.abs(frame.kappa) - 3.2293) < 5e-3, `kappa: ${frame.kappa}`);
+    assert.ok(Math.abs(frame.kappa - 3.2293) < 5e-3, `kappa: ${frame.kappa}`);
   });
 
   // Earth-Moon L1: γ≈0.1509、λ≈2.3344、ωz≈2.2688。
