@@ -280,7 +280,7 @@ export class BasePanel {
 
   // 外部コールバック
   public onLaunchVessel: ((ship: Player, base: Base) => void) | null = null;
-  // 「新造」ボタン。実際の艦の生成は Docking 側が行う(BasePanel は UI のみ)。
+  // 「新造」ボタンが押されたことを外部へ通知する。
   public onBuildVessel: ((base: Base) => void) | null = null;
   public onClose: (() => void) | null = null;
 
@@ -338,15 +338,15 @@ export class BasePanel {
     });
     this.tabBar.element.classList.add('dock-tabs');
     this.tabBar.element.setAttribute('aria-label', 'ドックの区画');
-    this.tabBar.element.querySelectorAll<HTMLElement>('[role="tab"]').forEach((tab, index) => {
+    for (const [index, tab] of Array.from(this.tabBar.element.querySelectorAll<HTMLElement>('[role="tab"]')).entries()) {
       const item = TAB_ITEMS[index];
-      if (!item) return;
+      if (!item) continue;
       tab.id = `dock-tab-${item[0]}`;
       tab.setAttribute('aria-controls', 'dock-panel-content');
-    });
+    }
     header.appendChild(this.tabBar.element);
 
-    // 閉じる操作は、プロパティウィンドウ側へパネル収納を要求する。
+    // 閉じるボタンが押されたことを onClose コールバックで外部へ通知する。
     const closeBtn = new CloseButton(() => this.onClose?.());
     header.appendChild(closeBtn.element);
     panel.appendChild(header);

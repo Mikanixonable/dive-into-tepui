@@ -1,5 +1,10 @@
+import { Button } from '../widgets';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../../game-entity/parts';
 import * as C from '../../const';
+
+// 基地パネルの3タブ(格納艦艇/部品/ショップ)が共有する処理を持つ。
+// ショップカタログ・売却額・補給額といった価格計算と、dock-btn の見た目や
+// セクション見出しなどタブ間で繰り返す DOM 組み立てを提供する。
 
 // ショップで購入可能な部品カタログ
 export interface PartCatalogEntry {
@@ -12,9 +17,9 @@ export interface PartCatalogEntry {
   readonly props: Record<string, number | string>;
 }
 
-// 既定パーツ(game-entity/ship.ts の initDefaultParts)と同じ単位・同じ桁で書く。
-// 桁がずれると、換装した瞬間に推力や耐久が別物になる。既定艦の値は
-// 重量 100 / 推力 PLAYER_MASS×最大スロットル / 冷却 25 / 発電 50 / 発射レート 1÷FIRE_INTERVAL。
+// SHOP_CATALOG の各値は、新造時の既定艦(重量 100 / 推力 PLAYER_MASS×最大スロットル /
+// 冷却 25 / 発電 50 / 発射レート 1÷FIRE_INTERVAL)と単位・桁を合わせる。ずれると、
+// 換装した瞬間に推力や耐久が別物になる。
 const DEFAULT_TORQUE = C.MAX_ANG_ACCEL * Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL);
 const DEFAULT_THRUST = C.PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
 export const SHOP_CATALOG: readonly PartCatalogEntry[] = [
@@ -53,12 +58,19 @@ function estimatePartValue(part: AnyPart): number {
   return catalogEntry ? catalogEntry.price : part.maxHp * PART_FALLBACK_VALUE_PER_MAXHP;
 }
 
+// 部品を売却したときにプレイヤーが受け取る額を返す。
 export function sellPrice(part: AnyPart): number {
   return Math.round(estimatePartValue(part) * PART_SELL_RATE);
 }
 
+// RCS タンクを満タンまで補給するのに必要な額を返す。満タンなら0。
 export function refuelCost(tank: RcsTankPart): number {
   return Math.max(0, Math.round((tank.maxFuel - tank.fuel) * RCS_REFUEL_PRICE_PER_KG));
+}
+
+// 金額を表示用の文字列にする。freeProcurement のときは金額を出さず定型の案内文を返す。
+export function costLabel(freeProcurement: boolean, amount: number): string {
+  return freeProcurement ? 'コストなし' : `${amount.toLocaleString()} Cr`;
 }
 
 export const PART_TYPE_LABELS: Readonly<Record<PartType, string>> = {
@@ -72,12 +84,18 @@ export const PART_TYPE_LABELS: Readonly<Record<PartType, string>> = {
   weapon: '武装',
 };
 
-export function formatPartMeta(part: Part): string {
-  if (part.type !== 'rcs_tank') return PART_TYPE_LABELS[part.type];
-  const tank = part as RcsTankPart;
-  return `${PART_TYPE_LABELS[part.type]} · 燃料 ${Math.round(tank.fuel).toLocaleString()} / ${Math.round(tank.maxFuel).toLocaleString()} kg`;
+// Part が RcsTankPart かどうかを判定する型ガード。
+export function isRcsTank(part: Part): part is RcsTankPart {
+  return part.type === 'rcs_tank';
 }
 
+// 部品の種別ラベルを返す。rcs_tank は燃料残量も添える。
+export function formatPartMeta(part: Part): string {
+  if (!isRcsTank(part)) return PART_TYPE_LABELS[part.type];
+  return `${PART_TYPE_LABELS[part.type]} · 燃料 ${Math.round(part.fuel).toLocaleString()} / ${Math.round(part.maxFuel).toLocaleString()} kg`;
+}
+
+// カタログのプロパティ1件を、単位付きの表示用文字列にする。
 export function formatCatalogProperty(name: string, value: number | string): string {
   switch (name) {
     case 'damageReduction': return `被害軽減 ${typeof value === 'number' ? Math.round(value * 100) : value} %`;
@@ -99,6 +117,7 @@ export function formatCatalogProperty(name: string, value: number | string): str
   }
 }
 
+// タイトル・説明・件数からなる、タブ共通のセクション見出しを組み立てる。
 export function buildSectionHeader(titleText: string, descriptionText: string, countText: string): HTMLElement {
   const header = document.createElement('header');
   header.className = 'dock-section-head';
@@ -118,4 +137,24 @@ export function buildSectionHeader(titleText: string, descriptionText: string, c
   count.textContent = countText;
   header.append(copy, count);
   return header;
+}
+
+export type DockBtnVariant = 'primary' | 'service' | 'quiet';
+
+// dock-btn の外見クラスを付与する。complete を渡すと、料金が0になった完了状態の見た目も切り替える。
+export function styleDockBtn(el: HTMLElement, variant: DockBtnVariant, complete?: boolean): void {
+  el.classList.add('dock-btn', `dock-btn-${variant}`);
+  if (complete !== undefined) el.classList.toggle('dock-btn-complete', complete);
+}
+
+// 支払って実行する系のボタンを組み立てる。cost が0以下なら完了表示にし、資金不足なら無効化する。
+export function buildFeeButton(
+  freeProcurement: boolean, money: number, cost: number,
+  actionLabel: string, doneLabel: string, onClick: () => void,
+): HTMLElement {
+  const enabled = cost > 0 && (freeProcurement || money >= cost);
+  const btn = new Button(cost > 0 ? `${actionLabel} · ${costLabel(freeProcurement, cost)}` : doneLabel, onClick);
+  styleDockBtn(btn.element, 'service', cost <= 0);
+  btn.setEnabled(enabled);
+  return btn.element;
 }
