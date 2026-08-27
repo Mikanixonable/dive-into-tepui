@@ -1,7 +1,5 @@
 // 画面座標に絶対配置する汎用コンテキストメニュー。開いた対象 T を保持し、項目クリック/
-// 項目ショートカットで onSelect(act, target) を発火して自動で閉じる。ESC・項目ショートカット・
-// 外側クリックでの close は OverlayManager への登録を通じて配送される — 自分で
-// window/document へリスナは張らない。
+// 項目ショートカットで onSelect(act, target) を発火して閉じる。
 // #hud の子として popup レイヤへ置くため、`#hud, #hud *` の margin/padding リセットに
 // 勝てるよう全セレクタを `#hud` で始める。
 import { clampOverlayPosition } from '../layout';
@@ -46,10 +44,10 @@ export interface MenuItem<A extends string = string> {
   act?: A;
   shortcut?: string;
   subLabel?: string;
-  // 排他選択肢の現在値を示す強調フラグ。ContextMenu 自身は使わず PropertyWindow が読む。
+  // 排他選択グループの現在値を示す強調フラグ。
   readonly selected?: boolean;
-  // 選ばれても(PropertyWindow に限り)自動で閉じない。選択肢を見比べながら切り替え直したい
-  // 排他選択グループの項目に立てる。ContextMenu は選べば常に閉じるので無視する。
+  // 選んでも開いたままにしたい排他選択グループの項目に立てるフラグ。選択肢を見比べながら
+  // 切り替え直せるようにする。
   readonly keepOpen?: boolean;
 }
 
@@ -67,11 +65,11 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   public onSelect: ((act: A, target: T) => void) | null = null;
   public onClose: (() => void) | null = null;
 
-  // メニュー要素を popupLayer(#hud の popup レイヤ)へ追加する。ESC・項目ショートカット・
-  // 要素外へのポインタ操作での自動クローズは overlayManager への登録を通じて配送される。
+  // メニュー要素を popupLayer(#hud の popup レイヤ)へ追加し、overlayManager へ登録する。
   public constructor(popupLayer: HTMLElement, private readonly overlayManager: OverlayManager) {
     this.overlayId = `ctx-menu-${ContextMenu.nextId++}`;
     injectOnce('ctx-menu', STYLE);
+    // メニュー要素を組み立てて popupLayer へ追加する。
     this.el = document.createElement('div');
     this.el.className = 'ctx-menu';
     this.el.setAttribute('role', 'menu');
@@ -79,17 +77,19 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
     this.el.addEventListener('keydown', (event) => this.handleMenuNavigation(event));
+    // ビューポートが変わるたびに、開いていれば位置を求め直す。
     this.unsubscribeViewport = onViewportChange(() => {
       if (this.target !== null) this.positionWithinViewport();
     });
   }
 
+  // OverlayHandle 実装。target がメニュー要素の内部かどうかを返す。
   public contains(target: Node): boolean {
     return this.el.contains(target);
   }
 
-  // OverlayManager からの項目ショートカット配送を受ける。一致する項目があれば
-  // クリックと同じ経路(close→onSelect)で選択したことにする。
+  // OverlayHandle 実装。ショートカットコードに一致する項目があれば、クリックと同じ経路
+  // (close→onSelect)で選択したことにする。
   public handleShortcut(code: string): boolean {
     if (this.target === null) return false;
     // 各項目のクリックリスナは自分自身を閉包で持つが、ここはコード文字列しか受け取らない
@@ -168,11 +168,13 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
     }
   }
 
+  // 矢印キー・Home/End で項目間のフォーカスを移し、Tab では閉じる。
   private handleMenuNavigation(event: KeyboardEvent): void {
     if (event.key === 'Tab') {
       this.close();
       return;
     }
+    // 現在フォーカス中の項目を基準に、押されたキーに応じた移動先を求める。
     const menuItems = Array.from(this.el.querySelectorAll<HTMLElement>('.ctx-menu-item'));
     if (menuItems.length === 0) return;
     const currentIndex = Math.max(0, menuItems.indexOf(document.activeElement as HTMLElement));
@@ -183,20 +185,24 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
     if (event.key === 'End') nextIndex = menuItems.length - 1;
     if (nextIndex === null) return;
     event.preventDefault();
+    // 求めた移動先へフォーカスを移す。
     const nextItem = menuItems[nextIndex]!;
     this.setRovingItem(nextItem);
     nextItem.focus({ preventScroll: true });
   }
 
+  // フォーカス対象の項目だけ tabIndex 0 にし、それ以外を -1 にする(roving tabindex)。
   private setRovingItem(activeItem: HTMLElement): void {
     for (const item of Array.from(this.el.querySelectorAll<HTMLElement>('.ctx-menu-item'))) {
       item.tabIndex = item === activeItem ? 0 : -1;
     }
   }
 
+  // 要求座標を基準に、ビューポート内へ収まるようメニューの位置を決める。
   private positionWithinViewport(): void {
     const margin = 6;
     const rect = this.el.getBoundingClientRect();
+    // メニューの実寸とビューポートに収まるよう要求座標をクランプする。
     const pos = clampOverlayPosition(
       { x: this.requestedX, y: this.requestedY },
       rect,
