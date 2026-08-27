@@ -39,7 +39,7 @@ export interface CriticalInclinationRow extends ReferenceOrbitRow {
 function buildCommonFields(
   configPanel: HTMLElement,
   onCommit: (patch: { colorStart?: number; opacity?: number; direction?: DirectionMarkerMode; animate?: boolean }) => void,
-): { readonly colorInput: ValueInput; readonly opacityField: ValueField; readonly direction: SegmentedControl<DirectionMarkerMode>; readonly animateSwitch: ToggleSwitch } {
+): Omit<ReferenceOrbitRow, 'heading' | 'configPanel'> {
   const colorField = buildColorField('色', 0, (v) => onCommit({ colorStart: v }));
   configPanel.appendChild(colorField.row);
   const opacityField = buildValueField('透明度', OPACITY_MAPPING, (v) => onCommit({ opacity: v }));
@@ -54,7 +54,7 @@ function buildCommonFields(
 // 回帰日数・周回数の2行(太陽同期準回帰軌道・ドーンダスク軌道に共通)。
 function buildRepeatGroundTrackFields(
   configPanel: HTMLElement, onCommit: (patch: Partial<SunSyncSettings>) => void,
-): { readonly repeatDaysField: ValueField; readonly revsPerRepeatField: ValueField } {
+): Omit<RepeatGroundTrackRow, keyof ReferenceOrbitRow> {
   const repeatDaysField = buildValueField('回帰日数', REPEAT_DAYS_MAPPING, (v) => onCommit({ repeatDays: Math.round(v) }));
   configPanel.appendChild(repeatDaysField.row);
   const revsPerRepeatField = buildValueField('周回数', REVS_PER_REPEAT_MAPPING, (v) => onCommit({ revsPerRepeat: Math.round(v) }));
