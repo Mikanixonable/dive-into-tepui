@@ -63,10 +63,8 @@ import { register as registerBlackbody } from './blackbody.test';
 import { register as registerWindowAgreement } from './window-agreement.test';
 import { register as registerPlanArcRange } from './plan-arc-range.test';
 import './creative-placement-validation.test';
-// TEMP-DISABLED-FOR-REVIEW: protein-combat-state.test.ts が workspace3 HEAD時点で
-// 既に src との型不一致で壊れている(このセッションの担当外)。動作確認のため一時退避。
-// import { register as registerProtein } from './protein-combat-state.test';
-// import { register as registerProteinFormation } from './protein-formation.test';
+import { register as registerProtein } from './protein-combat-state.test';
+import { register as registerProteinFormation } from './protein-formation.test';
 import { register as registerProjectileOrientation } from './projectile-orientation.test';
 import { register as registerProteinRibbonCollision } from './protein-ribbon-collision.test';
 import { register as registerProteinRibbonGeometry } from './protein-ribbon-geometry.test';
@@ -139,8 +137,8 @@ registerThermal();
 registerBlackbody();
 registerWindowAgreement();
 registerPlanArcRange();
-// registerProtein();
-// registerProteinFormation();
+registerProtein();
+registerProteinFormation();
 registerProjectileOrientation();
 registerProteinRibbonCollision();
 registerProteinRibbonGeometry();
