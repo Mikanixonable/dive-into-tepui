@@ -22,12 +22,13 @@ interface PanelCollapsedState {
 }
 
 type PanelCollapsedViewListener = (view: HudWorldView) => void;
-type PanelDefaultCollapsed = boolean | ((view: HudWorldView) => boolean);
+export type PanelDefaultCollapsed = boolean | ((view: HudWorldView) => boolean);
 
 let currentView: HudWorldView = 'combat';
 let cachedState: PanelCollapsedState | null = null;
 const viewListeners = new Set<PanelCollapsedViewListener>();
 
+// localStorage から読んだ値のうち、真偽値だけを畳み状態として採る。
 function parseBucketValue(parsed: unknown): PanelCollapsedBucket | null {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
   const bucket: PanelCollapsedBucket = {};
@@ -37,6 +38,7 @@ function parseBucketValue(parsed: unknown): PanelCollapsedBucket | null {
   return bucket;
 }
 
+// ビュー1つぶんの畳み状態表を、未知の形なら空として読み出す。
 function parseBucket(raw: string | null): PanelCollapsedBucket | null {
   if (!raw) return null;
   try {
@@ -127,6 +129,7 @@ export interface PanelCollapseWiring {
 export function wirePanelCollapse(params: PanelCollapseWiring): () => void {
   const { toggleRoot, toggleId, toggleClassName, target, labels, storageId, defaultCollapsed = false, extraHitEls = [] } = params;
   const toggle = buildCollapseToggle(toggleRoot, toggleId, toggleClassName, target, labels, extraHitEls);
+  // 現在ビューの保存値、無ければ既定値を畳み状態として当て直す。
   const applyCollapsedState = (): void => {
     const fallback = typeof defaultCollapsed === 'function' ? defaultCollapsed(currentView) : defaultCollapsed;
     const collapsed = loadPanelCollapsed(storageId) ?? fallback;
@@ -140,9 +143,9 @@ export function wirePanelCollapse(params: PanelCollapseWiring): () => void {
 }
 
 export class PanelShell {
-  readonly el: HTMLElement;
-  readonly titleEl: HTMLHeadingElement;
-  readonly body: HTMLElement;
+  public readonly el: HTMLElement;
+  public readonly titleEl: HTMLHeadingElement;
+  public readonly body: HTMLElement;
 
   // parent の子として id のパネルを組む。title は見出しの初期テキスト — 呼び出し側は
   // titleEl を直接書き換えて埋め込み要素(件数バッジ等)を足してよい。折りたたみ状態は
@@ -154,6 +157,7 @@ export class PanelShell {
     this.el.dataset['id'] = id;
     this.el.className = 'panel panel-shell';
 
+    // 見出し行と本文を組む。
     const head = document.createElement('div');
     head.className = 'panel-shell-head';
     this.titleEl = document.createElement('h3');
@@ -165,6 +169,7 @@ export class PanelShell {
     this.body.className = 'panel-shell-body';
     this.el.appendChild(this.body);
 
+    // 見出しクリックとトグルの両方から畳めるようにする。
     wirePanelCollapse({
       toggleRoot: head,
       toggleId: `${id}-collapse`,
@@ -186,7 +191,7 @@ export class PanelShell {
 
   // ゲーム状態由来の表示/非表示を .hidden クラスで切り替える。折りたたみ(利用者の
   // 好み)とは別軸 — 隠れている間に畳み外ししても、再表示時にその状態のまま出てくる。
-  setHidden(hidden: boolean): void {
+  public setHidden(hidden: boolean): void {
     this.el.classList.toggle('hidden', hidden);
   }
 }
