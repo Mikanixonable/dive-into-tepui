@@ -5,6 +5,7 @@
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
 import type { GameEntity } from '../../game-entity/game-entity';
+import { SyncThrottle } from '../sync-throttle';
 import { DraggableWindow } from '../windows/draggable-window';
 import {
   ChartAxis, ChartMark, ChartPoint, ChartSpec, OrbitChart, distanceAxis, timeAxis,
@@ -97,7 +98,7 @@ export class OrbitAnalysisWindow {
   private tab: AnalysisTab = 'altitude';
   private approachAvailable = false;
   private projectionAvailable = false;
-  private nextSyncAt = 0;
+  private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   // 縦軸(高度)の中心 [m]。null なら次の sync で現在高度に固定し直す。
   private altitudeCenterM: number | null = null;
   // 戦闘ビューでも未来の弧を伸ばし続けさせるため analysisPanelReader を立てている個体
@@ -216,9 +217,7 @@ export class OrbitAnalysisWindow {
   }
 
   public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
-    const now = performance.now();
-    if (now < this.nextSyncAt) return;
-    this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    if (!this.throttle.due()) return;
 
     const entity = game.activeControllableEntity;
     this.setReaderEntity(entity);
