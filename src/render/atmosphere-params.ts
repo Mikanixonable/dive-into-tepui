@@ -1,8 +1,10 @@
-// 天体ごとの、大気の見えを決める光学パラメータ。濃さは高度の指数関数で表し、レイリー散乱と
-// ミー散乱がそれぞれのスケールハイトを持つ。どの高度にも「ここから上は真空」という界面を
-// 置かないので、大気の広がりは決め打ちの厚みではなく散乱係数から導かれる。
+// 天体ごとの、大気の見えを決める光学パラメータと、その大気を解くサンプル点の配り方。濃さは高度の
+// 指数関数で表し、レイリー散乱とミー散乱がそれぞれのスケールハイトを持つ。どの高度にも「ここから
+// 上は真空」という界面を置かないので、大気の広がりは決め打ちの厚みではなく散乱係数から導かれる。
+// **サンプル点の配り方は物理ではなく、品質の段ぶんの予算をどの大気へ寄せるかの方針である。**
 // 抗力を解く大気モデル(physics/atmosphere.ts)とは別の分布で、こちらは見えだけを決める。
 import * as THREE from 'three/webgpu';
+import { ATMOSPHERE_QUALITY, type AtmosphereQuality } from './graphics-settings';
 
 // 大気 1 つぶんの光学パラメータ。散乱係数はいずれも基準球面(天体半径)での値 [1/m]。
 export type AtmosphereOptics = {
@@ -38,21 +40,25 @@ export const ATMOSPHERE_OPTICS: Readonly<Record<string, AtmosphereOptics>> = {
   },
 };
 
-// 主天体を細かく描く重みが、他の天体と同じ細かさへ薄まりきる対数消散係数の差。1 桁の開きが
-// あれば、その天体の大気が場を支配していると見なす。
-const DETAIL_WEIGHT_GAP = Math.LN10;
-
-// 主天体を細かく描く重み 0..1。gap は第 1 候補と第 2 候補の対数消散係数の差で、候補が
-// 1 体しか無いなら Infinity を渡す。**順位が入れ替わる点では gap が 0 になり、どちらが
-// 主天体でも重みが 0 で一致する**ので、入れ替わりそのものは絵に出ない。
-function detailWeightFromGap(gap: number): number {
-  return THREE.MathUtils.smoothstep(gap, 0, DETAIL_WEIGHT_GAP);
-}
-
 // 天体 id の大気。大気を持たない天体では null。
 export function atmosphereOpticsOf(id: string): AtmosphereOptics | null {
   return ATMOSPHERE_OPTICS[id] ?? null;
 }
+
+// 同時に大気を描ける天体の数。
+export const MAX_ATMOSPHERE_BODIES = 4;
+
+// 大気 1 体を解くのに配れるサンプル点の数の段。
+export const ATMOSPHERE_STEPS = { low: 2, medium: 6, high: 16 } as const;
+export type AtmosphereSteps = (typeof ATMOSPHERE_STEPS)[keyof typeof ATMOSPHERE_STEPS];
+
+// 品質の段ごとの、最も細かく描く天体へ配るサンプル点の数。
+const STEPS_OF_QUALITY: Readonly<Record<AtmosphereQuality, AtmosphereSteps>> = {
+  [ATMOSPHERE_QUALITY.off]: ATMOSPHERE_STEPS.low,
+  [ATMOSPHERE_QUALITY.low]: ATMOSPHERE_STEPS.low,
+  [ATMOSPHERE_QUALITY.medium]: ATMOSPHERE_STEPS.medium,
+  [ATMOSPHERE_QUALITY.high]: ATMOSPHERE_STEPS.high,
+};
 
 // 絵に出ないと見なす光学的厚み。地平線方向の視線がこれを下回る高度から上は描かない。
 const MIN_VISIBLE_OPTICAL_DEPTH = 1e-5;
@@ -103,20 +109,56 @@ function rankStrength(optics: AtmosphereOptics, surfaceRadius: number, altitude:
     - Math.max(altitude - cutoff, 0) / VACUUM_RANK_SCALE_HEIGHT;
 }
 
-// 大気を持つ天体を、視点のいる場所の大気を強く作っている順に並べ、先頭を細かく描く重み 0..1
-// を添えて返す。altitude は視点のその天体からの高度 [m]。**視線の向きは見ない** — 地表から空を
-// 見上げて地面が視錐台に入っていなくても、空は大気の色でなければならない。
-//
-// **この並びは視点に近い順でもある。** 裾の中では濃さが高度に対して指数で落ちるので、遠い天体が
-// 近い天体を上回るのは近い側の大気がそもそも見えないときだけ。裾の外の天体どうしは共通の減衰率で
-// 比べるので、近い順そのものになる。
-export function rankAtmospheres<T extends { readonly optics: AtmosphereOptics; readonly surfaceRadius: number }>(
-  candidates: readonly { readonly body: T; readonly altitude: number }[],
-): { readonly bodies: readonly T[]; readonly detailWeight: number } {
+// 細かく描く天体への寄せが、残りと同じ細かさへ薄まりきる順位の強さの差。1 桁の開きがあれば、
+// その天体の大気が場を支配していると見なす。
+const DETAIL_WEIGHT_GAP = Math.LN10;
+
+// 大気の広がりを決めるもの。
+type AtmosphereExtent = {
+  readonly optics: AtmosphereOptics;
+  readonly surfaceRadius: number;
+};
+
+// 大気を描く候補 1 体。distance は視点から天体中心までの距離 [m]。
+export type AtmosphereCandidate<T extends AtmosphereExtent> = {
+  readonly body: T;
+  readonly distance: number;
+};
+
+// 大気を描く指示 1 体ぶん。steps はその大気を解くサンプル点の数で、段の間の実数も採る。
+export type AtmosphereDraw<T extends AtmosphereExtent> = {
+  readonly body: T;
+  readonly steps: number;
+};
+
+// このフレームに大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数を添えて返す。
+// 品質がオフなら空。同時に描ける数を超えた候補は、影響の小さいほうから落ちる。
+export function atmosphereDraws<T extends AtmosphereExtent>(
+  candidates: readonly AtmosphereCandidate<T>[],
+  quality: AtmosphereQuality,
+): readonly AtmosphereDraw<T>[] {
+  if (quality === ATMOSPHERE_QUALITY.off) return [];
   const ranked = candidates
-    .map(({ body, altitude }) => ({ body, strength: rankStrength(body.optics, body.surfaceRadius, altitude) }))
-    .sort((a, b) => b.strength - a.strength);
-  // 候補が 1 体しか無いなら、その天体が場を独占している。
+    .map((candidate) => ({
+      ...candidate,
+      strength: rankStrength(
+        candidate.body.optics, candidate.body.surfaceRadius,
+        candidate.distance - candidate.body.surfaceRadius,
+      ),
+    }))
+    .sort((a, b) => b.strength - a.strength)
+    .slice(0, MAX_ATMOSPHERE_BODIES);
+  // 先頭へ寄せる予算は、2 位との開きで決める。**開きが 0 の場所では残りと同じ細かさになる**ので、
+  // 順位が入れ替わっても絵が飛ばない。候補が 1 体なら、その天体が場を独占している。
   const gap = ranked.length < 2 ? Infinity : ranked[0]!.strength - ranked[1]!.strength;
-  return { bodies: ranked.map(({ body }) => body), detailWeight: detailWeightFromGap(gap) };
+  const detailed = THREE.MathUtils.lerp(
+    ATMOSPHERE_STEPS.low, STEPS_OF_QUALITY[quality],
+    THREE.MathUtils.smoothstep(gap, 0, DETAIL_WEIGHT_GAP),
+  );
+  return ranked
+    .map(({ body, distance }, index) => ({
+      body, distance, steps: index === 0 ? detailed : ATMOSPHERE_STEPS.low,
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .map(({ body, steps }) => ({ body, steps }));
 }

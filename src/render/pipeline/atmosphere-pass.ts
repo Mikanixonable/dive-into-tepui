@@ -4,8 +4,8 @@
 // 遮蔽も同じ視線のレイ・スフィア交差で解くので、深度テストの精度には依存しない。大気を持つ
 // 天体を同時に MAX_ATMOSPHERE_BODIES 体まで受け、視点に近い順に重ねる。
 //
-// どの天体の見えも同じ「視線に沿った散乱の積分」で解き、違うのはサンプル点の数だけ。先頭の
-// 天体の数だけを呼び出し側が品質の段で選び、残りの天体は最も粗い段に固定する。
+// どの天体の見えも同じ「視線に沿った散乱の積分」で解き、違うのは呼び出し側が配ったサンプル点の
+// 数だけ。段の間の実数を受けた層は、上下の段を混ぜて近似する。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
@@ -15,31 +15,16 @@ import {
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
-import { ATMOSPHERE_QUALITY, type AtmosphereQuality } from '../graphics-settings';
-import { type AtmosphereOptics, cutoffAltitude } from '../atmosphere-params';
+import {
+  ATMOSPHERE_STEPS, MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, type AtmosphereOptics,
+  type AtmosphereSteps, cutoffAltitude,
+} from '../atmosphere-params';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
 import type { GBufferPass } from './gbuffer';
 import type { SunOcclusion } from './sun-occlusion';
 import type { SunLight } from './sun-light';
 import { viewPositionAt, viewRayAt } from './view-ray';
-
-// 同時に大気を描ける天体の数。**TSL のグラフは静的に展開されるので、実行時には増やせない。**
-export const MAX_ATMOSPHERE_BODIES = 4;
-
-// 視線に沿った積分のサンプル点の数。**TSL のグラフは静的に展開されるので、ここに無い数は
-// 実行時に選べない。** 先頭以外の天体は常に low で描く。
-export const ATMOSPHERE_STEPS = { low: 2, medium: 6, high: 16 } as const;
-export type AtmosphereSteps = (typeof ATMOSPHERE_STEPS)[keyof typeof ATMOSPHERE_STEPS];
-
-// 大気の品質の段ごとの、先頭の天体のサンプル点の数。オフのときは天体を1体も渡さないので、
-// そこで何を選んでも絵に出ない。
-export const ATMOSPHERE_STEPS_OF_QUALITY: Readonly<Record<AtmosphereQuality, AtmosphereSteps>> = {
-  [ATMOSPHERE_QUALITY.off]: ATMOSPHERE_STEPS.low,
-  [ATMOSPHERE_QUALITY.low]: ATMOSPHERE_STEPS.low,
-  [ATMOSPHERE_QUALITY.medium]: ATMOSPHERE_STEPS.medium,
-  [ATMOSPHERE_QUALITY.high]: ATMOSPHERE_STEPS.high,
-};
 
 // 消散係数の下限 [1/m]。散乱の割合を消散で割るときの 0/0 を塞ぐ。
 const MIN_EXTINCTION = 1e-30;
@@ -51,8 +36,10 @@ export type AtmosphereBody = {
   readonly optics: AtmosphereOptics;
 };
 
-// 天体 1 体ぶんの uniform。cutoffRadius は大気の裾を打ち切る半径(天体半径 + 打ち切り高度)。
+// 天体 1 体ぶんの uniform。cutoffRadius は大気の裾を打ち切る半径(天体半径 + 打ち切り高度)、
+// detailWeight は細かい段へ寄せる重み 0..1。
 type BodySlot = {
+  readonly detailWeight: FloatUniform;
   readonly center: Vec3Uniform;
   readonly surfaceRadius: FloatUniform;
   readonly cutoffRadius: FloatUniform;
@@ -118,14 +105,27 @@ const miePhase = Fn(([cosTheta, anisotropy]: readonly FloatNode[]) => {
   return float(1).sub(squared).div(denominator.mul(sqrt(denominator)));
 });
 
+// サンプル点 steps 個ぶんの細かさを賄える、最も粗い段。
+function detailTierFor(steps: number): AtmosphereSteps {
+  if (steps > ATMOSPHERE_STEPS.medium) return ATMOSPHERE_STEPS.high;
+  if (steps > ATMOSPHERE_STEPS.low) return ATMOSPHERE_STEPS.medium;
+  return ATMOSPHERE_STEPS.low;
+}
+
+// サンプル点 steps 個ぶんの細かさを、最も粗い段と tier の混合で表したときの tier 側の重み 0..1。
+function detailBlendOf(steps: number, tier: AtmosphereSteps): number {
+  if (tier <= ATMOSPHERE_STEPS.low) return 0;
+  return THREE.MathUtils.clamp((steps - ATMOSPHERE_STEPS.low) / (tier - ATMOSPHERE_STEPS.low), 0, 1);
+}
+
 export class AtmospherePass {
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
   private readonly slots: readonly BodySlot[];
   // 積分の刻みを画素ごとにずらす種。**このパスが持つ** — いまここだけが使う。
   private readonly blueNoise: BlueNoise;
-  private readonly primarySteps: FloatUniform;
-  private readonly detailWeight: FloatUniform;
+  // 細かい段のサンプル点の数。どのスロットもこの1つの段へ寄せる。
+  private readonly detailSteps: FloatUniform;
   // 下地と合成する前の、大気が足す内部散乱だけ。「大気」デバッグ表示だけが読む。
   private readonly scattered: Vec3Node;
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と view→描画座標の行列は
@@ -153,9 +153,9 @@ export class AtmospherePass {
     this.blueNoise = new BlueNoise();
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
-    this.primarySteps = uniform(ATMOSPHERE_STEPS.low);
-    this.detailWeight = uniform(0);
+    this.detailSteps = uniform(ATMOSPHERE_STEPS.low);
     this.slots = Array.from({ length: MAX_ATMOSPHERE_BODIES }, (): BodySlot => ({
+      detailWeight: uniform(0),
       center: uniform(new THREE.Vector3()),
       surfaceRadius: uniform(0),
       cutoffRadius: uniform(0),
@@ -204,7 +204,7 @@ export class AtmospherePass {
   ): LayerContribution {
     const transmittance = vec3(1, 1, 1).toVar();
     const inscatter = vec3(0, 0, 0).toVar();
-    for (const [index, slot] of this.slots.entries()) {
+    for (const slot of this.slots) {
       const segment = this.raySegment(slot, rayOrigin, rayDir, opaqueDist);
       const layerTransmittance = vec3(1, 1, 1).toVar();
       const layerInscatter = vec3(0, 0, 0).toVar();
@@ -212,18 +212,18 @@ export class AtmospherePass {
         const coarse = this.integrated(slot, segment, rayOrigin, rayDir, ATMOSPHERE_STEPS.low);
         layerTransmittance.assign(coarse.transmittance);
         layerInscatter.assign(coarse.inscatter);
-        // 先頭だけは、段が上なら細かいほうへ寄せる。**重みで混ぜるのは、先頭が入れ替わる場所で
-        // 絵を飛ばさないため** — 重みが 0 なら残りの天体とまったく同じ見えになる。段が「低」の
-        // ときは寄せ先が今解いたものと同じなので、分岐そのものを組まない。
-        if (index === 0) {
-          const blendDetail = (steps: number) => (): void => {
-            const detailed = this.integrated(slot, segment, rayOrigin, rayDir, steps);
-            layerTransmittance.assign(mix(layerTransmittance, detailed.transmittance, this.detailWeight));
-            layerInscatter.assign(mix(layerInscatter, detailed.inscatter, this.detailWeight));
-          };
-          If(this.primarySteps.equal(ATMOSPHERE_STEPS.high), blendDetail(ATMOSPHERE_STEPS.high))
-            .ElseIf(this.primarySteps.equal(ATMOSPHERE_STEPS.medium), blendDetail(ATMOSPHERE_STEPS.medium));
-        }
+        // 配られたサンプル点が最も粗い段を上回る層だけ、細かいほうへ寄せる。**重みで混ぜるのは、
+        // 細かく描く天体が入れ替わる場所で絵を飛ばさないため** — 重みが 0 なら残りの天体と
+        // まったく同じ見えになる。
+        const blendDetail = (steps: number) => (): void => {
+          const detailed = this.integrated(slot, segment, rayOrigin, rayDir, steps);
+          layerTransmittance.assign(mix(layerTransmittance, detailed.transmittance, slot.detailWeight));
+          layerInscatter.assign(mix(layerInscatter, detailed.inscatter, slot.detailWeight));
+        };
+        If(greaterThan(slot.detailWeight, 0), () => {
+          If(this.detailSteps.equal(ATMOSPHERE_STEPS.high), blendDetail(ATMOSPHERE_STEPS.high))
+            .ElseIf(this.detailSteps.equal(ATMOSPHERE_STEPS.medium), blendDetail(ATMOSPHERE_STEPS.medium));
+        });
       });
       // 奥の層の内部散乱には、ここまでに重ねた手前の層の透過率が掛かる。
       inscatter.addAssign(layerInscatter.mul(transmittance));
@@ -415,19 +415,22 @@ export class AtmospherePass {
   // 残っておらず、**それを残すためだけの描画は足さない**(lens-pass.ts の redistributedLight と同じ)。
   scatteredLight(): Vec3Node { return this.scattered; }
 
-  // このフレームで大気を描く天体を、カメラのいる場所の大気を強く作っている順に渡す。
-  // **先頭が主天体であり、同時に視点へ最も近い**ので、合成の前後もこの並びで決まる。
-  // steps は先頭の天体のサンプル点の数、detailWeight はそこへ寄せる重み 0..1(0 なら先頭も
-  // 残りの天体と同じ見えになる)。MAX_ATMOSPHERE_BODIES を超えた分と、空きスロットは描かれない。
-  setBodies(bodies: readonly AtmosphereBody[], steps: AtmosphereSteps, detailWeight: number): void {
-    this.primarySteps.value = steps;
-    this.detailWeight.value = detailWeight;
-    this.bodyCount = Math.min(bodies.length, MAX_ATMOSPHERE_BODIES);
+  // このフレームで大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数と一緒に渡す。
+  // 合成の前後はこの並びで決まる。MAX_ATMOSPHERE_BODIES を超えた分と、空きスロットは描かれない。
+  setDraws(draws: readonly AtmosphereDraw<AtmosphereBody>[]): void {
+    this.bodyCount = Math.min(draws.length, MAX_ATMOSPHERE_BODIES);
+    // 寄せ先の段はスロット共通なので、最も細かい要求を賄える段を採る。
+    let finest: number = ATMOSPHERE_STEPS.low;
+    for (let index = 0; index < this.bodyCount; index++) finest = Math.max(finest, draws[index]!.steps);
+    const tier = detailTierFor(finest);
+    this.detailSteps.value = tier;
     // 空きスロットは半径 0 で塞ぐ。区間の判定がそこで落ちて、以降の式は走らない。
     for (const [index, slot] of this.slots.entries()) {
-      const body = bodies[index];
-      slot.surfaceRadius.value = body === undefined ? 0 : body.surfaceRadius;
-      if (body === undefined) continue;
+      const draw = index < this.bodyCount ? draws[index] : undefined;
+      slot.surfaceRadius.value = draw === undefined ? 0 : draw.body.surfaceRadius;
+      slot.detailWeight.value = draw === undefined ? 0 : detailBlendOf(draw.steps, tier);
+      if (draw === undefined) continue;
+      const { body } = draw;
       const cutoffRadius = body.surfaceRadius + cutoffAltitude(body.optics, body.surfaceRadius);
       this.bodySpheres[index]!.set(body.center, cutoffRadius);
       slot.center.value.copy(body.center);
