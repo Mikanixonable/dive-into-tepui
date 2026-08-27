@@ -21,6 +21,7 @@ export class LightPrepass {
   // クリア色の退避先。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
+  // 照度バッファ 2 枚と、sources が共有するシェーディング入力を組む。sources の順に積む。
   constructor(
     renderer: WebGPURenderer,
     gbuffer: GBufferPass,
@@ -29,8 +30,8 @@ export class LightPrepass {
   ) {
     this.renderer = renderer;
 
-    // diffuse/specular の2枚。企画書は「rgb16float」と書くが WebGPU に3チャンネル16bit浮動小数点
-    // フォーマットは無いため、実際には rgba16float(a は未使用)を使う。
+    // diffuse/specular の2枚。WebGPU に3チャンネル16bit浮動小数点フォーマットは無いため、
+    // rgba16float(a は未使用)を使う。
     this.target = new THREE.RenderTarget(1, 1, { count: 2, depthBuffer: false, samples: 0 });
     const [diffuseTex, specularTex] = this.target.textures;
     diffuseTex!.name = 'diffuse';

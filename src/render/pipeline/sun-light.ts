@@ -1,7 +1,6 @@
 // シーンを照らす恒星光の値。「どこから・どれだけの光が届くか」だけを答え、素材の反射特性
-// (法線・粗さ・アルベド)には関知しない — ライティングパス(light-prepass.ts)がここを読んで
-// 照度バッファを書き、マテリアルパスがそこへ反射率を掛けるという分業の境界そのもの。
-// EnvironmentScene が毎フレーム set() で書き込み、RenderPipeline がインスタンスを所有する。
+// (法線・粗さ・アルベド)には関知しない — 光源と、それへ反射率を掛ける側との分業の境界そのもの。
+// 値は毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { AU } from '../../physics/planet-orbit';
@@ -18,8 +17,7 @@ export const SUN_IRRADIANCE_1AU = Math.PI;
 // 戻したもの。set() の intensity にはこれを渡す。
 export const SUN_RADIANT_INTENSITY = SUN_IRRADIANCE_1AU * AU * AU;
 
-// 恒星から distance [m] の点が受ける放射照度。画素ごとの陰影はライティングパスが同じ量を
-// GPU 側で引くが、前方描画の環や輝点は CPU 側で要る。
+// 恒星から distance [m] の点が受ける放射照度(CPU 側で引く版)。
 export function sunIrradianceAtDistance(distance: number): number {
   return SUN_RADIANT_INTENSITY / (distance * distance);
 }
@@ -33,6 +31,7 @@ export class SunLight {
   private readonly colorUniform: ColorUniform;
   private readonly intensityUniform: FloatUniform;
 
+  // set() が書くまでは放射強度 0(無光)。
   constructor() {
     this.positionUniform = uniform(new THREE.Vector3(0, 1, 0));
     this.radiusUniform = uniform(1);
@@ -51,7 +50,7 @@ export class SunLight {
 
   get position(): Vec3Uniform { return this.positionUniform; }
 
-  // 恒星の半径 [m]。遮蔽パスが本影と半影を分けるのに要る。
+  // 恒星の半径 [m]。
   get radius(): FloatNode { return this.radiusUniform; }
 
   get color(): ColorUniform { return this.colorUniform; }

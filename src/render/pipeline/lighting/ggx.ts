@@ -6,6 +6,7 @@ import {
 import type { FloatNode, Vec3Node } from '../../tsl-types';
 import type { ShadingSample } from './shading-sample';
 
+// 光源方向 lightDir(view 空間、正規化済み)からの放射照度へ掛ける鏡面の係数。
 export function ggxSpecularFactor(sample: ShadingSample, lightDir: Vec3Node): FloatNode {
   const alpha = sample.roughness.mul(sample.roughness);
   const dotNL = saturate(dot(sample.normal, lightDir));
