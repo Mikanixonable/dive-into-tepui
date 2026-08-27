@@ -1,34 +1,10 @@
 // 軌道物体一覧パネルの行ツリー: 種別ごとの一覧行を、既存 DOM を使い回しながら id 差分だけで
 // 同期・剪定する。見出し・検索欄・フィルタ UI の組み立てはパネル本体が持つ。
-import { bodyClassOf } from '../../celestial/body-class';
-import { bodyEntityGlyph, ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../../marker/marker-glyphs';
-import { baseMarkerSvg, shipMarkerSvg } from '../../marker/marker-shapes';
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../hud-root';
-import { LAGRANGE_ID } from '../object-groups';
+import { pickGlyphSvg, pickGlyphText } from '../../marker/pick-glyphs';
 import type { CelestialRegistry } from '../../../physics/solar-system';
-import type { MapPickable, MapPickKind } from '../../map-pickable';
+import type { MapPickable } from '../../map-pickable';
 import type { PhysicalObjectListOrder } from './physical-object-list-order';
-
-// 色が消えても種別を判別できる、マップ用の小さな形態記号。名称と常に並べて表示する。
-// body は恒星・衛星・ラグランジュ点で字形が変わるため、この表ではなく bodyGlyph() で選ぶ。
-const OBJECT_GLYPHS: Readonly<Record<Exclude<MapPickKind, 'body'>, string>> = {
-  player: ENTITY_GLYPH.ship,
-  ship: ENTITY_GLYPH.enemyShip,
-  ammo: ENTITY_GLYPH.ammo,
-  fuel: ENTITY_GLYPH.fuel,
-  base: ENTITY_GLYPH.base,
-  apsis: ORBIT_POINT_GLYPH.apsis,
-  relnode: ORBIT_POINT_GLYPH.ascendingNode,
-  eqnode: ORBIT_POINT_GLYPH.descendingNode,
-  'empty-space': '·',
-};
-
-// player/ship/base はマップ実マーカーと同じ SVG 形状を凡例にも使う。それ以外は Unicode 文字のまま。
-const OBJECT_GLYPH_SVGS: Partial<Readonly<Record<MapPickKind, string>>> = {
-  player: shipMarkerSvg(true),
-  ship: shipMarkerSvg(false),
-  base: baseMarkerSvg(),
-};
 
 const EMPTY_IDS: readonly string[] = [];
 
@@ -43,6 +19,8 @@ export interface RowTreeActions {
 // 1件ぶんの行 + その子を畳めるトグル区画。子を持たない行(自艦/敵/弾薬/基地、および
 // 子のない天体)でも toggle/childrenContainer 自体は生成しておき、可視性だけ切り替える
 // (子の有無はフレームごとに変わりうるため、生成を後から差し込むより組み替えが少ない)。
+// 子への参照は持たない — 行は区画ごとの平坦な台帳(id → RowNode)が所有し、木の形は
+// 毎フレーム渡される childIds が決める。木の形が変わっても行そのものは作り直さない。
 export interface RowNode {
   readonly row: HTMLElement;
   readonly toggle: HTMLElement;
@@ -50,8 +28,10 @@ export interface RowNode {
   readonly label: HTMLElement;
   readonly detail: HTMLElement;
   readonly childrenContainer: HTMLElement;
-  readonly children: Map<string, RowNode>;
   expanded: boolean;
+  // 子を持つか。開閉トグルを出すかと aria-expanded を付けるかの正本で、毎フレーム更新する
+  // (DOM の見た目から読み取らない)。
+  hasChildren: boolean;
   // 絞り込みが一致行を見せるために強制的に開いた場合の、直前のプレイヤー操作による
   // 畳み状態。null は「絞り込みによる強制展開はしていない」。絞り込み解除時にここへ戻す。
   savedExpanded: boolean | null;
@@ -66,40 +46,40 @@ export class PhysicalObjectListTree {
     private readonly actions: RowTreeActions,
   ) {}
 
-  // 天体の字形。マップ実マーカーと同じ選び方(ラグランジュ点は専用字形、それ以外は
-  // 恒星/衛星/その他で bodyEntityGlyph())をする。
-  private bodyGlyph(id: string): string {
-    return LAGRANGE_ID.test(id) ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(this.registry, id));
-  }
-
   // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
-  // id が今フレームの候補に無ければ何もしない。reorder は呼び出し元の区画の並びがこのフレームで
-  // 組み直されたか — 真なら既存行も並び順どおりの位置へ移す。
+  // rows はその区画の全行を持つ平坦な台帳で、木の形が変わっても行は作り直さず DOM を付け替える
+  // だけにする — 作り直すとプレイヤーが開いた枝と savedExpanded が毎回失われる。
+  // id が今フレームの候補に無ければ何もしない。今フレーム生存していた id は seen へ積み、
+  // 呼び出し元が区画ごとに一度だけ pruneRows() へ渡す。reorder は呼び出し元の区画の並びが
+  // このフレームで組み直されたか — 真なら既存行も並び順どおりの位置へ移す。
   public syncRow(
     rows: Map<string, RowNode>, id: string,
     childrenOf: ReadonlyMap<string, string[]>, focusId: string | undefined, container: HTMLElement,
     focusAncestors: ReadonlySet<string>, matchAncestors: ReadonlySet<string>, reorder: boolean,
+    seen: Set<string>,
   ): void {
     const item = this.itemsById.get(id);
     if (!item) return;
     let node = rows.get(item.id);
-    const isNew = !node;
     if (!node) {
       node = this.createRowNode(item.id);
       rows.set(item.id, node);
     }
-    if (isNew || reorder) {
+    seen.add(item.id);
+    // 動かす必要が無いフレームでは DOM に触らない — appendChild は既存要素でも移動になるので、
+    // 毎フレーム呼ぶとクリックの最中に行が動き、dblclick が成立しなくなる。
+    if (node.row.parentElement !== container || reorder) {
       container.appendChild(node.row);
       container.appendChild(node.childrenContainer);
     }
-    const svgGlyph = OBJECT_GLYPH_SVGS[item.kind];
-    if (svgGlyph !== undefined) {
+    const svgGlyph = pickGlyphSvg(item.kind);
+    if (svgGlyph !== null) {
       if (node.glyph.dataset.svgGlyph !== svgGlyph) {
         node.glyph.innerHTML = svgGlyph;
         node.glyph.dataset.svgGlyph = svgGlyph;
       }
     } else {
-      const glyph = item.kind === 'body' ? this.bodyGlyph(item.id) : OBJECT_GLYPHS[item.kind];
+      const glyph = pickGlyphText(item.kind, item.id, this.registry);
       if (node.glyph.textContent !== glyph) {
         node.glyph.textContent = glyph;
         delete node.glyph.dataset.svgGlyph;
@@ -110,7 +90,6 @@ export class PhysicalObjectListTree {
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
     node.detail.classList.toggle('hidden', item.kind === 'body');
     node.row.classList.toggle('tgt', item.id === focusId);
-    node.row.classList.toggle('related-orbit', item.id === focusId);
     // 衛星フィルタで添えたクラスタ見出し(親惑星自身はフィルタを通っていない)を淡色化する。
     node.row.classList.toggle('cluster', !this.order.matches(item));
     node.row.setAttribute('aria-label', [item.name, detailText].filter(Boolean).join('、'));
@@ -121,17 +100,16 @@ export class PhysicalObjectListTree {
       if (node.savedExpanded === null) node.savedExpanded = node.expanded;
       node.expanded = true;
     }
-    node.toggle.style.visibility = children.length > 0 ? 'visible' : 'hidden';
+    node.hasChildren = children.length > 0;
     this.applyRowExpanded(node);
 
-    const seen = new Set<string>();
     for (const childId of children) {
-      seen.add(childId);
-      this.syncRow(node.children, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors, reorder);
+      this.syncRow(rows, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors, reorder, seen);
     }
-    this.pruneRows(node.children, seen);
   }
 
+  // 今フレーム現れなかった行を台帳と DOM から取り除く。区画ごとに、根から辿り終えた後で
+  // 一度だけ呼ぶ。
   public pruneRows(rows: Map<string, RowNode>, seen: ReadonlySet<string>): void {
     for (const [id, node] of rows) {
       if (seen.has(id)) continue;
@@ -141,32 +119,27 @@ export class PhysicalObjectListTree {
     }
   }
 
-  // id に対応する行要素を rows 以下から再帰的に探す。見当たらなければ null。
+  // id に対応する行要素を台帳から引く。見当たらなければ null。
   public findRowElementIn(rows: ReadonlyMap<string, RowNode>, id: string): HTMLElement | null {
-    const node = rows.get(id);
-    if (node) return node.row;
-    for (const child of rows.values()) {
-      const found = this.findRowElementIn(child.children, id);
-      if (found) return found;
-    }
-    return null;
+    return rows.get(id)?.row ?? null;
   }
 
-  // 絞り込みが強制的に開いた分の畳み状態を、記録してあるプレイヤーの元の値へ戻す。
+  // 絞り込みが強制的に開いた分の畳み状態を、記録してあるプレイヤーの元の値へ戻す。DOM への
+  // 反映は、この後の syncRow() が applyRowExpanded() を通して行う。
   public restoreSavedExpanded(rows: ReadonlyMap<string, RowNode>): void {
     for (const node of rows.values()) {
-      if (node.savedExpanded !== null) { node.expanded = node.savedExpanded; node.savedExpanded = null; }
-      this.restoreSavedExpanded(node.children);
+      if (node.savedExpanded === null) continue;
+      node.expanded = node.savedExpanded;
+      node.savedExpanded = null;
     }
   }
 
-  // rows 以下の全ての入れ子を一括で展開/折りたたむ。手動での開閉と同じ状態として
-  // 扱うので savedExpanded には触れない。
+  // 区画の全ての入れ子を一括で展開/折りたたむ。手動での開閉と同じ状態として扱うので
+  // savedExpanded には触れない。
   public setAllRowsExpanded(rows: ReadonlyMap<string, RowNode>, expanded: boolean): void {
     for (const node of rows.values()) {
       node.expanded = expanded;
       this.applyRowExpanded(node);
-      this.setAllRowsExpanded(node.children, expanded);
     }
   }
 
@@ -201,8 +174,19 @@ export class PhysicalObjectListTree {
       this.actions.onFocus?.(id);
     });
     row.addEventListener('keydown', (e) => {
-      if (e.key.toLowerCase() === 'f') { e.preventDefault(); this.actions.onFocus?.(id); }
-      if (e.key.toLowerCase() === 't') { e.preventDefault(); this.actions.onNavTarget?.(id); }
+      // ゲーム側は window の keydown を全打鍵について走査するので、行にフォーカスがある間の
+      // 打鍵は先に消費してゲーム操作へ流れないようにする。ただし修飾キー付きとIME確定中は
+      // ブラウザ/IME 自身の処理(Cmd+F の検索など)に譲る。
+      if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      e.stopPropagation();
+      const key = e.key.toLowerCase();
+      if (key === 'f') { e.preventDefault(); this.actions.onFocus?.(id); return; }
+      if (key === 't') { e.preventDefault(); this.actions.onNavTarget?.(id); return; }
+      if ((e.key === 'Enter' || e.key === ' ') && node.hasChildren) {
+        e.preventDefault();
+        node.expanded = !node.expanded;
+        this.applyRowExpanded(node);
+      }
     });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -216,8 +200,8 @@ export class PhysicalObjectListTree {
       label,
       detail,
       childrenContainer,
-      children: new Map(),
       expanded: false,
+      hasChildren: false,
       savedExpanded: null,
     };
     toggle.addEventListener('click', (e) => {
@@ -228,8 +212,13 @@ export class PhysicalObjectListTree {
     return node;
   }
 
+  // node.expanded を、トグル記号・子コンテナの表示・行の aria-expanded へ反映する。
   private applyRowExpanded(node: RowNode): void {
     node.toggle.textContent = node.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH;
     node.childrenContainer.classList.toggle('collapsed', !node.expanded);
+    node.toggle.classList.toggle('no-children', !node.hasChildren);
+    // 子を持たない行にまで aria-expanded を付けると、本来無い開閉可能性を支援技術へ示唆する。
+    if (node.hasChildren) node.row.setAttribute('aria-expanded', String(node.expanded));
+    else node.row.removeAttribute('aria-expanded');
   }
 }
