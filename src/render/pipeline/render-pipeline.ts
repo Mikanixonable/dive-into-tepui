@@ -4,8 +4,9 @@
 // (深度・法線・ラフネスを MRT へ描く)→ 遮蔽パス(G バッファ深度から
 // 復元した位置に届く恒星の直射光の透過率を1枚へ描く)→ ライティングパス(その2枚だけを読み、
 // 拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(lit-opaque 層をライティングパスの照度で描き、
-// world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ 大気パス(同じ
-// ターゲットへ画面空間で大気を重ねる)→ world パス(シーンを同じ HDR ターゲットへ重ね描きする)
+// world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ 大気パス(不透明の
+// 絵のスナップショットを読み、大気と合成し終えた絵を同じターゲットへ上書きする)→ world パス
+// (シーンを同じ HDR ターゲットへ重ね描きする)
 // → レンズ効果パス(明るい画素の光を画面上の角度で決まる広がりへ配り直す)→ composite パス
 // → 3D UI パス。composite パスは通常表示
 // (debugTarget==='off')では HDR ターゲットをトーンマッピングしてキャンバスへ合成し、それ以外を選ぶと
@@ -58,6 +59,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly _ambient: AmbientSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
+  // 大気パスが読む、不透明の絵のスナップショットとそれを書き写す全画面クアッド。
+  private readonly backdropTarget: THREE.RenderTarget;
+  private readonly backdropMaterial: THREE.MeshBasicNodeMaterial;
+  private readonly backdropQuad: QuadMesh;
   private readonly overlayPass: OverlayPass;
   private readonly lensPass: LensPass;
   private readonly _sunLight: SunLight;
@@ -119,8 +124,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
+    // 大気パスが読む、不透明の絵のスナップショット。マルチサンプルの解決済みの絵を写すので、
+    // スナップショット自身はサンプル 1 でよく、深度も持たない。
+    this.backdropTarget = new THREE.RenderTarget(1, 1, {
+      type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false,
+    });
     this.atmospherePass = new AtmospherePass(
-      renderer, this.gbuffer, this._sunLight, this._sunOcclusion, gpu,
+      renderer, this.gbuffer, this.backdropTarget.texture, this._sunLight, this._sunOcclusion, gpu,
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
@@ -136,6 +146,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     });
     // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
+
+    // 共有ターゲットの中身(マテリアルパスの出力)をスナップショットへ書き写す全画面クアッド。
+    this.backdropMaterial = new THREE.MeshBasicNodeMaterial({
+      depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+    });
+    this.backdropMaterial.colorNode = texture(this.target.texture, screenUV);
+    this.backdropQuad = new QuadMesh(this.backdropMaterial);
 
     this.lensPass = new LensPass(renderer, this.target.texture, gpu);
     this.lensEnabled = graphics.lens;
@@ -301,8 +318,20 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       // ときだけ、自前のターゲットへも同じジオメトリをもう一度描く。
       this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
 
-      // 大気パス。不透明の絵の上へ画面空間で重ねる。G バッファ深度と視線だけを読むので scene は渡さない。
-      this.atmospherePass.render(camera, this.target);
+      // 大気パス。大気が写るフレームだけ、不透明の絵のスナップショットを撮ってから、下地と
+      // 合成し終えた大気を共有ターゲットへ上書きする。写らないフレームは 2 段とも発行しない
+      // — 深宇宙で大気の GPU 時間が 0 のまま保たれる。スナップショットのブリットも大気パスの
+      // 計測枠に計上する。
+      if (this.atmospherePass.anyBodyInView(camera)) {
+        if (this.backdropTarget.width !== width || this.backdropTarget.height !== height) {
+          this.backdropTarget.setSize(width, height);
+        }
+        this.gpu.beginPass(GPU_PASS.atmosphere);
+        this.renderer.setRenderTarget(this.backdropTarget);
+        this.backdropQuad.render(this.renderer);
+        this.renderer.setRenderTarget(null);
+        this.atmospherePass.render(camera, this.target);
+      }
 
       // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
       // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
@@ -354,6 +383,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.lightPrepass.dispose();
     this.materialPass.dispose();
     this.atmospherePass.dispose();
+    this.backdropTarget.dispose();
+    this.backdropMaterial.dispose();
     this.overlayPass.dispose();
     this.lensPass.dispose();
     this.lensCompositeMaterial.dispose();
