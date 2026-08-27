@@ -19,7 +19,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import { ATMOSPHERE_QUALITY, type GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import { SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
@@ -27,7 +27,11 @@ import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-li
 import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from './planet-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
-import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
+import {
+  ATMOSPHERE_DETAIL, ATMOSPHERE_DETAIL_OF_QUALITY,
+  type AtmosphereBody, type AtmospherePass,
+} from '../../render/pipeline/atmosphere-pass';
+import { atmosphereOpticsOf, rankAtmospheres } from '../../render/atmosphere-params';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CelestialView } from './celestial-view';
@@ -242,7 +246,7 @@ export class EnvironmentScene {
     this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
-    this.syncAtmosphere(floatingOrigin, displayTime, graphics);
+    this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem.activeCameraPos, graphics);
 
     const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
@@ -337,13 +341,35 @@ export class EnvironmentScene {
     );
   }
 
-  // 大気パスへ、大気を持つ天体を渡す。半径 0 は「このフレームは大気を描かない」の意。
-  private syncAtmosphere(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
-    const hasEarth = graphics.atmosphere && 'earth' in this.ephemeris.registry;
-    this.atmosphere.setBody(
-      hasEarth ? fo.RtoThreeV3(this.ephemeris.positionOf('earth', displayTime)) : ZERO_VECTOR,
-      hasEarth ? bodyDef(this.ephemeris.registry, 'earth').radius : 0,
-    );
+  // 大気パスへ、このフレームの大気を描く天体と、先頭へ足す積分の重みを渡す。
+  private syncAtmosphere(
+    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, graphics: GraphicsSettingsData,
+  ): void {
+    if (graphics.atmosphere === ATMOSPHERE_QUALITY.off) {
+      this.atmosphere.setBodies([], ATMOSPHERE_DETAIL.none, 0);
+      return;
+    }
+    const { bodies, denseWeight } = rankAtmospheres(this.atmosphereCandidates(fo, displayTime, cameraPos));
+    const detail = ATMOSPHERE_DETAIL_OF_QUALITY[graphics.atmosphere];
+    this.atmosphere.setBodies(bodies, detail, detail === ATMOSPHERE_DETAIL.none ? 0 : denseWeight);
+  }
+
+  // 大気を持つ参照天体を、カメラのその天体からの高度と一緒に集める。
+  private atmosphereCandidates(
+    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3,
+  ): readonly { readonly body: AtmosphereBody; readonly altitude: number }[] {
+    const candidates: { body: AtmosphereBody; altitude: number }[] = [];
+    for (const id of this.referenceIds) {
+      const optics = atmosphereOpticsOf(id);
+      if (optics === null) continue;
+      const surfaceRadius = bodyDef(this.ephemeris.registry, id).radius;
+      const center = this.ephemeris.positionOf(id, displayTime);
+      candidates.push({
+        body: { center: fo.RtoThreeV3(center), surfaceRadius, optics },
+        altitude: len(sub(cameraPos, center)) - surfaceRadius,
+      });
+    }
+    return candidates;
   }
 
   // 星球は描画原点(= カメラ)に固定した半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで

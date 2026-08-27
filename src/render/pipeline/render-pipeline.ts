@@ -38,10 +38,10 @@ import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 
-// applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
-// 駆動する側は、この並びを操作の対象にする。
+// パイプラインだけを駆動する呼び出し側(描画テスト環境)が操作の対象にする項目。
+// **ここを変えたときだけ、パイプラインが描くものが変わる。**
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'exposureCompensation', 'sunLightModel', 'planetLightCount',
+  'lens', 'exposureCompensation', 'atmosphere', 'sunLightModel', 'planetLightCount',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 
@@ -120,7 +120,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(
-      renderer, this.gbuffer, this._sunLight, this._sunOcclusion, this.occlusionPass, gpu,
+      renderer, this.gbuffer, this._sunLight, this._sunOcclusion, gpu,
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
