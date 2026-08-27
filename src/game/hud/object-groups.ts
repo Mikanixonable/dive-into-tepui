@@ -60,8 +60,8 @@ export function groupPickables(
     }
   }
 
-  // カメラ基準のように「表示中の候補」ではなく、登録済み天体を全件選ばせる
-  // 呼び出し側では、表示設定で除外された天体も補う。
+  // includeAllRegistryBodies が true なら「表示中の候補」に限らず、表示設定で
+  // 除外された天体も含めて登録済み天体を全件補う。
   if (includeAllRegistryBodies) {
     for (const id of Object.keys(registry)) {
       if (bodyIds.has(id)) continue;

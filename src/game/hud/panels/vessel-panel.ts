@@ -1,12 +1,14 @@
-// 常設 VESSEL パネル(#hud-status)の同期: RCS燃料・出力・動圧・太陽電池パドル・放熱板・RCS制動・微調整・
-// 進行方向ホールド・視点のRCS追従・弾薬。自機が無ければ隠す。
+// 常設 VESSEL パネル(#hud-vessel-status)の同期: RCS燃料・出力・動圧・太陽電池パドル・放熱板・
+// RCS制動・微調整・進行方向ホールド・視点のRCS追従・弾薬。操作対象(game.activeControllableEntity)
+// が無ければ隠す。
 // 装填/姿勢リセット/視点追従切替/ターゲット選択の4操作と、タッチ時のみのスロットル段は、
-// キー押下と同じ経路(Input.tapKey)で発火するボタンとして
-// ここに持つ — タッチでも到達できるようにするための、キー入力の代替 UI。
+// キー押下と同じ経路(Input.tapKey)で発火するボタンとしてここに持つ — タッチでも到達できるよう
+// にするための、キー入力の代替 UI。
 import * as C from '../../const';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { Button, SegmentedControl } from '../widgets';
-import { fmtAmmoStatus } from '../utils';
+import { fmtAmmoStatus, setElementText } from '../utils';
+import { SyncThrottle } from '../sync-throttle';
 import type { Game } from '../../game';
 import type { Input } from '../../input/input';
 import type { KeyBinding } from '../../input/key-mapping';
@@ -48,7 +50,7 @@ interface DeployButtonDom {
 }
 
 export class VesselPanel {
-  private nextSyncAt = 0;
+  private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private input: Input | null = null;
   private player: Player | null = null;
   private followButton: Button | null = null;
@@ -139,6 +141,7 @@ export class VesselPanel {
     return control;
   }
 
+  // 太陽電池パドル(左右)の展開/収納ボタン2つを組み立てる。container が無ければ組まない。
   private buildSolarButtons(container: HTMLElement | undefined): Record<SolarSide, DeployButtonDom> | null {
     if (!container) return null;
     return {
@@ -147,6 +150,7 @@ export class VesselPanel {
     };
   }
 
+  // 放熱板(左右)の展開/収納ボタン2つを組み立てる。container が無ければ組まない。
   private buildRadiatorButtons(container: HTMLElement | undefined): Record<RadiatorSide, DeployButtonDom> | null {
     if (!container) return null;
     return {
@@ -172,24 +176,25 @@ export class VesselPanel {
     };
   }
 
+  // game.activeControllableEntity(Player または Base)の状態を VESSEL パネルへ反映する。
+  // 操作対象が無ければパネルごと隠す。
   public sync(game: Game): void {
     const target = game.activeControllableEntity;
     this.player = target instanceof Player ? target : null;
     if (!target) {
-      document.getElementById('hud-vessel-status')?.classList.add('hidden');
+      this.els.get('hud-vessel-status')?.classList.add('hidden');
       return;
     }
     // 通常のマップビューでは艦固有の情報をプロパティウィンドウで参照するので畳む。
     // クリエイティブでは配置後の艦を常に操作できるため、マップビューでも VESSEL を表示する。
     // CSS 側でも同じ条件を持つが、未配置状態からの復帰時は JS で明示的に戻す。
     if (!game.cameraSystem.overviewMode || game.activeStage.id === 'creative') {
-      document.getElementById('hud-vessel-status')?.classList.remove('hidden');
+      this.els.get('hud-vessel-status')?.classList.remove('hidden');
     }
 
-    const now = performance.now();
-    if (now < this.nextSyncAt) return;
-    this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    if (!this.throttle.due()) return;
 
+    // 出力段の表示は Player・Base の双方が持つ throttle 由来。
     const throttleObj = target instanceof Player ? target : (target instanceof Base ? target : null);
     this.syncDeployButtons();
     if (!throttleObj) return;
@@ -205,6 +210,8 @@ export class VesselPanel {
       false,
     );
     this.throttleControl?.setSelected(throttleIdx);
+
+    // 動圧は Player だけが持つ(Base には空力が無い)。
     const qdynRow = this.els.get('qdyn-row');
     const hasQdyn = target instanceof Player;
     qdynRow?.classList.toggle('hidden', !hasQdyn);
@@ -220,6 +227,8 @@ export class VesselPanel {
         qdyn > 0.5 * C.MAX_DYN_PRESSURE,
       );
     }
+
+    // 微調整・視点追従・進行方向ホールドの状態語。
     const fineAtt = target instanceof Player ? target.fineAttitude : false;
     this.syncState('fine', fineAtt, 'near');
     const cameraFollowsAttitude = game.cameraSystem.combatCamera.camFollowAttitude;
@@ -227,6 +236,7 @@ export class VesselPanel {
     this.followButton?.setOn(cameraFollowsAttitude);
     this.syncState('prohold', throttleObj.throttle.progradeHold, 'near');
 
+    // 燃料メーター。Player は総燃料、Base は単一タンクの燃料を使う。
     let currentFuel = 0;
     let maxFuel = 0;
     if (target instanceof Player) {
@@ -252,8 +262,9 @@ export class VesselPanel {
       fuelFill.style.width = `${fuelPercent.toFixed(1)}%`;
       fuelFill.classList.toggle('danger', maxFuel > 0 && clampedFuel < maxFuel * 0.2);
     }
-    this.setText('rcs-fuel-value', fuelValueText);
+    setElementText(this.els, 'rcs-fuel-value', fuelValueText);
 
+    // 弾薬(Player)/燃料(Base)の読み値。
     const ammo = this.els.get('ammo');
     if (ammo) {
       if (target instanceof Player) {
@@ -266,21 +277,16 @@ export class VesselPanel {
     }
   }
 
-  // id 要素のテキストを、変化があるときだけ書き換える。
-  private setText(id: string, text: string): void {
-    const element = this.els.get(id);
-    if (element && element.textContent !== text) element.textContent = text;
-  }
-
+  // ratio(0〜1)からメーターの塗り幅・危険表示・aria 属性を反映する。
   private syncMeter(
-    dom: VesselMeterDom | null, ratio: number, label: string, max: number, now: number, critical: boolean,
+    dom: VesselMeterDom | null, ratio: number, label: string, max: number, valueNow: number, critical: boolean,
   ): void {
     if (!dom) return;
     const clampedRatio = Math.max(0, Math.min(1, ratio));
     dom.fill.style.width = `${(clampedRatio * 100).toFixed(1)}%`;
     dom.fill.classList.toggle('danger', critical);
     dom.meter.setAttribute('aria-valuemax', String(max));
-    dom.meter.setAttribute('aria-valuenow', String(now));
+    dom.meter.setAttribute('aria-valuenow', String(valueNow));
     dom.meter.setAttribute('aria-valuetext', label);
     if (dom.value.textContent !== label) dom.value.textContent = label;
   }
