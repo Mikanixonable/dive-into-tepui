@@ -18,6 +18,7 @@ function isCovered(depthTexture: THREE.Texture, uv: Vec2Node): BoolNode {
 // 置いておかないと、材質だけが面から来て照度が虚空のものになり、縁が1画素だけ別の明るさになる。
 function shadingUV(depthTexture: THREE.Texture, uv: Vec2Node): Vec2Node {
   const texel: Vec2Node = vec2(1).div(screenSize);
+  // 自分 → 左右 → 上下の順に、最初に面が写っている候補を採る。
   const candidates: readonly Vec2Node[] = [
     uv,
     uv.sub(vec2(texel.x, 0)), uv.add(vec2(texel.x, 0)),
@@ -48,6 +49,7 @@ export class ShadingSample {
   // ので、投影方式に依らない形(view-ray.ts)から取る。
   readonly viewDir: Vec3Node;
 
+  // G バッファを引く uv を 1 度だけ組み、すべての入力をその uv から取る。
   constructor(gbuffer: GBufferPass) {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewMatrix = uniform(new THREE.Matrix4());
