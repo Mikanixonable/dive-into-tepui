@@ -1,5 +1,5 @@
-// 軌道分析パネルの投影タブ: 背景テクスチャの読み込み/キャッシュと、操作対象・ターゲットの
-// 経緯度点列(orbit-analysis-data.ts)を OrbitProjectionChart へ渡すことだけを持つ。
+// 軌道分析パネルの投影タブ: 背景テクスチャの読み込み・キャッシュを行い、操作対象・ターゲットの
+// 経緯度点列を OrbitProjectionChart へ渡す。
 import { CelestialBody, strongestAttractor } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
 import type { GameEntity } from '../../game-entity/game-entity';
@@ -21,6 +21,7 @@ export class OrbitProjectionTab {
   // 背景画像。URL ごとに読み込み、読み込み完了まではその天体を背景無し(空メッセージ)で描く。
   private readonly textureImages = new Map<string, HTMLImageElement>();
 
+  // 保持しているチャートを破棄する。
   public dispose(): void {
     this.chart.dispose();
   }
@@ -31,6 +32,7 @@ export class OrbitProjectionTab {
     game: Game, entity: GameEntity, center: CelestialBody, approachSource: ApproachTargetSource | null,
     celestialBodies: readonly CelestialBody[], now: number, spanSec: number, sampleCount: number, textureUrl: string,
   ): void {
+    // 操作対象自身の軌跡(塗り丸)。
     const ship = projectionSeries(
       (t) => entityStateAt(entity, t, center, game.ephemeris), center, game.ephemeris, now, spanSec, sampleCount,
     );
@@ -43,6 +45,7 @@ export class OrbitProjectionTab {
         currentStyle: 'filled',
       });
     }
+    // ターゲットが同じ中心天体を周回していれば、その軌跡(縁だけの丸)も重ねる。
     const resolvedTarget = approachSource ? resolveTarget(approachSource) : null;
     const target = resolvedTarget && strongestAttractor(resolvedTarget.currentR, celestialBodies).id === center.id
       ? projectionSeries(
@@ -57,6 +60,7 @@ export class OrbitProjectionTab {
         currentStyle: 'ring',
       });
     }
+    // テクスチャが読み込み済みならそれを背景に、まだなら読み込み中の案内文を出す。
     const image = this.loadedTextureImage(textureUrl);
     const spec: ProjectionChartSpec = { textureImage: image, series, emptyMessage: image ? undefined : '読み込み中…' };
     this.chart.draw(spec);
