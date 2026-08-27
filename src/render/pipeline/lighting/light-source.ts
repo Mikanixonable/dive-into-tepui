@@ -14,12 +14,12 @@ export type LightContribution = {
 };
 
 export interface LightSource {
-  // このフレームに寄与があるか。無い光源の描画命令はパスが発行しない。
+  // このフレームに寄与があるか。偽なら描画命令は発行されない。
   hasContribution(): boolean;
-  // 照度バッファへ加算合成で描くマテリアル。パスが描画のたびに呼ぶので、実体は光源側が
+  // 照度バッファへ加算合成で描くマテリアル。毎フレーム呼ばれても再生成しないよう、実体は
   // 遅延生成して使い回す(設定でモードを持つ光源は、モードごとに 1 枚を持つ)。
   material(sample: ShadingSample): THREE.MeshBasicNodeMaterial;
-  // 生成したマテリアルなどの GPU 資源を解放する。パスの dispose から呼ばれる。
+  // 生成したマテリアルなどの GPU 資源を解放する。
   dispose(): void;
 }
 
@@ -30,9 +30,11 @@ export function contributionMaterial(
   const material = new THREE.MeshBasicNodeMaterial({
     depthTest: false, depthWrite: false, transparent: true,
   });
+  // 加算合成(src 1 + dst 1)。
   material.blending = THREE.CustomBlending;
   material.blendSrc = THREE.OneFactor;
   material.blendDst = THREE.OneFactor;
+  // 面の無い画素は 0 を積む。
   material.mrtNode = mrt({
     diffuse: vec4(select(sample.lit, contribution.diffuse, vec3(0)), 1),
     specular: vec4(select(sample.lit, contribution.specular, vec3(0)), 1),

@@ -1,6 +1,6 @@
 // 面の向きによらない一様な環境光。ゲームプレイのために物理から外す光源で、その画素の位置へ
 // 届く恒星の放射照度に一定の割合を掛け、遮蔽を受けずに届ける(DEVELOP/SPEC/RENDERING.md
-// 「地球の描画」)。割合は呼び出し側(EnvironmentScene / 描画テスト環境)が書く。
+// 「地球の描画」)。割合は setFraction() で毎フレーム受ける。
 import * as THREE from 'three/webgpu';
 import { PI, dot, uniform } from 'three/tsl';
 import type { FloatUniform, Vec3Node } from '../../tsl-types';
@@ -8,8 +8,8 @@ import type { SunLight } from '../sun-light';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import type { ShadingSample } from './shading-sample';
 
-// 恒星の放射照度へ掛ける割合の既定。強いほうが読みやすさ優先(マップビュー)、弱いほうが
-// 物理に近い暗さ優先(戦闘ビュー)で、どちらを使うかは呼び出し側が決める。
+// 恒星の放射照度へ掛ける割合の 2 段。強いほうが読みやすさ優先(マップビュー)、弱いほうが
+// 物理に近い暗さ優先(戦闘ビュー)。
 export const AMBIENT_STRONG = 0.06;
 export const AMBIENT_WEAK = 0.03;
 

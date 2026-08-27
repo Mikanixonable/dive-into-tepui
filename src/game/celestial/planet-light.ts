@@ -30,7 +30,7 @@ export function selectPlanetLights(
     if (body.isStar || body.radius <= 0) continue;
     const albedo = lightSourceAlbedoOf(body.id);
     // 主星の無いレジストリでは、全天体が 1 天文単位相当の明るさで満相のまま照らされていると
-    // みなす(environment-scene.ts が恒星方向へ置く仮の光源と同じ目盛り)。
+    // みなす。
     const toSun = star === null ? null : sub(star.state.r, body.state.r);
     const sunIrradiance = toSun === null ? SUN_IRRADIANCE_1AU : sunIrradianceAtDistance(len(toSun));
     const toReference = sub(reference, body.state.r);
