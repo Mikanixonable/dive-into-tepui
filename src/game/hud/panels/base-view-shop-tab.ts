@@ -1,17 +1,18 @@
+import type { Base } from '../../game-entity/base';
 import { createPart } from '../../game-entity/parts';
 import type { AnyPart } from '../../game-entity/parts';
 import { Button } from '../widgets';
-import type { BasePanelContext } from './base-view-context';
+import type { BasePanel } from './base-view';
 import {
   buildSectionHeader, formatCatalogProperty, PART_TYPE_LABELS, SHOP_CATALOG,
 } from './base-view-shared';
 
 // 基地パネルの「ショップ」タブ: 部品を購入し、この基地の倉庫へ搬入する。
 export class ShopTabController {
-  public constructor(private readonly ctx: BasePanelContext) {}
+  public constructor(private readonly panel: BasePanel) {}
 
-  public build(): HTMLElement {
-    const base = this.ctx.base();
+  // 品目一覧を組む。購入先の倉庫は base に固定される。
+  public build(base: Base): HTMLElement {
     const money = base.baseState.money;
 
     const frag = document.createElement('section');
@@ -26,7 +27,7 @@ export class ShopTabController {
     list.className = 'dock-shop-list';
     list.setAttribute('role', 'list');
     SHOP_CATALOG.forEach((entry, i) => {
-      const canBuy = this.ctx.freeProcurement() || money >= entry.price;
+      const canBuy = this.panel.freeProcurement || money >= entry.price;
       const props = Object.entries(entry.props).map(([name, value]) => formatCatalogProperty(name, value)).join(' · ');
 
       const item = document.createElement('article');
@@ -53,9 +54,9 @@ export class ShopTabController {
       actions.className = 'dock-shop-actions';
       const price = document.createElement('span');
       price.className = 'dock-shop-price';
-      price.textContent = this.ctx.freeProcurement() ? 'コストなし' : `${entry.price.toLocaleString()} Cr`;
+      price.textContent = this.panel.freeProcurement ? 'コストなし' : `${entry.price.toLocaleString()} Cr`;
       actions.appendChild(price);
-      const buyBtn = new Button('購入して倉庫へ', () => this.handleBuy(i));
+      const buyBtn = new Button('購入して倉庫へ', () => this.handleBuy(base, i));
       buyBtn.element.classList.add('dock-btn', 'dock-btn-primary');
       buyBtn.setEnabled(canBuy);
       actions.appendChild(buyBtn.element);
@@ -66,11 +67,10 @@ export class ShopTabController {
     return frag;
   }
 
-  private handleBuy(catalogIdx: number): void {
-    const base = this.ctx.base();
+  private handleBuy(base: Base, catalogIdx: number): void {
     const entry = SHOP_CATALOG[catalogIdx];
     if (!entry) return;
-    if (!this.ctx.freeProcurement() && base.baseState.money < entry.price) return;
+    if (!this.panel.freeProcurement && base.baseState.money < entry.price) return;
 
     const part = createPart(entry.type, {
       name: entry.name,
@@ -80,8 +80,8 @@ export class ShopTabController {
       ...entry.props,
     } as Partial<AnyPart>);
 
-    if (!this.ctx.freeProcurement()) base.baseState.money -= entry.price;
+    if (!this.panel.freeProcurement) base.baseState.money -= entry.price;
     base.baseState.inventory.push(part);
-    this.ctx.refresh();
+    this.panel.refresh();
   }
 }
