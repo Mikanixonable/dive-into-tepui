@@ -358,13 +358,15 @@ export class Ephemeris {
   }
 
   // 指定時刻の ECI(originId 中心)位置・速度。日心状態から originId の日心状態を引く一箇所だけで
-  // 座標変換する。originId 自身は同じ計算を2回引くので厳密に 0 になる。
+  // 座標変換する。originId 自身は同じ計算を2回引くので厳密に 0 になる。期間外の高精度暦パックは
+  // 使わず解析暦へ落とす(CELESTIAL.md 2.2: 期間外は例外なく解析暦だけで天体位置が求まる)。
   stateOf(id: CelestialBodyId, t: number): KinematicState {
-    if (this.precise?.hasBody(id)) return this.precise.stateOf(id, t);
-    if (this.precise !== null) {
+    const precise = this.precise;
+    if (precise !== null && precise.isValidAt(t)) {
+      if (precise.hasBody(id)) return precise.stateOf(id, t);
       const def = bodyDef(this.registry, id);
-      if (def.kind === 'satellite' && this.precise.hasBody(def.planet)) {
-        const parent = this.precise.stateOf(def.planet, t);
+      if (def.kind === 'satellite' && precise.hasBody(def.planet)) {
+        const parent = precise.stateOf(def.planet, t);
         const rel = this.satelliteRelState(def, t);
         return kinematicState(t, add(parent.r, rel.r), add(parent.v, rel.v));
       }
@@ -384,11 +386,12 @@ export class Ephemeris {
   // 実位置の x̂ 軸から最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
   orbitFrameRotationAt(id: OrbitingId, t: number): FrameRotation {
     const def = bodyDef(this.registry, id) as OrbitingDef;
-    if (this.precise?.hasBody(id)) {
+    const precise = this.precise;
+    if (precise !== null && precise.isValidAt(t) && precise.hasBody(id)) {
       const primary = primaryOf(this.registry, id);
-      if (primary !== null && this.precise.hasBody(primary)) {
-        const a = this.precise.stateOf(primary, t);
-        const b = this.precise.stateOf(id, t);
+      if (primary !== null && precise.hasBody(primary)) {
+        const a = precise.stateOf(primary, t);
+        const b = precise.stateOf(id, t);
         const r = sub(b.r, a.r);
         const v = sub(b.v, a.v);
         const h = cross(r, v);
@@ -405,11 +408,12 @@ export class Ephemeris {
   // id の軌道面の法線(単位ベクトル、ECI)。
   orbitNormalAt(id: OrbitingId, t: number): Vec3 {
     const def = bodyDef(this.registry, id) as OrbitingDef;
-    if (this.precise?.hasBody(id)) {
+    const precise = this.precise;
+    if (precise !== null && precise.isValidAt(t) && precise.hasBody(id)) {
       const primary = primaryOf(this.registry, id);
-      if (primary !== null && this.precise.hasBody(primary)) {
-        const a = this.precise.stateOf(primary, t);
-        const b = this.precise.stateOf(id, t);
+      if (primary !== null && precise.hasBody(primary)) {
+        const a = precise.stateOf(primary, t);
+        const b = precise.stateOf(id, t);
         return norm(cross(sub(b.r, a.r), sub(b.v, a.v)));
       }
     }
