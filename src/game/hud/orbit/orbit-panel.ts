@@ -28,7 +28,8 @@ export class OrbitPanel {
   // まだ配線されていないので、VesselPanel.setInput と同じ late injection にする。
   private openAnalysis: (() => void) | null = null;
 
-  constructor(private readonly els: Map<string, HTMLElement>) {
+  // 基準切替のセグメントコントロールと軌道分析ボタンを els が指す DOM へ組み込む。
+  public constructor(private readonly els: Map<string, HTMLElement>) {
     this.referenceControl = new SegmentedControl('基準', REFERENCE_ITEMS, (mode) => {
       this.game?.orbitReference.setMode(mode);
     });
@@ -37,10 +38,11 @@ export class OrbitPanel {
   }
 
   // Hud から軌道分析パネルの開閉ハンドラを受け取る。
-  setOpenAnalysisHandler(handler: () => void): void {
+  public setOpenAnalysisHandler(handler: () => void): void {
     this.openAnalysis = handler;
   }
 
+  // 軌道分析パネルを開くボタンを els が指す DOM へ組み込む。
   private buildActionButtons(): void {
     const container = this.els.get('orbit-actions');
     if (!container) return;
@@ -50,7 +52,8 @@ export class OrbitPanel {
 
   private game: Game | null = null;
 
-  sync(game: Game, celestialBodies: readonly CelestialBody[], hideInOverview = true): void {
+  // 操作対象の基準・高度・速度・遠地点/近地点・傾斜角・周期・動圧・機体温度を DOM へ反映する。
+  public sync(game: Game, celestialBodies: readonly CelestialBody[], hideInOverview = true): void {
     this.game = game;
     const entity = game.activeControllableEntity;
     const el = this.els.get('hud-orbit');

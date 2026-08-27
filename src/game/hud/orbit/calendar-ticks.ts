@@ -181,8 +181,8 @@ export function tickLabel(
 
 // 軌道要素マーカー(近地点/遠地点・昇交点/降交点・再接近点など)へ添える通過時刻の表記。
 // 'relative' は目盛りと同じ T+/- 形式、'absolute' は PREDICT パネルの絶対時刻表示と同じ
-// ISO 風の書式(SIM_EPOCH_SEC 基準)——暦の区切りに揃っていない任意の瞬間を表すため、
-// tickLabel の rank 依存の粗い書式(HH:00 など)は使わない。
+// ISO 風の書式(SIM_EPOCH_SEC 基準)を使う——暦の区切りに揃っていない任意の瞬間を表すため、
+// tickLabel の rank 依存の粗い書式(HH:00 など)よりこちらが適する。
 export function elementTimeLabel(simTimeT: number, mode: TickLabelMode, nowSimTime: number): string {
   if (mode === 'relative') {
     const delta = simTimeT - nowSimTime;
