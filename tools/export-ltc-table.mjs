@@ -29,6 +29,9 @@ import * as THREE from 'three/webgpu';
 
 export const LTC_TABLE_SIZE = 64;
 
+// 係数表 2 枚。
+export type LtcTables = { readonly ltc1: THREE.DataTexture; readonly ltc2: THREE.DataTexture };
+
 const LTC_1_BASE64 = '${toBase64(half1)}';
 
 const LTC_2_BASE64 = '${toBase64(half2)}';
@@ -47,7 +50,7 @@ function decodeTable(base64: string): THREE.DataTexture {
 }
 
 // 係数表 2 枚を新しいテクスチャとして返す。解放は呼び出し側が行う。
-export function createLtcTables(): { readonly ltc1: THREE.DataTexture; readonly ltc2: THREE.DataTexture } {
+export function createLtcTables(): LtcTables {
   return { ltc1: decodeTable(LTC_1_BASE64), ltc2: decodeTable(LTC_2_BASE64) };
 }
 `);
