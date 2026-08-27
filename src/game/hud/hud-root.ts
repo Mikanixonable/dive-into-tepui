@@ -379,9 +379,9 @@ function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
 // data-id 属性を持つ要素を、その id をキーにした Map にまとめて返す。
 function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   const els = new Map<string, HTMLElement>();
-  root.querySelectorAll<HTMLElement>('[data-id]').forEach((e) => {
-    els.set(e.dataset['id']!, e);
-  });
+  for (const element of Array.from(root.querySelectorAll<HTMLElement>('[data-id]'))) {
+    els.set(element.dataset['id']!, element);
+  }
   return els;
 }
 
