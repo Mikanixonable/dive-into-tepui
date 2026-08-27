@@ -73,6 +73,7 @@ export class SaveBrowser implements OverlayHandle {
 
   public get visible(): boolean { return this._visible; }
 
+  // モーダルの DOM 骨格だけを組み、非表示で親要素へ差し込む。中身は open のたびに rebuild する。
   public constructor(
     root: HTMLElement,
     private readonly slots: SaveSlots,
@@ -90,6 +91,7 @@ export class SaveBrowser implements OverlayHandle {
   // パネルを開く。表示対象スロットは既定でアクティブスロット、ステージタブは既定でいま
   // プレイ中のステージ。開いている間はゲームを止める。
   public open(): void {
+    // 表示対象を既定値(アクティブスロット・現在のステージ)へ戻す。
     this.viewedSlotId = this.slots.activeSlotId;
     this.viewedStageId = this.gameSource.current?.activeStage.id ?? null;
     this.statusLine = '';
@@ -97,12 +99,14 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
     this.el.style.display = 'flex';
     this._visible = true;
+    // 開いている間は裏のゲームを止め、オーバーレイとして入力を占有する。
     this.gameSource.current?.pause();
     this.overlayManager.open('save-browser', this, {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true, exclusiveGroup: 'system-modal',
     });
   }
 
+  // パネルを閉じ、裏のゲームを再開する。
   public close(): void {
     this.el.style.display = 'none';
     this._visible = false;
@@ -114,6 +118,7 @@ export class SaveBrowser implements OverlayHandle {
     return this.el.contains(target);
   }
 
+  // ステータス行の文言とエラー表示を差し替える。次の rebuild で DOM へ反映される。
   private setStatus(text: string, isError: boolean): void {
     this.statusLine = text;
     this.statusIsError = isError;
@@ -292,17 +297,20 @@ export class SaveBrowser implements OverlayHandle {
   // クリップ時は名前を尋ね、解除時はそのまま外す。上限に達している場合はクリップできず、
   // 理由をステータス行へ表示する。
   private handleTogglePin(snapId: string, currentlyPinned: boolean): void {
+    // 解除は確認なしでそのまま外す。
     if (currentlyPinned) {
       this.slots.setPinned(snapId, false);
       this.rebuild();
       return;
     }
+    // クリップは上限に達していれば失敗し、理由をステータス行へ出す。
     const ok = this.slots.setPinned(snapId, true);
     if (!ok) {
       this.setStatus('クリップ上限です。先にどれかのクリップを外してください。', true);
       this.rebuild();
       return;
     }
+    // 成功したら、任意で名前を付けて区別できるようにする。
     const name = prompt('クリップする名前(空欄なら変更しません)', '');
     if (name) this.slots.renameSnapshot(snapId, name);
     this.rebuild();
