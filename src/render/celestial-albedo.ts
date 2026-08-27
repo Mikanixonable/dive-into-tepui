@@ -23,7 +23,7 @@
 // **衝効果(opposition surge)はモデル化していない。** 満月に近い構図で写真より暗く写るのは
 // その正しい帰結で、アルベドを盛って埋めてはならない(埋めるなら再帰反射項を足す)。
 
-import { EARTH_TEXTURES, textureOf } from './celestial-textures';
+import { texturePhotometryOf } from './celestial-textures';
 
 // 線形 RGB の拡散アルベド。各成分は 0..1。
 export type Albedo = readonly [number, number, number];
@@ -129,8 +129,8 @@ export function rec709Luminance(albedo: Albedo): number {
 // id のボンドアルベドをスカラ1つで。実写テクスチャを持つ天体はその倍率の導出元
 // (celestial-textures.ts)を、それ以外は単色アルベドの輝度を返す。
 export function bondAlbedoOf(id: string): number {
-  const texture = textureOf(id);
-  return texture !== null ? texture.bondAlbedo : rec709Luminance(albedoOf(id));
+  const photometry = texturePhotometryOf(id);
+  return photometry !== null ? photometry.bondAlbedo : rec709Luminance(albedoOf(id));
 }
 
 // hue の色みを保ったまま、Rec.709 輝度を bondAlbedo へ合わせた線形 RGB。
@@ -142,8 +142,7 @@ function scaledToBondAlbedo(hue: readonly [number, number, number], bondAlbedo: 
 // id を光源として扱うときの色つきアルベド(輝度がボンドアルベドに一致する線形 RGB)。
 // 実写テクスチャを持つ天体は平均色の色みへボンドアルベドを掛け、それ以外は単色アルベドのまま。
 export function lightSourceAlbedoOf(id: string): Albedo {
-  if (id === 'earth') return scaledToBondAlbedo(EARTH_TEXTURES.averageHue, EARTH_TEXTURES.bondAlbedo);
-  const texture = textureOf(id);
-  if (texture !== null) return scaledToBondAlbedo(texture.averageHue, texture.bondAlbedo);
+  const photometry = texturePhotometryOf(id);
+  if (photometry !== null) return scaledToBondAlbedo(photometry.averageHue, photometry.bondAlbedo);
   return albedoOf(id);
 }
