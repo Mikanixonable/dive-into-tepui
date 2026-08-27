@@ -154,7 +154,7 @@ export class LabView {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
-      canvas, antialias: QUALITY_PRESETS.high.antialias, reversedDepthBuffer: true,
+      canvas, antialias: QUALITY_PRESETS.high.antialias, trackTimestamp: true, reversedDepthBuffer: true,
     });
     renderer.setOpaqueSort(reversedOpaqueSort);
     renderer.setTransparentSort(reversedTransparentSort);
@@ -348,8 +348,12 @@ export class LabView {
     this.gpu.resolve();
   }
 
-  async measure(name: CaseName, warmupFrames = 6, sampleFrames = 30): Promise<LabMeasurement> {
+  // ケースを表示して測る。angles を渡すと、ケース既定の観察の向きへそれを重ねてから測る。
+  async measure(
+    name: CaseName, angles: Partial<LabViewAngles> = {}, warmupFrames = 6, sampleFrames = 30,
+  ): Promise<LabMeasurement> {
     this.show(name);
+    this.setViewAngles(angles);
     await this.gpu.waitForResolve();
     this.gpu.reset();
 
