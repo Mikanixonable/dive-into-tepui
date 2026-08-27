@@ -1,5 +1,5 @@
 // 設定メニューの「描画」面。品質プリセットと、描画品質設定の全項目を群ごとに並べる。
-// **項目の増減にこのファイルは追随しない** — 並びも見出しも設定側の表が決める。
+// 並びも見出しも GRAPHICS_GROUPS・GRAPHICS_OPTIONS の表からそのまま組む。
 import {
   GRAPHICS_GROUPS, GRAPHICS_OPTIONS, GraphicsSettings, graphicsOptionKeys,
   type GraphicsOptionKey, type QualityPreset,
