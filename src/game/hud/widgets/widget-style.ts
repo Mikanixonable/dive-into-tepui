@@ -23,9 +23,9 @@ export const WIDGET_STYLE = `
   transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 .w-btn:hover, .w-close:hover { color: var(--color-primary-hover); background: var(--surface-3); }
-.w-btn.pressed, .w-close.pressed { background: var(--fill-3); transform: translateY(1px); }
+.w-btn.pressed { background: var(--fill-3); transform: translateY(1px); }
 .w-btn.on { background: var(--color-primary-fill); border-color: transparent; color: var(--color-primary); }
-.w-btn.disabled, .w-close.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+.w-btn.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 .w-btn:focus-visible, .w-close:focus-visible, .w-toggle-track:focus-visible, .w-input:focus-visible {
   outline: 2px solid var(--color-focus); outline-offset: 2px;
 }

@@ -1,16 +1,15 @@
-// 単発クリックのボタン。押すと onClick が呼ばれるだけで、on(点灯)/disabled の表示は
-// 呼び出し側が setOn/setEnabled で与える — 自分では状態を反転しない。点灯型トグルは
-// これに setOn を外から呼ぶ形で表現し、別ウィジェットを持たない。
+// 単発クリックのボタン。押すと onClick を呼ぶ。on(点灯)/disabled の表示は呼び出し側が
+// setOn/setEnabled で与える。点灯型トグルは setOn を外から呼ぶ形でこのボタンに表現させる。
 import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-base';
 
 export class Button {
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
   private enabled = true;
   private readonly labelEl: HTMLElement | null;
 
   // label はボタンの表示文字列。onClick はクリック(またはキーボード操作)のたびに呼ばれる。
   // icon を渡すと、その SVG/文字マークアップをラベルの前に添える。
-  constructor(label: string, onClick: () => void, icon?: string) {
+  public constructor(label: string, onClick: () => void, icon?: string) {
     this.element = document.createElement('span');
     this.element.className = 'w-btn';
     if (icon !== undefined) {
@@ -41,19 +40,20 @@ export class Button {
     bindActivation(this.element, () => { if (this.enabled) onClick(); });
   }
 
-  setLabel(label: string): void {
+  // ボタンの表示文字列を差し替える。
+  public setLabel(label: string): void {
     if (this.labelEl !== null) this.labelEl.textContent = label;
     else this.element.textContent = label;
   }
 
-  // 点灯表示を設定する。押されるたびに自分で反転はしない — onClick 側が setOn を呼ぶ。
-  setOn(on: boolean): void {
+  // 点灯表示を外部状態に合わせて設定する。呼び出し側が onClick 内などから setOn を呼んで反映する。
+  public setOn(on: boolean): void {
     this.element.classList.toggle('on', on);
     this.element.setAttribute('aria-pressed', String(on));
   }
 
-  // 無効化する。無効中はクリック・キーボード操作のいずれも onClick を呼ばない。
-  setEnabled(enabled: boolean): void {
+  // 無効化を切り替える。有効なときにクリック・キーボード操作が onClick を呼ぶ。
+  public setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     this.element.classList.toggle('disabled', !enabled);
     this.element.setAttribute('aria-disabled', String(!enabled));
