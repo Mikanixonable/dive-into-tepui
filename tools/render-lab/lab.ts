@@ -149,7 +149,7 @@ export class LabView {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
-      canvas, antialias: QUALITY_PRESETS.high.antialias, reversedDepthBuffer: true,
+      canvas, reversedDepthBuffer: true,
     });
     renderer.setOpaqueSort(reversedOpaqueSort);
     renderer.setTransparentSort(reversedTransparentSort);

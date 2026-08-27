@@ -43,9 +43,12 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 // applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
 // 駆動する側は、この並びを操作の対象にする。
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'antialias', 'exposureCompensation', 'sunLightModel', 'planetLightCount',
+  'lens', 'msaa', 'antialias', 'exposureCompensation', 'sunLightModel', 'planetLightCount',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
+
+// マルチサンプリングを入れるときの標本数。
+const MSAA_SAMPLES = 4;
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly renderer: WebGPURenderer;
@@ -129,15 +132,11 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
-    // antialias はレンダラ生成時にしか渡せず(scene.ts 参照)、キャンバスへの直描きは
-    // それでマルチサンプルされていた。オフスクリーンの HDR ターゲットは自前で samples を
-    // 要求しないと素通りで失われるので、構築時に一度だけ読んで反映する。
-    const samples = graphics.antialias ? 4 : 0;
     this.target = new THREE.RenderTarget(1, 1, {
       type: THREE.HalfFloatType,
       format: THREE.RGBAFormat,
       depthBuffer: true,
-      samples,
+      samples: graphics.msaa ? MSAA_SAMPLES : 0,
     });
     // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
@@ -273,6 +272,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.sunSource.setModel(graphics.sunLightModel);
     this._planetLight.setCount(graphics.planetLightCount);
     this.antialiasPass.setEnabled(graphics.antialias);
+    // 標本数を変えると、three が次の描画までに色と深度のテクスチャを作り直す。
+    this.target.samples = graphics.msaa ? MSAA_SAMPLES : 0;
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
@@ -282,8 +283,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが実際に
   // 生成した中身であるべきため。設定で切られている段(影・レンズ)を選べば、そのフレームが
   // 何も作っていないことがそのまま空として見える。**見せるために描き足すのはマテリアルだけ**
-  // — あの段の出力は共有ターゲットの上で大気と world に上書きされて残らず、かつ MSAA を
-  // 落とさずに残す方法が無いため(material-pass.ts の showDebugTarget)。
+  // — あの段の出力は共有ターゲットの上で大気と world に上書きされて残らないため
+  // (material-pass.ts の showDebugTarget)。
   render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
