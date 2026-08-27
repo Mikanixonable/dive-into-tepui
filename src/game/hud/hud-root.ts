@@ -8,9 +8,7 @@ import { HelpPanel } from './windows/help-panel';
 import {
   PanelShell,
   type HudWorldView,
-  loadPanelCollapsed,
-  onPanelCollapsedViewChange,
-  savePanelCollapsed,
+  wirePanelCollapse,
 } from './panel-shell';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
@@ -19,9 +17,7 @@ import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { isCompactViewport } from './breakpoints';
 import { startViewportTracking } from './viewport';
-import {
-  buildCollapseToggle, syncCollapseToggle, WIDGET_STYLE,
-} from './widgets';
+import { WIDGET_STYLE } from './widgets';
 import type { OverlayLayers } from './overlay-layer';
 import type { CollapseToggleLabels } from './widgets';
 export {
@@ -86,18 +82,15 @@ function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
 function buildRailToggle(
   root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: HudWorldView,
 ): void {
-  const railId = `hud-rail-${side}`;
-  const toggle = buildCollapseToggle(
-    root, `hud-${view}-rail-toggle-${side}`, `rail-toggle rail-toggle-${side}`, rail, railToggleLabels(side),
-  );
-  const applyCollapsedState = (): void => {
-    const collapsed = loadPanelCollapsed(railId) ?? isCompactViewport();
-    rail.classList.toggle('collapsed', collapsed);
-    syncCollapseToggle(toggle, rail, railToggleLabels(side));
-  };
-  applyCollapsedState();
-  onPanelCollapsedViewChange(applyCollapsedState);
-  toggle.addEventListener('click', () => savePanelCollapsed(railId, rail.classList.contains('collapsed')));
+  wirePanelCollapse({
+    toggleRoot: root,
+    toggleId: `hud-${view}-rail-toggle-${side}`,
+    toggleClassName: `rail-toggle rail-toggle-${side}`,
+    target: rail,
+    labels: railToggleLabels(side),
+    storageId: `hud-rail-${side}`,
+    defaultCollapsed: () => isCompactViewport(),
+  });
 }
 
 function buildWorldRoot(parent: HTMLElement, id: string, view: HudWorldView): HudWorldRoot {
@@ -153,9 +146,8 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   return svgOverlay;
 }
 
-// 常設の情報パネル(VESSEL/ORBIT/TARGET/CONTACTS)を左右のドックへ組む。左右レールの
-// 収納トグルと各 PanelShell の折りたたみは、現在ビューの永続状態を利用する。
-function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
+// 常設 VESSEL パネルを右レールへ組む。
+function buildVesselStatusPanel(rightRail: HTMLElement): void {
   const status = new PanelShell(rightRail, 'hud-vessel-status', 'Vessel');
   configureCombatPanel(status);
   status.body.innerHTML = `
@@ -199,7 +191,10 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
     <div class="vessel-deploy-controls" data-id="vessel-deploy-controls" role="group" aria-label="太陽電池パドル・放熱板の収納展開"></div>
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
     <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
+}
 
+// 常設 ORBIT パネルを左レールへ組む。マップビューと compact 幅では畳んで始める。
+function buildOrbitInfoPanel(leftRail: HTMLElement): void {
   const orbit = new PanelShell(
     leftRail, 'hud-orbit', 'Orbit', (view) => view === 'map' || isCompactViewport(),
   );
@@ -225,6 +220,10 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
 
   // ブースター燃焼管理は戦闘/マップで同じ DOM を移動して使う。ゲーム状態を直接
   // 参照する controller は Hud 側へ注入し、ここでは表示用のシェルだけを組む。
+}
+
+// ブースター燃焼管理パネルを左レールへ組む。
+function buildBurnManagementPanel(leftRail: HTMLElement): void {
   const burnManagement = new PanelShell(
     leftRail, 'burn-management-panel', '燃焼管理',
   );
@@ -252,7 +251,10 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       </div>
     </dl>
     <div class="panel-actions burn-actions" data-id="burn-actions" role="group" aria-label="ブースター操作"></div>`;
+}
 
+// 常設 TARGET パネルを右レールへ組む。ロック対象が無い間は隠す。
+function buildTargetPanel(rightRail: HTMLElement): void {
   const target = new PanelShell(rightRail, 'hud-target', 'Target');
   configureCombatPanel(target);
   target.setHidden(true);
@@ -289,7 +291,10 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       </section>
       <p class="target-help">軌道要素は右クリックで表示</p>
     </div>`;
+}
 
+// 常設 CONTACTS パネルを右レールへ組む。件数バッジを見出しへ添える。
+function buildEnemiesPanel(rightRail: HTMLElement): void {
   const enemies = new PanelShell(rightRail, 'hud-enemies', 'Enemies', isCompactViewport());
   configureCombatPanel(enemies);
   const count = document.createElement('span');
@@ -298,7 +303,15 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   count.textContent = '—';
   enemies.titleEl.append(' ', count);
   enemies.body.innerHTML = `<ol class="contact-list" data-id="elist" aria-label="距離順の戦闘対象"></ol>`;
+}
 
+// 常設の情報パネル群を左右のドックへ組む。
+function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
+  buildVesselStatusPanel(rightRail);
+  buildOrbitInfoPanel(leftRail);
+  buildBurnManagementPanel(leftRail);
+  buildTargetPanel(rightRail);
+  buildEnemiesPanel(rightRail);
 }
 
 // マップ視点の縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
