@@ -160,7 +160,9 @@ export const MAP_VIEW_STYLE = `
   border: 0;
   border-radius: var(--radius-control);
   color: var(--body);
-  background: transparent;
+  /* 見出しは内側スクロール領域の先頭に貼り付く(sticky、寸法は physical-object-list-panel.ts
+     側)ため、スクロールで下を通り過ぎる行を隠せるようパネルと同じ地の不透明度を持たせる。 */
+  background: var(--glass-quiet);
   letter-spacing: 0;
   cursor: pointer;
 }
@@ -173,10 +175,16 @@ export const MAP_VIEW_STYLE = `
   transition: color var(--transition-fast), background var(--transition-fast);
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--title); background: var(--surface-2); }
-#hud .hud-map-root.active #hud-physical-object-list .erow.related-orbit {
+/* 基調スキンの .erow.tgt はこのセレクタより詳細度が低く、上の .erow が指定する色に負ける。
+   フォーカス中の行を目立たせるため、マップ視点でも同じ詳細度で塗り直す。 */
+#hud .hud-map-root.active #hud-physical-object-list .erow.tgt {
   color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+@media ${MQ_COARSE} {
+  /* 既定の行高(--row-min-h-s)はマウス向けの詰めた寸法なので、タッチではタップ最小寸法まで広げる。 */
+  #hud .hud-map-root.active #hud-physical-object-list .erow { min-height: var(--hit-target-min); }
+}
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-glyph {
   flex: 0 0 16px;
   height: 16px;
