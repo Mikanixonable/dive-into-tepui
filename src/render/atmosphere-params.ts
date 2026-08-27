@@ -1,7 +1,7 @@
 // 天体ごとの、大気の見えを決める光学パラメータと、その大気を解くサンプル点の配り方。濃さは高度の
 // 指数関数で表し、レイリー散乱とミー散乱がそれぞれのスケールハイトを持つ。どの高度にも「ここから
 // 上は真空」という界面を置かないので、大気の広がりは決め打ちの厚みではなく散乱係数から導かれる。
-// **サンプル点の配り方は物理ではなく、品質の段ぶんの予算をどの大気へ寄せるかの方針である。**
+// **配り方は物理ではなく、品質の段が決める予算をどの大気へ回すかの方針である。**
 // 抗力を解く大気モデル(physics/atmosphere.ts)とは別の分布で、こちらは見えだけを決める。
 import * as THREE from 'three/webgpu';
 import { ATMOSPHERE_QUALITY, type AtmosphereQuality } from './graphics-settings';
@@ -48,17 +48,26 @@ export function atmosphereOpticsOf(id: string): AtmosphereOptics | null {
 // 同時に大気を描ける天体の数。
 export const MAX_ATMOSPHERE_BODIES = 4;
 
-// 大気 1 体を解くのに配れるサンプル点の数の段。
-export const ATMOSPHERE_STEPS = { low: 2, medium: 6, high: 16 } as const;
-export type AtmosphereSteps = (typeof ATMOSPHERE_STEPS)[keyof typeof ATMOSPHERE_STEPS];
-
-// 品質の段ごとの、最も細かく描く天体へ配るサンプル点の数。
-const STEPS_OF_QUALITY: Readonly<Record<AtmosphereQuality, AtmosphereSteps>> = {
-  [ATMOSPHERE_QUALITY.off]: ATMOSPHERE_STEPS.low,
-  [ATMOSPHERE_QUALITY.low]: ATMOSPHERE_STEPS.low,
-  [ATMOSPHERE_QUALITY.medium]: ATMOSPHERE_STEPS.medium,
-  [ATMOSPHERE_QUALITY.high]: ATMOSPHERE_STEPS.high,
+// 品質の段ごとの、大気ぜんぶへ配れるサンプル点の合計。**段が現れるのはこの表だけで、配分は
+// 予算だけを受け取る。** オフの予算 0 は「1 体も描かない」に落ちる。
+const TOTAL_SAMPLES_OF_QUALITY: Readonly<Record<AtmosphereQuality, number>> = {
+  [ATMOSPHERE_QUALITY.off]: 0,
+  [ATMOSPHERE_QUALITY.low]: 8,
+  [ATMOSPHERE_QUALITY.medium]: 16,
+  [ATMOSPHERE_QUALITY.high]: 24,
 };
+
+// 描くと決めた天体へ必ず配るサンプル点の数。
+const MIN_SAMPLES = 2;
+
+// 1 体へ配るサンプル点の上限。ここを超えても絵はほとんど変わらないので、支配的な 1 体が予算を
+// 吸い切る構図では余りを使わずに済ませる。
+const MAX_SAMPLES = 16;
+
+// 描くに値しないと見なす影響の下限。**不透明度 1 の大気が画面の 1 画素を覆うぶん。** 画素の
+// 視角は、最も狭い画角(照準ズームの 6° = 0.105 rad)を縦 2160 画素で割って採る — ズームで
+// 覗いたときに遠くの惑星の大気だけが消えないよう、最も細かい側に合わせておく。
+const MIN_SCORE = (0.105 / 2160) ** 2 / (4 * Math.PI);
 
 // 絵に出ないと見なす光学的厚み。地平線方向の視線がこれを下回る高度から上は描かない。
 const MIN_VISIBLE_OPTICAL_DEPTH = 1e-5;
@@ -81,24 +90,22 @@ export function cutoffAltitude(optics: AtmosphereOptics, surfaceRadius: number):
   );
 }
 
-// 裾の中にいる天体を、外から眺めている天体の上へ出す下駄。**物理ではなく、予算をどこへ寄せるかの
-// 方針である** — 地表まで潜れば、視半径が3桁大きく見える天体より優先される。
-const INSIDE_ATMOSPHERE_PRIORITY = 3 * Math.LN10;
-
-// 品質を落としたときに絵が崩れる度合いの推定。distance は視点から天体中心までの距離 [m]。
-// 基は**大気の裾球の視半径の対数**で、天体の大きさと距離の両方が効く。裾の中では大気が全天を
-// 覆って視半径では差が付かなくなるので、そこにいる濃さ(絵に出ない下限から地表までを 0..1 で
-// 測ったもの。密度は高度の指数なので、高度に比例させると対数の目盛りになる)を下駄として足す。
-function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, distance: number): number {
-  const cutoff = cutoffAltitude(optics, surfaceRadius);
-  const depth = THREE.MathUtils.smoothstep(cutoff - (distance - surfaceRadius), 0, cutoff);
-  return Math.log((surfaceRadius + cutoff) / Math.max(distance, 1))
-    + INSIDE_ATMOSPHERE_PRIORITY * depth;
+// 大気を天頂方向へ通り抜ける光学的厚み。**濃さを1つの数で表すためだけの量**なので、波長ごとに
+// 違うレイリー散乱は3成分の平均で潰す。
+function verticalOpticalDepth(optics: AtmosphereOptics): number {
+  const rayleigh = (optics.rayleigh.x + optics.rayleigh.y + optics.rayleigh.z) / 3;
+  return rayleigh * optics.rayleighScaleHeight + optics.mie * optics.mieScaleHeight;
 }
 
-// 細かく描く天体への寄せが、残りと同じ細かさへ薄まりきる推定値の差。視半径が2倍あれば、
-// その天体の大気が画面を支配していると見なす。
-const DETAIL_WEIGHT_GAP = Math.LN2;
+// その天体の大気が画面へ及ぼす影響の推定 0..1。**裾球が視野に占める割合 × 大気の効きの深さ。**
+// distance は視点から天体中心までの距離 [m]。遠い天体・小さい天体では視半径の2乗で落ちるので、
+// 影響は自然に 0 へ近づく。裾の中ではどの向きの視線も大気を通るので、占める割合は 1 に飽和する。
+function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, distance: number): number {
+  const cutoffRadius = surfaceRadius + cutoffAltitude(optics, surfaceRadius);
+  const sinAngular = Math.min(cutoffRadius / Math.max(distance, 1), 1);
+  const coverage = distance <= cutoffRadius ? 1 : (1 - Math.sqrt(1 - sinAngular * sinAngular)) / 2;
+  return coverage * -Math.expm1(-verticalOpticalDepth(optics));
+}
 
 // 大気の広がりを決めるもの。
 type AtmosphereExtent = {
@@ -112,37 +119,49 @@ export type AtmosphereCandidate<T extends AtmosphereExtent> = {
   readonly distance: number;
 };
 
-// 大気を描く指示 1 体ぶん。steps はその大気を解くサンプル点の数で、段の間の実数も採る。
+// 大気を描く指示 1 体ぶん。steps はその大気を解くサンプル点の数で、整数でない値も採る。
 export type AtmosphereDraw<T extends AtmosphereExtent> = {
   readonly body: T;
   readonly steps: number;
 };
 
+// 予算 budget サンプルを、影響の大きい順に配る。**返す並びは視点に近い順**(合成の順序)。
+// 予算で賄えない数の候補は、影響の小さい側から落ちる。
+function allocateSamples<T extends AtmosphereExtent>(
+  scored: readonly (AtmosphereCandidate<T> & { readonly score: number })[],
+  budget: number,
+): readonly AtmosphereDraw<T>[] {
+  // **体数そのものを予算で削る** — 最低ぶんすら賄えない数を描くと、段を下げたのに予算を超える。
+  const drawn = scored
+    .filter(({ score }) => score >= MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.min(MAX_ATMOSPHERE_BODIES, Math.floor(budget / MIN_SAMPLES)));
+  const scoreSum = drawn.reduce((sum, { score }) => sum + score, 0);
+  const shared = budget - MIN_SAMPLES * drawn.length;
+  // **上限で余った予算は捨てる。** 上限が効くのは 1 体が取り分を独占しているときで、そのとき
+  // 残りの候補は桁違いに小さい — 残りのスコアで割り直すと、その桁違いに小さい天体が余りを
+  // 丸ごと受け取ってしまう。
+  return drawn
+    .map(({ body, distance, score }) => ({
+      body,
+      distance,
+      steps: MIN_SAMPLES + Math.min(MAX_SAMPLES - MIN_SAMPLES, (shared * score) / scoreSum),
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .map(({ body, steps }) => ({ body, steps }));
+}
+
 // このフレームに大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数を添えて返す。
-// 品質がオフなら空。同時に描ける数を超えた候補は、影響の小さいほうから落ちる。
+// 品質の段は、大気ぜんぶへ配れるサンプル点の合計だけを決める。
 export function atmosphereDraws<T extends AtmosphereExtent>(
   candidates: readonly AtmosphereCandidate<T>[],
   quality: AtmosphereQuality,
 ): readonly AtmosphereDraw<T>[] {
-  if (quality === ATMOSPHERE_QUALITY.off) return [];
-  const ranked = candidates
-    .map((candidate) => ({
+  return allocateSamples(
+    candidates.map((candidate) => ({
       ...candidate,
-      impact: screenImpact(candidate.body.optics, candidate.body.surfaceRadius, candidate.distance),
-    }))
-    .sort((a, b) => b.impact - a.impact)
-    .slice(0, MAX_ATMOSPHERE_BODIES);
-  // 先頭へ寄せる予算は、2 位との開きで決める。**開きが 0 の場所では残りと同じ細かさになる**ので、
-  // 順位が入れ替わっても絵が飛ばない。候補が 1 体なら、その天体が場を独占している。
-  const gap = ranked.length < 2 ? Infinity : ranked[0]!.impact - ranked[1]!.impact;
-  const detailed = THREE.MathUtils.lerp(
-    ATMOSPHERE_STEPS.low, STEPS_OF_QUALITY[quality],
-    THREE.MathUtils.smoothstep(gap, 0, DETAIL_WEIGHT_GAP),
+      score: screenImpact(candidate.body.optics, candidate.body.surfaceRadius, candidate.distance),
+    })),
+    TOTAL_SAMPLES_OF_QUALITY[quality],
   );
-  return ranked
-    .map(({ body, distance }, index) => ({
-      body, distance, steps: index === 0 ? detailed : ATMOSPHERE_STEPS.low,
-    }))
-    .sort((a, b) => a.distance - b.distance)
-    .map(({ body, steps }) => ({ body, steps }));
 }

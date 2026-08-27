@@ -16,8 +16,7 @@ import {
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import {
-  ATMOSPHERE_STEPS, MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, type AtmosphereOptics,
-  cutoffAltitude,
+  MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, type AtmosphereOptics, cutoffAltitude,
 } from '../atmosphere-params';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
@@ -139,7 +138,7 @@ export class AtmospherePass {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
     this.slots = Array.from({ length: MAX_ATMOSPHERE_BODIES }, (): BodySlot => ({
-      steps: uniform(ATMOSPHERE_STEPS.low),
+      steps: uniform(1),
       center: uniform(new THREE.Vector3()),
       surfaceRadius: uniform(0),
       cutoffRadius: uniform(0),
@@ -398,7 +397,7 @@ export class AtmospherePass {
       slot.surfaceRadius.value = draw === undefined ? 0 : draw.body.surfaceRadius;
       // **空きスロットにも 1 以上を入れておく** — 積分の段の幅はサンプル数の逆数なので、
       // 0 を入れると分岐の外で組まれる式が 0 除算になる。
-      slot.steps.value = draw === undefined ? ATMOSPHERE_STEPS.low : draw.steps;
+      slot.steps.value = draw === undefined ? 1 : draw.steps;
       if (draw === undefined) continue;
       const { body } = draw;
       const cutoffRadius = body.surfaceRadius + cutoffAltitude(body.optics, body.surfaceRadius);
