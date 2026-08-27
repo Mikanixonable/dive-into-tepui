@@ -54,16 +54,20 @@ interface ActiveLabel {
   dy: number;
 }
 
+// マーカーの種別ごとの既定優先度(値が大きいほど重なったとき残す)。呼び出し側が
+// 個別の優先度を渡さなかったときに使う。
 function defaultPriorityForClass(key: string, cls: string): number {
   if (cls.includes('mk-poi')) {
     return key.includes('-l') ? C.MARKER_PRIORITY.LAGRANGE : C.MARKER_PRIORITY.SATELLITE_SMALL_BODY;
   }
   if (cls.includes('mk-target')) return C.MARKER_PRIORITY.PRIMARY_TARGET;
   if (cls.includes('mk-impact')) return C.MARKER_PRIORITY.IMPACT;
-  if (cls.includes('mk-base')) return C.MARKER_PRIORITY.BASE;
-  if (cls.includes('mk-self') || cls.includes('mk-ally')) return C.MARKER_PRIORITY.PLAYER;
-  if (cls.includes('mk-enemy')) return C.MARKER_PRIORITY.ENEMY;
-  if (cls.includes('mk-ammo') || cls.includes('mk-fuel')) return C.MARKER_PRIORITY.AMMO;
+  // 陣営種別は combatMarkerKindOf の分類を正本とし、ここで独自に cls を読み直さない。
+  const combatKind = combatMarkerKindOf(cls);
+  if (combatKind === 'base') return C.MARKER_PRIORITY.BASE;
+  if (combatKind === 'self' || combatKind === 'ally') return C.MARKER_PRIORITY.PLAYER;
+  if (combatKind === 'enemy') return C.MARKER_PRIORITY.ENEMY;
+  if (combatKind === 'ammo' || combatKind === 'fuel') return C.MARKER_PRIORITY.AMMO;
   if (cls.includes('mk-mnode') || cls.includes('mk-burn')) return C.MARKER_PRIORITY.MANEUVER_NODE;
   if (cls.includes('mk-node') || cls.includes('mk-relnode') || cls.includes('mk-eqnode') || cls.includes('mk-boardpass')) {
     return C.MARKER_PRIORITY.ORBITAL_NODE;
