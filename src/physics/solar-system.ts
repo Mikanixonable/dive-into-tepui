@@ -1333,7 +1333,7 @@ export const SOLAR_SYSTEM = {
   halley: {
     kind: 'planet',
     id: 'halley',
-    mu: 1.5e1, // 粗い推定値(核質量 ~2.2e14 kg 相当)
+    mu: GRAVITATIONAL_CONSTANT * 2.2e14, // 粗い推定値(核質量 ~2.2e14 kg 相当)
     radius: 5.5e3, // 粗い推定値(核長径の半分程度)
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=1P&full-prec=true (元期 JD2439875.5、
     // 1968年の近日点通過に近い元期)。非重力効果(彗星核からのガス噴出による軌道擾乱)は
@@ -1356,7 +1356,7 @@ export const SOLAR_SYSTEM = {
   encke: {
     kind: 'planet',
     id: 'encke',
-    mu: 4e0, // 粗い推定値(核質量 ~6e13 kg 相当)
+    mu: GRAVITATIONAL_CONSTANT * 6e13, // 粗い推定値(核質量 ~6e13 kg 相当)
     radius: 2.4e3,
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=2P&full-prec=true (元期 JD2459847.5)
     orbit: planetOrbit({
