@@ -66,10 +66,17 @@ export const GRAPHICS_OPTIONS = {
     items: [[0.25, '−2'], [0.5, '−1'], [1, '±0'], [2, '+1'], [4, '+2']],
     presets: { low: 1, medium: 1, high: 1 },
   },
-  // マルチサンプリング。レンダラ生成時にしか渡せないので、変更は次回起動から効く。
-  antialias: {
-    kind: 'toggle', group: 'basic', label: 'アンチエイリアス(次回起動から)',
+  // 光を受ける不透明物の縁を、画素より細かい被覆の割合として描くか。最終段のアンチエイリアスが
+  // 作れない中間調がここで入る。
+  msaa: {
+    kind: 'toggle', group: 'basic', label: 'マルチサンプリング',
     presets: { low: false, medium: true, high: true },
+  },
+  // 描画の最終段で、物体の縁と 3D UI の線のギザギザを均す方式。
+  antialias: {
+    kind: 'choice', group: 'basic', label: 'アンチエイリアス',
+    items: [[0, 'なし'], [1, 'FXAA'], [2, 'SMAA']],
+    presets: { low: 0, medium: 1, high: 2 },
   },
   // 小惑星帯・カイパー帯などの点群。
   pointField: {
