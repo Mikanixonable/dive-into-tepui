@@ -90,17 +90,31 @@ function logExtinctionAt(optics: AtmosphereOptics, altitude: number): number {
   return larger + Math.log1p(Math.exp(Math.min(rayleigh, mie) - larger));
 }
 
+// 裾の外の視点で強さを落とす、全天体共通のスケールハイト [m]。典型的な大気のスケールハイトの桁。
+const VACUUM_RANK_SCALE_HEIGHT = 1e4;
+
+// 並び替えに使う、その天体の大気が視点の場所を作っている強さ。裾の中では視点の消散係数の対数。
+// **裾の外では天体ごとのスケールハイトで外挿を続けない** — どの大気も絵に出ない高度なのに、
+// 遠方ではスケールハイトの大きい天体が距離によらず勝ってしまう。裾から先は全天体共通の減衰率で
+// 落とし、裾の外の天体どうしの比較を「どちらの大気に近いか」の比較にする。
+function rankStrength(optics: AtmosphereOptics, surfaceRadius: number, altitude: number): number {
+  const cutoff = cutoffAltitude(optics, surfaceRadius);
+  return logExtinctionAt(optics, Math.min(altitude, cutoff))
+    - Math.max(altitude - cutoff, 0) / VACUUM_RANK_SCALE_HEIGHT;
+}
+
 // 大気を持つ天体を、視点のいる場所の大気を強く作っている順に並べ、先頭へ足す濃い表現の重み 0..1
 // を添えて返す。altitude は視点のその天体からの高度 [m]。**視線の向きは見ない** — 地表から空を
 // 見上げて地面が視錐台に入っていなくても、空は大気の色でなければならない。
 //
-// **この並びは視点に近い順でもある。** 濃さは高度に対して指数で落ちるので、遠い天体が近い天体を
-// 上回るのは近い側の大気がそもそも見えないときだけ。
-export function rankAtmospheres<T extends { readonly optics: AtmosphereOptics }>(
+// **この並びは視点に近い順でもある。** 裾の中では濃さが高度に対して指数で落ちるので、遠い天体が
+// 近い天体を上回るのは近い側の大気がそもそも見えないときだけ。裾の外の天体どうしは共通の減衰率で
+// 比べるので、近い順そのものになる。
+export function rankAtmospheres<T extends { readonly optics: AtmosphereOptics; readonly surfaceRadius: number }>(
   candidates: readonly { readonly body: T; readonly altitude: number }[],
 ): { readonly bodies: readonly T[]; readonly denseWeight: number } {
   const ranked = candidates
-    .map(({ body, altitude }) => ({ body, strength: logExtinctionAt(body.optics, altitude) }))
+    .map(({ body, altitude }) => ({ body, strength: rankStrength(body.optics, body.surfaceRadius, altitude) }))
     .sort((a, b) => b.strength - a.strength);
   // 候補が 1 体しか無いなら、その天体が場を独占している。
   const gap = ranked.length < 2 ? Infinity : ranked[0]!.strength - ranked[1]!.strength;
