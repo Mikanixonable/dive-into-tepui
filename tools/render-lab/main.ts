@@ -24,7 +24,7 @@ declare global {
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | number) => void;
-      measure: (name: CaseName) => Promise<LabMeasurement>;
+      measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
     };
   }
 }
@@ -239,7 +239,7 @@ async function init(): Promise<void> {
     setStyle: selectStyle,
     setTarget: (target) => { markTarget(target); view.showDebugTarget(target); },
     setGraphicsOption: (key, value) => { view.setGraphicsOption(key, value); syncGraphics(); },
-    measure: (name) => view.measure(name),
+    measure: (name, angles) => view.measure(name, angles),
   };
 }
 
