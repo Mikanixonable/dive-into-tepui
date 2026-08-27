@@ -2,10 +2,9 @@
 // 5.2 の表が正本で、日本語訳に英語を添える。族の集合そのものは推測せず、呼び出し側から渡された
 // 実在の id だけを解釈する。
 //
-// 蝶形・トンボ形・共鳴・DRO は族 id ごとに独立した KindDef のまま(buildKindRow が1行ずつ作る)。
-// それ以外(リヤプノフ・垂直・軸方向・ハロー・短周期・長周期・DPO・LPO)は、点/南北/東西/区間の
-// 軸を持つ小題としてまとめた CombinedKindDef になる(buildCombinedKindRow が軸ボタン+共有設定
-// パネルを1つだけ作る)。
+// 蝶形・トンボ形・共鳴・DRO は族 id ごとに独立した KindDef のまま扱う。それ以外(リヤプノフ・
+// 垂直・軸方向・ハロー・短周期・長周期・DPO・LPO)は、点/南北/東西/区間の軸を持つ小題として
+// まとめた CombinedKindDef になる。
 import { guideKindDefaultColors } from '../../const';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import { GUIDE_GROUPS, type GuideGroupId } from '../../celestial/orbit-guide-settings';
@@ -43,7 +42,7 @@ export interface KindDef {
   readonly group: GuideGroupId;
   readonly label: string;
   readonly sortKey: number;
-  index: number;
+  readonly index: number;
 }
 
 export interface CombinedKindMember {
@@ -64,9 +63,10 @@ export interface CombinedKindDef {
   readonly branchValues: readonly ('N' | 'S')[];
   readonly ewValues: readonly ('E' | 'W')[];
   readonly segmentValues: readonly number[];
-  index: number;
+  readonly index: number;
 }
 
+// standalone種類(蝶形・トンボ形・共鳴・DRO)の表示ラベルを組む。
 function standaloneLabel(p: ParsedGuideKindId): string {
   const segmentLabel = p.segment > 0 ? ` 区間${p.segment}` : '';
   if (p.base === 'resonant') {
@@ -78,6 +78,8 @@ function standaloneLabel(p: ParsedGuideKindId): string {
   return `${BASE_LABELS[p.base]} ${p.point ?? ''}${branchLabel}${segmentLabel}`;
 }
 
+// standalone種類の並び順キー。STANDALONE_BASE_ORDER・POINT_ORDER・BRANCH_ORDER・RESONANT_ORDER
+// を基に、群内で昇順に比較できる1つの数値へ落とす。
 function standaloneSortKey(p: ParsedGuideKindId): number {
   if (p.base === 'resonant') {
     const ratio = p.id.slice('resonant-'.length);
@@ -90,6 +92,8 @@ function standaloneSortKey(p: ParsedGuideKindId): number {
   return baseOrder * 1000 + pointIndex * 100 + branchOrder * 10 + p.segment;
 }
 
+// 小題内でのメンバー(実在する族)の並び順キー。POINT_ORDER・BRANCH_ORDER・EW_ORDER と区間番号を
+// 基に、昇順に比較できる1つの数値へ落とす。
 function memberSortKey(m: CombinedKindMember): number {
   const pointIndex = m.point ? (POINT_ORDER[m.point] ?? 9) : 0;
   const branchOrder = m.branch ? (BRANCH_ORDER[m.branch] ?? 9) : 0;
@@ -97,8 +101,9 @@ function memberSortKey(m: CombinedKindMember): number {
   return pointIndex * 1000 + branchOrder * 100 + ewOrder * 10 + m.segment;
 }
 
-function uniqueSorted<T>(values: readonly T[], order: Readonly<Record<string, number>>): readonly T[] {
-  return [...new Set(values)].sort((a, b) => (order[a as string] ?? 9) - (order[b as string] ?? 9));
+// 重複を除いた値を order の並び順で昇順に整列する。order に無い値は末尾へ回す。
+function uniqueSorted<T extends string>(values: readonly T[], order: Readonly<Record<string, number>>): readonly T[] {
+  return [...new Set(values)].sort((a, b) => (order[a] ?? 9) - (order[b] ?? 9));
 }
 
 // availableFamilies(系ごとの族 id 一覧)の和から、種類の行一覧を組む。並び順が決まった時点で
@@ -110,7 +115,7 @@ export function buildKindDefs(availableFamilies: ReadonlyMap<CatalogSystemId, re
   const ids = new Set<string>();
   for (const list of availableFamilies.values()) for (const id of list) ids.add(id);
 
-  const kindsByGroup = new Map<GuideGroupId, KindDef[]>();
+  const kindsByGroup = new Map<GuideGroupId, Omit<KindDef, 'index'>[]>();
   for (const group of GUIDE_GROUPS) kindsByGroup.set(group, []);
 
   interface CombinedAccum {
@@ -125,51 +130,54 @@ export function buildKindDefs(availableFamilies: ReadonlyMap<CatalogSystemId, re
     const parsed = parseGuideKindId(id);
     if (parsed === null) continue;
     if (parsed.combinedKey === null) {
-      (kindsByGroup.get(parsed.group) as KindDef[]).push({
-        id, group: parsed.group, label: standaloneLabel(parsed), sortKey: standaloneSortKey(parsed), index: 0,
+      kindsByGroup.get(parsed.group)!.push({
+        id, group: parsed.group, label: standaloneLabel(parsed), sortKey: standaloneSortKey(parsed),
       });
       continue;
     }
+    // combinedKey が非nullな行は必ず axes も非null(型では保証されない)。
+    if (parsed.axes === null) continue;
     let accum = combinedByKey.get(parsed.combinedKey);
     if (accum === undefined) {
-      accum = { group: parsed.group, base: parsed.base, axes: parsed.axes as CombinedKindAxes, members: [] };
+      accum = { group: parsed.group, base: parsed.base, axes: parsed.axes, members: [] };
       combinedByKey.set(parsed.combinedKey, accum);
     }
     accum.members.push({ id, point: parsed.point, branch: parsed.branch, ew: parsed.ew, segment: parsed.segment });
   }
 
-  for (const list of kindsByGroup.values()) {
+  const kinds = new Map<GuideGroupId, readonly KindDef[]>();
+  for (const [group, list] of kindsByGroup) {
     list.sort((a, b) => a.sortKey - b.sortKey);
-    list.forEach((def, i) => { def.index = i; });
+    kinds.set(group, list.map((def, i) => ({ ...def, index: i })));
   }
 
-  const combinedByGroup = new Map<GuideGroupId, CombinedKindDef[]>();
+  const combinedByGroup = new Map<GuideGroupId, Omit<CombinedKindDef, 'index'>[]>();
   for (const group of GUIDE_GROUPS) combinedByGroup.set(group, []);
   for (const [key, accum] of combinedByKey) {
     accum.members.sort((a, b) => memberSortKey(a) - memberSortKey(b));
-    (combinedByGroup.get(accum.group) as CombinedKindDef[]).push({
-      key, group: accum.group, label: BASE_LABELS[accum.base] as string, axes: accum.axes, members: accum.members,
+    combinedByGroup.get(accum.group)!.push({
+      key, group: accum.group, label: BASE_LABELS[accum.base] ?? accum.base, axes: accum.axes, members: accum.members,
       pointValues: uniqueSorted(accum.members.map((m) => m.point).filter((v): v is string => v !== undefined), POINT_ORDER),
       branchValues: uniqueSorted(accum.members.map((m) => m.branch).filter((v): v is 'N' | 'S' => v !== undefined), BRANCH_ORDER),
       ewValues: uniqueSorted(accum.members.map((m) => m.ew).filter((v): v is 'E' | 'W' => v !== undefined), EW_ORDER),
       segmentValues: [...new Set(accum.members.map((m) => m.segment))].sort((a, b) => a - b),
-      index: 0,
     });
   }
-  for (const list of combinedByGroup.values()) {
+  const combined = new Map<GuideGroupId, readonly CombinedKindDef[]>();
+  for (const [group, list] of combinedByGroup) {
     list.sort((a, b) => COMBINED_BASE_ORDER.indexOf(baseOfKey(a.key)) - COMBINED_BASE_ORDER.indexOf(baseOfKey(b.key)));
-    list.forEach((def, i) => { def.index = i; });
+    combined.set(group, list.map((def, i) => ({ ...def, index: i })));
   }
 
-  return { kinds: kindsByGroup, combined: combinedByGroup };
+  return { kinds, combined };
 }
 
+// combinedKey(`${group}-${base}`)から base 部分だけを取り出す。
 function baseOfKey(key: string): string {
   return key.slice(key.indexOf('-') + 1);
 }
 
-// 種類の既定色(始・終)。群の色相・群内の明度分けは const.ts の guideKindDefaultColors
-// (静止軌道リング等ほかの軌道線と同じ既定色ロジック)をそのまま使う。
+// 群・小題内での並び順(index)と総数(count)から、種類の既定表示色(始・終)を返す。
 export function defaultColorsFor(group: GuideGroupId, index: number, count: number): { readonly start: number; readonly end: number } {
   const [start, end] = guideKindDefaultColors(group, index, count);
   return { start, end };
