@@ -150,6 +150,7 @@ export class PanelShell {
   public constructor(parent: HTMLElement, id: string, title: string, defaultCollapsed: PanelDefaultCollapsed = false) {
     this.el = document.createElement('div');
     this.el.id = id;
+    this.el.dataset['id'] = id;
     this.el.className = 'panel panel-shell';
 
     const head = document.createElement('div');
