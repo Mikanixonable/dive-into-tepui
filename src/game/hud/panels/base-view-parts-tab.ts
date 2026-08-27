@@ -3,7 +3,8 @@ import type { AnyPart, Part, RcsTankPart } from '../../game-entity/parts';
 import { Button, Meter } from '../widgets';
 import type { BasePanelContext } from './base-view-context';
 import {
-  buildSectionHeader, formatPartMeta, REPAIR_COST_PER_HP, refuelCost, sellPrice,
+  buildFeeButton, buildSectionHeader, formatPartMeta, isRcsTank, REPAIR_COST_PER_HP, refuelCost, sellPrice,
+  styleDockBtn,
 } from './base-view-shared';
 
 // 基地パネルの「部品」タブ: 搭載部品(修理・換装・補給)と倉庫(在庫確認・売却・補給)を扱う。
@@ -41,7 +42,7 @@ export class PartsTabController {
       const list = document.createElement('div');
       list.className = 'dock-part-list';
       list.setAttribute('role', 'list');
-      shipData.parts.forEach((p, i) => list.appendChild(this.buildInstalledPartRow(base, shipData, p, i)));
+      for (const [i, p] of shipData.parts.entries()) list.appendChild(this.buildInstalledPartRow(base, shipData, p, i));
       installedCol.appendChild(list);
     } else {
       const empty = document.createElement('div');
@@ -66,8 +67,9 @@ export class PartsTabController {
 
   // 艦の全部品をまとめて修理するボタンの行。
   private buildRepairAllHeader(base: Base, shipData: DockedVesselEntry): HTMLElement {
+    // 全部品ぶんの修理費用を合算する。
     const totalRepairCost = shipData.parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
-    const enabled = totalRepairCost > 0 && (this.ctx.freeProcurement() || base.baseState.money >= totalRepairCost);
+    // 整備対象の艦名を示すラベル。
     const row = document.createElement('div');
     row.className = 'dock-parts-header dock-focus-panel';
     const label = document.createElement('span');
@@ -77,16 +79,11 @@ export class PartsTabController {
     shipName.textContent = shipData.name || '名称未設定の艦';
     label.appendChild(shipName);
     row.appendChild(label);
-    const btn = new Button(
-      totalRepairCost > 0
-        ? `全部品を修理 · ${this.ctx.freeProcurement() ? 'コストなし' : `${totalRepairCost.toLocaleString()} Cr`}`
-        : '全部品は正常',
-      () => this.handleRepairAll(shipData.id),
-    );
-    btn.element.classList.add('dock-btn', 'dock-btn-service');
-    btn.element.classList.toggle('dock-btn-complete', totalRepairCost <= 0);
-    btn.setEnabled(enabled);
-    row.appendChild(btn.element);
+    // 合算費用でまとめて修理するボタン。
+    row.appendChild(buildFeeButton(
+      this.ctx.freeProcurement(), base.baseState.money, totalRepairCost,
+      '全部品を修理', '全部品は正常', () => this.handleRepairAll(shipData.id),
+    ));
     return row;
   }
 
@@ -94,29 +91,18 @@ export class PartsTabController {
   private buildInstalledPartRow(base: Base, shipData: DockedVesselEntry, p: Part, i: number): HTMLElement {
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
     const repairCost = (p.maxHp - p.hp) * REPAIR_COST_PER_HP;
-    const canRepair = repairCost > 0 && (this.ctx.freeProcurement() || base.baseState.money >= repairCost);
 
     const row = document.createElement('div');
     row.className = 'dock-part-row';
     row.setAttribute('role', 'listitem');
     const main = document.createElement('div');
     main.className = 'dock-part-row-main';
-
-    const info = document.createElement('div');
-    info.className = 'dock-part-info';
-    const name = document.createElement('span');
-    name.className = 'dock-part-name';
-    name.textContent = p.name;
-    const type = document.createElement('span');
-    type.className = 'dock-part-type';
-    type.textContent = formatPartMeta(p);
-    info.append(name, type);
-    main.appendChild(info);
+    main.appendChild(this.buildPartInfo(p));
 
     const meter = new Meter();
     meter.element.classList.add('dock-part-hp-meter');
     meter.setRatio(hpPct / 100);
-    // 3段階だった健全時/中間の色分けは Meter の「危険=DANGER」1本の規約へ統一する。
+    // 耐久が3割以下になったら Meter の危険表示(DANGER)を点灯する。
     meter.setDanger(hpPct <= 30);
     meter.setLabel(`${Math.round(p.hp)}/${p.maxHp}`);
     meter.element.setAttribute('role', 'progressbar');
@@ -128,18 +114,12 @@ export class PartsTabController {
 
     const actions = document.createElement('div');
     actions.className = 'dock-part-actions';
-    const repairBtn = new Button(
-      repairCost > 0
-        ? `修理 · ${this.ctx.freeProcurement() ? 'コストなし' : `${repairCost.toLocaleString()} Cr`}`
-        : '正常',
-      () => this.handleRepairPart(shipData.id, i),
-    );
-    repairBtn.element.classList.add('dock-btn', 'dock-btn-service');
-    repairBtn.element.classList.toggle('dock-btn-complete', repairCost <= 0);
-    repairBtn.setEnabled(canRepair);
-    actions.appendChild(repairBtn.element);
-    if (p.type === 'rcs_tank') {
-      actions.appendChild(this.buildRefuelButton(base, p as RcsTankPart, () => this.handleRefuelInstalled(shipData.id, i)));
+    actions.appendChild(buildFeeButton(
+      this.ctx.freeProcurement(), base.baseState.money, repairCost,
+      '修理', '正常', () => this.handleRepairPart(shipData.id, i),
+    ));
+    if (isRcsTank(p)) {
+      actions.appendChild(this.buildRefuelButton(base, p, () => this.handleRefuelInstalled(shipData.id, i)));
     }
     main.appendChild(actions);
     row.appendChild(main);
@@ -149,6 +129,22 @@ export class PartsTabController {
     return row;
   }
 
+  // 部品名と種別ラベルをまとめた情報ブロックを作る。
+  private buildPartInfo(part: Part): HTMLElement {
+    const info = document.createElement('div');
+    info.className = 'dock-part-info';
+    // 部品名。
+    const name = document.createElement('span');
+    name.className = 'dock-part-name';
+    name.textContent = part.name;
+    // 種別ラベル(rcs_tank なら燃料残量も添える)。
+    const type = document.createElement('span');
+    type.className = 'dock-part-type';
+    type.textContent = formatPartMeta(part);
+    info.append(name, type);
+    return info;
+  }
+
   // 換装候補の選択欄(<select>)と換装ボタンの行。
   private buildSwapRow(shipId: string, partIdx: number, candidates: readonly AnyPart[]): HTMLElement {
     const row = document.createElement('div');
@@ -156,6 +152,7 @@ export class PartsTabController {
     const label = document.createElement('span');
     label.textContent = '換装候補';
     row.appendChild(label);
+    // 換装先の在庫を選ぶ <select>。
     const select = document.createElement('select');
     select.className = 'dock-part-swap-select';
     for (const c of candidates) {
@@ -165,8 +162,9 @@ export class PartsTabController {
       select.appendChild(opt);
     }
     row.appendChild(select);
+    // 選択中の在庫へ換装するボタン。
     const swapBtn = new Button('換装', () => this.handleSwapPart(shipId, partIdx, select.value));
-    swapBtn.element.classList.add('dock-btn', 'dock-btn-primary');
+    styleDockBtn(swapBtn.element, 'primary');
     row.appendChild(swapBtn.element);
     return row;
   }
@@ -184,36 +182,28 @@ export class PartsTabController {
     list.className = 'dock-part-list';
     list.setAttribute('role', 'list');
     for (const p of inventory) {
+      // 部品情報と耐久表示。
       const row = document.createElement('div');
       row.className = 'dock-part-row';
       row.setAttribute('role', 'listitem');
       const main = document.createElement('div');
       main.className = 'dock-part-row-main dock-warehouse-row-main';
-
-      const info = document.createElement('div');
-      info.className = 'dock-part-info';
-      const name = document.createElement('span');
-      name.className = 'dock-part-name';
-      name.textContent = p.name;
-      const type = document.createElement('span');
-      type.className = 'dock-part-type';
-      type.textContent = formatPartMeta(p);
-      info.append(name, type);
-      main.appendChild(info);
+      main.appendChild(this.buildPartInfo(p));
 
       const hpText = document.createElement('span');
       hpText.className = 'dock-part-hp-text';
       hpText.textContent = `耐久 ${Math.round(p.hp)}/${p.maxHp}`;
       main.appendChild(hpText);
 
+      // rcs_tank なら補給ボタン、共通で売却ボタンを添える。
       const actions = document.createElement('div');
       actions.className = 'dock-part-actions';
       if (p.type === 'rcs_tank') {
-        actions.appendChild(this.buildRefuelButton(base, p as RcsTankPart, () => this.handleRefuelInventory(p.id)));
+        actions.appendChild(this.buildRefuelButton(base, p, () => this.handleRefuelInventory(p.id)));
       }
       const price = sellPrice(p);
       const sellBtn = new Button(`売却 · ${price.toLocaleString()} Cr`, () => this.handleSellPart(p.id));
-      sellBtn.element.classList.add('dock-btn', 'dock-btn-quiet');
+      styleDockBtn(sellBtn.element, 'quiet');
       actions.appendChild(sellBtn.element);
       main.appendChild(actions);
       row.appendChild(main);
@@ -225,20 +215,12 @@ export class PartsTabController {
   // rcs_tank 用の補給ボタンを作る。
   private buildRefuelButton(base: Base, tank: RcsTankPart, onClick: () => void): HTMLElement {
     const cost = refuelCost(tank);
-    const canRefuel = cost > 0 && (this.ctx.freeProcurement() || base.baseState.money >= cost);
-    const btn = new Button(
-      cost > 0
-        ? `燃料補給 · ${this.ctx.freeProcurement() ? 'コストなし' : `${cost.toLocaleString()} Cr`}`
-        : '燃料は満タン',
-      onClick,
-    );
-    btn.element.classList.add('dock-btn', 'dock-btn-service');
-    btn.element.classList.toggle('dock-btn-complete', cost <= 0);
-    btn.setEnabled(canRefuel);
-    return btn.element;
+    return buildFeeButton(this.ctx.freeProcurement(), base.baseState.money, cost, '燃料補給', '燃料は満タン', onClick);
   }
 
+  // 艦の1部品を修理する。資金不足なら何もしない。
   private handleRepairPart(shipId: string, partIdx: number): void {
+    // 対象の艦と部品を特定する。
     const base = this.ctx.base();
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
@@ -248,23 +230,27 @@ export class PartsTabController {
     const cost = (part.maxHp - part.hp) * REPAIR_COST_PER_HP;
     if (!this.ctx.freeProcurement() && base.baseState.money < cost) return;
 
+    // 費用を払って全快させる。
     if (!this.ctx.freeProcurement()) base.baseState.money -= cost;
     part.hp = part.maxHp;
     this.syncDockedSnapshot(shipData);
     this.ctx.refresh();
   }
 
+  // 艦の全部品をまとめて修理する。資金不足なら何もしない。
   private handleRepairAll(shipId: string): void {
     const base = this.ctx.base();
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
 
+    // 全部品ぶんの費用を合算してから、資金を確認する。
     const parts = shipData.parts;
     const totalCost = parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
     if (!this.ctx.freeProcurement() && base.baseState.money < totalCost) return;
 
+    // 費用を払って全部品を全快させる。
     if (!this.ctx.freeProcurement()) base.baseState.money -= totalCost;
-    parts.forEach((p) => { p.hp = p.maxHp; });
+    for (const p of parts) p.hp = p.maxHp;
     this.syncDockedSnapshot(shipData);
     this.ctx.refresh();
   }
@@ -280,6 +266,7 @@ export class PartsTabController {
   // 搭載部品を、選択中の倉庫在庫(同じ type)と入れ替える。外した部品は倉庫へ戻す。
   // shipData.parts は player.parts と同一参照なので、splice による差し替えは艦の性能集計へ即反映される。
   private handleSwapPart(shipId: string, partIdx: number, invId: string): void {
+    // 対象の艦の搭載部品と、換装先の在庫を特定する。
     const base = this.ctx.base();
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     const installed = shipData?.parts[partIdx];
@@ -289,6 +276,7 @@ export class PartsTabController {
     const incoming = base.baseState.inventory[invIdx];
     if (!incoming || incoming.type !== installed.type) return;
 
+    // 搭載側と倉庫側を互いに入れ替える。
     shipData.parts.splice(partIdx, 1, incoming);
     base.baseState.inventory.splice(invIdx, 1, installed as AnyPart);
 
@@ -296,15 +284,17 @@ export class PartsTabController {
     this.ctx.refresh();
   }
 
+  // 搭載中の RCS タンクへ補給する。
   private handleRefuelInstalled(shipId: string, partIdx: number): void {
     const base = this.ctx.base();
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     const part = shipData?.parts[partIdx];
-    if (!part || part.type !== 'rcs_tank') return;
-    this.refuelTank(base, part as RcsTankPart);
+    if (!part || !isRcsTank(part)) return;
+    this.refuelTank(base, part);
     this.ctx.refresh();
   }
 
+  // 倉庫にある RCS タンクへ補給する。
   private handleRefuelInventory(invId: string): void {
     const base = this.ctx.base();
     const part = base.baseState.inventory.find((p) => p.id === invId);
@@ -313,6 +303,7 @@ export class PartsTabController {
     this.ctx.refresh();
   }
 
+  // RCS タンクを満タンまで補給し、費用を差し引く。資金不足なら何もしない。
   private refuelTank(base: Base, tank: RcsTankPart): void {
     const cost = refuelCost(tank);
     if (cost <= 0) return;
@@ -321,6 +312,7 @@ export class PartsTabController {
     tank.fuel = tank.maxFuel;
   }
 
+  // 倉庫の部品を売却し、代金を受け取る。
   private handleSellPart(invId: string): void {
     const base = this.ctx.base();
     const idx = base.baseState.inventory.findIndex((p) => p.id === invId);
