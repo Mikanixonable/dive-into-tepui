@@ -14,11 +14,13 @@ export function getApsisLabelSpec(type: 'pe' | 'ap', centerId: string): OrbitLab
   const isSun = centerId === 'sun';
 
   if (type === 'pe') {
+    // 近点のラベル。
     if (isEarth) return { short: 'Pe', nameJa: '近地点', nameEn: 'Perigee', full: '近地点 Perigee' };
     if (isMoon)  return { short: 'Pe', nameJa: '近月点', nameEn: 'Perilune', full: '近月点 Perilune' };
     if (isSun)   return { short: 'Pe', nameJa: '近日点', nameEn: 'Perihelion', full: '近日点 Perihelion' };
     return { short: 'Pe', nameJa: '近点', nameEn: 'Periapsis', full: '近点 Periapsis' };
   } else {
+    // 遠点のラベル。
     if (isEarth) return { short: 'Ap', nameJa: '遠地点', nameEn: 'Apogee', full: '遠地点 Apogee' };
     if (isMoon)  return { short: 'Ap', nameJa: '遠月点', nameEn: 'Apolune', full: '遠月点 Apolune' };
     if (isSun)   return { short: 'Ap', nameJa: '遠日点', nameEn: 'Aphelion', full: '遠日点 Aphelion' };
