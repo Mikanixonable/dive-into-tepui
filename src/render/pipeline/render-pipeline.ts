@@ -265,7 +265,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this._exposure.setCompensation(graphics.exposureCompensation);
     this.sunSource.setModel(graphics.sunLightModel);
-    this._planetLight.count = graphics.planetLightCount;
+    this._planetLight.setCount(graphics.planetLightCount);
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
