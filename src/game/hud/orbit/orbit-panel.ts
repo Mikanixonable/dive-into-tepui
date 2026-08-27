@@ -1,7 +1,8 @@
 // 常設 ORBIT パネル(#hud-orbit)の同期: 自艦の基準・高度・速度・遠地点/近地点・傾斜角・
 // 周期・動圧・機体温度、および基準切替のセグメントコントロール。戦闘/マップ共通。
 import * as C from '../../const';
-import { fmtDist, fmtSpeed, fmtTime } from '../utils';
+import { fmtDist, fmtSpeed, fmtTime, setElementText } from '../utils';
+import { SyncThrottle } from '../sync-throttle';
 import { orbitInfo } from './orbit-info';
 import { CelestialBody } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
@@ -21,7 +22,7 @@ const REFERENCE_ITEMS: readonly (readonly [OrbitReferenceMode, string])[] = [
 ];
 
 export class OrbitPanel {
-  private nextSyncAt = 0;
+  private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private readonly referenceControl: SegmentedControl<OrbitReferenceMode>;
   // 軌道分析パネルの開閉は Hud が持つため、ここでは押されたことだけを伝える。ボタン構築時には
   // まだ配線されていないので、VesselPanel.setInput と同じ late injection にする。
@@ -52,16 +53,14 @@ export class OrbitPanel {
   sync(game: Game, celestialBodies: readonly CelestialBody[], hideInOverview = true): void {
     this.game = game;
     const entity = game.activeControllableEntity;
-    const el = document.getElementById('hud-orbit');
+    const el = this.els.get('hud-orbit');
     if (!entity) {
       el?.classList.add('hidden');
       return;
     }
     el?.classList.toggle('hidden', hideInOverview && game.cameraSystem.overviewMode);
 
-    const now = performance.now();
-    if (now < this.nextSyncAt) return;
-    this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    if (!this.throttle.due()) return;
 
     this.referenceControl.setSelected(game.orbitReference.selectedMode);
     const reference = game.orbitReference.resolve(
@@ -74,16 +73,16 @@ export class OrbitPanel {
     // 航法ターゲット基準で対象が重力天体でない(艦・基地・ラグランジュ点)場合は、
     // celestialBodyName の生 ID フォールバックより航法ターゲットの表示名を優先する。
     const centerName = !reference.attractor && game.navTarget.name ? game.navTarget.name : oi.centerName;
-    this.setText('center', centerName);
-    this.setText('alt', fmtDist(oi.alt));
+    setElementText(this.els, 'center', centerName);
+    setElementText(this.els, 'alt', fmtDist(oi.alt));
     this.els.get('alt')?.classList.toggle('warn-hot', ship?.altitudeAlarm.descendWarned ?? false);
-    this.setText('spd', fmtSpeed(oi.spd));
-    this.setText('ap-label', `${apSpec.nameJa} ${apSpec.short}`);
-    this.setText('pe-label', `${peSpec.nameJa} ${peSpec.short}`);
-    this.setText('ap', fmtDist(oi.apAlt));
-    this.setText('pe', fmtDist(oi.peAlt));
-    this.setText('inc', isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---');
-    this.setText('prd', fmtTime(oi.period));
+    setElementText(this.els, 'spd', fmtSpeed(oi.spd));
+    setElementText(this.els, 'ap-label', `${apSpec.nameJa} ${apSpec.short}`);
+    setElementText(this.els, 'pe-label', `${peSpec.nameJa} ${peSpec.short}`);
+    setElementText(this.els, 'ap', fmtDist(oi.apAlt));
+    setElementText(this.els, 'pe', fmtDist(oi.peAlt));
+    setElementText(this.els, 'inc', isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---');
+    setElementText(this.els, 'prd', fmtTime(oi.period));
     // 動圧・機体温度は閾値超過で警告表示にする。
     const qEl = this.els.get('qdyn');
     if (qEl) {
@@ -105,11 +104,5 @@ export class OrbitPanel {
         tEl.classList.remove('warn-hot');
       }
     }
-  }
-
-  // id 要素のテキストを、変化があるときだけ書き換える。
-  private setText(id: string, text: string): void {
-    const e = this.els.get(id);
-    if (e && e.textContent !== text) e.textContent = text;
   }
 }

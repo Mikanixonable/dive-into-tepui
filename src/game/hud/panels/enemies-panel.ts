@@ -1,6 +1,7 @@
 // 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
 import { len, sub } from '../../../physics/vec3';
 import { fmtDist } from '../utils';
+import { SyncThrottle } from '../sync-throttle';
 import type { Vec3 } from '../../../physics/vec3';
 import type { Enemy } from '../../game-entity/enemy';
 import type { CombatTarget } from '../../targeter';
@@ -25,7 +26,7 @@ type EnemyRow =
   };
 
 export class EnemiesPanel {
-  private nextSyncAt = 0;
+  private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private hasContacts = false;
 
   // 単独表示の行(波に集約されていない敵)の右クリック。波の集約行は特定の1機を指さないため呼ばれない。
@@ -35,16 +36,14 @@ export class EnemiesPanel {
 
   public sync(game: Game): void {
     const player = game.player;
-    const panel = document.getElementById('hud-enemies');
+    const panel = this.els.get('hud-enemies');
     if (!player) {
       this.hasContacts = false;
       panel?.classList.add('hidden');
       return;
     }
 
-    const now = performance.now();
-    if (now >= this.nextSyncAt) {
-      this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    if (this.throttle.due()) {
 
       const { kills, totalEnemiesSpawned } = game.activeStage.scoreCounter;
       const remainingCount = totalEnemiesSpawned - kills;

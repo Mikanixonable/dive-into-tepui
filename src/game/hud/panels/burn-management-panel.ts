@@ -127,7 +127,7 @@ export class BurnManagementPanel {
   /** 表示モデルを同期する。null はブースターのない機体としてパネルを隠す。 */
   public sync(view: BurnManagementViewModel | null): void {
     this.model = view;
-    const panel = document.getElementById('burn-management-panel');
+    const panel = this.els.get('burn-management-panel');
     if (!panel) return;
     panel.classList.toggle('hidden', view === null);
     if (!view) {
