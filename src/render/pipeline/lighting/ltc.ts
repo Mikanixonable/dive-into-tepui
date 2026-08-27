@@ -57,9 +57,11 @@ export function ltcEvaluate(
 ): FloatNode {
   const t1 = normalize(viewDir.sub(normal.mul(dot(viewDir, normal))));
   const t2 = cross(normal, t1).negate();
+  // 行列積と Fn の @types/three 上の戻り値型はメソッドチェインを持たない(型定義側の欠落)ため、
+  // 実体どおりのノード型へ読み替える。
   const transform = (mInv.mul(mat3(t1, t2, normal).transpose()) as unknown as Mat3Node).toVar();
   const projected = points.map((point) =>
-    (normalize(transform.mul(point.sub(position)) as unknown as Vec3Node) as Vec3Node).toVar());
+    normalize(transform.mul(point.sub(position)) as unknown as Vec3Node).toVar());
   const edges = projected.map((from, i) =>
     edgeVectorFormFactor(from, projected[(i + 1) % projected.length]!) as unknown as Vec3Node);
   return clippedSphereFormFactor(balancedSum(edges));

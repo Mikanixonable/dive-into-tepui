@@ -7,19 +7,20 @@ import type { OcclusionPass } from '../occlusion';
 import type { SunLight } from '../sun-light';
 import { ggxSpecularFactor } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
-import { createLtcTables } from './ltc-table';
+import { createLtcTables, type LtcTables } from './ltc-table';
 import { ltcEvaluate, ltcInverseTransform, ltcUv, sphereOctagonPoints } from './ltc';
 import { sphereIrradianceFactor } from './sphere-light';
 import type { ShadingSample } from './shading-sample';
 
 // 光源モデルの選択値。graphics-settings.ts の sunLightModel の選択肢と対応する。
-export const SUN_LIGHT_MODEL = { point: 0, sphere: 1 } as const;
+const SUN_LIGHT_MODEL = { point: 0, sphere: 1 } as const;
 
 export class SunSource implements LightSource {
   // モードごとに 1 枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの再コンパイルが
   // フレームを止める。
   private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
-  private ltcTables: ReturnType<typeof createLtcTables> | null = null;
+  // LTC 係数表。球光源のマテリアルを初めて組むときに 1 度だけ載せる。
+  private ltcTables: LtcTables | null = null;
 
   constructor(
     private readonly sunLight: SunLight,
@@ -74,7 +75,7 @@ export class SunSource implements LightSource {
       .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr)).mul(transmittance);
 
     // 鏡面は一様球の放射輝度 L = 放射強度 / (π R²) に、係数表の正規化 t2.x と LTC 積分を掛ける。
-    const tables = this.tables();
+    const tables = this.ltcTables ??= createLtcTables();
     const uv = ltcUv(sample.normal, sample.viewDir, sample.roughness);
     const t1 = texture(tables.ltc1, uv);
     const t2 = texture(tables.ltc2, uv);
@@ -86,12 +87,6 @@ export class SunSource implements LightSource {
       .mul(this.sunLight.intensity).div(radius.mul(radius).mul(PI));
     const specular: Vec3Node = radiance.mul(t2.x).mul(formFactor).mul(transmittance);
     return { diffuse, specular };
-  }
-
-  // LTC 係数表。球光源のマテリアルを初めて組むときに 1 度だけ載せる。
-  private tables(): ReturnType<typeof createLtcTables> {
-    this.ltcTables ??= createLtcTables();
-    return this.ltcTables;
   }
 
   dispose(): void {
