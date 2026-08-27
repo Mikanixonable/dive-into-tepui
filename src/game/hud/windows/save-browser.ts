@@ -2,17 +2,16 @@
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
 // 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
 import type { Game } from '../../game';
-import { SaveSlots, AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../../save/save-slots';
+import { SaveSlots } from '../../save/save-slots';
 import { SnapshotService } from '../../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../../save/save-transfer';
-import type { SaveSlotMeta, SnapshotMeta } from '../../save-data';
-import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../utils';
-import { celestialBodyName } from '../frame/frame-labels';
+import type { SaveSlotMeta } from '../../save-data';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
-import { findStageClass } from '../../stages/stage-dictionary';
-import { Button, CloseButton, Meter, TabBar } from '../widgets';
+import { CloseButton, TabBar } from '../widgets';
 import { injectOnce } from '../widgets/inject-style';
 import { MQ_COMPACT } from '../breakpoints';
+import { buildSlotsPane } from './save-browser-slot-pane';
+import { buildSnapshotPane } from './save-browser-snapshot-pane';
 
 const STYLE = `
 #save-browser {
@@ -37,65 +36,8 @@ const STYLE = `
   display: flex; flex-direction: column; gap: var(--space-3); background: var(--bg);
   scrollbar-width: thin;
 }
-#save-browser .sb-pane-slots { flex: 0 0 34%; }
 #save-browser .sb-pane-title { font-size: var(--font-xs); letter-spacing: 1.5px; color: var(--text-dim); }
 #save-browser .sb-empty { color: var(--text-dim); padding: var(--space-5); text-align: center; line-height: 1.7; font-size: var(--font-s); }
-#save-browser .sb-slot-list { display: flex; flex-direction: column; gap: var(--space-2); }
-/* アクティブ行の識別は色数を増やさず、左端 2px のオレンジ帯のみで示す。
-   「見ている」行は背景をわずかに明るくするだけで区別する。 */
-#save-browser .sb-slot-row {
-  display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
-  border: 1px solid var(--edge); border-left: 2px solid transparent; border-radius: var(--radius-m); cursor: pointer;
-}
-#save-browser .sb-slot-row.viewed { background: var(--fill-1); }
-#save-browser .sb-slot-row.on { border-left-color: var(--color-primary); }
-#save-browser .sb-slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-#save-browser .sb-slot-name { font-size: var(--font-s); }
-#save-browser .sb-slot-meta { font-size: var(--font-xxs); color: var(--text-dim); }
-#save-browser .sb-slot-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
-/* 左ペインは幅が狭いので、フッターのボタンは横並びにせず縦積みにして折り返しを防ぐ。 */
-#save-browser .sb-slot-footer { display: flex; flex-direction: column; gap: var(--space-3); margin-top: auto; padding-top: var(--space-3); }
-/* span. まで指定して .w-btn 側の見た目より確実に勝たせる
-   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
-#save-browser span.sb-btn {
-  padding: var(--space-2) var(--space-4); background: var(--fill-1); color: var(--text-dim); font-size: var(--font-xs);
-  white-space: nowrap;
-}
-#save-browser span.sb-btn:hover { background: var(--fill-2); color: var(--text); }
-#save-browser span.sb-btn.sb-btn-sm { padding: var(--space-2) var(--space-3); }
-#save-browser span.sb-btn.sb-btn-play { color: var(--text); border-color: var(--text-dim); }
-/* このパネルで唯一の「押すと今の状態が増える」操作 — 注目させるためオレンジを残す。 */
-#save-browser span#sb-capture-now {
-  background: var(--color-primary-fill-weak); color: var(--color-primary); border-color: var(--color-primary-edge);
-}
-#save-browser span#sb-capture-now:hover { background: var(--color-primary-fill); }
-#save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
-#save-browser .sb-snapshot-groups { display: flex; flex-direction: column; gap: var(--space-2); }
-#save-browser .sb-snapshot-group-title { font-size: var(--font-xs); color: var(--text-dim); margin-top: var(--space-2); }
-#save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: var(--space-2); }
-#save-browser .sb-snap-card {
-  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--edge); border-radius: var(--radius-m);
-}
-#save-browser .sb-snap-loadable { cursor: pointer; }
-#save-browser .sb-snap-loadable:hover { border-color: var(--text-dim); background: var(--fill-1); }
-#save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
-#save-browser .sb-snap-name { font-size: var(--font-s); }
-#save-browser .sb-snap-badge {
-  font-size: var(--font-xxs); letter-spacing: .5px; padding: 1px var(--space-3); border-radius: var(--radius-l);
-  border: 1px solid var(--edge); color: var(--text-dim);
-}
-#save-browser .sb-snap-badge-checkpoint { color: var(--text); border-color: var(--text-dim); }
-#save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
-/* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
-   HP 表示ではないため、他の注目要素と競合しないモノトーンに留める(danger 色も使わない)。 */
-#save-browser .sb-snap-hp-meter .w-meter-track { height: 3px; border-radius: var(--radius-s); }
-#save-browser .sb-snap-hp-meter .w-meter-fill { background: var(--text-dim); }
-#save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-/* クリップ済み(pin)状態だけは注目対象として残す — この行の意味は「消えずに残る」なので. */
-#save-browser span.sb-btn-pin.on {
-  background: var(--color-primary-fill-weak); color: var(--color-primary); border-color: var(--color-primary-edge);
-}
 #save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); border-top: 1px solid var(--edge); }
 #save-browser .sb-status.error { color: var(--color-error); }
 /* compact: 左右ペインを並べず、sb-mobile-tabs で切り替えた片方だけを表示する。 */
@@ -104,25 +46,9 @@ const STYLE = `
   #save-browser .sb-panel { width: 100vw; height: 100vh; height: 100dvh; border-radius: 0; }
   #save-browser .sb-mobile-tabs { display: flex; }
   #save-browser .sb-body { flex-direction: column; }
-  #save-browser .sb-pane-slots { flex: 1 1 0; }
   #save-browser .sb-pane:not(.sb-pane-mobile-active) { display: none; }
 }
 `;
-
-// ステージ id を選択画面と同じ表示名にする。登録の無い id はそのまま出す。
-function stageLabel(stageId: string): string {
-  return findStageClass(stageId)?.selectLabel ?? stageId;
-}
-
-// 数値であるはずのメタ項目。取り込んだファイルでは欠けていることがあり、そのまま
-// 書式化関数へ渡すと一覧の組み立てごと落ちてイベント配線まで届かなくなる。
-function num(v: number): number {
-  return Number.isFinite(v) ? v : 0;
-}
-
-const SNAPSHOT_KIND_LABEL: Record<SnapshotMeta['kind'], string> = {
-  auto: '自動', manual: '手動', checkpoint: '決着',
-};
 
 // 今どの周回の Game が動いているか。Game より長生きする側(Launcher)が満たす。
 export interface CurrentGameSource {
@@ -232,13 +158,33 @@ export class SaveBrowser implements OverlayHandle {
 
     const body = document.createElement('div');
     body.className = 'sb-body';
-    const slotsPane = this.buildSlotsPane();
+    const slotsPane = buildSlotsPane(this.slots.slots, this.slots.activeSlotId, this.viewedSlotId, {
+      onSelectSlot: (id) => { this.viewedSlotId = id; this.viewedStageId = null; this.rebuild(); },
+      onPlaySlot: (id) => this.handlePlaySlot(id),
+      onRenameSlot: (id) => this.handleRenameSlot(id),
+      onDuplicateSlot: (id) => this.handleDuplicateSlot(id),
+      onExportSlot: (id) => this.handleExportSlot(id),
+      onDeleteSlot: (id) => this.handleDeleteSlot(id),
+      onNewSlot: () => this.handleNewSlot(),
+      onImportSlot: () => this.handleImportSlot(),
+    });
     slotsPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'slots');
     body.appendChild(slotsPane);
     const snapPane = document.createElement('div');
     snapPane.className = 'sb-pane sb-pane-snapshots';
     snapPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'snapshots');
-    snapPane.appendChild(this.buildSnapshotPane());
+    const game = this.gameSource.current;
+    snapPane.appendChild(buildSnapshotPane(
+      this.viewedSlot(), this.viewedStageId, this.slots.activeSlotId, game?.activeStage.id ?? null, this.canCaptureNow(), {
+        onCaptureNow: () => this.handleCaptureNow(),
+        onSelectStage: (id) => { this.viewedStageId = id; this.rebuild(); },
+        onLoadSnapshot: (id, loadable) => this.handleLoadSnapshot(id, loadable),
+        onTogglePin: (id, pinned) => this.handleTogglePin(id, pinned),
+        onRenameSnapshot: (id) => this.handleRenameSnapshot(id),
+        onDeleteSnapshot: (id) => this.handleDeleteSnapshot(id),
+        onBranch: (slotId, snapId) => this.handleBranch(slotId, snapId),
+      },
+    ));
     body.appendChild(snapPane);
     panel.appendChild(body);
 
@@ -251,230 +197,7 @@ export class SaveBrowser implements OverlayHandle {
     this.el.appendChild(panel);
   }
 
-  private buildSlotsPane(): HTMLElement {
-    const pane = document.createElement('div');
-    pane.className = 'sb-pane sb-pane-slots';
-    const title = document.createElement('div');
-    title.className = 'sb-pane-title';
-    title.textContent = 'セーブデータ';
-    pane.appendChild(title);
-
-    const list = document.createElement('div');
-    list.className = 'sb-slot-list';
-    if (this.slots.slots.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'sb-empty';
-      empty.textContent = 'セーブデータがありません。';
-      list.appendChild(empty);
-    } else {
-      for (const s of this.slots.slots) list.appendChild(this.buildSlotRow(s));
-    }
-    pane.appendChild(list);
-
-    const footer = document.createElement('div');
-    footer.className = 'sb-slot-footer';
-    footer.appendChild(this.mainBtn('新しいセーブデータ', () => this.handleNewSlot()));
-    footer.appendChild(this.mainBtn('ファイルから取り込む', () => this.handleImportSlot()));
-    pane.appendChild(footer);
-    return pane;
-  }
-
-  private buildSlotRow(s: SaveSlotMeta): HTMLElement {
-    const totalSnapshots = s.stages.reduce((sum, h) => sum + h.snapshots.length, 0);
-    const active = s.id === this.slots.activeSlotId;
-    const viewed = s.id === this.viewedSlotId;
-
-    const row = document.createElement('div');
-    row.className = 'sb-slot-row';
-    row.classList.toggle('viewed', viewed);
-    row.classList.toggle('on', active);
-    row.addEventListener('click', () => {
-      this.viewedSlotId = s.id;
-      this.viewedStageId = null;
-      this.rebuild();
-    });
-
-    const info = document.createElement('div');
-    info.className = 'sb-slot-info';
-    const name = document.createElement('span');
-    name.className = 'sb-slot-name';
-    name.textContent = s.name + (active ? ' ▶' : '');
-    const meta = document.createElement('span');
-    meta.className = 'sb-slot-meta';
-    meta.textContent = `${s.lastStageId === '' ? '未プレイ' : stageLabel(s.lastStageId)} / ${fmtDateTime(s.lastPlayedAtReal / 1000)} / ${totalSnapshots}件`;
-    info.append(name, meta);
-    row.appendChild(info);
-
-    const actions = document.createElement('div');
-    actions.className = 'sb-slot-actions';
-    actions.appendChild(this.smallBtn('✎', '名前変更', () => this.handleRenameSlot(s.id)));
-    actions.appendChild(this.smallBtn('⎘', '複製', () => this.handleDuplicateSlot(s.id)));
-    actions.appendChild(this.smallBtn('⇩', '書き出し', () => this.handleExportSlot(s.id)));
-    actions.appendChild(this.smallBtn('🗑', '削除', () => this.handleDeleteSlot(s.id)));
-    if (!active) {
-      const playBtn = new Button('このデータで遊ぶ', () => this.handlePlaySlot(s.id));
-      playBtn.element.classList.add('sb-btn', 'sb-btn-sm', 'sb-btn-play');
-      actions.appendChild(playBtn.element);
-    }
-    row.appendChild(actions);
-    return row;
-  }
-
-  // 右ペイン: 表示対象スロットのステージ履歴タブとスナップショット一覧を組む。
-  private buildSnapshotPane(): HTMLElement {
-    const wrap = document.createElement('div');
-    const slot = this.viewedSlot();
-    if (!slot) {
-      const empty = document.createElement('div');
-      empty.className = 'sb-empty';
-      empty.textContent = '左の一覧からセーブデータを選んでください。';
-      wrap.appendChild(empty);
-      return wrap;
-    }
-    const stageId = this.viewedStageId ?? slot.stages[0]?.stageId ?? null;
-    const history = stageId ? slot.stages.find((h) => h.stageId === stageId) ?? null : null;
-
-    const title = document.createElement('div');
-    title.className = 'sb-pane-title';
-    title.textContent = 'スナップショット';
-    wrap.appendChild(title);
-
-    const captureBtn = new Button('今の状態をクリップして残す', () => this.handleCaptureNow());
-    captureBtn.element.id = 'sb-capture-now';
-    captureBtn.element.classList.add('sb-btn');
-    captureBtn.setEnabled(this.canCaptureNow());
-    captureBtn.element.title = this.canCaptureNow() ? '' : '決着後の状態は復元できないため残せません';
-    wrap.appendChild(captureBtn.element);
-
-    if (slot.stages.length > 1) {
-      const tabsWrap = document.createElement('div');
-      tabsWrap.className = 'sb-stage-tabs';
-      const tabBar = new TabBar<string>(
-        slot.stages.map((h) => [h.stageId, stageLabel(h.stageId)] as const),
-        (id) => { this.viewedStageId = id; this.rebuild(); },
-      );
-      tabBar.setSelected(stageId ?? '');
-      tabsWrap.appendChild(tabBar.element);
-      wrap.appendChild(tabsWrap);
-    }
-
-    const pinned = history ? history.snapshots.filter((s) => s.pinned) : [];
-    const auto = history ? history.snapshots.filter((s) => !s.pinned) : [];
-    // 復元できるのは、いま遊んでいるスロットの、いま遊んでいるステージのものだけ。
-    const game = this.gameSource.current;
-    const loadable = game !== null && slot.id === this.slots.activeSlotId && stageId === game.activeStage.id;
-
-    const groups = document.createElement('div');
-    groups.className = 'sb-snapshot-groups';
-    const pinnedTitle = document.createElement('div');
-    pinnedTitle.className = 'sb-snapshot-group-title';
-    pinnedTitle.textContent = `クリップ済み (${pinned.length}/${PINNED_SNAPSHOT_LIMIT})`;
-    groups.appendChild(pinnedTitle);
-    groups.appendChild(this.buildSnapshotList(pinned, slot, loadable));
-    const autoTitle = document.createElement('div');
-    autoTitle.className = 'sb-snapshot-group-title';
-    autoTitle.textContent = `自動 (${auto.length}/${AUTO_SNAPSHOT_LIMIT}・古い順に消えます)`;
-    groups.appendChild(autoTitle);
-    groups.appendChild(this.buildSnapshotList(auto, slot, loadable));
-    wrap.appendChild(groups);
-    return wrap;
-  }
-
-  private buildSnapshotList(list: readonly SnapshotMeta[], slot: SaveSlotMeta, loadable: boolean): HTMLElement {
-    const el = document.createElement('div');
-    el.className = 'sb-snapshot-list';
-    if (list.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'sb-empty';
-      empty.textContent = 'なし';
-      el.appendChild(empty);
-      return el;
-    }
-    for (const s of list) el.appendChild(this.buildSnapshotCard(s, slot, loadable));
-    return el;
-  }
-
-  private buildSnapshotCard(s: SnapshotMeta, slot: SaveSlotMeta, loadable: boolean): HTMLElement {
-    // 取り込んだファイル由来のメタは欠けていたり別物だったりし得るので、表示前に必ず均す。
-    const kind = SNAPSHOT_KIND_LABEL[s.kind] ? s.kind : 'auto';
-    const hpPct = Math.max(0, Math.min(100, num(s.hpRatio) * 100));
-    const loadTitle = loadable
-      ? 'ダブルクリックでロード'
-      : 'いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます';
-
-    const card = document.createElement('div');
-    card.className = 'sb-snap-card';
-    card.classList.toggle('sb-snap-loadable', loadable);
-    card.title = loadTitle;
-    // ボタンの click は自身で止まるが dblclick は素通りするので、カード自身の判定で弾く。
-    card.addEventListener('dblclick', (e) => {
-      if ((e.target as HTMLElement).closest('.w-btn')) return;
-      this.handleLoadSnapshot(s.id, loadable);
-    });
-
-    const head = document.createElement('div');
-    head.className = 'sb-snap-head';
-    const name = document.createElement('span');
-    name.className = 'sb-snap-name';
-    name.textContent = String(s.name ?? '');
-    const badge = document.createElement('span');
-    badge.className = `sb-snap-badge sb-snap-badge-${kind}`;
-    badge.textContent = SNAPSHOT_KIND_LABEL[kind];
-    head.append(name, badge);
-    card.appendChild(head);
-
-    const row1 = document.createElement('div');
-    row1.className = 'sb-snap-row';
-    row1.textContent = `MET ${fmtTime(num(s.simTime))} / ${fmtDateTime(num(s.createdAtReal) / 1000)}`;
-    card.appendChild(row1);
-
-    const row2 = document.createElement('div');
-    row2.className = 'sb-snap-row';
-    row2.textContent = `${celestialBodyName(s.centerBodyId)} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
-    card.appendChild(row2);
-
-    // このパネルの主役はセーブ操作であって HP 表示ではないため、常にモノトーンで塗る
-    // (danger 色は使わない — hud-root.ts の .sb-snap-hp-meter が塗り色を上書きする)。
-    const hpMeter = new Meter();
-    hpMeter.element.classList.add('sb-snap-hp-meter');
-    hpMeter.setRatio(hpPct / 100);
-    card.appendChild(hpMeter.element);
-
-    const row3 = document.createElement('div');
-    row3.className = 'sb-snap-row';
-    row3.textContent = `艦 ${num(s.playerCount)} / 敵残 ${num(s.enemyAliveCount)} / 所持金 ${num(s.money).toLocaleString()} Cr`;
-    card.appendChild(row3);
-
-    const actions = document.createElement('div');
-    actions.className = 'sb-snap-actions';
-    const pinBtn = new Button(s.pinned ? '📌 解除' : '📌 クリップ', () => this.handleTogglePin(s.id, s.pinned));
-    pinBtn.element.classList.add('sb-btn', 'sb-btn-sm', 'sb-btn-pin');
-    pinBtn.setOn(s.pinned);
-    actions.appendChild(pinBtn.element);
-    actions.appendChild(this.smallBtn('✎', '名前変更', () => this.handleRenameSnapshot(s.id)));
-    actions.appendChild(this.smallBtn('🗑', '削除', () => this.handleDeleteSnapshot(s.id)));
-    actions.appendChild(this.smallBtn('⑂', 'ここから分岐', () => this.handleBranch(slot.id, s.id)));
-    card.appendChild(actions);
-
-    return card;
-  }
-
-  // .sb-btn の主要ボタン(横幅いっぱい・文言そのまま)を組む。
-  private mainBtn(label: string, onClick: () => void): HTMLElement {
-    const btn = new Button(label, onClick);
-    btn.element.classList.add('sb-btn');
-    return btn.element;
-  }
-
-  // .sb-btn.sb-btn-sm の小型アイコンボタンを組む。title はホバー説明とタッチ向け aria-label の両方に使う。
-  private smallBtn(glyph: string, title: string, onClick: () => void): HTMLElement {
-    const btn = new Button(glyph, onClick);
-    btn.element.classList.add('sb-btn', 'sb-btn-sm');
-    btn.element.title = title;
-    btn.element.setAttribute('aria-label', title);
-    return btn.element;
-  }
-
+  // 新しい名前を prompt で尋ねてスロット名を書き換える。キャンセル・空文字なら何もしない。
   private handleRenameSlot(id: string): void {
     const slot = this.slots.slots.find((s) => s.id === id);
     if (!slot) return;
@@ -484,6 +207,7 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
+  // スロットを丸ごと複製し、成功したら複製先を表示対象にする。
   private handleDuplicateSlot(id: string): void {
     const slot = this.slots.slots.find((s) => s.id === id);
     if (!slot) return;
@@ -492,6 +216,7 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
+  // confirm でクリップ済みのみか全件かを尋ねてからファイルへ書き出し、成否をステータス行へ表示する。
   private handleExportSlot(id: string): void {
     const pinnedOnly = confirm('クリップ済みのスナップショットだけを書き出しますか?(キャンセルで全件)');
     const ok = exportSlotToFile(this.slots, id, pinnedOnly);
@@ -499,6 +224,8 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
+  // confirm で確認してからスロットを削除する。表示中のスロットを削除した場合はアクティブ
+  // スロットへ表示を戻す。
   private handleDeleteSlot(id: string): void {
     const slot = this.slots.slots.find((s) => s.id === id);
     if (!slot) return;
@@ -526,6 +253,8 @@ export class SaveBrowser implements OverlayHandle {
     this.onSlotSwitched?.();
   }
 
+  // ファイルを選択して取り込む。成功したら取り込んだスロットを表示対象にし、失敗理由を
+  // ステータス行へ表示する。
   private async handleImportSlot(): Promise<void> {
     const result = await pickAndImportSlot(this.slots);
     if (result.ok) {
@@ -537,6 +266,8 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
+  // 今の状態を手動スナップショットとして記録する。名前は prompt で尋ね、成否をステータス
+  // 行へ表示する。捕捉できない状態(canCaptureNow が false)なら何もしない。
   private handleCaptureNow(): void {
     const game = this.gameSource.current;
     if (game === null || !this.canCaptureNow()) return;
@@ -558,7 +289,8 @@ export class SaveBrowser implements OverlayHandle {
     this.onLoadSnapshot?.(snapId);
   }
 
-  // クリップ時は名前を尋ね、解除時はそのまま外す。
+  // クリップ時は名前を尋ね、解除時はそのまま外す。上限に達している場合はクリップできず、
+  // 理由をステータス行へ表示する。
   private handleTogglePin(snapId: string, currentlyPinned: boolean): void {
     if (currentlyPinned) {
       this.slots.setPinned(snapId, false);
@@ -576,6 +308,7 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
+  // 新しい名前を prompt で尋ねてスナップショット名を書き換える。キャンセル・空文字なら何もしない。
   private handleRenameSnapshot(id: string): void {
     const name = prompt('スナップショットの名前', '');
     if (!name) return;
@@ -583,12 +316,15 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
+  // confirm で確認してからスナップショットを削除する。
   private handleDeleteSnapshot(id: string): void {
     if (!confirm('このスナップショットを削除します。よろしいですか?')) return;
     this.slots.deleteSnapshot(id);
     this.rebuild();
   }
 
+  // 指定したスナップショット時点でスロットを複製(分岐)し、成否をステータス行へ表示する。
+  // 成功したら複製先を表示対象にする。
   private handleBranch(slotId: string, snapId: string): void {
     const dup = this.slots.duplicateSlot(slotId, snapId);
     if (dup) {
