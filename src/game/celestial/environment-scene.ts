@@ -27,8 +27,8 @@ import {
 import type { Exposure } from '../../render/pipeline/exposure';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import {
-  ATMOSPHERE_DETAIL, MAX_ATMOSPHERE_BODIES,
-  type AtmosphereBody, type AtmosphereDetail, type AtmospherePass,
+  ATMOSPHERE_DETAIL, ATMOSPHERE_DETAIL_OF_QUALITY,
+  type AtmosphereBody, type AtmospherePass,
 } from '../../render/pipeline/atmosphere-pass';
 import { atmosphereOpticsOf, rankAtmospheres } from '../../render/atmosphere-params';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
@@ -82,14 +82,6 @@ function castsVisibleShadow(
   if (maxOccludedFraction(cameraPos, star, body) >= MIN_OCCLUDED_FRACTION) return true;
   return focusPos !== null && maxOccludedFraction(focusPos, star, body) >= MIN_OCCLUDED_FRACTION;
 }
-
-// 大気の品質の段と、主天体へ足す濃い表現の細かさの対応。
-const ATMOSPHERE_DETAIL_OF_QUALITY: Readonly<Record<GraphicsSettingsData['atmosphere'], AtmosphereDetail>> = {
-  [ATMOSPHERE_QUALITY.off]: ATMOSPHERE_DETAIL.none,
-  [ATMOSPHERE_QUALITY.low]: ATMOSPHERE_DETAIL.none,
-  [ATMOSPHERE_QUALITY.medium]: ATMOSPHERE_DETAIL.coarse,
-  [ATMOSPHERE_QUALITY.high]: ATMOSPHERE_DETAIL.fine,
-};
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
@@ -346,10 +338,7 @@ export class EnvironmentScene {
     }
     const { bodies, denseWeight } = rankAtmospheres(this.atmosphereCandidates(fo, displayTime, cameraPos));
     const detail = ATMOSPHERE_DETAIL_OF_QUALITY[graphics.atmosphere];
-    this.atmosphere.setBodies(
-      bodies.slice(0, MAX_ATMOSPHERE_BODIES),
-      detail, detail === ATMOSPHERE_DETAIL.none ? 0 : denseWeight,
-    );
+    this.atmosphere.setBodies(bodies, detail, detail === ATMOSPHERE_DETAIL.none ? 0 : denseWeight);
   }
 
   // 大気を持つ参照天体を、カメラのその天体からの高度と一緒に集める。
