@@ -4,8 +4,9 @@ import { Base } from '../../game-entity/base';
 import * as C from '../../const';
 import { fmtEnergy } from '../utils';
 import { injectOnce } from '../widgets/inject-style';
+import { balanceRcsFuel, rcsFuelTotals, rcsTanksOf, refillRcsFuel, transferRcsFuel } from './rcs-fuel-transfer';
 import type { GameEntity } from '../../game-entity/game-entity';
-import type { Part, RcsTankPart } from '../../game-entity/parts';
+import type { Part } from '../../game-entity/parts';
 import type { OverlayManager } from '../overlay-manager';
 
 const STYLE = `
@@ -452,89 +453,41 @@ export class ResourceTransferDialog {
   private bindRcsEvents(a: Player, bShip: Player | null, bBase: Base | null): void {
     // B が基地のときは、受け取り側の操作をすべて自艦の満タン補給として扱う。
     this.rootEl.querySelector('.rt-btn-f-to-b')?.addEventListener('click', () => {
-      this.transferRcsFuel(a, bShip, RCS_FUEL_TRANSFER_STEP_KG);
+      transferRcsFuel(a, bShip, RCS_FUEL_TRANSFER_STEP_KG);
       this.render();
     });
 
     this.rootEl.querySelector('.rt-btn-f-to-a')?.addEventListener('click', () => {
       if (bBase) {
-        this.refillRcsFuel(a);
+        refillRcsFuel(a);
       } else if (bShip) {
-        this.transferRcsFuel(bShip, a, RCS_FUEL_TRANSFER_STEP_KG);
+        transferRcsFuel(bShip, a, RCS_FUEL_TRANSFER_STEP_KG);
       }
       this.render();
     });
 
     this.rootEl.querySelector('.rt-btn-f-bal')?.addEventListener('click', () => {
       if (bBase) {
-        this.refillRcsFuel(a);
+        refillRcsFuel(a);
       } else if (bShip) {
-        this.balanceRcsFuel(a, bShip);
+        balanceRcsFuel(a, bShip);
       }
       this.render();
     });
   }
 
-  // 指定した艦の RCS タンクをすべて満タンにする。
-  private refillRcsFuel(ship: Player): void {
-    for (const t of this.rcsTanksOf(ship)) t.fuel = t.maxFuel;
-  }
 
-  // from のタンクを残量がある順に消費し、to のタンクへ空き容量がある順に注ぐことで、
-  // 複数タンクをまたいだ amountKg [kg] の移送を行う。to が null なら from から失うだけにする。
-  private transferRcsFuel(from: Player, to: Player | null, amountKg: number): void {
-    const fromTanks = this.rcsTanksOf(from);
-    const available = fromTanks.reduce((s, t) => s + t.fuel, 0);
-    const toTransfer = Math.min(amountKg, available);
-    if (toTransfer <= 0) return;
 
-    let leftToDrain = toTransfer;
-    for (const t of fromTanks) {
-      const drain = Math.min(t.fuel, leftToDrain);
-      t.fuel -= drain;
-      leftToDrain -= drain;
-      if (leftToDrain <= 0) break;
-    }
-
-    if (!to) return;
-    // to 側のタンクへ、空き容量がある順に注ぎ込む。
-    const toTanks = this.rcsTanksOf(to);
-    let leftToAdd = toTransfer;
-    for (const t of toTanks) {
-      const space = t.maxFuel - t.fuel;
-      const add = Math.min(space, leftToAdd);
-      t.fuel += add;
-      leftToAdd -= add;
-      if (leftToAdd <= 0) break;
-    }
-  }
-
-  // 両者の RCS 燃料を合算し、双方が同じ充填率になるよう再配分する。
-  private balanceRcsFuel(shipA: Player, shipB: Player): void {
-    const tanksA = this.rcsTanksOf(shipA);
-    const tanksB = this.rcsTanksOf(shipB);
-    const totalFuel = tanksA.reduce((s, t) => s + t.fuel, 0) + tanksB.reduce((s, t) => s + t.fuel, 0);
-    const totalMax = tanksA.reduce((s, t) => s + t.maxFuel, 0) + tanksB.reduce((s, t) => s + t.maxFuel, 0);
-    if (totalMax <= 0) return;
-
-    const ratio = totalFuel / totalMax;
-    for (const t of tanksA) t.fuel = t.maxFuel * ratio;
-    for (const t of tanksB) t.fuel = t.maxFuel * ratio;
-  }
 
   // entity の電力・弾薬・RCS燃料の残量をまとめて返す。
   private computeMetrics(entity: Player): ResourceMetrics {
-    const tanks = this.rcsTanksOf(entity);
+    const totals = rcsFuelTotals(rcsTanksOf(entity));
     return {
       powerJ: entity.power.chargeJ,
       mags: entity.fire.mags,
-      rcsFuel: tanks.reduce((sum, t) => sum + t.fuel, 0),
-      rcsMaxFuel: tanks.reduce((sum, t) => sum + t.maxFuel, 0),
+      rcsFuel: totals.fuel,
+      rcsMaxFuel: totals.maxFuel,
     };
   }
 
-  // entity が搭載する RCS タンクを取り出す。
-  private rcsTanksOf(entity: Player): readonly RcsTankPart[] {
-    return entity.parts.filter((p): p is RcsTankPart => p.type === 'rcs_tank');
-  }
 }
