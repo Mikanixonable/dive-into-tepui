@@ -43,7 +43,7 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 // applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
 // 駆動する側は、この並びを操作の対象にする。
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'exposureCompensation', 'sunLightModel', 'planetLightCount',
+  'lens', 'antialias', 'exposureCompensation', 'sunLightModel', 'planetLightCount',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 
@@ -150,7 +150,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       type: THREE.UnsignedByteType,
       depthBuffer: true,
     });
-    this.antialiasPass = new AntialiasPass(renderer, this.displayTarget.texture, gpu);
+    this.antialiasPass = new AntialiasPass(renderer, this.displayTarget.texture, gpu, graphics.antialias);
 
     this.lensPass = new LensPass(renderer, this.target.texture, gpu);
     this.lensEnabled = graphics.lens;
@@ -272,6 +272,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this._exposure.setCompensation(graphics.exposureCompensation);
     this.sunSource.setModel(graphics.sunLightModel);
     this._planetLight.setCount(graphics.planetLightCount);
+    this.antialiasPass.setEnabled(graphics.antialias);
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
