@@ -15,6 +15,7 @@ export type QualityPreset = 'low' | 'medium' | 'high';
 export const GRAPHICS_GROUPS = [
   ['basic', '基本'],
   ['element', '表示する要素'],
+  ['light', '光源'],
   ['shadow', '影の詳細'],
 ] as const;
 export type GraphicsGroup = (typeof GRAPHICS_GROUPS)[number][0];
@@ -29,7 +30,7 @@ type ToggleOption = {
   readonly presets: PresetValues<boolean>;
 };
 
-// 数値の選択肢を持つ項目。items は [値, 表示ラベル] を、粗いほうから順に並べる。
+// 数値の選択肢を持つ項目。items は [値, 表示ラベル] を、値の小さいほうから順に並べる。
 type ChoiceOption = {
   readonly kind: 'choice';
   readonly group: GraphicsGroup;
@@ -39,6 +40,11 @@ type ChoiceOption = {
 };
 
 export type GraphicsOption = ToggleOption | ChoiceOption;
+
+// 大気の描き方の段。段が上がるほど、カメラのいる場所の大気を最も強く作っている天体の大気が
+// 精細になる。それ以外の大気天体の見え方は段によらない。
+export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
+export type AtmosphereQuality = (typeof ATMOSPHERE_QUALITY)[keyof typeof ATMOSPHERE_QUALITY];
 
 export const GRAPHICS_OPTIONS = {
   // devicePixelRatio へ掛ける描画解像度の倍率。
@@ -53,6 +59,12 @@ export const GRAPHICS_OPTIONS = {
     kind: 'choice', group: 'basic', label: '描画詳細度',
     items: [[0.5, '低'], [1, '標準'], [2, '高']],
     presets: { low: 0.5, medium: 1, high: 2 },
+  },
+  // 露出へ掛ける倍率。1 段が EV 1 段(明るさ 2 倍)。
+  exposureCompensation: {
+    kind: 'choice', group: 'basic', label: '露出補正',
+    items: [[0.25, '−2'], [0.5, '−1'], [1, '±0'], [2, '+1'], [4, '+2']],
+    presets: { low: 1, medium: 1, high: 1 },
   },
   // マルチサンプリング。レンダラ生成時にしか渡せないので、変更は次回起動から効く。
   antialias: {
@@ -74,15 +86,54 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: 'オーロラ',
     presets: { low: false, medium: false, high: true },
   },
-  // 地球の大気。
+  // 大気の描き方の段。**値は保存された設定を読む鍵なので、段を足すときも既存の値を動かさない**
+  // — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
   atmosphere: {
-    kind: 'toggle', group: 'element', label: '大気',
+    kind: 'choice', group: 'element', label: '大気',
+    items: [
+      [ATMOSPHERE_QUALITY.off, 'オフ'], [ATMOSPHERE_QUALITY.low, '低'],
+      [ATMOSPHERE_QUALITY.medium, '中'], [ATMOSPHERE_QUALITY.high, '高'],
+    ],
+    presets: { low: ATMOSPHERE_QUALITY.low, medium: ATMOSPHERE_QUALITY.medium, high: ATMOSPHERE_QUALITY.high },
+  },
+  // 地表へ合成する雲と、雲が地表へ落とす影。
+  clouds: {
+    kind: 'toggle', group: 'element', label: '雲',
+    presets: { low: false, medium: true, high: true },
+  },
+  // レンズ効果(滲み・条・ゴースト)。
+  lens: {
+    kind: 'toggle', group: 'element', label: 'レンズ効果',
     presets: { low: false, medium: true, high: true },
   },
   // タンパク質型の敵の構造の揺らぎ。
   proteinVibration: {
     kind: 'toggle', group: 'element', label: 'タンパク質の敵の揺らぎ',
     presets: { low: false, medium: true, high: true },
+  },
+  // 太陽の光源モデル。球光源では明暗の終端が視半径ぶん柔らかくなり、粗さの小さい金属面に
+  // 太陽の円盤が映る。
+  sunLightModel: {
+    kind: 'choice', group: 'light', label: '太陽の光源モデル',
+    items: [[0, '点光源'], [1, '球光源']],
+    presets: { low: 0, medium: 1, high: 1 },
+  },
+  // 同時に照らす天体の数。1 本が描画命令 1 本。「なし」では影の中が太陽の直射だけになり、
+  // 減らすと光源になる天体の入れ替わりが絵に出うる。最大値は MAX_PLANET_LIGHT_SLOTS。
+  planetLightCount: {
+    kind: 'choice', group: 'light', label: '天体照の光源の数',
+    items: [[0, 'なし'], [1, '1'], [2, '2']],
+    presets: { low: 0, medium: 2, high: 2 },
+  },
+  // 面の向きによらない一様な環境光を、マップビューで足すか。読みやすさのため強い。
+  overviewAmbient: {
+    kind: 'toggle', group: 'light', label: '環境光(マップビュー)',
+    presets: { low: true, medium: true, high: true },
+  },
+  // 同じく戦闘ビューで足すか。物理に近い暗さのため弱い。
+  combatAmbient: {
+    kind: 'toggle', group: 'light', label: '環境光(戦闘ビュー)',
+    presets: { low: true, medium: true, high: true },
   },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {

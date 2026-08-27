@@ -1,7 +1,7 @@
 import type { Base, DockedVesselEntry } from '../../game-entity/base';
 import type { AnyPart, Part, RcsTankPart } from '../../game-entity/parts';
 import { Button, Meter } from '../widgets';
-import type { BasePanelContext } from './base-view-context';
+import type { BasePanel } from './base-view';
 import {
   buildFeeButton, buildSectionHeader, formatPartMeta, isRcsTank, REPAIR_COST_PER_HP, refuelCost, sellPrice,
   styleDockBtn,
@@ -9,13 +9,12 @@ import {
 
 // 基地パネルの「部品」タブ: 搭載部品(修理・換装・補給)と倉庫(在庫確認・売却・補給)を扱う。
 export class PartsTabController {
-  public constructor(private readonly ctx: BasePanelContext) {}
+  public constructor(private readonly panel: BasePanel) {}
 
   // 搭載部品と倉庫を左右に並べ、同じ種類の部品を見比べながら換装先を選べるようにする。
-  public build(): HTMLElement {
-    const base = this.ctx.base();
+  public build(base: Base): HTMLElement {
     // 選択艦がなければ最初の艦を表示。倉庫は基地の持ち物なので、格納艦が居なくても出す。
-    const ship = this.ctx.vessel();
+    const ship = this.panel.vessel;
     const shipData = (ship ? base.baseState.dockedVessels.find((s) => s.id === ship.id) : undefined)
       ?? base.baseState.dockedVessels[0]
       ?? null;
@@ -81,8 +80,8 @@ export class PartsTabController {
     row.appendChild(label);
     // 合算費用でまとめて修理するボタン。
     row.appendChild(buildFeeButton(
-      this.ctx.freeProcurement(), base.baseState.money, totalRepairCost,
-      '全部品を修理', '全部品は正常', () => this.handleRepairAll(shipData.id),
+      this.panel.freeProcurement, base.baseState.money, totalRepairCost,
+      '全部品を修理', '全部品は正常', () => this.handleRepairAll(base, shipData.id),
     ));
     return row;
   }
@@ -115,17 +114,17 @@ export class PartsTabController {
     const actions = document.createElement('div');
     actions.className = 'dock-part-actions';
     actions.appendChild(buildFeeButton(
-      this.ctx.freeProcurement(), base.baseState.money, repairCost,
-      '修理', '正常', () => this.handleRepairPart(shipData.id, i),
+      this.panel.freeProcurement, base.baseState.money, repairCost,
+      '修理', '正常', () => this.handleRepairPart(base, shipData.id, i),
     ));
     if (isRcsTank(p)) {
-      actions.appendChild(this.buildRefuelButton(base, p, () => this.handleRefuelInstalled(shipData.id, i)));
+      actions.appendChild(this.buildRefuelButton(base, p, () => this.handleRefuelInstalled(base, shipData.id, i)));
     }
     main.appendChild(actions);
     row.appendChild(main);
 
     const candidates = base.baseState.inventory.filter((inv) => inv.type === p.type);
-    if (candidates.length > 0) row.appendChild(this.buildSwapRow(shipData.id, i, candidates));
+    if (candidates.length > 0) row.appendChild(this.buildSwapRow(base, shipData.id, i, candidates));
     return row;
   }
 
@@ -146,7 +145,7 @@ export class PartsTabController {
   }
 
   // 換装候補の選択欄(<select>)と換装ボタンの行。
-  private buildSwapRow(shipId: string, partIdx: number, candidates: readonly AnyPart[]): HTMLElement {
+  private buildSwapRow(base: Base, shipId: string, partIdx: number, candidates: readonly AnyPart[]): HTMLElement {
     const row = document.createElement('div');
     row.className = 'dock-part-swap-row';
     const label = document.createElement('span');
@@ -163,7 +162,7 @@ export class PartsTabController {
     }
     row.appendChild(select);
     // 選択中の在庫へ換装するボタン。
-    const swapBtn = new Button('換装', () => this.handleSwapPart(shipId, partIdx, select.value));
+    const swapBtn = new Button('換装', () => this.handleSwapPart(base, shipId, partIdx, select.value));
     styleDockBtn(swapBtn.element, 'primary');
     row.appendChild(swapBtn.element);
     return row;
@@ -199,10 +198,10 @@ export class PartsTabController {
       const actions = document.createElement('div');
       actions.className = 'dock-part-actions';
       if (p.type === 'rcs_tank') {
-        actions.appendChild(this.buildRefuelButton(base, p, () => this.handleRefuelInventory(p.id)));
+        actions.appendChild(this.buildRefuelButton(base, p, () => this.handleRefuelInventory(base, p.id)));
       }
       const price = sellPrice(p);
-      const sellBtn = new Button(`売却 · ${price.toLocaleString()} Cr`, () => this.handleSellPart(p.id));
+      const sellBtn = new Button(`売却 · ${price.toLocaleString()} Cr`, () => this.handleSellPart(base, p.id));
       styleDockBtn(sellBtn.element, 'quiet');
       actions.appendChild(sellBtn.element);
       main.appendChild(actions);
@@ -215,44 +214,42 @@ export class PartsTabController {
   // rcs_tank 用の補給ボタンを作る。
   private buildRefuelButton(base: Base, tank: RcsTankPart, onClick: () => void): HTMLElement {
     const cost = refuelCost(tank);
-    return buildFeeButton(this.ctx.freeProcurement(), base.baseState.money, cost, '燃料補給', '燃料は満タン', onClick);
+    return buildFeeButton(this.panel.freeProcurement, base.baseState.money, cost, '燃料補給', '燃料は満タン', onClick);
   }
 
   // 艦の1部品を修理する。資金不足なら何もしない。
-  private handleRepairPart(shipId: string, partIdx: number): void {
+  private handleRepairPart(base: Base, shipId: string, partIdx: number): void {
     // 対象の艦と部品を特定する。
-    const base = this.ctx.base();
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
 
     const part: Part | undefined = shipData.parts[partIdx];
     if (!part) return;
     const cost = (part.maxHp - part.hp) * REPAIR_COST_PER_HP;
-    if (!this.ctx.freeProcurement() && base.baseState.money < cost) return;
+    if (!this.panel.freeProcurement && base.baseState.money < cost) return;
 
     // 費用を払って全快させる。
-    if (!this.ctx.freeProcurement()) base.baseState.money -= cost;
+    if (!this.panel.freeProcurement) base.baseState.money -= cost;
     part.hp = part.maxHp;
     this.syncDockedSnapshot(shipData);
-    this.ctx.refresh();
+    this.panel.refresh();
   }
 
   // 艦の全部品をまとめて修理する。資金不足なら何もしない。
-  private handleRepairAll(shipId: string): void {
-    const base = this.ctx.base();
+  private handleRepairAll(base: Base, shipId: string): void {
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
 
     // 全部品ぶんの費用を合算してから、資金を確認する。
     const parts = shipData.parts;
     const totalCost = parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
-    if (!this.ctx.freeProcurement() && base.baseState.money < totalCost) return;
+    if (!this.panel.freeProcurement && base.baseState.money < totalCost) return;
 
     // 費用を払って全部品を全快させる。
-    if (!this.ctx.freeProcurement()) base.baseState.money -= totalCost;
+    if (!this.panel.freeProcurement) base.baseState.money -= totalCost;
     for (const p of parts) p.hp = p.maxHp;
     this.syncDockedSnapshot(shipData);
-    this.ctx.refresh();
+    this.panel.refresh();
   }
 
   // 格納中は shipData.parts が艦本体の parts 配列と同一参照なので、修理は艦へ直接反映される。
@@ -265,9 +262,8 @@ export class PartsTabController {
 
   // 搭載部品を、選択中の倉庫在庫(同じ type)と入れ替える。外した部品は倉庫へ戻す。
   // shipData.parts は player.parts と同一参照なので、splice による差し替えは艦の性能集計へ即反映される。
-  private handleSwapPart(shipId: string, partIdx: number, invId: string): void {
+  private handleSwapPart(base: Base, shipId: string, partIdx: number, invId: string): void {
     // 対象の艦の搭載部品と、換装先の在庫を特定する。
-    const base = this.ctx.base();
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     const installed = shipData?.parts[partIdx];
     if (!shipData || !installed) return;
@@ -281,46 +277,43 @@ export class PartsTabController {
     base.baseState.inventory.splice(invIdx, 1, installed as AnyPart);
 
     this.syncDockedSnapshot(shipData);
-    this.ctx.refresh();
+    this.panel.refresh();
   }
 
   // 搭載中の RCS タンクへ補給する。
-  private handleRefuelInstalled(shipId: string, partIdx: number): void {
-    const base = this.ctx.base();
+  private handleRefuelInstalled(base: Base, shipId: string, partIdx: number): void {
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     const part = shipData?.parts[partIdx];
     if (!part || !isRcsTank(part)) return;
     this.refuelTank(base, part);
-    this.ctx.refresh();
+    this.panel.refresh();
   }
 
   // 倉庫にある RCS タンクへ補給する。
-  private handleRefuelInventory(invId: string): void {
-    const base = this.ctx.base();
+  private handleRefuelInventory(base: Base, invId: string): void {
     const part = base.baseState.inventory.find((p) => p.id === invId);
     if (!part || part.type !== 'rcs_tank') return;
     this.refuelTank(base, part);
-    this.ctx.refresh();
+    this.panel.refresh();
   }
 
   // RCS タンクを満タンまで補給し、費用を差し引く。資金不足なら何もしない。
   private refuelTank(base: Base, tank: RcsTankPart): void {
     const cost = refuelCost(tank);
     if (cost <= 0) return;
-    if (!this.ctx.freeProcurement() && base.baseState.money < cost) return;
-    if (!this.ctx.freeProcurement()) base.baseState.money -= cost;
+    if (!this.panel.freeProcurement && base.baseState.money < cost) return;
+    if (!this.panel.freeProcurement) base.baseState.money -= cost;
     tank.fuel = tank.maxFuel;
   }
 
   // 倉庫の部品を売却し、代金を受け取る。
-  private handleSellPart(invId: string): void {
-    const base = this.ctx.base();
+  private handleSellPart(base: Base, invId: string): void {
     const idx = base.baseState.inventory.findIndex((p) => p.id === invId);
     const part = base.baseState.inventory[idx];
     if (idx < 0 || !part) return;
 
     base.baseState.money += sellPrice(part);
     base.baseState.inventory.splice(idx, 1);
-    this.ctx.refresh();
+    this.panel.refresh();
   }
 }

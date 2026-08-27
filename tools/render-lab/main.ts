@@ -1,11 +1,17 @@
-// 描画テスト環境の画面。ケースと、画面へ出す中間バッファを選ぶと、その絵をゲーム本体と同じ
-// 描画経路で描く。
+// 描画テスト環境の画面。ケースと、表示スタイルと、画面へ出す中間バッファを選ぶと、その絵を
+// ゲーム本体と同じ描画経路で描く。
 import { startProteinAssetPreload } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { PIPELINE_GRAPHICS_KEYS } from '../../src/render/pipeline/render-pipeline';
-import { GRAPHICS_OPTIONS } from '../../src/render/graphics-settings';
-import { CASE_NAMES, type CaseName } from './cases';
-import { LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM, type LabMeasurement, type LabViewAngles } from './lab';
+import { AMBIENT_STRONG, AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
+import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
+import { GRAPHICS_OPTIONS, type GraphicsOptionKey } from '../../src/render/graphics-settings';
+import { CASE_NAMES, MAX_CAMERA_DISTANCE_LOG, sunDiameterPx, type CaseName } from './cases';
+import {
+  LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM_LOG, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
+  type LabMeasurement, type LabViewAngles,
+} from './lab';
+import { AU } from '../../src/physics/planet-orbit';
 
 declare global {
   interface Window {
@@ -15,7 +21,9 @@ declare global {
       shoot: (name: CaseName) => Promise<string>;
       capture: () => Promise<string>;
       setView: (changes: Partial<LabViewAngles>) => void;
+      setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
+      setGraphicsOption: (key: GraphicsOptionKey, value: boolean | number) => void;
       measure: (name: CaseName) => Promise<LabMeasurement>;
     };
   }
@@ -37,6 +45,13 @@ function buildButtonRow<T extends string>(
   return (active) => {
     for (const [value, button] of buttons) button.classList.toggle('active', value === active);
   };
+}
+
+// row の中のボタンをまとめて押せる/押せないにする。
+function setRowEnabled(rowId: string, enabled: boolean): void {
+  document.getElementById(rowId)!.querySelectorAll('button').forEach((button) => {
+    button.disabled = !enabled;
+  });
 }
 
 // row の中に、見出しを添えた排他選択を1組足す。返り値で選択の見た目を更新する。
@@ -117,21 +132,40 @@ async function init(): Promise<void> {
     () => degrees(view.viewAngles.sunAzimuthDeg), (v) => view.setViewAngles({ sunAzimuthDeg: v }));
   const setSunElevation = buildSlider('view-angles', '仰角', -90, 90, 0.5,
     () => degrees(view.viewAngles.sunElevationDeg), (v) => view.setViewAngles({ sunElevationDeg: v }));
+  // 恒星までの距離。**見かけ径を併記する** — 太陽が 1px を切るあたりの挙動を読むためのつまみ
+  // なので、AU だけでは判断の材料にならない。
+  const setSunDistance = buildSlider('view-angles', '距離',
+    MIN_SUN_DISTANCE_LOG_AU, MAX_SUN_DISTANCE_LOG_AU, 0.01,
+    () => `${(view.sunDistance / AU).toPrecision(3)} AU / `
+      + `${sunDiameterPx(view.sunDistance, view.cameraFovDeg).toPrecision(2)} px`,
+    (v) => view.setViewAngles({ sunDistanceLogAu: v }));
   const setCameraAzimuth = buildSlider('view-angles', 'カメラ 方位', -180, 180, 0.5,
     () => degrees(view.viewAngles.cameraAzimuthDeg), (v) => view.setViewAngles({ cameraAzimuthDeg: v }));
   const setCameraElevation = buildSlider('view-angles', '仰角',
     -MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ELEVATION_DEG, 0.5,
     () => degrees(view.viewAngles.cameraElevationDeg), (v) => view.setViewAngles({ cameraElevationDeg: v }));
-  const setCameraZoom = buildSlider('view-angles', '距離', -MAX_CAMERA_ZOOM, MAX_CAMERA_ZOOM, 0.02,
-    () => `${view.cameraDistance.toExponential(2)} m`, (v) => view.setViewAngles({ cameraZoom: v }));
+  const setCameraDistance = buildSlider('view-angles', '距離',
+    -MAX_CAMERA_DISTANCE_LOG, MAX_CAMERA_DISTANCE_LOG, 0.02,
+    () => `${view.cameraDistance.toExponential(2)} m`, (v) => view.setViewAngles({ cameraDistanceLog: v }));
+  // ズームは画角を狭める倍率。**倍率と画角を併記する** — 遠くの天体をどこまで拡大したかは倍率で、
+  // その絵がどれだけ狭い画角を切り出したものかは画角でしか読めない。
+  const setCameraZoom = buildSlider('view-angles', 'ズーム', 0, MAX_CAMERA_ZOOM_LOG, 0.02,
+    () => `×${(10 ** view.viewAngles.cameraZoomLog).toPrecision(3)} / ${view.cameraFovDeg.toPrecision(3)}°`,
+    (v) => {
+      view.setViewAngles({ cameraZoomLog: v });
+      // 恒星の見かけ径は画角で変わるので、そちらの表示も引き直す。
+      setSunDistance(view.viewAngles.sunDistanceLogAu);
+    });
 
   const syncAngles = (): void => {
     const current = view.viewAngles;
     setSunAzimuth(current.sunAzimuthDeg);
     setSunElevation(current.sunElevationDeg);
+    setSunDistance(current.sunDistanceLogAu);
     setCameraAzimuth(current.cameraAzimuthDeg);
     setCameraElevation(current.cameraElevationDeg);
-    setCameraZoom(current.cameraZoom);
+    setCameraDistance(current.cameraDistanceLog);
+    setCameraZoom(current.cameraZoomLog);
   };
 
   const caseEntries = CASE_NAMES.map((name) => [name, name] as const);
@@ -144,6 +178,15 @@ async function init(): Promise<void> {
     markTarget(target);
     view.showDebugTarget(target);
   });
+
+  // 表示スタイルを選ぶ。デバッグ表示は写実スタイルのときだけ選べる
+  // (DEVELOP/SPEC/RENDERING.md)ので、模式図のあいだは選択欄ごと押せなくする。
+  const selectStyle = (style: RenderStyle): void => {
+    markStyle(style);
+    setRowEnabled('targets', style === 'realistic');
+    view.setStyle(style);
+  };
+  const markStyle = buildButtonRow<RenderStyle>('styles', RENDER_STYLES, selectStyle);
 
   // 描画品質設定は、パイプラインが読む項目だけを設定の表から起こす。点灯の正本は LabView 側に
   // あるので、どの操作のあとも全項目を引き直す。
@@ -173,8 +216,18 @@ async function init(): Promise<void> {
   }
   syncGraphics();
 
+  // 一様な環境光。ゲーム本体はビューの種別から強弱を決めるが、ここには種別が無いので直に選ぶ。
+  const markAmbient = buildChoiceField<number>('graphics', '環境光', [
+    [0, 'オフ'], [AMBIENT_WEAK, '弱(戦闘ビュー)'], [AMBIENT_STRONG, '強(マップビュー)'],
+  ], (fraction) => {
+    view.setAmbientFraction(fraction);
+    markAmbient(fraction);
+  });
+  markAmbient(view.ambientFraction);
+
   markCase(CASE_NAMES[0]!);
   markTarget('off');
+  markStyle('realistic');
   view.show(CASE_NAMES[0]!);
   syncAngles();
 
@@ -183,7 +236,9 @@ async function init(): Promise<void> {
     shoot: async (name) => { const png = await view.shoot(name); syncAngles(); return png; },
     capture: () => view.capture(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
+    setStyle: selectStyle,
     setTarget: (target) => { markTarget(target); view.showDebugTarget(target); },
+    setGraphicsOption: (key, value) => { view.setGraphicsOption(key, value); syncGraphics(); },
     measure: (name) => view.measure(name),
   };
 }

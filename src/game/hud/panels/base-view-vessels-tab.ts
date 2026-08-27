@@ -1,16 +1,15 @@
 import type { Base, DockedVesselEntry } from '../../game-entity/base';
 import * as C from '../../const';
 import { Button } from '../widgets';
-import type { BasePanelContext } from './base-view-context';
+import type { BasePanel } from './base-view';
 import { buildSectionHeader, costLabel, NEW_VESSEL_COST, styleDockBtn } from './base-view-shared';
 
 // 基地パネルの「格納艦艇」タブ: 発進する艦の選択と、既定構成での新造を担う。
 export class VesselsTabController {
-  public constructor(private readonly ctx: BasePanelContext) {}
+  public constructor(private readonly panel: BasePanel) {}
 
   // 格納艦艇の一覧と、新造行を組み立てる。
-  public build(): HTMLElement {
-    const base = this.ctx.base();
+  public build(base: Base): HTMLElement {
     const frag = document.createElement('section');
     frag.className = 'dock-section';
     const ships = base.baseState.dockedVessels;
@@ -29,7 +28,7 @@ export class VesselsTabController {
       const list = document.createElement('div');
       list.className = 'dock-ship-list';
       list.setAttribute('role', 'list');
-      for (const [i, s] of ships.entries()) list.appendChild(this.buildVesselRow(s, i));
+      for (const [i, s] of ships.entries()) list.appendChild(this.buildVesselRow(base, s, i));
       frag.appendChild(list);
     }
     // 末尾に新造行を添える。
@@ -38,11 +37,11 @@ export class VesselsTabController {
   }
 
   // 格納艦1隻分の行を作る。選択状態の表示、発進、部品タブへの遷移を提供する。
-  private buildVesselRow(s: DockedVesselEntry, i: number): HTMLElement {
+  private buildVesselRow(base: Base, s: DockedVesselEntry, i: number): HTMLElement {
     const row = document.createElement('div');
     row.className = 'dock-ship-row';
     row.setAttribute('role', 'listitem');
-    const selected = this.ctx.vessel()?.id === s.id;
+    const selected = this.panel.vessel?.id === s.id;
     row.classList.toggle('is-selected', selected);
     const hpRatio = s.maxHp > 0 ? s.hp / s.maxHp : 0;
     row.classList.toggle('is-critical', hpRatio <= 0.3);
@@ -54,8 +53,8 @@ export class VesselsTabController {
     select.setAttribute('aria-pressed', String(selected));
     select.setAttribute('aria-label', `${s.name || `艦 ${i + 1}`}を選択`);
     select.addEventListener('click', () => {
-      this.ctx.selectVessel(s.player);
-      this.ctx.refresh();
+      this.panel.vessel = s.player;
+      this.panel.refresh();
     });
 
     const info = document.createElement('div');
@@ -73,9 +72,9 @@ export class VesselsTabController {
     // 発進と、部品タブでの確認に分岐する操作列。
     const actions = document.createElement('div');
     actions.className = 'dock-ship-actions';
-    const launchBtn = new Button('発進', () => this.handleLaunch(i));
+    const launchBtn = new Button('発進', () => this.handleLaunch(base, i));
     styleDockBtn(launchBtn.element, 'primary');
-    const inspectBtn = new Button('部品を見る', () => this.handleInspect(i));
+    const inspectBtn = new Button('部品を見る', () => this.handleInspect(base, i));
     styleDockBtn(inspectBtn.element, 'quiet');
     actions.append(launchBtn.element, inspectBtn.element);
     row.appendChild(actions);
@@ -86,7 +85,7 @@ export class VesselsTabController {
   private buildNewVesselHeader(base: Base): HTMLElement {
     // ドックの空き・資金から新造の可否を決める。
     const isFull = base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS;
-    const canAfford = !isFull && (this.ctx.freeProcurement() || base.baseState.money >= NEW_VESSEL_COST);
+    const canAfford = !isFull && (this.panel.freeProcurement || base.baseState.money >= NEW_VESSEL_COST);
     // 状況に応じた案内文。
     const row = document.createElement('div');
     row.className = 'dock-parts-header';
@@ -98,8 +97,8 @@ export class VesselsTabController {
     row.appendChild(label);
     // 新造ボタン。
     const btn = new Button(
-      isFull ? 'ドック満杯' : `新造 · ${costLabel(this.ctx.freeProcurement(), NEW_VESSEL_COST)}`,
-      () => this.handleBuildVessel(),
+      isFull ? 'ドック満杯' : `新造 · ${costLabel(this.panel.freeProcurement, NEW_VESSEL_COST)}`,
+      () => this.handleBuildVessel(base),
     );
     styleDockBtn(btn.element, 'primary');
     btn.setEnabled(canAfford);
@@ -108,30 +107,28 @@ export class VesselsTabController {
   }
 
   // 選択中の艦の発進を要求する。発進した艦を選択中だったら選択を解除する。
-  private handleLaunch(idx: number): void {
-    const base = this.ctx.base();
+  private handleLaunch(base: Base, idx: number): void {
     const shipData = base.baseState.dockedVessels[idx];
     if (!shipData) return;
     const ship = shipData.player;
-    this.ctx.notifyLaunch(ship, base);
-    if (this.ctx.vessel() === ship) this.ctx.selectVessel(null);
-    this.ctx.refresh();
+    this.panel.onLaunchVessel?.(ship, base);
+    if (this.panel.vessel === ship) this.panel.vessel = null;
+    this.panel.refresh();
   }
 
-  // 新造費用を支払い、艦の生成を要求する。資金不足なら何もしない。
-  private handleBuildVessel(): void {
-    const base = this.ctx.base();
-    if (!this.ctx.freeProcurement() && base.baseState.money < NEW_VESSEL_COST) return;
-    if (!this.ctx.freeProcurement()) base.baseState.money -= NEW_VESSEL_COST;
-    this.ctx.notifyBuildVessel(base);
-    this.ctx.refresh();
+  // 新造費用を支払い、艦そのものの生成を BasePanel の外へ要求する。資金不足なら何もしない。
+  private handleBuildVessel(base: Base): void {
+    if (!this.panel.freeProcurement && base.baseState.money < NEW_VESSEL_COST) return;
+    if (!this.panel.freeProcurement) base.baseState.money -= NEW_VESSEL_COST;
+    this.panel.onBuildVessel?.(base);
+    this.panel.refresh();
   }
 
   // 指定した艦を選択し、部品タブへ切り替える。
-  private handleInspect(idx: number): void {
-    const shipData = this.ctx.base().baseState.dockedVessels[idx];
+  private handleInspect(base: Base, idx: number): void {
+    const shipData = base.baseState.dockedVessels[idx];
     if (!shipData) return;
-    this.ctx.selectVessel(shipData.player);
-    this.ctx.switchToPartsTab();
+    this.panel.vessel = shipData.player;
+    this.panel.switchToPartsTab();
   }
 }

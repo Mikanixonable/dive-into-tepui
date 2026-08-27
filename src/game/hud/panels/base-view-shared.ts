@@ -7,7 +7,7 @@ import * as C from '../../const';
 // セクション見出しなどタブ間で繰り返す DOM 組み立てを提供する。
 
 // ショップで購入可能な部品カタログ
-export interface PartCatalogEntry {
+interface PartCatalogEntry {
   readonly type: PartType;
   readonly name: string;
   readonly price: number;
@@ -43,11 +43,11 @@ export const SHOP_CATALOG: readonly PartCatalogEntry[] = [
 // 修理コスト: 1HPあたりのクレジット
 export const REPAIR_COST_PER_HP = 10;
 // 倉庫の部品を売却したときの掛け率。無限増殖を防ぐため購入価格を下回らせる。
-export const PART_SELL_RATE = 0.5;
+const PART_SELL_RATE = 0.5;
 // カタログに一致しない部品(艦に最初から積まれていたものなど)の売却基準額。maxHpに比例させる。
-export const PART_FALLBACK_VALUE_PER_MAXHP = 20;
+const PART_FALLBACK_VALUE_PER_MAXHP = 20;
 // RCSタンクへの燃料補給コスト: 1kgあたりのクレジット
-export const RCS_REFUEL_PRICE_PER_KG = 2;
+const RCS_REFUEL_PRICE_PER_KG = 2;
 // 新造艦艇(既定パーツ一式)の価格。SHOP_CATALOG の最安構成の合計(≈31,500 Cr)に組立分を上乗せした額。
 export const NEW_VESSEL_COST = 35000;
 

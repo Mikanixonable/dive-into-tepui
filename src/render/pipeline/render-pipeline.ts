@@ -1,19 +1,20 @@
 // フレームの描画パス構成を制御する。render/** 配下の個々の描画物モジュールとは別に、
 // 「何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか」をここへ集約する。
-// 現在は9段: 影パス(恒星の直射光を遮るメッシュをライト空間の深度マップへ描く)→ G バッファパス
+// 現在は10段: 影パス(恒星の直射光を遮るメッシュをライト空間の深度マップへ描く)→ G バッファパス
 // (深度・法線・ラフネスを MRT へ描く)→ 遮蔽パス(G バッファ深度から
 // 復元した位置に届く恒星の直射光の透過率を1枚へ描く)→ ライティングパス(その2枚だけを読み、
 // 拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(lit-opaque 層をライティングパスの照度で描き、
 // world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ 大気パス(同じ
 // ターゲットへ画面空間で大気を重ねる)→ world パス(シーンを同じ HDR ターゲットへ重ね描きする)
-// → composite パス → 3D UI パス。composite パスは通常表示
+// → レンズ効果パス(明るい画素の光を画面上の角度で決まる広がりへ配り直す)→ composite パス
+// → 3D UI パス。composite パスは通常表示
 // (debugTarget==='off')では HDR ターゲットをトーンマッピングしてキャンバスへ合成し、それ以外を選ぶと
 // 代わりに中間ターゲットの中身を画面いっぱいに映す(debug-target.ts)。あわせて G バッファの
 // 深度をキャンバスの深度バッファへ複製するので、最後の 3D UI パス(overlay-pass.ts)は
 // 普通に深度テストするだけで不透明物の奥へ隠れる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { float, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { GraphicsOptionKey, GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
@@ -22,27 +23,26 @@ import type { DebugTargetHost, DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
+import { AmbientSource } from './lighting/ambient-source';
+import { PlanetLightSource } from './lighting/planet-light-source';
+import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
 import { SunOcclusion } from './sun-occlusion';
 import { OverlayPass } from './overlay-pass';
 import { SchematicComposite } from './schematic-composite';
+import { LensPass } from './lens-pass';
+import { Exposure } from './exposure';
 import { SunLight } from './sun-light';
 import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
+import { applyActiveFilmLut } from './film-lut';
 
-// 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
-// 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
-// そのまま読み取れる。明るさの基準は放射照度の単位そのもの(sun-light.ts の
-// SUN_IRRADIANCE_1AU)が決めているので、出力段の露出には 1 を渡す。
-function toneMapped(color: Vec3Node): Vec3Node {
-  return neutralToneMapping(color, float(1)) as Vec3Node;
-}
-
-// applyGraphics が読む項目。**ここを変えたときだけ描画が変わる**ので、パイプラインだけを
-// 駆動する呼び出し側(描画テスト環境)は、この並びを操作の対象にする。
+// パイプラインだけを駆動する呼び出し側(描画テスト環境)が操作の対象にする項目。
+// **ここを変えたときだけ、パイプラインが描くものが変わる。**
 export const PIPELINE_GRAPHICS_KEYS = [
+  'lens', 'exposureCompensation', 'atmosphere', 'sunLightModel', 'planetLightCount',
   'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 
@@ -53,13 +53,23 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly _sunOcclusion: SunOcclusion;
   private readonly sunShadowMaps: SunShadowMaps;
   private readonly lightPrepass: LightPrepass;
+  // 光源モデルの設定を受けるため、光源の列とは別に太陽光源だけ手元にも持つ。
+  private readonly sunSource: SunSource;
+  private readonly _planetLight: PlanetLightSource;
+  private readonly _ambient: AmbientSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
+  private readonly lensPass: LensPass;
   private readonly _sunLight: SunLight;
+  private readonly _exposure: Exposure;
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
+  // レンズ効果を掛けた通常表示。**compositeMaterials とは別に持つ** — デバッグ表示の選択肢
+  // (DebugTargetId)ではなく、描画品質設定でオン/オフする 'off' の別版だからである。
+  private readonly lensCompositeMaterial: THREE.MeshBasicNodeMaterial;
+  private lensEnabled: boolean;
   private readonly schematicComposite: SchematicComposite;
   private readonly schematicMaterial: THREE.MeshBasicNodeMaterial;
   // 深度デバッグ表示が使う uniform。composite パスは QuadMesh 自前の固定直交カメラ
@@ -79,13 +89,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // に戻るセッション限定の状態で、永続化しない。
   debugTarget: DebugTargetId = 'off';
 
-  // ライティングパスが読む恒星光。EnvironmentScene がここへ毎フレーム書き込む。
+  // 以下は、シーン側が毎フレームの値(恒星の位置・順応の基準点・遮蔽器・光源になる天体・
+  // 環境光の割合・大気を持つ天体)を書き込む先。パイプライン自身はこれらの値を決めない。
   get sunLight(): SunLight { return this._sunLight; }
-
-  // 恒星の直射光の遮蔽。EnvironmentScene が遮蔽器と環の帯を毎フレーム書き込む。
+  get exposure(): Exposure { return this._exposure; }
   get sunOcclusion(): SunOcclusion { return this._sunOcclusion; }
-
-  // 大気パス。EnvironmentScene が大気を持つ天体を毎フレーム書き込む。
+  get planetLight(): PlanetLightSource { return this._planetLight; }
+  get ambient(): AmbientSource { return this._ambient; }
   get atmosphere(): AtmospherePass { return this.atmospherePass; }
 
   // G バッファパス・ライティングパス・マテリアルパスと、world パスの描画先である HDR
@@ -96,16 +106,22 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.unregisterProteinMotionRenderer = registerProteinMotionRenderer(renderer);
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
+    this._exposure = new Exposure();
     this.sunShadowMaps = new SunShadowMaps(
       renderer, gpu, graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
     this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
-    this.lightPrepass = new LightPrepass(renderer, this.gbuffer, this.occlusionPass, this._sunLight, gpu);
+    this.sunSource = new SunSource(this._sunLight, this.occlusionPass, graphics.sunLightModel);
+    this._planetLight = new PlanetLightSource(graphics.planetLightCount);
+    this._ambient = new AmbientSource(this._sunLight);
+    this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
+      this.sunSource, ...this._planetLight.lightSources, this._ambient,
+    ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
     this.atmospherePass = new AtmospherePass(
-      renderer, this.gbuffer, this._sunLight, this._sunOcclusion, this.occlusionPass, gpu,
+      renderer, this.gbuffer, this._sunLight, this._sunOcclusion, gpu,
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
@@ -122,6 +138,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
+    this.lensPass = new LensPass(renderer, this.target.texture, gpu);
+    this.lensEnabled = graphics.lens;
+
     this.depthDebugNear = uniform(1);
     this.depthDebugFar = uniform(2);
     this.depthDebugProjInv = uniform(new THREE.Matrix4());
@@ -132,7 +151,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // マテリアルをユニフォーム分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを
     // bind/sample することになるため、表示ごとに別マテリアルを構築する。
     this.compositeMaterials = {
-      off: this.buildCompositeMaterial(vec4(toneMapped(texture(this.target.texture, screenUV).rgb), 1)),
+      off: this.buildCompositeMaterial(
+        vec4(this.colorGrade(this.toneMapped(texture(this.target.texture, screenUV).rgb)), 1),
+      ),
       normal: this.buildCompositeMaterial(
         vec4(octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1),
       ),
@@ -150,24 +171,43 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       // 照度・陰影は 1 を超え得る HDR 値なので、通常表示と同じトーンマッピングを通してから
       // 画面へ出す(1 天文単位の放射照度は π を超えるため、通さないと全面白になる)。
       diffuse: this.buildCompositeMaterial(
-        vec4(toneMapped(texture(this.lightPrepass.diffuseTexture, screenUV).rgb), 1),
+        vec4(this.toneMapped(texture(this.lightPrepass.diffuseTexture, screenUV).rgb), 1),
       ),
       specular: this.buildCompositeMaterial(
-        vec4(toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
+        vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
       material: this.buildCompositeMaterial(
-        vec4(toneMapped(texture(this.materialPass.texture, screenUV).rgb), 1),
+        vec4(this.toneMapped(texture(this.materialPass.texture, screenUV).rgb), 1),
       ),
       atmosphere: this.buildCompositeMaterial(
-        vec4(toneMapped(texture(this.atmospherePass.texture, screenUV).rgb), 1),
+        vec4(this.toneMapped(this.atmospherePass.scatteredLight()), 1),
       ),
+      lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
     };
+    this.lensCompositeMaterial = this.buildCompositeMaterial(
+      vec4(
+        this.colorGrade(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
+        1,
+      ),
+    );
     // 模式図用の合成マテリアルは compositeMaterials とは別に1枚だけ持つ。debugTarget の選択肢
     // (DebugTargetId)には含まれない、表示スタイルそのものの切り替えのため。
     this.schematicComposite = new SchematicComposite(this.gbuffer, this.depthDebugProjInv);
     this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
 
     this.quad = new QuadMesh(this.compositeMaterials.off);
+  }
+
+  // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
+  // 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
+  // そのまま読み取れる。明るさの基準は放射照度の単位そのもの(sun-light.ts の
+  // SUN_IRRADIANCE_1AU)が決めていて、そこからいまいる場所へ合わせ直すぶんが露出係数になる。
+  private toneMapped(color: Vec3Node): Vec3Node {
+    return neutralToneMapping(color, this._exposure.factor) as Vec3Node;
+  }
+
+  private colorGrade(color: Vec3Node): Vec3Node {
+    return applyActiveFilmLut(color);
   }
 
   // depthTest/depthWrite/transparent の共通設定を1箇所へまとめた、composite 用マテリアルの
@@ -219,17 +259,24 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
 
   // 描画品質設定のうち、GPU 資源の確保を伴うものを各パスへ配る。値が変わった時点で1回呼ばれる。
   applyGraphics(graphics: GraphicsSettingsData): void {
+    this.lensEnabled = graphics.lens;
     this.sunShadowMaps.setQuality(
       graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
+    this._exposure.setCompensation(graphics.exposureCompensation);
+    this.sunSource.setModel(graphics.sunLightModel);
+    this._planetLight.setCount(graphics.planetLightCount);
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
-  // world → 合成 → 3D UI の順に発行する。Game.render() から毎フレーム 1回呼ぶ。
-  // 模式図スタイルではマテリアル・大気・world の3段を飛ばす。
+  // world → レンズ → 合成 → 3D UI の順に発行する。Game.render() から毎フレーム 1回呼ぶ。
+  // 模式図スタイルではマテリアル・大気・world・レンズの4段を飛ばす。
   // デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが実際に
-  // 生成した中身であるべきため。
+  // 生成した中身であるべきため。設定で切られている段(影・レンズ)を選べば、そのフレームが
+  // 何も作っていないことがそのまま空として見える。**見せるために描き足すのはマテリアルだけ**
+  // — あの段の出力は共有ターゲットの上で大気と world に上書きされて残らず、かつ MSAA を
+  // 落とさずに残す方法が無いため(material-pass.ts の showDebugTarget)。
   render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
@@ -265,7 +312,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
 
       // 大気パス。不透明の絵の上へ画面空間で重ねる。G バッファ深度と視線だけを読むので scene は渡さない。
-      this.atmospherePass.render(camera, this.target, width, height, this.debugTarget === 'atmosphere');
+      this.atmospherePass.render(camera, this.target);
 
       // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
       // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
@@ -281,7 +328,15 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.renderer.autoClear = true;
       this.renderer.setRenderTarget(null);
 
-      this.quad.material = this.compositeMaterials[this.debugTarget];
+      // レンズ効果パス。world パスまでの絵だけを読むので scene も camera も渡さない。設定で
+      // 切られているフレームは回さず、切り替わった最初の 1 フレームだけ出力を空へ戻す
+      // — 「レンズ」デバッグ表示にも、そのフレームが実際に何も作っていないことがそのまま出る。
+      if (this.lensEnabled) this.lensPass.render(width, height);
+      else this.lensPass.clear(width, height);
+
+      this.quad.material = this.debugTarget === 'off' && this.lensEnabled
+        ? this.lensCompositeMaterial
+        : this.compositeMaterials[this.debugTarget];
     }
 
     // composite パス。QuadMesh.render も内部で renderer.render() を呼ぶので、world パスとは
@@ -310,6 +365,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.materialPass.dispose();
     this.atmospherePass.dispose();
     this.overlayPass.dispose();
+    this.lensPass.dispose();
+    this.lensCompositeMaterial.dispose();
     this.target.dispose();
     for (const material of Object.values(this.compositeMaterials)) material.dispose();
     this.schematicMaterial.dispose();

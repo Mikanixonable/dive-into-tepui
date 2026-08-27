@@ -24,6 +24,10 @@ module.exports = {
         type: 'asset/resource',
       },
       {
+        test: /\.cube$/,
+        type: 'asset/source',
+      },
+      {
         // タンパク質の構造・モーション JSON(数十MB)はバンドルへインライン化せず、
         // 別ファイルとして書き出して import 元へは URL 文字列を渡す(起動時ダウンロード量を
         // 抑えるため)。semantic/backbone など他の JSON は既定どおりバンドルへ含める。
