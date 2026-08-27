@@ -45,7 +45,7 @@ const DENSE_WEIGHT_GAP = Math.LN10;
 // 主天体へ足す濃い表現の重み 0..1。gap は第 1 候補と第 2 候補の対数消散係数の差で、候補が
 // 1 体しか無いなら Infinity を渡す。**順位が入れ替わる点では gap が 0 になり、どちらが
 // 主天体でも重みが 0 で一致する**ので、入れ替わりそのものは絵に出ない。
-export function denseWeightFromGap(gap: number): number {
+function denseWeightFromGap(gap: number): number {
   return THREE.MathUtils.smoothstep(gap, 0, DENSE_WEIGHT_GAP);
 }
 
@@ -83,9 +83,26 @@ export function cutoffAltitude(optics: AtmosphereOptics, surfaceRadius: number):
 // 高度 altitude [m] における消散係数の自然対数。**天体どうしの「その場の大気の濃さ」は
 // この量で比べる** — 素の指数は惑星間距離で単精度の下限を割り込み、どの天体も 0 になって
 // 比較が付かなくなる。2成分の和の対数は、大きいほうを括り出して求める。
-export function logExtinctionAt(optics: AtmosphereOptics, altitude: number): number {
+function logExtinctionAt(optics: AtmosphereOptics, altitude: number): number {
   const rayleigh = Math.log(meanRayleigh(optics)) - altitude / optics.rayleighScaleHeight;
   const mie = Math.log(optics.mie) - altitude / optics.mieScaleHeight;
   const larger = Math.max(rayleigh, mie);
   return larger + Math.log1p(Math.exp(Math.min(rayleigh, mie) - larger));
+}
+
+// 大気を持つ天体を、視点のいる場所の大気を強く作っている順に並べ、先頭へ足す濃い表現の重み 0..1
+// を添えて返す。altitude は視点のその天体からの高度 [m]。**視線の向きは見ない** — 地表から空を
+// 見上げて地面が視錐台に入っていなくても、空は大気の色でなければならない。
+//
+// **この並びは視点に近い順でもある。** 濃さは高度に対して指数で落ちるので、遠い天体が近い天体を
+// 上回るのは近い側の大気がそもそも見えないときだけ。
+export function rankAtmospheres<T extends { readonly optics: AtmosphereOptics }>(
+  candidates: readonly { readonly body: T; readonly altitude: number }[],
+): { readonly bodies: readonly T[]; readonly denseWeight: number } {
+  const ranked = candidates
+    .map(({ body, altitude }) => ({ body, strength: logExtinctionAt(body.optics, altitude) }))
+    .sort((a, b) => b.strength - a.strength);
+  // 候補が 1 体しか無いなら、その天体が場を独占している。
+  const gap = ranked.length < 2 ? Infinity : ranked[0]!.strength - ranked[1]!.strength;
+  return { bodies: ranked.map(({ body }) => body), denseWeight: denseWeightFromGap(gap) };
 }
