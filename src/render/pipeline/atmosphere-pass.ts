@@ -381,9 +381,9 @@ export class AtmospherePass {
     // 高度から成分ごとの散乱係数を引く。消散はその和で、吸収を持たないので散乱と等しい。
     const offset = sub(point, slot.center);
     const radius = max(length(offset), max(slot.surfaceRadius, 1));
-    const altitude = slot.surfaceRadius.sub(radius);
-    const rayleigh: Vec3Node = slot.rayleigh.mul(exp(altitude.div(slot.rayleighScaleHeight)));
-    const mie = slot.mie.mul(exp(altitude.div(slot.mieScaleHeight)));
+    const altitude = radius.sub(slot.surfaceRadius);
+    const rayleigh: Vec3Node = slot.rayleigh.mul(exp(altitude.div(slot.rayleighScaleHeight).negate()));
+    const mie = slot.mie.mul(exp(altitude.div(slot.mieScaleHeight).negate()));
     const extinction: Vec3Node = rayleigh.add(vec3(mie));
 
     // 視線へ向かう散乱は、成分ごとの散乱係数に位相関数を掛けて重みを付けた和。
