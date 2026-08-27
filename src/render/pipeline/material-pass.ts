@@ -11,10 +11,6 @@
 // 奥行きを揃える — world パスは透明物(オービットライン・プルーム・ビルボード)を自分のソート順の
 // 最後に描くため、不透明な自艦の深度がその前に書き込まれていないと、自艦の手前にある透明物が
 // それで上書きされてしまう。
-//
-// 自前のデバッグ表示用ターゲットへ同じジオメトリをもう一度描くのは「マテリアル」表示を選んでいる
-// 間だけ — 通常プレイでは共有ターゲットへの1回の描画で足り、それ以外の表示を見ている間まで
-// 3回目のジオメトリ描画を払わせない。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer, PhysicalLightingModel } from 'three/webgpu';
 import { BRDF_Lambert, diffuseColor, metalness, mix, screenUV, texture, vec3 } from 'three/tsl';
@@ -65,7 +61,6 @@ LIT_OPAQUE_TEST.set(LIT_OPAQUE_LAYER);
 
 export class MaterialPass {
   private readonly renderer: WebGPURenderer;
-  private readonly target: THREE.RenderTarget;
   private readonly diffuseNode: Vec3Node;
   private readonly specularNode: Vec3Node;
   // 一度アップグレードした Material の再変換を避けるための既変換集合。
@@ -77,15 +72,9 @@ export class MaterialPass {
     private readonly gpu: GpuTimings,
   ) {
     this.renderer = renderer;
-    this.target = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true, samples: 0 });
-    // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
-    // 欠くとこのターゲットだけ depth24plus になり、デバッグ表示が本番と違う前後関係を映す。
-    this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
     this.diffuseNode = texture(this.lightPrepass.diffuseTexture, screenUV).rgb;
     this.specularNode = texture(this.lightPrepass.specularTexture, screenUV).rgb;
   }
-
-  get texture(): THREE.Texture { return this.target.texture; }
 
   // 標準マテリアルへ上のライティングモデルを据える。mesh.material が既に済みならなにもしない。
   // 呼び出し元がメッシュを組み立てる時点では、ライティングモデルが読む2枚の照度テクスチャ
@@ -102,17 +91,8 @@ export class MaterialPass {
   }
 
   // LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを、world パスと共有する HDR ターゲットへ
-  // 描く(このパスがそこへの最初の書き込みなのでクリアする)。showDebugTarget が立っているときだけ、同じ
-  // ジオメトリをこのパス専用のターゲットへもう一度描く — 「マテリアル」デバッグ表示を選んで
-  // いるかどうかの判断は RenderPipeline のもので、ここでは結果だけを受け取る。
-  render(
-    scene: THREE.Scene,
-    camera: THREE.Camera,
-    sharedTarget: THREE.RenderTarget,
-    width: number,
-    height: number,
-    showDebugTarget: boolean,
-  ): void {
+  // 描く(このパスがそこへの最初の書き込みなのでクリアする)。
+  render(scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget): void {
     scene.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (mesh.isMesh && mesh.layers.test(LIT_OPAQUE_TEST)) this.upgrade(mesh);
@@ -121,15 +101,7 @@ export class MaterialPass {
     const savedMask = camera.layers.mask;
     setOpaquePassLayers(camera);
 
-    if (showDebugTarget) {
-      if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
-      // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
-      this.gpu.beginPass(GPU_PASS.material);
-      this.renderer.setRenderTarget(this.target);
-      this.renderer.autoClear = true;
-      this.renderer.render(scene, camera);
-    }
-
+    // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
     this.gpu.beginPass(GPU_PASS.material);
     this.renderer.setRenderTarget(sharedTarget);
     this.renderer.autoClear = true;
@@ -137,10 +109,5 @@ export class MaterialPass {
     this.renderer.setRenderTarget(null);
 
     camera.layers.mask = savedMask;
-  }
-
-  // 保持している GPU 資源を解放する。
-  dispose(): void {
-    this.target.dispose();
   }
 }

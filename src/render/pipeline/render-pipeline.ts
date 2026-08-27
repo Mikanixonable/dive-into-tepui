@@ -190,8 +190,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       specular: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
+      // マテリアルパスの出力は大気と world に上書きされて残らないので、大気パスが読む
+      // スナップショット(backdropTarget)を映す。
       material: this.buildCompositeMaterial(
-        vec4(this.toneMapped(texture(this.materialPass.texture, screenUV).rgb), 1),
+        vec4(this.toneMapped(texture(this.backdropTarget.texture, screenUV).rgb), 1),
       ),
       atmosphere: this.buildCompositeMaterial(
         vec4(this.toneMapped(this.atmospherePass.scatteredLight()), 1),
@@ -281,9 +283,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // 模式図スタイルではマテリアル・大気・world・レンズの4段を飛ばす。
   // デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが実際に
   // 生成した中身であるべきため。設定で切られている段(影・レンズ)を選べば、そのフレームが
-  // 何も作っていないことがそのまま空として見える。**見せるために描き足すのはマテリアルだけ**
-  // — あの段の出力は共有ターゲットの上で大気と world に上書きされて残らず、かつ MSAA を
-  // 落とさずに残す方法が無いため(material-pass.ts の showDebugTarget)。
+  // 何も作っていないことがそのまま空として見える。例外はスナップショットのブリットだけ —
+  // 「マテリアル」表示は大気の写らないフレームでもこれを要るので、そのときは判定に依らず撮る。
   render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
@@ -314,15 +315,16 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.quad.material = this.schematicMaterial;
     } else {
       // マテリアルパス。LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを this.target(このあとの
-      // world パスと共有 — 最初の書き込みなのでクリアする)へ描く。「マテリアル」デバッグ表示を選んでいる
-      // ときだけ、自前のターゲットへも同じジオメトリをもう一度描く。
-      this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
+      // world パスと共有 — 最初の書き込みなのでクリアする)へ描く。
+      this.materialPass.render(scene, camera, this.target);
 
       // 大気パス。大気が写るフレームだけ、不透明の絵のスナップショットを撮ってから、下地と
       // 合成し終えた大気を共有ターゲットへ上書きする。写らないフレームは 2 段とも発行しない
       // — 深宇宙で大気の GPU 時間が 0 のまま保たれる。スナップショットのブリットも大気パスの
-      // 計測枠に計上する。
-      if (this.atmospherePass.anyBodyInView(camera)) {
+      // 計測枠に計上する。「マテリアル」デバッグ表示はスナップショットを映すので、選んでいる間は
+      // 大気が写らなくても撮る。
+      const atmosphereVisible = this.atmospherePass.anyBodyInView(camera);
+      if (atmosphereVisible || this.debugTarget === 'material') {
         if (this.backdropTarget.width !== width || this.backdropTarget.height !== height) {
           this.backdropTarget.setSize(width, height);
         }
@@ -330,8 +332,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
         this.renderer.setRenderTarget(this.backdropTarget);
         this.backdropQuad.render(this.renderer);
         this.renderer.setRenderTarget(null);
-        this.atmospherePass.render(camera, this.target);
       }
+      if (atmosphereVisible) this.atmospherePass.render(camera, this.target);
 
       // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
       // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
@@ -381,7 +383,6 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.occlusionPass.dispose();
     this.sunShadowMaps.dispose();
     this.lightPrepass.dispose();
-    this.materialPass.dispose();
     this.atmospherePass.dispose();
     this.backdropTarget.dispose();
     this.backdropMaterial.dispose();
