@@ -12,6 +12,11 @@ export interface MapPickable {
   readonly time?: number;
   // 一覧専用の軽量な補助表示。物理状態の再計算を UI に持ち込まない。
   readonly detail?: string;
+  // 区画見出しの内訳を数えるための状態。detail の文言から読み取るのではなく、値として持つ
+  // — 表示文字列を変えたときに数え上げが黙って壊れないようにする。
+  // approaching は敵が接近中か、collectable は弾薬/RCS燃料が回収可能な距離にあるか。
+  readonly approaching?: boolean;
+  readonly collectable?: boolean;
   // 自機からの距離 [m]。近傍しぼり込みと距離順の並べ替えの基準。
   readonly distance?: number;
   // 恒星からの距離 [m]。太陽系順の並べ替えの基準。恒星の無いレジストリでは undefined。
