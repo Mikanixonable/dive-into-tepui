@@ -4,7 +4,7 @@
 // 下回ってちらつくため。
 import * as THREE from 'three/webgpu';
 import { texture as textureNode, mix, uv, vec2, vec3 } from 'three/tsl';
-import { R_EARTH } from '../physics/solar-system';
+import { R_EARTH_EQ, SOLAR_SYSTEM, shapeAxes } from '../physics/solar-system';
 import { EARTH_TEXTURES } from './celestial-textures';
 import { CelestialSurface } from './celestial-surface';
 import { BodyGraticule } from './body-graticule';
@@ -63,9 +63,10 @@ export function createEarth(): Earth {
   const { material: surfaceMaterial, earthMap, cloudsMap } = buildSurfaceMaterial();
   const surface = CelestialSurface.withMaterial(surfaceMaterial);
   // 実半径への拡大は地表だけへ掛ける — オーロラは実寸 [m] の頂点を持つので、spin ごと
-  // 拡大すると地球半径倍に膨らむ。
+  // 拡大すると地球半径倍に膨らむ。他の惑星と同じ shapeAxes 経由で扁平を反映する。
   const surfaceScale = new THREE.Group();
-  surfaceScale.scale.setScalar(R_EARTH);
+  const axes = shapeAxes(R_EARTH_EQ, SOLAR_SYSTEM.earth.shape);
+  surfaceScale.scale.set(axes.x, axes.y, axes.z);
   surface.addTo(surfaceScale);
   const graticule = new BodyGraticule();
   graticule.addTo(surfaceScale);
