@@ -11,9 +11,7 @@ import {
 } from './hud/windows';
 import { TEMP_WINDOW_GROUP } from './hud/overlay-manager';
 import { LAGRANGE_ID, lagrangeParentId } from './hud/object-groups';
-import { bodyClassOf } from './celestial/body-class';
-import { ENTITY_GLYPH, ORBIT_POINT_GLYPH, bodyEntityGlyph } from './marker/marker-glyphs';
-import { baseMarkerSvg, shipMarkerSvg } from './marker/marker-shapes';
+import { pickGlyph } from './marker/pick-glyphs';
 import { MapPickable, pickNearest } from './map-pickable';
 import { OrbitPickable, pickNearestOrbit } from './orbit-pickable';
 import type { OrbitPickables } from './orbit-pickables';
@@ -124,9 +122,10 @@ export class MapContextActions {
       activePlayers, frameControls, activeStage, (target) => this.expandedBaseWindowKey === this.windowKey(target),
     );
     this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, ephemeris.registry);
+    // 一覧の行は隠れている対象でも操作できる(SPEC/MAP.md §10) — pickable によるマップ上の
+    // 衝突判定はマーカーのヒットテストにだけ適用され、一覧からの id 一致には適用しない。
     this.physicalObjectListPanel.onFocus = (id) => {
-      this.frameControls.setFocus({ kind: 'object', id });
-      this.hud.hint(`${this.pickables.pickables.find((i) => i.id === id)?.name ?? id} にフォーカス`);
+      this.focusTarget(id, this.pickables.pickables.find((i) => i.id === id));
     };
     this.physicalObjectListPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
@@ -397,17 +396,24 @@ export class MapContextActions {
         p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE),
       );
       if (!target) return false;
-      this.frameControls.setFocus({ kind: 'object', id: target.id });
-      this.hud.hint(`${target.name} にフォーカス`);
-      if (target.kind === 'player') {
-        const ship = this.entities.findPlayer(target.id);
-        if (ship) {
-          this.activePlayers.set(ship);
-          this.hud.hint(`${target.name} を操作対象に設定`);
-        }
-      }
+      this.focusTarget(target.id, target);
       return true;
     });
+  }
+
+  // マップ視点のフォーカスを対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md §10)。
+  // マップのダブルクリックと一覧パネルのフォーカス行はどちらもここを通す。id は一覧側が候補列に
+  // 頼らず持っている値、target は見つかっていれば名前・種別の解決に使う。
+  private focusTarget(id: string, target: MapPickable | undefined): void {
+    this.frameControls.setFocus({ kind: 'object', id });
+    this.hud.hint(`${target?.name ?? id} にフォーカス`);
+    if (target?.kind === 'player') {
+      const ship = this.entities.findPlayer(target.id);
+      if (ship) {
+        this.activePlayers.set(ship);
+        this.hud.hint(`${target.name} を操作対象に設定`);
+      }
+    }
   }
 
   // 単クリックは選択までに留める: 自艦はプロパティウィンドウを開くだけで操作対象は変えず、
@@ -565,29 +571,11 @@ export class MapContextActions {
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
     return {
-      title, subtitle, icon: this.iconFor(target), rows: [], items,
+      title, subtitle, icon: pickGlyph(target.kind, target.id, this.ephemeris.registry), rows: [], items,
       relatedItems: this.relatedItemsFor(target, this.ephemeris.celestialBodiesAt(simTime)),
       relatedTitle: this.relatedTitleFor(target),
       onRename: this.renameHandlerFor(target),
     };
-  }
-
-  // ウィンドウ題名に添えるグリフ。マップ実マーカーと同じ字形族(ENTITY_GLYPH/ORBIT_POINT_GLYPH)
-  // から種別に対応するものを選ぶ。player/ship/base はマップ実マーカーと同じ SVG 形状を使う。
-  private iconFor(target: MapPickable): string | undefined {
-    switch (target.kind) {
-      case 'body': return LAGRANGE_ID.test(target.id)
-        ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(this.ephemeris.registry, target.id));
-      case 'player': return shipMarkerSvg(true);
-      case 'ship': return shipMarkerSvg(false);
-      case 'base': return baseMarkerSvg();
-      case 'ammo': return ENTITY_GLYPH.ammo;
-      case 'fuel': return ENTITY_GLYPH.fuel;
-      case 'apsis': return ORBIT_POINT_GLYPH.apsis;
-      case 'relnode': return ORBIT_POINT_GLYPH.ascendingNode;
-      case 'eqnode': return ORBIT_POINT_GLYPH.descendingNode;
-      case 'empty-space': return undefined;
-    }
   }
 
   // 改名できる種別(自艦・基地)にだけコールバックを渡す。対象は id で引き直す —
