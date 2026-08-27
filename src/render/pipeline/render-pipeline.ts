@@ -39,13 +39,13 @@ import { SunLight } from './sun-light';
 import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
-import { applyActiveFilmLut } from './film-lut';
+import { FilmLut } from './film-lut';
 
 // パイプラインだけを駆動する呼び出し側(描画テスト環境)が操作の対象にする項目。
 // **ここを変えたときだけ、パイプラインが描くものが変わる。**
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'msaa', 'antialias', 'exposureCompensation', 'atmosphere', 'sunLightModel', 'planetLightCount',
-  'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
+  'lens', 'msaa', 'antialias', 'exposureCompensation', 'filmLut', 'atmosphere', 'sunLightModel',
+  'planetLightCount', 'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 
 // マルチサンプリングを入れるときの標本数。
@@ -73,6 +73,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // composite パスと 3D UI パスの描画先。トーンマッピングと表示用色空間への変換を終えた絵が入る。
   private readonly displayTarget: THREE.RenderTarget;
   private readonly quad: QuadMesh;
+  // 合成段の色へ当てるフィルムのルック。通常表示の2枚(compositeMaterials.off と
+  // lensCompositeMaterial)だけがこのノードを組み込む。
+  private readonly filmLut = new FilmLut();
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
   // レンズ効果を掛けた通常表示。**compositeMaterials とは別に持つ** — デバッグ表示の選択肢
   // (DebugTargetId)ではなく、描画品質設定でオン/オフする 'off' の別版だからである。
@@ -166,7 +169,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // bind/sample することになるため、表示ごとに別マテリアルを構築する。
     this.compositeMaterials = {
       off: this.buildCompositeMaterial(
-        vec4(this.colorGrade(this.toneMapped(texture(this.target.texture, screenUV).rgb)), 1),
+        vec4(this.filmLut.apply(this.toneMapped(texture(this.target.texture, screenUV).rgb)), 1),
       ),
       normal: this.buildCompositeMaterial(
         vec4(octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1),
@@ -200,7 +203,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     };
     this.lensCompositeMaterial = this.buildCompositeMaterial(
       vec4(
-        this.colorGrade(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
+        this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
         1,
       ),
     );
@@ -218,10 +221,6 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // SUN_IRRADIANCE_1AU)が決めていて、そこからいまいる場所へ合わせ直すぶんが露出係数になる。
   private toneMapped(color: Vec3Node): Vec3Node {
     return neutralToneMapping(color, this._exposure.factor) as Vec3Node;
-  }
-
-  private colorGrade(color: Vec3Node): Vec3Node {
-    return applyActiveFilmLut(color);
   }
 
   // depthTest/depthWrite/transparent の共通設定を1箇所へまとめた、composite 用マテリアルの
@@ -282,6 +281,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.sunSource.setModel(graphics.sunLightModel);
     this._planetLight.setCount(graphics.planetLightCount);
     this.antialiasPass.setMethod(graphics.antialias);
+    this.filmLut.select(graphics.filmLut);
     // 標本数を変えると、three が次の描画までに色と深度のテクスチャを作り直す。
     this.target.samples = graphics.msaa ? MSAA_SAMPLES : 0;
   }
@@ -401,5 +401,6 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.displayTarget.dispose();
     for (const material of Object.values(this.compositeMaterials)) material.dispose();
     this.schematicMaterial.dispose();
+    this.filmLut.dispose();
   }
 }
