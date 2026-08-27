@@ -9,9 +9,9 @@ import { SegmentedControl } from '../widgets';
 import { celestialBodyName, frameRoleName } from './frame-labels';
 
 export class RotationZone {
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
   // null は「解除」= 回転させない(慣性系)。
-  onSelect: ((rotatingWith: FrameRotationSource | null) => void) | null = null;
+  public onSelect: ((rotatingWith: FrameRotationSource | null) => void) | null = null;
 
   // 正規化キー → 回転対象。SegmentedControl は値を参照同一性で比べるので、組み直すたびに
   // 新しくなるオブジェクトではなく安定した文字列を値に持たせる。
@@ -20,7 +20,7 @@ export class RotationZone {
   private readonly ephemeris: Ephemeris;
 
   // title は選択肢見出し。
-  constructor(title: string, ephemeris: Ephemeris) {
+  public constructor(title: string, ephemeris: Ephemeris) {
     this.ephemeris = ephemeris;
     this.control = new SegmentedControl<string>(
       title, [['', '解除']], (key) => this.onSelect?.(this.sources.get(key) ?? null),
@@ -30,7 +30,7 @@ export class RotationZone {
 
   // 選択肢を「解除・各天体の公転・各天体の自転・validRoles の役割の公転」へ組み直す。
   // validRoles には、周回軌道にあって公転を固定できる役割だけを渡す。
-  setNearby(
+  public setNearby(
     members: readonly CelestialBodyId[], displayTime: number, validRoles: readonly FrameRole[] = [],
   ): void {
     const registry = this.ephemeris.registry;
@@ -69,7 +69,7 @@ export class RotationZone {
   }
 
   // 選択中の表示を合わせる。
-  setSelected(rotatingWith: FrameRotationSource | null): void {
+  public setSelected(rotatingWith: FrameRotationSource | null): void {
     this.control.setSelected(rotationSourceKey(rotatingWith));
   }
 }
