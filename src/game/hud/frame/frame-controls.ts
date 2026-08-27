@@ -36,6 +36,7 @@ export class FrameControls {
   // 固定解除は DOM イベント(フレームの外)から起きるので、直近の sync が見た時刻を控える。
   private lastTime = 0;
 
+  // panelRoot・popupRoot はカメラ/軌道フレーム両パネルへそのまま渡す設置先。
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
@@ -114,7 +115,7 @@ export class FrameControls {
   }
 
   // 両パネルと、保持している座標系選択ゾーンを片付ける。
-  dispose(): void {
+  public dispose(): void {
     this.cameraPanel.dispose();
     this.trajectoryPanel.dispose();
   }

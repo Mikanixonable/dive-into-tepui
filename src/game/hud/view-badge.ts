@@ -30,8 +30,7 @@ export class ViewBadge {
   private readonly viewButton: Button;
   private readonly styleToggle: ToggleSwitch;
   private readonly contextEls: Record<keyof ViewBadgeContext, HTMLElement>;
-  // ContextMenu は target !== null であることを onSelect 発火の条件にしているので、
-  // 対象を持たないこのメニューでも null 以外のダミー値を渡す。
+  // ビュー遷移メニューは特定の対象を持たないので、target には固定で true を使う。
   private readonly menu: ContextMenu<true, string>;
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
   private readonly unsubscribeRenderStyle: () => void;
@@ -101,7 +100,7 @@ export class ViewBadge {
     this.unsubscribeRenderStyle = renderStyle.subscribe((style) => this.styleToggle.setOn(style === 'schematic'));
   }
 
-  // 遷移メニューを片付け、container(Hud が持ち続ける行)から自分が足した中身だけを取り除く。
+  // 遷移メニューを片付け、container へ足した中身を取り除く。
   public dispose(): void {
     this.menu.dispose();
     this.unsubscribeRenderStyle();
