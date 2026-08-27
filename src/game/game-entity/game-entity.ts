@@ -42,16 +42,6 @@ const identityAttitude = (): Attitude => ({
   inertia: v3(1, 1, 1),
 });
 
-export interface OrbitLineSyncContext {
-  readonly displayTime: number;
-  readonly ephemeris: Ephemeris;
-  readonly frameAnchors: FrameAnchorSource;
-  readonly force?: boolean;
-  // 軌道パネルで固定された表示基準。非質量の艦・基地に固定中は、軌道楕円の代わりに
-  // relativeOrbitLine で相対軌跡を描く。
-  readonly orbitRef?: OrbitReference;
-}
-
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
 export class GameEntity {
@@ -261,10 +251,10 @@ export class GameEntity {
   // ターゲットを指すのは戦闘ビューだけ(EntityLineManager がマップビューでは orbitRef を渡さない)
   // ので、context.orbitRef の有無だけで戦闘ビュー/マップビューを判別できる。
   syncOrbitLine(
-    fo: FloatingOrigin, camera: THREE.Camera, context: OrbitLineSyncContext,
+    displayTime: number, ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera,
+    frameAnchors: FrameAnchorSource, orbitRef: OrbitReference | undefined,
   ): void {
     if (this.orbitLine === null && this.relativeOrbitLine === null) return;
-    const { displayTime, ephemeris, frameAnchors, force = false, orbitRef } = context;
     const state = this.displayState(displayTime, ephemeris);
     if (state === null) {
       // 表示時刻の状態が求まらない: 両方隠す。
@@ -295,7 +285,7 @@ export class GameEntity {
     const center = orbitRef?.fixed && orbitRef.attractor
       ? orbitRef.attractor
       : strongestAttractor(state.r, frameAnchors.bodies);
-    this.orbitLine?.sync(orbitalElementsOf(state, center), fo, camera, { force });
+    this.orbitLine?.sync(orbitalElementsOf(state, center), fo, camera);
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
