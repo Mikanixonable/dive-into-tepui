@@ -98,6 +98,7 @@ export function formatPartMeta(part: Part): string {
 // カタログのプロパティ1件を、単位付きの表示用文字列にする。
 export function formatCatalogProperty(name: string, value: number | string): string {
   switch (name) {
+    // 物理量系は単位付きの数値表記にする。
     case 'damageReduction': return `被害軽減 ${typeof value === 'number' ? Math.round(value * 100) : value} %`;
     case 'torque': return `トルク ${Number(value).toLocaleString()} N·m`;
     case 'thrust': return `推力 ${Number(value).toLocaleString()} N`;
@@ -106,6 +107,7 @@ export function formatCatalogProperty(name: string, value: number | string): str
     case 'fuel': return `初期燃料 ${Number(value).toLocaleString()} kg`;
     case 'coolingRate': return `放熱面積 ${value} m²`;
     case 'powerGeneration': return `発電 ${Number(value).toLocaleString()} W`;
+    // 武装系は表示名を日本語へ言い換える。
     case 'weaponType': {
       const weaponTypeLabel = value === 'gatling' ? 'ガトリング' : value === 'cannon' ? 'キャノン' : value;
       return `武器形式 ${weaponTypeLabel}`;
@@ -122,6 +124,7 @@ export function buildSectionHeader(titleText: string, descriptionText: string, c
   const header = document.createElement('header');
   header.className = 'dock-section-head';
 
+  // タイトルと説明文をまとめた見出し本文。
   const copy = document.createElement('div');
   copy.className = 'dock-section-copy';
   const title = document.createElement('h2');
@@ -132,6 +135,7 @@ export function buildSectionHeader(titleText: string, descriptionText: string, c
   description.textContent = descriptionText;
   copy.append(title, description);
 
+  // 件数バッジ。
   const count = document.createElement('span');
   count.className = 'dock-section-count';
   count.textContent = countText;
