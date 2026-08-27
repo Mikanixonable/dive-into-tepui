@@ -3,15 +3,15 @@
 import { expandHitTarget, stopDragPropagation } from './widget-base';
 
 export class HoldButton {
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
   private held = false;
 
-  get isHeld(): boolean {
+  public get isHeld(): boolean {
     return this.held;
   }
 
   // label はボタンの表示文字列。
-  constructor(label: string) {
+  public constructor(label: string) {
     this.element = document.createElement('span');
     this.element.className = 'w-btn w-hold';
     this.element.textContent = label;

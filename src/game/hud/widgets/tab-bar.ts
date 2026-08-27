@@ -3,13 +3,13 @@
 import { Button } from './button';
 
 export class TabBar<T> {
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
   private readonly buttons = new Map<T, Button>();
   private items: readonly (readonly [T, string])[] = [];
   private readonly onSelect: (value: T) => void;
 
   // items は [値, 表示ラベル] の並びで、その順にタブを並べる。
-  constructor(items: readonly (readonly [T, string])[], onSelect: (value: T) => void) {
+  public constructor(items: readonly (readonly [T, string])[], onSelect: (value: T) => void) {
     this.onSelect = onSelect;
     this.element = document.createElement('div');
     this.element.className = 'w-tabs';
@@ -18,7 +18,7 @@ export class TabBar<T> {
   }
 
   // 選択中の値のタブを点灯させる。
-  setSelected(value: T): void {
+  public setSelected(value: T): void {
     for (const [v, btn] of this.buttons) {
       const selected = v === value;
       btn.setOn(selected);
@@ -30,7 +30,7 @@ export class TabBar<T> {
   }
 
   // タブ列を items へ丸ごと差し替える。SegmentedControl と同じく、同じ内容なら作り直さない。
-  setItems(items: readonly (readonly [T, string])[]): void {
+  public setItems(items: readonly (readonly [T, string])[]): void {
     // 同じ内容なら作り直さない — 差し替えると押しかけのタブが消えてクリックが届かなくなる。
     const same = (pair: readonly [T, string], i: number): boolean => {
       const cur = this.items[i];
@@ -51,7 +51,7 @@ export class TabBar<T> {
 
   // 値に対応するタブボタンの要素。タブ本体との aria-controls の紐付けなど、呼び出し側が
   // ボタンへ直接属性を足したいときに使う。
-  buttonFor(value: T): HTMLElement | undefined {
+  public buttonFor(value: T): HTMLElement | undefined {
     return this.buttons.get(value)?.element;
   }
 }
