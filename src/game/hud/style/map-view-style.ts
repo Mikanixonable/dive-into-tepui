@@ -201,7 +201,7 @@ export const MAP_VIEW_STYLE = `
 }
 #hud .hud-map-root.active #hud-view-options .view-options-section-heading:first-child { margin-top: 0; }
 
-/* サブグループ(天体/機体と設備)の区切り。列凡例は持たず、ラベルだけを細く挟む。 */
+/* サブグループ(天体/機体と設備)の区切り。ラベルだけを細く挟んで示す。 */
 #hud .hud-map-root.active #hud-view-options .view-options-section-divider {
   margin: var(--space-3) 0 var(--space-1);
   padding-left: var(--space-5);
@@ -258,7 +258,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options .body-class-row.grid-class-row .body-class-btns {
   grid-template-columns: repeat(4, minmax(24px, 1fr));
 }
-/* 面/極/網を持たない行(月軌道・月赤道)の空セル。列位置だけ他行と揃える。 */
+/* 面/極/網のうち一部だけを表示切替に持つ行(月軌道・月赤道)の空セル。列位置だけ他行と揃える。 */
 #hud .hud-map-root.active #hud-view-options .body-class-icon-btn-empty { min-width: 0; }
 #hud .hud-map-root.active #hud-view-options span.body-class-icon-btn {
   position: relative;
