@@ -17,7 +17,8 @@ import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import { ATMOSPHERE_QUALITY, type AtmosphereQuality } from '../graphics-settings';
 import { type AtmosphereOptics, cutoffAltitude } from '../atmosphere-params';
-import { rayMarch, screenJitter, type MediumSample } from '../ray-march';
+import { rayMarch, type MediumSample } from '../ray-march';
+import { BlueNoise } from '../blue-noise';
 import type { GBufferPass } from './gbuffer';
 import type { SunOcclusion } from './sun-occlusion';
 import type { SunLight } from './sun-light';
@@ -121,6 +122,8 @@ export class AtmospherePass {
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
   private readonly slots: readonly BodySlot[];
+  // 積分の刻みを画素ごとにずらす種。**このパスが持つ** — いまここだけが使う。
+  private readonly blueNoise: BlueNoise;
   private readonly primarySteps: FloatUniform;
   private readonly detailWeight: FloatUniform;
   // 下地と合成する前の、大気が足す内部散乱だけ。「大気」デバッグ表示だけが読む。
@@ -147,6 +150,7 @@ export class AtmospherePass {
     private readonly sunOcclusion: SunOcclusion,
     private readonly gpu: GpuTimings,
   ) {
+    this.blueNoise = new BlueNoise();
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
     this.primarySteps = uniform(ATMOSPHERE_STEPS.low);
@@ -311,7 +315,7 @@ export class AtmospherePass {
     };
     const march = rayMarch(
       steps, distanceAt, (distance) => this.mediumAt(slot, rayOrigin.add(rayDir.mul(distance)), rayDir),
-      screenJitter(),
+      this.blueNoise.atScreenPixel(),
     );
     return { transmittance: march.transmittance, inscatter: march.radiance };
   }
@@ -469,5 +473,6 @@ export class AtmospherePass {
   // 共有する単一の板なので、ここでは解放しない。
   dispose(): void {
     this.material.dispose();
+    this.blueNoise.dispose();
   }
 }

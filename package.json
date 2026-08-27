@@ -16,6 +16,7 @@
     "test:physics": "node --max-old-space-size=8192 node_modules/typescript/bin/tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
     "export-assets": "node tools/export-models.mjs",
     "export-ltc-table": "node tools/export-ltc-table.mjs",
+    "export-blue-noise": "node tools/export-blue-noise.mjs",
     "orbits:fetch": "node tools/fetch-orbit-catalog.mjs",
     "export-lagrange-orbits": "node tools/export-lagrange-orbits.mjs",
     "coastline:fetch": "node tools/fetch-coastline-source.mjs",
