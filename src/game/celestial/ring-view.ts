@@ -78,6 +78,7 @@ export class RingView {
     this.coverageBands.push({ widthMeters: band.outerRadius - band.innerRadius, annulus, line });
   }
 
+  // renderOrder を子オブジェクトすべてへ設定し、group・visuals へ登録する。
   private addVisual(visual: RingVisual, renderOrder: number): void {
     visual.object.traverse((o) => { o.renderOrder = renderOrder; });
     this.group.add(visual.object);
