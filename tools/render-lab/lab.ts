@@ -7,15 +7,21 @@ import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '.
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
 import {
-  AMBIENT_COLOR, AMBIENT_IRRADIANCE, SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY,
+  SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY, sunIrradianceAtDistance,
 } from '../../src/render/pipeline/sun-light';
+import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
+import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
+import { ATMOSPHERE_QUALITY, QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
+import { ATMOSPHERE_DETAIL, ATMOSPHERE_DETAIL_OF_QUALITY } from '../../src/render/pipeline/atmosphere-pass';
+import { rankAtmospheres } from '../../src/render/atmosphere-params';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
-import { CASES, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
+import type { RenderStyle } from '../../src/render/render-style';
+import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
 
 export interface LabDistribution {
   readonly avg: number;
@@ -37,8 +43,9 @@ export interface LabMeasurement {
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
-// 恒星は 1 天文単位の位置に置く。ゲーム本体と同じ放射強度を渡すので、そこで受ける放射照度も
-// ゲーム本体の 1 天文単位と一致する。ケースごとの向きを毎フレーム書き込む。
+// 恒星を置く位置。向きも距離も観察のつまみが正本(ケースの sunDistance はその初期値)で、
+// ゲーム本体と同じ放射強度を渡すので、そこで受ける放射照度もゲーム本体の同じ距離と一致する。
+// 毎フレーム書き込む。
 const SUN_POSITION = new THREE.Vector3();
 
 // シーン光源(平行光)を置く距離 [m]。向きだけが意味を持つので、ケースの広がりより十分遠ければよい。
@@ -47,20 +54,33 @@ const SUN_LIGHT_DISTANCE = 1e5;
 // 恒星方向とカメラ位置を毎フレーム組み立てる書き込み先。
 const SUN_DIRECTION = new THREE.Vector3();
 const CAMERA_OFFSET = new THREE.Vector3();
+// 天体照の位相角を測る差分ベクトルの書き込み先。
+const SUN_TO_LIGHT = new THREE.Vector3();
+const ORIGIN_TO_LIGHT = new THREE.Vector3();
 
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
 
-// カメラの距離の倍率の常用対数の限界。0 がケース既定の距離。
-export const MAX_CAMERA_ZOOM = 1;
+// カメラのズーム(画角を狭める倍率)の常用対数の上限。0 がケース既定の画角。
+export const MAX_CAMERA_ZOOM_LOG = 2;
 
-// 観察の向き。角度は度、cameraZoom はケース既定の距離に対する倍率の常用対数。
+// 恒星までの距離(天文単位)の常用対数の下限・上限。**対数で持つ** — 見かけ径が 1px を切る
+// あたりの変化を読みたいので、AU を直に刻むと近距離側が粗すぎて追えない。下限の 0.01 AU は
+// 太陽が画角(50°)いっぱいに広がる距離、上限の 100 AU は海王星軌道の外側。
+export const MIN_SUN_DISTANCE_LOG_AU = -2;
+export const MAX_SUN_DISTANCE_LOG_AU = 2;
+
+// 観察の向き。角度は度、sunDistanceLogAu は恒星までの距離(天文単位)の常用対数、
+// cameraDistanceLog はケース既定の距離に対する倍率の常用対数、cameraZoomLog はケース既定の
+// 画角を狭める倍率の常用対数。
 export type LabViewAngles = {
   readonly sunAzimuthDeg: number;
   readonly sunElevationDeg: number;
+  readonly sunDistanceLogAu: number;
   readonly cameraAzimuthDeg: number;
   readonly cameraElevationDeg: number;
-  readonly cameraZoom: number;
+  readonly cameraDistanceLog: number;
+  readonly cameraZoomLog: number;
 };
 
 // 方位角・仰角 [deg] から単位ベクトルを組む。方位角 0 が +Z、+90 度が +X。
@@ -94,14 +114,20 @@ export class LabView {
     depthBuffer: true,
   });
   private current: LabCase | null = null;
+  // スタイルを差し替えるとケースを組み直すので、いま出ているケースの名前も持つ。
+  private currentName: CaseName | null = null;
+  // 画面全体の見せ方。ゲーム本体と違い保存はせず、起動のたびに写実から始める。
+  private style: RenderStyle = 'realistic';
   private lastRenderCpuMs = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
-  // ケース既定のカメラ距離 [m]。cameraZoom の基準になる。
+  // ケース既定のカメラ距離 [m]。cameraDistanceLog の基準になる。
   private defaultCameraDistance = 1;
+  // ケース既定の画角 [deg]。cameraZoomLog の基準になる。
+  private defaultCameraFovDeg = 1;
   private angles: LabViewAngles = {
-    sunAzimuthDeg: 0, sunElevationDeg: 0,
-    cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraZoom: 0,
+    sunAzimuthDeg: 0, sunElevationDeg: 0, sunDistanceLogAu: 0,
+    cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraDistanceLog: 0, cameraZoomLog: 0,
   };
   // 描画品質設定のうち、パイプラインが読むものだけを操作の対象にする。ゲーム本体と保存先を
   // 分けるため、ここが値の正本を持つ(ブラウザへは残さない)。
@@ -119,12 +145,10 @@ export class LabView {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
-    const ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_IRRADIANCE);
     // NodeMaterial はカメラのチャンネルと重なる光源が1つも無いと照明モデルを組まない。
     // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、光源も同チャンネルへ属させる。
     this.sun.layers.enable(LIT_OPAQUE_LAYER);
-    ambient.layers.enable(LIT_OPAQUE_LAYER);
-    this.scene.add(this.sun, ambient);
+    this.scene.add(this.sun);
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<LabView> {
@@ -140,21 +164,39 @@ export class LabView {
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, QUALITY_PRESETS.high, gpu);
+    pipeline.ambient.setFraction(AMBIENT_WEAK);
     return new LabView(renderer, pipeline, gpu);
   }
 
-  // ケースを組み直して描く。前のケースはシーンから外すだけで解放しない — 球の単位ジオメトリは
-  // LOD 段ごとに全利用元で共有されていて、ここで捨てると次のケースが壊れる。
+  // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
   show(name: CaseName): void {
+    this.build(name);
+    this.resetView();
+    this.render();
+  }
+
+  // 表示スタイルを差し替え、いま出ているケースをそのスタイルで組み直す。**観察の向きは戻さない**
+  // — 写実と模式図を同じ構図で見比べるための切り替えなので、既定へ戻すと見比べられない。
+  setStyle(style: RenderStyle): void {
+    this.style = style;
+    if (this.currentName !== null) this.build(this.currentName);
+    this.render();
+  }
+
+  // ケースをいまのスタイルで組み直してシーンへ載せ、それを現在のケースにする。前のケースは
+  // シーンから外すだけで解放しない — 球の単位ジオメトリは LOD 段ごとに全利用元で共有されて
+  // いて、ここで捨てると次のケースが壊れる。
+  private build(name: CaseName): void {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
+      this.current.star?.dispose();
       disposeCaseObjects(this.current);
     }
-    const built = CASES[name](this.pipeline.sunOcclusion, this.pipeline.sunLight);
+    const built = CASES[name](this.style, this.pipeline.sunOcclusion, this.pipeline.sunLight);
     this.scene.add(...built.objects);
+    built.star?.addTo(this.scene);
     this.current = built;
-    this.resetView(built);
-    this.render();
+    this.currentName = name;
   }
 
   get graphics(): GraphicsSettingsData { return this.graphicsData; }
@@ -163,6 +205,15 @@ export class LabView {
   setGraphicsOption(key: GraphicsOptionKey, value: boolean | number): void {
     this.graphicsData = withGraphicsOption(this.graphicsData, key, value);
     this.pipeline.applyGraphics(this.graphicsData);
+    this.render();
+  }
+
+  // 一様な環境光の割合。ゲーム本体はビューの種別から強弱を決めるが、ここには種別が無いので
+  // 直に選ぶ。起動時は弱(戦闘ビュー)。
+  get ambientFraction(): number { return this.pipeline.ambient.fraction; }
+
+  setAmbientFraction(fraction: number): void {
+    this.pipeline.ambient.setFraction(fraction);
     this.render();
   }
 
@@ -175,8 +226,17 @@ export class LabView {
   // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
   get viewAngles(): LabViewAngles { return this.angles; }
 
-  // 現在のカメラ距離 [m]。cameraZoom は倍率の対数なので、実寸はここから読む。
-  get cameraDistance(): number { return this.defaultCameraDistance * 10 ** this.angles.cameraZoom; }
+  // 現在のカメラ距離 [m]。cameraDistanceLog は倍率の対数なので、実寸はここから読む。
+  get cameraDistance(): number { return this.defaultCameraDistance * 10 ** this.angles.cameraDistanceLog; }
+
+  // 現在の画角 [deg]。ズームは画角を倍率ぶん狭めるので、半画角の正接を割って求める。
+  get cameraFovDeg(): number {
+    const halfTangent = Math.tan(THREE.MathUtils.degToRad(this.defaultCameraFovDeg / 2));
+    return THREE.MathUtils.radToDeg(2 * Math.atan(halfTangent / 10 ** this.angles.cameraZoomLog));
+  }
+
+  // 現在の恒星までの距離 [m]。sunDistanceLogAu は天文単位の対数なので、実寸はここから読む。
+  get sunDistance(): number { return AU * 10 ** this.angles.sunDistanceLogAu; }
 
   // 観察の向きを部分的に差し替え、その場で描き直す。仰角は姿勢が決まる範囲へ丸める。
   setViewAngles(changes: Partial<LabViewAngles>): void {
@@ -192,22 +252,27 @@ export class LabView {
 
   // ケースのカメラと注視点から、観察の向きの既定値を引き直す。**注視点はカメラの視線上へ
   // 落としてから使う** — 視線から外れた点を注視させると、向きへ触れていないのに絵が回る。
-  private resetView(built: LabCase): void {
+  private resetView(): void {
+    const built = this.current;
+    if (built === null) return;
     const camera = built.camera;
     camera.updateMatrixWorld(true);
     camera.getWorldDirection(this.forward);
     const pivot = built.viewTarget ?? this.caseCenter(built);
     const depth = this.forward.dot(this.scratchVector.subVectors(pivot, camera.position));
     this.defaultCameraDistance = Math.max(depth, camera.near);
+    this.defaultCameraFovDeg = camera.fov;
     this.pivot.copy(camera.position).addScaledVector(this.forward, this.defaultCameraDistance);
     const sun = anglesFromDirection(built.sunDirection ?? SUN_DIR);
     const eye = anglesFromDirection(this.scratchVector.copy(this.forward).negate());
     this.angles = {
       sunAzimuthDeg: sun.azimuthDeg,
       sunElevationDeg: sun.elevationDeg,
+      sunDistanceLogAu: Math.log10((built.sunDistance ?? AU) / AU),
       cameraAzimuthDeg: eye.azimuthDeg,
       cameraElevationDeg: eye.elevationDeg,
-      cameraZoom: 0,
+      cameraDistanceLog: 0,
+      cameraZoomLog: 0,
     };
   }
 
@@ -233,22 +298,56 @@ export class LabView {
       this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,
     );
     this.sun.position.copy(sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE);
-    this.pipeline.sunLight.set(
-      SUN_POSITION.copy(sunDirection).multiplyScalar(AU),
-      R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE,
-    );
+    const sunDistance = this.sunDistance;
+    SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
+    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY);
+    // 天体照。ケースが置いた光源をスロットへ書く。放射輝度は恒星のつまみの距離と、
+    // 描画原点を基準点とした位相角に追随する。
+    this.pipeline.planetLight.set((this.current.planetLights ?? []).map((light) => {
+      const toSun = SUN_TO_LIGHT.copy(SUN_POSITION).sub(light.center);
+      const toOrigin = ORIGIN_TO_LIGHT.copy(ORIGIN).sub(light.center);
+      const phase = lambertPhase(toSun.angleTo(toOrigin));
+      const base = planetRadiance(
+        light.albedo, sunIrradianceAtDistance(SUN_POSITION.distanceTo(light.center)),
+      );
+      return {
+        center: light.center,
+        radius: light.radius,
+        radiance: [base[0] * phase, base[1] * phase, base[2] * phase] as const,
+      };
+    }));
+    // 順応の基準点は描画原点。**ケースの sunDistance はここから恒星までの距離**なので、
+    // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
+    this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION);
     const camera = this.current.camera;
     directionFromAngles(this.angles.cameraAzimuthDeg, this.angles.cameraElevationDeg, CAMERA_OFFSET);
     camera.position.copy(this.pivot).addScaledVector(CAMERA_OFFSET, this.cameraDistance);
     camera.lookAt(this.pivot);
     camera.updateMatrixWorld(true);
+    // 画角の書き換えは、投影行列を組み直すまで無言で効かない。
+    camera.fov = this.cameraFovDeg;
+    camera.updateProjectionMatrix();
+    // 恒星の見た目は、光源と同じ位置から置き直す。**片方だけ動かさない** — 明るさの根拠と
+    // 光点の位置が食い違うと、ちらつきの出どころを読み違える。詳細度の設定もゲーム本体と
+    // 同じように掛ける(球と点像の切り替わる距離がここだけずれない)。
+    this.current.star?.sync(
+      SUN_POSITION, R_SUN, sunDiameterPx(sunDistance, camera.fov) * this.graphicsData.lodBias, camera.quaternion,
+    );
     this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    const atmosphere = this.current.atmosphere;
-    this.pipeline.atmosphere.setBody(atmosphere?.center ?? ORIGIN, atmosphere?.surfaceRadius ?? 0);
+    // 天体の並べ替えと濃い表現の重みは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
+    const quality = this.graphicsData.atmosphere;
+    const detail = ATMOSPHERE_DETAIL_OF_QUALITY[quality];
+    const { bodies, denseWeight } = rankAtmospheres((this.current.atmospheres ?? []).map((body) => ({
+      body, altitude: camera.position.distanceTo(body.center) - body.surfaceRadius,
+    })));
+    this.pipeline.atmosphere.setBodies(
+      quality === ATMOSPHERE_QUALITY.off ? [] : bodies,
+      detail, detail === ATMOSPHERE_DETAIL.none ? 0 : denseWeight,
+    );
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, camera, 'realistic');
+    this.pipeline.render(this.scene, camera, this.style);
     this.lastRenderCpuMs = performance.now() - startedAt;
     this.gpu.resolve();
   }

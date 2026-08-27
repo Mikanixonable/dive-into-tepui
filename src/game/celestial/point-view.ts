@@ -9,8 +9,9 @@ import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
+import { lambertSphereIrradiance } from '../../physics/lambert-sphere';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
-import { Billboard } from '../../render/billboard';
+import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { BodyGraticule } from '../../render/body-graticule';
 import { showsPhysicalSphere } from '../../render/screen-lod';
@@ -24,9 +25,8 @@ import { bondAlbedoOf } from '../../render/celestial-albedo';
 import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
 import type { Vec3 } from '../../physics/vec3';
 
-// 輝点スプライトの一辺 [m](星殻上での長さ)。**点像の広がりは光源の大きさではなく目/レンズの
-// 応答なので、天体ごとには変えない。**
-const POINT_SPRITE_SIZE = 1.3e5;
+// 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
+const POINT_SPRITE_SIZE = POINT_IMAGE_ANGULAR_SIZE * STAR_SHELL_RADIUS;
 
 // 太陽の視等級。ここから任意の視等級の放射照度が引ける。
 const SUN_APPARENT_MAGNITUDE = -26.74;
@@ -41,11 +41,6 @@ const NAKED_EYE_LIMIT_IRRADIANCE = SUN_IRRADIANCE_1AU
 // いう「目の応答」であって、面の輝度の物理ではない。天体ごとの手調整ではなく、**全天体へ一律に
 // 掛かる 1 つの応答**として、肉眼限界がかろうじて見える表示値になるよう決める。
 const POINT_DISPLAY_GAIN = NAKED_EYE_LIMIT_DISPLAY / NAKED_EYE_LIMIT_IRRADIANCE;
-
-// ランバート球の位相関数。位相角 0(満)で 1、π(新)で 0 になる。
-function lambertPhase(phaseAngle: number): number {
-  return (Math.sin(phaseAngle) + (Math.PI - phaseAngle) * Math.cos(phaseAngle)) / Math.PI;
-}
 
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
@@ -155,9 +150,7 @@ export class PointView extends CelestialView {
   }
 
   // 星殻上に、描画座標 p の方向だけを反映した輝点を置く。明るさは「いま観測者へ届く光の量」
-  // — 恒星から受ける放射照度・アルベド・半径・観測距離・位相角から引いた放射照度に、点光源の
-  // 表示応答を掛けたもの。係数の 2/3 はランバート球の幾何アルベドが (2/3)ρ であることから来る
-  // (落とすと輝点だけが球より 1.5 倍明るくなり、ビューを切り替えた瞬間に明るさが飛ぶ)。
+  // — ランバート球として引いた放射照度に、点光源の表示応答を掛けたもの。
   private syncBillboard(
     p: THREE.Vector3, pos: Vec3, displayTime: number, ephemeris: Ephemeris,
     cameraQuaternion: THREE.Quaternion,
@@ -169,9 +162,10 @@ export class PointView extends CelestialView {
     tmpToObserver.copy(p).negate().normalize();
     const cosPhase = Math.max(-1, Math.min(1,
       sunDir.x * tmpToObserver.x + sunDir.y * tmpToObserver.y + sunDir.z * tmpToObserver.z));
-    const geometry = (this.radius / observerDistance) ** 2 * lambertPhase(Math.acos(cosPhase));
-    const irradiance = (2 / 3) * this.bondAlbedo
-      * this.sunIrradianceAt(ephemeris, pos, displayTime) * geometry;
+    const irradiance = lambertSphereIrradiance(
+      this.bondAlbedo, this.sunIrradianceAt(ephemeris, pos, displayTime),
+      this.radius, observerDistance, Math.acos(cosPhase),
+    );
     this.billboard.sync(
       tmpPos.copy(p).setLength(STAR_SHELL_RADIUS),
       POINT_SPRITE_SIZE,

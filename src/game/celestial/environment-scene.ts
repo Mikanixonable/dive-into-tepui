@@ -19,11 +19,19 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import { ATMOSPHERE_QUALITY, type GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
-import { AMBIENT_IRRADIANCE, SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
+import { SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
+import type { Exposure } from '../../render/pipeline/exposure';
+import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
+import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
+import { selectPlanetLights } from './planet-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
-import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
+import {
+  ATMOSPHERE_DETAIL, ATMOSPHERE_DETAIL_OF_QUALITY,
+  type AtmosphereBody, type AtmospherePass,
+} from '../../render/pipeline/atmosphere-pass';
+import { atmosphereOpticsOf, rankAtmospheres } from '../../render/atmosphere-params';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CelestialView } from './celestial-view';
@@ -84,6 +92,13 @@ function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
   return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star');
 }
 
+// 一様な環境光の割合。マップビューでは読みやすさのため強く、戦闘ビューでは弱く、どちらも
+// 描画設定で切れる。
+function ambientFraction(overviewMode: boolean, graphics: GraphicsSettingsData): number {
+  if (overviewMode) return graphics.overviewAmbient ? AMBIENT_STRONG : 0;
+  return graphics.combatAmbient ? AMBIENT_WEAK : 0;
+}
+
 export class EnvironmentScene {
   private readonly scene: THREE.Scene;
   // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
@@ -124,7 +139,10 @@ export class EnvironmentScene {
     scene: THREE.Scene,
     private readonly ephemeris: Ephemeris,
     private readonly sunLight: SunLight,
+    private readonly exposure: Exposure,
     private readonly sunOcclusion: SunOcclusion,
+    private readonly planetLight: PlanetLightSource,
+    private readonly ambient: AmbientSource,
     private readonly atmosphere: AtmospherePass,
     earthSpinPhase0: number,
   ) {
@@ -220,18 +238,25 @@ export class EnvironmentScene {
     const sunPos = starId === null
       ? this.toThreeNormal(this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
       : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
-    this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY, AMBIENT_IRRADIANCE);
+    // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
+    // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
+    const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
+    this.exposure.setReference(reference, sunPos);
+    this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY);
+    this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
+    this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
-    this.syncAtmosphere(floatingOrigin, displayTime, graphics);
+    this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem.activeCameraPos, graphics);
 
+    const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
       this.ensurePointField().sync(
-        floatingOrigin, true, cameraSystem.bodyClassToggles.smallBodyVisible,
+        floatingOrigin, true, cameraSystem.bodyClassToggles.smallBodyVisible, fixedBrightnessScale,
       );
     } else {
-      this.pointFieldView?.sync(floatingOrigin, false, true);
+      this.pointFieldView?.sync(floatingOrigin, false, true, fixedBrightnessScale);
     }
-    this.syncStars(cameraSystem, gridVisibility.stars);
+    this.syncStars(cameraSystem, fixedBrightnessScale, gridVisibility.stars);
     const celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(
@@ -248,6 +273,17 @@ export class EnvironmentScene {
       style, gridVisibility, cameraSystem.activeCamera,
       cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
+  }
+
+  // 天体照の光源を選び、描画座標へ移してライティング側のスロットへ渡す。基準点は露出と
+  // 同じ注視点。
+  private syncPlanetLights(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem): void {
+    const lights = selectPlanetLights(this.ephemeris, displayTime, cameraSystem.activeViewpoint.lookTarget);
+    this.planetLight.set(lights.map((light) => ({
+      center: fo.RtoThreeV3(light.body.state.r),
+      radius: light.body.radius,
+      radiance: light.radiance,
+    })));
   }
 
   // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。まず最大遮蔽率が閾値を切る天体を落とし、
@@ -305,21 +341,44 @@ export class EnvironmentScene {
     );
   }
 
-  // 大気パスへ、大気を持つ天体を渡す。半径 0 は「このフレームは大気を描かない」の意。
-  private syncAtmosphere(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
-    const hasEarth = graphics.atmosphere && 'earth' in this.ephemeris.registry;
-    this.atmosphere.setBody(
-      hasEarth ? fo.RtoThreeV3(this.ephemeris.positionOf('earth', displayTime)) : ZERO_VECTOR,
-      hasEarth ? bodyDef(this.ephemeris.registry, 'earth').radius : 0,
-    );
+  // 大気パスへ、このフレームの大気を描く天体と、先頭へ足す積分の重みを渡す。
+  private syncAtmosphere(
+    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, graphics: GraphicsSettingsData,
+  ): void {
+    if (graphics.atmosphere === ATMOSPHERE_QUALITY.off) {
+      this.atmosphere.setBodies([], ATMOSPHERE_DETAIL.none, 0);
+      return;
+    }
+    const { bodies, denseWeight } = rankAtmospheres(this.atmosphereCandidates(fo, displayTime, cameraPos));
+    const detail = ATMOSPHERE_DETAIL_OF_QUALITY[graphics.atmosphere];
+    this.atmosphere.setBodies(bodies, detail, detail === ATMOSPHERE_DETAIL.none ? 0 : denseWeight);
+  }
+
+  // 大気を持つ参照天体を、カメラのその天体からの高度と一緒に集める。
+  private atmosphereCandidates(
+    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3,
+  ): readonly { readonly body: AtmosphereBody; readonly altitude: number }[] {
+    const candidates: { body: AtmosphereBody; altitude: number }[] = [];
+    for (const id of this.referenceIds) {
+      const optics = atmosphereOpticsOf(id);
+      if (optics === null) continue;
+      const surfaceRadius = bodyDef(this.ephemeris.registry, id).radius;
+      const center = this.ephemeris.positionOf(id, displayTime);
+      candidates.push({
+        body: { center: fo.RtoThreeV3(center), surfaceRadius, optics },
+        altitude: len(sub(cameraPos, center)) - surfaceRadius,
+      });
+    }
+    return candidates;
   }
 
   // 星球は描画原点(= カメラ)に固定した半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで
   // 拡大する(far は dist に連動して毎フレーム変わるため、殻の拡大率はそこから独立させる)。
-  private syncStars(cameraSystem: CameraSystem, visible = true): void {
+  private syncStars(cameraSystem: CameraSystem, fixedBrightnessScale: number, visible: boolean): void {
     this.stars.mesh.position.set(0, 0, 0);
     this.stars.mesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
     this.stars.mesh.visible = visible;
+    this.stars.setFixedBrightnessScale(fixedBrightnessScale);
   }
 
   private toThreeNormal(normal: Vec3): THREE.Vector3 {
