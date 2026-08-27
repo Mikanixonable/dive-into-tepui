@@ -10,8 +10,9 @@
 - **書くときの手順は `.claude/skills/rendering-workflow`**(踏む地雷と目視の仕方)。
   three を上げるときは `how_to_update_three.md`。
 
-各計画ファイル: [`arealight.md`](arealight.md)(エリアライト) / [`atmosphere.md`](atmosphere.md)
-(大気散乱) / [`volume.md`](volume.md)(大気以外の半透明) /
+各計画ファイル: [`arealight.md`](arealight.md)(エリアライト) /
+[`atmosphere_backlog.md`](atmosphere_backlog.md)(大気の残件) /
+[`volume.md`](volume.md)(大気以外の半透明) /
 [`screenspace.md`](screenspace.md)(AO と GI) / [`shadow_backlog.md`](shadow_backlog.md)(影の残件) /
 [`blackbody_backlog.md`](blackbody_backlog.md)(固体の黒体放射の残件) /
 [`exposure_backlog.md`](exposure_backlog.md)(露出の残件) /
@@ -299,6 +300,31 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
 明るさへ持ち上げる応答」(`POINT_DISPLAY_GAIN`)は太陽には掛けない** — 掛けると球の
 3×10⁵ 倍になる。**残っている振れは [`lens_backlog.md`](lens_backlog.md)。**
 
+### 2-7. 大気
+
+**大気は画面空間のフィルタ**(`atmosphere-pass.ts`)。G バッファの深度から視線と区間を復元し、
+指数分布の大気の透過率と内部散乱を解いて、前乗算アルファで不透明の絵の上へ重ねる。天体本体の
+遮蔽も同じ視線のレイ・スフィア交差で解くので、深度テストの精度に依らない。
+
+- **同時に 4 体まで、視点の場の濃さ順(= 視点に近い順)に合成する。** 全天体に掛かるのは、区間の
+  光学的厚みを Chapman 近似の解析で解く単層表現。**先頭の主天体だけ**、視線に沿った散乱の積分
+  (中 6 / 高 16 サンプル + 画素ごとのジッタ)を重み 0..1 で混ぜる。
+- **主天体の選定と重みは `atmosphere-params.ts` の `rankAtmospheres`** — カメラ位置の対数消散
+  係数が最大の天体(視線の向きは見ない。素の exp は惑星間距離で下位溢れするので対数で比べる)。
+  重みは第 1・第 2 候補の差の smoothstep で、状態を持たない — 入れ替え点では両候補とも 0 で
+  一致するので、順位の入れ替わりは絵に出ない。
+- **密度はレイリーとミーが別のスケールハイトを持つ 2 成分の指数**で、球。裾は地平線方向の
+  光学的厚みが閾値を切る高度で解析的に打ち切る。物理の区分指数モデル(`EARTH_ATMOSPHERE`)とは
+  独立の、見えだけの分布。パラメータを持つ天体は earth / mars(`ATMOSPHERE_OPTICS`)。
+- **太陽光路の透過率も同じ Chapman 近似の解析で解く(LUT なし)。** 恒星光はその天体自身の
+  地平線で切り、他天体の遮蔽(`sunOcclusion`)は積分の各点で評価し直す — 日食の月の影が大気にも
+  落ちる。サンプル点の遮蔽は天体の球だけで、メッシュの影と環は大気へ落とさない。
+- **合成のアルファは透過率 3 成分の平均**(下地の波長別減衰は表せない — 残件は
+  [`atmosphere_backlog.md`](atmosphere_backlog.md))。内部散乱の色は波長ごとに出る。
+- **品質の段(オフ/低/中/高)は主天体へ足す積分の細かさだけを選ぶ**(対応表は
+  `atmosphere-pass.ts` の `ATMOSPHERE_DETAIL_OF_QUALITY`)。単層表現は段に依らない土台。
+  **段の値は保存された設定を読む鍵なので振り直さない。** 雲は独立したトグル(`clouds`)。
+
 ---
 
 ## 3. 確かめる器
@@ -355,7 +381,7 @@ instanceMatrix の受け渡し経路を `count` から決め、最初の描画�
 |---|---|
 | 光源が「位置と半径を持つ点」のままで、有限の立体角を持たない | [`arealight.md`](arealight.md) |
 | `AMBIENT_IRRADIANCE`(地球からの距離でしか変わらず、方向も位相も遮蔽も持たない)が地球照・星明かり・多重散乱を兼ねている | [`arealight.md`](arealight.md) |
-| 大気の負荷が実機で未実測。品質設定の段ごとの予算に収まっているか分かっていない | [`atmosphere.md`](atmosphere.md) |
+| 大気の負荷が実機で未実測。品質設定の段ごとの予算に収まっているか分かっていない | [`atmosphere_backlog.md`](atmosphere_backlog.md) |
 | トーンカーブが選び直されていない。順応が場所の関数のままで、眼順応も星野の物理化も無い | [`exposure_backlog.md`](exposure_backlog.md) |
 | レンズ像の見た目(ゴーストの分布・条の色分散・発行コスト)が詰め切れていない | [`lens_backlog.md`](lens_backlog.md) |
 | 点像に置き換えたあとも、ラスタライズ由来の振れが 0.24 LSB 残っている | [`lens_backlog.md`](lens_backlog.md) |
