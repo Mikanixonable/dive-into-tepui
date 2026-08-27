@@ -10,8 +10,8 @@
 - **書くときの手順は `.claude/skills/rendering-workflow`**(踏む地雷と目視の仕方)。
   three を上げるときは `how_to_update_three.md`。
 
-各計画ファイル: [`atmosphere.md`](atmosphere.md)
-(大気散乱) / [`volume.md`](volume.md)(大気以外の半透明) /
+各計画ファイル: [`atmosphere_backlog.md`](atmosphere_backlog.md)(大気の残件) /
+[`volume.md`](volume.md)(大気以外の半透明) /
 [`screenspace.md`](screenspace.md)(AO と GI) / [`shadow_backlog.md`](shadow_backlog.md)(影の残件) /
 [`arealight_backlog.md`](arealight_backlog.md)(エリアライトの残件) /
 [`blackbody_backlog.md`](blackbody_backlog.md)(固体の黒体放射の残件) /
@@ -185,7 +185,7 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 |---|---|
 | `LIT_OPAQUE_LAYER` | 艦艇・基地・デブリ・薬莢、**天体の球すべて**、地球の地表 |
 | `WORLD_BACKGROUND_LAYER` | 星殻(マテリアルパスが不透明物より先に描く) |
-| 大気パス | 地球の大気(もや・リム) |
+| 大気パス | 大気を持つ天体の大気(同時に 4 体まで) |
 | world パス(チャンネル 0) | 自機弾・太陽の球と点像・オーロラ・噴射プルーム・敵のプラズマ弾・小天体の点群・惑星の環・惑星の輝点スプライト・被弾/撃破フラッシュ・再突入エフェクト |
 
 **world は「シーンの光を受けないもの」の受け皿**であり、分類の意図があって置かれたものと、
@@ -346,6 +346,31 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
 - **GPU 計測は描画命令ごとに `beginPass(GPU_PASS.lighting)` を申告**し、計測側が同一パスの
   複数回ぶんを足し合わせる — 負荷確認ウィンドウの行は 1 行のまま。
 
+### 2-8. 大気
+
+**大気は画面空間のフィルタ**(`atmosphere-pass.ts`)。G バッファの深度から視線と区間を復元し、
+指数分布の大気の透過率と内部散乱を解いて、前乗算アルファで不透明の絵の上へ重ねる。天体本体の
+遮蔽も同じ視線のレイ・スフィア交差で解くので、深度テストの精度に依らない。
+
+- **同時に 4 体まで、視点の場の濃さ順(= 視点に近い順)に合成する。** 全天体に掛かるのは、区間の
+  光学的厚みを Chapman 近似の解析で解く単層表現。**先頭の主天体だけ**、視線に沿った散乱の積分
+  (中 6 / 高 16 サンプル + 画素ごとのジッタ)を重み 0..1 で混ぜる。
+- **主天体の選定と重みは `atmosphere-params.ts` の `rankAtmospheres`** — カメラ位置の対数消散
+  係数が最大の天体(視線の向きは見ない。素の exp は惑星間距離で下位溢れするので対数で比べる)。
+  重みは第 1・第 2 候補の差の smoothstep で、状態を持たない — 入れ替え点では両候補とも 0 で
+  一致するので、順位の入れ替わりは絵に出ない。
+- **密度はレイリーとミーが別のスケールハイトを持つ 2 成分の指数**で、球。裾は地平線方向の
+  光学的厚みが閾値を切る高度で解析的に打ち切る。物理の区分指数モデル(`EARTH_ATMOSPHERE`)とは
+  独立の、見えだけの分布。パラメータを持つ天体は earth / mars(`ATMOSPHERE_OPTICS`)。
+- **太陽光路の透過率も同じ Chapman 近似の解析で解く(LUT なし)。** 恒星光はその天体自身の
+  地平線で切り、他天体の遮蔽(`sunOcclusion`)は積分の各点で評価し直す — 日食の月の影が大気にも
+  落ちる。サンプル点の遮蔽は天体の球だけで、メッシュの影と環は大気へ落とさない。
+- **合成のアルファは透過率 3 成分の平均**(下地の波長別減衰は表せない — 残件は
+  [`atmosphere_backlog.md`](atmosphere_backlog.md))。内部散乱の色は波長ごとに出る。
+- **品質の段(オフ/低/中/高)は主天体へ足す積分の細かさだけを選ぶ**(対応表は
+  `atmosphere-pass.ts` の `ATMOSPHERE_DETAIL_OF_QUALITY`)。単層表現は段に依らない土台。
+  **段の値は保存された設定を読む鍵なので振り直さない。** 雲は独立したトグル(`clouds`)。
+
 ---
 
 ## 3. 確かめる器
@@ -382,11 +407,11 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
 戦闘ビューで draw calls 約 165(ライトプリパスのジオメトリ 2 回描きを含めた実測は約 324)、
 triangles 約 33 万。マップビューで draw calls 約 198。パス別 GPU 時間の実測は
 G バッファ 0.6ms / マテリアル 0.6ms / ワールド 2.6ms / 合成 0.4ms。
-**影・遮蔽・ライティング・大気・レンズは未実測**(見積り: 遮蔽 0.22ms、大気 0.2〜0.5ms、
-ライティングは光源 1 本の描画命令 +0.3ms と LTC +0.16ms/本で最も重い設定 約 1.1ms。
-実機で読んで外れていたらここへ書き戻す)。レンズ段は全画面 quad を 22 回発行し、`render-lab` で
-測った CPU 側の差は +1.59ms だが、**この環境は GPU タイムスタンプが未対応
-(`gpuSupported: false`)で絶対値が本番より膨らむため真に受けられない**
+**影・遮蔽・ライティング・大気・レンズは未実測**(見積り: 遮蔽 0.22ms、大気は品質設定の段で
+変わり 低 0.5ms / 高 1.0ms、ライティングは光源 1 本の描画命令 +0.3ms と LTC +0.16ms/本で
+最も重い設定 約 1.1ms。実機で読んで外れていたらここへ書き戻す)。レンズ段は全画面 quad を
+22 回発行し、`render-lab` で測った CPU 側の差は +1.59ms だが、**この環境は GPU タイムスタンプが
+未対応(`gpuSupported: false`)で絶対値が本番より膨らむため真に受けられない**
 ボトルネックは描画ではなく update フェーズ(約 18〜19ms)にあり、これはこのディレクトリの
 外側の課題。
 
@@ -406,7 +431,7 @@ instanceMatrix の受け渡し経路を `count` から決め、最初の描画�
 |---|---|
 | 天体照の光の向きが天体の中心を指したまま(三日月でも中心から来る)。接触極限で真値の 2/3。衝効果が無い | [`arealight_backlog.md`](arealight_backlog.md) |
 | 天体照が lit-opaque チャンネルにしか届かず、環・大気の夜側が真っ黒。露出の順応が天体照を見ない | [`arealight_backlog.md`](arealight_backlog.md) |
-| 大気が Beer–Lambert 一本のもやで、散乱の積分になっていない | [`atmosphere.md`](atmosphere.md) |
+| 大気の負荷が実機で未実測。品質設定の段ごとの予算に収まっているか分かっていない | [`atmosphere_backlog.md`](atmosphere_backlog.md) |
 | トーンカーブが選び直されていない。順応が場所の関数のままで、眼順応も星野の物理化も無い | [`exposure_backlog.md`](exposure_backlog.md) |
 | レンズ像の見た目(ゴーストの分布・条の色分散・発行コスト)が詰め切れていない | [`lens_backlog.md`](lens_backlog.md) |
 | 点像に置き換えたあとも、ラスタライズ由来の振れが 0.24 LSB 残っている | [`lens_backlog.md`](lens_backlog.md) |
