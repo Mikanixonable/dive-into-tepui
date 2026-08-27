@@ -96,13 +96,16 @@ function buildRailToggle(
 
 // 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
 function buildWorldRoot(parent: HTMLElement, id: string, view: HudWorldView): HudWorldRoot {
+  // ビューのルート要素を作る。
   const element = createHudElement('div', id, parent, `hud-world-root hud-${view}-root`);
+  // 左右のレールを子として組む。
   const leftRail = createHudElement(
     'div', `${id}-rail-left`, element, 'hud-rail hud-rail-left',
   );
   const rightRail = createHudElement(
     'div', `${id}-rail-right`, element, 'hud-rail hud-rail-right',
   );
+  // 各レールの収納トグルを配線する。
   buildRailToggle(element, leftRail, 'left', view);
   buildRailToggle(element, rightRail, 'right', view);
   return { element, leftRail, rightRail };
@@ -110,6 +113,7 @@ function buildWorldRoot(parent: HTMLElement, id: string, view: HudWorldView): Hu
 
 // PanelShell が組んだ見出し・本文・開閉ボタンを、アクセシブルな一領域として関連付ける。
 function configureCombatPanel(panel: PanelShell): void {
+  // 見出しと本文を id で結び、region として関連付ける。
   const titleId = `${panel.el.id}-title`;
   const bodyId = `${panel.el.id}-body`;
   panel.el.classList.add('combat-panel');
@@ -118,6 +122,7 @@ function configureCombatPanel(panel: PanelShell): void {
   panel.titleEl.id = titleId;
   panel.body.id = bodyId;
 
+  // 開閉ボタンへ aria 属性を与え、開閉状態が変わるたびに読み上げ名を更新する。
   const toggle = panel.el.querySelector<HTMLElement>('.panel-shell-collapse');
   if (!toggle) return;
   toggle.setAttribute('type', 'button');
@@ -136,6 +141,7 @@ function injectStyle(): void {
 
 // マーカーのリード線を描く SVG オーバーレイを作る。
 function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
+  // 画面全体に重ねる透過 SVG 要素を用意する。
   const svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svgOverlay.setAttribute('aria-hidden', 'true');
   svgOverlay.style.position = 'absolute';
@@ -144,6 +150,7 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   svgOverlay.style.height = '100%';
   svgOverlay.style.pointerEvents = 'none';
   svgOverlay.style.zIndex = '0';
+  // 呼び出し元のレイヤへ組み込む。
   root.appendChild(svgOverlay);
   return svgOverlay;
 }
@@ -318,9 +325,11 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
 
 // マップ視点の縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
 function buildMapScale(root: HTMLElement): void {
+  // 縮尺表示の要素を作る。
   const mapScale = createHudElement('div', 'hud-map-scale', root);
   mapScale.dataset.id = 'map-scale';
   mapScale.setAttribute('aria-label', 'マップ縮尺');
+  // 数値表示と目盛りルーラーを組む。
   mapScale.innerHTML = `
     <div><span class="map-scale-value" data-id="map-scale-value"></span></div>
     <div class="map-scale-ruler" data-id="map-scale-ruler">
@@ -333,8 +342,10 @@ function buildMapScale(root: HTMLElement): void {
 // 画面全体のトップバーを組む。1行目はビュー切替と現在の対象バッジ(ViewBadge が中身を組む)、
 // 2行目は MET・時間加速・NODE WARP。
 function buildTopBar(root: HTMLElement): void {
+  // トップバー本体の section 要素を作る。
   const bar = createHudElement('section', 'hud-topbar', root);
   bar.setAttribute('aria-label', 'Mission status');
+  // ビュー切替行と、MET・時間加速・NODE WARP の行を組み立てる。
   bar.innerHTML = `
     <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
     <div class="gs-row">
@@ -348,17 +359,20 @@ function buildTopBar(root: HTMLElement): void {
 
 // 追従カメラの視点リセットボタンを組む。
 function buildChaseReset(root: HTMLElement): void {
+  // リセットボタン本体を作る。
   const chaseReset = createHudElement('button', 'hud-chase-reset', root);
   chaseReset.setAttribute('type', 'button');
   chaseReset.setAttribute('aria-label', '視点をリセット');
   chaseReset.setAttribute('title', '視点をリセット');
   chaseReset.dataset.id = 'chase-reset';
+  // リセットを示す矢印アイコンを描く。
   chaseReset.innerHTML = `
     <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2"
       fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
       <path d="M3 3v5h5"></path>
     </svg>`;
+  // キーボード操作でもポインタ操作と同じ経路で処理されるよう、Enter/Space を pointerdown へ変換する。
   chaseReset.addEventListener('keydown', (event) => {
     if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
     event.preventDefault();

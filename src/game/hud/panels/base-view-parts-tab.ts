@@ -67,7 +67,9 @@ export class PartsTabController {
 
   // 艦の全部品をまとめて修理するボタンの行。
   private buildRepairAllHeader(base: Base, shipData: DockedVesselEntry): HTMLElement {
+    // 全部品ぶんの修理費用を合算する。
     const totalRepairCost = shipData.parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
+    // 整備対象の艦名を示すラベル。
     const row = document.createElement('div');
     row.className = 'dock-parts-header dock-focus-panel';
     const label = document.createElement('span');
@@ -77,6 +79,7 @@ export class PartsTabController {
     shipName.textContent = shipData.name || '名称未設定の艦';
     label.appendChild(shipName);
     row.appendChild(label);
+    // 合算費用でまとめて修理するボタン。
     row.appendChild(buildFeeButton(
       this.ctx.freeProcurement(), base.baseState.money, totalRepairCost,
       '全部品を修理', '全部品は正常', () => this.handleRepairAll(shipData.id),
@@ -130,9 +133,11 @@ export class PartsTabController {
   private buildPartInfo(part: Part): HTMLElement {
     const info = document.createElement('div');
     info.className = 'dock-part-info';
+    // 部品名。
     const name = document.createElement('span');
     name.className = 'dock-part-name';
     name.textContent = part.name;
+    // 種別ラベル(rcs_tank なら燃料残量も添える)。
     const type = document.createElement('span');
     type.className = 'dock-part-type';
     type.textContent = formatPartMeta(part);
@@ -147,6 +152,7 @@ export class PartsTabController {
     const label = document.createElement('span');
     label.textContent = '換装候補';
     row.appendChild(label);
+    // 換装先の在庫を選ぶ <select>。
     const select = document.createElement('select');
     select.className = 'dock-part-swap-select';
     for (const c of candidates) {
@@ -156,6 +162,7 @@ export class PartsTabController {
       select.appendChild(opt);
     }
     row.appendChild(select);
+    // 選択中の在庫へ換装するボタン。
     const swapBtn = new Button('換装', () => this.handleSwapPart(shipId, partIdx, select.value));
     styleDockBtn(swapBtn.element, 'primary');
     row.appendChild(swapBtn.element);
@@ -175,6 +182,7 @@ export class PartsTabController {
     list.className = 'dock-part-list';
     list.setAttribute('role', 'list');
     for (const p of inventory) {
+      // 部品情報と耐久表示。
       const row = document.createElement('div');
       row.className = 'dock-part-row';
       row.setAttribute('role', 'listitem');
@@ -187,6 +195,7 @@ export class PartsTabController {
       hpText.textContent = `耐久 ${Math.round(p.hp)}/${p.maxHp}`;
       main.appendChild(hpText);
 
+      // rcs_tank なら補給ボタン、共通で売却ボタンを添える。
       const actions = document.createElement('div');
       actions.className = 'dock-part-actions';
       if (p.type === 'rcs_tank') {
@@ -211,6 +220,7 @@ export class PartsTabController {
 
   // 艦の1部品を修理する。資金不足なら何もしない。
   private handleRepairPart(shipId: string, partIdx: number): void {
+    // 対象の艦と部品を特定する。
     const base = this.ctx.base();
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
@@ -220,6 +230,7 @@ export class PartsTabController {
     const cost = (part.maxHp - part.hp) * REPAIR_COST_PER_HP;
     if (!this.ctx.freeProcurement() && base.baseState.money < cost) return;
 
+    // 費用を払って全快させる。
     if (!this.ctx.freeProcurement()) base.baseState.money -= cost;
     part.hp = part.maxHp;
     this.syncDockedSnapshot(shipData);
@@ -232,10 +243,12 @@ export class PartsTabController {
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     if (!shipData) return;
 
+    // 全部品ぶんの費用を合算してから、資金を確認する。
     const parts = shipData.parts;
     const totalCost = parts.reduce((sum, p) => sum + (p.maxHp - p.hp) * REPAIR_COST_PER_HP, 0);
     if (!this.ctx.freeProcurement() && base.baseState.money < totalCost) return;
 
+    // 費用を払って全部品を全快させる。
     if (!this.ctx.freeProcurement()) base.baseState.money -= totalCost;
     for (const p of parts) p.hp = p.maxHp;
     this.syncDockedSnapshot(shipData);
@@ -253,6 +266,7 @@ export class PartsTabController {
   // 搭載部品を、選択中の倉庫在庫(同じ type)と入れ替える。外した部品は倉庫へ戻す。
   // shipData.parts は player.parts と同一参照なので、splice による差し替えは艦の性能集計へ即反映される。
   private handleSwapPart(shipId: string, partIdx: number, invId: string): void {
+    // 対象の艦の搭載部品と、換装先の在庫を特定する。
     const base = this.ctx.base();
     const shipData = base.baseState.dockedVessels.find((s) => s.id === shipId);
     const installed = shipData?.parts[partIdx];
@@ -262,6 +276,7 @@ export class PartsTabController {
     const incoming = base.baseState.inventory[invIdx];
     if (!incoming || incoming.type !== installed.type) return;
 
+    // 搭載側と倉庫側を互いに入れ替える。
     shipData.parts.splice(partIdx, 1, incoming);
     base.baseState.inventory.splice(invIdx, 1, installed as AnyPart);
 
