@@ -37,6 +37,7 @@ import { SunLight } from './sun-light';
 import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
+import { applyActiveFilmLut } from './film-lut';
 
 // パイプラインだけを駆動する呼び出し側(描画テスト環境)が操作の対象にする項目。
 // **ここを変えたときだけ、パイプラインが描くものが変わる。**
@@ -150,7 +151,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // マテリアルをユニフォーム分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを
     // bind/sample することになるため、表示ごとに別マテリアルを構築する。
     this.compositeMaterials = {
-      off: this.buildCompositeMaterial(vec4(this.toneMapped(texture(this.target.texture, screenUV).rgb), 1)),
+      off: this.buildCompositeMaterial(
+        vec4(this.colorGrade(this.toneMapped(texture(this.target.texture, screenUV).rgb)), 1),
+      ),
       normal: this.buildCompositeMaterial(
         vec4(octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1),
       ),
@@ -182,7 +185,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
     };
     this.lensCompositeMaterial = this.buildCompositeMaterial(
-      vec4(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb)), 1),
+      vec4(
+        this.colorGrade(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
+        1,
+      ),
     );
     // 模式図用の合成マテリアルは compositeMaterials とは別に1枚だけ持つ。debugTarget の選択肢
     // (DebugTargetId)には含まれない、表示スタイルそのものの切り替えのため。
@@ -198,6 +204,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // SUN_IRRADIANCE_1AU)が決めていて、そこからいまいる場所へ合わせ直すぶんが露出係数になる。
   private toneMapped(color: Vec3Node): Vec3Node {
     return neutralToneMapping(color, this._exposure.factor) as Vec3Node;
+  }
+
+  private colorGrade(color: Vec3Node): Vec3Node {
+    return applyActiveFilmLut(color);
   }
 
   // depthTest/depthWrite/transparent の共通設定を1箇所へまとめた、composite 用マテリアルの
