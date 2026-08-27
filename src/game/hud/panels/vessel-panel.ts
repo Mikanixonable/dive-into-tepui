@@ -6,7 +6,8 @@
 import * as C from '../../const';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { Button, SegmentedControl } from '../widgets';
-import { fmtAmmoStatus } from '../utils';
+import { fmtAmmoStatus, setElementText } from '../utils';
+import { SyncThrottle } from '../sync-throttle';
 import type { Game } from '../../game';
 import type { Input } from '../../input/input';
 import type { KeyBinding } from '../../input/key-mapping';
@@ -48,7 +49,7 @@ interface DeployButtonDom {
 }
 
 export class VesselPanel {
-  private nextSyncAt = 0;
+  private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private input: Input | null = null;
   private player: Player | null = null;
   private followButton: Button | null = null;
@@ -176,19 +177,17 @@ export class VesselPanel {
     const target = game.activeControllableEntity;
     this.player = target instanceof Player ? target : null;
     if (!target) {
-      document.getElementById('hud-vessel-status')?.classList.add('hidden');
+      this.els.get('hud-vessel-status')?.classList.add('hidden');
       return;
     }
     // 通常のマップビューでは艦固有の情報をプロパティウィンドウで参照するので畳む。
     // クリエイティブでは配置後の艦を常に操作できるため、マップビューでも VESSEL を表示する。
     // CSS 側でも同じ条件を持つが、未配置状態からの復帰時は JS で明示的に戻す。
     if (!game.cameraSystem.overviewMode || game.activeStage.id === 'creative') {
-      document.getElementById('hud-vessel-status')?.classList.remove('hidden');
+      this.els.get('hud-vessel-status')?.classList.remove('hidden');
     }
 
-    const now = performance.now();
-    if (now < this.nextSyncAt) return;
-    this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    if (!this.throttle.due()) return;
 
     const throttleObj = target instanceof Player ? target : (target instanceof Base ? target : null);
     this.syncDeployButtons();
@@ -252,7 +251,7 @@ export class VesselPanel {
       fuelFill.style.width = `${fuelPercent.toFixed(1)}%`;
       fuelFill.classList.toggle('danger', maxFuel > 0 && clampedFuel < maxFuel * 0.2);
     }
-    this.setText('rcs-fuel-value', fuelValueText);
+    setElementText(this.els, 'rcs-fuel-value', fuelValueText);
 
     const ammo = this.els.get('ammo');
     if (ammo) {
@@ -266,21 +265,15 @@ export class VesselPanel {
     }
   }
 
-  // id 要素のテキストを、変化があるときだけ書き換える。
-  private setText(id: string, text: string): void {
-    const element = this.els.get(id);
-    if (element && element.textContent !== text) element.textContent = text;
-  }
-
   private syncMeter(
-    dom: VesselMeterDom | null, ratio: number, label: string, max: number, now: number, critical: boolean,
+    dom: VesselMeterDom | null, ratio: number, label: string, max: number, valueNow: number, critical: boolean,
   ): void {
     if (!dom) return;
     const clampedRatio = Math.max(0, Math.min(1, ratio));
     dom.fill.style.width = `${(clampedRatio * 100).toFixed(1)}%`;
     dom.fill.classList.toggle('danger', critical);
     dom.meter.setAttribute('aria-valuemax', String(max));
-    dom.meter.setAttribute('aria-valuenow', String(now));
+    dom.meter.setAttribute('aria-valuenow', String(valueNow));
     dom.meter.setAttribute('aria-valuetext', label);
     if (dom.value.textContent !== label) dom.value.textContent = label;
   }
