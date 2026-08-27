@@ -1,9 +1,6 @@
 // HUD 3D スクリーン投影マーカー CSS (.mk, 各種マーカーシンボル, ラベル, 重なり順).
 import * as C from '../../const';
-import { FILL_4, THEME_PRESETS } from '../../theme';
-
-// 模式図(白背景)向けの上書き色は、選択中のテーマに関わらず theme.ts の light 側パレットから取る。
-const LIGHT_PALETTE = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
+import { FILL_4, LIGHT_PALETTE } from '../../theme';
 
 export const MARKER_STYLE = `
 /* マーカー層 Z-Index トークン定義 */
@@ -150,8 +147,6 @@ export const MARKER_STYLE = `
 [data-render-style="schematic"] .mk-lead { stroke: ${LIGHT_PALETTE.muted}; }
 
 /* 天体ラベルの札。模式図では白背景の上に文字だけで読ませるため、地を落とす。
-   マップビューでの背景・文字色は --space-label-* トークン経由で上書きされる
-   (map-view-style.ts が var(--space-label-background) 等を参照するため)。
    .lbl-main/.lbl-sub は上の一括ルールより詳細度が高い個別の色を持つため、ここで
    改めて上書きする。 */
 [data-render-style="schematic"] .mk-poi .lbl { background: none; }

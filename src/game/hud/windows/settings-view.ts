@@ -1,28 +1,17 @@
 import faviconUrl from '../../../../public/favicon.svg';
 import type { Bgm } from '../../../audio/bgm/bgm';
-import { BGM_TRACKS } from '../../../audio/bgm/tracks/tracks';
 import type { GraphicsSettings } from '../../../render/graphics-settings';
-import {
-  applyThemePalette, currentThemePalette, THEME_PRESETS,
-} from '../../theme';
+import { BgmSettingsPanel } from '../panels/bgm-settings-panel';
 import { GraphicsPanel } from '../panels/graphics-panel';
+import { ThemePanel } from '../panels/theme-panel';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
-import { Button, CloseButton, Slider, TabBar } from '../widgets';
+import { CloseButton, TabBar } from '../widgets';
 
 type SettingsTab = 'theme' | 'graphics' | 'bgm';
 
 const OPEN_STORAGE_KEY = 'tepui.settingsViewOpen';
-const SEEK_REFRESH_MS = 100;
 
-// シークバー横の経過時間表示を "分:秒" にする。
-function fmtSeekTime(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-// localStorage から開閉状態を読む。ステージ復元(SaveSlots の lastStageId)とは別の、
-// このビュー専用の永続化——ステージ進行の記録に UI 表示状態を混ぜない。
+// 設定ビューの開閉状態を localStorage から読み、次回起動時に復元できるようにする。
 function loadSettingsViewOpen(): boolean {
   try {
     return localStorage.getItem(OPEN_STORAGE_KEY) === '1';
@@ -31,6 +20,7 @@ function loadSettingsViewOpen(): boolean {
   }
 }
 
+// 設定ビューの開閉状態を localStorage へ書き、次回起動時の復元に使う。
 function saveSettingsViewOpen(open: boolean): void {
   try {
     localStorage.setItem(OPEN_STORAGE_KEY, open ? '1' : '0');
@@ -45,18 +35,13 @@ export class SettingsView implements OverlayHandle {
   private readonly panel: HTMLElement;
   private readonly overlayManager: OverlayManager;
   private readonly bgm: Bgm;
+  private readonly bgmPanel: BgmSettingsPanel;
   private _isOpen = false;
-  private activeTrack: number | null = null;
-  private readonly stopButton: Button;
-  private readonly trackButtons: Button[] = [];
-  private readonly seekSlider: Slider;
-  private readonly seekTimeLabel: HTMLSpanElement;
-  private seeking = false;
-  private seekRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
-  onOpenChange: ((open: boolean) => void) | null = null;
+  public onOpenChange: ((open: boolean) => void) | null = null;
 
-  constructor(
+  // ブランド表示・ヘッダ・タブバーと、配色/描画/BGMの3面を組み立てて root へ差し込む。
+  public constructor(
     root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm, graphics: GraphicsSettings,
   ) {
     this.overlayManager = overlayManager;
@@ -68,7 +53,65 @@ export class SettingsView implements OverlayHandle {
     this.panel.setAttribute('role', 'dialog');
     this.panel.setAttribute('aria-modal', 'true');
     this.panel.setAttribute('aria-labelledby', 'hud-settings-title');
+    this.panel.appendChild(this.buildBrand());
+    this.panel.appendChild(this.buildHeader());
 
+    const description = document.createElement('p');
+    description.className = 'sv-description';
+    description.textContent = '配色・描画・BGMの設定を切り替えられます。';
+    this.panel.appendChild(description);
+
+    // タブバー: 配色・描画・BGMの3面を切り替える。
+    const tabPanels = new Map<SettingsTab, HTMLElement>();
+    const tabs = new TabBar<SettingsTab>(
+      [['theme', '配色'], ['graphics', '描画'], ['bgm', 'BGM']],
+      (selectedTab) => {
+        tabs.setSelected(selectedTab);
+        for (const [tab, panel] of tabPanels) panel.hidden = tab !== selectedTab;
+      },
+    );
+    tabs.element.classList.add('sv-tabs');
+    this.panel.appendChild(tabs.element);
+
+    // 見出し付きの節を1つ作る。タブ切り替え時に対応する節だけを取り出せるよう登録しておく。
+    const addTabPanel = (tab: SettingsTab, title: string): HTMLElement => {
+      const section = document.createElement('section');
+      section.className = 'sv-section sv-tab-panel';
+      section.setAttribute('role', 'tabpanel');
+      section.setAttribute('aria-label', title);
+      section.hidden = true;
+      const sectionTitle = document.createElement('h3');
+      sectionTitle.textContent = title;
+      section.appendChild(sectionTitle);
+      // タブ切り替え時に対応する節だけを表示するため、ここで登録しておく。
+      tabPanels.set(tab, section);
+      return section;
+    };
+
+    const themeSection = addTabPanel('theme', '配色');
+    const themePanel = new ThemePanel();
+    themeSection.appendChild(themePanel.element);
+    this.panel.appendChild(themeSection);
+
+    const graphicsSection = addTabPanel('graphics', '描画');
+    const graphicsPanel = new GraphicsPanel(graphics);
+    graphicsSection.appendChild(graphicsPanel.element);
+    this.panel.appendChild(graphicsSection);
+
+    const bgmSection = addTabPanel('bgm', 'BGM');
+    this.bgmPanel = new BgmSettingsPanel(bgm);
+    bgmSection.appendChild(this.bgmPanel.element);
+    this.panel.appendChild(bgmSection);
+
+    tabs.setSelected('theme');
+    const initialPanel = tabPanels.get('theme');
+    if (initialPanel !== undefined) initialPanel.hidden = false;
+
+    root.appendChild(this.panel);
+  }
+
+  // ロゴ・タイトル・バージョンを縦に積んだブランド表示を組み立てる。
+  private buildBrand(): HTMLElement {
     const brand = document.createElement('div');
     brand.className = 'sv-brand';
     const brandLogo = document.createElement('img');
@@ -76,6 +119,7 @@ export class SettingsView implements OverlayHandle {
     brandLogo.src = faviconUrl;
     brandLogo.alt = '';
     brand.appendChild(brandLogo);
+    // ロゴに続けて、タイトルとバージョンをまとめて積む。
     const brandText = document.createElement('div');
     brandText.className = 'sv-brand-text';
     const brandTitle = document.createElement('span');
@@ -87,8 +131,11 @@ export class SettingsView implements OverlayHandle {
     brandVersion.textContent = `v${__APP_VERSION__}`;
     brandText.appendChild(brandVersion);
     brand.appendChild(brandText);
-    this.panel.appendChild(brand);
+    return brand;
+  }
 
+  // 見出しと閉じるボタンを持つヘッダを組み立てる。
+  private buildHeader(): HTMLElement {
     const header = document.createElement('div');
     header.className = 'sv-header';
     const headingGroup = document.createElement('div');
@@ -102,186 +149,27 @@ export class SettingsView implements OverlayHandle {
     eyebrow.textContent = 'SYSTEM / SETTINGS';
     headingGroup.appendChild(eyebrow);
     header.appendChild(headingGroup);
+    // 見出しの隣に閉じるボタンを置く。
     const closeButton = new CloseButton(() => this.toggle(false));
     header.appendChild(closeButton.element);
-    this.panel.appendChild(header);
-
-    const description = document.createElement('p');
-    description.className = 'sv-description';
-    description.textContent = '配色・描画・BGMの設定を切り替えられます。';
-    this.panel.appendChild(description);
-
-    const tabPanels = new Map<SettingsTab, HTMLElement>();
-    const tabs = new TabBar<SettingsTab>(
-      [['theme', '配色'], ['graphics', '描画'], ['bgm', 'BGM']],
-      (selectedTab) => {
-        tabs.setSelected(selectedTab);
-        for (const [tab, panel] of tabPanels) panel.hidden = tab !== selectedTab;
-      },
-    );
-    tabs.element.classList.add('sv-tabs');
-    this.panel.appendChild(tabs.element);
-
-    const addTabPanel = (tab: SettingsTab, title: string): HTMLElement => {
-      const section = document.createElement('section');
-      section.className = 'sv-section sv-tab-panel';
-      section.setAttribute('role', 'tabpanel');
-      section.setAttribute('aria-label', title);
-      section.hidden = true;
-      const sectionTitle = document.createElement('h3');
-      sectionTitle.textContent = title;
-      section.appendChild(sectionTitle);
-      tabPanels.set(tab, section);
-      return section;
-    };
-
-    const themePanel = addTabPanel('theme', '配色');
-    const themeOptions = document.createElement('div');
-    themeOptions.className = 'sv-theme-options';
-    const themeButtons = new Map<string, Button>();
-    let activeThemeId = currentThemePalette().id;
-    for (const palette of THEME_PRESETS) {
-      const previewColors = [palette.page, palette.surface1, palette.title, palette.accent, palette.signal];
-      const preview = `<span class="sv-theme-preview">${previewColors
-        .map((color) => `<span class="sv-theme-swatch" style="background-color: ${color}"></span>`)
-        .join('')}</span>`;
-      const themeButton = new Button(
-        palette.name,
-        () => {
-          if (!applyThemePalette(palette.id)) return;
-          activeThemeId = palette.id;
-          for (const [id, button] of themeButtons) button.setOn(id === activeThemeId);
-        },
-        `<span class="sv-theme-icon">${preview}</span>`,
-      );
-      themeButton.element.classList.add('sv-theme-button');
-      themeButton.element.style.setProperty('--sv-theme-page', palette.page);
-      themeButton.element.style.setProperty('--sv-theme-title', palette.title);
-      themeButton.element.title = palette.description;
-      themeButton.element.setAttribute('aria-label', `${palette.name}: ${palette.description}`);
-      themeButtons.set(palette.id, themeButton);
-      themeOptions.appendChild(themeButton.element);
-    }
-    for (const [id, button] of themeButtons) button.setOn(id === activeThemeId);
-    themePanel.appendChild(themeOptions);
-    this.panel.appendChild(themePanel);
-
-    const graphicsSection = addTabPanel('graphics', '描画');
-    const graphicsPanel = new GraphicsPanel(graphics);
-    graphicsSection.appendChild(graphicsPanel.element);
-    this.panel.appendChild(graphicsSection);
-
-    const bgmSection = addTabPanel('bgm', 'BGM');
-
-    const volumeRow = document.createElement('div');
-    volumeRow.className = 'sv-volume-row';
-    const volumeLabel = document.createElement('span');
-    volumeLabel.className = 'sv-label';
-    volumeLabel.textContent = '音量';
-    volumeRow.appendChild(volumeLabel);
-    const volumeValue = document.createElement('span');
-    volumeValue.className = 'sv-volume-value';
-    const updateVolumeValue = (value: number): void => {
-      volumeValue.textContent = `${Math.round(value * 100)}%`;
-    };
-    const volumeSlider = new Slider({ min: 0, max: 1, step: 0.05 }, (value) => {
-      updateVolumeValue(value);
-      this.bgm.setVolume(value);
-    });
-    volumeSlider.setValue(this.bgm.getVolume());
-    updateVolumeValue(volumeSlider.getValue());
-    volumeRow.appendChild(volumeSlider.element);
-    volumeRow.appendChild(volumeValue);
-    bgmSection.appendChild(volumeRow);
-
-    const seekRow = document.createElement('div');
-    seekRow.className = 'sv-volume-row';
-    const seekLabel = document.createElement('span');
-    seekLabel.className = 'sv-label';
-    seekLabel.textContent = '再生位置';
-    seekRow.appendChild(seekLabel);
-    this.seekSlider = new Slider({ min: 0, max: 1, step: 1 }, (value) => {
-      this.seekTimeLabel.textContent = fmtSeekTime(value);
-      this.bgm.seekAudition(value);
-    });
-    // ドラッグ中は自動追従(refreshSeekPosition)で値を上書きしない。ポインタが要素の外へ
-    // 出ても離した瞬間を取りこぼさないよう、pointer capture で握ったまま追う。
-    this.seekSlider.element.addEventListener('pointerdown', (e) => {
-      this.seeking = true;
-      this.seekSlider.element.setPointerCapture(e.pointerId);
-    });
-    // pointerup/pointercancel のどちらでもドラッグを終える。
-    const endSeeking = (e: PointerEvent): void => {
-      this.seeking = false;
-      this.seekSlider.element.releasePointerCapture(e.pointerId);
-    };
-    this.seekSlider.element.addEventListener('pointerup', endSeeking);
-    this.seekSlider.element.addEventListener('pointercancel', endSeeking);
-    this.seekSlider.element.disabled = true;
-    seekRow.appendChild(this.seekSlider.element);
-    this.seekTimeLabel = document.createElement('span');
-    this.seekTimeLabel.className = 'sv-volume-value';
-    this.seekTimeLabel.textContent = '0:00';
-    seekRow.appendChild(this.seekTimeLabel);
-    bgmSection.appendChild(seekRow);
-
-    const trackList = document.createElement('div');
-    trackList.className = 'sv-track-list';
-    for (const [index, track] of BGM_TRACKS.entries()) {
-      const row = document.createElement('div');
-      row.className = 'sv-track-row';
-      const trackLabel = document.createElement('div');
-      trackLabel.className = 'sv-track-label';
-      const number = document.createElement('span');
-      number.className = 'sv-track-number';
-      number.textContent = String(index + 1).padStart(2, '0');
-      const name = document.createElement('span');
-      name.textContent = track.name;
-      trackLabel.append(number, name);
-      row.appendChild(trackLabel);
-
-      const previewButton = new Button('試聴', () => this.previewTrack(index));
-      previewButton.element.classList.add('sv-preview-button');
-      this.trackButtons.push(previewButton);
-      row.appendChild(previewButton.element);
-      trackList.appendChild(row);
-    }
-    bgmSection.appendChild(trackList);
-
-    const trackActions = document.createElement('div');
-    trackActions.className = 'sv-track-actions';
-    this.stopButton = new Button('試聴を停止', () => {
-      this.bgm.stopAudition();
-      this.activeTrack = null;
-      this.updateTrackButtons();
-      this.updateSeekControls();
-    });
-    trackActions.appendChild(this.stopButton.element);
-    bgmSection.appendChild(trackActions);
-    this.panel.appendChild(bgmSection);
-
-    tabs.setSelected('theme');
-    const initialPanel = tabPanels.get('theme');
-    if (initialPanel !== undefined) initialPanel.hidden = false;
-
-    root.appendChild(this.panel);
-    this.stopButton.setEnabled(false);
+    return header;
   }
 
-  contains(target: Node): boolean {
+  public contains(target: Node): boolean {
     return this.panel.contains(target);
   }
 
   // 起動シーケンスの配線(onOpenChange 等)が終わったあとに、呼び出し側から一度だけ呼ぶ。
-  restorePersistedOpenState(): void {
+  public restorePersistedOpenState(): void {
     if (loadSettingsViewOpen()) this.toggle(true);
   }
 
-  close(): void {
+  public close(): void {
     this.toggle(false);
   }
 
-  toggle(force?: boolean): void {
+  // 開閉を切り替える。force を渡せばその状態へ強制し、省略時は現在の逆にする。
+  public toggle(force?: boolean): void {
     const show = force !== undefined ? force : !this._isOpen;
     if (show === this._isOpen) return;
     this._isOpen = show;
@@ -290,8 +178,8 @@ export class SettingsView implements OverlayHandle {
     this.panel.closest<HTMLElement>('#hud')?.classList.toggle(
       'title-menu-open', show && document.getElementById('stage-select') !== null,
     );
-    // 開いている間はゲーム中の BGM を伏せ、試聴だけが聞こえる状態にする。閉じたら試聴の線を
-    // 畳んでゲーム側を戻す — 開いた時点で鳴っていなければ、戻しても無音のまま。
+    // 開いている間はゲーム中の BGM を伏せ、試聴だけが聞こえる状態にする。閉じるときは試聴を
+    // 止めてゲーム中の BGM へ戻す。
     if (show) {
       this.bgm.beginAudition();
       this.overlayManager.open('settings-view', this, {
@@ -300,51 +188,8 @@ export class SettingsView implements OverlayHandle {
       });
     } else {
       this.overlayManager.close('settings-view');
-      this.bgm.endAudition();
-      this.activeTrack = null;
-      this.updateTrackButtons();
-      this.updateSeekControls();
+      this.bgmPanel.stopAudition();
     }
     this.onOpenChange?.(show);
-  }
-
-  private previewTrack(index: number): void {
-    this.bgm.playAudition(index);
-    this.activeTrack = index;
-    this.updateTrackButtons();
-    this.updateSeekControls();
-  }
-
-  private updateTrackButtons(): void {
-    for (const [index, button] of this.trackButtons.entries()) {
-      const active = index === this.activeTrack;
-      button.setOn(active);
-      button.setLabel(active ? '再生中' : '試聴');
-    }
-    this.stopButton.setEnabled(this.activeTrack !== null);
-  }
-
-  // シークバーの可動域を試聴中の曲へ合わせ、無ければ操作できなくする。
-  private updateSeekControls(): void {
-    const duration = this.activeTrack !== null ? this.bgm.auditionDurationSec(this.activeTrack) : 0;
-    this.seekSlider.element.max = String(duration);
-    this.seekSlider.setValue(0);
-    this.seekSlider.element.disabled = duration <= 0;
-    this.seekTimeLabel.textContent = fmtSeekTime(0);
-    if (this.seekRefreshTimer !== null) {
-      clearInterval(this.seekRefreshTimer);
-      this.seekRefreshTimer = null;
-    }
-    if (duration > 0) {
-      this.seekRefreshTimer = setInterval(() => this.refreshSeekPosition(), SEEK_REFRESH_MS);
-    }
-  }
-
-  // 試聴の再生位置を追う。ドラッグ中はユーザーの操作を優先し、上書きしない。
-  private refreshSeekPosition(): void {
-    if (this.seeking) return;
-    const elapsed = this.bgm.auditionElapsedSec();
-    this.seekSlider.setValue(elapsed);
-    this.seekTimeLabel.textContent = fmtSeekTime(elapsed);
   }
 }

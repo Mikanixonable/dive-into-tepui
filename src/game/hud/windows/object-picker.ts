@@ -90,6 +90,7 @@ export class ObjectPicker<T> implements OverlayHandle {
     injectOnce('obj-picker', STYLE);
     this.onSelect = onSelect;
 
+    // 見出しと現在の選択を表示するトリガーボタンを組み立てる。
     this.element = document.createElement('div');
     this.element.className = 'w-group';
     const heading = document.createElement('span');
@@ -101,6 +102,7 @@ export class ObjectPicker<T> implements OverlayHandle {
     this.trigger.element.setAttribute('aria-expanded', 'false');
     this.element.appendChild(this.trigger.element);
 
+    // ポップアップ本体(絞り込み入力+候補一覧)を組み立てる。
     this.pop = document.createElement('div');
     this.pop.className = 'object-picker-pop';
     this.pop.setAttribute('role', 'dialog');
@@ -124,6 +126,7 @@ export class ObjectPicker<T> implements OverlayHandle {
       }
     });
     this.pop.appendChild(this.filter);
+    // 候補一覧はグリッドとして並べる。実際の行は renderList が描画する。
     this.list = document.createElement('div');
     this.list.className = 'op-grid';
     this.list.setAttribute('role', 'listbox');
@@ -132,6 +135,7 @@ export class ObjectPicker<T> implements OverlayHandle {
     root.appendChild(this.pop);
   }
 
+  // OverlayHandle 実装。target がトリガーボタンかポップアップの内部かどうかを返す。
   public contains(target: Node): boolean {
     return this.pop.contains(target) || this.element.contains(target);
   }
@@ -220,6 +224,7 @@ export class ObjectPicker<T> implements OverlayHandle {
     this.pop.remove();
   }
 
+  // index 番目の候補(範囲外は循環)へ roving tabindex を移してフォーカスする。
   private focusOption(index: number): void {
     const options = Array.from(this.list.querySelectorAll<HTMLElement>('[role="option"]'));
     if (options.length === 0) return;
@@ -229,9 +234,11 @@ export class ObjectPicker<T> implements OverlayHandle {
     option.focus({ preventScroll: true });
   }
 
+  // 矢印キー・Home/End で roving tabindex 対象を隣接候補・先頭・末尾へ移す。
   private handleOptionKeydown(event: KeyboardEvent, option: HTMLElement): void {
     const options = Array.from(this.list.querySelectorAll<HTMLElement>('[role="option"]'));
     const index = options.indexOf(option);
+    // キーごとに移動先のインデックスを決めて focusOption へ委ねる。
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       this.focusOption(index + 1);
@@ -247,6 +254,7 @@ export class ObjectPicker<T> implements OverlayHandle {
     }
   }
 
+  // フォーカス対象の候補だけ tabIndex 0 にし、それ以外を -1 にする(roving tabindex)。
   private setRovingOption(activeOption: HTMLElement): void {
     for (const option of Array.from(this.list.querySelectorAll<HTMLElement>('[role="option"]'))) {
       option.tabIndex = option === activeOption ? 0 : -1;
@@ -256,11 +264,13 @@ export class ObjectPicker<T> implements OverlayHandle {
   // 絞り込み文字列に一致する候補だけを、グループ見出しつきで並べ直す。候補が1件も無い
   // グループは見出しごと出さない。
   private renderList(): void {
+    // 再構築でフォーカスを失わないよう、直前にリスト内へフォーカスがあったかを覚えておく。
     const restoreOptionFocus = this.isOpen && this.list.contains(document.activeElement);
     const needle = this.filter.value.trim().toLowerCase();
     this.list.innerHTML = '';
     // 1件も残らなかったら「該当なし」を出す — 空のポップアップは壊れて見える。
     let shown = 0;
+    // グループごとに絞り込みへ一致する項目だけを残し、見出し→各行の順に積む。
     for (const group of this.groups) {
       const items = needle === ''
         ? group.items
@@ -272,6 +282,7 @@ export class ObjectPicker<T> implements OverlayHandle {
         head.textContent = group.label;
         this.list.appendChild(head);
       }
+      // 各候補行を組み立て、クリック・キー操作・フォーカスの挙動を配線する。
       for (const [value, label] of items) {
         const row = document.createElement('div');
         row.className = 'op-row';
@@ -298,6 +309,7 @@ export class ObjectPicker<T> implements OverlayHandle {
         shown++;
       }
     }
+    // 候補が1件もなければ空表記を出し、あれば選択中(無ければ先頭)の行へ roving tabindex を合わせる。
     if (shown === 0) {
       const empty = document.createElement('div');
       empty.className = 'op-empty';

@@ -280,13 +280,15 @@ export class BasePanel {
 
   // 外部コールバック
   public onLaunchVessel: ((ship: Player, base: Base) => void) | null = null;
-  // 「新造」ボタン。実際の艦の生成は Docking 側が行う(BasePanel は UI のみ)。
+  // 「新造」ボタンが押されたことを外部へ通知する。
   public onBuildVessel: ((base: Base) => void) | null = null;
   public onClose: (() => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
 
+  // 基地パネルの DOM 骨格(見出し・タブ・本文・閉じるボタン)を組み立てる。表示状態にするには
+  // open を呼ぶ。
   public constructor() {
     ensureStyle();
 
@@ -338,15 +340,15 @@ export class BasePanel {
     });
     this.tabBar.element.classList.add('dock-tabs');
     this.tabBar.element.setAttribute('aria-label', 'ドックの区画');
-    this.tabBar.element.querySelectorAll<HTMLElement>('[role="tab"]').forEach((tab, index) => {
+    for (const [index, tab] of Array.from(this.tabBar.element.querySelectorAll<HTMLElement>('[role="tab"]')).entries()) {
       const item = TAB_ITEMS[index];
-      if (!item) return;
+      if (!item) continue;
       tab.id = `dock-tab-${item[0]}`;
       tab.setAttribute('aria-controls', 'dock-panel-content');
-    });
+    }
     header.appendChild(this.tabBar.element);
 
-    // 閉じる操作は、プロパティウィンドウ側へパネル収納を要求する。
+    // 閉じるボタンが押されたことを onClose コールバックで外部へ通知する。
     const closeBtn = new CloseButton(() => this.onClose?.());
     header.appendChild(closeBtn.element);
     panel.appendChild(header);
@@ -387,6 +389,7 @@ export class BasePanel {
     this.focusEntry();
   }
 
+  // 基地パネルを閉じ、選択中の基地・機体をクリアする。
   public close(): void {
     this.el.style.display = 'none';
     this._visible = false;
@@ -394,11 +397,13 @@ export class BasePanel {
     this.currentVessel = null;
   }
 
+  // 選択中のタブボタンか、それが無ければ本文へフォーカスを移す。
   private focusEntry(): void {
     const selectedTab = this.tabBar.element.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
     (selectedTab ?? this.bodyEl).focus({ preventScroll: true });
   }
 
+  // 現在のタブと選択状態に応じて本文を再構築する。currentBase が無ければ何もしない。
   private refresh(): void {
     if (!this.currentBase) return;
 
@@ -418,6 +423,7 @@ export class BasePanel {
     if (this._visible && !this.el.contains(document.activeElement)) this.focusEntry();
   }
 
+  // パネルの DOM 要素を取り除く。
   public dispose(): void {
     this.el.remove();
   }

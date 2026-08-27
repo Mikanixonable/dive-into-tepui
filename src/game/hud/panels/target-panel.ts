@@ -1,13 +1,17 @@
-// 常設 TARGET パネル(#hud-target)の同期: ロック中ターゲットの名前・装甲・距離・
-// 接近速度・相対速度だけを表示する。軌道要素・相対傾斜角はプロパティウィンドウが持ち、
-// ここには出さない（戦闘=自艦の軌道要素は OrbitPanel、対象側は PropertyWindow の2系統に
-// 整理し、同じ値を二重の書式で表示しない）。
-import { fmtDist, fmtSpeed } from '../utils';
+// 常設 TARGET パネル(#hud-target)の同期。ロック中ターゲットの名前・装甲・距離・
+// 接近速度・相対速度を、ターゲットが固定されている間だけ表示する。
+import { fmtDist, fmtSpeed, setElementText } from '../utils';
+import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../orbit/orbit-info';
+import { Ship } from '../../game-entity/ship';
+import { Enemy } from '../../game-entity/enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
+
+// 基地は装甲を持たないため、ロック時の装甲バーへ出す満タン相当の目安値。
+const BASE_ARMOR_PLACEHOLDER = 1000;
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -22,11 +26,12 @@ interface TargetPanelData {
 }
 
 export class TargetPanel {
-  private nextSyncAt = 0;
+  private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
 
   // ロック中ターゲットの右クリック。ターゲットが無いときは呼ばれない。
-  onSelectRight: ((clientX: number, clientY: number) => void) | null = null;
+  public onSelectRight: ((clientX: number, clientY: number) => void) | null = null;
 
+  // els を保持し、パネル本体の右クリックを onSelectRight へ橋渡しする。
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
     this.els.get('tgtbody')?.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -34,15 +39,15 @@ export class TargetPanel {
     });
   }
 
+  // 固定対象の有無を毎フレーム反映し、値の更新は間引く。celestialBodies は相対距離・速度の
+  // 算出に使う。
   public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
     const player = game.player;
     const target = player ? game.targeter.aliveTarget : null;
     // 表示/非表示はターゲット固定の有無に直結するので、更新間隔とは別に毎フレーム反映する。
-    this.els.get('tgtbody')?.closest<HTMLElement>('#hud-target')?.classList.toggle('hidden', target === null);
+    this.els.get('hud-target')?.classList.toggle('hidden', target === null);
 
-    const now = performance.now();
-    if (now < this.nextSyncAt) return;
-    this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    if (!this.throttle.due()) return;
 
     if (!player || !target) {
       this.syncTarget(null);
@@ -54,27 +59,28 @@ export class TargetPanel {
       distanceM: relative.dist,
       closingMps: relative.closing,
       relativeSpeedMps: relative.relSpeed,
-      hp: 'hp' in target ? (target as { hp: number }).hp : 1000,
-      maxHp: 'maxHp' in target ? (target as { maxHp: number }).maxHp : 1000,
-      protein: 'proteinHudSnapshot' in target
-        ? (target as { proteinHudSnapshot: TargetPanelData['protein'] }).proteinHudSnapshot
-        : null,
+      // 基地は装甲を持たないので、ロック中は満タン相当の目安値を出す。
+      hp: target instanceof Ship ? target.hp : BASE_ARMOR_PLACEHOLDER,
+      maxHp: target instanceof Ship ? target.maxHp : BASE_ARMOR_PLACEHOLDER,
+      protein: target instanceof Enemy ? target.proteinHudSnapshot : null,
     });
   }
 
   // 安定した DOM へ値だけを同期し、高速更新でも読み上げ対象の要素を作り直さない。
   private syncTarget(target: TargetPanelData | null): void {
     if (!target) {
-      this.setText('tgtname', '—');
+      setElementText(this.els, 'tgtname', '—');
       this.els.get('tgt-protein')?.classList.add('hidden');
       return;
     }
 
-    this.setText('tgtname', target.name);
-    this.setText('tgt-dist', fmtDist(target.distanceM));
-    this.setText('tgt-closing', fmtSpeed(target.closingMps));
-    this.setText('tgt-relative-speed', fmtSpeed(target.relativeSpeedMps));
+    // 名前・距離・速度系の基本値。
+    setElementText(this.els, 'tgtname', target.name);
+    setElementText(this.els, 'tgt-dist', fmtDist(target.distanceM));
+    setElementText(this.els, 'tgt-closing', fmtSpeed(target.closingMps));
+    setElementText(this.els, 'tgt-relative-speed', fmtSpeed(target.relativeSpeedMps));
 
+    // 装甲メーターと数値表示。
     const clampedHp = Math.max(0, Math.min(target.maxHp, target.hp));
     const armorPercent = target.maxHp > 0 ? clampedHp / target.maxHp * 100 : 0;
     const armorValue = `${Math.floor(clampedHp)} / ${target.maxHp}`;
@@ -87,12 +93,13 @@ export class TargetPanel {
       armorFill.style.width = `${armorPercent}%`;
       armorFill.classList.toggle('danger', target.hp <= target.maxHp * 0.3);
     }
-    this.setText('tgt-armor-value', armorValue);
+    setElementText(this.els, 'tgt-armor-value', armorValue);
+    // タンパク質構造を持つ標的なら、フェーズと部位ごとの状態も表示する。
     const proteinPanel = this.els.get('tgt-protein');
     if (proteinPanel) {
       proteinPanel.classList.toggle('hidden', target.protein === null);
       if (target.protein) {
-        this.setText('tgt-protein-phase', target.protein.phase.toUpperCase());
+        setElementText(this.els, 'tgt-protein-phase', target.protein.phase.toUpperCase());
         const rows = target.protein.sites.map((site) => {
           const ratio = site.maxHp > 0 ? Math.max(0, Math.min(1, site.hp / site.maxHp)) : 0;
           const status = site.disabled ? '停止' : `${Math.floor(site.hp)} / ${site.maxHp}`;
@@ -102,14 +109,8 @@ export class TargetPanel {
         }).join('');
         const siteRows = this.els.get('tgt-protein-sites');
         if (siteRows && siteRows.innerHTML !== rows) siteRows.innerHTML = rows;
-        this.setText('tgt-integrity-value', `${Math.floor(target.protein.integrityHp)} / ${target.protein.integrityMaxHp}`);
+        setElementText(this.els, 'tgt-integrity-value', `${Math.floor(target.protein.integrityHp)} / ${target.protein.integrityMaxHp}`);
       }
     }
-  }
-
-  // data-id 要素のテキストを、変化があるときだけ書き換える。
-  private setText(id: string, text: string): void {
-    const element = this.els.get(id);
-    if (element && element.textContent !== text) element.textContent = text;
   }
 }
