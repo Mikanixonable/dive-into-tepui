@@ -17,7 +17,7 @@ export class RelativeOrbitLine {
   private origin: Vec3 | null = null;
 
   constructor(style: LineStyle) {
-    this.curve = new Curve({ style });
+    this.curve = new Curve(style);
     this.line = this.curve.object;
   }
 
@@ -42,7 +42,7 @@ export class RelativeOrbitLine {
     };
     this.origin = targetPos;
     this.curve.setTransform(fo.RtoThreeV3(targetPos));
-    this.curve.setHermiteCurve(knots, { revision: knots, camera });
+    this.curve.setHermiteCurve(knots, camera);
     this.curve.setVisible(true);
   }
 

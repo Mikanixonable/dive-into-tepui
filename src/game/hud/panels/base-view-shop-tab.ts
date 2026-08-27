@@ -1,18 +1,18 @@
+import type { Base } from '../../game-entity/base';
 import { createPart } from '../../game-entity/parts';
 import type { AnyPart } from '../../game-entity/parts';
 import { Button } from '../widgets';
-import type { BasePanelContext } from './base-view-context';
+import type { BasePanel } from './base-view';
 import {
   buildSectionHeader, costLabel, formatCatalogProperty, PART_TYPE_LABELS, SHOP_CATALOG, styleDockBtn,
 } from './base-view-shared';
 
 // 基地パネルの「ショップ」タブ: 部品を購入し、この基地の倉庫へ搬入する。
 export class ShopTabController {
-  public constructor(private readonly ctx: BasePanelContext) {}
+  public constructor(private readonly panel: BasePanel) {}
 
   // ショップの商品一覧を組み立てる。商品ごとに情報欄・価格・購入ボタンを持つカードを作る。
-  public build(): HTMLElement {
-    const base = this.ctx.base();
+  public build(base: Base): HTMLElement {
     const money = base.baseState.money;
 
     const frag = document.createElement('section');
@@ -27,7 +27,7 @@ export class ShopTabController {
     list.className = 'dock-shop-list';
     list.setAttribute('role', 'list');
     for (const [i, entry] of SHOP_CATALOG.entries()) {
-      const canBuy = this.ctx.freeProcurement() || money >= entry.price;
+      const canBuy = this.panel.freeProcurement || money >= entry.price;
       const props = Object.entries(entry.props).map(([name, value]) => formatCatalogProperty(name, value)).join(' · ');
 
       // 商品名・種別・プロパティ・重量/耐久からなる情報欄。
@@ -56,9 +56,9 @@ export class ShopTabController {
       actions.className = 'dock-shop-actions';
       const price = document.createElement('span');
       price.className = 'dock-shop-price';
-      price.textContent = costLabel(this.ctx.freeProcurement(), entry.price);
+      price.textContent = costLabel(this.panel.freeProcurement, entry.price);
       actions.appendChild(price);
-      const buyBtn = new Button('購入して倉庫へ', () => this.handleBuy(i));
+      const buyBtn = new Button('購入して倉庫へ', () => this.handleBuy(base, i));
       styleDockBtn(buyBtn.element, 'primary');
       buyBtn.setEnabled(canBuy);
       actions.appendChild(buyBtn.element);
@@ -70,12 +70,11 @@ export class ShopTabController {
   }
 
   // 指定した商品を購入し、生成した部品を倉庫へ加える。資金不足なら何もしない。
-  private handleBuy(catalogIdx: number): void {
+  private handleBuy(base: Base, catalogIdx: number): void {
     // カタログの商品を特定し、資金を確認する。
-    const base = this.ctx.base();
     const entry = SHOP_CATALOG[catalogIdx];
     if (!entry) return;
-    if (!this.ctx.freeProcurement() && base.baseState.money < entry.price) return;
+    if (!this.panel.freeProcurement && base.baseState.money < entry.price) return;
 
     // カタログのスペックそのままの新品部品を生成する。
     const part = createPart(entry.type, {
@@ -87,8 +86,8 @@ export class ShopTabController {
     } as Partial<AnyPart>);
 
     // 代金を払い、倉庫へ搬入する。
-    if (!this.ctx.freeProcurement()) base.baseState.money -= entry.price;
+    if (!this.panel.freeProcurement) base.baseState.money -= entry.price;
     base.baseState.inventory.push(part);
-    this.ctx.refresh();
+    this.panel.refresh();
   }
 }
