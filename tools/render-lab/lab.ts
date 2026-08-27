@@ -12,9 +12,8 @@ import {
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { ATMOSPHERE_QUALITY, QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
-import { ATMOSPHERE_STEPS_OF_QUALITY } from '../../src/render/pipeline/atmosphere-pass';
-import { rankAtmospheres } from '../../src/render/atmosphere-params';
+import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
+import { atmosphereDraws } from '../../src/render/atmosphere-params';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { AU } from '../../src/physics/planet-orbit';
@@ -336,15 +335,13 @@ export class LabView {
     this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    // 天体の並べ替えと細かく描く重みは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
-    const quality = this.graphicsData.atmosphere;
-    const { bodies, detailWeight } = rankAtmospheres((this.current.atmospheres ?? []).map((body) => ({
-      body, altitude: camera.position.distanceTo(body.center) - body.surfaceRadius,
-    })));
-    this.pipeline.atmosphere.setBodies(
-      quality === ATMOSPHERE_QUALITY.off ? [] : bodies,
-      ATMOSPHERE_STEPS_OF_QUALITY[quality], detailWeight,
-    );
+    // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
+    this.pipeline.atmosphere.setDraws(atmosphereDraws(
+      (this.current.atmospheres ?? []).map((body) => ({
+        body, distance: camera.position.distanceTo(body.center),
+      })),
+      this.graphicsData.atmosphere,
+    ));
     const startedAt = performance.now();
     this.pipeline.render(this.scene, camera, this.style);
     this.lastRenderCpuMs = performance.now() - startedAt;
