@@ -137,6 +137,8 @@ export interface EnemySaveData extends EntitySaveData {
   alive: boolean;
   health: number;
   accent: string | number;
+  // マーカー・軌道線の色。旧セーブデータには無いため任意(無ければ accent から導く)。
+  orbitLineColor?: string | number;
   waveId?: number;
   // 陣形に属する敵だけが持つ識別子と役割。無ければ単体敵として復元する。
   formationId?: string;

@@ -141,13 +141,13 @@ export class SaveBrowser implements OverlayHandle {
   private mobilePane: 'slots' | 'snapshots' = 'slots';
 
   // スロット切替の実処理は呼び出し側が行う。
-  onSlotSwitched: (() => void) | null = null;
+  public onSlotSwitched: (() => void) | null = null;
   // スナップショットのロードは Game を作り直すことで表現するため、実処理は呼び出し側が行う。
-  onLoadSnapshot: ((snapshotId: string) => void) | null = null;
+  public onLoadSnapshot: ((snapshotId: string) => void) | null = null;
 
-  get visible(): boolean { return this._visible; }
+  public get visible(): boolean { return this._visible; }
 
-  constructor(
+  public constructor(
     root: HTMLElement,
     private readonly slots: SaveSlots,
     private readonly service: SnapshotService,
@@ -163,7 +163,7 @@ export class SaveBrowser implements OverlayHandle {
 
   // パネルを開く。表示対象スロットは既定でアクティブスロット、ステージタブは既定でいま
   // プレイ中のステージ。開いている間はゲームを止める。
-  open(): void {
+  public open(): void {
     this.viewedSlotId = this.slots.activeSlotId;
     this.viewedStageId = this.gameSource.current?.activeStage.id ?? null;
     this.statusLine = '';
@@ -177,14 +177,14 @@ export class SaveBrowser implements OverlayHandle {
     });
   }
 
-  close(): void {
+  public close(): void {
     this.el.style.display = 'none';
     this._visible = false;
     this.gameSource.current?.resume();
     this.overlayManager.close('save-browser');
   }
 
-  contains(target: Node): boolean {
+  public contains(target: Node): boolean {
     return this.el.contains(target);
   }
 
@@ -600,7 +600,7 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.el.remove();
   }
 }

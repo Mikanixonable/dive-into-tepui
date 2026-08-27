@@ -48,14 +48,14 @@ export class Stage0 extends Stage {
     for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
     }
-    const enemies = generateCluster(player.state, this._hud, this._worldSfx, this._fx, this._scene);
+    const enemies = generateCluster(player.state, this._worldSfx, this._fx, this._scene);
     for (const enemy of enemies) this.addEnemy(enemy, entities);
   }
   // 敵の行動・補給・制限時間を1フレーム分進める。
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
 
-    this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
+    this.behaveAllEnemies(player, entities, simTime, simSpeed);
 
     this.logistics.updateLogistics(simTime, player, simSpeed);
 
