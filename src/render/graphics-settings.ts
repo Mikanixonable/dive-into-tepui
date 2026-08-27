@@ -43,6 +43,7 @@ export type GraphicsOption = ToggleOption | ChoiceOption;
 // 大気の描き方の段。段が上がるほど、カメラのいる場所の大気を最も強く作っている天体の大気が
 // 精細になる。それ以外の大気天体の見え方は段によらない。
 export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
+export type AtmosphereQuality = (typeof ATMOSPHERE_QUALITY)[keyof typeof ATMOSPHERE_QUALITY];
 
 export const GRAPHICS_OPTIONS = {
   // devicePixelRatio へ掛ける描画解像度の倍率。

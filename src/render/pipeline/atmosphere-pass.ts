@@ -13,6 +13,7 @@ import {
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
+import { ATMOSPHERE_QUALITY, type AtmosphereQuality } from '../graphics-settings';
 import { type AtmosphereOptics, cutoffAltitude } from '../atmosphere-params';
 import { rayMarch, screenJitter, type MediumSample } from '../ray-march';
 import type { GBufferPass } from './gbuffer';
@@ -26,6 +27,14 @@ export const MAX_ATMOSPHERE_BODIES = 4;
 // 主天体へ足す濃い表現の細かさ。積分のサンプル点の数がこれで決まる。
 export const ATMOSPHERE_DETAIL = { none: 0, coarse: 1, fine: 2 } as const;
 export type AtmosphereDetail = (typeof ATMOSPHERE_DETAIL)[keyof typeof ATMOSPHERE_DETAIL];
+
+// 大気の品質の段ごとの、主天体へ足す濃い表現の細かさ。
+export const ATMOSPHERE_DETAIL_OF_QUALITY: Readonly<Record<AtmosphereQuality, AtmosphereDetail>> = {
+  [ATMOSPHERE_QUALITY.off]: ATMOSPHERE_DETAIL.none,
+  [ATMOSPHERE_QUALITY.low]: ATMOSPHERE_DETAIL.none,
+  [ATMOSPHERE_QUALITY.medium]: ATMOSPHERE_DETAIL.coarse,
+  [ATMOSPHERE_QUALITY.high]: ATMOSPHERE_DETAIL.fine,
+};
 
 // 細かさごとの積分のサンプル点の数。
 const COARSE_STEPS = 6;
