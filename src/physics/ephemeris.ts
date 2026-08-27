@@ -357,11 +357,17 @@ export class Ephemeris {
     return sub(this.helioAccelOf(id, t), this.helioAccelOf(this.originId, t));
   }
 
+  // 高精度暦パックが id を持ち、かつ t がその有効期間内かどうか。期間外では解析暦へ落とす
+  // (CELESTIAL.md 2.2: 期間外は例外なく解析暦だけで天体位置が求まる)。
+  private preciseUsableFor(id: CelestialBodyId, t: number): boolean {
+    return this.precise !== null && this.precise.isValidAt(t) && this.precise.hasBody(id);
+  }
+
   // 指定時刻の ECI(originId 中心)位置・速度。日心状態から originId の日心状態を引く一箇所だけで
   // 座標変換する。originId 自身は同じ計算を2回引くので厳密に 0 になる。
   stateOf(id: CelestialBodyId, t: number): KinematicState {
-    if (this.precise?.hasBody(id)) return this.precise.stateOf(id, t);
-    if (this.precise !== null) {
+    if (this.preciseUsableFor(id, t)) return this.precise!.stateOf(id, t);
+    if (this.precise !== null && this.precise.isValidAt(t)) {
       const def = bodyDef(this.registry, id);
       if (def.kind === 'satellite' && this.precise.hasBody(def.planet)) {
         const parent = this.precise.stateOf(def.planet, t);
@@ -384,11 +390,11 @@ export class Ephemeris {
   // 実位置の x̂ 軸から最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
   orbitFrameRotationAt(id: OrbitingId, t: number): FrameRotation {
     const def = bodyDef(this.registry, id) as OrbitingDef;
-    if (this.precise?.hasBody(id)) {
+    if (this.preciseUsableFor(id, t)) {
       const primary = primaryOf(this.registry, id);
-      if (primary !== null && this.precise.hasBody(primary)) {
-        const a = this.precise.stateOf(primary, t);
-        const b = this.precise.stateOf(id, t);
+      if (primary !== null && this.precise!.hasBody(primary)) {
+        const a = this.precise!.stateOf(primary, t);
+        const b = this.precise!.stateOf(id, t);
         const r = sub(b.r, a.r);
         const v = sub(b.v, a.v);
         const h = cross(r, v);
@@ -405,11 +411,11 @@ export class Ephemeris {
   // id の軌道面の法線(単位ベクトル、ECI)。
   orbitNormalAt(id: OrbitingId, t: number): Vec3 {
     const def = bodyDef(this.registry, id) as OrbitingDef;
-    if (this.precise?.hasBody(id)) {
+    if (this.preciseUsableFor(id, t)) {
       const primary = primaryOf(this.registry, id);
-      if (primary !== null && this.precise.hasBody(primary)) {
-        const a = this.precise.stateOf(primary, t);
-        const b = this.precise.stateOf(id, t);
+      if (primary !== null && this.precise!.hasBody(primary)) {
+        const a = this.precise!.stateOf(primary, t);
+        const b = this.precise!.stateOf(id, t);
         return norm(cross(sub(b.r, a.r), sub(b.v, a.v)));
       }
     }
