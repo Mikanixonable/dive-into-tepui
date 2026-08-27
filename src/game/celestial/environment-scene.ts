@@ -28,7 +28,7 @@ import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/p
 import { selectPlanetLights } from './planet-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import {
-  ATMOSPHERE_DETAIL, ATMOSPHERE_DETAIL_OF_QUALITY,
+  ATMOSPHERE_STEPS, ATMOSPHERE_STEPS_OF_QUALITY,
   type AtmosphereBody, type AtmospherePass,
 } from '../../render/pipeline/atmosphere-pass';
 import { atmosphereOpticsOf, rankAtmospheres } from '../../render/atmosphere-params';
@@ -341,17 +341,16 @@ export class EnvironmentScene {
     );
   }
 
-  // 大気パスへ、このフレームの大気を描く天体と、先頭へ足す積分の重みを渡す。
+  // 大気パスへ、このフレームの大気を描く天体と、先頭を細かく描く重みを渡す。
   private syncAtmosphere(
     fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, graphics: GraphicsSettingsData,
   ): void {
     if (graphics.atmosphere === ATMOSPHERE_QUALITY.off) {
-      this.atmosphere.setBodies([], ATMOSPHERE_DETAIL.none, 0);
+      this.atmosphere.setBodies([], ATMOSPHERE_STEPS.low, 0);
       return;
     }
-    const { bodies, denseWeight } = rankAtmospheres(this.atmosphereCandidates(fo, displayTime, cameraPos));
-    const detail = ATMOSPHERE_DETAIL_OF_QUALITY[graphics.atmosphere];
-    this.atmosphere.setBodies(bodies, detail, detail === ATMOSPHERE_DETAIL.none ? 0 : denseWeight);
+    const { bodies, detailWeight } = rankAtmospheres(this.atmosphereCandidates(fo, displayTime, cameraPos));
+    this.atmosphere.setBodies(bodies, ATMOSPHERE_STEPS_OF_QUALITY[graphics.atmosphere], detailWeight);
   }
 
   // 大気を持つ参照天体を、カメラのその天体からの高度と一緒に集める。

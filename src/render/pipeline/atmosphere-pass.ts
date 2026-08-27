@@ -4,8 +4,8 @@
 // 遮蔽も同じ視線のレイ・スフィア交差で解くので、深度テストの精度には依存しない。大気を持つ
 // 天体を同時に MAX_ATMOSPHERE_BODIES 体まで受け、視点に近い順に重ねる。
 //
-// 先頭の天体だけは視線に沿った散乱の積分でも解き、単層表現と混ぜる。積分の細かさは
-// 呼び出し側が段で選ぶ。
+// どの天体の見えも同じ「視線に沿った散乱の積分」で解き、違うのはサンプル点の数だけ。先頭の
+// 天体の数だけを呼び出し側が品質の段で選び、残りの天体は最も粗い段に固定する。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
@@ -26,21 +26,19 @@ import { viewPositionAt, viewRayAt } from './view-ray';
 // 同時に大気を描ける天体の数。**TSL のグラフは静的に展開されるので、実行時には増やせない。**
 export const MAX_ATMOSPHERE_BODIES = 4;
 
-// 主天体へ足す濃い表現の細かさ。積分のサンプル点の数がこれで決まる。
-export const ATMOSPHERE_DETAIL = { none: 0, coarse: 1, fine: 2 } as const;
-export type AtmosphereDetail = (typeof ATMOSPHERE_DETAIL)[keyof typeof ATMOSPHERE_DETAIL];
+// 視線に沿った積分のサンプル点の数。**TSL のグラフは静的に展開されるので、ここに無い数は
+// 実行時に選べない。** 先頭以外の天体は常に low で描く。
+export const ATMOSPHERE_STEPS = { low: 2, medium: 6, high: 16 } as const;
+export type AtmosphereSteps = (typeof ATMOSPHERE_STEPS)[keyof typeof ATMOSPHERE_STEPS];
 
-// 大気の品質の段ごとの、主天体へ足す濃い表現の細かさ。
-export const ATMOSPHERE_DETAIL_OF_QUALITY: Readonly<Record<AtmosphereQuality, AtmosphereDetail>> = {
-  [ATMOSPHERE_QUALITY.off]: ATMOSPHERE_DETAIL.none,
-  [ATMOSPHERE_QUALITY.low]: ATMOSPHERE_DETAIL.none,
-  [ATMOSPHERE_QUALITY.medium]: ATMOSPHERE_DETAIL.coarse,
-  [ATMOSPHERE_QUALITY.high]: ATMOSPHERE_DETAIL.fine,
+// 大気の品質の段ごとの、先頭の天体のサンプル点の数。オフのときは天体を1体も渡さないので、
+// そこで何を選んでも絵に出ない。
+export const ATMOSPHERE_STEPS_OF_QUALITY: Readonly<Record<AtmosphereQuality, AtmosphereSteps>> = {
+  [ATMOSPHERE_QUALITY.off]: ATMOSPHERE_STEPS.low,
+  [ATMOSPHERE_QUALITY.low]: ATMOSPHERE_STEPS.low,
+  [ATMOSPHERE_QUALITY.medium]: ATMOSPHERE_STEPS.medium,
+  [ATMOSPHERE_QUALITY.high]: ATMOSPHERE_STEPS.high,
 };
-
-// 細かさごとの積分のサンプル点の数。
-const COARSE_STEPS = 6;
-const FINE_STEPS = 16;
 
 // 消散係数の下限 [1/m]。散乱の割合を消散で割るときの 0/0 を塞ぐ。
 const MIN_EXTINCTION = 1e-30;
@@ -70,12 +68,6 @@ type RaySegment = {
   readonly far: FloatNode;
   // 区間のうち大気が最も濃い距離。地表で終わる視線では区間の奥、掠める視線では最接近点。
   readonly densest: FloatNode;
-  // 区間の両端と最接近点の、天体中心から測った半径と、そこでの視線の天頂角余弦。
-  readonly nearRadius: FloatNode;
-  readonly farRadius: FloatNode;
-  readonly nearMu: FloatNode;
-  readonly farMu: FloatNode;
-  readonly perigeeRadius: FloatNode;
   // 視線が大気に掛かるか。掛からない画素では素通しへ倒す。
   readonly hitsAtmosphere: BoolNode;
 };
@@ -95,15 +87,6 @@ const outwardDepth = Fn((
   const chapmanZero = sqrt(PI.mul(radius!).div(scaleHeight!).mul(0.5));
   const chapman = chapmanZero.div(chapmanZero.sub(1).mul(mu!).add(1));
   return scaleHeight!.mul(exp(surfaceRadius!.sub(radius!).div(scaleHeight!))).mul(chapman);
-});
-
-// outwardDepth に、視線が降っている(mu<0)ぶんの符号を付けたもの。区間の光学的厚みは
-// 両端のこの値の差で出る。
-const signedDepth = Fn((
-  [radius, mu, surfaceRadius, scaleHeight]: readonly FloatNode[],
-) => {
-  const depth = outwardDepth(radius!, abs(mu!), surfaceRadius!, scaleHeight!);
-  return select(lessThan(mu!, 0), depth.negate(), depth);
 });
 
 // 半径 radius・天頂角余弦 mu の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。
@@ -138,8 +121,8 @@ export class AtmospherePass {
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
   private readonly slots: readonly BodySlot[];
-  private readonly denseDetail: FloatUniform;
-  private readonly denseWeight: FloatUniform;
+  private readonly primarySteps: FloatUniform;
+  private readonly detailWeight: FloatUniform;
   // 下地と合成する前の、大気が足す内部散乱だけ。「大気」デバッグ表示だけが読む。
   private readonly scattered: Vec3Node;
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と view→描画座標の行列は
@@ -166,8 +149,8 @@ export class AtmospherePass {
   ) {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
-    this.denseDetail = uniform(ATMOSPHERE_DETAIL.none);
-    this.denseWeight = uniform(0);
+    this.primarySteps = uniform(ATMOSPHERE_STEPS.low);
+    this.detailWeight = uniform(0);
     this.slots = Array.from({ length: MAX_ATMOSPHERE_BODIES }, (): BodySlot => ({
       center: uniform(new THREE.Vector3()),
       surfaceRadius: uniform(0),
@@ -207,11 +190,11 @@ export class AtmospherePass {
   }
 
   // 全スロットを視点に近い順に重ねた、視線 1 本ぶんの透過率と内部散乱。手前の層が奥の層の
-  // 内部散乱も減衰させるので、透過率を累積しながら足していく。**先頭だけが積分の対象**で、
-  // 残りは単層表現。Fn の中から呼ぶこと(toVar / If を使う)。
+  // 内部散乱も減衰させるので、透過率を累積しながら足していく。**どのスロットも同じ積分で解き、
+  // 違うのはサンプル点の数だけ。** Fn の中から呼ぶこと(toVar / If を使う)。
   //
   // **重い側はすべて分岐の中に置く。** 大気に掛からない視線と空きスロットは区間の判定だけで
-  // 抜け、積分の細かさは uniform で選ぶ — select で混ぜると、捨てるぶんまで毎画素走る。
+  // 抜け、サンプル点の数は uniform で選ぶ — select で混ぜると、捨てるぶんまで毎画素走る。
   private accumulateLayers(
     rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode,
   ): LayerContribution {
@@ -222,17 +205,20 @@ export class AtmospherePass {
       const layerTransmittance = vec3(1, 1, 1).toVar();
       const layerInscatter = vec3(0, 0, 0).toVar();
       If(segment.hitsAtmosphere, () => {
-        const single = this.singleLayer(slot, segment, rayOrigin, rayDir);
-        layerTransmittance.assign(single.transmittance);
-        layerInscatter.assign(single.inscatter);
+        const coarse = this.integrated(slot, segment, rayOrigin, rayDir, ATMOSPHERE_STEPS.low);
+        layerTransmittance.assign(coarse.transmittance);
+        layerInscatter.assign(coarse.inscatter);
+        // 先頭だけは、段が上なら細かいほうへ寄せる。**重みで混ぜるのは、先頭が入れ替わる場所で
+        // 絵を飛ばさないため** — 重みが 0 なら残りの天体とまったく同じ見えになる。段が「低」の
+        // ときは寄せ先が今解いたものと同じなので、分岐そのものを組まない。
         if (index === 0) {
-          const blendDense = (steps: number) => (): void => {
-            const dense = this.integrated(slot, segment, rayOrigin, rayDir, steps);
-            layerTransmittance.assign(mix(layerTransmittance, dense.transmittance, this.denseWeight));
-            layerInscatter.assign(mix(layerInscatter, dense.inscatter, this.denseWeight));
+          const blendDetail = (steps: number) => (): void => {
+            const detailed = this.integrated(slot, segment, rayOrigin, rayDir, steps);
+            layerTransmittance.assign(mix(layerTransmittance, detailed.transmittance, this.detailWeight));
+            layerInscatter.assign(mix(layerInscatter, detailed.inscatter, this.detailWeight));
           };
-          If(this.denseDetail.equal(ATMOSPHERE_DETAIL.fine), blendDense(FINE_STEPS))
-            .ElseIf(this.denseDetail.equal(ATMOSPHERE_DETAIL.coarse), blendDense(COARSE_STEPS));
+          If(this.primarySteps.equal(ATMOSPHERE_STEPS.high), blendDetail(ATMOSPHERE_STEPS.high))
+            .ElseIf(this.primarySteps.equal(ATMOSPHERE_STEPS.medium), blendDetail(ATMOSPHERE_STEPS.medium));
         }
       });
       // 奥の層の内部散乱には、ここまでに重ねた手前の層の透過率が掛かる。
@@ -270,51 +256,11 @@ export class AtmospherePass {
     // 逆に受け、値が未定義になる。大気に掛からない視線はここで長さ 0 の区間になる。
     const far = max(min(alongRay.negate().add(cutoffSpan), opaqueOrSurface), near);
 
-    // **半径には 1m の床を張る** — 空きスロットは半径 0 なので、床が無いと動径方向の
-    // 単位ベクトルが 0/0 になる。
-    const floorRadius = max(surface, 1);
-    const nearOffset = sub(rayOrigin.add(rayDir.mul(near)), slot.center);
-    const farOffset = sub(rayOrigin.add(rayDir.mul(far)), slot.center);
-    const nearRadius = max(length(nearOffset), floorRadius);
-    const farRadius = max(length(farOffset), floorRadius);
     return {
       near,
       far,
       densest: clamp(alongRay.negate(), near, far),
-      nearRadius,
-      farRadius,
-      nearMu: dot(nearOffset.div(nearRadius), rayDir),
-      farMu: dot(farOffset.div(farRadius), rayDir),
-      perigeeRadius: max(sqrt(perpSq), floorRadius),
       hitsAtmosphere: and(greaterThan(surface, 0), and(greaterThan(cutoffDisc, 0), greaterThan(far, near))),
-    };
-  }
-
-  // 区間を 1 枚の層として解いた透過率と内部散乱。光学的厚みは区間の両端から解析で出し、
-  // 太陽の当たり方は区間で最も濃い 1 点だけで代表させる。区間が空でないことは呼び出し側が保証する。
-  private singleLayer(
-    slot: BodySlot, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
-  ): LayerContribution {
-    const surface = slot.surfaceRadius;
-    // 最接近点を区間の内側に含む視線だけ、降る脚と昇る脚に分かれる。
-    const straddles = and(lessThan(segment.nearMu, 0), greaterThan(segment.farMu, 0));
-    // 成分 1 つぶんの、区間の光学的厚み(散乱係数を除いた形)。
-    const depthOf = (scaleHeight: FloatUniform): FloatNode => {
-      const ends = signedDepth(segment.nearRadius, segment.nearMu, surface, scaleHeight)
-        .sub(signedDepth(segment.farRadius, segment.farMu, surface, scaleHeight));
-      const turn = select(
-        straddles, outwardDepth(segment.perigeeRadius, float(0), surface, scaleHeight).mul(2), float(0),
-      );
-      return max(ends.add(turn), 0);
-    };
-    const opticalDepth: Vec3Node = slot.rayleigh.mul(depthOf(slot.rayleighScaleHeight))
-      .add(vec3(slot.mie.mul(depthOf(slot.mieScaleHeight))));
-
-    const transmittance: Vec3Node = exp(opticalDepth.negate());
-    const densest = rayOrigin.add(rayDir.mul(segment.densest));
-    return {
-      transmittance,
-      inscatter: vec3(1, 1, 1).sub(transmittance).mul(this.sunRadianceAt(slot, densest)),
     };
   }
 
@@ -467,11 +413,11 @@ export class AtmospherePass {
 
   // このフレームで大気を描く天体を、カメラのいる場所の大気を強く作っている順に渡す。
   // **先頭が主天体であり、同時に視点へ最も近い**ので、合成の前後もこの並びで決まる。
-  // detail は先頭の天体へ足す濃い表現の細かさ、denseWeight はそれを単層表現と混ぜる重み 0..1。
-  // MAX_ATMOSPHERE_BODIES を超えた分と、空きスロットは描かれない。
-  setBodies(bodies: readonly AtmosphereBody[], detail: AtmosphereDetail, denseWeight: number): void {
-    this.denseDetail.value = detail;
-    this.denseWeight.value = denseWeight;
+  // steps は先頭の天体のサンプル点の数、detailWeight はそこへ寄せる重み 0..1(0 なら先頭も
+  // 残りの天体と同じ見えになる)。MAX_ATMOSPHERE_BODIES を超えた分と、空きスロットは描かれない。
+  setBodies(bodies: readonly AtmosphereBody[], steps: AtmosphereSteps, detailWeight: number): void {
+    this.primarySteps.value = steps;
+    this.detailWeight.value = detailWeight;
     this.bodyCount = Math.min(bodies.length, MAX_ATMOSPHERE_BODIES);
     // 空きスロットは半径 0 で塞ぐ。区間の判定がそこで落ちて、以降の式は走らない。
     for (const [index, slot] of this.slots.entries()) {
