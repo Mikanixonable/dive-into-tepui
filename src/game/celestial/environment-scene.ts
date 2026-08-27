@@ -21,10 +21,11 @@ import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
-import {
-  SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight, ambientIrradianceAtDistance,
-} from '../../render/pipeline/sun-light';
+import { SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
+import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
+import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
+import { selectPlanetLights } from './planet-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
@@ -87,6 +88,13 @@ function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
   return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star');
 }
 
+// 一様な環境光の割合。マップビューでは読みやすさのため強く、戦闘ビューでは弱く、どちらも
+// 描画設定で切れる。
+function ambientFraction(overviewMode: boolean, graphics: GraphicsSettingsData): number {
+  if (overviewMode) return graphics.overviewAmbient ? AMBIENT_STRONG : 0;
+  return graphics.combatAmbient ? AMBIENT_WEAK : 0;
+}
+
 export class EnvironmentScene {
   private readonly scene: THREE.Scene;
   // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
@@ -129,6 +137,8 @@ export class EnvironmentScene {
     private readonly sunLight: SunLight,
     private readonly exposure: Exposure,
     private readonly sunOcclusion: SunOcclusion,
+    private readonly planetLight: PlanetLightSource,
+    private readonly ambient: AmbientSource,
     private readonly atmosphere: AtmospherePass,
     earthSpinPhase0: number,
   ) {
@@ -224,14 +234,13 @@ export class EnvironmentScene {
     const sunPos = starId === null
       ? this.toThreeNormal(this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
       : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
-    // 露出と環境光をどこの明るさへ合わせるかの基準点。カメラ位置ではなく注視点から取る —
+    // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
     this.exposure.setReference(reference, sunPos);
-    this.sunLight.set(
-      sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY,
-      this.ambientIrradianceAt(reference, floatingOrigin, displayTime),
-    );
+    this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY);
+    this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
+    this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, graphics);
 
@@ -262,11 +271,15 @@ export class EnvironmentScene {
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
   }
 
-  // 基準点へ届く環境光の放射照度。環境光は地球照の代用なので、地球が無いレジストリでは 0。
-  private ambientIrradianceAt(reference: THREE.Vector3, fo: FloatingOrigin, displayTime: number): number {
-    if (!('earth' in this.ephemeris.registry)) return 0;
-    const earth = fo.RtoThreeV3(this.ephemeris.positionOf('earth', displayTime));
-    return ambientIrradianceAtDistance(reference.distanceTo(earth));
+  // 天体照の光源を選び、描画座標へ移してライティング側のスロットへ渡す。基準点は露出と
+  // 同じ注視点。
+  private syncPlanetLights(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem): void {
+    const lights = selectPlanetLights(this.ephemeris, displayTime, cameraSystem.activeViewpoint.lookTarget);
+    this.planetLight.set(lights.map((light) => ({
+      center: fo.RtoThreeV3(light.body.state.r),
+      radius: light.body.radius,
+      radiance: light.radiance,
+    })));
   }
 
   // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。まず最大遮蔽率が閾値を切る天体を落とし、

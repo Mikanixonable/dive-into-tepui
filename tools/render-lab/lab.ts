@@ -7,12 +7,14 @@ import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '.
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
 import {
-  AMBIENT_COLOR, AMBIENT_IRRADIANCE, AMBIENT_REFERENCE_DISTANCE, SUN_COLOR, SUN_IRRADIANCE_1AU,
-  SUN_RADIANT_INTENSITY, ambientIrradianceAtDistance,
+  SUN_COLOR, SUN_IRRADIANCE_1AU, SUN_RADIANT_INTENSITY, sunIrradianceAtDistance,
 } from '../../src/render/pipeline/sun-light';
+import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
+import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
@@ -50,6 +52,9 @@ const SUN_LIGHT_DISTANCE = 1e5;
 // 恒星方向とカメラ位置を毎フレーム組み立てる書き込み先。
 const SUN_DIRECTION = new THREE.Vector3();
 const CAMERA_OFFSET = new THREE.Vector3();
+// 天体照の位相角を測る差分ベクトルの書き込み先。
+const SUN_TO_LIGHT = new THREE.Vector3();
+const ORIGIN_TO_LIGHT = new THREE.Vector3();
 
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
@@ -95,8 +100,6 @@ export class LabView {
   private readonly scene = new THREE.Scene();
   // ケースの太陽方向へ向け直すために持つ。恒星の位置と同じ向きを指す。
   private readonly sun = new THREE.DirectionalLight(SUN_COLOR.getHex(), SUN_IRRADIANCE_1AU);
-  // ケースごとの環境光。恒星光と同じく、強度は render() が毎フレーム書き込む。
-  private readonly ambient = new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_IRRADIANCE);
   // 撮影先。合成パスが既に sRGB へ変換した値を書くので、素の RGBA8 で受ける
   // (-srgb フォーマットにすると二重変換になり、撮った PNG だけが白っぽくなる)。
   // 深度は 3D UI パスが要る — 合成パスが G バッファの深度をここへ複製し、線はそれに対して
@@ -139,8 +142,7 @@ export class LabView {
     // NodeMaterial はカメラのチャンネルと重なる光源が1つも無いと照明モデルを組まない。
     // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、光源も同チャンネルへ属させる。
     this.sun.layers.enable(LIT_OPAQUE_LAYER);
-    this.ambient.layers.enable(LIT_OPAQUE_LAYER);
-    this.scene.add(this.sun, this.ambient);
+    this.scene.add(this.sun);
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<LabView> {
@@ -156,6 +158,7 @@ export class LabView {
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, QUALITY_PRESETS.high, gpu);
+    pipeline.ambient.setFraction(AMBIENT_WEAK);
     return new LabView(renderer, pipeline, gpu);
   }
 
@@ -196,6 +199,15 @@ export class LabView {
   setGraphicsOption(key: GraphicsOptionKey, value: boolean | number): void {
     this.graphicsData = withGraphicsOption(this.graphicsData, key, value);
     this.pipeline.applyGraphics(this.graphicsData);
+    this.render();
+  }
+
+  // 一様な環境光の割合。ゲーム本体はビューの種別から強弱を決めるが、ここには種別が無いので
+  // 直に選ぶ。起動時は弱(戦闘ビュー)。
+  get ambientFraction(): number { return this.pipeline.ambient.fraction; }
+
+  setAmbientFraction(fraction: number): void {
+    this.pipeline.ambient.setFraction(fraction);
     this.render();
   }
 
@@ -273,17 +285,23 @@ export class LabView {
     );
     this.sun.position.copy(sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE);
     const sunDistance = this.sunDistance;
-    // 環境光の強さは、フォワード経路の光源とライティングパスの両方が同じ値を読む —
-    // 片方だけ直すと陰影の辻褄が合わない。
-    const earthDistance = this.current.earthDistance ?? AMBIENT_REFERENCE_DISTANCE;
-    const ambientIrradiance = ambientIrradianceAtDistance(
-      typeof earthDistance === 'function' ? earthDistance(sunDistance) : earthDistance,
-    );
-    this.ambient.intensity = ambientIrradiance;
     SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
-    this.pipeline.sunLight.set(
-      SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY, ambientIrradiance,
-    );
+    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_COLOR, SUN_RADIANT_INTENSITY);
+    // 天体照。ケースが置いた光源をスロットへ書く。放射輝度は恒星のつまみの距離と、
+    // 描画原点を基準点とした位相角に追随する。
+    this.pipeline.planetLight.set((this.current.planetLights ?? []).map((light) => {
+      const toSun = SUN_TO_LIGHT.copy(SUN_POSITION).sub(light.center);
+      const toOrigin = ORIGIN_TO_LIGHT.copy(ORIGIN).sub(light.center);
+      const phase = lambertPhase(toSun.angleTo(toOrigin));
+      const base = planetRadiance(
+        light.albedo, sunIrradianceAtDistance(SUN_POSITION.distanceTo(light.center)),
+      );
+      return {
+        center: light.center,
+        radius: light.radius,
+        radiance: [base[0] * phase, base[1] * phase, base[2] * phase] as const,
+      };
+    }));
     // 順応の基準点は描画原点。**ケースの sunDistance はここから恒星までの距離**なので、
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
     this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION);
