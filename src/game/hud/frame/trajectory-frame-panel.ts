@@ -19,6 +19,7 @@ export class TrajectoryFramePanel {
 
   public followCamera = true;
 
+  // panelRoot はパネル自身の設置先、popupRoot は AnchorZone のポップアップの親。
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
@@ -54,6 +55,7 @@ export class TrajectoryFramePanel {
     this.panel.appendChild(this.orbitSummary);
   }
 
+  // パネル下部に表示するサマリ行の文字列を組み立てる。
   private orbitSummaryText(): string {
     const centerId = this.displayWindow.frame.center;
     const centerRole = frameRoleOf(centerId);
@@ -62,6 +64,7 @@ export class TrajectoryFramePanel {
     return `基準: ${planCenter}・${rotationSourceLabel(planRot)}`;
   }
 
+  // パネルの表示と各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。
   public sync(
     pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
     validRoles: readonly FrameRole[], isVisible: boolean,
@@ -79,6 +82,7 @@ export class TrajectoryFramePanel {
     this.orbitSummary.textContent = this.orbitSummaryText();
   }
 
+  // 保持しているゾーンとパネル要素を片付ける。
   public dispose(): void {
     this.planCenterZone.dispose();
     this.panel.remove();
