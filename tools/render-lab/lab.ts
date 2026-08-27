@@ -12,7 +12,7 @@ import {
 } from '../../src/render/pipeline/sun-light';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { ATMOSPHERE_QUALITY, QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
-import { ATMOSPHERE_DETAIL, type AtmosphereDetail } from '../../src/render/pipeline/atmosphere-pass';
+import { ATMOSPHERE_DETAIL, ATMOSPHERE_DETAIL_OF_QUALITY } from '../../src/render/pipeline/atmosphere-pass';
 import { rankAtmospheres } from '../../src/render/atmosphere-params';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { AU } from '../../src/physics/planet-orbit';
@@ -37,14 +37,6 @@ export interface LabMeasurement {
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
 }
-
-// 大気の品質の段と、主天体へ足す濃い表現の細かさの対応(ゲーム本体では game/ が持つ)。
-const LAB_ATMOSPHERE_DETAIL: Readonly<Record<number, AtmosphereDetail>> = {
-  [ATMOSPHERE_QUALITY.off]: ATMOSPHERE_DETAIL.none,
-  [ATMOSPHERE_QUALITY.low]: ATMOSPHERE_DETAIL.none,
-  [ATMOSPHERE_QUALITY.medium]: ATMOSPHERE_DETAIL.coarse,
-  [ATMOSPHERE_QUALITY.high]: ATMOSPHERE_DETAIL.fine,
-};
 
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
@@ -326,10 +318,9 @@ export class LabView {
     this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    // 大気の段はゲーム本体では game/ が解くので、ここでは同じ対応をこのビューが持つ。天体の
-    // 並べ替えと濃い表現の重みは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
+    // 天体の並べ替えと濃い表現の重みは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     const quality = this.graphicsData.atmosphere;
-    const detail = LAB_ATMOSPHERE_DETAIL[quality] ?? ATMOSPHERE_DETAIL.none;
+    const detail = ATMOSPHERE_DETAIL_OF_QUALITY[quality];
     const { bodies, denseWeight } = rankAtmospheres((this.current.atmospheres ?? []).map((body) => ({
       body, altitude: camera.position.distanceTo(body.center) - body.surfaceRadius,
     })));
