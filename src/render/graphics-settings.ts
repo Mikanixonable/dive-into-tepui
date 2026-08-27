@@ -67,10 +67,11 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'basic', label: 'マルチサンプリング',
     presets: { low: false, medium: true, high: true },
   },
-  // 描画の最終段で、物体の縁と 3D UI の線のギザギザを均すか。
+  // 描画の最終段で、物体の縁と 3D UI の線のギザギザを均す方式。
   antialias: {
-    kind: 'toggle', group: 'basic', label: 'アンチエイリアス',
-    presets: { low: false, medium: true, high: true },
+    kind: 'choice', group: 'basic', label: 'アンチエイリアス',
+    items: [[0, 'なし'], [1, 'FXAA'], [2, 'SMAA']],
+    presets: { low: 0, medium: 1, high: 2 },
   },
   // 小惑星帯・カイパー帯などの点群。
   pointField: {

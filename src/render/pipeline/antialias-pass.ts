@@ -1,14 +1,18 @@
 // フレーム最後のパス: 合成パスと 3D UI パスが描き終えた表示用の画像の、物体の縁と線の
-// ギザギザを均して画面へ出す。均すかどうかは描画品質設定で切り替わる。
+// ギザギザを均して画面へ出す。均し方は描画品質設定が選ぶ。
 //
 // 受け取る画像は表示用の階調を持つこと。縁を拾う閾値はその目盛りで定義されていて、
 // 線形の明るさで渡すと暗い面の境目がすべて閾値の下に沈む。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { colorSpaceToWorking, screenUV, texture } from 'three/tsl';
+import { colorSpaceToWorking, texture } from 'three/tsl';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
+import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { Vec4Node } from '../tsl-types';
+
+// 均し方の選択値。graphics-settings.ts の antialias の選択肢と対応する。
+const ANTIALIAS_METHOD = { none: 0, fxaa: 1, smaa: 2 } as const;
 
 // 表示用の階調で読んだ色を線形へ戻して返す板の材質。レンダラは画面へ書くときに同じ変換を
 // もう一度掛けるので、往復が相殺される — 戻さないと画面全体が白く浮く。
@@ -22,24 +26,26 @@ function displayMaterial(displayColor: THREE.Node): THREE.MeshBasicNodeMaterial 
 
 export class AntialiasPass {
   private readonly quad: QuadMesh;
-  private readonly smoothedMaterial: THREE.MeshBasicNodeMaterial;
-  private readonly rawMaterial: THREE.MeshBasicNodeMaterial;
+  // 方式ごとに1枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの再コンパイルが
+  // フレームを止める。
+  private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
+  private method: number;
 
   // source は 3D UI パスまでを描き終えた表示用の画像。
   public constructor(
     private readonly renderer: WebGPURenderer,
-    source: THREE.Texture,
+    private readonly source: THREE.Texture,
     private readonly gpu: GpuTimings,
-    enabled: boolean,
+    method: number,
   ) {
-    this.smoothedMaterial = displayMaterial(fxaa(texture(source, screenUV)));
-    this.rawMaterial = displayMaterial(texture(source, screenUV));
-    this.quad = new QuadMesh(enabled ? this.smoothedMaterial : this.rawMaterial);
+    this.method = method;
+    this.quad = new QuadMesh(this.material());
   }
 
-  // 縁を均すかどうかを切り替える。値が変わった時点で呼ぶ。
-  public setEnabled(enabled: boolean): void {
-    this.quad.material = enabled ? this.smoothedMaterial : this.rawMaterial;
+  // 均し方を差し替える。値が変わった時点で呼ぶ。
+  public setMethod(method: number): void {
+    this.method = method;
+    this.quad.material = this.material();
   }
 
   // 画面いっぱいに1枚描く。フレームの最後に1回呼ぶ。
@@ -50,10 +56,24 @@ export class AntialiasPass {
     this.quad.render(this.renderer);
   }
 
+  // 現在の方式のマテリアル。方式ごとに初回だけ組む。
+  private material(): THREE.MeshBasicNodeMaterial {
+    const cached = this.materials.get(this.method);
+    if (cached !== undefined) return cached;
+    // 読む位置は板の uv に任せる。screenUV を渡すと、頂点段で近傍の位置を組み立てる方式が
+    // fragCoord を参照することになり、シェーダが通らない。
+    const displayColor = texture(this.source);
+    const smoothed = this.method === ANTIALIAS_METHOD.fxaa ? fxaa(displayColor)
+      : this.method === ANTIALIAS_METHOD.smaa ? smaa(displayColor)
+        : displayColor;
+    const material = displayMaterial(smoothed);
+    this.materials.set(this.method, material);
+    return material;
+  }
+
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
   public dispose(): void {
-    this.smoothedMaterial.dispose();
-    this.rawMaterial.dispose();
+    for (const material of this.materials.values()) material.dispose();
   }
 }
