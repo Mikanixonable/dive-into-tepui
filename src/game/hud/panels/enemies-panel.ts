@@ -29,7 +29,7 @@ export class EnemiesPanel {
   private hasContacts = false;
 
   // 単独表示の行(波に集約されていない敵)の右クリック。波の集約行は特定の1機を指さないため呼ばれない。
-  onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
+  public onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
 
