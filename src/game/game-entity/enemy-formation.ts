@@ -1,3 +1,4 @@
+// タンパク質陣形における敵の役割と、陣形内の生存状況に基づく供給条件を扱う。
 export type FormationRole = 'attacker' | 'shield' | 'energy';
 
 type FormationEnemyStatus = {
