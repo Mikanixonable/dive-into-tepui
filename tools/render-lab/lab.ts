@@ -15,7 +15,7 @@ import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pi
 import { ATMOSPHERE_QUALITY, QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
 import { ATMOSPHERE_DETAIL, ATMOSPHERE_DETAIL_OF_QUALITY } from '../../src/render/pipeline/atmosphere-pass';
 import { rankAtmospheres } from '../../src/render/atmosphere-params';
-import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { ChoiceValue, GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
@@ -202,7 +202,7 @@ export class LabView {
   get graphics(): GraphicsSettingsData { return this.graphicsData; }
 
   // 描画品質設定の項目を1つ差し替え、パイプラインへ押し出してその場で描き直す。
-  setGraphicsOption(key: GraphicsOptionKey, value: boolean | number): void {
+  setGraphicsOption(key: GraphicsOptionKey, value: boolean | ChoiceValue): void {
     this.graphicsData = withGraphicsOption(this.graphicsData, key, value);
     this.pipeline.applyGraphics(this.graphicsData);
     this.render();
