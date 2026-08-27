@@ -18,6 +18,7 @@ export class TopBar {
 
     if (!this.throttle.due()) return;
 
+    // 時間加速セレクトを初回だけ選択肢で満たし、以後は選択値と表示を現在の速度へ合わせる。
     const simSpeedLabel = `×${game.simSpeedManager.simSpeed}`;
     const autoWarpRealRemain = game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime);
     const simSpeedEl = this.els.get('sim-speed');
@@ -37,6 +38,7 @@ export class TopBar {
       simSpeedEl.title = game.isPaused ? '一時停止中' : `時間加速 ${simSpeedLabel}${warpRemain}`;
       simSpeedEl.classList.toggle('sim-speed-hot', simSpeedLabel !== '×1' || game.isPaused);
     }
+    // NODE WARP の残り時間表示。
     const autoWarpSimRemain = game.simSpeedManager.remainingSimulationSeconds(game.simulator.simTime);
     const nodeWarpEl = this.els.get('node-warp-remain');
     if (nodeWarpEl) {

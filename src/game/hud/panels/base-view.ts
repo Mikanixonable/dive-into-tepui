@@ -287,6 +287,8 @@ export class BasePanel {
   public get visible(): boolean { return this._visible; }
   public get element(): HTMLElement { return this.el; }
 
+  // 基地パネルの DOM 骨格(見出し・タブ・本文・閉じるボタン)を組み立てる。表示状態にするには
+  // open を呼ぶ。
   public constructor() {
     ensureStyle();
 
@@ -387,6 +389,7 @@ export class BasePanel {
     this.focusEntry();
   }
 
+  // 基地パネルを閉じ、選択中の基地・機体をクリアする。
   public close(): void {
     this.el.style.display = 'none';
     this._visible = false;
@@ -394,11 +397,13 @@ export class BasePanel {
     this.currentVessel = null;
   }
 
+  // 選択中のタブボタンか、それが無ければ本文へフォーカスを移す。
   private focusEntry(): void {
     const selectedTab = this.tabBar.element.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
     (selectedTab ?? this.bodyEl).focus({ preventScroll: true });
   }
 
+  // 現在のタブと選択状態に応じて本文を再構築する。currentBase が無ければ何もしない。
   private refresh(): void {
     if (!this.currentBase) return;
 
@@ -418,6 +423,7 @@ export class BasePanel {
     if (this._visible && !this.el.contains(document.activeElement)) this.focusEntry();
   }
 
+  // パネルの DOM 要素を取り除く。
   public dispose(): void {
     this.el.remove();
   }

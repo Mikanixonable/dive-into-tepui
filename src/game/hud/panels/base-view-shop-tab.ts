@@ -71,11 +71,13 @@ export class ShopTabController {
 
   // 指定した商品を購入し、生成した部品を倉庫へ加える。資金不足なら何もしない。
   private handleBuy(catalogIdx: number): void {
+    // カタログの商品を特定し、資金を確認する。
     const base = this.ctx.base();
     const entry = SHOP_CATALOG[catalogIdx];
     if (!entry) return;
     if (!this.ctx.freeProcurement() && base.baseState.money < entry.price) return;
 
+    // カタログのスペックそのままの新品部品を生成する。
     const part = createPart(entry.type, {
       name: entry.name,
       weight: entry.weight,
@@ -84,6 +86,7 @@ export class ShopTabController {
       ...entry.props,
     } as Partial<AnyPart>);
 
+    // 代金を払い、倉庫へ搬入する。
     if (!this.ctx.freeProcurement()) base.baseState.money -= entry.price;
     base.baseState.inventory.push(part);
     this.ctx.refresh();
