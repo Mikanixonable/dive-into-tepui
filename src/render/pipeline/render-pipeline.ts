@@ -271,7 +271,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this._exposure.setCompensation(graphics.exposureCompensation);
     this.sunSource.setModel(graphics.sunLightModel);
     this._planetLight.setCount(graphics.planetLightCount);
-    this.antialiasPass.setEnabled(graphics.antialias);
+    this.antialiasPass.setMethod(graphics.antialias);
     // 標本数を変えると、three が次の描画までに色と深度のテクスチャを作り直す。
     this.target.samples = graphics.msaa ? MSAA_SAMPLES : 0;
   }
