@@ -37,7 +37,7 @@ import {
   type SunSyncSettings,
 } from '../../celestial/orbit-guide-settings';
 
-// 線数がこれを超えたら警告を出す(指定は曲げない、計画書 8 の #9)。
+// 線数がこれを超えたら警告を出す(指定は曲げない)。
 const LINE_COUNT_WARNING_THRESHOLD = 300;
 
 // ---- 種類1行ぶんの構成 -------------------------------------------------------------------
@@ -73,6 +73,26 @@ interface CombinedKindRow extends SharedKindFields {
   readonly axisButtons: ReadonlyMap<string, Button>;
 }
 
+// SharedKindFields(種類1行・小題1行の共有設定パネル)を現在の設定値へ合わせる。見出しの
+// 表示トグルと configPanel の hidden 判定は、行の種類ごとに条件が異なるため呼び出し側が持つ。
+function syncSharedKindFields(row: SharedKindFields, settings: GuideKindSharedSettings): void {
+  syncValueField(row.countField, COUNT_MAPPING, settings.count);
+  syncValueField(row.rangeMinField, RANGE_MAPPING, settings.rangeMin);
+  syncValueField(row.rangeMaxField, RANGE_MAPPING, settings.rangeMax);
+  row.colorStartInput.setValue(hexColorString(settings.colorStart));
+  row.colorEndInput.setValue(hexColorString(settings.colorEnd));
+  row.reversedButton.setOn(settings.reversed);
+  syncValueField(row.opacityField, OPACITY_MAPPING, settings.opacity);
+  row.direction.setSelected(settings.direction);
+  row.animateSwitch.setOn(settings.animate);
+  row.stabilitySwitch.setOn(settings.showStability);
+  // 本数が1のときは族範囲の上限・色(終)・反転が意味を持たないので隠す。
+  const single = settings.count <= 1;
+  row.rangeMaxRow.classList.toggle('hidden', single);
+  row.colorEndRow.classList.toggle('hidden', single);
+  row.reversedRow.classList.toggle('hidden', single);
+}
+
 // 軌道ガイドタブの群タブ。GuideGroupId(データ分類)に「基本」を加えた UI 専用の型。
 type GroupTab = 'basic' | GuideGroupId;
 const GROUP_TABS: readonly GroupTab[] = ['basic', ...GUIDE_GROUPS];
@@ -89,6 +109,7 @@ function loadGroupTab(): GroupTab {
   return 'basic';
 }
 
+// 選んだ群タブを保存する。localStorage 不可なら諦める。
 function saveGroupTab(tab: GroupTab): void {
   try {
     localStorage.setItem(GROUP_TAB_STORAGE_KEY, tab);
@@ -108,7 +129,7 @@ export class OrbitGuideTab {
   private readonly combinedRows = new Map<string, CombinedKindRow>();
   private readonly systemSwitches = new Map<CatalogSystemId, ToggleSwitch>();
   private readonly geostationaryButton: Button;
-  private lissajousRow!: {
+  private readonly lissajousRow: {
     readonly heading: Button;
     readonly configPanel: HTMLElement;
     readonly pointButtons: Map<'l1' | 'l2' | 'l3', Button>;
@@ -131,6 +152,7 @@ export class OrbitGuideTab {
   private selectedGroupTab: GroupTab;
   private readonly lineCountEl: HTMLElement;
 
+  // availableFamilies から種類・小題の定義一覧を組み、群タブと各行の DOM を組み立てる。
   public constructor(availableFamilies: ReadonlyMap<CatalogSystemId, readonly string[]>) {
     const defs = buildKindDefs(availableFamilies);
     this.kindDefs = defs.kinds;
@@ -170,13 +192,21 @@ export class OrbitGuideTab {
     );
     groupTabBodies.set('basic', basicBody);
 
-    // 共線点/三角点/副天体周回/共鳴の4群。小題(CombinedKindDef)を先に、族idごとに独立した
+    // 共線点群: 小題(CombinedKindDef)・族idごとに独立した種類に続けて、族を持たないリサジュー
+    // 軌道行を積む。リサジュー軌道は共線点にしか無い専用行なので、他の群と分けて直線的に組む。
+    const collinearBody = this.buildGroupTabBody('collinear');
+    for (const def of this.combinedDefs.get('collinear') ?? []) this.buildCombinedKindRow(collinearBody, def);
+    for (const def of this.kindDefs.get('collinear') ?? []) this.buildKindRow(collinearBody, def);
+    this.lissajousRow = this.buildLissajousRow(collinearBody);
+    groupTabBodies.set('collinear', collinearBody);
+
+    // 残りの群(三角点/副天体周回/共鳴)。小題(CombinedKindDef)を先に、族idごとに独立した
     // 種類(蝶形・トンボ形・共鳴・DRO)をその後に並べる。
     for (const group of GUIDE_GROUPS) {
+      if (group === 'collinear') continue;
       const body = this.buildGroupTabBody(group);
       for (const def of this.combinedDefs.get(group) ?? []) this.buildCombinedKindRow(body, def);
       for (const def of this.kindDefs.get(group) ?? []) this.buildKindRow(body, def);
-      if (group === 'collinear') this.lissajousRow = this.buildLissajousRow(body);
       groupTabBodies.set(group, body);
     }
     this.groupTabBodies = groupTabBodies;
@@ -201,6 +231,7 @@ export class OrbitGuideTab {
     return el;
   }
 
+  // 群タブを切り替え、選択を保存して表示を引き直す。
   private selectGroupTab(tab: GroupTab): void {
     this.selectedGroupTab = tab;
     saveGroupTab(tab);
@@ -208,6 +239,7 @@ export class OrbitGuideTab {
     this.applyGroupTabVisibility();
   }
 
+  // 選択中の群タブの本体だけを表示し、他は隠す。
   private applyGroupTabVisibility(): void {
     for (const [tab, el] of this.groupTabBodies) el.classList.toggle('hidden', tab !== this.selectedGroupTab);
   }
@@ -224,6 +256,7 @@ export class OrbitGuideTab {
     parent.appendChild(row);
   }
 
+  // 系トグル1つぶんの ON/OFF を正本へ反映する。
   private setSystem(system: CatalogSystemId, on: boolean): void {
     this.commit({ ...this.current, systems: { ...this.current.systems, [system]: on } });
   }
@@ -234,6 +267,7 @@ export class OrbitGuideTab {
     configPanel: HTMLElement, getCurrent: () => GuideKindSharedSettings,
     onCommit: (patch: Partial<GuideKindSharedSettings>) => void, onResetColor: () => void,
   ): SharedKindFields {
+    // 本数・族範囲(下限/上限が互いを追い越さないよう commit 前に min/max で挟む)。
     const countField = buildValueField('本数', COUNT_MAPPING, (v) => onCommit({ count: Math.round(v) }));
     configPanel.appendChild(countField.row);
     const rangeMinField = buildValueField('族の下限', RANGE_MAPPING, (v) => {
@@ -247,6 +281,7 @@ export class OrbitGuideTab {
     });
     configPanel.appendChild(rangeMaxField.row);
 
+    // 色(始・終)・反転。
     const colorStart = buildColorField('色(始)', 0, (v) => onCommit({ colorStart: v }));
     configPanel.appendChild(colorStart.row);
     const colorEnd = buildColorField('色(終)', 0, (v) => onCommit({ colorEnd: v }));
@@ -262,6 +297,7 @@ export class OrbitGuideTab {
     reversedRow.appendChild(reversedButton.element);
     configPanel.appendChild(reversedRow);
 
+    // 透明度・進行方向マーカー・安定度の見せ方。
     const opacityField = buildValueField('透明度', OPACITY_MAPPING, (v) => onCommit({ opacity: v }));
     configPanel.appendChild(opacityField.row);
 
@@ -289,11 +325,13 @@ export class OrbitGuideTab {
 
   // 種類1行(見出し+設定パネル)を組む。見出しの表示トグルが on のときだけ設定パネルを見せる。
   private buildKindRow(parent: HTMLElement, def: KindDef): void {
+    // 見出し(表示トグル)を先に組み、その ON/OFF を toggleKind へつなぐ。
     const { heading, configPanel } = buildKindRowHeading(
       parent, def.label, () => this.toggleKind(def.id),
       def.group === 'resonant' ? 'orbit-guide-kind-heading-btn-resonant' : undefined,
     );
 
+    // 続けて共有設定パネル。色リセットは同じ群内での index/count から既定色を引き直す。
     const shared = this.buildSharedKindFields(
       configPanel, () => this.current.kinds[def.id] ?? this.defaultKindFor(def.id),
       (patch) => this.commitKind(def.id, patch),
@@ -307,11 +345,13 @@ export class OrbitGuideTab {
     this.kindRows.set(def.id, { heading, configPanel, ...shared });
   }
 
+  // 種類の表示トグルを反転させる。
   private toggleKind(id: string): void {
     const kind = this.current.kinds[id] ?? this.defaultKindFor(id);
     this.commitKind(id, { on: !kind.on });
   }
 
+  // 種類 id に対応する既定設定を組む。id が属する群での並び順(index)から既定色を引く。
   private defaultKindFor(id: string): GuideKindSettings {
     for (const [group, defs] of this.kindDefs) {
       const def = defs.find((d) => d.id === id);
@@ -323,6 +363,7 @@ export class OrbitGuideTab {
     return defaultKindSettings(0x808080, 0xc0c0c0);
   }
 
+  // 種類 id の設定へ patch を重ねて正本を更新する。
   private commitKind(id: string, patch: Partial<GuideKindSettings>): void {
     const base = this.current.kinds[id] ?? this.defaultKindFor(id);
     this.commit({ ...this.current, kinds: { ...this.current.kinds, [id]: { ...base, ...patch } } });
@@ -340,10 +381,10 @@ export class OrbitGuideTab {
     heading.textContent = def.label;
     root.appendChild(heading);
 
-    // value は settings.combinedKinds[key].axisValues のキー(orbit-guide-lines.ts の
-    // parseGuideKindId が返す point/branch/ew/区間の生値と一致させる)。displayLabel はボタンの
-    // 表示文字列だけに使い、判定には使わない。
+    // value は settings.combinedKinds[key].axisValues のキーと一致する point/branch/ew/区間の
+    // 生値。displayLabel はボタンの表示文字列だけに使い、判定には使わない。
     const axisButtons = new Map<string, Button>();
+    // 軸1つぶんのボタン行。def が持たない軸(entries が空)は行ごと出さない。
     const buildAxisRow = (label: string, entries: readonly (readonly [string, string])[]): void => {
       if (entries.length === 0) return;
       const row = document.createElement('div');
@@ -388,6 +429,7 @@ export class OrbitGuideTab {
     return this.current.combinedKinds[key]?.axisValues[axisValue] ?? false;
   }
 
+  // 小題 def に対応する既定設定を組む。def が見つからない(null)ときは無難な灰色を返す。
   private defaultCombinedFor(def: CombinedKindDef | null): CombinedKindSettings {
     if (def === null) return defaultCombinedKindSettings(0x808080, 0xc0c0c0);
     const count = this.combinedDefs.get(def.group)?.length ?? 1;
@@ -395,6 +437,7 @@ export class OrbitGuideTab {
     return defaultCombinedKindSettings(colors.start, colors.end);
   }
 
+  // key(`${group}-${base}`)から小題定義を探す。見つからなければ null。
   private findCombinedDef(key: string): CombinedKindDef | null {
     for (const defs of this.combinedDefs.values()) {
       const def = defs.find((d) => d.key === key);
@@ -403,6 +446,7 @@ export class OrbitGuideTab {
     return null;
   }
 
+  // 小題 key の軸値1つぶんの ON/OFF を正本へ反映する。
   private commitCombinedAxis(key: string, axisValue: string, on: boolean): void {
     const base = this.current.combinedKinds[key] ?? this.defaultCombinedFor(this.findCombinedDef(key));
     this.commit({
@@ -411,6 +455,7 @@ export class OrbitGuideTab {
     });
   }
 
+  // 小題 key の設定へ patch を重ねて正本を更新する。
   private commitCombined(key: string, patch: Partial<GuideKindSharedSettings>): void {
     const base = this.current.combinedKinds[key] ?? this.defaultCombinedFor(this.findCombinedDef(key));
     this.commit({ ...this.current, combinedKinds: { ...this.current.combinedKinds, [key]: { ...base, ...patch } } });
@@ -423,6 +468,7 @@ export class OrbitGuideTab {
       this.commit({ ...this.current, lissajous: { ...this.current.lissajous, on } });
     });
 
+    // 起動する共線点(L1〜L3)の複数選択トグル。
     const pointRow = document.createElement('div');
     pointRow.className = 'w-group orbit-guide-toggle-row';
     const pointHeading = document.createElement('span');
@@ -437,6 +483,7 @@ export class OrbitGuideTab {
     }
     configPanel.appendChild(pointRow);
 
+    // 振幅・位相・周回数。
     const inPlaneField = buildValueField('面内振幅', AMPLITUDE_MAPPING, (v) => this.commitLissajous({ inPlane: v }));
     configPanel.appendChild(inPlaneField.row);
     const outOfPlaneField = buildValueField('面外振幅', AMPLITUDE_MAPPING, (v) => this.commitLissajous({ outOfPlane: v }));
@@ -448,6 +495,7 @@ export class OrbitGuideTab {
     const cyclesField = buildValueField('周回数', CYCLES_MAPPING, (v) => this.commitLissajous({ cycles: Math.round(v) }));
     configPanel.appendChild(cyclesField.row);
 
+    // 色・透明度・進行方向マーカー。族を持たないので色は単色(colorStart のみ)。
     const colorField = buildColorField('色', 0, (v) => this.commitLissajous({ colorStart: v }));
     configPanel.appendChild(colorField.row);
     const opacityField = buildValueField('透明度', OPACITY_MAPPING, (v) => this.commitLissajous({ opacity: v }));
@@ -463,22 +511,27 @@ export class OrbitGuideTab {
     };
   }
 
+  // リサジュー軌道の設定へ patch を重ねて正本を更新する。
   private commitLissajous(patch: Partial<LissajousSettings>): void {
     this.commit({ ...this.current, lissajous: { ...this.current.lissajous, ...patch } });
   }
 
+  // 太陽同期準回帰軌道の設定へ patch を重ねて正本を更新する。
   private commitSunSync(patch: Partial<SunSyncSettings>): void {
     this.commit({ ...this.current, sunSync: { ...this.current.sunSync, ...patch } });
   }
 
+  // ドーンダスク軌道の設定へ patch を重ねて正本を更新する。
   private commitDawnDusk(patch: Partial<DawnDuskSettings>): void {
     this.commit({ ...this.current, dawnDusk: { ...this.current.dawnDusk, ...patch } });
   }
 
+  // モルニヤ軌道の設定へ patch を重ねて正本を更新する。
   private commitMolniya(patch: Partial<CriticalInclinationSettings>): void {
     this.commit({ ...this.current, molniya: { ...this.current.molniya, ...patch } });
   }
 
+  // ツンドラ軌道の設定へ patch を重ねて正本を更新する。
   private commitTundra(patch: Partial<CriticalInclinationSettings>): void {
     this.commit({ ...this.current, tundra: { ...this.current.tundra, ...patch } });
   }
@@ -490,29 +543,20 @@ export class OrbitGuideTab {
     this.onSettingsChange?.(this.current);
   }
 
+  // 正本(this.current)から全ての行の見た目を引き直す。
   private syncAll(): void {
     this.geostationaryButton.setOn(this.current.geostationary);
     for (const [system, sw] of this.systemSwitches) sw.setOn(this.current.systems[system] ?? false);
+
+    // 種類1行: 見出しの表示トグルと configPanel の表示有無は on 一本で決まる。
     for (const [id, row] of this.kindRows) {
       const kind = this.current.kinds[id] ?? this.defaultKindFor(id);
       row.heading.setOn(kind.on);
       row.configPanel.classList.toggle('hidden', !kind.on);
-      syncValueField(row.countField, COUNT_MAPPING, kind.count);
-      syncValueField(row.rangeMinField, RANGE_MAPPING, kind.rangeMin);
-      syncValueField(row.rangeMaxField, RANGE_MAPPING, kind.rangeMax);
-      row.colorStartInput.setValue(hexColorString(kind.colorStart));
-      row.colorEndInput.setValue(hexColorString(kind.colorEnd));
-      row.reversedButton.setOn(kind.reversed);
-      syncValueField(row.opacityField, OPACITY_MAPPING, kind.opacity);
-      row.direction.setSelected(kind.direction);
-      row.animateSwitch.setOn(kind.animate);
-      row.stabilitySwitch.setOn(kind.showStability);
-      // 本数が1のときは族範囲の上限・色(終)・反転が意味を持たないので隠す。
-      const single = kind.count <= 1;
-      row.rangeMaxRow.classList.toggle('hidden', single);
-      row.colorEndRow.classList.toggle('hidden', single);
-      row.reversedRow.classList.toggle('hidden', single);
+      syncSharedKindFields(row, kind);
     }
+
+    // 小題1行: 軸ボタンの点灯を先に決め、押されている軸値が1つでもあれば configPanel を見せる。
     for (const [key, row] of this.combinedRows) {
       const combined = this.current.combinedKinds[key] ?? this.defaultCombinedFor(this.findCombinedDef(key));
       let anyOn = false;
@@ -522,21 +566,10 @@ export class OrbitGuideTab {
         anyOn ||= on;
       }
       row.configPanel.classList.toggle('hidden', !anyOn);
-      syncValueField(row.countField, COUNT_MAPPING, combined.count);
-      syncValueField(row.rangeMinField, RANGE_MAPPING, combined.rangeMin);
-      syncValueField(row.rangeMaxField, RANGE_MAPPING, combined.rangeMax);
-      row.colorStartInput.setValue(hexColorString(combined.colorStart));
-      row.colorEndInput.setValue(hexColorString(combined.colorEnd));
-      row.reversedButton.setOn(combined.reversed);
-      syncValueField(row.opacityField, OPACITY_MAPPING, combined.opacity);
-      row.direction.setSelected(combined.direction);
-      row.animateSwitch.setOn(combined.animate);
-      row.stabilitySwitch.setOn(combined.showStability);
-      const single = combined.count <= 1;
-      row.rangeMaxRow.classList.toggle('hidden', single);
-      row.colorEndRow.classList.toggle('hidden', single);
-      row.reversedRow.classList.toggle('hidden', single);
+      syncSharedKindFields(row, combined);
     }
+
+    // リサジュー軌道行: 族を持たないので専用フィールドを個別に反映する。
     const lissajous = this.current.lissajous;
     const lr = this.lissajousRow;
     lr.heading.setOn(lissajous.on);
@@ -554,6 +587,7 @@ export class OrbitGuideTab {
     lr.direction.setSelected(lissajous.direction);
     lr.animateSwitch.setOn(lissajous.animate);
 
+    // 地球専用参照軌道4種(基本群)。
     syncSunSyncRow(this.sunSyncRow, this.current.sunSync);
     syncDawnDuskRow(this.dawnDuskRow, this.current.dawnDusk);
     syncCriticalInclinationRow(this.molniyaRow, this.current.molniya);
