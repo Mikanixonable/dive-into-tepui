@@ -67,6 +67,7 @@ export function hudRail(root: HTMLElement, side: 'left' | 'right'): HTMLElement 
   return root.querySelector<HTMLElement>(`.hud-rail-${side}`) ?? root;
 }
 
+// レール収納トグルの字形と読み上げ名を、開く向き(左右)から組む。
 function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
   const label = side === 'left' ? '左' : '右';
   return {
@@ -93,6 +94,7 @@ function buildRailToggle(
   });
 }
 
+// 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
 function buildWorldRoot(parent: HTMLElement, id: string, view: HudWorldView): HudWorldRoot {
   const element = createHudElement('div', id, parent, `hud-world-root hud-${view}-root`);
   const leftRail = createHudElement(
