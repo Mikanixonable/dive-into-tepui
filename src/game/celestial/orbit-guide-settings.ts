@@ -186,10 +186,10 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
     direction: 'none',
     animate: false,
   },
-  // 太陽同期準回帰軌道の既定値: 回帰14日・98周は高度約800kmの太陽同期軌道に相当する。
+  // 太陽同期準回帰軌道の既定値: 回帰7日・98周(1日14周)は高度約894kmの太陽同期軌道に相当する。
   sunSync: {
     on: false,
-    repeatDays: 14,
+    repeatDays: 7,
     revsPerRepeat: 98,
     colorStart: 0x8bc9a8,
     opacity: 0.4,
@@ -198,7 +198,7 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
   },
   dawnDusk: {
     on: false,
-    repeatDays: 14,
+    repeatDays: 7,
     revsPerRepeat: 98,
     localTime: 'dawn',
     colorStart: 0xc9b08b,
