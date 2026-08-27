@@ -47,6 +47,12 @@ export class OriginCenteredEphemeris {
     return this.absolute.hasBody(id);
   }
 
+  // simTime に対応する jdTdb が absolute の有効期間内かどうか。
+  isValidAt(simTime: number): boolean {
+    const jdTdb = this.epochJdTdb + simTime / 86400;
+    return jdTdb >= this.absolute.validStartJdTdb && jdTdb <= this.absolute.validEndJdTdb;
+  }
+
   // 天体 id の、originId 中心・ゲーム ECI 軸の状態。収録されていない天体は例外を投げる。
   stateOf(id: CelestialBodyId, simTime: number): KinematicState {
     if (!this.absolute.hasBody(id)) throw new MissingEphemerisBodyError(id);
