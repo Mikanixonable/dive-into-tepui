@@ -19,6 +19,7 @@ export class VesselsTabController {
       '発進する艦を選択するか、整備画面で搭載部品を確認します。',
       `${ships.length} / ${C.BASE_MAX_VESSELS} 隻`,
     ));
+    // 格納艦が居なければ案内文を、居れば一覧を出す。
     if (ships.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'dock-empty';
@@ -31,6 +32,7 @@ export class VesselsTabController {
       for (const [i, s] of ships.entries()) list.appendChild(this.buildVesselRow(s, i));
       frag.appendChild(list);
     }
+    // 末尾に新造行を添える。
     frag.appendChild(this.buildNewVesselHeader(base));
     return frag;
   }
@@ -82,8 +84,10 @@ export class VesselsTabController {
 
   // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)行。
   private buildNewVesselHeader(base: Base): HTMLElement {
+    // ドックの空き・資金から新造の可否を決める。
     const isFull = base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS;
     const canAfford = !isFull && (this.ctx.freeProcurement() || base.baseState.money >= NEW_VESSEL_COST);
+    // 状況に応じた案内文。
     const row = document.createElement('div');
     row.className = 'dock-parts-header';
     const label = document.createElement('span');
@@ -92,6 +96,7 @@ export class VesselsTabController {
       ? `基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`
       : '既定構成の艦艇を新造して格納庫へ追加します。';
     row.appendChild(label);
+    // 新造ボタン。
     const btn = new Button(
       isFull ? 'ドック満杯' : `新造 · ${costLabel(this.ctx.freeProcurement(), NEW_VESSEL_COST)}`,
       () => this.handleBuildVessel(),

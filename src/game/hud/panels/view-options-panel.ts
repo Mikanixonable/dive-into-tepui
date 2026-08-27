@@ -44,6 +44,7 @@ function loadViewOptionsTab(): ViewOptionsTab {
   }
 }
 
+// 選択中タブを localStorage へ保存する。保存できない環境では何もしない。
 function saveViewOptionsTab(tab: ViewOptionsTab): void {
   try {
     localStorage.setItem(TAB_STORAGE_KEY, tab);
@@ -153,12 +154,14 @@ function appendColumnLegend(parent: HTMLElement, columns: readonly ViewOptionCol
   heading.className = 'view-options-section-heading';
   const legend = document.createElement('span');
   legend.className = 'view-options-column-legend';
+  // 各列のグリフとラベルを並べる。
   for (const column of columns) {
     const item = document.createElement('span');
     item.className = 'view-options-column';
     item.textContent = `${column.glyph} ${column.label}`;
     legend.appendChild(item);
   }
+  // 見出し行を親へ組み込む。
   heading.appendChild(legend);
   parent.appendChild(heading);
 }
@@ -363,17 +366,22 @@ export class ViewOptionsPanel {
     this.applyTabVisibility();
   }
 
+  // 選択中タブの本体だけを表示し、他は隠す。
   private applyTabVisibility(): void {
     for (const [tab, el] of this.tabBodies) el.classList.toggle('hidden', tab !== this.selectedTab);
   }
 
+  // ボタンの点灯・アイコン・説明文を、現在のモードへ合わせる。説明文には次にクリックしたときの
+  // 遷移先も含める。
   private setBodyClassModeButton(
     button: Button, label: string, mode: BodyClassDisplayMode, hasOrbit: boolean,
   ): void {
+    // 現在値と、次にクリックしたときの遷移先から説明文を組む。
     const modeLabel = mode === 'orbit' ? 'ラベル＋軌道' : mode === 'label' ? 'ラベル' : '非表示';
     const next = nextBodyClassDisplayMode(mode, hasOrbit);
     const nextLabel = next === 'orbit' ? 'ラベル＋軌道' : next === 'label' ? 'ラベル' : '非表示';
     const description = `${label}: ${modeLabel}。クリックで${nextLabel}`;
+    // 点灯・アイコン・aria 属性へ反映する。
     button.setOn(mode !== 'hidden');
     button.element.dataset.displayMode = mode;
     const icon = button.element.querySelector<HTMLElement>('.w-btn-icon');
@@ -421,13 +429,16 @@ export class ViewOptionsPanel {
 
   // 天球グリッドのトグル表示状態を現在値へ合わせる。
   public setGridVisibility(visibility: CelestialGridVisibility): void {
+    // 星空トグル。
     this.gridCurrent.set('stars', visibility.stars);
     this.starsButton.setOn(visibility.stars);
+    // 面/極/網/縮尺の個別トグル。
     for (const [key, btn] of this.gridButtons) {
       const on = visibility[key];
       this.gridCurrent.set(key, on);
       btn.setOn(on);
     }
+    // カテゴリ行の点灯と、全消灯時のグレーアウト。
     for (const [key, category, row] of this.gridCategoryButtons) {
       const enabled = Boolean(visibility[key]);
       this.gridCurrent.set(key, enabled);
