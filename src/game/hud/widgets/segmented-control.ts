@@ -12,6 +12,7 @@ export class SegmentedControl<T> {
   // items は [値, 表示ラベル, 任意のアイコンマークアップ] の並びで、その順にボタンを並べる。
   public constructor(title: string, items: readonly (readonly [T, string, string?])[], onSelect: (value: T) => void) {
     this.onSelect = onSelect;
+    // グループ要素と、任意の見出し。
     this.element = document.createElement('div');
     this.element.className = 'w-group';
     if (title !== '') {
@@ -20,6 +21,7 @@ export class SegmentedControl<T> {
       heading.textContent = title;
       this.element.appendChild(heading);
     }
+    // 初期のボタン列を組む。
     this.setItems(items);
   }
 
