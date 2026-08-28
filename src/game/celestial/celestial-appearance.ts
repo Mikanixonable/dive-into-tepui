@@ -1,4 +1,4 @@
-// 天体の見た目レジストリ: id から表示名と CelestialView の生成関数を引く。
+// 天体の見た目: id から表示名と CelestialView の生成関数を引く。
 // 天体の日本語表示名の定義元はここ1箇所 — 他のモジュールは必ずここを読む。
 //
 // 見た目そのもの(アルベド・テクスチャ)は render/ が持つ(celestial-albedo.ts /
@@ -33,7 +33,7 @@ function solidSurface(id: SolarSystemId): CelestialSurface {
 // テクスチャ付き惑星のレジストリ項を表示名から組む。rings(bodyDef からそのまま渡す)が
 // あれば環付きになる。**惑星は戦闘ビューでは常に輝点スプライトとして描かれる**(PointView)—
 // 見えるかどうかはその天体が届ける光の量が決める。
-function planetEntry(id: SolarSystemId, name: string): CelestialViewDef {
+function planetEntry(id: SolarSystemId, name: string): CelestialAppearance {
   const def = bodyDef(SOLAR_SYSTEM, id);
   return {
     name,
@@ -56,7 +56,7 @@ function shapeOf(id: SolarSystemId): ShapeDef | undefined {
 }
 
 // 単色の衛星のレジストリ項を表示名から組む。
-function satelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
+function satelliteEntry(id: SolarSystemId, name: string): CelestialAppearance {
   return {
     name,
     create: (sunOcclusion, sunLight) => new SphereView(
@@ -67,7 +67,7 @@ function satelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
 
 // テクスチャ付き衛星のレジストリ項を表示名から組む(実写の全球モザイクが入手できた衛星のみ;
 // それ以外は satelliteEntry の単色のまま)。
-function texturedSatelliteEntry(id: SolarSystemId, name: string): CelestialViewDef {
+function texturedSatelliteEntry(id: SolarSystemId, name: string): CelestialAppearance {
   return {
     name,
     create: (sunOcclusion, sunLight) => new SphereView(
@@ -77,7 +77,7 @@ function texturedSatelliteEntry(id: SolarSystemId, name: string): CelestialViewD
 }
 
 // テクスチャを持たない太陽中心天体(準惑星・大型小惑星・彗星核)のレジストリ項。
-function solidPlanetEntry(id: SolarSystemId, name: string): CelestialViewDef {
+function solidPlanetEntry(id: SolarSystemId, name: string): CelestialAppearance {
   return {
     name,
     create: (sunOcclusion, sunLight) => new SphereView(
@@ -89,12 +89,12 @@ function solidPlanetEntry(id: SolarSystemId, name: string): CelestialViewDef {
 // create が恒星光と遮蔽を受けるのは、環がそこから明るさと直射散乱の遮蔽を引くため。**引数を
 // 使わない closure(太陽・地球)も受け取れてしまうが、環を持ちうる SphereView / PointView が
 // これを必須の構築引数にしているので、渡し忘れは型検査で落ちる。**
-export type CelestialViewDef = {
+export type CelestialAppearance = {
   readonly name: string;
   create(sunOcclusion: SunOcclusion, sunLight: SunLight): CelestialView;
 };
 
-export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
+export const CELESTIAL_APPEARANCES: Record<SolarSystemId, CelestialAppearance> = {
   earth: { name: '地球', create: () => new EarthView() },
   moon: {
     name: '月',
@@ -202,10 +202,10 @@ export const CELESTIAL_VIEWS: Record<SolarSystemId, CelestialViewDef> = {
   sun: { name: '太陽', create: () => new SunView() },
 };
 
-// CELESTIAL_VIEWS に手作りエントリを持たない id(カスタムレジストリの架空天体)向けの見た目。
+// CELESTIAL_APPEARANCES に手作りエントリを持たない id(カスタムレジストリの架空天体)向けの見た目。
 // 恒星は SunView を汎用の id/半径で構築し、それ以外は単色球にする。表示名は呼び出し側
 // (frame-labels.ts の celestialBodyName)が id からフォールバックする。
-export function fallbackCelestialView(
+export function fallbackCelestialAppearance(
   registry: CelestialRegistry, id: CelestialBodyId, sunOcclusion: SunOcclusion, sunLight: SunLight,
 ): CelestialView {
   const def = bodyDef(registry, id);
