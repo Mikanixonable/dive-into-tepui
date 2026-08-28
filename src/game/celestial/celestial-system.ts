@@ -30,9 +30,7 @@ import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/p
 import { selectPlanetLights } from './planet-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
-import {
-  type AtmosphereCandidate, atmosphereDraws, atmosphereOpticsOf,
-} from '../../render/atmosphere';
+import { type AtmosphereCandidate, atmosphereDraws } from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CelestialEntity } from './celestial-entity';
@@ -461,7 +459,7 @@ export class CelestialSystem {
     const scale = cameraSystem.activeCameraRadialScale;
     const candidates: AtmosphereCandidate[] = [];
     for (const body of this.referenceBodies) {
-      const optics = atmosphereOpticsOf(body.id);
+      const optics = body.atmosphereOptics;
       if (optics === null) continue;
       const surfaceRadius = body.def.radius;
       const center = body.motion.stateAt(displayTime).r;
