@@ -11,7 +11,8 @@ import { InstrumentDef } from '../instruments/types';
 // どの Composer も音符を出す以上それを鳴らす楽器が要るため。
 export type BgmTrack =
   | { kind: 'phasing'; name: string; instruments: InstrumentDef[]; params: PhasingParams }
-  | { kind: 'antipode'; name: string; instruments: InstrumentDef[]; params: AntipodeParams };
+  | { kind: 'antipode'; name: string; instruments: InstrumentDef[]; params: AntipodeParams }
+  | { kind: 'suite'; name: string; instruments: InstrumentDef[]; params: SuiteParams };
 
 // ================================================================== Composer params
 
@@ -79,6 +80,21 @@ export interface PhasingParams {
   pads: PadLayer;
   drone: DroneLayer;
   sparkle: SparkleLayer | null;
+}
+
+// ----------------------------------------------------------------- suite-composer
+
+// PhasingParams による1区間。lengthSteps ぶん進んだら次の区間へ移り、全区間を終えたら
+// 最初の区間の先頭(local step 0)へ戻る。
+export interface SuiteSection {
+  params: PhasingParams;
+  lengthSteps: number;
+}
+
+// 複数の phasing 区間を順につないで1曲にする composer(composers/suite-composer.ts)の
+// パラメータ。緩急・音域・音色が区間ごとに変わる、複数部構成の曲に使う。
+export interface SuiteParams {
+  sections: SuiteSection[];
 }
 
 // -------------------------------------------------------------- antipode-composer
