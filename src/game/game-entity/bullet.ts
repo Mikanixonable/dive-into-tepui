@@ -3,7 +3,7 @@ import { GameEntity } from './game-entity';
 import { KinematicState } from '../../physics/kinematic-state';
 import { CelestialBody } from '../../physics/celestial-body';
 
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import type { Stage } from '../stages/stage';
 import type { Contact } from './contact';
 import { Vec3, lenSq, sub } from '../../math/vec3';

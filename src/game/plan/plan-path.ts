@@ -12,7 +12,7 @@ import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFrameP
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { TrajectoryLine } from '../trajectory-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';

@@ -15,7 +15,7 @@ import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { EntityManager } from '../simulation/entity-manager';
 import { SimSpeedManager } from '../sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../floating-origin';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';

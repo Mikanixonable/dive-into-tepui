@@ -16,7 +16,7 @@ import { ApsisTrack } from '../../physics/trajectory-features';
 import { Vec3, len, scale, sub, v3 } from '../../math/vec3';
 import type { Viewpoint } from '../../math/projection';
 import type { SphereHit } from './base-collision';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { OrbitLine } from '../orbit-line';
 import { RelativeOrbitLine } from '../relative-orbit-line';
 import { TrajectoryLine } from '../trajectory-line';
