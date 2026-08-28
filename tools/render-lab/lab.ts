@@ -61,6 +61,13 @@ const ORIGIN_TO_LIGHT = new THREE.Vector3();
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
 
+// つまみを出す描画品質設定の項目。**ここを変えたときだけ、この環境が描くものが変わる** —
+// 残りの項目はゲーム本体の側(天体の組み立て・HUD)が読むので、ここでは動かしても何も起きない。
+export const PIPELINE_GRAPHICS_KEYS = [
+  'lens', 'exposureCompensation', 'atmosphere', 'sunLightModel', 'planetLightCount',
+  'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
+] as const satisfies readonly GraphicsOptionKey[];
+
 // カメラのズーム(画角を狭める倍率)の常用対数の上限。0 がケース既定の画角。
 export const MAX_CAMERA_ZOOM_LOG = 2;
 
