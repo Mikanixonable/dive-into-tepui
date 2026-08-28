@@ -18,7 +18,6 @@ import { DisplayWindowManager } from './display-window-manager';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './simulation/sim-speed-manager';
 import { EntityManager } from './simulation/entity-manager';
-import { FutureCelestialBodies } from './simulation/future-celestial-bodies';
 import { EntityLineManager } from './lines/entity-line-manager';
 import { Simulator } from './simulation/simulator';
 import { Predictor } from './simulation/predictor';
@@ -103,7 +102,6 @@ export class Game {
   readonly frameAnchors: FrameAnchors;
   readonly orbitReference = new OrbitReferenceSelector();
   readonly entities: EntityManager;
-  private readonly futureCelestialBodies: FutureCelestialBodies;
   private readonly entityLines: EntityLineManager;
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
@@ -147,7 +145,6 @@ export class Game {
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
-    this.futureCelestialBodies = new FutureCelestialBodies(this.ephemeris);
     this.entityLines = new EntityLineManager(this.entities);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris);
 
@@ -198,7 +195,6 @@ export class Game {
       this._uiSfx,
       this.simSpeedManager,
       this.ephemeris,
-      this.futureCelestialBodies,
       this._scene,
       this.markerManager,
       this.activePlayers,
@@ -219,7 +215,7 @@ export class Game {
     this.mapHud = new MapHudController(this._hud);
 
     this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? initialSimTime ?? 0);
-    this.predictor = new Predictor(this.entities, this.futureCelestialBodies);
+    this.predictor = new Predictor(this.entities, this.ephemeris);
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
