@@ -1,27 +1,26 @@
 // 太陽の見た目: 実位置・実半径の自発光球体(遠くて球として描けないときは点像)と、
 // 模式図で代わりに出す輪郭円。
 import * as THREE from 'three/webgpu';
-import { createSun, Sun } from '../../render/stars';
+import { createSun, type Sun as SunMesh } from '../../render/stars';
 import { createOutlineCircle, OutlineCircle } from '../../render/outline-circle';
-import { Ephemeris } from '../../physics/ephemeris';
-import { R_SUN } from '../../physics/solar-system';
+import { CelestialMotion, StarMotion } from '../../physics/celestial-motion';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
-import { CelestialView } from './celestial-view';
+import { CelestialEntity } from './celestial-entity';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 
-export class SunView extends CelestialView {
-  readonly id: string;
-  private readonly sun: Sun = createSun();
+export class Sun extends CelestialEntity {
+  private readonly sun: SunMesh = createSun();
   // 模式図で太陽の代わりに出す、実位置・実半径の輪郭円。球のシルエットなので毎フレーム
   // カメラへ正対させる。
   private readonly outline: OutlineCircle = createOutlineCircle();
+  // 広範囲視点での実球体半径 [m]。
+  private readonly radius: number;
 
-  // id は恒星として振る舞う天体の id、radius は広範囲視点での実球体半径 [m]。
-  constructor(id: string = 'sun', private readonly radius: number = R_SUN) {
-    super();
-    this.id = id;
+  constructor(motion: StarMotion, name: string) {
+    super(motion, name, 'star');
+    this.radius = motion.def.radius;
   }
 
   // 実球体・点像・輪郭円をシーンへ一度だけ登録する。
@@ -38,11 +37,11 @@ export class SunView extends CelestialView {
 
   // displayTime 時点の実位置へ恒星を置く。
   sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, _star: CelestialMotion | null,
     graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.sun.visible && !this.outline.line.visible) return;
-    const pos = ephemeris.positionOf(this.id, displayTime);
+    const pos = this.motion.stateAt(displayTime).r;
     const p = fo.RtoThreeV3(pos);
     if (style === 'schematic') {
       this.sun.hide();

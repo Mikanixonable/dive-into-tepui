@@ -33,9 +33,9 @@ import {
 } from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
-import { CelestialView } from './celestial-view';
+import { CelestialEntity } from './celestial-entity';
 import { CELESTIAL_APPEARANCES, fallbackCelestialAppearance } from './celestial-appearance';
-import { EarthView } from './earth-view';
+import { Earth } from './earth';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
 import { OrbitGuideLines } from './orbit-guide-lines';
@@ -119,7 +119,7 @@ export class CelestialSystem {
   private readonly stars: Stars;
   readonly celestialGrid: CelestialGrid;
   private readonly scaleGrid: ScaleGridView;
-  private readonly bodies: readonly CelestialView[];
+  private readonly bodies: readonly CelestialEntity[];
   private readonly nearbyTracker = new NearbySystemTracker();
   // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なので、マップへ入るまで
   // 生成しない。11,200点の軌道要素・mesh・instance bufferをロード時に確保しないため。
@@ -177,13 +177,15 @@ export class CelestialSystem {
     this.celestialGrid = new CelestialGrid(scene);
     this.scaleGrid = new ScaleGridView(scene);
 
-    this.bodies = Object.keys(registry).map((id) =>
-      id in CELESTIAL_APPEARANCES
-        ? CELESTIAL_APPEARANCES[id as SolarSystemId].create(sunOcclusion, sunLight)
-        : fallbackCelestialAppearance(registry, id, sunOcclusion, sunLight));
-    for (const body of this.bodies) body.build(scene);
+    this.bodies = Object.keys(registry).map((id) => {
+      const motion = ephemeris.motionOf(id);
+      return id in CELESTIAL_APPEARANCES
+        ? CELESTIAL_APPEARANCES[id as SolarSystemId].create(motion)
+        : fallbackCelestialAppearance(motion);
+    });
+    for (const body of this.bodies) body.build(scene, sunOcclusion, sunLight);
 
-    this.bodies.find((b): b is EarthView => b instanceof EarthView)?.setSpinPhase0(earthSpinPhase0);
+    this.bodies.find((b): b is Earth => b instanceof Earth)?.setSpinPhase0(earthSpinPhase0);
   }
 
   // 表示時刻 t の点群の位置を更新する。
@@ -208,7 +210,7 @@ export class CelestialSystem {
 
   // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
   earthSpinPhase0(): number | undefined {
-    const earth = this.bodies.find((b): b is EarthView => b instanceof EarthView);
+    const earth = this.bodies.find((b): b is Earth => b instanceof Earth);
     return earth?.spinPhase0();
   }
 
@@ -236,22 +238,22 @@ export class CelestialSystem {
         nearbyIds,
       )
       : null;
+    const starId = this.ephemeris.starId;
+    const star = starId === null ? null : this.ephemeris.motionOf(starId);
     for (const body of this.bodies) {
       body.setVisible(!cameraSystem.overviewMode || visibilityPolicy!.body(body.id).category);
-      body.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, graphics, style);
+      body.sync(floatingOrigin, displayTime, cameraSystem, star, graphics, style);
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。
-    const starId = this.ephemeris.starId;
-    const star = starId === null ? null : bodyDef(this.ephemeris.registry, starId);
-    const sunPos = starId === null
+    const sunPos = star === null
       ? this.toThreeNormal(this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
-      : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
+      : floatingOrigin.RtoThreeV3(star.stateAt(displayTime).r);
     // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
     this.exposure.setReference(reference, sunPos);
-    this.sunLight.set(sunPos, star?.radius ?? 0, SUN_COLOR, SUN_RADIANT_INTENSITY);
+    this.sunLight.set(sunPos, star === null ? 0 : star.def.radius, SUN_COLOR, SUN_RADIANT_INTENSITY);
     this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);

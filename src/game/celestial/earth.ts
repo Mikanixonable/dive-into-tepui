@@ -1,19 +1,22 @@
 // 地球本体の見た目: 位置・自転角・太陽方向・表面アニメーションを表示時刻に同期する。
 import * as THREE from 'three/webgpu';
-import { createEarth, Earth } from '../../render/earth';
-import { Ephemeris } from '../../physics/ephemeris';
+import { createEarth, type Earth as EarthMesh } from '../../render/earth';
+import { CelestialMotion, PlanetMotion } from '../../physics/celestial-motion';
 import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
-import { CelestialView } from './celestial-view';
+import { CelestialEntity } from './celestial-entity';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 
-export class EarthView extends CelestialView {
-  readonly id = 'earth' as const;
-  private readonly earth: Earth = createEarth();
+export class Earth extends CelestialEntity {
+  private readonly earth: EarthMesh = createEarth();
   // 自転初期位相 [rad]。値は外から与えられる。
   private phase0 = 0;
+
+  constructor(motion: PlanetMotion, name: string) {
+    super(motion, name, 'planet');
+  }
 
   // 地球メッシュをシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
@@ -32,11 +35,11 @@ export class EarthView extends CelestialView {
 
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーション・地表LODへ同期する。
   sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, _star: CelestialMotion | null,
     graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.earth.group.visible) return;
-    const pos = ephemeris.positionOf('earth', displayTime);
+    const pos = this.motion.stateAt(displayTime).r;
     this.earth.group.position.copy(fo.RtoThreeV3(pos));
     this.earth.setRotation(this.phase0 + (2 * Math.PI * displayTime) / SIDEREAL_DAY);
     const metersPerPixel = cameraSystem.activeCameraScale(pos);
