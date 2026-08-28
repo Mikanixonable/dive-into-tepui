@@ -97,7 +97,7 @@ export class Targeter {
       mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
     };
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .updateOnEllipse(displayWindow.displayTime, celestialSystem.ephemeris, frameAnchors, timeLabel);
+      .updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から

@@ -23,7 +23,7 @@ import { TrajectoryLine } from '../lines/trajectory-line';
 import type { OrbitReference } from '../orbit-reference';
 import { LineStyle } from '../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../simulation/time-step';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
@@ -255,11 +255,11 @@ export class GameEntity {
   // ターゲットを指すのは戦闘ビューだけ(EntityLineManager がマップビューでは orbitRef を渡さない)
   // ので、context.orbitRef の有無だけで戦闘ビュー/マップビューを判別できる。
   syncOrbitLine(
-    displayTime: number, ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera,
+    displayTime: number, celestialSystem: CelestialSystem, fo: FloatingOrigin, camera: THREE.Camera,
     frameAnchors: FrameAnchorSource, orbitRef: OrbitReference | undefined,
   ): void {
     if (this.orbitLine === null && this.relativeOrbitLine === null) return;
-    const state = this.displayState(displayTime, ephemeris);
+    const state = this.displayState(displayTime, celestialSystem);
     if (state === null) {
       // 表示時刻の状態が求まらない: 両方隠す。
       this.hideOrbitEllipse(fo, camera);
@@ -275,7 +275,7 @@ export class GameEntity {
         this.scene?.add(line.line);
         this.relativeOrbitLine = line;
       }
-      const targetPos = relativeTarget.displayState(displayTime, ephemeris)?.r ?? relativeTarget.state.r;
+      const targetPos = relativeTarget.displayState(displayTime, celestialSystem)?.r ?? relativeTarget.state.r;
       this.relativeOrbitLine?.sync(state.r, targetPos, fo, camera);
       return;
     }
@@ -336,18 +336,18 @@ export class GameEntity {
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLines(
     frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number, predictedTo: number | null,
-    ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource,
+    celestialSystem: CelestialSystem, fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource,
   ): void {
     if (this.predictedLine !== null) {
-      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, ephemeris, frameAnchors);
-      this.predictedLine.syncTransform(frame, displayTime, ephemeris, fo, frameAnchors);
+      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, celestialSystem, frameAnchors);
+      this.predictedLine.syncTransform(frame, displayTime, celestialSystem, fo, frameAnchors);
       this.predictedLine.sync(camera);
     }
     if (this.actualLine !== null) {
       this.actualLine.syncGeometry(
-        this.actual, simTime - pastDuration, simTime, frame, ephemeris, frameAnchors,
+        this.actual, simTime - pastDuration, simTime, frame, celestialSystem, frameAnchors,
       );
-      this.actualLine.syncTransform(frame, displayTime, ephemeris, fo, frameAnchors);
+      this.actualLine.syncTransform(frame, displayTime, celestialSystem, fo, frameAnchors);
       this.actualLine.sync(camera);
     }
   }
@@ -514,10 +514,10 @@ export class GameEntity {
     return true;
   }
 
-  // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。ephemeris を渡すと、
+  // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。celestialSystem を渡すと、
   // 予測列で答えられない未来時刻を、先端を中心天体まわりの二体軌道とみなして外挿した値で
   // 答える(外挿もできなければ null)。
-  displayState(t: number, ephemeris?: Ephemeris): KinematicState | null {
+  displayState(t: number, celestialSystem?: CelestialSystem): KinematicState | null {
     if (t <= this.actual.state.t) {
       const past = this.actual.at(t);
       if (past !== null) return past;
@@ -528,9 +528,9 @@ export class GameEntity {
     }
     const predicted = this.predicted;
     const normal = predicted?.at(t) ?? null;
-    if (normal !== null || ephemeris === undefined) return normal;
+    if (normal !== null || celestialSystem === undefined) return normal;
     if (predicted === null || this.predictionTruncated || predicted.extrapolationCenter === null) return null;
-    return predicted.extrapolatedAt(t, ephemeris.stateOf(predicted.extrapolationCenter.id, t));
+    return predicted.extrapolatedAt(t, celestialSystem.bodyOf(predicted.extrapolationCenter.id).motion.stateAt(t));
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。

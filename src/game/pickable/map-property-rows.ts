@@ -45,7 +45,7 @@ export class MapPropertyRows {
   // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。軌道上の実体種別間で共通化する。
   // 「軌道」グループにまとめ、ウィンドウ先頭の折り畳みセクションへ描かれる。
   private orbitRows(entity: GameEntity, celestialBodies: readonly CelestialBody[]): PropertyRow[] {
-    const oi = orbitInfo(entity, autoOrbitReference(entity.state.r, celestialBodies));
+    const oi = orbitInfo(entity, autoOrbitReference(entity.state.r, celestialBodies), (id) => this.celestialSystem.nameOf(id));
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);
     const group = '軌道';

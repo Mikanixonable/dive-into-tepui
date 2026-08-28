@@ -6,7 +6,6 @@ import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../ph
 import { CelestialBody, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
 import type { LagrangePoints } from '../physics/lagrange';
 import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
-import type { Ephemeris } from '../physics/ephemeris';
 import { OrbitingMotion, type CelestialMotion } from '../physics/celestial-motion';
 import { qRotate } from '../physics/attitude';
 import { goldenSectionMin } from '../math/optimize';
@@ -175,7 +174,7 @@ export class NavTarget {
   // 月周回では通過までの時間ぶん位置がずれる。位置は通過時刻で bake し、displayWindow の
   // 表示時刻で un-bake して描画座標系へ移す。
   update(
-    player: Player | null, entities: EntityManager, ephemeris: Ephemeris, displayWindow: DisplayWindow,
+    player: Player | null, entities: EntityManager, celestialSystem: CelestialSystem, displayWindow: DisplayWindow,
     frameAnchors: FrameAnchorSource,
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
@@ -191,18 +190,18 @@ export class NavTarget {
     const target = entities.findAliveCombatTarget(this.targetId);
     this.setReaderEntity(target);
     const timeLabel = { mode: this.labelMode, show: this.showElementTimes, nowSimTime: simTime };
-    target?.ensureEquatorNodes(this.markerManager).updateOnEllipse(displayTime, ephemeris, frameAnchors, timeLabel);
+    target?.ensureEquatorNodes(this.markerManager).updateOnEllipse(displayTime, celestialSystem, frameAnchors, timeLabel);
     if (!player) return;
-    const stateCelestialBodies = ephemeris.celestialBodiesAt(simTime);
+    const stateCelestialBodies = celestialSystem.celestialBodiesAt(simTime);
     const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies);
-    const unbakeTf = ephemeris.frameTransformAt(frame, displayTime, frameAnchors);
+    const unbakeTf = celestialSystem.frames.transformAt(frame, displayTime, frameAnchors);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      unbakeToDisplayPoint(unbakeTf, ephemeris.frameTransformAt(frame, t, frameAnchors), r);
+      unbakeToDisplayPoint(unbakeTf, celestialSystem.frames.transformAt(frame, t, frameAnchors), r);
 
     // 再接近点は AN/DN(軌道面が定まる必要がある)とは独立した条件 — 同じ中心天体さえ
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
     if (target && strongestAttractor(target.state.r, stateCelestialBodies).id === playerCenter.id) {
-      const found = findClosestApproach(player, target, ephemeris.motionOf(playerCenter.id), simTime);
+      const found = findClosestApproach(player, target, celestialSystem.bodyOf(playerCenter.id).motion, simTime);
       if (found) {
         this.closestPos = toDisplay(found.pos, found.t);
         this.closestTime = found.t;
@@ -212,7 +211,7 @@ export class NavTarget {
     const playerEl = player.orbitalElementsAround(playerCenter);
     if (!playerEl) return;
 
-    const targetHat = this.resolvePlaneNormal(this.targetId, entities, ephemeris, simTime);
+    const targetHat = this.resolvePlaneNormal(this.targetId, entities, celestialSystem, simTime);
     if (!targetHat) return;
 
     const nodes = nodeAnomalies(playerEl, targetHat);
@@ -222,8 +221,8 @@ export class NavTarget {
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
-    const anEci = add(ephemeris.positionOf(playerCenter.id, anT), positionOnOrbit(playerEl, nodes.asc));
-    const dnEci = add(ephemeris.positionOf(playerCenter.id, dnT), positionOnOrbit(playerEl, nodes.desc));
+    const anEci = add(celestialSystem.bodyOf(playerCenter.id).motion.stateAt(anT).r, positionOnOrbit(playerEl, nodes.asc));
+    const dnEci = add(celestialSystem.bodyOf(playerCenter.id).motion.stateAt(dnT).r, positionOnOrbit(playerEl, nodes.desc));
     this.anPos = toDisplay(anEci, anT);
     this.dnPos = toDisplay(dnEci, dnT);
     this.anTime = anT;
@@ -261,33 +260,34 @@ export class NavTarget {
     const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
     return {
-      id, state: entity.displayState(t, celestialSystem.ephemeris) ?? entity.state, hasMass: false,
+      id, state: entity.displayState(t, celestialSystem) ?? entity.state, hasMass: false,
       attractor: null, entity, fixed: true,
     };
   }
 
   // id がターゲットになれる(軌道面が定まる)かどうか。
-  canTarget(id: string, entities: EntityManager, ephemeris: Ephemeris, t: number): boolean {
-    return this.resolvePlaneNormal(id, entities, ephemeris, t) !== null;
+  canTarget(id: string, entities: EntityManager, celestialSystem: CelestialSystem, t: number): boolean {
+    return this.resolvePlaneNormal(id, entities, celestialSystem, t) !== null;
   }
 
   // id から対象の軌道面法線を求める。船・基地は自身の軌道要素、公転している天体(惑星・衛星)
   // はその公転面法線、ラグランジュ点(`${副天体}-l${n}`)は副天体の公転面法線を使う。
   // 面が定まらない対象(恒星、および軌道要素の無い天体・存在しない船)は null。
-  private resolvePlaneNormal(id: string, entities: EntityManager, ephemeris: Ephemeris, t: number): Vec3 | null {
-    const registry = ephemeris.registry;
-    if (id in registry && ephemeris.motionOf(id).kind !== 'star') {
-      return ephemeris.orbitNormalAt(id, t);
+  private resolvePlaneNormal(id: string, entities: EntityManager, celestialSystem: CelestialSystem, t: number): Vec3 | null {
+    const idMotion = celestialSystem.find(id)?.motion;
+    if (idMotion instanceof OrbitingMotion) {
+      return idMotion.orbitNormalAt(t);
     }
     // 副天体がレジストリに実在する公転天体のときだけラグランジュ点として解釈する。そうしないと
     // 同じ形の名前を持つ船が天体として誤って解決される。
     const secondary = /^(.+)-l[1-5]$/.exec(id)?.[1];
-    if (secondary !== undefined && secondary in registry && ephemeris.motionOf(secondary).kind !== 'star') {
-      return qRotate(ephemeris.orbitFrameRotationAt(secondary, t).q, Z_HAT);
+    const secondaryMotion = secondary === undefined ? undefined : celestialSystem.find(secondary)?.motion;
+    if (secondaryMotion instanceof OrbitingMotion) {
+      return qRotate(secondaryMotion.orbitFrameRotationAt(t).q, Z_HAT);
     }
     const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
-    const center = strongestAttractor(entity.state.r, ephemeris.celestialBodiesAt(t));
+    const center = strongestAttractor(entity.state.r, celestialSystem.celestialBodiesAt(t));
     return entity.orbitalElementsAround(center)?.hHat ?? null;
   }
 
