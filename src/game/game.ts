@@ -50,7 +50,6 @@ import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 import { CombatHudController, MapHudController } from './hud/view-hud-controller';
 import { focusTargetId } from './camera/focus-target';
-import { celestialBodyName } from './hud/frame/frame-labels';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -124,15 +123,16 @@ export class Game {
     pauseMenu: PauseMenu,
     unlockManager: UnlockManager,
     sections: FrameSections,
-    ephemeris: Ephemeris,
+    celestialSystem: CelestialSystem,
     pipeline: RenderPipeline,
-    earthSpinPhase0: number,
     initialSave?: GameSaveData,
     initialSimTime?: number,
   ) {
     this.sections = sections;
     this._scene = gs.scene;
     this.pipeline = pipeline;
+    this._celestialSystem = celestialSystem;
+    const ephemeris = celestialSystem.ephemeris;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -167,9 +167,9 @@ export class Game {
     );
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.entities);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
-    this._celestialSystem = new CelestialSystem(
-      this._scene, ephemeris, pipeline.sunLight, pipeline.exposure,
-      pipeline.sunOcclusion, pipeline.planetLight, pipeline.ambient, pipeline.atmosphere, earthSpinPhase0);
+    this._celestialSystem.build(
+      this._scene, pipeline.sunLight, pipeline.exposure,
+      pipeline.sunOcclusion, pipeline.planetLight, pipeline.ambient, pipeline.atmosphere);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
     this._celestialSystem.setOrbitGuideSettings(this.navball.orbitGuideSettings);
     // 線が増えすぎたときの警告を UI へ戻す。
@@ -331,7 +331,7 @@ export class Game {
     const canDisplayFuture = !this.displayWindowManager.forceCurrent;
     // このフレームの表示時刻の celestialBodies を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
-    this.frameAnchors.update(this.ephemeris.celestialBodiesAt(displayWindow.displayTime));
+    this.frameAnchors.update(this.celestialSystem.celestialBodiesAt(displayWindow.displayTime));
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._celestialSystem.update(displayWindow.displayTime, overviewMode, graphics);
     this.sections.enter(SECTION.plan);
@@ -497,8 +497,7 @@ export class Game {
     if (pickable) return pickable.name;
     const entity = this.entities.all().find((item) => item.id === id);
     if (entity) return entity.name;
-    if (id in this.ephemeris.registry) return celestialBodyName(id);
-    return id;
+    return this.celestialSystem.nameOf(id);
   }
 
   private viewBadgeContext(): ViewBadgeContext {
@@ -523,8 +522,8 @@ export class Game {
     // 現在時刻の配列は「いまの状態」を数値で読ませる HUD・プロパティ行が使い、表示時刻の配列は
     // 画面に描く幾何(軌道線・折れ線・天体位置)が使う — 天体メッシュは displayTime に置かれるので、
     // 楕円の中心天体位置や折れ線の un-bake を simTime で取ると同一画面上でずれる。
-    const celestialBodies = this.ephemeris.celestialBodiesAt(simTime);
-    const displayCelestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
+    const celestialBodies = this.celestialSystem.celestialBodiesAt(simTime);
+    const displayCelestialBodies = this.celestialSystem.celestialBodiesAt(displayTime);
     // sync フェーズの frameTransformAt 呼び出しも同じ表示時刻の celestialBodies を見るように揃える。
     this.frameAnchors.update(displayCelestialBodies);
 
@@ -636,7 +635,7 @@ export class Game {
       ...this.predictor.perfCounts(),
       ...this.simulator.perfCounts(),
       ...this.editor.perfCounts(),
-      ...this.ephemeris.perfCounts(),
+      ...this.celestialSystem.perfCounts(),
       ...this.mapPickables.perfCounts(),
       displayDurationSec: this.displayWindowManager.current.duration,
       warp: this.simSpeedManager.simSpeed,
