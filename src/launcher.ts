@@ -206,11 +206,14 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       .finally(() => { this.transitioning = false; });
   }
 
-  // 選択画面を出し直し、選ばれたステージで作り直す。
+  // 選択画面を出し直し、選ばれたステージで作り直す。noteRunEnded で「直前に遊んでいたステージ」を
+  // クリアし、リロード時の復元(resolveStage)がタイトル画面へフォールバックできるようにする。
   returnToTitle(): void {
     if (this.transitioning) return;
     this.transitioning = true;
     this.endRun();
+    const activeSlotId = this.slots.activeSlotId;
+    if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
     this.selectStageScreen()
       .then(({ stageClass, startSimTime }) => this.startRun(stageClass, undefined, startSimTime))
       .catch((err) => this.fail(err))

@@ -5,22 +5,10 @@ import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../widgets';
 import { celestialBodyName, frameRoleName, rotationSourceLabel } from './frame-labels';
-import { hudRail } from '../hud-root';
 import type { MapPickable } from '../../map-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../overlay-manager';
-
-function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
-  const panel = document.createElement('div');
-  panel.id = id;
-  panel.className = 'panel hidden hud-frame-controls';
-  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-  const title = document.createElement('h3');
-  title.textContent = titleText;
-  panel.appendChild(title);
-  hudRail(root, 'left').appendChild(panel);
-  return panel;
-}
+import { buildPanel } from './frame-controls';
 
 export class TrajectoryFramePanel {
   private readonly panel: HTMLElement;
@@ -31,6 +19,7 @@ export class TrajectoryFramePanel {
 
   public followCamera = true;
 
+  // panelRoot はパネル自身の設置先、popupRoot は AnchorZone のポップアップの親。
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
@@ -66,6 +55,7 @@ export class TrajectoryFramePanel {
     this.panel.appendChild(this.orbitSummary);
   }
 
+  // パネル下部に表示するサマリ行の文字列を組み立てる。
   private orbitSummaryText(): string {
     const centerId = this.displayWindow.frame.center;
     const centerRole = frameRoleOf(centerId);
@@ -74,6 +64,7 @@ export class TrajectoryFramePanel {
     return `基準: ${planCenter}・${rotationSourceLabel(planRot)}`;
   }
 
+  // パネルの表示と各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。
   public sync(
     pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
     validRoles: readonly FrameRole[], isVisible: boolean,
@@ -91,6 +82,7 @@ export class TrajectoryFramePanel {
     this.orbitSummary.textContent = this.orbitSummaryText();
   }
 
+  // 保持しているゾーンとパネル要素を片付ける。
   public dispose(): void {
     this.planCenterZone.dispose();
     this.panel.remove();

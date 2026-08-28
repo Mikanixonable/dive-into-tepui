@@ -170,10 +170,18 @@ export class MapPickables {
     const viewer = this.activePlayers.current?.state;
     if (viewer) for (const item of this.candidateItems) {
       const d = len(sub(item.pos, viewer.r));
-      // 相対速度は対の速度を持つ敵艦にだけ意味がある。
-      const status = item.kind === 'ship' ? `${d < 2e5 ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${d <= C.AMMO_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'fuel' ? `${fmtDist(d)}${d <= C.RCS_FUEL_PICKUP_RADIUS ? ' · 回収可能' : ''}` : item.kind === 'base' ? `${fmtDist(d)} · ドック候補` : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, displayCelestialBodies).id)}` : item.detail;
+      const approaching = item.kind === 'ship' ? d < 2e5 : undefined;
+      const collectable = item.kind === 'ammo' ? d <= C.AMMO_PICKUP_RADIUS
+        : item.kind === 'fuel' ? d <= C.RCS_FUEL_PICKUP_RADIUS
+          : undefined;
+      // 相対速度は対の速度を持つ敵艦にだけ意味がある。天体の detail は一覧の行には表示されないが、
+      // PhysicalObjectListOrder.matches() の検索が「名前・補助表示文字列」として読む
+      // (DEVELOP/SPEC/MAP.md §10)ため、他種別と同じく組み立てておく。
+      const status = item.kind === 'ship' ? `${approaching ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'fuel' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'base' ? fmtDist(d) : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, displayCelestialBodies).id)}` : item.detail;
       item.detail = status;
       item.distance = d;
+      item.approaching = approaching;
+      item.collectable = collectable;
       // 所属系は天体以外にしか意味を持たない(天体は系そのものを表す行として常に一覧へ出す)。
       // 判定は最強天体から親を辿るぶん高価なので、読まれない天体候補では省く。
       item.inFocusedSystem = item.kind === 'body'
@@ -230,6 +238,8 @@ export class MapPickables {
     item.detail = detail;
     item.distance = undefined;
     item.distanceFromStar = undefined;
+    item.approaching = undefined;
+    item.collectable = undefined;
     item.priority = priority;
     item.time = time;
     item.inFocusedSystem = undefined;

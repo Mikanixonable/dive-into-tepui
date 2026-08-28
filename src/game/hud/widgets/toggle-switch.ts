@@ -2,12 +2,12 @@
 import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-base';
 
 export class ToggleSwitch {
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
   private readonly track: HTMLElement;
   private on = false;
 
   // title は見出し。onChange は切り替わった後の値で呼ばれる。
-  constructor(title: string, onChange: (on: boolean) => void) {
+  public constructor(title: string, onChange: (on: boolean) => void) {
     this.element = document.createElement('div');
     this.element.className = 'w-toggle';
     const heading = document.createElement('span');
@@ -33,8 +33,8 @@ export class ToggleSwitch {
     this.element.appendChild(this.track);
   }
 
-  // 表示状態を設定する(onChange は呼ばれない)。
-  setOn(on: boolean): void {
+  // 表示状態を外部状態に合わせて設定する。
+  public setOn(on: boolean): void {
     this.on = on;
     this.track.classList.toggle('on', on);
     this.track.setAttribute('aria-checked', String(on));

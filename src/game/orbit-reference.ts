@@ -4,6 +4,7 @@ import { CelestialBody, strongestAttractor } from '../physics/celestial-body';
 import type { Ephemeris } from '../physics/ephemeris';
 import { KinematicState } from '../physics/kinematic-state';
 import type { Vec3 } from '../physics/vec3';
+import type { GameEntity } from './game-entity/game-entity';
 import type { NavTarget } from './nav-target';
 import type { EntityManager } from './simulation/entity-manager';
 
@@ -14,13 +15,18 @@ export interface OrbitReference {
   readonly state: KinematicState;
   readonly hasMass: boolean; // false なら重力中心ではなく、apsis/傾斜角/周期は意味を持たない
   readonly attractor: CelestialBody | null; // hasMass のときだけ非null。mu/radius を要る軌道要素解決に使う
+  readonly entity: GameEntity | null; // hasMass=false かつ対象が艦・基地のときだけ非null
+  // 自動選択(auto)ではなく、地球・月・ターゲットのいずれかに明示的に固定されているか。
+  // 固定中は、各エンティティの軌道線もこの基準に従う(自身にとっての strongestAttractor を
+  // 使わない)。ターゲット未設定・解決不能で自動選択にフォールバックした場合は false。
+  readonly fixed: boolean;
 }
 
 // 常に strongestAttractor で基準を選ぶ(切替不可の場面向け)。プロパティウィンドウの
 // 「軌道」欄など、常設パネルの基準選択とは独立に軌道要素を出す場所が使う。
 export function autoOrbitReference(r: Vec3, celestialBodies: readonly CelestialBody[]): OrbitReference {
   const center = strongestAttractor(r, celestialBodies);
-  return { id: center.id, state: center.state, hasMass: true, attractor: center };
+  return { id: center.id, state: center.state, hasMass: true, attractor: center, entity: null, fixed: false };
 }
 
 export class OrbitReferenceSelector {
@@ -42,7 +48,7 @@ export class OrbitReferenceSelector {
   ): OrbitReference {
     if (this.mode === 'earth' || this.mode === 'moon') {
       const found = celestialBodies.find((a) => a.id === this.mode);
-      if (found) return { id: found.id, state: found.state, hasMass: true, attractor: found };
+      if (found) return { id: found.id, state: found.state, hasMass: true, attractor: found, entity: null, fixed: true };
     } else if (this.mode === 'target') {
       const resolved = navTarget.resolveState(entities, ephemeris, celestialBodies, t);
       if (resolved) return resolved;
