@@ -13,7 +13,7 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../camera/floating-origin';
-import { TrajectoryLine } from '../trajectory-line';
+import { TrajectoryLine } from '../lines/trajectory-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';

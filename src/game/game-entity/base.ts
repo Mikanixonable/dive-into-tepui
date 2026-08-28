@@ -14,7 +14,7 @@ import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
-import type { BaseSaveData } from '../save-data';
+import type { BaseSaveData } from '../save/save-data';
 import { Plan } from '../plan/plan';
 import type { PlanExecutionMode } from '../player/player';
 import { generateRandomName } from '../random-name';

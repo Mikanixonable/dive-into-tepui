@@ -4,7 +4,7 @@ import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
 import type { Player } from '../player/player';
 import { EntityIdAllocator } from '../game-entity/entity-id';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { SimSpeedManager } from '../sim-speed-manager';
+import type { SimSpeedManager } from '../simulation/sim-speed-manager';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
@@ -28,10 +28,10 @@ import { ElementsForm, LagrangeForm, ObjectType, ReferenceCelestialBody, ObjectP
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { STAGE_CONTROL_ENEMY_SHAPES, StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
-import { OrbitLine } from '../orbit-line';
+import { OrbitLine } from '../lines/orbit-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
-import type { CreativeStageSaveData, StageSaveData } from '../save-data';
+import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 
 const DEG = Math.PI / 180;
 

@@ -6,7 +6,7 @@ import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { PlanEditor } from './plan/plan-editor';
 import { DisplayWindowManager } from './display-window-manager';
-import { MapContextActions } from './map-context-actions';
+import { MapContextActions } from './pickable/map-context-actions';
 import type { ActiveControllableController } from './active-controllable-controller';
 import { setPanelCollapsedView } from './hud/panel-shell';
 import type { Base } from './game-entity/base';
