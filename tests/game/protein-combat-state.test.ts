@@ -347,7 +347,8 @@ export function register(): void {
   test('protein runtime: visual motion preserves the physics root pose and cycles attack origins', () => {
     const root = new THREE.Group();
     root.position.set(11, -7, 3);
-    root.rotation.z = 0.47;
+    const rootRollBeforeRebuild = 0.47;
+    root.rotation.z = rootRollBeforeRebuild;
     root.rotation.x = -0.21;
     root.scale.setScalar(3);
     const tagged = new THREE.Group();
@@ -399,7 +400,7 @@ export function register(): void {
     runtime.rebuildVisuals();
     runtime.updateVisual(12.5);
     assert.ok(Array.from(runtime.motionBinding.coefficients.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
-    assert.equal(root.rotation.z, 0.47);
+    assert.equal(root.rotation.z, rootRollBeforeRebuild);
     runtime.dispose();
   });
 

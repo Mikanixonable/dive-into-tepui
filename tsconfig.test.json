@@ -22,7 +22,6 @@
     "src/physics/atmosphere.ts",
     "src/physics/ephemeris.ts",
     "src/game/plan/plan.ts",
-    "src/game/hud/layout.ts",
     "src/game/protein/protein-schema.ts",
     "src/game/protein/protein-combat-state.ts",
     "src/game/game-entity/contact-damage.ts",

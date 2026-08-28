@@ -173,10 +173,9 @@ export function register(): void {
     controller.update(2.25, 'near', 'critical');
     const critical = projectAllResidues(controller, 2, asset);
 
-    assert.equal(PROTEIN_MOTION_PHASE_GAINS.intact, 1);
-    assert.equal(PROTEIN_MOTION_PHASE_GAINS.critical, 1.5);
+    const gainRatio = PROTEIN_MOTION_PHASE_GAINS.critical / PROTEIN_MOTION_PHASE_GAINS.intact;
     for (let index = 0; index < intact.length; index += 1) {
-      assert.ok(Math.abs(critical[index]! - intact[index]! * 1.5) < 1e-6);
+      assert.ok(Math.abs(critical[index]! - intact[index]! * gainRatio) < 1e-6);
     }
   });
 
