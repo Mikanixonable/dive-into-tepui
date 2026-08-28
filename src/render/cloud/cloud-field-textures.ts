@@ -4,7 +4,8 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mrt, screenUV, vec4 } from 'three/tsl';
 import { directionFromEquirectUv } from './sphere-frame';
-import { SLAB_COUNT, type WeatherModel } from './weather-model';
+import { condense, SLAB_COUNT } from './condensation';
+import type { WeatherModel } from './weather-model';
 import type { FloatNode } from '../tsl-types';
 
 // 写しの解像度 [texel]。正距円筒なので幅は高さの 2 倍。
@@ -33,7 +34,7 @@ export class CloudFieldTextures {
     }
 
     // texel ごとに単位方向へ写し、そこでの雲を 3 枚へ振り分ける。
-    const cloud = model.condense(model.weatherAt(directionFromEquirectUv(screenUV)));
+    const cloud = condense(model.weatherAt(directionFromEquirectUv(screenUV)));
     if (cloud.slabs.length !== SLAB_COUNT) throw new Error(`cloud slabs must be ${SLAB_COUNT}`);
     const slab = (k: number): FloatNode => cloud.slabs[k]!;
     this.material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });

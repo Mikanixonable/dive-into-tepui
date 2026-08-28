@@ -59,6 +59,7 @@ export class ClimateMap {
     return texture(this.map, equirectUvFromDirection(direction));
   }
 
+  // 保持しているテクスチャを解放する。
   public dispose(): void {
     this.map.dispose();
   }

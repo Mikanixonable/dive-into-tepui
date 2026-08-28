@@ -40,6 +40,7 @@ export class CloudLabView {
   private constructor(private readonly renderer: WebGPURenderer, climate: ClimateMap) {
     const model = new WeatherModel(climate);
     this.fields = new CloudFieldTextures(model);
+    // ビューごとに別のマテリアル。選ばれた 1 つだけがコンパイルされる。
     const materials = new Map<CloudLabViewId, THREE.MeshBasicNodeMaterial>();
     for (const view of CLOUD_LAB_VIEWS) {
       const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
