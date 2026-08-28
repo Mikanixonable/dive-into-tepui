@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
 import { qRotate, type Attitude } from '../../physics/attitude';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { add, scale, v3 } from '../../physics/vec3';
-import type { FloatingOrigin } from '../floating-origin';
+import { add, scale, v3 } from '../../math/vec3';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CameraSystem } from '../camera/camera-system';
-import type { DetachedBoosterSaveData } from '../save-data';
+import type { DetachedBoosterSaveData } from '../save/save-data';
 import * as C from '../const';
 import {
   BoosterStack,
@@ -20,6 +20,8 @@ import {
 } from '../../render/booster';
 import { GameEntity } from './game-entity';
 import type { RenderStyle } from '../../render/render-style';
+
+const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
 
 export type DetachedBoosterInit =
   | {
@@ -84,7 +86,7 @@ export class DetachedBooster extends GameEntity {
       ? (init.saved.collisionEnableAt ?? init.simTime)
       : init.collisionEnableAt;
     this.name = '分離ブースター';
-    this.radius = C.BOOSTER_COLLISION_RADIUS;
+    this.radius = BOOSTER_COLLISION_RADIUS;
     this.contactDamageWeight = 0.35;
     this.doPreciseReentry = true;
     this.refreshMass();

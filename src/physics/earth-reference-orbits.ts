@@ -5,7 +5,7 @@ import type { CelestialBody } from './celestial-body';
 import { kinematicState } from './kinematic-state';
 import { orbitalElementsFromClassical, OrbitalElements } from './elements';
 import { J2_EARTH, MU_EARTH, R_EARTH_EQ, SIDEREAL_DAY } from './solar-system';
-import { v3 } from './vec3';
+import { v3 } from '../math/vec3';
 
 const EARTH: CelestialBody = {
   id: 'earth', mu: MU_EARTH, radius: R_EARTH_EQ,
@@ -26,6 +26,7 @@ function sunSynchronousElements(
 ): OrbitalElements | null {
   const n = (revsPerRepeat * 2 * Math.PI) / (repeatDays * 86400);
   const a = Math.cbrt(EARTH.mu / (n * n));
+  if (a <= EARTH.radius) return null; // 解の高度が地表以下(地球に埋まる非物理的な解)。
   const sunRate = (2 * Math.PI) / TROPICAL_YEAR_SEC;
   const precessionPerRad = -1.5 * n * J2_EARTH * (EARTH.radius / a) ** 2;
   const cosInc = sunRate / precessionPerRad;
@@ -33,6 +34,19 @@ function sunSynchronousElements(
   const incDeg = (Math.acos(cosInc) * 180) / Math.PI;
   return orbitalElementsFromClassical(a, 0, incDeg, raanOffsetDeg, 0, EARTH);
 }
+
+// sunSynchronousElements が null を返す2つの境界(cosInc=-1・a=地球半径)を、それぞれ平均運動 n
+// について解いた閉形式。repeatDays・revsPerRepeat 個々の値ではなく、その比(1日あたり周回数)
+// だけで決まるので定数になる。HUD がスライダーの有効域を示すのに使う。
+export const SUN_SYNC_REVS_PER_DAY_RANGE: { readonly min: number; readonly max: number } = (() => {
+  const sunRate = (2 * Math.PI) / TROPICAL_YEAR_SEC;
+  // cosInc = -1(太陽同期条件の下限)。
+  const nMin = ((sunRate * EARTH.mu ** (2 / 3)) / (1.5 * J2_EARTH * EARTH.radius ** 2)) ** (3 / 7);
+  // a = EARTH.radius(解の高度が地表に一致する上限)。
+  const nMax = Math.sqrt(EARTH.mu / EARTH.radius ** 3);
+  const revPerDay = (n: number) => (n * 86400) / (2 * Math.PI);
+  return { min: revPerDay(nMin), max: revPerDay(nMax) };
+})();
 
 // 太陽同期準回帰軌道。昇交点の絶対位置はガイド線の形に影響しないので 0° に固定する。
 export function sunSyncRepeatGroundTrackElements(repeatDays: number, revsPerRepeat: number): OrbitalElements | null {
@@ -46,7 +60,7 @@ export type LocalTime = 'dawn' | 'dusk';
 export function dawnDuskElements(
   repeatDays: number, revsPerRepeat: number, localTime: LocalTime, sunRaanDeg: number,
 ): OrbitalElements | null {
-  return sunSynchronousElements(repeatDays, revsPerRepeat, sunRaanDeg + (localTime === 'dawn' ? 90 : -90));
+  return sunSynchronousElements(repeatDays, revsPerRepeat, sunRaanDeg + (localTime === 'dawn' ? -90 : 90));
 }
 
 // 傾斜角・近地点引数を臨界値(63.4°・270°)に固定し、周期 period から長半径を、近地点高度から

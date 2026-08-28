@@ -1,13 +1,13 @@
 // 木星の不規則衛星6つとネレイドの回帰テスト: JPL 公開値との公転周期の一致、逆行の符号、
 // 歳差なし(satelliteOrbit の 0 変換)、およびネレイド(高離心率)のケプラー往復精度。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
-import { cross, dot, len, scale, sub } from '../../src/physics/vec3';
+import { cross, dot, len, scale, sub } from '../../src/math/vec3';
 
 // テスト対象の id が衛星であることを前提に軌道モデルを取り出す。
 function satelliteOrbitOf(id: string): SatelliteOrbit {

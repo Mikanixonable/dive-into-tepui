@@ -16,13 +16,22 @@ import type { OrbitingId } from '../../physics/celestial-body';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { Ephemeris } from '../../physics/ephemeris';
-import * as C from '../const';
+import type { ObjectType } from '../random-name';
 import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, sunSyncInclinationDeg } from './orbit-form-fields';
+
+// ラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
+// 副天体ごとに主天体との距離が3桁近く違うため、妥当なオーダーを副天体ごとに別々に持つ。
+const HALO_AX_MOON_KM = 8000;
+const HALO_AZ_MOON_KM = 5000;
+const HALO_AX_EARTH_KM = 200000;
+const HALO_AZ_EARTH_KM = 120000;
+const HALO_AX_JUPITER_KM = 7000000;
+const HALO_AZ_JUPITER_KM = 4000000;
 import {
   SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
 } from './slider-field';
 
-export type ObjectType = 'player' | 'enemy' | 'ammo' | 'fuel' | 'base';
+export type { ObjectType };
 export type ReferenceCelestialBody = CelestialBodyId;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'lagrange';
@@ -102,15 +111,15 @@ const LAGRANGE_ORBIT_KIND_ITEMS: readonly (readonly [LagrangeOrbitKind, string])
 // 副天体ごとに妥当なオーダーへ面内/面外振幅の既定値を切り替える(系ごとに主天体間距離が
 // 桁違いなため)。
 const LAGRANGE_DEFAULT_AMPLITUDE_KM: Partial<Record<OrbitingId, { ax: number; az: number }>> = {
-  moon: { ax: C.HALO_AX_MOON_KM, az: C.HALO_AZ_MOON_KM },
-  earth: { ax: C.HALO_AX_EARTH_KM, az: C.HALO_AZ_EARTH_KM },
-  jupiter: { ax: C.HALO_AX_JUPITER_KM, az: C.HALO_AZ_JUPITER_KM },
+  moon: { ax: HALO_AX_MOON_KM, az: HALO_AZ_MOON_KM },
+  earth: { ax: HALO_AX_EARTH_KM, az: HALO_AZ_EARTH_KM },
+  jupiter: { ax: HALO_AX_JUPITER_KM, az: HALO_AZ_JUPITER_KM },
 };
 
 // 表に無い天体の既定振幅を主天体間距離から導くときの比。月の既定値と月の軌道長半径の比を
 // そのまま使うので、表に載っている天体と桁感が揃う。
-const AMPLITUDE_AX_RATIO = C.HALO_AX_MOON_KM / primaryDistanceKm('moon');
-const AMPLITUDE_AZ_RATIO = C.HALO_AZ_MOON_KM / primaryDistanceKm('moon');
+const AMPLITUDE_AX_RATIO = HALO_AX_MOON_KM / primaryDistanceKm('moon');
+const AMPLITUDE_AZ_RATIO = HALO_AZ_MOON_KM / primaryDistanceKm('moon');
 
 // 静止軌道の高度: 恒星日ちょうどの円軌道の半長軸から導出する(マジックナンバーで別途持たない)。
 const GEO_ALT_KM = (semiMajorFromPeriod(SIDEREAL_DAY, MU_EARTH) - R_EARTH) / 1e3;

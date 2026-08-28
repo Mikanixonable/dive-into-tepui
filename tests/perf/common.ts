@@ -3,10 +3,10 @@
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { nearestAtmosphereBody } from '../../src/physics/celestial-body';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
+import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import {
-  MU_EARTH, R_EARTH,
   SHIP_BCINV,
   INITIAL_ALT, INITIAL_INC_DEG,
   GRAVITY_NEGLIGIBLE_ACCEL,
