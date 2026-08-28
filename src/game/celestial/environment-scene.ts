@@ -44,13 +44,13 @@ import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-
 
 // 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、
 // FAR 以上なら完全表示、その間は距離に応じて線形にフェードインする。
-export const PLANET_ORBIT_LINE_FADE_NEAR_DIST = 1e9; // 100万km
-export const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10; // 1000万km
-export const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
-export const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
+const PLANET_ORBIT_LINE_FADE_NEAR_DIST = 1e9; // 100万km
+const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10; // 1000万km
+const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
+const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 
 // 参照軌道線が完全表示のときの不透明度。
-export const REFERENCE_LINE_OPACITY = 0.3;
+const REFERENCE_LINE_OPACITY = 0.3;
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。

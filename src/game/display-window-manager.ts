@@ -13,10 +13,10 @@ import { ReferenceFrame } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { GameEntity } from './game-entity/game-entity';
 
-export const DISPLAY_DUR_DAY = 86400; // 1日
-export const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
-export const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月
-export const DISPLAY_DUR_THREE_MONTH = 90 * 86400; // 3ヶ月
+const DISPLAY_DUR_DAY = 86400; // 1日
+const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
+const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月
+const DISPLAY_DUR_THREE_MONTH = 90 * 86400; // 3ヶ月
 
 export type DisplayDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth' | 'custom';
 

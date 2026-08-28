@@ -21,21 +21,21 @@ import type { Stage } from '../stages/stage';
 import { Player } from './player';
 import type { FireSaveData } from '../save/save-data';
 
-export const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
+const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 
 // 1発あたりに砲身へ入る熱量 [J]。発射ガスの熱の大半は砲身の側が受け取る。
-export const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
+const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
 
 export const BARREL_MASS = 300; // [kg]
 
-export const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
-export const BULLET_SPREAD = 0.002; // 散布界 [rad]
+const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
+const BULLET_SPREAD = 0.002; // 散布界 [rad]
 
-export const BULLET_LIFETIME = 240; // 保険としての寿命 [sim s]
-export const RECOIL_DV = 0.04; // 反動 [m/s]
+const BULLET_LIFETIME = 240; // 保険としての寿命 [sim s]
+const RECOIL_DV = 0.04; // 反動 [m/s]
 
-export const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
-export const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
+const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
+const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 
 export type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
 

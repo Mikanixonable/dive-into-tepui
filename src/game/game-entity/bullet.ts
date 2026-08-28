@@ -14,9 +14,9 @@ import { Enemy } from './enemy';
 import { Player } from '../player/player';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 
-export const BULLET_MAX_DIST = 30e3; // 自機からこれ以上離れた弾を消す [m]
-export const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
-export const BULLET_CLOSE_PASS_DIST = 40; // 敵弾が艦の至近を通過したとみなす距離 [m]
+const BULLET_MAX_DIST = 30e3; // 自機からこれ以上離れた弾を消す [m]
+const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
+const BULLET_CLOSE_PASS_DIST = 40; // 敵弾が艦の至近を通過したとみなす距離 [m]
 
 
 const tmpQuat = new THREE.Quaternion();

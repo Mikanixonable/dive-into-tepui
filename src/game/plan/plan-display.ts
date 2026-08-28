@@ -26,13 +26,13 @@ import type { Controllable } from '../game-entity/controllable';
 // 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。両方見つかった
 // ときの (遠地点距離-近地点距離)/(遠地点距離+近地点距離) と比較する — これ未満は円に
 // 近くアプシスの方向が不定になるので両方隠す。
-export const APSIS_MIN_ECC = 0.01;
+const APSIS_MIN_ECC = 0.01;
 
 // 計画軌道上の UTC 暦目盛(plan/plan-display.ts)の間隔・本数を決める値。時・日・月のどの
 // 単位で刻むかは画面上の間隔で選ぶため、固定した時間間隔ではなく画面距離基準で間引く。
-export const PLAN_TICK_MIN_PX = 40; // 目盛同士の最小画面間隔 [px]
-export const PLAN_TICK_LABEL_MIN_PX = 90; // ラベルを付ける最小画面間隔 [px]
-export const PLAN_TICK_MAX_COUNT = 400; // 日・月・年階級の目盛候補の上限本数
+const PLAN_TICK_MIN_PX = 40; // 目盛同士の最小画面間隔 [px]
+const PLAN_TICK_LABEL_MIN_PX = 90; // ラベルを付ける最小画面間隔 [px]
+const PLAN_TICK_MAX_COUNT = 400; // 日・月・年階級の目盛候補の上限本数
 
 // 時階級(1/3/6/12時間ごと)の目盛候補の上限本数。時階級の各刻みは互いに包含関係にある
 // (1時間ごとの列挙は3/6/12時間ごとの境界をすべて含む)ため、この上限に収まる限り常に
@@ -40,11 +40,11 @@ export const PLAN_TICK_MAX_COUNT = 400; // 日・月・年階級の目盛候補�
 // 委ねる — そうしないと区間の長さだけで階級が丸ごと切り替わり、ズームに対して連続に
 // 見えなくなる。PLAN_TICK_MAX_COUNT より大きく取り、既定の最長表示区間(28日)でも
 // 1時間ごとの候補が丸ごと落ちないようにする。
-export const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
+const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
 
 // 目盛点の半径 [px]。単位切替後も平均的な目盛の大きさが変わらないよう、絶対の階層ではなく
 // 現在表示中の最細目盛からの相対階層(0/1/2以上)で半径を引く。
-export const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
+const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {

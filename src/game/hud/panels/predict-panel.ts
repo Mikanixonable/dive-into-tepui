@@ -10,7 +10,7 @@ import type { DisplayTick } from '../orbit/tick-scale';
 
 // 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
 // サンプルが1件も残らず、どの時刻も引けない列になる。
-export const DISPLAY_DURATION_MIN = 3600;
+const DISPLAY_DURATION_MIN = 3600;
 
 type FixedDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth';
 

@@ -7,7 +7,7 @@ import * as C from '../const';
 
 // 加熱の理由を「空力」と「内部」に分ける動圧 [Pa]。地球の大気では高度 133 km 相当で、これを
 // 下回る動圧では空力加熱が放射冷却に対して桁で小さい。
-export const AERO_HEATING_MIN_Q = 1;
+const AERO_HEATING_MIN_Q = 1;
 
 export class AeroLoad {
   // いま浴びている動圧 [Pa]。

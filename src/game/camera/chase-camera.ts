@@ -11,7 +11,7 @@ import { GameEntity } from '../game-entity/game-entity';
 import { metersPerPixelAtDepth, Viewpoint } from '../../math/projection';
 import { ChaseCameraSaveData } from '../save/save-data';
 
-export const CAM_DRAG_ROTATE_RATE = 0.005; // マウスドラッグ [rad/px]
+const CAM_DRAG_ROTATE_RATE = 0.005; // マウスドラッグ [rad/px]
 
 // 初期視点: 機体後方やや上から見下ろす。
 const DEFAULT_ROT: Quat = qFromAxisAngle(v3(1, 0, 0), 0.3 - (10 * Math.PI) / 180);

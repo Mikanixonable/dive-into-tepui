@@ -5,11 +5,11 @@
 import { CLICK_MOVE_THRESHOLD } from '../const';
 import { KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
 
-export const RIGHT_CLICK_MOVE_THRESHOLD = 50; // [px]
-export const TOUCH_LONG_PRESS_MS = 500; // タッチの長押しを右クリックとみなすまでの静止時間 [ms]
-export const TOUCH_LONG_PRESS_FEEDBACK_MS = 300; // 長押し成立前に視覚フィードバックを出すまでの時間 [ms]
-export const TOUCH_DOUBLE_TAP_MS = 400; // タッチの連続タップをダブルタップとみなす時間差の上限 [ms]
-export const TOUCH_DOUBLE_TAP_PX = 24; // 同上、タップ間の許容移動距離 [px]
+const RIGHT_CLICK_MOVE_THRESHOLD = 50; // [px]
+const TOUCH_LONG_PRESS_MS = 500; // タッチの長押しを右クリックとみなすまでの静止時間 [ms]
+const TOUCH_LONG_PRESS_FEEDBACK_MS = 300; // 長押し成立前に視覚フィードバックを出すまでの時間 [ms]
+const TOUCH_DOUBLE_TAP_MS = 400; // タッチの連続タップをダブルタップとみなす時間差の上限 [ms]
+const TOUCH_DOUBLE_TAP_PX = 24; // 同上、タップ間の許容移動距離 [px]
 
 // 直近に検知した入力の種別。タッチパッドの表示可否(touch.ts)が読む。
 export type PointerKind = 'touch' | 'mouse';

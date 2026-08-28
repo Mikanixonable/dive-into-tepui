@@ -42,21 +42,21 @@ import { serializeEnemy } from './enemy-save';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
 // 達するのは、地球の大気では高度 80 km 付近。
-export const ENEMY_MAX_TEMP = 500; // [K]
+const ENEMY_MAX_TEMP = 500; // [K]
 
 export const ENEMY_SCALE = 20; // buildEnemyShip() の見た目メッシュに掛けるスケール
 
 export const PLAYER_BULLET_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
 
-export const PLASMA_BULLET_SPEED = C.MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
-export const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
-export const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
-export const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
-export const ENEMY_AI_MIN_RANGE = 50; // これより近いと射撃しない(至近距離) [m]
-export const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃する最大機数
-export const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
-export const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
-export const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
+const PLASMA_BULLET_SPEED = C.MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
+const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
+const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
+const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
+const ENEMY_AI_MIN_RANGE = 50; // これより近いと射撃しない(至近距離) [m]
+const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃する最大機数
+const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
+const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
+const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime の
 // epoch で展開する。orbitLineColor は旧セーブデータには無いため、無ければ accent から導く。

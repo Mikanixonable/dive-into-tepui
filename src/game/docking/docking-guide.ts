@@ -11,7 +11,7 @@ import { currentThemePalette } from '../theme';
 import * as C from '../const';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 
-export const DOCK_GUIDE_SHOW_DIST = 300;       // [m] ガイドを表示するポート接続点までの距離
+const DOCK_GUIDE_SHOW_DIST = 300;       // [m] ガイドを表示するポート接続点までの距離
 
 const GUIDE_MARKER_KEY = 'docking-guide';
 const AXIS_LENGTH = 32;

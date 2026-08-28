@@ -11,12 +11,12 @@ import * as C from '../const';
 // 見積りは保守的でありさえすればよく、精密である必要はない — 外れても訪問が1回増えるだけで、
 // 逆に短く見積もりすぎることだけが取りこぼしになる。下限は、相対速度がいま 0 の天体にも
 // 有限の期限を与えるために要る。
-export const ARC_BODY_CLOSING_SAFETY = 2;
-export const ARC_BODY_CLOSING_MARGIN = 2000;
+const ARC_BODY_CLOSING_SAFETY = 2;
+const ARC_BODY_CLOSING_MARGIN = 2000;
 
 // 一覧へ入れておく先読み時間を、そのときの刻み幅の何歩ぶんに取るか。次の1歩で表面へ届きうる
 // 天体が一覧の外に残ると、その歩の掃引到達判定がその天体を見ないまま通り抜ける。
-export const ARC_BODY_LEAD_STEPS = 4;
+const ARC_BODY_LEAD_STEPS = 4;
 
 // 積分が引きうる天体1体ぶんの、時刻に依らない素性。
 export type FutureBodyCandidate = {

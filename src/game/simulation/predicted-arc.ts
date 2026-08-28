@@ -21,7 +21,7 @@ import * as C from '../const';
 // (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを
 // 狭めるが、狭めた区間に残るサンプルが数点まで減ると、折れ線上のクリック候補が飛び飛びの
 // 点になる。これを超えて粗ければ弧を作り直す。
-export const ARC_MAX_SAMPLE_COARSENING = 8;
+const ARC_MAX_SAMPLE_COARSENING = 8;
 
 // 天体接近時、1ステップで表面までの残距離を跨がないための安全率。動径接近率(表面までの
 // 距離の減り方)に掛かる上限係数で、相対速さそのものではなく接近している成分だけを見る

@@ -17,7 +17,7 @@ import type { Stage } from '../stages/stage';
 // 1 substep あたりに解決する接触の上限。TOI(接触時刻)昇順で解決し、これを超えた分は
 // 次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
 // 明示的な繰越処理は不要)。
-export const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
+const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
 
 // 1 substep 分の接触候補1件。response が null なのは現在の状態では接触しないという意味で、
 // 当事者の状態が変われば非 null になりうる。resolved を立てた候補は以後選ばれない。

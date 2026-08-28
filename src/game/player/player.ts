@@ -60,30 +60,30 @@ import {
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
 
 // 艦首(+Z)の船体外側に置く単一の接続ポート。位置は姿勢から導出し、保存しない。
-export const SHIP_PORT_OFFSET = v3(0, 0, 3.0);
+const SHIP_PORT_OFFSET = v3(0, 0, 3.0);
 
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
 // 船体への直撃(PLAYER_BULLET_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
-export const RADIATOR_BULLET_DAMAGE = 0.25;
+const RADIATOR_BULLET_DAMAGE = 0.25;
 
-export const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱量 [J]
+const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱量 [J]
 
 // 分離式ブースターの標準段。自機 1,000 kg と並べたとき、1段あたりの乾燥+満載質量
 // 1,000 kg、推力 0.6 MN で約 300 m/s² となるようにする。燃料 800 kg を 80 kg/s
 // で燃やし切るので、通常のフレーム刻みでも十数秒の燃焼と最後の燃料切れを扱える。
-export const BOOSTER_DEFAULT_DRY_MASS = 200; // [kg]
-export const BOOSTER_DEFAULT_MAX_FUEL = 800; // [kg]
-export const BOOSTER_DEFAULT_THRUST = 6e5; // [N]
-export const BOOSTER_DEFAULT_FUEL_RATE = 80; // [kg/s]
-export const BOOSTER_MAX_ATTACHED = 4;
-export const BOOSTER_MOUNT_Z = -4.0; // 船体中心から最初の段の前端まで [m]
-export const BOOSTER_SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
-export const BOOSTER_COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
+const BOOSTER_DEFAULT_DRY_MASS = 200; // [kg]
+const BOOSTER_DEFAULT_MAX_FUEL = 800; // [kg]
+const BOOSTER_DEFAULT_THRUST = 6e5; // [N]
+const BOOSTER_DEFAULT_FUEL_RATE = 80; // [kg/s]
+const BOOSTER_MAX_ATTACHED = 4;
+const BOOSTER_MOUNT_Z = -4.0; // 船体中心から最初の段の前端まで [m]
+const BOOSTER_SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
+const BOOSTER_COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
 
-export const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
+const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
 
-export const PLAYER_MAX_HP = 1000;
-export const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
+const PLAYER_MAX_HP = 1000;
+const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 
 // 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
 export type PlanExecutionMode = 'off' | 'instant';

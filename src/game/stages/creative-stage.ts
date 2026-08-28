@@ -34,7 +34,7 @@ import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 
 // 軌道上へ配置できる自機の上限隻数。
-export const MAX_PLACED_SHIPS = 50;
+const MAX_PLACED_SHIPS = 50;
 
 const DEG = Math.PI / 180;
 

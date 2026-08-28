@@ -15,14 +15,14 @@ import type { EntityManager } from '../../simulation/entity-manager';
 import type { SimSpeedManager } from '../../simulation/sim-speed-manager';
 import type { LogisticsSaveData } from '../../save/save-data';
 
-export const AMMO_PICKUP_MAGS = 6; // 補給 1 個の取り込みで増えるマガジン数
-export const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
-export const LOGISTICS_LOW_FUEL_RATIO = 0.3; // この割合未満になると燃料補給を投入
-export const MAX_ACTIVE_RCS_FUEL_PICKUPS = 3; // 同時に存在する燃料補給の最大数
-export const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
-export const LOGISTICS_MIN_DIST = 312.5; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
-export const LOGISTICS_MAX_DIST = 625; // 同上限 [m]
-export const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
+const AMMO_PICKUP_MAGS = 6; // 補給 1 個の取り込みで増えるマガジン数
+const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
+const LOGISTICS_LOW_FUEL_RATIO = 0.3; // この割合未満になると燃料補給を投入
+const MAX_ACTIVE_RCS_FUEL_PICKUPS = 3; // 同時に存在する燃料補給の最大数
+const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
+const LOGISTICS_MIN_DIST = 312.5; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
+const LOGISTICS_MAX_DIST = 625; // 同上限 [m]
+const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
 
 export class Logistics {
   private resupplyCheckAt: number;

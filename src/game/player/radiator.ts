@@ -17,9 +17,9 @@ import type { Stage } from '../stages/stage';
 import type { Player } from './player';
 import type { RadiatorSaveData } from '../save/save-data';
 
-export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
+const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 
-export const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
+const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
 
 export type RadiatorSide = 'up' | 'down';
 

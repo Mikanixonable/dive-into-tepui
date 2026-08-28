@@ -6,11 +6,11 @@ import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../ma
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import { GameEntity } from '../game-entity/game-entity';
 
-export const MAG_CHAIN_MAX_ROLL_DEG = 15;  // ロール上限
-export const MAG_CHAIN_MAX_PITCH_DEG = 45; // ピッチ上限(上下方向の折れ)
-export const MAG_CHAIN_MAX_YAW_DEG = 15;   // ヨー上限(左右方向の折れ)
-export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
-export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
+const MAG_CHAIN_MAX_ROLL_DEG = 15;  // ロール上限
+const MAG_CHAIN_MAX_PITCH_DEG = 45; // ピッチ上限(上下方向の折れ)
+const MAG_CHAIN_MAX_YAW_DEG = 15;   // ヨー上限(左右方向の折れ)
+const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
+const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
 
 // ベルトが機体座標系でたわみなく伸びる基準方向。
 export const X_AXIS: Vec3 = v3(1, 0, 0);

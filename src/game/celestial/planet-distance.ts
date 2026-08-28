@@ -4,8 +4,8 @@ import { Vec3 } from '../../math/vec3';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import { bodyDef } from '../../physics/solar-system';
 
-export const MAP_PLANET_SHIP_LABEL_START = 5e8;
-export const MAP_PLANET_SHIP_LABEL_END = 1e9;
+const MAP_PLANET_SHIP_LABEL_START = 5e8;
+const MAP_PLANET_SHIP_LABEL_END = 1e9;
 
 export type NearestPlanet = { readonly celestialBody: CelestialBody; readonly distance: number };
 

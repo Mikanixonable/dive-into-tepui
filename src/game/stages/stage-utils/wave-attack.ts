@@ -17,32 +17,32 @@ import { orbitalElementsOf, strongestAttractor } from '../../../physics/celestia
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
 
-export const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m](wave-attack.ts)
+const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m](wave-attack.ts)
 
-export const STAGE00_SPAWN_DELAY = 10; // 弾取得からスポーンまでの遅延 [s]
-export const STAGE00_FORMATION_SPACING = 200; // 編隊の機体間隔 [m]
-export const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くするか [m]
-export const STAGE00_ALT_OFFSET_MAX = -200;
-export const STAGE00_SPAWN_INTERVAL = 30.0; // 波状攻撃の間隔 [s]
-export const STAGE00_SPAWN_DIST_MIN = 10000; // 敵集団のスポーン距離
-export const STAGE00_SPAWN_DIST_MAX = 14000;
-export const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
-export const STAGE00_WAVE_BASE_SHIPS = 5; // 第1波の機数
-export const STAGE00_WAVE_SHIPS_PER_WAVE = 2; // 波が進むごとに増える機数
-export const STAGE00_WAVE_MAX_SHIPS = 30; // 1ウェーブの最大機数上限
-export const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距離下限 [m]
-export const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
-export const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]
+const STAGE00_SPAWN_DELAY = 10; // 弾取得からスポーンまでの遅延 [s]
+const STAGE00_FORMATION_SPACING = 200; // 編隊の機体間隔 [m]
+const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くするか [m]
+const STAGE00_ALT_OFFSET_MAX = -200;
+const STAGE00_SPAWN_INTERVAL = 30.0; // 波状攻撃の間隔 [s]
+const STAGE00_SPAWN_DIST_MIN = 10000; // 敵集団のスポーン距離
+const STAGE00_SPAWN_DIST_MAX = 14000;
+const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
+const STAGE00_WAVE_BASE_SHIPS = 5; // 第1波の機数
+const STAGE00_WAVE_SHIPS_PER_WAVE = 2; // 波が進むごとに増える機数
+const STAGE00_WAVE_MAX_SHIPS = 30; // 1ウェーブの最大機数上限
+const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距離下限 [m]
+const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
+const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]
 
 // フライパス速度の上限 [m/s]。ステージ00は無限に続き波数に上限がないため、これが無いと
 // 相対速度が際限なく上がり、フライパスの Δv だけで敵の軌道が壊れる(近地点が地中に落ちる)。
 // 400 m/s なら 30km の交戦圏を約75秒で通過する — 演出として十分速く、軌道も壊れない。
-export const STAGE00_FLYBY_SPEED_MAX = 400.0;
+const STAGE00_FLYBY_SPEED_MAX = 400.0;
 
 // 敵の軌道が保つべき近地点高度の余裕 [m](大気圏突入高度 REENTRY_ALT に加算する)。
 // スポーン時の Δv はこの高度を割らない範囲まで縮められる(stage00.ts の limitFlybyDv)。
-export const STAGE00_MIN_PERIGEE_MARGIN = 40e3;
-export const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横ブレ最大 [m/s]
+const STAGE00_MIN_PERIGEE_MARGIN = 40e3;
+const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横ブレ最大 [m/s]
 
 export type WaveState = 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
 

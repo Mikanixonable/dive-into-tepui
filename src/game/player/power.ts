@@ -5,8 +5,8 @@ import { SOLAR_CONSTANT } from '../../physics/srp';
 import * as C from '../const';
 import type { PowerSaveData } from '../save/save-data';
 
-export const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
-export const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
+const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
+const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
 
 export type SolarSide = 'up' | 'down';
 

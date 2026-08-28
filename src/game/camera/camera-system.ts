@@ -46,8 +46,8 @@ function saveBodyClassToggles(v: BodyClassToggles): void {
 
 import type { GameEntity } from '../game-entity/game-entity';
 
-export const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
-export const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
+const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
+const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;

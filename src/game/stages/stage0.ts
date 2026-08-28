@@ -12,10 +12,10 @@ import type { Stage0SaveData, StageSaveData } from '../save/save-data';
 
 // 制限時間 [実秒]。選択画面の説明(stage0.ts の selectSub)とブリーフィングはこの値から
 // 生成されるので、変更すればどちらも自動的に追随する。
-export const STAGE0_TIME_LIMIT = 120;
-export const STAGE0_LOGISTICS_INITIAL_AMMO = 4; // 開始時に浮かべておく補給の数
-export const STAGE0_LOGISTICS_MIN_DIST = 75; // 補給の配置距離 [m](自機から)
-export const STAGE0_LOGISTICS_MAX_DIST = 225;
+const STAGE0_TIME_LIMIT = 120;
+const STAGE0_LOGISTICS_INITIAL_AMMO = 4; // 開始時に浮かべておく補給の数
+const STAGE0_LOGISTICS_MIN_DIST = 75; // 補給の配置距離 [m](自機から)
+const STAGE0_LOGISTICS_MAX_DIST = 225;
 
 // 制限時間を分単位で表す(選択画面の説明文とブリーフィングの両方から参照する)
 const stage0TimeLimitMinutes = (): number => Math.floor(STAGE0_TIME_LIMIT / 60);

@@ -8,24 +8,24 @@ import { Hud } from '../hud/hud';
 import type { ThrottleSaveData } from '../save/save-data';
 import type { Controllable } from '../game-entity/controllable';
 
-export const THROTTLE_DEFAULT_IDX = 1;
+const THROTTLE_DEFAULT_IDX = 1;
 
 // 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
-export const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
+const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
 
-export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
+const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
 
 // 手動回転RCSの出力ランプ: 押し始めは MIN、RAMP_TIME 秒かけて (MIN + RAMP) まで増加する
-export const RCS_MANUAL_OUTPUT_MIN = 0.3;
-export const RCS_MANUAL_OUTPUT_RAMP = 1.0;
-export const RCS_MANUAL_RAMP_TIME = 3.0; // [s]
+const RCS_MANUAL_OUTPUT_MIN = 0.3;
+const RCS_MANUAL_OUTPUT_RAMP = 1.0;
+const RCS_MANUAL_RAMP_TIME = 3.0; // [s]
 
 // 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度に掛ける倍率
-export const FINE_ATTITUDE_SCALE = 0.5;
+const FINE_ATTITUDE_SCALE = 0.5;
 
 // 進行方向ホールド([C]キー): 機首をプログレードへ向けるオートパイロットの PD ゲイン
-export const PROGRADE_HOLD_KP = 3.2; // 姿勢誤差角に対する比例ゲイン
-export const PROGRADE_HOLD_KD = 2.6; // 角速度に対する減衰ゲイン
+const PROGRADE_HOLD_KP = 3.2; // 姿勢誤差角に対する比例ゲイン
+const PROGRADE_HOLD_KD = 2.6; // 角速度に対する減衰ゲイン
 
 // 並進6方向の連打ラッチ判定対象キー一覧。
 const THRUST_KEYS: readonly KeyBinding[] = [K.thrustForward, K.thrustBackward, K.thrustLeft, K.thrustRight, K.thrustUp, K.thrustDown];
