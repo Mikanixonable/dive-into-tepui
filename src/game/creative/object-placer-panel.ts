@@ -10,7 +10,8 @@ import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
 import { celestialBodyName } from '../hud/frame/frame-labels';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { CollinearPoint } from '../../physics/halo';
-import { CelestialRegistry, MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
+import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system/constants';
+import { MOON } from '../../physics/solar-system/earth-system';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -116,8 +117,8 @@ const LAGRANGE_DEFAULT_AMPLITUDE_KM: Partial<Record<string, { ax: number; az: nu
 
 // 表に無い天体の既定振幅を主天体間距離から導くときの比。月の既定値と月の軌道長半径の比を
 // そのまま使うので、表に載っている天体と桁感が揃う。
-const AMPLITUDE_AX_RATIO = HALO_AX_MOON_KM / primaryDistanceKm('moon');
-const AMPLITUDE_AZ_RATIO = HALO_AZ_MOON_KM / primaryDistanceKm('moon');
+const AMPLITUDE_AX_RATIO = HALO_AX_MOON_KM / primaryDistanceKm(MOON);
+const AMPLITUDE_AZ_RATIO = HALO_AZ_MOON_KM / primaryDistanceKm(MOON);
 
 // 静止軌道の高度: 恒星日ちょうどの円軌道の半長軸から導出する(マジックナンバーで別途持たない)。
 const GEO_ALT_KM = (semiMajorFromPeriod(SIDEREAL_DAY, MU_EARTH) - R_EARTH) / 1e3;
@@ -194,7 +195,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
   // 物体配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
   // ephemeris が実際に持つレジストリから組む。
-  private readonly registry: CelestialRegistry;
+  private readonly ephemeris: Ephemeris;
   // ObjectPicker のポップアップの親。パネル自身の overflow に切られないよう popup レイヤへ置く。
   private readonly popupRoot: HTMLElement;
 
@@ -203,9 +204,9 @@ export class ObjectPlacerPanel implements OverlayHandle {
     panelRoot: HTMLElement, popupRoot: HTMLElement, ephemeris: Ephemeris,
     private readonly overlayManager: OverlayManager,
   ) {
-    this.registry = ephemeris.registry;
+    this.ephemeris = ephemeris;
     this.popupRoot = popupRoot;
-    const orbitingIds = orbitingIdsOf(ephemeris.registry);
+    const orbitingIds = orbitingIdsOf(ephemeris);
     this.celestialBodyItems = orbitingIds.map((id) => [id, celestialBodyName(id)] as const);
     this.baseCelestialBodyItems = this.celestialBodyItems.filter(([id]) => id === 'moon');
     this.lagrangeSystemItems = lagrangeSystemItemsOf(ephemeris, orbitingIds);
@@ -302,7 +303,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
       celestialBodyControl.setSelected(v);
       this.refreshPresets();
     }, this.overlayManager);
-    celestialBodyControl.setGroups(bodyGroupsOf(this.registry, this.celestialBodyItems, this.celestialBodyValue));
+    celestialBodyControl.setGroups(bodyGroupsOf(this.ephemeris, this.celestialBodyItems, this.celestialBodyValue));
     celestialBodyControl.setSelected(this.celestialBodyValue);
     elementsGroup.appendChild(celestialBodyControl.element);
 
@@ -456,7 +457,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
       if (this.celestialBodyValue !== 'moon') this.celestialBodyValue = 'moon';
       this.celestialBody.setGroups([{ label: '', items: this.baseCelestialBodyItems }]);
     } else {
-      this.celestialBody.setGroups(bodyGroupsOf(this.registry, this.celestialBodyItems, this.celestialBodyValue));
+      this.celestialBody.setGroups(bodyGroupsOf(this.ephemeris, this.celestialBodyItems, this.celestialBodyValue));
     }
     this.celestialBody.setSelected(this.celestialBodyValue);
     this.refreshPresets();
@@ -493,7 +494,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private defaultLagrangeAmplitude(secondary: string): { ax: number; az: number } {
     const listed = LAGRANGE_DEFAULT_AMPLITUDE_KM[secondary];
     if (listed !== undefined) return listed;
-    const distanceKm = primaryDistanceKm(secondary);
+    const distanceKm = primaryDistanceKm(this.ephemeris.motionOf(secondary).def);
     return { ax: distanceKm * AMPLITUDE_AX_RATIO, az: distanceKm * AMPLITUDE_AZ_RATIO };
   }
 
