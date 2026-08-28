@@ -16,7 +16,6 @@ import { planExecutionLabel, type Player } from '../player/player';
 import { len, sub } from '../../math/vec3';
 import { orbitalElementsOf, strongestAttractor, type CelestialBody } from '../../physics/celestial-body';
 import { apsisAltitudes } from '../../physics/elements';
-import { bodyDef, primaryOf } from '../../physics/solar-system';
 import * as C from '../const';
 
 export class MapPropertyRows {
@@ -172,15 +171,16 @@ export class MapPropertyRows {
       rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
       return rows;
     }
-    const def = bodyDef(registry, target.id);
-    const kindLabel = def.kind === 'star' ? '恒星' : def.kind === 'planet' ? '惑星' : '衛星';
+    const motion = this.ephemeris.motionOf(target.id);
+    const def = motion.def;
+    const kindLabel = motion.kind === 'star' ? '恒星' : motion.kind === 'planet' ? '惑星' : '衛星';
     rows.push(
       { key: 'kind', label: '種別', value: kindLabel },
       { key: 'mu', label: 'μ', value: `${def.mu.toExponential(3)} m³/s²` },
       { key: 'radius', label: '半径', value: fmtDist(def.radius) },
     );
-    if (def.kind === 'star') return rows;
-    const primary = celestialBodies.find((b) => b.id === primaryOf(registry, def.id));
+    if (motion.kind === 'star') return rows;
+    const primary = celestialBodies.find((b) => b.id === motion.primary?.id);
     const self = celestialBodies.find((b) => b.id === def.id);
     const el = primary && self ? orbitalElementsOf(self.state, primary) : null;
     if (!el) return rows;

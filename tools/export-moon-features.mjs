@@ -15,8 +15,8 @@ const outPath = join(repoRoot, 'src', 'assets', 'moon-features.json');
 // 1円ぶんの分割数。CIRCLE_SEGMENTS(body-graticule.ts)と同じ滑らかさに揃える。
 const CIRCLE_SEGMENTS = 128;
 
-const { solarSystem, dispose } = loadPhysicsModules(['solar-system']);
-const R_MOON = solarSystem.R_MOON;
+const { constants, dispose } = loadPhysicsModules(['solar-system/constants']);
+const R_MOON = constants.R_MOON;
 dispose();
 
 // 緯度・経度[deg]から単位球面上の点を返す(body-graticule.ts の latLonPoint(ratio=1) と同じ規約:
