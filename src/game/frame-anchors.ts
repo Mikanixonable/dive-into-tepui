@@ -2,8 +2,8 @@
 // (@activeShip / @navTarget)— を ECI 状態と主天体へ解決する FrameAnchorSource。
 // 役割トークンは毎フレームその時点の対象へ解決されるので、操作対象の乗り換えやターゲットの
 // 付け替えをまたいでも同じ基準を指し続ける(DEVELOP/SPEC/CELESTIAL.md 8節)。
-import { CelestialBody, CelestialBodyId, orbitingAttractorOf } from '../physics/celestial-body';
-import { FrameAnchorId, FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
+import { CelestialBody, orbitingAttractorOf } from '../physics/celestial-body';
+import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
 import { KinematicState } from '../physics/kinematic-state';
 
 // 解決に要る問い合わせをまとめた受け口。ゲーム側の型ではなく状態だけを受け取ることで、
@@ -29,7 +29,7 @@ export class FrameAnchors implements FrameAnchorSource {
   // update() ごとに進む通し番号。役割トークンの猶予とキャッシュの有効範囲をフレームで区切る。
   private frameIndex = 0;
   private attractorCacheKey: string | null = null;
-  private attractorCacheValue: CelestialBodyId | null = null;
+  private attractorCacheValue: string | null = null;
 
   constructor(private readonly targets: AnchorTargets) {}
 
@@ -41,7 +41,7 @@ export class FrameAnchors implements FrameAnchorSource {
   }
 
   // 基準 id の ECI 状態。役割トークン・機体・重力天体のいずれとしても解決できなければ null。
-  stateOf(id: FrameAnchorId, t: number): KinematicState | null {
+  stateOf(id: string, t: number): KinematicState | null {
     const role = frameRoleOf(id);
     if (role !== null) return this.heldRoleState(role, this.resolveRoleState(role, t));
     return this.targets.entityState(id, t) ?? this.bodies.find((b) => b.id === id)?.state ?? null;
@@ -49,7 +49,7 @@ export class FrameAnchors implements FrameAnchorSource {
 
   // 基準 id が公転している主天体。離心率1未満の周回軌道にないなら null。
   // 直近1件だけ憶える — 同じ id が同一フレーム内で重ねて問われ、探索は天体数に線形に効く。
-  attractorOf(id: FrameAnchorId, t: number): CelestialBodyId | null {
+  attractorOf(id: string, t: number): string | null {
     // bodies はフレームごとに差し替わるので、キャッシュもフレームで区切る。
     const key = `${this.frameIndex}|${id}|${t}`;
     if (this.attractorCacheKey === key) return this.attractorCacheValue;
@@ -60,7 +60,7 @@ export class FrameAnchors implements FrameAnchorSource {
   }
 
   // attractorOf のキャッシュを介さない本体。
-  private computeAttractorOf(id: FrameAnchorId, t: number): CelestialBodyId | null {
+  private computeAttractorOf(id: string, t: number): string | null {
     const state = this.stateOf(id, t);
     return state !== null ? orbitingAttractorOf(state, this.bodies)?.id ?? null : null;
   }

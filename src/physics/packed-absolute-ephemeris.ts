@@ -1,5 +1,4 @@
 import { AbsoluteEphemeris, BarycentricState } from './absolute-ephemeris';
-import { CelestialBodyId } from './celestial-body';
 import { ChebyshevEphemeris } from './ephemeris-pack/evaluator';
 import {
   DecodedEphemerisPack, EphemerisPackFormatError, decodeEphemerisPack, toEvaluatorEphemerisPack,
@@ -25,11 +24,11 @@ export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
     return new PackedAbsoluteEphemeris(decodeEphemerisPack(bytes));
   }
 
-  hasBody(id: CelestialBodyId): boolean {
+  hasBody(id: string): boolean {
     return this.ids.has(id);
   }
 
-  barycentricStateOf(id: CelestialBodyId, jdTdb: number): BarycentricState {
+  barycentricStateOf(id: string, jdTdb: number): BarycentricState {
     if (!Number.isFinite(jdTdb)) throw new RangeError(`JD_TDBは有限値でなければならない: ${jdTdb}`);
     const et = (jdTdb - J2000_JULIAN_DATE) * SECONDS_PER_DAY;
     const state = this.evaluator.stateAtSeconds(id, et);

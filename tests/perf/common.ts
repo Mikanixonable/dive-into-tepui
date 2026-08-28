@@ -1,11 +1,12 @@
 // tests/perf/ 配下の各実験が共有する土台。ゲーム本体と同じ調整値の再 export、LEO の初期状態と
 // Ephemeris の生成、刻み幅固定の積分、結果の比較と整形を持つ。
+import { solarSystemEphemeris } from 'physics/test-helpers';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { nearestAtmosphereBody } from '../../src/physics/celestial-body';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
-import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
+import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system/constants';
 import {
   SHIP_BCINV,
   INITIAL_ALT, INITIAL_INC_DEG,
@@ -38,9 +39,9 @@ export function initialLeoState(): KinematicState {
 }
 
 // 解析モデル(.epk パックなし)の Ephemeris。tests/physics/ephemeris.test.ts と同じ
-// `new Ephemeris()` 引数なし経路 — registry=SOLAR_SYSTEM, originId='earth' の既定値のまま。
+// `solarSystemEphemeris()` 引数なし経路 — 現実の太陽系・地球原点・既定エポック。
 export function buildEphemeris(): Ephemeris {
-  return new Ephemeris();
+  return solarSystemEphemeris();
 }
 
 // 1ステップぶん、ステップ中点の時刻で重力源を解決してから stepDynamics を呼ぶ。重力源は窓を

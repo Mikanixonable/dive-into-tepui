@@ -2,19 +2,22 @@
 // 歳差なし(satelliteOrbit の 0 変換)、およびネレイド(高離心率)のケプラー往復精度。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { SatelliteDef } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
+import { solarSystemEphemeris } from './test-helpers';
 import { cross, dot, len, scale, sub } from '../../src/math/vec3';
+
+// id から静的事実を引くための天体暦。
+const DEFS = solarSystemEphemeris();
 
 // テスト対象の id が衛星であることを前提に軌道モデルを取り出す。
 function satelliteOrbitOf(id: string): SatelliteOrbit {
-  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).orbit;
+  return (DEFS.motionOf(id).def as SatelliteDef).orbit;
 }
 function planetOf(id: string): string {
-  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).planet;
+  return DEFS.motionOf(id).primary!.id;
 }
 
 // [id, JPL 公開周期(日), 逆行か]。
@@ -29,7 +32,7 @@ const CASES: readonly [string, number, boolean][] = [
 ];
 
 export function register(): void {
-  const eph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {});
+  const eph = solarSystemEphemeris({});
 
   test('irregular-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {
     for (const [id, periodDays] of CASES) {

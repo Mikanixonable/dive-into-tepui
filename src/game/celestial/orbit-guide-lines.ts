@@ -43,7 +43,7 @@ const ALL_SYSTEMS: readonly CatalogSystemId[] = [
   'earth-moon', 'sun-earth', 'sun-mars', 'jupiter-europa', 'saturn-titan', 'saturn-enceladus', 'mars-phobos',
 ];
 
-// 「基本」群の地球専用参照軌道(静止軌道は environment-scene.ts が別枠で描くのでここには
+// 「基本」群の地球専用参照軌道(静止軌道は celestial-system.ts が別枠で描くのでここには
 // 含まない)。族を持たない単一軌道で、CR3BP の系トグルの対象外。
 type ReferenceOrbitKind = 'sunSync' | 'dawnDusk' | 'molniya' | 'tundra';
 const REFERENCE_ORBIT_KINDS: readonly ReferenceOrbitKind[] = ['sunSync', 'dawnDusk', 'molniya', 'tundra'];

@@ -1,6 +1,6 @@
 import { bodyClassOf } from '../../celestial/body-class';
 import { LAGRANGE_ID, lagrangePoint } from '../object-groups';
-import type { CelestialRegistry } from '../../../physics/solar-system';
+import type { Ephemeris } from '../../../physics/ephemeris';
 import type { BodyClass } from '../../celestial/body-class';
 import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
 
@@ -78,7 +78,7 @@ export class PhysicalObjectListOrder {
   private readonly idsInSectionScratch = new Set<string>();
   private readonly clusterParentSeenScratch = new Set<string>();
 
-  public constructor(private readonly registry: CelestialRegistry) {}
+  public constructor(private readonly ephemeris: Ephemeris) {}
 
   public get filteringActive(): boolean {
     return this.query !== '' || this.filter !== null;
@@ -93,7 +93,7 @@ export class PhysicalObjectListOrder {
     }
     if (this.filter === 'enemy') return item.kind === 'ship' && item.inFocusedSystem !== false;
     if (this.filter === 'lagrange') return item.kind === 'body' && LAGRANGE_ID.test(item.id);
-    return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.registry, item.id) === this.filter;
+    return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.ephemeris, item.id) === this.filter;
   }
 
   // 並べ替え・親子構造を決める入力(候補の顔ぶれ・表示名・種別・親・絞り込みの通過可否と

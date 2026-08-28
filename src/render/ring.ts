@@ -15,7 +15,7 @@ import {
   vec3,
   vec4,
 } from 'three/tsl';
-import { RingArcDef, RingOpticsDef } from '../physics/solar-system';
+import { RingArcDef, RingOpticsDef } from '../physics/solar-system/celestial-body-def';
 import { viewRayAt } from './pipeline/view-ray';
 import type { SunLight } from './pipeline/sun-light';
 import type { SunOcclusion } from './pipeline/sun-occlusion';
