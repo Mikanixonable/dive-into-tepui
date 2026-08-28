@@ -1,10 +1,10 @@
 // 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。視直径がピクセル未満に
 // なるので、戦闘ビューでは星殻上の輝点スプライトに切り替える。実体表示と輝点表示は別モデルの
-// 丸ごと差し替えであり、SphereView 側に視点モード分岐を足す形は取らない。見かけ直径が閾値
+// 丸ごと差し替えであり、SphereEntity 側に視点モード分岐を足す形は取らない。見かけ直径が閾値
 // 未満なら(マップビューでは輝点も出さず)実体を隠す。
 import * as THREE from 'three/webgpu';
-import { Ephemeris } from '../../physics/ephemeris';
-import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
+import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
+import { RingSystemDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
@@ -14,7 +14,8 @@ import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../render/billboard';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { BodyGraticule } from '../../render/body-graticule';
 import { showsPhysicalSphere } from '../../render/screen-lod';
-import { CelestialView } from './celestial-view';
+import { CelestialEntity } from './celestial-entity';
+import type { BodyClass } from './body-class';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
@@ -22,6 +23,7 @@ import type { RenderStyle } from '../../render/render-style';
 import { RingView } from './ring-view';
 import { bondAlbedoOf } from '../../render/celestial-albedo';
 import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
+import { norm, sub, v3 } from '../../math/vec3';
 import type { Vec3 } from '../../math/vec3';
 
 // 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
@@ -44,50 +46,50 @@ const POINT_DISPLAY_GAIN = NAKED_EYE_LIMIT_DISPLAY / NAKED_EYE_LIMIT_IRRADIANCE;
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
 
-export class PointView extends CelestialView {
-  readonly id: string;
+export class PointEntity extends CelestialEntity {
   private readonly group = new THREE.Group();
   private ring?: RingView;
   private readonly billboard: Billboard;
   private readonly bondAlbedo: number;
+  // 実半径 [m] と環(環を持たない天体では undefined)。
+  private readonly radius: number;
+  private readonly rings?: RingSystemDef;
   private readonly outerRadius: number;
   // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
   private readonly axes: THREE.Vector3;
   // 模式図スタイルでだけ見せる経緯度グリッド。姿勢は group の子として自然に追従する。
   private readonly graticule = new BodyGraticule();
 
-  // surface はマップビューで見せる実体、radius は実半径 [m]、shape は歪みの形状データ
-  // (省略時は radius による真球)。rings を渡すとマップビューでのみ環を持つ(戦闘ビューの
-  // 輝点に環はない)。sunOcclusion と sunLight はその環が直射散乱の遮蔽と明るさを引くために要る。
+  // surface はマップビューで見せる実体。実半径・歪みの形状・環は motion の定義から引き、
+  // 環はマップビューでのみ描く(戦闘ビューの輝点に環はない)。
   constructor(
-    id: string,
+    motion: OrbitingMotion,
+    name: string,
+    bodyClass: BodyClass,
     private readonly surface: CelestialSurface,
-    private readonly sunOcclusion: SunOcclusion,
-    private readonly sunLight: SunLight,
-    private readonly radius: number,
-    shape?: ShapeDef,
-    private readonly rings?: RingSystemDef,
   ) {
-    super();
-    this.id = id;
-    this.bondAlbedo = bondAlbedoOf(id);
-    this.outerRadius = rings === undefined
-      ? radius
-      : rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), radius);
+    super(motion, name, bodyClass);
+    const def = motion.def;
+    this.radius = def.radius;
+    this.rings = def.rings;
+    this.bondAlbedo = bondAlbedoOf(def.id);
+    this.outerRadius = def.rings === undefined
+      ? def.radius
+      : def.rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), def.radius);
     // 色はテクスチャ平均色を狙わず単色の白 — 恒星状の光点として過剰演出しない。
     this.billboard = new Billboard(0xffffff, -9);
-    const a = shapeAxes(radius, shape);
+    const a = shapeAxes(def.radius, def.shape);
     this.axes = new THREE.Vector3(a.x, a.y, a.z);
   }
 
   // マップビュー用の実体表面と輝点用ビルボードをシーンへ一度だけ登録する。
-  build(scene: THREE.Scene): void {
+  build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void {
     this.surface.addTo(this.group);
     this.graticule.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== undefined) {
       this.ring = new RingView(
-        this.rings, this.radius, this.group.renderOrder + 1, this.sunOcclusion, this.sunLight,
+        this.rings, this.radius, this.group.renderOrder + 1, sunOcclusion, sunLight,
       );
       scene.add(this.ring.group);
     }
@@ -104,11 +106,11 @@ export class PointView extends CelestialView {
   // 隠す)。見かけ直径が閾値未満では実体を隠す(戦闘視点は輝点へ切り替え、広範囲視点は
   // 輝点も出さない)。
   sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, ephemeris: Ephemeris,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, star: CelestialMotion | null,
     graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
-    const pos = ephemeris.positionOf(this.id, displayTime);
+    const pos = this.motion.stateAt(displayTime).r;
     const apparentDiameterPx = this.lodApparentDiameterPx(
       2 * this.outerRadius, cameraSystem.activeCameraScale(pos), graphics);
     if (!showsPhysicalSphere(apparentDiameterPx)) {
@@ -116,13 +118,13 @@ export class PointView extends CelestialView {
       if (cameraSystem.overviewMode) {
         this.billboard.hide();
       } else {
-        this.syncBillboard(fo.RtoThreeV3(pos), pos, displayTime, ephemeris, cameraSystem.activeCamera.quaternion);
+        this.syncBillboard(fo.RtoThreeV3(pos), pos, displayTime, star, cameraSystem.activeCamera.quaternion);
       }
       return;
     }
     this.surface.syncLod(apparentDiameterPx);
     this.graticule.setVisible(style === 'schematic');
-    const orientation = ephemeris.poleAt(this.id, displayTime);
+    const orientation = this.motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     const rings = graphics.rings ? this.rings : undefined;
     if (this.ring !== undefined) this.ring.group.visible = rings !== undefined;
@@ -151,18 +153,18 @@ export class PointView extends CelestialView {
   // 星殻上に、描画座標 p の方向だけを反映した輝点を置く。明るさは「いま観測者へ届く光の量」
   // — ランバート球として引いた放射照度に、点光源の表示応答を掛けたもの。
   private syncBillboard(
-    p: THREE.Vector3, pos: Vec3, displayTime: number, ephemeris: Ephemeris,
+    p: THREE.Vector3, pos: Vec3, displayTime: number, star: CelestialMotion | null,
     cameraQuaternion: THREE.Quaternion,
   ): void {
     const observerDistance = p.length();
-    const sunDir = ephemeris.sunDirFrom(pos, displayTime);
+    const sunDir = star === null ? v3(1, 0, 0) : norm(sub(star.stateAt(displayTime).r, pos));
     // 位相角は天体から見た恒星方向と観測者方向の成す角。観測者は描画原点なので -p̂ で、
     // フローティングオリジンは平行移動しかしないため、描画座標の向きは ECI の向きと一致する。
     tmpToObserver.copy(p).negate().normalize();
     const cosPhase = Math.max(-1, Math.min(1,
       sunDir.x * tmpToObserver.x + sunDir.y * tmpToObserver.y + sunDir.z * tmpToObserver.z));
     const irradiance = lambertSphereIrradiance(
-      this.bondAlbedo, this.sunIrradianceAt(ephemeris, pos, displayTime),
+      this.bondAlbedo, this.sunIrradianceAt(star, pos, displayTime),
       this.radius, observerDistance, Math.acos(cosPhase),
     );
     this.billboard.sync(

@@ -4,12 +4,13 @@
 // メッシュ構築(THREE 依存)と分けてあるのは、可視性の規則を DOM もレンダラも無しに
 // 評価できるようにするため。
 import { CelestialRegistry, SolarSystemId } from '../../physics/solar-system';
+import type { CelestialKind } from '../../physics/celestial-motion';
 
 export type BodyClass = 'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody';
 
 // 現実の太陽系(SOLAR_SYSTEM)の各天体の重要度。天体を登録すると Record の網羅性検査が
 // ここを要求する。
-const BODY_CLASSES: Record<SolarSystemId, BodyClass> = {
+const BODY_CLASS_BY_ID: Record<SolarSystemId, BodyClass> = {
   sun: 'star',
   mercury: 'planet',
   venus: 'planet',
@@ -110,11 +111,22 @@ const BODY_CLASSES: Record<SolarSystemId, BodyClass> = {
   eureka: 'smallBody',
 };
 
-// 登録天体の表示クラス。BODY_CLASSES に項が無い id(カスタムレジストリの架空天体)は、
+// 現実の太陽系の天体の表示クラス。
+export function solarSystemBodyClass(id: SolarSystemId): BodyClass {
+  return BODY_CLASS_BY_ID[id];
+}
+
+// 力学上の分類だけから決める表示クラス。準惑星・小天体の区別が付かないので、惑星と衛星と
+// 恒星の3つにしか落ちない。
+export function bodyClassOfKind(kind: CelestialKind): BodyClass {
+  return kind === 'star' ? 'star' : kind === 'satellite' ? 'satellite' : 'planet';
+}
+
+// 登録天体の表示クラス。現実の太陽系に項が無い id(カスタムレジストリの架空天体)は、
 // 力学上の分類をそのまま重要度として使う。
 export function bodyClassOf(registry: CelestialRegistry, id: string): BodyClass {
-  const cls = (BODY_CLASSES as Record<string, BodyClass | undefined>)[id];
+  const cls = (BODY_CLASS_BY_ID as Record<string, BodyClass | undefined>)[id];
   if (cls !== undefined) return cls;
   const kind = registry[id]?.kind;
-  return kind === 'star' ? 'star' : kind === 'satellite' ? 'satellite' : 'planet';
+  return kind === undefined ? 'planet' : bodyClassOfKind(kind);
 }
