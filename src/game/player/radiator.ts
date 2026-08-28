@@ -15,7 +15,7 @@ import { GameEntity } from '../game-entity/game-entity';
 import type { Contact } from '../game-entity/contact';
 import type { Stage } from '../stages/stage';
 import type { Player } from './player';
-import type { RadiatorSaveData } from '../save-data';
+import type { RadiatorSaveData } from '../save/save-data';
 
 export type RadiatorSide = 'up' | 'down';
 

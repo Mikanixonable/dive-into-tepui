@@ -7,8 +7,8 @@ import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { ScoreCounter } from './stage-utils/score-counter';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../sim-speed-manager';
-import type { Stage0SaveData, StageSaveData } from '../save-data';
+import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { Stage0SaveData, StageSaveData } from '../save/save-data';
 
 // 制限時間を分単位で表す(選択画面の説明文とブリーフィングの両方から参照する)
 const stage0TimeLimitMinutes = (): number => Math.floor(C.STAGE0_TIME_LIMIT / 60);

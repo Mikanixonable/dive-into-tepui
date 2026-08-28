@@ -12,8 +12,8 @@ import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { UiSfx } from '../../../audio/sfx/ui-sfx';
 import { Player } from '../../player/player';
 import type { EntityManager } from '../../simulation/entity-manager';
-import type { SimSpeedManager } from '../../sim-speed-manager';
-import type { LogisticsSaveData } from '../../save-data';
+import type { SimSpeedManager } from '../../simulation/sim-speed-manager';
+import type { LogisticsSaveData } from '../../save/save-data';
 
 export class Logistics {
   private resupplyCheckAt: number;

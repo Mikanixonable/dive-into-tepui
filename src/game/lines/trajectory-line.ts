@@ -19,17 +19,17 @@
 // THREE の合成は world = position + quaternion·vertex なので、原点まわりの un-bake 回転 →
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
-import { KinematicState, kinematicState } from '../physics/kinematic-state';
-import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../physics/frame';
-import { CelestialBody } from '../physics/celestial-body';
-import type { Ephemeris } from '../physics/ephemeris';
-import { DynamicTrajectory } from '../physics/dynamic-trajectory';
-import { extrapolatedRelativeStates } from '../physics/kepler-extrapolation';
-import { StateQueue } from '../physics/state-queue';
-import { add, Vec3 } from '../math/vec3';
-import { FloatingOrigin } from './camera/floating-origin';
-import { Curve, CurveKnots } from '../render/curve';
-import { LineStyle } from '../render/line-style';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
+import { CelestialBody } from '../../physics/celestial-body';
+import type { Ephemeris } from '../../physics/ephemeris';
+import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
+import { extrapolatedRelativeStates } from '../../physics/kepler-extrapolation';
+import { StateQueue } from '../../physics/state-queue';
+import { add, Vec3 } from '../../math/vec3';
+import { FloatingOrigin } from '../camera/floating-origin';
+import { Curve, CurveKnots } from '../../render/curve';
+import { LineStyle } from '../../render/line-style';
 
 // 頂点数の打ち切り。数周ぶんの軌跡なら数百頂点で収束するが、28日表示のように数百周が
 // 重なる区間は何頂点あっても収束しないので、どこで頭打ちにするかをここで決める。

@@ -10,7 +10,7 @@ import { add, len, scale, sub, v3, Vec3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { maxOccludedFraction } from '../../physics/shadow';
 import type { MarkerManager } from '../marker/marker-manager';
-import { OrbitLine } from '../orbit-line';
+import { OrbitLine } from '../lines/orbit-line';
 import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';

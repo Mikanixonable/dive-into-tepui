@@ -1,23 +1,23 @@
 // 被選択物(MapPickable)のプロパティウィンドウに出す行(PropertyRow)を種別ごとに組み立てる。
 // entities/ephemeris の現在状態から毎回導出する表示専用の処理で、副作用は持たない。
-import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from './hud/utils';
-import { orbitInfo, relativeInfo } from './hud/orbit/orbit-info';
-import { autoOrbitReference } from './orbit-reference';
-import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit/orbit-labels';
-import { celestialBodyName } from './hud/frame/frame-labels';
-import type { PropertyRow } from './hud/windows';
+import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from '../hud/utils';
+import { orbitInfo, relativeInfo } from '../hud/orbit/orbit-info';
+import { autoOrbitReference } from '../orbit-reference';
+import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
+import { celestialBodyName } from '../hud/frame/frame-labels';
+import type { PropertyRow } from '../hud/windows';
 import type { MapPickable } from './map-pickable';
-import type { EntityManager } from './simulation/entity-manager';
-import type { ActivePlayerController } from './active-controllable-controller';
-import type { NavTarget } from './nav-target';
-import type { Ephemeris } from '../physics/ephemeris';
-import type { GameEntity } from './game-entity/game-entity';
-import { planExecutionLabel, type Player } from './player/player';
-import { len, sub } from '../math/vec3';
-import { orbitalElementsOf, strongestAttractor, type CelestialBody } from '../physics/celestial-body';
-import { apsisAltitudes } from '../physics/elements';
-import { bodyDef, primaryOf } from '../physics/solar-system';
-import * as C from './const';
+import type { EntityManager } from '../simulation/entity-manager';
+import type { ActivePlayerController } from '../active-controllable-controller';
+import type { NavTarget } from '../nav-target';
+import type { Ephemeris } from '../../physics/ephemeris';
+import type { GameEntity } from '../game-entity/game-entity';
+import { planExecutionLabel, type Player } from '../player/player';
+import { len, sub } from '../../math/vec3';
+import { orbitalElementsOf, strongestAttractor, type CelestialBody } from '../../physics/celestial-body';
+import { apsisAltitudes } from '../../physics/elements';
+import { bodyDef, primaryOf } from '../../physics/solar-system';
+import * as C from '../const';
 
 export class MapPropertyRows {
   constructor(

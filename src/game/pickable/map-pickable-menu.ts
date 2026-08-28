@@ -1,29 +1,29 @@
 // 被選択物(MapPickable)の種別ごとに、コンテキストメニュー/プロパティウィンドウの操作項目と、
 // 選ばれた操作の実行先を対応づける。候補集合と表示可否は map-pickables.ts の MapPickables が
 // 持つ — 「何が選べるか」と「選んだらどうなるか」を分けている。
-import { Hud } from './hud/hud';
-import type { Base } from './game-entity/base';
-import { celestialBodyName } from './hud/frame/frame-labels';
-import { LAGRANGE_ID, lagrangeParentId } from './hud/object-groups';
+import { Hud } from '../hud/hud';
+import type { Base } from '../game-entity/base';
+import { celestialBodyName } from '../hud/frame/frame-labels';
+import { LAGRANGE_ID, lagrangeParentId } from '../hud/object-groups';
 import { MapPickable } from './map-pickable';
-import { focusTargetId } from './camera/focus-target';
-import { EntityManager } from './simulation/entity-manager';
-import { Ephemeris } from '../physics/ephemeris';
-import { NavTarget } from './nav-target';
-import { CameraSystem } from './camera/camera-system';
-import { PlanEditor } from './plan/plan-editor';
-import { SimSpeedManager } from './sim-speed-manager';
-import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from './hud/orbit/orbit-labels';
-import type { Docking } from './docking';
-import type { ActivePlayerController } from './active-controllable-controller';
-import type { FrameControls } from './hud/frame/frame-controls';
-import type { Stage } from './stages/stage';
-import { planExecutionLabel, type PlanExecutionMode } from './player/player';
-import { MenuAction, MenuCommon, MenuItem, type PauseMenu } from './hud/windows';
-import type { ObjectType } from './creative/object-placer-panel';
-import type { KinematicState } from '../physics/kinematic-state';
-import { strongestAttractor } from '../physics/celestial-body';
-import { primaryOf } from '../physics/solar-system';
+import { focusTargetId } from '../camera/focus-target';
+import { EntityManager } from '../simulation/entity-manager';
+import { Ephemeris } from '../../physics/ephemeris';
+import { NavTarget } from '../nav-target';
+import { CameraSystem } from '../camera/camera-system';
+import { PlanEditor } from '../plan/plan-editor';
+import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
+import type { Docking } from '../docking/docking';
+import type { ActivePlayerController } from '../active-controllable-controller';
+import type { FrameControls } from '../hud/frame/frame-controls';
+import type { Stage } from '../stages/stage';
+import { planExecutionLabel, type PlanExecutionMode } from '../player/player';
+import { MenuAction, MenuCommon, MenuItem, type PauseMenu } from '../hud/windows';
+import type { ObjectType } from '../creative/object-placer-panel';
+import type { KinematicState } from '../../physics/kinematic-state';
+import { strongestAttractor } from '../../physics/celestial-body';
+import { primaryOf } from '../../physics/solar-system';
 import type { MapPickables } from './map-pickables';
 
 interface PickHandler {

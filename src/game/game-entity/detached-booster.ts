@@ -4,7 +4,7 @@ import { kinematicState, type KinematicState } from '../../physics/kinematic-sta
 import { add, scale, v3 } from '../../math/vec3';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CameraSystem } from '../camera/camera-system';
-import type { DetachedBoosterSaveData } from '../save-data';
+import type { DetachedBoosterSaveData } from '../save/save-data';
 import * as C from '../const';
 import {
   BoosterStack,

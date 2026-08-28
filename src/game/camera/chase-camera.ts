@@ -9,7 +9,7 @@ import { Hud } from '../hud/hud';
 import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { GameEntity } from '../game-entity/game-entity';
 import { metersPerPixelAtDepth, Viewpoint } from '../../math/projection';
-import { ChaseCameraSaveData } from '../save-data';
+import { ChaseCameraSaveData } from '../save/save-data';
 
 // 初期視点: 機体後方やや上から見下ろす。
 const DEFAULT_ROT: Quat = qFromAxisAngle(v3(1, 0, 0), 0.3 - (10 * Math.PI) / 180);

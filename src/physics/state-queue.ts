@@ -80,7 +80,7 @@ export class StateQueue {
   }
 
   // 保持しているサンプルを古い順(= 内部の降順と逆順)の配列で返す。折れ線描画
-  // (game/trajectory-line.ts の TrajectoryLine.syncGeometry)は時系列順の配列を要求するため。
+  // (game/lines/trajectory-line.ts の TrajectoryLine.syncGeometry)は時系列順の配列を要求するため。
   toArrayOldestFirst(): KinematicState[] {
     const out: KinematicState[] = new Array(this.deque.size);
     for (let i = 0; i < this.deque.size; i++) out[i] = this.deque.at(this.deque.size - 1 - i);
