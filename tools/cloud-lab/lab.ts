@@ -22,7 +22,7 @@ export class CloudLabView {
   private readonly captureTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
     format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false, samples: 0,
   });
-  private viewId: CloudLabViewId = 'opticalDepth';
+  private viewId: CloudLabViewId = 'opaque';
   private seconds = 0;
 
   // レンダラを起こし、地球の気候を読み終えてから器を組む。
