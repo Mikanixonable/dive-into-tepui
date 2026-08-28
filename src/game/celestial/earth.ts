@@ -11,7 +11,7 @@ import { CelestialBody } from '../../physics/celestial-body';
 import { OrbitalElements } from '../../physics/elements';
 import { kinematicState } from '../../physics/kinematic-state';
 import { isOccluded } from '../../physics/occlusion';
-import { add, len, scale, sub, v3 } from '../../math/vec3';
+import { add, len, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -103,7 +103,7 @@ export class Earth extends CelestialEntity {
 
   // 静止軌道に沿った半透明の小さなテキスト文字ラベルを描画する。
   private syncGeoLabels(
-    earthPos: ReturnType<typeof v3>, geoFade: number, cameraSystem: CameraSystem,
+    earthPos: Vec3, geoFade: number, cameraSystem: CameraSystem,
     markerManager: MarkerManager | null, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     const keys = ['geolabel-0', 'geolabel-1', 'geolabel-2', 'geolabel-3'];
