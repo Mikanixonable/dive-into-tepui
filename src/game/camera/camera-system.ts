@@ -17,7 +17,7 @@ import {
   metersPerPixel, metersPerPixelAtDistance, ndcToScreen, Projected, projectToNdc, Viewpoint,
 } from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { CameraSaveData } from '../save/save-data';
 
 const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.bodyClassToggles';
@@ -160,13 +160,13 @@ export class CameraSystem {
   constructor(
     _hud: Hud,
     markerManager: MarkerManager,
-    ephemeris: Ephemeris,
+    celestialSystem: CelestialSystem,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
     // 両カメラとフォーカス候補ラベル
-    this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
+    this.focusMarkers = new FocusMarkers(markerManager, celestialSystem);
     this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
-    this.mapCamera = new MapCamera(_hud, ephemeris, saved?.overview);
+    this.mapCamera = new MapCamera(_hud, celestialSystem, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
     this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot, catalogFamilyIndex());
     this.viewOptionsPanel.onBodyClassModeChange = (key, mode) => {
