@@ -3,7 +3,7 @@
 import { kinematicState, KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add } from '../../math/vec3';
 import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../physics/celestial-body';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 
 // segmentDurationFrom が要求する表示窓の部分だけを切り出した形。
 export interface DisplayDurationSource {
@@ -147,10 +147,10 @@ export class Plan {
   // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければ起点)の時刻から、
   // その状態を起点に描かれている末尾区間の折れ線が尽きるところまで。起点の借り方は anchorOr と同じ。
   nodeTimeRange(
-    idx: number, from: KinematicState, ephemeris: Ephemeris, displayDuration: DisplayDurationSource,
+    idx: number, from: KinematicState, windows: CelestialBodyWindows, displayDuration: DisplayDurationSource,
   ): TimeRange {
     const prev = this.data?.nodes[idx - 1] ?? this.anchorOr(from);
-    const celestialBodies = ephemeris.celestialBodiesAt(prev.t);
+    const celestialBodies = windows.celestialBodiesAt(prev.t);
     return { min: prev.t, max: prev.t + segmentDurationFrom(prev, celestialBodies, displayDuration) };
   }
 
