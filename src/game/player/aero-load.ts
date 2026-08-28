@@ -2,8 +2,12 @@
 // 外殻の熱収支は GameEntity の温度が受け持つ。
 import type { CelestialBody } from '../../physics/celestial-body';
 import { airflow } from '../../physics/atmosphere';
-import { Vec3, sub } from '../../physics/vec3';
+import { Vec3, sub } from '../../math/vec3';
 import * as C from '../const';
+
+// 加熱の理由を「空力」と「内部」に分ける動圧 [Pa]。地球の大気では高度 133 km 相当で、これを
+// 下回る動圧では空力加熱が放射冷却に対して桁で小さい。
+const AERO_HEATING_MIN_Q = 1;
 
 export class AeroLoad {
   // いま浴びている動圧 [Pa]。
@@ -30,6 +34,6 @@ export class AeroLoad {
   // 空力加熱が効いている流れの中にいるか。これを下回る動圧では空力加熱は放射冷却に対して桁で
   // 小さく、そこで温度が上がったなら理由は艦の内部にしかない。
   get heatingAerodynamically(): boolean {
-    return this.qdyn >= C.AERO_HEATING_MIN_Q;
+    return this.qdyn >= AERO_HEATING_MIN_Q;
   }
 }

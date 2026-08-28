@@ -12,7 +12,7 @@ import {
   utcToTt,
   validateCalendarDate,
 } from '../../src/physics/time';
-import { test } from './harness';
+import { test } from '../harness';
 
 export function register(): void {
   test('astronomical time: canonical TDB date has the pinned JD and J2000 ET', () => {

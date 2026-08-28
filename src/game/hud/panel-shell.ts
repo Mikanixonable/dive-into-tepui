@@ -6,6 +6,7 @@ import {
   COLLAPSE_EXPANDED_GLYPH,
   buildCollapseToggle,
   syncCollapseToggle,
+  type CollapseToggleLabels,
 } from './widgets';
 
 export type HudWorldView = 'combat' | 'map';
@@ -21,12 +22,13 @@ interface PanelCollapsedState {
 }
 
 type PanelCollapsedViewListener = (view: HudWorldView) => void;
-type PanelDefaultCollapsed = boolean | ((view: HudWorldView) => boolean);
+export type PanelDefaultCollapsed = boolean | ((view: HudWorldView) => boolean);
 
 let currentView: HudWorldView = 'combat';
 let cachedState: PanelCollapsedState | null = null;
 const viewListeners = new Set<PanelCollapsedViewListener>();
 
+// localStorage から読んだ値のうち、真偽値だけを畳み状態として採る。
 function parseBucketValue(parsed: unknown): PanelCollapsedBucket | null {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
   const bucket: PanelCollapsedBucket = {};
@@ -36,6 +38,7 @@ function parseBucketValue(parsed: unknown): PanelCollapsedBucket | null {
   return bucket;
 }
 
+// ビュー1つぶんの畳み状態表を、未知の形なら空として読み出す。
 function parseBucket(raw: string | null): PanelCollapsedBucket | null {
   if (!raw) return null;
   try {
@@ -108,10 +111,41 @@ export function savePanelCollapsed(id: string, collapsed: boolean): void {
   saveCollapsedState(state);
 }
 
+export interface PanelCollapseWiring {
+  readonly toggleRoot: HTMLElement;
+  readonly toggleId: string;
+  readonly toggleClassName: string;
+  readonly target: HTMLElement;
+  readonly labels: CollapseToggleLabels;
+  readonly storageId: string;
+  readonly defaultCollapsed?: PanelDefaultCollapsed;
+  readonly extraHitEls?: readonly HTMLElement[];
+}
+
+// 折りたたみトグルの配線一式(生成・保存状態の復元・ビュー切替の購読・クリック時の保存)を
+// 1回で行う。対象要素・ラベル・保存 id を引数で受けるので、外枠の形が違うパネルからも使える。
+// defaultCollapsed に関数を渡すと、ビューが切り替わるたびに現在のビューで再評価する。
+// 戻り値は onPanelCollapsedViewChange の購読解除関数。
+export function wirePanelCollapse(params: PanelCollapseWiring): () => void {
+  const { toggleRoot, toggleId, toggleClassName, target, labels, storageId, defaultCollapsed = false, extraHitEls = [] } = params;
+  const toggle = buildCollapseToggle(toggleRoot, toggleId, toggleClassName, target, labels, extraHitEls);
+  // 現在ビューの保存値、無ければ既定値を畳み状態として当て直す。
+  const applyCollapsedState = (): void => {
+    const fallback = typeof defaultCollapsed === 'function' ? defaultCollapsed(currentView) : defaultCollapsed;
+    const collapsed = loadPanelCollapsed(storageId) ?? fallback;
+    target.classList.toggle('collapsed', collapsed);
+    syncCollapseToggle(toggle, target, labels);
+  };
+  applyCollapsedState();
+  const unsubscribe = onPanelCollapsedViewChange(applyCollapsedState);
+  toggle.addEventListener('click', () => savePanelCollapsed(storageId, target.classList.contains('collapsed')));
+  return unsubscribe;
+}
+
 export class PanelShell {
-  readonly el: HTMLElement;
-  readonly titleEl: HTMLHeadingElement;
-  readonly body: HTMLElement;
+  public readonly el: HTMLElement;
+  public readonly titleEl: HTMLHeadingElement;
+  public readonly body: HTMLElement;
 
   // parent の子として id のパネルを組む。title は見出しの初期テキスト — 呼び出し側は
   // titleEl を直接書き換えて埋め込み要素(件数バッジ等)を足してよい。折りたたみ状態は
@@ -120,8 +154,10 @@ export class PanelShell {
   public constructor(parent: HTMLElement, id: string, title: string, defaultCollapsed: PanelDefaultCollapsed = false) {
     this.el = document.createElement('div');
     this.el.id = id;
+    this.el.dataset['id'] = id;
     this.el.className = 'panel panel-shell';
 
+    // 見出し行と本文を組む。
     const head = document.createElement('div');
     head.className = 'panel-shell-head';
     this.titleEl = document.createElement('h3');
@@ -133,25 +169,21 @@ export class PanelShell {
     this.body.className = 'panel-shell-body';
     this.el.appendChild(this.body);
 
-    const labels = {
-      expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
-      collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-      expandedTitle: `${title}を折りたたむ`,
-      collapsedTitle: `${title}を開く`,
-    };
-    const toggle = buildCollapseToggle(
-      head, `${id}-collapse`, 'panel-shell-collapse', this.body, labels, [this.titleEl],
-    );
-    const applyCollapsedState = (): void => {
-      const collapsed = loadPanelCollapsed(id)
-        ?? (typeof defaultCollapsed === 'function' ? defaultCollapsed(currentView) : defaultCollapsed);
-      this.body.classList.toggle('collapsed', collapsed);
-      syncCollapseToggle(toggle, this.body, labels);
-    };
-    applyCollapsedState();
-    onPanelCollapsedViewChange(applyCollapsedState);
-    toggle.addEventListener('click', () => {
-      savePanelCollapsed(id, this.body.classList.contains('collapsed'));
+    // 見出しクリックとトグルの両方から畳めるようにする。
+    wirePanelCollapse({
+      toggleRoot: head,
+      toggleId: `${id}-collapse`,
+      toggleClassName: 'panel-shell-collapse',
+      target: this.body,
+      labels: {
+        expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+        collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
+        expandedTitle: `${title}を折りたたむ`,
+        collapsedTitle: `${title}を開く`,
+      },
+      storageId: id,
+      defaultCollapsed,
+      extraHitEls: [this.titleEl],
     });
 
     parent.appendChild(this.el);
@@ -159,7 +191,7 @@ export class PanelShell {
 
   // ゲーム状態由来の表示/非表示を .hidden クラスで切り替える。折りたたみ(利用者の
   // 好み)とは別軸 — 隠れている間に畳み外ししても、再表示時にその状態のまま出てくる。
-  setHidden(hidden: boolean): void {
+  public setHidden(hidden: boolean): void {
     this.el.classList.toggle('hidden', hidden);
   }
 }

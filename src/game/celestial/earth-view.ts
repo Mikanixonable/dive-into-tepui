@@ -4,7 +4,7 @@ import { createEarth, Earth } from '../../render/earth';
 import { Ephemeris } from '../../physics/ephemeris';
 import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { CelestialView } from './celestial-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';

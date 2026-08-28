@@ -24,11 +24,17 @@ import { EntityContactPhysics } from './entity-contact-physics';
 import { SurfaceContactPhysics } from './surface-contact-physics';
 import { SubstepBodies } from './substep-bodies';
 import { NextEventTime } from './next-event-time';
-import { v3 } from '../../physics/vec3';
+import { v3 } from '../../math/vec3';
 import { simulationMaxStep, simulationStepDuration } from './time-step';
-import type { NanWatchdog } from '../nan-watchdog';
+import type { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../../frame-sections';
 import type { PerfCounts } from '../../perf-meter';
+
+// ゼロ長サブステップ(丸めで刻みが0になったイベント消費)が連続してこの回数を超えたら
+// Simulator.advance が simTime を強制前進させる。イベント予告と実際の消滅判定が
+// 丸め誤差でずれた個体が残ると刻みが0のまま進まなくなるための保険で、正常時は1回で
+// 収まる(同時刻の複数イベントの消費に数回使う程度)。
+const SIMULATION_STALL_MAX_ZERO_STEPS = 8;
 
 export class Simulator {
   private readonly surfaceContactPhysics = new SurfaceContactPhysics();
@@ -87,10 +93,14 @@ export class Simulator {
       // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
       if (subDt <= 1e-9) {
         this.consecutiveZeroSteps++;
-        // イベント予告(nextSimulationEventTime)と消滅判定(checkLoss)が丸め誤差でずれた
-        // 個体が残ると、消費してもイベントが尽きずゼロ刻みが終わらない。simTime を人為的に
-        // 進めて事態を打ち切り、無音のフリーズではなく検知できる形にする。
-        if (this.consecutiveZeroSteps > C.SIMULATION_STALL_MAX_ZERO_STEPS) {
+        // eventTime は simTime 以上のはずだが、丸めで両者の差が 1e-9 未満に潰れると
+        // subDt が 0 になり simTime が動かない。その場合は eventTime へ直接そろえて
+        // 差を1回で消費する — 据え置くと次回も同じ差のまま同じ個体を何度も問い直し続ける。
+        if (eventTime !== null && eventTime > this.simTime) this.simTime = eventTime;
+        // それでも進まない(eventTime が無い、または既に追い越されている)個体が残ると
+        // ゼロ刻みが終わらない。simTime を人為的に進めて事態を打ち切り、無音のフリーズ
+        // ではなく検知できる形にする。
+        if (this.consecutiveZeroSteps > SIMULATION_STALL_MAX_ZERO_STEPS) {
           console.error(
             `[Simulator] ゼロ刻みが${this.consecutiveZeroSteps}回連続。simTime=${this.simTime} `
             + `eventTime=${eventTime} entities=${this.entities.all().length} — simTime を強制前進`);
@@ -109,10 +119,13 @@ export class Simulator {
       // 使い回す。内側で細分する個体の各歩も同じ組で足りる。
       this.bodies.reset(this.ephemeris, this.simTime, subDt);
       this.lastGravitySourceCount = this.bodies.gravitySourceCount;
-      this.surfaceContactPhysics.beginSubstep(
-        this.bodies.surface, this.simTime, this.simTime + subDt);
-      this.substep(subDt, activeStage);
-      this.simTime += subDt;
+      // このサブステップの終端は絶対時刻で1つだけ決め、全個体もこの値へ着地させる
+      // (substep)。刻み幅を各自で積ませると、細分した個体の先端時刻が丸め誤差ぶん
+      // simTime から外れ、履歴を持たない種別(弾・薬莢)が表示時刻と一致しなくなる。
+      const endTime = this.simTime + subDt;
+      this.surfaceContactPhysics.beginSubstep(this.bodies.surface, this.simTime, endTime);
+      this.substep(endTime, subDt, activeStage);
+      this.simTime = endTime;
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
       nanWatchdog.checkPlayer('simulator.advance(個体の前進)', player, this.simTime, dt, subDt);
@@ -173,7 +186,12 @@ export class Simulator {
   //
   // 重力源の絞り込みと大気天体の選択は個体ごとに1回。細分の内側では引き直さない — 天体位置は
   // 各段の時刻へ外挿されるし、絞り込みの顔ぶれはサブステップの中で変わらない。
-  private substep(dt: number, activeStage: Stage): void {
+  //
+  // **最後の1歩は endTime までの残りを刻み幅に採る。** 刻み幅を足し込むと、細分した個体の
+  // 先端時刻が dt/divisions の丸めぶん endTime から外れる。履歴を持たない種別(弾・薬莢)は
+  // 先端1件しか残さないので、そのずれがそのまま「表示時刻の状態を答えられない」= 非表示に
+  // なる。残りを引く形なら、近い2つの差は誤差なく求まるので必ず endTime へ着地する。
+  private substep(endTime: number, dt: number, activeStage: Stage): void {
     this.sharedIntervalScratch.length = 0;
     for (const e of this.entities.all()) {
       if (!e.alive) continue;
@@ -188,7 +206,8 @@ export class Simulator {
       const step = dt / divisions;
       for (let i = 0; i < divisions && e.alive; i++) {
         const integrated = e.stepSimulation(
-          step, near, this.bodies.surface, atmosphereBody, this.bodies.star, activeStage);
+          i === divisions - 1 ? endTime - e.state.t : step,
+          near, this.bodies.surface, atmosphereBody, this.bodies.star, activeStage);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
         if (divisions > 1) this.surfaceContactPhysics.resolveOne(e, activeStage);

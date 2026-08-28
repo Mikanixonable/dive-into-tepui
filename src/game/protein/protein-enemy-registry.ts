@@ -8,13 +8,14 @@ import {
 } from './protein-asset-loader';
 import type { ProteinAssetDefinition, ProteinMotionAsset } from './protein-schema';
 import type { ProteinDisplaySettings } from './protein-display';
+import type { ProteinMotionBinding } from '../../render/protein-motion-material';
 
 export interface ProteinEnemyDefinition {
   readonly assetId: ProteinAssetId;
   readonly asset: ProteinAssetDefinition;
   readonly motion: ProteinMotionAsset;
-  readonly buildRenderObject: (display: ProteinDisplaySettings, motion?: import('../../render/protein-motion-material').ProteinMotionBinding) => THREE.Object3D;
-  readonly recolorRenderObject: (target: THREE.Object3D, display: ProteinDisplaySettings, motion?: import('../../render/protein-motion-material').ProteinMotionBinding) => void;
+  readonly buildRenderObject: (display: ProteinDisplaySettings, motion?: ProteinMotionBinding) => THREE.Object3D;
+  readonly recolorRenderObject: (target: THREE.Object3D, display: ProteinDisplaySettings, motion?: ProteinMotionBinding) => void;
   readonly buildCollisionObject: () => THREE.Object3D;
 }
 

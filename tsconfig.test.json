@@ -7,7 +7,7 @@
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "resolveJsonModule": true,
+    "resolveJsonModule": false,
     "outDir": "tests/dist",
     "rootDir": ".",
     "paths": {
@@ -15,13 +15,13 @@
     }
   },
   "include": [
+    "src/types/json-shims.d.ts",
     "src/render/dispose-owned-render-resources.ts",
-    "src/physics/vec3.ts",
+    "src/math/vec3.ts",
     "src/physics/attitude.ts",
     "src/physics/atmosphere.ts",
     "src/physics/ephemeris.ts",
     "src/game/plan/plan.ts",
-    "src/game/hud/layout.ts",
     "src/game/protein/protein-schema.ts",
     "src/game/protein/protein-combat-state.ts",
     "src/game/game-entity/contact-damage.ts",
@@ -30,6 +30,10 @@
     "src/game/creative/placement-validation.ts",
     "src/game/celestial/point-field.ts",
     "src/game/camera/focus-target.ts",
-    "tests/physics/**/*.ts"
+    "tests/*.ts",
+    "tests/physics/**/*.ts",
+    "tests/math/**/*.ts",
+    "tests/game/**/*.ts",
+    "tests/render/**/*.ts"
   ]
 }

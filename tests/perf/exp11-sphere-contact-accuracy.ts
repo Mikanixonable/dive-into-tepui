@@ -5,7 +5,7 @@
 //   近似の誤差 = 近似曲線の最接近距離 − 真の最接近距離
 //   実装の許容 = R*(判定器) − 近似曲線の最接近距離   ← 細分の打ち切りで拾えなかった分
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { Vec3, add, cross, norm, scale, v3 } from '../../src/physics/vec3';
+import { Vec3, add, cross, norm, scale, v3 } from '../../src/math/vec3';
 import * as C from '../../src/game/const';
 import { SHIP_BCINV, buildEphemeris } from './common';
 import { KinematicState } from '../../src/physics/kinematic-state';

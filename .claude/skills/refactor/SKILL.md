@@ -67,7 +67,7 @@ git diff --stat HEAD -- src/
 
 ## 5. 仕上げ
 
-- `npm run typecheck`。`src/physics/` を触ったなら `npm run test:physics` も。
+- `npm run typecheck`。触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`)も。
 - **何を直したかを、規則の節番号つきで報告する。** 「見つけたが直さなかったもの」と、
   その理由も述べる。
 - **リファクタリングでは `DEVELOP/SPEC/` を更新しない。** 挙動を変える必要が出たなら、それは

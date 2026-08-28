@@ -41,6 +41,14 @@ export class TrackPlayback {
     return this.nextTime;
   }
 
+  // 鳴らしたまま任意のステップへ飛ぶ。すでに予約済みの音は取り消せないので、直前の音と
+  // 短く重なることがある。
+  seek(step: number, atTime: number): void {
+    this.step = step;
+    this.nextTime = atTime;
+    this.lastNoteEnd = atTime;
+  }
+
   // これまでにスケジュールした音がすべて消え、この再生を切り離してよくなる時刻。
   get soundingUntil(): number {
     return this.lastNoteEnd + RELEASE_TAIL_SEC;
