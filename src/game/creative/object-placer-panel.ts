@@ -21,12 +21,12 @@ import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, 
 
 // ラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
 // 副天体ごとに主天体との距離が3桁近く違うため、妥当なオーダーを副天体ごとに別々に持つ。
-export const HALO_AX_MOON_KM = 8000;
-export const HALO_AZ_MOON_KM = 5000;
-export const HALO_AX_EARTH_KM = 200000;
-export const HALO_AZ_EARTH_KM = 120000;
-export const HALO_AX_JUPITER_KM = 7000000;
-export const HALO_AZ_JUPITER_KM = 4000000;
+const HALO_AX_MOON_KM = 8000;
+const HALO_AZ_MOON_KM = 5000;
+const HALO_AX_EARTH_KM = 200000;
+const HALO_AZ_EARTH_KM = 120000;
+const HALO_AX_JUPITER_KM = 7000000;
+const HALO_AZ_JUPITER_KM = 4000000;
 import {
   SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
 } from './slider-field';

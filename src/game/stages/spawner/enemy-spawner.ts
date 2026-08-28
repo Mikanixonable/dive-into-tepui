@@ -10,18 +10,18 @@ import type { EffectsSystem } from '../../vfx/effects-system';
 import { Enemy } from '../../game-entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
 
-export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
+const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
 
 // 5グループの配置: 各グループ中心を安全半径(STAGE0_MAX_RANGE * SAFE_RANGE_FACTOR)
 // の CENTER_DIST_MIN〜+RANGE の位置に置き、各機はそこから ALONG/NORMAL/RADIAL
 // 方向にランダムに散らす
-export const STAGE0_SAFE_RANGE_FACTOR = 0.94; // マージンを残して確実に配置半径内に収める
-export const STAGE0_GROUP_CENTER_DIST_MIN = 0.52; // 安全半径に対する比率
-export const STAGE0_GROUP_CENTER_DIST_RANGE = 0.14;
-export const STAGE0_GROUP_RADIAL_FACTOR = 0.1; // 動径方向のグループ中心ばらつき(安全半径比)
-export const STAGE0_JITTER_ALONG = 500; // 各機の進行方向ばらつき [m]
-export const STAGE0_JITTER_NORMAL = 500; // 各機の軌道面法線方向ばらつき [m]
-export const STAGE0_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m]
+const STAGE0_SAFE_RANGE_FACTOR = 0.94; // マージンを残して確実に配置半径内に収める
+const STAGE0_GROUP_CENTER_DIST_MIN = 0.52; // 安全半径に対する比率
+const STAGE0_GROUP_CENTER_DIST_RANGE = 0.14;
+const STAGE0_GROUP_RADIAL_FACTOR = 0.1; // 動径方向のグループ中心ばらつき(安全半径比)
+const STAGE0_JITTER_ALONG = 500; // 各機の進行方向ばらつき [m]
+const STAGE0_JITTER_NORMAL = 500; // 各機の軌道面法線方向ばらつき [m]
+const STAGE0_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m]
 
 // 色分けされたグループ(既定 5 グループ×各10機)を base 周囲5km以内に配置して直接生成する(訓練クラスタ)。
 // groupCount/perGroup でグループ数・1グループあたりの機数を変更できる。

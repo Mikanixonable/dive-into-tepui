@@ -5,11 +5,11 @@ import * as C from '../const';
 import { AxisHandleSpec } from './node-gizmo';
 
 // マップモードの DOM ギズモ(node-gizmo.ts): 選択中ノードの Δv アーム(6方向ハンドル)
-export const NODE_GIZMO_HANDLE_PX = 42; // ノードからアームハンドルを離す距離 [px]
+const NODE_GIZMO_HANDLE_PX = 42; // ノードからアームハンドルを離す距離 [px]
 
-export const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s per 実秒]
+const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s per 実秒]
 export const DV_RATE_MAX = 400; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
-export const DV_RATE_RAMP_SEC = 3.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
+const DV_RATE_RAMP_SEC = 3.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
 
 // ホールド継続時間 [s] から Δv 加算レートを指数的に求める。押し始めは細かく、長押しで粗くなる。
 function rampedDvRate(heldSec: number): number {

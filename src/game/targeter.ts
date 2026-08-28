@@ -25,17 +25,17 @@ import type { NavTarget } from './nav-target';
 
 // ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー。
 // 最新の 1 点のみ表示する(複数出ると照準の目安として紛らわしいため)。
-export const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
-export const MAX_BOARD_MARKS = 1;
-export const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
+const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
+const MAX_BOARD_MARKS = 1;
+const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
 
-export const MAP_AMMO_FADE_START = 5e7;
-export const MAP_AMMO_FADE_END = 1e8;
-export const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
+const MAP_AMMO_FADE_START = 5e7;
+const MAP_AMMO_FADE_END = 1e8;
+const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
 
-export const TARGET_LOCK_PICK_PX_SQ_COARSE = 1936;
+const TARGET_LOCK_PICK_PX_SQ_COARSE = 1936;
 
-export const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
+const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
 
 export type CombatTarget = Enemy | Player | Base;
 

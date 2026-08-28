@@ -11,7 +11,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 
-export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
+const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
 
 
 export class RcsEffects {

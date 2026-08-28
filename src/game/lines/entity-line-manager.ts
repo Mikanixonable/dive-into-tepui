@@ -15,10 +15,10 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { OrbitReference } from '../orbit-reference';
 
-export const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
+const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
-export const LINE_STYLE = {
+const LINE_STYLE = {
   enemyOrbit: { color: C.COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
   baseOrbit: { color: C.COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
 } as const satisfies Record<string, LineStyle>;

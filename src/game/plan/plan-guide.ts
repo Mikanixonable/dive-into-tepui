@@ -14,12 +14,12 @@ import type { Player } from '../player/player';
 import type { PlanPath } from './plan-path';
 
 // マニューバ達成判定(計画軌道への接近許容)
-export const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
-export const NODE_TOL_ECC = 0.02 / 3; // 離心率差
-export const NODE_TOL_PLANE_DEG = 2.0 / 3; // 軌道面の角度差 [deg]
+const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
+const NODE_TOL_ECC = 0.02 / 3; // 離心率差
+const NODE_TOL_PLANE_DEG = 2.0 / 3; // 軌道面の角度差 [deg]
 
 // 実行時刻をこれだけ過ぎたノードは計画から落とす [s]。多少の遅れなら噴射できる猶予。
-export const NODE_EXPIRE_GRACE = 60;
+const NODE_EXPIRE_GRACE = 60;
 
 export class PlanGuide {
   // 通知済みのノード。ノードは編集のたびに別インスタンスへ置き換わるので、同一性の比較が

@@ -36,9 +36,9 @@ import type { PerfCounts } from '../../perf-meter';
 import type { OrbitReference } from '../orbit-reference';
 import type { ProteinMotionFrameSample, ProteinMotionLod } from '../../protein-motion-metrics';
 
-export const MAX_DETACHED_BOOSTERS = 64;
+const MAX_DETACHED_BOOSTERS = 64;
 
-export const MAX_DEBRIS = 600;
+const MAX_DEBRIS = 600;
 
 export class EntityManager {
   readonly enemies: Enemy[] = [];
