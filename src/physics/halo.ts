@@ -55,8 +55,9 @@ function linearParams(c2: number): { lambda: number; omegaZ: number; kappa: numb
   const disc = Math.sqrt(9 * c2 * c2 - 8 * c2);
   const lambda2 = (disc - c2 + 2) / 2;
   const lambda = Math.sqrt(lambda2);
-  // 面内運動 x=Ax cos(λτ+φ), y=κAx sin(λτ+φ) を線形化方程式へ代入して得る振幅比。
-  return { lambda, omegaZ: Math.sqrt(c2), kappa: (2 * lambda) / (c2 - 1 - lambda2) };
+  // 面内運動 x=Ax cos(λτ+φ), y=κAx sin(λτ+φ) を線形化方程式へ代入して得る振幅比
+  // (richardsonCoefficients の k と同一の量)。
+  return { lambda, omegaZ: Math.sqrt(c2), kappa: (lambda2 + 1 + 2 * c2) / (2 * lambda) };
 }
 
 // 質量比 mu だけから決まる共線点の無次元パラメータ。gamma は L点から最も近い天体までの
