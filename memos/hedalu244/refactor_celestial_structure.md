@@ -171,7 +171,7 @@ CODING-RULE の「類義語の混雑」「曖昧な区別」に当たる。ど�
 | 環の光学(τ・単一散乱アルベド・位相 g) | `physics/solar-system.ts:143-159`(`RingOpticsDef`)、実値 `:393-405`(`SATURN_RINGS`) | `CelestialBodyDef` の一部。**見た目の量が physics にある** |
 | `CELESTIAL_ALBEDO`(82天体の線形 RGB ボンドアルベド) | `render/celestial-albedo.ts:34-117` | 緩い `Record<string,_>`、網羅強制なし |
 | `CELESTIAL_TEXTURES` / `EARTH_TEXTURES`(url・albedoScale・bondAlbedo・averageHue) | `render/celestial-textures.ts:39-67` | 同上 |
-| `ATMOSPHERE_OPTICS`(earth / mars。「大気の見た目を持つ天体」の正本) | `render/atmosphere-params.ts:20-39` | 同上。physics 側 `AtmosphereDef`(抗力用の密度層)とは別の分布 |
+| `ATMOSPHERE_OPTICS`(earth / mars。「大気の見た目を持つ天体」の正本) | `render/atmosphere.ts:20-39` | 同上。physics 側 `AtmosphereDef`(抗力用の密度層)とは別の分布 |
 | `CELESTIAL_VIEWS`(日本語名 + View 選択) | `game/celestial/celestial-registry.ts:97-203` | `SolarSystemId` で網羅 |
 
 付随する事実:
