@@ -1,5 +1,11 @@
-// HUD 表示用の数値整形。
+// HUD 表示用の数値整形と、data-id で引いた要素への書き込み。
 import * as C from '../const';
+
+// data-id マップから id の要素を引き、表示中の文字列と異なるときだけ書き換える。
+export function setElementText(els: ReadonlyMap<string, HTMLElement>, id: string, text: string): void {
+  const element = els.get(id);
+  if (element && element.textContent !== text) element.textContent = text;
+}
 
 // "YYYY...-MM-DDTHH:MM:SS" を表示用の unix 秒相当へ変換する。年は4桁を超えてよい(SIM_EPOCH_TDB は
 // 作中世界の遠未来年代を持つ)。Date.parse は ECMA-262 の拡張年表記(符号付き6桁)以外の

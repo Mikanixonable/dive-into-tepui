@@ -2,7 +2,7 @@
 // showLoading/hideLoading の対で開閉し、表示中かどうかはこのモジュール自身が持つ。
 // 円形ゲージは実進捗(0..1)だけを表示する——取得できないフェーズは 0% のまま完了直前まで待つ。
 import {
-  ACCENT, SURFACE_OPAQUE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_2XL, FONT_M,
+  ACCENT, SURFACE_OPAQUE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_2XL, FONT_M, Z_LOADING_OVERLAY,
 } from './game/theme';
 
 const GAUGE_SIZE = 72;
@@ -23,7 +23,7 @@ export function showLoading(): void {
   const div = document.createElement('div');
   div.style.cssText =
     'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-    `gap:14px;color:${TEXT};background:${BG};font-family:${FONT_FAMILY};z-index:200;text-align:center`;
+    `gap:14px;color:${TEXT};background:${BG};font-family:${FONT_FAMILY};z-index:${Z_LOADING_OVERLAY};text-align:center`;
   div.innerHTML =
     `<div style="font-size:${FONT_2XL};letter-spacing:6px;color:${ACCENT}">Dive into Tepui</div>` +
     `<div style="position:relative;width:${GAUGE_SIZE}px;height:${GAUGE_SIZE}px;border-radius:50%;` +

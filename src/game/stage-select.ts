@@ -11,7 +11,7 @@ import { MQ_COMPACT, MQ_SHORT } from './hud/breakpoints';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import {
   ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACTIVE_THEME, BG, SURFACE_0 as THEME_SURFACE_0,
-  SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT,
+  SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT, Z_STAGE_SELECT,
 } from './theme';
 import { TITLE_SCENE_PATTERNS, createTitleScene, type TitleScene } from '../render/title-scene';
 
@@ -85,7 +85,7 @@ function pickRandom<T>(items: readonly T[]): T {
 
 const STYLE = `
 #stage-select {
-  position: fixed; inset: 0; z-index: 100; height: 100dvh; overflow: hidden;
+  position: fixed; inset: 0; z-index: ${Z_STAGE_SELECT}; height: 100dvh; overflow: hidden;
   background:
     radial-gradient(circle at 10% 16%, color-mix(in srgb, ${ACCENT} 6%, transparent), transparent 28rem),
     radial-gradient(circle at 88% 58%, color-mix(in srgb, ${SECONDARY_ACCENT} 5%, transparent), transparent 32rem), ${PAGE};
