@@ -1,4 +1,5 @@
 // 縦方向の開閉トグル。target の表示/非表示を collapsed クラスで切り替えるボタンを組み立てる。
+import { stopDragPropagation } from './widget-base';
 
 // マップのマーカーとは字形の族を分け、開いている状態と閉じている状態でどちらを向くかを
 // 画面内で一貫させる。
@@ -29,9 +30,9 @@ export function syncCollapseToggle(button: HTMLElement, target: HTMLElement, lab
 }
 
 // target の表示/非表示を collapsed クラスで切り替えるボタンを1つ組み、root へ追加して返す。
-// extraHitEls は、button 自身に加えて同じ切り替えを受け付ける要素(見出しテキストなど) —
-// button の祖先ではなく兄弟であることが呼び出し側の前提。root がボタンの置き場を兼ねる
-// だけの広い要素(画面全体・パネル全体など)の呼び出しでは渡さない。
+// extraHitEls には、button の兄弟であり同じ切り替えを受け付けたい要素(見出しテキストなど)を
+// 渡す。root が画面全体・パネル全体などボタンの置き場を兼ねる広い要素であるときは、既定の
+// 空配列のまま呼び出す。
 export function buildCollapseToggle(
   root: HTMLElement, id: string, className: string, target: HTMLElement, labels: CollapseToggleLabels,
   extraHitEls: readonly HTMLElement[] = [],
@@ -46,7 +47,7 @@ export function buildCollapseToggle(
     syncCollapseToggle(button, target, labels);
   };
   for (const el of [button, ...extraHitEls]) {
-    el.addEventListener('pointerdown', (event) => event.stopPropagation());
+    stopDragPropagation(el);
     el.addEventListener('click', toggle);
   }
   syncCollapseToggle(button, target, labels);

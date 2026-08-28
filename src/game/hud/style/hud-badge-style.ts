@@ -1,4 +1,4 @@
-// HUD の固定バッジ・ステータスバー・通知 CSS (視点バッジ、シミュレーションステータス、スケール定規、ヒント、トースト、カメラリセット)。
+// HUD の固定バッジ・ステータスバー・通知 CSS (視点バッジ、シミュレーションステータス、スケール定規、トースト、カメラリセット)。
 import { MQ_COARSE } from '../breakpoints';
 
 export const HUD_BADGE_STYLE = `
@@ -66,14 +66,6 @@ export const HUD_BADGE_STYLE = `
 #hud-map-scale .map-scale-tick.q3 { left: 75%; }
 #hud-map-scale .map-scale-tick.end { right: 0; }
 
-#hud-hint {
-  position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%);
-  background: var(--glass-focus); border: 0; border-radius: var(--radius-panel);
-  padding: var(--space-4) var(--space-6);
-  color: var(--color-primary-hover); font-size: var(--font-xl);
-  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
-  transition: opacity var(--transition-slow); opacity: 0; text-align: center;
-}
 #hud-chase-reset {
   position: absolute; top: calc(64px + var(--space-5)); left: 50%; transform: translateX(-50%);
   pointer-events: auto; cursor: pointer;
@@ -89,8 +81,24 @@ export const HUD_BADGE_STYLE = `
   #hud-chase-reset { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
 
+#hud-help-badge {
+  position: absolute; top: var(--space-5); right: var(--space-5);
+  pointer-events: auto; cursor: pointer;
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; justify-content: center; align-items: center;
+  padding: 0;
+  border: 0; background: var(--glass-quiet); color: var(--text-dim);
+  font: inherit; font-size: var(--font-l); font-weight: 700;
+  backdrop-filter: blur(14px) saturate(82%);
+}
+#hud-help-badge:hover { background: var(--surface-2); color: var(--color-primary-hover); }
+#hud-help-badge:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+@media ${MQ_COARSE} {
+  #hud-help-badge { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
+}
+
 #hud-toast {
-  position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(64px + var(--space-5) + 32px + var(--space-1)); left: 50%; transform: translateX(-50%);
   background: var(--glass-focus); border: 0; border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
   color: var(--text); font-size: var(--font-xl); text-align: center;
   box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);

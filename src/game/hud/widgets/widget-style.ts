@@ -23,9 +23,9 @@ export const WIDGET_STYLE = `
   transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 .w-btn:hover, .w-close:hover { color: var(--color-primary-hover); background: var(--surface-3); }
-.w-btn.pressed, .w-close.pressed { background: var(--fill-3); transform: translateY(1px); }
+.w-btn.pressed { background: var(--fill-3); transform: translateY(1px); }
 .w-btn.on { background: var(--color-primary-fill); border-color: transparent; color: var(--color-primary); }
-.w-btn.disabled, .w-close.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+.w-btn.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 .w-btn:focus-visible, .w-close:focus-visible, .w-toggle-track:focus-visible, .w-input:focus-visible {
   outline: 2px solid var(--color-focus); outline-offset: 2px;
 }
@@ -65,23 +65,15 @@ export const WIDGET_STYLE = `
   width: 20px; height: 20px; padding: 0; font-size: var(--font-m);
 }
 
-/* w-input: 数値/文字/検索入力。 */
-.w-input {
+/* w-input: 数値/文字/検索入力。w-select: プルダウンのドロップダウン選択
+   (見出し・反映ボタンは .w-group/.w-btn 側)。見た目は共通。 */
+.w-input, .w-select {
   box-sizing: border-box; padding: var(--space-2) var(--space-3); font: inherit; font-size: var(--font-s);
   color: var(--text); background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
-.w-input:hover { background: var(--surface-3); }
-.w-input:focus { background: var(--surface-3); border-color: var(--color-primary); }
-
-/* w-select: プルダウンのドロップダウン選択(見出し・反映ボタンは .w-group/.w-btn 側)。 */
-.w-select {
-  box-sizing: border-box; padding: var(--space-2) var(--space-3); font: inherit; font-size: var(--font-s);
-  color: var(--text); background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
-  transition: border-color var(--transition-fast), background var(--transition-fast);
-}
-.w-select:hover { background: var(--surface-3); }
-.w-select:focus { background: var(--surface-3); border-color: var(--color-primary); }
+.w-input:hover, .w-select:hover { background: var(--surface-3); }
+.w-input:focus, .w-select:focus { background: var(--surface-3); border-color: var(--color-primary); }
 
 /* w-slider: つまみ型の連続値スライダー。トラックの寸法はパネル側の CSS が決める。 */
 .w-slider { pointer-events: auto; accent-color: var(--color-primary); }

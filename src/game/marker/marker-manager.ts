@@ -54,16 +54,20 @@ interface ActiveLabel {
   dy: number;
 }
 
+// マーカーの種別ごとの既定優先度(値が大きいほど重なったとき残す)。呼び出し側が
+// 個別の優先度を渡さなかったときに使う。
 function defaultPriorityForClass(key: string, cls: string): number {
   if (cls.includes('mk-poi')) {
     return key.includes('-l') ? C.MARKER_PRIORITY.LAGRANGE : C.MARKER_PRIORITY.SATELLITE_SMALL_BODY;
   }
   if (cls.includes('mk-target')) return C.MARKER_PRIORITY.PRIMARY_TARGET;
   if (cls.includes('mk-impact')) return C.MARKER_PRIORITY.IMPACT;
-  if (cls.includes('mk-base')) return C.MARKER_PRIORITY.BASE;
-  if (cls.includes('mk-self') || cls.includes('mk-ally')) return C.MARKER_PRIORITY.PLAYER;
-  if (cls.includes('mk-enemy')) return C.MARKER_PRIORITY.ENEMY;
-  if (cls.includes('mk-ammo') || cls.includes('mk-fuel')) return C.MARKER_PRIORITY.AMMO;
+  // 陣営種別は combatMarkerKindOf の分類を正本とし、ここで独自に cls を読み直さない。
+  const combatKind = combatMarkerKindOf(cls);
+  if (combatKind === 'base') return C.MARKER_PRIORITY.BASE;
+  if (combatKind === 'self' || combatKind === 'ally') return C.MARKER_PRIORITY.PLAYER;
+  if (combatKind === 'enemy') return C.MARKER_PRIORITY.ENEMY;
+  if (combatKind === 'ammo' || combatKind === 'fuel') return C.MARKER_PRIORITY.AMMO;
   if (cls.includes('mk-mnode') || cls.includes('mk-burn')) return C.MARKER_PRIORITY.MANEUVER_NODE;
   if (cls.includes('mk-node') || cls.includes('mk-relnode') || cls.includes('mk-eqnode') || cls.includes('mk-boardpass')) {
     return C.MARKER_PRIORITY.ORBITAL_NODE;
@@ -84,14 +88,26 @@ function canHideIconByPriority(m: MarkerRecord): boolean {
   return true;
 }
 
+export type CombatMarkerKind = 'self' | 'ally' | 'enemy' | 'base' | 'ammo' | 'fuel';
+
+// マーカーの CSS クラス文字列から陣営種別を判定する。cls に複数クラスが並んでいるときは
+// 先に一致した種別を返す。
+export function combatMarkerKindOf(cls: string): CombatMarkerKind | null {
+  if (cls.includes('mk-self')) return 'self';
+  if (cls.includes('mk-ally')) return 'ally';
+  if (cls.includes('mk-enemy')) return 'enemy';
+  if (cls.includes('mk-base')) return 'base';
+  if (cls.includes('mk-ammo')) return 'ammo';
+  if (cls.includes('mk-fuel')) return 'fuel';
+  return null;
+}
+
 // GroupedMarkers が管理する船・弾薬のクラス。この集合どうしのペアはクラスタ化(近接まとめ)で
 // 既にアイコンを残す/ラベルを合体する判断が付いているため、下の優先度間引きで重ねてアイコンを
 // 消さない(消すと GroupedMarkers が残したはずのアイコンが消える)。
-const COMBAT_MARKER_CLASSES = ['mk-target', 'mk-enemy', 'mk-base', 'mk-self', 'mk-ally', 'mk-ammo', 'mk-fuel'];
-
 function isCombatMarker(m: MarkerRecord): boolean {
   const cls = m.root.className;
-  return COMBAT_MARKER_CLASSES.some((c) => cls.includes(c));
+  return combatMarkerKindOf(cls) !== null || cls.includes('mk-target');
 }
 
 // ラベルの概算矩形を入れる画面空間グリッドのセル幅。ラベルの幅は文字数に
@@ -403,20 +419,33 @@ export class MarkerManager {
   // 全マーカーの優先度に基づくアイコン/ラベル間引きと、残ったラベルどうしの衝突緩和。
   // マップモード(overviewMode === true)でのみ優先度間引きを行う。戦闘ビュー(overviewMode === false)では照準や敵アイコン等を隠さない。
   resolveCollisions(overviewMode = false): void {
+    const activeRecords = this.collectActiveMarkerRecords();
+    this.thinByPriority(activeRecords, overviewMode);
+    this.relaxLabelRects(activeRecords);
+    this.applyLabelOffsets();
+  }
+
+  // 現在表示中(hidden/occlusionHidden/フェードアウト完了のいずれでもない)のマーカーを集め、
+  // 前フレームの優先度間引き状態を消しておく。
+  private collectActiveMarkerRecords(): MarkerRecord[] {
     const activeRecords: MarkerRecord[] = [];
     for (const m of this.markerDictionary.values()) {
       if (m.hidden || m.occlusionHidden || m.root.style.opacity === '0') continue;
+      // 間引き結果はこのフレームで thinByPriority が改めて決めるので、いったん消す。
       m.iconHiddenByPriority = false;
       m.labelHiddenByPriority = false;
       m.sym.classList.remove('priority-hidden');
       m.lbl.classList.remove('priority-hidden');
       activeRecords.push(m);
     }
+    return activeRecords;
+  }
 
-    // マップモード(overviewMode === true)のときのみ、画面上の近接に基づく優先度間引きを行う。
-    // 隠す/再び出すしきい値をそれぞれの対象自身の直前フレームの状態(prevLabelHiddenByPriority)
-    // で分ける(ヒステリシス)。周期が数時間の衛星どうしなど、タイムワープ中に画面距離が
-    // しきい値付近で急変する組で、間引きが毎フレーム反転する明滅を防ぐ。
+  // マップモード(overviewMode === true)のときのみ、画面上の近接に基づく優先度間引きを行う。
+  // 隠す/再び出すしきい値をそれぞれの対象自身の直前フレームの状態(prevLabelHiddenByPriority)
+  // で分ける(ヒステリシス)。周期が数時間の衛星どうしなど、タイムワープ中に画面距離が
+  // しきい値付近で急変する組で、間引きが毎フレーム反転する明滅を防ぐ。
+  private thinByPriority(activeRecords: readonly MarkerRecord[], overviewMode: boolean): void {
     if (overviewMode) {
       for (let i = 0; i < activeRecords.length; i++) {
         const a = activeRecords[i]!;
@@ -454,7 +483,12 @@ export class MarkerManager {
       m.sym.classList.toggle('priority-hidden', m.iconHiddenByPriority);
       m.lbl.classList.toggle('priority-hidden', m.labelHiddenByPriority);
     }
+  }
 
+  // 優先度間引きを生き残ったラベルの推定矩形を集め、重なったものどうしをグリッドバケット +
+  // 5反復で反発させて緩和する。結果のオフセットは activeScratch/activeCount へ蓄積し、
+  // 位置の反映と引き出し線の描画は applyLabelOffsets が行う。
+  private relaxLabelRects(activeRecords: readonly MarkerRecord[]): void {
     const active = this.activeScratch;
     this.activeCount = 0;
 
@@ -588,8 +622,12 @@ export class MarkerManager {
         }
       }
     }
+  }
 
-    // ずらした位置を反映し、シンボルとの引き出し線を引く
+  // relaxLabelRects が求めたオフセットを DOM の transform へ反映し、ずれたラベルにはシンボルへの
+  // 引き出し線を引く。線を使わなくなったスロットは display: none で隠す(プールは再利用する)。
+  private applyLabelOffsets(): void {
+    const active = this.activeScratch;
     let lineIndex = 0;
     for (let i = 0; i < this.activeCount; i++) {
       const a = active[i]!;

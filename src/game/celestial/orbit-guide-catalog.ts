@@ -1,9 +1,20 @@
 // CR3BP 周期軌道カタログの読み込み。地球-月・太陽-地球はバンドルへ静的 import 済み、残り5系は
 // その系が初めて必要になったときに動的 import で取りに行く(webpack が自動でコード分割する)。
+import { lagrangeJacobi, type LagrangeLabel } from '../../physics/zero-velocity';
 import type { CatalogSystem, CatalogSystemId, OrbitCatalog } from '../../physics/orbit-catalog';
 import staticTable from '../../assets/orbits/lagrange-orbits.json';
 
 const STATIC_CATALOG = staticTable as unknown as OrbitCatalog;
+
+// ゼロ速度曲線(表示パネル)が使う質量比。焼き込みカタログの mu をそのまま使う——
+// L1〜L5 のヤコビ定数は系ごとの mu で決まるため、静的バンドル済みの2系だけをここで直接引く。
+export function zeroVelocityMu(system: 'earth-moon' | 'sun-earth'): number {
+  return STATIC_CATALOG.systems[system]?.mu ?? (system === 'earth-moon' ? 0.012150585 : 3.003e-6);
+}
+
+export function lagrangePointJacobi(system: 'earth-moon' | 'sun-earth', point: LagrangeLabel): number {
+  return lagrangeJacobi(zeroVelocityMu(system), point);
+}
 
 // 遅延ロード対象の系と、その取得関数。系ごとに1個の別ファイルを充てる。
 const LAZY_IMPORTS: Readonly<Partial<Record<CatalogSystemId, () => Promise<{ readonly default: unknown }>>>> = {

@@ -1,13 +1,13 @@
 // 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル・Δv アーム・コンテキストメニューを
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import * as C from '../const';
-import { FONT_FAMILY, FONT_XS } from '../theme';
+import { FONT_FAMILY, FONT_XS, Z_HUD_NODE_GIZMO } from '../theme';
 import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import type { OverlayManager } from '../hud/overlay-manager';
 
 const STYLE = `
 #hud #node-gizmo {
-  position: fixed; inset: 0; pointer-events: none; z-index: 5;
+  position: fixed; inset: 0; pointer-events: none; z-index: ${Z_HUD_NODE_GIZMO};
   font-family: ${FONT_FAMILY}; user-select: none;
   -webkit-user-select: none;
 }

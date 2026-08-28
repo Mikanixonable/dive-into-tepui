@@ -1,9 +1,9 @@
-// マップ視点の縮尺バー(#hud-map-scale)の同期。数値計算そのものは DOM 非依存の map-scale.ts
-// に置き、ここは要素への書き込みだけを行う。
+// マップ視点の縮尺バー(#hud-map-scale)の要素へ、計算済みの縮尺値を書き込む。
 import { formatMapScaleDistance, mapScaleFor } from '../map-scale';
 import type { Game } from '../../game';
 
 export class MapScaleBadge {
+  // 縮尺パネルへラベル要素(「縮尺」)を1度だけ差し込む。
   public constructor(private readonly els: Map<string, HTMLElement>) {
     const panel = this.els.get('map-scale');
     if (!panel || panel.querySelector('.map-scale-label')) return;

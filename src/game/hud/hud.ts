@@ -1,4 +1,4 @@
-// DOM オーバーレイの HUD のシェル。トースト・ヒント・ヘルプの表示と、
+// DOM オーバーレイの HUD のシェル。トースト・ヘルプの表示と、
 // root/svgOverlay の公開・常設パネル群の所有を担う。
 import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
@@ -23,30 +23,30 @@ const ANALYSIS_WINDOW_OPEN_X = 320;
 const ANALYSIS_WINDOW_OPEN_Y = 100;
 
 export class Hud {
-  readonly root: HTMLElement;
-  readonly layers: OverlayLayers;
-  readonly combatRoot: HTMLElement;
-  readonly mapRoot: HTMLElement;
-  readonly svgOverlay: SVGSVGElement;
-  readonly overlayManager: OverlayManager;
-  readonly helpPanel: HelpPanel;
-  readonly topBar: TopBar;
-  readonly viewBadgeRow: HTMLElement;
-  readonly mapScaleBadge: MapScaleBadge;
-  readonly vesselPanel: VesselPanel;
-  readonly orbitPanel: OrbitPanel;
-  readonly targetPanel: TargetPanel;
-  readonly enemiesPanel: EnemiesPanel;
-  readonly burnManagementPanel: BurnManagementPanel;
+  public readonly root: HTMLElement;
+  public readonly layers: OverlayLayers;
+  public readonly combatRoot: HTMLElement;
+  public readonly mapRoot: HTMLElement;
+  public readonly svgOverlay: SVGSVGElement;
+  public readonly overlayManager: OverlayManager;
+  public readonly helpPanel: HelpPanel;
+  public readonly topBar: TopBar;
+  public readonly viewBadgeRow: HTMLElement;
+  public readonly mapScaleBadge: MapScaleBadge;
+  public readonly vesselPanel: VesselPanel;
+  public readonly orbitPanel: OrbitPanel;
+  public readonly targetPanel: TargetPanel;
+  public readonly enemiesPanel: EnemiesPanel;
+  public readonly burnManagementPanel: BurnManagementPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
-  private hintUntil = 0;
   private toastUntil = 0;
 
   // HUD の DOM を構築する。
-  constructor(readonly renderStyle: RenderStyleSetting) {
+  public constructor(public readonly renderStyle: RenderStyleSetting) {
     const {
       root, layers, combatRoot, mapRoot, svgOverlay, overlayManager, helpPanel, els,
     } = buildHudDom(renderStyle);
+    // 構築済みの DOM 参照を受け取る。
     this.root = root;
     this.layers = layers;
     this.combatRoot = combatRoot.element;
@@ -54,6 +54,8 @@ export class Hud {
     this.svgOverlay = svgOverlay;
     this.overlayManager = overlayManager;
     this.helpPanel = helpPanel;
+
+    // data-id で引ける要素だけを各パネルへ渡し、DOM の組み立て方を持ち込ませない。
     this.topBar = new TopBar(els);
     this.viewBadgeRow = els.get('gs-viewrow')!;
     this.mapScaleBadge = new MapScaleBadge(els);
@@ -62,6 +64,8 @@ export class Hud {
     this.targetPanel = new TargetPanel(els);
     this.enemiesPanel = new EnemiesPanel(els);
     this.burnManagementPanel = new BurnManagementPanel(els);
+
+    // 初期表示の配線。
     this.burnManagementPanel.sync(null);
     this.orbitPanel.setOpenAnalysisHandler(() => this.openOrbitAnalysis());
     this.setWorldView('combat');
@@ -81,12 +85,12 @@ export class Hud {
   }
 
   // 戦闘/マップ HUD コントローラの sync から呼ばれる。窓が無ければ何もしない。
-  syncOrbitAnalysis(game: Game, celestialBodies: readonly CelestialBody[]): void {
+  public syncOrbitAnalysis(game: Game, celestialBodies: readonly CelestialBody[]): void {
     this.orbitAnalysisWindow?.sync(game, celestialBodies);
   }
 
   // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
-  setWorldView(view: HudWorldView): void {
+  public setWorldView(view: HudWorldView): void {
     const map = view === 'map';
     this.helpPanel.setWorldView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
@@ -112,21 +116,22 @@ export class Hud {
   }
 
   // ゲーム側で整えた表示用スナップショットだけを受け取り、Player 依存を HUD に持ち込まない。
-  syncBurnManagement(view: BurnManagementViewModel | null): void {
+  public syncBurnManagement(view: BurnManagementViewModel | null): void {
     this.burnManagementPanel.sync(view);
   }
 
-  // ヒントテキストを durationMs だけ表示する。
-  hint(text: string, durationMs = 1800): void {
-    const e = document.getElementById('hud-hint');
-    if (!e) return;
-    e.textContent = text;
-    e.style.opacity = '1';
-    this.hintUntil = performance.now() + durationMs;
+  // 見出しを持たないメッセージのみ型トーストを durationMs だけ表示する。
+  public hint(text: string, durationMs = 1800): void {
+    this.showToast(text, durationMs);
   }
 
-  // トースト(HTML)を durationMs だけ表示する。
-  toast(html: string, durationMs = 8000): void {
+  // 見出し+本文を持つタイトル-説明型トースト(HTML)を durationMs だけ表示する。
+  public toast(html: string, durationMs = 8000): void {
+    this.showToast(html, durationMs);
+  }
+
+  // トースト DOM の内容と表示期限を差し替える(hint/toast 共通の下請け)。
+  private showToast(html: string, durationMs: number): void {
     const e = document.getElementById('hud-toast');
     if (!e) return;
     e.innerHTML = html;
@@ -135,20 +140,13 @@ export class Hud {
   }
 
   // ヘルプ表示キーの押下エッジを受け取る。
-  handleInput(input: Input): void {
+  public handleInput(input: Input): void {
     this.helpPanel.handleInput(input);
   }
 
-  // 表示期限を過ぎたヒント・トーストをフェードアウトさせる。
-  tick(): void {
+  // 表示期限を過ぎたトーストをフェードアウトさせる。
+  public tick(): void {
     const now = performance.now();
-    // ヒントの期限切れ
-    const hint = document.getElementById('hud-hint');
-    if (hint && this.hintUntil && now > this.hintUntil) {
-      hint.style.opacity = '0';
-      this.hintUntil = 0;
-    }
-    // トーストの期限切れ
     const toast = document.getElementById('hud-toast');
     if (toast && this.toastUntil && now > this.toastUntil) {
       toast.style.opacity = '0';

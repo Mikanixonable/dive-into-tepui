@@ -1,16 +1,29 @@
 // JPL の Three-Body Periodic Orbits API から、CR3BP 周期軌道族の初期条件を取得し、族に沿って
 // 等間隔に間引いて assets-src/orbits/<系>.json へキャッシュするツール。
 //
+// API はメンバーをヤコビ定数の昇順で返す。これは族に沿った連続順ではない — ヤコビ定数が
+// 折り返す族(地球-月 L1 ハローなど)では、族の離れた区間どうしが交互に並ぶ。そのままでは
+// 軌道ガイドが族に沿って連続に変化しなくなるので、初期状態ベクトルの連続性から族の順序を
+// 復元してから間引く。
+//
+// 復元した並びが繋がらない(互いに独立な枝が混じっている)ことがあるため、断絶で区切った
+// 連続区間ごとに別の族として保存する(tools/orbit-family.mjs の splitAtBreaks)。区間の族 id
+// には segmentFamilyKey で `#1` `#2` … を付ける。
+//
+// 区間ごとの保存件数(MEMBERS_PER_FAMILY)は、実際に表示へ使う件数より多く持たせてある。
+// 焼き込み(tools/export-lagrange-orbits.mjs)が主星・副星へ衝突するメンバーをこの中から
+// 落としたうえで表示件数へ選び直すため、選び直す余地を残す必要がある。
+//
 // 実行: node tools/fetch-orbit-catalog.mjs
 //
 // ここで保存する初期条件が、リポジトリにコミットされる唯一の生データになる(数十MBの全件は
-// 保存しない)。焼き込み(tools/export-lagrange-orbits.mjs)はこのキャッシュだけを読み、
-// API へは接続しない。
+// 保存しない)。焼き込みはこのキャッシュだけを読み、API へは接続しない。
 //
 // 同じ入力(API の応答)からは常に同じ出力を書く。時刻・環境に依存する値は含めない。
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { segmentFamilyKey, splitAtBreaks, squaredStateDistance, thinByChordLength } from './orbit-family.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(repoRoot, 'assets-src', 'orbits');
@@ -43,23 +56,88 @@ const FAMILY_SPECS = [
   { family: 'resonant', librs: [null], branches: ['12', '21', '31', '23', '43', '34'] },
 ];
 
-// 族あたりに保存するメンバー数の目安。
-const MEMBERS_PER_FAMILY = 30;
+// 区間あたりに保存するメンバー数の目安。表示に使う件数(30 件)より多く持たせてあるのは、
+// 焼き込み側が主星・副星へ衝突するメンバーをここから落としたあとで、表示件数へ選び直す
+// 余地を残すため。
+const MEMBERS_PER_FAMILY = 120;
+// 断絶で区切った区間がこれ未満の行数(生データ、間引き前)なら、族として意味をなさないので
+// 落とす。
+const MIN_SEGMENT_LENGTH = 20;
 // 同時に投げるリクエスト数。ドキュメントにレート制限の明記がないため控えめに絞る。
 const CONCURRENCY = 4;
 
-// 族に沿って(API が返す順のまま)等間隔に count 件を選ぶ。先頭と末尾は必ず含む。
-function thinAlongFamily(rows, count) {
-  if (rows.length <= count) return rows;
-  const picked = [];
-  const seen = new Set();
-  for (let i = 0; i < count; i++) {
-    const index = Math.round((i * (rows.length - 1)) / (count - 1));
-    if (seen.has(index)) continue;
-    seen.add(index);
-    picked.push(rows[index]);
+// 未使用の中で from にいちばん近い行の添字と、その2乗距離。
+function nearestUnused(rows, used, from) {
+  let bestIndex = -1;
+  let bestDistance = Infinity;
+  for (let j = 0; j < rows.length; j++) {
+    if (used[j]) continue;
+    const distance = squaredStateDistance(rows, from, j);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = j;
+    }
   }
-  return picked;
+  return { index: bestIndex, distance: bestDistance };
+}
+
+// startIndex を起点に、未使用の最近傍を順に辿って1本の鎖(添字の並び)を作る。
+// 伸ばす向きは鎖の両端から近いほうを毎回選ぶ。片方向にしか伸ばさないと、起点が族の途中に
+// あったときに一方の端で行き止まり、そこから反対側へ跳んで並びが壊れる。
+function buildNearestNeighborChain(rows, startIndex) {
+  const n = rows.length;
+  const used = new Uint8Array(n);
+  // 前へ伸ばした側は逆順に積み、最後に反転して繋ぐ(先頭への挿入を繰り返さないため)。
+  const headSide = [];
+  const tailSide = [startIndex];
+  used[startIndex] = 1;
+  let head = startIndex;
+  let tail = startIndex;
+  for (let step = 1; step < n; step++) {
+    const atHead = nearestUnused(rows, used, head);
+    const atTail = head === tail ? atHead : nearestUnused(rows, used, tail);
+    if (atTail.distance < atHead.distance) {
+      tailSide.push(atTail.index);
+      used[atTail.index] = 1;
+      tail = atTail.index;
+    } else {
+      headSide.push(atHead.index);
+      used[atHead.index] = 1;
+      head = atHead.index;
+    }
+  }
+  return headSide.reverse().concat(tailSide);
+}
+
+// 鎖の隣接ステップ距離を、並びの順に返す。
+function chainSteps(rows, order) {
+  const steps = [];
+  for (let i = 1; i < order.length; i++) {
+    steps.push(Math.sqrt(squaredStateDistance(rows, order[i - 1], order[i])));
+  }
+  return steps;
+}
+
+// 並びに沿った総弦長。並べ替えが元の順より良くなっていることの確認に使う。
+function totalChainLength(rows, order) {
+  return chainSteps(rows, order).reduce((sum, step) => sum + step, 0);
+}
+
+// API が返す C 昇順の rows を、6次元状態ベクトルの連続性で族に沿った順へ並べ替えたうえで、
+// 断絶で区切った連続区間の配列(rows の配列)へ分ける。
+// 貪欲最近傍で鎖を組み、総弦長が元の C 順より短くなっていれば採る(短くならないのは、族が
+// もともと C について単調で並べ替えるまでもない場合か、データに構造が無い場合)。
+// MIN_SEGMENT_LENGTH に満たない区間は splitAtBreaks が落とすので、ここでは返さない
+// (呼び出し側が落ちた行数を警告する)。
+function orderFamilyByContinuity(rows) {
+  if (rows.length < 3) return splitAtBreaks(rows, MIN_SEGMENT_LENGTH);
+
+  const identity = rows.map((_, index) => index);
+  const chain = buildNearestNeighborChain(rows, 0);
+  const ordered = totalChainLength(rows, chain) > totalChainLength(rows, identity)
+    ? rows
+    : chain.map((index) => rows[index]);
+  return splitAtBreaks(ordered, MIN_SEGMENT_LENGTH);
 }
 
 // クエリ文字列を組み立てる。
@@ -125,6 +203,7 @@ async function runPool(tasks, worker) {
 async function main() {
   mkdirSync(outDir, { recursive: true });
   const failures = [];
+  const warnings = [];
   const report = [];
 
   for (const sys of SYSTEMS) {
@@ -146,16 +225,32 @@ async function main() {
         const result = await fetchCombo(sys, combo.family, combo.libr, combo.branch);
         if (result === null) return; // 無効・空の組み合わせ。この系にこの族は無い。
         systemMeta ??= result.system;
-        const thinned = thinAlongFamily(result.rows, MEMBERS_PER_FAMILY);
-        families[key] = {
-          libr: combo.fixedLibr ?? combo.libr,
-          branch: combo.branch,
-          totalCount: result.rows.length,
-          members: thinned.map(([x, y, z, vx, vy, vz, jacobi, period, stability]) => ({
-            state: [x, y, z, vx, vy, vz],
-            jacobi, period, stability,
-          })),
-        };
+        const segments = orderFamilyByContinuity(result.rows);
+        const droppedCount = result.rows.length - segments.reduce((sum, segment) => sum + segment.length, 0);
+        if (droppedCount > 0) {
+          warnings.push(`${sys} ${key}: MIN_SEGMENT_LENGTH 未満の区間・断絶の孤立行として ${droppedCount} 件を除外`);
+        }
+        if (segments.length === 0) {
+          warnings.push(`${sys} ${key}: 連続する区間が1つも残らなかったため除外`);
+          return;
+        }
+        if (segments.length > 1) {
+          const lengths = segments.map((segment) => `${segment.length} 件`).join('、');
+          warnings.push(`${sys} ${key}: 族が繋がらないため ${segments.length} 区間へ分けた(${lengths})`);
+        }
+        segments.forEach((segment, index) => {
+          const segmentKey = segmentFamilyKey(key, index, segments.length);
+          const thinned = thinByChordLength(segment, MEMBERS_PER_FAMILY);
+          families[segmentKey] = {
+            libr: combo.fixedLibr ?? combo.libr,
+            branch: combo.branch,
+            totalCount: segment.length,
+            members: thinned.map(([x, y, z, vx, vy, vz, jacobi, period, stability]) => ({
+              state: [x, y, z, vx, vy, vz],
+              jacobi, period, stability,
+            })),
+          };
+        });
       } catch (error) {
         failures.push(`${sys} ${key}: ${error.message}`);
       }
@@ -194,6 +289,9 @@ async function main() {
   process.stderr.write(`\n${report.join('\n')}\n`);
   if (failures.length > 0) {
     process.stderr.write(`\n取得に失敗した組み合わせ:\n${failures.map((f) => `  ${f}`).join('\n')}\n`);
+  }
+  if (warnings.length > 0) {
+    process.stderr.write(`\n1本の連続した列にならなかった族:\n${warnings.map((w) => `  ${w}`).join('\n')}\n`);
   }
 }
 

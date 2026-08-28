@@ -50,7 +50,7 @@ export class Stage00 extends Stage {
   update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
 
-    this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
+    this.behaveAllEnemies(player, entities, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed, true);
     this.waveAttack.update(dt, player, entities.enemies, simTime, this, (enemy) => this.addEnemy(enemy, entities));
   }

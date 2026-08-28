@@ -26,14 +26,14 @@ export type BulletType = 'normal' | 'plasma';
 // 自弾と敵プラズマ弾の両方に使う。
 // geometry/material はビルダーが弾種ごとに共有するため、traverse による個別 dispose は行わない。
 export class Bullet extends GameEntity {
-    override readonly bcInv = C.BULLET_BCINV;
+    public override readonly bcInv = C.BULLET_BCINV;
     // 弾は姿勢を持たず、速度方向を向く(sync)。
-    readonly hasAttitude = false;
+    public readonly hasAttitude = false;
 
-    readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
-    readonly shooter: Shooter;
-    readonly type: BulletType;
-    readonly damage: number;
+    private readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
+    public readonly shooter: Shooter;
+    public readonly type: BulletType;
+    public readonly damage: number;
     private passedClose: boolean = false; // 至近通過音を鳴らし終えたか
     private readonly lifetime: number;
     private readonly _worldSfx: WorldSfx;
@@ -45,7 +45,7 @@ export class Bullet extends GameEntity {
 
     // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
     // damage は着弾時に与える HP。撃った側の武装で決まるので、弾自身が持ち歩く。
-    constructor(
+    public constructor(
         state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number,
         worldSfx: WorldSfx, scene?: THREE.Scene, velocityReference?: GameEntity,
     ) {
@@ -67,7 +67,7 @@ export class Bullet extends GameEntity {
     // 発射後 SELF_CONTACT_GRACE の間だけ接触しない — 敵は同士討ちしないが自機は猶予を過ぎた
     // 自弾に当たる、という非対称は意図的(規則2・3は対称ではない)。艦に取り付いた実体
     // (ベルトの節点・放熱板の折り)は attachedTo を辿って艦本体と同じ扱いにする。
-    contactsWith(other: GameEntity, simTime: number): boolean {
+    public contactsWith(other: GameEntity, simTime: number): boolean {
         if (other instanceof Bullet) return false;
         const ship = other.attachedTo ?? other;
         if (this.shooter === 'enemy' && ship instanceof Enemy) return false;
@@ -78,7 +78,7 @@ export class Bullet extends GameEntity {
     }
 
     // 弾自身は接触したら消える。相手への作用は相手の collideWithEntity が書く。
-    collideWithEntity(_other: GameEntity, _contact: Contact): void {
+    public collideWithEntity(_other: GameEntity, _contact: Contact): void {
         this.alive = false;
     }
 
@@ -89,13 +89,13 @@ export class Bullet extends GameEntity {
         return this.bornSim + this.lifetime;
     }
 
-    nextSimulationEventTime(simTime: number): number | null {
+    public nextSimulationEventTime(simTime: number): number | null {
         return this.expiresAt >= simTime ? this.expiresAt : null;
     }
 
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。敵弾が自機の至近を通過した瞬間の
     // 判定もここで行う(substep ごとの位置だけを見る、意図的に雑な最接近判定)。
-    checkLoss(
+    public checkLoss(
         _dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3,
         _atmosphereBodies: readonly CelestialBody[],
     ): void {
@@ -111,7 +111,7 @@ export class Bullet extends GameEntity {
     }
 
     // 姿勢を持たないため、att.q ではなく射手に対する相対速度方向を向く。
-    sync(fo: FloatingOrigin, displayTime: number): void {
+    public sync(fo: FloatingOrigin, displayTime: number): void {
         // 表示できる時刻の範囲外なら非表示にする
         const s = this.displayState(displayTime);
         if (s === null) {

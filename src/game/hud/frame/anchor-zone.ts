@@ -6,6 +6,7 @@ import { Ephemeris } from '../../../physics/ephemeris';
 import { FRAME_ROLES } from '../../../physics/frame';
 import type { MapPickable } from '../../map-pickable';
 import { SegmentedControl } from '../widgets';
+import { injectOnce } from '../widgets/inject-style';
 import { frameRoleAnchorId, frameRoleName } from './frame-labels';
 import { groupPickables, LAGRANGE_ID, lagrangeParentId } from '../object-groups';
 import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
@@ -22,20 +23,10 @@ const STYLE = `
 #hud .hud-anchor-zone { display: flex; flex-direction: column; gap: var(--space-2); }
 `;
 
-let styleInjected = false;
-// ゾーンのスタイルシートを document.head へ一度だけ挿入する。
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
-
 export class AnchorZone {
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
   // null は「固定を解除」= releaseLabel が表す選択を表す。
-  onSelect: ((id: string | null) => void) | null = null;
+  public onSelect: ((id: string | null) => void) | null = null;
 
   private readonly picker: ObjectPicker<string | null>;
   private readonly quick: SegmentedControl<string | null>;
@@ -43,11 +34,11 @@ export class AnchorZone {
 
   // popupRoot は ObjectPicker のポップアップの親、title はプルダウンの見出し。releaseLabel が
   // null なら「解除」の選択肢そのものを出さない(プルダウン先頭・クイックボタン先頭の両方)。
-  constructor(
+  public constructor(
     popupRoot: HTMLElement, title: string, ephemeris: Ephemeris, private readonly releaseLabel: string | null,
     overlayManager: OverlayManager,
   ) {
-    ensureStyle();
+    injectOnce('anchor-zone', STYLE);
     this.ephemeris = ephemeris;
 
     this.element = document.createElement('div');
@@ -61,7 +52,7 @@ export class AnchorZone {
   }
 
   // 選べる対象の一覧を現在のマップ候補へ合わせる。releaseLabel があれば先頭に解除の選択肢を足す。
-  setItems(pickables: readonly MapPickable[], includeAllCelestialBodies = false): void {
+  public setItems(pickables: readonly MapPickable[], includeAllCelestialBodies = false): void {
     const groups: ObjectPickerGroup<string | null>[] = [
       ...(this.releaseLabel !== null ? [{ label: '', items: [[null, this.releaseLabel] as const] }] : []),
       ROLE_GROUP,
@@ -72,18 +63,21 @@ export class AnchorZone {
 
   // クイックボタンを、渡された系の天体列(+その衛星・ラグランジュ点)へ合わせる。
   // 候補に無い id は出さない(押せてから拒否することになるため)。
-  setNearby(members: readonly CelestialBodyId[], pickables: readonly MapPickable[]): void {
+  public setNearby(members: readonly CelestialBodyId[], pickables: readonly MapPickable[]): void {
     const byId = new Map(pickables.map((p) => [p.id, p] as const));
 
+    // 渡された系メンバーのうち、実際に選べる候補にあるものだけへ絞る。
     const baseIds = members.filter((id) => byId.has(id));
     const baseIdSet = new Set(baseIds);
 
+    // 絞った天体を親に持つラグランジュ点も、クイックボタンの対象へ加える。
     const lagrangeIds: string[] = [];
     for (const p of pickables) {
       if (p.kind !== 'body' || !LAGRANGE_ID.test(p.id)) continue;
       if (baseIdSet.has(lagrangeParentId(p.id))) lagrangeIds.push(p.id);
     }
 
+    // 解除の選択肢(あれば)を先頭に、天体本体・ラグランジュ点の順で並べる。
     const items: (readonly [string | null, string])[] = this.releaseLabel !== null ? [[null, '解除']] : [];
     for (const id of [...baseIds, ...lagrangeIds]) {
       const p = byId.get(id);
@@ -93,13 +87,13 @@ export class AnchorZone {
   }
 
   // 選択中の表示を合わせる。
-  setSelected(id: string | null): void {
+  public setSelected(id: string | null): void {
     this.picker.setSelected(id);
     this.quick.setSelected(id);
   }
 
   // 保持している ObjectPicker を片付ける。
-  dispose(): void {
+  public dispose(): void {
     this.picker.dispose();
   }
 }

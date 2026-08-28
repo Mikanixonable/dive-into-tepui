@@ -1,5 +1,6 @@
 import { AnyPart } from './game-entity/parts';
-import type { EnemyKind, FormationRole } from './game-entity/enemy';
+import type { EnemyKind } from './game-entity/enemy-kind';
+import type { FormationRole } from './game-entity/enemy-formation';
 import { CelestialBodyId } from '../physics/celestial-body';
 import type { GamePhase } from './stages/stage';
 import type { WaveAttackSaveData } from './stages/stage-utils/wave-attack';
@@ -136,6 +137,8 @@ export interface EnemySaveData extends EntitySaveData {
   alive: boolean;
   health: number;
   accent: string | number;
+  // マーカー・軌道線の色。旧セーブデータには無いため任意(無ければ accent から導く)。
+  orbitLineColor?: string | number;
   waveId?: number;
   // 陣形に属する敵だけが持つ識別子と役割。無ければ単体敵として復元する。
   formationId?: string;

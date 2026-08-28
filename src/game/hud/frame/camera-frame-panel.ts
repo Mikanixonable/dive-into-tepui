@@ -8,26 +8,14 @@ import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../widgets';
 import { celestialBodyName, frameRoleName, rotationSourceLabel } from './frame-labels';
-import { hudRail } from '../hud-root';
 import type { MapPickable } from '../../map-pickable';
 import type { OverlayManager } from '../overlay-manager';
+import { buildPanel } from './frame-controls';
 
 const ANGLE_COLUMNS = [
   { description: '面', items: [['ecliptic', '黄道面'], ['equator', '赤道面'], ['moonOrbit', '月軌道面']] },
   { description: '視点', items: [['above', '真上'], ['side', '真横']] },
 ] as const satisfies readonly [PulldownColumn<CameraReferencePlane>, PulldownColumn<CameraReferenceView>];
-
-function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
-  const panel = document.createElement('div');
-  panel.id = id;
-  panel.className = 'panel hidden hud-frame-controls';
-  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-  const title = document.createElement('h3');
-  title.textContent = titleText;
-  panel.appendChild(title);
-  hudRail(root, 'left').appendChild(panel);
-  return panel;
-}
 
 export class CameraFramePanel {
   private readonly panel: HTMLElement;
@@ -43,6 +31,7 @@ export class CameraFramePanel {
 
   public onSelectCenter: ((id: string | null) => void) | null = null;
 
+  // panelRoot はパネル自身の設置先、popupRoot は AnchorZone のポップアップの親。
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
@@ -113,6 +102,7 @@ export class CameraFramePanel {
     this.panel.appendChild(this.cameraSummary);
   }
 
+  // パネル下部に表示するサマリ行の文字列を組み立てる。
   private cameraSummaryText(): string {
     const camId = focusTargetId(this.mapCamera.focus);
     const camRole = camId === undefined ? null : frameRoleOf(camId);
@@ -123,6 +113,7 @@ export class CameraFramePanel {
     return `基準: ${camCenter}・${rotationSourceLabel(camRot)} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
   }
 
+  // パネルの表示と各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
   public sync(
     pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
     validRoles: readonly FrameRole[], isVisible: boolean,
@@ -134,9 +125,13 @@ export class CameraFramePanel {
     this.cameraCenterZone.setItems(pickables, true);
     this.cameraCenterZone.setNearby(members, pickables);
     this.cameraCenterZone.setSelected(focusTargetId(this.mapCamera.focus) ?? null);
+
+    // 回転追従の選択肢と、クオータニオン/オイラーの操作モード表示を合わせる。
     this.cameraRotationZone.setNearby(members, displayTime, validRoles);
     this.cameraRotationZone.setSelected(this.mapCamera.cameraFrame.rotatingWith);
     this.cameraRotationModeToggle.setOn(this.mapCamera.cameraRotationMode === 'quaternion');
+
+    // 平行投影は画角という概念自体を欠くため、画角の操作系一式を無効化して案内を出す。
     const isOrthographic = this.mapCamera.projection === 'orthographic';
     this.projectionToggle.setOn(isOrthographic);
     this.fovSlider.element.disabled = isOrthographic;
@@ -148,10 +143,13 @@ export class CameraFramePanel {
     if (document.activeElement !== this.fovInput.element) {
       this.fovInput.setValue(this.mapCamera.fov.toFixed(0));
     }
+
+    // 角度プルダウンの選択表示とサマリ行を最後に合わせる。
     this.angleControl.setSelected(0, this.mapCamera.referencePlane);
     this.cameraSummary.textContent = this.cameraSummaryText();
   }
 
+  // 保持しているゾーンとパネル要素を片付ける。
   public dispose(): void {
     this.cameraCenterZone.dispose();
     this.panel.remove();

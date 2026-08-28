@@ -1,364 +1,18 @@
-// [H] で開閉する操作説明パネル。キー定義は input/key-mapping.ts を参照し、
-// キーボード図・検索結果・操作一覧で同じ code/label を使う。
-import * as C from '../../const';
+// [H] で開閉する操作説明パネル。操作項目・キーボード配列のデータは help-content.ts を参照し、
+// 検索・フィルタ・選択ハイライトの状態遷移と DOM 描画を担当する。
 import type { Input } from '../../input/input';
-import { KEY_MAPPING as K, type KeyBinding } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
+import {
+  ARROW_KEYS, AUXILIARY_KEYS, BEHAVIOR_LABELS, HELP_CATEGORIES, HELP_ENTRIES, INPUT_LABELS, KEYBOARD_ROWS,
+  entryCodes, entryMatchesCode, normalize, scopeMatches,
+  type HelpCategory, type HelpEntry, type HelpInput, type HelpMode, type KeyboardKeyDefinition,
+} from './help-content';
 
-type HelpMode = 'combat' | 'map';
-type HelpInput = 'keyboard' | 'mouse' | 'touch';
-type HelpCategory = 'basic' | 'combat' | 'camera' | 'time' | 'map' | 'ui' | 'gesture';
-type HelpScope = HelpMode | 'both';
-type HelpBehavior = 'press' | 'hold' | 'toggle' | 'drag' | 'gesture';
-
-interface HelpEntry {
-  readonly id: string;
-  readonly category: HelpCategory;
-  readonly label: string;
-  readonly description: string;
-  readonly keys?: readonly KeyBinding[];
-  readonly inputs: readonly HelpInput[];
-  readonly scope: HelpScope;
-  readonly behavior?: HelpBehavior;
-  readonly example?: string;
-}
-
-interface KeyboardKeyDefinition {
-  readonly code: string;
-  readonly label: string;
-  readonly className?: string;
-}
-
-const HELP_CATEGORIES: readonly { id: HelpCategory; label: string; glyph: string }[] = [
-  { id: 'basic', label: '基本操作', glyph: '◆' },
-  { id: 'combat', label: '戦闘・機体', glyph: '◎' },
-  { id: 'camera', label: 'カメラ', glyph: '◇' },
-  { id: 'time', label: '時間操作', glyph: '◷' },
-  { id: 'map', label: '軌道計画', glyph: '⌁' },
-  { id: 'ui', label: '画面・メニュー', glyph: '□' },
-  { id: 'gesture', label: 'マウス・タッチ', glyph: '✦' },
-];
-
-// 説明文はここで管理し、キー名・キーコードは必ず KEY_MAPPING の値から取る。
-// scope が both でない項目は、戦闘/マップの現在モードに応じて一覧と図から切り替える。
-const HELP_ENTRIES: readonly HelpEntry[] = [
-  {
-    id: 'translation', category: 'basic', label: '機体の並進',
-    description: '前 / 後 / 左 / 右 / 上 / 下へ推進する。キーを押している間だけ出力する。',
-    keys: [K.thrustForward, K.thrustBackward, K.thrustLeft, K.thrustRight, K.thrustUp, K.thrustDown],
-    inputs: ['keyboard'], scope: 'combat', behavior: 'hold', example: 'W/S = 前後、A/D = 左右、Q/E = 上下',
-  },
-  {
-    id: 'attitude', category: 'basic', label: '機体の姿勢変更',
-    description: 'ピッチ / ヨー / ロールを RCS で操作する。',
-    keys: [K.pitchDown, K.pitchUp, K.yawRight, K.yawLeft, K.rollLeft, K.rollRight],
-    inputs: ['keyboard'], scope: 'combat', behavior: 'hold', example: 'I/K = ピッチ、J/L = ヨー、U/O = ロール',
-  },
-  {
-    id: 'rcs-damp', category: 'combat', label: 'RCS 回転制動',
-    description: '回転速度を自動的に抑える機能を ON/OFF する。',
-    keys: [K.rcsDampToggle], inputs: ['keyboard'], scope: 'combat', behavior: 'toggle',
-  },
-  {
-    id: 'prograde-reset', category: 'combat', label: 'プログレード姿勢リセット',
-    description: '機首を進行方向へ即座に向ける。',
-    keys: [K.progradeReset], inputs: ['keyboard'], scope: 'combat', behavior: 'press',
-  },
-  {
-    id: 'throttle', category: 'combat', label: '並進出力レベル',
-    description: `並進 6 方向に共通する出力を切り替える (${C.THROTTLE_LABELS.join(' / ')})。`,
-    keys: [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax],
-    inputs: ['keyboard'], scope: 'combat', behavior: 'press', example: '1 = 低出力、4 = 最大出力',
-  },
-  {
-    id: 'booster-management', category: 'combat', label: 'ブースター燃焼管理',
-    description: 'ブースターの点火 / 停止と最後尾段の分離を切り替える。',
-    keys: [K.boosterIgnitionToggle, K.boosterDecouple], inputs: ['keyboard'], scope: 'both', behavior: 'toggle',
-    example: '6 = 点火 / 停止、5 = 分離',
-  },
-  {
-    id: 'fine-attitude', category: 'combat', label: '姿勢微調整モード',
-    description: '角加速度・角速度を絞り、小刻みに姿勢を調整する。',
-    keys: [K.fineAttitudeToggle], inputs: ['keyboard'], scope: 'combat', behavior: 'toggle',
-  },
-  {
-    id: 'prograde-hold', category: 'combat', label: '進行方向ホールド',
-    description: '機首をプログレード方向へ自動で向け続ける。手動回転で解除する。',
-    keys: [K.progradeHoldToggle], inputs: ['keyboard'], scope: 'combat', behavior: 'toggle',
-  },
-  {
-    id: 'radiators', category: 'combat', label: 'ラジエーター展開 / 収納',
-    description: '左右のラジエーターを個別に切り替える。',
-    keys: [K.radiatorDeployLeft, K.radiatorDeployRight], inputs: ['keyboard'], scope: 'combat', behavior: 'toggle',
-    example: '9 = 左、0 = 右',
-  },
-  {
-    id: 'solar-panels', category: 'combat', label: '太陽電池パドル展開 / 収納',
-    description: '左右の太陽電池パドルを個別に切り替える。',
-    keys: [K.solarDeployLeft, K.solarDeployRight], inputs: ['keyboard'], scope: 'combat', behavior: 'toggle',
-    example: '7 = 左、8 = 右',
-  },
-  {
-    id: 'target', category: 'combat', label: 'ターゲット選択',
-    description: '照準に近い敵を選択する。短時間の連打で第二ターゲットを順送りする。',
-    keys: [K.targetSelect], inputs: ['keyboard', 'mouse'], scope: 'combat', behavior: 'press',
-  },
-  {
-    id: 'gunsight', category: 'camera', label: '照準ズーム',
-    description: '機首方向を画面中心に拡大表示する。自機は非表示になる。',
-    keys: [K.gunsightZoom], inputs: ['keyboard'], scope: 'combat', behavior: 'hold',
-  },
-  {
-    id: 'follow-attitude', category: 'camera', label: '視点の RCS 追従',
-    description: '視点を機体姿勢に追従させる。OFF にすると軌道基準の独立視点になる。',
-    keys: [K.followAttitudeToggle], inputs: ['keyboard'], scope: 'combat', behavior: 'toggle',
-  },
-  {
-    id: 'fire', category: 'combat', label: '機関砲発射',
-    description: `機関砲を発射する。ワープ ×${C.MAX_PHYS_SIM_SPEED} 以下で操作できる。`,
-    keys: [K.fire], inputs: ['keyboard', 'mouse'], scope: 'combat', behavior: 'hold',
-  },
-  {
-    id: 'reload', category: 'combat', label: 'マニュアル装填',
-    description: '残弾のあるマガジンを捨てて、新しいマガジンを装填する。',
-    keys: [K.reload], inputs: ['keyboard'], scope: 'combat', behavior: 'press',
-  },
-  {
-    id: 'camera-rotate', category: 'camera', label: '視点回転',
-    description: 'マウスの左ドラッグ、または矢印キーで視点を回転する。',
-    keys: [K.cameraYawLeft, K.cameraYawRight, K.cameraPitchUp, K.cameraPitchDown],
-    inputs: ['keyboard', 'mouse', 'touch'], scope: 'both', behavior: 'drag', example: '←/→ = ヨー、↑/↓ = ピッチ',
-  },
-  {
-    id: 'camera-roll', category: 'camera', label: '視点ロール',
-    description: '視点を左右にロールする。日本語キーボードでは Num0 / Num1 または / / _ を使う。',
-    keys: [K.cameraRollLeft, K.cameraRollRight], inputs: ['keyboard', 'touch'], scope: 'both', behavior: 'hold',
-  },
-  {
-    id: 'camera-pan', category: 'camera', label: '視点パン',
-    description: 'カメラを画面平面に沿って移動する。中ボタンドラッグ相当。',
-    keys: [K.cameraPanUp, K.cameraPanDown, K.cameraPanLeft, K.cameraPanRight],
-    inputs: ['keyboard', 'mouse', 'touch'], scope: 'both', behavior: 'drag',
-  },
-  {
-    id: 'camera-zoom', category: 'camera', label: '距離ズーム',
-    description: 'マウスホイールまたはピンチでカメラ距離を変更する。',
-    inputs: ['mouse', 'touch'], scope: 'both', behavior: 'gesture',
-  },
-  {
-    id: 'warp', category: 'time', label: '時間加速',
-    description: '時間加速の段階を増減する。',
-    keys: [K.warpSlower, K.warpFaster], inputs: ['keyboard'], scope: 'both', behavior: 'press', example: ', = 減速、. = 加速',
-  },
-  {
-    id: 'auto-warp', category: 'time', label: 'ノードまで自動ワープ',
-    description: '直近のマニューバノードまで時間を自動加速し、実行点の直前で解除する。',
-    keys: [K.autoWarpToNode], inputs: ['keyboard'], scope: 'both', behavior: 'toggle',
-  },
-  {
-    id: 'toggle-map', category: 'map', label: '軌道計画モード',
-    description: '戦闘ビューとマップモードを切り替える。時間は進み続けるのでワープも使える。',
-    keys: [K.toggleMapMode], inputs: ['keyboard'], scope: 'both', behavior: 'toggle', example: 'M → 軌道をクリック → ノードを編集 → M で確定',
-  },
-  {
-    id: 'map-translation', category: 'map', label: 'ノードの Δv 編集',
-    description: '選択中ノードの Δv を機体基準の 6 方向で調整する。通常ビューの移動キーとは意味が変わる。',
-    keys: [K.dvPrograde, K.dvRetrograde, K.dvNormal, K.dvAntinormal, K.dvRadialOut, K.dvRadialIn],
-    inputs: ['keyboard'], scope: 'map', behavior: 'hold', example: 'W/S = PRO/RET、A/D = NRM/ANM、E/Q = OUT/IN',
-  },
-  {
-    id: 'delete-node', category: 'map', label: 'ノードを削除',
-    description: 'マップモードでは選択中のノードを削除する。戦闘ビューでは計画全体を破棄する。',
-    keys: [K.deleteNode], inputs: ['keyboard'], scope: 'both', behavior: 'press',
-  },
-  {
-    id: 'node-place', category: 'map', label: 'ノードを配置',
-    description: '計画軌道をクリックしてノードを配置する。ノードの丸ハンドルをドラッグすると軌道上の時刻を移動する。',
-    inputs: ['mouse', 'touch'], scope: 'map', behavior: 'drag',
-  },
-  {
-    id: 'node-manual-time', category: 'map', label: 'ノード位置の手動入力',
-    description: '選択中ノードの ΔT [s] に現在時刻からの秒数を入力して位置を指定する。',
-    inputs: ['keyboard', 'mouse', 'touch'], scope: 'map', behavior: 'press',
-  },
-  {
-    id: 'node-dv-handle', category: 'map', label: 'Δv 矢印ハンドル',
-    description: 'ノード周囲の PRO/RET・NRM/ANM・OUT/IN ハンドルをドラッグして Δv 成分を調整する。',
-    inputs: ['mouse', 'touch'], scope: 'map', behavior: 'drag',
-  },
-  {
-    id: 'map-panels', category: 'map', label: 'マップの各パネル',
-    description: 'PREDICT で期間と未来位置、TRAJECTORY で計画軌道の描画座標系、表示パネルで天体・機体・星空・各種グリッドを切り替える。',
-    inputs: ['mouse', 'touch'], scope: 'map', behavior: 'press',
-  },
-  {
-    id: 'map-frame', category: 'map', label: 'カメラ / 軌道フレーム',
-    description: 'カメラの注視対象・回転系と、計画軌道の描画基準を独立して設定する。画角、透視/平行投影、黄道面・赤道面・月軌道面の視点も選べる。',
-    inputs: ['mouse', 'touch'], scope: 'map', behavior: 'press',
-  },
-  {
-    id: 'coordinate-frame', category: 'map', label: '慣性系 / 太陽回転系',
-    description: '計画軌道とカメラの座標系は独立して選べる。太陽回転系では太陽方向が画面上でほぼ固定され、遷移計画の目安になる。',
-    inputs: ['mouse', 'touch'], scope: 'map', behavior: 'press',
-  },
-  {
-    id: 'context-menu', category: 'map', label: 'コンテキストメニュー',
-    description: 'ノード近傍で右クリックすると、この時刻までの自動ワープ・ノード削除・キャンセルを選べる。',
-    inputs: ['mouse', 'touch'], scope: 'map', behavior: 'press',
-  },
-  {
-    id: 'orbit-markers', category: 'map', label: 'AN / DN マーカー',
-    description: '自機軌道とターゲット軌道面の交点。面変更（ノーマル / アンチノーマル burn）の目安位置。',
-    inputs: ['mouse', 'touch'], scope: 'map', behavior: 'gesture',
-  },
-  {
-    id: 'boardpass-marker', category: 'map', label: '✦ ボードパスマーカー',
-    description: 'ターゲット位置へ向けた仮想標的面を弾が通過した点。次弾の照準修正の目安になる。',
-    inputs: ['mouse', 'touch'], scope: 'combat', behavior: 'gesture',
-  },
-  {
-    id: 'direction-markers', category: 'map', label: '軌道方向マーカー',
-    description: '軌道基準の PRO/RET・NRM/ANM・OUT/IN を示す。機首をマーカーへ向けると、その方向へ並進できる。',
-    inputs: ['mouse', 'touch'], scope: 'both', behavior: 'gesture',
-  },
-  {
-    id: 'node-burn-marker', category: 'map', label: 'NODE / BURN マーカー',
-    description: '直近のマニューバ実行点と噴射ガイド。BURN の方向へ加速し、計画軌道へ十分近づくと次のノードへ進む。',
-    inputs: ['mouse', 'touch'], scope: 'both', behavior: 'gesture',
-  },
-  {
-    id: 'target-orbit', category: 'combat', label: 'オレンジの軌道線',
-    description: 'ターゲットの軌道。自機軌道とほぼ重なる場合は上に重ねて描画する。',
-    inputs: ['mouse', 'touch'], scope: 'combat', behavior: 'gesture',
-  },
-  {
-    id: 'ammo', category: 'combat', label: '弾薬 / AMMO',
-    description: `${C.MAG_ROUNDS} 発でマガジン 1 連を消費する。残弾が少なくなると軌道上へ補給が投入されるので、AMMO マーカーへ接近して回収する。`,
-    inputs: ['mouse', 'touch'], scope: 'combat', behavior: 'gesture',
-  },
-  {
-    id: 'right-click', category: 'gesture', label: '右クリック / 長押し',
-    description: 'プロパティ・空域・ノードメニューを開く。敵の右クリックはターゲットの固定 / 解除、射撃にも使える。',
-    inputs: ['mouse', 'touch'], scope: 'both', behavior: 'gesture',
-  },
-  {
-    id: 'middle-pan', category: 'gesture', label: '中ボタンドラッグ / 二本指ドラッグ',
-    description: 'カメラをパンする。',
-    inputs: ['mouse', 'touch'], scope: 'both', behavior: 'drag',
-  },
-  {
-    id: 'double-focus', category: 'gesture', label: 'ダブルクリック / ダブルタップ',
-    description: '対象へフォーカスを移す。',
-    inputs: ['mouse', 'touch'], scope: 'both', behavior: 'gesture',
-  },
-  {
-    id: 'touch-pinch', category: 'gesture', label: 'ピンチ',
-    description: 'カメラをズームする。二本指を回すと視点ロールも入力できる。',
-    inputs: ['touch'], scope: 'both', behavior: 'gesture',
-  },
-  {
-    id: 'help', category: 'ui', label: 'このヘルプ',
-    description: '操作説明を開閉する。ヘルプ内では H / ESC でも閉じられる。',
-    keys: [K.help], inputs: ['keyboard'], scope: 'both', behavior: 'toggle',
-  },
-  {
-    id: 'pause', category: 'ui', label: '一時停止メニュー',
-    description: '設定、セーブ、負荷表示、タイトルへ戻る操作を開く。',
-    keys: [K.pauseMenu], inputs: ['keyboard'], scope: 'both', behavior: 'press',
-  },
-  {
-    id: 'debug-tools', category: 'ui', label: 'デバッグ・スナップショット',
-    description: '負荷表示、スナップショット取得、スナップショット一覧を開く。',
-    keys: [K.togglePerfWindow, K.clipSnapshot, K.openSnapshots], inputs: ['keyboard'], scope: 'both', behavior: 'press',
-    example: 'F3 = 負荷、F5 = 取得、F9 = 一覧',
-  },
-  {
-    id: 'restart', category: 'ui', label: '決着後の再出撃',
-    description: '決着画面で同じステージへ再出撃する。',
-    keys: [K.restart], inputs: ['keyboard'], scope: 'both', behavior: 'press',
-  },
-];
-
-const KEYBOARD_ROWS: readonly KeyboardKeyDefinition[][] = [
-  [
-    { code: 'Escape', label: 'ESC', className: 'wide' },
-    { code: 'F1', label: 'F1' }, { code: 'F2', label: 'F2' }, { code: 'F3', label: 'F3' },
-    { code: 'F4', label: 'F4' }, { code: 'F5', label: 'F5' }, { code: 'F6', label: 'F6' },
-    { code: 'F7', label: 'F7' }, { code: 'F8', label: 'F8' }, { code: 'F9', label: 'F9' },
-    { code: 'F10', label: 'F10' }, { code: 'F11', label: 'F11' }, { code: 'F12', label: 'F12' },
-  ],
-  [
-    { code: 'Backquote', label: '半角' }, { code: 'Digit1', label: '1' }, { code: 'Digit2', label: '2' },
-    { code: 'Digit3', label: '3' }, { code: 'Digit4', label: '4' }, { code: 'Digit5', label: '5' },
-    { code: 'Digit6', label: '6' }, { code: 'Digit7', label: '7' }, { code: 'Digit8', label: '8' },
-    { code: 'Digit9', label: '9' }, { code: 'Digit0', label: '0' }, { code: 'Minus', label: '-' },
-    { code: 'Equal', label: '^' }, { code: 'Backspace', label: 'BS', className: 'wide' },
-  ],
-  [
-    { code: 'Tab', label: 'TAB', className: 'wide' }, { code: 'KeyQ', label: 'Q' }, { code: 'KeyW', label: 'W' },
-    { code: 'KeyE', label: 'E' }, { code: 'KeyR', label: 'R' }, { code: 'KeyT', label: 'T' },
-    { code: 'KeyY', label: 'Y' }, { code: 'KeyU', label: 'U' }, { code: 'KeyI', label: 'I' },
-    { code: 'KeyO', label: 'O' }, { code: 'KeyP', label: 'P' }, { code: 'BracketLeft', label: '@' },
-    { code: 'BracketRight', label: '[' }, { code: 'Backslash', label: ']' },
-  ],
-  [
-    { code: 'CapsLock', label: 'CAPS', className: 'wide' }, { code: 'KeyA', label: 'A' }, { code: 'KeyS', label: 'S' },
-    { code: 'KeyD', label: 'D' }, { code: 'KeyF', label: 'F' }, { code: 'KeyG', label: 'G' },
-    { code: 'KeyH', label: 'H' }, { code: 'KeyJ', label: 'J' }, { code: 'KeyK', label: 'K' },
-    { code: 'KeyL', label: 'L' }, { code: 'Semicolon', label: ';' }, { code: 'Quote', label: ':' },
-    { code: 'Enter', label: 'ENTER', className: 'wide' },
-  ],
-  [
-    { code: 'ShiftLeft', label: 'SHIFT', className: 'xwide' }, { code: 'KeyZ', label: 'Z' }, { code: 'KeyX', label: 'X' },
-    { code: 'KeyC', label: 'C' }, { code: 'KeyV', label: 'V' }, { code: 'KeyB', label: 'B' },
-    { code: 'KeyN', label: 'N' }, { code: 'KeyM', label: 'M' }, { code: 'Comma', label: ',' },
-    { code: 'Period', label: '.' }, { code: 'Slash', label: '/' }, { code: 'ShiftRight', label: 'SHIFT', className: 'xwide' },
-  ],
-  [
-    { code: 'ControlLeft', label: 'CTRL', className: 'wide' }, { code: 'MetaLeft', label: '⌘', className: 'wide' },
-    { code: 'AltLeft', label: 'ALT', className: 'wide' }, { code: 'Space', label: 'SPACE', className: 'space' },
-    { code: 'AltRight', label: 'ALT', className: 'wide' }, { code: 'MetaRight', label: '⌘', className: 'wide' },
-    { code: 'ControlRight', label: 'CTRL', className: 'wide' },
-  ],
-];
-
-const ARROW_KEYS: readonly KeyboardKeyDefinition[] = [
-  { code: 'ArrowUp', label: '↑' }, { code: 'ArrowLeft', label: '←' },
-  { code: 'ArrowDown', label: '↓' }, { code: 'ArrowRight', label: '→' },
-];
-
-const AUXILIARY_KEYS: readonly KeyboardKeyDefinition[] = [
-  { code: 'Numpad0', label: 'Num0' }, { code: 'Numpad1', label: 'Num1' }, { code: 'IntlRo', label: '_' },
-];
-
-const BEHAVIOR_LABELS: Readonly<Record<HelpBehavior, string>> = {
-  press: '押す', hold: '押している間', toggle: 'ON / OFF', drag: 'ドラッグ', gesture: 'ジェスチャ',
-};
-
-const INPUT_LABELS: Readonly<Record<HelpInput, string>> = {
-  keyboard: 'KEYBOARD', mouse: 'MOUSE', touch: 'TOUCH',
-};
-
+// HTML 属性値へ差し込む文字列をエスケープする。ラベル・説明文はユーザー操作の結果ではないが、
+// `<`/`&` を含む語(不等号表記など)が構造を壊さないようにする。
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
-}
-
-function normalize(value: string): string {
-  return value.trim().toLocaleLowerCase();
-}
-
-function entryCodes(entry: HelpEntry): string[] {
-  const codes: string[] = [];
-  for (const key of entry.keys ?? []) codes.push(key.code, ...(key.altCodes ?? []));
-  return [...new Set(codes)];
-}
-
-function entryMatchesCode(entry: HelpEntry, code: string): boolean {
-  return entryCodes(entry).includes(code);
-}
-
-function scopeMatches(entry: HelpEntry, mode: HelpMode): boolean {
-  return entry.scope === 'both' || entry.scope === mode;
 }
 
 export class HelpPanel implements OverlayHandle {
@@ -378,13 +32,17 @@ export class HelpPanel implements OverlayHandle {
   private selectedEntryId: string | null = null;
   private previousFocus: HTMLElement | null = null;
 
-  constructor(root: HTMLElement, private readonly overlayManager: OverlayManager) {
+  // 操作説明パネルの DOM 一式を組み立てて root へ追加し、クリック・検索入力の購読を開始する。
+  // 開閉状態は閉じたまま(open を呼ぶまで非表示)で始まる。
+  public constructor(root: HTMLElement, private readonly overlayManager: OverlayManager) {
     this.el = document.createElement('div');
     this.el.id = 'hud-help';
     this.el.className = 'panel';
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-modal', 'true');
     this.el.setAttribute('aria-labelledby', 'hud-help-title');
+    // ヘッダー・トグル群(表示モード/入力方式/カテゴリ)・本文(クイックスタート/キーボード図/
+    // 一覧)・スクリーンリーダー向け live region の順に、静的な骨格を一括で描画する。
     this.el.innerHTML = `
       <div class="help-header">
         <div>
@@ -436,6 +94,8 @@ export class HelpPanel implements OverlayHandle {
     `;
     root.appendChild(this.el);
 
+    // 描画のたびに書き換える要素への参照を保持しておき、以降の render はこれらの
+    // innerHTML/表示状態だけを差し替える。
     this.searchInput = this.el.querySelector<HTMLInputElement>('.help-search input')!;
     this.body = this.el.querySelector<HTMLElement>('.help-body')!;
     this.keyboardSection = this.el.querySelector<HTMLElement>('[data-help-keyboard-section]')!;
@@ -448,11 +108,11 @@ export class HelpPanel implements OverlayHandle {
     this.render();
   }
 
-  get isOpen(): boolean { return this._isOpen; }
+  public get isOpen(): boolean { return this._isOpen; }
 
   // ビュー切り替え時はヘルプの既定表示も同期する。タブから手動で選んだ場合でも、
   // 次にビューを切り替えた時点で現在の操作へ戻るため、常に迷子にならない。
-  setWorldView(view: HelpMode): void {
+  public setWorldView(view: HelpMode): void {
     if (this.mode === view) return;
     this.mode = view;
     this.selectedCode = null;
@@ -460,14 +120,17 @@ export class HelpPanel implements OverlayHandle {
     this.render();
   }
 
-  handleInput(input: Input): void {
+  // [H] キー押下を受け取ってヘルプの開閉を切り替える。毎フレーム呼び出す前提。
+  public handleInput(input: Input): void {
     if (!input.takeKey(K.help)) return;
     // 検索欄へ文字を入力している最中の H は、ヘルプの開閉に使わない。
     if (document.activeElement === this.searchInput) return;
     this.toggle();
   }
 
-  open(): void {
+  // パネルを開く。開く直前のフォーカス要素を退避し、閉じたときに戻せるようにしたうえで
+  // OverlayManager へ登録し、検索欄へフォーカスを移す。既に開いていれば何もしない。
+  public open(): void {
     if (this._isOpen) return;
     this._isOpen = true;
     this.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -475,6 +138,7 @@ export class HelpPanel implements OverlayHandle {
     this.selectedEntryId = null;
     this.render();
     this.el.style.display = 'block';
+    // 系のモーダル(ヘルプ・一時停止など)は同じ排他グループに属し、同時に1つしか開かない。
     this.overlayManager.open('help', this, {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true, exclusiveGroup: 'system-modal',
     });
@@ -484,7 +148,9 @@ export class HelpPanel implements OverlayHandle {
     });
   }
 
-  close(): void {
+  // パネルを閉じ、OverlayManager から登録を外して、開く前にフォーカスされていた要素へ
+  // フォーカスを戻す。既に閉じていれば何もしない。
+  public close(): void {
     if (!this._isOpen) return;
     this._isOpen = false;
     this.el.style.display = 'none';
@@ -494,15 +160,19 @@ export class HelpPanel implements OverlayHandle {
     this.previousFocus = null;
   }
 
-  contains(target: Node): boolean {
+  // 指定したノードがこのパネルの DOM 内にあるかを判定する。外側クリック判定に使う。
+  public contains(target: Node): boolean {
     return this.el.contains(target);
   }
 
+  // 開閉状態を反転する。
   private toggle(): void {
     if (this._isOpen) this.close();
     else this.open();
   }
 
+  // パネルを開いている間だけ有効な、キーボード図と一覧をハイライトするためのグローバル
+  // キー監視。テキスト入力中と、ヘルプ自身の開閉キー([H]/一時停止)は対象から除く。
   private readonly handleWindowKeyDown = (event: KeyboardEvent): void => {
     if (!this._isOpen || event.isComposing) return;
     const target = event.target;
@@ -511,12 +181,15 @@ export class HelpPanel implements OverlayHandle {
     this.selectCode(event.code, false);
   };
 
+  // 検索語の変更を受けて選択状態を解除し、一覧を再描画する。
   private readonly handleSearchInput = (): void => {
     this.selectedCode = null;
     this.selectedEntryId = null;
     this.render();
   };
 
+  // パネル内のクリックを、押された要素の data 属性に応じて分岐させる唯一の入口。
+  // 閉じるボタン・各種フィルタタブ・キーボード上のキー・一覧の操作行のいずれかを処理する。
   private readonly handleClick = (event: MouseEvent): void => {
     const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-help-action], [data-help-code], [data-help-entry], [data-help-mode], [data-help-input], [data-help-category]') : null;
     if (!target || !this.el.contains(target)) return;
@@ -525,6 +198,7 @@ export class HelpPanel implements OverlayHandle {
       this.close();
       return;
     }
+    // 表示モード / 入力方式 / カテゴリのタブは、選択を切り替えて再描画するだけの同じ形。
     const mode = target.dataset['helpMode'] as HelpMode | undefined;
     if (mode) {
       this.mode = mode;
@@ -549,6 +223,7 @@ export class HelpPanel implements OverlayHandle {
       this.render();
       return;
     }
+    // キーボード図のキー、または一覧の操作行そのものをクリックした場合はハイライトのみ行う。
     const code = target.dataset['helpCode'];
     if (code) {
       this.selectCode(code);
@@ -558,6 +233,7 @@ export class HelpPanel implements OverlayHandle {
     if (entryId) this.selectEntry(entryId);
   };
 
+  // 現在の検索語・入力方式・カテゴリ・表示モードのすべてに合致する操作項目を返す。
   private filteredEntries(): HelpEntry[] {
     const query = normalize(this.searchInput.value);
     return HELP_ENTRIES.filter((entry) => {
@@ -565,6 +241,7 @@ export class HelpPanel implements OverlayHandle {
       if (this.categoryFilter !== 'all' && entry.category !== this.categoryFilter) return false;
       if (this.inputFilter !== 'all' && !entry.inputs.includes(this.inputFilter)) return false;
       if (!query) return true;
+      // キー名・コード・代替コードも検索対象に含めることで、"W" や "KeyW" からも探せる。
       const values = [
         entry.label, entry.description, entry.example ?? '', entry.category,
         ...(entry.keys ?? []).flatMap((key) => [key.label, key.altLabel ?? '', key.code, ...(key.altCodes ?? [])]),
@@ -573,10 +250,14 @@ export class HelpPanel implements OverlayHandle {
     });
   }
 
+  // 現在の表示モードでキーボード図に描画すべき、キー割り当てを持つ操作項目を返す。
+  // 検索語・入力方式・カテゴリのフィルタは反映しない — キーボード図自体は常に全体を示す。
   private activeKeyboardEntries(): HelpEntry[] {
     return HELP_ENTRIES.filter((entry) => scopeMatches(entry, this.mode) && entry.inputs.includes('keyboard') && Boolean(entry.keys?.length));
   }
 
+  // 現在の状態(モード・フィルタ・検索語・選択)に合わせて、パネル全体を再描画する。
+  // モード/フィルタ/検索語/選択のいずれかを変更した箇所は、必ず最後にこれを呼ぶ。
   private render(): void {
     this.syncToolbar();
     const visibleEntries = this.filteredEntries();
@@ -586,34 +267,41 @@ export class HelpPanel implements OverlayHandle {
     this.el.querySelector<HTMLElement>('[data-help-keyboard-aux]')!.innerHTML = this.renderAuxiliaryKeys();
     this.el.querySelector<HTMLElement>('[data-help-legend]')!.innerHTML = this.renderLegend();
     this.content.innerHTML = this.renderEntryGroups(visibleEntries);
+    // 一覧が空になった場合の案内文は、非表示の要素として常設しておき hidden で切り替える。
     const noResults = this.el.querySelector<HTMLElement>('[data-help-no-results]')!;
     noResults.hidden = visibleEntries.length > 0;
     this.body.classList.toggle('has-no-results', visibleEntries.length === 0);
     this.applySelection();
   }
 
+  // 表示モード / 入力方式 / カテゴリの各タブに、現在選択されているものの点灯状態を反映する。
   private syncToolbar(): void {
     const modeStatus = this.el.querySelector<HTMLElement>('[data-help-mode-status]')!;
     modeStatus.textContent = `現在の表示: ${this.mode === 'combat' ? '戦闘ビュー' : 'マップモード'} — 共通操作も表示中`;
-    this.el.querySelectorAll<HTMLElement>('[data-help-mode]').forEach((button) => {
+    // 表示モードのタブ。
+    for (const button of Array.from(this.el.querySelectorAll<HTMLElement>('[data-help-mode]'))) {
       const selected = button.dataset['helpMode'] === this.mode;
       button.classList.toggle('on', selected);
       button.setAttribute('aria-selected', String(selected));
-    });
-    this.el.querySelectorAll<HTMLElement>('[data-help-input]').forEach((button) => {
+    }
+    // 入力方式のタブ。
+    for (const button of Array.from(this.el.querySelectorAll<HTMLElement>('[data-help-input]'))) {
       const selected = button.dataset['helpInput'] === this.inputFilter;
       button.classList.toggle('on', selected);
       button.setAttribute('aria-selected', String(selected));
-    });
-    this.el.querySelectorAll<HTMLElement>('[data-help-category]').forEach((button) => {
+    }
+    // カテゴリのタブ。
+    for (const button of Array.from(this.el.querySelectorAll<HTMLElement>('[data-help-category]'))) {
       const selected = button.dataset['helpCategory'] === this.categoryFilter;
       button.classList.toggle('on', selected);
       button.setAttribute('aria-selected', String(selected));
-    });
+    }
   }
 
+  // 現在の表示モードに応じた「まず覚える操作」の4手順を組み立てる。
   private renderQuickstart(): string {
     const isMap = this.mode === 'map';
+    // マップモードと戦闘ビューで別の4手順を持つ。
     return `
       <div class="help-section-heading">
         <h4 id="hud-help-quickstart-title">まず覚える操作</h4>
@@ -634,10 +322,13 @@ export class HelpPanel implements OverlayHandle {
       </div>`;
   }
 
+  // カテゴリ記号の凡例を、キーボード図の上に横並びで表示するために組み立てる。
   private renderLegend(): string {
     return HELP_CATEGORIES.map((category) => `<span class="help-legend-item cat-${category.id}"><i aria-hidden="true">${category.glyph}</i>${category.label}</span>`).join('');
   }
 
+  // メインのキーボード配列図を行ごとに描画する。検索語・カテゴリ絞り込みが有効なときは、
+  // 絞り込みに合致しないキーだけを見た目上ミュートする。
   private renderKeyboard(): string {
     const entries = this.activeKeyboardEntries();
     const query = normalize(this.searchInput.value);
@@ -650,6 +341,7 @@ export class HelpPanel implements OverlayHandle {
     return KEYBOARD_ROWS.map((row) => `<div class="help-keyboard-row">${row.map((key) => this.renderKeyboardKey(key, entryMap, dimUnmatched, matchingEntries)).join('')}</div>`).join('');
   }
 
+  // 矢印キーと補助キー(Numpad0/1、_)をメイン配列とは別の行として描画する。
   private renderAuxiliaryKeys(): string {
     const entries = this.activeKeyboardEntries();
     const entryMap = new Map<string, HelpEntry[]>();
@@ -660,6 +352,8 @@ export class HelpPanel implements OverlayHandle {
     return `<span class="help-keyboard-aux-label">補助キー</span>${[...AUXILIARY_KEYS, ...ARROW_KEYS].map((key) => this.renderKeyboardKey(key, entryMap, dimUnmatched, this.filteredEntries())).join('')}`;
   }
 
+  // 1つのキーをボタンとして描画する。割り当てられた操作のカテゴリ色・割り当ての有無・
+  // 絞り込みへの合致状況をクラス名へ反映する。
   private renderKeyboardKey(
     key: KeyboardKeyDefinition,
     entryMap: Map<string, HelpEntry[]>,
@@ -677,8 +371,11 @@ export class HelpPanel implements OverlayHandle {
     return `<button type="button" class="${classes}" data-help-code="${escapeHtml(key.code)}" aria-label="${escapeHtml(key.label)}: ${escapeHtml(title)}" title="${escapeHtml(title)}">${escapeHtml(key.label)}</button>`;
   }
 
+  // 渡された操作項目をカテゴリごとの折りたたみ(details)へまとめる。検索語・カテゴリ
+  // 絞り込みが有効なとき、または基本操作のグループは初期状態で開く。
   private renderEntryGroups(entries: readonly HelpEntry[]): string {
     return HELP_CATEGORIES.map((category) => {
+      // 該当エントリが無いカテゴリは、空の details を残さず丸ごと省く。
       const groupEntries = entries.filter((entry) => entry.category === category.id);
       if (groupEntries.length === 0) return '';
       const query = normalize(this.searchInput.value);
@@ -691,8 +388,11 @@ export class HelpPanel implements OverlayHandle {
     }).join('');
   }
 
+  // 1つの操作項目をキー表示・行動タグ・入力方式タグ・説明文を持つカードとして描画する。
+  // キー割り当てが無い項目は「ジェスチャ」と表示する。
   private renderEntry(entry: HelpEntry): string {
     const codes = entryCodes(entry);
+    // 主キーと代替キー(altCodes)を「/」区切りで並べる。キー割り当てが無ければジェスチャ表記。
     const keyMarkup = entry.keys?.length
       ? entry.keys.flatMap((key) => [
         this.renderEntryKey(key.code, key.label, entry),
@@ -712,10 +412,14 @@ export class HelpPanel implements OverlayHandle {
       </article>`;
   }
 
+  // キーボード図・一覧の両方で使う、1つのキーコードに対応するクリック可能なボタンを描画する。
+  // muted は代替コード側の表示を主コードより控えめにするためのもの。
   private renderEntryKey(code: string, label: string, entry: HelpEntry, muted = false): string {
     return `<button type="button" class="help-entry-key ${muted ? 'muted' : ''}" data-help-code="${escapeHtml(code)}" data-help-entry="${entry.id}">${escapeHtml(label)}</button>`;
   }
 
+  // 指定コードに割り当てられた操作をハイライト対象として選択する。該当する操作が
+  // 現在の表示モードに無ければ何もしない。announce が真のときだけ読み上げ用テキストを流す。
   private selectCode(code: string, announce = true): void {
     const matches = this.activeKeyboardEntries().filter((entry) => entryMatchesCode(entry, code));
     if (matches.length === 0) return;
@@ -726,6 +430,8 @@ export class HelpPanel implements OverlayHandle {
     if (announce) this.liveStatus.textContent = `${code}：${labels}`;
   }
 
+  // 指定 id の操作項目をハイライト対象として選択し、一覧内の該当カードまでスクロールする。
+  // 該当項目が存在しなければ何もしない。
   private selectEntry(entryId: string): void {
     const entry = HELP_ENTRIES.find((item) => item.id === entryId);
     if (!entry) return;
@@ -736,30 +442,24 @@ export class HelpPanel implements OverlayHandle {
     this.liveStatus.textContent = `${entry.label}：${entry.description}`;
   }
 
+  // 現在の selectedCode / selectedEntryId を、キーボード図・一覧のハイライトクラスへ反映する。
+  // 描画のたびに一度全消灯してから、該当する要素だけへ点灯クラスを付け直す。
   private applySelection(): void {
-    this.el.querySelectorAll<HTMLElement>('.help-key.is-selected, .help-entry.is-selected').forEach((element) => {
+    for (const element of Array.from(this.el.querySelectorAll<HTMLElement>('.help-key.is-selected, .help-entry.is-selected'))) {
       element.classList.remove('is-selected');
-    });
+    }
     if (this.selectedCode) {
-      this.el.querySelectorAll<HTMLElement>('[data-help-code]').forEach((element) => {
+      // キーボード図側のボタンと、そのコードを含む一覧カードの両方を点灯させる。
+      for (const element of Array.from(this.el.querySelectorAll<HTMLElement>('[data-help-code]'))) {
         if (element.dataset['helpCode'] === this.selectedCode) element.classList.add('is-selected');
-      });
-      this.el.querySelectorAll<HTMLElement>('.help-entry[data-help-codes]').forEach((element) => {
+      }
+      for (const element of Array.from(this.el.querySelectorAll<HTMLElement>('.help-entry[data-help-codes]'))) {
         const codes = element.dataset['helpCodes']?.split(' ') ?? [];
         if (codes.includes(this.selectedCode!)) element.classList.add('is-selected');
-      });
+      }
     }
     if (this.selectedEntryId) {
       this.el.querySelector<HTMLElement>(`[data-help-entry="${this.selectedEntryId}"]`)?.classList.add('is-selected');
     }
   }
-}
-
-// ショートカットキー(KeyboardEvent.code)をラベル添え用の表記へ変換する。
-// コンテキストメニューやプロパティウィンドウでも同じ表記を使う。
-export function shortcutKeyLabel(shortcut: string): string {
-  if (shortcut === 'Escape') return 'ESC';
-  if (shortcut === 'Delete') return 'DEL';
-  if (shortcut.startsWith('Key')) return shortcut.slice(3);
-  return shortcut.toUpperCase();
 }

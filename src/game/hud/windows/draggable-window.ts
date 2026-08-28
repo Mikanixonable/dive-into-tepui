@@ -1,8 +1,7 @@
 // ドラッグして動かせる、📌 でクリップできるウィンドウの外枠。ヘッダ(タイトル・サブタイトル・
-// 呼び出し側が任意のボタンを差し込める枠・📌・✕)・ヘッダのドラッグによる移動
-// (CLICK_MOVE_THRESHOLD でクリックと区別)・クリップ状態(既存の .clipped クラス)・
-// OverlayManager への登録とクリップ状態に応じた宣言更新・ビューポート変化への再クランプ・
-// 最前面化を持つ。本文に何を置くかは呼び出し側の責務 — このクラスは body 要素を貸すだけ。
+// 呼び出し側が任意のボタンを差し込める枠・📌・✕)を持ち、ヘッダのドラッグによる移動、
+// クリップ状態に応じた OverlayManager への宣言更新、ビューポート変化への再クランプ、
+// 最前面化を行う。本文は呼び出し側が組み立てて置く。
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import { CLICK_MOVE_THRESHOLD } from '../../const';
@@ -11,6 +10,7 @@ import { bringToFront as bringOverlayToFront } from '../overlay-layer';
 import { onViewportChange } from '../viewport';
 import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
 import { Button, CloseButton } from '../widgets';
+import { injectOnce } from '../widgets/inject-style';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
 
 const STYLE = `
@@ -60,25 +60,13 @@ const STYLE = `
 #hud .dg-window-btn:hover { background: var(--surface-3); color: var(--color-primary-hover); }
 #hud .dg-window-btn.clipped { background: var(--color-primary-fill); color: var(--color-primary); }
 #hud .dg-window.tgt { background: color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus)); }
-#hud .dg-window.on { background: color-mix(in srgb, var(--color-signal) 16%, var(--glass-focus)); }
 `;
-
-let styleInjected = false;
-
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
 
 export interface DraggableWindowOptions {
   readonly title: string;
   readonly subtitle?: string;
   // タイトル前に添える対象種別のグリフ。Unicode 文字または SVG マークアップ(信頼できる
-  // 内部生成の文字列のみ)。省略すると添えない。開いた後は変わらない前提で、setHeader の
-  // 差分更新対象にはしない。
+  // 内部生成の文字列を渡す)。省略すると添えない。値は開いた時点で固定する。
   readonly icon?: string;
   // クリップ済みの状態で開く。省略時は false。
   readonly initiallyClipped?: boolean;
@@ -116,8 +104,7 @@ export class DraggableWindow implements OverlayHandle {
   // クリップボタンで状態が反転したことを通知する。排他は overlayManager 自身が持つので、
   // これは呼び出し側が見た目の追従(一覧の表示等)を行うためだけの通知。
   public onClipChange: ((clipped: boolean) => void) | null = null;
-  // OverlayManager からの項目ショートカット配送を受ける。呼び出し側が項目の一致判定を持つ
-  // ため、未設定ならショートカットを受け付けない。
+  // 項目ショートカットの一致判定を呼び出し側へ委ねるコールバック。
   public onShortcut: ((code: string) => boolean) | null = null;
 
   // clientX/clientY を左上角として root の子として開く。viewport.ts のビューポート変化通知を
@@ -128,7 +115,7 @@ export class DraggableWindow implements OverlayHandle {
   ) {
     this.overlayId = `dg-window-${DraggableWindow.nextId++}`;
     this._clipped = options.initiallyClipped ?? false;
-    ensureStyle();
+    injectOnce('dg-window', STYLE);
     this.element = document.createElement('div');
     this.element.className = 'dg-window';
     this.element.setAttribute('role', 'dialog');
@@ -196,6 +183,7 @@ export class DraggableWindow implements OverlayHandle {
     this.overlayManager.open(this.overlayId, this, this.currentSpec());
   }
 
+  // OverlayHandle 実装。target がウィンドウ要素の内部かどうかを返す。
   public contains(target: Node): boolean {
     return this.element.contains(target);
   }
@@ -209,7 +197,7 @@ export class DraggableWindow implements OverlayHandle {
   }
 
   // 現在のクリップ状態から overlayManager へ渡す宣言を組む。tempWindowGroup が無ければ
-  // (負荷確認ウィンドウ等)常に ESC・外側クリックのどちらでも閉じない常設ウィンドウとして扱う。
+  // 常に ESC・外側クリックのどちらでも閉じない常設ウィンドウとして扱う。
   private currentSpec(): OverlaySpec {
     const isTemp = this.options.tempWindowGroup !== undefined && !this._clipped;
     return {
@@ -227,6 +215,7 @@ export class DraggableWindow implements OverlayHandle {
       this.lastTitle = title;
       this.titleMainEl.textContent = title;
     }
+    // サブタイトルの有無で表示行数が変わるため、変化した時だけ再クランプする。
     if (subtitle !== this.lastSubtitle) {
       this.lastSubtitle = subtitle;
       this.titleSubEl.textContent = subtitle ?? '';
@@ -235,13 +224,12 @@ export class DraggableWindow implements OverlayHandle {
     }
   }
 
-  // 対象が現在のターゲット/操作対象であることを示す帯び色。物体一覧パネルの erow.tgt/.on
-  // と同じ字面のクラスを、ウィンドウのルート要素に付け替える。
-  public setBadge(kind: 'tgt' | 'on' | null): void {
-    this.element.classList.toggle('tgt', kind === 'tgt');
-    this.element.classList.toggle('on', kind === 'on');
+  // 対象が現在のターゲットであることを示す帯び色を、ルート要素へ付け替える。
+  public setBadge(isTarget: boolean): void {
+    this.element.classList.toggle('tgt', isTarget);
   }
 
+  // 現在クリップされているかどうか。
   public get clipped(): boolean {
     return this._clipped;
   }
@@ -267,9 +255,8 @@ export class DraggableWindow implements OverlayHandle {
     this.moveTo(this.element.offsetLeft, this.element.offsetTop);
   }
 
-  // 要求座標をビューポート内へクランプして配置する。ドラッグ・resize 再クランプ・
-  // 既存ウィンドウを右クリック位置へ動かす呼び出し元の全てから呼ぶ。compact ではボトムシートの
-  // 位置を CSS が持つので何もしない(前回の非 compact 時の left/top が残っていれば消す)。
+  // 要求座標をビューポート内へクランプして配置する。compact ではボトムシートの位置を CSS へ
+  // 委ねる(前回の非 compact 時の left/top が残っていれば消す)。
   public moveTo(clientX: number, clientY: number): void {
     if (isCompactViewport()) {
       this.element.style.left = '';
@@ -277,6 +264,7 @@ export class DraggableWindow implements OverlayHandle {
       return;
     }
     const rect = this.element.getBoundingClientRect();
+    // ウィンドウの実寸とビューポートに収まるよう要求座標をクランプする。
     const pos = clampOverlayPosition(
       { x: clientX, y: clientY },
       { width: rect.width, height: rect.height },
@@ -286,8 +274,8 @@ export class DraggableWindow implements OverlayHandle {
     this.element.style.top = `${pos.y}px`;
   }
 
-  // ボタン上からは開始せず、ドラッグ開始点とポインタキャプチャだけ確保する。
-  // compact ではボトムシート化していてドラッグ不要なので、そもそも開始しない。
+  // ヘッダー上のボタン以外を掴んだときに、ドラッグ開始点とポインタキャプチャを確保する。
+  // compact ではボトムシート化しており、ドラッグの起点確保は不要になる。
   private handleHeaderPointerDown = (e: PointerEvent): void => {
     if (isCompactViewport()) return;
     if (e.target instanceof Element && e.target.closest('button')) return;
