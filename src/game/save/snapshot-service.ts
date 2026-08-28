@@ -90,7 +90,7 @@ function buildSaveData(game: Game): GameSaveData {
     simTime: game.simTime,
     ephemerisContext: { ...CURRENT_EPHEMERIS_CONTEXT },
     phaseOffsets: game.ephemeris.getPhaseOffsets(),
-    earthSpinPhase0: game.environment.earthSpinPhase0(),
+    earthSpinPhase0: game.celestialSystem.earthSpinPhase0(),
     players: game.entities.players.map(p => p.serialize()),
     activePlayerId: game.player ? game.player.id : null,
     enemies: game.entities.enemies.map(e => e.serialize()),

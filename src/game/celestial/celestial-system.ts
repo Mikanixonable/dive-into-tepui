@@ -1,4 +1,4 @@
-// 環境(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
+// 天体系(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -108,7 +108,7 @@ function ambientFraction(overviewMode: boolean, graphics: GraphicsSettingsData):
   return graphics.combatAmbient ? AMBIENT_WEAK : 0;
 }
 
-export class EnvironmentScene {
+export class CelestialSystem {
   private readonly scene: THREE.Scene;
   // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
   // モデルごと組まないので(NodeMaterial.setupLighting)、受け手を真っ黒にしないために
@@ -140,13 +140,13 @@ export class EnvironmentScene {
   // 軌道ガイドタブの正本の鏡映し。静止軌道リング・ラベルの表示可否だけをここから読む。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
 
-  // 天体ビューの配列がすべて ephemeris から引く。天体暦はゲーム側が所有する単一インスタンスを
-  // 共有参照する(状態を持たない純サンプラ)。sunLight はライティングパス(render/pipeline/)が
-  // 読む恒星光の値オブジェクトで、RenderPipeline が所有するインスタンスをここへ書き込む。
+  // ephemeris はこの系の天体の位置・姿勢を答える純サンプラで、天体ビューの配列がすべてここから
+  // 引く。sunLight はライティングパス(render/pipeline/)が読む恒星光の値オブジェクトで、
+  // RenderPipeline が所有するインスタンスをここへ書き込む。
   // earthSpinPhase0 は地球の自転初期位相(地球が現在のレジストリに無ければ何もしない)。
   constructor(
     scene: THREE.Scene,
-    private readonly ephemeris: Ephemeris,
+    readonly ephemeris: Ephemeris,
     private readonly sunLight: SunLight,
     private readonly exposure: Exposure,
     private readonly sunOcclusion: SunOcclusion,
