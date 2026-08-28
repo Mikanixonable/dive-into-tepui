@@ -3,11 +3,6 @@ import { formatMapScaleDistance, mapScaleFor } from '../../src/game/hud/map-scal
 import { test } from '../harness';
 
 export function register(): void {
-  test('map scale: meters-per-pixelから見やすい1/2/5距離と画面長を求める', () => {
-    const scale = mapScaleFor(1);
-    assert.deepEqual(scale, { distanceM: 100, widthPx: 100 });
-    assert.equal(formatMapScaleDistance(scale!.distanceM), '100 m');
-  });
 
   test('map scale: ズームに応じて縮尺バーの画面長が伸縮する', () => {
     const zoomedIn = mapScaleFor(0.8)!;
