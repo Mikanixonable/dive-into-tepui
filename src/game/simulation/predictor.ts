@@ -17,7 +17,7 @@ import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { simulationMaxStep } from './time-step';
-import type { FutureCelestialBodies } from './future-celestial-bodies';
+import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc } from './predicted-arc';
 import type { PerfCounts } from '../../perf-meter';
 
@@ -39,7 +39,7 @@ export class Predictor {
 
   constructor(
     private readonly entities: EntityManager,
-    private readonly futureCelestialBodies: FutureCelestialBodies,
+    private readonly ephemeris: Ephemeris,
   ) {}
 
   // Game.update の本流から無条件に(ポーズ中・決着後も)呼ぶ。simDt はこのフレームの時間送り
@@ -117,7 +117,7 @@ export class Predictor {
   private advanceBudget(
     e: GameEntity, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
   ): number {
-    const arc = e.ensurePredictedArc(this.futureCelestialBodies);
+    const arc = e.ensurePredictedArc(this.ephemeris);
     if (arc === null) return 0;
     arc.requiredEnd = simTime + horizon;
     arc.retainFrom = simTime - ARC_RETAIN_MARGIN;
