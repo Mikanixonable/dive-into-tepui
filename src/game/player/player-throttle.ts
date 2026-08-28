@@ -8,6 +8,25 @@ import { Hud } from '../hud/hud';
 import type { ThrottleSaveData } from '../save/save-data';
 import type { Controllable } from '../game-entity/controllable';
 
+export const THROTTLE_DEFAULT_IDX = 1;
+
+// 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
+export const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;
+
+export const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
+
+// 手動回転RCSの出力ランプ: 押し始めは MIN、RAMP_TIME 秒かけて (MIN + RAMP) まで増加する
+export const RCS_MANUAL_OUTPUT_MIN = 0.3;
+export const RCS_MANUAL_OUTPUT_RAMP = 1.0;
+export const RCS_MANUAL_RAMP_TIME = 3.0; // [s]
+
+// 微調整モード([V]キーでトグル、射撃中は自動でON)で角加速度に掛ける倍率
+export const FINE_ATTITUDE_SCALE = 0.5;
+
+// 進行方向ホールド([C]キー): 機首をプログレードへ向けるオートパイロットの PD ゲイン
+export const PROGRADE_HOLD_KP = 3.2; // 姿勢誤差角に対する比例ゲイン
+export const PROGRADE_HOLD_KD = 2.6; // 角速度に対する減衰ゲイン
+
 // 並進6方向の連打ラッチ判定対象キー一覧。
 const THRUST_KEYS: readonly KeyBinding[] = [K.thrustForward, K.thrustBackward, K.thrustLeft, K.thrustRight, K.thrustUp, K.thrustDown];
 
@@ -36,7 +55,7 @@ function isThrustKillSwitchActive(input: Input): boolean {
 
 export class PlayerThrottle {
   rcsDamp = true;
-  throttleIdx = C.THROTTLE_DEFAULT_IDX;
+  throttleIdx = THROTTLE_DEFAULT_IDX;
   progradeHold = true;
   thrustAccelVec: Vec3 = v3();
 
@@ -127,7 +146,7 @@ export class PlayerThrottle {
       if (!input.takeKey(key)) continue;
       const last = this.lastThrustPressTime[key.code];
       this.lastThrustPressTime[key.code] = now;
-      if (last === undefined || now - last > C.THRUST_LATCH_DOUBLE_TAP_SEC) continue;
+      if (last === undefined || now - last > THRUST_LATCH_DOUBLE_TAP_SEC) continue;
       if (this.latchedThrustKeys.has(key.code)) this.latchedThrustKeys.delete(key.code);
       else this.latchedThrustKeys.add(key.code);
       delete this.lastThrustPressTime[key.code];
@@ -206,15 +225,15 @@ export class PlayerThrottle {
 
     // 保持時間に応じてRCS出力を増強しつつ手動トルクを組む
     const rcsOutputFactor =
-      C.RCS_MANUAL_OUTPUT_MIN +
-      C.RCS_MANUAL_OUTPUT_RAMP *
-      (Math.min(C.RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / C.RCS_MANUAL_RAMP_TIME);
+      RCS_MANUAL_OUTPUT_MIN +
+      RCS_MANUAL_OUTPUT_RAMP *
+      (Math.min(RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / RCS_MANUAL_RAMP_TIME);
       
     const baseAngAccel = ship.totalTorque > 0
       ? ship.totalTorque / Math.max(inertia.x, inertia.y, inertia.z)
       : C.MAX_ANG_ACCEL;
 
-    const angScale = fineAttitude ? C.FINE_ATTITUDE_SCALE : 1;
+    const angScale = fineAttitude ? FINE_ATTITUDE_SCALE : 1;
     let maxAngAccel = baseAngAccel * angScale * rcsOutputFactor;
 
     // 燃料残量に応じて実際の角加速度を絞る
@@ -233,14 +252,14 @@ export class PlayerThrottle {
 
     // 無入力かつホールド中なら自動整列トルクを加える(機首をプログレード v、上方向を r へ)
     if (this.progradeHold && inX === 0 && inY === 0 && inZ === 0) {
-      return add(manualTorque, attitudeAlignTorque(v, r, att, C.PROGRADE_HOLD_KP, C.PROGRADE_HOLD_KD));
+      return add(manualTorque, attitudeAlignTorque(v, r, att, PROGRADE_HOLD_KP, PROGRADE_HOLD_KD));
     }
     // 無入力の軸だけRCS制動を掛ける
     if (this.rcsDamp) {
       return v3(
-        manualTorque.x - (inX === 0 ? C.RCS_DAMP_RATE * inertia.x * att.w.x : 0),
-        manualTorque.y - (inY === 0 ? C.RCS_DAMP_RATE * inertia.y * att.w.y : 0),
-        manualTorque.z - (inZ === 0 ? C.RCS_DAMP_RATE * inertia.z * att.w.z : 0),
+        manualTorque.x - (inX === 0 ? RCS_DAMP_RATE * inertia.x * att.w.x : 0),
+        manualTorque.y - (inY === 0 ? RCS_DAMP_RATE * inertia.y * att.w.y : 0),
+        manualTorque.z - (inZ === 0 ? RCS_DAMP_RATE * inertia.z * att.w.z : 0),
       );
     }
     return manualTorque;

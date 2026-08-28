@@ -1,6 +1,7 @@
 // ナビボール(#navball)の CSS。
-import * as C from '../../const';
 import { MQ_COARSE_SHORT, MQ_MEDIUM_DOWN } from '../breakpoints';
+
+export const COLOR_MARKER_BORESIGHT = '#dfe3e8';
 
 export const NAVBALL_STYLE = `
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }
@@ -8,7 +9,7 @@ export const NAVBALL_STYLE = `
 #navball .nb-rim { fill: var(--fill-1); stroke: var(--edge); stroke-width: 1; }
 #navball .nb-grid { fill: none; stroke: var(--text-dim); stroke-width: 0.6; opacity: 0.35; }
 #navball .nb-equator { fill: none; stroke: var(--text-dim); stroke-width: 0.9; opacity: 0.55; }
-#navball .nb-bore line { stroke: ${C.COLOR_MARKER_BORESIGHT}; stroke-width: 1; opacity: 0.8; }
+#navball .nb-bore line { stroke: ${COLOR_MARKER_BORESIGHT}; stroke-width: 1; opacity: 0.8; }
 #navball text { font-size: var(--font-xxs); text-anchor: middle; dominant-baseline: middle; }
 #navball .nb-pro { fill: var(--axis-prograde); }
 #navball .nb-nrm { fill: var(--axis-normal); }

@@ -42,6 +42,16 @@ import { OrbitGuideLines } from './orbit-guide-lines';
 import { ZeroVelocityLines } from './zero-velocity-lines';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-settings';
 
+// 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、
+// FAR 以上なら完全表示、その間は距離に応じて線形にフェードインする。
+export const PLANET_ORBIT_LINE_FADE_NEAR_DIST = 1e9; // 100万km
+export const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10; // 1000万km
+export const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
+export const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
+
+// 参照軌道線が完全表示のときの不透明度。
+export const REFERENCE_LINE_OPACITY = 0.3;
+
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
 function buildGeoElements(registry: CelestialRegistry): OrbitalElements | null {
@@ -499,10 +509,10 @@ export class EnvironmentScene {
   // 異なる。
   private referenceLineOpacityAt(id: OrbitingId, dist: number): number {
     const isSatellite = bodyDef(this.ephemeris.registry, id).kind === 'satellite';
-    const nearDist = isSatellite ? C.SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : C.PLANET_ORBIT_LINE_FADE_NEAR_DIST;
-    const farDist = isSatellite ? C.SATELLITE_ORBIT_LINE_FADE_FAR_DIST : C.PLANET_ORBIT_LINE_FADE_FAR_DIST;
+    const nearDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : PLANET_ORBIT_LINE_FADE_NEAR_DIST;
+    const farDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_FAR_DIST : PLANET_ORBIT_LINE_FADE_FAR_DIST;
     const t = Math.min(1, Math.max(0, (dist - nearDist) / (farDist - nearDist)));
-    return t * C.REFERENCE_LINE_OPACITY;
+    return t * REFERENCE_LINE_OPACITY;
   }
 
   // 点群はマップを一度も開かないプレイでは不要。最初のマップ更新時にだけ生成・登録する。
@@ -519,7 +529,7 @@ export class EnvironmentScene {
     if (existing) return existing;
     const color = bodyDef(this.ephemeris.registry, id).kind === 'satellite'
       ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
-    const line = new OrbitLine({ color, opacity: C.REFERENCE_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.reference });
+    const line = new OrbitLine({ color, opacity: REFERENCE_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.reference });
     this.scene.add(line.line);
     this.referenceLines.set(id, line);
     return line;

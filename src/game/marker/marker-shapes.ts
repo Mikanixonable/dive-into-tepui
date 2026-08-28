@@ -2,7 +2,8 @@
 // (headingHpMarkerSvg 等)と HUD の一覧パネルの凡例アイコンが同じ形を指せるよう、依存フリーな
 // 文字列組み立てだけをここへ集める。three/hud/player など重い・循環しうるモジュールは import しない。
 
-import { COLOR_MARKER_HP_EMPTY } from '../const';
+
+export const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
 
 export const SHIP_ARROWHEAD_POINTS = '12,1.5 17.5,21 12,16.5 6.5,21';
 

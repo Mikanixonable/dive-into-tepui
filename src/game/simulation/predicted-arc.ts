@@ -17,6 +17,23 @@ import { ArcBodies, type ArcBodyWindow, type FutureCelestialBodyProvider } from 
 import { atmosphericMaxStep } from './time-step';
 import * as C from '../const';
 
+// 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
+// (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを
+// 狭めるが、狭めた区間に残るサンプルが数点まで減ると、折れ線上のクリック候補が飛び飛びの
+// 点になる。これを超えて粗ければ弧を作り直す。
+export const ARC_MAX_SAMPLE_COARSENING = 8;
+
+// 天体接近時、1ステップで表面までの残距離を跨がないための安全率。動径接近率(表面までの
+// 距離の減り方)に掛かる上限係数で、相対速さそのものではなく接近している成分だけを見る
+// — でないと円軌道でも常に効いて粗化項(ARC_MAX_STEPS)を不当に上書きしてしまう。
+export const ARC_APPROACH_SAFETY = 0.5;
+
+// 消費される弧が、消費前線の近くで毎歩サンプルを残す歩数。この範囲では at() の補間誤差が
+// 1歩ぶん(20s 刻みで 4.5mm)まで落ちる。前線がここを抜けると周期基準の間引きへ移り、
+// 補間誤差は LEO で 20〜26m になる。512 は ×1 で 512×20s = 2.8 時間ぶん、最高ワープで
+// 512×34.1s = 8フレームぶんの前線をこの精度で覆う。
+export const ARC_FINE_STEPS = 512;
+
 // keepDuration ぶんを保持する列へ積む最小間隔 [s]。軌道周期 period を TRAJECTORY_SAMPLES_PER_REV
 // 等分した値と、保持窓を ARC_MAX_SAMPLES 等分した値の大きい方(period が非有限なら
 // DEFAULT_HISTORY_DURATION で代用)。
@@ -95,7 +112,7 @@ export class PredictedArc {
   // 比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
   represents(state0: KinematicState, end: number): boolean {
     const sampleInterval = (end - this.state0.t) / C.ARC_MAX_SAMPLES;
-    if (this._decimation > sampleInterval * C.ARC_MAX_SAMPLE_COARSENING) return false;
+    if (this._decimation > sampleInterval * ARC_MAX_SAMPLE_COARSENING) return false;
     return state0 === this.state0;
   }
 
@@ -117,7 +134,7 @@ export class PredictedArc {
     // 選択が実体の状態を変えてしまう。消費前線の近く(ARC_FINE_STEPS 歩ぶん)は毎歩保持し、
     // それより遠くは周期基準の間引きへ落とす。
     const sampleInterval = this.consumable
-      ? (tip.t - this.retainFrom <= C.ARC_FINE_STEPS * dt ? 0 : trajectorySampleInterval(period, 0))
+      ? (tip.t - this.retainFrom <= ARC_FINE_STEPS * dt ? 0 : trajectorySampleInterval(period, 0))
       : trajectorySampleInterval(period, span);
 
     // RK4 の各ステップにはその中点時刻の重力源を渡す。実シミュレーションも各サブステップの
@@ -168,7 +185,7 @@ export class PredictedArc {
       if (clearance <= 0) continue;
       const closingRate = -dot(relR, sub(tip.v, body.state.v)) / dist;
       if (closingRate <= 1e-9) continue;
-      approachDt = Math.min(approachDt, (clearance / closingRate) * C.ARC_APPROACH_SAFETY);
+      approachDt = Math.min(approachDt, (clearance / closingRate) * ARC_APPROACH_SAFETY);
     }
     // 大気が要求する上限は下限 ARC_MIN_STEP_DT より優先される。下限は接近項の Zeno を断つため
     // のもので、抗力を積めない幅まで刻みを広げる権利は持たない。

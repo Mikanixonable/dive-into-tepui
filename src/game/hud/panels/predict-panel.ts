@@ -8,6 +8,10 @@ import type { DisplayDurationKey, DisplayPastDurationKey } from '../../display-w
 import type { TickLabelMode } from '../orbit/calendar-ticks';
 import type { DisplayTick } from '../orbit/tick-scale';
 
+// 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
+// サンプルが1件も残らず、どの時刻も引けない列になる。
+export const DISPLAY_DURATION_MIN = 3600;
+
 type FixedDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth';
 
 const FIXED_DURATIONS: readonly (readonly [FixedDurationKey, string])[] = [
@@ -223,7 +227,7 @@ class DurationPillRow<K extends string, Kd extends K | 'custom'> {
   // ユーザー入力を壊さないよう書き換えない。
   public render(key: Kd, currentSec: number): void {
     for (const [k, btn] of this.buttons) btn.setOn(key === k);
-    if (!this.input.focused) this.input.syncSec(currentSec, C.DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
+    if (!this.input.focused) this.input.syncSec(currentSec, DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
   }
 }
 

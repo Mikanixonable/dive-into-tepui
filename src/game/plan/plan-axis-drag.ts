@@ -4,10 +4,17 @@ import { Vec3, add, scale } from '../../math/vec3';
 import * as C from '../const';
 import { AxisHandleSpec } from './node-gizmo';
 
+// マップモードの DOM ギズモ(node-gizmo.ts): 選択中ノードの Δv アーム(6方向ハンドル)
+export const NODE_GIZMO_HANDLE_PX = 42; // ノードからアームハンドルを離す距離 [px]
+
+export const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s per 実秒]
+export const DV_RATE_MAX = 400; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
+export const DV_RATE_RAMP_SEC = 3.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
+
 // ホールド継続時間 [s] から Δv 加算レートを指数的に求める。押し始めは細かく、長押しで粗くなる。
 function rampedDvRate(heldSec: number): number {
-  const t = Math.min(heldSec / C.DV_RATE_RAMP_SEC, 1);
-  return C.DV_RATE_MIN * (C.DV_RATE_MAX / C.DV_RATE_MIN) ** t;
+  const t = Math.min(heldSec / DV_RATE_RAMP_SEC, 1);
+  return DV_RATE_MIN * (DV_RATE_MAX / DV_RATE_MIN) ** t;
 }
 
 // Δv アーム6方向(PRO/RET・NRM/ANM・OUT/IN)の画面配置と、ドラッグ・長押しからの Δv 加算量を
@@ -49,7 +56,7 @@ export class AxisDragGizmo {
     ny: number,
     dirs: { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; },
   ): AxisHandleSpec[] {
-    const R = C.NODE_GIZMO_HANDLE_PX;
+    const R = NODE_GIZMO_HANDLE_PX;
     // 軸・符号・画面方向からハンドル1個分の位置とラベルを組む
     const mk = (axis: 0 | 1 | 2, sign: 1 | -1, d: { x: number; y: number; }, label: string): AxisHandleSpec => ({
       axis,

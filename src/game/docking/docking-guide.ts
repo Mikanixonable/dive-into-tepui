@@ -11,6 +11,8 @@ import { currentThemePalette } from '../theme';
 import * as C from '../const';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 
+export const DOCK_GUIDE_SHOW_DIST = 300;       // [m] ガイドを表示するポート接続点までの距離
+
 const GUIDE_MARKER_KEY = 'docking-guide';
 const AXIS_LENGTH = 32;
 const RING_RADIUS = 8;
@@ -112,7 +114,7 @@ export class DockingGuide {
     let nearest: DockingCandidate | null = null;
     for (const target of targets) {
       for (const candidate of this.docking.evaluateCandidates(player, target)) {
-        if (candidate.distance > C.DOCK_GUIDE_SHOW_DIST) continue;
+        if (candidate.distance > DOCK_GUIDE_SHOW_DIST) continue;
         if (!nearest || candidate.distance < nearest.distance) nearest = candidate;
       }
     }
