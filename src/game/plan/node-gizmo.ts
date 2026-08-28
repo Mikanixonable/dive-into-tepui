@@ -4,10 +4,10 @@ import { FONT_FAMILY, FONT_XS, Z_HUD_NODE_GIZMO } from '../theme';
 import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import type { OverlayManager } from '../hud/overlay-manager';
 
-export const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
+const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
 
 // Δv アームドラッグ・長押しボタンによる連続加算(plan-editor.ts の applyDv 系)
-export const DV_DRAG_LATCH_PX = 60; // これを超えるアーム基点からの変位でドラッグがラッチ状態に入る [px]
+const DV_DRAG_LATCH_PX = 60; // これを超えるアーム基点からの変位でドラッグがラッチ状態に入る [px]
 
 const STYLE = `
 #hud #node-gizmo {

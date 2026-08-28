@@ -2,10 +2,10 @@
 import * as C from '../../const';
 import { FILL_4, LIGHT_PALETTE } from '../../theme';
 
-export const COLOR_MARKER_TGTDIR = '#ff7ab0';
-export const COLOR_MARKER_BOARDPASS = '#ffffff';
-export const COLOR_MARKER_SELF = '#dfe3e8';
-export const COLOR_MARKER_PLANNED = '#8fd0ff';
+const COLOR_MARKER_TGTDIR = '#ff7ab0';
+const COLOR_MARKER_BOARDPASS = '#ffffff';
+const COLOR_MARKER_SELF = '#dfe3e8';
+const COLOR_MARKER_PLANNED = '#8fd0ff';
 
 export const MARKER_STYLE = `
 /* マーカー層 Z-Index トークン定義 */

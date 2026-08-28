@@ -10,8 +10,8 @@ import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
-export const AUTOWARP_MARGIN = 2;
-export const AUTOWARP_STOP = 10;
+const AUTOWARP_MARGIN = 2;
+const AUTOWARP_STOP = 10;
 
 export class SimSpeedManager {
   private levelIdx = 0;

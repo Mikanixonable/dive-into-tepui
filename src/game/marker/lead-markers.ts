@@ -7,7 +7,7 @@ import type { MarkerManager } from './marker-manager';
 import type { CombatTarget } from '../targeter';
 import { Player } from '../player/player';
 
-export const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
+const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
 const markerKey = (target: CombatTarget): string => `lead-${target.id}`;
 

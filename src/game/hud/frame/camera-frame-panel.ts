@@ -12,7 +12,7 @@ import type { MapPickable } from '../../pickable/map-pickable';
 import type { OverlayManager } from '../overlay-manager';
 import { buildPanel } from './frame-controls';
 
-export const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
+const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
 
 const ANGLE_COLUMNS = [
   { description: '面', items: [['ecliptic', '黄道面'], ['equator', '赤道面'], ['moonOrbit', '月軌道面']] },

@@ -21,10 +21,10 @@ import { ChaseCameraSaveData } from '../save/save-data';
 // near は精度のためではなく「カメラが物へめり込む手前で切り取られない」値として置く。far は球
 // として描かれる天体のうち見かけ直径が 2px を超える最遠のもの — 直径 1.4e9 m の恒星を LOD 上限で
 // 見た 1.4e12 m — が入る距離。far を広げる費用は事実上ゼロ。
-export const COMBAT_CAMERA_NEAR = 2;
-export const COMBAT_CAMERA_FAR = 2e12;
+const COMBAT_CAMERA_NEAR = 2;
+const COMBAT_CAMERA_FAR = 2e12;
 
-export const ZOOM_LERP_RATE = 9; // 画角遷移の追従速度 [1/s]
+const ZOOM_LERP_RATE = 9; // 画角遷移の追従速度 [1/s]
 
 // current から target へ、fovDeg だけを指数的に近づけた Viewpoint を返す(position/lookTarget/up/
 // aspect はアニメーションせず target の値をそのまま採用する — カメラの向き自体は毎フレーム

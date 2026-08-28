@@ -17,13 +17,13 @@ import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save/save-dat
 
 // 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
 // 視界に収められる引きの上限。
-export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
+const OVERVIEW_CAMERA_MAX_DIST = 1e14;
 
 // 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
 // (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
 // 手前がクリップされにくくなる。反転 32bit 深度では分解能が near に依らないので、
 // この比が深度精度と取引になることはない。
-export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
+const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
 
 // near = dist / OVERVIEW_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
 // 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
@@ -31,14 +31,14 @@ export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
 // R そのものでなく画面対角の半視野角 θ_diag での R·cosθ_diag を上限に取らないと、
 // 画面中心だけ残して周辺・四隅の星が消える(MapCamera.near 参照)。
 // 1 未満のこの係数はその余弦にさらに掛ける安全マージン。
-export const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
+const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
 
 // 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
 // (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
 // far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
 // far 平面の外に出て消える。逆に近距離域で far を大きく取ることの費用は、反転 32bit 深度では
 // 事実上ゼロ。
-export const OVERVIEW_CAMERA_FAR_RATIO = 100;
+const OVERVIEW_CAMERA_FAR_RATIO = 100;
 
 // 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
 // far の外に出ないための下限。
@@ -47,7 +47,7 @@ export const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
 // OVERVIEW_CAMERA_MAX_DIST × OVERVIEW_CAMERA_FAR_RATIO と等しい値。これより小さいと
 // 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
 // 注視点より奥にある軌道線・天体が far 平面でクリップされる。
-export const OVERVIEW_CAMERA_FAR_MAX = 1e16;
+const OVERVIEW_CAMERA_FAR_MAX = 1e16;
 
 // セーブデータの rotatingWith を FrameRotationSource へ変換する。旧セーブは公転対象の id を
 // 文字列(または回さないなら null)でそのまま持っていたので、その形は公転として受ける。

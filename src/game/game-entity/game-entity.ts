@@ -38,7 +38,7 @@ import { syncThermalState } from '../../render/thermal-emissive';
 
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
 // ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
-export const HISTORY_DURATION_MAX = C.DISPLAY_DURATION_MAX;
+const HISTORY_DURATION_MAX = C.DISPLAY_DURATION_MAX;
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
