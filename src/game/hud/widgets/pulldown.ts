@@ -1,6 +1,6 @@
-// 見出し + 1つ以上のドロップダウン選択 + 明示的な反映ボタン。選択の変更自体は onApply を
-// 呼ばない——反映ボタンを押した時点の各選択値をまとめて一度だけ通知する(値入力の確定契約・
-// SegmentedControl の即時反映とは別の規約)。
+// 見出し + 1つ以上のドロップダウン選択。反映ボタンを添えると、選択の変更自体は onApply を
+// 呼ばず、ボタンを押した時点の各選択値をまとめて一度だけ通知する(値入力の確定契約とは別の
+// 規約)。添えなければ選び直した時点で通知する。
 import { Button } from './button';
 import { expandHitTarget, stopDragPropagation } from './widget-base';
 
@@ -19,7 +19,6 @@ export class Pulldown<Cols extends readonly PulldownColumn<unknown>[]> {
   readonly element: HTMLElement;
   private readonly selects: readonly HTMLSelectElement[];
   private readonly columns: Cols;
-  private readonly applyButton: Button;
   // 列ごとに直近で外部状態から反映した値。sync() は毎フレーム呼ばれるが、この値と
   // 変わっていなければ selectedIndex に触れない——毎フレーム書き込むと、セットボタンへの
   // クリックがフォーカスを外してから click イベントが発火するまでの一瞬に sync が割り込み、
@@ -27,7 +26,8 @@ export class Pulldown<Cols extends readonly PulldownColumn<unknown>[]> {
   private readonly lastSynced = new Map<number, unknown>();
 
   // columns は左から並ぶドロップダウンの列。onApply は各列の選択値を列の順に並べたタプルを受け取る。
-  constructor(title: string, columns: Cols, applyLabel: string, onApply: (values: ColumnValues<Cols>) => void) {
+  // applyLabel に null を渡すと反映ボタンを持たず、選び直した時点で onApply を呼ぶ。
+  constructor(title: string, columns: Cols, applyLabel: string | null, onApply: (values: ColumnValues<Cols>) => void) {
     this.columns = columns;
     this.element = document.createElement('div');
     this.element.className = 'w-group';
@@ -56,16 +56,20 @@ export class Pulldown<Cols extends readonly PulldownColumn<unknown>[]> {
       this.element.appendChild(select);
       return select;
     });
-    this.applyButton = new Button(applyLabel, () => {
+    const notify = (): void => {
       const values = this.selects.map((select, i) => this.columns[i]?.items[select.selectedIndex]?.[0]);
       if (values.every((v) => v !== undefined)) onApply(values as ColumnValues<Cols>);
-    });
-    this.element.appendChild(this.applyButton.element);
+    };
+    if (applyLabel === null) {
+      for (const select of this.selects) select.addEventListener('change', notify);
+      return;
+    }
+    this.element.appendChild(new Button(applyLabel, notify).element);
   }
 
-  // columnIndex 列目の選択位置を外部状態(value)へ合わせる(反映ボタンを押すまで onApply は
-  // 呼ばれない)。前回合わせた値から変わっていなければ何もしない——毎フレーム呼ばれるため、
-  // 無条件に書き込むとユーザーが選び直した内容を反映前に消してしまう。
+  // columnIndex 列目の選択位置を外部状態(value)へ合わせる(この経路では onApply を呼ばない)。
+  // 前回合わせた値から変わっていなければ何もしない——毎フレーム呼ばれるため、無条件に書き込むと
+  // ユーザーが選び直した内容を反映前に消してしまう。
   setSelected<K extends keyof Cols & number>(columnIndex: K, value: ColumnValues<Cols>[K]): void {
     if (this.lastSynced.get(columnIndex) === value) return;
     this.lastSynced.set(columnIndex, value);

@@ -5,7 +5,9 @@
 //
 // 表へ載せてよいのは、切り替えた結果が絵か負荷で分かる項目だけ。真偽で持つものは「切れば
 // その要素が絵から消える」もの — 単独のメッシュ/描画物として存在しない要素は切れない。
-// 選択肢で持つものは、品質と負荷を刻んで釣り合わせる値。
+// 選択肢で持つものは、品質と負荷を刻んで釣り合わせる値か、絵の見え方を選ばせる値。
+
+import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
 const STORAGE_KEY = 'tepui.settings.graphics';
 
@@ -30,13 +32,18 @@ type ToggleOption = {
   readonly presets: PresetValues<boolean>;
 };
 
-// 数値の選択肢を持つ項目。items は [値, 表示ラベル] を、値の小さいほうから順に並べる。
+// 選択肢の項目が取りうる値。数値は段の大小に意味があり、文字列は名前で選ぶもの。
+export type ChoiceValue = number | string;
+
+// 選択肢を持つ項目。items は [値, 表示ラベル] を、数値なら小さいほうから順に並べる。
+// kind は並べ方を決める — 'choice' は短い段をボタンで横に並べ、'select' は候補が多い/名前が
+// 長いものをプルダウンへ畳む。
 type ChoiceOption = {
-  readonly kind: 'choice';
+  readonly kind: 'choice' | 'select';
   readonly group: GraphicsGroup;
   readonly label: string;
-  readonly items: readonly (readonly [number, string])[];
-  readonly presets: PresetValues<number>;
+  readonly items: readonly (readonly [ChoiceValue, string])[];
+  readonly presets: PresetValues<ChoiceValue>;
 };
 
 export type GraphicsOption = ToggleOption | ChoiceOption;
@@ -65,10 +72,24 @@ export const GRAPHICS_OPTIONS = {
     items: [[0.25, '−2'], [0.5, '−1'], [1, '±0'], [2, '+1'], [4, '+2']],
     presets: { low: 1, medium: 1, high: 1 },
   },
-  // マルチサンプリング。レンダラ生成時にしか渡せないので、変更は次回起動から効く。
-  antialias: {
-    kind: 'toggle', group: 'basic', label: 'アンチエイリアス(次回起動から)',
+  // トーンマッピング後の色へ当てるフィルムのルック。候補は同梱された .cube から起こすので、
+  // **この項目だけは選択肢が起動時にしか分からず**、値も段の番号ではなくルックの名前になる。
+  filmLut: {
+    kind: 'select', group: 'basic', label: 'フィルムのルック',
+    items: FILM_LUT_ITEMS,
+    presets: { low: FILM_LUT_NONE, medium: FILM_LUT_NONE, high: FILM_LUT_NONE },
+  },
+  // 光を受ける不透明物の縁を、画素より細かい被覆の割合として描くか。最終段のアンチエイリアスが
+  // 作れない中間調がここで入る。
+  msaa: {
+    kind: 'toggle', group: 'basic', label: 'マルチサンプリング',
     presets: { low: false, medium: true, high: true },
+  },
+  // 描画の最終段で、物体の縁と 3D UI の線のギザギザを均す方式。
+  antialias: {
+    kind: 'choice', group: 'basic', label: 'アンチエイリアス',
+    items: [[0, 'なし'], [1, 'FXAA'], [2, 'SMAA']],
+    presets: { low: 0, medium: 1, high: 2 },
   },
   // 小惑星帯・カイパー帯などの点群。
   pointField: {
@@ -196,9 +217,11 @@ const DEFAULTS: GraphicsSettingsData = QUALITY_PRESETS.high;
 
 // 表の外から来た値を受け入れるか決める。真偽の項目は型だけ、選択肢の項目は現在の候補に
 // 含まれるかまで見て、外れていれば fallback を返す。
-function acceptValue(option: GraphicsOption, value: unknown, fallback: boolean | number): boolean | number {
+function acceptValue(
+  option: GraphicsOption, value: unknown, fallback: boolean | ChoiceValue,
+): boolean | ChoiceValue {
   if (option.kind === 'toggle') return typeof value === 'boolean' ? value : fallback;
-  return option.items.some(([candidate]) => candidate === value) ? value as number : fallback;
+  return option.items.some(([candidate]) => candidate === value) ? value as ChoiceValue : fallback;
 }
 
 // 保存値は利用者がいつ書いたか分からないので、既知の項目だけを既定の上へ重ねる。
@@ -236,7 +259,7 @@ export class GraphicsSettings {
   }
 
   // 項目1つを差し替える。
-  public setOption(key: GraphicsOptionKey, value: boolean | number): void {
+  public setOption(key: GraphicsOptionKey, value: boolean | ChoiceValue): void {
     this.apply(withGraphicsOption(this.data, key, value));
   }
 
@@ -269,7 +292,7 @@ export class GraphicsSettings {
 // 項目1つを差し替えた値一式を返す。**操作する UI は項目名を実行時に持つ**ので、キーと値の
 // 対応を型では結べない — 表の選択肢に含まれない値はここで捨てる。
 export function withGraphicsOption(
-  data: GraphicsSettingsData, key: GraphicsOptionKey, value: boolean | number,
+  data: GraphicsSettingsData, key: GraphicsOptionKey, value: boolean | ChoiceValue,
 ): GraphicsSettingsData {
   return { ...data, [key]: acceptValue(GRAPHICS_OPTIONS[key], value, data[key]) } as GraphicsSettingsData;
 }
