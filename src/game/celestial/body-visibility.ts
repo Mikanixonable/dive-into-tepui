@@ -49,9 +49,8 @@ export type BodyClassDisplayMode = 'orbit' | 'label' | 'hidden';
 // ため、数の多いクラス(dwarf・smallBody・satellite)は既定 off にする。planet だけは数が
 // 少なく太陽系の骨格をなすので軌道線まで既定 on。一方 Name は focus-markers.ts の混雑抑制
 // (画面上で近すぎるラベルを間引く)が効くので溢れる心配が無く、planet と同様 dwarf・
-// smallBody・satellite も既定 on にする。lagrange は FocusMarkers の構築時点で力学的に
-// 意味を持つ点(Ephemeris の hasUsableCollinearPoints / hasStableTriangularPoints)だけに
-// 絞り込み済みで同じ懸念が当たらないため、既定 on にする。
+// smallBody・satellite も既定 on にする。lagrange は力学的に意味を持つ点(共線点の余裕・
+// 三角点の安定性を満たすもの)だけに絞り込まれていて同じ懸念が当たらないため、既定 on にする。
 export const DEFAULT_BODY_CLASS_TOGGLES: BodyClassToggles = {
   planetVisible: true,
   planetOrbit: true, planetName: true,
@@ -183,7 +182,7 @@ export function bodyClassVisible(cls: BodyClass, toggles: BodyClassToggles): boo
 
 // トグルで足されるクラス(planet/dwarf/satellite/smallBody)の Name を、そのクラスのトグル値
 // から読む。恒星・focus 近傍の常時表示はここを経由しない(呼び出し側の判断)。
-function classNameVisible(cls: BodyClass, toggles: BodyClassToggles): boolean {
+export function bodyNameVisible(cls: BodyClass, toggles: BodyClassToggles): boolean {
   if (!bodyClassVisible(cls, toggles)) return false;
   switch (cls) {
     case 'planet': return toggles.planetName;
@@ -295,14 +294,6 @@ export function alwaysFullyVisibleIds(
     }
   }
   return ids;
-}
-
-// 天体 id 1つの Name 表示可否。alwaysFullyVisibleIds に含まれる天体は呼び出し側で個別に
-// true とすること(この関数はクラストグルだけを読む)。
-export function bodyNameVisible(
-  ephemeris: Ephemeris, toggles: BodyClassToggles, id: string,
-): boolean {
-  return classNameVisible(bodyClassOf(ephemeris, id), toggles);
 }
 
 // cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。

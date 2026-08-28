@@ -9,10 +9,11 @@ import {
   TRIANGULAR_STABILITY_MASS_RATIO, collinearClearanceRatio, hasStableTriangularPoints,
 } from '../../src/physics/lagrange';
 import {
-  applyBodyClassDisplayMode, bodyClassDisplayMode, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES,
+  alwaysFullyVisibleIds, applyBodyClassDisplayMode, bodyClassDisplayMode, bodyClassVisible, bodyNameVisible,
+  BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES,
   isPositionInFocusedSystem, nextBodyClassDisplayMode, systemChainAt, systemMembersAt,
 } from '../../src/game/celestial/body-visibility';
-import { MapVisibilityPolicy } from '../../src/game/celestial/map-visibility';
+import { bodyClassOf } from '../../src/game/celestial/body-class';
 import { v3, addScaled } from '../../src/math/vec3';
 
 const MIN_CLEARANCE = 10;
@@ -20,14 +21,18 @@ const MIN_CLEARANCE = 10;
 // 現実の太陽系を組んだ天体暦。可視性の規則も静的事実もここから引く。
 const EPH = solarSystemEphemeris();
 
+// マーカーの点か名前のどちらかが出る天体の集合。クラストグルで足される天体と、恒星・
+// フォーカス系・カメラ近傍として無条件に足される天体の和になる。
 function visibleBodyIds(
-  ephemeris: Ephemeris, focusId: any, toggles: BodyClassToggles, nearbyIds: Iterable<any> = [],
+  ephemeris: Ephemeris, focusId: string | undefined, toggles: BodyClassToggles,
+  nearbyIds: Iterable<string> = [],
 ): ReadonlySet<string> {
-  const policy = new MapVisibilityPolicy(ephemeris, toggles, focusId, nearbyIds);
+  const forced = alwaysFullyVisibleIds(ephemeris, focusId, nearbyIds, toggles);
   const set = new Set<string>();
   for (const id of Object.keys(ephemeris.registry)) {
-    const p = policy.body(id as any);
-    if (p.icon || p.label) set.add(id);
+    const cls = bodyClassOf(ephemeris, id);
+    if (!bodyClassVisible(cls, toggles)) continue;
+    if (forced.has(id) || bodyNameVisible(cls, toggles)) set.add(id);
   }
   return set;
 }
@@ -103,23 +108,6 @@ export function register(): void {
     }
   });
 
-  test('visibility policy: entity の category/icon/label/orbit が同じトグルから決まる', () => {
-    const hidden = new MapVisibilityPolicy(EPH, {
-      ...DEFAULT_BODY_CLASS_TOGGLES,
-      shipVisible: false,
-      ammoName: false,
-      ammoOrbit: true,
-      baseOrbit: false,
-    });
-    assert.deepEqual(hidden.entity('ship'), {
-      category: false, icon: false, label: false, orbit: false, pickable: false,
-    });
-    assert.deepEqual(hidden.entity('ammo'), {
-      category: true, icon: false, label: false, orbit: true, pickable: false,
-    });
-    assert.equal(hidden.entity('base').orbit, false);
-  });
-
   test('visibility controls: 対象クラスは非表示→ラベル→軌道+ラベルを循環する', () => {
     const orbit = bodyClassDisplayMode(DEFAULT_BODY_CLASS_TOGGLES, 'planetVisible');
     assert.equal(orbit, 'orbit');
@@ -140,20 +128,6 @@ export function register(): void {
 
     assert.equal(nextBodyClassDisplayMode('hidden', false), 'label');
     assert.equal(nextBodyClassDisplayMode('label', false), 'hidden');
-  });
-
-  test('visibility policy: 操作対象の自機はカテゴリを閉じても位置を失わない', () => {
-    const policy = new MapVisibilityPolicy(EPH, {
-      ...DEFAULT_BODY_CLASS_TOGGLES,
-      playerVisible: false,
-      playerName: false,
-    });
-    assert.deepEqual(policy.entity('player', true), {
-      category: true, icon: true, label: false, orbit: true, pickable: true,
-    });
-    assert.deepEqual(policy.entity('player', false), {
-      category: false, icon: false, label: false, orbit: false, pickable: false,
-    });
   });
 
   test('visibility: フォーカス中の天体の子はトグル無しで見える', () => {

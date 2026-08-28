@@ -1,13 +1,13 @@
 // 天体とゲーム内 entity に共通するマップ表示ポリシー。
 // category/icon/label/orbit/pickable を各描画・選択系で個別に解釈しないための正本。
-import type { Ephemeris } from '../../physics/ephemeris';
 import {
   alwaysFullyVisibleIds,
   bodyClassVisible,
   bodyNameVisible,
   type BodyClassToggles,
 } from './body-visibility';
-import { bodyClassOf } from './body-class';
+import type { BodyClass } from './body-class';
+import type { CelestialSystem } from './celestial-system';
 
 export type MapEntityKind = 'player' | 'ship' | 'ammo' | 'fuel' | 'base';
 
@@ -31,11 +31,13 @@ const ENTITY_KEYS: Record<MapEntityKind, {
   base: { category: 'baseVisible', name: 'baseName', orbit: 'baseOrbit' },
 };
 
-function focusSystemOf(ephemeris: Ephemeris, focusId: string | undefined): string | null {
+// フォーカス対象が属する惑星系の代表 id(惑星なら自分、衛星なら親惑星)。ラグランジュ点の
+// id は所属天体の id へ戻してから引く。天体でない・恒星をフォーカスしているなら null。
+function focusSystemOf(celestialSystem: CelestialSystem, focusId: string | undefined): string | null {
   if (focusId === undefined) return null;
-  const bodyId = focusId.replace(/-l[1-5]$/, '');
-  if (!(bodyId in ephemeris.registry)) return null;
-  const motion = ephemeris.motionOf(bodyId);
+  const body = celestialSystem.find(focusId.replace(/-l[1-5]$/, ''));
+  if (body === null) return null;
+  const motion = body.motion;
   if (motion.kind === 'planet') return motion.id;
   return motion.kind === 'satellite' ? motion.primary?.id ?? null : null;
 }
@@ -54,12 +56,12 @@ export class MapVisibilityPolicy {
   private readonly entityResults = new Map<string, MapVisibility>();
 
   constructor(
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     private readonly toggles: BodyClassToggles,
     private readonly focusId?: string,
     nearbyIds: Iterable<string> = [],
   ) {
-    this.alwaysVisible = alwaysFullyVisibleIds(ephemeris, focusId, nearbyIds, toggles);
+    this.alwaysVisible = alwaysFullyVisibleIds(celestialSystem.ephemeris, focusId, nearbyIds, toggles);
     this.nearby = new Set(nearbyIds);
   }
 
@@ -78,13 +80,14 @@ export class MapVisibilityPolicy {
       const shown = category && this.toggles.lagrangeName;
       return { category, icon: shown, label: shown, orbit: false, pickable: shown };
     }
-    if (this.ephemeris.registry[id] === undefined) return noVisibility();
+    const body = this.celestialSystem.find(id);
+    if (body === null) return noVisibility();
 
-    const cls = bodyClassOf(this.ephemeris, id);
+    const cls = body.bodyClass;
     const category = bodyClassVisible(cls, this.toggles);
     if (!category) return noVisibility();
     const forced = this.alwaysVisible.has(id);
-    const shown = forced || bodyNameVisible(this.ephemeris, this.toggles, id);
+    const shown = forced || bodyNameVisible(cls, this.toggles);
     const orbit = this.orbitForBody(id, cls);
     return { category, icon: shown, label: shown, orbit, pickable: shown };
   }
@@ -113,16 +116,16 @@ export class MapVisibilityPolicy {
     return { category, icon, label, orbit, pickable: icon || label };
   }
 
-  private orbitForBody(id: string, cls: ReturnType<typeof bodyClassOf>): boolean {
+  private orbitForBody(id: string, cls: BodyClass): boolean {
     switch (cls) {
       case 'planet': return this.toggles.planetOrbit;
       case 'dwarf': return this.toggles.dwarfOrbit;
       case 'smallBody': return this.toggles.smallBodyOrbit;
       case 'satellite': {
-        const planetId = this.ephemeris.motionOf(id).primary?.id ?? null;
+        const planetId = this.celestialSystem.bodyOf(id).motion.primary?.id ?? null;
         if (planetId === null) return false;
         return this.toggles.satelliteOrbit
-          && (planetId === 'earth' || focusSystemOf(this.ephemeris, this.focusId) === planetId
+          && (planetId === 'earth' || focusSystemOf(this.celestialSystem, this.focusId) === planetId
             || this.nearby.has(id));
       }
       default: return false;
