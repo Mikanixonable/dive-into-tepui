@@ -12,6 +12,7 @@ import type { EffectsSystem } from '../../vfx/effects-system';
 import type { Ephemeris } from '../../../physics/ephemeris';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes } from '../../../physics/elements';
+import { R_EARTH } from '../../../physics/solar-system';
 import { orbitalElementsOf, strongestAttractor } from '../../../physics/celestial-body';
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
@@ -246,9 +247,9 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 
   // 出現高度が大気圏上限(+10km)を下回らないようにクランプする。
   const safeAlt = C.REENTRY_ALT + 10e3;
-  const currentAlt = len(droppedPos) - C.R_EARTH;
+  const currentAlt = len(droppedPos) - R_EARTH;
   if (currentAlt < safeAlt) {
-    return scale(norm(droppedPos), C.R_EARTH + safeAlt);
+    return scale(norm(droppedPos), R_EARTH + safeAlt);
   }
   return droppedPos;
 }
