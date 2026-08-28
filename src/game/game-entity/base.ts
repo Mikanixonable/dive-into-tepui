@@ -24,7 +24,7 @@ import { fmtMarkerDist } from '../hud/utils';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { baseMarkerSvg } from '../marker/marker-shapes';
 import * as C from '../const';
-import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
+import { BaseCollisionGeometry, RayHit, SphereHit } from './base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
 import type { Controllable } from './controllable';
 import type { Input } from '../input/input';
