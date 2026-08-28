@@ -10,7 +10,7 @@
 //     (参加者が1つなら into と同じ判定を二度やることになる)。
 import { CelestialBody, celestialBodyStateAt } from '../../physics/celestial-body';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, len, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, len, scale, sub, v3 } from '../../math/vec3';
 
 // 区間の始点位置と、そこから表面が区間内に届きうる距離。
 type BodyReach = {

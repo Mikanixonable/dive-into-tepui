@@ -9,7 +9,7 @@ import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { FrameAnchorId, FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Vec3, add, addScaled, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, add, addScaled, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const YEAR = 365.25636 * 86400;
 

@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import type { RenderStyle } from '../../render/render-style';
 import { spinOrientation } from '../../physics/body-orientation';
 import { RingBandDef, RingSystemDef } from '../../physics/solar-system';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import { createOutlineCircle, OutlineCircle } from '../../render/outline-circle';
 import {
   RING_TILT,

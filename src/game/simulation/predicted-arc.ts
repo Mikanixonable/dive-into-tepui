@@ -12,7 +12,7 @@ import { CelestialBody, nearestAtmosphereBody, strongestAttractor } from '../../
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
-import { dot, len, sub } from '../../physics/vec3';
+import { dot, len, sub } from '../../math/vec3';
 import { ArcBodies, type ArcBodyWindow, type FutureCelestialBodyProvider } from './arc-bodies';
 import { atmosphericMaxStep } from './time-step';
 import * as C from '../const';

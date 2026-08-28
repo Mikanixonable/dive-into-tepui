@@ -5,7 +5,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import type { FrameAnchorSource, ReferenceFrame } from '../physics/frame';
 import { guideSecondary } from '../physics/orbit-guide';
 import { primaryOf } from '../physics/solar-system';
-import type { Vec3 } from '../physics/vec3';
+import type { Vec3 } from '../math/vec3';
 import type { DisplayWindow } from './display-window-manager';
 import type { EntityManager } from './simulation/entity-manager';
 import type { CameraSystem } from './camera/camera-system';

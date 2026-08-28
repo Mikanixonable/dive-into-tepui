@@ -4,7 +4,7 @@
 // 来たときだけ解決して入る条件を見る。
 import type { CelestialBody, CelestialBodyId } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
-import { len, sub } from '../../physics/vec3';
+import { len, sub } from '../../math/vec3';
 import * as C from '../const';
 
 // 積分が引きうる天体1体ぶんの、時刻に依らない素性。

@@ -13,7 +13,7 @@ import type { Ephemeris } from '../../../physics/ephemeris';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes } from '../../../physics/elements';
 import { orbitalElementsOf, strongestAttractor } from '../../../physics/celestial-body';
-import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../../physics/vec3';
+import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
 
 export type WaveState = 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';

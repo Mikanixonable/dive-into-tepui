@@ -2,7 +2,7 @@
 import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../physics/celestial-body';
-import { addScaled, dot, len, norm, sub } from '../../physics/vec3';
+import { addScaled, dot, len, norm, sub } from '../../math/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { fmtDist, fmtSpeed, fmtTime } from '../hud/utils';

@@ -4,7 +4,7 @@
 // **配り方は物理ではなく、品質の段が決める予算をどの大気へ回すかの方針である。**
 // 抗力を解く大気モデル(physics/atmosphere.ts)とは別の分布で、こちらは見えだけを決める。
 import * as THREE from 'three/webgpu';
-import { apparentSizePx } from '../physics/projection';
+import { apparentSizePx } from '../math/projection';
 import { ATMOSPHERE_QUALITY, type AtmosphereQuality } from './graphics-settings';
 
 // 大気 1 つぶんの光学パラメータ。散乱係数はいずれも基準球面(天体半径)での値 [1/m]。

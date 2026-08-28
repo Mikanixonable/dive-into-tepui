@@ -7,7 +7,7 @@ import { bodyDef, CelestialBodyDef, MU_SUN, SOLAR_SYSTEM } from '../../src/physi
 import { keplerPeriod } from '../../src/physics/elements';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
-import { len, scale, sub } from '../../src/physics/vec3';
+import { len, scale, sub } from '../../src/math/vec3';
 
 function planetOrbitOf(id: string): PlanetOrbit {
   return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'planet' }>).orbit;

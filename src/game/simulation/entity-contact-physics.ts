@@ -5,8 +5,8 @@
 // 上限が要る。
 import * as C from '../const';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, scale, sameVec } from '../../physics/vec3';
-import { SpatialGrid } from '../../physics/spatial-grid';
+import { Vec3, add, scale, sameVec } from '../../math/vec3';
+import { SpatialGrid } from '../../math/spatial-grid';
 import { GameEntity } from '../game-entity/game-entity';
 import type { Player } from '../player/player';
 import type { CollisionResponse } from '../../physics/collision-response';

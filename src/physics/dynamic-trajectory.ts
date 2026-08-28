@@ -7,7 +7,7 @@ import { KinematicState, kinematicState } from './kinematic-state';
 import { StateQueue } from './state-queue';
 import { CelestialBody } from './celestial-body';
 import { extrapolatedRelativeState } from './kepler-extrapolation';
-import { Vec3, add } from './vec3';
+import { Vec3, add } from '../math/vec3';
 import { stepDynamics } from './dynamics';
 
 export class DynamicTrajectory {

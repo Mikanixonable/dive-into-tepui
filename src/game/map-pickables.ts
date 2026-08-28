@@ -13,7 +13,7 @@ import type { FrameAnchorSource } from '../physics/frame';
 import { CameraSystem } from './camera/camera-system';
 import { PlanEditor } from './plan/plan-editor';
 import type { ActivePlayerController } from './active-controllable-controller';
-import { len, sub } from '../physics/vec3';
+import { len, sub } from '../math/vec3';
 import { strongestAttractor } from '../physics/celestial-body';
 import { isOccluded } from '../physics/occlusion';
 import { apsisAltitudes } from '../physics/elements';
