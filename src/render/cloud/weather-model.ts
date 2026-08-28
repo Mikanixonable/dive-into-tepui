@@ -11,15 +11,18 @@ import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { ClimateMap } from './climate-map';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
-// 単位方向における天気。気圧は平年からの偏差 [hPa]、収束は地表風の収束 [1/s]、温度は [°C]、
-// 湿度は 0..1、風は東向き・北向きの成分 [m/s](wind が地表、upperWind が上層)。
+// 単位方向における天気。気圧は平年からの偏差 [hPa]、収束は地表風の収束 [1/s]、風は東向き・北向きの
+// 成分 [m/s](wind が地表、upperWind が上層)、上昇流は [m/s](地形と収束による、負なら下降)、
+// 温度は [°C]、湿度は 0..1(humidity が地表付近、upperHumidity が上層)。
 export type WeatherSample = {
   readonly pressure: FloatNode;
   readonly convergence: FloatNode;
   readonly wind: Vec2Node;
   readonly upperWind: Vec2Node;
+  readonly lift: FloatNode;
   readonly temperature: FloatNode;
   readonly humidity: FloatNode;
+  readonly upperHumidity: FloatNode;
 };
 
 // 単位方向における雲。opticalDepth は鉛直光学的厚み(0 で雲なし)、top は雲頂の高さ 0..1。
@@ -34,9 +37,19 @@ const DAY = 86400;
 const PRESSURE_NOISE = [1.5, 3, 8 * DAY] as const;
 const TEMPERATURE_NOISE = [2, 2, 10 * DAY] as const;
 const HUMIDITY_NOISE = [6, 5, 10 * DAY] as const;
+const UPPER_HUMIDITY_NOISE = [3, 4, 7 * DAY] as const;
 const PRESSURE_NOISE_AMPLITUDE = 6;
 const TEMPERATURE_NOISE_AMPLITUDE = 8;
 const HUMIDITY_NOISE_AMPLITUDE = 0.35;
+const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
+
+// 上昇流: 収束が持ち上げる気柱の厚み [m]。地形の上昇流は風と斜面の内積そのもの。
+const CONVERGENCE_DEPTH = 3000;
+// 上昇流の利得。地形の上昇流は風上を冷やし風下(下降)を暖める [°C per m/s]。上昇流は地表付近の
+// 湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く [per m/s]。
+const LIFT_COOLING = 50;
+const LIFT_HUMIDITY = 5;
+const UPPER_LIFT_HUMIDITY = 3;
 
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
 const PRESSURE_BAND_AMPLITUDE = 8;
@@ -53,14 +66,17 @@ const UPPER_GEOSTROPHIC_FACTOR = 2;
 
 // 湿度の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
 const ADVECTION_PERIOD = 6 * 3600;
-// 湿度の底上げと、平均湿度(海 1、陸 0)の重み。
+// 湿度の底上げと、平均湿度(海 1、陸 0)の重み。地表付近と上層で別に持つ。
 const HUMIDITY_BASE = 0.4;
 const MEAN_HUMIDITY_WEIGHT = 0.4;
+const UPPER_HUMIDITY_BASE = 0.3;
+const UPPER_MEAN_HUMIDITY_WEIGHT = 0.2;
 
 export class WeatherModel {
   private readonly pressureNoise = new DriftingNoise(...PRESSURE_NOISE);
   private readonly temperatureNoise = new DriftingNoise(...TEMPERATURE_NOISE);
   private readonly humidityNoise = new DriftingNoise(...HUMIDITY_NOISE);
+  private readonly upperHumidityNoise = new DriftingNoise(...UPPER_HUMIDITY_NOISE);
   private readonly cyclones = new Cyclones(R_EARTH);
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
@@ -75,6 +91,7 @@ export class WeatherModel {
     this.pressureNoise.syncTime(seconds);
     this.temperatureNoise.syncTime(seconds);
     this.humidityNoise.syncTime(seconds);
+    this.upperHumidityNoise.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     const cycle = (seconds / ADVECTION_PERIOD) % 1;
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
@@ -106,16 +123,33 @@ export class WeatherModel {
     const upperWind = capWind(geostrophic.mul(UPPER_GEOSTROPHIC_FACTOR).sub(inflow));
     const convergence = laplacian.mul(INFLOW_GAIN / R_EARTH);
 
+    // 上昇流: 風が斜面を駆け上がる分と、収束が押し上げる分。
+    const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
+    const terrainLift = dot(components(wind), this.climate.slope(direction));
+    const lift = terrainLift.add(convergence.mul(CONVERGENCE_DEPTH));
+
+    // 気候の平均へノイズと上昇流の効果を重ねる。湿度の源は風で流す。
     const temperature = this.climate.meanTemperature(direction)
-      .add(this.temperatureNoise.at(direction).mul(TEMPERATURE_NOISE_AMPLITUDE));
+      .add(this.temperatureNoise.at(direction).mul(TEMPERATURE_NOISE_AMPLITUDE))
+      .sub(terrainLift.mul(LIFT_COOLING));
+    const meanHumidity = this.climate.meanHumidity(direction);
     const humidity = clamp(
-      float(HUMIDITY_BASE).add(this.climate.meanHumidity(direction).mul(MEAN_HUMIDITY_WEIGHT))
-        .add(this.advected(this.humidityNoise, direction, wind).mul(HUMIDITY_NOISE_AMPLITUDE)),
+      float(HUMIDITY_BASE).add(meanHumidity.mul(MEAN_HUMIDITY_WEIGHT))
+        .add(this.advected(this.humidityNoise, direction, wind).mul(HUMIDITY_NOISE_AMPLITUDE))
+        .add(lift.mul(LIFT_HUMIDITY)),
+      0, 1,
+    );
+    const upperHumidity = clamp(
+      float(UPPER_HUMIDITY_BASE).add(meanHumidity.mul(UPPER_MEAN_HUMIDITY_WEIGHT))
+        .add(this.advected(this.upperHumidityNoise, direction, upperWind).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE))
+        .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)),
       0, 1,
     );
 
-    const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
-    return { pressure, convergence, wind: components(wind), upperWind: components(upperWind), temperature, humidity };
+    return {
+      pressure, convergence, wind: components(wind), upperWind: components(upperWind),
+      lift, temperature, humidity, upperHumidity,
+    };
   }
 
   // 天気から凝結する雲。湿度が閾値を超えた分が厚みになり、暖かいほど高く盛り上がる。
