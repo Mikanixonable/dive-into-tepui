@@ -1,14 +1,6 @@
 // 天体ID・役割・回転ゾーンの選択から、パネルへ表示する日本語ラベルを引き当てる。
 import { frameRoleOf, FrameRole, FrameRotationSource } from '../../../physics/frame';
-import { SolarSystemId } from '../../../physics/solar-system/solar-system';
-import { CELESTIAL_APPEARANCES } from '../../celestial/celestial-appearance';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-
-// id の日本語表示名。CELESTIAL_APPEARANCES に手作りエントリがある(現実の太陽系の天体)ならそれを、
-// なければ(カスタムレジストリの架空天体)id をそのまま表示名として使う。
-export function celestialBodyName(id: string): string {
-  return id in CELESTIAL_APPEARANCES ? CELESTIAL_APPEARANCES[id as SolarSystemId].name : id;
-}
 
 // 役割の日本語表示名。
 export function frameRoleName(role: FrameRole): string {

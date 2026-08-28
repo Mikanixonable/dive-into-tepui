@@ -1,6 +1,5 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
-import { Ephemeris } from '../../physics/ephemeris';
 import { kinematicState } from '../../physics/kinematic-state';
 import { CelestialBodyDef, CelestialMotion, PhaseOffsets } from '../../physics/celestial-motion';
 import { CelestialBodyWindows } from '../../physics/celestial-body-windows';
@@ -137,9 +136,9 @@ export class CelestialSystem {
   // 主星の個体。恒星を持たない星系では null。
   private readonly starBody: CelestialEntity | null;
   private readonly nearbyTracker = new NearbySystemTracker();
-  // この系の天体の位置・姿勢を答える純サンプラ。bodies の motion から組み、天体ビューの配列が
-  // すべてここから引く。
-  readonly ephemeris: Ephemeris;
+  // 座標系の同一性と、同一時刻の天体窓。どちらも bodies の motion から組む。
+  private readonly referenceFrames: ReferenceFrames;
+  private readonly bodyWindows: CelestialBodyWindows;
   // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なので、マップへ入るまで
   // 生成しない。11,200点の軌道要素・mesh・instance bufferをロード時に確保しないため。
   private pointFieldView: PointFieldView | null = null;
@@ -168,7 +167,8 @@ export class CelestialSystem {
     private readonly phaseOffsets: PhaseOffsets,
   ) {
     this.motions = bodies.map((b) => b.motion);
-    this.ephemeris = new Ephemeris(this.motions, origin.id, phaseOffsets);
+    this.referenceFrames = new ReferenceFrames(this.motions, origin.motion);
+    this.bodyWindows = new CelestialBodyWindows(this.motions);
     this.bodiesById = new Map(bodies.map((b) => [b.id, b]));
     this.starBody = bodies.find((b) => b.motion.kind === 'star') ?? null;
     this.geoElements = buildGeoElements(this.bodiesById.get('earth')?.def ?? null);
@@ -248,10 +248,10 @@ export class CelestialSystem {
   }
 
   // 座標系の同一性(同じ対に同じ参照)と、天体でない基準の解決。
-  get frames(): ReferenceFrames { return this.ephemeris.referenceFrames; }
+  get frames(): ReferenceFrames { return this.referenceFrames; }
 
   // 同一時刻の天体窓。積分・計画など、窓だけを要する層へはこれを渡す。
-  get windows(): CelestialBodyWindows { return this.ephemeris.windows; }
+  get windows(): CelestialBodyWindows { return this.bodyWindows; }
 
   // ECI の点 r から見た恒星方向の単位ベクトル。恒星が無い星系では無害な既定方向(+X)を返す。
   sunDirFrom(r: Vec3, t: number): Vec3 {
