@@ -15,9 +15,7 @@ import {
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
-import {
-  MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, type AtmosphereOptics, cutoffAltitude,
-} from '../atmosphere-params';
+import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffAltitude } from '../atmosphere-params';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
 import type { GBufferPass } from './gbuffer';
@@ -27,13 +25,6 @@ import { viewPositionAt, viewRayAt } from './view-ray';
 
 // 消散係数の下限 [1/m]。散乱の割合を消散で割るときの 0/0 を塞ぐ。
 const MIN_EXTINCTION = 1e-30;
-
-// 大気を描く天体 1 体。中心は描画座標、半径は [m]。
-export type AtmosphereBody = {
-  readonly center: THREE.Vector3;
-  readonly surfaceRadius: number;
-  readonly optics: AtmosphereOptics;
-};
 
 // 天体 1 体ぶんの uniform。cutoffRadius は大気の裾を打ち切る半径(天体半径 + 打ち切り高度)、
 // steps はこの層を解くサンプル点の数。
@@ -389,7 +380,7 @@ export class AtmospherePass {
 
   // このフレームで大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数と一緒に渡す。
   // 合成の前後はこの並びで決まる。MAX_ATMOSPHERE_BODIES を超えた分と、空きスロットは描かれない。
-  setDraws(draws: readonly AtmosphereDraw<AtmosphereBody>[]): void {
+  setDraws(draws: readonly AtmosphereDraw[]): void {
     this.bodyCount = Math.min(draws.length, MAX_ATMOSPHERE_BODIES);
     // 空きスロットは半径 0 で塞ぐ。区間の判定がそこで落ちて、以降の式は走らない。
     for (const [index, slot] of this.slots.entries()) {
