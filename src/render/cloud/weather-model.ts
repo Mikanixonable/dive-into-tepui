@@ -3,8 +3,8 @@
 // 空が出る。値はすべて見えのための調整値。
 import * as THREE from 'three/webgpu';
 import {
-  abs, acos, asin, clamp, cos, cross, dot, exp, float, fract, length, max, mix, mx_fractal_noise_float,
-  normalize, smoothstep, uniform, vec2, vec3,
+  abs, acos, asin, clamp, cos, cross, dot, exp, float, fract, length, max, min, mix, mx_fractal_noise_float,
+  normalize, pow, smoothstep, uniform, vec2, vec3,
 } from 'three/tsl';
 import { R_EARTH } from '../../physics/solar-system';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
@@ -36,10 +36,12 @@ const TRADE_LIMIT = THREE.MathUtils.degToRad(30);
 const WESTERLIES_LIMIT = THREE.MathUtils.degToRad(60);
 const BAND_BLEND = THREE.MathUtils.degToRad(6);
 
-// 台風の渦。最大風速 [m/s] とその半径 [m]、湿った核の半径 [m]、中心の緯度 [rad]、西進の速さ [m/s]。
+// 台風の渦。最大風速 [m/s] とその半径 [m]、外側で風が落ちる距離 [m]、湿った核の半径 [m]、
+// 中心の緯度 [rad]、西進の速さ [m/s]。
 const VORTEX_MAX_WIND = 45;
-const VORTEX_RADIUS = 80e3;
-const VORTEX_CORE_RADIUS = 300e3;
+const VORTEX_RADIUS = 120e3;
+const VORTEX_EXTENT = 1200e3;
+const VORTEX_CORE_RADIUS = 500e3;
 const VORTEX_LATITUDE = THREE.MathUtils.degToRad(15);
 const VORTEX_DRIFT = 5;
 
@@ -114,13 +116,15 @@ export class WeatherModel {
     return acos(clamp(dot(this.vortexCenter, direction), -1, 1)).mul(R_EARTH);
   }
 
-  // 台風の渦の風 [m/s]。中心のまわりを反時計回り(北半球の低気圧)に回り、VORTEX_RADIUS で最大になる。
+  // 台風の渦の風 [m/s]。中心のまわりを反時計回り(北半球の低気圧)に回り、VORTEX_RADIUS で最大、
+  // その外は距離の −0.6 乗で緩く落ちて VORTEX_EXTENT で消える。
   private vortexWind(direction: Vec3Node): Vec3Node {
     const tangent = cross(this.vortexCenter, direction);
     const tangentDir = tangent.div(max(length(tangent), 1e-6));
-    const x = this.vortexDistance(direction).div(VORTEX_RADIUS);
-    const speed = x.mul(exp(float(1).sub(x.mul(x)).mul(0.5))).mul(VORTEX_MAX_WIND);
-    return tangentDir.mul(speed);
+    const distance = this.vortexDistance(direction);
+    const x = distance.div(VORTEX_RADIUS);
+    const profile = min(x, pow(max(x, 1e-3), -0.6)).mul(exp(distance.div(VORTEX_EXTENT).pow(2).negate()));
+    return tangentDir.mul(profile.mul(VORTEX_MAX_WIND));
   }
 
   // 湿度の源(ノイズ)を風で流したもの −1..1。周期の半分ずれた 2 位相を三角波で混ぜるので、
