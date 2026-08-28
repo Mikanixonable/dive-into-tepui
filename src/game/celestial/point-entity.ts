@@ -15,7 +15,7 @@ import { CelestialSurface } from '../../render/celestial-surface';
 import { BodyGraticule } from '../../render/body-graticule';
 import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
-import type { BodyClass } from './body-class';
+import type { BodyClass } from './celestial-entity-def';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
