@@ -125,7 +125,7 @@ export class MapContextActions {
       hud, entities, celestialSystem, navTarget, cameraSystem, editor, simSpeedManager, pauseMenu, pickables,
       activePlayers, frameControls, activeStage, (target) => this.expandedBaseWindowKey === this.windowKey(target),
     );
-    this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialSystem.ephemeris);
+    this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialSystem);
     // 一覧の行は隠れている対象でも操作できる(SPEC/MAP.md §10) — pickable によるマップ上の
     // 衝突判定はマーカーのヒットテストにだけ適用され、一覧からの id 一致には適用しない。
     this.physicalObjectListPanel.onFocus = (id) => {
