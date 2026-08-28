@@ -9,8 +9,7 @@ import type { CelestialKind } from '../../physics/celestial-motion';
 
 export type BodyClass = 'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody';
 
-// 現実の太陽系(SOLAR_SYSTEM)の各天体の重要度。天体を登録すると Record の網羅性検査が
-// ここを要求する。
+// 現実の太陽系の各天体の重要度。天体を登録すると Record の網羅性検査がここを要求する。
 const BODY_CLASS_BY_ID: Record<SolarSystemId, BodyClass> = {
   sun: 'star',
   mercury: 'planet',
