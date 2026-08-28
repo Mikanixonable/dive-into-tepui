@@ -29,7 +29,6 @@ import type { FrameControls } from '../hud/frame/frame-controls';
 import { focusPoint } from '../camera/focus-target';
 import { CelestialBody, bodyAnchorSource, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { FrameAnchorSource, toFrameState } from '../../physics/frame';
-import type { FutureCelestialBodies } from '../simulation/future-celestial-bodies';
 import type { PredictedArc } from '../simulation/predicted-arc';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
@@ -98,8 +97,6 @@ export class PlanEditor {
     private readonly _uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly ephemeris: Ephemeris,
-    // 計画の積分が時刻ごとに引く重力源・衝突体。
-    private readonly celestialBodies: FutureCelestialBodies,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
     private readonly activePlayers: ActivePlayerController,
@@ -650,7 +647,7 @@ export class PlanEditor {
       this.closeMenu();
     }
     this.simTime = displayWindow.simTime;
-    this.planDisplay.update(this.displayedPlan, displayWindow, this.celestialBodies, ship, frameAnchors);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.ephemeris, ship, frameAnchors);
     this.updateEquatorNodes(displayWindow, frameAnchors);
   }
 
