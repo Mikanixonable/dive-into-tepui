@@ -8,7 +8,7 @@ import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../widgets';
 import { celestialBodyName, frameRoleName, rotationSourceLabel } from './frame-labels';
-import type { MapPickable } from '../../map-pickable';
+import type { MapPickable } from '../../pickable/map-pickable';
 import type { OverlayManager } from '../overlay-manager';
 import { buildPanel } from './frame-controls';
 

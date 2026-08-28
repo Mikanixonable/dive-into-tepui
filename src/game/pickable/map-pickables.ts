@@ -1,27 +1,27 @@
 // マップ上の被選択物(MapPickable)の候補集合と、表示可否(MapVisibilityPolicy)を1フレーム分
 // 組み立てる。「何が選べるか」だけを答え、選んだ結果どうするか(ヒットテスト・メニュー・
 // プロパティウィンドウ)は map-context-actions.ts の MapContextActions が持つ。
-import * as C from './const';
-import { fmtDist, fmtSpeed } from './hud/utils';
-import { celestialBodyName } from './hud/frame/frame-labels';
+import * as C from '../const';
+import { fmtDist, fmtSpeed } from '../hud/utils';
+import { celestialBodyName } from '../hud/frame/frame-labels';
 import { MapPickable } from './map-pickable';
-import { focusTargetId } from './camera/focus-target';
-import { EntityManager } from './simulation/entity-manager';
-import { Ephemeris } from '../physics/ephemeris';
-import { NavTarget } from './nav-target';
-import type { FrameAnchorSource } from '../physics/frame';
-import { CameraSystem } from './camera/camera-system';
-import { PlanEditor } from './plan/plan-editor';
-import type { ActivePlayerController } from './active-controllable-controller';
-import { len, sub } from '../math/vec3';
-import { strongestAttractor } from '../physics/celestial-body';
-import { isOccluded } from '../physics/occlusion';
-import { apsisAltitudes } from '../physics/elements';
-import { isPositionInFocusedSystem, NearbySystemTracker } from './celestial/body-visibility';
-import { MapVisibilityPolicy } from './celestial/map-visibility';
-import { MarkerManager } from './marker/marker-manager';
-import type { DisplayWindow } from './display-window-manager';
-import type { PerfCounts } from '../perf-meter';
+import { focusTargetId } from '../camera/focus-target';
+import { EntityManager } from '../simulation/entity-manager';
+import { Ephemeris } from '../../physics/ephemeris';
+import { NavTarget } from '../nav-target';
+import type { FrameAnchorSource } from '../../physics/frame';
+import { CameraSystem } from '../camera/camera-system';
+import { PlanEditor } from '../plan/plan-editor';
+import type { ActivePlayerController } from '../active-controllable-controller';
+import { len, sub } from '../../math/vec3';
+import { strongestAttractor } from '../../physics/celestial-body';
+import { isOccluded } from '../../physics/occlusion';
+import { apsisAltitudes } from '../../physics/elements';
+import { isPositionInFocusedSystem, NearbySystemTracker } from '../celestial/body-visibility';
+import { MapVisibilityPolicy } from '../celestial/map-visibility';
+import { MarkerManager } from '../marker/marker-manager';
+import type { DisplayWindow } from '../display-window-manager';
+import type { PerfCounts } from '../../perf-meter';
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 

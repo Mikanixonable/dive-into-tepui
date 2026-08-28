@@ -7,7 +7,7 @@ import { LAGRANGE_ID } from '../hud/object-groups';
 import { bodyEntityGlyph, ENTITY_GLYPH, ORBIT_POINT_GLYPH } from './marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from './marker-shapes';
 import type { CelestialRegistry } from '../../physics/solar-system';
-import type { MapPickKind } from '../map-pickable';
+import type { MapPickKind } from '../pickable/map-pickable';
 
 // 文字グリフを使う種別。body は恒星・衛星・ラグランジュ点で字形が変わるため、この表ではなく
 // pickGlyph() の中で bodyEntityGlyph() から選ぶ。

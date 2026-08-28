@@ -14,7 +14,7 @@ import {
   DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, FOCUS_ICON_PRIORITY_PX, FOCUS_LABEL_PRIORITY_PX,
   LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY,
 } from '../const';
-import type { MapPickable } from '../map-pickable';
+import type { MapPickable } from '../pickable/map-pickable';
 import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-glyphs';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
 import { resolveCrowdingWinner } from '../marker/crowding';

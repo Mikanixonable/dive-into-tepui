@@ -3,7 +3,7 @@ import { Attitude, qRotate } from '../../physics/attitude';
 import { Vec3, dot, v3 } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/srp';
 import * as C from '../const';
-import type { PowerSaveData } from '../save-data';
+import type { PowerSaveData } from '../save/save-data';
 
 export type SolarSide = 'up' | 'down';
 
