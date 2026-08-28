@@ -10,6 +10,7 @@ import { CelestialSurface } from '../../render/celestial-surface';
 import { albedoOf, DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { textureOf } from '../../render/celestial-textures';
 import { MoonSurfaceMarkings } from '../../render/moon-surface-markings';
+import { atmosphereOpticsOf } from '../../render/atmosphere';
 import { BodyClass, bodyClassOfKind, solarSystemBodyClass } from './body-class';
 import { CelestialEntity } from './celestial-entity';
 import { Earth } from './earth';
@@ -46,7 +47,7 @@ function planetEntry(id: SolarSystemId, name: string): CelestialAppearance {
   return {
     name,
     bodyClass,
-    create: (motion) => new PointEntity(motionAs(motion, OrbitingMotion), name, bodyClass, texturedSurface(id)),
+    create: (motion) => new PointEntity(motionAs(motion, OrbitingMotion), name, bodyClass, texturedSurface(id), atmosphereOpticsOf(id)),
   };
 }
 
@@ -82,14 +83,14 @@ export const CELESTIAL_APPEARANCES: Record<SolarSystemId, CelestialAppearance> =
   earth: {
     name: '地球',
     bodyClass: solarSystemBodyClass('earth'),
-    create: (motion) => new Earth(motionAs(motion, PlanetMotion), '地球'),
+    create: (motion) => new Earth(motionAs(motion, PlanetMotion), '地球', 0, atmosphereOpticsOf('earth')),
   },
   moon: {
     name: '月',
     bodyClass: solarSystemBodyClass('moon'),
     create: (motion) => new SphereEntity(
       motionAs(motion, OrbitingMotion), '月', solarSystemBodyClass('moon'),
-      texturedSurface('moon'), () => new MoonSurfaceMarkings(),
+      texturedSurface('moon'), null, () => new MoonSurfaceMarkings(),
     ),
   },
   mercury: planetEntry('mercury', '水星'),

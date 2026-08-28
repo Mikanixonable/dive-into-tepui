@@ -11,6 +11,8 @@ import { CelestialSurface } from '../../render/celestial-surface';
 import { BodyGraticule } from '../../render/body-graticule';
 import type { LineOverlay } from '../../render/line-overlay';
 import { CelestialEntity } from './celestial-entity';
+import type { AtmosphereOptics } from '../../render/atmosphere';
+import type { Albedo } from '../../render/celestial-albedo';
 import type { BodyClass } from './body-class';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { SunLight } from '../../render/pipeline/sun-light';
@@ -42,9 +44,10 @@ export class SphereEntity extends CelestialEntity {
     name: string,
     bodyClass: BodyClass,
     private readonly surface: CelestialSurface,
+    atmosphereOptics: AtmosphereOptics | null = null,
     surfaceMarkings?: () => LineOverlay,
   ) {
-    super(motion, name, bodyClass);
+    super(motion, name, bodyClass, atmosphereOptics);
     const def = motion.def;
     this.radius = def.radius;
     this.rings = def.rings;
@@ -55,6 +58,10 @@ export class SphereEntity extends CelestialEntity {
       : def.rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), def.radius);
     this.surfaceMarkings = surfaceMarkings?.();
   }
+
+  get lightSourceAlbedo(): Albedo | null { return this.surface.photometry?.lightSourceAlbedo ?? null; }
+
+  get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
 
   // 表面メッシュと環をシーンへ一度だけ登録する。
   build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void {
