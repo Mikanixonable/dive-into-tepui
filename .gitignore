@@ -11,3 +11,4 @@ docs/
 .venv-protein-builder/
 __pycache__/
 .cloud-lab/
+assets-src/climate/
