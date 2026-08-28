@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
-import { runAll, test } from './harness';
+import { test } from './harness';
 import type { ProteinAssetDefinition, ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import type { ProteinRenderSource } from '../../src/render/protein-enemy-ship';
 import { buildProteinEnemyShip } from '../../src/render/protein-enemy-ship';
@@ -214,8 +214,4 @@ export function register(): void {
     unregister();
   });
 
-}
-
-export function runRegisteredProteinRenderTests(): Promise<void> {
-  return runAll();
 }
