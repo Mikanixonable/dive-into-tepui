@@ -12,8 +12,10 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
-import { Vec3 } from '../../physics/vec3';
-import { metersPerPixel, ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
+import { Vec3, len, sub } from '../../physics/vec3';
+import {
+  metersPerPixel, metersPerPixelAtDistance, ndcToScreen, Projected, projectToNdc, Viewpoint,
+} from '../../physics/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { CameraSaveData } from '../save-data';
@@ -108,6 +110,13 @@ function projectionFromViewpoint(view: Viewpoint): ProjectFn {
 // 画面上で1ピクセルに相当する実距離[m]を返す関数を組む。
 function scaleFromViewpoint(view: Viewpoint): ScaleFn {
   return (worldPos) => metersPerPixel(view, worldPos, window.innerHeight);
+}
+
+// 同じ尺度を、視点からの直線距離で測って返す関数を組む。**画面に写らない位置にある物体の
+// 見かけの大きさを測るのはこちら** — 深度で測る側は視点の背後で床打ちされ、遠く後方にある
+// 物体が目の前にあるのと同じ尺度を返す。
+function radialScaleFromViewpoint(view: Viewpoint): ScaleFn {
+  return (worldPos) => metersPerPixelAtDistance(view, len(sub(worldPos, view.position)), window.innerHeight);
 }
 
 // 戦闘ビュー(CombatCameraSystem)と広範囲視点(MapCamera)を切り替えて駆動する。
@@ -261,6 +270,12 @@ export class CameraSystem {
   // アクティブカメラの画面尺度関数を返す。
   get activeCameraScale(): ScaleFn {
     return scaleFromViewpoint(this.overviewMode ? this.mapCamera.viewpoint : this.combatCamera.viewpoint);
+  }
+
+  // アクティブカメラの画面尺度関数を、視点からの直線距離で測って返す。画面の外や視点の背後に
+  // ある物体の見かけの大きさは、これでなければ測れない。
+  get activeCameraRadialScale(): ScaleFn {
+    return radialScaleFromViewpoint(this.overviewMode ? this.mapCamera.viewpoint : this.combatCamera.viewpoint);
   }
 
   // 両サブカメラの視点状態をセーブデータへ書き出す。どちらが表示中かは ViewManager の責務。
