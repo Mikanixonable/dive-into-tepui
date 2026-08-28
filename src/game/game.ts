@@ -32,7 +32,6 @@ import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import type { RenderStyle } from '../render/render-style';
 import { CelestialSystem } from './celestial/celestial-system';
-import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
 import { NanWatchdog } from './simulation/nan-watchdog';
 import { NavTarget } from './nav-target';
@@ -61,7 +60,6 @@ export class Game {
   private readonly _uiSfx: UiSfx;
   private readonly pauseMenu: PauseMenu;
   private readonly markerManager: MarkerManager;
-  get ephemeris(): Ephemeris { return this.celestialSystem.ephemeris; }
   readonly cameraSystem: CameraSystem;
   // 操作対象艦(0..n 隻のうちどれを操作するか)の切替を持つ。
   readonly activePlayers: ActiveControllableController;

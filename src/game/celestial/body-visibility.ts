@@ -268,7 +268,7 @@ function ancestorsOf(byId: ReadonlyMap<string, CelestialMotion>, focusId: string
 // すると操作の途中で行が明滅するので、カメラ位置から求めた重力系のメンバーで代用する。
 // focusId が undefined でも、nearbyIds に渡された近傍系は残す。
 export function alwaysFullyVisibleIds(
-  motions: readonly CelestialMotion[], bodyClassOf: BodyClassLookup, focusId: string | undefined,
+  motions: readonly CelestialMotion[], bodyClass: BodyClassLookup, focusId: string | undefined,
   nearbyIds: Iterable<string> = [],
   toggles?: BodyClassToggles,
 ): ReadonlySet<string> {
@@ -281,7 +281,7 @@ export function alwaysFullyVisibleIds(
   // nearbyIds は systemMembersAt() など、呼び出し側がカメラ位置から求めた系の集合。
   // 未登録の重力源が混ざっても、ここは天体ラベルの集合なので無視する。
   for (const id of nearbyIds) {
-    if (byId.has(id) && (toggles === undefined || bodyClassVisible(bodyClassOf(id), toggles))) {
+    if (byId.has(id) && (toggles === undefined || bodyClassVisible(bodyClass(id), toggles))) {
       ids.add(id);
     }
   }
@@ -289,7 +289,7 @@ export function alwaysFullyVisibleIds(
   if (focusId === undefined) return ids;
 
   for (const id of ancestorsOf(byId, focusId)) {
-    if (toggles === undefined || bodyClassVisible(bodyClassOf(id), toggles)) ids.add(id);
+    if (toggles === undefined || bodyClassVisible(bodyClass(id), toggles)) ids.add(id);
   }
   // 兄弟は「惑星系の中の兄弟」に限る。恒星の子はすべて互いに兄弟なので、そこまで含めると
   // 惑星にフォーカスしただけで全太陽周回天体が出てしまう(惑星どうしの表示は planetOrbit/
@@ -299,7 +299,7 @@ export function alwaysFullyVisibleIds(
   for (const id of sameSystemIds(motions, focusId)) {
     // focusId 自身は未登録(生存中の重力天体)でもありうるので、親を引く前に弾く。
     if ((siblingsMatter || id === focusId || (byId.get(id)?.primary?.id ?? null) === focusId)
-      && (toggles === undefined || bodyClassVisible(bodyClassOf(id), toggles))) {
+      && (toggles === undefined || bodyClassVisible(bodyClass(id), toggles))) {
       ids.add(id);
     }
   }

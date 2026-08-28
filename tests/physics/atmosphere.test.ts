@@ -8,7 +8,7 @@ import { Atmosphere, airspeed, atmosphericDensity, dragAccel, ellipsoidAltitude 
 import { EARTH_ATMOSPHERE } from '../../src/physics/solar-system/earth-system';
 import { len, v3 } from '../../src/math/vec3';
 
-// ECI の極軸を自転軸とする地球の大気(Ephemeris.celestialBodyAt が組むのと同じ形)。
+// ECI の極軸を自転軸とする地球の大気(CelestialMotion.at が組むのと同じ形)。
 const EARTH: Atmosphere = { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) };
 
 const TABLE_ALTS_KM = [
