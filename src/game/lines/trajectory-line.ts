@@ -23,6 +23,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
 import { CelestialBody } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
+import type { ReferenceFrames } from '../../physics/reference-frames';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../../physics/kepler-extrapolation';
 import { StateQueue } from '../../physics/state-queue';
@@ -220,12 +221,13 @@ export class TrajectoryLine {
   // 直近に bake した描画区間から、当たり判定向けの ECI 絶対座標のサンプル点列を返す。
   // 座標系相対 → 慣性系の変換は表示時刻の剛体運動(syncTransform の un-bake と同じ変換)で行う。
   samplePoints(
-    count: number, frame: ReferenceFrame, displayTime: number, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+    count: number, frame: ReferenceFrame, displayTime: number, frames: ReferenceFrames,
+    frameAnchors: FrameAnchorSource,
   ): readonly Vec3[] {
     const start = this.startTime;
     const end = this.endTime;
     if (this.baked.size < 2 || start === null || end === null || start >= end) return [];
-    const tf = ephemeris.frameTransformAt(frame, displayTime, frameAnchors);
+    const tf = frames.transformAt(frame, displayTime, frameAnchors);
     const points: Vec3[] = [];
     const scratch = new THREE.Vector3();
     for (let i = 0; i <= count; i++) {
