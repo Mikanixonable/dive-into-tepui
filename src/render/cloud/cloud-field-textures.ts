@@ -1,5 +1,5 @@
 // 天気のモデルが凝結する雲の場を、正距円筒図法の写し 3 枚(不透明雲のスラブ 0–3 / 4–7、薄い雲)へ
-// 描く。時刻を渡すたびに全面を描き直す。
+// 描く。呼ばれるたびに全面を描き直す。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mrt, screenUV, vec4 } from 'three/tsl';
@@ -17,8 +17,8 @@ export class CloudFieldTextures {
   private readonly material: THREE.MeshBasicNodeMaterial;
   private readonly quad: QuadMesh;
 
-  // model の雲を写すグラフを一度だけ組む。時刻は render() のたびに受ける。
-  public constructor(private readonly model: WeatherModel) {
+  // model の雲を写すグラフを一度だけ組む。
+  public constructor(model: WeatherModel) {
     this.target = new THREE.RenderTarget(CLOUD_FIELD_WIDTH, CLOUD_FIELD_HEIGHT, {
       count: 3, depthBuffer: false, samples: 0,
     });
@@ -53,9 +53,8 @@ export class CloudFieldTextures {
   // r16f: 薄い雲の光学的厚み。
   public get translucentTexture(): THREE.Texture { return this.target.textures[2]!; }
 
-  // 時刻 [s] の雲を写しへ描く。
-  public render(renderer: WebGPURenderer, seconds: number): void {
-    this.model.syncTime(seconds);
+  // model がいま指している時刻の雲を写しへ描く。
+  public render(renderer: WebGPURenderer): void {
     renderer.setRenderTarget(this.target);
     this.quad.render(renderer);
     renderer.setRenderTarget(null);
