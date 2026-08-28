@@ -3,7 +3,7 @@
 // 単体テスト(better_predict.md Step 2)。過去列にも将来列にも同じ実装を使う前提なので、
 // ここでの検証は GameEntity.actualTrajectory(過去列側)としての用法をそのまま代表する。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { extrapolatedRelativeState } from '../../src/physics/kepler-extrapolation';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';

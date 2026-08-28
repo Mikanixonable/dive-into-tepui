@@ -1,7 +1,7 @@
 // body-orientation.ts の回帰テスト。自転軸を軌道面法線と取り違えると月の J2 摂動の向きが
 // 6.7° ずれるが、加速度の大きさは変わらないので値の検査だけでは捕まらない。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { cassiniSpinAxis, meridianDirection, orthogonalizedTo } from '../../src/physics/body-orientation';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';

@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { createHash, webcrypto } from 'node:crypto';
-import { test } from './harness';
+import { test } from '../harness';
 import {
   buildEphemerisPackData, encodeEphemerisPack, encodeFloat64Payload,
 } from '../../src/physics/ephemeris-pack/format';
