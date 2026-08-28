@@ -17,7 +17,6 @@ import { SimSpeedManager } from '../simulation/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
-import { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
 import type { StageSaveData } from '../save/save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
@@ -58,7 +57,7 @@ export type StageDeps = [
   unlockManager: UnlockManager,
   fx: EffectsSystem,
   markerManager: MarkerManager,
-  ephemeris: Ephemeris,
+  celestialSystem: CelestialSystem,
   simulator: Simulator,
   activePlayers: ActivePlayerController,
 ];
@@ -150,7 +149,7 @@ export abstract class Stage {
   protected readonly _unlockManager: UnlockManager;
   protected readonly _entities: EntityManager;
   protected readonly _markerManager: MarkerManager;
-  protected readonly _ephemeris: Ephemeris;
+  protected readonly _celestialSystem: CelestialSystem;
   protected readonly _simulator: Simulator;
   protected readonly _activePlayers: ActivePlayerController;
 
@@ -170,7 +169,7 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers] = deps;
+    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, celestialSystem, simulator, activePlayers] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -179,7 +178,7 @@ export abstract class Stage {
     this._fx = fx;
     this._entities = entities;
     this._markerManager = markerManager;
-    this._ephemeris = ephemeris;
+    this._celestialSystem = celestialSystem;
     this._simulator = simulator;
     this._activePlayers = activePlayers;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
@@ -242,7 +241,7 @@ export abstract class Stage {
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。
   protected behaveAllEnemies(player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     for (const e of entities.enemies) {
-      if (e.alive) e.behave(simTime, player, entities, simSpeed, this._ephemeris);
+      if (e.alive) e.behave(simTime, player, entities, simSpeed, this._celestialSystem);
     }
   }
 
