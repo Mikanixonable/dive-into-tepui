@@ -41,7 +41,7 @@ export function createStars(): Stars {
   });
 
   const mesh = new THREE.Mesh(geo, mat);
-  // EnvironmentScene.sync が毎フレーム position をカメラ位置へ合わせる殻なので、
+  // CelestialSystem.sync が毎フレーム position をカメラ位置へ合わせる殻なので、
   // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
   mesh.frustumCulled = false;
   mesh.layers.set(WORLD_BACKGROUND_LAYER);

@@ -15,7 +15,6 @@ import {
 } from '../../src/game/const';
 import { ArcBodies } from '../../src/game/simulation/arc-bodies';
 import { attractorsNearInto, classifyAttractors } from '../../src/game/simulation/attractors';
-import { FutureCelestialBodies } from '../../src/game/simulation/future-celestial-bodies';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/simulation/surface-candidates';
 import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';
@@ -138,14 +137,13 @@ function descentState(bodyId: string, t: number): KinematicState {
 }
 
 export function register(): void {
-  const arcSources = new FutureCelestialBodies(EPHEMERIS);
   for (const site of SITES) {
     test(`gravity-window: ${site.name}で弧と実シミュレーションの重力和は GRAVITY_NEGLIGIBLE_ACCEL 以内で一致する`, () => {
       for (const t of SAMPLE_TIMES) {
         const from = site.stateAt(t);
         const sim = attractorsNearInto(from.r, classifyAttractors(EPHEMERIS.gravityAttractorsAt(t)), []);
         // 成員は最初の解決で確定するので、場所ごと・時刻ごとに弧を組み直す。
-        const arc = new ArcBodies(arcSources).resolve(t, from, 0).gravity;
+        const arc = new ArcBodies(EPHEMERIS).resolve(t, from, 0).gravity;
         const diff = len(sub(gravitySum(sim, from.r, t), gravitySum(arc, from.r, t)));
         assert.ok(
           diff <= GRAVITY_NEGLIGIBLE_ACCEL,
@@ -170,7 +168,7 @@ export function register(): void {
         // 何も通らない場所で比べても意味がないので、絞り込みが実際に通していることを先に見る。
         assert.ok(sim.length > 0, `${site.name} t=${t}: 実シミュレーション側が1体も通していない`);
         // 成員は最初の解決で確定するので、場所ごと・時刻ごとに弧を組み直す。
-        const arc = new ArcBodies(arcSources)
+        const arc = new ArcBodies(EPHEMERIS)
           .resolve(t + SUBSTEP_MAX_DT / 2, from, SUBSTEP_MAX_DT).collision;
         const known = new Set(arc.map((b) => b.id));
         const dropped = sim.filter((b) => !known.has(b.id)).map((b) => b.id);

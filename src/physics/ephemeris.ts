@@ -12,7 +12,7 @@ import {
 import { FrameAnchorSource, FrameRotationSource, ReferenceFrame, FrameTransform, rotationSourceKey } from './frame';
 import { FrameRotation } from './kepler-orbit';
 import { LagrangePoints } from './lagrange';
-import { CelestialRegistry, SOLAR_SYSTEM, starOf } from './solar-system';
+import { CelestialBodyDef, CelestialRegistry, SOLAR_SYSTEM, starOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { SECONDS_PER_DAY } from './time';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
@@ -270,6 +270,11 @@ export class Ephemeris {
   private anchorStateAt(id: string, t: number, source: FrameAnchorSource): KinematicState {
     if (id in this.registry) return this.stateOf(id, t);
     return source.stateOf(id, t) ?? kinematicState(t, v3(), v3());
+  }
+
+  // 全登録天体の定義(registry の宣言順)。
+  get defs(): readonly CelestialBodyDef[] {
+    return this.motions.map((m) => m.def);
   }
 
   // 指定時刻の全登録天体(registry の宣言順)。origin は原点に静止。
