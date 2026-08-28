@@ -1,7 +1,6 @@
-import { bodyClassOf } from '../../celestial/body-class';
 import { LAGRANGE_ID, lagrangePoint } from '../object-groups';
-import type { Ephemeris } from '../../../physics/ephemeris';
 import type { BodyClass } from '../../celestial/body-class';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
 
 // 1区画ぶんの表示順と親子構造を id で持つ。表示値(距離・詳細)は毎フレーム
@@ -78,7 +77,7 @@ export class PhysicalObjectListOrder {
   private readonly idsInSectionScratch = new Set<string>();
   private readonly clusterParentSeenScratch = new Set<string>();
 
-  public constructor(private readonly ephemeris: Ephemeris) {}
+  public constructor(private readonly celestialSystem: CelestialSystem) {}
 
   public get filteringActive(): boolean {
     return this.query !== '' || this.filter !== null;
@@ -93,7 +92,8 @@ export class PhysicalObjectListOrder {
     }
     if (this.filter === 'enemy') return item.kind === 'ship' && item.inFocusedSystem !== false;
     if (this.filter === 'lagrange') return item.kind === 'body' && LAGRANGE_ID.test(item.id);
-    return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.ephemeris, item.id) === this.filter;
+    return item.kind === 'body' && !LAGRANGE_ID.test(item.id)
+      && this.celestialSystem.bodyOf(item.id).bodyClass === this.filter;
   }
 
   // 並べ替え・親子構造を決める入力(候補の顔ぶれ・表示名・種別・親・絞り込みの通過可否と
@@ -142,7 +142,7 @@ export class PhysicalObjectListOrder {
     matched.sort((a, b) => this.compare(a, b));
     order.ids.length = 0;
     for (const item of matched) order.ids.push(item.id);
-    // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(bodyClassOf が
+    // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(親の bodyClass が
     // 'planet' のため)。親を惑星ごとのクラスタ見出しとして拾い出す — フィルタの一致件数
     // (ヘッダーの (N))には含めないので、order.ids は素通しのまま、木を組む先だけ displayIds へ分ける。
     const displayIds = this.displayIdsScratch;

@@ -143,7 +143,7 @@ export class Game {
 
     this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
     this.entityLines = new EntityLineManager(this.entities);
-    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, ephemeris);
+    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
     this.cameraSystem = new CameraSystem(
       this._hud,
@@ -162,7 +162,7 @@ export class Game {
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.entities, ephemeris, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
-      this._hud.mapRoot, this._hud.layers.popup, ephemeris, this.cameraSystem.mapCamera,
+      this._hud.mapRoot, this._hud.layers.popup, celestialSystem, this.cameraSystem.mapCamera,
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.entities);
