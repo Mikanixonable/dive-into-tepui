@@ -7,7 +7,7 @@ import { lightSourceAlbedoOf, rec709Luminance } from '../../render/celestial-alb
 import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from '../../render/pipeline/lighting/planet-light-source';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
 import type { CelestialBody } from '../../physics/celestial-body';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from './celestial-system';
 import type { Vec3 } from '../../math/vec3';
 import type { Albedo } from '../../render/celestial-albedo';
 
@@ -21,9 +21,9 @@ export type PlanetLight = {
 // 表示時刻 displayTime に、基準点 reference(ECI)へ強く届く順に天体光源を
 // MAX_PLANET_LIGHT_SLOTS 体まで返す。
 export function selectPlanetLights(
-  ephemeris: Ephemeris, displayTime: number, reference: Vec3,
+  celestialSystem: CelestialSystem, displayTime: number, reference: Vec3,
 ): readonly PlanetLight[] {
-  const bodies = ephemeris.celestialBodiesAt(displayTime);
+  const bodies = celestialSystem.celestialBodiesAt(displayTime);
   const star = bodies.find((body) => body.isStar) ?? null;
   const candidates: { readonly light: PlanetLight; readonly irradiance: number }[] = [];
   for (const body of bodies) {
