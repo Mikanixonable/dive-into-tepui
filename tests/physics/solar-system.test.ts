@@ -2,12 +2,11 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { spinRateOf } from '../../src/physics/celestial-motion';
-import { EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { CERES } from '../../src/physics/solar-system/dwarf-planets';
 import { EARTH } from '../../src/physics/solar-system/earth-system';
 import { VENUS } from '../../src/physics/solar-system/inner-planets';
 import { URANUS } from '../../src/physics/solar-system/uranus-system';
-import { SIDEREAL_DAY } from '../../src/physics/solar-system/constants';
+import { EPOCH_T_OFFSET, SIDEREAL_DAY } from '../../src/physics/solar-system/constants';
 import { solarSystemMotions } from '../../src/physics/solar-system/solar-system';
 
 // 重力源配列・天体一覧の順序はこの並びで決まる。並びが変わると重力の総和の丸めが変わって
