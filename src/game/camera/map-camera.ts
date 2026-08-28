@@ -7,7 +7,8 @@ import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
 import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, toFrameDir, toInertialDir } from '../../physics/frame';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/celestial-body';
-import type { Ephemeris } from '../../physics/ephemeris';
+import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { MapPickable } from '../pickable/map-pickable';
@@ -130,7 +131,7 @@ export class MapCamera {
 
   clearFocusIf(id: string): void {
     if (this._focus.kind === 'object' && this._focus.id === id) {
-      this.setFocusTarget({ kind: 'object', id: this.ephemeris.originId });
+      this.setFocusTarget({ kind: 'object', id: this.celestialSystem.origin.id });
     }
   }
 
@@ -144,11 +145,11 @@ export class MapCamera {
   };
 
   // THREE.PerspectiveCamera と初期視点(offset_r/pan_r/up_r/座標系/フォーカス)を組む。saved が
-  // あればその値から、無ければ既定の見下ろし視点から組む。座標系は必ず ephemeris.frameOf 経由で
+  // あればその値から、無ければ既定の見下ろし視点から組む。座標系は必ず frames.frameOf 経由で
   // 解決する — ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
   constructor(
     private readonly _hud: Hud,
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     saved?: MapCameraSaveData,
   ) {
     this.rotationMode = saved?.rotationMode ?? 'euler';
@@ -156,8 +157,9 @@ export class MapCamera {
     this._referencePlane = saved?.referencePlane === 'ecliptic' || saved?.referencePlane === 'moonOrbit'
       ? saved.referencePlane : 'equator';
     this.fovDeg = this.clampFov(saved?.fovDeg ?? OVERVIEW_CAMERA_FOV);
+    const frames = celestialSystem.frames;
     if (saved) {
-      this._cameraFrame = ephemeris.frameOf(ephemeris.originId, rotationSourceFromSaveData(saved.rotatingWith));
+      this._cameraFrame = frames.frameOf(celestialSystem.origin.id, rotationSourceFromSaveData(saved.rotatingWith));
       this.offset_r = frameDir(saved.offset.x, saved.offset.y, saved.offset.z);
       this.pan_r = frameDir(saved.pan.x, saved.pan.y, saved.pan.z);
       this.up_r = frameDir(saved.up.x, saved.up.y, saved.up.z);
@@ -165,16 +167,16 @@ export class MapCamera {
         ? { kind: 'object', id: saved.focus.id }
         : {
           kind: 'point',
-          frame: ephemeris.frameOf(saved.focus.center, rotationSourceFromSaveData(saved.focus.rotatingWith)),
+          frame: frames.frameOf(saved.focus.center, rotationSourceFromSaveData(saved.focus.rotatingWith)),
           point: framePoint(saved.focus.point.x, saved.focus.point.y, saved.focus.point.z),
         };
     } else {
-      this._cameraFrame = ephemeris.inertialFrame;
-      const tf0 = ephemeris.frameTransformAt(this._cameraFrame, 0, bodyAnchorSource([]));
+      this._cameraFrame = frames.inertialFrame;
+      const tf0 = frames.transformAt(this._cameraFrame, 0, bodyAnchorSource([]));
       this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
       this.pan_r = toFrameDir(tf0, v3());
       this.up_r = toFrameDir(tf0, WORLD_UP);
-      this._focus = { kind: 'object', id: ephemeris.originId };
+      this._focus = { kind: 'object', id: celestialSystem.origin.id };
     }
     this.rotationQ = this.rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r));
     this.euler = this.eulerFromRotation(this.rotationQ);
@@ -214,8 +216,9 @@ export class MapCamera {
       const distToBody = len(sub(cameraPos, nearest.state.r));
       const PLANETARY_SCALE_THRESHOLD = 1e9; // 1,000,000 km in meters
 
-      if (distToBody <= PLANETARY_SCALE_THRESHOLD && nearest.id in this.ephemeris.registry) {
-        return this.ephemeris.poleAt(nearest.id, this.displayTime)?.axis ?? ECI_POLE;
+      const nearestBody = this.celestialSystem.find(nearest.id);
+      if (distToBody <= PLANETARY_SCALE_THRESHOLD && nearestBody !== null) {
+        return nearestBody.motion.orientationAt(this.displayTime)?.axis ?? ECI_POLE;
       }
     }
     return ECL_POLE_ECI;
@@ -224,7 +227,7 @@ export class MapCamera {
   // Euler 操作の極はカメラ座標系の +Y ではなく、カメラ位置に応じた自転軸または黄道面法線にする。
   // 座標系が慣性系以外でも、基準軸を同じ座標系へ変換してから使う。
   private eulerPolarAxis(): Vec3 {
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
+    const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     return norm(frameDirVector(toFrameDir(tf, this.referenceUpAxisEci())));
   }
 
@@ -273,12 +276,13 @@ export class MapCamera {
 
   private framePlaneNormal(plane: CameraReferencePlane): Vec3 {
     if (plane === 'ecliptic') return ECL_POLE_ECI;
-    if (plane === 'moonOrbit' && 'moon' in this.ephemeris.registry) {
-      return this.ephemeris.orbitNormalAt('moon', this.displayTime);
+    if (plane === 'moonOrbit') {
+      const moon = this.celestialSystem.find('moon')?.motion;
+      if (moon instanceof OrbitingMotion) return moon.orbitNormalAt(this.displayTime);
     }
     if (plane === 'equator') {
-      const earthId = 'earth' in this.ephemeris.registry ? 'earth' : this.ephemeris.originId;
-      return this.ephemeris.poleAt(earthId, this.displayTime)?.axis ?? ECI_POLE;
+      const earth = this.celestialSystem.find('earth') ?? this.celestialSystem.origin;
+      return earth.motion.orientationAt(this.displayTime)?.axis ?? ECI_POLE;
     }
     return ECL_POLE_ECI;
   }
@@ -359,7 +363,7 @@ export class MapCamera {
   }
 
   public setReferenceView(view: CameraReferenceView): void {
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
+    const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const normal = norm(frameDirVector(toFrameDir(tf, this.framePlaneNormal(this._referencePlane))));
     const currentOffset = qRotate(this.rotationQ, FRAME_FORWARD);
     let offset: Vec3;
@@ -403,14 +407,15 @@ export class MapCamera {
   // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
   // フォーカスが天体でなければ通常の下限をそのまま使う。
   private get minDist(): number {
-    if (this._focus.kind !== 'object' || !(this._focus.id in this.ephemeris.registry)) return C.OVERVIEW_CAMERA_MIN_DIST;
-    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, this.ephemeris.motionOf(this._focus.id).def.radius);
+    const body = this._focus.kind === 'object' ? this.celestialSystem.find(this._focus.id) : null;
+    if (body === null) return C.OVERVIEW_CAMERA_MIN_DIST;
+    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, body.def.radius);
   }
 
   // ロールを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻し、パンでフォーカスから
   // ずれていた注視点もフォーカス位置へ戻す。
   reset(): void {
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
+    const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const offset = qRotate(this.rotationQ, FRAME_FORWARD);
     const upAxisEci = this.referenceUpAxisEci();
     const up = norm(frameDirVector(toFrameDir(tf, upAxisEci)));
@@ -422,20 +427,27 @@ export class MapCamera {
 
   // パン変位をゼロに戻す。
   resetPan(): void {
-    this.pan_r = toFrameDir(this.ephemeris.frameTransformAt(this._cameraFrame, this.displayTime, this.frameAnchors), v3());
+    const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
+    this.pan_r = toFrameDir(tf, v3());
   }
+
+  // 天体 id の運動。登録されていない id(機体・役割トークン・ラグランジュ点)には null。
+  private readonly celestialMotionOf = (id: string): CelestialMotion | null => (
+    this.celestialSystem.find(id)?.motion ?? null
+  );
 
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
   // point は座標系が回っていれば ECI 座標が動くため、毎フレーム焼き直す。
   private resolveFocus(candidates: readonly MapPickable[], displayTime: number, frameAnchors: FrameAnchorSource): Vec3 {
-    const result = resolveFocusTarget(this._focus, candidates, displayTime, frameAnchors, this.ephemeris, {
-      missingFocusFrames: this.missingFocusFrames,
-      lastResolvedFocus: this.lastResolvedFocus,
-    });
+    const result = resolveFocusTarget(
+      this._focus, candidates, displayTime, frameAnchors,
+      this.celestialSystem.frames, this.celestialMotionOf,
+      { missingFocusFrames: this.missingFocusFrames, lastResolvedFocus: this.lastResolvedFocus },
+    );
     this.missingFocusFrames = result.missingFocusFrames;
     this.lastResolvedFocus = result.lastResolvedFocus;
     if (result.fallToOrigin) {
-      this.setFocusTarget({ kind: 'object', id: this.ephemeris.originId });
+      this.setFocusTarget({ kind: 'object', id: this.celestialSystem.origin.id });
       return v3();
     }
     return result.pos;
@@ -451,18 +463,19 @@ export class MapCamera {
     return this.lastResolvedFocus;
   }
 
-  // カメラ視点の回転対象を切り替える。中心は常に ephemeris.originId — offset_r/pan_r/up_r は
+  // カメラ視点の回転対象を切り替える。中心は常に ECI 中心天体 — offset_r/pan_r/up_r は
   // 方向(FrameDir)しか持たず原点移動の影響を受けないので、中心をどれにしても視点は変わらない。
   // 切替の瞬間にカメラ視点(ECI)を跳ばせないよう、現在の座標系から新しい座標系へ変換し直す。
   setCameraRotation(rotatingWith: FrameRotationSource | null): void {
-    const frame = this.ephemeris.frameOf(this.ephemeris.originId, rotatingWith);
+    const frames = this.celestialSystem.frames;
+    const frame = frames.frameOf(this.celestialSystem.origin.id, rotatingWith);
     const from = this._cameraFrame;
     if (frame === from) return;
-    const tfFrom = this.ephemeris.frameTransformAt(from, this.displayTime, this.frameAnchors);
+    const tfFrom = frames.transformAt(from, this.displayTime, this.frameAnchors);
     const offEci = toInertialDir(tfFrom, this.offset_r);
     const panEci = toInertialDir(tfFrom, this.pan_r);
     const upEci = toInertialDir(tfFrom, this.up_r);
-    const tfTo = this.ephemeris.frameTransformAt(frame, this.displayTime, this.frameAnchors);
+    const tfTo = frames.transformAt(frame, this.displayTime, this.frameAnchors);
     this.offset_r = toFrameDir(tfTo, offEci);
     this.pan_r = toFrameDir(tfTo, panEci);
     this.up_r = toFrameDir(tfTo, upEci);
@@ -486,7 +499,7 @@ export class MapCamera {
     this.displayTime = displayTime;
     this.frameAnchors = frameAnchors;
     const focus = this.resolveFocus(candidates, displayTime, frameAnchors);
-    const tf = this.ephemeris.frameTransformAt(this._cameraFrame, displayTime, frameAnchors);
+    const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, displayTime, frameAnchors);
     let offFrame: Vec3;
     let upFrame: Vec3;
     if (this.rotationMode === 'euler') {

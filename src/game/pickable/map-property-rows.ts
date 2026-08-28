@@ -1,16 +1,15 @@
 // 被選択物(MapPickable)のプロパティウィンドウに出す行(PropertyRow)を種別ごとに組み立てる。
-// entities/ephemeris の現在状態から毎回導出する表示専用の処理で、副作用は持たない。
+// エンティティと天体の現在状態から毎回導出する表示専用の処理で、副作用は持たない。
 import { fmtAmmoStatus, fmtDist, fmtEnergy, fmtSpeed, fmtTime } from '../hud/utils';
 import { orbitInfo, relativeInfo } from '../hud/orbit/orbit-info';
 import { autoOrbitReference } from '../orbit-reference';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
-import { celestialBodyName } from '../hud/frame/frame-labels';
 import type { PropertyRow } from '../hud/windows';
 import type { MapPickable } from './map-pickable';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { NavTarget } from '../nav-target';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { GameEntity } from '../game-entity/game-entity';
 import { planExecutionLabel, type Player } from '../player/player';
 import { len, sub } from '../../math/vec3';
@@ -22,7 +21,7 @@ export class MapPropertyRows {
   constructor(
     private readonly entities: EntityManager,
     private readonly activePlayers: ActivePlayerController,
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
   ) {}
 
@@ -161,17 +160,17 @@ export class MapPropertyRows {
     return rows;
   }
 
-  // 実在の天体(現在のレジストリに登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
+  // 実在の天体(この星系に登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
   // ラグランジュ点なら種別のみを出す。
   private bodyRows(target: MapPickable, celestialBodies: readonly CelestialBody[], player: Player | null): PropertyRow[] {
-    const registry = this.ephemeris.registry;
+    const body = this.celestialSystem.find(target.id);
     const rows: PropertyRow[] = [];
     if (player) rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
-    if (!(target.id in registry)) {
+    if (body === null) {
       rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
       return rows;
     }
-    const motion = this.ephemeris.motionOf(target.id);
+    const motion = body.motion;
     const def = motion.def;
     const kindLabel = motion.kind === 'star' ? '恒星' : motion.kind === 'planet' ? '惑星' : '衛星';
     rows.push(
@@ -211,7 +210,7 @@ export class MapPropertyRows {
   private nodeRows(target: MapPickable, celestialBodies: readonly CelestialBody[], simTime: number): PropertyRow[] {
     const targetName = target.kind === 'relnode'
       ? (this.navTarget.name ?? '対象')
-      : celestialBodyName(strongestAttractor(target.pos, celestialBodies).id);
+      : this.celestialSystem.nameOf(strongestAttractor(target.pos, celestialBodies).id);
     const rows: PropertyRow[] = [];
     if (target.ownerName) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
     rows.push({ key: 'target', label: '対象', value: targetName });

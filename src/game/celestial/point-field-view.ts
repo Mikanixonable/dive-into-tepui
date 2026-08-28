@@ -4,7 +4,7 @@
 // 大きく異なるため — 群ごとの見た目は表示専用のこの層だけが持ち、point-field.ts の分布定義は
 // THREE 非依存に保つ。
 import * as THREE from 'three/webgpu';
-import { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialMotion } from '../../physics/celestial-motion';
 import { Vec3, v3 } from '../../math/vec3';
 import { FloatingOrigin } from '../camera/floating-origin';
 import {
@@ -117,7 +117,7 @@ class PointFieldGroupView {
 
 export class PointFieldView {
   private readonly groups: readonly PointFieldGroupView[];
-  // 現在のレジストリに恒星が実在するか。無ければ点群は太陽中心の座標を持てないので非表示にする。
+  // 現在の星系に恒星が実在するか。無ければ点群は太陽中心の座標を持てないので非表示にする。
   private hasStar = true;
   // update は map の表示中だけ呼ばれるため、false から true へ戻るフレームを再入場とみなす。
   private mapActive = false;
@@ -132,15 +132,15 @@ export class PointFieldView {
     for (const group of this.groups) group.build(scene);
   }
 
-  // 表示時刻 t の点の位置を引き直す。広範囲視点でないときは何もしない — 戦闘視点では
-  // 描かれないので位置を求める意味がない。
-  update(t: number, overviewMode: boolean, ephemeris: Ephemeris): void {
-    this.hasStar = ephemeris.starId !== null;
-    if (!overviewMode || ephemeris.starId === null) {
+  // 表示時刻 t の点の位置を引き直す。star はこの星系の恒星の運動で、恒星を持たない星系では
+  // null。広範囲視点でないときは何もしない — 戦闘視点では描かれないので位置を求める意味がない。
+  update(t: number, overviewMode: boolean, star: CelestialMotion | null): void {
+    this.hasStar = star !== null;
+    if (!overviewMode || star === null) {
       this.mapActive = false;
       return;
     }
-    const sunPos = ephemeris.positionOf(ephemeris.starId, t);
+    const sunPos = star.stateAt(t).r;
     const reentered = !this.mapActive;
     this.mapActive = true;
     for (const group of this.groups) group.update(t, sunPos, reentered);
