@@ -284,7 +284,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが実際に
   // 生成した中身であるべきため。設定で切られている段(影・レンズ)を選べば、そのフレームが
   // 何も作っていないことがそのまま空として見える。例外はスナップショットのブリットだけ —
-  // 「マテリアル」表示は大気の写らないフレームでもこれを要るので、そのときは判定に依らず撮る。
+  // 「マテリアル」表示は大気の写らないフレームでもこれが要るので、そのときは判定に依らず撮る。
   render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
