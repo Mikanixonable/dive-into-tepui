@@ -1,7 +1,7 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from './floating-origin';
-import { v3 } from '../physics/vec3';
+import { v3 } from '../math/vec3';
 import type { PerfCounts } from '../perf-meter';
 import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
 import { FrameSections, SECTION } from '../frame-sections';

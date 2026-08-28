@@ -7,7 +7,7 @@ import { Ephemeris } from '../../src/physics/ephemeris';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { FrameAnchorSource } from '../../src/physics/frame';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 
 const ORIGIN_STATE: FocusResolveState = { missingFocusFrames: 0, lastResolvedFocus: v3(1, 2, 3) };
 

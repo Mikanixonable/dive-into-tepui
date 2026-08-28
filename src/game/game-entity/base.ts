@@ -4,7 +4,7 @@ import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attitude } from '../../physics/attitude';
 import { qRotate } from '../../physics/attitude';
-import { add, len, sub, v3, Vec3 } from '../../physics/vec3';
+import { add, len, sub, v3, Vec3 } from '../../math/vec3';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
 import { Player } from '../player/player';

@@ -1,7 +1,7 @@
 // 爆発・マズルフラッシュなどの一時エフェクト。
 import * as THREE from "three/webgpu";
 import { KinematicState, kinematicState } from "../../physics/kinematic-state";
-import { addScaled } from "../../physics/vec3";
+import { addScaled } from "../../math/vec3";
 import { flashResources } from "../../render/billboard";
 import { InstancedPool } from "../../render/instanced-pool";
 import { FloatingOrigin } from "../floating-origin";

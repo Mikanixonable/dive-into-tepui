@@ -3,8 +3,8 @@
 // 空/クリア後のエラー・-Infinity を検証する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { MaxHeap } from '../../src/physics/max-heap';
-import { mulberry32 } from '../../src/physics/random';
+import { MaxHeap } from '../../src/math/max-heap';
+import { mulberry32 } from '../../src/math/random';
 
 export function register(): void {
   test('max-heap: pop order is non-increasing for a randomized workload, and preserves the multiset of values', () => {

@@ -1,6 +1,6 @@
 import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
-import { Projected } from '../../physics/projection';
-import { Vec3, add, scale } from '../../physics/vec3';
+import { Projected } from '../../math/projection';
+import { Vec3, add, scale } from '../../math/vec3';
 import * as C from '../const';
 import { AxisHandleSpec } from './node-gizmo';
 

@@ -19,7 +19,7 @@ import { CelestialBody, orbitalElementsOf } from '../../src/physics/celestial-bo
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { MU_MOON } from '../../src/physics/solar-system';
-import { dot, len, norm, sub, v3 } from '../../src/physics/vec3';
+import { dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 

@@ -5,7 +5,7 @@ import type { CelestialBody } from './celestial-body';
 import { kinematicState } from './kinematic-state';
 import { orbitalElementsFromClassical, OrbitalElements } from './elements';
 import { J2_EARTH, MU_EARTH, R_EARTH_EQ, SIDEREAL_DAY } from './solar-system';
-import { v3 } from './vec3';
+import { v3 } from '../math/vec3';
 
 const EARTH: CelestialBody = {
   id: 'earth', mu: MU_EARTH, radius: R_EARTH_EQ,

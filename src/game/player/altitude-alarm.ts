@@ -2,7 +2,7 @@
 // 指数移動平均で平滑化する。**熱ではない** — 温度も動圧も見ない。
 import type { CelestialBody } from '../../physics/celestial-body';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
-import { Vec3, sub } from '../../physics/vec3';
+import { Vec3, sub } from '../../math/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';

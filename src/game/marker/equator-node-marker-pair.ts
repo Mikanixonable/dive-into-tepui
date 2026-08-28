@@ -4,7 +4,7 @@ import { CelestialBody, strongestAttractor } from '../../physics/celestial-body'
 import { FrameAnchorSource, ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { KinematicState } from '../../physics/kinematic-state';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
 import { celestialBodyName } from '../hud/frame/frame-labels';
 import { TickLabelMode, elementTimeLabel } from '../hud/orbit/calendar-ticks';

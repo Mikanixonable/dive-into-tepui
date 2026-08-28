@@ -1,6 +1,6 @@
 // ゲームバランス・チューニング定数
 import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
-import { v3 } from '../physics/vec3';
+import { v3 } from '../math/vec3';
 import type { GuideGroupId } from './celestial/orbit-guide-settings';
 export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 

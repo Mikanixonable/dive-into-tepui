@@ -13,7 +13,7 @@ import type { NavTarget } from './nav-target';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { GameEntity } from './game-entity/game-entity';
 import { planExecutionLabel, type Player } from './player/player';
-import { len, sub } from '../physics/vec3';
+import { len, sub } from '../math/vec3';
 import { orbitalElementsOf, strongestAttractor, type CelestialBody } from '../physics/celestial-body';
 import { apsisAltitudes } from '../physics/elements';
 import { bodyDef, primaryOf } from '../physics/solar-system';

@@ -24,7 +24,7 @@ import { EntityContactPhysics } from './entity-contact-physics';
 import { SurfaceContactPhysics } from './surface-contact-physics';
 import { SubstepBodies } from './substep-bodies';
 import { NextEventTime } from './next-event-time';
-import { v3 } from '../../physics/vec3';
+import { v3 } from '../../math/vec3';
 import { simulationMaxStep, simulationStepDuration } from './time-step';
 import type { NanWatchdog } from '../nan-watchdog';
 import { FrameSections, SECTION } from '../../frame-sections';

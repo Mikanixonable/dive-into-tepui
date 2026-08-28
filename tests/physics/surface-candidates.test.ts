@@ -8,8 +8,8 @@ import { test } from './harness';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { firstSurfaceContact } from '../../src/physics/surface-contact';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { mulberry32, randSym } from '../../src/physics/random';
-import { Vec3, v3 } from '../../src/physics/vec3';
+import { mulberry32, randSym } from '../../src/math/random';
+import { Vec3, v3 } from '../../src/math/vec3';
 import {
   SurfaceCandidates, type SurfaceParticipant,
 } from '../../src/game/simulation/surface-candidates';

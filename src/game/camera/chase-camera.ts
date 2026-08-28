@@ -2,13 +2,13 @@
 // rot の意味は camFollowAttitude で切り替わる: true なら対象の姿勢に対する相対姿勢、false なら
 // ワールド(ECI)に対する絶対姿勢。切り替えは toggleFollowAttitude が対象の姿勢クオータニオンを
 // 掛け/割って読み替える。
-import { add, addScaled, cross, len, norm, scale, v3, Vec3 } from '../../physics/vec3';
+import { add, addScaled, cross, len, norm, scale, v3, Vec3 } from '../../math/vec3';
 import { MouseDelta } from '../input/input';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { GameEntity } from '../game-entity/game-entity';
-import { metersPerPixelAtDepth, Viewpoint } from '../../physics/projection';
+import { metersPerPixelAtDepth, Viewpoint } from '../../math/projection';
 import { ChaseCameraSaveData } from '../save-data';
 
 // 初期視点: 機体後方やや上から見下ろす。

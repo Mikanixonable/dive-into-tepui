@@ -2,7 +2,7 @@
 // 最古になるよう常に降順で保つ。push は「最新のサンプル」を積む操作で、時刻が逆行/重複した
 // push は先頭側の同時刻以降(その push によって計算し直された区間)を破棄してから積み直す)
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
-import { Deque } from './deque';
+import { Deque } from '../math/deque';
 
 export class StateQueue {
   private readonly deque: Deque<KinematicState>;

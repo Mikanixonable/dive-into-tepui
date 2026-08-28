@@ -1,5 +1,5 @@
 import { KinematicState, kinematicState } from '../kinematic-state';
-import { Vec3, v3 } from '../vec3';
+import { Vec3, v3 } from '../../math/vec3';
 import {
   ChebyshevBodyPack,
   ChebyshevEphemerisPack,
