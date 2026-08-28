@@ -1,6 +1,6 @@
 // 固定リボンの BVH を使い、外接球で絞った静止球・掃引球との接触を判定する。
 import * as THREE from 'three/webgpu';
-import { add, cross, dot, len, norm, scale, sub, type Vec3, v3 } from '../../physics/vec3';
+import { add, cross, dot, len, norm, scale, sub, type Vec3, v3 } from '../../math/vec3';
 import { qInvert, qRotate, type Quat } from '../../physics/attitude';
 import type { SphereHit, Triangle } from '../game-entity/base-collision';
 

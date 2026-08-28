@@ -2,7 +2,7 @@
 // 「天体がどこにいるか」(ephemeris.ts)とは別の問い。THREE/DOM 非依存の純関数。
 import { Quat, qFromAxisAngle, qFromForwardUp, qRotate } from './attitude';
 import { ECI_POLE } from './ecliptic';
-import { Vec3, addScaled, cross, dot, len, norm, v3 } from './vec3';
+import { Vec3, addScaled, cross, dot, len, norm, v3 } from '../math/vec3';
 
 // 自転軸が ECI の極と平行なとき、赤道の交線が定まらない代わりに使う基準方向(春分点)。
 const VERNAL: Vec3 = v3(1, 0, 0);

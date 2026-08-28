@@ -5,7 +5,7 @@
 // 「近点で速く・遠点で遅く」の動きになる。
 import * as THREE from 'three/webgpu';
 import { GuideCurve } from './guide-curve';
-import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../../physics/projection';
+import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../../math/projection';
 import { InstancedPool } from '../../render/instanced-pool';
 import { FloatingOrigin } from '../floating-origin';
 import type { DirectionMarkerMode } from './orbit-guide-settings';

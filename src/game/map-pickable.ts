@@ -1,5 +1,5 @@
 // マップ上で右クリックの被選択対象になりうるものの共通形と、画面上で最も近い候補を選ぶ処理。
-import { Vec3 } from '../physics/vec3';
+import { Vec3 } from '../math/vec3';
 import type { ProjectFn } from './camera/camera-system';
 
 export type MapPickKind = 'body' | 'ship' | 'player' | 'apsis' | 'relnode' | 'ammo' | 'fuel' | 'empty-space' | 'eqnode' | 'base';

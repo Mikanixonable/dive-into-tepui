@@ -1,4 +1,4 @@
-import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
+import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
 import { CelestialBody } from '../physics/celestial-body';
 import * as C from './const';
 import { Enemy } from './game-entity/enemy';

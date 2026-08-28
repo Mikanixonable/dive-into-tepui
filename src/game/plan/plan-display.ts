@@ -1,11 +1,11 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動と、表示時刻の計画上の自機位置ゴースト
 // (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import { Vec3, len, sub } from '../../physics/vec3';
+import { Vec3, len, sub } from '../../math/vec3';
 import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
-import { Projected } from '../../physics/projection';
+import { Projected } from '../../math/projection';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { SIM_EPOCH_SEC, fmtMarkerDist } from '../hud/utils';
 import { celestialBodyName } from '../hud/frame/frame-labels';

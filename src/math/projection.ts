@@ -1,5 +1,5 @@
 // ピンホールカメラ投影(Vec3 → NDC → ピクセル)。直交座標から射影座標への幾何変換であって
-// 見た目の調整値を含まないので、`physics/` に属する。THREE.js の PerspectiveCamera や
+// 見た目の調整値も物理量も含まないので、`math/` に属する。THREE.js の PerspectiveCamera や
 // フローティングオリジンに依存せず、カメラの絶対 ECI 視点状態と対象の絶対 ECI 位置
 // だけから完結する。THREE.Object3D.lookAt / PerspectiveCamera と同じ基底構築・
 // 透視除算の数式を踏襲しており、fov は垂直画角 [deg]。

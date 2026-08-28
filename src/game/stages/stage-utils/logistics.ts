@@ -1,8 +1,8 @@
 // 軌道上の弾薬/RCS燃料補給ピックアップの投入・回収・デスポーンを担う。
 import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
-import { randSym } from '../../../physics/random';
-import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../physics/vec3';
+import { randSym } from '../../../math/random';
+import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec3';
 import * as C from '../../const';
 import { AmmoPickup } from '../../game-entity/ammo-pickup';
 import { RcsFuelPickup } from '../../game-entity/rcs-fuel-pickup';

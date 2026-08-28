@@ -16,7 +16,7 @@ import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-s
 import { atmosphereDraws } from '../../src/render/atmosphere';
 import type { ChoiceValue, GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { lambertPhase } from '../../src/physics/lambert-sphere';
-import { metersPerPixelAtDepth } from '../../src/physics/projection';
+import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';

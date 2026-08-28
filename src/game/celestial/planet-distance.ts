@@ -1,6 +1,6 @@
 // ECI 位置から最寄りの登録惑星までの距離と、マップ用の距離フェードを求める。
 import type { CelestialBody } from '../../physics/celestial-body';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import { bodyDef } from '../../physics/solar-system';
 import * as C from '../const';

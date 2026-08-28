@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import { AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../theme';
 import { markOverlay } from '../../render/pipeline/lit-layer';
 

@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { samplesInRange } from '../../src/game/plan/arc-range';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 
 export function register(): void {
   test('plan arc range: 表示窓の端点を補間状態として含める', () => {

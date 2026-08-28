@@ -1,7 +1,7 @@
 // マガジンベルトの表示メッシュを管理する。物理演算結果から各リンクの位置・向きを導出してメッシュへ反映する。
 import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromAxisAngle, qFromUnitVectors, qMul, qRotate } from '../../physics/attitude';
-import { Vec3, len, scale, sub } from '../../physics/vec3';
+import { Vec3, len, scale, sub } from '../../math/vec3';
 import * as C from '../const';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH, buildMagazineMesh } from '../../render/ships';
 import { BeltPhysics, BeltSection, X_AXIS } from './belt-physics';

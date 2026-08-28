@@ -10,7 +10,7 @@ import {
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { OrbitingId } from '../../src/physics/celestial-body';
-import { dot, len, sub } from '../../src/physics/vec3';
+import { dot, len, sub } from '../../src/math/vec3';
 
 const SECONDARIES: OrbitingId[] = ['moon', 'earth'];
 const POINTS: CollinearPoint[] = ['L1', 'L2'];

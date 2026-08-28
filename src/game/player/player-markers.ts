@@ -2,7 +2,7 @@
 // マップ上の自機位置マーカーは他の船と同じく Targeter → GroupedMarkers が描く。
 import { Attitude, qRotate } from '../../physics/attitude';
 import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
-import { scale, sub, v3 } from '../../physics/vec3';
+import { scale, sub, v3 } from '../../math/vec3';
 import type { OrbitReference } from '../orbit-reference';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';

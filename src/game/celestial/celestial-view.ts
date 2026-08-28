@@ -5,10 +5,10 @@ import { CelestialBodyId } from '../../physics/celestial-body';
 import { Ephemeris } from '../../physics/ephemeris';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../floating-origin';
-import { apparentSizePx } from '../../physics/projection';
+import { apparentSizePx } from '../../math/projection';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
-import { len, sub } from '../../physics/vec3';
-import type { Vec3 } from '../../physics/vec3';
+import { len, sub } from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 

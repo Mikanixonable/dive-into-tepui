@@ -8,7 +8,7 @@ import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
-import { add, cross, dot, len, norm, scale, sub } from '../../src/physics/vec3';
+import { add, cross, dot, len, norm, scale, sub } from '../../src/math/vec3';
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
   return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).orbit;

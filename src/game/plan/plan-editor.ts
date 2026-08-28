@@ -4,8 +4,8 @@
 import type * as THREE from 'three/webgpu';
 import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
-import { Projected } from '../../physics/projection';
-import { Vec3, add, dot, len, sub, v3 } from '../../physics/vec3';
+import { Projected } from '../../math/projection';
+import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { Hud } from '../hud/hud';

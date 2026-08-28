@@ -5,7 +5,7 @@ import type { ProteinAssetId } from '../../src/game/protein/protein-asset-loader
 import { ProteinRibbonCollisionGeometry } from '../../src/game/protein/protein-ribbon-collision';
 import type { ProteinRenderSource } from '../../src/render/protein-enemy-ship';
 import { buildProteinCollisionRibbon } from '../../src/render/protein-ribbon';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 import { test } from './harness';
 import { testProteinAssetBundleFor } from './protein-test-assets';
 

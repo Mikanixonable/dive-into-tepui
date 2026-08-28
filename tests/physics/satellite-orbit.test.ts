@@ -6,7 +6,7 @@ import { PerturbationTerm, satelliteOrbit, satelliteState } from '../../src/phys
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { eciToEcl } from '../../src/physics/ecliptic';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { len, scale, sub } from '../../src/physics/vec3';
+import { len, scale, sub } from '../../src/math/vec3';
 
 const R2D = 180 / Math.PI;
 

@@ -10,7 +10,7 @@ import {
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { stateFromOrbitalElements } from '../../src/physics/elements';
 import { stepRK4 } from '../../src/physics/dynamics';
-import { Vec3, dot, len, norm, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
 // stepRK4 は中心重力を持たないので、hermiteInterpolate の精度を測るテスト用に
 // この加速度コールバックを自前で渡す。

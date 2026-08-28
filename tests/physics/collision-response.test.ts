@@ -3,7 +3,7 @@ import {
   FixedContactResponse, Sphere,
   distributeFixedContact, distributeSphereContact, resolveSphereCollision, sphereContactGeometry,
 } from '../../src/physics/collision-response';
-import { dot, len, lenSq, sub, v3, Vec3 } from '../../src/physics/vec3';
+import { dot, len, lenSq, sub, v3, Vec3 } from '../../src/math/vec3';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { test } from './harness';
 

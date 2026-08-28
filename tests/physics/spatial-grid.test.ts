@@ -2,8 +2,8 @@
 // 1つも取りこぼさないこと・同じ要素を二重に返さないことを検証する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { SpatialGrid } from '../../src/physics/spatial-grid';
-import { v3, Vec3, sub, len } from '../../src/physics/vec3';
+import { SpatialGrid } from '../../src/math/spatial-grid';
+import { v3, Vec3, sub, len } from '../../src/math/vec3';
 
 function mulberry32(seed: number): () => number {
   let a = seed;

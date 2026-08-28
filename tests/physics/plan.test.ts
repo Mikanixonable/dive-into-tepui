@@ -6,7 +6,7 @@ import { orbitalElementsOf, strongestAttractor } from '../../src/physics/celesti
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { apsisAltitudes, keplerPeriod } from '../../src/physics/elements';
-import { add, v3 } from '../../src/physics/vec3';
+import { add, v3 } from '../../src/math/vec3';
 import { orbitPeriodOf, Plan } from '../../src/game/plan/plan';
 import { test } from './harness';
 

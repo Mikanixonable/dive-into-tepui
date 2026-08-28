@@ -6,7 +6,7 @@ import { SOLAR_PRESSURE_1AU, srpAccel } from '../../src/physics/srp';
 import { AU } from '../../src/physics/planet-orbit';
 import { MU_SUN, R_SUN } from '../../src/physics/solar-system';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { cross, dot, len, norm, sub, v3 } from '../../src/physics/vec3';
+import { cross, dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
 

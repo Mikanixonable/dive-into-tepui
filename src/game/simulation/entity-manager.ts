@@ -1,7 +1,7 @@
 // エンティティ配列の保持・追加・上限管理・寿命回収・描画同期。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../../physics/vec3';
-import type { Viewpoint } from '../../physics/projection';
+import { Vec3 } from '../../math/vec3';
+import type { Viewpoint } from '../../math/projection';
 import { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../floating-origin';

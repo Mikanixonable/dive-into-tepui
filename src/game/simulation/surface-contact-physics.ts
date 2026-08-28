@@ -7,7 +7,7 @@ import { CelestialBody, celestialBodyStateAt } from '../../physics/celestial-bod
 import { distributeFixedContact } from '../../physics/collision-response';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { kinematicState } from '../../physics/kinematic-state';
-import { add, sameVec, scale } from '../../physics/vec3';
+import { add, sameVec, scale } from '../../math/vec3';
 import { GameEntity } from '../game-entity/game-entity';
 import type { Stage } from '../stages/stage';
 import { contactTime, isFiniteParticipant } from './contact-participant';

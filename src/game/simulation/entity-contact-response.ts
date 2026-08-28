@@ -2,7 +2,7 @@
 // 出す。球でない当たり形状(基地)の吸収もここが引き受けるので、解決器の側は種別を見ない。
 import * as C from '../const';
 import { KinematicState } from '../../physics/kinematic-state';
-import { sub, scale, len, type Vec3 } from '../../physics/vec3';
+import { sub, scale, len, type Vec3 } from '../../math/vec3';
 import type { SphereHit } from '../game-entity/base-collision';
 import { GameEntity } from '../game-entity/game-entity';
 import { Base } from '../game-entity/base';

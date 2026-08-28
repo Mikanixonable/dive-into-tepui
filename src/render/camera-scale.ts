@@ -2,7 +2,7 @@
 // 画角換算値は構築時に1度だけ取り出すので、同じカメラで多数の点を評価するなら1つ作って
 // 使い回す。
 import * as THREE from 'three/webgpu';
-import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../physics/projection';
+import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../math/projection';
 
 // PerspectiveCamera でも OrthographicCamera でもないカメラに使う垂直画角 [deg]。
 const FALLBACK_FOV_DEG = 50;

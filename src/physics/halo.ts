@@ -16,7 +16,7 @@ import { Ephemeris } from './ephemeris';
 import { OrbitingId } from './celestial-body';
 import { bodyDef, primaryOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, add, cross, len, scale, sub } from './vec3';
+import { Vec3, add, cross, len, scale, sub } from '../math/vec3';
 import { Vec3Tuple } from './cr3bp';
 
 export type CollinearPoint = 'L1' | 'L2' | 'L3';

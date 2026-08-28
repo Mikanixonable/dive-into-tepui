@@ -3,7 +3,7 @@ import { test } from './harness';
 import {
   AbsoluteEphemeris, MissingEphemerisBodyError, OriginCenteredEphemeris, icrfToGameEci,
 } from '../../src/physics/absolute-ephemeris';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 

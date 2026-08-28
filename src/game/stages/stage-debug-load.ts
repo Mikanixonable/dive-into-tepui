@@ -8,8 +8,8 @@ import * as C from '../const';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
-import { mulberry32 } from '../../physics/random';
-import { add, v3, Vec3 } from '../../physics/vec3';
+import { mulberry32 } from '../../math/random';
+import { add, v3, Vec3 } from '../../math/vec3';
 import type { StageSaveData } from '../save-data';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,

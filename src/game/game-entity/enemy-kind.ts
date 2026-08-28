@@ -1,4 +1,4 @@
-import { v3, type Vec3 } from '../../physics/vec3';
+import { v3, type Vec3 } from '../../math/vec3';
 import {
   isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type ProteinColorMode, type ProteinDisplaySettings,
 } from '../protein/protein-display';

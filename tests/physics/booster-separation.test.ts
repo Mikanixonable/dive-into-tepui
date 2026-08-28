@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { Vec3, add, dot, len, scale, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, add, dot, len, scale, sub, v3 } from '../../src/math/vec3';
 import {
   BoosterSeparationVelocities,
   boosterSeparationVelocities,

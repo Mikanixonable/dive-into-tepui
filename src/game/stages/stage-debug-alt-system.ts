@@ -11,7 +11,7 @@ import { planetOrbit } from '../../physics/planet-orbit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { kinematicState } from '../../physics/kinematic-state';
-import { add } from '../../physics/vec3';
+import { add } from '../../math/vec3';
 import type { StageSaveData } from '../save-data';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { CelestialBodyId } from '../../physics/celestial-body';

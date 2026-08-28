@@ -6,8 +6,8 @@ import { Base } from './game-entity/base';
 import type { GameEntity } from './game-entity/game-entity';
 import type { EntityManager } from './simulation/entity-manager';
 import type { ProjectFn } from './camera/camera-system';
-import { metersPerPixel, type Viewpoint } from '../physics/projection';
-import { add, cross, len, norm, scale, sub } from '../physics/vec3';
+import { metersPerPixel, type Viewpoint } from '../math/projection';
+import { add, cross, len, norm, scale, sub } from '../math/vec3';
 
 // 画面上の座標 (clientX, clientY) に視覚的に最も手前でヒットした生存中の実体を返す。
 // カメラの視点・画角・実体サイズから画面上の視覚半径を求めてヒット判定し、基地はさらに

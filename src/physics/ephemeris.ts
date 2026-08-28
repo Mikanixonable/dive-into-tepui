@@ -21,7 +21,7 @@ import { planetAngles } from './planet-orbit';
 import { satelliteState } from './satellite-orbit';
 import { bodyDef, CelestialBodyDef, CelestialRegistry, primaryOf, SOLAR_SYSTEM, spinRateOf, starOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from './vec3';
+import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../math/vec3';
 
 // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
 export type BodyOrientation = { readonly axis: Vec3; readonly spinAngle: number };

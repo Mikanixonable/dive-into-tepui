@@ -1,5 +1,5 @@
 import { qInvert, qRotate, type Quat } from '../../physics/attitude';
-import { add, sub, type Vec3, v3 } from '../../physics/vec3';
+import { add, sub, type Vec3, v3 } from '../../math/vec3';
 import type {
   ProteinModificationDefinition,
   ProteinMotionAsset,

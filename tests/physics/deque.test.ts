@@ -2,7 +2,7 @@
 // リングバッファのインデックス折り返し、範囲外アクセスのエラーを検証する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { Deque } from '../../src/physics/deque';
+import { Deque } from '../../src/math/deque';
 
 export function register(): void {
   test('deque: pushRight/popLeft is FIFO', () => {

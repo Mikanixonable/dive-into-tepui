@@ -6,7 +6,7 @@ import { CelestialBody } from '../../physics/celestial-body';
 import { FloatingOrigin } from '../floating-origin';
 import type { Stage } from '../stages/stage';
 import type { Contact } from './contact';
-import { Vec3, lenSq, sub } from '../../physics/vec3';
+import { Vec3, lenSq, sub } from '../../math/vec3';
 import * as C from '../const';
 import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';
 import { orientProjectile } from '../../render/projectile-orientation';

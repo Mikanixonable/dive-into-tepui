@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../physics/solar-system';
-import { Vec3, add, scale, v3, len, sub } from '../../physics/vec3';
+import { Vec3, add, scale, v3, len, sub } from '../../math/vec3';
 import { fmtMarkerDist } from '../hud/utils';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';

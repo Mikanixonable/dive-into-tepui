@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { SweptSphereContact, sweptSphereContact } from '../../src/physics/sphere-contact';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Vec3, scale, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, scale, sub, v3 } from '../../src/math/vec3';
 import { test } from './harness';
 
 // 曲線ソルバーは細分と二分で跨ぎ時刻を詰めるので、閉形式のような厳密値にはならない。実測で 1e-8 級。

@@ -10,7 +10,7 @@ import {
 import { catalogLoop, guideSecondary, rotatingFrame } from '../../src/physics/orbit-guide';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { len, sub } from '../../src/physics/vec3';
+import { len, sub } from '../../src/math/vec3';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

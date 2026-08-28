@@ -22,7 +22,7 @@ import {
 } from '../../src/render/protein-enemy-ship';
 import { proteinSecondaryKind } from '../../src/render/protein-ribbon-color';
 import { LIT_OPAQUE_LAYER, SUN_SHADOW_CASTER_LAYER } from '../../src/render/pipeline/lit-layer';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, PROTEIN_COLOR_LABELS,
   proteinColorModesFor, proteinDisplayFromLegacyColorMode,

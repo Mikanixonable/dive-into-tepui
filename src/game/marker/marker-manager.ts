@@ -7,8 +7,8 @@
 // 投影手順(project → set)を一元化したもの。headingRotationDeg は進行方向(ECI 速度)を
 // 向くグリフの回転角を求める。camera-system.ts が MarkerManager に依存しているため、
 // ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
-import { Vec3, addScaled, len, norm, sub, v3 } from '../../physics/vec3';
-import { Projected } from '../../physics/projection';
+import { Vec3, addScaled, len, norm, sub, v3 } from '../../math/vec3';
+import { Projected } from '../../math/projection';
 import * as C from '../const';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';

@@ -4,7 +4,7 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { StateQueue } from '../../src/physics/state-queue';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 
 function stateAt(t: number) {
   return kinematicState(t, v3(t, 0, 0), v3(1, 0, 0));

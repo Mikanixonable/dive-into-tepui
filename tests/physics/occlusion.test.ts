@@ -4,7 +4,7 @@ import { test } from './harness';
 import { isOccluded, occlusionOpacity } from '../../src/physics/occlusion';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
 const EARTH: CelestialBody = {

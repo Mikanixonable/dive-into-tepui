@@ -2,7 +2,7 @@
 // 外殻の熱収支は GameEntity の温度が受け持つ。
 import type { CelestialBody } from '../../physics/celestial-body';
 import { airflow } from '../../physics/atmosphere';
-import { Vec3, sub } from '../../physics/vec3';
+import { Vec3, sub } from '../../math/vec3';
 import * as C from '../const';
 
 export class AeroLoad {

@@ -1,5 +1,5 @@
 // マップモードのフォーカス対象(天体・ラグランジュ点)ラベルの算出と HUD マーカーへの反映。
-import { Vec3, v3, sub, len } from '../../physics/vec3';
+import { Vec3, v3, sub, len } from '../../math/vec3';
 import { CelestialBody, CelestialBodyId, OrbitingId, strongestAttractor } from '../../physics/celestial-body';
 import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';

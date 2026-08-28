@@ -15,7 +15,7 @@ import { MU_EARTH, R_EARTH, SIDEREAL_DAY, SOLAR_SYSTEM, bodyDef } from '../../sr
 import { keplerPeriod, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
-import { add, addScaled, len, norm, sub, v3 } from '../../src/physics/vec3';
+import { add, addScaled, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
 const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };

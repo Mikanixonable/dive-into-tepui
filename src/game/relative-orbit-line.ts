@@ -5,7 +5,7 @@
 // でも常に描ける。対象のいまの位置を平行移動の基準にする点は OrbitLine が中心天体のいまの
 // 位置を基準にするのと同じ考え方。
 import * as THREE from 'three/webgpu';
-import { add, sub, v3, Vec3 } from '../physics/vec3';
+import { add, sub, v3, Vec3 } from '../math/vec3';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveKnots } from '../render/curve';
 import { LineStyle } from '../render/line-style';

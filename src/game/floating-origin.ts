@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { sub, Vec3 } from '../physics/vec3';
+import { sub, Vec3 } from '../math/vec3';
 
 
 // フローティングオリジン: 描画のたびに原点として取り直す、慣性系(ECI)上の一点の運動状態。

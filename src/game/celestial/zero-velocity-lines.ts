@@ -8,7 +8,7 @@
 import * as THREE from 'three/webgpu';
 import { CurveKnots } from '../../render/curve';
 import { Ephemeris } from '../../physics/ephemeris';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import { rotatingFrame } from '../../physics/orbit-guide';
 import { zeroVelocityCurveSet, SectionPlane } from '../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';

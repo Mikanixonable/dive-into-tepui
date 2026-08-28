@@ -1,6 +1,6 @@
 // 再突入時に機首前方へ出るプラズマ状の燃焼エフェクト。強度は動圧から毎フレーム導けるため状態を持たない。
 import * as THREE from 'three/webgpu';
-import { Vec3, addScaled, lenSq, norm } from '../../physics/vec3';
+import { Vec3, addScaled, lenSq, norm } from '../../math/vec3';
 import { Billboard } from '../../render/billboard';
 import {
   REENTRY_CORE_BRIGHTNESS, REENTRY_CORE_COLOR, REENTRY_CORE_OFFSET, REENTRY_CORE_SIZE_RATIO,

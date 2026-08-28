@@ -1,6 +1,6 @@
 // 基地の多段階 (LOD0 / LOD1 / LOD2) 衝突検出エンジン
 import * as THREE from 'three/webgpu';
-import { Vec3, v3, add, sub, scale, dot, len, lenSq, norm, cross } from '../../physics/vec3';
+import { Vec3, v3, add, sub, scale, dot, len, lenSq, norm, cross } from '../../math/vec3';
 import { Quat, qRotate, qInvert } from '../../physics/attitude';
 import { buildBaseModel } from '../../render/base-station-model';
 

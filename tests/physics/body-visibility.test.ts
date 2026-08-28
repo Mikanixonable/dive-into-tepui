@@ -13,7 +13,7 @@ import {
   isPositionInFocusedSystem, nextBodyClassDisplayMode, systemChainAt, systemMembersAt,
 } from '../../src/game/celestial/body-visibility';
 import { MapVisibilityPolicy } from '../../src/game/celestial/map-visibility';
-import { v3, addScaled } from '../../src/physics/vec3';
+import { v3, addScaled } from '../../src/math/vec3';
 
 const MIN_CLEARANCE = 10;
 

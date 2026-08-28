@@ -3,7 +3,7 @@
 // 中心天体(CelestialBody)を保持する。THREE/DOM 非依存の純粋関数群。
 import type { CelestialBody } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from './vec3';
+import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../math/vec3';
 
 export interface OrbitalElements {
   a: number; // 軌道長半径 [m] (双曲線では負)

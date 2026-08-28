@@ -5,14 +5,14 @@
 // (視点の基準フレーム切り替え)の状態と読み替え処理は ChaseCamera が持つが、[G]キーの受け口は
 // このクラスの update() が持つ — 追従対象は毎フレームの引数でしか渡らないため。
 import * as THREE from 'three/webgpu';
-import { v3 } from '../../physics/vec3';
+import { v3 } from '../../math/vec3';
 import { Input, MouseDelta } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Player } from '../player/player';
 import type { GameEntity } from '../game-entity/game-entity';
-import { Viewpoint } from '../../physics/projection';
+import { Viewpoint } from '../../math/projection';
 import { ChaseCamera } from './chase-camera';
 import { GunsightCamera } from './gunsight-camera';
 import { ChaseCameraSaveData } from '../save-data';

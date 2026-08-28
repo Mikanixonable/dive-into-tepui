@@ -6,7 +6,7 @@ import { CelestialRegistry, RingSystemDef, SolarSystemId, bodyDef, primaryOf } f
 import { OrbitalElements } from '../../physics/elements';
 import { AU } from '../../physics/planet-orbit';
 import { CelestialBody, CelestialBodyId, OrbitingId, orbitalElementsOf } from '../../physics/celestial-body';
-import { add, len, scale, sub, v3, Vec3 } from '../../physics/vec3';
+import { add, len, scale, sub, v3, Vec3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { maxOccludedFraction } from '../../physics/shadow';
 import type { MarkerManager } from '../marker/marker-manager';

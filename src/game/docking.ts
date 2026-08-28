@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import * as C from './const';
-import { v3, len, sub, dot, norm } from '../physics/vec3';
+import { v3, len, sub, dot, norm } from '../math/vec3';
 import { kinematicState } from '../physics/kinematic-state';
 import { Hud } from './hud/hud';
 import { BasePanel } from './hud/panels/base-view';

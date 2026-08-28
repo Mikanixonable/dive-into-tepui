@@ -4,8 +4,8 @@
 // 見えるか」で決める。線の解像度そのものは Curve が決める。
 import * as THREE from 'three/webgpu';
 import { OrbitalElements, positionOnOrbit, trueAnomalyAt, velocityOnOrbit } from '../physics/elements';
-import { apparentSizePx } from '../physics/projection';
-import { add, len, sub, v3, Vec3 } from '../physics/vec3';
+import { apparentSizePx } from '../math/projection';
+import { add, len, sub, v3, Vec3 } from '../math/vec3';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveSampler, MAX_SAGITTA_PX } from '../render/curve';
 import { CameraScale } from '../render/camera-scale';

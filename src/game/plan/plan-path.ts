@@ -7,10 +7,10 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { CelestialBody, bodyAnchorSource } from '../../physics/celestial-body';
-import { Vec3, v3 } from '../../physics/vec3';
+import { Vec3, v3 } from '../../math/vec3';
 import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Projected } from '../../physics/projection';
+import { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../floating-origin';
 import { TrajectoryLine } from '../trajectory-line';
@@ -21,7 +21,7 @@ import { BodyImpact, PredictedArc } from '../simulation/predicted-arc';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
 import type { Controllable } from '../game-entity/controllable';
 import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
-import { goldenSectionMin } from '../../physics/optimize';
+import { goldenSectionMin } from '../../math/optimize';
 import * as C from '../const';
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
