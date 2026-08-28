@@ -245,7 +245,7 @@ export class EnvironmentScene {
     this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
-    this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem.activeCameraPos, graphics);
+    this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem, graphics);
 
     const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
@@ -342,17 +342,18 @@ export class EnvironmentScene {
 
   // 大気パスへ、このフレームに大気を描く天体とそのサンプル点の数を渡す。
   private syncAtmosphere(
-    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, graphics: GraphicsSettingsData,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
   ): void {
     this.atmosphere.setDraws(
-      atmosphereDraws(this.atmosphereCandidates(fo, displayTime, cameraPos), graphics.atmosphere),
+      atmosphereDraws(this.atmosphereCandidates(fo, displayTime, cameraSystem), graphics.atmosphere),
     );
   }
 
-  // 大気を持つ参照天体を、カメラからその中心までの距離と一緒に集める。
+  // 大気を持つ参照天体を、カメラからその中心までの距離と、その位置での画面尺度と一緒に集める。
   private atmosphereCandidates(
-    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
   ): readonly AtmosphereCandidate<AtmosphereBody>[] {
+    const scale = cameraSystem.activeCameraScale;
     const candidates: AtmosphereCandidate<AtmosphereBody>[] = [];
     for (const id of this.referenceIds) {
       const optics = atmosphereOpticsOf(id);
@@ -361,7 +362,8 @@ export class EnvironmentScene {
       const center = this.ephemeris.positionOf(id, displayTime);
       candidates.push({
         body: { center: fo.RtoThreeV3(center), surfaceRadius, optics },
-        distance: len(sub(cameraPos, center)),
+        distance: len(sub(cameraSystem.activeCameraPos, center)),
+        metersPerPixel: scale(center),
       });
     }
     return candidates;
