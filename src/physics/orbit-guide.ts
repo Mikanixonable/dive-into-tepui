@@ -13,7 +13,7 @@ import {
   LocalTime, dawnDuskElements, molniyaElements, sunSyncRepeatGroundTrackElements, tundraElements,
 } from './earth-reference-orbits';
 import { OrbitalElements, positionOnOrbit, trueAnomalyFromMean } from './elements';
-import { Vec3, add, cross, len, norm, scale, sub } from './vec3';
+import { Vec3, add, cross, len, norm, scale, sub } from '../math/vec3';
 
 export type GuidePoint = 'L1' | 'L2' | 'L3';
 

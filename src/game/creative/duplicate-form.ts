@@ -6,7 +6,7 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { CelestialBody, CelestialBodyId, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { OrbitalElements, apsisAltitudes, trueAnomalyAt } from '../../physics/elements';
 import { toFrameState } from '../../physics/frame';
-import { Vec3, cross, dot, len, norm, v3 } from '../../physics/vec3';
+import { Vec3, cross, dot, len, norm, v3 } from '../../math/vec3';
 import type { ElementsForm } from './object-placer-panel';
 
 const RAD_TO_DEG = 180 / Math.PI;

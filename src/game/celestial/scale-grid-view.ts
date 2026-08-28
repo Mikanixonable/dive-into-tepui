@@ -4,8 +4,8 @@ import * as THREE from 'three/webgpu';
 import { ScaleGrid } from '../../render/scale-grid';
 import { Ephemeris } from '../../physics/ephemeris';
 import { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
-import type { Vec3 } from '../../physics/vec3';
+import { FloatingOrigin } from '../camera/floating-origin';
+import type { Vec3 } from '../../math/vec3';
 import type { ScaleGridVisibility } from '../../render/scale-grid';
 import type { CelestialGridVisibility } from '../../render/celestial-grid';
 

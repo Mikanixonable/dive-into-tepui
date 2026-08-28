@@ -4,7 +4,7 @@
 // ここで固定する — 通り越すと T⁴ が段どうしで増幅し、1歩で発散する。太陽光の受熱については、
 // 日照だけで軌道上の物体が焼失しないことを固定する。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import {
   STEFAN_BOLTZMANN, aeroHeating, dragDissipation, radiativeCooling, solarHeating,
   sphereNoseRadius, stepTemperature, stepThermalDeviation,

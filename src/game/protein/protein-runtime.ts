@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { Quat } from '../../physics/attitude';
-import type { Vec3 } from '../../physics/vec3';
+import type { Vec3 } from '../../math/vec3';
 import type {
   ProteinAssetDefinition,
   ProteinHudSnapshot,

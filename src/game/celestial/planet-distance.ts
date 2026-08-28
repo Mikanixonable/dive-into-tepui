@@ -1,9 +1,11 @@
 // ECI 位置から最寄りの登録惑星までの距離と、マップ用の距離フェードを求める。
 import type { CelestialBody } from '../../physics/celestial-body';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import type { CelestialRegistry } from '../../physics/solar-system';
 import { bodyDef } from '../../physics/solar-system';
-import * as C from '../const';
+
+const MAP_PLANET_SHIP_LABEL_START = 5e8;
+const MAP_PLANET_SHIP_LABEL_END = 1e9;
 
 export type NearestPlanet = { readonly celestialBody: CelestialBody; readonly distance: number };
 
@@ -30,7 +32,7 @@ export function nearestPlanetDistance(
 
 export function mapPlanetFadeOpacity(distance: number | null): number {
   if (distance === null) return 1;
-  if (distance >= C.MAP_PLANET_SHIP_LABEL_END) return 0;
-  return Math.max(0, Math.min(1, (C.MAP_PLANET_SHIP_LABEL_END - distance)
-    / (C.MAP_PLANET_SHIP_LABEL_END - C.MAP_PLANET_SHIP_LABEL_START)));
+  if (distance >= MAP_PLANET_SHIP_LABEL_END) return 0;
+  return Math.max(0, Math.min(1, (MAP_PLANET_SHIP_LABEL_END - distance)
+    / (MAP_PLANET_SHIP_LABEL_END - MAP_PLANET_SHIP_LABEL_START)));
 }

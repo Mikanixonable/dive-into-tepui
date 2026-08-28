@@ -7,7 +7,7 @@
 // という連続量から系の呼び名を導く — 表示を絞る判定ではなく、いまいる場所の説明であるため。
 import { CelestialBody, CelestialBodyId, attractorAccel, strongestAttractor } from '../../physics/celestial-body';
 import { CelestialRegistry, bodyDef, primaryOf } from '../../physics/solar-system';
-import { Vec3, lenSq } from '../../physics/vec3';
+import { Vec3, lenSq } from '../../math/vec3';
 import { BodyClass, bodyClassOf } from './body-class';
 
 // クラスごとの表示トグル。恒星は常に見えるのでトグルを持たない(太陽系の基準点であり、

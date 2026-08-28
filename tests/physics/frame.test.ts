@@ -1,7 +1,7 @@
 // frame.ts の回帰テスト: 座標系(原点天体 × 回転)の点・KinematicState 順逆変換
 // （恒等・往復・既知回転角・速度の有限差分検証・bake+un-bake 合成・原点が動く系）。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { SOLAR_SYSTEM, MU_EARTH } from '../../src/physics/solar-system';
 import { FrameAnchors } from '../../src/game/frame-anchors';
@@ -9,7 +9,7 @@ import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { FrameAnchorId, FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Vec3, add, addScaled, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, add, addScaled, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const YEAR = 365.25636 * 86400;
 

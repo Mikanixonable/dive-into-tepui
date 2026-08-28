@@ -13,13 +13,13 @@ import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../sim-speed-manager';
+import { SimSpeedManager } from '../simulation/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../floating-origin';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
-import type { StageSaveData } from '../save-data';
+import type { StageSaveData } from '../save/save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -27,7 +27,7 @@ import type { ActivePlayerController } from '../active-controllable-controller';
 import type { CelestialBodyId } from '../../physics/celestial-body';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAtOrNull } from '../../physics/ephemeris-profile';
-import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../sim-epoch';
+import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../simulation/sim-epoch';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 

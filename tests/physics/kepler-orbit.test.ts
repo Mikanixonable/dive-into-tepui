@@ -1,6 +1,6 @@
 // kepler-orbit.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { assertOmegaMatchesBasis } from './test-helpers';
 import { OrbitalElements, keplerPeriod, timeSincePeriapsis, trueAnomalyFromMean } from '../../src/physics/elements';
 import { CelestialBody } from '../../src/physics/celestial-body';
@@ -8,7 +8,7 @@ import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitNormal, keplerOrbitRotation, ke
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
 import { qRotate } from '../../src/physics/attitude';
-import { dot, len, scale, sub, v3 } from '../../src/physics/vec3';
+import { dot, len, scale, sub, v3 } from '../../src/math/vec3';
 
 const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 

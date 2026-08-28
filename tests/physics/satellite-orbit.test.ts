@@ -1,12 +1,12 @@
 // satellite-orbit.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { planetAngles, planetOrbit } from '../../src/physics/planet-orbit';
 import { PerturbationTerm, satelliteOrbit, satelliteState } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { eciToEcl } from '../../src/physics/ecliptic';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { len, scale, sub } from '../../src/physics/vec3';
+import { len, scale, sub } from '../../src/math/vec3';
 
 const R2D = 180 / Math.PI;
 

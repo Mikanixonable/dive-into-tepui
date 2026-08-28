@@ -3,13 +3,13 @@
 // (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import {
   catalogLoop, dawnDuskGuideLoop, GuideLoop, GuidePoint, lissajousLoop,
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
 } from '../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { CurveColorSampler } from '../../render/curve';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import type { RenderStyle } from '../../render/render-style';

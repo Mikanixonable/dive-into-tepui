@@ -1,9 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qRotate } from '../../physics/attitude';
-import { Vec3, dot, v3 } from '../../physics/vec3';
+import { Vec3, dot, v3 } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/srp';
 import * as C from '../const';
-import type { PowerSaveData } from '../save-data';
+import type { PowerSaveData } from '../save/save-data';
+
+const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
+const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
 
 export type SolarSide = 'up' | 'down';
 
@@ -60,7 +63,7 @@ export class PowerSystem {
     // 裏面(法線が太陽と反対を向く)では発電しないため負値を0に切り詰める
     const cosIncidence = Math.max(0, dot(normal, sunDir));
     // 展開度 deployMult を掛けて、収納時は発電しないようにする
-    const basePower = ship.totalPowerGeneration > 0 ? ship.totalPowerGeneration : SOLAR_CONSTANT * C.SOLAR_PANEL_EFFICIENCY * C.SOLAR_PANEL_AREA;
+    const basePower = ship.totalPowerGeneration > 0 ? ship.totalPowerGeneration : SOLAR_CONSTANT * SOLAR_PANEL_EFFICIENCY * SOLAR_PANEL_AREA;
     const power = basePower * cosIncidence * sunlit * deployMult;
     this.charge = Math.min(C.POWER_CAPACITY, this.charge + power * dt);
   }

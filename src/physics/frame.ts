@@ -13,7 +13,7 @@
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
 import { CelestialBody, CelestialBodyId } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { add, cross, sub, v3, Vec3 } from './vec3';
+import { add, cross, sub, v3, Vec3 } from '../math/vec3';
 import { Quat, qInvert, qRotate } from './attitude';
 
 // 座標系 = 「どの天体を原点に置くか」×「何の回転(公転か自転)に合わせて回すか

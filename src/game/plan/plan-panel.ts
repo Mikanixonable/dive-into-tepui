@@ -3,7 +3,7 @@
 // 入力値をノードへ反映する)は PlanEditor が持ち、このクラスは表示専用。
 import { OrbitalElements, apsisAltitudes } from '../../physics/elements';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import { AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL } from '../theme';
 import { HoldButton, ValueInput } from '../hud/widgets';
 import { fmtDist, fmtTime } from '../hud/utils';

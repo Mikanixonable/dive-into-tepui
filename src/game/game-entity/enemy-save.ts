@@ -1,4 +1,4 @@
-import type { EnemySaveData } from '../save-data';
+import type { EnemySaveData } from '../save/save-data';
 import type { Enemy } from './enemy';
 
 // Enemy の現在状態をセーブデータへ変換する責務を持つ。

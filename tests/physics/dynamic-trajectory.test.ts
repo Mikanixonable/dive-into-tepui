@@ -3,7 +3,7 @@
 // 単体テスト(better_predict.md Step 2)。過去列にも将来列にも同じ実装を使う前提なので、
 // ここでの検証は GameEntity.actualTrajectory(過去列側)としての用法をそのまま代表する。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { extrapolatedRelativeState } from '../../src/physics/kepler-extrapolation';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
@@ -11,7 +11,7 @@ import { MU_EARTH, R_EARTH, SOLAR_SYSTEM } from '../../src/physics/solar-system'
 import { DynamicTrajectory } from '../../src/physics/dynamic-trajectory';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { add, len, sub, v3 } from '../../src/physics/vec3';
+import { add, len, sub, v3 } from '../../src/math/vec3';
 
 const EPH = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }); // 初期位相を固定して決定的にする
 const celestialBodiesAt = (t: number) => EPH.celestialBodiesAt(t); // step() が要求する重力源をステップ中点で引く

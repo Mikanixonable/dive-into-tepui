@@ -10,7 +10,7 @@
 import * as THREE from 'three/webgpu';
 import { floor, ivec2, mod, screenCoordinate, textureLoad } from 'three/tsl';
 import type { FloatNode } from './tsl-types';
-import { BLUE_NOISE_TILE_BASE64, BLUE_NOISE_TILE_SIZE } from './blue-noise-tile';
+import { BLUE_NOISE_TILE_BASE64, BLUE_NOISE_TILE_SIZE } from './blue-noise-tile.generated';
 
 export class BlueNoise {
   private readonly tile: THREE.DataTexture;

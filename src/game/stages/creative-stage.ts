@@ -4,15 +4,15 @@ import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
 import type { Player } from '../player/player';
 import { EntityIdAllocator } from '../game-entity/entity-id';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { SimSpeedManager } from '../sim-speed-manager';
+import type { SimSpeedManager } from '../simulation/sim-speed-manager';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
 import { haloState, lissajousState } from '../../physics/halo';
-import type { FloatingOrigin } from '../floating-origin';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import { qRotate } from '../../physics/attitude';
-import { Vec3, add, addScaled, v3 } from '../../physics/vec3';
+import { Vec3, add, addScaled, v3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
@@ -28,10 +28,13 @@ import { ElementsForm, LagrangeForm, ObjectType, ReferenceCelestialBody, ObjectP
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { STAGE_CONTROL_ENEMY_SHAPES, StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
-import { OrbitLine } from '../orbit-line';
+import { OrbitLine } from '../lines/orbit-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
-import type { CreativeStageSaveData, StageSaveData } from '../save-data';
+import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
+
+// 軌道上へ配置できる自機の上限隻数。
+const MAX_PLACED_SHIPS = 50;
 
 const DEG = Math.PI / 180;
 
@@ -302,8 +305,8 @@ export class CreativeStage extends Stage {
 
   // フォーム値から KinematicState を組み立て、配置する。
   private placeObject(name: string, form: ObjectPlacerForm): void {
-    if (form.objectType === 'player' && this._entities.players.length >= C.MAX_PLACED_SHIPS) {
-      this._hud.hint(`配置数が上限(${C.MAX_PLACED_SHIPS}隻)に達しています`);
+    if (form.objectType === 'player' && this._entities.players.length >= MAX_PLACED_SHIPS) {
+      this._hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
     try {

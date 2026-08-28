@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import {
   ChebyshevBodyNotFoundError,
   ChebyshevEphemeris,
@@ -8,7 +8,7 @@ import {
   findChebyshevSegmentIndex,
 } from '../../src/physics/ephemeris-pack/evaluator';
 import { ChebyshevEphemerisPack } from '../../src/physics/ephemeris-pack/types';
-import { len, Vec3, v3 } from '../../src/physics/vec3';
+import { len, Vec3, v3 } from '../../src/math/vec3';
 
 function assertVec3Close(actual: Vec3, expected: Vec3, tolerance = 1e-12): void {
   assert.ok(Math.abs(actual.x - expected.x) <= tolerance, `x: ${actual.x} vs ${expected.x}`);

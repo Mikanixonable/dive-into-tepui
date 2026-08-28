@@ -16,7 +16,7 @@
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { CelestialBody, localOrbitPeriod, nearestAtmosphereBody, strongestAttractor } from '../../src/physics/celestial-body';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
-import { v3, sub, len, cross, norm, scale, add } from '../../src/physics/vec3';
+import { v3, sub, len, cross, norm, scale, add } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import {
   buildEphemeris, initialLeoState, posError,

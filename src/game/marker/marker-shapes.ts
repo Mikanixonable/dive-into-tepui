@@ -2,11 +2,12 @@
 // (headingHpMarkerSvg 等)と HUD の一覧パネルの凡例アイコンが同じ形を指せるよう、依存フリーな
 // 文字列組み立てだけをここへ集める。three/hud/player など重い・循環しうるモジュールは import しない。
 
-import { COLOR_MARKER_HP_EMPTY } from '../const';
+
+const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
 
 export const SHIP_ARROWHEAD_POINTS = '12,1.5 17.5,21 12,16.5 6.5,21';
 
-export const BASE_HEPTAGON_POINTS = '12,2.5 19.43,6.08 21.26,14.11 16.12,20.56 7.88,20.56 2.74,14.11 4.57,6.08';
+const BASE_HEPTAGON_POINTS = '12,2.5 19.43,6.08 21.26,14.11 16.12,20.56 7.88,20.56 2.74,14.11 4.57,6.08';
 
 // HP に依存しない鏃形アイコン単体。filled は自艦・味方、中抜きは敵を想定。
 export function shipMarkerSvg(filled: boolean): string {

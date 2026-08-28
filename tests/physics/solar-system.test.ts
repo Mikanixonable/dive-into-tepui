@@ -1,6 +1,6 @@
 // solar-system.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { SIDEREAL_DAY, SOLAR_SYSTEM, bodyDef, spinRateOf } from '../../src/physics/solar-system';
 
 export function register(): void {

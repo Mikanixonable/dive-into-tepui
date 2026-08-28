@@ -7,7 +7,7 @@ import { Ephemeris } from '../../physics/ephemeris';
 import { OrbitingId } from '../../physics/celestial-body';
 import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
 import { lambertSphereIrradiance } from '../../physics/lambert-sphere';
 import { STAR_SHELL_RADIUS } from '../../render/stars';
@@ -23,7 +23,7 @@ import type { RenderStyle } from '../../render/render-style';
 import { RingView } from './ring-view';
 import { bondAlbedoOf } from '../../render/celestial-albedo';
 import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
-import type { Vec3 } from '../../physics/vec3';
+import type { Vec3 } from '../../math/vec3';
 
 // 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
 const POINT_SPRITE_SIZE = POINT_IMAGE_ANGULAR_SIZE * STAR_SHELL_RADIUS;

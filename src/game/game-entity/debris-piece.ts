@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { CelestialBody } from '../../physics/celestial-body';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from './contact';
@@ -21,6 +21,14 @@ import {
 import { GameEntity } from './game-entity';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
+
+const BARREL_BULK_DENSITY = 7850; // [kg/m^3]
+
+const BARREL_MAX_TEMP = 1700; // 鋼の融点 [K]
+
+const BOOSTER_HARDWARE_LIFETIME = 2.4; // 段間カバー/爆砕ボルトの飛散表示時間 [s]
+
+const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
 import {
   SHIP_DARK_HULL_COLOR,
 } from '../../render/vfx-style';
@@ -69,9 +77,9 @@ const ALUMINIUM_DEBRIS: DebrisThermal = {
 
 const STEEL_BARREL: DebrisThermal = {
   specificHeat: C.BARREL_SPECIFIC_HEAT,
-  bulkDensity: C.BARREL_BULK_DENSITY,
+  bulkDensity: BARREL_BULK_DENSITY,
   radiatingAreaPerMass: C.BARREL_RADIATING_AREA_PER_MASS,
-  maxTemperature: C.BARREL_MAX_TEMP,
+  maxTemperature: BARREL_MAX_TEMP,
 };
 
 // 種別ごとの材質。砲身だけが鋼で、赤熱する温度でも構造を保つ。
@@ -159,9 +167,9 @@ export class DebrisPiece extends GameEntity {
   // bornSim+寿命を計算すると丸め誤差でイベント予告と実際の消滅判定がずれかねない。
   private get expiresAt(): number | null {
     switch (this.debrisKind.kind) {
-      case 'casing': return this.debrisKind.bornSim + C.CASING_LIFETIME;
+      case 'casing': return this.debrisKind.bornSim + CASING_LIFETIME;
       case 'boosterCover':
-      case 'boosterBolt': return this.debrisKind.bornSim + C.BOOSTER_HARDWARE_LIFETIME;
+      case 'boosterBolt': return this.debrisKind.bornSim + BOOSTER_HARDWARE_LIFETIME;
       default: return null;
     }
   }

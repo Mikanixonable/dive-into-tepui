@@ -5,7 +5,7 @@ import { Quat } from './attitude';
 import { FrameAnchorId, FrameAnchorSource, FrameTransform, toFrameState } from './frame';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
-import { Vec3, addScaled, lenSq, len, sub, v3 } from './vec3';
+import { Vec3, addScaled, lenSq, len, sub, v3 } from '../math/vec3';
 
 // 天体の識別子。具体的なレジストリ(solar-system.ts の SOLAR_SYSTEM など)が実行時に
 // 差し替え可能なので、ここでは閉じた union にできない — 網羅性の強制は各レジストリの

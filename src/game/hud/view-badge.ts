@@ -3,10 +3,9 @@ import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from './overlay-manager';
 import { Button, ToggleSwitch } from './widgets';
 import type { RenderStyleSetting } from '../../render/render-style';
-import packageJson from '../../../package.json';
 
 const GAME_TITLE = 'Dive into Tepui';
-const GAME_VERSION = `v${packageJson.version}`;
+const GAME_VERSION = `v${__APP_VERSION__}`;
 
 const VIEW_LABELS: Record<ViewId, string> = { combat: 'Combat', map: 'Map' };
 

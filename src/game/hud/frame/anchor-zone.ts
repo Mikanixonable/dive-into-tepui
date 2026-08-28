@@ -4,7 +4,7 @@
 import { CelestialBodyId } from '../../../physics/celestial-body';
 import { Ephemeris } from '../../../physics/ephemeris';
 import { FRAME_ROLES } from '../../../physics/frame';
-import type { MapPickable } from '../../map-pickable';
+import type { MapPickable } from '../../pickable/map-pickable';
 import { SegmentedControl } from '../widgets';
 import { injectOnce } from '../widgets/inject-style';
 import { frameRoleAnchorId, frameRoleName } from './frame-labels';

@@ -1,4 +1,4 @@
-import { len, sub, type Vec3 } from '../../physics/vec3';
+import { len, sub, type Vec3 } from '../../math/vec3';
 import * as C from '../const';
 import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';

@@ -7,7 +7,7 @@ import type { OcclusionPass } from '../occlusion';
 import type { SunLight } from '../sun-light';
 import { ggxSpecularFactor } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
-import { createLtcTables, type LtcTables } from './ltc-table';
+import { createLtcTables, type LtcTables } from './ltc-table.generated';
 import { ltcEvaluate, ltcInverseTransform, ltcUv, sphereOctagonPoints } from './ltc';
 import { sphereIrradianceFactor } from './sphere-light';
 import type { ShadingSample } from './shading-sample';

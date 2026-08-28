@@ -6,7 +6,7 @@ description: ヘッドレス Chrome + CDP でゲームを起動・駆動し、�
 # ゲームの実行時検証
 
 **起動条件: ユーザーが実行時の動作確認・再現確認を明示的に求めたときだけ実行する。** コード変更の
-既定の検証は `npm run typecheck` のみ(`src/physics/` を触ったときは `npm run test:physics` も)。
+既定の検証は `npm run typecheck` のみ(触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`)も)。
 
 **まず `npm run smoke:browser` で足りないかを考える。** 本番ビルドを起動して60フレーム完走・HUD の
 崩れ・モーダル・マップの配置と右クリックまでを通す、動く実装が既にある(`tools/browser-smoke.mjs`)。

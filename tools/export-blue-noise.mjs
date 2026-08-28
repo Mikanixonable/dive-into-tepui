@@ -1,5 +1,5 @@
 // void-and-cluster (Ulichney 1993) で blue noise タイルを焼き、
-// src/render/blue-noise-tile.ts へ書き出す。
+// src/render/blue-noise-tile.generated.ts へ書き出す。
 //
 // blue noise が欲しいのは「値そのものがランダムなこと」ではなく、**近傍の画素どうしで値が
 // 打ち消し合うこと**である。画素ごとの誤差の大きさはどんな 0..1 の列でも変わらず、目に見える
@@ -139,7 +139,7 @@ const bytes = Buffer.alloc(N);
 for (let i = 0; i < N; i++) bytes[i] = Math.min(255, Math.floor(((rank[i] + 0.5) / N) * 256));
 
 const outPath = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)), '../src/render/blue-noise-tile.ts',
+  path.dirname(fileURLToPath(import.meta.url)), '../src/render/blue-noise-tile.generated.ts',
 );
 
 writeFileSync(outPath, `// 生成物。tools/export-blue-noise.mjs が void-and-cluster で焼いた blue noise タイル

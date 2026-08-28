@@ -3,12 +3,12 @@
 // 実際に連星(共通重心が冥王星本体の外側にある)であること、および未測定 GM が 0 として
 // 登録されていること。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
-import { add, cross, dot, len, norm, scale, sub } from '../../src/physics/vec3';
+import { add, cross, dot, len, norm, scale, sub } from '../../src/math/vec3';
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
   return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).orbit;

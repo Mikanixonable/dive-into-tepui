@@ -13,13 +13,13 @@ import {
 import { sunlitFactor } from '../../physics/shadow';
 import { SOLAR_CONSTANT } from '../../physics/srp';
 import { ApsisTrack } from '../../physics/trajectory-features';
-import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
-import type { Viewpoint } from '../../physics/projection';
-import type { SphereHit } from '../../physics/base-collision';
-import { FloatingOrigin } from '../floating-origin';
-import { OrbitLine } from '../orbit-line';
-import { RelativeOrbitLine } from '../relative-orbit-line';
-import { TrajectoryLine } from '../trajectory-line';
+import { Vec3, len, scale, sub, v3 } from '../../math/vec3';
+import type { Viewpoint } from '../../math/projection';
+import type { SphereHit } from './base-collision';
+import { FloatingOrigin } from '../camera/floating-origin';
+import { OrbitLine } from '../lines/orbit-line';
+import { RelativeOrbitLine } from '../lines/relative-orbit-line';
+import { TrajectoryLine } from '../lines/trajectory-line';
 import type { OrbitReference } from '../orbit-reference';
 import { LineStyle } from '../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
@@ -35,6 +35,10 @@ import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { MarkerManager } from '../marker/marker-manager';
 import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../render/thermal-emissive';
+
+// 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
+// ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
+const HISTORY_DURATION_MAX = C.DISPLAY_DURATION_MAX;
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -352,7 +356,7 @@ export class GameEntity {
   // 無視する。実際の保持時間は種別ごとの既定値との大きい方。
   requestHistoryDuration(sec: number): void {
     if (this.baseHistoryDuration <= 0) return;
-    this.requestedHistoryDuration = Math.max(0, Math.min(C.HISTORY_DURATION_MAX, sec));
+    this.requestedHistoryDuration = Math.max(0, Math.min(HISTORY_DURATION_MAX, sec));
   }
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする

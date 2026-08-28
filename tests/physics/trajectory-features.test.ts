@@ -1,13 +1,13 @@
 // trajectory-features.ts の回帰テスト。解析的なケプラー軌道をサンプリングした列に対して、
 // 折れ線走査/隣接ステップ判定が解析値と十分一致することを確認する。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { apsisCrossing, ApsisTrack, findEquatorCrossings } from '../../src/physics/trajectory-features';
 import { keplerPeriod, stateFromOrbitalElements, trueAnomalyFromMean } from '../../src/physics/elements';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
-import { len, sub, v3 } from '../../src/physics/vec3';
+import { len, sub, v3 } from '../../src/math/vec3';
 
 const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 
