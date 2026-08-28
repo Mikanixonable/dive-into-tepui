@@ -3,11 +3,11 @@ import { Vec3, v3, sub, len } from '../../math/vec3';
 import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { ProjectFn } from './camera-system';
 import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../marker/marker-manager';
-import type { Ephemeris } from '../../physics/ephemeris';
-import { celestialBodyName } from '../hud/frame/frame-labels';
+import { OrbitingMotion } from '../../physics/celestial-motion';
 import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibility';
-import { bodyClassOf, BodyClass } from '../celestial/body-class';
+import type { BodyClass } from '../celestial/body-class';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
 import { DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
 import type { MapPickable } from '../pickable/map-pickable';
@@ -60,13 +60,13 @@ export interface FocusLabel {
 }
 
 // ラグランジュ点の名前。所属天体を前に置き、一覧では親の直下に並ぶ。
-function lagrangeName(id: string, n: 1 | 2 | 3 | 4 | 5): string {
-  return `${celestialBodyName(id)}-L${n}`;
+function lagrangeName(bodyName: string, n: 1 | 2 | 3 | 4 | 5): string {
+  return `${bodyName}-L${n}`;
 }
 
 // ラグランジュ点のマーカー表記。地点名を上、所属天体を下の行に置く。
-function lagrangeMarkerLabel(id: string, n: 1 | 2 | 3 | 4 | 5): string {
-  return `L${n}\n${celestialBodyName(id)}`;
+function lagrangeMarkerLabel(bodyName: string, n: 1 | 2 | 3 | 4 | 5): string {
+  return `L${n}\n${bodyName}`;
 }
 
 // 陣営種別ごとのサブ行記号。mk-ally には専用の記号を持たせず、item.sym からの
@@ -168,11 +168,13 @@ class CrowdingGrid {
 }
 
 export class FocusMarkers {
-  // 天体本体1つにつき1ラベル、ラグランジュ点が力学的に意味を持つ天体にはさらに L1〜L5 の
-  // うち成立する点ぶんのラベルが並ぶ(表示名は「中心天体名-自分の名 Ln」)。
-  private readonly registryIds: readonly string[];
-  // ラグランジュ点ラベルを持つ天体と、そのうち成立する点の番号。
-  private readonly lagrangeSources: readonly { readonly id: string; readonly points: readonly (1 | 2 | 3 | 4 | 5)[] }[];
+  // ラグランジュ点ラベルを持つ天体と、そのうち成立する点の番号(表示名は「天体名-Ln」)。
+  private readonly lagrangeSources: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly motion: OrbitingMotion;
+    readonly points: readonly (1 | 2 | 3 | 4 | 5)[];
+  }[];
   // トグル・フォーカスに関わらない全登録天体+全ラグランジュ点ラベルの全集合(id/isLagrange 目的)。
   readonly allLabels: readonly FocusLabel[];
   // このフレームで表示する対象に絞ったラベル。
@@ -202,27 +204,25 @@ export class FocusMarkers {
   get shownLabelCount(): number { return this.shownLabels.length; }
   get activeLabels(): readonly ActiveCelestialLabel[] { return this.activeCelestialLabels; }
 
-  // レジストリからラベルの全集合を1度だけ組む。ラグランジュ点は5点まとめてではなく、
+  // 星系の全天体からラベルの全集合を1度だけ組む。ラグランジュ点は5点まとめてではなく、
   // 共線点・三角点それぞれの成立条件を満たす点だけを持たせる。
-  constructor(private readonly markerManager: MarkerManager, private readonly ephemeris: Ephemeris) {
-    const registry = ephemeris.registry;
-    this.registryIds = Object.keys(registry);
-    this.lagrangeSources = this.registryIds.flatMap((id) => {
-      if (ephemeris.motionOf(id).kind === 'star') return [];
-      const collinear = ephemeris.hasUsableCollinearPoints(id, LAGRANGE_MIN_CLEARANCE_RATIO);
+  constructor(private readonly markerManager: MarkerManager, private readonly celestialSystem: CelestialSystem) {
+    this.lagrangeSources = celestialSystem.bodies.flatMap((body) => {
+      const motion = body.motion;
+      if (!(motion instanceof OrbitingMotion)) return [];
+      const collinear = motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO);
       // 小天体・準惑星は数が多く、L3・L4・L5 まで並べるとラベルが密集しすぎる。
-      const cls = bodyClassOf(ephemeris, id);
-      const minor = cls === 'smallBody' || cls === 'dwarf';
-      const triangular = !minor && ephemeris.hasStableTriangularPoints(id);
+      const minor = body.bodyClass === 'smallBody' || body.bodyClass === 'dwarf';
+      const triangular = !minor && motion.hasStableTriangularPoints();
       const points = [
         ...(collinear ? (minor ? [1, 2] as const : [1, 2, 3] as const) : []),
         ...(triangular ? [4, 5] as const : []),
       ];
-      return points.length === 0 ? [] : [{ id, points }];
+      return points.length === 0 ? [] : [{ id: body.id, name: body.name, motion, points }];
     });
 
     // 親を先に、その子を続けて並べる。一覧はこの順をそのまま使うので、並べ替えを持たない。
-    // レジストリは実行時に差し替えられるので、親子関係が循環していても停止し、同じ天体を
+    // 星系は実行時に差し替えられるので、親子関係が循環していても停止し、同じ天体を
     // 二度並べないよう追加済みを覚えておく。
     const labels: FocusLabel[] = [];
     const added = new Set<string>();
@@ -230,29 +230,31 @@ export class FocusMarkers {
     const appendBody = (id: string, depth: number): void => {
       if (added.has(id)) return;
       added.add(id);
-      const cls = bodyClassOf(this.ephemeris, id);
+      const body = this.celestialSystem.bodyOf(id);
+      const cls = body.bodyClass;
       labels.push({
-        id, name: celestialBodyName(id), markerLabel: celestialBodyName(id),
+        id, name: body.name, markerLabel: body.name,
         pos: v3(0, 0, 0), kind: 'body', isLagrange: false, bodyClass: cls,
         labelPriority: LABEL_PRIORITY[cls], depth,
         showIcon: false, showLabel: false, pickable: true,
       });
       for (const n of pointsOf.get(id) ?? []) {
         labels.push({
-          id: `${id}-l${n}`, name: lagrangeName(id, n), markerLabel: lagrangeMarkerLabel(id, n), pos: v3(0, 0, 0),
+          id: `${id}-l${n}`, name: lagrangeName(body.name, n), markerLabel: lagrangeMarkerLabel(body.name, n),
+          pos: v3(0, 0, 0),
           kind: 'body', isLagrange: true, bodyClass: cls, labelPriority: LABEL_PRIORITY.lagrange, depth: depth + 1,
           showIcon: false, showLabel: false, pickable: true,
         });
       }
-      for (const child of this.registryIds) {
-        if (child !== id && this.ephemeris.motionOf(child).primary?.id === id) appendBody(child, depth + 1);
+      for (const child of this.celestialSystem.bodies) {
+        if (child.id !== id && child.motion.primary?.id === id) appendBody(child.id, depth + 1);
       }
     };
-    for (const id of this.registryIds) {
-      if (this.ephemeris.motionOf(id).primary === null) appendBody(id, 0);
+    for (const body of this.celestialSystem.bodies) {
+      if (body.motion.primary === null) appendBody(body.id, 0);
     }
-    // 主星を持たない孤立した天体(親が登録されていないレジストリ・循環したレジストリ)も落とさない。
-    for (const id of this.registryIds) appendBody(id, 0);
+    // 主星を持たない孤立した天体(親が登録されていない星系・循環した星系)も落とさない。
+    for (const body of this.celestialSystem.bodies) appendBody(body.id, 0);
     this.allLabels = labels;
     for (const label of labels) this.labelsById.set(label.id, label);
   }
@@ -277,25 +279,24 @@ export class FocusMarkers {
 
     // update を通らずに直接呼ばれる場合も既存の時刻仕様を保つ。通常の MapPickables 経路は
     // update が先に同じ policy で座標を作るため、下記の再計算分岐には入らない。
-    const ephemeris = this.ephemeris;
-    const posOf = new Map(ephemeris.celestialBodiesAt(t).map((a) => [a.id, a.state.r]));
+    const posOf = new Map(this.celestialSystem.celestialBodiesAt(t).map((a) => [a.id, a.state.r]));
     const drawn = new Map(this.allLabels.map((lbl) => [lbl.id, lbl.pickable]));
     this.cachedBodyPickables.length = 0;
-    for (const id of this.registryIds) {
-      if (!visibilityPolicy.body(id).pickable) continue;
-      const pos = posOf.get(id);
+    for (const body of this.celestialSystem.bodies) {
+      if (!visibilityPolicy.body(body.id).pickable) continue;
+      const pos = posOf.get(body.id);
       if (pos !== undefined) this.cacheBodyPickable(
-        id, celestialBodyName(id), pos, drawn.get(id) ?? true,
+        body.id, body.name, pos, drawn.get(body.id) ?? true,
       );
     }
-    for (const { id, points } of this.lagrangeSources) {
+    for (const { id, name, motion, points } of this.lagrangeSources) {
       if (!visibilityPolicy.body(id).category) continue;
-      const l = ephemeris.lagrangeAt(id, t);
+      const l = motion.lagrangeAt(t);
       for (const n of points) {
         const lagrangeId = `${id}-l${n}`;
         if (visibilityPolicy.body(lagrangeId).pickable) {
           this.cacheBodyPickable(
-            lagrangeId, lagrangeName(id, n), l[`L${n}`], drawn.get(lagrangeId) ?? true,
+            lagrangeId, lagrangeName(name, n), l[`L${n}`], drawn.get(lagrangeId) ?? true,
           );
         }
       }
@@ -325,34 +326,34 @@ export class FocusMarkers {
     t: number, focusId: string | undefined, toggles: BodyClassToggles, cameraPos: Vec3,
     sharedVisibilityPolicy?: MapVisibilityPolicy,
   ): void {
-    const ephemeris = this.ephemeris;
-    const celestialBodies = ephemeris.celestialBodiesAt(t);
+    const celestialSystem = this.celestialSystem;
+    const celestialBodies = celestialSystem.celestialBodiesAt(t);
     // フォーカスを解除しても、カメラが実際にいる惑星系の衛星は消さない。カメラ位置の
     // 「近さ」を固定距離で判定せず、既存の重力系判定を使うことで、地球/月や木星/衛星の
     // 境界を同じ規則で扱える。
     const nearby = sharedVisibilityPolicy === undefined
-      ? this.nearbyTracker.membersAt(ephemeris, cameraPos, celestialBodies)
+      ? this.nearbyTracker.membersAt(celestialSystem.ephemeris, cameraPos, celestialBodies)
       : [];
     // まず表示対象を決め、その中だけ座標を引く。表示の判断は marker/map-picker/参照線と
     // 同じ MapVisibilityPolicy を使い、個別実装の解釈ずれをなくす。
     const visibilityPolicy = sharedVisibilityPolicy
-      ?? new MapVisibilityPolicy(ephemeris, toggles, focusId, nearby);
+      ?? new MapVisibilityPolicy(celestialSystem, toggles, focusId, nearby);
 
     const positions: Record<string, Vec3> = {};
     const displayMap: Record<string, { icon: boolean; label: boolean }> = {};
     this.cachedBodyPickables.length = 0;
-    for (const id of this.registryIds) {
-      const visibility = visibilityPolicy.body(id);
+    for (const body of celestialSystem.bodies) {
+      const visibility = visibilityPolicy.body(body.id);
       if (!visibility.pickable) continue;
-      const pos = ephemeris.positionOf(id, t);
-      positions[id] = pos;
-      displayMap[id] = { icon: visibility.icon, label: visibility.label };
-      this.cacheBodyPickable(id, celestialBodyName(id), pos, true);
+      const pos = body.motion.stateAt(t).r;
+      positions[body.id] = pos;
+      displayMap[body.id] = { icon: visibility.icon, label: visibility.label };
+      this.cacheBodyPickable(body.id, body.name, pos, true);
     }
     if (toggles.lagrangeVisible && toggles.lagrangeName) {
-      for (const { id, points } of this.lagrangeSources) {
+      for (const { id, name, motion, points } of this.lagrangeSources) {
         if (!visibilityPolicy.body(id).category) continue;
-        const l = ephemeris.lagrangeAt(id, t);
+        const l = motion.lagrangeAt(t);
         for (const n of points) {
           const lagrangeId = `${id}-l${n}`;
           const visibility = visibilityPolicy.body(lagrangeId);
@@ -360,7 +361,7 @@ export class FocusMarkers {
           const pos = l[`L${n}`];
           positions[lagrangeId] = pos;
           displayMap[lagrangeId] = { icon: visibility.icon, label: visibility.label };
-          this.cacheBodyPickable(lagrangeId, lagrangeName(id, n), pos, true);
+          this.cacheBodyPickable(lagrangeId, lagrangeName(name, n), pos, true);
         }
       }
     }
@@ -498,7 +499,7 @@ export class FocusMarkers {
 
       if (isStage2) {
         // 第2段階 (500万km以上): 「月:」などのプレフィックスを表示せず、主親天体(地球等)へ集約
-        const primaryId = this.ephemeris.motionOf(center.id).primary?.id ?? null;
+        const primaryId = this.celestialSystem.bodyOf(center.id).motion.primary?.id ?? null;
         if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
           targetId = primaryId;
         } else if (this.bodyPickableRecords.get(center.id)?.pickable) {
@@ -512,10 +513,10 @@ export class FocusMarkers {
           targetId = center.id;
           prefix = '';
         } else {
-          const primaryId = this.ephemeris.motionOf(center.id).primary?.id ?? null;
+          const primaryId = this.celestialSystem.bodyOf(center.id).motion.primary?.id ?? null;
           if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
             targetId = primaryId;
-            prefix = `${celestialBodyName(center.id)}: `;
+            prefix = `${this.celestialSystem.nameOf(center.id)}: `;
           }
         }
       }

@@ -148,7 +148,7 @@ export class Game {
     this.cameraSystem = new CameraSystem(
       this._hud,
       this.markerManager,
-      ephemeris,
+      celestialSystem,
       initialSave?.camera,
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);
@@ -221,12 +221,12 @@ export class Game {
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
-      this.activePlayers, this.entities, ephemeris, this.navTarget, this.cameraSystem, this.editor, this.markerManager,
-      this.frameAnchors,
+      this.activePlayers, this.entities, celestialSystem, this.navTarget, this.cameraSystem, this.editor,
+      this.markerManager, this.frameAnchors,
     );
-    this.orbitPickables = new OrbitPickables(this.entities, this._celestialSystem, ephemeris, this.cameraSystem);
+    this.orbitPickables = new OrbitPickables(this.entities, this._celestialSystem, this.cameraSystem);
     this.mapActions = new MapContextActions(
-      this._hud, this.entities, ephemeris, this.navTarget,
+      this._hud, this.entities, celestialSystem, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.orbitPickables,
       this.activePlayers, this.frameControls, this.activeStage, this.targeter,
     );
@@ -593,7 +593,7 @@ export class Game {
     // 設定に関わらず常に自動選択のまま描く(orbit-info.ts の数値表示・軌道要素アイコンは
     // syncPlayers 側で orbitRef をそのまま使うので、この絞り込みの影響を受けない)。
     this.entityLines.sync(
-      displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris,
+      displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this._celestialSystem,
       overviewMode ? undefined : orbitRef,
     );
     // 軌道線の右クリック当たり判定向けの候補列。各軌道線が今フレーム焼いたサンプルを読むため、
