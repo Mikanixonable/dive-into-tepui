@@ -3,11 +3,10 @@
 // プロパティウィンドウ)は map-context-actions.ts の MapContextActions が持つ。
 import * as C from '../const';
 import { fmtDist, fmtSpeed } from '../hud/utils';
-import { celestialBodyName } from '../hud/frame/frame-labels';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from '../camera/focus-target';
 import { EntityManager } from '../simulation/entity-manager';
-import { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { NavTarget } from '../nav-target';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { CameraSystem } from '../camera/camera-system';
@@ -67,7 +66,7 @@ export class MapPickables {
   constructor(
     private readonly activePlayers: ActivePlayerController,
     private readonly entities: EntityManager,
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
     private readonly editor: PlanEditor,
@@ -90,20 +89,22 @@ export class MapPickables {
     const focusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     // 候補の位置は表示時刻のものなので、遮蔽・系の判定もその時刻の天体位置で行う。
     // 現在時刻の配列は「いまの自艦の軌道」を読む項目だけが使う。
-    const celestialBodies = this.ephemeris.celestialBodiesAt(simTime);
-    const displayCelestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
+    const celestialBodies = this.celestialSystem.celestialBodiesAt(simTime);
+    const displayCelestialBodies = this.celestialSystem.celestialBodiesAt(displayTime);
     const visibilityPolicy = new MapVisibilityPolicy(
-      this.ephemeris,
+      this.celestialSystem,
       this.cameraSystem.bodyClassToggles,
       focusId,
-      this.nearbyTracker.membersAt(this.ephemeris, this.cameraSystem.activeCameraPos, displayCelestialBodies),
+      this.nearbyTracker.membersAt(
+        this.celestialSystem.ephemeris, this.cameraSystem.activeCameraPos, displayCelestialBodies),
     );
     this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
       displayTime, focusId, this.cameraSystem.bodyClassToggles,
       this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
-    this.navTarget.update(this.activePlayers.current, this.entities, this.ephemeris, displayWindow, this.frameAnchors);
+    this.navTarget.update(
+      this.activePlayers.current, this.entities, this.celestialSystem.ephemeris, displayWindow, this.frameAnchors);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;
@@ -163,7 +164,8 @@ export class MapPickables {
 
     // 太陽系順の並べ替え基準。恒星の無いレジストリでは undefined のまま(呼び出し側が
     // 自機距離へ委譲する)。
-    const starPos = this.ephemeris.starId !== null ? this.ephemeris.positionOf(this.ephemeris.starId, displayTime) : null;
+    const star = this.celestialSystem.star;
+    const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
     if (starPos) for (const item of this.candidateItems) item.distanceFromStar = len(sub(item.pos, starPos));
 
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
@@ -177,7 +179,7 @@ export class MapPickables {
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。天体の detail は一覧の行には表示されないが、
       // PhysicalObjectListOrder.matches() の検索が「名前・補助表示文字列」として読む
       // (DEVELOP/SPEC/MAP.md §10)ため、他種別と同じく組み立てておく。
-      const status = item.kind === 'ship' ? `${approaching ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'fuel' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'base' ? fmtDist(d) : item.kind === 'body' ? `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(item.pos, displayCelestialBodies).id)}` : item.detail;
+      const status = item.kind === 'ship' ? `${approaching ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'fuel' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'base' ? fmtDist(d) : item.kind === 'body' ? `${fmtDist(d)} · ${this.celestialSystem.nameOf(strongestAttractor(item.pos, displayCelestialBodies).id)}` : item.detail;
       item.detail = status;
       item.distance = d;
       item.approaching = approaching;
@@ -186,7 +188,7 @@ export class MapPickables {
       // 判定は最強天体から親を辿るぶん高価なので、読まれない天体候補では省く。
       item.inFocusedSystem = item.kind === 'body'
         ? undefined
-        : isPositionInFocusedSystem(this.ephemeris, focusId, item.pos, displayCelestialBodies);
+        : isPositionInFocusedSystem(this.celestialSystem.ephemeris, focusId, item.pos, displayCelestialBodies);
     }
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
@@ -197,7 +199,7 @@ export class MapPickables {
     // ピック対象から除く。
     for (const item of this.candidateItems) {
       const included = item.kind === 'player'
-        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.ephemeris, focusId, item.pos, displayCelestialBodies)
+        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.celestialSystem.ephemeris, focusId, item.pos, displayCelestialBodies)
         : item.kind === 'body'
           ? true
           : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, displayCelestialBodies);

@@ -20,7 +20,7 @@ import { PhysicalObjectListPanel } from '../hud/panels/physical-object-list-pane
 import type { Input } from '../input/input';
 import { pickRadiusSq } from '../input/pointer-precision';
 import { EntityManager } from '../simulation/entity-manager';
-import { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
 import { PlanEditor } from '../plan/plan-editor';
@@ -105,7 +105,7 @@ export class MapContextActions {
   constructor(
     private readonly hud: Hud,
     private readonly entities: EntityManager,
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
     editor: PlanEditor,
@@ -120,12 +120,12 @@ export class MapContextActions {
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.pickableMenu.run(act, target);
-    this.propertyRows = new MapPropertyRows(entities, activePlayers, ephemeris, navTarget);
+    this.propertyRows = new MapPropertyRows(entities, activePlayers, celestialSystem, navTarget);
     this.pickableMenu = new MapPickableMenu(
-      hud, entities, ephemeris, navTarget, cameraSystem, editor, simSpeedManager, pauseMenu, pickables,
+      hud, entities, celestialSystem, navTarget, cameraSystem, editor, simSpeedManager, pauseMenu, pickables,
       activePlayers, frameControls, activeStage, (target) => this.expandedBaseWindowKey === this.windowKey(target),
     );
-    this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, ephemeris);
+    this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialSystem.ephemeris);
     // 一覧の行は隠れている対象でも操作できる(SPEC/MAP.md §10) — pickable によるマップ上の
     // 衝突判定はマーカーのヒットテストにだけ適用され、一覧からの id 一致には適用しない。
     this.physicalObjectListPanel.onFocus = (id) => {
@@ -133,7 +133,8 @@ export class MapContextActions {
     };
     this.physicalObjectListPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target && this.navTarget.canTarget(id, this.entities, this.ephemeris, this.pickables.lastSimTime)) {
+      const ephemeris = this.celestialSystem.ephemeris;
+      if (target && this.navTarget.canTarget(id, this.entities, ephemeris, this.pickables.lastSimTime)) {
         this.navTarget.toggleTarget(id, target.name);
       }
     };
@@ -494,7 +495,8 @@ export class MapContextActions {
       // 親とする — 親が無ければ(恒星、もしくは主天体が未登録)undefined のままにして根として扱う。
       const parentOf = new Map<string, string>();
       for (const l of this.cameraSystem.focusMarkers.allLabels) {
-        const parent = l.isLagrange ? lagrangeParentId(l.id) : this.ephemeris.motionOf(l.id).primary?.id ?? null;
+        const parent = l.isLagrange
+          ? lagrangeParentId(l.id) : this.celestialSystem.bodyOf(l.id).motion.primary?.id ?? null;
         if (parent !== null) parentOf.set(l.id, parent);
       }
       this.lastFocusId = focusTargetId(this.cameraSystem.mapCamera.focus);
@@ -574,8 +576,8 @@ export class MapContextActions {
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
     return {
-      title, subtitle, icon: pickGlyph(target.kind, target.id, this.ephemeris), rows: [], items,
-      relatedItems: this.relatedItemsFor(target, this.ephemeris.celestialBodiesAt(simTime)),
+      title, subtitle, icon: pickGlyph(target.kind, target.id, this.celestialSystem.ephemeris), rows: [], items,
+      relatedItems: this.relatedItemsFor(target, this.celestialSystem.celestialBodiesAt(simTime)),
       relatedTitle: this.relatedTitleFor(target),
       onRename: this.renameHandlerFor(target),
     };
@@ -636,13 +638,13 @@ export class MapContextActions {
         onContextMenu: (clientX, clientY) => this.openPartPropertyWindow(ship, part, clientX, clientY),
       }));
     }
-    if (target.kind !== 'body' || LAGRANGE_ID.test(target.id) || !(target.id in this.ephemeris.registry)) return [];
+    if (target.kind !== 'body' || LAGRANGE_ID.test(target.id) || !this.celestialSystem.has(target.id)) return [];
     const related: { item: MapPickable; label: string }[] = [];
     for (const item of this.pickables.pickables) {
       if (item.id === target.id) continue;
       let isOrbiting = false;
       if (item.kind === 'body') {
-        isOrbiting = bodyParentId(this.ephemeris, item.id) === target.id;
+        isOrbiting = bodyParentId(this.celestialSystem, item.id) === target.id;
       } else {
         const state = this.stateOfPickable(item);
         isOrbiting = state !== null && orbitingAttractorOf(state, celestialBodies)?.id === target.id;
