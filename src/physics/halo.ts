@@ -12,7 +12,7 @@
 // haloState/lissajousState が返す位置・速度は一次の線形解にとどまる。またゲームの積分器は
 // 地球中心二体 + J2 + 抗力 + 日月三体であって制限三体問題そのものではないため、ここで返した
 // 状態を実際にゲーム内で積分すると軌道はドリフトする。
-import { Ephemeris } from './ephemeris';
+import { OrbitingMotion } from './celestial-motion';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from '../math/vec3';
 import { Vec3Tuple } from './cr3bp';
@@ -84,23 +84,21 @@ export function collinearLocalToBarycentric(params: CollinearParams, local: Vec3
 }
 
 // 指定した副天体・L点における共線点まわりの回転局所基底と線形化パラメータを組み立てる。
-// 位置・回転フレームは ephemeris.ts の既存 API から取得し、質量比・距離比だけをここで
-// 計算する。gamma は ephemeris.ts が内部に持つ近似値を公開していないため、公開済みの
+// 位置・回転フレームは副天体の運動(CelestialMotion)から取得し、質量比・距離比だけをここで
+// 計算する。gamma は運動側が内部に持つ近似値を公開していないため、公開済みの
 // L点座標から逆算して一貫性を取る。
-export function collinearFrame(secondary: string, point: CollinearPoint, t: number, ephemeris: Ephemeris): CollinearFrame {
-  const motion = ephemeris.motionOf(secondary);
-  const primaryMotion = motion.primary;
-  if (primaryMotion === null) throw new Error(`collinearFrame: ${secondary} に主星が無いレジストリでは共線点は定義できない`);
-  const primary = primaryMotion.id;
-  const primaryPos = ephemeris.positionOf(primary, t);
-  const secondaryPos = ephemeris.positionOf(secondary, t);
-  const omega = ephemeris.orbitFrameRotationAt(secondary, t).omega;
+export function collinearFrame(secondary: OrbitingMotion, point: CollinearPoint, t: number): CollinearFrame {
+  const primaryMotion = secondary.primary;
+  if (primaryMotion === null) throw new Error(`collinearFrame: ${secondary.id} に主星が無い星系では共線点は定義できない`);
+  const primaryPos = primaryMotion.stateAt(t).r;
+  const secondaryPos = secondary.stateAt(t).r;
+  const omega = secondary.orbitFrameRotationAt(t).omega;
   // 回転フレームの omega は公転面法線まわりの公転成分と昇交点歳差成分の和になりうる
   // (kepler-orbit.ts 参照)ので、omega の向きそのものが公転面法線と一致するとは限らない。
   // 歳差の有無によらず正しい公転面法線を orbitNormalAt から直接取る。
-  const normal = ephemeris.orbitNormalAt(secondary, t);
-  const mu = motion.def.mu / (primaryMotion.def.mu + motion.def.mu);
-  const origin = ephemeris.lagrangeAt(secondary, t)[point];
+  const normal = secondary.orbitNormalAt(t);
+  const mu = secondary.def.mu / (primaryMotion.def.mu + secondary.def.mu);
+  const origin = secondary.lagrangeAt(t)[point];
 
   const rVec = sub(secondaryPos, primaryPos);
   const r = len(rVec);
@@ -119,7 +117,6 @@ export function collinearFrame(secondary: string, point: CollinearPoint, t: numb
 }
 
 export interface LissajousParams {
-  readonly secondary: string;
   readonly point: CollinearPoint;
   readonly ax: number; // 面内振幅 [m]
   readonly az: number; // 面外振幅 [m]
@@ -128,7 +125,6 @@ export interface LissajousParams {
 }
 
 export interface HaloParams {
-  readonly secondary: string;
   readonly point: CollinearPoint;
   readonly az: number; // 面外振幅 [m](面内振幅は三次の振幅拘束から決まる)
   readonly phase?: number; // 面内位相 [rad]、既定 0
@@ -307,8 +303,8 @@ export function richardsonAmplitudeX(c: RichardsonCoefficients, az: number): num
 // 指定したラグランジュ点(副天体 secondary の L1/L2)まわりのリサジュー軌道初期状態。
 // 面内振幅 ax・面外振幅 az は独立に指定でき、面内は線形振動数 λ、面外は独立な線形
 // 振動数 ωz で振動する。
-export function lissajousState(t: number, ephemeris: Ephemeris, params: LissajousParams): KinematicState {
-  const frame = collinearFrame(params.secondary, params.point, t, ephemeris);
+export function lissajousState(t: number, secondary: OrbitingMotion, params: LissajousParams): KinematicState {
+  const frame = collinearFrame(secondary, params.point, t);
   return centerManifoldState(
     t, frame, params.ax, params.az, params.phase ?? 0, params.psi ?? 0, frame.omegaZ,
   );
@@ -316,8 +312,8 @@ export function lissajousState(t: number, ephemeris: Ephemeris, params: Lissajou
 
 // 指定したラグランジュ点まわりのハロー軌道初期状態。面内振幅は面外振幅 az から三次の
 // 振幅拘束で決まる(az=0 でも面内振幅は下限値を取り、そこから単調に増える)。
-export function haloState(t: number, ephemeris: Ephemeris, params: HaloParams): KinematicState {
-  const frame = collinearFrame(params.secondary, params.point, t, ephemeris);
+export function haloState(t: number, secondary: OrbitingMotion, params: HaloParams): KinematicState {
+  const frame = collinearFrame(secondary, params.point, t);
   const ax = haloAmplitudeX(frame, params.az);
   // 拘束が成り立つ = 面内・面外の振動数が一致するので、面外も面内振動数 λ で駆動する。
   // 面外位相を π/2 ずらして面内の x と直交させ、閉じた三次元ループにする。

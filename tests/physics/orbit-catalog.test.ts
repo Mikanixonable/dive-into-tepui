@@ -1,7 +1,7 @@
 // 焼き込んだ周期軌道カタログの回帰テスト。カタログは JPL の初期条件を種に、その系の質量比で
 // 1周期積分して作られる。ここで確かめるのは「焼き込まれた形が本当に CR3BP の周期軌道か」と
 // 「実行時 API がそれを回転基底へ正しく載せるか」の2点で、値そのものは JPL 側が正本。
-import { solarSystemEphemeris } from './test-helpers';
+import { orbitingMotionOf, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
@@ -20,7 +20,7 @@ const CATALOG = JSON.parse(
 ) as OrbitCatalog;
 
 export function register(): void {
-  const ephemeris = solarSystemEphemeris();
+  const { motions: MOTIONS } = solarSystemParts();
   const t = 1e6;
   const systemIds = Object.keys(CATALOG.systems) as CatalogSystemId[];
 
@@ -117,11 +117,12 @@ export function register(): void {
 
     // 実行時 API が返す点列は、その系の回転基底に載っていなければならない。
     test(`orbit-catalog: ${systemId} runtime loops sit on the rotating frame`, () => {
-      const frame = rotatingFrame(t, ephemeris, systemId, system.mu);
+      const secondary = orbitingMotionOf(MOTIONS, guideSecondary(systemId));
+      const frame = rotatingFrame(t, secondary, system.mu);
       if (frame === null) return; // レジストリにその系の天体が無い
       for (const id of familyIds.slice(0, 6)) {
         const family: CatalogFamily = system.families[id]!;
-        const loop = catalogLoop(t, ephemeris, system, systemId, id, 0.5);
+        const loop = catalogLoop(t, secondary, system, id, 0.5);
         assert.ok(loop !== null, `${id}: ガイド線が組めない`);
         assert.ok(loop.shape.kind === 'knots', `${id}: 焼き込み族は節点列で返るはず`);
         const { us, positions, tangents } = loop.shape;

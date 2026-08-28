@@ -1,7 +1,7 @@
 // マップのガイドとして描く軌道の曲線(ECI [m])。焼き込みカタログ(orbit-catalog.ts)の
 // 無次元形状を、その瞬間の実際の天体位置・公転面から組んだ回転座標系へ載せて返す。
 // リサジュー軌道だけは連続な族として焼き込まないので、Richardson の解析近似から直に組む。
-import { Ephemeris } from './ephemeris';
+import { CelestialMotion, OrbitingMotion } from './celestial-motion';
 import { Vec3Tuple } from './cr3bp';
 import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
 import {
@@ -63,22 +63,21 @@ interface RotatingFrame {
   readonly unit: number;
 }
 
-// その瞬間の天体位置から系の回転基底を組む。レジストリに天体が無ければ null。
+// その瞬間の天体位置から系の回転基底を組む。副天体の解決(guideSecondary の id を星系から
+// 引くこと)は呼び出し側の仕事で、主星を持たない副天体では null。
 // 焼き込みは重心原点なので、原点も重心へ置く(質量比はカタログが持つ値を使う)。
-export function rotatingFrame(t: number, ephemeris: Ephemeris, system: CatalogSystemId, mu: number): RotatingFrame | null {
-  const [primary, secondary] = SYSTEM_BODIES[system];
-  if (ephemeris.registry[secondary] === undefined) return null;
-  if (ephemeris.registry[primary] === undefined) return null;
-  if (ephemeris.motionOf(secondary).primary === null) return null;
+export function rotatingFrame(t: number, secondary: OrbitingMotion, mu: number): RotatingFrame | null {
+  const primaryMotion = secondary.primary;
+  if (primaryMotion === null) return null;
 
-  const primaryPos = ephemeris.positionOf(primary, t);
-  const secondaryPos = ephemeris.positionOf(secondary, t);
+  const primaryPos = primaryMotion.stateAt(t).r;
+  const secondaryPos = secondary.stateAt(t).r;
   const rVec = sub(secondaryPos, primaryPos);
   const unit = len(rVec);
   if (!(unit > 0)) return null;
 
   const xHat = scale(rVec, 1 / unit);
-  const zHat = norm(ephemeris.orbitNormalAt(secondary, t));
+  const zHat = norm(secondary.orbitNormalAt(t));
   const yHat = norm(cross(zHat, xHat));
   // 重心は主天体から副天体へ向かって mu の位置にある。
   const origin = add(primaryPos, scale(xHat, mu * unit));
@@ -129,12 +128,12 @@ function bracketMember(family: CatalogFamily, s: number): { lo: number; hi: numb
 // 族の s の位置にある軌道を、ECI [m] のガイド線として返す。s は 0 が族の始端、1 が終端で、
 // 範囲外は端で頭打ちになる。系や族がカタログに無い、あるいはレジストリに天体が無ければ null。
 export function catalogLoop(
-  t: number, ephemeris: Ephemeris, catalog: CatalogSystem, system: CatalogSystemId,
+  t: number, secondary: OrbitingMotion, catalog: CatalogSystem,
   familyId: string, s: number,
 ): GuideLoop | null {
   const family = catalog.families[familyId];
   if (family === undefined || family.members.length === 0) return null;
-  const frame = rotatingFrame(t, ephemeris, system, catalog.mu);
+  const frame = rotatingFrame(t, secondary, catalog.mu);
   if (frame === null) return null;
 
   const values = familyPoints(family);
@@ -197,15 +196,13 @@ function lerp(a: number, b: number, f: number): number {
 // R*gamma が数桁違うため、メートルではなく比で受け取ることでどの系でも同じ値が Richardson
 // 近似の妥当域(目安 0〜0.5)に収まる。
 export function lissajousLoop(
-  t: number, ephemeris: Ephemeris, system: CatalogSystemId, point: GuidePoint,
+  t: number, secondary: OrbitingMotion, point: GuidePoint,
   inPlane: number, outOfPlane: number, inPlanePhase: number, outOfPlanePhase: number,
   cycles: number,
 ): GuideLoop | null {
-  const secondary = SYSTEM_BODIES[system][1];
-  if (ephemeris.registry[secondary] === undefined) return null;
-  if (ephemeris.motionOf(secondary).primary === null) return null;
+  if (secondary.primary === null) return null;
   // 振幅に依らない係数は1度だけ求め、位相だけを u から動かす。
-  const frame: CollinearFrame = collinearFrame(secondary, point, t, ephemeris);
+  const frame: CollinearFrame = collinearFrame(secondary, point, t);
   const coeffs = richardsonCoefficients(frame);
   const deltaN = point === 'L2' ? -1 : 1;
   const unit = frame.r * frame.gamma;
@@ -239,34 +236,31 @@ function elementsLoop(elements: OrbitalElements | null, centerEci: Vec3): GuideL
   return { shape: { kind: 'analytic', positionAt }, revolutions: 1 };
 }
 
-// 太陽同期準回帰軌道のガイド線。地球がレジストリに無ければ null。
+// 太陽同期準回帰軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
 export function sunSyncRepeatGroundTrackLoop(
-  t: number, ephemeris: Ephemeris, repeatDays: number, revsPerRepeat: number,
+  t: number, earth: CelestialMotion, repeatDays: number, revsPerRepeat: number,
 ): GuideLoop | null {
-  if (!('earth' in ephemeris.registry)) return null;
-  return elementsLoop(sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat), ephemeris.positionOf('earth', t));
+  return elementsLoop(sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat), earth.stateAt(t).r);
 }
 
 // 太陽方向の昇交点赤経(elements.ts の orbitPlaneBasis の規約: raan=0 で昇交点は +X 方向、
 // raan を Y 軸まわりに正転すると昇交点は -Z 側へ回る)を、その瞬間の太陽方向から逆算する。
 export function dawnDuskGuideLoop(
-  t: number, ephemeris: Ephemeris, repeatDays: number, revsPerRepeat: number, localTime: LocalTime,
+  t: number, earth: CelestialMotion, sunDirFrom: (r: Vec3, t: number) => Vec3,
+  repeatDays: number, revsPerRepeat: number, localTime: LocalTime,
 ): GuideLoop | null {
-  if (!('earth' in ephemeris.registry)) return null;
-  const earthPos = ephemeris.positionOf('earth', t);
-  const sunDir = ephemeris.sunDirFrom(earthPos, t);
+  const earthPos = earth.stateAt(t).r;
+  const sunDir = sunDirFrom(earthPos, t);
   const sunRaanDeg = (Math.atan2(-sunDir.z, sunDir.x) * 180) / Math.PI;
   return elementsLoop(dawnDuskElements(repeatDays, revsPerRepeat, localTime, sunRaanDeg), earthPos);
 }
 
-// モルニヤ軌道のガイド線。地球がレジストリに無ければ null。
-export function molniyaGuideLoop(t: number, ephemeris: Ephemeris, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
-  if (!('earth' in ephemeris.registry)) return null;
-  return elementsLoop(molniyaElements(perigeeAltitude, raanDeg), ephemeris.positionOf('earth', t));
+// モルニヤ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
+export function molniyaGuideLoop(t: number, earth: CelestialMotion, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
+  return elementsLoop(molniyaElements(perigeeAltitude, raanDeg), earth.stateAt(t).r);
 }
 
-// ツンドラ軌道のガイド線。地球がレジストリに無ければ null。
-export function tundraGuideLoop(t: number, ephemeris: Ephemeris, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
-  if (!('earth' in ephemeris.registry)) return null;
-  return elementsLoop(tundraElements(perigeeAltitude, raanDeg), ephemeris.positionOf('earth', t));
+// ツンドラ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
+export function tundraGuideLoop(t: number, earth: CelestialMotion, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
+  return elementsLoop(tundraElements(perigeeAltitude, raanDeg), earth.stateAt(t).r);
 }

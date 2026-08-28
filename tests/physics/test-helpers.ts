@@ -3,7 +3,6 @@ import * as assert from 'node:assert/strict';
 import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
 import { CelestialBodyWindows } from '../../src/physics/celestial-body-windows';
 import { CelestialMotion, OrbitingMotion, PhaseOffsets } from '../../src/physics/celestial-motion';
-import { Ephemeris } from '../../src/physics/ephemeris';
 import { FrameRotation } from '../../src/physics/kepler-orbit';
 import { ReferenceFrames } from '../../src/physics/reference-frames';
 import { EPOCH_T_OFFSET } from '../../src/physics/solar-system/constants';
@@ -11,18 +10,6 @@ import { SolarSystemMotions, solarSystemMotions } from '../../src/physics/solar-
 import { SECONDS_PER_DAY } from '../../src/physics/time';
 import { Vec3, cross, len, scale, sub, v3 } from '../../src/math/vec3';
 import { qRotate } from '../../src/physics/attitude';
-
-// 現実の太陽系を地球原点で組んだ天体暦。phases は天体ごとの平均黄経の初期位相 [rad]。
-// absoluteSource を渡すと、その有効期間だけ高精度暦パック経路を通る。
-export function solarSystemEphemeris(
-  phases: PhaseOffsets = {},
-  epochOffsetSec: number = EPOCH_T_OFFSET,
-  absoluteSource: AbsoluteEphemeris | null = null,
-  epochJdTdb: number = 2451545 + epochOffsetSec / SECONDS_PER_DAY,
-): Ephemeris {
-  const motions = solarSystemMotions('earth', phases, epochOffsetSec, absoluteSource, epochJdTdb);
-  return new Ephemeris(motions.all, 'earth', phases);
-}
 
 // 地球原点で組んだ現実の太陽系。天体1体ずつの運動と、系レベルの天体一覧の窓・座標系。
 export type SolarSystemParts = {
