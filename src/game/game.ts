@@ -1,6 +1,5 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
-import { FloatingOrigin } from './floating-origin';
 import { v3 } from '../math/vec3';
 import type { PerfCounts } from '../perf-meter';
 import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
@@ -525,10 +524,6 @@ export class Game {
     // update() が確定させた表示窓をそのまま読める。
     const displayWindow = this.displayWindowManager.current;
     this.viewBadge.sync(this.activeStage.stageClass.selectLabel, this.viewBadgeContext());
-    // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
-    // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
-    // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
-    const fo = new FloatingOrigin(this.cameraSystem.activeCameraPos, activeControllable?.state.v ?? v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
@@ -540,8 +535,9 @@ export class Game {
     // sync フェーズの frameTransformAt 呼び出しも同じ表示時刻の celestialBodies を見るように揃える。
     this.frameAnchors.update(displayCelestialBodies);
 
-    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
-    this.cameraSystem.sync(fo);
+    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
+    // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
+    const fo = this.cameraSystem.sync(activeControllable?.state.v ?? v3());
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;

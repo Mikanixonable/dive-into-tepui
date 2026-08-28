@@ -4,7 +4,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../physics/solar-system';
 import { Vec3, add, scale, v3, len, sub } from '../../math/vec3';
 import { fmtMarkerDist } from '../hud/utils';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
 import { Ship } from '../game-entity/ship';
 import { Bullet } from '../game-entity/bullet';

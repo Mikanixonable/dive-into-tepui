@@ -5,7 +5,7 @@ import { Ephemeris } from '../physics/ephemeris';
 import type { FrameAnchorSource } from '../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
 import * as C from './const';
-import { FloatingOrigin } from './floating-origin';
+import { FloatingOrigin } from './camera/floating-origin';
 import type { GameEntity } from './game-entity/game-entity';
 import { Player } from './player/player';
 import { currentThemePalette } from './theme';
