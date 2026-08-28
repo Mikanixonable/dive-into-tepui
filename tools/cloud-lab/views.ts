@@ -5,10 +5,10 @@ import { directionFromEquirectUv } from '../../src/render/cloud/sphere-frame';
 import type { ClimateMap } from '../../src/render/cloud/climate-map';
 import type { CloudFieldTextures } from '../../src/render/cloud/cloud-field-textures';
 import type { WeatherModel } from '../../src/render/cloud/weather-model';
-import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
+import type { Vec2Node, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
-  | 'opticalDepth' | 'cloudTop'
+  | 'opaque' | 'opaqueByAltitude' | 'translucent'
   | 'pressure' | 'convergence' | 'wind' | 'upperWind' | 'lift' | 'temperature' | 'humidity' | 'upperHumidity'
   | 'meanTemperature' | 'meanHumidity' | 'elevation';
 
@@ -18,10 +18,12 @@ export type CloudLabView = {
   readonly color: (model: WeatherModel, climate: ClimateMap, fields: CloudFieldTextures) => Vec3Node;
 };
 
-// 表示値 0..1 へ写すときの目盛り。光学的厚みは 0..8、気圧は −40..+20 hPa、収束は ±2e-5 /s を
-// 0.5 中心に、上昇流は ±0.2 m/s を 0.5 中心に、温度は −40..40 °C、風は ±40 m/s を 0.5 中心の
-// R(東)G(北)に、速さを B に、標高は 0..8000 m。
-const OPTICAL_DEPTH_SPAN = 8;
+// 表示値 0..1 へ写すときの目盛り。不透明雲の光学的厚みは 0..16(高度別は低・中・高の 3 群を RGB に)、
+// 薄い雲は 0..1.5、気圧は −40..+20 hPa、収束は ±2e-5 /s を 0.5 中心に、上昇流は ±0.2 m/s を
+// 0.5 中心に、温度は −40..40 °C、風は ±40 m/s を 0.5 中心の R(東)G(北)に、速さを B に、
+// 標高は 0..8000 m。
+const OPAQUE_SPAN = 16;
+const TRANSLUCENT_SPAN = 1.5;
 const PRESSURE_MIN = -40;
 const PRESSURE_SPAN = 60;
 const CONVERGENCE_SPAN = 2e-5;
@@ -39,9 +41,21 @@ function windColor(wind: Vec2Node): Vec3Node {
   return vec3(wind.x.div(2 * WIND_SPAN).add(0.5), wind.y.div(2 * WIND_SPAN).add(0.5), length(wind).div(WIND_SPAN));
 }
 
+// 不透明雲のスラブ 0..3 と 4..7 の光学的厚み。
+function slabs(fields: CloudFieldTextures): [Vec4Node, Vec4Node] {
+  return [texture(fields.opaqueLowTexture, screenUV), texture(fields.opaqueHighTexture, screenUV)];
+}
+
 export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
-  { id: 'opticalDepth', label: '光学的厚み', color: (_m, _c, fields) => vec3(texture(fields.fieldTexture, screenUV).r.div(OPTICAL_DEPTH_SPAN)) },
-  { id: 'cloudTop', label: '雲頂', color: (_m, _c, fields) => vec3(texture(fields.fieldTexture, screenUV).g) },
+  { id: 'opaque', label: '不透明雲', color: (_m, _c, fields) => {
+    const [low, high] = slabs(fields);
+    return vec3(low.r.add(low.g).add(low.b).add(low.a).add(high.r).add(high.g).add(high.b).add(high.a).div(OPAQUE_SPAN));
+  } },
+  { id: 'opaqueByAltitude', label: '不透明雲(高度別)', color: (_m, _c, fields) => {
+    const [low, high] = slabs(fields);
+    return vec3(low.r.add(low.g).add(low.b), low.a.add(high.r).add(high.g), high.b.add(high.a)).div(OPAQUE_SPAN / 2);
+  } },
+  { id: 'translucent', label: '薄い雲', color: (_m, _c, fields) => vec3(texture(fields.translucentTexture, screenUV).r.div(TRANSLUCENT_SPAN)) },
   { id: 'pressure', label: '気圧', color: (model) => vec3(model.weatherAt(direction).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
   { id: 'convergence', label: '収束', color: (model) => vec3(model.weatherAt(direction).convergence.div(2 * CONVERGENCE_SPAN).add(0.5)) },
   { id: 'wind', label: '風', color: (model) => windColor(model.weatherAt(direction).wind) },
