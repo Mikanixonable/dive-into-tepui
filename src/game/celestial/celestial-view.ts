@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { CelestialBodyId } from '../../physics/celestial-body';
 import { Ephemeris } from '../../physics/ephemeris';
 import { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { apparentSizePx } from '../../math/projection';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
 import { len, sub } from '../../math/vec3';

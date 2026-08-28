@@ -9,7 +9,7 @@ import {
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
 } from '../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { CurveColorSampler } from '../../render/curve';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import type { RenderStyle } from '../../render/render-style';

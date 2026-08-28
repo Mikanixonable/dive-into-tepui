@@ -10,7 +10,7 @@ import { MapPickable } from '../map-pickable';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from './floating-origin';
 import * as C from '../const';
 import { Vec3, len, sub } from '../../math/vec3';
 import {
@@ -248,8 +248,12 @@ export class CameraSystem {
     }
   }
 
-  // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
-  sync(fo: FloatingOrigin): void {
+  // このフレームの描画原点を組み立て、視点状態をそれで補正してアクティブカメラへ反映し、
+  // 組み立てた原点を返す。原点(位置)はアクティブカメラの ECI 位置 — カメラ自身の位置成分を
+  // ほぼ0にしておかないと、遠方の描画対象が f32 の桁落ちでカメラの動きに合わせて振動する。
+  // 速度基準 velocityReference は相対速度で向きを決める描画が差し引く値で、原点とは別 concern。
+  sync(velocityReference: Vec3): FloatingOrigin {
+    const fo = new FloatingOrigin(this.activeCameraPos, velocityReference);
     const active = this.overviewMode ? this.mapCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ表示設定パネルとフォーカスラベルを表示する。
@@ -260,6 +264,7 @@ export class CameraSystem {
     } else {
       this.focusMarkers.hideLabels();
     }
+    return fo;
   }
 
   // アクティブカメラの画面投影関数を返す。
