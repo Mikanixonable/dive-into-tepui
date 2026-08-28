@@ -1,5 +1,5 @@
 // 雲の実験環境の画面。表示する量を選び、時刻を動かして、天気のモデルの写しを正距円筒で見る。
-import { CloudLabView } from './lab';
+import { CloudLabCanvas } from './lab';
 import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
 import { buildButtonRow, buildSlider, buildToggleField } from '../lab-controls';
 
@@ -21,24 +21,24 @@ declare global {
 
 // 器を起こし、操作部品を配線し、撮影の入口を window へ出す。
 async function init(): Promise<void> {
-  const view = await CloudLabView.create(document.getElementById('view') as HTMLCanvasElement);
+  const canvas = await CloudLabCanvas.create(document.getElementById('view') as HTMLCanvasElement);
 
   const entries = CLOUD_LAB_VIEWS.map((view) => [view.id, view.label] as const);
   const markView = buildButtonRow<CloudLabViewId>('views', entries, (id) => {
     markView(id);
-    view.show(id);
+    canvas.show(id);
   });
   const setSlider = buildSlider('time', '時刻', 0, MAX_HOURS, 0.1,
-    () => `${view.hours.toFixed(1)} h`, (hours) => view.setTime(hours));
+    () => `${canvas.hours.toFixed(1)} h`, (hours) => canvas.setTime(hours));
 
   let playing = false;
   let lastFrameMs = 0;
   // 再生中の 1 フレーム。実時間に比例して時刻を進め、上限で頭から繰り返す。
   const advance = (nowMs: number): void => {
     if (!playing) return;
-    const hours = (view.hours + ((nowMs - lastFrameMs) / 1000) * PLAY_HOURS_PER_SECOND) % MAX_HOURS;
+    const hours = (canvas.hours + ((nowMs - lastFrameMs) / 1000) * PLAY_HOURS_PER_SECOND) % MAX_HOURS;
     lastFrameMs = nowMs;
-    view.setTime(hours);
+    canvas.setTime(hours);
     setSlider(hours);
     requestAnimationFrame(advance);
   };
@@ -50,15 +50,15 @@ async function init(): Promise<void> {
     requestAnimationFrame(advance);
   });
 
-  markView(view.currentView);
-  setSlider(view.hours);
-  view.render();
+  markView(canvas.currentView);
+  setSlider(canvas.hours);
+  canvas.render();
 
   window.cloudLab = {
     views: CLOUD_LAB_VIEWS.map((view) => view.id),
-    show: (id) => { markView(id); view.show(id); },
-    setTime: (hours) => { view.setTime(hours); setSlider(hours); },
-    capture: () => view.capture(),
+    show: (id) => { markView(id); canvas.show(id); },
+    setTime: (hours) => { canvas.setTime(hours); setSlider(hours); },
+    capture: () => canvas.capture(),
   };
 }
 
