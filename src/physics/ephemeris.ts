@@ -14,19 +14,13 @@ import { KinematicState } from './kinematic-state';
 import { TimeCacheStats } from './time-ring';
 import { Vec3, norm, sub, v3 } from '../math/vec3';
 
-// 全天体の軌道評価時刻へ一律に足す定数 [s]。要素の元期は J2000 のままにしたうえで、
-// simTime = 0 をゲーム開始にふさわしい瞬間 — 地球から見て太陽が +X 方向(昼側)にある、
-// すなわち地球の日心黄経が π になる瞬間 — へ合わせる。
-// 導出: 地球の平均黄経 L(t) = l0 + L̇·t を L = 180° と置いて解く。
-//   (180° − 100.46457166°) / 35999.37244981 [deg/Cy] × JULIAN_CENTURY = 6.9721972e6 s。
-// 中心差(真黄経と平均黄経の差)は地球の e = 0.0167 で高々 ±1.9° あるが、この定数は
-// 見た目の昼夜を合わせるためのアンカーなので平均黄経で足りる。
-export const EPOCH_T_OFFSET = 6972197.1872752225;
+// 定義は physics/solar-system/constants.ts へ移した。既存の import 経路のための再輸出。
+export { EPOCH_T_OFFSET } from './solar-system/constants';
 
 export class Ephemeris {
   private readonly motionsById: Readonly<Partial<Record<string, CelestialMotion>>>;
 
-  private readonly referenceFrames: ReferenceFrames;
+  readonly referenceFrames: ReferenceFrames;
   private readonly windows: CelestialBodyWindows;
 
   // 主星。恒星を持たない星系では null(輻射源・影の計算がそもそも無意味になる)。
