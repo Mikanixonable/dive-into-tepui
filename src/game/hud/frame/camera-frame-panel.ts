@@ -1,13 +1,13 @@
 // マップモードの「カメラ」パネル。カメラの注視対象・回転系・平行/透視投影・画角・基準面設定を担当する。
-import type { Ephemeris } from '../../../physics/ephemeris';
 import { FrameRole, frameRoleOf } from '../../../physics/frame';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 import * as C from '../../const';
 import { CameraReferencePlane, CameraReferenceView, MapCamera } from '../../camera/map-camera';
 import { focusTargetId } from '../../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../widgets';
-import { celestialBodyName, frameRoleName, rotationSourceLabel } from './frame-labels';
+import { frameRoleName, rotationSourceLabel } from './frame-labels';
 import type { MapPickable } from '../../pickable/map-pickable';
 import type { OverlayManager } from '../overlay-manager';
 import { buildPanel } from './frame-controls';
@@ -37,18 +37,18 @@ export class CameraFramePanel {
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
-    ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     private readonly mapCamera: MapCamera,
     overlayManager: OverlayManager,
   ) {
     this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
 
-    this.cameraCenterZone = new AnchorZone(popupRoot, '基準', ephemeris, '固定を解除', overlayManager);
+    this.cameraCenterZone = new AnchorZone(popupRoot, '基準', celestialSystem, '固定を解除', overlayManager);
     this.cameraCenterZone.element.classList.add('hud-frame-origin-zone');
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
     this.panel.appendChild(this.cameraCenterZone.element);
 
-    this.cameraRotationZone = new RotationZone('回転追従', ephemeris);
+    this.cameraRotationZone = new RotationZone('回転追従', celestialSystem);
     this.cameraRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.cameraRotationZone.onSelect = (rotatingWith) => mapCamera.setCameraRotation(rotatingWith);
     this.panel.appendChild(this.cameraRotationZone.element);
@@ -108,11 +108,13 @@ export class CameraFramePanel {
   private cameraSummaryText(): string {
     const camId = focusTargetId(this.mapCamera.focus);
     const camRole = camId === undefined ? null : frameRoleOf(camId);
-    const camCenter = camId === undefined ? '固定なし' : camRole !== null ? frameRoleName(camRole) : celestialBodyName(camId);
+    const camCenter = camId === undefined ? '固定なし'
+      : camRole !== null ? frameRoleName(camRole) : this.celestialSystem.nameOf(camId);
     const camRot = this.mapCamera.cameraFrame.rotatingWith;
     const modeText = this.mapCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
     const projectionText = this.mapCamera.projection === 'orthographic' ? '平行' : '透視';
-    return `基準: ${camCenter}・${rotationSourceLabel(camRot)} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
+    const rotationText = rotationSourceLabel(this.celestialSystem, camRot);
+    return `基準: ${camCenter}・${rotationText} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
   }
 
   // パネルの表示と各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
