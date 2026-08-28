@@ -11,10 +11,10 @@ import type {
 } from './protein-schema';
 import { ProteinCombatState } from './protein-combat-state';
 import {
+  proteinAnchorOffset,
   proteinAnchorResidues,
   proteinLocalImpactPoint,
   proteinSiteWorldPosition,
-  setProteinAnchorPosition,
 } from './protein-anchors';
 import {
   ProteinMotionController,
@@ -39,17 +39,13 @@ interface ProteinBondVisual {
 
 /** Owns gameplay state and display-only ANM/OU deformation for one enemy. */
 export class ProteinRuntime {
-  readonly combat: ProteinCombatState;
-  readonly motion: ProteinMotionAsset;
-  readonly controller: ProteinMotionController;
-  readonly motionBinding: ProteinMotionBinding;
+  public readonly combat: ProteinCombatState;
+  private readonly motion: ProteinMotionAsset;
+  private readonly controller: ProteinMotionController;
+  public readonly motionBinding: ProteinMotionBinding;
   private readonly root: THREE.Object3D;
-  private readonly siteMeshes = new Map<string, THREE.Mesh>();
-  private readonly modificationMeshes = new Map<string, THREE.Mesh>();
   private readonly baseSitePositions = new Map<string, THREE.Vector3>();
-  private readonly baseModificationPositions = new Map<string, THREE.Vector3>();
   private readonly siteResidueGroups = new Map<string, readonly number[]>();
-  private readonly modificationResidueGroups = new Map<string, readonly number[]>();
   private trackedResidues: readonly number[] = [];
   private readonly trackedResidueOffsets: Float32Array;
   private readonly bondVisuals: ProteinBondVisual[] = [];
@@ -61,7 +57,7 @@ export class ProteinRuntime {
   private lastCpuMs = 0;
   private lastUploadBytes = 0;
 
-  constructor(
+  public constructor(
     root: THREE.Object3D,
     asset: ProteinAssetDefinition,
     motion: ProteinMotionAsset,
@@ -85,13 +81,13 @@ export class ProteinRuntime {
     this.rebuildVisuals();
   }
 
-  get asset(): ProteinAssetDefinition { return this.combat.asset; }
-  get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
-  get lod(): ProteinMotionLod { return this.currentLod; }
-  get cpuMs(): number { return this.lastCpuMs; }
-  get uploadBytes(): number { return this.lastUploadBytes; }
+  private get asset(): ProteinAssetDefinition { return this.combat.asset; }
+  public get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
+  public get lod(): ProteinMotionLod { return this.currentLod; }
+  public get cpuMs(): number { return this.lastCpuMs; }
+  public get uploadBytes(): number { return this.lastUploadBytes; }
 
-  clearVisuals(): void {
+  public clearVisuals(): void {
     for (const child of [...this.root.children]) {
       if (child.userData[RUNTIME_VISUAL] !== true) continue;
       child.traverse((nested) => {
@@ -106,52 +102,19 @@ export class ProteinRuntime {
       });
       this.root.remove(child);
     }
-    this.siteMeshes.clear();
-    this.modificationMeshes.clear();
     this.baseSitePositions.clear();
-    this.baseModificationPositions.clear();
     this.siteResidueGroups.clear();
-    this.modificationResidueGroups.clear();
     this.bondVisuals.length = 0;
   }
 
-  rebuildVisuals(): void {
+  public rebuildVisuals(): void {
     this.clearVisuals();
     const scale = this.asset.coordinateScale;
     for (let index = 0; index < this.asset.sites.length; index += 1) {
       const site = this.asset.sites[index]!;
       const [x, y, z] = site.position;
-      const position = new THREE.Vector3(x * scale, y * scale, z * scale);
-      const material = new THREE.MeshStandardMaterial({
-        color: site.type === 'active' ? 0x55eaff : site.type === 'interface' ? 0x887cff : 0xffbb55,
-        emissive: site.type === 'active' ? 0x007caa : 0x25104c,
-        emissiveIntensity: 0.55, roughness: 0.22, metalness: 0.5,
-        transparent: true, opacity: 0.9, side: THREE.DoubleSide,
-      });
-      const mesh = new THREE.Mesh(new THREE.ConeGeometry(Math.max(0.36, site.radius * scale * 0.18), 0.16, 3), material);
-      mesh.position.copy(position);
-      mesh.renderOrder = 4;
-      mesh.userData[RUNTIME_VISUAL] = true;
-      mesh.userData.proteinSiteId = site.id;
-      this.root.add(mesh);
-      this.siteMeshes.set(site.id, mesh);
-      this.baseSitePositions.set(site.id, position);
+      this.baseSitePositions.set(site.id, new THREE.Vector3(x * scale, y * scale, z * scale));
       this.siteResidueGroups.set(site.id, proteinAnchorResidues(site, index, this.motion, this.motion.bindings.siteResidues));
-    }
-    for (let index = 0; index < this.asset.modificationSlots.length; index += 1) {
-      const slot = this.asset.modificationSlots[index]!;
-      const [x, y, z] = slot.position;
-      const material = new THREE.MeshStandardMaterial({
-        color: 0xffd84a, emissive: 0xff6a00, emissiveIntensity: 1.1,
-        roughness: 0.18, metalness: 0.7,
-      });
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.75, 12, 8), material);
-      mesh.position.set(x * scale, y * scale, z * scale);
-      mesh.userData[RUNTIME_VISUAL] = true;
-      this.root.add(mesh);
-      this.modificationMeshes.set(slot.id, mesh);
-      this.baseModificationPositions.set(slot.id, mesh.position.clone());
-      this.modificationResidueGroups.set(slot.id, proteinAnchorResidues(slot, index, this.motion, this.motion.bindings.modificationResidues));
     }
     for (const bond of this.asset.bonds) {
       const from = this.combat.site(bond.from);
@@ -168,15 +131,12 @@ export class ProteinRuntime {
       this.root.add(line);
       this.bondVisuals.push({ line, fromSiteId: bond.from, toSiteId: bond.to });
     }
-    this.trackedResidues = [...new Set([
-      ...this.siteResidueGroups.values(),
-      ...this.modificationResidueGroups.values(),
-    ].flat())];
+    this.trackedResidues = [...new Set([...this.siteResidueGroups.values()].flat())];
   }
 
   /** 投影サイズから LOD をヒステリシス付きで更新する。marker になったフレームは
    * 重い更新をしないので、CPU/upload の計測も正直に 0 へ戻す。 */
-  updateLod(projectedDiameterPx: number): ProteinMotionLod {
+  public updateLod(projectedDiameterPx: number): ProteinMotionLod {
     this.currentLod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.currentLod);
     if (this.currentLod === 'marker') {
       this.lastCpuMs = 0;
@@ -188,7 +148,7 @@ export class ProteinRuntime {
   /** モード係数を更新して GPU へ送り、アンカーが使う残基だけを CPU 側で投影する。
    * `vibrationEnabled` が false の間は marker LOD 相当のモード係数(全ゼロ)を使い、
    * 静止した構造で表示する。 */
-  updateVisual(displayTime: number, vibrationEnabled = true): void {
+  public updateVisual(displayTime: number, vibrationEnabled = true): void {
     const cpuStart = performance.now();
     this.controller.update(displayTime, vibrationEnabled ? this.currentLod : 'marker', this.combat.phase);
     if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
@@ -206,49 +166,29 @@ export class ProteinRuntime {
     this.lastCpuMs = performance.now() - cpuStart;
     const scale = this.asset.coordinateScale;
     const state = this.combat;
-    for (const site of this.asset.sites) {
-      const mesh = this.siteMeshes.get(site.id);
-      const base = this.baseSitePositions.get(site.id);
-      const siteState = state.siteState(site.id);
-      if (!mesh || !base || !siteState) continue;
-      setProteinAnchorPosition(mesh, base, this.siteResidueGroups.get(site.id) ?? [], this.trackedResidueOffsets, this.motion.residueCount, scale);
-      mesh.visible = true;
-      const material = mesh.material as THREE.MeshStandardMaterial;
-      const ratio = siteState.maxHp > 0 ? Math.max(0, Math.min(1, siteState.hp / siteState.maxHp)) : 0;
-      material.opacity = siteState.disabled ? 0.18 : 0.32 + ratio * 0.68;
-      material.emissiveIntensity = (siteState.disabled ? 0.05 : 0.25 + ratio * 0.5) + (state.phase === 'critical' ? 0.35 : 0);
-      mesh.scale.setScalar(0.55 + ratio * 0.45);
-    }
-    for (const slot of this.asset.modificationSlots) {
-      const mesh = this.modificationMeshes.get(slot.id);
-      const base = this.baseModificationPositions.get(slot.id);
-      if (!mesh || !base) continue;
-      setProteinAnchorPosition(mesh, base, this.modificationResidueGroups.get(slot.id) ?? [], this.trackedResidueOffsets, this.motion.residueCount, scale);
-      const active = state.modificationState(slot.id) !== 'empty';
-      mesh.visible = active;
-      mesh.scale.setScalar(active ? 1 + 0.12 * Math.sin(displayTime * 2.4) : 0.001);
-    }
     for (const bond of this.bondVisuals) {
-      const from = this.siteMeshes.get(bond.fromSiteId);
-      const to = this.siteMeshes.get(bond.toSiteId);
-      if (!from || !to) continue;
+      const fromBase = this.baseSitePositions.get(bond.fromSiteId);
+      const toBase = this.baseSitePositions.get(bond.toSiteId);
+      if (!fromBase || !toBase) continue;
+      const fromOffset = proteinAnchorOffset(this.siteResidueGroups.get(bond.fromSiteId) ?? [], this.trackedResidueOffsets, this.motion.residueCount);
+      const toOffset = proteinAnchorOffset(this.siteResidueGroups.get(bond.toSiteId) ?? [], this.trackedResidueOffsets, this.motion.residueCount);
       const positions = bond.line.geometry.getAttribute('position') as THREE.BufferAttribute;
-      positions.setXYZ(0, from.position.x, from.position.y, from.position.z);
-      positions.setXYZ(1, to.position.x, to.position.y, to.position.z);
+      positions.setXYZ(0, fromBase.x + fromOffset[0] * scale, fromBase.y + fromOffset[1] * scale, fromBase.z + fromOffset[2] * scale);
+      positions.setXYZ(1, toBase.x + toOffset[0] * scale, toBase.y + toOffset[1] * scale, toBase.z + toOffset[2] * scale);
       positions.needsUpdate = true;
     }
     this.bondMaterial.opacity = state.phase === 'intact' ? 0.42 : state.phase === 'critical' ? 0.12 : 0.68;
   }
 
-  activeSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
+  public activeSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
     return this.siteWorldPosition(this.combat.activeSite, origin, attitude);
   }
 
-  nextAttackSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
+  public nextAttackSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
     return this.siteWorldPosition(this.combat.nextAttackSite(), origin, attitude);
   }
 
-  siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
+  public siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
     return this.siteWorldPosition(this.combat.site(id), origin, attitude);
   }
 
@@ -265,11 +205,11 @@ export class ProteinRuntime {
     );
   }
 
-  localImpactPoint(worldPoint: Vec3, origin: Vec3, attitude: Quat): Vec3 {
+  public localImpactPoint(worldPoint: Vec3, origin: Vec3, attitude: Quat): Vec3 {
     return proteinLocalImpactPoint(worldPoint, origin, attitude, this.root.scale.x);
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.clearVisuals();
     this.bondMaterial.dispose();
     disposeProteinMotionBinding(this.motionBinding);

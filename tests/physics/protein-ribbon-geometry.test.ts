@@ -109,7 +109,7 @@ export function register(): void {
   test('protein ribbon geometry: real assets keep every vertex finite, one mesh per chain, no triangle lost', () => {
     for (const id of ['pdb-5i4r', 'pdb-1mbn-myoglobin'] as const) {
       const source = sourceFor(id);
-      const object = buildProteinRibbon(source, 'publication');
+      const object = buildProteinRibbon(source, 'chain');
       const meshes = ribbonMeshes(object);
       const chainCount = new Set(source.structure.ribbon.mesh.chain).size;
       assert.equal(meshes.length, chainCount);
@@ -124,7 +124,7 @@ export function register(): void {
   test('protein ribbon geometry: mesh count matches chain count, material is shared', () => {
     for (const id of ['pdb-5i4r', 'pdb-1mbn-myoglobin'] as const) {
       const source = sourceFor(id);
-      const object = buildProteinRibbon(source, 'publication');
+      const object = buildProteinRibbon(source, 'chain');
       const meshes = ribbonMeshes(object);
       const chainCount = new Set(source.backbone.backboneChains).size;
       assert.equal(meshes.length, chainCount);
@@ -136,7 +136,7 @@ export function register(): void {
     }
   });
 
-  test('protein ribbon geometry: publication colors use deterministic Set2 chain mapping', () => {
+  test('protein ribbon geometry: chain colors use deterministic Set2 chain mapping', () => {
     const secondary = Array<ProteinSecondaryKind>(9).fill('coil');
     const chains = Array.from({ length: 9 }, (_, index) => String.fromCharCode(65 + index));
     const source = straightSource(secondary, chains);
@@ -145,31 +145,49 @@ export function register(): void {
       0xa6d854, 0xffd92f, 0xe5c494, 0xb3b3b3,
     ] as const;
     for (let index = 0; index < SET2.length; index++) {
-      const color = proteinRibbonColor(source, index, 'publication');
+      const color = proteinRibbonColor(source, index, 'chain');
       const expected = new THREE.Color(SET2[index]);
       assertNear(color.r, expected.r);
       assertNear(color.g, expected.g);
       assertNear(color.b, expected.b);
     }
     // 9鎖目(index 8, chain 'I')は8色パレットの先頭へ循環する。
-    assert.deepEqual(proteinRibbonColor(source, 8, 'publication'), proteinRibbonColor(source, 0, 'publication'));
+    assert.deepEqual(proteinRibbonColor(source, 8, 'chain'), proteinRibbonColor(source, 0, 'chain'));
   });
 
   test('protein ribbon geometry: existing ribbon color calculations remain unchanged', () => {
     const source = straightSource(['helix', 'helix']);
     const expectations = [
-      ['chain', new THREE.Color().setHSL(0.02, 0.78, 0.56)],
+      ['chain', new THREE.Color(0x66c2a5)],
       ['b-factor', new THREE.Color().setHSL(0.66, 0.86, 0.56)],
-      ['entity', new THREE.Color().setHSL(0.04, 0.78, 0.56)],
       ['rainbow', new THREE.Color().setHSL(0.66, 0.86, 0.56)],
       ['secondary-structure', new THREE.Color(0xe85d75)],
-      ['component-role', new THREE.Color(0x4fc3f7)],
+      ['component', new THREE.Color().setHSL(0, 0.78, 0.56)],
     ] as const;
     for (const [mode, expected] of expectations) {
       const color = proteinRibbonColor(source, 0, mode);
       assertNear(color.r, expected.r);
       assertNear(color.g, expected.g);
       assertNear(color.b, expected.b);
+    }
+  });
+
+  test('protein ribbon geometry: component colors stay distinct beyond the old 6-color palette', () => {
+    const source = testProteinAssetBundleFor('pdb-6n2y-atp-synthase');
+    const roleCount = new Set(source.semantic.components.map((component) => component.role)).size;
+    assert.ok(roleCount > 6, 'fixture should exercise more roles than the retired fixed palette held');
+
+    const colorsByRole = new Map<string, THREE.Color>();
+    for (const component of source.semantic.components) {
+      const chain = component.chains[0]!;
+      const index = source.backbone.backboneChains.indexOf(chain);
+      colorsByRole.set(component.role, proteinRibbonColor(source, index, 'component'));
+    }
+    const seen = new Set<string>();
+    for (const color of colorsByRole.values()) {
+      const key = color.getHexString();
+      assert.ok(!seen.has(key), `component color collided at ${key}`);
+      seen.add(key);
     }
   });
 }

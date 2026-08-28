@@ -2,10 +2,10 @@
 import { expandHitTarget, stopDragPropagation } from './widget-base';
 
 export class CloseButton {
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
 
   // onClick はクリックのたびに呼ばれる。
-  constructor(onClick: () => void) {
+  public constructor(onClick: () => void) {
     const button = document.createElement('button');
     button.type = 'button';
     this.element = button;

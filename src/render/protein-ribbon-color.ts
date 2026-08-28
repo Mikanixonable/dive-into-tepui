@@ -5,15 +5,14 @@ import type { ProteinRenderSource } from './protein-ribbon';
 
 export type ProteinSecondaryKind = 'coil' | 'helix' | 'sheet';
 
-const PUBLICATION_PALETTE = [
+const CHAIN_PALETTE = [
   0x66c2a5, 0xfc8d62, 0x8da0cb, 0xe78ac3,
   0xa6d854, 0xffd92f, 0xe5c494, 0xb3b3b3,
 ] as const;
-const COMPONENT_ROLE_COLORS = [
-  0x4fc3f7, 0xa78bfa, 0xffc857, 0x56df9b, 0xff6b91, 0xb7e06b,
-] as const;
+// 連続する整数を掛けても隣接するインデックスの色相が近づかない無理数刻み。
+const GOLDEN_ANGLE_CONJUGATE = 0.6180339887498949;
 const bFactorRanges = new WeakMap<object, { min: number; max: number }>();
-const componentRoleLookups = new WeakMap<object, {
+const componentLookups = new WeakMap<object, {
   byEntity: ReadonlyMap<number, number>;
   byChain: ReadonlyMap<string, number>;
 }>();
@@ -42,21 +41,21 @@ function rainbowColor(t: number): THREE.Color {
 }
 
 /** 鎖 ID を Set2 の固定位置へ決定的に写像する。 */
-function publicationChainIndex(chain: string): number {
+function chainPaletteIndex(chain: string): number {
   if (/^[A-Za-z]$/.test(chain)) {
-    return (chain.toUpperCase().charCodeAt(0) - 65) % PUBLICATION_PALETTE.length;
+    return (chain.toUpperCase().charCodeAt(0) - 65) % CHAIN_PALETTE.length;
   }
   let hash = 2166136261;
   for (const character of chain) {
     hash ^= character.charCodeAt(0);
     hash = Math.imul(hash, 16777619);
   }
-  return (hash >>> 0) % PUBLICATION_PALETTE.length;
+  return (hash >>> 0) % CHAIN_PALETTE.length;
 }
 
 /** 構成要素の役割を asset 内で安定した色へ写像する。 */
-function componentRoleColor(source: ProteinRenderSource, index: number): THREE.Color {
-  let lookup = componentRoleLookups.get(source);
+function componentColor(source: ProteinRenderSource, index: number): THREE.Color {
+  let lookup = componentLookups.get(source);
   // 役割の宣言順を entity／chain の検索表へ一度だけ展開する。
   if (!lookup) {
     const roles = [...new Set(source.semantic.components.map((component) => component.role))];
@@ -68,14 +67,14 @@ function componentRoleColor(source: ProteinRenderSource, index: number): THREE.C
       for (const chain of component.chains) byChain.set(chain, roleIndex);
     }
     lookup = { byEntity, byChain };
-    componentRoleLookups.set(source, lookup);
+    componentLookups.set(source, lookup);
   }
   const entity = source.backbone.backboneEntities[index];
   const chain = source.backbone.backboneChains[index];
   const roleIndex = (entity === undefined ? undefined : lookup.byEntity.get(entity))
     ?? (chain === undefined ? undefined : lookup.byChain.get(chain))
     ?? 0;
-  return new THREE.Color(COMPONENT_ROLE_COLORS[roleIndex % COMPONENT_ROLE_COLORS.length]!);
+  return new THREE.Color().setHSL((roleIndex * GOLDEN_ANGLE_CONJUGATE) % 1, 0.78, 0.56);
 }
 
 /** 指定した着色方式で残基の頂点色を返す。 */
@@ -85,11 +84,6 @@ export function proteinRibbonColor(
   mode: ProteinRibbonColorMode,
 ): THREE.Color {
   const backbone = source.backbone;
-  // 論文調は既存モードから独立した定性パレットを鎖単位で適用する。
-  if (mode === 'publication') {
-    const chain = backbone.backboneChains[index] ?? 'A';
-    return new THREE.Color(PUBLICATION_PALETTE[publicationChainIndex(chain)]!);
-  }
   if (mode === 'rainbow') return rainbowColor(index / Math.max(1, backbone.backboneCount - 1));
   if (mode === 'secondary-structure') {
     const kind = proteinSecondaryKind(backbone.backboneSecondary[index]);
@@ -106,12 +100,7 @@ export function proteinRibbonColor(
       ((backbone.backboneBFactors[index] ?? range.min) - range.min) / Math.max(1e-6, range.max - range.min),
     );
   }
-  if (mode === 'component-role') return componentRoleColor(source, index);
-  if (mode === 'entity') {
-    const entity = backbone.backboneEntities[index] ?? 1;
-    return new THREE.Color().setHSL(((entity - 1) * 0.19 + 0.04) % 1, 0.78, 0.56);
-  }
+  if (mode === 'component') return componentColor(source, index);
   const chain = backbone.backboneChains[index] ?? 'A';
-  const chainIndex = Math.max(0, chain.charCodeAt(0) - 65);
-  return new THREE.Color().setHSL((chainIndex * 0.13 + 0.02) % 1, 0.78, 0.56);
+  return new THREE.Color(CHAIN_PALETTE[chainPaletteIndex(chain)]!);
 }
