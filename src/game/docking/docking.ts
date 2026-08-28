@@ -19,6 +19,15 @@ import type { ActivePlayerController } from '../active-controllable-controller';
 import type { Stage } from '../stages/stage';
 import { generateRandomName } from '../random-name';
 
+export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
+
+export const PORT_DOCK_MAX_DIST = 50;          // [m] 船対船ポート間の最大捕捉距離
+export const PORT_DOCK_MIN_ALIGNMENT = 0.5;    // ポート軸の最小内積 (cos 60°)
+export const HATCH_DOCK_MAX_DIST = 80;        // 基地ハッチ前での最大ドッキング距離 [m]
+export const HATCH_DOCK_MIN_ALIGNMENT = 0.5;  // ハッチ正面コーンの最小内積 (cos 60° = 0.5)
+export const SLOT_DOCK_MAX_DIST = 50;         // 各ドックスロット前での最大ドッキング距離 [m]
+export const SLOT_DOCK_MIN_ALIGNMENT = 0.5;   // スロット正面コーンの最小内積 (cos 60° = 0.5)
+
 export type DockingCandidateKind = 'slot' | 'hatch' | 'ship';
 
 // 判定とガイドが共有する接続点の評価結果。canDock だけでなく各残差を公開することで、
@@ -98,7 +107,7 @@ export class Docking {
     const portPos = ship.getPortWorldPos();
     const portNormal = norm(ship.getPortWorldNormal());
     const relSpeed = len(sub(ship.state.v, target.state.v));
-    const speedOk = relSpeed <= C.DOCK_CAPTURE_REL_V;
+    const speedOk = relSpeed <= DOCK_CAPTURE_REL_V;
     const candidates: DockingCandidate[] = [];
     const make = (
       kind: DockingCandidateKind,
@@ -110,7 +119,7 @@ export class Docking {
       const distance = len(sub(portPos, position));
       const distanceOk = distance <= maxDist;
       const approachOk = approach >= approachMinAlignment;
-      const alignmentOk = alignment >= C.PORT_DOCK_MIN_ALIGNMENT;
+      const alignmentOk = alignment >= PORT_DOCK_MIN_ALIGNMENT;
       candidates.push({
         target, kind, position, normal, distance, axisAlignment: alignment,
         axisErrorDeg: alignmentErrorDeg(alignment), relSpeed,
@@ -128,13 +137,13 @@ export class Docking {
         const normal = norm(target.getSlotWorldNormal(i));
         const toShip = norm(sub(portPos, position));
         // 基地接続面の正面側 (位置) と、船軸の進入方向 (姿勢) は別条件。
-        make('slot', position, normal, C.SLOT_DOCK_MAX_DIST, C.SLOT_DOCK_MIN_ALIGNMENT, i,
+        make('slot', position, normal, SLOT_DOCK_MAX_DIST, SLOT_DOCK_MIN_ALIGNMENT, i,
           dot(toShip, normal), -dot(portNormal, normal), capacityOk);
       }
       const position = target.getHatchWorldPos();
       const normal = norm(target.getHatchWorldNormal());
       const toShip = norm(sub(portPos, position));
-      make('hatch', position, normal, C.HATCH_DOCK_MAX_DIST, C.HATCH_DOCK_MIN_ALIGNMENT, null,
+      make('hatch', position, normal, HATCH_DOCK_MAX_DIST, HATCH_DOCK_MIN_ALIGNMENT, null,
         dot(toShip, normal), -dot(portNormal, normal), capacityOk);
       return candidates;
     }
@@ -147,7 +156,7 @@ export class Docking {
       const facing = -dot(portNormal, targetPortNormal);
       // 船対船では各ポートの法線が相手方向を向くことも必要にする。
       const approach = Math.min(dot(portNormal, toTarget), dot(targetPortNormal, toShip));
-      make('ship', targetPortPos, targetPortNormal, C.PORT_DOCK_MAX_DIST, C.PORT_DOCK_MIN_ALIGNMENT,
+      make('ship', targetPortPos, targetPortNormal, PORT_DOCK_MAX_DIST, PORT_DOCK_MIN_ALIGNMENT,
         null, approach, facing, true);
     }
     return candidates;

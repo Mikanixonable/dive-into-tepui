@@ -37,6 +37,14 @@ import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibility } from '../celestial/map-visibility';
 import { currentThemePalette } from '../theme';
 
+export const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
+export const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
+export const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
+export const BASE_MAX_FUEL = 50000;    // 基地の最大燃料
+export const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
+export const BASE_INERTIA_Y = 1e8;
+export const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
+
 // 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部, 3倍スケール対応)
 export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
 export const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
@@ -100,11 +108,11 @@ export class Base extends GameEntity implements Controllable {
   readonly thrustEffects: ThrustEffects;
   readonly rcsEffects: RcsEffects;
   private baseFuel: number;
-  get totalThrust(): number { return C.BASE_THRUST; }
-  get totalTorque(): number { return C.BASE_TORQUE; }
-  get totalFuelConsumptionRate(): number { return C.BASE_FUEL_RATE; }
+  get totalThrust(): number { return BASE_THRUST; }
+  get totalTorque(): number { return BASE_TORQUE; }
+  get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
   get fuel(): number { return this.baseFuel; }
-  get maxFuel(): number { return C.BASE_MAX_FUEL; }
+  get maxFuel(): number { return BASE_MAX_FUEL; }
 
   consumeFuel(amount: number): number {
     if (amount <= 0) return 1.0;
@@ -146,21 +154,21 @@ export class Base extends GameEntity implements Controllable {
       ? {
         q: { ...init.saved.q },
         w: init.saved.w ? v3(init.saved.w.x, init.saved.w.y, init.saved.w.z) : v3(),
-        inertia: v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z),
+        inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
       }
       : undefined;
     super(state, buildBaseModel(), scene, savedAtt ?? att, idAllocator.next(id));
     // 姿勢に慣性モーメントを設定（既定の identityAttitude は inertia=(1,1,1) なので上書きが必要）
     if (!savedAtt && !att) {
-      this.att = { ...this.att, inertia: v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z) };
+      this.att = { ...this.att, inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z) };
     } else if (att && !att.inertia) {
-      this.att = { ...this.att, inertia: v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z) };
+      this.att = { ...this.att, inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z) };
     }
     this.mass = 3e6;
     this.radius = 330;
     this.collides = true;
     this.name = name;
-    this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : C.BASE_MAX_FUEL;
+    this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : BASE_MAX_FUEL;
     this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);

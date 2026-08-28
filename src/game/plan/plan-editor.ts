@@ -34,6 +34,13 @@ import type { PredictedArc } from '../simulation/predicted-arc';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
+export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
+
+export const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
+export const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
+
+export const DV_LATCH_RATE_PER_PX = 3.0; // ラッチ中、閾値超過1pxあたりのΔv加算レート [m/s per 実秒 per px]
+
 export class PlanEditor {
   // 編集対象として選択中のノード。ノードは不変オブジェクトで、編集のたびに新しい
   // KinematicState へ置き換わる — 選択を参照で持てば、編集で置き換わった場合も、
@@ -219,7 +226,7 @@ export class PlanEditor {
   private pickNodeAt(mx: number, my: number): number | null {
     const nodes = this.plan?.nodes ?? [];
     let bestIdx: number | null = null;
-    let bestD = C.NODE_PICK_PX * C.NODE_PICK_PX;
+    let bestD = NODE_PICK_PX * NODE_PICK_PX;
     for (let i = 0; i < nodes.length; i++) {
       const p = this.nodeScreenPos(nodes[i]!);
       if (!p.front) continue;
@@ -253,7 +260,7 @@ export class PlanEditor {
 
     // 見つからなければ計画軌道上の最寄り点にノードを配置。折れ線が自分自身に重なっていれば
     // その位置に最初に到達する時刻(= referenceT を -Infinity にして最早時刻)を選ぶ。
-    const picked = this.planDisplay.path.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
+    const picked = this.planDisplay.path.nearestSample(mx, my, NODE_PICK_PX, -Infinity);
     if (picked) {
       this.selectNewNode(ship.plan.addNode(picked.state, ship.state));
       return;
@@ -269,7 +276,7 @@ export class PlanEditor {
     const node = this.plan?.nodes[i];
     const arr = arriving[i];
     if (!node || !arr) return false;
-    return len(sub(node.v, arr.v)) < C.NODE_MIN_DV;
+    return len(sub(node.v, arr.v)) < NODE_MIN_DV;
   }
 
   // 選択中ノードが実質的に空なら削除する。
@@ -311,7 +318,7 @@ export class PlanEditor {
       // ノードでなくても計画軌道上を右クリックすれば、その位置の時刻まで
       // 自動ワープできる。描画と同じサンプル列から求めるため、表示変換との
       // ずれや月基準フレームの差を生じさせない。
-      const picked = this.planDisplay.path.nearestSample(mx, my, C.NODE_PICK_PX, -Infinity);
+      const picked = this.planDisplay.path.nearestSample(mx, my, NODE_PICK_PX, -Infinity);
       if (!picked) return false;
       this.selectedNodeIdx = null;
       this.orbitMenu.open(mx, my, picked.state, [
@@ -492,7 +499,7 @@ export class PlanEditor {
   private syncGizmo(plan: Plan, mapDist: number, fo: FloatingOrigin): void {
     const arriving = this.planDisplay.path.arrivalStates();
     const nodeSpecs: NodeHandleSpec[] = [];
-    const limit = Math.min(plan.nodes.length, C.MAX_PLAN_NODE_MARKERS);
+    const limit = Math.min(plan.nodes.length, MAX_PLAN_NODE_MARKERS);
     // 各ノードの画面座標とラベルを組む
     for (let i = 0; i < limit; i++) {
       const node = plan.nodes[i]!;
@@ -573,7 +580,7 @@ export class PlanEditor {
       // ラッチ後は基点からの超過距離に比例させる。ここを DV_RATE_MAX で
       // 飽和させると、一定距離以上のドラッグがすべて同じ Δv になり、
       // 「大きくドラッグするほど加速が増える」という操作感が失われる。
-      const rate = latch.excessPx * C.DV_LATCH_RATE_PER_PX * fineScale;
+      const rate = latch.excessPx * DV_LATCH_RATE_PER_PX * fineScale;
       this.applyDv(latch.axis, latch.sign, rate * dt);
     }
   }

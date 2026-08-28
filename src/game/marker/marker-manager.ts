@@ -20,6 +20,16 @@ import { toFrameDir } from '../../physics/frame';
 import { qRotate } from '../../physics/attitude';
 import type { Ephemeris } from '../../physics/ephemeris';
 
+export const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
+
+// 優先度間引きで一度隠したラベル/アイコンを再び出す画面距離のしきい値(MARKER_CLUSTER_PX より
+// 緩い値)。同じ値だと境界ちょうどで距離が揺れたときに毎フレーム表示・非表示が反転する
+// (周期が数時間の衛星どうしなど、タイムワープ中に画面距離が急変する組で顕著)。
+export const MARKER_CLUSTER_RELEASE_PX = 60;
+
+// 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
+export const MARKER_BEARING_RING_RATIO = 0.8;
+
 type ProjectFn = (worldPos: Vec3) => Projected;
 type ScaleFn = (worldPos: Vec3) => number;
 
@@ -149,7 +159,7 @@ export class MarkerManager {
     private root: HTMLElement,
     private svgOverlay: SVGSVGElement,
   ) {
-    this.combatMarkers = new GroupedMarkers(this, C.MARKER_CLUSTER_PX);
+    this.combatMarkers = new GroupedMarkers(this, MARKER_CLUSTER_PX);
     this.leadMarkers = new LeadMarkers(this);
   }
 
@@ -346,7 +356,7 @@ export class MarkerManager {
     // 背面の対象は投影が反転しているので、方位も反転させる
     const sign = p.front ? 1 : -1;
     const ang = Math.atan2(sign * (p.y - cy), sign * (p.x - cx));
-    const ring = Math.min(cx, cy) * C.MARKER_BEARING_RING_RATIO;
+    const ring = Math.min(cx, cy) * MARKER_BEARING_RING_RATIO;
     this.set(
       key, cls, sym,
       cx + ring * Math.cos(ang), cy + ring * Math.sin(ang), true,
@@ -458,7 +468,7 @@ export class MarkerManager {
           );
           if (pick === undefined) continue;
           const [loser, winner] = pick === 'a' ? [a, b] : [b, a];
-          const threshold = loser.prevLabelHiddenByPriority ? C.MARKER_CLUSTER_RELEASE_PX : C.MARKER_CLUSTER_PX;
+          const threshold = loser.prevLabelHiddenByPriority ? MARKER_CLUSTER_RELEASE_PX : MARKER_CLUSTER_PX;
           if (Math.hypot(a.x - b.x, a.y - b.y) >= threshold) continue;
 
           loser.labelHiddenByPriority = true;

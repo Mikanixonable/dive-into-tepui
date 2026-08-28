@@ -21,6 +21,10 @@ import type { FutureCelestialBodies } from './future-celestial-bodies';
 import { PredictedArc } from './predicted-arc';
 import type { PerfCounts } from '../../perf-meter';
 
+// 消費される弧が、消費前線より過去側にも保持しておく余裕 [s]。保持窓の左端が前線に一致すると
+// at(前線) を挟む補間区間が消える。予測線の下端は simTime なので、余分に保持しても描画は変わらない。
+export const ARC_RETAIN_MARGIN = 300;
+
 export class Predictor {
   private cursor = 0;
 
@@ -116,7 +120,7 @@ export class Predictor {
     const arc = e.ensurePredictedArc(this.futureCelestialBodies);
     if (arc === null) return 0;
     arc.requiredEnd = simTime + horizon;
-    arc.retainFrom = simTime - C.ARC_RETAIN_MARGIN;
+    arc.retainFrom = simTime - ARC_RETAIN_MARGIN;
     arc.simulationMaxStep = maxStep;
     const consumed = this.grow(arc, budgetSteps);
     this.lastSteps += consumed;

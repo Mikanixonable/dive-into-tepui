@@ -46,6 +46,9 @@ function saveBodyClassToggles(v: BodyClassToggles): void {
 
 import type { GameEntity } from '../game-entity/game-entity';
 
+export const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
+export const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
+
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
 
@@ -236,9 +239,9 @@ export class CameraSystem {
     const keyPanX = (input.down(K.cameraPanLeft) ? 1 : 0) + (input.down(K.cameraPanRight) ? -1 : 0);
     const keyPanY = (input.down(K.cameraPanUp) ? 1 : 0) + (input.down(K.cameraPanDown) ? -1 : 0);
     const mouse = { ...input.mouse() };
-    mouse.panDx += keyPanX * C.CAM_KEY_PAN_RATE * dt;
-    mouse.panDy += keyPanY * C.CAM_KEY_PAN_RATE * dt;
-    mouse.roll += keyRoll * C.CAM_KEY_ROLL_RATE * dt;
+    mouse.panDx += keyPanX * CAM_KEY_PAN_RATE * dt;
+    mouse.panDy += keyPanY * CAM_KEY_PAN_RATE * dt;
+    mouse.roll += keyRoll * CAM_KEY_ROLL_RATE * dt;
 
     if (this.overviewMode) {
       this.mapCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, frameAnchors);

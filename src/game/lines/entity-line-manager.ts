@@ -15,6 +15,14 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { OrbitReference } from '../orbit-reference';
 
+export const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
+
+// 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
+export const LINE_STYLE = {
+  enemyOrbit: { color: C.COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  baseOrbit: { color: C.COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+} as const satisfies Record<string, LineStyle>;
+
 // ターゲットの軌道はほぼ自機の軌道と重なることが多く(近傍ランデブーを狙うため)、
 // 埋もれて見えなくならないよう不透明度を上げる。
 const TARGET_LINE_OPACITY = 0.9;
@@ -45,13 +53,13 @@ export class EntityLineManager {
     const primaryStyle: LineStyle = { color: palette.signal, opacity: TARGET_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.target };
     const targetStyleOf = (e: CombatTarget): LineStyle | null => e === primaryTarget ? primaryStyle : null;
     const playerOrbitStyleOf = (isActive: boolean): LineStyle => (
-      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.shipOrbit }
+      { color: isActive ? palette.accent : COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.shipOrbit }
     );
     const playerPredictedStyleOf = (isActive: boolean): LineStyle => (
-      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.predicted }
+      { color: isActive ? palette.accent : COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.55, renderOrder: LINE_RENDER_ORDER.predicted }
     );
     const playerActualStyleOf = (isActive: boolean): LineStyle => (
-      { color: isActive ? palette.accent : C.COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.3, renderOrder: LINE_RENDER_ORDER.predicted }
+      { color: isActive ? palette.accent : COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.3, renderOrder: LINE_RENDER_ORDER.predicted }
     );
     // 1体分の判定材料から、解析楕円/予測線/過去線の出す/消す/スタイルを決める。ターゲットである間は
     // 常に asTarget のスタイルで解析楕円を維持し、予測線・過去線には切り替えない。lineVisible は
@@ -90,7 +98,7 @@ export class EntityLineManager {
     for (const enemy of this.entities.enemies) {
       const visibility = visibilityPolicy?.entity('ship');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
-      const enemyLineStyle: LineStyle = { ...C.LINE_STYLE.enemyOrbit, color: enemy.orbitLineColor };
+      const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyOrbit, color: enemy.orbitLineColor };
       applyEntityLines(
         enemy, targetStyleOf(enemy), lineVisible, lineVisible && enemy.alive, overviewMode && enemy.showTrajectoryLine,
         sameTrajectoryStyle(enemyLineStyle),
@@ -100,7 +108,7 @@ export class EntityLineManager {
       const lineVisible = visibilityPolicy?.entity('base').orbit ?? false;
       applyEntityLines(
         base, targetStyleOf(base), lineVisible, lineVisible, overviewMode && base.showTrajectoryLine,
-        sameTrajectoryStyle(C.LINE_STYLE.baseOrbit),
+        sameTrajectoryStyle(LINE_STYLE.baseOrbit),
       );
     }
   }

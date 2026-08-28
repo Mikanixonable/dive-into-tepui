@@ -15,6 +15,15 @@ import type { EntityManager } from '../../simulation/entity-manager';
 import type { SimSpeedManager } from '../../simulation/sim-speed-manager';
 import type { LogisticsSaveData } from '../../save/save-data';
 
+export const AMMO_PICKUP_MAGS = 6; // 補給 1 個の取り込みで増えるマガジン数
+export const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
+export const LOGISTICS_LOW_FUEL_RATIO = 0.3; // この割合未満になると燃料補給を投入
+export const MAX_ACTIVE_RCS_FUEL_PICKUPS = 3; // 同時に存在する燃料補給の最大数
+export const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
+export const LOGISTICS_MIN_DIST = 312.5; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
+export const LOGISTICS_MAX_DIST = 625; // 同上限 [m]
+export const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給マガジンをデスポーンさせる距離 [m]
+
 export class Logistics {
   private resupplyCheckAt: number;
 
@@ -40,8 +49,8 @@ export class Logistics {
   // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
   spawnForPlayer(
     player: Player,
-    minDist = C.LOGISTICS_MIN_DIST,
-    maxDist = C.LOGISTICS_MAX_DIST,
+    minDist = LOGISTICS_MIN_DIST,
+    maxDist = LOGISTICS_MAX_DIST,
   ): void {
     // 自機の軌道面内で minDist〜maxDist 先に相当する角度だけ位相をずらす
     const r = player.state.r;
@@ -73,8 +82,8 @@ export class Logistics {
   // 自機の軌道上、minDist〜maxDist 先の位相に RCS 燃料補給を1個投入する。
   spawnRcsFuelForPlayer(
     player: Player,
-    minDist = C.LOGISTICS_MIN_DIST,
-    maxDist = C.LOGISTICS_MAX_DIST,
+    minDist = LOGISTICS_MIN_DIST,
+    maxDist = LOGISTICS_MAX_DIST,
   ): void {
     const r = player.state.r;
     const v = player.state.v;
@@ -116,11 +125,11 @@ export class Logistics {
     // 停止していた長さぶんの空白を再開後に持ち越さないため。
     if (!canResupplyAmmo && !canResupplyFuel) return;
     if (simTime < this.resupplyCheckAt) return;
-    this.resupplyCheckAt = simTime + C.LOGISTICS_CHECK_INTERVAL;
-    if (canResupplyAmmo && player.magsLeft < C.LOGISTICS_LOW_MAGS && this.liveAmmoPickupCount() < C.MAX_ACTIVE_AMMO_PICKUPS) {
+    this.resupplyCheckAt = simTime + LOGISTICS_CHECK_INTERVAL;
+    if (canResupplyAmmo && player.magsLeft < LOGISTICS_LOW_MAGS && this.liveAmmoPickupCount() < C.MAX_ACTIVE_AMMO_PICKUPS) {
       this.spawnForPlayer(player);
     }
-    if (canResupplyFuel && this.shouldResupplyFuel(player) && this.liveRcsFuelPickupCount() < C.MAX_ACTIVE_RCS_FUEL_PICKUPS) {
+    if (canResupplyFuel && this.shouldResupplyFuel(player) && this.liveRcsFuelPickupCount() < MAX_ACTIVE_RCS_FUEL_PICKUPS) {
       this.spawnRcsFuelForPlayer(player);
     }
   }
@@ -149,7 +158,7 @@ export class Logistics {
 
   private shouldResupplyFuel(player: Player): boolean {
     return player.totalMaxFuel > 0
-      && player.totalFuel < player.totalMaxFuel * C.LOGISTICS_LOW_FUEL_RATIO;
+      && player.totalFuel < player.totalMaxFuel * LOGISTICS_LOW_FUEL_RATIO;
   }
 
   // 回収半径内の生存中補給を吸収し、ベルトへ弾を追加する。
@@ -161,9 +170,9 @@ export class Logistics {
         >= C.AMMO_PICKUP_RADIUS * C.AMMO_PICKUP_RADIUS
       ) continue;
       ammoPickup.alive = false;
-      player.onPickup(C.AMMO_PICKUP_MAGS);
+      player.onPickup(AMMO_PICKUP_MAGS);
       this._worldSfx.pickup();
-      this._hud.hint(`補給取り込み — ベルト +${C.AMMO_PICKUP_MAGS} 連`, 3000);
+      this._hud.hint(`補給取り込み — ベルト +${AMMO_PICKUP_MAGS} 連`, 3000);
     }
   }
 
@@ -188,7 +197,7 @@ export class Logistics {
     // デスポーン距離を超えた分を消し、再投入すべき数を数える
     for (const ammoPickup of this.entities.ammoPickups) {
       if (!ammoPickup.alive) continue;
-      if (len(sub(ammoPickup.state.r, player.state.r)) <= C.LOGISTICS_DESPAWN_DIST) continue;
+      if (len(sub(ammoPickup.state.r, player.state.r)) <= LOGISTICS_DESPAWN_DIST) continue;
       ammoPickup.alive = false;
       if (respawnOnDespawn) respawn++;
     }
@@ -206,13 +215,13 @@ export class Logistics {
     let respawn = 0;
     for (const pickup of this.entities.rcsFuelPickups) {
       if (!pickup.alive) continue;
-      if (len(sub(pickup.state.r, player.state.r)) <= C.LOGISTICS_DESPAWN_DIST) continue;
+      if (len(sub(pickup.state.r, player.state.r)) <= LOGISTICS_DESPAWN_DIST) continue;
       pickup.alive = false;
       if (respawnOnDespawn) respawn++;
     }
     if (!respawnOnDespawn) return;
     let count = this.liveRcsFuelPickupCount();
-    for (let i = 0; i < respawn && count < C.MAX_ACTIVE_RCS_FUEL_PICKUPS; i++) {
+    for (let i = 0; i < respawn && count < MAX_ACTIVE_RCS_FUEL_PICKUPS; i++) {
       this.spawnRcsFuelForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
       count++;
     }

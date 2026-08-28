@@ -14,6 +14,10 @@ import { Enemy } from './enemy';
 import { Player } from '../player/player';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 
+export const BULLET_MAX_DIST = 30e3; // 自機からこれ以上離れた弾を消す [m]
+export const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
+export const BULLET_CLOSE_PASS_DIST = 40; // 敵弾が艦の至近を通過したとみなす距離 [m]
+
 
 const tmpQuat = new THREE.Quaternion();
 
@@ -73,7 +77,7 @@ export class Bullet extends GameEntity {
         if (this.shooter === 'enemy' && ship instanceof Enemy) return false;
         const ownShip = (this.shooter === 'player' && ship instanceof Player)
             || (this.shooter === 'enemy' && ship instanceof Enemy);
-        if (ownShip && simTime - this.bornSim <= C.SELF_CONTACT_GRACE) return false;
+        if (ownShip && simTime - this.bornSim <= SELF_CONTACT_GRACE) return false;
         return true;
     }
 
@@ -101,12 +105,12 @@ export class Bullet extends GameEntity {
     ): void {
         if (!this.alive) return;
         if (this.shooter === 'enemy' && !this.passedClose
-          && lenSq(sub(this.state.r, playerPos)) < C.BULLET_CLOSE_PASS_DIST * C.BULLET_CLOSE_PASS_DIST) {
+          && lenSq(sub(this.state.r, playerPos)) < BULLET_CLOSE_PASS_DIST * BULLET_CLOSE_PASS_DIST) {
             this.passedClose = true;
             if (this.type === 'plasma') this._worldSfx.magneticInterference();
         }
         // 至近通過音は消滅判定より先に評価する — 同じ substep で寿命が尽きる弾でも通過音は鳴らす。
-        if (lenSq(sub(this.state.r, playerPos)) > C.BULLET_MAX_DIST * C.BULLET_MAX_DIST) { this.alive = false; return; }
+        if (lenSq(sub(this.state.r, playerPos)) > BULLET_MAX_DIST * BULLET_MAX_DIST) { this.alive = false; return; }
         if (simTime >= this.expiresAt) this.alive = false;
     }
 

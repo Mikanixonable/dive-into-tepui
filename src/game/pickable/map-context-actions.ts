@@ -36,13 +36,18 @@ import { v3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { orbitingAttractorOf } from '../../physics/celestial-body';
 import { primaryOf } from '../../physics/solar-system';
-import * as C from '../const';
 import type { MapPickables } from './map-pickables';
 import type { Part } from '../game-entity/parts';
 import { pickCombatEntityAtPoint } from './combat-pickable';
 import { MapPropertyRows } from './map-property-rows';
 import { bodyParentId, MapPickableMenu } from './map-pickable-menu';
 import type { KinematicState } from '../../physics/kinematic-state';
+
+export const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
+export const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
+
+export const MAP_PICK_PX_SQ_COARSE = 1936;
+export const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 
 // 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
 // (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。
@@ -156,7 +161,7 @@ export class MapContextActions {
       const candidates = this.pickables.pickables.filter((item) => item.pickable !== false);
       const target = pickNearest(
         candidates, p.x, p.y, this.cameraSystem.activeCameraProjection,
-        pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE),
+        pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE),
       );
       if (!target) return false;
       this.openPropertyWindow(p.x, p.y, target, simTime);
@@ -173,7 +178,7 @@ export class MapContextActions {
     input.takeRightClicks((p) => {
       const orbit = pickNearestOrbit(
         this.orbitPickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
-        pickRadiusSq(C.ORBIT_LINE_PICK_PX_SQ, C.ORBIT_LINE_PICK_PX_SQ_COARSE),
+        pickRadiusSq(ORBIT_LINE_PICK_PX_SQ, ORBIT_LINE_PICK_PX_SQ_COARSE),
       );
       if (!orbit) return false;
       this.openOrbitPropertyWindow(p.x, p.y, orbit);
@@ -378,7 +383,7 @@ export class MapContextActions {
     if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
       const candidates = this.pickables.pickables.filter((i) => (i.kind === 'player' || i.kind === 'base') && i.pickable !== false);
-      const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE));
+      const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE));
       if (!target) return false;
       this.selectPickable(target, p.x, p.y);
       return true;
@@ -393,7 +398,7 @@ export class MapContextActions {
     input.takeDoubleClicks((p) => {
       const target = pickNearest(
         this.pickables.pickables.filter((item) => item.pickable !== false),
-        p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(C.MAP_PICK_PX_SQ, C.MAP_PICK_PX_SQ_COARSE),
+        p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE),
       );
       if (!target) return false;
       this.focusTarget(target.id, target);

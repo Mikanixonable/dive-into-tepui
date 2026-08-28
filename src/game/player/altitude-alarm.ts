@@ -3,9 +3,16 @@
 import type { CelestialBody } from '../../physics/celestial-body';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
 import { Vec3, sub } from '../../math/vec3';
-import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
+
+// 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]
+export const ALT_WARN_THRESHOLDS = [120e3, 100e3, 80e3];
+
+export const ALT_EMA_TIME_CONST = 3; // 高度・降下率EMAの時定数 [s]
+export const ALT_DESCEND_WARN_RATE = -3; // この降下率(EMA)を下回ると警告 [m/s]
+export const ALT_DESCEND_CLEAR_RATE = -1; // この降下率(EMA)まで戻ると警告解除 [m/s]
+export const ALT_WARN_HYSTERESIS = 5e3; // しきい値の再警告までのヒステリシス幅 [m]
 
 export class AltitudeAlarm {
   // 降下中とみなされているか。HUD の高度表示が読む。
@@ -34,22 +41,22 @@ export class AltitudeAlarm {
   private step(dt: number, alt: number): void {
     if (!isFinite(this.altEma)) this.altEma = alt;
     const prevEma = this.altEma;
-    const k = Math.min(1, dt / C.ALT_EMA_TIME_CONST);
+    const k = Math.min(1, dt / ALT_EMA_TIME_CONST);
     this.altEma += (alt - this.altEma) * k;
     if (dt > 1e-6) {
       const rate = (this.altEma - prevEma) / dt;
       this.altRateEma += (rate - this.altRateEma) * k;
     }
-    if (this.altRateEma < C.ALT_DESCEND_WARN_RATE) this.descendWarned = true;
-    else if (this.altRateEma > C.ALT_DESCEND_CLEAR_RATE) this.descendWarned = false;
+    if (this.altRateEma < ALT_DESCEND_WARN_RATE) this.descendWarned = true;
+    else if (this.altRateEma > ALT_DESCEND_CLEAR_RATE) this.descendWarned = false;
 
-    for (const threshold of C.ALT_WARN_THRESHOLDS) {
+    for (const threshold of ALT_WARN_THRESHOLDS) {
       if (this.altEma < threshold) {
         if (this.warnedThresholds.has(threshold)) continue;
         this.warnedThresholds.add(threshold);
         this._hud.hint(`警告: 高度が${Math.round(threshold / 1000)}km以下です`, 3000);
         this._worldSfx.altAlarm();
-      } else if (this.altEma > threshold + C.ALT_WARN_HYSTERESIS) {
+      } else if (this.altEma > threshold + ALT_WARN_HYSTERESIS) {
         this.warnedThresholds.delete(threshold);
       }
     }

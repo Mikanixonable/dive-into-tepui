@@ -17,6 +17,10 @@ import type { Stage } from '../stages/stage';
 import type { Player } from './player';
 import type { RadiatorSaveData } from '../save/save-data';
 
+export const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
+
+export const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
+
 export type RadiatorSide = 'up' | 'down';
 
 // 収納時(deploy=0)の折り角。展開軸から ±90° で交互に折ると、隣り合う折り目の
@@ -188,7 +192,7 @@ export class RadiatorSystem {
       const { even, odd } = this.foldThetas(side);
       const cosEven = Math.abs(dot(this.worldNormal(even, att), sunDir));
       const cosOdd = Math.abs(dot(this.worldNormal(odd, att), sunDir));
-      return sum + C.RADIATOR_SOLAR_ABSORB * halfArea * (cosEven + cosOdd);
+      return sum + RADIATOR_SOLAR_ABSORB * halfArea * (cosEven + cosOdd);
     }, 0);
   }
 
@@ -197,7 +201,7 @@ export class RadiatorSystem {
   collisionFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
     const result: RadiatorFold[] = [];
     for (const side of ['up', 'down'] as const) {
-      if (this.panels[side].deploy < C.RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
+      if (this.panels[side].deploy < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
       const proxies = this.foldProxies[side];
       while (proxies.length < C.RADIATOR_FOLD_COUNT) proxies.push(new RadiatorFold(side, proxies.length, this.owner));
       const { even, odd } = this.foldThetas(side);

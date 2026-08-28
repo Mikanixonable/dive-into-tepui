@@ -36,6 +36,10 @@ import type { PerfCounts } from '../../perf-meter';
 import type { OrbitReference } from '../orbit-reference';
 import type { ProteinMotionFrameSample, ProteinMotionLod } from '../../protein-motion-metrics';
 
+export const MAX_DETACHED_BOOSTERS = 64;
+
+export const MAX_DEBRIS = 600;
+
 export class EntityManager {
   readonly enemies: Enemy[] = [];
   readonly bullets: Bullet[] = [];
@@ -81,7 +85,7 @@ export class EntityManager {
     this.casingPool = new InstancedPool(
       scene, casingBody.geometry, casingBody.material, C.MAX_CASINGS, false, 0, true);
     this.debrisFragmentPools = debrisFragment.geometries.map(
-      (geo) => new InstancedPool(scene, geo, debrisFragment.material, C.MAX_DEBRIS, true, 0, true));
+      (geo) => new InstancedPool(scene, geo, debrisFragment.material, MAX_DEBRIS, true, 0, true));
     this.effects = new EffectsSystem(scene, this, worldSfx);
     if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
   }
@@ -243,7 +247,7 @@ export class EntityManager {
   // 破片を種別(薬莢/その他)ごとの配列へ登録する。上限を超えた分は古いものから破棄する。
   addDebris(piece: DebrisPiece): void {
     if (piece.kind === 'casing') this.addCapped(this.casings, piece, C.MAX_CASINGS);
-    else this.addCapped(this.debris, piece, C.MAX_DEBRIS);
+    else this.addCapped(this.debris, piece, MAX_DEBRIS);
   }
 
   // 弾薬ピックアップを登録する。
@@ -260,7 +264,7 @@ export class EntityManager {
 
   // 分離済みブースターを登録する。古いものから上限回収し、無制限に残骸を増やさない。
   addDetachedBooster(booster: DetachedBooster): void {
-    this.addCapped(this.detachedBoosters, booster, C.MAX_DETACHED_BOOSTERS);
+    this.addCapped(this.detachedBoosters, booster, MAX_DETACHED_BOOSTERS);
   }
 
   // 基地を登録する。
