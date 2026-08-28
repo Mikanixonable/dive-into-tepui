@@ -14,7 +14,7 @@
     "ci": "node tools/check-three-pin.mjs && npm run verify:source && npm run verify:theme && npm run typecheck && npm run protein:generate:check && npm run protein:validate && npm run protein:validate-structure && npm run protein:catalog:check && npm run test:physics && npm run build && npm run verify:release && npm run smoke:browser",
     "typecheck": "tsc --noEmit",
     "pretest:physics": "node -e \"require('node:fs').rmSync('tests/dist', { recursive: true, force: true })\"",
-    "test:physics": "node --max-old-space-size=8192 node_modules/typescript/bin/tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
+    "test:physics": "tsc -p tsconfig.test.json && node tests/dist/tests/physics/index.js",
     "export-assets": "node tools/export-models.mjs",
     "export-ltc-table": "node tools/export-ltc-table.mjs",
     "export-blue-noise": "node tools/export-blue-noise.mjs",

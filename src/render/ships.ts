@@ -94,7 +94,7 @@ export function cloneIndependent<T extends THREE.Object3D>(template: T): T {
 }
 
 // data を初回だけパースしてキャッシュし、以後は cloneIndependent で複製を返すビルダーを作る。
-function memoParse<T extends THREE.Object3D>(data: object): () => T {
+function memoParse<T extends THREE.Object3D>(data: unknown): () => T {
   let cached: T | null = null;
   return () => {
     if (!cached) cached = loader.parse(data) as T;
@@ -108,7 +108,7 @@ function memoParse<T extends THREE.Object3D>(data: object): () => T {
 // .clone() は行わない)。弾本体のマテリアルは発射後に書き換えられないので
 // 個体ごとの独立コピーは不要 — これにより毎発の生成で新規 GPU リソースが
 // 増え続けるリークを防ぐ。
-function memoParseShared<T extends THREE.Object3D>(data: object): () => T {
+function memoParseShared<T extends THREE.Object3D>(data: unknown): () => T {
   let cached: T | null = null;
   return () => {
     if (!cached) cached = loader.parse(data) as T;

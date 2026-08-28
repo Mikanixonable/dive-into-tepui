@@ -1,6 +1,7 @@
 // 物理関数の回帰テスト エントリポイント。
 // `npm run test:physics` から tsconfig.test.json でコンパイル後、これを node 実行する。
 // 引数を1つ渡すと、名前にそれを含むケースだけを走らせる。
+import './repo-assets';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAll } from './harness';
