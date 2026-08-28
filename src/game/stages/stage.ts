@@ -24,7 +24,6 @@ import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
-import type { CelestialBodyId } from '../../physics/celestial-body';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAtOrNull } from '../../physics/ephemeris-profile';
 import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../simulation/sim-epoch';
@@ -65,7 +64,7 @@ export type StageDeps = [
 export interface StageClass {
   readonly id: StageId;
   createEphemeris(
-    phaseOffsets: Partial<Record<CelestialBodyId, number>>, onProgress?: (ratio: number) => void,
+    phaseOffsets: Partial<Record<string, number>>, onProgress?: (ratio: number) => void,
     startSimTime?: number,
   ): Promise<Ephemeris>;
   // 選択画面が読む項目。
@@ -101,7 +100,7 @@ export abstract class Stage {
   // ゲーム既定のエポック)が近未来/遠未来いずれかの高精度期間に入っていれば精密暦パックを
   // 読み込み、どちらにも入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
   public static async createEphemeris(
-    phaseOffsets: Partial<Record<CelestialBodyId, number>>, onProgress?: (ratio: number) => void,
+    phaseOffsets: Partial<Record<string, number>>, onProgress?: (ratio: number) => void,
     startSimTime = 0,
   ): Promise<Ephemeris> {
     const startJdTdb = SIM_EPOCH_JD_TDB + startSimTime / 86400;

@@ -1,12 +1,11 @@
 // 天体ID・役割・回転ゾーンの選択から、パネルへ表示する日本語ラベルを引き当てる。
-import { CelestialBodyId } from '../../../physics/celestial-body';
-import { FrameAnchorId, frameRoleOf, FrameRole, FrameRotationSource } from '../../../physics/frame';
+import { frameRoleOf, FrameRole, FrameRotationSource } from '../../../physics/frame';
 import { SolarSystemId } from '../../../physics/solar-system';
 import { CELESTIAL_APPEARANCES } from '../../celestial/celestial-appearance';
 
 // id の日本語表示名。CELESTIAL_APPEARANCES に手作りエントリがある(現実の太陽系の天体)ならそれを、
 // なければ(カスタムレジストリの架空天体)id をそのまま表示名として使う。
-export function celestialBodyName(id: CelestialBodyId): string {
+export function celestialBodyName(id: string): string {
   return id in CELESTIAL_APPEARANCES ? CELESTIAL_APPEARANCES[id as SolarSystemId].name : id;
 }
 
@@ -15,8 +14,8 @@ export function frameRoleName(role: FrameRole): string {
   return role === 'activeShip' ? '操作対象の船' : 'ターゲット';
 }
 
-// 役割トークンの FrameAnchorId 表記。
-export function frameRoleAnchorId(role: FrameRole): FrameAnchorId {
+// 役割を参照フレームの基準 id として書いた形。
+export function frameRoleAnchorId(role: FrameRole): string {
   return `@${role}`;
 }
 

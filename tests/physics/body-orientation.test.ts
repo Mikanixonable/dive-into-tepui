@@ -5,7 +5,6 @@ import { test } from '../harness';
 import { cassiniSpinAxis, meridianDirection, orthogonalizedTo } from '../../src/physics/body-orientation';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { bodyDef, MOON_OBLIQUITY, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
@@ -13,7 +12,7 @@ const MOON_ORBIT_INC = (5.145 * Math.PI) / 180;
 const R2D = 180 / Math.PI;
 
 // 自転軸を持つ天体(地球は ECI の極軸そのもの、月はカッシーニ状態、残りは IAU の一次式)。
-const POLE_BODIES: readonly CelestialBodyId[] = ['earth', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
+const POLE_BODIES: readonly string[] = ['earth', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
 
 function angleBetween(a: Vec3, b: Vec3): number {
   return Math.acos(Math.min(1, Math.max(-1, dot(norm(a), norm(b)))));

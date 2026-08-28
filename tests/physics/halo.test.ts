@@ -9,10 +9,9 @@ import {
 } from '../../src/physics/halo';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { OrbitingId } from '../../src/physics/celestial-body';
 import { dot, len, sub } from '../../src/math/vec3';
 
-const SECONDARIES: OrbitingId[] = ['moon', 'earth'];
+const SECONDARIES: string[] = ['moon', 'earth'];
 const POINTS: CollinearPoint[] = ['L1', 'L2'];
 
 function isFiniteVec(v: { x: number; y: number; z: number }): boolean {

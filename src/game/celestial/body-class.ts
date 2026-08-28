@@ -3,7 +3,6 @@
 // という編集上の判断で、同じ kind: 'planet' の中から準惑星・小天体を分ける。
 // メッシュ構築(THREE 依存)と分けてあるのは、可視性の規則を DOM もレンダラも無しに
 // 評価できるようにするため。
-import { CelestialBodyId } from '../../physics/celestial-body';
 import { CelestialRegistry, SolarSystemId } from '../../physics/solar-system';
 
 export type BodyClass = 'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody';
@@ -113,7 +112,7 @@ const BODY_CLASSES: Record<SolarSystemId, BodyClass> = {
 
 // 登録天体の表示クラス。BODY_CLASSES に項が無い id(カスタムレジストリの架空天体)は、
 // 力学上の分類をそのまま重要度として使う。
-export function bodyClassOf(registry: CelestialRegistry, id: CelestialBodyId): BodyClass {
+export function bodyClassOf(registry: CelestialRegistry, id: string): BodyClass {
   const cls = (BODY_CLASSES as Record<string, BodyClass | undefined>)[id];
   if (cls !== undefined) return cls;
   const kind = registry[id]?.kind;

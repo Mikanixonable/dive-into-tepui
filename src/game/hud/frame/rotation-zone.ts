@@ -1,7 +1,6 @@
 // マップの座標系UIのうち「何の回転に合わせて回すか」を選ばせるゾーン。いまカメラがいる系の
 // 天体ぶんの公転・自転と、役割(操作対象の船/ターゲット)の公転を選択肢として並べ、
 // 選ばれた回転対象を返す。
-import { CelestialBodyId } from '../../../physics/celestial-body';
 import { Ephemeris } from '../../../physics/ephemeris';
 import { FrameRole, FrameRotationSource, rotationSourceKey } from '../../../physics/frame';
 import { primaryOf } from '../../../physics/solar-system';
@@ -31,14 +30,14 @@ export class RotationZone {
   // 選択肢を「解除・各天体の公転・各天体の自転・validRoles の役割の公転」へ組み直す。
   // validRoles には、周回軌道にあって公転を固定できる役割だけを渡す。
   public setNearby(
-    members: readonly CelestialBodyId[], displayTime: number, validRoles: readonly FrameRole[] = [],
+    members: readonly string[], displayTime: number, validRoles: readonly FrameRole[] = [],
   ): void {
     const registry = this.ephemeris.registry;
     this.sources.clear();
     this.sources.set('', null);
     const items: (readonly [string, string])[] = [['', '解除']];
 
-    const revolvable: CelestialBodyId[] = [];
+    const revolvable: string[] = [];
     for (const id of members) {
       if (registry[id] === undefined) continue;
       // 恒星は primaryOf が null を返すのでここで外れる。

@@ -14,7 +14,6 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { add } from '../../math/vec3';
 import type { StageSaveData } from '../save/save-data';
 import { Ephemeris } from '../../physics/ephemeris';
-import type { CelestialBodyId } from '../../physics/celestial-body';
 
 const PRIMARY_ID = 'zephyrus';
 const MOON_ID = 'zephyrus-i';
@@ -56,7 +55,7 @@ const ALT_REGISTRY: CelestialRegistry = {
 
 export class StageDebugAltSystem extends Stage {
   static readonly id = 'debug-alt-system' as const;
-  static async createEphemeris(phaseOffsets: Partial<Record<CelestialBodyId, number>>): Promise<Ephemeris> {
+  static async createEphemeris(phaseOffsets: Partial<Record<string, number>>): Promise<Ephemeris> {
     return new Ephemeris(ALT_REGISTRY, PRIMARY_ID, 0, phaseOffsets);
   }
   static readonly selectLabel = 'DEBUG(架空星系)';

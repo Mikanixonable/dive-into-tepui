@@ -1,6 +1,6 @@
 // 天体暦のレジストリを、積分弧が引ける候補一覧の形へ見せる。
 import type { Ephemeris } from '../../physics/ephemeris';
-import type { CelestialBody, CelestialBodyId } from '../../physics/celestial-body';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { FutureCelestialBodyProvider, FutureBodyCandidate } from './arc-bodies';
 
 export class FutureCelestialBodies implements FutureCelestialBodyProvider {
@@ -15,7 +15,7 @@ export class FutureCelestialBodies implements FutureCelestialBodyProvider {
   candidates(): readonly FutureBodyCandidate[] { return this.candidateList; }
 
   // 候補1体の時刻 t での状態。
-  celestialBodyAt(id: CelestialBodyId, t: number): CelestialBody {
+  celestialBodyAt(id: string, t: number): CelestialBody {
     return this.ephemeris.celestialBodyAt(id, t);
   }
 }
