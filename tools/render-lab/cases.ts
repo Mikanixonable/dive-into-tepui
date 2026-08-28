@@ -19,10 +19,9 @@ import {
 } from '../../src/render/thermal-emissive';
 import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
-import type { AtmosphereBody } from '../../src/render/pipeline/atmosphere-pass';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import type { FloatNode } from '../../src/render/tsl-types';
-import { ATMOSPHERE_OPTICS } from '../../src/render/atmosphere-params';
+import { ATMOSPHERE_OPTICS, type AtmosphereBody } from '../../src/render/atmosphere-params';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
