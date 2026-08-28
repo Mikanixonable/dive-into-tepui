@@ -23,7 +23,7 @@ export abstract class CelestialView {
   abstract dispose(): void;
 
   // pos が恒星から受けている放射照度(render/pipeline/sun-light.ts の単位)。恒星を持たない
-  // レジストリでは 1 天文単位ぶんを返す — 恒星光を 1 天文単位の位置へ置く EnvironmentScene の
+  // レジストリでは 1 天文単位ぶんを返す — 恒星光を 1 天文単位の位置へ置く CelestialSystem の
   // 扱いと揃える。
   protected sunIrradianceAt(ephemeris: Ephemeris, pos: Vec3, displayTime: number): number {
     const starId = ephemeris.starId;
