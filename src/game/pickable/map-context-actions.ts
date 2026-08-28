@@ -35,7 +35,6 @@ import type { Targeter } from '../targeter';
 import { v3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { orbitingAttractorOf } from '../../physics/celestial-body';
-import { primaryOf } from '../../physics/solar-system';
 import type { MapPickables } from './map-pickables';
 import type { Part } from '../game-entity/parts';
 import { pickCombatEntityAtPoint } from './combat-pickable';
@@ -126,7 +125,7 @@ export class MapContextActions {
       hud, entities, ephemeris, navTarget, cameraSystem, editor, simSpeedManager, pauseMenu, pickables,
       activePlayers, frameControls, activeStage, (target) => this.expandedBaseWindowKey === this.windowKey(target),
     );
-    this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, ephemeris.registry);
+    this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, ephemeris);
     // 一覧の行は隠れている対象でも操作できる(SPEC/MAP.md §10) — pickable によるマップ上の
     // 衝突判定はマーカーのヒットテストにだけ適用され、一覧からの id 一致には適用しない。
     this.physicalObjectListPanel.onFocus = (id) => {
@@ -493,10 +492,9 @@ export class MapContextActions {
     if (overviewMode) {
       // ラグランジュ点は自分を持つ天体(衛星ならその衛星自身)、それ以外の天体は主星/主天体を
       // 親とする — 親が無ければ(恒星、もしくは主天体が未登録)undefined のままにして根として扱う。
-      const registry = this.ephemeris.registry;
       const parentOf = new Map<string, string>();
       for (const l of this.cameraSystem.focusMarkers.allLabels) {
-        const parent = l.isLagrange ? lagrangeParentId(l.id) : primaryOf(registry, l.id);
+        const parent = l.isLagrange ? lagrangeParentId(l.id) : this.ephemeris.motionOf(l.id).primary?.id ?? null;
         if (parent !== null) parentOf.set(l.id, parent);
       }
       this.lastFocusId = focusTargetId(this.cameraSystem.mapCamera.focus);
@@ -576,7 +574,7 @@ export class MapContextActions {
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
     return {
-      title, subtitle, icon: pickGlyph(target.kind, target.id, this.ephemeris.registry), rows: [], items,
+      title, subtitle, icon: pickGlyph(target.kind, target.id, this.ephemeris), rows: [], items,
       relatedItems: this.relatedItemsFor(target, this.ephemeris.celestialBodiesAt(simTime)),
       relatedTitle: this.relatedTitleFor(target),
       onRename: this.renameHandlerFor(target),
