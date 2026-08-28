@@ -2,8 +2,9 @@
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { kinematicState } from '../../physics/kinematic-state';
+import { CelestialBodyDef, PhaseOffsets } from '../../physics/celestial-motion';
+import { ReferenceFrames } from '../../physics/reference-frames';
 import { RingSystemDef } from '../../physics/solar-system/celestial-body-def';
-import { SolarSystemId } from '../../physics/solar-system/solar-system';
 import { OrbitalElements } from '../../physics/elements';
 import { AU } from '../../physics/planet-orbit';
 import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
@@ -35,7 +36,6 @@ import {
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CelestialEntity } from './celestial-entity';
-import { CELESTIAL_APPEARANCES, fallbackCelestialAppearance } from './celestial-appearance';
 import { Earth } from './earth';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
@@ -110,18 +110,27 @@ function ambientFraction(overviewMode: boolean, graphics: GraphicsSettingsData):
 }
 
 export class CelestialSystem {
-  private readonly scene: THREE.Scene;
+  private scene!: THREE.Scene;
   // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
   // モデルごと組まないので(NodeMaterial.setupLighting)、受け手を真っ黒にしないために
   // 1 個だけ置いてある。マテリアルパスは direct() を無効化し indirect() を照度バッファの
   // 読み出しへ差し替えるため、この光源の色も強度もどこからも読まれない — 光の値の正本は
   // SunLight ただ 1 つ。
-  private readonly lightingAnchor: THREE.AmbientLight;
-  private readonly stars: Stars;
-  readonly celestialGrid: CelestialGrid;
-  private readonly scaleGrid: ScaleGridView;
-  private readonly bodies: readonly CelestialEntity[];
+  private lightingAnchor!: THREE.AmbientLight;
+  private stars!: Stars;
+  celestialGrid!: CelestialGrid;
+  private scaleGrid!: ScaleGridView;
+  private sunLight!: SunLight;
+  private exposure!: Exposure;
+  private sunOcclusion!: SunOcclusion;
+  private planetLight!: PlanetLightSource;
+  private ambient!: AmbientSource;
+  private atmosphere!: AtmospherePass;
+  private readonly bodiesById: ReadonlyMap<string, CelestialEntity>;
   private readonly nearbyTracker = new NearbySystemTracker();
+  // この系の天体の位置・姿勢を答える純サンプラ。bodies の motion から組み、天体ビューの配列が
+  // すべてここから引く。
+  readonly ephemeris: Ephemeris;
   // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なので、マップへ入るまで
   // 生成しない。11,200点の軌道要素・mesh・instance bufferをロード時に確保しないため。
   private pointFieldView: PointFieldView | null = null;
@@ -135,38 +144,46 @@ export class CelestialSystem {
   private readonly referenceIds: readonly string[];
   private readonly referenceLines: Map<string, OrbitLine>;
   // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
-  private readonly orbitGuideLines: OrbitGuideLines;
+  private orbitGuideLines!: OrbitGuideLines;
   // ゼロ速度曲線(ガイドタブ5.3節)。
-  private readonly zeroVelocityLines: ZeroVelocityLines;
+  private zeroVelocityLines!: ZeroVelocityLines;
   // 軌道ガイドタブの正本の鏡映し。静止軌道リング・ラベルの表示可否だけをここから読む。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
 
-  // ephemeris はこの系の天体の位置・姿勢を答える純サンプラで、天体ビューの配列がすべてここから
-  // 引く。sunLight はライティングパス(render/pipeline/)が読む恒星光の値オブジェクトで、
-  // RenderPipeline が所有するインスタンスをここへ書き込む。
-  // earthSpinPhase0 は地球の自転初期位相(地球が現在のレジストリに無ければ何もしない)。
+  // bodies はこの星系の全天体(宣言順。重力源配列・一覧の順序もこれで決まる)、origin は
+  // その中の ECI 中心天体。phaseOffsets は motion を組むのに使った初期位相(セーブでそのまま
+  // 返すために保持する)。THREE の資源はここでは受け取らない — build(scene, …) が登録する。
   constructor(
-    scene: THREE.Scene,
-    readonly ephemeris: Ephemeris,
-    private readonly sunLight: SunLight,
-    private readonly exposure: Exposure,
-    private readonly sunOcclusion: SunOcclusion,
-    private readonly planetLight: PlanetLightSource,
-    private readonly ambient: AmbientSource,
-    private readonly atmosphere: AtmospherePass,
-    earthSpinPhase0: number,
+    readonly bodies: readonly CelestialEntity[],
+    readonly origin: CelestialEntity,
+    phaseOffsets: PhaseOffsets,
   ) {
-    this.scene = scene;
-    const registry = ephemeris.registry;
-    scene.add(this.geoLine.line);
-    this.geoElements = buildGeoElements(ephemeris);
-    this.referenceIds = referenceLineIds(ephemeris);
-
+    this.ephemeris = new Ephemeris(bodies.map((b) => b.motion), origin.id, phaseOffsets);
+    this.bodiesById = new Map(bodies.map((b) => [b.id, b]));
+    this.geoElements = buildGeoElements(this.ephemeris);
+    this.referenceIds = referenceLineIds(this.ephemeris);
     // 参照線はマップで表示される天体だけが必要とする。全カタログぶんを起動時に
     // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
     this.referenceLines = new Map();
-    this.orbitGuideLines = new OrbitGuideLines(scene, ephemeris);
-    this.zeroVelocityLines = new ZeroVelocityLines(scene, ephemeris);
+  }
+
+  // シーンとライティングパスの値オブジェクト(RenderPipeline が所有)を受け取り、全天体の
+  // メッシュ・星野・グリッド・光源アンカーをシーンへ登録する。Game の構築中に1度だけ呼ぶ —
+  // update / sync はこの後でないと呼べない。
+  build(
+    scene: THREE.Scene, sunLight: SunLight, exposure: Exposure, sunOcclusion: SunOcclusion,
+    planetLight: PlanetLightSource, ambient: AmbientSource, atmosphere: AtmospherePass,
+  ): void {
+    this.scene = scene;
+    this.sunLight = sunLight;
+    this.exposure = exposure;
+    this.sunOcclusion = sunOcclusion;
+    this.planetLight = planetLight;
+    this.ambient = ambient;
+    this.atmosphere = atmosphere;
+    scene.add(this.geoLine.line);
+    this.orbitGuideLines = new OrbitGuideLines(scene, this.ephemeris);
+    this.zeroVelocityLines = new ZeroVelocityLines(scene, this.ephemeris);
     this.lightingAnchor = new THREE.AmbientLight();
     scene.add(this.lightingAnchor);
     // レンダラーは光源自身の layers とカメラの layers が重ならないと光源をそのカメラの描画対象
@@ -177,16 +194,66 @@ export class CelestialSystem {
     scene.add(this.stars.mesh);
     this.celestialGrid = new CelestialGrid(scene);
     this.scaleGrid = new ScaleGridView(scene);
-
-    this.bodies = Object.keys(registry).map((id) => {
-      const motion = ephemeris.motionOf(id);
-      return id in CELESTIAL_APPEARANCES
-        ? CELESTIAL_APPEARANCES[id as SolarSystemId].create(motion)
-        : fallbackCelestialAppearance(motion);
-    });
     for (const body of this.bodies) body.build(scene, sunOcclusion, sunLight);
+  }
 
-    this.bodies.find((b): b is Earth => b instanceof Earth)?.setSpinPhase0(earthSpinPhase0);
+  // ---------------------------------------------------------------- 天体の口
+
+  // 天体 id の個体。未登録の id を渡すと例外になる。
+  bodyOf(id: string): CelestialEntity {
+    const body = this.bodiesById.get(id);
+    if (body === undefined) throw new Error(`CelestialSystem: 登録されていない天体 id: ${id}`);
+    return body;
+  }
+
+  find(id: string): CelestialEntity | null { return this.bodiesById.get(id) ?? null; }
+
+  has(id: string): boolean { return this.bodiesById.has(id); }
+
+  // 天体 id の表示名。未登録の id はそのまま返す(架空天体のラベルを例外で止めない)。
+  nameOf(id: string): string { return this.bodiesById.get(id)?.name ?? id; }
+
+  // 主星の個体。恒星を持たない星系では null。
+  get star(): CelestialEntity | null {
+    const starId = this.ephemeris.starId;
+    return starId === null ? null : this.bodyOf(starId);
+  }
+
+  // 全登録天体の定義(宣言順)。
+  get defs(): readonly CelestialBodyDef[] { return this.ephemeris.defs; }
+
+  // ---------------------------------------------------------- 系レベルの物理
+
+  // 指定時刻の全登録天体(宣言順)。同一 t には同一の配列参照が返るので、**呼び出し側は
+  // この配列と要素を書き換えてはならない**(gravityAttractorsAt / atmosphere… も同じ)。
+  celestialBodiesAt(t: number): readonly CelestialBody[] { return this.ephemeris.celestialBodiesAt(t); }
+
+  // 指定時刻の重力源天体(mu が 0 でないもの、宣言順)。
+  gravityAttractorsAt(t: number): readonly CelestialBody[] { return this.ephemeris.gravityAttractorsAt(t); }
+
+  // 指定時刻の大気を持つ天体(宣言順)。抗力を掛ける1体を選ぶ側が引く窓。
+  atmosphereCelestialBodiesAt(t: number): readonly CelestialBody[] {
+    return this.ephemeris.atmosphereCelestialBodiesAt(t);
+  }
+
+  // 座標系の同一性(同じ対に同じ参照)と、天体でない基準の解決。
+  get frames(): ReferenceFrames { return this.ephemeris.referenceFrames; }
+
+  // ECI の点 r から見た恒星方向の単位ベクトル。恒星が無い星系では無害な既定方向(+X)を返す。
+  sunDirFrom(r: Vec3, t: number): Vec3 { return this.ephemeris.sunDirFrom(r, t); }
+
+  // 星系の再構築に要る値のスナップショット(セーブ用)。phaseOffsets は構築時に受け取った
+  // record をそのまま返す(明示 0 のキーを落とさない)。
+  serialize(): { readonly phaseOffsets: PhaseOffsets; readonly earthSpinPhase0: number | undefined } {
+    return { phaseOffsets: this.ephemeris.getPhaseOffsets(), earthSpinPhase0: this.earthSpinPhase0() };
+  }
+
+  // 負荷確認ウィンドウが読む、天体暦の時刻キャッシュのヒット/ミス累計。
+  perfCounts(): {
+    celestialBodiesCacheHits: number; celestialBodiesCacheMisses: number;
+    timeCacheHits: number; timeCacheMisses: number;
+  } {
+    return this.ephemeris.perfCounts();
   }
 
   // 表示時刻 t の点群の位置を更新する。

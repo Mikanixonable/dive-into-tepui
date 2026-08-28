@@ -15,7 +15,8 @@ import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add } from '../../math/vec3';
 import type { StageSaveData } from '../save/save-data';
-import { Ephemeris } from '../../physics/ephemeris';
+import { fallbackCelestialAppearance } from '../celestial/celestial-appearance';
+import { CelestialSystem } from '../celestial/celestial-system';
 
 const PRIMARY_ID = 'zephyrus';
 const MOON_ID = 'zephyrus-i';
@@ -61,8 +62,10 @@ function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[]
 
 export class StageDebugAltSystem extends Stage {
   static readonly id = 'debug-alt-system' as const;
-  static async createEphemeris(phaseOffsets: PhaseOffsets): Promise<Ephemeris> {
-    return new Ephemeris(zephyrusSystemMotions(phaseOffsets), PRIMARY_ID, phaseOffsets);
+  static async createCelestialSystem(phaseOffsets: PhaseOffsets, _earthSpinPhase0: number): Promise<CelestialSystem> {
+    const bodies = zephyrusSystemMotions(phaseOffsets).map(fallbackCelestialAppearance);
+    const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
+    return new CelestialSystem(bodies, origin, phaseOffsets);
   }
   static readonly selectLabel = 'DEBUG(架空星系)';
   static readonly selectSub = '【デバッグ】恒星0個・架空天体2体のレジストリで起動する';
