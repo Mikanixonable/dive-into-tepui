@@ -30,7 +30,7 @@ import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pi
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import {
   type AtmosphereCandidate, atmosphereDraws, atmosphereOpticsOf,
-} from '../../render/atmosphere-params';
+} from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CelestialView } from './celestial-view';

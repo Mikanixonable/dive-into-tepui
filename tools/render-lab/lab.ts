@@ -13,7 +13,7 @@ import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
-import { atmosphereDraws } from '../../src/render/atmosphere-params';
+import { atmosphereDraws } from '../../src/render/atmosphere';
 import type { ChoiceValue, GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { metersPerPixelAtDepth } from '../../src/physics/projection';
