@@ -1,5 +1,5 @@
 import { LAGRANGE_ID, lagrangePoint } from '../object-groups';
-import type { BodyClass } from '../../celestial/body-class';
+import type { BodyClass } from '../../celestial/celestial-entity-def';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
 

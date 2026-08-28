@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import { createEarth, type Earth as EarthMesh } from '../../render/earth';
 import { CelestialMotion, PlanetMotion } from '../../physics/celestial-motion';
 import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system/constants';
-import { EARTH_TEXTURES } from '../../render/celestial-textures';
+import { EARTH_TEXTURES } from '../../render/earth';
 import { scaledToBondAlbedo, type Albedo } from '../../render/celestial-albedo';
 import type { AtmosphereOptics } from '../../render/atmosphere';
 import { CameraSystem } from '../camera/camera-system';

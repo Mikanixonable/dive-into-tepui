@@ -19,33 +19,6 @@ export type AtmosphereOptics = {
   readonly mieAnisotropy: number;
 };
 
-// 大気を持つ天体の光学パラメータ。**ここに載っている天体だけが大気を持つ。**
-export const ATMOSPHERE_OPTICS: Readonly<Record<string, AtmosphereOptics>> = {
-  // 標準大気の分子散乱と、視程 50km 相当のエーロゾル。
-  earth: {
-    rayleigh: new THREE.Vector3(5.802e-6, 13.558e-6, 33.1e-6),
-    rayleighScaleHeight: 8.0e3,
-    mie: 3.996e-6,
-    mieScaleHeight: 1.2e3,
-    mieAnisotropy: 0.8,
-  },
-  // 地球の 1/166 の柱密度へ CO2 の散乱断面積を掛けた分子散乱と、光学的厚み 0.3 の浮遊塵。
-  // **塵が分子散乱を2桁上回る**ので、空の色は青ではなく塵の色になる。塵は地球のエーロゾルと
-  // 違って大気全体へ混ざるため、スケールハイトが分子と同じになる。
-  mars: {
-    rayleigh: new THREE.Vector3(8.6e-8, 2.0e-7, 4.9e-7),
-    rayleighScaleHeight: 11.1e3,
-    mie: 2.7e-5,
-    mieScaleHeight: 11.1e3,
-    mieAnisotropy: 0.65,
-  },
-};
-
-// 天体 id の大気。大気を持たない天体では null。
-export function atmosphereOpticsOf(id: string): AtmosphereOptics | null {
-  return ATMOSPHERE_OPTICS[id] ?? null;
-}
-
 // 同時に大気を描ける天体の数。
 export const MAX_ATMOSPHERE_BODIES = 4;
 

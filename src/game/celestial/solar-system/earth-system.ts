@@ -10,8 +10,8 @@ import type { CelestialEntity } from '../celestial-entity';
 import { Earth } from '../earth';
 import { SphereEntity } from '../sphere-entity';
 
-// 標準大気の分子散乱と、視程 50km 相当のエーロゾル。
-const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
+// 標準大気の分子散乱と、視程 50km 相当のエーロゾル。render-lab の大気ケースも同じ値を読む。
+export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   rayleigh: new THREE.Vector3(5.802e-6, 13.558e-6, 33.1e-6),
   rayleighScaleHeight: 8.0e3,
   mie: 3.996e-6,

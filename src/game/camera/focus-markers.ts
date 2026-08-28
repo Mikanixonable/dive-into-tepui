@@ -6,7 +6,7 @@ import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../mar
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibility';
-import type { BodyClass } from '../celestial/body-class';
+import type { BodyClass } from '../celestial/celestial-entity-def';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
 import { DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';

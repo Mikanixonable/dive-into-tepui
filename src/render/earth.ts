@@ -8,7 +8,19 @@ import type { FloatUniform } from './tsl-types';
 import { shapeAxes } from '../physics/solar-system/celestial-body-def';
 import { EARTH } from '../physics/solar-system/earth-system';
 import { R_EARTH_EQ } from '../physics/solar-system/constants';
-import { EARTH_TEXTURES } from './celestial-textures';
+import earthTextureUrl from '../assets/earth.jpg';
+import cloudsTextureUrl from '../assets/8k_clouds.jpg';
+
+// 地球は地表・雲・雲影を1つのアルベドへ合成するので、テクスチャ2枚と合成後の倍率を
+// 1組で持つ。平均輝度 0.3104 は合成後の式で測った値で、A_B=0.306 との比が倍率。
+// averageHue も合成後の式で測った色み(Rec.709 輝度 1 の線形 RGB)。
+export const EARTH_TEXTURES = {
+  surfaceUrl: earthTextureUrl,
+  cloudsUrl: cloudsTextureUrl,
+  albedoScale: 0.9858,
+  bondAlbedo: 0.306,
+  averageHue: [0.9695, 0.9937, 1.1519],
+} as const;
 import { CelestialSurface } from './celestial-surface';
 import { BodyGraticule } from './body-graticule';
 import { EarthCoastline } from './earth-coastline';

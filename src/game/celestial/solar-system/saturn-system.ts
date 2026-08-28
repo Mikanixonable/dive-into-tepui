@@ -3,10 +3,16 @@
 import saturnTextureUrl from '../../../assets/2k_saturn.jpg';
 import titanTextureUrl from '../../../assets/2k_titan.jpg';
 import type { SaturnSystemMotions } from '../../../physics/solar-system/saturn-system';
+import type { CelestialTexture } from '../../../render/celestial-textures';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity';
 import { PointEntity } from '../point-entity';
 import { SphereEntity } from '../sphere-entity';
+
+// 平均輝度 0.6160(A_B は公表ボンド)。render-lab の土星ケースも同じ測光を読む。
+export const SATURN_TEXTURE: CelestialTexture = {
+  url: saturnTextureUrl, albedoScale: 0.5552, bondAlbedo: 0.342, averageHue: [1.2028, 0.9763, 0.6378],
+};
 
 // 土星系の運動に見た目を対応づける。
 export function saturnSystemEntities(
@@ -14,11 +20,7 @@ export function saturnSystemEntities(
 ): { readonly [K in keyof SaturnSystemMotions]: CelestialEntity } {
   return {
     // 惑星は戦闘ビューでは輝点スプライトとして描くので PointEntity。
-    saturn: new PointEntity(
-      m.saturn, '土星', 'planet',
-      // 平均輝度 0.6160(A_B は公表ボンド)
-      CelestialSurface.textured({ url: saturnTextureUrl, albedoScale: 0.5552, bondAlbedo: 0.342, averageHue: [1.2028, 0.9763, 0.6378] }),
-    ),
+    saturn: new PointEntity(m.saturn, '土星', 'planet', CelestialSurface.textured(SATURN_TEXTURE)),
     // パン A_B=0.28(幾何 0.5 x q=0.564)
     pan: new SphereEntity(m.pan, 'パン', 'satellite', CelestialSurface.solid([0.3326, 0.2699, 0.2252])),
     // ダフニス A_B=0.28(分類既定 幾何 0.5 x q=0.564)

@@ -6,7 +6,7 @@ import {
   bodyNameVisible,
   type BodyClassToggles,
 } from './body-visibility';
-import type { BodyClass } from './body-class';
+import type { BodyClass } from './celestial-entity-def';
 import type { CelestialSystem } from './celestial-system';
 
 export type MapEntityKind = 'player' | 'ship' | 'ammo' | 'fuel' | 'base';
@@ -62,7 +62,7 @@ export class MapVisibilityPolicy {
     nearbyIds: Iterable<string> = [],
   ) {
     this.alwaysVisible = alwaysFullyVisibleIds(
-      celestialSystem.motions, (id) => celestialSystem.bodyOf(id).bodyClass, focusId, nearbyIds, toggles);
+      celestialSystem.motions, (id) => celestialSystem.find(id)?.bodyClass ?? 'planet', focusId, nearbyIds, toggles);
     this.nearby = new Set(nearbyIds);
   }
 
