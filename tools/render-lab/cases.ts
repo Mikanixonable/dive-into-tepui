@@ -7,7 +7,7 @@ import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { lightSourceAlbedoOf, rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
-import { R_EARTH, R_SUN } from '../../src/physics/solar-system';
+import { R_EARTH, R_SUN } from '../../src/physics/solar-system/constants';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
@@ -27,7 +27,9 @@ import { RingView } from '../../src/game/celestial/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
-import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
+import { type RingBandDef } from '../../src/physics/solar-system/celestial-body-def';
+import { MARS } from '../../src/physics/solar-system/mars-system';
+import { SATURN } from '../../src/physics/solar-system/saturn-system';
 import { textureOf, type CelestialTexture } from '../../src/render/celestial-textures';
 import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection';
 import { v3 } from '../../src/math/vec3';
@@ -45,11 +47,10 @@ const FOV_DEG = 50;
 // **寄り切った先へ物体を置くケースは、この値から距離を逆算する。**
 export const MAX_CAMERA_DISTANCE_LOG = 2;
 
-// 土星ケースが使う実データの環。planet 以外は rings を持たないので、ここで判別を閉じる。
+// 土星ケースが使う実データの環。
 const SATURN_RINGS = (() => {
-  const def = bodyDef(SOLAR_SYSTEM, 'saturn');
-  if (def.kind !== 'planet' || def.rings === undefined) throw new Error('saturn has no rings');
-  return def.rings;
+  if (SATURN.rings === undefined) throw new Error('saturn has no rings');
+  return SATURN.rings;
 })();
 
 // 環の帯を遮蔽パスへ渡す形へ直す。半径は描画座標と同じメートルのまま。
@@ -654,7 +655,7 @@ function earthEclipse(style: RenderStyle): LabCase {
 
 // 地球と火星のケースの寸法 [m]。**距離のつまみを縮め切った位置が火星の大気の中**へ来るよう、
 // 火星までの距離を到達高度から逆算する。カメラの高度は地球の大気の裾(高度 116km)の内側。
-const MARS_RADIUS = bodyDef(SOLAR_SYSTEM, 'mars').radius;
+const MARS_RADIUS = MARS.radius;
 const MARS_ARRIVAL_ALTITUDE = 4e4;
 const EARTH_MARS_DISTANCE = (MARS_RADIUS + MARS_ARRIVAL_ALTITUDE) * 10 ** MAX_CAMERA_DISTANCE_LOG;
 const EARTH_MARS_CAMERA_ALTITUDE = 1e5;

@@ -1,14 +1,13 @@
 // halo.ts の回帰テスト。線形化パラメータ(λ・ωz・c2・γ)と三次の振幅拘束は文献値のある量なので
 // 実測値ではなく理論値で固定する。状態そのものは線形解なので厳密解が無く、「有限」「面内」
 // 「振幅のオーダー」という緩い性質のみを確認する。
+import { solarSystemEphemeris } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   HaloParams, LissajousParams, CollinearPoint,
   collinearFrame, haloAmplitudeX, haloState, lissajousState,
 } from '../../src/physics/halo';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { dot, len, sub } from '../../src/math/vec3';
 
 const SECONDARIES: string[] = ['moon', 'earth'];
@@ -19,7 +18,7 @@ function isFiniteVec(v: { x: number; y: number; z: number }): boolean {
 }
 
 export function register(): void {
-  const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.7 });
+  const ephemeris = solarSystemEphemeris({ moon: 0.7 });
   const t = 1e6;
 
   for (const secondary of SECONDARIES) {

@@ -6,7 +6,7 @@ import { OrbitalElements, keplerPeriod, timeSincePeriapsis, trueAnomalyFromMean 
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
+import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system/constants';
 import { qRotate } from '../../src/physics/attitude';
 import { dot, len, scale, sub, v3 } from '../../src/math/vec3';
 
