@@ -6,18 +6,18 @@ import { SatelliteDef } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
-import { solarSystemEphemeris } from './test-helpers';
+import { motionOf, solarSystemParts } from './test-helpers';
 import { cross, dot, len, scale, sub } from '../../src/math/vec3';
 
-// id から静的事実を引くための天体暦。
-const DEFS = solarSystemEphemeris();
+// id から静的事実を引くための太陽系。
+const DEFS = solarSystemParts().motions;
 
 // テスト対象の id が衛星であることを前提に軌道モデルを取り出す。
 function satelliteOrbitOf(id: string): SatelliteOrbit {
-  return (DEFS.motionOf(id).def as SatelliteDef).orbit;
+  return (motionOf(DEFS, id).def as SatelliteDef).orbit;
 }
 function planetOf(id: string): string {
-  return DEFS.motionOf(id).primary!.id;
+  return motionOf(DEFS, id).primary!.id;
 }
 
 // [id, JPL 公開周期(日), 逆行か]。
@@ -32,7 +32,7 @@ const CASES: readonly [string, number, boolean][] = [
 ];
 
 export function register(): void {
-  const eph = solarSystemEphemeris({});
+  const motions = solarSystemParts({}).motions;
 
   test('irregular-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {
     for (const [id, periodDays] of CASES) {
@@ -44,11 +44,10 @@ export function register(): void {
 
   test('irregular-satellites: 傾斜角どおりの向きに公転する(逆行4体は角運動量が黄道極と逆向き)', () => {
     for (const [id, , retrograde] of CASES) {
-      const planet = planetOf(id);
       const t = 1e7;
-      const rel = sub(eph.stateOf(id, t).r, eph.stateOf(planet, t).r);
-      const relVel = sub(eph.stateOf(id, t).v, eph.stateOf(planet, t).v);
-      const h = cross(rel, relVel);
+      const satellite = motionOf(motions, id).stateAt(t);
+      const planet = motionOf(motions, planetOf(id)).stateAt(t);
+      const h = cross(sub(satellite.r, planet.r), sub(satellite.v, planet.v));
       const sign = dot(h, ECL_POLE_ECI);
       if (retrograde) assert.ok(sign < 0, `${id} が順行している: ${sign}`);
       else assert.ok(sign > 0, `${id} が逆行している: ${sign}`);
