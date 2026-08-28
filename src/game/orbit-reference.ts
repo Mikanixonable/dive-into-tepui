@@ -3,7 +3,7 @@
 import { CelestialBody, strongestAttractor } from '../physics/celestial-body';
 import type { Ephemeris } from '../physics/ephemeris';
 import { KinematicState } from '../physics/kinematic-state';
-import type { Vec3 } from '../physics/vec3';
+import type { Vec3 } from '../math/vec3';
 import type { GameEntity } from './game-entity/game-entity';
 import type { NavTarget } from './nav-target';
 import type { EntityManager } from './simulation/entity-manager';

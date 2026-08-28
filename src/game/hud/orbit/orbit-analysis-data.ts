@@ -6,7 +6,7 @@ import { semiMajorFromPeriod } from '../../../physics/elements';
 import type { Ephemeris } from '../../../physics/ephemeris';
 import { latLonOf } from '../../../physics/body-orientation';
 import { KinematicState } from '../../../physics/kinematic-state';
-import { dot, len, sub } from '../../../physics/vec3';
+import { dot, len, sub } from '../../../math/vec3';
 import type { GameEntity } from '../../game-entity/game-entity';
 import { entityStateAt } from '../../simulation/entity-state-at';
 import type { OrbitReference } from '../../orbit-reference';

@@ -9,8 +9,8 @@ import { closingSpeed, type Contact } from './contact';
 import { collisionDamageFraction, contactDamageSpeed } from './contact-damage';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { add, len, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../physics/vec3';
-import { apparentSizePx, metersPerPixel, type Viewpoint } from '../../physics/projection';
+import { add, len, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../math/vec3';
+import { apparentSizePx, metersPerPixel, type Viewpoint } from '../../math/projection';
 import { solveLeadTime } from '../../physics/intercept';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -20,8 +20,8 @@ import { Bullet } from './bullet';
 import type { EnemyDeathCause, Stage } from '../stages/stage';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { SimSpeedManager } from '../sim-speed-manager';
-import type { EnemySaveData } from '../save-data';
+import type { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { EnemySaveData } from '../save/save-data';
 import { proteinEnemyDefinitionFor } from '../protein/protein-enemy-registry';
 import { proteinMotionModeDisplacements } from '../protein/protein-motion-modes';
 import { ProteinRuntime } from '../protein/protein-runtime';
@@ -39,6 +39,24 @@ import { isFormationEnergyAvailable, type FormationRole } from './enemy-formatio
 import { sunGlareSpreadScale } from './enemy-sun-glare';
 import { buildEnemyMarkerItem } from './enemy-marker';
 import { serializeEnemy } from './enemy-save';
+
+// 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
+// 達するのは、地球の大気では高度 80 km 付近。
+const ENEMY_MAX_TEMP = 500; // [K]
+
+export const ENEMY_SCALE = 20; // buildEnemyShip() の見た目メッシュに掛けるスケール
+
+export const PLAYER_BULLET_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
+
+const PLASMA_BULLET_SPEED = C.MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
+const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
+const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
+const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
+const ENEMY_AI_MIN_RANGE = 50; // これより近いと射撃しない(至近距離) [m]
+const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃する最大機数
+const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
+const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
+const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime の
 // epoch で展開する。orbitLineColor は旧セーブデータには無いため、無ければ accent から導く。
@@ -59,7 +77,7 @@ export type EnemyInit =
 
 export class Enemy extends Ship {
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
-  protected readonly maxTemperature = C.ENEMY_MAX_TEMP;
+  protected readonly maxTemperature = ENEMY_MAX_TEMP;
   readonly accent: string | number; // マーカー色・集団識別。全敵が保持する
   readonly waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   readonly formationId?: string;
@@ -158,13 +176,13 @@ export class Enemy extends Ship {
     this.mass = 10000;
     this.collides = true;
     this.doPreciseReentry = true;
-    this.renderObject.scale.setScalar(C.ENEMY_SCALE);
+    this.renderObject.scale.setScalar(ENEMY_SCALE);
     if (this.proteinRuntime) {
       // 表示が原子模型へ切り替わっていても判定形状は常に同じリボンに固定する。専用の
       // 一時メッシュから三角形を抽出し、抽出後は GPU/CPU 資源をただちに解放する。
       const collisionSource = proteinDefinition?.buildCollisionObject();
       if (!collisionSource) throw new Error(`No protein collision definition registered for ${proteinId}`);
-      this.proteinRibbonCollision = new ProteinRibbonCollisionGeometry(collisionSource, C.ENEMY_SCALE);
+      this.proteinRibbonCollision = new ProteinRibbonCollisionGeometry(collisionSource, ENEMY_SCALE);
       disposeOwnedRenderResources(collisionSource);
     } else {
       this.proteinRibbonCollision = null;
@@ -247,7 +265,7 @@ export class Enemy extends Ship {
   }
 
   override sync(
-    fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint,
+    fo: import('../camera/floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint,
     proteinVibrationEnabled = true,
   ): void {
     super.sync(fo, displayTime);
@@ -293,7 +311,7 @@ export class Enemy extends Ship {
   private destroyEffect(): void {
     this._worldSfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    this._fx.spawnShipDestroyEffect(this.state, C.ENEMY_SCALE, ENEMY_DESTROY_FRAG_COLOR);
+    this._fx.spawnShipDestroyEffect(this.state, ENEMY_SCALE, ENEMY_DESTROY_FRAG_COLOR);
   }
 
   // 被弾によるダメージ・致死判定。
@@ -416,7 +434,7 @@ export class Enemy extends Ship {
       }
     }
     const dist = len(sub(player.state.r, this.state.r));
-    if (!(dist < C.STAGE00_MAX_RANGE && dist > C.ENEMY_AI_MIN_RANGE)) return;
+    if (!(dist < C.STAGE00_MAX_RANGE && dist > ENEMY_AI_MIN_RANGE)) return;
 
     // バースト継続中なら次弾のタイミングだけ見る
     if (this.burstLeft && this.burstLeft > 0) {
@@ -424,21 +442,21 @@ export class Enemy extends Ship {
       if (this.burstDelay <= 0) {
         this.firePlasma(simTime, player, entities, ephemeris);
         this.burstLeft--;
-        this.burstDelay = C.ENEMY_BURST_INTERVAL;
+        this.burstDelay = ENEMY_BURST_INTERVAL;
       }
       return;
     }
 
-    if (this.lastFireSim === undefined) this.lastFireSim = simTime - Math.random() * C.ENEMY_FIRE_INTERVAL;
-    if (simTime - this.lastFireSim <= C.ENEMY_FIRE_INTERVAL) return;
+    if (this.lastFireSim === undefined) this.lastFireSim = simTime - Math.random() * ENEMY_FIRE_INTERVAL;
+    if (simTime - this.lastFireSim <= ENEMY_FIRE_INTERVAL) return;
     this.lastFireSim = simTime;
 
     // 新規バーストを始めるかどうかを抽選する
     const countInGroup = this.attackingCountInGroup(entities.enemies);
-    if (countInGroup >= C.ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= C.ENEMY_ATTACK_CHANCE) return;
-    const counts = C.ENEMY_BURST_COUNTS;
+    if (countInGroup >= ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= ENEMY_ATTACK_CHANCE) return;
+    const counts = ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
-    this.burstDelay = C.ENEMY_BURST_INTERVAL;
+    this.burstDelay = ENEMY_BURST_INTERVAL;
     this.firePlasma(simTime, player, entities, ephemeris);
   }
 
@@ -461,9 +479,9 @@ export class Enemy extends Ship {
     const relV = sub(player.state.v, v);
 
     // 正確な見越し時間を計算
-    let leadTime = solveLeadTime(toPlayer, relV, C.PLASMA_BULLET_SPEED);
+    let leadTime = solveLeadTime(toPlayer, relV, PLASMA_BULLET_SPEED);
     if (leadTime === null || leadTime < 0) {
-      leadTime = len(toPlayer) / C.PLASMA_BULLET_SPEED; // フォールバック
+      leadTime = len(toPlayer) / PLASMA_BULLET_SPEED; // フォールバック
     }
 
     const predictedRelPos = add(toPlayer, scale(relV, leadTime));
@@ -474,17 +492,17 @@ export class Enemy extends Ship {
 
     // 散布界をスケール適用
     const perp = randPerp(aimDir);
-    const spreadAng = (Math.random() * C.PLASMA_SPREAD_DEG * spreadScale * Math.PI) / 180;
+    const spreadAng = (Math.random() * PLASMA_SPREAD_DEG * spreadScale * Math.PI) / 180;
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
 
-    const relativeBulletVelocity = scale(actualAim, C.PLASMA_BULLET_SPEED);
+    const relativeBulletVelocity = scale(actualAim, PLASMA_BULLET_SPEED);
     const bV = add(v, relativeBulletVelocity);
 
     const bulletDamage = this.proteinRuntime
-      ? this.proteinRuntime.combat.projectileDamage(C.PLAYER_BULLET_DAMAGE)
-      : C.PLAYER_BULLET_DAMAGE;
+      ? this.proteinRuntime.combat.projectileDamage(PLAYER_BULLET_DAMAGE)
+      : PLAYER_BULLET_DAMAGE;
     const pb = new Bullet(
-      kinematicState(simTime, r, bV), C.PLASMA_LIFETIME, 'enemy', 'plasma', bulletDamage,
+      kinematicState(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma', bulletDamage,
       this._worldSfx, this.scene, this,
     );
     // 弾の姿勢は Bullet.sync() に一本化する。プラズマの長軸(+Z)を、

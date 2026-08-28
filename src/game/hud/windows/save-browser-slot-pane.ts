@@ -1,7 +1,7 @@
 // セーブブラウザ左ペイン(セーブデータ一覧)の DOM 構築。
 // 一覧行と行ごとの操作ボタン、新規作成/取り込みの導線を組み立てる。
 // 表示対象の選択・実際の改名/複製/削除などの実処理は、コールバックを通じて呼び出し側へ委ねる。
-import type { SaveSlotMeta } from '../../save-data';
+import type { SaveSlotMeta } from '../../save/save-data';
 import { fmtDateTime } from '../utils';
 import { Button } from '../widgets';
 import { injectOnce } from '../widgets/inject-style';

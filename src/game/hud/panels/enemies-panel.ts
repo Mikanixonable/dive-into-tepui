@@ -1,8 +1,8 @@
 // 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
-import { len, sub } from '../../../physics/vec3';
+import { len, sub } from '../../../math/vec3';
 import { fmtDist } from '../utils';
 import { SyncThrottle } from '../sync-throttle';
-import type { Vec3 } from '../../../physics/vec3';
+import type { Vec3 } from '../../../math/vec3';
 import type { Enemy } from '../../game-entity/enemy';
 import type { CombatTarget } from '../../targeter';
 import type { Game } from '../../game';

@@ -2,7 +2,7 @@
 // 実測値ではなく理論値で固定する。状態そのものは線形解なので厳密解が無く、「有限」「面内」
 // 「振幅のオーダー」という緩い性質のみを確認する。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import {
   HaloParams, LissajousParams, CollinearPoint,
   collinearFrame, haloAmplitudeX, haloState, lissajousState,
@@ -10,7 +10,7 @@ import {
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { OrbitingId } from '../../src/physics/celestial-body';
-import { dot, len, sub } from '../../src/physics/vec3';
+import { dot, len, sub } from '../../src/math/vec3';
 
 const SECONDARIES: OrbitingId[] = ['moon', 'earth'];
 const POINTS: CollinearPoint[] = ['L1', 'L2'];

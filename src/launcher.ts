@@ -11,7 +11,7 @@ import { selectStage } from './game/stage-select';
 import type { UnlockManager } from './game/unlock-manager';
 import type { SaveSlots } from './game/save/save-slots';
 import type { SnapshotService } from './game/save/snapshot-service';
-import type { GameSaveData } from './game/save-data';
+import type { GameSaveData } from './game/save/save-data';
 import type { AudioEngine } from './audio/audio-engine';
 import type { Bgm } from './audio/bgm/bgm';
 import type { WorldSfx } from './audio/sfx/world-sfx';
