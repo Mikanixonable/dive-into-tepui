@@ -27,7 +27,8 @@ import type { ActivePlayerController } from '../active-controllable-controller';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAtOrNull } from '../../physics/ephemeris-profile';
 import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../simulation/sim-epoch';
-import { solarSystemMotions } from '../../physics/solar-system/solar-system';
+import { solarSystem } from '../celestial/solar-system/solar-system';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { PhaseOffsets } from '../../physics/celestial-motion';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
@@ -65,10 +66,10 @@ export type StageDeps = [
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
   readonly id: StageId;
-  createEphemeris(
-    phaseOffsets: PhaseOffsets, onProgress?: (ratio: number) => void,
+  createCelestialSystem(
+    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, onProgress?: (ratio: number) => void,
     startSimTime?: number,
-  ): Promise<Ephemeris>;
+  ): Promise<CelestialSystem>;
   // 選択画面が読む項目。
   readonly selectLabel: string;
   readonly selectSub: string;
@@ -98,24 +99,19 @@ export type StageResult = {
 };
 
 export abstract class Stage {
-  // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、開始時刻(startSimTime、省略時は
+  // 起動時に1度だけ組む星系。既定は現実の太陽系で、開始時刻(startSimTime、省略時は
   // ゲーム既定のエポック)が近未来/遠未来いずれかの高精度期間に入っていれば精密暦パックを
   // 読み込み、どちらにも入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
-  public static async createEphemeris(
-    phaseOffsets: PhaseOffsets, onProgress?: (ratio: number) => void,
+  public static async createCelestialSystem(
+    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, onProgress?: (ratio: number) => void,
     startSimTime = 0,
-  ): Promise<Ephemeris> {
+  ): Promise<CelestialSystem> {
     const startJdTdb = SIM_EPOCH_JD_TDB + startSimTime / 86400;
     const profile = profileAtOrNull(startJdTdb);
-    if (profile === null) {
-      const motions = solarSystemMotions('earth', phaseOffsets, SIM_EPOCH_ET, null, SIM_EPOCH_JD_TDB);
-      return new Ephemeris(motions.all, 'earth', phaseOffsets);
-    }
-    const pack = await loadAbsoluteEphemeris(
+    const pack = profile === null ? null : await loadAbsoluteEphemeris(
       profile.id, profile.validStartJdTdb, profile.validEndJdTdb, onProgress,
     );
-    const motions = solarSystemMotions('earth', phaseOffsets, SIM_EPOCH_ET, pack, SIM_EPOCH_JD_TDB);
-    return new Ephemeris(motions.all, 'earth', phaseOffsets);
+    return solarSystem('earth', phaseOffsets, earthSpinPhase0, pack, SIM_EPOCH_ET, SIM_EPOCH_JD_TDB);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;

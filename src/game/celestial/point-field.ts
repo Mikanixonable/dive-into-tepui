@@ -5,9 +5,8 @@
 // でよく、生成コード自体に群固有の分岐を増やさない。
 import { Q_ECLY_TO_ECI } from '../../physics/ecliptic';
 import { positionFromOrbitalElements, trueAnomalyFromMean } from '../../physics/elements';
-import { EPOCH_T_OFFSET } from '../../physics/ephemeris';
 import { AU } from '../../physics/planet-orbit';
-import { MU_SUN } from '../../physics/solar-system/constants';
+import { EPOCH_T_OFFSET, MU_SUN } from '../../physics/solar-system/constants';
 import { JUPITER } from '../../physics/solar-system/jupiter-system';
 import { qRotate } from '../../physics/attitude';
 import { mulberry32 } from '../../math/random';

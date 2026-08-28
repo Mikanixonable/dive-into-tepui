@@ -19,7 +19,7 @@ import type { UiSfx } from './audio/sfx/ui-sfx';
 import type { GameScene } from './render/scene';
 import type { RenderPipeline } from './render/pipeline/render-pipeline';
 import type { FrameSections } from './frame-sections';
-import type { Ephemeris } from './physics/ephemeris';
+import type { CelestialSystem } from './game/celestial/celestial-system';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 
@@ -39,13 +39,14 @@ function fallbackResult(phase: GamePhase): StageResult {
   return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
 }
 
-// ローディング表示の下で、このステージの天体暦を組む。
-async function initEphemeris(
-  stageClass: StageClass, phaseOffsets: Partial<Record<string, number>>, startSimTime?: number,
-): Promise<Ephemeris> {
+// ローディング表示の下で、このステージの星系を組む。
+async function initCelestialSystem(
+  stageClass: StageClass, phaseOffsets: Partial<Record<string, number>>, earthSpinPhase0: number,
+  startSimTime?: number,
+): Promise<CelestialSystem> {
   showLoading();
   try {
-    return await stageClass.createEphemeris(phaseOffsets, setLoadingProgress, startSimTime);
+    return await stageClass.createCelestialSystem(phaseOffsets, earthSpinPhase0, setLoadingProgress, startSimTime);
   } finally {
     hideLoading();
   }
@@ -131,12 +132,14 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   private async startRun(stageClass: StageClass, snapshotId?: string, startSimTime?: number): Promise<void> {
     this.endRun();
     const initialSave = this.initialSaveFor(stageClass, snapshotId, startSimTime);
-    const ephemeris = await initEphemeris(stageClass, initialSave?.phaseOffsets ?? {}, startSimTime);
     // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
     const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
+    const celestialSystem = await initCelestialSystem(
+      stageClass, initialSave?.phaseOffsets ?? {}, earthSpinPhase0, startSimTime,
+    );
     this.game = new Game(
       this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu, this.unlockManager,
-      this.sections, ephemeris, this.pipeline, earthSpinPhase0, initialSave, startSimTime,
+      this.sections, celestialSystem, this.pipeline, initialSave, startSimTime,
     );
     // AudioContext は実際のユーザー操作でしか作れないため、unlock は入力エッジの発火点へ配線する。
     // Input は周回ごとに作り直されるので、配線もそのたびに張り直す。
