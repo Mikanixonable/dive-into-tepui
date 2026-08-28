@@ -1,14 +1,14 @@
 // フレーム最後のパス: 3D 空間に居るが物理的な明るさを持たない表示物(軌道線・軌跡線・天球
-// グリッド・縮尺グリッド・Δv ギズモ)を、合成後の画面へ描き足す。物理量として描くものだけが
+// グリッド・縮尺グリッド・Δv ギズモ)を、合成後の絵へ描き足す。物理量として描くものだけが
 // 露出とトーンマッピングを通るので、それらの外へ出す — 指定した色がそのまま画面へ出る。
 //
-// 深度は自前では書かない。合成パスが G バッファの深度を画面の深度バッファへ複製しているので、
+// 深度は自前では書かない。合成パスが G バッファの深度を描画先の深度バッファへ複製しているので、
 // このパスは普通に深度テストするだけでよく、線のマテリアルをノード化する必要がない。
 // 帰結として、深度を書かない透ける物体(環・大気・オーロラ・噴射炎)には隠れない。
 //
 // 模式図スタイルは白背景なので、暗背景向けに定義された線の色はそのままでは見えない。線ごとの
 // 色定義を書き換える代わりに、このチャンネルだけを専用ターゲットへ描いてから、色相を保った
-// まま暗くして画面へ合成する。
+// まま暗くして重ね描く。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { max, min, screenUV, texture, uniform, vec2, vec4 } from 'three/tsl';
@@ -96,7 +96,7 @@ export class OverlayPass {
   }
 
   // 3D UI チャンネルのオブジェクトを描く。camera は他のパスと同じインスタンスなので、
-  // layers.mask は呼び出し前の値へ必ず戻す。写実スタイルはキャンバスへ直接重ね描きし、模式図
+  // layers.mask は呼び出し前の値へ必ず戻す。写実スタイルは合成パスの絵へ直接重ね描きし、模式図
   // スタイルは専用ターゲットへ描いてから明度反転して合成する。
   render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     const savedMask = camera.layers.mask;
@@ -108,7 +108,7 @@ export class OverlayPass {
     camera.layers.mask = savedMask;
   }
 
-  // 合成パスが書いた色と深度を残したまま、3D UI チャンネルをキャンバスへそのまま重ね描く。
+  // 合成パスが書いた色と深度を残したまま、3D UI チャンネルをそのまま重ね描く。
   private renderRealistic(scene: THREE.Scene, camera: THREE.Camera): void {
     this.renderer.autoClear = false;
     this.gpu.beginPass(GPU_PASS.overlay);
@@ -117,7 +117,7 @@ export class OverlayPass {
   }
 
   // 3D UI チャンネルを専用ターゲットへ描いてから、明度反転しつつプリマルチプライドアルファで
-  // キャンバスへ合成する。
+  // 重ね描く。
   private renderSchematic(scene: THREE.Scene, camera: THREE.Camera): void {
     this.renderer.getDrawingBufferSize(OverlayPass.sizeScratch);
     const width = OverlayPass.sizeScratch.x;
@@ -136,8 +136,8 @@ export class OverlayPass {
     this.renderer.render(scene, camera);
     this.renderer.setRenderTarget(null);
 
-    // 合成パスが書いたキャンバスの色を消さずに重ねる — autoClear のまま板を描くと、
-    // キャンバスがクリア色で塗り潰されてから線だけが残る。
+    // 合成パスが書いた色を消さずに重ねる — autoClear のまま板を描くと、
+    // 描画先がクリア色で塗り潰されてから線だけが残る。
     this.quad.material = this.compositeMaterial;
     this.gpu.beginPass(GPU_PASS.overlay);
     this.quad.render(this.renderer);

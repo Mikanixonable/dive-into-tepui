@@ -1,6 +1,6 @@
 // フレームの描画パス構成を制御する。render/** 配下の個々の描画物モジュールとは別に、
 // 「何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか」をここへ集約する。
-// 現在は10段: 影パス(恒星の直射光を遮るメッシュをライト空間の深度マップへ描く)→ G バッファパス
+// 現在は11段: 影パス(恒星の直射光を遮るメッシュをライト空間の深度マップへ描く)→ G バッファパス
 // (深度・法線・ラフネスを MRT へ描く)→ 遮蔽パス(G バッファ深度から
 // 復元した位置に届く恒星の直射光の透過率を1枚へ描く)→ ライティングパス(その2枚だけを読み、
 // 拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(lit-opaque 層をライティングパスの照度で描き、
@@ -8,10 +8,11 @@
 // 絵のスナップショットを読み、大気と合成し終えた絵を同じターゲットへ上書きする)→ world パス
 // (シーンを同じ HDR ターゲットへ重ね描きする)
 // → レンズ効果パス(明るい画素の光を画面上の角度で決まる広がりへ配り直す)→ composite パス
-// → 3D UI パス。composite パスは通常表示
-// (debugTarget==='off')では HDR ターゲットをトーンマッピングしてキャンバスへ合成し、それ以外を選ぶと
+// → 3D UI パス → アンチエイリアスパス。composite パスと 3D UI パスは表示用の LDR ターゲットへ
+// 描き、アンチエイリアスパスがそれを画面へ出す。composite パスは通常表示
+// (debugTarget==='off')では HDR ターゲットをトーンマッピングして合成し、それ以外を選ぶと
 // 代わりに中間ターゲットの中身を画面いっぱいに映す(debug-target.ts)。あわせて G バッファの
-// 深度をキャンバスの深度バッファへ複製するので、最後の 3D UI パス(overlay-pass.ts)は
+// 深度をそのターゲットの深度バッファへ複製するので、3D UI パス(overlay-pass.ts)は
 // 普通に深度テストするだけで不透明物の奥へ隠れる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
@@ -31,6 +32,7 @@ import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
 import { SunOcclusion } from './sun-occlusion';
 import { OverlayPass } from './overlay-pass';
+import { AntialiasPass } from './antialias-pass';
 import { SchematicComposite } from './schematic-composite';
 import { LensPass } from './lens-pass';
 import { Exposure } from './exposure';
@@ -38,6 +40,10 @@ import { SunLight } from './sun-light';
 import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
+import { FilmLut } from './film-lut';
+
+// マルチサンプリングを入れるときの標本数。
+const MSAA_SAMPLES = 4;
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly renderer: WebGPURenderer;
@@ -57,11 +63,17 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly backdropMaterial: THREE.MeshBasicNodeMaterial;
   private readonly backdropQuad: QuadMesh;
   private readonly overlayPass: OverlayPass;
+  private readonly antialiasPass: AntialiasPass;
   private readonly lensPass: LensPass;
   private readonly _sunLight: SunLight;
   private readonly _exposure: Exposure;
   private readonly target: THREE.RenderTarget;
+  // composite パスと 3D UI パスの描画先。トーンマッピングと表示用色空間への変換を終えた絵が入る。
+  private readonly displayTarget: THREE.RenderTarget;
   private readonly quad: QuadMesh;
+  // 合成段の色へ当てるフィルムのルック。通常表示の2枚(compositeMaterials.off と
+  // lensCompositeMaterial)だけがこのノードを組み込む。
+  private readonly filmLut = new FilmLut();
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
   // レンズ効果を掛けた通常表示。**compositeMaterials とは別に持つ** — デバッグ表示の選択肢
   // (DebugTargetId)ではなく、描画品質設定でオン/オフする 'off' の別版だからである。
@@ -127,15 +139,11 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
-    // antialias はレンダラ生成時にしか渡せず(scene.ts 参照)、キャンバスへの直描きは
-    // それでマルチサンプルされていた。オフスクリーンの HDR ターゲットは自前で samples を
-    // 要求しないと素通りで失われるので、構築時に一度だけ読んで反映する。
-    const samples = graphics.antialias ? 4 : 0;
     this.target = new THREE.RenderTarget(1, 1, {
       type: THREE.HalfFloatType,
       format: THREE.RGBAFormat,
       depthBuffer: true,
-      samples,
+      samples: graphics.msaa ? MSAA_SAMPLES : 0,
     });
     // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
@@ -146,6 +154,16 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     });
     this.backdropMaterial.colorNode = texture(this.target.texture, screenUV);
     this.backdropQuad = new QuadMesh(this.backdropMaterial);
+
+    // 表示用の絵は 8bit で足りる。**素の RGBA8 で受ける** — `-srgb` のフォーマットにすると、
+    // 表示用色空間への変換が二重に掛かって画面全体が白く浮く。深度を持たせるのは、composite
+    // パスが写した G バッファ深度に対して 3D UI パスが深度テストするため。
+    this.displayTarget = new THREE.RenderTarget(1, 1, {
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType,
+      depthBuffer: true,
+    });
+    this.antialiasPass = new AntialiasPass(renderer, this.displayTarget.texture, gpu, graphics.antialias);
 
     this.lensPass = new LensPass(renderer, this.target.texture, gpu);
     this.lensEnabled = graphics.lens;
@@ -160,7 +178,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // マテリアルをユニフォーム分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを
     // bind/sample することになるため、表示ごとに別マテリアルを構築する。
     this.compositeMaterials = {
-      off: this.buildCompositeMaterial(vec4(this.toneMapped(texture(this.target.texture, screenUV).rgb), 1)),
+      off: this.buildCompositeMaterial(
+        vec4(this.filmLut.apply(this.toneMapped(texture(this.target.texture, screenUV).rgb)), 1),
+      ),
       normal: this.buildCompositeMaterial(
         vec4(octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1),
       ),
@@ -194,7 +214,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
     };
     this.lensCompositeMaterial = this.buildCompositeMaterial(
-      vec4(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb)), 1),
+      vec4(
+        this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
+        1,
+      ),
     );
     // 模式図用の合成マテリアルは compositeMaterials とは別に1枚だけ持つ。debugTarget の選択肢
     // (DebugTargetId)には含まれない、表示スタイルそのものの切り替えのため。
@@ -269,10 +292,15 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this._exposure.setCompensation(graphics.exposureCompensation);
     this.sunSource.setModel(graphics.sunLightModel);
     this._planetLight.setCount(graphics.planetLightCount);
+    this.antialiasPass.setMethod(graphics.antialias);
+    this.filmLut.select(graphics.filmLut);
+    // 標本数を変えると、three が次の描画までに色と深度のテクスチャを作り直す。
+    this.target.samples = graphics.msaa ? MSAA_SAMPLES : 0;
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
-  // world → レンズ → 合成 → 3D UI の順に発行する。Game.render() から毎フレーム 1回呼ぶ。
+  // world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。Game.render() から
+  // 毎フレーム 1回呼ぶ。
   // 模式図スタイルではマテリアル・大気・world・レンズの4段を飛ばす。
   // デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが実際に
   // 生成した中身であるべきため。設定で切られている段(影・レンズ)を選べば、そのフレームが
@@ -283,6 +311,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     const width = this.drawingBufferSize.x;
     const height = this.drawingBufferSize.y;
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    if (this.displayTarget.width !== width || this.displayTarget.height !== height) {
+      this.displayTarget.setSize(width, height);
+    }
 
     // 影パスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
     flushProteinMotionComputes(this.renderer);
@@ -361,11 +392,19 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.depthDebugNear.value = camera.near;
       this.depthDebugFar.value = camera.far;
     }
+    // 出力先を差し替えると、描画先を指定しない2つのパスが表示用ターゲットへ向く。撮影のために
+    // 呼び出し側が張った出力先を潰さないよう、退避してから戻す。
+    const outputTarget = this.renderer.getOutputRenderTarget();
+    this.renderer.setOutputRenderTarget(this.displayTarget);
     this.gpu.beginPass(GPU_PASS.composite);
     this.quad.render(this.renderer);
 
-    // 3D UI パス。合成パスが複製した深度に対して深度テストしながら、キャンバスへ重ね描きする。
+    // 3D UI パス。合成パスが複製した深度に対して深度テストしながら重ね描きする。
     this.overlayPass.render(scene, camera, style);
+    this.renderer.setOutputRenderTarget(outputTarget);
+
+    // アンチエイリアスパス。表示用ターゲットの絵だけを読むので scene も camera も渡さない。
+    this.antialiasPass.render();
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
@@ -380,10 +419,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.backdropTarget.dispose();
     this.backdropMaterial.dispose();
     this.overlayPass.dispose();
+    this.antialiasPass.dispose();
     this.lensPass.dispose();
     this.lensCompositeMaterial.dispose();
     this.target.dispose();
+    this.displayTarget.dispose();
     for (const material of Object.values(this.compositeMaterials)) material.dispose();
     this.schematicMaterial.dispose();
+    this.filmLut.dispose();
   }
 }
