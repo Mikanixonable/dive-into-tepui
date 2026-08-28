@@ -11,7 +11,6 @@ import type { Ephemeris } from '../../physics/ephemeris';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { MapPickable } from '../pickable/map-pickable';
-import { bodyDef } from '../../physics/solar-system';
 import { FocusTarget, resolveFocusTarget } from './focus-target';
 import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save/save-data';
 
@@ -405,7 +404,7 @@ export class MapCamera {
   // フォーカスが天体でなければ通常の下限をそのまま使う。
   private get minDist(): number {
     if (this._focus.kind !== 'object' || !(this._focus.id in this.ephemeris.registry)) return C.OVERVIEW_CAMERA_MIN_DIST;
-    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, bodyDef(this.ephemeris.registry, this._focus.id).radius);
+    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, this.ephemeris.motionOf(this._focus.id).def.radius);
   }
 
   // ロールを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻し、パンでフォーカスから

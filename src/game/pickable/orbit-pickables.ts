@@ -4,12 +4,11 @@
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { guideSecondary } from '../../physics/orbit-guide';
-import { primaryOf } from '../../physics/solar-system';
 import type { Vec3 } from '../../math/vec3';
 import type { DisplayWindow } from '../display-window-manager';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { CameraSystem } from '../camera/camera-system';
-import type { EnvironmentScene } from '../celestial/environment-scene';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { VisibleGuideLine } from '../celestial/orbit-guide-lines';
 import type { GameEntity } from '../game-entity/game-entity';
 import { OrbitCalcMethod, OrbitPickable } from './orbit-pickable';
@@ -26,7 +25,7 @@ export class OrbitPickables {
 
   constructor(
     private readonly entities: EntityManager,
-    private readonly environment: EnvironmentScene,
+    private readonly celestialSystem: CelestialSystem,
     private readonly ephemeris: Ephemeris,
     private readonly cameraSystem: CameraSystem,
   ) {}
@@ -38,7 +37,7 @@ export class OrbitPickables {
     if (!this.cameraSystem.overviewMode) return;
     const { frame, displayTime } = displayWindow;
 
-    for (const [id, line] of this.environment.referenceOrbitLines) {
+    for (const [id, line] of this.celestialSystem.referenceOrbitLines) {
       const points = line.samplePoints(ORBIT_PICK_SAMPLES);
       if (points.length < 2) continue;
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [`body:${id}`], points });
@@ -48,7 +47,7 @@ export class OrbitPickables {
     for (const enemy of this.entities.enemies) this.addShipOrbit('ship', enemy, frame, displayTime, frameAnchors);
     for (const base of this.entities.bases) this.addShipOrbit('base', base, frame, displayTime, frameAnchors);
 
-    for (const guide of this.environment.orbitGuide.visibleLines(ORBIT_PICK_SAMPLES)) {
+    for (const guide of this.celestialSystem.orbitGuide.visibleLines(ORBIT_PICK_SAMPLES)) {
       this.items.push({
         key: `orbit-guide:${guide.key}`, kind: 'orbit-guide', method: 'guide',
         ownerKeys: this.guideOwnerKeys(guide), points: guide.points,
@@ -61,7 +60,7 @@ export class OrbitPickables {
   private guideOwnerKeys(guide: VisibleGuideLine): readonly string[] {
     if (guide.system === null) return ['body:earth'];
     const secondary = guideSecondary(guide.system);
-    const primary = primaryOf(this.ephemeris.registry, secondary) ?? secondary;
+    const primary = this.ephemeris.motionOf(secondary).primary?.id ?? secondary;
     return guide.point
       ? [`body:${secondary}-l${guide.point.slice(1)}`, `body:${primary}`, `body:${secondary}`]
       : [`body:${primary}`, `body:${secondary}`];

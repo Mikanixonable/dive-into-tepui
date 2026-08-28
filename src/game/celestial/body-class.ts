@@ -1,16 +1,16 @@
-// 天体の表示上の重要度。solar-system.ts の kind(恒星/惑星/衛星)が「中心天体が何か」という
+// 天体の表示上の重要度。運動の kind(恒星/惑星/衛星)が「中心天体が何か」という
 // 力学上の分類であるのに対し、こちらは「マップで既定でも見せるか、絞り込みの対象にするか」
 // という編集上の判断で、同じ kind: 'planet' の中から準惑星・小天体を分ける。
 // メッシュ構築(THREE 依存)と分けてあるのは、可視性の規則を DOM もレンダラも無しに
 // 評価できるようにするため。
-import { CelestialBodyId } from '../../physics/celestial-body';
-import { CelestialRegistry, SolarSystemId } from '../../physics/solar-system';
+import type { Ephemeris } from '../../physics/ephemeris';
+import { SolarSystemId } from '../../physics/solar-system/solar-system';
+import type { CelestialKind } from '../../physics/celestial-motion';
 
 export type BodyClass = 'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody';
 
-// 現実の太陽系(SOLAR_SYSTEM)の各天体の重要度。天体を登録すると Record の網羅性検査が
-// ここを要求する。
-const BODY_CLASSES: Record<SolarSystemId, BodyClass> = {
+// 現実の太陽系の各天体の重要度。天体を登録すると Record の網羅性検査がここを要求する。
+const BODY_CLASS_BY_ID: Record<SolarSystemId, BodyClass> = {
   sun: 'star',
   mercury: 'planet',
   venus: 'planet',
@@ -111,11 +111,21 @@ const BODY_CLASSES: Record<SolarSystemId, BodyClass> = {
   eureka: 'smallBody',
 };
 
-// 登録天体の表示クラス。BODY_CLASSES に項が無い id(カスタムレジストリの架空天体)は、
-// 力学上の分類をそのまま重要度として使う。
-export function bodyClassOf(registry: CelestialRegistry, id: CelestialBodyId): BodyClass {
-  const cls = (BODY_CLASSES as Record<string, BodyClass | undefined>)[id];
-  if (cls !== undefined) return cls;
-  const kind = registry[id]?.kind;
+// 現実の太陽系の天体の表示クラス。
+export function solarSystemBodyClass(id: SolarSystemId): BodyClass {
+  return BODY_CLASS_BY_ID[id];
+}
+
+// 力学上の分類だけから決める表示クラス。準惑星・小天体の区別が付かないので、惑星と衛星と
+// 恒星の3つにしか落ちない。
+export function bodyClassOfKind(kind: CelestialKind): BodyClass {
   return kind === 'star' ? 'star' : kind === 'satellite' ? 'satellite' : 'planet';
+}
+
+// 登録天体の表示クラス。現実の太陽系に項が無い id(カスタムレジストリの架空天体)は、
+// 力学上の分類をそのまま重要度として使う。
+export function bodyClassOf(ephemeris: Ephemeris, id: string): BodyClass {
+  const cls = (BODY_CLASS_BY_ID as Record<string, BodyClass | undefined>)[id];
+  if (cls !== undefined) return cls;
+  return id in ephemeris.registry ? bodyClassOfKind(ephemeris.motionOf(id).kind) : 'planet';
 }
