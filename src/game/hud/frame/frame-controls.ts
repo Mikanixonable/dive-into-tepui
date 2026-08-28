@@ -96,7 +96,7 @@ export class FrameControls {
     simTime: number, displayTime: number, visible: boolean,
   ): void {
     this.lastTime = simTime;
-    const members = visible ? systemMembersAt(this.ephemeris.registry, cameraPos, celestialBodies) : [];
+    const members = visible ? systemMembersAt(this.ephemeris, cameraPos, celestialBodies) : [];
     // 役割が周回しているかどうかはパネルが見えているかと関係がないので、非表示でも判定する
     // — 見えていないあいだ空扱いにすると、パネルを畳んだだけで下の巻き戻しが走り、選択が消える。
     const validRoles = this.validRevolutionRoles(displayTime);

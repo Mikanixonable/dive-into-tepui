@@ -1,9 +1,9 @@
 // frame.ts の回帰テスト: 座標系(原点天体 × 回転)の点・KinematicState 順逆変換
 // （恒等・往復・既知回転角・速度の有限差分検証・bake+un-bake 合成・原点が動く系）。
+import { solarSystemEphemeris } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { SOLAR_SYSTEM, MU_EARTH } from '../../src/physics/solar-system';
+import { MU_EARTH } from '../../src/physics/solar-system/constants';
 import { FrameAnchors } from '../../src/game/frame-anchors';
 import { FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
@@ -30,7 +30,7 @@ function findFrame(frames: readonly ReferenceFrame[], center: string, rotatingWi
 const NO_ANCHORS: FrameAnchorSource = { bodies: [], stateOf: () => null, attractorOf: () => null };
 
 export function register(): void {
-  const eph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.4 }); // 太陽・月とも初期位相を固定して決定的にする
+  const eph = solarSystemEphemeris({ moon: 0.4 }); // 太陽・月とも初期位相を固定して決定的にする
   const EARTH_INERTIAL = findFrame(eph.frames, 'earth', null);
   const SUN_EARTH_ROTATING = findFrame(eph.frames, 'earth', 'earth');
   const MOON_ROTATING = findFrame(eph.frames, 'earth', 'moon');
