@@ -1,7 +1,6 @@
 // 天体1つぶんの見た目(メッシュ・輝点スプライト・環など)。位置・速度は持たない —
 // Ephemeris が唯一の正本で、sync のたびにそこから引く。
 import * as THREE from 'three/webgpu';
-import { CelestialBodyId } from '../../physics/celestial-body';
 import { Ephemeris } from '../../physics/ephemeris';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -13,7 +12,7 @@ import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 
 export abstract class CelestialView {
-  abstract readonly id: CelestialBodyId;
+  abstract readonly id: string;
   abstract build(scene: THREE.Scene): void;
   abstract setVisible(visible: boolean): void;
   abstract sync(

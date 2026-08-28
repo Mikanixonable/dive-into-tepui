@@ -2,7 +2,6 @@
 // 見かけ直径が閾値未満なら球自体を描かない。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
-import { OrbitingId } from '../../physics/celestial-body';
 import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -19,7 +18,7 @@ import type { RenderStyle } from '../../render/render-style';
 import { RingView } from './ring-view';
 
 export class SphereView extends CelestialView {
-  readonly id: OrbitingId;
+  readonly id: string;
   private readonly group = new THREE.Group();
   // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
   private readonly axes: THREE.Vector3;
@@ -39,7 +38,7 @@ export class SphereView extends CelestialView {
   // surfaceMarkings は表面ラインの LineOverlay を作るファクトリ(その天体固有のデータを持つ
   // 具象クラスを呼び出し側が渡す)。
   constructor(
-    id: OrbitingId,
+    id: string,
     private readonly surface: CelestialSurface,
     private readonly sunOcclusion: SunOcclusion,
     private readonly sunLight: SunLight,

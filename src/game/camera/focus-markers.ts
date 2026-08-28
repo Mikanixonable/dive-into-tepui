@@ -1,6 +1,6 @@
 // マップモードのフォーカス対象(天体・ラグランジュ点)ラベルの算出と HUD マーカーへの反映。
 import { Vec3, v3, sub, len } from '../../math/vec3';
-import { CelestialBody, CelestialBodyId, OrbitingId, strongestAttractor } from '../../physics/celestial-body';
+import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
 import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../marker/marker-manager';
@@ -61,12 +61,12 @@ export interface FocusLabel {
 }
 
 // ラグランジュ点の名前。所属天体を前に置き、一覧では親の直下に並ぶ。
-function lagrangeName(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
+function lagrangeName(id: string, n: 1 | 2 | 3 | 4 | 5): string {
   return `${celestialBodyName(id)}-L${n}`;
 }
 
 // ラグランジュ点のマーカー表記。地点名を上、所属天体を下の行に置く。
-function lagrangeMarkerLabel(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
+function lagrangeMarkerLabel(id: string, n: 1 | 2 | 3 | 4 | 5): string {
   return `L${n}\n${celestialBodyName(id)}`;
 }
 
@@ -171,9 +171,9 @@ class CrowdingGrid {
 export class FocusMarkers {
   // 天体本体1つにつき1ラベル、ラグランジュ点が力学的に意味を持つ天体にはさらに L1〜L5 の
   // うち成立する点ぶんのラベルが並ぶ(表示名は「中心天体名-自分の名 Ln」)。
-  private readonly registryIds: readonly CelestialBodyId[];
+  private readonly registryIds: readonly string[];
   // ラグランジュ点ラベルを持つ天体と、そのうち成立する点の番号。
-  private readonly lagrangeSources: readonly { readonly id: OrbitingId; readonly points: readonly (1 | 2 | 3 | 4 | 5)[] }[];
+  private readonly lagrangeSources: readonly { readonly id: string; readonly points: readonly (1 | 2 | 3 | 4 | 5)[] }[];
   // トグル・フォーカスに関わらない全登録天体+全ラグランジュ点ラベルの全集合(id/isLagrange 目的)。
   readonly allLabels: readonly FocusLabel[];
   // このフレームで表示する対象に絞ったラベル。
@@ -226,9 +226,9 @@ export class FocusMarkers {
     // レジストリは実行時に差し替えられるので、親子関係が循環していても停止し、同じ天体を
     // 二度並べないよう追加済みを覚えておく。
     const labels: FocusLabel[] = [];
-    const added = new Set<CelestialBodyId>();
+    const added = new Set<string>();
     const pointsOf = new Map(this.lagrangeSources.map((s) => [s.id, s.points]));
-    const appendBody = (id: CelestialBodyId, depth: number): void => {
+    const appendBody = (id: string, depth: number): void => {
       if (added.has(id)) return;
       added.add(id);
       const cls = bodyClassOf(registry, id);
@@ -323,7 +323,7 @@ export class FocusMarkers {
   // 表示時刻 t の各ラベル座標を求め直す。表示対象の外にある天体は座標計算ごと飛ばす —
   // 登録天体が増えるほど lagrangeAt(1天体あたり positionOf 2回 + 回転系1回)が効くため。
   update(
-    t: number, focusId: CelestialBodyId | undefined, toggles: BodyClassToggles, cameraPos: Vec3,
+    t: number, focusId: string | undefined, toggles: BodyClassToggles, cameraPos: Vec3,
     sharedVisibilityPolicy?: MapVisibilityPolicy,
   ): void {
     const ephemeris = this.ephemeris;
@@ -500,7 +500,7 @@ export class FocusMarkers {
 
       if (isStage2) {
         // 第2段階 (500万km以上): 「月:」などのプレフィックスを表示せず、主親天体(地球等)へ集約
-        const primaryId = primaryOf(registry, center.id as OrbitingId);
+        const primaryId = primaryOf(registry, center.id);
         if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
           targetId = primaryId;
         } else if (this.bodyPickableRecords.get(center.id)?.pickable) {
@@ -514,10 +514,10 @@ export class FocusMarkers {
           targetId = center.id;
           prefix = '';
         } else {
-          const primaryId = primaryOf(registry, center.id as OrbitingId);
+          const primaryId = primaryOf(registry, center.id);
           if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
             targetId = primaryId;
-            prefix = `${celestialBodyName(center.id as CelestialBodyId)}: `;
+            prefix = `${celestialBodyName(center.id)}: `;
           }
         }
       }
