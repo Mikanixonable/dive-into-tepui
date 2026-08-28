@@ -4,8 +4,9 @@
 // (深度・法線・ラフネスを MRT へ描く)→ 遮蔽パス(G バッファ深度から
 // 復元した位置に届く恒星の直射光の透過率を1枚へ描く)→ ライティングパス(その2枚だけを読み、
 // 拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(lit-opaque 層をライティングパスの照度で描き、
-// world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ 大気パス(同じ
-// ターゲットへ画面空間で大気を重ねる)→ world パス(シーンを同じ HDR ターゲットへ重ね描きする)
+// world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ 大気パス(不透明の
+// 絵のスナップショットを読み、大気と合成し終えた絵を同じターゲットへ上書きする)→ world パス
+// (シーンを同じ HDR ターゲットへ重ね描きする)
 // → レンズ効果パス(明るい画素の光を画面上の角度で決まる広がりへ配り直す)→ composite パス
 // → 3D UI パス → アンチエイリアスパス。composite パスと 3D UI パスは表示用の LDR ターゲットへ
 // 描き、アンチエイリアスパスがそれを画面へ出す。composite パスは通常表示
@@ -17,7 +18,7 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import type { GraphicsOptionKey, GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
+import type { GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
@@ -41,13 +42,6 @@ import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 import { FilmLut } from './film-lut';
 
-// パイプラインだけを駆動する呼び出し側(描画テスト環境)が操作の対象にする項目。
-// **ここを変えたときだけ、パイプラインが描くものが変わる。**
-export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'msaa', 'antialias', 'exposureCompensation', 'filmLut', 'atmosphere', 'sunLightModel',
-  'planetLightCount', 'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
-] as const satisfies readonly GraphicsOptionKey[];
-
 // マルチサンプリングを入れるときの標本数。
 const MSAA_SAMPLES = 4;
 
@@ -64,6 +58,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly _ambient: AmbientSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
+  // 大気パスが読む、不透明の絵のスナップショットとそれを書き写す全画面クアッド。
+  private readonly backdropTarget: THREE.RenderTarget;
+  private readonly backdropMaterial: THREE.MeshBasicNodeMaterial;
+  private readonly backdropQuad: QuadMesh;
   private readonly overlayPass: OverlayPass;
   private readonly antialiasPass: AntialiasPass;
   private readonly lensPass: LensPass;
@@ -131,8 +129,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
+    // 大気パスが読む、不透明の絵のスナップショット。マルチサンプルの解決済みの絵を写すので、
+    // スナップショット自身はサンプル 1 でよく、深度も持たない。
+    this.backdropTarget = new THREE.RenderTarget(1, 1, {
+      type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false,
+    });
     this.atmospherePass = new AtmospherePass(
-      renderer, this.gbuffer, this._sunLight, this._sunOcclusion, gpu,
+      renderer, this.gbuffer, this.backdropTarget.texture, this._sunLight, this._sunOcclusion, gpu,
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
@@ -144,6 +147,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     });
     // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
+
+    // 共有ターゲットの中身(マテリアルパスの出力)をスナップショットへ書き写す全画面クアッド。
+    this.backdropMaterial = new THREE.MeshBasicNodeMaterial({
+      depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+    });
+    this.backdropMaterial.colorNode = texture(this.target.texture, screenUV);
+    this.backdropQuad = new QuadMesh(this.backdropMaterial);
 
     // 表示用の絵は 8bit で足りる。**素の RGBA8 で受ける** — `-srgb` のフォーマットにすると、
     // 表示用色空間への変換が二重に掛かって画面全体が白く浮く。深度を持たせるのは、composite
@@ -193,8 +203,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       specular: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
+      // マテリアルパスの出力は大気と world に上書きされて残らないので、大気パスが読む
+      // スナップショット(backdropTarget)を映す。
       material: this.buildCompositeMaterial(
-        vec4(this.toneMapped(texture(this.materialPass.texture, screenUV).rgb), 1),
+        vec4(this.toneMapped(texture(this.backdropTarget.texture, screenUV).rgb), 1),
       ),
       atmosphere: this.buildCompositeMaterial(
         vec4(this.toneMapped(this.atmospherePass.scatteredLight()), 1),
@@ -292,9 +304,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // 模式図スタイルではマテリアル・大気・world・レンズの4段を飛ばす。
   // デバッグ表示を選んでいてもいずれのパスも省略しない — 見せるのは通常のフレームが実際に
   // 生成した中身であるべきため。設定で切られている段(影・レンズ)を選べば、そのフレームが
-  // 何も作っていないことがそのまま空として見える。**見せるために描き足すのはマテリアルだけ**
-  // — あの段の出力は共有ターゲットの上で大気と world に上書きされて残らないため
-  // (material-pass.ts の showDebugTarget)。
+  // 何も作っていないことがそのまま空として見える。例外はスナップショットのブリットだけ —
+  // 「マテリアル」表示は大気の写らないフレームでもこれが要るので、そのときは判定に依らず撮る。
   render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
@@ -328,12 +339,25 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.quad.material = this.schematicMaterial;
     } else {
       // マテリアルパス。LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを this.target(このあとの
-      // world パスと共有 — 最初の書き込みなのでクリアする)へ描く。「マテリアル」デバッグ表示を選んでいる
-      // ときだけ、自前のターゲットへも同じジオメトリをもう一度描く。
-      this.materialPass.render(scene, camera, this.target, width, height, this.debugTarget === 'material');
+      // world パスと共有 — 最初の書き込みなのでクリアする)へ描く。
+      this.materialPass.render(scene, camera, this.target);
 
-      // 大気パス。不透明の絵の上へ画面空間で重ねる。G バッファ深度と視線だけを読むので scene は渡さない。
-      this.atmospherePass.render(camera, this.target);
+      // 大気パス。大気が写るフレームだけ、不透明の絵のスナップショットを撮ってから、下地と
+      // 合成し終えた大気を共有ターゲットへ上書きする。写らないフレームは 2 段とも発行しない
+      // — 深宇宙で大気の GPU 時間が 0 のまま保たれる。スナップショットのブリットも大気パスの
+      // 計測枠に計上する。「マテリアル」デバッグ表示はスナップショットを映すので、選んでいる間は
+      // 大気が写らなくても撮る。
+      const atmosphereVisible = this.atmospherePass.anyBodyInView(camera);
+      if (atmosphereVisible || this.debugTarget === 'material') {
+        if (this.backdropTarget.width !== width || this.backdropTarget.height !== height) {
+          this.backdropTarget.setSize(width, height);
+        }
+        this.gpu.beginPass(GPU_PASS.atmosphere);
+        this.renderer.setRenderTarget(this.backdropTarget);
+        this.backdropQuad.render(this.renderer);
+        this.renderer.setRenderTarget(null);
+      }
+      if (atmosphereVisible) this.atmospherePass.render(camera, this.target);
 
       // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
       // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
@@ -391,8 +415,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.occlusionPass.dispose();
     this.sunShadowMaps.dispose();
     this.lightPrepass.dispose();
-    this.materialPass.dispose();
     this.atmospherePass.dispose();
+    this.backdropTarget.dispose();
+    this.backdropMaterial.dispose();
     this.overlayPass.dispose();
     this.antialiasPass.dispose();
     this.lensPass.dispose();

@@ -19,7 +19,7 @@ import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
-import { ATMOSPHERE_QUALITY, type GraphicsSettingsData } from '../../render/graphics-settings';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import { SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
@@ -27,11 +27,10 @@ import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-li
 import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from './planet-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
+import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import {
-  ATMOSPHERE_DETAIL, ATMOSPHERE_DETAIL_OF_QUALITY,
-  type AtmosphereBody, type AtmospherePass,
-} from '../../render/pipeline/atmosphere-pass';
-import { atmosphereOpticsOf, rankAtmospheres } from '../../render/atmosphere-params';
+  type AtmosphereCandidate, atmosphereDraws, atmosphereOpticsOf,
+} from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CelestialView } from './celestial-view';
@@ -246,7 +245,7 @@ export class EnvironmentScene {
     this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
-    this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem.activeCameraPos, graphics);
+    this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem, graphics);
 
     const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
@@ -341,24 +340,23 @@ export class EnvironmentScene {
     );
   }
 
-  // 大気パスへ、このフレームの大気を描く天体と、先頭へ足す積分の重みを渡す。
+  // 大気パスへ、このフレームに大気を描く天体とそのサンプル点の数を渡す。
   private syncAtmosphere(
-    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, graphics: GraphicsSettingsData,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
   ): void {
-    if (graphics.atmosphere === ATMOSPHERE_QUALITY.off) {
-      this.atmosphere.setBodies([], ATMOSPHERE_DETAIL.none, 0);
-      return;
-    }
-    const { bodies, denseWeight } = rankAtmospheres(this.atmosphereCandidates(fo, displayTime, cameraPos));
-    const detail = ATMOSPHERE_DETAIL_OF_QUALITY[graphics.atmosphere];
-    this.atmosphere.setBodies(bodies, detail, detail === ATMOSPHERE_DETAIL.none ? 0 : denseWeight);
+    this.atmosphere.setDraws(
+      atmosphereDraws(this.atmosphereCandidates(fo, displayTime, cameraSystem), graphics.atmosphere),
+    );
   }
 
-  // 大気を持つ参照天体を、カメラのその天体からの高度と一緒に集める。
+  // 大気を持つ参照天体を、カメラからその中心までの距離と、その距離での画面尺度と一緒に集める。
+  // **尺度は直線距離で引く** — 深度で引くと、視点の背後にある天体が目の前にあるのと同じ尺度に
+  // なり、画面に写っていないのに予算を総取りする。
   private atmosphereCandidates(
-    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3,
-  ): readonly { readonly body: AtmosphereBody; readonly altitude: number }[] {
-    const candidates: { body: AtmosphereBody; altitude: number }[] = [];
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+  ): readonly AtmosphereCandidate[] {
+    const scale = cameraSystem.activeCameraRadialScale;
+    const candidates: AtmosphereCandidate[] = [];
     for (const id of this.referenceIds) {
       const optics = atmosphereOpticsOf(id);
       if (optics === null) continue;
@@ -366,7 +364,8 @@ export class EnvironmentScene {
       const center = this.ephemeris.positionOf(id, displayTime);
       candidates.push({
         body: { center: fo.RtoThreeV3(center), surfaceRadius, optics },
-        altitude: len(sub(cameraPos, center)) - surfaceRadius,
+        distance: len(sub(cameraSystem.activeCameraPos, center)),
+        metersPerPixel: scale(center),
       });
     }
     return candidates;

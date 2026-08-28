@@ -80,13 +80,20 @@ export function apparentSizePx(worldSize: number, metersPerPixel: number): numbe
   return worldSize / metersPerPixel;
 }
 
-// worldPos の位置における画面1ピクセル相当の実距離 [m]。画面上で一定に見せたい長さに
-// 掛けると、その位置での実距離が得られる。
-export function metersPerPixel(view: Viewpoint, worldPos: Vec3, viewportHeight: number): number {
-  const forward = norm(sub(view.lookTarget, view.position));
-  const depth = dot(sub(worldPos, view.position), forward);
+// 視点から distance だけ離れたところにある物体の、画面1ピクセル相当の実距離 [m]。
+// distance に何を渡すかは呼び出し側が決める — 視線方向の深度を渡せば画面上の見かけの大きさに、
+// 視点からの直線距離を渡せば向きに依らない見かけの大きさになる。
+export function metersPerPixelAtDistance(view: Viewpoint, distance: number, viewportHeight: number): number {
   if (view.projection === 'orthographic' && view.orthographicHalfHeight !== undefined) {
     return (2 * Math.max(MIN_DEPTH, view.orthographicHalfHeight)) / viewportHeight;
   }
-  return metersPerPixelAtDepth(view.fovDeg, depth, viewportHeight);
+  return metersPerPixelAtDepth(view.fovDeg, distance, viewportHeight);
+}
+
+// worldPos の位置における画面1ピクセル相当の実距離 [m]。画面上で一定に見せたい長さに
+// 掛けると、その位置での実距離が得られる。**視線方向の深度で測る**ので、視点の背後にある
+// worldPos では深度が MIN_DEPTH まで床打ちされ、目の前にあるのと同じ尺度が返る。
+export function metersPerPixel(view: Viewpoint, worldPos: Vec3, viewportHeight: number): number {
+  const forward = norm(sub(view.lookTarget, view.position));
+  return metersPerPixelAtDistance(view, dot(sub(worldPos, view.position), forward), viewportHeight);
 }
