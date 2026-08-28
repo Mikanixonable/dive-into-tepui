@@ -1,27 +1,26 @@
 import { sameSystemIds } from '../celestial/body-visibility';
-import { BodyClass, bodyClassOf } from '../celestial/body-class';
+import { BodyClass } from '../celestial/body-class';
 import { ObjectPickerGroup } from '../hud/windows/object-picker';
-import { celestialBodyName } from '../hud/frame/frame-labels';
-import type { CelestialBodyDef } from '../../physics/celestial-motion';
+import { OrbitingMotion, type CelestialBodyDef } from '../../physics/celestial-motion';
 import { EARTH } from '../../physics/solar-system/earth-system';
 import { J2_EARTH, MU_EARTH, R_EARTH } from '../../physics/solar-system/constants';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import * as C from '../const';
 
 // ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙する。軌道要素指定の基準天体も
 // これを使う(公転していない恒星を周回の中心には選べない)。
-export function orbitingIdsOf(ephemeris: Ephemeris): readonly string[] {
-  return Object.keys(ephemeris.registry).filter((id) => ephemeris.motionOf(id).kind !== 'star');
+export function orbitingIdsOf(celestialSystem: CelestialSystem): readonly string[] {
+  return celestialSystem.bodies.filter((b) => b.motion.kind !== 'star').map((b) => b.id);
 }
 
 // 天体の候補をクラス別のまとまりへ組む。先頭は「いま選んでいる系」— 実際に選ばれるのは
 // ほぼ常に同じ系の別天体なので、1クリック目に置く。
 export function bodyGroupsOf(
-  ephemeris: Ephemeris, items: readonly (readonly [string, string])[], selected: string,
+  celestialSystem: CelestialSystem, items: readonly (readonly [string, string])[], selected: string,
 ): readonly ObjectPickerGroup<string>[] {
-  const near0 = sameSystemIds(ephemeris, selected);
+  const near0 = sameSystemIds(celestialSystem.motions, selected);
   const near = items.filter(([id]) => near0.has(id));
-  const byClass = (cls: BodyClass) => items.filter(([id]) => bodyClassOf(ephemeris, id) === cls);
+  const byClass = (cls: BodyClass) => items.filter(([id]) => celestialSystem.bodyOf(id).bodyClass === cls);
   return [
     { label: 'いま選んでいる系', items: near },
     { label: '惑星', items: byClass('planet') },
@@ -31,14 +30,20 @@ export function bodyGroupsOf(
   ].filter((g) => g.items.length > 0);
 }
 
-// 表示名を「中心天体名-自分の名」として ephemeris から組む。
-export function lagrangeSystemItemsOf(ephemeris: Ephemeris, orbitingIds: readonly string[]): readonly (readonly [string, string])[] {
+// 表示名を「中心天体名-自分の名」として celestialSystem から組む。
+export function lagrangeSystemItemsOf(
+  celestialSystem: CelestialSystem, orbitingIds: readonly string[],
+): readonly (readonly [string, string])[] {
   // 共線点が行き先として意味を持つ系だけを出す。質量が未測定の天体では質量比が 0 になり、
   // 共線点の距離比を解く反復が収束せず NaN の状態を返すため、選ばせてはいけない。
-  return orbitingIds.filter((id) => ephemeris.hasUsableCollinearPoints(id, C.LAGRANGE_MIN_CLEARANCE_RATIO)).map((id) => {
-    const primary = ephemeris.motionOf(id).primary?.id ?? null;
-    const primaryName = primary === null ? celestialBodyName(id) : celestialBodyName(primary);
-    return [id, `${primaryName}-${celestialBodyName(id)}`] as const;
+  const usable = (id: string): boolean => {
+    const motion = celestialSystem.bodyOf(id).motion;
+    return motion instanceof OrbitingMotion && motion.hasUsableCollinearPoints(C.LAGRANGE_MIN_CLEARANCE_RATIO);
+  };
+  return orbitingIds.filter(usable).map((id) => {
+    const primary = celestialSystem.bodyOf(id).motion.primary?.id ?? null;
+    const primaryName = celestialSystem.nameOf(primary ?? id);
+    return [id, `${primaryName}-${celestialSystem.nameOf(id)}`] as const;
   });
 }
 

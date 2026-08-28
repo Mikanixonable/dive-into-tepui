@@ -96,7 +96,7 @@ export class MapPickables {
       this.cameraSystem.bodyClassToggles,
       focusId,
       this.nearbyTracker.membersAt(
-        this.celestialSystem.ephemeris, this.cameraSystem.activeCameraPos, displayCelestialBodies),
+        this.celestialSystem.motions, this.cameraSystem.activeCameraPos, displayCelestialBodies),
     );
     this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
@@ -188,7 +188,7 @@ export class MapPickables {
       // 判定は最強天体から親を辿るぶん高価なので、読まれない天体候補では省く。
       item.inFocusedSystem = item.kind === 'body'
         ? undefined
-        : isPositionInFocusedSystem(this.celestialSystem.ephemeris, focusId, item.pos, displayCelestialBodies);
+        : isPositionInFocusedSystem(this.celestialSystem.motions, focusId, item.pos, displayCelestialBodies);
     }
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
@@ -199,7 +199,7 @@ export class MapPickables {
     // ピック対象から除く。
     for (const item of this.candidateItems) {
       const included = item.kind === 'player'
-        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.celestialSystem.ephemeris, focusId, item.pos, displayCelestialBodies)
+        ? item.inFocusedSystem ?? isPositionInFocusedSystem(this.celestialSystem.motions, focusId, item.pos, displayCelestialBodies)
         : item.kind === 'body'
           ? true
           : !isOccluded(this.cameraSystem.activeCameraPos, item.pos, displayCelestialBodies);

@@ -576,7 +576,7 @@ export class MapContextActions {
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
     return {
-      title, subtitle, icon: pickGlyph(target.kind, target.id, this.celestialSystem.ephemeris), rows: [], items,
+      title, subtitle, icon: pickGlyph(target.kind, target.id, this.celestialSystem), rows: [], items,
       relatedItems: this.relatedItemsFor(target, this.celestialSystem.celestialBodiesAt(simTime)),
       relatedTitle: this.relatedTitleFor(target),
       onRename: this.renameHandlerFor(target),

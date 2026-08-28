@@ -2,11 +2,10 @@
 // 記号そのものの定義は marker-glyphs.ts(文字)と marker-shapes.ts(SVG)が持ち、ここは
 // 「どの種別にどれを使うか」だけを決める — 一覧パネルとプロパティウィンドウで同じ種別が
 // 別の形に見えないようにするため、両者はこの関数だけを通す。
-import { bodyClassOf } from '../celestial/body-class';
 import { LAGRANGE_ID } from '../hud/object-groups';
 import { bodyEntityGlyph, ENTITY_GLYPH, ORBIT_POINT_GLYPH } from './marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from './marker-shapes';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapPickKind } from '../pickable/map-pickable';
 
 // 文字グリフを使う種別。body は恒星・衛星・ラグランジュ点で字形が変わるため、この表ではなく
@@ -36,13 +35,14 @@ export function pickGlyphSvg(kind: MapPickKind): string | null {
 }
 
 // kind/id に対応する文字グリフ。SVG を持つ種別でも、SVG を描けない場所のために必ず返る。
-export function pickGlyphText(kind: MapPickKind, id: string, ephemeris: Ephemeris): string {
+export function pickGlyphText(kind: MapPickKind, id: string, celestialSystem: CelestialSystem): string {
   if (kind !== 'body') return TEXT_GLYPHS[kind];
-  return LAGRANGE_ID.test(id) ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(ephemeris, id));
+  if (LAGRANGE_ID.test(id)) return ENTITY_GLYPH.lagrange;
+  return bodyEntityGlyph(celestialSystem.find(id)?.bodyClass ?? 'planet');
 }
 
 // SVG を描ける場所向けに、SVG があればそれを、無ければ文字グリフを返す。空域は記号を持たない。
-export function pickGlyph(kind: MapPickKind, id: string, ephemeris: Ephemeris): string | undefined {
+export function pickGlyph(kind: MapPickKind, id: string, celestialSystem: CelestialSystem): string | undefined {
   if (kind === 'empty-space') return undefined;
-  return pickGlyphSvg(kind) ?? pickGlyphText(kind, id, ephemeris);
+  return pickGlyphSvg(kind) ?? pickGlyphText(kind, id, celestialSystem);
 }

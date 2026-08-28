@@ -6,9 +6,18 @@
 // 距離のような連続量で判定すると操作の途中で行が明滅する)。systemChainAt だけはカメラ位置
 // という連続量から系の呼び名を導く — 表示を絞る判定ではなく、いまいる場所の説明であるため。
 import { CelestialBody, attractorAccel, strongestAttractor } from '../../physics/celestial-body';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialMotion } from '../../physics/celestial-motion';
 import { Vec3, lenSq } from '../../math/vec3';
-import { BodyClass, bodyClassOf } from './body-class';
+import type { BodyClass } from './body-class';
+
+// 天体 id の表示クラスを引く口。CelestialSystem 側は (id) => bodyOf(id).bodyClass を渡す。
+// このモジュールは tests が node で実行するため、THREE を経由する型を直接受け取れない —
+// 天体の列挙・親子関係は motions(参照の木)で、表示クラスはこの写像で受ける。
+export type BodyClassLookup = (id: string) => BodyClass;
+
+function motionById(motions: readonly CelestialMotion[]): ReadonlyMap<string, CelestialMotion> {
+  return new Map(motions.map((m) => [m.id, m]));
+}
 
 // クラスごとの表示トグル。恒星は常に見えるのでトグルを持たない(太陽系の基準点であり、
 // 消えると現在地が読めなくなる)。Name(マーカーの点+ラベル)と Orbit(軌道線)は保存上は別の
@@ -196,14 +205,14 @@ export function bodyNameVisible(cls: BodyClass, toggles: BodyClassToggles): bool
 // focusId と同じ系にある天体(自分・親・子・親を共有する兄弟)。UI が「いま見ている系」を
 // 先頭に出すときの判定もこれを使う — 可視性と選択候補の並びで系の切り方が食い違わないように。
 // focusId が undefined(フォーカス中の天体が無い)なら空集合を返す。
-export function sameSystemIds(ephemeris: Ephemeris, focusId: string | undefined): ReadonlySet<string> {
+export function sameSystemIds(motions: readonly CelestialMotion[], focusId: string | undefined): ReadonlySet<string> {
   if (focusId === undefined) return new Set();
-  const parent = ephemeris.registry[focusId] === undefined ? null : ephemeris.motionOf(focusId).primary?.id ?? null;
+  const parent = motions.find((m) => m.id === focusId)?.primary?.id ?? null;
   const ids = new Set<string>([focusId]);
   if (parent !== null) ids.add(parent);
-  for (const id of Object.keys(ephemeris.registry)) {
-    const p = (ephemeris.motionOf(id).primary?.id ?? null);
-    if (p === focusId || (parent !== null && p === parent)) ids.add(id);
+  for (const m of motions) {
+    const p = m.primary?.id ?? null;
+    if (p === focusId || (parent !== null && p === parent)) ids.add(m.id);
   }
   return ids;
 }
@@ -217,38 +226,39 @@ export function sameSystemIds(ephemeris: Ephemeris, focusId: string | undefined)
 // 天体以外(艦船・固定点など)へフォーカスしている場合は、どの天体系を表示するかを恣意的に
 // 決めないため絞り込まない。これにより、対象艦へフォーカスした瞬間に他艦が消えない。
 export function isPositionInFocusedSystem(
-  ephemeris: Ephemeris,
+  motions: readonly CelestialMotion[],
   focusId: string | undefined,
   position: Vec3,
   celestialBodies: readonly CelestialBody[],
 ): boolean {
-  if (focusId === undefined || ephemeris.registry[focusId] === undefined) return true;
+  const byId = motionById(motions);
+  const focus = focusId === undefined ? undefined : byId.get(focusId);
+  if (focus === undefined) return true;
 
-  const systemFocusId = ephemeris.motionOf(focusId).kind === 'satellite'
-    ? ephemeris.motionOf(focusId).primary?.id ?? null
-    : focusId;
+  const systemFocusId = focus.kind === 'satellite' ? focus.primary?.id ?? null : focus.id;
   const initial = strongestAttractor(position, celestialBodies).id;
   // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
-  if (ephemeris.motionOf(initial).kind === 'star') return true;
+  if (byId.get(initial)?.kind === 'star') return true;
   let current: string | null = initial;
-  // 壊れた親子定義でも停止するよう、レジストリ数を上限にする。
-  for (let i = 0; current !== null && i <= Object.keys(ephemeris.registry).length; i++) {
+  // 壊れた親子定義でも停止するよう、登録数を上限にする。
+  for (let i = 0; current !== null && i <= motions.length; i++) {
     if (current === systemFocusId) return true;
-    if (ephemeris.registry[current] === undefined) return false;
-    current = ephemeris.motionOf(current).primary?.id ?? null;
+    const m: CelestialMotion | undefined = byId.get(current);
+    if (m === undefined) return false;
+    current = m.primary?.id ?? null;
   }
   return false;
 }
 
 // focus の親を辿って主星まで遡った id の列(focus 自身を含む)。
-function ancestorsOf(ephemeris: Ephemeris, focusId: string): string[] {
+function ancestorsOf(byId: ReadonlyMap<string, CelestialMotion>, focusId: string): string[] {
   const chain: string[] = [];
   let cur: string | null = focusId;
-  // 循環した registry でも止まるよう、登録数を上限にする。
-  for (let i = 0; cur !== null && i <= Object.keys(ephemeris.registry).length; i++) {
+  // 循環した親子定義でも止まるよう、登録数を上限にする。
+  for (let i = 0; cur !== null && i <= byId.size; i++) {
     if (chain.includes(cur)) break;
     chain.push(cur);
-    cur = ephemeris.registry[cur] === undefined ? null : (ephemeris.motionOf(cur).primary?.id ?? null);
+    cur = byId.get(cur)?.primary?.id ?? null;
   }
   return chain;
 }
@@ -258,38 +268,38 @@ function ancestorsOf(ephemeris: Ephemeris, focusId: string): string[] {
 // すると操作の途中で行が明滅するので、カメラ位置から求めた重力系のメンバーで代用する。
 // focusId が undefined でも、nearbyIds に渡された近傍系は残す。
 export function alwaysFullyVisibleIds(
-  ephemeris: Ephemeris, focusId: string | undefined,
+  motions: readonly CelestialMotion[], bodyClassOf: BodyClassLookup, focusId: string | undefined,
   nearbyIds: Iterable<string> = [],
   toggles?: BodyClassToggles,
 ): ReadonlySet<string> {
+  const byId = motionById(motions);
   const ids = new Set<string>();
-  for (const id of Object.keys(ephemeris.registry)) {
-    const cls = bodyClassOf(ephemeris, id);
-    if (cls === 'star') ids.add(id);
+  for (const m of motions) {
+    if (m.kind === 'star') ids.add(m.id);
   }
 
   // nearbyIds は systemMembersAt() など、呼び出し側がカメラ位置から求めた系の集合。
   // 未登録の重力源が混ざっても、ここは天体ラベルの集合なので無視する。
   for (const id of nearbyIds) {
-    if (ephemeris.registry[id] !== undefined && (toggles === undefined || bodyClassVisible(bodyClassOf(ephemeris, id), toggles))) {
+    if (byId.has(id) && (toggles === undefined || bodyClassVisible(bodyClassOf(id), toggles))) {
       ids.add(id);
     }
   }
 
   if (focusId === undefined) return ids;
 
-  for (const id of ancestorsOf(ephemeris, focusId)) {
-    if (toggles === undefined || bodyClassVisible(bodyClassOf(ephemeris, id), toggles)) ids.add(id);
+  for (const id of ancestorsOf(byId, focusId)) {
+    if (toggles === undefined || bodyClassVisible(bodyClassOf(id), toggles)) ids.add(id);
   }
   // 兄弟は「惑星系の中の兄弟」に限る。恒星の子はすべて互いに兄弟なので、そこまで含めると
   // 惑星にフォーカスしただけで全太陽周回天体が出てしまう(惑星どうしの表示は planetOrbit/
   // planetName トグルが別途受け持つ)。
-  const focusParent = ephemeris.registry[focusId] === undefined ? null : ephemeris.motionOf(focusId).primary?.id ?? null;
-  const siblingsMatter = focusParent !== null && ephemeris.motionOf(focusParent).kind !== 'star';
-  for (const id of sameSystemIds(ephemeris, focusId)) {
-    // focusId 自身は未登録(生存中の重力天体)でもありうるので、primaryOf を引く前に弾く。
-    if ((siblingsMatter || id === focusId || (ephemeris.motionOf(id).primary?.id ?? null) === focusId)
-      && (toggles === undefined || bodyClassVisible(bodyClassOf(ephemeris, id), toggles))) {
+  const focusParent = byId.get(focusId)?.primary ?? null;
+  const siblingsMatter = focusParent !== null && focusParent.kind !== 'star';
+  for (const id of sameSystemIds(motions, focusId)) {
+    // focusId 自身は未登録(生存中の重力天体)でもありうるので、親を引く前に弾く。
+    if ((siblingsMatter || id === focusId || (byId.get(id)?.primary?.id ?? null) === focusId)
+      && (toggles === undefined || bodyClassVisible(bodyClassOf(id), toggles))) {
       ids.add(id);
     }
   }
@@ -299,22 +309,24 @@ export function alwaysFullyVisibleIds(
 // cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。
 // 最寄り天体が registry に未登録(生存中の重力天体)なら、その id 1つだけを返す。
 export function systemChainAt(
-  ephemeris: Ephemeris, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+  motions: readonly CelestialMotion[], cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
 ): readonly string[] {
   if (celestialBodies.length === 0) return [];
   const nearest = strongestAttractor(cameraPos, celestialBodies).id;
-  return chainFromNearest(ephemeris, nearest);
+  return chainFromNearest(motionById(motions), nearest);
 }
 
-function chainFromNearest(ephemeris: Ephemeris, nearest: string): readonly string[] {
-  if (ephemeris.registry[nearest] === undefined) return [nearest];
-  return ancestorsOf(ephemeris, nearest);
+function chainFromNearest(byId: ReadonlyMap<string, CelestialMotion>, nearest: string): readonly string[] {
+  if (!byId.has(nearest)) return [nearest];
+  return ancestorsOf(byId, nearest);
 }
 
 // chain の列に、各天体の子(恒星の子は除く)を合わせた集合。近い順・各天体→その子の順に並ぶ
 // 配列で返す(呼び出し側の選択肢が毎フレーム揺れないよう順序を固定する)。恒星の子は足さない
 // — 足すと太陽を含む列で全惑星が並んでしまうため。
-function membersFromChain(ephemeris: Ephemeris, chain: readonly string[]): readonly string[] {
+function membersFromChain(
+  motions: readonly CelestialMotion[], byId: ReadonlyMap<string, CelestialMotion>, chain: readonly string[],
+): readonly string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const id of chain) {
@@ -322,11 +334,11 @@ function membersFromChain(ephemeris: Ephemeris, chain: readonly string[]): reado
       seen.add(id);
       result.push(id);
     }
-    if (ephemeris.registry[id] === undefined || (ephemeris.motionOf(id).primary?.id ?? null) === null) continue;
-    for (const childId of Object.keys(ephemeris.registry)) {
-      if (seen.has(childId) || (ephemeris.motionOf(childId).primary?.id ?? null) !== id) continue;
-      seen.add(childId);
-      result.push(childId);
+    if ((byId.get(id)?.primary ?? null) === null) continue;
+    for (const child of motions) {
+      if (seen.has(child.id) || (child.primary?.id ?? null) !== id) continue;
+      seen.add(child.id);
+      result.push(child.id);
     }
   }
   return result;
@@ -334,9 +346,9 @@ function membersFromChain(ephemeris: Ephemeris, chain: readonly string[]): reado
 
 // systemChainAt の列に、各天体の子(恒星の子は除く)を合わせた集合。
 export function systemMembersAt(
-  ephemeris: Ephemeris, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+  motions: readonly CelestialMotion[], cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
 ): readonly string[] {
-  return membersFromChain(ephemeris, systemChainAt(ephemeris, cameraPos, celestialBodies));
+  return membersFromChain(motions, motionById(motions), systemChainAt(motions, cameraPos, celestialBodies));
 }
 
 // strongestAttractor をそのまま「いまいる系」の判定に使うと、勢力圏が極端に狭い天体(主星から
@@ -349,15 +361,15 @@ const STICKY_MARGIN_SQ = 1.2 * 1.2;
 export class NearbySystemTracker {
   private previousId: string | null = null;
 
-  chainAt(ephemeris: Ephemeris, cameraPos: Vec3, celestialBodies: readonly CelestialBody[]): readonly string[] {
+  chainAt(motions: readonly CelestialMotion[], cameraPos: Vec3, celestialBodies: readonly CelestialBody[]): readonly string[] {
     if (celestialBodies.length === 0) return [];
     const nearest = this.pickNearest(cameraPos, celestialBodies);
     this.previousId = nearest;
-    return chainFromNearest(ephemeris, nearest);
+    return chainFromNearest(motionById(motions), nearest);
   }
 
-  membersAt(ephemeris: Ephemeris, cameraPos: Vec3, celestialBodies: readonly CelestialBody[]): readonly string[] {
-    return membersFromChain(ephemeris, this.chainAt(ephemeris, cameraPos, celestialBodies));
+  membersAt(motions: readonly CelestialMotion[], cameraPos: Vec3, celestialBodies: readonly CelestialBody[]): readonly string[] {
+    return membersFromChain(motions, motionById(motions), this.chainAt(motions, cameraPos, celestialBodies));
   }
 
   private pickNearest(cameraPos: Vec3, celestialBodies: readonly CelestialBody[]): string {

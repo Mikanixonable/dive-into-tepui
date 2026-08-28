@@ -332,7 +332,7 @@ export class FocusMarkers {
     // 「近さ」を固定距離で判定せず、既存の重力系判定を使うことで、地球/月や木星/衛星の
     // 境界を同じ規則で扱える。
     const nearby = sharedVisibilityPolicy === undefined
-      ? this.nearbyTracker.membersAt(celestialSystem.ephemeris, cameraPos, celestialBodies)
+      ? this.nearbyTracker.membersAt(celestialSystem.motions, cameraPos, celestialBodies)
       : [];
     // まず表示対象を決め、その中だけ座標を引く。表示の判断は marker/map-picker/参照線と
     // 同じ MapVisibilityPolicy を使い、個別実装の解釈ずれをなくす。
