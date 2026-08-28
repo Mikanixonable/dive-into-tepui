@@ -7,10 +7,10 @@ import { JUPITER } from '../../src/physics/solar-system/jupiter-system';
 import { VENUS } from '../../src/physics/solar-system/inner-planets';
 import { PHOBOS } from '../../src/physics/solar-system/mars-system';
 import { SATURN } from '../../src/physics/solar-system/saturn-system';
-import { solarSystemEphemeris } from './test-helpers';
+import { solarSystemParts } from './test-helpers';
 
-// id から静的事実を引くための天体暦。
-const EPH = solarSystemEphemeris();
+// 登録された天体の定義を引くための太陽系。
+const DEFS = solarSystemParts().motions;
 
 export function register(): void {
   test('shapeAxes: 土星の縦横比 Rp/Re = 0.902', () => {
@@ -28,12 +28,12 @@ export function register(): void {
   });
 
   test('shapeAxes: shape を持つ全天体で radius(衝突球) が3軸の最大値以上', () => {
-    for (const id of Object.keys(EPH.registry)) {
-      const def = EPH.motionOf(id).def;
+    for (const motion of DEFS.all) {
+      const def = motion.def;
       if (!('shape' in def) || def.shape === undefined) continue;
       const axes = shapeAxes(def.radius, def.shape);
       const maxAxis = Math.max(axes.x, axes.y, axes.z);
-      assert.ok(def.radius >= maxAxis - 1e-6, `${id}: radius=${def.radius} < max軸=${maxAxis}`);
+      assert.ok(def.radius >= maxAxis - 1e-6, `${def.id}: radius=${def.radius} < max軸=${maxAxis}`);
     }
   });
 

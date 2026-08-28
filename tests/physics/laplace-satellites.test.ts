@@ -3,22 +3,22 @@
 // イアペトゥス・フェーベの黄道傾斜が公表値と合うこと。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Ephemeris } from '../../src/physics/ephemeris';
 import { SatelliteDef } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
-import { solarSystemEphemeris } from './test-helpers';
+import { SolarSystemMotions } from '../../src/physics/solar-system/solar-system';
+import { motionOf, solarSystemParts } from './test-helpers';
 import { cross, dot, len, norm, sub } from '../../src/math/vec3';
 
-// id から静的事実を引くための天体暦。
-const DEFS = solarSystemEphemeris();
+// id から静的事実を引くための太陽系。
+const DEFS = solarSystemParts().motions;
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
-  return (DEFS.motionOf(id).def as SatelliteDef).orbit;
+  return (motionOf(DEFS, id).def as SatelliteDef).orbit;
 }
 function planetOf(id: string): string {
-  return DEFS.motionOf(id).primary!.id;
+  return motionOf(DEFS, id).primary!.id;
 }
 
 const JULIAN_YEAR_DAYS = 365.25;
@@ -75,14 +75,14 @@ const NO_PRECESSION: readonly string[] = [
 // 土星の自転極(IAU、元期の値。SATURN_POLE と同じ出典)。
 const SATURN_POLE_ECI = raDecToEci(40.589, 83.537);
 
-function orbitNormal(eph: Ephemeris, id: string, planet: string, t: number) {
-  const rel = sub(eph.stateOf(id, t).r, eph.stateOf(planet, t).r);
-  const relVel = sub(eph.stateOf(id, t).v, eph.stateOf(planet, t).v);
-  return norm(cross(rel, relVel));
+function orbitNormal(motions: SolarSystemMotions, id: string, planet: string, t: number) {
+  const satellite = motionOf(motions, id).stateAt(t);
+  const primary = motionOf(motions, planet).stateAt(t);
+  return norm(cross(sub(satellite.r, primary.r), sub(satellite.v, primary.v)));
 }
 
 export function register(): void {
-  const eph = solarSystemEphemeris({});
+  const { motions, windows } = solarSystemParts({});
 
   test('laplace-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {
     for (const [id, periodDays] of CASES) {
@@ -137,7 +137,7 @@ export function register(): void {
   });
 
   test('laplace-satellites: フェーベは土星の自転極に対しても黄道極に対しても逆行(角運動量が負の内積)', () => {
-    const h = orbitNormal(eph, 'phoebe', 'saturn', 1e7);
+    const h = orbitNormal(motions, 'phoebe', 'saturn', 1e7);
     assert.ok(dot(h, SATURN_POLE_ECI) < 0, `土星の自転極に対して逆行していない: ${dot(h, SATURN_POLE_ECI)}`);
     assert.ok(dot(h, ECL_POLE_ECI) < 0, `黄道極に対して逆行していない: ${dot(h, ECL_POLE_ECI)}`);
   });
@@ -146,7 +146,7 @@ export function register(): void {
   // 内側衛星の面に載せると、この黄道傾斜が十数度ずれる。
   test('laplace-satellites: イアペトゥス・フェーベの黄道傾斜が公表値と一致する', () => {
     const eclipticIncDeg = (id: string, planet: string): number => {
-      const h = orbitNormal(eph, id, planet, 0);
+      const h = orbitNormal(motions, id, planet, 0);
       return Math.acos(Math.min(1, Math.max(-1, dot(h, ECL_POLE_ECI)))) * (180 / Math.PI);
     };
     assert.ok(Math.abs(eclipticIncDeg('iapetus', 'saturn') - 17.28) < 0.2, `イアペトゥス: ${eclipticIncDeg('iapetus', 'saturn')}°`);
@@ -155,7 +155,7 @@ export function register(): void {
 
   // 内側衛星は土星の赤道面に近いラプラス面に載るので、黄道極からは土星の赤道傾斜ぶん離れる。
   test('laplace-satellites: 土星の内側衛星の基準面は黄道面ではなくラプラス面(ミマスの軌道法線が黄道極から26°以上離れる)', () => {
-    const h = orbitNormal(eph, 'mimas', 'saturn', 1e7);
+    const h = orbitNormal(motions, 'mimas', 'saturn', 1e7);
     const angleFromEclipticPoleDeg = Math.acos(Math.min(1, Math.max(-1, dot(h, ECL_POLE_ECI)))) * (180 / Math.PI);
     assert.ok(angleFromEclipticPoleDeg > 26, `黄道極からの角度: ${angleFromEclipticPoleDeg}°(黄道基準では成立しないはず)`);
   });
@@ -167,7 +167,7 @@ export function register(): void {
 
   test('laplace-satellites: 半径・重力定数が有限で正(ダフニスのみ mu=0)', () => {
     for (const [id] of CASES) {
-      const def = DEFS.motionOf(id).def as SatelliteDef;
+      const def = motionOf(DEFS, id).def as SatelliteDef;
       assert.ok(Number.isFinite(def.radius) && def.radius > 0, `${id} の radius`);
       if (id === 'daphnis') assert.equal(def.mu, 0);
       else assert.ok(Number.isFinite(def.mu) && def.mu > 0, `${id} の mu`);
@@ -175,7 +175,7 @@ export function register(): void {
   });
 
   test('laplace-satellites: celestialBodiesAt から得られる位置が正の距離を持つ(有限性の smoke test)', () => {
-    const celestialBodies = eph.celestialBodiesAt(1e7);
+    const celestialBodies = windows.celestialBodiesAt(1e7);
     for (const [id] of CASES) {
       const a = celestialBodies.find((x) => x.id === id)!;
       assert.ok(a !== undefined, `${id} が celestialBodiesAt に無い`);

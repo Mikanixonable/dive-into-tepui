@@ -1,11 +1,10 @@
-import { solarSystemEphemeris } from './test-helpers';
+import { solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   AbsoluteEphemeris, MissingEphemerisBodyError, OriginCenteredEphemeris, icrfToGameEci,
 } from '../../src/physics/absolute-ephemeris';
 import { v3 } from '../../src/math/vec3';
-import { Ephemeris } from '../../src/physics/ephemeris';
 
 export function register(): void {
   const source: AbsoluteEphemeris = {
@@ -36,12 +35,12 @@ export function register(): void {
     assert.throws(() => new OriginCenteredEphemeris(source, 'mars', 150), MissingEphemerisBodyError);
   });
 
-  test('absolute ephemeris: Ephemeris は収録天体の位置・速度・軌道法線を高精度経路へ統一する', () => {
-    const eph = solarSystemEphemeris({}, 0, source, 150);
-    const moon = eph.stateOf('moon', 3600);
+  test('absolute ephemeris: 天体の運動は収録天体の位置・速度・軌道法線を高精度経路へ統一する', () => {
+    const moonMotion = solarSystemParts({}, 0, source, 150).motions.earthSystem.moon;
+    const moon = moonMotion.stateAt(3600);
     assert.deepEqual(moon.r, v3(10, 30, -20));
     assert.deepEqual(moon.v, v3(3, 5, -4));
-    const n = eph.orbitNormalAt('moon', 3600);
+    const n = moonMotion.orbitNormalAt(3600);
     const h = {
       x: moon.r.y * moon.v.z - moon.r.z * moon.v.y,
       y: moon.r.z * moon.v.x - moon.r.x * moon.v.z,
