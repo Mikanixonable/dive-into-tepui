@@ -33,6 +33,9 @@ import { LINE_RENDER_ORDER } from '../../render/line-style';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 
+// 軌道上へ配置できる自機の上限隻数。
+export const MAX_PLACED_SHIPS = 50;
+
 const DEG = Math.PI / 180;
 
 const STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE = 2000;
@@ -302,8 +305,8 @@ export class CreativeStage extends Stage {
 
   // フォーム値から KinematicState を組み立て、配置する。
   private placeObject(name: string, form: ObjectPlacerForm): void {
-    if (form.objectType === 'player' && this._entities.players.length >= C.MAX_PLACED_SHIPS) {
-      this._hud.hint(`配置数が上限(${C.MAX_PLACED_SHIPS}隻)に達しています`);
+    if (form.objectType === 'player' && this._entities.players.length >= MAX_PLACED_SHIPS) {
+      this._hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
     try {
