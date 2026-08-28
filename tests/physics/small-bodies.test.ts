@@ -2,15 +2,19 @@
 // セドナ(高離心率)のケプラー往復精度、離心率・半径の妥当性、celestialBodiesAt からの取得。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { bodyDef, CelestialBodyDef, MU_SUN, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { PlanetDef } from '../../src/physics/celestial-motion';
+import { MU_SUN } from '../../src/physics/solar-system/constants';
 import { keplerPeriod } from '../../src/physics/elements';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
+import { solarSystemEphemeris } from './test-helpers';
 import { len, scale, sub } from '../../src/math/vec3';
 
+// id から静的事実を引くための天体暦。
+const DEFS = solarSystemEphemeris();
+
 function planetOrbitOf(id: string): PlanetOrbit {
-  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'planet' }>).orbit;
+  return (DEFS.motionOf(id).def as PlanetDef).orbit;
 }
 
 const SMALL_BODY_IDS: readonly string[] = [
@@ -21,7 +25,7 @@ const SMALL_BODY_IDS: readonly string[] = [
 ];
 
 export function register(): void {
-  const eph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {});
+  const eph = solarSystemEphemeris({});
 
   test('small-bodies: lRate がケプラー第3法則から導いた値と一致する', () => {
     for (const id of SMALL_BODY_IDS) {
@@ -55,7 +59,7 @@ export function register(): void {
 
   test('small-bodies: 半径が有限で正、shape を持つ体では外接球になっている', () => {
     for (const id of SMALL_BODY_IDS) {
-      const def = bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'planet' }>;
+      const def = DEFS.motionOf(id).def as PlanetDef;
       assert.ok(Number.isFinite(def.radius) && def.radius > 0, `${id} の radius`);
       if (def.shape !== undefined && def.shape.kind === 'triaxial') {
         const maxAxis = Math.max(def.shape.a, def.shape.b, def.shape.c);
