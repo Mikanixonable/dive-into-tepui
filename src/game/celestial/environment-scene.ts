@@ -349,11 +349,13 @@ export class EnvironmentScene {
     );
   }
 
-  // 大気を持つ参照天体を、カメラからその中心までの距離と、その位置での画面尺度と一緒に集める。
+  // 大気を持つ参照天体を、カメラからその中心までの距離と、その距離での画面尺度と一緒に集める。
+  // **尺度は直線距離で引く** — 深度で引くと、視点の背後にある天体が目の前にあるのと同じ尺度に
+  // なり、画面に写っていないのに予算を総取りする。
   private atmosphereCandidates(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
   ): readonly AtmosphereCandidate[] {
-    const scale = cameraSystem.activeCameraScale;
+    const scale = cameraSystem.activeCameraRadialScale;
     const candidates: AtmosphereCandidate[] = [];
     for (const id of this.referenceIds) {
       const optics = atmosphereOpticsOf(id);
