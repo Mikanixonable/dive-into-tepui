@@ -21,7 +21,7 @@ export class Ephemeris {
   private readonly motionsById: Readonly<Partial<Record<string, CelestialMotion>>>;
 
   readonly referenceFrames: ReferenceFrames;
-  private readonly windows: CelestialBodyWindows;
+  readonly windows: CelestialBodyWindows;
 
   // 主星。恒星を持たない星系では null(輻射源・影の計算がそもそも無意味になる)。
   readonly starId: string | null;

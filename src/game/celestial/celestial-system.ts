@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { kinematicState } from '../../physics/kinematic-state';
 import { CelestialBodyDef, PhaseOffsets } from '../../physics/celestial-motion';
+import { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { ReferenceFrames } from '../../physics/reference-frames';
 import { RingSystemDef } from '../../physics/solar-system/celestial-body-def';
 import { OrbitalElements } from '../../physics/elements';
@@ -238,6 +239,9 @@ export class CelestialSystem {
 
   // 座標系の同一性(同じ対に同じ参照)と、天体でない基準の解決。
   get frames(): ReferenceFrames { return this.ephemeris.referenceFrames; }
+
+  // 同一時刻の天体窓。積分・計画など、窓だけを要する層へはこれを渡す。
+  get windows(): CelestialBodyWindows { return this.ephemeris.windows; }
 
   // ECI の点 r から見た恒星方向の単位ベクトル。恒星が無い星系では無害な既定方向(+X)を返す。
   sunDirFrom(r: Vec3, t: number): Vec3 { return this.ephemeris.sunDirFrom(r, t); }
