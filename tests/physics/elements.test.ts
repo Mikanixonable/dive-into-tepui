@@ -1,7 +1,7 @@
 // elements.ts の回帰テスト。ケプラー要素⇄状態ベクトルの往復精度は理論上「機械精度」であるべき
 // 値(解析的往復)。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import {
   OrbitalElements,
   eccentricAnomalyFromMean,

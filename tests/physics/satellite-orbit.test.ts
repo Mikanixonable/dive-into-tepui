@@ -1,6 +1,6 @@
 // satellite-orbit.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { planetAngles, planetOrbit } from '../../src/physics/planet-orbit';
 import { PerturbationTerm, satelliteOrbit, satelliteState } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';

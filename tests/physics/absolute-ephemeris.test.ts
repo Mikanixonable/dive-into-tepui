@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import {
   AbsoluteEphemeris, MissingEphemerisBodyError, OriginCenteredEphemeris, icrfToGameEci,
 } from '../../src/physics/absolute-ephemeris';

@@ -1,7 +1,7 @@
 // 太陽を公転する小天体32個の回帰テスト: lRate がケプラー第3法則と一致すること、
 // セドナ(高離心率)のケプラー往復精度、離心率・半径の妥当性、celestialBodiesAt からの取得。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { bodyDef, CelestialBodyDef, MU_SUN, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { keplerPeriod } from '../../src/physics/elements';

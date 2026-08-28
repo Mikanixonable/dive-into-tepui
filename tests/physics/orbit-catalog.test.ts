@@ -2,7 +2,7 @@
 // 1周期積分して作られる。ここで確かめるのは「焼き込まれた形が本当に CR3BP の周期軌道か」と
 // 「実行時 API がそれを回転基底へ正しく載せるか」の2点で、値そのものは JPL 側が正本。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import {
   CATALOG_STRIDE, CatalogFamily, CatalogMember, CatalogSystem, CatalogSystemId, OrbitCatalog,
   decodeCatalogPoints,

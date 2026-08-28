@@ -2,7 +2,7 @@
 // および四元数ノルムの維持。理論上エネルギーは厳密保存されるべき量なので、
 // 許容誤差は数値誤差起因の小さい値として設定する。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { ATT_MAX_DYNAMIC_STEPS, Attitude, attitudeAlignError, attitudeAlignTorque, qFromAxisAngle, stepAttitude } from '../../src/physics/attitude';
 import { v3 } from '../../src/math/vec3';
 

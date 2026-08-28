@@ -2,7 +2,7 @@
 // フェーベの逆行、内側衛星の基準面が黄道面ではなくラプラス面であること、および外側の
 // イアペトゥス・フェーベの黄道傾斜が公表値と合うこと。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';

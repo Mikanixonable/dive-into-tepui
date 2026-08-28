@@ -2,7 +2,7 @@
 // 探し方が違うのは同時性から来る正当な差だが、答えが食い違ってよい理由はない。この2つの窓が
 // 同じ位置・同じ時刻で一致することを、重力と表面判定の両方について固定する。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { attractorAccel } from '../../src/physics/celestial-body';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { kinematicState } from '../../src/physics/kinematic-state';

@@ -22,7 +22,7 @@ description: サブエージェントへ作業を配るときの手順。範囲�
 - **担当範囲** — 対象のファイルを列挙し、**その外側を1文字も変えないこと。**
 - **読ませるもの** — 編集させるなら `DEVELOP/CODING-RULE.md` を読んでから書くこと。該当する
   `DEVELOP/SPEC/` のファイルと、通すべき SKILL(`/ui-design` など)も名指しする。
-- **検証** — 担当分について `npm run typecheck`(`src/physics/` を触るなら `npm run test:physics` も)を
+- **検証** — 担当分について `npm run typecheck`(触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`)も)を
   自分で通してから報告すること。
 - **報告に含めるもの** — 触ったファイル、判断した箇所、直さずに残したもの。
 

@@ -83,7 +83,7 @@ description: 大規模な機能追加要求を、調査(コードベース・必
 - 計画書のステップのうち、**互いに依存しないものは並列サブエージェント(Sonnet)で実装する。**
   同じファイルを複数のエージェントに触らせない(`/delegate` の「範囲を分ける」)。
 - 規模に応じて `EnterWorktree` で作業を分離し、完了後に main へ統合する。
-- 各ステップが実装・検証(`npm run typecheck`、該当すれば `npm run test:physics`)できた時点で
+- 各ステップが実装・検証(`npm run typecheck`、該当すれば触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`))できた時点で
   commit する。まとめて最後に1回commitしない。
 - push はユーザーから明示されたときだけ。
 

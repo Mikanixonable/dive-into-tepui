@@ -1,6 +1,6 @@
 // earth-reference-orbits.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { dawnDuskElements, sunSyncRepeatGroundTrackElements } from '../../src/physics/earth-reference-orbits';
 import { OrbitalElements } from '../../src/physics/elements';
 
