@@ -109,6 +109,9 @@ export abstract class CelestialMotion {
     // 高精度暦パック。持たない構成では null。
     protected readonly precise: OriginCenteredEphemeris | null,
     private readonly origin: EciOrigin,
+    // 自転の初期位相 [rad]。eciPole の自転モデルの位相原点をこれだけ進める(iau は w0 が、
+    // 同期回転は軌道が位相を持つ)。
+    readonly spinPhase0: number = 0,
   ) {}
 
   get id(): string {
@@ -317,12 +320,12 @@ export abstract class OrbitingMotion extends CelestialMotion {
     const model = this.def.pole;
     if (model === undefined) return null;
     const te = t + this.epochOffsetSec;
-    // 'eciPole' は ECI の極軸そのもの。位相の原点は春分点方向に取り、地球の自転ぶんだけ
-    // 時刻とともに進める。軸は ECI に固定されているため、ここを固定位相にすると
+    // 'eciPole' は ECI の極軸そのもの。位相の原点は春分点方向に取り、初期位相 spinPhase0 から
+    // 自転ぶんだけ時刻とともに進める。軸は ECI に固定されているため、ここを固定位相にすると
     // spinRotationAt() の omega だけが進み、フレーム姿勢 q が時間変化しなくなる。
     if (model.kind === 'eciPole') {
       const rate = this.spinRate;
-      return { axis: ECI_POLE, spinAngle: rate === null ? 0 : rate * t };
+      return { axis: ECI_POLE, spinAngle: this.spinPhase0 + (rate === null ? 0 : rate * t) };
     }
     if (model.kind === 'iau') {
       const cy = te / JULIAN_CENTURY;
@@ -393,12 +396,14 @@ export class PlanetMotion extends OrbitingMotion {
   private readonly moons: SatelliteMotion[] = [];
   private readonly helioCache = new TimeRing<KinematicState>();
 
-  // star は主星。恒星を持たない星系では null を渡す。
+  // star は主星。恒星を持たない星系では null を渡す。spinPhase0 は自転の初期位相 [rad]
+  // (eciPole の自転モデルを持つ惑星だけが意味を持つ)。
   constructor(
     readonly def: PlanetDef, readonly star: StarMotion | null, phase: number,
     epochOffsetSec: number, precise: OriginCenteredEphemeris | null, origin: EciOrigin,
+    spinPhase0 = 0,
   ) {
-    super(phase, epochOffsetSec, precise, origin);
+    super(phase, epochOffsetSec, precise, origin, spinPhase0);
   }
 
   get primary(): CelestialMotion | null { return this.star; }

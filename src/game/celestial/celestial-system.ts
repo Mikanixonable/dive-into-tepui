@@ -263,8 +263,7 @@ export class CelestialSystem {
 
   // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
   earthSpinPhase0(): number | undefined {
-    const earth = this.bodies.find((b): b is Earth => b instanceof Earth);
-    return earth?.spinPhase0();
+    return this.bodies.find((b) => b instanceof Earth)?.motion.spinPhase0;
   }
 
   // 天体ビュー・星・照明・遮蔽・参照線・天球グリッドを、この1フレームの表示状態に同期する。

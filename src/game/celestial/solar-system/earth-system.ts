@@ -19,12 +19,12 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   mieAnisotropy: 0.8,
 };
 
-// 地球系の運動に見た目を対応づける。earthSpinPhase0 は地球の自転初期位相 [rad]。
+// 地球系の運動に見た目を対応づける。
 export function earthSystemEntities(
-  m: EarthSystemMotions, earthSpinPhase0: number,
+  m: EarthSystemMotions,
 ): { readonly [K in keyof EarthSystemMotions]: CelestialEntity } {
   return {
-    earth: new Earth(m.earth, '地球', earthSpinPhase0, EARTH_ATMOSPHERE_OPTICS),
+    earth: new Earth(m.earth, '地球', EARTH_ATMOSPHERE_OPTICS),
     moon: new SphereEntity(
       m.moon, '月', 'satellite',
       // 平均輝度 0.3180(A_B は公表ボンド)

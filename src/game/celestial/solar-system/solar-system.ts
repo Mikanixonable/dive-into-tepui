@@ -25,11 +25,11 @@ export function solarSystem(
   originId: SolarSystemId, phases: PhaseOffsets, earthSpinPhase0: number,
   absoluteSource: AbsoluteEphemeris | null, epochOffsetSec: number, epochJdTdb: number,
 ): CelestialSystem {
-  const m = solarSystemMotions(originId, phases, epochOffsetSec, absoluteSource, epochJdTdb);
+  const m = solarSystemMotions(originId, phases, epochOffsetSec, absoluteSource, epochJdTdb, earthSpinPhase0);
   // Record の網羅性検査が「physics 側に居る天体に見た目が無い」をコンパイルエラーにする。
   const e: Record<SolarSystemId, CelestialEntity> = {
     sun: new Sun(m.sun, '太陽'),
-    ...earthSystemEntities(m.earthSystem, earthSpinPhase0),
+    ...earthSystemEntities(m.earthSystem),
     ...innerPlanetEntities(m.innerPlanets),
     ...marsSystemEntities(m.marsSystem),
     ...jupiterSystemEntities(m.jupiterSystem),

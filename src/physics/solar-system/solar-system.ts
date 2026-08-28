@@ -38,17 +38,18 @@ export type SolarSystemId =
 
 // 太陽系の全天体の運動を組む。phases は天体ごとの平均黄経の初期位相 [rad]、epochOffsetSec は
 // 全天体の軌道評価時刻へ一律に足す定数 [s]。absoluteSource を渡すと、その有効期間だけ
-// 高精度暦パック経路を通る(epochJdTdb はそのパックの元期)。
+// 高精度暦パック経路を通る(epochJdTdb はそのパックの元期)。earthSpinPhase0 は地球の自転
+// 初期位相 [rad]。
 export function solarSystemMotions(
   originId: SolarSystemId, phases: PhaseOffsets, epochOffsetSec: number,
-  absoluteSource: AbsoluteEphemeris | null, epochJdTdb: number,
+  absoluteSource: AbsoluteEphemeris | null, epochJdTdb: number, earthSpinPhase0 = 0,
 ): SolarSystemMotions {
   const origin = new EciOrigin();
   const pack = absoluteSource === null
     ? null
     : new OriginCenteredEphemeris(absoluteSource, originId, epochJdTdb);
   const sun = new StarMotion(SUN, phases[SUN.id] ?? 0, epochOffsetSec, pack, origin);
-  const earth = earthSystem(sun, phases, epochOffsetSec, pack, origin);
+  const earth = earthSystem(sun, phases, epochOffsetSec, pack, origin, earthSpinPhase0);
   const inner = innerPlanets(sun, phases, epochOffsetSec, pack, origin);
   const mars = marsSystem(sun, phases, epochOffsetSec, pack, origin);
   const jupiter = jupiterSystem(sun, phases, epochOffsetSec, pack, origin);

@@ -111,12 +111,12 @@ export type EarthSystemMotions = {
   readonly moon: SatelliteMotion;
 };
 
-// 地球と月の運動を組む。
+// 地球と月の運動を組む。earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: OriginCenteredEphemeris | null, origin: EciOrigin,
+  pack: OriginCenteredEphemeris | null, origin: EciOrigin, earthSpinPhase0 = 0,
 ): EarthSystemMotions {
-  const earth = new PlanetMotion(EARTH, sun, phases[EARTH.id] ?? 0, epochOffsetSec, pack, origin);
+  const earth = new PlanetMotion(EARTH, sun, phases[EARTH.id] ?? 0, epochOffsetSec, pack, origin, earthSpinPhase0);
   const moon = new SatelliteMotion(MOON, earth, phases[MOON.id] ?? 0, epochOffsetSec, pack, origin);
   return { earth, moon };
 }
