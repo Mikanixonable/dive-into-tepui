@@ -60,18 +60,16 @@ const LIT_OPAQUE_TEST = new THREE.Layers();
 LIT_OPAQUE_TEST.set(LIT_OPAQUE_LAYER);
 
 export class MaterialPass {
-  private readonly renderer: WebGPURenderer;
   private readonly diffuseNode: Vec3Node;
   private readonly specularNode: Vec3Node;
   // 一度アップグレードした Material の再変換を避けるための既変換集合。
   private readonly upgraded = new WeakSet<THREE.Material>();
 
   constructor(
-    renderer: WebGPURenderer,
+    private readonly renderer: WebGPURenderer,
     private readonly lightPrepass: LightPrepass,
     private readonly gpu: GpuTimings,
   ) {
-    this.renderer = renderer;
     this.diffuseNode = texture(this.lightPrepass.diffuseTexture, screenUV).rgb;
     this.specularNode = texture(this.lightPrepass.specularTexture, screenUV).rgb;
   }
