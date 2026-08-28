@@ -22,6 +22,7 @@ import { R_SUN } from '../../src/physics/solar-system';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
 import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
+import { pixelsToPngDataUrl } from '../lab-png';
 
 export interface LabDistribution {
   readonly avg: number;
@@ -415,7 +416,7 @@ export class LabView {
       this.renderer.setOutputRenderTarget(null);
     }
     const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
-    return toPng(new Uint8Array(pixels.buffer));
+    return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
   }
 }
 
@@ -449,14 +450,4 @@ function distribution(values: readonly number[]): LabDistribution {
     p95: percentile(sorted, 0.95),
     max: sorted[sorted.length - 1] ?? 0,
   };
-}
-
-// 読み出した RGBA 画素を PNG のデータ URL にする。
-function toPng(pixels: Uint8Array): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = VIEW_WIDTH;
-  canvas.height = VIEW_HEIGHT;
-  const context = canvas.getContext('2d')!;
-  context.putImageData(new ImageData(new Uint8ClampedArray(pixels), VIEW_WIDTH, VIEW_HEIGHT), 0, 0);
-  return canvas.toDataURL('image/png');
 }
