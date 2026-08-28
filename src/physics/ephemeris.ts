@@ -146,7 +146,7 @@ export class Ephemeris {
   private phaseOf(id: string): number { return this.phaseOffsets[id] ?? 0; }
 
   // 天体 id の運動。registry に無い id を渡すと例外になる。
-  private motionOf(id: string): CelestialMotion {
+  motionOf(id: string): CelestialMotion {
     const motion = this.motionsById.get(id);
     if (motion === undefined) throw new Error(`Ephemeris: レジストリに登録されていない天体 id: ${id}`);
     return motion;
