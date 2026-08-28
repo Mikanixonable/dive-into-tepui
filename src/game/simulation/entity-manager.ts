@@ -4,7 +4,7 @@ import { Vec3 } from '../../math/vec3';
 import type { Viewpoint } from '../../math/projection';
 import { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 import { AmmoPickup } from '../game-entity/ammo-pickup';

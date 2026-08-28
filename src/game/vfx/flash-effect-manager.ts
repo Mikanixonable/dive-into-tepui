@@ -4,7 +4,7 @@ import { KinematicState, kinematicState } from "../../physics/kinematic-state";
 import { addScaled } from "../../math/vec3";
 import { flashResources } from "../../render/billboard";
 import { InstancedPool } from "../../render/instanced-pool";
-import { FloatingOrigin } from "../floating-origin";
+import { FloatingOrigin } from "../camera/floating-origin";
 import * as C from "../const";
 
 // 軌道速度で流れないよう、発生源の速度で移流させる。位置は時刻つきの state として

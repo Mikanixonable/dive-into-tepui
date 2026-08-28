@@ -12,7 +12,7 @@ import { Hud } from '../hud/hud';
 import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { FloatingOrigin } from '../floating-origin';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CameraSystem } from '../camera/camera-system';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';

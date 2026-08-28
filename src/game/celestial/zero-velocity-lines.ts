@@ -12,7 +12,7 @@ import { Vec3 } from '../../math/vec3';
 import { rotatingFrame } from '../../physics/orbit-guide';
 import { zeroVelocityCurveSet, SectionPlane } from '../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { GuideCurve } from './guide-curve';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { ZeroVelocitySettings } from './orbit-guide-settings';

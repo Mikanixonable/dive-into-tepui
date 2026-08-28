@@ -15,7 +15,7 @@ import { TickLabelMode, TickRank, calendarBoundaries, elementTimeLabel, tickLabe
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { MapPickable } from '../map-pickable';
 import * as C from '../const';
 import { DisplayDurationSource, PlanData } from './plan';

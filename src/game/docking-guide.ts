@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { FloatingOrigin } from './floating-origin';
+import { FloatingOrigin } from './camera/floating-origin';
 import { Player } from './player/player';
 import type { EntityManager } from './simulation/entity-manager';
 import type { MarkerManager } from './marker/marker-manager';

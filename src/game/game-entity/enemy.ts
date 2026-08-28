@@ -247,7 +247,7 @@ export class Enemy extends Ship {
   }
 
   override sync(
-    fo: import('../floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint,
+    fo: import('../camera/floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint,
     proteinVibrationEnabled = true,
   ): void {
     super.sync(fo, displayTime);

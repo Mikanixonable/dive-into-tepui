@@ -15,7 +15,7 @@ import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';

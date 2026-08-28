@@ -13,7 +13,7 @@ import {
 } from '../../render/vfx-style';
 import { SchematicThrustCone } from '../../render/schematic-thrust-cone';
 import type { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { RenderStyle } from '../../render/render-style';
 

@@ -10,7 +10,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
 import { haloState, lissajousState } from '../../physics/halo';
-import type { FloatingOrigin } from '../floating-origin';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import { qRotate } from '../../physics/attitude';
 import { Vec3, add, addScaled, v3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';

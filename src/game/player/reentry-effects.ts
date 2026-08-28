@@ -8,7 +8,7 @@ import {
   REENTRY_SIZE_MIN, REENTRY_SIZE_SPAN,
 } from '../../render/vfx-style';
 import type { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
 
 export class ReentryEffects {

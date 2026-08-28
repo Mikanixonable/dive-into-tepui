@@ -32,7 +32,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ThrustEffects } from '../player/thrust-effects';
 import { RcsEffects } from '../player/rcs-effects';
 import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../floating-origin';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibility } from '../celestial/map-visibility';
 import { currentThemePalette } from '../theme';

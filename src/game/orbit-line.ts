@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitalElements, positionOnOrbit, trueAnomalyAt, velocityOnOrbit } from '../physics/elements';
 import { apparentSizePx } from '../math/projection';
 import { add, len, sub, v3, Vec3 } from '../math/vec3';
-import { FloatingOrigin } from './floating-origin';
+import { FloatingOrigin } from './camera/floating-origin';
 import { Curve, CurveSampler, MAX_SAGITTA_PX } from '../render/curve';
 import { CameraScale } from '../render/camera-scale';
 import { LineStyle } from '../render/line-style';

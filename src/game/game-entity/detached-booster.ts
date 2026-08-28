@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { qRotate, type Attitude } from '../../physics/attitude';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { add, scale, v3 } from '../../math/vec3';
-import type { FloatingOrigin } from '../floating-origin';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CameraSystem } from '../camera/camera-system';
 import type { DetachedBoosterSaveData } from '../save-data';
 import * as C from '../const';
