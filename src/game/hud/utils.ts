@@ -1,19 +1,11 @@
-// HUD 表示用の数値整形。
+// HUD 表示用の数値整形と、data-id で引いた要素への書き込み。
 import * as C from '../const';
 
-// "YYYY...-MM-DDTHH:MM:SS" を表示用の unix 秒相当へ変換する。年は4桁を超えてよい(SIM_EPOCH_TDB は
-// 作中世界の遠未来年代を持つ)。Date.parse は ECMA-262 の拡張年表記(符号付き6桁)以外の
-// 5桁以上の年を NaN にするため、Date.parse ではなく年ごと数値で取り出して Date.UTC へ渡す。
-function parseDisplayIso(iso: string): number {
-  const m = /^(\d+)-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/.exec(iso);
-  if (!m) return NaN;
-  const [, y, mo, d, h, mi, s] = m;
-  return Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)) / 1000;
+// data-id マップから id の要素を引き、表示中の文字列と異なるときだけ書き換える。
+export function setElementText(els: ReadonlyMap<string, HTMLElement>, id: string, text: string): void {
+  const element = els.get(id);
+  if (element && element.textContent !== text) element.textContent = text;
 }
-
-// simTime=0 に対応する絶対時刻 [unix s]。
-// 作中カレンダーの表示・日界線目盛用。物理時刻は sim-epoch.ts のJD_TDBを使う。
-export const SIM_EPOCH_SEC = parseDisplayIso(C.SIM_EPOCH_TDB);
 
 // パネル用距離表記(例: "420 m" / "1.23 km" / "1.50 Mm")
 export function fmtDist(m: number): string {

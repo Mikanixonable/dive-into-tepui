@@ -1,4 +1,4 @@
-import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../physics/vec3';
+import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
 import { CelestialBody } from '../physics/celestial-body';
 import * as C from './const';
 import { Enemy } from './game-entity/enemy';
@@ -12,7 +12,7 @@ import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
 import { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH } from './marker/marker-glyphs';
-import { pickNearest } from './map-pickable';
+import { pickNearest } from './pickable/map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { FrameAnchorSource } from '../physics/frame';
@@ -23,6 +23,20 @@ import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-
 import { isOccluded } from '../physics/occlusion';
 import type { NavTarget } from './nav-target';
 
+// ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー。
+// 最新の 1 点のみ表示する(複数出ると照準の目安として紛らわしいため)。
+const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
+const MAX_BOARD_MARKS = 1;
+const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
+
+const MAP_AMMO_FADE_START = 5e7;
+const MAP_AMMO_FADE_END = 1e8;
+const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
+
+const TARGET_LOCK_PICK_PX_SQ_COARSE = 1936;
+
+const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
+
 export type CombatTarget = Enemy | Player | Base;
 
 // マーカー上での対象の役割。ターゲットは色と字形が変わる。
@@ -31,7 +45,7 @@ export type MarkerRole = 'none' | 'primary';
 // 自機からの距離が MAP_AMMO_FADE_END を超えるとマップ上で見えなくなる(近くの弾薬だけ拾えれば
 // よいため、遠方まで塗り続けない)。
 function ammoFadeOpacity(distance: number): number {
-  return Math.max(0, Math.min(1, (C.MAP_AMMO_FADE_END - distance) / (C.MAP_AMMO_FADE_END - C.MAP_AMMO_FADE_START)));
+  return Math.max(0, Math.min(1, (MAP_AMMO_FADE_END - distance) / (MAP_AMMO_FADE_END - MAP_AMMO_FADE_START)));
 }
 
 export class Targeter {
@@ -98,7 +112,7 @@ export class Targeter {
     }
     this.boardMarks = this.boardMarks.filter((m) => {
       m.age += dt;
-      return m.age < C.BOARD_MARK_LIFETIME;
+      return m.age < BOARD_MARK_LIFETIME;
     });
     const n = norm(sub(target.state.r, player.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
@@ -113,9 +127,9 @@ export class Targeter {
       const t = d0 / (d0 - d1);
       const pos = addScaled(prevR, sub(b.state.r, prevR), t);
       const off = sub(pos, target.state.r);
-      if (lenSq(off) > C.BOARD_RADIUS * C.BOARD_RADIUS) continue; // 的から外れすぎ
+      if (lenSq(off) > BOARD_RADIUS * BOARD_RADIUS) continue; // 的から外れすぎ
       this.boardMarks.push({ off, age: 0 });
-      if (this.boardMarks.length > C.MAX_BOARD_MARKS) this.boardMarks.shift();
+      if (this.boardMarks.length > MAX_BOARD_MARKS) this.boardMarks.shift();
     }
   }
 
@@ -216,12 +230,12 @@ export class Targeter {
   private syncProteinSiteMarkers(
     enemy: Enemy, displayPos: Vec3 | null, viewerPos: Vec3, overviewMode: boolean, project: ProjectFn, cameraPos: Vec3,
   ): void {
-    const inRange = !overviewMode && displayPos !== null && len(sub(displayPos, viewerPos)) <= C.PROTEIN_SITE_MARKER_RANGE;
+    const inRange = !overviewMode && displayPos !== null && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
     const sites = enemy.proteinSiteMarkers(displayPos ?? enemy.state.r);
     for (const site of sites) {
       const key = `psite-${enemy.id}-${site.id}`;
       if (!inRange) { this.markerManager.hide(key); continue; }
-      const label = `${site.label} ${Math.max(0, Math.round(site.hp))}/${site.maxHp}`;
+      const label = `${site.abbreviation} ${Math.max(0, Math.round(site.hp))}/${site.maxHp}`;
       const color = site.disabled ? 'var(--text-dim)' : site.attackable ? C.COLOR_MARKER_ENEMY : undefined;
       this.markerManager.setPosition(key, 'mk-protein-site', '●', site.worldPos, project, label, 1, color, undefined, false, false, C.MARKER_PRIORITY.PROTEIN_SITE, cameraPos);
     }
@@ -230,14 +244,14 @@ export class Targeter {
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として表示する
   private syncBoardMarkers(project: ProjectFn): void {
     const target = this.aliveTarget;
-    for (let i = 0; i < C.MAX_BOARD_MARKS; i++) {
+    for (let i = 0; i < MAX_BOARD_MARKS; i++) {
       const key = `bh${i}`;
       const m = this.boardMarks[i];
       if (!m || !target) {
         this.markerManager.hide(key);
         continue;
       }
-      const fade = 1 - m.age / C.BOARD_MARK_LIFETIME;
+      const fade = 1 - m.age / BOARD_MARK_LIFETIME;
       this.markerManager.setPosition(key, 'mk-boardpass', '✦', add(target.state.r, m.off), project, '', 0.25 + 0.75 * fade);
     }
   }
@@ -260,7 +274,7 @@ export class Targeter {
   // MapContextActions の戦闘ビュー右クリック(プロパティウィンドウを開く対象探し)が読む。
   pickTargetAt(click: PointerPoint, targets: readonly CombatTarget[], project: ProjectFn): CombatTarget | null {
     const pickables = targets.filter((e) => e.alive).map((target) => ({ pos: target.state.r, target }));
-    const picked = pickNearest(pickables, click.x, click.y, project, pickRadiusSq(C.TARGET_LOCK_PICK_PX_SQ, C.TARGET_LOCK_PICK_PX_SQ_COARSE));
+    const picked = pickNearest(pickables, click.x, click.y, project, pickRadiusSq(TARGET_LOCK_PICK_PX_SQ, TARGET_LOCK_PICK_PX_SQ_COARSE));
     return picked?.target ?? null;
   }
 }

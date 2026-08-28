@@ -6,15 +6,15 @@ import { Input, PointerKind } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
 import {
-  FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW,
+  FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
 } from '../theme';
 
 const STYLE = `
-/* z-index 9: システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く。
+/* システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く。
    初回タッチまでは不可視・無反応(.shown が無い間 opacity:0 かつボタンも無効)にし、
    以後マウス操作を検出するたびに .faded で半透明化する(ハイブリッド端末での両立)。 */
 #touch-ui {
-  position: fixed; inset: 0; pointer-events: none; z-index: 9;
+  position: fixed; inset: 0; pointer-events: none; z-index: ${Z_TOUCH_UI};
   font-family: ${FONT_FAMILY}; user-select: none;
   -webkit-user-select: none;
   opacity: 0; transition: opacity ${TRANSITION_SLOW};

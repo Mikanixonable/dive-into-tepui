@@ -7,7 +7,7 @@
 // SPEC/ORBIT.md「未確定の案」の「掃引の近似を区間ごとに粗くする分岐」を入れるための余地で、
 // どこまで粗くしてよいかは tests/perf/exp10・exp11 が測る。
 import { KinematicState } from './kinematic-state';
-import { Vec3, add, len, scale, v3 } from './vec3';
+import { Vec3, add, len, scale, v3 } from '../math/vec3';
 
 // 区間内で表面を跨いだ瞬間。
 export interface SurfaceCrossing {

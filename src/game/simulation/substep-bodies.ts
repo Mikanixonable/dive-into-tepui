@@ -5,7 +5,7 @@ import {
   CelestialBody, nearestAtmosphereBody,
 } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import { ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
 
 export class SubstepBodies {

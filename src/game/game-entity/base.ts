@@ -4,7 +4,7 @@ import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Attitude } from '../../physics/attitude';
 import { qRotate } from '../../physics/attitude';
-import { add, len, sub, v3, Vec3 } from '../../physics/vec3';
+import { add, len, sub, v3, Vec3 } from '../../math/vec3';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
 import { Player } from '../player/player';
@@ -14,7 +14,7 @@ import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
-import type { BaseSaveData } from '../save-data';
+import type { BaseSaveData } from '../save/save-data';
 import { Plan } from '../plan/plan';
 import type { PlanExecutionMode } from '../player/player';
 import { generateRandomName } from '../random-name';
@@ -24,7 +24,7 @@ import { fmtMarkerDist } from '../hud/utils';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { baseMarkerSvg } from '../marker/marker-shapes';
 import * as C from '../const';
-import { BaseCollisionGeometry, RayHit, SphereHit } from '../../physics/base-collision';
+import { BaseCollisionGeometry, RayHit, SphereHit } from './base-collision';
 import { PlayerThrottle } from '../player/player-throttle';
 import type { Controllable } from './controllable';
 import type { Input } from '../input/input';
@@ -32,14 +32,22 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ThrustEffects } from '../player/thrust-effects';
 import { RcsEffects } from '../player/rcs-effects';
 import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../floating-origin';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibility } from '../celestial/map-visibility';
 import { currentThemePalette } from '../theme';
 
+export const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
+const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
+const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
+const BASE_MAX_FUEL = 50000;    // 基地の最大燃料
+const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
+const BASE_INERTIA_Y = 1e8;
+const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
+
 // 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部, 3倍スケール対応)
-export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
-export const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
+const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
+const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
 
 export interface BaseDockSlot {
   readonly id: number;
@@ -47,7 +55,7 @@ export interface BaseDockSlot {
   readonly localNormal: Vec3;
 }
 
-export const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
+const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
   { id: 0, localPos: v3(-16.5, 21.0, -16.5), localNormal: v3(0, 1, 0) },
   { id: 1, localPos: v3( 16.5, 21.0, -16.5), localNormal: v3(0, 1, 0) },
   { id: 2, localPos: v3(-16.5, 21.0,  16.5), localNormal: v3(0, 1, 0) },
@@ -100,11 +108,11 @@ export class Base extends GameEntity implements Controllable {
   readonly thrustEffects: ThrustEffects;
   readonly rcsEffects: RcsEffects;
   private baseFuel: number;
-  get totalThrust(): number { return C.BASE_THRUST; }
-  get totalTorque(): number { return C.BASE_TORQUE; }
-  get totalFuelConsumptionRate(): number { return C.BASE_FUEL_RATE; }
+  get totalThrust(): number { return BASE_THRUST; }
+  get totalTorque(): number { return BASE_TORQUE; }
+  get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
   get fuel(): number { return this.baseFuel; }
-  get maxFuel(): number { return C.BASE_MAX_FUEL; }
+  get maxFuel(): number { return BASE_MAX_FUEL; }
 
   consumeFuel(amount: number): number {
     if (amount <= 0) return 1.0;
@@ -146,21 +154,21 @@ export class Base extends GameEntity implements Controllable {
       ? {
         q: { ...init.saved.q },
         w: init.saved.w ? v3(init.saved.w.x, init.saved.w.y, init.saved.w.z) : v3(),
-        inertia: v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z),
+        inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
       }
       : undefined;
     super(state, buildBaseModel(), scene, savedAtt ?? att, idAllocator.next(id));
     // 姿勢に慣性モーメントを設定（既定の identityAttitude は inertia=(1,1,1) なので上書きが必要）
     if (!savedAtt && !att) {
-      this.att = { ...this.att, inertia: v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z) };
+      this.att = { ...this.att, inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z) };
     } else if (att && !att.inertia) {
-      this.att = { ...this.att, inertia: v3(C.BASE_INERTIA_X, C.BASE_INERTIA_Y, C.BASE_INERTIA_Z) };
+      this.att = { ...this.att, inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z) };
     }
     this.mass = 3e6;
     this.radius = 330;
     this.collides = true;
     this.name = name;
-    this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : C.BASE_MAX_FUEL;
+    this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : BASE_MAX_FUEL;
     this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);

@@ -3,9 +3,9 @@ import {
   FixedContactResponse, Sphere,
   distributeFixedContact, distributeSphereContact, resolveSphereCollision, sphereContactGeometry,
 } from '../../src/physics/collision-response';
-import { dot, len, lenSq, sub, v3, Vec3 } from '../../src/physics/vec3';
+import { dot, len, lenSq, sub, v3, Vec3 } from '../../src/math/vec3';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { test } from './harness';
+import { test } from '../harness';
 
 // 天体との接触を、幾何を出す段と当てる段を繋いで解く — 表面接触の解決器が同じ順で呼ぶ。
 function fixedContact(

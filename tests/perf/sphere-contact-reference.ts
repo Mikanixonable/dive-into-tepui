@@ -1,7 +1,7 @@
 // 掃引接触判定を外から測るための参照実装。判定器と同じ制御点で曲線を張り直し、原点との
 // 最接近距離を密なサンプリングで出す。**判定器の内部は一切使わない** — 判定器がその最接近
 // 距離をどこで拾うかを測るのが目的なので、参照が判定器を経由してはならない。
-import { Vec3, len, scale, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, len, scale, sub, v3 } from '../../src/math/vec3';
 import { Solver, Sweep, solve } from './sphere-contact-sweeps';
 
 const SAMPLES = 200001;

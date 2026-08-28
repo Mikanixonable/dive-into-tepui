@@ -78,7 +78,8 @@
 ## 作業のルール
 
 - **検証は変更箇所に対応させる。** 既定は `npm run typecheck` のみで、これは常に走らせる。
-  `npm run test:physics` は `src/physics/` を触ったときだけ。ヘッドレス実行検証(`/verify`)は
+  回帰テストは触った層のものだけ — `src/physics/` なら `npm run test:physics`、以下同様に
+  `test:math` / `test:game` / `test:render`。ヘッドレス実行検証(`/verify`)は
   ユーザーが実行時の動作確認を明示的に求めたときだけ。変更と無関係な検証に時間を使わない。
   **例外は main へ送るとき** — そのときだけは変更箇所によらず全部回す(「ブランチと main への
   マージ」)。
@@ -93,7 +94,7 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 入れる(小規模なら直マージ)。
 
 **main へ入る時点で、CI が回す検証がすべて通っていなければならない。** CI
-(`.github/workflows/build.yml`)は `npm run typecheck` → `npm run test:physics` → `npm run build`
+(`.github/workflows/build.yml`)は `npm run typecheck` → `npm run test` → `npm run build`
 を順に回し、**どれか1つでも落ちれば deploy がそこで止まる** — `release` が更新されず、公開版が
 古いまま取り残される。自動テストが回らない状態が常態化するのも困るが、**デプロイが止まったまま
 常態化するほうがはるかにマズい。**
@@ -101,8 +102,8 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 したがって:
 
 - **main へマージする前・PR を送る前に、作業ブランチで `npm run typecheck` と
-  `npm run test:physics` を通す。** 変更が `src/physics/` に触れていなくても、**このときだけは
-  必ず回す。** ローカルで通らないものを main へ送らない。
+  `npm run test`(全層)を通す。** 触った層がどこであっても、**このときだけは必ず回す。**
+  ローカルで通らないものを main へ送らない。
 - **赤いまま main へ送らない。** 原因が自分の変更の外にあっても同じ — 赤いものを通した時点から
   先の deploy が全部止まる。自分の変更が原因でないなら、先にそれを直すか、**直さずに送る判断は
   ユーザーに委ねる**(黙って送らない)。
@@ -112,7 +113,11 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 | コマンド | 用途 | いつ走らせるか |
 | --- | --- | --- |
 | `npm run typecheck` | 型検査 | **常に** |
-| `npm run test:physics` | `src/physics/` の回帰テスト | `src/physics/` を触ったとき / **main へ送る前** |
+| `npm run test` | 全層の回帰テスト | **main へ送る前** |
+| `npm run test:physics` | `src/physics/` の回帰テスト | `src/physics/` を触ったとき |
+| `npm run test:math` | `src/math/` の回帰テスト | `src/math/` を触ったとき |
+| `npm run test:game` | `src/game/` の回帰テスト | `src/game/` を触ったとき |
+| `npm run test:render` | `src/render/` の回帰テスト | `src/render/` を触ったとき |
 | `npm run dev` | 開発サーバ(http://localhost:8080) | 実機で動かすとき |
 | `npm run smoke:browser` | ヘッドレスでの起動・操作スモーク | 実行時の確認を求められたとき |
 | `npm run build` | `docs/` への本番ビルド | 通常不要(公開は CI が行う) |

@@ -1,16 +1,17 @@
 // RCS パフ(姿勢制御スラスタの噴射煙)。指令トルクに寄与するノズルを選び、その先へ噴射煙を置く。
 import * as THREE from 'three/webgpu';
 import { Attitude, qRotate } from '../../physics/attitude';
-import { Vec3, add, cross, dot, lenSq, scale, v3 } from '../../physics/vec3';
+import { Vec3, add, cross, dot, lenSq, scale, v3 } from '../../math/vec3';
 import { Billboard } from '../../render/billboard';
 import {
   RCS_PLUME_BRIGHTNESS, RCS_PLUME_COLOR, RCS_PLUME_OFFSET, RCS_PLUME_SIZE,
 } from '../../render/vfx-style';
 import { RCS_NOZZLES } from '../../render/rcs-nozzles';
-import * as C from '../const';
 import type { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
+
+const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
 
 
 export class RcsEffects {
@@ -41,7 +42,7 @@ export class RcsEffects {
     plumeScale = 1.0,
   ): void {
     // 回転していない、またはズーム視点なら全パフを隠して終える
-    const rotating = visible && lenSq(torque) > C.RCS_PUFF_TORQUE_EPS * C.RCS_PUFF_TORQUE_EPS;
+    const rotating = visible && lenSq(torque) > RCS_PUFF_TORQUE_EPS * RCS_PUFF_TORQUE_EPS;
     // 全艦のプルームは描画するが、共有音源を更新するのは操作対象だけ。
     if (audible) this._worldSfx.setRcs(rotating);
     if (!rotating || camera.zoomActive) {
