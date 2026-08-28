@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { kinematicState } from '../../physics/kinematic-state';
-import { CelestialBodyDef, PhaseOffsets } from '../../physics/celestial-motion';
+import { CelestialBodyDef, CelestialMotion, PhaseOffsets } from '../../physics/celestial-motion';
 import { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { ReferenceFrames } from '../../physics/reference-frames';
 import { RingSystemDef } from '../../physics/solar-system/celestial-body-def';
@@ -131,6 +131,9 @@ export class CelestialSystem {
   private ambient!: AmbientSource;
   private atmosphere!: AtmospherePass;
   private readonly bodiesById: ReadonlyMap<string, CelestialEntity>;
+  // 全天体の運動(bodies と同じ宣言順)。THREE 非依存の層(body-visibility 等)へ列挙を
+  // 渡すときはこれを使う。
+  readonly motions: readonly CelestialMotion[];
   // 主星の個体。恒星を持たない星系では null。
   private readonly starBody: CelestialEntity | null;
   private readonly nearbyTracker = new NearbySystemTracker();
@@ -164,7 +167,8 @@ export class CelestialSystem {
     readonly origin: CelestialEntity,
     private readonly phaseOffsets: PhaseOffsets,
   ) {
-    this.ephemeris = new Ephemeris(bodies.map((b) => b.motion), origin.id, phaseOffsets);
+    this.motions = bodies.map((b) => b.motion);
+    this.ephemeris = new Ephemeris(this.motions, origin.id, phaseOffsets);
     this.bodiesById = new Map(bodies.map((b) => [b.id, b]));
     this.starBody = bodies.find((b) => b.motion.kind === 'star') ?? null;
     this.geoElements = buildGeoElements(this.bodiesById.get('earth')?.def ?? null);
@@ -313,7 +317,7 @@ export class CelestialSystem {
     // 既存経路ではここで一度だけ構築し、参照線にも同じインスタンスを渡す。
     const nearbyIds = cameraSystem.overviewMode && sharedVisibilityPolicy === null
       ? this.nearbyTracker.membersAt(
-        this.ephemeris, cameraSystem.activeCameraPos, this.celestialBodiesAt(displayTime))
+        this.motions, cameraSystem.activeCameraPos, this.celestialBodiesAt(displayTime))
       : [];
     const visibilityPolicy = cameraSystem.overviewMode
       ? sharedVisibilityPolicy ?? new MapVisibilityPolicy(

@@ -79,7 +79,7 @@ export class PhysicalObjectListTree {
         node.glyph.dataset.svgGlyph = svgGlyph;
       }
     } else {
-      const glyph = pickGlyphText(item.kind, item.id, this.celestialSystem.ephemeris);
+      const glyph = pickGlyphText(item.kind, item.id, this.celestialSystem);
       if (node.glyph.textContent !== glyph) {
         node.glyph.textContent = glyph;
         delete node.glyph.dataset.svgGlyph;

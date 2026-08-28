@@ -7,14 +7,13 @@ import { ObjectPicker } from '../hud/windows/object-picker';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
-import { celestialBodyName } from '../hud/frame/frame-labels';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { CollinearPoint } from '../../physics/halo';
 import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system/constants';
 import { MOON } from '../../physics/solar-system/earth-system';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ObjectType } from '../random-name';
 import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, sunSyncInclinationDeg } from './orbit-form-fields';
 
@@ -194,22 +193,22 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private lagrangeOrbitKindValue: LagrangeOrbitKind = 'halo';
 
   // 物体配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
-  // ephemeris が実際に持つレジストリから組む。
-  private readonly ephemeris: Ephemeris;
+  // celestialSystem が実際に持つ天体から組む。
+  private readonly celestialSystem: CelestialSystem;
   // ObjectPicker のポップアップの親。パネル自身の overflow に切られないよう popup レイヤへ置く。
   private readonly popupRoot: HTMLElement;
 
   // panelRoot はパネル自体の置き場所、popupRoot は ObjectPicker のポップアップの置き場所。
   constructor(
-    panelRoot: HTMLElement, popupRoot: HTMLElement, ephemeris: Ephemeris,
+    panelRoot: HTMLElement, popupRoot: HTMLElement, celestialSystem: CelestialSystem,
     private readonly overlayManager: OverlayManager,
   ) {
-    this.ephemeris = ephemeris;
+    this.celestialSystem = celestialSystem;
     this.popupRoot = popupRoot;
-    const orbitingIds = orbitingIdsOf(ephemeris);
-    this.celestialBodyItems = orbitingIds.map((id) => [id, celestialBodyName(id)] as const);
+    const orbitingIds = orbitingIdsOf(celestialSystem);
+    this.celestialBodyItems = orbitingIds.map((id) => [id, celestialSystem.nameOf(id)] as const);
     this.baseCelestialBodyItems = this.celestialBodyItems.filter(([id]) => id === 'moon');
-    this.lagrangeSystemItems = lagrangeSystemItemsOf(ephemeris, orbitingIds);
+    this.lagrangeSystemItems = lagrangeSystemItemsOf(celestialSystem, orbitingIds);
 
     this.panel = document.createElement('div');
     this.panel.id = 'hud-object-placer';
@@ -303,7 +302,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
       celestialBodyControl.setSelected(v);
       this.refreshPresets();
     }, this.overlayManager);
-    celestialBodyControl.setGroups(bodyGroupsOf(this.ephemeris, this.celestialBodyItems, this.celestialBodyValue));
+    celestialBodyControl.setGroups(bodyGroupsOf(this.celestialSystem, this.celestialBodyItems, this.celestialBodyValue));
     celestialBodyControl.setSelected(this.celestialBodyValue);
     elementsGroup.appendChild(celestialBodyControl.element);
 
@@ -457,7 +456,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
       if (this.celestialBodyValue !== 'moon') this.celestialBodyValue = 'moon';
       this.celestialBody.setGroups([{ label: '', items: this.baseCelestialBodyItems }]);
     } else {
-      this.celestialBody.setGroups(bodyGroupsOf(this.ephemeris, this.celestialBodyItems, this.celestialBodyValue));
+      this.celestialBody.setGroups(bodyGroupsOf(this.celestialSystem, this.celestialBodyItems, this.celestialBodyValue));
     }
     this.celestialBody.setSelected(this.celestialBodyValue);
     this.refreshPresets();
@@ -494,7 +493,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private defaultLagrangeAmplitude(secondary: string): { ax: number; az: number } {
     const listed = LAGRANGE_DEFAULT_AMPLITUDE_KM[secondary];
     if (listed !== undefined) return listed;
-    const distanceKm = primaryDistanceKm(this.ephemeris.motionOf(secondary).def);
+    const distanceKm = primaryDistanceKm(this.celestialSystem.bodyOf(secondary).def);
     return { ax: distanceKm * AMPLITUDE_AX_RATIO, az: distanceKm * AMPLITUDE_AZ_RATIO };
   }
 
