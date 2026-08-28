@@ -105,32 +105,33 @@ function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPer
   return Math.PI * radiusPx * radiusPx * -Math.expm1(-verticalOpticalDepth(optics));
 }
 
-// 大気の広がりを決めるもの。
-type AtmosphereExtent = {
-  readonly optics: AtmosphereOptics;
+// 大気を持つ天体 1 体。中心は描画座標、半径は [m]。
+export type AtmosphereBody = {
+  readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
+  readonly optics: AtmosphereOptics;
 };
 
 // 大気を描く候補 1 体。distance は視点から天体中心までの距離 [m] で、重ねる順序を決める。
 // metersPerPixel はその天体の位置での画面 1 画素ぶんの実距離 [m] で、影響の大きさを決める。
-export type AtmosphereCandidate<T extends AtmosphereExtent> = {
-  readonly body: T;
+export type AtmosphereCandidate = {
+  readonly body: AtmosphereBody;
   readonly distance: number;
   readonly metersPerPixel: number;
 };
 
 // 大気を描く指示 1 体ぶん。steps はその大気を解くサンプル点の数で、整数でない値も採る。
-export type AtmosphereDraw<T extends AtmosphereExtent> = {
-  readonly body: T;
+export type AtmosphereDraw = {
+  readonly body: AtmosphereBody;
   readonly steps: number;
 };
 
 // 予算 budget サンプルを、影響の大きい順に配る。**返す並びは視点に近い順**(合成の順序)。
 // 予算で賄えない数の候補は、影響の小さい側から落ちる。
-function allocateSamples<T extends AtmosphereExtent>(
-  scored: readonly (AtmosphereCandidate<T> & { readonly score: number })[],
+function allocateSamples(
+  scored: readonly (AtmosphereCandidate & { readonly score: number })[],
   budget: number,
-): readonly AtmosphereDraw<T>[] {
+): readonly AtmosphereDraw[] {
   // **体数そのものを予算で削る** — 最低ぶんすら賄えない数を描くと、段を下げたのに予算を超える。
   const drawn = scored
     .filter(({ score }) => score >= MIN_SCORE)
@@ -153,10 +154,10 @@ function allocateSamples<T extends AtmosphereExtent>(
 
 // このフレームに大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数を添えて返す。
 // 品質の段は、大気ぜんぶへ配れるサンプル点の合計だけを決める。
-export function atmosphereDraws<T extends AtmosphereExtent>(
-  candidates: readonly AtmosphereCandidate<T>[],
+export function atmosphereDraws(
+  candidates: readonly AtmosphereCandidate[],
   quality: AtmosphereQuality,
-): readonly AtmosphereDraw<T>[] {
+): readonly AtmosphereDraw[] {
   return allocateSamples(
     candidates.map((candidate) => ({
       ...candidate,

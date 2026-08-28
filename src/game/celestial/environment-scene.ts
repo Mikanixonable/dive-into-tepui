@@ -27,7 +27,7 @@ import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-li
 import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from './planet-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
-import type { AtmosphereBody, AtmospherePass } from '../../render/pipeline/atmosphere-pass';
+import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import {
   type AtmosphereCandidate, atmosphereDraws, atmosphereOpticsOf,
 } from '../../render/atmosphere-params';
@@ -352,9 +352,9 @@ export class EnvironmentScene {
   // 大気を持つ参照天体を、カメラからその中心までの距離と、その位置での画面尺度と一緒に集める。
   private atmosphereCandidates(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
-  ): readonly AtmosphereCandidate<AtmosphereBody>[] {
+  ): readonly AtmosphereCandidate[] {
     const scale = cameraSystem.activeCameraScale;
-    const candidates: AtmosphereCandidate<AtmosphereBody>[] = [];
+    const candidates: AtmosphereCandidate[] = [];
     for (const id of this.referenceIds) {
       const optics = atmosphereOpticsOf(id);
       if (optics === null) continue;
