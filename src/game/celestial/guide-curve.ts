@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../math/vec3';
 import { Curve, CurveColorSampler, CurveKnots, CurveSampler } from '../../render/curve';
 import { LineStyle } from '../../render/line-style';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 
 export class GuideCurve {
   private readonly curve: Curve;
