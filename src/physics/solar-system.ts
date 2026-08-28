@@ -2,7 +2,6 @@
 // 重力定数・半径・軌道モデル(SOLAR_SYSTEM)。宣言順が Ephemeris が返す重力源配列の順になる。
 import { AtmosphereDef } from './atmosphere';
 import { Quat } from './attitude';
-import { CelestialBodyId } from './celestial-body';
 import { equatorBasisToEci } from './body-orientation';
 import { raDecToEci } from './ecliptic';
 import { keplerPeriod } from './elements';
@@ -42,8 +41,8 @@ export const MOON_OBLIQUITY = 1.543 * (Math.PI / 180); // [rad]
 // registry の中から恒星を1つ探す。0個なら null。このステップがサポートするのは主星が
 // ちょうど1つ、または0個の星系のみで、複数の恒星が相互に公転しあう連星系は対象外 — 2つ以上
 // 見つかったら例外にする。
-export function starOf(registry: CelestialRegistry): CelestialBodyId | null {
-  let star: CelestialBodyId | null = null;
+export function starOf(registry: CelestialRegistry): string | null {
+  let star: string | null = null;
   for (const [id, def] of Object.entries(registry)) {
     if (def.kind !== 'star') continue;
     if (star !== null) throw new Error(`starOf: レジストリに複数の恒星がある(連星系は非対応): ${star}, ${id}`);
@@ -55,7 +54,7 @@ export function starOf(registry: CelestialRegistry): CelestialBodyId | null {
 // 天体を、表示上の「親」— 衛星ならその惑星、惑星ならそのレジストリの恒星 — へ写す。
 // 恒星自身は親を持たないので null(レジストリに恒星が無い場合も同じく null)。
 // null が階層の根であることを呼び出し側が使えるよう、恒星が自分自身を返すことはない。
-export function primaryOf(registry: CelestialRegistry, id: CelestialBodyId): CelestialBodyId | null {
+export function primaryOf(registry: CelestialRegistry, id: string): string | null {
   const def = bodyDef(registry, id);
   if (def.kind === 'star') return null;
   return def.kind === 'satellite' ? def.planet : starOf(registry);
@@ -161,10 +160,10 @@ export type RingSystemDef = { readonly bands: readonly RingBandDef[] };
 type RingSystemFlag = { readonly rings?: RingSystemDef };
 
 export type CelestialBodyDef =
-  | { readonly kind: 'star'; readonly id: CelestialBodyId; readonly mu: number; readonly radius: number }
+  | { readonly kind: 'star'; readonly id: string; readonly mu: number; readonly radius: number }
   | ({
       readonly kind: 'planet';
-      readonly id: CelestialBodyId;
+      readonly id: string;
       readonly mu: number;
       readonly radius: number;
       readonly orbit: PlanetOrbit; // 中心は必ず恒星
@@ -175,10 +174,10 @@ export type CelestialBodyDef =
     } & LagrangeLabelFlag & RingSystemFlag)
   | ({
       readonly kind: 'satellite';
-      readonly id: CelestialBodyId;
+      readonly id: string;
       readonly mu: number;
       readonly radius: number;
-      readonly planet: CelestialBodyId; // 中心は必ず惑星
+      readonly planet: string; // 中心は必ず惑星
       readonly orbit: SatelliteOrbit;
       readonly pole?: PoleModel;
       readonly degree2?: Degree2GravityDef;
@@ -199,7 +198,7 @@ export function shapeAxes(radius: number, shape: ShapeDef | undefined): Vec3 {
 
 // 天体レジストリ: id から静的事実(CelestialBodyDef)を引く表。SOLAR_SYSTEM が「現実の太陽系」
 // という名前つきの既定値で、ステージごとに別のレジストリへ差し替えられる。
-export type CelestialRegistry = Readonly<Record<CelestialBodyId, CelestialBodyDef>>;
+export type CelestialRegistry = Readonly<Record<string, CelestialBodyDef>>;
 
 const D2R = Math.PI / 180;
 
@@ -2028,7 +2027,7 @@ export const SOLAR_SYSTEM = {
 export type SolarSystemId = keyof typeof SOLAR_SYSTEM;
 
 // id を registry から引く。registry に無い id を渡すと例外になる。
-export function bodyDef(registry: CelestialRegistry, id: CelestialBodyId): CelestialBodyDef {
+export function bodyDef(registry: CelestialRegistry, id: string): CelestialBodyDef {
   const def = registry[id];
   if (def === undefined) throw new Error(`bodyDef: レジストリに登録されていない天体 id: ${id}`);
   return def;

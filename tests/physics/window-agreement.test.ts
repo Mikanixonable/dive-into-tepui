@@ -17,7 +17,7 @@ import { ArcBodies } from '../../src/game/simulation/arc-bodies';
 import { attractorsNearInto, classifyAttractors } from '../../src/game/simulation/attractors';
 import { FutureCelestialBodies } from '../../src/game/simulation/future-celestial-bodies';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/simulation/surface-candidates';
-import type { CelestialBody, CelestialBodyId } from '../../src/physics/celestial-body';
+import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';
 import type { Vec3 } from '../../src/math/vec3';
 
@@ -110,11 +110,11 @@ function substepInterval(from: KinematicState, dt: number): SurfaceParticipant {
 
 // 表面判定の相手を比べる場所。円軌道では1サブステップの間にどの表面へも届かないので、
 // 絞り込みが実際に何かを通す「接触が差し迫った場所」でなければ比べる意味がない。
-type SurfaceSite = { readonly name: string; readonly bodyId: CelestialBodyId };
+type SurfaceSite = { readonly name: string; readonly bodyId: string };
 
 // レジストリで最初に見つかる、重力を及ぼさないが半径を持つ天体。表面判定が重力の有無に
 // 依らないことは、この種の天体でしか見えない。
-function firstMasslessBodyId(): CelestialBodyId {
+function firstMasslessBodyId(): string {
   const def = Object.values(EPHEMERIS.registry).find((b) => b.mu === 0 && b.radius > 0);
   assert.ok(def !== undefined, '既定レジストリに mu=0 の天体が無い');
   return def!.id;
@@ -127,7 +127,7 @@ const SURFACE_SITES: readonly SurfaceSite[] = [
 ];
 
 // bodyId の表面から 1km 上空を、表面へ向かって降りていく状態。向きは任意でよいので +X に取る。
-function descentState(bodyId: CelestialBodyId, t: number): KinematicState {
+function descentState(bodyId: string, t: number): KinematicState {
   const body = EPHEMERIS.celestialBodyAt(bodyId, t);
   const up = v3(1, 0, 0);
   return kinematicState(

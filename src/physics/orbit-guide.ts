@@ -3,7 +3,6 @@
 // リサジュー軌道だけは連続な族として焼き込まないので、Richardson の解析近似から直に組む。
 import { Ephemeris } from './ephemeris';
 import { primaryOf } from './solar-system';
-import { OrbitingId } from './celestial-body';
 import { Vec3Tuple } from './cr3bp';
 import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
 import {
@@ -40,7 +39,7 @@ export interface GuideLoop {
 }
 
 // 系を構成する主天体・副天体。カタログの系 id とゲームのレジストリを繋ぐ唯一の対応表。
-const SYSTEM_BODIES: Readonly<Record<CatalogSystemId, readonly [OrbitingId | 'sun', OrbitingId]>> = {
+const SYSTEM_BODIES: Readonly<Record<CatalogSystemId, readonly [string, string]>> = {
   'earth-moon': ['earth', 'moon'],
   'sun-earth': ['sun', 'earth'],
   'sun-mars': ['sun', 'mars'],
@@ -51,7 +50,7 @@ const SYSTEM_BODIES: Readonly<Record<CatalogSystemId, readonly [OrbitingId | 'su
 };
 
 // 系の副天体 id。
-export function guideSecondary(system: CatalogSystemId): OrbitingId {
+export function guideSecondary(system: CatalogSystemId): string {
   return SYSTEM_BODIES[system][1];
 }
 
