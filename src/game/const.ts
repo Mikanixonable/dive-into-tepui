@@ -2,7 +2,6 @@
 import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
 import { v3 } from '../math/vec3';
 import type { GuideGroupId } from './celestial/orbit-guide-settings';
-export { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../physics/solar-system';
 
 // 軌道上へ配置できる自機の上限隻数。
 export const MAX_PLACED_SHIPS = 50;
@@ -572,10 +571,6 @@ export const ARC_MIN_ITEM_STEPS = 16;
 export const AUTOWARP_MARGIN = 2;
 export const AUTOWARP_STOP = 10;
 
-// simTime=0 の物理元期。遠未来UTCは定義できないため、天体力学ではTDBとして解釈する。
-// HUDは同じ暦フィールドを作中日時ラベルとして表示する。
-export const SIM_EPOCH_TDB = '20115-05-14T06:00:00';
-
 // --- 第零ステージ(近接戦闘訓練) ---
 export const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
 export const STAGE0_PER_GROUP = 10; // グループあたりの機数
@@ -685,7 +680,7 @@ export const REFERENCE_LINE_OPACITY = 0.3;
 
 // 軌道ガイド(orbit-guide-lines.ts)の群ごとの基準色相。群の中の種類は明度違いで分ける
 // (guideKindDefaultColors)。静止軌道リング(0x8b93a0)と同じ控えめな系統でまとめる。
-export const GUIDE_GROUP_HUE: Readonly<Record<GuideGroupId, number>> = {
+const GUIDE_GROUP_HUE: Readonly<Record<GuideGroupId, number>> = {
   collinear: 0x6fa3c9, // 青(旧ハロー色を踏襲)
   triangular: 0xc9a969, // 橙
   secondary: 0x6fc9b8, // 緑(DRO/DPO/LPO)
@@ -700,7 +695,7 @@ function lerpColor(color: number, towards: number, t: number): number {
 }
 
 // 群の色相を、群内での種類の並び順(index/count)に応じた明度違いへ展開する。
-export function guideKindShade(group: GuideGroupId, index: number, count: number): number {
+function guideKindShade(group: GuideGroupId, index: number, count: number): number {
   const base = GUIDE_GROUP_HUE[group];
   if (count <= 1) return base;
   return lerpColor(base, 0xffffff, 0.15 + 0.5 * (index / (count - 1)));
