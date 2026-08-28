@@ -55,7 +55,7 @@ export class AnchorZone {
     const groups: ObjectPickerGroup<string | null>[] = [
       ...(this.releaseLabel !== null ? [{ label: '', items: [[null, this.releaseLabel] as const] }] : []),
       ROLE_GROUP,
-      ...groupPickables(this.ephemeris.registry, pickables, includeAllCelestialBodies),
+      ...groupPickables(this.ephemeris, pickables, includeAllCelestialBodies),
     ];
     this.picker.setGroups(groups);
   }

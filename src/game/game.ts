@@ -568,10 +568,10 @@ export class Game {
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
       player, combatTargets, this.entities.ammoPickups, this.entities.rcsFuelPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
-      this.ephemeris.registry, displayCelestialBodies,
+      this.ephemeris, displayCelestialBodies,
     );
     this.cameraSystem.focusMarkers.syncSubLabels(
-      this.markerManager.combatMarkers, this.ephemeris.registry, displayCelestialBodies,
+      this.markerManager.combatMarkers, displayCelestialBodies,
       overviewMode, project, this.cameraSystem.activeCameraPos,
     );
     this.navTarget.sync(this.cameraSystem);
