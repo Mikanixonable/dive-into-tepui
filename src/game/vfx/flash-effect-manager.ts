@@ -6,9 +6,9 @@ import { flashResources } from "../../render/billboard";
 import { InstancedPool } from "../../render/instanced-pool";
 import { FloatingOrigin } from "../camera/floating-origin";
 
-export const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラッシュ最大不透明度倍率(完全には消さない)
+const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラッシュ最大不透明度倍率(完全には消さない)
 
-export const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命中・撃破・ガス)の上限。超過分は描画されない
+const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命中・撃破・ガス)の上限。超過分は描画されない
 
 // 軌道速度で流れないよう、発生源の速度で移流させる。位置は時刻つきの state として
 // 持ち、その時刻から現在の simTime までを毎フレーム移流させる。transform は

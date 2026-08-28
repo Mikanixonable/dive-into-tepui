@@ -43,11 +43,11 @@ import { MapPropertyRows } from './map-property-rows';
 import { bodyParentId, MapPickableMenu } from './map-pickable-menu';
 import type { KinematicState } from '../../physics/kinematic-state';
 
-export const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
-export const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
+const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
+const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
 
-export const MAP_PICK_PX_SQ_COARSE = 1936;
-export const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
+const MAP_PICK_PX_SQ_COARSE = 1936;
+const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 
 // 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
 // (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。

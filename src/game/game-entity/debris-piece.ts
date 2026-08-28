@@ -22,13 +22,13 @@ import { GameEntity } from './game-entity';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
 
-export const BARREL_BULK_DENSITY = 7850; // [kg/m^3]
+const BARREL_BULK_DENSITY = 7850; // [kg/m^3]
 
-export const BARREL_MAX_TEMP = 1700; // 鋼の融点 [K]
+const BARREL_MAX_TEMP = 1700; // 鋼の融点 [K]
 
-export const BOOSTER_HARDWARE_LIFETIME = 2.4; // 段間カバー/爆砕ボルトの飛散表示時間 [s]
+const BOOSTER_HARDWARE_LIFETIME = 2.4; // 段間カバー/爆砕ボルトの飛散表示時間 [s]
 
-export const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
+const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
 import {
   SHIP_DARK_HULL_COLOR,
 } from '../../render/vfx-style';

@@ -26,14 +26,14 @@ import * as C from '../const';
 
 // 折れ線が自分自身に重なる(周回を跨いで表示期間が延びた)場合、最短画面距離からこの
 // 許容差以内の候補のうち最も早い時刻のものを選ぶ [px]
-export const NEAREST_SAMPLE_TIE_PX = 3;
+const NEAREST_SAMPLE_TIE_PX = 3;
 
 // 計画軌道の折れ線を破線で描くときの、破線1本・間隔の画面上の長さ [px] と不透明度。
 // 実距離ではなく画面ピクセルで持つのは、マップの倍率が数桁変わるため実距離で固定すると
 // 拡大時は数本の線分に、縮小時はサブピクセルになって実線と区別できなくなるため。
-export const PLAN_ARC_DASH_PX = 8;
-export const PLAN_ARC_GAP_PX = 6;
-export const PLAN_ARC_OPACITY = 0.85;
+const PLAN_ARC_DASH_PX = 8;
+const PLAN_ARC_GAP_PX = 6;
+const PLAN_ARC_OPACITY = 0.85;
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
