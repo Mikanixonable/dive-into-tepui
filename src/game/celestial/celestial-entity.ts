@@ -7,7 +7,9 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { apparentSizePx } from '../../math/projection';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
 import { len, sub } from '../../math/vec3';
-import type { BodyClass } from './body-class';
+import type { AtmosphereOptics } from '../../render/atmosphere';
+import type { Albedo } from '../../render/celestial-albedo';
+import type { BodyClass } from './celestial-entity-def';
 import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { SunLight } from '../../render/pipeline/sun-light';
@@ -15,11 +17,20 @@ import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../render/render-style';
 
 export abstract class CelestialEntity {
+  // atmosphereOptics は大気の見えの光学パラメータ(大気を持たない・描かない天体では null)。
   protected constructor(
     readonly motion: CelestialMotion,
     readonly name: string,
     readonly bodyClass: BodyClass,
+    readonly atmosphereOptics: AtmosphereOptics | null,
   ) {}
+
+  // この天体を光源として扱うときの色つきアルベド(Rec.709 輝度 = ボンドアルベド)。
+  // 自発光の恒星と、測光を持たない表面では null。
+  abstract get lightSourceAlbedo(): Albedo | null;
+
+  // 円筒図法の実写テクスチャの URL。単色球・恒星では null。
+  abstract get surfaceTextureUrl(): string | null;
 
   get id(): string {
     return this.motion.id;

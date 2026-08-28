@@ -3,7 +3,7 @@
 import { lambertPhase } from '../../physics/lambert-sphere';
 import { sunlitFactor } from '../../physics/shadow';
 import { dot, len, sub } from '../../math/vec3';
-import { lightSourceAlbedoOf, rec709Luminance } from '../../render/celestial-albedo';
+import { DEFAULT_ALBEDO, rec709Luminance } from '../../render/celestial-albedo';
 import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from '../../render/pipeline/lighting/planet-light-source';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -28,7 +28,7 @@ export function selectPlanetLights(
   const candidates: { readonly light: PlanetLight; readonly irradiance: number }[] = [];
   for (const body of bodies) {
     if (body.isStar || body.radius <= 0) continue;
-    const albedo = lightSourceAlbedoOf(body.id);
+    const albedo = celestialSystem.bodyOf(body.id).lightSourceAlbedo ?? DEFAULT_ALBEDO;
     // 主星の無いレジストリでは、全天体が 1 天文単位相当の明るさで満相のまま照らされていると
     // みなす。
     const toSun = star === null ? null : sub(star.state.r, body.state.r);
