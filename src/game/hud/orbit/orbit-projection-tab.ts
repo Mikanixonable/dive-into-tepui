@@ -4,16 +4,14 @@ import { CelestialBody, strongestAttractor } from '../../../physics/celestial-bo
 import type { Game } from '../../game';
 import type { GameEntity } from '../../game-entity/game-entity';
 import { entityStateAt } from '../../simulation/entity-state-at';
-import { EARTH_TEXTURES, textureOf } from '../../../render/celestial-textures';
 import { ACCENT, ACCENT_SECONDARY } from '../../theme';
 import { ApproachTargetSource, projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { OrbitProjectionChart, ProjectionChartSpec, ProjectionSeriesSpec } from './orbit-projection-chart';
 
 // id の天体が持つ円筒図法テクスチャの URL。実写テクスチャが無い天体(単色球扱い)は投影タブを
-// 出せないので null。地球は地表+雲を合成する専用テクスチャ(EARTH_TEXTURES)を持つため別扱い。
-export function projectionTextureUrl(id: string): string | null {
-  if (id === 'earth') return EARTH_TEXTURES.surfaceUrl;
-  return textureOf(id)?.url ?? null;
+// 出せないので null。
+export function projectionTextureUrl(game: Game, id: string): string | null {
+  return game.celestialSystem.find(id)?.surfaceTextureUrl ?? null;
 }
 
 export class OrbitProjectionTab {

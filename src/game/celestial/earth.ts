@@ -3,6 +3,9 @@ import * as THREE from 'three/webgpu';
 import { createEarth, type Earth as EarthMesh } from '../../render/earth';
 import { CelestialMotion, PlanetMotion } from '../../physics/celestial-motion';
 import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system/constants';
+import { EARTH_TEXTURES } from '../../render/celestial-textures';
+import { scaledToBondAlbedo, type Albedo } from '../../render/celestial-albedo';
+import type { AtmosphereOptics } from '../../render/atmosphere';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { CelestialEntity } from './celestial-entity';
@@ -11,12 +14,20 @@ import type { RenderStyle } from '../../render/render-style';
 
 export class Earth extends CelestialEntity {
   private readonly earth: EarthMesh = createEarth();
-  // 自転初期位相 [rad]。値は外から与えられる。
-  private phase0 = 0;
+  // 自転初期位相 [rad]。起動時の乱数かセーブの復元値が入る。
+  private readonly phase0: number;
 
-  constructor(motion: PlanetMotion, name: string) {
-    super(motion, name, 'planet');
+  constructor(motion: PlanetMotion, name: string, spinPhase0: number, atmosphereOptics: AtmosphereOptics | null) {
+    super(motion, name, 'planet', atmosphereOptics);
+    this.phase0 = spinPhase0;
   }
+
+  // 地表・雲の合成テクスチャから測った色み(render/earth.ts の合成と同じ測光)。
+  get lightSourceAlbedo(): Albedo | null {
+    return scaledToBondAlbedo(EARTH_TEXTURES.averageHue, EARTH_TEXTURES.bondAlbedo);
+  }
+
+  get surfaceTextureUrl(): string | null { return EARTH_TEXTURES.surfaceUrl; }
 
   // 地球メッシュをシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {
@@ -29,9 +40,6 @@ export class Earth extends CelestialEntity {
 
   // 自転初期位相 [rad](セーブ用)。
   spinPhase0(): number { return this.phase0; }
-
-  // 自転初期位相を差し替える(ロード用)。
-  setSpinPhase0(phase0: number): void { this.phase0 = phase0; }
 
   // displayTime 時点の位置・自転角・太陽方向・表面アニメーション・地表LODへ同期する。
   sync(

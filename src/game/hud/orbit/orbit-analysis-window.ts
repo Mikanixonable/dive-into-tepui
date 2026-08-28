@@ -258,7 +258,7 @@ export class OrbitAnalysisWindow {
 
     // 投影タブが選べるかどうかは、操作対象の基準天体が円筒図法テクスチャを持つかで決まる。
     const projectionCenter = reference.attractor;
-    const textureUrl = projectionCenter ? projectionTextureUrl(projectionCenter.id) : null;
+    const textureUrl = projectionCenter ? projectionTextureUrl(game, projectionCenter.id) : null;
     this.projectionAvailable = textureUrl !== null;
 
     // タブの選択肢を更新し、選択中タブが選べなくなっていたら高度タブへ戻す。
