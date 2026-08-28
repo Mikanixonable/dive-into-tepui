@@ -193,8 +193,8 @@ export class CelestialSystem {
     this.ambient = ambient;
     this.atmosphere = atmosphere;
     scene.add(this.geoLine.line);
-    this.orbitGuideLines = new OrbitGuideLines(scene, this.ephemeris);
-    this.zeroVelocityLines = new ZeroVelocityLines(scene, this.ephemeris);
+    this.orbitGuideLines = new OrbitGuideLines(scene, this);
+    this.zeroVelocityLines = new ZeroVelocityLines(scene, this);
     this.lightingAnchor = new THREE.AmbientLight();
     scene.add(this.lightingAnchor);
     // レンダラーは光源自身の layers とカメラの layers が重ならないと光源をそのカメラの描画対象
