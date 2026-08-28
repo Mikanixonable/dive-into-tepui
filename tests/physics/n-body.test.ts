@@ -1,7 +1,7 @@
 // 相互重力(小惑星どうし)の回帰テスト。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialBody, CelestialBodyId } from '../../src/physics/celestial-body';
+import { CelestialBody } from '../../src/physics/celestial-body';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';

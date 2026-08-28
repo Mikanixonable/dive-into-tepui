@@ -5,7 +5,7 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { CelestialRegistry, RingSystemDef, SolarSystemId, bodyDef, primaryOf } from '../../physics/solar-system';
 import { OrbitalElements } from '../../physics/elements';
 import { AU } from '../../physics/planet-orbit';
-import { CelestialBody, CelestialBodyId, OrbitingId, orbitalElementsOf } from '../../physics/celestial-body';
+import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
 import { add, len, scale, sub, v3, Vec3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { maxOccludedFraction } from '../../physics/shadow';
@@ -97,7 +97,7 @@ const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
 // 恒星以外の全公転天体の id(registry の宣言順)。天体が増えれば参照線もここから自動で増える。
-function referenceLineIds(registry: CelestialRegistry): readonly OrbitingId[] {
+function referenceLineIds(registry: CelestialRegistry): readonly string[] {
   return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star');
 }
 
@@ -131,8 +131,8 @@ export class EnvironmentScene {
   private readonly geoElements: OrbitalElements | null;
   // 公転天体1体につき1本、registry から自動生成する参照軌道線(衛星は親惑星中心、
   // 惑星は太陽中心)。マップモード専用で、天体暦の状態から作られる表示なのでここが所有する。
-  private readonly referenceIds: readonly OrbitingId[];
-  private readonly referenceLines: Map<OrbitingId, OrbitLine>;
+  private readonly referenceIds: readonly string[];
+  private readonly referenceLines: Map<string, OrbitLine>;
   // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
   private readonly orbitGuideLines: OrbitGuideLines;
   // ゼロ速度曲線(ガイドタブ5.3節)。
@@ -201,7 +201,7 @@ export class EnvironmentScene {
   }
 
   // 公転天体1体につき1本の参照軌道線(右クリックの当たり判定向け)。
-  get referenceOrbitLines(): ReadonlyMap<OrbitingId, OrbitLine> { return this.referenceLines; }
+  get referenceOrbitLines(): ReadonlyMap<string, OrbitLine> { return this.referenceLines; }
 
   // ラグランジュ点まわりの軌道ガイド線(右クリックの当たり判定向け)。
   get orbitGuide(): OrbitGuideLines { return this.orbitGuideLines; }
@@ -322,7 +322,7 @@ export class EnvironmentScene {
   // 環の影を落とす天体を1体選び、その帯を遮蔽パスへ渡す。画面に環付き天体が複数写る状況は
   // 実質起きないので、最も大きく見える1体だけを扱う。
   private syncRingShadow(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
-    let ringed: { readonly id: OrbitingId; readonly rings: RingSystemDef } | null = null;
+    let ringed: { readonly id: string; readonly rings: RingSystemDef } | null = null;
     let bestApparent = 0;
     if (graphics.rings) {
       for (const id of this.referenceIds) {
@@ -398,9 +398,9 @@ export class EnvironmentScene {
   // 距離を測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
     simTime: number, fo: FloatingOrigin, overviewMode: boolean, geostationaryOrbitVisible: boolean,
-    focusId: CelestialBodyId | undefined,
+    focusId: string | undefined,
     toggles: BodyClassToggles, sharedVisibilityPolicy: MapVisibilityPolicy | null,
-    nearbyIds: readonly CelestialBodyId[], camera: THREE.Camera, cameraPos: Vec3,
+    nearbyIds: readonly string[], camera: THREE.Camera, cameraPos: Vec3,
   ): void {
     if (!overviewMode) {
       this.geoLine.sync(null, fo, camera);
@@ -507,7 +507,7 @@ export class EnvironmentScene {
 
   // カメラから天体までの距離 dist に応じた参照軌道線の不透明度。惑星と衛星でフェード距離が
   // 異なる。
-  private referenceLineOpacityAt(id: OrbitingId, dist: number): number {
+  private referenceLineOpacityAt(id: string, dist: number): number {
     const isSatellite = bodyDef(this.ephemeris.registry, id).kind === 'satellite';
     const nearDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : PLANET_ORBIT_LINE_FADE_NEAR_DIST;
     const farDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_FAR_DIST : PLANET_ORBIT_LINE_FADE_FAR_DIST;
@@ -524,7 +524,7 @@ export class EnvironmentScene {
     return this.pointFieldView;
   }
 
-  private ensureReferenceLine(id: OrbitingId): OrbitLine {
+  private ensureReferenceLine(id: string): OrbitLine {
     const existing = this.referenceLines.get(id);
     if (existing) return existing;
     const color = bodyDef(this.ephemeris.registry, id).kind === 'satellite'
@@ -535,7 +535,7 @@ export class EnvironmentScene {
     return line;
   }
 
-  private removeReferenceLine(id: OrbitingId): void {
+  private removeReferenceLine(id: string): void {
     const line = this.referenceLines.get(id);
     if (!line) return;
     line.line.removeFromParent();
@@ -545,7 +545,7 @@ export class EnvironmentScene {
 
   // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も
   // ECI 上を動くので、固定 CelestialBody ではなくその時刻の状態を毎回引いて組む。
-  private orbitElementsFor(id: OrbitingId, simTime: number): OrbitalElements | null {
+  private orbitElementsFor(id: string, simTime: number): OrbitalElements | null {
     const registry = this.ephemeris.registry;
     const centerId = primaryOf(registry, id);
     if (centerId === null) return null;

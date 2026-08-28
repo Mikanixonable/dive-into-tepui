@@ -4,7 +4,6 @@
 // 見た目そのもの(アルベド・テクスチャ)は render/ が持つ(celestial-albedo.ts /
 // celestial-textures.ts)。ここに残るのは id・表示名・どの view クラスを使うかの選択だけ。
 import { bodyDef, CelestialRegistry, RingSystemDef, ShapeDef, SOLAR_SYSTEM, SolarSystemId } from '../../physics/solar-system';
-import { CelestialBodyId } from '../../physics/celestial-body';
 import { CelestialSurface } from '../../render/celestial-surface';
 import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
@@ -206,7 +205,7 @@ export const CELESTIAL_APPEARANCES: Record<SolarSystemId, CelestialAppearance> =
 // 恒星は SunView を汎用の id/半径で構築し、それ以外は単色球にする。表示名は呼び出し側
 // (frame-labels.ts の celestialBodyName)が id からフォールバックする。
 export function fallbackCelestialAppearance(
-  registry: CelestialRegistry, id: CelestialBodyId, sunOcclusion: SunOcclusion, sunLight: SunLight,
+  registry: CelestialRegistry, id: string, sunOcclusion: SunOcclusion, sunLight: SunLight,
 ): CelestialView {
   const def = bodyDef(registry, id);
   return def.kind === 'star'
