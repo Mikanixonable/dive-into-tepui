@@ -1,7 +1,7 @@
 // 共線点まわりの解析解の回帰テスト。共線点 γ は文献値が期待値の正本になる。焼き込んだ
 // 軌道カタログそのものは orbit-catalog.test.ts が受け持つ。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { collinearGamma } from '../../src/physics/lagrange';
 
 export function register(): void {

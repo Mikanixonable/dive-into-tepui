@@ -1,6 +1,6 @@
 // dynamics.ts の回帰テスト。stepDynamics は DynamicTrajectory.step が使う唯一の 1 ステップ実装。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH, R_EARTH_EQ, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
@@ -8,7 +8,7 @@ import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/physics/solar-system';
 import { CelestialBody, Degree2Gravity, orbitalElementsOf } from '../../src/physics/celestial-body';
 import { degree2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';
-import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { qFromAxisAngle, qRotate } from '../../src/physics/attitude';
 
 const EARTH_POLE = v3(0, 1, 0);

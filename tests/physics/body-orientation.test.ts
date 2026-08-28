@@ -1,13 +1,13 @@
 // body-orientation.ts の回帰テスト。自転軸を軌道面法線と取り違えると月の J2 摂動の向きが
 // 6.7° ずれるが、加速度の大きさは変わらないので値の検査だけでは捕まらない。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { cassiniSpinAxis, meridianDirection, orthogonalizedTo } from '../../src/physics/body-orientation';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { bodyDef, MOON_OBLIQUITY, SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const MOON_ORBIT_INC = (5.145 * Math.PI) / 180;
 const R2D = 180 / Math.PI;

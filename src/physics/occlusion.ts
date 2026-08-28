@@ -3,7 +3,7 @@
 // 選出可否は、この1関数を両方が呼ぶことで揃える — 見えているのに押せない/見えないのに
 // 押せる、という食い違いを防ぐ。
 import { KinematicState } from './kinematic-state';
-import { addScaled, dot, len, lenSq, sub, Vec3 } from './vec3';
+import { addScaled, dot, len, lenSq, sub, Vec3 } from '../math/vec3';
 
 // 手前側交点が対象点よりこの距離以上カメラ寄りのときだけ遮蔽と判定する余裕。対象点自身が
 // その天体の表面上・近傍にある(その天体を回っている物体など)場合に、丸め誤差で

@@ -6,20 +6,20 @@ import { CelestialRegistry, RingSystemDef, SolarSystemId, bodyDef, primaryOf } f
 import { OrbitalElements } from '../../physics/elements';
 import { AU } from '../../physics/planet-orbit';
 import { CelestialBody, CelestialBodyId, OrbitingId, orbitalElementsOf } from '../../physics/celestial-body';
-import { add, len, scale, sub, v3, Vec3 } from '../../physics/vec3';
+import { add, len, scale, sub, v3, Vec3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { maxOccludedFraction } from '../../physics/shadow';
 import type { MarkerManager } from '../marker/marker-manager';
-import { OrbitLine } from '../orbit-line';
+import { OrbitLine } from '../lines/orbit-line';
 import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
 import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
-import { ATMOSPHERE_QUALITY, type GraphicsSettingsData } from '../../render/graphics-settings';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import { SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
@@ -27,21 +27,30 @@ import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-li
 import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from './planet-light';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
+import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import {
-  ATMOSPHERE_DETAIL, ATMOSPHERE_DETAIL_OF_QUALITY,
-  type AtmosphereBody, type AtmospherePass,
-} from '../../render/pipeline/atmosphere-pass';
-import { atmosphereOpticsOf, rankAtmospheres } from '../../render/atmosphere-params';
+  type AtmosphereCandidate, atmosphereDraws, atmosphereOpticsOf,
+} from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CelestialView } from './celestial-view';
-import { CELESTIAL_VIEWS, fallbackCelestialView } from './celestial-registry';
+import { CELESTIAL_APPEARANCES, fallbackCelestialAppearance } from './celestial-appearance';
 import { EarthView } from './earth-view';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
 import { OrbitGuideLines } from './orbit-guide-lines';
 import { ZeroVelocityLines } from './zero-velocity-lines';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-settings';
+
+// 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、
+// FAR 以上なら完全表示、その間は距離に応じて線形にフェードインする。
+const PLANET_ORBIT_LINE_FADE_NEAR_DIST = 1e9; // 100万km
+const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10; // 1000万km
+const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
+const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
+
+// 参照軌道線が完全表示のときの不透明度。
+const REFERENCE_LINE_OPACITY = 0.3;
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
@@ -169,9 +178,9 @@ export class EnvironmentScene {
     this.scaleGrid = new ScaleGridView(scene);
 
     this.bodies = Object.keys(registry).map((id) =>
-      id in CELESTIAL_VIEWS
-        ? CELESTIAL_VIEWS[id as SolarSystemId].create(sunOcclusion, sunLight)
-        : fallbackCelestialView(registry, id, sunOcclusion, sunLight));
+      id in CELESTIAL_APPEARANCES
+        ? CELESTIAL_APPEARANCES[id as SolarSystemId].create(sunOcclusion, sunLight)
+        : fallbackCelestialAppearance(registry, id, sunOcclusion, sunLight));
     for (const body of this.bodies) body.build(scene);
 
     this.bodies.find((b): b is EarthView => b instanceof EarthView)?.setSpinPhase0(earthSpinPhase0);
@@ -246,7 +255,7 @@ export class EnvironmentScene {
     this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
-    this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem.activeCameraPos, graphics);
+    this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem, graphics);
 
     const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
     if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
@@ -341,24 +350,23 @@ export class EnvironmentScene {
     );
   }
 
-  // 大気パスへ、このフレームの大気を描く天体と、先頭へ足す積分の重みを渡す。
+  // 大気パスへ、このフレームに大気を描く天体とそのサンプル点の数を渡す。
   private syncAtmosphere(
-    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, graphics: GraphicsSettingsData,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
   ): void {
-    if (graphics.atmosphere === ATMOSPHERE_QUALITY.off) {
-      this.atmosphere.setBodies([], ATMOSPHERE_DETAIL.none, 0);
-      return;
-    }
-    const { bodies, denseWeight } = rankAtmospheres(this.atmosphereCandidates(fo, displayTime, cameraPos));
-    const detail = ATMOSPHERE_DETAIL_OF_QUALITY[graphics.atmosphere];
-    this.atmosphere.setBodies(bodies, detail, detail === ATMOSPHERE_DETAIL.none ? 0 : denseWeight);
+    this.atmosphere.setDraws(
+      atmosphereDraws(this.atmosphereCandidates(fo, displayTime, cameraSystem), graphics.atmosphere),
+    );
   }
 
-  // 大気を持つ参照天体を、カメラのその天体からの高度と一緒に集める。
+  // 大気を持つ参照天体を、カメラからその中心までの距離と、その距離での画面尺度と一緒に集める。
+  // **尺度は直線距離で引く** — 深度で引くと、視点の背後にある天体が目の前にあるのと同じ尺度に
+  // なり、画面に写っていないのに予算を総取りする。
   private atmosphereCandidates(
-    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3,
-  ): readonly { readonly body: AtmosphereBody; readonly altitude: number }[] {
-    const candidates: { body: AtmosphereBody; altitude: number }[] = [];
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+  ): readonly AtmosphereCandidate[] {
+    const scale = cameraSystem.activeCameraRadialScale;
+    const candidates: AtmosphereCandidate[] = [];
     for (const id of this.referenceIds) {
       const optics = atmosphereOpticsOf(id);
       if (optics === null) continue;
@@ -366,7 +374,8 @@ export class EnvironmentScene {
       const center = this.ephemeris.positionOf(id, displayTime);
       candidates.push({
         body: { center: fo.RtoThreeV3(center), surfaceRadius, optics },
-        altitude: len(sub(cameraPos, center)) - surfaceRadius,
+        distance: len(sub(cameraSystem.activeCameraPos, center)),
+        metersPerPixel: scale(center),
       });
     }
     return candidates;
@@ -500,10 +509,10 @@ export class EnvironmentScene {
   // 異なる。
   private referenceLineOpacityAt(id: OrbitingId, dist: number): number {
     const isSatellite = bodyDef(this.ephemeris.registry, id).kind === 'satellite';
-    const nearDist = isSatellite ? C.SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : C.PLANET_ORBIT_LINE_FADE_NEAR_DIST;
-    const farDist = isSatellite ? C.SATELLITE_ORBIT_LINE_FADE_FAR_DIST : C.PLANET_ORBIT_LINE_FADE_FAR_DIST;
+    const nearDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : PLANET_ORBIT_LINE_FADE_NEAR_DIST;
+    const farDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_FAR_DIST : PLANET_ORBIT_LINE_FADE_FAR_DIST;
     const t = Math.min(1, Math.max(0, (dist - nearDist) / (farDist - nearDist)));
-    return t * C.REFERENCE_LINE_OPACITY;
+    return t * REFERENCE_LINE_OPACITY;
   }
 
   // 点群はマップを一度も開かないプレイでは不要。最初のマップ更新時にだけ生成・登録する。
@@ -520,7 +529,7 @@ export class EnvironmentScene {
     if (existing) return existing;
     const color = bodyDef(this.ephemeris.registry, id).kind === 'satellite'
       ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
-    const line = new OrbitLine({ color, opacity: C.REFERENCE_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.reference });
+    const line = new OrbitLine({ color, opacity: REFERENCE_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.reference });
     this.scene.add(line.line);
     this.referenceLines.set(id, line);
     return line;

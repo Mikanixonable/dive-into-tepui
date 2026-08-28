@@ -9,7 +9,7 @@ import { keplerPeriod } from './elements';
 import { JULIAN_CENTURY } from './kepler-orbit';
 import { AU, PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
-import { Vec3, v3 } from './vec3';
+import { Vec3, v3 } from '../math/vec3';
 
 // 万有引力定数 [m^3/(kg・s^2)]。MU_* は測定された GM を直接持つ値なのでこれで割り直さないこと —
 // GM が測定されておらず質量から導く天体だけがこれを使う。
@@ -1333,7 +1333,7 @@ export const SOLAR_SYSTEM = {
   halley: {
     kind: 'planet',
     id: 'halley',
-    mu: 1.5e1, // 粗い推定値(核質量 ~2.2e14 kg 相当)
+    mu: GRAVITATIONAL_CONSTANT * 2.2e14, // 粗い推定値(核質量 ~2.2e14 kg 相当)
     radius: 5.5e3, // 粗い推定値(核長径の半分程度)
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=1P&full-prec=true (元期 JD2439875.5、
     // 1968年の近日点通過に近い元期)。非重力効果(彗星核からのガス噴出による軌道擾乱)は
@@ -1356,7 +1356,7 @@ export const SOLAR_SYSTEM = {
   encke: {
     kind: 'planet',
     id: 'encke',
-    mu: 4e0, // 粗い推定値(核質量 ~6e13 kg 相当)
+    mu: GRAVITATIONAL_CONSTANT * 6e13, // 粗い推定値(核質量 ~6e13 kg 相当)
     radius: 2.4e3,
     // 出典: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=2P&full-prec=true (元期 JD2459847.5)
     orbit: planetOrbit({
@@ -2023,7 +2023,7 @@ export const SOLAR_SYSTEM = {
 } satisfies CelestialRegistry;
 
 // SOLAR_SYSTEM を satisfies で受けているため、リテラルなキー集合(SolarSystemId)がそのまま
-// 保たれる — CELESTIAL_VIEWS(game/celestial/celestial-registry.ts)はこれを Record の
+// 保たれる — CELESTIAL_APPEARANCES(game/celestial/celestial-appearance.ts)はこれを Record の
 // キーに使うことで、天体を1体追加すると表示名の欠落がコンパイルエラーになる。
 export type SolarSystemId = keyof typeof SOLAR_SYSTEM;
 

@@ -2,13 +2,13 @@
 // フェーベの逆行、内側衛星の基準面が黄道面ではなくラプラス面であること、および外側の
 // イアペトゥス・フェーベの黄道傾斜が公表値と合うこと。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
-import { cross, dot, len, norm, sub } from '../../src/physics/vec3';
+import { cross, dot, len, norm, sub } from '../../src/math/vec3';
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
   return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).orbit;

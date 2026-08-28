@@ -13,12 +13,14 @@ import {
 import { sunlitFactor } from '../../physics/shadow';
 import { SOLAR_CONSTANT } from '../../physics/srp';
 import { ApsisTrack } from '../../physics/trajectory-features';
-import { Vec3, len, scale, sub, v3 } from '../../physics/vec3';
-import type { Viewpoint } from '../../physics/projection';
-import type { SphereHit } from '../../physics/base-collision';
-import { FloatingOrigin } from '../floating-origin';
-import { OrbitLine } from '../orbit-line';
-import { TrajectoryLine } from '../trajectory-line';
+import { Vec3, len, scale, sub, v3 } from '../../math/vec3';
+import type { Viewpoint } from '../../math/projection';
+import type { SphereHit } from './base-collision';
+import { FloatingOrigin } from '../camera/floating-origin';
+import { OrbitLine } from '../lines/orbit-line';
+import { RelativeOrbitLine } from '../lines/relative-orbit-line';
+import { TrajectoryLine } from '../lines/trajectory-line';
+import type { OrbitReference } from '../orbit-reference';
 import { LineStyle } from '../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
@@ -33,6 +35,10 @@ import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
 import type { MarkerManager } from '../marker/marker-manager';
 import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../render/thermal-emissive';
+
+// 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
+// ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
+const HISTORY_DURATION_MAX = C.DISPLAY_DURATION_MAX;
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -92,6 +98,11 @@ export class GameEntity {
   torque: Vec3 = v3();
   // 自身の軌道楕円を描く線。null = 持たない。
   orbitLine: OrbitLine | null = null;
+  // 戦闘ビューで非質量の艦・基地に表示基準を固定中、orbitLine の代わりに対象との直線を描く線。
+  // null = 持たない。
+  relativeOrbitLine: RelativeOrbitLine | null = null;
+  // showOrbitLine で渡された style。relativeOrbitLine を遅延生成するときに使い回す。
+  private orbitLineStyle: LineStyle | null = null;
   // 自身の予測軌道を描く線。null = 持たない。
   predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
@@ -205,39 +216,80 @@ export class GameEntity {
     return orbitalElementsOf(this.state, center);
   }
 
-  // 軌道楕円の線を style で出す。既に出ていれば style を塗り直す。
+  // 軌道楕円(または戦闘ビューで非質量ターゲット固定中の対象への直線)の線を style で出す。
+  // 既に出ていれば style を塗り直す。
   showOrbitLine(style: LineStyle): void {
+    this.orbitLineStyle = style;
     if (this.orbitLine !== null) {
       this.orbitLine.setStyle(style);
-      return;
+    } else {
+      const line = new OrbitLine(style);
+      this.scene?.add(line.line);
+      this.orbitLine = line;
     }
-    const line = new OrbitLine(style);
-    this.scene?.add(line.line);
-    this.orbitLine = line;
+    this.relativeOrbitLine?.setStyle(style);
   }
 
-  // 軌道楕円の線を消す。出し直すと作り直しになる。
+  // 軌道楕円・対象への直線を消す。出し直すと作り直しになる。
   hideOrbitLine(): void {
-    if (this.orbitLine === null) return;
-    this.scene?.remove(this.orbitLine.line);
-    this.orbitLine.dispose();
-    this.orbitLine = null;
+    this.orbitLineStyle = null;
+    if (this.orbitLine !== null) {
+      this.scene?.remove(this.orbitLine.line);
+      this.orbitLine.dispose();
+      this.orbitLine = null;
+    }
+    if (this.relativeOrbitLine !== null) {
+      this.scene?.remove(this.relativeOrbitLine.line);
+      this.relativeOrbitLine.dispose();
+      this.relativeOrbitLine = null;
+    }
   }
 
-  // orbitLine を表示時刻の状態で最も強く引く天体まわりの軌道楕円に合わせる。線を持たなければ
-  // 何もしない。displayTime が現在時刻より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。
+  // 軌道楕円を隠す(相対軌跡モードへ切り替える/状態が求まらないときに使う)。
+  private hideOrbitEllipse(fo: FloatingOrigin, camera: THREE.Camera): void {
+    this.orbitLine?.sync(null, fo, camera);
+  }
+
+  // orbitLine を表示時刻の状態に合わせる。線を持たなければ何もしない。displayTime が現在時刻
+  // より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。orbitRef が非質量の艦・基地
+  // ターゲットを指すのは戦闘ビューだけ(EntityLineManager がマップビューでは orbitRef を渡さない)
+  // ので、context.orbitRef の有無だけで戦闘ビュー/マップビューを判別できる。
   syncOrbitLine(
     displayTime: number, ephemeris: Ephemeris, fo: FloatingOrigin, camera: THREE.Camera,
-    frameAnchors: FrameAnchorSource,
+    frameAnchors: FrameAnchorSource, orbitRef: OrbitReference | undefined,
   ): void {
-    if (this.orbitLine === null) return;
+    if (this.orbitLine === null && this.relativeOrbitLine === null) return;
     const state = this.displayState(displayTime, ephemeris);
     if (state === null) {
-      this.orbitLine.sync(null, fo, camera);
+      // 表示時刻の状態が求まらない: 両方隠す。
+      this.hideOrbitEllipse(fo, camera);
+      this.relativeOrbitLine?.hide();
       return;
     }
-    const center = strongestAttractor(state.r, frameAnchors.bodies);
-    this.orbitLine.sync(orbitalElementsOf(state, center), fo, camera);
+    // 非質量の艦・基地に固定中で、自分自身がその対象でなければ対象への直線モード。
+    const relativeTarget = orbitRef?.fixed && !orbitRef.hasMass ? orbitRef.entity : null;
+    if (relativeTarget !== null && relativeTarget !== this) {
+      this.hideOrbitEllipse(fo, camera);
+      if (this.relativeOrbitLine === null && this.orbitLineStyle !== null) {
+        const line = new RelativeOrbitLine(this.orbitLineStyle);
+        this.scene?.add(line.line);
+        this.relativeOrbitLine = line;
+      }
+      const targetPos = relativeTarget.displayState(displayTime, ephemeris)?.r ?? relativeTarget.state.r;
+      this.relativeOrbitLine?.sync(state.r, targetPos, fo, camera);
+      return;
+    }
+    this.relativeOrbitLine?.hide();
+    // 艦・基地以外の非質量対象(ラグランジュ点など)、または自分自身が対象のときは楕円も出さない。
+    if (orbitRef?.fixed && !orbitRef.hasMass) {
+      this.hideOrbitEllipse(fo, camera);
+      return;
+    }
+    // 質量天体に固定中はその天体中心、自動選択(未固定)なら自身にとって最も強く引く天体を中心に描く。
+    const center = orbitRef?.fixed && orbitRef.attractor
+      ? orbitRef.attractor
+      : strongestAttractor(state.r, frameAnchors.bodies);
+    this.orbitLine?.sync(orbitalElementsOf(state, center), fo, camera);
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
@@ -304,7 +356,7 @@ export class GameEntity {
   // 無視する。実際の保持時間は種別ごとの既定値との大きい方。
   requestHistoryDuration(sec: number): void {
     if (this.baseHistoryDuration <= 0) return;
-    this.requestedHistoryDuration = Math.max(0, Math.min(C.HISTORY_DURATION_MAX, sec));
+    this.requestedHistoryDuration = Math.max(0, Math.min(HISTORY_DURATION_MAX, sec));
   }
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
@@ -466,7 +518,14 @@ export class GameEntity {
   // 予測列で答えられない未来時刻を、先端を中心天体まわりの二体軌道とみなして外挿した値で
   // 答える(外挿もできなければ null)。
   displayState(t: number, ephemeris?: Ephemeris): KinematicState | null {
-    if (t <= this.actual.state.t) return this.actual.at(t);
+    if (t <= this.actual.state.t) {
+      const past = this.actual.at(t);
+      if (past !== null) return past;
+      // 履歴を持たない種別(弾・薬莢・破片)の保持列は先端1件だけなので、at() は t が先端時刻
+      // と完全に一致したときしか答えられない。積分の刻みの積み方や simTime の強制前進で先端が
+      // 丸め1つぶん外れただけで非表示になってしまうため、その1件をそのまま答えにする。
+      return this.historyDuration > 0 ? null : this.actual.state;
+    }
     const predicted = this.predicted;
     const normal = predicted?.at(t) ?? null;
     if (normal !== null || ephemeris === undefined) return normal;

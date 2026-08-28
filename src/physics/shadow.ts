@@ -4,7 +4,7 @@
 // 金環(遮蔽円盤が太陽円盤に内包)・半影(部分的に重なる)・完全日照(重なり無し)が場合分け
 // 無しに1つの閉じた式から出る。
 import { CelestialBody } from './celestial-body';
-import { Vec3 } from './vec3';
+import { Vec3 } from '../math/vec3';
 
 // 2円(半径 r1, r2、中心距離 d、すべて同じ角度単位)の交差面積。
 function circleOverlapArea(r1: number, r2: number, d: number): number {

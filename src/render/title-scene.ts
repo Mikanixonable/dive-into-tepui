@@ -290,7 +290,6 @@ export async function createTitleScene(
 
   const clock = new THREE.Clock();
   renderer.setAnimationLoop(() => {
-    if (document.hidden) return;
     const t = reduced.matches ? 0 : clock.getElapsedTime();
     for (let i = 0; i < bodies.length; i += 1) {
       const b = bodies[i]!;

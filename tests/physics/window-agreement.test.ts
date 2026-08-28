@@ -2,12 +2,12 @@
 // 探し方が違うのは同時性から来る正当な差だが、答えが食い違ってよい理由はない。この2つの窓が
 // 同じ位置・同じ時刻で一致することを、重力と表面判定の両方について固定する。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { attractorAccel } from '../../src/physics/celestial-body';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON } from '../../src/physics/solar-system';
-import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import {
   GRAVITY_NEGLIGIBLE_ACCEL, INITIAL_ALT, INITIAL_INC_DEG,
@@ -19,7 +19,7 @@ import { FutureCelestialBodies } from '../../src/game/simulation/future-celestia
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/simulation/surface-candidates';
 import type { CelestialBody, CelestialBodyId } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';
-import type { Vec3 } from '../../src/physics/vec3';
+import type { Vec3 } from '../../src/math/vec3';
 
 // 現実の太陽系・地球原点の既定レジストリ。両方の窓へ同じ天体一式を供給する。
 const EPHEMERIS = new Ephemeris();

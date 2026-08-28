@@ -13,6 +13,11 @@ import { ReferenceFrame } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { GameEntity } from './game-entity/game-entity';
 
+const DISPLAY_DUR_DAY = 86400; // 1日
+const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
+const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月
+const DISPLAY_DUR_THREE_MONTH = 90 * 86400; // 3ヶ月
+
 export type DisplayDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth' | 'custom';
 
 // 過去方向の表示期間の選択。'none'(既定)は過去を描かない。
@@ -40,10 +45,10 @@ const TICK_MAX_COUNT = 6;
 
 // 固定長プリセットの秒数。キーを増やすと網羅漏れが型エラーになる。
 const FIXED_DURATION_SEC: Record<'day' | 'tenDay' | 'month' | 'threeMonth', number> = {
-  day: C.DISPLAY_DUR_DAY,
-  tenDay: C.DISPLAY_DUR_TEN_DAY,
-  month: C.DISPLAY_DUR_MONTH,
-  threeMonth: C.DISPLAY_DUR_THREE_MONTH,
+  day: DISPLAY_DUR_DAY,
+  tenDay: DISPLAY_DUR_TEN_DAY,
+  month: DISPLAY_DUR_MONTH,
+  threeMonth: DISPLAY_DUR_THREE_MONTH,
 };
 
 // スライダーの段階数 [下限, 上限]。期間が長いほど 1 段階あたりの時間が粗くなるので、
@@ -57,8 +62,8 @@ export class DisplayWindowManager {
   private durationKey: DisplayDurationKey = 'orbit';
   private pastDurationKey: DisplayPastDurationKey = 'none';
   private sliderT = 0;
-  private customDurationSec = C.DISPLAY_DUR_DAY;
-  private customPastDurationSec = C.DISPLAY_DUR_DAY;
+  private customDurationSec = DISPLAY_DUR_DAY;
+  private customPastDurationSec = DISPLAY_DUR_DAY;
   private _tickLabelMode: TickLabelMode = 'absolute';
   private _showElementTimes = false;
   private _frame: ReferenceFrame;

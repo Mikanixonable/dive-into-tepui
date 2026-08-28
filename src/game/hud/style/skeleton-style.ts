@@ -15,15 +15,10 @@ export const RESPONSIVE_SKELETON_STYLE = `
   #hud .row { gap: var(--space-4); }
   #hud .row .v { min-width: 64px; }
   #hud:not(.map-ui-active) #hud-viewbadge { display: none; }
-  #hud-hint { bottom: auto; top: 26%; max-width: 92vw; white-space: normal; }
   #hud-toast { max-width: 92vw; padding: var(--space-5) var(--space-5); font-size: var(--font-l); }
   #hud .hud-rail { top: 8px; bottom: 8px; gap: var(--space-3); }
   #hud .hud-rail-left { left: 8px; }
   #hud .hud-rail-right { right: 8px; }
-  #hud-hint {
-    top: calc(50% - 40px); transform: translateX(-50%); max-height: 72px;
-    overflow-y: auto; padding: var(--space-3) var(--space-5); font-size: var(--font-s);
-  }
   #hud-chase-reset { top: calc(60px + var(--space-5)); width: 28px; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
   #hud-map-scale { right: 8px; bottom: 8px; font-size: var(--font-xxs); }
@@ -43,7 +38,6 @@ export const RESPONSIVE_SKELETON_STYLE = `
 }
 @media ${MQ_SHORT} {
   #hud-map-scale { bottom: 52px; }
-  #hud-hint { top: calc(40px + var(--combat-panel-max-h) * 2 + var(--space-3) + 15px); }
 }
 @media (prefers-reduced-motion: reduce) {
   #hud *, #hud *::before, #hud *::after {

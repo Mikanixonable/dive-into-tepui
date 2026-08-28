@@ -28,7 +28,7 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run test:physics
+      - run: npm run test
       - run: npm run build
 
       # webpack の出力先は docs/(GitHub Pages の公開元)。

@@ -5,8 +5,8 @@
 //      MarkerManager.setBearing の担当で、ここは対象ごとに呼ぶだけ)
 // を行う。どちらも「対象 1 体では決められない = 集合の側の責務」であり、逆に対象ごとの
 // 見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
-import { Vec3, len, sub } from '../../physics/vec3';
-import { Projected } from '../../physics/projection';
+import { Vec3, len, sub } from '../../math/vec3';
+import { Projected } from '../../math/projection';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { ActiveCelestialLabel } from '../camera/focus-markers';
 import type { MarkerManager } from './marker-manager';

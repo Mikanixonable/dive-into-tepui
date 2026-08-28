@@ -77,7 +77,7 @@ description: 機能の追加・変更・削除を要求されたときに必ず�
 
 ## 6. 仕上げ
 
-- `npm run typecheck`。`src/physics/` を触ったなら `npm run test:physics` も。
+- `npm run typecheck`。触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`)も。
 - **書き上げたコードを SPEC/ へ突き合わせに行かない。** 実装できたことも、実装しきれなかったことも、
   SPEC/ へ書き足す理由にならない。**仕様を変える必要が出たときだけ、手順 1 へ戻る。**
 - 大きな変更だったなら `/refactor` で規約からの逸脱を点検し、`/comment-cleanup` で

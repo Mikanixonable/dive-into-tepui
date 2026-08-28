@@ -77,7 +77,7 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
   },
   {
     id: 'dusk-rose', name: 'Dusk Rose', description: 'くすみローズと深いティールの対比', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#d98a94', accentNear: '#e8aab1', signal: '#2f6f6b',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#d98a94', accentNear: '#e8aab1', signal: '#388781',
   },
   {
     id: 'glacier-mint', name: 'Glacier Mint', description: 'ラベンダーとミントの淡いペア', tone: 'dark',
@@ -96,6 +96,9 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
     ...LIGHT_SEMANTIC, accent: '#873b35', accentNear: '#a95d54', signal: '#4e545a',
   },
 ] as const;
+
+// 模式図での固定色上書きに使う、選択中の配色によらない light パレット。
+export const LIGHT_PALETTE: ThemePalette = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
 const THEME_STORAGE_KEY = 'tepui.theme-palette';
 const DEFAULT_THEME_ID = 'fluorescent-red-blue';
@@ -304,6 +307,19 @@ export const TRANSITION_SLOW = '0.24s';
 
 export const HIT_TARGET_MIN = '44px'; // タップ最小寸法
 
+// ページ直下(body の子)の要素間の重なり順。#hud の子(パネル/ウィンドウ/ポップアップ等)の
+// 重なりはここではなく overlay-layer.ts の8層(OverlayLayerName、z-index 10〜17)が持つ——
+// Z_HUD が同じ「10」に見えるのは別のスタッキング文脈(ページ直下 vs #hud 内部)だからで、衝突ではない。
+export const Z_TOUCH_UI = 9;
+export const Z_HUD = 10;
+export const Z_HUD_NODE_GIZMO = 5; // #hud 内部だが overlay-layer の層を経由しない特例
+export const Z_HUD_RAIL_TOGGLE = 20; // 同上
+export const Z_HUD_TITLE_MENU = 110;
+export const Z_STAGE_SELECT = 100;
+export const Z_RESOURCE_TRANSFER_DIALOG = 100;
+export const Z_LOADING_OVERLAY = 200;
+export const Z_FATAL_ERROR = 1000;
+
 // ノッチ・ホームインジケータ等が占める領域の幅。env() は CSS 側でしか評価できないため、
 // 計算済みの値ではなく env() 呼び出し自体を注入する。
 export const SAFE_AREA_TOP = 'env(safe-area-inset-top, 0px)';
@@ -419,12 +435,65 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--transition-fast': TRANSITION_FAST,
   '--transition-slow': TRANSITION_SLOW,
   '--hit-target-min': HIT_TARGET_MIN,
+  '--z-hud': String(Z_HUD),
+  '--z-hud-title-menu': String(Z_HUD_TITLE_MENU),
+  '--z-hud-rail-toggle': String(Z_HUD_RAIL_TOGGLE),
+  '--z-resource-transfer-dialog': String(Z_RESOURCE_TRANSFER_DIALOG),
   '--safe-t': SAFE_AREA_TOP,
   '--safe-r': SAFE_AREA_RIGHT,
   '--safe-b': SAFE_AREA_BOTTOM,
   '--safe-l': SAFE_AREA_LEFT,
   '--font-family': FONT_FAMILY,
 };
+
+function relativeLuminance(hex: string): number {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const channels = [value >> 16, value >> 8, value].map((channel) => (channel & 0xff) / 255);
+  const linear = channels.map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+}
+
+export function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+export interface ThemeContrastIssue {
+  readonly themeId: string;
+  readonly pair: string;
+  readonly ratio: number;
+  readonly minimum: number;
+}
+
+// 全プリセットのSemantic文字/非文字ペアに対するWCAG準拠の検査。tools/verify-theme-contrast.mjs
+// がビルド外から呼ぶため、src/ 内に参照が無くても消さない。
+export function themeContrastIssues(palette: ThemePalette): readonly ThemeContrastIssue[] {
+  const textPairs = [
+    ['text', palette.title, palette.surface1],
+    ['body', palette.body, palette.surface1],
+    ['muted', palette.muted, palette.surface1],
+    ['primary', palette.accent, palette.page],
+    ['signal', palette.signal, palette.page],
+    ['success', palette.success, palette.page],
+    ['warning', palette.warning, palette.page],
+    ['error', palette.error, palette.page],
+    ['info', palette.info, palette.page],
+  ] as const;
+  const issues: ThemeContrastIssue[] = textPairs.flatMap(([pair, foreground, background]) => {
+    const ratio = contrastRatio(foreground, background);
+    return ratio >= 4.5 ? [] : [{ themeId: palette.id, pair, ratio, minimum: 4.5 }];
+  });
+  const focusRatio = contrastRatio(palette.focus, palette.focusContrast);
+  if (focusRatio < 3) issues.push({ themeId: palette.id, pair: 'focus-keyline', ratio: focusRatio, minimum: 3 });
+  return issues;
+}
+
+export function allThemeContrastIssues(): readonly ThemeContrastIssue[] {
+  return THEME_PRESETS.flatMap(themeContrastIssues);
+}
 
 let injected = false;
 

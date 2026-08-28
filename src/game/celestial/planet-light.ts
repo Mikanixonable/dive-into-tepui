@@ -2,13 +2,13 @@
 // 返す。天体が枠から外れるのは、より明るい天体に追い越されたときだけ。
 import { lambertPhase } from '../../physics/lambert-sphere';
 import { sunlitFactor } from '../../physics/shadow';
-import { dot, len, sub } from '../../physics/vec3';
+import { dot, len, sub } from '../../math/vec3';
 import { lightSourceAlbedoOf, rec709Luminance } from '../../render/celestial-albedo';
 import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from '../../render/pipeline/lighting/planet-light-source';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';
-import type { Vec3 } from '../../physics/vec3';
+import type { Vec3 } from '../../math/vec3';
 import type { Albedo } from '../../render/celestial-albedo';
 
 // 光源として選ばれた天体 1 体。位置・半径は body(ECI)から読む。

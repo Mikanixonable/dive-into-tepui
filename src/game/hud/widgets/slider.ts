@@ -10,9 +10,10 @@ export interface SliderOptions {
 }
 
 export class Slider {
-  readonly element: HTMLInputElement;
+  public readonly element: HTMLInputElement;
 
-  constructor(options: SliderOptions, onInput: (value: number) => void) {
+  // options は値域と刻み幅。onInput はドラッグ・矢印キーなど値が動くたびに呼ばれる。
+  public constructor(options: SliderOptions, onInput: (value: number) => void) {
     this.element = document.createElement('input');
     this.element.type = 'range';
     this.element.className = 'w-slider';
@@ -21,21 +22,21 @@ export class Slider {
     if (options.step !== undefined) this.element.step = String(options.step);
     stopDragPropagation(this.element);
     expandHitTarget(this.element);
-    // Input の window keydown 購読へ矢印キー等が漏れてゲーム操作と誤認されないよう止める。
+    // 矢印キー等の打鍵をゲーム操作と誤認されないよう伝播を止める。
     this.element.addEventListener('keydown', (e) => e.stopPropagation());
     this.element.addEventListener('input', () => onInput(Number(this.element.value)));
   }
 
-  setValue(value: number): void {
+  public setValue(value: number): void {
     this.element.value = String(value);
   }
 
-  getValue(): number {
+  public getValue(): number {
     return Number(this.element.value);
   }
 
   // ratio(0..1)まで満ちたグラデーションをトラック背景に描く。1 以上なら単色トラックへ戻す。
-  setGradient(ratio: number): void {
+  public setGradient(ratio: number): void {
     if (ratio >= 1) {
       this.element.style.background = '';
       return;
@@ -43,5 +44,23 @@ export class Slider {
     const r = Math.max(0, ratio) * 100;
     this.element.style.background =
       `linear-gradient(to right, var(--fill-4) 0%, var(--fill-4) ${r}%, var(--fill-2) ${r}%, var(--fill-2) 100%)`;
+  }
+
+  // [minRatio, maxRatio](0..1)の区間だけ通常色にし、区間外は減光したトラック背景を描く。
+  // 全域が有効/無効なら単色トラックへ戻す。
+  public setValidRange(minRatio: number, maxRatio: number): void {
+    const lo = Math.max(0, minRatio) * 100;
+    const hi = Math.min(1, maxRatio) * 100;
+    // 全域が有効なら単色トラックへ戻す。
+    if (lo <= 0 && hi >= 100) {
+      this.element.style.background = '';
+    } else if (lo >= hi) {
+      // 全域が無効なら減光した単色トラックにする。
+      this.element.style.background = 'var(--fill-2)';
+    } else {
+      // 区間の内外で色を切り替えたグラデーションを描く。
+      this.element.style.background =
+        `linear-gradient(to right, var(--fill-2) 0%, var(--fill-2) ${lo}%, var(--fill-4) ${lo}%, var(--fill-4) ${hi}%, var(--fill-2) ${hi}%, var(--fill-2) 100%)`;
+    }
   }
 }

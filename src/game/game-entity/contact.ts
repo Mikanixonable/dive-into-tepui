@@ -1,7 +1,7 @@
 // 1回の接触を、受け手から見た形で記述する語彙。解決器(simulation/)が組み、受け手の
 // collideWithEntity / collideWithCelestialBody と contactDamageSpeed が読む。
 import { KinematicState } from '../../physics/kinematic-state';
-import { Vec3, dot, sub } from '../../physics/vec3';
+import { Vec3, dot, sub } from '../../math/vec3';
 
 // self/other は受け手ごとに入れ替えて組み直す(normal も向きが反転する)ので、同じ解決結果から
 // 自分用と相手用の2つを作る。

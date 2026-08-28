@@ -2,7 +2,7 @@
 // 暦データの表現(Chebyshev/SPK/テスト用解析解)と座標原点の選択を分離する。
 import { CelestialBodyId } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, sub, v3 } from './vec3';
+import { Vec3, sub, v3 } from '../math/vec3';
 
 export type BarycentricState = {
   readonly r: Vec3; // ICRF/J2000 [m]
@@ -45,6 +45,12 @@ export class OriginCenteredEphemeris {
 
   hasBody(id: CelestialBodyId): boolean {
     return this.absolute.hasBody(id);
+  }
+
+  // simTime に対応する jdTdb が absolute の有効期間内かどうか。
+  isValidAt(simTime: number): boolean {
+    const jdTdb = this.epochJdTdb + simTime / 86400;
+    return jdTdb >= this.absolute.validStartJdTdb && jdTdb <= this.absolute.validEndJdTdb;
   }
 
   // 天体 id の、originId 中心・ゲーム ECI 軸の状態。収録されていない天体は例外を投げる。

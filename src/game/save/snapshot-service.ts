@@ -1,12 +1,12 @@
 import { Game } from '../game';
-import { SAVE_VERSION } from '../save-data';
+import { SAVE_VERSION } from './save-data';
 import { orbitInfo } from '../hud/orbit/orbit-info';
 import { autoOrbitReference } from '../orbit-reference';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
 import { CURRENT_EPHEMERIS_CONTEXT, isEphemerisContextCompatible } from './ephemeris-context';
-import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData, SnapshotKind, SnapshotMeta } from '../save-data';
+import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData, SnapshotKind, SnapshotMeta } from './save-data';
 import type { OrbitInfo } from '../hud/orbit/orbit-info';
 
 // Game の実行状態と GameSaveData の相互変換、およびストア/スロットへの出し入れを担う。

@@ -6,17 +6,19 @@ import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { catalogFamilyIndex } from '../celestial/orbit-guide-catalog';
 import { FocusMarkers } from './focus-markers';
 import { applyBodyClassDisplayMode, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
-import { MapPickable } from '../map-pickable';
+import { MapPickable } from '../pickable/map-pickable';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from './floating-origin';
 import * as C from '../const';
-import { Vec3 } from '../../physics/vec3';
-import { metersPerPixel, ndcToScreen, Projected, projectToNdc, Viewpoint } from '../../physics/projection';
+import { Vec3, len, sub } from '../../math/vec3';
+import {
+  metersPerPixel, metersPerPixelAtDistance, ndcToScreen, Projected, projectToNdc, Viewpoint,
+} from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { CameraSaveData } from '../save-data';
+import { CameraSaveData } from '../save/save-data';
 
 const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.bodyClassToggles';
 
@@ -43,6 +45,9 @@ function saveBodyClassToggles(v: BodyClassToggles): void {
 }
 
 import type { GameEntity } from '../game-entity/game-entity';
+
+const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
+const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
 
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
@@ -108,6 +113,13 @@ function projectionFromViewpoint(view: Viewpoint): ProjectFn {
 // 画面上で1ピクセルに相当する実距離[m]を返す関数を組む。
 function scaleFromViewpoint(view: Viewpoint): ScaleFn {
   return (worldPos) => metersPerPixel(view, worldPos, window.innerHeight);
+}
+
+// 同じ尺度を、視点からの直線距離で測って返す関数を組む。**画面に写らない位置にある物体の
+// 見かけの大きさを測るのはこちら** — 深度で測る側は視点の背後で床打ちされ、遠く後方にある
+// 物体が目の前にあるのと同じ尺度を返す。
+function radialScaleFromViewpoint(view: Viewpoint): ScaleFn {
+  return (worldPos) => metersPerPixelAtDistance(view, len(sub(worldPos, view.position)), window.innerHeight);
 }
 
 // 戦闘ビュー(CombatCameraSystem)と広範囲視点(MapCamera)を切り替えて駆動する。
@@ -227,9 +239,9 @@ export class CameraSystem {
     const keyPanX = (input.down(K.cameraPanLeft) ? 1 : 0) + (input.down(K.cameraPanRight) ? -1 : 0);
     const keyPanY = (input.down(K.cameraPanUp) ? 1 : 0) + (input.down(K.cameraPanDown) ? -1 : 0);
     const mouse = { ...input.mouse() };
-    mouse.panDx += keyPanX * C.CAM_KEY_PAN_RATE * dt;
-    mouse.panDy += keyPanY * C.CAM_KEY_PAN_RATE * dt;
-    mouse.roll += keyRoll * C.CAM_KEY_ROLL_RATE * dt;
+    mouse.panDx += keyPanX * CAM_KEY_PAN_RATE * dt;
+    mouse.panDy += keyPanY * CAM_KEY_PAN_RATE * dt;
+    mouse.roll += keyRoll * CAM_KEY_ROLL_RATE * dt;
 
     if (this.overviewMode) {
       this.mapCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, frameAnchors);
@@ -239,8 +251,12 @@ export class CameraSystem {
     }
   }
 
-  // 視点状態をフローティングオリジン(fo)で補正してアクティブカメラへ反映する。
-  sync(fo: FloatingOrigin): void {
+  // このフレームの描画原点を組み立て、視点状態をそれで補正してアクティブカメラへ反映し、
+  // 組み立てた原点を返す。原点(位置)はアクティブカメラの ECI 位置 — カメラ自身の位置成分を
+  // ほぼ0にしておかないと、遠方の描画対象が f32 の桁落ちでカメラの動きに合わせて振動する。
+  // 速度基準 velocityReference は相対速度で向きを決める描画が差し引く値で、原点とは別 concern。
+  sync(velocityReference: Vec3): FloatingOrigin {
+    const fo = new FloatingOrigin(this.activeCameraPos, velocityReference);
     const active = this.overviewMode ? this.mapCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ表示設定パネルとフォーカスラベルを表示する。
@@ -251,6 +267,7 @@ export class CameraSystem {
     } else {
       this.focusMarkers.hideLabels();
     }
+    return fo;
   }
 
   // アクティブカメラの画面投影関数を返す。
@@ -261,6 +278,12 @@ export class CameraSystem {
   // アクティブカメラの画面尺度関数を返す。
   get activeCameraScale(): ScaleFn {
     return scaleFromViewpoint(this.overviewMode ? this.mapCamera.viewpoint : this.combatCamera.viewpoint);
+  }
+
+  // アクティブカメラの画面尺度関数を、視点からの直線距離で測って返す。画面の外や視点の背後に
+  // ある物体の見かけの大きさは、これでなければ測れない。
+  get activeCameraRadialScale(): ScaleFn {
+    return radialScaleFromViewpoint(this.overviewMode ? this.mapCamera.viewpoint : this.combatCamera.viewpoint);
   }
 
   // 両サブカメラの視点状態をセーブデータへ書き出す。どちらが表示中かは ViewManager の責務。

@@ -8,10 +8,10 @@ export const COMBAT_VIEW_STYLE = `
 #hud:not(.base-mode) .hud-combat-root.active #burn-management-panel,
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies,
 #hud:not(.base-mode) .hud-combat-root.active #hud-target {
-  background: var(--glass-quiet, var(--surface));
+  background: var(--glass-quiet);
   border: 0;
-  border-radius: var(--radius-panel, 16px);
-  padding: 10px 12px;
+  border-radius: var(--radius-panel);
+  padding: 10px var(--space-5);
   backdrop-filter: blur(14px) saturate(82%);
   -webkit-backdrop-filter: blur(14px) saturate(82%);
   box-shadow: 0 12px 30px var(--shade-1);
@@ -43,11 +43,11 @@ export const COMBAT_VIEW_STYLE = `
   width: 26px;
   height: 26px;
   border: 0;
-  border-radius: var(--radius-control, 11px);
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--text-dim);
   line-height: 1;
-  transition: color 140ms, background 140ms;
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:hover {
   background: var(--fill-1);
@@ -74,9 +74,9 @@ export const COMBAT_VIEW_STYLE = `
   line-height: 1.35;
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel kbd {
-  padding: 1px 4px;
+  padding: 1px var(--space-2);
   border: 0;
-  border-radius: var(--radius-micro, 8px);
+  border-radius: var(--radius-micro);
   background: var(--fill-1);
   color: var(--text-dim);
   font: inherit;
@@ -93,9 +93,9 @@ export const COMBAT_VIEW_STYLE = `
   margin-top: 7px;
 }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-actions .w-btn {
-  padding: 6px 8px;
+  padding: var(--space-3) var(--space-4);
   border: 0;
-  border-radius: var(--radius-control, 11px);
+  border-radius: var(--radius-control);
   background: var(--fill-1);
   color: var(--text-dim);
   font-size: var(--font-xxs);
@@ -121,7 +121,7 @@ export const COMBAT_VIEW_STYLE = `
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch .w-btn {
   border: 0;
-  border-radius: var(--radius-control, 11px);
+  border-radius: var(--radius-control);
   background: var(--fill-1);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch .w-btn.on {
@@ -130,7 +130,7 @@ export const COMBAT_VIEW_STYLE = `
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .vessel-deploy-controls .vessel-deploy-btn {
   border: 0;
-  border-radius: var(--radius-control, 11px);
+  border-radius: var(--radius-control);
   background: var(--fill-1);
   color: var(--text-dim);
   font-size: var(--font-xxs);
@@ -148,10 +148,10 @@ export const COMBAT_VIEW_STYLE = `
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 2px 7px;
+  gap: var(--space-1) 7px;
   margin-bottom: 7px;
-  padding: 7px 8px;
-  border-radius: var(--radius-control, 11px);
+  padding: 7px var(--space-4);
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--color-signal) 8%, transparent);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-lock-glyph {
@@ -179,25 +179,12 @@ export const COMBAT_VIEW_STYLE = `
   display: inline-grid;
   grid-template-columns: minmax(64px, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-3);
   width: 128px;
 }
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter {
-  height: 6px;
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--bar-bg);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter-fill {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
+/* w-meter-fill の既定色(--color-primary)より、ターゲット固有の signal 色を優先する。 */
+#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter .w-meter-fill {
   background: var(--color-signal);
-  transition: width 180ms;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter.critical .armor-meter-fill {
-  background: var(--color-error);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-value {
   min-width: 48px;
@@ -206,7 +193,7 @@ export const COMBAT_VIEW_STYLE = `
   text-align: right;
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-help {
-  margin-top: 6px;
+  margin-top: var(--space-3);
   color: var(--text-dim);
   font-size: var(--font-xxs);
   line-height: 1.45;
@@ -220,7 +207,7 @@ export const COMBAT_VIEW_STYLE = `
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-list {
   display: grid;
-  gap: 2px;
+  gap: var(--space-1);
   list-style: none;
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row {
@@ -229,8 +216,8 @@ export const COMBAT_VIEW_STYLE = `
   align-items: center;
   gap: 7px;
   min-height: 24px;
-  padding: 4px 6px;
-  border-radius: var(--radius-micro, 8px);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-micro);
   color: var(--text-dim);
   font-size: var(--font-xs);
   font-variant-numeric: tabular-nums;
@@ -258,21 +245,21 @@ export const COMBAT_VIEW_STYLE = `
   color: var(--color-signal);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-empty {
-  padding: 4px 0;
+  padding: var(--space-2) 0;
   color: var(--text-dim);
   font-size: var(--font-xs);
 }
 
 #hud:not(.base-mode) #hud-topbar {
   border: 0;
-  border-radius: 0 0 var(--radius-panel, 16px) var(--radius-panel, 16px);
-  background: var(--glass-quiet, var(--surface));
+  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  background: var(--glass-quiet);
   backdrop-filter: blur(14px) saturate(82%);
   -webkit-backdrop-filter: blur(14px) saturate(82%);
   box-shadow: 0 10px 28px var(--shade-1);
 }
-#hud:not(.base-mode) #hud-topbar .k { color: var(--text-dim); }
-#hud:not(.base-mode) #hud-topbar .gs-sep { color: var(--fill-4); }
+#hud:not(.base-mode) #hud-simulation-status .k { color: var(--text-dim); }
+#hud:not(.base-mode) #hud-simulation-status .gs-sep { color: var(--fill-4); }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:focus-visible,
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .w-btn:focus-visible {
   outline: 2px solid var(--color-focus);
@@ -295,7 +282,7 @@ export const COMBAT_VIEW_STYLE = `
   #hud:not(.base-mode) .hud-combat-root.active #hud-orbit,
   #hud:not(.base-mode) .hud-combat-root.active #hud-enemies,
   #hud:not(.base-mode) .hud-combat-root.active #hud-target {
-    padding: 8px 10px;
+    padding: var(--space-4) 10px;
   }
 }
 @media ${MQ_COARSE} {

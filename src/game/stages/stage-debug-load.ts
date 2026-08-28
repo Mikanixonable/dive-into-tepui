@@ -3,14 +3,14 @@
 import { Stage, type StageDeps } from './stage';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { SimSpeedManager } from '../sim-speed-manager';
+import type { SimSpeedManager } from '../simulation/sim-speed-manager';
 import * as C from '../const';
 import { DebrisPiece } from '../game-entity/debris-piece';
 import { randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
-import { mulberry32 } from '../../physics/random';
-import { add, v3, Vec3 } from '../../physics/vec3';
-import type { StageSaveData } from '../save-data';
+import { mulberry32 } from '../../math/random';
+import { add, v3, Vec3 } from '../../math/vec3';
+import type { StageSaveData } from '../save/save-data';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
 } from '../../render/vfx-style';

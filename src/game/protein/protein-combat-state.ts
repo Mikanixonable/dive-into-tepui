@@ -2,27 +2,6 @@ import type {
   ProteinActionDefinition, ProteinAssetDefinition, ProteinHudSnapshot, ProteinPhase, ProteinSaveData, ProteinSiteDefinition,
 } from './protein-schema';
 
-export type FormationRole = 'attacker' | 'shield' | 'energy';
-
-type FormationEnemyStatus = {
-  readonly alive: boolean;
-  readonly formationId?: string;
-  readonly formationRole?: FormationRole;
-};
-
-// 陣形の攻撃担当だけが必要とする、同じ陣形内の生存エネルギー役を都度集計する。
-// formationId が無い敵は単体敵として、従来どおり供給条件を満たすものとする。
-export function isFormationEnergyAvailable(
-  formationRole: FormationRole | undefined,
-  formationId: string | undefined,
-  enemies: readonly FormationEnemyStatus[],
-): boolean {
-  if (formationRole !== 'attacker' || formationId === undefined) return true;
-  return enemies.some((enemy) => (
-    enemy.alive && enemy.formationId === formationId && enemy.formationRole === 'energy'
-  ));
-}
-
 export interface ProteinDamageResult {
   readonly target: 'site' | 'integrity';
   readonly siteId: string | null;
@@ -45,16 +24,16 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export class ProteinCombatState {
-  readonly asset: ProteinAssetDefinition;
-  readonly integrityMaxHp: number;
-  integrityHp: number;
-  phase: ProteinPhase;
+  public readonly asset: ProteinAssetDefinition;
+  public readonly integrityMaxHp: number;
+  public integrityHp: number;
+  public phase: ProteinPhase;
   private readonly siteStates: SiteState[];
   private readonly modifications = new Map<string, string>();
   private selectedSiteId: string | null = null;
   private attackSiteCursor = 0;
 
-  constructor(asset: ProteinAssetDefinition, saved?: ProteinSaveData, legacyHealth?: number) {
+  public constructor(asset: ProteinAssetDefinition, saved?: ProteinSaveData, legacyHealth?: number) {
     this.asset = asset;
     this.integrityMaxHp = asset.integrity.maxHp;
     this.integrityHp = saved?.integrityHp ?? (legacyHealth === undefined
@@ -71,18 +50,18 @@ export class ProteinCombatState {
     this.reselectSite();
   }
 
-  get defeated(): boolean { return this.integrityHp <= 0; }
+  private get defeated(): boolean { return this.integrityHp <= 0; }
 
-  get activeSite(): ProteinSiteDefinition | null {
+  public get activeSite(): ProteinSiteDefinition | null {
     return this.attackSites[0] ?? null;
   }
 
-  get attackAction(): ProteinActionDefinition | null {
+  public get attackAction(): ProteinActionDefinition | null {
     return this.asset.actions.find((action) => action.kind === 'projectile') ?? null;
   }
 
   /** Functional regions that can independently originate the protein's attack. */
-  get attackSites(): readonly ProteinSiteDefinition[] {
+  private get attackSites(): readonly ProteinSiteDefinition[] {
     const actionId = this.attackAction?.id;
     if (!actionId) return [];
     return this.siteStates
@@ -90,10 +69,8 @@ export class ProteinCombatState {
       .map((site) => site.definition);
   }
 
-  hasAttackSite(): boolean { return this.attackSites.length > 0; }
-
   /** Pick the next still-functional attack region for an ordinary enemy shot. */
-  nextAttackSite(): ProteinSiteDefinition | null {
+  public nextAttackSite(): ProteinSiteDefinition | null {
     const sites = this.attackSites;
     if (sites.length === 0) return null;
     const site = sites[this.attackSiteCursor % sites.length] ?? sites[0]!;
@@ -101,39 +78,34 @@ export class ProteinCombatState {
     return site;
   }
 
-  site(id: string): ProteinSiteDefinition | null {
+  public site(id: string): ProteinSiteDefinition | null {
     return this.siteStates.find((site) => site.definition.id === id)?.definition ?? null;
   }
 
-  siteState(id: string): { readonly hp: number; readonly maxHp: number; readonly disabled: boolean } | null {
-    const site = this.siteStates.find((entry) => entry.definition.id === id);
-    return site ? { hp: site.hp, maxHp: site.definition.maxHp, disabled: site.disabled } : null;
-  }
+  private modificationState(id: string): string | null { return this.modifications.get(id) ?? null; }
 
-  modificationState(id: string): string | null { return this.modifications.get(id) ?? null; }
-
-  setModification(id: string, state: string): boolean {
+  public setModification(id: string, state: string): boolean {
     const slot = this.asset.modificationSlots.find((entry) => entry.id === id);
     if (!slot || !slot.states.includes(state)) return false;
     this.modifications.set(id, state);
     return true;
   }
 
-  setSelectedSite(id: string | null): void {
+  public setSelectedSite(id: string | null): void {
     this.selectedSiteId = this.siteStates.some((site) => site.definition.id === id) ? id : null;
   }
 
-  isActionEnabled(action: string, externalCondition = true): boolean {
+  public isActionEnabled(action: string, externalCondition = true): boolean {
     return externalCondition && this.siteStates.some((site) => !site.disabled && site.definition.actions.includes(action));
   }
 
-  effectMultiplier(slotId: string, effect: string, fallback = 1): number {
+  private effectMultiplier(slotId: string, effect: string, fallback = 1): number {
     const slot = this.asset.modificationSlots.find((entry) => entry.id === slotId);
     const state = this.modificationState(slotId);
     return slot?.effects[state ?? '']?.[effect] ?? fallback;
   }
 
-  projectileDamage(baseDamage: number): number {
+  public projectileDamage(baseDamage: number): number {
     let multiplier = 1;
     for (const slot of this.asset.modificationSlots) {
       multiplier *= this.effectMultiplier(slot.id, 'damageMultiplier');
@@ -142,7 +114,7 @@ export class ProteinCombatState {
   }
 
   /** localPoint is in model-local units after the root display scale, not source Å. */
-  applyDamage(amount: number, localPoint: { x: number; y: number; z: number }): ProteinDamageResult {
+  public applyDamage(amount: number, localPoint: { x: number; y: number; z: number }): ProteinDamageResult {
     const previousPhase = this.phase;
     const candidate = this.closestSite(localPoint);
     let siteId: string | null = null;
@@ -167,7 +139,7 @@ export class ProteinCombatState {
     };
   }
 
-  applyContactDamage(amount: number): ProteinDamageResult {
+  public applyContactDamage(amount: number): ProteinDamageResult {
     const previousPhase = this.phase;
     const damage = Math.max(0, amount);
     this.integrityHp = Math.max(0, this.integrityHp - damage);
@@ -178,7 +150,7 @@ export class ProteinCombatState {
     };
   }
 
-  serialize(): ProteinSaveData {
+  public serialize(): ProteinSaveData {
     const sites = this.siteStates.map((site) => ({ id: site.definition.id, hp: site.hp, disabled: site.disabled }));
     return {
       schemaVersion: 1,
@@ -189,8 +161,7 @@ export class ProteinCombatState {
     };
   }
 
-  hudSnapshot(): ProteinHudSnapshot {
-    let attackOrdinal = 0;
+  public hudSnapshot(): ProteinHudSnapshot {
     return {
       phase: this.phase,
       integrityHp: this.integrityHp,
@@ -199,14 +170,13 @@ export class ProteinCombatState {
       sites: this.siteStates.map((site) => {
         const attackActionId = this.attackAction?.id;
         const attackable = attackActionId !== undefined && site.definition.actions.includes(attackActionId);
-        const label = attackable ? `${site.definition.label}(攻撃部位${++attackOrdinal})` : site.definition.label;
         return {
-        id: site.definition.id,
-        label,
-        hp: site.hp,
-        maxHp: site.definition.maxHp,
-        disabled: site.disabled,
-        attackable,
+          id: site.definition.id,
+          abbreviation: site.definition.abbreviation,
+          hp: site.hp,
+          maxHp: site.definition.maxHp,
+          disabled: site.disabled,
+          attackable,
         };
       }),
     };

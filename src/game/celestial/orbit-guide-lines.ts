@@ -3,13 +3,13 @@
 // (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import {
-  catalogLoop, dawnDuskGuideLoop, familyVisualS, GuideLoop, GuidePoint, lissajousLoop,
+  catalogLoop, dawnDuskGuideLoop, GuideLoop, GuidePoint, lissajousLoop,
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
 } from '../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { CurveColorSampler } from '../../render/curve';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import type { RenderStyle } from '../../render/render-style';
@@ -18,6 +18,7 @@ import { GuideCurve } from './guide-curve';
 import {
   GuideGroupId, GuideKindSettings, OrbitGuideSettings,
 } from './orbit-guide-settings';
+import { combinedCandidateIds, parseGuideKindId } from './orbit-guide-kind-ids';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import { DirectionMarkers } from './direction-markers';
 
@@ -97,24 +98,35 @@ function applyLoop(curve: GuideCurve, loop: GuideLoop): void {
   curve.setHermite(origin, { ts: shape.us, positions, tangents });
 }
 
-// 族 id からその種類が属する群を判定する。「軸方向軌道」「垂直軌道」は共線点(L1-L3)と
-// 三角点(L4/L5)の双方にあるので、末尾のラグランジュ点で見分ける。
 function groupOf(familyId: string): GuideGroupId | null {
-  if (familyId.startsWith('resonant-')) return 'resonant';
-  if (familyId === 'dro' || familyId === 'dpo' || familyId.startsWith('lpo-')) return 'secondary';
-  if (familyId.startsWith('short-') || familyId.startsWith('longp-')) return 'triangular';
-  if (familyId.startsWith('axial-') || familyId.startsWith('vertical-')) {
-    return /L[45]/.test(familyId) ? 'triangular' : 'collinear';
-  }
-  if (
-    familyId.startsWith('lyapunov-') || familyId.startsWith('halo-')
-    || familyId.startsWith('butterfly-') || familyId.startsWith('dragonfly-')
-  ) return 'collinear';
-  return null;
+  return parseGuideKindId(familyId)?.group ?? null;
 }
 
 function pointOf(familyId: string): string | null {
-  return /L[1-5]/.exec(familyId)?.[0] ?? null;
+  return parseGuideKindId(familyId)?.point ?? null;
+}
+
+// 族 id の表示設定を1つに解決する。小題(combinedKey)に属する族は on を
+// combinedCandidateIds(押されている軸値から実際に表示される族id集合を組む関数、軸の自動補完も
+// ここに1本化されている)への所属で決め、他のフィールドは小題の共有設定を使う。属さない族
+// (蝶形・トンボ形・共鳴・DRO)は settings.kinds をそのまま使う。
+function effectiveKind(settings: OrbitGuideSettings, familyId: string): GuideKindSettings | undefined {
+  const parsed = parseGuideKindId(familyId);
+  if (parsed === null || parsed.combinedKey === null) return settings.kinds[familyId];
+  const combined = settings.combinedKinds[parsed.combinedKey];
+  if (combined === undefined) return undefined;
+  const on = combinedCandidateIds(parsed.combinedKey, combined.axisValues).includes(familyId);
+  return { ...combined, on };
+}
+
+// 表示設定を持ちうる族 id の全体(kinds のキー全部+小題ごとに押されている軸値から組める候補id)。
+// effectiveKind と組み合わせて、蝶形/共鳴等の standalone 族と小題の族を同じループで扱える。
+function activeFamilyIds(settings: OrbitGuideSettings): readonly string[] {
+  const ids = new Set<string>(Object.keys(settings.kinds));
+  for (const [key, combined] of Object.entries(settings.combinedKinds)) {
+    for (const id of combinedCandidateIds(key, combined.axisValues)) ids.add(id);
+  }
+  return [...ids];
 }
 
 function activeSystems(settings: OrbitGuideSettings): readonly CatalogSystemId[] {
@@ -143,8 +155,9 @@ interface LineVisualStyle {
 // スライダーを掴んでいる間じゅう全線を焼き直すことがない。
 function geometrySignature(settings: OrbitGuideSettings): string {
   const parts: string[] = [];
-  for (const [id, kind] of Object.entries(settings.kinds)) {
-    if (!kind.on) continue;
+  for (const id of activeFamilyIds(settings)) {
+    const kind = effectiveKind(settings, id);
+    if (!kind?.on) continue;
     parts.push(`${id}:${kind.count}:${kind.rangeMin}:${kind.rangeMax}`);
   }
   const l = settings.lissajous;
@@ -166,10 +179,10 @@ function geometrySignature(settings: OrbitGuideSettings): string {
 // 本数・族範囲・系選択の直積が変わったとき(rebuildLines を要するとき)だけ変わる識別子。
 // 色・透明度・進行方向・安定度・振幅など、点列や本数を変えない設定は含めない。
 function structuralKey(settings: OrbitGuideSettings): string {
-  const kindsKey = Object.keys(settings.kinds).sort()
+  const kindsKey = [...activeFamilyIds(settings)].sort()
     .map((id) => {
-      const k = settings.kinds[id]!;
-      return `${id}:${k.on}:${k.on ? k.count : 0}`;
+      const k = effectiveKind(settings, id);
+      return `${id}:${k?.on ?? false}:${k?.on ? k.count : 0}`;
     })
     .join(',');
   const systemsKey = activeSystems(settings).join('+');
@@ -274,8 +287,8 @@ export class OrbitGuideLines {
     return visible;
   }
 
-  // 族の位置設定(0〜1)は画面上の間隔が均等に見える弧長パラメータとして扱い、カタログの
-  // 実際のメンバー選択に使う s へ familyVisualS で変換してから catalogLoop へ渡す。
+  // 族の位置設定(0〜1)は、焼き込み側で幾何的に等間隔へ間引いてあるため、そのまま
+  // catalogLoop が使うメンバー添字基準の s として渡せる。
   private computeLoop(entry: GuideLineEntry, t: number, settings: OrbitGuideSettings): GuideLoop | null {
     if (entry.familyId === 'lissajous') {
       const l = settings.lissajous;
@@ -300,13 +313,11 @@ export class OrbitGuideLines {
       const u = settings.tundra;
       return tundraGuideLoop(t, this.ephemeris, u.perigeeAltitude, u.raan);
     }
-    const kind = settings.kinds[entry.familyId];
+    const kind = effectiveKind(settings, entry.familyId);
     if (!kind || entry.system === null) return null;
     const system = this.catalog.systemFor(entry.system);
     if (!system) return null;
-    const family = system.families[entry.familyId];
-    if (!family) return null;
-    const s = familyVisualS(family, sValueFor(kind, entry.index, entry.count));
+    const s = sValueFor(kind, entry.index, entry.count);
     return catalogLoop(t, this.ephemeris, system, entry.system, entry.familyId, s);
   }
 
@@ -319,10 +330,10 @@ export class OrbitGuideLines {
     if (style === 'schematic') {
       // 模式図では色分けに意味を持たせない。表示の有無だけは通常どおり設定に従う。
       const on = entry.familyId === 'lissajous' ? settings.lissajous.on
-        : referenceKind ? settings[referenceKind].on : settings.kinds[entry.familyId]?.on;
+        : referenceKind ? settings[referenceKind].on : effectiveKind(settings, entry.familyId)?.on;
       if (!on) return null;
       const kindDirection = entry.familyId === 'lissajous' ? settings.lissajous
-        : referenceKind ? settings[referenceKind] : settings.kinds[entry.familyId]!;
+        : referenceKind ? settings[referenceKind] : effectiveKind(settings, entry.familyId)!;
       return {
         opacity: 1, direction: kindDirection.direction, animate: kindDirection.animate,
         markerColor: SCHEMATIC_LINE, color: SCHEMATIC_LINE,
@@ -342,7 +353,7 @@ export class OrbitGuideLines {
         markerColor: r.colorStart, color: r.colorStart,
       };
     }
-    const kind = settings.kinds[entry.familyId];
+    const kind = effectiveKind(settings, entry.familyId);
     if (!kind) return null;
 
     let gradientT = entry.count <= 1 ? 0 : entry.index / (entry.count - 1);
@@ -373,8 +384,9 @@ export class OrbitGuideLines {
     }
     this.lines = [];
 
-    for (const [familyId, kind] of Object.entries(settings.kinds)) {
-      if (!kind.on) continue;
+    for (const familyId of activeFamilyIds(settings)) {
+      const kind = effectiveKind(settings, familyId);
+      if (!kind?.on) continue;
       const group = groupOf(familyId);
       if (group === null) continue; // 未知の族 id(壊れた保存データ)は無視
       const point = pointOf(familyId);

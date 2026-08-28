@@ -1,7 +1,11 @@
-// 折れ線グラフの描き手。渡された点列と軸をそのまま canvas 2D へ描く。何をプロットするかは知らない。
-import { ACCENT, ACCENT_SOFT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED, TEXT_STRONG } from '../../theme';
-import { fmtDuration } from '../utils';
-import { chooseTickInterval } from './tick-scale';
+// 折れ線グラフの描き手。渡された点列・軸・マークだけを canvas 2D へ描く汎用エンジンで、
+// 単位系や意味づけは軸構築側(orbit-chart-axes.ts)と呼び出し側が持つ。
+import { ACCENT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED } from '../../theme';
+import { injectOnce } from '../widgets/inject-style';
+import {
+  CHART_LINE_WIDTH, CHART_MARK_RADIUS, CHART_MARK_RING_WIDTH, chartCanvasStyle,
+  drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore, type BackingStoreState,
+} from './chart-canvas';
 
 export interface ChartPoint {
   readonly x: number;
@@ -36,7 +40,6 @@ export interface ChartSpec {
   readonly emptyMessage?: string;
 }
 
-const ASPECT_RATIO = '16 / 9';
 const PADDING_LEFT = 44;
 const PADDING_RIGHT = 10;
 const PADDING_TOP = 10;
@@ -46,25 +49,8 @@ const X_CAPTION_OFFSET = 12;
 const Y_CAPTION_MARGIN = 4;
 const AXIS_LINE_WIDTH = 1;
 const GRID_LINE_WIDTH = 1;
-const CHART_LINE_WIDTH = 1.5;
-const MARK_RADIUS = 3;
-const MARK_RING_WIDTH = 1;
 
-const STYLE = `
-#hud .orbit-chart { display: block; width: 100%; aspect-ratio: ${ASPECT_RATIO}; }
-#hud .orbit-chart.panzoom { touch-action: none; cursor: grab; }
-#hud .orbit-chart.panzoom:active { cursor: grabbing; }
-`;
-
-let styleInjected = false;
-
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
+const STYLE = chartCanvasStyle('orbit-chart');
 
 // 値域 [min, max] を長さ span の画面区間 [origin, origin+span] へ写す。min === max なら中央に固定する。
 function scaleValue(value: number, min: number, max: number, origin: number, span: number, invert: boolean): number {
@@ -77,12 +63,11 @@ function scaleValue(value: number, min: number, max: number, origin: number, spa
 export class OrbitChart {
   public readonly element: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
-  private lastCssWidth = 0;
-  private lastCssHeight = 0;
-  private lastDpr = 0;
+  private readonly backing: BackingStoreState = { cssWidth: 0, cssHeight: 0, dpr: 0 };
 
+  // canvas 要素を作り、2D コンテキストを確保する。
   public constructor() {
-    ensureStyle();
+    injectOnce('orbit-chart', STYLE);
     this.element = document.createElement('canvas');
     this.element.className = 'orbit-chart';
     const ctx = this.element.getContext('2d');
@@ -96,19 +81,22 @@ export class OrbitChart {
   // 直近の draw() が描いたプロット領域のピクセル寸法。まだ描いていない/寸法0なら null
   // ——呼び出し側がドラッグ移動量を軸の値へ換算する変換係数として使う。
   public plotPixelSize(): { width: number; height: number } | null {
-    const width = this.lastCssWidth - PADDING_LEFT - PADDING_RIGHT;
-    const height = this.lastCssHeight - PADDING_TOP - PADDING_BOTTOM;
+    const width = this.backing.cssWidth - PADDING_LEFT - PADDING_RIGHT;
+    const height = this.backing.cssHeight - PADDING_TOP - PADDING_BOTTOM;
     return width > 0 && height > 0 ? { width, height } : null;
   }
 
+  // spec の軸・マーク・点列を、この順(グリッド→外枠→キャプション→線→マーク)で描き直す。
+  // 点が1つも無ければ折れ線の代わりに emptyMessage を出す。
   public draw(spec: ChartSpec): void {
-    this.resizeBackingStoreIfNeeded();
+    resizeCanvasBackingStore(this.element, this.ctx, this.backing);
     const ctx = this.ctx;
-    const cssWidth = this.lastCssWidth;
-    const cssHeight = this.lastCssHeight;
+    const cssWidth = this.backing.cssWidth;
+    const cssHeight = this.backing.cssHeight;
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     if (cssWidth <= 0 || cssHeight <= 0) return;
 
+    // プロット領域(軸・キャプション分の余白を除いた矩形)を確定する。
     const plotLeft = PADDING_LEFT;
     const plotRight = cssWidth - PADDING_RIGHT;
     const plotTop = PADDING_TOP;
@@ -124,6 +112,8 @@ export class OrbitChart {
     this.drawFrame(plotLeft, plotTop, plotWidth, plotHeight);
     this.drawCaptions(spec, plotLeft, plotRight, cssHeight);
 
+    // 折れ線・マークはプロット領域内にクリップする——値がプロット範囲外に出ても
+    // 軸ラベルの上へはみ出さない。
     if (!spec.points.some((point) => point !== null)) {
       this.drawEmptyMessage(spec.emptyMessage ?? '', plotLeft, plotTop, plotWidth, plotHeight);
       return;
@@ -138,19 +128,7 @@ export class OrbitChart {
     ctx.restore();
   }
 
-  private resizeBackingStoreIfNeeded(): void {
-    const dpr = window.devicePixelRatio || 1;
-    const cssWidth = this.element.clientWidth;
-    const cssHeight = this.element.clientHeight;
-    if (cssWidth === this.lastCssWidth && cssHeight === this.lastCssHeight && dpr === this.lastDpr) return;
-    this.lastCssWidth = cssWidth;
-    this.lastCssHeight = cssHeight;
-    this.lastDpr = dpr;
-    this.element.width = Math.max(1, Math.round(cssWidth * dpr));
-    this.element.height = Math.max(1, Math.round(cssHeight * dpr));
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
+  // x/y 軸それぞれの目盛り線とラベルを描く。
   private drawGrid(spec: ChartSpec, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
     const ctx = this.ctx;
     const plotBottom = plotTop + plotHeight;
@@ -159,6 +137,7 @@ export class OrbitChart {
     ctx.lineWidth = GRID_LINE_WIDTH;
     ctx.fillStyle = TEXT_DIM;
 
+    // x軸: 縦の目盛り線を下端のラベルとともに描く。
     ctx.textAlign = 'center';
     for (const tick of spec.x.ticks) {
       const px = scaleValue(tick.value, spec.x.min, spec.x.max, plotLeft, plotWidth, false);
@@ -169,6 +148,7 @@ export class OrbitChart {
       ctx.fillText(tick.label, px, plotBottom + TICK_LABEL_GAP + X_CAPTION_OFFSET / 2);
     }
 
+    // y軸: 横の目盛り線を左端のラベルとともに描く。
     ctx.textAlign = 'right';
     for (const tick of spec.y.ticks) {
       const py = scaleValue(tick.value, spec.y.min, spec.y.max, plotTop, plotHeight, true);
@@ -180,6 +160,7 @@ export class OrbitChart {
     }
   }
 
+  // プロット領域の外枠。
   private drawFrame(plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
     const ctx = this.ctx;
     ctx.strokeStyle = EDGE;
@@ -187,6 +168,7 @@ export class OrbitChart {
     ctx.strokeRect(plotLeft, plotTop, plotWidth, plotHeight);
   }
 
+  // x軸・y軸それぞれのキャプション文字列。
   private drawCaptions(spec: ChartSpec, plotLeft: number, plotRight: number, cssHeight: number): void {
     const ctx = this.ctx;
     ctx.fillStyle = TEXT_MUTED;
@@ -196,6 +178,7 @@ export class OrbitChart {
     ctx.fillText(spec.y.caption, Y_CAPTION_MARGIN, PADDING_TOP / 2);
   }
 
+  // プロット領域の中央に表示する案内文。
   private drawEmptyMessage(message: string, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
     const ctx = this.ctx;
     ctx.fillStyle = TEXT_DIM;
@@ -203,26 +186,16 @@ export class OrbitChart {
     ctx.fillText(message, plotLeft + plotWidth / 2, plotTop + plotHeight / 2);
   }
 
+  // spec.points を折れ線として描く。
   private drawLine(spec: ChartSpec, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
-    const ctx = this.ctx;
-    ctx.strokeStyle = ACCENT;
-    ctx.lineWidth = CHART_LINE_WIDTH;
-    ctx.beginPath();
-    let penDown = false;
-    for (const point of spec.points) {
-      if (point === null) {
-        penDown = false;
-        continue;
-      }
-      const px = scaleValue(point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false);
-      const py = scaleValue(point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true);
-      if (penDown) ctx.lineTo(px, py);
-      else ctx.moveTo(px, py);
-      penDown = true;
-    }
-    ctx.stroke();
+    const toPx = (point: ChartPoint): { x: number; y: number } => ({
+      x: scaleValue(point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false),
+      y: scaleValue(point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true),
+    });
+    drawPolylineWithGaps(this.ctx, spec.points, toPx, ACCENT, CHART_LINE_WIDTH);
   }
 
+  // mark.style に応じた丸マークを1点描く。
   private drawMark(
     mark: ChartMark,
     spec: ChartSpec,
@@ -231,76 +204,8 @@ export class OrbitChart {
     plotWidth: number,
     plotHeight: number,
   ): void {
-    const ctx = this.ctx;
     const px = scaleValue(mark.point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false);
     const py = scaleValue(mark.point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true);
-    ctx.beginPath();
-    ctx.arc(px, py, MARK_RADIUS, 0, Math.PI * 2);
-    if (mark.style === 'current') {
-      ctx.fillStyle = ACCENT_SOFT;
-      ctx.fill();
-      ctx.strokeStyle = ACCENT;
-    } else {
-      ctx.strokeStyle = TEXT_STRONG;
-    }
-    ctx.lineWidth = MARK_RING_WIDTH;
-    ctx.stroke();
+    drawPointMarker(this.ctx, px, py, mark.style === 'current', CHART_MARK_RADIUS, CHART_MARK_RING_WIDTH);
   }
-}
-
-// 0 秒から spanSec までの時間軸。目盛り間隔は chooseTickInterval が選ぶ。
-export function timeAxis(spanSec: number, maxTicks: number, caption: string): ChartAxis {
-  const span = isFinite(spanSec) && spanSec > 0 ? spanSec : 0;
-  if (span === 0) return { min: 0, max: 0, ticks: [], caption };
-  const interval = chooseTickInterval(span, maxTicks);
-  const ticks: ChartTick[] = [];
-  for (let value = 0; value <= span; value += interval) {
-    ticks.push({ value, label: fmtDuration(value, interval) });
-  }
-  return { min: 0, max: span, ticks, caption };
-}
-
-// 距離目盛りの候補ラダー [km]、小さい順。1, 2, 5 × 10^n。
-const DISTANCE_TICK_INTERVALS_KM = [
-  1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
-] as const;
-
-// spanKm の目盛り本数が maxTicks を超えない最小の間隔 [km] を選ぶ。どの候補でも超えるなら最大の候補を返す。
-function chooseDistanceTickIntervalKm(spanKm: number, maxTicks: number): number {
-  let interval: number = DISTANCE_TICK_INTERVALS_KM[0];
-  if (!isFinite(spanKm) || spanKm <= 0) return interval;
-  for (const candidate of DISTANCE_TICK_INTERVALS_KM) {
-    interval = candidate;
-    if (Math.floor(spanKm / candidate) + 1 <= maxTicks) break;
-  }
-  return interval;
-}
-
-// 軸目盛り専用の距離表記。目盛り値は常に km ラダーの丸い数なので、fmtDist の小数
-// 表示だと ".00" だけが残って PADDING_LEFT からはみ出す — 整数に丸める。
-function fmtAxisDist(m: number): string {
-  if (Math.abs(m) >= 1e6) return `${Math.round(m / 1e6)} Mm`;
-  if (Math.abs(m) >= 1e3) return `${Math.round(m / 1e3)} km`;
-  return `${Math.round(m)} m`;
-}
-
-// centerM を中央に置いた幅 spanM の距離軸 [m]。目盛りは km 単位のラダーから選ぶ。
-// floorAtZero は下端を 0 未満にせず、その分だけ上端へ span を寄せる(高度は 0 未満が
-// 意味を持たないため)。
-export function distanceAxis(
-  centerM: number, spanM: number, maxTicks: number, caption: string, floorAtZero = false,
-): ChartAxis {
-  const span = isFinite(spanM) && spanM > 0 ? spanM : 0;
-  const center = isFinite(centerM) ? centerM : 0;
-  if (span === 0) return { min: center, max: center, ticks: [], caption };
-  let min = center - span / 2;
-  let max = center + span / 2;
-  if (floorAtZero && min < 0) { max -= min; min = 0; }
-  const intervalM = chooseDistanceTickIntervalKm(span / 1000, maxTicks) * 1000;
-  const firstTick = Math.ceil(min / intervalM) * intervalM;
-  const ticks: ChartTick[] = [];
-  for (let value = firstTick; value <= max; value += intervalM) {
-    ticks.push({ value, label: fmtAxisDist(value) });
-  }
-  return { min, max, ticks, caption };
 }

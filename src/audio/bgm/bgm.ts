@@ -9,6 +9,7 @@
 import { BGM_TRACKS } from './tracks/tracks';
 import { Conductor } from './conductor';
 import { AudioEngine } from '../audio-engine';
+import { trackCycleDurationSec } from './track-cycle';
 
 const BGM_VOL_KEY = 'tepui.settings.bgm_vol'; // localStorage キー
 const PUMP_INTERVAL_MS = 120; // スケジューラを回す間隔
@@ -160,6 +161,22 @@ export class Bgm {
   stopAudition(): void {
     this.disposeAudition();
     this.syncPump();
+  }
+
+  // 試聴中の曲を、一巡の中の timeSec 秒の位置へ飛ばす。試聴していなければ何もしない。
+  seekAudition(timeSec: number): void {
+    this.audition?.seek(timeSec);
+  }
+
+  // 試聴中の曲の、一巡の中での経過秒数。試聴していなければ 0。
+  auditionElapsedSec(): number {
+    return this.audition?.elapsedSec ?? 0;
+  }
+
+  // 指定した曲が一巡する長さ(秒)。一巡という概念を持たない曲では 0。
+  auditionDurationSec(index: number): number {
+    const track = BGM_TRACKS[index];
+    return track ? trackCycleDurationSec(track) : 0;
   }
 
   // 設定画面が閉じた。試聴の線を畳み、ゲーム中の BGM を元へ戻す。

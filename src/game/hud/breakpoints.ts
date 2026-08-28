@@ -19,9 +19,8 @@ export const MQ_COARSE_SHORT = `${MQ_COARSE} and ${MQ_SHORT}`;
 
 // 現在のビューポート幅が compact かどうかをその場で判定する。pointer:coarse の判定
 // (pointer-precision.ts の isCoarsePointer)と異なり起動時に固定せず毎回評価する —
-// 画面幅は回転・リサイズで実際に変わり、これを使う箇所(初期折りたたみ状態の決定、
-// ボトムシート化の判断)はいずれも頻繁に呼ばれる per-frame の経路ではなく、
-// パネルを開く/組み立てるという離散的な瞬間にしか読まないため、都度の再評価で構わない。
+// 画面幅は回転・リサイズで実際に変わるため、頻繁に呼ばれる per-frame の経路ではなく
+// パネルを開く/組み立てるという離散的な瞬間に読む前提とし、都度の再評価で構わない。
 export function isCompactViewport(): boolean {
   return typeof matchMedia === 'function' && matchMedia(MQ_COMPACT).matches;
 }

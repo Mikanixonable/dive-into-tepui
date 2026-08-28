@@ -3,9 +3,9 @@ import * as THREE from 'three/webgpu';
 import { qRotate, randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../../physics/solar-system';
-import { randSym } from '../../physics/random';
+import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
-import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../physics/vec3';
+import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
 import type { Ephemeris } from '../../physics/ephemeris';
 import * as C from '../const';
 import { Input } from '../input/input';
@@ -19,7 +19,23 @@ import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { Stage } from '../stages/stage';
 import { Player } from './player';
-import type { FireSaveData } from '../save-data';
+import type { FireSaveData } from '../save/save-data';
+
+const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
+
+// 1発あたりに砲身へ入る熱量 [J]。発射ガスの熱の大半は砲身の側が受け取る。
+const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
+
+export const BARREL_MASS = 300; // [kg]
+
+const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
+const BULLET_SPREAD = 0.002; // 散布界 [rad]
+
+const BULLET_LIFETIME = 240; // 保険としての寿命 [sim s]
+const RECOIL_DV = 0.04; // 反動 [m/s]
+
+const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
+const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 
 export type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
 
@@ -50,7 +66,7 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 export class PlayerFire {
   rounds = C.MAG_ROUNDS;
   mags = C.INITIAL_MAGS - 1;
-  barrel = C.MAGS_PER_BARREL;
+  barrel = MAGS_PER_BARREL;
 
   // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。交換で切り離すときに
   // そのまま排出されるデブリへ移る。
@@ -111,6 +127,13 @@ export class PlayerFire {
       this.mags--;
       this.rounds = C.MAG_ROUNDS;
     }
+  }
+
+  // 装填中の残弾・予備マガジン・バレル寿命を初期積載の状態まで満タンにする。
+  refillFull(): void {
+    this.rounds = C.MAG_ROUNDS;
+    this.mags = C.INITIAL_MAGS - 1;
+    this.barrel = MAGS_PER_BARREL;
   }
 
   // 発射状態を強制的に解除する。
@@ -177,7 +200,7 @@ export class PlayerFire {
     // 起動時のタイムラグ
     if (justStartedFiring) {
       this._worldSfx.spinUp();
-      this.cooldown = C.SPINUP_TIME;
+      this.cooldown = SPINUP_TIME;
       return;
     }
 
@@ -201,7 +224,7 @@ export class PlayerFire {
         return;
       case 'barrel-reload':
         this.spawnEjectedMagazineFrame(this.player);
-        this.cooldown = C.RELOAD_TIME;
+        this.cooldown = RELOAD_TIME;
         this.dropBarrel(this.player);
         this._worldSfx.playReload();
         return;
@@ -224,7 +247,7 @@ export class PlayerFire {
     this.barrel--;
     if (this.barrel > 0) return 'mag-reload';
 
-    this.barrel = C.MAGS_PER_BARREL;
+    this.barrel = MAGS_PER_BARREL;
     return 'barrel-reload';
   }
 
@@ -237,8 +260,8 @@ export class PlayerFire {
     if (!canReload) return false;
     this.mags--;
     this.rounds = C.MAG_ROUNDS;
-    this.barrel = C.MAGS_PER_BARREL;
-    this.cooldown = C.RELOAD_TIME;
+    this.barrel = MAGS_PER_BARREL;
+    this.cooldown = RELOAD_TIME;
     this._worldSfx.playReload();
     this.dropBarrel(this.player);
     return true;
@@ -264,14 +287,14 @@ export class PlayerFire {
     this.player.state = kinematicState(
       this.player.state.t,
       this.player.state.r,
-      addScaled(this.player.state.v, fwd, -C.RECOIL_DV),
+      addScaled(this.player.state.v, fwd, -RECOIL_DV),
     );
     this.dropCasing(this.player, muzzle);
     this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
     activeStage.scoreCounter.recordShot();
-    this.player.absorbHeat(C.GUN_HEAT_PER_ROUND / C.PLAYER_MASS);
-    this.pendingBarrelJoules += C.GUN_BARREL_HEAT_PER_ROUND;
+    this.player.absorbHeat(GUN_HEAT_PER_ROUND / C.PLAYER_MASS);
+    this.pendingBarrelJoules += GUN_BARREL_HEAT_PER_ROUND;
     this._worldSfx.fire();
   }
 
@@ -282,7 +305,7 @@ export class PlayerFire {
     const sunDir = ephemeris.sunDirFrom(ship.state.r, ship.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
     // 機首方向に散布角を加えた発射方向
-    const spread = Math.abs(randSym(C.BULLET_SPREAD)) * spreadScale;
+    const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
     const bullet = new Bullet(
       kinematicState(
@@ -290,7 +313,7 @@ export class PlayerFire {
         addScaled(muzzle, fwd, 1.5),
         addScaled(ship.state.v, dir, ship.averageMuzzleVelocity),
       ),
-      C.BULLET_LIFETIME,
+      BULLET_LIFETIME,
       'player',
       'normal',
       ship.weaponDamage,
@@ -344,7 +367,7 @@ export class PlayerFire {
       C.BARREL_RADIATING_AREA_PER_MASS, C.BARREL_SPECIFIC_HEAT, dt);
     // 溜まっていた発射ガスの熱を、この区間で一度だけ温度へ変える。
     if (this.pendingBarrelJoules === 0) return;
-    const rise = this.pendingBarrelJoules / (C.BARREL_MASS * C.BARREL_SPECIFIC_HEAT);
+    const rise = this.pendingBarrelJoules / (BARREL_MASS * C.BARREL_SPECIFIC_HEAT);
     this.barrelTemperature += rise;
     this.barrelDeviation += rise;
     this.pendingBarrelJoules = 0;

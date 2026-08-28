@@ -27,7 +27,7 @@ import {
 } from '../../src/physics/thermal';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Vec3, add, dot, len, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, add, dot, len, sub, v3 } from '../../src/math/vec3';
 import * as C from '../../src/game/const';
 import { atmosphericMaxStep, simulationMaxStep } from '../../src/game/simulation/time-step';
 import { MU_EARTH, R_EARTH, SHIP_BCINV, buildEphemeris } from './common';

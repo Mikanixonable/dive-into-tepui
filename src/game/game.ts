@@ -1,7 +1,6 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
-import { FloatingOrigin } from './floating-origin';
-import { v3 } from '../physics/vec3';
+import { v3 } from '../math/vec3';
 import type { PerfCounts } from '../perf-meter';
 import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
 import { FrameSections, SECTION } from '../frame-sections';
@@ -17,10 +16,10 @@ import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
 import { DisplayWindowManager } from './display-window-manager';
 import { PlanGuide } from './plan/plan-guide';
-import { SimSpeedManager } from './sim-speed-manager';
+import { SimSpeedManager } from './simulation/sim-speed-manager';
 import { EntityManager } from './simulation/entity-manager';
 import { FutureCelestialBodies } from './simulation/future-celestial-bodies';
-import { EntityLineManager } from './entity-line-manager';
+import { EntityLineManager } from './lines/entity-line-manager';
 import { Simulator } from './simulation/simulator';
 import { Predictor } from './simulation/predictor';
 import { Input } from './input/input';
@@ -36,18 +35,18 @@ import type { RenderStyle } from '../render/render-style';
 import { EnvironmentScene } from './celestial/environment-scene';
 import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
-import { NanWatchdog } from './nan-watchdog';
+import { NanWatchdog } from './simulation/nan-watchdog';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
 import { OrbitReferenceSelector } from './orbit-reference';
-import { MapPickables } from './map-pickables';
-import { OrbitPickables } from './orbit-pickables';
-import { MapContextActions } from './map-context-actions';
+import { MapPickables } from './pickable/map-pickables';
+import { OrbitPickables } from './pickable/orbit-pickables';
+import { MapContextActions } from './pickable/map-context-actions';
 import { Navball } from './navball/navball';
-import { GameSaveData } from './save-data';
+import { GameSaveData } from './save/save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
-import { Docking } from './docking';
-import { DockingGuide } from './docking-guide';
+import { Docking } from './docking/docking';
+import { DockingGuide } from './docking/docking-guide';
 import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 import { CombatHudController, MapHudController } from './hud/view-hud-controller';
@@ -525,10 +524,6 @@ export class Game {
     // update() が確定させた表示窓をそのまま読める。
     const displayWindow = this.displayWindowManager.current;
     this.viewBadge.sync(this.activeStage.stageClass.selectLabel, this.viewBadgeContext());
-    // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
-    // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
-    // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
-    const fo = new FloatingOrigin(this.cameraSystem.activeCameraPos, activeControllable?.state.v ?? v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
@@ -540,8 +535,9 @@ export class Game {
     // sync フェーズの frameTransformAt 呼び出しも同じ表示時刻の celestialBodies を見るように揃える。
     this.frameAnchors.update(displayCelestialBodies);
 
-    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
-    this.cameraSystem.sync(fo);
+    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
+    // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
+    const fo = this.cameraSystem.sync(activeControllable?.state.v ?? v3());
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
@@ -558,8 +554,13 @@ export class Game {
       this.markerManager,
     );
 
-    const orbitRef = player
-      ? this.orbitReference.resolve(player.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, player.state.t)
+    // 基地操作中もその基地を基準に軌道パネルが解決するのと揃える(orbit-panel.ts も同じ
+    // activeControllableEntity を使う) — player だけを見ると、基地操作中は常に undefined になり
+    // 軌道パネルの表示と3D軌道線の基準がずれる。
+    const orbitRef = activeControllable
+      ? this.orbitReference.resolve(
+        activeControllable.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, activeControllable.state.t,
+      )
       : undefined;
     this.entities.syncPlayers(player, fo, this.cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
     this.entities.syncDetachedBoosters(fo, this.cameraSystem, displayTime, style, visibilityPolicy);
@@ -596,7 +597,13 @@ export class Game {
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris);
+    // 軌道線(3D描画)は戦闘ビューだけ orbitRef の固定設定に従う。マップビューは軌道情報パネルの
+    // 設定に関わらず常に自動選択のまま描く(orbit-info.ts の数値表示・軌道要素アイコンは
+    // syncPlayers 側で orbitRef をそのまま使うので、この絞り込みの影響を受けない)。
+    this.entityLines.sync(
+      displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris,
+      overviewMode ? undefined : orbitRef,
+    );
     // 軌道線の右クリック当たり判定向けの候補列。各軌道線が今フレーム焼いたサンプルを読むため、
     // environment.sync/entityLines.sync の後に組む。
     this.orbitPickables.refresh(displayWindow, this.frameAnchors);

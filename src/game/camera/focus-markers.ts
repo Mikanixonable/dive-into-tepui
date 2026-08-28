@@ -1,23 +1,27 @@
 // マップモードのフォーカス対象(天体・ラグランジュ点)ラベルの算出と HUD マーカーへの反映。
-import { Vec3, v3, sub, len } from '../../physics/vec3';
+import { Vec3, v3, sub, len } from '../../math/vec3';
 import { CelestialBody, CelestialBodyId, OrbitingId, strongestAttractor } from '../../physics/celestial-body';
 import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
-import { MarkerManager } from '../marker/marker-manager';
+import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { celestialBodyName } from '../hud/frame/frame-labels';
 import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibility';
 import { bodyClassOf, BodyClass } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
-import {
-  DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, FOCUS_ICON_PRIORITY_PX, FOCUS_LABEL_PRIORITY_PX,
-  LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY,
-} from '../const';
-import type { MapPickable } from '../map-pickable';
+import { DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
+import type { MapPickable } from '../pickable/map-pickable';
 import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-glyphs';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
 import { resolveCrowdingWinner } from '../marker/crowding';
+
+// 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
+const FOCUS_LABEL_PRIORITY_PX = 40;
+
+// 位置の点(アイコン)側の混雑判定。名前(FOCUS_LABEL_PRIORITY_PX)より小さい値にし、名前だけが
+// 間引かれて点は残る距離帯を作る。
+const FOCUS_ICON_PRIORITY_PX = 16;
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number; dist: number };
@@ -66,14 +70,17 @@ function lagrangeMarkerLabel(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
   return `L${n}\n${celestialBodyName(id)}`;
 }
 
+// 陣営種別ごとのサブ行記号。mk-ally には専用の記号を持たせず、item.sym からの
+// フォールバックに委ねる。
+const SUB_LABEL_GLYPH_BY_KIND: Partial<Record<CombatMarkerKind, string>> = {
+  self: '▲', base: '⬡', enemy: '△', ammo: '▣', fuel: '◈',
+};
+
 // サブ行テキスト用のクリーンな Unicode 記号を取得する(SVG タグ文字列を避ける)。
 function cleanSubLabelGlyph(item: GroupedMarkerItem): string {
-  const cls = item.cls;
-  if (cls.includes('mk-self')) return '▲';
-  if (cls.includes('mk-base')) return '⬡';
-  if (cls.includes('mk-enemy')) return '△';
-  if (cls.includes('mk-ammo')) return '▣';
-  if (cls.includes('mk-fuel')) return '◈';
+  const kind = combatMarkerKindOf(item.cls);
+  const glyph = kind ? SUB_LABEL_GLYPH_BY_KIND[kind] : undefined;
+  if (glyph) return glyph;
   if (item.sym && !item.sym.trim().startsWith('<')) return item.sym.trim();
   return '▲';
 }
@@ -542,11 +549,11 @@ export class FocusMarkers {
         let nFuel = 0;
 
         for (const entry of entries) {
-          const item = entry.item;
-          if (item.cls.includes('mk-enemy')) nEnemy++;
-          else if (item.cls.includes('mk-base')) nBase++;
-          else if (item.cls.includes('mk-ammo')) nAmmo++;
-          else if (item.cls.includes('mk-fuel')) nFuel++;
+          const kind = combatMarkerKindOf(entry.item.cls);
+          if (kind === 'enemy') nEnemy++;
+          else if (kind === 'base') nBase++;
+          else if (kind === 'ammo') nAmmo++;
+          else if (kind === 'fuel') nFuel++;
           else nAlly++;
         }
 

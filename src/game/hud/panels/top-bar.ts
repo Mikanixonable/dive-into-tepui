@@ -1,23 +1,25 @@
 // 画面全体のトップバー(#hud-topbar)の同期: MET・時間加速・NODE WARP。
 // 自機の有無に関係なく常に出す画面全体の状態。
-import { SIM_EPOCH_SEC, fmtDateTime, fmtElapsedUnits, fmtTime } from '../utils';
+import { SyncThrottle } from '../sync-throttle';
+import { fmtDateTime, fmtElapsedUnits, setElementText, fmtTime } from '../utils';
+import { SIM_EPOCH_SEC } from '../../simulation/sim-epoch';
 import type { Game } from '../../game';
 import * as C from '../../const';
 
 const SYNC_INTERVAL_MS = 100;
 
 export class TopBar {
-  private nextSyncAt = 0;
+  private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
 
-  constructor(private readonly els: Map<string, HTMLElement>) {}
+  public constructor(private readonly els: Map<string, HTMLElement>) {}
 
-  sync(game: Game): void {
-    this.setText('met', `${fmtDateTime(SIM_EPOCH_SEC + game.simulator.simTime)} / T+ ${fmtElapsedUnits(game.simulator.simTime)}`);
+  // MET を毎フレーム、時間加速と NODE WARP の残りを間引いて反映する。
+  public sync(game: Game): void {
+    setElementText(this.els, 'met', `${fmtDateTime(SIM_EPOCH_SEC + game.simulator.simTime)} / T+ ${fmtElapsedUnits(game.simulator.simTime)}`);
 
-    const now = performance.now();
-    if (now < this.nextSyncAt) return;
-    this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    if (!this.throttle.due()) return;
 
+    // 時間加速セレクトを初回だけ選択肢で満たし、以後は選択値と表示を現在の速度へ合わせる。
     const simSpeedLabel = `×${game.simSpeedManager.simSpeed}`;
     const autoWarpRealRemain = game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime);
     const simSpeedEl = this.els.get('sim-speed');
@@ -37,17 +39,12 @@ export class TopBar {
       simSpeedEl.title = game.isPaused ? '一時停止中' : `時間加速 ${simSpeedLabel}${warpRemain}`;
       simSpeedEl.classList.toggle('sim-speed-hot', simSpeedLabel !== '×1' || game.isPaused);
     }
+    // NODE WARP の残り時間表示。
     const autoWarpSimRemain = game.simSpeedManager.remainingSimulationSeconds(game.simulator.simTime);
     const nodeWarpEl = this.els.get('node-warp-remain');
     if (nodeWarpEl) {
       nodeWarpEl.textContent = autoWarpSimRemain === null ? '—' : fmtTime(autoWarpSimRemain);
       nodeWarpEl.classList.toggle('sim-speed-hot', autoWarpSimRemain !== null);
     }
-  }
-
-  // id 要素のテキストを、変化があるときだけ書き換える。
-  private setText(id: string, text: string): void {
-    const e = this.els.get(id);
-    if (e && e.textContent !== text) e.textContent = text;
   }
 }

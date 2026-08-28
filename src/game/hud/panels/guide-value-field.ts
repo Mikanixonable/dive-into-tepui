@@ -1,9 +1,10 @@
 // 軌道ガイドの設定行に使う「スライダー+数値入力」と色入力の部品。値そのものの意味(0〜1 の
 // 族範囲、対数の振幅、位相のラジアン)は写像として持ち、行の組み立てと同期を1箇所へ集約する。
-import { Slider, ValueInput } from '../widgets';
+import { Button, Slider, ValueInput } from '../widgets';
 import {
   MAX_LINES_PER_KIND, MAX_ZERO_VELOCITY_CURVES, type DirectionMarkerMode,
 } from '../../celestial/orbit-guide-settings';
+import { SUN_SYNC_REVS_PER_DAY_RANGE } from '../../../physics/earth-reference-orbits';
 
 // 進行方向マーカーの出し方(SegmentedControl の選択肢)。族・地球専用参照軌道の双方が使う。
 export const DIRECTION_ITEMS: readonly (readonly [DirectionMarkerMode, string])[] = [
@@ -38,12 +39,18 @@ export const RANGE_MAPPING: ValueMapping = {
 
 export const OPACITY_MAPPING: ValueMapping = RANGE_MAPPING;
 
-export const COUNT_MAPPING: ValueMapping = {
-  sliderMin: 1, sliderMax: MAX_LINES_PER_KIND, sliderStep: 1,
-  toSlider: (v) => Math.round(v), fromSlider: (raw) => Math.round(raw),
-  format: (v) => String(Math.round(v)), parse: (text) => Math.round(clamp(Number(text), 1, MAX_LINES_PER_KIND)),
-  inputMin: 1, inputMax: MAX_LINES_PER_KIND, inputStep: 1,
-};
+// 1〜max の整数刻みで丸める ValueMapping。本数・周回数・回帰日数など、意味は違うが刻み方が
+// 同一の値をまとめて作る。
+function integerCountMapping(max: number): ValueMapping {
+  return {
+    sliderMin: 1, sliderMax: max, sliderStep: 1,
+    toSlider: (v) => Math.round(v), fromSlider: (raw) => Math.round(raw),
+    format: (v) => String(Math.round(v)), parse: (text) => Math.round(clamp(Number(text), 1, max)),
+    inputMin: 1, inputMax: max, inputStep: 1,
+  };
+}
+
+export const COUNT_MAPPING: ValueMapping = integerCountMapping(MAX_LINES_PER_KIND);
 
 // リサジュー軌道の振幅(L点局所γ単位に対する無次元比)。系ごとに実距離換算が数桁違うため
 // 無次元で持ち、Richardson近似が発散しない目安の範囲(0〜0.3)に収める。
@@ -72,12 +79,7 @@ export const PHASE_MAPPING: ValueMapping = {
   inputMin: 0, inputMax: Number((2 * Math.PI).toFixed(2)), inputStep: 0.01, unit: 'rad',
 };
 
-export const CYCLES_MAPPING: ValueMapping = {
-  sliderMin: 1, sliderMax: 30, sliderStep: 1,
-  toSlider: (v) => Math.round(v), fromSlider: (raw) => Math.round(raw),
-  format: (v) => String(Math.round(v)), parse: (text) => Math.round(clamp(Number(text), 1, 30)),
-  inputMin: 1, inputMax: 30, inputStep: 1,
-};
+export const CYCLES_MAPPING: ValueMapping = integerCountMapping(30);
 
 // ゼロ速度曲線のヤコビ定数。地球-月系(L1≈3.19)から太陽-地球系(L1≈3.0000009)まで跨ぐので、
 // 実務上使う範囲を広めに取る。
@@ -98,6 +100,8 @@ export interface ValueField {
   readonly input: ValueInput;
 }
 
+// ラベル+スライダー+数値入力の1行を組む。mapping が値⇔スライダー生値⇔表示文字列の変換を
+// 持ち、どちらを操作しても他方とonCommitへ揃った値が伝わる。
 export function buildValueField(label: string, mapping: ValueMapping, onCommit: (value: number) => void): ValueField {
   const row = document.createElement('div');
   row.className = 'w-group orbit-guide-value-row';
@@ -110,6 +114,7 @@ export function buildValueField(label: string, mapping: ValueMapping, onCommit: 
   sliderCol.className = 'slider-col';
   row.appendChild(sliderCol);
 
+  // スライダー操作: 生値を mapping.fromSlider で実値へ戻し、数値入力欄へも書き戻す。
   const slider = new Slider({ min: mapping.sliderMin, max: mapping.sliderMax, step: mapping.sliderStep }, (raw) => {
     const value = mapping.fromSlider(raw);
     input.setValue(mapping.format(value));
@@ -117,6 +122,7 @@ export function buildValueField(label: string, mapping: ValueMapping, onCommit: 
   });
   sliderCol.appendChild(slider.element);
 
+  // 数値入力欄の確定: mapping.parse でクランプし、スライダー側の位置も揃える。
   const input = new ValueInput({
     type: 'number', min: mapping.inputMin, max: mapping.inputMax, step: mapping.inputStep,
   }, (text) => {
@@ -136,11 +142,35 @@ export function buildValueField(label: string, mapping: ValueMapping, onCommit: 
   return { row, slider, input };
 }
 
+// buildValueField が作った行を現在値へ合わせる。数値入力欄はフォーカス中(編集中)なら
+// 書き換えない。
 export function syncValueField(field: ValueField, mapping: ValueMapping, value: number): void {
   if (document.activeElement !== field.input.element) field.input.setValue(mapping.format(value));
   field.slider.setValue(mapping.toSlider(value));
 }
 
+// 種類1行の見出し(トグルボタン)+設定パネルの骨組み。設定パネルは呼び出し側が中身を積んだ後、
+// 表示トグルに応じて .hidden を付け外しする。
+export function buildKindRowHeading(
+  parent: HTMLElement, label: string, onToggle: () => void, extraHeadingClass?: string,
+): { readonly heading: Button; readonly configPanel: HTMLElement } {
+  const root = document.createElement('div');
+  root.className = 'orbit-guide-kind-row';
+  const heading = new Button(label, onToggle);
+  heading.element.classList.add('orbit-guide-kind-heading-btn');
+  if (extraHeadingClass !== undefined) heading.element.classList.add(extraHeadingClass);
+  const headingRow = document.createElement('div');
+  headingRow.className = 'orbit-guide-kind-heading';
+  headingRow.appendChild(heading.element);
+  root.appendChild(headingRow);
+  const configPanel = document.createElement('div');
+  configPanel.className = 'orbit-guide-kind-config hidden';
+  root.appendChild(configPanel);
+  parent.appendChild(root);
+  return { heading, configPanel };
+}
+
+// ラベル+色入力(<input type=color>)の1行を組む。
 export function buildColorField(label: string, value: number, onCommit: (value: number) => void): { readonly row: HTMLElement; readonly input: ValueInput } {
   const row = document.createElement('div');
   row.className = 'w-group orbit-guide-color-row';
@@ -159,22 +189,32 @@ export function hexColorString(value: number): string {
 }
 
 // 太陽同期準回帰軌道・ドーンダスク軌道の回帰日数(整数日)。実用域の1〜30日を取る。
-export const REPEAT_DAYS_MAPPING: ValueMapping = {
-  sliderMin: 1, sliderMax: 30, sliderStep: 1,
-  toSlider: (v) => Math.round(v), fromSlider: (raw) => Math.round(raw),
-  format: (v) => String(Math.round(v)), parse: (text) => Math.round(clamp(Number(text), 1, 30)),
-  inputMin: 1, inputMax: 30, inputStep: 1,
-};
+export const REPEAT_DAYS_MAPPING: ValueMapping = integerCountMapping(30);
 
 // 回帰日数の間に周回する回数(整数)。高度200km前後で1日16周弱になるので、30日ぶんまで
-// 動かせるよう上限を広めに取る。太陽同期条件を満たさない組み合わせはガイド線が消えるだけで
-// 範囲自体は曲げない(計画書 8 の #9 と同じ方針)。
-export const REVS_PER_REPEAT_MAPPING: ValueMapping = {
-  sliderMin: 1, sliderMax: 480, sliderStep: 1,
-  toSlider: (v) => Math.round(v), fromSlider: (raw) => Math.round(raw),
-  format: (v) => String(Math.round(v)), parse: (text) => Math.round(clamp(Number(text), 1, 480)),
-  inputMin: 1, inputMax: 480, inputStep: 1,
-};
+// 動かせるよう上限を広めに取る。太陽同期条件を満たさない組み合わせはスライダーの色で示すだけで、
+// 範囲自体は曲げない。
+export const REVS_PER_REPEAT_MAPPING: ValueMapping = integerCountMapping(480);
+
+function sliderRatio(mapping: ValueMapping, value: number): number {
+  return (mapping.toSlider(value) - mapping.sliderMin) / (mapping.sliderMax - mapping.sliderMin);
+}
+
+// 回帰日数・周回数スライダーのトラックへ、もう一方の現在値に対して太陽同期条件を満たす範囲を
+// 色分けして示す(可動範囲自体は変えない)。
+export function syncSunSyncValidRange(
+  repeatDaysField: ValueField, revsPerRepeatField: ValueField, repeatDays: number, revsPerRepeat: number,
+): void {
+  const { min, max } = SUN_SYNC_REVS_PER_DAY_RANGE;
+  repeatDaysField.slider.setValidRange(
+    sliderRatio(REPEAT_DAYS_MAPPING, revsPerRepeat / max),
+    sliderRatio(REPEAT_DAYS_MAPPING, revsPerRepeat / min),
+  );
+  revsPerRepeatField.slider.setValidRange(
+    sliderRatio(REVS_PER_REPEAT_MAPPING, repeatDays * min),
+    sliderRatio(REVS_PER_REPEAT_MAPPING, repeatDays * max),
+  );
+}
 
 // 近地点高度 [m]。モルニヤ・ツンドラ軌道の実用域(数百 km)を UI 上は km で見せる。
 export const PERIGEE_ALTITUDE_MAPPING: ValueMapping = {
@@ -193,10 +233,4 @@ export const RAAN_MAPPING: ValueMapping = {
 };
 
 // ゼロ速度曲線を何本描くか。上限は設定モジュールが持つ。
-export const ZERO_VELOCITY_COUNT_MAPPING: ValueMapping = {
-  sliderMin: 1, sliderMax: MAX_ZERO_VELOCITY_CURVES, sliderStep: 1,
-  toSlider: (v) => Math.round(v), fromSlider: (raw) => Math.round(raw),
-  format: (v) => String(Math.round(v)),
-  parse: (text) => Math.round(clamp(Number(text), 1, MAX_ZERO_VELOCITY_CURVES)),
-  inputMin: 1, inputMax: MAX_ZERO_VELOCITY_CURVES, inputStep: 1,
-};
+export const ZERO_VELOCITY_COUNT_MAPPING: ValueMapping = integerCountMapping(MAX_ZERO_VELOCITY_CURVES);

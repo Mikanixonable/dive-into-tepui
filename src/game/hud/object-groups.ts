@@ -3,7 +3,7 @@
 import type { CelestialRegistry } from '../../physics/solar-system';
 import { bodyClassOf } from '../celestial/body-class';
 import { celestialBodyName } from './frame/frame-labels';
-import type { MapPickable } from '../map-pickable';
+import type { MapPickable } from '../pickable/map-pickable';
 import type { ObjectPickerGroup } from './windows/object-picker';
 
 const GROUP_LABELS = ['恒星', '惑星', '準惑星', '衛星', '小天体', 'ラグランジュ点', '自艦', '敵', '基地', '弾薬', 'RCS燃料'] as const;
@@ -11,9 +11,18 @@ const GROUP_LABELS = ['恒星', '惑星', '準惑星', '衛星', '小天体', '�
 // id が `${親id}-l1`〜`${親id}-l5` の形かどうか(FocusMarkers のラグランジュ点ラベルの命名)。
 export const LAGRANGE_ID = /-l[1-5]$/;
 
+// 同じ命名を親天体と点番号へ分解する形。LAGRANGE_ID と別々に育てないよう並べて置く。
+const LAGRANGE_POINT_ID = /^(.+)-l([1-5])$/;
+
 // ラグランジュ点 id からその親天体の id を取り出す。ラグランジュ点でない id を渡すと無変換で返る。
 export function lagrangeParentId(id: string): string {
   return id.replace(LAGRANGE_ID, '');
+}
+
+// ラグランジュ点 id を親天体と点番号へ分解する。ラグランジュ点でなければ null。
+export function lagrangePoint(id: string): { readonly parentId: string; readonly point: number } | null {
+  const match = LAGRANGE_POINT_ID.exec(id);
+  return match ? { parentId: match[1]!, point: Number(match[2]) } : null;
 }
 
 // items をジャンル別にグループ分けする。値は MapPickable.id。空のグループは返さない。
@@ -51,8 +60,8 @@ export function groupPickables(
     }
   }
 
-  // カメラ基準のように「表示中の候補」ではなく、登録済み天体を全件選ばせる
-  // 呼び出し側では、表示設定で除外された天体も補う。
+  // includeAllRegistryBodies が true なら「表示中の候補」に限らず、表示設定で
+  // 除外された天体も含めて登録済み天体を全件補う。
   if (includeAllRegistryBodies) {
     for (const id of Object.keys(registry)) {
       if (bodyIds.has(id)) continue;

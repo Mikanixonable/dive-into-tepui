@@ -13,13 +13,13 @@ import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../sim-speed-manager';
+import { SimSpeedManager } from '../simulation/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../floating-origin';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { Simulator } from '../simulation/simulator';
-import type { StageSaveData } from '../save-data';
+import type { StageSaveData } from '../save/save-data';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -27,7 +27,7 @@ import type { ActivePlayerController } from '../active-controllable-controller';
 import type { CelestialBodyId } from '../../physics/celestial-body';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAtOrNull } from '../../physics/ephemeris-profile';
-import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../sim-epoch';
+import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../simulation/sim-epoch';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
@@ -100,7 +100,7 @@ export abstract class Stage {
   // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、開始時刻(startSimTime、省略時は
   // ゲーム既定のエポック)が近未来/遠未来いずれかの高精度期間に入っていれば精密暦パックを
   // 読み込み、どちらにも入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
-  static async createEphemeris(
+  public static async createEphemeris(
     phaseOffsets: Partial<Record<CelestialBodyId, number>>, onProgress?: (ratio: number) => void,
     startSimTime = 0,
   ): Promise<Ephemeris> {
@@ -113,31 +113,31 @@ export abstract class Stage {
     return new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, pack, SIM_EPOCH_JD_TDB);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
-  static readonly selectLockedSub: string | undefined = undefined;
+  public static readonly selectLockedSub: string | undefined = undefined;
   // タイトルのステージ選択ボタン列に並べない。
-  static readonly hiddenFromSelect: boolean = false;
+  public static readonly hiddenFromSelect: boolean = false;
   // 選択画面でこのステージを並べるタブの名前。表示のまとまりだけを決め、挙動には影響しない。
-  static readonly selectGroup: string = 'ステージモード';
+  public static readonly selectGroup: string = 'ステージモード';
 
   // このステージが解放済みかどうかをクリア回数から判定する。既定では常に解放。
-  static isUnlocked(_clearCounts: ClearCounts): boolean {
+  public static isUnlocked(_clearCounts: ClearCounts): boolean {
     return true;
   }
 
   // 自身のクラス。起動時の静的宣言はここから読む。
-  get stageClass(): StageClass {
+  public get stageClass(): StageClass {
     return this.constructor as unknown as StageClass;
   }
-  get id(): StageId { return this.stageClass.id; }
+  public get id(): StageId { return this.stageClass.id; }
 
   // ドックでの購入・修理・燃料補給を無償にするか。既定では通貨を消費する。
-  readonly freeProcurement: boolean = false;
+  public readonly freeProcurement: boolean = false;
   // 艦の軌道計画を自動実行させるか。既定では実行しない。
-  readonly executesPlans: boolean = false;
+  public readonly executesPlans: boolean = false;
   // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。
-  readonly authoring: ObjectAuthoring | null = null;
+  public readonly authoring: ObjectAuthoring | null = null;
 
-  readonly scoreCounter: ScoreCounter;
+  public readonly scoreCounter: ScoreCounter;
   protected readonly logistics: Logistics;
   private readonly statusPanel: StatusPanel;
 
@@ -154,10 +154,10 @@ export abstract class Stage {
   protected readonly _activePlayers: ActivePlayerController;
 
   private _phase: GamePhase;
-  get phase(): GamePhase { return this._phase; }
-  get isPlaying(): boolean { return this._phase === 'playing'; }
+  public get phase(): GamePhase { return this._phase; }
+  public get isPlaying(): boolean { return this._phase === 'playing'; }
   private _result: StageResult | null = null;
-  get result(): StageResult | null { return this._result; }
+  public get result(): StageResult | null { return this._result; }
   // 勝敗と結果画面の内容を同時に確定させる。表示は呼び出し側(Launcher)の役目。
   protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
     this._phase = phase;
@@ -168,7 +168,7 @@ export abstract class Stage {
   // saved が undefined ならスナップショットからの再開ではない新規開始で、スコア0・進行中・
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
-  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
@@ -203,7 +203,7 @@ export abstract class Stage {
 
   // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
   // ステージ固有の描画物を持つサブクラスが使う。
-  sync(
+  public sync(
     player: Player | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
     _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
@@ -239,28 +239,28 @@ export abstract class Stage {
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。
-  protected behaveAllEnemies(dt: number, player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  protected behaveAllEnemies(player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     for (const e of entities.enemies) {
-      if (e.alive) e.behave(dt, simTime, player, entities, simSpeed, this._ephemeris);
+      if (e.alive) e.behave(simTime, player, entities, simSpeed, this._ephemeris);
     }
   }
 
-  abstract briefingHtml(): string;
+  protected abstract briefingHtml(): string;
   // 初期配置。既定では何も置かない。
   protected init(_entities: EntityManager): void { }
   // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
-  abstract update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
+  public abstract update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
-  nextSimulationEventTime(_simTime: number): number | null { return null; }
-  applySimulationEvents(_simTime: number): void { }
+  public nextSimulationEventTime(_simTime: number): number | null { return null; }
+  public applySimulationEvents(_simTime: number): void { }
 
   // 残存敵数が 0 以下なら勝利。
-  checkWin(): boolean {
+  protected checkWin(): boolean {
     return this.scoreCounter.totalEnemiesSpawned - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
   }
   // 決着を「勝利」で確定させる。
-  onWin(simTime: number): void {
+  protected onWin(simTime: number): void {
     this.decide('won', {
       win: true,
       title: null,
@@ -269,12 +269,12 @@ export abstract class Stage {
   }
 
   // ステータスパネルに表示する補助メッセージ。既定では非表示(null)。
-  hudSubStatus(): string | null {
+  protected hudSubStatus(): string | null {
     return null;
   }
 
   // 原因によらず勝利判定を通す: 再突入・離脱でも残存数 0 なら決着させる。
-  recordEnemyDeath(enemy: Enemy, simTime: number, cause: EnemyDeathCause = 'killed'): void {
+  public recordEnemyDeath(enemy: Enemy, simTime: number, cause: EnemyDeathCause = 'killed'): void {
     if (cause === 'killed') {
       this.scoreCounter.recordKill();
       this._hud.hint(`${enemy.name} 撃破`);
@@ -291,7 +291,7 @@ export abstract class Stage {
   }
 
   // 敗北を記録し、reason を添えて決着を「敗北」で確定させる。
-  recordPlayerLost(reason: string): void {
+  public recordPlayerLost(reason: string): void {
     // isPlaying ガード: 勝利後に自機が再突入しても敗北で上書きしないよう。
     if (!this.isPlaying) return;
     this.decide('lost', {
@@ -303,13 +303,13 @@ export abstract class Stage {
 
   // statusPanel を片付ける。自前の DOM/シーンオブジェクトを持つ具象ステージは
   // super.dispose() を呼んでから続きを片付ける。
-  dispose(): void {
+  public dispose(): void {
     this.statusPanel.dispose();
   }
 
   // スコア・決着状態・補給タイマーをセーブデータへ変換する。固有の内訳を持つ具象ステージは
   // これを拡張した戻り値型で override する。
-  serialize(): StageSaveData {
+  public serialize(): StageSaveData {
     return {
       scoreCounter: this.scoreCounter.serialize(),
       phase: this._phase,

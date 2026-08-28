@@ -6,7 +6,7 @@
 // 頂点を t のどこに何個置くかは、画面上のサジッタと折れ角を見て毎フレーム決め直す。
 
 import * as THREE from 'three/webgpu';
-import { MaxHeap } from '../physics/max-heap';
+import { MaxHeap } from '../math/max-heap';
 import { CameraScale } from './camera-scale';
 import type { LineStyle } from './line-style';
 import { markOverlay } from './pipeline/lit-layer';

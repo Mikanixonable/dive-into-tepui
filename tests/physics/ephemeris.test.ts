@@ -1,7 +1,7 @@
 // ephemeris.ts の回帰テスト: Ephemeris クラスの合成(恒星→重心→惑星/衛星、重心補正)
 // が正しいこと。個々の軌道モデルの精度は kepler-orbit.test.ts / satellite-orbit.test.ts が担う。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { CelestialBodyDef, MU_EARTH, R_EARTH_EQ, bodyDef } from '../../src/physics/solar-system';
 import { MU_MOON, MU_SUN as MU_SUN_LOCAL, SOLAR_SYSTEM } from '../../src/physics/solar-system';
@@ -12,14 +12,16 @@ import { JULIAN_CENTURY, keplerOrbitState } from '../../src/physics/kepler-orbit
 import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { SIDEREAL_DAY } from '../../src/physics/solar-system';
-import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { toFrameState } from '../../src/physics/frame';
 import { bodyAnchorSource } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
+import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
 import { assertOmegaMatchesBasis } from './test-helpers';
 
 const YEAR = 365.25636 * 86400;
 const MOON_PERIOD = 27.321661 * 86400;
+const DAY = 86400;
 // 地球-月重心の日心ケプラー軌道(SOLAR_SYSTEM の宣言そのもの)。重心不変条件の
 // 検証で Ephemeris の合成結果と突き合わせる基準として使う。
 const EARTH_ORBIT: PlanetOrbit = (SOLAR_SYSTEM.earth as { orbit: PlanetOrbit }).orbit;
@@ -489,6 +491,40 @@ export function register(): void {
     const { axis } = eph.poleAt('venus', t)!;
     const { omega } = eph.spinRotationAt('venus', t)!;
     assert.ok(dot(omega, axis) < 0, `dot: ${dot(omega, axis)}`);
+  });
+
+  // 高精度暦パックの有効期間(CELESTIAL.md 2.2)を10日間だけに絞ったモックで、期間内/外の
+  // 境界をまたいで stateOf/orbitFrameRotationAt/orbitNormalAt を呼ぶ。
+  const preciseEpochJdTdb = 2451545;
+  const preciseValidDays = 10;
+  const mockPrecise: AbsoluteEphemeris = {
+    validStartJdTdb: preciseEpochJdTdb,
+    validEndJdTdb: preciseEpochJdTdb + preciseValidDays,
+    hasBody: (id) => id === 'earth' || id === 'moon',
+    barycentricStateOf: (id) => ({
+      r: id === 'earth' ? v3(0, 0, 0) : v3(4e8, 0, 0),
+      v: id === 'earth' ? v3(0, 0, 0) : v3(0, 1e3, 0),
+    }),
+  };
+  const analyticOnly = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {});
+  const withPrecise = new Ephemeris(
+    SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {}, mockPrecise, preciseEpochJdTdb,
+  );
+  const tOutsideValidity = (preciseValidDays + 5) * DAY;
+
+  test('ephemeris: 高精度暦パックの有効期間内では pack 由来の値を返す', () => {
+    const s = withPrecise.stateOf('moon', 0);
+    assert.ok(len(s.r) > 0 && Number.isFinite(len(s.r)));
+    assert.notEqual(s.r.x, analyticOnly.stateOf('moon', 0).r.x);
+  });
+
+  test('ephemeris: 有効期間を過ぎると例外を投げずに解析暦へフォールバックする', () => {
+    assert.doesNotThrow(() => withPrecise.stateOf('moon', tOutsideValidity));
+    assert.doesNotThrow(() => withPrecise.orbitFrameRotationAt('moon', tOutsideValidity));
+    assert.doesNotThrow(() => withPrecise.orbitNormalAt('moon', tOutsideValidity));
+    const fallback = withPrecise.stateOf('moon', tOutsideValidity);
+    const analytic = analyticOnly.stateOf('moon', tOutsideValidity);
+    assert.ok(len(sub(fallback.r, analytic.r)) < 1e-3, `期間外は解析暦と一致するはず: ${JSON.stringify(fallback.r)} vs ${JSON.stringify(analytic.r)}`);
   });
 }
 
