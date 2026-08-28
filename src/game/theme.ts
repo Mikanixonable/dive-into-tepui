@@ -77,7 +77,7 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
   },
   {
     id: 'dusk-rose', name: 'Dusk Rose', description: 'くすみローズと深いティールの対比', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#d98a94', accentNear: '#e8aab1', signal: '#2f6f6b',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#d98a94', accentNear: '#e8aab1', signal: '#388781',
   },
   {
     id: 'glacier-mint', name: 'Glacier Mint', description: 'ラベンダーとミントの淡いペア', tone: 'dark',
@@ -445,6 +445,55 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--safe-l': SAFE_AREA_LEFT,
   '--font-family': FONT_FAMILY,
 };
+
+function relativeLuminance(hex: string): number {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const channels = [value >> 16, value >> 8, value].map((channel) => (channel & 0xff) / 255);
+  const linear = channels.map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+}
+
+export function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+export interface ThemeContrastIssue {
+  readonly themeId: string;
+  readonly pair: string;
+  readonly ratio: number;
+  readonly minimum: number;
+}
+
+// 全プリセットのSemantic文字/非文字ペアに対するWCAG準拠の検査。tools/verify-theme-contrast.mjs
+// がビルド外から呼ぶため、src/ 内に参照が無くても消さない。
+export function themeContrastIssues(palette: ThemePalette): readonly ThemeContrastIssue[] {
+  const textPairs = [
+    ['text', palette.title, palette.surface1],
+    ['body', palette.body, palette.surface1],
+    ['muted', palette.muted, palette.surface1],
+    ['primary', palette.accent, palette.page],
+    ['signal', palette.signal, palette.page],
+    ['success', palette.success, palette.page],
+    ['warning', palette.warning, palette.page],
+    ['error', palette.error, palette.page],
+    ['info', palette.info, palette.page],
+  ] as const;
+  const issues: ThemeContrastIssue[] = textPairs.flatMap(([pair, foreground, background]) => {
+    const ratio = contrastRatio(foreground, background);
+    return ratio >= 4.5 ? [] : [{ themeId: palette.id, pair, ratio, minimum: 4.5 }];
+  });
+  const focusRatio = contrastRatio(palette.focus, palette.focusContrast);
+  if (focusRatio < 3) issues.push({ themeId: palette.id, pair: 'focus-keyline', ratio: focusRatio, minimum: 3 });
+  return issues;
+}
+
+export function allThemeContrastIssues(): readonly ThemeContrastIssue[] {
+  return THEME_PRESETS.flatMap(themeContrastIssues);
+}
 
 let injected = false;
 
