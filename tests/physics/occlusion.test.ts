@@ -1,6 +1,6 @@
 // occlusion.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { isOccluded, occlusionOpacity } from '../../src/physics/occlusion';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';

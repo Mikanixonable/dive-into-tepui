@@ -1,7 +1,7 @@
 // zero-velocity.ts の回帰テスト。ヤコビ定数の閉じた式・停留点性・ネックが開閉する順序・
 // 曲線上の点が f=0 を満たすことを、地球-月/太陽-地球の質量比で確かめる。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import {
   pseudoPotential, lagrangeJacobi, zeroVelocityCurves, LagrangeLabel,
 } from '../../src/physics/zero-velocity';
