@@ -3,7 +3,7 @@
 import * as C from '../const';
 import { KinematicState } from '../../physics/kinematic-state';
 import { sub, scale, len, type Vec3 } from '../../physics/vec3';
-import type { SphereHit } from '../../physics/base-collision';
+import type { SphereHit } from '../game-entity/base-collision';
 import { GameEntity } from '../game-entity/game-entity';
 import { Base } from '../game-entity/base';
 import {
