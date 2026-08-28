@@ -34,7 +34,7 @@ import {
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CelestialView } from './celestial-view';
-import { CELESTIAL_VIEWS, fallbackCelestialView } from './celestial-registry';
+import { CELESTIAL_APPEARANCES, fallbackCelestialAppearance } from './celestial-appearance';
 import { EarthView } from './earth-view';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
@@ -168,9 +168,9 @@ export class EnvironmentScene {
     this.scaleGrid = new ScaleGridView(scene);
 
     this.bodies = Object.keys(registry).map((id) =>
-      id in CELESTIAL_VIEWS
-        ? CELESTIAL_VIEWS[id as SolarSystemId].create(sunOcclusion, sunLight)
-        : fallbackCelestialView(registry, id, sunOcclusion, sunLight));
+      id in CELESTIAL_APPEARANCES
+        ? CELESTIAL_APPEARANCES[id as SolarSystemId].create(sunOcclusion, sunLight)
+        : fallbackCelestialAppearance(registry, id, sunOcclusion, sunLight));
     for (const body of this.bodies) body.build(scene);
 
     this.bodies.find((b): b is EarthView => b instanceof EarthView)?.setSpinPhase0(earthSpinPhase0);

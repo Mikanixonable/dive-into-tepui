@@ -2023,7 +2023,7 @@ export const SOLAR_SYSTEM = {
 } satisfies CelestialRegistry;
 
 // SOLAR_SYSTEM を satisfies で受けているため、リテラルなキー集合(SolarSystemId)がそのまま
-// 保たれる — CELESTIAL_VIEWS(game/celestial/celestial-registry.ts)はこれを Record の
+// 保たれる — CELESTIAL_APPEARANCES(game/celestial/celestial-appearance.ts)はこれを Record の
 // キーに使うことで、天体を1体追加すると表示名の欠落がコンパイルエラーになる。
 export type SolarSystemId = keyof typeof SOLAR_SYSTEM;
 
