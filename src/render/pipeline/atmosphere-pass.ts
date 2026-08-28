@@ -78,10 +78,10 @@ const outwardDepth = Fn((
 const depthToSpace = Fn((
   [radius, mu, surfaceRadius, scaleHeight]: readonly FloatNode[],
 ) => {
+  const ascending = outwardDepth(radius!, abs(mu!), surfaceRadius!, scaleHeight!);
   const perigee = max(radius!.mul(sqrt(max(float(1).sub(mu!.mul(mu!)), 0))), surfaceRadius!);
-  const descending = outwardDepth(perigee, float(0), surfaceRadius!, scaleHeight!).mul(2)
-    .sub(outwardDepth(radius!, abs(mu!), surfaceRadius!, scaleHeight!));
-  return select(greaterThan(mu!, 0), outwardDepth(radius!, abs(mu!), surfaceRadius!, scaleHeight!), descending);
+  const descending = outwardDepth(perigee, float(0), surfaceRadius!, scaleHeight!).mul(2).sub(ascending);
+  return select(greaterThan(mu!, 0), ascending, descending);
 });
 
 // レイリー散乱の位相関数。等方散乱を 1 とする目盛りなので、前後で 1.5、側方で 0.75 になる。
