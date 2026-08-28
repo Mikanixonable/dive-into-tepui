@@ -2,12 +2,12 @@
 // 「マニューバノードの実行時刻まで自動的に加速する」機能を担う。
 // マップモードの計画データそのものには依存しない — [N] キーの受け口と
 // どのノード時刻へ自動ワープするかは呼び出し側(PlanEditor)が決めて渡す。
-import * as C from './const';
-import { Hud } from './hud/hud';
-import { UiSfx } from '../audio/sfx/ui-sfx';
-import { KinematicState } from '../physics/kinematic-state';
-import type { Input } from './input/input';
-import { KEY_MAPPING as K } from './input/key-mapping';
+import * as C from '../const';
+import { Hud } from '../hud/hud';
+import { UiSfx } from '../../audio/sfx/ui-sfx';
+import { KinematicState } from '../../physics/kinematic-state';
+import type { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 
 export class SimSpeedManager {
   private levelIdx = 0;

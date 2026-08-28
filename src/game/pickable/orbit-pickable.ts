@@ -1,8 +1,8 @@
 // 右クリックの当たり判定にかける軌道線(公転軌道・船の軌道・軌道ガイド)の共通形と、
 // 画面上でクリック位置に最も近い軌道線を選ぶ処理。MapPickable(点)と違い、線分の列に対して
 // 最短距離で当たり判定する。
-import { Vec3 } from '../math/vec3';
-import type { ProjectFn } from './camera/camera-system';
+import { Vec3 } from '../../math/vec3';
+import type { ProjectFn } from '../camera/camera-system';
 
 export type OrbitPickKind = 'orbit-body' | 'orbit-ship' | 'orbit-guide';
 export type OrbitCalcMethod = 'analytic' | 'predicted' | 'guide';

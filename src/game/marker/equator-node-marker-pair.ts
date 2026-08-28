@@ -11,7 +11,7 @@ import { TickLabelMode, elementTimeLabel } from '../hud/orbit/calendar-ticks';
 import type { MarkerManager } from './marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker-glyphs';
 import type { ProjectFn } from '../camera/camera-system';
-import { MapPickable } from '../map-pickable';
+import { MapPickable } from '../pickable/map-pickable';
 import type { GameEntity } from '../game-entity/game-entity';
 
 // 交点アイコン。右クリックの被選択物であると同時に、マーカーに出す短いラベルを持つ。

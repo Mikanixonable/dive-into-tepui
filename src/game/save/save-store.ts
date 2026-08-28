@@ -1,4 +1,4 @@
-import { SaveIndex, GameSaveData } from '../save-data';
+import { SaveIndex, GameSaveData } from './save-data';
 
 // セーブの永続化だけを担う。索引とスナップショット本体の読み書きを Game 非依存の
 // JSON I/O として提供する。

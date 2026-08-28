@@ -40,7 +40,7 @@ import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import { Ephemeris } from '../../physics/ephemeris';
 import { Plan } from '../plan/plan';
-import type { PlayerSaveData, PlanSaveData } from '../save-data';
+import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart } from '../game-entity/parts';
 import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';

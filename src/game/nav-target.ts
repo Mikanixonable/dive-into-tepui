@@ -20,7 +20,7 @@ import { TickLabelMode, elementTimeLabel } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { CameraSystem } from './camera/camera-system';
-import { MapPickable } from './map-pickable';
+import { MapPickable } from './pickable/map-pickable';
 import type { GameEntity } from './game-entity/game-entity';
 import type { OrbitReference } from './orbit-reference';
 

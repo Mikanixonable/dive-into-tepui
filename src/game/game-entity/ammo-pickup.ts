@@ -10,7 +10,7 @@ import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import type { Attitude } from '../../physics/attitude';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { AmmoPickupSaveData } from '../save-data';
+import type { AmmoPickupSaveData } from '../save/save-data';
 
 const idAllocator = new EntityIdAllocator('ammo-');
 

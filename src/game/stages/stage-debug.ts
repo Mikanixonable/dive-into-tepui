@@ -6,8 +6,8 @@ import { Button, ToggleSwitch } from '../hud/widgets';
 import * as C from '../const';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../sim-speed-manager';
-import type { StageSaveData } from '../save-data';
+import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { StageSaveData } from '../save/save-data';
 
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
