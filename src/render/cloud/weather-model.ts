@@ -3,10 +3,12 @@
 // 空が出る。値はすべて見えのための調整値。
 import * as THREE from 'three/webgpu';
 import {
-  abs, acos, asin, clamp, cos, cross, dot, exp, float, fract, length, max, min, mix, mx_fractal_noise_float,
-  normalize, pow, smoothstep, uniform, vec2, vec3,
+  abs, acos, clamp, cross, dot, exp, float, fract, length, max, min, mix, mx_fractal_noise_float,
+  normalize, pow, smoothstep, uniform, vec2,
 } from 'three/tsl';
 import { R_EARTH } from '../../physics/solar-system';
+import { eastAt, latitudeOf, northAt } from './sphere-frame';
+import type { ClimateMap } from './climate-map';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 // 単位方向における天気。温度は [°C]、湿度は 0..1、風は東向き・北向きの成分 [m/s]。
@@ -21,9 +23,6 @@ export type CloudSample = {
   readonly opticalDepth: FloatNode;
   readonly top: FloatNode;
 };
-
-// 自転軸。正距円筒図法の v=0 がこの向きの極。
-const POLE = vec3(0, 1, 0);
 
 // 湿度の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
 const ADVECTION_PERIOD = 6 * 3600;
@@ -51,14 +50,17 @@ const HUMIDITY_NOISE_OCTAVES = 5;
 const TEMPERATURE_NOISE_FREQUENCY = 2;
 const TEMPERATURE_NOISE_OCTAVES = 3;
 
+// 平均湿度(海 1、陸 0)が湿度に効く重み。残りはノイズの取り分。
+const MEAN_HUMIDITY_WEIGHT = 0.4;
+
 export class WeatherModel {
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
   // 台風の中心の単位方向。
   private readonly vortexCenter: Vec3Uniform = uniform(new THREE.Vector3());
 
-  // 時刻 0 の天気で始める。
-  public constructor() {
+  // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布。
+  public constructor(private readonly climate: ClimateMap) {
     this.syncTime(0);
   }
 
@@ -76,17 +78,20 @@ export class WeatherModel {
 
   // 単位方向 direction における天気のグラフ。
   public weatherAt(direction: Vec3Node): WeatherSample {
-    const latitude = asin(clamp(direction.y, -1, 1));
-    const east = this.eastAt(direction);
-    const north = cross(direction, east);
+    const latitude = latitudeOf(direction);
+    const east = eastAt(direction);
+    const north = northAt(direction);
     const wind: Vec3Node = east.mul(this.zonalWind(latitude)).add(this.vortexWind(direction));
 
-    const temperature = cos(latitude).mul(35).sub(5)
+    const temperature = this.climate.meanTemperature(direction)
       .add(mx_fractal_noise_float(direction.mul(TEMPERATURE_NOISE_FREQUENCY), TEMPERATURE_NOISE_OCTAVES).mul(8));
-    // 赤道と ±60° で湿り、±30° と極で乾く帯へ、風で流した源と台風の湿った核を重ねる。
-    const band = cos(latitude.mul(6)).mul(0.15);
+    // 海陸の平均湿度へ、風で流した源と台風の湿った核を重ねる。
     const vortexCore = exp(this.vortexDistance(direction).div(VORTEX_CORE_RADIUS).pow(2).negate()).mul(0.3);
-    const humidity = clamp(float(0.55).add(band).add(this.advectedSource(direction, wind).mul(0.35)).add(vortexCore), 0, 1);
+    const humidity = clamp(
+      float(0.4).add(this.climate.meanHumidity(direction).mul(MEAN_HUMIDITY_WEIGHT))
+        .add(this.advectedSource(direction, wind).mul(0.35)).add(vortexCore),
+      0, 1,
+    );
 
     return { temperature, humidity, wind: vec2(dot(wind, east), dot(wind, north)) };
   }
@@ -96,12 +101,6 @@ export class WeatherModel {
     const opticalDepth = smoothstep(0.55, 0.85, weather.humidity).mul(8);
     const top = smoothstep(0.6, 0.95, weather.humidity).mul(smoothstep(0, 25, weather.temperature));
     return { opticalDepth, top };
-  }
-
-  // 東向きの単位接ベクトル。極では向きが決まらないので、長さに床を張って発散を避ける。
-  private eastAt(direction: Vec3Node): Vec3Node {
-    const raw = cross(POLE, direction);
-    return raw.div(max(length(raw), 1e-6));
   }
 
   // 緯度帯の東西風 [m/s]。帯の境目は BAND_BLEND の幅で滑らかに繋ぐ。

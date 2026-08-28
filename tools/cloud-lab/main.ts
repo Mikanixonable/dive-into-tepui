@@ -1,5 +1,6 @@
 // 雲の実験環境の画面。表示する量を選び、時刻を動かして、天気のモデルの写しを正距円筒で見る。
-import { CLOUD_LAB_VIEWS, CloudLabView, type CloudLabViewId } from './lab';
+import { CloudLabView } from './lab';
+import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
 import { buildButtonRow, buildSlider, buildToggleField } from '../lab-controls';
 
 // 時刻スライダーの上限 [h] と、再生中に実時間 1 秒あたり進める時刻 [h]。
@@ -22,7 +23,8 @@ declare global {
 async function init(): Promise<void> {
   const view = await CloudLabView.create(document.getElementById('view') as HTMLCanvasElement);
 
-  const markView = buildButtonRow<CloudLabViewId>('views', CLOUD_LAB_VIEWS, (id) => {
+  const entries = CLOUD_LAB_VIEWS.map((view) => [view.id, view.label] as const);
+  const markView = buildButtonRow<CloudLabViewId>('views', entries, (id) => {
     markView(id);
     view.show(id);
   });
@@ -53,7 +55,7 @@ async function init(): Promise<void> {
   view.render();
 
   window.cloudLab = {
-    views: CLOUD_LAB_VIEWS.map(([id]) => id),
+    views: CLOUD_LAB_VIEWS.map((view) => view.id),
     show: (id) => { markView(id); view.show(id); },
     setTime: (hours) => { view.setTime(hours); setSlider(hours); },
     capture: () => view.capture(),
