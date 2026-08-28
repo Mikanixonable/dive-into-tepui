@@ -96,9 +96,13 @@ function verticalOpticalDepth(optics: AtmosphereOptics): number {
   return rayleigh * optics.rayleighScaleHeight + optics.mie * optics.mieScaleHeight;
 }
 
-// その天体の大気が画面で覆う画素の数を、効きの深さで重み付けした量。metersPerPixel はその
-// 天体の位置での画面 1 画素ぶんの実距離。**画角と解像度がここから入る** — 同じ天体でも、
-// 覗き込めば影響は増える。裾球の縁までが大気を通る視線なので、覆う範囲は裾球の円盤で採る。
+// その天体の大気が画面で覆う画素の数を、効きの深さで重み付けした量。**画角と解像度がここから
+// 入る** — 同じ天体でも、覗き込めば影響は増える。裾球の縁までが大気を通る視線なので、覆う範囲は
+// 裾球の円盤で採る。
+//
+// **カメラが裾球の中にいる構図では、これは必ず画面 1 枚ぶんを超える** — 視点からの直線距離が
+// 裾半径を下回るので、円盤の半径が画面の高さの半分を超える。地表から空を見上げて地面が画面に
+// 無い構図でも、空の色が予算から落ちることはない。
 function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPerPixel: number): number {
   const cutoffRadius = surfaceRadius + cutoffAltitude(optics, surfaceRadius);
   const radiusPx = apparentSizePx(cutoffRadius, metersPerPixel);
@@ -113,7 +117,9 @@ export type AtmosphereBody = {
 };
 
 // 大気を描く候補 1 体。distance は視点から天体中心までの距離 [m] で、重ねる順序を決める。
-// metersPerPixel はその天体の位置での画面 1 画素ぶんの実距離 [m] で、影響の大きさを決める。
+// metersPerPixel はその距離での画面 1 画素ぶんの実距離 [m] で、影響の大きさを決める。
+// **視線方向の深度ではなく直線距離で測ったものを渡すこと** — 深度は視点の背後で床打ちされ、
+// 画面に写らない天体が目の前の天体と同じ影響を主張する。
 export type AtmosphereCandidate = {
   readonly body: AtmosphereBody;
   readonly distance: number;
