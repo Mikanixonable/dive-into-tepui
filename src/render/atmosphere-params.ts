@@ -4,6 +4,7 @@
 // **配り方は物理ではなく、品質の段が決める予算をどの大気へ回すかの方針である。**
 // 抗力を解く大気モデル(physics/atmosphere.ts)とは別の分布で、こちらは見えだけを決める。
 import * as THREE from 'three/webgpu';
+import { apparentSizePx } from '../physics/projection';
 import { ATMOSPHERE_QUALITY, type AtmosphereQuality } from './graphics-settings';
 
 // 大気 1 つぶんの光学パラメータ。散乱係数はいずれも基準球面(天体半径)での値 [1/m]。
@@ -64,10 +65,8 @@ const MIN_SAMPLES = 2;
 // 吸い切る構図では余りを使わずに済ませる。
 const MAX_SAMPLES = 16;
 
-// 描くに値しないと見なす影響の下限。**不透明度 1 の大気が画面の 1 画素を覆うぶん。** 画素の
-// 視角は、最も狭い画角(照準ズームの 6° = 0.105 rad)を縦 2160 画素で割って採る — ズームで
-// 覗いたときに遠くの惑星の大気だけが消えないよう、最も細かい側に合わせておく。
-const MIN_SCORE = (0.105 / 2160) ** 2 / (4 * Math.PI);
+// 描くに値しないと見なす影響の下限 [画素]。**画面の 1 画素にも満たない大気は描かない。**
+const MIN_SCORE = 1;
 
 // 絵に出ないと見なす光学的厚み。地平線方向の視線がこれを下回る高度から上は描かない。
 const MIN_VISIBLE_OPTICAL_DEPTH = 1e-5;
@@ -97,14 +96,13 @@ function verticalOpticalDepth(optics: AtmosphereOptics): number {
   return rayleigh * optics.rayleighScaleHeight + optics.mie * optics.mieScaleHeight;
 }
 
-// その天体の大気が画面へ及ぼす影響の推定 0..1。**裾球が視野に占める割合 × 大気の効きの深さ。**
-// distance は視点から天体中心までの距離 [m]。遠い天体・小さい天体では視半径の2乗で落ちるので、
-// 影響は自然に 0 へ近づく。裾の中ではどの向きの視線も大気を通るので、占める割合は 1 に飽和する。
-function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, distance: number): number {
+// その天体の大気が画面で覆う画素の数を、効きの深さで重み付けした量。metersPerPixel はその
+// 天体の位置での画面 1 画素ぶんの実距離。**画角と解像度がここから入る** — 同じ天体でも、
+// 覗き込めば影響は増える。裾球の縁までが大気を通る視線なので、覆う範囲は裾球の円盤で採る。
+function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPerPixel: number): number {
   const cutoffRadius = surfaceRadius + cutoffAltitude(optics, surfaceRadius);
-  const sinAngular = Math.min(cutoffRadius / Math.max(distance, 1), 1);
-  const coverage = distance <= cutoffRadius ? 1 : (1 - Math.sqrt(1 - sinAngular * sinAngular)) / 2;
-  return coverage * -Math.expm1(-verticalOpticalDepth(optics));
+  const radiusPx = apparentSizePx(cutoffRadius, metersPerPixel);
+  return Math.PI * radiusPx * radiusPx * -Math.expm1(-verticalOpticalDepth(optics));
 }
 
 // 大気の広がりを決めるもの。
@@ -113,10 +111,12 @@ type AtmosphereExtent = {
   readonly surfaceRadius: number;
 };
 
-// 大気を描く候補 1 体。distance は視点から天体中心までの距離 [m]。
+// 大気を描く候補 1 体。distance は視点から天体中心までの距離 [m] で、重ねる順序を決める。
+// metersPerPixel はその天体の位置での画面 1 画素ぶんの実距離 [m] で、影響の大きさを決める。
 export type AtmosphereCandidate<T extends AtmosphereExtent> = {
   readonly body: T;
   readonly distance: number;
+  readonly metersPerPixel: number;
 };
 
 // 大気を描く指示 1 体ぶん。steps はその大気を解くサンプル点の数で、整数でない値も採る。
@@ -160,7 +160,7 @@ export function atmosphereDraws<T extends AtmosphereExtent>(
   return allocateSamples(
     candidates.map((candidate) => ({
       ...candidate,
-      score: screenImpact(candidate.body.optics, candidate.body.surfaceRadius, candidate.distance),
+      score: screenImpact(candidate.body.optics, candidate.body.surfaceRadius, candidate.metersPerPixel),
     })),
     TOTAL_SAMPLES_OF_QUALITY[quality],
   );

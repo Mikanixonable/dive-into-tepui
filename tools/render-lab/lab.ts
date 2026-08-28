@@ -16,6 +16,7 @@ import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-s
 import { atmosphereDraws } from '../../src/render/atmosphere-params';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { lambertPhase } from '../../src/physics/lambert-sphere';
+import { metersPerPixelAtDepth } from '../../src/physics/projection';
 import { AU } from '../../src/physics/planet-orbit';
 import { R_SUN } from '../../src/physics/solar-system';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
@@ -337,9 +338,10 @@ export class LabView {
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
-      (this.current.atmospheres ?? []).map((body) => ({
-        body, distance: camera.position.distanceTo(body.center),
-      })),
+      (this.current.atmospheres ?? []).map((body) => {
+        const distance = camera.position.distanceTo(body.center);
+        return { body, distance, metersPerPixel: metersPerPixelAtDepth(camera.fov, distance, VIEW_HEIGHT) };
+      }),
       this.graphicsData.atmosphere,
     ));
     const startedAt = performance.now();
