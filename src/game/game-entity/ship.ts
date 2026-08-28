@@ -5,7 +5,7 @@ import * as C from '../const';
 import { GameEntity } from './game-entity';
 import { Part, PartType, createPart } from './parts';
 import { collisionDamageFraction } from './contact-damage';
-import { SHIP_ARROWHEAD_POINTS } from '../marker/marker-shapes';
+import { SHIP_ARROWHEAD_POINTS, triangleHpMarkerSvg } from '../marker/marker-shapes';
 import type {
   ArmorPart,
   CockpitPart,
@@ -17,7 +17,7 @@ import type {
 } from './parts';
 
 export abstract class Ship extends GameEntity {
-  override readonly bcInv = C.SHIP_BCINV;
+  public override readonly bcInv = C.SHIP_BCINV;
   protected readonly srpCoeff = C.SHIP_SRP_COEFF;
   protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;
   protected readonly predictedForGhost = true;
@@ -27,12 +27,12 @@ export abstract class Ship extends GameEntity {
 
   private _hp!: number;
   private _maxHp!: number;
-  parts: Part[] = [];
+  public parts: Part[] = [];
 
-  get hp(): number { return this._hp; }
-  set hp(value: number) { this._hp = value; }
-  get maxHp(): number { return this._maxHp; }
-  set maxHp(value: number) { this._maxHp = value; }
+  public get hp(): number { return this._hp; }
+  public set hp(value: number) { this._hp = value; }
+  public get maxHp(): number { return this._maxHp; }
+  public set maxHp(value: number) { this._maxHp = value; }
 
   // パーツ配列の type 走査は性能取得 getter から毎回行わず、換装・復元時だけ組み直す。
   // HP/fuel はパーツ本体で変化するため、これらはパーツ参照の固定配列であり、値のキャッシュではない。
@@ -104,7 +104,7 @@ export abstract class Ship extends GameEntity {
   }
 
   // 部品構成が変わったとき(換装など)に、艦の maxHp と hp を部品側から求め直す。
-  refreshFromParts(): void {
+  public refreshFromParts(): void {
     this.rebuildPartReferences();
     let maxHp = 0;
     for (const p of this.parts) maxHp += p.maxHp;
@@ -170,7 +170,7 @@ export abstract class Ship extends GameEntity {
   // 受けたダメージを健全なパーツ1つへ無作為に割り振る。装甲があれば最も高い軽減率で
   // 減衰させる。part を指定すると割り振り先をそのパーツに固定する(被弾位置から
   // 当たったパーツが判っている場合)。
-  applyDamageToParts(amount: number, part?: Part): void {
+  protected applyDamageToParts(amount: number, part?: Part): void {
     if (this.parts.length === 0) {
       this.hp -= amount;
       return;
@@ -214,7 +214,7 @@ export abstract class Ship extends GameEntity {
 
   // amount [HP] を自然回復できる損傷部品へ均等に配る。全損した部品は対象外で、
   // 復旧にはドックでの修理が要る。
-  selfRepair(amount: number): void {
+  protected selfRepair(amount: number): void {
     const targets = this.parts.filter(
       p => p.hp > 0 && p.hp < p.maxHp && !Ship.SELF_REPAIR_EXCLUDED.includes(p.type));
     if (targets.length === 0) return;
@@ -237,39 +237,8 @@ export abstract class Ship extends GameEntity {
     this.hp = hp;
   }
 
-  // 正三角形を辺中央の切り欠きで分割し、残HPに応じて発光するSVGを生成する。
-  // 分割数は3の倍数へ丸めるため、将来HPが12/18になっても多重リングへ拡張しやすい。
   public hpMarkerSvg(): string {
-    const segments = Math.max(3, Math.round(this.maxHp / 3) * 3);
-    const lit = Math.max(0, Math.min(segments, Math.round((this.hp / this.maxHp) * segments)));
-    // 正三角形のシルエット(辺長18、外接円中心は(12,12))。
-    const points: [number, number][] = [[12, 3], [21, 18.588], [3, 18.588]];
-    const lines: string[] = [];
-    const emit = (i: number, j: number, k: number, a: number, b: number): void => {
-      if (b <= a) return;
-      const [x1, y1] = points[i]!;
-      const [x2, y2] = points[(i + 1) % 3]!;
-      const color = (i * k + j) < lit ? 'currentColor' : C.COLOR_MARKER_HP_EMPTY;
-      lines.push(`<line x1="${x1 + (x2 - x1) * a}" y1="${y1 + (y2 - y1) * a}" x2="${x1 + (x2 - x1) * b}" y2="${y1 + (y2 - y1) * b}" stroke="${color}" stroke-width="1.5" stroke-linecap="butt"/>`);
-    };
-    for (let i = 0; i < 3; i++) {
-      const k = segments / 3;
-      const notch = 0.09;
-      const notchStart = 0.5 - notch / 2;
-      const notchEnd = 0.5 + notch / 2;
-      // 頂点は連続させ、各辺の中央だけを切り欠く(境界がちょうど0.5に重なる分割数でも欠ける)。
-      for (let j = 0; j < k; j++) {
-        const a = j / k;
-        const b = (j + 1) / k;
-        if (a < notchEnd && b > notchStart) {
-          if (a < notchStart) emit(i, j, k, a, notchStart);
-          if (b > notchEnd) emit(i, j, k, notchEnd, b);
-        } else {
-          emit(i, j, k, a, b);
-        }
-      }
-    }
-    return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">${lines.join('')}</svg>`;
+    return triangleHpMarkerSvg(this.hp, this.maxHp);
   }
 
   // 進行方向へ回転させても崩れない HP 表現。後部が凹んだ鋭角矢尻の外形と、底辺からの塗り高さで
@@ -294,38 +263,38 @@ export abstract class Ship extends GameEntity {
   }
 
   // パーツベースの性能取得
-  get totalTorque(): number {
+  public get totalTorque(): number {
     let total = 0;
     for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.torque;
     return total;
   }
 
-  get totalThrust(): number {
+  public get totalThrust(): number {
     let total = 0;
     for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.thrust;
     return total;
   }
   
-  get totalFuelConsumptionRate(): number {
+  public get totalFuelConsumptionRate(): number {
     let total = 0;
     for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.fuelConsumptionRate;
     return total;
   }
 
-  get totalFuel(): number {
+  public get totalFuel(): number {
     let total = 0;
     for (const p of this.rcsTankPartRefs) if (p.hp > 0) total += p.fuel;
     return total;
   }
 
-  get totalMaxFuel(): number {
+  public get totalMaxFuel(): number {
     let total = 0;
     for (const p of this.rcsTankPartRefs) if (p.hp > 0) total += p.maxFuel;
     return total;
   }
 
   // 燃料を消費し、実際に消費できた割合（0.0〜1.0）を返す
-  consumeFuel(amount: number): number {
+  public consumeFuel(amount: number): number {
     if (amount <= 0) return 1.0;
     
     let remainingToConsume = amount;
@@ -346,7 +315,7 @@ export abstract class Ship extends GameEntity {
   }
 
   // 燃料を補給し、実際に追加できた量 [kg] を返す。破損タンクと容量超過は対象外。
-  refuelFuel(amount: number): number {
+  public refuelFuel(amount: number): number {
     if (amount <= 0) return 0;
 
     let remainingToAdd = amount;
@@ -367,28 +336,28 @@ export abstract class Ship extends GameEntity {
 
   // 機体左右2枚の放熱板・太陽電池パドルに対応するパーツ。並び順が side に対応し、
   // 先頭が 'up'(左)、次が 'down'(右)。枚数が足りなければ undefined になる。
-  get radiatorParts(): readonly (RadiatorPart | undefined)[] {
+  public get radiatorParts(): readonly (RadiatorPart | undefined)[] {
     return this.radiatorPartRefs;
   }
 
-  get solarParts(): readonly (SolarPanelPart | undefined)[] {
+  public get solarParts(): readonly (SolarPanelPart | undefined)[] {
     return this.solarPanelPartRefs;
   }
 
-  get totalCoolingRate(): number {
+  public get totalCoolingRate(): number {
     let total = 0;
     for (const p of this.radiatorPartRefs) if (p && p.hp > 0) total += p.coolingRate;
     return total;
   }
 
-  get totalPowerGeneration(): number {
+  public get totalPowerGeneration(): number {
     let total = 0;
     for (const p of this.solarPanelPartRefs) if (p && p.hp > 0) total += p.powerGeneration;
     return total;
   }
 
   // 1発あたりのダメージ。複数積んでいる場合は最も強い武装のものを使う。
-  get weaponDamage(): number {
+  public get weaponDamage(): number {
     let damage = 0;
     let hasWeapon = false;
     for (const p of this.weaponPartRefs) {
@@ -399,14 +368,14 @@ export abstract class Ship extends GameEntity {
     return damage;
   }
 
-  get totalFireRate(): number {
+  public get totalFireRate(): number {
     let total = 0;
     for (const p of this.weaponPartRefs) if (p.hp > 0) total += p.fireRate;
     return total;
   }
 
   // 生存武装の初速平均。武装が全損している場合は 0(呼び出し側は totalFireRate <= 0 で発射不能を判定する)。
-  get averageMuzzleVelocity(): number {
+  public get averageMuzzleVelocity(): number {
     let total = 0;
     let count = 0;
     for (const p of this.weaponPartRefs) {
