@@ -120,13 +120,12 @@ export class EntityLineManager {
     frameAnchors: FrameAnchorSource, celestialSystem: CelestialSystem, orbitRef: OrbitReference | undefined,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
-    const ephemeris = celestialSystem.ephemeris;
     for (const group of this.lineOwners) {
       for (const entity of group) {
         const predictedTo = entity.predictionTruncated ? null : simTime + duration;
         entity.syncTrajectoryLines(
-          frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
-        entity.syncOrbitLine(displayTime, ephemeris, fo, camera, frameAnchors, orbitRef);
+          frame, simTime, displayTime, pastDuration, predictedTo, celestialSystem, fo, camera, frameAnchors);
+        entity.syncOrbitLine(displayTime, celestialSystem, fo, camera, frameAnchors, orbitRef);
       }
     }
   }

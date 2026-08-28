@@ -155,7 +155,7 @@ export class PlanEditor {
     g.onMenuFocus = (idx) => {
       const n = this.plan?.nodes[idx];
       if (n) this.frameControls.setFocus(
-        focusPoint(this.celestialSystem.ephemeris, this.celestialSystem.frames.inertialFrame, n.r, n.t, bodyAnchorSource([])));
+        focusPoint(this.celestialSystem.frames, this.celestialSystem.frames.inertialFrame, n.r, n.t, bodyAnchorSource([])));
     };
   }
 
@@ -647,7 +647,7 @@ export class PlanEditor {
       this.closeMenu();
     }
     this.simTime = displayWindow.simTime;
-    this.planDisplay.update(this.displayedPlan, displayWindow, this.celestialSystem.ephemeris, ship, frameAnchors);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.celestialSystem, ship, frameAnchors);
     this.updateEquatorNodes(displayWindow, frameAnchors);
   }
 
@@ -660,7 +660,7 @@ export class PlanEditor {
       mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
     };
     ship.ensureEquatorNodes(this.markerManager).updateOnPath(
-      displayWindow.frame, displayWindow.displayTime, this.celestialSystem.ephemeris, frameAnchors,
+      displayWindow.frame, displayWindow.displayTime, this.celestialSystem, frameAnchors,
       ship.state, this.planDisplay.path.displayedSamples(), timeLabel,
     );
   }

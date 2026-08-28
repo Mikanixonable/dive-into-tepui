@@ -133,8 +133,7 @@ export class MapContextActions {
     };
     this.physicalObjectListPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      const ephemeris = this.celestialSystem.ephemeris;
-      if (target && this.navTarget.canTarget(id, this.entities, ephemeris, this.pickables.lastSimTime)) {
+      if (target && this.navTarget.canTarget(id, this.entities, this.celestialSystem, this.pickables.lastSimTime)) {
         this.navTarget.toggleTarget(id, target.name);
       }
     };

@@ -5,7 +5,6 @@ import { kinematicState } from '../../../physics/kinematic-state';
 import { dot, len, sub, Vec3 } from '../../../math/vec3';
 import type { GameEntity } from '../../game-entity/game-entity';
 import type { OrbitReference } from '../../orbit-reference';
-import { celestialBodyName } from '../frame/frame-labels';
 
 export interface OrbitInfo {
   centerId: string;
@@ -21,8 +20,10 @@ export interface OrbitInfo {
 // エンティティの現在状態から、reference が示す基準に対する高度・相対速度・遠地点・近地点・
 // 傾斜角・周期を導出する。速度は reference 自身の速度を差し引いた相対速度。reference が重力
 // 中心でない(attractor=null)場合、および要素が求まらない状態(双曲線軌道等)では
-// ap/pe/inc/period を NaN にする。
-export function orbitInfo(entity: GameEntity, reference: OrbitReference): OrbitInfo {
+// ap/pe/inc/period を NaN にする。nameOf は天体 id → 表示名(celestialSystem.nameOf)。
+export function orbitInfo(
+  entity: GameEntity, reference: OrbitReference, nameOf: (id: string) => string,
+): OrbitInfo {
   // reference 系での相対位置・速度(高度・相対速度の元)。
   const rel = kinematicState(entity.state.t, sub(entity.state.r, reference.state.r), sub(entity.state.v, reference.state.v));
   // reference が重力中心のときだけ軌道要素・遠地点/近地点が求まる。
@@ -30,7 +31,7 @@ export function orbitInfo(entity: GameEntity, reference: OrbitReference): OrbitI
   const apsis = el ? apsisAltitudes(el) : null;
   return {
     centerId: reference.id,
-    centerName: celestialBodyName(reference.id),
+    centerName: nameOf(reference.id),
     alt: len(rel.r) - (reference.attractor?.radius ?? 0),
     spd: len(rel.v),
     apAlt: apsis ? apsis.ap : NaN,
