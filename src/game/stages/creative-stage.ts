@@ -95,7 +95,7 @@ export class CreativeStage extends Stage {
     this._scene.add(this.previewOrbitLine.line);
 
     this.placerPanel = new ObjectPlacerPanel(
-      this._hud.mapRoot, this._hud.layers.popup, this._celestialSystem.ephemeris, this._hud.overlayManager,
+      this._hud.mapRoot, this._hud.layers.popup, this._celestialSystem, this._hud.overlayManager,
     );
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
     this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem, savedCreative?.waveAttack);
