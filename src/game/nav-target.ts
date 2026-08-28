@@ -7,6 +7,7 @@ import { CelestialBody, frameOfCelestialBody, strongestAttractor } from '../phys
 import type { LagrangePoints } from '../physics/lagrange';
 import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import type { Ephemeris } from '../physics/ephemeris';
+import { OrbitingMotion, type CelestialMotion } from '../physics/celestial-motion';
 import { qRotate } from '../physics/attitude';
 import { goldenSectionMin } from '../math/optimize';
 import { Player } from './player/player';
@@ -21,6 +22,7 @@ import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { CameraSystem } from './camera/camera-system';
 import { MapPickable } from './pickable/map-pickable';
 import type { GameEntity } from './game-entity/game-entity';
+import type { CelestialSystem } from './celestial/celestial-system';
 import type { OrbitReference } from './orbit-reference';
 
 const Z_HAT: Vec3 = v3(0, 0, 1);
@@ -38,11 +40,11 @@ const CLOSEST_APPROACH_REFINE_ITERATIONS = 20;
 // 探索で追い込む。どちらかの予測がその時刻まで届かない、または区間内に極小が無ければ null
 // (まだ近づいている途中、あるいは既に最接近を過ぎている)。
 function findClosestApproach(
-  player: GameEntity, target: GameEntity, center: CelestialBody, ephemeris: Ephemeris, simTime: number,
+  player: GameEntity, target: GameEntity, centerMotion: CelestialMotion, simTime: number,
 ): { readonly pos: Vec3; readonly t: number } | null {
   const distAt = (t: number): number | null => {
-    const p = entityStateAt(player, t, center, ephemeris);
-    const q = entityStateAt(target, t, center, ephemeris);
+    const p = entityStateAt(player, t, centerMotion);
+    const q = entityStateAt(target, t, centerMotion);
     return p && q ? len(sub(p.r, q.r)) : null;
   };
   const step = CLOSEST_APPROACH_SPAN_SEC / CLOSEST_APPROACH_SAMPLES;
@@ -58,7 +60,7 @@ function findClosestApproach(
     const lo = simTime + (i - 1) * step;
     const hi = simTime + (i + 1) * step;
     const tMin = goldenSectionMin(lo, hi, (t) => distAt(t) ?? Infinity, CLOSEST_APPROACH_REFINE_ITERATIONS);
-    const p = entityStateAt(player, tMin, center, ephemeris);
+    const p = entityStateAt(player, tMin, centerMotion);
     return p ? { pos: p.r, t: tMin } : null;
   }
   return null;
@@ -200,7 +202,7 @@ export class NavTarget {
     // 再接近点は AN/DN(軌道面が定まる必要がある)とは独立した条件 — 同じ中心天体さえ
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
     if (target && strongestAttractor(target.state.r, stateCelestialBodies).id === playerCenter.id) {
-      const found = findClosestApproach(player, target, playerCenter, ephemeris, simTime);
+      const found = findClosestApproach(player, target, ephemeris.motionOf(playerCenter.id), simTime);
       if (found) {
         this.closestPos = toDisplay(found.pos, found.t);
         this.closestTime = found.t;
@@ -233,26 +235,25 @@ export class NavTarget {
   }
 
   // 現在のターゲットの時刻 t における位置・速度。天体は CelestialBody.state、ラグランジュ点は
-  // ephemeris.lagrangeStateAt、船・基地は entity.displayState(t) から得る。天体以外は重力中心
-  // ではないため hasMass=false を返す。船・基地は軌道線を相対軌跡に切り替えられるよう entity
-  // 自身も添えて返す。ターゲット未設定・解決不能なら null。
+  // 副天体の運動、船・基地は entity.displayState(t) から得る。天体以外は重力中心ではないため
+  // hasMass=false を返す。船・基地は軌道線を相対軌跡に切り替えられるよう entity 自身も添えて
+  // 返す。ターゲット未設定・解決不能なら null。
   resolveState(
-    entities: EntityManager, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[], t: number,
+    entities: EntityManager, celestialSystem: CelestialSystem, celestialBodies: readonly CelestialBody[], t: number,
   ): OrbitReference | null {
     const id = this.targetId;
     if (id === null) return null;
-    const registry = ephemeris.registry;
-    if (id in registry && ephemeris.motionOf(id).kind !== 'star') {
+    if (celestialSystem.find(id)?.motion instanceof OrbitingMotion) {
       const attractor = celestialBodies.find((a) => a.id === id);
       if (attractor) return { id, state: attractor.state, hasMass: true, attractor, entity: null, fixed: true };
     }
     const match = /^(.+)-l([1-5])$/.exec(id);
     if (match) {
-      const secondary = match[1]!;
-      if (secondary in registry && ephemeris.motionOf(secondary).kind !== 'star') {
+      const secondary = celestialSystem.find(match[1]!)?.motion ?? null;
+      if (secondary instanceof OrbitingMotion) {
         const point = `L${match[2]}` as keyof LagrangePoints;
         return {
-          id, state: ephemeris.lagrangeStateAt(secondary, point, t), hasMass: false,
+          id, state: secondary.lagrangeStateAt(point, t), hasMass: false,
           attractor: null, entity: null, fixed: true,
         };
       }
@@ -260,7 +261,7 @@ export class NavTarget {
     const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
     return {
-      id, state: entity.displayState(t, ephemeris) ?? entity.state, hasMass: false,
+      id, state: entity.displayState(t, celestialSystem.ephemeris) ?? entity.state, hasMass: false,
       attractor: null, entity, fixed: true,
     };
   }

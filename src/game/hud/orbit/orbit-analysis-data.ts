@@ -3,12 +3,13 @@
 import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../../physics/celestial-body';
 import type { OrbitalElements } from '../../../physics/elements';
 import { semiMajorFromPeriod } from '../../../physics/elements';
-import type { Ephemeris } from '../../../physics/ephemeris';
+import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { latLonOf } from '../../../physics/body-orientation';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { dot, len, sub } from '../../../math/vec3';
 import type { GameEntity } from '../../game-entity/game-entity';
 import { entityStateAt } from '../../simulation/entity-state-at';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { OrbitReference } from '../../orbit-reference';
 import { relativeInclinationDeg } from './orbit-info';
 
@@ -30,7 +31,7 @@ export interface ApproachSeries {
 }
 
 // 接近タブのターゲット側の伝播経路は種別ごとに違う(艦・基地は predicted、天体は
-// ephemeris.stateOf)。ラグランジュ点など質量を持たない対象は period が求まらず
+// その運動)。ラグランジュ点など質量を持たない対象は period が求まらず
 // approachSeries が null を返すので、この union に含めない。
 export type ApproachTargetSource =
   | { readonly kind: 'entity'; readonly entity: GameEntity }
@@ -50,7 +51,7 @@ function altitudeOf(state: KinematicState, centerState: KinematicState, center: 
 export function altitudeSeries(
   entity: GameEntity,
   reference: OrbitReference,
-  ephemeris: Ephemeris,
+  celestialSystem: CelestialSystem,
   now: number,
   spanSec: number,
   sampleCount: number,
@@ -62,14 +63,15 @@ export function altitudeSeries(
   }
 
   const currentAlt = altitudeOf(entity.state, reference.state, center);
+  const centerMotion = celestialSystem.bodyOf(center.id).motion;
   const samples: AltitudeSample[] = [];
   let truncated = false;
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     // 外挿できない時刻に達したら、そこで列を止める(0/NaN で埋めない)。
-    const state = entityStateAt(entity, t, center, ephemeris);
+    const state = entityStateAt(entity, t, centerMotion);
     if (state === null) { truncated = true; break; }
-    const centerState = ephemeris.stateOf(center.id, t);
+    const centerState = centerMotion.stateAt(t);
     samples.push({ t: t - now, alt: altitudeOf(state, centerState, center) });
   }
   return { samples, currentAlt, truncated };
@@ -88,17 +90,18 @@ function phaseAngleOn(el: OrbitalElements, positionRelCenter: KinematicState['r'
 
 // ターゲット(target)の状態と軌道要素を、他の対象と同じ形(状態取得関数 + 軌道要素)へ揃える。
 export function resolveTarget(
-  target: ApproachTargetSource,
-): { stateAt: (t: number, center: CelestialBody, ephemeris: Ephemeris) => KinematicState | null; currentR: KinematicState['r'] } {
-  // 艦・基地は predicted(将来は外挿できないことがある)、天体は ephemeris(常に解析的に解ける)。
+  target: ApproachTargetSource, celestialSystem: CelestialSystem,
+): { stateAt: (t: number, centerMotion: CelestialMotion) => KinematicState | null; currentR: KinematicState['r'] } {
+  // 艦・基地は predicted(将来は外挿できないことがある)、天体は自身の運動(常に解析的に解ける)。
   if (target.kind === 'entity') {
     return {
-      stateAt: (t, center, ephemeris) => entityStateAt(target.entity, t, center, ephemeris),
+      stateAt: (t, centerMotion) => entityStateAt(target.entity, t, centerMotion),
       currentR: target.entity.state.r,
     };
   }
+  const targetMotion = celestialSystem.bodyOf(target.body.id).motion;
   return {
-    stateAt: (t, _center, ephemeris) => ephemeris.stateOf(target.body.id, t),
+    stateAt: (t) => targetMotion.stateAt(t),
     currentR: target.body.state.r,
   };
 }
@@ -120,12 +123,12 @@ export function approachSeries(
   ship: GameEntity,
   target: ApproachTargetSource,
   celestialBodies: readonly CelestialBody[],
-  ephemeris: Ephemeris,
+  celestialSystem: CelestialSystem,
   now: number,
   spanSec: number,
   sampleCount: number,
 ): ApproachSeries | null {
-  const resolved = resolveTarget(target);
+  const resolved = resolveTarget(target, celestialSystem);
   const selfCenter = strongestAttractor(ship.state.r, celestialBodies);
   const targetCenter = strongestAttractor(resolved.currentR, celestialBodies);
   if (selfCenter.id !== targetCenter.id) return null;
@@ -144,16 +147,17 @@ export function approachSeries(
     return { samples: [], relIncDeg, truncated: true };
   }
 
+  const centerMotion = celestialSystem.bodyOf(center.id).motion;
   const samples: (ApproachSample | null)[] = [];
   let truncated = false;
   let lastTheta: number | null = null;
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     // どちらかが外挿できなくなった時点で列を止める。
-    const shipState = entityStateAt(ship, t, center, ephemeris);
-    const targetState = resolved.stateAt(t, center, ephemeris);
+    const shipState = entityStateAt(ship, t, centerMotion);
+    const targetState = resolved.stateAt(t, centerMotion);
     if (shipState === null || targetState === null) { truncated = true; break; }
-    const centerState = ephemeris.stateOf(center.id, t);
+    const centerState = centerMotion.stateAt(t);
     const shipRel = sub(shipState.r, centerState.r);
     const targetRel = sub(targetState.r, centerState.r);
     const theta = wrapAngle(phaseAngleOn(targetEl, shipRel) - phaseAngleOn(targetEl, targetRel));
@@ -175,29 +179,28 @@ export interface ProjectionSeries {
   readonly truncated: boolean;
 }
 
-// state(center 相対ではなく ECI)を center の時刻 t での自転を通じて緯度経度へ変換する。
-// center が自転モデルを持たなければ null。
-function projectionSampleAt(state: KinematicState, centerState: KinematicState, center: CelestialBody, ephemeris: Ephemeris, t: number): ProjectionSample | null {
-  const orientation = ephemeris.poleAt(center.id, t);
+// state(中心天体相対ではなく ECI)を中心天体の時刻 t での自転を通じて緯度経度へ変換する。
+// 中心天体が自転モデルを持たなければ null。
+function projectionSampleAt(state: KinematicState, centerState: KinematicState, centerMotion: CelestialMotion, t: number): ProjectionSample | null {
+  const orientation = centerMotion.orientationAt(t);
   if (orientation === null) return null;
   const { latRad, lonRad } = latLonOf(sub(state.r, centerState.r), orientation.axis, orientation.spinAngle);
   return { latDeg: (latRad * 180) / Math.PI, lonDeg: (lonRad * 180) / Math.PI };
 }
 
-// 投影タブ: stateAt(艦・基地は entityStateAt、天体は ephemeris.stateOf)が返す位置を、center の
-// 自転(ephemeris.poleAt)を通じて緯度経度へ変換した点列。center が自転モデルを持たない場合は null。
+// 投影タブ: stateAt が返す位置を、centerMotion の自転を通じて緯度経度へ変換した点列。
+// 中心天体が自転モデルを持たない場合は null。
 export function projectionSeries(
   stateAt: (t: number) => KinematicState | null,
-  center: CelestialBody,
-  ephemeris: Ephemeris,
+  centerMotion: CelestialMotion,
   now: number,
   spanSec: number,
   sampleCount: number,
 ): ProjectionSeries | null {
-  // 現在時刻の経緯度。center が自転モデルを持たなければここで打ち切る。
+  // 現在時刻の経緯度。中心天体が自転モデルを持たなければここで打ち切る。
   const currentState = stateAt(now);
   if (currentState === null) return null;
-  const current = projectionSampleAt(currentState, ephemeris.stateOf(center.id, now), center, ephemeris, now);
+  const current = projectionSampleAt(currentState, centerMotion.stateAt(now), centerMotion, now);
   if (current === null) return null;
 
   if (spanSec <= 0 || sampleCount <= 0 || !isFinite(spanSec) || !Number.isFinite(sampleCount)) {
@@ -212,7 +215,7 @@ export function projectionSeries(
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     const state = stateAt(t);
-    const sample = state === null ? null : projectionSampleAt(state, ephemeris.stateOf(center.id, t), center, ephemeris, t);
+    const sample = state === null ? null : projectionSampleAt(state, centerMotion.stateAt(t), centerMotion, t);
     if (sample === null) { truncated = true; break; }
     if (lastLonDeg !== null && Math.abs(sample.lonDeg - lastLonDeg) > 180) samples.push(null);
     lastLonDeg = sample.lonDeg;

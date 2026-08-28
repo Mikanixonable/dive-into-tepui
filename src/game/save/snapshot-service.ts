@@ -20,7 +20,7 @@ export class SnapshotService {
     if (slotId === null) return null;
 
     const player = game.player;
-    const info = player ? orbitInfo(player, autoOrbitReference(player.state.r, game.ephemeris.celestialBodiesAt(game.simTime))) : null;
+    const info = player ? orbitInfo(player, autoOrbitReference(player.state.r, game.celestialSystem.celestialBodiesAt(game.simTime))) : null;
     const meta: SnapshotMeta = {
       id: generateSnapshotId(),
       kind,
@@ -28,7 +28,7 @@ export class SnapshotService {
       name: name && name.length > 0 ? name : autoName(game.simTime, info),
       createdAtReal: Date.now(),
       simTime: game.simTime,
-      centerBodyId: info ? info.centerId : game.ephemeris.originId,
+      centerBodyId: info ? info.centerId : game.celestialSystem.origin.id,
       altitude: info ? info.alt : 0,
       speed: info ? info.spd : 0,
       hpRatio: player && player.maxHp > 0 ? Math.max(0, player.hp) / player.maxHp : 0,
@@ -84,13 +84,14 @@ function normalizePickupKeys(data: GameSaveData): GameSaveData | null {
 
 // 各エンティティ・ステージ自身の serialize を集めて1件ぶんのセーブ本体にする。
 function buildSaveData(game: Game): GameSaveData {
+  const { phaseOffsets, earthSpinPhase0 } = game.celestialSystem.serialize();
   return {
     version: SAVE_VERSION,
     stageId: game.activeStage.id,
     simTime: game.simTime,
     ephemerisContext: { ...CURRENT_EPHEMERIS_CONTEXT },
-    phaseOffsets: game.ephemeris.getPhaseOffsets(),
-    earthSpinPhase0: game.celestialSystem.earthSpinPhase0(),
+    phaseOffsets,
+    earthSpinPhase0,
     players: game.entities.players.map(p => p.serialize()),
     activePlayerId: game.player ? game.player.id : null,
     enemies: game.entities.enemies.map(e => e.serialize()),

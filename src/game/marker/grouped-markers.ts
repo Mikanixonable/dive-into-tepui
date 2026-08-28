@@ -13,7 +13,7 @@ import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-glyphs';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { ReferenceFrames } from '../../physics/reference-frames';
 import { resolveCrowdingWinner } from './crowding';
 import * as C from '../const';
 
@@ -83,7 +83,7 @@ export class GroupedMarkers {
     cameraPos?: Vec3,
     frame?: ReferenceFrame,
     displayTime?: number,
-    ephemeris?: Ephemeris,
+    frames?: ReferenceFrames,
     frameAnchors?: FrameAnchorSource,
   ): void {
     const placed: PlacedItem[] = items.map(
@@ -105,7 +105,7 @@ export class GroupedMarkers {
       }
       const label = m.labeled ? this.label(m.item, m.count, m.groupMembers) : '';
       const rotationDeg = overviewMode
-        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, celestialBodies, frame, displayTime, ephemeris, frameAnchors)
+        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, celestialBodies, frame, displayTime, frames, frameAnchors)
         : undefined;
       this.markerManager.set(
         m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, opacity, m.item.color,

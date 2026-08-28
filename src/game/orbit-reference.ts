@@ -1,7 +1,7 @@
 // 軌道要素・軌道要素アイコンの表示基準(自動/地球/月/航法ターゲット)の選択と解決。
 // 選択状態そのものを持ち、モードに応じて基準天体・対象の状態(KinematicState)を解決する。
 import { CelestialBody, strongestAttractor } from '../physics/celestial-body';
-import type { Ephemeris } from '../physics/ephemeris';
+import type { CelestialSystem } from './celestial/celestial-system';
 import { KinematicState } from '../physics/kinematic-state';
 import type { Vec3 } from '../math/vec3';
 import type { GameEntity } from './game-entity/game-entity';
@@ -44,13 +44,13 @@ export class OrbitReferenceSelector {
   // ターゲットが未設定・解決不能なときは自動選択(strongestAttractor)へフォールバックする。
   resolve(
     r: Vec3, celestialBodies: readonly CelestialBody[], navTarget: NavTarget, entities: EntityManager,
-    ephemeris: Ephemeris, t: number,
+    celestialSystem: CelestialSystem, t: number,
   ): OrbitReference {
     if (this.mode === 'earth' || this.mode === 'moon') {
       const found = celestialBodies.find((a) => a.id === this.mode);
       if (found) return { id: found.id, state: found.state, hasMass: true, attractor: found, entity: null, fixed: true };
     } else if (this.mode === 'target') {
-      const resolved = navTarget.resolveState(entities, ephemeris, celestialBodies, t);
+      const resolved = navTarget.resolveState(entities, celestialSystem, celestialBodies, t);
       if (resolved) return resolved;
     }
     return autoOrbitReference(r, celestialBodies);

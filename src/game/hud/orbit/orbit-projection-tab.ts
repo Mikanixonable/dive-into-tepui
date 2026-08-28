@@ -32,9 +32,10 @@ export class OrbitProjectionTab {
     game: Game, entity: GameEntity, center: CelestialBody, approachSource: ApproachTargetSource | null,
     celestialBodies: readonly CelestialBody[], now: number, spanSec: number, sampleCount: number, textureUrl: string,
   ): void {
+    const centerMotion = game.celestialSystem.bodyOf(center.id).motion;
     // 操作対象自身の軌跡(塗り丸)。
     const ship = projectionSeries(
-      (t) => entityStateAt(entity, t, center, game.ephemeris), center, game.ephemeris, now, spanSec, sampleCount,
+      (t) => entityStateAt(entity, t, centerMotion), centerMotion, now, spanSec, sampleCount,
     );
     const series: ProjectionSeriesSpec[] = [];
     if (ship) {
@@ -46,10 +47,10 @@ export class OrbitProjectionTab {
       });
     }
     // ターゲットが同じ中心天体を周回していれば、その軌跡(縁だけの丸)も重ねる。
-    const resolvedTarget = approachSource ? resolveTarget(approachSource) : null;
+    const resolvedTarget = approachSource ? resolveTarget(approachSource, game.celestialSystem) : null;
     const target = resolvedTarget && strongestAttractor(resolvedTarget.currentR, celestialBodies).id === center.id
       ? projectionSeries(
-        (t) => resolvedTarget.stateAt(t, center, game.ephemeris), center, game.ephemeris, now, spanSec, sampleCount,
+        (t) => resolvedTarget.stateAt(t, centerMotion), centerMotion, now, spanSec, sampleCount,
       )
       : null;
     if (target) {

@@ -6,7 +6,7 @@ import { CelestialBody, strongestAttractor } from '../../physics/celestial-body'
 import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../math/projection';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { fmtMarkerDist } from '../hud/utils';
 import { SIM_EPOCH_SEC } from '../simulation/sim-epoch';
 import { celestialBodyName } from '../hud/frame/frame-labels';
@@ -99,7 +99,7 @@ export class PlanDisplay {
   constructor(
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     displayDuration: DisplayDurationSource,
   ) {
     this.path = new PlanPath(scene, displayDuration);
@@ -121,9 +121,9 @@ export class PlanDisplay {
       return;
     }
     const { simTime, displayTime } = displayWindow;
-    this.celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
+    this.celestialBodies = this.celestialSystem.celestialBodiesAt(displayTime);
     this.path.update(
-      planData, ship, this.ephemeris, displayWindow.frame, simTime, displayTime, frameAnchors,
+      planData, ship, this.celestialSystem.ephemeris, displayWindow.frame, simTime, displayTime, frameAnchors,
       celestialBodyProvider, displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);
@@ -239,11 +239,11 @@ export class PlanDisplay {
     const apCenter = final.apoapsisCenter;
     let peDist = 0;
     if (pe && peCenter) {
-      peDist = len(sub(pe.r, this.ephemeris.positionOf(peCenter.id, pe.t)));
+      peDist = len(sub(pe.r, this.celestialSystem.bodyOf(peCenter.id).motion.stateAt(pe.t).r));
     }
     let apDist = 0;
     if (ap && apCenter) {
-      apDist = len(sub(ap.r, this.ephemeris.positionOf(apCenter.id, ap.t)));
+      apDist = len(sub(ap.r, this.celestialSystem.bodyOf(apCenter.id).motion.stateAt(ap.t).r));
     }
     // 中心天体が遷移の前後で変わる場合、異なる中心からの距離を比較して円軌道と判定しない。
     if (pe && ap && peCenter && apCenter && peCenter.id === apCenter.id

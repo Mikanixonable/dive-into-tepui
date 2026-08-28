@@ -4,7 +4,7 @@
 import {
   CelestialBody, nearestAtmosphereBody,
 } from '../../physics/celestial-body';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { Vec3 } from '../../math/vec3';
 import { ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
 
@@ -19,13 +19,13 @@ export class SubstepBodies {
   // 区間 [simTime, simTime + dt] の窓を組み直す。重力源と大気は区間の中点で解決し、表面と
   // 遮蔽体は開始時刻で解決する — 遮蔽の幾何は区間内の天体の移動にほとんど左右されず、
   // 表面の側は接触の解決が各個体の時刻へ引き直すため。
-  reset(ephemeris: Ephemeris, simTime: number, dt: number): void {
+  reset(windows: CelestialBodyWindows, simTime: number, dt: number): void {
     const mid = simTime + dt / 2;
-    const sources = ephemeris.gravityAttractorsAt(mid);
+    const sources = windows.gravityAttractorsAt(mid);
     this._gravitySourceCount = sources.length;
     this.classified = classifyAttractors(sources);
-    this._surface = ephemeris.celestialBodiesAt(simTime);
-    this._atmosphere = ephemeris.atmosphereCelestialBodiesAt(mid);
+    this._surface = windows.celestialBodiesAt(simTime);
+    this._atmosphere = windows.atmosphereCelestialBodiesAt(mid);
     this._star = this._surface.find((b) => b.isStar) ?? null;
   }
 

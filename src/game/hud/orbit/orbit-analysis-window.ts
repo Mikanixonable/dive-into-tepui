@@ -240,7 +240,7 @@ export class OrbitAnalysisWindow {
     }
 
     const reference = game.orbitReference.resolve(
-      entity.state.r, celestialBodies, game.navTarget, game.entities, game.ephemeris, entity.state.t,
+      entity.state.r, celestialBodies, game.navTarget, game.entities, game.celestialSystem, entity.state.t,
     );
     const sampleCount = this.sampleCount();
 
@@ -250,7 +250,7 @@ export class OrbitAnalysisWindow {
     this.setReaderTargetEntity(approachSource?.kind === 'entity' ? approachSource.entity : null);
     const approach = approachSource
       ? approachSeries(
-        entity, approachSource, celestialBodies, game.ephemeris, entity.state.t,
+        entity, approachSource, celestialBodies, game.celestialSystem, entity.state.t,
         APPROACH_SAMPLE_SPAN_SEC, sampleCount * APPROACH_SAMPLE_MULTIPLIER,
       )
       : null;
@@ -273,7 +273,7 @@ export class OrbitAnalysisWindow {
     // 選択中タブの点列を求め、対応するチャートへ描く。
     if (this.tab === 'altitude') {
       const altitude = altitudeSeries(
-        entity, reference, game.ephemeris, entity.state.t, this.scales.altitude.x * 3600, sampleCount,
+        entity, reference, game.celestialSystem, entity.state.t, this.scales.altitude.x * 3600, sampleCount,
       );
       this.chart.draw(this.altitudeSpec(altitude));
     } else if (this.tab === 'approach' && approach) {

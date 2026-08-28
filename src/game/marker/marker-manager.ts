@@ -18,7 +18,7 @@ import { CelestialBody, strongestAttractor } from '../../physics/celestial-body'
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { toFrameDir } from '../../physics/frame';
 import { qRotate } from '../../physics/attitude';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { ReferenceFrames } from '../../physics/reference-frames';
 
 const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 
@@ -311,13 +311,13 @@ export class MarkerManager {
     celestialBodies: readonly CelestialBody[] = [],
     frame?: ReferenceFrame,
     displayTime?: number,
-    ephemeris?: Ephemeris,
+    frames?: ReferenceFrames,
     frameAnchors?: FrameAnchorSource,
   ): number | undefined {
     const center = celestialBodies.length > 0 ? strongestAttractor(worldPos, celestialBodies) : null;
     let relVel = center ? sub(vel, center.state.v) : vel;
-    if (frame && displayTime !== undefined && ephemeris && frameAnchors && celestialBodies.length > 0) {
-      const tf = ephemeris.frameTransformAt(frame, displayTime, frameAnchors);
+    if (frame && displayTime !== undefined && frames && frameAnchors && celestialBodies.length > 0) {
+      const tf = frames.transformAt(frame, displayTime, frameAnchors);
       if (tf) {
         const vFrame = toFrameDir(tf, relVel);
         relVel = qRotate(tf.q, v3(vFrame.x, vFrame.y, vFrame.z));
