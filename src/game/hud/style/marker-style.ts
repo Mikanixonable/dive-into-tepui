@@ -1,9 +1,6 @@
 // HUD 3D スクリーン投影マーカー CSS (.mk, 各種マーカーシンボル, ラベル, 重なり順).
 import * as C from '../../const';
-import { FILL_4, THEME_PRESETS } from '../../theme';
-
-// 模式図(白背景)向けの上書き色は、選択中のテーマに関わらず theme.ts の light 側パレットから取る。
-const LIGHT_PALETTE = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
+import { FILL_4, LIGHT_PALETTE } from '../../theme';
 
 export const MARKER_STYLE = `
 /* マーカー層 Z-Index トークン定義 */
@@ -33,11 +30,11 @@ export const MARKER_STYLE = `
 .mk {
   position: absolute; transform: translate(-50%, -50%);
   text-align: center; white-space: nowrap; text-shadow: 0 0 4px var(--bg), 0 0 2px var(--bg);
-  width: 24px; height: 24px; transition: opacity 300ms ease;
+  width: 24px; height: 24px; transition: opacity var(--transition-slow) ease;
 }
 .mk .sym {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: var(--glyph-base); line-height: 1; transition: opacity 200ms ease; transform-origin: 50% 50%;
+  font-size: var(--glyph-base); line-height: 1; transition: opacity var(--transition-slow) ease; transform-origin: 50% 50%;
 }
 .mk .sym svg { display: block; width: 100%; height: 100%; }
 
@@ -46,7 +43,7 @@ export const MARKER_STYLE = `
 
 .mk .lbl {
   position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-  font-size: var(--font-xs); letter-spacing: 1px; transition: opacity 200ms ease;
+  font-size: var(--font-xs); letter-spacing: 1px; transition: opacity var(--transition-slow) ease;
 }
 .mk .sym.priority-hidden, .mk .lbl.priority-hidden { opacity: 0; pointer-events: none; }
 #hud .mk .lbl { margin-top: var(--space-1); }
@@ -82,7 +79,7 @@ export const MARKER_STYLE = `
 .mk-burn { color: var(--color-primary); }
 .mk-self { color: ${C.COLOR_MARKER_SELF}; }
 .mk-ammo { color: var(--text-dim); }
-.mk-fuel { color: #ffcf70; }
+.mk-fuel { color: ${C.COLOR_MARKER_FUEL}; }
 .mk-planned { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
 .mk-impact { color: var(--color-error); }
@@ -150,8 +147,6 @@ export const MARKER_STYLE = `
 [data-render-style="schematic"] .mk-lead { stroke: ${LIGHT_PALETTE.muted}; }
 
 /* 天体ラベルの札。模式図では白背景の上に文字だけで読ませるため、地を落とす。
-   マップビューでの背景・文字色は --space-label-* トークン経由で上書きされる
-   (map-view-style.ts が var(--space-label-background) 等を参照するため)。
    .lbl-main/.lbl-sub は上の一括ルールより詳細度が高い個別の色を持つため、ここで
    改めて上書きする。 */
 [data-render-style="schematic"] .mk-poi .lbl { background: none; }

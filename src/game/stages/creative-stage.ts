@@ -14,25 +14,20 @@ import type { FloatingOrigin } from '../floating-origin';
 import { qRotate } from '../../physics/attitude';
 import { Vec3, add, addScaled, v3 } from '../../physics/vec3';
 import { isOccluded } from '../../physics/occlusion';
-import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../hud/widgets';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { RcsFuelPickup } from '../game-entity/rcs-fuel-pickup';
 import { Base } from '../game-entity/base';
 import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy, proteinFormationSpawns } from './spawner/enemy-generator';
-import { PROTEIN_ASSET_IDS, type ProteinAssetId } from '../protein/protein-asset-loader';
-import {
-  DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,
-  isProteinDisplaySettings, proteinColorModesFor, proteinDisplayWithColor, type ProteinColorMode, type ProteinDisplaySettings,
-  type ProteinRepresentation,
-} from '../protein/protein-display';
+import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, type ProteinDisplaySettings } from '../protein/protein-display';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
 import * as C from '../const';
 import { ElementsForm, LagrangeForm, ObjectType, ReferenceCelestialBody, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
+import { STAGE_CONTROL_ENEMY_SHAPES, StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
 import { OrbitLine } from '../orbit-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
@@ -40,22 +35,6 @@ import type { CreativeStageSaveData, StageSaveData } from '../save-data';
 
 const DEG = Math.PI / 180;
 
-type EnemyShapeDefinition =
-  | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
-  | { readonly id: 'stage0-a' | 'stage0-b' | 'stage0-c'; readonly family: 'conventional'; readonly kind: 'stage0'; readonly typeIndex: number }
-  | { readonly id: ProteinAssetId; readonly family: 'protein'; readonly kind: 'protein'; readonly assetId: ProteinAssetId };
-
-const STAGE_CONTROL_ENEMY_SHAPES: readonly EnemyShapeDefinition[] = [
-  { id: 'drifting', family: 'conventional', kind: 'drifting' },
-  { id: 'stage0-a', family: 'conventional', kind: 'stage0', typeIndex: 0 },
-  { id: 'stage0-b', family: 'conventional', kind: 'stage0', typeIndex: 1 },
-  { id: 'stage0-c', family: 'conventional', kind: 'stage0', typeIndex: 2 },
-  ...PROTEIN_ASSET_IDS.map((assetId) => ({ id: assetId, family: 'protein', kind: 'protein', assetId } as const)),
-];
-type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
-const STAGE_CONTROL_ENEMY_COLORS = [
-  [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],
-] as const;
 const STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE = 2000;
 
 export class CreativeStage extends Stage {
@@ -70,8 +49,7 @@ export class CreativeStage extends Stage {
 
   private readonly placerPanel: ObjectPlacerPanel;
   // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
-  private readonly stageControlsPanel: HTMLElement;
-  private spawnEnemyButtons: Button[] = [];
+  private readonly stageControlsPanel: StageControlsPanel;
   private readonly waveAttack: WaveAttack;
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
   private waveAttackEnabled: boolean;
@@ -87,12 +65,8 @@ export class CreativeStage extends Stage {
   private manualEnemyCount = 0;
   private manualFormationCount = 0;
   private manualEnemySpawnDistance = STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE;
+  // 手動スポーンで使うタンパク質の表示設定。ステージ操作パネルの選択と onProteinDisplayChange で同期する。
   private proteinDisplay: ProteinDisplaySettings = DEFAULT_PROTEIN_DISPLAY;
-  private readonly proteinDisplayByRepresentation = new Map<ProteinRepresentation, ProteinDisplaySettings>([
-    ['molecular', defaultProteinDisplayFor('molecular')],
-    ['ribbon', DEFAULT_PROTEIN_DISPLAY],
-    ['silhouette', defaultProteinDisplayFor('silhouette')],
-  ]);
 
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
@@ -112,7 +86,6 @@ export class CreativeStage extends Stage {
     const restoredProtein = this._entities.enemies.find((enemy) => enemy.enemyKind.kind === 'protein' && isProteinDisplaySettings(enemy.enemyKind.display));
     if (restoredProtein && restoredProtein.enemyKind.kind === 'protein' && isProteinDisplaySettings(restoredProtein.enemyKind.display)) {
       this.proteinDisplay = restoredProtein.enemyKind.display;
-      this.proteinDisplayByRepresentation.set(this.proteinDisplay.representation, this.proteinDisplay);
     }
 
     this.previewOrbitLine = new OrbitLine({ color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan });
@@ -124,205 +97,47 @@ export class CreativeStage extends Stage {
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
     this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
-    this.stageControlsPanel = this.buildStageControlsPanel(this._hud.mapRoot);
+    this.stageControlsPanel = new StageControlsPanel(
+      this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
+      this.manualEnemySpawnDistance, this.proteinDisplay,
+    );
+    this.stageControlsPanel.onToggleResupply = (on) => { this.logistics.resupplyEnabled = on; };
+    this.stageControlsPanel.onToggleFuelResupply = (on) => { this.logistics.rcsFuelResupplyEnabled = on; };
+    this.stageControlsPanel.onToggleWaveAttack = (on) => { this.waveAttackEnabled = on; };
+    this.stageControlsPanel.onRefillAmmo = () => this.refillActivePlayerAmmo();
+    this.stageControlsPanel.onRefillFuel = () => this.refillActivePlayerRcsFuel();
+    this.stageControlsPanel.onSpawnDistanceChange = (distance) => { this.manualEnemySpawnDistance = distance; };
+    this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.spawnManualEnemy(shape, colorValue);
+    this.stageControlsPanel.onSpawnFormation = () => this.spawnProteinFormation();
+    this.stageControlsPanel.onProteinDisplayChange = (display) => {
+      this.proteinDisplay = display;
+      this.applyProteinDisplay(display);
+    };
+    hudRail(this._hud.mapRoot, 'right').appendChild(this.stageControlsPanel.element);
 
     this.begin();
   }
 
-  // 補給の自動投入・敵の波状攻撃のトグルを載せたステージ操作パネルを組み立て、右ドックへ追加して返す。
-  private buildStageControlsPanel(hudRoot: HTMLElement): HTMLElement {
-    const panel = document.createElement('div');
-    panel.id = 'hud-stage-controls';
-    panel.className = 'panel hidden';
-    panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-    const title = document.createElement('h3');
-    title.textContent = 'ステージ操作';
-    panel.appendChild(title);
-    const body = document.createElement('div');
-    body.className = 'stage-controls-body';
-    panel.appendChild(body);
-    const compactToggle = new ToggleSwitch('コンパクト表示', (on) => {
-      body.classList.toggle('hidden', on);
-    });
-    compactToggle.setOn(false);
-    panel.insertBefore(compactToggle.element, body);
-    const resupplyToggle = new ToggleSwitch('弾薬の自動投入', (on) => { this.logistics.resupplyEnabled = on; });
-    resupplyToggle.setOn(this.logistics.resupplyEnabled);
-    body.appendChild(resupplyToggle.element);
-    const fuelResupplyToggle = new ToggleSwitch('RCS燃料の自動投入', (on) => { this.logistics.rcsFuelResupplyEnabled = on; });
-    fuelResupplyToggle.setOn(this.logistics.rcsFuelResupplyEnabled);
-    body.appendChild(fuelResupplyToggle.element);
-    const waveAttackToggle = new ToggleSwitch('敵の波状攻撃', (on) => { this.waveAttackEnabled = on; });
-    waveAttackToggle.setOn(this.waveAttackEnabled);
-    body.appendChild(waveAttackToggle.element);
-
-    const spawnDistanceWrapper = document.createElement('label');
-    spawnDistanceWrapper.className = 'stage-control-select';
-    const spawnDistanceTitle = document.createElement('span');
-    spawnDistanceTitle.textContent = '敵のスポーン距離 (m)';
-    spawnDistanceWrapper.appendChild(spawnDistanceTitle);
-    const spawnDistanceInput = new ValueInput({ type: 'number', min: 0, step: 1 }, (text) => {
-      const distance = Number(text);
-      if (Number.isFinite(distance) && distance >= 0) {
-        this.manualEnemySpawnDistance = distance;
-      }
-      spawnDistanceInput.setValue(String(this.manualEnemySpawnDistance));
-    });
-    spawnDistanceInput.setValue(String(this.manualEnemySpawnDistance));
-    spawnDistanceWrapper.appendChild(spawnDistanceInput.element);
-    body.appendChild(spawnDistanceWrapper);
-
-    const conventionalShapes = STAGE_CONTROL_ENEMY_SHAPES.filter(({ family }) => family === 'conventional');
-    const proteinShapes = STAGE_CONTROL_ENEMY_SHAPES.filter(({ family }) => family === 'protein');
-    type EnemyFamily = 'conventional' | 'protein';
-    const enemySections = new Map<EnemyFamily, HTMLElement>();
-    let selectedEnemyFamily: EnemyFamily = 'conventional';
-    const enemyTabs = new TabBar<EnemyFamily>(
-      [['conventional', '従来型の敵'], ['protein', 'タンパク質型の敵']],
-      (family) => {
-        selectedEnemyFamily = family;
-        enemyTabs.setSelected(family);
-        for (const [tab, section] of enemySections) {
-          const visible = tab === selectedEnemyFamily;
-          section.classList.toggle('hidden', !visible);
-          section.setAttribute('aria-hidden', String(!visible));
-        }
-      },
-    );
-    enemyTabs.element.classList.add('stage-control-enemy-tabs');
-    enemyTabs.element.setAttribute('aria-label', '敵の種類');
-    enemyTabs.element.querySelectorAll<HTMLElement>('[role="tab"]').forEach((tab, index) => {
-      const family = (index === 0 ? 'conventional' : 'protein') as EnemyFamily;
-      tab.id = `stage-control-tab-${family}`;
-      tab.setAttribute('aria-controls', `stage-control-panel-${family}`);
-    });
-    body.appendChild(enemyTabs.element);
-
-    let selectedConventionalShape: EnemySpawnShape = conventionalShapes[0]!.id;
-    const conventionalSection = document.createElement('div');
-    conventionalSection.className = 'stage-control-section';
-    conventionalSection.id = 'stage-control-panel-conventional';
-    conventionalSection.setAttribute('role', 'tabpanel');
-    conventionalSection.setAttribute('aria-label', '従来型の敵');
-    const conventionalTitle = document.createElement('div');
-    conventionalTitle.className = 'stage-control-section-title';
-    conventionalTitle.textContent = '従来型の敵';
-    conventionalSection.appendChild(conventionalTitle);
-    const shapeControl = new SegmentedControl<EnemySpawnShape>(
-      '敵の形状', conventionalShapes.map(({ id }) => [id, id] as const),
-      (shape) => {
-        selectedConventionalShape = shape;
-        shapeControl.setSelected(shape);
-      },
-    );
-    shapeControl.element.classList.add('stage-control-shapes');
-    shapeControl.setSelected(selectedConventionalShape);
-    conventionalSection.appendChild(shapeControl.element);
-    const colorSelect = this.buildStageControlSelect('敵の色', STAGE_CONTROL_ENEMY_COLORS);
-    conventionalSection.appendChild(colorSelect.wrapper);
-    const conventionalSpawnButton = new Button('敵をスポーン', () => {
-      this.spawnManualEnemy(selectedConventionalShape, colorSelect.select.value);
-    });
-    conventionalSection.appendChild(conventionalSpawnButton.element);
-    enemySections.set('conventional', conventionalSection);
-    body.appendChild(conventionalSection);
-
-    let selectedProteinShape: EnemySpawnShape = proteinShapes[0]!.id;
-    const proteinSection = document.createElement('div');
-    proteinSection.className = 'stage-control-section';
-    proteinSection.id = 'stage-control-panel-protein';
-    proteinSection.setAttribute('role', 'tabpanel');
-    proteinSection.setAttribute('aria-label', 'タンパク質型の敵');
-    const proteinTitle = document.createElement('div');
-    proteinTitle.className = 'stage-control-section-title';
-    proteinTitle.textContent = 'タンパク質型の敵';
-    proteinSection.appendChild(proteinTitle);
-    const proteinShapeControl = new SegmentedControl<EnemySpawnShape>(
-      '敵の形状', proteinShapes.map(({ id }) => [id, id] as const),
-      (shape) => {
-        selectedProteinShape = shape;
-        proteinShapeControl.setSelected(shape);
-      },
-    );
-    proteinShapeControl.element.classList.add('stage-control-shapes');
-    proteinShapeControl.setSelected(selectedProteinShape);
-    proteinSection.appendChild(proteinShapeControl.element);
-    const representationItems = (Object.keys(PROTEIN_DISPLAY_LABELS) as ProteinRepresentation[])
-      .map((representation) => [representation, PROTEIN_DISPLAY_LABELS[representation]] as const);
-    const proteinDisplayControl = new SegmentedControl<ProteinRepresentation>(
-      '表示形態', representationItems,
-      (representation) => {
-        this.proteinDisplay = this.proteinDisplayByRepresentation.get(representation) ?? defaultProteinDisplayFor(representation);
-        this.proteinDisplayByRepresentation.set(representation, this.proteinDisplay);
-        proteinDisplayControl.setSelected(representation);
-        updateProteinColorItems();
-        this.applyProteinDisplay(this.proteinDisplay);
-      },
-    );
-    proteinDisplayControl.element.classList.add('stage-control-protein-representation');
-    proteinDisplayControl.setSelected(this.proteinDisplay.representation);
-    proteinSection.appendChild(proteinDisplayControl.element);
-    const proteinColorControl = new SegmentedControl<ProteinColorMode>('着色', [], (mode) => {
-      const next = proteinDisplayWithColor(this.proteinDisplay.representation, mode);
-      if (next === null) return;
-      this.proteinDisplay = next;
-      this.proteinDisplayByRepresentation.set(next.representation, next);
-      proteinColorControl.setSelected(mode);
-      this.applyProteinDisplay(next);
-    });
-    proteinColorControl.element.classList.add('stage-control-protein-colors');
-    const updateProteinColorItems = (): void => {
-      const modes = proteinColorModesFor(this.proteinDisplay.representation);
-      proteinColorControl.setItems(modes.map((mode) => [mode, PROTEIN_COLOR_LABELS[mode]] as const));
-      proteinColorControl.setSelected(this.proteinDisplay.colorMode);
-    };
-    updateProteinColorItems();
-    proteinSection.appendChild(proteinColorControl.element);
-    const proteinSpawnButton = new Button('敵をスポーン', () => {
-      this.spawnManualEnemy(selectedProteinShape, String(0xffffff));
-    });
-    proteinSection.appendChild(proteinSpawnButton.element);
-    const proteinFormationSpawnButton = new Button('陣形をスポーン', () => {
-      this.spawnProteinFormation();
-    });
-    proteinSection.appendChild(proteinFormationSpawnButton.element);
-    enemySections.set('protein', proteinSection);
-    body.appendChild(proteinSection);
-    enemyTabs.setSelected(selectedEnemyFamily);
-    for (const [family, section] of enemySections) {
-      const visible = family === selectedEnemyFamily;
-      section.classList.toggle('hidden', !visible);
-      section.setAttribute('aria-hidden', String(!visible));
-    }
-    this.spawnEnemyButtons = [conventionalSpawnButton, proteinSpawnButton, proteinFormationSpawnButton];
-    hudRail(hudRoot, 'right').appendChild(panel);
-    return panel;
-  }
-
-  private buildStageControlSelect<T extends number>(
-    label: string, items: readonly (readonly [T, string])[],
-  ): { readonly wrapper: HTMLElement; readonly select: HTMLSelectElement } {
-    const wrapper = document.createElement('label');
-    wrapper.className = 'stage-control-select';
-    const title = document.createElement('span');
-    title.textContent = label;
-    wrapper.appendChild(title);
-    const select = document.createElement('select');
-    select.className = 'w-select';
-    select.setAttribute('aria-label', label);
-    select.addEventListener('keydown', (event) => event.stopPropagation());
-    for (const [value, text] of items) {
-      const option = document.createElement('option');
-      option.value = String(value);
-      option.textContent = text;
-      select.appendChild(option);
-    }
-    wrapper.appendChild(select);
-    return { wrapper, select };
-  }
-
   private applyProteinDisplay(display: ProteinDisplaySettings): void {
     for (const enemy of this._entities.enemies) enemy.setProteinDisplay(display);
+  }
+
+  private refillActivePlayerAmmo(): void {
+    const player = this.activePlayer;
+    if (player === null || !player.alive) {
+      this._hud.hint('操作艦がいないため弾薬を補充できません');
+      return;
+    }
+    player.refillAmmo();
+  }
+
+  private refillActivePlayerRcsFuel(): void {
+    const player = this.activePlayer;
+    if (player === null || !player.alive) {
+      this._hud.hint('操作艦がいないためRCS燃料を補充できません');
+      return;
+    }
+    player.refuelFuel(player.totalMaxFuel);
   }
 
   private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
@@ -339,20 +154,20 @@ export class CreativeStage extends Stage {
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return;
     if (shapeDefinition.kind === 'drifting') {
-      this.addEnemy(generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._hud, this._worldSfx, this._fx, this._scene), this._entities);
+      this.addEnemy(generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._worldSfx, this._fx, this._scene), this._entities);
       return;
     }
     if (shapeDefinition.kind === 'protein') {
       this.spawnEnemyWhenReady(
         shapeDefinition.assetId,
-        () => generateProteinEnemy(name, state, shapeDefinition.assetId, this.proteinDisplay, this._hud, this._worldSfx, this._fx, this._scene),
+        () => generateProteinEnemy(name, state, shapeDefinition.assetId, this.proteinDisplay, this._worldSfx, this._fx, this._scene),
         this._entities,
       );
       return;
     }
     this.addEnemy(generateApproachingEnemy(
       name, state, C.STAGE0_ENEMY_HP, color, color, shapeDefinition.typeIndex, undefined,
-      this._hud, this._worldSfx, this._fx, this._scene,
+      this._worldSfx, this._fx, this._scene,
     ), this._entities);
   }
 
@@ -368,7 +183,7 @@ export class CreativeStage extends Stage {
     const state = kinematicState(player.state.t, position, player.state.v);
     const name = `FORMATION-${++this.manualFormationCount}`;
     const formationId = name;
-    for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._hud, this._worldSfx, this._fx, this._scene)) {
+    for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._worldSfx, this._fx, this._scene)) {
       this.spawnEnemyWhenReady(assetId, build, this._entities);
     }
   }
@@ -377,10 +192,10 @@ export class CreativeStage extends Stage {
   private mountStageControlsPanel(inMapView: boolean): void {
     const root = inMapView ? this._hud.mapRoot : this._hud.combatRoot;
     const rightRail = hudRail(root, 'right');
-    if (this.stageControlsPanel.parentElement === rightRail) return;
+    if (this.stageControlsPanel.element.parentElement === rightRail) return;
     const vessel = rightRail.querySelector<HTMLElement>('#hud-vessel-status');
-    if (vessel !== null) rightRail.insertBefore(this.stageControlsPanel, vessel);
-    else rightRail.appendChild(this.stageControlsPanel);
+    if (vessel !== null) rightRail.insertBefore(this.stageControlsPanel.element, vessel);
+    else rightRail.appendChild(this.stageControlsPanel.element);
   }
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
@@ -390,14 +205,14 @@ export class CreativeStage extends Stage {
   ): void {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
     this.activePlayer = player;
-    for (const button of this.spawnEnemyButtons) button.setEnabled(player !== null && player.alive);
+    this.stageControlsPanel.setSpawnButtonsEnabled(player !== null && player.alive);
     this.mountStageControlsPanel(cameraSystem.overviewMode);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
       cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._ephemeris.celestialBodiesAt(displayTime),
     );
     this.placerPanel.setIssues(this.issues);
-    this.stageControlsPanel.classList.remove('hidden');
+    this.stageControlsPanel.element.classList.remove('hidden');
   }
 
   // オブジェクト配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
@@ -503,7 +318,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
         const finalName = name.trim() || generateRandomName('enemy');
-        const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._hud, this._worldSfx, this._fx, this._scene);
+        const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._worldSfx, this._fx, this._scene);
         this._entities.addEnemy(enemy);
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {
@@ -601,7 +416,7 @@ export class CreativeStage extends Stage {
   update(dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
-      this.behaveAllEnemies(dt, player, this._entities, simTime, simSpeed);
+      this.behaveAllEnemies(player, this._entities, simTime, simSpeed);
       if (this.waveAttackEnabled) {
         this.waveAttack.update(dt, player, this._entities.enemies, simTime, this, (enemy) => this.addEnemy(enemy, this._entities));
       }
@@ -660,7 +475,7 @@ export class CreativeStage extends Stage {
     super.dispose();
     this.previewOrbitLine.line.removeFromParent();
     this.previewOrbitLine.dispose();
-    this.stageControlsPanel.remove();
+    this.stageControlsPanel.element.remove();
     this.placerPanel.dispose();
   }
 
