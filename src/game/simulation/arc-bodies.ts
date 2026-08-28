@@ -7,6 +7,17 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../math/vec3';
 import * as C from '../const';
 
+// 一覧の外にある天体が「いつまで効き得ないか」を見積もるときの、相対速さの安全率と下限 [m/s]。
+// 見積りは保守的でありさえすればよく、精密である必要はない — 外れても訪問が1回増えるだけで、
+// 逆に短く見積もりすぎることだけが取りこぼしになる。下限は、相対速度がいま 0 の天体にも
+// 有限の期限を与えるために要る。
+export const ARC_BODY_CLOSING_SAFETY = 2;
+export const ARC_BODY_CLOSING_MARGIN = 2000;
+
+// 一覧へ入れておく先読み時間を、そのときの刻み幅の何歩ぶんに取るか。次の1歩で表面へ届きうる
+// 天体が一覧の外に残ると、その歩の掃引到達判定がその天体を見ないまま通り抜ける。
+export const ARC_BODY_LEAD_STEPS = 4;
+
 // 積分が引きうる天体1体ぶんの、時刻に依らない素性。
 export type FutureBodyCandidate = {
   readonly id: CelestialBodyId;
@@ -50,8 +61,8 @@ function slackTime(w: Watch, body: CelestialBody, from: KinematicState): number 
   const collisionSlack = dist - body.radius;
   const slack = Math.min(gravitySlack, collisionSlack);
   if (slack <= 0) return 0;
-  const closing = (len(sub(body.state.v, from.v)) + len(body.state.v)) * C.ARC_BODY_CLOSING_SAFETY
-    + C.ARC_BODY_CLOSING_MARGIN;
+  const closing = (len(sub(body.state.v, from.v)) + len(body.state.v)) * ARC_BODY_CLOSING_SAFETY
+    + ARC_BODY_CLOSING_MARGIN;
   return slack / closing;
 }
 
@@ -92,7 +103,7 @@ export class ArcBodies {
   // 新しく、呼び出し側が次の解決まで保持してよい。
   resolve(t: number, from: KinematicState, stepDt: number): ArcBodyWindow {
     // 次の歩で表面へ届きうる天体が一覧の外に残らないよう、刻み幅の数歩ぶん先まで入れておく。
-    const lead = Math.max(stepDt, C.ARC_MIN_STEP_DT) * C.ARC_BODY_LEAD_STEPS;
+    const lead = Math.max(stepDt, C.ARC_MIN_STEP_DT) * ARC_BODY_LEAD_STEPS;
     const gravity: CelestialBody[] = [];
     const collision: CelestialBody[] = [];
     this.lastResolved = 0;

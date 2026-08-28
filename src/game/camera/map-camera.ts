@@ -15,6 +15,40 @@ import { bodyDef } from '../../physics/solar-system';
 import { FocusTarget, resolveFocusTarget } from './focus-target';
 import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save/save-data';
 
+// 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
+// 視界に収められる引きの上限。
+export const OVERVIEW_CAMERA_MAX_DIST = 1e14;
+
+// 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
+// (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
+// 手前がクリップされにくくなる。反転 32bit 深度では分解能が near に依らないので、
+// この比が深度精度と取引になることはない。
+export const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
+
+// near = dist / OVERVIEW_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
+// 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
+// near クリップは光軸からの角度 θ に対して球殻上の点を R·cosθ まで切り詰めるので、
+// R そのものでなく画面対角の半視野角 θ_diag での R·cosθ_diag を上限に取らないと、
+// 画面中心だけ残して周辺・四隅の星が消える(MapCamera.near 参照)。
+// 1 未満のこの係数はその余弦にさらに掛ける安全マージン。
+export const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
+
+// 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
+// (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
+// far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
+// far 平面の外に出て消える。逆に近距離域で far を大きく取ることの費用は、反転 32bit 深度では
+// 事実上ゼロ。
+export const OVERVIEW_CAMERA_FAR_RATIO = 100;
+
+// 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
+// far の外に出ないための下限。
+export const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
+
+// OVERVIEW_CAMERA_MAX_DIST × OVERVIEW_CAMERA_FAR_RATIO と等しい値。これより小さいと
+// 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
+// 注視点より奥にある軌道線・天体が far 平面でクリップされる。
+export const OVERVIEW_CAMERA_FAR_MAX = 1e16;
+
 // セーブデータの rotatingWith を FrameRotationSource へ変換する。旧セーブは公転対象の id を
 // 文字列(または回さないなら null)でそのまま持っていたので、その形は公転として受ける。
 function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | string | null): FrameRotationSource | null {
@@ -149,7 +183,7 @@ export class MapCamera {
     const savedHalfHeight = saved?.orthographicHalfHeight;
     const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight) ? savedHalfHeight : defaultHalfHeight;
     this.orthographicHalfHeight = Math.max(C.OVERVIEW_CAMERA_MIN_DIST * 1e-6,
-      Math.min(C.OVERVIEW_CAMERA_MAX_DIST, halfHeight));
+      Math.min(OVERVIEW_CAMERA_MAX_DIST, halfHeight));
     this.perspectiveCamera = new THREE.PerspectiveCamera(
       this.fovDeg,
       window.innerWidth / window.innerHeight,
@@ -302,7 +336,7 @@ export class MapCamera {
 
   private setDistance(distance: number): void {
     const current = this.dist;
-    const next = Math.max(this.minDist, Math.min(C.OVERVIEW_CAMERA_MAX_DIST, distance));
+    const next = Math.max(this.minDist, Math.min(OVERVIEW_CAMERA_MAX_DIST, distance));
     if (!(current > 0) || next === current) return;
     this.offset_r = frameDir(
       this.offset_r.x * next / current,
@@ -357,14 +391,14 @@ export class MapCamera {
     const halfV = THREE.MathUtils.degToRad(this.fov * 0.5);
     const halfH = Math.atan(Math.tan(halfV) * window.innerWidth / window.innerHeight);
     const halfDiag = Math.atan(Math.hypot(Math.tan(halfV), Math.tan(halfH)));
-    const nearMax = C.CELESTIAL_SHELL_RADIUS * Math.cos(halfDiag) * C.OVERVIEW_CAMERA_NEAR_SHELL_MARGIN;
-    return Math.min(nearMax, this.dist / C.OVERVIEW_CAMERA_NEAR_RATIO);
+    const nearMax = C.CELESTIAL_SHELL_RADIUS * Math.cos(halfDiag) * OVERVIEW_CAMERA_NEAR_SHELL_MARGIN;
+    return Math.min(nearMax, this.dist / OVERVIEW_CAMERA_NEAR_RATIO);
   }
 
   // CameraSystem.sync が読む遠クリップ距離。dist に比例させることで、引いたカメラでも
   // 太陽・木星のような遠方天体が far の外に出て消えない(OVERVIEW_CAMERA_FAR_RATIO 参照)。
   get far(): number {
-    return Math.min(C.OVERVIEW_CAMERA_FAR_MAX, Math.max(C.OVERVIEW_CAMERA_FAR_MIN, this.dist * C.OVERVIEW_CAMERA_FAR_RATIO));
+    return Math.min(OVERVIEW_CAMERA_FAR_MAX, Math.max(OVERVIEW_CAMERA_FAR_MIN, this.dist * OVERVIEW_CAMERA_FAR_RATIO));
   }
 
   // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
@@ -472,10 +506,10 @@ export class MapCamera {
     const zoomFactor = Math.exp(mouse.wheel * 0.0018);
     const dist = this.projectionMode === 'orthographic'
       ? this.dist
-      : Math.max(this.minDist, Math.min(C.OVERVIEW_CAMERA_MAX_DIST, this.dist * zoomFactor));
+      : Math.max(this.minDist, Math.min(OVERVIEW_CAMERA_MAX_DIST, this.dist * zoomFactor));
     if (this.projectionMode === 'orthographic' && mouse.wheel !== 0) {
       this.orthographicHalfHeight = Math.max(C.OVERVIEW_CAMERA_MIN_DIST * 1e-6,
-        Math.min(C.OVERVIEW_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
+        Math.min(OVERVIEW_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
     }
     upEci = norm(addScaled(upEci, offEci, -dot(upEci, offEci) / dot(offEci, offEci)));
     const yaw = mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;

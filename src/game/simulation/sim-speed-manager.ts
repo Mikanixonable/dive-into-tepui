@@ -9,6 +9,10 @@ import { KinematicState } from '../../physics/kinematic-state';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 
+// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
+export const AUTOWARP_MARGIN = 2;
+export const AUTOWARP_STOP = 10;
+
 export class SimSpeedManager {
   private levelIdx = 0;
   private autoWarpUntil: number | null = null;
@@ -125,7 +129,7 @@ export class SimSpeedManager {
     }
     let idx = 0;
     for (let i = 0; i < C.SIM_SPEED_LEVELS.length; i++) {
-      if (C.SIM_SPEED_LEVELS[i]! <= tRem / C.AUTOWARP_MARGIN) idx = i;
+      if (C.SIM_SPEED_LEVELS[i]! <= tRem / AUTOWARP_MARGIN) idx = i;
     }
     this.levelIdx = idx;
   }
@@ -137,12 +141,12 @@ export class SimSpeedManager {
   estimatedRealSecondsToWarpEnd(simTime: number): number | null {
     if (this.autoWarpUntil === null) return null;
     let tRem = this.autoWarpUntil - simTime;
-    if (tRem <= C.AUTOWARP_STOP) return 0;
+    if (tRem <= AUTOWARP_STOP) return 0;
     let realSec = 0;
     for (let i = C.SIM_SPEED_LEVELS.length - 1; i >= 0; i--) {
       const s = C.SIM_SPEED_LEVELS[i]!;
-      if (s > tRem / C.AUTOWARP_MARGIN) continue;
-      const lowerBound = Math.max(C.AUTOWARP_STOP, s * C.AUTOWARP_MARGIN);
+      if (s > tRem / AUTOWARP_MARGIN) continue;
+      const lowerBound = Math.max(AUTOWARP_STOP, s * AUTOWARP_MARGIN);
       if (tRem <= lowerBound) continue;
       realSec += (tRem - lowerBound) / s;
       tRem = lowerBound;

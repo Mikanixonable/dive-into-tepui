@@ -2,6 +2,11 @@
 import * as C from '../../const';
 import { FILL_4, LIGHT_PALETTE } from '../../theme';
 
+export const COLOR_MARKER_TGTDIR = '#ff7ab0';
+export const COLOR_MARKER_BOARDPASS = '#ffffff';
+export const COLOR_MARKER_SELF = '#dfe3e8';
+export const COLOR_MARKER_PLANNED = '#8fd0ff';
+
 export const MARKER_STYLE = `
 /* マーカー層 Z-Index トークン定義 */
 #hud {
@@ -69,19 +74,19 @@ export const MARKER_STYLE = `
 .mk-retro { color: var(--axis-prograde); }
 .mk-nrm { color: var(--axis-normal); }
 .mk-rad { color: var(--axis-radial); }
-.mk-tgtdir { color: ${C.COLOR_MARKER_TGTDIR}; }
+.mk-tgtdir { color: ${COLOR_MARKER_TGTDIR}; }
 .mk-node { color: ${C.COLOR_MARKER_NODE}; }
-.mk-boardpass { color: ${C.COLOR_MARKER_BOARDPASS}; }
+.mk-boardpass { color: ${COLOR_MARKER_BOARDPASS}; }
 .mk-boardpass .sym { font-size: var(--font-xxs); }
 .mk-mnode { color: var(--color-primary-hover); }
 .mk-mnode .lbl { white-space: pre; line-height: 1.25; }
 #hud .mk-mnode .lbl, #hud .mk-burn .lbl { margin-top: var(--space-2); }
 .mk-burn { color: var(--color-primary); }
-.mk-self { color: ${C.COLOR_MARKER_SELF}; }
+.mk-self { color: ${COLOR_MARKER_SELF}; }
 .mk-ammo { color: var(--text-dim); }
 .mk-fuel { color: ${C.COLOR_MARKER_FUEL}; }
-.mk-planned { color: ${C.COLOR_MARKER_PLANNED}; }
-.mk-apsis { color: ${C.COLOR_MARKER_PLANNED}; }
+.mk-planned { color: ${COLOR_MARKER_PLANNED}; }
+.mk-apsis { color: ${COLOR_MARKER_PLANNED}; }
 .mk-impact { color: var(--color-error); }
 .mk-plantick { color: var(--text-dim); }
 .mk-protein-site { color: var(--text-dim); }

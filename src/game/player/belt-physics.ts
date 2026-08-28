@@ -4,8 +4,13 @@ import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../
 import { kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
-import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
+
+export const MAG_CHAIN_MAX_ROLL_DEG = 15;  // ロール上限
+export const MAG_CHAIN_MAX_PITCH_DEG = 45; // ピッチ上限(上下方向の折れ)
+export const MAG_CHAIN_MAX_YAW_DEG = 15;   // ヨー上限(左右方向の折れ)
+export const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
+export const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
 
 // ベルトが機体座標系でたわみなく伸びる基準方向。
 export const X_AXIS: Vec3 = v3(1, 0, 0);
@@ -170,14 +175,14 @@ export class BeltPhysics {
   // beltPos/beltPrevPos へ書き戻す。併せてねじれ角(beltTwist)を積分する。根本から2番目の
   // つなぎ目だけは、次にリンク0へ昇格する前に直立させるため feed に応じて上限を0へ絞る。
   private advanceOrientationConstraints(dt: number, att: Attitude, feed: number): void {
-    const maxRoll = (C.MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
-    const maxPitchRad = (C.MAG_CHAIN_MAX_PITCH_DEG * Math.PI) / 180;
-    const maxYawRad = (C.MAG_CHAIN_MAX_YAW_DEG * Math.PI) / 180;
+    const maxRoll = (MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
+    const maxPitchRad = (MAG_CHAIN_MAX_PITCH_DEG * Math.PI) / 180;
+    const maxYawRad = (MAG_CHAIN_MAX_YAW_DEG * Math.PI) / 180;
     const secondLinkNarrowing = clamp(1 - feed, 0, 1);
-    const rollLerp = Math.min(1, dt * C.MAG_CHAIN_ROLL_RATE);
+    const rollLerp = Math.min(1, dt * MAG_CHAIN_ROLL_RATE);
     let prevPoint = this.anchor;
     let prevQ: Quat = IDENTITY_Q; // アンカー(機体)側の基準姿勢: ベルトは+X方向へ伸びる
-    let prevTwist = att.w.z * C.MAG_CHAIN_ROLL_GAIN; // ねじれの発生源: 機体のロール角速度
+    let prevTwist = att.w.z * MAG_CHAIN_ROLL_GAIN; // ねじれの発生源: 機体のロール角速度
 
     for (let i = 0; i < this.linkCount; i++) {
       const rawDir = sub(this.beltPos[i]!, prevPoint);

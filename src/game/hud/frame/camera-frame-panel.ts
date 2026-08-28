@@ -12,6 +12,8 @@ import type { MapPickable } from '../../pickable/map-pickable';
 import type { OverlayManager } from '../overlay-manager';
 import { buildPanel } from './frame-controls';
 
+export const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
+
 const ANGLE_COLUMNS = [
   { description: '面', items: [['ecliptic', '黄道面'], ['equator', '赤道面'], ['moonOrbit', '月軌道面']] },
   { description: '視点', items: [['above', '真上'], ['side', '真横']] },
@@ -70,14 +72,14 @@ export class CameraFramePanel {
     this.fovSlider = new Slider({
       min: C.OVERVIEW_CAMERA_FOV_MIN,
       max: C.OVERVIEW_CAMERA_FOV_MAX,
-      step: C.OVERVIEW_CAMERA_FOV_STEP,
+      step: OVERVIEW_CAMERA_FOV_STEP,
     }, (value) => mapCamera.setFovDeg(value));
     fovGroup.appendChild(this.fovSlider.element);
     this.fovInput = new ValueInput({
       type: 'number',
       min: C.OVERVIEW_CAMERA_FOV_MIN,
       max: C.OVERVIEW_CAMERA_FOV_MAX,
-      step: C.OVERVIEW_CAMERA_FOV_STEP,
+      step: OVERVIEW_CAMERA_FOV_STEP,
     }, (text) => mapCamera.setFovDeg(Number(text)));
     fovGroup.appendChild(this.fovInput.element);
     const fovUnit = document.createElement('span');
