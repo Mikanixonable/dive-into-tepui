@@ -1,34 +1,22 @@
-// 天体暦: 恒星→惑星-衛星系重心→惑星/衛星の順に合成し(重心補正込み)、任意時刻の ECI
-// 位置・速度・重力源配列・回転基準系・ラグランジュ点を返すサンプラ。分岐は SOLAR_SYSTEM の
-// kind(恒星/惑星/衛星)だけで、固有名の分岐は持たない。ECI 化は「日心位置 − 地球の日心位置」
-// の一箇所のみ(地球は自分自身を引くので厳密に 0 になる)。
-// 評価結果は時刻 t をキーにした固定長リングでメモ化する。ヒットするのはキーが厳密に一致した
-// ときだけで、ミス時は常に再計算するため、どの順に呼んでも返る値は変わらない(呼び出し順に
-// 依存する隠れた制約を作らない)。
-// THREE/DOM 非依存の純関数群 + 状態(初期位相とメモ)を持つサンプラクラス。
-import { Atmosphere } from './atmosphere';
-import { Quat, qFromForwardUp, qRotate } from './attitude';
+// 天体暦: レジストリから天体ごとの CelestialMotion を組み、任意時刻の ECI 位置・速度・
+// 重力源配列・回転基準系・ラグランジュ点を天体 id 引きで答えるサンプラ。
+// 天体一覧を返す各メソッドは時刻 t をキーにした固定長リングでメモ化する。ヒットするのは
+// キーが厳密に一致したときだけで、ミス時は常に再計算するため、どの順に呼んでも返る値は
+// 変わらない(呼び出し順に依存する隠れた制約を作らない)。
+import { Quat, qFromForwardUp } from './attitude';
 import { AbsoluteEphemeris, OriginCenteredEphemeris } from './absolute-ephemeris';
-import { CelestialBody, Degree2Gravity } from './celestial-body';
-import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
-import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
-import { FrameAnchorSource, FrameRotationSource, ReferenceFrame, FrameTransform, rotationSourceKey } from './frame';
-import { FrameRotation, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
+import { CelestialBody } from './celestial-body';
 import {
-  LagrangePoints, collinearClearanceRatio, hasStableTriangularPoints, lagrangePoints,
-} from './lagrange';
-import { planetAngles } from './planet-orbit';
-import { satelliteState } from './satellite-orbit';
-import { bodyDef, CelestialBodyDef, CelestialRegistry, primaryOf, SOLAR_SYSTEM, spinRateOf, starOf } from './solar-system';
+  BodyOrientation, CelestialMotion, EciOrigin, OrbitingMotion, PlanetMotion, SatelliteMotion, StarMotion,
+} from './celestial-motion';
+import { FrameAnchorSource, FrameRotationSource, ReferenceFrame, FrameTransform, rotationSourceKey } from './frame';
+import { FrameRotation } from './kepler-orbit';
+import { LagrangePoints } from './lagrange';
+import { CelestialRegistry, SOLAR_SYSTEM, starOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
+import { SECONDS_PER_DAY } from './time';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
-import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../math/vec3';
-
-// 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
-export type BodyOrientation = { readonly axis: Vec3; readonly spinAngle: number };
-
-const JULIAN_CENTURY = 36525 * 86400; // [s]
-const DAY = 86400; // [s]
+import { Vec3, cross, len, lenSq, norm, scale, sub, v3 } from '../math/vec3';
 
 // 全天体の軌道評価時刻へ一律に足す定数 [s]。要素の元期は J2000 のままにしたうえで、
 // simTime = 0 をゲーム開始にふさわしい瞬間 — 地球から見て太陽が +X 方向(昼側)にある、
@@ -42,109 +30,97 @@ export const EPOCH_T_OFFSET = 6972197.1872752225;
 // 回転しない座標系(ReferenceFrame.rotatingWith === null)の姿勢・角速度。
 const IDENTITY_ROTATION: FrameRotation = { q: { x: 0, y: 0, z: 0, w: 1 } as Quat, omega: v3() };
 
-type PlanetDef = Extract<CelestialBodyDef, { readonly kind: 'planet' }>;
-type SatelliteDef = Extract<CelestialBodyDef, { readonly kind: 'satellite' }>;
-type OrbitingDef = PlanetDef | SatelliteDef;
-
-// 公転している天体の二体部分の軌道。衛星は周期摂動項を含まない平均要素(kepler)を持つ。
-function keplerOrbitOf(def: OrbitingDef): KeplerOrbit {
-  return def.kind === 'planet' ? def.orbit : def.orbit.kepler;
-}
-
 // 回転系(rotatingWith が非 null)の原点。衛星は惑星まわりの公転を止めて見せたいので
 // その惑星(例: 月回転系は地球中心)、惑星は自分自身(例: 太陽-地球回転系は地球中心のまま、
 // 地球自身の公転方向へ向きだけ合わせる。原点ごと恒星へ移した完全な恒星中心系が欲しければ
 // {center: starId, rotatingWith: null} を使う)。
-function rotatingFrameCenterOf(registry: CelestialRegistry, id: string): string {
-  const def = bodyDef(registry, id);
-  return def.kind === 'satellite' ? def.planet : id;
-}
-
-// 主天体まわりの二体相対加速度 -mu·d/|d|³。d は主天体からの相対位置、mu は両者の mu の和。
-function twoBodyAccel(d: Vec3, mu: number): Vec3 {
-  const d2 = lenSq(d);
-  if (d2 < 1) return v3();
-  return scale(d, -mu / (d2 * Math.sqrt(d2)));
+function rotatingFrameCenterOf(motion: CelestialMotion): string {
+  return motion instanceof SatelliteMotion ? motion.planet.id : motion.id;
 }
 
 export class Ephemeris {
-  // 天体ごとの平均黄経の初期オフセット。構築時に決まり、以後変わらない。既定は空(全天体0)で、
-  // 値は必ずコンストラクタの引数として外から渡す。
+  // 天体ごとの平均黄経の初期オフセット。構築時に決まり、以後変わらない。
   private readonly phaseOffsets: Partial<Record<string, number>>;
 
-  // 天体ごとの中間結果と、天体一覧を返す各メソッドの時刻キャッシュ。
-  private readonly planetHelioCache = new Map<string, TimeRing<KinematicState>>();
-  private readonly satelliteRelCache = new Map<string, TimeRing<KinematicState>>();
+  // registry の全天体の運動(宣言順)。celestialBodiesAt が返す配列の順序でもある。
+  private readonly motions: readonly CelestialMotion[];
+  private readonly motionsById = new Map<string, CelestialMotion>();
+  // mu が 0 でない天体と、大気を持つ天体(いずれも宣言順)。どちらも時刻に依らないので構築時に確定する。
+  private readonly gravityMotions: readonly CelestialMotion[];
+  private readonly atmosphereMotions: readonly CelestialMotion[];
+
+  // 天体一覧を返す各メソッドの時刻キャッシュ。
   private readonly allCelestialBodiesCache = new TimeRing<readonly CelestialBody[]>();
   private readonly gravityAttractorsCache = new TimeRing<readonly CelestialBody[]>();
   private readonly atmosphereCelestialBodiesCache = new TimeRing<readonly CelestialBody[]>();
 
-  // registry の全天体 id、および celestialBodiesAt が返す配列の順序(宣言順)。
-  private readonly ids: readonly string[];
-  // mu が 0 でない天体の id(宣言順)。mu は時刻に依らないので構築時に確定する。
-  private readonly gravityIds: readonly string[];
-  // 大気を持つ天体の id(宣言順)。大気の有無は時刻に依らないので構築時に確定する。
-  private readonly atmosphereIds: readonly string[];
-  // registry の主星。0個なら null(輻射源・影の計算がそもそも無意味になる — sunDirAt/dynamics.ts の
-  // 呼び出し側はその前提で無害なフォールバックを扱う)。
+  // registry の主星。恒星を持たないレジストリでは null(輻射源・影の計算がそもそも無意味になる)。
   readonly starId: string | null;
-  // originId 中心・無回転の慣性系。frames の対応要素・frameOf(originId, null) と同一参照。
+  // originId 中心・無回転の慣性系。frameOf(originId, null) と同一参照。
   readonly inertialFrame: ReferenceFrame;
-  // registry から生成した全天体の慣性系 + 公転天体ぶんの回転系。値は必ず frameOf が返すのと
-  // 同じ参照になる(trajectory-line.ts の frame === lastFrame キャッシュ判定が参照同一性を前提にする)。
+  // 全天体の慣性系 + 公転天体ぶんの回転系。値は frameOf が返すのと同じ参照になる。
   readonly frames: readonly ReferenceFrame[];
   // (center, rotationSourceKey(rotatingWith)) の対ごとに ReferenceFrame を1個だけ持つキャッシュ。
-  // frameOf/frameFor/inertialFrame/frames はすべてこれを経由するので、同じ対に対して異なる参照が
-  // 生まれない(rotatingWith オブジェクト自身もキャッシュ内で1個だけ作って使い回す)。
   private readonly frameCache = new Map<string, Map<string, ReferenceFrame>>();
 
   // registry/originId/epochOffsetSec を省略すると現実の太陽系・地球原点・既定エポックで動く。
-  // starId・inertialFrame・frames は registry から1度だけ導出し、以後は参照を使い回す。
+  // absoluteSource を渡すと、その有効期間だけ高精度暦パック経路を通る。
   constructor(
     readonly registry: CelestialRegistry = SOLAR_SYSTEM,
     readonly originId: string = 'earth',
-    private readonly epochOffsetSec: number = EPOCH_T_OFFSET,
+    epochOffsetSec: number = EPOCH_T_OFFSET,
     phaseOffsets: Partial<Record<string, number>> = {},
     absoluteSource?: AbsoluteEphemeris,
-    epochJdTdb = 2451545 + epochOffsetSec / DAY,
+    epochJdTdb = 2451545 + epochOffsetSec / SECONDS_PER_DAY,
   ) {
     this.phaseOffsets = phaseOffsets;
-    this.ids = Object.keys(registry);
-    this.gravityIds = this.ids.filter((id) => bodyDef(registry, id).mu !== 0);
-    this.atmosphereIds = this.ids.filter((id) => {
-      const def = bodyDef(registry, id);
-      return def.kind !== 'star' && def.atmosphere !== undefined;
-    });
     this.starId = starOf(registry);
+    const precise = absoluteSource === undefined
+      ? null
+      : new OriginCenteredEphemeris(absoluteSource, originId, epochJdTdb);
+    const origin = new EciOrigin();
+
+    // 恒星→惑星→衛星の順に作る。衛星は親の惑星の参照を要求し、自分を親の重心補正へ積む。
+    let star: StarMotion | null = null;
+    for (const [id, def] of Object.entries(registry)) {
+      if (def.kind !== 'star') continue;
+      star = new StarMotion(def, this.phaseOf(id), epochOffsetSec, precise, origin);
+      this.motionsById.set(id, star);
+    }
+    for (const [id, def] of Object.entries(registry)) {
+      if (def.kind !== 'planet') continue;
+      this.motionsById.set(id, new PlanetMotion(def, star, this.phaseOf(id), epochOffsetSec, precise, origin));
+    }
+    for (const [id, def] of Object.entries(registry)) {
+      if (def.kind !== 'satellite') continue;
+      const planet = this.motionsById.get(def.planet);
+      if (!(planet instanceof PlanetMotion)) throw new Error(`Ephemeris: 衛星 ${id} の惑星 ${def.planet} が無い`);
+      this.motionsById.set(id, new SatelliteMotion(def, planet, this.phaseOf(id), epochOffsetSec, precise, origin));
+    }
+
+    // 木が揃ってから ECI の中心を結ぶ。中心天体自身も自分を参照するので、この順序は崩せない。
+    this.motions = Object.keys(registry).map((id) => this.motionOf(id));
+    origin.set(this.motionOf(originId));
+
+    this.gravityMotions = this.motions.filter((m) => m.def.mu !== 0);
+    this.atmosphereMotions = this.motions.filter((m) => m instanceof OrbitingMotion && m.def.atmosphere !== undefined);
     this.inertialFrame = this.frameOf(originId, null);
     this.frames = [
       this.inertialFrame,
-      ...this.ids.filter((id) => id !== originId).map((id) => this.frameOf(id, null)),
-      ...this.ids
-        .filter((id) => bodyDef(registry, id).kind !== 'star')
-        .map((id) => this.frameOf(rotatingFrameCenterOf(registry, id), { kind: 'revolution', id })),
+      ...this.motions.filter((m) => m.id !== originId).map((m) => this.frameOf(m.id, null)),
+      ...this.motions.filter((m) => m.kind !== 'star')
+        .map((m) => this.frameOf(rotatingFrameCenterOf(m), { kind: 'revolution', id: m.id })),
     ];
-    this.precise = absoluteSource === undefined
-      ? null
-      : new OriginCenteredEphemeris(absoluteSource, originId, epochJdTdb);
   }
-
-  // DE440/長期暦パックが与えられたときだけ使う高精度経路。未収録の衛星は、収録済みの
-  // 親天体へ既存の惑星相対モデルを足して補う。暦パックが無い既存ステージは解析モデルの
-  // ままなので、代替太陽系レジストリの挙動を変えない。
-  private readonly precise: OriginCenteredEphemeris | null;
 
   // celestialBodiesAt の時刻キャッシュのヒット/ミス累計。
-  get celestialBodiesCacheStats(): TimeCacheStats {
-    return this.allCelestialBodiesCache.stats;
-  }
+  get celestialBodiesCacheStats(): TimeCacheStats { return this.allCelestialBodiesCache.stats; }
 
   // 保持する全時刻キャッシュを合算したヒット/ミス累計。
   get timeCacheStats(): TimeCacheStats {
     let stats = addTimeCacheStats(this.allCelestialBodiesCache.stats, this.gravityAttractorsCache.stats);
     stats = addTimeCacheStats(stats, this.atmosphereCelestialBodiesCache.stats);
-    for (const ring of this.planetHelioCache.values()) stats = addTimeCacheStats(stats, ring.stats);
-    for (const ring of this.satelliteRelCache.values()) stats = addTimeCacheStats(stats, ring.stats);
+    for (const motion of this.motions) stats = addTimeCacheStats(stats, motion.cacheStats);
     return stats;
   }
 
@@ -155,275 +131,79 @@ export class Ephemeris {
     celestialBodiesCacheHits: number; celestialBodiesCacheMisses: number;
     timeCacheHits: number; timeCacheMisses: number;
   } {
-    const celestialBodiesCache = this.celestialBodiesCacheStats;
-    const timeCache = this.timeCacheStats;
+    const bodies = this.celestialBodiesCacheStats;
+    const time = this.timeCacheStats;
     return {
-      celestialBodiesCacheHits: celestialBodiesCache.hits,
-      celestialBodiesCacheMisses: celestialBodiesCache.misses,
-      timeCacheHits: timeCache.hits,
-      timeCacheMisses: timeCache.misses,
+      celestialBodiesCacheHits: bodies.hits, celestialBodiesCacheMisses: bodies.misses,
+      timeCacheHits: time.hits, timeCacheMisses: time.misses,
     };
   }
 
   // 現在の位相オフセットのスナップショット(セーブ用)。
-  getPhaseOffsets(): Partial<Record<string, number>> {
-    return { ...this.phaseOffsets };
-  }
+  getPhaseOffsets(): Partial<Record<string, number>> { return { ...this.phaseOffsets }; }
 
   // id の平均黄経の初期位相(未指定なら 0)。
-  private phaseOf(id: string): number {
-    return this.phaseOffsets[id] ?? 0;
+  private phaseOf(id: string): number { return this.phaseOffsets[id] ?? 0; }
+
+  // 天体 id の運動。registry に無い id を渡すと例外になる。
+  private motionOf(id: string): CelestialMotion {
+    const motion = this.motionsById.get(id);
+    if (motion === undefined) throw new Error(`Ephemeris: レジストリに登録されていない天体 id: ${id}`);
+    return motion;
   }
 
-  // planet を回る衛星の id 一覧。
-  private satellitesOf(planet: string): readonly string[] {
-    const ids: string[] = [];
-    for (const id of this.ids) {
-      const def = bodyDef(this.registry, id);
-      if (def.kind === 'satellite' && def.planet === planet) ids.push(def.id);
-    }
-    return ids;
+  // 公転している天体 id の運動。恒星や registry に無い id を渡すと例外になる。
+  private orbitingMotionOf(id: string): OrbitingMotion {
+    const motion = this.motionOf(id);
+    if (!(motion instanceof OrbitingMotion)) throw new Error(`Ephemeris: 公転していない天体 id: ${id}`);
+    return motion;
   }
 
-  // 惑星-衛星系重心の日心状態。
-  private baryHelioState(def: PlanetDef, t: number): KinematicState {
-    const s = keplerOrbitState(def.orbit, t + this.epochOffsetSec, this.phaseOf(def.id));
-    return kinematicState(t, s.r, s.v);
-  }
-
-  // 衛星の惑星相対状態。太陽の方向は惑星-衛星系重心の軌道が持つ平均角度(planetAngles)
-  // から取るので循環しない。
-  private satelliteRelState(def: SatelliteDef, t: number): KinematicState {
-    let ring = this.satelliteRelCache.get(def.id);
-    if (ring === undefined) {
-      ring = new TimeRing<KinematicState>();
-      this.satelliteRelCache.set(def.id, ring);
-    }
-    const cached = ring.get(t);
-    if (cached !== undefined) return cached;
-    return ring.put(t, this.computeSatelliteRelState(def, t));
-  }
-
-  // 衛星の惑星相対状態そのもの(キャッシュを経由しない評価)。
-  private computeSatelliteRelState(def: SatelliteDef, t: number): KinematicState {
-    const planet = bodyDef(this.registry, def.planet) as PlanetDef;
-    const te = t + this.epochOffsetSec;
-    const pAngles = planetAngles(planet.orbit, te, this.phaseOf(planet.id));
-    const s = satelliteState(def.orbit, pAngles, te, this.phaseOf(def.id));
-    return kinematicState(t, s.r, s.v);
-  }
-
-  // 惑星本体の日心状態。重心の日心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)
-  // ぶんを引く(重心補正。位置・速度の両方に効く)。
-  private planetHelioState(def: PlanetDef, t: number): KinematicState {
-    let ring = this.planetHelioCache.get(def.id);
-    if (ring === undefined) {
-      ring = new TimeRing<KinematicState>();
-      this.planetHelioCache.set(def.id, ring);
-    }
-    const cached = ring.get(t);
-    if (cached !== undefined) return cached;
-    return ring.put(t, this.computePlanetHelioState(def, t));
-  }
-
-  // 惑星本体の日心状態そのもの(キャッシュを経由しない評価)。
-  private computePlanetHelioState(def: PlanetDef, t: number): KinematicState {
-    const bary = this.baryHelioState(def, t);
-    const satellites = this.satellitesOf(def.id);
-    if (satellites.length === 0) return bary;
-    // mu = 0 は「質量が未測定」であって質量0ではない。本体の質量が分からない系では重心の
-    // 位置も決まらないので、補正せず本体を重心に置いたままにする — 補正すると衛星の質量比が
-    // 1 になり、本体が衛星との距離ぶんまるごとずれる。
-    if (def.mu <= 0) return bary;
-
-    // 重心を分け合う全質量(惑星本体 + 全衛星)に対する各衛星の比で、重心から差し引く量を決める。
-    let muTotal = def.mu;
-    for (const s of satellites) muTotal += bodyDef(this.registry, s).mu;
-
-    let r = bary.r;
-    let v = bary.v;
-    for (const s of satellites) {
-      const satDef = bodyDef(this.registry, s) as SatelliteDef;
-      const rel = this.satelliteRelState(satDef, t);
-      const w = satDef.mu / muTotal;
-      r = addScaled(r, rel.r, -w);
-      v = addScaled(v, rel.v, -w);
-    }
-    return kinematicState(t, r, v);
-  }
-
-  // 天体の日心状態(恒星は原点に静止、惑星は重心補正込みの本体、衛星は惑星本体 + 惑星相対状態)。
-  private helioStateOf(id: string, t: number): KinematicState {
-    const def = bodyDef(this.registry, id);
-    switch (def.kind) {
-      // 恒星は日心座標系の原点そのもの。
-      case 'star':
-        return kinematicState(t, v3(0, 0, 0), v3(0, 0, 0));
-      case 'planet':
-        return this.planetHelioState(def, t);
-      // 衛星の日心状態は、惑星本体の日心状態に惑星相対状態を足すだけ。
-      case 'satellite': {
-        const planetHelio = this.planetHelioState(bodyDef(this.registry, def.planet) as PlanetDef, t);
-        const rel = this.satelliteRelState(def, t);
-        return kinematicState(t, add(planetHelio.r, rel.r), add(planetHelio.v, rel.v));
-      }
-    }
-  }
-
-  // 天体 id の日心加速度。helioStateOf と同じ分岐に立つが、解析式の厳密な二階微分ではなく
-  // 主天体まわりの二体近似 — 用途は RK4 の各段の時刻へ位置を外挿する2次補正項なので、この
-  // 近似の誤差(太陽の潮汐項を落とすぶん、月で0.5%程度)は結果に効かない。高精度パック経路
-  // (precise)でも位置・速度はパック由来だが、加速度はこの解析近似を使う。
-  private helioAccelOf(id: string, t: number): Vec3 {
-    const def = bodyDef(this.registry, id);
-    switch (def.kind) {
-      // 恒星は日心座標系の原点そのものなので静止している。
-      case 'star':
-        return v3();
-      case 'planet': {
-        const starMu = this.starId === null ? 0 : bodyDef(this.registry, this.starId).mu;
-        return twoBodyAccel(this.planetHelioState(def, t).r, starMu + def.mu);
-      }
-      // 衛星の日心加速度は、惑星本体の日心加速度に惑星まわりの二体加速度を足す。
-      case 'satellite': {
-        const planetDef = bodyDef(this.registry, def.planet) as PlanetDef;
-        return add(
-          this.helioAccelOf(def.planet, t),
-          twoBodyAccel(this.satelliteRelState(def, t).r, planetDef.mu + def.mu),
-        );
-      }
-    }
-  }
-
-  // 指定時刻の ECI 加速度。ECI 原点(地球)自身が自由落下する非慣性系なので、id の日心加速度から
-  // 原点の日心加速度を差し引く。originId 自身は同じ計算を2回引くので厳密に v3() になる。
-  private eciAccelOf(id: string, t: number): Vec3 {
-    return sub(this.helioAccelOf(id, t), this.helioAccelOf(this.originId, t));
-  }
-
-  // 指定時刻の ECI(originId 中心)位置・速度。日心状態から originId の日心状態を引く一箇所だけで
-  // 座標変換する。originId 自身は同じ計算を2回引くので厳密に 0 になる。期間外の高精度暦パックは
-  // 使わず解析暦へ落とす(CELESTIAL.md 2.2: 期間外は例外なく解析暦だけで天体位置が求まる)。
-  stateOf(id: string, t: number): KinematicState {
-    const precise = this.precise;
-    if (precise !== null && precise.isValidAt(t)) {
-      if (precise.hasBody(id)) return precise.stateOf(id, t);
-      const def = bodyDef(this.registry, id);
-      if (def.kind === 'satellite' && precise.hasBody(def.planet)) {
-        const parent = precise.stateOf(def.planet, t);
-        const rel = this.satelliteRelState(def, t);
-        return kinematicState(t, add(parent.r, rel.r), add(parent.v, rel.v));
-      }
-    }
-    const helio = this.helioStateOf(id, t);
-    const originHelio = this.helioStateOf(this.originId, t);
-    return kinematicState(t, sub(helio.r, originHelio.r), sub(helio.v, originHelio.v));
-  }
+  // 指定時刻の ECI(originId 中心)位置・速度。originId 自身は厳密に 0 になる。
+  stateOf(id: string, t: number): KinematicState { return this.motionOf(id).stateAt(t); }
 
   // 指定時刻の ECI 位置。
-  positionOf(id: string, t: number): Vec3 {
-    return this.stateOf(id, t).r;
-  }
+  positionOf(id: string, t: number): Vec3 { return this.motionOf(id).stateAt(t).r; }
+
+  // 1天体ぶんの時刻 t での重力源表現。返る値は不変。
+  celestialBodyAt(id: string, t: number): CelestialBody { return this.motionOf(id).at(t); }
 
   // 天体 id に固定した回転基準系(x̂ = 中心天体→id、ẑ = 軌道面法線)。中心は分類から決まる
-  // (惑星なら恒星、衛星ならその惑星)。衛星の周期項は平均要素に含めないので、この基底は
-  // 実位置の x̂ 軸から最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
-  orbitFrameRotationAt(id: string, t: number): FrameRotation {
-    const def = bodyDef(this.registry, id) as OrbitingDef;
-    const precise = this.precise;
-    if (precise !== null && precise.isValidAt(t) && precise.hasBody(id)) {
-      const primary = primaryOf(this.registry, id);
-      if (primary !== null && precise.hasBody(primary)) {
-        const a = precise.stateOf(primary, t);
-        const b = precise.stateOf(id, t);
-        const r = sub(b.r, a.r);
-        const v = sub(b.v, a.v);
-        const h = cross(r, v);
-        const xHat = norm(r);
-        const zHat = norm(h);
-        const yHat = cross(zHat, xHat);
-        const q = qFromForwardUp(zHat, yHat);
-        if (q !== null) return { q, omega: scale(zHat, len(h) / (len(r) * len(r))) };
-      }
-    }
-    return keplerOrbitRotation(keplerOrbitOf(def), t + this.epochOffsetSec, this.phaseOf(id));
-  }
+  // (惑星なら恒星、衛星ならその惑星)。
+  orbitFrameRotationAt(id: string, t: number): FrameRotation { return this.orbitingMotionOf(id).orbitFrameRotationAt(t); }
 
   // id の軌道面の法線(単位ベクトル、ECI)。
-  orbitNormalAt(id: string, t: number): Vec3 {
-    const def = bodyDef(this.registry, id) as OrbitingDef;
-    const precise = this.precise;
-    if (precise !== null && precise.isValidAt(t) && precise.hasBody(id)) {
-      const primary = primaryOf(this.registry, id);
-      if (primary !== null && precise.hasBody(primary)) {
-        const a = precise.stateOf(primary, t);
-        const b = precise.stateOf(id, t);
-        return norm(cross(sub(b.r, a.r), sub(b.v, a.v)));
-      }
-    }
-    return keplerOrbitNormal(keplerOrbitOf(def), t + this.epochOffsetSec, this.phaseOf(id));
-  }
+  orbitNormalAt(id: string, t: number): Vec3 { return this.orbitingMotionOf(id).orbitNormalAt(t); }
 
-  // secondary(公転している天体)を副天体とする円制限三体問題のラグランジュ点。中心天体
-  // (主天体)は primaryOf が分類から決める(惑星なら registry の恒星、衛星ならその惑星)。
-  // 回転系は orbitFrameRotationAt(id) の姿勢(x̂ = 主天体→副天体)そのものを使う。
-  lagrangeAt(secondary: string, t: number): LagrangePoints {
-    const def = bodyDef(this.registry, secondary) as OrbitingDef;
-    const primary = primaryOf(this.registry, secondary);
-    if (primary === null) throw new Error(`lagrangeAt: ${secondary} に主星が無いレジストリではラグランジュ点は定義できない`);
-    const primaryPos = this.positionOf(primary, t);
-    const secondaryPos = this.positionOf(secondary, t);
-    const R = len(sub(secondaryPos, primaryPos));
-    const { q } = this.orbitFrameRotationAt(secondary, t);
-    const mu = def.mu / (bodyDef(this.registry, primary).mu + def.mu);
-    return lagrangePoints(mu, (x, y) => add(primaryPos, qRotate(q, v3(R * x, R * y, 0))));
-  }
+  // secondary(公転している天体)を副天体とする円制限三体問題のラグランジュ点。
+  lagrangeAt(secondary: string, t: number): LagrangePoints { return this.orbitingMotionOf(secondary).lagrangeAt(t); }
 
-  // ラグランジュ点1点の ECI 状態(位置・速度)。回転系の角速度 omega(orbitFrameRotationAt)と
-  // 主天体の速度から v = v_primary + omega × (r − r_primary) として合成する(5点とも同じ
-  // 剛体回転系に乗っているため omega は共通)。
+  // ラグランジュ点1点の ECI 状態(位置・速度)。
   lagrangeStateAt(secondary: string, point: keyof LagrangePoints, t: number): KinematicState {
-    const primary = primaryOf(this.registry, secondary);
-    if (primary === null) throw new Error(`lagrangeStateAt: ${secondary} に主星が無いレジストリではラグランジュ点は定義できない`);
-    const primaryState = this.stateOf(primary, t);
-    const r = this.lagrangeAt(secondary, t)[point];
-    const { omega } = this.orbitFrameRotationAt(secondary, t);
-    return kinematicState(t, r, add(primaryState.v, cross(omega, sub(r, primaryState.r))));
+    return this.orbitingMotionOf(secondary).lagrangeStateAt(point, t);
   }
 
-  // secondary の主天体に対する質量比 mu = m2/(m1+m2)。主星が無ければ null。
-  private massRatioOf(secondary: string): number | null {
-    const primary = primaryOf(this.registry, secondary);
-    if (primary === null) return null;
-    const def = bodyDef(this.registry, secondary);
-    // どちらかの質量が未測定(mu = 0)なら質量比は決まらない。0 を比として通すと共線点を解く
-    // 反復が発散し、1 を通すと L1 が主天体の中心に落ちる。
-    const primaryMu = bodyDef(this.registry, primary).mu;
-    if (primaryMu <= 0 || def.mu <= 0) return null;
-    return def.mu / (primaryMu + def.mu);
-  }
-
-  // secondary の共線点(L1/L2/L3)が行き先として意味を持つか。副天体が軽いほどヒル半径が
-  // 縮んで L1 が表面へ寄るので、副天体半径に対する余裕が minClearanceRatio 倍に満たない系は
-  // 共線点を持たないものとして扱う(しきい値はハロー軌道の振幅が収まるかの判断なので、
-  // 物理定数ではなく呼び出し側から受け取る)。
+  // secondary の共線点(L1/L2/L3)が行き先として意味を持つか。公転していない天体では false。
   hasUsableCollinearPoints(secondary: string, minClearanceRatio: number): boolean {
-    const mu = this.massRatioOf(secondary);
-    if (mu === null || mu <= 0) return false;
-    const def = bodyDef(this.registry, secondary);
-    if (def.kind === 'star') return false;
-    return collinearClearanceRatio(mu, keplerOrbitOf(def).a, def.radius) >= minClearanceRatio;
+    const motion = this.motionOf(secondary);
+    return motion instanceof OrbitingMotion && motion.hasUsableCollinearPoints(minClearanceRatio);
   }
 
-  // secondary の三角点(L4/L5)が線形安定か(Routh の質量比条件)。
+  // secondary の三角点(L4/L5)が線形安定か。公転していない天体では false。
   hasStableTriangularPoints(secondary: string): boolean {
-    const mu = this.massRatioOf(secondary);
-    return mu !== null && mu > 0 && hasStableTriangularPoints(mu);
+    const motion = this.motionOf(secondary);
+    return motion instanceof OrbitingMotion && motion.hasStableTriangularPoints();
   }
+
+  // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。自転軸を持たない天体は null。
+  poleAt(id: string, t: number): BodyOrientation | null { return this.motionOf(id).orientationAt(t); }
+
+  // 天体 id の自転に固定した回転基準系。自転モデルを持たない天体では null。
+  spinRotationAt(id: string, t: number): FrameRotation | null { return this.motionOf(id).spinRotationAt(t); }
 
   // ECI の点 r から見た恒星方向の単位ベクトル(陰影・日照判定・輻射の向き)。基準点を引数に
   // 取るのは、恒星との位置関係が点ごとに違うため — 惑星間では地心方向で代用できない。
-  // 恒星が無いレジストリでは影・輻射圧の計算そのものが無意味になるので、無害な既定方向(+X)を返す。
+  // 恒星が無いレジストリでは無害な既定方向(+X)を返す。
   sunDirFrom(r: Vec3, t: number): Vec3 {
     return this.starId === null ? v3(1, 0, 0) : norm(sub(this.positionOf(this.starId, t), r));
   }
@@ -438,6 +218,7 @@ export class Ephemeris {
       byRotation = new Map();
       this.frameCache.set(center, byRotation);
     }
+    // rotatingWith オブジェクト自身もキャッシュ内で1個だけ作って使い回す。
     const key = rotationSourceKey(rotatingWith);
     let frame = byRotation.get(key);
     if (frame === undefined) {
@@ -448,157 +229,70 @@ export class Ephemeris {
   }
 
   // 登録の有無を問わず center 中心の慣性系を返す、frameOf(id, null) の別名。
-  frameFor(id: string): ReferenceFrame {
-    return this.frameOf(id, null);
-  }
+  frameFor(id: string): ReferenceFrame { return this.frameOf(id, null); }
 
   // ReferenceFrame の時刻 t における剛体運動。origin は frame.center の状態、回転は
-  // frame.rotatingWith が null なら恒等。'spin' はその天体の自転基準系(spinRotationAt。
-  // 自転モデルを持たなければ恒等)。'revolution' は、その天体が現在の registry に登録されて
-  // いれば解析的な公転回転基準系(orbitFrameRotationAt)を使う — 既定レジストリでの月・地球
-  // 回転系など既存の座標系はこの経路のみを通るので挙動は変わらない。登録されていない
-  // (= 生存中の重力天体・機体・役割トークンの)id は解析軌道を持たないので、source が答える
-  // 主天体との瞬間の相対状態(x̂ = 主天体→id、ẑ = 相対角運動量方向)から骨組みの基底を組む —
-  // 主天体は frame.center とは独立に source.attractorOf(rotatingWith.id, t) が決める
-  // (CELESTIAL.md 8節: 原点をどこに選んでも回転対象自身の主天体まわりの公転になる)。
+  // frameRotationAt が決める。
   frameTransformAt(frame: ReferenceFrame, t: number, source: FrameAnchorSource): FrameTransform {
     const origin = this.anchorStateAt(frame.center, t, source);
-    const rotatingWith = frame.rotatingWith;
-    if (rotatingWith === null) return { origin: origin.r, originVel: origin.v, ...IDENTITY_ROTATION };
-    if (rotatingWith.kind === 'spin') {
-      const rotation = this.spinRotationAt(rotatingWith.id, t);
-      if (rotation === null) return { origin: origin.r, originVel: origin.v, ...IDENTITY_ROTATION };
-      return { origin: origin.r, originVel: origin.v, q: rotation.q, omega: rotation.omega };
-    }
-    if (rotatingWith.id in this.registry) {
-      const { q, omega } = this.orbitFrameRotationAt(rotatingWith.id, t);
-      return { origin: origin.r, originVel: origin.v, q, omega };
-    }
-    const target = source.stateOf(rotatingWith.id, t);
-    const primaryId = target !== null ? source.attractorOf(rotatingWith.id, t) : null;
-    if (target === null || primaryId === null) return { origin: origin.r, originVel: origin.v, ...IDENTITY_ROTATION };
-    const primary = this.anchorStateAt(primaryId, t, source);
-    const rel = sub(target.r, primary.r);
-    const relVel = sub(target.v, primary.v);
-    const h = cross(rel, relVel);
-    if (lenSq(rel) < 1 || lenSq(h) < 1e-9) return { origin: origin.r, originVel: origin.v, ...IDENTITY_ROTATION };
-    const xHat = norm(rel);
-    const zHat = norm(h);
-    const yHat = cross(zHat, xHat);
-    const q = qFromForwardUp(zHat, yHat) ?? IDENTITY_ROTATION.q;
-    const omega = scale(zHat, len(h) / (len(rel) * len(rel)));
-    return { origin: origin.r, originVel: origin.v, q, omega };
+    const rotation = this.frameRotationAt(frame.rotatingWith, t, source) ?? IDENTITY_ROTATION;
+    return { origin: origin.r, originVel: origin.v, q: rotation.q, omega: rotation.omega };
   }
 
-  // 参照フレームの基準の時刻 t における状態。registry にあれば暦(stateOf)、無ければ source
+  // rotatingWith が指す回転。恒等でよい(回転しない・回転を組めない)ときは null。'spin' は
+  // その天体の自転基準系、'revolution' は registry の天体なら解析的な公転回転基準系。
+  // registry に無い(= 生存中の重力天体・機体・役割トークンの)id は解析軌道を持たないので、
+  // source が答える主天体との瞬間の相対状態(x̂ = 主天体→id、ẑ = 相対角運動量方向)から
+  // 骨組みの基底を組む — 主天体は frame.center とは独立に source.attractorOf が決める
+  // (CELESTIAL.md 8節: 原点をどこに選んでも回転対象自身の主天体まわりの公転になる)。
+  private frameRotationAt(
+    rotatingWith: FrameRotationSource | null, t: number, source: FrameAnchorSource,
+  ): FrameRotation | null {
+    if (rotatingWith === null) return null;
+    if (rotatingWith.kind === 'spin') return this.spinRotationAt(rotatingWith.id, t);
+    if (rotatingWith.id in this.registry) return this.orbitFrameRotationAt(rotatingWith.id, t);
+    // 登録天体でない対象は、その瞬間の主天体相対状態から基底を組む。
+    const target = source.stateOf(rotatingWith.id, t);
+    if (target === null) return null;
+    const primaryId = source.attractorOf(rotatingWith.id, t);
+    if (primaryId === null) return null;
+    const primary = this.anchorStateAt(primaryId, t, source);
+    const rel = sub(target.r, primary.r);
+    const h = cross(rel, sub(target.v, primary.v));
+    if (lenSq(rel) < 1 || lenSq(h) < 1e-9) return null;
+    const zHat = norm(h);
+    const q = qFromForwardUp(zHat, cross(zHat, norm(rel))) ?? IDENTITY_ROTATION.q;
+    return { q, omega: scale(zHat, len(h) / (len(rel) * len(rel))) };
+  }
+
+  // 参照フレームの基準の時刻 t における状態。registry にあれば暦、無ければ source
   // (生存中の重力天体・機体・役割トークン)に委ね、どちらでも解決できなければ ECI 原点に落とす。
   private anchorStateAt(id: string, t: number, source: FrameAnchorSource): KinematicState {
     if (id in this.registry) return this.stateOf(id, t);
     return source.stateOf(id, t) ?? kinematicState(t, v3(), v3());
   }
 
-  // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。自転軸を持たない天体は null。
-  // 位相は body-orientation.ts の基準方向(天体赤道と ECI 赤道の昇交点)から測る。
-  poleAt(id: string, t: number): BodyOrientation | null {
-    return this.orientationOf(bodyDef(this.registry, id), t);
-  }
-
-  // 天体 id の自転に固定した回転基準系(ẑ = 自転軸、x̂ = 本初子午線方向)。自転モデルを持たない
-  // 天体では null。逆行自転する天体でも ẑ は IAU の「北極」のままで、逆行は omega の符号に現れる
-  // (DEVELOP/SPEC/CELESTIAL.md 8節)— x̂ が IAU の極を基準に定義されているため。
-  spinRotationAt(id: string, t: number): FrameRotation | null {
-    const def = bodyDef(this.registry, id);
-    const orientation = this.orientationOf(def, t);
-    const rate = spinRateOf(def);
-    if (orientation === null || rate === null) return null;
-    return { q: meridianBasisToEci(orientation.axis, orientation.spinAngle), omega: scale(orientation.axis, rate) };
-  }
-
-  // poleAt の本体。分岐は PoleModel の分類だけで、固有名は持たない。
-  private orientationOf(def: CelestialBodyDef, t: number): BodyOrientation | null {
-    if (def.kind === 'star' || def.pole === undefined) return null;
-    const model = def.pole;
-    const te = t + this.epochOffsetSec;
-    // 'eciPole' は ECI の極軸そのもの。位相の原点は春分点方向に取り、地球の自転ぶんだけ
-    // 時刻とともに進める。軸は ECI に固定されているため、ここを固定位相にすると
-    // spinRotationAt() の omega だけが進み、フレーム姿勢 q が時間変化しなくなる。
-    if (model.kind === 'eciPole') {
-      const rate = spinRateOf(def);
-      return { axis: ECI_POLE, spinAngle: rate === null ? 0 : rate * t };
-    }
-    if (model.kind === 'iau') {
-      const cy = te / JULIAN_CENTURY;
-      const axis = raDecToEci(
-        model.ra0Deg + model.ra1DegPerCentury * cy,
-        model.dec0Deg + model.dec1DegPerCentury * cy,
-      );
-      const w = (model.w0Deg + model.wRateDegPerDay * (te / DAY)) * (Math.PI / 180);
-      return { axis, spinAngle: w };
-    }
-    // 同期回転する衛星は、軌道面法線から傾いた自転軸のまわりで本初子午線が親を向き続ける。
-    // 一様自転する本初子午線は真黄経ではなく平均黄経を追うため、向きは真近点角では表せない。
-    const orbit = keplerOrbitOf(def);
-    const phase = this.phaseOf(def.id);
-    const axis = cassiniSpinAxis(ECL_POLE_ECI, keplerOrbitNormal(orbit, te, phase), model.obliquity);
-    const toPrimary = scale(keplerOrbitMeanDirection(orbit, te, phase), -1);
-    return { axis, spinAngle: spinPhaseOf(axis, toPrimary) };
-  }
-
-  // 天体の2次重力場を時刻 t の姿勢込みで解決する。2次重力場を持たない天体は null。
-  // 主軸座標系の長軸は本初子午線と同じ向き(C22 項は2回対称なので符号は効かない)。
-  private degree2At(def: CelestialBodyDef, t: number): Degree2Gravity | null {
-    if (def.kind === 'star' || def.degree2 === undefined) return null;
-    const orientation = this.orientationOf(def, t);
-    if (orientation === null) return null;
-    const model = def.degree2;
-    const tesseral = model.c22 === 0 ? null : {
-      c22: model.c22,
-      longAxis: orthogonalizedTo(orientation.axis, meridianDirection(orientation.axis, orientation.spinAngle)),
-    };
-    return { j2: model.j2, refRadius: model.refRadius, pole: orientation.axis, tesseral };
-  }
-
-  // 天体の大気を時刻 t の自転軸込みで解決する。大気を持たない天体は null。大気は自転軸を
-  // 共回転の軸として要求するので、姿勢を持たない天体は大気を持てない。
-  private atmosphereAt(def: CelestialBodyDef, t: number): Atmosphere | null {
-    if (def.kind === 'star' || def.atmosphere === undefined) return null;
-    const orientation = this.orientationOf(def, t);
-    if (orientation === null) return null;
-    return { ...def.atmosphere, pole: orientation.axis };
-  }
-
-  // 指定時刻の全登録天体(registry の宣言順)。origin は原点に静止。遮蔽判定・表面接触・
-  // 中心天体解決・積分刻み・基準天体解決が読む窓。
+  // 指定時刻の全登録天体(registry の宣言順)。origin は原点に静止。
   // 同一 t には同一の配列参照が返るので、**呼び出し側はこの配列と要素を書き換えてはならない。**
   celestialBodiesAt(t: number): readonly CelestialBody[] {
     const cached = this.allCelestialBodiesCache.get(t);
     if (cached !== undefined) return cached;
-    return this.allCelestialBodiesCache.put(t, this.ids.map((id) => this.celestialBodyAt(id, t)));
+    return this.allCelestialBodiesCache.put(t, this.motions.map((m) => m.at(t)));
   }
 
-  // 指定時刻の重力源天体(mu が 0 でないもの、registry の宣言順)。origin は原点に静止。
-  // 同一 t には同一の配列参照が返るので、**呼び出し側はこの配列と要素を書き換えてはならない。**
+  // 指定時刻の重力源天体(mu が 0 でないもの、registry の宣言順)。配列の扱いは
+  // celestialBodiesAt と同じ。
   gravityAttractorsAt(t: number): readonly CelestialBody[] {
     const cached = this.gravityAttractorsCache.get(t);
     if (cached !== undefined) return cached;
-    return this.gravityAttractorsCache.put(t, this.gravityIds.map((id) => this.celestialBodyAt(id, t)));
+    return this.gravityAttractorsCache.put(t, this.gravityMotions.map((m) => m.at(t)));
   }
 
   // 指定時刻の大気を持つ天体(registry の宣言順)。抗力を掛ける1体を選ぶ側が引く窓で、
-  // 既定レジストリでは要素数 1。
-  // 同一 t には同一の配列参照が返るので、**呼び出し側はこの配列と要素を書き換えてはならない。**
+  // 配列の扱いは celestialBodiesAt と同じ。
   atmosphereCelestialBodiesAt(t: number): readonly CelestialBody[] {
     const cached = this.atmosphereCelestialBodiesCache.get(t);
     if (cached !== undefined) return cached;
-    return this.atmosphereCelestialBodiesCache.put(t, this.atmosphereIds.map((id) => this.celestialBodyAt(id, t)));
-  }
-
-  // 1天体ぶんの時刻 t での重力源表現。返る値は不変。
-  celestialBodyAt(id: string, t: number): CelestialBody {
-    const def = bodyDef(this.registry, id);
-    return {
-      id, mu: def.mu, radius: def.radius, state: this.stateOf(id, t), accel: this.eciAccelOf(id, t),
-      degree2: this.degree2At(def, t), atmosphere: this.atmosphereAt(def, t), isStar: def.kind === 'star',
-    };
+    return this.atmosphereCelestialBodiesCache.put(t, this.atmosphereMotions.map((m) => m.at(t)));
   }
 }
