@@ -21,6 +21,7 @@ import { planetAngles } from './planet-orbit';
 import { satelliteState } from './satellite-orbit';
 import { bodyDef, CelestialBodyDef, CelestialRegistry, primaryOf, SOLAR_SYSTEM, spinRateOf, starOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
+import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../math/vec3';
 
 // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
@@ -64,55 +65,6 @@ function twoBodyAccel(d: Vec3, mu: number): Vec3 {
   const d2 = lenSq(d);
   if (d2 < 1) return v3();
   return scale(d, -mu / (d2 * Math.sqrt(d2)));
-}
-
-// 時刻キャッシュの保持段数。1フレームには t と t + dt/2 の交互参照、対象ごとの先端時刻、
-// 近点・遠点・ノードなどの単発時刻が流入するので、主要経路の段がそれらに押し出されない
-// 段数を持たせる。照合はこの段数ぶんの数値比較で、ミス1回の再計算に比べれば無視できる。
-const TIME_CACHE_SLOTS = 32;
-
-// 時刻キャッシュのヒット/ミスの累計。
-export interface TimeCacheStats {
-  readonly hits: number;
-  readonly misses: number;
-}
-
-// 時刻 t をキーにした固定長リング。キーが厳密に一致したときだけ値を返し、それ以外は undefined。
-class TimeRing<T> {
-  private readonly keys: number[] = new Array(TIME_CACHE_SLOTS).fill(NaN);
-  private readonly values: (T | undefined)[] = new Array(TIME_CACHE_SLOTS).fill(undefined);
-  private next = 0;
-
-  // get の結果の累計。返る値には影響しない。
-  hits = 0;
-  misses = 0;
-
-  // t に一致する保持値。無ければ undefined。
-  get(t: number): T | undefined {
-    for (let i = 0; i < TIME_CACHE_SLOTS; i++) {
-      if (this.keys[i] === t) {
-        this.hits++;
-        return this.values[i];
-      }
-    }
-    this.misses++;
-    return undefined;
-  }
-
-  // t をキーに value を最古の段へ書き、その value をそのまま返す。
-  put(t: number, value: T): T {
-    this.keys[this.next] = t;
-    this.values[this.next] = value;
-    this.next = (this.next + 1) % TIME_CACHE_SLOTS;
-    return value;
-  }
-
-  // 全段を空にする。
-  clear(): void {
-    this.keys.fill(NaN);
-    this.values.fill(undefined);
-    this.next = 0;
-  }
 }
 
 export class Ephemeris {
@@ -184,24 +136,16 @@ export class Ephemeris {
 
   // celestialBodiesAt の時刻キャッシュのヒット/ミス累計。
   get celestialBodiesCacheStats(): TimeCacheStats {
-    return { hits: this.allCelestialBodiesCache.hits, misses: this.allCelestialBodiesCache.misses };
+    return this.allCelestialBodiesCache.stats;
   }
 
   // 保持する全時刻キャッシュを合算したヒット/ミス累計。
   get timeCacheStats(): TimeCacheStats {
-    let hits = this.allCelestialBodiesCache.hits + this.gravityAttractorsCache.hits
-      + this.atmosphereCelestialBodiesCache.hits;
-    let misses = this.allCelestialBodiesCache.misses + this.gravityAttractorsCache.misses
-      + this.atmosphereCelestialBodiesCache.misses;
-    for (const ring of this.planetHelioCache.values()) {
-      hits += ring.hits;
-      misses += ring.misses;
-    }
-    for (const ring of this.satelliteRelCache.values()) {
-      hits += ring.hits;
-      misses += ring.misses;
-    }
-    return { hits, misses };
+    let stats = addTimeCacheStats(this.allCelestialBodiesCache.stats, this.gravityAttractorsCache.stats);
+    stats = addTimeCacheStats(stats, this.atmosphereCelestialBodiesCache.stats);
+    for (const ring of this.planetHelioCache.values()) stats = addTimeCacheStats(stats, ring.stats);
+    for (const ring of this.satelliteRelCache.values()) stats = addTimeCacheStats(stats, ring.stats);
+    return stats;
   }
 
   // 負荷確認ウィンドウが読む、時刻キャッシュのヒット/ミス累計。perf-meter.ts の
