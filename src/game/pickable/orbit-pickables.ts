@@ -1,7 +1,6 @@
 // 右クリックの当たり判定にかける軌道線(公転軌道・船の軌道・軌道ガイド)の候補集合を1フレーム分
 // 組み立てる。サンプル点列そのものは各軌道線(OrbitLine/TrajectoryLine/OrbitGuideLines)が持つので、
 // ここは「いまフレームにどの軌道線が表示されているか」を集めるだけ。
-import type { Ephemeris } from '../../physics/ephemeris';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { guideSecondary } from '../../physics/orbit-guide';
 import type { Vec3 } from '../../math/vec3';
@@ -26,7 +25,6 @@ export class OrbitPickables {
   constructor(
     private readonly entities: EntityManager,
     private readonly celestialSystem: CelestialSystem,
-    private readonly ephemeris: Ephemeris,
     private readonly cameraSystem: CameraSystem,
   ) {}
 
@@ -60,7 +58,7 @@ export class OrbitPickables {
   private guideOwnerKeys(guide: VisibleGuideLine): readonly string[] {
     if (guide.system === null) return ['body:earth'];
     const secondary = guideSecondary(guide.system);
-    const primary = this.ephemeris.motionOf(secondary).primary?.id ?? secondary;
+    const primary = this.celestialSystem.bodyOf(secondary).motion.primary?.id ?? secondary;
     return guide.point
       ? [`body:${secondary}-l${guide.point.slice(1)}`, `body:${primary}`, `body:${secondary}`]
       : [`body:${primary}`, `body:${secondary}`];
@@ -83,9 +81,10 @@ export class OrbitPickables {
       points = [...entity.orbitLine.samplePoints(ORBIT_PICK_SAMPLES)];
     } else if (entity.predictedLine !== null || entity.actualLine !== null) {
       method = 'predicted';
+      const frames = this.celestialSystem.frames;
       points = [
-        ...(entity.actualLine?.samplePoints(ORBIT_PICK_SAMPLES, frame, displayTime, this.ephemeris, frameAnchors) ?? []),
-        ...(entity.predictedLine?.samplePoints(ORBIT_PICK_SAMPLES, frame, displayTime, this.ephemeris, frameAnchors) ?? []),
+        ...(entity.actualLine?.samplePoints(ORBIT_PICK_SAMPLES, frame, displayTime, frames, frameAnchors) ?? []),
+        ...(entity.predictedLine?.samplePoints(ORBIT_PICK_SAMPLES, frame, displayTime, frames, frameAnchors) ?? []),
       ];
     } else {
       return;

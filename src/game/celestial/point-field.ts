@@ -132,8 +132,8 @@ function uniform(rand: () => number, [min, max]: readonly [number, number]): num
   return min + rand() * (max - min);
 }
 
-// 木星の平均黄経 [rad]。トロヤ群・ヒルダ群の共鳴基準にしか使わないので、Ephemeris の3段合成
-// ではなく平均黄経の一次式だけを引く。
+// 木星の平均黄経 [rad]。トロヤ群・ヒルダ群の共鳴基準にしか使わないので、位置の3段合成では
+// なく平均黄経の一次式だけを引く。
 export function jupiterMeanLongitude(t: number): number {
   const orbit = JUPITER.orbit;
   return orbit.l0 + orbit.lRate * (t + EPOCH_T_OFFSET);
