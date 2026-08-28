@@ -21,7 +21,8 @@ import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../render/render-style';
 import { RingView } from './ring-view';
-import { bondAlbedoOf } from '../../render/celestial-albedo';
+import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../render/celestial-albedo';
+import type { AtmosphereOptics } from '../../render/atmosphere';
 import { SUN_IRRADIANCE_1AU } from '../../render/pipeline/sun-light';
 import { norm, sub, v3 } from '../../math/vec3';
 import type { Vec3 } from '../../math/vec3';
@@ -67,12 +68,13 @@ export class PointEntity extends CelestialEntity {
     name: string,
     bodyClass: BodyClass,
     private readonly surface: CelestialSurface,
+    atmosphereOptics: AtmosphereOptics | null = null,
   ) {
-    super(motion, name, bodyClass);
+    super(motion, name, bodyClass, atmosphereOptics);
     const def = motion.def;
     this.radius = def.radius;
     this.rings = def.rings;
-    this.bondAlbedo = bondAlbedoOf(def.id);
+    this.bondAlbedo = surface.photometry?.bondAlbedo ?? rec709Luminance(DEFAULT_ALBEDO);
     this.outerRadius = def.rings === undefined
       ? def.radius
       : def.rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), def.radius);
@@ -81,6 +83,10 @@ export class PointEntity extends CelestialEntity {
     const a = shapeAxes(def.radius, def.shape);
     this.axes = new THREE.Vector3(a.x, a.y, a.z);
   }
+
+  get lightSourceAlbedo(): Albedo | null { return this.surface.photometry?.lightSourceAlbedo ?? null; }
+
+  get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
 
   // マップビュー用の実体表面と輝点用ビルボードをシーンへ一度だけ登録する。
   build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void {

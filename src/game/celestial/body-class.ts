@@ -4,9 +4,9 @@
 // メッシュ構築(THREE 依存)と分けてあるのは、可視性の規則を DOM もレンダラも無しに
 // 評価できるようにするため。
 import { SolarSystemId } from '../../physics/solar-system/solar-system';
-import type { CelestialKind } from '../../physics/celestial-motion';
+import { BodyClass } from './celestial-entity-def';
 
-export type BodyClass = 'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody';
+export { BodyClass, bodyClassOfKind } from './celestial-entity-def';
 
 // 現実の太陽系の各天体の重要度。天体を登録すると Record の網羅性検査がここを要求する。
 const BODY_CLASS_BY_ID: Record<SolarSystemId, BodyClass> = {
@@ -113,10 +113,4 @@ const BODY_CLASS_BY_ID: Record<SolarSystemId, BodyClass> = {
 // 現実の太陽系の天体の表示クラス。
 export function solarSystemBodyClass(id: SolarSystemId): BodyClass {
   return BODY_CLASS_BY_ID[id];
-}
-
-// 力学上の分類だけから決める表示クラス。準惑星・小天体の区別が付かないので、惑星と衛星と
-// 恒星の3つにしか落ちない。
-export function bodyClassOfKind(kind: CelestialKind): BodyClass {
-  return kind === 'star' ? 'star' : kind === 'satellite' ? 'satellite' : 'planet';
 }

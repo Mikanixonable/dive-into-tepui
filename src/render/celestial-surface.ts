@@ -3,7 +3,7 @@
 // すべてパイプラインが与える。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque } from './pipeline/lit-layer';
-import type { Albedo } from './celestial-albedo';
+import { rec709Luminance, scaledToBondAlbedo, type Albedo } from './celestial-albedo';
 import type { CelestialTexture } from './celestial-textures';
 import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 
@@ -23,15 +23,25 @@ function unitSphereGeometry(level: SphereLodLevel): THREE.BufferGeometry {
   return geometry;
 }
 
+// 表面の測光値。bondAlbedo は輝点の明るさを引くスカラ、lightSourceAlbedo はこの天体を
+// 光源として扱うときの色つきアルベド(Rec.709 輝度がボンドアルベドに一致する線形 RGB)。
+export type SurfacePhotometry = {
+  readonly bondAlbedo: number;
+  readonly lightSourceAlbedo: Albedo;
+};
+
 export class CelestialSurface {
   // 段ごとの半径 1 の球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
 
-  // material と texture は解放までこの表面が持つ。
+  // material と texture は解放までこの表面が持つ。photometry / textureUrl は静的事実で、
+  // 自前のマテリアルを持ち込む表面(withMaterial)では null。
   private constructor(
     private readonly material: THREE.Material,
     private readonly texture: THREE.Texture | null,
+    readonly photometry: SurfacePhotometry | null,
+    readonly textureUrl: string | null,
   ) {
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     // 段ごとにメッシュを持つ — WebGPU では mesh.geometry の差し替えが効かない。
@@ -52,7 +62,11 @@ export class CelestialSurface {
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(scale, scale, scale), map, roughness: 1, metalness: 0,
     });
-    return new CelestialSurface(material, map);
+    const photometry = {
+      bondAlbedo: texture.bondAlbedo,
+      lightSourceAlbedo: scaledToBondAlbedo(texture.averageHue, texture.bondAlbedo),
+    };
+    return new CelestialSurface(material, map, photometry, texture.url);
   }
 
   // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド
@@ -62,12 +76,12 @@ export class CelestialSurface {
       color: new THREE.Color().setRGB(albedo[0], albedo[1], albedo[2], THREE.LinearSRGBColorSpace),
       roughness: 1, metalness: 0,
     });
-    return new CelestialSurface(material, null);
+    return new CelestialSurface(material, null, { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
   }
 
   // マテリアルを自前で組む天体の球面。material の解放もこの表面が担う。
   static withMaterial(material: THREE.Material): CelestialSurface {
-    return new CelestialSurface(material, null);
+    return new CelestialSurface(material, null, null, null);
   }
 
   // 全段のメッシュを parent の下へ置く。

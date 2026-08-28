@@ -7,6 +7,7 @@ import { CelestialMotion, StarMotion } from '../../physics/celestial-motion';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { CelestialEntity } from './celestial-entity';
+import type { Albedo } from '../../render/celestial-albedo';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 
@@ -19,9 +20,14 @@ export class Sun extends CelestialEntity {
   private readonly radius: number;
 
   constructor(motion: StarMotion, name: string) {
-    super(motion, name, 'star');
+    super(motion, name, 'star', null);
     this.radius = motion.def.radius;
   }
+
+  // 自発光なので反射の測光を持たない。
+  get lightSourceAlbedo(): Albedo | null { return null; }
+
+  get surfaceTextureUrl(): string | null { return null; }
 
   // 実球体・点像・輪郭円をシーンへ一度だけ登録する。
   build(scene: THREE.Scene): void {

@@ -134,7 +134,7 @@ export function bondAlbedoOf(id: string): number {
 }
 
 // hue の色みを保ったまま、Rec.709 輝度を bondAlbedo へ合わせた線形 RGB。
-function scaledToBondAlbedo(hue: readonly [number, number, number], bondAlbedo: number): Albedo {
+export function scaledToBondAlbedo(hue: readonly [number, number, number], bondAlbedo: number): Albedo {
   const k = bondAlbedo / rec709Luminance(hue);
   return [hue[0] * k, hue[1] * k, hue[2] * k];
 }
