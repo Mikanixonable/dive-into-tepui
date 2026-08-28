@@ -4,7 +4,7 @@
 // 未満なら(マップビューでは輝点も出さず)実体を隠す。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
-import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system';
+import { RingSystemDef, ShapeDef, shapeAxes } from '../../physics/solar-system/celestial-body-def';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
