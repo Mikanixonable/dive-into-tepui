@@ -2,6 +2,7 @@
 // しながら tracks.ts の値を詰めるための道具。鳴らす仕組みそのものは lab-player.ts。
 import { BGM_TRACKS } from '../../src/audio/bgm/tracks/tracks';
 import { BgmTrack, PhaseCycle } from '../../src/audio/bgm/tracks/types';
+import { trackCycleSteps } from '../../src/audio/bgm/track-cycle';
 import { LabPlayer } from './lab-player';
 
 const STATE_KEY = 'tepui.bgmLab';
@@ -43,23 +44,10 @@ function saveState(s: LabState): void {
 
 // --- 曲の構造の読み出し ---------------------------------------------------
 
-const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b;
-
-// この曲が本当に一巡するまでのステップ数。各循環の周期の最小公倍数。
-function superCycleSteps(track: BgmTrack): number {
-  if (track.kind !== 'phasing') return 0;
-  const p = track.params;
-  const periods = [
-    p.transpose.values.length * p.transpose.everySteps,
-    p.octave.values.length * p.octave.everySteps,
-    p.voiceA.pattern.length,
-    p.voiceB.pattern.length,
-    p.pads.chords.length * p.pads.everySteps,
-    p.drone.everySteps,
-    ...(p.sparkle ? [p.sparkle.everySteps] : []),
-  ].filter((n) => n > 0);
-  return periods.reduce(lcm, 1);
+// 再生位置スライダーの可動域。ぴったり一巡できる曲は一巡分、そうでなければ適当な幅で妥協する。
+function seekRangeSteps(track: BgmTrack): number {
+  const cycle = trackCycleSteps(track);
+  return cycle > 0 ? cycle : 256;
 }
 
 // いまどの循環のどこにいるか。位相のずれ具合が数字で見えないと値を詰められない。
@@ -97,6 +85,8 @@ const loopChk = el<HTMLInputElement>('loop');
 const fromIn = el<HTMLInputElement>('from');
 const toIn = el<HTMLInputElement>('to');
 const volIn = el<HTMLInputElement>('vol');
+const seekIn = el<HTMLInputElement>('seek');
+const seekLabel = el<HTMLDivElement>('seekLabel');
 const mutesBox = el<HTMLDivElement>('mutes');
 const readout = el<HTMLDivElement>('readout');
 const hint = el<HTMLDivElement>('hint');
@@ -152,6 +142,13 @@ function applyMutes(): void {
   }
 }
 
+// スライダーをドラッグしている間は、再生位置の自動追従で値を書き換えない。
+let seeking = false;
+
+function updateSeekRange(): void {
+  seekIn.max = String(seekRangeSteps(track()));
+}
+
 function applyLoop(): void {
   player?.setLoop(state.loopEnabled ? { from: state.loopFrom, to: state.loopTo } : null);
 }
@@ -184,19 +181,24 @@ function refresh(): void {
   }
   const { step, notes } = player.current;
   const stepDur = t.kind === 'phasing' ? t.params.stepDur : 0;
-  const cycle = superCycleSteps(t);
+  const cycle = trackCycleSteps(t);
   const lines = [
     `step <b>${step}</b>   ${fmtTime(step * stepDur)}   このステップの音 ${notes}`,
     structureReadout(t, step),
     cycle > 0 ? `一巡 ${cycle} steps (${fmtTime(cycle * stepDur)})   step長 ${stepDur}s` : '',
   ];
   readout.innerHTML = lines.filter((l) => l !== '').join('\n');
+  if (!seeking) {
+    seekIn.value = String(step % (Number(seekIn.max) || 1));
+    seekLabel.textContent = `step ${step}`;
+  }
 }
 
 trackSel.addEventListener('change', () => {
   state.trackIdx = Number(trackSel.value);
   saveState(state);
   buildMutes();
+  updateSeekRange();
   if (player?.isPlaying) start();
 });
 playBtn.addEventListener('click', () => start());
@@ -206,6 +208,15 @@ loopChk.addEventListener('change', () => { state.loopEnabled = loopChk.checked; 
 fromIn.addEventListener('change', () => { state.loopFrom = Math.max(0, Number(fromIn.value) | 0); applyLoop(); saveState(state); });
 toIn.addEventListener('change', () => { state.loopTo = Math.max(0, Number(toIn.value) | 0); applyLoop(); saveState(state); });
 volIn.addEventListener('input', () => { state.volume = Number(volIn.value); player?.setVolume(state.volume); saveState(state); });
+seekIn.addEventListener('pointerdown', () => { seeking = true; });
+seekIn.addEventListener('pointerup', () => { seeking = false; });
+seekIn.addEventListener('input', () => {
+  const step = Number(seekIn.value) | 0;
+  seekLabel.textContent = `step ${step}`;
+  state.startStep = step;
+  saveState(state);
+  if (player?.isPlaying) player.seek(step);
+});
 
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
@@ -226,6 +237,8 @@ loopChk.checked = state.loopEnabled;
 fromIn.value = String(state.loopFrom);
 toIn.value = String(state.loopTo);
 volIn.value = String(state.volume);
+updateSeekRange();
+seekIn.value = String(state.startStep);
 window.setInterval(refresh, 80);
 
 // AudioContext は実際の操作からしか作れないので、再読込直後は鳴らせない。
