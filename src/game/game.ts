@@ -159,7 +159,7 @@ export class Game {
     this.frameAnchors = new FrameAnchors({
       entityState: (id, t) => this.entities.all().find((e) => e.id === id && e.alive)?.displayState(t, ephemeris) ?? null,
       activeShipState: (t) => this.activeControllableEntity?.displayState(t, ephemeris) ?? null,
-      navTargetState: (bodies, t) => this.navTarget.resolveState(this.entities, ephemeris, bodies, t)?.state ?? null,
+      navTargetState: (bodies, t) => this.navTarget.resolveState(this.entities, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
       this._hud.mapRoot, this._hud.layers.popup, ephemeris, this.cameraSystem.mapCamera,
@@ -191,7 +191,7 @@ export class Game {
       this._hud,
       this._uiSfx,
       this.simSpeedManager,
-      ephemeris,
+      celestialSystem,
       this._scene,
       this.markerManager,
       this.activePlayers,
@@ -211,12 +211,12 @@ export class Game {
     this.combatHud = new CombatHudController(this._hud);
     this.mapHud = new MapHudController(this._hud);
 
-    this.simulator = new Simulator(this.entities, ephemeris, sections, initialSave?.simTime ?? initialSimTime ?? 0);
+    this.simulator = new Simulator(this.entities, celestialSystem.windows, sections, initialSave?.simTime ?? initialSimTime ?? 0);
     this.predictor = new Predictor(this.entities, ephemeris);
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
-      this.entities.effects, this.markerManager, ephemeris, this.simulator, this.activePlayers,
+      this.entities.effects, this.markerManager, celestialSystem, this.simulator, this.activePlayers,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
@@ -346,8 +346,8 @@ export class Game {
     );
     this.sections.exit(SECTION.predict);
     this.sections.enter(SECTION.plan);
-    this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.ephemeris, this.frameAnchors);
-    this.entities.updateBaseEquatorNodes(overviewMode, displayWindow, this.ephemeris, this.frameAnchors);
+    this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.celestialSystem, this.frameAnchors);
+    this.entities.updateBaseEquatorNodes(overviewMode, displayWindow, this.celestialSystem, this.frameAnchors);
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
@@ -390,7 +390,7 @@ export class Game {
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     const playerInput = this.controlledBase !== null ? null : this.input;
     this.entities.updatePlayers(
-      this.player, playerInput, canShipAct, dt, simDt, this.activeStage, this.ephemeris,
+      this.player, playerInput, canShipAct, dt, simDt, this.activeStage, this.celestialSystem,
     );
     this.entities.updateBases(
       this.controlledBase, this.input, canShipAct, dt, simDt,
@@ -551,7 +551,7 @@ export class Game {
     // 軌道パネルの表示と3D軌道線の基準がずれる。
     const orbitRef = activeControllable
       ? this.orbitReference.resolve(
-        activeControllable.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, activeControllable.state.t,
+        activeControllable.state.r, celestialBodies, this.navTarget, this.entities, this.celestialSystem, activeControllable.state.t,
       )
       : undefined;
     this.entities.syncPlayers(player, fo, this.cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
@@ -567,7 +567,7 @@ export class Game {
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
       player, combatTargets, this.entities.ammoPickups, this.entities.rcsFuelPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
-      this.ephemeris, displayCelestialBodies,
+      this.celestialSystem, displayCelestialBodies,
     );
     this.cameraSystem.focusMarkers.syncSubLabels(
       this.markerManager.combatMarkers, displayCelestialBodies,

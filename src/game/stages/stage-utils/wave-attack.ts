@@ -9,7 +9,7 @@ import type { Stage } from '../stage';
 import type { Hud } from '../../hud/hud';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import type { Ephemeris } from '../../../physics/ephemeris';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes } from '../../../physics/elements';
 import { R_EARTH } from '../../../physics/solar-system/constants';
@@ -65,7 +65,7 @@ export class WaveAttack {
     private readonly worldSfx: WorldSfx,
     private readonly fx: EffectsSystem,
     private readonly scene: THREE.Scene,
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     saved?: WaveAttackSaveData,
   ) {
     this.waveState = saved?.waveState ?? 'waiting_for_ammo';
@@ -76,7 +76,7 @@ export class WaveAttack {
   // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。
   public spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this._waveCount;
-    const enemies = generateWave(player.state, wave, this.ephemeris, this.worldSfx, this.fx, this.scene, forcedPattern);
+    const enemies = generateWave(player.state, wave, this.celestialSystem, this.worldSfx, this.fx, this.scene, forcedPattern);
     for (const enemy of enemies) addEnemy(enemy);
   }
 
@@ -193,9 +193,9 @@ function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number):
 }
 
 // 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
-function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, ephemeris: Ephemeris): Vec3 {
+function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, celestialSystem: CelestialSystem): Vec3 {
   const minPeAlt = REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN;
-  const center = strongestAttractor(centerR, ephemeris.celestialBodiesAt(t));
+  const center = strongestAttractor(centerR, celestialSystem.celestialBodiesAt(t));
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
     const el = orbitalElementsOf(kinematicState(t, centerR, v), center);
@@ -282,12 +282,12 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, ephemeris: Ephemeris, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, celestialSystem: CelestialSystem, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
   const { approachDir, centerV: rawCenterV } = makeFlybyVelocity(player, centerR, waveNumber);
-  const centerV = limitFlybyDv(player.v, centerR, rawCenterV, player.t, ephemeris);
+  const centerV = limitFlybyDv(player.v, centerR, rawCenterV, player.t, celestialSystem);
   const subGroups = makeSubGroupHexes(pickWaveBaseHex());
   const typeIndex = Math.floor(Math.random() * 3);
   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');

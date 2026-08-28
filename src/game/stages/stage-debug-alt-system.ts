@@ -84,7 +84,7 @@ export class StageDebugAltSystem extends Stage {
   // 自機を zephyrus の低軌道へ置く(このレジストリでは既定の地球 LEO に意味が無い)。
   protected init(): void {
     const t = this._simulator.simTime;
-    const primary = this._ephemeris.celestialBodiesAt(t).find((a) => a.id === PRIMARY_ID)!;
+    const primary = this._celestialSystem.celestialBodiesAt(t).find((a) => a.id === PRIMARY_ID)!;
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.mu);
     this.addPlayer({
       state: kinematicState(t, add(primary.state.r, rel.r), add(primary.state.v, rel.v)),

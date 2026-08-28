@@ -38,7 +38,7 @@ import type { OrbitReference } from '../orbit-reference';
 import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
-import { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart } from '../game-entity/parts';
@@ -426,7 +426,7 @@ export class Player extends Ship {
     simDt: number,
     entities: EntityManager,
     activeStage: Stage,
-    ephemeris: Ephemeris,
+    celestialSystem: CelestialSystem,
   ): void {
     this.updatePassive(dt);
     if (input !== null) this.handleEdgeInput(input, entities);
@@ -439,7 +439,7 @@ export class Player extends Ship {
     }
     this.updateTorque(input, dt, simDt);
 
-    this.fire.updateFireState(dt, input, activeStage, entities, ephemeris);
+    this.fire.updateFireState(dt, input, activeStage, entities, celestialSystem);
 
     this.throttle.updateThrustLatches(input);
     this.rcsThrust = this.throttle.updateThrustState(input, this.att, simDt, this);

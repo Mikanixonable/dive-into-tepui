@@ -25,7 +25,7 @@ import type { CombatTarget } from '../targeter';
 import type { MapVisibilityPolicy } from '../celestial/map-visibility';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DisplayWindow } from '../display-window-manager';
 import type { GameSaveData } from '../save/save-data';
 import type { Hud } from '../hud/hud';
@@ -362,7 +362,7 @@ export class EntityManager {
   // input を渡すかどうかの1つの判断にまとめる。
   updatePlayers(
     activePlayer: Player | null, input: Input | null, operable: boolean,
-    dt: number, simDt: number, activeStage: Stage, ephemeris: Ephemeris,
+    dt: number, simDt: number, activeStage: Stage, celestialSystem: CelestialSystem,
   ): void {
     for (const booster of this.detachedBoosters) if (booster.alive) booster.updateBurn(simDt);
     for (const ship of this.players) {
@@ -372,7 +372,7 @@ export class EntityManager {
         simDt,
         this,
         activeStage,
-        ephemeris,
+        celestialSystem,
       );
     }
   }
@@ -458,14 +458,14 @@ export class EntityManager {
   // マップ表示中だけ、全基地の赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。基地は
   // 常設の軌道構造物で、接近・ドッキングは軌道面合わせそのものなので、選択の有無に関わらず出す。
   updateBaseEquatorNodes(
-    overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+    overviewMode: boolean, displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
     if (!overviewMode) return;
     const timeLabel = {
       mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
     };
     for (const base of this.bases) {
-      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, ephemeris, frameAnchors, timeLabel);
+      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, celestialSystem.ephemeris, frameAnchors, timeLabel);
     }
   }
 
