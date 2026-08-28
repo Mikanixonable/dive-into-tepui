@@ -29,7 +29,7 @@ function earthOnlyProvider(withAtmosphere = false): FutureCelestialBodyProvider 
     state: kinematicState(t, v3(), v3()), accel: v3(), degree2: null, atmosphere, isStar: false,
   });
   return {
-    candidates: () => [{ id: 'earth', mu: MU_EARTH, radius: R_EARTH }],
+    defs: [{ id: 'earth', mu: MU_EARTH, radius: R_EARTH }],
     celestialBodyAt: (_id, t) => earthAt(t),
   };
 }

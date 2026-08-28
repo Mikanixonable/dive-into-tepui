@@ -623,6 +623,11 @@ export class Ephemeris {
     return { ...def.atmosphere, pole: orientation.axis };
   }
 
+  // 全登録天体の定義(registry の宣言順)。
+  get defs(): readonly CelestialBodyDef[] {
+    return this.ids.map((id) => bodyDef(this.registry, id));
+  }
+
   // 指定時刻の全登録天体(registry の宣言順)。origin は原点に静止。遮蔽判定・表面接触・
   // 中心天体解決・積分刻み・基準天体解決が読む窓。
   // 同一 t には同一の配列参照が返るので、**呼び出し側はこの配列と要素を書き換えてはならない。**
