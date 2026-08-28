@@ -1,7 +1,7 @@
 // zero-velocity.ts の回帰テスト。ヤコビ定数の閉じた式・停留点性・ネックが開閉する順序・
 // 曲線上の点が f=0 を満たすことを、地球-月/太陽-地球の質量比で確かめる。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import {
   pseudoPotential, lagrangeJacobi, zeroVelocityCurves, LagrangeLabel,
 } from '../../src/physics/zero-velocity';
@@ -11,7 +11,7 @@ import {
 const MU_EARTH_MOON = 0.012150585609624;
 const MU_SUN_EARTH = 3.003480578941791e-6;
 
-// tests/physics/index.ts から呼ばれ、このファイルのテストケースを harness へ登録する。
+// tests/run.ts から呼ばれ、このファイルのテストケースを harness へ登録する。
 export function register(): void {
   for (const mu of [MU_EARTH_MOON, MU_SUN_EARTH]) {
     test(`zero-velocity: lagrangeJacobi(L4) matches the closed form (mu=${mu})`, () => {

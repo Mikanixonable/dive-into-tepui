@@ -5,11 +5,11 @@ import { bodyAnchorSource, CelestialBody } from '../../../physics/celestial-body
 import type { Ephemeris } from '../../../physics/ephemeris';
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
-import { Vec3 } from '../../../physics/vec3';
+import { Vec3 } from '../../../math/vec3';
 import { systemMembersAt } from '../../celestial/body-visibility';
 import { MapCamera } from '../../camera/map-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
-import type { MapPickable } from '../../map-pickable';
+import type { MapPickable } from '../../pickable/map-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../overlay-manager';
 import { hudRail } from '../hud-root';

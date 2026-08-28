@@ -6,7 +6,7 @@ import { KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
 import { srpAccel } from './srp';
-import { Vec3, add, cross, dot, sub, v3 } from './vec3';
+import { Vec3, add, cross, dot, sub, v3 } from '../math/vec3';
 
 // 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに、その段が
 // 実際に評価されるべき絶対時刻 t とともに呼ばれる。RK4 が4次精度を持つのは非自励系

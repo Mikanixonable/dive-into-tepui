@@ -9,8 +9,8 @@ import { EPOCH_T_OFFSET } from '../../physics/ephemeris';
 import { AU } from '../../physics/planet-orbit';
 import { MU_SUN, SOLAR_SYSTEM } from '../../physics/solar-system';
 import { qRotate } from '../../physics/attitude';
-import { mulberry32 } from '../../physics/random';
-import { Vec3 } from '../../physics/vec3';
+import { mulberry32 } from '../../math/random';
+import { Vec3 } from '../../math/vec3';
 
 // 1点の軌道。平均運動を要素と一緒に持つのは、位置評価が毎フレーム全点に及ぶため
 // (a から毎回 sqrt を引くのを避ける)。

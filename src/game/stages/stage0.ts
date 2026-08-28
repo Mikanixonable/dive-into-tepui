@@ -7,11 +7,18 @@ import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { ScoreCounter } from './stage-utils/score-counter';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../sim-speed-manager';
-import type { Stage0SaveData, StageSaveData } from '../save-data';
+import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { Stage0SaveData, StageSaveData } from '../save/save-data';
+
+// 制限時間 [実秒]。選択画面の説明(stage0.ts の selectSub)とブリーフィングはこの値から
+// 生成されるので、変更すればどちらも自動的に追随する。
+const STAGE0_TIME_LIMIT = 120;
+const STAGE0_LOGISTICS_INITIAL_AMMO = 4; // 開始時に浮かべておく補給の数
+const STAGE0_LOGISTICS_MIN_DIST = 75; // 補給の配置距離 [m](自機から)
+const STAGE0_LOGISTICS_MAX_DIST = 225;
 
 // 制限時間を分単位で表す(選択画面の説明文とブリーフィングの両方から参照する)
-const stage0TimeLimitMinutes = (): number => Math.floor(C.STAGE0_TIME_LIMIT / 60);
+const stage0TimeLimitMinutes = (): number => Math.floor(STAGE0_TIME_LIMIT / 60);
 
 export class Stage0 extends Stage {
   static readonly id = '0' as const;
@@ -28,7 +35,7 @@ export class Stage0 extends Stage {
   // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
-    this.timer = new ScoreAttackTimer((saved as Stage0SaveData | undefined)?.timeLeft ?? C.STAGE0_TIME_LIMIT);
+    this.timer = new ScoreAttackTimer((saved as Stage0SaveData | undefined)?.timeLeft ?? STAGE0_TIME_LIMIT);
     this.begin();
   }
 
@@ -45,8 +52,8 @@ export class Stage0 extends Stage {
   // 弾薬ゼロの自機を置き、初期補給と敵クラスタを配置する。
   protected init(entities: EntityManager): void {
     const player = this.addPlayer({ ammo: { mags: 0, rounds: 0 } });
-    for (let i = 0; i < C.STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
-      this.logistics.spawnForPlayer(player, C.STAGE0_LOGISTICS_MIN_DIST, C.STAGE0_LOGISTICS_MAX_DIST);
+    for (let i = 0; i < STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
+      this.logistics.spawnForPlayer(player, STAGE0_LOGISTICS_MIN_DIST, STAGE0_LOGISTICS_MAX_DIST);
     }
     const enemies = generateCluster(player.state, this._worldSfx, this._fx, this._scene);
     for (const enemy of enemies) this.addEnemy(enemy, entities);

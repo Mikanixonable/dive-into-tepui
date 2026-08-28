@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qRotate, randomQuat } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { randSym } from '../../physics/random';
-import { add, addScaled, randVec, scale, v3, Vec3 } from '../../physics/vec3';
-import { FloatingOrigin } from '../floating-origin';
+import { randSym } from '../../math/random';
+import { add, addScaled, randVec, scale, v3, Vec3 } from '../../math/vec3';
+import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
 import { DebrisKind, DebrisPiece } from '../game-entity/debris-piece';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
