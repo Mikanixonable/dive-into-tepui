@@ -11,7 +11,7 @@ import {
 const MU_EARTH_MOON = 0.012150585609624;
 const MU_SUN_EARTH = 3.003480578941791e-6;
 
-// tests/physics/index.ts から呼ばれ、このファイルのテストケースを harness へ登録する。
+// tests/run.ts から呼ばれ、このファイルのテストケースを harness へ登録する。
 export function register(): void {
   for (const mu of [MU_EARTH_MOON, MU_SUN_EARTH]) {
     test(`zero-velocity: lagrangeJacobi(L4) matches the closed form (mu=${mu})`, () => {
