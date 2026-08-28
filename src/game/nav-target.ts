@@ -2,7 +2,6 @@
 // 自機軌道との相対 AN/DN(昇交点・降交点)・再接近点の算出・マーカー表示・被選択物としての公開。
 // ターゲットが敵・自艦・基地(CombatTarget)の場合は、Targeter の射撃・照準補助の基準にもなる。
 import { Vec3, v3, add, len, sub } from '../physics/vec3';
-import { KinematicState } from '../physics/kinematic-state';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { CelestialBody, OrbitingId, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
 import type { LagrangePoints } from '../physics/lagrange';
@@ -23,6 +22,7 @@ import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { CameraSystem } from './camera/camera-system';
 import { MapPickable } from './map-pickable';
 import type { GameEntity } from './game-entity/game-entity';
+import type { OrbitReference } from './orbit-reference';
 
 const Z_HAT: Vec3 = v3(0, 0, 1);
 
@@ -66,9 +66,6 @@ function findClosestApproach(
 }
 
 export class NavTarget {
-  // ターゲットが変わるたびに通知する — 物体一覧パネルのハイライトを追随させる用途。
-  onSelect: ((id: string | null) => void) | null = null;
-
   private targetId: string | null = null;
   private targetName: string | null = null;
   private ownerName: string | null = null;
@@ -109,7 +106,6 @@ export class NavTarget {
     // 対象を切り替えた時点で即座に降ろす — 次の update までターゲットが変わらない前提の
     // 個体に、外れたあとも未来予測の負担を残さない。
     this.setReaderEntity(null);
-    this.onSelect?.(id);
   }
 
   // 旧対象のフラグを降ろし、新対象に立て直す。
@@ -150,7 +146,7 @@ export class NavTarget {
     const wasEntityId = entities.findEnemy(data.id) !== null
       || entities.players.some((p) => p.id === data.id)
       || entities.bases.some((b) => b.id === data.id);
-    if (wasEntityId && !this.resolveEntity(data.id, entities)) return;
+    if (wasEntityId && !entities.findAliveCombatTarget(data.id)) return;
     this.setInternal(data.id, data.name);
   }
 
@@ -158,7 +154,7 @@ export class NavTarget {
   // など戦闘対象になれない対象がターゲットの場合は null。
   resolveCombatTarget(entities: EntityManager): CombatTarget | null {
     if (this.targetId === null) return null;
-    const entity = this.resolveEntity(this.targetId, entities);
+    const entity = entities.findAliveCombatTarget(this.targetId);
     return entity && entity.alive ? entity : null;
   }
 
@@ -191,7 +187,7 @@ export class NavTarget {
     this.celestialBodies = frameAnchors.bodies;
     if (!this.targetId) { this.setReaderEntity(null); return; }
     // ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
-    const target = this.resolveEntity(this.targetId, entities);
+    const target = entities.findAliveCombatTarget(this.targetId);
     this.setReaderEntity(target);
     const timeLabel = { mode: this.labelMode, show: this.showElementTimes, nowSimTime: simTime };
     target?.ensureEquatorNodes(this.markerManager).updateOnEllipse(displayTime, ephemeris, frameAnchors, timeLabel);
@@ -239,28 +235,35 @@ export class NavTarget {
 
   // 現在のターゲットの時刻 t における位置・速度。天体は CelestialBody.state、ラグランジュ点は
   // ephemeris.lagrangeStateAt、船・基地は entity.displayState(t) から得る。天体以外は重力中心
-  // ではないため hasMass=false を返す。ターゲット未設定・解決不能なら null。
+  // ではないため hasMass=false を返す。船・基地は軌道線を相対軌跡に切り替えられるよう entity
+  // 自身も添えて返す。ターゲット未設定・解決不能なら null。
   resolveState(
     entities: EntityManager, ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[], t: number,
-  ): { id: string; state: KinematicState; hasMass: boolean; attractor: CelestialBody | null } | null {
+  ): OrbitReference | null {
     const id = this.targetId;
     if (id === null) return null;
     const registry = ephemeris.registry;
     if (id in registry && bodyDef(registry, id).kind !== 'star') {
       const attractor = celestialBodies.find((a) => a.id === id);
-      if (attractor) return { id, state: attractor.state, hasMass: true, attractor };
+      if (attractor) return { id, state: attractor.state, hasMass: true, attractor, entity: null, fixed: true };
     }
     const match = /^(.+)-l([1-5])$/.exec(id);
     if (match) {
       const secondary = match[1]!;
       if (secondary in registry && bodyDef(registry, secondary).kind !== 'star') {
         const point = `L${match[2]}` as keyof LagrangePoints;
-        return { id, state: ephemeris.lagrangeStateAt(secondary as OrbitingId, point, t), hasMass: false, attractor: null };
+        return {
+          id, state: ephemeris.lagrangeStateAt(secondary as OrbitingId, point, t), hasMass: false,
+          attractor: null, entity: null, fixed: true,
+        };
       }
     }
-    const entity = this.resolveEntity(id, entities);
+    const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
-    return { id, state: entity.displayState(t, ephemeris) ?? entity.state, hasMass: false, attractor: null };
+    return {
+      id, state: entity.displayState(t, ephemeris) ?? entity.state, hasMass: false,
+      attractor: null, entity, fixed: true,
+    };
   }
 
   // id がターゲットになれる(軌道面が定まる)かどうか。
@@ -282,19 +285,10 @@ export class NavTarget {
     if (secondary !== undefined && secondary in registry && bodyDef(registry, secondary).kind !== 'star') {
       return qRotate(ephemeris.orbitFrameRotationAt(secondary as OrbitingId, t).q, Z_HAT);
     }
-    const entity = this.resolveEntity(id, entities);
+    const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
     const center = strongestAttractor(entity.state.r, ephemeris.celestialBodiesAt(t));
     return entity.orbitalElementsAround(center)?.hHat ?? null;
-  }
-
-  // id を生存中の敵・自機・基地として引く。天体・ラグランジュ点は実体を持たないので null。
-  private resolveEntity(id: string, entities: EntityManager): CombatTarget | null {
-    const enemy = entities.findEnemy(id);
-    return (enemy?.alive ? enemy : null)
-      ?? entities.players.find((p) => p.id === id)
-      ?? entities.bases.find((b) => b.id === id && b.alive)
-      ?? null;
   }
 
   // 右クリック対象として公開する AN/DN・再接近点アイコン。計算できているぶんだけ返す。

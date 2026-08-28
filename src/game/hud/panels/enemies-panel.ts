@@ -1,6 +1,7 @@
 // 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
 import { len, sub } from '../../../physics/vec3';
 import { fmtDist } from '../utils';
+import { SyncThrottle } from '../sync-throttle';
 import type { Vec3 } from '../../../physics/vec3';
 import type { Enemy } from '../../game-entity/enemy';
 import type { CombatTarget } from '../../targeter';
@@ -25,26 +26,26 @@ type EnemyRow =
   };
 
 export class EnemiesPanel {
-  private nextSyncAt = 0;
+  private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private hasContacts = false;
 
   // 単独表示の行(波に集約されていない敵)の右クリック。波の集約行は特定の1機を指さないため呼ばれない。
-  onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
+  public onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
 
+  // 残存数の見出しと、距離順の敵一覧を同期する。自機が無ければパネルごと隠す。
   public sync(game: Game): void {
     const player = game.player;
-    const panel = document.getElementById('hud-enemies');
+    const panel = this.els.get('hud-enemies');
     if (!player) {
       this.hasContacts = false;
       panel?.classList.add('hidden');
       return;
     }
 
-    const now = performance.now();
-    if (now >= this.nextSyncAt) {
-      this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    // 間引き周期でのみ一覧を組み直す。
+    if (this.throttle.due()) {
 
       const { kills, totalEnemiesSpawned } = game.activeStage.scoreCounter;
       const remainingCount = totalEnemiesSpawned - kills;
@@ -116,12 +117,15 @@ export class EnemiesPanel {
       return;
     }
 
+    // rows は距離順なので、固定ターゲットでない先頭行が最も近い(=隣接)行になる。
     const adjacentIndex = rows.findIndex((row) => !row.targeted);
     const items = rows.map((row, index) => {
       const isAdjacent = index === adjacentIndex;
       const role = row.targeted ? '固定' : isAdjacent ? '隣接' : '';
       const label = row.kind === 'wave' ? `第${row.waveId}波 ×${row.count}` : row.name;
       const distance = fmtDist(row.distanceM);
+
+      // 行本体。固定/隣接の強調はクラスと aria-current で示す。
       const item = document.createElement('li');
       item.className = [
         'contact-row',
@@ -137,6 +141,7 @@ export class EnemiesPanel {
         });
       }
 
+      // 名前・距離・役割ラベルの3スパン。
       const name = document.createElement('span');
       name.className = 'contact-name';
       name.textContent = label;
