@@ -2,7 +2,7 @@
 // ノイズ的な周期関数で表現する(閉ループを保つため周期関数のみを使う)。1つで1層ぶんなので、
 // 同じ極に複数重ねて厚みを出す。
 import * as THREE from 'three/webgpu';
-import { R_EARTH } from '../physics/solar-system';
+import { R_EARTH } from '../physics/solar-system/constants';
 
 const SEG = 160;
 const V_SEG = 3; // 鉛直方向4頂点: 0=下端フェード, 1=核(緑), 2=中間(赤), 3=上端フェード

@@ -5,7 +5,7 @@
 // celestial-textures.ts)。ここに残るのは id・表示名・表示クラス・どの entity クラスを
 // 使うかの選択だけ。
 import { CelestialMotion, OrbitingMotion, PlanetMotion, StarMotion } from '../../physics/celestial-motion';
-import { SolarSystemId } from '../../physics/solar-system';
+import { SolarSystemId } from '../../physics/solar-system/solar-system';
 import { CelestialSurface } from '../../render/celestial-surface';
 import { albedoOf, DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { textureOf } from '../../render/celestial-textures';

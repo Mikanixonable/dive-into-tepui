@@ -27,6 +27,8 @@ import type { ActivePlayerController } from '../active-controllable-controller';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAtOrNull } from '../../physics/ephemeris-profile';
 import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../simulation/sim-epoch';
+import { solarSystemMotions } from '../../physics/solar-system/solar-system';
+import type { PhaseOffsets } from '../../physics/celestial-motion';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
@@ -64,7 +66,7 @@ export type StageDeps = [
 export interface StageClass {
   readonly id: StageId;
   createEphemeris(
-    phaseOffsets: Partial<Record<string, number>>, onProgress?: (ratio: number) => void,
+    phaseOffsets: PhaseOffsets, onProgress?: (ratio: number) => void,
     startSimTime?: number,
   ): Promise<Ephemeris>;
   // 選択画面が読む項目。
@@ -100,16 +102,20 @@ export abstract class Stage {
   // ゲーム既定のエポック)が近未来/遠未来いずれかの高精度期間に入っていれば精密暦パックを
   // 読み込み、どちらにも入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
   public static async createEphemeris(
-    phaseOffsets: Partial<Record<string, number>>, onProgress?: (ratio: number) => void,
+    phaseOffsets: PhaseOffsets, onProgress?: (ratio: number) => void,
     startSimTime = 0,
   ): Promise<Ephemeris> {
     const startJdTdb = SIM_EPOCH_JD_TDB + startSimTime / 86400;
     const profile = profileAtOrNull(startJdTdb);
-    if (profile === null) return new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets);
+    if (profile === null) {
+      const motions = solarSystemMotions('earth', phaseOffsets, SIM_EPOCH_ET, null, SIM_EPOCH_JD_TDB);
+      return new Ephemeris(motions.all, 'earth', phaseOffsets);
+    }
     const pack = await loadAbsoluteEphemeris(
       profile.id, profile.validStartJdTdb, profile.validEndJdTdb, onProgress,
     );
-    return new Ephemeris(undefined, undefined, SIM_EPOCH_ET, phaseOffsets, pack, SIM_EPOCH_JD_TDB);
+    const motions = solarSystemMotions('earth', phaseOffsets, SIM_EPOCH_ET, pack, SIM_EPOCH_JD_TDB);
+    return new Ephemeris(motions.all, 'earth', phaseOffsets);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;

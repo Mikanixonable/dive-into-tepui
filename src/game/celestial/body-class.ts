@@ -1,9 +1,10 @@
-// 天体の表示上の重要度。solar-system.ts の kind(恒星/惑星/衛星)が「中心天体が何か」という
+// 天体の表示上の重要度。運動の kind(恒星/惑星/衛星)が「中心天体が何か」という
 // 力学上の分類であるのに対し、こちらは「マップで既定でも見せるか、絞り込みの対象にするか」
 // という編集上の判断で、同じ kind: 'planet' の中から準惑星・小天体を分ける。
 // メッシュ構築(THREE 依存)と分けてあるのは、可視性の規則を DOM もレンダラも無しに
 // 評価できるようにするため。
-import { CelestialRegistry, SolarSystemId } from '../../physics/solar-system';
+import type { Ephemeris } from '../../physics/ephemeris';
+import { SolarSystemId } from '../../physics/solar-system/solar-system';
 import type { CelestialKind } from '../../physics/celestial-motion';
 
 export type BodyClass = 'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody';
@@ -124,9 +125,8 @@ export function bodyClassOfKind(kind: CelestialKind): BodyClass {
 
 // 登録天体の表示クラス。現実の太陽系に項が無い id(カスタムレジストリの架空天体)は、
 // 力学上の分類をそのまま重要度として使う。
-export function bodyClassOf(registry: CelestialRegistry, id: string): BodyClass {
+export function bodyClassOf(ephemeris: Ephemeris, id: string): BodyClass {
   const cls = (BODY_CLASS_BY_ID as Record<string, BodyClass | undefined>)[id];
   if (cls !== undefined) return cls;
-  const kind = registry[id]?.kind;
-  return kind === undefined ? 'planet' : bodyClassOfKind(kind);
+  return id in ephemeris.registry ? bodyClassOfKind(ephemeris.motionOf(id).kind) : 'planet';
 }

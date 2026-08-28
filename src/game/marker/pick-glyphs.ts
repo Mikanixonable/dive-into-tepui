@@ -6,7 +6,7 @@ import { bodyClassOf } from '../celestial/body-class';
 import { LAGRANGE_ID } from '../hud/object-groups';
 import { bodyEntityGlyph, ENTITY_GLYPH, ORBIT_POINT_GLYPH } from './marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from './marker-shapes';
-import type { CelestialRegistry } from '../../physics/solar-system';
+import type { Ephemeris } from '../../physics/ephemeris';
 import type { MapPickKind } from '../pickable/map-pickable';
 
 // 文字グリフを使う種別。body は恒星・衛星・ラグランジュ点で字形が変わるため、この表ではなく
@@ -36,13 +36,13 @@ export function pickGlyphSvg(kind: MapPickKind): string | null {
 }
 
 // kind/id に対応する文字グリフ。SVG を持つ種別でも、SVG を描けない場所のために必ず返る。
-export function pickGlyphText(kind: MapPickKind, id: string, registry: CelestialRegistry): string {
+export function pickGlyphText(kind: MapPickKind, id: string, ephemeris: Ephemeris): string {
   if (kind !== 'body') return TEXT_GLYPHS[kind];
-  return LAGRANGE_ID.test(id) ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(registry, id));
+  return LAGRANGE_ID.test(id) ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(ephemeris, id));
 }
 
 // SVG を描ける場所向けに、SVG があればそれを、無ければ文字グリフを返す。空域は記号を持たない。
-export function pickGlyph(kind: MapPickKind, id: string, registry: CelestialRegistry): string | undefined {
+export function pickGlyph(kind: MapPickKind, id: string, ephemeris: Ephemeris): string | undefined {
   if (kind === 'empty-space') return undefined;
-  return pickGlyphSvg(kind) ?? pickGlyphText(kind, id, registry);
+  return pickGlyphSvg(kind) ?? pickGlyphText(kind, id, ephemeris);
 }

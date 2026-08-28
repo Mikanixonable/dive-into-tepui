@@ -3,7 +3,6 @@
 // 選ばれた回転対象を返す。
 import { Ephemeris } from '../../../physics/ephemeris';
 import { FrameRole, FrameRotationSource, rotationSourceKey } from '../../../physics/frame';
-import { primaryOf } from '../../../physics/solar-system';
 import { SegmentedControl } from '../widgets';
 import { celestialBodyName, frameRoleName } from './frame-labels';
 
@@ -40,12 +39,12 @@ export class RotationZone {
     const revolvable: string[] = [];
     for (const id of members) {
       if (registry[id] === undefined) continue;
-      // 恒星は primaryOf が null を返すのでここで外れる。
-      if (primaryOf(registry, id) === null) continue;
+      // 恒星は主天体を持たないのでここで外れる。
+      if (this.ephemeris.motionOf(id).primary === null) continue;
       revolvable.push(id);
     }
     for (const id of revolvable) {
-      const primary = primaryOf(registry, id)!;
+      const primary = this.ephemeris.motionOf(id).primary!.id;
       const source: FrameRotationSource = { kind: 'revolution', id };
       const key = rotationSourceKey(source);
       this.sources.set(key, source);

@@ -15,7 +15,7 @@ import { Ephemeris } from '../../src/physics/ephemeris';
 import { CelestialBody, attractorAccel } from '../../src/physics/celestial-body';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { add, cross, len, lenSq, scale, sub, v3, Vec3 } from '../../src/math/vec3';
-import { MU_MOON, R_MOON } from '../../src/physics/solar-system';
+import { MU_MOON, R_MOON } from '../../src/physics/solar-system/constants';
 import {
   MU_EARTH, R_EARTH, SHIP_BCINV, GRAVITY_NEGLIGIBLE_ACCEL,
   buildEphemeris, initialLeoState, stepDynamicsAt, posError,

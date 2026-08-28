@@ -1,13 +1,12 @@
 // 天体1体。運動(CelestialMotion)と表示名・表示クラスを持ち、見た目(メッシュ・輝点スプライト・
 // 環など)をその運動へ同期する。位置・姿勢の正本は motion で、sync のたびにそこから引く。
 import * as THREE from 'three/webgpu';
-import { CelestialMotion } from '../../physics/celestial-motion';
+import { CelestialBodyDef, CelestialMotion } from '../../physics/celestial-motion';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { apparentSizePx } from '../../math/projection';
 import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
 import { len, sub } from '../../math/vec3';
-import type { CelestialBodyDef } from '../../physics/solar-system';
 import type { BodyClass } from './body-class';
 import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';

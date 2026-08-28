@@ -1,6 +1,6 @@
 // 天体ID・役割・回転ゾーンの選択から、パネルへ表示する日本語ラベルを引き当てる。
 import { frameRoleOf, FrameRole, FrameRotationSource } from '../../../physics/frame';
-import { SolarSystemId } from '../../../physics/solar-system';
+import { SolarSystemId } from '../../../physics/solar-system/solar-system';
 import { CELESTIAL_APPEARANCES } from '../../celestial/celestial-appearance';
 
 // id の日本語表示名。CELESTIAL_APPEARANCES に手作りエントリがある(現実の太陽系の天体)ならそれを、

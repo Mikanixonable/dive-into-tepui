@@ -1,10 +1,9 @@
 // focus-target.ts の回帰テスト。振動バグの本体は「機体 id は候補配列ではなく
 // frameAnchors.stateOf を返す」ケース(resolveFocusTarget は候補配列を先に見ると壊れる)。
+import { solarSystemEphemeris } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { FocusCandidate, FocusResolveState, resolveFocusTarget } from '../../src/game/camera/focus-target';
-import { Ephemeris } from '../../src/physics/ephemeris';
-import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { FrameAnchorSource } from '../../src/physics/frame';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
@@ -16,7 +15,7 @@ function stubAnchors(states: Partial<Record<string, KinematicState>>): FrameAnch
 }
 
 export function register(): void {
-  const eph = new Ephemeris(SOLAR_SYSTEM, 'earth');
+  const eph = solarSystemEphemeris();
 
   test('focus-target: 天体 id は ephemeris.positionOf を返す', () => {
     const anchors = stubAnchors({});

@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { qRotate, randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
-import { R_EARTH_EQ } from '../../physics/solar-system';
+import { R_EARTH_EQ } from '../../physics/solar-system/constants';
 import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';

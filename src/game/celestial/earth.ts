@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { createEarth, type Earth as EarthMesh } from '../../render/earth';
 import { CelestialMotion, PlanetMotion } from '../../physics/celestial-motion';
-import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
+import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system/constants';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { CelestialEntity } from './celestial-entity';

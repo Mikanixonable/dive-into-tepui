@@ -5,9 +5,9 @@
 // 「方向」(変位・速度差・上方向など。回転のみで変換)を取り違えると静かに壊れるため、
 // この2つを別の型にしている。
 //
-// 座標系の中身(その時刻の原点・姿勢・角速度 = FrameTransform)は天体暦
-// (Ephemeris.frameTransformAt)が組む。ここは変換値を受け取って変換するだけの純関数群で、
-// Ephemeris を import しない — これにより frame.ts と ephemeris.ts の間に循環依存が生まれない。
+// 座標系の中身(その時刻の原点・姿勢・角速度 = FrameTransform)は ReferenceFrames が組む。
+// ここは変換値を受け取って変換するだけの純関数群で、ReferenceFrames を import しない —
+// これにより frame.ts と reference-frames.ts の間に循環依存が生まれない。
 //
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
@@ -17,7 +17,7 @@ import { add, cross, sub, v3, Vec3 } from '../math/vec3';
 import { Quat, qInvert, qRotate } from './attitude';
 
 // 座標系 = 「どの天体を原点に置くか」×「何の回転(公転か自転)に合わせて回すか
-// (null = 回さない)」。値は必ず Ephemeris.frames/frameFor/frameOf の要素を参照する —
+// (null = 回さない)」。値は必ず ReferenceFrames の frames/frameFor/frameOf の要素を参照する —
 // リテラルで組むと参照同一性が崩れ、trajectory-line.ts の `frame === lastFrame` による
 // キャッシュ判定が毎フレーム外れて描画が無駄に重くなる。
 export type ReferenceFrame = {
