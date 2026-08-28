@@ -17,7 +17,7 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import type { GraphicsOptionKey, GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
+import type { GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
@@ -38,13 +38,6 @@ import { SunLight } from './sun-light';
 import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
-
-// パイプラインだけを駆動する呼び出し側(描画テスト環境)が操作の対象にする項目。
-// **ここを変えたときだけ、パイプラインが描くものが変わる。**
-export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'exposureCompensation', 'atmosphere', 'sunLightModel', 'planetLightCount',
-  'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
-] as const satisfies readonly GraphicsOptionKey[];
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly renderer: WebGPURenderer;
