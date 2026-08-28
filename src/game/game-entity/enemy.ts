@@ -13,7 +13,7 @@ import { add, len, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../.
 import { apparentSizePx, metersPerPixel, type Viewpoint } from '../../math/projection';
 import { solveLeadTime } from '../../physics/intercept';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { EffectsSystem } from '../vfx/effects-system';
 import { Player } from '../player/player';
 import { Bullet } from './bullet';
@@ -417,7 +417,7 @@ export class Enemy extends Ship {
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
-  behave(simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager, ephemeris: Ephemeris): void {
+  behave(simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager, celestialSystem: CelestialSystem): void {
     // 射撃間隔はsimulation timeで統一する。wall dtを混ぜると×4時だけバースト間隔が
     // 4倍に引き伸ばされ、同じゲーム内時間でもwarp段によって弾数が変わっていた。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
@@ -440,7 +440,7 @@ export class Enemy extends Ship {
     if (this.burstLeft && this.burstLeft > 0) {
       this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
       if (this.burstDelay <= 0) {
-        this.firePlasma(simTime, player, entities, ephemeris);
+        this.firePlasma(simTime, player, entities, celestialSystem);
         this.burstLeft--;
         this.burstDelay = ENEMY_BURST_INTERVAL;
       }
@@ -457,7 +457,7 @@ export class Enemy extends Ship {
     const counts = ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
     this.burstDelay = ENEMY_BURST_INTERVAL;
-    this.firePlasma(simTime, player, entities, ephemeris);
+    this.firePlasma(simTime, player, entities, celestialSystem);
   }
 
   // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
@@ -470,7 +470,7 @@ export class Enemy extends Ship {
   }
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、entities に追加する。
-  private firePlasma(simTime: number, player: Player, entities: EntityManager, ephemeris: Ephemeris, origin?: Vec3): void {
+  private firePlasma(simTime: number, player: Player, entities: EntityManager, celestialSystem: CelestialSystem, origin?: Vec3): void {
     const r = origin ?? (this.proteinRuntime
       ? this.proteinRuntime.nextAttackSiteWorldPosition(this.state.r, this.att.q)
       : this.state.r);
@@ -487,7 +487,7 @@ export class Enemy extends Ship {
     const predictedRelPos = add(toPlayer, scale(relV, leadTime));
     const aimDir = norm(predictedRelPos);
 
-    const sunDir = ephemeris.sunDirFrom(r, simTime);
+    const sunDir = celestialSystem.sunDirFrom(r, simTime);
     const spreadScale = sunGlareSpreadScale(r, aimDir, sunDir);
 
     // 散布界をスケール適用

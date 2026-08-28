@@ -95,10 +95,10 @@ export class CreativeStage extends Stage {
     this._scene.add(this.previewOrbitLine.line);
 
     this.placerPanel = new ObjectPlacerPanel(
-      this._hud.mapRoot, this._hud.layers.popup, this._ephemeris, this._hud.overlayManager,
+      this._hud.mapRoot, this._hud.layers.popup, this._celestialSystem.ephemeris, this._hud.overlayManager,
     );
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-    this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
+    this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
     this.stageControlsPanel = new StageControlsPanel(
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
@@ -212,7 +212,7 @@ export class CreativeStage extends Stage {
     this.mountStageControlsPanel(cameraSystem.overviewMode);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
-      cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._ephemeris.celestialBodiesAt(displayTime),
+      cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._celestialSystem.celestialBodiesAt(displayTime),
     );
     this.placerPanel.setIssues(this.issues);
     this.stageControlsPanel.element.classList.remove('hidden');
@@ -230,8 +230,8 @@ export class CreativeStage extends Stage {
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
   // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
   openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
-    const celestialBodies = this._ephemeris.celestialBodiesAt(this._simulator.simTime);
-    const form = elementsFormFromState(state, celestialBodies, this._ephemeris.originId);
+    const celestialBodies = this._celestialSystem.celestialBodiesAt(this._simulator.simTime);
+    const form = elementsFormFromState(state, celestialBodies, this._celestialSystem.origin.id);
     if (form && validateBaseReferenceFields(objectType, 'elements', form.celestialBody).length === 0) {
       this.placerPanel.open({ kind: 'form', objectType, form });
       return;
@@ -361,9 +361,9 @@ export class CreativeStage extends Stage {
   private buildLagrangeState(form: LagrangeForm): KinematicState {
     const common = { secondary: form.lagrangeSecondary, point: form.lagrangePoint };
     if (form.lagrangeOrbitKind === 'halo') {
-      return haloState(this._simulator.simTime, this._ephemeris, { ...common, az: form.azKm * 1e3 });
+      return haloState(this._simulator.simTime, this._celestialSystem.ephemeris, { ...common, az: form.azKm * 1e3 });
     }
-    return lissajousState(this._simulator.simTime, this._ephemeris, {
+    return lissajousState(this._simulator.simTime, this._celestialSystem.ephemeris, {
       ...common, ax: form.axKm * 1e3, az: form.azKm * 1e3,
     });
   }
@@ -371,7 +371,7 @@ export class CreativeStage extends Stage {
   // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
   // 要る情報がすべてここから出る。
   private referenceCelestialBody(form: ElementsForm): CelestialBody {
-    return this._ephemeris.celestialBodiesAt(this._simulator.simTime).find((b) => b.id === form.celestialBody)!;
+    return this._celestialSystem.celestialBodiesAt(this._simulator.simTime).find((b) => b.id === form.celestialBody)!;
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
