@@ -1,9 +1,13 @@
 // 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル・Δv アーム・コンテキストメニューを
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
-import * as C from '../const';
 import { FONT_FAMILY, FONT_XS, Z_HUD_NODE_GIZMO } from '../theme';
 import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import type { OverlayManager } from '../hud/overlay-manager';
+
+const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
+
+// Δv アームドラッグ・長押しボタンによる連続加算(plan-editor.ts の applyDv 系)
+const DV_DRAG_LATCH_PX = 60; // これを超えるアーム基点からの変位でドラッグがラッチ状態に入る [px]
 
 const STYLE = `
 #hud #node-gizmo {
@@ -212,13 +216,13 @@ export class NodeGizmo {
     el.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       moved += Math.abs(e.movementX) + Math.abs(e.movementY);
-      if (moved > C.NODE_GIZMO_DRAG_THRESHOLD_PX) this.onNodeDragMove?.(idx, e.clientX, e.clientY);
+      if (moved > NODE_GIZMO_DRAG_THRESHOLD_PX) this.onNodeDragMove?.(idx, e.clientX, e.clientY);
     });
     // ドラッグ量が閾値以下ならクリックとみなしてノード選択を発火する。
     const end = (e: PointerEvent): void => {
       if (!dragging) return;
       dragging = false;
-      if (moved <= C.NODE_GIZMO_DRAG_THRESHOLD_PX) this.onNodeSelect?.(idx);
+      if (moved <= NODE_GIZMO_DRAG_THRESHOLD_PX) this.onNodeSelect?.(idx);
       try {
         el.releasePointerCapture(e.pointerId);
       } catch {
@@ -271,11 +275,11 @@ export class NodeGizmo {
       const sign = Number(el.dataset['sign'] ?? 1) as 1 | -1;
       const proj = dx * dirx + dy * diry;
       totalProj += proj;
-      if (!latched && Math.abs(totalProj) > C.DV_DRAG_LATCH_PX) latched = true;
+      if (!latched && Math.abs(totalProj) > DV_DRAG_LATCH_PX) latched = true;
       if (!latched) {
         this.onAxisDrag?.(axis, sign, proj);
       } else {
-        this.latch = { axis, sign, excessPx: Math.abs(totalProj) - C.DV_DRAG_LATCH_PX };
+        this.latch = { axis, sign, excessPx: Math.abs(totalProj) - DV_DRAG_LATCH_PX };
       }
     });
     // ドラッグ終了時にポインタキャプチャを解放し、ラッチを解除する。

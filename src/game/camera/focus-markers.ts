@@ -1,5 +1,5 @@
 // マップモードのフォーカス対象(天体・ラグランジュ点)ラベルの算出と HUD マーカーへの反映。
-import { Vec3, v3, sub, len } from '../../physics/vec3';
+import { Vec3, v3, sub, len } from '../../math/vec3';
 import { CelestialBody, CelestialBodyId, OrbitingId, strongestAttractor } from '../../physics/celestial-body';
 import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
 import { ProjectFn } from './camera-system';
@@ -10,14 +10,18 @@ import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibility';
 import { bodyClassOf, BodyClass } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
-import {
-  DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, FOCUS_ICON_PRIORITY_PX, FOCUS_LABEL_PRIORITY_PX,
-  LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY,
-} from '../const';
-import type { MapPickable } from '../map-pickable';
+import { DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
+import type { MapPickable } from '../pickable/map-pickable';
 import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-glyphs';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
 import { resolveCrowdingWinner } from '../marker/crowding';
+
+// 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
+const FOCUS_LABEL_PRIORITY_PX = 40;
+
+// 位置の点(アイコン)側の混雑判定。名前(FOCUS_LABEL_PRIORITY_PX)より小さい値にし、名前だけが
+// 間引かれて点は残る距離帯を作る。
+const FOCUS_ICON_PRIORITY_PX = 16;
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number; dist: number };

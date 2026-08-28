@@ -1,7 +1,7 @@
 // ephemeris.ts の回帰テスト: Ephemeris クラスの合成(恒星→重心→惑星/衛星、重心補正)
 // が正しいこと。個々の軌道モデルの精度は kepler-orbit.test.ts / satellite-orbit.test.ts が担う。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { CelestialBodyDef, MU_EARTH, R_EARTH_EQ, bodyDef } from '../../src/physics/solar-system';
 import { MU_MOON, MU_SUN as MU_SUN_LOCAL, SOLAR_SYSTEM } from '../../src/physics/solar-system';
@@ -12,7 +12,7 @@ import { JULIAN_CENTURY, keplerOrbitState } from '../../src/physics/kepler-orbit
 import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { SIDEREAL_DAY } from '../../src/physics/solar-system';
-import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { toFrameState } from '../../src/physics/frame';
 import { bodyAnchorSource } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';

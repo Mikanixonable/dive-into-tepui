@@ -5,7 +5,7 @@ import type { Game } from '../../game';
 import { SaveSlots } from '../../save/save-slots';
 import { SnapshotService } from '../../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../../save/save-transfer';
-import type { SaveSlotMeta } from '../../save-data';
+import type { SaveSlotMeta } from '../../save/save-data';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import { CloseButton, TabBar } from '../widgets';
 import { injectOnce } from '../widgets/inject-style';

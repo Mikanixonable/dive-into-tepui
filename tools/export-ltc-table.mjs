@@ -1,5 +1,5 @@
 // three/addons の LTC 係数表(64×64 RGBA×2枚)を半精度で焼き、
-// src/render/pipeline/lighting/ltc-table.ts へ書き出す。
+// src/render/pipeline/lighting/ltc-table.generated.ts へ書き出す。
 //
 // 実行時に three/addons を読むと素の three(three.module.js)がバンドルへ丸ごと入るため、
 // 表だけを生成物として切り出す。表が変わるのは three を更新したときだけで、そのときは
@@ -13,13 +13,13 @@ const lib = RectAreaLightTexturesLib.init();
 const half1 = lib.LTC_HALF_1.image.data;
 const half2 = lib.LTC_HALF_2.image.data;
 
-// Uint16Array をリトルエンディアンの base64 へ。読み戻し(ltc-table.ts)と対で保つ。
+// Uint16Array をリトルエンディアンの base64 へ。読み戻し(ltc-table.generated.ts)と対で保つ。
 function toBase64(halves) {
   return Buffer.from(halves.buffer, halves.byteOffset, halves.byteLength).toString('base64');
 }
 
 const outPath = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)), '../src/render/pipeline/lighting/ltc-table.ts',
+  path.dirname(fileURLToPath(import.meta.url)), '../src/render/pipeline/lighting/ltc-table.generated.ts',
 );
 
 writeFileSync(outPath, `// 生成物。tools/export-ltc-table.mjs が three/addons の RectAreaLightTexturesLib から

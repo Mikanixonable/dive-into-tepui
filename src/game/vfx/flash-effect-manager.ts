@@ -1,11 +1,14 @@
 // 爆発・マズルフラッシュなどの一時エフェクト。
 import * as THREE from "three/webgpu";
 import { KinematicState, kinematicState } from "../../physics/kinematic-state";
-import { addScaled } from "../../physics/vec3";
+import { addScaled } from "../../math/vec3";
 import { flashResources } from "../../render/billboard";
 import { InstancedPool } from "../../render/instanced-pool";
-import { FloatingOrigin } from "../floating-origin";
-import * as C from "../const";
+import { FloatingOrigin } from "../camera/floating-origin";
+
+const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラッシュ最大不透明度倍率(完全には消さない)
+
+const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命中・撃破・ガス)の上限。超過分は描画されない
 
 // 軌道速度で流れないよう、発生源の速度で移流させる。位置は時刻つきの state として
 // 持ち、その時刻から現在の simTime までを毎フレーム移流させる。transform は
@@ -34,7 +37,7 @@ export class FlashEffectManager {
     this.geometry = geometry;
     this.material = material;
     // Billboard の既定 renderOrder(5)に合わせる。
-    this.pool = new InstancedPool(scene, geometry, material, C.MAX_FLASHES, true, 5);
+    this.pool = new InstancedPool(scene, geometry, material, MAX_FLASHES, true, 5);
   }
 
   // フラッシュエフェクトを追加する。
@@ -61,7 +64,7 @@ export class FlashEffectManager {
     for (const fx of this.effects) {
       const t = fx.age / fx.duration;
       const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
-      const zoomScale = zoomActive && fx.dimsInGunsight ? C.ZOOM_MUZZLE_FLASH_SCALE : 1;
+      const zoomScale = zoomActive && fx.dimsInGunsight ? ZOOM_MUZZLE_FLASH_SCALE : 1;
       const brightness = fx.peakBrightness * (1 - t) * zoomScale;
       fx.transform.position.copy(fo.RtoThreeV3(fx.state.r));
       fx.transform.scale.setScalar(size);

@@ -1,4 +1,4 @@
-// LTC(Linearly Transformed Cosines)による面光源の鏡面積分。係数表(ltc-table.ts)を
+// LTC(Linearly Transformed Cosines)による面光源の鏡面積分。係数表(ltc-table.generated.ts)を
 // 粗さと視線の傾きで引いて逆変換行列と正規化係数を取り、多角形の張る立体角の積分を
 // 閉じた形で評価する。多角形は球光源を面積の一致する正 8 角形へ写して作る。
 //
@@ -10,7 +10,7 @@ import {
   sqrt, vec2, vec3,
 } from 'three/tsl';
 import type { FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
-import { LTC_TABLE_SIZE } from './ltc-table';
+import { LTC_TABLE_SIZE } from './ltc-table.generated';
 
 // 正 8 角形の外接半径 / 同じ面積の円の半径。8 角形の面積 2√2·ρ² を円の π·r² に合わせる。
 const OCTAGON_RADIUS_SCALE = Math.sqrt(Math.PI / (2 * Math.SQRT2));
