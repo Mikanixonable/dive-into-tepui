@@ -12,6 +12,8 @@ import type { Attitude } from '../../physics/attitude';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { RcsFuelPickupSaveData } from '../save/save-data';
 
+export const RCS_FUEL_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m]
+
 const idAllocator = new EntityIdAllocator('rcs-fuel-');
 
 export type RcsFuelPickupInit =
@@ -41,7 +43,7 @@ export class RcsFuelPickup extends GameEntity {
     super(state, buildRcsFuelPickup(), scene, att, idAllocator.next(id));
     this.name = ('saved' in init && init.saved.name) ? init.saved.name : 'RCS燃料';
     this.mass = 0;
-    this.radius = C.RCS_FUEL_PHYS_RADIUS;
+    this.radius = RCS_FUEL_PHYS_RADIUS;
     this.collides = true;
     this.contactDamageWeight = 0;
   }

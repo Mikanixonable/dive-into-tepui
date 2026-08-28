@@ -13,6 +13,14 @@ import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import type { Player } from '../player/player';
 import type { PlanPath } from './plan-path';
 
+// マニューバ達成判定(計画軌道への接近許容)
+export const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
+export const NODE_TOL_ECC = 0.02 / 3; // 離心率差
+export const NODE_TOL_PLANE_DEG = 2.0 / 3; // 軌道面の角度差 [deg]
+
+// 実行時刻をこれだけ過ぎたノードは計画から落とす [s]。多少の遅れなら噴射できる猶予。
+export const NODE_EXPIRE_GRACE = 60;
+
 export class PlanGuide {
   // 通知済みのノード。ノードは編集のたびに別インスタンスへ置き換わるので、同一性の比較が
   // そのまま「同じノードについて既に通知したか」の判定になる。
@@ -31,7 +39,7 @@ export class PlanGuide {
   update(player: Player | null, simTime: number, editMode: boolean, celestialBodies: readonly CelestialBody[]): void {
     if (!player || editMode) return;
     const plan = player.plan;
-    plan.consumeNodesUpTo(simTime - C.NODE_EXPIRE_GRACE, player.state);
+    plan.consumeNodesUpTo(simTime - NODE_EXPIRE_GRACE, player.state);
 
     const node = plan.firstNode();
     // 実行の窓に入るまでは通知しない。窓の手前では自機はまだ噴射前の軌道にいるので、
@@ -124,8 +132,8 @@ function orbitalElementsClose(a: OrbitalElements, b: OrbitalElements): boolean {
   if (!isFinite(a.a) || !isFinite(b.a) || a.a <= 0 || b.a <= 0) return false;
   const planeCos = Math.max(-1, Math.min(1, dot(a.hHat, b.hHat)));
   return (
-    Math.abs(a.a - b.a) / b.a < C.NODE_TOL_SMA &&
-    Math.abs(a.e - b.e) < C.NODE_TOL_ECC &&
-    (Math.acos(planeCos) * 180) / Math.PI < C.NODE_TOL_PLANE_DEG
+    Math.abs(a.a - b.a) / b.a < NODE_TOL_SMA &&
+    Math.abs(a.e - b.e) < NODE_TOL_ECC &&
+    (Math.acos(planeCos) * 180) / Math.PI < NODE_TOL_PLANE_DEG
   );
 }

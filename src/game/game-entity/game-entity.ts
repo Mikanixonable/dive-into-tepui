@@ -36,6 +36,10 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../render/thermal-emissive';
 
+// 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
+// ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
+export const HISTORY_DURATION_MAX = C.DISPLAY_DURATION_MAX;
+
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
   w: v3(),
@@ -352,7 +356,7 @@ export class GameEntity {
   // 無視する。実際の保持時間は種別ごとの既定値との大きい方。
   requestHistoryDuration(sec: number): void {
     if (this.baseHistoryDuration <= 0) return;
-    this.requestedHistoryDuration = Math.max(0, Math.min(C.HISTORY_DURATION_MAX, sec));
+    this.requestedHistoryDuration = Math.max(0, Math.min(HISTORY_DURATION_MAX, sec));
   }
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする

@@ -17,6 +17,33 @@ import { orbitalElementsOf, strongestAttractor } from '../../../physics/celestia
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
 
+export const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m](wave-attack.ts)
+
+export const STAGE00_SPAWN_DELAY = 10; // 弾取得からスポーンまでの遅延 [s]
+export const STAGE00_FORMATION_SPACING = 200; // 編隊の機体間隔 [m]
+export const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くするか [m]
+export const STAGE00_ALT_OFFSET_MAX = -200;
+export const STAGE00_SPAWN_INTERVAL = 30.0; // 波状攻撃の間隔 [s]
+export const STAGE00_SPAWN_DIST_MIN = 10000; // 敵集団のスポーン距離
+export const STAGE00_SPAWN_DIST_MAX = 14000;
+export const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
+export const STAGE00_WAVE_BASE_SHIPS = 5; // 第1波の機数
+export const STAGE00_WAVE_SHIPS_PER_WAVE = 2; // 波が進むごとに増える機数
+export const STAGE00_WAVE_MAX_SHIPS = 30; // 1ウェーブの最大機数上限
+export const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距離下限 [m]
+export const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
+export const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]
+
+// フライパス速度の上限 [m/s]。ステージ00は無限に続き波数に上限がないため、これが無いと
+// 相対速度が際限なく上がり、フライパスの Δv だけで敵の軌道が壊れる(近地点が地中に落ちる)。
+// 400 m/s なら 30km の交戦圏を約75秒で通過する — 演出として十分速く、軌道も壊れない。
+export const STAGE00_FLYBY_SPEED_MAX = 400.0;
+
+// 敵の軌道が保つべき近地点高度の余裕 [m](大気圏突入高度 REENTRY_ALT に加算する)。
+// スポーン時の Δv はこの高度を割らない範囲まで縮められる(stage00.ts の limitFlybyDv)。
+export const STAGE00_MIN_PERIGEE_MARGIN = 40e3;
+export const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横ブレ最大 [m/s]
+
 export type WaveState = 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
 
 export interface WaveAttackSaveData {
@@ -67,7 +94,7 @@ export class WaveAttack {
   private updateWaitingForAmmoPhase(player: Player): void {
     if (player.magsLeft <= 0 && player.roundsInMag <= 0) return;
     this.waveState = 'spawning_enemies';
-    this.spawnTimer = C.STAGE00_SPAWN_DELAY;
+    this.spawnTimer = STAGE00_SPAWN_DELAY;
     this.hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
   }
 
@@ -77,7 +104,7 @@ export class WaveAttack {
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, addEnemy);
     this.waveState = 'active_combat';
-    this.spawnTimer = C.STAGE00_SPAWN_INTERVAL;
+    this.spawnTimer = STAGE00_SPAWN_INTERVAL;
   }
 
   // 交戦圏外の敵を消し、同時展開数の上限内でタイマーに従い次のウェーブを湧かせる。
@@ -96,7 +123,7 @@ export class WaveAttack {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, addEnemy);
-    this.spawnTimer = C.STAGE00_SPAWN_INTERVAL;
+    this.spawnTimer = STAGE00_SPAWN_INTERVAL;
     this.hud.toast(`波状攻撃 第${this._waveCount}波 接近中！`, 3000);
   }
 
@@ -134,7 +161,7 @@ function resolveWaveSpawnLimits(waveCount: number, activeGroups: number): { maxG
 
 // ウェーブ出現位置: 自機と同じ高度の水平方向(全方位)にランダムな距離で配置
 function pickWaveCenter(player: KinematicState, wave: number): Vec3 {
-  const dist = C.STAGE00_SPAWN_DIST_MIN + Math.random() * (C.STAGE00_SPAWN_DIST_MAX - C.STAGE00_SPAWN_DIST_MIN);
+  const dist = STAGE00_SPAWN_DIST_MIN + Math.random() * (STAGE00_SPAWN_DIST_MAX - STAGE00_SPAWN_DIST_MIN);
 
   // 第1波は必ず後方(速度ベクトルと逆向き)に出現させる。
   let dir: Vec3;
@@ -149,7 +176,7 @@ function pickWaveCenter(player: KinematicState, wave: number): Vec3 {
 
 // ウェーブ中心が自機の近傍を通過するフライバイの接近方向と速度を求める。
 function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number): { approachDir: Vec3; centerV: Vec3 } {
-  const missDist = C.STAGE00_FLYBY_MISS_DIST_MIN + Math.random() * C.STAGE00_FLYBY_MISS_DIST_RANGE;
+  const missDist = STAGE00_FLYBY_MISS_DIST_MIN + Math.random() * STAGE00_FLYBY_MISS_DIST_RANGE;
   const directDir = norm(sub(player.r, centerR));
   const missPerp = randPerp(directDir);
   const targetPos = add(player.r, scale(missPerp, missDist));
@@ -157,17 +184,17 @@ function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number):
   const approachDir = norm(sub(targetPos, centerR));
   // ウェーブが進むほど接近速度を上げるが、上限を設けないと Δv が軌道を破壊する。
   const flybySpeed = Math.min(
-    C.STAGE00_FLYBY_SPEED + (wave - 1) * C.STAGE00_FLYBY_SPEED_RAMP,
-    C.STAGE00_FLYBY_SPEED_MAX,
+    STAGE00_FLYBY_SPEED + (wave - 1) * STAGE00_FLYBY_SPEED_RAMP,
+    STAGE00_FLYBY_SPEED_MAX,
   );
   const perpDir = randPerp(approachDir);
-  const spread = scale(perpDir, Math.random() * C.STAGE00_FLYBY_LATERAL_SPREAD);
+  const spread = scale(perpDir, Math.random() * STAGE00_FLYBY_LATERAL_SPREAD);
   return { approachDir, centerV: add(player.v, add(scale(approachDir, flybySpeed), spread)) };
 }
 
 // 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
 function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, ephemeris: Ephemeris): Vec3 {
-  const minPeAlt = C.REENTRY_ALT + C.STAGE00_MIN_PERIGEE_MARGIN;
+  const minPeAlt = REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN;
   const center = strongestAttractor(centerR, ephemeris.celestialBodiesAt(t));
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
@@ -233,20 +260,20 @@ function makeSubGroupHexes(baseHex: number): number[] {
 function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: number, centerR: Vec3, approachDir: Vec3): Vec3 {
   let pos: Vec3;
   if (pattern === 'linear') {
-    const offset = (i - (shipCount - 1) / 2) * C.STAGE00_FORMATION_SPACING;
+    const offset = (i - (shipCount - 1) / 2) * STAGE00_FORMATION_SPACING;
     const jitter = scale(randPerp(approachDir), (Math.random() - 0.5) * 200);
     pos = add(centerR, add(scale(approachDir, -offset), jitter));
   } else {
     const randDir = norm(v3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5));
-    const randDist = Math.random() * C.STAGE00_FORMATION_SPACING * (shipCount / 2);
+    const randDist = Math.random() * STAGE00_FORMATION_SPACING * (shipCount / 2);
     pos = add(centerR, scale(randDir, randDist));
   }
 
-  const altDrop = C.STAGE00_ALT_OFFSET_MIN + Math.random() * (C.STAGE00_ALT_OFFSET_MAX - C.STAGE00_ALT_OFFSET_MIN);
+  const altDrop = STAGE00_ALT_OFFSET_MIN + Math.random() * (STAGE00_ALT_OFFSET_MAX - STAGE00_ALT_OFFSET_MIN);
   const droppedPos = add(pos, scale(norm(pos), altDrop));
 
   // 出現高度が大気圏上限(+10km)を下回らないようにクランプする。
-  const safeAlt = C.REENTRY_ALT + 10e3;
+  const safeAlt = REENTRY_ALT + 10e3;
   const currentAlt = len(droppedPos) - R_EARTH;
   if (currentAlt < safeAlt) {
     return scale(norm(droppedPos), R_EARTH + safeAlt);
@@ -256,8 +283,8 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
 export function generateWave(player: KinematicState, waveNumber: number, ephemeris: Ephemeris, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
-  const calculatedCount = C.STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * C.STAGE00_WAVE_SHIPS_PER_WAVE);
-  const shipCount = Math.min(calculatedCount, C.STAGE00_WAVE_MAX_SHIPS);
+  const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
+  const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
   const { approachDir, centerV: rawCenterV } = makeFlybyVelocity(player, centerR, waveNumber);
   const centerV = limitFlybyDv(player.v, centerR, rawCenterV, player.t, ephemeris);

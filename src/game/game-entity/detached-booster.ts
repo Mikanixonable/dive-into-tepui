@@ -21,6 +21,8 @@ import {
 import { GameEntity } from './game-entity';
 import type { RenderStyle } from '../../render/render-style';
 
+export const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
+
 export type DetachedBoosterInit =
   | {
     readonly stage: BoosterStageState;
@@ -84,7 +86,7 @@ export class DetachedBooster extends GameEntity {
       ? (init.saved.collisionEnableAt ?? init.simTime)
       : init.collisionEnableAt;
     this.name = '分離ブースター';
-    this.radius = C.BOOSTER_COLLISION_RADIUS;
+    this.radius = BOOSTER_COLLISION_RADIUS;
     this.contactDamageWeight = 0.35;
     this.doPreciseReentry = true;
     this.refreshMass();
