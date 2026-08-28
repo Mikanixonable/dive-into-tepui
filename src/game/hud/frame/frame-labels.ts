@@ -2,6 +2,7 @@
 import { frameRoleOf, FrameRole, FrameRotationSource } from '../../../physics/frame';
 import { SolarSystemId } from '../../../physics/solar-system/solar-system';
 import { CELESTIAL_APPEARANCES } from '../../celestial/celestial-appearance';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 
 // id の日本語表示名。CELESTIAL_APPEARANCES に手作りエントリがある(現実の太陽系の天体)ならそれを、
 // なければ(カスタムレジストリの架空天体)id をそのまま表示名として使う。
@@ -19,10 +20,12 @@ export function frameRoleAnchorId(role: FrameRole): string {
   return `@${role}`;
 }
 
-// 回転ゾーンの選択を日本語表記へ変換する。
-export function rotationSourceLabel(source: FrameRotationSource | null): string {
+// 回転ゾーンの選択を日本語表記へ変換する。天体を指す選択の表示名は celestialSystem から引く。
+export function rotationSourceLabel(
+  celestialSystem: CelestialSystem, source: FrameRotationSource | null,
+): string {
   if (source === null) return '慣性系';
-  if (source.kind === 'spin') return `${celestialBodyName(source.id)}自転系`;
+  if (source.kind === 'spin') return `${celestialSystem.nameOf(source.id)}自転系`;
   const role = frameRoleOf(source.id);
-  return role !== null ? `${frameRoleName(role)}公転系` : `${celestialBodyName(source.id)}回転系`;
+  return role !== null ? `${frameRoleName(role)}公転系` : `${celestialSystem.nameOf(source.id)}回転系`;
 }
