@@ -10,7 +10,7 @@ import { buildTicks } from './hud/orbit/tick-scale';
 import type { TickLabelMode } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/celestial-body';
 import { ReferenceFrame } from '../physics/frame';
-import type { Ephemeris } from '../physics/ephemeris';
+import type { CelestialSystem } from './celestial/celestial-system';
 import type { GameEntity } from './game-entity/game-entity';
 
 const DISPLAY_DUR_DAY = 86400; // 1日
@@ -75,9 +75,9 @@ export class DisplayWindowManager {
   // 操作パネルを構築し、期間選択・スライダー・任意期間入力・T+ジャンプ入力の反映先を自身にする。
   constructor(
     hudRoot: HTMLElement,
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
   ) {
-    this._frame = ephemeris.inertialFrame;
+    this._frame = celestialSystem.frames.inertialFrame;
     this._current = {
       frame: this._frame, simTime: 0, referencePeriod: NaN,
       duration: C.APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0,
@@ -231,7 +231,7 @@ export class DisplayWindowManager {
   // durationSec 側のフォールバックに委ねる。
   private currentOrbitPeriod(player: GameEntity | null, simTime: number): number {
     if (!player) return NaN;
-    const center = strongestAttractor(player.state.r, this.ephemeris.celestialBodiesAt(simTime));
+    const center = strongestAttractor(player.state.r, this.celestialSystem.celestialBodiesAt(simTime));
     return player.orbitalElementsAround(center)?.period ?? NaN;
   }
 

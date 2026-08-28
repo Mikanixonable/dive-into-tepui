@@ -2,7 +2,7 @@
 // 同期・剪定する。見出し・検索欄・フィルタ UI の組み立てはパネル本体が持つ。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../hud-root';
 import { pickGlyphSvg, pickGlyphText } from '../../marker/pick-glyphs';
-import type { Ephemeris } from '../../../physics/ephemeris';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable } from '../../pickable/map-pickable';
 import type { PhysicalObjectListOrder } from './physical-object-list-order';
 
@@ -40,7 +40,7 @@ export interface RowNode {
 // 軌道物体一覧の入れ子行ツリーを、既存 DOM を使い回しながら id 差分だけで同期・剪定する。
 export class PhysicalObjectListTree {
   public constructor(
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     private readonly order: PhysicalObjectListOrder,
     private readonly itemsById: ReadonlyMap<string, MapPickable>,
     private readonly actions: RowTreeActions,
@@ -79,7 +79,7 @@ export class PhysicalObjectListTree {
         node.glyph.dataset.svgGlyph = svgGlyph;
       }
     } else {
-      const glyph = pickGlyphText(item.kind, item.id, this.ephemeris);
+      const glyph = pickGlyphText(item.kind, item.id, this.celestialSystem.ephemeris);
       if (node.glyph.textContent !== glyph) {
         node.glyph.textContent = glyph;
         delete node.glyph.dataset.svgGlyph;
