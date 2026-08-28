@@ -4,41 +4,39 @@
 // 登録されていること。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { EPOCH_T_OFFSET, Ephemeris } from '../../src/physics/ephemeris';
 import {
   EciOrigin, PlanetDef, PlanetMotion, SatelliteDef, StarMotion,
 } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
+import { EPOCH_T_OFFSET } from '../../src/physics/solar-system/constants';
 import { PLUTO } from '../../src/physics/solar-system/dwarf-planets';
 import { earthSystem } from '../../src/physics/solar-system/earth-system';
 import { ORCUS, QUAOAR } from '../../src/physics/solar-system/small-bodies';
 import { SUN } from '../../src/physics/solar-system/sun';
-import { solarSystemEphemeris } from './test-helpers';
+import { SolarSystemMotions } from '../../src/physics/solar-system/solar-system';
+import { motionOf, orbitingMotionOf, solarSystemParts } from './test-helpers';
 import { add, cross, dot, len, norm, scale, sub } from '../../src/math/vec3';
 
-// id から静的事実を引くための天体暦。
-const DEFS = solarSystemEphemeris();
+// id から静的事実を引くための太陽系。
+const DEFS = solarSystemParts().motions;
 
-// 衛星を1体も登録せずに primaryDef の惑星だけを組んだ天体暦。原点(地球)側は本来どおり
-// 月まで組む — 原点天体の日心位置がずれると ECI 位置の比較にならない。
-function withoutSatellite(primaryDef: PlanetDef): Ephemeris {
+// 衛星を1体も登録せずに組んだ primaryDef の惑星の運動。原点(地球)側は本来どおり月まで
+// 組む — 原点天体の日心位置がずれると ECI 位置の比較にならない。
+function withoutSatellite(primaryDef: PlanetDef): PlanetMotion {
   const origin = new EciOrigin();
   const sun = new StarMotion(SUN, 0, EPOCH_T_OFFSET, null, origin);
   const { earth } = earthSystem(sun, {}, EPOCH_T_OFFSET, null, origin);
   const bare = new PlanetMotion(primaryDef, sun, 0, EPOCH_T_OFFSET, null, origin);
   origin.set(earth);
-  return new Ephemeris([earth, bare, sun], 'earth', {});
+  return bare;
 }
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
-  return (DEFS.motionOf(id).def as SatelliteDef).orbit;
-}
-function planetOf(id: string): string {
-  return DEFS.motionOf(id).primary!.id;
+  return (motionOf(DEFS, id).def as SatelliteDef).orbit;
 }
 function muOf(id: string): number {
-  return DEFS.motionOf(id).def.mu;
+  return motionOf(DEFS, id).def.mu;
 }
 
 // [id, JPL 公開周期(日)]。
@@ -63,14 +61,14 @@ const CASES: readonly [string, number][] = [
 
 const URANUS_MOONS: readonly string[] = ['miranda', 'ariel', 'umbriel', 'titania', 'oberon'];
 
-function orbitNormal(eph: Ephemeris, id: string, planet: string, t: number) {
-  const rel = sub(eph.stateOf(id, t).r, eph.stateOf(planet, t).r);
-  const relVel = sub(eph.stateOf(id, t).v, eph.stateOf(planet, t).v);
-  return norm(cross(rel, relVel));
+function orbitNormal(motions: SolarSystemMotions, id: string, planet: string, t: number) {
+  const satellite = motionOf(motions, id).stateAt(t);
+  const primary = motionOf(motions, planet).stateAt(t);
+  return norm(cross(sub(satellite.r, primary.r), sub(satellite.v, primary.v)));
 }
 
 export function register(): void {
-  const eph = solarSystemEphemeris({});
+  const motions = solarSystemParts({}).motions;
 
   test('equatorial-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {
     for (const [id, periodDays] of CASES) {
@@ -83,7 +81,7 @@ export function register(): void {
   test('equatorial-satellites: 天王星の衛星の軌道面は黄道極から90°以上離れている(自転軸97.8°の横倒しを反映)', () => {
     const t = 2e7;
     for (const id of URANUS_MOONS) {
-      const n = orbitNormal(eph, id, 'uranus', t);
+      const n = orbitNormal(motions, id, 'uranus', t);
       const angleDeg = (Math.acos(Math.max(-1, Math.min(1, dot(n, ECL_POLE_ECI)))) * 180) / Math.PI;
       assert.ok(angleDeg > 90, `${id} の軌道面が黄道基準の傾斜角として計算されている疑い: ${angleDeg}°`);
     }
@@ -91,7 +89,7 @@ export function register(): void {
 
   test('equatorial-satellites: 天王星の5衛星は互いにほぼ同一面(軌道法線どうしのなす角が5°未満)', () => {
     const t = 2e7;
-    const normals = URANUS_MOONS.map((id) => orbitNormal(eph, id, 'uranus', t));
+    const normals = URANUS_MOONS.map((id) => orbitNormal(motions, id, 'uranus', t));
     for (let i = 1; i < normals.length; i++) {
       const angleDeg = (Math.acos(Math.max(-1, Math.min(1, dot(normals[0]!, normals[i]!)))) * 180) / Math.PI;
       assert.ok(angleDeg < 5, `${URANUS_MOONS[i]} の軌道面がミランダと揃っていない: ${angleDeg}°`);
@@ -106,8 +104,8 @@ export function register(): void {
     const steps = 400;
     for (let i = 0; i < steps; i++) {
       const t = (periodSec * i) / steps;
-      const rPluto = eph.stateOf('pluto', t).r;
-      const rCharon = eph.stateOf('charon', t).r;
+      const rPluto = motions.dwarfPlanets.pluto.stateAt(t).r;
+      const rCharon = motions.dwarfPlanets.charon.stateAt(t).r;
       const barycenter = scale(add(scale(rPluto, muPluto), scale(rCharon, muCharon)), 1 / (muPluto + muCharon));
       maxOffset = Math.max(maxOffset, len(sub(rPluto, barycenter)));
     }
@@ -131,7 +129,7 @@ export function register(): void {
     for (const [primary, satellite] of [['quaoar', 'weywot'], ['orcus', 'vanth']] as const) {
       const bare = withoutSatellite(primary === 'quaoar' ? QUAOAR : ORCUS);
       const t = 1e6;
-      const moved = len(sub(eph.stateOf(primary, t).r, bare.stateOf(primary, t).r));
+      const moved = len(sub(motionOf(motions, primary).stateAt(t).r, bare.stateAt(t).r));
       assert.ok(moved < 1, `${primary} が ${satellite} の有無で ${moved} m 動いている`);
     }
   });
@@ -140,14 +138,14 @@ export function register(): void {
   // L1 が主天体の中心へ落ちる)。
   test('equatorial-satellites: どちらかの質量が未測定の系はラグランジュ点を持たない', () => {
     for (const id of ['quaoar', 'orcus', 'puck', 'styx', 'kerberos'] as const) {
-      assert.equal(eph.hasUsableCollinearPoints(id, 10), false, `${id} の共線点`);
-      assert.equal(eph.hasStableTriangularPoints(id), false, `${id} の三角点`);
+      assert.equal(orbitingMotionOf(motions, id).hasUsableCollinearPoints(10), false, `${id} の共線点`);
+      assert.equal(orbitingMotionOf(motions, id).hasStableTriangularPoints(), false, `${id} の三角点`);
     }
     // 両方の質量が判明していれば持つ。ディディモスは質量比が 1e-19 台まで小さいので、
     // 「質量が小さい」ことと「質量が未測定」ことが混ざっていないかを分ける。
-    assert.equal(eph.hasUsableCollinearPoints('moon', 10), true, '地球-月の共線点');
-    assert.equal(eph.hasStableTriangularPoints('moon'), true, '地球-月の三角点');
-    assert.equal(eph.hasUsableCollinearPoints('didymos', 10), true, '太陽-ディディモスの共線点');
-    assert.equal(eph.hasStableTriangularPoints('didymos'), true, '太陽-ディディモスの三角点');
+    assert.equal(motions.earthSystem.moon.hasUsableCollinearPoints(10), true, '地球-月の共線点');
+    assert.equal(motions.earthSystem.moon.hasStableTriangularPoints(), true, '地球-月の三角点');
+    assert.equal(motions.smallBodies.didymos.hasUsableCollinearPoints(10), true, '太陽-ディディモスの共線点');
+    assert.equal(motions.smallBodies.didymos.hasStableTriangularPoints(), true, '太陽-ディディモスの三角点');
   });
 }

@@ -1,7 +1,7 @@
 // 実シミュレーションと積分弧は、同じ問い(この物体にどの天体が効くか)へ別々の絞り込みで答える。
 // 探し方が違うのは同時性から来る正当な差だが、答えが食い違ってよい理由はない。この2つの窓が
 // 同じ位置・同じ時刻で一致することを、重力と表面判定の両方について固定する。
-import { solarSystemEphemeris } from './test-helpers';
+import { motionOf, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { attractorAccel } from '../../src/physics/celestial-body';
@@ -13,21 +13,27 @@ import {
   GRAVITY_NEGLIGIBLE_ACCEL, INITIAL_ALT, INITIAL_INC_DEG,
   PLAYER_HULL_RADIUS, SUBSTEP_MAX_DT,
 } from '../../src/game/const';
-import { ArcBodies } from '../../src/game/simulation/arc-bodies';
+import { ArcBodies, type FutureCelestialBodyProvider } from '../../src/game/simulation/arc-bodies';
 import { attractorsNearInto, classifyAttractors } from '../../src/game/simulation/attractors';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/simulation/surface-candidates';
 import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';
 import type { Vec3 } from '../../src/math/vec3';
 
-// 現実の太陽系・地球原点の既定レジストリ。両方の窓へ同じ天体一式を供給する。
-const EPHEMERIS = solarSystemEphemeris();
+// 現実の太陽系・地球原点の既定の登録天体。両方の窓へ同じ天体一式を供給する。
+const { motions: MOTIONS, windows: WINDOWS } = solarSystemParts();
+
+// 弧が候補として引く天体一式。実シミュレーション側の窓と同じ運動から組む。
+const ARC_SOURCES: FutureCelestialBodyProvider = {
+  defs: MOTIONS.all.map((m) => m.def),
+  celestialBodyAt: (id, t) => motionOf(MOTIONS, id).at(t),
+};
 
 const DAY = 86400;
 // 天体の配置そのものが入れ替わるよう、数か月の間を置いた時刻でも見る。
 const SAMPLE_TIMES: readonly number[] = [0, 90 * DAY, 200 * DAY];
 
-// 検査する場所。位置も速度も天体暦から導き、どこなのかが式から読めるようにする。
+// 検査する場所。位置も速度も天体の運動から導き、どこなのかが式から読めるようにする。
 type Site = {
   readonly name: string;
   readonly stateAt: (t: number) => KinematicState;
@@ -55,9 +61,9 @@ const SITES: readonly Site[] = [
     name: '低月周回軌道',
     // 月の反地球側 100km 上空を、白道面内で回る。
     stateAt: (t) => {
-      const moon = EPHEMERIS.stateOf('moon', t);
+      const moon = MOTIONS.earthSystem.moon.stateAt(t);
       const offset = scale(norm(moon.r), R_MOON + 100e3);
-      return circularOrbitState(moon, MU_MOON, offset, EPHEMERIS.orbitNormalAt('moon', t));
+      return circularOrbitState(moon, MU_MOON, offset, MOTIONS.earthSystem.moon.orbitNormalAt(t));
     },
   },
   {
@@ -65,18 +71,19 @@ const SITES: readonly Site[] = [
     // L2 は地球と共に公転するので、速度はラグランジュ点そのものの時間微分になる。
     stateAt: (t) => {
       const dt = 1;
-      const back = EPHEMERIS.lagrangeAt('earth', t - dt).L2;
-      const fwd = EPHEMERIS.lagrangeAt('earth', t + dt).L2;
-      return kinematicState(t, EPHEMERIS.lagrangeAt('earth', t).L2, scale(sub(fwd, back), 1 / (2 * dt)));
+      const back = MOTIONS.earthSystem.earth.lagrangeAt(t - dt).L2;
+      const fwd = MOTIONS.earthSystem.earth.lagrangeAt(t + dt).L2;
+      return kinematicState(t, MOTIONS.earthSystem.earth.lagrangeAt(t).L2, scale(sub(fwd, back), 1 / (2 * dt)));
     },
   },
   {
     name: '主帯',
     // ケレスと同じ日心距離・同じ軌道面で、公転方向へ 90° 進んだ点。
     stateAt: (t) => {
-      const sun = EPHEMERIS.stateOf('sun', t);
-      const normal = EPHEMERIS.orbitNormalAt('ceres', t);
-      const offset = cross(normal, sub(EPHEMERIS.positionOf('ceres', t), sun.r));
+      const sun = MOTIONS.sun.stateAt(t);
+      const ceres = MOTIONS.dwarfPlanets.ceres;
+      const normal = ceres.orbitNormalAt(t);
+      const offset = cross(normal, sub(ceres.stateAt(t).r, sun.r));
       return circularOrbitState(sun, MU_SUN, offset, normal);
     },
   },
@@ -99,7 +106,7 @@ function onlyIn(bodies: readonly CelestialBody[], others: readonly CelestialBody
 // 実シミュレーションのサブステップ1回ぶんの区間。絞り込みは区間の両端を見るので、弧と同じ
 // 刻みで実際に1歩積んだ結果を渡す。
 function substepInterval(from: KinematicState, dt: number): SurfaceParticipant {
-  const mid = EPHEMERIS.gravityAttractorsAt(from.t + dt / 2);
+  const mid = WINDOWS.gravityAttractorsAt(from.t + dt / 2);
   return {
     prevState: from,
     state: stepDynamics(from, dt, mid, [], null, 0, 0, null),
@@ -111,11 +118,11 @@ function substepInterval(from: KinematicState, dt: number): SurfaceParticipant {
 // 絞り込みが実際に何かを通す「接触が差し迫った場所」でなければ比べる意味がない。
 type SurfaceSite = { readonly name: string; readonly bodyId: string };
 
-// レジストリで最初に見つかる、重力を及ぼさないが半径を持つ天体。表面判定が重力の有無に
+// 登録天体で最初に見つかる、重力を及ぼさないが半径を持つ天体。表面判定が重力の有無に
 // 依らないことは、この種の天体でしか見えない。
 function firstMasslessBodyId(): string {
-  const def = Object.values(EPHEMERIS.registry).find((b) => b !== undefined && b.mu === 0 && b.radius > 0);
-  assert.ok(def !== undefined, '既定レジストリに mu=0 の天体が無い');
+  const def = MOTIONS.all.map((m) => m.def).find((b) => b.mu === 0 && b.radius > 0);
+  assert.ok(def !== undefined, '既定の登録天体に mu=0 のものが無い');
   return def.id;
 }
 
@@ -127,7 +134,7 @@ const SURFACE_SITES: readonly SurfaceSite[] = [
 
 // bodyId の表面から 1km 上空を、表面へ向かって降りていく状態。向きは任意でよいので +X に取る。
 function descentState(bodyId: string, t: number): KinematicState {
-  const body = EPHEMERIS.celestialBodyAt(bodyId, t);
+  const body = motionOf(MOTIONS, bodyId).at(t);
   const up = v3(1, 0, 0);
   return kinematicState(
     t,
@@ -141,9 +148,9 @@ export function register(): void {
     test(`gravity-window: ${site.name}で弧と実シミュレーションの重力和は GRAVITY_NEGLIGIBLE_ACCEL 以内で一致する`, () => {
       for (const t of SAMPLE_TIMES) {
         const from = site.stateAt(t);
-        const sim = attractorsNearInto(from.r, classifyAttractors(EPHEMERIS.gravityAttractorsAt(t)), []);
+        const sim = attractorsNearInto(from.r, classifyAttractors(WINDOWS.gravityAttractorsAt(t)), []);
         // 成員は最初の解決で確定するので、場所ごと・時刻ごとに弧を組み直す。
-        const arc = new ArcBodies(EPHEMERIS).resolve(t, from, 0).gravity;
+        const arc = new ArcBodies(ARC_SOURCES).resolve(t, from, 0).gravity;
         const diff = len(sub(gravitySum(sim, from.r, t), gravitySum(arc, from.r, t)));
         assert.ok(
           diff <= GRAVITY_NEGLIGIBLE_ACCEL,
@@ -162,13 +169,13 @@ export function register(): void {
         const participant = substepInterval(from, SUBSTEP_MAX_DT);
         const candidates = new SurfaceCandidates();
         candidates.resetSpan(
-          EPHEMERIS.celestialBodiesAt(t), participant.prevState.t, participant.state.t);
+          WINDOWS.celestialBodiesAt(t), participant.prevState.t, participant.state.t);
         candidates.narrow([participant]);
         const sim = candidates.into(participant, []);
         // 何も通らない場所で比べても意味がないので、絞り込みが実際に通していることを先に見る。
         assert.ok(sim.length > 0, `${site.name} t=${t}: 実シミュレーション側が1体も通していない`);
         // 成員は最初の解決で確定するので、場所ごと・時刻ごとに弧を組み直す。
-        const arc = new ArcBodies(EPHEMERIS)
+        const arc = new ArcBodies(ARC_SOURCES)
           .resolve(t + SUBSTEP_MAX_DT / 2, from, SUBSTEP_MAX_DT).collision;
         const known = new Set(arc.map((b) => b.id));
         const dropped = sim.filter((b) => !known.has(b.id)).map((b) => b.id);
