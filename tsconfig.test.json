@@ -20,7 +20,6 @@
     "src/math/vec3.ts",
     "src/physics/attitude.ts",
     "src/physics/atmosphere.ts",
-    "src/physics/ephemeris.ts",
     "src/game/plan/plan.ts",
     "src/game/protein/protein-schema.ts",
     "src/game/protein/protein-combat-state.ts",
