@@ -14,7 +14,7 @@ import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source'
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
 import { atmosphereDraws } from '../../src/render/atmosphere-params';
-import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { ChoiceValue, GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { metersPerPixelAtDepth } from '../../src/physics/projection';
 import { AU } from '../../src/physics/planet-orbit';
@@ -64,8 +64,8 @@ export const MAX_CAMERA_ELEVATION_DEG = 89;
 // つまみを出す描画品質設定の項目。**ここを変えたときだけ、この環境が描くものが変わる** —
 // 残りの項目はゲーム本体の側(天体の組み立て・HUD)が読むので、ここでは動かしても何も起きない。
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'exposureCompensation', 'atmosphere', 'sunLightModel', 'planetLightCount',
-  'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
+  'lens', 'msaa', 'antialias', 'exposureCompensation', 'filmLut', 'atmosphere', 'sunLightModel',
+  'planetLightCount', 'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 
 // カメラのズーム(画角を狭める倍率)の常用対数の上限。0 がケース既定の画角。
@@ -162,7 +162,7 @@ export class LabView {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
-      canvas, antialias: QUALITY_PRESETS.high.antialias, trackTimestamp: true, reversedDepthBuffer: true,
+      canvas, trackTimestamp: true, reversedDepthBuffer: true,
     });
     renderer.setOpaqueSort(reversedOpaqueSort);
     renderer.setTransparentSort(reversedTransparentSort);
@@ -209,7 +209,7 @@ export class LabView {
   get graphics(): GraphicsSettingsData { return this.graphicsData; }
 
   // 描画品質設定の項目を1つ差し替え、パイプラインへ押し出してその場で描き直す。
-  setGraphicsOption(key: GraphicsOptionKey, value: boolean | number): void {
+  setGraphicsOption(key: GraphicsOptionKey, value: boolean | ChoiceValue): void {
     this.graphicsData = withGraphicsOption(this.graphicsData, key, value);
     this.pipeline.applyGraphics(this.graphicsData);
     this.render();

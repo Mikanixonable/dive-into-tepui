@@ -17,12 +17,13 @@ export const GPU_PASS = {
   lens: 7,
   composite: 8,
   overlay: 9,
+  antialias: 10,
 } as const;
 
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
 
 // 表示名。並びは GPU_PASS の値の順。
-export const GPU_PASS_LABELS: readonly string[] = ['影', 'Gバッファ', '遮蔽', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成', '3D UI'];
+export const GPU_PASS_LABELS: readonly string[] = ['影', 'Gバッファ', '遮蔽', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成', '3D UI', 'アンチエイリアス'];
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
 
@@ -46,13 +47,21 @@ const PENDING_UID_CAP = GPU_PASS_COUNT * 8;
 // だけの Inspector。GpuTimings 自身に InspectorBase を継承させず別クラスへ切り出すのは、
 // InspectorBase が持つ広いメソッド一式(beginCompute など)を GpuTimings の公開面へ持ち込まないため。
 class PassInspector extends InspectorBase {
-  constructor(private readonly onUid: (uid: string) => void) {
+  constructor(
+    private readonly onBegin: (uid: string) => void,
+    private readonly onFinish: () => void,
+  ) {
     super();
   }
 
   // レンダラーが render() を呼ぶたびに、その呼び出しの uid を添えて呼ばれる。
   beginRender(uid: string): void {
-    this.onUid(uid);
+    this.onBegin(uid);
+  }
+
+  // その render() が終わるたびに呼ばれる。入れ子の呼び出しでは内側が先に閉じる。
+  finishRender(): void {
+    this.onFinish();
   }
 }
 
@@ -66,13 +75,20 @@ export class GpuTimings {
   private available = false;
   // 次に来る renderer.render() 呼び出しが属するパス。Inspector が uid を受け取るたび null へ戻す。
   private pendingPass: GpuPassId | null = null;
+  // 実行中の render() の入れ子の深さと、いちばん外側が属するパス。ノードが自前の中間パスを
+  // 内側で発行することがあるので、そのぶんも外側のパスへ計上する。
+  private renderDepth = 0;
+  private outerPass: GpuPassId | null = null;
   // render() 呼び出しの uid → その呼び出しが属していたパス。resolve() が該当分を引いて消費する。
   private readonly passByUid = new Map<string, GpuPassId>();
 
   // 自分専用の Inspector をレンダラーへ据え、以後の render() 呼び出しの uid を
   // beginPass が宣言したパスへ結び付けられるようにする。
   constructor(private readonly renderer: WebGPURenderer) {
-    renderer.inspector = new PassInspector((uid) => this.onBeginRender(uid));
+    renderer.inspector = new PassInspector(
+      (uid) => this.onBeginRender(uid),
+      () => this.onFinishRender(),
+    );
   }
 
   // 時刻印が実際に取れているか。デバイスが timestamp-query を持たない環境では偽のままになる。
@@ -88,12 +104,21 @@ export class GpuTimings {
     this.pendingPass = id;
   }
 
-  // beginPass を伴わない render() 呼び出し(three が内部で発行するもの)はどのパスにも
-  // 属さないので、そのまま無視して他のパスの枠を奪わないようにする。
+  // いちばん外側の render() が beginPass の宣言を消費し、その内側で発行される render()
+  // (ノードが自前の中間パスを持つとき)も同じパスへ計上する。宣言のないまま始まった外側の
+  // 呼び出しは、どのパスにも属さない扱いで流れる。
   private onBeginRender(uid: string): void {
-    if (!this.enabled || this.pendingPass === null) return;
-    this.passByUid.set(uid, this.pendingPass);
+    if (this.renderDepth === 0) this.outerPass = this.pendingPass;
+    this.renderDepth++;
     this.pendingPass = null;
+    if (this.enabled && this.outerPass !== null) this.passByUid.set(uid, this.outerPass);
+  }
+
+  // 深さの記帳は enabled によらず行う。窓の開閉が描画の途中に挟まっても、深さが
+  // 釣り合わないまま取り残されないようにする。
+  private onFinishRender(): void {
+    if (this.renderDepth > 0) this.renderDepth--;
+    if (this.renderDepth === 0) this.outerPass = null;
   }
 
   // 描画フェーズの末尾で呼ぶ。直近フレームのパス所要時間を要求し、届き次第 elapsedMs へ書く。
