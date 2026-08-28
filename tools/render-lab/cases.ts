@@ -3,7 +3,7 @@
 // 表示スタイルで組み方が変わるケース(環・地球)は、受け取った style をゲーム本体と同じ
 // sync / setVisible へそのまま流す — スタイルの切り替えは呼び出し側がケースを組み直して行う。
 import * as THREE from 'three/webgpu';
-import { exp, float, max, select, uv, vec3 } from 'three/tsl';
+import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { lightSourceAlbedoOf, rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
@@ -19,9 +19,9 @@ import {
 } from '../../src/render/thermal-emissive';
 import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
-import type { AtmosphereBody } from '../../src/render/pipeline/atmosphere-pass';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
-import { ATMOSPHERE_OPTICS } from '../../src/render/atmosphere-params';
+import type { FloatNode } from '../../src/render/tsl-types';
+import { ATMOSPHERE_OPTICS, type AtmosphereBody } from '../../src/render/atmosphere';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
@@ -29,8 +29,8 @@ import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
 import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
 import { textureOf, type CelestialTexture } from '../../src/render/celestial-textures';
-import { apparentSizePx, metersPerPixelAtDepth } from '../../src/physics/projection';
-import { v3 } from '../../src/physics/vec3';
+import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection';
+import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
 import type { ProteinLabCaseMetadata } from './protein-cases';
@@ -572,8 +572,11 @@ function marchSlab(): LabCase {
     source: vec3(0, 0, 0),
   });
   const analytic = exp(thickness.mul(-SLAB_EXTINCTION));
-  const even = rayMarch(SLAB_STEPS, (f) => thickness.mul(f), medium).transmittance.x;
-  const bunched = rayMarch(SLAB_STEPS, (f) => thickness.mul(f.mul(f)), medium).transmittance.x;
+  // 積分は toVar と Loop を使うので、Fn の中で組む。
+  const transmittanceOf = (warp: (fraction: FloatNode) => FloatNode): FloatNode =>
+    Fn(() => rayMarch(float(SLAB_STEPS), warp, medium).transmittance.x)();
+  const even = transmittanceOf((f) => thickness.mul(f));
+  const bunched = transmittanceOf((f) => thickness.mul(f.mul(f)));
   const error = max(even.sub(analytic).abs(), bunched.sub(analytic).abs()).mul(SLAB_ERROR_GAIN);
   const band = uv().y.mul(4).floor();
   const value = select(

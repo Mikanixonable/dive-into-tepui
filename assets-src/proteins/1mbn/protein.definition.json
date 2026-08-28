@@ -49,6 +49,7 @@
     {
       "id": "heme-iron",
       "label": "ヘム鉄",
+      "abbreviation": "Fe155",
       "type": "active",
       "source": "author",
       "residues": [
@@ -76,6 +77,7 @@
     {
       "id": "proximal-histidine",
       "label": "近位ヒスチジン(His93)",
+      "abbreviation": "His93",
       "type": "interface",
       "source": "author",
       "residues": [
@@ -101,6 +103,7 @@
     {
       "id": "globin-core",
       "label": "グロビン核",
+      "abbreviation": "Mb-Core",
       "type": "core",
       "source": "computed",
       "residues": [],

@@ -1,6 +1,11 @@
 // 投影タブの描き手。円筒図法テクスチャを背景に、経緯度グリッド・複数系統の軌跡・現在位置を
 // canvas 2D へ描く。表示範囲(中心経緯度・ズーム)を自分で持ち、pan/zoom/resetView で操作する。
-import { ACCENT, ACCENT_SOFT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_STRONG } from '../../theme';
+import { EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM } from '../../theme';
+import { injectOnce } from '../widgets/inject-style';
+import {
+  CHART_LINE_WIDTH, CHART_MARK_RADIUS, CHART_MARK_RING_WIDTH, chartCanvasStyle,
+  drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore, type BackingStoreState,
+} from './chart-canvas';
 
 export interface ProjectionPoint { readonly lonDeg: number; readonly latDeg: number }
 
@@ -20,39 +25,23 @@ export interface ProjectionChartSpec {
 
 interface Window { lonMin: number; lonMax: number; latMin: number; latMax: number }
 
-const ASPECT_RATIO = '16 / 9';
 const PADDING_LEFT = 30;
 const PADDING_RIGHT = 10;
 const PADDING_TOP = 10;
 const PADDING_BOTTOM = 20;
 const GRID_STEP_DEG = 30;
-const LINE_WIDTH = 1.5;
-const MARK_RADIUS = 3;
-const MARK_RING_WIDTH = 1;
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 8;
 
-const STYLE = `
-#hud .orbit-projection-chart { display: block; width: 100%; aspect-ratio: ${ASPECT_RATIO}; }
-#hud .orbit-projection-chart.panzoom { touch-action: none; cursor: grab; }
-#hud .orbit-projection-chart.panzoom:active { cursor: grabbing; }
-`;
+const STYLE = chartCanvasStyle('orbit-projection-chart');
 
-let styleInjected = false;
-
-function ensureStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
-
+// 経度グリッドのラベル表記(東経 E / 西経 W、±180° は 180° に統一)。
 function lonLabel(deg: number): string {
   if (deg === -180 || deg === 180) return '180°';
   return deg === 0 ? '0°' : `${Math.abs(deg)}°${deg > 0 ? 'E' : 'W'}`;
 }
 
+// 緯度グリッドのラベル表記(北緯 N / 南緯 S)。
 function latLabel(deg: number): string {
   return deg === 0 ? '0°' : `${Math.abs(deg)}°${deg > 0 ? 'N' : 'S'}`;
 }
@@ -60,17 +49,16 @@ function latLabel(deg: number): string {
 export class OrbitProjectionChart {
   public readonly element: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
-  private lastCssWidth = 0;
-  private lastCssHeight = 0;
-  private lastDpr = 0;
+  private readonly backing: BackingStoreState = { cssWidth: 0, cssHeight: 0, dpr: 0 };
   private lastPlotWidth = 0;
   private lastPlotHeight = 0;
   private centerLon = 0;
   private centerLat = 0;
   private zoomLevel = ZOOM_MIN;
 
+  // canvas 要素を作り、2D コンテキストを確保する。
   public constructor() {
-    ensureStyle();
+    injectOnce('orbit-projection-chart', STYLE);
     this.element = document.createElement('canvas');
     this.element.className = 'orbit-projection-chart';
     const ctx = this.element.getContext('2d');
@@ -81,11 +69,14 @@ export class OrbitProjectionChart {
   public dispose(): void {
   }
 
+  // 直近の draw() が描いたプロット領域のピクセル寸法。まだ描いていない/寸法0なら null
+  // ——呼び出し側がドラッグ移動量を表示範囲の度数へ換算する変換係数として使う。
   public plotPixelSize(): { width: number; height: number } | null {
     return this.lastPlotWidth > 0 && this.lastPlotHeight > 0
       ? { width: this.lastPlotWidth, height: this.lastPlotHeight } : null;
   }
 
+  // 表示範囲を全球・最大縮小(中心経度0・緯度0)へ戻す。
   public resetView(): void {
     this.centerLon = 0;
     this.centerLat = 0;
@@ -107,6 +98,7 @@ export class OrbitProjectionChart {
     this.clampCenter();
   }
 
+  // 現在のズーム倍率での経度・緯度スパン [deg]。
   private spanDeg(): { lonSpan: number; latSpan: number } {
     return { lonSpan: 360 / this.zoomLevel, latSpan: 180 / this.zoomLevel };
   }
@@ -120,6 +112,7 @@ export class OrbitProjectionChart {
     this.centerLat = latSpan >= 180 ? 0 : Math.max(-90 + halfLat, Math.min(90 - halfLat, this.centerLat));
   }
 
+  // 中心経緯度・ズーム倍率から、現在プロットへ映している経緯度の範囲を求める。
   private currentWindow(): Window {
     const { lonSpan, latSpan } = this.spanDeg();
     return {
@@ -132,13 +125,14 @@ export class OrbitProjectionChart {
 
   // 背景(テクスチャ or 空メッセージ)→グリッド→各系列の折れ線・現在位置マークの順に描く。
   public draw(spec: ProjectionChartSpec): void {
-    this.resizeBackingStoreIfNeeded();
+    resizeCanvasBackingStore(this.element, this.ctx, this.backing);
     const ctx = this.ctx;
-    const cssWidth = this.lastCssWidth;
-    const cssHeight = this.lastCssHeight;
+    const cssWidth = this.backing.cssWidth;
+    const cssHeight = this.backing.cssHeight;
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     if (cssWidth <= 0 || cssHeight <= 0) return;
 
+    // プロット領域の寸法を確定し、pan/zoom が px→度の換算に使う値として保持する。
     const plotLeft = PADDING_LEFT;
     const plotTop = PADDING_TOP;
     const plotWidth = cssWidth - PADDING_LEFT - PADDING_RIGHT;
@@ -151,6 +145,7 @@ export class OrbitProjectionChart {
     ctx.font = `${FONT_XXS} ${FONT_FAMILY}`;
     ctx.textBaseline = 'middle';
 
+    // 背景・グリッド線・系列の折れ線はプロット領域内にクリップして描く。
     ctx.save();
     ctx.beginPath();
     ctx.rect(plotLeft, plotTop, plotWidth, plotHeight);
@@ -165,25 +160,15 @@ export class OrbitProjectionChart {
     for (const series of spec.series) this.drawSeries(series, win, plotLeft, plotTop, plotWidth, plotHeight);
     ctx.restore();
 
+    // グリッドのラベルと外枠はクリップの外(プロット領域の余白)に描く。
     this.drawGridLabels(win, plotLeft, plotTop, plotWidth, plotHeight);
     ctx.strokeStyle = EDGE;
     ctx.lineWidth = 1;
     ctx.strokeRect(plotLeft, plotTop, plotWidth, plotHeight);
   }
 
-  private resizeBackingStoreIfNeeded(): void {
-    const dpr = window.devicePixelRatio || 1;
-    const cssWidth = this.element.clientWidth;
-    const cssHeight = this.element.clientHeight;
-    if (cssWidth === this.lastCssWidth && cssHeight === this.lastCssHeight && dpr === this.lastDpr) return;
-    this.lastCssWidth = cssWidth;
-    this.lastCssHeight = cssHeight;
-    this.lastDpr = dpr;
-    this.element.width = Math.max(1, Math.round(cssWidth * dpr));
-    this.element.height = Math.max(1, Math.round(cssHeight * dpr));
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
+  // 経緯度(lonDeg, latDeg)を、表示範囲 win に対するプロット領域内のピクセル座標へ写す。
+  // 経度は左から右、緯度は上(latMax)から下(latMin)へ向かって増えるので、y だけ向きを反転する。
   private toPx(
     lonDeg: number, latDeg: number, win: Window,
     plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
@@ -205,10 +190,12 @@ export class OrbitProjectionChart {
     this.ctx.drawImage(image, sx, sy, sWidth, sHeight, plotLeft, plotTop, plotWidth, plotHeight);
   }
 
+  // 表示範囲 win に入る経度・緯度 30 度おきの縦横グリッド線を描く。
   private drawGridLines(win: Window, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
     const ctx = this.ctx;
     ctx.strokeStyle = EDGE;
     ctx.lineWidth = 1;
+    // 経度線(縦線)。
     for (let lon = -180; lon <= 180; lon += GRID_STEP_DEG) {
       if (lon < win.lonMin || lon > win.lonMax) continue;
       const { x } = this.toPx(lon, 0, win, plotLeft, plotTop, plotWidth, plotHeight);
@@ -217,6 +204,7 @@ export class OrbitProjectionChart {
       ctx.lineTo(x, plotTop + plotHeight);
       ctx.stroke();
     }
+    // 緯度線(横線)。
     for (let lat = -90; lat <= 90; lat += GRID_STEP_DEG) {
       if (lat < win.latMin || lat > win.latMax) continue;
       const { y } = this.toPx(0, lat, win, plotLeft, plotTop, plotWidth, plotHeight);
@@ -227,15 +215,18 @@ export class OrbitProjectionChart {
     }
   }
 
+  // drawGridLines の各線に添える経度・緯度のラベル。
   private drawGridLabels(win: Window, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
     const ctx = this.ctx;
     ctx.fillStyle = TEXT_DIM;
+    // 経度ラベルはプロット下端に沿って並べる。
     ctx.textAlign = 'center';
     for (let lon = -180; lon <= 180; lon += GRID_STEP_DEG) {
       if (lon < win.lonMin || lon > win.lonMax) continue;
       const { x } = this.toPx(lon, 0, win, plotLeft, plotTop, plotWidth, plotHeight);
       ctx.fillText(lonLabel(lon), x, plotTop + plotHeight + 10);
     }
+    // 緯度ラベルはプロット左端に沿って並べる。
     ctx.textAlign = 'left';
     for (let lat = -90; lat <= 90; lat += GRID_STEP_DEG) {
       if (lat < win.latMin || lat > win.latMax) continue;
@@ -244,34 +235,15 @@ export class OrbitProjectionChart {
     }
   }
 
+  // 1系列ぶんの軌跡(折れ線)と現在位置の丸マークを描く。
   private drawSeries(
     series: ProjectionSeriesSpec, win: Window, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
   ): void {
-    const ctx = this.ctx;
-    ctx.strokeStyle = series.color;
-    ctx.lineWidth = LINE_WIDTH;
-    ctx.beginPath();
-    let penDown = false;
-    for (const point of series.points) {
-      if (point === null) { penDown = false; continue; }
-      const { x, y } = this.toPx(point.lonDeg, point.latDeg, win, plotLeft, plotTop, plotWidth, plotHeight);
-      if (penDown) ctx.lineTo(x, y);
-      else ctx.moveTo(x, y);
-      penDown = true;
-    }
-    ctx.stroke();
+    const toPx = (point: ProjectionPoint): { x: number; y: number } =>
+      this.toPx(point.lonDeg, point.latDeg, win, plotLeft, plotTop, plotWidth, plotHeight);
+    drawPolylineWithGaps(this.ctx, series.points, toPx, series.color, CHART_LINE_WIDTH);
 
-    const { x, y } = this.toPx(series.current.lonDeg, series.current.latDeg, win, plotLeft, plotTop, plotWidth, plotHeight);
-    ctx.beginPath();
-    ctx.arc(x, y, MARK_RADIUS, 0, Math.PI * 2);
-    if (series.currentStyle === 'filled') {
-      ctx.fillStyle = ACCENT_SOFT;
-      ctx.fill();
-      ctx.strokeStyle = ACCENT;
-    } else {
-      ctx.strokeStyle = TEXT_STRONG;
-    }
-    ctx.lineWidth = MARK_RING_WIDTH;
-    ctx.stroke();
+    const { x, y } = toPx(series.current);
+    drawPointMarker(this.ctx, x, y, series.currentStyle === 'filled', CHART_MARK_RADIUS, CHART_MARK_RING_WIDTH);
   }
 }

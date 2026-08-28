@@ -6,8 +6,8 @@ import { Button, ToggleSwitch } from '../hud/widgets';
 import * as C from '../const';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../sim-speed-manager';
-import type { StageSaveData } from '../save-data';
+import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { StageSaveData } from '../save/save-data';
 
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
@@ -33,7 +33,7 @@ export class StageDebug extends Stage {
   // 自機を置き、敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
   protected init(entities: EntityManager): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
-    const enemies = generateWave(player.state, this.waveCount++, this._ephemeris, this._hud, this._worldSfx, this._fx, this._scene, 'random');
+    const enemies = generateWave(player.state, this.waveCount++, this._ephemeris, this._worldSfx, this._fx, this._scene, 'random');
     for (const enemy of enemies) this.addEnemy(enemy, entities);
 
     // 切替は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
@@ -43,7 +43,7 @@ export class StageDebug extends Stage {
 
     // 敵集団をスポーンするボタン
     const spawnEnemyBtn = new Button('敵集団をスポーン', () => {
-      const newEnemies = generateWave(player.state, this.waveCount++, this._ephemeris, this._hud, this._worldSfx, this._fx, this._scene, 'random');
+      const newEnemies = generateWave(player.state, this.waveCount++, this._ephemeris, this._worldSfx, this._fx, this._scene, 'random');
       for (const enemy of newEnemies) this.addEnemy(enemy, entities);
     });
     this.addStatusPanelWidget(spawnEnemyBtn.element);
@@ -62,10 +62,10 @@ export class StageDebug extends Stage {
   }
 
   // 敵の行動を進め、射撃許可を毎フレーム自ステージの敵全体へ反映する。
-  update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
     for (const e of entities.enemies) e.fireEnabled = this.enemyFireEnabled;
-    this.behaveAllEnemies(dt, player, entities, simTime, simSpeed);
+    this.behaveAllEnemies(player, entities, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 

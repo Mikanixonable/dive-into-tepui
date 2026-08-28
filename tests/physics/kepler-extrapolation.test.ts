@@ -1,13 +1,13 @@
 // kepler-extrapolation.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { extrapolatedRelativeState, extrapolatedRelativeStates } from '../../src/physics/kepler-extrapolation';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
-import { len, sub, v3 } from '../../src/physics/vec3';
+import { len, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
 const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };

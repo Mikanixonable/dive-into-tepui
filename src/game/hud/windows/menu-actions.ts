@@ -1,5 +1,7 @@
 import { MenuItem } from './context-menu';
 
+// 右クリックメニューの操作を表す act 識別子(MenuAction)と、頻出する項目を組み立てる
+// 共通ファクトリ(MenuCommon)を提供する。
 export type MenuAction =
   | 'focus'
   | 'target'
@@ -24,8 +26,7 @@ export type MenuAction =
   | 'deployPart'
   | 'stowPart';
 
-// 共通メニュー項目ファクトリ。shortcut は KeyboardEvent.code — OverlayManager.dispatchShortcut
-// が Input のエッジキューから受け取る値と同じ表記にする。
+// shortcut には KeyboardEvent.code の表記を使う。
 export const MenuCommon = {
   cancel: (): MenuItem<MenuAction> => ({ label: 'キャンセル', act: 'cancel', shortcut: 'Escape' }),
   focus: (): MenuItem<MenuAction> => ({ label: 'フォーカスを移動', act: 'focus', shortcut: 'KeyF' }),

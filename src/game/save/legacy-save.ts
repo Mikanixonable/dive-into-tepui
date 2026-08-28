@@ -1,4 +1,4 @@
-import { GameSaveData, SaveSlotMeta, SnapshotMeta, SAVE_VERSION } from '../save-data';
+import { GameSaveData, SaveSlotMeta, SnapshotMeta, SAVE_VERSION } from './save-data';
 import { SaveSlots } from './save-slots';
 
 // 単一スロット時代の固定キー(tepui.save)に残っているセーブを、スロット/スナップショット
