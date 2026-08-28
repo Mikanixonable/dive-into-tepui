@@ -8,9 +8,10 @@
 import { CelestialBody, attractorAccel, strongestAttractor } from '../../physics/celestial-body';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import { Vec3, lenSq } from '../../math/vec3';
-import type { BodyClass } from './body-class';
+import type { BodyClass } from './celestial-entity-def';
 
-// 天体 id の表示クラスを引く口。CelestialSystem 側は (id) => bodyOf(id).bodyClass を渡す。
+// 天体 id の表示クラスを引く口。フォーカス id は艦など未登録の id でもありうるので、
+// **未登録 id には既定の 'planet' を返すこと**(例外にしない)。
 // このモジュールは tests が node で実行するため、THREE を経由する型を直接受け取れない —
 // 天体の列挙・親子関係は motions(参照の木)で、表示クラスはこの写像で受ける。
 export type BodyClassLookup = (id: string) => BodyClass;

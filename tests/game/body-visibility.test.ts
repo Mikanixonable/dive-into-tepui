@@ -8,13 +8,12 @@ import {
   TRIANGULAR_STABILITY_MASS_RATIO, collinearClearanceRatio, hasStableTriangularPoints,
 } from '../../src/physics/lagrange';
 import { OrbitingMotion } from '../../src/physics/celestial-motion';
-import type { SolarSystemId } from '../../src/physics/solar-system/solar-system';
 import {
   alwaysFullyVisibleIds, applyBodyClassDisplayMode, bodyClassDisplayMode, bodyClassVisible, bodyNameVisible,
   BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES,
   isPositionInFocusedSystem, nextBodyClassDisplayMode, systemChainAt, systemMembersAt,
 } from '../../src/game/celestial/body-visibility';
-import { BodyClass, solarSystemBodyClass } from '../../src/game/celestial/body-class';
+import { BodyClass, bodyClassOfKind } from '../../src/game/celestial/celestial-entity-def';
 import { v3, addScaled } from '../../src/math/vec3';
 
 const MIN_CLEARANCE = 10;
@@ -23,8 +22,14 @@ const MIN_CLEARANCE = 10;
 const { motions: MOTIONS, windows: WINDOWS } = solarSystemParts();
 const ALL = MOTIONS.all;
 
-// 現実の太陽系の表示クラス。実行中の CelestialEntity.bodyClass と同じ表から引く。
-const bodyClass = (id: string): BodyClass => solarSystemBodyClass(id as SolarSystemId);
+// 表示クラスは運動の分類から引く(未登録 id は BodyClassLookup の契約どおり 'planet')。
+// 準惑星・小天体は 'planet' に落ちるが、このテストの表示規則は planet/dwarf/smallBody の
+// Name トグルを既定 ON のまま使うので判定に影響しない(規則が区別するのは satellite と
+// star だけで、どちらも分類から正しく出る)。
+const bodyClass = (id: string): BodyClass => {
+  const motion = ALL.find((m) => m.id === id);
+  return motion === undefined ? 'planet' : bodyClassOfKind(motion.kind);
+};
 
 // マーカーの点か名前のどちらかが出る天体の集合。クラストグルで足される天体と、恒星・
 // フォーカス系・カメラ近傍として無条件に足される天体の和になる。
