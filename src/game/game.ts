@@ -36,7 +36,7 @@ import type { RenderStyle } from '../render/render-style';
 import { EnvironmentScene } from './celestial/environment-scene';
 import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
-import { NanWatchdog } from './nan-watchdog';
+import { NanWatchdog } from './simulation/nan-watchdog';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
 import { OrbitReferenceSelector } from './orbit-reference';

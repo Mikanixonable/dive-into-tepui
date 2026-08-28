@@ -5,7 +5,7 @@
 //    全メッシュの座標が NaN になり、3D 画面だけが真っ暗になる(HUD は DOM なので残る)。
 //  - 喪失判定: checkLoss の大気密度の判定は NaN で false になるので、汚染されたエンティティは
 //    死ぬべき条件でも死なず、症状が別の形(消えない)で表面化する。
-//  - 剛体接触: 接触は伝播経路そのものなので、game/simulation/contact.ts は参加者の段階で
+//  - 剛体接触: 接触は伝播経路そのものなので、contact-participant.ts は参加者の段階で
 //    位置・速度・半径・質量の**4つすべて**が有限であることを確かめ、欠けたものを候補にすら
 //    入れない。4つ揃って見る必要があるのは、非有限値との比較が常に false になるからである
 //    — 位置だけを見る距離判定は、速度だけが非有限な物体を素通りさせ、その先で法線方向
@@ -16,11 +16,11 @@
 // 「最初に壊れた対象」をその場で記録することが、原因特定の唯一の近道になる。
 //
 // 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
-import { Hud } from './hud/hud';
-import { Player } from './player/player';
-import { GameEntity } from './game-entity/game-entity';
-import { EntityManager } from './simulation/entity-manager';
-import { Vec3 } from '../math/vec3';
+import { Hud } from '../hud/hud';
+import { Player } from '../player/player';
+import { GameEntity } from '../game-entity/game-entity';
+import { EntityManager } from './entity-manager';
+import { Vec3 } from '../../math/vec3';
 
 // 全成分が有限値かどうかを返す。
 function finiteVec(v: Vec3): boolean {

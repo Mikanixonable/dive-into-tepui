@@ -26,7 +26,7 @@ import { SubstepBodies } from './substep-bodies';
 import { NextEventTime } from './next-event-time';
 import { v3 } from '../../math/vec3';
 import { simulationMaxStep, simulationStepDuration } from './time-step';
-import type { NanWatchdog } from '../nan-watchdog';
+import type { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../../frame-sections';
 import type { PerfCounts } from '../../perf-meter';
 
