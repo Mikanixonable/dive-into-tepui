@@ -385,7 +385,7 @@ export class MapPickableMenu {
   // AN/DN が出ないので項目自体を出さない。マップビュー・戦闘ビューどちらでも同じ項目を出す。
   private targetItems(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[] {
     if (target.id === this.navTarget.id) return [MenuCommon.target(true)];
-    const canTarget = this.navTarget.canTarget(target.id, this.entities, this.celestialSystem.ephemeris, simTime);
+    const canTarget = this.navTarget.canTarget(target.id, this.entities, this.celestialSystem, simTime);
     return canTarget ? [MenuCommon.target(false)] : [];
   }
 

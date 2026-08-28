@@ -79,7 +79,7 @@ export class FrameControls {
     const frame = star !== null ? frames.frameOf(star.id, null) : frames.inertialFrame;
     // 回さない(rotatingWith: null)ので基準は必ず登録天体 — 機体・役割トークンの解決は要らない。
     this.setFocus(focusPoint(
-      this.celestialSystem.ephemeris, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([]),
+      this.celestialSystem.frames, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([]),
     ));
   }
 
