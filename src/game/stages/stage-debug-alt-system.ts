@@ -7,7 +7,8 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../simulation/sim-speed-manager';
 import * as C from '../const';
 import {
-  CelestialMotion, EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion,
+  CelestialMotion, EciOrigin, OrbitingMotion, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef,
+  SatelliteMotion, StarMotion,
 } from '../../physics/celestial-motion';
 import { planetOrbit } from '../../physics/planet-orbit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
@@ -15,8 +16,13 @@ import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add } from '../../math/vec3';
 import type { StageSaveData } from '../save/save-data';
-import { fallbackCelestialAppearance } from '../celestial/celestial-appearance';
+import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
+import { CelestialSurface } from '../../render/celestial-surface';
+import { bodyClassOfKind } from '../celestial/celestial-entity-def';
+import { CelestialEntity } from '../celestial/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
+import { SphereEntity } from '../celestial/sphere-entity';
+import { Sun } from '../celestial/sun';
 
 const PRIMARY_ID = 'zephyrus';
 const MOON_ID = 'zephyrus-i';
@@ -60,10 +66,17 @@ function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[]
   return [zephyrus, zephyrusI];
 }
 
+// 架空天体の見た目: 恒星なら太陽の見た目、それ以外は単色球。表示名は id をそのまま使う。
+function fallbackEntity(motion: CelestialMotion): CelestialEntity {
+  if (motion instanceof StarMotion) return new Sun(motion, motion.id);
+  if (!(motion instanceof OrbitingMotion)) throw new Error(`${motion.id} の運動が OrbitingMotion ではない`);
+  return new SphereEntity(motion, motion.id, bodyClassOfKind(motion.kind), CelestialSurface.solid(DEFAULT_ALBEDO));
+}
+
 export class StageDebugAltSystem extends Stage {
   static readonly id = 'debug-alt-system' as const;
   static async createCelestialSystem(phaseOffsets: PhaseOffsets, _earthSpinPhase0: number): Promise<CelestialSystem> {
-    const bodies = zephyrusSystemMotions(phaseOffsets).map(fallbackCelestialAppearance);
+    const bodies = zephyrusSystemMotions(phaseOffsets).map(fallbackEntity);
     const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
     return new CelestialSystem(bodies, origin, phaseOffsets);
   }
