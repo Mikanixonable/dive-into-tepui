@@ -10,6 +10,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
 import { haloState, lissajousState } from '../../physics/halo';
+import { OrbitingMotion } from '../../physics/celestial-motion';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import { qRotate } from '../../physics/attitude';
 import { Vec3, add, addScaled, v3 } from '../../math/vec3';
@@ -359,12 +360,15 @@ export class CreativeStage extends Stage {
   // 副天体・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
   // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォーム自体に面内振幅の値がない。
   private buildLagrangeState(form: LagrangeForm): KinematicState {
-    const common = { secondary: form.lagrangeSecondary, point: form.lagrangePoint };
-    if (form.lagrangeOrbitKind === 'halo') {
-      return haloState(this._simulator.simTime, this._celestialSystem.ephemeris, { ...common, az: form.azKm * 1e3 });
+    const motion = this._celestialSystem.bodyOf(form.lagrangeSecondary).motion;
+    if (!(motion instanceof OrbitingMotion)) {
+      throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
-    return lissajousState(this._simulator.simTime, this._celestialSystem.ephemeris, {
-      ...common, ax: form.axKm * 1e3, az: form.azKm * 1e3,
+    if (form.lagrangeOrbitKind === 'halo') {
+      return haloState(this._simulator.simTime, motion, { point: form.lagrangePoint, az: form.azKm * 1e3 });
+    }
+    return lissajousState(this._simulator.simTime, motion, {
+      point: form.lagrangePoint, ax: form.axKm * 1e3, az: form.azKm * 1e3,
     });
   }
 
