@@ -17,11 +17,11 @@ import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-marker
 import { resolveCrowdingWinner } from '../marker/crowding';
 
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
-export const FOCUS_LABEL_PRIORITY_PX = 40;
+const FOCUS_LABEL_PRIORITY_PX = 40;
 
 // 位置の点(アイコン)側の混雑判定。名前(FOCUS_LABEL_PRIORITY_PX)より小さい値にし、名前だけが
 // 間引かれて点は残る距離帯を作る。
-export const FOCUS_ICON_PRIORITY_PX = 16;
+const FOCUS_ICON_PRIORITY_PX = 16;
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number; dist: number };

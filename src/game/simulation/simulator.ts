@@ -34,7 +34,7 @@ import type { PerfCounts } from '../../perf-meter';
 // Simulator.advance が simTime を強制前進させる。イベント予告と実際の消滅判定が
 // 丸め誤差でずれた個体が残ると刻みが0のまま進まなくなるための保険で、正常時は1回で
 // 収まる(同時刻の複数イベントの消費に数回使う程度)。
-export const SIMULATION_STALL_MAX_ZERO_STEPS = 8;
+const SIMULATION_STALL_MAX_ZERO_STEPS = 8;
 
 export class Simulator {
   private readonly surfaceContactPhysics = new SurfaceContactPhysics();

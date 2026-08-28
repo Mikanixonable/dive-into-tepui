@@ -1,7 +1,7 @@
 // ナビボール(#navball)の CSS。
 import { MQ_COARSE_SHORT, MQ_MEDIUM_DOWN } from '../breakpoints';
 
-export const COLOR_MARKER_BORESIGHT = '#dfe3e8';
+const COLOR_MARKER_BORESIGHT = '#dfe3e8';
 
 export const NAVBALL_STYLE = `
 #navball { top: 12px; left: 12px; width: 190px; pointer-events: auto; }

@@ -19,14 +19,14 @@ import type { ActivePlayerController } from '../active-controllable-controller';
 import type { Stage } from '../stages/stage';
 import { generateRandomName } from '../random-name';
 
-export const DOCK_CAPTURE_REL_V = 20;   // [m/s]
+const DOCK_CAPTURE_REL_V = 20;   // [m/s]
 
-export const PORT_DOCK_MAX_DIST = 50;          // [m] 船対船ポート間の最大捕捉距離
-export const PORT_DOCK_MIN_ALIGNMENT = 0.5;    // ポート軸の最小内積 (cos 60°)
-export const HATCH_DOCK_MAX_DIST = 80;        // 基地ハッチ前での最大ドッキング距離 [m]
-export const HATCH_DOCK_MIN_ALIGNMENT = 0.5;  // ハッチ正面コーンの最小内積 (cos 60° = 0.5)
-export const SLOT_DOCK_MAX_DIST = 50;         // 各ドックスロット前での最大ドッキング距離 [m]
-export const SLOT_DOCK_MIN_ALIGNMENT = 0.5;   // スロット正面コーンの最小内積 (cos 60° = 0.5)
+const PORT_DOCK_MAX_DIST = 50;          // [m] 船対船ポート間の最大捕捉距離
+const PORT_DOCK_MIN_ALIGNMENT = 0.5;    // ポート軸の最小内積 (cos 60°)
+const HATCH_DOCK_MAX_DIST = 80;        // 基地ハッチ前での最大ドッキング距離 [m]
+const HATCH_DOCK_MIN_ALIGNMENT = 0.5;  // ハッチ正面コーンの最小内積 (cos 60° = 0.5)
+const SLOT_DOCK_MAX_DIST = 50;         // 各ドックスロット前での最大ドッキング距離 [m]
+const SLOT_DOCK_MIN_ALIGNMENT = 0.5;   // スロット正面コーンの最小内積 (cos 60° = 0.5)
 
 export type DockingCandidateKind = 'slot' | 'hatch' | 'ship';
 

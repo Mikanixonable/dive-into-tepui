@@ -5,7 +5,7 @@ import { qRotate } from '../../physics/attitude';
 import { Player } from '../player/player';
 import { Viewpoint } from '../../math/projection';
 
-export const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]
+const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]
 
 export class GunsightCamera {
   viewpoint: Viewpoint = {

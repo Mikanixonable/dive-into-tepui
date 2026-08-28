@@ -38,16 +38,16 @@ import type { MapVisibility } from '../celestial/map-visibility';
 import { currentThemePalette } from '../theme';
 
 export const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
-export const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
-export const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
-export const BASE_MAX_FUEL = 50000;    // 基地の最大燃料
-export const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
-export const BASE_INERTIA_Y = 1e8;
-export const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
+const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
+const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
+const BASE_MAX_FUEL = 50000;    // 基地の最大燃料
+const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
+const BASE_INERTIA_Y = 1e8;
+const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
 
 // 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部, 3倍スケール対応)
-export const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
-export const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
+const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
+const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
 
 export interface BaseDockSlot {
   readonly id: number;
@@ -55,7 +55,7 @@ export interface BaseDockSlot {
   readonly localNormal: Vec3;
 }
 
-export const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
+const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
   { id: 0, localPos: v3(-16.5, 21.0, -16.5), localNormal: v3(0, 1, 0) },
   { id: 1, localPos: v3( 16.5, 21.0, -16.5), localNormal: v3(0, 1, 0) },
   { id: 2, localPos: v3(-16.5, 21.0,  16.5), localNormal: v3(0, 1, 0) },
