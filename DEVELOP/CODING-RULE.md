@@ -432,8 +432,7 @@ branded type だけがそれを表せる。
 - **単体の `body` を接辞にしない。** 天体は `celestialBody`、剛体一般が要るようになったら
   `rigidBody`。指すものがその場で一意に決まる狭いスコープ(ローカル変数・短いコールバック)に
   限って、無標の `body` でよい。
-- **天体は `celestialBody`。** `CelestialBody` / `CelestialBodyId` / `celestialBodiesAt` /
-  `celestialBodyAt`。
+- **天体は `celestialBody`。** `CelestialBody` / `celestialBodiesAt` / `celestialBodyAt`。
 - **機体は `ship`。** 機体に固定した座標系も `ship` で表す。
 - **重力源としての値は `attractor`。** ただし楕円の中心として渡すものは `center`。
 
