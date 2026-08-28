@@ -1,6 +1,6 @@
 // kepler-extrapolation.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { extrapolatedRelativeState, extrapolatedRelativeStates } from '../../src/physics/kepler-extrapolation';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { stepDynamics } from '../../src/physics/dynamics';

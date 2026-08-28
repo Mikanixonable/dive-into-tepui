@@ -1,6 +1,6 @@
 // lambert-sphere.ts の回帰テスト。期待値はランバート球の解析解。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { lambertPhase, lambertSphereIrradiance } from '../../src/physics/lambert-sphere';
 
 export function register(): void {

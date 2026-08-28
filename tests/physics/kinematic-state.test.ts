@@ -1,6 +1,6 @@
 // kinematic-state.ts の回帰テスト(hermiteInterpolate / orbitAxes / fromOrbitAxes)。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import {
   fromOrbitAxes,
   hermiteInterpolate,
