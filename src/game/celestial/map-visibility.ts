@@ -61,7 +61,8 @@ export class MapVisibilityPolicy {
     private readonly focusId?: string,
     nearbyIds: Iterable<string> = [],
   ) {
-    this.alwaysVisible = alwaysFullyVisibleIds(celestialSystem.ephemeris, focusId, nearbyIds, toggles);
+    this.alwaysVisible = alwaysFullyVisibleIds(
+      celestialSystem.motions, (id) => celestialSystem.bodyOf(id).bodyClass, focusId, nearbyIds, toggles);
     this.nearby = new Set(nearbyIds);
   }
 
