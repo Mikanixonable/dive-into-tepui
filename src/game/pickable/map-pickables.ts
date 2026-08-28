@@ -104,7 +104,7 @@ export class MapPickables {
       this.cameraSystem.activeCameraPos, visibilityPolicy,
     );
     this.navTarget.update(
-      this.activePlayers.current, this.entities, this.celestialSystem.ephemeris, displayWindow, this.frameAnchors);
+      this.activePlayers.current, this.entities, this.celestialSystem, displayWindow, this.frameAnchors);
 
     // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;

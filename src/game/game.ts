@@ -132,7 +132,6 @@ export class Game {
     this._scene = gs.scene;
     this.pipeline = pipeline;
     this._celestialSystem = celestialSystem;
-    const ephemeris = celestialSystem.ephemeris;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -157,8 +156,8 @@ export class Game {
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム celestialBodies を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors({
-      entityState: (id, t) => this.entities.all().find((e) => e.id === id && e.alive)?.displayState(t, ephemeris) ?? null,
-      activeShipState: (t) => this.activeControllableEntity?.displayState(t, ephemeris) ?? null,
+      entityState: (id, t) => this.entities.all().find((e) => e.id === id && e.alive)?.displayState(t, celestialSystem) ?? null,
+      activeShipState: (t) => this.activeControllableEntity?.displayState(t, celestialSystem) ?? null,
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.entities, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
@@ -212,7 +211,7 @@ export class Game {
     this.mapHud = new MapHudController(this._hud);
 
     this.simulator = new Simulator(this.entities, celestialSystem.windows, sections, initialSave?.simTime ?? initialSimTime ?? 0);
-    this.predictor = new Predictor(this.entities, ephemeris);
+    this.predictor = new Predictor(this.entities, celestialSystem);
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
@@ -427,7 +426,7 @@ export class Game {
     this.sections.enter(SECTION.plan);
     this.guide.update(
       this.player, this.simulator.simTime, this.editor.editMode,
-      this.ephemeris.celestialBodiesAt(this.simulator.simTime),
+      this.celestialSystem.celestialBodiesAt(this.simulator.simTime),
     );
     this.sections.exit(SECTION.plan);
   }

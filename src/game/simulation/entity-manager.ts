@@ -465,7 +465,7 @@ export class EntityManager {
       mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
     };
     for (const base of this.bases) {
-      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, celestialSystem.ephemeris, frameAnchors, timeLabel);
+      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
     }
   }
 

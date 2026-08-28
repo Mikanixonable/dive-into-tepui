@@ -9,7 +9,6 @@ import { Projected } from '../../math/projection';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { fmtMarkerDist } from '../hud/utils';
 import { SIM_EPOCH_SEC } from '../simulation/sim-epoch';
-import { celestialBodyName } from '../hud/frame/frame-labels';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { TickLabelMode, TickRank, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/orbit/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
@@ -123,7 +122,7 @@ export class PlanDisplay {
     const { simTime, displayTime } = displayWindow;
     this.celestialBodies = this.celestialSystem.celestialBodiesAt(displayTime);
     this.path.update(
-      planData, ship, this.celestialSystem.ephemeris, displayWindow.frame, simTime, displayTime, frameAnchors,
+      planData, ship, this.celestialSystem, displayWindow.frame, simTime, displayTime, frameAnchors,
       celestialBodyProvider, displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);
@@ -283,7 +282,7 @@ export class PlanDisplay {
     return this.path.impactPoints().flatMap(({ state, body, arcIdx }) => {
       const key = IMPACT_MARKER_KEYS[arcIdx];
       if (key === undefined) return [];
-      return [{ key, pos: this.path.toDisplay(state.r, state.t), label: `衝突 ${celestialBodyName(body.id)}` }];
+      return [{ key, pos: this.path.toDisplay(state.r, state.t), label: `衝突 ${this.celestialSystem.nameOf(body.id)}` }];
     });
   }
 

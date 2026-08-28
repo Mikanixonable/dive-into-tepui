@@ -69,7 +69,7 @@ export class OrbitPanel {
     const reference = game.orbitReference.resolve(
       entity.state.r, celestialBodies, game.navTarget, game.entities, game.celestialSystem, entity.state.t,
     );
-    const oi = orbitInfo(entity, reference);
+    const oi = orbitInfo(entity, reference, (id) => game.celestialSystem.nameOf(id));
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);
     const ship = entity instanceof Player ? entity : null;

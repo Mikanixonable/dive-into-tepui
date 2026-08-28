@@ -3,7 +3,6 @@
 // という編集上の判断で、同じ kind: 'planet' の中から準惑星・小天体を分ける。
 // メッシュ構築(THREE 依存)と分けてあるのは、可視性の規則を DOM もレンダラも無しに
 // 評価できるようにするため。
-import type { Ephemeris } from '../../physics/ephemeris';
 import { SolarSystemId } from '../../physics/solar-system/solar-system';
 import type { CelestialKind } from '../../physics/celestial-motion';
 
@@ -120,12 +119,4 @@ export function solarSystemBodyClass(id: SolarSystemId): BodyClass {
 // 恒星の3つにしか落ちない。
 export function bodyClassOfKind(kind: CelestialKind): BodyClass {
   return kind === 'star' ? 'star' : kind === 'satellite' ? 'satellite' : 'planet';
-}
-
-// 登録天体の表示クラス。現実の太陽系に項が無い id(カスタムレジストリの架空天体)は、
-// 力学上の分類をそのまま重要度として使う。
-export function bodyClassOf(ephemeris: Ephemeris, id: string): BodyClass {
-  const cls = (BODY_CLASS_BY_ID as Record<string, BodyClass | undefined>)[id];
-  if (cls !== undefined) return cls;
-  return id in ephemeris.registry ? bodyClassOfKind(ephemeris.motionOf(id).kind) : 'planet';
 }

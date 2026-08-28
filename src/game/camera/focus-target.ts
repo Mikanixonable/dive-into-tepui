@@ -3,7 +3,6 @@
 import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint, toInertialPoint } from '../../physics/frame';
 import { Vec3, v3 } from '../../math/vec3';
 import type { CelestialMotion } from '../../physics/celestial-motion';
-import type { Ephemeris } from '../../physics/ephemeris';
 import type { ReferenceFrames } from '../../physics/reference-frames';
 
 export type FocusTarget =
@@ -17,9 +16,9 @@ export function focusTargetId(target: FocusTarget): string | undefined {
 
 // ECI 位置 pos(時刻 t)を frame に焼き込んだ固定点フォーカスを組む。
 export function focusPoint(
-  ephemeris: Ephemeris, frame: ReferenceFrame, pos: Vec3, t: number, frameAnchors: FrameAnchorSource,
+  frames: ReferenceFrames, frame: ReferenceFrame, pos: Vec3, t: number, frameAnchors: FrameAnchorSource,
 ): FocusTarget {
-  const tf = ephemeris.frameTransformAt(frame, t, frameAnchors);
+  const tf = frames.transformAt(frame, t, frameAnchors);
   return { kind: 'point', frame, point: toFramePoint(tf, pos) };
 }
 

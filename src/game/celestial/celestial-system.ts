@@ -239,6 +239,9 @@ export class CelestialSystem {
   // 指定時刻の重力源天体(mu が 0 でないもの、宣言順)。
   gravityAttractorsAt(t: number): readonly CelestialBody[] { return this.windows.gravityAttractorsAt(t); }
 
+  // 1天体ぶんの時刻 t での重力源表現。予測弧の候補供給(FutureCelestialBodyProvider)もこれで満たす。
+  celestialBodyAt(id: string, t: number): CelestialBody { return this.bodyOf(id).motion.at(t); }
+
   // 指定時刻の大気を持つ天体(宣言順)。抗力を掛ける1体を選ぶ側が引く窓。
   atmosphereCelestialBodiesAt(t: number): readonly CelestialBody[] {
     return this.windows.atmosphereCelestialBodiesAt(t);
