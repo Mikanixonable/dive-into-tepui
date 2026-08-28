@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, cross, dot, v3 } from '../../physics/vec3';
+import { Vec3, add, cross, dot, v3 } from '../../math/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_HINGE,

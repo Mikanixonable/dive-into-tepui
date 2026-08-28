@@ -7,7 +7,7 @@ import { attractorAccel } from '../../src/physics/celestial-body';
 import { Ephemeris } from '../../src/physics/ephemeris';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON } from '../../src/physics/solar-system';
-import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import {
   GRAVITY_NEGLIGIBLE_ACCEL, INITIAL_ALT, INITIAL_INC_DEG,
@@ -19,7 +19,7 @@ import { FutureCelestialBodies } from '../../src/game/simulation/future-celestia
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/simulation/surface-candidates';
 import type { CelestialBody, CelestialBodyId } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';
-import type { Vec3 } from '../../src/physics/vec3';
+import type { Vec3 } from '../../src/math/vec3';
 
 // 現実の太陽系・地球原点の既定レジストリ。両方の窓へ同じ天体一式を供給する。
 const EPHEMERIS = new Ephemeris();

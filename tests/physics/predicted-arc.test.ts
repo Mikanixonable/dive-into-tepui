@@ -8,7 +8,7 @@ import { test } from './harness';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { EARTH_ATMOSPHERE, MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
-import { len, v3 } from '../../src/physics/vec3';
+import { len, v3 } from '../../src/math/vec3';
 import { PredictedArc } from '../../src/game/simulation/predicted-arc';
 import { atmosphericMaxStep } from '../../src/game/simulation/time-step';
 import { SHIP_BCINV } from '../../src/game/const';

@@ -32,7 +32,7 @@ import type { Stage } from './stages/stage';
 import { Player } from './player/player';
 import type { GameEntity } from './game-entity/game-entity';
 import type { Targeter } from './targeter';
-import { v3 } from '../physics/vec3';
+import { v3 } from '../math/vec3';
 import type { CelestialBody } from '../physics/celestial-body';
 import { orbitingAttractorOf } from '../physics/celestial-body';
 import { primaryOf } from '../physics/solar-system';

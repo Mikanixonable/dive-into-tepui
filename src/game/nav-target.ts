@@ -1,7 +1,7 @@
 // マップ上のターゲット(任意の MapPickable — 月・ラグランジュ点なども含む)の保持と、
 // 自機軌道との相対 AN/DN(昇交点・降交点)・再接近点の算出・マーカー表示・被選択物としての公開。
 // ターゲットが敵・自艦・基地(CombatTarget)の場合は、Targeter の射撃・照準補助の基準にもなる。
-import { Vec3, v3, add, len, sub } from '../physics/vec3';
+import { Vec3, v3, add, len, sub } from '../math/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { CelestialBody, OrbitingId, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
 import type { LagrangePoints } from '../physics/lagrange';
@@ -9,7 +9,7 @@ import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physic
 import { bodyDef } from '../physics/solar-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { qRotate } from '../physics/attitude';
-import { goldenSectionMin } from '../physics/optimize';
+import { goldenSectionMin } from '../math/optimize';
 import { Player } from './player/player';
 import type { DisplayWindow } from './display-window-manager';
 import type { EntityManager } from './simulation/entity-manager';

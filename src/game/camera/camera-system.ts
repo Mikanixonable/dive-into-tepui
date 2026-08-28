@@ -12,10 +12,10 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { FloatingOrigin } from '../floating-origin';
 import * as C from '../const';
-import { Vec3, len, sub } from '../../physics/vec3';
+import { Vec3, len, sub } from '../../math/vec3';
 import {
   metersPerPixel, metersPerPixelAtDistance, ndcToScreen, Projected, projectToNdc, Viewpoint,
-} from '../../physics/projection';
+} from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { CameraSaveData } from '../save-data';

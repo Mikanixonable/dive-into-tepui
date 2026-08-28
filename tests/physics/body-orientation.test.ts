@@ -7,7 +7,7 @@ import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
 import { CelestialBodyId } from '../../src/physics/celestial-body';
 import { bodyDef, MOON_OBLIQUITY, SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const MOON_ORBIT_INC = (5.145 * Math.PI) / 180;
 const R2D = 180 / Math.PI;

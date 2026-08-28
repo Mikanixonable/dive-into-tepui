@@ -4,7 +4,7 @@ import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from './ele
 import { toFrameState } from './frame';
 import { KinematicState } from './kinematic-state';
 import { findEquatorCrossings } from './trajectory-features';
-import { Vec3, add } from './vec3';
+import { Vec3, add } from '../math/vec3';
 
 export interface OrbitNodeState {
   readonly r: KinematicState['r'];

@@ -26,7 +26,7 @@ import type { Ephemeris } from '../physics/ephemeris';
 import { DynamicTrajectory } from '../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../physics/kepler-extrapolation';
 import { StateQueue } from '../physics/state-queue';
-import { add, Vec3 } from '../physics/vec3';
+import { add, Vec3 } from '../math/vec3';
 import { FloatingOrigin } from './floating-origin';
 import { Curve, CurveKnots } from '../render/curve';
 import { LineStyle } from '../render/line-style';

@@ -1,7 +1,7 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
 import { FrameRotation } from '../../src/physics/kepler-orbit';
-import { Vec3, cross, len, scale, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, cross, len, scale, sub, v3 } from '../../src/math/vec3';
 import { qRotate } from '../../src/physics/attitude';
 
 // 回転基準系の角速度が姿勢の時間微分と整合するか(基底の各軸で ḃ = ω×b)を中心差分で確かめる。

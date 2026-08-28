@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';

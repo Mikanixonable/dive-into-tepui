@@ -1,10 +1,10 @@
 // マップモードの地球中心広範囲視点カメラ。太陽回転系への切替とフォーカス対象の選択を持つ。
 import * as THREE from 'three/webgpu';
-import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../physics/vec3';
+import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../math/vec3';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
-import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../physics/projection';
+import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
 import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, toFrameDir, toInertialDir } from '../../physics/frame';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/celestial-body';
 import type { Ephemeris } from '../../physics/ephemeris';

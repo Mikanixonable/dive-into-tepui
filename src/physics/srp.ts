@@ -2,7 +2,7 @@
 // 太陽 - 物体を結ぶ直線方向にのみ力が働くとする。THREE/DOM 非依存の純関数。
 import { CelestialBody } from './celestial-body';
 import { AU } from './planet-orbit';
-import { Vec3, v3 } from './vec3';
+import { Vec3, v3 } from '../math/vec3';
 
 export const SPEED_OF_LIGHT = 299792458; // 真空中の光速 [m/s](SI 定義値)
 // 1天文単位における太陽の全波長放射照度 [W/m^2]。距離の2乗に反比例して弱まる。

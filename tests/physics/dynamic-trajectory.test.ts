@@ -11,7 +11,7 @@ import { MU_EARTH, R_EARTH, SOLAR_SYSTEM } from '../../src/physics/solar-system'
 import { DynamicTrajectory } from '../../src/physics/dynamic-trajectory';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { add, len, sub, v3 } from '../../src/physics/vec3';
+import { add, len, sub, v3 } from '../../src/math/vec3';
 
 const EPH = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }); // 初期位相を固定して決定的にする
 const celestialBodiesAt = (t: number) => EPH.celestialBodiesAt(t); // step() が要求する重力源をステップ中点で引く

@@ -3,7 +3,7 @@ import {
   atmosphericMaxStep, dragTakesFullAirspeed, simulationStepDuration,
 } from '../../src/game/simulation/time-step';
 import { test } from './harness';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { Atmosphere } from '../../src/physics/atmosphere';

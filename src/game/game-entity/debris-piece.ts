@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { CelestialBody } from '../../physics/celestial-body';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import * as C from '../const';
 import type { Stage } from '../stages/stage';
 import type { Contact } from './contact';
