@@ -20,7 +20,6 @@ import type { GameScene } from './render/scene';
 import type { RenderPipeline } from './render/pipeline/render-pipeline';
 import type { FrameSections } from './frame-sections';
 import type { Ephemeris } from './physics/ephemeris';
-import type { CelestialBodyId } from './physics/celestial-body';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 
@@ -42,7 +41,7 @@ function fallbackResult(phase: GamePhase): StageResult {
 
 // ローディング表示の下で、このステージの天体暦を組む。
 async function initEphemeris(
-  stageClass: StageClass, phaseOffsets: Partial<Record<CelestialBodyId, number>>, startSimTime?: number,
+  stageClass: StageClass, phaseOffsets: Partial<Record<string, number>>, startSimTime?: number,
 ): Promise<Ephemeris> {
   showLoading();
   try {

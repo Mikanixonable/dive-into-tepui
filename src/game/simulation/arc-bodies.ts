@@ -2,7 +2,8 @@
 // 解決する代わりに、いま効きうる天体だけを成員として保持する。成員は解決するついでに抜ける
 // 条件を見る。成員でない候補は「最短でもこの時刻までは効き得ない」期限を持ち、その時刻が
 // 来たときだけ解決して入る条件を見る。
-import type { CelestialBody, CelestialBodyId } from '../../physics/celestial-body';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { CelestialBodyDef } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../math/vec3';
 import * as C from '../const';
@@ -18,18 +19,12 @@ const ARC_BODY_CLOSING_MARGIN = 2000;
 // 天体が一覧の外に残ると、その歩の掃引到達判定がその天体を見ないまま通り抜ける。
 const ARC_BODY_LEAD_STEPS = 4;
 
-// 積分が引きうる天体1体ぶんの、時刻に依らない素性。
-export type FutureBodyCandidate = {
-  readonly id: CelestialBodyId;
-  readonly mu: number; // 重力定数 GM [m^3/s^2]。0 なら重力源にならない
-  readonly radius: number; // 表面半径 [m]
-};
-
 // 弧が天体を引く相手。候補の顔ぶれは弧を作った時点で確定する。
 export type FutureCelestialBodyProvider = {
-  readonly candidates: () => readonly FutureBodyCandidate[];
+  // 積分が引きうる天体の、時刻に依らない素性。mu が 0 の天体は重力源にならない。
+  readonly defs: readonly Pick<CelestialBodyDef, 'id' | 'mu' | 'radius'>[];
   // 候補1体の時刻 t での状態。
-  readonly celestialBodyAt: (id: CelestialBodyId, t: number) => CelestialBody;
+  readonly celestialBodyAt: (id: string, t: number) => CelestialBody;
 };
 
 // 弧の1歩が読む天体一式。gravity は引力を持つ天体、collision は表面到達の相手。
@@ -40,7 +35,7 @@ export type ArcBodyWindow = {
 
 // 候補1体ぶんの成員判定の状態。
 type Watch = {
-  readonly candidate: FutureBodyCandidate;
+  readonly candidate: Pick<CelestialBodyDef, 'id' | 'mu' | 'radius'>;
   // 引力が GRAVITY_NEGLIGIBLE_ACCEL を割ると言い切れる距離 [m]。直達項 mu/d² と ECI 原点補正項
   // mu/D² の和は 2mu/min(d,D)² を超えないので、min(d,D) がこれを上回れば寄与は無視できる。
   readonly gravityReach: number;
@@ -67,8 +62,8 @@ function slackTime(w: Watch, body: CelestialBody, from: KinematicState): number 
 }
 
 // 最も重い天体の id。引力を持つ天体が候補に無ければ null。
-function heaviestGravityId(candidates: readonly FutureBodyCandidate[]): CelestialBodyId | null {
-  let id: CelestialBodyId | null = null;
+function heaviestGravityId(candidates: readonly Pick<CelestialBodyDef, 'id' | 'mu' | 'radius'>[]): string | null {
+  let id: string | null = null;
   let mu = 0;
   for (const c of candidates) {
     if (c.mu <= mu) continue;
@@ -87,7 +82,7 @@ export class ArcBodies {
 
   // 候補の顔ぶれを構築時に確定させ、以後は1体ぶんの状態だけを sources へ問う。
   constructor(private readonly sources: FutureCelestialBodyProvider) {
-    const candidates = sources.candidates();
+    const candidates = sources.defs;
     const pinnedId = heaviestGravityId(candidates);
     this.watches = candidates.map((candidate) => ({
       candidate,
