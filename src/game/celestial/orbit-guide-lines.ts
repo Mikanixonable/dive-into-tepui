@@ -2,10 +2,11 @@
 // リサジュー軌道の折れ線群(表示パネルの軌道ガイドタブ、静止軌道を除く)。設定の kinds
 // (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
-import { Ephemeris } from '../../physics/ephemeris';
+import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
+import type { CelestialSystem } from './celestial-system';
 import { Vec3 } from '../../math/vec3';
 import {
-  catalogLoop, dawnDuskGuideLoop, GuideLoop, GuidePoint, lissajousLoop,
+  catalogLoop, dawnDuskGuideLoop, GuideLoop, GuidePoint, guideSecondary, lissajousLoop,
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
 } from '../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
@@ -203,7 +204,7 @@ export class OrbitGuideLines {
   private lastCatalogGeneration = -1;
   private onLineCountChange: ((count: number) => void) | null = null;
 
-  public constructor(private readonly scene: THREE.Scene, private readonly ephemeris: Ephemeris) {
+  public constructor(private readonly scene: THREE.Scene, private readonly celestialSystem: CelestialSystem) {
     this.markers = new DirectionMarkers(scene, MARKER_POOL_CAPACITY, LINE_RENDER_ORDER.reference);
   }
 
@@ -292,33 +293,53 @@ export class OrbitGuideLines {
   private computeLoop(entry: GuideLineEntry, t: number, settings: OrbitGuideSettings): GuideLoop | null {
     if (entry.familyId === 'lissajous') {
       const l = settings.lissajous;
+      const secondary = this.guideSecondaryOf(entry.system as CatalogSystemId);
+      if (secondary === null) return null;
       return lissajousLoop(
-        t, this.ephemeris, entry.system as CatalogSystemId, entry.point as GuidePoint,
+        t, secondary, entry.point as GuidePoint,
         l.inPlane, l.outOfPlane, l.inPlanePhase, l.outOfPlanePhase, l.cycles,
       );
     }
     if (entry.familyId === 'sunSync') {
       const s = settings.sunSync;
-      return sunSyncRepeatGroundTrackLoop(t, this.ephemeris, s.repeatDays, s.revsPerRepeat);
+      const earth = this.earthMotion();
+      return earth === null ? null : sunSyncRepeatGroundTrackLoop(t, earth, s.repeatDays, s.revsPerRepeat);
     }
     if (entry.familyId === 'dawnDusk') {
       const d = settings.dawnDusk;
-      return dawnDuskGuideLoop(t, this.ephemeris, d.repeatDays, d.revsPerRepeat, d.localTime);
+      const earth = this.earthMotion();
+      return earth === null ? null : dawnDuskGuideLoop(
+        t, earth, (r, tt) => this.celestialSystem.sunDirFrom(r, tt), d.repeatDays, d.revsPerRepeat, d.localTime);
     }
     if (entry.familyId === 'molniya') {
       const m = settings.molniya;
-      return molniyaGuideLoop(t, this.ephemeris, m.perigeeAltitude, m.raan);
+      const earth = this.earthMotion();
+      return earth === null ? null : molniyaGuideLoop(t, earth, m.perigeeAltitude, m.raan);
     }
     if (entry.familyId === 'tundra') {
       const u = settings.tundra;
-      return tundraGuideLoop(t, this.ephemeris, u.perigeeAltitude, u.raan);
+      const earth = this.earthMotion();
+      return earth === null ? null : tundraGuideLoop(t, earth, u.perigeeAltitude, u.raan);
     }
     const kind = effectiveKind(settings, entry.familyId);
     if (!kind || entry.system === null) return null;
     const system = this.catalog.systemFor(entry.system);
     if (!system) return null;
     const s = sValueFor(kind, entry.index, entry.count);
-    return catalogLoop(t, this.ephemeris, system, entry.system, entry.familyId, s);
+    const secondary = this.guideSecondaryOf(entry.system);
+    if (secondary === null) return null;
+    return catalogLoop(t, secondary, system, entry.familyId, s);
+  }
+
+  // 系の副天体の運動。星系に居ない・公転していないなら null(その系のガイドは描かない)。
+  private guideSecondaryOf(system: CatalogSystemId): OrbitingMotion | null {
+    const motion = this.celestialSystem.find(guideSecondary(system))?.motion;
+    return motion instanceof OrbitingMotion ? motion : null;
+  }
+
+  // 地球の運動。地球を持たない星系では null(地球専用の参照軌道は描かない)。
+  private earthMotion(): CelestialMotion | null {
+    return this.celestialSystem.find('earth')?.motion ?? null;
   }
 
   // その線をいま描くべき色・不透明度・進行方向マーカーの出し方を、現在の設定から組む。

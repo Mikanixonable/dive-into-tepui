@@ -1,6 +1,6 @@
 // focus-target.ts の回帰テスト。振動バグの本体は「機体 id は候補配列ではなく
 // frameAnchors.stateOf を返す」ケース(resolveFocusTarget は候補配列を先に見ると壊れる)。
-import { solarSystemEphemeris } from '../physics/test-helpers';
+import { motionOf as motionInParts, solarSystemParts } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { FocusCandidate, FocusResolveState, resolveFocusTarget } from '../../src/game/camera/focus-target';
@@ -16,17 +16,16 @@ function stubAnchors(states: Partial<Record<string, KinematicState>>): FrameAnch
 }
 
 export function register(): void {
-  const eph = solarSystemEphemeris();
-  const frames = eph.referenceFrames;
+  const { motions: MOTIONS, referenceFrames: frames } = solarSystemParts();
   // 未登録の id には null を返す天体運動の引き手(CelestialSystem.find と同じ契約)。
   const motionOf = (id: string): CelestialMotion | null => (
-    eph.registry[id] === undefined ? null : eph.motionOf(id)
+    MOTIONS.all.find((m) => m.id === id) ?? null
   );
 
   test('focus-target: 天体 id は その運動の ECI 位置を返す', () => {
     const anchors = stubAnchors({});
     const result = resolveFocusTarget({ kind: 'object', id: 'moon' }, [], 0, anchors, frames, motionOf, ORIGIN_STATE);
-    assert.deepEqual(result.pos, eph.positionOf('moon', 0));
+    assert.deepEqual(result.pos, motionInParts(MOTIONS, 'moon').stateAt(0).r);
     assert.equal(result.missingFocusFrames, 0);
   });
 

@@ -7,9 +7,10 @@
 // 同じ考え方)。
 import * as THREE from 'three/webgpu';
 import { CurveKnots } from '../../render/curve';
-import { Ephemeris } from '../../physics/ephemeris';
+import { OrbitingMotion } from '../../physics/celestial-motion';
+import type { CelestialSystem } from './celestial-system';
 import { Vec3 } from '../../math/vec3';
-import { rotatingFrame } from '../../physics/orbit-guide';
+import { guideSecondary, rotatingFrame } from '../../physics/orbit-guide';
 import { zeroVelocityCurveSet, SectionPlane } from '../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -116,7 +117,7 @@ export class ZeroVelocityLines {
   private structureKey = '';
   private lastComputedTime: number | null = null;
 
-  public constructor(private readonly scene: THREE.Scene, private readonly ephemeris: Ephemeris) {}
+  public constructor(private readonly scene: THREE.Scene, private readonly celestialSystem: CelestialSystem) {}
 
   // ゲーム側配線用の setter。sync はここで受けた最新値を読む。
   public setSettings(settings: ZeroVelocitySettings): void {
@@ -209,7 +210,9 @@ export class ZeroVelocityLines {
       let frame = frames.get(system);
       if (frame === undefined) {
         const mu = this.muFor(system);
-        frame = mu === null ? null : rotatingFrame(displayTime, this.ephemeris, system, mu);
+        const motion = this.celestialSystem.find(guideSecondary(system))?.motion;
+        frame = mu === null || !(motion instanceof OrbitingMotion)
+          ? null : rotatingFrame(displayTime, motion, mu);
         frames.set(system, frame);
       }
       if (!frame) {
