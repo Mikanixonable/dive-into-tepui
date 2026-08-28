@@ -4,7 +4,6 @@ import * as THREE from 'three/webgpu';
 import { createSun, Sun } from '../../render/stars';
 import { createOutlineCircle, OutlineCircle } from '../../render/outline-circle';
 import { Ephemeris } from '../../physics/ephemeris';
-import { CelestialBodyId } from '../../physics/celestial-body';
 import { R_SUN } from '../../physics/solar-system';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -13,14 +12,14 @@ import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 
 export class SunView extends CelestialView {
-  readonly id: CelestialBodyId;
+  readonly id: string;
   private readonly sun: Sun = createSun();
   // 模式図で太陽の代わりに出す、実位置・実半径の輪郭円。球のシルエットなので毎フレーム
   // カメラへ正対させる。
   private readonly outline: OutlineCircle = createOutlineCircle();
 
   // id は恒星として振る舞う天体の id、radius は広範囲視点での実球体半径 [m]。
-  constructor(id: CelestialBodyId = 'sun', private readonly radius: number = R_SUN) {
+  constructor(id: string = 'sun', private readonly radius: number = R_SUN) {
     super();
     this.id = id;
   }

@@ -3,7 +3,7 @@
 // ターゲットが敵・自艦・基地(CombatTarget)の場合は、Targeter の射撃・照準補助の基準にもなる。
 import { Vec3, v3, add, len, sub } from '../math/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
-import { CelestialBody, OrbitingId, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
+import { CelestialBody, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
 import type { LagrangePoints } from '../physics/lagrange';
 import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { bodyDef } from '../physics/solar-system';
@@ -253,7 +253,7 @@ export class NavTarget {
       if (secondary in registry && bodyDef(registry, secondary).kind !== 'star') {
         const point = `L${match[2]}` as keyof LagrangePoints;
         return {
-          id, state: ephemeris.lagrangeStateAt(secondary as OrbitingId, point, t), hasMass: false,
+          id, state: ephemeris.lagrangeStateAt(secondary, point, t), hasMass: false,
           attractor: null, entity: null, fixed: true,
         };
       }
@@ -277,13 +277,13 @@ export class NavTarget {
   private resolvePlaneNormal(id: string, entities: EntityManager, ephemeris: Ephemeris, t: number): Vec3 | null {
     const registry = ephemeris.registry;
     if (id in registry && bodyDef(registry, id).kind !== 'star') {
-      return ephemeris.orbitNormalAt(id as OrbitingId, t);
+      return ephemeris.orbitNormalAt(id, t);
     }
     // 副天体がレジストリに実在する公転天体のときだけラグランジュ点として解釈する。そうしないと
     // 同じ形の名前を持つ船が天体として誤って解決される。
     const secondary = /^(.+)-l[1-5]$/.exec(id)?.[1];
     if (secondary !== undefined && secondary in registry && bodyDef(registry, secondary).kind !== 'star') {
-      return qRotate(ephemeris.orbitFrameRotationAt(secondary as OrbitingId, t).q, Z_HAT);
+      return qRotate(ephemeris.orbitFrameRotationAt(secondary, t).q, Z_HAT);
     }
     const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;

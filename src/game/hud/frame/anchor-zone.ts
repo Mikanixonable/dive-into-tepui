@@ -1,7 +1,6 @@
 // マップの座標系UIのうち「何に固定/追随するか」を選ばせるゾーン。上段は登録天体・自艦・
 // 敵・基地・弾薬まで含む全候補から選ぶプルダウン(ObjectPicker)、下段はいまカメラがいる
 // 系の天体だけに絞ったクイックボタン(SegmentedControl)。
-import { CelestialBodyId } from '../../../physics/celestial-body';
 import { Ephemeris } from '../../../physics/ephemeris';
 import { FRAME_ROLES } from '../../../physics/frame';
 import type { MapPickable } from '../../pickable/map-pickable';
@@ -63,7 +62,7 @@ export class AnchorZone {
 
   // クイックボタンを、渡された系の天体列(+その衛星・ラグランジュ点)へ合わせる。
   // 候補に無い id は出さない(押せてから拒否することになるため)。
-  public setNearby(members: readonly CelestialBodyId[], pickables: readonly MapPickable[]): void {
+  public setNearby(members: readonly string[], pickables: readonly MapPickable[]): void {
     const byId = new Map(pickables.map((p) => [p.id, p] as const));
 
     // 渡された系メンバーのうち、実際に選べる候補にあるものだけへ絞る。
