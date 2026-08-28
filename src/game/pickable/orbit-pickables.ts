@@ -35,7 +35,7 @@ export class OrbitPickables {
     if (!this.cameraSystem.overviewMode) return;
     const { frame, displayTime } = displayWindow;
 
-    for (const [id, line] of this.celestialSystem.referenceOrbitLines) {
+    for (const { id, line } of this.celestialSystem.referenceOrbitLines) {
       const points = line.samplePoints(ORBIT_PICK_SAMPLES);
       if (points.length < 2) continue;
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [`body:${id}`], points });

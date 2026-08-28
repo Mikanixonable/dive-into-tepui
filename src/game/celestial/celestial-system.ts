@@ -1,15 +1,12 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
-import { kinematicState } from '../../physics/kinematic-state';
 import { CelestialBodyDef, CelestialMotion, PhaseOffsets } from '../../physics/celestial-motion';
 import { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { ReferenceFrames } from '../../physics/reference-frames';
 import { RingSystemDef } from '../../physics/solar-system/celestial-body-def';
-import { OrbitalElements } from '../../physics/elements';
 import { AU } from '../../physics/planet-orbit';
-import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
-import { add, len, norm, scale, sub, v3, Vec3 } from '../../math/vec3';
-import { isOccluded } from '../../physics/occlusion';
+import { CelestialBody } from '../../physics/celestial-body';
+import { len, norm, sub, v3, Vec3 } from '../../math/vec3';
 import { maxOccludedFraction } from '../../physics/shadow';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitLine } from '../lines/orbit-line';
@@ -32,7 +29,6 @@ import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pi
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { type AtmosphereCandidate, atmosphereDraws } from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
-import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { CelestialEntity } from './celestial-entity';
 import { Earth } from './earth';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
@@ -50,26 +46,6 @@ const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 
 // 参照軌道線が完全表示のときの不透明度。
 const REFERENCE_LINE_OPACITY = 0.3;
-
-// 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球を持たない
-// 架空の星系では無意味なので、earth が null なら組まない。
-function buildGeoElements(earth: CelestialBodyDef | null): OrbitalElements | null {
-  if (earth === null) return null;
-  const earthCelestialBody: CelestialBody = {
-    id: 'earth', mu: earth.mu, radius: earth.radius,
-    state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null,
-    isStar: false,
-  };
-  return {
-    a: earth.radius + 35786e3, e: 1e-6, p: earth.radius + 35786e3, incDeg: 0, period: 86164,
-    hHat: v3(0, 1, 0), pHat: v3(1, 0, 0), qHat: v3(0, 0, -1), center: earthCelestialBody,
-  };
-}
-
-// 公転天体の参照軌道線の色: 衛星は月軌道線の色、惑星は木星軌道線の色を踏襲し、
-// 同じ種別の天体はすべて同じ色で引く。
-const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
-const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 
 // 遮蔽器と環の持ち主を選ぶ尺度。カメラから見た視半径が大きい天体ほど、その影が画面に
 // 写っている何かへ落ちる見込みが高い。
@@ -141,14 +117,6 @@ export class CelestialSystem {
   // 生成しない。11,200点の軌道要素・mesh・instance bufferをロード時に確保しないため。
   private pointFieldView: PointFieldView | null = null;
 
-  // 静止軌道高度の参照リングは実在の天体ではないので、以下の天体駆動の配列とは別に持つ。
-  // 地球が現在のレジストリに無ければ null(sync は非表示のまま何もしない)。
-  readonly geoLine = new OrbitLine({ color: 0x8b93a0, opacity: 0.2, renderOrder: LINE_RENDER_ORDER.reference });
-  private readonly geoElements: OrbitalElements | null;
-  // 公転天体1体につき1本、星系から自動生成する参照軌道線(衛星は親惑星中心、
-  // 惑星は太陽中心)。マップモード専用で、天体の運動から作られる表示なのでここが所有する。
-  private readonly referenceBodies: readonly CelestialEntity[];
-  private readonly referenceLines: Map<string, OrbitLine>;
   // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
   private orbitGuideLines!: OrbitGuideLines;
   // ゼロ速度曲線(ガイドタブ5.3節)。
@@ -169,11 +137,6 @@ export class CelestialSystem {
     this.bodyWindows = new CelestialBodyWindows(this.motions);
     this.bodiesById = new Map(bodies.map((b) => [b.id, b]));
     this.starBody = bodies.find((b) => b.motion.kind === 'star') ?? null;
-    this.geoElements = buildGeoElements(this.bodiesById.get('earth')?.def ?? null);
-    this.referenceBodies = bodies.filter((b) => b.motion.kind !== 'star');
-    // 参照線はマップで表示される天体だけが必要とする。全カタログぶんを起動時に
-    // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
-    this.referenceLines = new Map();
   }
 
   // シーンとライティングパスの値オブジェクト(RenderPipeline が所有)を受け取り、全天体の
@@ -190,7 +153,6 @@ export class CelestialSystem {
     this.planetLight = planetLight;
     this.ambient = ambient;
     this.atmosphere = atmosphere;
-    scene.add(this.geoLine.line);
     this.orbitGuideLines = new OrbitGuideLines(scene, this);
     this.zeroVelocityLines = new ZeroVelocityLines(scene, this);
     this.lightingAnchor = new THREE.AmbientLight();
@@ -291,8 +253,10 @@ export class CelestialSystem {
     this.zeroVelocityLines.setSettings(settings.zeroVelocity);
   }
 
-  // 公転天体1体につき1本の参照軌道線(右クリックの当たり判定向け)。
-  get referenceOrbitLines(): ReadonlyMap<string, OrbitLine> { return this.referenceLines; }
+  // 公転天体1体につき1本の参照軌道線(右クリックの当たり判定向け)。線を持つ個体だけを列挙する。
+  get referenceOrbitLines(): readonly { readonly id: string; readonly line: OrbitLine }[] {
+    return this.bodies.flatMap((b) => (b.referenceLine === null ? [] : [{ id: b.id, line: b.referenceLine }]));
+  }
 
   // ラグランジュ点まわりの軌道ガイド線(右クリックの当たり判定向け)。
   get orbitGuide(): OrbitGuideLines { return this.orbitGuideLines; }
@@ -361,12 +325,14 @@ export class CelestialSystem {
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(
       displayTime, floatingOrigin, cameraSystem.overviewMode,
-      geostationaryOrbitVisible,
       focusTargetId(cameraSystem.mapCamera.focus), cameraSystem.bodyClassToggles,
       visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
-    this.syncGeoLabels(
-      displayTime, cameraSystem.overviewMode, geostationaryOrbitVisible,
-      cameraSystem, markerManager, celestialBodies);
+    // 地球の静止軌道リングなど、天体固有のマップ付随表示。出すかどうかの判断はここが持つ。
+    for (const body of this.bodies) {
+      body.syncMapOverlay(
+        floatingOrigin, displayTime, cameraSystem, markerManager, celestialBodies,
+        cameraSystem.overviewMode && geostationaryOrbitVisible);
+    }
     this.orbitGuideLines.sync(style, displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.zeroVelocityLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
@@ -416,7 +382,7 @@ export class CelestialSystem {
     let ringed: { readonly body: CelestialEntity; readonly rings: RingSystemDef } | null = null;
     let bestApparent = 0;
     if (graphics.rings) {
-      for (const body of this.referenceBodies) {
+      for (const body of this.bodies) {
         const def = body.def;
         if (!('rings' in def) || def.rings === undefined) continue;
         const apparent = apparentRadius(def.radius, body.motion.stateAt(displayTime).r, fo.r);
@@ -458,7 +424,7 @@ export class CelestialSystem {
   ): readonly AtmosphereCandidate[] {
     const scale = cameraSystem.activeCameraRadialScale;
     const candidates: AtmosphereCandidate[] = [];
-    for (const body of this.referenceBodies) {
+    for (const body of this.bodies) {
       const optics = body.atmosphereOptics;
       if (optics === null) continue;
       const surfaceRadius = body.def.radius;
@@ -485,17 +451,17 @@ export class CelestialSystem {
     return new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
   }
 
-  // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。cameraPos はフェード
-  // 距離を測る基準(カメラの真の ECI 位置)。
+  // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。実体は個体が持ち、
+  // ここは「出すか(表示ポリシー)・濃さ(カメラ距離のフェード)」を決めて個体へ指示する。
+  // cameraPos はフェード距離を測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
-    simTime: number, fo: FloatingOrigin, overviewMode: boolean, geostationaryOrbitVisible: boolean,
+    simTime: number, fo: FloatingOrigin, overviewMode: boolean,
     focusId: string | undefined,
     toggles: BodyClassToggles, sharedVisibilityPolicy: MapVisibilityPolicy | null,
     nearbyIds: readonly string[], camera: THREE.Camera, cameraPos: Vec3,
   ): void {
     if (!overviewMode) {
-      this.geoLine.sync(null, fo, camera);
-      for (const [id] of this.referenceLines) this.removeReferenceLine(id);
+      for (const body of this.bodies) body.removeReferenceLine();
       return;
     }
     const visibilityPolicy = sharedVisibilityPolicy ?? new MapVisibilityPolicy(
@@ -504,97 +470,13 @@ export class CelestialSystem {
       focusId,
       nearbyIds,
     );
-    this.geoLine.sync(
-      geostationaryOrbitVisible ? this.geoElements : null,
-      fo, camera);
-    const earth = this.find('earth');
-    if (geostationaryOrbitVisible && earth !== null) {
-      const earthPos = earth.motion.stateAt(simTime).r;
-      const distToEarth = len(sub(earthPos, cameraPos));
-      // 静止軌道リングは 240,000km で薄れ始め 720,000km で消える。
-      const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 2.4e8) / 4.8e8));
-      this.geoLine.setOpacity(0.55 * geoFade);
-    }
-    for (const body of this.referenceBodies) {
-      if (!visibilityPolicy.body(body.id).orbit) {
-        this.removeReferenceLine(body.id);
+    for (const body of this.bodies) {
+      if (body.motion.kind === 'star' || !visibilityPolicy.body(body.id).orbit) {
+        body.removeReferenceLine();
         continue;
       }
-      const line = this.ensureReferenceLine(body);
-      const el = this.orbitElementsFor(body, simTime);
-      line.sync(el, fo, camera);
       const dist = len(sub(body.motion.stateAt(simTime).r, cameraPos));
-      line.setOpacity(referenceLineOpacityAt(body, dist));
-    }
-  }
-
-  // 静止軌道に沿った半透明の小さなテキスト文字ラベルを描画する。
-  private syncGeoLabels(
-    displayTime: number,
-    overviewMode: boolean,
-    geostationaryOrbitVisible: boolean,
-    cameraSystem: CameraSystem,
-    markerManager: MarkerManager | null,
-    celestialBodies: readonly CelestialBody[],
-  ): void {
-    const keys = ['geolabel-0', 'geolabel-1', 'geolabel-2', 'geolabel-3'];
-    const earth = this.find('earth');
-    if (!markerManager || !overviewMode || !geostationaryOrbitVisible || !this.geoElements || earth === null) {
-      if (markerManager) {
-        for (const key of keys) markerManager.hide(key);
-      }
-      return;
-    }
-
-    const earthPos = earth.motion.stateAt(displayTime).r;
-    const cameraPos = cameraSystem.activeCameraPos;
-    const distToEarth = len(sub(earthPos, cameraPos));
-    // フェードアウト距離をさらに2倍(240,000km〜720,000km)にし、視認性を維持(0.90 * geoFade)
-    const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 2.4e8) / 4.8e8));
-    const labelOpacity = 0.90 * geoFade;
-
-    if (labelOpacity <= 0.02) {
-      for (const key of keys) markerManager.hide(key);
-      return;
-    }
-
-    const project = cameraSystem.activeCameraProjection;
-    const rGeo = this.geoElements.a;
-    const pHat = this.geoElements.pHat;
-    const qHat = this.geoElements.qHat;
-
-    const numLabels = 1;
-    for (let i = 1; i < 4; i++) markerManager.hide(keys[i]!);
-    for (let i = 0; i < numLabels; i++) {
-      const key = keys[i]!;
-      const theta = Math.PI / 4;
-      const cosT = Math.cos(theta);
-      const sinT = Math.sin(theta);
-
-      const pos = add(earthPos, add(scale(pHat, rGeo * cosT), scale(qHat, rGeo * sinT)));
-
-      const p0 = project(pos);
-      if (!p0.front || isOccluded(cameraPos, pos, celestialBodies)) {
-        markerManager.hide(key);
-        continue;
-      }
-
-      markerManager.set(
-        key,
-        'mk-geolabel',
-        'GEO (35,786km)',
-        p0.x,
-        p0.y,
-        p0.front,
-        '',
-        labelOpacity,
-        undefined,
-        undefined,
-        false,
-        true,
-        C.MARKER_PRIORITY.ORBITAL_NODE,
-        len(sub(pos, cameraPos)),
-      );
+      body.syncReferenceLine(this.scene, simTime, fo, camera, referenceLineOpacityAt(body, dist));
     }
   }
 
@@ -607,44 +489,8 @@ export class CelestialSystem {
     return this.pointFieldView;
   }
 
-  private ensureReferenceLine(body: CelestialEntity): OrbitLine {
-    const existing = this.referenceLines.get(body.id);
-    if (existing) return existing;
-    const color = body.motion.kind === 'satellite'
-      ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
-    const line = new OrbitLine({ color, opacity: REFERENCE_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.reference });
-    this.scene.add(line.line);
-    this.referenceLines.set(body.id, line);
-    return line;
-  }
-
-  private removeReferenceLine(id: string): void {
-    const line = this.referenceLines.get(id);
-    if (!line) return;
-    line.line.removeFromParent();
-    line.dispose();
-    this.referenceLines.delete(id);
-  }
-
-  // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も
-  // ECI 上を動くので、固定 CelestialBody ではなくその時刻の状態を毎回引いて組む。
-  private orbitElementsFor(body: CelestialEntity, simTime: number): OrbitalElements | null {
-    const centerMotion = body.motion.primary;
-    if (centerMotion === null) return null;
-    const centerDef = centerMotion.def;
-    const center: CelestialBody = {
-      id: centerMotion.id, mu: centerDef.mu, radius: centerDef.radius, state: centerMotion.stateAt(simTime),
-      accel: v3(), degree2: null, atmosphere: null, isStar: centerMotion.kind === 'star',
-    };
-    return orbitalElementsOf(body.motion.stateAt(simTime), center);
-  }
-
   // 天体ビュー・星殻・グリッド・点群・参照線・照明を残さず解放する。
   dispose(): void {
-    // 静止軌道参照リングと公転天体ぶんの参照軌道線。
-    this.geoLine.line.removeFromParent();
-    this.geoLine.dispose();
-    for (const id of [...this.referenceLines.keys()]) this.removeReferenceLine(id);
     this.orbitGuideLines.dispose();
     this.zeroVelocityLines.dispose();
     // ライティングモデルを組ませるためだけの光源。
@@ -655,8 +501,11 @@ export class CelestialSystem {
     this.stars.dispose();
     this.celestialGrid.dispose();
     this.scaleGrid.dispose();
-    // 各天体ビューと、マップを一度でも開いていれば生成済みの小天体点群。
-    for (const body of this.bodies) body.dispose();
+    // 各天体ビュー(参照軌道線を含む)と、マップを一度でも開いていれば生成済みの小天体点群。
+    for (const body of this.bodies) {
+      body.removeReferenceLine();
+      body.dispose();
+    }
     this.pointFieldView?.dispose();
   }
 }
