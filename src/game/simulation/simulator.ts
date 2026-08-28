@@ -18,7 +18,7 @@ import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
 import type { GameEntity } from '../game-entity/game-entity';
 import type { CelestialBody } from '../../physics/celestial-body';
-import { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import type { Stage } from '../stages/stage';
 import { EntityContactPhysics } from './entity-contact-physics';
 import { SurfaceContactPhysics } from './surface-contact-physics';
@@ -57,10 +57,10 @@ export class Simulator {
   // このサブステップの天体窓。
   private readonly bodies = new SubstepBodies();
 
-  // entities/ephemeris/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
+  // entities/windows/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
   constructor(
     private readonly entities: EntityManager,
-    private readonly ephemeris: Ephemeris,
+    private readonly windows: CelestialBodyWindows,
     private readonly sections: FrameSections,
     initialSimTime = 0,
   ) {
@@ -117,7 +117,7 @@ export class Simulator {
       this.sections.enter(SECTION.orbit);
       // 天体の窓も、表面へ触れうる相手の絞り込みも、このサブステップで1組だけ組んで全個体で
       // 使い回す。内側で細分する個体の各歩も同じ組で足りる。
-      this.bodies.reset(this.ephemeris, this.simTime, subDt);
+      this.bodies.reset(this.windows, this.simTime, subDt);
       this.lastGravitySourceCount = this.bodies.gravitySourceCount;
       // このサブステップの終端は絶対時刻で1つだけ決め、全個体もこの値へ着地させる
       // (substep)。刻み幅を各自で積ませると、細分した個体の先端時刻が丸め誤差ぶん
@@ -173,7 +173,7 @@ export class Simulator {
 
   // このサブステップで大気を持つ相手として扱う天体。焼失の判定に表面の窓は要らない。
   private atmosphereBodies(): readonly CelestialBody[] {
-    return this.ephemeris.atmosphereCelestialBodiesAt(this.simTime);
+    return this.windows.atmosphereCelestialBodiesAt(this.simTime);
   }
 
   // 生存する全個体を dt だけ進める。個体どうしに依存が無いので、順序は結果を変えない

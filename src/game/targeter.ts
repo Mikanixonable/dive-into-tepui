@@ -14,7 +14,7 @@ import { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { pickNearest } from './pickable/map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
-import type { Ephemeris } from '../physics/ephemeris';
+import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
 import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
@@ -90,14 +90,14 @@ export class Targeter {
 
   // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
   updateEquatorNodes(
-    overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+    overviewMode: boolean, displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
     if (!overviewMode) return;
     const timeLabel = {
       mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
     };
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .updateOnEllipse(displayWindow.displayTime, ephemeris, frameAnchors, timeLabel);
+      .updateOnEllipse(displayWindow.displayTime, celestialSystem.ephemeris, frameAnchors, timeLabel);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
@@ -148,7 +148,7 @@ export class Targeter {
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
-    ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
+    celestialSystem: CelestialSystem, celestialBodies: readonly CelestialBody[],
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
@@ -174,7 +174,7 @@ export class Targeter {
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && overviewMode
-          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, ephemeris, celestialBodies))
+          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, celestialSystem, celestialBodies))
           : 1;
       this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
     }
