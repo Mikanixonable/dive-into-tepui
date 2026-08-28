@@ -2,7 +2,8 @@
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
 import { kinematicState } from '../../physics/kinematic-state';
-import { CelestialRegistry, RingSystemDef, SolarSystemId, bodyDef, primaryOf } from '../../physics/solar-system';
+import { RingSystemDef } from '../../physics/solar-system/celestial-body-def';
+import { SolarSystemId } from '../../physics/solar-system/solar-system';
 import { OrbitalElements } from '../../physics/elements';
 import { AU } from '../../physics/planet-orbit';
 import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
@@ -54,9 +55,9 @@ const REFERENCE_LINE_OPACITY = 0.3;
 
 // 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
 // レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
-function buildGeoElements(registry: CelestialRegistry): OrbitalElements | null {
-  if (!('earth' in registry)) return null;
-  const earth = bodyDef(registry, 'earth');
+function buildGeoElements(ephemeris: Ephemeris): OrbitalElements | null {
+  if (!('earth' in ephemeris.registry)) return null;
+  const earth = ephemeris.motionOf('earth').def;
   const earthCelestialBody: CelestialBody = {
     id: 'earth', mu: earth.mu, radius: earth.radius,
     state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null,
@@ -97,8 +98,8 @@ const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
 // 恒星以外の全公転天体の id(registry の宣言順)。天体が増えれば参照線もここから自動で増える。
-function referenceLineIds(registry: CelestialRegistry): readonly string[] {
-  return Object.keys(registry).filter((id) => bodyDef(registry, id).kind !== 'star');
+function referenceLineIds(ephemeris: Ephemeris): readonly string[] {
+  return Object.keys(ephemeris.registry).filter((id) => ephemeris.motionOf(id).kind !== 'star');
 }
 
 // 一様な環境光の割合。マップビューでは読みやすさのため強く、戦闘ビューでは弱く、どちらも
@@ -158,8 +159,8 @@ export class CelestialSystem {
     this.scene = scene;
     const registry = ephemeris.registry;
     scene.add(this.geoLine.line);
-    this.geoElements = buildGeoElements(registry);
-    this.referenceIds = referenceLineIds(registry);
+    this.geoElements = buildGeoElements(ephemeris);
+    this.referenceIds = referenceLineIds(ephemeris);
 
     // 参照線はマップで表示される天体だけが必要とする。全カタログぶんを起動時に
     // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
@@ -180,7 +181,7 @@ export class CelestialSystem {
     this.bodies = Object.keys(registry).map((id) =>
       id in CELESTIAL_APPEARANCES
         ? CELESTIAL_APPEARANCES[id as SolarSystemId].create(sunOcclusion, sunLight)
-        : fallbackCelestialAppearance(registry, id, sunOcclusion, sunLight));
+        : fallbackCelestialAppearance(ephemeris.motionOf(id), sunOcclusion, sunLight));
     for (const body of this.bodies) body.build(scene);
 
     this.bodies.find((b): b is EarthView => b instanceof EarthView)?.setSpinPhase0(earthSpinPhase0);
@@ -226,11 +227,11 @@ export class CelestialSystem {
     // Game.sync が同じカメラ位置・表示時刻で組んだ policy を渡せるようにする。渡されない
     // 既存経路ではここで一度だけ構築し、参照線にも同じインスタンスを渡す。
     const nearbyIds = cameraSystem.overviewMode && sharedVisibilityPolicy === null
-      ? this.nearbyTracker.membersAt(this.ephemeris.registry, cameraSystem.activeCameraPos, this.ephemeris.celestialBodiesAt(displayTime))
+      ? this.nearbyTracker.membersAt(this.ephemeris, cameraSystem.activeCameraPos, this.ephemeris.celestialBodiesAt(displayTime))
       : [];
     const visibilityPolicy = cameraSystem.overviewMode
       ? sharedVisibilityPolicy ?? new MapVisibilityPolicy(
-        this.ephemeris.registry,
+        this.ephemeris,
         cameraSystem.bodyClassToggles,
         focusTargetId(cameraSystem.mapCamera.focus),
         nearbyIds,
@@ -243,7 +244,7 @@ export class CelestialSystem {
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。
     const starId = this.ephemeris.starId;
-    const star = starId === null ? null : bodyDef(this.ephemeris.registry, starId);
+    const star = starId === null ? null : this.ephemeris.motionOf(starId).def;
     const sunPos = starId === null
       ? this.toThreeNormal(this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
       : floatingOrigin.RtoThreeV3(this.ephemeris.positionOf(starId, displayTime));
@@ -326,8 +327,8 @@ export class CelestialSystem {
     let bestApparent = 0;
     if (graphics.rings) {
       for (const id of this.referenceIds) {
-        const def = bodyDef(this.ephemeris.registry, id);
-        if (def.kind !== 'planet' || def.rings === undefined) continue;
+        const def = this.ephemeris.motionOf(id).def;
+        if (!('rings' in def) || def.rings === undefined) continue;
         const apparent = apparentRadius(def.radius, this.ephemeris.positionOf(id, displayTime), fo.r);
         if (apparent <= bestApparent) continue;
         bestApparent = apparent;
@@ -370,7 +371,7 @@ export class CelestialSystem {
     for (const id of this.referenceIds) {
       const optics = atmosphereOpticsOf(id);
       if (optics === null) continue;
-      const surfaceRadius = bodyDef(this.ephemeris.registry, id).radius;
+      const surfaceRadius = this.ephemeris.motionOf(id).def.radius;
       const center = this.ephemeris.positionOf(id, displayTime);
       candidates.push({
         body: { center: fo.RtoThreeV3(center), surfaceRadius, optics },
@@ -408,7 +409,7 @@ export class CelestialSystem {
       return;
     }
     const visibilityPolicy = sharedVisibilityPolicy ?? new MapVisibilityPolicy(
-      this.ephemeris.registry,
+      this.ephemeris,
       toggles,
       focusId,
       nearbyIds,
@@ -508,7 +509,7 @@ export class CelestialSystem {
   // カメラから天体までの距離 dist に応じた参照軌道線の不透明度。惑星と衛星でフェード距離が
   // 異なる。
   private referenceLineOpacityAt(id: string, dist: number): number {
-    const isSatellite = bodyDef(this.ephemeris.registry, id).kind === 'satellite';
+    const isSatellite = this.ephemeris.motionOf(id).kind === 'satellite';
     const nearDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : PLANET_ORBIT_LINE_FADE_NEAR_DIST;
     const farDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_FAR_DIST : PLANET_ORBIT_LINE_FADE_FAR_DIST;
     const t = Math.min(1, Math.max(0, (dist - nearDist) / (farDist - nearDist)));
@@ -527,7 +528,7 @@ export class CelestialSystem {
   private ensureReferenceLine(id: string): OrbitLine {
     const existing = this.referenceLines.get(id);
     if (existing) return existing;
-    const color = bodyDef(this.ephemeris.registry, id).kind === 'satellite'
+    const color = this.ephemeris.motionOf(id).kind === 'satellite'
       ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
     const line = new OrbitLine({ color, opacity: REFERENCE_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.reference });
     this.scene.add(line.line);
@@ -546,13 +547,13 @@ export class CelestialSystem {
   // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も
   // ECI 上を動くので、固定 CelestialBody ではなくその時刻の状態を毎回引いて組む。
   private orbitElementsFor(id: string, simTime: number): OrbitalElements | null {
-    const registry = this.ephemeris.registry;
-    const centerId = primaryOf(registry, id);
-    if (centerId === null) return null;
-    const centerDef = bodyDef(registry, centerId);
+    const centerMotion = this.ephemeris.motionOf(id).primary;
+    if (centerMotion === null) return null;
+    const centerId = centerMotion.id;
+    const centerDef = centerMotion.def;
     const center: CelestialBody = {
       id: centerId, mu: centerDef.mu, radius: centerDef.radius, state: this.ephemeris.stateOf(centerId, simTime),
-      accel: v3(), degree2: null, atmosphere: null, isStar: centerDef.kind === 'star',
+      accel: v3(), degree2: null, atmosphere: null, isStar: centerMotion.kind === 'star',
     };
     return orbitalElementsOf(this.ephemeris.stateOf(id, simTime), center);
   }

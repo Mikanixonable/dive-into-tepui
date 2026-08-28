@@ -3,7 +3,7 @@
 // 恒星/惑星/衛星の違いはクラスで表し、衛星→惑星・惑星→恒星の関係は構築時の参照で持つ。
 // 評価結果は時刻 t をキーにした固定長リング(TimeRing)でメモ化する。
 // THREE/DOM 非依存。
-import { Atmosphere } from './atmosphere';
+import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp, qRotate } from './attitude';
 import { OriginCenteredEphemeris } from './absolute-ephemeris';
 import { CelestialBody, Degree2Gravity, celestialBodyStateAt } from './celestial-body';
@@ -16,9 +16,10 @@ import {
 import {
   LagrangePoints, collinearClearanceRatio, hasStableTriangularPoints, lagrangePoints,
 } from './lagrange';
-import { planetAngles } from './planet-orbit';
-import { satelliteState } from './satellite-orbit';
-import { CelestialBodyDef, spinRateOf } from './solar-system';
+import { PlanetOrbit, planetAngles } from './planet-orbit';
+import { SatelliteOrbit, satelliteState } from './satellite-orbit';
+import { Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef } from './solar-system/celestial-body-def';
+import { SIDEREAL_DAY } from './solar-system/constants';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { SECONDS_PER_DAY } from './time';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
@@ -27,12 +28,43 @@ import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '.
 // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
 export type BodyOrientation = { readonly axis: Vec3; readonly spinAngle: number };
 
-export type StarDef = Extract<CelestialBodyDef, { readonly kind: 'star' }>;
-export type PlanetDef = Extract<CelestialBodyDef, { readonly kind: 'planet' }>;
-export type SatelliteDef = Extract<CelestialBodyDef, { readonly kind: 'satellite' }>;
+// 天体ごとの平均黄経の初期位相 [rad]。未指定の天体は 0 として扱う。
+export type PhaseOffsets = Partial<Record<string, number>>;
+
+export type StarDef = { readonly id: string; readonly mu: number; readonly radius: number };
+export type PlanetDef = {
+  readonly id: string;
+  readonly mu: number;
+  readonly radius: number;
+  readonly orbit: PlanetOrbit; // 中心は必ず恒星
+  readonly pole?: PoleModel; // 省略時は自転軸を持たない
+  readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
+  readonly shape?: ShapeDef; // 省略時は radius による真球
+  readonly atmosphere?: AtmosphereDef; // 省略時は大気を持たない(抗力・焼失ともに起きない)
+  readonly rings?: RingSystemDef; // 省略時は環を持たない
+  // ラグランジュ点をフォーカス対象のラベルとして出すかどうか(省略時 = 出さない)。全公転天体で
+  // 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
+  readonly lagrangeLabels?: boolean;
+};
+// 中心は必ず惑星で、その関係は SatelliteMotion が持つ参照が表す。
+export type SatelliteDef = Omit<PlanetDef, 'orbit'> & { readonly orbit: SatelliteOrbit };
+export type CelestialBodyDef = StarDef | PlanetDef | SatelliteDef;
 
 // 天体の分類。網羅的な分岐を書きたい呼び出し側のための札で、運動の合成そのものはクラスが担う。
 export type CelestialKind = 'star' | 'planet' | 'satellite';
+
+// pole 定義から自転角速度 [rad/s] を取り出す。自転モデルを持たない天体は null。符号は自転の
+// 向きを表し、逆行自転する天体では負になる。同期回転の衛星は本初子午線が公転の平均黄経を追うので、
+// 自転角速度は公転の平均運動と一致する。歳差は自転の 10⁻⁷ 倍未満なので織り込まない。
+export function spinRateOf(def: CelestialBodyDef): number | null {
+  if (!('pole' in def)) return null;
+  const pole = def.pole;
+  if (pole === undefined) return null;
+  if (pole.kind === 'eciPole') return (2 * Math.PI) / SIDEREAL_DAY;
+  if (pole.kind === 'iau') return (pole.wRateDegPerDay * Math.PI) / 180 / 86400;
+  // カッシーニ状態の同期回転は衛星だけが持つ。
+  return 'kepler' in def.orbit ? def.orbit.kepler.lRate : null;
+}
 
 // 主天体まわりの二体相対加速度 -mu·d/|d|³。d は主天体からの相対位置、mu は両者の mu の和。
 function twoBodyAccel(d: Vec3, mu: number): Vec3 {
@@ -62,6 +94,9 @@ export class EciOrigin {
 export abstract class CelestialMotion {
   abstract readonly def: CelestialBodyDef;
   abstract readonly kind: CelestialKind;
+
+  // 主天体。惑星なら恒星(恒星の無い星系では null)、衛星ならその惑星、恒星自身は null。
+  abstract get primary(): CelestialMotion | null;
 
   // 時刻 pivot の CelestialBody のメモ。
   private readonly bodyCache = new TimeRing<CelestialBody>();
@@ -174,6 +209,9 @@ export class StarMotion extends CelestialMotion {
   ) {
     super(phase, epochOffsetSec, precise, origin);
   }
+
+  // 恒星は階層の根。
+  get primary(): CelestialMotion | null { return null; }
 
   // 恒星は日心座標系の原点そのもの。
   helioStateAt(t: number): KinematicState {

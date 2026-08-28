@@ -1,11 +1,11 @@
 // body-orientation.ts の回帰テスト。自転軸を軌道面法線と取り違えると月の J2 摂動の向きが
 // 6.7° ずれるが、加速度の大きさは変わらないので値の検査だけでは捕まらない。
+import { solarSystemEphemeris } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { cassiniSpinAxis, meridianDirection, orthogonalizedTo } from '../../src/physics/body-orientation';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { bodyDef, MOON_OBLIQUITY, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { MOON_OBLIQUITY } from '../../src/physics/solar-system/constants';
 import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const MOON_ORBIT_INC = (5.145 * Math.PI) / 180;
@@ -17,6 +17,9 @@ const POLE_BODIES: readonly string[] = ['earth', 'moon', 'mercury', 'venus', 'ma
 function angleBetween(a: Vec3, b: Vec3): number {
   return Math.acos(Math.min(1, Math.max(-1, dot(norm(a), norm(b)))));
 }
+
+// id から静的事実を引くための天体暦。
+const DEFS = solarSystemEphemeris();
 
 export function register(): void {
   test('body-orientation: cassiniSpinAxis tilts the pole by the obliquity, away from the orbit normal', () => {
@@ -50,7 +53,7 @@ export function register(): void {
   });
 
   test('ephemeris: the moon keeps a 1.543deg equatorial tilt to the ecliptic across a node period', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.7 });
+    const ephemeris = solarSystemEphemeris({ moon: 0.7 });
     const nodePeriod = 18.612958 * 365.25 * 86400;
     for (let i = 0; i <= 12; i++) {
       const t = (i / 12) * nodePeriod;
@@ -62,7 +65,7 @@ export function register(): void {
 
   test('ephemeris: the moon spin axis sits 6.688deg from its own orbit normal, opposite the ecliptic pole', () => {
     // 自転軸を軌道面法線で代用していれば、この離角は 0 になる。
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.2 });
+    const ephemeris = solarSystemEphemeris({ moon: 0.2 });
     for (const t of [0, 5e7, 2e8]) {
       const moon = ephemeris.celestialBodiesAt(t).find((b) => b.id === 'moon')!;
       const normal = ephemeris.orbitNormalAt('moon', t);
@@ -74,7 +77,7 @@ export function register(): void {
   test('ephemeris: the moon long axis follows the mean longitude, not the instantaneous earth direction', () => {
     // 同期回転は一様なので本初子午線は平均黄経を追う。真方向で代用すると中心差ぶん
     // (離心率 0.0549 に対して最大 6.3°)ずれ、C22 の位相が狂う。
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 });
+    const ephemeris = solarSystemEphemeris({ moon: 0 });
     let maxSep = 0;
     for (let i = 0; i <= 40; i++) {
       const t = (i / 40) * 27.321661 * 86400;
@@ -111,7 +114,7 @@ export function register(): void {
   });
 
   test('ephemeris: every registered pole is a unit vector', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {});
+    const ephemeris = solarSystemEphemeris({});
     for (const id of POLE_BODIES) {
       const orientation = ephemeris.poleAt(id, 3.2e7);
       assert.ok(orientation !== null, `${id} should have a pole`);
@@ -122,10 +125,10 @@ export function register(): void {
   test('ephemeris: the IAU poles reproduce the published axial tilts', () => {
     // 赤道傾斜角は自転(角速度)方向と軌道面法線の離角。自転位相 W の変化率が負の天体は
     // 角速度が pole の逆を向くので、天王星は 82.2° ではなく 97.8° になる。
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {});
+    const ephemeris = solarSystemEphemeris({});
     for (const [id, expected] of [['saturn', 26.73], ['uranus', 97.77], ['mars', 23.92]] as const) {
       const { axis } = ephemeris.poleAt(id, 0)!;
-      const pole = (bodyDef(SOLAR_SYSTEM, id) as { pole?: { kind: string; wRateDegPerDay?: number } }).pole;
+      const pole = (DEFS.motionOf(id).def as { pole?: { kind: string; wRateDegPerDay?: number } }).pole;
       const spinDir = pole?.kind === 'iau' && (pole.wRateDegPerDay ?? 0) < 0 ? scale(axis, -1) : axis;
       const tilt = angleBetween(spinDir, ephemeris.orbitNormalAt(id, 0)) * R2D;
       assert.ok(Math.abs(tilt - expected) < 0.2, `${id} axial tilt: ${tilt} deg (expected ${expected})`);
@@ -136,7 +139,7 @@ export function register(): void {
     // 環の面は赤道面なので、その法線は自転軸そのもの。黄道極からの離角は土星 28.05°
     // (IAU の α0=40.589°/δ0=83.537° から出る値。軌道面法線基準の赤道傾斜角 26.73° とは別)、
     // 天王星は横倒しで 82.28°(面は向きを持たないので、逆行自転の 97.72° と同じ傾き)。
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {});
+    const ephemeris = solarSystemEphemeris({});
     for (const [id, expected] of [['saturn', 28.05], ['uranus', 82.28]] as const) {
       const tilt = angleBetween(ephemeris.poleAt(id, 0)!.axis, ECL_POLE_ECI) * R2D;
       assert.ok(Math.abs(tilt - expected) < 0.2, `${id} ring-plane tilt: ${tilt} deg (expected ${expected})`);
@@ -144,7 +147,7 @@ export function register(): void {
   });
 
   test('ephemeris: the moon pole agrees with the cassini axis carried by its gravity field', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.4 });
+    const ephemeris = solarSystemEphemeris({ moon: 0.4 });
     for (const t of [0, 5e6, 2e8]) {
       const gravityPole = ephemeris.celestialBodiesAt(t).find((b) => b.id === 'moon')!.degree2!.pole;
       assert.ok(len(sub(ephemeris.poleAt('moon', t)!.axis, gravityPole)) < 1e-12, `moon pole disagreement at t=${t}`);
@@ -154,7 +157,7 @@ export function register(): void {
   test('ephemeris: the moon prime meridian keeps facing the earth', () => {
     // 潮汐固定。秤動(中心差 6.3° + 出差ほかの周期摂動 + 面外成分)のぶんだけ離れる。上界が
     // 閉じた形にならないので実測値を緩く固定する — 固定が壊れれば1公転で 180° まで開く。
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.3 });
+    const ephemeris = solarSystemEphemeris({ moon: 0.3 });
     let maxSep = 0;
     for (let i = 0; i <= 40; i++) {
       const t = (i / 40) * 27.321661 * 86400;

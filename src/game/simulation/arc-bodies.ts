@@ -3,7 +3,7 @@
 // 条件を見る。成員でない候補は「最短でもこの時刻までは効き得ない」期限を持ち、その時刻が
 // 来たときだけ解決して入る条件を見る。
 import type { CelestialBody } from '../../physics/celestial-body';
-import type { CelestialBodyDef } from '../../physics/solar-system';
+import type { CelestialBodyDef } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../math/vec3';
 import * as C from '../const';

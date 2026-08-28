@@ -2,7 +2,6 @@
 // 無次元形状を、その瞬間の実際の天体位置・公転面から組んだ回転座標系へ載せて返す。
 // リサジュー軌道だけは連続な族として焼き込まないので、Richardson の解析近似から直に組む。
 import { Ephemeris } from './ephemeris';
-import { primaryOf } from './solar-system';
 import { Vec3Tuple } from './cr3bp';
 import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
 import {
@@ -70,7 +69,7 @@ export function rotatingFrame(t: number, ephemeris: Ephemeris, system: CatalogSy
   const [primary, secondary] = SYSTEM_BODIES[system];
   if (ephemeris.registry[secondary] === undefined) return null;
   if (ephemeris.registry[primary] === undefined) return null;
-  if (primaryOf(ephemeris.registry, secondary) === null) return null;
+  if (ephemeris.motionOf(secondary).primary === null) return null;
 
   const primaryPos = ephemeris.positionOf(primary, t);
   const secondaryPos = ephemeris.positionOf(secondary, t);
@@ -204,7 +203,7 @@ export function lissajousLoop(
 ): GuideLoop | null {
   const secondary = SYSTEM_BODIES[system][1];
   if (ephemeris.registry[secondary] === undefined) return null;
-  if (primaryOf(ephemeris.registry, secondary) === null) return null;
+  if (ephemeris.motionOf(secondary).primary === null) return null;
   // 振幅に依らない係数は1度だけ求め、位相だけを u から動かす。
   const frame: CollinearFrame = collinearFrame(secondary, point, t, ephemeris);
   const coeffs = richardsonCoefficients(frame);

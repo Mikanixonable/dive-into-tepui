@@ -12,7 +12,7 @@ import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../src/
 import { keplerPeriod } from '../../src/physics/elements';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { add, cross, dot, len, norm, sub, v3, Vec3 } from '../../src/math/vec3';
-import { MU_MOON, R_MOON } from '../../src/physics/solar-system';
+import { MU_MOON, R_MOON } from '../../src/physics/solar-system/constants';
 import {
   MU_EARTH, R_EARTH,
   ARC_MAX_STEPS,

@@ -1,6 +1,7 @@
 // 焼き込んだ周期軌道カタログの回帰テスト。カタログは JPL の初期条件を種に、その系の質量比で
 // 1周期積分して作られる。ここで確かめるのは「焼き込まれた形が本当に CR3BP の周期軌道か」と
 // 「実行時 API がそれを回転基底へ正しく載せるか」の2点で、値そのものは JPL 側が正本。
+import { solarSystemEphemeris } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
@@ -8,8 +9,6 @@ import {
   decodeCatalogPoints,
 } from '../../src/physics/orbit-catalog';
 import { catalogLoop, guideSecondary, rotatingFrame } from '../../src/physics/orbit-guide';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 import { len, sub } from '../../src/math/vec3';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -21,7 +20,7 @@ const CATALOG = JSON.parse(
 ) as OrbitCatalog;
 
 export function register(): void {
-  const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET);
+  const ephemeris = solarSystemEphemeris();
   const t = 1e6;
   const systemIds = Object.keys(CATALOG.systems) as CatalogSystemId[];
 

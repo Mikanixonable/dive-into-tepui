@@ -1,10 +1,10 @@
 // マップ表示の可視性規則(body-visibility.ts)と、ラグランジュ点が力学的に意味を持つかの
 // 判定(lagrange.ts + Ephemeris)の回帰テスト。どちらも DOM を持たない純粋な規則なので、
 // 「どう見えるか」ではなく「何が見えるべきか」だけをここで固定する。
+import { solarSystemEphemeris } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { SOLAR_SYSTEM, bodyDef, primaryOf } from '../../src/physics/solar-system';
 import {
   TRIANGULAR_STABILITY_MASS_RATIO, collinearClearanceRatio, hasStableTriangularPoints,
 } from '../../src/physics/lagrange';
@@ -17,12 +17,15 @@ import { v3, addScaled } from '../../src/math/vec3';
 
 const MIN_CLEARANCE = 10;
 
+// 現実の太陽系を組んだ天体暦。可視性の規則も静的事実もここから引く。
+const EPH = solarSystemEphemeris();
+
 function visibleBodyIds(
-  registry: any, focusId: any, toggles: BodyClassToggles, nearbyIds: Iterable<any> = [],
+  ephemeris: Ephemeris, focusId: any, toggles: BodyClassToggles, nearbyIds: Iterable<any> = [],
 ): ReadonlySet<string> {
-  const policy = new MapVisibilityPolicy(registry, toggles, focusId, nearbyIds);
+  const policy = new MapVisibilityPolicy(ephemeris, toggles, focusId, nearbyIds);
   const set = new Set<string>();
-  for (const id of Object.keys(registry)) {
+  for (const id of Object.keys(ephemeris.registry)) {
     const p = policy.body(id as any);
     if (p.icon || p.label) set.add(id);
   }
@@ -38,9 +41,8 @@ const SATELLITES_OFF: BodyClassToggles = {
 
 // 登録天体の主天体に対する質量比。
 function massRatio(id: string): number {
-  const primary = primaryOf(SOLAR_SYSTEM, id)!;
-  const def = bodyDef(SOLAR_SYSTEM, id);
-  return def.mu / (bodyDef(SOLAR_SYSTEM, primary).mu + def.mu);
+  const motion = EPH.motionOf(id);
+  return motion.def.mu / (motion.primary!.def.mu + motion.def.mu);
 }
 
 export function register(): void {
@@ -62,8 +64,8 @@ export function register(): void {
 
   test('lagrange: 共線点の余裕は現行レジストリのしきい値の内外を再現する', () => {
     const clearance = (id: string): number => {
-      const def = bodyDef(SOLAR_SYSTEM, id);
-      const orbit = def.kind === 'planet' ? def.orbit : (def as { orbit: { kepler: { a: number } } }).orbit.kepler;
+      const def = EPH.motionOf(id).def as { radius: number; orbit: { a?: number; kepler?: { a: number } } };
+      const orbit = def.orbit.kepler ?? (def.orbit as { a: number });
       return collinearClearanceRatio(massRatio(id), orbit.a, def.radius);
     };
     // しきい値の近くにある系。ここが動くと判定が変わるので明示的に固定する。
@@ -74,7 +76,7 @@ export function register(): void {
   });
 
   test('lagrange: Ephemeris はしきい値の内外で共線点の可否を答える', () => {
-    const e = new Ephemeris();
+    const e = solarSystemEphemeris();
     assert.ok(e.hasUsableCollinearPoints('moon', MIN_CLEARANCE));
     assert.ok(e.hasUsableCollinearPoints('titan', MIN_CLEARANCE));
     assert.ok(!e.hasUsableCollinearPoints('phobos', MIN_CLEARANCE));
@@ -85,7 +87,7 @@ export function register(): void {
   });
 
   test('visibility: 既定では恒星・惑星・準惑星・小天体・衛星が見える', () => {
-    const visible = visibleBodyIds(SOLAR_SYSTEM, 'earth', DEFAULT_BODY_CLASS_TOGGLES);
+    const visible = visibleBodyIds(EPH, 'earth', DEFAULT_BODY_CLASS_TOGGLES);
     for (const id of ['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']) {
       assert.ok(visible.has(id), `${id} は常に見えるべき`);
     }
@@ -95,14 +97,14 @@ export function register(): void {
     }
     for (const id of ['ceres', 'pluto']) assert.ok(visible.has(id), `${id} は既定で見えるべき`);
     // 衛星クラスを畳めば、フォーカス系の外の衛星は隠れる。
-    const noSatellites = visibleBodyIds(SOLAR_SYSTEM, 'earth', SATELLITES_OFF);
+    const noSatellites = visibleBodyIds(EPH, 'earth', SATELLITES_OFF);
     for (const id of ['io', 'titan', 'triton']) {
       assert.ok(!noSatellites.has(id), `${id} は衛星トグル OFF では見えないべき`);
     }
   });
 
   test('visibility policy: entity の category/icon/label/orbit が同じトグルから決まる', () => {
-    const hidden = new MapVisibilityPolicy(SOLAR_SYSTEM, {
+    const hidden = new MapVisibilityPolicy(EPH, {
       ...DEFAULT_BODY_CLASS_TOGGLES,
       shipVisible: false,
       ammoName: false,
@@ -141,7 +143,7 @@ export function register(): void {
   });
 
   test('visibility policy: 操作対象の自機はカテゴリを閉じても位置を失わない', () => {
-    const policy = new MapVisibilityPolicy(SOLAR_SYSTEM, {
+    const policy = new MapVisibilityPolicy(EPH, {
       ...DEFAULT_BODY_CLASS_TOGGLES,
       playerVisible: false,
       playerName: false,
@@ -155,7 +157,7 @@ export function register(): void {
   });
 
   test('visibility: フォーカス中の天体の子はトグル無しで見える', () => {
-    const visible = visibleBodyIds(SOLAR_SYSTEM, 'jupiter', SATELLITES_OFF);
+    const visible = visibleBodyIds(EPH, 'jupiter', SATELLITES_OFF);
     for (const id of ['io', 'europa', 'ganymede', 'callisto']) {
       assert.ok(visible.has(id), `木星にフォーカスすれば ${id} が見えるべき`);
     }
@@ -165,7 +167,7 @@ export function register(): void {
   });
 
   test('visibility: フォーカス中の天体の親と兄弟も見える', () => {
-    const visible = visibleBodyIds(SOLAR_SYSTEM, 'io', SATELLITES_OFF);
+    const visible = visibleBodyIds(EPH, 'io', SATELLITES_OFF);
     assert.ok(visible.has('jupiter'), '親');
     assert.ok(visible.has('europa'), '兄弟');
     assert.ok(visible.has('io'), '自分自身');
@@ -173,7 +175,7 @@ export function register(): void {
   });
 
   test('visibility: クラストグルを立てるとそのクラスが全数見える', () => {
-    const visible = visibleBodyIds(SOLAR_SYSTEM, 'earth', { ...SATELLITES_OFF, satelliteName: true });
+    const visible = visibleBodyIds(EPH, 'earth', { ...SATELLITES_OFF, satelliteName: true });
     for (const id of ['moon', 'io', 'titan', 'triton', 'phobos']) {
       assert.ok(visible.has(id), `${id} が見えるべき`);
     }
@@ -184,7 +186,7 @@ export function register(): void {
   test('visibility: 親子の深さは主星を 0 として数えられる', () => {
     const depth = (id: string): number => {
       let d = 0;
-      for (let cur = primaryOf(SOLAR_SYSTEM, id); cur !== null; cur = primaryOf(SOLAR_SYSTEM, cur)) d++;
+      for (let cur = EPH.motionOf(id).primary; cur !== null; cur = cur.primary) d++;
       return d;
     };
     assert.equal(depth('sun'), 0);
@@ -197,40 +199,40 @@ export function register(): void {
     const jupiterMoons = ['metis', 'adrastea', 'amalthea', 'thebe', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope'];
     const saturnMoons = ['pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'hyperion', 'iapetus', 'phoebe'];
 
-    const atEarth = visibleBodyIds(SOLAR_SYSTEM, 'earth', SATELLITES_OFF);
+    const atEarth = visibleBodyIds(EPH, 'earth', SATELLITES_OFF);
     for (const id of [...jupiterMoons, ...saturnMoons, 'nereid']) {
       assert.ok(!atEarth.has(id), `${id} が地球にいる間から見えている`);
     }
 
-    const atJupiter = visibleBodyIds(SOLAR_SYSTEM, 'jupiter', SATELLITES_OFF);
+    const atJupiter = visibleBodyIds(EPH, 'jupiter', SATELLITES_OFF);
     for (const id of jupiterMoons) assert.ok(atJupiter.has(id), `${id} が木星にフォーカスしても見えない`);
 
-    const atSaturn = visibleBodyIds(SOLAR_SYSTEM, 'saturn', SATELLITES_OFF);
+    const atSaturn = visibleBodyIds(EPH, 'saturn', SATELLITES_OFF);
     for (const id of saturnMoons) assert.ok(atSaturn.has(id), `${id} が土星にフォーカスしても見えない`);
 
-    assert.ok(visibleBodyIds(SOLAR_SYSTEM, 'neptune', SATELLITES_OFF).has('nereid'), 'ネレイド');
+    assert.ok(visibleBodyIds(EPH, 'neptune', SATELLITES_OFF).has('nereid'), 'ネレイド');
   });
 
   test('visibility: 未登録の id にフォーカスしても恒星・惑星は見え続ける', () => {
-    const visible = visibleBodyIds(SOLAR_SYSTEM, 'asteroid-1', DEFAULT_BODY_CLASS_TOGGLES);
+    const visible = visibleBodyIds(EPH, 'asteroid-1', DEFAULT_BODY_CLASS_TOGGLES);
     assert.ok(visible.has('earth'));
     assert.ok(visible.has('sun'));
   });
 
   test('visibility: focusId が undefined でも恒星・惑星とトグルで足したクラスは見える', () => {
-    const visible = visibleBodyIds(SOLAR_SYSTEM, undefined, { ...SATELLITES_OFF, satelliteName: true });
+    const visible = visibleBodyIds(EPH, undefined, { ...SATELLITES_OFF, satelliteName: true });
     assert.ok(visible.has('earth'));
     assert.ok(visible.has('sun'));
     assert.ok(visible.has('moon'), 'トグルで足したクラスは無条件で見える');
     // フォーカス由来の親子・兄弟の追加が無いことを、衛星トグルを畳んだ状態で確認する。
-    const visibleNoSatellites = visibleBodyIds(SOLAR_SYSTEM, undefined, SATELLITES_OFF);
+    const visibleNoSatellites = visibleBodyIds(EPH, undefined, SATELLITES_OFF);
     assert.ok(!visibleNoSatellites.has('moon'), 'フォーカスが無ければ親子関係による追加も無い');
   });
 
   test('visibility: フォーカス解除後もカメラ近傍の惑星系の衛星は見える', () => {
-    const e = new Ephemeris();
-    const nearby = systemMembersAt(SOLAR_SYSTEM, v3(), e.celestialBodiesAt(0));
-    const visible = visibleBodyIds(SOLAR_SYSTEM, undefined, SATELLITES_OFF, nearby);
+    const e = solarSystemEphemeris();
+    const nearby = systemMembersAt(EPH, v3(), e.celestialBodiesAt(0));
+    const visible = visibleBodyIds(EPH, undefined, SATELLITES_OFF, nearby);
     assert.ok(nearby.includes('earth'));
     assert.ok(nearby.includes('moon'));
     assert.ok(visible.has('moon'), '地球近傍カメラではフォーカス解除後も月を残す');
@@ -240,64 +242,64 @@ export function register(): void {
   });
 
   test('visibility: フォーカス天体の系に属する位置だけを player 表示対象にする', () => {
-    const e = new Ephemeris();
+    const e = solarSystemEphemeris();
     const celestialBodies = e.celestialBodiesAt(0);
     const moon = e.positionOf('moon', 0);
     const saturn = e.positionOf('saturn', 0);
     // 地球周回と、その子である月周回は地球フォーカスで表示する。一方で土星近傍は除く。
-    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', v3(7e6, 0, 0), celestialBodies));
-    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', addScaled(moon, v3(1, 0, 0), 1e6), celestialBodies));
-    assert.ok(!isPositionInFocusedSystem(SOLAR_SYSTEM, 'earth', addScaled(saturn, v3(1, 0, 0), 1e8), celestialBodies));
+    assert.ok(isPositionInFocusedSystem(EPH, 'earth', v3(7e6, 0, 0), celestialBodies));
+    assert.ok(isPositionInFocusedSystem(EPH, 'earth', addScaled(moon, v3(1, 0, 0), 1e6), celestialBodies));
+    assert.ok(!isPositionInFocusedSystem(EPH, 'earth', addScaled(saturn, v3(1, 0, 0), 1e8), celestialBodies));
     // 天体以外のフォーカスは系を特定できないため、表示を絞らない。
-    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'player-1', addScaled(saturn, v3(1, 0, 0), 1e8), celestialBodies));
+    assert.ok(isPositionInFocusedSystem(EPH, 'player-1', addScaled(saturn, v3(1, 0, 0), 1e8), celestialBodies));
   });
 
   test('visibility: 衛星フォーカスでも同じ惑星系の player は表示対象にする', () => {
-    const e = new Ephemeris();
+    const e = solarSystemEphemeris();
     const celestialBodies = e.celestialBodiesAt(0);
     const saturn = e.positionOf('saturn', 0);
     const titan = e.positionOf('titan', 0);
     const jupiter = e.positionOf('jupiter', 0);
 
     // タイタンをフォーカスしても、親惑星の土星周回にいる player は消さない。
-    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(saturn, v3(1, 0, 0), 1e8), celestialBodies));
+    assert.ok(isPositionInFocusedSystem(EPH, 'titan', addScaled(saturn, v3(1, 0, 0), 1e8), celestialBodies));
     // タイタン自身の周回も同じ土星系として扱う。
-    assert.ok(isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(titan, v3(1, 0, 0), 1e6), celestialBodies));
+    assert.ok(isPositionInFocusedSystem(EPH, 'titan', addScaled(titan, v3(1, 0, 0), 1e6), celestialBodies));
     // 木星系の player は土星系の衛星フォーカスでは表示しない。
-    assert.ok(!isPositionInFocusedSystem(SOLAR_SYSTEM, 'titan', addScaled(jupiter, v3(1, 0, 0), 1e8), celestialBodies));
+    assert.ok(!isPositionInFocusedSystem(EPH, 'titan', addScaled(jupiter, v3(1, 0, 0), 1e8), celestialBodies));
   });
 
   test('systemChainAt: 月の近くでは月→地球→太陽の系列になる', () => {
-    const e = new Ephemeris();
+    const e = solarSystemEphemeris();
     const celestialBodies = e.celestialBodiesAt(0);
     const moon = e.positionOf('moon', 0);
     // 月の中心そのものは attractorAccel の直接項が距離ゼロで消えるため、月面付近の
     // 1点(中心から1000km)を使う。
     const nearMoon = addScaled(moon, v3(1, 0, 0), 1e6);
-    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, nearMoon, celestialBodies), ['moon', 'earth', 'sun']);
+    assert.deepEqual(systemChainAt(EPH, nearMoon, celestialBodies), ['moon', 'earth', 'sun']);
   });
 
   test('systemChainAt: 地球の近くでは地球→太陽の系列になる', () => {
-    const e = new Ephemeris();
+    const e = solarSystemEphemeris();
     const celestialBodies = e.celestialBodiesAt(0);
-    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, v3(), celestialBodies), ['earth', 'sun']);
+    assert.deepEqual(systemChainAt(EPH, v3(), celestialBodies), ['earth', 'sun']);
   });
 
   test('systemChainAt: 太陽の近くでは太陽単独になる', () => {
-    const e = new Ephemeris();
+    const e = solarSystemEphemeris();
     const celestialBodies = e.celestialBodiesAt(0);
     const sun = e.positionOf('sun', 0);
-    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, sun, celestialBodies), ['sun']);
+    assert.deepEqual(systemChainAt(EPH, sun, celestialBodies), ['sun']);
   });
 
   test('systemChainAt: celestialBodies が空なら空配列', () => {
-    assert.deepEqual(systemChainAt(SOLAR_SYSTEM, v3(), []), []);
+    assert.deepEqual(systemChainAt(EPH, v3(), []), []);
   });
 
   test('systemMembersAt: 地球近傍では月が含まれ、太陽の子(恒星の子)は含まれない', () => {
-    const e = new Ephemeris();
+    const e = solarSystemEphemeris();
     const celestialBodies = e.celestialBodiesAt(0);
-    const members = systemMembersAt(SOLAR_SYSTEM, v3(), celestialBodies);
+    const members = systemMembersAt(EPH, v3(), celestialBodies);
     assert.ok(members.includes('earth'));
     assert.ok(members.includes('moon'), '地球の子である月が足されるべき');
     assert.ok(members.includes('sun'));
@@ -307,11 +309,11 @@ export function register(): void {
   });
 
   test('systemMembersAt: 月近傍では地球と月が含まれ、月自身は重複しない', () => {
-    const e = new Ephemeris();
+    const e = solarSystemEphemeris();
     const celestialBodies = e.celestialBodiesAt(0);
     const moon = e.positionOf('moon', 0);
     const nearMoon = addScaled(moon, v3(1, 0, 0), 1e6);
-    const members = systemMembersAt(SOLAR_SYSTEM, nearMoon, celestialBodies);
+    const members = systemMembersAt(EPH, nearMoon, celestialBodies);
     assert.ok(members.includes('moon'));
     assert.ok(members.includes('earth'), '月の親である地球が足されるべき');
     assert.ok(members.includes('sun'));

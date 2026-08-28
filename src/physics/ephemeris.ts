@@ -1,19 +1,16 @@
-// 天体暦: レジストリから天体ごとの CelestialMotion を組み、任意時刻の ECI 位置・速度・
+// 天体暦: 組み立て済みの天体ごとの CelestialMotion を束ね、任意時刻の ECI 位置・速度・
 // 重力源配列・回転基準系・ラグランジュ点を天体 id 引きで答えるサンプラ。系レベルの計算
 // (座標系と天体一覧の窓)は ReferenceFrames / CelestialBodyWindows へ委譲する。
-import { AbsoluteEphemeris, OriginCenteredEphemeris } from './absolute-ephemeris';
 import { CelestialBody } from './celestial-body';
 import { CelestialBodyWindows } from './celestial-body-windows';
 import {
-  BodyOrientation, CelestialMotion, EciOrigin, OrbitingMotion, PlanetMotion, SatelliteMotion, StarMotion,
+  BodyOrientation, CelestialBodyDef, CelestialMotion, OrbitingMotion, PhaseOffsets,
 } from './celestial-motion';
 import { FrameAnchorSource, FrameRotationSource, ReferenceFrame, FrameTransform } from './frame';
 import { FrameRotation } from './kepler-orbit';
 import { LagrangePoints } from './lagrange';
 import { ReferenceFrames } from './reference-frames';
-import { CelestialBodyDef, CelestialRegistry, SOLAR_SYSTEM, starOf } from './solar-system';
 import { KinematicState } from './kinematic-state';
-import { SECONDS_PER_DAY } from './time';
 import { TimeCacheStats } from './time-ring';
 import { Vec3, norm, sub, v3 } from '../math/vec3';
 
@@ -27,62 +24,29 @@ import { Vec3, norm, sub, v3 } from '../math/vec3';
 export const EPOCH_T_OFFSET = 6972197.1872752225;
 
 export class Ephemeris {
-  // 天体ごとの平均黄経の初期オフセット。構築時に決まり、以後変わらない。
-  private readonly phaseOffsets: Partial<Record<string, number>>;
-
-  // registry の全天体の運動(宣言順)。celestialBodiesAt が返す配列の順序でもある。
-  private readonly motions: readonly CelestialMotion[];
   private readonly motionsById: Readonly<Partial<Record<string, CelestialMotion>>>;
 
   private readonly referenceFrames: ReferenceFrames;
   private readonly windows: CelestialBodyWindows;
 
-  // registry の主星。恒星を持たないレジストリでは null(輻射源・影の計算がそもそも無意味になる)。
+  // 主星。恒星を持たない星系では null(輻射源・影の計算がそもそも無意味になる)。
   readonly starId: string | null;
 
-  // registry/originId/epochOffsetSec を省略すると現実の太陽系・地球原点・既定エポックで動く。
-  // absoluteSource を渡すと、その有効期間だけ高精度暦パック経路を通る。
+  // 天体 id から静的事実を引く表。
+  readonly registry: Readonly<Partial<Record<string, CelestialBodyDef>>>;
+
+  // motions は組み立て済みの全天体の運動(宣言順)。celestialBodiesAt が返す配列の順序でもある。
+  // originId はその中の ECI 中心天体、phaseOffsets は motions を組むのに使った初期位相。
   constructor(
-    readonly registry: CelestialRegistry = SOLAR_SYSTEM,
-    readonly originId: string = 'earth',
-    epochOffsetSec: number = EPOCH_T_OFFSET,
-    phaseOffsets: Partial<Record<string, number>> = {},
-    absoluteSource?: AbsoluteEphemeris,
-    epochJdTdb = 2451545 + epochOffsetSec / SECONDS_PER_DAY,
+    private readonly motions: readonly CelestialMotion[],
+    readonly originId: string,
+    private readonly phaseOffsets: PhaseOffsets = {},
   ) {
-    this.phaseOffsets = phaseOffsets;
-    this.starId = starOf(registry);
-    const precise = absoluteSource === undefined
-      ? null
-      : new OriginCenteredEphemeris(absoluteSource, originId, epochJdTdb);
-    const origin = new EciOrigin();
-
-    // 恒星→惑星→衛星の順に作る。衛星は親の惑星の参照を要求し、自分を親の重心補正へ積む。
-    const byId: Partial<Record<string, CelestialMotion>> = {};
-    let star: StarMotion | null = null;
-    for (const [id, def] of Object.entries(registry)) {
-      if (def.kind !== 'star') continue;
-      star = new StarMotion(def, this.phaseOf(id), epochOffsetSec, precise, origin);
-      byId[id] = star;
-    }
-    for (const [id, def] of Object.entries(registry)) {
-      if (def.kind !== 'planet') continue;
-      byId[id] = new PlanetMotion(def, star, this.phaseOf(id), epochOffsetSec, precise, origin);
-    }
-    for (const [id, def] of Object.entries(registry)) {
-      if (def.kind !== 'satellite') continue;
-      const planet = byId[def.planet];
-      if (!(planet instanceof PlanetMotion)) throw new Error(`Ephemeris: 衛星 ${id} の惑星 ${def.planet} が無い`);
-      byId[id] = new SatelliteMotion(def, planet, this.phaseOf(id), epochOffsetSec, precise, origin);
-    }
-    this.motionsById = byId;
-
-    // 木が揃ってから ECI の中心を結ぶ。中心天体自身も自分を参照するので、この順序は崩せない。
-    this.motions = Object.keys(registry).map((id) => this.motionOf(id));
-    origin.set(this.motionOf(originId));
-
-    this.referenceFrames = new ReferenceFrames(this.motions, this.motionOf(originId));
-    this.windows = new CelestialBodyWindows(this.motions);
+    this.motionsById = Object.fromEntries(motions.map((m) => [m.id, m]));
+    this.registry = Object.fromEntries(motions.map((m) => [m.id, m.def]));
+    this.starId = motions.find((m) => m.kind === 'star')?.id ?? null;
+    this.referenceFrames = new ReferenceFrames(motions, this.motionOf(originId));
+    this.windows = new CelestialBodyWindows(motions);
   }
 
   // celestialBodiesAt の時刻キャッシュのヒット/ミス累計。
@@ -107,10 +71,7 @@ export class Ephemeris {
   }
 
   // 現在の位相オフセットのスナップショット(セーブ用)。
-  getPhaseOffsets(): Partial<Record<string, number>> { return { ...this.phaseOffsets }; }
-
-  // id の平均黄経の初期位相(未指定なら 0)。
-  private phaseOf(id: string): number { return this.phaseOffsets[id] ?? 0; }
+  getPhaseOffsets(): PhaseOffsets { return { ...this.phaseOffsets }; }
 
   // 天体 id の運動。registry に無い id を渡すと例外になる。
   motionOf(id: string): CelestialMotion {

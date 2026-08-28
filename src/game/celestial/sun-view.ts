@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { createSun, Sun } from '../../render/stars';
 import { createOutlineCircle, OutlineCircle } from '../../render/outline-circle';
 import { Ephemeris } from '../../physics/ephemeris';
-import { R_SUN } from '../../physics/solar-system';
+import { R_SUN } from '../../physics/solar-system/constants';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { CelestialView } from './celestial-view';
