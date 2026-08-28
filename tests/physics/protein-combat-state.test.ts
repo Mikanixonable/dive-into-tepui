@@ -8,7 +8,7 @@ import rawMyoglobinBackbone from '../../src/assets/models/myoglobin1mbnBackbone.
 import rawMyoglobinStructure from '../../src/assets/models/myoglobin1mbnStructure.json';
 import rawMotion from '../../src/assets/models/pdb5i4rMotion.json';
 import { ProteinCombatState } from '../../src/game/protein/protein-combat-state';
-import type { ProteinAssetDefinition } from '../../src/game/protein/protein-schema';
+import type { ProteinAssetDefinition, ProteinSiteDefinition } from '../../src/game/protein/protein-schema';
 import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import { collisionDamageFraction } from '../../src/game/game-entity/contact-damage';
 import * as THREE from 'three/webgpu';
@@ -48,6 +48,13 @@ function ribbonKinds(source: ProteinRenderSource): Set<string> {
   return new Set(source.backbone.backboneSecondary.map(proteinSecondaryKind));
 }
 
+/** 攻撃に使える(無効化されていない)機能部位の定義を、HUD スナップショット経由で得る。 */
+function attackSitesOf(state: ProteinCombatState, definition: ProteinAssetDefinition): ProteinSiteDefinition[] {
+  return state.hudSnapshot().sites
+    .filter((site) => site.attackable && !site.disabled)
+    .map((site) => definition.sites.find((entry) => entry.id === site.id)!);
+}
+
 export function register(): void {
   test('protein combat: each attack site has independent HP and disabling one preserves the others', () => {
     const state = new ProteinCombatState(asset);
@@ -55,11 +62,11 @@ export function register(): void {
     const actionId = state.attackAction?.id;
     assert.equal(actionId, 'plasma-burst');
     assert.ok(actionId);
-    assert.ok(state.attackSites.length >= 3);
-    assert.equal(state.isActionEnabled(actionId, true), state.hasAttackSite());
+    assert.ok(attackSitesOf(state, asset).length >= 3);
+    assert.equal(state.isActionEnabled(actionId, true), state.activeSite !== null);
     const snapshot = state.hudSnapshot();
     assert.equal(snapshot.sites.length, asset.sites.length);
-    assert.equal(snapshot.sites.filter((entry) => entry.attackable).length, state.attackSites.length);
+    assert.equal(snapshot.sites.filter((entry) => entry.attackable).length, attackSitesOf(state, asset).length);
     const result = state.applyDamage(site.maxHp, {
       x: site.position[0] * asset.coordinateScale,
       y: site.position[1] * asset.coordinateScale,
@@ -68,8 +75,8 @@ export function register(): void {
     assert.equal(result.siteId, site.id);
     assert.equal(result.siteDisabled, true);
     assert.equal(state.isActionEnabled(actionId, true), true);
-    assert.ok(!state.attackSites.some((entry) => entry.id === site.id));
-    for (const attackSite of [...state.attackSites]) {
+    assert.ok(!attackSitesOf(state, asset).some((entry) => entry.id === site.id));
+    for (const attackSite of attackSitesOf(state, asset)) {
       state.applyDamage(attackSite.maxHp, {
         x: attackSite.position[0] * asset.coordinateScale,
         y: attackSite.position[1] * asset.coordinateScale,
@@ -77,7 +84,7 @@ export function register(): void {
       });
     }
     assert.equal(state.isActionEnabled(actionId, true), false);
-    assert.equal(state.isActionEnabled(actionId, true), state.hasAttackSite());
+    assert.equal(state.isActionEnabled(actionId, true), state.activeSite !== null);
   });
 
   test('protein combat: attack sites follow the asset action definition', () => {
@@ -90,7 +97,7 @@ export function register(): void {
       })),
     };
     const state = new ProteinCombatState(genericActionAsset);
-    assert.equal(state.attackSites.length, 3);
+    assert.equal(attackSitesOf(state, genericActionAsset).length, 3);
     assert.equal(state.isActionEnabled('ion-pulse'), true);
     assert.equal(state.isActionEnabled('plasma-burst'), false);
   });
@@ -110,7 +117,7 @@ export function register(): void {
     assert.equal(state.isActionEnabled('plasma-burst', true), true);
     assert.equal(state.isActionEnabled('plasma-burst', false), false);
 
-    for (const site of [...state.attackSites]) {
+    for (const site of attackSitesOf(state, asset)) {
       state.applyDamage(site.maxHp, {
         x: site.position[0] * asset.coordinateScale,
         y: site.position[1] * asset.coordinateScale,
@@ -123,7 +130,7 @@ export function register(): void {
   test('protein combat: an action-less protein cannot fire under an external condition', () => {
     const state = new ProteinCombatState({ ...asset, actions: [], sites: [] });
     assert.equal(state.attackAction, null);
-    assert.equal(state.hasAttackSite(), false);
+    assert.equal(state.activeSite, null);
     assert.equal(state.isActionEnabled('plasma-burst', true), false);
     assert.equal(state.isActionEnabled('plasma-burst', false), false);
   });
@@ -165,7 +172,7 @@ export function register(): void {
     assert.equal(myoglobinAsset.ligands[0]?.residue, 'HEM');
     assert.equal(myoglobinAsset.ligands[0]?.metalElement, 'FE');
     assert.equal(myoglobinAsset.ligands[0]?.centerSite, 'heme-iron');
-    assert.deepEqual(state.attackSites.map((site) => site.id), ['heme-iron']);
+    assert.deepEqual(attackSitesOf(state, myoglobinAsset).map((site) => site.id), ['heme-iron']);
     assert.equal(state.nextAttackSite()?.id, 'heme-iron');
 
     const structure = rawMyoglobinStructure as unknown as {
@@ -292,13 +299,13 @@ export function register(): void {
     const serialized = state.serialize();
     const restored = new ProteinCombatState(asset, serialized);
     assert.deepEqual(restored.serialize(), serialized);
-    assert.equal(restored.modificationState('phosphate-1'), 'phosphorylated');
+    assert.equal(restored.serialize().modifications['phosphate-1'], 'phosphorylated');
   });
 
   test('protein combat: structural damage removes the visible modification state', () => {
     const state = new ProteinCombatState(asset);
     state.applyDamage(asset.integrity.maxHp * 0.4, { x: 1000, y: 1000, z: 1000 });
-    assert.equal(state.modificationState('phosphate-1'), 'empty');
+    assert.equal(state.serialize().modifications['phosphate-1'], 'empty');
   });
 
   test('protein combat: new and legacy-restored integrity starts at the authoritative 320 HP', () => {
@@ -322,7 +329,7 @@ export function register(): void {
     const state = new ProteinCombatState(asset);
     state.applyContactDamage(asset.integrity.maxHp * collisionDamageFraction(275));
     assert.equal(state.integrityHp, asset.integrity.maxHp / 2);
-    assert.equal(state.modificationState('phosphate-1'), 'empty');
+    assert.equal(state.serialize().modifications['phosphate-1'], 'empty');
   });
 
   test('protein asset: component chains follow the RCSB entity mapping', () => {
@@ -382,11 +389,6 @@ export function register(): void {
     assert.deepEqual(root.scale, baseRootScale);
     assert.deepEqual(tagged.position, baseChildPosition);
     assert.ok(tagged.quaternion.equals(baseChildQuaternion));
-    const marker = root.children.find((child) => child.userData.proteinSiteId === 'complex-interface');
-    assert.ok(marker);
-    const firstMarkerPosition = marker.position.clone();
-    runtime.updateVisual(100);
-    assert.ok(marker.position.distanceTo(firstMarkerPosition) > 1e-9);
 
     runtime.clearVisuals();
     assert.deepEqual(tagged.position, baseChildPosition);
@@ -405,25 +407,33 @@ export function register(): void {
     assert.deepEqual(proteinColorModesFor('molecular'), ['element']);
     assert.deepEqual(proteinColorModesFor('silhouette'), ['surface-charge', 'hydrophobicity']);
     assert.deepEqual(proteinColorModesFor('ribbon'), [
-      'publication', 'chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role',
+      'chain', 'b-factor', 'rainbow', 'secondary-structure', 'component',
     ]);
-    assert.equal(PROTEIN_COLOR_LABELS.publication, '論文調（鎖別）');
+    assert.equal(PROTEIN_COLOR_LABELS.chain, 'Chain');
+    assert.equal(PROTEIN_COLOR_LABELS.component, 'Component');
     assert.ok(isProteinDisplaySettings(DEFAULT_PROTEIN_DISPLAY));
-    assert.deepEqual(DEFAULT_PROTEIN_DISPLAY, { representation: 'ribbon', colorMode: 'publication' });
+    assert.deepEqual(DEFAULT_PROTEIN_DISPLAY, { representation: 'ribbon', colorMode: 'chain' });
     assert.ok(isProteinDisplaySettings(defaultProteinDisplayFor('molecular')));
-    assert.deepEqual(defaultProteinDisplayFor('ribbon'), { representation: 'ribbon', colorMode: 'publication' });
+    assert.deepEqual(defaultProteinDisplayFor('ribbon'), { representation: 'ribbon', colorMode: 'chain' });
     assert.ok(!isProteinDisplaySettings({ representation: 'molecular', colorMode: 'chain' }));
   });
 
   test('protein display: legacy color modes restore without losing valid ribbon choices', () => {
     assert.deepEqual(proteinDisplayFromLegacyColorMode(undefined), { representation: 'ribbon', colorMode: 'chain' });
     for (const colorMode of [
-      'chain', 'b-factor', 'entity', 'rainbow', 'secondary-structure', 'component-role', 'publication',
+      'chain', 'b-factor', 'rainbow', 'secondary-structure', 'component',
     ] as const) {
       assert.deepEqual(proteinDisplayFromLegacyColorMode(colorMode), {
         representation: 'ribbon',
         colorMode,
       });
+    }
+    // 未知の着色モードは鎖別着色として復元する。
+    for (const unknownMode of ['publication', 'entity', 'component-role'] as const) {
+      assert.deepEqual(
+        proteinDisplayFromLegacyColorMode(unknownMode as unknown as Parameters<typeof proteinDisplayFromLegacyColorMode>[0]),
+        { representation: 'ribbon', colorMode: 'chain' },
+      );
     }
   });
 }

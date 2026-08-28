@@ -76,7 +76,10 @@ export class OrbitPickables {
     if (!entity.alive) return;
     let method: OrbitCalcMethod;
     let points: Vec3[];
-    if (entity.orbitLine !== null) {
+    if (entity.relativeOrbitLine !== null) {
+      method = 'analytic';
+      points = [...entity.relativeOrbitLine.samplePoints(ORBIT_PICK_SAMPLES)];
+    } else if (entity.orbitLine !== null) {
       method = 'analytic';
       points = [...entity.orbitLine.samplePoints(ORBIT_PICK_SAMPLES)];
     } else if (entity.predictedLine !== null || entity.actualLine !== null) {
