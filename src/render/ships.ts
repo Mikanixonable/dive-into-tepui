@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
-import { mulberry32 } from '../physics/random';
+import { mulberry32 } from '../math/random';
 import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
 import { attachThermalEmissive, makeThermallyEmissive, THERMAL_SHAPE_ATTRIBUTE } from './thermal-emissive';
 

@@ -1,7 +1,7 @@
 // optimize.ts の回帰テスト。理論値で自明な単峰関数に対して十分な精度で最小点を当てることを確認する。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { goldenSectionMin } from '../../src/physics/optimize';
+import { goldenSectionMin } from '../../src/math/optimize';
 
 export function register(): void {
   test('optimize: goldenSectionMin finds the minimum of a quadratic well inside the interval', () => {

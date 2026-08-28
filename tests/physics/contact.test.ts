@@ -13,7 +13,7 @@ import {
   distributeFixedContact, resolveSphereCollision, sphereContactGeometry,
 } from '../../src/physics/collision-response';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Vec3, scale, v3 } from '../../src/physics/vec3';
+import { Vec3, scale, v3 } from '../../src/math/vec3';
 
 // closingSpeed が読むのは速度と法線だけなので、時刻と接触点は退化させてよい。
 function contact(selfV: Vec3, otherV: Vec3, normal: Vec3): Contact {

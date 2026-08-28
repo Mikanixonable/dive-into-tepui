@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import { test } from './harness';
 import { FrameAnchors } from '../../src/game/frame-anchors';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 
 export function register(): void {
   const shipState = kinematicState(0, v3(7e6, 0, 0), v3(0, 7500, 0));

@@ -1,7 +1,7 @@
 // vec3.ts のスモークテスト(基本演算)。理論値(解析的に自明な値)で検証。
 import * as assert from 'node:assert/strict';
 import { test } from './harness';
-import { add, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../../src/physics/vec3';
+import { add, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../../src/math/vec3';
 
 export function register(): void {
   test('vec3: add/sub/scale', () => {

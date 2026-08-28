@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { kinematicState } from '../../physics/kinematic-state';
-import { len, sub, v3, type Vec3 } from '../../physics/vec3';
+import { len, sub, v3, type Vec3 } from '../../math/vec3';
 import * as C from '../const';
 import { buildRcsFuelPickup } from '../../render/ships';
 import { GameEntity } from './game-entity';

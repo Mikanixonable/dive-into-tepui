@@ -8,7 +8,7 @@ import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from '../../src/physics/solar
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
-import { cross, dot, len, norm, sub } from '../../src/physics/vec3';
+import { cross, dot, len, norm, sub } from '../../src/math/vec3';
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
   return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).orbit;

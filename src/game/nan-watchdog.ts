@@ -20,7 +20,7 @@ import { Hud } from './hud/hud';
 import { Player } from './player/player';
 import { GameEntity } from './game-entity/game-entity';
 import { EntityManager } from './simulation/entity-manager';
-import { Vec3 } from '../physics/vec3';
+import { Vec3 } from '../math/vec3';
 
 // 全成分が有限値かどうかを返す。
 function finiteVec(v: Vec3): boolean {

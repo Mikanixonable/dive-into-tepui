@@ -5,7 +5,7 @@ import {
 } from '../../physics/atmosphere';
 import { CelestialBody, nearestAtmosphereBody } from '../../physics/celestial-body';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Vec3, dot, len, sub } from '../../physics/vec3';
+import { Vec3, dot, len, sub } from '../../math/vec3';
 import * as C from '../const';
 
 // targetTime・maxStep・nextEventTime のいずれよりも先へ進まない、今回のサブステップ幅 [s] を返す。

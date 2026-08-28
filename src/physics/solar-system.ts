@@ -9,7 +9,7 @@ import { keplerPeriod } from './elements';
 import { JULIAN_CENTURY } from './kepler-orbit';
 import { AU, PlanetOrbit, planetOrbit } from './planet-orbit';
 import { PerturbationTerm, SatelliteOrbit, satelliteOrbit } from './satellite-orbit';
-import { Vec3, v3 } from './vec3';
+import { Vec3, v3 } from '../math/vec3';
 
 // 万有引力定数 [m^3/(kg・s^2)]。MU_* は測定された GM を直接持つ値なのでこれで割り直さないこと —
 // GM が測定されておらず質量から導く天体だけがこれを使う。
