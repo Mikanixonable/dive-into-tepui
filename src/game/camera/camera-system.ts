@@ -6,7 +6,7 @@ import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { catalogFamilyIndex } from '../celestial/orbit-guide-catalog';
 import { FocusMarkers } from './focus-markers';
 import { applyBodyClassDisplayMode, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
-import { MapPickable } from '../map-pickable';
+import { MapPickable } from '../pickable/map-pickable';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -18,7 +18,7 @@ import {
 } from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { CameraSaveData } from '../save-data';
+import { CameraSaveData } from '../save/save-data';
 
 const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.bodyClassToggles';
 

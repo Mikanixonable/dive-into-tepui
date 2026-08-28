@@ -3,7 +3,7 @@
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../hud-root';
 import { pickGlyphSvg, pickGlyphText } from '../../marker/pick-glyphs';
 import type { CelestialRegistry } from '../../../physics/solar-system';
-import type { MapPickable } from '../../map-pickable';
+import type { MapPickable } from '../../pickable/map-pickable';
 import type { PhysicalObjectListOrder } from './physical-object-list-order';
 
 const EMPTY_IDS: readonly string[] = [];

@@ -1,4 +1,4 @@
-import type { ScoreCounterSaveData } from '../../save-data';
+import type { ScoreCounterSaveData } from '../../save/save-data';
 
 // 発射・命中・撃破・自然喪失の集計(純粋なカウンタ)。saved があればその値から始める。
 export class ScoreCounter {

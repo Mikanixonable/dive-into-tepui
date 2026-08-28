@@ -12,7 +12,7 @@ import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
 import { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH } from './marker/marker-glyphs';
-import { pickNearest } from './map-pickable';
+import { pickNearest } from './pickable/map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
 import type { Ephemeris } from '../physics/ephemeris';
 import type { FrameAnchorSource } from '../physics/frame';

@@ -5,7 +5,7 @@ import { UnlockManager } from './unlock-manager';
 import type { StageClass } from './stages/stage';
 import { StageDebug } from './stages/stage-debug';
 import { Button, TabBar, ValueInput } from './hud/widgets';
-import { dateStringToSimTime, SIM_EPOCH_CALENDAR_TDB } from './sim-epoch';
+import { dateStringToSimTime, SIM_EPOCH_CALENDAR_TDB } from './simulation/sim-epoch';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { MQ_COMPACT, MQ_SHORT } from './hud/breakpoints';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';

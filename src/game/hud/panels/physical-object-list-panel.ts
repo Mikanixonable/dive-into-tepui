@@ -12,7 +12,7 @@ import { MQ_COARSE } from '../breakpoints';
 import { PhysicalObjectListTree } from './physical-object-list-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialRegistry } from '../../../physics/solar-system';
-import type { MapPickable, MapPickKind } from '../../map-pickable';
+import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
 import type { RowNode } from './physical-object-list-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
 

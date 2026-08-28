@@ -19,7 +19,7 @@ import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { Stage } from '../stages/stage';
 import { Player } from './player';
-import type { FireSaveData } from '../save-data';
+import type { FireSaveData } from '../save/save-data';
 
 export type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
 

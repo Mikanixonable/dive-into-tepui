@@ -3,7 +3,7 @@ import * as C from '../../const';
 import { Button, PREDICT_TOGGLE_LABELS, SegmentedControl, Slider, ToggleSwitch, ValueInput } from '../widgets';
 import { wirePanelCollapse } from '../panel-shell';
 import { fmtDateTime, fmtDuration } from '../utils';
-import { SIM_EPOCH_SEC } from '../../sim-epoch';
+import { SIM_EPOCH_SEC } from '../../simulation/sim-epoch';
 import type { DisplayDurationKey, DisplayPastDurationKey } from '../../display-window-manager';
 import type { TickLabelMode } from '../orbit/calendar-ticks';
 import type { DisplayTick } from '../orbit/tick-scale';

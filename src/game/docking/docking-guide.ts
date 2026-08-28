@@ -1,15 +1,15 @@
 import * as THREE from 'three/webgpu';
-import { FloatingOrigin } from './camera/floating-origin';
-import { Player } from './player/player';
-import type { EntityManager } from './simulation/entity-manager';
-import type { MarkerManager } from './marker/marker-manager';
+import { FloatingOrigin } from '../camera/floating-origin';
+import { Player } from '../player/player';
+import type { EntityManager } from '../simulation/entity-manager';
+import type { MarkerManager } from '../marker/marker-manager';
 import type { Docking, DockingCandidate } from './docking';
-import type { ViewManager } from './view-manager';
-import type { Projected } from '../math/projection';
-import type { Vec3 } from '../math/vec3';
-import { currentThemePalette } from './theme';
-import * as C from './const';
-import { LINE_RENDER_ORDER } from '../render/line-style';
+import type { ViewManager } from '../view-manager';
+import type { Projected } from '../../math/projection';
+import type { Vec3 } from '../../math/vec3';
+import { currentThemePalette } from '../theme';
+import * as C from '../const';
+import { LINE_RENDER_ORDER } from '../../render/line-style';
 
 const GUIDE_MARKER_KEY = 'docking-guide';
 const AXIS_LENGTH = 32;

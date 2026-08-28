@@ -5,7 +5,7 @@ import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
-import type { ThrottleSaveData } from '../save-data';
+import type { ThrottleSaveData } from '../save/save-data';
 import type { Controllable } from '../game-entity/controllable';
 
 // 並進6方向の連打ラッチ判定対象キー一覧。

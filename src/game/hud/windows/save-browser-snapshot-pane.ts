@@ -2,7 +2,7 @@
 // クリップ済み/自動の区画分け、ステージ切替タブ、カード1件ごとの表示と操作ボタンを組み立てる。
 // 表示対象の状態やクリップ・改名・削除・分岐などの実処理は、コールバックを通じて呼び出し側へ委ねる。
 import { AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../../save/save-slots';
-import type { SaveSlotMeta, SnapshotMeta } from '../../save-data';
+import type { SaveSlotMeta, SnapshotMeta } from '../../save/save-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../utils';
 import { celestialBodyName } from '../frame/frame-labels';
 import { Button, Meter, TabBar } from '../widgets';

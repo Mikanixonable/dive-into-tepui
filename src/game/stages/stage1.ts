@@ -10,8 +10,8 @@ import {
 } from './spawner/enemy-generator';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../sim-speed-manager';
-import type { StageSaveData } from '../save-data';
+import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { StageSaveData } from '../save/save-data';
 
 export class Stage1 extends Stage {
   static readonly id = '1' as const;

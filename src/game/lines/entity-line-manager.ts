@@ -1,19 +1,19 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決める。
 // update が出す/消す/スタイルを決め、sync は既に出ている線の形状と変換を合わせる。
 import * as THREE from 'three/webgpu';
-import { Ephemeris } from '../physics/ephemeris';
-import type { FrameAnchorSource } from '../physics/frame';
-import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
-import * as C from './const';
-import { FloatingOrigin } from './camera/floating-origin';
-import type { GameEntity } from './game-entity/game-entity';
-import { Player } from './player/player';
-import { currentThemePalette } from './theme';
-import type { CombatTarget } from './targeter';
-import type { EntityManager } from './simulation/entity-manager';
-import type { DisplayWindow } from './display-window-manager';
-import type { MapVisibilityPolicy } from './celestial/map-visibility';
-import type { OrbitReference } from './orbit-reference';
+import { Ephemeris } from '../../physics/ephemeris';
+import type { FrameAnchorSource } from '../../physics/frame';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
+import * as C from '../const';
+import { FloatingOrigin } from '../camera/floating-origin';
+import type { GameEntity } from '../game-entity/game-entity';
+import { Player } from '../player/player';
+import { currentThemePalette } from '../theme';
+import type { CombatTarget } from '../targeter';
+import type { EntityManager } from '../simulation/entity-manager';
+import type { DisplayWindow } from '../display-window-manager';
+import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { OrbitReference } from '../orbit-reference';
 
 // ターゲットの軌道はほぼ自機の軌道と重なることが多く(近傍ランデブーを狙うため)、
 // 埋もれて見えなくならないよう不透明度を上げる。

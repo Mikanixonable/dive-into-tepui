@@ -3,13 +3,13 @@
 // 焼き直すかどうかは「いま描かれている楕円が、いまの軌道要素の楕円から画面上何 px ずれて
 // 見えるか」で決める。線の解像度そのものは Curve が決める。
 import * as THREE from 'three/webgpu';
-import { OrbitalElements, positionOnOrbit, trueAnomalyAt, velocityOnOrbit } from '../physics/elements';
-import { apparentSizePx } from '../math/projection';
-import { add, len, sub, v3, Vec3 } from '../math/vec3';
-import { FloatingOrigin } from './camera/floating-origin';
-import { Curve, CurveSampler, MAX_SAGITTA_PX } from '../render/curve';
-import { CameraScale } from '../render/camera-scale';
-import { LineStyle } from '../render/line-style';
+import { OrbitalElements, positionOnOrbit, trueAnomalyAt, velocityOnOrbit } from '../../physics/elements';
+import { apparentSizePx } from '../../math/projection';
+import { add, len, sub, v3, Vec3 } from '../../math/vec3';
+import { FloatingOrigin } from '../camera/floating-origin';
+import { Curve, CurveSampler, MAX_SAGITTA_PX } from '../../render/curve';
+import { CameraScale } from '../../render/camera-scale';
+import { LineStyle } from '../../render/line-style';
 
 // 焼き直しを迫るずれ [px]。適応分割が目標にしているサジッタへ揃え、焼いた楕円が古いことに
 // よるずれが、分割の粗さによるずれを上回らないようにする。

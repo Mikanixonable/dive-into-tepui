@@ -4,7 +4,7 @@
 import { Stage, type StageDeps } from './stage';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
-import type { SimSpeedManager } from '../sim-speed-manager';
+import type { SimSpeedManager } from '../simulation/sim-speed-manager';
 import * as C from '../const';
 import { CelestialRegistry } from '../../physics/solar-system';
 import { planetOrbit } from '../../physics/planet-orbit';
@@ -12,7 +12,7 @@ import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add } from '../../math/vec3';
-import type { StageSaveData } from '../save-data';
+import type { StageSaveData } from '../save/save-data';
 import { Ephemeris } from '../../physics/ephemeris';
 import type { CelestialBodyId } from '../../physics/celestial-body';
 

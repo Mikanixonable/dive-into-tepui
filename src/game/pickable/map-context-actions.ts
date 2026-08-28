@@ -2,47 +2,47 @@
 // 軌道ウィンドウのライフサイクル管理。候補集合と表示可否は map-pickables.ts の MapPickables
 // から読み、メニュー項目の構築・実行は MapPickableMenu、プロパティ行の構築は MapPropertyRows
 // が持つ — 「何が選べるか」「選んだらどうなるか」「どう表示するか」を分けている。
-import { Hud } from './hud/hud';
-import { Base } from './game-entity/base';
+import { Hud } from '../hud/hud';
+import { Base } from '../game-entity/base';
 import {
   ContextMenu, PropertyWindow, PropertyWindowContent, PropertyWindowItem,
   type PropertyWindowRelatedItem,
   MenuAction, type PauseMenu,
-} from './hud/windows';
-import { TEMP_WINDOW_GROUP } from './hud/overlay-manager';
-import { LAGRANGE_ID, lagrangeParentId } from './hud/object-groups';
-import { pickGlyph } from './marker/pick-glyphs';
+} from '../hud/windows';
+import { TEMP_WINDOW_GROUP } from '../hud/overlay-manager';
+import { LAGRANGE_ID, lagrangeParentId } from '../hud/object-groups';
+import { pickGlyph } from '../marker/pick-glyphs';
 import { MapPickable, pickNearest } from './map-pickable';
 import { OrbitPickable, pickNearestOrbit } from './orbit-pickable';
 import type { OrbitPickables } from './orbit-pickables';
-import { focusTargetId } from './camera/focus-target';
-import { PhysicalObjectListPanel } from './hud/panels/physical-object-list-panel';
-import type { Input } from './input/input';
-import { pickRadiusSq } from './input/pointer-precision';
-import { EntityManager } from './simulation/entity-manager';
-import { Ephemeris } from '../physics/ephemeris';
-import { NavTarget } from './nav-target';
-import { CameraSystem } from './camera/camera-system';
-import { PlanEditor } from './plan/plan-editor';
-import { SimSpeedManager } from './sim-speed-manager';
-import type { Docking } from './docking';
-import type { ActivePlayerController } from './active-controllable-controller';
-import type { FrameControls } from './hud/frame/frame-controls';
-import type { Stage } from './stages/stage';
-import { Player } from './player/player';
-import type { GameEntity } from './game-entity/game-entity';
-import type { Targeter } from './targeter';
-import { v3 } from '../math/vec3';
-import type { CelestialBody } from '../physics/celestial-body';
-import { orbitingAttractorOf } from '../physics/celestial-body';
-import { primaryOf } from '../physics/solar-system';
-import * as C from './const';
+import { focusTargetId } from '../camera/focus-target';
+import { PhysicalObjectListPanel } from '../hud/panels/physical-object-list-panel';
+import type { Input } from '../input/input';
+import { pickRadiusSq } from '../input/pointer-precision';
+import { EntityManager } from '../simulation/entity-manager';
+import { Ephemeris } from '../../physics/ephemeris';
+import { NavTarget } from '../nav-target';
+import { CameraSystem } from '../camera/camera-system';
+import { PlanEditor } from '../plan/plan-editor';
+import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { Docking } from '../docking/docking';
+import type { ActivePlayerController } from '../active-controllable-controller';
+import type { FrameControls } from '../hud/frame/frame-controls';
+import type { Stage } from '../stages/stage';
+import { Player } from '../player/player';
+import type { GameEntity } from '../game-entity/game-entity';
+import type { Targeter } from '../targeter';
+import { v3 } from '../../math/vec3';
+import type { CelestialBody } from '../../physics/celestial-body';
+import { orbitingAttractorOf } from '../../physics/celestial-body';
+import { primaryOf } from '../../physics/solar-system';
+import * as C from '../const';
 import type { MapPickables } from './map-pickables';
-import type { Part } from './game-entity/parts';
+import type { Part } from '../game-entity/parts';
 import { pickCombatEntityAtPoint } from './combat-pickable';
 import { MapPropertyRows } from './map-property-rows';
 import { bodyParentId, MapPickableMenu } from './map-pickable-menu';
-import type { KinematicState } from '../physics/kinematic-state';
+import type { KinematicState } from '../../physics/kinematic-state';
 
 // 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
 // (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。

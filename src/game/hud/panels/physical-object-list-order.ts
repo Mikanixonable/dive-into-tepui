@@ -2,7 +2,7 @@ import { bodyClassOf } from '../../celestial/body-class';
 import { LAGRANGE_ID, lagrangePoint } from '../object-groups';
 import type { CelestialRegistry } from '../../../physics/solar-system';
 import type { BodyClass } from '../../celestial/body-class';
-import type { MapPickable, MapPickKind } from '../../map-pickable';
+import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
 
 // 1区画ぶんの表示順と親子構造を id で持つ。表示値(距離・詳細)は毎フレーム
 // 引き渡される MapPickable から読み直すため、ここには id しか置かない。

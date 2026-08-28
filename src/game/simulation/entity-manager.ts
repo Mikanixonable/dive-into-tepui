@@ -27,7 +27,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
-import type { GameSaveData } from '../save-data';
+import type { GameSaveData } from '../save/save-data';
 import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';

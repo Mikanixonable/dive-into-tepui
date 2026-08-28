@@ -10,7 +10,7 @@ import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import type { Attitude } from '../../physics/attitude';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { RcsFuelPickupSaveData } from '../save-data';
+import type { RcsFuelPickupSaveData } from '../save/save-data';
 
 const idAllocator = new EntityIdAllocator('rcs-fuel-');
 

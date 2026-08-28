@@ -4,9 +4,9 @@ import { Stage, type StageDeps } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { Player } from '../player/player';
-import { SimSpeedManager } from '../sim-speed-manager';
+import { SimSpeedManager } from '../simulation/sim-speed-manager';
 import { WaveAttack } from './stage-utils/wave-attack';
-import type { Stage00SaveData, StageSaveData } from '../save-data';
+import type { Stage00SaveData, StageSaveData } from '../save/save-data';
 
 export class Stage00 extends Stage {
   static readonly id = '00' as const;

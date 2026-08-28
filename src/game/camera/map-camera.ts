@@ -10,10 +10,10 @@ import { bodyAnchorSource, strongestAttractor } from '../../physics/celestial-bo
 import type { Ephemeris } from '../../physics/ephemeris';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
-import { MapPickable } from '../map-pickable';
+import { MapPickable } from '../pickable/map-pickable';
 import { bodyDef } from '../../physics/solar-system';
 import { FocusTarget, resolveFocusTarget } from './focus-target';
-import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save-data';
+import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save/save-data';
 
 // セーブデータの rotatingWith を FrameRotationSource へ変換する。旧セーブは公転対象の id を
 // 文字列(または回さないなら null)でそのまま持っていたので、その形は公転として受ける。

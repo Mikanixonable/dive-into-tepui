@@ -1,17 +1,17 @@
 // 右クリックの当たり判定にかける軌道線(公転軌道・船の軌道・軌道ガイド)の候補集合を1フレーム分
 // 組み立てる。サンプル点列そのものは各軌道線(OrbitLine/TrajectoryLine/OrbitGuideLines)が持つので、
 // ここは「いまフレームにどの軌道線が表示されているか」を集めるだけ。
-import type { Ephemeris } from '../physics/ephemeris';
-import type { FrameAnchorSource, ReferenceFrame } from '../physics/frame';
-import { guideSecondary } from '../physics/orbit-guide';
-import { primaryOf } from '../physics/solar-system';
-import type { Vec3 } from '../math/vec3';
-import type { DisplayWindow } from './display-window-manager';
-import type { EntityManager } from './simulation/entity-manager';
-import type { CameraSystem } from './camera/camera-system';
-import type { EnvironmentScene } from './celestial/environment-scene';
-import type { VisibleGuideLine } from './celestial/orbit-guide-lines';
-import type { GameEntity } from './game-entity/game-entity';
+import type { Ephemeris } from '../../physics/ephemeris';
+import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
+import { guideSecondary } from '../../physics/orbit-guide';
+import { primaryOf } from '../../physics/solar-system';
+import type { Vec3 } from '../../math/vec3';
+import type { DisplayWindow } from '../display-window-manager';
+import type { EntityManager } from '../simulation/entity-manager';
+import type { CameraSystem } from '../camera/camera-system';
+import type { EnvironmentScene } from '../celestial/environment-scene';
+import type { VisibleGuideLine } from '../celestial/orbit-guide-lines';
+import type { GameEntity } from '../game-entity/game-entity';
 import { OrbitCalcMethod, OrbitPickable } from './orbit-pickable';
 
 // 当たり判定用サンプル点数。描画の適応分割ほどの精度は要らず、画面上のピクセル半径内かの判定さえ
