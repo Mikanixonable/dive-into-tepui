@@ -7,14 +7,14 @@ import { MU_SUN } from '../../src/physics/solar-system/constants';
 import { keplerPeriod } from '../../src/physics/elements';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
-import { solarSystemEphemeris } from './test-helpers';
+import { motionOf, solarSystemParts } from './test-helpers';
 import { len, scale, sub } from '../../src/math/vec3';
 
-// id から静的事実を引くための天体暦。
-const DEFS = solarSystemEphemeris();
+// id から静的事実を引くための太陽系。
+const DEFS = solarSystemParts().motions;
 
 function planetOrbitOf(id: string): PlanetOrbit {
-  return (DEFS.motionOf(id).def as PlanetDef).orbit;
+  return (motionOf(DEFS, id).def as PlanetDef).orbit;
 }
 
 const SMALL_BODY_IDS: readonly string[] = [
@@ -25,7 +25,7 @@ const SMALL_BODY_IDS: readonly string[] = [
 ];
 
 export function register(): void {
-  const eph = solarSystemEphemeris({});
+  const windows = solarSystemParts({}).windows;
 
   test('small-bodies: lRate がケプラー第3法則から導いた値と一致する', () => {
     for (const id of SMALL_BODY_IDS) {
@@ -59,7 +59,7 @@ export function register(): void {
 
   test('small-bodies: 半径が有限で正、shape を持つ体では外接球になっている', () => {
     for (const id of SMALL_BODY_IDS) {
-      const def = DEFS.motionOf(id).def as PlanetDef;
+      const def = motionOf(DEFS, id).def as PlanetDef;
       assert.ok(Number.isFinite(def.radius) && def.radius > 0, `${id} の radius`);
       if (def.shape !== undefined && def.shape.kind === 'triaxial') {
         const maxAxis = Math.max(def.shape.a, def.shape.b, def.shape.c);
@@ -69,7 +69,7 @@ export function register(): void {
   });
 
   test('small-bodies: celestialBodiesAt から32体すべてが取れ、太陽からの距離が有限で正', () => {
-    const celestialBodies = eph.celestialBodiesAt(1e7);
+    const celestialBodies = windows.celestialBodiesAt(1e7);
     const sun = celestialBodies.find((a) => a.id === 'sun')!;
     for (const id of SMALL_BODY_IDS) {
       const a = celestialBodies.find((x) => x.id === id);
