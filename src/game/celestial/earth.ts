@@ -37,6 +37,7 @@ export class Earth extends CelestialEntity {
   constructor(motion: PlanetMotion, name: string, spinPhase0: number, atmosphereOptics: AtmosphereOptics | null) {
     super(motion, name, 'planet', atmosphereOptics);
     this.phase0 = spinPhase0;
+    // 静止軌道の要素は地球中心の固定円。実在の衛星や特定経度を表すものではない定数。
     const def = motion.def;
     const earthCelestialBody: CelestialBody = {
       id: motion.id, mu: def.mu, radius: def.radius,

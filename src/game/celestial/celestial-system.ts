@@ -471,6 +471,7 @@ export class CelestialSystem {
       nearbyIds,
     );
     for (const body of this.bodies) {
+      // 恒星は公転しないので線を持たない。非表示の間は実体ごと解放し、頂点バッファを残さない。
       if (body.motion.kind === 'star' || !visibilityPolicy.body(body.id).orbit) {
         body.removeReferenceLine();
         continue;
