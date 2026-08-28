@@ -1,11 +1,7 @@
 // HUD の全オーバーレイ(モーダル・ポップアップ・ウィンドウ)を一つの台帳へ登録し、
 // 重なり順(最前面が誰か)・ESC の配送先・項目ショートカットの配送先・外側クリックでの
-// 自動クローズ・入力ゲートを一元的に決める。層(#hud-layer-*)自体の前後関係は
-// overlay-layer.ts が持つ — このクラスが持つのは登録されたオーバーレイどうしの論理的な順序だけ。
-// ESC・項目ショートカット・外側クリックとも、このクラス自身は window/document への
-// 直付けリスナを増やさない(ESC・項目ショートカットは Game.handleInput が Input のエッジ
-// キュー経由で取った edge をそのまま渡す。外側クリックは下の1箇所のキャプチャリスナへ
-// 集約し、各オーバーレイはここへ登録するだけにする)。
+// 自動クローズ・入力ゲートを一元的に決める。登録されたオーバーレイどうしの論理的な順序を
+// 持ち、外側クリックの判定は1箇所のキャプチャリスナに集約する。
 
 export type OverlayKind = 'modal' | 'popup' | 'window';
 
@@ -24,8 +20,8 @@ export interface OverlaySpec {
   readonly exclusiveGroup?: string;
 }
 
-// 開閉の実処理・対象要素は各オーバーレイの持ち主が持つ。このクラスは持ち主の参照を
-// 束ねるだけで、閉じ方そのものには関与しない。
+// 各オーバーレイの持ち主が実装する、開閉判定に使うハンドル。閉じる実処理・対象要素の判定は
+// 実装側が持つ。
 export interface OverlayHandle {
   contains(target: Node): boolean;
   close(): void;
@@ -40,9 +36,7 @@ interface OverlayEntry {
   spec: OverlaySpec;
 }
 
-// テキスト入力へフォーカスがある間は項目ショートカットの対象から外す — ValueInput 自身の
-// stopPropagation は DOM の伝播経路を止めるだけで、Input の window keydown 購読とは別経路
-// (フォーカス中の要素を素通りしてしまう構成)になり得るため、配送側でも独立に判定する。
+// 現在フォーカスしている要素がテキスト入力(input/textarea/contentEditable)かどうかを返す。
 function isTextInputFocused(): boolean {
   const el = document.activeElement;
   if (!(el instanceof HTMLElement)) return false;
@@ -54,29 +48,30 @@ export class OverlayManager {
   private wasModalOpen = false;
 
   // shield は入力ゲート中に背景の 3D 入力を遮る全画面要素、gateLayer はその親レイヤ
-  // (#hud-layer-gate)。いずれも buildHudDom が構築して渡す。
-  constructor(private readonly shield: HTMLElement, private readonly gateLayer: HTMLElement) {
+  // (#hud-layer-gate)。
+  public constructor(private readonly shield: HTMLElement, private readonly gateLayer: HTMLElement) {
     shield.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
     shield.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
-    // 外側クリックを拾う唯一のキャプチャリスナ。個々のオーバーレイは自分で document へ
-    // リスナを張らず、ここへ登録した contains/close を通じて判定・応答させる。
+    // 外側クリックを拾う唯一のキャプチャリスナ。登録済みの各オーバーレイの contains/close を
+    // 通じて判定・応答する。
     document.addEventListener('pointerdown', this.handleOutsidePointerDown, true);
     this.sync();
   }
 
-  isOverlayOpen(id: string): boolean {
+  // id のオーバーレイが現在開いているかどうかを返す。
+  public isOverlayOpen(id: string): boolean {
     return this.stack.some((e) => e.id === id);
   }
 
   // 入力をゲートしているオーバーレイ(kind:'modal' かつ gatesInput:true)が1つでも開いているか。
   // 個々のオーバーレイの id を名指しせずに「背景入力を遮るべきか」を答える。
-  isInputGated(): boolean {
+  public isInputGated(): boolean {
     return this.stack.some((e) => e.spec.kind === 'modal' && e.spec.gatesInput);
   }
 
   // handle を id で開く/最前面へ動かす。既に同じ id があれば一旦外してから積み直す。
   // 排他グループが指定されていれば、同グループの他の開いているオーバーレイを先に閉じる。
-  open(id: string, handle: OverlayHandle, spec: OverlaySpec): void {
+  public open(id: string, handle: OverlayHandle, spec: OverlaySpec): void {
     this.close(id);
     this.evictGroup(id, spec.exclusiveGroup);
     this.stack.push({ id, handle, spec });
@@ -84,7 +79,7 @@ export class OverlayManager {
   }
 
   // 開いたまま宣言だけ更新する(クリップ状態の変化など、最前面への並べ替えを伴わない場合)。
-  reconfigure(id: string, spec: OverlaySpec): void {
+  public reconfigure(id: string, spec: OverlaySpec): void {
     const entry = this.stack.find((e) => e.id === id);
     if (!entry) return;
     entry.spec = spec;
@@ -93,7 +88,7 @@ export class OverlayManager {
   }
 
   // 台帳から外す。未登録の id は無視する(重複呼び出しに対して冪等)。
-  close(id: string): void {
+  public close(id: string): void {
     const i = this.stack.findIndex((e) => e.id === id);
     if (i === -1) return;
     this.stack.splice(i, 1);
@@ -108,9 +103,8 @@ export class OverlayManager {
     }
   }
 
-  // 最前面から順に、ESC で閉じられるオーバーレイを1つだけ閉じる。閉じるものが無ければ false
-  // — 呼び出し側(Game.handleInput)はこれを見て「何も無ければ一時停止メニューを開く」へ倒す。
-  closeTopmostOnEscape(): boolean {
+  // 最前面から順に、ESC で閉じられるオーバーレイを1つだけ閉じる。閉じるものが無ければ false を返す。
+  public closeTopmostOnEscape(): boolean {
     for (let i = this.stack.length - 1; i >= 0; i--) {
       const entry = this.stack[i]!;
       if (entry.spec.closeOnEscape) {
@@ -122,10 +116,10 @@ export class OverlayManager {
   }
 
   // 最前面から順に、code に一致する項目ショートカットを持つオーバーレイを探して1つだけ
-  // 実行する。closeTopmostOnEscape の兄弟 — handleShortcut を持たない/一致しないハンドルは
-  // 素通りして1つ下を試す(クリップ中の PropertyWindow は常に false を返すので、その下に
-  // 積まれた一時ウィンドウまで届く)。テキスト入力へフォーカスがある間は誰にも配らない。
-  dispatchShortcut(code: string): boolean {
+  // 実行する。handleShortcut を持たない/一致しないハンドルは素通りして1つ下を試すので、
+  // 手前の対象外なオーバーレイの下に積まれたものまで配送が届く。テキスト入力へフォーカスが
+  // ある間は誰にも配らない。
+  public dispatchShortcut(code: string): boolean {
     if (isTextInputFocused()) return false;
     for (let i = this.stack.length - 1; i >= 0; i--) {
       const entry = this.stack[i]!;
