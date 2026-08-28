@@ -188,6 +188,7 @@ export class SaveBrowser implements OverlayHandle {
         onRenameSnapshot: (id) => this.handleRenameSnapshot(id),
         onDeleteSnapshot: (id) => this.handleDeleteSnapshot(id),
         onBranch: (slotId, snapId) => this.handleBranch(slotId, snapId),
+        nameOf: (id) => game?.celestialSystem.nameOf(id) ?? id,
       },
     ));
     body.appendChild(snapPane);

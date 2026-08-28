@@ -8,7 +8,7 @@
 // 時刻範囲を切り出し、位置と接線を持つ節点列として Curve へ渡すことと、その曲線が描かれる
 // 座標系の管理。節点の間をどう埋めるかは Curve が持つ。
 //
-// 座標変換は physics/frame.ts / physics/ephemeris.ts へ委譲する二段構え:
+// 座標変換は physics/frame.ts / physics/reference-frames.ts へ委譲する二段構え:
 //  - bake(点列・frame が変わったときだけ, syncGeometry): 各サンプルの KinematicState を
 //    その時刻の座標系相対へ変換する(frameTransformAt→toFrameState)。点ごとに座標系の姿勢・
 //    原点が違う非剛体変形なので、時刻ごとに変換し直す(慣性系なら無変換)。
@@ -22,7 +22,7 @@ import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
 import { CelestialBody } from '../../physics/celestial-body';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ReferenceFrames } from '../../physics/reference-frames';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../../physics/kepler-extrapolation';
@@ -57,13 +57,13 @@ function extrapolationTargetInterval(baseInterval: number, span: number): number
 // なので、各サンプル自身の時刻における center の ECI 状態を足し戻す。離心率が高すぎる・
 // 双曲線などで外挿できない場合は空配列。
 function extrapolatedTailStates(
-  tip: KinematicState, center: CelestialBody, to: number, baseInterval: number, ephemeris: Ephemeris,
+  tip: KinematicState, center: CelestialBody, to: number, baseInterval: number, celestialSystem: CelestialSystem,
 ): KinematicState[] {
   const span = to - tip.t;
   const target = extrapolationTargetInterval(baseInterval, span);
   const count = Math.min(MAX_EXTRAPOLATED_SAMPLES, Math.max(2, Math.ceil(span / target)));
   return extrapolatedRelativeStates(tip, center, to, count).map((s) => {
-    const centerState = ephemeris.stateOf(center.id, s.t);
+    const centerState = celestialSystem.bodyOf(center.id).motion.stateAt(s.t);
     return kinematicState(s.t, add(s.r, centerState.r), add(s.v, centerState.v));
   });
 }
@@ -107,7 +107,7 @@ export class TrajectoryLine {
   // だけで見た目には出ない。
   syncGeometry(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
-    ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+    celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
     const samples = trajectory?.samplesOldestFirst() ?? NO_SAMPLES;
     const tip = samples.length > 0 ? samples[samples.length - 1]! : null;
@@ -123,7 +123,7 @@ export class TrajectoryLine {
       this.lastSamples = samples;
       this.lastFrame = frame;
       const tail = extrapolating
-        ? extrapolatedTailStates(tip!, center!, to!, trajectory!.sampleInterval, ephemeris)
+        ? extrapolatedTailStates(tip!, center!, to!, trajectory!.sampleInterval, celestialSystem)
         : [];
       const combined = tail.length > 0 ? [...samples, ...tail] : samples;
       // エルミート補間は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
@@ -131,7 +131,7 @@ export class TrajectoryLine {
       // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
       const queue = new StateQueue(Math.max(1, combined.length));
       for (const s of combined) {
-        const rel = toFrameState(ephemeris.frameTransformAt(frame, s.t, frameAnchors), s);
+        const rel = toFrameState(celestialSystem.frames.transformAt(frame, s.t, frameAnchors), s);
         queue.push(kinematicState(s.t, rel.r, rel.v));
       }
       this.baked = queue;
@@ -185,10 +185,10 @@ export class TrajectoryLine {
   // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点)。
   // currentTime = 描画時刻(通常 simTime)。
   syncTransform(
-    frame: ReferenceFrame, currentTime: number, ephemeris: Ephemeris, fo: FloatingOrigin,
+    frame: ReferenceFrame, currentTime: number, celestialSystem: CelestialSystem, fo: FloatingOrigin,
     frameAnchors: FrameAnchorSource,
   ): void {
-    const tf = ephemeris.frameTransformAt(frame, currentTime, frameAnchors);
+    const tf = celestialSystem.frames.transformAt(frame, currentTime, frameAnchors);
     this.unbakeQuat.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
     this.curve.setTransform(fo.RtoThreeV3(tf.origin), this.unbakeQuat);
   }
