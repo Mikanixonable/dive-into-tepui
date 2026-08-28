@@ -333,7 +333,7 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
   Snyder の解析解(`lighting/sphere-light.ts`)で、視半径 → 0 で点光源の N·L へ連続に縮退する
   (分岐なし)。鏡面は太陽を面積の一致する正 8 角形へ写して LTC で積分する(`lighting/ltc.ts`)。
   遮蔽パスの透過率は拡散・鏡面の両方に掛かる。
-- **LTC の係数表は生成物**(`lighting/ltc-table.ts`、`npm run export-ltc-table` が
+- **LTC の係数表は生成物**(`lighting/ltc-table.generated.ts`、`npm run export-ltc-table` が
   `three/addons` から半精度で焼く)。実行時に `three/addons` を読んではならない — 素の three が
   バンドルへ丸ごと入る。**⚠ 8 角形の頂点は受け手から見て反時計回り**(基底 `(u,v,axis)`
   右手系で φ を負に回す)。逆に巻くと形状係数が地平線上の光源で 0 になり、**拡散は正常なまま
