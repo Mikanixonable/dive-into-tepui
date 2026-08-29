@@ -208,32 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順11. `CelestialSystem` の `body` を `entity` へ揃える
-
-**目的.** `CelestialSystem` が `CelestialEntity` の配列を `bodies` と呼び、`bodyOf` で引いている。
-**`body` と `CelestialEntity` が同義別語になっている**うえ、同じクラスの
-`celestialBodiesAt(t)` は physics の `CelestialBody` を返すので、`bodies` と
-`celestialBodies` が別物という読みづらさが生まれている。個体は `entity`、physics の値は
-`celestialBody` に固定する。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/celestial-system.ts` | `bodies`→`entities`、`bodiesById`→`entitiesById`、`bodyOf`→`entityOf`、`starBody`→`starEntity`。`celestialBodiesAt` / `celestialBodyAt` / `gravityAttractorsAt` / `atmosphereCelestialBodiesAt` / `defs` / `motions` は physics の値を返す口なのでそのまま |
-| `src/game/celestial/solar-system/solar-system.ts` ほか構築側 | `new CelestialSystem(bodies, …)` のローカル名を `entities` へ |
-| `celestialSystem.bodyOf(` を呼ぶ全ファイル | `entityOf(` へ |
-
-`memos/` はここでは触らない — 改名がすべて確定してから手順13でまとめて1回だけ通す。
-
-**達成条件と検証**
-
-- `grep -nE "\bbodies\b|\bbodyOf\b|\bstarBody\b" src/game/celestial/celestial-system.ts` が 0 件。
-- `grep -rn "\.bodyOf(" src tests tools` が 0 件。
-- `npm run typecheck` / `npm run test`(全層)が通る。
-
----
-
 ### 手順12. 他ファイルから参照されない export を絞る
 
 **目的.** モジュールの公開面が実際の利用より広い。`export` されているのに他のどのファイルからも

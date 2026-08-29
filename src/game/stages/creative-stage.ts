@@ -360,7 +360,7 @@ export class CreativeStage extends Stage {
   // 副天体・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
   // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォーム自体に面内振幅の値がない。
   private buildLagrangeState(form: LagrangeForm): KinematicState {
-    const motion = this._celestialSystem.bodyOf(form.lagrangeSecondary).motion;
+    const motion = this._celestialSystem.entityOf(form.lagrangeSecondary).motion;
     if (!(motion instanceof OrbitingMotion)) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }

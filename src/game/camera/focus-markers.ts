@@ -206,7 +206,7 @@ export class FocusMarkers {
   // 星系の全天体からラベルの全集合を1度だけ組む。ラグランジュ点は5点まとめてではなく、
   // 共線点・三角点それぞれの成立条件を満たす点だけを持たせる。
   constructor(private readonly markerManager: MarkerManager, private readonly celestialSystem: CelestialSystem) {
-    this.lagrangeSources = celestialSystem.bodies.flatMap((body) => {
+    this.lagrangeSources = celestialSystem.entities.flatMap((body) => {
       const motion = body.motion;
       if (!(motion instanceof OrbitingMotion)) return [];
       const collinear = motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO);
@@ -229,7 +229,7 @@ export class FocusMarkers {
     const appendBody = (id: string, depth: number): void => {
       if (added.has(id)) return;
       added.add(id);
-      const body = this.celestialSystem.bodyOf(id);
+      const body = this.celestialSystem.entityOf(id);
       const cls = body.bodyClass;
       labels.push({
         id, name: body.name, markerLabel: body.name,
@@ -245,15 +245,15 @@ export class FocusMarkers {
           showIcon: false, showLabel: false, pickable: true,
         });
       }
-      for (const child of this.celestialSystem.bodies) {
+      for (const child of this.celestialSystem.entities) {
         if (child.id !== id && child.motion.primary?.id === id) appendBody(child.id, depth + 1);
       }
     };
-    for (const body of this.celestialSystem.bodies) {
+    for (const body of this.celestialSystem.entities) {
       if (body.motion.primary === null) appendBody(body.id, 0);
     }
     // 主星を持たない孤立した天体(親が登録されていない星系・循環した星系)も落とさない。
-    for (const body of this.celestialSystem.bodies) appendBody(body.id, 0);
+    for (const body of this.celestialSystem.entities) appendBody(body.id, 0);
     this.allLabels = labels;
     for (const label of labels) this.labelsById.set(label.id, label);
   }
@@ -281,7 +281,7 @@ export class FocusMarkers {
     const posOf = new Map(this.celestialSystem.celestialBodiesAt(t).map((a) => [a.id, a.state.r]));
     const drawn = new Map(this.allLabels.map((lbl) => [lbl.id, lbl.pickable]));
     this.cachedBodyPickables.length = 0;
-    for (const body of this.celestialSystem.bodies) {
+    for (const body of this.celestialSystem.entities) {
       if (!visibilityPolicy.body(body.id).pickable) continue;
       const pos = posOf.get(body.id);
       if (pos !== undefined) this.cacheBodyPickable(
@@ -332,7 +332,7 @@ export class FocusMarkers {
     const positions: Record<string, Vec3> = {};
     const displayMap: Record<string, { icon: boolean; label: boolean }> = {};
     this.cachedBodyPickables.length = 0;
-    for (const body of celestialSystem.bodies) {
+    for (const body of celestialSystem.entities) {
       const visibility = visibilityPolicy.body(body.id);
       if (!visibility.pickable) continue;
       const pos = body.motion.stateAt(t).r;
@@ -489,7 +489,7 @@ export class FocusMarkers {
 
       if (isStage2) {
         // 第2段階 (500万km以上): 「月:」などのプレフィックスを表示せず、主親天体(地球等)へ集約
-        const primaryId = this.celestialSystem.bodyOf(center.id).motion.primary?.id ?? null;
+        const primaryId = this.celestialSystem.entityOf(center.id).motion.primary?.id ?? null;
         if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
           targetId = primaryId;
         } else if (this.bodyPickableRecords.get(center.id)?.pickable) {
@@ -503,7 +503,7 @@ export class FocusMarkers {
           targetId = center.id;
           prefix = '';
         } else {
-          const primaryId = this.celestialSystem.bodyOf(center.id).motion.primary?.id ?? null;
+          const primaryId = this.celestialSystem.entityOf(center.id).motion.primary?.id ?? null;
           if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
             targetId = primaryId;
             prefix = `${this.celestialSystem.nameOf(center.id)}: `;

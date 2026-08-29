@@ -63,7 +63,7 @@ export function altitudeSeries(
   }
 
   const currentAlt = altitudeOf(entity.state, reference.state, center);
-  const centerMotion = celestialSystem.bodyOf(center.id).motion;
+  const centerMotion = celestialSystem.entityOf(center.id).motion;
   const samples: AltitudeSample[] = [];
   let truncated = false;
   for (let i = 0; i <= sampleCount; i++) {
@@ -99,7 +99,7 @@ export function resolveTarget(
       currentR: target.entity.state.r,
     };
   }
-  const targetMotion = celestialSystem.bodyOf(target.body.id).motion;
+  const targetMotion = celestialSystem.entityOf(target.body.id).motion;
   return {
     stateAt: (t) => targetMotion.stateAt(t),
     currentR: target.body.state.r,
@@ -147,7 +147,7 @@ export function approachSeries(
     return { samples: [], relIncDeg, truncated: true };
   }
 
-  const centerMotion = celestialSystem.bodyOf(center.id).motion;
+  const centerMotion = celestialSystem.entityOf(center.id).motion;
   const samples: (ApproachSample | null)[] = [];
   let truncated = false;
   let lastTheta: number | null = null;

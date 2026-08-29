@@ -165,7 +165,7 @@ export class MapVisibilityPolicy {
       case 'dwarf': return this.toggles.dwarfOrbit;
       case 'smallBody': return this.toggles.smallBodyOrbit;
       case 'satellite': {
-        const planetId = this.celestialSystem.bodyOf(id).motion.primary?.id ?? null;
+        const planetId = this.celestialSystem.entityOf(id).motion.primary?.id ?? null;
         if (planetId === null) return false;
         return this.toggles.satelliteOrbit
           && (planetId === 'earth' || focusSystemOf(this.celestialSystem, this.focusId) === planetId

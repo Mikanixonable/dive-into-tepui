@@ -495,7 +495,7 @@ export class MapContextActions {
       const parentOf = new Map<string, string>();
       for (const l of this.cameraSystem.focusMarkers.allLabels) {
         const parent = l.isLagrange
-          ? lagrangeParentId(l.id) : this.celestialSystem.bodyOf(l.id).motion.primary?.id ?? null;
+          ? lagrangeParentId(l.id) : this.celestialSystem.entityOf(l.id).motion.primary?.id ?? null;
         if (parent !== null) parentOf.set(l.id, parent);
       }
       this.lastFocusId = focusTargetId(this.cameraSystem.mapCamera.focus);

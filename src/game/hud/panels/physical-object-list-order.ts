@@ -93,7 +93,7 @@ export class PhysicalObjectListOrder {
     if (this.filter === 'enemy') return item.kind === 'ship' && item.inFocusedSystem !== false;
     if (this.filter === 'lagrange') return item.kind === 'body' && LAGRANGE_ID.test(item.id);
     return item.kind === 'body' && !LAGRANGE_ID.test(item.id)
-      && this.celestialSystem.bodyOf(item.id).bodyClass === this.filter;
+      && this.celestialSystem.entityOf(item.id).bodyClass === this.filter;
   }
 
   // 並べ替え・親子構造を決める入力(候補の顔ぶれ・表示名・種別・親・絞り込みの通過可否と

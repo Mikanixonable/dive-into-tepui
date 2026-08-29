@@ -30,7 +30,7 @@ export class OrbitProjectionTab {
     game: Game, entity: DynamicEntity, center: CelestialBody, approachSource: ApproachTargetSource | null,
     celestialBodies: readonly CelestialBody[], now: number, spanSec: number, sampleCount: number, textureUrl: string,
   ): void {
-    const centerMotion = game.celestialSystem.bodyOf(center.id).motion;
+    const centerMotion = game.celestialSystem.entityOf(center.id).motion;
     // 操作対象自身の軌跡(塗り丸)。
     const ship = projectionSeries(
       (t) => entityStateAt(entity, t, centerMotion), centerMotion, now, spanSec, sampleCount,
