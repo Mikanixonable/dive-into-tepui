@@ -208,35 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順4. 環境光の割合・星殻の倍率・恒星のない星系の既定を render へ移す
-
-**目的.** 「マップビューでは環境光を強く、戦闘ビューでは弱く」「星殻を広範囲視点では
-`CELESTIAL_SHELL_RADIUS` まで拡げる」「恒星を持たない星系では 1 天文単位の位置に無彩色の
-基準光源を置く」は、いずれも**どう見せるかの既定値**であって、何があるかの記述ではない。
-**この時点で絵は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/lighting/ambient-source.ts` | `celestial-system.ts:68-71` の `ambientFraction(overviewMode, graphics)` を移し、`AMBIENT_STRONG` / `AMBIENT_WEAK` を export しなくする |
-| `src/render/stars.ts` | `CELESTIAL_SHELL_RADIUS` を `src/game/const.ts:206` から移し、`overviewMode` を受けて殻の倍率を決める口を置く。`celestial-system.ts:335,417-422` の重複した式(2箇所)を1本にする |
-| `src/game/camera/map-camera.ts:397` | `C.CELESTIAL_SHELL_RADIUS` の参照を `render/stars` からの import へ差し替える |
-| `src/game/const.ts:206` | `CELESTIAL_SHELL_RADIUS` を削除する |
-| `src/render/pipeline/sun-light.ts` | `celestial-system.ts:60` の `STARLESS_LIGHT_COLOR` と、恒星が無いとき 1 天文単位の位置へ光源を置く扱いを、`SunLight` 側の既定として受ける形にする |
-| `src/game/celestial/celestial-system.ts:296-303,417-422` | 上の判断を呼び出しへ置き換える |
-
-**達成条件と検証**
-
-- `grep -rn "AMBIENT_STRONG\|AMBIENT_WEAK\|CELESTIAL_SHELL_RADIUS" src/game/` が 0 件。
-- `grep -n "CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS" src/` が 1 件(render 側のみ)。
-- `npm run typecheck` / `npm run test:render` が通る。
-- `npm run dev` — マップビューと戦闘ビューを往復し、影の中の明るさの差が着手前と同じであること、
-  描画設定の「環境光」をマップ/戦闘それぞれで切って効くこと、マップで星野の粒が天球グリッドと
-  同じ殻に乗っていることを見る。
-
----
-
 ### 手順5. `celestial/` 直下から `solar-system/` への依存を切る
 
 **目的.** `celestial-system.ts:21` が `./solar-system/point-field-view` を import しており、
@@ -621,3 +592,7 @@ grep -rhoE "src/game/(celestial|simulation|game-entity|dynamic|map)/[a-z0-9./-]*
   環メッシュを描くかどうか**を設定から決めているだけで、`graphics.lodBias` を個体が読むのと
   同じ種類のもの。選定を render へ移す動機(スロット本数と密結合)が当たらないので、
   そのままにした。
+- **`AMBIENT_STRONG` / `AMBIENT_WEAK` は export のまま残した。** 手順4 は「export しなくする」
+  と書いていたが、`tools/render-lab/{lab,main}.ts` が環境光を手で設定するために直接引いており、
+  非公開にすると描画実験環境が固まる。**達成目標8 は `src/game/` から消えることだけを求めて
+  いるので、そちらは満たしている。**
