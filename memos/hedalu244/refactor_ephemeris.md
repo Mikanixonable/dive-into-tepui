@@ -72,9 +72,19 @@ uranus, neptune, pluto)で、登録されている天体は **98 体**ある。�
 `SIM_EPOCH_ET`(`sim-epoch.ts:11`)という**全天体共通の定数**。位相 `phase` は
 `phases[id] ?? 0` という**天体ごとの定数**。どちらも構築時に確定するので、**軌道の値へ畳める。**
 
-- `epochOffsetSec` は要素の永年変化が時刻の一次式なので、`a / e / inc / raan0 / lonPeri0 / l0` へ
-  それぞれの rate × offset を加えるだけで厳密に畳める。
-- `phase` は平均黄経の定数オフセットなので `l0` へ加えるだけで畳める。
+- **`phase` の畳み込みは厳密。** いまの式は `orbit.l0 + phaseOffset + orbit.lRate * t` を左から評価する
+  ので、`l0 + phase` を構築時に1回で計算しても演算列が変わらない — ビット一致する。
+- **`epochOffsetSec` の畳み込みは厳密ではない。** `lRate * (t + off)` を
+  `(l0 + lRate*off) + lRate*t` へ組み替えると結合則が変わる。off = SIM_EPOCH_ET = 5.7167e11 s、
+  地球の lRate では折り返し前の平均黄経が **1.14e5 rad** まで積み上がっており、そこでの ulp は
+  1.5e-11 rad = 地球軌道上で 2 m。**実測で最大 2.2 m ずれる**(畳み込みのみ)。2π で正規化して
+  畳むと以降の中間値が 100 rad 規模へ落ちるので **精度は約 1000 倍良くなる**が、それでも今の値
+  からは最大 1.2 m 動く。
+- 時刻軸を ET 秒側へ揃えて暦に `J2000 + et/86400` を計算させる案も、同じ理由で
+  `epochJdTdb + simTime/86400` とはビット一致しない(月で 0.1 m 規模)。
+- **したがって、時刻軸を1つに揃える限り「挙動を変えない」は達成できない。** 残る選択は
+  「phase だけ畳んで epochOffsetSec は呼び出し側に残す(ビット一致)」か、「両方畳んで
+  1〜2 m の変化と精度改善を受け入れる」か。
 
 畳めば `keplerOrbitState(orbit, t)` / `satelliteState(orbit, t)` は **純粋な t → 状態の写像**になり、
 ephemeris の `stateOf(id, t)` と同じ形になる。`phaseOffsets` はセーブに残り
@@ -111,7 +121,7 @@ ephemeris の `stateOf(id, t)` と同じ形になる。`phaseOffsets` はセー�
 (`PlanetMotion.computeHelioStateAt` が全衛星の質量比で重心を戻す処理)が Orbit 層と Motion 層に
 またがるため、木が二重化するだけでなく重心補正の置き場が曖昧になる。
 
-案X なら手順5 は不要。案Y を採る場合だけ手順5 を実施する。
+**案X を採る**(2026-08-30 決定)。実施後の構造を見てから案Y を再検討する。
 
 ### やらないこと
 
@@ -129,7 +139,7 @@ ephemeris の `stateOf(id, t)` と同じ形になる。`phaseOffsets` はセー�
    `grep -rn "phaseOffset" src/` が 0 件。
 4. `epochOffsetSec` が `physics/` と `game/celestial/solar-system/` の引数から消える —
    `grep -rn "epochOffsetSec" src/game/celestial/` が 0 件。
-5. `OrbitalElements` が元期を持ち、`stateAt(el, t)` がある。参照軌道では null を返す。
+5. `OrbitalElements` が元期を持ち、`stateOnOrbitAt(el, t)` がある。参照軌道では null を返す。
 6. **数値が変わらない** — 下記のベースライン比較で、全 98 天体・全サンプル時刻の位置・速度が
    変更前と一致する。**手順2 だけはビット一致にできない**(下記)ので、そこでは ECI 位置の
    ノルムに対する相対差が 1e-12 以下であること。手順1・3・4 はビット一致。
@@ -158,7 +168,8 @@ tests/physics/_baseline.ts(一時ファイル。*.test.ts にしないこと —
 ### 手順3. 位相定数と元期オフセットを軌道へ畳む
 
 **目的.** 解析側の時刻引数を、ephemeris と同じ「絶対時刻1つ」に揃える。位相を別引数で持ち回る
-形をやめる。**この時点で挙動は変えない**(畳み込みは厳密)。
+形をやめる。**`phase` の畳み込みはビット一致、`epochOffsetSec` の畳み込みは最大 1〜2 m 動く**
+(判断3 を参照)。どちらまで畳むかはユーザーの判断。
 
 **変更が必要な箇所**
 
@@ -181,44 +192,6 @@ tests/physics/_baseline.ts(一時ファイル。*.test.ts にしないこと —
 `grep -rn "phaseOffset" src/` が 0 件、`grep -rn "epochOffsetSec" src/game/celestial/` が 0 件。
 ベースライン比較が全 98 天体 × 7 時刻で完全一致。
 
-### 手順4. `OrbitalElements` に元期を持たせ、`stateAt` を足す
-
-**目的.** 軌道要素からも絶対時刻で状態を引けるようにする。周期は既に持っているので、足りないのは
-位相の基準時刻だけ。**この時点で既存の呼び出しの挙動は変えない**(追加のみ)。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/elements.ts:8-18` | `OrbitalElements` へ元期を足す(`t0: number` と `nu0: number`、または近点通過時刻 `tPeri: number \| null`)。参照軌道では null |
-| `src/physics/elements.ts:36` | `orbitalElementsFromState` が `rel.t` から元期を埋める。いま捨てている値をそのまま使う |
-| `src/physics/elements.ts:171-178` | `orbitalElementsFromClassical` は元期 null で組む |
-| `src/physics/elements.ts`(新規) | `stateAt(el, t)`: 元期があれば `timeSincePeriapsis` / `trueAnomalyFromMean` の逆をたどって ν を出し `positionOnOrbit` / `velocityOnOrbit` を通す。元期が null なら null を返す。双曲線は既存の双曲線ケプラー方程式(`:121-137`)を使う |
-| `src/physics/celestial-body.ts:139-142` | `orbitalElementsOf` は変更不要(`s.t` を既に渡している) |
-| `tests/physics/elements.test.ts` | 元期を持つ要素の往復と、`stateAt` が `stateFromOrbitalElements` と一致することの表明を足す |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test:physics`。
-新しい表明: 楕円・双曲線の両方で `stateAt(el, el.t0) === (元の状態)` が機械精度で成り立つ。
-ベースライン比較が全 98 天体 × 7 時刻で完全一致(追加のみなので当然一致すべき)。
-
-### 手順5.(案Y を採る場合のみ)`SatelliteOrbit` を日心にする
-
-**目的.** `orbit` と `ephemeris` の契約を完全に一致させる。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/satellite-orbit.ts:33-38` | `SatelliteOrbit` へ `primary: PlanetOrbit` を足す |
-| `src/physics/satellite-orbit.ts:117-122` | `satelliteState(orbit, t)` が `planetAngles` を自分で組み、惑星の状態を足した根中心状態を返す |
-| `src/physics/celestial-motion.ts:488-500, 524-529` | `SatelliteMotion.relStateAt` / `helioStateAt` / `computeRelStateAt` を、日心を返す軌道の上に組み直す。`relStateAt` は惑星相対が要る箇所(重心補正・`packedStateAt` の補完)向けに残す |
-| `src/physics/celestial-motion.ts:438-461` | `PlanetMotion.computeHelioStateAt` の重心補正が `relStateAt` に依存し続けることを確認する |
-| `src/game/celestial/solar-system/satellite-orbit-builders.ts` | `primary` を渡すよう構築を追従 |
-| `tests/physics/{satellite-orbit,laplace-satellites,irregular-satellites}.test.ts` | 追従 |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test`(全層)。
-ベースライン比較が全 98 天体 × 7 時刻で完全一致。
-
 ## 見積り
 
 置換・追従の量から出す(`tests/dist/` を除いた実ファイルでの出現数)。
@@ -228,8 +201,8 @@ tests/physics/_baseline.ts(一時ファイル。*.test.ts にしないこと —
 | ~~1~~ | 実測 33 行 | 実施済み |
 | ~~2~~ | 実測 15 ファイル / +126 −77 行 | 実施済み。位置・速度の最大相対差 5.2e-16(1 ulp) |
 | 3 | 約 200 | `epochOffsetSec` 133 + `phaseOffset` 19 + `keplerOrbitState` 36 + `planetAngles` 19 の一部 |
-| 4 | 約 25 | `OrbitalElements` の構築点 2 + `stateAt` 新規 + テスト |
-| 5 | 約 40 | `satelliteState` 21 + `relStateAt` / `helioStateAt` の組み直し |
+| ~~4~~ | 実測 4 ファイル / +52 −23 行 | 実施済み。ベースラインはビット一致 |
+| ~~5~~ | — | 案X 採用により実施しない |
 
 手順3 が量の大半だが、`epochOffsetSec` の 133 箇所は**引数の削除**であって置換ではないので、
 機械的に消せる。手順2 が量は小さく、意味の変更としては最も大きい。
@@ -245,7 +218,7 @@ tests/physics/_baseline.ts(一時ファイル。*.test.ts にしないこと —
 | `epochOffsetSec` の畳み込みで、二次以上の項を持つ要素を一次で畳む | 位置が静かにずれる。`KeplerOrbit` は全要素が時刻の一次式なので厳密だが、`satellite-orbit.ts` の周期項は引数が線形なだけで振幅は定数 — 畳み込み後の引数が元と一致することを式で確かめること | 手順3。ベースライン比較 |
 | `phase` を `l0` へ畳む際に、`planetAngles` が `l0 + phaseOffset` を使っている(`planet-orbit.ts:56`)ことを見落とす | 衛星モデルが見る太陽方向がずれ、月の位置が数百 km 動く | 手順3。月の ECI 位置をベースライン比較で確認 |
 | `TimeRing` のキャッシュキーが `t`(simTime)である | 軌道側の時刻軸を ET 秒へ変えたとき、Motion 層のキャッシュキーまで ET 秒にするとヒット率は同じでも意味が変わる。キーは simTime のまま据え置くこと | 手順3 |
-| `OrbitalElements` の元期を必須にしてしまう | 参照軌道(`earth-reference-orbits.ts`、`geostationary-overlay.ts`)が意味のない元期を持つ | 手順4 |
-| 元期 null の要素に `stateAt` を呼ぶ経路が実行時にだけ現れる | 軌道ガイドの線が消える。型で null を返すので、呼び出し側の分岐漏れは typecheck が拾う | 手順4 |
-| 案Y を採ると `PlanetMotion.computeHelioStateAt` の重心補正が `SatelliteMotion.relStateAt` に依存し続ける | 木が Orbit 層と Motion 層に二重化し、重心補正の置き場が曖昧になる | 手順5。案X を採るなら発生しない |
+| ~~`OrbitalElements` の元期を必須にしてしまう~~ | 手順4 で `epoch: OrbitEpoch | null` にし、参照軌道は null にした | 済 |
+| ~~元期 null の要素に `stateOnOrbitAt` を呼ぶ経路~~ | 戻り値が `| null` なので分岐漏れは typecheck が拾う | 済 |
+| 案Y を採ると `PlanetMotion.computeHelioStateAt` の重心補正が `SatelliteMotion.relStateAt` に依存し続ける | 木が Orbit 層と Motion 層に二重化し、重心補正の置き場が曖昧になる | 案X を採ったので発生しない |
 | `HelioEphemeris` の `helio` は、恒星を持たない星系では字義どおりでない | 架空星系では根が仮想点になる。`CelestialMotion.helioStateAt` が同じ語を同じ意味で使っているので、この frame の呼び名を変えるなら2つ一緒に動かす | 手順2 で `OriginCenteredEphemeris` から改名済み。呼び名を変えるなら rename-ephemeris.md 側で |
