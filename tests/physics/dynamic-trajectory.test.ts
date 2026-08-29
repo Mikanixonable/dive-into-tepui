@@ -8,7 +8,7 @@ import { test } from '../harness';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { extrapolatedRelativeState } from '../../src/physics/kepler-extrapolation';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { DynamicTrajectory } from '../../src/physics/dynamic-trajectory';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { add, len, sub, v3 } from '../../src/math/vec3';

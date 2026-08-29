@@ -2,7 +2,7 @@
 // 守り、個体の運動から引いた値と一致すること。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { R_EARTH_EQ } from '../../src/physics/solar-system/constants';
+import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
 import { len, sub } from '../../src/math/vec3';
 import { positionOf, solarSystemParts } from './test-helpers';
 

@@ -3,7 +3,7 @@
 // になる。
 import * as THREE from 'three/webgpu';
 import { StarDef } from '../../../physics/celestial-motion';
-import { MU_SUN, R_SUN } from '../../../physics/solar-system/constants';
+import { MU_SUN, R_SUN } from './constants';
 
 export const SUN: StarDef = { id: 'sun', mu: MU_SUN, radius: R_SUN };
 

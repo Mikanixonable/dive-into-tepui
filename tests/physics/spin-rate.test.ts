@@ -6,7 +6,7 @@ import { CERES } from '../../src/game/celestial/solar-system/dwarf-planets';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { VENUS } from '../../src/game/celestial/solar-system/inner-planets';
 import { URANUS } from '../../src/game/celestial/solar-system/uranus-system';
-import { SIDEREAL_DAY } from '../../src/physics/solar-system/constants';
+import { SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
 
 export function register(): void {
   test('spinRateOf: 地球は 2π/恒星日', () => {
