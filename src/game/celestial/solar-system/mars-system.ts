@@ -27,19 +27,28 @@ export const MARS_TEXTURE: CelestialTexture = {
   url: marsTextureUrl, albedoScale: 1.3663, bondAlbedo: 0.25, averageHue: [2.6054, 0.5946, 0.2888],
 };
 
+// 火星系の天体の表示名。
+export const MARS_SYSTEM_NAMES: { readonly [K in keyof MarsSystemMotions]: string } = {
+  mars: '火星',
+  phobos: 'フォボス',
+  deimos: 'ダイモス',
+};
+
 // 火星系の運動に見た目を対応づける。
 export function marsSystemEntities(
   m: MarsSystemMotions,
 ): { readonly [K in keyof MarsSystemMotions]: CelestialEntity } {
   return {
-    mars: new PointEntity(m.mars, '火星', 'planet', CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS),
+    mars: new PointEntity(
+      m.mars, MARS_SYSTEM_NAMES.mars, 'planet', CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS,
+    ),
     phobos: new SphereEntity(
-      m.phobos, 'フォボス', 'satellite',
+      m.phobos, MARS_SYSTEM_NAMES.phobos, 'satellite',
       // 平均輝度 0.2774(A_B は幾何 0.071 x q=0.393)
       CelestialSurface.textured({ url: phobosTextureUrl, albedoScale: 0.1009, bondAlbedo: 0.028, averageHue: [1, 1, 1] }),
     ),
     deimos: new SphereEntity(
-      m.deimos, 'ダイモス', 'satellite',
+      m.deimos, MARS_SYSTEM_NAMES.deimos, 'satellite',
       // A_B=0.027(幾何 0.068 x q=0.393)
       CelestialSurface.solid([0.0330, 0.0259, 0.0199]),
     ),
