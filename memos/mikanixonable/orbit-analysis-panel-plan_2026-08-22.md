@@ -25,7 +25,7 @@ Orbit パネル(戦闘ビュー左レールの常設パネル `#hud-orbit`)か�
 
 | 要るもの | 既存 | 判定 |
 | --- | --- | --- |
-| 将来時刻の状態 | `DynamicTrajectory.extrapolatedAt(t, centerStateAtT)`(`src/physics/dynamic-trajectory.ts:112`)。艦からは `entity.predicted`(`src/game/game-entity/game-entity.ts:134`)で辿る | **そのまま呼ぶ。伝播コードを新規に書かない** |
+| 将来時刻の状態 | `DynamicTrajectory.extrapolatedAt(t, centerStateAtT)`(`src/physics/dynamic-trajectory.ts:112`)。艦からは `entity.predicted`(`src/game/dynamic/dynamic-entity/dynamic-entity.ts:134`)で辿る | **そのまま呼ぶ。伝播コードを新規に書かない** |
 | 中心天体の将来位置 | `ephemeris.stateOf(id, t)`。`src/game/trajectory-line.ts:54` `extrapolatedTailStates()` が「相対外挿+中心を足し戻す」の見本 | 同じ形を踏襲 |
 | 高度の定義 | `orbitInfo()`(`src/game/hud/orbit-info.ts:25`)の `len(rel.r) - attractor.radius` | 時間軸へ拡張して再利用 |
 | 主天体の決定 | `strongestAttractor(r, celestialBodies)`(`src/physics/celestial-body.ts:103`) | そのまま |

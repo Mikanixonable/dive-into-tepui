@@ -130,7 +130,7 @@ Blender + MolecularNodesは高精細GLBを再authoringする場合だけ必要�
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/game/game-entity/enemy.ts` | `EnemyInit`(:112)に `formationId` と `formationRole: 'attacker' \| 'shield' \| 'energy'` を追加(省略可)。`Enemy` に保持(:125 付近、accent/waveId と同列) |
+| `src/game/dynamic/dynamic-entity/enemy.ts` | `EnemyInit`(:112)に `formationId` と `formationRole: 'attacker' \| 'shield' \| 'energy'` を追加(省略可)。`Enemy` に保持(:125 付近、accent/waveId と同列) |
 | `src/game/stages/spawner/enemy-generator.ts` | `generateProteinFormation(...)` を新設。中心軌道を 1 つ決め、`generateProteinEnemy`(:38)を役割ごとの相対オフセットで呼ぶ。配置は攻撃担当中心・ルビスコ前面・ATPシンテターゼ後方(`enemy-spawner.ts:16` `generateCluster` の円周配置+ジッターを参考) |
 | `src/game/stages/creative-stage.ts` | :339 のタンパク質生成箇所に陣形生成の呼び出しを追加(動作確認用の湧き) |
 | `src/game/save-data.ts` | 陣形IDと役割を任意フィールドとして保存し、旧セーブとの互換を保つ |
@@ -149,7 +149,7 @@ Blender + MolecularNodesは高精細GLBを再authoringする場合だけ必要�
 | ファイル | 何をするか |
 | --- | --- |
 | `src/game/protein/protein-combat-state.ts` | `isActionEnabled`(:103)に外部条件(エネルギー供給の有無)を合成できる口を追加 |
-| `src/game/game-entity/enemy.ts` | `behave()`(:446)の射撃判定に「同一 formationId に energy 役が生存しているか」の集計を追加。集計は `attackingCountInGroup`(:482)と同じ都度集計方式 |
+| `src/game/dynamic/dynamic-entity/enemy.ts` | `behave()`(:446)の射撃判定に「同一 formationId に energy 役が生存しているか」の集計を追加。集計は `attackingCountInGroup`(:482)と同じ都度集計方式 |
 
 **達成条件と検証** — `npm run typecheck`。`npm run dev` で ATPシンテターゼだけを撃破 →
 攻撃担当の射撃が止まることを目視。逆に攻撃担当だけ残して supply 生存なら撃ち続けることも確認。

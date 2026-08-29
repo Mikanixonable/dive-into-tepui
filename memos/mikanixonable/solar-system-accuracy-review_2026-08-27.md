@@ -124,7 +124,7 @@ Y軸(北極)の正方向から見て反時計回り=地球の自転方向と同�
 **対応済み**(commit `1b7a7ce8`): dawn→`-90`、dusk→`+90` に直した。回帰テスト
 (`tests/physics/earth-reference-orbits.test.ts`、新規)を追加。
 
-### 1.7 `src/game/celestial/orbit-guide-settings.ts:189-198` — 太陽同期準回帰軌道の既定値が「約800km」というコメントと大きく食い違う
+### 1.7 `src/game/celestial/orbit-guide/orbit-guide-settings.ts:189-198` — 太陽同期準回帰軌道の既定値が「約800km」というコメントと大きく食い違う
 
 既定値 `repeatDays: 14, revsPerRepeat: 98`(1日7周、周期約205.7分)を
 `sunSynchronousElements`(`earth-reference-orbits.ts`)の式で実際に解くと、軌道長半径は
@@ -149,7 +149,7 @@ CELESTIAL.md 4.1節は水星・地球・火星・木星・土星・天王星・�
 3軸スケールに揃えた。render-lab:shotで地球シーンを撮影し崩れが無いことを確認済み(扁平率
 約0.34%は視覚的にはほぼ判別できない差)。
 
-### 1.9 `src/game/celestial/ring-view.ts` — 環の面/線切替が「実距離での見かけ幅」ではなく「帯の実幅の固定閾値」になっている
+### 1.9 `src/game/celestial/celestial-entity/ring-view.ts` — 環の面/線切替が「実距離での見かけ幅」ではなく「帯の実幅の固定閾値」になっている
 
 CELESTIAL.md 5節は「見かけの幅が画面上で1ピクセルを割った時点で」動的に面↔線を切り替えると
 規定し、フェーベ環(半径400万〜1300万km)を名指しでこの仕組みの対象としているが、実装は
@@ -168,10 +168,10 @@ annulus→lineへの切替を目視確認済み。
 
 ## 2. 中確信度の指摘
 
-- **`src/game/celestial/orbit-guide-lines.ts:31-33`**: `RECOMPUTE_INTERVAL=300秒`の正当化コメントが
+- **`src/game/celestial/orbit-guide/orbit-guide-lines.ts:31-33`**: `RECOMPUTE_INTERVAL=300秒`の正当化コメントが
   「地球-月系が最速なので0.05°しか回らない」としているが、同じ`ALL_SYSTEMS`には火星-フォボス
   (周期7.66時間)が含まれ、300秒で約3.92°回転する。コメントの前提が誤り。
-- **`src/game/celestial/orbit-guide-settings.ts:219-227`**: ツンドラ軌道の既定近地点高度がモルニヤの
+- **`src/game/celestial/orbit-guide/orbit-guide-settings.ts:219-227`**: ツンドラ軌道の既定近地点高度がモルニヤの
   値(600km)をそのまま流用しており、ツンドラの周期(1恒星日)に当てはめると離心率0.835・
   遠地点高度約70,972kmという、現実のツンドラ軌道(近地点高度数万km・e≈0.27前後)とは
   かけ離れた極端な楕円になる。意図的な値か確認を要する。
@@ -189,7 +189,7 @@ annulus→lineへの切替を目視確認済み。
 - **`src/physics/solar-system.ts:1051`**: 海王星の極半径(24,285.3km)が広く引用される値
   (約24,341km)と1割程度大きい扁平率を示す。天王星側は正しく再現できているため、海王星側だけ
   転記の誤りがある可能性。
-- **`src/game/celestial/body-visibility.ts:220-241`**: `isPositionInFocusedSystem`(艦などの
+- **`src/game/celestial/system-membership.ts`**: `isPositionInFocusedSystem`(艦などの
   マップ表示判定)にカメラ用のヒステリシス(1.44倍のSTICKY_MARGIN)が掛かっておらず、勢力圏境界
   付近を飛ぶ艦の表示がフレームごとに切り替わりうる。
 
@@ -217,10 +217,10 @@ annulus→lineへの切替を目視確認済み。
   収束を実測検証していない。閾値`e>0.8`の根拠も定量的でない。
 - `src/physics/earth-reference-orbits.ts` の太陽同期条件がJ2による平均運動の補正なしの2体近似。
   HUDガイド線用途なので実害は小さいと見られる。
-- `src/game/celestial/zero-velocity-lines.ts` のゼロ速度曲線が地球-月系・太陽-地球系の2系統のみで、
+- `src/game/celestial/orbit-guide/zero-velocity-lines.ts` のゼロ速度曲線が地球-月系・太陽-地球系の2系統のみで、
   CELESTIAL.md 6節がHUD対象として挙げる太陽-木星系・太陽-土星系が含まれない(UI仕様側の意図的な
   範囲限定の可能性)。
-- `src/game/celestial/map-visibility.ts:123-129` の「月だけ常時表示」の判定が `def.planet==='earth'`
+- `src/game/map/visibility-policy.ts:123-129` の「月だけ常時表示」の判定が `def.planet==='earth'`
   でハードコードされている。カスタムレジストリで地球に複数衛星を登録した場合、月以外も対象になる。
 - `src/physics/solar-system.ts:518` の地球(EM Bary)の軌道長半径が、他の要素はJPL Standish表の値を
   精密転記している中で `a` だけ「ちょうど1AU」の定義値に置き換わっている(実用上の差は約2.6ppm)。
