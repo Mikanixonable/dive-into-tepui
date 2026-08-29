@@ -2,11 +2,11 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { shapeAxes } from '../../src/physics/celestial-body-def';
-import { CERES } from '../../src/physics/solar-system/dwarf-planets';
-import { JUPITER } from '../../src/physics/solar-system/jupiter-system';
-import { VENUS } from '../../src/physics/solar-system/inner-planets';
-import { PHOBOS } from '../../src/physics/solar-system/mars-system';
-import { SATURN } from '../../src/physics/solar-system/saturn-system';
+import { CERES } from '../../src/game/celestial/solar-system/dwarf-planets';
+import { JUPITER } from '../../src/game/celestial/solar-system/jupiter-system';
+import { VENUS } from '../../src/game/celestial/solar-system/inner-planets';
+import { PHOBOS } from '../../src/game/celestial/solar-system/mars-system';
+import { SATURN } from '../../src/game/celestial/solar-system/saturn-system';
 import { solarSystemParts } from './test-helpers';
 
 // 登録された天体の定義を引くための太陽系。

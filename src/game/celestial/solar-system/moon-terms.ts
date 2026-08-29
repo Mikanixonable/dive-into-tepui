@@ -1,5 +1,5 @@
 // 月の軌道の黄経・黄緯・動径にかかる周期摂動項。
-import { PerturbationTerm } from '../satellite-orbit';
+import { PerturbationTerm } from '../../../physics/satellite-orbit';
 
 const D2R = Math.PI / 180;
 
