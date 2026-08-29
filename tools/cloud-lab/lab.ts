@@ -1,24 +1,22 @@
-// 雲の実験環境のキャンバス。天気のモデル・気候の事前分布・雲の場の写しから選んだ量を、値のまま
-// 出す(トーンマッピングも色空間変換も掛けない)。撮影(PNG)もここが担う。
+// 雲の実験環境のキャンバス。面が組んだ色を、値のまま出す(トーンマッピングも色空間変換も掛けない)。
+// 撮影(PNG)もここが担う。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { screenUV } from 'three/tsl';
 import { R_EARTH } from '../../src/physics/solar-system';
 import { EARTH_TEXTURES } from '../../src/render/celestial-textures';
-import { createCloudField } from '../../src/render/cloud/cloud-field';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
 import { EquirectProjection } from '../../src/render/cloud/field-projection';
-import { WeatherModel } from '../../src/render/cloud/weather-model';
 import { pixelsToPngDataUrl } from '../lab-png';
+import { CloudLabPane } from './pane';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
-import type { BakedField } from '../../src/render/cloud/baked-field';
 
 // キャンバスと撮影の大きさ [px]。正距円筒なので 2:1。
 export const VIEW_WIDTH = 1024;
 export const VIEW_HEIGHT = 512;
 
 export class CloudLabCanvas {
-  private readonly model: WeatherModel;
-  private readonly cloud: BakedField;
+  private readonly pane: CloudLabPane;
   private readonly materials: ReadonlyMap<CloudLabViewId, THREE.MeshBasicNodeMaterial>;
   private readonly quad: QuadMesh;
   // 撮影先。表示値をそのまま RGBA8 で受ける。
@@ -44,14 +42,12 @@ export class CloudLabCanvas {
     // 写しは表示と同じ大きさに取る — 読む側より細かく焼いた分は、読み出しの補間で均されて捨てられる。
     // この大きさだと気圧の差分の刻み(0.01 rad)が texel(2π/1024)の 1.6 倍、湿度のノイズの
     // 最上段(159 km)が 4 texel。
-    const projection = new EquirectProjection(VIEW_HEIGHT);
-    this.model = new WeatherModel(climate, projection);
-    this.cloud = createCloudField(this.model, projection);
+    this.pane = new CloudLabPane(new EquirectProjection(VIEW_HEIGHT), climate);
     // ビューごとに別のマテリアル。選ばれた 1 つだけがコンパイルされる。
     const materials = new Map<CloudLabViewId, THREE.MeshBasicNodeMaterial>();
     for (const view of CLOUD_LAB_VIEWS) {
       const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
-      material.colorNode = view.color(this.model, climate, this.cloud);
+      material.colorNode = this.pane.colorAt(view, screenUV);
       materials.set(view.id, material);
     }
     this.materials = materials;
@@ -74,12 +70,10 @@ export class CloudLabCanvas {
     this.render();
   }
 
-  // いまの時刻をモデルへ入れ、選んだ量をキャンバスへ出す。雲の場の写しは、それを読むビューの
-  // ときだけ焼く(気圧の写しはどのビューも読むので必ず焼く)。
+  // いまの時刻を面へ入れ、選んだ量をキャンバスへ出す。
   public render(): void {
-    this.model.syncTime(this.seconds);
-    this.model.bake(this.renderer);
-    if (this.view.readsCloud) this.cloud.render(this.renderer);
+    this.pane.syncTime(this.seconds);
+    this.pane.bake(this.renderer, this.view);
     this.quad.render(this.renderer);
   }
 
