@@ -16,10 +16,10 @@ import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
-import { assertOmegaMatchesBasis, motionOf, solarSystemParts } from './test-helpers';
+import { assertOmegaMatchesBasis, motionOf, orbitingMotionOf, solarSystemParts } from './test-helpers';
 
 // 定義だけを引くための太陽系(id から静的事実を取り出す口としてだけ使う)。
-const DEFS = solarSystemParts().motions;
+const DEFS = solarSystemParts();
 
 const YEAR = 365.25636 * 86400;
 const MOON_PERIOD = 27.321661 * 86400;
@@ -37,11 +37,11 @@ function satelliteOrbitOf(id: string): SatelliteOrbit {
 }
 
 export function register(): void {
-  const motions = solarSystemParts({ earth: 0.3, moon: 0.4 }).motions;
+  const parts = solarSystemParts({ earth: 0.3, moon: 0.4 });
 
   test('celestial-motion: 地球は ECI 原点に厳密に静止する', () => {
     for (const t of [0, 1e6, 1e8]) {
-      const s = motions.earthSystem.earth.stateAt(t);
+      const s = orbitingMotionOf(parts, 'earth').stateAt(t);
       assert.deepEqual(s.r, v3(0, 0, 0));
       assert.deepEqual(s.v, v3(0, 0, 0));
     }
@@ -52,7 +52,7 @@ export function register(): void {
     let maxD = 0;
     for (let i = 0; i < 32; i++) {
       const t = (i / 32) * YEAR;
-      const d = len(motions.sun.stateAt(t).r);
+      const d = len(motionOf(parts, 'sun').stateAt(t).r);
       minD = Math.min(minD, d);
       maxD = Math.max(maxD, d);
     }
@@ -65,11 +65,11 @@ export function register(): void {
   // 日心地球位置(= -太陽の地心位置)だけ ECI へ平行移動した値とも一致しなければならない。
   test('celestial-motion: 重心の不変条件(質量加重平均 = PlanetOrbit の重心を ECI 化した値、位置・速度とも)', () => {
     for (const t of [0, 1e6, 3e8]) {
-      const moonState = motions.earthSystem.moon.stateAt(t);
+      const moonState = orbitingMotionOf(parts, 'moon').stateAt(t);
       const wMoon = MU_MOON / (MU_EARTH + MU_MOON);
       const baryFromMass = { r: scale(moonState.r, wMoon), v: scale(moonState.v, wMoon) };
 
-      const sunEci = motions.sun.stateAt(t);
+      const sunEci = motionOf(parts, 'sun').stateAt(t);
       const earthHelio = { r: scale(sunEci.r, -1), v: scale(sunEci.v, -1) }; // 太陽は日心原点
       const baryHelio = keplerOrbitState(EARTH_ORBIT, t + EPOCH_T_OFFSET, 0.3);
       const baryFromKepler = { r: sub(baryHelio.r, earthHelio.r), v: sub(baryHelio.v, earthHelio.v) };
@@ -88,7 +88,7 @@ export function register(): void {
     const diffAt = (t: number) => {
       const bary = keplerOrbitState(EARTH_ORBIT, t + EPOCH_T_OFFSET, 0.3);
       const pureKeplerSunEci = scale(bary.r, -1);
-      return sub(motions.sun.stateAt(t).r, pureKeplerSunEci);
+      return sub(motionOf(parts, 'sun').stateAt(t).r, pureKeplerSunEci);
     };
 
     const d0 = diffAt(1e6);
@@ -96,7 +96,7 @@ export function register(): void {
     assert.ok(mag > 4.0e6 && mag < 5.0e6, `重心補正ぶんのずれ: ${mag} m`);
 
     // 補正ベクトルは月方向を向く(地球は重心を挟んで月と反対側にずれるので、地球→重心は月方向)。
-    const moonDir = norm(motions.earthSystem.moon.stateAt(1e6).r);
+    const moonDir = norm(orbitingMotionOf(parts, 'moon').stateAt(1e6).r);
     assert.ok(dot(norm(d0), moonDir) > 0.99, '補正ベクトルは月方向を向く');
 
     // 恒星月周期で振れる(昇交点・近点歳差は1周期では無視できるほど小さい)。
@@ -106,15 +106,15 @@ export function register(): void {
 
   test('celestial-motion: 太陽-地球ラグランジュ点の無次元距離比は文献値と一致する(0.00997/0.01004)', () => {
     for (const t of [0, 1e7, 1e9]) {
-      const sunDist = len(motions.sun.stateAt(t).r);
-      const { L1, L2 } = motions.earthSystem.earth.lagrangeAt(t);
+      const sunDist = len(motionOf(parts, 'sun').stateAt(t).r);
+      const { L1, L2 } = orbitingMotionOf(parts, 'earth').lagrangeAt(t);
       assert.ok(Math.abs(len(L1) / sunDist - 0.00997) < 1e-3, `L1 比: ${len(L1) / sunDist}`);
       assert.ok(Math.abs(len(L2) / sunDist - 0.01004) < 1e-3, `L2 比: ${len(L2) / sunDist}`);
     }
   });
 
   test('celestial-motion: 地球-月ラグランジュ点は白道面内にあり、L1/L2 は文献値の距離比になる(0.15093/0.16783)', () => {
-    const moon = motions.earthSystem.moon;
+    const moon = orbitingMotionOf(parts, 'moon');
     for (const t of [0, 1e6, 1e8]) {
       const moonPos = moon.stateAt(t).r;
       const R = len(moonPos);
@@ -133,7 +133,7 @@ export function register(): void {
   // 共線点の内外関係と L3/L4/L5 の幾何。x̂ を「主天体→副天体」へ統一した写像が正しいことは、
   // 距離比だけでなく「どちら側に置かれるか」で初めて確かめられる。
   test('celestial-motion: 地球-月ラグランジュ点の L1/L2 は月の内外、L3 は反月方向、L4/L5 は正三角形', () => {
-    const moon = motions.earthSystem.moon;
+    const moon = orbitingMotionOf(parts, 'moon');
     for (const t of [0, 1e6, 1e8]) {
       const moonPos = moon.stateAt(t).r;
       const R = len(moonPos);
@@ -157,10 +157,10 @@ export function register(): void {
   // 太陽-地球系では地球が副天体なので、地心を原点とする ECI での配置は地球-月系と別物になる:
   // L1/L2 は地球の両隣、L3 は太陽の向こう側(地心から約 2 au)、L4/L5 は地心から 1 au。
   test('celestial-motion: 太陽-地球ラグランジュ点は黄道面内にあり、L3 は約2au 太陽側・L4/L5 は正三角形', () => {
-    const earth = motions.earthSystem.earth;
+    const earth = orbitingMotionOf(parts, 'earth');
     const mu = MU_EARTH / (MU_SUN_LOCAL + MU_EARTH);
     for (const t of [0, 1e7, 1e9]) {
-      const sPos = motions.sun.stateAt(t).r;
+      const sPos = motionOf(parts, 'sun').stateAt(t).r;
       const R = len(sPos);
       const sHat = norm(sPos);
       const n = earth.orbitNormalAt(t);
@@ -190,7 +190,7 @@ export function register(): void {
   // とどまる。昇交点・近点の歳差を平均黄経に混ぜると、この差が年オーダーで単調に開く
   // (1年で -19° 級)ため、長期の時間加速で月とラグランジュ点が実位置から外れる。
   test('celestial-motion: 月の黄経は恒星月の平均運動で進む(歳差ぶんの遅速がない)', () => {
-    const moon = solarSystemParts({ moon: 0 }).motions.earthSystem.moon;
+    const moon = orbitingMotionOf(solarSystemParts({ moon: 0 }), 'moon');
     const MOON_ECC = 0.0549;
     const maxCenterDeg = (2 * MOON_ECC * 180) / Math.PI + 0.5;
     for (const days of [27.321661, 365.25, 3652.5]) {
@@ -208,7 +208,7 @@ export function register(): void {
     let minDeg = 180;
     let maxDeg = 0;
     for (let i = 0; i < 64; i++) {
-      const n = motions.earthSystem.moon.orbitNormalAt((i / 64) * NODE_PERIOD);
+      const n = orbitingMotionOf(parts, 'moon').orbitNormalAt((i / 64) * NODE_PERIOD);
       const deg = (Math.acos(Math.max(-1, Math.min(1, dot(n, v3(0, 1, 0))))) * 180) / Math.PI;
       minDeg = Math.min(minDeg, deg);
       maxDeg = Math.max(maxDeg, deg);
@@ -220,7 +220,7 @@ export function register(): void {
   // EPOCH_T_OFFSET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。
   // 平均黄経で合わせているぶん、中心差(地球の e=0.0167 で最大 1.9°)だけ真の方向はずれる。
   test('celestial-motion: t=0 では太陽が +X 方向(昼側)にある', () => {
-    const dir = norm(solarSystemParts({}).motions.sun.stateAt(0).r);
+    const dir = norm(motionOf(solarSystemParts({}), 'sun').stateAt(0).r);
     const offDeg = (Math.acos(dir.x / len(dir)) * 180) / Math.PI;
     assert.ok(offDeg < 3, `t=0 の太陽方向が +X から離れている: ${offDeg}°`);
   });
@@ -230,11 +230,11 @@ export function register(): void {
   // 中心差(最大 2e: 地球 1.9°・木星 5.6°)ぶんまで離れうる — 元期不整合(78° 級)を捕まえる
   // にはこの幅で足りる。
   test('celestial-motion: 地球と木星の日心黄経差は t=−EPOCH_T_OFFSET で J2000 の表の値と一致する', () => {
-    const m = solarSystemParts({}).motions;
+    const m = solarSystemParts({});
     const t = -EPOCH_T_OFFSET;
-    const sun = m.sun.stateAt(t).r;
+    const sun = motionOf(m, 'sun').stateAt(t).r;
     const earthHelio = scale(sun, -1);
-    const jupiterHelio = sub(m.jupiterSystem.jupiter.stateAt(t).r, sun);
+    const jupiterHelio = sub(orbitingMotionOf(m, 'jupiter').stateAt(t).r, sun);
     const diffDeg = ((eclipticLongitude(jupiterHelio) - eclipticLongitude(earthHelio)) * 180) / Math.PI;
     const expectedDeg = 34.39644051 - 100.46457166;
     const errDeg = ((diffDeg - expectedDeg + 540) % 360) - 180;
@@ -294,17 +294,17 @@ export function register(): void {
   // 親惑星の赤道面を基準面として登録できていれば、軌道法線は親の自転軸のすぐ近くに来る。
   // 黄道基準のままだと木星の赤道傾斜 3.13° と黄道傾斜 23.44° ぶん離れる。
   test('celestial-motion: ガリレオ衛星の軌道面は木星の赤道面に一致する', () => {
-    const jupiterSystem = motions.jupiterSystem;
-    const pole = jupiterSystem.jupiter.orientationAt(1e7)!.axis;
+    const pole = orbitingMotionOf(parts, 'jupiter').orientationAt(1e7)!.axis;
     for (const id of ['io', 'europa', 'ganymede', 'callisto'] as const) {
-      const offDeg = (Math.acos(dot(jupiterSystem[id].orbitNormalAt(1e7), pole)) * 180) / Math.PI;
+      const offDeg = (Math.acos(dot(orbitingMotionOf(parts, id).orbitNormalAt(1e7), pole)) * 180) / Math.PI;
       assert.ok(offDeg < 1, `${id} の軌道面法線と木星自転軸のなす角: ${offDeg}°`);
     }
   });
 
   test('celestial-motion: トリトンは海王星の自転に対して逆行する', () => {
     const t = 1e7;
-    const { neptune, triton } = motions.neptuneSystem;
+    const neptune = orbitingMotionOf(parts, 'neptune');
+    const triton = orbitingMotionOf(parts, 'triton');
     const rel = sub(triton.stateAt(t).r, neptune.stateAt(t).r);
     const relVel = sub(triton.stateAt(t).v, neptune.stateAt(t).v);
     const h = cross(rel, relVel);
@@ -340,7 +340,7 @@ export function register(): void {
   });
 
   test('celestial-motion: 地球の spinRotationAt の姿勢は1恒星日でほぼ元へ戻る', () => {
-    const earth = motions.earthSystem.earth;
+    const earth = orbitingMotionOf(parts, 'earth');
     const q0 = earth.spinRotationAt(0)!.q;
     const q1 = earth.spinRotationAt(SIDEREAL_DAY)!.q;
     // q1 * inverse(q0) の回転角(2倍角の余弦を w から取り出す)が 2π の整数倍に近いかを見る。
@@ -350,7 +350,7 @@ export function register(): void {
   });
 
   test('celestial-motion: 地球の spinRotationAt の姿勢は自転中も omega と整合する', () => {
-    const earth = motions.earthSystem.earth;
+    const earth = orbitingMotionOf(parts, 'earth');
     const t = SIDEREAL_DAY / 3;
     const q0 = earth.spinRotationAt(0)!.q;
     const qt = earth.spinRotationAt(t)!.q;
@@ -361,7 +361,7 @@ export function register(): void {
   });
 
   test('celestial-motion: 地球の spinRotationAt の姿勢は時刻とともに自転角だけ進む', () => {
-    const earth = motions.earthSystem.earth;
+    const earth = orbitingMotionOf(parts, 'earth');
     const q0 = earth.spinRotationAt(0)!.q;
     const quarter = earth.spinRotationAt(SIDEREAL_DAY / 4)!.q;
     const rel = qMul(quarter, qInvert(q0));
@@ -370,20 +370,20 @@ export function register(): void {
   });
 
   test('celestial-motion: 地球の spinRotationAt の omega の大きさは 2π/恒星日 に一致する', () => {
-    const { omega } = motions.earthSystem.earth.spinRotationAt(12345)!;
+    const { omega } = orbitingMotionOf(parts, 'earth').spinRotationAt(12345)!;
     const expected = (2 * Math.PI) / SIDEREAL_DAY;
     assert.ok(Math.abs(len(omega) - expected) / expected < 1e-6, `|omega|: ${len(omega)} vs ${expected}`);
   });
 
   test('celestial-motion: spinRotationAt は自転モデルを持たない天体(ceres)で null', () => {
-    assert.equal(motions.dwarfPlanets.ceres.spinRotationAt(0), null);
+    assert.equal(orbitingMotionOf(parts, 'ceres').spinRotationAt(0), null);
   });
 
   // 公転回転系(orbitFrameRotationAt)が ẑ に軌道面法線・x̂ に中心天体→天体を置くのに合わせ、
   // 自転回転系は ẑ に自転軸・x̂ に本初子午線を置く。ここが崩れると、自転系だけ軸の意味が
   // 変わってしまい、同じパネルで選んだ2つの座標系が別の規約で回る。
   test('celestial-motion: spinRotationAt の基底は ẑ = 自転軸、x̂ = 本初子午線', () => {
-    const earth = motions.earthSystem.earth;
+    const earth = orbitingMotionOf(parts, 'earth');
     const t = 98765;
     const { axis, spinAngle } = earth.orientationAt(t)!;
     const { q } = earth.spinRotationAt(t)!;
@@ -397,7 +397,7 @@ export function register(): void {
   // 逆行自転は軸を反転せずに角速度の符号で表す — 金星の omega は IAU の北極と逆を向く。
   test('celestial-motion: 逆行自転(金星)の omega は自転軸と逆向き', () => {
     const t = 4242;
-    const venus = motions.innerPlanets.venus;
+    const venus = orbitingMotionOf(parts, 'venus');
     const { axis } = venus.orientationAt(t)!;
     const { omega } = venus.spinRotationAt(t)!;
     assert.ok(dot(omega, axis) < 0, `dot: ${dot(omega, axis)}`);
@@ -416,8 +416,8 @@ export function register(): void {
       v: id === 'earth' ? v3(0, 0, 0) : v3(0, 1e3, 0),
     }),
   };
-  const analyticOnlyMoon = solarSystemParts({}).motions.earthSystem.moon;
-  const preciseMoon = solarSystemParts({}, EPOCH_T_OFFSET, mockPrecise, preciseEpochJdTdb).motions.earthSystem.moon;
+  const analyticOnlyMoon = orbitingMotionOf(solarSystemParts({}), 'moon');
+  const preciseMoon = orbitingMotionOf(solarSystemParts({}, EPOCH_T_OFFSET, mockPrecise, preciseEpochJdTdb), 'moon');
   const tOutsideValidity = (preciseValidDays + 5) * DAY;
 
   test('celestial-motion: 高精度暦パックの有効期間内では pack 由来の値を返す', () => {

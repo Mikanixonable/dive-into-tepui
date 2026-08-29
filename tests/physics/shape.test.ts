@@ -10,7 +10,7 @@ import { SATURN } from '../../src/physics/solar-system/saturn-system';
 import { solarSystemParts } from './test-helpers';
 
 // 登録された天体の定義を引くための太陽系。
-const DEFS = solarSystemParts().motions;
+const DEFS = solarSystemParts();
 
 export function register(): void {
   test('shapeAxes: 土星の縦横比 Rp/Re = 0.902', () => {
@@ -28,7 +28,7 @@ export function register(): void {
   });
 
   test('shapeAxes: shape を持つ全天体で radius(衝突球) が3軸の最大値以上', () => {
-    for (const motion of DEFS.all) {
+    for (const motion of DEFS.bodies) {
       const def = motion.def;
       if (!('shape' in def) || def.shape === undefined) continue;
       const axes = shapeAxes(def.radius, def.shape);

@@ -10,7 +10,7 @@ import { motionOf, solarSystemParts } from './test-helpers';
 import { cross, dot, len, scale, sub } from '../../src/math/vec3';
 
 // id から静的事実を引くための太陽系。
-const DEFS = solarSystemParts().motions;
+const DEFS = solarSystemParts();
 
 // テスト対象の id が衛星であることを前提に軌道モデルを取り出す。
 function satelliteOrbitOf(id: string): SatelliteOrbit {
@@ -32,7 +32,7 @@ const CASES: readonly [string, number, boolean][] = [
 ];
 
 export function register(): void {
-  const motions = solarSystemParts({}).motions;
+  const parts = solarSystemParts({});
 
   test('irregular-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {
     for (const [id, periodDays] of CASES) {
@@ -45,8 +45,8 @@ export function register(): void {
   test('irregular-satellites: 傾斜角どおりの向きに公転する(逆行4体は角運動量が黄道極と逆向き)', () => {
     for (const [id, , retrograde] of CASES) {
       const t = 1e7;
-      const satellite = motionOf(motions, id).stateAt(t);
-      const planet = motionOf(motions, planetOf(id)).stateAt(t);
+      const satellite = motionOf(parts, id).stateAt(t);
+      const planet = motionOf(parts, planetOf(id)).stateAt(t);
       const h = cross(sub(satellite.r, planet.r), sub(satellite.v, planet.v));
       const sign = dot(h, ECL_POLE_ECI);
       if (retrograde) assert.ok(sign < 0, `${id} が順行している: ${sign}`);

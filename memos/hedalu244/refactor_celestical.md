@@ -138,26 +138,31 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 の `createEarth()` がテクスチャを構築時に読むため、解体するまで地球を含む星系を DOM 無しで
 組めず、手順5のテストが本番の構築経路を使えないため)。
 
-### 手順4. 機構テストをローカルフィクスチャ星系へ書き直す
+### 手順4. テストを木の形から切り離す
 
-**目的**: P6 の知的作業部分を木の一元化(手順5)の前に済ませ、手順5を機械的な移設に保つ。
-運動合成・座標系・積分・窓の**機構**を検証しているテストから `solarSystemParts()`(= 現実の
-太陽系全体)への依存を抜き、celestial-motion のクラスを直接組んだ小さな架空星系
-(`tests/physics/equatorial-satellites.test.ts:26-33` の手組みを一般化した共通フィクスチャ)へ
-載せ替える。実データの検証(仕分け規則6-ii)はここでは触らず手順5で移す。
+**目的**: P6 のうち、手順5を機械的な移設に保つために先に済ませる部分。テストが
+`SolarSystemMotions` の**名前付きフィールドの木**(`motions.earthSystem.moon`)へ直接触るのを
+やめ、id 引きだけにする。木が消えても当たり続けるテストにしてから、手順5で構築経路を差し替える。
+
+**当初案(架空フィクスチャ星系への載せ替え)は採らない。** 対象の機構テストは実際には
+「文献値・実測値との一致」を検証している(ラグランジュ点の距離比 0.00997、恒星月の平均運動、
+水星の近日点移動 574〜578″/Cy、ハレー彗星の近日点 0.586au、主要衛星の公転周期など)。架空の
+星系へ移すと期待値の出所がコード自身になり、CODING-RULE 4.1 が禁じる「現状の写し」へ退化する。
+実データを入力に使う機構テストは、実データのまま残すのが正しい。
 
 **変更が必要な箇所**
 
 | ファイル | 何をするか |
 | --- | --- |
-| `tests/physics/test-helpers.ts` | 架空フィクスチャ星系(恒星1・惑星2・衛星2程度、J2/C22/大気/環/各 PoleModel を網羅する Def)を追加。`solarSystemParts` はこの手順ではまだ残す(実データ系テストが使う) |
-| `tests/physics/solar-system.test.ts` | **削除**(95天体の id 並び固定は正本がコード自身)。`spinRateOf` の符号・null の検証だけローカル Def で celestial-motion.test.ts へ移す |
-| `tests/physics/{celestial-motion,frame,dynamic-trajectory,dynamics,celestial-body,celestial-body-windows,halo,orbit-catalog}.test.ts` | フィクスチャ星系で書き直す。実在天体の値に依存する期待値(例: 月の重心補正率)はこの手順では実データ系へ分離してマークだけ付ける |
-| `tests/physics/absolute-ephemeris.test.ts` | 暦パック経路の機構検証としてフィクスチャ + テスト用解析暦で書き直す |
-| `tests/game/window-agreement → 保留` | game/simulation も import しており手順5で tests/game へ移すため、ここでは触らない |
+| `tests/physics/test-helpers.ts` | `SolarSystemParts` から `SolarSystemMotions` を外し、`bodies: readonly CelestialMotion[]`(宣言順)+ 窓 + 座標系にする。`motionOf` / `orbitingMotionOf` / `positionOf` は `SolarSystemParts` を受ける |
+| `tests/physics/solar-system.test.ts` | **95天体の id 並びを deepEqual で固定するテストを削除**(期待値の正本がコード自身にしかない)。`spinRateOf` の3件は Def 由来の実測事実なので残す |
+| `tests/physics/{celestial-motion,frame,absolute-ephemeris,body-orientation,equatorial-satellites,window-agreement}.test.ts` | `motions.<系>.<天体>` を `motionOf(parts, '<id>')` へ |
+| `tests/physics/{laplace-satellites,equatorial-satellites}.test.ts` | ヘルパの引数型 `SolarSystemMotions` を `SolarSystemParts` へ |
+| `tests/physics/{celestial-body-windows,irregular-satellites,shape,small-bodies,body-orientation,celestial-motion}.test.ts` | `parts.motions.all` の参照を `parts.bodies` へ |
 
-**達成条件と検証**: `npm run typecheck` と `npm run test:physics` が green。上記8ファイルに
-`solarSystemParts` / `SolarSystemMotions` の参照が無い(grep)。テストケース数の増減を報告に記録。
+**達成条件と検証**: `npm run typecheck` と `npm run test:physics` が green。
+`grep -rn "SolarSystemMotions\|\.earthSystem\.\|\.dwarfPlanets\.\|\.innerPlanets\.\|\.jupiterSystem\.\|\.smallBodies\." tests/` が 0 件(tests/dist を除く)。
+削除したテストは1件(id 並びの固定)であることを報告に書く。
 
 ### 手順5. 木の一元化 — physics/solar-system を game/celestial/solar-system へ統合
 
