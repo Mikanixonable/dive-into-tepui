@@ -12,7 +12,7 @@ import { Cyclones } from './cyclones';
 import { DriftingNoise } from './drifting-noise';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { ClimateMap } from './climate-map';
-import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、収束は風の収束 [1/s]、風は東向き・北向きの
 // 成分 [m/s]、上昇流は [m/s](地形と収束による、負なら下降)、温度は [°C]、湿度は 0..1
@@ -73,7 +73,8 @@ const WIND_CAP = 50;
 
 // 湿度の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
 const ADVECTION_PERIOD = 12 * 3600;
-// 台風の目。中心で地表付近と上層の湿度をこれだけ下げ、雲を抜く。
+// 台風の目。移流前の湿度をこれだけ下げる。焼いてから流すので、目は流れに沿って中心へ引き込まれて
+// 歪み、見えの穴は Cyclones が持つ半径よりずっと小さくなる。
 const TYPHOON_EYE_DRYNESS = 0.45;
 // 湿度の底上げ(平年の雲量が 0 の土地での値)と、平年の雲量の重み。地表付近と上層で別に持つ。
 // 重みは、雲量の地理的な差が凝結のしきい値をまたぐ幅に取る — 小さく取ると砂漠にも海と同じだけ
@@ -90,7 +91,9 @@ export class WeatherModel {
   private readonly upperHumidityNoise = new DriftingNoise(...UPPER_HUMIDITY_NOISE);
   private readonly cyclones = new Cyclones(R_EARTH);
   private readonly pressure = new BakedField(
-    'pressure', THREE.RedFormat, (direction) => vec4(this.pressureSource(direction), 0, 0, 1));
+    'pressure', THREE.RedFormat, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
+  private readonly humiditySource = new BakedField(
+    'humiditySource', THREE.RGFormat, (direction) => this.humiditySourceAt(direction));
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
@@ -99,9 +102,10 @@ export class WeatherModel {
     this.syncTime(0);
   }
 
-  // いまの時刻の気圧を写しへ焼く。syncTime のあと、weatherAt のグラフを描く前に呼ぶ。
+  // いまの時刻の気圧と、移流前の湿度を写しへ焼く。syncTime のあと、weatherAt のグラフを描く前に呼ぶ。
   public bake(renderer: WebGPURenderer): void {
     this.pressure.render(renderer);
+    this.humiditySource.render(renderer);
   }
 
   // 時刻 [s] を uniform へ写す。
@@ -145,24 +149,13 @@ export class WeatherModel {
     const terrainLift = dot(components(wind), this.climate.slope(direction));
     const lift = limitLift(terrainLift.add(convergence.mul(CONVERGENCE_DEPTH)));
 
-    // 気候の平均へノイズと上昇流の効果を重ねる。湿度の源は風で流す。
+    // 気候の平均へノイズと上昇流の効果を重ねる。湿度は写しを風で流したものへ上昇流を足す。
     const temperature = this.climate.meanTemperature(direction)
       .add(this.temperatureNoise.at(direction).mul(TEMPERATURE_NOISE_AMPLITUDE))
       .sub(terrainLift.mul(LIFT_COOLING));
-    const meanCloudiness = this.climate.meanCloudiness(direction);
-    const eye = this.cyclones.typhoonEyeAt(direction).mul(TYPHOON_EYE_DRYNESS);
-    const humidity = clamp(
-      float(HUMIDITY_BASE).add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT))
-        .add(this.advected(this.humidityNoise, direction, wind).mul(HUMIDITY_NOISE_AMPLITUDE))
-        .add(lift.mul(LIFT_HUMIDITY)).sub(eye),
-      0, 1,
-    );
-    const upperHumidity = clamp(
-      float(UPPER_HUMIDITY_BASE).add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
-        .add(this.advected(this.upperHumidityNoise, direction, wind).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE))
-        .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye),
-      0, 1,
-    );
+    const advected = this.advected(direction, wind);
+    const humidity = clamp(advected.x.add(lift.mul(LIFT_HUMIDITY)), 0, 1);
+    const upperHumidity = clamp(advected.y.add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)), 0, 1);
 
     return {
       pressure, convergence, wind: components(wind),
@@ -171,26 +164,41 @@ export class WeatherModel {
   }
 
   // 写しへ焼く気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。読むのは pressure.at()。
-  private pressureSource(direction: Vec3Node): FloatNode {
+  private pressureSourceAt(direction: Vec3Node): FloatNode {
     const band = cos(latitudeOf(direction).mul(6)).mul(-PRESSURE_BAND_AMPLITUDE);
     return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE)).add(this.cyclones.pressureAt(direction));
   }
 
-  // ノイズの段を風で流したもの −1..1。周期の半分ずれた 2 位相を三角波で混ぜるので、流れの変位が
-  // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならない。
-  private advected(noise: DriftingNoise, direction: Vec3Node, wind: Vec3Node): FloatNode {
+  // 写しへ焼く移流前の湿度: 地表付近を R、上層を G。平年の雲量も台風の目も、ここへ入れたものが
+  // まとめて風で流れる。読むのは advected()。
+  private humiditySourceAt(direction: Vec3Node): Vec4Node {
+    const meanCloudiness = this.climate.meanCloudiness(direction);
+    const eye = this.cyclones.typhoonEyeAt(direction).mul(TYPHOON_EYE_DRYNESS);
+    return vec4(
+      float(HUMIDITY_BASE).add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT))
+        .add(this.humidityNoise.at(direction).mul(HUMIDITY_NOISE_AMPLITUDE)).sub(eye),
+      float(UPPER_HUMIDITY_BASE).add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
+        .add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)).sub(eye),
+      0, 1,
+    );
+  }
+
+  // 移流前の湿度の写しを風で流したもの(x が地表付近、y が上層)。周期の半分ずれた 2 位相を三角波で
+  // 混ぜるので、流れの変位が周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならない。
+  private advected(direction: Vec3Node, wind: Vec3Node): Vec2Node {
     const phaseA = this.advectionCycle;
     const phaseB = fract(phaseA.add(0.5));
     const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
     // 位相 phase(周期に対する比)だけ風上へ遡った点の源。
-    const sourceAt = (phase: FloatNode): FloatNode =>
-      noise.at(normalize(direction.sub(wind.mul(phase.mul(ADVECTION_PERIOD / R_EARTH)))));
+    const sourceAt = (phase: FloatNode): Vec2Node =>
+      this.humiditySource.at(normalize(direction.sub(wind.mul(phase.mul(ADVECTION_PERIOD / R_EARTH))))).xy;
     return mix(sourceAt(phaseB), sourceAt(phaseA), weightA);
   }
 
   // 保持している GPU 資源を解放する。
   public dispose(): void {
     this.pressure.dispose();
+    this.humiditySource.dispose();
   }
 }
 
