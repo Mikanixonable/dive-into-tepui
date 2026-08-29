@@ -1,7 +1,7 @@
 // 気圧へ書き込む低気圧の谷: 熱帯を西進する台風 1 つと、中緯度を東進しながら生まれて消える低気圧。
 // 中心と深さは時刻の閉じた関数で、どの時刻へ飛んでも同じ配置になる。
 import * as THREE from 'three/webgpu';
-import { exp, float, length, uniform } from 'three/tsl';
+import { dot, exp, float, uniform } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 // 台風。中心の緯度 [rad]、時刻 0 の経度 [rad]、西進の速さ [m/s]、深さ [hPa]、半径 [m]。
@@ -48,9 +48,10 @@ class Trough {
   }
 
   // 中心から radius [m] で 1 → 1/e へ落ちるガウス。距離は弦で測るので、対蹠点に鏡像が出ない。
+  // 弦は二乗のまま扱う — 長さを取ってから二乗し直すと、平方根と累乗を 1 つずつ余計に踏む。
   public falloff(direction: Vec3Node, radiusOfBody: number, radius: number): FloatNode {
-    const chord = length(direction.sub(this.center)).mul(radiusOfBody);
-    return exp(chord.div(radius).pow(2).negate());
+    const offset = direction.sub(this.center);
+    return exp(dot(offset, offset).mul(-((radiusOfBody / radius) ** 2)));
   }
 
   // 単位方向 direction での気圧の落ち込み [hPa](負)。

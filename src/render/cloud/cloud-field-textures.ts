@@ -8,9 +8,9 @@ import { condense, SLAB_COUNT } from './condensation';
 import type { WeatherModel } from './weather-model';
 import type { FloatNode } from '../tsl-types';
 
-// 写しの解像度 [texel]。正距円筒なので幅は高さの 2 倍。
-export const CLOUD_FIELD_WIDTH = 2048;
-export const CLOUD_FIELD_HEIGHT = 1024;
+// 写しの解像度 [texel]。正距円筒なので幅は高さの 2 倍で、雲を出すキャンバスと同じ大きさに取る。
+const CLOUD_FIELD_WIDTH = 1024;
+const CLOUD_FIELD_HEIGHT = 512;
 
 export class CloudFieldTextures {
   private readonly target: THREE.RenderTarget;

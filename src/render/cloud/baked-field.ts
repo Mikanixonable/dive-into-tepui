@@ -6,10 +6,11 @@ import { mrt, screenUV, texture } from 'three/tsl';
 import { directionFromEquirectUv, equirectUvFromDirection } from './sphere-frame';
 import type { Vec3Node, Vec4Node } from '../tsl-types';
 
-// 写しの解像度 [texel]。正距円筒なので幅は高さの 2 倍。気圧の差分の刻み(0.01 rad)が texel
-// (2π/2048)の 3 倍あり、湿度のノイズの最上段(159 km)が 8 texel で表せる大きさ。
-const WIDTH = 2048;
-const HEIGHT = 1024;
+// 写しの解像度 [texel]。正距円筒なので幅は高さの 2 倍で、これを読む雲の場の写しと同じ大きさに取る
+// — 読む側より細かく焼いた分は、読み出しの補間で均されてそのまま捨てられる。この大きさだと気圧の
+// 差分の刻み(0.01 rad)が texel(2π/1024)の 1.6 倍、湿度のノイズの最上段(159 km)が 4 texel。
+const WIDTH = 1024;
+const HEIGHT = 512;
 
 export class BakedField {
   private readonly target: THREE.RenderTarget;
