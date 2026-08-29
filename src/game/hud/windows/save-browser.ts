@@ -2,6 +2,7 @@
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
 // 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
 import type { Game } from '../../game';
+import { solarSystemBodyName } from '../../celestial/solar-system/solar-system';
 import { SaveSlots } from '../../save/save-slots';
 import { SnapshotService } from '../../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../../save/save-transfer';
@@ -188,7 +189,8 @@ export class SaveBrowser implements OverlayHandle {
         onRenameSnapshot: (id) => this.handleRenameSnapshot(id),
         onDeleteSnapshot: (id) => this.handleDeleteSnapshot(id),
         onBranch: (slotId, snapId) => this.handleBranch(slotId, snapId),
-        nameOf: (id) => game?.celestialSystem.nameOf(id) ?? id,
+        // 周回が1つも動いていない状態でも一覧の中心天体名を出せるよう、静的な表へ落とす。
+        nameOf: (id) => game?.celestialSystem.nameOf(id) ?? solarSystemBodyName(id),
       },
     ));
     body.appendChild(snapPane);

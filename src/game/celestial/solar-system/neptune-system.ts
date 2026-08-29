@@ -7,23 +7,30 @@ import type { CelestialEntity } from '../celestial-entity';
 import { PointEntity } from '../point-entity';
 import { SphereEntity } from '../sphere-entity';
 
+// 海王星系の天体の表示名。
+export const NEPTUNE_SYSTEM_NAMES: { readonly [K in keyof NeptuneSystemMotions]: string } = {
+  neptune: '海王星',
+  triton: 'トリトン',
+  nereid: 'ネレイド',
+};
+
 // 海王星系の運動に見た目を対応づける。
 export function neptuneSystemEntities(
   m: NeptuneSystemMotions,
 ): { readonly [K in keyof NeptuneSystemMotions]: CelestialEntity } {
   return {
     neptune: new PointEntity(
-      m.neptune, '海王星', 'planet',
+      m.neptune, NEPTUNE_SYSTEM_NAMES.neptune, 'planet',
       // 平均輝度 0.1228(A_B は公表ボンド)
       CelestialSurface.textured({ url: neptuneTextureUrl, albedoScale: 2.3609, bondAlbedo: 0.29, averageHue: [0.3358, 0.9100, 3.8476] }),
     ),
     triton: new SphereEntity(
-      m.triton, 'トリトン', 'satellite',
+      m.triton, NEPTUNE_SYSTEM_NAMES.triton, 'satellite',
       // A_B=0.43(幾何 0.76 x q=0.564)
       CelestialSurface.solid([0.4794, 0.4216, 0.3680]),
     ),
     nereid: new SphereEntity(
-      m.nereid, 'ネレイド', 'satellite',
+      m.nereid, NEPTUNE_SYSTEM_NAMES.nereid, 'satellite',
       // A_B=0.071(幾何 0.155 x q=0.461)
       CelestialSurface.solid([0.0816, 0.0693, 0.0563]),
     ),
