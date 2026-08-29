@@ -4,11 +4,11 @@
 
 ## 対象ファイル
 - `src/game/player/`: player.ts / player-throttle.ts / player-fire.ts / thermal.ts / radiator.ts / power.ts / belt.ts / belt-physics.ts / thrust-effects.ts / rcs-effects.ts / reentry-effects.ts / player-markers.ts
-- `src/game/game-entity/ship.ts` / `parts.ts` / `enemy.ts` / `bullet.ts`
+- `src/game/dynamic/dynamic-entity/ship.ts` / `parts.ts` / `enemy.ts` / `bullet.ts`
 - `src/render/ships.ts` / `radiator-hinge.ts`
 
 ## 手順
-1. `git log --oneline HEAD~200..HEAD -- src/game/player src/game/game-entity/ship.ts src/game/game-entity/parts.ts` で該当コミットを把握。
+1. `git log --oneline HEAD~200..HEAD -- src/game/player src/game/dynamic/dynamic-entity/ship.ts src/game/dynamic/dynamic-entity/parts.ts` で該当コミットを把握。
 2. 観点:
    - **parts = HP/性能の単一正**: 全ダメージが `applyDamageToParts` を通るか。`updateOverallHp` の「hull/cockpit 喪失で 0」規則のバイパス経路。`refreshFromParts` の呼び忘れ(dock 修理・restore・swap)。`Part.weight` 未読は既知(`[spec?]` 再確認のみ)。
    - **thermal**: `pendingHeat` バンク方式 — substep 回数にスケールしない不変条件。`addGunHeat`/`addImpactHeat` 以外に `hullTemp` 直書きがないか。radiator の `wear` 受け渡し(自己修復なし)、`solarLoad` の偶奇 fold 向き分割、`abs` vs `max(0,·)`(radiator/power の違いは意図的)。

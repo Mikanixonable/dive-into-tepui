@@ -1105,7 +1105,7 @@ SPEC・CODING-RULE に押しっぱなしの扱いを定めた記述は無い(「
 
 実施結果 c のとおり、RCS 燃料の補給・移送・均等化を `windows/` 配下の純関数モジュールへ出した。
 中身は「タンク群にどう配分するか」というゲームのロジックで、HUD の関心ではない。
-`game/` 側(`game-entity/parts` の近く)へ移すのが筋の可能性がある。
+`game/` 側(`dynamic/dynamic-entity/parts` の近く)へ移すのが筋の可能性がある。
 
 ### 13. `guide-kind-def.ts` に残る2つの `!` アサーション
 
@@ -1133,15 +1133,15 @@ boolean を分離すれば挙動を変えずに直せる)。
 このファイルは除外対象(`physical-object-list-panel.ts`)と対になっているため、そちらの作業が
 片付いてから扱う。
 
-### 11. `base-view-shared.ts` と `game-entity/ship.ts` の値の二重管理
+### 11. `base-view-shared.ts` と `dynamic/dynamic-entity/ship.ts` の値の二重管理
 
 `src/game/hud/panels/base-view-shared.ts:18-19` の `DEFAULT_TORQUE`/`DEFAULT_THRUST` が
 `C.MAX_ANG_ACCEL * Math.max(PITCH,YAW,ROLL)` / `C.PLAYER_MASS * C.THROTTLE_LEVELS[...]` という式を
-持ち、同じ式が `src/game/game-entity/ship.ts:86-88` にも書かれている。`SHOP_CATALOG` の
+持ち、同じ式が `src/game/dynamic/dynamic-entity/ship.ts:86-88` にも書かれている。`SHOP_CATALOG` の
 "Gatling Gun"(fireRate/damage/muzzleVelocity)と "Light Armor"(damageReduction 0.2)の値も
 `Ship.initDefaultParts()` の既定値と一致しており、`base-view-shared.ts:15-17` のコメントが
 「同じ単位・同じ桁で書く」よう**手で揃える運用**を明言している。規約 1.6 の
 「整合性保持責務の漏洩は重大な違反」に当たる。
 
-解消には `src/game/game-entity/ship.ts`(HUD の外)を共通定数へ切り出す変更が要るため、
+解消には `src/game/dynamic/dynamic-entity/ship.ts`(HUD の外)を共通定数へ切り出す変更が要るため、
 HUD のリファクタリングの範囲を超える。
