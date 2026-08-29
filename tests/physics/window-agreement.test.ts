@@ -6,7 +6,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { attractorAccel } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON } from '../../src/physics/solar-system/constants';
+import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/constants';
 import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import {

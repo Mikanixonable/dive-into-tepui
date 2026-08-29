@@ -7,7 +7,7 @@ import {
   EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
-import { MU_MARS } from '../../../physics/solar-system/constants';
+import { MU_MARS } from './constants';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import { CelestialSurface } from '../../../render/celestial-surface';

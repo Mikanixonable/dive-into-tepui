@@ -5,7 +5,7 @@ import type { CelestialBodyWindows } from '../../src/physics/celestial-body-wind
 import { CelestialMotion, OrbitingMotion, PhaseOffsets } from '../../src/physics/celestial-motion';
 import { FrameRotation } from '../../src/physics/kepler-orbit';
 import type { ReferenceFrames } from '../../src/physics/reference-frames';
-import { EPOCH_T_OFFSET } from '../../src/physics/solar-system/constants';
+import { EPOCH_T_OFFSET } from '../../src/game/celestial/solar-system/constants';
 import { solarSystem } from '../../src/game/celestial/solar-system/solar-system';
 import { SECONDS_PER_DAY } from '../../src/physics/time';
 import { Vec3, cross, len, scale, sub, v3 } from '../../src/math/vec3';
