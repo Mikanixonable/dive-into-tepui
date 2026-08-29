@@ -4,11 +4,12 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../src/physics/solar-system';
 import { EARTH_TEXTURES } from '../../src/render/celestial-textures';
+import { createCloudField } from '../../src/render/cloud/cloud-field';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
-import { CloudFieldTextures } from '../../src/render/cloud/cloud-field-textures';
 import { WeatherModel } from '../../src/render/cloud/weather-model';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
+import type { BakedField } from '../../src/render/cloud/baked-field';
 
 // キャンバスと撮影の大きさ [px]。正距円筒なので 2:1。
 export const VIEW_WIDTH = 1024;
@@ -16,7 +17,7 @@ export const VIEW_HEIGHT = 512;
 
 export class CloudLabCanvas {
   private readonly model: WeatherModel;
-  private readonly fields: CloudFieldTextures;
+  private readonly cloud: BakedField;
   private readonly materials: ReadonlyMap<CloudLabViewId, THREE.MeshBasicNodeMaterial>;
   private readonly quad: QuadMesh;
   // 撮影先。表示値をそのまま RGBA8 で受ける。
@@ -40,12 +41,12 @@ export class CloudLabCanvas {
   // 表示の種類ごとのマテリアルを一度だけ組む。
   private constructor(private readonly renderer: WebGPURenderer, climate: ClimateMap) {
     this.model = new WeatherModel(climate);
-    this.fields = new CloudFieldTextures(this.model);
+    this.cloud = createCloudField(this.model);
     // ビューごとに別のマテリアル。選ばれた 1 つだけがコンパイルされる。
     const materials = new Map<CloudLabViewId, THREE.MeshBasicNodeMaterial>();
     for (const view of CLOUD_LAB_VIEWS) {
       const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
-      material.colorNode = view.color(this.model, climate, this.fields);
+      material.colorNode = view.color(this.model, climate, this.cloud);
       materials.set(view.id, material);
     }
     this.materials = materials;
@@ -73,7 +74,7 @@ export class CloudLabCanvas {
   public render(): void {
     this.model.syncTime(this.seconds);
     this.model.bake(this.renderer);
-    if (this.view.readsFields) this.fields.render(this.renderer);
+    if (this.view.readsCloud) this.cloud.render(this.renderer);
     this.quad.render(this.renderer);
   }
 
