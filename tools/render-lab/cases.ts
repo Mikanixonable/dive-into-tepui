@@ -28,7 +28,7 @@ import { RingView } from '../../src/game/celestial/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
-import { type RingBandDef } from '../../src/physics/solar-system/celestial-body-def';
+import { type RingBandDef } from '../../src/physics/celestial-body-def';
 import { MARS } from '../../src/physics/solar-system/mars-system';
 import { SATURN } from '../../src/physics/solar-system/saturn-system';
 import { type CelestialTexture } from '../../src/render/celestial-textures';

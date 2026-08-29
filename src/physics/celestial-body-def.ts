@@ -1,14 +1,15 @@
 // 天体1体の静的な記述を組み立てる部品: 自転極モデル・2次重力場・形状・環系。
 // これらを束ねた StarDef / PlanetDef / SatelliteDef は celestial-motion.ts が持つ。
-import { Vec3, v3 } from '../../math/vec3';
+import { Vec3, v3 } from '../math/vec3';
 
-// 自転軸と自転位相の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)、
-// 'cassini' は同期回転する衛星のカッシーニ状態で、黄道に対する赤道の傾き obliquity [rad]
-// と軌道面法線から軸が、親を向き続ける平均黄経方向から位相が決まる。'iau' は極の赤経・赤緯と
-// 自転位相 W をそれぞれ時刻の一次式で与える(周期項・高次項は扱わない)。'iau' の係数は
-// いずれも NAIF pck00011.tpc(WGCCRE 2015 準拠)の BODY_POLE_RA / BODY_POLE_DEC / BODY_PM。
+// 自転軸と自転位相の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)で、
+// 自転角速度 spinRate [rad/s] をその天体が与える。'cassini' は同期回転する衛星のカッシーニ状態で、
+// 黄道に対する赤道の傾き obliquity [rad] と軌道面法線から軸が、親を向き続ける平均黄経方向から
+// 位相が決まる。'iau' は極の赤経・赤緯と自転位相 W をそれぞれ時刻の一次式で与える(周期項・
+// 高次項は扱わない)。'iau' の係数はいずれも NAIF pck00011.tpc(WGCCRE 2015 準拠)の
+// BODY_POLE_RA / BODY_POLE_DEC / BODY_PM。
 export type PoleModel =
-  | { readonly kind: 'eciPole' }
+  | { readonly kind: 'eciPole'; readonly spinRate: number }
   | { readonly kind: 'cassini'; readonly obliquity: number }
   | {
       readonly kind: 'iau';

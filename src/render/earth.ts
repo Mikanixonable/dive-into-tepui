@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { texture as textureNode, mix, uniform, uv, vec2, vec3 } from 'three/tsl';
 import type { FloatUniform } from './tsl-types';
-import { shapeAxes } from '../physics/solar-system/celestial-body-def';
+import { shapeAxes } from '../physics/celestial-body-def';
 import { EARTH } from '../physics/solar-system/earth-system';
 import { R_EARTH_EQ } from '../physics/solar-system/constants';
 import earthTextureUrl from '../assets/earth.jpg';
