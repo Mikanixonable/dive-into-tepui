@@ -23,7 +23,7 @@
   .row .field input[type=range] { width: 320px; accent-color: var(--accent); }
   .row .field output { min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
   figure { margin: 0; background: var(--panel); border: 1px solid var(--edge); padding: 8px; width: fit-content; }
-  figure canvas { display: block; width: 1024px; height: 512px; background: #000; }
+  figure canvas { display: block; width: 1536px; max-width: 100%; height: auto; background: #000; }
   #error { color: #ff8a5c; white-space: pre-wrap; }
 </style>
 </head>
@@ -31,6 +31,7 @@
   <h1>Cloud Lab</h1>
   <div class="row" id="views"></div>
   <div class="row" id="time"></div>
+  <div class="row" id="cap"></div>
   <figure><canvas id="view"></canvas></figure>
   <p id="error"></p>
 </body>

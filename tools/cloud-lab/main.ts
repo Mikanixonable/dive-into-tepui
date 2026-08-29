@@ -50,8 +50,22 @@ async function init(): Promise<void> {
     requestAnimationFrame(advance);
   });
 
+  // cap の面の写す範囲。3 本のスライダーは、動かした 1 本といまの残り 2 つで置き直す。
+  const setCapLatitude = buildSlider('cap', 'cap 中心緯度', -90, 90, 1,
+    () => `${canvas.capCenterLatitude.toFixed(0)}°`,
+    (latitude) => canvas.aimCap(latitude, canvas.capCenterLongitude, canvas.capAngularRadius));
+  const setCapLongitude = buildSlider('cap', '中心経度', -180, 180, 1,
+    () => `${canvas.capCenterLongitude.toFixed(0)}°`,
+    (longitude) => canvas.aimCap(canvas.capCenterLatitude, longitude, canvas.capAngularRadius));
+  const setCapRadius = buildSlider('cap', '半径', 1, 90, 1,
+    () => `${canvas.capAngularRadius.toFixed(0)}°`,
+    (radius) => canvas.aimCap(canvas.capCenterLatitude, canvas.capCenterLongitude, radius));
+
   markView(canvas.currentView);
   setSlider(canvas.hours);
+  setCapLatitude(canvas.capCenterLatitude);
+  setCapLongitude(canvas.capCenterLongitude);
+  setCapRadius(canvas.capAngularRadius);
   canvas.render();
 
   window.cloudLab = {
