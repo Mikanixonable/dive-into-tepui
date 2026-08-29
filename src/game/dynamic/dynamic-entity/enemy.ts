@@ -60,7 +60,7 @@ const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime の
 // epoch で展開する。orbitLineColor は旧セーブデータには無いため、無ければ accent から導く。
-export type EnemyInit =
+type EnemyInit =
   | {
     readonly name: string;
     readonly state: KinematicState;

@@ -49,35 +49,35 @@ export const JUPITER: PlanetDef = {
 
 // 木星の内側小衛星(環境軌道群)4個。基準面はガリレオ衛星と同じ木星系ラプラス面。
 // GM・平均半径は JPL Planetary Satellite Physical Parameters。歳差周期はいずれも未測定。
-export const METIS: SatelliteDef = {
+const METIS: SatelliteDef = {
   id: 'metis',
   mu: 0.00250e9,
   radius: 2.15e4,
   orbit: jplSatelliteOrbit({ a: 1.28000e8, e: 0.000, incDeg: 0.0, periodDays: 0.294779, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: JUPITER_LAPLACE_BASIS }),
 };
 
-export const ADRASTEA: SatelliteDef = {
+const ADRASTEA: SatelliteDef = {
   id: 'adrastea',
   mu: 0.00014e9,
   radius: 8.2e3,
   orbit: jplSatelliteOrbit({ a: 1.29000e8, e: 0.000, incDeg: 0.0, periodDays: 0.298260, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: JUPITER_LAPLACE_BASIS }),
 };
 
-export const AMALTHEA: SatelliteDef = {
+const AMALTHEA: SatelliteDef = {
   id: 'amalthea',
   mu: 0.16456e9,
   radius: 8.35e4,
   orbit: jplSatelliteOrbit({ a: 1.81400e8, e: 0.003, incDeg: 0.4, periodDays: 0.499918, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: JUPITER_LAPLACE_BASIS }),
 };
 
-export const THEBE: SatelliteDef = {
+const THEBE: SatelliteDef = {
   id: 'thebe',
   mu: 0.03015e9,
   radius: 4.93e4,
   orbit: jplSatelliteOrbit({ a: 2.21900e8, e: 0.018, incDeg: 1.1, periodDays: 0.676105, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: JUPITER_LAPLACE_BASIS }),
 };
 
-export const IO: SatelliteDef = {
+const IO: SatelliteDef = {
   id: 'io',
   mu: 5.9599e12,
   radius: 1.83e6, // 三軸の最長半軸(外接球)
@@ -86,21 +86,21 @@ export const IO: SatelliteDef = {
   orbit: jplSatelliteOrbit({ a: 4.218e8, e: 0.0033, incDeg: 0.04, periodDays: 1.762732, nodePeriodYears: 0, apsisPeriodYears: 1.333, basisToEci: JUPITER_LAPLACE_BASIS }),
 };
 
-export const EUROPA: SatelliteDef = {
+const EUROPA: SatelliteDef = {
   id: 'europa',
   mu: 3.2027e12,
   radius: 1.5608e6,
   orbit: jplSatelliteOrbit({ a: 6.711e8, e: 0.0072, incDeg: 0.47, periodDays: 3.525463, nodePeriodYears: 30.202, apsisPeriodYears: 1.394, basisToEci: JUPITER_LAPLACE_BASIS }),
 };
 
-export const GANYMEDE: SatelliteDef = {
+const GANYMEDE: SatelliteDef = {
   id: 'ganymede',
   mu: 9.8878e12,
   radius: 2.6312e6,
   orbit: jplSatelliteOrbit({ a: 1.0704e9, e: 0.0013, incDeg: 0.20, periodDays: 7.155588, nodePeriodYears: 137.812, apsisPeriodYears: 68.301, basisToEci: JUPITER_LAPLACE_BASIS }),
 };
 
-export const CALLISTO: SatelliteDef = {
+const CALLISTO: SatelliteDef = {
   id: 'callisto',
   mu: 7.1793e12,
   radius: 2.4103e6,
@@ -113,14 +113,14 @@ export const CALLISTO: SatelliteDef = {
 // 0(歳差なし)。GM・平均半径は Planetary Satellite Physical Parameters が一次だが、
 // エララ・アナンケ・カルメ・パシファエ・シノーペの半径はその表に無いため、Wikipedia
 // "List of natural satellites"(一次は Sheppard の測光サイズ推定)の値を使う。
-export const HIMALIA: SatelliteDef = {
+const HIMALIA: SatelliteDef = {
   id: 'himalia',
   mu: 0.15155e9,
   radius: 8.5e4,
   orbit: jplSatelliteOrbit({ a: 1.14390e10, e: 0.160, incDeg: 28.4, periodDays: 249.9090, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
-export const ELARA: SatelliteDef = {
+const ELARA: SatelliteDef = {
   id: 'elara',
   mu: 0,
   radius: 3.995e4,
@@ -128,28 +128,28 @@ export const ELARA: SatelliteDef = {
 };
 
 // 傾斜角 90° 超が逆行を表す。
-export const ANANKE: SatelliteDef = {
+const ANANKE: SatelliteDef = {
   id: 'ananke',
   mu: 0,
   radius: 1.455e4,
   orbit: jplSatelliteOrbit({ a: 2.10295e10, e: 0.238, incDeg: 147.6, periodDays: 623.1097, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
-export const CARME: SatelliteDef = {
+const CARME: SatelliteDef = {
   id: 'carme',
   mu: 0,
   radius: 2.33e4,
   orbit: jplSatelliteOrbit({ a: 2.31392e10, e: 0.261, incDeg: 164.6, periodDays: 719.2806, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
-export const PASIPHAE: SatelliteDef = {
+const PASIPHAE: SatelliteDef = {
   id: 'pasiphae',
   mu: 0,
   radius: 2.89e4,
   orbit: jplSatelliteOrbit({ a: 2.34632e10, e: 0.412, incDeg: 148.3, periodDays: 734.4215, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
-export const SINOPE: SatelliteDef = {
+const SINOPE: SatelliteDef = {
   id: 'sinope',
   mu: 0,
   radius: 1.75e4,

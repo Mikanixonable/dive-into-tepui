@@ -1,3 +1,4 @@
+// BaseState は public フィールド baseState の型なので、外から名指しできるよう export したままにする。
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
 import { EntityIdAllocator } from './entity-id';
@@ -37,7 +38,7 @@ import type { RenderStyle } from '../../../render/render-style';
 import type { MapVisibility } from '../../map/visibility-policy';
 import { currentThemePalette } from '../../theme';
 
-export const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
+const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
 const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
 const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
 const BASE_MAX_FUEL = 50000;    // 基地の最大燃料
@@ -49,7 +50,7 @@ const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
 const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
 const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
 
-export interface BaseDockSlot {
+interface BaseDockSlot {
   readonly id: number;
   readonly localPos: Vec3;
   readonly localNormal: Vec3;
@@ -84,7 +85,7 @@ const idAllocator = new EntityIdAllocator('base-');
 
 // 新規配置は state/name/att をそのまま使い、スナップショットからの再開は saved を
 // simTime の epoch で展開する。
-export type BaseInit =
+type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
 

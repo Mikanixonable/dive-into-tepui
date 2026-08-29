@@ -21,13 +21,13 @@ import { SUN, SUN_LIGHT_COLOR, SUN_SURFACE_COLOR } from './sun';
 import { UranusSystemBodyId, URANUS_SYSTEM_NAMES, uranusSystem } from './uranus-system';
 
 // 太陽系に登録された天体の id。各系の id 集合を合わせたもの。
-export type SolarSystemId =
+type SolarSystemId =
   | EarthSystemBodyId | InnerPlanetId | MarsSystemBodyId | JupiterSystemBodyId
   | SaturnSystemBodyId | UranusSystemBodyId | NeptuneSystemBodyId | DwarfPlanetId | SmallBodyId
   | 'sun';
 
 // 太陽系の全天体の表示名。各系ファイルの表を1つに合わせたもので、名前の正本は系ファイルのまま。
-export const SOLAR_SYSTEM_BODY_NAMES: Record<SolarSystemId, string> = {
+const SOLAR_SYSTEM_BODY_NAMES: Record<SolarSystemId, string> = {
   sun: '太陽',
   ...EARTH_SYSTEM_NAMES,
   ...INNER_PLANET_NAMES,

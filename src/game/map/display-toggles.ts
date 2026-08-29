@@ -64,7 +64,7 @@ export const DEFAULT_MAP_DISPLAY_TOGGLES: MapDisplayToggles = {
 // 各クラスの「クラス全体」トグルと、その配下にある子トグル(ラベル・軌道線)の対応。
 // 表示パネルのボタン構成もこの表を正本として組み立て、UI 側で別の対応関係を持たない。
 // 子トグルは1つでもONならクラス全体を自動でONにし、全てOFFになれば自動でOFFにする
-// (applyBodyClassToggle/normalizeMapDisplayToggles)。lagrange は軌道という概念自体が
+// (normalizeMapDisplayToggles)。lagrange は軌道という概念自体が
 // 無いため children はラベルのみ。
 interface MapDisplayCategory {
   readonly category: keyof MapDisplayToggles;
@@ -125,24 +125,6 @@ export function applyMapDisplayMode(
   next[entry.category] = visible;
   next[entry.name] = visible;
   if (entry.orbit !== null) next[entry.orbit] = mode === 'orbit';
-  return next;
-}
-
-// クリックされたキー1つの反映。子キーなら該当クラスのクラス全体トグルを子の状態から
-// 再計算し、クラス全体キーそのものなら子を全て同じ値へ揃える(表示パネルの唯一の更新口)。
-export function applyBodyClassToggle(
-  current: MapDisplayToggles, key: keyof MapDisplayToggles, on: boolean,
-): MapDisplayToggles {
-  const asCategory = MAP_DISPLAY_CATEGORIES.find((c) => c.category === key);
-  if (asCategory !== undefined) {
-    const next = { ...current, [key]: on };
-    for (const child of asCategory.children) next[child] = on;
-    return next;
-  }
-  const owner = MAP_DISPLAY_CATEGORIES.find((c) => c.children.includes(key));
-  if (owner === undefined) return { ...current, [key]: on };
-  const next = { ...current, [key]: on };
-  next[owner.category] = owner.children.some((child) => next[child]);
   return next;
 }
 

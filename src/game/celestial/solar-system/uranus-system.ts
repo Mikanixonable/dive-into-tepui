@@ -41,7 +41,7 @@ export const URANUS: PlanetDef = {
 
 // 天王星の主要衛星6個。基準面は天王星の赤道面(equatorBasis(URANUS_POLE))。
 // 出典: JPL Solar System Dynamics 衛星平均要素表 / Planetary Satellite Physical Parameters。
-export const PUCK: SatelliteDef = {
+const PUCK: SatelliteDef = {
   id: 'puck',
   // GM は表に無い(6衛星中パックだけ未測定)。半径は Wikipedia "Puck (moon)" 経由
   // (一次は Karkoschka 2001 の Voyager 2 画像解析、平均半径 81±2 km)。
@@ -50,35 +50,35 @@ export const PUCK: SatelliteDef = {
   orbit: jplSatelliteOrbit({ a: 86004e3, e: 0.000, incDeg: 0.3, periodDays: 0.761833, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(URANUS_POLE) }),
 };
 
-export const MIRANDA: SatelliteDef = {
+const MIRANDA: SatelliteDef = {
   id: 'miranda',
   mu: 4.3e9,
   radius: 235.8e3,
   orbit: jplSatelliteOrbit({ a: 129846e3, e: 0.001, incDeg: 4.4, periodDays: 1.413479, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(URANUS_POLE) }),
 };
 
-export const ARIEL: SatelliteDef = {
+const ARIEL: SatelliteDef = {
   id: 'ariel',
   mu: 83.5e9,
   radius: 578.9e3,
   orbit: jplSatelliteOrbit({ a: 190929e3, e: 0.001, incDeg: 0.0, periodDays: 2.520379, nodePeriodYears: 0, apsisPeriodYears: 28.901, basisToEci: equatorBasis(URANUS_POLE) }),
 };
 
-export const UMBRIEL: SatelliteDef = {
+const UMBRIEL: SatelliteDef = {
   id: 'umbriel',
   mu: 85.1e9,
   radius: 584.7e3,
   orbit: jplSatelliteOrbit({ a: 265986e3, e: 0.004, incDeg: 0.1, periodDays: 4.144177, nodePeriodYears: 129.745, apsisPeriodYears: 64.126, basisToEci: equatorBasis(URANUS_POLE) }),
 };
 
-export const TITANIA: SatelliteDef = {
+const TITANIA: SatelliteDef = {
   id: 'titania',
   mu: 226.9e9,
   radius: 788.9e3,
   orbit: jplSatelliteOrbit({ a: 436298e3, e: 0.002, incDeg: 0.1, periodDays: 8.705869, nodePeriodYears: 1644.649, apsisPeriodYears: 579.928, basisToEci: equatorBasis(URANUS_POLE) }),
 };
 
-export const OBERON: SatelliteDef = {
+const OBERON: SatelliteDef = {
   id: 'oberon',
   mu: 205.3e9,
   radius: 761.4e3,

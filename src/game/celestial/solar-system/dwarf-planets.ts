@@ -51,7 +51,7 @@ export const CERES: PlanetDef = {
   }),
 };
 
-export const VESTA: PlanetDef = {
+const VESTA: PlanetDef = {
   id: 'vesta',
   mu: 1.73e10,
   radius: 2.863e5, // 三軸の最長半軸(外接球)
@@ -74,7 +74,7 @@ export const VESTA: PlanetDef = {
   }),
 };
 
-export const PALLAS: PlanetDef = {
+const PALLAS: PlanetDef = {
   id: 'pallas',
   mu: 1.36e10,
   radius: 2.56e5,
@@ -124,14 +124,14 @@ export const PLUTO: PlanetDef = {
 
 // 冥王星の衛星5個。基準面は冥王星-カロン共通重心の赤道面(equatorBasis(PLUTO_POLE))。
 // 出典は天王星衛星と同じ JPL Solar System Dynamics 表。歳差周期は5体とも未公開(=0)。
-export const CHARON: SatelliteDef = {
+const CHARON: SatelliteDef = {
   id: 'charon',
   mu: 106.1e9,
   radius: 606.0e3,
   orbit: jplSatelliteOrbit({ a: 19600e3, e: 0.000, incDeg: 0.0, periodDays: 6.387222, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
 };
 
-export const STYX: SatelliteDef = {
+const STYX: SatelliteDef = {
   id: 'styx',
   // GM は上限値(< 0.0003 km^3/s^2)しか無く実測でないため 0 として扱う。
   mu: 0,
@@ -139,14 +139,14 @@ export const STYX: SatelliteDef = {
   orbit: jplSatelliteOrbit({ a: 43200e3, e: 0.025, incDeg: 0.0, periodDays: 20.16, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
 };
 
-export const NIX: SatelliteDef = {
+const NIX: SatelliteDef = {
   id: 'nix',
   mu: 0.0015e9,
   radius: 18.0e3,
   orbit: jplSatelliteOrbit({ a: 49300e3, e: 0.015, incDeg: 0.0, periodDays: 24.85, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
 };
 
-export const KERBEROS: SatelliteDef = {
+const KERBEROS: SatelliteDef = {
   id: 'kerberos',
   // GM は上限値(< 0.0002 km^3/s^2)しか無く実測でないため 0 として扱う。
   mu: 0,
@@ -154,14 +154,14 @@ export const KERBEROS: SatelliteDef = {
   orbit: jplSatelliteOrbit({ a: 58300e3, e: 0.010, incDeg: 0.4, periodDays: 32.17, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
 };
 
-export const HYDRA: SatelliteDef = {
+const HYDRA: SatelliteDef = {
   id: 'hydra',
   mu: 0.0020e9,
   radius: 18.5e3,
   orbit: jplSatelliteOrbit({ a: 65200e3, e: 0.009, incDeg: 0.3, periodDays: 38.20, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
 };
 
-export const HAUMEA: PlanetDef = {
+const HAUMEA: PlanetDef = {
   id: 'haumea',
   mu: 2.67e11,
   radius: 1.05e6, // 三軸の最長半軸(外接球)
@@ -189,14 +189,14 @@ export const HAUMEA: PlanetDef = {
 // 精度・基準面の一貫性が低い二次引用(一次は各々 Ratzka et al. 2007 / Wikipedia 経由)。
 // 質量 [kg] から GRAVITATIONAL_CONSTANT で GM を導く。
 // 歳差周期は2体とも未公開(=0)。
-export const HIIAKA: SatelliteDef = {
+const HIIAKA: SatelliteDef = {
   id: 'hiiaka',
   mu: GRAVITATIONAL_CONSTANT * 1.6e19,
   radius: 185e3,
   orbit: jplSatelliteOrbit({ a: 49371e3, e: 0.0542, incDeg: 77.394, periodDays: 49.462, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
-export const NAMAKA: SatelliteDef = {
+const NAMAKA: SatelliteDef = {
   id: 'namaka',
   mu: GRAVITATIONAL_CONSTANT * 1.18e18,
   radius: 75e3,
@@ -205,7 +205,7 @@ export const NAMAKA: SatelliteDef = {
   orbit: jplSatelliteOrbit({ a: 25506e3, e: 0.2179, incDeg: 13, periodDays: 18.2783, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
-export const MAKEMAKE: PlanetDef = {
+const MAKEMAKE: PlanetDef = {
   id: 'makemake',
   mu: 2.1e11,
   radius: 7.15e5,
@@ -226,7 +226,7 @@ export const MAKEMAKE: PlanetDef = {
   }),
 };
 
-export const ERIS: PlanetDef = {
+const ERIS: PlanetDef = {
   id: 'eris',
   mu: 1.108e12,
   radius: 1.163e6,
@@ -248,7 +248,7 @@ export const ERIS: PlanetDef = {
 };
 
 // エリスの衛星ディスノミア。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
-export const DYSNOMIA: SatelliteDef = {
+const DYSNOMIA: SatelliteDef = {
   id: 'dysnomia',
   mu: GRAVITATIONAL_CONSTANT * 8.2e19,
   radius: 307.5e3,

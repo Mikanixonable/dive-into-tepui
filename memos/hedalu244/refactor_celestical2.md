@@ -208,48 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順12. 他ファイルから参照されない export を絞る
-
-**目的.** モジュールの公開面が実際の利用より広い。`export` されているのに他のどのファイルからも
-参照されない識別子が、`celestial/` `simulation/` `game-entity/` 合計で 100 以上ある(うち 94 は
-`solar-system/` の天体 Def 定数)。CODING-RULE 1.11 は公開範囲を「外部へ約束するかどうか」で
-決めよと言うので、**約束する意図があるものは残し、それ以外を落とす。**
-**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/solar-system/{inner-planets,mars-system,jupiter-system,saturn-system,uranus-system,neptune-system,dwarf-planets,small-bodies}.ts` | 同一ファイル内でしか使われない天体 Def 定数(94 個)から `export` を外す。**`SUN` / `EARTH` / `MOON` / `JUPITER` / `MARS` / `SATURN` など、他ファイル(`point-field.ts`・`tools/render-lab/cases.ts`・`tools/export-lagrange-orbits.mjs`)が引くものは残す** |
-| `src/game/celestial/solar-system/point-field.ts` | `SizeDistribution` / `ResonanceDistribution` / `PointFieldDef` / `ASTEROID_SEED` / `POINT_FIELD_DEFS` の `export` を、`tests/game/point-field.test.ts` が引くものだけに絞る |
-| `src/game/celestial/orbit-guide/orbit-guide-kind-ids.ts:95` | `buildCombinedId` の `export` を外す |
-| `src/game/celestial/orbit-guide/orbit-guide-catalog.ts:11` | `zeroVelocityMu` の `export` を外す |
-| `src/game/celestial/planet-distance.ts:9,11` | `NearestPlanet` / `findNearestPlanet` の `export` を外す(外から使うのは `targeter.ts` が引く `nearestPlanetDistance` と `mapPlanetFadeOpacity` だけ) |
-| `src/game/map/display-toggles.ts` | `applyBodyClassToggle` 由来の関数の `export` を、UI が呼ぶものだけに絞る |
-| `src/game/dynamic/entity-state-at.ts:13` | `trajectoryStateAt` の `export` を外す |
-| `src/game/dynamic/dynamic-entity/{ammo-pickup,base,bullet,detached-booster,enemy,parts,rcs-fuel-pickup}.ts` | `*Init` 型・`BaseDockSlot` / `BaseState` / `Shooter` / `BulletType` / `HullPart` / `BASE_THRUST` のうち、**セーブの形を表す型は残し**(`save-data.ts` から辿れる契約)、コンストラクタ引数のためだけの型から `export` を外す |
-
-**判定スクリプト**(この手順の検証にも使う)—
-
-```bash
-for f in $(find src/game/celestial src/game/dynamic -name '*.ts'); do
-  grep -ohE "^export (const|function|class|abstract class|type|interface|enum) [A-Za-z_][A-Za-z0-9_]*" "$f" \
-  | sed 's/.* //' | while read -r n; do
-    c=$(grep -rlE "\b$n\b" src tests tools --include=*.ts --include=*.mjs 2>/dev/null \
-        | grep -v "tests/dist" | grep -v "^$f$" | wc -l)
-    [ "$c" -eq 0 ] && echo "$f :: $n"
-  done
-done
-```
-
-**達成条件と検証**
-
-- 上のスクリプトの出力が、意図して公開契約に残したもの(セーブの形を表す型など)だけになる。
-  残したものはそのファイルの先頭コメントに理由を1行で書く。
-- `npm run typecheck` / `npm run test`(全層)が通る。
-
----
-
 ### 手順13. `memos/` の旧名を一掃する
 
 **目的.** `memos/` の 71 ファイルが、この計画で消える名前を持っている。次に memos を読む人が
@@ -416,3 +374,10 @@ grep -rhoE "src/game/(celestial|simulation|game-entity|dynamic|map)/[a-z0-9./-]*
 - **`arcBodies` の perf カウンタと `'arc-bodies'` の表示キーも併せて改名した**
   (`arcCelestialBodies` / `'arc-celestial-bodies'`)。モジュール名だけ直して計数の名前を
   残すと、同じ規則違反(無標の `body` を接辞にする)が別の場所に残る。
+- **手順6 の commit メッセージは `applyBodyClassToggle` を「削除した」と書いたが、実際に
+  削除したのは手順12 だった。** 手順6 の時点では移設しただけで残っていた。
+- **公開契約として export を残したのは 5 つ**(`BaseState` / `Shooter` / `BulletType` /
+  `HullPart` / `DynamicEntityKind`)。いずれも public フィールド・公開 union・公開メソッドの
+  引数として外から名指しできる必要があるもので、理由を各ファイルの先頭コメントに書いた。
+  コンストラクタ引数だけの `*Init` 型は、呼び出し側がオブジェクトリテラルで渡せて型名を要しない
+  ため export を外した。

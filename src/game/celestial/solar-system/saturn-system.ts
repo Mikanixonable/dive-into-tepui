@@ -49,42 +49,42 @@ export const SATURN: PlanetDef = {
 // ラプラス面。GM・平均半径は JPL Planetary Satellite Physical Parameters。歳差周期は
 // いずれも未測定。ダフニスのみ GM が未測定(mu: 0)で、半径も同表に無いため Wikipedia
 // "Daphnis (moon)"(平均直径 7.8±1.0 km、一次は測光サイズ推定)の値を使う。
-export const PAN: SatelliteDef = {
+const PAN: SatelliteDef = {
   id: 'pan',
   mu: 0.00028e9,
   radius: 1.40e4,
   orbit: jplSatelliteOrbit({ a: 1.336e8, e: 0.000, incDeg: 0.0, periodDays: 0.575051, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-export const DAPHNIS: SatelliteDef = {
+const DAPHNIS: SatelliteDef = {
   id: 'daphnis',
   mu: 0,
   radius: 3.9e3,
   orbit: jplSatelliteOrbit({ a: 1.365e8, e: 0.000, incDeg: 0.0, periodDays: 0.594080, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-export const PROMETHEUS: SatelliteDef = {
+const PROMETHEUS: SatelliteDef = {
   id: 'prometheus',
   mu: 0.01071e9,
   radius: 4.31e4,
   orbit: jplSatelliteOrbit({ a: 1.394e8, e: 0.002, incDeg: 0.0, periodDays: 0.615878, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-export const PANDORA: SatelliteDef = {
+const PANDORA: SatelliteDef = {
   id: 'pandora',
   mu: 0.00926e9,
   radius: 4.06e4,
   orbit: jplSatelliteOrbit({ a: 1.417e8, e: 0.004, incDeg: 0.0, periodDays: 0.631369, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-export const EPIMETHEUS: SatelliteDef = {
+const EPIMETHEUS: SatelliteDef = {
   id: 'epimetheus',
   mu: 0.03514e9,
   radius: 5.82e4,
   orbit: jplSatelliteOrbit({ a: 1.514e8, e: 0.020, incDeg: 0.3, periodDays: 0.697012, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-export const JANUS: SatelliteDef = {
+const JANUS: SatelliteDef = {
   id: 'janus',
   mu: 0.12662e9,
   radius: 8.92e4,
@@ -92,42 +92,42 @@ export const JANUS: SatelliteDef = {
 };
 
 // 土星の主要な氷衛星6個(ミマス〜レア)。基準面・出典はここまでの土星衛星と同じ。
-export const MIMAS: SatelliteDef = {
+const MIMAS: SatelliteDef = {
   id: 'mimas',
   mu: 2.50349e9,
   radius: 1.982e5,
   orbit: jplSatelliteOrbit({ a: 1.860e8, e: 0.020, incDeg: 1.6, periodDays: 0.942422, nodePeriodYears: 0.986, apsisPeriodYears: 0.493, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-export const ENCELADUS: SatelliteDef = {
+const ENCELADUS: SatelliteDef = {
   id: 'enceladus',
   mu: 7.21037e9,
   radius: 2.521e5,
   orbit: jplSatelliteOrbit({ a: 2.384e8, e: 0.005, incDeg: 0.0, periodDays: 1.370218, nodePeriodYears: 0, apsisPeriodYears: 2.916, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-export const TETHYS: SatelliteDef = {
+const TETHYS: SatelliteDef = {
   id: 'tethys',
   mu: 41.21353e9,
   radius: 5.311e5,
   orbit: jplSatelliteOrbit({ a: 2.950e8, e: 0.001, incDeg: 1.1, periodDays: 1.887802, nodePeriodYears: 4.982, apsisPeriodYears: 0.005, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-export const DIONE: SatelliteDef = {
+const DIONE: SatelliteDef = {
   id: 'dione',
   mu: 73.11607e9,
   radius: 5.614e5,
   orbit: jplSatelliteOrbit({ a: 3.777e8, e: 0.002, incDeg: 0.0, periodDays: 2.736916, nodePeriodYears: 0, apsisPeriodYears: 11.698, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-export const RHEA: SatelliteDef = {
+const RHEA: SatelliteDef = {
   id: 'rhea',
   mu: 153.94175e9,
   radius: 7.635e5,
   orbit: jplSatelliteOrbit({ a: 5.272e8, e: 0.001, incDeg: 0.3, periodDays: 4.517503, nodePeriodYears: 35.775, apsisPeriodYears: 33.939, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-export const TITAN: SatelliteDef = {
+const TITAN: SatelliteDef = {
   id: 'titan',
   mu: 8.9781e12,
   radius: 2.5747e6,
@@ -136,7 +136,7 @@ export const TITAN: SatelliteDef = {
 
 // タイタンより遠い土星の不規則衛星寄りの3個。イアペトゥスは軌道傾斜が大きく(基準面から
 // 7.6°)、フェーベは傾斜角 90° 超で逆行。出典・歳差周期の扱いはここまでの土星衛星と同じ。
-export const HYPERION: SatelliteDef = {
+const HYPERION: SatelliteDef = {
   id: 'hyperion',
   mu: 0.37049e9,
   radius: 1.350e5,
@@ -147,7 +147,7 @@ export const HYPERION: SatelliteDef = {
 // (ラプラス面は内側では親の扁平が、外側では太陽潮汐が支配する)。JPL が公開する
 // 傾斜角はそれぞれの局所ラプラス面基準で、その面の極は転記できていないため、黄道面基準の
 // 傾斜角(イアペトゥス 17.28°: Wikipedia の軌道要素表)で登録する。
-export const IAPETUS: SatelliteDef = {
+const IAPETUS: SatelliteDef = {
   id: 'iapetus',
   mu: 120.51511e9,
   radius: 7.343e5,
@@ -156,7 +156,7 @@ export const IAPETUS: SatelliteDef = {
 };
 
 // フェーベは捕獲された逆行の不規則衛星。JPL の傾斜角 175.2° は黄道基準の値と一致する。
-export const PHOEBE: SatelliteDef = {
+const PHOEBE: SatelliteDef = {
   id: 'phoebe',
   mu: 0.55479e9,
   radius: 1.065e5,

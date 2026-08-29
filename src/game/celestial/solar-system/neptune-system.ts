@@ -17,7 +17,7 @@ import { equatorialSatelliteOrbit, jplSatelliteOrbit } from './satellite-orbit-b
 // 海王星系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type NeptuneSystemBodyId = 'neptune' | 'triton' | 'nereid';
 
-export const NEPTUNE: PlanetDef = {
+const NEPTUNE: PlanetDef = {
   id: 'neptune',
   mu: MU_NEPTUNE,
   radius: 2.47606e7, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII
@@ -40,7 +40,7 @@ export const NEPTUNE: PlanetDef = {
   rings: NEPTUNE_RINGS,
 };
 
-export const TRITON: SatelliteDef = {
+const TRITON: SatelliteDef = {
   id: 'triton',
   mu: 1.4276e12,
   radius: 1.3534e6,
@@ -50,7 +50,7 @@ export const TRITON: SatelliteDef = {
 
 // ネレイド。トリトンの潮汐力に大きく乱された高離心率の遠方軌道で、黄道基準の平均要素を使う
 // (出典・GM/半径の扱いはヒマリア群と同じ)。GM は未測定。
-export const NEREID: SatelliteDef = {
+const NEREID: SatelliteDef = {
   id: 'nereid',
   mu: 0,
   radius: 1.7e5,

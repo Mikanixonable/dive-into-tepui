@@ -11,7 +11,7 @@ import type { PointElements, PointField } from '../point-field';
 
 // 軌道長半径の引き方。散乱円盤だけは近日点距離 q = a(1-e) に集中する分布なので、
 // a ではなく q から引いて a = q/(1-e) を逆算する。
-export type SizeDistribution =
+type SizeDistribution =
   | { readonly kind: 'semiMajor'; readonly aRangeAu: readonly [number, number] }
   | { readonly kind: 'perihelion'; readonly qRangeAu: readonly [number, number] };
 
@@ -19,13 +19,13 @@ export type SizeDistribution =
 // 共鳴角 σ = p·λ_J − q·λ_H − (p−q)·ϖ_H (p:q = n_点群:n_木星)を、librationCenterDeg の
 // 周りに ±librationWidthDeg で散らす。a を共鳴比どおりに取れば dσ/dt = 0 になり、σ は保たれる。
 // p=q(1:1, トロヤ群)のときは (p−q) 項が消えて ϖ_H が自由になる代わり、σ が直接 λ_H を決める。
-export type ResonanceDistribution = {
+type ResonanceDistribution = {
   readonly meanMotionRatio: readonly [number, number]; // [p, q]
   readonly librationCenterDeg: number;
   readonly librationWidthDeg: number;
 };
 
-export type PointFieldDef = {
+type PointFieldDef = {
   readonly id: string;
   readonly drawRadius: number; // [m] 表示上の1点の大きさ
   readonly color: number;
@@ -37,7 +37,7 @@ export type PointFieldDef = {
   readonly resonance?: ResonanceDistribution;
 };
 
-export const ASTEROID_SEED = 0x5eed_a571;
+const ASTEROID_SEED = 0x5eed_a571;
 
 const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
@@ -49,7 +49,7 @@ const MAX_REJECTION_TRIES = 64;
 
 const JUPITER_A_AU = JUPITER.orbit.a / AU;
 
-export const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
+const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
   {
     id: 'main-belt',
     drawRadius: 3e7,
