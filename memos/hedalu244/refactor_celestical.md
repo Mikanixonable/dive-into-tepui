@@ -132,23 +132,6 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 
 ## 手順
 
-### 手順2. earth-reference-orbits の地球定数を引数化
-
-**目的**: physics に残るもう1つの太陽系データ直読み(P2)を切る。参照軌道のレシピ(太陽同期・
-ドーンダスク・モルニヤ・ツンドラ)は式なので physics に残し、地球の値は呼び出し側から受ける。
-**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/earth-reference-orbits.ts` | 定数 import(7行)と内部の偽 EARTH(10-13行)を廃し、各関数が地球の CelestialBody(または mu / j2 / refRadius / radius / spinRate の明示引数)を受ける形へ。`SUN_SYNC_REVS_PER_DAY_RANGE`(41行)は同じ値を返す関数へ |
-| `src/physics/orbit-guide.ts:240-265` | 各 `*GuideLoop` は既に `earth: CelestialMotion` を受けている — その `def` から値を引いて渡す |
-| `src/game/hud/panels/guide-value-field.ts:7` | レンジを関数呼びへ。地球は CelestialSystem から `find('earth')` で引き、不在なら該当フィールドを出さない(orbit-guide-lines.ts:340-343 の既存の縮退と同じ扱い) |
-
-**達成条件と検証**: `npm run typecheck`。`npm run test:physics`(earth-reference-orbits.test は
-引数化に合わせて期待値そのままで書き換え)。`grep -n "solar-system" src/physics/earth-reference-orbits.ts` が 0 件。
-
 ### 手順3. エンティティ構築の DOM/GPU 資源遅延と、テスト実行系のアセット対応
 
 **目的**: 「決めたこと 5」の実現。エンティティ構築を node 安全にし、後続手順でテストが本番の
