@@ -35,7 +35,7 @@ export function groupPickables(
     if (list) list.push([id, name]); else byLabel.set(label, [[id, name]]);
   };
 
-  // 'body' はさらにラグランジュ点か BodyClass かで分ける。マーカー由来の kind は素通りする。
+  // 'body' はさらにラグランジュ点か CelestialClass かで分ける。マーカー由来の kind は素通りする。
   for (const item of items) {
     switch (item.kind) {
       case 'body':

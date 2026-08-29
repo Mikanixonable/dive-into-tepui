@@ -5,10 +5,10 @@ import { ProjectFn } from './camera-system';
 import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../marker/marker-manager';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { occlusionOpacity } from '../../physics/occlusion';
-import { BodyClassToggles } from '../celestial/body-visibility';
-import type { BodyClass } from '../celestial/celestial-entity-def';
+import { MapDisplayToggles } from '../map/display-toggles';
+import type { CelestialClass } from '../celestial/celestial-entity-def';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { MapVisibilityPolicy } from '../celestial/map-visibility';
+import { MapVisibilityPolicy } from '../map/visibility-policy';
 import { DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
 import type { MapPickable } from '../pickable/map-pickable';
 import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-glyphs';
@@ -47,7 +47,7 @@ export interface FocusLabel {
   kind: 'body';
   isLagrange: boolean;
   // アイコン形状の選択に使う(ラグランジュ点では未使用)。
-  bodyClass: BodyClass;
+  bodyClass: CelestialClass;
   // 天体の表示分類に基づくラベル優先度。数値が大きいほど優先して残す。
   readonly labelPriority: number;
   // 主星を 0 とする階層の深さ。一覧をこの順・この字下げで並べると親子関係がそのまま出る。
@@ -324,7 +324,7 @@ export class FocusMarkers {
   // visibilityPolicy は同じフレームの update 位相で確定させた表示ポリシーを渡す。マーカー・
   // 選択候補・参照線が同じインスタンスを読むことで、個別実装の解釈ずれをなくす。
   update(
-    t: number, toggles: BodyClassToggles, visibilityPolicy: MapVisibilityPolicy,
+    t: number, toggles: MapDisplayToggles, visibilityPolicy: MapVisibilityPolicy,
   ): void {
     const celestialSystem = this.celestialSystem;
     const celestialBodies = celestialSystem.celestialBodiesAt(t);
