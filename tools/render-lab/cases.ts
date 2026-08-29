@@ -15,7 +15,9 @@ import { EarthCoastline } from '../../src/render/earth-coastline';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
-import { createSun, type Sun } from '../../src/render/stars';
+import { createStarSphere, type StarSphere } from '../../src/render/star-sphere';
+import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
+import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
@@ -68,6 +70,9 @@ function occlusionBands(bands: readonly RingBandDef[]): readonly RingBand[] {
   }));
 }
 
+// 太陽面の輝度。放射強度を、面が張る立体角(π R²)で割ったもの。
+const SUN_SURFACE_RADIANCE = REFERENCE_STAR_RADIANT_INTENSITY / (Math.PI * R_SUN * R_SUN);
+
 // 全ケース共通の恒星方向。球の陰影と、呼び出し側が置く光源が同じ向きを使う。
 export const SUN_DIR = new THREE.Vector3(1, 0.35, 0.5).normalize();
 
@@ -94,7 +99,7 @@ export type LabCase = {
   readonly sunDistance?: number;
   // 恒星の見た目。持たせると、恒星の向きと距離のつまみに合わせて毎フレーム同期される
   // (持たないケースでは、つまみは光源と露出だけを動かす)。
-  readonly star?: Sun;
+  readonly star?: StarSphere;
   // 天体照の光源として置く天体。中心は描画座標、albedo は輝度がボンドアルベドに一致する
   // 線形 RGB。省略すると天体照は無い。
   readonly planetLights?: readonly {
@@ -948,7 +953,7 @@ function sunAt(distance: number): LabCase {
     camera,
     sunDirection: SUN_CASE_DIR,
     sunDistance: distance,
-    star: createSun(),
+    star: createStarSphere(SUN_SURFACE_COLOR, SUN_SURFACE_RADIANCE),
     viewTarget: SUN_CASE_SHIP_POSITION,
   };
 }

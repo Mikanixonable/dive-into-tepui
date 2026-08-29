@@ -7,7 +7,9 @@ import {
 } from '../../../physics/solar-system/solar-system';
 import { CelestialSystem } from '../celestial-system';
 import type { CelestialEntity } from '../celestial-entity';
-import { Sun } from '../sun';
+import { StarEntity } from '../star-entity';
+import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
+import { SUN_LIGHT_COLOR, SUN_SURFACE_COLOR } from './sun';
 import { DWARF_PLANET_NAMES, dwarfPlanetEntities } from './dwarf-planets';
 import { EARTH_SYSTEM_NAMES, earthSystemEntities } from './earth-system';
 import { INNER_PLANET_NAMES, innerPlanetEntities } from './inner-planets';
@@ -47,7 +49,10 @@ export function solarSystem(
   const m = solarSystemMotions(originId, phases, epochOffsetSec, absoluteSource, epochJdTdb, earthSpinPhase0);
   // Record の網羅性検査が「physics 側に居る天体に見た目が無い」をコンパイルエラーにする。
   const e: Record<SolarSystemId, CelestialEntity> = {
-    sun: new Sun(m.sun, SOLAR_SYSTEM_BODY_NAMES.sun),
+    // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
+    sun: new StarEntity(
+      m.sun, SOLAR_SYSTEM_BODY_NAMES.sun, SUN_LIGHT_COLOR,
+      REFERENCE_STAR_RADIANT_INTENSITY, SUN_SURFACE_COLOR),
     ...earthSystemEntities(m.earthSystem),
     ...innerPlanetEntities(m.innerPlanets),
     ...marsSystemEntities(m.marsSystem),
