@@ -132,25 +132,6 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 8. `npm run render-lab:shot` の地球・土星・大気ケースが再編前と同等の絵(目視)。
 9. セーブの `phaseOffsets` / `earthSpinPhase0` の形が不変(serialize の出力キーが同じ)。
 
-## 手順
-
-**残りの実施順**: **10**(手順7・8は手順3の直後に済ませた — `render/earth.ts`
-の `createEarth()` がテクスチャを構築時に読むため、解体するまで地球を含む星系を DOM 無しで
-組めず、手順5のテストが本番の構築経路を使えないため)。
-
-### 手順10. 総仕上げ
-
-**目的**: 達成目標の全判定と、規約・コメントの一括点検。
-
-- `/refactor` を通して CODING-RULE からの逸脱(旧名残骸・重複・たらい回し)を点検する。
-  特に 1.10: `solarSystemMotions` / `createEarth` / `EARTH_TEXTURES` / `*Motions` などの旧名を
-  `src` `tests` `DEVELOP` `CLAUDE.md` `.claude` `memos` から全文検索して 0 件にする
-  (memos は指示があるまで書き換えない — 検出したら報告のみ)。
-- `/comment-cleanup` で移動・統合したファイルのコメントを一括点検する。
-- 達成目標 1〜9 を1つずつ判定し、リスク表を1つずつ当てる。
-- 検証: `npm run typecheck` → `npm run test` → `npm run render-lab:shot`(地球・土星・太陽)。
-  実行時確認が要る項目(セーブ互換・オーロラ・GEO 表示)は `/verify` + `npm run dev` 目視。
-
 ## 見積り
 
 | 手順 | 規模の導出 |
