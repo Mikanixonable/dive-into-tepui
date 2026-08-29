@@ -29,7 +29,7 @@
     "src/game/protein/protein-runtime.ts",
     "src/physics/sphere-contact.ts",
     "src/game/creative/placement-validation.ts",
-    "src/game/celestial/point-field.ts",
+    "src/game/celestial/solar-system/point-field.ts",
     "src/game/camera/focus-target.ts",
     "tests/*.ts",
     "tests/physics/**/*.ts",

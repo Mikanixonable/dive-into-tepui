@@ -134,27 +134,9 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 
 ## 手順
 
-**残りの実施順**: **6 → 9 → 10**(手順7・8は手順3の直後に済ませた — `render/earth.ts`
+**残りの実施順**: **9 → 10**(手順7・8は手順3の直後に済ませた — `render/earth.ts`
 の `createEarth()` がテクスチャを構築時に読むため、解体するまで地球を含む星系を DOM 無しで
 組めず、手順5のテストが本番の構築経路を使えないため)。
-
-### 手順6. constants.ts の移動と全参照の張り替え
-
-**目的**: physics/solar-system の残骸を消し、太陽系の物理定数をデータの置き場
-(`game/celestial/solar-system/constants.ts`)へ移す(P2 完了)。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/solar-system/constants.ts` | `src/game/celestial/solar-system/constants.ts` へ移動し、ディレクトリを削除 |
-| src 内の参照元(手順5・7で消える分を除く): `game/player/{player,player-fire}.ts`、`game/game-entity/enemy-sun-glare.ts`、`game/stages/stage-utils/wave-attack.ts`、`game/stages/spawner/enemy-generator.ts`、`game/creative/{orbit-form-fields,object-placer-panel}.ts`、`game/celestial/{earth,point-field}.ts`、`render/{aurora,stars,earth}.ts`(手順7・8で消えるまでの暫定張り替え) | import パスを新位置へ |
-| `tools/render-lab/{lab,cases}.ts`、`tools/export-moon-features.mjs`(文字列パス) | 同上 |
-| `tests/` で定数を参照する残り全ファイル(手順5でローカル化しなかった分) | 同上 |
-
-**達成条件と検証**: `npm run typecheck`。`npm run test`。
-`grep -rn "solar-system" src/physics/` が 0 件(達成目標2がここで立つ)。
-`node tools/export-moon-features.mjs` が読み込みまで通る。
 
 ### 手順9. CelestialSystem の荷下ろし
 
