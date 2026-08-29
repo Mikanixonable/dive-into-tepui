@@ -38,13 +38,13 @@ CELESTIAL.md 6節)が、開始直後から理論上の周期軌道に乗って�
 **対応済み**(commit `479a5b8d`): `kappa` の式を `richardsonCoefficients` 内の `k` と同一にした。
 `halo.test.ts` の文献値検証も絶対値比較から符号込みの直接比較に強化した。
 
-### 1.2 `src/physics/ephemeris.ts` — 高精度暦パックの有効期間を実行時に一切チェックしていない
+### 1.2 `src/physics/celestial-motion.ts` — 高精度暦パックの有効期間を実行時に一切チェックしていない
 
 `stateOf`/`orbitFrameRotationAt` 等は `this.precise?.hasBody(id)` だけで高精度データを使うか
 判定しており、評価時刻がパックの有効期間内かを見ていない。有効期間は `AbsoluteEphemeris` が
-`validStartJdTdb`/`validEndJdTdb` として持つが、`OriginCenteredEphemeris` の時点でこれを転送しておらず、
-`Ephemeris` 側からは有効期間へアクセスする経路が無い(宣言だけの値になっている)。有効期間の
-判定はステージ起動時に一度だけ行われ(`Stage.createEphemeris`)、以降は再判定されない。
+`validStartJdTdb`/`validEndJdTdb` として持つが、`HelioEphemeris` の時点でこれを転送しておらず、
+`CelestialMotion` 側からは有効期間へアクセスする経路が無い(宣言だけの値になっている)。有効期間の
+判定はステージ起動時に一度だけ行われ(`Stage.createCelestialSystem`)、以降は再判定されない。
 
 シミュレーション時刻がパック期間(近未来10年 / 遠未来10年)を超えて進行すると、
 `ChebyshevEphemeris.segmentOf` が区間を見つけられず `ChebyshevTimeOutOfRangeError` を投げ、
@@ -56,8 +56,8 @@ CELESTIAL.md 6節)が、開始直後から理論上の周期軌道に乗って�
 有効開始そのものであり、時間加速倍率に上限がない設計と合わせると、1セッション中にsimTimeが
 10年を超えることは十分起こりうる。
 
-**対応済み**(commit `fa5f0451`): `OriginCenteredEphemeris.isValidAt()` を追加し、
-`Ephemeris` 側の3箇所(`stateOf`/`orbitFrameRotationAt`/`orbitNormalAt`)に有効期間ガードを足した。
+**対応済み**(commit `fa5f0451`): `HelioEphemeris.isValidAt()` を追加し、
+`CelestialMotion` 側の3箇所(`stateOf`/`orbitFrameRotationAt`/`orbitNormalAt`)に有効期間ガードを足した。
 有効期間外でも例外を投げず解析暦へ落ちることを回帰テストで確認済み。
 
 ### 1.3 `src/physics/solar-system.ts:1336, 1359` — ハレー・エンケ彗星核の `mu` が桁で誤っている
