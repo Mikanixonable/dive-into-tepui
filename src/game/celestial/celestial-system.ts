@@ -3,25 +3,26 @@ import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion, PhaseOffsets } from '../../physics/celestial-motion';
 import { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { ReferenceFrames } from '../../physics/reference-frames';
-import { AU } from '../../physics/planet-orbit';
 import { CelestialBody } from '../../physics/celestial-body';
 import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitLine } from '../lines/orbit-line';
-import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
+import { celestialShellScale, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../camera/floating-origin';
-import * as C from '../const';
 import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from './solar-system/point-field-view';
-import { REFERENCE_STAR_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
+import {
+  REFERENCE_STAR_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE,
+  STARLESS_SUN_RADIUS, SunLight,
+} from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
 import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
-import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
+import { ambientFraction, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import type { Occluder, SunOcclusion } from '../../render/pipeline/sun-occlusion';
@@ -38,18 +39,8 @@ import { OrbitGuideLines } from './orbit-guide-lines';
 import { ZeroVelocityLines } from './zero-velocity-lines';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-settings';
 
-// 恒星を持たない星系で仮に置く光源の色。色の手がかりが無いので無彩色。
-const STARLESS_LIGHT_COLOR = new THREE.Color(1, 1, 1);
-
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
-
-// 一様な環境光の割合。マップビューでは読みやすさのため強く、戦闘ビューでは弱く、どちらも
-// 描画設定で切れる。
-function ambientFraction(overviewMode: boolean, graphics: GraphicsSettingsData): number {
-  if (overviewMode) return graphics.overviewAmbient ? AMBIENT_STRONG : 0;
-  return graphics.combatAmbient ? AMBIENT_WEAK : 0;
-}
 
 export class CelestialSystem {
   private scene!: THREE.Scene;
@@ -258,7 +249,8 @@ export class CelestialSystem {
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。
     const sunPos = starMotion === null
-      ? this.toThreeNormal(this.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
+      ? this.toThreeNormal(this.sunDirFrom(floatingOrigin.r, displayTime))
+        .multiplyScalar(STARLESS_SUN_DISTANCE)
       : floatingOrigin.RtoThreeV3(starMotion.stateAt(displayTime).r);
     // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
@@ -267,8 +259,8 @@ export class CelestialSystem {
     const starIntensity = star?.radiantIntensity ?? REFERENCE_STAR_RADIANT_INTENSITY;
     this.exposure.setReference(reference, sunPos, starIntensity);
     this.sunLight.set(
-      sunPos, star === null ? 0 : star.def.radius,
-      star?.color ?? STARLESS_LIGHT_COLOR, starIntensity);
+      sunPos, star?.def.radius ?? STARLESS_SUN_RADIUS,
+      star?.color ?? STARLESS_SUN_COLOR, starIntensity);
     this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
@@ -300,7 +292,7 @@ export class CelestialSystem {
     this.zeroVelocityLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       style, gridVisibility, cameraSystem.activeCamera,
-      cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
+      celestialShellScale(cameraSystem.overviewMode));
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, gridVisibility);
   }
 
@@ -378,11 +370,10 @@ export class CelestialSystem {
     this.atmosphere.setDraws(atmosphereDraws(candidates, graphics.atmosphere));
   }
 
-  // 星球は描画原点(= カメラ)に固定した半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで
-  // 拡大する(far は dist に連動して毎フレーム変わるため、殻の拡大率はそこから独立させる)。
+  // 星球は描画原点(= カメラ)に固定した半径の殻。
   private syncStars(cameraSystem: CameraSystem, fixedBrightnessScale: number, visible: boolean): void {
     this.stars.mesh.position.set(0, 0, 0);
-    this.stars.mesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
+    this.stars.mesh.scale.setScalar(celestialShellScale(cameraSystem.overviewMode));
     this.stars.mesh.visible = visible;
     this.stars.setFixedBrightnessScale(fixedBrightnessScale);
   }

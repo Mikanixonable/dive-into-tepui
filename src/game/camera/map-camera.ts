@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../math/vec3';
 import * as C from '../const';
+import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
@@ -394,7 +395,7 @@ export class MapCamera {
     const halfV = THREE.MathUtils.degToRad(this.fov * 0.5);
     const halfH = Math.atan(Math.tan(halfV) * window.innerWidth / window.innerHeight);
     const halfDiag = Math.atan(Math.hypot(Math.tan(halfV), Math.tan(halfH)));
-    const nearMax = C.CELESTIAL_SHELL_RADIUS * Math.cos(halfDiag) * OVERVIEW_CAMERA_NEAR_SHELL_MARGIN;
+    const nearMax = CELESTIAL_SHELL_RADIUS * Math.cos(halfDiag) * OVERVIEW_CAMERA_NEAR_SHELL_MARGIN;
     return Math.min(nearMax, this.dist / OVERVIEW_CAMERA_NEAR_RATIO);
   }
 

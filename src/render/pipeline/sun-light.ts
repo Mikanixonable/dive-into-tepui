@@ -18,6 +18,12 @@ export const SUN_IRRADIANCE_1AU = Math.PI;
 // 目盛りの定義を放射強度として書き直したもの。放射強度が分かっていない恒星にもこれを与える。
 export const REFERENCE_STAR_RADIANT_INTENSITY = SUN_IRRADIANCE_1AU * AU * AU;
 
+// 恒星を持たない星系で仮に置く光源。**基準強度どおりの放射照度が届く距離**へ、色の手がかりが
+// 無いので無彩色で、半径 0(誰も遮らない)で置く。
+export const STARLESS_SUN_DISTANCE = AU;
+export const STARLESS_SUN_RADIUS = 0;
+export const STARLESS_SUN_COLOR = new THREE.Color(1, 1, 1);
+
 // 放射強度 intensity の恒星から distance [m] の点が受ける放射照度(CPU 側で引く版)。
 export function irradianceAtDistance(intensity: number, distance: number): number {
   return intensity / (distance * distance);
