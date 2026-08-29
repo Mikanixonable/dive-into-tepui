@@ -3,7 +3,7 @@
 // ウェーブ1回分の隻数・編成・接近軌道の生成。
 import * as THREE from 'three/webgpu';
 import * as C from '../../const';
-import { Enemy } from '../../game-entity/enemy';
+import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { Player } from '../../player/player';
 import type { Stage } from '../stage';
 import type { Hud } from '../../hud/hud';

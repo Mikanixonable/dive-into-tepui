@@ -1,8 +1,8 @@
-import { v3, type Vec3 } from '../../math/vec3';
+import { v3, type Vec3 } from '../../../math/vec3';
 import {
   isProteinDisplaySettings, proteinDisplayFromLegacyColorMode, type ProteinColorMode, type ProteinDisplaySettings,
-} from '../protein/protein-display';
-import type { ProteinAssetId } from '../protein/protein-asset-loader';
+} from '../../protein/protein-display';
+import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 
 // 敵の外見・生成方法を表す種別と、そこから導かれる値。
 type LegacyPdb5i4rEnemyKind = {

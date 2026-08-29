@@ -44,7 +44,7 @@ function saveBodyClassToggles(v: MapDisplayToggles): void {
   }
 }
 
-import type { GameEntity } from '../game-entity/game-entity';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
 const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
@@ -210,7 +210,7 @@ export class CameraSystem {
   // displayTime/frameAnchors は広範囲視点の座標系変換にのみ使う — 線・メッシュと同じ表示時刻でないと
   // 回転系選択時にカメラだけが現在時刻に取り残される。
   update(
-    player: GameEntity | null,
+    player: DynamicEntity | null,
     displayTime: number,
     input: Input,
     dt: number,

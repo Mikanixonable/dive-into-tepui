@@ -7,7 +7,7 @@ import { MouseDelta } from '../input/input';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
-import { GameEntity } from '../game-entity/game-entity';
+import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { metersPerPixelAtDepth, Viewpoint } from '../../math/projection';
 import { ChaseCameraSaveData } from '../save/save-data';
 
@@ -47,12 +47,12 @@ export class ChaseCamera {
   }
 
   // ワールド基準として持っている rot を、同じ向きを指す対象の姿勢基準の値へ読み替える。
-  private rotInTargetFrame(target: GameEntity): Quat {
+  private rotInTargetFrame(target: DynamicEntity): Quat {
     return qNormalize(qMul(qInvert(target.att.q), this.rot));
   }
 
   // 対象の姿勢基準として持っている rot を、同じ向きを指すワールド基準の値へ読み替える。
-  private rotInWorldFrame(target: GameEntity): Quat {
+  private rotInWorldFrame(target: DynamicEntity): Quat {
     return qNormalize(qMul(target.att.q, this.rot));
   }
 
@@ -70,7 +70,7 @@ export class ChaseCamera {
 
   // 視点の基準フレーム(機体姿勢基準 ⇔ ワールド基準)を切り替える。切替の瞬間に見えている向きが
   // 変わらないよう rot を新しい基準での値へ読み替えるので、読み替えの基準となる対象が要る。
-  toggleFollowAttitude(target: GameEntity | null): void {
+  toggleFollowAttitude(target: DynamicEntity | null): void {
     if (!target) return;
     const next = !this._camFollowAttitude;
     this.rot = next ? this.rotInTargetFrame(target) : this.rotInWorldFrame(target);
@@ -85,7 +85,7 @@ export class ChaseCamera {
   // null なら(操作対象艦が居ない)何もせず、viewpoint は直前の値のまま凍結する。
   update(
     mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number,
-    target: GameEntity | null,
+    target: DynamicEntity | null,
   ): void {
     if (!target) return;
     let q = this._camFollowAttitude ? qMul(target.att.q, this.rot) : this.rot;

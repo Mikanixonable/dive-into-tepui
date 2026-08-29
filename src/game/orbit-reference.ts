@@ -4,7 +4,7 @@ import { CelestialBody, strongestAttractor } from '../physics/celestial-body';
 import type { CelestialSystem } from './celestial/celestial-system';
 import { KinematicState } from '../physics/kinematic-state';
 import type { Vec3 } from '../math/vec3';
-import type { GameEntity } from './game-entity/game-entity';
+import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { NavTarget } from './nav-target';
 import type { EntityManager } from './simulation/entity-manager';
 
@@ -15,7 +15,7 @@ export interface OrbitReference {
   readonly state: KinematicState;
   readonly hasMass: boolean; // false なら重力中心ではなく、apsis/傾斜角/周期は意味を持たない
   readonly attractor: CelestialBody | null; // hasMass のときだけ非null。mu/radius を要る軌道要素解決に使う
-  readonly entity: GameEntity | null; // hasMass=false かつ対象が艦・基地のときだけ非null
+  readonly entity: DynamicEntity | null; // hasMass=false かつ対象が艦・基地のときだけ非null
   // 自動選択(auto)ではなく、地球・月・ターゲットのいずれかに明示的に固定されているか。
   // 固定中は、各エンティティの軌道線もこの基準に従う(自身にとっての strongestAttractor を
   // 使わない)。ターゲット未設定・解決不能で自動選択にフォールバックした場合は false。

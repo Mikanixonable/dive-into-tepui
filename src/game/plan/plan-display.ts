@@ -20,7 +20,7 @@ import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
-import type { Controllable } from '../game-entity/controllable';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 
 // 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。両方見つかった
 // ときの (遠地点距離-近地点距離)/(遠地点距離+近地点距離) と比較する — これ未満は円に

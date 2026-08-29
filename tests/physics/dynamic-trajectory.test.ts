@@ -1,7 +1,7 @@
-// physics/dynamic-trajectory.ts の回帰テスト。game/game-entity/game-entity.ts の GameEntity から
+// physics/dynamic-trajectory.ts の回帰テスト。game/dynamic/dynamic-entity/dynamic-entity.ts の DynamicEntity から
 // 切り出した「時刻付き状態 + その手前のサンプル列(間引き済み)+ 自分を1ステップ進める能力」の
 // 単体テスト(better_predict.md Step 2)。過去列にも将来列にも同じ実装を使う前提なので、
-// ここでの検証は GameEntity.actualTrajectory(過去列側)としての用法をそのまま代表する。
+// ここでの検証は DynamicEntity.actualTrajectory(過去列側)としての用法をそのまま代表する。
 import { solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';

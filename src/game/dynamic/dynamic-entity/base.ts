@@ -1,41 +1,41 @@
 import * as THREE from 'three/webgpu';
-import { GameEntity } from './game-entity';
+import { DynamicEntity } from './dynamic-entity';
 import { EntityIdAllocator } from './entity-id';
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { Attitude } from '../../physics/attitude';
-import { qRotate } from '../../physics/attitude';
-import { add, len, sub, v3, Vec3 } from '../../math/vec3';
+import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import { Attitude } from '../../../physics/attitude';
+import { qRotate } from '../../../physics/attitude';
+import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
-import { Player } from '../player/player';
-import { buildBaseModel } from '../../render/base-station-model';
-import type { Hud } from '../hud/hud';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import type { EffectsSystem } from '../vfx/effects-system';
-import type { MarkerManager } from '../marker/marker-manager';
-import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
-import type { BaseSaveData } from '../save/save-data';
-import { Plan } from '../plan/plan';
-import type { PlanExecutionMode } from '../player/player';
-import { generateRandomName } from '../random-name';
-import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import type { MarkerRole } from '../targeter';
-import { fmtMarkerDist } from '../hud/utils';
-import { ENTITY_GLYPH } from '../marker/marker-glyphs';
-import { baseMarkerSvg } from '../marker/marker-shapes';
-import * as C from '../const';
+import { Player } from '../../player/player';
+import { buildBaseModel } from '../../../render/base-station-model';
+import type { Hud } from '../../hud/hud';
+import type { WorldSfx } from '../../../audio/sfx/world-sfx';
+import type { EffectsSystem } from '../../vfx/effects-system';
+import type { MarkerManager } from '../../marker/marker-manager';
+import { EquatorNodeMarkerPair } from '../../marker/equator-node-marker-pair';
+import type { BaseSaveData } from '../../save/save-data';
+import { Plan } from '../../plan/plan';
+import type { PlanExecutionMode } from '../../player/player';
+import { generateRandomName } from '../../random-name';
+import type { GroupedMarkerItem } from '../../marker/grouped-markers';
+import type { MarkerRole } from '../../targeter';
+import { fmtMarkerDist } from '../../hud/utils';
+import { ENTITY_GLYPH } from '../../marker/marker-glyphs';
+import { baseMarkerSvg } from '../../marker/marker-shapes';
+import * as C from '../../const';
 import { BaseCollisionGeometry, RayHit, SphereHit } from './base-collision';
-import { PlayerThrottle } from '../player/player-throttle';
+import { PlayerThrottle } from '../../player/player-throttle';
 import type { Controllable } from './controllable';
-import type { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ThrustEffects } from '../player/thrust-effects';
-import { RcsEffects } from '../player/rcs-effects';
-import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../camera/floating-origin';
-import type { RenderStyle } from '../../render/render-style';
-import type { MapVisibility } from '../map/visibility-policy';
-import { currentThemePalette } from '../theme';
+import type { Input } from '../../input/input';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { ThrustEffects } from '../../player/thrust-effects';
+import { RcsEffects } from '../../player/rcs-effects';
+import type { CameraSystem } from '../../camera/camera-system';
+import type { FloatingOrigin } from '../../camera/floating-origin';
+import type { RenderStyle } from '../../../render/render-style';
+import type { MapVisibility } from '../../map/visibility-policy';
+import { currentThemePalette } from '../../theme';
 
 export const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
 const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
@@ -88,7 +88,7 @@ export type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
-export class Base extends GameEntity implements Controllable {
+export class Base extends DynamicEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
   protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;

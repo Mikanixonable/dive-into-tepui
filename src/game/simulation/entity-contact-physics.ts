@@ -1,5 +1,5 @@
-// 物体どうしの剛体接触の列挙・解決。collides を立てた GameEntity どうしを参加者とし、反発が
-// 起きた当事者へ collideWithEntity を呼ぶ。ダメージ・音・エフェクトはそれぞれの GameEntity
+// 物体どうしの剛体接触の列挙・解決。collides を立てた DynamicEntity どうしを参加者とし、反発が
+// 起きた当事者へ collideWithEntity を呼ぶ。ダメージ・音・エフェクトはそれぞれの DynamicEntity
 // 自身の責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する — 参加者は互いの状態を
 // 書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業マップと解決回数の
 // 上限が要る。
@@ -7,7 +7,7 @@ import * as C from '../const';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { SpatialGrid } from '../../math/spatial-grid';
-import { GameEntity } from '../game-entity/game-entity';
+import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { Player } from '../player/player';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
@@ -22,8 +22,8 @@ const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
 // 1 substep 分の接触候補1件。response が null なのは現在の状態では接触しないという意味で、
 // 当事者の状態が変われば非 null になりうる。resolved を立てた候補は以後選ばれない。
 interface Candidate {
-  a: GameEntity;
-  b: GameEntity;
+  a: DynamicEntity;
+  b: DynamicEntity;
   response: CollisionResponse | null;
   resolved: boolean;
 }
@@ -31,11 +31,11 @@ interface Candidate {
 // 位置と速度がどちらも動いていない当事者は、working も changed も触らない。書き戻しは
 // 予測弧を捨てるので、質量 0 の相手に触れられただけの艦がそれで作り直しになるのを防ぐ。
 function replaceIfMoved(
-  e: GameEntity,
+  e: DynamicEntity,
   before: KinematicState,
   after: { readonly r: Vec3; readonly v: Vec3 },
-  working: Map<GameEntity, KinematicState>,
-  changed: Set<GameEntity>,
+  working: Map<DynamicEntity, KinematicState>,
+  changed: Set<DynamicEntity>,
 ): void {
   if (sameVec(before.r, after.r) && sameVec(before.v, after.v)) return;
   working.set(e, kinematicState(e.state.t, after.r, after.v));
@@ -46,7 +46,7 @@ function replaceIfMoved(
 // 共通する変位(平均 Δ̄)を差し引いた量で測る。ペア (a,b) が区間内で接触するなら、区間終端の
 // 距離は 半径和 + |Δa−Δ̄| + |Δb−Δ̄| 以下 — つまり各参加者の到達量 半径+|Δ−Δ̄| の最大値の2倍を
 // 一辺に取れば、27近傍の外のペアはどちらの判定式でも接触しえない。
-function contactCellSize(all: readonly GameEntity[], working: ReadonlyMap<GameEntity, KinematicState>): number {
+function contactCellSize(all: readonly DynamicEntity[], working: ReadonlyMap<DynamicEntity, KinematicState>): number {
   let mx = 0, my = 0, mz = 0;
   for (const e of all) {
     const w = working.get(e)!.r, p = e.prevState.r;
@@ -68,20 +68,20 @@ function contactCellSize(all: readonly GameEntity[], working: ReadonlyMap<GameEn
 export class EntityContactPhysics {
   // 接触解決は Simulator の substep ごとに同期的に完了するため、入力の抽出・作業集合を
   // インスタンス単位で再利用できる。配列の詰め直しは元の配列走査順をそのまま保つ。
-  private readonly participantScratch: GameEntity[] = [];
-  private readonly beltParticipantScratch: GameEntity[] = [];
-  private readonly otherScratch: GameEntity[] = [];
-  private readonly allScratch: GameEntity[] = [];
-  private readonly attackerSetScratch = new Set<GameEntity>();
-  private readonly workingScratch = new Map<GameEntity, KinematicState>();
-  private readonly changedScratch = new Set<GameEntity>();
+  private readonly participantScratch: DynamicEntity[] = [];
+  private readonly beltParticipantScratch: DynamicEntity[] = [];
+  private readonly otherScratch: DynamicEntity[] = [];
+  private readonly allScratch: DynamicEntity[] = [];
+  private readonly attackerSetScratch = new Set<DynamicEntity>();
+  private readonly workingScratch = new Map<DynamicEntity, KinematicState>();
+  private readonly changedScratch = new Set<DynamicEntity>();
   private readonly neighborScratch: number[] = [];
   private readonly gridScratch = new SpatialGrid<number>(1);
   private readonly candidateScratch: Candidate[] = [];
 
   // 1 substep ぶんの物体どうしの接触解決。ワープ倍率によるゲートは呼び出し側の判断で、
   // ここには倍率を見る条件を持たない。
-  resolveEntityContacts(simTime: number, entities: GameEntity[], activeStage: Stage): void {
+  resolveEntityContacts(simTime: number, entities: DynamicEntity[], activeStage: Stage): void {
     this.collectParticipants(entities, this.participantScratch);
     this.resolveInOrder(this.participantScratch, [], simTime, activeStage);
   }
@@ -92,7 +92,7 @@ export class EntityContactPhysics {
     dt: number,
     simTime: number,
     player: Player,
-    entities: GameEntity[],
+    entities: DynamicEntity[],
     activeStage: Stage,
   ): void {
     if (!player.alive || dt <= 1e-6) return;
@@ -105,7 +105,7 @@ export class EntityContactPhysics {
     player.belt.applyCollisionSections(dt, player.state.r, player.state.v, player.att);
   }
 
-  private collectParticipants(source: readonly GameEntity[], out: GameEntity[]): void {
+  private collectParticipants(source: readonly DynamicEntity[], out: DynamicEntity[]): void {
     out.length = 0;
     for (const entity of source) {
       if (entity.alive && entity.collides && isFiniteParticipant(entity)) out.push(entity);
@@ -114,11 +114,11 @@ export class EntityContactPhysics {
 
   // attackers 同士・attackers×others の接触候補を1回だけ列挙し、TOI が最小のものから1件ずつ
   // 解決する。上限回数を超えた分は次回の呼び出し(次の substep / 次のフレーム)へ持ち越す。
-  // GameEntity.state への書き戻しは全解決が終わってから一括で行う — ループの途中で書き戻すと
+  // DynamicEntity.state への書き戻しは全解決が終わってから一括で行う — ループの途中で書き戻すと
   // state セッタ自身が prevState を書き換えてしまい、以降の反復が区間の始点を失う。
   private resolveInOrder(
-    attackers: readonly GameEntity[],
-    others: readonly GameEntity[],
+    attackers: readonly DynamicEntity[],
+    others: readonly DynamicEntity[],
     simTime: number,
     activeStage: Stage,
   ): void {
@@ -147,8 +147,8 @@ export class EntityContactPhysics {
     const count = this.collectCandidates(all, attackerSet, simTime, working, grid);
     // 直前の解決で状態が変わった当事者。これを含まない候補の response は引き直しても同じ値に
     // なるので、含む候補だけを引き直す。
-    let dirtyA: GameEntity | null = null;
-    let dirtyB: GameEntity | null = null;
+    let dirtyA: DynamicEntity | null = null;
+    let dirtyB: DynamicEntity | null = null;
     for (let i = 0; i < CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP; i++) {
       const best = this.earliestContact(count, dirtyA, dirtyB, working);
       if (best === null) break;
@@ -170,10 +170,10 @@ export class EntityContactPhysics {
   // 通ったものだけを候補列へ詰め直して件数を返す。接触しない組み合わせも response=null の
   // 候補として残す — 当事者の状態が変われば接触しうるため。
   private collectCandidates(
-    all: readonly GameEntity[],
-    attackerSet: ReadonlySet<GameEntity>,
+    all: readonly DynamicEntity[],
+    attackerSet: ReadonlySet<DynamicEntity>,
     simTime: number,
-    working: ReadonlyMap<GameEntity, KinematicState>,
+    working: ReadonlyMap<DynamicEntity, KinematicState>,
     grid: SpatialGrid<number>,
   ): number {
     let count = 0;
@@ -196,7 +196,7 @@ export class EntityContactPhysics {
 
   // 候補列の index 番目を書き直す。既にあるスロットはオブジェクトごと使い回す。
   private pushCandidate(
-    index: number, a: GameEntity, b: GameEntity, response: CollisionResponse | null,
+    index: number, a: DynamicEntity, b: DynamicEntity, response: CollisionResponse | null,
   ): void {
     const slot = this.candidateScratch[index];
     if (slot === undefined) this.candidateScratch.push({ a, b, response, resolved: false });
@@ -212,9 +212,9 @@ export class EntityContactPhysics {
   // 当事者に含む候補は、走査のついでに現在の working 上の値で response を引き直す。
   private earliestContact(
     count: number,
-    dirtyA: GameEntity | null,
-    dirtyB: GameEntity | null,
-    working: ReadonlyMap<GameEntity, KinematicState>,
+    dirtyA: DynamicEntity | null,
+    dirtyB: DynamicEntity | null,
+    working: ReadonlyMap<DynamicEntity, KinematicState>,
   ): Candidate | null {
     let best: Candidate | null = null;
     for (let i = 0; i < count; i++) {
@@ -235,8 +235,8 @@ export class EntityContactPhysics {
   // あるので、呼び出し順に結果は依存しない)。
   private applyCandidate(
     candidate: Candidate,
-    working: Map<GameEntity, KinematicState>,
-    changed: Set<GameEntity>,
+    working: Map<DynamicEntity, KinematicState>,
+    changed: Set<DynamicEntity>,
     activeStage: Stage,
   ): void {
     const { a, b } = candidate;

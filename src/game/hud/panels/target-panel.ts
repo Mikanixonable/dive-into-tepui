@@ -3,8 +3,8 @@
 import { fmtDist, fmtSpeed, setElementText } from '../utils';
 import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../orbit/orbit-info';
-import { Ship } from '../../game-entity/ship';
-import { Enemy } from '../../game-entity/enemy';
+import { Ship } from '../../dynamic/dynamic-entity/ship';
+import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Game } from '../../game';

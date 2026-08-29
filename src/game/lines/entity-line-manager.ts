@@ -5,7 +5,7 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import * as C from '../const';
 import { FloatingOrigin } from '../camera/floating-origin';
-import type { GameEntity } from '../game-entity/game-entity';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { Player } from '../player/player';
 import { currentThemePalette } from '../theme';
 import type { CombatTarget } from '../targeter';
@@ -66,7 +66,7 @@ export class EntityLineManager {
     // ターゲット強調時にも及ぶ表示可否、visibleWhenUntargeted はそれに加えてターゲットでないときだけ
     // 課される表示可否(敵の生存判定など)を表す。
     const applyEntityLines = (
-      entity: GameEntity, asTarget: LineStyle | null, lineVisible: boolean, visibleWhenUntargeted: boolean,
+      entity: DynamicEntity, asTarget: LineStyle | null, lineVisible: boolean, visibleWhenUntargeted: boolean,
       trajectoryEligible: boolean, styles: TrajectoryStyles,
     ): void => {
       // 予測線・過去線を使う条件が揃っているか。
@@ -131,7 +131,7 @@ export class EntityLineManager {
   }
 
   // 線を持ちうるエンティティ。sync は種別を問わず同じ呼び出しで済むので、まとめて辿る。
-  private get lineOwners(): readonly (readonly GameEntity[])[] {
+  private get lineOwners(): readonly (readonly DynamicEntity[])[] {
     return [this.entities.players, this.entities.enemies, this.entities.bases];
   }
 }

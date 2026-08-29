@@ -5,8 +5,8 @@ import type { PerfCounts } from '../perf-meter';
 import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
 import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
-import { Base } from './game-entity/base';
-import type { GameEntity } from './game-entity/game-entity';
+import { Base } from './dynamic/dynamic-entity/base';
+import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
@@ -65,7 +65,7 @@ export class Game {
   readonly activePlayers: ActiveControllableController;
   get player(): Player | null { return this.activePlayers.current; }
   get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
-  get activeControllableEntity(): GameEntity | null {
+  get activeControllableEntity(): DynamicEntity | null {
     return this.controlledBase ?? this.player ?? this.entities.bases.find((b) => b.alive) ?? null;
   }
   readonly simSpeedManager: SimSpeedManager;

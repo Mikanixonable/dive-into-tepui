@@ -1,4 +1,4 @@
-// 接触1件の記述(game/game-entity/contact.ts)の回帰テスト。closingSpeed は
+// 接触1件の記述(game/dynamic/dynamic-entity/contact.ts)の回帰テスト。closingSpeed は
 // SPEC/COMBAT.md「剛体接触によるダメージ」が根拠に据える量そのもの — 接触法線方向の
 // 相対速度 — なので、掛かる重み(調整値)と違って理論値で固定できる。
 //
@@ -8,7 +8,7 @@
 // 解決器と同じ組み方を再現して両者が噛み合っていることまで見る。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { closingSpeed, type Contact } from '../../src/game/game-entity/contact';
+import { closingSpeed, type Contact } from '../../src/game/dynamic/dynamic-entity/contact';
 import {
   distributeFixedContact, resolveSphereCollision, sphereContactGeometry,
 } from '../../src/physics/collision-response';

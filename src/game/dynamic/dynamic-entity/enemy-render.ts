@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { buildEnemyShip, buildStage0EnemyShip } from '../../render/ships';
-import { type ProteinMotionBinding } from '../../render/protein-motion-material';
-import { proteinEnemyDefinitionFor } from '../protein/protein-enemy-registry';
+import { buildEnemyShip, buildStage0EnemyShip } from '../../../render/ships';
+import { type ProteinMotionBinding } from '../../../render/protein-motion-material';
+import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import {
   DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, type ProteinDisplaySettings,
-} from '../protein/protein-display';
+} from '../../protein/protein-display';
 import { proteinAssetIdForEnemyKind, type EnemyKind } from './enemy-kind';
 
 // 敵の見た目を組み立てる。

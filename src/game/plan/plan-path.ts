@@ -19,7 +19,7 @@ import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { BodyImpact, PredictedArc } from '../simulation/predicted-arc';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
-import type { Controllable } from '../game-entity/controllable';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../math/optimize';
 import * as C from '../const';

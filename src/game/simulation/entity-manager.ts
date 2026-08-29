@@ -6,16 +6,16 @@ import { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
-import { GameEntity } from '../game-entity/game-entity';
-import { AmmoPickup } from '../game-entity/ammo-pickup';
-import { RcsFuelPickup } from '../game-entity/rcs-fuel-pickup';
-import { DebrisPiece } from '../game-entity/debris-piece';
-import { Enemy } from '../game-entity/enemy';
-import { proteinAssetIdForEnemyKind } from '../game-entity/enemy-kind';
+import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { AmmoPickup } from '../dynamic/dynamic-entity/ammo-pickup';
+import { RcsFuelPickup } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
+import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
+import { Enemy } from '../dynamic/dynamic-entity/enemy';
+import { proteinAssetIdForEnemyKind } from '../dynamic/dynamic-entity/enemy-kind';
 import { isProteinAssetReady, type ProteinAssetId } from '../protein/protein-asset-loader';
-import { Bullet } from '../game-entity/bullet';
-import { Base } from '../game-entity/base';
-import { DetachedBooster } from '../game-entity/detached-booster';
+import { Bullet } from '../dynamic/dynamic-entity/bullet';
+import { Base } from '../dynamic/dynamic-entity/base';
+import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
 import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
 import { Player } from '../player/player';
@@ -122,8 +122,8 @@ export class EntityManager {
   // ときだけ結合し、以降は同じ安定配列を返す。
   private _collectionRevision = 0;
   private cachedRevision = -1;
-  private readonly cachedOtherEntities: GameEntity[] = [];
-  private readonly cachedAllEntities: GameEntity[] = [];
+  private readonly cachedOtherEntities: DynamicEntity[] = [];
+  private readonly cachedAllEntities: DynamicEntity[] = [];
   // Targeter/Game は取得した配列を読み取り専用として扱う(filter/sort等で破壊しない)ため、
   // collectionRevision が変わるまで敵・自機の結合結果も再利用する。
   private combatTargetsRevision = -1;
@@ -279,7 +279,7 @@ export class EntityManager {
   }
 
   // 配列へ追加し、cap を超えたら先頭(最古)を1件破棄する。
-  private addCapped<T extends GameEntity>(arr: T[], entity: T, cap: number): void {
+  private addCapped<T extends DynamicEntity>(arr: T[], entity: T, cap: number): void {
     arr.push(entity);
     if (arr.length > cap) arr.shift()!.dispose();
     this.invalidateCaches();
@@ -308,13 +308,13 @@ export class EntityManager {
   }
 
   // 自機以外の保持エンティティを1つの配列にまとめて返す。
-  private otherEntities(): GameEntity[] {
+  private otherEntities(): DynamicEntity[] {
     this.rebuildCachesIfNeeded();
     return this.cachedOtherEntities;
   }
 
   // 保持する全エンティティを1つの配列にまとめて返す。
-  all(): GameEntity[] {
+  all(): DynamicEntity[] {
     this.rebuildCachesIfNeeded();
     return this.cachedAllEntities;
   }
@@ -338,7 +338,7 @@ export class EntityManager {
   }
 
   // in-place フィルタ: 配列の参照はそのまま保つ。
-  private prune<T extends GameEntity>(arr: T[]): void {
+  private prune<T extends DynamicEntity>(arr: T[]): void {
     let w = 0;
     let changed = false;
     for (const x of arr) {
@@ -537,7 +537,7 @@ export class EntityManager {
   }
 
   // 配列内の各エンティティを破棄したうえで、配列自体も空にする。
-  private disposeAll<T extends GameEntity>(arr: T[]): void {
+  private disposeAll<T extends DynamicEntity>(arr: T[]): void {
     for (const e of arr) e.dispose();
     arr.length = 0;
   }

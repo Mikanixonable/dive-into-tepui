@@ -6,7 +6,7 @@ import { Vec3, cross, norm, v3 } from '../math/vec3';
 // KinematicState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
 // できなくなるため)。t を state 自身が持つので「状態」と「その時刻」が引数として
 // 分かれて食い違うことがない — 予測点列もエンティティの履歴
-// (game-entity/game-entity.ts)も同じこの型で表す。
+// (dynamic/dynamic-entity/dynamic-entity.ts)も同じこの型で表す。
 export type KinematicState = {
   readonly t: number; // 絶対 simTime [s]
   readonly r: Vec3; // ECI 位置 [m]

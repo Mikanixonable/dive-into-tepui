@@ -1,7 +1,7 @@
-// GameEntity.predicted と、計画軌道の各区間の弧を、共有のフレーム予算内で伸ばす。1歩ぶんの
+// DynamicEntity.predicted と、計画軌道の各区間の弧を、共有のフレーム予算内で伸ばす。1歩ぶんの
 // 積分(刻み幅・窓解決・到達判定)は game/simulation/predicted-arc.ts の PredictedArc へ持ち、
 // ここは予算の配分だけを持つ。伸長対象は「その個体の未来を読む消費者がいるか」
-// (GameEntity.hasFutureReader)で決まる。
+// (DynamicEntity.hasFutureReader)で決まる。
 //
 // 実シミュレーション(game/simulation/simulator.ts の Simulator)との役割の違いは2点で、
 // 二重性はこの2点に由来する。統一はできない。
@@ -14,7 +14,7 @@
 // 関係(どの天体が引くか・表面へ到達したか・大気で焼失したか・刻みをどこまで広げてよいか)。
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
-import { GameEntity } from '../game-entity/game-entity';
+import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { Player } from '../player/player';
 import { simulationMaxStep } from './time-step';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -115,7 +115,7 @@ export class Predictor {
   // 要求終端・保持窓の左端・実シミュレーションの刻み上限を弧へ書いてから grow を呼ぶだけで、
   // 刻み幅・窓解決・到達判定は弧(PredictedArc)の責務。
   private advanceBudget(
-    e: GameEntity, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
+    e: DynamicEntity, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
   ): number {
     const arc = e.ensurePredictedArc(this.celestialSystem);
     if (arc === null) return 0;

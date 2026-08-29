@@ -1,8 +1,8 @@
 // 操作対象（自機船 0..n 隻、および基地）の切替・削除と、それに伴う各所有者への伝播
 // (航法ターゲット・SFX、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
 import type { Player } from './player/player';
-import type { Base } from './game-entity/base';
-import type { Controllable } from './game-entity/controllable';
+import type { Base } from './dynamic/dynamic-entity/base';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import type { EntityManager } from './simulation/entity-manager';
 import type { CameraSystem } from './camera/camera-system';
 import type { NavTarget } from './nav-target';

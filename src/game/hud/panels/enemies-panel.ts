@@ -3,7 +3,7 @@ import { len, sub } from '../../../math/vec3';
 import { fmtDist } from '../utils';
 import { SyncThrottle } from '../sync-throttle';
 import type { Vec3 } from '../../../math/vec3';
-import type { Enemy } from '../../game-entity/enemy';
+import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import type { CombatTarget } from '../../targeter';
 import type { Game } from '../../game';
 
