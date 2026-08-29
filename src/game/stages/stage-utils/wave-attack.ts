@@ -12,7 +12,7 @@ import type { EffectsSystem } from '../../vfx/effects-system';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes } from '../../../physics/elements';
-import { R_EARTH } from '../../../physics/solar-system/constants';
+import { R_EARTH } from '../../celestial/solar-system/constants';
 import { orbitalElementsOf, strongestAttractor } from '../../../physics/celestial-body';
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
