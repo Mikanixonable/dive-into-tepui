@@ -8,7 +8,7 @@ const STATIC_CATALOG = staticTable as unknown as OrbitCatalog;
 
 // ゼロ速度曲線(表示パネル)が使う質量比。焼き込みカタログの mu をそのまま使う——
 // L1〜L5 のヤコビ定数は系ごとの mu で決まるため、静的バンドル済みの2系だけをここで直接引く。
-export function zeroVelocityMu(system: 'earth-moon' | 'sun-earth'): number {
+function zeroVelocityMu(system: 'earth-moon' | 'sun-earth'): number {
   return STATIC_CATALOG.systems[system]?.mu ?? (system === 'earth-moon' ? 0.012150585 : 3.003e-6);
 }
 

@@ -16,7 +16,7 @@ const idAllocator = new EntityIdAllocator('ammo-');
 
 // 新規配置は state/att をそのまま使い、スナップショットからの再開は saved を simTime の
 // epoch で展開する。
-export type AmmoPickupInit =
+type AmmoPickupInit =
   | { readonly state: KinematicState; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: AmmoPickupSaveData; readonly simTime: number };
 

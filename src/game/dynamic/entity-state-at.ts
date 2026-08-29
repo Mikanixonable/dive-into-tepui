@@ -10,7 +10,7 @@ import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 // まわりの二体ケプラー外挿(extrapolatedAt)で答える。両者とも先端以前は内挿に落ちる
 // (DynamicTrajectory.extrapolatedAt 自身の契約)ので、ここでは呼び分けを気にせず
 // extrapolatedAt を呼ぶだけでよい。centerMotion は外挿が必要になったときにだけ引く。
-export function trajectoryStateAt(
+function trajectoryStateAt(
   trajectory: DynamicTrajectory, t: number, centerMotion: CelestialMotion,
 ): KinematicState | null {
   if (t <= trajectory.state.t) return trajectory.at(t);
