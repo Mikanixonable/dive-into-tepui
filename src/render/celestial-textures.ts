@@ -62,7 +62,7 @@ const CELESTIAL_TEXTURES: Readonly<Record<string, CelestialTexture>> = {
 export const EARTH_TEXTURES = {
   surfaceUrl: earthTextureUrl,
   cloudsUrl: cloudsTextureUrl,
-  // 気候の事前分布(平均気温・平均湿度・標高)。tools/export-climate.mjs が焼く。
+  // 気候の事前分布(平均気温・平年の雲量・標高)。tools/export-climate.mjs が焼く。
   climateUrl: climateTextureUrl,
   albedoScale: 0.9858,
   bondAlbedo: 0.306,
