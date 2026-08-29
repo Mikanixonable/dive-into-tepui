@@ -2,7 +2,7 @@
 // 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
 // 見えのための調整値。
 import {
-  abs, clamp, cos, cross, dot, float, fract, length, max, min, mix, normalize, sin, tanh, uniform, vec2, vec4,
+  abs, clamp, cos, cross, dot, exp, float, fract, length, max, min, mix, normalize, sin, tanh, uniform, vec2, vec4,
 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -15,12 +15,11 @@ import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { ClimateMap } from './climate-map';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
-// 単位方向における天気。気圧は平年からの偏差 [hPa]、収束は風の収束 [1/s]、風は東向き・北向きの
-// 成分 [m/s]、上昇流は [m/s](地形と収束による、負なら下降)、湿度は 0..1
-// (humidity が地表付近、upperHumidity が上層)。
+// 単位方向における天気。気圧は平年からの偏差 [hPa]、風は東向き・北向きの成分 [m/s]、
+// 上昇流は [m/s](地形と気圧による、負なら下降)、湿度は 0..1(humidity が地表付近、
+// upperHumidity が上層)。
 export type WeatherSample = {
   readonly pressure: FloatNode;
-  readonly convergence: FloatNode;
   readonly wind: Vec2Node;
   readonly lift: FloatNode;
   readonly humidity: FloatNode;
@@ -28,8 +27,8 @@ export type WeatherSample = {
 };
 
 // ノイズの段。段ごとに空間周波数(球面 1 周あたりの山の数)と段数を変える。
-// 気圧は 1 段しか持たない。総観規模より細かい構造を実際に持たず、さらに収束がそのラプラシアン
-// なので、段を増やすとノイズの格子が上昇流と雲へそのまま出る。
+// 気圧は 1 段しか持たない。総観規模より細かい構造を実際に持たないうえ、上昇流が気圧そのものの
+// 関数なので、段を増やすとノイズの格子が雲へそのまま出る。
 const PRESSURE_NOISE = [1.2, 1] as const;
 // 湿度は基準周波数を低く段を多く取る。基準の角波長(2550 km)が一枚板の雲の広がりを、
 // 最上段(160 km)が凝結のしきい値をまたぐ縁の細かさを決める。上層はこれ以上段を減らせない —
@@ -40,13 +39,14 @@ const PRESSURE_NOISE_AMPLITUDE = 18;
 const HUMIDITY_NOISE_AMPLITUDE = 0.3;
 const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
 
-// 上昇流: 収束が持ち上げる気柱の厚み [m]。地形の上昇流は風と斜面の内積そのもの。
-// 厚みは、低気圧の中心の上昇流が地形の上昇流と同じ桁に収まる高さに置く。ここを厚く取ると
-// 低気圧が湿度へ自分で飽和した円盤を書き、流入が巻き込んだ渦をその上から塗り潰してしまう
-// — 渦の見えは、収束が書く滑らかな円盤ではなく、流入が既にある雲を縮める分から出る。
-const CONVERGENCE_DEPTH = 133;
-// 上昇流の頭打ち [m/s]。最も急な斜面へ強い風が当たると上昇流は並の 5 倍以上になり、線形のままだと
-// 湿度が 0/1 で切れて、山脈が硬い縁の白い帯になる。漸近させて、並の上昇流はほぼ素通しにする。
+// 気圧の偏差から出る上昇流。利得 [m/s] が高気圧側の吹きおろしの上限で、低気圧側は圧力の尺度
+// [hPa] ごとに e 倍に伸びる。上昇は狭く強く、下降は広く弱いので、写像は原点で非対称に取る。
+// 利得を上げると低気圧が湿度へ飽和した円盤を書き、流入が巻き込んだ渦をその上から塗り潰す
+// — 渦の見えは、滑らかな円盤ではなく、流入が既にある雲を縮める分から出る。
+const PRESSURE_LIFT_GAIN = 0.02;
+const PRESSURE_LIFT_SCALE = 20;
+// 上昇流の頭打ち [m/s]。急な斜面へ強い風が当たる所と深い谷の芯では上昇流が並の何倍にもなり、
+// 線形のままだと湿度が 0/1 で切れて硬い縁の白い塊になる。漸近させて、並の上昇流はほぼ素通しにする。
 const LIFT_LIMIT = 0.06;
 // 上昇流の利得。上昇流は地表付近の湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く
 // [per m/s]。
@@ -56,7 +56,7 @@ const UPPER_LIFT_HUMIDITY = 3;
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
 const PRESSURE_BAND_AMPLITUDE = 8;
 
-// 気圧の勾配とラプラシアンを取る中心差分の刻み [rad]。台風の半径(700 km ≈ 0.11 rad)より小さく、
+// 気圧の勾配を取る中心差分の刻み [rad]。台風の半径(700 km ≈ 0.11 rad)より小さく、
 // 気圧の写しの texel より数倍大きい。
 const GRADIENT_STEP = 0.01;
 // 風の利得 [m/s あたり hPa/rad]。流入は気圧の低い方へ、地衡風は等圧線に沿って(緯度の正弦に比例)。
@@ -117,7 +117,7 @@ export class WeatherModel {
     const east = eastAt(direction);
     const north = northAt(direction);
 
-    // 気圧の写しの 5 点差分から勾配(接ベクトル [hPa/rad])とラプラシアン。
+    // 気圧の写しの 4 点差分から勾配(接ベクトル [hPa/rad])。
     const pressure = this.pressure.at(direction).r;
     const eastStep = east.mul(GRADIENT_STEP);
     const northStep = north.mul(GRADIENT_STEP);
@@ -127,26 +127,23 @@ export class WeatherModel {
     const pressureSouth = this.pressure.at(normalize(direction.sub(northStep))).r;
     const gradient = east.mul(pressureEast.sub(pressureWest)).add(north.mul(pressureNorth.sub(pressureSouth)))
       .div(2 * GRADIENT_STEP);
-    const laplacian = pressureEast.add(pressureWest).add(pressureNorth).add(pressureSouth).sub(pressure.mul(4))
-      .div(GRADIENT_STEP * GRADIENT_STEP);
 
     // 風 = 低い方への流入 + 等圧線に沿う地衡風(コリオリ力の向きは半球で反転)。
     const inflow = gradient.mul(-INFLOW_GAIN);
     const geostrophic = cross(direction, gradient).mul(sin(latitude).mul(GEOSTROPHIC_GAIN));
     const wind = capWind(inflow.add(geostrophic));
-    const convergence = laplacian.mul(INFLOW_GAIN / R_EARTH);
 
-    // 上昇流: 風が斜面を駆け上がる分と、収束が押し上げる分。
+    // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分。
     const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
     const terrainLift = dot(components(wind), this.climate.slope(direction));
-    const lift = limitLift(terrainLift.add(convergence.mul(CONVERGENCE_DEPTH)));
+    const lift = limitLift(terrainLift.add(liftFromPressure(pressure)));
 
     // 湿度は、風で流した写しへ上昇流の分を足したもの。
     const advected = this.advected(direction, wind);
     const humidity = clamp(advected.x.add(lift.mul(LIFT_HUMIDITY)), 0, 1);
     const upperHumidity = clamp(advected.y.add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)), 0, 1);
 
-    return { pressure, convergence, wind: components(wind), lift, humidity, upperHumidity };
+    return { pressure, wind: components(wind), lift, humidity, upperHumidity };
   }
 
   // 写しへ焼く気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。読むのは pressure.at()。
@@ -190,6 +187,11 @@ export class WeatherModel {
 // 風速を WIND_CAP で頭打ちにする。
 function capWind(wind: Vec3Node): Vec3Node {
   return wind.mul(min(float(1), float(WIND_CAP).div(max(length(wind), 1e-3))));
+}
+
+// 気圧の偏差 [hPa] が生む上昇流 [m/s]。低気圧で正、高気圧で負。
+function liftFromPressure(pressure: FloatNode): FloatNode {
+  return exp(pressure.div(-PRESSURE_LIFT_SCALE)).sub(1).mul(PRESSURE_LIFT_GAIN);
 }
 
 // 上昇流を LIFT_LIMIT へ漸近させる。LIFT_LIMIT より十分弱い上昇流はほぼ素通しで、強いものだけが丸まる。
