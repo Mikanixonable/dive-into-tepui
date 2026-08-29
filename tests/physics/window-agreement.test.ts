@@ -13,7 +13,7 @@ import {
   GRAVITY_NEGLIGIBLE_ACCEL, INITIAL_ALT, INITIAL_INC_DEG,
   PLAYER_HULL_RADIUS, SUBSTEP_MAX_DT,
 } from '../../src/game/const';
-import { ArcBodies, type FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-celestial-bodies';
+import { ArcCelestialBodies, type FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-celestial-bodies';
 import { attractorsNearInto, classifyAttractors } from '../../src/game/dynamic/attractors';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/dynamic/surface-candidates';
 import type { CelestialBody } from '../../src/physics/celestial-body';
@@ -151,7 +151,7 @@ export function register(): void {
         const from = site.stateAt(t);
         const sim = attractorsNearInto(from.r, classifyAttractors(WINDOWS.gravityAttractorsAt(t)), []);
         // 成員は最初の解決で確定するので、場所ごと・時刻ごとに弧を組み直す。
-        const arc = new ArcBodies(ARC_SOURCES).resolve(t, from, 0).gravity;
+        const arc = new ArcCelestialBodies(ARC_SOURCES).resolve(t, from, 0).gravity;
         const diff = len(sub(gravitySum(sim, from.r, t), gravitySum(arc, from.r, t)));
         assert.ok(
           diff <= GRAVITY_NEGLIGIBLE_ACCEL,
@@ -176,7 +176,7 @@ export function register(): void {
         // 何も通らない場所で比べても意味がないので、絞り込みが実際に通していることを先に見る。
         assert.ok(sim.length > 0, `${site.name} t=${t}: 実シミュレーション側が1体も通していない`);
         // 成員は最初の解決で確定するので、場所ごと・時刻ごとに弧を組み直す。
-        const arc = new ArcBodies(ARC_SOURCES)
+        const arc = new ArcCelestialBodies(ARC_SOURCES)
           .resolve(t + SUBSTEP_MAX_DT / 2, from, SUBSTEP_MAX_DT).collision;
         const known = new Set(arc.map((b) => b.id));
         const dropped = sim.filter((b) => !known.has(b.id)).map((b) => b.id);
