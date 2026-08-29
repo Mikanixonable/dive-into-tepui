@@ -1,26 +1,26 @@
 // 天体1体。運動(CelestialMotion)と表示名・表示クラスを持ち、見た目(メッシュ・輝点スプライト・
 // 環など)をその運動へ同期する。位置・姿勢の正本は motion で、sync のたびにそこから引く。
 import * as THREE from 'three/webgpu';
-import { CelestialBodyDef, CelestialMotion } from '../../physics/celestial-motion';
-import type { RingSystemDef } from '../../physics/celestial-body-def';
-import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
-import { OrbitalElements } from '../../physics/elements';
-import { OrbitLine } from '../lines/orbit-line';
-import { LINE_RENDER_ORDER } from '../../render/line-style';
-import type { MarkerManager } from '../marker/marker-manager';
-import { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../camera/floating-origin';
-import { apparentSizePx } from '../../math/projection';
-import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../render/pipeline/sun-light';
-import { len, sub, v3 } from '../../math/vec3';
-import type { AtmosphereCandidate, AtmosphereOptics } from '../../render/atmosphere';
-import type { Albedo } from '../../render/celestial-albedo';
+import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
+import type { RingSystemDef } from '../../../physics/celestial-body-def';
+import { CelestialBody, orbitalElementsOf } from '../../../physics/celestial-body';
+import { OrbitalElements } from '../../../physics/elements';
+import { OrbitLine } from '../../lines/orbit-line';
+import { LINE_RENDER_ORDER } from '../../../render/line-style';
+import type { MarkerManager } from '../../marker/marker-manager';
+import { CameraSystem } from '../../camera/camera-system';
+import { FloatingOrigin } from '../../camera/floating-origin';
+import { apparentSizePx } from '../../../math/projection';
+import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
+import { len, sub, v3 } from '../../../math/vec3';
+import type { AtmosphereCandidate, AtmosphereOptics } from '../../../render/atmosphere';
+import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
-import type { Vec3 } from '../../math/vec3';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import type { SunLight } from '../../render/pipeline/sun-light';
-import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
-import type { RenderStyle } from '../../render/render-style';
+import type { Vec3 } from '../../../math/vec3';
+import type { GraphicsSettingsData } from '../../../render/graphics-settings';
+import type { SunLight } from '../../../render/pipeline/sun-light';
+import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
+import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
 
 // 公転天体の参照軌道線の色: 衛星は月軌道線の色、惑星は木星軌道線の色を踏襲し、
