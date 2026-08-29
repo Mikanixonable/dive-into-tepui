@@ -32,7 +32,7 @@ const DEFAULT_CAP_RADIUS = 20;
 
 export class CloudLabCanvas {
   // 左が全球の正距円筒、右が正射影の cap。並びが画面の左右と一致する。
-  private readonly panes: readonly CloudLabPane[];
+  private readonly panes: readonly [CloudLabPane, CloudLabPane];
   private readonly capProjection: OrthographicCap;
   private readonly materials: ReadonlyMap<CloudLabViewId, THREE.MeshBasicNodeMaterial>;
   private readonly quad: QuadMesh;
@@ -135,9 +135,9 @@ export class CloudLabCanvas {
     return Fn(() => {
       const color = vec3(0).toVar();
       If(screenUV.x.lessThan(SPLIT_U), () => {
-        color.assign(globe!.colorAt(view, vec2(screenUV.x.div(SPLIT_U), screenUV.y)));
+        color.assign(globe.colorAt(view, vec2(screenUV.x.div(SPLIT_U), screenUV.y)));
       }).Else(() => {
-        color.assign(cap!.colorAt(view, vec2(screenUV.x.sub(SPLIT_U).div(1 - SPLIT_U), screenUV.y)));
+        color.assign(cap.colorAt(view, vec2(screenUV.x.sub(SPLIT_U).div(1 - SPLIT_U), screenUV.y)));
       });
       return color;
     })();
