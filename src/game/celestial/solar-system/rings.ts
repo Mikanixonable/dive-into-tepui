@@ -1,5 +1,5 @@
 // 環系の帯を [km] 単位の表から組む補助と、環を持つ天体の環系定義。
-import { RingArcDef, RingBandDef, RingOpticsDef, RingSystemDef } from '../celestial-body-def';
+import { RingArcDef, RingBandDef, RingOpticsDef, RingSystemDef } from '../../../physics/celestial-body-def';
 
 const KM = 1e3;
 
