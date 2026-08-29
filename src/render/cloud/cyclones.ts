@@ -4,19 +4,23 @@ import * as THREE from 'three/webgpu';
 import { exp, float, length, uniform } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
-// 台風。中心の緯度 [rad]、西進の速さ [m/s]、深さ [hPa]、半径 [m]。
+// 台風。中心の緯度 [rad]、時刻 0 の経度 [rad]、西進の速さ [m/s]、深さ [hPa]、半径 [m]。
+// 半径は目の大きさではなく、風と雲が渦を巻いて見える範囲。
 const TYPHOON_LATITUDE = THREE.MathUtils.degToRad(15);
-const TYPHOON_DRIFT = -5;
+const TYPHOON_LONGITUDE = THREE.MathUtils.degToRad(140);
+const TYPHOON_DRIFT = -8;
 const TYPHOON_DEPTH = 50;
-const TYPHOON_RADIUS = 300e3;
+const TYPHOON_RADIUS = 1200e3;
 
-// 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、半径 [m]、
-// 中心の緯度の範囲 [rad]。寿命の中で深さは山形に変わり、次の寿命では別の経度に生まれる。
-const LOW_COUNT = 6;
+// 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、半径 [m]
+// (番号で最小から幅のあいだへ散らす)、中心の緯度の範囲 [rad]。寿命の中で深さは山形に変わり、
+// 次の寿命では別の経度に生まれる。
+const LOW_COUNT = 10;
 const LOW_LIFETIME = 5 * 86400;
 const LOW_DRIFT = 12;
-const LOW_DEPTH = 15;
-const LOW_RADIUS = 900e3;
+const LOW_DEPTH = 18;
+const LOW_RADIUS_MIN = 800e3;
+const LOW_RADIUS_SPAN = 800e3;
 const LOW_LATITUDE_MIN = THREE.MathUtils.degToRad(35);
 const LOW_LATITUDE_SPAN = THREE.MathUtils.degToRad(25);
 
@@ -49,7 +53,8 @@ class Trough {
 
 export class Cyclones {
   private readonly typhoon = new Trough(TYPHOON_RADIUS);
-  private readonly lows: readonly Trough[] = Array.from({ length: LOW_COUNT }, () => new Trough(LOW_RADIUS));
+  private readonly lows: readonly Trough[] = Array.from(
+    { length: LOW_COUNT }, (_, i) => new Trough(LOW_RADIUS_MIN + (i / LOW_COUNT) * LOW_RADIUS_SPAN));
 
   // radius はこの天体の半径 [m]。
   public constructor(private readonly radius: number) {
@@ -59,7 +64,10 @@ export class Cyclones {
   // 時刻 [s] の配置を uniform へ写す。
   public syncTime(seconds: number): void {
     this.typhoon.depth.value = TYPHOON_DEPTH;
-    this.typhoon.place(TYPHOON_LATITUDE, (TYPHOON_DRIFT / (this.radius * Math.cos(TYPHOON_LATITUDE))) * seconds);
+    this.typhoon.place(
+      TYPHOON_LATITUDE,
+      TYPHOON_LONGITUDE + (TYPHOON_DRIFT / (this.radius * Math.cos(TYPHOON_LATITUDE))) * seconds,
+    );
 
     // 低気圧は寿命ごとに世代が進み、世代と番号のハッシュで生まれる経度・緯度が決まる。
     for (const [i, low] of this.lows.entries()) {
