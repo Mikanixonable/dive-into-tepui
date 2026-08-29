@@ -41,7 +41,7 @@ export function groupPickables(
       case 'body':
         bodyIds.add(item.id);
         if (LAGRANGE_ID.test(item.id)) { push('ラグランジュ点', item.id, item.name); break; }
-        switch (celestialSystem.bodyOf(item.id).bodyClass) {
+        switch (celestialSystem.entityOf(item.id).bodyClass) {
           case 'star': push('恒星', item.id, item.name); break;
           case 'planet': push('惑星', item.id, item.name); break;
           case 'dwarf': push('準惑星', item.id, item.name); break;
@@ -61,7 +61,7 @@ export function groupPickables(
   // includeAllCelestialBodies が true なら「表示中の候補」に限らず、表示設定で
   // 除外された天体も含めて登録済み天体を全件補う。
   if (includeAllCelestialBodies) {
-    for (const body of celestialSystem.bodies) {
+    for (const body of celestialSystem.entities) {
       if (bodyIds.has(body.id)) continue;
       switch (body.bodyClass) {
         case 'star': push('恒星', body.id, body.name); break;

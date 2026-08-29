@@ -63,7 +63,7 @@ export function solarSystem(
     REFERENCE_STAR_RADIANT_INTENSITY, SUN_SURFACE_COLOR);
 
   // 全天体を系ごとの宣言順に並べたもの。重力源配列・天体一覧の順序はこれで決まる。
-  const bodies: readonly CelestialEntity[] = [
+  const entities: readonly CelestialEntity[] = [
     ...Object.values(earthSystem(sunMotion, phases, epochOffsetSec, pack, origin, earthSpinPhase0)),
     ...Object.values(innerPlanets(sunMotion, phases, epochOffsetSec, pack, origin)),
     ...Object.values(marsSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
@@ -77,9 +77,9 @@ export function solarSystem(
   ];
 
   // 木が揃ってから ECI の中心を結ぶ。中心天体自身も自分を参照するので、この順序は崩せない。
-  const originBody = bodies.find((b) => b.id === originId);
-  if (originBody === undefined) throw new Error(`solarSystem: 太陽系に無い原点 id: ${originId}`);
-  origin.set(originBody.motion);
+  const originEntity = entities.find((b) => b.id === originId);
+  if (originEntity === undefined) throw new Error(`solarSystem: 太陽系に無い原点 id: ${originId}`);
+  origin.set(originEntity.motion);
 
-  return new CelestialSystem(bodies, originBody, phases, new PointFieldView(generatePointField()));
+  return new CelestialSystem(entities, originEntity, phases, new PointFieldView(generatePointField()));
 }
