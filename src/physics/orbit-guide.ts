@@ -1,6 +1,7 @@
 // マップのガイドとして描く軌道の曲線(ECI [m])。焼き込みカタログ(orbit-catalog.ts)の
 // 無次元形状を、その瞬間の実際の天体位置・公転面から組んだ回転座標系へ載せて返す。
 // リサジュー軌道だけは連続な族として焼き込まないので、Richardson の解析近似から直に組む。
+import type { CelestialBody } from './celestial-body';
 import { CelestialMotion, OrbitingMotion } from './celestial-motion';
 import { Vec3Tuple } from './cr3bp';
 import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
@@ -240,7 +241,8 @@ function elementsLoop(elements: OrbitalElements | null, centerEci: Vec3): GuideL
 export function sunSyncRepeatGroundTrackLoop(
   t: number, earth: CelestialMotion, repeatDays: number, revsPerRepeat: number,
 ): GuideLoop | null {
-  return elementsLoop(sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat), earth.stateAt(t).r);
+  return elementsLoop(
+    sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat, earth.at(t)), earth.stateAt(t).r);
 }
 
 // 太陽方向の昇交点赤経(elements.ts の orbitPlaneBasis の規約: raan=0 で昇交点は +X 方向、
@@ -252,15 +254,28 @@ export function dawnDuskGuideLoop(
   const earthPos = earth.stateAt(t).r;
   const sunDir = sunDirFrom(earthPos, t);
   const sunRaanDeg = (Math.atan2(-sunDir.z, sunDir.x) * 180) / Math.PI;
-  return elementsLoop(dawnDuskElements(repeatDays, revsPerRepeat, localTime, sunRaanDeg), earthPos);
+  return elementsLoop(
+    dawnDuskElements(repeatDays, revsPerRepeat, localTime, sunRaanDeg, earth.at(t)), earthPos);
+}
+
+// 自転周期に共鳴する参照軌道(モルニヤ・ツンドラ)の共通部。自転モデルを持たない天体では
+// 共鳴の基準が無いので線を引かない。
+function spinResonantLoop(
+  t: number, earth: CelestialMotion,
+  elementsOf: (planet: CelestialBody, spinPeriod: number) => OrbitalElements,
+): GuideLoop | null {
+  const spinRate = earth.spinRate;
+  if (spinRate === null || spinRate === 0) return null;
+  return elementsLoop(
+    elementsOf(earth.at(t), Math.abs((2 * Math.PI) / spinRate)), earth.stateAt(t).r);
 }
 
 // モルニヤ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
 export function molniyaGuideLoop(t: number, earth: CelestialMotion, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
-  return elementsLoop(molniyaElements(perigeeAltitude, raanDeg), earth.stateAt(t).r);
+  return spinResonantLoop(t, earth, (planet, spinPeriod) => molniyaElements(perigeeAltitude, raanDeg, planet, spinPeriod));
 }
 
 // ツンドラ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
 export function tundraGuideLoop(t: number, earth: CelestialMotion, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
-  return elementsLoop(tundraElements(perigeeAltitude, raanDeg), earth.stateAt(t).r);
+  return spinResonantLoop(t, earth, (planet, spinPeriod) => tundraElements(perigeeAltitude, raanDeg, planet, spinPeriod));
 }
