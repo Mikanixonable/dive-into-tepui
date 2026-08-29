@@ -8,7 +8,7 @@ import type { CelestialBodyWindows } from '../../physics/celestial-body-windows'
 import { Vec3 } from '../../math/vec3';
 import { ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
 
-export class SubstepBodies {
+export class SubstepCelestialBodies {
   private classified: ClassifiedAttractors = classifyAttractors([]);
   private _gravitySourceCount = 0;
   private _surface: readonly CelestialBody[] = [];
