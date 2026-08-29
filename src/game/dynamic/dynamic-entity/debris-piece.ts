@@ -44,7 +44,7 @@ export type DebrisKind =
 
 // DebrisKind の種別に応じたメッシュを構築する。fragment は InstancedPool 経由で描くため
 // ジオメトリを持たない — size だけを renderObject.scale へ焼き、どのバリアント/色を使うかは
-// DebrisPiece 自身が持つ(EntityManager.sync が variant ごとのプールへ push する)。
+// DebrisPiece 自身が持つ(DynamicSystem.sync が variant ごとのプールへ push する)。
 function buildDebrisRenderObject(debrisKind: DebrisKind): THREE.Object3D {
   switch (debrisKind.kind) {
     case 'fragment': {
@@ -100,7 +100,7 @@ export class DebrisPiece extends DynamicEntity {
   }
 
   // fragment のみ意味を持つ: どのバリアントジオメトリを使うか、InstancedPool の
-  // per-instance color へ渡す色。EntityManager.sync が variant ごとのプールへ push する。
+  // per-instance color へ渡す色。DynamicSystem.sync が variant ごとのプールへ push する。
   readonly fragmentVariant: number;
   readonly fragmentColor: THREE.Color | null;
 

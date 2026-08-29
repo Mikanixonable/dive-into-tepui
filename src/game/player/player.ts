@@ -9,7 +9,7 @@ import * as C from '../const';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { Input } from '../input/input';
@@ -304,7 +304,7 @@ export class Player extends Ship {
   }
 
   // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
-  decoupleBooster(entities: EntityManager): boolean {
+  decoupleBooster(entities: DynamicSystem): boolean {
     const stageIndex = this.boosters.stages.length - 1;
     if (stageIndex < 0) {
       this._hud.hint('分離できるブースターがありません');
@@ -424,7 +424,7 @@ export class Player extends Ship {
     input: Input | null,
     dt: number,
     simDt: number,
-    entities: EntityManager,
+    entities: DynamicSystem,
     activeStage: Stage,
     celestialSystem: CelestialSystem,
   ): void {
@@ -497,12 +497,12 @@ export class Player extends Ship {
   }
 
   // 自機側のキー(RCS減衰・プログレード・スロットル等)を1フレーム分消費する。
-  private handleEdgeInput(input: Input, entities: EntityManager): void {
+  private handleEdgeInput(input: Input, entities: DynamicSystem): void {
     input.takeKeys((code) => this.handleEdgePress(code, entities));
   }
 
   // 自機側キー1個を処理する。処理したキーは true を返し input.takeKeys に消費させる。
-  private handleEdgePress(code: string, entities: EntityManager): boolean {
+  private handleEdgePress(code: string, entities: DynamicSystem): boolean {
     switch (code) {
       case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
       case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;

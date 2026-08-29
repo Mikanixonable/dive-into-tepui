@@ -11,8 +11,8 @@ import { qRotate } from '../physics/attitude';
 import { goldenSectionMin } from '../math/optimize';
 import { Player } from './player/player';
 import type { DisplayWindow } from './display-window-manager';
-import type { EntityManager } from './simulation/entity-manager';
-import { entityStateAt } from './simulation/entity-state-at';
+import type { DynamicSystem } from './dynamic/dynamic-system';
+import { entityStateAt } from './dynamic/entity-state-at';
 import type { CombatTarget } from './targeter';
 import { Hud } from './hud/hud';
 import { TickLabelMode, elementTimeLabel } from './hud/orbit/calendar-ticks';
@@ -141,7 +141,7 @@ export class NavTarget {
   // セーブデータからの復元用。id が敵・自機・基地を指していた場合はそれが生存していないと
   // 復元しない(撃墜・破壊されていれば未選択に戻す)。天体・ラグランジュ点など消滅しない対象は
   // 常に復元する。ヒントは出さない。
-  restore(data: { id: string; name: string } | null | undefined, entities: EntityManager): void {
+  restore(data: { id: string; name: string } | null | undefined, entities: DynamicSystem): void {
     if (!data) return;
     const wasEntityId = entities.findEnemy(data.id) !== null
       || entities.players.some((p) => p.id === data.id)
@@ -152,7 +152,7 @@ export class NavTarget {
 
   // 現在のターゲットを、生存中の戦闘対象(敵・自艦・基地)として解決する。天体・ラグランジュ点
   // など戦闘対象になれない対象がターゲットの場合は null。
-  resolveCombatTarget(entities: EntityManager): CombatTarget | null {
+  resolveCombatTarget(entities: DynamicSystem): CombatTarget | null {
     if (this.targetId === null) return null;
     const entity = entities.findAliveCombatTarget(this.targetId);
     return entity && entity.alive ? entity : null;
@@ -174,7 +174,7 @@ export class NavTarget {
   // 月周回では通過までの時間ぶん位置がずれる。位置は通過時刻で bake し、displayWindow の
   // 表示時刻で un-bake して描画座標系へ移す。
   update(
-    player: Player | null, entities: EntityManager, celestialSystem: CelestialSystem, displayWindow: DisplayWindow,
+    player: Player | null, entities: DynamicSystem, celestialSystem: CelestialSystem, displayWindow: DisplayWindow,
     frameAnchors: FrameAnchorSource,
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
@@ -238,7 +238,7 @@ export class NavTarget {
   // hasMass=false を返す。船・基地は軌道線を相対軌跡に切り替えられるよう entity 自身も添えて
   // 返す。ターゲット未設定・解決不能なら null。
   resolveState(
-    entities: EntityManager, celestialSystem: CelestialSystem, celestialBodies: readonly CelestialBody[], t: number,
+    entities: DynamicSystem, celestialSystem: CelestialSystem, celestialBodies: readonly CelestialBody[], t: number,
   ): OrbitReference | null {
     const id = this.targetId;
     if (id === null) return null;
@@ -266,14 +266,14 @@ export class NavTarget {
   }
 
   // id がターゲットになれる(軌道面が定まる)かどうか。
-  canTarget(id: string, entities: EntityManager, celestialSystem: CelestialSystem, t: number): boolean {
+  canTarget(id: string, entities: DynamicSystem, celestialSystem: CelestialSystem, t: number): boolean {
     return this.resolvePlaneNormal(id, entities, celestialSystem, t) !== null;
   }
 
   // id から対象の軌道面法線を求める。船・基地は自身の軌道要素、公転している天体(惑星・衛星)
   // はその公転面法線、ラグランジュ点(`${副天体}-l${n}`)は副天体の公転面法線を使う。
   // 面が定まらない対象(恒星、および軌道要素の無い天体・存在しない船)は null。
-  private resolvePlaneNormal(id: string, entities: EntityManager, celestialSystem: CelestialSystem, t: number): Vec3 | null {
+  private resolvePlaneNormal(id: string, entities: DynamicSystem, celestialSystem: CelestialSystem, t: number): Vec3 | null {
     const idMotion = celestialSystem.find(id)?.motion;
     if (idMotion instanceof OrbitingMotion) {
       return idMotion.orbitNormalAt(t);
