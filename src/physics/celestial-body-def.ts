@@ -1,5 +1,7 @@
 // 天体1体の静的な記述を組み立てる部品: 自転極モデル・2次重力場・形状・環系。
 // これらを束ねた StarDef / PlanetDef / SatelliteDef は celestial-motion.ts が持つ。
+import { JULIAN_CENTURY } from './kepler-orbit';
+import { SECONDS_PER_DAY } from './time';
 import { Vec3, v3 } from '../math/vec3';
 
 // 自転軸と自転位相の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)で、
@@ -20,6 +22,27 @@ export type PoleModel =
       readonly w0Deg: number;
       readonly wRateDegPerDay: number;
     };
+
+// IAU モデルの元期を epochOffsetSec ぶん進めた自転モデル。基準方向・本初子午線の位相はどちらも
+// 時刻の一次式なので係数へ畳める。極方向を持たないモデル(cassini/eciPole)は時刻の原点を
+// 持たないのでそのまま。
+export function poleModelAtEpoch(pole: PoleModel | undefined, epochOffsetSec: number): PoleModel | undefined {
+  if (pole === undefined || pole.kind !== 'iau') return pole;
+  const centuries = epochOffsetSec / JULIAN_CENTURY;
+  const days = epochOffsetSec / SECONDS_PER_DAY;
+  return {
+    ...pole,
+    ra0Deg: pole.ra0Deg + pole.ra1DegPerCentury * centuries,
+    dec0Deg: pole.dec0Deg + pole.dec1DegPerCentury * centuries,
+    // 本初子午線は1日1周規模で進むので、畳まないと 1e7 deg まで積み上がる。
+    w0Deg: wrapDegrees(pole.w0Deg + pole.wRateDegPerDay * days),
+  };
+}
+
+// 角度[deg]を [0, 360) へ畳む。
+function wrapDegrees(x: number): number {
+  return x - 360 * Math.floor(x / 360);
+}
 
 // 2次の重力場の静的な記述。時刻ごとの自転軸・長軸の実ベクトルは CelestialMotion が組む。
 export type Degree2GravityDef = {
