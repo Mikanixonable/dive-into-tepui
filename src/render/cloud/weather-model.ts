@@ -9,7 +9,7 @@ import type { WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../physics/solar-system';
 import { BakedField } from './baked-field';
 import { CirculatingNoise } from './circulating-noise';
-import { Circulation } from './circulation';
+import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { ClimateMap } from './climate-map';
@@ -81,10 +81,11 @@ const UPPER_HUMIDITY_BASE = 0.31;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.28;
 
 export class WeatherModel {
-  private readonly circulation = new Circulation(R_EARTH);
+  private readonly circulation = new Circulation(R_EARTH, SURFACE_BANDS);
+  private readonly upperCirculation = new Circulation(R_EARTH, UPPER_BANDS);
   private readonly pressureNoise = new CirculatingNoise(this.circulation, ...PRESSURE_NOISE);
   private readonly humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE);
-  private readonly upperHumidityNoise = new CirculatingNoise(this.circulation, ...UPPER_HUMIDITY_NOISE);
+  private readonly upperHumidityNoise = new CirculatingNoise(this.upperCirculation, ...UPPER_HUMIDITY_NOISE);
   private readonly cyclones = new Cyclones(R_EARTH);
   private readonly pressure: BakedField;
   private readonly humiditySource: BakedField;
@@ -109,6 +110,7 @@ export class WeatherModel {
   // 時刻 [s] を uniform へ写す。
   public syncTime(seconds: number): void {
     this.circulation.syncTime(seconds);
+    this.upperCirculation.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     const cycle = (seconds / ADVECTION_PERIOD) % 1;
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
