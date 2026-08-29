@@ -5,7 +5,7 @@
 // THREE/DOM 非依存。
 import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp, qRotate } from './attitude';
-import { OriginCenteredEphemeris } from './absolute-ephemeris';
+import { HelioEphemeris } from './absolute-ephemeris';
 import { CelestialBody, Degree2Gravity, celestialBodyStateAt } from './celestial-body';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
@@ -72,10 +72,17 @@ function twoBodyAccel(d: Vec3, mu: number): Vec3 {
   return scale(d, -mu / (d2 * Math.sqrt(d2)));
 }
 
+// b を原点に置き直した a。
+function relativeState(t: number, a: KinematicState, b: KinematicState): KinematicState {
+  return kinematicState(t, sub(a.r, b.r), sub(a.v, b.v));
+}
+
 // ECI の中心天体。中心天体自身も自分を参照する循環があるため、全 motion を作り終えてから
 // set で1度だけ結ぶ。
 export class EciOrigin {
   private center: CelestialMotion | null = null;
+  // 原点天体の暦パック状態は全天体が同じ時刻で引くので、時刻ごとに1回へ畳む。
+  private readonly packedCache = new TimeRing<KinematicState | null>();
 
   // 中心天体。set より前に読むと例外。
   get motion(): CelestialMotion {
@@ -87,6 +94,13 @@ export class EciOrigin {
   set(motion: CelestialMotion): void {
     if (this.center !== null) throw new Error(`EciOrigin: 中心天体は1度だけ設定できる(${this.center.id} → ${motion.id})`);
     this.center = motion;
+  }
+
+  // 暦パックが答える中心天体の恒星中心状態。パックが答えられなければ null。
+  packedHelioStateAt(t: number): KinematicState | null {
+    const cached = this.packedCache.get(t);
+    if (cached !== undefined) return cached;
+    return this.packedCache.put(t, this.motion.packedHelioStateAt(t));
   }
 }
 
@@ -106,7 +120,7 @@ export abstract class CelestialMotion {
     // 軌道評価時刻へ一律に足す定数 [s]。
     protected readonly epochOffsetSec: number,
     // 高精度暦パック。持たない構成では null。
-    protected readonly precise: OriginCenteredEphemeris | null,
+    protected readonly precise: HelioEphemeris | null,
     private readonly origin: EciOrigin,
     // 自転の初期位相 [rad]。eciPole の自転モデルの位相原点をこれだけ進める(iau は w0 が、
     // 同期回転は軌道が位相を持つ)。
@@ -175,35 +189,40 @@ export abstract class CelestialMotion {
     return this.bodyCache.stats;
   }
 
-  // 時刻 t の厳密な ECI(原点天体中心)位置・速度。
+  // 時刻 t の厳密な ECI(原点天体中心)位置・速度。両方の供給源が恒星中心で答えるので、
+  // ECI への変換はここでの1回の減算だけ。原点天体自身は同じ計算を2回引いて厳密に 0 になる。
   //
   // **この天体と ECI 原点天体は、必ず同じ供給源から引く。** 暦パックと解析暦は同じ天体に
   // 対して別の位置を答えるので、片方をパック・片方を解析で引くと、その差がそのまま相対位置の
-  // 誤りになる。暦パックは自分を答えられる期間だけ使い、答えられなければ両端とも解析暦へ
+  // 誤りになる。暦パックは両端を答えられる期間だけ使い、答えられなければ両端とも解析暦へ
   // 落とす(CELESTIAL.md 2.2)。
   private eciStateAt(t: number): KinematicState {
     return this.packedEciStateAt(t) ?? this.analyticEciStateAt(t);
   }
 
-  // 暦パックだけで組んだ ECI 位置・速度。パックを持たない・有効期間外・この天体を答えられない
-  // のいずれかなら null。
+  // 暦パックだけで組んだ ECI 位置・速度。この天体か ECI 原点天体をパックが答えられなければ null。
   private packedEciStateAt(t: number): KinematicState | null {
+    const body = this.packedHelioStateAt(t);
+    if (body === null) return null;
+    const origin = this.origin.packedHelioStateAt(t);
+    return origin === null ? null : relativeState(t, body, origin);
+  }
+
+  // 解析暦だけで組んだ ECI 位置・速度。
+  private analyticEciStateAt(t: number): KinematicState {
+    return relativeState(t, this.helioStateAt(t), this.origin.motion.helioStateAt(t));
+  }
+
+  // 暦パックが答えるこの天体の恒星中心位置・速度。パックを持たない・有効期間外・この天体を
+  // 答えられないのいずれかなら null。
+  packedHelioStateAt(t: number): KinematicState | null {
     const precise = this.precise;
     if (precise === null || !precise.isValidAt(t)) return null;
     return this.packedStateAt(precise, t);
   }
 
-  // 解析暦だけで組んだ ECI 位置・速度。日心状態から原点天体の日心状態を引く一箇所だけで
-  // 座標変換するので、原点天体自身は同じ計算を2回引いて厳密に 0 になる。
-  private analyticEciStateAt(t: number): KinematicState {
-    const helio = this.helioStateAt(t);
-    const originHelio = this.origin.motion.helioStateAt(t);
-    return kinematicState(t, sub(helio.r, originHelio.r), sub(helio.v, originHelio.v));
-  }
-
-  // 暦パックが答えるこの天体の ECI 位置・速度。収録されていなければ null — 呼び出し側は
-  // そのとき原点天体もパックから引いてはならない(eciStateAt の供給源の規則)。
-  protected packedStateAt(precise: OriginCenteredEphemeris, t: number): KinematicState | null {
+  // 暦パックが収録するこの天体の恒星中心位置・速度。収録されていなければ null。
+  protected packedStateAt(precise: HelioEphemeris, t: number): KinematicState | null {
     return precise.hasBody(this.id) ? precise.stateOf(this.id, t) : null;
   }
 
@@ -220,7 +239,7 @@ export class StarMotion extends CelestialMotion {
   // phase は平均黄経の初期位相 [rad]、epochOffsetSec は軌道評価時刻へ足す定数 [s]。
   constructor(
     readonly def: StarDef, phase: number, epochOffsetSec: number,
-    precise: OriginCenteredEphemeris | null, origin: EciOrigin,
+    precise: HelioEphemeris | null, origin: EciOrigin,
   ) {
     super(phase, epochOffsetSec, precise, origin);
   }
@@ -412,7 +431,7 @@ export class PlanetMotion extends OrbitingMotion {
   // (eciPole の自転モデルを持つ惑星だけが意味を持つ)。
   constructor(
     readonly def: PlanetDef, readonly star: StarMotion | null, phase: number,
-    epochOffsetSec: number, precise: OriginCenteredEphemeris | null, origin: EciOrigin,
+    epochOffsetSec: number, precise: HelioEphemeris | null, origin: EciOrigin,
     spinPhase0 = 0,
   ) {
     super(phase, epochOffsetSec, precise, origin, spinPhase0);
@@ -487,7 +506,7 @@ export class SatelliteMotion extends OrbitingMotion {
   // 惑星の日心状態を初めて引く前に全衛星を作り終えていなければならない。
   constructor(
     readonly def: SatelliteDef, readonly planet: PlanetMotion, phase: number,
-    epochOffsetSec: number, precise: OriginCenteredEphemeris | null, origin: EciOrigin,
+    epochOffsetSec: number, precise: HelioEphemeris | null, origin: EciOrigin,
   ) {
     super(phase, epochOffsetSec, precise, origin);
     planet.addSatellite(this);
@@ -524,7 +543,7 @@ export class SatelliteMotion extends OrbitingMotion {
   }
 
   // 未収録の衛星は、収録済みの惑星へ惑星相対モデルを足して補う。
-  protected override packedStateAt(precise: OriginCenteredEphemeris, t: number): KinematicState | null {
+  protected override packedStateAt(precise: HelioEphemeris, t: number): KinematicState | null {
     const own = super.packedStateAt(precise, t);
     if (own !== null) return own;
     if (!precise.hasBody(this.planet.id)) return null;

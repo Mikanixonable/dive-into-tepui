@@ -1,7 +1,7 @@
 // 現実の太陽系。各系の構築関数を呼んで全天体の運動と見た目を組み、宣言順に並べた
 // CelestialSystem を返す。ECI の中心(originId)は呼び出し側の選択で、同じ太陽系を別の原点で
 // 組める。高精度暦パックを渡すと、その有効期間だけパック経路を通る。
-import { AbsoluteEphemeris, OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
+import { AbsoluteEphemeris, HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import { EciOrigin, PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
@@ -55,7 +55,7 @@ export function solarSystem(
   const origin = new EciOrigin();
   const pack = absoluteSource === null
     ? null
-    : new OriginCenteredEphemeris(absoluteSource, originId, epochJdTdb);
+    : new HelioEphemeris(absoluteSource, SUN.id, epochJdTdb);
   const sunMotion = new StarMotion(SUN, phases[SUN.id] ?? 0, epochOffsetSec, pack, origin);
   // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
   const sun = new StarEntity(

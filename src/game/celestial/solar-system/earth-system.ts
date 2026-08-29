@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
 import cloudsTextureUrl from '../../../assets/8k_clouds.jpg';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
-import { OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
+import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import { AtmosphereDef } from '../../../physics/atmosphere';
 import {
   EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
@@ -180,7 +180,7 @@ function earthAuroras(): readonly Aurora[] {
 // earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: OriginCenteredEphemeris | null, origin: EciOrigin, earthSpinPhase0 = 0,
+  pack: HelioEphemeris | null, origin: EciOrigin, earthSpinPhase0 = 0,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = new PlanetMotion(EARTH, sun, phases[EARTH.id] ?? 0, epochOffsetSec, pack, origin, earthSpinPhase0);
   return {
