@@ -6,7 +6,7 @@
 ## 到達した骨格
 
 ```
-src/game/celestial/               解析暦で動く側(位置は時刻から閉じた式で決まる)
+src/game/celestial/               時刻を与えれば状態が決まる側(ゲームの進行に左右されない)
   celestial-entity/               個体1体とその派生・環・同期軌道リング
   celestial-system.ts             個体の集合 + 毎フレーム同期
   orbit-guide/                    ラグランジュ軌道ガイドとゼロ速度曲線
@@ -23,13 +23,14 @@ src/game/map/                     マップ表示ポリシー(両族にまたが
   visibility-policy.ts            category/icon/label/orbit/pickable の正本
 ```
 
-**残した非対称は2つとも説明がつく。** `celestial/` に積分機構が無いのは、天体の運動が個体ごとに
-閉じた式で解けて `physics/celestial-motion.ts` が持つため。`dynamic/` に「組んで返すもの」が
+**残した非対称は2つとも説明がつく。** `celestial/` に積分機構が無いのは、天体の運動が時刻から
+決まり `physics/celestial-motion.ts` が持つため。`dynamic/` に「組んで返すもの」が
 無いのは、顔ぶれを決めるのが `game/stages/` であるため。
 
 ## 命名の規則
 
-族語は CODING-RULE 2.2 の語をそのまま使う — **`celestial`(解析暦)/ `dynamic`(数値積分)**。
+族語は CODING-RULE 2.2 の語をそのまま使う — **`celestial`(時刻で状態が決まる)/
+`dynamic`(数値積分で状態が進む)**。
 `game` は置き場の名前であって族語ではないので型名から外した。役割語は **`Entity`(個体)/
 `System`(集合 + 毎フレーム同期)** の2つ。`Manager` は使わない。
 

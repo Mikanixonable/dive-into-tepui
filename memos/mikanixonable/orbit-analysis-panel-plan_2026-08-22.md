@@ -306,7 +306,7 @@ Step 1 は `PropertyWindow` の全域に触るので配らない。
 
 - `extrapolatedRelativeState` は毎回ケプラー方程式を解く(反復 ≒ 10 回、三角関数を数回)。
   ≒ 1 µs/点。
-- `ephemeris.stateOf` は解析暦の評価。≒ 1 µs/点(登録天体1つぶん)。
+- `CelestialMotion.stateAt` は天体1体の評価。≒ 1 µs/点(登録天体1つぶん)。
 - 高度タブ = 200 点 × 2 µs ≒ **0.4 ms**。接近タブ = 双方ぶんで **0.8 ms**。
 - canvas の描画は 200 セグメントの `lineTo` + 目盛 20 本 ≒ 0.1 ms。
 

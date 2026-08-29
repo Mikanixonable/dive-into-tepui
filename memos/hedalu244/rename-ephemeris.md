@@ -45,11 +45,11 @@ CODING-RULE 2.2 は `celestial` / `dynamic` を対として固定し `ephemeris`
 (`barycentricStateOf(id, jdTdb)` / `stateOf(id, simTime)`)。`orbit` は経路そのもの(形)で、
 絶対時刻を引数に取らない — `KeplerOrbit` は t=0 の要素と変化率の束、`OrbitalElements` は真近点角
 で引き、`CatalogFamily.points` の各点が持つのは周期を1とする位相 `tFrac` だけ。絶対時刻から状態を
-出すのは `keplerOrbitState(orbit, t, phase)` という関数であって `orbit` 自身ではない。
+出すのは `keplerOrbitState(orbit, t)` という関数であって `orbit` 自身ではない。
 
 **軸2 — 誰に対する位置か。** `orbit` は主天体相対で、主天体が変われば別の軌道になる。
-`ephemeris` は系で共通の1原点(太陽系重心、または原点天体)に対する位置で、天体ごとに原点は
-変わらない。`OrbitingMotion.packedPrimaryRelStateAt`(`celestial-motion.ts:381-390`)が主天体相対を
+`ephemeris` は系で共通の1原点(恒星 = 系の階層の根)に対する位置で、天体ごとに原点は
+変わらない。`OrbitingMotion.packedPrimaryRelStateAt`(`celestial-motion.ts:429-438`)が主天体相対を
 得るために **ephemeris を2回引いて差を取っている**のは、ephemeris が主天体相対を直接は答えられない
 ため。
 
@@ -119,7 +119,7 @@ CODING-RULE 2.2 は `celestial` / `dynamic` を対として固定し `ephemeris`
 
 **代案E — 語順を族語前置で全部揃える**(`EphemerisBarycentric` / `EphemerisOriginCentered`)。
 `EphemerisProfile` / `EphemerisContext` と語順が揃い、grep で族が一箇所に集まる。**欠点**: 英語の
-語順として不自然で、`HelioEphemeris`(32 箇所)を含む既存の読みやすさを落とす。
+語順として不自然で、`HelioEphemeris`(34 箇所)を含む既存の読みやすさを落とす。
 
 ## 達成目標
 
@@ -202,7 +202,7 @@ CODING-RULE 2.2 は `celestial` / `dynamic` を対として固定し `ephemeris`
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/physics/celestial-motion.ts:109,182-194,210,382-388,402,477,514-518` | フィールド・引数 `precise` → `ephemeris`。`packedStateAt` → `ephemerisStateAt`、`packedPrimaryRelStateAt` → `ephemerisPrimaryRelStateAt`。コメントの「暦パック」も供給源を指す箇所は「天体暦」へ |
+| `src/physics/celestial-motion.ts` の `precise` 全 21 箇所 | フィールド・引数 `precise` → `ephemeris`。`packedStateAt` → `ephemerisStateAt`、`packedPrimaryRelStateAt` → `ephemerisPrimaryRelStateAt`。コメントの「暦パック」も供給源を指す箇所は「天体暦」へ |
 | `src/game/celestial/solar-system/solar-system.ts:53-58` | 引数 `pack` → `ephemeris` |
 | `src/game/celestial/solar-system/{inner-planets,earth-system,mars-system,jupiter-system,saturn-system,uranus-system,neptune-system,dwarf-planets,small-bodies}.ts` | 引数 `pack` → `ephemeris`(9ファイル、計 117 箇所) |
 | `src/game/stages/stage.ts:110` | ローカル `pack` → `ephemeris` |
