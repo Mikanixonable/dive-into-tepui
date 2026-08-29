@@ -12,8 +12,8 @@ const TYPHOON_LONGITUDE = THREE.MathUtils.degToRad(140);
 const TYPHOON_DRIFT = -8;
 const TYPHOON_DEPTH = 35;
 const TYPHOON_RADIUS = 700e3;
-// 目の半径 [m]。谷よりずっと小さく、ここだけ湿度が落ちて雲が抜ける。
-const TYPHOON_EYE_RADIUS = 200e3;
+// 目の半径 [m]。中心からこの広がりで湿度が落ちる。
+const TYPHOON_EYE_RADIUS = 790e3;
 
 // 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、半径 [m]
 // (番号で最小から幅のあいだへ散らす)、中心の緯度の範囲 [rad]。寿命の中で深さは山形に変わり、
