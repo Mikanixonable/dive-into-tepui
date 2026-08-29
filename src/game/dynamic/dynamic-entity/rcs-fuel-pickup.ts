@@ -1,16 +1,16 @@
 import * as THREE from 'three/webgpu';
-import { kinematicState } from '../../physics/kinematic-state';
-import { len, sub, v3, type Vec3 } from '../../math/vec3';
-import * as C from '../const';
-import { buildRcsFuelPickup } from '../../render/ships';
-import { GameEntity } from './game-entity';
+import { kinematicState } from '../../../physics/kinematic-state';
+import { len, sub, v3, type Vec3 } from '../../../math/vec3';
+import * as C from '../../const';
+import { buildRcsFuelPickup } from '../../../render/ships';
+import { DynamicEntity } from './dynamic-entity';
 import { EntityIdAllocator } from './entity-id';
-import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
-import { fmtMarkerDist } from '../hud/utils';
-import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import type { Attitude } from '../../physics/attitude';
-import type { KinematicState } from '../../physics/kinematic-state';
-import type { RcsFuelPickupSaveData } from '../save/save-data';
+import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-glyphs';
+import { fmtMarkerDist } from '../../hud/utils';
+import type { GroupedMarkerItem } from '../../marker/grouped-markers';
+import type { Attitude } from '../../../physics/attitude';
+import type { KinematicState } from '../../../physics/kinematic-state';
+import type { RcsFuelPickupSaveData } from '../../save/save-data';
 
 const RCS_FUEL_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m]
 
@@ -21,7 +21,7 @@ export type RcsFuelPickupInit =
   | { readonly saved: RcsFuelPickupSaveData; readonly simTime: number };
 
 // 軌道上の RCS 燃料補給。接近すると燃料を艦のタンクへ移す。
-export class RcsFuelPickup extends GameEntity {
+export class RcsFuelPickup extends DynamicEntity {
   override readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
   protected readonly specificHeat = C.SMALL_DEBRIS_SPECIFIC_HEAT;

@@ -2,7 +2,7 @@
 // 経緯度点列を OrbitProjectionChart へ渡す。
 import { CelestialBody, strongestAttractor } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
-import type { GameEntity } from '../../game-entity/game-entity';
+import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import { entityStateAt } from '../../simulation/entity-state-at';
 import { ACCENT, ACCENT_SECONDARY } from '../../theme';
 import { ApproachTargetSource, projectionSeries, resolveTarget } from './orbit-analysis-data';
@@ -27,7 +27,7 @@ export class OrbitProjectionTab {
   // 中心天体 center の反対側(遠地点付近)を通る軌道でも見失わないよう高度タブと同じ
   // サンプル数を使い、期間 spanSec はマップの未来表示(軌道予測パネル)が指す期間をそのまま使う。
   public draw(
-    game: Game, entity: GameEntity, center: CelestialBody, approachSource: ApproachTargetSource | null,
+    game: Game, entity: DynamicEntity, center: CelestialBody, approachSource: ApproachTargetSource | null,
     celestialBodies: readonly CelestialBody[], now: number, spanSec: number, sampleCount: number, textureUrl: string,
   ): void {
     const centerMotion = game.celestialSystem.bodyOf(center.id).motion;

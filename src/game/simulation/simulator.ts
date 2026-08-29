@@ -1,5 +1,5 @@
 // 実シミュレーションの更新。simTime/lastSimDt を保持し、サブステップの区切りと、その区間の
-// 天体窓を決める。個体1つを1区間進めること自体は GameEntity.stepSimulation の責務で、ここは
+// 天体窓を決める。個体1つを1区間進めること自体は DynamicEntity.stepSimulation の責務で、ここは
 // 「いつ区切るか」「その瞬間に何があるか」「誰と誰が相互作用するか」だけを持つ。
 //
 // 予測(game/simulation/predictor.ts の Predictor)との役割の違いは2点で、二重性はこの2点に
@@ -16,7 +16,7 @@
 import * as C from '../const';
 import { EntityManager } from './entity-manager';
 import { Player } from '../player/player';
-import type { GameEntity } from '../game-entity/game-entity';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import type { Stage } from '../stages/stage';
@@ -51,9 +51,9 @@ export class Simulator {
   private readonly nextEventTime = new NextEventTime();
   // ゼロ長サブステップが連続した回数。simTime が実際に進んだら 0 へ戻す。
   private consecutiveZeroSteps = 0;
-  private readonly contactEntitiesScratch: GameEntity[] = [];
+  private readonly contactEntitiesScratch: DynamicEntity[] = [];
   // このサブステップを1歩で渡った個体。区間が揃っているので、天体接触をまとめて解ける。
-  private readonly sharedIntervalScratch: GameEntity[] = [];
+  private readonly sharedIntervalScratch: DynamicEntity[] = [];
   // このサブステップの天体窓。
   private readonly bodies = new SubstepBodies();
 

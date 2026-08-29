@@ -3,7 +3,7 @@
 // から読み、メニュー項目の構築・実行は MapPickableMenu、プロパティ行の構築は MapPropertyRows
 // が持つ — 「何が選べるか」「選んだらどうなるか」「どう表示するか」を分けている。
 import { Hud } from '../hud/hud';
-import { Base } from '../game-entity/base';
+import { Base } from '../dynamic/dynamic-entity/base';
 import {
   ContextMenu, PropertyWindow, PropertyWindowContent, PropertyWindowItem,
   type PropertyWindowRelatedItem,
@@ -30,13 +30,13 @@ import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { Stage } from '../stages/stage';
 import { Player } from '../player/player';
-import type { GameEntity } from '../game-entity/game-entity';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { Targeter } from '../targeter';
 import { v3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { orbitingAttractorOf } from '../../physics/celestial-body';
 import type { MapPickables } from './map-pickables';
-import type { Part } from '../game-entity/parts';
+import type { Part } from '../dynamic/dynamic-entity/parts';
 import { pickCombatEntityAtPoint } from './combat-pickable';
 import { MapPropertyRows } from './map-property-rows';
 import { bodyParentId, MapPickableMenu } from './map-pickable-menu';
@@ -468,7 +468,7 @@ export class MapContextActions {
     });
   }
 
-  private entityToPickable(entity: GameEntity): MapPickable {
+  private entityToPickable(entity: DynamicEntity): MapPickable {
     if (entity instanceof Player) {
       return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'player' };
     }
