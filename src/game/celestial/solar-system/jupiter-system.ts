@@ -4,7 +4,7 @@ import europaTextureUrl from '../../../assets/2k_europa.jpg';
 import ganymedeTextureUrl from '../../../assets/2k_ganymede.jpg';
 import ioTextureUrl from '../../../assets/2k_io.jpg';
 import jupiterTextureUrl from '../../../assets/2k_jupiter.jpg';
-import { OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
+import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
   EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
@@ -178,7 +178,7 @@ export const JUPITER_SYSTEM_NAMES: Record<JupiterSystemBodyId, string> = {
 // 木星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function jupiterSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: OriginCenteredEphemeris | null, origin: EciOrigin,
+  pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<JupiterSystemBodyId, CelestialEntity> {
   const jupiter = new PlanetMotion(JUPITER, sun, phases[JUPITER.id] ?? 0, epochOffsetSec, pack, origin);
   return {
