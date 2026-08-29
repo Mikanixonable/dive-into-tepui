@@ -58,7 +58,7 @@ export class OrbitPickables {
   private guideOwnerKeys(guide: VisibleGuideLine): readonly string[] {
     if (guide.system === null) return ['body:earth'];
     const secondary = guideSecondary(guide.system);
-    const primary = this.celestialSystem.bodyOf(secondary).motion.primary?.id ?? secondary;
+    const primary = this.celestialSystem.entityOf(secondary).motion.primary?.id ?? secondary;
     return guide.point
       ? [`body:${secondary}-l${guide.point.slice(1)}`, `body:${primary}`, `body:${secondary}`]
       : [`body:${primary}`, `body:${secondary}`];
