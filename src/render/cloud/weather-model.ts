@@ -2,7 +2,7 @@
 // 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
 // 見えのための調整値。
 import {
-  abs, clamp, cos, cross, dot, float, fract, length, max, min, mix, normalize, sin, uniform, vec2,
+  abs, clamp, cos, cross, dot, float, fract, length, max, min, mix, normalize, sin, tanh, uniform, vec2,
 } from 'three/tsl';
 import { R_EARTH } from '../../physics/solar-system';
 import { Cyclones } from './cyclones';
@@ -28,17 +28,23 @@ export type WeatherSample = {
 const DAY = 86400;
 
 // ノイズの段。段ごとに空間周波数(球面 1 周あたりの山の数)・段数・動きの周期 [s] を変える。
-const PRESSURE_NOISE = [1.5, 3, 8 * DAY] as const;
+// 気圧だけは段を増やせない。収束は気圧のラプラシアンなので、段が 1 つ増えるごとにその段の寄与が
+// 倍になり、ノイズの格子が上昇流と雲へそのまま出る。実際の海面気圧も総観規模までしか構造を持たない。
+const PRESSURE_NOISE = [1.2, 2, 8 * DAY] as const;
 const TEMPERATURE_NOISE = [2, 2, 10 * DAY] as const;
 const HUMIDITY_NOISE = [6, 5, 10 * DAY] as const;
 const UPPER_HUMIDITY_NOISE = [3, 4, 7 * DAY] as const;
-const PRESSURE_NOISE_AMPLITUDE = 6;
+const PRESSURE_NOISE_AMPLITUDE = 10;
 const TEMPERATURE_NOISE_AMPLITUDE = 8;
 const HUMIDITY_NOISE_AMPLITUDE = 0.35;
 const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
 
 // 上昇流: 収束が持ち上げる気柱の厚み [m]。地形の上昇流は風と斜面の内積そのもの。
 const CONVERGENCE_DEPTH = 3000;
+// 上昇流の頭打ち [m/s]。台風や低気圧の中心の収束は、地形の上昇流の 10 倍以上になる。線形のまま
+// 湿度へ効かせると、弱い上昇流が見えないか、中心が飽和した円盤と乾いた環になるかのどちらかにしか
+// ならない(両立する谷の大きさと深さは天体の 1/4 を覆う)。
+const LIFT_LIMIT = 0.08;
 // 上昇流の利得。地形の上昇流は風上を冷やし風下(下降)を暖める [°C per m/s]。上昇流は地表付近の
 // 湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く [per m/s]。
 const LIFT_COOLING = 50;
@@ -51,7 +57,8 @@ const PRESSURE_BAND_AMPLITUDE = 8;
 // 気圧の勾配とラプラシアンを取る中心差分の刻み [rad]。台風の半径(300 km ≈ 0.047 rad)より小さい。
 const GRADIENT_STEP = 0.01;
 // 風の利得 [m/s あたり hPa/rad]。流入は気圧の低い方へ、地衡風は等圧線に沿って(緯度の正弦に比例)。
-const INFLOW_GAIN = 0.02;
+// 流入と地衡風の比が、地表風が等圧線を横切る角(中緯度で 20° 前後)を決める。
+const INFLOW_GAIN = 0.1;
 const GEOSTROPHIC_GAIN = 0.4;
 // 風速の上限 [m/s]。台風の中心近くの勾配で地衡風が発散するのを抑える。
 const WIND_CAP = 50;
@@ -120,7 +127,7 @@ export class WeatherModel {
     // 上昇流: 風が斜面を駆け上がる分と、収束が押し上げる分。
     const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
     const terrainLift = dot(components(wind), this.climate.slope(direction));
-    const lift = terrainLift.add(convergence.mul(CONVERGENCE_DEPTH));
+    const lift = limitLift(terrainLift.add(convergence.mul(CONVERGENCE_DEPTH)));
 
     // 気候の平均へノイズと上昇流の効果を重ねる。湿度の源は風で流す。
     const temperature = this.climate.meanTemperature(direction)
@@ -168,4 +175,9 @@ export class WeatherModel {
 // 風速を WIND_CAP で頭打ちにする。
 function capWind(wind: Vec3Node): Vec3Node {
   return wind.mul(min(float(1), float(WIND_CAP).div(max(length(wind), 1e-3))));
+}
+
+// 上昇流を LIFT_LIMIT へ漸近させる。LIFT_LIMIT より十分弱い上昇流はほぼ素通しで、強いものだけが丸まる。
+function limitLift(lift: FloatNode): FloatNode {
+  return tanh(lift.div(LIFT_LIMIT)).mul(LIFT_LIMIT);
 }
