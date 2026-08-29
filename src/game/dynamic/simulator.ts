@@ -22,7 +22,7 @@ import type { CelestialBodyWindows } from '../../physics/celestial-body-windows'
 import type { Stage } from '../stages/stage';
 import { EntityContactPhysics } from './entity-contact-physics';
 import { SurfaceContactPhysics } from './surface-contact-physics';
-import { SubstepBodies } from './substep-celestial-bodies';
+import { SubstepCelestialBodies } from './substep-celestial-bodies';
 import { NextEventTime } from './next-event-time';
 import { v3 } from '../../math/vec3';
 import { simulationMaxStep, simulationStepDuration } from './time-step';
@@ -55,7 +55,7 @@ export class Simulator {
   // このサブステップを1歩で渡った個体。区間が揃っているので、天体接触をまとめて解ける。
   private readonly sharedIntervalScratch: DynamicEntity[] = [];
   // このサブステップの天体窓。
-  private readonly bodies = new SubstepBodies();
+  private readonly bodies = new SubstepCelestialBodies();
 
   // entities/windows/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
   constructor(
