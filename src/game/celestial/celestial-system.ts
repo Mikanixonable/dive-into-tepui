@@ -30,7 +30,6 @@ import { atmosphereDraws } from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialEntity } from './celestial-entity';
 import { StarEntity } from './star-entity';
-import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
 import { OrbitGuideLines } from './orbit-guide-lines';
 import { ZeroVelocityLines } from './zero-velocity-lines';
@@ -92,7 +91,6 @@ export class CelestialSystem {
   readonly motions: readonly CelestialMotion[];
   // 主星の個体。恒星を持たない星系では null。
   private readonly starBody: StarEntity | null;
-  private readonly nearbyTracker = new NearbySystemTracker();
   // 座標系の同一性と、同一時刻の天体窓。どちらも bodies の motion から組む。
   private readonly referenceFrames: ReferenceFrames;
   private readonly bodyWindows: CelestialBodyWindows;
@@ -256,6 +254,8 @@ export class CelestialSystem {
   }
 
   // 天体ビュー・星・照明・遮蔽・参照線・天球グリッドを、この1フレームの表示状態に同期する。
+  // visibilityPolicy は**マップビューのとき非 null、戦闘ビューのとき null** を渡す。描かれる
+  // 対象と選べる対象が同じ判定から出るよう、同じフレームの update 位相で確定させたものを渡す。
   sync(
     floatingOrigin: FloatingOrigin,
     displayTime: number,
@@ -263,27 +263,13 @@ export class CelestialSystem {
     graphics: GraphicsSettingsData,
     style: RenderStyle,
     gridVisibility: CelestialGridVisibility,
-    sharedVisibilityPolicy: MapVisibilityPolicy | null = null,
-    markerManager: MarkerManager | null = null,
+    visibilityPolicy: MapVisibilityPolicy | null,
+    markerManager: MarkerManager | null,
   ): void {
-    // Game.sync が同じカメラ位置・表示時刻で組んだ policy を渡せるようにする。渡されない
-    // 既存経路ではここで一度だけ構築し、参照線にも同じインスタンスを渡す。
-    const nearbyIds = cameraSystem.overviewMode && sharedVisibilityPolicy === null
-      ? this.nearbyTracker.membersAt(
-        this.motions, cameraSystem.activeCameraPos, this.celestialBodiesAt(displayTime))
-      : [];
-    const visibilityPolicy = cameraSystem.overviewMode
-      ? sharedVisibilityPolicy ?? new MapVisibilityPolicy(
-        this,
-        cameraSystem.bodyClassToggles,
-        focusTargetId(cameraSystem.mapCamera.focus),
-        nearbyIds,
-      )
-      : null;
     const star = this.starBody;
     const starMotion = star?.motion ?? null;
     for (const body of this.bodies) {
-      body.setVisible(!cameraSystem.overviewMode || visibilityPolicy!.body(body.id).category);
+      body.setVisible(visibilityPolicy === null || visibilityPolicy.body(body.id).category);
       body.sync(floatingOrigin, displayTime, cameraSystem, star, graphics, style);
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
@@ -319,9 +305,8 @@ export class CelestialSystem {
     const celestialBodies = this.celestialBodiesAt(displayTime);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(
-      displayTime, floatingOrigin, cameraSystem.overviewMode,
-      focusTargetId(cameraSystem.mapCamera.focus), cameraSystem.bodyClassToggles,
-      visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
+      displayTime, floatingOrigin, visibilityPolicy,
+      cameraSystem.activeCamera, cameraSystem.activeCameraPos);
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。出すかどうかの判断はここが持つ。
     for (const body of this.bodies) {
       body.syncMapOverlay(
@@ -431,21 +416,13 @@ export class CelestialSystem {
   // 持ち、ここは表示ポリシーから「出すか」だけを決めて個体へ指示する。
   // cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
-    simTime: number, fo: FloatingOrigin, overviewMode: boolean,
-    focusId: string | undefined,
-    toggles: BodyClassToggles, sharedVisibilityPolicy: MapVisibilityPolicy | null,
-    nearbyIds: readonly string[], camera: THREE.Camera, cameraPos: Vec3,
+    simTime: number, fo: FloatingOrigin, visibilityPolicy: MapVisibilityPolicy | null,
+    camera: THREE.Camera, cameraPos: Vec3,
   ): void {
-    if (!overviewMode) {
+    if (visibilityPolicy === null) {
       for (const body of this.bodies) body.removeReferenceLine();
       return;
     }
-    const visibilityPolicy = sharedVisibilityPolicy ?? new MapVisibilityPolicy(
-      this,
-      toggles,
-      focusId,
-      nearbyIds,
-    );
     for (const body of this.bodies) {
       // 恒星は公転しないので線を持たない。非表示の間は実体ごと解放し、頂点バッファを残さない。
       if (body.motion.kind === 'star' || !visibilityPolicy.body(body.id).orbit) {

@@ -100,8 +100,7 @@ export class MapPickables {
     );
     this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
-      displayTime, focusId, this.cameraSystem.bodyClassToggles,
-      this.cameraSystem.activeCameraPos, visibilityPolicy,
+      displayTime, this.cameraSystem.bodyClassToggles, visibilityPolicy,
     );
     this.navTarget.update(
       this.activePlayers.current, this.entities, this.celestialSystem, displayWindow, this.frameAnchors);
