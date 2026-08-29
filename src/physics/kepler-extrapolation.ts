@@ -4,42 +4,31 @@ import {
   OrbitalElements,
   eccentricAnomalyFromMean,
   positionOnOrbit,
-  timeSincePeriapsis,
-  trueAnomalyAt,
-  trueAnomalyFromMean,
+  stateOnOrbitAt,
   velocityOnOrbit,
 } from './elements';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { sub } from '../math/vec3';
 
 // この外挿が前提とする離心率の上限。eccentricAnomalyFromMean のニュートン法が収束するとみなす
 // 範囲(既存の楕円ケプラーソルバの前提)。
 const MAX_ECCENTRICITY = 0.98;
 
-// tip を center まわりの二体軌道とみなしたときの軌道要素と、tip 自身の真近点角。
+// tip を center まわりの二体軌道とみなしたときの軌道要素。位相の基準は要素自身が持つ。
 // 外挿できない場合(軌道要素が求まらない、離心率が MAX_ECCENTRICITY 以上、長半径が非有限・
 // 非正、center に質量が無い)は null。
-function findExtrapolationOrbit(
-  tip: KinematicState, center: CelestialBody,
-): { el: OrbitalElements; nu0: number } | null {
+function findExtrapolationOrbit(tip: KinematicState, center: CelestialBody): OrbitalElements | null {
   if (center.mu <= 0) return null;
   const el = orbitalElementsOf(tip, center);
   if (el === null || el.e >= MAX_ECCENTRICITY || !isFinite(el.a) || el.a <= 0) return null;
-  const nu0 = trueAnomalyAt(el, sub(tip.r, center.state.r));
-  return { el, nu0 };
+  return el;
 }
 
 // tip を center まわりの二体ケプラー軌道とみなした、時刻 t における中心天体相対の状態
 // (位置・速度は ECI 方向のまま原点だけ center に取った相対値。絶対 ECI 化は center の
 // 位置・速度を足して行う)。外挿できない軌道では null。
 export function extrapolatedRelativeState(tip: KinematicState, center: CelestialBody, t: number): KinematicState | null {
-  const orbit = findExtrapolationOrbit(tip, center);
-  if (orbit === null) return null;
-  const { el, nu0 } = orbit;
-  const n = (2 * Math.PI) / el.period; // 平均運動
-  const meanAnomaly = n * (timeSincePeriapsis(el, nu0) + (t - tip.t));
-  const nu = trueAnomalyFromMean(meanAnomaly, el.e);
-  return kinematicState(t, positionOnOrbit(el, nu), velocityOnOrbit(el, nu));
+  const el = findExtrapolationOrbit(tip, center);
+  return el === null ? null : stateOnOrbitAt(el, t);
 }
 
 // 離心近点角 E → 真近点角 ν の直接式(反復なし)。
@@ -54,9 +43,9 @@ export function extrapolatedRelativeStates(
   tip: KinematicState, center: CelestialBody, untilT: number, count: number,
 ): KinematicState[] {
   if (count <= 0 || untilT <= tip.t) return [];
-  const orbit = findExtrapolationOrbit(tip, center);
-  if (orbit === null) return [];
-  const { el, nu0 } = orbit;
+  const el = findExtrapolationOrbit(tip, center);
+  if (el === null || el.epoch === null) return [];
+  const nu0 = el.epoch.nu;
   const e = el.e;
   const n = (2 * Math.PI) / el.period;
 

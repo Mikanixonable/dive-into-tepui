@@ -72,7 +72,7 @@ export function register(): void {
     for (const e of [0, 0.0549, 0.3]) {
       const el: OrbitalElements = {
         a, e, p: a * (1 - e * e), incDeg: 0, period: keplerPeriod(a, MU_EARTH),
-        pHat: v3(1, 0, 0), qHat: v3(0, 1, 0), hHat: v3(0, 0, 1), center: EARTH,
+        pHat: v3(1, 0, 0), qHat: v3(0, 1, 0), hHat: v3(0, 0, 1), epoch: null, center: EARTH,
       };
       const n = (2 * Math.PI) / el.period;
       for (const nu0 of [-2.5, -1, 0, 0.7, 2.9]) {

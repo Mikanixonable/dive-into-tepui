@@ -4,11 +4,13 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   OrbitalElements,
+  orbitalElementsFromClassical,
   eccentricAnomalyFromMean,
   keplerPeriod,
   nodeAnomalies,
   positionOnOrbit,
   semiMajorFromPeriod,
+  stateOnOrbitAt,
   stateFromOrbitalElements,
   timeSincePeriapsis,
   tofBetween,
@@ -24,6 +26,23 @@ import { dot, len, norm, sub, v3 } from '../../src/math/vec3';
 const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 
 export function register(): void {
+  test('elements: stateOnOrbitAt は元期でその状態そのものを返す(機械精度)', () => {
+    const a = R_EARTH + 500e3;
+    const s = stateFromOrbitalElements(1234, a, 0.05, (51.6 * Math.PI) / 180, 0.7, 1.1, 2.3, MU_EARTH);
+    const el = orbitalElementsOf(s, EARTH) as OrbitalElements;
+    assert.equal(el.epoch?.t, 1234, '状態から組んだ要素は元期を持つ');
+    const back = stateOnOrbitAt(el, 1234);
+    assert.ok(back, "元期を持つ楕円要素は時刻から状態を答える");
+    assert.ok(len(sub(back!.r, s.r)) / len(s.r) < 1e-12, `位置: ${len(sub(back!.r, s.r))}`);
+    assert.ok(len(sub(back!.v, s.v)) / len(s.v) < 1e-12, `速度: ${len(sub(back!.v, s.v))}`);
+  });
+
+  test('elements: 位相を持たない参照軌道は時刻から状態を答えない', () => {
+    const el = orbitalElementsFromClassical(R_EARTH + 800e3, 0, 98, 0, 0, EARTH);
+    assert.equal(el.epoch, null);
+    assert.equal(stateOnOrbitAt(el, 0), null);
+  });
+
   test('elements: stateFromOrbitalElements <-> orbitalElementsFromState round trip (machine precision)', () => {
     const a = R_EARTH + 500e3;
     const e = 0.05;

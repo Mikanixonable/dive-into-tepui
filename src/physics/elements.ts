@@ -5,6 +5,10 @@ import type { CelestialBody } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../math/vec3';
 
+// 軌道上の位相の基準 — 時刻 t におけるこの軌道上の真近点角が nu。形だけを指定した参照軌道は
+// 位相を持たないので、この基準も持たない。
+export type OrbitEpoch = { readonly t: number; readonly nu: number };
+
 export interface OrbitalElements {
   a: number; // 軌道長半径 [m] (双曲線では負)
   e: number; // 離心率
@@ -14,6 +18,7 @@ export interface OrbitalElements {
   pHat: Vec3; // 近地点方向(軌道面内)
   qHat: Vec3; // pHat と直交する軌道面内方向
   hHat: Vec3; // 軌道面法線
+  epoch: OrbitEpoch | null; // 位相の基準。形だけを指定した参照軌道では null
   center: CelestialBody; // 中心天体。楕円をどの天体位置へ描画すべきかもこれで決まる。
 }
 
@@ -56,7 +61,7 @@ export function orbitalElementsFromState(rel: KinematicState, center: CelestialB
   const incDeg = (Math.acos(Math.max(-1, Math.min(1, hHat.y))) * 180) / Math.PI;
 
   const elliptic = e < 1 && isFinite(a) && a > 0;
-  return {
+  const el: OrbitalElements = {
     a,
     e,
     p,
@@ -65,8 +70,12 @@ export function orbitalElementsFromState(rel: KinematicState, center: CelestialB
     pHat,
     qHat,
     hHat,
+    epoch: null,
     center,
   };
+  // 真近点角は pHat/qHat 基準で測るので、要素を組み終えてからでないと出せない。
+  el.epoch = { t: rel.t, nu: trueAnomalyAt(el, r) };
+  return el;
 }
 
 // 中心天体表面からの近点・遠点高度。遠地点は楕円軌道のみ(双曲線・放物線は NaN)。
@@ -149,6 +158,17 @@ export function positionOnOrbit(el: OrbitalElements, nu: number): Vec3 {
   return addScaled(scale(el.pHat, r * Math.cos(nu)), el.qHat, r * Math.sin(nu));
 }
 
+// 元期の位相から時刻 t まで進めた、中心天体相対の状態(ECI 軸)。位相の基準を持たない要素と、
+// 閉じない軌道(楕円でないもの)では null — 平均近点角から真近点角への逆変換が楕円に限られる。
+export function stateOnOrbitAt(el: OrbitalElements, t: number): KinematicState | null {
+  const epoch = el.epoch;
+  if (epoch === null || !(el.period > 0) || !isFinite(el.period)) return null;
+  const n = (2 * Math.PI) / el.period; // 平均運動
+  const meanAnomaly = n * (timeSincePeriapsis(el, epoch.nu) + (t - epoch.t));
+  const nu = trueAnomalyFromMean(meanAnomaly, el.e);
+  return kinematicState(t, positionOnOrbit(el, nu), velocityOnOrbit(el, nu));
+}
+
 // 軌道上の真近点角 nu における中心天体相対の速度(ECI 軸)。
 export function velocityOnOrbit(el: OrbitalElements, nu: number): Vec3 {
   const k = Math.sqrt(el.center.mu / el.p);
@@ -174,7 +194,8 @@ export function orbitalElementsFromClassical(
   const deg = Math.PI / 180;
   const { pHat, qHat, hHat } = orbitPlaneBasis(incDeg * deg, raanDeg * deg, argpDeg * deg);
   return {
-    a, e, p: a * (1 - e * e), incDeg, period: keplerPeriod(a, center.mu), pHat, qHat, hHat, center,
+    a, e, p: a * (1 - e * e), incDeg, period: keplerPeriod(a, center.mu), pHat, qHat, hHat,
+    epoch: null, center,
   };
 }
 
