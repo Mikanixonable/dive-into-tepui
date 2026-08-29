@@ -7,12 +7,11 @@ import { SatelliteDef } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
-import { SolarSystemMotions } from '../../src/physics/solar-system/solar-system';
-import { motionOf, solarSystemParts } from './test-helpers';
+import { SolarSystemParts, motionOf, solarSystemParts } from './test-helpers';
 import { cross, dot, len, norm, sub } from '../../src/math/vec3';
 
 // id から静的事実を引くための太陽系。
-const DEFS = solarSystemParts().motions;
+const DEFS = solarSystemParts();
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
   return (motionOf(DEFS, id).def as SatelliteDef).orbit;
@@ -75,14 +74,15 @@ const NO_PRECESSION: readonly string[] = [
 // 土星の自転極(IAU、元期の値。SATURN_POLE と同じ出典)。
 const SATURN_POLE_ECI = raDecToEci(40.589, 83.537);
 
-function orbitNormal(motions: SolarSystemMotions, id: string, planet: string, t: number) {
-  const satellite = motionOf(motions, id).stateAt(t);
-  const primary = motionOf(motions, planet).stateAt(t);
+function orbitNormal(parts: SolarSystemParts, id: string, planet: string, t: number) {
+  const satellite = motionOf(parts, id).stateAt(t);
+  const primary = motionOf(parts, planet).stateAt(t);
   return norm(cross(sub(satellite.r, primary.r), sub(satellite.v, primary.v)));
 }
 
 export function register(): void {
-  const { motions, windows } = solarSystemParts({});
+  const parts = solarSystemParts({});
+  const windows = parts.windows;
 
   test('laplace-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {
     for (const [id, periodDays] of CASES) {
@@ -137,7 +137,7 @@ export function register(): void {
   });
 
   test('laplace-satellites: フェーベは土星の自転極に対しても黄道極に対しても逆行(角運動量が負の内積)', () => {
-    const h = orbitNormal(motions, 'phoebe', 'saturn', 1e7);
+    const h = orbitNormal(parts, 'phoebe', 'saturn', 1e7);
     assert.ok(dot(h, SATURN_POLE_ECI) < 0, `土星の自転極に対して逆行していない: ${dot(h, SATURN_POLE_ECI)}`);
     assert.ok(dot(h, ECL_POLE_ECI) < 0, `黄道極に対して逆行していない: ${dot(h, ECL_POLE_ECI)}`);
   });
@@ -146,7 +146,7 @@ export function register(): void {
   // 内側衛星の面に載せると、この黄道傾斜が十数度ずれる。
   test('laplace-satellites: イアペトゥス・フェーベの黄道傾斜が公表値と一致する', () => {
     const eclipticIncDeg = (id: string, planet: string): number => {
-      const h = orbitNormal(motions, id, planet, 0);
+      const h = orbitNormal(parts, id, planet, 0);
       return Math.acos(Math.min(1, Math.max(-1, dot(h, ECL_POLE_ECI)))) * (180 / Math.PI);
     };
     assert.ok(Math.abs(eclipticIncDeg('iapetus', 'saturn') - 17.28) < 0.2, `イアペトゥス: ${eclipticIncDeg('iapetus', 'saturn')}°`);
@@ -155,7 +155,7 @@ export function register(): void {
 
   // 内側衛星は土星の赤道面に近いラプラス面に載るので、黄道極からは土星の赤道傾斜ぶん離れる。
   test('laplace-satellites: 土星の内側衛星の基準面は黄道面ではなくラプラス面(ミマスの軌道法線が黄道極から26°以上離れる)', () => {
-    const h = orbitNormal(motions, 'mimas', 'saturn', 1e7);
+    const h = orbitNormal(parts, 'mimas', 'saturn', 1e7);
     const angleFromEclipticPoleDeg = Math.acos(Math.min(1, Math.max(-1, dot(h, ECL_POLE_ECI)))) * (180 / Math.PI);
     assert.ok(angleFromEclipticPoleDeg > 26, `黄道極からの角度: ${angleFromEclipticPoleDeg}°(黄道基準では成立しないはず)`);
   });

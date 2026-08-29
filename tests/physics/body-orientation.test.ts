@@ -19,7 +19,7 @@ function angleBetween(a: Vec3, b: Vec3): number {
 }
 
 // id から静的事実を引くための太陽系。
-const DEFS = solarSystemParts().motions;
+const DEFS = solarSystemParts();
 
 export function register(): void {
   test('body-orientation: cassiniSpinAxis tilts the pole by the obliquity, away from the orbit normal', () => {
@@ -65,10 +65,11 @@ export function register(): void {
 
   test('celestial-motion: the moon spin axis sits 6.688deg from its own orbit normal, opposite the ecliptic pole', () => {
     // 自転軸を軌道面法線で代用していれば、この離角は 0 になる。
-    const { motions, windows } = solarSystemParts({ moon: 0.2 });
+    const parts = solarSystemParts({ moon: 0.2 });
+    const windows = parts.windows;
     for (const t of [0, 5e7, 2e8]) {
       const moon = windows.celestialBodiesAt(t).find((b) => b.id === 'moon')!;
-      const normal = motions.earthSystem.moon.orbitNormalAt(t);
+      const normal = orbitingMotionOf(parts, 'moon').orbitNormalAt(t);
       const sep = angleBetween(moon.degree2!.pole, normal) * R2D;
       assert.ok(Math.abs(sep - 6.688) < 0.02, `spin-axis to orbit-normal separation at t=${t}: ${sep} deg`);
     }
@@ -114,9 +115,9 @@ export function register(): void {
   });
 
   test('celestial-motion: every registered pole is a unit vector', () => {
-    const motions = solarSystemParts({}).motions;
+    const parts = solarSystemParts({});
     for (const id of POLE_BODIES) {
-      const orientation = motionOf(motions, id).orientationAt(3.2e7);
+      const orientation = motionOf(parts, id).orientationAt(3.2e7);
       assert.ok(orientation !== null, `${id} should have a pole`);
       assert.ok(Math.abs(len(orientation!.axis) - 1) < 1e-12, `${id} pole length: ${len(orientation!.axis)}`);
     }
@@ -125,9 +126,9 @@ export function register(): void {
   test('celestial-motion: the IAU poles reproduce the published axial tilts', () => {
     // 赤道傾斜角は自転(角速度)方向と軌道面法線の離角。自転位相 W の変化率が負の天体は
     // 角速度が pole の逆を向くので、天王星は 82.2° ではなく 97.8° になる。
-    const motions = solarSystemParts({}).motions;
+    const parts = solarSystemParts({});
     for (const [id, expected] of [['saturn', 26.73], ['uranus', 97.77], ['mars', 23.92]] as const) {
-      const motion = orbitingMotionOf(motions, id);
+      const motion = orbitingMotionOf(parts, id);
       const { axis } = motion.orientationAt(0)!;
       const pole = (motionOf(DEFS, id).def as { pole?: { kind: string; wRateDegPerDay?: number } }).pole;
       const spinDir = pole?.kind === 'iau' && (pole.wRateDegPerDay ?? 0) < 0 ? scale(axis, -1) : axis;
@@ -140,18 +141,19 @@ export function register(): void {
     // 環の面は赤道面なので、その法線は自転軸そのもの。黄道極からの離角は土星 28.05°
     // (IAU の α0=40.589°/δ0=83.537° から出る値。軌道面法線基準の赤道傾斜角 26.73° とは別)、
     // 天王星は横倒しで 82.28°(面は向きを持たないので、逆行自転の 97.72° と同じ傾き)。
-    const motions = solarSystemParts({}).motions;
+    const parts = solarSystemParts({});
     for (const [id, expected] of [['saturn', 28.05], ['uranus', 82.28]] as const) {
-      const tilt = angleBetween(motionOf(motions, id).orientationAt(0)!.axis, ECL_POLE_ECI) * R2D;
+      const tilt = angleBetween(motionOf(parts, id).orientationAt(0)!.axis, ECL_POLE_ECI) * R2D;
       assert.ok(Math.abs(tilt - expected) < 0.2, `${id} ring-plane tilt: ${tilt} deg (expected ${expected})`);
     }
   });
 
   test('celestial-motion: the moon pole agrees with the cassini axis carried by its gravity field', () => {
-    const { motions, windows } = solarSystemParts({ moon: 0.4 });
+    const parts = solarSystemParts({ moon: 0.4 });
+    const windows = parts.windows;
     for (const t of [0, 5e6, 2e8]) {
       const gravityPole = windows.celestialBodiesAt(t).find((b) => b.id === 'moon')!.degree2!.pole;
-      const pole = motions.earthSystem.moon.orientationAt(t)!.axis;
+      const pole = orbitingMotionOf(parts, 'moon').orientationAt(t)!.axis;
       assert.ok(len(sub(pole, gravityPole)) < 1e-12, `moon pole disagreement at t=${t}`);
     }
   });
@@ -159,12 +161,12 @@ export function register(): void {
   test('celestial-motion: the moon prime meridian keeps facing the earth', () => {
     // 潮汐固定。秤動(中心差 6.3° + 出差ほかの周期摂動 + 面外成分)のぶんだけ離れる。上界が
     // 閉じた形にならないので実測値を緩く固定する — 固定が壊れれば1公転で 180° まで開く。
-    const motions = solarSystemParts({ moon: 0.3 }).motions;
+    const parts = solarSystemParts({ moon: 0.3 });
     let maxSep = 0;
     for (let i = 0; i <= 40; i++) {
       const t = (i / 40) * 27.321661 * 86400;
-      const { axis, spinAngle } = motions.earthSystem.moon.orientationAt(t)!;
-      const toEarth = norm(scale(positionOf(motions, 'moon', t), -1));
+      const { axis, spinAngle } = orbitingMotionOf(parts, 'moon').orientationAt(t)!;
+      const toEarth = norm(scale(positionOf(parts, 'moon', t), -1));
       maxSep = Math.max(maxSep, angleBetween(meridianDirection(axis, spinAngle), toEarth) * R2D);
     }
     assert.ok(maxSep < 13, `the near side should keep facing the earth: max separation ${maxSep} deg`);

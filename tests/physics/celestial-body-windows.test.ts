@@ -66,6 +66,6 @@ export function register(): void {
     const moonB = b.windows.celestialBodiesAt(1234).find((x) => x.id === 'moon')!.state.r;
     assert.ok(len(sub(moonA, moonB)) > 1e6, `位相オフセットが反映されていない: ${len(sub(moonA, moonB))}`);
     // 窓の時刻キャッシュを経由しても、個体の運動から引いた位置と同じ値を返す。
-    assert.deepEqual(moonB, positionOf(b.motions, 'moon', 1234));
+    assert.deepEqual(moonB, positionOf(b, 'moon', 1234));
   });
 }

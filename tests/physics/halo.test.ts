@@ -18,13 +18,13 @@ function isFiniteVec(v: { x: number; y: number; z: number }): boolean {
 }
 
 export function register(): void {
-  const { motions: MOTIONS } = solarSystemParts({ moon: 0.7 });
+  const PARTS = solarSystemParts({ moon: 0.7 });
   const t = 1e6;
 
   for (const secondaryId of SECONDARIES) {
     for (const point of POINTS) {
       const label = `${secondaryId}/${point}`;
-      const secondary = orbitingMotionOf(MOTIONS, secondaryId);
+      const secondary = orbitingMotionOf(PARTS, secondaryId);
       const ax = 1e4;
       const az = 5e3;
       const lissajous: LissajousParams = { point, ax, az, phase: 0.3, psi: 1.1 };
@@ -73,7 +73,7 @@ export function register(): void {
   // 文献値との突き合わせ。Sun-Earth L1 の線形化パラメータは γ≈0.01、c2≈4.0611、
   // λ≈2.0864、ωz≈2.0152、κ≈+3.2293(符号込み)。
   test('halo: Sun-Earth L1 linear parameters match the published values', () => {
-    const frame = collinearFrame(orbitingMotionOf(MOTIONS, 'earth'), 'L1', t);
+    const frame = collinearFrame(orbitingMotionOf(PARTS, 'earth'), 'L1', t);
     assert.ok(Math.abs(frame.gamma - 0.01) < 5e-4, `gamma: ${frame.gamma}`);
     assert.ok(Math.abs(frame.lambda - 2.0864) < 2e-3, `lambda: ${frame.lambda}`);
     assert.ok(Math.abs(frame.omegaZ - 2.0152) < 2e-3, `omegaZ: ${frame.omegaZ}`);
@@ -82,7 +82,7 @@ export function register(): void {
 
   // Earth-Moon L1: γ≈0.1509、λ≈2.3344、ωz≈2.2688。
   test('halo: Earth-Moon L1 linear parameters match the published values', () => {
-    const frame = collinearFrame(orbitingMotionOf(MOTIONS, 'moon'), 'L1', t);
+    const frame = collinearFrame(orbitingMotionOf(PARTS, 'moon'), 'L1', t);
     assert.ok(Math.abs(frame.gamma - 0.1509) < 2e-3, `gamma: ${frame.gamma}`);
     assert.ok(Math.abs(frame.lambda - 2.3344) < 5e-3, `lambda: ${frame.lambda}`);
     assert.ok(Math.abs(frame.omegaZ - 2.2688) < 5e-3, `omegaZ: ${frame.omegaZ}`);
@@ -91,7 +91,7 @@ export function register(): void {
   // Richardson (1980) が例に挙げた Sun-Earth L1 のハロー(ISEE-3 相当): Az=110,000 km で
   // Ax≈206,000 km、Ay=|κ|·Ax≈666,000 km。三次の振幅拘束が正しく解けているかを見る。
   test('halo: Sun-Earth L1 amplitude constraint reproduces the ISEE-3 halo', () => {
-    const frame = collinearFrame(orbitingMotionOf(MOTIONS, 'earth'), 'L1', t);
+    const frame = collinearFrame(orbitingMotionOf(PARTS, 'earth'), 'L1', t);
     const ax = haloAmplitudeX(frame, 110000e3);
     assert.ok(ax !== null, 'no halo solution for Az = 110,000 km');
     assert.ok(Math.abs(ax! - 206000e3) < 6000e3, `Ax: ${ax! / 1e3} km`);
@@ -102,7 +102,7 @@ export function register(): void {
   // 拘束 l1·Ax²+l2·Az²+Δ=0 は Az→0 で面内振幅の下限(平面リアプノフ軌道からハローが
   // 分岐する振幅)を与える。太陽-地球 L1 では約 20 万 km で、Az を増やすと単調に増える。
   test('halo: in-plane amplitude has a lower bound and grows with the out-of-plane one', () => {
-    const frame = collinearFrame(orbitingMotionOf(MOTIONS, 'earth'), 'L1', t);
+    const frame = collinearFrame(orbitingMotionOf(PARTS, 'earth'), 'L1', t);
     const axMin = haloAmplitudeX(frame, 0)!;
     assert.ok(Math.abs(axMin - 200000e3) < 20000e3, `Ax at Az=0: ${axMin / 1e3} km`);
     assert.ok(haloAmplitudeX(frame, 110000e3)! > axMin, 'Ax should grow with Az');

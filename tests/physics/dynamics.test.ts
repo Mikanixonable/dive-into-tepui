@@ -165,7 +165,8 @@ export function register(): void {
   });
 
   test('dynamics: a circular lunar orbit (surface +100km) returns to about the same moon-relative position after one revolution (measured, pinned)', () => {
-    const { motions, windows } = solarSystemParts({ moon: 0 });
+    const parts = solarSystemParts({ moon: 0 });
+    const windows = parts.windows;
     const attractors0 = windows.celestialBodiesAt(0);
     const moon0 = attractors0.find((b) => b.id === 'moon')!;
     const a = R_MOON + 100e3;
@@ -180,7 +181,7 @@ export function register(): void {
       s = stepDynamics(s, dt, attractors, attractors, null, 0, 0, null);
     }
 
-    const relFinal = sub(s.r, positionOf(motions, 'moon', s.t));
+    const relFinal = sub(s.r, positionOf(parts, 'moon', s.t));
     const drift = len(sub(relFinal, rel0.r));
     // 地球(・太陽)の潮汐差ぶんの摂動がかかるので、月の二体問題の解には正確には戻らない。
     assert.ok(drift < 50e3, `moon-relative drift after 1 revolution: ${drift} m (expected within tens of km)`);

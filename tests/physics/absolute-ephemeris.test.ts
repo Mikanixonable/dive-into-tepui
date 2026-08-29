@@ -1,4 +1,4 @@
-import { solarSystemParts } from './test-helpers';
+import { orbitingMotionOf, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
@@ -36,7 +36,7 @@ export function register(): void {
   });
 
   test('absolute ephemeris: 天体の運動は収録天体の位置・速度・軌道法線を高精度経路へ統一する', () => {
-    const moonMotion = solarSystemParts({}, 0, source, 150).motions.earthSystem.moon;
+    const moonMotion = orbitingMotionOf(solarSystemParts({}, 0, source, 150), 'moon');
     const moon = moonMotion.stateAt(3600);
     assert.deepEqual(moon.r, v3(10, 30, -20));
     assert.deepEqual(moon.v, v3(3, 5, -4));
