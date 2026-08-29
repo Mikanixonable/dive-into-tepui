@@ -2,7 +2,7 @@
 // 見かけ直径が閾値未満なら球自体を描かない。
 import * as THREE from 'three/webgpu';
 import { OrbitingMotion } from '../../physics/celestial-motion';
-import { RingSystemDef, shapeAxes } from '../../physics/celestial-body-def';
+import { shapeAxes } from '../../physics/celestial-body-def';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
@@ -23,9 +23,8 @@ import { RingView } from './ring-view';
 
 export class SphereEntity extends CelestialEntity {
   private readonly group = new THREE.Group();
-  // 実半径 [m] と環(環を持たない天体では undefined)。
+  // 実半径 [m]。
   private readonly radius: number;
-  private readonly rings?: RingSystemDef;
   // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
   private readonly axes: THREE.Vector3;
   // 環を含めた最外半径 [m]。radius だけで見かけ直径を判定すると、本体が閾値未満でも
@@ -47,7 +46,6 @@ export class SphereEntity extends CelestialEntity {
     super(motion, name, bodyClass, atmosphereOptics);
     const def = motion.def;
     this.radius = def.radius;
-    this.rings = def.rings;
     const a = shapeAxes(def.radius, def.shape);
     this.axes = new THREE.Vector3(a.x, a.y, a.z);
     this.outerRadius = def.rings === undefined
@@ -65,7 +63,7 @@ export class SphereEntity extends CelestialEntity {
     this.graticule.addTo(this.group);
     this.surfaceMarkings?.addTo(this.group);
     scene.add(this.group);
-    if (this.rings !== undefined) {
+    if (this.rings !== null) {
       this.ring = new RingView(
         this.rings, this.radius, this.group.renderOrder + 1, sunOcclusion, sunLight,
       );
@@ -102,8 +100,8 @@ export class SphereEntity extends CelestialEntity {
     const orientation = this.motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
-    const rings = graphics.rings ? this.rings : undefined;
-    if (this.ring !== undefined && rings !== undefined) {
+    const rings = graphics.rings ? this.rings : null;
+    if (this.ring !== undefined && rings !== null) {
       this.ring.group.visible = true;
       this.ring.sync(
         this.group.position,

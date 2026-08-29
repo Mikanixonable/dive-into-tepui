@@ -4,7 +4,7 @@
 // 未満なら(マップビューでは輝点も出さず)実体を隠す。
 import * as THREE from 'three/webgpu';
 import { OrbitingMotion } from '../../physics/celestial-motion';
-import { RingSystemDef, shapeAxes } from '../../physics/celestial-body-def';
+import { shapeAxes } from '../../physics/celestial-body-def';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';
@@ -65,9 +65,8 @@ export class PointEntity extends CelestialEntity {
   // 輝点スプライト。グローテクスチャの生成が DOM を要するので build まで作らない。
   private billboard!: Billboard;
   private readonly bondAlbedo: number;
-  // 実半径 [m] と環(環を持たない天体では undefined)。
+  // 実半径 [m]。
   private readonly radius: number;
-  private readonly rings?: RingSystemDef;
   private readonly outerRadius: number;
   // 自転姿勢が乗る前のローカル半軸 [m](真球なら3軸とも radius)。
   private readonly axes: THREE.Vector3;
@@ -91,7 +90,6 @@ export class PointEntity extends CelestialEntity {
     super(motion, name, bodyClass, atmosphereOptics);
     const def = motion.def;
     this.radius = def.radius;
-    this.rings = def.rings;
     this.bondAlbedo = surface.photometry?.bondAlbedo ?? rec709Luminance(DEFAULT_ALBEDO);
     this.outerRadius = def.rings === undefined
       ? def.radius
@@ -114,7 +112,7 @@ export class PointEntity extends CelestialEntity {
     this.group.add(this.shapeGroup);
     for (const aurora of this.auroras) this.group.add(aurora.mesh);
     scene.add(this.group);
-    if (this.rings !== undefined) {
+    if (this.rings !== null) {
       this.ring = new RingView(
         this.rings, this.radius, this.group.renderOrder + 1, sunOcclusion, sunLight,
       );
@@ -157,13 +155,13 @@ export class PointEntity extends CelestialEntity {
     this.syncAuroras(displayTime, graphics.aurora);
     const orientation = this.motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
-    const rings = graphics.rings ? this.rings : undefined;
-    if (this.ring !== undefined) this.ring.group.visible = rings !== undefined;
+    const rings = graphics.rings ? this.rings : null;
+    if (this.ring !== undefined) this.ring.group.visible = rings !== null;
     this.group.position.copy(fo.RtoThreeV3(pos));
     this.shapeGroup.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     this.billboard.hide();
-    if (this.ring !== undefined && rings !== undefined) {
+    if (this.ring !== undefined && rings !== null) {
       this.ring.sync(
         this.group.position,
         orientation === null ? null : orientation.axis,
