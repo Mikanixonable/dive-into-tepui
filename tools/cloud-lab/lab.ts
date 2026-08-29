@@ -1,22 +1,39 @@
-// 雲の実験環境のキャンバス。面が組んだ色を、値のまま出す(トーンマッピングも色空間変換も掛けない)。
-// 撮影(PNG)もここが担う。
+// 雲の実験環境のキャンバス。投影法の違う 2 面を横に並べ、面が組んだ色を値のまま出す
+// (トーンマッピングも色空間変換も掛けない)。撮影(PNG)もここが担う。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { screenUV } from 'three/tsl';
+import { Fn, If, screenUV, vec2, vec3 } from 'three/tsl';
 import { R_EARTH } from '../../src/physics/solar-system';
 import { EARTH_TEXTURES } from '../../src/render/celestial-textures';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
-import { EquirectProjection } from '../../src/render/cloud/field-projection';
+import { EquirectProjection, OrthographicCap } from '../../src/render/cloud/field-projection';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { CloudLabPane } from './pane';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
+import type { Vec3Node } from '../../src/render/tsl-types';
 
-// キャンバスと撮影の大きさ [px]。正距円筒なので 2:1。
-export const VIEW_WIDTH = 1024;
-export const VIEW_HEIGHT = 512;
+// 面の大きさ [px]。全球の面は正距円筒なので 2:1、cap の面は正方形。写しは表示と同じ大きさに取る
+// — 読む側より細かく焼いた分は、読み出しの補間で均されてそのまま捨てられる。
+const VIEW_HEIGHT = 512;
+const GLOBE_WIDTH = VIEW_HEIGHT * 2;
+const CAP_SIZE = VIEW_HEIGHT;
+
+// キャンバスと撮影の大きさ [px]。2 面を横に並べた合計。
+const VIEW_WIDTH = GLOBE_WIDTH + CAP_SIZE;
+
+// 全球の面と cap の面の境目(キャンバスの幅に対する比)。
+const SPLIT_U = GLOBE_WIDTH / VIEW_WIDTH;
+
+// cap の既定 [°]。台風の初期位置(15°N・140°E)を中心に、LEO(高度 400 km)の地平線 19.8° に
+// 近い半径で開く。
+const DEFAULT_CAP_LATITUDE = 15;
+const DEFAULT_CAP_LONGITUDE = 140;
+const DEFAULT_CAP_RADIUS = 20;
 
 export class CloudLabCanvas {
-  private readonly pane: CloudLabPane;
+  // 左が全球の正距円筒、右が正射影の cap。並びが画面の左右と一致する。
+  private readonly panes: readonly CloudLabPane[];
+  private readonly capProjection: OrthographicCap;
   private readonly materials: ReadonlyMap<CloudLabViewId, THREE.MeshBasicNodeMaterial>;
   private readonly quad: QuadMesh;
   // 撮影先。表示値をそのまま RGBA8 で受ける。
@@ -25,6 +42,9 @@ export class CloudLabCanvas {
   });
   private view: CloudLabView = DEFAULT_CLOUD_LAB_VIEW;
   private seconds = 0;
+  private capLatitude = DEFAULT_CAP_LATITUDE;
+  private capLongitude = DEFAULT_CAP_LONGITUDE;
+  private capRadius = DEFAULT_CAP_RADIUS;
 
   // レンダラを起こし、地球の気候を読み終えてから器を組む。
   public static async create(canvas: HTMLCanvasElement): Promise<CloudLabCanvas> {
@@ -37,17 +57,20 @@ export class CloudLabCanvas {
     return new CloudLabCanvas(renderer, climate);
   }
 
-  // 表示の種類ごとのマテリアルを一度だけ組む。
+  // 2 面と、表示の種類ごとのマテリアルを一度だけ組む。
   private constructor(private readonly renderer: WebGPURenderer, climate: ClimateMap) {
-    // 写しは表示と同じ大きさに取る — 読む側より細かく焼いた分は、読み出しの補間で均されて捨てられる。
-    // この大きさだと気圧の差分の刻み(0.01 rad)が texel(2π/1024)の 1.6 倍、湿度のノイズの
-    // 最上段(159 km)が 4 texel。
-    this.pane = new CloudLabPane(new EquirectProjection(VIEW_HEIGHT), climate);
+    this.capProjection = new OrthographicCap(
+      CAP_SIZE, THREE.MathUtils.degToRad(this.capLatitude), THREE.MathUtils.degToRad(this.capLongitude),
+      THREE.MathUtils.degToRad(this.capRadius));
+    this.panes = [
+      new CloudLabPane(new EquirectProjection(VIEW_HEIGHT), climate),
+      new CloudLabPane(this.capProjection, climate),
+    ];
     // ビューごとに別のマテリアル。選ばれた 1 つだけがコンパイルされる。
     const materials = new Map<CloudLabViewId, THREE.MeshBasicNodeMaterial>();
     for (const view of CLOUD_LAB_VIEWS) {
       const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
-      material.colorNode = this.pane.colorAt(view, screenUV);
+      material.colorNode = this.colorNode(view);
       materials.set(view.id, material);
     }
     this.materials = materials;
@@ -56,6 +79,9 @@ export class CloudLabCanvas {
 
   public get currentView(): CloudLabViewId { return this.view.id; }
   public get hours(): number { return this.seconds / 3600; }
+  public get capCenterLatitude(): number { return this.capLatitude; }
+  public get capCenterLongitude(): number { return this.capLongitude; }
+  public get capAngularRadius(): number { return this.capRadius; }
 
   // 表示する量を切り替えて描き直す。
   public show(id: CloudLabViewId): void {
@@ -70,10 +96,22 @@ export class CloudLabCanvas {
     this.render();
   }
 
-  // いまの時刻を面へ入れ、選んだ量をキャンバスへ出す。
+  // cap の中心の緯度・経度と半径 [°] を置き直して描き直す。
+  public aimCap(latitude: number, longitude: number, radius: number): void {
+    this.capLatitude = latitude;
+    this.capLongitude = longitude;
+    this.capRadius = radius;
+    this.capProjection.aim(
+      THREE.MathUtils.degToRad(latitude), THREE.MathUtils.degToRad(longitude), THREE.MathUtils.degToRad(radius));
+    this.render();
+  }
+
+  // いまの時刻を両面へ入れ、選んだ量をキャンバスへ出す。
   public render(): void {
-    this.pane.syncTime(this.seconds);
-    this.pane.bake(this.renderer, this.view);
+    for (const pane of this.panes) {
+      pane.syncTime(this.seconds);
+      pane.bake(this.renderer, this.view);
+    }
     this.quad.render(this.renderer);
   }
 
@@ -88,5 +126,20 @@ export class CloudLabCanvas {
     }
     const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
+  }
+
+  // 画面の左右で面を切り替える色。**分岐は select ではなく If で書く** — select は両辺を評価する
+  // ので、ノイズを直に評価するビューで捨てる側の面ぶんが毎画素走る。
+  private colorNode(view: CloudLabView): Vec3Node {
+    const [globe, cap] = this.panes;
+    return Fn(() => {
+      const color = vec3(0).toVar();
+      If(screenUV.x.lessThan(SPLIT_U), () => {
+        color.assign(globe!.colorAt(view, vec2(screenUV.x.div(SPLIT_U), screenUV.y)));
+      }).Else(() => {
+        color.assign(cap!.colorAt(view, vec2(screenUV.x.sub(SPLIT_U).div(1 - SPLIT_U), screenUV.y)));
+      });
+      return color;
+    })();
   }
 }
