@@ -208,30 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順7. 軌道ガイドを `celestial/` 直下から折り畳む
-
-**目的.** ラグランジュ点まわりの軌道ガイドは6ファイル・約 1200 行あり、`celestial/` 直下の
-20 ファイルの半分近い面積を占めている。互いにしか使わない閉じた塊なので、サブフォルダへ
-畳めば「天体の個体・系・具体系」という骨格が直下から読めるようになる。
-**この時点で挙動は変えない。責務の所属は変えない**(ガイドは天体系の力学から引く曲線なので
-`celestial/` の内側に置く)。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/orbit-guide/{orbit-guide-lines,orbit-guide-settings,orbit-guide-catalog,orbit-guide-kind-ids,guide-curve,direction-markers,zero-velocity-lines}.ts` | 7ファイルを `git mv` する |
-| 上を import する 18 ファイル(`celestial-system.ts` / `const.ts` / `navball/navball.ts` / `hud/panels/{guide-kind-def,guide-value-field,orbit-guide-tab,reference-orbit-rows,view-options-panel,zero-velocity-section}.ts` ほか) | import パスを直す |
-
-**達成条件と検証**
-
-- `ls src/game/celestial/*.ts` が個体・系・可視性まわりだけになる(20 → 12 ファイル)。
-- `npm run typecheck` / `npm run test:game` が通る。
-- `npm run dev` — 表示パネルの軌道ガイドタブで、ハロー/リヤプノフ/DRO/ゼロ速度曲線と
-  静止軌道リングが着手前と同じに出ることを見る。
-
----
-
 ### 手順8. `celestial/celestial-entity/` を作る
 
 **目的.** 天体の個体とその派生が `celestial/` 直下に散らばっており、`game-entity/` が独立
