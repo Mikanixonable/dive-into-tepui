@@ -208,36 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順3. 遮蔽器の順位付けと環の影の選定を render へ移す
-
-**目的.** 「遮蔽器を何体まで採るか」は `MAX_OCCLUDERS`(= `SunOcclusion` の uniform スロット数)が
-決め、「絵に出ない遮蔽を落とす閾値」`MIN_OCCLUDED_FRACTION` と「環は最も大きく見える1体だけ」も
-遮蔽パスのグラフの形に対する判断である。すべて `render/pipeline/sun-occlusion.ts` の隣に属する。
-**この時点で絵は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/occluder-select.ts`(新規) | `celestial-system.ts:41-58` の `apparentRadius` / `castsVisibleShadow` / `MIN_OCCLUDED_FRACTION` を移す。`selectOccluders(celestialBodies, star, cameraPos, focusPos)` が `MAX_OCCLUDERS` 体までの `readonly CelestialBody[]` を返す。あわせて `RingShadowCandidate = { center, axis, apparentRadius, bands }` を受ける `selectRingShadow(candidates, ringsEnabled)` を置き、`graphics.rings` による打ち切りもここへ入れる |
-| `src/game/celestial/celestial-system.ts:354-374` | `syncOcclusion` は候補を渡して選定を呼び、返った天体だけ `fo.RtoThreeV3` で移して `setOccluders` へ渡す |
-| `src/game/celestial/celestial-system.ts:376-403` | `syncRingShadow` は環を持つ個体から候補を組み、選定の結果を描画座標へ移して `setRings` へ渡す。「1体だけ」「`graphics.rings` を見る」の判断は残さない |
-| `src/game/celestial/celestial-system.ts:41-58,45` | 移した関数と定数を削除する |
-| `src/game/celestial/celestial-entity.ts:128` | `apparentRadiusFrom` は候補を組むために game 側へ残す(尺度の値であって選定基準ではない) |
-
-**達成条件と検証**
-
-- `grep -rn "MAX_OCCLUDERS\|MIN_OCCLUDED_FRACTION" src/game/` が 0 件。
-- `grep -n "graphics.rings" src/game/celestial/` が 0 件。
-- **一時的な同値テスト。** 手順2と同じ形で、`simTime` 5点 × カメラ位置4種(地球低軌道・
-  土星近傍・木星近傍・太陽系外からの俯瞰)について、移動前後の `selectOccluders` が同じ id を
-  同じ順で返し、`selectRingShadow` が同じ天体を返すことを当てる。**通ったら消す。**
-- `npm run typecheck` / `npm run test:game` / `npm run test:render` が通る。
-- `npm run dev` — 地球低軌道で日食に入るときの本影・半影、土星本体に落ちる環の影、
-  描画設定の「環」をオフにしたとき環の影も消えることを見る。
-
----
-
 ### 手順4. 環境光の割合・星殻の倍率・恒星のない星系の既定を render へ移す
 
 **目的.** 「マップビューでは環境光を強く、戦闘ビューでは弱く」「星殻を広範囲視点では
@@ -645,3 +615,9 @@ grep -rhoE "src/game/(celestial|simulation|game-entity|dynamic|map)/[a-z0-9./-]*
   値 import の `title-scene.ts` 1 件だけは、色の所有者を `render/` 側へ移せば消える。
 - **`memos/` がこの計画と無関係に持つ、死んだパス 105 種**(`render/` `physics/` や、過去に
   消えた `game/` の他フォルダ)。手順13 では触らない。
+- **`point-entity.ts` / `sphere-entity.ts` に残る `graphics.rings` 2 箇所。** 手順3 の
+  達成条件は「`graphics.rings` が `game/celestial/` から 0 件」と書いていたが、**これは条件の
+  書きすぎだった。** この 2 箇所は「環の影を落とす 1 体を選ぶ」判断ではなく、**個体が自分の
+  環メッシュを描くかどうか**を設定から決めているだけで、`graphics.lodBias` を個体が読むのと
+  同じ種類のもの。選定を render へ移す動機(スロット本数と密結合)が当たらないので、
+  そのままにした。
