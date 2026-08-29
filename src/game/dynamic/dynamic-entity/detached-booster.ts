@@ -23,7 +23,7 @@ import type { RenderStyle } from '../../../render/render-style';
 
 const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
 
-export type DetachedBoosterInit =
+type DetachedBoosterInit =
   | {
     readonly stage: BoosterStageState;
     readonly state: KinematicState;

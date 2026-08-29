@@ -51,7 +51,7 @@ export const PHOBOS: SatelliteDef = {
   orbit: equatorialSatelliteOrbit({ a: 9.376e6, e: 0.0151, incDeg: 1.08, planetMu: MU_MARS, planetPole: MARS_POLE }),
 };
 
-export const DEIMOS: SatelliteDef = {
+const DEIMOS: SatelliteDef = {
   id: 'deimos',
   mu: 9.85e4,
   radius: 8.04e3, // 三軸の最長半軸(外接球)

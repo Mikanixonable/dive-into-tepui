@@ -1,5 +1,6 @@
 // 天体とゲーム内 entity に共通するマップ表示ポリシー。
 // category/icon/label/orbit/pickable を各描画・選択系で個別に解釈しないための正本。
+// DynamicEntityKind は公開メソッド dynamic(kind) の引数型なので export したままにする。
 import {
   ancestorsOf, motionById, sameSystemIds, type CelestialClassLookup,
 } from '../celestial/system-membership';

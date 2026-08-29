@@ -16,7 +16,7 @@ const RCS_FUEL_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m]
 
 const idAllocator = new EntityIdAllocator('rcs-fuel-');
 
-export type RcsFuelPickupInit =
+type RcsFuelPickupInit =
   | { readonly state: KinematicState; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: RcsFuelPickupSaveData; readonly simTime: number };
 
