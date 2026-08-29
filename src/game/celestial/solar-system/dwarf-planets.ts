@@ -1,5 +1,5 @@
 // 準惑星・大型小惑星とその衛星。静的事実・運動・見た目を1体につき1箇所で組む。
-import { OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
+import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
   EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
@@ -277,7 +277,7 @@ export const DWARF_PLANET_NAMES: Record<DwarfPlanetId, string> = {
 // 準惑星・大型小惑星とその衛星を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function dwarfPlanets(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: OriginCenteredEphemeris | null, origin: EciOrigin,
+  pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<DwarfPlanetId, CelestialEntity> {
   // 衛星を持つ天体の運動は、子の主天体として渡すため先に組む。
   const pluto = new PlanetMotion(PLUTO, sun, phases[PLUTO.id] ?? 0, epochOffsetSec, pack, origin);
