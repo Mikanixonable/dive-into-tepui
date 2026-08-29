@@ -58,6 +58,7 @@ export class GeostationaryOverlay {
     return new GeostationaryOverlay(motion, a);
   }
 
+  // リングをシーンへ一度だけ登録する。ラベルは MarkerManager が持つので登録は要らない。
   build(scene: THREE.Scene): void {
     scene.add(this.line.line);
   }
@@ -77,6 +78,7 @@ export class GeostationaryOverlay {
     this.syncLabel(elements, center.state.r, fade, cameraSystem, markerManager, celestialBodies, visible);
   }
 
+  // リングを親から外して解放する。
   dispose(): void {
     this.line.line.removeFromParent();
     this.line.dispose();
@@ -93,6 +95,7 @@ export class GeostationaryOverlay {
     markerManager: MarkerManager | null, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     if (markerManager === null) return;
+    // 消えるほど薄いラベルは、射影も遮蔽判定もせずに畳む。
     const opacity = LABEL_OPACITY * fade;
     if (!visible || opacity <= 0.02) {
       markerManager.hide(MARKER_KEY);

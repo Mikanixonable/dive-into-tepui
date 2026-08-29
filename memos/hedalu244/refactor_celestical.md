@@ -134,28 +134,9 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 
 ## 手順
 
-**残りの実施順**: **9 → 10**(手順7・8は手順3の直後に済ませた — `render/earth.ts`
+**残りの実施順**: **10**(手順7・8は手順3の直後に済ませた — `render/earth.ts`
 の `createEarth()` がテクスチャを構築時に読むため、解体するまで地球を含む星系を DOM 無しで
 組めず、手順5のテストが本番の構築経路を使えないため)。
-
-### 手順9. CelestialSystem の荷下ろし
-
-**目的**: P5。個別天体に下ろせる事象を CelestialEntity へ移し、CelestialSystem を
-「CelestialEntity の統括 + 系レベルの選択・配線」だけにする。**挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/celestial-entity.ts` | `referenceLineOpacityAt` とフェード定数群(celestial-system.ts:42-63)を entity 側へ(自分の kind でフェード距離を選び、カメラ位置から濃さまで決める)。大気候補(celestial-system.ts:421-438 のループ内 1 体分)を `atmosphereCandidateAt(...)` として entity へ。環影・遮蔽の候補材料(def.rings の掘り出し等)を entity の公開値へ — 複数体からの**選択**は系に残す |
-| `src/game/celestial/celestial-system.ts` | 上記の移譲で `syncReferenceLines` / `atmosphereCandidates` / `syncRingShadow` を選択とループだけに縮める。`FutureCelestialBodyProvider` が構造適合で要求する `defs` / `celestialBodyAt` の名前は**変えない**(simulation/arc-bodies.ts:23-28) |
-| `src/game/celestial/point-field.ts` / `point-field-view.ts` | `game/celestial/solar-system/` 下へ移動(太陽系固有物)。CelestialSystem の直接保持(118, 484-490行)をやめ、構築側(solar-system.ts)が注入する null 許容の星系付随ビューとして受ける |
-| `tsconfig.test.json` | include の `src/game/celestial/point-field.ts` パスを更新 |
-| `tests/game/point-field.test.ts` | import パス更新 |
-
-**達成条件と検証**: `npm run typecheck`。`npm run test:game`。
-`wc -l src/game/celestial/celestial-system.ts` が 500 以下(達成目標6)。
-`npm run dev` のマップで参照軌道線のフェード・小惑星帯点群・土星の環影が従前どおり(目視)。
 
 ### 手順10. 総仕上げ
 
