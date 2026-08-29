@@ -1,40 +1,40 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import * as THREE from 'three/webgpu';
-import { KinematicState } from '../../physics/kinematic-state';
-import { OrbitalElements } from '../../physics/elements';
-import { Attitude, stepAttitude } from '../../physics/attitude';
-import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { CelestialBody, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../physics/celestial-body';
-import { airflow } from '../../physics/atmosphere';
+import { KinematicState } from '../../../physics/kinematic-state';
+import { OrbitalElements } from '../../../physics/elements';
+import { Attitude, stepAttitude } from '../../../physics/attitude';
+import { DynamicTrajectory } from '../../../physics/dynamic-trajectory';
+import { CelestialBody, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../../physics/celestial-body';
+import { airflow } from '../../../physics/atmosphere';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
   stepThermalDeviation,
-} from '../../physics/thermal';
-import { sunlitFactor } from '../../physics/shadow';
-import { SOLAR_CONSTANT } from '../../physics/srp';
-import { ApsisTrack } from '../../physics/trajectory-features';
-import { Vec3, len, scale, sub, v3 } from '../../math/vec3';
-import type { Viewpoint } from '../../math/projection';
+} from '../../../physics/thermal';
+import { sunlitFactor } from '../../../physics/shadow';
+import { SOLAR_CONSTANT } from '../../../physics/srp';
+import { ApsisTrack } from '../../../physics/trajectory-features';
+import { Vec3, len, scale, sub, v3 } from '../../../math/vec3';
+import type { Viewpoint } from '../../../math/projection';
 import type { SphereHit } from './base-collision';
-import { FloatingOrigin } from '../camera/floating-origin';
-import { OrbitLine } from '../lines/orbit-line';
-import { RelativeOrbitLine } from '../lines/relative-orbit-line';
-import { TrajectoryLine } from '../lines/trajectory-line';
-import type { OrbitReference } from '../orbit-reference';
-import { LineStyle } from '../../render/line-style';
-import { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import { PredictedArc, trajectorySampleInterval } from '../simulation/predicted-arc';
-import { atmosphericMaxStep, dragTakesFullAirspeed } from '../simulation/time-step';
-import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
-import * as C from '../const';
-import type { Stage } from '../stages/stage';
+import { FloatingOrigin } from '../../camera/floating-origin';
+import { OrbitLine } from '../../lines/orbit-line';
+import { RelativeOrbitLine } from '../../lines/relative-orbit-line';
+import { TrajectoryLine } from '../../lines/trajectory-line';
+import type { OrbitReference } from '../../orbit-reference';
+import { LineStyle } from '../../../render/line-style';
+import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
+import type { CelestialSystem } from '../../celestial/celestial-system';
+import { PredictedArc, trajectorySampleInterval } from '../../simulation/predicted-arc';
+import { atmosphericMaxStep, dragTakesFullAirspeed } from '../../simulation/time-step';
+import type { FutureCelestialBodyProvider } from '../../simulation/arc-bodies';
+import * as C from '../../const';
+import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
-import { EquatorNodeMarkerPair } from '../marker/equator-node-marker-pair';
-import type { MarkerManager } from '../marker/marker-manager';
-import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
-import { syncThermalState } from '../../render/thermal-emissive';
+import { EquatorNodeMarkerPair } from '../../marker/equator-node-marker-pair';
+import type { MarkerManager } from '../../marker/marker-manager';
+import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
+import { syncThermalState } from '../../../render/thermal-emissive';
 
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
 // ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
@@ -48,7 +48,7 @@ const identityAttitude = (): Attitude => ({
 
 // 軌道上を運動するゲーム内エンティティの基底。表示ルート・HP・生死・姿勢・AI といったゲーム側の
 // 付帯情報と、種別ごとの積分パラメータ(bcInv・historyDuration)を持つ。
-export class GameEntity {
+export class DynamicEntity {
   readonly actual: DynamicTrajectory;
 
   get state(): KinematicState { return this.actual.state; }
@@ -84,7 +84,7 @@ export class GameEntity {
   get contactMass(): number { return this.mass; }
   // 特定の艦に取り付いた実体(ベルトの節点・放熱板の折りなど)であれば、その艦自身。
   // 独立した実体なら既定 null。
-  attachedTo: GameEntity | null = null;
+  attachedTo: DynamicEntity | null = null;
   private _thrust: Vec3 | null = null;
   // 自身が出している ECI 加速度 [m/s²]。null = 噴射していない。噴射している間の弧は現実を
   // 表さないので、非 null を書いた時点で無効化する — 実シミュレーションはそこから積分へ落ち、
@@ -203,7 +203,7 @@ export class GameEntity {
     addToScene = true,
   ) {
     this.actual = new DynamicTrajectory(state);
-    this.id = id ?? GameEntity.idAllocator.next();
+    this.id = id ?? DynamicEntity.idAllocator.next();
     this.name = this.id;
     this.att = att;
     this.renderObject = renderObject;
@@ -563,7 +563,7 @@ export class GameEntity {
   }
 
   // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。
-  contactsWith(_other: GameEntity, _simTime: number): boolean {
+  contactsWith(_other: DynamicEntity, _simTime: number): boolean {
     return true;
   }
 
@@ -593,7 +593,7 @@ export class GameEntity {
 
   // 個体どうしの接触で自分に何が起きるかを記述する。相手に何が起きるかは書かない(相手の
   // collideWithEntity が書く)。既定は何も起きない。
-  collideWithEntity(_other: GameEntity, _contact: Contact, _activeStage: Stage): void {
+  collideWithEntity(_other: DynamicEntity, _contact: Contact, _activeStage: Stage): void {
   }
 
   // 天体の固体表面へ触れたときに自分に何が起きるか。既定は失われる。

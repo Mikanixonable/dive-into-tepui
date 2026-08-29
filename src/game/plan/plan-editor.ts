@@ -23,7 +23,7 @@ import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan, PlanData } from './plan';
 import { PlanDisplay } from './plan-display';
 import { SimSpeedManager } from '../simulation/sim-speed-manager';
-import type { Controllable } from '../game-entity/controllable';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import { focusPoint } from '../camera/focus-target';

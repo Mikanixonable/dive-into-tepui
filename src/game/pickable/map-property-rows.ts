@@ -10,7 +10,7 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { NavTarget } from '../nav-target';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { GameEntity } from '../game-entity/game-entity';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { planExecutionLabel, type Player } from '../player/player';
 import { len, sub } from '../../math/vec3';
 import { orbitalElementsOf, strongestAttractor, type CelestialBody } from '../../physics/celestial-body';
@@ -44,7 +44,7 @@ export class MapPropertyRows {
 
   // 基準天体・高度・速度・AP/PE/INC/PRD の軌道要素一式。軌道上の実体種別間で共通化する。
   // 「軌道」グループにまとめ、ウィンドウ先頭の折り畳みセクションへ描かれる。
-  private orbitRows(entity: GameEntity, celestialBodies: readonly CelestialBody[]): PropertyRow[] {
+  private orbitRows(entity: DynamicEntity, celestialBodies: readonly CelestialBody[]): PropertyRow[] {
     const oi = orbitInfo(entity, autoOrbitReference(entity.state.r, celestialBodies), (id) => this.celestialSystem.nameOf(id));
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);

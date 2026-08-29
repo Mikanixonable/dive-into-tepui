@@ -9,7 +9,7 @@ import type { EntityManager } from '../simulation/entity-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
-import type { GameEntity } from '../game-entity/game-entity';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { OrbitCalcMethod, OrbitPickable } from './orbit-pickable';
 
 // 当たり判定用サンプル点数。描画の適応分割ほどの精度は要らず、画面上のピクセル半径内かの判定さえ
@@ -67,7 +67,7 @@ export class OrbitPickables {
   // 船(自艦・敵・基地)1隻ぶんの軌道線を候補へ積む。表示方式(解析楕円 or 予測線・過去線)は
   // EntityLineManager が既に決めているので、ここではどちらが出ているかを読むだけ。
   private addShipOrbit(
-    ownerKind: 'player' | 'ship' | 'base', entity: GameEntity,
+    ownerKind: 'player' | 'ship' | 'base', entity: DynamicEntity,
     frame: ReferenceFrame, displayTime: number, frameAnchors: FrameAnchorSource,
   ): void {
     if (!entity.alive) return;

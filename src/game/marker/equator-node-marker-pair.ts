@@ -11,7 +11,7 @@ import type { MarkerManager } from './marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker-glyphs';
 import type { ProjectFn } from '../camera/camera-system';
 import { MapPickable } from '../pickable/map-pickable';
-import type { GameEntity } from '../game-entity/game-entity';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 // 交点アイコン。右クリックの被選択物であると同時に、マーカーに出す短いラベルを持つ。
 interface EqNodeIcon extends MapPickable {
@@ -26,7 +26,7 @@ export class EquatorNodeMarkerPair {
   private readonly anKey: string;
   private readonly dnKey: string;
 
-  constructor(private readonly owner: GameEntity, private readonly markerManager: MarkerManager) {
+  constructor(private readonly owner: DynamicEntity, private readonly markerManager: MarkerManager) {
     this.anKey = `eqan-${owner.id}`;
     this.dnKey = `eqdn-${owner.id}`;
   }

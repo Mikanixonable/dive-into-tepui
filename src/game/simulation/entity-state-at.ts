@@ -4,7 +4,7 @@
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import { KinematicState } from '../../physics/kinematic-state';
-import type { GameEntity } from '../game-entity/game-entity';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 // t <= trajectory の現在時刻なら保持区間の内挿(at)、それより先なら centerMotion が表す天体
 // まわりの二体ケプラー外挿(extrapolatedAt)で答える。両者とも先端以前は内挿に落ちる
@@ -20,7 +20,7 @@ export function trajectoryStateAt(
 // エンティティ(艦・基地)の時刻 t の状態。predicted を持たない(＝未来を予測しない種別の)
 // エンティティでは、t が現在時刻より先なら求まらない。
 export function entityStateAt(
-  entity: GameEntity, t: number, centerMotion: CelestialMotion,
+  entity: DynamicEntity, t: number, centerMotion: CelestialMotion,
 ): KinematicState | null {
   if (t <= entity.state.t) return entity.actual.at(t);
   const predicted = entity.predicted;

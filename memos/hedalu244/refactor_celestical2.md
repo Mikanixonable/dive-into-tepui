@@ -208,34 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順9. `GameEntity` → `DynamicEntity`、`game-entity/` → `dynamic/dynamic-entity/`
-
-**目的.** 族語を `dynamic` へ揃え、個体のフォルダを新しい `dynamic/` の下へ入れる。
-**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-entity/`(新規フォルダ) | `src/game/game-entity/` の 21 ファイルを `git mv` する |
-| `.../game-entity.ts` → `.../dynamic-entity.ts` | ファイル名を主要 export に合わせる |
-| `src/game/dynamic/dynamic-entity/dynamic-entity.ts` | `export class GameEntity` → `export class DynamicEntity`。クラスコメント「軌道上を運動するゲーム内エンティティの基底」を「数値積分で運動する個体の基底」の意味へ書き直す |
-| `GameEntity` を参照する 44 ファイル(型注釈 179 箇所) | 識別子を差し替える。`extends GameEntity` は `ammo-pickup` / `base` / `bullet` / `debris-piece` / `detached-booster` / `rcs-fuel-pickup` / `ship` / `player/belt-physics` / `player/radiator` の9箇所 |
-| `game-entity/` を import する 67 ファイル | パスを直す |
-| `.claude/skills/overview/SKILL.md:28` / `.claude/skills/CODE-SNAPSHOT.md:25` | フォルダ一覧と図の名前を直す |
-
-`src/game/player/` は移さない。`Player` / `BeltSection` / `RadiatorFold` は `DynamicEntity` の
-派生だが、`player/` は推進・電力・ラジエータ・ベルトという別の関心を 17 ファイルで持っており、
-個体の族で切るフォルダではない。
-
-**達成条件と検証**
-
-- `grep -rn "\bGameEntity\b" src tests tools DEVELOP .claude CLAUDE.md` が 0 件。
-- `src/game/game-entity/` が存在しない。
-- `npm run typecheck` / `npm run test`(全層)が通る。
-
----
-
 ### 手順10. `simulation/` → `dynamic/`、`EntityManager` → `DynamicSystem`
 
 **目的.** 積分側の集合クラスを `CelestialSystem` と対になる名前にし、積分機構を個体と同じ

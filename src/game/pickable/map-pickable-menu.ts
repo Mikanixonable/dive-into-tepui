@@ -2,7 +2,7 @@
 // 選ばれた操作の実行先を対応づける。候補集合と表示可否は map-pickables.ts の MapPickables が
 // 持つ — 「何が選べるか」と「選んだらどうなるか」を分けている。
 import { Hud } from '../hud/hud';
-import type { Base } from '../game-entity/base';
+import type { Base } from '../dynamic/dynamic-entity/base';
 import { LAGRANGE_ID, lagrangeParentId } from '../hud/object-groups';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from '../camera/focus-target';

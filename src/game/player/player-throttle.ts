@@ -6,7 +6,7 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import type { ThrottleSaveData } from '../save/save-data';
-import type { Controllable } from '../game-entity/controllable';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 
 const THROTTLE_DEFAULT_IDX = 1;
 

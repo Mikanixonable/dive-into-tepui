@@ -5,7 +5,7 @@
 // 変換した値を、選択中タブのスケール・平行移動量へ反映する。
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
-import type { GameEntity } from '../../game-entity/game-entity';
+import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import { SyncThrottle } from '../sync-throttle';
 import { DraggableWindow } from '../windows/draggable-window';
 import { ChartAxis, ChartMark, ChartPoint, ChartSpec, OrbitChart } from './orbit-chart';
@@ -107,8 +107,8 @@ export class OrbitAnalysisWindow {
   private altitudeCenterM: number | null = null;
   // 戦闘ビューでも未来の弧を伸ばし続けさせるため analysisPanelReader を立てている個体
   // (操作対象・接近/投影タブのターゲット)。
-  private readerEntity: GameEntity | null = null;
-  private readerTargetEntity: GameEntity | null = null;
+  private readerEntity: DynamicEntity | null = null;
+  private readerTargetEntity: DynamicEntity | null = null;
   private readonly scales: Record<ScaleTab, TabScale> = {
     altitude: { ...DEFAULT_SCALES.altitude },
     approach: { ...DEFAULT_SCALES.approach },
@@ -206,7 +206,7 @@ export class OrbitAnalysisWindow {
   }
 
   // 旧対象のフラグを降ろし、新対象に立て直す。
-  private static applyReader(prev: GameEntity | null, next: GameEntity | null): GameEntity | null {
+  private static applyReader(prev: DynamicEntity | null, next: DynamicEntity | null): DynamicEntity | null {
     if (prev === next) return prev;
     if (prev) prev.analysisPanelReader = false;
     if (next) next.analysisPanelReader = true;
@@ -214,14 +214,14 @@ export class OrbitAnalysisWindow {
   }
 
   // 操作対象が変わったら analysisPanelReader を付け替え、高度中心を次の sync で固定し直す。
-  private setReaderEntity(entity: GameEntity | null): void {
+  private setReaderEntity(entity: DynamicEntity | null): void {
     if (entity === this.readerEntity) return;
     this.readerEntity = OrbitAnalysisWindow.applyReader(this.readerEntity, entity);
     this.altitudeCenterM = null;
   }
 
   // 接近/投影タブのターゲットが変わったら analysisPanelReader を付け替える。
-  private setReaderTargetEntity(entity: GameEntity | null): void {
+  private setReaderTargetEntity(entity: DynamicEntity | null): void {
     this.readerTargetEntity = OrbitAnalysisWindow.applyReader(this.readerTargetEntity, entity);
   }
 
