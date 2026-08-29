@@ -27,15 +27,17 @@ export type WeatherSample = {
   readonly upperHumidity: FloatNode;
 };
 
-// ノイズの段。段ごとに空間周波数(球面 1 周あたりの山の数)と段数を変える。
+// ノイズの段。段ごとに空間周波数(1 rad あたりの山の数)と段数を変える。
 // 気圧は 1 段しか持たない。総観規模より細かい構造を実際に持たないうえ、上昇流が気圧そのものの
 // 関数なので、段を増やすとノイズの格子が雲へそのまま出る。
 const PRESSURE_NOISE = [1.2, 1] as const;
-// 湿度は基準周波数を低く段を多く取る。基準の角波長(2550 km)が一枚板の雲の広がりを、
-// 最上段(160 km)が凝結のしきい値をまたぐ縁の細かさを決める。上層はこれ以上段を減らせない —
-// 薄い雲は光学的厚みが 1 に届かず下地が透けるので、上の段が縁ではなく繊維の濃淡として直に見える。
-const HUMIDITY_NOISE = [2.5, 5] as const;
-const UPPER_HUMIDITY_NOISE = [1.6, 5] as const;
+// 湿度は基準周波数を低く段を多く取る。基準の角波長(1270 km)が一枚板の雲の広がりを、
+// 最上段(80 km)が凝結のしきい値をまたぐ縁の細かさを決める。**最上段は移流の 1 歩より十分
+// 大きく取る** — 下回ると、模様が変位場に沿って引き伸ばされ、雲が筋の束になる。上層はこれ以上
+// 段を減らせない — 薄い雲は光学的厚みが 1 に届かず下地が透けるので、上の段が縁ではなく繊維の
+// 濃淡として直に見える。
+const HUMIDITY_NOISE = [5, 5] as const;
+const UPPER_HUMIDITY_NOISE = [3.2, 5] as const;
 const PRESSURE_NOISE_AMPLITUDE = 18;
 const HUMIDITY_NOISE_AMPLITUDE = 0.3;
 const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
