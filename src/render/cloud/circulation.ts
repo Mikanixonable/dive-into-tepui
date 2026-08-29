@@ -1,5 +1,6 @@
 // 大気の大循環。単位方向を、そこに効く緯度帯の流れに乗せた「ノイズ空間の位置」へ写す。帯は
-// 極偏東風・偏西風・貿易風が赤道を挟んで鏡像に並ぶ 6 本で、境目では隣り合う 2 本を混ぜる。
+// 赤道を挟んで鏡像に並ぶ 6 本で、境目では隣り合う 2 本を混ぜる。速さの表は層ごとに違うので
+// 持ち込みで受け取り、帯の中心緯度と混ぜ幅だけを層のあいだで共有する。
 //
 // 東西の流れは自転軸まわりの回転、南北の流れは公転で作る。公転は、球を公転の中心から離してから
 // 回すので、球の極は常に進行方向を向き、模様の湧き出し口は北極に、吸い込み口は南極に固定される
@@ -13,18 +14,33 @@ import {
 import { latitudeOf } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node, Vec4Uniform } from '../tsl-types';
 
-// 帯ごとの、中心緯度での雲の進む速さ [m/s](east が東向き、north が北向き)。北から南へ並び、
-// 中心緯度は FIRST_LATITUDE から BAND_SPACING 刻みで番号から出る。
-const BANDS = [
+// 1 本の帯の、中心緯度での雲の進む速さ [m/s]。east が東向き、north が北向き。
+export type CirculationBand = { readonly east: number; readonly north: number };
+
+// 帯の表は北から南へ並び、中心緯度は FIRST_LATITUDE から BAND_SPACING 刻みで番号から出る。
+const FIRST_LATITUDE = THREE.MathUtils.degToRad(75);
+const BAND_SPACING = THREE.MathUtils.degToRad(30);
+
+// 地表付近の帯。極偏東風・偏西風・貿易風が赤道を挟んで鏡像に並ぶ。
+export const SURFACE_BANDS: readonly CirculationBand[] = [
   { east: -5, north: -2 }, // 極偏東風(北)
   { east: 10, north: 3 }, // 偏西風(北)
   { east: -7, north: -3 }, // 貿易風(北)
   { east: -7, north: 3 }, // 貿易風(南)
   { east: 10, north: -3 }, // 偏西風(南)
   { east: -5, north: 2 }, // 極偏東風(南)
-] as const;
-const FIRST_LATITUDE = THREE.MathUtils.degToRad(75);
-const BAND_SPACING = THREE.MathUtils.degToRad(30);
+];
+
+// 巻雲の高さ(≈200 hPa)の帯。南北はどの帯でも地表付近と逆向きで、東西は中緯度だけが同じ西風の
+// まま亜熱帯ジェットまで速くなり、熱帯と極では逆向きになる。
+export const UPPER_BANDS: readonly CirculationBand[] = [
+  { east: 6, north: 2 }, // 極(北)
+  { east: 30, north: -3 }, // 亜熱帯ジェット(北)
+  { east: 2, north: 3 }, // 熱帯(北)
+  { east: 2, north: -3 }, // 熱帯(南)
+  { east: 30, north: 3 }, // 亜熱帯ジェット(南)
+  { east: 6, north: -2 }, // 極(南)
+];
 
 // 隣り合う帯を混ぜる幅(帯の間隔に対する比)。境目の 0°・±30°・±60° を中心に取る。狭いほど
 // 逆向きに流れる 2 枚が重なる範囲が狭まり、広いほど向きの変わり方が滑らかになる。
@@ -43,19 +59,20 @@ const BREATH_PERIOD = 7 * 86400;
 
 export class Circulation {
   // 帯ごとの (cos 自転角, sin 自転角, cos 公転位相, sin 公転位相)。
-  private readonly flows: readonly Vec4Uniform[] = BANDS.map(() => uniform(new THREE.Vector4(1, 0, 1, 0)));
+  private readonly flows: readonly Vec4Uniform[];
   // 呼吸の位相(赤道での半径の伸び)。
   private readonly breath: FloatUniform = uniform(0);
 
-  // radius はこの天体の半径 [m]。
-  public constructor(private readonly radius: number) {
+  // radius はこの天体の半径 [m]、bands はこの層の帯の速さ。
+  public constructor(private readonly radius: number, private readonly bands: readonly CirculationBand[]) {
+    this.flows = bands.map(() => uniform(new THREE.Vector4(1, 0, 1, 0)));
     this.syncTime(0);
   }
 
   // 時刻 [s] の帯ごとの角度を uniform へ写す。2π で畳んでから余弦・正弦にするので、大きな時刻でも
   // 精度が落ちない。
   public syncTime(seconds: number): void {
-    for (const [i, band] of BANDS.entries()) {
+    for (const [i, band] of this.bands.entries()) {
       // 中心緯度での速さ [m/s] を、その緯度の円に沿った角速度 [rad/s] へ。
       const perMeter = 1 / (this.radius * Math.cos(FIRST_LATITUDE - i * BAND_SPACING));
       const spin = wrapAngle(band.east * perMeter * seconds);
@@ -75,9 +92,9 @@ export class Circulation {
   // 緯度だけで決まるので、画面のまとまった範囲で揃う。
   public carry(direction: Vec3Node, sample: (position: Vec3Node) => FloatNode): FloatNode {
     return Fn(() => {
-      const band = clamp(float(FIRST_LATITUDE).sub(latitudeOf(direction)).div(BAND_SPACING), 0, BANDS.length - 1);
+      const band = clamp(float(FIRST_LATITUDE).sub(latitudeOf(direction)).div(BAND_SPACING), 0, this.bands.length - 1);
       const lower = floor(band).toVar();
-      const upper = min(lower.add(1), BANDS.length - 1).toVar();
+      const upper = min(lower.add(1), this.bands.length - 1).toVar();
       const weight = smoothstep(0.5 - BLEND_WIDTH / 2, 0.5 + BLEND_WIDTH / 2, band.sub(lower)).toVar();
       // 呼吸を効かせる度合い。cos²(緯度) をもう一度掛けてあるのは、公転が既に法線を向いている
       // 中緯度で張り合わせないため。
