@@ -10,7 +10,7 @@ import {
   clamp, float, floor, greaterThanEqual, inverseSqrt, min, select, smoothstep, uniform, vec3,
 } from 'three/tsl';
 import { latitudeOf } from './sphere-frame';
-import type { FloatNode, Vec3Node, Vec4Node, Vec4Uniform } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec3Node, Vec4Node, Vec4Uniform } from '../tsl-types';
 
 // 帯ごとの、中心緯度での雲の進む速さ [m/s](east が東向き、north が北向き)。北から南へ並び、
 // 中心緯度は FIRST_LATITUDE から BAND_SPACING 刻みで番号から出る。
@@ -33,9 +33,18 @@ const BLEND_WIDTH = 0.5;
 // 流れの速さの 1/半径 になる。大きく取るほど直進に近づき、ノイズ空間の座標が伸びる。
 const ORBIT_RADIUS = 30;
 
+// 呼吸: ノイズ空間の中で球の半径を伸縮させ、模様をその場で入れ替える。公転がノイズ空間で球面の
+// 法線を向く割合は |sin(緯度)| なので、これが無いと熱帯の模様は形を変えずに滑るだけになる。
+// 振幅は赤道での値で、極へ向けて 0 に落とす — 一律に掛けると、公転が既に法線を向いている中緯度で
+// 両者が打ち消し合い、模様の入れ替わりが止まる時期ができる。周期は [s]。
+const BREATH_AMPLITUDE = 0.05;
+const BREATH_PERIOD = 7 * 86400;
+
 export class Circulation {
   // 帯ごとの (cos 自転角, sin 自転角, cos 公転位相, sin 公転位相)。
   private readonly flows: readonly Vec4Uniform[] = BANDS.map(() => uniform(new THREE.Vector4(1, 0, 1, 0)));
+  // 呼吸の位相(赤道での半径の伸び)。
+  private readonly breath: FloatUniform = uniform(0);
 
   // radius はこの天体の半径 [m]。
   public constructor(private readonly radius: number) {
@@ -53,6 +62,7 @@ export class Circulation {
       const orbit = wrapAngle((-band.north * perMeter * seconds) / ORBIT_RADIUS);
       this.flows[i]!.value.set(Math.cos(spin), Math.sin(spin), Math.cos(orbit), Math.sin(orbit));
     }
+    this.breath.value = BREATH_AMPLITUDE * Math.sin((2 * Math.PI * seconds) / BREATH_PERIOD);
   }
 
   // 単位方向 direction の模様を、そこに効く 2 本の帯の流れへ乗せて sample し、混ぜた値。sample へ
@@ -65,19 +75,23 @@ export class Circulation {
     const weight = smoothstep(0.5 - BLEND_WIDTH / 2, 0.5 + BLEND_WIDTH / 2, band.sub(lower));
     const rest = float(1).sub(weight);
     const scale = inverseSqrt(weight.mul(weight).add(rest.mul(rest)));
-    return sample(this.positionAt(direction, lower)).mul(rest.mul(scale))
-      .add(sample(this.positionAt(direction, upper)).mul(weight.mul(scale)));
+    // 呼吸を効かせる度合い。cos²(緯度) をもう一度掛けてあるのは、公転が既に法線を向いている
+    // 中緯度で張り合わせないため。
+    const cosLatitude2 = float(1).sub(direction.y.mul(direction.y));
+    const breathing = direction.mul(this.breath.mul(cosLatitude2).mul(cosLatitude2).add(1));
+    return sample(this.positionAt(breathing, lower)).mul(rest.mul(scale))
+      .add(sample(this.positionAt(breathing, upper)).mul(weight.mul(scale)));
   }
 
-  // 帯 index の流れに乗せた direction の位置。自転軸が +Y、公転面の法線が +X であることは
-  // sphere-frame の POLE と正距円筒図法の取り決めに従う。
-  private positionAt(direction: Vec3Node, index: FloatNode): Vec3Node {
+  // 帯 index の流れに乗せた point の位置。point は呼吸で伸縮させた単位方向。自転軸が +Y、
+  // 公転面の法線が +X であることは sphere-frame の POLE と正距円筒図法の取り決めに従う。
+  private positionAt(point: Vec3Node, index: FloatNode): Vec3Node {
     const flow = this.flowAt(index);
     // 東西の流れ: 自転軸まわりに −自転角。
     const spun = vec3(
-      direction.x.mul(flow.x).sub(direction.z.mul(flow.y)),
-      direction.y,
-      direction.x.mul(flow.y).add(direction.z.mul(flow.x)),
+      point.x.mul(flow.x).sub(point.z.mul(flow.y)),
+      point.y,
+      point.x.mul(flow.y).add(point.z.mul(flow.x)),
     );
     // 南北の流れ: 公転の中心から離してから、公転面の法線まわりに −公転位相。
     const orbiting = spun.add(vec3(0, 0, ORBIT_RADIUS));
