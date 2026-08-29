@@ -493,7 +493,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private defaultLagrangeAmplitude(secondary: string): { ax: number; az: number } {
     const listed = LAGRANGE_DEFAULT_AMPLITUDE_KM[secondary];
     if (listed !== undefined) return listed;
-    const distanceKm = primaryDistanceKm(this.celestialSystem.bodyOf(secondary).def);
+    const distanceKm = primaryDistanceKm(this.celestialSystem.entityOf(secondary).def);
     return { ax: distanceKm * AMPLITUDE_AX_RATIO, az: distanceKm * AMPLITUDE_AZ_RATIO };
   }
 

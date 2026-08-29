@@ -201,7 +201,7 @@ export class NavTarget {
     // 再接近点は AN/DN(軌道面が定まる必要がある)とは独立した条件 — 同じ中心天体さえ
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
     if (target && strongestAttractor(target.state.r, stateCelestialBodies).id === playerCenter.id) {
-      const found = findClosestApproach(player, target, celestialSystem.bodyOf(playerCenter.id).motion, simTime);
+      const found = findClosestApproach(player, target, celestialSystem.entityOf(playerCenter.id).motion, simTime);
       if (found) {
         this.closestPos = toDisplay(found.pos, found.t);
         this.closestTime = found.t;
@@ -221,8 +221,8 @@ export class NavTarget {
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
-    const anEci = add(celestialSystem.bodyOf(playerCenter.id).motion.stateAt(anT).r, positionOnOrbit(playerEl, nodes.asc));
-    const dnEci = add(celestialSystem.bodyOf(playerCenter.id).motion.stateAt(dnT).r, positionOnOrbit(playerEl, nodes.desc));
+    const anEci = add(celestialSystem.entityOf(playerCenter.id).motion.stateAt(anT).r, positionOnOrbit(playerEl, nodes.asc));
+    const dnEci = add(celestialSystem.entityOf(playerCenter.id).motion.stateAt(dnT).r, positionOnOrbit(playerEl, nodes.desc));
     this.anPos = toDisplay(anEci, anT);
     this.dnPos = toDisplay(dnEci, dnT);
     this.anTime = anT;
