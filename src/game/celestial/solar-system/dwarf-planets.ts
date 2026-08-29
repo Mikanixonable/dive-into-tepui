@@ -4,7 +4,7 @@ import {
   EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
-import { GRAVITATIONAL_CONSTANT } from '../../../physics/solar-system/constants';
+import { GRAVITATIONAL_CONSTANT } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity';
 import { SphereEntity } from '../sphere-entity';

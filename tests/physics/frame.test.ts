@@ -4,7 +4,7 @@
 import { orbitingMotionOf, positionOf, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { MU_EARTH, R_EARTH_EQ } from '../../src/physics/solar-system/constants';
+import { MU_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
 import { bodyAnchorSource } from '../../src/physics/celestial-body';
 import { FrameAnchors } from '../../src/game/frame-anchors';
 import { FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';

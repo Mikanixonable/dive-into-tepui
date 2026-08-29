@@ -7,7 +7,7 @@ import { PlanetDef, SatelliteDef } from '../../src/physics/celestial-motion';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import {
   EPOCH_T_OFFSET, MU_EARTH, MU_MOON, MU_SUN as MU_SUN_LOCAL, SIDEREAL_DAY,
-} from '../../src/physics/solar-system/constants';
+} from '../../src/game/celestial/solar-system/constants';
 import { EPS } from '../../src/physics/ecliptic';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';

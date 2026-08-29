@@ -1,10 +1,10 @@
 // 計画の区間長・アプシス高度が、その場で最も強く引く天体を中心として求まることの回帰。
 import { motionOf, solarSystemParts } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
-import { MU_MOON, R_MOON } from '../../src/physics/solar-system/constants';
+import { MU_MOON, R_MOON } from '../../src/game/celestial/solar-system/constants';
 import { orbitalElementsOf, strongestAttractor } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { apsisAltitudes, keplerPeriod } from '../../src/physics/elements';
 import { add, v3 } from '../../src/math/vec3';
 import { orbitPeriodOf, Plan } from '../../src/game/plan/plan';

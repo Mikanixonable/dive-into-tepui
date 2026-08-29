@@ -9,7 +9,7 @@ import {
   EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { planetOrbit } from '../../../physics/planet-orbit';
-import { MU_JUPITER } from '../../../physics/solar-system/constants';
+import { MU_JUPITER } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity';
 import { PointEntity } from '../point-entity';

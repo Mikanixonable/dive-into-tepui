@@ -5,7 +5,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { cassiniSpinAxis, meridianDirection, orthogonalizedTo } from '../../src/physics/body-orientation';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
-import { MOON_OBLIQUITY } from '../../src/physics/solar-system/constants';
+import { MOON_OBLIQUITY } from '../../src/game/celestial/solar-system/constants';
 import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const MOON_ORBIT_INC = (5.145 * Math.PI) / 180;

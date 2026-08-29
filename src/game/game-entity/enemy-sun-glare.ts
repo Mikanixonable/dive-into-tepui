@@ -1,4 +1,4 @@
-import { R_EARTH_EQ } from '../../physics/solar-system/constants';
+import { R_EARTH_EQ } from '../celestial/solar-system/constants';
 import { addScaled, dot, lenSq, type Vec3 } from '../../math/vec3';
 
 // 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、

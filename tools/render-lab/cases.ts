@@ -7,7 +7,7 @@ import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import cloudsTextureUrl from '../../src/assets/8k_clouds.jpg';
-import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/physics/solar-system/constants';
+import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeAxes, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/body-graticule';

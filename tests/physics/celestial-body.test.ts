@@ -12,9 +12,9 @@ import {
   strongestAttractor,
 } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../src/physics/solar-system/constants';
+import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
 import { keplerPeriod, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
-import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system/constants';
+import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);

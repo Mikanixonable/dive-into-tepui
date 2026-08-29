@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { PlanetDef } from '../../src/physics/celestial-motion';
-import { MU_SUN } from '../../src/physics/solar-system/constants';
+import { MU_SUN } from '../../src/game/celestial/solar-system/constants';
 import { keplerPeriod } from '../../src/physics/elements';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';

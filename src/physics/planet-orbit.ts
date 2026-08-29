@@ -6,7 +6,7 @@ import { ECLIPTIC_BASIS, JULIAN_CENTURY, KeplerOrbit } from './kepler-orbit';
 export type PlanetOrbit = KeplerOrbit;
 
 const DEG = Math.PI / 180;
-// 天文単位(定義値)。地球軌道の長半径(solar-system.ts)と数値は近いが、地球がいまその
+// 天文単位(定義値)。地球軌道の長半径と数値は近いが、地球がいまその
 // 距離にいるかとは無関係な長さの単位である。
 export const AU = 1.495978707e11; // [m]
 

@@ -134,79 +134,9 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 
 ## 手順
 
-**残りの実施順**: **4 → 5 → 6 → 9 → 10**(手順7・8は手順3の直後に済ませた — `render/earth.ts`
+**残りの実施順**: **6 → 9 → 10**(手順7・8は手順3の直後に済ませた — `render/earth.ts`
 の `createEarth()` がテクスチャを構築時に読むため、解体するまで地球を含む星系を DOM 無しで
 組めず、手順5のテストが本番の構築経路を使えないため)。
-
-### 手順4. テストを木の形から切り離す
-
-**目的**: P6 のうち、手順5を機械的な移設に保つために先に済ませる部分。テストが
-`SolarSystemMotions` の**名前付きフィールドの木**(`motions.earthSystem.moon`)へ直接触るのを
-やめ、id 引きだけにする。木が消えても当たり続けるテストにしてから、手順5で構築経路を差し替える。
-
-**当初案(架空フィクスチャ星系への載せ替え)は採らない。** 対象の機構テストは実際には
-「文献値・実測値との一致」を検証している(ラグランジュ点の距離比 0.00997、恒星月の平均運動、
-水星の近日点移動 574〜578″/Cy、ハレー彗星の近日点 0.586au、主要衛星の公転周期など)。架空の
-星系へ移すと期待値の出所がコード自身になり、CODING-RULE 4.1 が禁じる「現状の写し」へ退化する。
-実データを入力に使う機構テストは、実データのまま残すのが正しい。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `tests/physics/test-helpers.ts` | `SolarSystemParts` から `SolarSystemMotions` を外し、`bodies: readonly CelestialMotion[]`(宣言順)+ 窓 + 座標系にする。`motionOf` / `orbitingMotionOf` / `positionOf` は `SolarSystemParts` を受ける |
-| `tests/physics/solar-system.test.ts` | **95天体の id 並びを deepEqual で固定するテストを削除**(期待値の正本がコード自身にしかない)。`spinRateOf` の3件は Def 由来の実測事実なので残す |
-| `tests/physics/{celestial-motion,frame,absolute-ephemeris,body-orientation,equatorial-satellites,window-agreement}.test.ts` | `motions.<系>.<天体>` を `motionOf(parts, '<id>')` へ |
-| `tests/physics/{laplace-satellites,equatorial-satellites}.test.ts` | ヘルパの引数型 `SolarSystemMotions` を `SolarSystemParts` へ |
-| `tests/physics/{celestial-body-windows,irregular-satellites,shape,small-bodies,body-orientation,celestial-motion}.test.ts` | `parts.motions.all` の参照を `parts.bodies` へ |
-
-**達成条件と検証**: `npm run typecheck` と `npm run test:physics` が green。
-`grep -rn "SolarSystemMotions\|\.earthSystem\.\|\.dwarfPlanets\.\|\.innerPlanets\.\|\.jupiterSystem\.\|\.smallBodies\." tests/` が 0 件(tests/dist を除く)。
-削除したテストは1件(id 並びの固定)であることを報告に書く。
-
-### 手順5. 木の一元化 — physics/solar-system を game/celestial/solar-system へ統合
-
-**目的**: P1 の解消(本体)。系ごとに Def・運動構築・名前・測光・entity 構築を1ファイルへ
-まとめ、写像型を撤去し、physics/solar-system から constants.ts 以外を消す。
-**この時点で挙動は変えない**(`all` の宣言順・全 Def 値・id を厳密に保つ)。
-
-**統合後の形**(earth-system.ts の例):
-
-- `type EarthSystemBodyId = 'earth' | 'moon'`(系の id 集合のアンカー)と、
-  Def(`EARTH` / `MOON` / `EARTH_ATMOSPHERE`)・`EARTH_SYSTEM_NAMES: Record<EarthSystemBodyId, string>`・
-  テクスチャ/測光・`EARTH_ATMOSPHERE_OPTICS` を1ファイルに置く。
-- 構築関数は運動と見た目を1体につき1箇所で組む:
-  `earthSystem(sun, phases, epochOffsetSec, pack, origin, earthSpinPhase0)` が
-  `Record<EarthSystemBodyId, CelestialEntity>` を返す(網羅性は決めたこと4)。
-  `*Motions` 型と `*Entities` 関数の対は消える。
-- `game/celestial/solar-system/solar-system.ts` が `EciOrigin`・`OriginCenteredEphemeris`・
-  `StarMotion` を自分で組み(現 physics 側 solar-system.ts:47-71 の写し)、全系の entity から
-  `all` を**現行と同じ宣言順**で並べ、`CelestialSystem` を返す。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/solar-system/{earth-system,inner-planets,mars-system,jupiter-system,saturn-system,uranus-system,neptune-system,dwarf-planets,small-bodies}.ts` | physics 側の同名ファイルの内容を統合し、上記の形へ(9ファイル) |
-| `src/game/celestial/solar-system/solar-system.ts` | 全系の直接構築へ書き換え。`SolarSystemId` を各系 `*BodyId` union + `'sun'` として定義。`SOLAR_SYSTEM_BODY_NAMES` / `solarSystemBodyName` は存続 |
-| `src/physics/solar-system/{sun,poles,rings,moon-terms,satellite-orbit-builders}.ts` | `game/celestial/solar-system/` へ移動(中身は変えない) |
-| `src/physics/solar-system/{solar-system,earth-system,…9系ファイル,celestial-body-def 済}.ts` | **削除**(constants.ts だけ残す) |
-| `src/game/celestial/point-field.ts:10` | `JUPITER` の import を新パスへ |
-| `src/game/creative/orbit-form-fields.ts:5`、`object-placer-panel.ts:13` | `EARTH` / `MOON` の import を新パスへ |
-| `src/render/earth.ts:9-10` | `EARTH` の import を新パスへ(解体は手順7) |
-| `tools/render-lab/cases.ts` | `MARS` / `SATURN` / `RingBandDef` を新パスへ(これで cases.ts の天体定義参照は game 側だけになる) |
-| `tools/export-lagrange-orbits.mjs`、`tools/compile-physics.mjs` | **文字列パス**で `'solar-system/sun'` 等を指定している — 新パスへ書き換え、`node tools/export-lagrange-orbits.mjs` が読み込みまで通ることを確認(生成物の差分は commit しない) |
-| `tests/physics/test-helpers.ts` | `solarSystemParts` を game 側 `solarSystem('earth', …)` 呼びで再実装(戻りは CelestialSystem。`motionOf(cs, id)` = `cs.bodyOf(id).motion`)。`SolarSystemMotions` 型の参照を消す |
-| `tests/physics/{satellite-orbit,shape,small-bodies,laplace-satellites,equatorial-satellites,irregular-satellites,body-orientation,atmosphere}.test.ts` | 実データ検証(仕分け規則6-ii)として `tests/game/` へ移設し、import を新パスへ。`.earthSystem.moon` 等の named-field アクセスは `motionOf` へ |
-| `tests/physics/{elements,kepler-orbit,kepler-extrapolation,kinematic-state,n-body,shadow,srp,surface-contact,trajectory-features,celestial-motion,dynamics,…}.test.ts` | サンプル値としてだけ使う `MU_EARTH` 等はテストローカル定数化(手順6の張り替え対象を減らす)。取り切れない分は手順6で張り替え |
-| `tests/game/{focus-target,plan,body-visibility,window-agreement,predicted-arc,creative-placement-validation}.test.ts` | `solarSystemParts` / Def / 定数の参照を新ヘルパー・新パスへ |
-| `tests/perf/{common,sphere-contact-sweeps,exp10-sphere-contact}.ts` | import を新パスへ(npm test の対象外だが壊したまま残さない) |
-
-**達成条件と検証**: `npm run typecheck`。`npm run test`(全層 — テストの移設を含むため)。
-`ls src/physics/solar-system/` が constants.ts のみ。`grep -rn "in keyof" src/game/celestial/` 0件。
-`grep -rn "solarSystemMotions" src/ tests/` 0件。移設・削除したテストファイルと理由の一覧を報告。
-一時検証(commit しない): 新旧の `bodies.map(b => b.id)` を突き合わせ、95天体の並びが同一で
-あることを確認する。
 
 ### 手順6. constants.ts の移動と全参照の張り替え
 

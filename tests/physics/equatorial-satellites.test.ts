@@ -9,7 +9,7 @@ import {
 } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
-import { EPOCH_T_OFFSET } from '../../src/physics/solar-system/constants';
+import { EPOCH_T_OFFSET } from '../../src/game/celestial/solar-system/constants';
 import { PLUTO } from '../../src/game/celestial/solar-system/dwarf-planets';
 import { EARTH, MOON } from '../../src/game/celestial/solar-system/earth-system';
 import { ORCUS, QUAOAR } from '../../src/game/celestial/solar-system/small-bodies';
