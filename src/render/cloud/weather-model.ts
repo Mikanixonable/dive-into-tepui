@@ -76,7 +76,7 @@ const TYPHOON_EYE_DRYNESS = 0.45;
 // 湿度の底上げと、平均湿度(海 1、陸 0)の重み。地表付近と上層で別に持つ。重みは陸と海の
 // どちらもしきい値をまたげる幅に留める — 大きく取ると海が一様に曇り、陸から雲が消えて、
 // 標高と風下の効果がしきい値へ届かなくなる。
-const HUMIDITY_BASE = 0.56;
+const HUMIDITY_BASE = 0.545;
 const MEAN_HUMIDITY_WEIGHT = 0.06;
 const UPPER_HUMIDITY_BASE = 0.47;
 const UPPER_MEAN_HUMIDITY_WEIGHT = 0.05;
