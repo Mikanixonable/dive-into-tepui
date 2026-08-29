@@ -20,8 +20,8 @@ export type CloudSample = {
 // 地表付近の湿度が COVERAGE_ONSET から COVERAGE_FULL の間で雲量 0..1 になり、雲底は乾いているほど
 // 高く(持ち上げ凝結高度 [m/湿度不足])、層の厚みは層雲の厚み [m] に、暖かさ [m/°C] と上昇流
 // [m per m/s] で伸びる対流の分を足す。スラブ 1 枚を満たす雲の光学的厚みが TAU_PER_SLAB。
-const COVERAGE_ONSET = 0.6;
-const COVERAGE_FULL = 0.85;
+const COVERAGE_ONSET = 0.55;
+const COVERAGE_FULL = 0.72;
 const CONDENSATION_LEVEL_PER_DRYNESS = 2500;
 const CLOUD_BASE_MIN = 300;
 const STRATUS_DEPTH = 800;
