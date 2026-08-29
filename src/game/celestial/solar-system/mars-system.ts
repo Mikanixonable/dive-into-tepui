@@ -4,7 +4,7 @@ import marsTextureUrl from '../../../assets/2k_mars.jpg';
 import phobosTextureUrl from '../../../assets/2k_phobos.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
+  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { MU_MARS } from './constants';
@@ -88,19 +88,19 @@ export function marsSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
   pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<MarsSystemBodyId, CelestialEntity> {
-  const mars = new PlanetMotion(MARS, sun, phases[MARS.id] ?? 0, epochOffsetSec, pack, origin);
+  const mars = new PlanetMotion(planetDefAtEpoch(MARS, phases, epochOffsetSec), sun, pack, origin);
   return {
     mars: new PointEntity(
       mars, MARS_SYSTEM_NAMES.mars, 'planet', CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS,
     ),
     phobos: new SphereEntity(
-      new SatelliteMotion(PHOBOS, mars, phases[PHOBOS.id] ?? 0, epochOffsetSec, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(PHOBOS, phases, epochOffsetSec), mars, pack, origin),
       MARS_SYSTEM_NAMES.phobos, 'satellite',
       // 平均輝度 0.2774(A_B は幾何 0.071 x q=0.393)
       CelestialSurface.textured({ url: phobosTextureUrl, albedoScale: 0.1009, bondAlbedo: 0.028, averageHue: [1, 1, 1] }),
     ),
     deimos: new SphereEntity(
-      new SatelliteMotion(DEIMOS, mars, phases[DEIMOS.id] ?? 0, epochOffsetSec, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(DEIMOS, phases, epochOffsetSec), mars, pack, origin),
       MARS_SYSTEM_NAMES.deimos, 'satellite',
       // A_B=0.027(幾何 0.068 x q=0.393)
       CelestialSurface.solid([0.0330, 0.0259, 0.0199]),

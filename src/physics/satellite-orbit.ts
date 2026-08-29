@@ -14,7 +14,7 @@
 import { Quat } from './attitude';
 import { PlanetAngles } from './planet-orbit';
 import { eclToEci, eciToEcl } from './ecliptic';
-import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitState } from './kepler-orbit';
+import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitAtEpoch, keplerOrbitState } from './kepler-orbit';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { dot, len } from '../math/vec3';
 
@@ -114,14 +114,21 @@ function sumPeriodicTerms(
 // 回転基準系(kepler-orbit.ts の keplerOrbitRotation)と軌道法線は二体部分(平均要素)
 // だけから組まれ、周期項を含まない — 混ぜると角速度が滑らかでなくなるためで、
 // この結果、衛星の実位置は回転系の x̂ 軸から最大 2.5° ほどずれる(周期項の振幅の総和)。
+// 二体部分の元期を epochOffsetSec ぶん進め、平均黄経へ初期位相 phase を足した軌道。周期項の
+// 引数はすべて二体部分の角から組むので、畳むのは kepler だけでよい。
+export function satelliteOrbitAtEpoch(
+  orbit: SatelliteOrbit, phase: number, epochOffsetSec: number,
+): SatelliteOrbit {
+  return { ...orbit, kepler: keplerOrbitAtEpoch(orbit.kepler, phase, epochOffsetSec) };
+}
+
 export function satelliteState(
   orbit: SatelliteOrbit,
   planetAngles: PlanetAngles,
   t: number,
-  phaseOffset: number,
 ): KinematicState {
   const k = orbit.kepler;
-  const base = keplerOrbitState(k, t, phaseOffset);
+  const base = keplerOrbitState(k, t);
   // 黄道座標への分解は黄道極を通る軌道で rho0 = hypot(x,y) → 0 となり速度が発散する。
   // 重ねる補正が1項も無いなら分解する意味自体が無いので、二体解をそのまま返す。
   if (orbit.lonTerms.length === 0 && orbit.latTerms.length === 0 && orbit.distTerms.length === 0) return base;
@@ -140,7 +147,7 @@ export function satelliteState(
 
   // 出典(Meeus)の基本角と同じ、太陽からの平均離角 D・太陽の平均近点角 M・衛星の平均近点角
   // M'・衛星の昇交点からの緯度引数 F(すべて平均角)。
-  const satL = k.l0 + phaseOffset + k.lRate * t;
+  const satL = k.l0 + k.lRate * t;
   const sunL = planetAngles.meanLongitude + Math.PI; // 見かけの太陽黄経 = 惑星の日心黄経 + π
   const d = satL - sunL;
   const m = planetAngles.meanAnomaly;

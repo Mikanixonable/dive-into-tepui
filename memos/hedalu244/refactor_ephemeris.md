@@ -82,9 +82,10 @@ uranus, neptune, pluto)で、登録されている天体は **98 体**ある。�
   からは最大 1.2 m 動く。
 - 時刻軸を ET 秒側へ揃えて暦に `J2000 + et/86400` を計算させる案も、同じ理由で
   `epochJdTdb + simTime/86400` とはビット一致しない(月で 0.1 m 規模)。
-- **したがって、時刻軸を1つに揃える限り「挙動を変えない」は達成できない。** 残る選択は
-  「phase だけ畳んで epochOffsetSec は呼び出し側に残す(ビット一致)」か、「両方畳んで
-  1〜2 m の変化と精度改善を受け入れる」か。
+- **したがって、時刻軸を1つに揃える限り「挙動を変えない」は達成できない。**
+  **2026-08-30、両方畳む(2π 正規化あり)を選択。** 実測: 天体位置は最大 4.5 m 動いたが、
+  平均黄経の丸め雑音(等間隔 t での2階差分。真値は厳密に 0)は **2.18 m → 1.06 mm** へ
+  2048 倍改善した。動いた 4.5 m はその雑音を取り除いたぶんの位相の付け替えである。
 
 畳めば `keplerOrbitState(orbit, t)` / `satelliteState(orbit, t)` は **純粋な t → 状態の写像**になり、
 ephemeris の `stateOf(id, t)` と同じ形になる。`phaseOffsets` はセーブに残り
@@ -135,14 +136,15 @@ ephemeris の `stateOf(id, t)` と同じ形になる。`phaseOffsets` はセー�
 1. 原点天体を引く処理が `CelestialMotion.eciStateAt` の1箇所だけになる —
    `grep -rn "origin" src/physics/absolute-ephemeris.ts` が 0 件。
 2. `HelioEphemeris` が ECI 原点天体の id を知らない(コンストラクタが受け取らない)。
-3. `keplerOrbitState` / `satelliteState` / `planetAngles` から `phaseOffset` 引数が消える —
-   `grep -rn "phaseOffset" src/` が 0 件。
-4. `epochOffsetSec` が `physics/` と `game/celestial/solar-system/` の引数から消える —
-   `grep -rn "epochOffsetSec" src/game/celestial/` が 0 件。
+3. `keplerOrbitState` / `satelliteState` / `planetAngles` / `keplerOrbitRotation` /
+   `keplerOrbitNormal` / `keplerOrbitMeanDirection` が位相の引数を取らない — `src/physics/` に
+   `phaseOffset` が 0 件(`render/aurora.ts` の同名は無関係)。
+4. `epochOffsetSec` が `CelestialMotion` へ渡らない。`game/celestial/` に残るのは
+   `planetDefAtEpoch` / `satelliteDefAtEpoch` へ渡す配管だけ。
 5. `OrbitalElements` が元期を持ち、`stateOnOrbitAt(el, t)` がある。参照軌道では null を返す。
-6. **数値が変わらない** — 下記のベースライン比較で、全 98 天体・全サンプル時刻の位置・速度が
-   変更前と一致する。**手順2 だけはビット一致にできない**(下記)ので、そこでは ECI 位置の
-   ノルムに対する相対差が 1e-12 以下であること。手順1・3・4 はビット一致。
+6. **数値の動きが説明できる** — 下記のベースライン比較で、
+   手順1・4 はビット一致、手順2 は 1 ulp(位置 2.3e-16 / 速度 5.2e-16)、手順3 は位相の
+   付け替えぶんで最大 4.5 m(didymos、|r| = 2.6e11 m すなわち相対 1.7e-11)。
 7. `npm run typecheck` と `npm run test`(全層)が通る。
 
 ### ベースライン比較の手順(達成目標6 の測り方)
@@ -165,32 +167,7 @@ tests/physics/_baseline.ts(一時ファイル。*.test.ts にしないこと —
 
 ## 手順
 
-### 手順3. 位相定数と元期オフセットを軌道へ畳む
-
-**目的.** 解析側の時刻引数を、ephemeris と同じ「絶対時刻1つ」に揃える。位相を別引数で持ち回る
-形をやめる。**`phase` の畳み込みはビット一致、`epochOffsetSec` の畳み込みは最大 1〜2 m 動く**
-(判断3 を参照)。どちらまで畳むかはユーザーの判断。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/kepler-orbit.ts:67-173` | `orbitAngles` / `keplerOrbitState` / `keplerOrbitRotation` / `keplerOrbitNormal` / `keplerOrbitMeanDirection` から `phaseOffset` 引数を落とす |
-| `src/physics/kepler-orbit.ts:29-43` | `KeplerOrbit` へ位相と元期オフセットを畳む関数を足す(`l0 += phase + lRate*offset` ほか、各要素へ rate × offset を加える) |
-| `src/physics/planet-orbit.ts:54-63` | `planetAngles` から `phaseOffset` 引数を落とす |
-| `src/physics/satellite-orbit.ts:117-122` | `satelliteState` から `phaseOffset` 引数を落とす。周期項の引数も畳み込み済みの `t` で組む |
-| `src/physics/celestial-motion.ts:103-115` | コンストラクタから `phase` / `epochOffsetSec` を落とし、構築側で畳んだ軌道を受け取る。`readonly phase` を参照している箇所(`:256-274`, `:337-344`, `:379-390`, `:462-466`, `:524-529`)を追従 |
-| `src/game/celestial/solar-system/solar-system.ts` と系ファイル9本 | `phases` / `epochOffsetSec` を各 Motion へ渡すのをやめ、`Def` の軌道値を畳んでから渡す。`epochOffsetSec` の引き回し 133 箇所が消える |
-| `src/game/stages/stage-debug-alt-system.ts:63-68` | 同じ形へ追従 |
-| `tests/physics/test-helpers.ts:24-31` | `solarSystemParts` の引数を追従 |
-| `tests/physics/{celestial-motion,kepler-orbit,satellite-orbit,irregular-satellites,laplace-satellites,small-bodies}.test.ts` | `phaseOffset` を渡している呼び出しを追従(この6本が該当) |
-
-**`phaseOffsets` はセーブに残す** — `CelestialSystem.serialize()`(`celestial-system.ts:182`)と
-`save-data.ts:335` はそのまま。畳むのは構築時であって、保存される値ではない。
-
-**達成条件と検証.** `npm run typecheck` / `npm run test`(全層)。
-`grep -rn "phaseOffset" src/` が 0 件、`grep -rn "epochOffsetSec" src/game/celestial/` が 0 件。
-ベースライン比較が全 98 天体 × 7 時刻で完全一致。
+**全手順を実施済み**(2026-08-30)。手順5 は案X 採用により実施しない。
 
 ## 見積り
 
@@ -200,7 +177,7 @@ tests/physics/_baseline.ts(一時ファイル。*.test.ts にしないこと —
 | --- | --- | --- |
 | ~~1~~ | 実測 33 行 | 実施済み |
 | ~~2~~ | 実測 15 ファイル / +126 −77 行 | 実施済み。位置・速度の最大相対差 5.2e-16(1 ulp) |
-| 3 | 約 200 | `epochOffsetSec` 133 + `phaseOffset` 19 + `keplerOrbitState` 36 + `planetAngles` 19 の一部 |
+| ~~3~~ | 実測 21 ファイル / 構築 99 箇所 | 実施済み。位置が最大 4.5 m 動く(下記) |
 | ~~4~~ | 実測 4 ファイル / +52 −23 行 | 実施済み。ベースラインはビット一致 |
 | ~~5~~ | — | 案X 採用により実施しない |
 
