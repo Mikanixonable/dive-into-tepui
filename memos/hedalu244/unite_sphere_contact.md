@@ -73,7 +73,7 @@ linearSphereContact / curveSphereContact(次数) / sweptSagitta … src/ から�
 | `ContactPhysics.resolveSubstep` | `Simulator.surfaceBodies` — ×4 以下でしか呼ばれないので常に `ephemeris.attractorsAt` | 101 |
 | `ContactPhysics.resolveBelt` | `ephemeris.attractorsAt` | 101 |
 | `checkLoss`(`DynamicSystem.cleanup` 経由) | 同じ `Simulator.surfaceBodies` — ×4 以下は `attractorsAt`、×4 超はサブステップ中点の `gravityAttractorsAt` | 101 / 65 |
-| `PredictedArc.checkSurfaceReach` | `ArcBodies.resolve().collision` | ≤ 101 |
+| `PredictedArc.checkSurfaceReach` | `ArcCelestialBodies.resolve().collision` | ≤ 101 |
 
 (既定レジストリ `SOLAR_SYSTEM` は 101 体。`mu: 0` が 36 体なので重力源は 65 体、`atmosphere` を
 持つのは 1 体。)**個体は弧の候補に入らない。**

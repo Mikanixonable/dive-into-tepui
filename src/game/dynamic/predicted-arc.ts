@@ -13,7 +13,7 @@ import { firstSurfaceContact } from '../../physics/surface-contact';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { dot, len, sub } from '../../math/vec3';
-import { ArcBodies, type ArcBodyWindow, type FutureCelestialBodyProvider } from './arc-celestial-bodies';
+import { ArcCelestialBodies, type ArcCelestialBodyWindow, type FutureCelestialBodyProvider } from './arc-celestial-bodies';
 import { atmosphericMaxStep } from './time-step';
 import * as C from '../const';
 
@@ -54,10 +54,10 @@ export class PredictedArc {
   private _impact: BodyImpact | null = null;
   private _apsides: ApsisTrack | null = null;
   // この弧が引く天体の一覧。
-  private readonly bodies: ArcBodies;
+  private readonly bodies: ArcCelestialBodies;
   // 前歩の中点で解決した窓の持ち越し。刻み幅と外挿・極値の中心天体の解決だけに使うので、
   // 半歩〜1フレーム古い内容で構わない(RK4 は鈍感、外挿中心は元から1歩古い)。
-  private carriedSources: ArcBodyWindow | null = null;
+  private carriedSources: ArcCelestialBodyWindow | null = null;
   // 要求された間引き下限(span / ARC_MAX_SAMPLES)の最も粗い値。周期由来の間隔は含めない —
   // 含めると、作り直しても同じ値になる粗さを理由に represents が毎フレーム作り直しを命じる。
   private _decimation = 0;
@@ -87,7 +87,7 @@ export class PredictedArc {
     this._trajectory = new DynamicTrajectory(state0);
     this.requiredEnd = state0.t;
     this.retainFrom = state0.t;
-    this.bodies = new ArcBodies(sources);
+    this.bodies = new ArcCelestialBodies(sources);
   }
 
   // 直近の1歩が解決した天体の数と、そのうち期限到来で訪問したものの数。
