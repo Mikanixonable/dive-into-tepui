@@ -23,7 +23,8 @@ import { REFERENCE_STAR_RADIANT_INTENSITY, SunLight } from '../../render/pipelin
 import type { Exposure } from '../../render/pipeline/exposure';
 import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
 import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
-import { selectPlanetLights } from './planet-light';
+import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
+import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { atmosphereDraws } from '../../render/atmosphere';
@@ -321,13 +322,18 @@ export class CelestialSystem {
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, gridVisibility);
   }
 
-  // 天体照の光源を選び、描画座標へ移してライティング側のスロットへ渡す。基準点は露出と
-  // 同じ注視点。
+  // 天体照の光源の候補を組んで選定へ渡し、**選ばれたものだけ**を描画座標へ移してライティング
+  // 側のスロットへ入れる。基準点は露出と同じ注視点。
   private syncPlanetLights(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem): void {
-    const lights = selectPlanetLights(this, displayTime, cameraSystem.activeViewpoint.lookTarget);
+    const candidates = this.celestialBodiesAt(displayTime).map((celestialBody) => ({
+      celestialBody,
+      albedo: this.bodyOf(celestialBody.id).lightSourceAlbedo ?? DEFAULT_ALBEDO,
+    }));
+    const lights = selectPlanetLights(
+      candidates, this.starBody?.radiantIntensity ?? null, cameraSystem.activeViewpoint.lookTarget);
     this.planetLight.set(lights.map((light) => ({
-      center: fo.RtoThreeV3(light.body.state.r),
-      radius: light.body.radius,
+      center: fo.RtoThreeV3(light.celestialBody.state.r),
+      radius: light.celestialBody.radius,
       radiance: light.radiance,
     })));
   }
