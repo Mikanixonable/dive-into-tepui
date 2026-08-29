@@ -77,13 +77,13 @@ const UPPER_GEOSTROPHIC_FACTOR = 2;
 const ADVECTION_PERIOD = 12 * 3600;
 // 台風の目。中心で地表付近と上層の湿度をこれだけ下げ、雲を抜く。
 const TYPHOON_EYE_DRYNESS = 0.45;
-// 湿度の底上げと、平均湿度(海 1、陸 0)の重み。地表付近と上層で別に持つ。重みは陸と海の
-// どちらもしきい値をまたげる幅に留める — 大きく取ると海が一様に曇り、陸から雲が消えて、
-// 標高と風下の効果がしきい値へ届かなくなる。
-const HUMIDITY_BASE = 0.545;
-const MEAN_HUMIDITY_WEIGHT = 0.06;
-const UPPER_HUMIDITY_BASE = 0.47;
-const UPPER_MEAN_HUMIDITY_WEIGHT = 0.05;
+// 湿度の底上げ(平年の雲量が 0 の土地での値)と、平年の雲量の重み。地表付近と上層で別に持つ。
+// 重みは、雲量の地理的な差が凝結のしきい値をまたぐ幅に取る — 小さく取ると砂漠にも海と同じだけ
+// 雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、平年の雲量図がそのまま貼り付く。
+const HUMIDITY_BASE = 0.349;
+const MEAN_CLOUDINESS_WEIGHT = 0.35;
+const UPPER_HUMIDITY_BASE = 0.31;
+const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.28;
 
 export class WeatherModel {
   private readonly pressureNoise = new DriftingNoise(...PRESSURE_NOISE);
@@ -151,16 +151,16 @@ export class WeatherModel {
     const temperature = this.climate.meanTemperature(direction)
       .add(this.temperatureNoise.at(direction).mul(TEMPERATURE_NOISE_AMPLITUDE))
       .sub(terrainLift.mul(LIFT_COOLING));
-    const meanHumidity = this.climate.meanHumidity(direction);
+    const meanCloudiness = this.climate.meanCloudiness(direction);
     const eye = this.cyclones.typhoonEyeAt(direction).mul(TYPHOON_EYE_DRYNESS);
     const humidity = clamp(
-      float(HUMIDITY_BASE).add(meanHumidity.mul(MEAN_HUMIDITY_WEIGHT))
+      float(HUMIDITY_BASE).add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT))
         .add(this.advected(this.humidityNoise, direction, wind).mul(HUMIDITY_NOISE_AMPLITUDE))
         .add(lift.mul(LIFT_HUMIDITY)).sub(eye),
       0, 1,
     );
     const upperHumidity = clamp(
-      float(UPPER_HUMIDITY_BASE).add(meanHumidity.mul(UPPER_MEAN_HUMIDITY_WEIGHT))
+      float(UPPER_HUMIDITY_BASE).add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(this.advected(this.upperHumidityNoise, direction, upperWind).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye),
       0, 1,

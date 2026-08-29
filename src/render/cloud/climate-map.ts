@@ -1,4 +1,4 @@
-// 天体の気候の事前テクスチャ(正距円筒 RGB8: R 平均気温 / G 平均湿度 / B 標高)を読み、単位方向で
+// 天体の気候の事前テクスチャ(正距円筒 RGB8: R 平均気温 / G 平年の雲量 / B 標高)を読み、単位方向で
 // 標本化する。雲より桁で低周波な、その天体固有の分布だけを持つ。
 import * as THREE from 'three/webgpu';
 import { texture, vec2 } from 'three/tsl';
@@ -33,8 +33,8 @@ export class ClimateMap {
     return this.sample(direction).r.mul(TEMPERATURE_SPAN).add(TEMPERATURE_MIN);
   }
 
-  // 平均湿度 0..1。
-  public meanHumidity(direction: Vec3Node): FloatNode {
+  // 平年の雲量 0..1。
+  public meanCloudiness(direction: Vec3Node): FloatNode {
     return this.sample(direction).g;
   }
 
@@ -54,7 +54,7 @@ export class ClimateMap {
     );
   }
 
-  // 単位方向のテクセル(R 平均気温 / G 平均湿度 / B 標高、それぞれ 0..1)。
+  // 単位方向のテクセル(R 平均気温 / G 平年の雲量 / B 標高、それぞれ 0..1)。
   private sample(direction: Vec3Node): Vec4Node {
     return texture(this.map, equirectUvFromDirection(direction));
   }
