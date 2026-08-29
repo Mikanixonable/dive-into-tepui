@@ -6,8 +6,8 @@ import {
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { GRAVITATIONAL_CONSTANT } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity';
-import { SphereEntity } from '../sphere-entity';
+import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { SphereEntity } from '../celestial-entity/sphere-entity';
 import { PLUTO_POLE, equatorBasis } from './poles';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';
 

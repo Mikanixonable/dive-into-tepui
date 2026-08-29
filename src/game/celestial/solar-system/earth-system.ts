@@ -20,10 +20,10 @@ import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import { EarthCoastline } from '../../../render/earth-coastline';
 import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
-import type { CelestialEntity } from '../celestial-entity';
-import { GeostationaryOverlay } from '../geostationary-overlay';
-import { PointEntity } from '../point-entity';
-import { SphereEntity } from '../sphere-entity';
+import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { GeostationaryOverlay } from '../celestial-entity/geostationary-overlay';
+import { PointEntity } from '../celestial-entity/point-entity';
+import { SphereEntity } from '../celestial-entity/sphere-entity';
 import { MOON_DIST_TERMS, MOON_LAT_TERMS, MOON_LON_TERMS } from './moon-terms';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。

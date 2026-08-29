@@ -30,7 +30,7 @@ import type { FloatNode } from '../../src/render/tsl-types';
 import { type AtmosphereBody } from '../../src/render/atmosphere';
 import { EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
 import type { LineStyle } from '../../src/render/line-style';
-import { RingView } from '../../src/game/celestial/ring-view';
+import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
