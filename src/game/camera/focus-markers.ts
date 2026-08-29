@@ -5,7 +5,7 @@ import { ProjectFn } from './camera-system';
 import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../marker/marker-manager';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { occlusionOpacity } from '../../physics/occlusion';
-import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibility';
+import { BodyClassToggles } from '../celestial/body-visibility';
 import type { BodyClass } from '../celestial/celestial-entity-def';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
@@ -181,7 +181,6 @@ export class FocusMarkers {
   private shownLabels: readonly FocusLabel[] = [];
   // 直前のフレームに表示していたラベル id(集合から外れたものを隠すため)。
   private prevShownIds: readonly string[] = [];
-  private readonly nearbyTracker = new NearbySystemTracker();
 
   private celestialBodies: readonly CelestialBody[] = [];
   private readonly labelsById = new Map<string, FocusLabel>();
@@ -322,22 +321,13 @@ export class FocusMarkers {
 
   // 表示時刻 t の各ラベル座標を求め直す。表示対象の外にある天体は座標計算ごと飛ばす —
   // 登録天体が増えるほど lagrangeAt(1天体あたり positionOf 2回 + 回転系1回)が効くため。
+  // visibilityPolicy は同じフレームの update 位相で確定させた表示ポリシーを渡す。マーカー・
+  // 選択候補・参照線が同じインスタンスを読むことで、個別実装の解釈ずれをなくす。
   update(
-    t: number, focusId: string | undefined, toggles: BodyClassToggles, cameraPos: Vec3,
-    sharedVisibilityPolicy?: MapVisibilityPolicy,
+    t: number, toggles: BodyClassToggles, visibilityPolicy: MapVisibilityPolicy,
   ): void {
     const celestialSystem = this.celestialSystem;
     const celestialBodies = celestialSystem.celestialBodiesAt(t);
-    // フォーカスを解除しても、カメラが実際にいる惑星系の衛星は消さない。カメラ位置の
-    // 「近さ」を固定距離で判定せず、既存の重力系判定を使うことで、地球/月や木星/衛星の
-    // 境界を同じ規則で扱える。
-    const nearby = sharedVisibilityPolicy === undefined
-      ? this.nearbyTracker.membersAt(celestialSystem.motions, cameraPos, celestialBodies)
-      : [];
-    // まず表示対象を決め、その中だけ座標を引く。表示の判断は marker/map-picker/参照線と
-    // 同じ MapVisibilityPolicy を使い、個別実装の解釈ずれをなくす。
-    const visibilityPolicy = sharedVisibilityPolicy
-      ?? new MapVisibilityPolicy(celestialSystem, toggles, focusId, nearby);
 
     const positions: Record<string, Vec3> = {};
     const displayMap: Record<string, { icon: boolean; label: boolean }> = {};
