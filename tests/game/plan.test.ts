@@ -12,12 +12,13 @@ import { test } from '../harness';
 
 export function register(): void {
   test('plan: 月周回の区間長・アプシスが月中心の状態と重力定数で求まる', () => {
-    const { motions, windows } = solarSystemParts({ moon: 0 });
+    const parts = solarSystemParts({ moon: 0 });
+    const windows = parts.windows;
     const t = 12345;
     const radius = R_MOON + 100_000;
     const relativeR = v3(radius, 0, 0);
     const relativeV = v3(0, 0, Math.sqrt(MU_MOON / radius));
-    const moonState = motionOf(motions, 'moon').stateAt(t);
+    const moonState = motionOf(parts, 'moon').stateAt(t);
     const state = kinematicState(
       t,
       add(moonState.r, relativeR),

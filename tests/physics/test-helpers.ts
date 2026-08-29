@@ -6,14 +6,15 @@ import { CelestialMotion, OrbitingMotion, PhaseOffsets } from '../../src/physics
 import { FrameRotation } from '../../src/physics/kepler-orbit';
 import { ReferenceFrames } from '../../src/physics/reference-frames';
 import { EPOCH_T_OFFSET } from '../../src/physics/solar-system/constants';
-import { SolarSystemMotions, solarSystemMotions } from '../../src/physics/solar-system/solar-system';
+import { solarSystemMotions } from '../../src/physics/solar-system/solar-system';
 import { SECONDS_PER_DAY } from '../../src/physics/time';
 import { Vec3, cross, len, scale, sub, v3 } from '../../src/math/vec3';
 import { qRotate } from '../../src/physics/attitude';
 
-// 地球原点で組んだ現実の太陽系。天体1体ずつの運動と、系レベルの天体一覧の窓・座標系。
+// 地球原点で組んだ現実の太陽系。天体は宣言順(重力源配列・一覧の順序もこの並び)に並び、
+// 1体ずつは id で引く。系レベルの天体一覧の窓と座標系も一緒に持つ。
 export type SolarSystemParts = {
-  readonly motions: SolarSystemMotions;
+  readonly bodies: readonly CelestialMotion[];
   readonly windows: CelestialBodyWindows;
   readonly referenceFrames: ReferenceFrames;
 };
@@ -26,31 +27,33 @@ export function solarSystemParts(
   absoluteSource: AbsoluteEphemeris | null = null,
   epochJdTdb: number = 2451545 + epochOffsetSec / SECONDS_PER_DAY,
 ): SolarSystemParts {
-  const motions = solarSystemMotions('earth', phases, epochOffsetSec, absoluteSource, epochJdTdb);
+  const bodies = solarSystemMotions('earth', phases, epochOffsetSec, absoluteSource, epochJdTdb).all;
+  const earth = bodies.find((m) => m.id === 'earth');
+  if (earth === undefined) throw new Error('太陽系に地球が登録されていない');
   return {
-    motions,
-    windows: new CelestialBodyWindows(motions.all),
-    referenceFrames: new ReferenceFrames(motions.all, motionOf(motions, 'earth')),
+    bodies,
+    windows: new CelestialBodyWindows(bodies),
+    referenceFrames: new ReferenceFrames(bodies, earth),
   };
 }
 
 // 天体 id の運動。太陽系に登録されていない id を渡すと例外。
-export function motionOf(motions: SolarSystemMotions, id: string): CelestialMotion {
-  const motion = motions.all.find((m) => m.id === id);
+export function motionOf(parts: SolarSystemParts, id: string): CelestialMotion {
+  const motion = parts.bodies.find((m) => m.id === id);
   if (motion === undefined) throw new Error(`太陽系に登録されていない天体 id: ${id}`);
   return motion;
 }
 
 // 公転している天体 id の運動。恒星や未登録の id を渡すと例外。
-export function orbitingMotionOf(motions: SolarSystemMotions, id: string): OrbitingMotion {
-  const motion = motionOf(motions, id);
+export function orbitingMotionOf(parts: SolarSystemParts, id: string): OrbitingMotion {
+  const motion = motionOf(parts, id);
   if (!(motion instanceof OrbitingMotion)) throw new Error(`公転していない天体 id: ${id}`);
   return motion;
 }
 
 // 天体 id の時刻 t での ECI 位置。
-export function positionOf(motions: SolarSystemMotions, id: string, t: number): Vec3 {
-  return motionOf(motions, id).stateAt(t).r;
+export function positionOf(parts: SolarSystemParts, id: string, t: number): Vec3 {
+  return motionOf(parts, id).stateAt(t).r;
 }
 
 // 回転基準系の角速度が姿勢の時間微分と整合するか(基底の各軸で ḃ = ω×b)を中心差分で確かめる。
