@@ -2,7 +2,7 @@
 
 自機を喪失しても視点は自動で切り替わらないが、**追従対象を失った `ChaseCamera` は
 最後の `viewpoint` を保持したまま止まる。** 喪失した艦は積分されない
-(`GameEntity.stepActual` が `!alive` で自己抑制する)ので、そもそも凍結点しか見ていない。
+(`DynamicEntity.stepActual` が `!alive` で自己抑制する)ので、そもそも凍結点しか見ていない。
 一方 `Player.destroyEffect()` が撒く破片11個は艦の速度を引き継ぐので、
 軌道速度(LEO で約 7.6 km/s)で画面外へ出ていく。
 
@@ -11,7 +11,7 @@
 Creative では結果画面が出ないので見える。
 
 絵が欲しくなったときのために手順を残す。**着手は任意** — 追従対象の一般化
-(`ChaseCamera.target: GameEntity | null`)は済んでいるので、どちらの案も追加は配線だけ。
+(`ChaseCamera.target: DynamicEntity | null`)は済んでいるので、どちらの案も追加は配線だけ。
 
 ---
 

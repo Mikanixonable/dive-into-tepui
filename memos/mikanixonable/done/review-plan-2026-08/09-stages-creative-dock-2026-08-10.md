@@ -5,7 +5,7 @@
 ## 対象ファイル
 - `src/game/stages/`: stage.ts / stage-dictionary.ts / stage0.ts / stage00.ts / stage1.ts / stage2.ts / stage-debug*.ts / creative-stage.ts / stage-utils/(logistics / score-counter / score-attack-timer / stage-status-panel)/ spawner/
 - `src/game/creative/`: ship-placer-panel.ts / duplicate-form.ts / placement-validation.ts
-- `src/game/docking.ts` / `src/game/hud/dock-view.ts` / `src/game/game-entity/base.ts`
+- `src/game/docking.ts` / `src/game/hud/dock-view.ts` / `src/game/dynamic/dynamic-entity/base.ts`
 - `src/game/launch-select.ts` / `game-mode.ts` / `unlock-manager.ts` / `main.ts`(resolveLaunchSelection)
 
 ## 手順

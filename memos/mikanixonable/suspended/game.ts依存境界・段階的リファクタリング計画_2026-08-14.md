@@ -24,7 +24,7 @@
 
 | 種類 | 例 | 判断 |
 | --- | --- | --- |
-| セッションの中核状態 | `Ephemeris`、`EntityManager`、`Simulator`、`Stage` | `Game` が生成・進行を管理する現状では妥当 |
+| セッションの中核状態 | `Ephemeris`、`DynamicSystem`、`Simulator`、`Stage` | `Game` が生成・進行を管理する現状では妥当 |
 | 表示・操作の協調役 | `CameraSystem`、`PlanEditor`、`ViewManager`、`Targeter` | 同一フレームで順序を調停するため妥当 |
 | 表示・入力アダプタ | `Hud`、`GameScene`、`Input`、`Sfx` | 最上位の組立地点が知るのは妥当 |
 | 低レベルの補助 | `v3`、`focusPoint`、`KEY_MAPPING`、`SIM_EPOCH_*` | 粒度は細かいが、現段階で抽象化するほどの反復・交換可能性はない |
@@ -80,7 +80,7 @@
    - `ActivePlayerController`: `current` の参照と操作対象の変更
    - `Stage`: `executesPlans` と `authoring` の判定
    - `FrameControls`: フォーカス変更
-   - 既存の `CameraSystem`、`EntityManager`、`Ephemeris` など
+   - 既存の `CameraSystem`、`DynamicSystem`、`Ephemeris` など
 5. auto-warp の時刻には、すでに `refresh()` で保持している `lastSimTime` を使う。イベント処理時点の simulation time を引数で渡す必要があると判明した場合だけ、その値を個別引数として渡す。
 
 受入条件:

@@ -61,12 +61,13 @@
 **`dispose` はここにあってよい。** 構築の逆順で配線を解くのはオーケストレーションそのもので、
 1.2 の言う「実装」ではない。hook が毎回警告するのは hook 側の粒度の問題なので、直すなら hook。
 
-### 4. `game/celestial/` の置き場と命名
+### 4. `game/celestial/` の置き場
 
 `src/celestial/` へ出す条件「`game/` を import しない」が不成立。残っている import は
 `game/camera/floating-origin`・`game/camera/camera-system`・`game/camera/focus-target`・
-`game/marker/marker-manager`・`game/lines/orbit-line`・`game/const` の6種
-(この一覧は `987fd46c` 時点のスナップショット。食い違ったらコードを信じる)。
+`game/marker/marker-manager`・`game/lines/orbit-line`・`game/map/visibility-policy` の6種
+(この一覧は `HEAD` 時点のスナップショット。食い違ったらコードを信じる)。
+`game/const` への依存は消えた一方、マップ表示ポリシーを `game/map/` へ出したぶん
+`game/map/visibility-policy` への依存が増えた(`CelestialSystem.sync` の引数型なので
+`import type` 1件のみで、実行時の依存は無い)。
 カメラ・マーカー・線の抽象を切るか、置き場は現状維持かの判断が要る。
-あわせて `System` / `Manager` の使い分け(`CelestialSystem` と `EntityManager` の非対称)も
-再検討する。

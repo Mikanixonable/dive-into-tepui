@@ -22,7 +22,7 @@ Tepui の軌道表示は3つの線が同じ画面に重なる構造になって�
 モジュールが別の判断基準で決めている。2026-08-10 に実施した調査で、その判断基準の不整合に由来する
 不具合と、責務の置き場所の誤りが見つかった。この計画書はその修正を5つのフェーズに分けて記述する。
 
-適用範囲は `src/game/plan/`、`src/game/simulation/predictor.ts`、`src/game/game-entity/game-entity.ts`、
+適用範囲は `src/game/plan/`、`src/game/dynamic/predictor.ts`、`src/game/dynamic/dynamic-entity/dynamic-entity.ts`、
 `src/render/orbit-line.ts`、`src/render/sampled-line.ts`、`src/game/predicted-trajectory-line.ts`、
 `src/game/debug-trajectory-line.ts`、`src/game/map-picker.ts`、`src/game/object-list-panel.ts`、
 `src/game/display-time-panel.ts`、`src/game/frame-controls.ts`、`src/game/view-manager.ts`。
@@ -104,7 +104,7 @@ HUD 上の入力欄がキーイベントの伝播を止めなければ、欄に�
 画面上はギズモが別ノードへ移動するだけなので、原因が推測できない。
 
 **修正** — 選択をノードの参照(`KinematicState`)で保持する。`Plan` のノードは不変オブジェクトで
-あり、編集のたびに新しい `KinematicState` へ置き換わる(この不変性は `GameEntity.orbitalElementsAround`
+あり、編集のたびに新しい `KinematicState` へ置き換わる(この不変性は `DynamicEntity.orbitalElementsAround`
 のメモ化と `DynamicTrajectory` の履歴記録が依存している、プロジェクト全体の前提である)。したがって
 参照で持てば「編集で置き換わったノード」と「消化されて消えたノード」の両方を、配列位置ではなく
 同一性で判定できる。index が必要な箇所(`Plan.applyNodeDv` の引数など)は、参照から
@@ -283,7 +283,7 @@ index による保持は「配列が前方から詰まらない」という、`P
 
 ### 3-2. `synced` 集合の廃止
 
-**現状** — `PredictedTrajectoryLine` は `synced: Set<GameEntity>` を持つ。これは `hasLineFor` が
+**現状** — `PredictedTrajectoryLine` は `synced: Set<DynamicEntity>` を持つ。これは `hasLineFor` が
 `EntityLineSet.lineFor` を呼ぶと、**問い合わせただけで線を新規作成してしまう**ため、その副作用を
 打ち消す目的だけで存在する。
 
@@ -347,7 +347,7 @@ index による保持は「配列が前方から詰まらない」という、`P
 
 ### 4-2. 予測の許容誤差が「現在の表示期間」に追随して破棄を誘発する
 
-**現状** — `src/game/game-entity/game-entity.ts` の `GameEntity.resyncPrediction` は、予測列が実際の
+**現状** — `src/game/dynamic/dynamic-entity/dynamic-entity.ts` の `DynamicEntity.resyncPrediction` は、予測列が実際の
 状態からどれだけ乖離したかを見て、閾値を超えていれば列を破棄する。この閾値
 (`resyncTolerance`)は固定値ではなく、「予測列の間引き間隔における Hermite 補間の誤差」に
 合わせて広げられている。長い表示期間では列が粗く間引かれ、補間誤差そのものが数十キロメートルに
@@ -373,7 +373,7 @@ index による保持は「配列が前方から詰まらない」という、`P
 
 ### 4-3. 予測予算の配分で他エンティティが停止する
 
-**現状** — `src/game/simulation/predictor.ts` の `Predictor.update` は、まず操作対象艦に
+**現状** — `src/game/dynamic/predictor.ts` の `Predictor.update` は、まず操作対象艦に
 `PREDICT_STEP_BUDGET` の予算を渡し、その残りで全エンティティのラウンドロビンを回す。艦の予測が
 未完成の間は予算が使い切られ、ラウンドロビンに入らず `cursor` も進まない。
 
@@ -614,7 +614,7 @@ normal・radial・照準・バーン方位)は矢、軌道上の点(近地点・
 |---|---|---|
 | `Plan.retimeNode` | `Plan.replaceNode` | 主な用途である `PlanEditor.setNodeDvLocal` は時刻を変えず速度だけ差し替えるため、現在の名前が実体と乖離している |
 | `Plan.deleteFollowingNodes` | `Plan.truncateAfter` | `Plan.removeNode` が行う切り詰めと対称な名前にし、境界の含み方の違いを名前で表す |
-| `GameEntity.resyncPrediction` | `GameEntity.discardPredictionIfDiverged` | 再同期は行わず、乖離時に破棄するだけである |
+| `DynamicEntity.resyncPrediction` | `DynamicEntity.discardPredictionIfDiverged` | 再同期は行わず、乖離時に破棄するだけである |
 | `PlanPath.finalSegmentStart` / `finalSegmentSamples` / `finalPeriapsisPoint` / `finalApoapsisPoint` | `PlanPath.finalSegment()` に統合 | 他の出力はすべてメソッドであるのに、末尾区間だけが public な可変フィールドとして露出しており、更新前の値を外部が読める |
 | `OrbitLine` の `perRadius` | `radiiPerRadian` | 実体は「長半径 ÷ 天体半径」であり、現在の名前は単位も意味も逆を示す |
 | `SampledLine.lastScale` | `SampledLine.bakedScale` | 「最後に頂点を焼いたときの m/px」であり、早期 return では更新されないという意図が現在の名前から読めない |

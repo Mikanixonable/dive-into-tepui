@@ -47,6 +47,6 @@ ephemeris 解体後に残っていた「見た目と運動の二重木」を解�
   外すと挙動が変わる。
 - `orbit-guide-lines.ts` の `'earth'` 直結。ツンドラ等は地球専用ガイドという仕様どおり。
 - `point-entity.ts` の `SUN_APPARENT_MAGNITUDE`(表示応答の校正値。太陽固有だが game 側)。
-- `CelestialSystem` / `EntityManager` の命名非対称(`refactor_game.md` 論点4)。
+- `CelestialSystem` / `DynamicSystem` の命名非対称(`refactor_game.md` 論点4)。
 - `small-bodies.ts` は 571 行。ほぼ Def のデータ表で、分割すると対応付けが外部化するため
   意図的に分けていない。

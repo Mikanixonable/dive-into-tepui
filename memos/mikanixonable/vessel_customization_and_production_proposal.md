@@ -30,9 +30,9 @@
 └──────────────┘       └──────────────────┘       └────────────────────┘
 ```
 
-### (1) 追加・拡張するデータモデル（`src/game/game-entity/`）
+### (1) 追加・拡張するデータモデル（`src/game/dynamic/dynamic-entity/`）
 
-#### ① `VesselBlueprint`（新規作成: `src/game/game-entity/blueprint.ts`）
+#### ① `VesselBlueprint`（新規作成: `src/game/dynamic/dynamic-entity/blueprint.ts`）
 プレイヤーがデザインした艦艇の「設計図」を表すシリアライズ可能なデータ構造。
 ```typescript
 export interface PaintScheme {
@@ -57,7 +57,7 @@ export interface VesselBlueprint {
 }
 ```
 
-#### ② `VesselFrame`（新規作成: `src/game/game-entity/vessel-frame.ts`）
+#### ② `VesselFrame`（新規作成: `src/game/dynamic/dynamic-entity/vessel-frame.ts`）
 艦艇の基礎スケルトン（骨格）を定義するマスターデータ。艦艇タイプごとに装着可能なスロット（ハードポイント）の座標や対応パーツ種別を持つ。
 ```typescript
 export interface HardpointSocket {
@@ -78,7 +78,7 @@ export interface VesselFrame {
 }
 ```
 
-#### ③ `Part` のビジュアル拡張（`src/game/game-entity/parts.ts`）
+#### ③ `Part` のビジュアル拡張（`src/game/dynamic/dynamic-entity/parts.ts`）
 各パーツに 3Dメッシュ識別子（`meshAssetId`）とアタッチ用のオフセットを追加し、アセンブリ時にどの3Dモデルをどこに結合するかを紐付ける。
 
 ---
@@ -100,11 +100,11 @@ export interface VesselFrame {
 
 ### (3) ロジック・ステート層の拡張
 
-#### ① `Vessel`（旧 `Ship`）/ `Player` クラスの更新（`src/game/game-entity/vessel.ts` または `ship.ts`）
+#### ① `Vessel`（旧 `Ship`）/ `Player` クラスの更新（`src/game/dynamic/dynamic-entity/vessel.ts` または `ship.ts`）
 * `recalculateSpecsFromBlueprint(bp: VesselBlueprint)` メソッドを追加。
 * 単にパーツの `maxHp` や `weight` を合計するだけでなく、**総重量・推力重量比 (TWR)・慣性モーメント（旋回性能）・発電・放熱・DPS** を動的に再計算。
 
-#### ② `BaseState` の拡張（`src/game/game-entity/base.ts`）
+#### ② `BaseState` の拡張（`src/game/dynamic/dynamic-entity/base.ts`）
 * `blueprints: VesselBlueprint[]` （基地に保存されている設計図リスト）
 * `productionQueue: ProductionTask[]` （生産中の艦艇と完了までのタイマー）を追加。
 

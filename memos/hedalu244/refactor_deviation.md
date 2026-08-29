@@ -27,7 +27,7 @@
 
 ### 1-1. `FutureCelestialBodyProvider` が「クラスの契約」なのに関数型の `type`
 
-`src/game/simulation/arc-bodies.ts:18-22`
+`src/game/dynamic/arc-celestial-bodies.ts:18-22`
 
 ```ts
 export type FutureCelestialBodyProvider = {
@@ -91,7 +91,7 @@ export type FutureCelestialBodyProvider = {
   ```
   `(r, t) => this.planDisplay.path.projectPoint(r, t)` は旧規則が名指しした
   `(t) => other.sample(t)` そのもの。受け側は `src/game/plan/plan-axis-drag.ts:19-23`。
-- `src/game/simulation/arc-bodies.ts:18-22` — 上の 1-1 と同じ箇所。実装が1クラスに定まっている
+- `src/game/dynamic/arc-celestial-bodies.ts:18-22` — 上の 1-1 と同じ箇所。実装が1クラスに定まっている
   契約を、関数プロパティ2本の袋にしている。
 
 > **注記**: `ProjectFn` 例外は現行コードにも生きている(`CameraSystem.activeCameraProjection`)。
@@ -158,7 +158,7 @@ CODING-RULE.md には `_` 接頭辞の規約が**どちらの意味でも1行も
   `src/game/camera/camera-system.ts:156-157` も同じ形。
 - `src/game/camera/chase-camera.ts:36` — `private readonly _hud: Hud`。:77 で使うが、
   対になる public getter `hud` は無い。**getter の裏当てでもない。**
-- `src/game/game-entity/bullet.ts:39` — `private readonly _worldSfx: WorldSfx`。同上(:106 で使用、
+- `src/game/dynamic/dynamic-entity/bullet.ts:39` — `private readonly _worldSfx: WorldSfx`。同上(:106 で使用、
   getter 無し)。
 
 これは規則を復元するだけでは決まらない — **`_` にどちらの意味を割り当てるか(あるいは両方やめるか)

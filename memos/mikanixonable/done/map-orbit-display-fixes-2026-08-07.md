@@ -11,8 +11,8 @@
 マップモードにおいて、シミュレーションの時間加速（ワープ）を行うと、自機の積分軌道（過去履歴と未来予測を繋いだ線）の描画がねじれたり、交差したりするなど、表示が破綻する。
 
 ### 原因
-時間加速時（`simSpeed > MAX_PHYS_SIM_SPEED`）は、パフォーマンス維持のため `src/game/simulation/predictor.ts` の `Predictor.update` 内で未来予測の更新処理が意図的にスキップされます（`suspended = true`）。
-しかし、シミュレーション本体は進行し続けるため、自機の「過去履歴（`GameEntity.current.samplesOldestFirst()`）」には最新の位置データが追加されていきます。その結果、「最新の過去」と「更新が止まった古い未来」の間に時間的・空間的な矛盾（時刻の逆転など）が生じます。
+時間加速時（`simSpeed > MAX_PHYS_SIM_SPEED`）は、パフォーマンス維持のため `src/game/dynamic/predictor.ts` の `Predictor.update` 内で未来予測の更新処理が意図的にスキップされます（`suspended = true`）。
+しかし、シミュレーション本体は進行し続けるため、自機の「過去履歴（`DynamicEntity.current.samplesOldestFirst()`）」には最新の位置データが追加されていきます。その結果、「最新の過去」と「更新が止まった古い未来」の間に時間的・空間的な矛盾（時刻の逆転など）が生じます。
 軌道描画を担当する `src/game/debug-history-line.ts` では、この2つの配列を無条件に `[...current, ...predicted]` の形で連結して1本の線として描画しているため、破綻したデータ列がそのまま描画されて表示が崩れます。
 
 ### 修正案

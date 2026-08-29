@@ -120,8 +120,8 @@ export class MapContextGizmo {
 
 **方針:**
 - `OverviewCamera.focus` は現在ラベル ID 文字列で、`resolveFocus()` が `FocusMarkers.findLabel` を引く。**エンティティは位置が毎フレーム変わるので、ID 文字列引きの仕組みを拡張する。**
-- **推奨案:** `OverviewCamera.focus` を `string` から `FocusTarget = { kind: 'label'; id: string } | { kind: 'entity'; entity: GameEntity }` にせず、**`focus: MapPickable | null`(null = 地球)**にする。`MapPickable.pos` を毎フレーム更新済みの値として読むだけで済み、ラベルもエンティティも同じ扱いになる。
-  - エンティティ側は `GameEntity` に `mapPickable(displayTime): MapPickable` を生やすのではなく、**マップ用の `MapPickable` を毎フレーム組み立てるのは `Game.sync` の担当**にする(`displayState(displayTime)` を引くのは `Game.sync` が既にやっている仕事)。
+- **推奨案:** `OverviewCamera.focus` を `string` から `FocusTarget = { kind: 'label'; id: string } | { kind: 'entity'; entity: DynamicEntity }` にせず、**`focus: MapPickable | null`(null = 地球)**にする。`MapPickable.pos` を毎フレーム更新済みの値として読むだけで済み、ラベルもエンティティも同じ扱いになる。
+  - エンティティ側は `DynamicEntity` に `mapPickable(displayTime): MapPickable` を生やすのではなく、**マップ用の `MapPickable` を毎フレーム組み立てるのは `Game.sync` の担当**にする(`displayState(displayTime)` を引くのは `Game.sync` が既にやっている仕事)。
   - `OverviewCamera` は保持した `MapPickable` の `id` を鍵に、そのフレームの候補配列から引き直す。参照を握りっぱなしにすると死亡エンティティを掴み続ける。**`focus` は `id: string` を保持し、`resolveFocus` は「そのフレームの `MapPickable[]`」から引く**形にする(引けなければ地球にフォールバック)。
 - 候補配列は `CameraSystem` が `sync` 時に受け取る(`Game.sync` から明示引数で渡す。`*Ctx` は禁止)。
 
@@ -398,7 +398,7 @@ export class MapContextGizmo {
 - **設置される宇宙船:** 既存の `Ship` 系を使う。**`Player` は 1 機前提の設計(`Game.player` は非 null、`FloatingOrigin` は `player.state` から作られる)なので、複数機は `Player` の複製にはできない。**
   - **価値判断 → 提案:** クリエイティブの艦艇は **`Enemy` ではなく、新クラス `CreativeShip extends Ship`** とする。`Enemy` は AI(射撃)とグループ攻撃者上限を持ち、意味が合わない。`CreativeShip` は AI を持たず、軌道を進むだけ + 計画自動追従(WP-E5)を持つ。
   - **アクティブ化(WP-E4)は「その `CreativeShip` を `Player` にする」のではなく、「`Player` をその状態へ移す」でもない。** 設計は WP-E4 で決める。
-- `EntityManager` に `CreativeShip` の配列を足すか、既存 `enemies` に相乗りさせるか → **足す。** `enemies` は `Enemy[]` 型で、AI・ターゲット・撃破判定の全経路が繋がっている。
+- `DynamicSystem` に `CreativeShip` の配列を足すか、既存 `enemies` に相乗りさせるか → **足す。** `enemies` は `Enemy[]` 型で、AI・ターゲット・撃破判定の全経路が繋がっている。
 
 **検証:** `npm run typecheck` + `npm run test:physics`(`orbital.ts`/`ephemeris.ts` に追加した場合)。
 
@@ -448,7 +448,7 @@ export class MapContextGizmo {
 - **各艦が自分の `Plan` を持つ必要がある。** 現状 `Plan` は `PlanEditor` が 1 つだけ持つ。**`Plan` の所有を `CreativeShip` へ移し、`PlanEditor` は「アクティブ艦の `Plan` を編集する」形にする。**
   - ステージモードでは `Player` が `Plan` を持つ。`PlanEditor` は `player.plan` を編集する。**この変更はステージモードにも及ぶので、ステージモードの挙動が変わらないことを確認すること。**
 - **自動実行の方法の価値判断 → 提案:**
-  - **A(推奨): ノード時刻に達したら状態を瞬間的にノードの状態へ置き換える。** ノードは既に「バーン後の絶対状態」なので、`GameEntity.state` の setter(`OrbitEntity.reset`)を呼ぶだけで済む。有限時間のバーンを模擬しないので、計画軌道と実軌道が厳密に一致する — 「計画軌道を移動する」という要件そのもの。
+  - **A(推奨): ノード時刻に達したら状態を瞬間的にノードの状態へ置き換える。** ノードは既に「バーン後の絶対状態」なので、`DynamicEntity.state` の setter(`OrbitEntity.reset`)を呼ぶだけで済む。有限時間のバーンを模擬しないので、計画軌道と実軌道が厳密に一致する — 「計画軌道を移動する」という要件そのもの。
   - B: Δv を有限推力で実行する。物理的に正しいが、計画とずれるので「自動追従」の看板と合わない。**非推奨。**
 - 自動追従が ON の艦は、`CreativeStage.update` が毎フレーム「次ノードの時刻を跨いだか」を見て `reset` する。跨いだノードは消費して次へ進む。
 - **アクティブ艦が自動追従 ON のとき、ユーザーの手動操作と競合する。** 推奨: アクティブ化しても自動追従の設定は独立に保つ。手動推力を入れると計画が実軌道からずれるが、それはユーザーの選択。

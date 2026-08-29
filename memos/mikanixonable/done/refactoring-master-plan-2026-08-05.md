@@ -185,7 +185,7 @@
 
 ### C-05 CreativeでPlayerを削除するとPlayer固有のscene/GPU資源が残る
 
-- **根拠**: `EntityManager.removePlayer()` は `player.dispose()` を呼ぶが、Playerはdisposeをoverrideしない。継承元Shipは本体mesh/materialだけを破棄する。Playerが直接sceneへ追加する `orbitLine`、`ThrustEffects` 2枚、全RCS puff、`ReentryEffects` 2枚は残る。各effect classにもdisposeがない。
+- **根拠**: `DynamicSystem.removePlayer()` は `player.dispose()` を呼ぶが、Playerはdisposeをoverrideしない。継承元Shipは本体mesh/materialだけを破棄する。Playerが直接sceneへ追加する `orbitLine`、`ThrustEffects` 2枚、全RCS puff、`ReentryEffects` 2枚は残る。各effect classにもdisposeがない。
 - **影響**: 配置・削除を繰り返すとscene child、geometry、material、描画物が増え続ける。孤立した軌道線も残る。
 - **修正**: `Player.dispose()` をidempotentにし、全owned resourceをremove/disposeする。各effectにscene所有を明示したdisposeを追加。共通 `Disposable` とresource ownership規則を定める。
 - **受入条件**: fake scene/unit testではowned object、scene child、marker、DOM listener数が20回の配置・削除後にbaselineへ戻り、二重disposeでthrowしない。20回は線形増加を短時間で露出させる最低反復とし、browser負荷試験は100回でheap/GPU memoryの単調増加がないことを見る。three WebGPU r169に安定した公開GPU resource counterがないため、取得方法を確定していない `renderer resource数` をhard gateにはしない。
@@ -193,7 +193,7 @@
 
 ### C-06 喪失したCreative船が永久に8隻上限を消費する
 
-- **根拠**: `EntityManager.cleanup()` はplayersをpruneしない。仕様どおり死んだ船はmap pickableから外れるため、利用者は選択も削除もできない。
+- **根拠**: `DynamicSystem.cleanup()` はplayersをpruneしない。仕様どおり死んだ船はmap pickableから外れるため、利用者は選択も削除もできない。
 - **影響**: 喪失を繰り返すと配置枠が回収不能になり、Creative sessionがsoft-lockする。
 - **修正**: roster UIからwreckを削除できるようにするか、非activeのlost playerを演出終了後に自動disposeする。active corpseをcamera基準として残す場合も、明示的なretention policyを持つ。
 - **受入条件**: 8隻喪失後も規定の方法で枠を回収し、再配置できる。
@@ -247,7 +247,7 @@
 
 ### C-13 高ワープでは寿命・再突入判定がframe末まで遅れる
 
-- **根拠**: Simulatorは最大656 substepを回すが、`EntityManager.cleanup()` は全substep後に一度。弾240秒、薬莢1800秒、距離、再突入を途中判定しない。
+- **根拠**: Simulatorは最大656 substepを回すが、`DynamicSystem.cleanup()` は全substep後に一度。弾240秒、薬莢1800秒、距離、再突入を途中判定しない。
 - **影響**: 最大warpの1frame内で寿命を1万秒以上超えた弾が飛び続け、命中候補にも残る。死ぬべきentityが残りのsubstepを積分される。
 - **修正**: 既知の寿命境界は検査後ではなく越境前に `subDt = min(remaining, maxDt, nextLifetime - now, ...)` でstepを切る。距離・再突入のように解析的な境界時刻が出ない条件は、保守的なstep上限またはcrossingをbracketして短く再積分する。境界到達後にallocation-freeなlifecycle判定で `alive=false` とし、残りstep/hitから除外する。scene remove/disposeとarray compactionはframe末にまとめる。D-04の同時刻順序に従う。
 - **受入条件**: max warpで弾がborn+240秒以後のsegmentに参加しない。dispose回数は1回。
@@ -325,9 +325,9 @@
 
 ### C-23 削除時にfocus/nav target等の参照整合を一括処理しない
 
-- **根拠**: `EntityManager.removePlayer()` は配列とmeshだけを扱い、Camera focus、NavTarget、開いたContextMenu、PlanEditor等へlifecycle eventを通知しない。
+- **根拠**: `DynamicSystem.removePlayer()` は配列とmeshだけを扱い、Camera focus、NavTarget、開いたContextMenu、PlanEditor等へlifecycle eventを通知しない。
 - **影響**: ghost ID、Earthへの暗黙fallback、削除済み対象名のUI残留が起き得る。
-- **修正**: `EntityRemoved` eventまたはsession registry callbackで参照所有者がcleanupする。EntityManagerにCamera/HUDを注入しない。
+- **修正**: `EntityRemoved` eventまたはsession registry callbackで参照所有者がcleanupする。DynamicSystemにCamera/HUDを注入しない。
 - **受入条件**: focused/targeted/following shipを削除するcase table。
 - **工数**: M。C-08後。
 
@@ -435,7 +435,7 @@
 - **受入条件**: max entity deterministic benchmarkとp95 budget。
 - **工数**: M〜L。
 
-### PERF-13 `EntityManager.all()`、filter、spreadがframe内で短命arrayを作る
+### PERF-13 `DynamicSystem.all()`、filter、spreadがframe内で短命arrayを作る
 
 - **例**: cleanup、collision、Predictor、NanWatchdog、alive enemy filter。
 - **修正**: stable grouped iterator、`forEachAlive`、必要な箇所だけscratch array。可読性を落とす全域micro-optimizationはしない。
@@ -613,7 +613,7 @@
 - **受入条件**: emitted graph 0 cycleを維持し、source graphのtype/runtimeを分離表示。
 - **工数**: S〜M。
 
-### ARCH-06 GameEntityがsimulation stateとThree objectを同時所有する
+### ARCH-06 DynamicEntityがsimulation stateとThree objectを同時所有する
 
 - **影響**: browserなしのgame integration test、worker、save/replay、render batchingが難しい。
 - **推奨**: 一括分離しない。最初にprojectileとcollision eventをplain snapshot化し、Instanced rendererがそのsnapshotを読む。次にSpacecraft controllerを分ける。D-09。
@@ -709,7 +709,7 @@
 
 ### TOOL-03 game層のテストがない
 
-- **不足**: Stage/Simulator/EntityManager integration、warp境界、Creative validation、dispose、multi-player、hit/collision/lifecycle順、Input、DOM、launch。
+- **不足**: Stage/Simulator/DynamicSystem integration、warp境界、Creative validation、dispose、multi-player、hit/collision/lifecycle順、Input、DOM、launch。
 - **修正順**:
   1. 純粋validator/clock/event test。
   2. fake renderer/audioを使うSimulation Harness。
@@ -1095,7 +1095,7 @@ Lunaに任せるのは、判断が確定し、入力・出力・受入条件が�
 #### S-03 Domain event and session lifecycle
 
 - event schema、所有権、dispose順、audio/vfx consumerを決める。
-- EntityManagerへUI/Three ownerを逆注入しない。
+- DynamicSystemへUI/Three ownerを逆注入しない。
 
 #### S-04 Render registry / instancing
 

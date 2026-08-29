@@ -327,7 +327,7 @@ Richardson 三次近似を実行時に評価する経路を**廃止**し、す�
 | 1-5 | Richardson 三次近似のうち、焼き込みの種としても使われなくなった経路を消す(`halo.ts` の整理) |
 
 - **変更が必要な箇所**: `tools/export-lagrange-orbits.mjs`、`src/physics/halo-guide.ts`、
-  `src/physics/halo.ts`、`src/assets/orbits/`、`src/game/celestial/orbit-guide-settings.ts`
+  `src/physics/halo.ts`、`src/assets/orbits/`、`src/game/celestial/orbit-guide/orbit-guide-settings.ts`
   (振幅→族範囲)、`src/game/hud/panels/orbit-guide-tab.ts`(同)
 - **達成条件**: 平面リヤプノフの族範囲を上限まで上げても、軌道が副天体を回り込む形を保つ。
   地球の近くを直線的に突っ切る形が出ない
