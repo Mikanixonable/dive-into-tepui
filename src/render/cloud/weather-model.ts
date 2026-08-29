@@ -12,7 +12,7 @@ import { Cyclones } from './cyclones';
 import { DriftingNoise } from './drifting-noise';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { ClimateMap } from './climate-map';
-import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、収束は風の収束 [1/s]、風は東向き・北向きの
 // 成分 [m/s]、上昇流は [m/s](地形と収束による、負なら下降)、温度は [°C]、湿度は 0..1
@@ -93,7 +93,7 @@ export class WeatherModel {
   private readonly pressure = new BakedField(
     'pressure', THREE.RedFormat, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
   private readonly humiditySource = new BakedField(
-    'humiditySource', THREE.RGFormat, (direction) => this.humiditySourceAt(direction));
+    'humiditySource', THREE.RGFormat, (direction) => vec4(this.humiditySourceAt(direction), 0, 1));
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
@@ -169,17 +169,16 @@ export class WeatherModel {
     return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE)).add(this.cyclones.pressureAt(direction));
   }
 
-  // 写しへ焼く移流前の湿度: 地表付近を R、上層を G。平年の雲量も台風の目も、ここへ入れたものが
-  // まとめて風で流れる。読むのは advected()。
-  private humiditySourceAt(direction: Vec3Node): Vec4Node {
+  // 移流前の湿度(x が地表付近、y が上層)。平年の雲量も台風の目も、ここへ入れたものがまとめて
+  // 風で流れる。写しへ焼かれ、advected() が風上へ遡って読む。
+  public humiditySourceAt(direction: Vec3Node): Vec2Node {
     const meanCloudiness = this.climate.meanCloudiness(direction);
     const eye = this.cyclones.typhoonEyeAt(direction).mul(TYPHOON_EYE_DRYNESS);
-    return vec4(
+    return vec2(
       float(HUMIDITY_BASE).add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT))
         .add(this.humidityNoise.at(direction).mul(HUMIDITY_NOISE_AMPLITUDE)).sub(eye),
       float(UPPER_HUMIDITY_BASE).add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)).sub(eye),
-      0, 1,
     );
   }
 

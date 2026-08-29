@@ -1,5 +1,6 @@
-// 雲の実験環境で表示できる量の表。並びがそのまま画面のボタンの並び。各ビューは、天気のモデルの
-// グラフ・気候の事前分布・雲の場の写しから、表示値 0..1 の色を組む。
+// 雲の実験環境で表示できる量の表。並びがそのまま画面のボタンの並びで、構成の上流(気候の事前分布)から
+// 下流(雲)へ並ぶ。各ビューは、天気のモデルのグラフ・気候の事前分布・雲の場の写しから、
+// 表示値 0..1 の色を組む。
 import { length, screenUV, texture, vec3 } from 'three/tsl';
 import { directionFromEquirectUv } from '../../src/render/cloud/sphere-frame';
 import type { ClimateMap } from '../../src/render/cloud/climate-map';
@@ -8,9 +9,10 @@ import type { WeatherModel } from '../../src/render/cloud/weather-model';
 import type { Vec2Node, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
-  | 'opaque' | 'opaqueByAltitude' | 'translucent'
-  | 'pressure' | 'convergence' | 'wind' | 'lift' | 'temperature' | 'humidity' | 'upperHumidity'
-  | 'meanTemperature' | 'meanCloudiness' | 'elevation';
+  | 'elevation' | 'meanTemperature' | 'meanCloudiness'
+  | 'pressure' | 'wind' | 'convergence' | 'lift' | 'temperature'
+  | 'humiditySource' | 'upperHumiditySource' | 'humidity' | 'upperHumidity'
+  | 'opaque' | 'opaqueByAltitude' | 'translucent';
 
 export type CloudLabView = {
   readonly id: CloudLabViewId;
@@ -50,6 +52,18 @@ function slabs(fields: CloudFieldTextures): [Vec4Node, Vec4Node] {
 }
 
 export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
+  { id: 'elevation', label: '標高', readsFields: false, color: (_m, climate) => vec3(climate.elevation(direction).div(ELEVATION_SPAN)) },
+  { id: 'meanTemperature', label: '平均気温', readsFields: false, color: (_m, climate) => vec3(climate.meanTemperature(direction).sub(TEMPERATURE_MIN).div(TEMPERATURE_SPAN)) },
+  { id: 'meanCloudiness', label: '平年の雲量', readsFields: false, color: (_m, climate) => vec3(climate.meanCloudiness(direction)) },
+  { id: 'pressure', label: '気圧', readsFields: false, color: (model) => vec3(model.weatherAt(direction).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
+  { id: 'wind', label: '風', readsFields: false, color: (model) => windColor(model.weatherAt(direction).wind) },
+  { id: 'convergence', label: '収束', readsFields: false, color: (model) => vec3(model.weatherAt(direction).convergence.div(2 * CONVERGENCE_SPAN).add(0.5)) },
+  { id: 'lift', label: '上昇流', readsFields: false, color: (model) => vec3(model.weatherAt(direction).lift.div(2 * LIFT_SPAN).add(0.5)) },
+  { id: 'temperature', label: '温度', readsFields: false, color: (model) => vec3(model.weatherAt(direction).temperature.sub(TEMPERATURE_MIN).div(TEMPERATURE_SPAN)) },
+  { id: 'humiditySource', label: '移流前の湿度', readsFields: false, color: (model) => vec3(model.humiditySourceAt(direction).x) },
+  { id: 'upperHumiditySource', label: '移流前の上層湿度', readsFields: false, color: (model) => vec3(model.humiditySourceAt(direction).y) },
+  { id: 'humidity', label: '湿度', readsFields: false, color: (model) => vec3(model.weatherAt(direction).humidity) },
+  { id: 'upperHumidity', label: '上層湿度', readsFields: false, color: (model) => vec3(model.weatherAt(direction).upperHumidity) },
   { id: 'opaque', label: '不透明雲', readsFields: true, color: (_m, _c, fields) => {
     const [low, high] = slabs(fields);
     return vec3(low.r.add(low.g).add(low.b).add(low.a).add(high.r).add(high.g).add(high.b).add(high.a).div(OPAQUE_SPAN));
@@ -59,14 +73,7 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     return vec3(low.r.add(low.g).add(low.b), low.a.add(high.r).add(high.g), high.b.add(high.a)).div(OPAQUE_SPAN / 2);
   } },
   { id: 'translucent', label: '薄い雲', readsFields: true, color: (_m, _c, fields) => vec3(texture(fields.translucentTexture, screenUV).r.div(TRANSLUCENT_SPAN)) },
-  { id: 'pressure', label: '気圧', readsFields: false, color: (model) => vec3(model.weatherAt(direction).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
-  { id: 'convergence', label: '収束', readsFields: false, color: (model) => vec3(model.weatherAt(direction).convergence.div(2 * CONVERGENCE_SPAN).add(0.5)) },
-  { id: 'wind', label: '風', readsFields: false, color: (model) => windColor(model.weatherAt(direction).wind) },
-  { id: 'lift', label: '上昇流', readsFields: false, color: (model) => vec3(model.weatherAt(direction).lift.div(2 * LIFT_SPAN).add(0.5)) },
-  { id: 'temperature', label: '温度', readsFields: false, color: (model) => vec3(model.weatherAt(direction).temperature.sub(TEMPERATURE_MIN).div(TEMPERATURE_SPAN)) },
-  { id: 'humidity', label: '湿度', readsFields: false, color: (model) => vec3(model.weatherAt(direction).humidity) },
-  { id: 'upperHumidity', label: '上層湿度', readsFields: false, color: (model) => vec3(model.weatherAt(direction).upperHumidity) },
-  { id: 'meanTemperature', label: '平均気温', readsFields: false, color: (_m, climate) => vec3(climate.meanTemperature(direction).sub(TEMPERATURE_MIN).div(TEMPERATURE_SPAN)) },
-  { id: 'meanCloudiness', label: '平年の雲量', readsFields: false, color: (_m, climate) => vec3(climate.meanCloudiness(direction)) },
-  { id: 'elevation', label: '標高', readsFields: false, color: (_m, climate) => vec3(climate.elevation(direction).div(ELEVATION_SPAN)) },
 ];
+
+// 起動時に出す量。並びが上流から下流なので、既定は先頭ではなく最終出力。
+export const DEFAULT_CLOUD_LAB_VIEW: CloudLabView = CLOUD_LAB_VIEWS.find((view) => view.id === 'opaque')!;

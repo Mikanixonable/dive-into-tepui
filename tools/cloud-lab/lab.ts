@@ -8,7 +8,7 @@ import { ClimateMap } from '../../src/render/cloud/climate-map';
 import { CloudFieldTextures } from '../../src/render/cloud/cloud-field-textures';
 import { WeatherModel } from '../../src/render/cloud/weather-model';
 import { pixelsToPngDataUrl } from '../lab-png';
-import { CLOUD_LAB_VIEWS, type CloudLabView, type CloudLabViewId } from './views';
+import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
 
 // キャンバスと撮影の大きさ [px]。正距円筒なので 2:1。
 export const VIEW_WIDTH = 1024;
@@ -23,7 +23,7 @@ export class CloudLabCanvas {
   private readonly captureTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
     format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false, samples: 0,
   });
-  private view: CloudLabView = CLOUD_LAB_VIEWS[0]!;
+  private view: CloudLabView = DEFAULT_CLOUD_LAB_VIEW;
   private seconds = 0;
 
   // レンダラを起こし、地球の気候を読み終えてから器を組む。
