@@ -1,7 +1,7 @@
 // 「テクスチャ球」で済む天体(月・木星など)の見た目を実 ECI 位置・実半径で描く。
 // 見かけ直径が閾値未満なら球自体を描かない。
 import * as THREE from 'three/webgpu';
-import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
+import { OrbitingMotion } from '../../physics/celestial-motion';
 import { RingSystemDef, shapeAxes } from '../../physics/celestial-body-def';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -18,6 +18,7 @@ import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../render/render-style';
+import type { StarEntity } from './star-entity';
 import { RingView } from './ring-view';
 
 export class SphereEntity extends CelestialEntity {
@@ -79,7 +80,7 @@ export class SphereEntity extends CelestialEntity {
 
   // displayTime 時点の位置へ同期する。見かけ直径が閾値未満なら球自体(と環)を描かない。
   sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, _star: CelestialMotion | null,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, _star: StarEntity | null,
     graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.group.visible) return;
