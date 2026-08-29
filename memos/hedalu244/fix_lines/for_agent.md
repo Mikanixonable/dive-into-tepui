@@ -12,10 +12,10 @@
 
 `render/curve.ts` の `Curve` を使う描画は、ラッパが2種類しかない。
 
-- `src/game/orbit-line.ts` `OrbitLine` — **解析的な閉じた楕円**。`OrbitalElements` から
+- `src/game/lines/orbit-line.ts` `OrbitLine` — **解析的な閉じた楕円**。`OrbitalElements` から
   離心近点角 E=t·2π で位置を出す。頂点は**中心天体相対**のまま保持し、毎フレームは
   `Object3D.position` の平行移動だけ。
-- `src/game/trajectory-line.ts` `TrajectoryLine` — **時刻付き点列**をエルミート補間して
+- `src/game/lines/trajectory-line.ts` `TrajectoryLine` — **時刻付き点列**をエルミート補間して
   折れ線化する汎用土台。頂点は**表示座標系(planFrame)相対**で bake し、毎フレームは
   剛体 un-bake(回転)+ フローティングオリジン(平行移動)だけ。
 
