@@ -56,7 +56,7 @@ export function solarSystem(
   const pack = absoluteSource === null
     ? null
     : new HelioEphemeris(absoluteSource, SUN.id, epochJdTdb);
-  const sunMotion = new StarMotion(SUN, phases[SUN.id] ?? 0, epochOffsetSec, pack, origin);
+  const sunMotion = new StarMotion(SUN, pack, origin);
   // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
   const sun = new StarEntity(
     sunMotion, SOLAR_SYSTEM_BODY_NAMES.sun, SUN_LIGHT_COLOR,

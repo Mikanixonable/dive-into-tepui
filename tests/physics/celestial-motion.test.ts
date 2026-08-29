@@ -11,7 +11,7 @@ import {
 import { EPS } from '../../src/physics/ecliptic';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
-import { JULIAN_CENTURY, keplerOrbitState } from '../../src/physics/kepler-orbit';
+import { JULIAN_CENTURY, keplerOrbitAtEpoch, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
@@ -71,7 +71,7 @@ export function register(): void {
 
       const sunEci = motionOf(parts, 'sun').stateAt(t);
       const earthHelio = { r: scale(sunEci.r, -1), v: scale(sunEci.v, -1) }; // 太陽は日心原点
-      const baryHelio = keplerOrbitState(EARTH_ORBIT, t + EPOCH_T_OFFSET, 0.3);
+      const baryHelio = keplerOrbitState(keplerOrbitAtEpoch(EARTH_ORBIT, 0.3, EPOCH_T_OFFSET), t);
       const baryFromKepler = { r: sub(baryHelio.r, earthHelio.r), v: sub(baryHelio.v, earthHelio.v) };
 
       const rErr = len(sub(baryFromMass.r, baryFromKepler.r));
@@ -86,7 +86,7 @@ export function register(): void {
   // 4,673 km 前後になる(月の距離レンジ × 質量比 ≈ 4,331〜4,941 km)。
   test('celestial-motion: 太陽の地心位置は純ケプラー地球位置から重心補正ぶん(月の位相と共に振れる約4,673km)ずれる', () => {
     const diffAt = (t: number) => {
-      const bary = keplerOrbitState(EARTH_ORBIT, t + EPOCH_T_OFFSET, 0.3);
+      const bary = keplerOrbitState(keplerOrbitAtEpoch(EARTH_ORBIT, 0.3, EPOCH_T_OFFSET), t);
       const pureKeplerSunEci = scale(bary.r, -1);
       return sub(motionOf(parts, 'sun').stateAt(t).r, pureKeplerSunEci);
     };

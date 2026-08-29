@@ -130,7 +130,7 @@ export function register(): void {
     let maxDiff = 0;
     for (let i = 0; i < 20; i++) {
       const t = (i / 20) * period;
-      maxDiff = Math.max(maxDiff, len(sub(keplerOrbitState(orbit, t, 0).r, keplerOrbitState(frozen, t, 0).r)));
+      maxDiff = Math.max(maxDiff, len(sub(keplerOrbitState(orbit, t).r, keplerOrbitState(frozen, t).r)));
     }
     // 軌道長半径 295,000 km に対し、離心率ぶんの振れ幅(a·e ≈ 295 km)の数倍に収まる。
     assert.ok(maxDiff < 1200e3, `近点歳差の有無による位置差: ${maxDiff / 1e3} km`);

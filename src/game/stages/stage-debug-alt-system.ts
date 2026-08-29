@@ -9,7 +9,7 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import * as C from '../const';
 import {
   CelestialMotion, EciOrigin, OrbitingMotion, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef,
-  SatelliteMotion, StarMotion,
+  planetDefAtEpoch, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../physics/celestial-motion';
 import { planetOrbit } from '../../physics/planet-orbit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
@@ -62,8 +62,8 @@ const ZEPHYRUS_I: SatelliteDef = {
 // 架空星系の運動を組む。恒星が無いので惑星の主星は null になる。
 function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[] {
   const origin = new EciOrigin();
-  const zephyrus = new PlanetMotion(ZEPHYRUS, null, phases[PRIMARY_ID] ?? 0, 0, null, origin);
-  const zephyrusI = new SatelliteMotion(ZEPHYRUS_I, zephyrus, phases[MOON_ID] ?? 0, 0, null, origin);
+  const zephyrus = new PlanetMotion(planetDefAtEpoch(ZEPHYRUS, phases, 0), null, null, origin);
+  const zephyrusI = new SatelliteMotion(satelliteDefAtEpoch(ZEPHYRUS_I, phases, 0), zephyrus, null, origin);
   origin.set(zephyrus);
   return [zephyrus, zephyrusI];
 }

@@ -2,7 +2,7 @@
 import neptuneTextureUrl from '../../../assets/2k_neptune.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
+  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { MU_NEPTUNE } from './constants';
@@ -69,7 +69,7 @@ export function neptuneSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
   pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<NeptuneSystemBodyId, CelestialEntity> {
-  const neptune = new PlanetMotion(NEPTUNE, sun, phases[NEPTUNE.id] ?? 0, epochOffsetSec, pack, origin);
+  const neptune = new PlanetMotion(planetDefAtEpoch(NEPTUNE, phases, epochOffsetSec), sun, pack, origin);
   return {
     neptune: new PointEntity(
       neptune, NEPTUNE_SYSTEM_NAMES.neptune, 'planet',
@@ -77,13 +77,13 @@ export function neptuneSystem(
       CelestialSurface.textured({ url: neptuneTextureUrl, albedoScale: 2.3609, bondAlbedo: 0.29, averageHue: [0.3358, 0.9100, 3.8476] }),
     ),
     triton: new SphereEntity(
-      new SatelliteMotion(TRITON, neptune, phases[TRITON.id] ?? 0, epochOffsetSec, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(TRITON, phases, epochOffsetSec), neptune, pack, origin),
       NEPTUNE_SYSTEM_NAMES.triton, 'satellite',
       // A_B=0.43(幾何 0.76 x q=0.564)
       CelestialSurface.solid([0.4794, 0.4216, 0.3680]),
     ),
     nereid: new SphereEntity(
-      new SatelliteMotion(NEREID, neptune, phases[NEREID.id] ?? 0, epochOffsetSec, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(NEREID, phases, epochOffsetSec), neptune, pack, origin),
       NEPTUNE_SYSTEM_NAMES.nereid, 'satellite',
       // A_B=0.071(幾何 0.155 x q=0.461)
       CelestialSurface.solid([0.0816, 0.0693, 0.0563]),

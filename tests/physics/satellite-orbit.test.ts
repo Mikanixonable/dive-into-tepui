@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { planetAngles, planetOrbit } from '../../src/physics/planet-orbit';
-import { PerturbationTerm, satelliteOrbit, satelliteState } from '../../src/physics/satellite-orbit';
+import { PerturbationTerm, satelliteOrbit, satelliteOrbitAtEpoch, satelliteState } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { eciToEcl } from '../../src/physics/ecliptic';
 import { EARTH, MOON } from '../../src/game/celestial/solar-system/earth-system';
@@ -49,7 +49,7 @@ function moonOrbit(lonTerms: readonly PerturbationTerm[] = [], latTerms: readonl
 
 export function register(): void {
   test('satellite-orbit: satelliteOrbit は昇交点を逆行、近点を順行させる(周期18.61年/8.85年)', () => {
-    const orbit = moonOrbit();
+    const orbit = satelliteOrbitAtEpoch(moonOrbit(), 0.4, 0);
     assert.ok(orbit.kepler.raanRate < 0, `昇交点が逆行でない: ${orbit.kepler.raanRate}`);
     assert.ok(orbit.kepler.lonPeriRate > 0, `近点が順行でない: ${orbit.kepler.lonPeriRate}`);
     assert.ok(
@@ -63,26 +63,26 @@ export function register(): void {
   });
 
   test('satellite-orbit: 周期項が空表なら satelliteState は二体ケプラー解に一致する', () => {
-    const orbit = moonOrbit();
+    const orbit = satelliteOrbitAtEpoch(moonOrbit(), 0.4, 0);
     for (const t of [0, 1e6, 1e8]) {
-      const angles = planetAngles(EARTH_ORBIT, t, 0);
-      const s = satelliteState(orbit, angles, t, 0.4);
+      const angles = planetAngles(EARTH_ORBIT, t);
+      const s = satelliteState(orbit, angles, t);
       // satelliteState は二体解を黄経・黄緯・動径へ分解し補正 0 を足して再構成するので、
       // 浮動小数の丸め程度で一致するはず。
-      const base = keplerOrbitState(orbit.kepler, t, 0.4);
+      const base = keplerOrbitState(orbit.kepler, t);
       assert.ok(len(sub(s.r, base.r)) / len(base.r) < 1e-9, `位置が二体解と一致しない (t=${t})`);
       assert.ok(len(sub(s.v, base.v)) / len(base.v) < 1e-9, `速度が二体解と一致しない (t=${t})`);
     }
   });
 
   test('satellite-orbit: satelliteState の速度は位置の中心差分に一致する(空表・相対1e-6)', () => {
-    const orbit = moonOrbit();
+    const orbit = satelliteOrbitAtEpoch(moonOrbit(), 0.4, 0);
     const dt = 10;
     for (const t of [0, 1e6, 1e8]) {
-      const angles = (s: number) => planetAngles(EARTH_ORBIT, s, 0);
-      const s0 = satelliteState(orbit, angles(t), t, 0.4);
-      const sPlus = satelliteState(orbit, angles(t + dt), t + dt, 0.4);
-      const sMinus = satelliteState(orbit, angles(t - dt), t - dt, 0.4);
+      const angles = (s: number) => planetAngles(EARTH_ORBIT, s);
+      const s0 = satelliteState(orbit, angles(t), t);
+      const sPlus = satelliteState(orbit, angles(t + dt), t + dt);
+      const sMinus = satelliteState(orbit, angles(t - dt), t - dt);
       const vFd = scale(sub(sPlus.r, sMinus.r), 1 / (2 * dt));
       const relErr = len(sub(vFd, s0.v)) / len(s0.v);
       assert.ok(relErr < 1e-6, `速度と位置の中心差分の不一致 (t=${t}): ${relErr}`);
@@ -94,13 +94,13 @@ export function register(): void {
     const lonTerms: PerturbationTerm[] = [{ d: 2, m: -1, mp: 0, f: 0, amp: (1.274 * Math.PI) / 180 }];
     const latTerms: PerturbationTerm[] = [{ d: 0, m: 0, mp: 0, f: 2, amp: (0.5 * Math.PI) / 180 }];
     const distTerms: PerturbationTerm[] = [{ d: 2, m: 0, mp: -1, f: 0, amp: 5e6 }];
-    const orbit = moonOrbit(lonTerms, latTerms, distTerms);
+    const orbit = satelliteOrbitAtEpoch(moonOrbit(lonTerms, latTerms, distTerms), 0.4, 0);
     const dt = 10;
     for (const t of [0, 1e6, 1e8]) {
-      const angles = (s: number) => planetAngles(EARTH_ORBIT, s, 0);
-      const s0 = satelliteState(orbit, angles(t), t, 0.4);
-      const sPlus = satelliteState(orbit, angles(t + dt), t + dt, 0.4);
-      const sMinus = satelliteState(orbit, angles(t - dt), t - dt, 0.4);
+      const angles = (s: number) => planetAngles(EARTH_ORBIT, s);
+      const s0 = satelliteState(orbit, angles(t), t);
+      const sPlus = satelliteState(orbit, angles(t + dt), t + dt);
+      const sMinus = satelliteState(orbit, angles(t - dt), t - dt);
       const vFd = scale(sub(sPlus.r, sMinus.r), 1 / (2 * dt));
       const relErr = len(sub(vFd, s0.v)) / len(s0.v);
       assert.ok(relErr < 1e-6, `速度と位置の中心差分の不一致 (t=${t}): ${relErr}`);
@@ -115,17 +115,17 @@ export function register(): void {
       terms.some((term) => term.d === 0 && term.m === 0 && term.f === 0 && term.mp !== 0);
     const hasMainInclinationTerm = (terms: readonly PerturbationTerm[]) =>
       terms.some((term) => term.d === 0 && term.m === 0 && term.mp === 0 && term.f !== 0);
-    const orbit = MOON.orbit;
+    const orbit = satelliteOrbitAtEpoch(MOON.orbit, 0.4, 0);
     assert.equal(hasCenterOfEquationTerm(orbit.lonTerms), false, '中心差(引数がmpのみ)の二重計上');
     assert.equal(hasMainInclinationTerm(orbit.latTerms), false, '黄緯の主傾斜項(引数がfのみ)の二重計上');
   });
 
   test('satellite-orbit: 月の地心距離は 3.564e8〜4.067e8 m の範囲に収まる', () => {
-    const orbit = moonOrbit();
+    const orbit = satelliteOrbitAtEpoch(moonOrbit(), 0.4, 0);
     for (let i = 0; i < 24; i++) {
       const t = (i / 24) * MOON_PERIOD * 5.3;
-      const angles = planetAngles(EARTH_ORBIT, t, 0);
-      const s = satelliteState(orbit, angles, t, 0.4);
+      const angles = planetAngles(EARTH_ORBIT, t);
+      const s = satelliteState(orbit, angles, t);
       const d = len(s.r);
       assert.ok(d > 3.564e8 && d < 4.067e8, `地心距離 (t=${t}): ${d}`);
     }
@@ -146,13 +146,13 @@ export function register(): void {
 
   test('satellite-orbit: 実データで二体ケプラー解との黄経差の最大値が2.0°〜2.6°に収まる', () => {
     // 大きく超えるなら中心差(mp のみの高調波)を周期項へ二重計上している。
-    const orbit = MOON.orbit;
+    const orbit = satelliteOrbitAtEpoch(MOON.orbit, 0.4, 0);
     let maxDiffDeg = 0;
     for (let i = 0; i < 5000; i++) {
       const t = (i / 5000) * 2 * YEAR;
-      const angles = planetAngles(EARTH.orbit, t, 0);
-      const base = keplerOrbitState(orbit.kepler, t, 0.4);
-      const s = satelliteState(orbit, angles, t, 0.4);
+      const angles = planetAngles(EARTH.orbit, t);
+      const base = keplerOrbitState(orbit.kepler, t);
+      const s = satelliteState(orbit, angles, t);
       const lambdaBase = Math.atan2(eciToEcl(base.r).y, eciToEcl(base.r).x);
       const lambda = Math.atan2(eciToEcl(s.r).y, eciToEcl(s.r).x);
       let diffDeg = ((lambda - lambdaBase) * R2D) % 360;
@@ -169,13 +169,13 @@ export function register(): void {
   });
 
   test('satellite-orbit: 実周期項を加えても速度は位置の中心差分に一致する(相対1e-6)', () => {
-    const orbit = MOON.orbit;
+    const orbit = satelliteOrbitAtEpoch(MOON.orbit, 0.4, 0);
     const dt = 10;
     for (const t of [0, 1e6, 1e8, 5e8]) {
-      const angles = (s: number) => planetAngles(EARTH.orbit, s, 0);
-      const s0 = satelliteState(orbit, angles(t), t, 0.4);
-      const sPlus = satelliteState(orbit, angles(t + dt), t + dt, 0.4);
-      const sMinus = satelliteState(orbit, angles(t - dt), t - dt, 0.4);
+      const angles = (s: number) => planetAngles(EARTH.orbit, s);
+      const s0 = satelliteState(orbit, angles(t), t);
+      const sPlus = satelliteState(orbit, angles(t + dt), t + dt);
+      const sMinus = satelliteState(orbit, angles(t - dt), t - dt);
       const vFd = scale(sub(sPlus.r, sMinus.r), 1 / (2 * dt));
       const relErr = len(sub(vFd, s0.v)) / len(s0.v);
       assert.ok(relErr < 1e-6, `速度と位置の中心差分の不一致 (t=${t}): ${relErr}`);
@@ -183,7 +183,7 @@ export function register(): void {
   });
 
   test('satellite-orbit: 実周期項を加えても歳差周期は変わらない(昇交点18.61年/近点8.85年)', () => {
-    const orbit = MOON.orbit;
+    const orbit = satelliteOrbitAtEpoch(MOON.orbit, 0.4, 0);
     assert.ok(orbit.kepler.raanRate < 0, `昇交点が逆行でない: ${orbit.kepler.raanRate}`);
     assert.ok(orbit.kepler.lonPeriRate > 0, `近点が順行でない: ${orbit.kepler.lonPeriRate}`);
     assert.ok(
@@ -197,13 +197,13 @@ export function register(): void {
   });
 
   test('satellite-orbit: 実周期項を含めても月の平均地心距離は 385,000 km 前後になる', () => {
-    const orbit = MOON.orbit;
+    const orbit = satelliteOrbitAtEpoch(MOON.orbit, 0.4, 0);
     const N = 4000;
     let sum = 0;
     for (let i = 0; i < N; i++) {
       const t = (i / N) * MOON_PERIOD * 20;
-      const angles = planetAngles(EARTH.orbit, t, 0);
-      sum += len(satelliteState(orbit, angles, t, 0.4).r);
+      const angles = planetAngles(EARTH.orbit, t);
+      sum += len(satelliteState(orbit, angles, t).r);
     }
     const mean = sum / N;
     assert.ok(Math.abs(mean - 3.85e8) < 2e6, `月の平均地心距離: ${mean}`);
@@ -213,10 +213,10 @@ export function register(): void {
     // 近地点・遠地点は月ごとに離心率の周期変動で揺れる範囲を持つ(出典の実測範囲)。
     // 距離の極小・極大(前後のサンプルより低い/高い点)をそれぞれ集め、範囲内かを検査する —
     // これは距離項(distTerms)の転記ミスを最も直接に捕まえる検査になる。
-    const orbit = MOON.orbit;
+    const orbit = satelliteOrbitAtEpoch(MOON.orbit, 0.4, 0);
     const N = 6000;
     const spanSec = MOON_PERIOD * 40; // 近点月(約27.55日)を40回以上含む
-    const dist = (t: number) => len(satelliteState(orbit, planetAngles(EARTH.orbit, t, 0), t, 0.4).r);
+    const dist = (t: number) => len(satelliteState(orbit, planetAngles(EARTH.orbit, t), t).r);
     const perigees: number[] = [];
     const apogees: number[] = [];
     let prev = dist(0);

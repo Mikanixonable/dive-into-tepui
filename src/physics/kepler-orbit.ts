@@ -64,14 +64,14 @@ type OrbitAngles = {
 // 標準の ν̇ = Ṁ(1+e cosν)²/(1−e²)^1.5 は a・e を定数とみなした式で、aRate/eRate ≠ 0(惑星要素の
 // 永年変化)では長半径そのものの変化、およびケプラー方程式 M = E − e sinE の e への依存ぶんが
 // Ė、ひいては ν̇/ṙ から抜け落ちる。
-function orbitAngles(orbit: KeplerOrbit, t: number, phaseOffset: number): OrbitAngles {
+function orbitAngles(orbit: KeplerOrbit, t: number): OrbitAngles {
   // 各要素を t=0 の値 + 永年変化率×t で t 時点へ進める。
   const a = orbit.a + orbit.aRate * t;
   const e = orbit.e + orbit.eRate * t;
   const inc = orbit.inc + orbit.incRate * t;
   const raan = orbit.raan0 + orbit.raanRate * t;
   const lonPeri = orbit.lonPeri0 + orbit.lonPeriRate * t;
-  const L = orbit.l0 + phaseOffset + orbit.lRate * t;
+  const L = orbit.l0 + orbit.lRate * t;
   const M = L - lonPeri;
   const mRate = orbit.lRate - orbit.lonPeriRate;
 
@@ -142,12 +142,37 @@ function rotationFromAngles(orbit: KeplerOrbit, a: OrbitAngles): FrameRotation {
   return { q, omega };
 }
 
+// 角を [0, 2π) へ畳む。
+function wrapAngle(x: number): number {
+  const TWO_PI = 2 * Math.PI;
+  return x - TWO_PI * Math.floor(x / TWO_PI);
+}
+
+// 要素の元期を epochOffsetSec ぶん進め、平均黄経へ初期位相 phase を足した軌道。永年変化は
+// すべて時刻の一次式なので、各要素へ「変化率 × オフセット」を加えるだけで移せる。
+//
+// **角は必ず畳む。** オフセットは 18,000 年規模になりうる — 畳まないと平均黄経が 1e5 rad まで
+// 積み上がり、そこでの ulp(1.5e-11 rad)が以降すべての評価の丸めを支配して、地球軌道上で
+// メートル規模の誤差になる。畳めば中間値が 100 rad 規模に収まり、丸めは 3 桁小さくなる。
+export function keplerOrbitAtEpoch(orbit: KeplerOrbit, phase: number, epochOffsetSec: number): KeplerOrbit {
+  const s = epochOffsetSec;
+  return {
+    ...orbit,
+    a: orbit.a + orbit.aRate * s,
+    e: orbit.e + orbit.eRate * s,
+    inc: orbit.inc + orbit.incRate * s,
+    raan0: wrapAngle(orbit.raan0 + orbit.raanRate * s),
+    lonPeri0: wrapAngle(orbit.lonPeri0 + orbit.lonPeriRate * s),
+    l0: wrapAngle(orbit.l0 + phase + orbit.lRate * s),
+  };
+}
+
 // 中心天体中心・ECI 軸での状態。軌道は要素と平均黄経の変化率だけで決まるので、中心天体の
 // 重力定数は要らない(lRate が平均運動そのもの)。
 // 速度は、軌道面内の動径変化(ṙ·r̂)と回転基準系自身の角速度による見かけの移動(omega×r)の
 // 和として組む — 後者が昇交点・近点の歳差ぶんの寄与を担う。
-export function keplerOrbitState(orbit: KeplerOrbit, t: number, phaseOffset: number): KinematicState {
-  const a = orbitAngles(orbit, t, phaseOffset);
+export function keplerOrbitState(orbit: KeplerOrbit, t: number): KinematicState {
+  const a = orbitAngles(orbit, t);
   const r = qRotate(qMul(orbit.basisToEci, Q_ZUP_TO_YUP), positionFromOrbitalElements(a.a, a.e, a.inc, a.raan, a.argp, a.nu));
   const { omega } = rotationFromAngles(orbit, a);
   const v = addScaled(cross(omega, r), norm(r), a.rDot);
@@ -155,19 +180,19 @@ export function keplerOrbitState(orbit: KeplerOrbit, t: number, phaseOffset: num
 }
 
 // この軌道に固定した回転基準系の t 時点の姿勢・角速度。
-export function keplerOrbitRotation(orbit: KeplerOrbit, t: number, phaseOffset: number): FrameRotation {
-  return rotationFromAngles(orbit, orbitAngles(orbit, t, phaseOffset));
+export function keplerOrbitRotation(orbit: KeplerOrbit, t: number): FrameRotation {
+  return rotationFromAngles(orbit, orbitAngles(orbit, t));
 }
 
 // 軌道面の法線(単位ベクトル、ECI)。
-export function keplerOrbitNormal(orbit: KeplerOrbit, t: number, phaseOffset: number): Vec3 {
-  return normalFromAngles(orbit, orbitAngles(orbit, t, phaseOffset));
+export function keplerOrbitNormal(orbit: KeplerOrbit, t: number): Vec3 {
+  return normalFromAngles(orbit, orbitAngles(orbit, t));
 }
 
 // 平均黄経が指す方向の単位ベクトル(ECI)。真近点角ではなく平均近点角で軌道面内の角を取るので、
 // 中心差のぶんだけ実位置とはずれる。公転周期でちょうど一定角速度で回るため、同期回転する
 // 天体の本初子午線が指す方向はこちらで表される。
-export function keplerOrbitMeanDirection(orbit: KeplerOrbit, t: number, phaseOffset: number): Vec3 {
-  const a = orbitAngles(orbit, t, phaseOffset);
+export function keplerOrbitMeanDirection(orbit: KeplerOrbit, t: number): Vec3 {
+  const a = orbitAngles(orbit, t);
   return directionFromAngles(orbit, a, a.uMean);
 }

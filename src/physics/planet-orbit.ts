@@ -51,9 +51,9 @@ export type PlanetAngles = {
 };
 
 // 衛星モデルが太陽方向を求めるのに要る角度。惑星-衛星系重心の軌道から取れるので循環しない。
-export function planetAngles(orbit: PlanetOrbit, t: number, phaseOffset: number): PlanetAngles {
+export function planetAngles(orbit: PlanetOrbit, t: number): PlanetAngles {
   const lonPeri = orbit.lonPeri0 + orbit.lonPeriRate * t;
-  const meanLongitude = orbit.l0 + phaseOffset + orbit.lRate * t;
+  const meanLongitude = orbit.l0 + orbit.lRate * t;
   return {
     meanAnomaly: meanLongitude - lonPeri,
     meanLongitude,

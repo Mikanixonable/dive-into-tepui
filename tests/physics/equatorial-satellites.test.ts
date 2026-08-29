@@ -5,7 +5,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
-  EciOrigin, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
+  EciOrigin, PlanetDef, planetDefAtEpoch, satelliteDefAtEpoch, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
@@ -24,11 +24,11 @@ const DEFS = solarSystemParts();
 // 組む — 原点天体の日心位置がずれると ECI 位置の比較にならない。
 function withoutSatellite(primaryDef: PlanetDef): PlanetMotion {
   const origin = new EciOrigin();
-  const sun = new StarMotion(SUN, 0, EPOCH_T_OFFSET, null, origin);
-  const earth = new PlanetMotion(EARTH, sun, 0, EPOCH_T_OFFSET, null, origin);
+  const sun = new StarMotion(SUN, null, origin);
+  const earth = new PlanetMotion(planetDefAtEpoch(EARTH, {}, EPOCH_T_OFFSET), sun, null, origin);
   // 月は構築するだけで地球の重心補正の対象として登録される。
-  new SatelliteMotion(MOON, earth, 0, EPOCH_T_OFFSET, null, origin);
-  const bare = new PlanetMotion(primaryDef, sun, 0, EPOCH_T_OFFSET, null, origin);
+  new SatelliteMotion(satelliteDefAtEpoch(MOON, {}, EPOCH_T_OFFSET), earth, null, origin);
+  const bare = new PlanetMotion(planetDefAtEpoch(primaryDef, {}, EPOCH_T_OFFSET), sun, null, origin);
   origin.set(earth);
   return bare;
 }

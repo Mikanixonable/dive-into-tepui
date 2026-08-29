@@ -2,7 +2,7 @@
 import mercuryTextureUrl from '../../../assets/2k_mercury.jpg';
 import venusTextureUrl from '../../../assets/2k_venus_atmosphere.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
-import { EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, StarMotion } from '../../../physics/celestial-motion';
+import { EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, StarMotion } from '../../../physics/celestial-motion';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
@@ -88,13 +88,13 @@ export function innerPlanets(
 ): Record<InnerPlanetId, CelestialEntity> {
   return {
     mercury: new PointEntity(
-      new PlanetMotion(MERCURY, sun, phases[MERCURY.id] ?? 0, epochOffsetSec, pack, origin),
+      new PlanetMotion(planetDefAtEpoch(MERCURY, phases, epochOffsetSec), sun, pack, origin),
       INNER_PLANET_NAMES.mercury, 'planet',
       // 平均輝度 0.2306(A_B は公表ボンド)
       CelestialSurface.textured({ url: mercuryTextureUrl, albedoScale: 0.3815, bondAlbedo: 0.088, averageHue: [1.0088, 0.9974, 0.9997] }),
     ),
     venus: new PointEntity(
-      new PlanetMotion(VENUS, sun, phases[VENUS.id] ?? 0, epochOffsetSec, pack, origin),
+      new PlanetMotion(planetDefAtEpoch(VENUS, phases, epochOffsetSec), sun, pack, origin),
       INNER_PLANET_NAMES.venus, 'planet',
       // 平均輝度 0.5561(A_B は公表ボンド)
       CelestialSurface.textured({ url: venusTextureUrl, albedoScale: 1.3666, bondAlbedo: 0.76, averageHue: [1.4227, 0.9352, 0.3977] }),

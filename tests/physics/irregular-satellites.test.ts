@@ -68,9 +68,9 @@ export function register(): void {
     const dt = period / 100000;
     for (let i = 0; i < 10; i++) {
       const t = (i / 10) * period;
-      const s = keplerOrbitState(orbit, t, 0);
-      const sPlus = keplerOrbitState(orbit, t + dt, 0);
-      const sMinus = keplerOrbitState(orbit, t - dt, 0);
+      const s = keplerOrbitState(orbit, t);
+      const sPlus = keplerOrbitState(orbit, t + dt);
+      const sMinus = keplerOrbitState(orbit, t - dt);
       const vFd = scale(sub(sPlus.r, sMinus.r), 1 / (2 * dt));
       const relErr = len(sub(vFd, s.v)) / len(s.v);
       assert.ok(relErr < 1e-6, `速度と位置の中心差分の不一致 (t=${t}): ${relErr}`);

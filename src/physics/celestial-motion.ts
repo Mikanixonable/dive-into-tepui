@@ -11,14 +11,16 @@ import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedT
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import {
   FrameRotation, JULIAN_CENTURY, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal,
-  keplerOrbitRotation, keplerOrbitState,
+  keplerOrbitAtEpoch, keplerOrbitRotation, keplerOrbitState,
 } from './kepler-orbit';
 import {
   LagrangePoints, collinearClearanceRatio, hasStableTriangularPoints, lagrangePoints,
 } from './lagrange';
 import { PlanetOrbit, planetAngles } from './planet-orbit';
-import { SatelliteOrbit, satelliteState } from './satellite-orbit';
-import { Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef } from './celestial-body-def';
+import { SatelliteOrbit, satelliteOrbitAtEpoch, satelliteState } from './satellite-orbit';
+import {
+  Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelAtEpoch,
+} from './celestial-body-def';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { SECONDS_PER_DAY } from './time';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
@@ -77,6 +79,27 @@ function relativeState(t: number, a: KinematicState, b: KinematicState): Kinemat
   return kinematicState(t, sub(a.r, b.r), sub(a.v, b.v));
 }
 
+// 天体の宣言を、平均黄経の初期位相と元期オフセットを畳み込んだ宣言へ写す。これを通した宣言
+// だけが CelestialMotion へ渡ってよい — 軌道も自転モデルも simTime そのものを引数に取る形に
+// なり、評価のたびに巨大な定数を足し直さずに済む。
+export function planetDefAtEpoch(def: PlanetDef, phases: PhaseOffsets, epochOffsetSec: number): PlanetDef {
+  return {
+    ...def,
+    orbit: keplerOrbitAtEpoch(def.orbit, phases[def.id] ?? 0, epochOffsetSec),
+    pole: poleModelAtEpoch(def.pole, epochOffsetSec),
+  };
+}
+
+export function satelliteDefAtEpoch(
+  def: SatelliteDef, phases: PhaseOffsets, epochOffsetSec: number,
+): SatelliteDef {
+  return {
+    ...def,
+    orbit: satelliteOrbitAtEpoch(def.orbit, phases[def.id] ?? 0, epochOffsetSec),
+    pole: poleModelAtEpoch(def.pole, epochOffsetSec),
+  };
+}
+
 // ECI の中心天体。中心天体自身も自分を参照する循環があるため、全 motion を作り終えてから
 // set で1度だけ結ぶ。
 export class EciOrigin {
@@ -115,10 +138,6 @@ export abstract class CelestialMotion {
   private readonly bodyCache = new TimeRing<CelestialBody>();
 
   protected constructor(
-    // 平均黄経の初期位相 [rad]。
-    readonly phase: number,
-    // 軌道評価時刻へ一律に足す定数 [s]。
-    protected readonly epochOffsetSec: number,
     // 高精度暦パック。持たない構成では null。
     protected readonly precise: HelioEphemeris | null,
     private readonly origin: EciOrigin,
@@ -236,12 +255,10 @@ export abstract class CelestialMotion {
 export class StarMotion extends CelestialMotion {
   readonly kind: CelestialKind = 'star';
 
-  // phase は平均黄経の初期位相 [rad]、epochOffsetSec は軌道評価時刻へ足す定数 [s]。
   constructor(
-    readonly def: StarDef, phase: number, epochOffsetSec: number,
-    precise: HelioEphemeris | null, origin: EciOrigin,
+    readonly def: StarDef, precise: HelioEphemeris | null, origin: EciOrigin,
   ) {
-    super(phase, epochOffsetSec, precise, origin);
+    super(precise, origin);
   }
 
   // 恒星は階層の根。
@@ -295,14 +312,14 @@ export abstract class OrbitingMotion extends CelestialMotion {
       const q = qFromForwardUp(zHat, yHat);
       if (q !== null) return { q, omega: scale(zHat, len(h) / (len(packed.r) * len(packed.r))) };
     }
-    return keplerOrbitRotation(this.keplerOrbit, t + this.epochOffsetSec, this.phase);
+    return keplerOrbitRotation(this.keplerOrbit, t);
   }
 
   // 軌道面の法線(単位ベクトル、ECI)。
   orbitNormalAt(t: number): Vec3 {
     const packed = this.packedPrimaryRelStateAt(t);
     if (packed !== null) return norm(cross(packed.r, packed.v));
-    return keplerOrbitNormal(this.keplerOrbit, t + this.epochOffsetSec, this.phase);
+    return keplerOrbitNormal(this.keplerOrbit, t);
   }
 
   // 自分を副天体とする円制限三体問題のラグランジュ点。回転系は orbitFrameRotationAt の姿勢
@@ -350,7 +367,6 @@ export abstract class OrbitingMotion extends CelestialMotion {
   orientationAt(t: number): BodyOrientation | null {
     const model = this.def.pole;
     if (model === undefined) return null;
-    const te = t + this.epochOffsetSec;
     // 'eciPole' は ECI の極軸そのもの。位相の原点は春分点方向に取り、初期位相 spinPhase0 から
     // 自転ぶんだけ時刻とともに進める。軸は ECI に固定されているため、ここを固定位相にすると
     // spinRotationAt() の omega だけが進み、フレーム姿勢 q が時間変化しなくなる。
@@ -359,19 +375,19 @@ export abstract class OrbitingMotion extends CelestialMotion {
       return { axis: ECI_POLE, spinAngle: this.spinPhase0 + (rate === null ? 0 : rate * t) };
     }
     if (model.kind === 'iau') {
-      const cy = te / JULIAN_CENTURY;
+      const cy = t / JULIAN_CENTURY;
       const axis = raDecToEci(
         model.ra0Deg + model.ra1DegPerCentury * cy,
         model.dec0Deg + model.dec1DegPerCentury * cy,
       );
-      const w = (model.w0Deg + model.wRateDegPerDay * (te / SECONDS_PER_DAY)) * (Math.PI / 180);
+      const w = (model.w0Deg + model.wRateDegPerDay * (t / SECONDS_PER_DAY)) * (Math.PI / 180);
       return { axis, spinAngle: w };
     }
     // 同期回転する衛星は、軌道面法線から傾いた自転軸のまわりで本初子午線が親を向き続ける。
     // 一様自転する本初子午線は真黄経ではなく平均黄経を追うため、向きは真近点角では表せない。
     const orbit = this.keplerOrbit;
-    const axis = cassiniSpinAxis(ECL_POLE_ECI, keplerOrbitNormal(orbit, te, this.phase), model.obliquity);
-    const toPrimary = scale(keplerOrbitMeanDirection(orbit, te, this.phase), -1);
+    const axis = cassiniSpinAxis(ECL_POLE_ECI, keplerOrbitNormal(orbit, t), model.obliquity);
+    const toPrimary = scale(keplerOrbitMeanDirection(orbit, t), -1);
     return { axis, spinAngle: spinPhaseOf(axis, toPrimary) };
   }
 
@@ -430,11 +446,10 @@ export class PlanetMotion extends OrbitingMotion {
   // star は主星。恒星を持たない星系では null を渡す。spinPhase0 は自転の初期位相 [rad]
   // (eciPole の自転モデルを持つ惑星だけが意味を持つ)。
   constructor(
-    readonly def: PlanetDef, readonly star: StarMotion | null, phase: number,
-    epochOffsetSec: number, precise: HelioEphemeris | null, origin: EciOrigin,
-    spinPhase0 = 0,
+    readonly def: PlanetDef, readonly star: StarMotion | null,
+    precise: HelioEphemeris | null, origin: EciOrigin, spinPhase0 = 0,
   ) {
-    super(phase, epochOffsetSec, precise, origin, spinPhase0);
+    super(precise, origin, spinPhase0);
   }
 
   get primary(): CelestialMotion | null { return this.star; }
@@ -492,7 +507,7 @@ export class PlanetMotion extends OrbitingMotion {
 
   // 惑星-衛星系重心の日心状態。
   private baryHelioStateAt(t: number): KinematicState {
-    const s = keplerOrbitState(this.def.orbit, t + this.epochOffsetSec, this.phase);
+    const s = keplerOrbitState(this.def.orbit, t);
     return kinematicState(t, s.r, s.v);
   }
 }
@@ -505,10 +520,10 @@ export class SatelliteMotion extends OrbitingMotion {
   // 自分を planet の重心補正の対象として登録する。惑星本体の位置はこの登録に依存するので、
   // 惑星の日心状態を初めて引く前に全衛星を作り終えていなければならない。
   constructor(
-    readonly def: SatelliteDef, readonly planet: PlanetMotion, phase: number,
-    epochOffsetSec: number, precise: HelioEphemeris | null, origin: EciOrigin,
+    readonly def: SatelliteDef, readonly planet: PlanetMotion,
+    precise: HelioEphemeris | null, origin: EciOrigin,
   ) {
-    super(phase, epochOffsetSec, precise, origin);
+    super(precise, origin);
     planet.addSatellite(this);
   }
 
@@ -554,9 +569,8 @@ export class SatelliteMotion extends OrbitingMotion {
 
   // 惑星相対状態そのもの(キャッシュを経由しない評価)。
   private computeRelStateAt(t: number): KinematicState {
-    const te = t + this.epochOffsetSec;
-    const angles = planetAngles(this.planet.def.orbit, te, this.planet.phase);
-    const s = satelliteState(this.def.orbit, angles, te, this.phase);
+    const angles = planetAngles(this.planet.def.orbit, t);
+    const s = satelliteState(this.def.orbit, angles, t);
     return kinematicState(t, s.r, s.v);
   }
 }
