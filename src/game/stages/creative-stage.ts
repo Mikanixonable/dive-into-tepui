@@ -31,7 +31,7 @@ import { elementsFormFromState } from '../creative/duplicate-form';
 import { STAGE_CONTROL_ENEMY_SHAPES, StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
 import { OrbitLine } from '../lines/orbit-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
-import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 
 // 軌道上へ配置できる自機の上限隻数。

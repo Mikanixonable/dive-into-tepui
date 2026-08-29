@@ -22,7 +22,7 @@ import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { Input } from '../input/input';
 import type { CombatTarget } from '../targeter';
-import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { CelestialSystem } from '../celestial/celestial-system';

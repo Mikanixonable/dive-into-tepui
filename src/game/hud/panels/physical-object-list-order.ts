@@ -1,5 +1,5 @@
 import { LAGRANGE_ID, lagrangePoint } from '../object-groups';
-import type { BodyClass } from '../../celestial/celestial-entity-def';
+import type { CelestialClass } from '../../celestial/celestial-entity-def';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
 
@@ -11,7 +11,7 @@ export interface SectionOrder {
   readonly childIds: Map<string, string[]>;
 }
 
-export type PhysicalObjectListFilter = 'artifact' | 'enemy' | 'lagrange' | Exclude<BodyClass, 'star'>;
+export type PhysicalObjectListFilter = 'artifact' | 'enemy' | 'lagrange' | Exclude<CelestialClass, 'star'>;
 
 export const FILTERS: readonly (readonly [PhysicalObjectListFilter, string])[] = [
   ['planet', '惑星'],

@@ -20,7 +20,7 @@ import { buildPlayerShip } from '../../render/ships';
 import { CelestialBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
-import type { MapVisibility } from '../celestial/map-visibility';
+import type { MapVisibility } from '../map/visibility-policy';
 import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
 import { PlayerThrottle } from './player-throttle';

@@ -16,7 +16,7 @@ import { BodyGraticule } from '../../render/body-graticule';
 import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
 import type { Aurora } from '../../render/aurora';
-import type { BodyClass } from './celestial-entity-def';
+import type { CelestialClass } from './celestial-entity-def';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { GeostationaryOverlay } from './geostationary-overlay';
 import type { StarEntity } from './star-entity';
@@ -80,7 +80,7 @@ export class PointEntity extends CelestialEntity {
   constructor(
     motion: OrbitingMotion,
     name: string,
-    bodyClass: BodyClass,
+    bodyClass: CelestialClass,
     private readonly surface: CelestialSurface,
     atmosphereOptics: AtmosphereOptics | null = null,
     private readonly surfaceMarkings: LineOverlay | null = null,

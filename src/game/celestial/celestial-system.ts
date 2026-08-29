@@ -34,7 +34,7 @@ import { atmosphereDraws } from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialEntity } from './celestial-entity';
 import { StarEntity } from './star-entity';
-import { MapVisibilityPolicy } from './map-visibility';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import { OrbitGuideLines } from './orbit-guide-lines';
 import { ZeroVelocityLines } from './zero-velocity-lines';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-settings';
@@ -60,7 +60,7 @@ export class CelestialSystem {
   private ambient!: AmbientSource;
   private atmosphere!: AtmospherePass;
   private readonly bodiesById: ReadonlyMap<string, CelestialEntity>;
-  // 全天体の運動(bodies と同じ宣言順)。THREE 非依存の層(body-visibility 等)へ列挙を
+  // 全天体の運動(bodies と同じ宣言順)。THREE 非依存の層(system-membership 等)へ列挙を
   // 渡すときはこれを使う。
   readonly motions: readonly CelestialMotion[];
   // 主星の個体。恒星を持たない星系では null。
@@ -271,7 +271,7 @@ export class CelestialSystem {
     if (pointField !== null && cameraSystem.overviewMode && star !== null && graphics.pointField) {
       this.buildPointField(pointField);
       pointField.sync(
-        floatingOrigin, true, cameraSystem.bodyClassToggles.smallBodyVisible, fixedBrightnessScale,
+        floatingOrigin, true, cameraSystem.mapDisplayToggles.smallBodyVisible, fixedBrightnessScale,
       );
     } else if (this.pointFieldBuilt) {
       pointField?.sync(floatingOrigin, false, true, fixedBrightnessScale);

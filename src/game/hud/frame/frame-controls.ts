@@ -5,7 +5,7 @@ import { bodyAnchorSource, CelestialBody } from '../../../physics/celestial-body
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
-import { systemMembersAt } from '../../celestial/body-visibility';
+import { systemMembersAt } from '../../celestial/system-membership';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { MapCamera } from '../../camera/map-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';

@@ -15,7 +15,7 @@ import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../render/pipeline/
 import { len, sub, v3 } from '../../math/vec3';
 import type { AtmosphereCandidate, AtmosphereOptics } from '../../render/atmosphere';
 import type { Albedo } from '../../render/celestial-albedo';
-import type { BodyClass } from './celestial-entity-def';
+import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { SunLight } from '../../render/pipeline/sun-light';
@@ -47,7 +47,7 @@ export abstract class CelestialEntity {
   protected constructor(
     readonly motion: CelestialMotion,
     readonly name: string,
-    readonly bodyClass: BodyClass,
+    readonly bodyClass: CelestialClass,
     readonly atmosphereOptics: AtmosphereOptics | null,
   ) {}
 
