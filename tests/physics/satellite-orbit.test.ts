@@ -5,7 +5,7 @@ import { planetAngles, planetOrbit } from '../../src/physics/planet-orbit';
 import { PerturbationTerm, satelliteOrbit, satelliteState } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { eciToEcl } from '../../src/physics/ecliptic';
-import { EARTH, MOON } from '../../src/physics/solar-system/earth-system';
+import { EARTH, MOON } from '../../src/game/celestial/solar-system/earth-system';
 import { len, scale, sub } from '../../src/math/vec3';
 
 const R2D = 180 / Math.PI;

@@ -1,24 +1,28 @@
-// 現実の太陽系の game 側パック: physics 側パック(solarSystemMotions)が組んだ運動に
-// 見た目(CelestialEntity)を対応づけ、CelestialSystem を返す構築コードの入口。
-import { AbsoluteEphemeris } from '../../../physics/absolute-ephemeris';
-import { PhaseOffsets } from '../../../physics/celestial-motion';
-import {
-  SolarSystemId, solarSystemMotions,
-} from '../../../physics/solar-system/solar-system';
+// 現実の太陽系。各系の構築関数を呼んで全天体の運動と見た目を組み、宣言順に並べた
+// CelestialSystem を返す。ECI の中心(originId)は呼び出し側の選択で、同じ太陽系を別の原点で
+// 組める。高精度暦パックを渡すと、その有効期間だけパック経路を通る。
+import { AbsoluteEphemeris, OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
+import { EciOrigin, PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
+import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
 import type { CelestialEntity } from '../celestial-entity';
 import { StarEntity } from '../star-entity';
-import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
-import { SUN_LIGHT_COLOR, SUN_SURFACE_COLOR } from './sun';
-import { DWARF_PLANET_NAMES, dwarfPlanetEntities } from './dwarf-planets';
-import { EARTH_SYSTEM_NAMES, earthSystemEntities } from './earth-system';
-import { INNER_PLANET_NAMES, innerPlanetEntities } from './inner-planets';
-import { JUPITER_SYSTEM_NAMES, jupiterSystemEntities } from './jupiter-system';
-import { MARS_SYSTEM_NAMES, marsSystemEntities } from './mars-system';
-import { NEPTUNE_SYSTEM_NAMES, neptuneSystemEntities } from './neptune-system';
-import { SATURN_SYSTEM_NAMES, saturnSystemEntities } from './saturn-system';
-import { SMALL_BODY_NAMES, smallBodyEntities } from './small-bodies';
-import { URANUS_SYSTEM_NAMES, uranusSystemEntities } from './uranus-system';
+import { DwarfPlanetId, DWARF_PLANET_NAMES, dwarfPlanets } from './dwarf-planets';
+import { EarthSystemBodyId, EARTH_SYSTEM_NAMES, earthSystem } from './earth-system';
+import { InnerPlanetId, INNER_PLANET_NAMES, innerPlanets } from './inner-planets';
+import { JupiterSystemBodyId, JUPITER_SYSTEM_NAMES, jupiterSystem } from './jupiter-system';
+import { MarsSystemBodyId, MARS_SYSTEM_NAMES, marsSystem } from './mars-system';
+import { NeptuneSystemBodyId, NEPTUNE_SYSTEM_NAMES, neptuneSystem } from './neptune-system';
+import { SaturnSystemBodyId, SATURN_SYSTEM_NAMES, saturnSystem } from './saturn-system';
+import { SmallBodyId, SMALL_BODY_NAMES, smallBodies } from './small-bodies';
+import { SUN, SUN_LIGHT_COLOR, SUN_SURFACE_COLOR } from './sun';
+import { UranusSystemBodyId, URANUS_SYSTEM_NAMES, uranusSystem } from './uranus-system';
+
+// 太陽系に登録された天体の id。各系の id 集合を合わせたもの。
+export type SolarSystemId =
+  | EarthSystemBodyId | InnerPlanetId | MarsSystemBodyId | JupiterSystemBodyId
+  | SaturnSystemBodyId | UranusSystemBodyId | NeptuneSystemBodyId | DwarfPlanetId | SmallBodyId
+  | 'sun';
 
 // 太陽系の全天体の表示名。各系ファイルの表を1つに合わせたもので、名前の正本は系ファイルのまま。
 export const SOLAR_SYSTEM_BODY_NAMES: Record<SolarSystemId, string> = {
@@ -46,24 +50,34 @@ export function solarSystem(
   originId: SolarSystemId, phases: PhaseOffsets, earthSpinPhase0: number,
   absoluteSource: AbsoluteEphemeris | null, epochOffsetSec: number, epochJdTdb: number,
 ): CelestialSystem {
-  const m = solarSystemMotions(originId, phases, epochOffsetSec, absoluteSource, epochJdTdb, earthSpinPhase0);
-  // Record の網羅性検査が「physics 側に居る天体に見た目が無い」をコンパイルエラーにする。
-  const e: Record<SolarSystemId, CelestialEntity> = {
-    // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
-    sun: new StarEntity(
-      m.sun, SOLAR_SYSTEM_BODY_NAMES.sun, SUN_LIGHT_COLOR,
-      REFERENCE_STAR_RADIANT_INTENSITY, SUN_SURFACE_COLOR),
-    ...earthSystemEntities(m.earthSystem),
-    ...innerPlanetEntities(m.innerPlanets),
-    ...marsSystemEntities(m.marsSystem),
-    ...jupiterSystemEntities(m.jupiterSystem),
-    ...saturnSystemEntities(m.saturnSystem),
-    ...uranusSystemEntities(m.uranusSystem),
-    ...neptuneSystemEntities(m.neptuneSystem),
-    ...dwarfPlanetEntities(m.dwarfPlanets),
-    ...smallBodyEntities(m.smallBodies),
-  };
-  const bodies = m.all.map((motion) => e[motion.id as SolarSystemId]);
-  const origin = e[originId];
-  return new CelestialSystem(bodies, origin, phases);
+  const origin = new EciOrigin();
+  const pack = absoluteSource === null
+    ? null
+    : new OriginCenteredEphemeris(absoluteSource, originId, epochJdTdb);
+  const sunMotion = new StarMotion(SUN, phases[SUN.id] ?? 0, epochOffsetSec, pack, origin);
+  // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
+  const sun = new StarEntity(
+    sunMotion, SOLAR_SYSTEM_BODY_NAMES.sun, SUN_LIGHT_COLOR,
+    REFERENCE_STAR_RADIANT_INTENSITY, SUN_SURFACE_COLOR);
+
+  // 全天体を系ごとの宣言順に並べたもの。重力源配列・天体一覧の順序はこれで決まる。
+  const bodies: readonly CelestialEntity[] = [
+    ...Object.values(earthSystem(sunMotion, phases, epochOffsetSec, pack, origin, earthSpinPhase0)),
+    ...Object.values(innerPlanets(sunMotion, phases, epochOffsetSec, pack, origin)),
+    ...Object.values(marsSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
+    ...Object.values(jupiterSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
+    ...Object.values(saturnSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
+    ...Object.values(uranusSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
+    ...Object.values(neptuneSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
+    ...Object.values(dwarfPlanets(sunMotion, phases, epochOffsetSec, pack, origin)),
+    ...Object.values(smallBodies(sunMotion, phases, epochOffsetSec, pack, origin)),
+    sun,
+  ];
+
+  // 木が揃ってから ECI の中心を結ぶ。中心天体自身も自分を参照するので、この順序は崩せない。
+  const originBody = bodies.find((b) => b.id === originId);
+  if (originBody === undefined) throw new Error(`solarSystem: 太陽系に無い原点 id: ${originId}`);
+  origin.set(originBody.motion);
+
+  return new CelestialSystem(bodies, originBody, phases);
 }
