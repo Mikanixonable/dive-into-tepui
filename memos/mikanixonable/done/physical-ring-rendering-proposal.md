@@ -19,7 +19,7 @@
 
 ### 固定値が全環へ適用される
 
-`src/game/celestial/ring-view.ts` は非テクスチャ環へ共通して次を使用している。
+`src/game/celestial/celestial-entity/ring-view.ts` は非テクスチャ環へ共通して次を使用している。
 
 ```ts
 RING_OPACITY = 0.3
@@ -278,7 +278,7 @@ pixelRadiance = resolvedRadiance * coverage
   - `MeshBasicMaterial`をTSLノード材質へ置換。
   - 観測角透過、単一散乱、惑星影を実装。
   - 穴のない扁平球を廃止。
-- `src/game/celestial/ring-view.ts`
+- `src/game/celestial/celestial-entity/ring-view.ts`
   - 太陽方向、カメラ位置、天体中心・半径をシェーダへ同期。
   - 二値判定から被覆率保存・クロスフェードのLODへ変更。
 - `src/game/celestial/sphere-body.ts`
