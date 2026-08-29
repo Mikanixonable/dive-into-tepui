@@ -15,8 +15,13 @@ import { CelestialSurface } from '../../render/celestial-surface';
 import { BodyGraticule } from '../../render/body-graticule';
 import { showsPhysicalSphere } from '../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
+import type { Aurora } from '../../render/aurora';
 import type { BodyClass } from './celestial-entity-def';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { GeostationaryOverlay } from './geostationary-overlay';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { LineOverlay } from '../../render/line-overlay';
+import type { MarkerManager } from '../marker/marker-manager';
 import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../render/render-style';
@@ -44,11 +49,17 @@ const NAKED_EYE_LIMIT_IRRADIANCE = SUN_IRRADIANCE_1AU
 // 掛かる 1 つの応答**として、肉眼限界がかろうじて見える表示値になるよう決める。
 const POINT_DISPLAY_GAIN = NAKED_EYE_LIMIT_DISPLAY / NAKED_EYE_LIMIT_IRRADIANCE;
 
+// オーロラの明滅・波打ちが進む速さ [1/s]。
+const AURORA_PHASE_RATE = 0.02;
+
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
 
 export class PointEntity extends CelestialEntity {
+  // 位置と自転姿勢だけを載せる入れ物。扁平のスケールは shapeGroup が持つ — オーロラは実寸 [m]
+  // の頂点を持つので、ここを拡大すると天体半径倍に膨らむ。
   private readonly group = new THREE.Group();
+  private readonly shapeGroup = new THREE.Group();
   private ring?: RingView;
   // 輝点スプライト。グローテクスチャの生成が DOM を要するので build まで作らない。
   private billboard!: Billboard;
@@ -63,13 +74,18 @@ export class PointEntity extends CelestialEntity {
   private readonly graticule = new BodyGraticule();
 
   // surface はマップビューで見せる実体。実半径・歪みの形状・環は motion の定義から引き、
-  // 環はマップビューでのみ描く(戦闘ビューの輝点に環はない)。
+  // 環はマップビューでのみ描く(戦闘ビューの輝点に環はない)。surfaceMarkings は模式図で
+  // だけ見せる天体固有の表面ライン、auroras は極を囲むカーテン(層ごとに1枚)、
+  // mapOverlay はマップ専用の同期軌道リング。持たない天体では null / 空。
   constructor(
     motion: OrbitingMotion,
     name: string,
     bodyClass: BodyClass,
     private readonly surface: CelestialSurface,
     atmosphereOptics: AtmosphereOptics | null = null,
+    private readonly surfaceMarkings: LineOverlay | null = null,
+    private readonly auroras: readonly Aurora[] = [],
+    private readonly mapOverlay: GeostationaryOverlay | null = null,
   ) {
     super(motion, name, bodyClass, atmosphereOptics);
     const def = motion.def;
@@ -91,8 +107,11 @@ export class PointEntity extends CelestialEntity {
   build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void {
     // 色はテクスチャ平均色を狙わず単色の白 — 恒星状の光点として過剰演出しない。
     this.billboard = new Billboard(0xffffff, -9);
-    this.surface.addTo(this.group);
-    this.graticule.addTo(this.group);
+    this.surface.addTo(this.shapeGroup);
+    this.graticule.addTo(this.shapeGroup);
+    this.surfaceMarkings?.addTo(this.shapeGroup);
+    this.group.add(this.shapeGroup);
+    for (const aurora of this.auroras) this.group.add(aurora.mesh);
     scene.add(this.group);
     if (this.rings !== undefined) {
       this.ring = new RingView(
@@ -101,6 +120,7 @@ export class PointEntity extends CelestialEntity {
       scene.add(this.ring.group);
     }
     scene.add(this.billboard.mesh);
+    this.mapOverlay?.build(scene);
   }
 
   setVisible(visible: boolean): void {
@@ -130,13 +150,16 @@ export class PointEntity extends CelestialEntity {
       return;
     }
     this.surface.syncLod(apparentDiameterPx);
+    this.surface.setCloudAmount(graphics.clouds ? 1 : 0);
     this.graticule.setVisible(style === 'schematic');
+    this.surfaceMarkings?.setVisible(style === 'schematic');
+    this.syncAuroras(displayTime, graphics.aurora);
     const orientation = this.motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     const rings = graphics.rings ? this.rings : undefined;
     if (this.ring !== undefined) this.ring.group.visible = rings !== undefined;
     this.group.position.copy(fo.RtoThreeV3(pos));
-    this.group.scale.copy(this.axes);
+    this.shapeGroup.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     this.billboard.hide();
     if (this.ring !== undefined && rings !== undefined) {
@@ -150,10 +173,29 @@ export class PointEntity extends CelestialEntity {
     }
   }
 
+  // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
+  override syncMapOverlay(
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+    markerManager: MarkerManager | null, celestialBodies: readonly CelestialBody[], visible: boolean,
+  ): void {
+    this.mapOverlay?.sync(fo, displayTime, cameraSystem, markerManager, celestialBodies, visible);
+  }
+
+  // オーロラの波打ち・明滅を表示時刻へ進める。
+  private syncAuroras(displayTime: number, visible: boolean): void {
+    const phase = displayTime * AURORA_PHASE_RATE;
+    for (const aurora of this.auroras) {
+      aurora.mesh.visible = visible;
+      if (visible) aurora.sync(phase);
+    }
+  }
+
   // 見かけ直径が閾値未満のときの共通後始末: 実体メッシュと環を隠す。
   private hidePhysical(): void {
     this.surface.hide();
     this.graticule.setVisible(false);
+    this.surfaceMarkings?.setVisible(false);
+    for (const aurora of this.auroras) aurora.mesh.visible = false;
     if (this.ring !== undefined) this.ring.group.visible = false;
   }
 
@@ -182,11 +224,14 @@ export class PointEntity extends CelestialEntity {
     );
   }
 
-  // 表面・環・輝点ビルボードを解放する。
+  // 表面・環・オーロラ・輝点ビルボードを解放する。
   dispose(): void {
     this.group.removeFromParent();
     this.surface.dispose();
     this.graticule.dispose();
+    this.surfaceMarkings?.dispose();
+    for (const aurora of this.auroras) aurora.dispose();
+    this.mapOverlay?.dispose();
     this.ring?.dispose();
     this.billboard.mesh.removeFromParent();
     this.billboard.dispose();
