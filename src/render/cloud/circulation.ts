@@ -7,7 +7,8 @@
 // どちらも 2π で畳めるので、時刻がどれだけ進んでもノイズ空間の座標は有界に留まる。
 import * as THREE from 'three/webgpu';
 import {
-  clamp, float, floor, greaterThanEqual, inverseSqrt, min, select, smoothstep, uniform, vec3,
+  Fn, If, clamp, float, floor, greaterThanEqual, inverseSqrt, lessThanEqual, min, select, smoothstep,
+  uniform, vec3,
 } from 'three/tsl';
 import { latitudeOf } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node, Vec4Uniform } from '../tsl-types';
@@ -65,22 +66,37 @@ export class Circulation {
     this.breath.value = BREATH_AMPLITUDE * Math.sin((2 * Math.PI * seconds) / BREATH_PERIOD);
   }
 
-  // 単位方向 direction の模様を、そこに効く 2 本の帯の流れへ乗せて sample し、混ぜた値。sample へ
-  // 渡る位置は、球の半径を 1 とするノイズ空間の位置。重みは二乗和が 1 になるよう正規化してあるので、
-  // 独立な 2 枚を混ぜても境目で振幅が落ちない。
+  // 単位方向 direction の模様を、そこに効く帯の流れへ乗せて sample した値。sample へ渡る位置は、
+  // 球の半径を 1 とするノイズ空間の位置。境目では隣り合う 2 本を混ぜる — 重みは二乗和が 1 になるよう
+  // 正規化してあるので、独立な 2 枚を混ぜても境目で振幅が落ちない。
+  //
+  // **2 枚目を sample するのは混ざる範囲にいるときだけ。** sample はノイズの評価そのもので、
+  // 重み 0 のまま走らせると帯の内側(緯度の 6 割)でその分がまるごと捨てられる。分岐の向きは
+  // 緯度だけで決まるので、画面のまとまった範囲で揃う。
   public carry(direction: Vec3Node, sample: (position: Vec3Node) => FloatNode): FloatNode {
-    const band = clamp(float(FIRST_LATITUDE).sub(latitudeOf(direction)).div(BAND_SPACING), 0, BANDS.length - 1);
-    const lower = floor(band);
-    const upper = min(lower.add(1), BANDS.length - 1);
-    const weight = smoothstep(0.5 - BLEND_WIDTH / 2, 0.5 + BLEND_WIDTH / 2, band.sub(lower));
-    const rest = float(1).sub(weight);
-    const scale = inverseSqrt(weight.mul(weight).add(rest.mul(rest)));
-    // 呼吸を効かせる度合い。cos²(緯度) をもう一度掛けてあるのは、公転が既に法線を向いている
-    // 中緯度で張り合わせないため。
-    const cosLatitude2 = float(1).sub(direction.y.mul(direction.y));
-    const breathing = direction.mul(this.breath.mul(cosLatitude2).mul(cosLatitude2).add(1));
-    return sample(this.positionAt(breathing, lower)).mul(rest.mul(scale))
-      .add(sample(this.positionAt(breathing, upper)).mul(weight.mul(scale)));
+    return Fn(() => {
+      const band = clamp(float(FIRST_LATITUDE).sub(latitudeOf(direction)).div(BAND_SPACING), 0, BANDS.length - 1);
+      const lower = floor(band).toVar();
+      const upper = min(lower.add(1), BANDS.length - 1).toVar();
+      const weight = smoothstep(0.5 - BLEND_WIDTH / 2, 0.5 + BLEND_WIDTH / 2, band.sub(lower)).toVar();
+      // 呼吸を効かせる度合い。cos²(緯度) をもう一度掛けてあるのは、公転が既に法線を向いている
+      // 中緯度で張り合わせないため。
+      const cosLatitude2 = float(1).sub(direction.y.mul(direction.y));
+      const breathing = direction.mul(this.breath.mul(cosLatitude2).mul(cosLatitude2).add(1)).toVar();
+
+      const carried = float(0).toVar();
+      If(lessThanEqual(weight, 0), () => {
+        carried.assign(sample(this.positionAt(breathing, lower)));
+      }).ElseIf(greaterThanEqual(weight, 1), () => {
+        carried.assign(sample(this.positionAt(breathing, upper)));
+      }).Else(() => {
+        const rest = float(1).sub(weight);
+        const scale = inverseSqrt(weight.mul(weight).add(rest.mul(rest)));
+        carried.assign(sample(this.positionAt(breathing, lower)).mul(rest.mul(scale))
+          .add(sample(this.positionAt(breathing, upper)).mul(weight.mul(scale))));
+      });
+      return carried;
+    })();
   }
 
   // 帯 index の流れに乗せた point の位置。point は呼吸で伸縮させた単位方向。自転軸が +Y、
