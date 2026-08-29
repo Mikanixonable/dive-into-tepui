@@ -36,17 +36,14 @@
 
 ## 残っている論点
 
-### 1. `_isPaused && hud.modalController.isOpen`
+### 1. `_isPaused || overlayManager.isInputGated()`
 
-`Game` 所有の `_isPaused` と `Hud` 所有の `isOpen` を跨ぐ単純な AND で、ポインタ入力を
-配るかどうかを決めている。**全画面のモーダルが自分でポインタを消費すれば、この AND 自体が
-要らなくなる。** ポーズ経路は「設定パネル/スナップショット一覧を開いた(=モーダル)」か
-「ドック」しかないので、両者の実効差を確認する価値はある。
-
-同じ `handlePointerInput` には戦闘側を配る前の `if (this._isPaused) return;` も残っている。
-こちらはドック表示中に背後の3D世界が見えないまま当たり判定だけが生きるのを防いでいるが、
-ドックビューがキャンバスを覆ってポインタイベント自体を奪っているなら、これも不要になりうる。
-上と同じ調査で片が付く。
+`Game.handlePointerInput` の冒頭で、`Game` 所有の `_isPaused` と `Hud` 所有の入力ゲートを
+跨ぐ OR がポインタ入力を配るかどうかを決めている。**入力を塞ぐオーバーレイが自分でポインタを
+消費すれば、この判定自体が要らなくなる。** ポーズ経路は「設定パネル/スナップショット一覧を
+開いた(=オーバーレイ)」か「ドック」しかないので、両者の実効差を確認する価値はある。
+ドックビューがキャンバスを覆ってポインタイベント自体を奪っているなら、`_isPaused` の側も
+不要になりうる — 同じ調査で片が付く。
 
 ### 2. `if (player) touchControls?.syncModeButtons(...)`
 
@@ -54,8 +51,22 @@
 艦がいないときに前の艦のモード表示が凍結して残る。**本来は仮想パッドごと畳むべきで、それは
 `ViewManager.applyChrome` の側の話。**
 
-### 3. `Docking` のポーズ操作のクロージャ注入
+### 3. `Game` の責務境界(CODING-RULE 1.2 / 1.9)
 
-`pauseGame`/`resumeGame` の2クロージャは「クロージャ注入は原則行わず参照を渡す」規則への
-**暫定的な例外**(理由は `docking.ts` のコンストラクタコメントと CLAUDE.md にある)。
-`Game` を分解して「ポーズの正本」を独立した所有者へ切り出せるなら、参照渡しへ戻す。
+`game/game.ts` にオーケストレーション以外のメンバー(`setControlledBase` / `advanceSimulation` /
+`handlePointerInput` / `objectName` / `viewBadgeContext` / `proteinMotionFrameSample` 等)があり、
+`sync()` の中で `displayWindowManager` の解決など update 相当を呼ぶ箇所がある。横断を責務とする
+モジュールへ寄せる再編が要る。
+
+**`dispose` はここにあってよい。** 構築の逆順で配線を解くのはオーケストレーションそのもので、
+1.2 の言う「実装」ではない。hook が毎回警告するのは hook 側の粒度の問題なので、直すなら hook。
+
+### 4. `game/celestial/` の置き場と命名
+
+`src/celestial/` へ出す条件「`game/` を import しない」が不成立。残っている import は
+`game/camera/floating-origin`・`game/camera/camera-system`・`game/camera/focus-target`・
+`game/marker/marker-manager`・`game/lines/orbit-line`・`game/const` の6種
+(この一覧は `987fd46c` 時点のスナップショット。食い違ったらコードを信じる)。
+カメラ・マーカー・線の抽象を切るか、置き場は現状維持かの判断が要る。
+あわせて `System` / `Manager` の使い分け(`CelestialSystem` と `EntityManager` の非対称)も
+再検討する。
