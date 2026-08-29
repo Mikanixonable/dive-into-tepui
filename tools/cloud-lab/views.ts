@@ -10,7 +10,7 @@ import type { Vec2Node, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 export type CloudLabViewId =
   | 'opaque' | 'opaqueByAltitude' | 'translucent'
   | 'pressure' | 'convergence' | 'wind' | 'upperWind' | 'lift' | 'temperature' | 'humidity' | 'upperHumidity'
-  | 'meanTemperature' | 'meanHumidity' | 'elevation';
+  | 'meanTemperature' | 'meanCloudiness' | 'elevation';
 
 export type CloudLabView = {
   readonly id: CloudLabViewId;
@@ -68,6 +68,6 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'humidity', label: '湿度', readsFields: false, color: (model) => vec3(model.weatherAt(direction).humidity) },
   { id: 'upperHumidity', label: '上層湿度', readsFields: false, color: (model) => vec3(model.weatherAt(direction).upperHumidity) },
   { id: 'meanTemperature', label: '平均気温', readsFields: false, color: (_m, climate) => vec3(climate.meanTemperature(direction).sub(TEMPERATURE_MIN).div(TEMPERATURE_SPAN)) },
-  { id: 'meanHumidity', label: '平均湿度', readsFields: false, color: (_m, climate) => vec3(climate.meanHumidity(direction)) },
+  { id: 'meanCloudiness', label: '平年の雲量', readsFields: false, color: (_m, climate) => vec3(climate.meanCloudiness(direction)) },
   { id: 'elevation', label: '標高', readsFields: false, color: (_m, climate) => vec3(climate.elevation(direction).div(ELEVATION_SPAN)) },
 ];
