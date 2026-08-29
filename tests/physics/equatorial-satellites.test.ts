@@ -5,15 +5,15 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
-  EciOrigin, PlanetDef, PlanetMotion, SatelliteDef, StarMotion,
+  EciOrigin, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { EPOCH_T_OFFSET } from '../../src/physics/solar-system/constants';
-import { PLUTO } from '../../src/physics/solar-system/dwarf-planets';
-import { earthSystem } from '../../src/physics/solar-system/earth-system';
-import { ORCUS, QUAOAR } from '../../src/physics/solar-system/small-bodies';
-import { SUN } from '../../src/physics/solar-system/sun';
+import { PLUTO } from '../../src/game/celestial/solar-system/dwarf-planets';
+import { EARTH, MOON } from '../../src/game/celestial/solar-system/earth-system';
+import { ORCUS, QUAOAR } from '../../src/game/celestial/solar-system/small-bodies';
+import { SUN } from '../../src/game/celestial/solar-system/sun';
 import { SolarSystemParts, motionOf, orbitingMotionOf, solarSystemParts } from './test-helpers';
 import { add, cross, dot, len, norm, scale, sub } from '../../src/math/vec3';
 
@@ -25,7 +25,9 @@ const DEFS = solarSystemParts();
 function withoutSatellite(primaryDef: PlanetDef): PlanetMotion {
   const origin = new EciOrigin();
   const sun = new StarMotion(SUN, 0, EPOCH_T_OFFSET, null, origin);
-  const { earth } = earthSystem(sun, {}, EPOCH_T_OFFSET, null, origin);
+  const earth = new PlanetMotion(EARTH, sun, 0, EPOCH_T_OFFSET, null, origin);
+  // 月は構築するだけで地球の重心補正の対象として登録される。
+  new SatelliteMotion(MOON, earth, 0, EPOCH_T_OFFSET, null, origin);
   const bare = new PlanetMotion(primaryDef, sun, 0, EPOCH_T_OFFSET, null, origin);
   origin.set(earth);
   return bare;

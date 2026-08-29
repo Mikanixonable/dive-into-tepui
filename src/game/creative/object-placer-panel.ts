@@ -10,7 +10,7 @@ import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { CollinearPoint } from '../../physics/halo';
 import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system/constants';
-import { MOON } from '../../physics/solar-system/earth-system';
+import { MOON } from '../celestial/solar-system/earth-system';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { CelestialSystem } from '../celestial/celestial-system';

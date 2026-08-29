@@ -2,10 +2,10 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { spinRateOf } from '../../src/physics/celestial-motion';
-import { CERES } from '../../src/physics/solar-system/dwarf-planets';
-import { EARTH } from '../../src/physics/solar-system/earth-system';
-import { VENUS } from '../../src/physics/solar-system/inner-planets';
-import { URANUS } from '../../src/physics/solar-system/uranus-system';
+import { CERES } from '../../src/game/celestial/solar-system/dwarf-planets';
+import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
+import { VENUS } from '../../src/game/celestial/solar-system/inner-planets';
+import { URANUS } from '../../src/game/celestial/solar-system/uranus-system';
 import { SIDEREAL_DAY } from '../../src/physics/solar-system/constants';
 
 export function register(): void {

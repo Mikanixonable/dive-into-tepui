@@ -1,12 +1,12 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
 import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
-import { CelestialBodyWindows } from '../../src/physics/celestial-body-windows';
+import type { CelestialBodyWindows } from '../../src/physics/celestial-body-windows';
 import { CelestialMotion, OrbitingMotion, PhaseOffsets } from '../../src/physics/celestial-motion';
 import { FrameRotation } from '../../src/physics/kepler-orbit';
-import { ReferenceFrames } from '../../src/physics/reference-frames';
+import type { ReferenceFrames } from '../../src/physics/reference-frames';
 import { EPOCH_T_OFFSET } from '../../src/physics/solar-system/constants';
-import { solarSystemMotions } from '../../src/physics/solar-system/solar-system';
+import { solarSystem } from '../../src/game/celestial/solar-system/solar-system';
 import { SECONDS_PER_DAY } from '../../src/physics/time';
 import { Vec3, cross, len, scale, sub, v3 } from '../../src/math/vec3';
 import { qRotate } from '../../src/physics/attitude';
@@ -27,14 +27,8 @@ export function solarSystemParts(
   absoluteSource: AbsoluteEphemeris | null = null,
   epochJdTdb: number = 2451545 + epochOffsetSec / SECONDS_PER_DAY,
 ): SolarSystemParts {
-  const bodies = solarSystemMotions('earth', phases, epochOffsetSec, absoluteSource, epochJdTdb).all;
-  const earth = bodies.find((m) => m.id === 'earth');
-  if (earth === undefined) throw new Error('太陽系に地球が登録されていない');
-  return {
-    bodies,
-    windows: new CelestialBodyWindows(bodies),
-    referenceFrames: new ReferenceFrames(bodies, earth),
-  };
+  const system = solarSystem('earth', phases, 0, absoluteSource, epochOffsetSec, epochJdTdb);
+  return { bodies: system.motions, windows: system.windows, referenceFrames: system.frames };
 }
 
 // 天体 id の運動。太陽系に登録されていない id を渡すと例外。

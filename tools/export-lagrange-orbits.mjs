@@ -19,7 +19,7 @@
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadPhysicsModules } from './compile-physics.mjs';
+import { loadSourceModules } from './compile-source.mjs';
 import { keepLongEnough, segmentFamilyKey, splitSegmentKey, thinByChordLength } from './orbit-family.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -54,9 +54,10 @@ const MEMBERS_PER_FAMILY = 30;
 // 区間が1つしか無い族(分かれなかった族)には効かせない。
 const MIN_SEGMENT_LENGTH = 3;
 
-const physics = loadPhysicsModules([
-  'cr3bp', 'solar-system/sun', 'solar-system/earth-system', 'solar-system/mars-system',
-  'solar-system/jupiter-system', 'solar-system/saturn-system',
+const physics = loadSourceModules([
+  'physics/cr3bp', 'game/celestial/solar-system/sun', 'game/celestial/solar-system/earth-system',
+  'game/celestial/solar-system/mars-system', 'game/celestial/solar-system/jupiter-system',
+  'game/celestial/solar-system/saturn-system',
 ]);
 const { cr3bp, sun, earthSystem, marsSystem, jupiterSystem, saturnSystem } = physics;
 

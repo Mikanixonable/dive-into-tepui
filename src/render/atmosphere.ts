@@ -5,7 +5,11 @@
 // 抗力を解く大気モデル(physics/atmosphere.ts)とは別の分布で、こちらは見えだけを決める。
 import * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../math/projection';
-import { ATMOSPHERE_QUALITY, type AtmosphereQuality } from './graphics-settings';
+
+
+// 大気の描き方の段。上げるほど、大気ぜんぶへ配れる精細さの合計が増える。
+export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
+export type AtmosphereQuality = (typeof ATMOSPHERE_QUALITY)[keyof typeof ATMOSPHERE_QUALITY];
 
 // 大気 1 つぶんの光学パラメータ。散乱係数はいずれも基準球面(天体半径)での値 [1/m]。
 export type AtmosphereOptics = {

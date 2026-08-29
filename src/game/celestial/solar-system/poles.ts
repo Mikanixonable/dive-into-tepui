@@ -1,8 +1,8 @@
 // 惑星の IAU 自転極と、衛星の軌道要素が基準面に取る回転。
-import { Quat } from '../attitude';
-import { equatorBasisToEci } from '../body-orientation';
-import { raDecToEci } from '../ecliptic';
-import { PoleModel } from '../celestial-body-def';
+import { Quat } from '../../../physics/attitude';
+import { equatorBasisToEci } from '../../../physics/body-orientation';
+import { raDecToEci } from '../../../physics/ecliptic';
+import { PoleModel } from '../../../physics/celestial-body-def';
 
 export type IauPole = Extract<PoleModel, { readonly kind: 'iau' }>;
 

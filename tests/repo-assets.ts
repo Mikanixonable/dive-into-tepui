@@ -3,7 +3,7 @@
 // tests/dist 配下の src/assets/ を指す require を、リポジトリ上の実ファイルへ振り直し、
 // webpack が URL 文字列へ変換する画像には同じ形を返すローダーを立てる。
 // 読み込むのは import した側なので、この副作用モジュールをテスト本体より先に評価する。
-import Module from 'node:module';
+import Module, { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 
 // __dirname = <repo>/tests/dist/tests
@@ -28,6 +28,7 @@ host._resolveFilename = function (request, parent, ...rest): string {
 
 // 天体テクスチャは webpack の asset/resource ローダーが最終出力 URL の文字列へ変換する。
 // node には同じ変換が無いので、実ファイルのパスを既定 export として返す。
-require.extensions['.jpg'] = (module, filename) => {
+// webpack 用に `require` がグローバル宣言されているので、node のローダー登録はここで作る。
+createRequire(__filename).extensions['.jpg'] = (module, filename) => {
   module.exports = filename;
 };

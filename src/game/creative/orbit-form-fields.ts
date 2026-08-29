@@ -2,7 +2,7 @@ import { sameSystemIds } from '../celestial/body-visibility';
 import { BodyClass } from '../celestial/celestial-entity-def';
 import { ObjectPickerGroup } from '../hud/windows/object-picker';
 import { OrbitingMotion, type CelestialBodyDef } from '../../physics/celestial-motion';
-import { EARTH } from '../../physics/solar-system/earth-system';
+import { EARTH } from '../celestial/solar-system/earth-system';
 import { J2_EARTH, MU_EARTH, R_EARTH } from '../../physics/solar-system/constants';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import * as C from '../const';
