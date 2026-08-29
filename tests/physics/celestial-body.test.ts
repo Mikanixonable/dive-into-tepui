@@ -137,15 +137,16 @@ export function register(): void {
   });
 
   test('celestial-body-windows: celestialBodiesAt は太陽系の宣言順で、天体の運動と整合する', () => {
-    const { motions, windows } = solarSystemParts({ earth: 0.1, moon: 0.2 });
+    const parts = solarSystemParts({ earth: 0.1, moon: 0.2 });
+    const windows = parts.windows;
     const celestialBodies = windows.celestialBodiesAt(5000);
     assert.deepEqual(celestialBodies.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'apophis', 'didymos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);
     // 天体を1つ挿入しても静かに別天体を指さないよう、添字ではなく id で引く。
     const byId = (id: string) => celestialBodies.find((b) => b.id === id)!;
     assert.deepEqual(byId('earth').state.r, ZERO, '地球は原点に静止');
-    assert.deepEqual(byId('moon').state.r, positionOf(motions, 'moon', 5000));
-    assert.deepEqual(byId('jupiter').state.r, positionOf(motions, 'jupiter', 5000));
-    assert.deepEqual(byId('sun').state.r, positionOf(motions, 'sun', 5000));
+    assert.deepEqual(byId('moon').state.r, positionOf(parts, 'moon', 5000));
+    assert.deepEqual(byId('jupiter').state.r, positionOf(parts, 'jupiter', 5000));
+    assert.deepEqual(byId('sun').state.r, positionOf(parts, 'sun', 5000));
     assert.equal(byId('earth').mu, MU_EARTH);
     assert.equal(byId('moon').mu, MU_MOON);
     assert.equal(byId('sun').mu, MU_SUN);

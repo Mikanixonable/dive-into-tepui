@@ -20,7 +20,7 @@ const CATALOG = JSON.parse(
 ) as OrbitCatalog;
 
 export function register(): void {
-  const { motions: MOTIONS } = solarSystemParts();
+  const PARTS = solarSystemParts();
   const t = 1e6;
   const systemIds = Object.keys(CATALOG.systems) as CatalogSystemId[];
 
@@ -117,7 +117,7 @@ export function register(): void {
 
     // 実行時 API が返す点列は、その系の回転基底に載っていなければならない。
     test(`orbit-catalog: ${systemId} runtime loops sit on the rotating frame`, () => {
-      const secondary = orbitingMotionOf(MOTIONS, guideSecondary(systemId));
+      const secondary = orbitingMotionOf(PARTS, guideSecondary(systemId));
       const frame = rotatingFrame(t, secondary, system.mu);
       if (frame === null) return; // レジストリにその系の天体が無い
       for (const id of familyIds.slice(0, 6)) {

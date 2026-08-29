@@ -11,7 +11,7 @@ import { motionOf, solarSystemParts } from './test-helpers';
 import { len, scale, sub } from '../../src/math/vec3';
 
 // id から静的事実を引くための太陽系。
-const DEFS = solarSystemParts().motions;
+const DEFS = solarSystemParts();
 
 function planetOrbitOf(id: string): PlanetOrbit {
   return (motionOf(DEFS, id).def as PlanetDef).orbit;

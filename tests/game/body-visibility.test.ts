@@ -19,8 +19,9 @@ import { v3, addScaled } from '../../src/math/vec3';
 const MIN_CLEARANCE = 10;
 
 // 現実の太陽系の運動と窓。可視性の規則も静的事実もここから引く。
-const { motions: MOTIONS, windows: WINDOWS } = solarSystemParts();
-const ALL = MOTIONS.all;
+const PARTS = solarSystemParts();
+const WINDOWS = PARTS.windows;
+const ALL = PARTS.bodies;
 
 // 表示クラスは運動の分類から引く(未登録 id は BodyClassLookup の契約どおり 'planet')。
 // 準惑星・小天体は 'planet' に落ちるが、このテストの表示規則は planet/dwarf/smallBody の
@@ -56,7 +57,7 @@ const SATELLITES_OFF: BodyClassToggles = {
 
 // 登録天体の主天体に対する質量比。
 function massRatio(id: string): number {
-  const motion = motionOf(MOTIONS, id);
+  const motion = motionOf(PARTS, id);
   return motion.def.mu / (motion.primary!.def.mu + motion.def.mu);
 }
 
@@ -79,7 +80,7 @@ export function register(): void {
 
   test('lagrange: 共線点の余裕は現行レジストリのしきい値の内外を再現する', () => {
     const clearance = (id: string): number => {
-      const def = motionOf(MOTIONS, id).def as { radius: number; orbit: { a?: number; kepler?: { a: number } } };
+      const def = motionOf(PARTS, id).def as { radius: number; orbit: { a?: number; kepler?: { a: number } } };
       const orbit = def.orbit.kepler ?? (def.orbit as { a: number });
       return collinearClearanceRatio(massRatio(id), orbit.a, def.radius);
     };
@@ -91,12 +92,12 @@ export function register(): void {
   });
 
   test('lagrange: 運動はしきい値の内外で共線点の可否を答える', () => {
-    assert.ok(orbitingMotionOf(MOTIONS, 'moon').hasUsableCollinearPoints(MIN_CLEARANCE));
-    assert.ok(orbitingMotionOf(MOTIONS, 'titan').hasUsableCollinearPoints(MIN_CLEARANCE));
-    assert.ok(!orbitingMotionOf(MOTIONS, 'phobos').hasUsableCollinearPoints(MIN_CLEARANCE));
-    assert.ok(!orbitingMotionOf(MOTIONS, 'io').hasUsableCollinearPoints(MIN_CLEARANCE));
+    assert.ok(orbitingMotionOf(PARTS, 'moon').hasUsableCollinearPoints(MIN_CLEARANCE));
+    assert.ok(orbitingMotionOf(PARTS, 'titan').hasUsableCollinearPoints(MIN_CLEARANCE));
+    assert.ok(!orbitingMotionOf(PARTS, 'phobos').hasUsableCollinearPoints(MIN_CLEARANCE));
+    assert.ok(!orbitingMotionOf(PARTS, 'io').hasUsableCollinearPoints(MIN_CLEARANCE));
     // 恒星は主天体を持たないので共線点も三角点も持たない(公転運動ですらない)。
-    assert.ok(!(motionOf(MOTIONS, 'sun') instanceof OrbitingMotion));
+    assert.ok(!(motionOf(PARTS, 'sun') instanceof OrbitingMotion));
   });
 
   test('visibility: 既定では恒星・惑星・準惑星・小天体・衛星が見える', () => {
@@ -168,7 +169,7 @@ export function register(): void {
   test('visibility: 親子の深さは主星を 0 として数えられる', () => {
     const depth = (id: string): number => {
       let d = 0;
-      for (let cur = motionOf(MOTIONS, id).primary; cur !== null; cur = cur.primary) d++;
+      for (let cur = motionOf(PARTS, id).primary; cur !== null; cur = cur.primary) d++;
       return d;
     };
     assert.equal(depth('sun'), 0);
@@ -224,8 +225,8 @@ export function register(): void {
 
   test('visibility: フォーカス天体の系に属する位置だけを player 表示対象にする', () => {
     const celestialBodies = WINDOWS.celestialBodiesAt(0);
-    const moon = positionOf(MOTIONS, 'moon', 0);
-    const saturn = positionOf(MOTIONS, 'saturn', 0);
+    const moon = positionOf(PARTS, 'moon', 0);
+    const saturn = positionOf(PARTS, 'saturn', 0);
     // 地球周回と、その子である月周回は地球フォーカスで表示する。一方で土星近傍は除く。
     assert.ok(isPositionInFocusedSystem(ALL, 'earth', v3(7e6, 0, 0), celestialBodies));
     assert.ok(isPositionInFocusedSystem(ALL, 'earth', addScaled(moon, v3(1, 0, 0), 1e6), celestialBodies));
@@ -236,9 +237,9 @@ export function register(): void {
 
   test('visibility: 衛星フォーカスでも同じ惑星系の player は表示対象にする', () => {
     const celestialBodies = WINDOWS.celestialBodiesAt(0);
-    const saturn = positionOf(MOTIONS, 'saturn', 0);
-    const titan = positionOf(MOTIONS, 'titan', 0);
-    const jupiter = positionOf(MOTIONS, 'jupiter', 0);
+    const saturn = positionOf(PARTS, 'saturn', 0);
+    const titan = positionOf(PARTS, 'titan', 0);
+    const jupiter = positionOf(PARTS, 'jupiter', 0);
 
     // タイタンをフォーカスしても、親惑星の土星周回にいる player は消さない。
     assert.ok(isPositionInFocusedSystem(ALL, 'titan', addScaled(saturn, v3(1, 0, 0), 1e8), celestialBodies));
@@ -250,7 +251,7 @@ export function register(): void {
 
   test('systemChainAt: 月の近くでは月→地球→太陽の系列になる', () => {
     const celestialBodies = WINDOWS.celestialBodiesAt(0);
-    const moon = positionOf(MOTIONS, 'moon', 0);
+    const moon = positionOf(PARTS, 'moon', 0);
     // 月の中心そのものは attractorAccel の直接項が距離ゼロで消えるため、月面付近の
     // 1点(中心から1000km)を使う。
     const nearMoon = addScaled(moon, v3(1, 0, 0), 1e6);
@@ -264,7 +265,7 @@ export function register(): void {
 
   test('systemChainAt: 太陽の近くでは太陽単独になる', () => {
     const celestialBodies = WINDOWS.celestialBodiesAt(0);
-    const sun = positionOf(MOTIONS, 'sun', 0);
+    const sun = positionOf(PARTS, 'sun', 0);
     assert.deepEqual(systemChainAt(ALL, sun, celestialBodies), ['sun']);
   });
 
@@ -285,7 +286,7 @@ export function register(): void {
 
   test('systemMembersAt: 月近傍では地球と月が含まれ、月自身は重複しない', () => {
     const celestialBodies = WINDOWS.celestialBodiesAt(0);
-    const moon = positionOf(MOTIONS, 'moon', 0);
+    const moon = positionOf(PARTS, 'moon', 0);
     const nearMoon = addScaled(moon, v3(1, 0, 0), 1e6);
     const members = systemMembersAt(ALL, nearMoon, celestialBodies);
     assert.ok(members.includes('moon'));
