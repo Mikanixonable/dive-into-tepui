@@ -3,9 +3,9 @@
 import * as C from '../const';
 import { KinematicState } from '../../physics/kinematic-state';
 import { sub, scale, len, type Vec3 } from '../../math/vec3';
-import type { SphereHit } from '../game-entity/base-collision';
-import { GameEntity } from '../game-entity/game-entity';
-import { Base } from '../game-entity/base';
+import type { SphereHit } from '../dynamic/dynamic-entity/base-collision';
+import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { Base } from '../dynamic/dynamic-entity/base';
 import {
   CollisionResponse, ContactGeometry,
   distributeSphereContact, resolveSphereCollision,
@@ -14,7 +14,7 @@ import {
 // 基地の当たり形状は球ではないので、幾何だけを基地自身へ問い、受け持ちの分配は球どうしと
 // 共有する。触れていなければ null。
 function baseContactGeometry(
-  base: Base, other: GameEntity, baseWork: KinematicState, otherWork: KinematicState, baseIsA: boolean,
+  base: Base, other: DynamicEntity, baseWork: KinematicState, otherWork: KinematicState, baseIsA: boolean,
 ): ContactGeometry | null {
   if (len(sub(otherWork.r, baseWork.r)) > base.radius + other.radius) return null;
   const hit = base.testSphereCollision(otherWork.r, other.radius);
@@ -30,7 +30,7 @@ function baseContactGeometry(
 // タンパク質のリボンなど、球の外接半径ではなく種別固有メッシュを持つ側の狭域判定。
 // 接触解決器へ渡す法線は常に a → b に揃える。
 function customContactGeometry(
-  a: GameEntity, aWork: KinematicState, b: GameEntity, bWork: KinematicState,
+  a: DynamicEntity, aWork: KinematicState, b: DynamicEntity, bWork: KinematicState,
   sweptValid: boolean,
 ): ContactGeometry | null {
   if (!sweptValid && len(sub(bWork.r, aWork.r)) > a.radius + b.radius) return null;
@@ -71,7 +71,7 @@ function customContactGeometry(
 
 // aWork/bWork は解決の途中経過を含む「いまの状態」で、a.state とは限らない。
 export function entityContactResponse(
-  a: GameEntity, aWork: KinematicState, b: GameEntity, bWork: KinematicState,
+  a: DynamicEntity, aWork: KinematicState, b: DynamicEntity, bWork: KinematicState,
 ): CollisionResponse | null {
   const bodyA = { state: aWork, radius: a.radius, invMass: 1 / a.contactMass };
   const bodyB = { state: bWork, radius: b.radius, invMass: 1 / b.contactMass };

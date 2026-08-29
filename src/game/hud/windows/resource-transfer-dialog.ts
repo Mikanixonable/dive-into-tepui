@@ -1,12 +1,12 @@
 // ドッキング中の船同士・船と基地の間で電力・物資(弾薬・RCS燃料・パーツ)を融通するダイアログ。
 import { Player } from '../../player/player';
-import { Base } from '../../game-entity/base';
+import { Base } from '../../dynamic/dynamic-entity/base';
 import * as C from '../../const';
 import { fmtEnergy } from '../utils';
 import { injectOnce } from '../widgets/inject-style';
 import { balanceRcsFuel, rcsFuelTotals, rcsTanksOf, refillRcsFuel, transferRcsFuel } from './rcs-fuel-transfer';
-import type { GameEntity } from '../../game-entity/game-entity';
-import type { Part } from '../../game-entity/parts';
+import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import type { Part } from '../../dynamic/dynamic-entity/parts';
 import type { OverlayManager } from '../overlay-manager';
 
 const STYLE = `
@@ -105,7 +105,7 @@ export class ResourceTransferDialog {
 
   // ダイアログが開いている間だけ、融通対象の2者を保持する(閉じている間は両方 null)。
   private shipA: Player | null = null;
-  private entityB: GameEntity | null = null;
+  private entityB: DynamicEntity | null = null;
 
   // ダイアログが閉じたときに呼ばれる。
   public onClose?: () => void;
@@ -125,7 +125,7 @@ export class ResourceTransferDialog {
   }
 
   // shipA と entityB の間で資源を融通できる状態にしてダイアログを開く。
-  public open(shipA: Player, entityB: GameEntity): void {
+  public open(shipA: Player, entityB: DynamicEntity): void {
     this.shipA = shipA;
     this.entityB = entityB;
     this.isOpen = true;

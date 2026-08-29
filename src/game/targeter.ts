@@ -1,10 +1,10 @@
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
 import { CelestialBody } from '../physics/celestial-body';
 import * as C from './const';
-import { Enemy } from './game-entity/enemy';
-import { Base } from './game-entity/base';
-import type { AmmoPickup } from './game-entity/ammo-pickup';
-import type { RcsFuelPickup } from './game-entity/rcs-fuel-pickup';
+import { Enemy } from './dynamic/dynamic-entity/enemy';
+import { Base } from './dynamic/dynamic-entity/base';
+import type { AmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
+import type { RcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
 import type { EntityManager } from './simulation/entity-manager';
 import { Player } from './player/player';
 import { Input, PointerPoint } from './input/input';

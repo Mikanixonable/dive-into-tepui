@@ -7,7 +7,7 @@ import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { latLonOf } from '../../../physics/body-orientation';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { dot, len, sub } from '../../../math/vec3';
-import type { GameEntity } from '../../game-entity/game-entity';
+import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import { entityStateAt } from '../../simulation/entity-state-at';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { OrbitReference } from '../../orbit-reference';
@@ -34,7 +34,7 @@ export interface ApproachSeries {
 // その運動)。ラグランジュ点など質量を持たない対象は period が求まらず
 // approachSeries が null を返すので、この union に含めない。
 export type ApproachTargetSource =
-  | { readonly kind: 'entity'; readonly entity: GameEntity }
+  | { readonly kind: 'entity'; readonly entity: DynamicEntity }
   | { readonly kind: 'celestialBody'; readonly body: CelestialBody };
 
 // center 相対の高度。
@@ -49,7 +49,7 @@ function altitudeOf(state: KinematicState, centerState: KinematicState, center: 
 // 予測が外挿できず null が返った時刻で打ち切り、それより先のサンプルは作らない(0/NaN で
 // 埋めない)。
 export function altitudeSeries(
-  entity: GameEntity,
+  entity: DynamicEntity,
   reference: OrbitReference,
   celestialSystem: CelestialSystem,
   now: number,
@@ -120,7 +120,7 @@ export function resolveTarget(
 //
 // target の period が求まらない(双曲線、要素が解けない、質量を持たない対象)場合は null。
 export function approachSeries(
-  ship: GameEntity,
+  ship: DynamicEntity,
   target: ApproachTargetSource,
   celestialBodies: readonly CelestialBody[],
   celestialSystem: CelestialSystem,

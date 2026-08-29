@@ -1,9 +1,9 @@
-import { len, sub, type Vec3 } from '../../math/vec3';
-import * as C from '../const';
-import { fmtMarkerDist } from '../hud/utils';
-import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import { ENTITY_GLYPH } from '../marker/marker-glyphs';
-import { currentThemePalette } from '../theme';
+import { len, sub, type Vec3 } from '../../../math/vec3';
+import * as C from '../../const';
+import { fmtMarkerDist } from '../../hud/utils';
+import type { GroupedMarkerItem } from '../../marker/grouped-markers';
+import { ENTITY_GLYPH } from '../../marker/marker-glyphs';
+import { currentThemePalette } from '../../theme';
 
 // 敵のマーカー表示項目を組み立てる。
 // pos/vel は機体メッシュと同じ表示時刻の状態(displayState 経由)を使う。role がターゲットで

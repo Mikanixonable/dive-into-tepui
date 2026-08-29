@@ -1,25 +1,25 @@
 import * as THREE from 'three/webgpu';
-import { qRotate, type Attitude } from '../../physics/attitude';
-import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { add, scale, v3 } from '../../math/vec3';
-import type { FloatingOrigin } from '../camera/floating-origin';
-import type { CameraSystem } from '../camera/camera-system';
-import type { DetachedBoosterSaveData } from '../save/save-data';
-import * as C from '../const';
+import { qRotate, type Attitude } from '../../../physics/attitude';
+import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
+import { add, scale, v3 } from '../../../math/vec3';
+import type { FloatingOrigin } from '../../camera/floating-origin';
+import type { CameraSystem } from '../../camera/camera-system';
+import type { DetachedBoosterSaveData } from '../../save/save-data';
+import * as C from '../../const';
 import {
   BoosterStack,
   boosterAverageAcceleration,
   type BoosterStage as BoosterStageState,
-} from '../player/booster-stack';
-import { nextBoosterId } from '../player/booster-id';
+} from '../../player/booster-stack';
+import { nextBoosterId } from '../../player/booster-id';
 import {
   BOOSTER_STAGE_DIMENSIONS,
   BoosterPlume,
   buildBoosterStage,
   type BoosterStage as BoosterStageModel,
-} from '../../render/booster';
-import { GameEntity } from './game-entity';
-import type { RenderStyle } from '../../render/render-style';
+} from '../../../render/booster';
+import { DynamicEntity } from './dynamic-entity';
+import type { RenderStyle } from '../../../render/render-style';
 
 const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
 
@@ -33,7 +33,7 @@ export type DetachedBoosterInit =
   | { readonly saved: DetachedBoosterSaveData; readonly simTime: number };
 
 // 分離後の一段。接続時の燃料・点火状態を引き継ぎ、燃料切れまで自律的に燃焼する。
-export class DetachedBooster extends GameEntity {
+export class DetachedBooster extends DynamicEntity {
   override readonly bcInv = 0.006;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
   protected readonly specificHeat = C.SMALL_DEBRIS_SPECIFIC_HEAT;
@@ -72,7 +72,7 @@ export class DetachedBooster extends GameEntity {
     // 接続部のカバーは分離時に爆砕ボルトで切り離されるため、独立した段には残さない。
     const model = buildBoosterStage({ interstageCover: false });
     const root = new THREE.Group();
-    // GameEntity.state は段の重心。描画モデルは前端原点なので、その中点をrootへ合わせる。
+    // DynamicEntity.state は段の重心。描画モデルは前端原点なので、その中点をrootへ合わせる。
     const centerZ = (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
     model.position.z = -centerZ;
     root.add(model);
@@ -126,7 +126,7 @@ export class DetachedBooster extends GameEntity {
     return this.collisionEnableAt > simTime ? this.collisionEnableAt : null;
   }
 
-  override contactsWith(_other: GameEntity, simTime: number): boolean {
+  override contactsWith(_other: DynamicEntity, simTime: number): boolean {
     return simTime > this.collisionEnableAt;
   }
 

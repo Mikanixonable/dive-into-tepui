@@ -1,6 +1,6 @@
-import { AnyPart } from '../game-entity/parts';
-import type { EnemyKind } from '../game-entity/enemy-kind';
-import type { FormationRole } from '../game-entity/enemy-formation';
+import { AnyPart } from '../dynamic/dynamic-entity/parts';
+import type { EnemyKind } from '../dynamic/dynamic-entity/enemy-kind';
+import type { FormationRole } from '../dynamic/dynamic-entity/enemy-formation';
 import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';

@@ -1,7 +1,7 @@
 // 全ステージ共通の骨格。撃破数による勝利判定・常時解放・HUD補助表示なしを既定実装として持ち、
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
-import { Enemy } from '../game-entity/enemy';
+import { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import { Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';

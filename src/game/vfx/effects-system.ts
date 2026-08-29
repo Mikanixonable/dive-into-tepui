@@ -5,7 +5,7 @@ import { randSym } from '../../math/random';
 import { add, addScaled, randVec, scale, v3, Vec3 } from '../../math/vec3';
 import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
-import { DebrisKind, DebrisPiece } from '../game-entity/debris-piece';
+import { DebrisKind, DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';

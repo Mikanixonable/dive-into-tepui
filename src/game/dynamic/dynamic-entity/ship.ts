@@ -1,11 +1,11 @@
 import * as THREE from 'three/webgpu';
-import { Attitude } from '../../physics/attitude';
-import { KinematicState } from '../../physics/kinematic-state';
-import * as C from '../const';
-import { GameEntity } from './game-entity';
+import { Attitude } from '../../../physics/attitude';
+import { KinematicState } from '../../../physics/kinematic-state';
+import * as C from '../../const';
+import { DynamicEntity } from './dynamic-entity';
 import { Part, PartType, createPart } from './parts';
 import { collisionDamageFraction } from './contact-damage';
-import { SHIP_ARROWHEAD_POINTS, triangleHpMarkerSvg } from '../marker/marker-shapes';
+import { SHIP_ARROWHEAD_POINTS, triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type {
   ArmorPart,
   CockpitPart,
@@ -16,7 +16,7 @@ import type {
   WeaponPart,
 } from './parts';
 
-export abstract class Ship extends GameEntity {
+export abstract class Ship extends DynamicEntity {
   public override readonly bcInv = C.SHIP_BCINV;
   protected readonly srpCoeff = C.SHIP_SRP_COEFF;
   protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;

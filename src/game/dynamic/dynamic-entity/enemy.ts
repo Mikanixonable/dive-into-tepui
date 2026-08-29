@@ -1,38 +1,38 @@
 
 import * as THREE from 'three/webgpu';
-import * as C from '../const';
+import * as C from '../../const';
 import { Ship } from './ship';
-import { CelestialBody } from '../../physics/celestial-body';
+import { CelestialBody } from '../../../physics/celestial-body';
 
-import { GameEntity } from './game-entity';
+import { DynamicEntity } from './dynamic-entity';
 import { closingSpeed, type Contact } from './contact';
 import { collisionDamageFraction, contactDamageSpeed } from './contact-damage';
-import { Attitude } from '../../physics/attitude';
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { add, len, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../math/vec3';
-import { apparentSizePx, metersPerPixel, type Viewpoint } from '../../math/projection';
-import { solveLeadTime } from '../../physics/intercept';
-import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import { EffectsSystem } from '../vfx/effects-system';
-import { Player } from '../player/player';
+import { Attitude } from '../../../physics/attitude';
+import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import { add, len, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
+import { apparentSizePx, metersPerPixel, type Viewpoint } from '../../../math/projection';
+import { solveLeadTime } from '../../../physics/intercept';
+import type { GroupedMarkerItem } from '../../marker/grouped-markers';
+import type { CelestialSystem } from '../../celestial/celestial-system';
+import { EffectsSystem } from '../../vfx/effects-system';
+import { Player } from '../../player/player';
 import { Bullet } from './bullet';
-import type { EnemyDeathCause, Stage } from '../stages/stage';
-import { WorldSfx } from '../../audio/sfx/world-sfx';
-import type { EntityManager } from '../simulation/entity-manager';
-import type { SimSpeedManager } from '../simulation/sim-speed-manager';
-import type { EnemySaveData } from '../save/save-data';
-import { proteinEnemyDefinitionFor } from '../protein/protein-enemy-registry';
-import { proteinMotionModeDisplacements } from '../protein/protein-motion-modes';
-import { ProteinRuntime } from '../protein/protein-runtime';
-import { ProteinRibbonCollisionGeometry } from '../protein/protein-ribbon-collision';
-import { createProteinMotionBinding } from '../../render/protein-motion-material';
-import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
-import type { ProteinDamageResult } from '../protein/protein-combat-state';
-import type { ProteinDisplaySettings } from '../protein/protein-display';
+import type { EnemyDeathCause, Stage } from '../../stages/stage';
+import { WorldSfx } from '../../../audio/sfx/world-sfx';
+import type { EntityManager } from '../../simulation/entity-manager';
+import type { SimSpeedManager } from '../../simulation/sim-speed-manager';
+import type { EnemySaveData } from '../../save/save-data';
+import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
+import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
+import { ProteinRuntime } from '../../protein/protein-runtime';
+import { ProteinRibbonCollisionGeometry } from '../../protein/protein-ribbon-collision';
+import { createProteinMotionBinding } from '../../../render/protein-motion-material';
+import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
+import type { ProteinDamageResult } from '../../protein/protein-combat-state';
+import type { ProteinDisplaySettings } from '../../protein/protein-display';
 import {
   ENEMY_DESTROY_FRAG_COLOR,
-} from '../../render/vfx-style';
+} from '../../../render/vfx-style';
 import { proteinAssetIdForEnemyKind, normalizeEnemyKind, inertiaForEnemyKind, type EnemyKind } from './enemy-kind';
 import { buildEnemyRenderObject } from './enemy-render';
 import { isFormationEnergyAvailable, type FormationRole } from './enemy-formation';
@@ -265,7 +265,7 @@ export class Enemy extends Ship {
   }
 
   override sync(
-    fo: import('../camera/floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint,
+    fo: import('../../camera/floating-origin').FloatingOrigin, displayTime: number, viewer?: Viewpoint,
     proteinVibrationEnabled = true,
   ): void {
     super.sync(fo, displayTime);
@@ -352,7 +352,7 @@ export class Enemy extends Ship {
 
   // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
   // (どちらもゲームバランスの量で、物理の質量からは導かない)。
-  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
+  collideWithEntity(other: DynamicEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     const simTime = contact.selfState.t;
 

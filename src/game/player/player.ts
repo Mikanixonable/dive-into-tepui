@@ -6,12 +6,12 @@ import { Vec3, add, scale, v3, len, sub } from '../../math/vec3';
 import { fmtMarkerDist } from '../hud/utils';
 import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
-import { Ship } from '../game-entity/ship';
-import { Bullet } from '../game-entity/bullet';
-import type { GameEntity } from '../game-entity/game-entity';
+import { Ship } from '../dynamic/dynamic-entity/ship';
+import { Bullet } from '../dynamic/dynamic-entity/bullet';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityManager } from '../simulation/entity-manager';
-import { closingSpeed, type Contact } from '../game-entity/contact';
-import { contactDamageSpeed } from '../game-entity/contact-damage';
+import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
+import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
@@ -41,7 +41,7 @@ import { PowerSystem } from './power';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
-import { partFromSaveData, type AnyPart } from '../game-entity/parts';
+import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import {
@@ -50,7 +50,7 @@ import {
 import { BoosterStack, boosterAverageAcceleration, type BoosterStage } from './booster-stack';
 import { nextBoosterId } from './booster-id';
 import { boosterSeparationVelocities } from './booster-separation';
-import { DetachedBooster } from '../game-entity/detached-booster';
+import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
 import {
   BOOSTER_STAGE_DIMENSIONS,
   BoosterPlumeSet,
@@ -554,7 +554,7 @@ export class Player extends Ship {
 
   // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
   // (どちらもゲームバランスの量で、物理の質量からは導かない)。
-  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
+  collideWithEntity(other: DynamicEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
     if (other instanceof Bullet) {
@@ -573,7 +573,7 @@ export class Player extends Ship {
 
   // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージの割り振り先が side のパーツに
   // 固定される点だけが collideWithEntity(機体本体)との違い。
-  collideAtRadiatorWithEntity(side: RadiatorSide, other: GameEntity, contact: Contact, activeStage: Stage): void {
+  collideAtRadiatorWithEntity(side: RadiatorSide, other: DynamicEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
     if (other instanceof Bullet) {
@@ -604,7 +604,7 @@ export class Player extends Ship {
   }
 
   // この艦の放熱板の、今フレームの接触代理一覧(展開中かつ健在な折りのみ)。
-  collisionFolds(simTime: number): GameEntity[] {
+  collisionFolds(simTime: number): DynamicEntity[] {
     return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
   }
 

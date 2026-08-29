@@ -1,25 +1,25 @@
 import * as THREE from 'three/webgpu';
-import { Attitude } from '../../physics/attitude';
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { CelestialBody } from '../../physics/celestial-body';
-import { Vec3 } from '../../math/vec3';
-import * as C from '../const';
-import type { Stage } from '../stages/stage';
+import { Attitude } from '../../../physics/attitude';
+import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import { CelestialBody } from '../../../physics/celestial-body';
+import { Vec3 } from '../../../math/vec3';
+import * as C from '../../const';
+import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import type { EffectsSystem } from '../vfx/effects-system';
+import type { WorldSfx } from '../../../audio/sfx/world-sfx';
+import type { EffectsSystem } from '../../vfx/effects-system';
 import {
   buildBarrelMesh,
   buildCasingMesh,
   buildMagazineFrame,
   DEBRIS_FRAGMENT_VARIANT_COUNT,
-} from '../../render/ships';
+} from '../../../render/ships';
 import {
   buildBoosterExplosiveBoltMesh,
   buildBoosterInterstageCoverPanelMesh,
-} from '../../render/booster';
-import { GameEntity } from './game-entity';
-import { Player } from '../player/player';
+} from '../../../render/booster';
+import { DynamicEntity } from './dynamic-entity';
+import { Player } from '../../player/player';
 import { Bullet } from './bullet';
 
 const BARREL_BULK_DENSITY = 7850; // [kg/m^3]
@@ -31,7 +31,7 @@ const BOOSTER_HARDWARE_LIFETIME = 2.4; // 段間カバー/爆砕ボルトの飛�
 const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
 import {
   SHIP_DARK_HULL_COLOR,
-} from '../../render/vfx-style';
+} from '../../../render/vfx-style';
 
 // DebrisPiece の見た目・振る舞いの種別。
 export type DebrisKind =
@@ -87,7 +87,7 @@ function debrisThermal(kind: DebrisKind['kind']): DebrisThermal {
   return kind === 'barrel' ? STEEL_BARREL : ALUMINIUM_DEBRIS;
 }
 
-export class DebrisPiece extends GameEntity {
+export class DebrisPiece extends DynamicEntity {
   override readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
   protected readonly specificHeat: number;
@@ -154,7 +154,7 @@ export class DebrisPiece extends GameEntity {
 
   // 弾が当たったらガスパフを噴いて消える(弾自身の消滅は Bullet.collideWithEntity が書く)。
   // 薬莢が艦(操作対象に限らず Player 全般)に触れたときは、からんと音を鳴らす。
-  collideWithEntity(other: GameEntity, contact: Contact): void {
+  collideWithEntity(other: DynamicEntity, contact: Contact): void {
     if (other instanceof Bullet) {
       this._fx.spawnGasPuff(kinematicState(contact.selfState.t, contact.point, contact.selfState.v));
       return;

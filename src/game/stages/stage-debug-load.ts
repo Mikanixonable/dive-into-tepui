@@ -5,7 +5,7 @@ import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { SimSpeedManager } from '../simulation/sim-speed-manager';
 import * as C from '../const';
-import { DebrisPiece } from '../game-entity/debris-piece';
+import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../math/random';

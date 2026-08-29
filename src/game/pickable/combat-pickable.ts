@@ -2,8 +2,8 @@
 // 判定する。map-pickable.ts / orbit-pickable.ts と同じ「画面座標から最も手前の候補を選ぶ」
 // 当たり判定だが、対象が MapPickable の固定候補列ではなく EntityManager の実体そのものである点が
 // 異なる。
-import { Base } from '../game-entity/base';
-import type { GameEntity } from '../game-entity/game-entity';
+import { Base } from '../dynamic/dynamic-entity/base';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { ProjectFn } from '../camera/camera-system';
 import { metersPerPixel, type Viewpoint } from '../../math/projection';
@@ -14,16 +14,16 @@ import { add, cross, len, norm, scale, sub } from '../../math/vec3';
 // BVH メッシュへのレイキャストで絞り込む。当たらなければ null。
 export function pickCombatEntityAtPoint(
   entities: EntityManager, view: Viewpoint, project: ProjectFn, clientX: number, clientY: number,
-): GameEntity | null {
+): DynamicEntity | null {
   const viewportHeight = window.innerHeight;
 
-  const candidates: { entity: GameEntity; radius: number }[] = [
+  const candidates: { entity: DynamicEntity; radius: number }[] = [
     ...entities.players.filter((p) => p.alive).map((p) => ({ entity: p, radius: p.radius || 5 })),
     ...entities.enemies.filter((e) => e.alive).map((e) => ({ entity: e, radius: e.radius || 90 })),
     ...entities.bases.filter((b) => b.alive).map((b) => ({ entity: b, radius: b.radius || 100 })),
   ];
 
-  let bestEntity: GameEntity | null = null;
+  let bestEntity: DynamicEntity | null = null;
   let minDepth = Infinity;
 
   for (const item of candidates) {
