@@ -2,6 +2,7 @@
 // 環など)をその運動へ同期する。位置・姿勢の正本は motion で、sync のたびにそこから引く。
 import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion } from '../../physics/celestial-motion';
+import type { RingSystemDef } from '../../physics/celestial-body-def';
 import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
 import { OrbitalElements } from '../../physics/elements';
 import { OrbitLine } from '../lines/orbit-line';
@@ -12,7 +13,7 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { apparentSizePx } from '../../math/projection';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../render/pipeline/sun-light';
 import { len, sub, v3 } from '../../math/vec3';
-import type { AtmosphereOptics } from '../../render/atmosphere';
+import type { AtmosphereCandidate, AtmosphereOptics } from '../../render/atmosphere';
 import type { Albedo } from '../../render/celestial-albedo';
 import type { BodyClass } from './celestial-entity-def';
 import type { Vec3 } from '../../math/vec3';
@@ -27,9 +28,19 @@ import type { StarEntity } from './star-entity';
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
 const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 
+// 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、
+// FAR 以上なら完全表示、その間は距離に応じて線形にフェードインする。
+const PLANET_ORBIT_LINE_FADE_NEAR_DIST = 1e9; // 100万km
+const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10; // 1000万km
+const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
+const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
+
+// 参照軌道線が完全表示のときの不透明度。
+const REFERENCE_LINE_OPACITY = 0.3;
+
 export abstract class CelestialEntity {
-  // マップ専用の参照軌道線(衛星は親惑星中心、惑星は主星中心)。実体は個体が持ち、
-  // 出す/消す・濃さの判断は所有者(CelestialSystem)が sync/remove の呼び分けで行う。
+  // マップ専用の参照軌道線(衛星は親惑星中心、惑星は主星中心)。実体も濃さの決め方も個体が
+  // 持ち、出す/消すの判断だけを所有者(CelestialSystem)が sync/remove の呼び分けで行う。
   referenceLine: OrbitLine | null = null;
 
   // atmosphereOptics は大気の見えの光学パラメータ(大気を持たない・描かない天体では null)。
@@ -82,7 +93,11 @@ export abstract class CelestialEntity {
   }
 
   // 参照軌道線を表示時刻の接触軌道要素と濃さへ同期する(実体が無ければ生成して scene へ登録)。
-  syncReferenceLine(scene: THREE.Scene, simTime: number, fo: FloatingOrigin, camera: THREE.Camera, opacity: number): void {
+  // cameraPos はフェードの濃さを測る基準(カメラの真の ECI 位置)。
+  syncReferenceLine(
+    scene: THREE.Scene, simTime: number, fo: FloatingOrigin, camera: THREE.Camera, cameraPos: Vec3,
+  ): void {
+    const opacity = this.referenceLineOpacityFrom(cameraPos, simTime);
     if (this.referenceLine === null) {
       const color = this.motion.kind === 'satellite' ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
       this.referenceLine = new OrbitLine({ color, opacity, renderOrder: LINE_RENDER_ORDER.reference });
@@ -90,6 +105,45 @@ export abstract class CelestialEntity {
     }
     this.referenceLine.sync(this.referenceElementsAt(simTime), fo, camera);
     this.referenceLine.setOpacity(opacity);
+  }
+
+  // cameraPos から見た参照軌道線の不透明度。惑星と衛星でフェード距離が異なる。
+  private referenceLineOpacityFrom(cameraPos: Vec3, simTime: number): number {
+    const isSatellite = this.motion.kind === 'satellite';
+    const nearDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : PLANET_ORBIT_LINE_FADE_NEAR_DIST;
+    const farDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_FAR_DIST : PLANET_ORBIT_LINE_FADE_FAR_DIST;
+    const dist = len(sub(this.motion.stateAt(simTime).r, cameraPos));
+    const t = Math.min(1, Math.max(0, (dist - nearDist) / (farDist - nearDist)));
+    return t * REFERENCE_LINE_OPACITY;
+  }
+
+  // 環(環を持たない天体では null)。どの天体の環の影を落とすかは所有者が選ぶ。
+  get rings(): RingSystemDef | null {
+    const def = this.def;
+    return 'rings' in def ? def.rings ?? null : null;
+  }
+
+  // cameraPos から見たこの天体の視半径。影を落としうるか・環をどれで代表させるかの尺度で、
+  // 大きく見える天体ほどその影が画面に写っている何かへ落ちる見込みが高い。
+  apparentRadiusFrom(cameraPos: Vec3, simTime: number): number {
+    const center = this.motion.stateAt(simTime).r;
+    return this.def.radius / Math.max(1, len(sub(center, cameraPos)));
+  }
+
+  // 大気パスへ渡す1体ぶんの候補。大気を持たない・描かない天体では null。**尺度は直線距離で
+  // 引く** — 深度で引くと、視点の背後にある天体が目の前にあるのと同じ尺度になり、画面に
+  // 写っていないのに予算を総取りする。
+  atmosphereCandidateAt(
+    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, radialScale: (center: Vec3) => number,
+  ): AtmosphereCandidate | null {
+    const optics = this.atmosphereOptics;
+    if (optics === null) return null;
+    const center = this.motion.stateAt(displayTime).r;
+    return {
+      body: { center: fo.RtoThreeV3(center), surfaceRadius: this.def.radius, optics },
+      distance: len(sub(cameraPos, center)),
+      metersPerPixel: radialScale(center),
+    };
   }
 
   // 参照軌道線を実体ごと解放する。非表示の間も頂点バッファを残さないため。

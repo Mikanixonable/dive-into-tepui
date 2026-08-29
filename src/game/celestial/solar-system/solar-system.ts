@@ -7,6 +7,7 @@ import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-l
 import { CelestialSystem } from '../celestial-system';
 import type { CelestialEntity } from '../celestial-entity';
 import { StarEntity } from '../star-entity';
+import { PointFieldView } from './point-field-view';
 import { DwarfPlanetId, DWARF_PLANET_NAMES, dwarfPlanets } from './dwarf-planets';
 import { EarthSystemBodyId, EARTH_SYSTEM_NAMES, earthSystem } from './earth-system';
 import { InnerPlanetId, INNER_PLANET_NAMES, innerPlanets } from './inner-planets';
@@ -79,5 +80,5 @@ export function solarSystem(
   if (originBody === undefined) throw new Error(`solarSystem: 太陽系に無い原点 id: ${originId}`);
   origin.set(originBody.motion);
 
-  return new CelestialSystem(bodies, originBody, phases);
+  return new CelestialSystem(bodies, originBody, phases, new PointFieldView());
 }

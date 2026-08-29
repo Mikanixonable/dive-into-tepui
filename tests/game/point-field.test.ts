@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   PointElements, PointField, generatePointField, jupiterMeanLongitude, pointPositionAt,
-} from '../../src/game/celestial/point-field';
+} from '../../src/game/celestial/solar-system/point-field';
 import { AU } from '../../src/physics/planet-orbit';
 
 const DEG = Math.PI / 180;

@@ -3,14 +3,14 @@
 // 載せない。THREE 非依存に保ってあり、生成の決定性と分布は tests/physics で検査する。
 // 各群は PointFieldDef 1つのデータで駆動する — 群を増やすには POINT_FIELD_DEFS に要素を足すだけ
 // でよく、生成コード自体に群固有の分岐を増やさない。
-import { Q_ECLY_TO_ECI } from '../../physics/ecliptic';
-import { positionFromOrbitalElements, trueAnomalyFromMean } from '../../physics/elements';
-import { AU } from '../../physics/planet-orbit';
-import { EPOCH_T_OFFSET, MU_SUN } from './solar-system/constants';
-import { JUPITER } from './solar-system/jupiter-system';
-import { qRotate } from '../../physics/attitude';
-import { mulberry32 } from '../../math/random';
-import { Vec3 } from '../../math/vec3';
+import { Q_ECLY_TO_ECI } from '../../../physics/ecliptic';
+import { positionFromOrbitalElements, trueAnomalyFromMean } from '../../../physics/elements';
+import { AU } from '../../../physics/planet-orbit';
+import { EPOCH_T_OFFSET, MU_SUN } from './constants';
+import { JUPITER } from './jupiter-system';
+import { qRotate } from '../../../physics/attitude';
+import { mulberry32 } from '../../../math/random';
+import { Vec3 } from '../../../math/vec3';
 
 // 1点の軌道。平均運動を要素と一緒に持つのは、位置評価が毎フレーム全点に及ぶため
 // (a から毎回 sqrt を引くのを避ける)。
