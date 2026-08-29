@@ -132,26 +132,10 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 
 ## 手順
 
-### 手順3. エンティティ構築の DOM/GPU 資源遅延と、テスト実行系のアセット対応
-
-**目的**: 「決めたこと 5」の実現。エンティティ構築を node 安全にし、後続手順でテストが本番の
-構築経路で星系を組めるようにする。**この時点で挙動は変えない**(資源確保が構築時→build 時に
-移るだけで、build は必ず構築直後に1度呼ばれる)。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/celestial-surface.ts` | `textured()`(59行)の `TextureLoader().load` を廃し、URL を保持して `addTo()` の初回にテクスチャを生成・マテリアルへ差す。dispose の解放対象は変えない |
-| `src/game/celestial/point-entity.ts` | `Billboard` の生成(82行)をコンストラクタから `build()` へ。輝点フィールドは `null` 許容にし、sync の輝点経路で未 build を踏まない構造にする |
-| `src/render/stars.ts` | `SunObject` の `Billboard` 生成(103行)を `addTo()` 時へ(手順8で本体を再編するので最小限) |
-| `src/types/` | `*.jpg` の module 宣言 shim を追加(tsconfig.test.json のコンパイルで系ファイルの画像 import を通すため) |
-| `tests/run.ts`(または repo-assets.ts と並ぶ副作用モジュール) | node の require が `.jpg` を踏んだらパス文字列を返すフックを登録(`tests/repo-assets.ts` の JSON 振り直しと同じ流儀) |
-| `tsconfig.test.json` | 上記 shim を include へ |
-
-**達成条件と検証**: `npm run typecheck`。`npm run test`(全層 — render の構築時契約に触るため)。
-`npm run dev` で戦闘ビューの惑星輝点・太陽の点像が出ること(目視)。
-`grep -n "TextureLoader" src/render/celestial-surface.ts` の該当が addTo 経路にだけあること。
+**実施順の変更(手順3の実施中に確定)**: 残りは **7 → 8 → 4 → 5 → 6 → 9 → 10** の順で行う。
+理由: `render/earth.ts` の `createEarth()` がテクスチャを構築時に読むため、手順7で解体するまで
+地球を含む星系は DOM 無しで組めない。手順5のテストは本番の構築経路で星系を組むので、
+手順7・8を先に済ませる必要がある。手順の中身は以下のまま。
 
 ### 手順4. 機構テストをローカルフィクスチャ星系へ書き直す
 
