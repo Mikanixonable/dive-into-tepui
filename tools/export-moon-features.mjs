@@ -15,7 +15,7 @@ const outPath = join(repoRoot, 'src', 'assets', 'moon-features.json');
 // 1円ぶんの分割数。CIRCLE_SEGMENTS(body-graticule.ts)と同じ滑らかさに揃える。
 const CIRCLE_SEGMENTS = 128;
 
-const { constants, dispose } = loadSourceModules(['physics/solar-system/constants']);
+const { constants, dispose } = loadSourceModules(['game/celestial/solar-system/constants']);
 const R_MOON = constants.R_MOON;
 dispose();
 

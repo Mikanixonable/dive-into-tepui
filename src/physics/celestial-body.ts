@@ -26,7 +26,7 @@ export type Degree2Gravity = {
 export type CelestialBody = {
   readonly id: string;
   readonly mu: number; // GM [m^3/s^2]
-  readonly radius: number; // 表面半径 [m]。形状(solar-system.ts の ShapeDef)を持つ天体では
+  readonly radius: number; // 表面半径 [m]。形状(ShapeDef)を持つ天体では
   // その外接球の半径 — 衝突・高度判定を楕円体化しない当面の間、極方向で安全側に倒す選択
   readonly state: KinematicState; // ECI 位置・速度(同一時刻。地球は原点に静止)
   readonly accel: Vec3; // この天体自身が受けている ECI 加速度 [m/s²]。state(t, r, v)と合わせて
