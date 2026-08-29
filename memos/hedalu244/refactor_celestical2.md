@@ -208,47 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順6. マップ表示ポリシーを `celestial/` から出す
-
-**目的.** `body-visibility.ts` と `map-visibility.ts` は**天体と積分個体の両方**の表示可否を
-決める共通のポリシーなのに、天体側のフォルダに入っている(`BodyClassToggles` が
-`playerVisible` / `shipOrbit` / `ammoName` / `baseVisible` を、`MapEntityKind` が
-`'player' | 'ship' | 'ammo' | 'fuel' | 'base'` を持つ)。**天体側だけがマップ全体の表示規則を
-背負っているのが、非対称の実体のひとつである。** あわせて CODING-RULE 2.2 が禁じる無標の
-`body` を接辞から外す。**この時点で挙動は変えない。**
-
-`body-visibility.ts` は2つの関心が同居しているので、そこで切る。
-
-- (A) 表示トグルの表と操作 — 両族にまたがる → `game/map/` へ
-- (B) 天体の親子関係・近傍系の判定 — 天体の木への問い合わせ → `celestial/` に残す
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/map/display-toggles.ts`(新規) | `body-visibility.ts:29-207` の (A) を移す。`BodyClassToggles`→`MapDisplayToggles`、`DEFAULT_BODY_CLASS_TOGGLES`→`DEFAULT_MAP_DISPLAY_TOGGLES`、`BodyClassDisplayMode`→`MapDisplayMode`、`bodyClass*`/`applyBodyClass*`/`normalizeBodyClassToggles` の `bodyClass` を `celestialClass` へ |
-| `src/game/map/visibility-policy.ts`(新規) | `map-visibility.ts` 全体を移す。`MapEntityKind`→`DynamicEntityKind`、メソッド `body(id)`→`celestial(id)`、`entity(kind)`→`dynamic(kind)`(族語の対で読めるようにする) |
-| `src/game/celestial/system-membership.ts`(新規) | `body-visibility.ts:17-19` と `:209-385` の (B) を移す。`BodyClassLookup`→`CelestialClassLookup`、`motionById`、`sameSystemIds` / `isPositionInFocusedSystem` / `alwaysFullyVisibleIds` / `systemChainAt` / `systemMembersAt` / `NearbySystemTracker` |
-| `src/game/celestial/body-visibility.ts` | 削除する |
-| `src/game/celestial/map-visibility.ts` | 削除する |
-| `src/game/celestial/celestial-entity-def.ts:8-12` | `BodyClass`→`CelestialClass`、`bodyClassOfKind`→`celestialClassOfKind` |
-| `src/game/camera/camera-system.ts` | `bodyClassToggles` フィールドを `mapDisplayToggles` へ改名し、import を差し替える |
-| `src/game/camera/focus-markers.ts` / `src/game/pickable/map-pickables.ts` / `src/game/celestial/celestial-system.ts` / `src/game/hud/panels/view-options-panel.ts` / `src/game/lines/entity-line-manager.ts` / `src/game/player/player.ts` / `src/game/game-entity/base.ts` / `src/game/simulation/entity-manager.ts` / `src/game/stages/stage.ts` / `src/game/stages/creative-stage.ts` / `src/game/targeter.ts` | import パスと識別子を差し替える |
-| `tests/game/body-visibility.test.ts` | import パスと識別子を差し替える(ファイル名も対象に合わせて改める) |
-
-**達成条件と検証**
-
-- `grep -rn "BodyClass\b\|BodyClassToggles\|MapEntityKind\|body-visibility\|map-visibility" src tests tools`
-  が 0 件。
-- `src/game/map/` の中身が `game/celestial/` を import しない(`display-toggles.ts` は
-  `CelestialClass` の型だけを引く)。
-- `npm run typecheck` / `npm run test:game` が通る。
-- `npm run dev` — 表示パネルの表示オプションタブで、天体クラス(惑星・準惑星・衛星・小天体・
-  ラグランジュ点)と個体クラス(自機・敵艦・弾薬・燃料・基地)の各ボタンが着手前と同じ3状態を
-  巡り、マップの表示がそれに追随することを見る。
-
----
-
 ### 手順7. 軌道ガイドを `celestial/` 直下から折り畳む
 
 **目的.** ラグランジュ点まわりの軌道ガイドは6ファイル・約 1200 行あり、`celestial/` 直下の
@@ -568,3 +527,16 @@ grep -rhoE "src/game/(celestial|simulation|game-entity|dynamic|map)/[a-z0-9./-]*
   と書いていたが、`tools/render-lab/{lab,main}.ts` が環境光を手で設定するために直接引いており、
   非公開にすると描画実験環境が固まる。**達成目標8 は `src/game/` から消えることだけを求めて
   いるので、そちらは満たしている。**
+- **手順6 の改名表に誤りがあった。** 計画は `bodyClassDisplayMode` / `nextBodyClassDisplayMode` /
+  `applyBodyClassDisplayMode` / `applyBodyClassToggle` の `bodyClass` を `celestialClass` へ
+  置換すると書いていたが、**これらは天体クラスと個体種別の両方を含む表(`keyof MapDisplayToggles`)
+  を受ける**ので、`celestialClass` に改名すると嘘の名前になる。実際には
+  `mapDisplayModeOf` / `nextMapDisplayMode` / `applyMapDisplayMode` へ改めた。天体クラスだけを
+  受ける `bodyClassVisible` / `bodyNameVisible` は計画どおり `celestialClassVisible` /
+  `celestialNameVisible`。
+- **`applyBodyClassToggle` は呼び出し元が1つも無い死にコードだった**ので、手順6 で移す代わりに
+  削除した(手順12 の「過剰 export」ではなく、関数ごと不要)。
+- **`alwaysFullyVisibleIds` は `map/visibility-policy.ts` へ移した。** 計画では天体の木の問い合わせ
+  (B)側に残す想定だったが、実装は表示トグルで絞り込む処理を含んでおり、残すと
+  `celestial/` → `map/` の逆向き依存が生まれる。移した結果、**実行時の `celestial/` → `map/`
+  依存は 0** になった(残るのは `sync` の引数型としての `import type` 1件のみ)。

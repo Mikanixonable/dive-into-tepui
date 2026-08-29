@@ -1,4 +1,4 @@
-// マップ表示の可視性規則(body-visibility.ts)と、ラグランジュ点が力学的に意味を持つかの
+// マップ表示の可視性規則(map/ と celestial/system-membership.ts)と、ラグランジュ点が力学的に意味を持つかの
 // 判定(lagrange.ts + CelestialMotion)の回帰テスト。どちらも DOM を持たない純粋な規則なので、
 // 「どう見えるか」ではなく「何が見えるべきか」だけをここで固定する。
 import { motionOf, orbitingMotionOf, positionOf, solarSystemParts } from '../physics/test-helpers';
@@ -9,11 +9,14 @@ import {
 } from '../../src/physics/lagrange';
 import { OrbitingMotion } from '../../src/physics/celestial-motion';
 import {
-  alwaysFullyVisibleIds, applyBodyClassDisplayMode, bodyClassDisplayMode, bodyClassVisible, bodyNameVisible,
-  BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES,
-  isPositionInFocusedSystem, nextBodyClassDisplayMode, systemChainAt, systemMembersAt,
-} from '../../src/game/celestial/body-visibility';
-import { BodyClass, bodyClassOfKind } from '../../src/game/celestial/celestial-entity-def';
+  isPositionInFocusedSystem, systemChainAt, systemMembersAt,
+} from '../../src/game/celestial/system-membership';
+import {
+  applyMapDisplayMode, mapDisplayModeOf, celestialClassVisible, celestialNameVisible,
+  MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, nextMapDisplayMode,
+} from '../../src/game/map/display-toggles';
+import { alwaysFullyVisibleIds } from '../../src/game/map/visibility-policy';
+import { CelestialClass, celestialClassOfKind } from '../../src/game/celestial/celestial-entity-def';
 import { v3, addScaled } from '../../src/math/vec3';
 
 const MIN_CLEARANCE = 10;
@@ -23,27 +26,27 @@ const PARTS = solarSystemParts();
 const WINDOWS = PARTS.windows;
 const ALL = PARTS.bodies;
 
-// 表示クラスは運動の分類から引く(未登録 id は BodyClassLookup の契約どおり 'planet')。
+// 表示クラスは運動の分類から引く(未登録 id は CelestialClassLookup の契約どおり 'planet')。
 // 準惑星・小天体は 'planet' に落ちるが、このテストの表示規則は planet/dwarf/smallBody の
 // Name トグルを既定 ON のまま使うので判定に影響しない(規則が区別するのは satellite と
 // star だけで、どちらも分類から正しく出る)。
-const bodyClass = (id: string): BodyClass => {
+const bodyClass = (id: string): CelestialClass => {
   const motion = ALL.find((m) => m.id === id);
-  return motion === undefined ? 'planet' : bodyClassOfKind(motion.kind);
+  return motion === undefined ? 'planet' : celestialClassOfKind(motion.kind);
 };
 
 // マーカーの点か名前のどちらかが出る天体の集合。クラストグルで足される天体と、恒星・
 // フォーカス系・カメラ近傍として無条件に足される天体の和になる。
 function visibleBodyIds(
-  focusId: string | undefined, toggles: BodyClassToggles,
+  focusId: string | undefined, toggles: MapDisplayToggles,
   nearbyIds: Iterable<string> = [],
 ): ReadonlySet<string> {
   const forced = alwaysFullyVisibleIds(ALL, bodyClass, focusId, nearbyIds, toggles);
   const set = new Set<string>();
   for (const m of ALL) {
     const cls = bodyClass(m.id);
-    if (!bodyClassVisible(cls, toggles)) continue;
-    if (forced.has(m.id) || bodyNameVisible(cls, toggles)) set.add(m.id);
+    if (!celestialClassVisible(cls, toggles)) continue;
+    if (forced.has(m.id) || celestialNameVisible(cls, toggles)) set.add(m.id);
   }
   return set;
 }
@@ -51,8 +54,8 @@ function visibleBodyIds(
 // 衛星クラスの Name を畳んだトグル。フォーカス由来・カメラ近傍由来の追加規則は、
 // クラストグル自身が既にその天体を足している間は観測できないので、その規則を固定する
 // テストはこちらを使う。
-const SATELLITES_OFF: BodyClassToggles = {
-  ...DEFAULT_BODY_CLASS_TOGGLES, satelliteName: false,
+const SATELLITES_OFF: MapDisplayToggles = {
+  ...DEFAULT_MAP_DISPLAY_TOGGLES, satelliteName: false,
 };
 
 // 登録天体の主天体に対する質量比。
@@ -101,7 +104,7 @@ export function register(): void {
   });
 
   test('visibility: 既定では恒星・惑星・準惑星・小天体・衛星が見える', () => {
-    const visible = visibleBodyIds('earth', DEFAULT_BODY_CLASS_TOGGLES);
+    const visible = visibleBodyIds('earth', DEFAULT_MAP_DISPLAY_TOGGLES);
     for (const id of ['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']) {
       assert.ok(visible.has(id), `${id} は常に見えるべき`);
     }
@@ -118,25 +121,25 @@ export function register(): void {
   });
 
   test('visibility controls: 対象クラスは非表示→ラベル→軌道+ラベルを循環する', () => {
-    const orbit = bodyClassDisplayMode(DEFAULT_BODY_CLASS_TOGGLES, 'planetVisible');
+    const orbit = mapDisplayModeOf(DEFAULT_MAP_DISPLAY_TOGGLES, 'planetVisible');
     assert.equal(orbit, 'orbit');
-    assert.equal(nextBodyClassDisplayMode(orbit, true), 'hidden');
-    assert.equal(nextBodyClassDisplayMode('hidden', true), 'label');
-    assert.equal(nextBodyClassDisplayMode('label', true), 'orbit');
+    assert.equal(nextMapDisplayMode(orbit, true), 'hidden');
+    assert.equal(nextMapDisplayMode('hidden', true), 'label');
+    assert.equal(nextMapDisplayMode('label', true), 'orbit');
 
-    const label = applyBodyClassDisplayMode(DEFAULT_BODY_CLASS_TOGGLES, 'planetVisible', 'label');
+    const label = applyMapDisplayMode(DEFAULT_MAP_DISPLAY_TOGGLES, 'planetVisible', 'label');
     assert.equal(label.planetVisible, true);
     assert.equal(label.planetName, true);
     assert.equal(label.planetOrbit, false);
 
-    const hidden = applyBodyClassDisplayMode(label, 'planetVisible', 'hidden');
-    assert.equal(bodyClassDisplayMode(hidden, 'planetVisible'), 'hidden');
+    const hidden = applyMapDisplayMode(label, 'planetVisible', 'hidden');
+    assert.equal(mapDisplayModeOf(hidden, 'planetVisible'), 'hidden');
     assert.equal(hidden.planetVisible, false);
     assert.equal(hidden.planetName, false);
     assert.equal(hidden.planetOrbit, false);
 
-    assert.equal(nextBodyClassDisplayMode('hidden', false), 'label');
-    assert.equal(nextBodyClassDisplayMode('label', false), 'hidden');
+    assert.equal(nextMapDisplayMode('hidden', false), 'label');
+    assert.equal(nextMapDisplayMode('label', false), 'hidden');
   });
 
   test('visibility: フォーカス中の天体の子はトグル無しで見える', () => {
@@ -197,7 +200,7 @@ export function register(): void {
   });
 
   test('visibility: 未登録の id にフォーカスしても恒星・惑星は見え続ける', () => {
-    const visible = visibleBodyIds('asteroid-1', DEFAULT_BODY_CLASS_TOGGLES);
+    const visible = visibleBodyIds('asteroid-1', DEFAULT_MAP_DISPLAY_TOGGLES);
     assert.ok(visible.has('earth'));
     assert.ok(visible.has('sun'));
   });

@@ -19,7 +19,7 @@ import { add } from '../../math/vec3';
 import type { StageSaveData } from '../save/save-data';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { CelestialSurface } from '../../render/celestial-surface';
-import { bodyClassOfKind } from '../celestial/celestial-entity-def';
+import { celestialClassOfKind } from '../celestial/celestial-entity-def';
 import { CelestialEntity } from '../celestial/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
 import { SphereEntity } from '../celestial/sphere-entity';
@@ -76,7 +76,7 @@ function fallbackEntity(motion: CelestialMotion): CelestialEntity {
       motion, motion.id, new THREE.Color(1, 1, 1), REFERENCE_STAR_RADIANT_INTENSITY, 0xffffff);
   }
   if (!(motion instanceof OrbitingMotion)) throw new Error(`${motion.id} の運動が OrbitingMotion ではない`);
-  return new SphereEntity(motion, motion.id, bodyClassOfKind(motion.kind), CelestialSurface.solid(DEFAULT_ALBEDO));
+  return new SphereEntity(motion, motion.id, celestialClassOfKind(motion.kind), CelestialSurface.solid(DEFAULT_ALBEDO));
 }
 
 export class StageDebugAltSystem extends Stage {

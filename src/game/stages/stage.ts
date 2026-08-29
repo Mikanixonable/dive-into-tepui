@@ -19,7 +19,7 @@ import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Simulator } from '../simulation/simulator';
 import type { StageSaveData } from '../save/save-data';
-import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
