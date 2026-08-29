@@ -56,6 +56,7 @@ export type SurfacePhotometry = {
   readonly lightSourceAlbedo: Albedo;
 };
 
+// 実写テクスチャの測光。倍率を掛ける前の平均色を、その天体のボンドアルベドへ合わせる。
 function photometryOf(texture: CelestialTexture): SurfacePhotometry {
   return {
     bondAlbedo: texture.bondAlbedo,
