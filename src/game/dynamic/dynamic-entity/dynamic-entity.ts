@@ -530,7 +530,7 @@ export class DynamicEntity {
     const normal = predicted?.at(t) ?? null;
     if (normal !== null || celestialSystem === undefined) return normal;
     if (predicted === null || this.predictionTruncated || predicted.extrapolationCenter === null) return null;
-    return predicted.extrapolatedAt(t, celestialSystem.bodyOf(predicted.extrapolationCenter.id).motion.stateAt(t));
+    return predicted.extrapolatedAt(t, celestialSystem.entityOf(predicted.extrapolationCenter.id).motion.stateAt(t));
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。

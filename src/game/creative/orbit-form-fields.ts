@@ -10,7 +10,7 @@ import * as C from '../const';
 // ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙する。軌道要素指定の基準天体も
 // これを使う(公転していない恒星を周回の中心には選べない)。
 export function orbitingIdsOf(celestialSystem: CelestialSystem): readonly string[] {
-  return celestialSystem.bodies.filter((b) => b.motion.kind !== 'star').map((b) => b.id);
+  return celestialSystem.entities.filter((b) => b.motion.kind !== 'star').map((b) => b.id);
 }
 
 // 天体の候補をクラス別のまとまりへ組む。先頭は「いま選んでいる系」— 実際に選ばれるのは
@@ -20,7 +20,7 @@ export function bodyGroupsOf(
 ): readonly ObjectPickerGroup<string>[] {
   const near0 = sameSystemIds(celestialSystem.motions, selected);
   const near = items.filter(([id]) => near0.has(id));
-  const byClass = (cls: CelestialClass) => items.filter(([id]) => celestialSystem.bodyOf(id).bodyClass === cls);
+  const byClass = (cls: CelestialClass) => items.filter(([id]) => celestialSystem.entityOf(id).bodyClass === cls);
   return [
     { label: 'いま選んでいる系', items: near },
     { label: '惑星', items: byClass('planet') },
@@ -37,11 +37,11 @@ export function lagrangeSystemItemsOf(
   // 共線点が行き先として意味を持つ系だけを出す。質量が未測定の天体では質量比が 0 になり、
   // 共線点の距離比を解く反復が収束せず NaN の状態を返すため、選ばせてはいけない。
   const usable = (id: string): boolean => {
-    const motion = celestialSystem.bodyOf(id).motion;
+    const motion = celestialSystem.entityOf(id).motion;
     return motion instanceof OrbitingMotion && motion.hasUsableCollinearPoints(C.LAGRANGE_MIN_CLEARANCE_RATIO);
   };
   return orbitingIds.filter(usable).map((id) => {
-    const primary = celestialSystem.bodyOf(id).motion.primary?.id ?? null;
+    const primary = celestialSystem.entityOf(id).motion.primary?.id ?? null;
     const primaryName = celestialSystem.nameOf(primary ?? id);
     return [id, `${primaryName}-${celestialSystem.nameOf(id)}`] as const;
   });
