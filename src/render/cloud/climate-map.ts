@@ -2,7 +2,8 @@
 // 標本化する。雲より桁で低周波な、その天体固有の分布だけを持つ。
 import * as THREE from 'three/webgpu';
 import { texture, vec2 } from 'three/tsl';
-import { eastAt, equirectUvFromDirection, northAt } from './sphere-frame';
+import { equirectUvFromDirection } from './field-projection';
+import { eastAt, northAt } from './sphere-frame';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
 // テクスチャの目盛り。B は 0..8000 m を 0..1 で持つ。

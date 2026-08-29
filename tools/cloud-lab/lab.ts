@@ -6,6 +6,7 @@ import { R_EARTH } from '../../src/physics/solar-system';
 import { EARTH_TEXTURES } from '../../src/render/celestial-textures';
 import { createCloudField } from '../../src/render/cloud/cloud-field';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
+import { EquirectProjection } from '../../src/render/cloud/field-projection';
 import { WeatherModel } from '../../src/render/cloud/weather-model';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
@@ -40,8 +41,12 @@ export class CloudLabCanvas {
 
   // 表示の種類ごとのマテリアルを一度だけ組む。
   private constructor(private readonly renderer: WebGPURenderer, climate: ClimateMap) {
-    this.model = new WeatherModel(climate);
-    this.cloud = createCloudField(this.model);
+    // 写しは表示と同じ大きさに取る — 読む側より細かく焼いた分は、読み出しの補間で均されて捨てられる。
+    // この大きさだと気圧の差分の刻み(0.01 rad)が texel(2π/1024)の 1.6 倍、湿度のノイズの
+    // 最上段(159 km)が 4 texel。
+    const projection = new EquirectProjection(VIEW_HEIGHT);
+    this.model = new WeatherModel(climate, projection);
+    this.cloud = createCloudField(this.model, projection);
     // ビューごとに別のマテリアル。選ばれた 1 つだけがコンパイルされる。
     const materials = new Map<CloudLabViewId, THREE.MeshBasicNodeMaterial>();
     for (const view of CLOUD_LAB_VIEWS) {
