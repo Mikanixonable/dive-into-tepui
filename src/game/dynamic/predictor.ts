@@ -1,9 +1,9 @@
 // DynamicEntity.predicted と、計画軌道の各区間の弧を、共有のフレーム予算内で伸ばす。1歩ぶんの
-// 積分(刻み幅・窓解決・到達判定)は game/simulation/predicted-arc.ts の PredictedArc へ持ち、
+// 積分(刻み幅・窓解決・到達判定)は game/dynamic/predicted-arc.ts の PredictedArc へ持ち、
 // ここは予算の配分だけを持つ。伸長対象は「その個体の未来を読む消費者がいるか」
 // (DynamicEntity.hasFutureReader)で決まる。
 //
-// 実シミュレーション(game/simulation/simulator.ts の Simulator)との役割の違いは2点で、
+// 実シミュレーション(game/dynamic/simulator.ts の Simulator)との役割の違いは2点で、
 // 二重性はこの2点に由来する。統一はできない。
 //  1. 同時性。こちらは選ばれた少数の弧を1本ずつ、それぞれ別の先端時刻で伸ばす。共通の瞬間が
 //     無いので、絞り込みは弧ごと(ArcBodies)にしか組めず、弧どうしの剛体接触は解けない。
@@ -13,8 +13,8 @@
 // **この2点に起因しない部分は、両者で同じ答えでなければならない** — 個体1つと解析天体の
 // 関係(どの天体が引くか・表面へ到達したか・大気で焼失したか・刻みをどこまで広げてよいか)。
 import * as C from '../const';
-import { EntityManager } from './entity-manager';
-import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { DynamicSystem } from './dynamic-system';
+import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { Player } from '../player/player';
 import { simulationMaxStep } from './time-step';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -38,7 +38,7 @@ export class Predictor {
   lastArcLead: number | null = null;
 
   constructor(
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
   ) {}
 
@@ -144,13 +144,13 @@ export class Predictor {
   // 積分step数 — 区間の再生成数(planArcs)は plan/plan-editor.ts が答える。
   perfCounts(): Pick<PerfCounts,
   'predicted' | 'predictComplete' | 'predictorSteps' | 'planSteps'
-  | 'arcBodies' | 'arcRevisits' | 'arcLead'> {
+  | 'arcCelestialBodies' | 'arcRevisits' | 'arcLead'> {
     return {
       predicted: this.tracked,
       predictComplete: this.finished,
       predictorSteps: this.lastSteps,
       planSteps: this.lastPlanSteps,
-      arcBodies: this.lastBodies,
+      arcCelestialBodies: this.lastBodies,
       arcRevisits: this.lastRevisits,
       arcLead: this.lastArcLead,
     };

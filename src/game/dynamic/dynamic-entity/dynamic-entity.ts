@@ -24,9 +24,9 @@ import type { OrbitReference } from '../../orbit-reference';
 import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import { PredictedArc, trajectorySampleInterval } from '../../simulation/predicted-arc';
-import { atmosphericMaxStep, dragTakesFullAirspeed } from '../../simulation/time-step';
-import type { FutureCelestialBodyProvider } from '../../simulation/arc-bodies';
+import { PredictedArc, trajectorySampleInterval } from '../../dynamic/predicted-arc';
+import { atmosphericMaxStep, dragTakesFullAirspeed } from '../../dynamic/time-step';
+import type { FutureCelestialBodyProvider } from '../../dynamic/arc-celestial-bodies';
 import * as C from '../../const';
 import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
@@ -179,7 +179,7 @@ export class DynamicEntity {
 
   protected readonly scene?: THREE.Scene;
 
-  // 未来の予測列を保持する統一積分弧(game/simulation/predicted-arc.ts の PredictedArc)。
+  // 未来の予測列を保持する統一積分弧(game/dynamic/predicted-arc.ts の PredictedArc)。
   private _predictedArc: PredictedArc | null = null;
   // 弧そのもの(素の読み取り専用アクセス)。plan/plan-path.ts がノードの無い末尾区間として
   // 丸ごと借用するために公開する — 生成は ensurePredictedArc の専任のまま。

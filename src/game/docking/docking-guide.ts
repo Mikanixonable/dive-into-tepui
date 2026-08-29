@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { Player } from '../player/player';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Docking, DockingCandidate } from './docking';
 import type { ViewManager } from '../view-manager';
@@ -39,7 +39,7 @@ export class DockingGuide {
   constructor(
     private readonly scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly docking: Docking,
     private readonly viewManager: ViewManager,
   ) {

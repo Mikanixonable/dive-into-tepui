@@ -8,7 +8,7 @@ import { ResourceTransferDialog } from '../hud/windows/resource-transfer-dialog'
 import { Base } from '../dynamic/dynamic-entity/base';
 import { Player } from '../player/player';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { MapContextActions } from '../pickable/map-context-actions';
 import type { CameraSystem } from '../camera/camera-system';
 import type { ViewManager } from '../view-manager';
@@ -71,7 +71,7 @@ export class Docking {
     private readonly scene: THREE.Scene,
     private readonly effects: EffectsSystem,
     private readonly markerManager: MarkerManager,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly mapActions: MapContextActions,
     private readonly cameraSystem: CameraSystem,
     private readonly viewManager: ViewManager,

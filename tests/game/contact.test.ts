@@ -3,7 +3,7 @@
 // 相対速度 — なので、掛かる重み(調整値)と違って理論値で固定できる。
 //
 // **法線の向きの取り決めは2つのモジュールに跨がる。** 記述を組むのは接触の解決器
-// (simulation/entity-contact-physics.ts・surface-contact-physics.ts)で、それが渡す法線は
+// (dynamic/entity-contact-physics.ts・surface-contact-physics.ts)で、それが渡す法線は
 // physics/collision-response.ts が決める。片方だけを読んでも符号は確かめられないので、
 // 解決器と同じ組み方を再現して両者が噛み合っていることまで見る。
 import * as assert from 'node:assert/strict';

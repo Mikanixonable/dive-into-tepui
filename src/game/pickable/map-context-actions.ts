@@ -19,12 +19,12 @@ import { focusTargetId } from '../camera/focus-target';
 import { PhysicalObjectListPanel } from '../hud/panels/physical-object-list-panel';
 import type { Input } from '../input/input';
 import { pickRadiusSq } from '../input/pointer-precision';
-import { EntityManager } from '../simulation/entity-manager';
+import { DynamicSystem } from '../dynamic/dynamic-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
 import { PlanEditor } from '../plan/plan-editor';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { Docking } from '../docking/docking';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
@@ -104,7 +104,7 @@ export class MapContextActions {
   // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
   constructor(
     private readonly hud: Hud,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,

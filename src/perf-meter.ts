@@ -18,7 +18,7 @@ export type PerfCounts = {
   players: number; enemies: number; bullets: number; casings: number;
   debris: number; ammoPickups: number; rcsFuelPickups: number; bases: number;
   predicted: number; predictComplete: number; predictorSteps: number;
-  arcBodies: number; arcRevisits: number; arcLead: number | null;
+  arcCelestialBodies: number; arcRevisits: number; arcLead: number | null;
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
   simSubsteps: number; simIntegrated: number; simFollowed: number; gravitySources: number;
   planArcs: number; planSteps: number;
@@ -40,7 +40,7 @@ const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (
   { key: 'pred-tracked', label: 'tracked', group: '予測', read: (c) => c.predicted },
   { key: 'pred-complete', label: 'complete', group: '予測', read: (c) => c.predictComplete },
   { key: 'pred-steps', label: 'steps', group: '予測', read: (c) => c.predictorSteps },
-  { key: 'arc-bodies', label: '解決天体', group: '予測', read: (c) => c.arcBodies },
+  { key: 'arc-celestial-bodies', label: '解決天体', group: '予測', read: (c) => c.arcCelestialBodies },
   { key: 'arc-revisits', label: '期限訪問', group: '予測', read: (c) => c.arcRevisits },
   { key: 'sim-substeps', label: 'substeps', group: 'シミュレーション', read: (c) => c.simSubsteps },
   { key: 'sim-integrated', label: '積分', group: 'シミュレーション', read: (c) => c.simIntegrated },

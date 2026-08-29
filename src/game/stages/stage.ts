@@ -12,12 +12,12 @@ import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
-import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { Simulator } from '../simulation/simulator';
+import type { Simulator } from '../dynamic/simulator';
 import type { StageSaveData } from '../save/save-data';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ObjectType } from '../creative/object-placer-panel';
@@ -25,7 +25,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAtOrNull } from '../../physics/ephemeris-profile';
-import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../simulation/sim-epoch';
+import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../sim-epoch';
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { PhaseOffsets } from '../../physics/celestial-motion';
@@ -53,7 +53,7 @@ export type StageDeps = [
   worldSfx: WorldSfx,
   uiSfx: UiSfx,
   scene: THREE.Scene,
-  entities: EntityManager,
+  entities: DynamicSystem,
   unlockManager: UnlockManager,
   fx: EffectsSystem,
   markerManager: MarkerManager,
@@ -147,7 +147,7 @@ export abstract class Stage {
   protected readonly _scene: THREE.Scene;
   protected readonly _fx: EffectsSystem;
   protected readonly _unlockManager: UnlockManager;
-  protected readonly _entities: EntityManager;
+  protected readonly _entities: DynamicSystem;
   protected readonly _markerManager: MarkerManager;
   protected readonly _celestialSystem: CelestialSystem;
   protected readonly _simulator: Simulator;
@@ -227,19 +227,19 @@ export abstract class Stage {
   }
 
   // 敵を entities へ登録し、出撃数をスコアへ記録する。
-  protected addEnemy(enemy: Enemy, entities: EntityManager): void {
+  protected addEnemy(enemy: Enemy, entities: DynamicSystem): void {
     entities.addEnemy(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
   // タンパク質アセットの fetch 待ちで実体化を遅らせうる敵を登録する。準備が整い次第
   // entities へ登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
-  protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, entities: EntityManager): void {
+  protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, entities: DynamicSystem): void {
     entities.spawnEnemyWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。
-  protected behaveAllEnemies(player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  protected behaveAllEnemies(player: Player, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     for (const e of entities.enemies) {
       if (e.alive) e.behave(simTime, player, entities, simSpeed, this._celestialSystem);
     }
@@ -247,9 +247,9 @@ export abstract class Stage {
 
   protected abstract briefingHtml(): string;
   // 初期配置。既定では何も置かない。
-  protected init(_entities: EntityManager): void { }
+  protected init(_entities: DynamicSystem): void { }
   // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
-  public abstract update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
+  public abstract update(dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
   public nextSimulationEventTime(_simTime: number): number | null { return null; }

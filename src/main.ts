@@ -140,7 +140,7 @@ function initSaveSlots(store: LocalStorageSaveStore): SaveSlots {
 
 async function main() {
   // シーン初期化と並行して、タンパク質アセット(構造・モーション)の fetch を非同期に始める。
-  // 完了前にタンパク質型の敵を生成する側(EntityManager.spawnEnemyWhenReady)が待つ。
+  // 完了前にタンパク質型の敵を生成する側(DynamicSystem.spawnEnemyWhenReady)が待つ。
   startProteinAssetPreload();
   const unlockmanager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();

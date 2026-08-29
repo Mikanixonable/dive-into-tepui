@@ -18,8 +18,8 @@
 // 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
 import { Hud } from '../hud/hud';
 import { Player } from '../player/player';
-import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import { EntityManager } from './entity-manager';
+import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import { DynamicSystem } from './dynamic-system';
 import { Vec3 } from '../../math/vec3';
 
 // 全成分が有限値かどうかを返す。
@@ -56,7 +56,7 @@ export class NanWatchdog {
   // 全エンティティを走査する重い検査。自機より先に汚染されるのは他のエンティティ
   // (薬莢・破片・弾)であることが多く、それが接触を通じて自機へ伝播する。
   // フレームにつき一度だけ呼ぶこと。
-  checkAll(phase: string, player: Player | null, entities: EntityManager, simTime: number, dt: number, simDt: number): void {
+  checkAll(phase: string, player: Player | null, entities: DynamicSystem, simTime: number, dt: number, simDt: number): void {
     if (this.tripped) return;
     this.checkPlayer(phase, player, simTime, dt, simDt);
     if (this.tripped) return;

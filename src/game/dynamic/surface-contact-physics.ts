@@ -8,7 +8,7 @@ import { distributeFixedContact } from '../../physics/collision-response';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add, sameVec, scale } from '../../math/vec3';
-import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { Stage } from '../stages/stage';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { SurfaceCandidates } from './surface-candidates';

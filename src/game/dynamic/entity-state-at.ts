@@ -4,7 +4,7 @@
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import { KinematicState } from '../../physics/kinematic-state';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 
 // t <= trajectory の現在時刻なら保持区間の内挿(at)、それより先なら centerMotion が表す天体
 // まわりの二体ケプラー外挿(extrapolatedAt)で答える。両者とも先端以前は内挿に落ちる

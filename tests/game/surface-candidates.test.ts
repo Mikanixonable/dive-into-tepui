@@ -1,4 +1,4 @@
-// 表面へ触れうる天体の絞り込み(game/simulation/surface-candidates.ts)の回帰テスト。
+// 表面へ触れうる天体の絞り込み(game/dynamic/surface-candidates.ts)の回帰テスト。
 // **絞り込みは判定器の答えを変えてはならない** — 触れうる相手を1つも落とさないことだけが
 // 正しさの条件で、これを破ると判定器そのものが呼ばれなくなる。つまり sphere-contact.test.ts の
 // ような判定器のテストでは絶対に見えない。総当たり(窓をそのまま渡す)と絞り込んだ窓とで
@@ -12,7 +12,7 @@ import { mulberry32, randSym } from '../../src/math/random';
 import { Vec3, v3 } from '../../src/math/vec3';
 import {
   SurfaceCandidates, type SurfaceParticipant,
-} from '../../src/game/simulation/surface-candidates';
+} from '../../src/game/dynamic/surface-candidates';
 
 // 位置・速度・半径だけを持つ天体。重力も大気も表面判定には効かない。
 function body(id: string, r: Vec3, v: Vec3, radius: number): CelestialBody {

@@ -6,7 +6,7 @@ import { autoOrbitReference } from '../orbit-reference';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
 import type { PropertyRow } from '../hud/windows';
 import type { MapPickable } from './map-pickable';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { NavTarget } from '../nav-target';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -19,7 +19,7 @@ import * as C from '../const';
 
 export class MapPropertyRows {
   constructor(
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly activePlayers: ActivePlayerController,
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,

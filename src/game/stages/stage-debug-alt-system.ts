@@ -4,8 +4,8 @@
 import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps } from './stage';
 import type { Player } from '../player/player';
-import type { EntityManager } from '../simulation/entity-manager';
-import type { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import * as C from '../const';
 import {
   CelestialMotion, EciOrigin, OrbitingMotion, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef,
@@ -111,7 +111,7 @@ export class StageDebugAltSystem extends Stage {
     });
   }
 
-  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, player: Player | null, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }

@@ -2,7 +2,7 @@
 // 自機の有無に関係なく常に出す画面全体の状態。
 import { SyncThrottle } from '../sync-throttle';
 import { fmtDateTime, fmtElapsedUnits, setElementText, fmtTime } from '../utils';
-import { SIM_EPOCH_SEC } from '../../simulation/sim-epoch';
+import { SIM_EPOCH_SEC } from '../../sim-epoch';
 import type { Game } from '../../game';
 import * as C from '../../const';
 

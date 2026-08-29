@@ -5,7 +5,7 @@ import * as C from '../const';
 import { fmtDist, fmtSpeed } from '../hud/utils';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from '../camera/focus-target';
-import { EntityManager } from '../simulation/entity-manager';
+import { DynamicSystem } from '../dynamic/dynamic-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { NavTarget } from '../nav-target';
 import type { FrameAnchorSource } from '../../physics/frame';
@@ -65,7 +65,7 @@ export class MapPickables {
   // 候補の供給元を参照として受け取る。
   constructor(
     private readonly activePlayers: ActivePlayerController,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,

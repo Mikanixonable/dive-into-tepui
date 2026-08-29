@@ -8,7 +8,7 @@ import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../math/projection';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { fmtMarkerDist } from '../hud/utils';
-import { SIM_EPOCH_SEC } from '../simulation/sim-epoch';
+import { SIM_EPOCH_SEC } from '../sim-epoch';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { TickLabelMode, TickRank, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/orbit/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
@@ -19,7 +19,7 @@ import { MapPickable } from '../pickable/map-pickable';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
-import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
+import type { FutureCelestialBodyProvider } from '../dynamic/arc-celestial-bodies';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 
 // 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。両方見つかった

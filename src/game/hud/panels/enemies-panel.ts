@@ -56,7 +56,7 @@ export class EnemiesPanel {
       }
       const primaryTarget = game.targeter.aliveTarget;
       const rows = this.buildEnemyRows(
-        game.entities.enemies.filter((enemy) => enemy.alive),
+        game.dynamicSystem.enemies.filter((enemy) => enemy.alive),
         player.state.r,
         primaryTarget,
       );

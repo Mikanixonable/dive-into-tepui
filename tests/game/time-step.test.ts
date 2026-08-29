@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import {
   atmosphericMaxStep, dragTakesFullAirspeed, simulationStepDuration,
-} from '../../src/game/simulation/time-step';
+} from '../../src/game/dynamic/time-step';
 import { test } from '../harness';
 import { v3 } from '../../src/math/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';

@@ -19,8 +19,8 @@ import { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { EntityManager } from '../../simulation/entity-manager';
-import type { SimSpeedManager } from '../../simulation/sim-speed-manager';
+import type { DynamicSystem } from '../../dynamic/dynamic-system';
+import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { EnemySaveData } from '../../save/save-data';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
@@ -417,7 +417,7 @@ export class Enemy extends Ship {
   }
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
-  behave(simTime: number, player: Player, entities: EntityManager, simSpeed: SimSpeedManager, celestialSystem: CelestialSystem): void {
+  behave(simTime: number, player: Player, entities: DynamicSystem, simSpeed: SimSpeedManager, celestialSystem: CelestialSystem): void {
     // 射撃間隔はsimulation timeで統一する。wall dtを混ぜると×4時だけバースト間隔が
     // 4倍に引き伸ばされ、同じゲーム内時間でもwarp段によって弾数が変わっていた。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
@@ -470,7 +470,7 @@ export class Enemy extends Ship {
   }
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、entities に追加する。
-  private firePlasma(simTime: number, player: Player, entities: EntityManager, celestialSystem: CelestialSystem, origin?: Vec3): void {
+  private firePlasma(simTime: number, player: Player, entities: DynamicSystem, celestialSystem: CelestialSystem, origin?: Vec3): void {
     const r = origin ?? (this.proteinRuntime
       ? this.proteinRuntime.nextAttackSiteWorldPosition(this.state.r, this.att.q)
       : this.state.r);

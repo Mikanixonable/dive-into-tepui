@@ -2,9 +2,9 @@
 import * as C from '../const';
 import { Stage, type StageDeps } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { Player } from '../player/player';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { WaveAttack } from './stage-utils/wave-attack';
 import type { Stage00SaveData, StageSaveData } from '../save/save-data';
 
@@ -37,7 +37,7 @@ export class Stage00 extends Stage {
   }
 
   // 自機・弾薬ピックアップ・初期の敵ウェーブを配置する。
-  protected init(entities: EntityManager): void {
+  protected init(entities: DynamicSystem): void {
     const player = this.addPlayer();
     for (let i = 0; i < C.MAX_ACTIVE_AMMO_PICKUPS; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
@@ -47,7 +47,7 @@ export class Stage00 extends Stage {
   }
 
   // 敵の行動・補給・波状攻撃の更新を行う。
-  update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
 
     this.behaveAllEnemies(player, entities, simTime, simSpeed);

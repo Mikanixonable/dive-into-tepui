@@ -43,7 +43,7 @@ export function register(): void {
   });
 
   test('spatial-grid: 半径和だけのセルサイズは掃引経路の途中にいる相手を取りこぼす', () => {
-    // 接触検出は各区間の終端位置で登録する(game/simulation/contact.ts と同じ)。
+    // 接触検出は各区間の終端位置で登録する(game/dynamic/contact.ts と同じ)。
     // a は (0,0,0) → (100,0,0) へ動き、c はその掃引経路の途中(50,0,0)近くに静止している。
     const radius = 1;
     const aEnd = v3(100, 0, 0);

@@ -240,7 +240,7 @@ export class OrbitAnalysisWindow {
     }
 
     const reference = game.orbitReference.resolve(
-      entity.state.r, celestialBodies, game.navTarget, game.entities, game.celestialSystem, entity.state.t,
+      entity.state.r, celestialBodies, game.navTarget, game.dynamicSystem, game.celestialSystem, entity.state.t,
     );
     const sampleCount = this.sampleCount();
 
@@ -462,7 +462,7 @@ export class OrbitAnalysisWindow {
     if (id === null) return null;
     const body = celestialBodies.find((b) => b.id === id);
     if (body) return { kind: 'celestialBody', body };
-    const entity = game.entities.findAliveCombatTarget(id);
+    const entity = game.dynamicSystem.findAliveCombatTarget(id);
     return entity ? { kind: 'entity', entity } : null;
   }
 }

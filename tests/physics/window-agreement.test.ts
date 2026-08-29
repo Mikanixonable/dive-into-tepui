@@ -13,9 +13,9 @@ import {
   GRAVITY_NEGLIGIBLE_ACCEL, INITIAL_ALT, INITIAL_INC_DEG,
   PLAYER_HULL_RADIUS, SUBSTEP_MAX_DT,
 } from '../../src/game/const';
-import { ArcBodies, type FutureCelestialBodyProvider } from '../../src/game/simulation/arc-bodies';
-import { attractorsNearInto, classifyAttractors } from '../../src/game/simulation/attractors';
-import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/simulation/surface-candidates';
+import { ArcBodies, type FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-celestial-bodies';
+import { attractorsNearInto, classifyAttractors } from '../../src/game/dynamic/attractors';
+import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/dynamic/surface-candidates';
 import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';
 import type { Vec3 } from '../../src/math/vec3';

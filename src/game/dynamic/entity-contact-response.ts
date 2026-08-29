@@ -3,9 +3,9 @@
 import * as C from '../const';
 import { KinematicState } from '../../physics/kinematic-state';
 import { sub, scale, len, type Vec3 } from '../../math/vec3';
-import type { SphereHit } from '../dynamic/dynamic-entity/base-collision';
-import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import { Base } from '../dynamic/dynamic-entity/base';
+import type { SphereHit } from './dynamic-entity/base-collision';
+import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import { Base } from './dynamic-entity/base';
 import {
   CollisionResponse, ContactGeometry,
   distributeSphereContact, resolveSphereCollision,

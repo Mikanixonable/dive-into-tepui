@@ -1,4 +1,4 @@
-// game/simulation/predicted-arc.ts の回帰。実シミュレーションが状態を引く弧(consumable)の
+// game/dynamic/predicted-arc.ts の回帰。実シミュレーションが状態を引く弧(consumable)の
 // 刻みが simulationMaxStep に揃うことと、その刻み・間引きが表示期間(requiredEnd)に依存しない
 // ことを固定する — 依存すると PREDICT パネルの選択が実体の軌道と HUD の読みを変えてしまう。
 // consumable でない弧が requiredEnd に依存したままであることも併せて固定し、前者が
@@ -10,10 +10,10 @@ import { KinematicState, kinematicState } from '../../src/physics/kinematic-stat
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { EARTH_ATMOSPHERE } from '../../src/game/celestial/solar-system/earth-system';
 import { len, v3 } from '../../src/math/vec3';
-import { PredictedArc } from '../../src/game/simulation/predicted-arc';
-import { atmosphericMaxStep } from '../../src/game/simulation/time-step';
+import { PredictedArc } from '../../src/game/dynamic/predicted-arc';
+import { atmosphericMaxStep } from '../../src/game/dynamic/time-step';
 import { SHIP_BCINV } from '../../src/game/const';
-import type { FutureCelestialBodyProvider } from '../../src/game/simulation/arc-bodies';
+import type { FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-celestial-bodies';
 
 function circularState(t = 0): KinematicState {
   const r0 = R_EARTH + 420e3;

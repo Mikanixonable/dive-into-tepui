@@ -6,12 +6,12 @@ import type { Base } from '../dynamic/dynamic-entity/base';
 import { LAGRANGE_ID, lagrangeParentId } from '../hud/object-groups';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from '../camera/focus-target';
-import { EntityManager } from '../simulation/entity-manager';
+import { DynamicSystem } from '../dynamic/dynamic-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
 import { PlanEditor } from '../plan/plan-editor';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
 import type { Docking } from '../docking/docking';
 import type { ActivePlayerController } from '../active-controllable-controller';
@@ -60,7 +60,7 @@ export class MapPickableMenu {
 
   constructor(
     private readonly hud: Hud,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,

@@ -208,36 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順10. `simulation/` → `dynamic/`、`EntityManager` → `DynamicSystem`
-
-**目的.** 積分側の集合クラスを `CelestialSystem` と対になる名前にし、積分機構を個体と同じ
-`dynamic/` の下へ集める。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/` | `src/game/simulation/` の 18 ファイルを `git mv` する |
-| `.../entity-manager.ts` → `src/game/dynamic/dynamic-system.ts` | `export class EntityManager` → `export class DynamicSystem` |
-| `.../arc-bodies.ts` → `.../arc-celestial-bodies.ts` | 無標の `body` を接辞から外す(CODING-RULE 2.2)。中の `FutureCelestialBodyProvider` は既に有標なので変えない |
-| `.../substep-bodies.ts` → `.../substep-celestial-bodies.ts` | 同上 |
-| `src/game/game.ts:141,157-221 ほか` | `this.entities` フィールドを `this.dynamicSystem` へ改名し、`celestialSystem` と対で読めるようにする |
-| `EntityManager` を参照する 36 ファイル(98 箇所) | 識別子を差し替える |
-| `simulation/` を import する 50 ファイル | パスを直す |
-| `src/game/dynamic/sim-epoch.ts` → `src/game/sim-epoch.ts` | `simulation/` の中から誰も import しておらず(利用は `hud/` `plan/` `save/` `stages/` の7ファイル)、内容も暦の元期定数で積分機構ではない。積分側のフォルダから出す |
-| `.claude/skills/overview/SKILL.md:28` / `.claude/skills/CODE-SNAPSHOT.md:26,56` | 名前を直す |
-
-**達成条件と検証**
-
-- `grep -rn "\bEntityManager\b" src tests tools DEVELOP .claude CLAUDE.md` が 0 件。
-- `src/game/simulation/` が存在しない。
-- `grep -rnE "\b(arc|substep)-bodies\b" src tests tools` が 0 件。
-- `npm run typecheck` / `npm run test`(全層)が通る。
-- `npm run dev` — 敵の湧き・弾・破片・基地の生成と消滅、時間加速、予測軌道線が着手前と同じに
-  動くことを見る。
-
----
-
 ### 手順11. `CelestialSystem` の `body` を `entity` へ揃える
 
 **目的.** `CelestialSystem` が `CelestialEntity` の配列を `bodies` と呼び、`bodyOf` で引いている。
@@ -465,3 +435,10 @@ grep -rhoE "src/game/(celestial|simulation|game-entity|dynamic|map)/[a-z0-9./-]*
   (B)側に残す想定だったが、実装は表示トグルで絞り込む処理を含んでおり、残すと
   `celestial/` → `map/` の逆向き依存が生まれる。移した結果、**実行時の `celestial/` → `map/`
   依存は 0** になった(残るのは `sync` の引数型としての `import type` 1件のみ)。
+- **`Game.entities` だけを `dynamicSystem` へ改めた。** `DynamicSystem` を受け取る他クラス
+  (`Predictor` / `Simulator` / `MapPickables` など)のフィールド名は `entities` のまま残した —
+  あれらは「渡された個体の集合」を指すローカルな名前で、`Game` のように
+  `celestialSystem` と対で並ぶ文脈が無い。全部を改名すると差分だけ増えて読みは良くならない。
+- **`arcBodies` の perf カウンタと `'arc-bodies'` の表示キーも併せて改名した**
+  (`arcCelestialBodies` / `'arc-celestial-bodies'`)。モジュール名だけ直して計数の名前を
+  残すと、同じ規則違反(無標の `body` を接辞にする)が別の場所に残る。

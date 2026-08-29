@@ -3,8 +3,8 @@ import type * as THREE from 'three/webgpu';
 import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
 import type { Player } from '../player/player';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
-import type { EntityManager } from '../simulation/entity-manager';
-import type { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
@@ -420,7 +420,7 @@ export class CreativeStage extends Stage {
   // フィールド単位の検証結果を求め直す。既存敵の AI 行動は常に進める。トグルが制御するのは
   // 新規ウェーブの発生のみ(OFF の間は waveAttack.update を止め、既に出ている敵はそのまま残る)。
   // ノードの消化は Simulator のイベント境界(applySimulationEvents)で行う。
-  update(dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, player: Player | null, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
       this.behaveAllEnemies(player, this._entities, simTime, simSpeed);

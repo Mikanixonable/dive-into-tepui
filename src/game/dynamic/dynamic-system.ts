@@ -6,16 +6,16 @@ import { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
-import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import { AmmoPickup } from '../dynamic/dynamic-entity/ammo-pickup';
-import { RcsFuelPickup } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
-import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
-import { Enemy } from '../dynamic/dynamic-entity/enemy';
-import { proteinAssetIdForEnemyKind } from '../dynamic/dynamic-entity/enemy-kind';
+import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import { AmmoPickup } from './dynamic-entity/ammo-pickup';
+import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
+import { DebrisPiece } from './dynamic-entity/debris-piece';
+import { Enemy } from './dynamic-entity/enemy';
+import { proteinAssetIdForEnemyKind } from './dynamic-entity/enemy-kind';
 import { isProteinAssetReady, type ProteinAssetId } from '../protein/protein-asset-loader';
-import { Bullet } from '../dynamic/dynamic-entity/bullet';
-import { Base } from '../dynamic/dynamic-entity/base';
-import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
+import { Bullet } from './dynamic-entity/bullet';
+import { Base } from './dynamic-entity/base';
+import { DetachedBooster } from './dynamic-entity/detached-booster';
 import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
 import { Player } from '../player/player';
@@ -40,7 +40,7 @@ const MAX_DETACHED_BOOSTERS = 64;
 
 const MAX_DEBRIS = 600;
 
-export class EntityManager {
+export class DynamicSystem {
   readonly enemies: Enemy[] = [];
   readonly bullets: Bullet[] = [];
   readonly casings: DebrisPiece[] = [];

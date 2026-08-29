@@ -1,6 +1,6 @@
 import {
   calendarDateToJulianDate, ephemerisSeconds, parseCalendarDate,
-} from '../../physics/time';
+} from '../physics/time';
 
 // simTime=0 の元期。遠未来UTCは定義できないため、天体力学ではTDBとして解釈する。
 // HUDは同じ暦フィールドを作中日時ラベルとして表示する。

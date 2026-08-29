@@ -7,7 +7,7 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
 import { DebrisKind, DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import {
   BULLET_IMPACT_FLASH_COLOR, BULLET_IMPACT_FLASH_DURATION, BULLET_IMPACT_FLASH_SIZE0, BULLET_IMPACT_FLASH_SIZE1, DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1, DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1, DESTROY_FLASH_COLOR_1, DESTROY_FLASH_COLOR_2, DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, GAS_PUFF1_BRIGHTNESS, GAS_PUFF1_DURATION, GAS_PUFF1_SIZE0, GAS_PUFF1_SIZE1, GAS_PUFF2_BRIGHTNESS, GAS_PUFF2_DURATION, GAS_PUFF2_SIZE0, GAS_PUFF2_SIZE1, GAS_PUFF_COLOR_1, GAS_PUFF_COLOR_2, MUZZLE_FLASH_COLOR, MUZZLE_FLASH_DURATION, MUZZLE_FLASH_SIZE0, MUZZLE_FLASH_SIZE1, PLASMA_IMPACT_FLASH_COLOR, PLASMA_IMPACT_FLASH_DURATION, PLASMA_IMPACT_FLASH_SIZE0, PLASMA_IMPACT_FLASH_SIZE1,
@@ -29,7 +29,7 @@ export class EffectsSystem {
   // (接触音・弾命中エフェクト)へそのまま渡す。
   constructor(
     private readonly _scene: THREE.Scene,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly _worldSfx: WorldSfx,
   ) {
     this._flashEffects = new FlashEffectManager(_scene);
