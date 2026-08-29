@@ -18,8 +18,7 @@ import {
 } from './lagrange';
 import { PlanetOrbit, planetAngles } from './planet-orbit';
 import { SatelliteOrbit, satelliteState } from './satellite-orbit';
-import { Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef } from './solar-system/celestial-body-def';
-import { SIDEREAL_DAY } from './solar-system/constants';
+import { Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef } from './celestial-body-def';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { SECONDS_PER_DAY } from './time';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
@@ -60,7 +59,7 @@ export function spinRateOf(def: CelestialBodyDef): number | null {
   if (!('pole' in def)) return null;
   const pole = def.pole;
   if (pole === undefined) return null;
-  if (pole.kind === 'eciPole') return (2 * Math.PI) / SIDEREAL_DAY;
+  if (pole.kind === 'eciPole') return pole.spinRate;
   if (pole.kind === 'iau') return (pole.wRateDegPerDay * Math.PI) / 180 / 86400;
   // カッシーニ状態の同期回転は衛星だけが持つ。
   return 'kepler' in def.orbit ? def.orbit.kepler.lRate : null;
