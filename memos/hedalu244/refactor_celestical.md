@@ -118,9 +118,11 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 1. `src/physics/solar-system/` ディレクトリが存在しない。
 2. `grep -rn "solar-system" src/physics/` が 0 件(physics から太陽系データへの依存が消滅)。
 3. 写像型の二重表が消滅: `grep -rn "in keyof" src/game/celestial/` が 0 件。
-4. `src/render/earth.ts` が存在しない。`grep -rln "EARTH_TEXTURES\|8k_clouds\|R_EARTH\|R_SUN\|SUN_SURFACE_COLOR\|SUN_RADIANT_INTENSITY\|SUN_COLOR" src/render/` が 0 件
-   (データ資産モジュール earth-coastline.ts / moon-surface-markings.ts と、放射量の目盛り
-   `SUN_IRRADIANCE_1AU` は残る)。
+4. `src/render/earth.ts` が存在しない。`grep -rln "EARTH_TEXTURES\|8k_clouds\|R_EARTH\|R_SUN\|SUN_SURFACE_COLOR\|SUN_COLOR" src/render/` が 0 件
+   (データ資産モジュール earth-coastline.ts / moon-surface-markings.ts は残る。
+   `SUN_IRRADIANCE_1AU` と `REFERENCE_STAR_RADIANT_INTENSITY` は**描画の放射照度の目盛りの
+   定義**なので render に残す — 太陽の物理量ではなく単位系の基準点で、色だけが恒星ごとの値。
+   `blackbody.ts` の `SUN_TEMPERATURE` / `SUN_SURFACE_VALUE` も同じ理由で白色点の定義として残す)。
 5. `game/celestial/` 直下(solar-system/ を除く)から太陽系固有物が消滅: `earth.ts` が無く、
    `point-field*.ts` が `solar-system/` 下にあり、`grep -n "instanceof Earth" src/` が 0 件。
    (「決めたこと 8」の id 直書き3件は残ってよい。)
@@ -132,10 +134,9 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 
 ## 手順
 
-**実施順の変更(手順3の実施中に確定)**: 残りは **7 → 8 → 4 → 5 → 6 → 9 → 10** の順で行う。
-理由: `render/earth.ts` の `createEarth()` がテクスチャを構築時に読むため、手順7で解体するまで
-地球を含む星系は DOM 無しで組めない。手順5のテストは本番の構築経路で星系を組むので、
-手順7・8を先に済ませる必要がある。手順の中身は以下のまま。
+**残りの実施順**: **4 → 5 → 6 → 9 → 10**(手順7・8は手順3の直後に済ませた — `render/earth.ts`
+の `createEarth()` がテクスチャを構築時に読むため、解体するまで地球を含む星系を DOM 無しで
+組めず、手順5のテストが本番の構築経路を使えないため)。
 
 ### 手順4. 機構テストをローカルフィクスチャ星系へ書き直す
 
@@ -219,52 +220,6 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 **達成条件と検証**: `npm run typecheck`。`npm run test`。
 `grep -rn "solar-system" src/physics/` が 0 件(達成目標2がここで立つ)。
 `node tools/export-moon-features.mjs` が読み込みまで通る。
-
-### 手順7. render/earth.ts の解体と、オーロラ・マップ付随表示の null 許容フィーチャ化
-
-**目的**: P3・P4 の中核。render に残る「地球の組み立て」を、天体非依存の部品 + game 側の値へ
-分解する。`game/celestial/earth.ts`(Earth クラス)を解消し、地球は他惑星と同じ entity クラス +
-null 許容フィーチャの構成にする。**絵は変えない**(値の写し替えのみ)。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/aurora.ts` | 天体半径・オーバル緯度・発光高度・色ランプを `AuroraOptics` 型(render が型を持ち、値は game)+ 層ずらし引数で受ける形へ。`R_EARTH` import を削除 |
-| `src/render/earth.ts` | **削除**。雲を地表アルベドへ合成する材質の組み立ては `CelestialSurface` の変種(テクスチャ2枚 + 雲影オフセット + 倍率を受け、雲量 uniform の制御口を返す)として render に残す(置き場は celestial-surface.ts か新規 1 ファイル) |
-| `src/render/earth-coastline.ts` | render に残すが、組み込み元を game 注入(`surfaceMarkings` ファクトリ)へ — moon-surface-markings と同じ向きに揃える |
-| `src/game/celestial/solar-system/earth-system.ts` | `EARTH_TEXTURES` 相当の値・オーロラ4層のパラメータ・雲テクスチャを持ち、地球を `PointEntity`(他惑星と同じ)+ 雲合成 surface + オーロラ + 海岸線 + GEO オーバーレイで組む |
-| `src/game/celestial/celestial-entity.ts` | null 許容フィーチャの受け口: オーロラ(自転に追従・**スケール群の外**・tick を sync 内で駆動)とマップ付随表示(下記)を、SphereEntity / PointEntity が任意引数で受ける |
-| `src/game/celestial/geostationary-overlay.ts`(新規) | `game/celestial/earth.ts` の GEO リング + ラベル(25-27, 44-47, 89-154行)を移す。entity の `syncMapOverlay` はこのオーバーレイへの委譲になる |
-| `src/game/celestial/earth.ts` | **削除** |
-| `src/game/celestial/celestial-system.ts` | `earthSpinPhase0()`(265-267行)を `instanceof Earth` から「`def.pole` が `'eciPole'` の天体の `motion.spinPhase0`」へ。`Earth` import 削除 |
-| `tools/render-lab/cases.ts` | `createEarth` / `EARTH_TEXTURES` の参照を、earth-system.ts の値 + 新部品の組み立てへ張り替え |
-
-**達成条件と検証**: `npm run typecheck`。`npm run test:game` と `npm run test:render`。
-`npm run render-lab:shot` で地球ケース(雲・大気)を撮影し再編前と目視比較。
-`npm run dev` で (i) 地球のオーロラが極を囲む実寸カーテンで出る(巨大化していない)、
-(ii) 模式図スタイルで海岸線が出る、(iii) マップで GEO リングとラベルが出る。
-`grep -rn "createEarth\|EARTH_TEXTURES" src/ tools/` 0件。達成目標5の grep。
-
-### 手順8. 恒星の見た目パラメータの引数化と星野の分離
-
-**目的**: P3 の残り。太陽の色・面輝度・放射強度を render の焼き込みから恒星側の値へ移し、
-`stars.ts` の「星野背景」と「恒星の見た目」を別ファイルへ分ける。celestial 直下の `Sun` は
-任意恒星のクラスとして命名・引数を整える。**絵は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/stars.ts` | 星野(`createStars` + 8k_stars.jpg + `STAR_SHELL_RADIUS`)だけ残す。`createSun` / `SunObject` は `star-sphere.ts`(仮名)へ分離し、色・面輝度を引数化(`SUN_SURFACE_COLOR` / `SUN_SURFACE_RADIANCE` を焼き込まない。面輝度の式 `(AU/R_SUN)²` は放射強度と半径から呼び出し側が導ける) |
-| `src/render/pipeline/sun-light.ts` | `SUN_COLOR`(26行)・`SUN_RADIANT_INTENSITY`(18行)の値を削除(`SunLight` の器と `SUN_IRRADIANCE_1AU` の目盛りは残す) |
-| `src/game/celestial/solar-system/sun.ts` | 太陽の Def と並べて色・放射強度の値を持つ |
-| `src/game/celestial/sun.ts` | 恒星エンティティとして改名(例: `star-entity.ts`)、色・放射強度をコンストラクタで受け、光源用の値を公開する |
-| `src/game/celestial/celestial-system.ts:308` | `sunLight.set` へ渡す色・強度を主星エンティティから引く。恒星なし星系の既定値はライティング側の既定として render が持つ(現挙動と同値) |
-| `tools/render-lab/lab.ts` | `SUN_COLOR` 等の参照を新しい置き場へ |
-
-**達成条件と検証**: `npm run typecheck`。`npm run test:render`。`npm run render-lab:shot` で
-太陽・露出まわりのケースを目視比較。`grep -rn "SUN_COLOR\|SUN_RADIANT_INTENSITY\|SUN_SURFACE" src/render/` 0件。
 
 ### 手順9. CelestialSystem の荷下ろし
 
