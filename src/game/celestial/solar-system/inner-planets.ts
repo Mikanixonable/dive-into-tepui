@@ -1,7 +1,7 @@
 // 内惑星(水星・金星)。静的事実・運動・見た目を1体につき1箇所で組む。
 import mercuryTextureUrl from '../../../assets/2k_mercury.jpg';
 import venusTextureUrl from '../../../assets/2k_venus_atmosphere.jpg';
-import { OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
+import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import { EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, StarMotion } from '../../../physics/celestial-motion';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { CelestialSurface } from '../../../render/celestial-surface';
@@ -84,7 +84,7 @@ export const INNER_PLANET_NAMES: Record<InnerPlanetId, string> = {
 // 内惑星を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function innerPlanets(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: OriginCenteredEphemeris | null, origin: EciOrigin,
+  pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<InnerPlanetId, CelestialEntity> {
   return {
     mercury: new PointEntity(
