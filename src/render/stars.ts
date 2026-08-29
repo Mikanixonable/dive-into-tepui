@@ -99,10 +99,12 @@ export function createSun(): Sun {
 class SunObject implements Sun {
   private readonly mesh = createSunMesh();
   // 点像。**星殻上へ置く** — 実位置に置くと、戦闘視点の遠平面より遠い恒星が消える。
-  // 描画順は星野の直後で、惑星の輝点と揃える。
-  private readonly point = new Billboard(SUN_SURFACE_COLOR, -9);
+  // 描画順は星野の直後で、惑星の輝点と揃える。グローテクスチャの生成が DOM を要するので
+  // addTo まで作らない。
+  private point!: Billboard;
 
   addTo(scene: THREE.Scene): void {
+    this.point = new Billboard(SUN_SURFACE_COLOR, -9);
     scene.add(this.mesh, this.point.mesh);
   }
 
