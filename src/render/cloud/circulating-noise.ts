@@ -5,8 +5,7 @@ import type { Circulation } from './circulation';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
 export class CirculatingNoise {
-  // frequency は球面 1 周あたりの山の数、octaves は段数。circulation は模様を動かす流れで、
-  // 同じ天体のノイズはこれを共有する。
+  // frequency は 1 rad あたりの山の数、octaves は段数、circulation はこの段を運ぶ流れ。
   public constructor(
     private readonly circulation: Circulation,
     private readonly frequency: number,
