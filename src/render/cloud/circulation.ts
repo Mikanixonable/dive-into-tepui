@@ -48,9 +48,9 @@ export class Circulation {
     for (const [i, band] of BANDS.entries()) {
       // 中心緯度での速さ [m/s] を、その緯度の円に沿った角速度 [rad/s] へ。
       const perMeter = 1 / (this.radius * Math.cos(FIRST_LATITUDE - i * BAND_SPACING));
-      const spin = band.east * perMeter * seconds;
+      const spin = wrapAngle(band.east * perMeter * seconds);
       // 公転の位相が増えると模様は南へ動くので、北向きの帯では符号を反転する。
-      const orbit = (-band.north * perMeter * seconds) / ORBIT_RADIUS;
+      const orbit = wrapAngle((-band.north * perMeter * seconds) / ORBIT_RADIUS);
       this.flows[i]!.value.set(Math.cos(spin), Math.sin(spin), Math.cos(orbit), Math.sin(orbit));
     }
   }
@@ -96,4 +96,10 @@ export class Circulation {
     }
     return flow;
   }
+}
+
+// 角度 [rad] を 0..2π へ畳む。
+function wrapAngle(angle: number): number {
+  const turns = angle / (2 * Math.PI);
+  return (turns - Math.floor(turns)) * 2 * Math.PI;
 }
