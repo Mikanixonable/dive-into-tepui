@@ -22,17 +22,17 @@ export type CloudLabView = {
 };
 
 // 表示値 0..1 へ写すときの目盛り。不透明雲の光学的厚みは 0..32(高度別は低・中・高の 3 群を RGB に)、
-// 薄い雲は 0..1.5、気圧は −40..+20 hPa、収束は ±2e-4 /s を 0.5 中心に、上昇流は ±0.1 m/s を
-// 0.5 中心に、温度は −40..40 °C、風は ±40 m/s を 0.5 中心の R(東)G(北)に、速さを B に、
+// 薄い雲は 0..1.5、気圧は −70..+30 hPa、収束は ±2e-4 /s を 0.5 中心に、上昇流は ±0.1 m/s を
+// 0.5 中心に、温度は −50..50 °C、風は ±40 m/s を 0.5 中心の R(東)G(北)に、速さを B に、
 // 標高は 0..8000 m。
 const OPAQUE_SPAN = 32;
 const TRANSLUCENT_SPAN = 1.5;
-const PRESSURE_MIN = -40;
-const PRESSURE_SPAN = 60;
+const PRESSURE_MIN = -70;
+const PRESSURE_SPAN = 100;
 const CONVERGENCE_SPAN = 2e-4;
 const LIFT_SPAN = 0.1;
-const TEMPERATURE_MIN = -40;
-const TEMPERATURE_SPAN = 80;
+const TEMPERATURE_MIN = -50;
+const TEMPERATURE_SPAN = 100;
 const WIND_SPAN = 40;
 const ELEVATION_SPAN = 8000;
 

@@ -30,16 +30,16 @@ export type WeatherSample = {
 const DAY = 86400;
 
 // ノイズの段。段ごとに空間周波数(球面 1 周あたりの山の数)・段数・動きの周期 [s] を変える。
-// 気圧だけは段を増やせない。収束は気圧のラプラシアンなので、段が 1 つ増えるごとにその段の寄与が
-// 倍になり、ノイズの格子が上昇流と雲へそのまま出る。実際の海面気圧も総観規模までしか構造を持たない。
-const PRESSURE_NOISE = [1.2, 2, 8 * DAY] as const;
-const TEMPERATURE_NOISE = [2, 2, 10 * DAY] as const;
+// 気圧と気温は 1 段しか持たない。どちらも総観規模より細かい構造を実際に持たず、気圧はさらに、
+// 収束がそのラプラシアンなので、段を増やすとノイズの格子が上昇流と雲へそのまま出る。
+const PRESSURE_NOISE = [1.2, 1, 8 * DAY] as const;
+const TEMPERATURE_NOISE = [2, 1, 10 * DAY] as const;
 // 湿度は基準周波数を低く段を多く取る。基準の角波長(2550 km)が一枚板の雲の広がりを、
 // 最上段(80 km)が凝結のしきい値をまたぐ縁の細かさを決める。
 const HUMIDITY_NOISE = [2.5, 6, 6 * DAY] as const;
 const UPPER_HUMIDITY_NOISE = [1.6, 5, 7 * DAY] as const;
-const PRESSURE_NOISE_AMPLITUDE = 10;
-const TEMPERATURE_NOISE_AMPLITUDE = 8;
+const PRESSURE_NOISE_AMPLITUDE = 18;
+const TEMPERATURE_NOISE_AMPLITUDE = 12;
 const HUMIDITY_NOISE_AMPLITUDE = 0.3;
 const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
 
