@@ -10,7 +10,7 @@ import { stepDynamics } from '../../src/physics/dynamics';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Atmosphere } from '../../src/physics/atmosphere';
 import { MU_EARTH, MU_MOON, R_EARTH_EQ, R_MOON } from '../../src/physics/solar-system/constants';
-import { EARTH_ATMOSPHERE } from '../../src/physics/solar-system/earth-system';
+import { EARTH_ATMOSPHERE } from '../../src/game/celestial/solar-system/earth-system';
 import { Vec3, add, len, sub, v3 } from '../../src/math/vec3';
 
 const G = 6.674e-11;

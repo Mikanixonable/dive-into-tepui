@@ -7,7 +7,7 @@ import { Q_ECLY_TO_ECI } from '../../physics/ecliptic';
 import { positionFromOrbitalElements, trueAnomalyFromMean } from '../../physics/elements';
 import { AU } from '../../physics/planet-orbit';
 import { EPOCH_T_OFFSET, MU_SUN } from '../../physics/solar-system/constants';
-import { JUPITER } from '../../physics/solar-system/jupiter-system';
+import { JUPITER } from './solar-system/jupiter-system';
 import { qRotate } from '../../physics/attitude';
 import { mulberry32 } from '../../math/random';
 import { Vec3 } from '../../math/vec3';

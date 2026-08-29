@@ -1,7 +1,7 @@
 // 公開された衛星平均要素表の列から SatelliteOrbit を組む補助。
-import { Quat } from '../attitude';
-import { keplerPeriod } from '../elements';
-import { SatelliteOrbit, satelliteOrbit } from '../satellite-orbit';
+import { Quat } from '../../../physics/attitude';
+import { keplerPeriod } from '../../../physics/elements';
+import { SatelliteOrbit, satelliteOrbit } from '../../../physics/satellite-orbit';
 import { IauPole, equatorBasis } from './poles';
 
 // 親惑星の赤道面を基準面に取る衛星の二体ケプラー軌道。要素は JPL Solar System Dynamics の
