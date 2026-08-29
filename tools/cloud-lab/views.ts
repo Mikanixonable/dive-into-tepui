@@ -9,7 +9,7 @@ import type { Vec2Node, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
   | 'opaque' | 'opaqueByAltitude' | 'translucent'
-  | 'pressure' | 'convergence' | 'wind' | 'upperWind' | 'lift' | 'temperature' | 'humidity' | 'upperHumidity'
+  | 'pressure' | 'convergence' | 'wind' | 'lift' | 'temperature' | 'humidity' | 'upperHumidity'
   | 'meanTemperature' | 'meanCloudiness' | 'elevation';
 
 export type CloudLabView = {
@@ -62,7 +62,6 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'pressure', label: '気圧', readsFields: false, color: (model) => vec3(model.weatherAt(direction).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
   { id: 'convergence', label: '収束', readsFields: false, color: (model) => vec3(model.weatherAt(direction).convergence.div(2 * CONVERGENCE_SPAN).add(0.5)) },
   { id: 'wind', label: '風', readsFields: false, color: (model) => windColor(model.weatherAt(direction).wind) },
-  { id: 'upperWind', label: '上層風', readsFields: false, color: (model) => windColor(model.weatherAt(direction).upperWind) },
   { id: 'lift', label: '上昇流', readsFields: false, color: (model) => vec3(model.weatherAt(direction).lift.div(2 * LIFT_SPAN).add(0.5)) },
   { id: 'temperature', label: '温度', readsFields: false, color: (model) => vec3(model.weatherAt(direction).temperature.sub(TEMPERATURE_MIN).div(TEMPERATURE_SPAN)) },
   { id: 'humidity', label: '湿度', readsFields: false, color: (model) => vec3(model.weatherAt(direction).humidity) },
