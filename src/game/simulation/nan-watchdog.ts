@@ -18,7 +18,7 @@
 // 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
 import { Hud } from '../hud/hud';
 import { Player } from '../player/player';
-import { GameEntity } from '../game-entity/game-entity';
+import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { EntityManager } from './entity-manager';
 import { Vec3 } from '../../math/vec3';
 
@@ -28,7 +28,7 @@ function finiteVec(v: Vec3): boolean {
 }
 
 // エンティティの位置・速度を報告文言用の文字列にする。
-function describe(entity: GameEntity): string {
+function describe(entity: DynamicEntity): string {
   const { r, v } = entity.state;
   return `r=(${r.x},${r.y},${r.z}) v=(${v.x},${v.y},${v.z})`;
 }

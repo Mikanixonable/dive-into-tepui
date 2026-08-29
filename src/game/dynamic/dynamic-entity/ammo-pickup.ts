@@ -1,16 +1,16 @@
 import * as THREE from 'three/webgpu';
-import { kinematicState } from '../../physics/kinematic-state';
-import { len, sub, v3, type Vec3 } from '../../math/vec3';
-import * as C from '../const';
-import { buildAmmoPickup } from '../../render/ships';
-import { GameEntity } from './game-entity';
+import { kinematicState } from '../../../physics/kinematic-state';
+import { len, sub, v3, type Vec3 } from '../../../math/vec3';
+import * as C from '../../const';
+import { buildAmmoPickup } from '../../../render/ships';
+import { DynamicEntity } from './dynamic-entity';
 import { EntityIdAllocator } from './entity-id';
-import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../marker/marker-glyphs';
-import { fmtMarkerDist } from '../hud/utils';
-import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import type { Attitude } from '../../physics/attitude';
-import type { KinematicState } from '../../physics/kinematic-state';
-import type { AmmoPickupSaveData } from '../save/save-data';
+import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-glyphs';
+import { fmtMarkerDist } from '../../hud/utils';
+import type { GroupedMarkerItem } from '../../marker/grouped-markers';
+import type { Attitude } from '../../../physics/attitude';
+import type { KinematicState } from '../../../physics/kinematic-state';
+import type { AmmoPickupSaveData } from '../../save/save-data';
 
 const idAllocator = new EntityIdAllocator('ammo-');
 
@@ -21,7 +21,7 @@ export type AmmoPickupInit =
   | { readonly saved: AmmoPickupSaveData; readonly simTime: number };
 
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
-export class AmmoPickup extends GameEntity {
+export class AmmoPickup extends DynamicEntity {
   override readonly bcInv = C.SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
   protected readonly specificHeat = C.SMALL_DEBRIS_SPECIFIC_HEAT;

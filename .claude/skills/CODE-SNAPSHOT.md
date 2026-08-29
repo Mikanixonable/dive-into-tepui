@@ -22,7 +22,7 @@ sweptSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)   ← 掃引の幾何�
 │     ├─ ContactPhysics.resolveSubstep …… simSpeed ≤ ×4、毎 substep
 │     └─ ContactPhysics.resolveBelt ……… simSpeed ≤ ×4 かつ自機生存、フレームに1回
 └─ attractor.ts  reachedBody(prev, next, bodies)   ← 幾何を持たず最小 TOI を選ぶだけ
-   ├─ game-entity.ts / player.ts / bullet.ts  checkLoss
+   ├─ dynamic-entity.ts / player.ts / bullet.ts  checkLoss
    │     (`EntityManager.cleanup` から毎 substep、全生存個体)
    └─ predicted-arc.ts  checkSurfaceReach
          (`Predictor.update` から、実体の弧も計画の弧も同じ grow を通る)

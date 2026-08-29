@@ -1,18 +1,18 @@
 import * as THREE from 'three/webgpu';
-import { GameEntity } from './game-entity';
-import { KinematicState } from '../../physics/kinematic-state';
-import { CelestialBody } from '../../physics/celestial-body';
+import { DynamicEntity } from './dynamic-entity';
+import { KinematicState } from '../../../physics/kinematic-state';
+import { CelestialBody } from '../../../physics/celestial-body';
 
-import { FloatingOrigin } from '../camera/floating-origin';
-import type { Stage } from '../stages/stage';
+import { FloatingOrigin } from '../../camera/floating-origin';
+import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
-import { Vec3, lenSq, sub } from '../../math/vec3';
-import * as C from '../const';
-import { buildBulletMesh, buildPlasmaMesh } from '../../render/ships';
-import { orientProjectile } from '../../render/projectile-orientation';
+import { Vec3, lenSq, sub } from '../../../math/vec3';
+import * as C from '../../const';
+import { buildBulletMesh, buildPlasmaMesh } from '../../../render/ships';
+import { orientProjectile } from '../../../render/projectile-orientation';
 import { Enemy } from './enemy';
-import { Player } from '../player/player';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
+import { Player } from '../../player/player';
+import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 
 const BULLET_MAX_DIST = 30e3; // 自機からこれ以上離れた弾を消す [m]
 const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
@@ -29,7 +29,7 @@ export type BulletType = 'normal' | 'plasma';
 
 // 自弾と敵プラズマ弾の両方に使う。
 // geometry/material はビルダーが弾種ごとに共有するため、traverse による個別 dispose は行わない。
-export class Bullet extends GameEntity {
+export class Bullet extends DynamicEntity {
     public override readonly bcInv = C.BULLET_BCINV;
     // 弾は姿勢を持たず、速度方向を向く(sync)。
     public readonly hasAttitude = false;
@@ -45,13 +45,13 @@ export class Bullet extends GameEntity {
     // floating-origin velocity (which is usually the player's velocity). Keeping
     // the reference entity lets a moving enemy's plasma point along its actual
     // launch direction instead of appearing to slide sideways.
-    private readonly velocityReference: GameEntity | null;
+    private readonly velocityReference: DynamicEntity | null;
 
     // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
     // damage は着弾時に与える HP。撃った側の武装で決まるので、弾自身が持ち歩く。
     public constructor(
         state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number,
-        worldSfx: WorldSfx, scene?: THREE.Scene, velocityReference?: GameEntity,
+        worldSfx: WorldSfx, scene?: THREE.Scene, velocityReference?: DynamicEntity,
     ) {
         // renderObject は InstancedPool へ渡す変換を保持する。
         super(state, type === 'plasma' ? buildPlasmaMesh() : buildBulletMesh(), scene, undefined, undefined, false);
@@ -71,7 +71,7 @@ export class Bullet extends GameEntity {
     // 発射後 SELF_CONTACT_GRACE の間だけ接触しない — 敵は同士討ちしないが自機は猶予を過ぎた
     // 自弾に当たる、という非対称は意図的(規則2・3は対称ではない)。艦に取り付いた実体
     // (ベルトの節点・放熱板の折り)は attachedTo を辿って艦本体と同じ扱いにする。
-    public contactsWith(other: GameEntity, simTime: number): boolean {
+    public contactsWith(other: DynamicEntity, simTime: number): boolean {
         if (other instanceof Bullet) return false;
         const ship = other.attachedTo ?? other;
         if (this.shooter === 'enemy' && ship instanceof Enemy) return false;
@@ -82,7 +82,7 @@ export class Bullet extends GameEntity {
     }
 
     // 弾自身は接触したら消える。相手への作用は相手の collideWithEntity が書く。
-    public collideWithEntity(_other: GameEntity, _contact: Contact): void {
+    public collideWithEntity(_other: DynamicEntity, _contact: Contact): void {
         this.alive = false;
     }
 

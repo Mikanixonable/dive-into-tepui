@@ -17,9 +17,9 @@ import { randSym } from '../../../math/random';
 import { addScaled, len, norm, rotateAxis, scale, v3, type Vec3 } from '../../../math/vec3';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy } from '../../game-entity/enemy';
-import { inertiaForEnemyKind, type EnemyKind } from '../../game-entity/enemy-kind';
-import type { FormationRole } from '../../game-entity/enemy-formation';
+import { Enemy } from '../../dynamic/dynamic-entity/enemy';
+import { inertiaForEnemyKind, type EnemyKind } from '../../dynamic/dynamic-entity/enemy-kind';
+import type { FormationRole } from '../../dynamic/dynamic-entity/enemy-formation';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 

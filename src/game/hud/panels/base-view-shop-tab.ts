@@ -1,6 +1,6 @@
-import type { Base } from '../../game-entity/base';
-import { createPart } from '../../game-entity/parts';
-import type { AnyPart } from '../../game-entity/parts';
+import type { Base } from '../../dynamic/dynamic-entity/base';
+import { createPart } from '../../dynamic/dynamic-entity/parts';
+import type { AnyPart } from '../../dynamic/dynamic-entity/parts';
 import { Button } from '../widgets';
 import type { BasePanel } from './base-view';
 import {

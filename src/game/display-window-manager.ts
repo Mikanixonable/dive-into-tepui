@@ -11,7 +11,7 @@ import type { TickLabelMode } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/celestial-body';
 import { ReferenceFrame } from '../physics/frame';
 import type { CelestialSystem } from './celestial/celestial-system';
-import type { GameEntity } from './game-entity/game-entity';
+import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 
 const DISPLAY_DUR_DAY = 86400; // 1日
 const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
@@ -193,7 +193,7 @@ export class DisplayWindowManager {
   // update と sync の間、および DOM イベントから直近の窓を読むためのフレームスナップショット
   // であり、導出値のキャッシュではない。表示時刻はスライダーが立っている間だけ未来を指し、
   // forceCurrent または原点では simTime そのもの。
-  resolve(simTime: number, player: GameEntity | null): DisplayWindow {
+  resolve(simTime: number, player: DynamicEntity | null): DisplayWindow {
     const referencePeriod = this.currentOrbitPeriod(player, simTime);
     const duration = this.durationSec(referencePeriod);
     this._current = {
@@ -210,7 +210,7 @@ export class DisplayWindowManager {
   }
 
   // 毎フレーム呼ぶ。操作パネル(期間・スクラバー・目盛り)の表示/非表示と内容を押し出す。
-  sync(player: GameEntity | null): void {
+  sync(player: DynamicEntity | null): void {
     this.panel.render({
       visible: !this._forceCurrent,
       durationKey: this.durationKey,
@@ -229,14 +229,14 @@ export class DisplayWindowManager {
 
   // 操作艦・基地の現在軌道の周期 [s]。対象がいない、または有限な周期が求まらない間は NaN —
   // durationSec 側のフォールバックに委ねる。
-  private currentOrbitPeriod(player: GameEntity | null, simTime: number): number {
+  private currentOrbitPeriod(player: DynamicEntity | null, simTime: number): number {
     if (!player) return NaN;
     const center = strongestAttractor(player.state.r, this.celestialSystem.celestialBodiesAt(simTime));
     return player.orbitalElementsAround(center)?.period ?? NaN;
   }
 
   // 操作対象の予測軌道が表示期間のどこまで届いているかの割合(0..1)。
-  private predictionCoverageRatio(player: GameEntity | null): number {
+  private predictionCoverageRatio(player: DynamicEntity | null): number {
     const end = player?.predicted?.state.t;
     if (end === undefined || this._current.duration <= 0) return 1;
     return Math.max(0, Math.min(1, (end - this._current.simTime) / this._current.duration));

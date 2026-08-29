@@ -1,6 +1,6 @@
 // 自機の展開式ラジエーター: 上下2枚それぞれの展開度・損耗度を持ち、
 // 今フレームの放熱面積と太陽入射を答える。機体温度そのものは知らない
-// (温度の4乗則を持つのは GameEntity の熱収支のみ)。
+// (温度の4乗則を持つのは DynamicEntity の熱収支のみ)。
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -11,8 +11,8 @@ import {
   RADIATOR_SEGMENT_LENGTH,
 } from '../../render/ships';
 import * as C from '../const';
-import { GameEntity } from '../game-entity/game-entity';
-import type { Contact } from '../game-entity/contact';
+import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { Contact } from '../dynamic/dynamic-entity/contact';
 import type { Stage } from '../stages/stage';
 import type { Player } from './player';
 import type { RadiatorSaveData } from '../save/save-data';
@@ -50,7 +50,7 @@ function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: 
 
 // 蛇腹1折りぶんの接触代理。艦の姿勢と展開度から一意に決まる剛体の取り付けなので、
 // ベルトと違い Verlet 解法は要らず、毎フレーム RadiatorSystem.collisionFolds が置き直すだけでよい。
-export class RadiatorFold extends GameEntity {
+export class RadiatorFold extends DynamicEntity {
   // 位置は毎フレーム collisionFolds が置き直すので、ここでは原点で仮生成する。
   constructor(readonly side: RadiatorSide, readonly foldIndex: number, private readonly owner: Player) {
     super(kinematicState(0, v3(), v3()), new THREE.Object3D());
@@ -61,13 +61,13 @@ export class RadiatorFold extends GameEntity {
   }
 
   // 吊り元の艦、およびそれに取り付いた他の実体(放熱板の他の折り・ベルトの節点)とは接触しない。
-  contactsWith(other: GameEntity): boolean {
+  contactsWith(other: DynamicEntity): boolean {
     if (other === this.owner) return false;
     return other.attachedTo !== this.owner;
   }
 
   // 帰結は owner の collideAtRadiatorWithEntity に委ねる。
-  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
+  collideWithEntity(other: DynamicEntity, contact: Contact, activeStage: Stage): void {
     this.owner.collideAtRadiatorWithEntity(this.side, other, contact, activeStage);
   }
 }

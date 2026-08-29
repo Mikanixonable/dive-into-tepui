@@ -20,7 +20,7 @@ import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { CameraSystem } from './camera/camera-system';
 import { MapPickable } from './pickable/map-pickable';
-import type { GameEntity } from './game-entity/game-entity';
+import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { OrbitReference } from './orbit-reference';
 
@@ -39,7 +39,7 @@ const CLOSEST_APPROACH_REFINE_ITERATIONS = 20;
 // 探索で追い込む。どちらかの予測がその時刻まで届かない、または区間内に極小が無ければ null
 // (まだ近づいている途中、あるいは既に最接近を過ぎている)。
 function findClosestApproach(
-  player: GameEntity, target: GameEntity, centerMotion: CelestialMotion, simTime: number,
+  player: DynamicEntity, target: DynamicEntity, centerMotion: CelestialMotion, simTime: number,
 ): { readonly pos: Vec3; readonly t: number } | null {
   const distAt = (t: number): number | null => {
     const p = entityStateAt(player, t, centerMotion);
@@ -88,7 +88,7 @@ export class NavTarget {
   private showElementTimes = false;
   private nowSimTime = 0;
   // 戦闘ビューでもターゲットの未来の軌道計算を止めないため navTargetReader を立てている個体。
-  private readerEntity: GameEntity | null = null;
+  private readerEntity: DynamicEntity | null = null;
 
   constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {}
 
@@ -109,7 +109,7 @@ export class NavTarget {
   }
 
   // 旧対象のフラグを降ろし、新対象に立て直す。
-  private setReaderEntity(entity: GameEntity | null): void {
+  private setReaderEntity(entity: DynamicEntity | null): void {
     if (entity === this.readerEntity) return;
     if (this.readerEntity) this.readerEntity.navTargetReader = false;
     if (entity) entity.navTargetReader = true;
