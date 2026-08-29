@@ -8,15 +8,34 @@ import {
 import { CelestialSystem } from '../celestial-system';
 import type { CelestialEntity } from '../celestial-entity';
 import { Sun } from '../sun';
-import { dwarfPlanetEntities } from './dwarf-planets';
-import { earthSystemEntities } from './earth-system';
-import { innerPlanetEntities } from './inner-planets';
-import { jupiterSystemEntities } from './jupiter-system';
-import { marsSystemEntities } from './mars-system';
-import { neptuneSystemEntities } from './neptune-system';
-import { saturnSystemEntities } from './saturn-system';
-import { smallBodyEntities } from './small-bodies';
-import { uranusSystemEntities } from './uranus-system';
+import { DWARF_PLANET_NAMES, dwarfPlanetEntities } from './dwarf-planets';
+import { EARTH_SYSTEM_NAMES, earthSystemEntities } from './earth-system';
+import { INNER_PLANET_NAMES, innerPlanetEntities } from './inner-planets';
+import { JUPITER_SYSTEM_NAMES, jupiterSystemEntities } from './jupiter-system';
+import { MARS_SYSTEM_NAMES, marsSystemEntities } from './mars-system';
+import { NEPTUNE_SYSTEM_NAMES, neptuneSystemEntities } from './neptune-system';
+import { SATURN_SYSTEM_NAMES, saturnSystemEntities } from './saturn-system';
+import { SMALL_BODY_NAMES, smallBodyEntities } from './small-bodies';
+import { URANUS_SYSTEM_NAMES, uranusSystemEntities } from './uranus-system';
+
+// 太陽系の全天体の表示名。各系ファイルの表を1つに合わせたもので、名前の正本は系ファイルのまま。
+export const SOLAR_SYSTEM_BODY_NAMES: Record<SolarSystemId, string> = {
+  sun: '太陽',
+  ...EARTH_SYSTEM_NAMES,
+  ...INNER_PLANET_NAMES,
+  ...MARS_SYSTEM_NAMES,
+  ...JUPITER_SYSTEM_NAMES,
+  ...SATURN_SYSTEM_NAMES,
+  ...URANUS_SYSTEM_NAMES,
+  ...NEPTUNE_SYSTEM_NAMES,
+  ...DWARF_PLANET_NAMES,
+  ...SMALL_BODY_NAMES,
+};
+
+// 天体 id の表示名。星系を組まずに引ける静的な引き先で、太陽系に無い id はそのまま返す。
+export function solarSystemBodyName(id: string): string {
+  return SOLAR_SYSTEM_BODY_NAMES[id as SolarSystemId] ?? id;
+}
 
 // 太陽系の CelestialSystem を組む。originId は ECI の中心天体(ステージの選択)、
 // earthSpinPhase0 は地球の自転初期位相 [rad]。absoluteSource を渡すと、その有効期間だけ
@@ -28,7 +47,7 @@ export function solarSystem(
   const m = solarSystemMotions(originId, phases, epochOffsetSec, absoluteSource, epochJdTdb, earthSpinPhase0);
   // Record の網羅性検査が「physics 側に居る天体に見た目が無い」をコンパイルエラーにする。
   const e: Record<SolarSystemId, CelestialEntity> = {
-    sun: new Sun(m.sun, '太陽'),
+    sun: new Sun(m.sun, SOLAR_SYSTEM_BODY_NAMES.sun),
     ...earthSystemEntities(m.earthSystem),
     ...innerPlanetEntities(m.innerPlanets),
     ...marsSystemEntities(m.marsSystem),

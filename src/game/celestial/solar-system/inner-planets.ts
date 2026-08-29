@@ -7,18 +7,24 @@ import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity';
 import { PointEntity } from '../point-entity';
 
+// 内惑星の表示名。
+export const INNER_PLANET_NAMES: { readonly [K in keyof InnerPlanetMotions]: string } = {
+  mercury: '水星',
+  venus: '金星',
+};
+
 // 内惑星の運動に見た目を対応づける。
 export function innerPlanetEntities(
   m: InnerPlanetMotions,
 ): { readonly [K in keyof InnerPlanetMotions]: CelestialEntity } {
   return {
     mercury: new PointEntity(
-      m.mercury, '水星', 'planet',
+      m.mercury, INNER_PLANET_NAMES.mercury, 'planet',
       // 平均輝度 0.2306(A_B は公表ボンド)
       CelestialSurface.textured({ url: mercuryTextureUrl, albedoScale: 0.3815, bondAlbedo: 0.088, averageHue: [1.0088, 0.9974, 0.9997] }),
     ),
     venus: new PointEntity(
-      m.venus, '金星', 'planet',
+      m.venus, INNER_PLANET_NAMES.venus, 'planet',
       // 平均輝度 0.5561(A_B は公表ボンド)
       CelestialSurface.textured({ url: venusTextureUrl, albedoScale: 1.3666, bondAlbedo: 0.76, averageHue: [1.4227, 0.9352, 0.3977] }),
     ),
