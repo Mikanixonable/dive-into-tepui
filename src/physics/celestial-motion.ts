@@ -175,21 +175,34 @@ export abstract class CelestialMotion {
     return this.bodyCache.stats;
   }
 
-  // 時刻 t の厳密な ECI(原点天体中心)位置・速度。日心状態から原点天体の日心状態を引く
-  // 一箇所だけで座標変換するので、原点天体自身は同じ計算を2回引いて厳密に 0 になる。
+  // 時刻 t の厳密な ECI(原点天体中心)位置・速度。
+  //
+  // **この天体と ECI 原点天体は、必ず同じ供給源から引く。** 暦パックと解析暦は同じ天体に
+  // 対して別の位置を答えるので、片方をパック・片方を解析で引くと、その差がそのまま相対位置の
+  // 誤りになる。暦パックは自分を答えられる期間だけ使い、答えられなければ両端とも解析暦へ
+  // 落とす(CELESTIAL.md 2.2)。
   private eciStateAt(t: number): KinematicState {
-    // 高精度暦パックは有効期間内でだけ使い、期間外は解析暦へ落とす(CELESTIAL.md 2.2)。
+    return this.packedEciStateAt(t) ?? this.analyticEciStateAt(t);
+  }
+
+  // 暦パックだけで組んだ ECI 位置・速度。パックを持たない・有効期間外・この天体を答えられない
+  // のいずれかなら null。
+  private packedEciStateAt(t: number): KinematicState | null {
     const precise = this.precise;
-    if (precise !== null && precise.isValidAt(t)) {
-      const packed = this.packedStateAt(precise, t);
-      if (packed !== null) return packed;
-    }
+    if (precise === null || !precise.isValidAt(t)) return null;
+    return this.packedStateAt(precise, t);
+  }
+
+  // 解析暦だけで組んだ ECI 位置・速度。日心状態から原点天体の日心状態を引く一箇所だけで
+  // 座標変換するので、原点天体自身は同じ計算を2回引いて厳密に 0 になる。
+  private analyticEciStateAt(t: number): KinematicState {
     const helio = this.helioStateAt(t);
     const originHelio = this.origin.motion.helioStateAt(t);
     return kinematicState(t, sub(helio.r, originHelio.r), sub(helio.v, originHelio.v));
   }
 
-  // 有効期間内の暦パックから引いた ECI 位置・速度。パックが答えられなければ null。
+  // 暦パックが答えるこの天体の ECI 位置・速度。収録されていなければ null — 呼び出し側は
+  // そのとき原点天体もパックから引いてはならない(eciStateAt の供給源の規則)。
   protected packedStateAt(precise: OriginCenteredEphemeris, t: number): KinematicState | null {
     return precise.hasBody(this.id) ? precise.stateOf(this.id, t) : null;
   }
