@@ -4,11 +4,11 @@
 // 大きく異なるため — 群ごとの見た目は表示専用のこの層だけが持ち、point-field.ts の分布定義は
 // THREE 非依存に保つ。
 import * as THREE from 'three/webgpu';
-import type { CelestialMotion } from '../../physics/celestial-motion';
-import { Vec3, v3 } from '../../math/vec3';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { CelestialMotion } from '../../../physics/celestial-motion';
+import { Vec3, v3 } from '../../../math/vec3';
+import { FloatingOrigin } from '../../camera/floating-origin';
 import {
-  PointElements, PointField, PointFieldGroup, generatePointField, pointPositionAt,
+  PointElements, PointFieldGroup, generatePointField, pointPositionAt,
 } from './point-field';
 
 // 群ごとの描画半径 [m] と色。カイパーベルト・散乱円盤はメインベルト・トロヤ群/ヒルダ群より
@@ -116,19 +116,17 @@ class PointFieldGroupView {
 }
 
 export class PointFieldView {
-  private readonly groups: readonly PointFieldGroupView[];
+  // 群ごとの描画。**11,200点の軌道要素と instance buffer は build まで確保しない** —
+  // マップを一度も開かないプレイでは要らないため。
+  private groups: readonly PointFieldGroupView[] = [];
   // 現在の星系に恒星が実在するか。無ければ点群は太陽中心の座標を持てないので非表示にする。
   private hasStar = true;
   // update は map の表示中だけ呼ばれるため、false から true へ戻るフレームを再入場とみなす。
   private mapActive = false;
 
-  // 点群を生成し、群ごとに描画用の InstancedMesh を組む。
-  constructor(field: PointField = generatePointField()) {
-    this.groups = field.map((group) => new PointFieldGroupView(group));
-  }
-
-  // 点群をシーンへ登録する。
+  // 点群を生成し、群ごとに描画用の InstancedMesh を組んでシーンへ登録する。
   build(scene: THREE.Scene): void {
+    this.groups = generatePointField().map((group) => new PointFieldGroupView(group));
     for (const group of this.groups) group.build(scene);
   }
 
