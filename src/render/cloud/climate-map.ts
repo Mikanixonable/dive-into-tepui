@@ -5,9 +5,7 @@ import { texture, vec2 } from 'three/tsl';
 import { eastAt, equirectUvFromDirection, northAt } from './sphere-frame';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
-// テクスチャの目盛り。R は −40..40 °C、B は 0..8000 m を 0..1 で持つ。
-const TEMPERATURE_MIN = -40;
-const TEMPERATURE_SPAN = 80;
+// テクスチャの目盛り。B は 0..8000 m を 0..1 で持つ。
 const ELEVATION_SPAN = 8000;
 // 標高の勾配を取る中心差分の刻み [rad]。テクスチャの texel(2π/512)より大きく、山脈の幅より小さい。
 const SLOPE_STEP = 0.02;
@@ -27,11 +25,6 @@ export class ClimateMap {
   }
 
   private constructor(private readonly map: THREE.Texture, private readonly radius: number) {}
-
-  // 平均気温 [°C]。
-  public meanTemperature(direction: Vec3Node): FloatNode {
-    return this.sample(direction).r.mul(TEMPERATURE_SPAN).add(TEMPERATURE_MIN);
-  }
 
   // 平年の雲量 0..1。
   public meanCloudiness(direction: Vec3Node): FloatNode {
