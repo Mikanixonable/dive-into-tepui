@@ -2,7 +2,7 @@
 import { Quat } from '../attitude';
 import { equatorBasisToEci } from '../body-orientation';
 import { raDecToEci } from '../ecliptic';
-import { PoleModel } from './celestial-body-def';
+import { PoleModel } from '../celestial-body-def';
 
 export type IauPole = Extract<PoleModel, { readonly kind: 'iau' }>;
 

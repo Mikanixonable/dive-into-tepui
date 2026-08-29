@@ -1,7 +1,7 @@
 // celestial-body-def.ts の ShapeDef/shapeAxes 回帰テスト。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { shapeAxes } from '../../src/physics/solar-system/celestial-body-def';
+import { shapeAxes } from '../../src/physics/celestial-body-def';
 import { CERES } from '../../src/physics/solar-system/dwarf-planets';
 import { JUPITER } from '../../src/physics/solar-system/jupiter-system';
 import { VENUS } from '../../src/physics/solar-system/inner-planets';
