@@ -5,6 +5,7 @@ import * as THREE from 'three/webgpu';
 import { PI, dot, uniform } from 'three/tsl';
 import type { FloatUniform, Vec3Node } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
+import type { GraphicsSettingsData } from '../../graphics-settings';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import type { ShadingSample } from './shading-sample';
 
@@ -12,6 +13,13 @@ import type { ShadingSample } from './shading-sample';
 // 物理に近い暗さ優先(戦闘ビュー)。
 export const AMBIENT_STRONG = 0.06;
 export const AMBIENT_WEAK = 0.03;
+
+// 恒星の放射照度へ掛ける割合。マップビューでは読みやすさのため強く、戦闘ビューでは弱く、
+// どちらも描画設定で切れる。
+export function ambientFraction(overviewMode: boolean, graphics: GraphicsSettingsData): number {
+  if (overviewMode) return graphics.overviewAmbient ? AMBIENT_STRONG : 0;
+  return graphics.combatAmbient ? AMBIENT_WEAK : 0;
+}
 
 export class AmbientSource implements LightSource {
   private readonly fractionUniform: FloatUniform = uniform(0);
