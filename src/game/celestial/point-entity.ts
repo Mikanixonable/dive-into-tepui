@@ -3,7 +3,7 @@
 // 丸ごと差し替えであり、SphereEntity 側に視点モード分岐を足す形は取らない。見かけ直径が閾値
 // 未満なら(マップビューでは輝点も出さず)実体を隠す。
 import * as THREE from 'three/webgpu';
-import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
+import { OrbitingMotion } from '../../physics/celestial-motion';
 import { RingSystemDef, shapeAxes } from '../../physics/celestial-body-def';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -19,6 +19,7 @@ import type { Aurora } from '../../render/aurora';
 import type { BodyClass } from './celestial-entity-def';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { GeostationaryOverlay } from './geostationary-overlay';
+import type { StarEntity } from './star-entity';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { LineOverlay } from '../../render/line-overlay';
 import type { MarkerManager } from '../marker/marker-manager';
@@ -133,7 +134,7 @@ export class PointEntity extends CelestialEntity {
   // 隠す)。見かけ直径が閾値未満では実体を隠す(戦闘視点は輝点へ切り替え、広範囲視点は
   // 輝点も出さない)。
   sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, star: CelestialMotion | null,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, star: StarEntity | null,
     graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
@@ -202,11 +203,11 @@ export class PointEntity extends CelestialEntity {
   // 星殻上に、描画座標 p の方向だけを反映した輝点を置く。明るさは「いま観測者へ届く光の量」
   // — ランバート球として引いた放射照度に、点光源の表示応答を掛けたもの。
   private syncBillboard(
-    p: THREE.Vector3, pos: Vec3, displayTime: number, star: CelestialMotion | null,
+    p: THREE.Vector3, pos: Vec3, displayTime: number, star: StarEntity | null,
     cameraQuaternion: THREE.Quaternion,
   ): void {
     const observerDistance = p.length();
-    const sunDir = star === null ? v3(1, 0, 0) : norm(sub(star.stateAt(displayTime).r, pos));
+    const sunDir = star === null ? v3(1, 0, 0) : norm(sub(star.motion.stateAt(displayTime).r, pos));
     // 位相角は天体から見た恒星方向と観測者方向の成す角。観測者は描画原点なので -p̂ で、
     // フローティングオリジンは平行移動しかしないため、描画座標の向きは ECI の向きと一致する。
     tmpToObserver.copy(p).negate().normalize();
