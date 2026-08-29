@@ -208,78 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順1. 死んだ「共有ポリシーか自前構築か」の二重呼出規約を落とす
-
-**目的.** `MapVisibilityPolicy` を「渡されたら使い、渡されなければ自分で作る」形で受ける関数が
-2つあるが、**自前で作る側の枝は現在どの経路からも通らない。** 分岐が残っている限り、後続の
-手順でこの死んだ枝の引数まで運ぶことになる。**この時点で挙動は変えない。**
-
-根拠 — `MapVisibilityPolicy` を作るのは `MapPickables.refresh()` ただ1箇所で、
-`overviewMode` のときは必ず非 null を、そうでなければ null を入れる。読み手の分岐は
-`overviewMode && policy === null` でしか成立しないので、この条件は決して真にならない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/celestial-system.ts:266-282` | `sync` の `sharedVisibilityPolicy` を必須の `MapVisibilityPolicy \| null` にし、`?? new MapVisibilityPolicy(...)` と `nearbyIds` の算出を削除する |
-| `src/game/celestial/celestial-system.ts:95,33` | `nearbyTracker` フィールドと `NearbySystemTracker` の import を削除する |
-| `src/game/celestial/celestial-system.ts:433-447` | `syncReferenceLines` から `toggles` / `nearbyIds` / `focusId` 引数と `??` の枝を削除する |
-| `src/game/celestial/celestial-system.ts:320-324` | 上の呼び出しを新しい引数へ合わせる |
-| `src/game/camera/focus-markers.ts:184,325-340` | `update` の `sharedVisibilityPolicy` を必須にし、`nearbyTracker` と `?? new MapVisibilityPolicy(...)` を削除する。使われなくなる `toggles` / `cameraPos` 引数も落とす |
-| `src/game/pickable/map-pickables.ts:102-105` | `focusMarkers.update` の呼び出しを新しい引数へ合わせる |
-| `src/game/game.ts:540-544` | `celestialSystem.sync` の呼び出しを新しい引数へ合わせる |
-
-**達成条件と検証**
-
-- `grep -rn "NearbySystemTracker" src/` が `body-visibility.ts`(定義)と `map-pickables.ts`
-  (唯一の利用)の2ファイルだけになる。
-- `grep -n "?? new MapVisibilityPolicy" src/` が 0 件。
-- `npm run typecheck` が通る。`npm run test:game` が通る。
-- `npm run dev` — マップビューで天体ラベル・参照軌道線・ピック候補が着手前と同じに出る。
-  戦闘ビューへ切り替えて参照軌道線が消えることも見る。
-
----
-
-### 手順2. 天体照の光源選定を render へ移す
-
-**目的.** 「どの天体を光源として扱うか」「何体まで扱えるか」は、スロット本数
-(`MAX_PLANET_LIGHT_SLOTS`)と描画設定 `planetLightCount` が決めるものなので、
-`render/pipeline/lighting/` の判断である。いま `game/celestial/planet-light.ts` が持っており、
-しかも `CelestialSystem` を import して逆流している。**この時点で絵は変えない。**
-
-**呼出規約(手順2〜4で共通).** `render` 側の選定関数は **ECI の値(`physics/celestial-body` の
-`CelestialBody`、`math/vec3` の `Vec3`)を受け、選ばれた部分集合を ECI のまま返す。**
-描画座標への変換は `FloatingOrigin` を持つ game 側が、**選ばれたものだけに対して**行う。
-`render/atmosphere.ts` の `atmosphereDraws` は描画座標の候補を受けるが、あちらは候補が
-そのまま描画命令になるのに対し、こちらは 98 体の候補から数体を選ぶ形なので、落とすものまで
-変換するのは無駄になる。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/lighting/planet-light-select.ts`(新規) | `src/game/celestial/planet-light.ts` の中身を移す。`PlanetLightCandidate = { celestialBody, albedo }` を受け、`selectPlanetLights(candidates, star, starIntensity, reference)` が `readonly PlanetLight[]`(center は ECI の `Vec3`)を返す |
-| `src/game/celestial/planet-light.ts` | 削除する |
-| `src/game/celestial/celestial-system.ts:341-349` | `syncPlanetLights` は候補(全天体 + `lightSourceAlbedo ?? DEFAULT_ALBEDO`)を組んで render の選定を呼び、返った光源だけ `fo.RtoThreeV3` で移してスロットへ渡す |
-| `src/game/celestial/celestial-system.ts:26` | `./planet-light` の import を新しい場所へ差し替える |
-
-**達成条件と検証**
-
-- `src/game/celestial/planet-light.ts` が存在しない。
-- `grep -rn "MAX_PLANET_LIGHT_SLOTS" src/game/` が 0 件。
-- `grep -rn "celestial-system" src/render/` が 0 件(render が game を知らないこと)。
-- **一時的な同値テスト**を書いて通す。`tests/game/` に置き、太陽系を組んで
-  `simTime = 0, 1e6, 1e7, 1e8, 1e9` の5時刻 × 基準点3種(地球中心・木星中心・土星中心)で、
-  移動前の実装(このコミット直前の関数をテストへコピーしたもの)と移動後の
-  `selectPlanetLights` が **同じ id を同じ順で、放射輝度も相対誤差 1e-12 以内で返す**ことを
-  当てる。**通ったら消す** — 正本がコード自身しかないので残さない(CODING-RULE 4.1)。
-- `npm run typecheck` / `npm run test:game` / `npm run test:render` が通る。
-- `npm run dev` — 低い月周回軌道で地球照が艦の陰側に乗ることを見る。描画設定の
-  「天体照の光源の数」を なし/1/2 と切り替え、段が効くことを見る。
-
----
-
 ### 手順3. 遮蔽器の順位付けと環の影の選定を render へ移す
 
 **目的.** 「遮蔽器を何体まで採るか」は `MAX_OCCLUDERS`(= `SunOcclusion` の uniform スロット数)が
@@ -702,3 +630,18 @@ grep -rhoE "src/game/(celestial|simulation|game-entity|dynamic|map)/[a-z0-9./-]*
 | `memos/` の置換が巻き添えで `src/` を触る(サブエージェントが「ついでに」直す) | コードの変更が memos の commit に紛れ、後から差分を追えなくなる | 手順13。commit 前に `git diff --stat -- src tests tools` が空であることを見る |
 | 手順13 で `memos/mikanixonable/` を書き換える | このフォルダは通常「指示があったときだけ書き換える」領域。今回はユーザーが明示的に許可した範囲だが、次回以降の既定に戻す必要がある | 手順13。**この許可はこの計画1回限り。** 完了記録にその旨を1行残す |
 | `main` へ送る前に全層テストを回し忘れる | CI が落ちて `release` の更新が止まり、公開版が古いまま取り残される | 全手順の後。`npm run typecheck` と `npm run test`(全層)を通してから PR を出す |
+
+---
+
+## 検査で見つけた、この計画の範囲外のもの
+
+実施中に見つかったが、この再編では動かさないもの。**別の作業として切り出す判断はユーザーのもの。**
+
+- **`render/` が `game/` を import している 9 箇所。** 内訳は `protein-*.ts` の 8 件
+  (`game/protein/` の型を `import type` で引く。コンパイル後は消えるので実行時の依存は無い)と、
+  `render/title-scene.ts` が `game/theme` の色定数を値として引く 1 件。
+  CODING-RULE 1.3 の層の向き(`game/` が両方に依存し、`render/` は `game/` を知らない)に
+  反するが、**どれもタンパク質表示とタイトル画面の話で、天体・積分側の再編とは交わらない。**
+  値 import の `title-scene.ts` 1 件だけは、色の所有者を `render/` 側へ移せば消える。
+- **`memos/` がこの計画と無関係に持つ、死んだパス 105 種**(`render/` `physics/` や、過去に
+  消えた `game/` の他フォルダ)。手順13 では触らない。
