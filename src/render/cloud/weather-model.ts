@@ -32,19 +32,23 @@ const DAY = 86400;
 // 倍になり、ノイズの格子が上昇流と雲へそのまま出る。実際の海面気圧も総観規模までしか構造を持たない。
 const PRESSURE_NOISE = [1.2, 2, 8 * DAY] as const;
 const TEMPERATURE_NOISE = [2, 2, 10 * DAY] as const;
-const HUMIDITY_NOISE = [6, 5, 10 * DAY] as const;
-const UPPER_HUMIDITY_NOISE = [3, 4, 7 * DAY] as const;
+// 湿度は基準周波数を低く段を多く取る。基準の角波長(2550 km)が一枚板の雲の広がりを、
+// 最上段(80 km)が凝結のしきい値をまたぐ縁の細かさを決める。
+const HUMIDITY_NOISE = [2.5, 6, 6 * DAY] as const;
+const UPPER_HUMIDITY_NOISE = [1.6, 5, 7 * DAY] as const;
 const PRESSURE_NOISE_AMPLITUDE = 10;
 const TEMPERATURE_NOISE_AMPLITUDE = 8;
-const HUMIDITY_NOISE_AMPLITUDE = 0.35;
+const HUMIDITY_NOISE_AMPLITUDE = 0.3;
 const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
 
 // 上昇流: 収束が持ち上げる気柱の厚み [m]。地形の上昇流は風と斜面の内積そのもの。
-const CONVERGENCE_DEPTH = 3000;
-// 上昇流の頭打ち [m/s]。台風や低気圧の中心の収束は、地形の上昇流の 10 倍以上になる。線形のまま
-// 湿度へ効かせると、弱い上昇流が見えないか、中心が飽和した円盤と乾いた環になるかのどちらかにしか
-// ならない(両立する谷の大きさと深さは天体の 1/4 を覆う)。
-const LIFT_LIMIT = 0.08;
+// 厚みは、低気圧の中心の上昇流が地形の上昇流と同じ桁に収まる高さに置く。ここを厚く取ると
+// 低気圧が湿度へ自分で飽和した円盤を書き、流入が巻き込んだ渦をその上から塗り潰してしまう
+// — 渦の見えは、収束が書く滑らかな円盤ではなく、流入が既にある雲を縮める分から出る。
+const CONVERGENCE_DEPTH = 200;
+// 上昇流の頭打ち [m/s]。最も急な斜面へ強い風が当たると上昇流は並の 5 倍以上になり、線形のままだと
+// 湿度が 0/1 で切れて、山脈が硬い縁の白い帯になる。漸近させて、並の上昇流はほぼ素通しにする。
+const LIFT_LIMIT = 0.06;
 // 上昇流の利得。地形の上昇流は風上を冷やし風下(下降)を暖める [°C per m/s]。上昇流は地表付近の
 // 湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く [per m/s]。
 const LIFT_COOLING = 50;
@@ -66,12 +70,16 @@ const WIND_CAP = 50;
 const UPPER_GEOSTROPHIC_FACTOR = 2;
 
 // 湿度の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
-const ADVECTION_PERIOD = 6 * 3600;
-// 湿度の底上げと、平均湿度(海 1、陸 0)の重み。地表付近と上層で別に持つ。
-const HUMIDITY_BASE = 0.35;
-const MEAN_HUMIDITY_WEIGHT = 0.3;
-const UPPER_HUMIDITY_BASE = 0.3;
-const UPPER_MEAN_HUMIDITY_WEIGHT = 0.2;
+const ADVECTION_PERIOD = 12 * 3600;
+// 台風の目。中心で地表付近と上層の湿度をこれだけ下げ、雲を抜く。
+const TYPHOON_EYE_DRYNESS = 0.45;
+// 湿度の底上げと、平均湿度(海 1、陸 0)の重み。地表付近と上層で別に持つ。重みは陸と海の
+// どちらもしきい値をまたげる幅に留める — 大きく取ると海が一様に曇り、陸から雲が消えて、
+// 標高と風下の効果がしきい値へ届かなくなる。
+const HUMIDITY_BASE = 0.56;
+const MEAN_HUMIDITY_WEIGHT = 0.06;
+const UPPER_HUMIDITY_BASE = 0.47;
+const UPPER_MEAN_HUMIDITY_WEIGHT = 0.05;
 
 export class WeatherModel {
   private readonly pressureNoise = new DriftingNoise(...PRESSURE_NOISE);
@@ -134,16 +142,17 @@ export class WeatherModel {
       .add(this.temperatureNoise.at(direction).mul(TEMPERATURE_NOISE_AMPLITUDE))
       .sub(terrainLift.mul(LIFT_COOLING));
     const meanHumidity = this.climate.meanHumidity(direction);
+    const eye = this.cyclones.typhoonEyeAt(direction).mul(TYPHOON_EYE_DRYNESS);
     const humidity = clamp(
       float(HUMIDITY_BASE).add(meanHumidity.mul(MEAN_HUMIDITY_WEIGHT))
         .add(this.advected(this.humidityNoise, direction, wind).mul(HUMIDITY_NOISE_AMPLITUDE))
-        .add(lift.mul(LIFT_HUMIDITY)),
+        .add(lift.mul(LIFT_HUMIDITY)).sub(eye),
       0, 1,
     );
     const upperHumidity = clamp(
       float(UPPER_HUMIDITY_BASE).add(meanHumidity.mul(UPPER_MEAN_HUMIDITY_WEIGHT))
         .add(this.advected(this.upperHumidityNoise, direction, upperWind).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE))
-        .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)),
+        .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye),
       0, 1,
     );
 
