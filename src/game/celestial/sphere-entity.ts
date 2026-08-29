@@ -2,7 +2,7 @@
 // 見かけ直径が閾値未満なら球自体を描かない。
 import * as THREE from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
-import { RingSystemDef, shapeAxes } from '../../physics/solar-system/celestial-body-def';
+import { RingSystemDef, shapeAxes } from '../../physics/celestial-body-def';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { spinOrientation } from '../../physics/body-orientation';

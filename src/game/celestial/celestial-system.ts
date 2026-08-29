@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion, PhaseOffsets } from '../../physics/celestial-motion';
 import { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { ReferenceFrames } from '../../physics/reference-frames';
-import { RingSystemDef } from '../../physics/solar-system/celestial-body-def';
+import { RingSystemDef } from '../../physics/celestial-body-def';
 import { AU } from '../../physics/planet-orbit';
 import { CelestialBody } from '../../physics/celestial-body';
 import { len, norm, sub, v3, Vec3 } from '../../math/vec3';

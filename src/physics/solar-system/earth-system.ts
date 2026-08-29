@@ -76,7 +76,7 @@ export const EARTH: PlanetDef = {
     eRatePerCentury: -0.00004392,
     aRatePerCenturyAu: 0.00000562,
   }),
-  pole: { kind: 'eciPole' },
+  pole: { kind: 'eciPole', spinRate: (2 * Math.PI) / SIDEREAL_DAY },
   // 赤道断面の楕円性 C22 は J2 の約 1/690 しかないため軸対称として扱う。
   degree2: { j2: J2_EARTH, c22: 0, refRadius: R_EARTH_EQ },
   atmosphere: EARTH_ATMOSPHERE,
