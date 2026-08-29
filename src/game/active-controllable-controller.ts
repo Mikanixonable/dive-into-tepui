@@ -3,7 +3,7 @@
 import type { Player } from './player/player';
 import type { Base } from './dynamic/dynamic-entity/base';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
-import type { EntityManager } from './simulation/entity-manager';
+import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { CameraSystem } from './camera/camera-system';
 import type { NavTarget } from './nav-target';
 import type { WorldSfx } from '../audio/sfx/world-sfx';
@@ -17,7 +17,7 @@ export class ActiveControllableController {
   // の先頭、艦が0隻なら null。
   constructor(
     activePlayerId: string | null | undefined,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly cameraSystem: CameraSystem,
     private readonly navTarget: NavTarget,
     private readonly worldSfx: WorldSfx,

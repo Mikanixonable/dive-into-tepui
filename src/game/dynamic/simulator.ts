@@ -2,7 +2,7 @@
 // 天体窓を決める。個体1つを1区間進めること自体は DynamicEntity.stepSimulation の責務で、ここは
 // 「いつ区切るか」「その瞬間に何があるか」「誰と誰が相互作用するか」だけを持つ。
 //
-// 予測(game/simulation/predictor.ts の Predictor)との役割の違いは2点で、二重性はこの2点に
+// 予測(game/dynamic/predictor.ts の Predictor)との役割の違いは2点で、二重性はこの2点に
 // 由来する。統一はできない。
 //  1. 同時性。こちらは生存する全個体(破片まで含めて多数)を、同じ1つの瞬間で同時に進める。
 //     同時だからこそ、重力源と表面を持つ天体の絞り込みをサブステップに1つだけ組んで全個体で
@@ -14,15 +14,15 @@
 // 関係(どの天体が引くか・表面へ到達したか・大気で焼失したか・刻みをどこまで広げてよいか)。
 // 探し方が違うのは同時性から来る正当な差だが、答えが違ってよい理由はない。
 import * as C from '../const';
-import { EntityManager } from './entity-manager';
+import { DynamicSystem } from './dynamic-system';
 import { Player } from '../player/player';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import type { Stage } from '../stages/stage';
 import { EntityContactPhysics } from './entity-contact-physics';
 import { SurfaceContactPhysics } from './surface-contact-physics';
-import { SubstepBodies } from './substep-bodies';
+import { SubstepBodies } from './substep-celestial-bodies';
 import { NextEventTime } from './next-event-time';
 import { v3 } from '../../math/vec3';
 import { simulationMaxStep, simulationStepDuration } from './time-step';
@@ -59,7 +59,7 @@ export class Simulator {
 
   // entities/windows/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
   constructor(
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly windows: CelestialBodyWindows,
     private readonly sections: FrameSections,
     initialSimTime = 0,
@@ -137,7 +137,7 @@ export class Simulator {
       this.sections.exit(SECTION.contact);
       nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
       if (canResolveEntityContacts) {
-        // 放熱板の折りは EntityManager に登録された実体ではなく、艦の姿勢から毎 substep
+        // 放熱板の折りは DynamicSystem に登録された実体ではなく、艦の姿勢から毎 substep
         // 置き直す接触代理なので、参加者リストへこの場で合流させる。
         this.contactEntitiesScratch.length = 0;
         this.contactEntitiesScratch.push(...this.entities.all());

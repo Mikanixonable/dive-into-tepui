@@ -22,14 +22,14 @@ import { PlanGizmo3D } from './plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan, PlanData } from './plan';
 import { PlanDisplay } from './plan-display';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import { focusPoint } from '../camera/focus-target';
 import { CelestialBody, bodyAnchorSource, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { FrameAnchorSource, toFrameState } from '../../physics/frame';
-import type { PredictedArc } from '../simulation/predicted-arc';
+import type { PredictedArc } from '../dynamic/predicted-arc';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 

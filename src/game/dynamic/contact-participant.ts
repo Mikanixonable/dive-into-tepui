@@ -1,6 +1,6 @@
 // 接触の参加者としての個体の、区間 [prevState, state] の読み方。表面接触と物体どうしの接触は
 // 共有するものをほとんど持たないが、この2つだけは同じ規則で読まなければならない。
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 
 // 区間の両端の位置・速度と半径が有限で、接触用の質量が負でないか。1つでも欠けた
 // エンティティを解決へ入れる前に落とす — 非有限座標はセル添字を壊し、区間変位は
