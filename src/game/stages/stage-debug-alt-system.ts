@@ -1,6 +1,7 @@
 // デバッグ用ステージ: 現実の太陽系とは無関係な架空のレジストリ・原点で進行する。恒星を
 // 1体も持たないため、輻射源・日照率・点群などの太陽系依存の経路が恒星0個でも安全に振る舞う
 // ことを実演する。タイトルの通常ボタン列には出ない。
+import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps } from './stage';
 import type { Player } from '../player/player';
 import type { EntityManager } from '../simulation/entity-manager';
@@ -22,7 +23,8 @@ import { bodyClassOfKind } from '../celestial/celestial-entity-def';
 import { CelestialEntity } from '../celestial/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
 import { SphereEntity } from '../celestial/sphere-entity';
-import { Sun } from '../celestial/sun';
+import { StarEntity } from '../celestial/star-entity';
+import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
 
 const PRIMARY_ID = 'zephyrus';
 const MOON_ID = 'zephyrus-i';
@@ -68,7 +70,11 @@ function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[]
 
 // 架空天体の見た目: 恒星なら太陽の見た目、それ以外は単色球。表示名は id をそのまま使う。
 function fallbackEntity(motion: CelestialMotion): CelestialEntity {
-  if (motion instanceof StarMotion) return new Sun(motion, motion.id);
+  // 色の手がかりを持たない架空の恒星なので、無彩色で目盛りの基準どおりの明るさにする。
+  if (motion instanceof StarMotion) {
+    return new StarEntity(
+      motion, motion.id, new THREE.Color(1, 1, 1), REFERENCE_STAR_RADIANT_INTENSITY, 0xffffff);
+  }
   if (!(motion instanceof OrbitingMotion)) throw new Error(`${motion.id} の運動が OrbitingMotion ではない`);
   return new SphereEntity(motion, motion.id, bodyClassOfKind(motion.kind), CelestialSurface.solid(DEFAULT_ALBEDO));
 }
