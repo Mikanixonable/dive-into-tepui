@@ -32,7 +32,7 @@ export type WeatherSample = {
 const PRESSURE_NOISE = [1.2, 1] as const;
 // 湿度は基準周波数を低く段を多く取る。基準の角波長(2550 km)が一枚板の雲の広がりを、
 // 最上段(160 km)が凝結のしきい値をまたぐ縁の細かさを決める。上層はこれ以上段を減らせない —
-// 薄い雲はしきい値で切らずに不透明度へ連続に写すので、上の段が縁ではなく繊維として直に出る。
+// 薄い雲は光学的厚みが 1 に届かず下地が透けるので、上の段が縁ではなく繊維の濃淡として直に見える。
 const HUMIDITY_NOISE = [2.5, 5] as const;
 const UPPER_HUMIDITY_NOISE = [1.6, 5] as const;
 const PRESSURE_NOISE_AMPLITUDE = 18;
