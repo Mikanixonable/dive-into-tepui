@@ -2,7 +2,7 @@
 // 下流(雲)へ並ぶ。各ビューは、天気のモデルのグラフ・気候の事前分布・雲の場の写しから、
 // 表示値 0..1 の色を組む。
 import { length, screenUV, vec3 } from 'three/tsl';
-import { directionFromEquirectUv } from '../../src/render/cloud/sphere-frame';
+import { directionFromEquirectUv } from '../../src/render/cloud/field-projection';
 import type { BakedField } from '../../src/render/cloud/baked-field';
 import type { ClimateMap } from '../../src/render/cloud/climate-map';
 import type { WeatherModel } from '../../src/render/cloud/weather-model';
