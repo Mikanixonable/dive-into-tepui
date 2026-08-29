@@ -20,7 +20,7 @@ import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
-import { SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
+import { REFERENCE_STAR_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
 import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
 import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
@@ -30,6 +30,7 @@ import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { type AtmosphereCandidate, atmosphereDraws } from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialEntity } from './celestial-entity';
+import { StarEntity } from './star-entity';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
 import { OrbitGuideLines } from './orbit-guide-lines';
@@ -75,6 +76,9 @@ function castsVisibleShadow(
   return focusPos !== null && maxOccludedFraction(focusPos, star, body) >= MIN_OCCLUDED_FRACTION;
 }
 
+// 恒星を持たない星系で仮に置く光源の色。色の手がかりが無いので無彩色。
+const STARLESS_LIGHT_COLOR = new THREE.Color(1, 1, 1);
+
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
@@ -107,7 +111,7 @@ export class CelestialSystem {
   // 渡すときはこれを使う。
   readonly motions: readonly CelestialMotion[];
   // 主星の個体。恒星を持たない星系では null。
-  private readonly starBody: CelestialEntity | null;
+  private readonly starBody: StarEntity | null;
   private readonly nearbyTracker = new NearbySystemTracker();
   // 座標系の同一性と、同一時刻の天体窓。どちらも bodies の motion から組む。
   private readonly referenceFrames: ReferenceFrames;
@@ -135,7 +139,7 @@ export class CelestialSystem {
     this.referenceFrames = new ReferenceFrames(this.motions, origin.motion);
     this.bodyWindows = new CelestialBodyWindows(this.motions);
     this.bodiesById = new Map(bodies.map((b) => [b.id, b]));
-    this.starBody = bodies.find((b) => b.motion.kind === 'star') ?? null;
+    this.starBody = bodies.find((b): b is StarEntity => b instanceof StarEntity) ?? null;
   }
 
   // シーンとライティングパスの値オブジェクト(RenderPipeline が所有)を受け取り、全天体の
@@ -184,7 +188,7 @@ export class CelestialSystem {
   nameOf(id: string): string { return this.bodiesById.get(id)?.name ?? id; }
 
   // 主星の個体。恒星を持たない星系では null。
-  get star(): CelestialEntity | null { return this.starBody; }
+  get star(): StarEntity | null { return this.starBody; }
 
   // 全登録天体の定義(宣言順)。
   get defs(): readonly CelestialBodyDef[] { return this.bodies.map((b) => b.def); }
@@ -292,21 +296,26 @@ export class CelestialSystem {
         nearbyIds,
       )
       : null;
-    const star = this.starBody?.motion ?? null;
+    const star = this.starBody;
+    const starMotion = star?.motion ?? null;
     for (const body of this.bodies) {
       body.setVisible(!cameraSystem.overviewMode || visibilityPolicy!.body(body.id).category);
       body.sync(floatingOrigin, displayTime, cameraSystem, star, graphics, style);
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。
-    const sunPos = star === null
+    const sunPos = starMotion === null
       ? this.toThreeNormal(this.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
-      : floatingOrigin.RtoThreeV3(star.stateAt(displayTime).r);
+      : floatingOrigin.RtoThreeV3(starMotion.stateAt(displayTime).r);
     // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
-    this.exposure.setReference(reference, sunPos);
-    this.sunLight.set(sunPos, star === null ? 0 : star.def.radius, SUN_COLOR, SUN_RADIANT_INTENSITY);
+    // 恒星を持たない星系では、1 天文単位の位置に置いた基準の恒星ぶんの光が届くものとして扱う。
+    const starIntensity = star?.radiantIntensity ?? REFERENCE_STAR_RADIANT_INTENSITY;
+    this.exposure.setReference(reference, sunPos, starIntensity);
+    this.sunLight.set(
+      sunPos, star === null ? 0 : star.def.radius,
+      star?.color ?? STARLESS_LIGHT_COLOR, starIntensity);
     this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);

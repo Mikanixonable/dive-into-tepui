@@ -5,7 +5,7 @@ import { sunlitFactor } from '../../physics/shadow';
 import { dot, len, sub } from '../../math/vec3';
 import { DEFAULT_ALBEDO, rec709Luminance } from '../../render/celestial-albedo';
 import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from '../../render/pipeline/lighting/planet-light-source';
-import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from '../../render/pipeline/sun-light';
+import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../render/pipeline/sun-light';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from './celestial-system';
 import type { Vec3 } from '../../math/vec3';
@@ -25,6 +25,7 @@ export function selectPlanetLights(
 ): readonly PlanetLight[] {
   const bodies = celestialSystem.celestialBodiesAt(displayTime);
   const star = bodies.find((body) => body.isStar) ?? null;
+  const starIntensity = celestialSystem.star?.radiantIntensity ?? null;
   const candidates: { readonly light: PlanetLight; readonly irradiance: number }[] = [];
   for (const body of bodies) {
     if (body.isStar || body.radius <= 0) continue;
@@ -32,7 +33,8 @@ export function selectPlanetLights(
     // 主星の無いレジストリでは、全天体が 1 天文単位相当の明るさで満相のまま照らされていると
     // みなす。
     const toSun = star === null ? null : sub(star.state.r, body.state.r);
-    const sunIrradiance = toSun === null ? SUN_IRRADIANCE_1AU : sunIrradianceAtDistance(len(toSun));
+    const sunIrradiance = toSun === null || starIntensity === null
+      ? SUN_IRRADIANCE_1AU : irradianceAtDistance(starIntensity, len(toSun));
     const toReference = sub(reference, body.state.r);
     const dist = Math.max(len(toReference), body.radius);
     // 位相角: 天体から見た太陽と基準点のなす角。
