@@ -15,7 +15,7 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
-import type { PointFieldView } from './solar-system/point-field-view';
+import type { PointFieldView } from './point-field-view';
 import {
   REFERENCE_STAR_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE,
   STARLESS_SUN_RADIUS, SunLight,

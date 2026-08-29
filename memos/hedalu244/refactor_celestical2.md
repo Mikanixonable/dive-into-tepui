@@ -208,34 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順5. `celestial/` 直下から `solar-system/` への依存を切る
-
-**目的.** `celestial-system.ts:21` が `./solar-system/point-field-view` を import しており、
-**一般化星系の層が太陽系固有の層を知っている。** 原因は点群の見た目(群ごとの描画半径と色)が
-表示クラス側に太陽系の群 id (`main-belt` / `kuiper-cold` …)で埋め込まれていること。
-値を太陽系のデータ側へ移せば、表示クラスは群 id を知らない汎用の部品になる。
-**この時点で絵は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/solar-system/point-field.ts:29-` | `PointFieldDef` に `drawRadius` と `color` を足し、`POINT_FIELD_DEFS` の7群へ現在の値(`point-field-view.ts:16-24` の表)を書く |
-| `src/game/celestial/solar-system/point-field-view.ts:16-24` | `GROUP_VIEW` / `FALLBACK_VIEW` を削除し、群の値は `PointFieldGroup` から読む |
-| `src/game/celestial/point-field-view.ts`(移動) | 群 id を知らなくなった表示クラスを `celestial/` 直下へ `git mv` する |
-| `src/game/celestial/celestial-system.ts:21` | import を `./point-field-view` へ直す |
-| `src/game/celestial/solar-system/solar-system.ts:10` | import を `../point-field-view` へ直す |
-
-**達成条件と検証**
-
-- `grep -rn "solar-system" src/game/celestial/*.ts` が 0 件。
-- `grep -n "main-belt\|kuiper" src/game/celestial/point-field-view.ts` が 0 件。
-- `npm run typecheck` / `npm run test:game`(`tests/game/point-field.test.ts` を含む)が通る。
-- `npm run dev` — マップを開き、メインベルト・トロヤ群・カイパーベルト・散乱円盤の点の
-  大きさと色が着手前と同じであることを見る。
-
----
-
 ### 手順6. マップ表示ポリシーを `celestial/` から出す
 
 **目的.** `body-visibility.ts` と `map-visibility.ts` は**天体と積分個体の両方**の表示可否を

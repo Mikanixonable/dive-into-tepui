@@ -3,26 +3,11 @@
 // 載せない。THREE 非依存に保ってあり、生成の決定性と分布は tests/physics で検査する。
 // 各群は PointFieldDef 1つのデータで駆動する — 群を増やすには POINT_FIELD_DEFS に要素を足すだけ
 // でよく、生成コード自体に群固有の分岐を増やさない。
-import { Q_ECLY_TO_ECI } from '../../../physics/ecliptic';
-import { positionFromOrbitalElements, trueAnomalyFromMean } from '../../../physics/elements';
 import { AU } from '../../../physics/planet-orbit';
 import { EPOCH_T_OFFSET, MU_SUN } from './constants';
 import { JUPITER } from './jupiter-system';
-import { qRotate } from '../../../physics/attitude';
 import { mulberry32 } from '../../../math/random';
-import { Vec3 } from '../../../math/vec3';
-
-// 1点の軌道。平均運動を要素と一緒に持つのは、位置評価が毎フレーム全点に及ぶため
-// (a から毎回 sqrt を引くのを避ける)。
-export type PointElements = {
-  readonly a: number; // 軌道長半径 [m]
-  readonly e: number;
-  readonly inc: number; // 黄道面に対する傾斜 [rad]
-  readonly raan: number; // 昇交点黄経 [rad]
-  readonly lonPeri: number; // 近点黄経 ϖ [rad]
-  readonly l0: number; // t=0 の平均黄経 [rad]
-  readonly meanMotion: number; // 平均黄経の変化率 [rad/s]
-};
+import type { PointElements, PointField } from '../point-field';
 
 // 軌道長半径の引き方。散乱円盤だけは近日点距離 q = a(1-e) に集中する分布なので、
 // a ではなく q から引いて a = q/(1-e) を逆算する。
@@ -41,7 +26,9 @@ export type ResonanceDistribution = {
 };
 
 export type PointFieldDef = {
-  readonly id: string; // 群の識別子。表示側(point-field-view.ts)が色・描画半径を引く鍵。
+  readonly id: string;
+  readonly drawRadius: number; // [m] 表示上の1点の大きさ
+  readonly color: number;
   readonly count: number;
   readonly size: SizeDistribution;
   readonly gapsAu?: readonly number[]; // 共鳴間隙の中心 [AU](ガウス棄却で抜く。semiMajor のみ)
@@ -49,9 +36,6 @@ export type PointFieldDef = {
   readonly incRange: readonly [number, number]; // [rad]
   readonly resonance?: ResonanceDistribution;
 };
-
-export type PointFieldGroup = { readonly id: string; readonly points: readonly PointElements[] };
-export type PointField = readonly PointFieldGroup[];
 
 export const ASTEROID_SEED = 0x5eed_a571;
 
@@ -68,6 +52,8 @@ const JUPITER_A_AU = JUPITER.orbit.a / AU;
 export const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
   {
     id: 'main-belt',
+    drawRadius: 3e7,
+    color: 0x777777,
     count: 4000,
     size: { kind: 'semiMajor', aRangeAu: [2.0, 3.4] },
     // 木星との 4:1 / 3:1 / 7:3 / 5:2 / 2:1 平均運動共鳴によるカークウッドの空隙。
@@ -77,6 +63,8 @@ export const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
   },
   {
     id: 'trojan-l4',
+    drawRadius: 3e7,
+    color: 0x777777,
     count: 800,
     size: { kind: 'semiMajor', aRangeAu: [JUPITER_A_AU, JUPITER_A_AU] },
     eRange: [0, 0.15],
@@ -85,6 +73,8 @@ export const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
   },
   {
     id: 'trojan-l5',
+    drawRadius: 3e7,
+    color: 0x777777,
     count: 800,
     size: { kind: 'semiMajor', aRangeAu: [JUPITER_A_AU, JUPITER_A_AU] },
     eRange: [0, 0.15],
@@ -96,6 +86,8 @@ export const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
     // M = 3(λ_H − λ_J) + σ となるため遠日点が木星に対して 120° おきの3方向で繰り返し、
     // 遠日点付近に長く留まる効果で群全体が三角形に見える(頂点は木星の L4/L3/L5)。
     id: 'hilda',
+    drawRadius: 3e7,
+    color: 0x777777,
     count: 600,
     size: { kind: 'semiMajor', aRangeAu: [3.972, 3.972] },
     eRange: [0.1, 0.3],
@@ -104,6 +96,8 @@ export const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
   },
   {
     id: 'kuiper-cold',
+    drawRadius: 1.2e8,
+    color: 0x5588aa,
     count: 2500,
     size: { kind: 'semiMajor', aRangeAu: [39, 48] },
     eRange: [0, 0.1],
@@ -113,6 +107,8 @@ export const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
     // hot 群と別の PointFieldDef にするのは、両者が力学的に別起源で、1つの分布にまとめると
     // 傾斜角の二峰性が消えてしまうため。
     id: 'kuiper-hot',
+    drawRadius: 1.2e8,
+    color: 0x5588aa,
     count: 1500,
     size: { kind: 'semiMajor', aRangeAu: [39, 48] },
     eRange: [0, 0.3],
@@ -120,6 +116,8 @@ export const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
   },
   {
     id: 'scattered-disk',
+    drawRadius: 1.2e8,
+    color: 0xaa8855,
     count: 1000,
     size: { kind: 'perihelion', qRangeAu: [30, 40] },
     eRange: [0.3, 0.9],
@@ -215,14 +213,8 @@ export function generatePointField(seed: number = ASTEROID_SEED): PointField {
   const jupiterLRate = JUPITER.orbit.lRate;
   return POINT_FIELD_DEFS.map((def) => ({
     id: def.id,
+    drawRadius: def.drawRadius,
+    color: def.color,
     points: Array.from({ length: def.count }, () => generatePoint(rand, def, jupiterLambda0, jupiterLRate)),
   }));
-}
-
-// 時刻 t の太陽中心位置 [m]。ECI 化(太陽の ECI 位置を足す)は呼び出し側の仕事。
-export function pointPositionAt(el: PointElements, t: number): Vec3 {
-  const m = el.l0 + el.meanMotion * t - el.lonPeri;
-  const nu = trueAnomalyFromMean(m, el.e);
-  const p = positionFromOrbitalElements(el.a, el.e, el.inc, el.raan, el.lonPeri - el.raan, nu);
-  return qRotate(Q_ECLY_TO_ECI, p);
 }
