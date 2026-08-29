@@ -9,8 +9,8 @@ import type { WeatherModel } from '../../src/render/cloud/weather-model';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
-  | 'elevation' | 'meanTemperature' | 'meanCloudiness'
-  | 'pressure' | 'wind' | 'convergence' | 'lift' | 'temperature'
+  | 'elevation' | 'meanCloudiness'
+  | 'pressure' | 'wind' | 'convergence' | 'lift'
   | 'humiditySource' | 'upperHumiditySource' | 'humidity' | 'upperHumidity'
   | 'opaque' | 'translucent';
 
@@ -25,7 +25,7 @@ export type CloudLabView = {
 
 // 表示値 0..1 へ写すときの目盛り。不透明雲の光学的厚みは 0..4(そこで下地が 98% 隠れる)、
 // 薄い雲は 0..1、気圧は −70..+30 hPa、収束は ±2e-4 /s を 0.5 中心に、上昇流は ±0.1 m/s を
-// 0.5 中心に、温度は −50..50 °C、風は ±40 m/s を 0.5 中心の R(東)G(北)に、速さを B に、
+// 0.5 中心に、風は ±40 m/s を 0.5 中心の R(東)G(北)に、速さを B に、
 // 標高は 0..8000 m。
 const OPAQUE_SPAN = 4;
 const TRANSLUCENT_SPAN = 1;
@@ -33,8 +33,6 @@ const PRESSURE_MIN = -70;
 const PRESSURE_SPAN = 100;
 const CONVERGENCE_SPAN = 2e-4;
 const LIFT_SPAN = 0.1;
-const TEMPERATURE_MIN = -50;
-const TEMPERATURE_SPAN = 100;
 const WIND_SPAN = 40;
 const ELEVATION_SPAN = 8000;
 
@@ -48,13 +46,11 @@ function windColor(wind: Vec2Node): Vec3Node {
 
 export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'elevation', label: '標高', readsCloud: false, color: (_m, climate) => vec3(climate.elevation(direction).div(ELEVATION_SPAN)) },
-  { id: 'meanTemperature', label: '平均気温', readsCloud: false, color: (_m, climate) => vec3(climate.meanTemperature(direction).sub(TEMPERATURE_MIN).div(TEMPERATURE_SPAN)) },
   { id: 'meanCloudiness', label: '平年の雲量', readsCloud: false, color: (_m, climate) => vec3(climate.meanCloudiness(direction)) },
   { id: 'pressure', label: '気圧', readsCloud: false, color: (model) => vec3(model.weatherAt(direction).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
   { id: 'wind', label: '風', readsCloud: false, color: (model) => windColor(model.weatherAt(direction).wind) },
   { id: 'convergence', label: '収束', readsCloud: false, color: (model) => vec3(model.weatherAt(direction).convergence.div(2 * CONVERGENCE_SPAN).add(0.5)) },
   { id: 'lift', label: '上昇流', readsCloud: false, color: (model) => vec3(model.weatherAt(direction).lift.div(2 * LIFT_SPAN).add(0.5)) },
-  { id: 'temperature', label: '温度', readsCloud: false, color: (model) => vec3(model.weatherAt(direction).temperature.sub(TEMPERATURE_MIN).div(TEMPERATURE_SPAN)) },
   { id: 'humiditySource', label: '移流前の湿度', readsCloud: false, color: (model) => vec3(model.humiditySourceAt(direction).x) },
   { id: 'upperHumiditySource', label: '移流前の上層湿度', readsCloud: false, color: (model) => vec3(model.humiditySourceAt(direction).y) },
   { id: 'humidity', label: '湿度', readsCloud: false, color: (model) => vec3(model.weatherAt(direction).humidity) },
