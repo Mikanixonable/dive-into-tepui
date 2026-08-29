@@ -5,8 +5,7 @@ import { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { ReferenceFrames } from '../../physics/reference-frames';
 import { AU } from '../../physics/planet-orbit';
 import { CelestialBody } from '../../physics/celestial-body';
-import { len, norm, sub, v3, Vec3 } from '../../math/vec3';
-import { maxOccludedFraction } from '../../physics/shadow';
+import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitLine } from '../lines/orbit-line';
 import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
@@ -25,7 +24,10 @@ import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-li
 import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
-import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
+import type { Occluder, SunOcclusion } from '../../render/pipeline/sun-occlusion';
+import {
+  selectOccluders, selectRingShadow, type RingShadowCandidate,
+} from '../../render/pipeline/sun-occlusion-select';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { atmosphereDraws } from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
@@ -35,26 +37,6 @@ import { MapVisibilityPolicy } from './map-visibility';
 import { OrbitGuideLines } from './orbit-guide-lines';
 import { ZeroVelocityLines } from './zero-velocity-lines';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-settings';
-
-// 遮蔽器を選ぶ尺度。カメラから見た視半径が大きい天体ほど、その影が画面に写っている何かへ
-// 落ちる見込みが高い。
-function apparentRadius(radius: number, center: Vec3, cameraPos: Vec3): number {
-  return radius / Math.max(1, len(sub(center, cameraPos)));
-}
-
-// 遮蔽器として残す最大遮蔽率の下限。これを下回る天体は、どの向きでも恒星面の 1% 未満しか
-// 隠せないので、落としても絵に出ない(physics/shadow.ts の maxOccludedFraction)。
-const MIN_OCCLUDED_FRACTION = 1e-2;
-
-// body が cameraPos か focusPos のどちらかから見て、絵に出るだけの影を落としうるか。
-// **カメラ位置だけで測ってはいけない** — 土星から引いたマップビューでは土星自身が閾値を
-// 切り、環の影が本体から消える。
-function castsVisibleShadow(
-  star: CelestialBody, body: CelestialBody, cameraPos: Vec3, focusPos: Vec3 | null,
-): boolean {
-  if (maxOccludedFraction(cameraPos, star, body) >= MIN_OCCLUDED_FRACTION) return true;
-  return focusPos !== null && maxOccludedFraction(focusPos, star, body) >= MIN_OCCLUDED_FRACTION;
-}
 
 // 恒星を持たない星系で仮に置く光源の色。色の手がかりが無いので無彩色。
 const STARLESS_LIGHT_COLOR = new THREE.Color(1, 1, 1);
@@ -338,58 +320,49 @@ export class CelestialSystem {
     })));
   }
 
-  // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。まず最大遮蔽率が閾値を切る天体を落とし、
-  // 残りをカメラから見た視半径の大きい順に MAX_OCCLUDERS 体まで採る — 恒星の視半径が同じなら
-  // 最大遮蔽率は視半径に比例するので、この並びは最大遮蔽率の降順と一致する。環は最上位の
-  // 環付き天体 1 体ぶん。
+  // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。候補を組んで選定へ回し、**選ばれた
+  // ものだけ**を描画座標へ移す。focusPos はマップの注視点で、艦など天体でない対象を注視して
+  // いるなら null。
   private syncOcclusion(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
   ): void {
     const bodies = this.celestialBodiesAt(displayTime);
-    const star = bodies.find((body) => body.isStar);
     const focusId = focusTargetId(cameraSystem.mapCamera.focus);
     const focusPos = focusId === undefined
       ? null : bodies.find((body) => body.id === focusId)?.state.r ?? null;
-    const ranked = bodies
-      .filter((body) => !body.isStar && body.radius > 0
-        && (star === undefined || castsVisibleShadow(star, body, fo.r, focusPos)))
-      .map((body) => ({ body, apparent: apparentRadius(body.radius, body.state.r, fo.r) }))
-      .sort((a, b) => b.apparent - a.apparent)
-      .slice(0, MAX_OCCLUDERS);
-    this.sunOcclusion.setOccluders(ranked.map(({ body }): Occluder => (
-      { center: fo.RtoThreeV3(body.state.r), radius: body.radius }
-    )));
+    this.sunOcclusion.setOccluders(
+      selectOccluders(bodies, fo.r, focusPos).map((body): Occluder => (
+        { center: fo.RtoThreeV3(body.state.r), radius: body.radius }
+      )));
     this.syncRingShadow(fo, displayTime, graphics);
   }
 
-  // 環の影を落とす天体を1体選び、その帯を遮蔽パスへ渡す。画面に環付き天体が複数写る状況は
-  // 実質起きないので、最も大きく見える1体だけを扱う。
+  // 環を持つ天体を候補として選定へ回し、選ばれた1体の帯を遮蔽パスへ渡す。選ばれなければ
+  // 帯を空にする(影は落ちない)。
   private syncRingShadow(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
-    let ringed: CelestialEntity | null = null;
-    let bestApparent = 0;
-    if (graphics.rings) {
-      for (const body of this.bodies) {
-        if (body.rings === null) continue;
-        const apparent = body.apparentRadiusFrom(fo.r, displayTime);
-        if (apparent <= bestApparent) continue;
-        bestApparent = apparent;
-        ringed = body;
-      }
-    }
-    const rings = ringed?.rings ?? null;
-    if (ringed === null || rings === null) {
+    const candidates = this.bodies.flatMap((body): RingShadowCandidate[] => {
+      const rings = body.rings;
+      if (rings === null) return [];
+      return [{
+        center: body.motion.stateAt(displayTime).r,
+        axis: body.motion.orientationAt(displayTime)?.axis ?? null,
+        radius: body.def.radius,
+        bands: rings.bands.map((band) => ({
+          innerRadius: band.innerRadius,
+          outerRadius: band.outerRadius,
+          normalOpticalDepth: band.optics.normalOpticalDepth,
+        })),
+      }];
+    });
+    const ringed = selectRingShadow(candidates, fo.r, graphics);
+    if (ringed === null) {
       this.sunOcclusion.setRings(ZERO_VECTOR, UP_VECTOR, []);
       return;
     }
-    const pole = ringed.motion.orientationAt(displayTime);
     this.sunOcclusion.setRings(
-      fo.RtoThreeV3(ringed.motion.stateAt(displayTime).r),
-      pole === null ? UP_VECTOR : this.toThreeNormal(pole.axis),
-      rings.bands.map((band) => ({
-        innerRadius: band.innerRadius,
-        outerRadius: band.outerRadius,
-        normalOpticalDepth: band.optics.normalOpticalDepth,
-      })),
+      fo.RtoThreeV3(ringed.center),
+      ringed.axis === null ? UP_VECTOR : this.toThreeNormal(ringed.axis),
+      ringed.bands,
     );
   }
 
