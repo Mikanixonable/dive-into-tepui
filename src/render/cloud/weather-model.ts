@@ -51,6 +51,10 @@ const PRESSURE_LIFT_SCALE = 20;
 // 上昇流の頭打ち [m/s]。急な斜面へ強い風が当たる所と深い谷の芯では上昇流が並の何倍にもなり、
 // 線形のままだと湿度が 0/1 で切れて硬い縁の白い塊になる。漸近させて、並の上昇流はほぼ素通しにする。
 const LIFT_LIMIT = 0.06;
+// 風が斜面を駆け上がる分の利得。等倍だと、偏西風や貿易風が山脈へ当たり続けるだけで上昇流が
+// 頭打ちに達し、気候と無関係な地形の縞が年中貼り付く。慢性的な湿潤・乾燥は平年の雲量が持つので、
+// ここは低気圧が山へぶつかったときだけ効く高さへ落とす。
+const TERRAIN_LIFT_GAIN = 0.35;
 // 上昇流の利得。上昇流は地表付近の湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く
 // [per m/s]。
 const LIFT_HUMIDITY = 5;
@@ -74,13 +78,15 @@ const ADVECTION_PERIOD = 12 * 3600;
 // 台風の目。移流前の湿度をこれだけ下げる。焼いてから流すので、目は流れに沿って中心へ引き込まれて
 // 歪み、見えの穴は Cyclones が持つ半径よりずっと小さくなる。
 const TYPHOON_EYE_DRYNESS = 0.45;
-// 湿度の底上げ(平年の雲量が 0 の土地での値)と、平年の雲量の重み。地表付近と上層で別に持つ。
-// 重みは、雲量の地理的な差が凝結のしきい値をまたぐ幅に取る — 小さく取ると砂漠にも海と同じだけ
-// 雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、平年の雲量図がそのまま貼り付く。
-const HUMIDITY_BASE = 0.349;
-const MEAN_CLOUDINESS_WEIGHT = 0.35;
-const UPPER_HUMIDITY_BASE = 0.31;
-const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.28;
+// 湿度の底上げ(移流前の源が持つ、平年の雲量を抜きにした値)と、移流後に足す平年の雲量の重み。
+// 地表付近と上層で別に持つ。重みは、雲量の地理的な差が凝結のしきい値をまたぐ幅に取る — 小さく
+// 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
+// 平年の雲量図がそのまま貼り付く。底上げは、重みを変えても平年並みの土地の湿度が動かないように
+// 取る(平年の雲量の中央値ぶんを差し引く)。
+const HUMIDITY_BASE = 0.246;
+const MEAN_CLOUDINESS_WEIGHT = 0.5;
+const UPPER_HUMIDITY_BASE = 0.227;
+const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.4;
 
 export class WeatherModel {
   private readonly circulation = new Circulation(R_EARTH, SURFACE_BANDS);
@@ -142,13 +148,18 @@ export class WeatherModel {
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分。
     const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
-    const terrainLift = dot(components(wind), this.climate.slope(direction));
+    const terrainLift = dot(components(wind), this.climate.slope(direction)).mul(TERRAIN_LIFT_GAIN);
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)));
 
-    // 湿度は、風で流した写しへ上昇流の分を足したもの。
+    // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足したもの。後の 2 つは移流を
+    // 通らないので、気候と地形に貼り付いたまま歪まない。
     const advected = this.advected(direction, wind);
-    const humidity = clamp(advected.x.add(lift.mul(LIFT_HUMIDITY)), 0, 1);
-    const upperHumidity = clamp(advected.y.add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)), 0, 1);
+    const meanCloudiness = this.climate.meanCloudiness(direction);
+    const humidity = clamp(
+      advected.x.add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT)).add(lift.mul(LIFT_HUMIDITY)), 0, 1);
+    const upperHumidity = clamp(
+      advected.y.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT)).add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)),
+      0, 1);
 
     return { pressure, wind: components(wind), lift, humidity, upperHumidity };
   }
@@ -159,16 +170,17 @@ export class WeatherModel {
     return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE)).add(this.cyclones.pressureAt(direction));
   }
 
-  // 移流前の湿度(x が地表付近、y が上層)。平年の雲量も台風の目も、ここへ入れたものがまとめて
-  // 風で流れる。写しへ焼かれ、advected() が風上へ遡って読む。
+  // 移流前の湿度(x が地表付近、y が上層)。ここへ入れたものが風で流れる。写しへ焼かれ、
+  // advected() が風上へ遡って読む。
+  //
+  // **平年の雲量はここへ入れない。** 移流の変位は雲を筋に引くのに要る大きさなので、通すと気候の
+  // 分布がその変位ぶん歪んで読めなくなる — 慢性的な湿潤・乾燥は場所に貼り付いているべきもので、
+  // 流れていくものではない。
   public humiditySourceAt(direction: Vec3Node): Vec2Node {
-    const meanCloudiness = this.climate.meanCloudiness(direction);
     const eye = this.cyclones.typhoonEyeAt(direction).mul(TYPHOON_EYE_DRYNESS);
     return vec2(
-      float(HUMIDITY_BASE).add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT))
-        .add(this.humidityNoise.at(direction).mul(HUMIDITY_NOISE_AMPLITUDE)).sub(eye),
-      float(UPPER_HUMIDITY_BASE).add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
-        .add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)).sub(eye),
+      float(HUMIDITY_BASE).add(this.humidityNoise.at(direction).mul(HUMIDITY_NOISE_AMPLITUDE)).sub(eye),
+      float(UPPER_HUMIDITY_BASE).add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)).sub(eye),
     );
   }
 
