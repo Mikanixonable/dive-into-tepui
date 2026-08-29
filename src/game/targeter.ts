@@ -5,7 +5,7 @@ import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { Base } from './dynamic/dynamic-entity/base';
 import type { AmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
 import type { RcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
-import type { EntityManager } from './simulation/entity-manager';
+import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
 import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
@@ -59,7 +59,7 @@ export class Targeter {
 
   constructor(
     private readonly markerManager: MarkerManager,
-    private readonly navTarget: NavTarget, private readonly entities: EntityManager,
+    private readonly navTarget: NavTarget, private readonly entities: DynamicSystem,
   ) {}
 
   // 現在の戦闘ターゲット。正本は NavTarget(航法ターゲットと状態を共有)が持ち、ここでは
@@ -102,7 +102,7 @@ export class Targeter {
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
   // 通過した点をターゲット相対で記録する。既存の記録は経過時間を進め、寿命切れを捨てる。
-  updateBoardMarks(dt: number, player: Player | null, entities: EntityManager): void {
+  updateBoardMarks(dt: number, player: Player | null, entities: DynamicSystem): void {
     const target = this.aliveTarget;
     // 記録側と描画側で同じ aliveTarget を見る: target のままだと撃破後も死亡個体の
     // 凍結位置を基準に ✦ を残し続けてしまう。

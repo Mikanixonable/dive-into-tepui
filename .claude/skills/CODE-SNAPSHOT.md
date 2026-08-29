@@ -23,7 +23,7 @@ sweptSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)   ← 掃引の幾何�
 │     └─ ContactPhysics.resolveBelt ……… simSpeed ≤ ×4 かつ自機生存、フレームに1回
 └─ attractor.ts  reachedBody(prev, next, bodies)   ← 幾何を持たず最小 TOI を選ぶだけ
    ├─ dynamic-entity.ts / player.ts / bullet.ts  checkLoss
-   │     (`EntityManager.cleanup` から毎 substep、全生存個体)
+   │     (`DynamicSystem.cleanup` から毎 substep、全生存個体)
    └─ predicted-arc.ts  checkSurfaceReach
          (`Predictor.update` から、実体の弧も計画の弧も同じ grow を通る)
 
@@ -53,7 +53,7 @@ linearSphereContact / curveSphereContact(次数) / sweptSagitta … src/ から�
 **図の外に書くもの** — 木の下に空行を挟んで、必要な分だけ:
 
 - 木に載らない例外(「`Enemy.checkLoss` は天体到達を見ない」「`BeltSection` は
-  `EntityManager` に載らないので `cleanup` を通らない」)。
+  `DynamicSystem` に載らないので `cleanup` を通らない」)。
 - 呼び出し 0 件の同族 API と、なぜ残っているか。**走査した範囲を明記する。**
 
 `/ownership` の保持木もこの罫線で書く。ただし注記の中身は所有と参照の別・正本と導出値の別で、

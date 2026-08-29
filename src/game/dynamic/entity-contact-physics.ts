@@ -7,7 +7,7 @@ import * as C from '../const';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { SpatialGrid } from '../../math/spatial-grid';
-import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { Player } from '../player/player';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';

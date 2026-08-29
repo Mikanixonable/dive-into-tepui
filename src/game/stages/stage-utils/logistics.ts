@@ -11,8 +11,8 @@ import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { UiSfx } from '../../../audio/sfx/ui-sfx';
 import { Player } from '../../player/player';
-import type { EntityManager } from '../../simulation/entity-manager';
-import type { SimSpeedManager } from '../../simulation/sim-speed-manager';
+import type { DynamicSystem } from '../../dynamic/dynamic-system';
+import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { LogisticsSaveData } from '../../save/save-data';
 
 const AMMO_PICKUP_MAGS = 6; // 補給 1 個の取り込みで増えるマガジン数
@@ -38,7 +38,7 @@ export class Logistics {
     private readonly _worldSfx: WorldSfx,
     private readonly _uiSfx: UiSfx,
     private readonly _scene: THREE.Scene,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     saved?: LogisticsSaveData,
   ) {
     this.resupplyCheckAt = saved?.resupplyCheckAt ?? 0;

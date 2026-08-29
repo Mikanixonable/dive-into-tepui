@@ -1,6 +1,6 @@
 // 計画軌道のルーラー目盛りを、暦(時・日・月・年)の区切りに合わせて生成する。
 import { fmtDateTime, fmtDuration } from '../utils';
-import { SIM_EPOCH_SEC } from '../../simulation/sim-epoch';
+import { SIM_EPOCH_SEC } from '../../sim-epoch';
 
 // 目盛階数。数が大きいほど粗い単位 — 0:1時間 1:3時間 2:6時間 3:12時間 4:1日 5:1月 6:1年。
 export type TickRank = 0 | 1 | 2 | 3 | 4 | 5 | 6;
