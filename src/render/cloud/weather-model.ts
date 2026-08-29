@@ -8,8 +8,9 @@ import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../physics/solar-system';
 import { BakedField } from './baked-field';
+import { CirculatingNoise } from './circulating-noise';
+import { Circulation } from './circulation';
 import { Cyclones } from './cyclones';
-import { DriftingNoise } from './drifting-noise';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { ClimateMap } from './climate-map';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
@@ -27,18 +28,16 @@ export type WeatherSample = {
   readonly upperHumidity: FloatNode;
 };
 
-const DAY = 86400;
-
-// ノイズの段。段ごとに空間周波数(球面 1 周あたりの山の数)・段数・動きの周期 [s] を変える。
+// ノイズの段。段ごとに空間周波数(球面 1 周あたりの山の数)と段数を変える。
 // 気圧と気温は 1 段しか持たない。どちらも総観規模より細かい構造を実際に持たず、気圧はさらに、
 // 収束がそのラプラシアンなので、段を増やすとノイズの格子が上昇流と雲へそのまま出る。
-const PRESSURE_NOISE = [1.2, 1, 8 * DAY] as const;
-const TEMPERATURE_NOISE = [2, 1, 10 * DAY] as const;
+const PRESSURE_NOISE = [1.2, 1] as const;
+const TEMPERATURE_NOISE = [2, 1] as const;
 // 湿度は基準周波数を低く段を多く取る。基準の角波長(2550 km)が一枚板の雲の広がりを、
 // 最上段(160 km)が凝結のしきい値をまたぐ縁の細かさを決める。上層はこれ以上段を減らせない —
 // 薄い雲はしきい値で切らずに不透明度へ連続に写すので、上の段が縁ではなく繊維として直に出る。
-const HUMIDITY_NOISE = [2.5, 5, 6 * DAY] as const;
-const UPPER_HUMIDITY_NOISE = [1.6, 5, 7 * DAY] as const;
+const HUMIDITY_NOISE = [2.5, 5] as const;
+const UPPER_HUMIDITY_NOISE = [1.6, 5] as const;
 const PRESSURE_NOISE_AMPLITUDE = 18;
 const TEMPERATURE_NOISE_AMPLITUDE = 12;
 const HUMIDITY_NOISE_AMPLITUDE = 0.3;
@@ -85,10 +84,11 @@ const UPPER_HUMIDITY_BASE = 0.31;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.28;
 
 export class WeatherModel {
-  private readonly pressureNoise = new DriftingNoise(...PRESSURE_NOISE);
-  private readonly temperatureNoise = new DriftingNoise(...TEMPERATURE_NOISE);
-  private readonly humidityNoise = new DriftingNoise(...HUMIDITY_NOISE);
-  private readonly upperHumidityNoise = new DriftingNoise(...UPPER_HUMIDITY_NOISE);
+  private readonly circulation = new Circulation(R_EARTH);
+  private readonly pressureNoise = new CirculatingNoise(this.circulation, ...PRESSURE_NOISE);
+  private readonly temperatureNoise = new CirculatingNoise(this.circulation, ...TEMPERATURE_NOISE);
+  private readonly humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE);
+  private readonly upperHumidityNoise = new CirculatingNoise(this.circulation, ...UPPER_HUMIDITY_NOISE);
   private readonly cyclones = new Cyclones(R_EARTH);
   private readonly pressure = new BakedField(
     'pressure', THREE.RedFormat, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
@@ -110,10 +110,7 @@ export class WeatherModel {
 
   // 時刻 [s] を uniform へ写す。
   public syncTime(seconds: number): void {
-    this.pressureNoise.syncTime(seconds);
-    this.temperatureNoise.syncTime(seconds);
-    this.humidityNoise.syncTime(seconds);
-    this.upperHumidityNoise.syncTime(seconds);
+    this.circulation.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     const cycle = (seconds / ADVECTION_PERIOD) % 1;
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
