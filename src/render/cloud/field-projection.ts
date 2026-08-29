@@ -1,8 +1,8 @@
 // 単位方向とテクスチャの uv の対応。雲の場を焼く側も読む側も、往復はこの契約だけを通る —
 // どの図法で持っているかを、写しの器も読み手も知らない。
 import * as THREE from 'three/webgpu';
-import { asin, atan, clamp, cos, float, sin, vec2, vec3 } from 'three/tsl';
-import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
+import { asin, atan, clamp, cos, dot, float, max, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
+import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 export type FieldProjection = {
   // 写しの大きさ [texel]。図法が持つ縦横比はここに出る。
@@ -56,5 +56,57 @@ export class EquirectProjection implements FieldProjection {
   // 全球を覆うので、どの uv も値を持つ。
   public insideAt(): FloatNode {
     return float(1);
+  }
+}
+
+// 中心のまわりの円板だけを正方形の写しで持つ正射影 — 中心からの球面上距離 θ を、投影面上の
+// 半径 sin θ へ写す。遠方から球を見た画面そのものの写像なので、texel と画素の比が円板の全域で
+// ほぼ一定になる。円板の外側(四隅)は値を持たない。
+export class OrthographicCap implements FieldProjection {
+  public readonly width: number;
+  public readonly height: number;
+  public readonly wrapS: THREE.Wrapping = THREE.ClampToEdgeWrapping;
+  public readonly wrapT: THREE.Wrapping = THREE.ClampToEdgeWrapping;
+  // 中心の単位方向と、そこでの接平面の枠。テクスチャ全域で定数なので CPU 側で組む。
+  private readonly center: Vec3Uniform = uniform(new THREE.Vector3());
+  private readonly east: Vec3Uniform = uniform(new THREE.Vector3());
+  private readonly north: Vec3Uniform = uniform(new THREE.Vector3());
+  private readonly sinRadius: FloatUniform = uniform(0);
+
+  // size は写しの 1 辺の texel 数。中心と半径の意味は aim() と同じ。
+  public constructor(size: number, latitude: number, longitude: number, radius: number) {
+    this.width = size;
+    this.height = size;
+    this.aim(latitude, longitude, radius);
+  }
+
+  // 中心の緯度・経度 [rad] と円板の半径 [rad](0 < radius ≤ π/2)を置き直す。枠は経度から直に
+  // 組むので、中心が極にあっても退化しない。
+  public aim(latitude: number, longitude: number, radius: number): void {
+    const cosLatitude = Math.cos(latitude);
+    const sinLatitude = Math.sin(latitude);
+    const cosLongitude = Math.cos(longitude);
+    const sinLongitude = Math.sin(longitude);
+    this.center.value.set(cosLatitude * sinLongitude, sinLatitude, cosLatitude * cosLongitude);
+    this.east.value.set(cosLongitude, 0, -sinLongitude);
+    this.north.value.set(-sinLatitude * sinLongitude, cosLatitude, -sinLatitude * cosLongitude);
+    this.sinRadius.value = Math.sin(radius);
+  }
+
+  public directionAt(uv: Vec2Node): Vec3Node {
+    // v は北から南へ増えるので、北成分は符号を返す。円板の外では中心からの距離を 1 で止める。
+    const plane = vec2(uv.x.mul(2).sub(1), float(1).sub(uv.y.mul(2))).mul(this.sinRadius);
+    const alongCenter = sqrt(max(float(1).sub(dot(plane, plane)), 0));
+    return this.east.mul(plane.x).add(this.north.mul(plane.y)).add(this.center.mul(alongCenter));
+  }
+
+  public uvAt(direction: Vec3Node): Vec2Node {
+    const plane = vec2(dot(direction, this.east), dot(direction, this.north)).div(this.sinRadius);
+    return vec2(plane.x, plane.y.negate()).mul(0.5).add(0.5);
+  }
+
+  public insideAt(uv: Vec2Node): FloatNode {
+    const offset = uv.mul(2).sub(1);
+    return step(dot(offset, offset), 1);
   }
 }
