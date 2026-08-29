@@ -1,4 +1,4 @@
-// 状態を持たない天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 温度・湿度と
+// 状態を持たない天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度と
 // 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
 // 見えのための調整値。
 import {
@@ -16,30 +16,27 @@ import type { ClimateMap } from './climate-map';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、収束は風の収束 [1/s]、風は東向き・北向きの
-// 成分 [m/s]、上昇流は [m/s](地形と収束による、負なら下降)、温度は [°C]、湿度は 0..1
+// 成分 [m/s]、上昇流は [m/s](地形と収束による、負なら下降)、湿度は 0..1
 // (humidity が地表付近、upperHumidity が上層)。
 export type WeatherSample = {
   readonly pressure: FloatNode;
   readonly convergence: FloatNode;
   readonly wind: Vec2Node;
   readonly lift: FloatNode;
-  readonly temperature: FloatNode;
   readonly humidity: FloatNode;
   readonly upperHumidity: FloatNode;
 };
 
 // ノイズの段。段ごとに空間周波数(球面 1 周あたりの山の数)と段数を変える。
-// 気圧と気温は 1 段しか持たない。どちらも総観規模より細かい構造を実際に持たず、気圧はさらに、
-// 収束がそのラプラシアンなので、段を増やすとノイズの格子が上昇流と雲へそのまま出る。
+// 気圧は 1 段しか持たない。総観規模より細かい構造を実際に持たず、さらに収束がそのラプラシアン
+// なので、段を増やすとノイズの格子が上昇流と雲へそのまま出る。
 const PRESSURE_NOISE = [1.2, 1] as const;
-const TEMPERATURE_NOISE = [2, 1] as const;
 // 湿度は基準周波数を低く段を多く取る。基準の角波長(2550 km)が一枚板の雲の広がりを、
 // 最上段(160 km)が凝結のしきい値をまたぐ縁の細かさを決める。上層はこれ以上段を減らせない —
 // 薄い雲はしきい値で切らずに不透明度へ連続に写すので、上の段が縁ではなく繊維として直に出る。
 const HUMIDITY_NOISE = [2.5, 5] as const;
 const UPPER_HUMIDITY_NOISE = [1.6, 5] as const;
 const PRESSURE_NOISE_AMPLITUDE = 18;
-const TEMPERATURE_NOISE_AMPLITUDE = 12;
 const HUMIDITY_NOISE_AMPLITUDE = 0.3;
 const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
 
@@ -51,9 +48,8 @@ const CONVERGENCE_DEPTH = 133;
 // 上昇流の頭打ち [m/s]。最も急な斜面へ強い風が当たると上昇流は並の 5 倍以上になり、線形のままだと
 // 湿度が 0/1 で切れて、山脈が硬い縁の白い帯になる。漸近させて、並の上昇流はほぼ素通しにする。
 const LIFT_LIMIT = 0.06;
-// 上昇流の利得。地形の上昇流は風上を冷やし風下(下降)を暖める [°C per m/s]。上昇流は地表付近の
-// 湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く [per m/s]。
-const LIFT_COOLING = 50;
+// 上昇流の利得。上昇流は地表付近の湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く
+// [per m/s]。
 const LIFT_HUMIDITY = 5;
 const UPPER_LIFT_HUMIDITY = 3;
 
@@ -86,7 +82,6 @@ const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.28;
 export class WeatherModel {
   private readonly circulation = new Circulation(R_EARTH);
   private readonly pressureNoise = new CirculatingNoise(this.circulation, ...PRESSURE_NOISE);
-  private readonly temperatureNoise = new CirculatingNoise(this.circulation, ...TEMPERATURE_NOISE);
   private readonly humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE);
   private readonly upperHumidityNoise = new CirculatingNoise(this.circulation, ...UPPER_HUMIDITY_NOISE);
   private readonly cyclones = new Cyclones(R_EARTH);
@@ -146,18 +141,12 @@ export class WeatherModel {
     const terrainLift = dot(components(wind), this.climate.slope(direction));
     const lift = limitLift(terrainLift.add(convergence.mul(CONVERGENCE_DEPTH)));
 
-    // 気候の平均へノイズと上昇流の効果を重ねる。湿度は写しを風で流したものへ上昇流を足す。
-    const temperature = this.climate.meanTemperature(direction)
-      .add(this.temperatureNoise.at(direction).mul(TEMPERATURE_NOISE_AMPLITUDE))
-      .sub(terrainLift.mul(LIFT_COOLING));
+    // 湿度は、風で流した写しへ上昇流の分を足したもの。
     const advected = this.advected(direction, wind);
     const humidity = clamp(advected.x.add(lift.mul(LIFT_HUMIDITY)), 0, 1);
     const upperHumidity = clamp(advected.y.add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)), 0, 1);
 
-    return {
-      pressure, convergence, wind: components(wind),
-      lift, temperature, humidity, upperHumidity,
-    };
+    return { pressure, convergence, wind: components(wind), lift, humidity, upperHumidity };
   }
 
   // 写しへ焼く気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。読むのは pressure.at()。
