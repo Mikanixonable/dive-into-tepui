@@ -7,7 +7,7 @@
 // 投影手順(project → set)を一元化したもの。headingRotationDeg は進行方向(ECI 速度)を
 // 向くグリフの回転角を求める。camera-system.ts が MarkerManager に依存しているため、
 // ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
-import { Vec3, addScaled, len, norm, sub, v3 } from '../../math/vec3';
+import { Vec3, addScaled, len, norm, sub } from '../../math/vec3';
 import { Projected } from '../../math/projection';
 import * as C from '../const';
 import { GroupedMarkers } from './grouped-markers';
@@ -15,10 +15,6 @@ import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
 import { resolveCrowdingWinner } from './crowding';
 import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
-import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
-import { toFrameDir } from '../../physics/frame';
-import { qRotate } from '../../physics/attitude';
-import type { ReferenceFrames } from '../../physics/reference-frames';
 
 const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 
@@ -299,8 +295,8 @@ export class MarkerManager {
     this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel, priority);
   }
 
-  // worldPos にいる対象の進行方向(基準天体相対速度・表示座標系)を、上向きグリフをその方向へ向ける
-  // rotationDeg に変換する(atan2 は 0=右方向を返すため +90 して補正する)。
+  // worldPos にいる対象の進行方向(最も強く引く天体に対する相対速度)を、上向きグリフをその方向へ
+  // 向ける rotationDeg に変換する(atan2 は 0=右方向を返すため +90 して補正する)。
   // set/setPosition の rotationDeg 引数へそのまま渡せる。速度が視線とほぼ平行で
   // 投影差が縮退し方位を定められないときは undefined を返す。
   headingRotationDeg(
@@ -309,20 +305,9 @@ export class MarkerManager {
     project: ProjectFn,
     scale: ScaleFn,
     celestialBodies: readonly CelestialBody[] = [],
-    frame?: ReferenceFrame,
-    displayTime?: number,
-    frames?: ReferenceFrames,
-    frameAnchors?: FrameAnchorSource,
   ): number | undefined {
     const center = celestialBodies.length > 0 ? strongestAttractor(worldPos, celestialBodies) : null;
-    let relVel = center ? sub(vel, center.state.v) : vel;
-    if (frame && displayTime !== undefined && frames && frameAnchors && celestialBodies.length > 0) {
-      const tf = frames.transformAt(frame, displayTime, frameAnchors);
-      if (tf) {
-        const vFrame = toFrameDir(tf, relVel);
-        relVel = qRotate(tf.q, v3(vFrame.x, vFrame.y, vFrame.z));
-      }
-    }
+    const relVel = center ? sub(vel, center.state.v) : vel;
     const probe = Math.max(1, scale(worldPos) * 2);
     const p0 = project(worldPos);
     const p1 = project(addScaled(worldPos, norm(relVel), probe));
