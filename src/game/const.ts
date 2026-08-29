@@ -203,7 +203,6 @@ export const OVERVIEW_CAMERA_FOV_MAX = 120; // 広範囲視点の最大垂直画
 // far とは独立に固定する。
 // far の下限(OVERVIEW_CAMERA_FAR_MIN)より 10% 内側に取る — 等しいと最小ズームで
 // 殻のジオメトリが far 平面上に乗り、視線方向の星・グリッドがクリップされる。
-export const CELESTIAL_SHELL_RADIUS = 1.35e10;
 export const NODE_DV_RATE = 300; // Δv 調整速度 [m/s per 実秒]
 export const NODE_DV_RATE_FINE = 30; // 微調整モード時
 // ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。噴射準備の通知・達成判定の開始・
