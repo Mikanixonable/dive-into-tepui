@@ -5,8 +5,8 @@ import { AbsoluteEphemeris, OriginCenteredEphemeris } from '../../../physics/abs
 import { EciOrigin, PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
-import type { CelestialEntity } from '../celestial-entity';
-import { StarEntity } from '../star-entity';
+import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { StarEntity } from '../celestial-entity/star-entity';
 import { PointFieldView } from '../point-field-view';
 import { generatePointField } from './point-field';
 import { DwarfPlanetId, DWARF_PLANET_NAMES, dwarfPlanets } from './dwarf-planets';

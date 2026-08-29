@@ -208,29 +208,6 @@ CODING-RULE 1.10 の全文検索対象(`src` `tests` `DEVELOP` `CLAUDE.md` `.cla
 
 ## 手順
 
-### 手順8. `celestial/celestial-entity/` を作る
-
-**目的.** 天体の個体とその派生が `celestial/` 直下に散らばっており、`game-entity/` が独立
-フォルダである積分側と形が揃っていない。個体をフォルダへ畳むことで、手順10 の到達形と
-同じ形になる。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/celestial-entity/{celestial-entity,celestial-entity-def,sphere-entity,star-entity,point-entity,ring-view,geostationary-overlay}.ts` | 7ファイルを `git mv` する |
-| 上を import する 25 ファイル(`celestial-system.ts` / `solar-system/` の9ファイル / `hud/` / `pickable/` / `tools/render-lab/cases.ts` ほか) | import パスを直す |
-
-**達成条件と検証**
-
-- `src/game/celestial/` の直下が `celestial-entity/` `orbit-guide/` `solar-system/` の3フォルダ +
-  `celestial-system.ts` `system-membership.ts` `planet-distance.ts` `scale-grid-view.ts`
-  `point-field-view.ts` になる。
-- `npm run typecheck` / `npm run test`(全層)が通る。
-- `npm run render-lab:shot` が走り切る(`tools/render-lab/cases.ts` の import が直っていること)。
-
----
-
 ### 手順9. `GameEntity` → `DynamicEntity`、`game-entity/` → `dynamic/dynamic-entity/`
 
 **目的.** 族語を `dynamic` へ揃え、個体のフォルダを新しい `dynamic/` の下へ入れる。

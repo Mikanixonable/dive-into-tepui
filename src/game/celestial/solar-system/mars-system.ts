@@ -11,9 +11,9 @@ import { MU_MARS } from './constants';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity';
-import { PointEntity } from '../point-entity';
-import { SphereEntity } from '../sphere-entity';
+import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { PointEntity } from '../celestial-entity/point-entity';
+import { SphereEntity } from '../celestial-entity/sphere-entity';
 import { MARS_POLE } from './poles';
 import { equatorialSatelliteOrbit } from './satellite-orbit-builders';
 
