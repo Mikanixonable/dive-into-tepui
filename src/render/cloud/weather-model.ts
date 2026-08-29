@@ -2,13 +2,14 @@
 // 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
 // 見えのための調整値。
 import {
-  abs, clamp, cos, cross, dot, float, fract, length, max, min, mix, normalize, sin, tanh, uniform, vec2,
+  abs, clamp, cos, cross, dot, float, fract, length, max, min, mix, normalize, sin, tanh, uniform, vec2, vec4,
 } from 'three/tsl';
+import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../physics/solar-system';
+import { BakedField } from './baked-field';
 import { Cyclones } from './cyclones';
 import { DriftingNoise } from './drifting-noise';
-import { PressureField } from './pressure-field';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { ClimateMap } from './climate-map';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
@@ -88,7 +89,8 @@ export class WeatherModel {
   private readonly humidityNoise = new DriftingNoise(...HUMIDITY_NOISE);
   private readonly upperHumidityNoise = new DriftingNoise(...UPPER_HUMIDITY_NOISE);
   private readonly cyclones = new Cyclones(R_EARTH);
-  private readonly pressure = new PressureField((direction) => this.pressureSource(direction));
+  private readonly pressure = new BakedField(
+    'pressure', THREE.RedFormat, (direction) => vec4(this.pressureSource(direction), 0, 0, 1));
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
@@ -120,13 +122,13 @@ export class WeatherModel {
     const north = northAt(direction);
 
     // 気圧の写しの 5 点差分から勾配(接ベクトル [hPa/rad])とラプラシアン。
-    const pressure = this.pressure.at(direction);
+    const pressure = this.pressure.at(direction).r;
     const eastStep = east.mul(GRADIENT_STEP);
     const northStep = north.mul(GRADIENT_STEP);
-    const pressureEast = this.pressure.at(normalize(direction.add(eastStep)));
-    const pressureWest = this.pressure.at(normalize(direction.sub(eastStep)));
-    const pressureNorth = this.pressure.at(normalize(direction.add(northStep)));
-    const pressureSouth = this.pressure.at(normalize(direction.sub(northStep)));
+    const pressureEast = this.pressure.at(normalize(direction.add(eastStep))).r;
+    const pressureWest = this.pressure.at(normalize(direction.sub(eastStep))).r;
+    const pressureNorth = this.pressure.at(normalize(direction.add(northStep))).r;
+    const pressureSouth = this.pressure.at(normalize(direction.sub(northStep))).r;
     const gradient = east.mul(pressureEast.sub(pressureWest)).add(north.mul(pressureNorth.sub(pressureSouth)))
       .div(2 * GRADIENT_STEP);
     const laplacian = pressureEast.add(pressureWest).add(pressureNorth).add(pressureSouth).sub(pressure.mul(4))
