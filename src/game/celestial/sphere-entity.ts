@@ -13,7 +13,7 @@ import type { LineOverlay } from '../../render/line-overlay';
 import { CelestialEntity } from './celestial-entity';
 import type { AtmosphereOptics } from '../../render/atmosphere';
 import type { Albedo } from '../../render/celestial-albedo';
-import type { BodyClass } from './celestial-entity-def';
+import type { CelestialClass } from './celestial-entity-def';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
@@ -38,7 +38,7 @@ export class SphereEntity extends CelestialEntity {
   constructor(
     motion: OrbitingMotion,
     name: string,
-    bodyClass: BodyClass,
+    bodyClass: CelestialClass,
     private readonly surface: CelestialSurface,
     atmosphereOptics: AtmosphereOptics | null = null,
     private readonly surfaceMarkings: LineOverlay | null = null,

@@ -1,5 +1,5 @@
-import { sameSystemIds } from '../celestial/body-visibility';
-import { BodyClass } from '../celestial/celestial-entity-def';
+import { sameSystemIds } from '../celestial/system-membership';
+import { CelestialClass } from '../celestial/celestial-entity-def';
 import { ObjectPickerGroup } from '../hud/windows/object-picker';
 import { OrbitingMotion, type CelestialBodyDef } from '../../physics/celestial-motion';
 import { EARTH } from '../celestial/solar-system/earth-system';
@@ -20,7 +20,7 @@ export function bodyGroupsOf(
 ): readonly ObjectPickerGroup<string>[] {
   const near0 = sameSystemIds(celestialSystem.motions, selected);
   const near = items.filter(([id]) => near0.has(id));
-  const byClass = (cls: BodyClass) => items.filter(([id]) => celestialSystem.bodyOf(id).bodyClass === cls);
+  const byClass = (cls: CelestialClass) => items.filter(([id]) => celestialSystem.bodyOf(id).bodyClass === cls);
   return [
     { label: 'いま選んでいる系', items: near },
     { label: '惑星', items: byClass('planet') },
