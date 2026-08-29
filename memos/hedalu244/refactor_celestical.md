@@ -132,28 +132,6 @@ solar-system に依存し、うち 17 ファイル(173ケース)は `solarSystem
 
 ## 手順
 
-### 手順1. 汎用型の引き上げと eciPole の自転率明示
-
-**目的**: celestial-motion.ts の solar-system への逆流依存(P2)を切る。汎用語彙
-`celestial-body-def.ts` を physics 直下へ移し、`'eciPole'` に `spinRate` を持たせて
-`SIDEREAL_DAY` の import を落とす。**この時点で挙動は変えない**(EARTH の spinRate に
-`(2π)/SIDEREAL_DAY` と同値を与える)。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/solar-system/celestial-body-def.ts` | `src/physics/celestial-body-def.ts` へ移動。`PoleModel` の `'eciPole'` へ `readonly spinRate: number`(rad/s)を追加 |
-| `src/physics/celestial-motion.ts` | import を新パスへ。`spinRateOf`(63行)と `orientationAt`(326-329行)を `model.spinRate` 読みに変え、`SIDEREAL_DAY` import を削除 |
-| `src/physics/solar-system/earth-system.ts` | `EARTH.pole` を `{ kind: 'eciPole', spinRate: (2 * Math.PI) / SIDEREAL_DAY }` に |
-| `src/physics/solar-system/` 内で celestial-body-def を import する全ファイル(poles.ts / rings.ts / 各系ファイル) | import パス張り替え |
-| `src/render/earth.ts:8`、`src/render/ring.ts`、`src/game/celestial/{celestial-system,sphere-entity,point-entity,ring-view}.ts` | import パス張り替え |
-| `tools/render-lab/cases.ts`、`tests/physics/shape.test.ts` | import パス張り替え |
-
-**達成条件と検証**: `npm run typecheck`。`npm run test:physics`。
-`grep -rn "solar-system/celestial-body-def" src/ tools/ tests/` が 0 件。
-`grep -n "SIDEREAL_DAY" src/physics/celestial-motion.ts` が 0 件。
-
 ### 手順2. earth-reference-orbits の地球定数を引数化
 
 **目的**: physics に残るもう1つの太陽系データ直読み(P2)を切る。参照軌道のレシピ(太陽同期・
