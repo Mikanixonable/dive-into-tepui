@@ -4,9 +4,11 @@
 import {
   abs, clamp, cos, cross, dot, float, fract, length, max, min, mix, normalize, sin, tanh, uniform, vec2,
 } from 'three/tsl';
+import type { WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../physics/solar-system';
 import { Cyclones } from './cyclones';
 import { DriftingNoise } from './drifting-noise';
+import { PressureField } from './pressure-field';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { ClimateMap } from './climate-map';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
@@ -58,7 +60,8 @@ const UPPER_LIFT_HUMIDITY = 3;
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
 const PRESSURE_BAND_AMPLITUDE = 8;
 
-// 気圧の勾配とラプラシアンを取る中心差分の刻み [rad]。台風の半径(300 km ≈ 0.047 rad)より小さい。
+// 気圧の勾配とラプラシアンを取る中心差分の刻み [rad]。台風の半径(700 km ≈ 0.11 rad)より小さく、
+// 気圧の写しの texel より数倍大きい。
 const GRADIENT_STEP = 0.01;
 // 風の利得 [m/s あたり hPa/rad]。流入は気圧の低い方へ、地衡風は等圧線に沿って(緯度の正弦に比例)。
 // 流入と地衡風の比が、地表風が等圧線を横切る角(中緯度で 20° 前後)を決める。
@@ -87,12 +90,18 @@ export class WeatherModel {
   private readonly humidityNoise = new DriftingNoise(...HUMIDITY_NOISE);
   private readonly upperHumidityNoise = new DriftingNoise(...UPPER_HUMIDITY_NOISE);
   private readonly cyclones = new Cyclones(R_EARTH);
+  private readonly pressure = new PressureField((direction) => this.pressureSource(direction));
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
   // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布。
   public constructor(private readonly climate: ClimateMap) {
     this.syncTime(0);
+  }
+
+  // いまの時刻の気圧を写しへ焼く。syncTime のあと、weatherAt のグラフを描く前に呼ぶ。
+  public bake(renderer: WebGPURenderer): void {
+    this.pressure.render(renderer);
   }
 
   // 時刻 [s] を uniform へ写す。
@@ -112,14 +121,14 @@ export class WeatherModel {
     const east = eastAt(direction);
     const north = northAt(direction);
 
-    // 気圧の 5 点差分から勾配(接ベクトル [hPa/rad])とラプラシアン。
-    const pressure = this.pressureAt(direction);
+    // 気圧の写しの 5 点差分から勾配(接ベクトル [hPa/rad])とラプラシアン。
+    const pressure = this.pressure.at(direction);
     const eastStep = east.mul(GRADIENT_STEP);
     const northStep = north.mul(GRADIENT_STEP);
-    const pressureEast = this.pressureAt(normalize(direction.add(eastStep)));
-    const pressureWest = this.pressureAt(normalize(direction.sub(eastStep)));
-    const pressureNorth = this.pressureAt(normalize(direction.add(northStep)));
-    const pressureSouth = this.pressureAt(normalize(direction.sub(northStep)));
+    const pressureEast = this.pressure.at(normalize(direction.add(eastStep)));
+    const pressureWest = this.pressure.at(normalize(direction.sub(eastStep)));
+    const pressureNorth = this.pressure.at(normalize(direction.add(northStep)));
+    const pressureSouth = this.pressure.at(normalize(direction.sub(northStep)));
     const gradient = east.mul(pressureEast.sub(pressureWest)).add(north.mul(pressureNorth.sub(pressureSouth)))
       .div(2 * GRADIENT_STEP);
     const laplacian = pressureEast.add(pressureWest).add(pressureNorth).add(pressureSouth).sub(pressure.mul(4))
@@ -162,8 +171,8 @@ export class WeatherModel {
     };
   }
 
-  // 気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。
-  private pressureAt(direction: Vec3Node): FloatNode {
+  // 写しへ焼く気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。読むのは pressure.at()。
+  private pressureSource(direction: Vec3Node): FloatNode {
     const band = cos(latitudeOf(direction).mul(6)).mul(-PRESSURE_BAND_AMPLITUDE);
     return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE)).add(this.cyclones.pressureAt(direction));
   }
@@ -178,6 +187,11 @@ export class WeatherModel {
     const sourceAt = (phase: FloatNode): FloatNode =>
       noise.at(normalize(direction.sub(wind.mul(phase.mul(ADVECTION_PERIOD / R_EARTH)))));
     return mix(sourceAt(phaseB), sourceAt(phaseA), weightA);
+  }
+
+  // 保持している GPU 資源を解放する。
+  public dispose(): void {
+    this.pressure.dispose();
   }
 }
 
