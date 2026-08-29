@@ -34,7 +34,7 @@ import { RcsEffects } from '../player/rcs-effects';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { RenderStyle } from '../../render/render-style';
-import type { MapVisibility } from '../celestial/map-visibility';
+import type { MapVisibility } from '../map/visibility-policy';
 import { currentThemePalette } from '../theme';
 
 export const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）

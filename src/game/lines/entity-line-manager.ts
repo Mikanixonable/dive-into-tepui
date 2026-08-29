@@ -12,7 +12,7 @@ import type { CombatTarget } from '../targeter';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { DisplayWindow } from '../display-window-manager';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { OrbitReference } from '../orbit-reference';
 
 const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線

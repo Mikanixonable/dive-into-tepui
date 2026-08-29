@@ -18,7 +18,7 @@ import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
 import type { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
-import type { MapVisibility, MapVisibilityPolicy } from './celestial/map-visibility';
+import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
 import type { NavTarget } from './nav-target';

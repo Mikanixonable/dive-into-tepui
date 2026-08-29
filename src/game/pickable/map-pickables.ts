@@ -16,8 +16,8 @@ import { len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/celestial-body';
 import { isOccluded } from '../../physics/occlusion';
 import { apsisAltitudes } from '../../physics/elements';
-import { isPositionInFocusedSystem, NearbySystemTracker } from '../celestial/body-visibility';
-import { MapVisibilityPolicy } from '../celestial/map-visibility';
+import { isPositionInFocusedSystem, NearbySystemTracker } from '../celestial/system-membership';
+import { MapVisibilityPolicy } from '../map/visibility-policy';
 import { MarkerManager } from '../marker/marker-manager';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
@@ -93,14 +93,14 @@ export class MapPickables {
     const displayCelestialBodies = this.celestialSystem.celestialBodiesAt(displayTime);
     const visibilityPolicy = new MapVisibilityPolicy(
       this.celestialSystem,
-      this.cameraSystem.bodyClassToggles,
+      this.cameraSystem.mapDisplayToggles,
       focusId,
       this.nearbyTracker.membersAt(
         this.celestialSystem.motions, this.cameraSystem.activeCameraPos, displayCelestialBodies),
     );
     this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
-      displayTime, this.cameraSystem.bodyClassToggles, visibilityPolicy,
+      displayTime, this.cameraSystem.mapDisplayToggles, visibilityPolicy,
     );
     this.navTarget.update(
       this.activePlayers.current, this.entities, this.celestialSystem, displayWindow, this.frameAnchors);
