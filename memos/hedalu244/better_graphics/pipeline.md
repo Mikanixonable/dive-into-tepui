@@ -32,8 +32,9 @@
 ### 1-1. GPU に ECI 絶対座標を載せない
 
 描画はすべてフローティングオリジン座標系(`THREE.Vector3`)で行う。具体的には
-**`src/render/**` から `Vec3` / `KinematicState` / `ReferenceFrame` / `Attractor` /
-`Ephemeris` / `OrbitalElements` / `FloatingOrigin` への import が 0 件**であること。
+**`src/render/**` から `Vec3` / `KinematicState` / `ReferenceFrame` /
+`CelestialMotion` / `OrbitalElements` / `FloatingOrigin` への import が 0 件**であること。
+`CelestialBody` だけは例外で、光源・遮蔽の選定を render が持つため ECI の値として渡る。
 シェーダへ渡す位置は G バッファでも影マップでも照度バッファでもすべて描画座標系。
 
 唯一の例外は `game/celestial/point-field-view.ts` の `instanceMatrix`(太陽中心の生座標を
@@ -472,8 +473,8 @@ instanceMatrix の受け渡し経路を `count` から決め、最初の描画�
   べきか。見た目の変更を伴うかもしれない)、太陽の球と星殻(emissive を表現できるなら不透明パスへ。
   emissive が障害になるなら逆に両方を world から降ろす道もある)、小天体の点群、惑星の環
   (反射するマテリアルだが半透明という微妙な立ち位置)、惑星の輝点スプライト。
-- **`game/celestial/{sphere,point,sun,earth}-view.ts` 等を `render/celestial/` へ移せるか。**
-  これらは `Ephemeris` / `FloatingOrigin` / `Vec3` を読むので、そのまま移すと §1-1 を破る。
+- **`game/celestial/celestial-entity/*.ts` 等を `render/celestial/` へ移せるか。**
+  これらは `CelestialMotion` / `FloatingOrigin` / `Vec3` を読むので、そのまま移すと §1-1 を破る。
   移せるのは ECI を受け取らない部分だけ。**当面は動かさない。**
 - **月だけが LOD ラダーに乗らず 64×32 に固定されている。** テクスチャの経度原点を合わせるために
   ジオメトリを回すので、段ごとの共有ジオメトリを使えない(回すと他の天体まで一緒に回る)。
