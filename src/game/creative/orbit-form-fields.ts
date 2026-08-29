@@ -1,5 +1,5 @@
 import { sameSystemIds } from '../celestial/system-membership';
-import { CelestialClass } from '../celestial/celestial-entity-def';
+import { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import { ObjectPickerGroup } from '../hud/windows/object-picker';
 import { OrbitingMotion, type CelestialBodyDef } from '../../physics/celestial-motion';
 import { EARTH } from '../celestial/solar-system/earth-system';

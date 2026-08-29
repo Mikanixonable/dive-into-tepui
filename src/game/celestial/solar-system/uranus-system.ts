@@ -6,9 +6,9 @@ import {
 } from '../../../physics/celestial-motion';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity';
-import { PointEntity } from '../point-entity';
-import { SphereEntity } from '../sphere-entity';
+import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { PointEntity } from '../celestial-entity/point-entity';
+import { SphereEntity } from '../celestial-entity/sphere-entity';
 import { URANUS_POLE, equatorBasis } from './poles';
 import { URANUS_RINGS } from './rings';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';

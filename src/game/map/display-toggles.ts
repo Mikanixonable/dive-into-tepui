@@ -1,7 +1,7 @@
 // マップの表示トグル。天体のクラス(惑星・準惑星・衛星・小天体・ラグランジュ点)と、積分で動く
 // 個体の種別(自機・敵艦・弾薬・燃料・基地)を同じ表で持つ — 表示パネルの1ボタンが示す状態も、
 // 保存される boolean の組も、この1つの表が正本。
-import type { CelestialClass } from '../celestial/celestial-entity-def';
+import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 
 export type MapDisplayToggles = {
   readonly planetVisible: boolean;

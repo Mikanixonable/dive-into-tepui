@@ -32,8 +32,8 @@ import {
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { atmosphereDraws } from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
-import { CelestialEntity } from './celestial-entity';
-import { StarEntity } from './star-entity';
+import { CelestialEntity } from './celestial-entity/celestial-entity';
+import { StarEntity } from './celestial-entity/star-entity';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import { OrbitGuideLines } from './orbit-guide/orbit-guide-lines';
 import { ZeroVelocityLines } from './orbit-guide/zero-velocity-lines';

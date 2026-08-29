@@ -1,23 +1,23 @@
 // 「テクスチャ球」で済む天体(月・木星など)の見た目を実 ECI 位置・実半径で描く。
 // 見かけ直径が閾値未満なら球自体を描かない。
 import * as THREE from 'three/webgpu';
-import { OrbitingMotion } from '../../physics/celestial-motion';
-import { shapeAxes } from '../../physics/celestial-body-def';
-import { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../camera/floating-origin';
-import { spinOrientation } from '../../physics/body-orientation';
-import { showsPhysicalSphere } from '../../render/screen-lod';
-import { CelestialSurface } from '../../render/celestial-surface';
-import { BodyGraticule } from '../../render/body-graticule';
-import type { LineOverlay } from '../../render/line-overlay';
+import { OrbitingMotion } from '../../../physics/celestial-motion';
+import { shapeAxes } from '../../../physics/celestial-body-def';
+import { CameraSystem } from '../../camera/camera-system';
+import { FloatingOrigin } from '../../camera/floating-origin';
+import { spinOrientation } from '../../../physics/body-orientation';
+import { showsPhysicalSphere } from '../../../render/screen-lod';
+import { CelestialSurface } from '../../../render/celestial-surface';
+import { BodyGraticule } from '../../../render/body-graticule';
+import type { LineOverlay } from '../../../render/line-overlay';
 import { CelestialEntity } from './celestial-entity';
-import type { AtmosphereOptics } from '../../render/atmosphere';
-import type { Albedo } from '../../render/celestial-albedo';
+import type { AtmosphereOptics } from '../../../render/atmosphere';
+import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import type { SunLight } from '../../render/pipeline/sun-light';
-import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
-import type { RenderStyle } from '../../render/render-style';
+import type { GraphicsSettingsData } from '../../../render/graphics-settings';
+import type { SunLight } from '../../../render/pipeline/sun-light';
+import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
+import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
 import { RingView } from './ring-view';
 

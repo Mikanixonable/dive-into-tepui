@@ -2,7 +2,7 @@
 // 軌道上の特異点を指すのか」なので、塗りつぶし=実体・矢=方向・中空=軌道上の点、と
 // 字形の族をその区別に対応させる。どの字形を使うかは各マーカーの所有者が選ぶので、
 // ここが持つのは族ごとの選択肢だけで、キーとマーカーの対応は持たない。
-import type { CelestialClass } from '../celestial/celestial-entity-def';
+import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 
 // 3D 空間に実在する物。
 export const ENTITY_GLYPH = {

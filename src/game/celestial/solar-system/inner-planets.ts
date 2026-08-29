@@ -5,8 +5,8 @@ import { OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
 import { EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, StarMotion } from '../../../physics/celestial-motion';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity';
-import { PointEntity } from '../point-entity';
+import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { PointEntity } from '../celestial-entity/point-entity';
 
 // 内惑星に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type InnerPlanetId = 'mercury' | 'venus';

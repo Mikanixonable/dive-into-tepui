@@ -19,11 +19,11 @@ import { add } from '../../math/vec3';
 import type { StageSaveData } from '../save/save-data';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { CelestialSurface } from '../../render/celestial-surface';
-import { celestialClassOfKind } from '../celestial/celestial-entity-def';
-import { CelestialEntity } from '../celestial/celestial-entity';
+import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-entity-def';
+import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
-import { SphereEntity } from '../celestial/sphere-entity';
-import { StarEntity } from '../celestial/star-entity';
+import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
+import { StarEntity } from '../celestial/celestial-entity/star-entity';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
 
 const PRIMARY_ID = 'zephyrus';

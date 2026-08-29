@@ -11,9 +11,9 @@ import {
 import { planetOrbit } from '../../../physics/planet-orbit';
 import { MU_JUPITER } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity';
-import { PointEntity } from '../point-entity';
-import { SphereEntity } from '../sphere-entity';
+import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { PointEntity } from '../celestial-entity/point-entity';
+import { SphereEntity } from '../celestial-entity/sphere-entity';
 import { JUPITER_LAPLACE_BASIS, JUPITER_POLE } from './poles';
 import { JUPITER_RINGS } from './rings';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';

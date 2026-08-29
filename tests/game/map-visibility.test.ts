@@ -16,7 +16,7 @@ import {
   MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, nextMapDisplayMode,
 } from '../../src/game/map/display-toggles';
 import { alwaysFullyVisibleIds } from '../../src/game/map/visibility-policy';
-import { CelestialClass, celestialClassOfKind } from '../../src/game/celestial/celestial-entity-def';
+import { CelestialClass, celestialClassOfKind } from '../../src/game/celestial/celestial-entity/celestial-entity-def';
 import { v3, addScaled } from '../../src/math/vec3';
 
 const MIN_CLEARANCE = 10;

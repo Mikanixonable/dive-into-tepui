@@ -7,9 +7,9 @@ import {
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { MU_NEPTUNE } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity';
-import { PointEntity } from '../point-entity';
-import { SphereEntity } from '../sphere-entity';
+import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { PointEntity } from '../celestial-entity/point-entity';
+import { SphereEntity } from '../celestial-entity/sphere-entity';
 import { NEPTUNE_POLE } from './poles';
 import { NEPTUNE_RINGS } from './rings';
 import { equatorialSatelliteOrbit, jplSatelliteOrbit } from './satellite-orbit-builders';

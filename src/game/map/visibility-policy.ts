@@ -5,7 +5,7 @@ import {
 } from '../celestial/system-membership';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import { celestialClassVisible, celestialNameVisible, type MapDisplayToggles } from './display-toggles';
-import type { CelestialClass } from '../celestial/celestial-entity-def';
+import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../celestial/celestial-system';
 
 export type DynamicEntityKind = 'player' | 'ship' | 'ammo' | 'fuel' | 'base';
