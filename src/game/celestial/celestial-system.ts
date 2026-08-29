@@ -30,7 +30,6 @@ import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { type AtmosphereCandidate, atmosphereDraws } from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialEntity } from './celestial-entity';
-import { Earth } from './earth';
 import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
 import { MapVisibilityPolicy } from './map-visibility';
 import { OrbitGuideLines } from './orbit-guide-lines';
@@ -261,9 +260,11 @@ export class CelestialSystem {
   // ラグランジュ点まわりの軌道ガイド線(右クリックの当たり判定向け)。
   get orbitGuide(): OrbitGuideLines { return this.orbitGuideLines; }
 
-  // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
+  // ECI の極軸を自転軸とする天体(この座標系を定義している天体)の自転初期位相(セーブ用)。
+  // その天体が星系に無ければ undefined。
   earthSpinPhase0(): number | undefined {
-    return this.bodies.find((b) => b instanceof Earth)?.motion.spinPhase0;
+    const pole = this.bodies.find((b) => 'pole' in b.def && b.def.pole?.kind === 'eciPole');
+    return pole?.motion.spinPhase0;
   }
 
   // 天体ビュー・星・照明・遮蔽・参照線・天球グリッドを、この1フレームの表示状態に同期する。

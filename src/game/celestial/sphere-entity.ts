@@ -33,19 +33,15 @@ export class SphereEntity extends CelestialEntity {
   private ring?: RingView;
   // 模式図スタイルでだけ見せる経緯度グリッド。姿勢は group の子として自然に追従する。
   private readonly graticule = new BodyGraticule();
-  // 模式図スタイルでだけ見せる、天体固有の表面ライン(月の海・クレーターなど)。持たない天体では
-  // undefined のまま。
-  private readonly surfaceMarkings?: LineOverlay;
-
-  // 実半径・歪みの形状・環は motion の定義から引く。surfaceMarkings は表面ラインの LineOverlay を
-  // 作るファクトリ(その天体固有のデータを持つ具象クラスを呼び出し側が渡す)。
+  // 実半径・歪みの形状・環は motion の定義から引く。surfaceMarkings は模式図スタイルでだけ
+  // 見せる天体固有の表面ライン(月の海・クレーターなど)で、持たない天体では null。
   constructor(
     motion: OrbitingMotion,
     name: string,
     bodyClass: BodyClass,
     private readonly surface: CelestialSurface,
     atmosphereOptics: AtmosphereOptics | null = null,
-    surfaceMarkings?: () => LineOverlay,
+    private readonly surfaceMarkings: LineOverlay | null = null,
   ) {
     super(motion, name, bodyClass, atmosphereOptics);
     const def = motion.def;
@@ -56,7 +52,6 @@ export class SphereEntity extends CelestialEntity {
     this.outerRadius = def.rings === undefined
       ? def.radius
       : def.rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), def.radius);
-    this.surfaceMarkings = surfaceMarkings?.();
   }
 
   get lightSourceAlbedo(): Albedo | null { return this.surface.photometry?.lightSourceAlbedo ?? null; }

@@ -6,8 +6,12 @@ import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
-import { createEarth } from '../../src/render/earth';
-import { R_EARTH, R_SUN } from '../../src/physics/solar-system/constants';
+import cloudsTextureUrl from '../../src/assets/8k_clouds.jpg';
+import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/physics/solar-system/constants';
+import { EARTH } from '../../src/physics/solar-system/earth-system';
+import { shapeAxes, type RingBandDef } from '../../src/physics/celestial-body-def';
+import { BodyGraticule } from '../../src/render/body-graticule';
+import { EarthCoastline } from '../../src/render/earth-coastline';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
@@ -22,17 +26,15 @@ import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import type { FloatNode } from '../../src/render/tsl-types';
 import { type AtmosphereBody } from '../../src/render/atmosphere';
-import { EARTH_ATMOSPHERE_OPTICS } from '../../src/game/celestial/solar-system/earth-system';
+import { EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
-import { type RingBandDef } from '../../src/physics/celestial-body-def';
 import { MARS } from '../../src/physics/solar-system/mars-system';
 import { SATURN } from '../../src/physics/solar-system/saturn-system';
 import { type CelestialTexture } from '../../src/render/celestial-textures';
-import { EARTH_TEXTURES } from '../../src/render/earth';
 import { MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
 import { SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
 import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection';
@@ -76,7 +78,7 @@ const GREY_SPHERE_ALBEDO: Albedo = [0.521, 0.4793, 0.4179];
 const SATURN_ALBEDO: Albedo = scaledToBondAlbedo([1, 0.812, 0.530], SATURN_TEXTURE.bondAlbedo);
 
 // 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
-const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURES.averageHue, EARTH_TEXTURES.bondAlbedo);
+const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURE.averageHue, EARTH_TEXTURE.bondAlbedo);
 
 // カメラは常に原点から -Z を見る。near はゲーム本体と同じ 2 m(深度分解能の導出がこの値に乗る)。
 const EYE = new THREE.Vector3(0, 0, 0);
@@ -589,16 +591,24 @@ function marchSlab(): LabCase {
   return { objects: [plane], camera };
 }
 
-// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。線の表示はスタイルへ従う。
+// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。雲を合成した地表と、模式図で
+// だけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。
 function earthAt(center: THREE.Vector3, style: RenderStyle): THREE.Object3D {
-  const built = createEarth();
-  built.group.position.copy(center);
-  built.setAuroraVisible(false);
-  built.setGraticuleVisible(style === 'schematic');
-  built.setCoastlineVisible(style === 'schematic');
-  built.syncSurfaceLod(CLOSE_UP_DIAMETER_PX);
-  built.tick(0);
-  return built.group;
+  const group = new THREE.Group();
+  group.position.copy(center);
+  const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
+  group.scale.set(axes.x, axes.y, axes.z);
+  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl);
+  surface.addTo(group);
+  surface.syncLod(CLOSE_UP_DIAMETER_PX);
+  surface.setCloudAmount(1);
+  const graticule = new BodyGraticule();
+  graticule.addTo(group);
+  graticule.setVisible(style === 'schematic');
+  const coastline = new EarthCoastline();
+  coastline.addTo(group);
+  coastline.setVisible(style === 'schematic');
+  return group;
 }
 
 // カメラ(原点)から見て、地球の地平線が視線から margin [rad] だけ下へ来る向きの地球中心。
