@@ -8,7 +8,7 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { EntityManager } from '../simulation/entity-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { VisibleGuideLine } from '../celestial/orbit-guide-lines';
+import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
 import type { GameEntity } from '../game-entity/game-entity';
 import { OrbitCalcMethod, OrbitPickable } from './orbit-pickable';
 

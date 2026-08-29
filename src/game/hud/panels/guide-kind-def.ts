@@ -7,10 +7,10 @@
 // まとめた CombinedKindDef になる。
 import { guideKindDefaultColors } from '../../const';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { GUIDE_GROUPS, type GuideGroupId } from '../../celestial/orbit-guide-settings';
+import { GUIDE_GROUPS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-settings';
 import {
   parseGuideKindId, type CombinedKindAxes, type ParsedGuideKindId,
-} from '../../celestial/orbit-guide-kind-ids';
+} from '../../celestial/orbit-guide/orbit-guide-kind-ids';
 
 // 4.1 の表の日本語訳+英語併記。族の base 名(id の先頭要素)をキーにする。
 const BASE_LABELS: Readonly<Record<string, string>> = {
