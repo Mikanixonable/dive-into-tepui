@@ -5,7 +5,7 @@ import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { guideSecondary } from '../../physics/orbit-guide';
 import type { Vec3 } from '../../math/vec3';
 import type { DisplayWindow } from '../display-window-manager';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { CameraSystem } from '../camera/camera-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
@@ -23,7 +23,7 @@ export class OrbitPickables {
   get pickables(): readonly OrbitPickable[] { return this.items; }
 
   constructor(
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly cameraSystem: CameraSystem,
   ) {}

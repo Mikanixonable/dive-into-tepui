@@ -3,7 +3,7 @@
 import { CelestialBody, strongestAttractor } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
-import { entityStateAt } from '../../simulation/entity-state-at';
+import { entityStateAt } from '../../dynamic/entity-state-at';
 import { ACCENT, ACCENT_SECONDARY } from '../../theme';
 import { ApproachTargetSource, projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { OrbitProjectionChart, ProjectionChartSpec, ProjectionSeriesSpec } from './orbit-projection-chart';

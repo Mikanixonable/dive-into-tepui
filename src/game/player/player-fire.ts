@@ -14,7 +14,7 @@ import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { Stage } from '../stages/stage';
@@ -146,7 +146,7 @@ export class PlayerFire {
     dt: number,
     input: Input,
     activeStage: Stage,
-    entities: EntityManager,
+    entities: DynamicSystem,
     celestialSystem: CelestialSystem,
   ): void {
     this.tickReloadTimer(dt);
@@ -190,7 +190,7 @@ export class PlayerFire {
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(
     activeStage: Stage,
-    entities: EntityManager,
+    entities: DynamicSystem,
     celestialSystem: CelestialSystem,
   ): void {
     const justStartedFiring = !this.wasFiring;
@@ -272,7 +272,7 @@ export class PlayerFire {
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
   private fireGun(
     activeStage: Stage,
-    entities: EntityManager,
+    entities: DynamicSystem,
     celestialSystem: CelestialSystem,
   ): void {
     const fwd = qRotate(this.player.att.q, v3(0, 0, 1));
@@ -300,7 +300,7 @@ export class PlayerFire {
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, entities: EntityManager, celestialSystem: CelestialSystem,
+    ship: Ship, muzzle: Vec3, fwd: Vec3, entities: DynamicSystem, celestialSystem: CelestialSystem,
   ): void {
     const sunDir = celestialSystem.sunDirFrom(ship.state.r, ship.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);

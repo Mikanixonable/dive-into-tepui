@@ -5,8 +5,8 @@ import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../hud/widgets';
 import * as C from '../const';
 import type { Player } from '../player/player';
-import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
 
 export class StageDebug extends Stage {
@@ -31,7 +31,7 @@ export class StageDebug extends Stage {
   }
 
   // 自機を置き、敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
-  protected init(entities: EntityManager): void {
+  protected init(entities: DynamicSystem): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
     const enemies = generateWave(player.state, this.waveCount++, this._celestialSystem, this._worldSfx, this._fx, this._scene, 'random');
     for (const enemy of enemies) this.addEnemy(enemy, entities);
@@ -62,7 +62,7 @@ export class StageDebug extends Stage {
   }
 
   // 敵の行動を進め、射撃許可を毎フレーム自ステージの敵全体へ反映する。
-  update(_dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
     for (const e of entities.enemies) e.fireEnabled = this.enemyFireEnabled;
     this.behaveAllEnemies(player, entities, simTime, simSpeed);

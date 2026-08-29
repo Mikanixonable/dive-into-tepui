@@ -67,7 +67,7 @@ export class OrbitPanel {
 
     this.referenceControl.setSelected(game.orbitReference.selectedMode);
     const reference = game.orbitReference.resolve(
-      entity.state.r, celestialBodies, game.navTarget, game.entities, game.celestialSystem, entity.state.t,
+      entity.state.r, celestialBodies, game.navTarget, game.dynamicSystem, game.celestialSystem, entity.state.t,
     );
     const oi = orbitInfo(entity, reference, (id) => game.celestialSystem.nameOf(id));
     const apSpec = getApsisLabelSpec('ap', oi.centerId);

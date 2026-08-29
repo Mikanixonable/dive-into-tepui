@@ -9,7 +9,7 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { Player } from '../player/player';
 import { currentThemePalette } from '../theme';
 import type { CombatTarget } from '../targeter';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { DisplayWindow } from '../display-window-manager';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
@@ -40,7 +40,7 @@ function sameTrajectoryStyle(style: LineStyle): TrajectoryStyles {
 }
 
 export class EntityLineManager {
-  constructor(private readonly entities: EntityManager) {}
+  constructor(private readonly entities: DynamicSystem) {}
 
   // 出す/消す/スタイルを決める。判断材料(表示可否・ターゲット・操作艦・ビュー)が
   // このフレームの確定値になった後に呼ぶ。
