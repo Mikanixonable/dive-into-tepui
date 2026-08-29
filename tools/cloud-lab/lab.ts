@@ -68,9 +68,11 @@ export class CloudLabCanvas {
     this.render();
   }
 
-  // いまの時刻をモデルへ入れ、選んだ量をキャンバスへ出す。写しは、それを読むビューのときだけ焼く。
+  // いまの時刻をモデルへ入れ、選んだ量をキャンバスへ出す。雲の場の写しは、それを読むビューの
+  // ときだけ焼く(気圧の写しはどのビューも読むので必ず焼く)。
   public render(): void {
     this.model.syncTime(this.seconds);
+    this.model.bake(this.renderer);
     if (this.view.readsFields) this.fields.render(this.renderer);
     this.quad.render(this.renderer);
   }
