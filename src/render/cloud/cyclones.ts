@@ -5,12 +5,15 @@ import { exp, float, length, uniform } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 // 台風。中心の緯度 [rad]、時刻 0 の経度 [rad]、西進の速さ [m/s]、深さ [hPa]、半径 [m]。
-// 半径は目の大きさではなく、風と雲が渦を巻いて見える範囲。
+// 半径は目の大きさではなく、渦の広がり。雲が一面に覆う円盤はこの 0.95 倍(収束が正の範囲)、
+// その外側に下降で乾いた環が同じだけ続く。
 const TYPHOON_LATITUDE = THREE.MathUtils.degToRad(15);
 const TYPHOON_LONGITUDE = THREE.MathUtils.degToRad(140);
 const TYPHOON_DRIFT = -8;
-const TYPHOON_DEPTH = 50;
-const TYPHOON_RADIUS = 1200e3;
+const TYPHOON_DEPTH = 35;
+const TYPHOON_RADIUS = 700e3;
+// 目の半径 [m]。谷よりずっと小さく、ここだけ湿度が落ちて雲が抜ける。
+const TYPHOON_EYE_RADIUS = 200e3;
 
 // 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、半径 [m]
 // (番号で最小から幅のあいだへ散らす)、中心の緯度の範囲 [rad]。寿命の中で深さは山形に変わり、
@@ -44,10 +47,15 @@ class Trough {
     );
   }
 
-  // 単位方向 direction での気圧の落ち込み [hPa](負)。中心からの距離は弦で測るので、対蹠点に鏡像が出ない。
-  public pressureAt(direction: Vec3Node, radiusOfBody: number): FloatNode {
+  // 中心から radius [m] で 1 → 1/e へ落ちるガウス。距離は弦で測るので、対蹠点に鏡像が出ない。
+  public falloff(direction: Vec3Node, radiusOfBody: number, radius: number): FloatNode {
     const chord = length(direction.sub(this.center)).mul(radiusOfBody);
-    return exp(chord.div(this.radius).pow(2).negate()).mul(this.depth).negate();
+    return exp(chord.div(radius).pow(2).negate());
+  }
+
+  // 単位方向 direction での気圧の落ち込み [hPa](負)。
+  public pressureAt(direction: Vec3Node, radiusOfBody: number): FloatNode {
+    return this.falloff(direction, radiusOfBody, this.radius).mul(this.depth).negate();
   }
 }
 
@@ -82,6 +90,11 @@ export class Cyclones {
       low.place(latitude, longitude);
       low.depth.value = LOW_DEPTH * Math.sin(Math.PI * life);
     }
+  }
+
+  // 台風の目の中の強さ 0..1(中心で 1、外で 0)。
+  public typhoonEyeAt(direction: Vec3Node): FloatNode {
+    return this.typhoon.falloff(direction, this.radius, TYPHOON_EYE_RADIUS);
   }
 
   // 単位方向 direction での気圧の落ち込みの合計 [hPa](0 以下)。
