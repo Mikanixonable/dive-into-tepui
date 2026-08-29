@@ -42,7 +42,9 @@ satellite のどの kind でも恒星中心を返し、`SatelliteMotion.helioSta
 ### 判断2. 供給源の混在規則を、暗黙から明示へ移す
 
 **暦パックに入っているのは 11 天体だけ**(sun, mercury, venus, earth, moon, mars, jupiter, saturn,
-uranus, neptune, pluto)で、登録されている天体は **105 体**ある。有効期間内でも大半は解析経路を通る。
+uranus, neptune, pluto)で、登録されている天体は **98 体**ある。有効期間内でも大半は解析経路を通る。
+実測では、パックの有無で t=0 の ECI 位置が変わるのは 98 体中 **54 体** — 収録 11 体より多いのは、
+収録惑星の衛星が「パックの惑星 + 解析の惑星相対」で組まれるため。
 
 いまは「自分がパックで引けるならパック経路(このとき原点天体もパックから引かれる)、引けないなら
 両端とも解析」という規則が `OriginCenteredEphemeris` の内側に隠れている
@@ -120,7 +122,7 @@ ephemeris の `stateOf(id, t)` と同じ形になる。`phaseOffsets` はセー�
 4. `epochOffsetSec` が `physics/` と `game/celestial/solar-system/` の引数から消える —
    `grep -rn "epochOffsetSec" src/game/celestial/` が 0 件。
 5. `OrbitalElements` が元期を持ち、`stateAt(el, t)` がある。参照軌道では null を返す。
-6. **数値が変わらない** — 下記のベースライン比較で、全 105 天体・全サンプル時刻の ECI 位置が
+6. **数値が変わらない** — 下記のベースライン比較で、全 98 天体・全サンプル時刻の位置・速度が
    変更前と一致する(相対誤差 0)。
 7. `npm run typecheck` と `npm run test`(全層)が通る。
 
@@ -129,34 +131,20 @@ ephemeris の `stateOf(id, t)` と同じ形になる。`phaseOffsets` はセー�
 着手前に、現行ツリーで次を走らせて基準値を採る。同じスクリプトを各手順の後に走らせて突き合わせる。
 
 ```
-tests/physics/test-helpers.ts の solarSystemParts(phases, epochOffsetSec, absoluteSource, epochJdTdb)
-  absoluteSource = PackedAbsoluteEphemeris.fromTrustedBytes(
-    readFileSync('src/assets/ephemeris/modern-2026-10y.epk'))
-  epochJdTdb = 2461041.5(modern-de440 の validStart)
+tests/physics/_baseline.ts(一時ファイル。*.test.ts にしないこと — run.ts は *.test.js だけ登録する)
+  先頭で import '../repo-assets'(アセット require のスタブ)が要る
+  solarSystemParts(phases, epochOffsetSec, absoluteSource, epochJdTdb) を3構成で組む:
+    far-future(ゲーム既定): far-future-20115-10y.epk / SIM_EPOCH_ET / SIM_EPOCH_JD_TDB
+    modern-de440:          modern-2026-10y.epk / 820497600 / 2461041.5
+    パック無し:            null / SIM_EPOCH_ET / SIM_EPOCH_JD_TDB
 サンプル時刻: パック有効期間の内側 5 点(0, 1e6, 5e7, 1.5e8, 3.1e8 秒)と外側 2 点(-1e8, 5e8 秒)
-出力: 全 105 天体 × 7 時刻の positionOf(parts, id, t) を JSON へ
+出力: 全 98 天体 × 7 時刻の stateAt(t) の r・v(計 12,348 値)を JSON へ
 ```
 
-**パック収録の 11 天体だけでなく全 105 天体を出すこと** — 判断2 の混在規則が壊れると、
-壊れるのは収録されていない 94 天体のほうである。
+**パック収録の 11 天体だけでなく全 98 天体を出すこと** — 判断2 の混在規則が壊れると、
+壊れるのは収録されていない 87 天体のほうである。
 
 ## 手順
-
-### 手順1. `eciStateAt` の供給源選択を明示する
-
-**目的.** ECI 変換を引き上げる前に、「両端を同じ供給源から取る」規則をコードの表面へ出す。
-いまは `OriginCenteredEphemeris` が本体と原点の両方を引くことで暗黙に成立している。
-**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/celestial-motion.ts:180-196` | `eciStateAt` を「まず供給源を1つ決め、本体と原点をその供給源から引く」形へ書き直す。パック経路が選ばれる条件(`precise !== null && isValidAt(t) && packedStateAt(...) !== null`)を1つの述語へ括り出す |
-| 同 `:193-196`, `:514-521` | `packedStateAt` の戻り値 null が「この天体はこの供給源では引けない」を意味することをコメントで固定する |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test:physics`。
-ベースライン比較が全 105 天体 × 7 時刻で完全一致。
 
 ### 手順2. ephemeris の原点を根へ移し、ECI 変換を `eciStateAt` へ集約する
 
@@ -176,7 +164,7 @@ ECI 原点天体を引く処理を1箇所にする。**数値は変わらない*
 | `tests/physics/packed-absolute-ephemeris.test.ts` | 影響があれば追従 |
 
 **達成条件と検証.** `npm run typecheck` / `npm run test`(全層)。
-ベースライン比較が全 105 天体 × 7 時刻で完全一致。
+ベースライン比較が全 98 天体 × 7 時刻で完全一致。
 `grep -n "originId" src/game/celestial/solar-system/solar-system.ts` が ECI 原点の用途だけを返す
 (暦の構築には現れない)。
 
@@ -204,7 +192,7 @@ ECI 原点天体を引く処理を1箇所にする。**数値は変わらない*
 
 **達成条件と検証.** `npm run typecheck` / `npm run test`(全層)。
 `grep -rn "phaseOffset" src/` が 0 件、`grep -rn "epochOffsetSec" src/game/celestial/` が 0 件。
-ベースライン比較が全 105 天体 × 7 時刻で完全一致。
+ベースライン比較が全 98 天体 × 7 時刻で完全一致。
 
 ### 手順4. `OrbitalElements` に元期を持たせ、`stateAt` を足す
 
@@ -224,7 +212,7 @@ ECI 原点天体を引く処理を1箇所にする。**数値は変わらない*
 
 **達成条件と検証.** `npm run typecheck` / `npm run test:physics`。
 新しい表明: 楕円・双曲線の両方で `stateAt(el, el.t0) === (元の状態)` が機械精度で成り立つ。
-ベースライン比較が全 105 天体 × 7 時刻で完全一致(追加のみなので当然一致すべき)。
+ベースライン比較が全 98 天体 × 7 時刻で完全一致(追加のみなので当然一致すべき)。
 
 ### 手順5.(案Y を採る場合のみ)`SatelliteOrbit` を日心にする
 
@@ -242,7 +230,7 @@ ECI 原点天体を引く処理を1箇所にする。**数値は変わらない*
 | `tests/physics/{satellite-orbit,laplace-satellites,irregular-satellites}.test.ts` | 追従 |
 
 **達成条件と検証.** `npm run typecheck` / `npm run test`(全層)。
-ベースライン比較が全 105 天体 × 7 時刻で完全一致。
+ベースライン比較が全 98 天体 × 7 時刻で完全一致。
 
 ## 見積り
 
@@ -250,7 +238,7 @@ ECI 原点天体を引く処理を1箇所にする。**数値は変わらない*
 
 | 手順 | 触る箇所 | 根拠 |
 | --- | --- | --- |
-| 1 | 約 20 行 | `celestial-motion.ts` の1メソッドとコメントのみ |
+| ~~1~~ | 実測 33 行 | 実施済み |
 | 2 | 約 60 | `OriginCenteredEphemeris` 32 + `eciStateAt` 周辺 15 + テスト 3ファイル |
 | 3 | 約 200 | `epochOffsetSec` 133 + `phaseOffset` 19 + `keplerOrbitState` 36 + `planetAngles` 19 の一部 |
 | 4 | 約 25 | `OrbitalElements` の構築点 2 + `stateAt` 新規 + テスト |
