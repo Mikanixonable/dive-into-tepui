@@ -55,7 +55,7 @@ function sbdbOrbit(p: {
 }
 
 // 彗星核の μ/半径は観測が乏しく粗い推定値。
-export const HALLEY: PlanetDef = {
+const HALLEY: PlanetDef = {
   id: 'halley',
   mu: GRAVITATIONAL_CONSTANT * 2.2e14, // 粗い推定値(核質量 ~2.2e14 kg 相当)
   radius: 5.5e3, // 粗い推定値(核長径の半分程度)
@@ -78,7 +78,7 @@ export const HALLEY: PlanetDef = {
   }),
 };
 
-export const ENCKE: PlanetDef = {
+const ENCKE: PlanetDef = {
   id: 'encke',
   mu: GRAVITATIONAL_CONSTANT * 6e13, // 粗い推定値(核質量 ~6e13 kg 相当)
   radius: 2.4e3,
@@ -111,7 +111,7 @@ export const ENCKE: PlanetDef = {
 // セドナのみ直径が未測定なので、掩蔽・熱赤外観測から広く引用される推定値(半径 500 km)を
 // 代わりに使う — 描画にも衝突判定にも半径が要るため、値が無いままにはできない。
 // 三軸半径 [km](a>=b>=c)は探査機・掩蔽・レーダー・適応光学など天体ごとに別の観測による。
-export const SEDNA: PlanetDef = {
+const SEDNA: PlanetDef = {
   id: 'sedna',
   mu: 0,
   radius: 500000.0,
@@ -127,14 +127,14 @@ export const QUAOAR: PlanetDef = {
 };
 
 // クワオアーの衛星ウェイウォット。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
-export const WEYWOT: SatelliteDef = {
+const WEYWOT: SatelliteDef = {
   id: 'weywot',
   mu: GRAVITATIONAL_CONSTANT * 2.4e18,
   radius: 72e3,
   orbit: jplSatelliteOrbit({ a: 13329e3, e: 0.01111, incDeg: 13.62, periodDays: 12.42727, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
-export const CHARIKLO: PlanetDef = {
+const CHARIKLO: PlanetDef = {
   id: 'chariklo',
   mu: 0,
   radius: 143800.0, // 三軸の最長半軸(外接球)
@@ -143,7 +143,7 @@ export const CHARIKLO: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 15.7343733, e: 0.1708196, incDeg: 23.4319043, raanDeg: 300.476891, lonPeriDeg: 541.6834978, l0Deg: 671.7725806 }),
 };
 
-export const HYGIEA: PlanetDef = {
+const HYGIEA: PlanetDef = {
   id: 'hygiea',
   mu: 7000000000.0,
   radius: 217000.0, // 三軸の最長半軸(外接球)
@@ -151,7 +151,7 @@ export const HYGIEA: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 3.150974, e: 0.1067093, incDeg: 3.8295299, raanDeg: 283.1198928, lonPeriDeg: 595.5441315, l0Deg: 847.5785557 }),
 };
 
-export const EROS: PlanetDef = {
+const EROS: PlanetDef = {
   id: 'eros',
   mu: 446300.0,
   radius: 17200.0, // 三軸の最長半軸(外接球)
@@ -159,14 +159,14 @@ export const EROS: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 1.4582437, e: 0.222878, incDeg: 10.8285441, raanDeg: 304.2679713, lonPeriDeg: 483.1861032, l0Deg: 545.6975582 }),
 };
 
-export const RYUGU: PlanetDef = {
+const RYUGU: PlanetDef = {
   id: 'ryugu',
   mu: 30.0,
   radius: 448.0,
   orbit: sbdbOrbit({ aAu: 1.1909189, e: 0.191073, incDeg: 5.8664425, raanDeg: 251.2897124, lonPeriDeg: 462.8987063, l0Deg: 525.2393806 }),
 };
 
-export const BENNU: PlanetDef = {
+const BENNU: PlanetDef = {
   id: 'bennu',
   mu: 4.8904,
   radius: 252.35, // 三軸の最長半軸(外接球)
@@ -182,42 +182,42 @@ export const ORCUS: PlanetDef = {
 };
 
 // オルクスの衛星ヴァンス。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
-export const VANTH: SatelliteDef = {
+const VANTH: SatelliteDef = {
   id: 'vanth',
   mu: GRAVITATIONAL_CONSTANT * 8.7e19,
   radius: 221.25e3,
   orbit: jplSatelliteOrbit({ a: 8999.8e3, e: 0.00091, incDeg: 90.54, periodDays: 9.539154, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
-export const GONGGONG: PlanetDef = {
+const GONGGONG: PlanetDef = {
   id: 'gonggong',
   mu: 0,
   radius: 615000.0,
   orbit: sbdbOrbit({ aAu: 66.867, e: 0.50425, incDeg: 30.8991, raanDeg: 336.8383, lonPeriDeg: 543.4615, l0Deg: 655.1263 }),
 };
 
-export const SALACIA: PlanetDef = {
+const SALACIA: PlanetDef = {
   id: 'salacia',
   mu: 0,
   radius: 419000.0,
   orbit: sbdbOrbit({ aAu: 42.055, e: 0.1046, incDeg: 23.9272, raanDeg: 280.2543, lonPeriDeg: 589.2316, l0Deg: 723.9095 }),
 };
 
-export const VARUNA: PlanetDef = {
+const VARUNA: PlanetDef = {
   id: 'varuna',
   mu: 0,
   radius: 450000.0,
   orbit: sbdbOrbit({ aAu: 43.2, e: 0.051615, incDeg: 17.1405, raanDeg: 97.2158, lonPeriDeg: 370.5748, l0Deg: 486.2427 }),
 };
 
-export const IXION: PlanetDef = {
+const IXION: PlanetDef = {
   id: 'ixion',
   mu: 0,
   radius: 348390.0,
   orbit: sbdbOrbit({ aAu: 39.346, e: 0.24356, incDeg: 19.6625, raanDeg: 71.0808, lonPeriDeg: 371.7031, l0Deg: 666.6707 }),
 };
 
-export const ARROKOTH: PlanetDef = {
+const ARROKOTH: PlanetDef = {
   id: 'arrokoth',
   mu: 0,
   radius: 17500.0, // 三軸の最長半軸(外接球)
@@ -225,7 +225,7 @@ export const ARROKOTH: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 44.053, e: 0.03556, incDeg: 2.4506, raanDeg: 159.0377, lonPeriDeg: 347.8884, l0Deg: 658.8723 }),
 };
 
-export const CHIRON: PlanetDef = {
+const CHIRON: PlanetDef = {
   id: 'chiron',
   mu: 0,
   radius: 63000.0, // 三軸の最長半軸(外接球)
@@ -233,7 +233,7 @@ export const CHIRON: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 13.68427, e: 0.379766, incDeg: 6.93057, raanDeg: 209.2961, lonPeriDeg: 548.5839, l0Deg: 765.3038 }),
 };
 
-export const INTERAMNIA: PlanetDef = {
+const INTERAMNIA: PlanetDef = {
   id: 'interamnia',
   mu: 0,
   radius: 181000.0, // 三軸の最長半軸(外接球)
@@ -241,14 +241,14 @@ export const INTERAMNIA: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 3.056812, e: 0.155059, incDeg: 17.3153, raanDeg: 280.1672, lonPeriDeg: 374.2289, l0Deg: 595.3737 }),
 };
 
-export const EUROPA52: PlanetDef = {
+const EUROPA52: PlanetDef = {
   id: 'europa52',
   mu: 0,
   radius: 151959.0,
   orbit: sbdbOrbit({ aAu: 3.094136, e: 0.112483, incDeg: 7.4815, raanDeg: 128.5734, lonPeriDeg: 471.3774, l0Deg: 820.3002 }),
 };
 
-export const DAVIDA: PlanetDef = {
+const DAVIDA: PlanetDef = {
   id: 'davida',
   mu: 0,
   radius: 178500.0, // 三軸の最長半軸(外接球)
@@ -256,14 +256,14 @@ export const DAVIDA: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 3.161793, e: 0.189373, incDeg: 15.9498, raanDeg: 107.5541, lonPeriDeg: 444.084, l0Deg: 514.52 }),
 };
 
-export const JUNO: PlanetDef = {
+const JUNO: PlanetDef = {
   id: 'juno',
   mu: 0,
   radius: 123298.0,
   orbit: sbdbOrbit({ aAu: 2.67099, e: 0.2557, incDeg: 12.9866, raanDeg: 169.8116, lonPeriDeg: 417.7067, l0Deg: 680.439 }),
 };
 
-export const PSYCHE: PlanetDef = {
+const PSYCHE: PlanetDef = {
   id: 'psyche',
   mu: 0,
   radius: 139000.0, // 三軸の最長半軸(外接球)
@@ -271,7 +271,7 @@ export const PSYCHE: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 2.92572, e: 0.134932, incDeg: 3.0987, raanDeg: 149.9754, lonPeriDeg: 380.0081, l0Deg: 459.7775 }),
 };
 
-export const EUNOMIA: PlanetDef = {
+const EUNOMIA: PlanetDef = {
   id: 'eunomia',
   mu: 0,
   radius: 170000.0, // 三軸の最長半軸(外接球)
@@ -279,7 +279,7 @@ export const EUNOMIA: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 2.641959, e: 0.187771, incDeg: 11.7614, raanDeg: 292.8808, lonPeriDeg: 391.3421, l0Deg: 551.0312 }),
 };
 
-export const SYLVIA: PlanetDef = {
+const SYLVIA: PlanetDef = {
   id: 'sylvia',
   mu: 0,
   radius: 181500.0, // 三軸の最長半軸(外接球)
@@ -287,14 +287,14 @@ export const SYLVIA: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 3.490931, e: 0.094242, incDeg: 10.8493, raanDeg: 72.946, lonPeriDeg: 340.0475, l0Deg: 463.9674 }),
 };
 
-export const APOPHIS: PlanetDef = {
+const APOPHIS: PlanetDef = {
   id: 'apophis',
   mu: 0,
   radius: 170.0,
   orbit: sbdbOrbit({ aAu: 0.922359, e: 0.191149, incDeg: 3.340997, raanDeg: 203.8937, lonPeriDeg: 330.5733, l0Deg: 505.9037 }),
 };
 
-export const DIDYMOS: PlanetDef = {
+const DIDYMOS: PlanetDef = {
   id: 'didymos',
   mu: GRAVITATIONAL_CONSTANT * 5.2e11,
   radius: 398.5, // 三軸の最長半軸(外接球)
@@ -302,35 +302,35 @@ export const DIDYMOS: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 1.64271, e: 0.383123, incDeg: 3.413877, raanDeg: 72.9858, lonPeriDeg: 392.5665, l0Deg: 653.4278 }),
 };
 
-export const TEMPEL1: PlanetDef = {
+const TEMPEL1: PlanetDef = {
   id: 'tempel1',
   mu: 0,
   radius: 3000.0,
   orbit: sbdbOrbit({ aAu: 3.146134, e: 0.5097, incDeg: 10.4734, raanDeg: 68.7536, lonPeriDeg: 247.9509, l0Deg: 584.5363 }),
 };
 
-export const WILD2: PlanetDef = {
+const WILD2: PlanetDef = {
   id: 'wild2',
   mu: 0,
   radius: 2000.0,
   orbit: sbdbOrbit({ aAu: 3.449746, e: 0.5374, incDeg: 3.237, raanDeg: 136.1102, lonPeriDeg: 177.8354, l0Deg: 365.4321 }),
 };
 
-export const HARTLEY2: PlanetDef = {
+const HARTLEY2: PlanetDef = {
   id: 'hartley2',
   mu: 0,
   radius: 800.0,
   orbit: sbdbOrbit({ aAu: 3.475652, e: 0.6936, incDeg: 13.5995, raanDeg: 219.7422, lonPeriDeg: 401.064, l0Deg: 652.8462 }),
 };
 
-export const CRUITHNE: PlanetDef = {
+const CRUITHNE: PlanetDef = {
   id: 'cruithne',
   mu: 0,
   radius: 1035.5,
   orbit: sbdbOrbit({ aAu: 0.997797, e: 0.5149, incDeg: 19.8024, raanDeg: 126.1887, lonPeriDeg: 170.0717, l0Deg: 352.2041 }),
 };
 
-export const KAMOOALEWA: PlanetDef = {
+const KAMOOALEWA: PlanetDef = {
   id: 'kamooalewa',
   mu: 0,
   radius: 34.0, // 三軸の最長半軸(外接球)
@@ -338,14 +338,14 @@ export const KAMOOALEWA: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 1.00081, e: 0.10224, incDeg: 7.8026, raanDeg: 65.5932, lonPeriDeg: 369.9564, l0Deg: 613.3436 }),
 };
 
-export const TK7: PlanetDef = {
+const TK7: PlanetDef = {
   id: 'tk7',
   mu: 0,
   radius: 189.5,
   orbit: sbdbOrbit({ aAu: 0.998508, e: 0.19027, incDeg: 20.9057, raanDeg: 96.4145, lonPeriDeg: 142.4843, l0Deg: 286.9046 }),
 };
 
-export const EUREKA: PlanetDef = {
+const EUREKA: PlanetDef = {
   id: 'eureka',
   mu: 0,
   radius: 939.0,

@@ -6,9 +6,9 @@ import type { CelestialSystem } from './celestial-system';
 const MAP_PLANET_SHIP_LABEL_START = 5e8;
 const MAP_PLANET_SHIP_LABEL_END = 1e9;
 
-export type NearestPlanet = { readonly celestialBody: CelestialBody; readonly distance: number };
+type NearestPlanet = { readonly celestialBody: CelestialBody; readonly distance: number };
 
-export function findNearestPlanet(
+function findNearestPlanet(
   position: Vec3, celestialSystem: CelestialSystem, celestialBodies: readonly CelestialBody[],
 ): NearestPlanet | null {
   let nearest: NearestPlanet | null = null;

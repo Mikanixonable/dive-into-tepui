@@ -13,7 +13,7 @@ export type InnerPlanetId = 'mercury' | 'venus';
 
 // 水星〜海王星の要素・永年変化率はいずれも JPL Standish "Keplerian Elements for Approximate
 // Positions of the Major Planets" Table 1(黄道基準・J2000、有効期間 1800–2050AD)。
-export const MERCURY: PlanetDef = {
+const MERCURY: PlanetDef = {
   id: 'mercury',
   mu: 2.2032e13,
   radius: 2.44053e6, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII

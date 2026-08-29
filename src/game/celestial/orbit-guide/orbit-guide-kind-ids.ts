@@ -92,7 +92,7 @@ export function parseGuideKindId(id: string): ParsedGuideKindId | null {
 
 // parseGuideKindId の逆変換。combinedKey 側で押されている軸値の組み合わせから候補 id を組む
 // (実在するかどうかは呼び出し側がカタログで確かめる)。
-export function buildCombinedId(
+function buildCombinedId(
   base: string, parts: { readonly point?: string; readonly branch?: 'N' | 'S'; readonly ew?: 'E' | 'W'; readonly segment: number },
 ): string {
   const body = [base, parts.point ?? parts.ew, parts.branch].filter((v): v is string => v !== undefined).join('-');

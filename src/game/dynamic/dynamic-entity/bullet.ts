@@ -1,3 +1,4 @@
+// Shooter / BulletType は public フィールドの型なので、外から名指しできるよう export したままにする。
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
 import { KinematicState } from '../../../physics/kinematic-state';
