@@ -1,6 +1,6 @@
 # マップビュー predict 機能の修正案
 
-調査対象: `game/simulation/predictor.ts` / `game-entity/game-entity.ts` /
+調査対象: `game/dynamic/predictor.ts` / `game-entity/game-entity.ts` /
 `physics/orbit-entity.ts` / `physics/ephemeris.ts` / `game/game.ts`。
 実装はまだ入れていない。**着手順は末尾の「着手順」節を見る**(項目番号は識別子であって
 優先度ではない。第2部 A が要件本体で、第1部 1・2・6 はその前提)。
@@ -66,7 +66,7 @@ if (!e.stepPrediction(bodies, simTime, dt)) break;
 ### 案: `advanceBudget` の先頭でガードする
 
 ```ts
-private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number): number {
+private advanceBudget(e: DynamicEntity, budgetSteps: number, simTime: number): number {
   if (e.predictDuration <= 0) return 0;
   ...
 }
@@ -79,7 +79,7 @@ private advanceBudget(e: GameEntity, budgetSteps: number, simTime: number): numb
 さらに `update` の `resyncPrediction` ループ(`predictor.ts:27`)と
 ラウンドロビンの訪問対象も、予測を持ちうる個体だけにできると無駄がない。
 ただし `all()` をフィルタすると毎フレーム配列が確保されるので、
-`EntityManager` 側に予測対象だけの配列を持たせるか、上記ガードで済ませるかは要判断。
+`DynamicSystem` 側に予測対象だけの配列を持たせるか、上記ガードで済ませるかは要判断。
 まずはガードだけで実測し、訪問コスト自体が問題になってから配列を検討する。
 
 ## 3. `suspended` 中に古い予測列が残り、誤った未来軌道を描く
@@ -263,7 +263,7 @@ UI と機能の対応は次のとおり。
 
 エンティティの未来位置は `predictDuration = C.PREDICT_DURATION = 3時間`
 (`const.ts:280`、`Ship`/`Ammo` に固定)までしか存在せず、超えると
-`displayState` が `null` を返して `GameEntity.sync` が `obj.visible = false` にする。
+`displayState` が `null` を返して `DynamicEntity.sync` が `obj.visible = false` にする。
 スライダーの期間とは完全に独立なので、
 
 - 期間 90分(< 3時間)→ スライダーでは決して見えない1.5時間ぶんを積んで保持している

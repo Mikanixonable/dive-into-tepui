@@ -45,7 +45,7 @@ sweptSphereContact(aStart, aEnd, bStart, bEnd, radiusSum)   ← 掃引の幾何�
 │        └─ ContactPhysics.resolveBelt ……… simSpeed ≤ ×4 かつ自機生存、フレームに1回
 └─ attractor.ts  reachedBody(prev, next, bodies)   ← 幾何を持たず最小 TOI を選ぶだけ
    ├─ game-entity.ts / player.ts / bullet.ts  checkLoss
-   │     (`EntityManager.cleanup` から毎 substep、全生存個体)
+   │     (`DynamicSystem.cleanup` から毎 substep、全生存個体)
    └─ predicted-arc.ts  checkSurfaceReach
          (`Predictor.update` から、実体の弧も計画の弧も同じ grow を通る)
 
@@ -55,7 +55,7 @@ linearSphereContact / curveSphereContact(次数) / sweptSagitta … src/ から�
 
 `Enemy` は `checkLoss` を持たない — 焼失は温度が決め、固体表面との接触は
 `collideWithCelestialBody` が扱う。
-`RadiatorFold` / `BeltSection` は `EntityManager` に載らないので `checkLoss` を通らない。
+`RadiatorFold` / `BeltSection` は `DynamicSystem` に載らないので `checkLoss` を通らない。
 
 ### 2-2. フォールバック
 
@@ -72,7 +72,7 @@ linearSphereContact / curveSphereContact(次数) / sweptSagitta … src/ から�
 |---|---|---|
 | `ContactPhysics.resolveSubstep` | `Simulator.surfaceBodies` — ×4 以下でしか呼ばれないので常に `ephemeris.attractorsAt` | 101 |
 | `ContactPhysics.resolveBelt` | `ephemeris.attractorsAt` | 101 |
-| `checkLoss`(`EntityManager.cleanup` 経由) | 同じ `Simulator.surfaceBodies` — ×4 以下は `attractorsAt`、×4 超はサブステップ中点の `gravityAttractorsAt` | 101 / 65 |
+| `checkLoss`(`DynamicSystem.cleanup` 経由) | 同じ `Simulator.surfaceBodies` — ×4 以下は `attractorsAt`、×4 超はサブステップ中点の `gravityAttractorsAt` | 101 / 65 |
 | `PredictedArc.checkSurfaceReach` | `ArcBodies.resolve().collision` | ≤ 101 |
 
 (既定レジストリ `SOLAR_SYSTEM` は 101 体。`mu: 0` が 36 体なので重力源は 65 体、`atmosphere` を
@@ -248,7 +248,7 @@ r = 6791 km(高度 413 km、衝突球 6378 km)の円軌道を1歩で θ 掃か�
 
 刻みを粗くさせない外側のガードは2つあるが、**どちらも判定器の精度を保証しない。**
 
-- `atmosphericMaxStep`(`game/simulation/time-step.ts`)は**大気を持つ天体にしか掛からない。**
+- `atmosphericMaxStep`(`game/dynamic/time-step.ts`)は**大気を持つ天体にしか掛からない。**
   既定レジストリで `atmosphere` を持つのは 1 体だけで、**残り 100 体には刻みの保護が無い。**
   実シミュレーション側はさらに、自機と敵の位置しか見ていない。
 - `PredictedArc.stepDt` の接近項は**動径接近率**で見るので、**接線方向にかすめる通過には効かない。**
