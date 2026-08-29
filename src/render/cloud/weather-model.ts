@@ -13,14 +13,13 @@ import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { ClimateMap } from './climate-map';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
-// 単位方向における天気。気圧は平年からの偏差 [hPa]、収束は地表風の収束 [1/s]、風は東向き・北向きの
-// 成分 [m/s](wind が地表、upperWind が上層)、上昇流は [m/s](地形と収束による、負なら下降)、
-// 温度は [°C]、湿度は 0..1(humidity が地表付近、upperHumidity が上層)。
+// 単位方向における天気。気圧は平年からの偏差 [hPa]、収束は風の収束 [1/s]、風は東向き・北向きの
+// 成分 [m/s]、上昇流は [m/s](地形と収束による、負なら下降)、温度は [°C]、湿度は 0..1
+// (humidity が地表付近、upperHumidity が上層)。
 export type WeatherSample = {
   readonly pressure: FloatNode;
   readonly convergence: FloatNode;
   readonly wind: Vec2Node;
-  readonly upperWind: Vec2Node;
   readonly lift: FloatNode;
   readonly temperature: FloatNode;
   readonly humidity: FloatNode;
@@ -48,7 +47,7 @@ const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
 // 厚みは、低気圧の中心の上昇流が地形の上昇流と同じ桁に収まる高さに置く。ここを厚く取ると
 // 低気圧が湿度へ自分で飽和した円盤を書き、流入が巻き込んだ渦をその上から塗り潰してしまう
 // — 渦の見えは、収束が書く滑らかな円盤ではなく、流入が既にある雲を縮める分から出る。
-const CONVERGENCE_DEPTH = 200;
+const CONVERGENCE_DEPTH = 133;
 // 上昇流の頭打ち [m/s]。最も急な斜面へ強い風が当たると上昇流は並の 5 倍以上になり、線形のままだと
 // 湿度が 0/1 で切れて、山脈が硬い縁の白い帯になる。漸近させて、並の上昇流はほぼ素通しにする。
 const LIFT_LIMIT = 0.06;
@@ -65,13 +64,11 @@ const PRESSURE_BAND_AMPLITUDE = 8;
 // 気圧の写しの texel より数倍大きい。
 const GRADIENT_STEP = 0.01;
 // 風の利得 [m/s あたり hPa/rad]。流入は気圧の低い方へ、地衡風は等圧線に沿って(緯度の正弦に比例)。
-// 流入と地衡風の比が、地表風が等圧線を横切る角(中緯度で 20° 前後)を決める。
-const INFLOW_GAIN = 0.1;
-const GEOSTROPHIC_GAIN = 0.4;
+// 流入と地衡風の比が、風が等圧線を横切る角(中緯度で 20° 前後)を決める。
+const INFLOW_GAIN = 0.15;
+const GEOSTROPHIC_GAIN = 0.6;
 // 風速の上限 [m/s]。台風の中心近くの勾配で地衡風が発散するのを抑える。
 const WIND_CAP = 50;
-// 上層の風: 地衡風の倍率と、流入の反転(吹き出し)。
-const UPPER_GEOSTROPHIC_FACTOR = 2;
 
 // 湿度の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
 const ADVECTION_PERIOD = 12 * 3600;
@@ -139,7 +136,6 @@ export class WeatherModel {
     const inflow = gradient.mul(-INFLOW_GAIN);
     const geostrophic = cross(direction, gradient).mul(sin(latitude).mul(GEOSTROPHIC_GAIN));
     const wind = capWind(inflow.add(geostrophic));
-    const upperWind = capWind(geostrophic.mul(UPPER_GEOSTROPHIC_FACTOR).sub(inflow));
     const convergence = laplacian.mul(INFLOW_GAIN / R_EARTH);
 
     // 上昇流: 風が斜面を駆け上がる分と、収束が押し上げる分。
@@ -161,13 +157,13 @@ export class WeatherModel {
     );
     const upperHumidity = clamp(
       float(UPPER_HUMIDITY_BASE).add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
-        .add(this.advected(this.upperHumidityNoise, direction, upperWind).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE))
+        .add(this.advected(this.upperHumidityNoise, direction, wind).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye),
       0, 1,
     );
 
     return {
-      pressure, convergence, wind: components(wind), upperWind: components(upperWind),
+      pressure, convergence, wind: components(wind),
       lift, temperature, humidity, upperHumidity,
     };
   }
