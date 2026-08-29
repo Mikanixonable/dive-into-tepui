@@ -1,17 +1,17 @@
 // 同期軌道(自転と同じ周期で公転する赤道円軌道)の高度を示す、マップ専用のリングとラベル。
 // 実在の衛星や特定経度ではなく、高度の目盛りとして引く1本。
 import * as THREE from 'three/webgpu';
-import { CelestialMotion } from '../../physics/celestial-motion';
-import { CelestialBody } from '../../physics/celestial-body';
-import { OrbitalElements, orbitalElementsFromClassical } from '../../physics/elements';
-import { isOccluded } from '../../physics/occlusion';
-import { add, len, scale, sub, type Vec3 } from '../../math/vec3';
-import { LINE_RENDER_ORDER } from '../../render/line-style';
-import { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../camera/floating-origin';
-import * as C from '../const';
-import { OrbitLine } from '../lines/orbit-line';
-import type { MarkerManager } from '../marker/marker-manager';
+import { CelestialMotion } from '../../../physics/celestial-motion';
+import { CelestialBody } from '../../../physics/celestial-body';
+import { OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
+import { isOccluded } from '../../../physics/occlusion';
+import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
+import { LINE_RENDER_ORDER } from '../../../render/line-style';
+import { CameraSystem } from '../../camera/camera-system';
+import { FloatingOrigin } from '../../camera/floating-origin';
+import * as C from '../../const';
+import { OrbitLine } from '../../lines/orbit-line';
+import type { MarkerManager } from '../../marker/marker-manager';
 
 // リングとラベルは中心天体から 240,000km で薄れ始め 720,000km で消える。
 const FADE_NEAR_DIST = 2.4e8;

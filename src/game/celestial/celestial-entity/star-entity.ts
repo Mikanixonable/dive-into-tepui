@@ -1,15 +1,15 @@
 // 恒星の見た目: 実位置・実半径の自発光球体(遠くて球として描けないときは点像)と、
 // 模式図で代わりに出す輪郭円。色と放射強度は恒星ごとの値で、シーンを照らす光源の値でもある。
 import * as THREE from 'three/webgpu';
-import { createStarSphere, type StarSphere } from '../../render/star-sphere';
-import { createOutlineCircle, OutlineCircle } from '../../render/outline-circle';
-import { StarMotion } from '../../physics/celestial-motion';
-import { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../camera/floating-origin';
+import { createStarSphere, type StarSphere } from '../../../render/star-sphere';
+import { createOutlineCircle, OutlineCircle } from '../../../render/outline-circle';
+import { StarMotion } from '../../../physics/celestial-motion';
+import { CameraSystem } from '../../camera/camera-system';
+import { FloatingOrigin } from '../../camera/floating-origin';
 import { CelestialEntity } from './celestial-entity';
-import type { Albedo } from '../../render/celestial-albedo';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import type { RenderStyle } from '../../render/render-style';
+import type { Albedo } from '../../../render/celestial-albedo';
+import type { GraphicsSettingsData } from '../../../render/graphics-settings';
+import type { RenderStyle } from '../../../render/render-style';
 
 export class StarEntity extends CelestialEntity {
   private readonly star: StarSphere;

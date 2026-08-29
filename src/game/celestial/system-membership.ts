@@ -3,7 +3,7 @@
 import { CelestialBody, attractorAccel, strongestAttractor } from '../../physics/celestial-body';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import { Vec3, lenSq } from '../../math/vec3';
-import type { CelestialClass } from './celestial-entity-def';
+import type { CelestialClass } from './celestial-entity/celestial-entity-def';
 
 export type CelestialClassLookup = (id: string) => CelestialClass;
 

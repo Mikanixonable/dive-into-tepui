@@ -1,11 +1,11 @@
 // RingSystemDefの物理データを、マップビューと戦闘ビューで共通のRingVisualへ同期する。
 // 環の姿勢は極軸だけで決まり、非軸対称アークは本体の自転位相には追従させない。
 import * as THREE from 'three/webgpu';
-import type { RenderStyle } from '../../render/render-style';
-import { spinOrientation } from '../../physics/body-orientation';
-import { RingBandDef, RingSystemDef } from '../../physics/celestial-body-def';
-import { Vec3 } from '../../math/vec3';
-import { createOutlineCircle, OutlineCircle } from '../../render/outline-circle';
+import type { RenderStyle } from '../../../render/render-style';
+import { spinOrientation } from '../../../physics/body-orientation';
+import { RingBandDef, RingSystemDef } from '../../../physics/celestial-body-def';
+import { Vec3 } from '../../../math/vec3';
+import { createOutlineCircle, OutlineCircle } from '../../../render/outline-circle';
 import {
   RING_TILT,
   createAnnulusRing,
@@ -13,11 +13,11 @@ import {
   createTorusRing,
   RingVisual,
   RingVisualState,
-} from '../../render/ring';
-import { ringPixelCoverage } from '../../render/screen-lod';
-import type { SunLight } from '../../render/pipeline/sun-light';
-import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
-import { ScaleFn } from '../camera/camera-system';
+} from '../../../render/ring';
+import { ringPixelCoverage } from '../../../render/screen-lod';
+import type { SunLight } from '../../../render/pipeline/sun-light';
+import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
+import { ScaleFn } from '../../camera/camera-system';
 
 type CoverageBand = {
   readonly widthMeters: number;
