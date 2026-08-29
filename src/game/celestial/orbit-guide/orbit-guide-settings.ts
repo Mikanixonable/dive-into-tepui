@@ -1,7 +1,7 @@
 // 軌道ガイド(表示パネルの軌道ガイドタブ)の設定値。参照として描く軌道の種類ごとに、表示の
 // 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方を持ち、localStorage へ永続化する。
 // どの系にどの種類があるかは焼き込みカタログが持ち、ここは選択だけを持つ。
-import type { CatalogSystemId } from '../../physics/orbit-catalog';
+import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 
 // 軌道の種類をまとめる群。系のトグルは群ごとに1組持つ。
 export type GuideGroupId = 'collinear' | 'triangular' | 'secondary' | 'resonant';

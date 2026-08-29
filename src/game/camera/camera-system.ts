@@ -3,7 +3,7 @@ import { Hud } from '../hud/hud';
 import { CombatCameraSystem } from './combat-camera-system';
 import { MapCamera } from './map-camera';
 import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
-import { catalogFamilyIndex } from '../celestial/orbit-guide-catalog';
+import { catalogFamilyIndex } from '../celestial/orbit-guide/orbit-guide-catalog';
 import { FocusMarkers } from './focus-markers';
 import { applyMapDisplayMode, MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, normalizeMapDisplayToggles } from '../map/display-toggles';
 import { MapPickable } from '../pickable/map-pickable';

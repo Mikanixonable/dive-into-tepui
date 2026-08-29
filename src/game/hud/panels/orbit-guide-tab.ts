@@ -35,7 +35,7 @@ import {
   type LissajousSettings,
   type OrbitGuideSettings,
   type SunSyncSettings,
-} from '../../celestial/orbit-guide-settings';
+} from '../../celestial/orbit-guide/orbit-guide-settings';
 
 // 線数がこれを超えたら警告を出す(指定は曲げない)。
 const LINE_COUNT_WARNING_THRESHOLD = 300;
