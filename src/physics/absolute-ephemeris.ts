@@ -28,18 +28,20 @@ export function icrfToGameEci(a: Vec3): Vec3 {
   return v3(a.x, a.z, a.y === 0 ? 0 : -a.y);
 }
 
-export class OriginCenteredEphemeris {
-  // 直前に引いた時刻の原点天体の状態。同じ時刻で複数の天体を引くとき、原点側の評価は
+// 恒星(系の階層の根)を中心に、ゲーム ECI 軸で答える暦。**ECI 原点天体を引くのは呼び出し側の
+// 仕事** — 解析暦も同じ恒星中心を返すので、どちらの供給源から引いても同じ形の答えになる。
+export class HelioEphemeris {
+  // 直前に引いた時刻の恒星の状態。同じ時刻で複数の天体を引くとき、恒星側の評価は
   // 天体ごとに同じ値を返すので1回で足りる。
-  private lastOriginJdTdb = NaN;
-  private lastOriginState: BarycentricState | null = null;
+  private lastStarJdTdb = NaN;
+  private lastStarState: BarycentricState | null = null;
 
   constructor(
     private readonly absolute: AbsoluteEphemeris,
-    readonly originId: string,
+    readonly starId: string,
     readonly epochJdTdb: number,
   ) {
-    if (!absolute.hasBody(originId)) throw new MissingEphemerisBodyError(originId);
+    if (!absolute.hasBody(starId)) throw new MissingEphemerisBodyError(starId);
   }
 
   hasBody(id: string): boolean {
@@ -52,25 +54,25 @@ export class OriginCenteredEphemeris {
     return jdTdb >= this.absolute.validStartJdTdb && jdTdb <= this.absolute.validEndJdTdb;
   }
 
-  // 天体 id の、originId 中心・ゲーム ECI 軸の状態。収録されていない天体は例外を投げる。
+  // 天体 id の、恒星中心・ゲーム ECI 軸の状態。収録されていない天体は例外を投げる。
   stateOf(id: string, simTime: number): KinematicState {
     if (!this.absolute.hasBody(id)) throw new MissingEphemerisBodyError(id);
     const jdTdb = this.epochJdTdb + simTime / 86400;
     const body = this.absolute.barycentricStateOf(id, jdTdb);
-    const origin = this.originStateAt(jdTdb);
+    const star = this.starStateAt(jdTdb);
     return kinematicState(
       simTime,
-      icrfToGameEci(sub(body.r, origin.r)),
-      icrfToGameEci(sub(body.v, origin.v)),
+      icrfToGameEci(sub(body.r, star.r)),
+      icrfToGameEci(sub(body.v, star.v)),
     );
   }
 
-  // 時刻 jdTdb の原点天体の重心状態。
-  private originStateAt(jdTdb: number): BarycentricState {
-    if (this.lastOriginState === null || this.lastOriginJdTdb !== jdTdb) {
-      this.lastOriginState = this.absolute.barycentricStateOf(this.originId, jdTdb);
-      this.lastOriginJdTdb = jdTdb;
+  // 時刻 jdTdb の恒星の重心状態。
+  private starStateAt(jdTdb: number): BarycentricState {
+    if (this.lastStarState === null || this.lastStarJdTdb !== jdTdb) {
+      this.lastStarState = this.absolute.barycentricStateOf(this.starId, jdTdb);
+      this.lastStarJdTdb = jdTdb;
     }
-    return this.lastOriginState;
+    return this.lastStarState;
   }
 }

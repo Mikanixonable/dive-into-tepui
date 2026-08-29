@@ -3,7 +3,7 @@
 ## 目的
 
 `src/**/*.ts` に `ephemeris` を含む行が 214 行あるが、**語が層ごとに違うものを指していて、同じ値が
-境界をまたぐたびに別名になっている。** `OriginCenteredEphemeris` は保持側で `precise`、渡す側で
+境界をまたぐたびに別名になっている。** `HelioEphemeris` は保持側で `precise`、渡す側で
 `pack` と呼ばれ、`.epk` の器も、それを読む口も、どちらも `pack` と呼ばれている。
 
 CODING-RULE 2.2 は `celestial` / `dynamic` を対として固定し `ephemeris` をその軸から外したが、
@@ -22,7 +22,7 @@ CODING-RULE 2.2 は `celestial` / `dynamic` を対として固定し `ephemeris`
 
 | 問い | 供給源 | 実体 |
 | --- | --- | --- |
-| 並進(表引き) | `.epk` の Chebyshev 位置係数 | `OriginCenteredEphemeris` |
+| 並進(表引き) | `.epk` の Chebyshev 位置係数 | `HelioEphemeris` |
 | 並進(閉じた式) | ケプラー要素 + 摂動項 | `PlanetOrbit` / `SatelliteOrbit` |
 | 自転 | IAU 極モデル / カッシーニ / ECI 極 | `PoleModel`(`physics/celestial-body-def.ts`) |
 
@@ -81,7 +81,7 @@ CODING-RULE 2.2 は `celestial` / `dynamic` を対として固定し `ephemeris`
 | --- | --- | --- |
 | `AbsoluteEphemeris` | `BarycentricEphemeris` | 座標原点 = 太陽系重心、時刻軸 = JD_TDB |
 | `PackedAbsoluteEphemeris` | `ChebyshevBarycentricEphemeris` | 上の実装が Chebyshev 係数であること |
-| `OriginCenteredEphemeris` | 据置 | 座標原点 = 原点天体、時刻軸 = simTime |
+| ~~`OriginCenteredEphemeris`~~ | `HelioEphemeris`(改名済み) | 座標原点 = 恒星(系の根)、時刻軸 = simTime |
 | `loadAbsoluteEphemeris` | `loadBarycentricEphemeris` | |
 | `loadPackedAbsoluteEphemeris` | `loadChebyshevBarycentricEphemeris` | |
 | `CelestialMotion.precise` | `.ephemeris` | 供給源そのもの |
@@ -119,7 +119,7 @@ CODING-RULE 2.2 は `celestial` / `dynamic` を対として固定し `ephemeris`
 
 **代案E — 語順を族語前置で全部揃える**(`EphemerisBarycentric` / `EphemerisOriginCentered`)。
 `EphemerisProfile` / `EphemerisContext` と語順が揃い、grep で族が一箇所に集まる。**欠点**: 英語の
-語順として不自然で、`OriginCenteredEphemeris`(32 箇所)を含む既存の読みやすさを落とす。
+語順として不自然で、`HelioEphemeris`(32 箇所)を含む既存の読みやすさを落とす。
 
 ## 達成目標
 
@@ -195,7 +195,7 @@ CODING-RULE 2.2 は `celestial` / `dynamic` を対として固定し `ephemeris`
 
 ### 手順4. 供給源の呼び名を `ephemeris` へ統一する
 
-**目的.** `OriginCenteredEphemeris` 型の値が、保持側で `precise`、渡す側で `pack` と呼ばれている。
+**目的.** `HelioEphemeris` 型の値が、保持側で `precise`、渡す側で `pack` と呼ばれている。
 1つの名前に揃え、`pack` を `.epk` の器へ返す。**この時点で挙動は変えない。**
 
 **変更が必要な箇所**
@@ -328,7 +328,7 @@ CODING-RULE 2.2 は `celestial` / `dynamic` を対として固定し `ephemeris`
 | `series` は HUD のチャートでも使われている(`src/game/hud/orbit/orbit-analysis-data.ts` ほか3ファイル、計 37 箇所) | 一括置換で無関係な語まで巻き込む | 手順3。置換範囲を `src/physics/ephemeris-pack/` と `tools/ephemeris/` に限ること |
 | `positionOf` は `tests/physics/test-helpers.ts:49` にも別物として存在する | 一括置換で無関係な関数を壊す | 手順2・3 |
 | `pack` は `webpack` / `package` / `unpackAlignment` の部分文字列 | 単語境界を見ない置換が無関係な箇所を壊す | 手順4・6。`\bpack\b` で当たること |
-| `OriginCenteredEphemeris.stateOf` と `ChebyshevEphemeris.stateOf` が同名・同シグネチャで、**座標系も時刻軸も違う** | 取り違えても型が通る。手順3 で片方を消すまで残る | 手順3 |
+| `HelioEphemeris.stateOf` と `ChebyshevEphemeris.stateOf` が同名・同シグネチャで、**座標系も時刻軸も違う** | 取り違えても型が通る。手順3 で片方を消すまで残る | 手順3 |
 | `src/assets/ephemeris/*.epk` は `webpack.config.js:23` の asset ルールで解決される | アセットのディレクトリ名を変えるとビルドは通るが実行時に 404 | 手順7。ディレクトリ名は据置を推奨 |
 | solar-system 9ファイルの `pack` は `new PlanetMotion(...)` の位置引数として渡っている | 引数名の変更は無害だが、順序を触ると隣接引数と入れ替わっても型が通りうる | 手順4。引数の順序は触らないこと |
 | コメント中の「暦パック」「精密暦」「解析暦」は識別子と語彙がズレたまま(コード内に「暦」50 箇所) | 改名後もコメントだけ旧語彙で残ると、次に読む人が対応を取れない | 手順4・5・6。触ったファイルのコメントは同じ commit で揃える |

@@ -404,16 +404,17 @@ export function register(): void {
   });
 
   // 高精度暦パックの有効期間(CELESTIAL.md 2.2)を10日間だけに絞ったモックで、期間内/外の
-  // 境界をまたいで stateAt/orbitFrameRotationAt/orbitNormalAt を呼ぶ。
+  // 境界をまたいで stateAt/orbitFrameRotationAt/orbitNormalAt を呼ぶ。恒星は系の根として
+  // 必ず収録されていなければならない(HelioEphemeris の構築条件)。
   const preciseEpochJdTdb = 2451545;
   const preciseValidDays = 10;
   const mockPrecise: AbsoluteEphemeris = {
     validStartJdTdb: preciseEpochJdTdb,
     validEndJdTdb: preciseEpochJdTdb + preciseValidDays,
-    hasBody: (id) => id === 'earth' || id === 'moon',
+    hasBody: (id) => id === 'sun' || id === 'earth' || id === 'moon',
     barycentricStateOf: (id) => ({
-      r: id === 'earth' ? v3(0, 0, 0) : v3(4e8, 0, 0),
-      v: id === 'earth' ? v3(0, 0, 0) : v3(0, 1e3, 0),
+      r: id === 'moon' ? v3(4e8, 0, 0) : v3(0, 0, 0),
+      v: id === 'moon' ? v3(0, 1e3, 0) : v3(0, 0, 0),
     }),
   };
   const analyticOnlyMoon = orbitingMotionOf(solarSystemParts({}), 'moon');

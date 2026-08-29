@@ -1,7 +1,7 @@
 // 土星系(土星と15個の衛星)。静的事実・運動・見た目を1体につき1箇所で組む。
 import saturnTextureUrl from '../../../assets/2k_saturn.jpg';
 import titanTextureUrl from '../../../assets/2k_titan.jpg';
-import { OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
+import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
   EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
@@ -191,7 +191,7 @@ export const SATURN_SYSTEM_NAMES: Record<SaturnSystemBodyId, string> = {
 // 土星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function saturnSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: OriginCenteredEphemeris | null, origin: EciOrigin,
+  pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<SaturnSystemBodyId, CelestialEntity> {
   const saturn = new PlanetMotion(SATURN, sun, phases[SATURN.id] ?? 0, epochOffsetSec, pack, origin);
   return {

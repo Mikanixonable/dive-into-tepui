@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import marsTextureUrl from '../../../assets/2k_mars.jpg';
 import phobosTextureUrl from '../../../assets/2k_phobos.jpg';
-import { OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
+import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
   EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
@@ -86,7 +86,7 @@ export const MARS_SYSTEM_NAMES: Record<MarsSystemBodyId, string> = {
 // 火星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function marsSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: OriginCenteredEphemeris | null, origin: EciOrigin,
+  pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<MarsSystemBodyId, CelestialEntity> {
   const mars = new PlanetMotion(MARS, sun, phases[MARS.id] ?? 0, epochOffsetSec, pack, origin);
   return {

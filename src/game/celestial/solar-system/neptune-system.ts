@@ -1,6 +1,6 @@
 // 海王星系(海王星・トリトン・ネレイド)。静的事実・運動・見た目を1体につき1箇所で組む。
 import neptuneTextureUrl from '../../../assets/2k_neptune.jpg';
-import { OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
+import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
   EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
@@ -67,7 +67,7 @@ export const NEPTUNE_SYSTEM_NAMES: Record<NeptuneSystemBodyId, string> = {
 // 海王星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function neptuneSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: OriginCenteredEphemeris | null, origin: EciOrigin,
+  pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<NeptuneSystemBodyId, CelestialEntity> {
   const neptune = new PlanetMotion(NEPTUNE, sun, phases[NEPTUNE.id] ?? 0, epochOffsetSec, pack, origin);
   return {

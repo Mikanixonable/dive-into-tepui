@@ -1,6 +1,6 @@
 // 天王星系(天王星と6個の衛星)。静的事実・運動・見た目を1体につき1箇所で組む。
 import uranusTextureUrl from '../../../assets/2k_uranus.jpg';
-import { OriginCenteredEphemeris } from '../../../physics/absolute-ephemeris';
+import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
   EciOrigin, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
@@ -99,7 +99,7 @@ export const URANUS_SYSTEM_NAMES: Record<UranusSystemBodyId, string> = {
 // 天王星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function uranusSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: OriginCenteredEphemeris | null, origin: EciOrigin,
+  pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<UranusSystemBodyId, CelestialEntity> {
   const uranus = new PlanetMotion(URANUS, sun, phases[URANUS.id] ?? 0, epochOffsetSec, pack, origin);
   return {

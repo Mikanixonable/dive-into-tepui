@@ -32,12 +32,21 @@ satellite のどの kind でも恒星中心を返し、`SatelliteMotion.helioSta
 (`stage-debug-alt-system.ts:65` は `PlanetMotion(ZEPHYRUS, null, …)`)ため、正確には
 **「階層の根の座標原点」**であり、太陽系ではそれが恒星の中心にあたる。
 
-**揃っていないのは ephemeris 側だけ。** `OriginCenteredEphemeris`(`absolute-ephemeris.ts:33-75`)が
-原点天体を引いて ECI へ落としているので、これを根(恒星)を引く形に変え、**ECI への変換は
-`CelestialMotion.eciStateAt` の1箇所へ引き上げる。**
+**揃っていないのは ephemeris 側だけ**だった。`OriginCenteredEphemeris` は ECI 原点天体を引いて
+ECI へ落としていたので、恒星を引く形へ変えて `HelioEphemeris` へ改名し、**ECI への変換は
+`CelestialMotion.eciStateAt` の1箇所へ引き上げた**(手順2 で実施済み)。
 
 覆された場合(SSB を採る): 手順2 が成立しなくなり、暦パックの有効期間外を解析で埋める設計自体を
 見直すことになる。
+
+**根を経由すると丸めが入る。** いまパック経路は暦の中で `pack(天体) − pack(ECI原点)` を1回引いて
+いる。根中心へ揃えると `[pack(天体) − pack(根)] − [pack(ECI原点) − pack(根)]` になり、代数的には
+同じでも浮動小数では一致しない — 重心位置は外惑星で 1e12 m 規模、倍精度の相対精度 1e-16 なので
+絶対 1e-4 m 程度の丸めが乗る。**これを避けるには供給源ごとに原点を変えたまま(パックは重心、解析は
+恒星中心)差で打ち消す形にするしかなく、それでは「同じ問いに同じ形で答える1つのメソッド」に
+ならない。** 丸めを受け入れて根中心へ揃える。**実測では位置の最大相対差 2.3e-16、速度 5.2e-16**
+1 ulp)で、2058 状態のうち 1578(76.7%)はビット一致のまま。絶対差の最大は木星の衛星アナンケの
+位置で 1.4e-4 m。
 
 ### 判断2. 供給源の混在規則を、暗黙から明示へ移す
 
@@ -47,8 +56,8 @@ uranus, neptune, pluto)で、登録されている天体は **98 体**ある。�
 収録惑星の衛星が「パックの惑星 + 解析の惑星相対」で組まれるため。
 
 いまは「自分がパックで引けるならパック経路(このとき原点天体もパックから引かれる)、引けないなら
-両端とも解析」という規則が `OriginCenteredEphemeris` の内側に隠れている
-(`OriginCenteredEphemeris.stateOf` が本体と原点の両方をパックから引くため)。ECI 変換を引き上げると
+両端とも解析」という規則が、手順2 の前は暦クラスの内側に隠れていた
+(`stateOf` が本体と ECI 原点天体の両方をパックから引いていたため)。ECI 変換を引き上げると
 **両端の供給源がばらける余地ができる** — パックにある地球から、解析にしかない小惑星を引く形になり、
 その天体の ECI 位置が地球の解析モデル誤差ぶん動く。
 
@@ -114,16 +123,16 @@ ephemeris の `stateOf(id, t)` と同じ形になる。`phaseOffsets` はセー�
 ## 達成目標
 
 1. 原点天体を引く処理が `CelestialMotion.eciStateAt` の1箇所だけになる —
-   `grep -rn "origin" src/physics/absolute-ephemeris.ts` が `OriginCenteredEphemeris` の
-   クラス名以外を返さない。
-2. `OriginCenteredEphemeris` が ECI 原点天体の id を知らない(コンストラクタが受け取らない)。
+   `grep -rn "origin" src/physics/absolute-ephemeris.ts` が 0 件。
+2. `HelioEphemeris` が ECI 原点天体の id を知らない(コンストラクタが受け取らない)。
 3. `keplerOrbitState` / `satelliteState` / `planetAngles` から `phaseOffset` 引数が消える —
    `grep -rn "phaseOffset" src/` が 0 件。
 4. `epochOffsetSec` が `physics/` と `game/celestial/solar-system/` の引数から消える —
    `grep -rn "epochOffsetSec" src/game/celestial/` が 0 件。
 5. `OrbitalElements` が元期を持ち、`stateAt(el, t)` がある。参照軌道では null を返す。
 6. **数値が変わらない** — 下記のベースライン比較で、全 98 天体・全サンプル時刻の位置・速度が
-   変更前と一致する(相対誤差 0)。
+   変更前と一致する。**手順2 だけはビット一致にできない**(下記)ので、そこでは ECI 位置の
+   ノルムに対する相対差が 1e-12 以下であること。手順1・3・4 はビット一致。
 7. `npm run typecheck` と `npm run test`(全層)が通る。
 
 ### ベースライン比較の手順(達成目標6 の測り方)
@@ -145,28 +154,6 @@ tests/physics/_baseline.ts(一時ファイル。*.test.ts にしないこと —
 壊れるのは収録されていない 87 天体のほうである。
 
 ## 手順
-
-### 手順2. ephemeris の原点を根へ移し、ECI 変換を `eciStateAt` へ集約する
-
-**目的.** 2つの供給源が返す位置の原点を「階層の根(太陽系では恒星の中心)」へ揃える。
-ECI 原点天体を引く処理を1箇所にする。**数値は変わらない**(判断2 の規則を守る限り)。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/absolute-ephemeris.ts:33-75` | `OriginCenteredEphemeris` のコンストラクタが受け取る id を、ECI 原点天体から**系の根の天体**へ変える。`stateOf` は根中心・ゲーム ECI 軸の状態を返す(軸変換 `icrfToGameEci` はここに残す — 解析側が最初からゲーム ECI 軸なので、比較可能にするために必要) |
-| `src/physics/celestial-motion.ts:180-196` | `eciStateAt` が、選んだ供給源から本体と ECI 原点天体の**根中心状態**を引き、その差を返す形にする。解析経路の `helio - originHelio` と同じ1つの式に合流する |
-| `src/physics/celestial-motion.ts:381-390` | `packedPrimaryRelStateAt` は差分のままなので原点が変わっても不変。根中心になったことをコメントへ反映 |
-| `src/game/celestial/solar-system/solar-system.ts:56-58` | `new OriginCenteredEphemeris(absoluteSource, originId, epochJdTdb)` の第2引数を恒星の id へ変える。**パックが根の天体を収録していることが構築条件**になる(現行パックは `sun` を収録済み) |
-| `tests/physics/absolute-ephemeris.test.ts` | 原点の意味が変わるので期待値を作り直す |
-| `tests/physics/celestial-motion.test.ts:410-` | `mockPrecise` の期待値を追従 |
-| `tests/physics/packed-absolute-ephemeris.test.ts` | 影響があれば追従 |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test`(全層)。
-ベースライン比較が全 98 天体 × 7 時刻で完全一致。
-`grep -n "originId" src/game/celestial/solar-system/solar-system.ts` が ECI 原点の用途だけを返す
-(暦の構築には現れない)。
 
 ### 手順3. 位相定数と元期オフセットを軌道へ畳む
 
@@ -239,7 +226,7 @@ ECI 原点天体を引く処理を1箇所にする。**数値は変わらない*
 | 手順 | 触る箇所 | 根拠 |
 | --- | --- | --- |
 | ~~1~~ | 実測 33 行 | 実施済み |
-| 2 | 約 60 | `OriginCenteredEphemeris` 32 + `eciStateAt` 周辺 15 + テスト 3ファイル |
+| ~~2~~ | 実測 15 ファイル / +126 −77 行 | 実施済み。位置・速度の最大相対差 5.2e-16(1 ulp) |
 | 3 | 約 200 | `epochOffsetSec` 133 + `phaseOffset` 19 + `keplerOrbitState` 36 + `planetAngles` 19 の一部 |
 | 4 | 約 25 | `OrbitalElements` の構築点 2 + `stateAt` 新規 + テスト |
 | 5 | 約 40 | `satelliteState` 21 + `relStateAt` / `helioStateAt` の組み直し |
@@ -251,7 +238,8 @@ ECI 原点天体を引く処理を1箇所にする。**数値は変わらない*
 
 | リスク | 影響 | 露見する場所 |
 | --- | --- | --- |
-| 本体と ECI 原点天体を**別の供給源**から引く | パック未収録の 94 天体の ECI 位置が、地球の解析モデル誤差ぶん動く。テストは緑のまま通りうる | 手順1・2。ベースライン比較を全 105 天体で取ること(収録 11 天体だけ見ると気付けない) |
+| 本体と ECI 原点天体を**別の供給源**から引く | パック未収録の 87 天体の ECI 位置が、地球の解析モデル誤差ぶん動く。テストは緑のまま通りうる | 手順1・2。ベースライン比較を全 98 天体で取ること(収録 11 天体だけ見ると気付けない) |
+| 根を経由する二重の減算で ECI 原点天体の状態が毎回引き直される | パック未収録も含む全天体ぶん、ECI 原点天体の Chebyshev 評価が余分に走る。いまは暦の中で時刻ごとに1回へ畳まれている | 手順2。`EciOrigin` 側に時刻キャッシュを置いて畳み直すこと |
 | 暦パックが系の根の天体を収録していない | 手順2 のあと構築時に例外。現行パックは `sun` を収録しているので通るが、将来パックを絞ると落ちる | 手順2。構築条件をコンストラクタの表明で固定する |
 | 恒星を持たない星系(`stage-debug-alt-system.ts:65` は `star = null`) | 「根中心」が恒星の位置ではなく仮想点になる。パックは null なので実害は無いが、`helioStateAt` の名前が実態(根中心)とずれる | 手順2。DEBUG(架空星系)ステージが起動することを確かめる |
 | `epochOffsetSec` の畳み込みで、二次以上の項を持つ要素を一次で畳む | 位置が静かにずれる。`KeplerOrbit` は全要素が時刻の一次式なので厳密だが、`satellite-orbit.ts` の周期項は引数が線形なだけで振幅は定数 — 畳み込み後の引数が元と一致することを式で確かめること | 手順3。ベースライン比較 |
@@ -260,4 +248,4 @@ ECI 原点天体を引く処理を1箇所にする。**数値は変わらない*
 | `OrbitalElements` の元期を必須にしてしまう | 参照軌道(`earth-reference-orbits.ts`、`geostationary-overlay.ts`)が意味のない元期を持つ | 手順4 |
 | 元期 null の要素に `stateAt` を呼ぶ経路が実行時にだけ現れる | 軌道ガイドの線が消える。型で null を返すので、呼び出し側の分岐漏れは typecheck が拾う | 手順4 |
 | 案Y を採ると `PlanetMotion.computeHelioStateAt` の重心補正が `SatelliteMotion.relStateAt` に依存し続ける | 木が Orbit 層と Motion 層に二重化し、重心補正の置き場が曖昧になる | 手順5。案X を採るなら発生しない |
-| 手順2 のあと `OriginCenteredEphemeris` という名前が実態(根中心)とずれる | `rename-ephemeris.md` の改名表で「据置」としている1行が変わる — `StarCenteredEphemeris` などへ | 手順2 完了時に `rename-ephemeris.md` を1行更新する |
+| `HelioEphemeris` の `helio` は、恒星を持たない星系では字義どおりでない | 架空星系では根が仮想点になる。`CelestialMotion.helioStateAt` が同じ語を同じ意味で使っているので、この frame の呼び名を変えるなら2つ一緒に動かす | 手順2 で `OriginCenteredEphemeris` から改名済み。呼び名を変えるなら rename-ephemeris.md 側で |
