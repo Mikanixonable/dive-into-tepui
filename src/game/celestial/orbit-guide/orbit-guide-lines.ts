@@ -2,19 +2,19 @@
 // リサジュー軌道の折れ線群(表示パネルの軌道ガイドタブ、静止軌道を除く)。設定の kinds
 // (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
-import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
-import type { CelestialSystem } from './celestial-system';
-import { Vec3 } from '../../math/vec3';
+import { CelestialMotion, OrbitingMotion } from '../../../physics/celestial-motion';
+import type { CelestialSystem } from '../celestial-system';
+import { Vec3 } from '../../../math/vec3';
 import {
   catalogLoop, dawnDuskGuideLoop, GuideLoop, GuidePoint, guideSecondary, lissajousLoop,
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
-} from '../../physics/orbit-guide';
-import type { CatalogSystemId } from '../../physics/orbit-catalog';
-import { FloatingOrigin } from '../camera/floating-origin';
-import { CurveColorSampler } from '../../render/curve';
-import { LINE_RENDER_ORDER } from '../../render/line-style';
-import type { RenderStyle } from '../../render/render-style';
-import { SCHEMATIC_LINE } from '../../render/schematic-style';
+} from '../../../physics/orbit-guide';
+import type { CatalogSystemId } from '../../../physics/orbit-catalog';
+import { FloatingOrigin } from '../../camera/floating-origin';
+import { CurveColorSampler } from '../../../render/curve';
+import { LINE_RENDER_ORDER } from '../../../render/line-style';
+import type { RenderStyle } from '../../../render/render-style';
+import { SCHEMATIC_LINE } from '../../../render/schematic-style';
 import { GuideCurve } from './guide-curve';
 import {
   GuideGroupId, GuideKindSettings, OrbitGuideSettings,

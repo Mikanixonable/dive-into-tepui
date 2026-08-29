@@ -6,16 +6,16 @@
 // 回転基底が進んだときは後者だけをやり直す(orbit-guide-lines.ts の RECOMPUTE_INTERVAL と
 // 同じ考え方)。
 import * as THREE from 'three/webgpu';
-import { CurveKnots } from '../../render/curve';
-import { OrbitingMotion } from '../../physics/celestial-motion';
-import type { CelestialSystem } from './celestial-system';
-import { Vec3 } from '../../math/vec3';
-import { guideSecondary, rotatingFrame } from '../../physics/orbit-guide';
-import { zeroVelocityCurveSet, SectionPlane } from '../../physics/zero-velocity';
-import type { CatalogSystemId } from '../../physics/orbit-catalog';
-import { FloatingOrigin } from '../camera/floating-origin';
+import { CurveKnots } from '../../../render/curve';
+import { OrbitingMotion } from '../../../physics/celestial-motion';
+import type { CelestialSystem } from '../celestial-system';
+import { Vec3 } from '../../../math/vec3';
+import { guideSecondary, rotatingFrame } from '../../../physics/orbit-guide';
+import { zeroVelocityCurveSet, SectionPlane } from '../../../physics/zero-velocity';
+import type { CatalogSystemId } from '../../../physics/orbit-catalog';
+import { FloatingOrigin } from '../../camera/floating-origin';
 import { GuideCurve } from './guide-curve';
-import { LINE_RENDER_ORDER } from '../../render/line-style';
+import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import { ZeroVelocitySettings } from './orbit-guide-settings';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 

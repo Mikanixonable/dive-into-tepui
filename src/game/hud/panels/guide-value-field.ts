@@ -3,7 +3,7 @@
 import { Button, Slider, ValueInput } from '../widgets';
 import {
   MAX_LINES_PER_KIND, MAX_ZERO_VELOCITY_CURVES, type DirectionMarkerMode,
-} from '../../celestial/orbit-guide-settings';
+} from '../../celestial/orbit-guide/orbit-guide-settings';
 import { sunSyncRevsPerDayRange } from '../../../physics/earth-reference-orbits';
 import { J2_EARTH, MU_EARTH, R_EARTH_EQ } from '../../celestial/solar-system/constants';
 

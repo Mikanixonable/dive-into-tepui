@@ -35,9 +35,9 @@ import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialEntity } from './celestial-entity';
 import { StarEntity } from './star-entity';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import { OrbitGuideLines } from './orbit-guide-lines';
-import { ZeroVelocityLines } from './zero-velocity-lines';
-import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-settings';
+import { OrbitGuideLines } from './orbit-guide/orbit-guide-lines';
+import { ZeroVelocityLines } from './orbit-guide/zero-velocity-lines';
+import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide/orbit-guide-settings';
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);

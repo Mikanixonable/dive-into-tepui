@@ -1,5 +1,5 @@
 // ゲームバランス・チューニング定数
-import type { GuideGroupId } from './celestial/orbit-guide-settings';
+import type { GuideGroupId } from './celestial/orbit-guide/orbit-guide-settings';
 
 // --- 基地ドッキング ---
 export const BASE_MAX_VESSELS = 4;      // 基地が保有・格納できる艦艇の最大数
