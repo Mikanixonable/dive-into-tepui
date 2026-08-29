@@ -50,7 +50,8 @@ const tmpToObserver = new THREE.Vector3();
 export class PointEntity extends CelestialEntity {
   private readonly group = new THREE.Group();
   private ring?: RingView;
-  private readonly billboard: Billboard;
+  // 輝点スプライト。グローテクスチャの生成が DOM を要するので build まで作らない。
+  private billboard!: Billboard;
   private readonly bondAlbedo: number;
   // 実半径 [m] と環(環を持たない天体では undefined)。
   private readonly radius: number;
@@ -78,8 +79,6 @@ export class PointEntity extends CelestialEntity {
     this.outerRadius = def.rings === undefined
       ? def.radius
       : def.rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), def.radius);
-    // 色はテクスチャ平均色を狙わず単色の白 — 恒星状の光点として過剰演出しない。
-    this.billboard = new Billboard(0xffffff, -9);
     const a = shapeAxes(def.radius, def.shape);
     this.axes = new THREE.Vector3(a.x, a.y, a.z);
   }
@@ -90,6 +89,8 @@ export class PointEntity extends CelestialEntity {
 
   // マップビュー用の実体表面と輝点用ビルボードをシーンへ一度だけ登録する。
   build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void {
+    // 色はテクスチャ平均色を狙わず単色の白 — 恒星状の光点として過剰演出しない。
+    this.billboard = new Billboard(0xffffff, -9);
     this.surface.addTo(this.group);
     this.graticule.addTo(this.group);
     scene.add(this.group);
