@@ -13,6 +13,7 @@ import { Circulation } from './circulation';
 import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { ClimateMap } from './climate-map';
+import type { FieldProjection } from './field-projection';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、風は東向き・北向きの成分 [m/s]、
@@ -85,15 +86,17 @@ export class WeatherModel {
   private readonly humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE);
   private readonly upperHumidityNoise = new CirculatingNoise(this.circulation, ...UPPER_HUMIDITY_NOISE);
   private readonly cyclones = new Cyclones(R_EARTH);
-  private readonly pressure = new BakedField(
-    'pressure', THREE.RedFormat, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
-  private readonly humiditySource = new BakedField(
-    'humiditySource', THREE.RGFormat, (direction) => vec4(this.humiditySourceAt(direction), 0, 1));
+  private readonly pressure: BakedField;
+  private readonly humiditySource: BakedField;
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
-  // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布。
-  public constructor(private readonly climate: ClimateMap) {
+  // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方。
+  public constructor(private readonly climate: ClimateMap, projection: FieldProjection) {
+    this.pressure = new BakedField(
+      'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
+    this.humiditySource = new BakedField(
+      'humiditySource', THREE.RGFormat, projection, (direction) => vec4(this.humiditySourceAt(direction), 0, 1));
     this.syncTime(0);
   }
 

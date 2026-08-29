@@ -4,11 +4,12 @@ import * as THREE from 'three/webgpu';
 import { vec4 } from 'three/tsl';
 import { BakedField } from './baked-field';
 import { condense } from './condensation';
+import type { FieldProjection } from './field-projection';
 import type { WeatherModel } from './weather-model';
 
-// model がいま指している時刻の雲を焼く写し。読む前に render() を呼ぶ。
-export function createCloudField(model: WeatherModel): BakedField {
-  return new BakedField('cloud', THREE.RGFormat, (direction) => {
+// model がいま指している時刻の雲を、projection の持ち方で焼く写し。読む前に render() を呼ぶ。
+export function createCloudField(model: WeatherModel, projection: FieldProjection): BakedField {
+  return new BakedField('cloud', THREE.RGFormat, projection, (direction) => {
     const cloud = condense(model.weatherAt(direction));
     return vec4(cloud.opaque, cloud.translucent, 0, 1);
   });

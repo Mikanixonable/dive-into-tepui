@@ -100,7 +100,7 @@ export class Circulation {
   }
 
   // 帯 index の流れに乗せた point の位置。point は呼吸で伸縮させた単位方向。自転軸が +Y、
-  // 公転面の法線が +X であることは sphere-frame の POLE と正距円筒図法の取り決めに従う。
+  // 公転面の法線が +X であることは sphere-frame の POLE と field-projection の経度の取り決めに従う。
   private positionAt(point: Vec3Node, index: FloatNode): Vec3Node {
     const flow = this.flowAt(index);
     // 東西の流れ: 自転軸まわりに −自転角。
