@@ -19,14 +19,20 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   mieAnisotropy: 0.8,
 };
 
+// 地球系の天体の表示名。
+export const EARTH_SYSTEM_NAMES: { readonly [K in keyof EarthSystemMotions]: string } = {
+  earth: '地球',
+  moon: '月',
+};
+
 // 地球系の運動に見た目を対応づける。
 export function earthSystemEntities(
   m: EarthSystemMotions,
 ): { readonly [K in keyof EarthSystemMotions]: CelestialEntity } {
   return {
-    earth: new Earth(m.earth, '地球', EARTH_ATMOSPHERE_OPTICS),
+    earth: new Earth(m.earth, EARTH_SYSTEM_NAMES.earth, EARTH_ATMOSPHERE_OPTICS),
     moon: new SphereEntity(
-      m.moon, '月', 'satellite',
+      m.moon, EARTH_SYSTEM_NAMES.moon, 'satellite',
       // 平均輝度 0.3180(A_B は公表ボンド)
       CelestialSurface.textured({ url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844] }),
       null, () => new MoonSurfaceMarkings(),
