@@ -1,13 +1,14 @@
 // 星系の全天体から、表示に使う座標系(ReferenceFrame)の集合と、その時刻ごとの剛体運動
-// (FrameTransform)を供給する。2段変換の2段目 — ECI 値を入力に取り、参照フレーム相対への
-// 剛体運動を答える(1段目の ECI 化は physics/eci-transform.ts)。座標系相対への値の変換
-// そのものは physics/frame.ts の純関数群が担い、ここは「どの座標系があるか」と
-// 「その原点・姿勢・角速度が時刻 t で何になるか」を答える。
+// (FrameTransform)を供給する。天体の ECI 値を入力に取り、参照フレーム相対への剛体運動を
+// 答える。座標系そのものの値の変換は physics/frame.ts の純関数群が担い、ここは
+// 「どの座標系があるか」と「その原点・姿勢・角速度が時刻 t で何になるか」を答える。
 // THREE/DOM 非依存。
 import { Quat, qFromForwardUp } from '../../physics/attitude';
 import { CelestialMotion, OrbitingMotion, SatelliteMotion } from '../../physics/celestial-motion';
 import { EciTransform } from '../../physics/eci-transform';
-import { FrameAnchorSource, FrameRotationSource, FrameTransform, ReferenceFrame, rotationSourceKey } from '../../physics/frame';
+import {
+  FrameAnchorSource, FrameRotationSource, FrameTransform, ReferenceFrame, rotationSourceKey,
+} from '../../physics/frame';
 import { FrameRotation } from '../../physics/kepler-orbit';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { cross, len, lenSq, norm, scale, sub, v3 } from '../../math/vec3';
