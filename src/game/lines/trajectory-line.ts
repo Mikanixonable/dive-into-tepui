@@ -8,7 +8,7 @@
 // 時刻範囲を切り出し、位置と接線を持つ節点列として Curve へ渡すことと、その曲線が描かれる
 // 座標系の管理。節点の間をどう埋めるかは Curve が持つ。
 //
-// 座標変換は physics/frame.ts / physics/reference-frames.ts へ委譲する二段構え:
+// 座標変換は physics/frame.ts / game/celestial/reference-frames.ts へ委譲する二段構え:
 //  - bake(点列・frame が変わったときだけ, syncGeometry): 各サンプルの KinematicState を
 //    その時刻の座標系相対へ変換する(frameTransformAt→toFrameState)。点ごとに座標系の姿勢・
 //    原点が違う非剛体変形なので、時刻ごとに変換し直す(慣性系なら無変換)。
@@ -23,7 +23,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
 import { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { ReferenceFrames } from '../../physics/reference-frames';
+import type { ReferenceFrames } from '../celestial/reference-frames';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../../physics/kepler-extrapolation';
 import { StateQueue } from '../../physics/state-queue';
