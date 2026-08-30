@@ -4,6 +4,7 @@
 // THREE/DOM 非依存。
 import { Quat, qFromForwardUp } from './attitude';
 import { CelestialMotion, OrbitingMotion, SatelliteMotion } from './celestial-motion';
+import { EciTransform } from './eci-transform';
 import { FrameAnchorSource, FrameRotationSource, FrameTransform, ReferenceFrame, rotationSourceKey } from './frame';
 import { FrameRotation } from './kepler-orbit';
 import { KinematicState, kinematicState } from './kinematic-state';
@@ -32,13 +33,14 @@ export class ReferenceFrames {
   // 全天体の慣性系 + 公転天体ぶんの回転系。値は frameOf が返すのと同じ参照になる。
   readonly frames: readonly ReferenceFrame[];
 
-  // motions は宣言順の全登録天体、origin は ECI の中心天体。
-  constructor(motions: readonly CelestialMotion[], origin: CelestialMotion) {
+  // motions は宣言順の全登録天体、eci は天体の値を ECI へ移す変換器(その原点が慣性系の中心)。
+  constructor(motions: readonly CelestialMotion[], private readonly eci: EciTransform) {
     this.motionsById = Object.fromEntries(motions.map((m) => [m.id, m]));
-    this.inertialFrame = this.frameOf(origin.id, null);
+    const originId = eci.originId;
+    this.inertialFrame = this.frameOf(originId, null);
     this.frames = [
       this.inertialFrame,
-      ...motions.filter((m) => m.id !== origin.id).map((m) => this.frameOf(m.id, null)),
+      ...motions.filter((m) => m.id !== originId).map((m) => this.frameOf(m.id, null)),
       ...motions.filter((m) => m.kind !== 'star')
         .map((m) => this.frameOf(rotatingFrameCenterOf(m), { kind: 'revolution', id: m.id })),
     ];
@@ -105,7 +107,7 @@ export class ReferenceFrames {
   // (生存中の重力天体・機体・役割トークン)に委ね、どちらでも解決できなければ ECI 原点に落とす。
   private anchorStateAt(id: string, t: number, source: FrameAnchorSource): KinematicState {
     const motion = this.motionsById[id];
-    if (motion !== undefined) return motion.eciStateAt(t);
+    if (motion !== undefined) return this.eci.stateAt(t, motion);
     return source.stateOf(id, t) ?? kinematicState<'eci'>(t, v3(), v3());
   }
 
