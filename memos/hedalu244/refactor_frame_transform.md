@@ -1,6 +1,6 @@
 # 座標は誰が持ち、どこで変換されるのか
 
-**争点A〜E は決着し、2 の形まで実施済み。残っているのは4節の保留2件だけ。**
+**争点A〜E は決着し、2 の形まで実施済み。残っているのは4節の保留3件だけ。**
 `refactor_orbit_ephemeris.md` の論点2(キャッシュの持ち主)はここへ引き継いだ。
 
 ---
@@ -45,29 +45,31 @@
 
 ### 位置が組み上がる順
 
-依存は一方向に流れる。**恒星の重心相対位置は各系の「主星相対」の二体解だけから組むので、
+依存は一方向に流れる。**恒星の重心相対位置は各系の「主星相対」の二体解(1)だけから組むので、
 自分の絶対位置を経由せず循環しない。**
 
-```
-PlanetSystem.starRelStateAt(t)  ← 系の重心の二体解。主星の位置を経由しない
-├─ StarMotion.analyticStateAt ………… −Σ(μ_i/μ_total)·r_i を全系ぶん足す
-│                                     (μ = 0 の系は二体解を解く前に抜ける)
-└─ PlanetSystem.analyticStateAt …… 主星の重心相対位置 + 二体解
-   └─ PlanetMotion.analyticStateAt … 重心 − Σ(μ_衛星/μ_系)·r_衛星(惑星相対)
-      └─ SatelliteMotion.analyticStateAt … 惑星本体 + 惑星相対
-```
+1. `PlanetSystem.starRelStateAt` — 系の重心の二体解(主星相対)。主星の位置を経由しない。
+2. `StarMotion.analyticStateAt` — 全系の 1 を −Σ(μ_i/μ_total)·r_i で畳んだ、恒星の重心相対位置。
+   μ = 0 の系は二体解を解く前に抜ける。
+3. `PlanetSystem.analyticStateAt` — 2 + 1。
+4. `PlanetMotion.analyticStateAt` — 3 − Σ(μ_衛星/μ_系)·r_衛星(惑星相対)。
+5. `SatelliteMotion.analyticStateAt` — 4 + 惑星相対。
 
 ### ECI までの2段
 
 ```
-CelestialEntity.bodyAt(t) ……………… 1体ぶん。eciCache で時刻メモ化
-└─ EciTransform.celestialBodyAt(t, motion)   ← stage 1。平行移動だけ
-   ├─ 天体の絶対位置(上の木)
-   └─ ECI 原点天体の一式(originCache)  ← 供給源を揃える不変条件はここに閉じる
+CelestialEntity.bodyAt(t)                          ← 1体ぶんの ECI 瞬間値。eciCache でメモ化
+└─ EciTransform.celestialBodyAt(t, motion)         ← stage 1。平行移動だけ
+   ├─ CelestialMotion.analyticStateAt / packedStateAt  (天体の絶対位置)
+   └─ EciTransform.originStateAt                    ← ECI 原点天体の一式。originCache。
+                                                     供給源を揃える不変条件はここに閉じる
 
-ReferenceFrames.transformAt(frame, t, source)  ← stage 2。剛体運動(q と ω が入る)
-└─ frame.ts の純関数群(toFrameState / toFramePoint …)が値を変換する
+ReferenceFrames.transformAt(frame, t, source)      ← stage 2。その時刻の原点・q・ω を組む
+└─ EciTransform.stateAt(t, motion)                 (基準天体の ECI 値)
 ```
+
+値そのものの変換は、組み上がった `FrameTransform` を受け取る `frame.ts` の純関数群
+(`toFrameState` / `toFramePoint` / `toFrameDir` …)が行う。
 
 **供給源(解析暦 / 暦パック)は `FrameTag` が型で守る。** `toEci<F>` が同じ `F` 同士しか
 受け付けないので、「パックの天体 + 解析の原点」は型エラーになる。`'primaryRel'` が供給源を
