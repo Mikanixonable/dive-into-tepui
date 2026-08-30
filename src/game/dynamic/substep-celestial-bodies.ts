@@ -2,9 +2,8 @@
 // 「どの天体が引くか」「どの大気が抗力を及ぼすか」という個体ごとの絞り込みも、この1組の上で
 // 答える — 分類を多数の問い合わせ位置で使い回すことが、絞り込みが得になる条件そのものだから。
 import {
-  CelestialBody, nearestAtmosphereBody,
+  CelestialBody, CelestialBodyWindows, nearestAtmosphereBody,
 } from '../../physics/celestial-body';
-import type { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { Vec3 } from '../../math/vec3';
 import { ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
 

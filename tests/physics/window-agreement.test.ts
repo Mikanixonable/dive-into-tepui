@@ -22,12 +22,12 @@ import type { Vec3 } from '../../src/math/vec3';
 
 // 現実の太陽系・地球原点の既定の登録天体。両方の窓へ同じ天体一式を供給する。
 const PARTS = solarSystemParts();
-const WINDOWS = PARTS.windows;
+const WINDOWS = PARTS.system;
 
 // 弧が候補として引く天体一式。実シミュレーション側の窓と同じ運動から組む。
 const ARC_SOURCES: FutureCelestialBodyProvider = {
   defs: PARTS.bodies.map((m) => m.def),
-  celestialBodyAt: (id, t) => PARTS.windows.bodyAt(id, t),
+  celestialBodyAt: (id, t) => PARTS.system.celestialBodyAt(id, t),
 };
 
 const DAY = 86400;
@@ -135,7 +135,7 @@ const SURFACE_SITES: readonly SurfaceSite[] = [
 
 // bodyId の表面から 1km 上空を、表面へ向かって降りていく状態。向きは任意でよいので +X に取る。
 function descentState(bodyId: string, t: number): KinematicState {
-  const body = PARTS.windows.bodyAt(bodyId, t);
+  const body = PARTS.system.celestialBodyAt(bodyId, t);
   const up = v3(1, 0, 0);
   return kinematicState(
     t,

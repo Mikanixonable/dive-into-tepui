@@ -34,7 +34,7 @@ const NO_ANCHORS: FrameAnchorSource = { bodies: [], stateOf: () => null, attract
 export function register(): void {
   // 太陽・月とも初期位相を固定して決定的にする。
   const parts = solarSystemParts({ moon: 0.4 });
-  const windows = parts.windows;
+  const windows = parts.system;
   const referenceFrames = parts.referenceFrames;
   const EARTH_INERTIAL = findFrame(referenceFrames.frames, 'earth', null);
   const SUN_EARTH_ROTATING = findFrame(referenceFrames.frames, 'earth', 'earth');

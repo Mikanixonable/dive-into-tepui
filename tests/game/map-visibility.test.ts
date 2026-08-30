@@ -23,7 +23,7 @@ const MIN_CLEARANCE = 10;
 
 // 現実の太陽系の運動と窓。可視性の規則も静的事実もここから引く。
 const PARTS = solarSystemParts();
-const WINDOWS = PARTS.windows;
+const WINDOWS = PARTS.system;
 const ALL = PARTS.bodies;
 
 // 表示クラスは運動の分類から引く(未登録 id は CelestialClassLookup の契約どおり 'planet')。
