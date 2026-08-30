@@ -106,6 +106,7 @@ export class CelestialBodyWindows {
     const motion = this.motions[index]!;
     const def = motion.def;
     const origin = this.originAt(t);
+    // 原点が暦パックで引けない時刻では、この天体も引かずに解析経路へ揃える。
     const originEphemeris = origin.ephemeris;
     const ephemeris = originEphemeris === null ? null : motion.packedHelioStateAt(t);
     return cache.put(t, {
