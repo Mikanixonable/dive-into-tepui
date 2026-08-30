@@ -3,7 +3,6 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, If, screenUV, vec2, vec3 } from 'three/tsl';
-import { R_EARTH } from '../../src/physics/solar-system';
 import { EARTH_TEXTURES } from '../../src/render/celestial-textures';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
 import { EquirectProjection, OrthographicCap } from '../../src/render/cloud/field-projection';
@@ -54,7 +53,7 @@ export class CloudLabCanvas {
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     await renderer.init();
-    const climate = await ClimateMap.load(EARTH_TEXTURES.climateUrl, R_EARTH);
+    const climate = await ClimateMap.load(EARTH_TEXTURES.climateUrl);
     return new CloudLabCanvas(renderer, climate);
   }
 
