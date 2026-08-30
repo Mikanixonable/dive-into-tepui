@@ -2,7 +2,7 @@
 // 摩擦を足した定常の釣り合いを 1 本の式で解く。勾配が緩い所ではコリオリが釣り合いを受け持って
 // 地衡風の枝へ、谷が狭く深い所では遠心力が受け持って緯度に依らない枝へ落ちるので、**中緯度の
 // 低気圧も熱帯の台風も同じ式から出る。** 赤道でも高気圧側でも有限に留まる。
-import { abs, cos, cross, length, max, sign, sin, sqrt } from 'three/tsl';
+import { abs, cos, cross, length, max, sin, sqrt, tanh } from 'three/tsl';
 import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
@@ -18,6 +18,10 @@ const GRADIENT_TO_ACCELERATION = 100 / (AIR_DENSITY * R_EARTH);
 const BEND_TO_SPIN_SQUARED = 100 / (AIR_DENSITY * R_EARTH ** 2);
 // コリオリ因子 f = CORIOLIS_RATE sin φ [1/s] の係数(= 2Ω)。
 const CORIOLIS_RATE = (4 * Math.PI) / SIDEREAL_DAY;
+// 渦の回る向きが決まらなくなる、赤道を挟む幅(sin 緯度で測る)。向きは周りの自転が渦へ渡すので、
+// コリオリ力の消える赤道では決まらない — 符号で切り替えると、そこで風が跳ぶ。熱帯低気圧の
+// 生まれない緯度(5°)に取る。外側ではほぼ ±1 で、15° の台風の巻きは 1% も鈍らない。
+const SPIN_SENSE_WIDTH = Math.sin((5 * Math.PI) / 180);
 
 // 等圧線方向の単位接ベクトル。北半球の低気圧を回る向き(南半球では balancedWind が符号を返す)。
 export function isobarAt(direction: Vec3Node, gradient: Vec3Node): Vec3Node {
@@ -37,21 +41,22 @@ export type BalancedWind = {
 export function balancedWind(
   gradient: Vec3Node, isobar: Vec3Node, bend: FloatNode, latitude: FloatNode, friction: number,
 ): BalancedWind {
-  const coriolis = sin(latitude).mul(CORIOLIS_RATE);
-  const hemisphere = sign(coriolis);
+  const sinLatitude = sin(latitude);
+  const coriolis = sinLatitude.mul(CORIOLIS_RATE);
   const damped = sqrt(coriolis.mul(coriolis).add(friction ** 2));
   const spinSquared = bend.mul(BEND_TO_SPIN_SQUARED);
   // 判別式の床を 0 に取ると、高気圧側(bend < 0)が厳密な釣り合いから 70% 外れる。
   const denominator = damped.add(sqrt(max(damped.mul(damped).add(spinSquared.mul(4)), friction ** 2)));
   const speed = length(gradient).mul(2 * GRADIENT_TO_ACCELERATION).div(denominator);
   // 流れが渦の中心のまわりを回る角速度 [rad/s]。等圧線に沿う成分はコリオリとこれの和が受け持ち、
-  // 受け持ち切れない残りを摩擦が受けて、等圧線を横切る流入になる。
-  const spin = spinSquared.mul(2).div(denominator);
-  const along = hemisphere.mul(abs(coriolis).add(spin));
+  // 受け持ち切れない残りを摩擦が受けて、等圧線を横切る流入になる。赤道で決まらなくなるのは向きだけ
+  // なので、落とすのはここだけ — 速さを決める denominator は spinSquared を持ったままにする。
+  const spin = spinSquared.mul(2).div(denominator).mul(tanh(sinLatitude.div(SPIN_SENSE_WIDTH)));
+  const along = coriolis.add(spin);
   // 向きの長さは √(along² + friction²) で、勾配が消えても 0 にならない。normalize では NaN が出る。
   const velocity = isobar.mul(along).sub(gradient.div(max(length(gradient), 1e-6)).mul(friction))
     .div(sqrt(along.mul(along).add(friction ** 2))).mul(speed);
-  return { velocity, turn: hemisphere.mul(spin) };
+  return { velocity, turn: spin };
 }
 
 // wind に seconds 秒だけ流された変位 [m]。direction はその点の天頂で、seconds を負に取れば来た弧を
@@ -68,10 +73,11 @@ export function windStep(wind: BalancedWind, direction: Vec3Node, seconds: Float
 // balancedWind と同じ釣り合いを、深さ depth [hPa]・広がり radius [m] のガウスの谷の芯(勾配が
 // 消える点)について解いた、風が等圧線を横切る角 [rad]。**渦が小さく速いほど閉じる。**
 export function coreCrossingAngle(depth: number, radius: number, latitude: number): number {
-  const coriolis = Math.abs(CORIOLIS_RATE * Math.sin(latitude));
+  const sinLatitude = Math.abs(Math.sin(latitude));
+  const coriolis = CORIOLIS_RATE * sinLatitude;
   const damped = Math.hypot(coriolis, FRICTION_RATE);
   const spinSquared = BEND_TO_SPIN_SQUARED * 2 * depth * (R_EARTH / radius) ** 2;
   const spin = 2 * spinSquared
     / (damped + Math.sqrt(Math.max(damped * damped + 4 * spinSquared, FRICTION_RATE ** 2)));
-  return Math.atan2(FRICTION_RATE, coriolis + spin);
+  return Math.atan2(FRICTION_RATE, coriolis + spin * Math.tanh(sinLatitude / SPIN_SENSE_WIDTH));
 }
