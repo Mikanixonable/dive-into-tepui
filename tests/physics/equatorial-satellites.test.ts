@@ -7,6 +7,7 @@ import { test } from '../harness';
 import {
   PlanetDef, planetDefForSimZero, satelliteDefForSimZero, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../src/physics/celestial-motion';
+import { EciTransform } from '../../src/physics/eci-transform';
 import { planetSystem } from '../../src/physics/planet-system';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
@@ -28,9 +29,7 @@ function withoutSatellitePosition(primaryDef: PlanetDef, t: number): Vec3 {
   // 月は構築するだけで地球-月系の重心補正の対象として登録される。
   new SatelliteMotion(satelliteDefForSimZero(MOON, {}, TEST_SIM_ZERO_ET), earth);
   const bare = planetSystem(planetDefForSimZero(primaryDef, {}, TEST_SIM_ZERO_ET), sun);
-  bare.body.bindEciOrigin(earth.body);
-  earth.body.bindEciOrigin(earth.body);
-  return bare.body.eciStateAt(t).r;
+  return new EciTransform(earth.body).stateAt(t, bare.body).r;
 }
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
