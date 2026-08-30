@@ -1,6 +1,6 @@
-// 天体1体の運動。解析暦では恒星中心まで、暦パックでは太陽系重心中心までの位置・速度・
-// 加速度を合成し、自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。**どの天体を
-// ECI 原点に置くかは系レベルの選択**なので、その1体を bindEciOrigin で結んでもらい、
+// 天体1体の運動。解析暦・暦パックのどちらでも太陽系重心中心の位置・速度・加速度を合成し、
+// 自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。**どの天体を ECI 原点に置くかは
+// 系レベルの選択**なので、その1体を bindEciOrigin で結んでもらい、
 // ECI 化そのものは自分で行う(天体1体ぶんの値の持ち主は、その1体)。
 // 恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
 // 評価結果は時刻 t をキーにした固定長リング(TimeRing)でメモ化する。
@@ -31,9 +31,9 @@ import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '.
 // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
 export type BodyOrientation = { readonly axis: Vec3; readonly spinAngle: number };
 
-// ECI 原点天体が時刻 t に答える、原点を引くための一式。暦パックは太陽系重心中心、解析暦は
-// 恒星中心で答えるが、ECI 化は同じ経路どうしの差を取るので原点は打ち消える。ephemeris が
-// null の時刻は、全天体が解析経路へ落ちる。
+// ECI 原点天体が時刻 t に答える、原点を引くための一式。どちらも太陽系重心中心だが、
+// **供給源が違えば同じ天体に別の位置を答える**ので、ECI 化は必ず同じ経路どうしで差を取る。
+// ephemeris が null の時刻は、全天体が解析経路へ落ちる。
 type EciOriginState = {
   readonly ephemeris: KinematicState<'packed'> | null;
   readonly analytic: KinematicState<'analytic'>;
@@ -143,10 +143,10 @@ export abstract class CelestialMotion {
     return this.def.id;
   }
 
-  // 恒星中心の位置・速度。
+  // 解析暦が答える太陽系重心中心の位置・速度。
   abstract analyticStateAt(t: number): KinematicState<'analytic'>;
 
-  // 恒星中心の加速度。解析式の厳密な二階微分ではなく主天体まわりの二体近似 — 用途は RK4 の
+  // 解析暦が答える加速度。解析式の厳密な二階微分ではなく主天体まわりの二体近似 — 用途は RK4 の
   // 各段の時刻へ位置を外挿する2次補正項なので、この近似の誤差(太陽の潮汐項を落とすぶん、
   // 月で0.5%程度)は結果に効かない。
   abstract analyticAccelAt(t: number): Vec3;
@@ -246,6 +246,11 @@ export abstract class CelestialMotion {
 export class StarMotion extends CelestialMotion {
   readonly kind: CelestialKind = 'star';
 
+  // この恒星を主星とする惑星-衛星系(登録順)。重心の位置を決めるのに要る。
+  private readonly systems: PlanetSystem[] = [];
+
+  private readonly analyticCache = new TimeRing<KinematicState<'analytic'>>();
+
   constructor(readonly def: StarDef) {
     super();
   }
@@ -253,14 +258,51 @@ export class StarMotion extends CelestialMotion {
   // 恒星は階層の根。
   get primary(): CelestialMotion | null { return null; }
 
-  // 恒星は日心座標系の原点そのもの。
-  analyticStateAt(t: number): KinematicState<'analytic'> {
-    return kinematicState<'analytic'>(t, v3(0, 0, 0), v3(0, 0, 0));
+  // 惑星-衛星系をこの恒星へ登録する。**組むときは planet-system.ts の planetSystem() を使う** —
+  // 登録し忘れずに作れる唯一の入口。
+  addPlanetSystem(system: PlanetSystem): void {
+    this.systems.push(system);
   }
 
-  // 日心座標系の原点そのものなので静止している。
+  // 恒星の太陽系重心状態。全惑星-衛星系がこれを足して自分の位置を組むので、1度へ畳む。
+  analyticStateAt(t: number): KinematicState<'analytic'> {
+    const cached = this.analyticCache.get(t);
+    if (cached !== undefined) return cached;
+    return this.analyticCache.put(t, this.computeAnalyticStateAt(t));
+  }
+
+  // 恒星が重心のまわりに描く運動は加速度としては入れない。用途は積分1歩ぶんの2次外挿項で、
+  // 木星が恒星へ及ぼす 2e-7 m/s² は1歩の幅では mm に満たない。
   analyticAccelAt(): Vec3 {
     return v3();
+  }
+
+  // 重心相対位置は全惑星-衛星系ぶんの二体解から組む。
+  get cacheStats(): TimeCacheStats {
+    return addTimeCacheStats(super.cacheStats, this.analyticCache.stats);
+  }
+
+  // 恒星の太陽系重心相対位置 −Σ(μ_i/μ_total)·r_i。r_i は各系の重心の**主星相対**位置なので、
+  // 自分の位置を経由せず循環しない。系の内訳(惑星本体と衛星)は各系の重心が畳んでいる。
+  private computeAnalyticStateAt(t: number): KinematicState<'analytic'> {
+    // mu = 0 は「質量が未測定」であって質量0ではない。恒星の質量が分からない星系では重心の
+    // 位置も決まらないので、補正せず恒星を原点に置いたままにする。
+    if (this.def.mu <= 0) return kinematicState<'analytic'>(t, v3(), v3());
+
+    let muTotal = this.def.mu;
+    for (const system of this.systems) muTotal += system.mu;
+
+    let r = v3();
+    let v = v3();
+    for (const system of this.systems) {
+      // 質量が未測定の系は重心を動かさない。小天体はほとんどがこれなので、二体解を解く前に抜ける。
+      const w = system.mu / muTotal;
+      if (w === 0) continue;
+      const rel = system.starRelStateAt(t);
+      r = addScaled(r, rel.r, -w);
+      v = addScaled(v, rel.v, -w);
+    }
+    return kinematicState<'analytic'>(t, r, v);
   }
 
   // 恒星は自転姿勢を持たない。
@@ -420,26 +462,30 @@ export class PlanetMotion extends OrbitingMotion {
   get primary(): CelestialMotion | null { return this.star; }
   get keplerOrbit(): KeplerOrbit { return this.system.orbit; }
 
-  // 惑星本体の日心状態。
+  // 惑星本体の太陽系重心状態。
   analyticStateAt(t: number): KinematicState<'analytic'> {
     const cached = this.analyticCache.get(t);
     if (cached !== undefined) return cached;
     return this.analyticCache.put(t, this.computeAnalyticStateAt(t));
   }
 
-  // 主星まわりの二体加速度。
+  // 主星まわりの二体加速度。原点は太陽系重心なので、二体の相対位置は主星の位置を引いて
+  // 組む — 絶対位置をそのまま渡すと恒星の重心相対位置ぶん(この太陽系では 100 万 km 前後)誤る。
   analyticAccelAt(t: number): Vec3 {
-    const starMu = this.star === null ? 0 : this.star.def.mu;
-    return twoBodyAccel(this.analyticStateAt(t).r, starMu + this.def.mu);
+    const star = this.star;
+    if (star === null) return twoBodyAccel(this.analyticStateAt(t).r, this.def.mu);
+    return twoBodyAccel(
+      sub(this.analyticStateAt(t).r, star.analyticStateAt(t).r), star.def.mu + this.def.mu,
+    );
   }
 
-  // 日心状態は自分の ECI 化と全衛星の恒星中心化から引かれるので、1時刻あたり 1 + 衛星数 回に
-  // なる。重心補正が全衛星の相対位置を要るぶん重いので、そのぶんをここで畳む。
+  // この状態は自分の ECI 化・自分の二体加速度・全衛星の絶対位置から引かれるので、1時刻あたり
+  // 2 + 衛星数 回になる。重心補正が全衛星の相対位置を要るぶん重いので、そのぶんをここで畳む。
   get cacheStats(): TimeCacheStats {
     return addTimeCacheStats(super.cacheStats, this.analyticCache.stats);
   }
 
-  // 重心の日心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)ぶんを引く
+  // 系の重心の太陽系重心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)ぶんを引く
   // (重心補正。位置・速度の両方に効く)。
   private computeAnalyticStateAt(t: number): KinematicState<'analytic'> {
     const bary = this.system.analyticStateAt(t);
@@ -472,7 +518,7 @@ export class SatelliteMotion extends OrbitingMotion {
   private readonly relCache = new TimeRing<KinematicState<'primaryRel'>>();
 
   // system は自分が属する惑星-衛星系。自分をその重心補正の対象として登録するので、惑星本体の
-  // 日心状態を初めて引く前に全衛星を作り終えていなければならない。
+  // 絶対位置を初めて引く前に全衛星を作り終えていなければならない。
   constructor(readonly def: SatelliteDef, readonly system: PlanetSystem) {
     super();
     system.addSatellite(this);
@@ -492,12 +538,12 @@ export class SatelliteMotion extends OrbitingMotion {
     return this.relCache.put(t, this.computeRelStateAt(t));
   }
 
-  // 惑星本体の日心状態に惑星相対状態を足す。
+  // 惑星本体の太陽系重心状態に惑星相対状態を足す。
   analyticStateAt(t: number): KinematicState<'analytic'> {
     return addPrimaryRelative(this.planet.analyticStateAt(t), this.relStateAt(t));
   }
 
-  // 惑星本体の日心加速度に惑星まわりの二体加速度を足す。
+  // 惑星本体の加速度に惑星まわりの二体加速度を足す。
   analyticAccelAt(t: number): Vec3 {
     return add(
       this.planet.analyticAccelAt(t),
@@ -505,7 +551,7 @@ export class SatelliteMotion extends OrbitingMotion {
     );
   }
 
-  // 惑星相対の位置は、自分の恒星中心化・加速度・惑星本体の重心補正・暦パックの補完から
+  // 惑星相対の位置は、自分の絶対位置・加速度・惑星本体の重心補正・暦パックの補完から
   // 引かれるので、1時刻あたり4回前後になる。周期項の総和がそのたびに走るので畳む。
   get cacheStats(): TimeCacheStats {
     return addTimeCacheStats(super.cacheStats, this.relCache.stats);
