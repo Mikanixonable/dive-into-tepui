@@ -3,9 +3,7 @@ import {
 } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import {
-  AbsoluteEphemeris, MissingEphemerisBodyError, HelioEphemeris, icrfToGameEci,
-} from '../../src/physics/absolute-ephemeris';
+import { AbsoluteEphemeris, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
 import { v3 } from '../../src/math/vec3';
 
 export function register(): void {
@@ -21,30 +19,35 @@ export function register(): void {
     assert.deepEqual(icrfToGameEci(v3(1, 2, 3)), v3(1, 3, -2));
   });
 
-  test('absolute ephemeris: 恒星を厳密な原点にし位置・速度を同じ変換へ通す', () => {
-    const eph = new HelioEphemeris(source, 'sun');
-    assert.deepEqual(eph.stateOf('sun', 150).r, v3());
-    const earth = eph.stateOf('earth', 150);
-    assert.deepEqual(earth.r, icrfToGameEci(v3(150, 300, 450)));
-    assert.deepEqual(earth.v, icrfToGameEci(v3(1, 2, 3)));
-    assert.equal(earth.t, 150);
+  test('absolute ephemeris: 1体ぶんの暦は重心中心のままゲーム軸で答える', () => {
+    const earth = source.bodyEphemerisOf('earth');
+    assert.ok(earth !== null);
+    // 恒星を引かない — 原点は太陽系重心のまま。軸だけがゲーム軸へ写る。
+    assert.deepEqual(earth.stateAt(150).r, icrfToGameEci(v3(150, 300, 450)));
+    assert.deepEqual(earth.stateAt(150).v, icrfToGameEci(v3(1, 2, 3)));
+    assert.equal(earth.stateAt(150).t, 150);
   });
 
-  test('absolute ephemeris: 恒星の重心位置を引いてから答える', () => {
-    const offsetStar: AbsoluteEphemeris = testEphemerisSource(0, 86400, (id) => {
-      if (id === 'sun') return { r: v3(1, 2, 3), v: v3(4, 5, 6) };
-      if (id === 'earth') return { r: v3(11, 22, 33), v: v3(44, 55, 66) };
-      return null;
-    });
-    const earth = new HelioEphemeris(offsetStar, 'sun').stateOf('earth', 0);
-    assert.deepEqual(earth.r, icrfToGameEci(v3(10, 20, 30)));
-    assert.deepEqual(earth.v, icrfToGameEci(v3(40, 50, 60)));
+  test('absolute ephemeris: 収録していない天体の切り出しは null', () => {
+    assert.equal(source.bodyEphemerisOf('mars'), null);
   });
 
-  test('absolute ephemeris: 未収録天体を暗黙フォールバックしない', () => {
-    const eph = new HelioEphemeris(source, 'sun');
-    assert.throws(() => eph.stateOf('mars', 0), MissingEphemerisBodyError);
-    assert.throws(() => new HelioEphemeris(source, 'mars'), MissingEphemerisBodyError);
+  // 恒星中心化を持たないことの検査。ECI 化は「自分 − ECI 原点天体」の差なので、恒星をどこへ
+  // 置いてもその項は現れない。**恒星を引いてから差を取る実装へ戻すと、恒星の位置が丸めを
+  // 通して結果へ漏れる** — この検査はその漏れを拒む。
+  test('absolute ephemeris: 恒星をどこへ置いても ECI 位置は変わらない', () => {
+    const withStarAt = (star: ReturnType<typeof v3>): AbsoluteEphemeris =>
+      testEphemerisSource(-1e9, 1e9, (id, t) => {
+        if (id === 'sun') return { r: star, v: v3(0, 0, 0) };
+        if (id === 'earth') return { r: v3(1.5e11 + t, 2e6, -3e6), v: v3(1, 0, 0) };
+        if (id === 'mars') return { r: v3(-2.2e11 + t, 3e6, 4e10), v: v3(1, 0, 0) };
+        return null;
+      });
+    const atOrigin = solarSystemParts({}, TEST_EPOCH, withStarAt(v3(0, 0, 0)));
+    const displaced = solarSystemParts({}, TEST_EPOCH, withStarAt(v3(7e9, -4e9, 2e9)));
+    for (const t of [0, 3600, -3600]) {
+      assert.deepEqual(stateOf(displaced, 'mars', t), stateOf(atOrigin, 'mars', t));
+    }
   });
 
   test('absolute ephemeris: 天体の運動は収録天体の位置・速度・軌道法線を高精度経路へ統一する', () => {

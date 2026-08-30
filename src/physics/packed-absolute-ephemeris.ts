@@ -1,4 +1,4 @@
-import { AbsoluteEphemeris, BarycentricState, icrfToGameEci } from './absolute-ephemeris';
+import { AbsoluteEphemeris, icrfToGameEci } from './absolute-ephemeris';
 import { BodyEphemeris } from './body-ephemeris';
 import { ChebyshevEphemeris } from './ephemeris-pack/evaluator';
 import { KinematicState, kinematicState } from './kinematic-state';
@@ -13,31 +13,15 @@ import { ephemerisSeconds, TdbJulianDate } from './time';
 // 1.2e-4 s あって要求した時刻がそのまま honor されないこと。
 // payload SHA-256は非同期loaderが検証する。同期コンストラクタは既に信頼済みのbytesだけを受ける。
 export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
-  readonly validStartSimTime: number;
-  readonly validEndSimTime: number;
   private readonly evaluator: ChebyshevEphemeris;
-  private readonly ids: ReadonlySet<string>;
 
   constructor(readonly decoded: DecodedEphemerisPack, epoch: TdbJulianDate) {
-    const simZeroEt = ephemerisSeconds(epoch);
-    this.validStartSimTime = decoded.manifest.validStart - simZeroEt;
-    this.validEndSimTime = decoded.manifest.validEnd - simZeroEt;
-    this.evaluator = new ChebyshevEphemeris(toEvaluatorEphemerisPack(decoded, simZeroEt));
-    this.ids = new Set(this.evaluator.bodyIds());
+    this.evaluator = new ChebyshevEphemeris(
+      toEvaluatorEphemerisPack(decoded, ephemerisSeconds(epoch)));
   }
 
   static fromTrustedBytes(bytes: Uint8Array, epoch: TdbJulianDate): PackedAbsoluteEphemeris {
     return new PackedAbsoluteEphemeris(decodeEphemerisPack(bytes), epoch);
-  }
-
-  hasBody(id: string): boolean {
-    return this.ids.has(id);
-  }
-
-  barycentricStateOf(id: string, simTime: number): BarycentricState {
-    if (!Number.isFinite(simTime)) throw new RangeError(`simTime は有限値でなければならない: ${simTime}`);
-    const state = this.evaluator.stateOf(id, simTime);
-    return { r: state.r, v: state.v };
   }
 
   // 天体 id の1体ぶんを切り出した暦。有効期間は**その天体自身のセグメント範囲**から取る

@@ -406,8 +406,8 @@ export function register(): void {
   });
 
   // 高精度暦パックの有効期間(CELESTIAL.md 2.2)を10日間だけに絞ったモックで、期間内/外の
-  // 境界をまたいで stateAt/orbitFrameRotationAt/orbitNormalAt を呼ぶ。恒星は系の根として
-  // 必ず収録されていなければならない(HelioEphemeris の構築条件)。
+  // 境界をまたいで stateAt/orbitFrameRotationAt/orbitNormalAt を呼ぶ。ECI 原点天体(地球)が
+  // 収録されていなければどの天体もパック経路を通らないので、地球は入れておく。
   const preciseValidDays = 10;
   const mockPrecise: AbsoluteEphemeris = testEphemerisSource(
     0, preciseValidDays * DAY, (id) => {

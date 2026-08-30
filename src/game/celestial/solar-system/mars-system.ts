@@ -2,7 +2,6 @@
 import * as THREE from 'three/webgpu';
 import marsTextureUrl from '../../../assets/2k_mars.jpg';
 import phobosTextureUrl from '../../../assets/2k_phobos.jpg';
-import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
   PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
@@ -87,21 +86,20 @@ export const MARS_SYSTEM_NAMES: Record<MarsSystemBodyId, string> = {
 // 火星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function marsSystem(
   sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
-  pack: HelioEphemeris | null,
 ): Record<MarsSystemBodyId, CelestialEntity> {
-  const mars = planetSystem(planetDefForSimZero(MARS, phases, simZeroEt), sun, pack);
+  const mars = planetSystem(planetDefForSimZero(MARS, phases, simZeroEt), sun);
   return {
     mars: new PointEntity(
       mars.body, MARS_SYSTEM_NAMES.mars, 'planet', CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS,
     ),
     phobos: new SphereEntity(
-      new SatelliteMotion(satelliteDefForSimZero(PHOBOS, phases, simZeroEt), mars, pack),
+      new SatelliteMotion(satelliteDefForSimZero(PHOBOS, phases, simZeroEt), mars),
       MARS_SYSTEM_NAMES.phobos, 'satellite',
       // 平均輝度 0.2774(A_B は幾何 0.071 x q=0.393)
       CelestialSurface.textured({ url: phobosTextureUrl, albedoScale: 0.1009, bondAlbedo: 0.028, averageHue: [1, 1, 1] }),
     ),
     deimos: new SphereEntity(
-      new SatelliteMotion(satelliteDefForSimZero(DEIMOS, phases, simZeroEt), mars, pack),
+      new SatelliteMotion(satelliteDefForSimZero(DEIMOS, phases, simZeroEt), mars),
       MARS_SYSTEM_NAMES.deimos, 'satellite',
       // A_B=0.027(幾何 0.068 x q=0.393)
       CelestialSurface.solid([0.0330, 0.0259, 0.0199]),

@@ -1,7 +1,8 @@
 // 現実の太陽系。各系の構築関数を呼んで全天体の運動と見た目を組み、宣言順に並べた
 // CelestialSystem を返す。ECI の中心(originId)は呼び出し側の選択で、同じ太陽系を別の原点で
-// 組める。高精度暦パックを渡すと、その有効期間だけパック経路を通る。
-import { AbsoluteEphemeris, HelioEphemeris } from '../../../physics/absolute-ephemeris';
+// 組める。高精度暦パックを渡すと、収録された天体が
+// その有効期間だけパック経路を通る。
+import { AbsoluteEphemeris } from '../../../physics/absolute-ephemeris';
 import { PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
@@ -56,10 +57,7 @@ export function solarSystem(
   // 要素・極モデルの元期(J2000)から simTime=0 へ畳むための秒数。元期の唯一の表現である
   // epoch からその場で導く — 別の値として持ち回ると、片方だけが古くなる。
   const simZeroEt = ephemerisSeconds(epoch);
-  const pack = absoluteSource === null
-    ? null
-    : new HelioEphemeris(absoluteSource, SUN.id);
-  const sunMotion = new StarMotion(SUN, pack);
+  const sunMotion = new StarMotion(SUN);
   // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
   const sun = new StarEntity(
     sunMotion, SOLAR_SYSTEM_BODY_NAMES.sun, SUN_LIGHT_COLOR,
@@ -67,15 +65,15 @@ export function solarSystem(
 
   // 全天体を系ごとの宣言順に並べたもの。重力源配列・天体一覧の順序はこれで決まる。
   const entities: readonly CelestialEntity[] = [
-    ...Object.values(earthSystem(sunMotion, phases, simZeroEt, pack, earthSpinPhase0)),
-    ...Object.values(innerPlanets(sunMotion, phases, simZeroEt, pack)),
-    ...Object.values(marsSystem(sunMotion, phases, simZeroEt, pack)),
-    ...Object.values(jupiterSystem(sunMotion, phases, simZeroEt, pack)),
-    ...Object.values(saturnSystem(sunMotion, phases, simZeroEt, pack)),
-    ...Object.values(uranusSystem(sunMotion, phases, simZeroEt, pack)),
-    ...Object.values(neptuneSystem(sunMotion, phases, simZeroEt, pack)),
-    ...Object.values(dwarfPlanets(sunMotion, phases, simZeroEt, pack)),
-    ...Object.values(smallBodies(sunMotion, phases, simZeroEt, pack)),
+    ...Object.values(earthSystem(sunMotion, phases, simZeroEt, earthSpinPhase0)),
+    ...Object.values(innerPlanets(sunMotion, phases, simZeroEt)),
+    ...Object.values(marsSystem(sunMotion, phases, simZeroEt)),
+    ...Object.values(jupiterSystem(sunMotion, phases, simZeroEt)),
+    ...Object.values(saturnSystem(sunMotion, phases, simZeroEt)),
+    ...Object.values(uranusSystem(sunMotion, phases, simZeroEt)),
+    ...Object.values(neptuneSystem(sunMotion, phases, simZeroEt)),
+    ...Object.values(dwarfPlanets(sunMotion, phases, simZeroEt)),
+    ...Object.values(smallBodies(sunMotion, phases, simZeroEt)),
     sun,
   ];
 
@@ -83,5 +81,6 @@ export function solarSystem(
   if (originEntity === undefined) throw new Error(`solarSystem: 太陽系に無い原点 id: ${originId}`);
 
   return new CelestialSystem(
-    entities, originEntity, phases, epoch, new PointFieldView(generatePointField(simZeroEt)));
+    entities, originEntity, phases, epoch, new PointFieldView(generatePointField(simZeroEt)),
+    absoluteSource);
 }
