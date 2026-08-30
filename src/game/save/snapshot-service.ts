@@ -5,10 +5,9 @@ import { autoOrbitReference } from '../orbit-reference';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
-import { ephemerisContextFor, isEphemerisContextCompatible } from './ephemeris-context';
+import { ephemerisContextFor, isEphemerisContextRestorable } from './ephemeris-context';
 import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData, SnapshotKind, SnapshotMeta } from './save-data';
 import type { OrbitInfo } from '../hud/orbit/orbit-info';
-import type { TdbJulianDate } from '../../physics/time';
 
 // Game の実行状態と GameSaveData の相互変換、およびストア/スロットへの出し入れを担う。
 export class SnapshotService {
@@ -50,18 +49,17 @@ export class SnapshotService {
 
   // snapshotId のスナップショット本体を取得する。本体欠損・バージョン不一致・
   // 起動先ステージとの不一致のいずれかなら null。
-  load(snapshotId: string, expectedStageId: string, epoch: TdbJulianDate): GameSaveData | null {
+  load(snapshotId: string, expectedStageId: string): GameSaveData | null {
     const data = this.store.readSnapshot(snapshotId);
     if (data === null) return null;
     if (data.version !== SAVE_VERSION) return null;
     const normalizedData = normalizePickupKeys(data);
     if (normalizedData === null) return null;
     if (expectedStageId !== normalizedData.stageId) return null;
-    // 暦情報が無いスナップショットは互換復元で読む。暦情報がある場合は、
-    // 異なる epoch/profile/pack で絶対天体状態が曖昧になるデータを拒否する。
-    if (!isEphemerisContextCompatible(
+    // 暦情報が無いスナップショットは互換復元で読む。元期は継承するので照合しないが、
+    // その元期が選ぶ暦データがいま手元にあるものと違うなら、絶対天体状態が曖昧になるので拒否する。
+    if (!isEphemerisContextRestorable(
       (normalizedData as { ephemerisContext?: unknown }).ephemerisContext,
-      ephemerisContextFor(epoch),
     )) return null;
     return normalizedData;
   }

@@ -72,8 +72,8 @@ export type StageDeps = [
 export interface StageClass {
   readonly id: StageId;
   createCelestialSystem(
-    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, onProgress?: (ratio: number) => void,
-    startSimTime?: number,
+    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
+    onProgress?: (ratio: number) => void,
   ): Promise<CelestialSystem>;
   // simTime=0 に置く絶対時刻。**基底に既定値は無く、全ステージが自分で宣言する** —
   // 置くと宣言し忘れが型検査に落ちなくなり、元期が共有の定数へ静かに戻る。
@@ -109,19 +109,18 @@ export type StageResult = {
 };
 
 export abstract class Stage {
-  // 起動時に1度だけ組む星系。既定は現実の太陽系で、開始時刻(startSimTime、省略時は
-  // ゲーム既定のエポック)が近未来/遠未来いずれかの高精度期間に入っていれば精密暦パックを
-  // 読み込み、どちらにも入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
+  // 起動時に1度だけ組む星系。既定は現実の太陽系で、元期(simTime=0 が指す絶対時刻)が
+  // 近未来/遠未来いずれかの高精度期間に入っていれば精密暦パックを読み込み、どちらにも
+  // 入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
   public static async createCelestialSystem(
-    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, onProgress?: (ratio: number) => void,
-    startSimTime = 0,
+    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
+    onProgress?: (ratio: number) => void,
   ): Promise<CelestialSystem> {
-    const startJdTdb = STORY_EPOCH.value + startSimTime / 86400;
-    const profile = profileAtOrNull(startJdTdb);
+    const profile = profileAtOrNull(epoch.value);
     const pack = profile === null ? null : await loadAbsoluteEphemeris(
       profile.id, profile.validStartJdTdb, profile.validEndJdTdb, onProgress,
     );
-    return solarSystem('earth', phaseOffsets, earthSpinPhase0, pack, STORY_EPOCH);
+    return solarSystem('earth', phaseOffsets, earthSpinPhase0, pack, epoch);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;

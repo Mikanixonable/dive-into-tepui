@@ -6,7 +6,7 @@ import type { StageClass } from './stages/stage';
 import { StageDebug } from './stages/stage-debug';
 import { Button, TabBar, ValueInput } from './hud/widgets';
 import {
-  calendarDateToJulianDate, ephemerisSeconds, julianDateToCalendarDate, parseCalendarDate,
+  calendarDateToJulianDate, julianDateToCalendarDate, parseCalendarDate, TdbJulianDate,
 } from '../physics/time';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { MQ_COMPACT, MQ_SHORT } from './hud/breakpoints';
@@ -304,7 +304,7 @@ export function selectStage(
   onEscape?: () => void,
   onClose?: () => void,
   onSettings?: () => void,
-): Promise<{ stageClass: StageClass; startSimTime?: number }> {
+): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
   return new Promise((resolve) => {
     ensureStyle();
     ensureTitleFonts();
@@ -447,9 +447,9 @@ export function selectStage(
       return input;
     });
     const startButton = new Button('開始', () => {
-      const simTime = readSimTime();
-      if (simTime === null) return;
-      done(pendingCreativeStage!, simTime);
+      const epoch = readEpoch();
+      if (epoch === null) return;
+      done(pendingCreativeStage!, epoch);
     });
     const backButton = new Button('戻る', () => {
       dateTimeStepOpen = false;
@@ -464,25 +464,24 @@ export function selectStage(
 
     // 年+2桁パディングした月日時分から parseCalendarDate が要求する拡張ISO形式を組み立てる。
     const pad2 = (n: number) => String(n).padStart(2, '0');
-    // 5欄の入力値から、そのステージの元期からのオフセット秒を求める。
+    // 5欄の入力値が指す絶対時刻。これがそのランの元期(simTime=0)になる。
     // 数値でない/存在しない日時なら null。
-    const readSimTime = (): number | null => {
+    const readEpoch = (): TdbJulianDate | null => {
       if (inputs.some((input) => input.element.value.trim() === '' || !isFinite(Number(input.element.value)))) return null;
       const [year, month, day, hour, minute] = inputs.map((input) => Number(input.element.value)) as [number, number, number, number, number];
       if (year < 0) return null;
       const iso = `${String(year).padStart(4, '0')}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}:00`;
       try {
-        const chosen = calendarDateToJulianDate(parseCalendarDate(iso, 'TDB'));
-        return ephemerisSeconds(chosen) - ephemerisSeconds(pendingCreativeStage!.epoch);
+        return calendarDateToJulianDate(parseCalendarDate(iso, 'TDB'));
       } catch {
         return null;
       }
     };
     // 入力のたびに確定ボタンの有効/無効とエラーメッセージを更新する。
     const validate = () => {
-      const simTime = readSimTime();
-      startButton.setEnabled(simTime !== null);
-      errorP.classList.toggle('hidden', simTime !== null);
+      const epoch = readEpoch();
+      startButton.setEnabled(epoch !== null);
+      errorP.classList.toggle('hidden', epoch !== null);
     };
     errorP.textContent = '存在しない日時です。';
     validate();
@@ -522,13 +521,13 @@ export function selectStage(
       .catch(() => {});
 
     // 選択確定: 3D 場面と画面を片付けて Promise を解決する
-    const done = (stageClass: StageClass, startSimTime?: number) => {
+    const done = (stageClass: StageClass, startEpoch?: TdbJulianDate) => {
       window.removeEventListener('keydown', onKey);
       onClose?.();
       selected = true;
       scene?.dispose();
       root.remove();
-      resolve({ stageClass, startSimTime });
+      resolve({ stageClass, startEpoch });
     };
     // 解放済みステージのショートカットキーにマッチしたら選択確定する。タブに関係なく効く。
     const onKey = (e: KeyboardEvent) => {
