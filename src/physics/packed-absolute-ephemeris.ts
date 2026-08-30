@@ -24,8 +24,8 @@ export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
     return new PackedAbsoluteEphemeris(decodeEphemerisPack(bytes), epoch);
   }
 
-  // 天体 id の1体ぶんを切り出した暦。有効期間は**その天体自身のセグメント範囲**から取る
-  // (pack 共通の範囲ではない)。収録していなければ null。
+  // 天体 id の1体ぶんを切り出した暦。有効期間はその天体自身のセグメント範囲。
+  // 収録していなければ null。
   bodyEphemerisOf(id: string): BodyEphemeris | null {
     const body = this.evaluator.pack.bodies.find((candidate) => candidate.id === id);
     if (body === undefined) return null;
@@ -36,9 +36,8 @@ export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
   }
 }
 
-// 系全体の評価器から天体1体ぶんだけを見せる窓。id は構築時に固定され、評価のたびには
-// 引き直さない。**ICRF 軸からゲーム ECI 軸への置き換えはここで済ませる** — 原点の付け替えは
-// しないので、答えるのは太陽系重心中心のまま。
+// 評価器の1天体ぶんを BodyEphemeris として見せる窓。id を構築時に固定し、ICRF 軸を
+// ゲーム ECI 軸へ写す。原点は太陽系重心のまま。
 class PackedBodyEphemeris implements BodyEphemeris {
   constructor(
     private readonly evaluator: ChebyshevEphemeris,

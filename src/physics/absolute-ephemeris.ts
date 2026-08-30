@@ -3,9 +3,8 @@
 import { BodyEphemeris } from './body-ephemeris';
 import { Vec3, v3 } from '../math/vec3';
 
-// 天体 id から1体ぶんの暦を切り出す供給源。**構築時にだけ引く口** — 1回の状態評価の中で
-// 呼ばない。収録の有無は切り出しの結果(null かどうか)として天体側へ渡り、そこから先は
-// id を引き直さずに済む。
+// 天体 id から1体ぶんの暦を切り出す供給源。引くのは構築時に1度で、収録していない天体には
+// null を返す。
 export interface AbsoluteEphemeris {
   bodyEphemerisOf(id: string): BodyEphemeris | null;
 }
