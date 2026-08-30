@@ -1,9 +1,9 @@
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_2, SPACE_4 } from '../../theme';
-import { CLICK_MOVE_THRESHOLD } from '../../const';
-import { clampOverlayPosition, Point2 } from '../layout';
+import { clampOverlayPosition } from '../layout';
 import { onViewportChange } from '../viewport';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
+import { HeaderDragController } from './header-drag-controller';
 import {
   Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider,
 } from '../widgets';
@@ -33,10 +33,6 @@ export class PauseMenu implements OverlayHandle {
   // (0 かどうか)から読めるので別に持たない。
   private lastVol = 1;
 
-  private dragPointerId: number | null = null;
-  private dragStartClient: Point2 | null = null;
-  private dragStartWindowPos: Point2 = { x: 0, y: 0 };
-
   // パネル DOM を組み立てて root へ追加する。各操作のコールバックは onXxx フィールドへ
   // 後から代入する。
   public constructor(root: HTMLElement, overlayManager: OverlayManager) {
@@ -62,10 +58,13 @@ export class PauseMenu implements OverlayHandle {
     headerActions.appendChild(this.minimizeToggle);
     headerActions.appendChild(closeBtn.element);
     header.appendChild(headerActions);
-    header.addEventListener('pointerdown', this.handleHeaderPointerDown);
-    header.addEventListener('pointermove', this.handleHeaderPointerMove);
-    header.addEventListener('pointerup', this.handleHeaderPointerUp);
-    header.addEventListener('pointercancel', this.handleHeaderPointerUp);
+    new HeaderDragController(header, {
+      getWindowPos: () => ({ x: this.panel.offsetLeft, y: this.panel.offsetTop }),
+      onDrag: (x, y) => {
+        this.hasCustomPosition = true;
+        this.moveTo(x, y);
+      },
+    });
     this.panel.appendChild(header);
 
     this.body = document.createElement('div');
@@ -228,33 +227,6 @@ export class PauseMenu implements OverlayHandle {
     if (!this._isOpen) return;
     this.moveTo(this.panel.offsetLeft, this.panel.offsetTop);
   }
-
-  // ヘッダー上のボタン以外を掴んだときに、ドラッグ開始点とポインタキャプチャを確保する。
-  private handleHeaderPointerDown = (e: PointerEvent): void => {
-    if (e.target instanceof Element && e.target.closest('button')) return;
-    this.dragPointerId = e.pointerId;
-    this.dragStartClient = { x: e.clientX, y: e.clientY };
-    this.dragStartWindowPos = { x: this.panel.offsetLeft, y: this.panel.offsetTop };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
-
-  // しきい値(CLICK_MOVE_THRESHOLD)を超えて動いたら位置を持ち出し位置として確定させる。
-  private handleHeaderPointerMove = (e: PointerEvent): void => {
-    if (this.dragPointerId !== e.pointerId || this.dragStartClient === null) return;
-    const dx = e.clientX - this.dragStartClient.x;
-    const dy = e.clientY - this.dragStartClient.y;
-    if (!this.hasCustomPosition && Math.hypot(dx, dy) < CLICK_MOVE_THRESHOLD) return;
-    this.hasCustomPosition = true;
-    this.moveTo(this.dragStartWindowPos.x + dx, this.dragStartWindowPos.y + dy);
-  };
-
-  // ポインタキャプチャを解放してドラッグ状態を終える。
-  private handleHeaderPointerUp = (e: PointerEvent): void => {
-    if (this.dragPointerId !== e.pointerId) return;
-    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    this.dragPointerId = null;
-    this.dragStartClient = null;
-  };
 
   // BGM スライダーの表示を更新する。
   public setBgmVolume(vol: number): void {
