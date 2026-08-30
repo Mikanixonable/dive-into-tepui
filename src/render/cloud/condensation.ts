@@ -14,7 +14,7 @@ export type CloudSample = {
 
 // 被覆率の足切りの縁と、そこへ足す対流の重み。湿度に対流の強弱を足したものを渡すので、湿度が上の
 // 縁を超えている所は対流が下がっても覆われたままで、**湿度が縁のあいだにある所だけが対流の周波数で
-// 千切れる。** 縁の幅は、重みを掛けた対流が振れる幅(±0.12)と同じに取る — 湿った所はすぐ飽和し、
+// 千切れる。** 縁の幅は、活発度 1 の対流が振れる幅(±0.12)と同じに取る — 湿った所はすぐ飽和し、
 // そこから先の起伏は雲頂高度が持つ。
 const COVERAGE_ONSET = 0.62;
 const COVERAGE_FULL = 0.80;
@@ -36,12 +36,15 @@ const TRANSLUCENT_GAIN = 1.5;
 
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した 1 本の足切りから、
 // 雲頂高度は上昇流と対流を別々の重みで混ぜたロジスティックから出る — 覆う広さは湿度が、
-// 高さは上昇流が決め、対流はどちらにも粒と起伏を与える。
+// 高さは上昇流が決め、対流はどちらにも粒と起伏を与える。**対流の活発度が効くのは被覆率の側で、
+// 雲頂は活発度に依らず対流をそのまま受ける** — 一面に覆われた空も一様な白い面にはならない
+// (`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
 export function condense(weather: WeatherSample): CloudSample {
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT)
     .add(weather.convection.mul(CLOUD_TOP_RELIEF)).sub(CLOUD_TOP_BIAS);
+  const granularity = weather.convection.mul(weather.convectiveActivity).mul(CONVECTION_GAIN);
   return {
-    coverage: smoothstep(COVERAGE_ONSET, COVERAGE_FULL, weather.humidity.add(weather.convection.mul(CONVECTION_GAIN))),
+    coverage: smoothstep(COVERAGE_ONSET, COVERAGE_FULL, weather.humidity.add(granularity)),
     cloudTop: float(1).add(exp(depth.negate())).reciprocal().mul(CLOUD_TOP_SPAN).add(CLOUD_BASE_HEIGHT),
     translucent: max(weather.upperHumidity.sub(TRANSLUCENT_ONSET), 0).mul(TRANSLUCENT_GAIN),
   };
