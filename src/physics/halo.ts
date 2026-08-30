@@ -222,7 +222,7 @@ function centerManifoldState(
   // 回転フレーム相対の状態を絶対位置へ平行移動し、フレームの角速度ぶんを足して ECI 速度にする。
   const rEci = add(frame.origin, relPos);
   const vEci = add(relVel, cross(omega, rEci));
-  return kinematicState(t, rEci, vEci);
+  return kinematicState<'eci'>(t, rEci, vEci);
 }
 
 // Richardson (1980) 三次近似の係数一式。長さはすべて gamma 単位、時間は τ=n·t 単位。

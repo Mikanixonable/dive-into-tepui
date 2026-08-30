@@ -198,7 +198,7 @@ function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, ce
   const center = strongestAttractor(centerR, celestialSystem.celestialBodiesAt(t));
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
-    const el = orbitalElementsOf(kinematicState(t, centerR, v), center);
+    const el = orbitalElementsOf(kinematicState<'eci'>(t, centerR, v), center);
     return el !== null && apsisAltitudes(el).pe >= minPeAlt;
   };
   if (safe(centerV)) return centerV;
@@ -297,7 +297,7 @@ export function generateWave(player: KinematicState, waveNumber: number, celesti
   for (let i = 0; i < shipCount; i++) {
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir);
-    const state: KinematicState = kinematicState(player.t, position, centerV);
+    const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
     enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, accent, typeIndex, waveNumber, worldSfx, fx, scene));
   }
   return enemies;

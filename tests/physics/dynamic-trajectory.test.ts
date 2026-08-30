@@ -15,12 +15,12 @@ import { add, len, sub, v3 } from '../../src/math/vec3';
 
 const WINDOWS = solarSystemParts({ moon: 0 }).system; // 初期位相を固定して決定的にする
 const celestialBodiesAt = (t: number) => WINDOWS.celestialBodiesAt(t); // step() が要求する重力源をステップ中点で引く
-const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(), v3()), accel: v3(), degree2: null, atmosphere: null, isStar: false };
+const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 
 function circularState(t = 0): KinematicState {
   const r0 = R_EARTH + 420e3;
   const vc = Math.sqrt(MU_EARTH / r0);
-  return kinematicState(t, v3(r0, 0, 0), v3(0, vc, 0));
+  return kinematicState<'eci'>(t, v3(r0, 0, 0), v3(0, vc, 0));
 }
 
 export function register(): void {
@@ -94,7 +94,7 @@ export function register(): void {
       e.step(dt, celestialBodiesAt(e.state.t + dt / 2), [], null, 0, 0, null, dt, 100000); // 毎ステップ記録: history = t=0..80, state.t=90
     }
     assert.ok(e.at(50), 'sanity: t=50 should be recorded before reset');
-    e.reset(kinematicState(50, v3(1, 0, 0), v3(0, 1, 0)));
+    e.reset(kinematicState<'eci'>(50, v3(1, 0, 0), v3(0, 1, 0)));
     assert.equal(e.at(50), e.state, 'the sample at the reset time is the reset state itself');
     assert.ok(e.at(30), 'samples strictly before the reset time should survive');
     assert.equal(e.state.t, 50);
@@ -113,7 +113,7 @@ export function register(): void {
     assert.equal(e.state.t, 20);
 
     const before = e.state;
-    e.reset(kinematicState(20, v3(1, 0, 0), v3(0, 1, 0)));
+    e.reset(kinematicState<'eci'>(20, v3(1, 0, 0), v3(0, 1, 0)));
     assert.equal(e.prevState.t, before.t, 'reset should also advance prevState to the state it replaced');
   });
 
@@ -167,7 +167,7 @@ export function register(): void {
     const c = e.samplesOldestFirst();
     assert.notEqual(c, a, 'a step must invalidate the memoized reference');
 
-    e.reset(kinematicState(e.state.t, v3(1, 0, 0), v3(0, 1, 0)));
+    e.reset(kinematicState<'eci'>(e.state.t, v3(1, 0, 0), v3(0, 1, 0)));
     const d = e.samplesOldestFirst();
     assert.notEqual(d, c, 'a reset must invalidate the memoized reference');
   });
@@ -184,7 +184,7 @@ export function register(): void {
     e.step(10, celestialBodiesAt(e.state.t + 5), [], null, 0, 0, null, 10, 1e6, EARTH);
     assert.equal(e.extrapolationCenter, EARTH);
 
-    e.reset(kinematicState(e.state.t, v3(1, 0, 0), v3(0, 1, 0)));
+    e.reset(kinematicState<'eci'>(e.state.t, v3(1, 0, 0), v3(0, 1, 0)));
     assert.equal(e.extrapolationCenter, null, '不連続な差し替えで中心天体は破棄される');
   });
 
@@ -225,7 +225,7 @@ export function register(): void {
     const e = new DynamicTrajectory(circularState());
     e.step(10, celestialBodiesAt(e.state.t + 5), [], null, 0, 0, null, 1000, 0);
     const tipBeforeFollow = e.state;
-    const next = kinematicState(e.state.t + 10, v3(1, 0, 0), v3(0, 1, 0));
+    const next = kinematicState<'eci'>(e.state.t + 10, v3(1, 0, 0), v3(0, 1, 0));
     e.follow(next, 1000, 0);
     assert.equal(e.prevState, tipBeforeFollow);
     assert.equal(e.state, next);
@@ -235,7 +235,7 @@ export function register(): void {
     const e = new DynamicTrajectory(circularState());
     e.step(10, celestialBodiesAt(e.state.t + 5), [], null, 0, 0, null, 10, 1e6);
     const before = e.samplesOldestFirst();
-    const next = kinematicState(e.state.t + 10, v3(1, 0, 0), v3(0, 1, 0));
+    const next = kinematicState<'eci'>(e.state.t + 10, v3(1, 0, 0), v3(0, 1, 0));
     e.follow(next, 10, 1e6);
     const after = e.samplesOldestFirst();
     assert.notEqual(after, before, 'follow はメモを無効化するはず');
@@ -248,7 +248,7 @@ export function register(): void {
     const t = e.state.t + 1000;
 
     const rel = extrapolatedRelativeState(e.state, EARTH, t)!;
-    const movingCenter = kinematicState(t, v3(1e6, 2e6, -3e6), v3(10, -20, 30));
+    const movingCenter = kinematicState<'eci'>(t, v3(1e6, 2e6, -3e6), v3(10, -20, 30));
     const extrapolated = e.extrapolatedAt(t, movingCenter);
     assert.ok(extrapolated);
     assert.deepEqual(extrapolated!.r, add(rel.r, movingCenter.r));

@@ -157,7 +157,7 @@ export class CreativeStage extends Stage {
     const color = Number(colorValue);
     const forward = qRotate(player.att.q, v3(0, 0, 1));
     const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
-    const state = kinematicState(player.state.t, position, player.state.v);
+    const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
     const name = `MANUAL-${++this.manualEnemyCount}`;
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return;
@@ -188,7 +188,7 @@ export class CreativeStage extends Stage {
     }
     const forward = qRotate(player.att.q, v3(0, 0, 1));
     const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
-    const state = kinematicState(player.state.t, position, player.state.v);
+    const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
     const name = `FORMATION-${++this.manualFormationCount}`;
     const formationId = name;
     for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._worldSfx, this._fx, this._scene)) {
@@ -408,7 +408,7 @@ export class CreativeStage extends Stage {
     const rel = stateFromOrbitalElements(
       this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, center.mu,
     );
-    return kinematicState(this._simulator.simTime, add(center.state.r, rel.r), add(center.state.v, rel.v));
+    return kinematicState<'eci'>(this._simulator.simTime, add(center.state.r, rel.r), add(center.state.v, rel.v));
   }
 
   // フォームの値が物理的に成立するか検証する。computeFieldIssues と同じ検証呼び出しを共有し、

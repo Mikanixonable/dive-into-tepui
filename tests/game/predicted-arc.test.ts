@@ -18,7 +18,7 @@ import type { FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-cel
 function circularState(t = 0): KinematicState {
   const r0 = R_EARTH + 420e3;
   const vc = Math.sqrt(MU_EARTH / r0);
-  return kinematicState(t, v3(r0, 0, 0), v3(0, vc, 0));
+  return kinematicState<'eci'>(t, v3(r0, 0, 0), v3(0, vc, 0));
 }
 
 // 地球1体だけを引く provider。地球は ECI 原点に静止させる(dynamic-trajectory.test.ts の EARTH と同じ)。
@@ -27,7 +27,7 @@ function earthOnlyProvider(withAtmosphere = false): FutureCelestialBodyProvider 
   const atmosphere = withAtmosphere ? { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) } : null;
   const earthAt = (t: number): CelestialBody => ({
     id: 'earth', mu: MU_EARTH, radius: R_EARTH,
-    state: kinematicState(t, v3(), v3()), accel: v3(), degree2: null, atmosphere, isStar: false,
+    state: kinematicState<'eci'>(t, v3(), v3()), accel: v3(), degree2: null, atmosphere, isStar: false,
   });
   return {
     defs: [{ id: 'earth', mu: MU_EARTH, radius: R_EARTH }],
@@ -68,7 +68,7 @@ export function register(): void {
     // 同じ時間帯の状態を決める積分は1本でなければならないので、弧の刻みは実シミュレーションの
     // 刻み規則(atmosphericMaxStep)と同じ値へ落ちる。大気を載せた地球でなければ成立しない。
     const r0 = R_EARTH + 40e3;
-    const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
+    const state0 = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
     const arc = new PredictedArc(state0, earthOnlyProvider(true), /* radius */ 0, SHIP_BCINV, 0, /* keplerTail */ true, /* consumable */ true);
     arc.requiredEnd = state0.t + 86400;
     arc.retainFrom = state0.t;
@@ -77,7 +77,7 @@ export function register(): void {
     const atmosphere = { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) };
     const earth: CelestialBody = {
       id: 'earth', mu: MU_EARTH, radius: R_EARTH,
-      state: kinematicState(0, v3(), v3()), accel: v3(), degree2: null, atmosphere, isStar: false,
+      state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(), degree2: null, atmosphere, isStar: false,
     };
     let prev = arc.trajectory.state;
     for (let i = 0; i < 8; i++) {
@@ -156,7 +156,7 @@ export function register(): void {
   test('predicted-arc: 大気を持たない天体の低空では、再突入域の細分化が起きない', () => {
     // 細分化の理由は大気の密度勾配なので、大気の無いところに再突入域は無い。
     const r0 = R_EARTH + 150e3;
-    const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
+    const state0 = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
     const arc = new PredictedArc(state0, earthOnlyProvider(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
     arc.requiredEnd = state0.t + 86400;
     arc.retainFrom = state0.t;
@@ -175,7 +175,7 @@ export function register(): void {
     // 大気を持つ地球へ、近地点が地表下になる衝突コースで落とす。弧は熱の蓄積状態を運ばないので
     // 焼失を判定できず、判定しない — 途中の大気の濃さに関わらず表面まで伸びる。
     const r0 = R_EARTH + 300e3;
-    const state0 = kinematicState(0, v3(r0, 0, 0), v3(0, 1500, 0)); // 円速度を大きく割る = 落ちる
+    const state0 = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, 1500, 0)); // 円速度を大きく割る = 落ちる
     const arc = new PredictedArc(
       state0, earthOnlyProvider(true), /* radius */ 0, 3.3e-3, 0, /* keplerTail */ true, /* consumable */ true);
     arc.requiredEnd = state0.t + 86400;
@@ -205,7 +205,7 @@ export function register(): void {
     tipTimes(arc, 5);
 
     assert.ok(arc.represents(state0, end), '同じ起点なら弧を使い回せる(毎フレーム作り直さない)');
-    const edited = kinematicState(state0.t, state0.r, v3(state0.v.x, state0.v.y + 10, state0.v.z));
+    const edited = kinematicState<'eci'>(state0.t, state0.r, v3(state0.v.x, state0.v.y + 10, state0.v.z));
     assert.ok(!arc.represents(edited, end), '起点を差し替えたら弧を作り直す(計画のノードを編集したとき)');
   });
 }

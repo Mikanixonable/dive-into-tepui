@@ -126,7 +126,7 @@ export class Enemy extends Ship {
     const { name, state, enemyKind: rawEnemyKind, att, accent, orbitLineColor, waveId, id, formationId, formationRole } = 'saved' in init
       ? {
         name: init.saved.name || '',
-        state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
+        state: kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
         enemyKind: init.saved.enemyKind,
         att: { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: inertiaForEnemyKind(init.saved.enemyKind) } as Attitude,
         accent: init.saved.accent,
@@ -300,11 +300,11 @@ export class Enemy extends Ship {
   private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
     this._worldSfx.enemyHit();
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
+      this._fx.spawnPlasmaFlash(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(kinematicState(this.state.t, impactPoint, this.state.v));
+      this._fx.spawnBulletFlash(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
     }
-    this._fx.spawnGasPuff(kinematicState(this.state.t, impactPoint, this.state.v));
+    this._fx.spawnGasPuff(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
   }
 
   // 撃破時の爆発音・エフェクトを発生させる。
@@ -346,7 +346,7 @@ export class Enemy extends Ship {
   private handleProteinDamage(result: ProteinDamageResult, impactPoint: Vec3): void {
     if (!this.proteinRuntime) return;
     if (result.siteDisabled || result.phaseChanged) {
-      this._fx.spawnProteinStateFlash(kinematicState(this.state.t, impactPoint, this.state.v), result.phaseChanged ? result.phase : 'site-disabled');
+      this._fx.spawnProteinStateFlash(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v), result.phaseChanged ? result.phase : 'site-disabled');
     }
   }
 
@@ -502,7 +502,7 @@ export class Enemy extends Ship {
       ? this.proteinRuntime.combat.projectileDamage(PLAYER_BULLET_DAMAGE)
       : PLAYER_BULLET_DAMAGE;
     const pb = new Bullet(
-      kinematicState(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma', bulletDamage,
+      kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma', bulletDamage,
       this._worldSfx, this.scene, this,
     );
     // 弾の姿勢は Bullet.sync() に一本化する。プラズマの長軸(+Z)を、
@@ -510,7 +510,7 @@ export class Enemy extends Ship {
     // 直接 lookAt() するよりも、敵自身の速度を含む軌道と一致する。
 
     if (this.proteinRuntime) {
-      this._fx.spawnMuzzleFlash(kinematicState(simTime, r, v));
+      this._fx.spawnMuzzleFlash(kinematicState<'eci'>(simTime, r, v));
     }
 
     entities.addBullet(pb);

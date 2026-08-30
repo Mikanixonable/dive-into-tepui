@@ -19,7 +19,7 @@ const SMALL_RADIUS = 50e3;
 
 function body(id: string, mu: number, radius: number, atmosphere: Atmosphere | null = null): CelestialBody {
   return {
-    id, mu, radius, state: kinematicState(0, v3(), v3()), accel: v3(),
+    id, mu, radius, state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(),
     degree2: null, atmosphere, isStar: false,
   };
 }
@@ -45,7 +45,7 @@ export function withThrust(central: CelestialBody, thrust: Vec3): Advance {
   return (s, dt) => stepDynamics(s, dt, [central], [], null, 0, 0, thrust);
 }
 
-export const still: Advance = (s, dt) => kinematicState(s.t + dt, s.r, s.v);
+export const still: Advance = (s, dt) => kinematicState<'eci'>(s.t + dt, s.r, s.v);
 
 // 判定にかける1区間。radiusSum は費用の計測で使う代表値で、精度の計測では二分探索で動かす。
 export interface Sweep {
@@ -93,14 +93,14 @@ export function sweepOf(
 export function againstBody(
   label: string, central: CelestialBody, a0: KinematicState, dt: number, advanceA: Advance,
 ): Sweep {
-  return sweepOf(label, a0, kinematicState(a0.t, central.state.r, v3()), dt,
+  return sweepOf(label, a0, kinematicState<'eci'>(a0.t, central.state.r, v3()), dt,
     advanceA, still, central.radius);
 }
 
 // 表面から alt の円軌道上の状態。x 軸上に置き、y 方向へ回る。
 export function circular(central: CelestialBody, alt: number): KinematicState {
   const r = central.radius + alt;
-  return kinematicState(0, v3(r, 0, 0), v3(0, Math.sqrt(central.mu / r), 0));
+  return kinematicState<'eci'>(0, v3(r, 0, 0), v3(0, Math.sqrt(central.mu / r), 0));
 }
 
 // 半径 r の円軌道の周期。刻みを「1周あたり何歩か」で指定するための基準。
@@ -112,14 +112,14 @@ export function circularPeriod(central: CelestialBody, r: number): number {
 export function beforePerigee(
   central: CelestialBody, rp: number, e: number, dt: number, frac: number,
 ): KinematicState {
-  const atPerigee = kinematicState(0, v3(rp, 0, 0), v3(0, Math.sqrt(central.mu * (1 + e) / rp), 0));
+  const atPerigee = kinematicState<'eci'>(0, v3(rp, 0, 0), v3(0, Math.sqrt(central.mu * (1 + e) / rp), 0));
   const back = freeFall(central);
   let s = atPerigee;
   for (let i = 0; i < TRUE_STEPS; i++) s = back(s, -(dt * frac) / TRUE_STEPS);
-  return kinematicState(0, s.r, s.v);
+  return kinematicState<'eci'>(0, s.r, s.v);
 }
 
 // 基準の軌道から offset だけずらし、速度を relSpeed だけ加えた相手。
 export function companion(base: KinematicState, offset: Vec3, relV: Vec3): KinematicState {
-  return kinematicState(base.t, add(base.r, offset), add(base.v, relV));
+  return kinematicState<'eci'>(base.t, add(base.r, offset), add(base.v, relV));
 }

@@ -8,7 +8,7 @@ import { v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
 const EARTH: CelestialBody = {
-  id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false,
+  id: 'earth', mu: 1, radius: 6.371e6, state: kinematicState<'eci'>(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false,
 };
 
 export function register(): void {
@@ -60,7 +60,7 @@ export function register(): void {
   test('occlusion: カメラの後方にある天体は遮蔽しない', () => {
     const cameraPos = v3(0, 0, 0);
     const point = v3(1e7, 0, 0);
-    const behindCamera: CelestialBody = { ...EARTH, state: kinematicState(0, v3(-1e7, 0, 0), ZERO) };
+    const behindCamera: CelestialBody = { ...EARTH, state: kinematicState<'eci'>(0, v3(-1e7, 0, 0), ZERO) };
     assert.equal(isOccluded(cameraPos, point, [behindCamera]), false);
   });
 }

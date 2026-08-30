@@ -76,7 +76,7 @@ export class SurfaceContactPhysics {
     const before = e.state;
     // 位置も速度も動いていなければ書き戻さない — 書き戻しは予測弧を捨てる。
     if (!sameVec(before.r, response.r) || !sameVec(before.v, response.v)) {
-      e.state = kinematicState(before.t, response.r, response.v);
+      e.state = kinematicState<'eci'>(before.t, response.r, response.v);
     }
     if (!response.bounced) return;
     // 反発で失われた力学エネルギーは熱になる。当事者の判断ではなく物理なので、失われるかどうか
