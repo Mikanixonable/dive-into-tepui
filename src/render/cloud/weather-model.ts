@@ -75,9 +75,9 @@ const WIND_CAP = 50;
 
 // 湿度の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
 const ADVECTION_PERIOD = 12 * 3600;
-// 台風の目。移流前の湿度をこれだけ下げる。焼いてから流すので、目は流れに沿って中心へ引き込まれて
-// 歪み、見えの穴は Cyclones が持つ半径よりずっと小さくなる。
-const TYPHOON_EYE_DRYNESS = 0.45;
+// 台風の目。移流の後の湿度をこれだけ下げる。目は渦とともに動く定常の構造なので、風に流さない。
+// 眼壁は上昇流が頭打ちに張り付いて飽和しているので、そこを貫く深さが要る。
+const TYPHOON_EYE_DRYNESS = 0.55;
 // 湿度の底上げ(移流前の源が持つ、平年の雲量を抜きにした値)と、移流後に足す平年の雲量の重み。
 // 地表付近と上層で別に持つ。重みは、雲量の地理的な差が凝結のしきい値をまたぐ幅に取る — 小さく
 // 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
@@ -151,12 +151,13 @@ export class WeatherModel {
     const terrainLift = dot(components(wind), this.climate.slope(direction)).mul(TERRAIN_LIFT_GAIN);
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)));
 
-    // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足したもの。後の 2 つは移流を
-    // 通らないので、気候と地形に貼り付いたまま歪まない。
+    // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足し、台風の目のぶんを引いたもの。
+    // 後の 3 つは移流を通らないので、気候と地形と渦に貼り付いたまま歪まない。
     const advected = this.advected(direction, wind);
     const meanCloudiness = this.climate.meanCloudiness(direction);
+    const eye = this.cyclones.typhoonEyeAt(direction).mul(TYPHOON_EYE_DRYNESS);
     const humidity = clamp(
-      advected.x.add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT)).add(lift.mul(LIFT_HUMIDITY)), 0, 1);
+      advected.x.add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT)).add(lift.mul(LIFT_HUMIDITY)).sub(eye), 0, 1);
     const upperHumidity = clamp(
       advected.y.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT)).add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)),
       0, 1);
@@ -177,10 +178,9 @@ export class WeatherModel {
   // 分布がその変位ぶん歪んで読めなくなる — 慢性的な湿潤・乾燥は場所に貼り付いているべきもので、
   // 流れていくものではない。
   public humiditySourceAt(direction: Vec3Node): Vec2Node {
-    const eye = this.cyclones.typhoonEyeAt(direction).mul(TYPHOON_EYE_DRYNESS);
     return vec2(
-      float(HUMIDITY_BASE).add(this.humidityNoise.at(direction).mul(HUMIDITY_NOISE_AMPLITUDE)).sub(eye),
-      float(UPPER_HUMIDITY_BASE).add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)).sub(eye),
+      float(HUMIDITY_BASE).add(this.humidityNoise.at(direction).mul(HUMIDITY_NOISE_AMPLITUDE)),
+      float(UPPER_HUMIDITY_BASE).add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)),
     );
   }
 
