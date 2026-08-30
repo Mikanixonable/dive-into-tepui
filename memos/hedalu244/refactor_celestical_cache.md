@@ -479,8 +479,16 @@ addPrimaryRelative(planet.analyticStateAt(t), system.starRelStateAt(t)) // 惑�
 | 原点天体の一式 | 太陽系重心相対 ×2 | `EciTransform.originCache` |
 | ECI 瞬間値 | ECI 原点天体 | `CelestialEntity.eciCache` |
 
-**主星相対・惑星本体相対を保持している場所は 0 になる。** 公開している場所も 0。
-必要になった者が、太陽系重心相対どうしを引き算して作る。
+**実施後の実測**: `TimeRing` が保持する値の型は
+`KinematicState<'analytic'>`(恒星・系重心)/ `SystemMembers`(惑星本体・衛星、どれも
+`'analytic'`)/ `OriginState`(パック+解析、どちらも太陽系重心)/ `CelestialBody`(ECI)。
+**主星相対・惑星本体相対を保持している場所は 0。**
+
+**公開している場所は1つ残る** — `PlanetSystem.satelliteRelStateAt`(惑星本体相対)。
+`SatelliteMotion` の解析加速度と暦パックの補完が惑星本体相対を要り、TypeScript の
+`private` が別クラスから見えないため。ただし**保持はしておらず、呼ばれるたびに系が持つ
+太陽系重心相対どうしを引き算して作る** — 方針が言う「必要になった者が引き算する」を、
+両方を知っている系が代わりに行っている形。
 
 ### 掃かずに残るもの(直す/直さないの判断が要るので、手順に入れていない)
 
