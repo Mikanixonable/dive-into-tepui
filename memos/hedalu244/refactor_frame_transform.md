@@ -1,6 +1,6 @@
 # 座標は誰が持ち、どこで変換されるのか
 
-**争点だけを持つ。決めたことは「0. 方針」だけで、それ以外は未決。**
+**争点A〜E は決着済み。残っているのは実施と、2.5 の保留2件。**
 行番号のスナップショットは **`82fdcf6c`**。
 `refactor_orbit_ephemeris.md` の論点2(キャッシュの持ち主)はここへ引き継いだ。
 
@@ -154,17 +154,21 @@ ECI で統一されているべきで、原点を選べる型にする意味が�
   4〜5桁落とす。加えて**供給源の制約は「損をする」ではなく「禁止」**(解析の原点 × パックの
   天体は誤り)なので、許される対と許されない対の判定をモジュールの内側へ抱え込むことになる。
 
-#### C-2. 後段への渡し方(**未決**)
+#### C-2. 後段への渡し方(**決着: `ReferenceFrames` を game/celestial へ移す**)
 
 表現をどう選んでも **stage 2(`ReferenceFrames`)は ECI 値を入力に取る。** しかも
 `frameRotationAt`(`reference-frames.ts:96`)は**機体の ECI 状態と天体の状態を直接引き算する**
-ので、天体側も任意の t で ECI を答えられなければならない。`ReferenceFrames` は physics に
-あり、stage 1 は game/celestial にある(争点D)ので、**境界を跨いで値を渡す口が要る。**
+ので、天体側も任意の t で ECI を答えられなければならない。stage 1 は game/celestial にあるので、
+**`ReferenceFrames` ごと game/celestial へ移す。** ECI を知る層が game に揃い、口が増えない。
 
-| | 得る | 失う |
-| --- | --- | --- |
-| **ECI 値の解決口を注入する**(`FrameAnchorSource` と同じ形。`(id, t) => KinematicState`) | `ReferenceFrames` は physics に残る | 口が1つ増える。既存の `FrameAnchorSource.bodies` は**1フレームの固定時刻スナップショット**で任意の t に答えられないので流用できない(`frame-anchors.ts:47`) |
-| **`ReferenceFrames` を game/celestial へ移す** | 口が増えない。ECI を知る層が game に揃う | physics から参照フレームが消える。`frame.ts`(純関数)との距離が開く |
+採らなかった案: **ECI 値の解決口を注入する**(`FrameAnchorSource` と同じ形)。physics に
+`ReferenceFrames` を残せるが、口が1つ増える。既存の `FrameAnchorSource.bodies` は
+1フレームの固定時刻スナップショットで任意の t に答えられないので流用もできない
+(`frame-anchors.ts:47`)。
+
+**残る注意:** `frame.ts`(座標変換の純関数群)は physics に残る。`ReferenceFrames` だけが
+game へ出るので、両者の距離が開く — `frame.ts` が `ReferenceFrames` を import しない
+(循環を作らない)という現状の取り決めは、移動後も同じく守られる。
 
 ### 争点D. 変換器とキャッシュの持ち主(**決着**)
 
@@ -192,29 +196,46 @@ ECI 原点天体の値と、どちらの供給源か」— は天体1体のも�
 それぞれ `orientationAt` を引く)を含む。**持ち主が決まっただけで、置くかどうかは
 移してから測る。**
 
-### 争点E. branded type をどこまで広げるか
+### 争点E. 位置の原点を型で守れるか(**実測済み: 守れる。不可能な構造は無かった**)
 
-**`KinematicState<F>` は既に原点で branded されている**(`kinematic-state.ts:14`)ので、
-「まず branded type で守る」の実質は**そこから漏れている部分**を塞ぐこと。漏れているのは:
+**`KinematicState<F>` は既に原点で branded されている**(`kinematic-state.ts:14`)が、
+**`.r` / `.v` を取り出した瞬間に素の `Vec3` へ落ちる。** これが唯一の漏れ口で、
+`CelestialBody.accel` / `FrameTransform.origin` / 位置を `r: Vec3` で受ける physics の
+8関数(`attractorAccel` / `strongestAttractor` / `nearestAtmosphereBody` / `localOrbitPeriod` /
+`srpAccel` / `sunlitFactor` / `maxOccludedFraction` / `frameKinematicState`)/ `FloatingOrigin.r`
+は、そこから流れ込んだ値を受けている。
 
-- `CelestialBody.state`(無標 = `'eci'`。→ 争点B で明示へ)と `CelestialBody.accel`(素の `Vec3`)
-- `FrameTransform.origin` / `originVel`(素の `Vec3`。ECI 前提)
-- 位置を素の `Vec3` で受ける physics の関数 — `attractorAccel(r, …)` /
-  `strongestAttractor(r, …)` / `nearestAtmosphereBody(r, …)` / `localOrbitPeriod(r, …)` /
-  `srpAccel(r, …)` / `sunlitFactor(r, …)` / `celestialBodyPositionAt` の戻り
-- `FloatingOrigin.r`(`floating-origin.ts:18`)
+#### `Vec3` そのものを型引数化する案は採らない
 
-**位置の `Vec3` 全部に札を付けるのか、無標 ECI をやめる(争点B)だけで足りるのか**が争点。
-`Vec3` 自体は `__tag: "Vec3"` を持つだけで原点は表していない。
+`Vec3` は src の 133 ファイル・800 箇所で使われ、**位置だけでなく向き・軸・角速度も同じ型**で
+表している。型引数化すると `vec3.ts` の 14 関数すべてにアフィン代数の場合分け
+(位置 − 位置 = 変位、位置 + 変位 = 位置、変位 + 変位 = 変位)が要り、しかも
+「向き × 向きの外積」のような原点を持たない用途と混ざる。**波及が大きすぎる。**
 
-**札に何を書くかは争点A と連動する。** いまの `FrameTag` は原点を名乗りながら実際には
-供給源(解析/パック)を守っている。原点を重心へ揃えるなら、札は原点ではなく供給源で切る。
+#### 代わりに `KinematicState<F>` の `r` / `v` を branded にする(**実測: src 全体で6件**)
 
----
+`r` / `v` の型を `Vec3 & { __originOf: F }` にして型検査を通したところ、**エラーは
+`src` 全体で6件だけ**だった。組み立ての唯一の入口 `kinematicState<F>(t, r, v)` が
+素の `Vec3` を受けて内側で札を付けるので、**構築側は1箇所も直さなくてよい**。読み出し側も
+`FramedVec3<F>` は `Vec3` の部分型なので、既存の演算にそのまま渡せる。
+
+出た6件の内訳(**どちらも直し方が分かっている。行き詰まる構造は無い**):
+
+| 種類 | 箇所 | 中身 |
+| --- | --- | --- |
+| **アフィン代数で札が落ちる**(4件) | `celestial-motion.ts:462` `:463` / `orbit-solvers.ts:53` / `plan-editor.ts:413` | `addScaled(位置, 相対, w)` や `add(中心位置, 軌道上の相対)` のように「位置 ± 変位 = 位置」を書いている場所。`add` / `sub` / `addScaled` が素の `Vec3` を返すので札が落ちる。**再付与するか、この3関数へ「位置 ± 変位 = 位置」のオーバーロードを足す** |
+| **変位を位置の型で受けていた**(2件) | `orbit-analysis-data.ts:86` の `phaseAngleOn(el, positionRelCenter: KinematicState['r'])`(呼び出しは `:162` の2箇所) | 引数名は `positionRelCenter`(中心相対の**変位**)なのに、型が `KinematicState['r']`(= ECI の**位置**)。**型が実態と食い違っていたのを札が暴いた** — 変位用の型で受け直す |
+
+**この6件のうち5件はまだ結論が要る**(オーバーロードを足すか、その場で再付与するか)が、
+**「どうしても不可能な構造」は見つからなかった。** ECI と太陽系重心(と相対ベクトル)の
+区別は、この形で付けられる。
+
+**着手は争点A の後。** タグの綴りそのものが争点A で変わる(原点 → 供給源)ので、先にやると
+二度手間になる。
 
 ## 2.4 ここまでで決まった形
 
-争点A・B・C-1・D を合わせると、目指す形はこうなる。**未決は C-2 と E だけ。**
+争点A〜E を合わせると、目指す形はこうなる。
 
 - **`CelestialMotion`** — 自分の位置だけを答える。原点は太陽系重心(衛星は主天体相対)、
   タグは供給源(解析 / パック)で切る。**ECI も原点天体も知らない。**
@@ -225,8 +246,10 @@ ECI 原点天体の値と、どちらの供給源か」— は天体1体のも�
 - **`CelestialEntity`** — 変換器を使って**自分の** ECI 値を答える。1体ぶんの ECI キャッシュも
   ここが持つ(置くかどうかは移してから測る)。
 - **`CelestialSystem`** — 個体が変換した結果を**集めて配列にする**。集合のキャッシュもここ。
-- **stage 2(`ReferenceFrames` / `frame.ts`)** — 触らない。ECI 値を入力に取り、参照フレーム
-  相対へ剛体変換する。ECI 値をどう受け取るかが C-2。
+- **stage 2** — `frame.ts`(純関数)は physics に残す。`ReferenceFrames` は
+  **game/celestial へ移す**(C-2)。ECI 値を入力に取り、参照フレーム相対へ剛体変換する。
+- **`KinematicState<F>` の `r` / `v`** — 原点(供給源)で branded にする。素の `Vec3` へ
+  落ちる漏れ口を塞ぐ唯一の場所(E)。
 - **`CelestialBody`** — 「ECI 化した `CelestialEntity` のスナップショット」として ECI 固定。
   型引数化しない。
 
@@ -278,13 +301,13 @@ ECI 原点天体の値と、どちらの供給源か」— は天体1体のも�
 1. **争点A を片付ける。** 原点を重心へ揃え、タグを供給源で切り直す。ここでタグの意味が
    変わるので、型で守る話(争点B・E)はこの後でないと的が定まらない。**`celestial-eci-baseline`
    の固定値が動く**ので、動かす理由をコミットに書く。
-2. **争点E を決める。** 争点B は決着済み(型引数化しない/無標 ECI をやめる)なので、
-   残るのは素の `Vec3` をどこまで守るか。無標 ECI の書き換えは機械的なので、
-   タグの意味が変わる争点A の後にまとめて通す。
-3. **stage 1 の変換器を新設して置く。** 表現は別モジュール(C-1 で決着)、正本は
-   `CelestialSystem`、個体へは参照を結ぶ(D で決着)。ここで `eciCache` / `eciOriginCache` が
-   `CelestialMotion` から外れ、ECI 変換が `CelestialEntity` へ移る。**`ReferenceFrames` へ
-   ECI 値をどう渡すか(C-2)だけが未決**なので、着手前に決める。
+2. **型で守る(争点B・E)。** 無標 ECI をやめる書き換えと、`KinematicState<F>` の `r` / `v` の
+   branded 化をまとめて通す。どちらも機械的で、後者は実測で **src 全体 6 件**しか動かない。
+   タグの綴りが争点A で変わるので、必ずその後に。
+3. **stage 1 の変換器を新設して置き、`ReferenceFrames` を game/celestial へ移す。**
+   表現は別モジュール(C-1)、正本は `CelestialSystem`、個体へは参照を結ぶ(D)。ここで
+   `eciCache` / `eciOriginCache` が `CelestialMotion` から外れ、ECI 変換が
+   `CelestialEntity` へ移る。
 4. **全天体に自分の位置のキャッシュを持たせる。** いま `SatelliteMotion` は星系原点の値を
    毎回組み直している(`celestial-motion.ts:496`)。変換器がそれを引く形になると引かれる
    回数が増えるので、ここで畳む。
