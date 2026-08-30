@@ -24,13 +24,21 @@ export function isobarAt(direction: Vec3Node, gradient: Vec3Node): Vec3Node {
   return cross(direction, gradient).div(max(length(gradient), 1e-6));
 }
 
-// 釣り合った風 [m/s]。gradient は気圧の勾配 [hPa/rad] の接ベクトル、isobar は isobarAt() の向き、
-// bend は等圧線に沿う向きの 2 階微分 [hPa/rad²](= |∇p| ÷ 等圧線の曲率半径。低気圧で正)、
-// friction は摩擦の減衰率 [1/s]。摩擦を強く取るほど風は遅く、等圧線を深く横切る。
+// 釣り合った風。velocity は [m/s]、turn は流れが向きを変える角速度 [rad/s](天頂まわりに右ねじ正で、
+// 北半球の低気圧で正)。曲率半径は |velocity| / turn。
+export type BalancedWind = {
+  readonly velocity: Vec3Node;
+  readonly turn: FloatNode;
+};
+
+// gradient は気圧の勾配 [hPa/rad] の接ベクトル、isobar は isobarAt() の向き、bend は等圧線に沿う
+// 向きの 2 階微分 [hPa/rad²](= |∇p| ÷ 等圧線の曲率半径。低気圧で正)、friction は摩擦の減衰率
+// [1/s]。摩擦を強く取るほど風は遅く、等圧線を深く横切る。
 export function balancedWind(
   gradient: Vec3Node, isobar: Vec3Node, bend: FloatNode, latitude: FloatNode, friction: number,
-): Vec3Node {
+): BalancedWind {
   const coriolis = sin(latitude).mul(CORIOLIS_RATE);
+  const hemisphere = sign(coriolis);
   const damped = sqrt(coriolis.mul(coriolis).add(friction ** 2));
   const spinSquared = bend.mul(BEND_TO_SPIN_SQUARED);
   // 判別式の床を 0 に取ると、高気圧側(bend < 0)が厳密な釣り合いから 70% 外れる。
@@ -39,10 +47,11 @@ export function balancedWind(
   // 流れが渦の中心のまわりを回る角速度 [rad/s]。等圧線に沿う成分はコリオリとこれの和が受け持ち、
   // 受け持ち切れない残りを摩擦が受けて、等圧線を横切る流入になる。
   const spin = spinSquared.mul(2).div(denominator);
-  const along = sign(coriolis).mul(abs(coriolis).add(spin));
+  const along = hemisphere.mul(abs(coriolis).add(spin));
   // 向きの長さは √(along² + friction²) で、勾配が消えても 0 にならない。normalize では NaN が出る。
-  return isobar.mul(along).sub(gradient.div(max(length(gradient), 1e-6)).mul(friction))
+  const velocity = isobar.mul(along).sub(gradient.div(max(length(gradient), 1e-6)).mul(friction))
     .div(sqrt(along.mul(along).add(friction ** 2))).mul(speed);
+  return { velocity, turn: hemisphere.mul(spin) };
 }
 
 // balancedWind と同じ釣り合いを、深さ depth [hPa]・広がり radius [m] のガウスの谷の芯(勾配が

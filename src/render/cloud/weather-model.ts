@@ -13,6 +13,7 @@ import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
 import type { ClimateMap } from './climate-map';
 import type { FieldProjection } from './field-projection';
+import type { BalancedWind } from './wind-law';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、風は東向き・北向きの成分 [m/s]、
@@ -77,8 +78,8 @@ const CONVECTION_FRICTION = 3 * FRICTION_RATE;
 
 // 移流の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
 const ADVECTION_PERIOD = 12 * 3600;
-// 対流を流す風に掛ける倍率。1 周期の変位が写しに載る粒(80〜40 km)より大きいと、粒は流れの向きへ
-// 伸びる。並の対流の風(3.6 m/s)で 200 km。
+// 対流を流す 1 歩を、湿度の 1 歩の何倍の長さに取るか。1 周期の変位が写しに載る粒(80〜40 km)より
+// 大きいと、粒は流れの向きへ伸びる。並の対流の風(3.6 m/s)で 200 km。
 const CONVECTION_ADVECTION = 1.3;
 // 渦の目。移流の後の湿度をこれだけ下げる。目は渦とともに動く定常の構造なので、風に流さない。
 // 眼壁は上昇流が頭打ちに張り付いて飽和しているので、そこを貫く深さが要る。
@@ -181,12 +182,11 @@ export class WeatherModel {
 
     // 湿度と対流は、摩擦の違う 2 本の風で流す。
     const wind = balancedWind(gradient, isobar, bend, latitude, FRICTION_RATE);
-    const convectionWind = balancedWind(gradient, isobar, bend, latitude, CONVECTION_FRICTION)
-      .mul(CONVECTION_ADVECTION);
+    const convectionWind = balancedWind(gradient, isobar, bend, latitude, CONVECTION_FRICTION);
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分。
     const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
-    const terrainLift = dot(components(wind), this.climate.slope(direction)).mul(TERRAIN_LIFT_GAIN);
+    const terrainLift = dot(components(wind.velocity), this.climate.slope(direction)).mul(TERRAIN_LIFT_GAIN);
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)));
 
     // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足し、渦の目のぶんを引いたもの。
@@ -200,7 +200,7 @@ export class WeatherModel {
       advected.y.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT)).add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)),
       0, 1);
 
-    return { pressure, wind: components(wind), lift, humidity, upperHumidity, convection: advected.z };
+    return { pressure, wind: components(wind.velocity), lift, humidity, upperHumidity, convection: advected.z };
   }
 
   // 写しへ焼く気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。読むのは pressure.at()。
@@ -230,20 +230,23 @@ export class WeatherModel {
   // 移流前の写しを風で流したもの(x が地表付近の湿度、y が上層の湿度、z が対流)。周期の半分
   // ずれた 2 位相を三角波で混ぜるので、流れの変位が周期ぶんで頭打ちになり、渦に巻き込まれた模様が
   // 無限に細くならない。湿度と対流は向きも速さも違う風で流すので、伸びた先でも 2 枚の向きが揃わない。
-  private advected(direction: Vec3Node, wind: Vec3Node, convectionWind: Vec3Node): Vec3Node {
+  private advected(direction: Vec3Node, wind: BalancedWind, convectionWind: BalancedWind): Vec3Node {
     const phaseA = this.advectionCycle;
     const phaseB = fract(phaseA.add(0.5));
     const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
-    // 位相 phase(周期に対する比)だけ flow の風上へ遡った点の source。
-    const sourceAt = (source: BakedField, flow: Vec3Node, phase: FloatNode): Vec4Node =>
-      source.at(normalize(direction.sub(flow.mul(phase.mul(ADVECTION_PERIOD / R_EARTH)))));
+    // seconds 秒だけ flow に流された点の source。負に取れば風上へ遡る。
+    const sourceAt = (source: BakedField, flow: BalancedWind, seconds: FloatNode): Vec4Node =>
+      source.at(normalize(direction.add(flow.velocity.mul(seconds.div(R_EARTH)))));
+    // 遡る秒数 [s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
+    const stepA = phaseA.mul(-ADVECTION_PERIOD);
+    const stepB = phaseB.mul(-ADVECTION_PERIOD);
     const humidity = this.humiditySource;
     const convection = this.convectionSource;
     return vec3(
-      mix(sourceAt(humidity, wind, phaseB).xy, sourceAt(humidity, wind, phaseA).xy, weightA),
+      mix(sourceAt(humidity, wind, stepB).xy, sourceAt(humidity, wind, stepA).xy, weightA),
       mix(
-        sourceAt(convection, convectionWind, phaseB).r,
-        sourceAt(convection, convectionWind, phaseA).r, weightA),
+        sourceAt(convection, convectionWind, stepB.mul(CONVECTION_ADVECTION)).r,
+        sourceAt(convection, convectionWind, stepA.mul(CONVECTION_ADVECTION)).r, weightA),
     );
   }
 
