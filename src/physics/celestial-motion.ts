@@ -16,7 +16,7 @@ import {
 } from './kepler-orbit';
 import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
 import type { PlanetSystem } from './planet-system';
-import { SatelliteOrbit, satelliteOrbitForSimZero, satelliteState } from './satellite-orbit';
+import { SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
 import {
   Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelForSimZero,
 } from './celestial-body-def';
@@ -387,8 +387,6 @@ export abstract class OrbitingMotion extends CelestialMotion {
 export class PlanetMotion extends OrbitingMotion {
   readonly kind: CelestialKind = 'planet';
 
-  private readonly analyticCache = new TimeRing<KinematicState<'analytic'>>();
-
   // star は主星。恒星を持たない星系では null を渡す。system は自分が属する惑星-衛星系で、
   // 軌道と衛星の一覧はそちらが持つ。spinPhase0 は自転の初期位相 [rad](eciPole の自転
   // モデルを持つ惑星だけが意味を持つ)。**組むときは planet-system.ts の planetSystem()
@@ -418,11 +416,10 @@ export class PlanetMotion extends OrbitingMotion {
       bary, toPrimaryRelative(t, this.analyticStateAt(t), this.system.analyticStateAt(t)));
   }
 
-  // 惑星本体の太陽系重心状態。
+  // 惑星本体の太陽系重心状態。系の重心から衛星ぶんの重心補正を差し引いた位置で、
+  // 補正が全衛星に依存するので系がまとめて畳んでいる。
   analyticStateAt(t: number): KinematicState<'analytic'> {
-    const cached = this.analyticCache.get(t);
-    if (cached !== undefined) return cached;
-    return this.analyticCache.put(t, this.computeAnalyticStateAt(t));
+    return this.system.membersAt(t).body;
   }
 
   // 主星まわりの二体加速度。原点は太陽系重心なので、二体の相対位置は主星の位置を引いて
@@ -435,52 +432,23 @@ export class PlanetMotion extends OrbitingMotion {
     );
   }
 
-  // この状態は1時刻あたり 2 + 衛星数 回引かれる。重心補正が全衛星の相対位置を要るぶん重いので、
-  // そのぶんをここで畳む。系のキャッシュは惑星本体と1対1なので、ここで一緒に数える。
+  // 系のキャッシュは惑星本体と1対1なので、ここで一緒に数える。
   get cacheStats(): TimeCacheStats {
-    return addTimeCacheStats(
-      addTimeCacheStats(super.cacheStats, this.analyticCache.stats), this.system.cacheStats,
-    );
-  }
-
-  // 系の重心の太陽系重心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)ぶんを引く
-  // (重心補正。位置・速度の両方に効く)。
-  private computeAnalyticStateAt(t: number): KinematicState<'analytic'> {
-    const bary = this.system.analyticStateAt(t);
-    const moons = this.system.satellites;
-    if (moons.length === 0) return bary;
-    // mu = 0 は「質量が未測定」であって質量0ではない。本体の質量が分からない系では重心の
-    // 位置も決まらないので、補正せず本体を重心に置いたままにする — 補正すると衛星の質量比が
-    // 1 になり、本体が衛星との距離ぶんまるごとずれる。
-    if (this.def.mu <= 0) return bary;
-
-    // 重心を分け合う全質量(惑星本体 + 全衛星)に対する各衛星の比で、重心から差し引く量を決める。
-    let muTotal = this.def.mu;
-    for (const moon of moons) muTotal += moon.def.mu;
-
-    // 位置 − 変位 = 位置。演算の途中は札の落ちた素の Vec3 で、名乗り直すのは kinematicState。
-    let r: Vec3 = bary.r;
-    let v: Vec3 = bary.v;
-    for (const moon of moons) {
-      const rel = moon.relStateAt(t);
-      const w = moon.def.mu / muTotal;
-      r = addScaled(r, rel.r, -w);
-      v = addScaled(v, rel.v, -w);
-    }
-    return kinematicState<'analytic'>(t, r, v);
+    return addTimeCacheStats(super.cacheStats, this.system.cacheStats);
   }
 }
 
 export class SatelliteMotion extends OrbitingMotion {
   readonly kind: CelestialKind = 'satellite';
 
-  private readonly relCache = new TimeRing<KinematicState<'primaryRel'>>();
+  // 系の中での自分の登録順。系が畳んだ一式から自分のぶんを引くのに要る。
+  private readonly index: number;
 
   // system は自分が属する惑星-衛星系。自分をその重心補正の対象として登録するので、惑星本体の
   // 絶対位置を初めて引く前に全衛星を作り終えていなければならない。
   constructor(readonly def: SatelliteDef, readonly system: PlanetSystem) {
     super();
-    system.addSatellite(this);
+    this.index = system.addSatellite(this);
   }
 
   // 主天体である惑星本体。
@@ -489,31 +457,17 @@ export class SatelliteMotion extends OrbitingMotion {
   get primary(): CelestialMotion { return this.planet; }
   get keplerOrbit(): KeplerOrbit { return this.def.orbit.kepler; }
 
-  // 惑星相対の位置・速度。太陽の方向は系の重心が持つ平均角から取るので、惑星本体の位置に
-  // 依存しない。
-  relStateAt(t: number): KinematicState<'primaryRel'> {
-    const cached = this.relCache.get(t);
-    if (cached !== undefined) return cached;
-    return this.relCache.put(t, this.computeRelStateAt(t));
-  }
-
-  // 惑星本体の太陽系重心状態に惑星相対状態を足す。
+  // 衛星の太陽系重心状態。
   analyticStateAt(t: number): KinematicState<'analytic'> {
-    return addPrimaryRelative(this.planet.analyticStateAt(t), this.relStateAt(t));
+    return this.system.satelliteStateAt(this.index, t);
   }
 
   // 惑星本体の加速度に惑星まわりの二体加速度を足す。
   analyticAccelAt(t: number): Vec3 {
     return add(
       this.planet.analyticAccelAt(t),
-      twoBodyAccel(this.relStateAt(t).r, this.planet.def.mu + this.def.mu),
+      twoBodyAccel(this.system.satelliteRelStateAt(this.index, t).r, this.planet.def.mu + this.def.mu),
     );
-  }
-
-  // 惑星相対の位置は、自分の絶対位置・加速度・惑星本体の重心補正・暦パックの補完から
-  // 引かれるので、1時刻あたり4回前後になる。周期項の総和がそのたびに走るので畳む。
-  get cacheStats(): TimeCacheStats {
-    return addTimeCacheStats(super.cacheStats, this.relCache.stats);
   }
 
   // 未収録の衛星は、暦パックが答える惑星本体へ惑星相対モデルを足して補う。
@@ -521,11 +475,7 @@ export class SatelliteMotion extends OrbitingMotion {
     const own = this.ownPackedStateAt(t);
     if (own !== null) return own;
     const planet = this.planet.packedStateAt(t);
-    return planet === null ? null : addPrimaryRelative(planet, this.relStateAt(t));
-  }
-
-  // 惑星相対状態そのもの(キャッシュを経由しない評価)。
-  private computeRelStateAt(t: number): KinematicState<'primaryRel'> {
-    return satelliteState(this.def.orbit, this.system.anglesAt(t), t);
+    return planet === null ? null
+      : addPrimaryRelative(planet, this.system.satelliteRelStateAt(this.index, t));
   }
 }
