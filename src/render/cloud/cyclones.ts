@@ -1,7 +1,7 @@
 // 気圧へ書き込む低気圧の谷: 熱帯を西進する台風 1 つと、中緯度を東進する低気圧。どちらも寿命の
 // 中で生まれて発達して消える。中心と深さは時刻の閉じた関数で、どの時刻へ飛んでも同じ配置になる。
 import * as THREE from 'three/webgpu';
-import { dot, exp, float, uniform } from 'three/tsl';
+import { dot, exp, float, inverseSqrt, uniform } from 'three/tsl';
 import { coreCrossingAngle } from './wind-law';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
@@ -12,17 +12,17 @@ const TYPHOON_LATITUDE = THREE.MathUtils.degToRad(15);
 const TYPHOON_LONGITUDE = THREE.MathUtils.degToRad(169);
 const TYPHOON_DRIFT = -8;
 const TYPHOON_LIFETIME = 9 * 86400;
-// 台風の谷は同心の 2 枚。最深 [hPa] と広がり [m] を、深く狭い芯と浅く広い裾で持つ。渦の回る
-// 角速度は √深さ / 広がり に比例するので芯が巻きを作り、上昇流は深さから直に出るので裾が雲の傘を
-// 500〜1000 km へ広げる。1 枚では両方を持てない — 狭めれば傘が縮み、広げれば巻きが緩む。
-const TYPHOON_CORE_DEPTH = 40;
-const TYPHOON_CORE_RADIUS = 250e3;
-const TYPHOON_SKIRT_DEPTH = 20;
-const TYPHOON_SKIRT_RADIUS = 1300e3;
+// 台風の最深 [hPa] と広がり [m]。
+const TYPHOON_DEPTH = 63;
+const TYPHOON_RADIUS = 220e3;
+
+// 谷の効きが届く限界 [m]。裾は距離に反比例するので、1 つでは薄くても谷の数だけ足すと全球の
+// 底上げになり、気圧から出る上昇流の基準がまるごと持ち上がる。ここで遠方を閉じる。
+const TROUGH_REACH = 2200e3;
 
 // 目。広がりは谷自身の広がりに対する比で、湿度はその内側で落ちる。目を持つかどうかは、谷の芯で
 // 風が等圧線を横切る角で決まる — この角より閉じた谷だけが目を持ち、あいだで滑らかに渡る。
-// 狭くて深い台風の芯は 10° で全部持ち、その裾(43°)も中緯度の低気圧(21〜32°)も持たない。
+// 狭くて深い台風は 10° で全部持ち、中緯度の低気圧(21〜32°)は持たない。
 const EYE_FRACTION = 0.4;
 const EYE_ANGLE_FULL = THREE.MathUtils.degToRad(12);
 const EYE_ANGLE_NONE = THREE.MathUtils.degToRad(16);
@@ -46,14 +46,16 @@ function hash(n: number): number {
 }
 
 // 谷 1 つ。中心の単位方向と深さ [hPa] は時刻ごとに書き換わり、広がり radius [m] と最盛期の
-// 落ち込み peakDepth [hPa] は固定。
+// 落ち込み peakDepth [hPa] は固定。radiusOfBody はこの谷が乗る天体の半径 [m]。
 class Trough {
   public readonly center: Vec3Uniform = uniform(new THREE.Vector3());
   public readonly depth: FloatUniform = uniform(0);
   // 目の濃さ 0..1。深さと広がりと緯度から出るので、同じ谷でも一生の中で現れて消える。
   public readonly eyeStrength: FloatUniform = uniform(0);
 
-  public constructor(public readonly radius: number, public readonly peakDepth: number) {}
+  public constructor(
+    private readonly radiusOfBody: number, private readonly radius: number, private readonly peakDepth: number,
+  ) {}
 
   // 中心を緯度・経度 [rad] へ置き、寿命の中の位置 life(0 で生まれ、0.5 で最盛期、1 で消える)に
   // 応じた深さと目にする。
@@ -61,53 +63,65 @@ class Trough {
     this.center.value.set(
       Math.cos(latitude) * Math.sin(longitude), Math.sin(latitude), Math.cos(latitude) * Math.cos(longitude),
     );
-    this.depth.value = this.peakDepth * Math.sin(Math.PI * life);
+    const depth = this.peakDepth * Math.sin(Math.PI * life);
+    this.depth.value = depth;
+    // 芯(勾配の消える点)での等圧線方向の 2 階微分 [hPa/rad²]。pressureAt の形を原点で開いたもの。
+    const coreBend = depth
+      * ((this.radiusOfBody / this.radius) ** 2 + 2 * (this.radiusOfBody / TROUGH_REACH) ** 2);
     this.eyeStrength.value = 1 - THREE.MathUtils.smoothstep(
-      coreCrossingAngle(this.depth.value, this.radius, latitude), EYE_ANGLE_FULL, EYE_ANGLE_NONE);
+      coreCrossingAngle(coreBend, latitude), EYE_ANGLE_FULL, EYE_ANGLE_NONE);
   }
 
-  // 単位方向 direction での目の濃さ 0..1(中心で最も濃く、外で 0)。
-  public eyeAt(direction: Vec3Node, radiusOfBody: number): FloatNode {
-    return this.falloff(direction, radiusOfBody, this.radius * EYE_FRACTION).mul(this.eyeStrength);
-  }
-
-  // 中心から radius [m] で 1 → 1/e へ落ちるガウス。距離は弦で測るので、対蹠点に鏡像が出ない。
-  // 弦は二乗のまま扱う — 長さを取ってから二乗し直すと、平方根と累乗を 1 つずつ余計に踏む。
-  public falloff(direction: Vec3Node, radiusOfBody: number, radius: number): FloatNode {
+  // 中心からの弦の二乗。距離を弦で測るので、対蹠点に鏡像が出ない。弦は二乗のまま扱う — 長さを
+  // 取ってから二乗し直すと、平方根と累乗を 1 つずつ余計に踏む。
+  private chordSquared(direction: Vec3Node): FloatNode {
     const offset = direction.sub(this.center);
-    return exp(dot(offset, offset).mul(-((radiusOfBody / radius) ** 2)));
+    return dot(offset, offset);
   }
 
-  // 単位方向 direction での気圧の落ち込み [hPa](負)。
-  public pressureAt(direction: Vec3Node, radiusOfBody: number): FloatNode {
-    return this.falloff(direction, radiusOfBody, this.radius).mul(this.depth).negate();
+  // 単位方向 direction での気圧の落ち込み [hPa](負)。中心から radius で 1/√2 へ落ち、その先は
+  // 中心からの距離に反比例して裾を引き、TROUGH_REACH のガウスが遠方を閉じる。
+  //
+  // **裾の緩さを決めるのは対数傾き。** 反比例の裾は傾きが一桁ぶんの半径をかけて渡るので、風向も
+  // 移流の伸びも半径に沿って滑らかに緩む。芯の巻きは 深さ/広がり² が単独で握り、裾と別に動かせる。
+  public pressureAt(direction: Vec3Node): FloatNode {
+    const chordSquared = this.chordSquared(direction);
+    return inverseSqrt(chordSquared.mul((this.radiusOfBody / this.radius) ** 2).add(1))
+      .mul(exp(chordSquared.mul(-((this.radiusOfBody / TROUGH_REACH) ** 2))))
+      .mul(this.depth).negate();
+  }
+
+  // 単位方向 direction での目の濃さ 0..1(中心で最も濃く、外で 0)。気圧と違って裾を引かない
+  // ガウスで、谷の芯より内側にだけ効く。
+  public eyeAt(direction: Vec3Node): FloatNode {
+    const radius = this.radius * EYE_FRACTION;
+    return exp(this.chordSquared(direction).mul(-((this.radiusOfBody / radius) ** 2))).mul(this.eyeStrength);
   }
 }
 
 export class Cyclones {
-  private readonly typhoon: readonly Trough[] = [
-    new Trough(TYPHOON_CORE_RADIUS, TYPHOON_CORE_DEPTH),
-    new Trough(TYPHOON_SKIRT_RADIUS, TYPHOON_SKIRT_DEPTH),
-  ];
-  private readonly lows: readonly Trough[] = Array.from(
-    { length: LOW_COUNT }, (_, i) => new Trough(LOW_RADIUS_MIN + (i / LOW_COUNT) * LOW_RADIUS_SPAN, LOW_DEPTH));
-  // 気圧も目も種類を分けずに足す。台風の芯・裾も低気圧も、同じ 1 つの規則で効く。
-  private readonly troughs: readonly Trough[] = [...this.typhoon, ...this.lows];
+  private readonly typhoon: Trough;
+  private readonly lows: readonly Trough[];
+  // 気圧も目も種類を分けずに足す。台風も低気圧も、同じ 1 つの規則で効く。
+  private readonly troughs: readonly Trough[];
 
   // radius はこの天体の半径 [m]。
   public constructor(private readonly radius: number) {
+    this.typhoon = new Trough(radius, TYPHOON_RADIUS, TYPHOON_DEPTH);
+    this.lows = Array.from({ length: LOW_COUNT },
+      (_, i) => new Trough(radius, LOW_RADIUS_MIN + (i / LOW_COUNT) * LOW_RADIUS_SPAN, LOW_DEPTH));
+    this.troughs = [this.typhoon, ...this.lows];
     this.syncTime(0);
   }
 
   // 時刻 [s] の配置を uniform へ写す。
   public syncTime(seconds: number): void {
-    // 台風は寿命ごとに生まれ直す。時刻 0 が最盛期になるよう位相を半周期ずらす。芯と裾は同じ中心で
-    // 同じ一生を辿る。
+    // 台風は寿命ごとに生まれ直す。時刻 0 が最盛期になるよう位相を半周期ずらす。
     const typhoonAge = seconds / TYPHOON_LIFETIME + 0.5;
     const typhoonLife = typhoonAge - Math.floor(typhoonAge);
     const typhoonLongitude = TYPHOON_LONGITUDE
       + (TYPHOON_DRIFT / (this.radius * Math.cos(TYPHOON_LATITUDE))) * typhoonLife * TYPHOON_LIFETIME;
-    for (const trough of this.typhoon) trough.place(TYPHOON_LATITUDE, typhoonLongitude, typhoonLife);
+    this.typhoon.place(TYPHOON_LATITUDE, typhoonLongitude, typhoonLife);
 
     // 低気圧は寿命ごとに世代が進み、世代と番号のハッシュで生まれる経度・緯度が決まる。
     for (const [i, low] of this.lows.entries()) {
@@ -126,14 +140,14 @@ export class Cyclones {
   // 単位方向 direction での気圧の落ち込みの合計 [hPa](0 以下)。
   public pressureAt(direction: Vec3Node): FloatNode {
     let sum: FloatNode = float(0);
-    for (const trough of this.troughs) sum = sum.add(trough.pressureAt(direction, this.radius));
+    for (const trough of this.troughs) sum = sum.add(trough.pressureAt(direction));
     return sum;
   }
 
   // 単位方向 direction での目の濃さの合計 0..1。
   public eyeAt(direction: Vec3Node): FloatNode {
     let sum: FloatNode = float(0);
-    for (const trough of this.troughs) sum = sum.add(trough.eyeAt(direction, this.radius));
+    for (const trough of this.troughs) sum = sum.add(trough.eyeAt(direction));
     return sum;
   }
 }
