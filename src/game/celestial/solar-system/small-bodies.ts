@@ -4,8 +4,8 @@ import {
   EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { keplerPeriod } from '../../../physics/elements';
-import { JULIAN_CENTURY } from '../../../physics/kepler-orbit';
-import { AU, PlanetOrbit, planetOrbit } from '../../../physics/planet-orbit';
+import { JULIAN_CENTURY, KeplerOrbit } from '../../../physics/kepler-orbit';
+import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { GRAVITATIONAL_CONSTANT, MU_SUN } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
@@ -36,7 +36,7 @@ function sbdbOrbit(p: {
   raanDeg: number;
   lonPeriDeg: number;
   l0Deg: number;
-}): PlanetOrbit {
+}): KeplerOrbit {
   const a = p.aAu * AU;
   return planetOrbit({
     a,
