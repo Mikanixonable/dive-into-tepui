@@ -8,11 +8,13 @@ export type BarycentricState = {
   readonly v: Vec3; // ICRF/J2000 [m/s]
 };
 
+// 太陽系重心・ICRF 軸の状態を simTime で答える供給源。**この型は絶対時刻を知らない** —
+// 元期からの寄せは供給源の構築時に済んでいる(CODING-RULE 1.9)。
 export interface AbsoluteEphemeris {
-  readonly validStartJdTdb: number;
-  readonly validEndJdTdb: number;
+  readonly validStartSimTime: number;
+  readonly validEndSimTime: number;
   hasBody(id: string): boolean;
-  barycentricStateOf(id: string, jdTdb: number): BarycentricState;
+  barycentricStateOf(id: string, simTime: number): BarycentricState;
 }
 
 export class MissingEphemerisBodyError extends Error {
@@ -31,15 +33,14 @@ export function icrfToGameEci(a: Vec3): Vec3 {
 // 恒星(系の階層の根)を中心に、ゲーム ECI 軸で答える暦。**ECI 原点天体を引くのは呼び出し側の
 // 仕事** — 解析暦も同じ恒星中心を返すので、どちらの供給源から引いても同じ形の答えになる。
 export class HelioEphemeris {
-  // 直前に引いた時刻の恒星の状態。1時刻ぶんの ECI 化では全天体が同じ jdTdb でこれを引くので、
+  // 直前に引いた時刻の恒星の状態。1時刻ぶんの ECI 化では全天体が同じ simTime でこれを引くので、
   // 1段だけ憶えれば天体数ぶんの Chebyshev 評価が1回に畳まれる。
-  private lastStarJdTdb = NaN;
+  private lastStarSimTime = NaN;
   private lastStarState: BarycentricState | null = null;
 
   constructor(
     private readonly absolute: AbsoluteEphemeris,
     readonly starId: string,
-    readonly epochJdTdb: number,
   ) {
     if (!absolute.hasBody(starId)) throw new MissingEphemerisBodyError(starId);
   }
@@ -48,18 +49,16 @@ export class HelioEphemeris {
     return this.absolute.hasBody(id);
   }
 
-  // simTime に対応する jdTdb が absolute の有効期間内かどうか。
+  // simTime が absolute の有効期間内かどうか。
   isValidAt(simTime: number): boolean {
-    const jdTdb = this.epochJdTdb + simTime / 86400;
-    return jdTdb >= this.absolute.validStartJdTdb && jdTdb <= this.absolute.validEndJdTdb;
+    return simTime >= this.absolute.validStartSimTime && simTime <= this.absolute.validEndSimTime;
   }
 
   // 天体 id の、恒星中心・ゲーム ECI 軸の状態。収録されていない天体は例外を投げる。
   stateOf(id: string, simTime: number): KinematicState<'helio'> {
     if (!this.absolute.hasBody(id)) throw new MissingEphemerisBodyError(id);
-    const jdTdb = this.epochJdTdb + simTime / 86400;
-    const body = this.absolute.barycentricStateOf(id, jdTdb);
-    const star = this.starStateAt(jdTdb);
+    const body = this.absolute.barycentricStateOf(id, simTime);
+    const star = this.starStateAt(simTime);
     return kinematicState<'helio'>(
       simTime,
       icrfToGameEci(sub(body.r, star.r)),
@@ -67,11 +66,11 @@ export class HelioEphemeris {
     );
   }
 
-  // 時刻 jdTdb の恒星の重心状態。
-  private starStateAt(jdTdb: number): BarycentricState {
-    if (this.lastStarState === null || this.lastStarJdTdb !== jdTdb) {
-      this.lastStarState = this.absolute.barycentricStateOf(this.starId, jdTdb);
-      this.lastStarJdTdb = jdTdb;
+  // 時刻 simTime の恒星の重心状態。
+  private starStateAt(simTime: number): BarycentricState {
+    if (this.lastStarState === null || this.lastStarSimTime !== simTime) {
+      this.lastStarState = this.absolute.barycentricStateOf(this.starId, simTime);
+      this.lastStarSimTime = simTime;
     }
     return this.lastStarState;
   }

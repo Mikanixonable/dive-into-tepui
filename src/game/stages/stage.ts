@@ -118,7 +118,7 @@ export abstract class Stage {
   ): Promise<CelestialSystem> {
     const profile = profileAtOrNull(epoch.value);
     const pack = profile === null ? null : await loadAbsoluteEphemeris(
-      profile.id, profile.validStartJdTdb, profile.validEndJdTdb, onProgress,
+      profile.id, epoch, profile.validEndJdTdb, onProgress,
     );
     return solarSystem('earth', phaseOffsets, earthSpinPhase0, pack, epoch);
   }

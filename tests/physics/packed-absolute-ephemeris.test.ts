@@ -7,7 +7,9 @@ import {
 import {
   PackedAbsoluteEphemeris, loadPackedAbsoluteEphemeris,
 } from '../../src/physics/packed-absolute-ephemeris';
-import { J2000_JULIAN_DATE } from '../../src/physics/time';
+import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY } from '../../src/physics/time';
+
+const J2000 = createJulianDate('TDB', J2000_JULIAN_DATE);
 
 function fixture(corrupt = false): Uint8Array {
   const base = {
@@ -32,15 +34,28 @@ function fixture(corrupt = false): Uint8Array {
 }
 
 export function register(): void {
-  test('packed absolute ephemeris: J2000 ET packをJD_TDBで評価する', () => {
-    const source = PackedAbsoluteEphemeris.fromTrustedBytes(fixture());
+  test('packed absolute ephemeris: 元期 J2000 なら pack の ET 秒がそのまま simTime になる', () => {
+    const source = PackedAbsoluteEphemeris.fromTrustedBytes(fixture(), J2000);
     assert.ok(source.hasBody('earth'));
-    assert.deepEqual(source.barycentricStateOf('earth', J2000_JULIAN_DATE).r, { x: 1, y: 2, z: 3 });
-    assert.equal(source.validStartJdTdb, J2000_JULIAN_DATE);
+    assert.deepEqual(source.barycentricStateOf('earth', 0).r, { x: 1, y: 2, z: 3 });
+    assert.equal(source.validStartSimTime, 0);
+    assert.equal(source.validEndSimTime, 10);
+  });
+
+  // 構築時に元期へ寄せるので、元期をずらせば同じ pack が同じ状態を別の simTime で答える。
+  // 有効期間も一緒に動く。
+  test('packed absolute ephemeris: 元期をずらすと有効期間と評価時刻が同じだけ動く', () => {
+    const shiftDays = 3;
+    const shifted = PackedAbsoluteEphemeris.fromTrustedBytes(
+      fixture(), createJulianDate('TDB', J2000_JULIAN_DATE + shiftDays));
+    const shiftSec = shiftDays * SECONDS_PER_DAY;
+    assert.equal(shifted.validStartSimTime, -shiftSec);
+    assert.equal(shifted.validEndSimTime, 10 - shiftSec);
+    assert.deepEqual(shifted.barycentricStateOf('earth', -shiftSec).r, { x: 1, y: 2, z: 3 });
   });
 
   test('packed absolute ephemeris: browser loaderはpayload改竄を拒否する', async () => {
     if (!globalThis.crypto) Object.defineProperty(globalThis, 'crypto', { value: webcrypto });
-    await assert.rejects(loadPackedAbsoluteEphemeris(fixture(true)), /SHA-256不一致/);
+    await assert.rejects(loadPackedAbsoluteEphemeris(fixture(true), J2000), /SHA-256不一致/);
   });
 }

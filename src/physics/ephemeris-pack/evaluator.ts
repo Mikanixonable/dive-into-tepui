@@ -280,10 +280,11 @@ export class ChebyshevEphemeris {
     return this.evaluate(bodyId, time).state;
   }
 
-  // Explicit synonym for callers whose time source is a simulation epoch in SI
-  // seconds. stateOf is retained as the concise physics-layer convention.
-  stateAtSeconds(bodyId: string, secondsSinceEpoch: number): KinematicState<'barycentric'> {
-    return this.stateOf(bodyId, secondsSinceEpoch);
+  // Explicit synonym for callers whose time source is seconds on this pack's own
+  // time axis. The pack does not know where that axis is anchored; whoever built
+  // it chose the origin. stateOf is retained as the concise physics-layer convention.
+  stateAtSeconds(bodyId: string, seconds: number): KinematicState<'barycentric'> {
+    return this.stateOf(bodyId, seconds);
   }
 
   positionOf(bodyId: string, time: number): Vec3 {

@@ -353,7 +353,13 @@ export function decodeEphemerisPack(input: Uint8Array): DecodedEphemerisPack {
  * seconds, while the binary manifest retains the authoritative ICRF/TDB
  * frame and epoch metadata.
  */
-export function toEvaluatorEphemerisPack(decoded: DecodedEphemerisPack): CanonicalEvaluatorEphemerisPack {
+// 復号済みの pack を評価器の入力へ写す。timeOriginSec を渡すと、セグメント境界をその原点
+// からの秒へ寄せる — 評価器はワイヤ形式の J2000 ET 秒を知らずに済み、呼び出し側が決めた
+// 時刻軸だけで引ける。**manifest 側と bodies 側は同じ segments から組むので、片方だけが
+// ずれることはない**(評価器の検証はこの一致を要求する)。
+export function toEvaluatorEphemerisPack(
+  decoded: DecodedEphemerisPack, timeOriginSec = 0,
+): CanonicalEvaluatorEphemerisPack {
   const bodies = new Map<string, {
     readonly id: string;
     readonly segments: Array<{
@@ -372,8 +378,8 @@ export function toEvaluatorEphemerisPack(decoded: DecodedEphemerisPack): Canonic
     const componentLength = series.degree + 1;
     const offset = series.coefficientOffset;
     body.segments.push({
-      start: series.start,
-      end: series.end,
+      start: series.start - timeOriginSec,
+      end: series.end - timeOriginSec,
       degree: series.degree,
       coefficients: [
         Array.from(decoded.payload.slice(offset, offset + componentLength)),

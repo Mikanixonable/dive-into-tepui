@@ -281,44 +281,6 @@ simTime 1軸だけなので、**`+` / `-` をヘルパ呼び出しへ置き換�
 
 ## 手順
 
-### 手順5. J2000 ET 秒を `.epk` の復号の内側へ閉じる
-
-**目的.** 契約 4・5 の実施。`AbsoluteEphemeris` の口を simTime へ寄せ、**JD_TDB を実行時の
-評価経路から追い出す。** 副次的に、Chebyshev の正規化座標の量子化(7.06e-10)が消えて
-要求した t が honor されるようになる。**ワイヤ形式には触らない** — 復号後のセグメント境界を
-構築時に1回引くだけ。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/absolute-ephemeris.ts:11-16` | `AbsoluteEphemeris` の `validStartJdTdb` / `validEndJdTdb` → `validStartSimTime` / `validEndSimTime`、`barycentricStateOf(id, jdTdb)` → `barycentricStateOf(id, simTime)`。**この型がもう JD_TDB を知らないことが要点** |
-| 同 `:36-79` | `HelioEphemeris` の元期引数を落とす。`isValidAt(simTime)` は `validStart/EndSimTime` と直接比較、`stateOf` は `simTime` をそのまま渡す。`lastStarJdTdb` → `lastStarSimTime` |
-| `src/physics/packed-absolute-ephemeris.ts:11-36` | コンストラクタが `epoch: TdbJulianDate` を追加で受け、内部で `const simZeroEt = ephemerisSeconds(epoch)` を1回導出する。`validStartSimTime = decoded.manifest.validStart − simZeroEt` 等。`toEvaluatorEphemerisPack(decoded)` の結果に対し、**manifest 側と bodies 側のセグメント `start`/`end` を同じ量だけ引いてから** `ChebyshevEphemeris` を作る(`validateManifest` が両者の一致を検査するので、片方だけ引くと構築時に落ちる)。`barycentricStateOf(id, simTime)` は `evaluator.stateAtSeconds(id, simTime)` を直接呼ぶ |
-| 同 `:52-56` | `loadPackedAbsoluteEphemeris(bytes)` → `loadPackedAbsoluteEphemeris(bytes, epoch)` |
-| `src/physics/ephemeris-pack/evaluator.ts:283-287` | `stateAtSeconds` の引数名 `secondsSinceEpoch` と「simulation epoch in SI seconds」のコメントを、**「pack の時刻軸の秒(構築側が原点を決める)」**へ書き換える。評価器自身は原点を知らない |
-| `src/physics/ephemeris-catalog.ts:37-64` | `loadAbsoluteEphemeris(profileId, epochJdTdb, requiredEndJdTdb, onProgress)` → `(profileId, epoch: TdbJulianDate, requiredEndJdTdb, onProgress)`。**プロファイル選択と期間検査は JD_TDB のまま**(契約 5 の用途)。pack の期間検査は要求側を simTime へ寄せて比較する |
-| `src/physics/ephemeris-profile.ts` | **触らない。** `*JdTdb` は絶対時刻の語彙として正しい |
-| `src/game/stages/stage.ts:104-113` | `loadAbsoluteEphemeris(profile.id, epoch, ...)` |
-| `src/game/celestial/solar-system/solar-system.ts:57` | `new HelioEphemeris(absoluteSource, SUN.id)` — 元期の引数が消える |
-| `tests/physics/absolute-ephemeris.test.ts:11-73` | スタブを新しい口へ。`new HelioEphemeris(source, 'sun', 150)` の第3引数を落とし、期待値を simTime 基準へ書き直す |
-| `tests/physics/packed-absolute-ephemeris.test.ts` | 構築に元期を渡す。**元期 J2000 を渡したときに従来と同じ値を返す**ことを1本足すと、rebase が値を動かしていないことが押さえられる |
-| `tests/physics/celestial-eci-baseline.test.ts:170` / `tests/physics/window-agreement.test.ts` | 構築の追従 |
-| `tests/physics/chebyshev-ephemeris.test.ts` | 評価器そのものは変わらない。引数名の変更に追従するだけ |
-
-**達成条件と検証**
-
-- `grep -rn "JdTdb" src/physics/absolute-ephemeris.ts src/physics/packed-absolute-ephemeris.ts`
-  が **0 件**。
-- `grep -rn "JdTdb" src/` が `ephemeris-profile.ts` / `ephemeris-catalog.ts` / `save/` /
-  `stages/stage.ts` の**絶対時刻の用途だけ**であること(1件ずつ目視)。
-- `npm run typecheck`、`npm run test:physics`、`npm run test:game`。
-- `tests/physics/celestial-eci-baseline.test.ts` が通る — **rebase が位置を動かしていない
-  ことの本体の検査**。
-- `git diff --stat src/assets/` が空(`.epk` を触っていないこと)。
-
----
-
 ### 手順6. dynamic 層の絶対秒 ε を「実際に進んだか」の判定へ置き換える
 
 **目的.** 契約 6 の実施。手順4 で simTime は 0 から始まるようになったので、これは**もう
@@ -425,7 +387,6 @@ simTime が大きくなっても、無音のフリーズを検知する砦が効
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 5 | src 6 ファイル・tests 5 ファイル | `JdTdb` 参照のうち評価経路にある 25 箇所(`absolute-ephemeris.ts` 17 + `packed-absolute-ephemeris.ts` 8)+ catalog/stage/solar-system の追従 |
 | 6 | src 2 ファイル・tests 1 ファイル | 判定 3 箇所 + 新規テスト1本 |
 | 7 | src 14 ファイル・tests 8 ファイル | `AtEpoch` 151 + `epochOffsetSec` 122(手順2 後)+ `OrbitEpoch` 11 = 284 件。うち約 250 件は9系ファイルの `planetDefForSimZero(X, phases, simZeroEt)` 形の同一パターン |
 | 8 | src 3 ファイル・tests 4 ファイル | `EPOCH_T_OFFSET` 参照 13 箇所 + 新規テスト1本 |

@@ -11,7 +11,7 @@ import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { keplerOrbitAtEpoch, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { scale, sub, v3 } from '../../src/math/vec3';
-import { ephemerisSeconds } from '../../src/physics/time';
+import { ephemerisSeconds, SECONDS_PER_DAY } from '../../src/physics/time';
 import { motionOf, solarSystemParts, stateOf, TEST_EPOCH } from './test-helpers';
 
 // 元期・1日後・1年後・1年前。永年変化と周期項の両方が効く幅を取る。
@@ -26,11 +26,11 @@ type Baseline = readonly (readonly number[])[];
 // 地球(ECI 原点)と火星はパック経路を通る。一次式の原点を元期に置くので、simTime=0 では
 // どの天体も係数そのものの位置に立つ。
 const SOURCE: AbsoluteEphemeris = {
-  validStartJdTdb: TEST_EPOCH.value - 500,
-  validEndJdTdb: TEST_EPOCH.value + 500,
+  validStartSimTime: -500 * SECONDS_PER_DAY,
+  validEndSimTime: 500 * SECONDS_PER_DAY,
   hasBody: (id) => id === 'sun' || id === 'earth' || id === 'mars',
-  barycentricStateOf: (id, jd) => {
-    const d = jd - TEST_EPOCH.value;
+  barycentricStateOf: (id, t) => {
+    const d = t / SECONDS_PER_DAY;
     if (id === 'sun') return { r: v3(1e6 * d, 2e6, -3e6), v: v3(1e6 / 86400, 0, 0) };
     if (id === 'earth') {
       return { r: v3(1.5e11 + 1e6 * d, 2e6 + 3e8 * d, -3e6), v: v3(1e6 / 86400, 3e8 / 86400, 0) };
@@ -140,9 +140,9 @@ const PACKED: Readonly<Record<string, Baseline>> = {
       0, 0, 4629.62962962963],
     [-370000000000, 40003000000, 400000000,
       0, 0, 4629.62962962963],
-    [-370000000000, 40003000000, 146111111111.1939,
+    [-370000000000, 40003000000, 146111111111.1111,
       0, 0, 4629.62962962963],
-    [-370000000000, 40003000000, -146111111111.1939,
+    [-370000000000, 40003000000, -146111111111.1111,
       0, 0, 4629.62962962963],
   ],
   jupiter: [
