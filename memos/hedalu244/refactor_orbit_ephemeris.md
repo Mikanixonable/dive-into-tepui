@@ -283,7 +283,6 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 
 | 手順 | 何を |
 | --- | --- |
-| 3 | `PlanetOrbit` を消す |
 | 4 | 惑星系重心をノードとして立てる |
 | 5 | ECI 化を `CelestialBodyWindows` へ引き上げる |
 | 6 | キャッシュの棚卸し |
@@ -350,25 +349,6 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
    ラベル・静止軌道リングが従来どおり出る。
 
 ## 手順
-
-### 手順3. `PlanetOrbit` を消す
-
-**目的.** `PlanetOrbit = KeplerOrbit` は完全な型別名で、型としての内容が無い。登場人物を1つ
-減らし、手順4 で「惑星系重心が持つ軌道」を導入するときに同義の名前が3つ並ぶのを避ける。
-**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/planet-orbit.ts:6,27,54` | `export type PlanetOrbit = KeplerOrbit;` を削除。`planetOrbit()` の戻り値と `planetAngles()` の引数を `KeplerOrbit` へ。冒頭コメントに「この関数が組むのは**惑星-衛星系重心**の軌道である」ことを残す |
-| `src/physics/celestial-motion.ts:19,40` | import と `PlanetDef.orbit` の型を `KeplerOrbit` へ |
-| `src/game/celestial/solar-system/small-bodies.ts:8,39` | import と戻り値型の追従 |
-| `tests/physics/celestial-motion.test.ts:12,29,32,64,66` | import・型注釈・テスト名の追従 |
-| `tests/physics/small-bodies.test.ts:9,16` | 同上 |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test:physics` / `npm run test:game` が通る。
-`grep -rn "PlanetOrbit" src/ tests/` が 0 件。固定値テストが1文字も変えずに通る。
 
 ### 手順4. 惑星系重心をノードとして立てる
 
@@ -457,12 +437,11 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 3 | 13 | `PlanetOrbit` の実測出現数(src 7 + tests 6) |
 | 4 | 約 165 | 新規1ファイル 約 60 行 + `celestial-motion.ts` 約 30 行 + 構築点 `new PlanetMotion` 50 + `new SatelliteMotion` 52 の親引数差し替え + `PlanetSystem` の生成 約 25 |
 | 5 | 約 190 | 構築点 104 からの引数削除 + 呼び出し移行 47(entity 8 + その他 39)+ windows/reference-frames/celestial-system 約 40 |
 | 6 | 約 15 | キャッシュ4箇所の判断とコメント |
 
-合計およそ 385 行。**手順5 が最大**で、そのうち 104 は引数1つの削除(機械的)、47 は受け手の
+合計およそ 372 行。**手順5 が最大**で、そのうち 104 は引数1つの削除(機械的)、47 は受け手の
 差し替え(1行ずつ確認が要る)。手順4・5 で同じ 104 箇所を2度触るが、2度目は削除だけになる。
 
 ## リスクと落とし穴
@@ -477,7 +456,7 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 | `hermiteInterpolate` を総称化するとき両端のタグを縛り忘れる | 原点の違う2状態を補間して無意味な値になる | **確認済み**: `hermiteInterpolate<F>(a: KS<F>, b: KS<F>): KS<F>` で両端を縛った |
 | `PlanetSystem.satellites` が揃う前に惑星本体を評価する | 重心補正が抜けた位置がキャッシュへ入り、以後その時刻だけ間違い続ける | 手順4。`solarSystem()` が全 entity を返すまで評価が起きないことを確かめる |
 | `system.angles` を平均要素ではなく周期項込みで組む | 回転基準系の角速度が滑らかでなくなり、回転系のカメラが震える | 手順4。`angles` は `orbit`(平均要素)だけから組む |
-| `*AtEpoch` を通す位置がずれる | `keplerOrbitAtEpoch` は角を畳んでいる。畳む前の値を `PlanetSystem` へ渡すと、18,000 年規模のオフセットで丸めが支配し、地球軌道上でメートル規模の誤差になる | 手順3・4。`planetDefAtEpoch` を通した `def.orbit` を渡すこと |
+| `*AtEpoch` を通す位置がずれる | `keplerOrbitAtEpoch` は角を畳んでいる。畳む前の値を `PlanetSystem` へ渡すと、18,000 年規模のオフセットで丸めが支配し、地球軌道上でメートル規模の誤差になる | 手順4。`planetDefAtEpoch` を通した `def.orbit` を渡すこと |
 | `motion.stateAt(pivot, t)` の2引数を1引数へ潰す | 外挿の基準時刻が変わり、積分1歩ぶんの誤差が静かに入る | 手順5。`windows.stateAt(id, pivot, t)` でも2引数を保つ |
 | `CelestialEntity.sync` へ ECI を渡す形にしたとき、天体ごとに違う時刻で同期していた箇所が1時刻へ揃う(あるいは逆) | 表示だけがずれる | 手順5。`displayTime` が1つであることを確かめてから渡す |
 | 104 の構築点を2度触るので、片方だけ直した状態で commit する | 型が通らない中途半端な commit が残る | 手順4・5。各手順の中で全ファイルを揃えてから typecheck を通す |

@@ -3,8 +3,6 @@
 // 振幅で回っている)。要素の永年変化は他惑星からの摂動に由来し、世紀あたりの値で入力する。
 import { ECLIPTIC_BASIS, JULIAN_CENTURY, KeplerOrbit } from './kepler-orbit';
 
-export type PlanetOrbit = KeplerOrbit;
-
 const DEG = Math.PI / 180;
 // 天文単位(定義値)。地球軌道の長半径と数値は近いが、地球がいまその
 // 距離にいるかとは無関係な長さの単位である。
@@ -24,7 +22,7 @@ export function planetOrbit(p: {
   lonPeriRateDegPerCentury: number;
   eRatePerCentury: number;
   aRatePerCenturyAu: number;
-}): PlanetOrbit {
+}): KeplerOrbit {
   // 度/世紀・au/世紀の入力単位を、KeplerOrbit のラジアン/秒単位へ一括変換するだけ。
   return {
     basisToEci: ECLIPTIC_BASIS,
@@ -51,7 +49,7 @@ export type PlanetAngles = {
 };
 
 // 衛星モデルが太陽方向を求めるのに要る角度。惑星-衛星系重心の軌道から取れるので循環しない。
-export function planetAngles(orbit: PlanetOrbit, t: number): PlanetAngles {
+export function planetAngles(orbit: KeplerOrbit, t: number): PlanetAngles {
   const lonPeri = orbit.lonPeri0 + orbit.lonPeriRate * t;
   const meanLongitude = orbit.l0 + orbit.lRate * t;
   return {
