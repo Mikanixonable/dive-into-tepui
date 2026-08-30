@@ -405,7 +405,8 @@ export class PlanEditor {
     // 含んだ速度になっているので、加算前(プレバーン)の速度へ戻してから改めて Δv を組み立てる。
     // 置ける時刻範囲は直前の状態から表示期間ぶん伸びるため、2つ以上先の arc の
     // サンプルが範囲に入りうる — 自ノードぶんだけ引くと中間ノードの Δv が残る。
-    let baseV = sample.v;
+    // 速度 − Δv = 速度。演算の途中は札の落ちた素の Vec3 になる。
+    let baseV: Vec3 = sample.v;
     for (let i = idx; i < arcIdx; i++) {
       const passed = plan.nodes[i];
       const passedArr = arriving[i];
