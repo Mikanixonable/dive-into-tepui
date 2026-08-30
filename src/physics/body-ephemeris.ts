@@ -7,5 +7,5 @@ export interface BodyEphemeris {
   readonly validEndSimTime: number;
 
   // 太陽系重心中心・ゲーム ECI 軸の位置・速度。範囲外の simTime を渡すと例外。
-  stateAt(simTime: number): KinematicState<'barycentric'>;
+  stateAt(simTime: number): KinematicState<'packed'>;
 }

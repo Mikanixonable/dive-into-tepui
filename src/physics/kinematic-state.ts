@@ -2,16 +2,21 @@
 // エルミート補間)。THREE/DOM 非依存の純粋関数群。
 import { Vec3, add, cross, norm, sub, v3 } from '../math/vec3';
 
-// 位置・速度をどの原点で測っているか。軸はどれもゲーム ECI 軸(icrf だけ ICRF 軸)で、
-// 違うのは原点だけ。**原点の違いは値からは見分けられない**ので、型で持たせて取り違えを
-// 型検査に拾わせる。
+// 位置・速度を**どの供給源から、どの原点で**測っているか。軸はどれもゲーム ECI 軸
+// (icrf だけ ICRF 軸)。**供給源の違いも原点の違いも値からは見分けられない**ので、型で
+// 持たせて取り違えを型検査に拾わせる。
+//
+// 守っている不変条件は「**絶対 − 絶対は供給源を揃える**」— 暦パックと解析暦は同じ天体に
+// 別の位置を答えるので、片方だけを差し替えると差がそのまま相対位置の誤りになる。
+// 一方「**絶対 + 相対は混ぜてよい**」ので、`primaryRel` は供給源を持たない
+// (解析の相対軌道をパックの惑星本体へ足す合成が、そのために要る)。
 //
 // - `eci` — ECI 原点天体(ステージが選ぶ中心天体)中心。無標の既定。
-// - `helio` — 恒星(星系の階層の根)中心。
-// - `primaryRel` — 主天体中心(惑星なら恒星、衛星なら惑星、軌道要素なら el.center)。
-// - `barycentric` — 太陽系重心中心。暦パックが外向きに答える原点。
+// - `analytic` — 解析暦が答える位置。原点は恒星(星系の階層の根)中心。
+// - `packed` — 暦パックが答える位置。原点は太陽系重心。
+// - `primaryRel` — 主天体中心の相対量(惑星なら恒星、衛星なら惑星、軌道要素なら el.center)。
 // - `icrf` — 太陽系重心中心・ICRF 軸。暦パックの生の座標。
-export type FrameTag = 'eci' | 'helio' | 'primaryRel' | 'barycentric' | 'icrf';
+export type FrameTag = 'eci' | 'analytic' | 'primaryRel' | 'packed' | 'icrf';
 
 // ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
 // KinematicState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
@@ -26,7 +31,7 @@ export type KinematicState<F extends FrameTag = 'eci'> = {
 } & { readonly __frame: F; }
 
 // KinematicState を組み立てる唯一の入口。ECI 以外を組むときは型引数を明示する
-// (`kinematicState<'helio'>(...)`)— 書き忘れると暗黙に ECI を名乗ることになる。
+// (`kinematicState<'analytic'>(...)`)— 書き忘れると暗黙に ECI を名乗ることになる。
 export function kinematicState<F extends FrameTag = 'eci'>(t: number, r: Vec3, v: Vec3): KinematicState<F> {
   return { t, r, v } as KinematicState<F>;
 }
