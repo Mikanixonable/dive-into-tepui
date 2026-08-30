@@ -3,7 +3,6 @@ import * as THREE from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
 import cloudsTextureUrl from '../../../assets/8k_clouds.jpg';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
-import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import { AtmosphereDef } from '../../../physics/atmosphere';
 import {
   PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
@@ -181,9 +180,9 @@ function earthAuroras(): readonly Aurora[] {
 // earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
   sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
-  pack: HelioEphemeris | null, earthSpinPhase0 = 0,
+  earthSpinPhase0 = 0,
 ): Record<EarthSystemBodyId, CelestialEntity> {
-  const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, pack, earthSpinPhase0);
+  const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
@@ -192,7 +191,7 @@ export function earthSystem(
       GeostationaryOverlay.of(earth.body),
     ),
     moon: new SphereEntity(
-      new SatelliteMotion(satelliteDefForSimZero(MOON, phases, simZeroEt), earth, pack),
+      new SatelliteMotion(satelliteDefForSimZero(MOON, phases, simZeroEt), earth),
       EARTH_SYSTEM_NAMES.moon, 'satellite',
       // 平均輝度 0.3180(A_B は公表ボンド)
       CelestialSurface.textured({ url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844] }),

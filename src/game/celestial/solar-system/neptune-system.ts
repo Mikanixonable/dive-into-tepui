@@ -1,6 +1,5 @@
 // 海王星系(海王星・トリトン・ネレイド)。静的事実・運動・見た目を1体につき1箇所で組む。
 import neptuneTextureUrl from '../../../assets/2k_neptune.jpg';
-import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
   PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
@@ -68,9 +67,8 @@ export const NEPTUNE_SYSTEM_NAMES: Record<NeptuneSystemBodyId, string> = {
 // 海王星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function neptuneSystem(
   sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
-  pack: HelioEphemeris | null,
 ): Record<NeptuneSystemBodyId, CelestialEntity> {
-  const neptune = planetSystem(planetDefForSimZero(NEPTUNE, phases, simZeroEt), sun, pack);
+  const neptune = planetSystem(planetDefForSimZero(NEPTUNE, phases, simZeroEt), sun);
   return {
     neptune: new PointEntity(
       neptune.body, NEPTUNE_SYSTEM_NAMES.neptune, 'planet',
@@ -78,13 +76,13 @@ export function neptuneSystem(
       CelestialSurface.textured({ url: neptuneTextureUrl, albedoScale: 2.3609, bondAlbedo: 0.29, averageHue: [0.3358, 0.9100, 3.8476] }),
     ),
     triton: new SphereEntity(
-      new SatelliteMotion(satelliteDefForSimZero(TRITON, phases, simZeroEt), neptune, pack),
+      new SatelliteMotion(satelliteDefForSimZero(TRITON, phases, simZeroEt), neptune),
       NEPTUNE_SYSTEM_NAMES.triton, 'satellite',
       // A_B=0.43(幾何 0.76 x q=0.564)
       CelestialSurface.solid([0.4794, 0.4216, 0.3680]),
     ),
     nereid: new SphereEntity(
-      new SatelliteMotion(satelliteDefForSimZero(NEREID, phases, simZeroEt), neptune, pack),
+      new SatelliteMotion(satelliteDefForSimZero(NEREID, phases, simZeroEt), neptune),
       NEPTUNE_SYSTEM_NAMES.nereid, 'satellite',
       // A_B=0.071(幾何 0.155 x q=0.461)
       CelestialSurface.solid([0.0816, 0.0693, 0.0563]),
