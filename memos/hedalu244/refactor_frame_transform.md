@@ -333,18 +333,6 @@ ECI 原点天体の値と、どちらの供給源か」— は天体1体のも�
 **値が動く手順と動かない手順を混ぜない。** 混ぜると `celestial-eci-baseline` が
 「意図した変更」なのか「壊した」のか区別できなくなる。
 
-### 手順3a. stage 1 の変換器を新設する(**値は動かない**)
-
-「天体の値 → ECI」の平行移動だけを行うモジュールを立て、供給源を揃える不変条件をそこへ閉じる。
-正本は `CelestialSystem`、`CelestialEntity` へ参照を結ぶ。`eciCache` / `eciOriginCache` が
-`CelestialMotion` から外れ、ECI 変換が `CelestialEntity` へ移る。集合を組むのは
-`CelestialSystem` のまま。
-
-### 手順3b. `ReferenceFrames` を game/celestial へ移す(**値は動かない**)
-
-ファイルの移動と import の付け替え。`frame.ts`(純関数)は physics に残す。
-`ReferenceFrames` は移動先で ECI 値を stage 1 から引く。
-
 ### 手順4. キャッシュを整理する
 
 - **`gravityCache` と `atmosphereCache` を消す。** 構造上ヒットしえないことが分かっている

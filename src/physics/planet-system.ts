@@ -9,9 +9,11 @@ import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestia
 import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
 import { KinematicState, addPrimaryRelative, kinematicState } from './kinematic-state';
 import { PlanetAngles, planetAngles } from './planet-orbit';
+import { TimeCacheStats, TimeRing } from './time-ring';
 
 export class PlanetSystem {
   private readonly moons: SatelliteMotion[] = [];
+  private readonly starRelCache = new TimeRing<KinematicState<'primaryRel'>>();
   private planetBody: PlanetMotion | null = null;
 
   // orbit は系の重心が主星まわりに描く軌道。
@@ -19,9 +21,12 @@ export class PlanetSystem {
 
   // 系の重心の主星相対状態。重心の軌道は中心が主星なので、二体解がそのまま主星相対になる。
   // **主星の位置を経由しない**ので、主星がこれを集めて自分の重心相対位置を組んでも循環しない。
+  // 質量を持つ系では主星の重心相対位置と自分の絶対位置の両方から引かれるので、1度へ畳む。
   starRelStateAt(t: number): KinematicState<'primaryRel'> {
+    const cached = this.starRelCache.get(t);
+    if (cached !== undefined) return cached;
     const s = keplerOrbitState(this.orbit, t);
-    return kinematicState<'primaryRel'>(t, s.r, s.v);
+    return this.starRelCache.put(t, kinematicState<'primaryRel'>(t, s.r, s.v));
   }
 
   // 系の重心の太陽系重心状態。主星の重心相対位置に、主星相対の二体解を足す。
@@ -32,6 +37,9 @@ export class PlanetSystem {
     if (star === null) return kinematicState<'analytic'>(t, rel.r, rel.v);
     return addPrimaryRelative(star.analyticStateAt(t), rel);
   }
+
+  // 負荷確認ウィンドウが読む、主星相対の二体解の時刻キャッシュのヒット/ミス累計。
+  get cacheStats(): TimeCacheStats { return this.starRelCache.stats; }
 
   // この系が重心を分け合う全質量(惑星本体 + 全衛星)。衛星は構築のたびに増えるので、
   // 構築時に畳まず引かれた時点で合算する。

@@ -41,12 +41,6 @@ export function register(): void {
     }
   });
 
-  test('celestial-body-windows: 同一 t の gravityAttractorsAt は同一配列参照を返す', () => {
-    const w = solarSystemParts({ earth: 0.3, moon: 0.4 }).system;
-    assert.equal(w.gravityAttractorsAt(1234), w.gravityAttractorsAt(1234));
-    assert.notEqual(w.gravityAttractorsAt(1234), w.celestialBodiesAt(1234));
-  });
-
   test('celestial-body-windows: 異なる t では再計算され、値が変わる', () => {
     const w = solarSystemParts({ earth: 0.3, moon: 0.4 }).system;
     const a = w.celestialBodiesAt(0);
