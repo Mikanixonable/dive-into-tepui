@@ -281,38 +281,6 @@ simTime 1軸だけなので、**`+` / `-` をヘルパ呼び出しへ置き換�
 
 ## 手順
 
-### 手順4. 開始日時がそのまま simTime=0 になる
-
-**目的.** GAME.md 9.0 の仕様どおりにする。**この手順は挙動を変える。** 元期がランの開始時刻に
-なることで、simTime は常に 0 から始まり、`|simTime|` はそのランの経過時間で抑えられる。
-「決めたこと 2」の実施であり、この計画の中核。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/stage-select.ts` | `readEpoch()` の結果を simTime へ直さず、**`TdbJulianDate` のまま `done(stage, epoch)` で返す** |
-| `src/launcher.ts:45,49,91-92,100-142,162-164,220,243-246` | `startSimTime?: number` を **`startEpoch?: TdbJulianDate`** へ。`startRun` は `initialSave` を先に読み(:134)、**元期を `initialSave?.ephemerisContext.epochJdTdb ?? startEpoch ?? stageClass.epoch` の順で決めて** `initCelestialSystem` と `Game` へ渡す。`initialSaveFor` の「明示されていれば自動復元しない」判定は `startEpoch` で同じ形 |
-| `src/game/stages/stage.ts:66-71,104-113` | `createCelestialSystem(phaseOffsets, earthSpinPhase0, onProgress?, startSimTime?)` → **`(..., epoch: TdbJulianDate)`**(必須)。`profileAtOrNull(epoch.value)` でプロファイルを選び、`solarSystem(..., epoch)` |
-| `src/game/stages/stage-debug-alt-system.ts:83` | 同じシグネチャへ追従 |
-| `src/game/game.ts:127,211` | `initialSimTime?: number` を落とす。`new Simulator(..., initialSave?.simTime ?? 0)` — **新規開始は常に 0** |
-| `src/game/save/ephemeris-context.ts` | `ephemerisContextStatus` から **`epochJdTdb` の一致検査を外す**(元期は継承する値)。照合に残すのは `profileId` / `packId` / `packFormatVersion`。**`ephemerisContextFor(epoch)` 化は手順3 で済ませた**(この節が game グラフへ依存すると physics のテストビルドが `.epk` を読めずに壊れるため、前倒しした) |
-| `src/game/save/snapshot-service.ts` | `load(snapshotId, stageId, epoch)` が受け取る元期を、ステージの宣言ではなく**スナップショット自身の元期**にする(継承)。`launcher.ts:169` の呼び出しを合わせる |
-| `src/game/save/save-data.ts:229,332-334` | `EphemerisContext.epochJdTdb` は「**そのランの元期**」の意味になる。`simTime` は元期からの経過秒。フィールド名は据置でよいので、**コメントを書き換える** |
-| `tests/game/`(新規) | ①クリエイティブ相当の起動で **`Simulator.simTime` の初期値が 0** ②**スナップショットの元期が現在の元期と違っても読める** ③**西暦50年を元期にしたとき HUD の日時が 1950 年にならない**(`Date.UTC` の 0〜99 年の罠)を各1本 |
-
-**達成条件と検証**
-
-- `grep -rn "startSimTime\|initialSimTime\|CURRENT_EPHEMERIS_CONTEXT" src/` が **0 件**。
-- `npm run typecheck`、`npm run test:game`、`npm run test:physics`。
-- 目視: タイトル → クリエイティブ → 開始日時 `2026 / 1 / 1 / 0 / 0` → 開始。
-  **HUD 上部の日時が `2026-01-01T00:00:00`、T+ が 0** から始まること。
-  既定日時(20115)でも同じく T+ 0 から始まること。
-- 目視: 2026 開始のランでスナップショットを保存 → タイトルへ戻る → 20115 の既定で起動 →
-  そのスナップショットを読み込むと **2026 のランとして復元される**こと。
-
----
-
 ### 手順5. J2000 ET 秒を `.epk` の復号の内側へ閉じる
 
 **目的.** 契約 4・5 の実施。`AbsoluteEphemeris` の口を simTime へ寄せ、**JD_TDB を実行時の
@@ -457,7 +425,6 @@ simTime が大きくなっても、無音のフリーズを検知する砦が効
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 4 | src 8 ファイル・tests 1 ファイル | `startSimTime` 経路 13 箇所 + save 3 ファイル + 新規テスト3本。**判断が最も要る手順** |
 | 5 | src 6 ファイル・tests 5 ファイル | `JdTdb` 参照のうち評価経路にある 25 箇所(`absolute-ephemeris.ts` 17 + `packed-absolute-ephemeris.ts` 8)+ catalog/stage/solar-system の追従 |
 | 6 | src 2 ファイル・tests 1 ファイル | 判定 3 箇所 + 新規テスト1本 |
 | 7 | src 14 ファイル・tests 8 ファイル | `AtEpoch` 151 + `epochOffsetSec` 122(手順2 後)+ `OrbitEpoch` 11 = 284 件。うち約 250 件は9系ファイルの `planetDefForSimZero(X, phases, simZeroEt)` 形の同一パターン |
