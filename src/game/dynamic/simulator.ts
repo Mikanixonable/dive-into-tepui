@@ -86,25 +86,28 @@ export class Simulator {
     this.lastIntegratedSteps = 0;
     this.lastFollowedSteps = 0;
     const targetTime = this.simTime + simDt;
-    while (this.simTime < targetTime - 1e-9) {
+    while (this.simTime < targetTime) {
       const maxStep = simulationMaxStep(simDt, C.SUBSTEP_MAX_DT, C.SUBSTEP_MAX_COUNT);
       const eventTime = this.nextEventTime.at(this.simTime, activeStage, this.entities);
       const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
-      // 浮動小数点の丸めでゼロ刻みになったイベントは現在時刻で消費して前進を保証する。
-      if (subDt <= 1e-9) {
+      // 丸めで前進しない刻みになったイベントは現在時刻で消費して前進を保証する。**絶対秒の
+      // しきい値では判定しない** — simTime の分解能は |simTime|·2⁻⁵² なので、固定の ε は
+      // 元期の選び方しだいで意味を失う(CODING-RULE 1.9)。足しても進まないことを直接見る。
+      if (this.simTime + subDt <= this.simTime) {
         this.consecutiveZeroSteps++;
-        // eventTime は simTime 以上のはずだが、丸めで両者の差が 1e-9 未満に潰れると
+        // eventTime は simTime 以上のはずだが、丸めで両者の差が 1 ULP 未満に潰れると
         // subDt が 0 になり simTime が動かない。その場合は eventTime へ直接そろえて
         // 差を1回で消費する — 据え置くと次回も同じ差のまま同じ個体を何度も問い直し続ける。
         if (eventTime !== null && eventTime > this.simTime) this.simTime = eventTime;
         // それでも進まない(eventTime が無い、または既に追い越されている)個体が残ると
-        // ゼロ刻みが終わらない。simTime を人為的に進めて事態を打ち切り、無音のフリーズ
-        // ではなく検知できる形にする。
+        // ゼロ刻みが終わらない。このフレームぶんを一括で消費して打ち切り、無音のフリーズ
+        // ではなく検知できる形にする。**微小量を足して逃げない** — |simTime| が大きい構成では
+        // ULP 未満の加算が no-op になり、砦そのものが効かなくなる。
         if (this.consecutiveZeroSteps > SIMULATION_STALL_MAX_ZERO_STEPS) {
           console.error(
             `[Simulator] ゼロ刻みが${this.consecutiveZeroSteps}回連続。simTime=${this.simTime} `
-            + `eventTime=${eventTime} entities=${this.entities.all().length} — simTime を強制前進`);
-          this.simTime += 1e-6;
+            + `eventTime=${eventTime} entities=${this.entities.all().length} — このフレームぶんを一括消費`);
+          this.simTime = targetTime;
           this.consecutiveZeroSteps = 0;
         }
         activeStage.applySimulationEvents(this.simTime);

@@ -87,6 +87,8 @@ export function entityContactResponse(
   }
 
   const sweptValid = a.prevState.t < a.state.t && b.prevState.t < b.state.t
+    // 同一サブステップの個体は同じ endTime へビット一致で着地するので、この 1e-6 は
+    // |simTime| が大きい構成では実質 === に締まるだけで、緩む方向には効かない。
     && Math.abs(a.prevState.t - b.prevState.t) <= 1e-6 && Math.abs(a.state.t - b.state.t) <= 1e-6;
 
   if (a.usesCustomSphereCollision() || b.usesCustomSphereCollision()) {
