@@ -17,8 +17,8 @@ const TYPHOON_LIFETIME = 9 * 86400;
 // 500〜1000 km へ広げる。1 枚では両方を持てない — 狭めれば傘が縮み、広げれば巻きが緩む。
 const TYPHOON_CORE_DEPTH = 40;
 const TYPHOON_CORE_RADIUS = 250e3;
-const TYPHOON_SKIRT_DEPTH = 15;
-const TYPHOON_SKIRT_RADIUS = 1000e3;
+const TYPHOON_SKIRT_DEPTH = 20;
+const TYPHOON_SKIRT_RADIUS = 1300e3;
 
 // 目。広がりは谷自身の広がりに対する比で、湿度はその内側で落ちる。目を持つかどうかは、谷の芯で
 // 風が等圧線を横切る角で決まる — この角より閉じた谷だけが目を持ち、あいだで滑らかに渡る。
