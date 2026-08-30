@@ -23,7 +23,7 @@ import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constan
 import { MU_MOON } from '../../src/game/celestial/solar-system/constants';
 import { dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
-const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
+const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 
 export function register(): void {
   test('elements: stateOnOrbitAt は元期でその状態そのものを返す(機械精度)', () => {

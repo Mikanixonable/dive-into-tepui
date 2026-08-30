@@ -18,7 +18,7 @@ import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/game/celestial/solar-s
 import { add, addScaled, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
-const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
+const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
 
 export function register(): void {
   // 天体の外挿は state.t の前後どちらへも効く必要がある — 掃引はサブステップの中点で
@@ -26,7 +26,7 @@ export function register(): void {
   test('celestialBodyStateAt: state.t の前後へ等加速度で外挿する', () => {
     const body: CelestialBody = {
       id: 'body', mu: 0, radius: 1, accel: v3(0, 3, 0), degree2: null, atmosphere: null, isStar: false,
-      state: kinematicState(100, v3(1000, 0, 0), v3(0, 20, 0)),
+      state: kinematicState<'eci'>(100, v3(1000, 0, 0), v3(0, 20, 0)),
     };
     for (const s of [-30, 0, 45]) {
       const got = celestialBodyStateAt(body, 100 + s);
@@ -48,7 +48,7 @@ export function register(): void {
     const r = v3(R_EARTH + 420e3, 0, 0);
     // moon がクエリ位置と同じ座標(距離ゼロ)にある人工の配置。飛ばされず加算されると
     // μ/0³ で発散する。
-    const coincidentMoon: CelestialBody = { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, r, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
+    const coincidentMoon: CelestialBody = { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState<'eci'>(0, r, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
     const a = attractorAccel(r, coincidentMoon, coincidentMoon.state.t);
     assert.ok(Number.isFinite(a.x) && Number.isFinite(a.y) && Number.isFinite(a.z), `finite: ${JSON.stringify(a)}`);
     // 直接引力の項だけが落ちて、原点補正項(月が地球を引く分)は残る。
@@ -115,11 +115,11 @@ export function register(): void {
     // sqrt(MU_EARTH/MU_MOON) ~= 9 倍ずれる。
     const moon: CelestialBody = {
       id: 'moon', mu: MU_MOON, radius: R_MOON, accel: ZERO, degree2: null, atmosphere: null, isStar: false,
-      state: kinematicState(0, v3(3.844e8, 0, 0), v3(0, 0, 1023)),
+      state: kinematicState<'eci'>(0, v3(3.844e8, 0, 0), v3(0, 0, 1023)),
     };
     const a = R_MOON + 100e3;
     const rel = stateFromOrbitalElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
-    const s = kinematicState(0, add(rel.r, moon.state.r), add(rel.v, moon.state.v));
+    const s = kinematicState<'eci'>(0, add(rel.r, moon.state.r), add(rel.v, moon.state.v));
 
     const el = orbitalElementsOf(s, moon);
     assert.ok(el, 'orbitalElementsOf should not be null');
@@ -159,8 +159,8 @@ export function register(): void {
     const bodies = solarSystemParts().system.celestialBodiesAt(0).filter((b) => b.id === 'earth');
     const r = v3(7e6, 0, 0);
     const vCirc = Math.sqrt(MU_EARTH / 7e6);
-    assert.equal(orbitingAttractorOf(kinematicState(0, r, v3(0, vCirc, 0)), bodies)?.id, 'earth');
+    assert.equal(orbitingAttractorOf(kinematicState<'eci'>(0, r, v3(0, vCirc, 0)), bodies)?.id, 'earth');
     // 脱出速度の 1.2 倍は双曲線軌道(e >= 1)。
-    assert.equal(orbitingAttractorOf(kinematicState(0, r, v3(0, vCirc * Math.SQRT2 * 1.2, 0)), bodies), null);
+    assert.equal(orbitingAttractorOf(kinematicState<'eci'>(0, r, v3(0, vCirc * Math.SQRT2 * 1.2, 0)), bodies), null);
   });
 }

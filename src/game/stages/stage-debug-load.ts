@@ -38,7 +38,7 @@ export class StageDebugLoad extends Stage {
     const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
     for (let i = 0; i < C.DEBUG_LOAD_DEBRIS_COUNT; i++) {
       const offset = randomOffset(rand, C.DEBUG_LOAD_DEBRIS_MAX_DIST);
-      const state = kinematicState(player.state.t, add(player.state.r, offset), player.state.v);
+      const state = kinematicState<'eci'>(player.state.t, add(player.state.r, offset), player.state.v);
       const size = DESTROY_FRAG_SIZE_MIN + rand() * (DESTROY_FRAG_SIZE_MAX - DESTROY_FRAG_SIZE_MIN);
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
       entities.addDebris(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));

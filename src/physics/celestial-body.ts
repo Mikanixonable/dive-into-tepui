@@ -66,7 +66,7 @@ export function celestialBodyPositionAt(a: CelestialBody, t: number): Vec3 {
 export function celestialBodyStateAt(a: CelestialBody, t: number): KinematicState {
   const s = t - a.state.t;
   if (s === 0) return a.state;
-  return kinematicState(t, celestialBodyPositionAt(a, t), addScaled(a.state.v, a.accel, s));
+  return kinematicState<'eci'>(t, celestialBodyPositionAt(a, t), addScaled(a.state.v, a.accel, s));
 }
 
 // 天体 attractor が位置 r の運動方程式へ寄与する加速度 μ[(r_b − r)/|r_b − r|³ − r_b/|r_b|³]。

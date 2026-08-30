@@ -36,7 +36,7 @@ export class AmmoPickup extends DynamicEntity {
   public constructor(init: AmmoPickupInit, scene: THREE.Scene) {
     const { state, att, id } = 'saved' in init
       ? {
-        state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
+        state: kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
         att: { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: v3(1, 1, 1) } as Attitude,
         id: init.saved.id || undefined,
       }

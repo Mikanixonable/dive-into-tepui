@@ -25,7 +25,7 @@ export function orbitInfo(
   entity: DynamicEntity, reference: OrbitReference, nameOf: (id: string) => string,
 ): OrbitInfo {
   // reference 系での相対位置・速度(高度・相対速度の元)。
-  const rel = kinematicState(entity.state.t, sub(entity.state.r, reference.state.r), sub(entity.state.v, reference.state.v));
+  const rel = kinematicState<'eci'>(entity.state.t, sub(entity.state.r, reference.state.r), sub(entity.state.v, reference.state.v));
   // reference が重力中心のときだけ軌道要素・遠地点/近地点が求まる。
   const el = reference.attractor ? entity.orbitalElementsAround(reference.attractor) : null;
   const apsis = el ? apsisAltitudes(el) : null;

@@ -156,7 +156,7 @@ export class DebrisPiece extends DynamicEntity {
   // 薬莢が艦(操作対象に限らず Player 全般)に触れたときは、からんと音を鳴らす。
   collideWithEntity(other: DynamicEntity, contact: Contact): void {
     if (other instanceof Bullet) {
-      this._fx.spawnGasPuff(kinematicState(contact.selfState.t, contact.point, contact.selfState.v));
+      this._fx.spawnGasPuff(kinematicState<'eci'>(contact.selfState.t, contact.point, contact.selfState.v));
       return;
     }
     if (this.debrisKind.kind === 'casing' && other instanceof Player) this._worldSfx.clank();
