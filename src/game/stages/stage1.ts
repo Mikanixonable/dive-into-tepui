@@ -1,6 +1,6 @@
 // Stage 1: 第一ステージ(LEO 戦域)。
 import * as C from '../const';
-import { Stage, type StageDeps } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import {
   generateCoellipticEnemy,
@@ -15,6 +15,7 @@ import type { StageSaveData } from '../save/save-data';
 
 export class Stage1 extends Stage {
   static readonly id = '1' as const;
+  static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'stage 1';
   static readonly selectSub = '【第一ステージ: LEO戦域】 高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
   static readonly selectKeys = ['Digit1', 'Enter'];

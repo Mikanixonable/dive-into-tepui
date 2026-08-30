@@ -281,41 +281,6 @@ simTime 1軸だけなので、**`+` / `-` をヘルパ呼び出しへ置き換�
 
 ## 手順
 
-### 手順3. `sim-epoch.ts` を解体し、元期をステージの宣言にする
-
-**目的.** 「決めたこと 1」の実施。作中の日時は**ステージが持つ設定**であって、リポジトリ全体が
-import する共有財ではない。表示ブリッジと入力パースは元期とは別物なので、それぞれの持ち場へ返す。
-**この時点で挙動は変えない** — 全ステージが同じ `STORY_EPOCH` を宣言し、クリエイティブは
-まだ `startSimTime` 経路を通る。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/stages/stage.ts` | **`export const STORY_EPOCH: TdbJulianDate`** を新設(`20115-05-14T06:00:00 TDB` を `parseCalendarDate` → `calendarDateToJulianDate` で組む)。`StageClass` へ `readonly epoch: TdbJulianDate` と `readonly picksStartEpoch: boolean` を追加。**`Stage` 基底には `epoch` の既定値を置かない**(宣言し忘れを型検査へ落とすため)。`picksStartEpoch` だけ基底に `false` を置く |
-| `src/game/stages/{stage00,stage0,stage1,stage2,stage-debug,stage-debug-load,stage-debug-alt-system}.ts` | `static readonly epoch = STORY_EPOCH;` を、`selectLabel` の並びへ追加(7クラス) |
-| `src/game/stages/creative-stage.ts:46-47` | `static readonly epoch = STORY_EPOCH;`(日時指定画面の初期値・`?stage=creative` 直接起動の値)と `static readonly picksStartEpoch = true;` |
-| `src/game/stages/stage.ts:104-113` | `createCelestialSystem` が `SIM_EPOCH` ではなく渡された元期を使う形へ(引数の型は手順4 で確定するので、この手順では `this`/`stageClass` の `epoch` を既定に使う) |
-| `src/game/hud/utils.ts:37-47` | **`epochUnixSeconds(epoch: TdbJulianDate): number`** を新設。`julianDateToCalendarDate(epoch)` の各成分から `Date.UTC` で組む。**西暦 0〜99 年は `Date.UTC` が 1900+year へ写すので、`setUTCFullYear` で補正する**。`fmtDateTime` のコメントから `SIM_EPOCH_TDB` の参照を外す |
-| `src/game/hud/panels/top-bar.ts:5,18` / `src/game/hud/panels/predict-panel.ts:6,467` | `SIM_EPOCH_SEC` を廃し、`epochUnixSeconds(game.celestialSystem.epoch)` から導く |
-| `src/game/hud/orbit/calendar-ticks.ts:3,185-193` / `src/game/plan/plan-display.ts:11,296,301,308` | 純関数なので **元期の unix 秒を引数で受ける**。呼び出し元が `celestialSystem.epoch` から渡す |
-| `src/game/stage-select.ts:8,390,434-476` | `SIM_EPOCH_CALENDAR_TDB` の import を廃し、日時入力欄の初期値を `julianDateToCalendarDate(stageClass.epoch)` から組む。`dateStringToSimTime` を局所の `readEpoch(): TdbJulianDate \| null` へ吸収(`parseCalendarDate` → `calendarDateToJulianDate` を try/catch)。**`:390` の `stageClass.id === 'creative'` を `stageClass.picksStartEpoch` へ**。返り値はこの手順では従来どおり simTime へ直して返す(`ephemerisSeconds(選択) − ephemerisSeconds(stageClass.epoch)`) |
-| `src/game/save/ephemeris-context.ts:3,15,22` | `SIM_EPOCH` の import を廃し、`STORY_EPOCH`(手順4 でランの元期へ差し替わる)を使う |
-| `src/game/sim-epoch.ts` | **ファイルごと削除。** |
-
-**達成条件と検証**
-
-- `grep -rn "sim-epoch" src/ tests/` が **0 件**。ファイルが存在しない。
-- `grep -rn "SIM_EPOCH" src/` が **0 件**。
-- `grep -n "id === 'creative'" src/game/stage-select.ts` が **0 件**。
-- `STAGE_CLASSES` のどれか1つから `epoch` を消すと `stage-dictionary.ts:13` が型エラーになること
-  (一時的に消して `npm run typecheck` で確認し、戻す)。
-- `npm run typecheck`、`npm run test:game`。
-- 目視: HUD 上部の日時が従来と同じ `20115-05-14T06:00:00` から始まること
-  (**この手順では表示が変わってはいけない**)。
-
----
-
 ### 手順4. 開始日時がそのまま simTime=0 になる
 
 **目的.** GAME.md 9.0 の仕様どおりにする。**この手順は挙動を変える。** 元期がランの開始時刻に
@@ -331,8 +296,8 @@ import する共有財ではない。表示ブリッジと入力パースは元�
 | `src/game/stages/stage.ts:66-71,104-113` | `createCelestialSystem(phaseOffsets, earthSpinPhase0, onProgress?, startSimTime?)` → **`(..., epoch: TdbJulianDate)`**(必須)。`profileAtOrNull(epoch.value)` でプロファイルを選び、`solarSystem(..., epoch)` |
 | `src/game/stages/stage-debug-alt-system.ts:83` | 同じシグネチャへ追従 |
 | `src/game/game.ts:127,211` | `initialSimTime?: number` を落とす。`new Simulator(..., initialSave?.simTime ?? 0)` — **新規開始は常に 0** |
-| `src/game/save/ephemeris-context.ts:15,22,50-72` | module 定数 `currentProfile` / `CURRENT_EPHEMERIS_CONTEXT` を廃し、**`ephemerisContextFor(epoch: TdbJulianDate): EphemerisContextValue`** にする。`ephemerisContextStatus` から **`epochJdTdb` の一致検査を外す**(元期は継承する値)。照合に残すのは `profileId` / `packId` / `packFormatVersion` |
-| `src/game/save/snapshot-service.ts:8,61-63,96` | `CURRENT_EPHEMERIS_CONTEXT` → `ephemerisContextFor(celestialSystem.epoch)` |
+| `src/game/save/ephemeris-context.ts` | `ephemerisContextStatus` から **`epochJdTdb` の一致検査を外す**(元期は継承する値)。照合に残すのは `profileId` / `packId` / `packFormatVersion`。**`ephemerisContextFor(epoch)` 化は手順3 で済ませた**(この節が game グラフへ依存すると physics のテストビルドが `.epk` を読めずに壊れるため、前倒しした) |
+| `src/game/save/snapshot-service.ts` | `load(snapshotId, stageId, epoch)` が受け取る元期を、ステージの宣言ではなく**スナップショット自身の元期**にする(継承)。`launcher.ts:169` の呼び出しを合わせる |
 | `src/game/save/save-data.ts:229,332-334` | `EphemerisContext.epochJdTdb` は「**そのランの元期**」の意味になる。`simTime` は元期からの経過秒。フィールド名は据置でよいので、**コメントを書き換える** |
 | `tests/game/`(新規) | ①クリエイティブ相当の起動で **`Simulator.simTime` の初期値が 0** ②**スナップショットの元期が現在の元期と違っても読める** ③**西暦50年を元期にしたとき HUD の日時が 1950 年にならない**(`Date.UTC` の 0〜99 年の罠)を各1本 |
 
@@ -492,7 +457,6 @@ simTime が大きくなっても、無音のフリーズを検知する砦が効
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 3 | src 15 ファイル・tests 0 | ステージ 8 クラス × 1〜2 行 + `sim-epoch.ts` の 7 importer + `hud/utils.ts` へ 1 関数 + ファイル削除 |
 | 4 | src 8 ファイル・tests 1 ファイル | `startSimTime` 経路 13 箇所 + save 3 ファイル + 新規テスト3本。**判断が最も要る手順** |
 | 5 | src 6 ファイル・tests 5 ファイル | `JdTdb` 参照のうち評価経路にある 25 箇所(`absolute-ephemeris.ts` 17 + `packed-absolute-ephemeris.ts` 8)+ catalog/stage/solar-system の追従 |
 | 6 | src 2 ファイル・tests 1 ファイル | 判定 3 箇所 + 新規テスト1本 |

@@ -1,6 +1,6 @@
 // デバッグ用ステージ: 破片を多数配置し、積分するエンティティ数の高負荷を常時再現する。
 // タイトルの通常ボタン列には出ない。
-import { Stage, type StageDeps } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -17,6 +17,7 @@ import {
 
 export class StageDebugLoad extends Stage {
   static readonly id = 'debug-load' as const;
+  static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'DEBUG(高負荷)';
   static readonly selectSub = '【デバッグ】破片を多数配置し積分を高負荷にする・撃破しても終了しない';
   static readonly hiddenFromSelect = true;

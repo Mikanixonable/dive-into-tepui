@@ -16,7 +16,7 @@ import { pickNearest } from './pickable/map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
-import type { DisplayWindow } from './display-window-manager';
+import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
@@ -93,9 +93,7 @@ export class Targeter {
     overviewMode: boolean, displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
     if (!overviewMode) return;
-    const timeLabel = {
-      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
-    };
+    const timeLabel = timeLabelSettingOf(displayWindow);
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
       .updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
   }

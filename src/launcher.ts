@@ -166,7 +166,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const initialSnapshotId = snapshotId
       ?? (resumesLastLaunchedStage ? this.slots.latestSnapshot(activeSlotId, stageClass.id)?.id ?? null : null);
     const initialSave = initialSnapshotId !== null
-      ? this.snapshotService.load(initialSnapshotId, stageClass.id) ?? undefined
+      ? this.snapshotService.load(initialSnapshotId, stageClass.id, stageClass.epoch) ?? undefined
       : undefined;
     // ロードした時点より後の自動スナップショットは、もう起きなかった未来なので破棄する。
     if (initialSave && initialSnapshotId !== null) this.slots.discardAfter(initialSnapshotId);
