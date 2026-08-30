@@ -1,7 +1,7 @@
 // 球面で切った 3D フラクタルノイズ。大気の大循環に乗せて標本化するので、模様は緯度帯ごとに
 // 違う向きへ流れながら形を変える。焼く先の texel で標本化できない段は落とすが、落ちる境目の 1 段は
 // 端数の振幅で乗せる — 写しの解像度が連続に変われば、段が丸ごと現れたり消えたりしない。
-import { clamp, exp2, float, floor, int, log2, mx_fractal_noise_float, mx_noise_float } from 'three/tsl';
+import { If, clamp, exp2, float, floor, greaterThan, int, log2, mx_fractal_noise_float, mx_noise_float } from 'three/tsl';
 import type { Circulation } from './circulation';
 import type { FloatNode, IntNode, Vec3Node } from '../tsl-types';
 
@@ -37,10 +37,14 @@ export class CirculatingNoise {
   }
 
   // 周波数 2 倍・振幅 1/2 で段を重ねた和。端数の段の振幅は、段数が 1 つ増える所で 1/2 段ぶんに
-  // 達するので、和は段数の境目で跳ばない。
+  // 達するので、和は段数の境目で跳ばない。端数の段の分岐は texelAngle だけで決まって写しの全域で
+  // 揃うので、段数がクランプに張り付く場面ではこの段が丸ごと消える。
   private fractalAt(position: Vec3Node): FloatNode {
     const scaled = position.mul(this.frequency);
-    return mx_fractal_noise_float(scaled, this.fullOctaves)
-      .add(mx_noise_float(scaled.mul(this.partialFrequency)).mul(this.partialAmplitude));
+    const sum = mx_fractal_noise_float(scaled, this.fullOctaves).toVar();
+    If(greaterThan(this.partialAmplitude, 0), () => {
+      sum.addAssign(mx_noise_float(scaled.mul(this.partialFrequency)).mul(this.partialAmplitude));
+    });
+    return sum;
   }
 }
