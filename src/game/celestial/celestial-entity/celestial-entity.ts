@@ -4,7 +4,6 @@ import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
 import { CelestialBody, orbitalElementsOf } from '../../../physics/celestial-body';
-import { CelestialBodyWindows } from '../../../physics/celestial-body-windows';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { OrbitalElements } from '../../../physics/elements';
 import { OrbitLine } from '../../lines/orbit-line';
@@ -14,7 +13,7 @@ import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { apparentSizePx } from '../../../math/projection';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
-import { len, sub, v3 } from '../../../math/vec3';
+import { len, sub } from '../../../math/vec3';
 import type { AtmosphereCandidate, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
@@ -53,35 +52,14 @@ export abstract class CelestialEntity {
     readonly atmosphereOptics: AtmosphereOptics | null,
   ) {}
 
-  // 自分の ECI 瞬間値を引く窓。ECI 化は窓の中でしか起きないので、個体はどの天体が原点かを
-  // 知らない。CelestialSystem が構築直後に1度だけ差し込む。
-  private eciWindows: CelestialBodyWindows | null = null;
-
-  // ECI の窓を結ぶ。2度目の呼び出しは例外。
-  bindWindows(windows: CelestialBodyWindows): void {
-    if (this.eciWindows !== null) throw new Error(`CelestialEntity: ${this.id} の ECI 窓は1度だけ結べる`);
-    this.eciWindows = windows;
-  }
-
   // 自分の時刻 t での ECI 瞬間値。
   bodyAt(t: number): CelestialBody {
-    return this.windows.bodyAt(this.id, t);
+    return this.motion.celestialBodyAt(t);
   }
 
   // 自分の時刻 t での ECI 位置・速度。
   stateAt(t: number): KinematicState {
-    return this.windows.stateAt(this.id, t);
-  }
-
-  // 他の登録天体の時刻 t での ECI 位置・速度。
-  protected stateOf(id: string, t: number): KinematicState {
-    return this.windows.stateAt(id, t);
-  }
-
-  // bindWindows より前に読むと例外。
-  private get windows(): CelestialBodyWindows {
-    if (this.eciWindows === null) throw new Error(`CelestialEntity: ${this.id} の ECI 窓が結ばれていない`);
-    return this.eciWindows;
+    return this.motion.eciStateAt(t);
   }
 
   // この天体を光源として扱うときの色つきアルベド(Rec.709 輝度 = ボンドアルベド)。
@@ -117,12 +95,7 @@ export abstract class CelestialEntity {
   referenceElementsAt(t: number): OrbitalElements | null {
     const centerMotion = this.motion.primary;
     if (centerMotion === null) return null;
-    const centerDef = centerMotion.def;
-    const center: CelestialBody = {
-      id: centerMotion.id, mu: centerDef.mu, radius: centerDef.radius, state: this.stateOf(centerMotion.id, t),
-      accel: v3(), degree2: null, atmosphere: null, isStar: centerMotion.kind === 'star',
-    };
-    return orbitalElementsOf(this.stateAt(t), center);
+    return orbitalElementsOf(this.stateAt(t), centerMotion.celestialBodyAt(t));
   }
 
   // 参照軌道線を表示時刻の接触軌道要素と濃さへ同期する(実体が無ければ生成して scene へ登録)。

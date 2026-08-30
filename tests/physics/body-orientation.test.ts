@@ -53,7 +53,7 @@ export function register(): void {
   });
 
   test('celestial-motion: the moon keeps a 1.543deg equatorial tilt to the ecliptic across a node period', () => {
-    const windows = solarSystemParts({ moon: 0.7 }).windows;
+    const windows = solarSystemParts({ moon: 0.7 }).system;
     const nodePeriod = 18.612958 * 365.25 * 86400;
     for (let i = 0; i <= 12; i++) {
       const t = (i / 12) * nodePeriod;
@@ -66,7 +66,7 @@ export function register(): void {
   test('celestial-motion: the moon spin axis sits 6.688deg from its own orbit normal, opposite the ecliptic pole', () => {
     // 自転軸を軌道面法線で代用していれば、この離角は 0 になる。
     const parts = solarSystemParts({ moon: 0.2 });
-    const windows = parts.windows;
+    const windows = parts.system;
     for (const t of [0, 5e7, 2e8]) {
       const moon = windows.celestialBodiesAt(t).find((b) => b.id === 'moon')!;
       const normal = orbitingMotionOf(parts, 'moon').orbitNormalAt(t);
@@ -78,7 +78,7 @@ export function register(): void {
   test('celestial-motion: the moon long axis follows the mean longitude, not the instantaneous earth direction', () => {
     // 同期回転は一様なので本初子午線は平均黄経を追う。真方向で代用すると中心差ぶん
     // (離心率 0.0549 に対して最大 6.3°)ずれ、C22 の位相が狂う。
-    const windows = solarSystemParts({ moon: 0 }).windows;
+    const windows = solarSystemParts({ moon: 0 }).system;
     let maxSep = 0;
     for (let i = 0; i <= 40; i++) {
       const t = (i / 40) * 27.321661 * 86400;
@@ -150,7 +150,7 @@ export function register(): void {
 
   test('celestial-motion: the moon pole agrees with the cassini axis carried by its gravity field', () => {
     const parts = solarSystemParts({ moon: 0.4 });
-    const windows = parts.windows;
+    const windows = parts.system;
     for (const t of [0, 5e6, 2e8]) {
       const gravityPole = windows.celestialBodiesAt(t).find((b) => b.id === 'moon')!.degree2!.pole;
       const pole = orbitingMotionOf(parts, 'moon').orientationAt(t)!.axis;

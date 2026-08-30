@@ -119,7 +119,7 @@ export function register(): void {
     // 実行時 API が返す点列は、その系の回転基底に載っていなければならない。
     test(`orbit-catalog: ${systemId} runtime loops sit on the rotating frame`, () => {
       const secondary = secondaryFrameOf(
-        PARTS.windows.celestialBodiesAt(t), orbitingMotionOf(PARTS, guideSecondary(systemId)), t);
+        PARTS.system.celestialBodiesAt(t), orbitingMotionOf(PARTS, guideSecondary(systemId)), t);
       if (secondary === null) return; // レジストリにその系の天体が無い
       const frame = rotatingFrame(secondary, system.mu);
       if (frame === null) return; // レジストリにその系の天体が無い

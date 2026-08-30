@@ -36,6 +36,18 @@ export type CelestialBody = {
   readonly isStar: boolean; // 太陽輻射圧の輻射源として加算するか
 };
 
+// 星系の全天体を、時刻 t での重力源表現の配列としてまとめて答える窓。積分・接触判定・抗力は
+// 個体ではなくこの配列に対して回る。**同一 t には同一の配列参照が返るので、呼び出し側は
+// 返った配列と要素を書き換えてはならない。** 並びは天体の宣言順。
+export interface CelestialBodyWindows {
+  // 全登録天体。中心天体は原点に静止。
+  celestialBodiesAt(t: number): readonly CelestialBody[];
+  // mu が 0 でない天体。
+  gravityAttractorsAt(t: number): readonly CelestialBody[];
+  // 大気を持つ天体。抗力を掛ける1体を選ぶ側が引く。
+  atmosphereCelestialBodiesAt(t: number): readonly CelestialBody[];
+}
+
 // 天体自身の state.t と accel から、時刻 t での位置を弾道外挿する。天体は実質的に
 // 弾道運動しており、1ステップぶんの時間幅では3次以上の項が無視できるので2次で足りる。
 // この外挿の唯一の定義箇所 — 他所で同じ式を書かないこと。

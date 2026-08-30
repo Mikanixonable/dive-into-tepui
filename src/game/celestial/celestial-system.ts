@@ -1,10 +1,14 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
-import { CelestialBodyDef, CelestialMotion, PhaseOffsets } from '../../physics/celestial-motion';
+import {
+  CelestialBodyDef, CelestialMotion, OrbitingMotion, PhaseOffsets,
+} from '../../physics/celestial-motion';
 import { AbsoluteEphemeris } from '../../physics/absolute-ephemeris';
-import { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { ReferenceFrames } from '../../physics/reference-frames';
-import { CelestialBody } from '../../physics/celestial-body';
+import {
+  CelestialBody, CelestialBodyWindows, celestialBodyStateAt,
+} from '../../physics/celestial-body';
+import { TimeRing, addTimeCacheStats } from '../../physics/time-ring';
 import { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
 import { norm, sub, v3, Vec3 } from '../../math/vec3';
@@ -45,7 +49,7 @@ import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide/
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
-export class CelestialSystem {
+export class CelestialSystem implements CelestialBodyWindows {
   private scene!: THREE.Scene;
   // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
   // モデルごと組まないので(NodeMaterial.setupLighting)、受け手を真っ黒にしないために
@@ -68,9 +72,18 @@ export class CelestialSystem {
   readonly motions: readonly CelestialMotion[];
   // 主星の個体。恒星を持たない星系では null。
   private readonly starEntity: StarEntity | null;
-  // 座標系の同一性と、同一時刻の天体窓。どちらも entities の motion から組む。
+  // 座標系の同一性。entities の motion から組む。
   private readonly referenceFrames: ReferenceFrames;
-  private readonly bodyWindows: CelestialBodyWindows;
+
+  // mu が 0 でない天体と、大気を持つ天体(いずれも宣言順)。どちらも時刻に依らないので
+  // 構築時に確定する。
+  private readonly gravityMotions: readonly CelestialMotion[];
+  private readonly atmosphereMotions: readonly CelestialMotion[];
+
+  // 同一時刻の集合。値は天体1体ずつが答えるので、ここが畳むのは配列の同一参照だけ。
+  private readonly allCache = new TimeRing<readonly CelestialBody[]>();
+  private readonly gravityCache = new TimeRing<readonly CelestialBody[]>();
+  private readonly atmosphereCache = new TimeRing<readonly CelestialBody[]>();
 
   // 点群をシーンへ登録済みか。マップへ入るまで登録しない。
   private pointFieldBuilt = false;
@@ -98,9 +111,12 @@ export class CelestialSystem {
     absoluteSource: AbsoluteEphemeris | null = null,
   ) {
     this.motions = entities.map((b) => b.motion);
-    this.bodyWindows = new CelestialBodyWindows(this.motions, origin.motion);
+    this.gravityMotions = this.motions.filter((m) => m.def.mu !== 0);
+    this.atmosphereMotions = this.motions.filter(
+      (m) => m instanceof OrbitingMotion && m.def.atmosphere !== undefined,
+    );
     this.referenceFrames = new ReferenceFrames(this.motions, origin.motion);
-    for (const entity of entities) entity.bindWindows(this.bodyWindows);
+    for (const motion of this.motions) motion.bindEciOrigin(origin.motion);
     if (absoluteSource !== null) {
       for (const motion of this.motions) motion.bindEphemeris(absoluteSource.bodyEphemerisOf(motion.id));
     }
@@ -163,30 +179,37 @@ export class CelestialSystem {
 
   // 指定時刻の全登録天体(宣言順)。同一 t には同一の配列参照が返るので、**呼び出し側は
   // この配列と要素を書き換えてはならない**(gravityAttractorsAt / atmosphere… も同じ)。
-  celestialBodiesAt(t: number): readonly CelestialBody[] { return this.windows.celestialBodiesAt(t); }
+  celestialBodiesAt(t: number): readonly CelestialBody[] {
+    const cached = this.allCache.get(t);
+    if (cached !== undefined) return cached;
+    return this.allCache.put(t, this.motions.map((m) => m.celestialBodyAt(t)));
+  }
 
   // 指定時刻の重力源天体(mu が 0 でないもの、宣言順)。
-  gravityAttractorsAt(t: number): readonly CelestialBody[] { return this.windows.gravityAttractorsAt(t); }
-
-  // 1天体ぶんの時刻 t での重力源表現。予測弧の候補供給(FutureCelestialBodyProvider)もこれで満たす。
-  celestialBodyAt(id: string, t: number): CelestialBody { return this.windows.bodyAt(id, t); }
-
-  // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと
-  // pivot 自身の厳密な値。
-  stateAt(id: string, pivot: number, t: number = pivot): KinematicState {
-    return this.windows.stateAt(id, pivot, t);
+  gravityAttractorsAt(t: number): readonly CelestialBody[] {
+    const cached = this.gravityCache.get(t);
+    if (cached !== undefined) return cached;
+    return this.gravityCache.put(t, this.gravityMotions.map((m) => m.celestialBodyAt(t)));
   }
 
   // 指定時刻の大気を持つ天体(宣言順)。抗力を掛ける1体を選ぶ側が引く窓。
   atmosphereCelestialBodiesAt(t: number): readonly CelestialBody[] {
-    return this.windows.atmosphereCelestialBodiesAt(t);
+    const cached = this.atmosphereCache.get(t);
+    if (cached !== undefined) return cached;
+    return this.atmosphereCache.put(t, this.atmosphereMotions.map((m) => m.celestialBodyAt(t)));
+  }
+
+  // 1天体ぶんの時刻 t での重力源表現。予測弧の候補供給(FutureCelestialBodyProvider)もこれで満たす。
+  celestialBodyAt(id: string, t: number): CelestialBody { return this.entityOf(id).motion.celestialBodyAt(t); }
+
+  // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと
+  // pivot 自身の厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
+  stateAt(id: string, pivot: number, t: number = pivot): KinematicState {
+    return celestialBodyStateAt(this.celestialBodyAt(id, pivot), t);
   }
 
   // 座標系の同一性(同じ対に同じ参照)と、天体でない基準の解決。
   get frames(): ReferenceFrames { return this.referenceFrames; }
-
-  // 同一時刻の天体窓。積分・計画など、窓だけを要する層へはこれを渡す。
-  get windows(): CelestialBodyWindows { return this.bodyWindows; }
 
   // ECI の点 r から見た恒星方向の単位ベクトル。恒星が無い星系では無害な既定方向(+X)を返す。
   sunDirFrom(r: Vec3, t: number): Vec3 {
@@ -205,8 +228,10 @@ export class CelestialSystem {
     celestialBodiesCacheHits: number; celestialBodiesCacheMisses: number;
     timeCacheHits: number; timeCacheMisses: number;
   } {
-    const celestialBodies = this.windows.celestialBodiesStats;
-    const time = this.windows.stats;
+    const celestialBodies = this.allCache.stats;
+    let time = addTimeCacheStats(this.allCache.stats, this.gravityCache.stats);
+    time = addTimeCacheStats(time, this.atmosphereCache.stats);
+    for (const motion of this.motions) time = addTimeCacheStats(time, motion.cacheStats);
     return {
       celestialBodiesCacheHits: celestialBodies.hits, celestialBodiesCacheMisses: celestialBodies.misses,
       timeCacheHits: time.hits, timeCacheMisses: time.misses,

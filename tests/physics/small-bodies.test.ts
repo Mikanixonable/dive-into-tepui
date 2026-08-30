@@ -24,7 +24,7 @@ const SMALL_BODY_IDS: readonly string[] = [
 ];
 
 export function register(): void {
-  const windows = solarSystemParts({}).windows;
+  const windows = solarSystemParts({}).system;
 
   test('small-bodies: lRate がケプラー第3法則から導いた値と一致する', () => {
     for (const id of SMALL_BODY_IDS) {
