@@ -410,8 +410,8 @@ export function register(): void {
   // 必ず収録されていなければならない(HelioEphemeris の構築条件)。
   const preciseValidDays = 10;
   const mockPrecise: AbsoluteEphemeris = {
-    validStartJdTdb: TEST_EPOCH.value,
-    validEndJdTdb: TEST_EPOCH.value + preciseValidDays,
+    validStartSimTime: 0,
+    validEndSimTime: preciseValidDays * DAY,
     hasBody: (id) => id === 'sun' || id === 'earth' || id === 'moon',
     barycentricStateOf: (id) => ({
       r: id === 'moon' ? v3(4e8, 0, 0) : v3(0, 0, 0),
