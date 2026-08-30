@@ -63,7 +63,7 @@ const UPPER_LIFT_HUMIDITY = 3;
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
 const PRESSURE_BAND_AMPLITUDE = 8;
 
-// 気圧の勾配を取る中心差分の刻み [rad]。台風の半径(700 km ≈ 0.11 rad)より小さく、
+// 気圧の勾配を取る中心差分の刻み [rad]。台風の広がり(900 km ≈ 0.14 rad)より小さく、
 // 気圧の写しの texel より数倍大きい。
 const GRADIENT_STEP = 0.01;
 // 風の利得 [m/s あたり hPa/rad]。流入は気圧の低い方へ、地衡風は等圧線に沿って(緯度の正弦に比例)。

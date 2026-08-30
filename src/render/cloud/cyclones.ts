@@ -11,8 +11,8 @@ const TYPHOON_LATITUDE = THREE.MathUtils.degToRad(15);
 const TYPHOON_LONGITUDE = THREE.MathUtils.degToRad(169);
 const TYPHOON_DRIFT = -8;
 const TYPHOON_LIFETIME = 9 * 86400;
-const TYPHOON_DEPTH = 35;
-const TYPHOON_RADIUS = 700e3;
+const TYPHOON_DEPTH = 45;
+const TYPHOON_RADIUS = 900e3;
 // 目の半径 [m]。中心からこの広がりで湿度が落ちる。
 const TYPHOON_EYE_RADIUS = 150e3;
 
