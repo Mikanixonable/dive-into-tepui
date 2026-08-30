@@ -78,6 +78,7 @@ export abstract class CelestialEntity {
     return this.windows.stateAt(id, t);
   }
 
+  // bindWindows より前に読むと例外。
   private get windows(): CelestialBodyWindows {
     if (this.eciWindows === null) throw new Error(`CelestialEntity: ${this.id} の ECI 窓が結ばれていない`);
     return this.eciWindows;
