@@ -147,7 +147,7 @@ DraggableWindow(title: '軌道分析', clipped: true, tempWindowGroup: 未指定
 - 解像度は `devicePixelRatio` を掛けたバッキングストアで持ち、CSS 側は幅 100 % ×
   固定アスペクト。`onViewportChange` でサイズを取り直す。
 - **色は `src/game/theme.ts` の TypeScript 側トークン定数を直接読む**(`TEXT_DIM`, `ACCENT`,
-  `EDGE` など)。canvas にカスタムプロパティは届かないので、これは CODING-RULE 1.12 が
+  `EDGE` など)。canvas にカスタムプロパティは届かないので、これは CODING-RULE 1.13 が
   認めている経路そのもの。**リテラルの色を書かない。**
 - 描くもの: 枠と軸、横軸目盛(`chooseTickInterval` の間隔+`fmtDuration`)、縦軸目盛
   (指定幅を等分)、折れ線1本、現在位置(t=0)の点。
