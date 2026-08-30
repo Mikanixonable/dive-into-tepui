@@ -10,12 +10,12 @@ import { OrbitingMotion } from '../physics/celestial-motion';
 import { qRotate } from '../physics/attitude';
 import { goldenSectionMin } from '../math/optimize';
 import { Player } from './player/player';
-import type { DisplayWindow } from './display-window-manager';
+import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { OrbitCenter, entityStateAt } from './dynamic/entity-state-at';
 import type { CombatTarget } from './targeter';
 import { Hud } from './hud/hud';
-import { TickLabelMode, elementTimeLabel } from './hud/orbit/calendar-ticks';
+import { TimeLabelSetting, elementTimeLabel } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
 import { CameraSystem } from './camera/camera-system';
@@ -84,9 +84,10 @@ export class NavTarget {
   private readonly pickableCache: MapPickable[] = [];
   // マーカーラベルへ通過時刻を併記するか(PREDICT パネルの設定)と、併記する表記の基準時刻。
   // update から sync まで持ち越すために保持する。
-  private labelMode: TickLabelMode = 'absolute';
-  private showElementTimes = false;
-  private nowSimTime = 0;
+  // 通過時刻ラベルの設定。update ごとに表示窓から組み直す。
+  private timeLabel: TimeLabelSetting = {
+    mode: 'absolute', show: false, nowSimTime: 0, epochUnixSec: 0,
+  };
   // 戦闘ビューでもターゲットの未来の軌道計算を止めないため navTargetReader を立てている個体。
   private readerEntity: DynamicEntity | null = null;
 
@@ -180,17 +181,15 @@ export class NavTarget {
     const { simTime, displayTime, frame } = displayWindow;
     this.anPos = this.dnPos = this.anTime = this.dnTime = null;
     this.closestPos = this.closestTime = null;
-    this.labelMode = displayWindow.tickLabelMode;
-    this.showElementTimes = displayWindow.showElementTimes;
-    this.nowSimTime = simTime;
+    this.timeLabel = timeLabelSettingOf(displayWindow);
     this.ownerName = player?.name ?? null;
     this.celestialBodies = frameAnchors.bodies;
     if (!this.targetId) { this.setReaderEntity(null); return; }
     // ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
     const target = entities.findAliveCombatTarget(this.targetId);
     this.setReaderEntity(target);
-    const timeLabel = { mode: this.labelMode, show: this.showElementTimes, nowSimTime: simTime };
-    target?.ensureEquatorNodes(this.markerManager).updateOnEllipse(displayTime, celestialSystem, frameAnchors, timeLabel);
+    target?.ensureEquatorNodes(this.markerManager)
+      .updateOnEllipse(displayTime, celestialSystem, frameAnchors, this.timeLabel);
     if (!player) return;
     const stateCelestialBodies = celestialSystem.celestialBodiesAt(simTime);
     const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies);
@@ -307,7 +306,7 @@ export class NavTarget {
 
   // マーカーラベルへ通過時刻を併記するか(PREDICT パネルの設定)に応じたラベル文字列。
   private markerLabel(base: string, t: number): string {
-    return this.showElementTimes ? `${base} ${elementTimeLabel(t, this.labelMode, this.nowSimTime)}` : base;
+    return this.timeLabel.show ? `${base} ${elementTimeLabel(t, this.timeLabel)}` : base;
   }
 
   // マップビューでは、天体に遮蔽されて画面上見えていない AN/DN・再接近点を隠す(戦闘ビューでは効かせない)。

@@ -1,6 +1,6 @@
 // Stage 2: 第二ステージ(モルニヤ戦域)。ステージ1クリアで解放。
 import * as C from '../const';
-import { Stage, type StageDeps } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { ClearCounts } from '../unlock-manager';
 import {
@@ -15,6 +15,7 @@ import type { StageSaveData } from '../save/save-data';
 
 export class Stage2 extends Stage {
   static readonly id = '2' as const;
+  static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'stage 2';
   static readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
   static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';

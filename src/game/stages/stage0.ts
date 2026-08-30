@@ -1,6 +1,6 @@
 // Stage 0: 近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック。タイムアップで終了。
 import * as C from '../const';
-import { Stage, type StageDeps } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { generateCluster } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
@@ -22,6 +22,7 @@ const stage0TimeLimitMinutes = (): number => Math.floor(STAGE0_TIME_LIMIT / 60);
 
 export class Stage0 extends Stage {
   static readonly id = '0' as const;
+  static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'stage 0';
   static readonly selectSub =
     `【近接戦闘訓練】 常時選択可。${C.STAGE0_MAX_RANGE / 1000}km以内に色分けされた敵集団 ` +

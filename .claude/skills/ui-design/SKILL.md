@@ -6,7 +6,7 @@ description: HUD/UI/DOM/CSS(パネル・ウィンドウ・ボタン・入力欄�
 # UI/デザイン変更の手順
 
 **規約の全文はここに書かない。** 正本は2つ — **UI がどう振舞い、どう見えるべきか**は
-`DEVELOP/SPEC/UI-DESIGN.md`、**それをコードでどう書くか**は `DEVELOP/CODING-RULE.md` 1.12。
+`DEVELOP/SPEC/UI-DESIGN.md`、**それをコードでどう書くか**は `DEVELOP/CODING-RULE.md` 1.13。
 このファイルは「どう手順を踏むか」と「よくある誤り」だけを持つ。
 
 ## 1. 該当する節を読む
@@ -74,7 +74,7 @@ description: HUD/UI/DOM/CSS(パネル・ウィンドウ・ボタン・入力欄�
 
 ## 5. 完了判定
 
-- `DEVELOP/SPEC/UI-DESIGN.md` §7「やってはいけないことの一覧」と `DEVELOP/CODING-RULE.md` 1.12 を
+- `DEVELOP/SPEC/UI-DESIGN.md` §7「やってはいけないことの一覧」と `DEVELOP/CODING-RULE.md` 1.13 を
   自分の変更範囲に当て、新しい違反を増やしていないか確認する(既存の違反をゼロにすることまでは
   求めない — それは別の変更セットで直すべき既存の gap であり、自分の変更が原因でないかだけを
   確かめる)。

@@ -1,6 +1,6 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
 import type * as THREE from 'three/webgpu';
-import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
+import { Stage, type ObjectAuthoring, type StageDeps, STORY_EPOCH } from './stage';
 import type { Player } from '../player/player';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
@@ -44,6 +44,9 @@ const STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE = 2000;
 
 export class CreativeStage extends Stage {
   static readonly id = 'creative' as const;
+  static readonly epoch = STORY_EPOCH;
+  // 開始日時の指定画面を挟む唯一のステージ(GAME.md 9.0)。epoch はその欄の既定値になる。
+  static readonly picksStartEpoch = true;
   static readonly selectLabel = 'CREATIVE';
   static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   static readonly selectGroup = 'クリエイティブモード';
