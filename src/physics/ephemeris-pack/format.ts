@@ -30,6 +30,7 @@
  * CLI verifies this field.
  */
 
+import type { EphemerisPointKind } from '../absolute-ephemeris';
 import type { ChebyshevEphemerisPack } from './types';
 
 export const EPHEMERIS_PACK_MAGIC = 'TEPUIEPK';
@@ -59,6 +60,8 @@ export interface EphemerisManifest {
   readonly validStart: number;
   readonly validEnd: number;
   readonly series: readonly EphemerisSeries[];
+  /** body ごとに収録している点。欠けている body は 'body'(天体そのものの中心)。 */
+  readonly bodyPoints?: Readonly<Record<string, EphemerisPointKind>>;
   readonly payloadSha256?: string;
   readonly [key: string]: unknown;
 }
@@ -194,6 +197,16 @@ export function validateManifest(value: unknown): EphemerisManifest {
       if (left === undefined || right === undefined || left.body !== right.body) continue;
       if (left.start < right.end && right.start < left.end) {
         throw new EphemerisPackFormatError(`series[${i}] and series[${j}] overlap for body ${left.body}`);
+      }
+    }
+  }
+
+  const bodyPoints = value.bodyPoints;
+  if (bodyPoints !== undefined) {
+    if (!isRecord(bodyPoints)) throw new EphemerisPackFormatError('bodyPoints must be a JSON object');
+    for (const [body, kind] of Object.entries(bodyPoints)) {
+      if (kind !== 'body' && kind !== 'systemBarycenter') {
+        throw new EphemerisPackFormatError(`bodyPoints[${body}] must be body or systemBarycenter`);
       }
     }
   }

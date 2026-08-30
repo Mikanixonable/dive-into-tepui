@@ -1,6 +1,6 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
-import { AbsoluteEphemeris, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
+import { AbsoluteEphemeris, EphemerisPointKind, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
 import { BodyEphemeris } from '../../src/physics/body-ephemeris';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { KinematicState } from '../../src/physics/kinematic-state';
@@ -102,12 +102,15 @@ export function assertOmegaMatchesBasis(rot: (t: number) => FrameRotation, t: nu
 
 // 天体 id ごとの重心状態(ICRF 軸)を返す関数から、テスト用の暦供給源を組む。**収録して
 // いない天体には null を返させる** — 収録の有無をテスト側で二重に宣言せずに済む。
+// pointKinds は天体本体でなく惑星系の重心を収録している id の宣言(既定は全部が本体)。
 export function testEphemerisSource(
   validStartSimTime: number,
   validEndSimTime: number,
   stateOf: (id: string, simTime: number) => { readonly r: Vec3; readonly v: Vec3 } | null,
+  pointKinds: Readonly<Partial<Record<string, EphemerisPointKind>>> = {},
 ): AbsoluteEphemeris {
   return {
+    pointKindOf: (id: string): EphemerisPointKind => pointKinds[id] ?? 'body',
     bodyEphemerisOf: (id: string): BodyEphemeris | null => {
       if (stateOf(id, validStartSimTime) === null) return null;
       return {

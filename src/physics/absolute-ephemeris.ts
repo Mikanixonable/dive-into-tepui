@@ -3,10 +3,17 @@
 import { BodyEphemeris } from './body-ephemeris';
 import { Vec3, v3 } from '../math/vec3';
 
+// 暦が id ごとに収録している点。天体そのものの中心か、その天体を含む惑星系の重心か。
+// **1つの暦の中で id ごとに違いうる** — JPL の SPK は地球と月を本体まで分解する一方、
+// 火星以遠は系の重心しか持たないため。
+export type EphemerisPointKind = 'body' | 'systemBarycenter';
+
 // 天体 id から1体ぶんの暦を切り出す供給源。引くのは構築時に1度で、収録していない天体には
-// null を返す。
+// null を返す。**切り出した暦がどの点を答えるかは pointKindOf が決める** — 結び先の
+// ノード(天体本体か惑星系か)はそれで分かれる。
 export interface AbsoluteEphemeris {
   bodyEphemerisOf(id: string): BodyEphemeris | null;
+  pointKindOf(id: string): EphemerisPointKind;
 }
 
 // ICRF の (X,Y,Z)=(春分点方向, 赤道面内, 北極) を、ゲームの
