@@ -12,13 +12,13 @@ import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedT
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import {
   FrameRotation, JULIAN_CENTURY, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal,
-  keplerOrbitAtEpoch, keplerOrbitRotation,
+  keplerOrbitForSimZero, keplerOrbitRotation,
 } from './kepler-orbit';
 import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
 import type { PlanetSystem } from './planet-system';
-import { SatelliteOrbit, satelliteOrbitAtEpoch, satelliteState } from './satellite-orbit';
+import { SatelliteOrbit, satelliteOrbitForSimZero, satelliteState } from './satellite-orbit';
 import {
-  Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelAtEpoch,
+  Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelForSimZero,
 } from './celestial-body-def';
 import {
   KinematicState, addPrimaryRelative, kinematicState, toPrimaryRelative,
@@ -78,21 +78,21 @@ function twoBodyAccel(d: Vec3, mu: number): Vec3 {
 // 天体の宣言を、平均黄経の初期位相と元期オフセットを畳み込んだ宣言へ写す。これを通した宣言
 // だけが CelestialMotion へ渡ってよい — 軌道も自転モデルも simTime そのものを引数に取る形に
 // なり、評価のたびに巨大な定数を足し直さずに済む。
-export function planetDefAtEpoch(def: PlanetDef, phases: PhaseOffsets, epochOffsetSec: number): PlanetDef {
+export function planetDefForSimZero(def: PlanetDef, phases: PhaseOffsets, simZeroEt: number): PlanetDef {
   return {
     ...def,
-    orbit: keplerOrbitAtEpoch(def.orbit, phases[def.id] ?? 0, epochOffsetSec),
-    pole: poleModelAtEpoch(def.pole, epochOffsetSec),
+    orbit: keplerOrbitForSimZero(def.orbit, phases[def.id] ?? 0, simZeroEt),
+    pole: poleModelForSimZero(def.pole, simZeroEt),
   };
 }
 
-export function satelliteDefAtEpoch(
-  def: SatelliteDef, phases: PhaseOffsets, epochOffsetSec: number,
+export function satelliteDefForSimZero(
+  def: SatelliteDef, phases: PhaseOffsets, simZeroEt: number,
 ): SatelliteDef {
   return {
     ...def,
-    orbit: satelliteOrbitAtEpoch(def.orbit, phases[def.id] ?? 0, epochOffsetSec),
-    pole: poleModelAtEpoch(def.pole, epochOffsetSec),
+    orbit: satelliteOrbitForSimZero(def.orbit, phases[def.id] ?? 0, simZeroEt),
+    pole: poleModelForSimZero(def.pole, simZeroEt),
   };
 }
 

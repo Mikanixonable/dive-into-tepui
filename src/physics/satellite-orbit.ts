@@ -14,7 +14,7 @@
 import { Quat } from './attitude';
 import { PlanetAngles } from './planet-orbit';
 import { eclToEci, eciToEcl } from './ecliptic';
-import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitAtEpoch, keplerOrbitState } from './kepler-orbit';
+import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState } from './kepler-orbit';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { dot, len } from '../math/vec3';
 
@@ -114,12 +114,12 @@ function sumPeriodicTerms(
 // 回転基準系(kepler-orbit.ts の keplerOrbitRotation)と軌道法線は二体部分(平均要素)
 // だけから組まれ、周期項を含まない — 混ぜると角速度が滑らかでなくなるためで、
 // この結果、衛星の実位置は回転系の x̂ 軸から最大 2.5° ほどずれる(周期項の振幅の総和)。
-// 二体部分の元期を epochOffsetSec ぶん進め、平均黄経へ初期位相 phase を足した軌道。周期項の
+// 二体部分の元期を simZeroEt ぶん進め、平均黄経へ初期位相 phase を足した軌道。周期項の
 // 引数はすべて二体部分の角から組むので、畳むのは kepler だけでよい。
-export function satelliteOrbitAtEpoch(
-  orbit: SatelliteOrbit, phase: number, epochOffsetSec: number,
+export function satelliteOrbitForSimZero(
+  orbit: SatelliteOrbit, phase: number, simZeroEt: number,
 ): SatelliteOrbit {
-  return { ...orbit, kepler: keplerOrbitAtEpoch(orbit.kepler, phase, epochOffsetSec) };
+  return { ...orbit, kepler: keplerOrbitForSimZero(orbit.kepler, phase, simZeroEt) };
 }
 
 export function satelliteState(

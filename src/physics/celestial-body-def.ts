@@ -23,13 +23,13 @@ export type PoleModel =
       readonly wRateDegPerDay: number;
     };
 
-// IAU モデルの元期を epochOffsetSec ぶん進めた自転モデル。基準方向・本初子午線の位相はどちらも
+// IAU モデルの元期を simZeroEt ぶん進めた自転モデル。基準方向・本初子午線の位相はどちらも
 // 時刻の一次式なので係数へ畳める。極方向を持たないモデル(cassini/eciPole)は時刻の原点を
 // 持たないのでそのまま。
-export function poleModelAtEpoch(pole: PoleModel | undefined, epochOffsetSec: number): PoleModel | undefined {
+export function poleModelForSimZero(pole: PoleModel | undefined, simZeroEt: number): PoleModel | undefined {
   if (pole === undefined || pole.kind !== 'iau') return pole;
-  const centuries = epochOffsetSec / JULIAN_CENTURY;
-  const days = epochOffsetSec / SECONDS_PER_DAY;
+  const centuries = simZeroEt / JULIAN_CENTURY;
+  const days = simZeroEt / SECONDS_PER_DAY;
   return {
     ...pole,
     ra0Deg: pole.ra0Deg + pole.ra1DegPerCentury * centuries,
