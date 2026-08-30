@@ -8,10 +8,10 @@
 // どちらも 2π で畳めるので、時刻がどれだけ進んでもノイズ空間の座標は有界に留まる。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, abs, clamp, float, greaterThan, greaterThanEqual, inverseSqrt, round, select, sign, smoothstep, uniform, vec3,
+  Fn, If, abs, clamp, float, greaterThan, int, inverseSqrt, round, sign, smoothstep, uniform, uniformArray, vec3,
 } from 'three/tsl';
 import { latitudeOf } from './sphere-frame';
-import type { FloatNode, FloatUniform, Vec3Node, Vec4Node, Vec4Uniform } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
 
 // 1 本の帯で模様が進む角速度 [°/日]。east が東向き(経度の進み)、north が北向き(緯度の進み)。
 // **速さ [m/s] ではなく角速度で持つ。** この流れは伸びではなく見えの動きを作るもので、移流が
@@ -59,14 +59,17 @@ const BREATH_AMPLITUDE = 0.05;
 const BREATH_PERIOD = 7 * 86400;
 
 export class Circulation {
-  // 帯ごとの (cos 自転角, sin 自転角, cos 公転位相, sin 公転位相)。
-  private readonly flows: readonly Vec4Uniform[];
+  // 帯ごとの (cos 自転角, sin 自転角, cos 公転位相, sin 公転位相)。書き換えるのはこちらで、
+  // uniform 配列は描画のたびにここから詰め直される。
+  private readonly flows: THREE.Vector4[];
+  private readonly flowArray: THREE.UniformArrayNode<'vec4'>;
   // 呼吸の位相(赤道での半径の伸び)。
   private readonly breath: FloatUniform = uniform(0);
 
   // bands はこの層の帯の角速度。
   public constructor(private readonly bands: readonly CirculationBand[]) {
-    this.flows = bands.map(() => uniform(new THREE.Vector4(1, 0, 1, 0)));
+    this.flows = bands.map(() => new THREE.Vector4(1, 0, 1, 0));
+    this.flowArray = uniformArray(this.flows, 'vec4');
     this.syncTime(0);
   }
 
@@ -77,7 +80,7 @@ export class Circulation {
       const spin = wrapAngle(perSecond(band.east) * seconds);
       // 公転の位相が増えると模様は南へ動くので、北向きの帯では符号を反転する。
       const orbit = wrapAngle((-perSecond(band.north) * seconds) / ORBIT_RADIUS);
-      this.flows[i]!.value.set(Math.cos(spin), Math.sin(spin), Math.cos(orbit), Math.sin(orbit));
+      this.flows[i]!.set(Math.cos(spin), Math.sin(spin), Math.cos(orbit), Math.sin(orbit));
     }
     this.breath.value = BREATH_AMPLITUDE * Math.sin((2 * Math.PI * seconds) / BREATH_PERIOD);
   }
@@ -115,7 +118,7 @@ export class Circulation {
   // 帯 index の流れに乗せた point の位置。point は呼吸で伸縮させた単位方向。自転軸が +Y、
   // 公転面の法線が +X であることは sphere-frame の POLE と field-projection の経度の取り決めに従う。
   private positionAt(point: Vec3Node, index: FloatNode): Vec3Node {
-    const flow = this.flowAt(index);
+    const flow = this.flowArray.element(int(index));
     // 東西の流れ: 自転軸まわりに −自転角。
     const spun = vec3(
       point.x.mul(flow.x).sub(point.z.mul(flow.y)),
@@ -129,15 +132,6 @@ export class Circulation {
       orbiting.y.mul(flow.z).add(orbiting.z.mul(flow.w)),
       orbiting.z.mul(flow.z).sub(orbiting.y.mul(flow.w)),
     );
-  }
-
-  // 番号で帯の角度を引く。
-  private flowAt(index: FloatNode): Vec4Node {
-    let flow: Vec4Node = this.flows[0]!;
-    for (const [i, next] of this.flows.entries()) {
-      if (i > 0) flow = select(greaterThanEqual(index, i), next, flow);
-    }
-    return flow;
   }
 }
 
