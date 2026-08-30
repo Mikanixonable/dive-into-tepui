@@ -8,8 +8,9 @@ import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../physics/solar-system';
 import { BakedField } from './baked-field';
-import { CirculatingNoise, resolvableTexelAngle } from './circulating-noise';
+import { CirculatingNoise, coarsenessFor } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
+import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { FRICTION_RATE, balancedWind, isobarAt, windStep } from './wind-law';
@@ -20,7 +21,8 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、風は東向き・北向きの成分 [m/s]、
 // 上昇流は [m/s](地形と気圧による、負なら下降)、湿度は 0..1(humidity が地表付近、
-// upperHumidity が上層)、対流は対流セルの強弱(0 中心の高周波)。
+// upperHumidity が上層)、対流は対流セルの強弱(0 中心の高周波)、対流の活発度はその強弱が
+// どれだけ強く現れるか 0..1。
 export type WeatherSample = {
   readonly pressure: FloatNode;
   readonly wind: Vec2Node;
@@ -28,6 +30,7 @@ export type WeatherSample = {
   readonly humidity: FloatNode;
   readonly upperHumidity: FloatNode;
   readonly convection: FloatNode;
+  readonly convectiveActivity: FloatNode;
 };
 
 // ノイズの段。段ごとに空間周波数(1 rad あたりの山の数)と段数を変える。
@@ -107,15 +110,6 @@ const MEAN_CLOUDINESS_WEIGHT = 0.5;
 const UPPER_HUMIDITY_BASE = 0.227;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.4;
 
-// 移流前の場を、投影の何分の一の細かさで焼くか。載っている段がどれも振幅 1 を保つ範囲で、
-// 2 の冪まで粗くする — 湿度は雲塊の配置しか持たないので投影より粗くて足りることがあり、
-// 同じ細かさを要る対流とは写しを分ける。
-function coarsenessFor(projection: FieldProjection, ...noises: readonly (readonly [number, number])[]): number {
-  const room = Math.min(...noises.map(([frequency, octaves]) => resolvableTexelAngle(frequency, octaves)))
-    / projection.texelAngleValue;
-  return Math.max(1, 2 ** Math.floor(Math.log2(room)));
-}
-
 export class WeatherModel {
   private readonly circulation = new Circulation(SURFACE_BANDS);
   private readonly upperCirculation = new Circulation(UPPER_BANDS);
@@ -128,12 +122,15 @@ export class WeatherModel {
   private readonly pressure: BakedField;
   private readonly humiditySource: BakedField;
   private readonly convectionSource: BakedField;
+  private readonly convectiveActivity: ConvectiveActivity;
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
   // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方。
   public constructor(private readonly climate: ClimateMap, projection: FieldProjection) {
     const texel = projection.texelAngle;
+    // 湿度は雲塊の配置しか持たないので投影より粗くて足りることがあり、同じ細かさを要る対流とは
+    // 写しを分ける。
     const humidityCoarseness = coarsenessFor(projection, HUMIDITY_NOISE, UPPER_HUMIDITY_NOISE);
     const convectionCoarseness = coarsenessFor(projection, CONVECTION_NOISE);
     const humidityTexel = texel.mul(humidityCoarseness);
@@ -151,6 +148,7 @@ export class WeatherModel {
     this.convectionSource = new BakedField(
       'convectionSource', THREE.RedFormat, projection, convectionCoarseness,
       (direction) => vec4(this.convectionSourceAt(direction), 0, 0, 1));
+    this.convectiveActivity = new ConvectiveActivity(this.circulation, projection);
     this.syncTime(0);
   }
 
@@ -159,6 +157,7 @@ export class WeatherModel {
     this.pressure.render(renderer);
     this.humiditySource.render(renderer);
     this.convectionSource.render(renderer);
+    this.convectiveActivity.bake(renderer);
   }
 
   // 時刻 [s] を uniform へ写す。
@@ -214,7 +213,15 @@ export class WeatherModel {
       advected.y.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT)).add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY))
         .sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
-    return { pressure, wind: components(wind.velocity), lift, humidity, upperHumidity, convection: advected.z };
+    return {
+      pressure,
+      wind: components(wind.velocity),
+      lift,
+      humidity,
+      upperHumidity,
+      convection: advected.z,
+      convectiveActivity: this.convectiveActivity.at(direction, lift),
+    };
   }
 
   // 写しへ焼く気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。読むのは pressure.at()。
@@ -280,6 +287,7 @@ export class WeatherModel {
     this.pressure.dispose();
     this.humiditySource.dispose();
     this.convectionSource.dispose();
+    this.convectiveActivity.dispose();
   }
 }
 
