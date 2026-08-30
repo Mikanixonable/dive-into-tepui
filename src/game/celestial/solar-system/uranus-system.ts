@@ -2,8 +2,9 @@
 import uranusTextureUrl from '../../../assets/2k_uranus.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
+import { planetSystem } from '../../../physics/planet-system';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
@@ -101,10 +102,10 @@ export function uranusSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
   pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<UranusSystemBodyId, CelestialEntity> {
-  const uranus = new PlanetMotion(planetDefAtEpoch(URANUS, phases, epochOffsetSec), sun, pack, origin);
+  const uranus = planetSystem(planetDefAtEpoch(URANUS, phases, epochOffsetSec), sun, pack, origin);
   return {
     uranus: new PointEntity(
-      uranus, URANUS_SYSTEM_NAMES.uranus, 'planet',
+      uranus.body, URANUS_SYSTEM_NAMES.uranus, 'planet',
       // 平均輝度 0.5640(A_B は公表ボンド)
       CelestialSurface.textured({ url: uranusTextureUrl, albedoScale: 0.5320, bondAlbedo: 0.3, averageHue: [0.6079, 1.0981, 1.1831] }),
     ),
