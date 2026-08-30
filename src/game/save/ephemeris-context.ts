@@ -1,6 +1,6 @@
 import { EPHEMERIS_PACK_VERSION } from '../../physics/ephemeris-pack/format';
 import { profileAt } from '../../physics/ephemeris-profile';
-import { SIM_EPOCH_JD_TDB } from '../sim-epoch';
+import { SIM_EPOCH } from '../sim-epoch';
 
 // Keep this small compatibility module independent from entity save types. In
 // particular, the physics test build can exercise it without pulling the DOM
@@ -12,14 +12,14 @@ export interface EphemerisContextValue {
   packFormatVersion: number;
 }
 
-const currentProfile = profileAt(SIM_EPOCH_JD_TDB);
+const currentProfile = profileAt(SIM_EPOCH.value);
 
 // The catalog selects the pack by this profile id. Keeping that catalog key in
 // the save makes the context stable without copying any ephemeris coefficients
 // into save data. The format version additionally rejects packs that cannot be
 // interpreted by the current evaluator.
 export const CURRENT_EPHEMERIS_CONTEXT: Readonly<EphemerisContextValue> = Object.freeze({
-  epochJdTdb: SIM_EPOCH_JD_TDB,
+  epochJdTdb: SIM_EPOCH.value,
   profileId: currentProfile.id,
   packId: currentProfile.packId,
   packFormatVersion: EPHEMERIS_PACK_VERSION,

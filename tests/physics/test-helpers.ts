@@ -11,7 +11,7 @@ import { FrameRotation } from '../../src/physics/kepler-orbit';
 import type { ReferenceFrames } from '../../src/physics/reference-frames';
 import { EPOCH_T_OFFSET } from '../../src/game/celestial/solar-system/constants';
 import { solarSystem } from '../../src/game/celestial/solar-system/solar-system';
-import { SECONDS_PER_DAY } from '../../src/physics/time';
+import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../../src/physics/time';
 import { Vec3, cross, len, scale, sub, v3 } from '../../src/math/vec3';
 import { qRotate } from '../../src/physics/attitude';
 
@@ -23,15 +23,20 @@ export type SolarSystemParts = {
   readonly referenceFrames: ReferenceFrames;
 };
 
-// 現実の太陽系を地球原点で組む。phases は天体ごとの平均黄経の初期位相 [rad]。
-// absoluteSource を渡すと、その有効期間だけ高精度暦パック経路を通る。
+// 回帰テストが既定で使う元期。EPOCH_T_OFFSET は「simTime=0 を、地球の日心黄経が π になる
+// 瞬間へ合わせる」ための J2000 からの秒数で、その瞬間を絶対時刻として表したものがこれ。
+export const TEST_EPOCH: TdbJulianDate =
+  createJulianDate('TDB', J2000_JULIAN_DATE + EPOCH_T_OFFSET / SECONDS_PER_DAY);
+
+// 現実の太陽系を地球原点で組む。phases は天体ごとの平均黄経の初期位相 [rad]、
+// epoch は simTime=0 が指す絶対時刻。absoluteSource を渡すと、その有効期間だけ
+// 高精度暦パック経路を通る。
 export function solarSystemParts(
   phases: PhaseOffsets = {},
-  epochOffsetSec: number = EPOCH_T_OFFSET,
+  epoch: TdbJulianDate = TEST_EPOCH,
   absoluteSource: AbsoluteEphemeris | null = null,
-  epochJdTdb: number = 2451545 + epochOffsetSec / SECONDS_PER_DAY,
 ): SolarSystemParts {
-  const system = solarSystem('earth', phases, 0, absoluteSource, epochOffsetSec, epochJdTdb);
+  const system = solarSystem('earth', phases, 0, absoluteSource, epoch);
   return { bodies: system.motions, windows: system.windows, referenceFrames: system.frames };
 }
 
