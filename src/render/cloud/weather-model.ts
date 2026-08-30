@@ -94,8 +94,8 @@ const UPPER_HUMIDITY_BASE = 0.227;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.4;
 
 export class WeatherModel {
-  private readonly circulation = new Circulation(R_EARTH, SURFACE_BANDS);
-  private readonly upperCirculation = new Circulation(R_EARTH, UPPER_BANDS);
+  private readonly circulation = new Circulation(SURFACE_BANDS);
+  private readonly upperCirculation = new Circulation(UPPER_BANDS);
   private readonly pressureNoise = new CirculatingNoise(this.circulation, ...PRESSURE_NOISE);
   private readonly humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE);
   private readonly upperHumidityNoise = new CirculatingNoise(this.upperCirculation, ...UPPER_HUMIDITY_NOISE);
