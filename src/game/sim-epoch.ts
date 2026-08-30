@@ -1,5 +1,5 @@
 import {
-  calendarDateToJulianDate, ephemerisSeconds, parseCalendarDate,
+  calendarDateToJulianDate, ephemerisSeconds, parseCalendarDate, TdbJulianDate,
 } from '../physics/time';
 
 // simTime=0 の元期。遠未来UTCは定義できないため、天体力学ではTDBとして解釈する。
@@ -7,8 +7,9 @@ import {
 export const SIM_EPOCH_TDB = '20115-05-14T06:00:00';
 
 export const SIM_EPOCH_CALENDAR_TDB = parseCalendarDate(SIM_EPOCH_TDB, 'TDB');
-export const SIM_EPOCH_JD_TDB = calendarDateToJulianDate(SIM_EPOCH_CALENDAR_TDB).value;
-export const SIM_EPOCH_ET = ephemerisSeconds(SIM_EPOCH_CALENDAR_TDB);
+// 元期はこの1つだけが正本。ET 秒が要る場所は ephemerisSeconds() で導く — 同じ瞬間を
+// 2つ持つと、片方だけを差し替えたときに解析暦と暦パックが別々の時刻を答える。
+export const SIM_EPOCH: TdbJulianDate = calendarDateToJulianDate(SIM_EPOCH_CALENDAR_TDB);
 
 // "YYYY...-MM-DDTHH:MM:SS" を表示用の unix 秒相当へ変換する。年は4桁を超えてよい。
 // Date.parse は ECMA-262 の拡張年表記(符号付き6桁)以外の 5桁以上の年を NaN にするため、
@@ -27,7 +28,7 @@ export const SIM_EPOCH_SEC = parseDisplayIso(SIM_EPOCH_TDB);
 // SIM_EPOCH_TDB からのオフセット秒(= simTime の初期値)へ変換する。パースできない日時は null。
 export function dateStringToSimTime(text: string): number | null {
   try {
-    return ephemerisSeconds(parseCalendarDate(text, 'TDB')) - SIM_EPOCH_ET;
+    return ephemerisSeconds(parseCalendarDate(text, 'TDB')) - ephemerisSeconds(SIM_EPOCH);
   } catch {
     return null;
   }
