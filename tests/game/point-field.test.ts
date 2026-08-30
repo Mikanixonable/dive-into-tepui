@@ -74,7 +74,7 @@ export function register(): void {
       const parts = solarSystemParts({}, epoch);
       const simZeroEt = ephemerisSeconds(epoch);
       for (const t of [0, 3.156e7, -3.156e7]) {
-        const actual = eclipticLongitude(motionOf(parts, 'jupiter').helioStateAt(t).r);
+        const actual = eclipticLongitude(motionOf(parts, 'jupiter').analyticStateAt(t).r);
         const mean = jupiterMeanLongitude(t, simZeroEt);
         const offDeg = Math.abs(wrapPi(actual - mean)) / DEG;
         assert.ok(offDeg <= 6, `${label} t=${t}: 木星の平均黄経の基準が実際と ${offDeg} 度ずれている`);

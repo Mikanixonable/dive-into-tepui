@@ -46,10 +46,10 @@ class PackedBodyEphemeris implements BodyEphemeris {
     readonly validEndSimTime: number,
   ) {}
 
-  stateAt(simTime: number): KinematicState<'barycentric'> {
+  stateAt(simTime: number): KinematicState<'packed'> {
     if (!Number.isFinite(simTime)) throw new RangeError(`simTime は有限値でなければならない: ${simTime}`);
     const state = this.evaluator.stateOf(this.id, simTime);
-    return kinematicState<'barycentric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
+    return kinematicState<'packed'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
   }
 }
 

@@ -18,9 +18,9 @@ export class PlanetSystem {
 
   // 系の重心の恒星中心状態。重心の軌道は中心が恒星なので、主天体相対がそのまま恒星中心に
   // なる — 原点の読み替えはここでしか起きない。
-  helioStateAt(t: number): KinematicState<'helio'> {
+  analyticStateAt(t: number): KinematicState<'analytic'> {
     const s = keplerOrbitState(this.orbit, t);
-    return kinematicState<'helio'>(t, s.r, s.v);
+    return kinematicState<'analytic'>(t, s.r, s.v);
   }
 
   // 衛星モデルが太陽方向を求めるのに要る平均角。重心の軌道から取るので惑星本体の位置に
