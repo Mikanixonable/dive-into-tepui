@@ -283,7 +283,6 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 
 | 手順 | 何を |
 | --- | --- |
-| 5 | ECI 化を `CelestialBodyWindows` へ引き上げる |
 | 6 | キャッシュの棚卸し |
 
 ### 前提: 挙動不変の物差し
@@ -308,6 +307,21 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 必ず `kinematicState<'helio'>(...)` のように明示する。** 原点の読み替え(主天体相対 → 恒星中心)
 が起きるのは `PlanetMotion.baryHelioStateAt` の1箇所だけ。
 
+### 前提: ECI 化の場所
+
+`CelestialBodyWindows`(`physics/celestial-body-windows.ts`)が **ECI 化を行う唯一の場所**。
+構築時に ECI 原点天体を受け取り、時刻ごとに原点の恒星中心状態を暦経路・解析経路の両方で1回だけ
+引いて、各天体は**自分と同じ経路の原点**を引いて差し引く。天体ごとの `CelestialBody` の
+メモもここが持つ。口は `celestialBodiesAt` / `gravityAttractorsAt` /
+`atmosphereCelestialBodiesAt` / `bodyAt(id, t)` / `stateAt(id, pivot, t)`。
+
+`CelestialMotion` は恒星中心までしか答えない(`helioStateAt` / `packedHelioStateAt` /
+`helioAccelAt`)。`CelestialEntity` は `CelestialSystem` が構築直後に差し込む窓を通じて
+`stateAt(t)` / `bodyAt(t)` を答えるので、**どの天体が原点かを知らない。**
+
+CR3BP の量は `SecondaryFrame`(`physics/lagrange.ts`)を受け取る自由関数で、
+`physics/halo.ts` と `physics/orbit-guide.ts` は motion も窓も知らない。
+
 ### 前提: 惑星-衛星系のノード
 
 `PlanetSystem`(`physics/planet-system.ts`)が系の重心の軌道と、その系の惑星本体・衛星を持つ。
@@ -320,10 +334,6 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 
 ### 順序の根拠
 
-- **手順4 を手順5 より先。** どちらも 104 の構築点を触るので2度触ることになるが、この順なら
-  **最後の一括編集が「引数を1つ消すだけ」**の機械的な作業になる(逆順だと最後が親引数の
-  差し替えになる)。加えて手順5 は「`helioStateAt` が返すのは本体であって重心ではない」ことを
-  意識しながら配線を組み替える作業なので、その区別が手順4 でオブジェクトになっている方が安全。
 
 ### やらないこと
 
@@ -353,62 +363,13 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
    なる** — 検査用に1行書いて `npm run typecheck` が落ちることを確かめ、消す。
 6. `new PlanetMotion`(50)/ `new SatelliteMotion`(52)/ `new StarMotion`(2)の引数から
    `origin` が消えている。
-7. `tests/physics/celestial-eci-baseline.test.ts` が焼き込んだ ECI 位置・速度が、全手順の後も
-   **ビット単位で一致する**(テストを1文字も書き換えずに通る)。
+7. `tests/physics/celestial-eci-baseline.test.ts` が焼き込んだ **期待値が1つも変わらない**
+   (`git diff` に数値の行が出ない)。ECI を引く口が移った手順では呼び出し行だけが変わる。
 8. `npm run typecheck` と `npm run test`(全層)が通る。
 9. `npm run smoke:browser` が通り、マップビューで地球周回の楕円・月の公転楕円・ラグランジュ点
    ラベル・静止軌道リングが従来どおり出る。
 
 ## 手順
-
-### 手順5. ECI を返す派生量を自由関数へ出し、ECI 化を `CelestialBodyWindows` へ引き上げる
-
-**目的.** ECI の原点をどこに置くかは**系レベルの選択**なのに、いま `EciOrigin` を天体1体ごとの
-`CelestialMotion` へ 104 箇所で配っている。天体は恒星中心までを答え、**ECI 化は系の窓が1回だけ
-行う。** 原点天体の状態も1時刻につき1回だけ引く。**この時点で挙動は変えない。**
-
-**着手して分かったこと**: `CelestialMotion` が返す ECI 値は `at` / `stateAt` だけではなく、
-`lagrangeAt` / `lagrangeStateAt` も原点に依存する(内部で `stateAt` を引く)。これらは
-`physics/halo.ts` の `collinearFrame` → `lissajousState` / `haloState`、`physics/orbit-guide.ts` の
-各ガイド線、`focus-markers` / `nav-target` / `creative-stage` から引かれている。
-**そこで、ECI を返す派生量は motion のメソッドをやめ、ECI の `CelestialBody` を受け取る自由関数
-にする** — こうすると `physics/halo.ts` と `physics/orbit-guide.ts` が系レベルのオブジェクトを
-知らずに済む(呼び出し側は既に `celestialBodies` 配列を持っている)。
-
-**手順5a(ラグランジュ点を自由関数へ出す)は実施済み。** `physics/lagrange.ts` に
-`SecondaryFrame`(副天体・主天体の ECI 瞬間値 + 公転回転基準系 + 公転面法線)と
-`secondaryFrameOf` / `lagrangePointsOf` / `lagrangeStateOf` を置き、`OrbitingMotion` から
-`lagrangeAt` / `lagrangeStateAt` を落とした。`physics/halo.ts` と `physics/orbit-guide.ts` は
-motion を受け取らなくなり、CR3BP の量は同時刻の ECI 天体配列だけから決まる。
-
-残りは 5b・5c。**どの時点でも型検査と全テストが通る状態を保つ。**
-
-#### 手順5b. ECI 化を windows へ移す
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/celestial-motion.ts` | `EciOrigin` を削除。constructor から `origin` を外す。`eciStateAt` / `packedEciStateAt` / `analyticEciStateAt` / `eciAccelAt` / `at` / `stateAt` / `bodyCache` を削除 |
-| `src/physics/celestial-body-windows.ts` | constructor に原点天体を受ける。時刻ごとに原点の恒星中心状態を**暦経路・解析経路の両方**で1回ずつ引き、各天体は**自分と同じ経路の原点**を引いて `toEci` で ECI 化する。天体ごとの `TimeRing<CelestialBody>` をここが持つ。`bodyAt(id, t)` / `stateAt(id, pivot, t)` を公開 |
-| `src/physics/reference-frames.ts` | `anchorStateAt` が windows を引く。constructor の引数を追従 |
-| `src/game/celestial/celestial-system.ts` | windows へ原点を渡す。`celestialBodyAt` / `stateAt(id, pivot, t)` を windows 経由へ |
-| `src/game/celestial/solar-system/` 10 ファイル + `stage-debug-alt-system.ts` + `tests/physics/equatorial-satellites.test.ts` | 構築点から `origin` 引数を削除 |
-| `src/game/` の `motion.stateAt` / `motion.at` 呼び出し(entity 8・その他 39) | `celestialSystem` / `windows` 経由へ |
-| `tests/physics/test-helpers.ts` | `positionOf` を windows 経由へ |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test`(全層)。固定値テストが1文字も変えずに
-通る。`grep -rn "EciOrigin" src/ tests/` が 0 件、`grep -rniE "eci" src/physics/celestial-motion.ts`
-が 0 件。`npm run smoke:browser`。
-
-#### 手順5c. 天体の表示へ ECI を渡す
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/celestial-system.ts` | `CelestialEntity.sync` へその天体の ECI `CelestialBody` を引数で渡す |
-| `src/game/celestial/celestial-entity/*.ts` | 渡された値を使う(8 箇所) |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test:game` / `npm run test:render`。
-`npm run dev` でマップビューへ入り、地球周回の楕円・月の公転楕円・ラグランジュ点ラベル・
-静止軌道リング・太陽の位置が従来どおりであることを目で見る。
 
 ### 手順6. キャッシュの棚卸し
 
@@ -434,10 +395,9 @@ motion を受け取らなくなり、CR3BP の量は同時刻の ECI 天体配�
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 5 | 約 190 | 構築点 104 からの引数削除 + 呼び出し移行 47(entity 8 + その他 39)+ windows/reference-frames/celestial-system 約 40 |
 | 6 | 約 15 | キャッシュ4箇所の判断とコメント |
 
-合計およそ 205 行。**手順5 が最大**で、そのうち 104 は引数1つの削除(機械的)、47 は受け手の
+合計およそ 15 行。**手順5 が最大**で、そのうち 104 は引数1つの削除(機械的)、47 は受け手の
 差し替え(1行ずつ確認が要る)。手順4・5 で同じ 104 箇所を2度触るが、2度目は削除だけになる。
 
 ## リスクと落とし穴

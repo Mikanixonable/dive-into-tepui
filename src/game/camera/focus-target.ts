@@ -3,6 +3,7 @@
 import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint, toInertialPoint } from '../../physics/frame';
 import { Vec3, v3 } from '../../math/vec3';
 import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { KinematicState } from '../../physics/kinematic-state';
 import type { ReferenceFrames } from '../../physics/reference-frames';
 
 export type FocusTarget =
@@ -55,6 +56,7 @@ export function resolveFocusTarget(
   frameAnchors: FrameAnchorSource,
   frames: ReferenceFrames,
   celestialMotionOf: (id: string) => CelestialMotion | null,
+  celestialStateOf: (id: string, t: number) => KinematicState,
   state: FocusResolveState,
 ): FocusResolveResult {
   if (focus.kind === 'point') {
@@ -68,7 +70,7 @@ export function resolveFocusTarget(
   }
   const motion = celestialMotionOf(focus.id);
   if (motion !== null) {
-    const pos = motion.stateAt(displayTime).r;
+    const pos = celestialStateOf(focus.id, displayTime).r;
     return { pos, missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
   }
   const anchored = frameAnchors.stateOf(focus.id, displayTime);

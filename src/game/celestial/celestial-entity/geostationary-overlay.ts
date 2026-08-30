@@ -42,7 +42,7 @@ export class GeostationaryOverlay {
   private readonly semiMajorAxis: number;
   private readonly label: string;
 
-  private constructor(private readonly motion: CelestialMotion, semiMajorAxis: number) {
+  private constructor(motion: CelestialMotion, semiMajorAxis: number) {
     this.semiMajorAxis = semiMajorAxis;
     this.label = altitudeLabel(semiMajorAxis - motion.def.radius);
   }
@@ -66,10 +66,9 @@ export class GeostationaryOverlay {
   // リングとラベルをこのフレームの表示状態へ同期する。visible は所有者の判断
   // (マップ視点 かつ 同期軌道トグル ON)。
   sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+    center: CelestialBody, fo: FloatingOrigin, cameraSystem: CameraSystem,
     markerManager: MarkerManager | null, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
-    const center = this.motion.at(displayTime);
     const elements = this.elementsAround(center);
     this.line.sync(visible ? elements : null, fo, cameraSystem.activeCamera);
     const dist = len(sub(center.state.r, cameraSystem.activeCameraPos));

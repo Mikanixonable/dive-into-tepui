@@ -82,7 +82,7 @@ export class SphereEntity extends CelestialEntity {
     graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.group.visible) return;
-    const pos = this.motion.stateAt(displayTime).r;
+    const pos = this.stateAt(displayTime).r;
     const apparentDiameterPx = this.lodApparentDiameterPx(
       2 * this.outerRadius, cameraSystem.activeCameraScale(pos), graphics);
     if (!showsPhysicalSphere(apparentDiameterPx)) {

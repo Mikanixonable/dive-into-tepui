@@ -9,6 +9,7 @@ import {
   decodeCatalogPoints,
 } from '../../src/physics/orbit-catalog';
 import { catalogLoop, guideSecondary, rotatingFrame } from '../../src/physics/orbit-guide';
+import { secondaryFrameOf } from '../../src/physics/lagrange';
 import { len, sub } from '../../src/math/vec3';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -117,12 +118,14 @@ export function register(): void {
 
     // 実行時 API が返す点列は、その系の回転基底に載っていなければならない。
     test(`orbit-catalog: ${systemId} runtime loops sit on the rotating frame`, () => {
-      const secondary = orbitingMotionOf(PARTS, guideSecondary(systemId));
-      const frame = rotatingFrame(t, secondary, system.mu);
+      const secondary = secondaryFrameOf(
+        PARTS.windows.celestialBodiesAt(t), orbitingMotionOf(PARTS, guideSecondary(systemId)), t);
+      if (secondary === null) return; // レジストリにその系の天体が無い
+      const frame = rotatingFrame(secondary, system.mu);
       if (frame === null) return; // レジストリにその系の天体が無い
       for (const id of familyIds.slice(0, 6)) {
         const family: CatalogFamily = system.families[id]!;
-        const loop = catalogLoop(t, secondary, system, id, 0.5);
+        const loop = catalogLoop(secondary, system, id, 0.5);
         assert.ok(loop !== null, `${id}: ガイド線が組めない`);
         assert.ok(loop.shape.kind === 'knots', `${id}: 焼き込み族は節点列で返るはず`);
         const { us, positions, tangents } = loop.shape;

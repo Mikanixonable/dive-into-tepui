@@ -338,7 +338,7 @@ export class FocusMarkers {
     for (const body of celestialSystem.entities) {
       const visibility = visibilityPolicy.body(body.id);
       if (!visibility.pickable) continue;
-      const pos = body.motion.stateAt(t).r;
+      const pos = body.stateAt(t).r;
       positions[body.id] = pos;
       displayMap[body.id] = { icon: visibility.icon, label: visibility.label };
       this.cacheBodyPickable(body.id, body.name, pos, true);

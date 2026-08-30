@@ -55,7 +55,7 @@ export class StarEntity extends CelestialEntity {
     graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.star.visible && !this.outline.line.visible) return;
-    const pos = this.motion.stateAt(displayTime).r;
+    const pos = this.stateAt(displayTime).r;
     const p = fo.RtoThreeV3(pos);
     if (style === 'schematic') {
       this.star.hide();

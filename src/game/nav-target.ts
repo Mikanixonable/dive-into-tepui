@@ -6,13 +6,13 @@ import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../ph
 import { CelestialBody, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
 import { LagrangePoints, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
-import { OrbitingMotion, type CelestialMotion } from '../physics/celestial-motion';
+import { OrbitingMotion } from '../physics/celestial-motion';
 import { qRotate } from '../physics/attitude';
 import { goldenSectionMin } from '../math/optimize';
 import { Player } from './player/player';
 import type { DisplayWindow } from './display-window-manager';
 import type { DynamicSystem } from './dynamic/dynamic-system';
-import { entityStateAt } from './dynamic/entity-state-at';
+import { OrbitCenter, entityStateAt } from './dynamic/entity-state-at';
 import type { CombatTarget } from './targeter';
 import { Hud } from './hud/hud';
 import { TickLabelMode, elementTimeLabel } from './hud/orbit/calendar-ticks';
@@ -39,11 +39,11 @@ const CLOSEST_APPROACH_REFINE_ITERATIONS = 20;
 // 探索で追い込む。どちらかの予測がその時刻まで届かない、または区間内に極小が無ければ null
 // (まだ近づいている途中、あるいは既に最接近を過ぎている)。
 function findClosestApproach(
-  player: DynamicEntity, target: DynamicEntity, centerMotion: CelestialMotion, simTime: number,
+  player: DynamicEntity, target: DynamicEntity, center: OrbitCenter, simTime: number,
 ): { readonly pos: Vec3; readonly t: number } | null {
   const distAt = (t: number): number | null => {
-    const p = entityStateAt(player, t, centerMotion);
-    const q = entityStateAt(target, t, centerMotion);
+    const p = entityStateAt(player, t, center);
+    const q = entityStateAt(target, t, center);
     return p && q ? len(sub(p.r, q.r)) : null;
   };
   const step = CLOSEST_APPROACH_SPAN_SEC / CLOSEST_APPROACH_SAMPLES;
@@ -59,7 +59,7 @@ function findClosestApproach(
     const lo = simTime + (i - 1) * step;
     const hi = simTime + (i + 1) * step;
     const tMin = goldenSectionMin(lo, hi, (t) => distAt(t) ?? Infinity, CLOSEST_APPROACH_REFINE_ITERATIONS);
-    const p = entityStateAt(player, tMin, centerMotion);
+    const p = entityStateAt(player, tMin, center);
     return p ? { pos: p.r, t: tMin } : null;
   }
   return null;
@@ -201,7 +201,7 @@ export class NavTarget {
     // 再接近点は AN/DN(軌道面が定まる必要がある)とは独立した条件 — 同じ中心天体さえ
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
     if (target && strongestAttractor(target.state.r, stateCelestialBodies).id === playerCenter.id) {
-      const found = findClosestApproach(player, target, celestialSystem.entityOf(playerCenter.id).motion, simTime);
+      const found = findClosestApproach(player, target, celestialSystem.entityOf(playerCenter.id), simTime);
       if (found) {
         this.closestPos = toDisplay(found.pos, found.t);
         this.closestTime = found.t;
@@ -221,8 +221,8 @@ export class NavTarget {
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
-    const anEci = add(celestialSystem.entityOf(playerCenter.id).motion.stateAt(anT).r, positionOnOrbit(playerEl, nodes.asc));
-    const dnEci = add(celestialSystem.entityOf(playerCenter.id).motion.stateAt(dnT).r, positionOnOrbit(playerEl, nodes.desc));
+    const anEci = add(celestialSystem.stateAt(playerCenter.id, anT).r, positionOnOrbit(playerEl, nodes.asc));
+    const dnEci = add(celestialSystem.stateAt(playerCenter.id, dnT).r, positionOnOrbit(playerEl, nodes.desc));
     this.anPos = toDisplay(anEci, anT);
     this.dnPos = toDisplay(dnEci, dnT);
     this.anTime = anT;
