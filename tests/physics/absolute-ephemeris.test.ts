@@ -5,6 +5,7 @@ import {
   AbsoluteEphemeris, MissingEphemerisBodyError, HelioEphemeris, icrfToGameEci,
 } from '../../src/physics/absolute-ephemeris';
 import { v3 } from '../../src/math/vec3';
+import { createJulianDate } from '../../src/physics/time';
 
 export function register(): void {
   // 恒星を重心に固定した源。ECI 化の減算だけを検査対象にするため、恒星のずれは別の源で見る。
@@ -54,7 +55,7 @@ export function register(): void {
   });
 
   test('absolute ephemeris: 天体の運動は収録天体の位置・速度・軌道法線を高精度経路へ統一する', () => {
-    const parts = solarSystemParts({}, 0, source, 150);
+    const parts = solarSystemParts({}, createJulianDate('TDB', 150), source);
     const moonMotion = orbitingMotionOf(parts, 'moon');
     const moon = stateOf(parts, 'moon', 3600);
     assert.deepEqual(moon.r, v3(10, 30, -20));
