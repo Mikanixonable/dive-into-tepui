@@ -10,6 +10,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
 import { haloState, lissajousState } from '../../physics/halo';
+import { secondaryFrameOf } from '../../physics/lagrange';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import { qRotate } from '../../physics/attitude';
@@ -364,12 +365,15 @@ export class CreativeStage extends Stage {
     if (!(motion instanceof OrbitingMotion)) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
-    if (form.lagrangeOrbitKind === 'halo') {
-      return haloState(this._simulator.simTime, motion, { point: form.lagrangePoint, az: form.azKm * 1e3 });
+    const t = this._simulator.simTime;
+    const system = secondaryFrameOf(this._celestialSystem.celestialBodiesAt(t), motion, t);
+    if (system === null) {
+      throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} の主天体が引けない`);
     }
-    return lissajousState(this._simulator.simTime, motion, {
-      point: form.lagrangePoint, ax: form.axKm * 1e3, az: form.azKm * 1e3,
-    });
+    if (form.lagrangeOrbitKind === 'halo') {
+      return haloState(system, { point: form.lagrangePoint, az: form.azKm * 1e3 });
+    }
+    return lissajousState(system, { point: form.lagrangePoint, ax: form.axKm * 1e3, az: form.azKm * 1e3 });
   }
 
   // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
