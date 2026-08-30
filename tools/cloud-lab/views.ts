@@ -1,8 +1,8 @@
 // 雲の実験環境で表示できる量の表。並びがそのまま画面のボタンの並びで、構成の上流(気候の事前分布)から
-// 下流(雲)へ並ぶ。各ビューは、単位方向・天気のモデルのグラフ・気候の事前分布・雲の場の写しから、
-// 表示値 0..1 の色を組む。
+// 下流(雲)へ並ぶ。各ビューは表示値 0..1 の色を組み、その材料が天気のモデルなのか雲の写しなのかで
+// 2 種類に分かれる。
 import { length, vec3 } from 'three/tsl';
-import type { BakedField } from '../../src/render/cloud/baked-field';
+import type { CloudField } from '../../src/render/cloud/cloud-field';
 import type { ClimateMap } from '../../src/render/cloud/climate-map';
 import type { WeatherModel } from '../../src/render/cloud/weather-model';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
@@ -14,15 +14,15 @@ export type CloudLabViewId =
   | 'humidity' | 'upperHumidity' | 'convection' | 'convectiveActivity'
   | 'coverage' | 'cloudTop' | 'translucent';
 
+// reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
+// 写しから色を組む。焼く費用は雲の写しにしか掛からないので、面はこの区別を見て焼く量を決める。
 export type CloudLabView = {
   readonly id: CloudLabViewId;
   readonly label: string;
-  // 雲の場の写しを読むビューだけが true。false のビューでは写しを焼かない — 焼くと写し全面ぶんの
-  // 天気の評価が、画面に出ないまま捨てられる。
-  readonly readsCloud: boolean;
-  readonly color: (
-    direction: Vec3Node, model: WeatherModel, climate: ClimateMap, cloud: BakedField) => Vec3Node;
-};
+} & (
+  | { readonly reads: 'weather'; readonly color: (d: Vec3Node, model: WeatherModel, climate: ClimateMap) => Vec3Node }
+  | { readonly reads: 'cloud'; readonly color: (d: Vec3Node, cloud: CloudField) => Vec3Node }
+);
 
 // 表示値 0..1 へ写すときの目盛り。雲頂高度は 0..15000 m、薄い雲の光学的厚みは 0..1、気圧は
 // −70..+30 hPa、上昇流は ±0.1 m/s を、対流は ±0.5 をそれぞれ 0.5 中心に、風は ±45 m/s(台風の芯の
@@ -44,22 +44,38 @@ function windColor(wind: Vec2Node): Vec3Node {
 }
 
 export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
-  { id: 'elevation', label: '標高', readsCloud: false, color: (d, _m, climate) => vec3(climate.elevation(d).div(ELEVATION_SPAN)) },
-  { id: 'meanCloudiness', label: '平年の雲量', readsCloud: false, color: (d, _m, climate) => vec3(climate.meanCloudiness(d)) },
-  { id: 'meanWind', label: '平均風', readsCloud: false, color: (d, model) => windColor(model.meanWindAt(d)) },
-  { id: 'pressure', label: '気圧', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
-  { id: 'wind', label: '風', readsCloud: false, color: (d, model) => windColor(model.weatherAt(d).wind) },
-  { id: 'lift', label: '上昇流', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).lift.div(2 * LIFT_SPAN).add(0.5)) },
-  { id: 'humiditySource', label: '移流前の湿度', readsCloud: false, color: (d, model) => vec3(model.humiditySourceAt(d).x) },
-  { id: 'upperHumiditySource', label: '移流前の上層湿度', readsCloud: false, color: (d, model) => vec3(model.humiditySourceAt(d).y) },
-  { id: 'convectionSource', label: '移流前の対流', readsCloud: false, color: (d, model) => vec3(model.convectionSourceAt(d).div(2 * CONVECTION_SPAN).add(0.5)) },
-  { id: 'humidity', label: '湿度', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).humidity) },
-  { id: 'upperHumidity', label: '上層湿度', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).upperHumidity) },
-  { id: 'convection', label: '対流', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).convection.div(2 * CONVECTION_SPAN).add(0.5)) },
-  { id: 'convectiveActivity', label: '対流の活発度', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).convectiveActivity) },
-  { id: 'coverage', label: '被覆率', readsCloud: true, color: (d, _m, _c, cloud) => vec3(cloud.at(d).r) },
-  { id: 'cloudTop', label: '雲頂高度', readsCloud: true, color: (d, _m, _c, cloud) => vec3(cloud.at(d).g.div(CLOUD_TOP_SPAN)) },
-  { id: 'translucent', label: '薄い雲', readsCloud: true, color: (d, _m, _c, cloud) => vec3(cloud.at(d).b.div(TRANSLUCENT_SPAN)) },
+  { id: 'elevation', label: '標高', reads: 'weather',
+    color: (d, _model, climate) => vec3(climate.elevation(d).div(ELEVATION_SPAN)) },
+  { id: 'meanCloudiness', label: '平年の雲量', reads: 'weather',
+    color: (d, _model, climate) => vec3(climate.meanCloudiness(d)) },
+  { id: 'meanWind', label: '平均風', reads: 'weather',
+    color: (d, model) => windColor(model.meanWindAt(d)) },
+  { id: 'pressure', label: '気圧', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
+  { id: 'wind', label: '風', reads: 'weather',
+    color: (d, model) => windColor(model.weatherAt(d).wind) },
+  { id: 'lift', label: '上昇流', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).lift.div(2 * LIFT_SPAN).add(0.5)) },
+  { id: 'humiditySource', label: '移流前の湿度', reads: 'weather',
+    color: (d, model) => vec3(model.humiditySourceAt(d).x) },
+  { id: 'upperHumiditySource', label: '移流前の上層湿度', reads: 'weather',
+    color: (d, model) => vec3(model.humiditySourceAt(d).y) },
+  { id: 'convectionSource', label: '移流前の対流', reads: 'weather',
+    color: (d, model) => vec3(model.convectionSourceAt(d).div(2 * CONVECTION_SPAN).add(0.5)) },
+  { id: 'humidity', label: '湿度', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).humidity) },
+  { id: 'upperHumidity', label: '上層湿度', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).upperHumidity) },
+  { id: 'convection', label: '対流', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).convection.div(2 * CONVECTION_SPAN).add(0.5)) },
+  { id: 'convectiveActivity', label: '対流の活発度', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).convectiveActivity) },
+  { id: 'coverage', label: '被覆率', reads: 'cloud',
+    color: (d, cloud) => vec3(cloud.at(d).coverage) },
+  { id: 'cloudTop', label: '雲頂高度', reads: 'cloud',
+    color: (d, cloud) => vec3(cloud.at(d).cloudTop.div(CLOUD_TOP_SPAN)) },
+  { id: 'translucent', label: '薄い雲', reads: 'cloud',
+    color: (d, cloud) => vec3(cloud.at(d).translucent.div(TRANSLUCENT_SPAN)) },
 ];
 
 // 起動時に出す量。並びが上流から下流なので、既定は先頭ではなく最終出力。
