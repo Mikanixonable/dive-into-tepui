@@ -2,7 +2,7 @@
 // 軌道要素は「どの天体を中心に取ったか」まで含めて初めて意味が定まるため、OrbitalElements 自身が
 // 中心天体(CelestialBody)を保持する。THREE/DOM 非依存の純粋関数群。
 import type { CelestialBody } from './celestial-body';
-import { KinematicState, kinematicState } from './kinematic-state';
+import { FrameTag, KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../math/vec3';
 
 // 軌道上の位相の基準 — 時刻 t におけるこの軌道上の真近点角が nu。形だけを指定した参照軌道は
@@ -38,7 +38,9 @@ export function semiMajorFromPeriod(period: number, mu: number): number {
 // 差し引いた後)の状態ベクトルでなければならない — 絶対 ECI 座標をそのまま渡すと、center が
 // 原点(地球)でない限り誤った要素になる。絶対 ECI からの呼び出しは celestial-body.ts の
 // orbitalElementsOf に一本化する。半径・角運動量が縮退している場合は null。
-export function orbitalElementsFromState(rel: KinematicState, center: CelestialBody): OrbitalElements | null {
+export function orbitalElementsFromState(
+  rel: KinematicState<FrameTag>, center: CelestialBody,
+): OrbitalElements | null {
   const r = rel.r;
   const v = rel.v;
   const mu = center.mu;
@@ -160,13 +162,13 @@ export function positionOnOrbit(el: OrbitalElements, nu: number): Vec3 {
 
 // 元期の位相から時刻 t まで進めた、中心天体相対の状態(ECI 軸)。位相の基準を持たない要素と、
 // 閉じない軌道(楕円でないもの)では null — 平均近点角から真近点角への逆変換が楕円に限られる。
-export function stateOnOrbitAt(el: OrbitalElements, t: number): KinematicState | null {
+export function stateOnOrbitAt(el: OrbitalElements, t: number): KinematicState<'primaryRel'> | null {
   const epoch = el.epoch;
   if (epoch === null || !(el.period > 0) || !isFinite(el.period)) return null;
   const n = (2 * Math.PI) / el.period; // 平均運動
   const meanAnomaly = n * (timeSincePeriapsis(el, epoch.nu) + (t - epoch.t));
   const nu = trueAnomalyFromMean(meanAnomaly, el.e);
-  return kinematicState(t, positionOnOrbit(el, nu), velocityOnOrbit(el, nu));
+  return kinematicState<'primaryRel'>(t, positionOnOrbit(el, nu), velocityOnOrbit(el, nu));
 }
 
 // 軌道上の真近点角 nu における中心天体相対の速度(ECI 軸)。
