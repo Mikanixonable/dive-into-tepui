@@ -26,9 +26,10 @@ export interface ChebyshevBodyManifest {
 }
 
 // Segment times are SI seconds and coefficient values are SI metres. The
-// evaluator's public stateAtSeconds/stateOf methods take seconds on this same
-// time axis; Julian dates are deliberately kept out of this binary-independent
-// core and belong at an explicit adapter boundary.
+// evaluator takes seconds on this same time axis and does not know where that
+// axis is anchored — whoever built the pack chose the origin. Julian dates are
+// deliberately kept out of this binary-independent core and belong at an
+// explicit adapter boundary.
 export interface ChebyshevManifest {
   readonly version: number;
   readonly bodies: readonly ChebyshevBodyManifest[];
