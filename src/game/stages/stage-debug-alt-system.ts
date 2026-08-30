@@ -63,8 +63,8 @@ const ZEPHYRUS_I: SatelliteDef = {
 
 // 架空星系の運動を組む。恒星が無いので惑星の主星は null になる。
 function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[] {
-  const zephyrus = planetSystem(planetDefForSimZero(ZEPHYRUS, phases, 0), null, null);
-  const zephyrusI = new SatelliteMotion(satelliteDefForSimZero(ZEPHYRUS_I, phases, 0), zephyrus, null);
+  const zephyrus = planetSystem(planetDefForSimZero(ZEPHYRUS, phases, 0), null);
+  const zephyrusI = new SatelliteMotion(satelliteDefForSimZero(ZEPHYRUS_I, phases, 0), zephyrus);
   return [zephyrus.body, zephyrusI];
 }
 
