@@ -39,7 +39,7 @@ export type FutureCelestialBodyProvider = {
 実装しているのは `FutureCelestialBodies` というクラス1つだけ
 (`src/game/simulation/future-celestial-bodies.ts:6` で `implements` している)。
 
-**既存の CODING-RULE 1.11 に既に違反している** — 「オブジェクトの公開契約と、クラスが実装できる
+**既存の CODING-RULE 1.12 に既に違反している** — 「オブジェクトの公開契約と、クラスが実装できる
 契約には `interface` を使う。union、intersection、mapped type、関数型には `type` を使う。」
 メソッドを持つ `interface` にすれば、下の 2-1 の「クロージャではなく参照を渡す」とも揃う。
 なお `Ctx` 型ほどの害はない — 寄せ集めではなく、実装が1つに定まった契約なので。
@@ -57,7 +57,7 @@ export type FutureCelestialBodyProvider = {
 
 ### 2-1. 渡すのはクロージャではなくオブジェクトの参照 【違反あり】
 
-出典: 旧 `refactor-fixed` §7 / `naming.md` A-7。現在の CODING-RULE 1.11 には
+出典: 旧 `refactor-fixed` §7 / `naming.md` A-7。現在の CODING-RULE 1.12 には
 **弱められた1行だけ**が残っている:
 
 > - **不要なクロージャ注入は行わない。** 特定のオブジェクトに影響を及ぼしたいなら、その mutable な
