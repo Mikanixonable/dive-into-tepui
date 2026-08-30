@@ -1,8 +1,8 @@
-// 気圧の場と釣り合う風の法則。傾度風(気圧勾配 = コリオリ + 遠心力)へ摩擦を足した定常の釣り合いを
-// 1 本の式で解く。勾配が緩い所ではコリオリが釣り合いを受け持って地衡風の枝へ、谷が狭く深い所では
-// 遠心力が受け持って緯度に依らない枝へ落ちるので、**中緯度の低気圧も熱帯の台風も同じ式から出る。**
-// 赤道でも高気圧側でも有限に留まる。
-import { abs, cross, length, max, sign, sin, sqrt } from 'three/tsl';
+// 気圧の場と釣り合う風の法則と、その風に流された 1 歩。傾度風(気圧勾配 = コリオリ + 遠心力)へ
+// 摩擦を足した定常の釣り合いを 1 本の式で解く。勾配が緩い所ではコリオリが釣り合いを受け持って
+// 地衡風の枝へ、谷が狭く深い所では遠心力が受け持って緯度に依らない枝へ落ちるので、**中緯度の
+// 低気圧も熱帯の台風も同じ式から出る。** 赤道でも高気圧側でも有限に留まる。
+import { abs, cos, cross, length, max, sign, sin, sqrt } from 'three/tsl';
 import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
@@ -52,6 +52,17 @@ export function balancedWind(
   const velocity = isobar.mul(along).sub(gradient.div(max(length(gradient), 1e-6)).mul(friction))
     .div(sqrt(along.mul(along).add(friction ** 2))).mul(speed);
   return { velocity, turn: hemisphere.mul(spin) };
+}
+
+// wind に seconds 秒だけ流された変位 [m]。direction はその点の天頂で、seconds を負に取れば来た弧を
+// そのまま遡る。流れは曲率半径 |velocity| / turn の円をたどるので、変位はその弦 — 渦の芯では
+// 直径 2 r_c に収まる。
+export function windStep(wind: BalancedWind, direction: Vec3Node, seconds: FloatNode): Vec3Node {
+  const half = wind.turn.mul(seconds).mul(0.5);
+  // 弦は sin(half)/half に比例する。この比は偶関数なので、0 割りの床は絶対値の側だけで足りる。
+  const angle = max(abs(half), 1e-6);
+  return wind.velocity.mul(cos(half)).add(cross(direction, wind.velocity).mul(sin(half)))
+    .mul(sin(angle).div(angle).mul(seconds));
 }
 
 // balancedWind と同じ釣り合いを、深さ depth [hPa]・広がり radius [m] のガウスの谷の芯(勾配が
