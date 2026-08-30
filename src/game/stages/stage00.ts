@@ -1,6 +1,6 @@
 // Stage 00: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く。
 import * as C from '../const';
-import { Stage, type StageDeps } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { Player } from '../player/player';
@@ -10,6 +10,7 @@ import type { Stage00SaveData, StageSaveData } from '../save/save-data';
 
 export class Stage00 extends Stage {
   static readonly id = '00' as const;
+  static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'stage 00';
   static readonly selectSub = '【無限耐久サバイバル】 常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
   static readonly selectKeys = ['Digit0'];

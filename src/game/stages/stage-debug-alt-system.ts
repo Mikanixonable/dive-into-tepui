@@ -2,7 +2,7 @@
 // 1体も持たないため、輻射源・日照率・点群などの太陽系依存の経路が恒星0個でも安全に振る舞う
 // ことを実演する。タイトルの通常ボタン列には出ない。
 import * as THREE from 'three/webgpu';
-import { Stage, type StageDeps } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -23,7 +23,6 @@ import { CelestialSurface } from '../../render/celestial-surface';
 import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-entity-def';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
-import { SIM_EPOCH } from '../sim-epoch';
 import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
 import { StarEntity } from '../celestial/celestial-entity/star-entity';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
@@ -81,10 +80,11 @@ function fallbackEntity(motion: CelestialMotion): CelestialEntity {
 
 export class StageDebugAltSystem extends Stage {
   static readonly id = 'debug-alt-system' as const;
+  static readonly epoch = STORY_EPOCH;
   static async createCelestialSystem(phaseOffsets: PhaseOffsets, _earthSpinPhase0: number): Promise<CelestialSystem> {
     const bodies = zephyrusSystemMotions(phaseOffsets).map(fallbackEntity);
     const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
-    return new CelestialSystem(bodies, origin, phaseOffsets, SIM_EPOCH);
+    return new CelestialSystem(bodies, origin, phaseOffsets, StageDebugAltSystem.epoch);
   }
   static readonly selectLabel = 'DEBUG(架空星系)';
   static readonly selectSub = '【デバッグ】恒星0個・架空天体2体のレジストリで起動する';
