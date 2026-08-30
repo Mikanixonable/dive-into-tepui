@@ -1,5 +1,6 @@
 // 時刻付きの太陽系重心状態を供給する層と、ゲームが使う中心天体基準へ落とす層。
 // 暦データの表現(Chebyshev/SPK/テスト用解析解)と座標原点の選択を分離する。
+import { BodyEphemeris } from './body-ephemeris';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, sub, v3 } from '../math/vec3';
 
@@ -15,6 +16,9 @@ export interface AbsoluteEphemeris {
   readonly validEndSimTime: number;
   hasBody(id: string): boolean;
   barycentricStateOf(id: string, simTime: number): BarycentricState;
+  // 天体 id を答えられるなら、その1体ぶんを切り出した暦。収録していなければ null。
+  // **構築時にだけ引く口** — 1回の状態評価の中で呼ばない。
+  bodyEphemerisOf(id: string): BodyEphemeris | null;
 }
 
 export class MissingEphemerisBodyError extends Error {

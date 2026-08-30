@@ -1,6 +1,8 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
-import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
+import { AbsoluteEphemeris, BarycentricState, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
+import { BodyEphemeris } from '../../src/physics/body-ephemeris';
+import { kinematicState } from '../../src/physics/kinematic-state';
 import { KinematicState } from '../../src/physics/kinematic-state';
 import {
   LagrangePoints, SecondaryFrame, lagrangePointsOf, secondaryFrameOf,
@@ -96,4 +98,36 @@ export function assertOmegaMatchesBasis(rot: (t: number) => FrameRotation, t: nu
       `角速度の不一致 (t=${t}, axis=${JSON.stringify(axis)}): ${JSON.stringify(fd)} vs ${JSON.stringify(analytic)}`,
     );
   }
+}
+
+// 天体 id ごとの重心状態(ICRF 軸)を返す関数から、テスト用の暦供給源を組む。**収録して
+// いない天体には null を返させる** — 収録の有無をテスト側で二重に宣言せずに済む。
+export function testEphemerisSource(
+  validStartSimTime: number,
+  validEndSimTime: number,
+  stateOf: (id: string, simTime: number) => BarycentricState | null,
+): AbsoluteEphemeris {
+  const bodyEphemerisOf = (id: string): BodyEphemeris | null => {
+    if (stateOf(id, validStartSimTime) === null) return null;
+    return {
+      validStartSimTime,
+      validEndSimTime,
+      stateAt: (simTime: number) => {
+        const state = stateOf(id, simTime);
+        if (state === null) throw new Error(`testEphemerisSource: 収録していない天体 id: ${id}`);
+        return kinematicState<'barycentric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
+      },
+    };
+  };
+  return {
+    validStartSimTime,
+    validEndSimTime,
+    hasBody: (id) => stateOf(id, validStartSimTime) !== null,
+    barycentricStateOf: (id, simTime) => {
+      const state = stateOf(id, simTime);
+      if (state === null) throw new Error(`testEphemerisSource: 収録していない天体 id: ${id}`);
+      return state;
+    },
+    bodyEphemerisOf,
+  };
 }

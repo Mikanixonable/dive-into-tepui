@@ -7,6 +7,7 @@ import {
 import {
   PackedAbsoluteEphemeris, loadPackedAbsoluteEphemeris,
 } from '../../src/physics/packed-absolute-ephemeris';
+import { icrfToGameEci } from '../../src/physics/absolute-ephemeris';
 import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY } from '../../src/physics/time';
 
 const J2000 = createJulianDate('TDB', J2000_JULIAN_DATE);
@@ -52,6 +53,31 @@ export function register(): void {
     assert.equal(shifted.validStartSimTime, -shiftSec);
     assert.equal(shifted.validEndSimTime, 10 - shiftSec);
     assert.deepEqual(shifted.barycentricStateOf('earth', -shiftSec).r, { x: 1, y: 2, z: 3 });
+  });
+
+  // 1体ぶんの切り出し。id は構築時に固定され、評価では引き直さない。
+  test('packed absolute ephemeris: 天体1体ぶんを切り出し、ゲーム ECI 軸で答える', () => {
+    const source = PackedAbsoluteEphemeris.fromTrustedBytes(fixture(), J2000);
+    const earth = source.bodyEphemerisOf('earth');
+    assert.ok(earth !== null);
+    // ICRF の (x, y, z) がゲーム軸の (x, z, -y) へ写る。原点は太陽系重心のまま。
+    assert.deepEqual(earth.stateAt(0).r, icrfToGameEci(source.barycentricStateOf('earth', 0).r));
+    assert.deepEqual(earth.stateAt(0).v, icrfToGameEci(source.barycentricStateOf('earth', 0).v));
+    assert.equal(earth.stateAt(0).t, 0);
+  });
+
+  // 有効期間は pack 共通の値ではなく、その天体自身のセグメント範囲から取る。
+  test('packed absolute ephemeris: 切り出した暦は自分のセグメント範囲を有効期間に持つ', () => {
+    const source = PackedAbsoluteEphemeris.fromTrustedBytes(fixture(), J2000);
+    const earth = source.bodyEphemerisOf('earth');
+    assert.ok(earth !== null);
+    assert.equal(earth.validStartSimTime, 0);
+    assert.equal(earth.validEndSimTime, 10);
+  });
+
+  test('packed absolute ephemeris: 収録していない天体の切り出しは null', () => {
+    const source = PackedAbsoluteEphemeris.fromTrustedBytes(fixture(), J2000);
+    assert.equal(source.bodyEphemerisOf('mars'), null);
   });
 
   test('packed absolute ephemeris: browser loaderはpayload改竄を拒否する', async () => {
