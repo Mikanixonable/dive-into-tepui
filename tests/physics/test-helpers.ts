@@ -116,7 +116,7 @@ export function testEphemerisSource(
         stateAt: (simTime: number) => {
           const state = stateOf(id, simTime);
           if (state === null) throw new Error(`testEphemerisSource: 収録していない天体 id: ${id}`);
-          return kinematicState<'barycentric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
+          return kinematicState<'packed'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
         },
       };
     },
