@@ -54,26 +54,27 @@ const MEMBERS_PER_FAMILY = 30;
 // 区間が1つしか無い族(分かれなかった族)には効かせない。
 const MIN_SEGMENT_LENGTH = 3;
 
-const physics = loadPhysicsModules(['cr3bp', 'solar-system']);
-const { cr3bp, solarSystem } = physics;
+const physics = loadPhysicsModules([
+  'cr3bp', 'solar-system/sun', 'solar-system/earth-system', 'solar-system/mars-system',
+  'solar-system/jupiter-system', 'solar-system/saturn-system',
+]);
+const { cr3bp, sun, earthSystem, marsSystem, jupiterSystem, saturnSystem } = physics;
 
-// 系の主天体 id(src/physics/solar-system.ts の SOLAR_SYSTEM キーと対応)。JPL の族データは
-// 副天体の半径しか返さないため、主天体への衝突判定にはゲームのレジストリの半径を使う。
-const PRIMARY_BODY = {
-  'earth-moon': 'earth',
-  'sun-earth': 'sun',
-  'sun-mars': 'sun',
-  'jupiter-europa': 'jupiter',
-  'saturn-titan': 'saturn',
-  'saturn-enceladus': 'saturn',
-  'mars-phobos': 'mars',
+// 系の主天体の定義。JPL の族データは副天体の半径しか返さないため、主天体への衝突判定には
+// ゲームの定義の半径を使う。
+const PRIMARY_DEF = {
+  'earth-moon': earthSystem.EARTH,
+  'sun-earth': sun.SUN,
+  'sun-mars': sun.SUN,
+  'jupiter-europa': jupiterSystem.JUPITER,
+  'saturn-titan': saturnSystem.SATURN,
+  'saturn-enceladus': saturnSystem.SATURN,
+  'mars-phobos': marsSystem.MARS,
 };
 
 // 系の主天体の半径 [km]。
 function primaryRadiusKm(system) {
-  const bodyId = PRIMARY_BODY[system];
-  const body = solarSystem.SOLAR_SYSTEM[bodyId];
-  return body.radius / 1000;
+  return PRIMARY_DEF[system].radius / 1000;
 }
 
 // 点列の中心から最も離れた点までの距離。閉合残差を測る物差しにする。

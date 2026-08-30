@@ -1,4 +1,5 @@
 // celestial-body.ts の回帰テスト。
+import { solarSystemEphemeris } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
@@ -11,10 +12,9 @@ import {
   strongestAttractor,
 } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH, SIDEREAL_DAY, SOLAR_SYSTEM, bodyDef } from '../../src/physics/solar-system';
+import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../src/physics/solar-system/constants';
 import { keplerPeriod, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system';
+import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/physics/solar-system/constants';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
@@ -57,7 +57,7 @@ export function register(): void {
   });
 
   test('celestialBody: attractorAccel は差分潮汐式 μ[(r_b−r)/|r_b−r|³ − r_b/|r_b|³] に一致', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
+    const ephemeris = solarSystemEphemeris({ earth: 0.3, moon: 0.4 });
     const celestialBodies = ephemeris.celestialBodiesAt(12345);
     const r = v3(R_EARTH + 420e3, 1.2e6, -3e5);
 
@@ -80,14 +80,14 @@ export function register(): void {
   });
 
   test('celestialBody: strongestAttractor は LEO で earth', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 });
+    const ephemeris = solarSystemEphemeris({ moon: 0 });
     const celestialBodies = ephemeris.celestialBodiesAt(0);
     const r = v3(R_EARTH + 420e3, 0, 0);
     assert.equal(strongestAttractor(r, celestialBodies).id, 'earth');
   });
 
   test('celestialBody: strongestAttractor は月から30,000kmでmoon、50,000kmでearthに切り替わる', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 });
+    const ephemeris = solarSystemEphemeris({ moon: 0 });
     const celestialBodies = ephemeris.celestialBodiesAt(0);
     const moon = celestialBodies.find((b) => b.id === 'moon')!;
     const towardEarth = (dist: number) => addScaled(moon.state.r, norm(moon.state.r), -dist);
@@ -96,7 +96,7 @@ export function register(): void {
   });
 
   test('celestialBody: strongestAttractor は素の引力でなくattractorAccelで比べる(地心1e9mでearth、5e9mでsun)', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 });
+    const ephemeris = solarSystemEphemeris({ moon: 0 });
     const celestialBodies = ephemeris.celestialBodiesAt(0);
     // 素の引力 μ/d² で比べると太陽は地心 2.6e5 km 手前で既に地球に勝ってしまう回帰。
     assert.equal(strongestAttractor(v3(1e9, 0, 0), celestialBodies).id, 'earth', '地心 1e9 m');
@@ -104,7 +104,7 @@ export function register(): void {
   });
 
   test('celestialBody: localOrbitPeriod は LEO で約5,580秒、月面+100kmで約7,066秒(実測値をピン留め)', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 });
+    const ephemeris = solarSystemEphemeris({ moon: 0 });
     const celestialBodies = ephemeris.celestialBodiesAt(0);
     const leoPeriod = localOrbitPeriod(v3(R_EARTH + 420e3, 0, 0), celestialBodies);
     assert.ok(Math.abs(leoPeriod - 5580) / 5580 < 0.01, `LEO 周期: ${leoPeriod}`);
@@ -135,14 +135,14 @@ export function register(): void {
   });
 
   test('ephemeris: celestialBodiesAt は同一 t を引くたび同じ値を返す', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.1, moon: 0.2 });
+    const ephemeris = solarSystemEphemeris({ earth: 0.1, moon: 0.2 });
     const a = ephemeris.celestialBodiesAt(1000);
     const b = ephemeris.celestialBodiesAt(1000);
     assert.deepEqual(a, b);
   });
 
-  test('ephemeris: celestialBodiesAt は SOLAR_SYSTEM の宣言順で、positionOf と整合する', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.1, moon: 0.2 });
+  test('ephemeris: celestialBodiesAt は太陽系の宣言順で、positionOf と整合する', () => {
+    const ephemeris = solarSystemEphemeris({ earth: 0.1, moon: 0.2 });
     const celestialBodies = ephemeris.celestialBodiesAt(5000);
     assert.deepEqual(celestialBodies.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'apophis', 'didymos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);
     // 天体を1つ挿入しても静かに別天体を指さないよう、添字ではなく id で引く。
@@ -160,7 +160,7 @@ export function register(): void {
   // 参照フレームの「役割の公転」を選択肢に出すかどうかがこの判定に乗っている。周回して
   // いない対象の公転は定義できないので、選択肢そのものを出さないための入口。
   test('orbitingAttractorOf: 楕円軌道なら主天体、脱出速度以上なら null', () => {
-    const bodies = new Ephemeris().celestialBodiesAt(0).filter((b) => b.id === 'earth');
+    const bodies = solarSystemEphemeris().celestialBodiesAt(0).filter((b) => b.id === 'earth');
     const r = v3(7e6, 0, 0);
     const vCirc = Math.sqrt(MU_EARTH / 7e6);
     assert.equal(orbitingAttractorOf(kinematicState(0, r, v3(0, vCirc, 0)), bodies)?.id, 'earth');
