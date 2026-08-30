@@ -1,3 +1,4 @@
+import { solarSystemEphemeris } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
@@ -5,7 +6,6 @@ import {
 } from '../../src/physics/absolute-ephemeris';
 import { v3 } from '../../src/math/vec3';
 import { Ephemeris } from '../../src/physics/ephemeris';
-import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
 
 export function register(): void {
   const source: AbsoluteEphemeris = {
@@ -37,7 +37,7 @@ export function register(): void {
   });
 
   test('absolute ephemeris: Ephemeris は収録天体の位置・速度・軌道法線を高精度経路へ統一する', () => {
-    const eph = new Ephemeris(SOLAR_SYSTEM, 'earth', 0, {}, source, 150);
+    const eph = solarSystemEphemeris({}, 0, source, 150);
     const moon = eph.stateOf('moon', 3600);
     assert.deepEqual(moon.r, v3(10, 30, -20));
     assert.deepEqual(moon.v, v3(3, 5, -4));
