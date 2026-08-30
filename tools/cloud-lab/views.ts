@@ -11,7 +11,7 @@ export type CloudLabViewId =
   | 'elevation' | 'meanCloudiness' | 'meanWind'
   | 'pressure' | 'wind' | 'lift'
   | 'humiditySource' | 'upperHumiditySource' | 'convectionSource'
-  | 'humidity' | 'upperHumidity' | 'convection'
+  | 'humidity' | 'upperHumidity' | 'convection' | 'convectiveActivity'
   | 'coverage' | 'cloudTop' | 'translucent';
 
 export type CloudLabView = {
@@ -27,8 +27,8 @@ export type CloudLabView = {
 // 表示値 0..1 へ写すときの目盛り。雲頂高度は 0..15000 m、薄い雲の光学的厚みは 0..1、気圧は
 // −70..+30 hPa、上昇流は ±0.1 m/s を、対流は ±0.5 をそれぞれ 0.5 中心に、風は ±45 m/s(台風の芯の
 // 風速まで飽和させない幅)を 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
-// 被覆率と湿度はそのまま出す。**風と平均風は同じ目盛りに乗せる** — 大循環が運ぶ分と、気圧から
-// 出る分の大きさを見比べるため。
+// 被覆率・湿度・対流の活発度はそのまま出す。**風と平均風は同じ目盛りに乗せる** — 大循環が運ぶ分と、
+// 気圧から出る分の大きさを見比べるため。
 const CLOUD_TOP_SPAN = 15000;
 const CONVECTION_SPAN = 0.5;
 const TRANSLUCENT_SPAN = 1;
@@ -56,6 +56,7 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'humidity', label: '湿度', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).humidity) },
   { id: 'upperHumidity', label: '上層湿度', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).upperHumidity) },
   { id: 'convection', label: '対流', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).convection.div(2 * CONVECTION_SPAN).add(0.5)) },
+  { id: 'convectiveActivity', label: '対流の活発度', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).convectiveActivity) },
   { id: 'coverage', label: '被覆率', readsCloud: true, color: (d, _m, _c, cloud) => vec3(cloud.at(d).r) },
   { id: 'cloudTop', label: '雲頂高度', readsCloud: true, color: (d, _m, _c, cloud) => vec3(cloud.at(d).g.div(CLOUD_TOP_SPAN)) },
   { id: 'translucent', label: '薄い雲', readsCloud: true, color: (d, _m, _c, cloud) => vec3(cloud.at(d).b.div(TRANSLUCENT_SPAN)) },
