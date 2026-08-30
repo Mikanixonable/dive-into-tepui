@@ -88,9 +88,7 @@ export class CelestialSystem {
   // 組まれている。THREE の資源はここでは受け取らない — build(scene, …) が登録する。
   // pointFieldView はこの星系に付随する小天体の点群(持たない星系では null)。マップへ入るまで
   // 資源を確保しない表示なので、シーンへの登録は最初のマップ更新まで遅らせる。
-  // absoluteSource は高精度暦の供給源(持たない構成では null)。**ここで天体1体ぶんへ切り分けて
-  // 配る** — 系全体の暦を天体へ持たせると、100 体が同じ1個の参照を握って「自分は収録されて
-  // いるか」を評価のたびに問い直すことになる。
+  // absoluteSource は高精度暦の供給源。天体1体ぶんへ切り分けて各 motion へ配る。
   constructor(
     readonly entities: readonly CelestialEntity[],
     readonly origin: CelestialEntity,
@@ -103,10 +101,8 @@ export class CelestialSystem {
     this.bodyWindows = new CelestialBodyWindows(this.motions, origin.motion);
     this.referenceFrames = new ReferenceFrames(this.bodyWindows, this.motions, origin.motion);
     for (const entity of entities) entity.bindWindows(this.bodyWindows);
-    // 暦を持たない構成でも全 motion へ null で1度呼ぶ — 配り漏れと「収録されていない」を
-    // 同じ形(null)に揃えて、片方だけ静かに解析経路へ落ちる状態を作らない。
-    for (const motion of this.motions) {
-      motion.bindEphemeris(absoluteSource === null ? null : absoluteSource.bodyEphemerisOf(motion.id));
+    if (absoluteSource !== null) {
+      for (const motion of this.motions) motion.bindEphemeris(absoluteSource.bodyEphemerisOf(motion.id));
     }
     this.entitiesById = new Map(entities.map((b) => [b.id, b]));
     this.starEntity = entities.find((b): b is StarEntity => b instanceof StarEntity) ?? null;
