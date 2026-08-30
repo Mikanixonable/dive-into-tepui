@@ -396,12 +396,12 @@ CR3BP の量は `SecondaryFrame`(`physics/lagrange.ts`)を受け取る自由関�
 | `keplerOrbitState` の戻り値タグを `'helio'` にしてしまう | 惑星では中心が恒星なので**たまたま正しく、衛星では間違う。型検査は通る** | **確認済み**: `keplerOrbitState` は `'primaryRel'` を返し、恒星中心への読み替えは `PlanetSystem.helioStateAt` の1箇所だけ |
 | タグの既定を `'eci'` にしたことで、タグを**書き忘れた**関数が暗黙に ECI を名乗る | 取り違えが検出されないまま残り、以降の手順が無防備になる | **確認済み**: 2節の表の 13 段すべてにタグが付いた(`barycentricStateOf` は `BarycentricState` 型、`FrameKinematicState` は別の branded type で元から区別されている) |
 | `hermiteInterpolate` を総称化するとき両端のタグを縛り忘れる | 原点の違う2状態を補間して無意味な値になる | **確認済み**: `hermiteInterpolate<F>(a: KS<F>, b: KS<F>): KS<F>` で両端を縛った |
-| `PlanetSystem.satellites` が揃う前に惑星本体を評価する | 重心補正が抜けた位置がキャッシュへ入り、以後その時刻だけ間違い続ける | 手順4。`solarSystem()` が全 entity を返すまで評価が起きないことを確かめる |
+| `PlanetSystem.satellites` が揃う前に惑星本体を評価する | 重心補正が抜けた位置がキャッシュへ入り、以後その時刻だけ間違い続ける | **確認済み**: `solarSystem()` は全 entity を組み終えてから返し、構築中に評価する経路は無い。固定値テストが重心補正込みの値で通る |
 | `system.anglesAt` を平均要素ではなく周期項込みで組む | 回転基準系の角速度が滑らかでなくなり、回転系のカメラが震える | **確認済み**: `anglesAt` は `orbit` だけから組んでいる |
 | `*AtEpoch` を通す位置がずれる | `keplerOrbitAtEpoch` は角を畳んでいる。畳む前の値を `PlanetSystem` へ渡すと、18,000 年規模のオフセットで丸めが支配し、地球軌道上でメートル規模の誤差になる | **確認済み**: `planetSystem()` が受け取る def は `planetDefAtEpoch` を通したもので、`PlanetSystem` はその `def.orbit` をそのまま持つ |
-| `motion.stateAt(pivot, t)` の2引数を1引数へ潰す | 外挿の基準時刻が変わり、積分1歩ぶんの誤差が静かに入る | 手順5。`windows.stateAt(id, pivot, t)` でも2引数を保つ |
+| `motion.stateAt(pivot, t)` の2引数を1引数へ潰す | 外挿の基準時刻が変わり、積分1歩ぶんの誤差が静かに入る | **確認済み**: `windows.stateAt(id, pivot, t = pivot)` で2引数を保った |
 | `CelestialEntity.sync` へ ECI を渡す形にしたとき、天体ごとに違う時刻で同期していた箇所が1時刻へ揃う(あるいは逆) | 表示だけがずれる | **解消**: sync へ値を渡す形をやめ、個体へ窓を差し込む形にしたので、各所が従来と同じ時刻で引く |
-| 104 の構築点を2度触るので、片方だけ直した状態で commit する | 型が通らない中途半端な commit が残る | 手順4・5。各手順の中で全ファイルを揃えてから typecheck を通す |
+| 104 の構築点を2度触るので、片方だけ直した状態で commit する | 型が通らない中途半端な commit が残る | **確認済み**: 各手順の中で全ファイルを揃え、commit ごとに typecheck と全テストを通した |
 | `celestialBodiesAt` が返す配列の**要素の同一性**が崩れる | 「同一 t には同一参照」に依存している呼び出し側(`trajectory-line.ts` の再描画判定など)が毎フレーム焼き直しになり、静かに重くなる | **確認済み**: 「同一 t の celestialBodiesAt は同一配列参照を返す」「gravityAttractorsAt の要素は同一 t の celestialBodiesAt と厳密に一致する」が通る |
 | `.epk` のワイヤ形式・`EPHEMERIS_PACK_VERSION` に触る | 既存セーブが全部 incompatible になる | **確認済み**: `ephemeris-pack/` の差分は型引数の4行だけで、ワイヤ形式・定数に触れていない |
 
