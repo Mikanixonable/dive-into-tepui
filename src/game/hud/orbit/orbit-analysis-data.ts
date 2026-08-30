@@ -5,7 +5,7 @@ import type { OrbitalElements } from '../../../physics/elements';
 import { semiMajorFromPeriod } from '../../../physics/elements';
 import { latLonOf } from '../../../physics/body-orientation';
 import { KinematicState } from '../../../physics/kinematic-state';
-import { dot, len, sub } from '../../../math/vec3';
+import { Vec3, dot, len, sub } from '../../../math/vec3';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import { OrbitCenter, entityStateAt } from '../../dynamic/entity-state-at';
 import type { CelestialSystem } from '../../celestial/celestial-system';
@@ -83,7 +83,7 @@ function wrapAngle(a: number): number {
 
 // C を中心とする target の軌道基底(pHat/qHat, target の hHat 由来)上での、position の位相角
 // (真近点角と同じ向き — trueAnomalyAt と同じ atan2(qHat 成分, pHat 成分))。
-function phaseAngleOn(el: OrbitalElements, positionRelCenter: KinematicState['r']): number {
+function phaseAngleOn(el: OrbitalElements, positionRelCenter: Vec3): number {
   return Math.atan2(dot(positionRelCenter, el.qHat), dot(positionRelCenter, el.pHat));
 }
 

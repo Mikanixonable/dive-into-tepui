@@ -500,8 +500,9 @@ export class PlanetMotion extends OrbitingMotion {
     let muTotal = this.def.mu;
     for (const moon of moons) muTotal += moon.def.mu;
 
-    let r = bary.r;
-    let v = bary.v;
+    // 位置 − 変位 = 位置。演算の途中は札の落ちた素の Vec3 で、名乗り直すのは kinematicState。
+    let r: Vec3 = bary.r;
+    let v: Vec3 = bary.v;
     for (const moon of moons) {
       const rel = moon.relStateAt(t);
       const w = moon.def.mu / muTotal;
