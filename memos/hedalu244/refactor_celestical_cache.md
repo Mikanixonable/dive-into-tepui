@@ -435,7 +435,9 @@ addPrimaryRelative(planet.analyticStateAt(t), system.starRelStateAt(t)) // 惑�
 | **S**: 畳み込みが解いた 24 系へ太陽系重心位置を配る | 24 + (同上) | **±0** | **±0** |
 
 参考: `CelestialSystem.celestialBodiesAt`(98体・新しい t)= 204.9 µs。
-**案 S を採る** — ①〜④を満たしたうえで⑤の悪化が無い。
+**案 S を採った。実施後の実測: 184.3 µs → 180.9 µs**(3000 t を3回、定常値)。悪化なし。
+**`celestial-eci-baseline.test.ts` はビット一致で通った** — 演算順を保てば一致するという
+見込み(8節)は当たった。
 
 **(b) 惑星相対を引き算で復元したときの精度**
 
@@ -454,37 +456,13 @@ addPrimaryRelative(planet.analyticStateAt(t), system.starRelStateAt(t)) // 惑�
 どちらも mm を問題にしない。**したがって「惑星系重心相対の補助キャッシュ」は
 いま置く必要がない**(置く判断は、mm を問題にする利用者が現れたときに戻す)。
 
-### 手順2 — `PlanetSystem` を「太陽系重心相対を答え、暦を結べるノード」にする
-
-**目的**: 基準①③。**パックが系重心を収録している以上、系重心はコード側でも
-一人前のノードでなければならない。** 同時に主星相対を保持値・公開値から外す(基準③)。
-
-**変更箇所**: `planet-system.ts`・`celestial-motion.ts`(`StarMotion`)・`celestial-system.ts`
-
-- `PlanetSystem` に **id** を与える(`planetSystem()` が `def.id` から作る)。
-- `PlanetSystem.analyticCache` を置き、**太陽系重心相対の系重心状態**を畳む。
-- `PlanetSystem` に `bindEphemeris` / `ownPackedStateAt` / `packedStateAt` を持たせる
-  (中身は `CelestialMotion` のものと同じ。**共通の口を切り出して両方が実装する**)。
-- **`starRelStateAt` と `starRelCache` を消す。**
-- **案 S**: `StarMotion.computeAnalyticStateAt` を2パスにする。
-  1. μ>0 の系ぶん `keplerOrbitState(system.orbit, t)` を解いて一時配列へ置き、`Σ w_i·r_i` を作る。
-  2. 自分の太陽系重心位置 `R_s = −Σ w_i·r_i` を確定し、**同じ一時配列から各系の
-     `R_i = R_s + r_i` を作って、その系の `analyticCache` へ書き込む。**
-  μ=0 の系は今までどおり自分の `analyticStateAt` で自分の二体解を1回だけ解く
-  (恒星の位置はキャッシュ済み)。**ケプラー解の回数は現状と同一**(7.1(a))。
-- 主星相対は、恒星の畳み込みの中の一時値と、μ=0 の系の自前計算の中の一時値としてだけ
-  残る。**どこにも保存されず、外へも出ない。**
-
-**落とし穴**: 恒星を持たない星系(`stage-debug-alt-system.ts`)は `StarMotion` が居ないので、
-`PlanetSystem` が自分で二体解を解いて太陽系重心相対とする分岐が要る(現状と同じ扱い)。
-
-**検証**: 手順1のテスト・`npm run test:physics`・`node tools/perf-probe.mjs`(前後で比較。
-7.1(a) の予測は ±0 なので、**差が出たら予測が外れたということ**)。
-`celestial-eci-baseline.test.ts` は落ちる(8節)。
-
 ### 手順3 — 暦パックに点の種別を持たせ、系重心の暦を系へ結ぶ(**6.1 の修正**)
 
 **目的**: 基準①②。手順2 で系重心が一人前のノードになっているので、**結び先を変えるだけ。**
+
+**手順2 から持ち越し**: `PlanetSystem` に **id** を与え(`planetSystem()` が `def.id` から作る)、
+`bindEphemeris` / `ownPackedStateAt` / `packedStateAt` を持たせる。手順2 で入れると
+使い道が無いまま置かれるので、こちらへ寄せた。
 
 **変更箇所**: `ephemeris-pack/format.ts`(manifest)・`packed-absolute-ephemeris.ts`・
 `celestial-system.ts:125`・`celestial-motion.ts`(`packedStateAt` 群)・

@@ -12,7 +12,7 @@ import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedT
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import {
   FrameRotation, JULIAN_CENTURY, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal,
-  keplerOrbitForSimZero, keplerOrbitRotation,
+  keplerOrbitForSimZero, keplerOrbitRotation, keplerOrbitState,
 } from './kepler-orbit';
 import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
 import type { PlanetSystem } from './planet-system';
@@ -215,6 +215,8 @@ export class StarMotion extends CelestialMotion {
 
   // 恒星の太陽系重心相対位置 −Σ(μ_i/μ_total)·r_i。r_i は各系の重心の**主星相対**位置なので、
   // 自分の位置を経由せず循環しない。系の内訳(惑星本体と衛星)は各系の重心が畳んでいる。
+  // 解いた r_i は捨てず、自分の位置が決まった時点で各系の太陽系重心状態へ組み直して配る —
+  // **主星相対の値がここから外へ出ないのはこのため。**
   private computeAnalyticStateAt(t: number): KinematicState<'analytic'> {
     // mu = 0 は「質量が未測定」であって質量0ではない。恒星の質量が分からない星系では重心の
     // 位置も決まらないので、補正せず恒星を原点に置いたままにする。
@@ -223,17 +225,22 @@ export class StarMotion extends CelestialMotion {
     let muTotal = this.def.mu;
     for (const system of this.systems) muTotal += system.mu;
 
+    const solved: { system: PlanetSystem; rel: KinematicState<'primaryRel'> }[] = [];
     let r = v3();
     let v = v3();
     for (const system of this.systems) {
       // 質量が未測定の系は重心を動かさない。小天体はほとんどがこれなので、二体解を解く前に抜ける。
       const w = system.mu / muTotal;
       if (w === 0) continue;
-      const rel = system.starRelStateAt(t);
+      const rel = keplerOrbitState(system.orbit, t);
+      solved.push({ system, rel });
       r = addScaled(r, rel.r, -w);
       v = addScaled(v, rel.v, -w);
     }
-    return kinematicState<'analytic'>(t, r, v);
+
+    const state = kinematicState<'analytic'>(t, r, v);
+    for (const { system, rel } of solved) system.receiveAnalyticState(addPrimaryRelative(state, rel));
+    return state;
   }
 
   // 恒星は自転姿勢を持たない。

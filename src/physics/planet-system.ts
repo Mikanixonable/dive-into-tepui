@@ -1,9 +1,9 @@
 // 惑星-衛星系。木構造の内側のノードで、系の重心が描く軌道と、その系に属する天体(惑星本体と
 // 衛星)を持つ。**重心と惑星本体は別のもの** — 惑星本体は重心から衛星ぶんを差し引いた位置に
 // あり、地球なら 4,673 km 離れる。
-// 評価の依存はこのノードを根に一方向へ流れる: 重心の主星相対(軌道だけで決まる)→ 衛星の
-// 惑星相対(重心の平均角から太陽方向を取る)→ 重心の太陽系重心位置(主星の重心相対位置を
-// 足す)→ 惑星本体(重心 − 衛星ぶん)→ 衛星の太陽系重心位置。
+// 評価の依存はこのノードを根に一方向へ流れる: 重心の主星相対二体解(軌道だけで決まる)→
+// 衛星の惑星相対(重心の平均角から太陽方向を取る)→ 重心の太陽系重心位置(主星の畳み込みが
+// 配る)→ 惑星本体(重心 − 衛星ぶん)→ 衛星の太陽系重心位置。
 // THREE/DOM 非依存。
 import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
 import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
@@ -13,33 +13,39 @@ import { TimeCacheStats, TimeRing } from './time-ring';
 
 export class PlanetSystem {
   private readonly moons: SatelliteMotion[] = [];
-  private readonly starRelCache = new TimeRing<KinematicState<'primaryRel'>>();
+  private readonly analyticCache = new TimeRing<KinematicState<'analytic'>>();
   private planetBody: PlanetMotion | null = null;
 
   // orbit は系の重心が主星まわりに描く軌道。
   constructor(readonly orbit: KeplerOrbit) {}
 
-  // 系の重心の主星相対状態。重心の軌道は中心が主星なので、二体解がそのまま主星相対になる。
-  // **主星の位置を経由しない**ので、主星がこれを集めて自分の重心相対位置を組んでも循環しない。
-  // 同じ時刻に複数回引かれるので1度へ畳む。
-  starRelStateAt(t: number): KinematicState<'primaryRel'> {
-    const cached = this.starRelCache.get(t);
-    if (cached !== undefined) return cached;
-    const s = keplerOrbitState(this.orbit, t);
-    return this.starRelCache.put(t, kinematicState<'primaryRel'>(t, s.r, s.v));
-  }
-
-  // 系の重心の太陽系重心状態。主星の重心相対位置に、主星相対の二体解を足す。
+  // 系の重心の太陽系重心状態。同じ時刻に複数回引かれるので1度へ畳む。
   analyticStateAt(t: number): KinematicState<'analytic'> {
+    const cached = this.analyticCache.get(t);
+    if (cached !== undefined) return cached;
     const star = this.body.star;
-    const rel = this.starRelStateAt(t);
     // 主星を持たない星系では、二体解の中心がそのまま原点。
-    if (star === null) return kinematicState<'analytic'>(t, rel.r, rel.v);
-    return addPrimaryRelative(star.analyticStateAt(t), rel);
+    if (star === null) {
+      const rel = keplerOrbitState(this.orbit, t);
+      return this.analyticCache.put(t, kinematicState<'analytic'>(t, rel.r, rel.v));
+    }
+    // 主星は自分の重心相対位置を組む過程で質量を持つ系ぶんの二体解を解いており、その通しで
+    // 各系の太陽系重心状態を配る。自分がその中にいれば、この呼び出しでキャッシュが埋まる。
+    const starState = star.analyticStateAt(t);
+    const filled = this.analyticCache.get(t);
+    if (filled !== undefined) return filled;
+    // 質量が未測定の系は主星の畳み込みに現れないので、自分で解く。
+    return this.analyticCache.put(t, addPrimaryRelative(starState, keplerOrbitState(this.orbit, t)));
   }
 
-  // 負荷確認ウィンドウが読む、主星相対の二体解の時刻キャッシュのヒット/ミス累計。
-  get cacheStats(): TimeCacheStats { return this.starRelCache.stats; }
+  // 主星の畳み込みが解いた二体解から組んだ太陽系重心状態を受け取る。**呼ぶのは
+  // StarMotion の畳み込みだけ** — 主星相対の二体解を外へ出さずに配るための口。
+  receiveAnalyticState(state: KinematicState<'analytic'>): void {
+    this.analyticCache.put(state.t, state);
+  }
+
+  // 負荷確認ウィンドウが読む、系の重心の時刻キャッシュのヒット/ミス累計。
+  get cacheStats(): TimeCacheStats { return this.analyticCache.stats; }
 
   // この系が重心を分け合う全質量(惑星本体 + 全衛星)。衛星は構築のたびに増えるので、
   // 構築時に畳まず引かれた時点で合算する。
