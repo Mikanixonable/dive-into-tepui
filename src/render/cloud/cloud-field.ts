@@ -9,7 +9,7 @@ import type { WeatherModel } from './weather-model';
 
 // model がいま指している時刻の雲を、projection の持ち方で焼く写し。読む前に render() を呼ぶ。
 export function createCloudField(model: WeatherModel, projection: FieldProjection): BakedField {
-  return new BakedField('cloud', THREE.RGBAFormat, projection, (direction) => {
+  return new BakedField('cloud', THREE.RGBAFormat, projection, 1, (direction) => {
     const cloud = condense(model.weatherAt(direction));
     return vec4(cloud.coverage, cloud.cloudTop, cloud.translucent, 1);
   });
