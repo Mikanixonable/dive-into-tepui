@@ -10,7 +10,8 @@ import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 export type CloudLabViewId =
   | 'elevation' | 'meanCloudiness'
   | 'pressure' | 'wind' | 'lift'
-  | 'humiditySource' | 'upperHumiditySource' | 'humidity' | 'upperHumidity'
+  | 'humiditySource' | 'upperHumiditySource' | 'convectionSource'
+  | 'humidity' | 'upperHumidity' | 'convection'
   | 'opaque' | 'translucent';
 
 export type CloudLabView = {
@@ -45,10 +46,12 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'pressure', label: '気圧', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
   { id: 'wind', label: '風', readsCloud: false, color: (d, model) => windColor(model.weatherAt(d).wind) },
   { id: 'lift', label: '上昇流', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).lift.div(2 * LIFT_SPAN).add(0.5)) },
-  { id: 'humiditySource', label: '移流前の湿度', readsCloud: false, color: (d, model) => vec3(model.humiditySourceAt(d).x) },
-  { id: 'upperHumiditySource', label: '移流前の上層湿度', readsCloud: false, color: (d, model) => vec3(model.humiditySourceAt(d).y) },
+  { id: 'humiditySource', label: '移流前の湿度', readsCloud: false, color: (d, model) => vec3(model.advectionSourceAt(d).x) },
+  { id: 'upperHumiditySource', label: '移流前の上層湿度', readsCloud: false, color: (d, model) => vec3(model.advectionSourceAt(d).y) },
+  { id: 'convectionSource', label: '移流前の対流', readsCloud: false, color: (d, model) => vec3(model.advectionSourceAt(d).z) },
   { id: 'humidity', label: '湿度', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).humidity) },
   { id: 'upperHumidity', label: '上層湿度', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).upperHumidity) },
+  { id: 'convection', label: '対流', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).convection) },
   { id: 'opaque', label: '不透明雲', readsCloud: true, color: (d, _m, _c, cloud) => vec3(cloud.at(d).r.div(OPAQUE_SPAN)) },
   { id: 'translucent', label: '薄い雲', readsCloud: true, color: (d, _m, _c, cloud) => vec3(cloud.at(d).g.div(TRANSLUCENT_SPAN)) },
 ];
