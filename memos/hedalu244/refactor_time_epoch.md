@@ -281,47 +281,6 @@ simTime 1軸だけなので、**`+` / `-` をヘルパ呼び出しへ置き換�
 
 ## 手順
 
-### 手順7. `epoch` 1語を軸ごとの語へ解体する
-
-**目的.** 契約が決まったので、`epoch` が3つの別物を指している状態を解く。
-**この時点で挙動は変えない**(純粋な改名)。`refactor_orbit_ephemeris.md` 2節と
-`rename-ephemeris.md` 1.6 が「別計画」として送った分がこれ。
-
-**変更が必要な箇所**
-
-| 現名 | 新名 | ファイル(件数は `d4df3da9`) |
-| --- | --- | --- |
-| `epochOffsetSec`(引数・ローカル) | `simZeroEt` | 9系ファイル + `celestial-motion.ts` / `kepler-orbit.ts` / `satellite-orbit.ts` / `celestial-body-def.ts`、計 132 件。**手順2 で `solar-system.ts` の 10 件は既に消えている** |
-| `planetDefAtEpoch` / `satelliteDefAtEpoch` | `planetDefForSimZero` / `satelliteDefForSimZero` | `celestial-motion.ts:81,89` と 9系ファイルの呼び出し |
-| `keplerOrbitAtEpoch` / `satelliteOrbitAtEpoch` / `poleModelAtEpoch` | `keplerOrbitForSimZero` / `satelliteOrbitForSimZero` / `poleModelForSimZero` | `kepler-orbit.ts:157` / `satellite-orbit.ts:119` / `celestial-body-def.ts:29` と呼び出し |
-| `OrbitEpoch` / `OrbitalElements.epoch` | `OrbitPhaseRef` / `.phaseRef` | `elements.ts:10,21,72,76,163-166,197` / `kepler-extrapolation.ts:49-50` / `tests/physics/elements.test.ts:33,42` / `tests/physics/kepler-orbit.test.ts:76` |
-
-`AtEpoch` の総数は src 123 + tests 28 = 151 件。すべて機械的な置換。
-
-**「元期における」ではなく「simTime=0 起点へ畳んだ」**という中身を名前に出すのが狙いなので、
-`AtEpoch`(前置詞 at = その時点における)を残さない。`OrbitEpoch` は元期ではなく位相の基準
-(`t` は simTime)なので、`epoch` の語自体を外す。
-
-**変更が必要な箇所(追加)**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-entity/{ammo-pickup,base,enemy}.ts` / `src/game/player/player.ts` / `src/game/game.ts:375` / `src/game/stages/spawner/enemy-generator.ts:70` | コメント中の「epoch で展開する」= 「時刻付き状態として復元する」の意。**`epoch` の語を落として「simTime 付きの状態として復元する」へ書き換える** |
-| `src/physics/ephemeris-pack/format.ts:23` | 「seconds from the J2000 ET epoch」はワイヤ形式の説明なので**据置**(ここだけが ET を語ってよい場所) |
-| `src/game/stages/stage.ts` の `STORY_EPOCH` / `StageClass.epoch` | **据置。** これは「元期」そのものを指す正しい用法 |
-| `src/game/celestial/solar-system/constants.ts:10` | `EPOCH_T_OFFSET` は**この手順では触らない**(手順8 で消える)。一括置換の対象から外すこと |
-
-**達成条件と検証**
-
-- `grep -rn "AtEpoch" src/ tests/` が **0 件**(`tests/dist` を除く)。
-- `grep -rn "OrbitEpoch" src/ tests/` が **0 件**。
-- `grep -rniE "\bepoch\b" src/` の残りが `physics/time/`・`stages/stage.ts` の元期宣言・
-  `ephemeris-pack/format.ts`・`save/` の元期フィールド・**`EPOCH_T_OFFSET`(手順8 で消える)**
-  だけであること。
-- `npm run typecheck`、`npm run test`(全層)。
-
----
-
 ### 手順8. 点群の元期を太陽系本体へ揃える(バグ修正)
 
 **目的.** 「決めたこと 6-(a)」を直す。**この手順は挙動を変える** — トロヤ群・ヒルダ群の
@@ -359,7 +318,6 @@ simTime 1軸だけなので、**`+` / `-` をヘルパ呼び出しへ置き換�
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 7 | src 14 ファイル・tests 8 ファイル | `AtEpoch` 151 + `epochOffsetSec` 122(手順2 後)+ `OrbitEpoch` 11 = 284 件。うち約 250 件は9系ファイルの `planetDefForSimZero(X, phases, simZeroEt)` 形の同一パターン |
 | 8 | src 3 ファイル・tests 4 ファイル | `EPOCH_T_OFFSET` 参照 13 箇所 + 新規テスト1本 |
 
 **件数の大半は手順7** で、`\b` 境界付きの一括置換で機械的に片付く。**判断が要るのは手順4**

@@ -3,7 +3,7 @@ import saturnTextureUrl from '../../../assets/2k_saturn.jpg';
 import titanTextureUrl from '../../../assets/2k_titan.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
@@ -191,87 +191,87 @@ export const SATURN_SYSTEM_NAMES: Record<SaturnSystemBodyId, string> = {
 
 // 土星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function saturnSystem(
-  sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
+  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
   pack: HelioEphemeris | null,
 ): Record<SaturnSystemBodyId, CelestialEntity> {
-  const saturn = planetSystem(planetDefAtEpoch(SATURN, phases, epochOffsetSec), sun, pack);
+  const saturn = planetSystem(planetDefForSimZero(SATURN, phases, simZeroEt), sun, pack);
   return {
     // 惑星は戦闘ビューでは輝点スプライトとして描くので PointEntity。
     saturn: new PointEntity(saturn.body, SATURN_SYSTEM_NAMES.saturn, 'planet', CelestialSurface.textured(SATURN_TEXTURE)),
     // パン A_B=0.28(幾何 0.5 x q=0.564)
     pan: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(PAN, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(PAN, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.pan, 'satellite', CelestialSurface.solid([0.3326, 0.2699, 0.2252]),
     ),
     // ダフニス A_B=0.28(分類既定 幾何 0.5 x q=0.564)
     daphnis: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(DAPHNIS, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(DAPHNIS, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.daphnis, 'satellite', CelestialSurface.solid([0.3326, 0.2699, 0.2252]),
     ),
     // プロメテウス A_B=0.34(幾何 0.6 x q=0.564)
     prometheus: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(PROMETHEUS, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(PROMETHEUS, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.prometheus, 'satellite', CelestialSurface.solid([0.3956, 0.3294, 0.2814]),
     ),
     // パンドラ A_B=0.34(幾何 0.6 x q=0.564)
     pandora: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(PANDORA, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(PANDORA, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.pandora, 'satellite', CelestialSurface.solid([0.3956, 0.3294, 0.2814]),
     ),
     // エピメテウス A_B=0.41(幾何 0.73 x q=0.564)
     epimetheus: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(EPIMETHEUS, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(EPIMETHEUS, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.epimetheus, 'satellite', CelestialSurface.solid([0.4694, 0.3987, 0.3469]),
     ),
     // ヤヌス A_B=0.4(幾何 0.71 x q=0.564)
     janus: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(JANUS, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(JANUS, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.janus, 'satellite', CelestialSurface.solid([0.4580, 0.3890, 0.3385]),
     ),
     // ミマス A_B=0.54(幾何 0.962 x q=0.564)
     mimas: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(MIMAS, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(MIMAS, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.mimas, 'satellite', CelestialSurface.solid([0.5631, 0.5382, 0.4903]),
     ),
     // エンケラドゥス A_B=0.81(公表ボンド 0.81(幾何は 1.375))
     enceladus: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(ENCELADUS, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(ENCELADUS, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.enceladus, 'satellite', CelestialSurface.solid([0.8249, 0.8089, 0.7774]),
     ),
     // テティス A_B=0.69(幾何 1.229 x q=0.564)
     tethys: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(TETHYS, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(TETHYS, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.tethys, 'satellite', CelestialSurface.solid([0.7185, 0.6877, 0.6284]),
     ),
     // ディオネ A_B=0.56(幾何 0.998 x q=0.564)
     dione: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(DIONE, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(DIONE, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.dione, 'satellite', CelestialSurface.solid([0.5844, 0.5580, 0.5074]),
     ),
     // レア A_B=0.54(幾何 0.949 x q=0.564)
     rhea: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(RHEA, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(RHEA, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.rhea, 'satellite', CelestialSurface.solid([0.5622, 0.5382, 0.4920]),
     ),
     titan: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(TITAN, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(TITAN, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.titan, 'satellite',
       // 平均輝度 0.2425(A_B は幾何 0.22 x q=0.564)
       CelestialSurface.textured({ url: titanTextureUrl, albedoScale: 0.5113, bondAlbedo: 0.124, averageHue: [1, 1, 1] }),
     ),
     // ヒペリオン A_B=0.14(幾何 0.30 x q=0.461)
     hyperion: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(HYPERION, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(HYPERION, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.hyperion, 'satellite', CelestialSurface.solid([0.1617, 0.1375, 0.1009]),
     ),
     // イアペトゥス A_B=0.12(幾何は明暗半球で 0.05-0.5。全球平均 0.27 x q=0.461)
     iapetus: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(IAPETUS, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(IAPETUS, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.iapetus, 'satellite', CelestialSurface.solid([0.1296, 0.1189, 0.1023]),
     ),
     // フェーベ A_B=0.024(幾何 0.06 x q=0.393)
     phoebe: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(PHOEBE, phases, epochOffsetSec), saturn, pack),
+      new SatelliteMotion(satelliteDefForSimZero(PHOEBE, phases, simZeroEt), saturn, pack),
       SATURN_SYSTEM_NAMES.phoebe, 'satellite', CelestialSurface.solid([0.0276, 0.0234, 0.0196]),
     ),
   };

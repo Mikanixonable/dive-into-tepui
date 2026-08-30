@@ -46,8 +46,8 @@ export function extrapolatedRelativeStates(
 ): KinematicState<'primaryRel'>[] {
   if (count <= 0 || untilT <= tip.t) return [];
   const el = findExtrapolationOrbit(tip, center);
-  if (el === null || el.epoch === null) return [];
-  const nu0 = el.epoch.nu;
+  if (el === null || el.phaseRef === null) return [];
+  const nu0 = el.phaseRef.nu;
   const e = el.e;
   const n = (2 * Math.PI) / el.period;
 

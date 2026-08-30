@@ -6,7 +6,7 @@ import ioTextureUrl from '../../../assets/2k_io.jpg';
 import jupiterTextureUrl from '../../../assets/2k_jupiter.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/planet-orbit';
@@ -178,10 +178,10 @@ export const JUPITER_SYSTEM_NAMES: Record<JupiterSystemBodyId, string> = {
 
 // 木星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function jupiterSystem(
-  sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
+  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
   pack: HelioEphemeris | null,
 ): Record<JupiterSystemBodyId, CelestialEntity> {
-  const jupiter = planetSystem(planetDefAtEpoch(JUPITER, phases, epochOffsetSec), sun, pack);
+  const jupiter = planetSystem(planetDefForSimZero(JUPITER, phases, simZeroEt), sun, pack);
   return {
     jupiter: new PointEntity(
       jupiter.body, JUPITER_SYSTEM_NAMES.jupiter, 'planet',
@@ -190,76 +190,76 @@ export function jupiterSystem(
     ),
     // メティス A_B=0.024(幾何 0.061 x q=0.393)
     metis: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(METIS, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(METIS, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.metis, 'satellite', CelestialSurface.solid([0.0285, 0.0231, 0.0193]),
     ),
     // アドラステア A_B=0.039(幾何 0.10 x q=0.393)
     adrastea: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(ADRASTEA, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(ADRASTEA, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.adrastea, 'satellite', CelestialSurface.solid([0.0463, 0.0376, 0.0314]),
     ),
     // アマルテア A_B=0.035(幾何 0.090 x q=0.393)
     amalthea: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(AMALTHEA, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(AMALTHEA, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.amalthea, 'satellite', CelestialSurface.solid([0.0673, 0.0271, 0.0181]),
     ),
     // テーベ A_B=0.018(幾何 0.047 x q=0.393)
     thebe: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(THEBE, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(THEBE, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.thebe, 'satellite', CelestialSurface.solid([0.0214, 0.0174, 0.0145]),
     ),
     io: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(IO, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(IO, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.io, 'satellite',
       // 平均輝度 0.2621(A_B は幾何 0.63 x q=0.564)
       CelestialSurface.textured({ url: ioTextureUrl, albedoScale: 1.3543, bondAlbedo: 0.355, averageHue: [1.3697, 0.9471, 0.4357] }),
     ),
     europa: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(EUROPA, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(EUROPA, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.europa, 'satellite',
       // 平均輝度 0.3127(A_B は幾何 0.67 x q=0.564)
       CelestialSurface.textured({ url: europaTextureUrl, albedoScale: 1.2089, bondAlbedo: 0.378, averageHue: [1, 1, 1] }),
     ),
     ganymede: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(GANYMEDE, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(GANYMEDE, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.ganymede, 'satellite',
       // 平均輝度 0.1777(A_B は幾何 0.43 x q=0.564)
       CelestialSurface.textured({ url: ganymedeTextureUrl, albedoScale: 1.3675, bondAlbedo: 0.243, averageHue: [1.0763, 0.9959, 0.8162] }),
     ),
     callisto: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(CALLISTO, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(CALLISTO, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.callisto, 'satellite',
       // 平均輝度 0.0491(A_B は公表ボンド)
       CelestialSurface.textured({ url: callistoTextureUrl, albedoScale: 2.2403, bondAlbedo: 0.11, averageHue: [1, 1, 1] }),
     ),
     // ヒマリア A_B=0.016(幾何 0.04 x q=0.393)
     himalia: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(HIMALIA, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(HIMALIA, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.himalia, 'satellite', CelestialSurface.solid([0.0190, 0.0156, 0.0114]),
     ),
     // エララ A_B=0.016(分類既定 幾何 0.04 x q=0.393)
     elara: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(ELARA, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(ELARA, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.elara, 'satellite', CelestialSurface.solid([0.0206, 0.0151, 0.0108]),
     ),
     // アナンケ A_B=0.016(分類既定 幾何 0.04 x q=0.393)
     ananke: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(ANANKE, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(ANANKE, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.ananke, 'satellite', CelestialSurface.solid([0.0188, 0.0156, 0.0121]),
     ),
     // カルメ A_B=0.016(分類既定 幾何 0.04 x q=0.393)
     carme: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(CARME, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(CARME, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.carme, 'satellite', CelestialSurface.solid([0.0190, 0.0154, 0.0129]),
     ),
     // パシファエ A_B=0.016(分類既定 幾何 0.04 x q=0.393)
     pasiphae: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(PASIPHAE, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(PASIPHAE, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.pasiphae, 'satellite', CelestialSurface.solid([0.0197, 0.0153, 0.0116]),
     ),
     // シノーペ A_B=0.016(分類既定 幾何 0.04 x q=0.393)
     sinope: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(SINOPE, phases, epochOffsetSec), jupiter, pack),
+      new SatelliteMotion(satelliteDefForSimZero(SINOPE, phases, simZeroEt), jupiter, pack),
       JUPITER_SYSTEM_NAMES.sinope, 'satellite', CelestialSurface.solid([0.0203, 0.0152, 0.0112]),
     ),
   };

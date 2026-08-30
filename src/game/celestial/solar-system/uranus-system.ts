@@ -2,7 +2,7 @@
 import uranusTextureUrl from '../../../assets/2k_uranus.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
@@ -99,10 +99,10 @@ export const URANUS_SYSTEM_NAMES: Record<UranusSystemBodyId, string> = {
 
 // 天王星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function uranusSystem(
-  sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
+  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
   pack: HelioEphemeris | null,
 ): Record<UranusSystemBodyId, CelestialEntity> {
-  const uranus = planetSystem(planetDefAtEpoch(URANUS, phases, epochOffsetSec), sun, pack);
+  const uranus = planetSystem(planetDefForSimZero(URANUS, phases, simZeroEt), sun, pack);
   return {
     uranus: new PointEntity(
       uranus.body, URANUS_SYSTEM_NAMES.uranus, 'planet',
@@ -110,37 +110,37 @@ export function uranusSystem(
       CelestialSurface.textured({ url: uranusTextureUrl, albedoScale: 0.5320, bondAlbedo: 0.3, averageHue: [0.6079, 1.0981, 1.1831] }),
     ),
     puck: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(PUCK, phases, epochOffsetSec), uranus, pack),
+      new SatelliteMotion(satelliteDefForSimZero(PUCK, phases, simZeroEt), uranus, pack),
       URANUS_SYSTEM_NAMES.puck, 'satellite',
       // A_B=0.051(幾何 0.11 x q=0.461)
       CelestialSurface.solid([0.0536, 0.0508, 0.0455]),
     ),
     miranda: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(MIRANDA, phases, epochOffsetSec), uranus, pack),
+      new SatelliteMotion(satelliteDefForSimZero(MIRANDA, phases, simZeroEt), uranus, pack),
       URANUS_SYSTEM_NAMES.miranda, 'satellite',
       // A_B=0.18(幾何 0.32 x q=0.564)
       CelestialSurface.solid([0.1875, 0.1791, 0.1668]),
     ),
     ariel: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(ARIEL, phases, epochOffsetSec), uranus, pack),
+      new SatelliteMotion(satelliteDefForSimZero(ARIEL, phases, simZeroEt), uranus, pack),
       URANUS_SYSTEM_NAMES.ariel, 'satellite',
       // A_B=0.3(幾何 0.53 x q=0.564)
       CelestialSurface.solid([0.3059, 0.2996, 0.2871]),
     ),
     umbriel: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(UMBRIEL, phases, epochOffsetSec), uranus, pack),
+      new SatelliteMotion(satelliteDefForSimZero(UMBRIEL, phases, simZeroEt), uranus, pack),
       URANUS_SYSTEM_NAMES.umbriel, 'satellite',
       // A_B=0.15(幾何 0.26 x q=0.564)
       CelestialSurface.solid([0.1562, 0.1490, 0.1420]),
     ),
     titania: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(TITANIA, phases, epochOffsetSec), uranus, pack),
+      new SatelliteMotion(satelliteDefForSimZero(TITANIA, phases, simZeroEt), uranus, pack),
       URANUS_SYSTEM_NAMES.titania, 'satellite',
       // A_B=0.2(幾何 0.35 x q=0.564)
       CelestialSurface.solid([0.2044, 0.2000, 0.1872]),
     ),
     oberon: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(OBERON, phases, epochOffsetSec), uranus, pack),
+      new SatelliteMotion(satelliteDefForSimZero(OBERON, phases, simZeroEt), uranus, pack),
       URANUS_SYSTEM_NAMES.oberon, 'satellite',
       // A_B=0.17(幾何 0.31 x q=0.564)
       CelestialSurface.solid([0.1773, 0.1694, 0.1543]),

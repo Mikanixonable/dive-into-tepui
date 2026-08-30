@@ -96,8 +96,8 @@ export function planExecutionLabel(mode: PlanExecutionMode): string {
 }
 
 // 新規配置は name/state/id/ammo を任意指定し、省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の
-// 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime の
-// epoch で展開する。
+// 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime 付きの
+// 状態として展開する。
 export type PlayerInit =
   | { readonly name?: string; readonly state?: KinematicState; readonly id?: string; readonly ammo?: AmmoLoad }
   | { readonly saved: PlayerSaveData; readonly simTime: number };

@@ -84,7 +84,7 @@ export interface BaseState {
 const idAllocator = new EntityIdAllocator('base-');
 
 // 新規配置は state/name/att をそのまま使い、スナップショットからの再開は saved を
-// simTime の epoch で展開する。
+// simTime 付きの状態として展開する。
 type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
