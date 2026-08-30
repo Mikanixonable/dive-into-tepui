@@ -58,7 +58,7 @@ export function solarSystem(
   const simZeroEt = ephemerisSeconds(epoch);
   const pack = absoluteSource === null
     ? null
-    : new HelioEphemeris(absoluteSource, SUN.id, epoch.value);
+    : new HelioEphemeris(absoluteSource, SUN.id);
   const sunMotion = new StarMotion(SUN, pack);
   // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
   const sun = new StarEntity(
