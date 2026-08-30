@@ -1,6 +1,7 @@
-// 大気の大循環。単位方向を、そこに効く緯度帯の流れに乗せた「ノイズ空間の位置」へ写す。帯は
-// 赤道を挟んで鏡像に並ぶ 6 本で、境目では隣り合う 2 本を混ぜる。角速度の表は層ごとに違うので
-// 持ち込みで受け取り、帯の中心緯度と混ぜ幅だけを層のあいだで共有する。
+// 大気の大循環。単位方向を、そこに効く緯度帯の流れに乗せた「ノイズ空間の位置」へ写すのと、
+// そこに効く平均風を返すのを担う。帯は赤道を挟んで鏡像に並ぶ 6 本で、境目では隣り合う 2 本が
+// 重なる。角速度の表は層ごとに違うので持ち込みで受け取り、帯の中心緯度と混ぜ幅だけを層のあいだで
+// 共有する。
 //
 // 東西の流れは自転軸まわりの回転、南北の流れは公転で作る。公転は、球を公転の中心から離してから
 // 回すので、球の極は常に進行方向を向き、模様の湧き出し口は北極に、吸い込み口は南極に固定される
@@ -8,10 +9,10 @@
 // どちらも 2π で畳めるので、時刻がどれだけ進んでもノイズ空間の座標は有界に留まる。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, abs, clamp, float, greaterThan, int, inverseSqrt, round, sign, smoothstep, uniform, uniformArray, vec3,
+  Fn, If, abs, clamp, cos, float, greaterThan, int, round, sign, sin, smoothstep, uniform, uniformArray, vec3,
 } from 'three/tsl';
 import { latitudeOf } from './sphere-frame';
-import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 1 本の帯で模様が進む角速度 [°/日]。east が東向き(経度の進み)、north が北向き(緯度の進み)。
 // **速さ [m/s] ではなく角速度で持つ。** この流れは伸びではなく見えの動きを作るもので、移流が
@@ -58,11 +59,20 @@ const ORBIT_RADIUS = 30;
 const BREATH_AMPLITUDE = 0.05;
 const BREATH_PERIOD = 7 * 86400;
 
+// 帯 1 本と、そこへ寄せる重み。混ざる 2 本の重みは二乗和が 1 に保たれる対で、境目ではどちらも
+// 1/√2 になる。
+type WeightedBand = {
+  readonly index: FloatNode;
+  readonly weight: FloatNode;
+};
+
 export class Circulation {
   // 帯ごとの (cos 自転角, sin 自転角, cos 公転位相, sin 公転位相)。書き換えるのはこちらで、
   // uniform 配列は描画のたびにここから詰め直される。
   private readonly flows: THREE.Vector4[];
   private readonly flowArray: THREE.UniformArrayNode<'vec4'>;
+  // 帯ごとの角速度 [°/日](x が東向き、y が北向き)。
+  private readonly windArray: THREE.UniformArrayNode<'vec2'>;
   // 呼吸の位相(赤道での半径の伸び)。
   private readonly breath: FloatUniform = uniform(0);
 
@@ -70,6 +80,7 @@ export class Circulation {
   public constructor(private readonly bands: readonly CirculationBand[]) {
     this.flows = bands.map(() => new THREE.Vector4(1, 0, 1, 0));
     this.flowArray = uniformArray(this.flows, 'vec4');
+    this.windArray = uniformArray(bands.map((band) => new THREE.Vector2(band.east, band.north)), 'vec2');
     this.syncTime(0);
   }
 
@@ -86,33 +97,46 @@ export class Circulation {
   }
 
   // 単位方向 direction の模様を、そこに効く帯の流れへ乗せて sample した値。sample へ渡る位置は、
-  // 球の半径を 1 とするノイズ空間の位置。境目では隣り合う 2 本を混ぜる — 重みは二乗和が 1 になるよう
-  // 正規化してあるので、独立な 2 枚を混ぜても境目で振幅が落ちない。
+  // 球の半径を 1 とするノイズ空間の位置。境目では隣り合う 2 本を混ぜる。
   //
   // **sample を書くのは 2 箇所まで。** sample はノイズの評価そのもので、書いた数だけシェーダが
   // 膨らむ。2 枚目を評価するのは混ざる範囲にいるときだけで、分岐の向きは緯度だけで決まるので、
   // 画面のまとまった範囲で揃う。
   public carry(direction: Vec3Node, sample: (position: Vec3Node) => FloatNode): FloatNode {
     return Fn(() => {
-      const band = clamp(float(FIRST_LATITUDE).sub(latitudeOf(direction)).div(BAND_SPACING), 0, this.bands.length - 1);
-      const nearest = round(band).toVar();
-      const offset = band.sub(nearest).toVar();
-      // 隣の帯へ寄せる重み。混ざる範囲の外では 0 になり、そこは近い 1 本だけで済む。
-      const blend = smoothstep(0.5 - BLEND_WIDTH / 2, 0.5 + BLEND_WIDTH / 2, abs(offset)).toVar();
+      const [near, far] = this.bandsAt(direction);
       // 呼吸を効かせる度合い。cos²(緯度) をもう一度掛けてあるのは、公転が既に法線を向いている
       // 中緯度で張り合わせないため。
       const cosLatitude2 = float(1).sub(direction.y.mul(direction.y));
       const breathing = direction.mul(this.breath.mul(cosLatitude2).mul(cosLatitude2).add(1)).toVar();
 
-      const carried = sample(this.positionAt(breathing, nearest)).toVar();
-      If(greaterThan(blend, 0), () => {
-        const rest = float(1).sub(blend);
-        const scale = inverseSqrt(blend.mul(blend).add(rest.mul(rest)));
-        carried.assign(carried.mul(rest.mul(scale))
-          .add(sample(this.positionAt(breathing, nearest.add(sign(offset)))).mul(blend.mul(scale))));
+      const carried = sample(this.positionAt(breathing, near.index)).mul(near.weight).toVar();
+      If(greaterThan(far.weight, 0), () => {
+        carried.addAssign(sample(this.positionAt(breathing, far.index)).mul(far.weight));
       });
       return carried;
     })();
+  }
+
+  // 単位方向 direction における平均風 [°/日](x が東向き、y が北向き)。重なる帯は足し合わさる。
+  public meanWindAt(direction: Vec3Node): Vec2Node {
+    const [near, far] = this.bandsAt(direction);
+    return this.windArray.element(int(near.index)).mul(near.weight)
+      .add(this.windArray.element(int(far.index)).mul(far.weight));
+  }
+
+  // 単位方向 direction に効く帯 2 本。[0] がいちばん近い帯、[1] がその隣で、[1] の重みは混ざる
+  // 範囲の外では 0 になる。
+  private bandsAt(direction: Vec3Node): readonly [WeightedBand, WeightedBand] {
+    const band = clamp(float(FIRST_LATITUDE).sub(latitudeOf(direction)).div(BAND_SPACING), 0, this.bands.length - 1);
+    const nearest = round(band).toVar();
+    const offset = band.sub(nearest).toVar();
+    // 近い帯から隣の帯へ渡る 4 分の 1 回転。cos と sin で受けるので、渡るあいだ二乗和が 1 に保たれる。
+    const angle = smoothstep(0.5 - BLEND_WIDTH / 2, 0.5 + BLEND_WIDTH / 2, abs(offset)).mul(Math.PI / 2).toVar();
+    return [
+      { index: nearest, weight: cos(angle) },
+      { index: nearest.add(sign(offset)), weight: sin(angle) },
+    ];
   }
 
   // 帯 index の流れに乗せた point の位置。point は呼吸で伸縮させた単位方向。自転軸が +Y、
