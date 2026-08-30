@@ -25,8 +25,8 @@ export type CloudLabView = {
 };
 
 // 表示値 0..1 へ写すときの目盛り。雲頂高度は 0..15000 m、薄い雲の光学的厚みは 0..1、気圧は
-// −70..+30 hPa、上昇流は ±0.1 m/s を、対流は ±0.5 をそれぞれ 0.5 中心に、風は ±25 m/s(並の風が
-// 読める幅。台風の芯は飽和する)を 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
+// −70..+30 hPa、上昇流は ±0.1 m/s を、対流は ±0.5 をそれぞれ 0.5 中心に、風は ±45 m/s(台風の芯の
+// 風速まで飽和させない幅)を 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
 // 被覆率と湿度はそのまま出す。
 const CLOUD_TOP_SPAN = 15000;
 const CONVECTION_SPAN = 0.5;
@@ -34,7 +34,7 @@ const TRANSLUCENT_SPAN = 1;
 const PRESSURE_MIN = -70;
 const PRESSURE_SPAN = 100;
 const LIFT_SPAN = 0.1;
-const WIND_SPAN = 25;
+const WIND_SPAN = 45;
 const ELEVATION_SPAN = 8000;
 
 // 風 [m/s] の東・北成分を 0.5 中心の RG に、速さを B に。
