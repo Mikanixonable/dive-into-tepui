@@ -4,6 +4,7 @@ import {
   CelestialBodyDef, CelestialMotion, OrbitingMotion, PhaseOffsets,
 } from '../../physics/celestial-motion';
 import { AbsoluteEphemeris } from '../../physics/absolute-ephemeris';
+import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from '../../physics/reference-frames';
 import {
   CelestialBody, CelestialBodyWindows, celestialBodyStateAt,
@@ -72,13 +73,16 @@ export class CelestialSystem implements CelestialBodyWindows {
   readonly motions: readonly CelestialMotion[];
   // 主星の個体。恒星を持たない星系では null。
   private readonly starEntity: StarEntity | null;
+  // 天体の値を ECI へ移す変換器。**どの天体を原点に置くかは系レベルの選択**なので正本はここが
+  // 持ち、個体へは参照を配る。
+  private readonly eciTransform: EciTransform;
   // 座標系の同一性。entities の motion から組む。
   private readonly referenceFrames: ReferenceFrames;
 
   // mu が 0 でない天体と、大気を持つ天体(いずれも宣言順)。どちらも時刻に依らないので
   // 構築時に確定する。
-  private readonly gravityMotions: readonly CelestialMotion[];
-  private readonly atmosphereMotions: readonly CelestialMotion[];
+  private readonly gravityEntities: readonly CelestialEntity[];
+  private readonly atmosphereEntities: readonly CelestialEntity[];
 
   // 同一時刻の集合。値は天体1体ずつが答えるので、ここが畳むのは配列の同一参照だけ。
   private readonly allCache = new TimeRing<readonly CelestialBody[]>();
@@ -111,13 +115,14 @@ export class CelestialSystem implements CelestialBodyWindows {
     absoluteSource: AbsoluteEphemeris | null = null,
   ) {
     this.motions = entities.map((b) => b.motion);
-    this.gravityMotions = this.motions.filter((m) => m.def.mu !== 0);
-    this.atmosphereMotions = this.motions.filter(
-      (m) => m instanceof OrbitingMotion && m.def.atmosphere !== undefined,
+    this.gravityEntities = entities.filter((b) => b.def.mu !== 0);
+    this.atmosphereEntities = entities.filter(
+      (b) => b.motion instanceof OrbitingMotion && b.motion.def.atmosphere !== undefined,
     );
-    this.referenceFrames = new ReferenceFrames(this.motions, origin.motion);
-    // 天体1体ぶんの値は個体が答えるので、その供給源(ECI 原点・暦)はここで1度だけ配る。
-    for (const motion of this.motions) motion.bindEciOrigin(origin.motion);
+    this.eciTransform = new EciTransform(origin.motion);
+    this.referenceFrames = new ReferenceFrames(this.motions, this.eciTransform);
+    // 天体1体ぶんの値は個体が答えるので、その供給源(ECI 変換器・暦)はここで1度だけ配る。
+    for (const entity of entities) entity.bindEciTransform(this.eciTransform);
     if (absoluteSource !== null) {
       for (const motion of this.motions) motion.bindEphemeris(absoluteSource.bodyEphemerisOf(motion.id));
     }
@@ -183,25 +188,25 @@ export class CelestialSystem implements CelestialBodyWindows {
   celestialBodiesAt(t: number): readonly CelestialBody[] {
     const cached = this.allCache.get(t);
     if (cached !== undefined) return cached;
-    return this.allCache.put(t, this.motions.map((m) => m.celestialBodyAt(t)));
+    return this.allCache.put(t, this.entities.map((b) => b.bodyAt(t)));
   }
 
   // 指定時刻の重力源天体(mu が 0 でないもの、宣言順)。
   gravityAttractorsAt(t: number): readonly CelestialBody[] {
     const cached = this.gravityCache.get(t);
     if (cached !== undefined) return cached;
-    return this.gravityCache.put(t, this.gravityMotions.map((m) => m.celestialBodyAt(t)));
+    return this.gravityCache.put(t, this.gravityEntities.map((b) => b.bodyAt(t)));
   }
 
   // 指定時刻の大気を持つ天体(宣言順)。抗力を掛ける1体を選ぶ側が引く窓。
   atmosphereCelestialBodiesAt(t: number): readonly CelestialBody[] {
     const cached = this.atmosphereCache.get(t);
     if (cached !== undefined) return cached;
-    return this.atmosphereCache.put(t, this.atmosphereMotions.map((m) => m.celestialBodyAt(t)));
+    return this.atmosphereCache.put(t, this.atmosphereEntities.map((b) => b.bodyAt(t)));
   }
 
   // 1天体ぶんの時刻 t での重力源表現。予測弧の候補供給(FutureCelestialBodyProvider)もこれで満たす。
-  celestialBodyAt(id: string, t: number): CelestialBody { return this.entityOf(id).motion.celestialBodyAt(t); }
+  celestialBodyAt(id: string, t: number): CelestialBody { return this.entityOf(id).bodyAt(t); }
 
   // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと
   // pivot 自身の厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
@@ -232,6 +237,8 @@ export class CelestialSystem implements CelestialBodyWindows {
     const celestialBodies = this.allCache.stats;
     let time = addTimeCacheStats(this.allCache.stats, this.gravityCache.stats);
     time = addTimeCacheStats(time, this.atmosphereCache.stats);
+    time = addTimeCacheStats(time, this.eciTransform.cacheStats);
+    for (const entity of this.entities) time = addTimeCacheStats(time, entity.cacheStats);
     for (const motion of this.motions) time = addTimeCacheStats(time, motion.cacheStats);
     return {
       celestialBodiesCacheHits: celestialBodies.hits, celestialBodiesCacheMisses: celestialBodies.misses,
