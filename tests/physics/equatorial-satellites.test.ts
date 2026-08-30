@@ -24,11 +24,11 @@ const DEFS = solarSystemParts();
 // 衛星を1体も登録せずに組んだ primaryDef の惑星の、時刻 t での ECI 位置。原点(地球)側は
 // 本来どおり月まで組む — 原点天体の日心位置がずれると ECI 位置の比較にならない。
 function withoutSatellitePosition(primaryDef: PlanetDef, t: number): Vec3 {
-  const sun = new StarMotion(SUN, null);
-  const earth = planetSystem(planetDefForSimZero(EARTH, {}, TEST_SIM_ZERO_ET), sun, null);
+  const sun = new StarMotion(SUN);
+  const earth = planetSystem(planetDefForSimZero(EARTH, {}, TEST_SIM_ZERO_ET), sun);
   // 月は構築するだけで地球-月系の重心補正の対象として登録される。
-  new SatelliteMotion(satelliteDefForSimZero(MOON, {}, TEST_SIM_ZERO_ET), earth, null);
-  const bare = planetSystem(planetDefForSimZero(primaryDef, {}, TEST_SIM_ZERO_ET), sun, null);
+  new SatelliteMotion(satelliteDefForSimZero(MOON, {}, TEST_SIM_ZERO_ET), earth);
+  const bare = planetSystem(planetDefForSimZero(primaryDef, {}, TEST_SIM_ZERO_ET), sun);
   const windows = new CelestialBodyWindows([sun, earth.body, bare.body], earth.body);
   return windows.stateAt(bare.body.id, t).r;
 }
