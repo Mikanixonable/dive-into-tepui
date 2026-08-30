@@ -16,6 +16,9 @@
   **1.5 nm** と4桁以上違う。physics/celestial にこの都合を持ち込まない。
 - したがって **ECI 変換は game/celestial(あるいはそこが physics/frame へ委譲する形)で行い、
   `CelestialMotion` は ECI も原点天体も知らない。**
+- **分担は「個体は `CelestialEntity`、集合は `CelestialSystem`」。** 1体ぶんの ECI 変換は
+  `CelestialMotion` から `CelestialEntity` へ移し、**変換した結果を集めて配列にするのは
+  `CelestialSystem`。** 変換と収集は別の操作で、前者だけが個体の仕事。
 - **全天体が自分の位置をキャッシュしてよい。** ECI が要るときは「その天体の値」と
   「ECI 原点天体の値」を組み合わせる。**組み合わせるのは変換側の仕事で、天体側ではない。**
 
@@ -32,7 +35,7 @@
 | `CelestialMotion`(全体) | 暦パックの位置・速度 | 太陽系重心 | 無し | ○(→ 争点A) |
 | `CelestialMotion`(全体) | **自分の ECI 瞬間値** | **ECI** | `eciCache`(`:122`) | **✕ 方針に反する** |
 | `CelestialMotion`(全体) | **ECI 原点天体の一式** | 恒星中心 + 太陽系重心 | `eciOriginCache`(`:123`) | **✕ 他天体の値を全天体が持っている** |
-| `CelestialSystem` | 天体の集合 | ECI | `allCache` ほか3本(`celestial-system.ts:84-86`) | game 側なので位置としては○(→ 争点F) |
+| `CelestialSystem` | 天体の集合 | ECI | `allCache` ほか3本(`celestial-system.ts:84-86`) | ○(集合を扱うのは系) |
 | `DynamicEntity` | 機体の状態 | ECI | — | ○ |
 | `FrameAnchors` | 1フレームぶんの天体配列 | ECI | フレーム単位 + 文字列キーの1件メモ(`frame-anchors.ts:31-32`) | 文字列キーは別件(→ 争点D) |
 | `FloatingOrigin` | 描画原点 | ECI | フレーム単位 | ○ |
@@ -161,18 +164,11 @@ ECI で揃っている必要がある。
   `srpAccel(r, …)` / `sunlitFactor(r, …)` / `celestialBodyPositionAt` の戻り
 - `FloatingOrigin.r`(`floating-origin.ts:18`)
 
-**位置の `Vec3` 全部に札を付けるのか、`CelestialBody` の型引数化(争点B)だけで足りるのか**が
-争点。`Vec3` 自体は `__tag: "Vec3"` を持つだけで原点は表していない。
+**位置の `Vec3` 全部に札を付けるのか、無標 ECI をやめる(争点B)だけで足りるのか**が争点。
+`Vec3` 自体は `__tag: "Vec3"` を持つだけで原点は表していない。
 
 **札に何を書くかは争点A と連動する。** いまの `FrameTag` は原点を名乗りながら実際には
 供給源(解析/パック)を守っている。原点を重心へ揃えるなら、札は原点ではなく供給源で切る。
-
-### 争点F. 集合(`CelestialBody[]`)は誰が組むか
-
-いまは `CelestialSystem`(game)が組んでいて、方針とは矛盾しない。ただし変換を
-`CelestialEntity` へ引き上げると、**集合は「個体が変換した結果を集めたもの」になる** —
-`CelestialSystem` が変換器を持って自分で組むのか、個体に組ませて集めるのかで、
-変換器の配り先が変わる(争点D と連動)。
 
 ---
 
