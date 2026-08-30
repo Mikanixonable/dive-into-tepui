@@ -8,7 +8,7 @@
 // どちらも 2π で畳めるので、時刻がどれだけ進んでもノイズ空間の座標は有界に留まる。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, clamp, float, floor, greaterThan, greaterThanEqual, inverseSqrt, min, select, smoothstep, uniform, vec3,
+  Fn, If, abs, clamp, float, greaterThan, greaterThanEqual, inverseSqrt, round, select, sign, smoothstep, uniform, vec3,
 } from 'three/tsl';
 import { latitudeOf } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node, Vec4Uniform } from '../tsl-types';
@@ -92,20 +92,21 @@ export class Circulation {
   public carry(direction: Vec3Node, sample: (position: Vec3Node) => FloatNode): FloatNode {
     return Fn(() => {
       const band = clamp(float(FIRST_LATITUDE).sub(latitudeOf(direction)).div(BAND_SPACING), 0, this.bands.length - 1);
-      const lower = floor(band).toVar();
-      const weight = smoothstep(0.5 - BLEND_WIDTH / 2, 0.5 + BLEND_WIDTH / 2, band.sub(lower)).toVar();
+      const nearest = round(band).toVar();
+      const offset = band.sub(nearest).toVar();
+      // 隣の帯へ寄せる重み。混ざる範囲の外では 0 になり、そこは近い 1 本だけで済む。
+      const blend = smoothstep(0.5 - BLEND_WIDTH / 2, 0.5 + BLEND_WIDTH / 2, abs(offset)).toVar();
       // 呼吸を効かせる度合い。cos²(緯度) をもう一度掛けてあるのは、公転が既に法線を向いている
       // 中緯度で張り合わせないため。
       const cosLatitude2 = float(1).sub(direction.y.mul(direction.y));
       const breathing = direction.mul(this.breath.mul(cosLatitude2).mul(cosLatitude2).add(1)).toVar();
 
-      const carried = sample(this.positionAt(breathing, lower)).toVar();
-      If(greaterThan(weight, 0), () => {
-        const upper = min(lower.add(1), this.bands.length - 1);
-        const rest = float(1).sub(weight);
-        const scale = inverseSqrt(weight.mul(weight).add(rest.mul(rest)));
+      const carried = sample(this.positionAt(breathing, nearest)).toVar();
+      If(greaterThan(blend, 0), () => {
+        const rest = float(1).sub(blend);
+        const scale = inverseSqrt(blend.mul(blend).add(rest.mul(rest)));
         carried.assign(carried.mul(rest.mul(scale))
-          .add(sample(this.positionAt(breathing, upper)).mul(weight.mul(scale))));
+          .add(sample(this.positionAt(breathing, nearest.add(sign(offset)))).mul(blend.mul(scale))));
       });
       return carried;
     })();
