@@ -4,7 +4,7 @@ import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint, toInertial
 import { Vec3, v3 } from '../../math/vec3';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { ReferenceFrames } from '../../physics/reference-frames';
+import type { ReferenceFrames } from '../celestial/reference-frames';
 
 export type FocusTarget =
   | { readonly kind: 'object'; readonly id: string }
