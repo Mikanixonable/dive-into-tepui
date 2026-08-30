@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../physics/solar-system';
 import { BakedField } from './baked-field';
-import { CirculatingNoise } from './circulating-noise';
+import { CirculatingNoise, resolvableTexelAngle } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
@@ -104,6 +104,15 @@ const MEAN_CLOUDINESS_WEIGHT = 0.5;
 const UPPER_HUMIDITY_BASE = 0.227;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.4;
 
+// 移流前の場を、投影の何分の一の細かさで焼くか。載っている段がどれも振幅 1 を保つ範囲で、
+// 2 の冪まで粗くする — 湿度は雲塊の配置しか持たないので投影より粗くて足りることがあり、
+// 同じ細かさを要る対流とは写しを分ける。
+function coarsenessFor(projection: FieldProjection, ...noises: readonly (readonly [number, number])[]): number {
+  const room = Math.min(...noises.map(([frequency, octaves]) => resolvableTexelAngle(frequency, octaves)))
+    / projection.texelAngleValue;
+  return Math.max(1, 2 ** Math.floor(Math.log2(room)));
+}
+
 export class WeatherModel {
   private readonly circulation = new Circulation(SURFACE_BANDS);
   private readonly upperCirculation = new Circulation(UPPER_BANDS);
@@ -114,28 +123,39 @@ export class WeatherModel {
   private readonly convectionNoise: CirculatingNoise;
   private readonly upperHumidityNoise: CirculatingNoise;
   private readonly pressure: BakedField;
-  private readonly advectionSource: BakedField;
+  private readonly humiditySource: BakedField;
+  private readonly convectionSource: BakedField;
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
   // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方。
   public constructor(private readonly climate: ClimateMap, projection: FieldProjection) {
     const texel = projection.texelAngle;
+    const humidityCoarseness = coarsenessFor(projection, HUMIDITY_NOISE, UPPER_HUMIDITY_NOISE);
+    const convectionCoarseness = coarsenessFor(projection, CONVECTION_NOISE);
+    const humidityTexel = texel.mul(humidityCoarseness);
+    const convectionTexel = texel.mul(convectionCoarseness);
     this.pressureNoise = new CirculatingNoise(this.circulation, ...PRESSURE_NOISE, texel);
-    this.humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE, texel);
-    this.convectionNoise = new CirculatingNoise(this.circulation, ...CONVECTION_NOISE, texel);
-    this.upperHumidityNoise = new CirculatingNoise(this.upperCirculation, ...UPPER_HUMIDITY_NOISE, texel);
+    this.humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE, humidityTexel);
+    this.convectionNoise = new CirculatingNoise(this.circulation, ...CONVECTION_NOISE, convectionTexel);
+    this.upperHumidityNoise = new CirculatingNoise(this.upperCirculation, ...UPPER_HUMIDITY_NOISE, humidityTexel);
+    // 気圧の写しだけは段ではなく、読む側の中心差分の刻み(GRADIENT_STEP)が細かさを決める。
     this.pressure = new BakedField(
-      'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
-    this.advectionSource = new BakedField(
-      'advectionSource', THREE.RGBAFormat, projection, (direction) => vec4(this.advectionSourceAt(direction), 1));
+      'pressure', THREE.RedFormat, projection, 1, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
+    this.humiditySource = new BakedField(
+      'humiditySource', THREE.RGFormat, projection, humidityCoarseness,
+      (direction) => vec4(this.humiditySourceAt(direction), 0, 1));
+    this.convectionSource = new BakedField(
+      'convectionSource', THREE.RedFormat, projection, convectionCoarseness,
+      (direction) => vec4(this.convectionSourceAt(direction), 0, 0, 1));
     this.syncTime(0);
   }
 
   // いまの時刻の気圧と、移流前の場を写しへ焼く。syncTime のあと、weatherAt のグラフを描く前に呼ぶ。
   public bake(renderer: WebGPURenderer): void {
     this.pressure.render(renderer);
-    this.advectionSource.render(renderer);
+    this.humiditySource.render(renderer);
+    this.convectionSource.render(renderer);
   }
 
   // 時刻 [s] を uniform へ写す。
@@ -196,18 +216,22 @@ export class WeatherModel {
     return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE)).add(this.cyclones.pressureAt(direction));
   }
 
-  // 移流前の場(x が地表付近の湿度、y が上層の湿度、z が対流の強弱)。ここへ入れたものが風で流れる。
-  // 写しへ焼かれ、advected() が風上へ遡って読む。
+  // 移流前の湿度(x が地表付近、y が上層)。ここへ入れたものが風で流れる。写しへ焼かれ、
+  // advected() が風上へ遡って読む。
   //
   // **平年の雲量はここへ入れない。** 移流の変位は雲を筋に引くのに要る大きさなので、通すと気候の
   // 分布がその変位ぶん歪んで読めなくなる — 慢性的な湿潤・乾燥は場所に貼り付いているべきもので、
   // 流れていくものではない。
-  public advectionSourceAt(direction: Vec3Node): Vec3Node {
-    return vec3(
+  public humiditySourceAt(direction: Vec3Node): Vec2Node {
+    return vec2(
       float(HUMIDITY_BASE).add(this.humidityNoise.at(direction).mul(HUMIDITY_NOISE_AMPLITUDE)),
       float(UPPER_HUMIDITY_BASE).add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)),
-      this.convectionNoise.at(direction).mul(CONVECTION_NOISE_AMPLITUDE),
     );
+  }
+
+  // 移流前の対流の強弱(0 中心の高周波)。湿度と別の写しへ焼き、別の風で流す。
+  public convectionSourceAt(direction: Vec3Node): FloatNode {
+    return this.convectionNoise.at(direction).mul(CONVECTION_NOISE_AMPLITUDE);
   }
 
   // 移流前の写しを風で流したもの(x が地表付近の湿度、y が上層の湿度、z が対流)。周期の半分
@@ -217,21 +241,24 @@ export class WeatherModel {
     const phaseA = this.advectionCycle;
     const phaseB = fract(phaseA.add(0.5));
     const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
-    // 位相 phase(周期に対する比)だけ flow の風上へ遡った点の源。
-    const sourceAt = (flow: Vec3Node, phase: FloatNode): Vec4Node =>
-      this.advectionSource.at(normalize(direction.sub(flow.mul(phase.mul(ADVECTION_PERIOD / R_EARTH)))));
+    // 位相 phase(周期に対する比)だけ flow の風上へ遡った点の source。
+    const sourceAt = (source: BakedField, flow: Vec3Node, phase: FloatNode): Vec4Node =>
+      source.at(normalize(direction.sub(flow.mul(phase.mul(ADVECTION_PERIOD / R_EARTH)))));
+    const humidity = this.humiditySource;
+    const convection = this.convectionSource;
     return vec3(
-      mix(sourceAt(wind, phaseB).xy, sourceAt(wind, phaseA).xy, weightA),
+      mix(sourceAt(humidity, wind, phaseB).xy, sourceAt(humidity, wind, phaseA).xy, weightA),
       mix(
-        sourceAt(convectionWind, phaseB).z,
-        sourceAt(convectionWind, phaseA).z, weightA),
+        sourceAt(convection, convectionWind, phaseB).r,
+        sourceAt(convection, convectionWind, phaseA).r, weightA),
     );
   }
 
   // 保持している GPU 資源を解放する。
   public dispose(): void {
     this.pressure.dispose();
-    this.advectionSource.dispose();
+    this.humiditySource.dispose();
+    this.convectionSource.dispose();
   }
 }
 

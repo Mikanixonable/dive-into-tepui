@@ -9,6 +9,12 @@ import type { FloatNode, IntNode, Vec3Node } from '../tsl-types';
 // (= Nyquist の 2 texel)までのあいだで、段の振幅を 1 から 0 へ渡す。
 const OCTAVE_FADE_START = 0.25;
 
+// frequency から始まる octaves 段が、どれも振幅 1 で乗る 1 texel の角 [rad] の上限。これより
+// 細かく焼いても段は増えないので、写しをどこまで粗くしてよいかがここから決まる。
+export function resolvableTexelAngle(frequency: number, octaves: number): number {
+  return OCTAVE_FADE_START / (frequency * 2 ** (octaves - 1));
+}
+
 export class CirculatingNoise {
   // 振幅 1 で乗る段数と、その次の 1 段の周波数・振幅。texelAngle から出るだけで標本化する位置に
   // 依らないので、位置ごとに組み直さない。
