@@ -410,7 +410,7 @@ branded type だけがそれを表せる。
 - 固定値として共有するモジュール定数と static 定数は `UPPER_SNAKE_CASE`。単に `const` で宣言した
   ローカル変数は `camelCase`。
 - 略語は `camelCase` / `PascalCase` の中では一つの単語として扱う(`celestialBodyId`、`toEci`、`jdTdb`)。
-  `UPPER_SNAKE_CASE` では略語も大文字にする(`SIM_EPOCH_JD_TDB`)。
+  `UPPER_SNAKE_CASE` では略語も大文字にする(`J2000_JULIAN_DATE`、`TT_MINUS_TAI_SECONDS`)。
 - JavaScript、Web API、ライブラリが定めた表記(`URLSearchParams`、`getUTCDate`、`WebGPU`)は
   変更しない。
 - 一文字名は、短い数式、狭いコールバック、ループ添字など、意味が慣習とスコープから一意に決まる

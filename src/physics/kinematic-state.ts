@@ -19,7 +19,7 @@ export type FrameTag = 'eci' | 'helio' | 'primaryRel' | 'barycentric';
 // (dynamic/dynamic-entity/dynamic-entity.ts)も同じこの型で表す。
 // 型引数は原点(FrameTag)。既定が 'eci' なので、ECI を扱う側は型引数を書かなくてよい。
 export type KinematicState<F extends FrameTag = 'eci'> = {
-  readonly t: number; // 絶対 simTime [s]
+  readonly t: number; // 絶対 simTime [s](時刻軸の契約は CODING-RULE 1.9)
   readonly r: Vec3; // 位置 [m]
   readonly v: Vec3; // 速度 [m/s]
 } & { readonly __frame: F; }
