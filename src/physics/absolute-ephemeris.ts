@@ -55,12 +55,12 @@ export class HelioEphemeris {
   }
 
   // 天体 id の、恒星中心・ゲーム ECI 軸の状態。収録されていない天体は例外を投げる。
-  stateOf(id: string, simTime: number): KinematicState {
+  stateOf(id: string, simTime: number): KinematicState<'helio'> {
     if (!this.absolute.hasBody(id)) throw new MissingEphemerisBodyError(id);
     const jdTdb = this.epochJdTdb + simTime / 86400;
     const body = this.absolute.barycentricStateOf(id, jdTdb);
     const star = this.starStateAt(jdTdb);
-    return kinematicState(
+    return kinematicState<'helio'>(
       simTime,
       icrfToGameEci(sub(body.r, star.r)),
       icrfToGameEci(sub(body.v, star.v)),

@@ -171,12 +171,12 @@ export function keplerOrbitAtEpoch(orbit: KeplerOrbit, phase: number, epochOffse
 // 重力定数は要らない(lRate が平均運動そのもの)。
 // 速度は、軌道面内の動径変化(ṙ·r̂)と回転基準系自身の角速度による見かけの移動(omega×r)の
 // 和として組む — 後者が昇交点・近点の歳差ぶんの寄与を担う。
-export function keplerOrbitState(orbit: KeplerOrbit, t: number): KinematicState {
+export function keplerOrbitState(orbit: KeplerOrbit, t: number): KinematicState<'primaryRel'> {
   const a = orbitAngles(orbit, t);
   const r = qRotate(qMul(orbit.basisToEci, Q_ZUP_TO_YUP), positionFromOrbitalElements(a.a, a.e, a.inc, a.raan, a.argp, a.nu));
   const { omega } = rotationFromAngles(orbit, a);
   const v = addScaled(cross(omega, r), norm(r), a.rDot);
-  return kinematicState(t, r, v);
+  return kinematicState<'primaryRel'>(t, r, v);
 }
 
 // この軌道に固定した回転基準系の t 時点の姿勢・角速度。

@@ -56,7 +56,7 @@ export interface ChebyshevEphemerisPack {
 }
 
 export interface ChebyshevEvaluation {
-  readonly state: KinematicState;
+  readonly state: KinematicState<'barycentric'>;
   readonly segment: ChebyshevSegment;
   readonly segmentIndex: number;
 }

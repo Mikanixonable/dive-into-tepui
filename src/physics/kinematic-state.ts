@@ -1,21 +1,56 @@
 // 状態ベクトル(KinematicState)そのものの定義と、それだけで完結する幾何演算(軌道基底・
 // エルミート補間)。THREE/DOM 非依存の純粋関数群。
-import { Vec3, cross, norm, v3 } from '../math/vec3';
+import { Vec3, add, cross, norm, sub, v3 } from '../math/vec3';
+
+// 位置・速度をどの原点で測っているか。軸はどれもゲーム ECI 軸(barycentric だけ ICRF 軸)で、
+// 違うのは原点だけ。**原点の違いは値からは見分けられない**ので、型で持たせて取り違えを
+// 型検査に拾わせる。
+//
+// - `eci` — ECI 原点天体(ステージが選ぶ中心天体)中心。無標の既定。
+// - `helio` — 恒星(星系の階層の根)中心。
+// - `primaryRel` — 主天体中心(惑星なら恒星、衛星なら惑星、軌道要素なら el.center)。
+// - `barycentric` — 太陽系重心中心・ICRF 軸。暦パックの生の座標。
+export type FrameTag = 'eci' | 'helio' | 'primaryRel' | 'barycentric';
 
 // ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
 // KinematicState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
 // できなくなるため)。t を state 自身が持つので「状態」と「その時刻」が引数として
 // 分かれて食い違うことがない — 予測点列もエンティティの履歴
 // (dynamic/dynamic-entity/dynamic-entity.ts)も同じこの型で表す。
-export type KinematicState = {
+// 型引数は原点(FrameTag)。既定が 'eci' なので、ECI を扱う側は型引数を書かなくてよい。
+export type KinematicState<F extends FrameTag = 'eci'> = {
   readonly t: number; // 絶対 simTime [s]
-  readonly r: Vec3; // ECI 位置 [m]
-  readonly v: Vec3; // ECI 速度 [m/s]
-} & { readonly __frame: 'inertial'; }
+  readonly r: Vec3; // 位置 [m]
+  readonly v: Vec3; // 速度 [m/s]
+} & { readonly __frame: F; }
 
-// KinematicState を組み立てる唯一の入口。
-export function kinematicState(t: number, r: Vec3, v: Vec3): KinematicState {
-  return { t, r, v } as KinematicState;
+// KinematicState を組み立てる唯一の入口。ECI 以外を組むときは型引数を明示する
+// (`kinematicState<'helio'>(...)`)— 書き忘れると暗黙に ECI を名乗ることになる。
+export function kinematicState<F extends FrameTag = 'eci'>(t: number, r: Vec3, v: Vec3): KinematicState<F> {
+  return { t, r, v } as KinematicState<F>;
+}
+
+// 主天体を原点に置き直した状態。**両者は同じ原点で測られていなければならない**(同じ F)。
+export function toPrimaryRelative<F extends FrameTag>(
+  t: number, body: KinematicState<F>, primary: KinematicState<F>,
+): KinematicState<'primaryRel'> {
+  return kinematicState<'primaryRel'>(t, sub(body.r, primary.r), sub(body.v, primary.v));
+}
+
+// ECI 原点天体を原点に置き直した状態。**両者は同じ原点で、かつ同じ供給源から引かれて
+// いなければならない** — 暦パックと解析暦は同じ天体に別の位置を答えるので、片方だけを
+// 差し替えると差がそのまま相対位置の誤りになる。
+export function toEci<F extends FrameTag>(
+  t: number, body: KinematicState<F>, origin: KinematicState<F>,
+): KinematicState {
+  return kinematicState(t, sub(body.r, origin.r), sub(body.v, origin.v));
+}
+
+// 主天体相対を、その主天体の恒星中心状態へ足し戻したもの。
+export function addPrimaryRelative(
+  primary: KinematicState<'helio'>, rel: KinematicState<'primaryRel'>,
+): KinematicState<'helio'> {
+  return kinematicState<'helio'>(primary.t, add(primary.r, rel.r), add(primary.v, rel.v));
 }
 
 // 軌道基底: 進行方向・軌道面法線・面内で進行方向に直交する向きからなる正規直交系。
@@ -28,14 +63,14 @@ export type OrbitAxes = {
 };
 
 // 状態ベクトルから軌道基底を組む。速度または角運動量が縮退していると各軸は NaN になる。
-export function orbitAxes(s: KinematicState): OrbitAxes {
+export function orbitAxes<F extends FrameTag>(s: KinematicState<F>): OrbitAxes {
   const pro = norm(s.v);
   const nrm = norm(cross(s.r, s.v));
   return { pro, nrm, radOut: cross(pro, nrm) };
 }
 
 // 軌道基底で表したベクトル(x=pro, y=nrm, z=radOut 成分)をワールド ECI へ変換する。
-export function fromOrbitAxes(s: KinematicState, x: Vec3): Vec3 {
+export function fromOrbitAxes<F extends FrameTag>(s: KinematicState<F>, x: Vec3): Vec3 {
   const { pro, nrm, radOut } = orbitAxes(s);
   return v3(
     pro.x * x.x + nrm.x * x.y + radOut.x * x.z,
@@ -49,11 +84,11 @@ export function fromOrbitAxes(s: KinematicState, x: Vec3): Vec3 {
 // a.t > b.t(逆順)でも同じ多項式が定まるので、順序は問わない。
 // 区間外の t は拒否する。多項式は区間外で急速に発散し、軌道として破綻した状態
 // (地球内部の位置、脱出速度を超える速度など)を平然と返すため。
-export function hermiteInterpolate(
-  a: KinematicState,
-  b: KinematicState,
+export function hermiteInterpolate<F extends FrameTag>(
+  a: KinematicState<F>,
+  b: KinematicState<F>,
   t: number,
-): KinematicState {
+): KinematicState<F> {
   const h = b.t - a.t;
   if (h === 0) throw new Error(`hermiteInterpolate: 両端が同時刻 (t=${a.t}) で補間できない`);
   if ((t - a.t) * (t - b.t) > 0) {
@@ -73,7 +108,7 @@ export function hermiteInterpolate(
     wr0 * a.r.z + wv0 * a.v.z + wr1 * b.r.z + wv1 * b.v.z,
   );
 
-  return kinematicState(
+  return kinematicState<F>(
     t,
     combine(w[0]!, w[1]! * h, w[2]!, w[3]! * h),
     combine(dw[0]! / h, dw[1]!, dw[2]! / h, dw[3]!),

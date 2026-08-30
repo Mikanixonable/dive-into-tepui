@@ -4,7 +4,7 @@ import {
 } from '../../src/game/dynamic/time-step';
 import { test } from '../harness';
 import { v3 } from '../../src/math/vec3';
-import { kinematicState } from '../../src/physics/kinematic-state';
+import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { Atmosphere } from '../../src/physics/atmosphere';
 
@@ -22,7 +22,7 @@ function body(atmosphere: Atmosphere | null, center = v3()): CelestialBody {
 }
 
 // 高度 alt を降下速度 rate で降りている状態。
-function descending(alt: number, rate = 100): ReturnType<typeof kinematicState> {
+function descending(alt: number, rate = 100): KinematicState {
   return kinematicState(0, v3(1000 + alt, 0, 0), v3(-rate, 0, 0));
 }
 

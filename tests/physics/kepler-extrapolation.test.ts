@@ -5,7 +5,7 @@ import { extrapolatedRelativeState, extrapolatedRelativeStates } from '../../src
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import { KinematicState, kinematicState, toPrimaryRelative } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { len, sub, v3 } from '../../src/math/vec3';
 
@@ -23,7 +23,13 @@ function integrate(tip: KinematicState, t: number, dt: number): KinematicState {
   return s;
 }
 
-function chordDistances(states: readonly KinematicState[]): number[] {
+// 外挿結果は中心天体相対なので、先端も同じ原点へ移してから並べる(EARTH は原点に静止して
+// いるので値は変わらないが、原点を混ぜないことを型で示す)。
+function relativeTip(tip: KinematicState): KinematicState<'primaryRel'> {
+  return toPrimaryRelative(tip.t, tip, EARTH.state);
+}
+
+function chordDistances(states: readonly KinematicState<'primaryRel'>[]): number[] {
   const out: number[] = [];
   for (let i = 1; i < states.length; i++) out.push(len(sub(states[i]!.r, states[i - 1]!.r)));
   return out;
@@ -99,7 +105,7 @@ export function register(): void {
 
     // 単調な E から求めているので、隣接サンプルの間隔は中央値の数倍を超えない
     // (巻き戻りバグがあれば、ある1点だけ軌道径ぶんの跳躍が出るはず)。
-    const chords = chordDistances([tip, ...states]);
+    const chords = chordDistances([relativeTip(tip), ...states]);
     const sorted = [...chords].sort((x, y) => x - y);
     const median = sorted[Math.floor(sorted.length / 2)]!;
     assert.ok(Math.max(...chords) < median * 6, `no single jump among chord distances: max=${Math.max(...chords)}, median=${median}`);
@@ -114,14 +120,14 @@ export function register(): void {
     const count = 20;
 
     const byE = extrapolatedRelativeStates(tip, EARTH, untilT, count);
-    const byTime: KinematicState[] = [];
+    const byTime: KinematicState<'primaryRel'>[] = [];
     for (let i = 1; i <= count; i++) {
       const t = tip.t + (period * i) / count;
       byTime.push(extrapolatedRelativeState(tip, EARTH, t)!);
     }
 
-    const stdevByE = stdev(chordDistances([tip, ...byE]));
-    const stdevByTime = stdev(chordDistances([tip, ...byTime]));
+    const stdevByE = stdev(chordDistances([relativeTip(tip), ...byE]));
+    const stdevByTime = stdev(chordDistances([relativeTip(tip), ...byTime]));
     assert.ok(
       stdevByE < stdevByTime,
       `E-equal spacing should be more uniform than time-equal spacing: ${stdevByE} vs ${stdevByTime}`,

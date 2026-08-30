@@ -26,7 +26,9 @@ function findExtrapolationOrbit(tip: KinematicState, center: CelestialBody): Orb
 // tip を center まわりの二体ケプラー軌道とみなした、時刻 t における中心天体相対の状態
 // (位置・速度は ECI 方向のまま原点だけ center に取った相対値。絶対 ECI 化は center の
 // 位置・速度を足して行う)。外挿できない軌道では null。
-export function extrapolatedRelativeState(tip: KinematicState, center: CelestialBody, t: number): KinematicState | null {
+export function extrapolatedRelativeState(
+  tip: KinematicState, center: CelestialBody, t: number,
+): KinematicState<'primaryRel'> | null {
   const el = findExtrapolationOrbit(tip, center);
   return el === null ? null : stateOnOrbitAt(el, t);
 }
@@ -41,7 +43,7 @@ function trueAnomalyFromEccentric(E: number, e: number): number {
 // 粗くなるため E で等分する。外挿できない場合、count <= 0、untilT <= tip.t のいずれでも空配列。
 export function extrapolatedRelativeStates(
   tip: KinematicState, center: CelestialBody, untilT: number, count: number,
-): KinematicState[] {
+): KinematicState<'primaryRel'>[] {
   if (count <= 0 || untilT <= tip.t) return [];
   const el = findExtrapolationOrbit(tip, center);
   if (el === null || el.epoch === null) return [];
@@ -62,14 +64,14 @@ export function extrapolatedRelativeStates(
   const Eend = eccentricAnomalyFromMean(wrappedMeanAnomalyEnd, e) + revolutions * 2 * Math.PI;
 
   // E0〜Eend を等分した各 Ei から、Mi・ti・νi をすべて直接式(反復なし)で求める。
-  const states: KinematicState[] = [];
+  const states: KinematicState<'primaryRel'>[] = [];
   for (let i = 0; i < count; i++) {
     const isLast = i === count - 1;
     const Ei = isLast ? Eend : E0 + (Eend - E0) * ((i + 1) / count);
     const Mi = Ei - e * Math.sin(Ei);
     const ti = isLast ? untilT : tip.t + (Mi - M0) / n;
     const nui = trueAnomalyFromEccentric(Ei, e);
-    states.push(kinematicState(ti, positionOnOrbit(el, nui), velocityOnOrbit(el, nui)));
+    states.push(kinematicState<'primaryRel'>(ti, positionOnOrbit(el, nui), velocityOnOrbit(el, nui)));
   }
   return states;
 }

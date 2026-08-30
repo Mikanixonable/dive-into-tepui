@@ -126,7 +126,7 @@ export function satelliteState(
   orbit: SatelliteOrbit,
   planetAngles: PlanetAngles,
   t: number,
-): KinematicState {
+): KinematicState<'primaryRel'> {
   const k = orbit.kepler;
   const base = keplerOrbitState(k, t);
   // 黄道座標への分解は黄道極を通る軌道で rho0 = hypot(x,y) → 0 となり速度が発散する。
@@ -180,5 +180,5 @@ export function satelliteState(
   const vye = rDot * cosB * sinL - r * betaRate * sinB * sinL + r * lambdaRate * cosB * cosL;
   const vze = rDot * sinB + r * betaRate * cosB;
 
-  return kinematicState(t, eclToEci(xe, ye, ze), eclToEci(vxe, vye, vze));
+  return kinematicState<'primaryRel'>(t, eclToEci(xe, ye, ze), eclToEci(vxe, vye, vze));
 }
