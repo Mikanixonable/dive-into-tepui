@@ -3,7 +3,7 @@
 // 個々の軌道モデルの精度は kepler-orbit.test.ts / satellite-orbit.test.ts が担う。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { PlanetDef, SatelliteDef } from '../../src/physics/celestial-motion';
+import { PlanetDef, PlanetMotion, SatelliteDef } from '../../src/physics/celestial-motion';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import {
   MU_EARTH, MU_MOON, MU_SUN as MU_SUN_LOCAL, SIDEREAL_DAY,
@@ -13,11 +13,11 @@ import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
-import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
+import { Vec3, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
 import {
   assertOmegaMatchesBasis, lagrangeOf, motionOf, orbitingMotionOf, positionOf, solarSystemParts, stateOf,
-  testEphemerisSource, TEST_EPOCH, TEST_SIM_ZERO_ET,
+  SolarSystemParts, testEphemerisSource, TEST_EPOCH, TEST_SIM_ZERO_ET,
 } from './test-helpers';
 
 // 定義だけを引くための太陽系(id から静的事実を取り出す口としてだけ使う)。
@@ -30,9 +30,26 @@ const DAY = 86400;
 // 運動の合成結果と突き合わせる基準として使う。
 const EARTH_ORBIT: KeplerOrbit = EARTH.orbit;
 
+// 重心不変条件を測る時刻。永年変化と周期項の両方が効く幅を取る。
+const BARYCENTER_TIMES = [0, 1e6, 3e8, -3e8, 1e9];
+
 // テスト対象の id が惑星/衛星であることを前提に軌道モデルを取り出す。
 function planetOrbit(id: string): KeplerOrbit {
   return (motionOf(DEFS, id).def as PlanetDef).orbit;
+}
+
+// 惑星 id の運動。恒星や衛星の id を渡すと例外。系(PlanetSystem)を引くのに要る。
+function planetMotionOf(parts: SolarSystemParts, id: string): PlanetMotion {
+  const motion = motionOf(parts, id);
+  if (!(motion instanceof PlanetMotion)) throw new Error(`惑星ではない天体 id: ${id}`);
+  return motion;
+}
+
+// 衛星を持つ惑星系を、その本体の運動で代表して集める。重心不変条件は系ごとに閉じている。
+function systemsWithSatellites(parts: SolarSystemParts): readonly PlanetMotion[] {
+  return parts.bodies.filter(
+    (m): m is PlanetMotion => m instanceof PlanetMotion && m.system.satellites.length > 0,
+  );
 }
 function satelliteOrbitOf(id: string): SatelliteOrbit {
   return (motionOf(DEFS, id).def as SatelliteDef).orbit;
@@ -81,6 +98,91 @@ export function register(): void {
       assert.ok(rErr < 1, `重心位置の不一致 (t=${t}): ${rErr} m`);
       assert.ok(vErr < 1e-6, `重心速度の不一致 (t=${t}): ${vErr} m/s`);
     }
+  });
+
+  // 上のテストは衛星が1体の系しか見ないので、Σ の重み μ_k/μ_sys を μ_k/(μ_p+μ_k) と
+  // 取り違えても値が一致してしまう。**系重心は対ごとではなく全員で1点**なので、衛星を複数
+  // 持つ系まで含めて押さえる。許容は f64 の丸め(実測の最大はエリスの 2.0e-3 m)に対して5倍。
+  test('celestial-motion: 系の重心不変条件(衛星を複数持つ系でも Σμ_i·R_i = μ_sys·R_b)', () => {
+    for (const planet of systemsWithSatellites(parts)) {
+      // μ が未測定の惑星は重心補正を行わない。その逸脱は次のテストが押さえる。
+      if (planet.def.mu <= 0) continue;
+      const moons = planet.system.satellites;
+      let muSys = planet.def.mu;
+      for (const moon of moons) muSys += moon.def.mu;
+      for (const t of BARYCENTER_TIMES) {
+        const body = planet.analyticStateAt(t);
+        let r: Vec3 = scale(body.r, planet.def.mu / muSys);
+        let v: Vec3 = scale(body.v, planet.def.mu / muSys);
+        for (const moon of moons) {
+          const moonState = moon.analyticStateAt(t);
+          r = addScaled(r, moonState.r, moon.def.mu / muSys);
+          v = addScaled(v, moonState.v, moon.def.mu / muSys);
+        }
+        const bary = planet.system.analyticStateAt(t);
+        assert.ok(len(sub(r, bary.r)) < 1e-2, `${planet.id} の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
+        assert.ok(len(sub(v, bary.v)) < 1e-9, `${planet.id} の重心速度 (t=${t}): ${len(sub(v, bary.v))} m/s`);
+      }
+    }
+  });
+
+  // 恒星の重心相対位置は各系の主星相対二体解を −Σ(μ_sys/μ_total) で畳んだものなので、
+  // 畳み込みの重みが崩れると太陽系重心が原点から外れる形で出る。
+  test('celestial-motion: 恒星まわりの重心不変条件(μ_s·R_s + Σ μ_sys·R_b = 0)', () => {
+    const star = motionOf(parts, 'sun');
+    const systems = [...new Set(parts.bodies
+      .filter((m): m is PlanetMotion => m instanceof PlanetMotion)
+      .map((m) => m.system))];
+    let muTotal = star.def.mu;
+    for (const system of systems) muTotal += system.mu;
+    for (const t of BARYCENTER_TIMES) {
+      let r: Vec3 = scale(star.analyticStateAt(t).r, star.def.mu / muTotal);
+      for (const system of systems) {
+        r = addScaled(r, system.analyticStateAt(t).r, system.mu / muTotal);
+      }
+      assert.ok(len(r) < 1e-5, `太陽系重心が原点から外れる (t=${t}): ${len(r)} m`);
+    }
+  });
+
+  // μ が未測定(0)の惑星は比が決まらないので重心補正を行わず、本体を系重心に置いたままにする。
+  // **意図した逸脱であることをここで宣言しておく** — 系の質量が衛星にしか無いため、質量加重
+  // 平均は衛星の側へ寄り、上の不変条件はこの2系でだけ破れる。破れ幅は衛星の距離規模。
+  test('celestial-motion: μ が未測定の惑星(orcus / quaoar)は本体を系重心に置き、不変条件を破る', () => {
+    for (const id of ['orcus', 'quaoar']) {
+      const planet = planetMotionOf(parts, id);
+      assert.equal(planet.def.mu, 0, `${id} の μ が未測定(0)であることがこのテストの前提`);
+      const t = 1e6;
+      const bary = planet.system.analyticStateAt(t);
+      assert.ok(len(sub(planet.analyticStateAt(t).r, bary.r)) < 1e-6, `${id} の本体は系重心に一致する`);
+
+      let muSys = 0;
+      for (const moon of planet.system.satellites) muSys += moon.def.mu;
+      assert.ok(muSys > 0, `${id} の衛星は μ を持つ(でなければ破れ自体が起きない)`);
+      let r: Vec3 = v3();
+      for (const moon of planet.system.satellites) {
+        r = addScaled(r, moon.analyticStateAt(t).r, moon.def.mu / muSys);
+      }
+      assert.ok(len(sub(r, bary.r)) > 1e6, `${id} の破れは衛星の距離規模: ${len(sub(r, bary.r))} m`);
+    }
+  });
+
+  // 衛星の軌道要素は**惑星本体中心の相対軌道**であって系重心相対ではない。月の a = 384,400 km は
+  // 地心距離で、重心相対の長半径 379,730 km ではない(比は 1+μ_m/μ_e = 1.0123、差 4,700 km)。
+  // 取り違えると実測レンジから 1.2% 外れる。出典は satellite-orbit.ts のコメントと同じ
+  // 近地点 356,400 km・遠地点 406,700 km で、モデルの切り詰めぶんを見て 0.5% まで許す。
+  test('celestial-motion: 月の地心距離は相対軌道の実測レンジに収まる(系重心相対と取り違えていない)', () => {
+    const moon = motionOf(parts, 'moon');
+    const earth = motionOf(parts, 'earth');
+    let minDist = Infinity;
+    let maxDist = 0;
+    // 遠地点は出差(周期 206 日)で振れるので、それを覆う 1,000 日ぶんを 12 時間刻みで見る。
+    for (let t = 0; t < 1000 * 86400; t += 12 * 3600) {
+      const d = len(sub(moon.analyticStateAt(t).r, earth.analyticStateAt(t).r));
+      minDist = Math.min(minDist, d);
+      maxDist = Math.max(maxDist, d);
+    }
+    assert.ok(Math.abs(minDist / 356.4e6 - 1) < 5e-3, `近地点: ${minDist} m`);
+    assert.ok(Math.abs(maxDist / 406.7e6 - 1) < 5e-3, `遠地点: ${maxDist} m`);
   });
 
   // 地球を完全なケプラー軌道(重心補正なし)に置いた場合の太陽の地心位置との差は、
