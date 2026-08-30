@@ -3,7 +3,7 @@ import { asin, clamp, cross, length, max, vec3 } from 'three/tsl';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
 // 自転軸。
-export const POLE = vec3(0, 1, 0);
+const POLE = vec3(0, 1, 0);
 
 // 単位方向の緯度 [rad]。
 export function latitudeOf(direction: Vec3Node): FloatNode {
