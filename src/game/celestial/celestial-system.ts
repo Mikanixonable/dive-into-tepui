@@ -99,7 +99,7 @@ export class CelestialSystem {
   ) {
     this.motions = entities.map((b) => b.motion);
     this.bodyWindows = new CelestialBodyWindows(this.motions, origin.motion);
-    this.referenceFrames = new ReferenceFrames(this.bodyWindows, this.motions, origin.motion);
+    this.referenceFrames = new ReferenceFrames(this.motions, origin.motion);
     for (const entity of entities) entity.bindWindows(this.bodyWindows);
     if (absoluteSource !== null) {
       for (const motion of this.motions) motion.bindEphemeris(absoluteSource.bodyEphemerisOf(motion.id));
