@@ -9,7 +9,7 @@ import {
 } from '../../src/physics/lagrange';
 import { CelestialMotion, OrbitingMotion, PhaseOffsets } from '../../src/physics/celestial-motion';
 import { FrameRotation } from '../../src/physics/kepler-orbit';
-import type { ReferenceFrames } from '../../src/physics/reference-frames';
+import type { ReferenceFrames } from '../../src/game/celestial/reference-frames';
 // 回帰テストが simTime = 0 に置く瞬間の、J2000 からの秒数。地球から見て太陽が +X 方向
 // (昼側)にある — すなわち地球の日心黄経が π になる — 瞬間へ合わせてある。
 // 導出: 地球の平均黄経 L(t) = l0 + L̇·t を L = 180° と置いて解く。
