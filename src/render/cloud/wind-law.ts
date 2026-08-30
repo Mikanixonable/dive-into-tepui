@@ -70,13 +70,13 @@ export function windStep(wind: BalancedWind, direction: Vec3Node, seconds: Float
     .mul(sin(angle).div(angle).mul(seconds));
 }
 
-// balancedWind と同じ釣り合いを、深さ depth [hPa]・広がり radius [m] のガウスの谷の芯(勾配が
-// 消える点)について解いた、風が等圧線を横切る角 [rad]。**渦が小さく速いほど閉じる。**
-export function coreCrossingAngle(depth: number, radius: number, latitude: number): number {
+// balancedWind と同じ釣り合いを、等圧線方向の 2 階微分が bend [hPa/rad²] で勾配の消える谷の芯に
+// ついて解いた、風が等圧線を横切る角 [rad]。**渦が小さく速いほど閉じる。**
+export function coreCrossingAngle(bend: number, latitude: number): number {
   const sinLatitude = Math.abs(Math.sin(latitude));
   const coriolis = CORIOLIS_RATE * sinLatitude;
   const damped = Math.hypot(coriolis, FRICTION_RATE);
-  const spinSquared = BEND_TO_SPIN_SQUARED * 2 * depth * (R_EARTH / radius) ** 2;
+  const spinSquared = BEND_TO_SPIN_SQUARED * bend;
   const spin = 2 * spinSquared
     / (damped + Math.sqrt(Math.max(damped * damped + 4 * spinSquared, FRICTION_RATE ** 2)));
   return Math.atan2(FRICTION_RATE, coriolis + spin * Math.tanh(sinLatitude / SPIN_SENSE_WIDTH));
