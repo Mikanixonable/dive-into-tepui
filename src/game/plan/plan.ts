@@ -2,8 +2,9 @@
 // Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
 import { kinematicState, KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add } from '../../math/vec3';
-import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../physics/celestial-body';
-import type { CelestialBodyWindows } from '../../physics/celestial-body-windows';
+import {
+  CelestialBody, CelestialBodyWindows, orbitalElementsOf, strongestAttractor,
+} from '../../physics/celestial-body';
 
 // segmentDurationFrom が要求する表示窓の部分だけを切り出した形。
 export interface DisplayDurationSource {

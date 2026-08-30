@@ -7,7 +7,6 @@ import { KinematicState } from '../../src/physics/kinematic-state';
 import {
   LagrangePoints, SecondaryFrame, lagrangePointsOf, secondaryFrameOf,
 } from '../../src/physics/lagrange';
-import type { CelestialBodyWindows } from '../../src/physics/celestial-body-windows';
 import { CelestialMotion, OrbitingMotion, PhaseOffsets } from '../../src/physics/celestial-motion';
 import { FrameRotation } from '../../src/physics/kepler-orbit';
 import type { ReferenceFrames } from '../../src/physics/reference-frames';
@@ -18,16 +17,17 @@ import type { ReferenceFrames } from '../../src/physics/reference-frames';
 // 中心差(真黄経と平均黄経の差)は地球の e = 0.0167 で高々 ±1.9° あるが、これは見た目の
 // 昼夜を合わせるためのアンカーなので平均黄経で足りる。
 export const TEST_SIM_ZERO_ET = 6972197.1872752225;
+import type { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import { solarSystem } from '../../src/game/celestial/solar-system/solar-system';
 import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../../src/physics/time';
 import { Vec3, cross, len, scale, sub, v3 } from '../../src/math/vec3';
 import { qRotate } from '../../src/physics/attitude';
 
 // 地球原点で組んだ現実の太陽系。天体は宣言順(重力源配列・一覧の順序もこの並び)に並び、
-// 1体ずつは id で引く。系レベルの天体一覧の窓と座標系も一緒に持つ。
+// 1体ずつは id で引く。同一時刻の集合を答える系と、座標系も一緒に持つ。
 export type SolarSystemParts = {
   readonly bodies: readonly CelestialMotion[];
-  readonly windows: CelestialBodyWindows;
+  readonly system: CelestialSystem;
   readonly referenceFrames: ReferenceFrames;
 };
 
@@ -45,7 +45,7 @@ export function solarSystemParts(
   absoluteSource: AbsoluteEphemeris | null = null,
 ): SolarSystemParts {
   const system = solarSystem('earth', phases, 0, absoluteSource, epoch);
-  return { bodies: system.motions, windows: system.windows, referenceFrames: system.frames };
+  return { bodies: system.motions, system, referenceFrames: system.frames };
 }
 
 // 天体 id の運動。太陽系に登録されていない id を渡すと例外。
@@ -64,21 +64,21 @@ export function orbitingMotionOf(parts: SolarSystemParts, id: string): OrbitingM
 
 // 天体 id の時刻 t におけるラグランジュ点(ECI)。公転していない・主天体が引けない id は例外。
 export function lagrangeOf(parts: SolarSystemParts, id: string, t: number): LagrangePoints {
-  const frame = secondaryFrameOf(parts.windows.celestialBodiesAt(t), orbitingMotionOf(parts, id), t);
+  const frame = secondaryFrameOf(parts.system.celestialBodiesAt(t), orbitingMotionOf(parts, id), t);
   if (frame === null) throw new Error(`ラグランジュ点を組めない天体 id: ${id}`);
   return lagrangePointsOf(frame);
 }
 
 // 天体 id の時刻 t における SecondaryFrame。組めない id は例外。
 export function secondaryFrameFor(parts: SolarSystemParts, id: string, t: number): SecondaryFrame {
-  const frame = secondaryFrameOf(parts.windows.celestialBodiesAt(t), orbitingMotionOf(parts, id), t);
+  const frame = secondaryFrameOf(parts.system.celestialBodiesAt(t), orbitingMotionOf(parts, id), t);
   if (frame === null) throw new Error(`SecondaryFrame を組めない天体 id: ${id}`);
   return frame;
 }
 
 // 天体 id の時刻 t での ECI 位置・速度。
 export function stateOf(parts: SolarSystemParts, id: string, t: number): KinematicState {
-  return parts.windows.stateAt(id, t);
+  return parts.system.stateAt(id, t);
 }
 
 // 天体 id の時刻 t での ECI 位置。
