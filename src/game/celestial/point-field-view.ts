@@ -4,7 +4,6 @@
 // 大きく異なるため — 群ごとの見た目は表示専用のこの層だけが持ち、point-field.ts の分布定義は
 // THREE 非依存に保つ。
 import * as THREE from 'three/webgpu';
-import type { CelestialMotion } from '../../physics/celestial-motion';
 import { Vec3, v3 } from '../../math/vec3';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { PointElements, PointField, PointFieldGroup, pointPositionAt } from './point-field';
@@ -117,15 +116,15 @@ export class PointFieldView {
     for (const group of this.groups) group.build(scene);
   }
 
-  // 表示時刻 t の点の位置を引き直す。star はこの星系の恒星の運動で、恒星を持たない星系では
+  // 表示時刻 t の点の位置を引き直す。starPos はこの星系の恒星の ECI 位置で、恒星を持たない星系では
   // null。広範囲視点でないときは何もしない — 戦闘視点では描かれないので位置を求める意味がない。
-  update(t: number, overviewMode: boolean, star: CelestialMotion | null): void {
-    this.hasStar = star !== null;
-    if (!overviewMode || star === null) {
+  update(t: number, overviewMode: boolean, starPos: Vec3 | null): void {
+    this.hasStar = starPos !== null;
+    if (!overviewMode || starPos === null) {
       this.mapActive = false;
       return;
     }
-    const sunPos = star.stateAt(t).r;
+    const sunPos = starPos;
     const reentered = !this.mapActive;
     this.mapActive = true;
     for (const group of this.groups) group.update(t, sunPos, reentered);

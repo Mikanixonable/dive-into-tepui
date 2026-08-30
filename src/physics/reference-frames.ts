@@ -3,6 +3,7 @@
 // ここは「どの座標系があるか」と「その原点・姿勢・角速度が時刻 t で何になるか」を答える。
 // THREE/DOM 非依存。
 import { Quat, qFromForwardUp } from './attitude';
+import { CelestialBodyWindows } from './celestial-body-windows';
 import { CelestialMotion, OrbitingMotion, SatelliteMotion } from './celestial-motion';
 import { FrameAnchorSource, FrameRotationSource, FrameTransform, ReferenceFrame, rotationSourceKey } from './frame';
 import { FrameRotation } from './kepler-orbit';
@@ -32,8 +33,11 @@ export class ReferenceFrames {
   // 全天体の慣性系 + 公転天体ぶんの回転系。値は frameOf が返すのと同じ参照になる。
   readonly frames: readonly ReferenceFrame[];
 
-  // motions は宣言順の全登録天体、origin は ECI の中心天体。
-  constructor(motions: readonly CelestialMotion[], origin: CelestialMotion) {
+  // windows は ECI 瞬間値の窓、motions は宣言順の全登録天体、origin は ECI の中心天体。
+  constructor(
+    private readonly windows: CelestialBodyWindows,
+    motions: readonly CelestialMotion[], origin: CelestialMotion,
+  ) {
     this.motionsById = Object.fromEntries(motions.map((m) => [m.id, m]));
     this.inertialFrame = this.frameOf(origin.id, null);
     this.frames = [
@@ -104,8 +108,7 @@ export class ReferenceFrames {
   // 参照フレームの基準の時刻 t における状態。登録天体なら暦、無ければ source
   // (生存中の重力天体・機体・役割トークン)に委ね、どちらでも解決できなければ ECI 原点に落とす。
   private anchorStateAt(id: string, t: number, source: FrameAnchorSource): KinematicState {
-    const motion = this.motionsById[id];
-    if (motion !== undefined) return motion.stateAt(t);
+    if (this.motionsById[id] !== undefined) return this.windows.stateAt(id, t);
     return source.stateOf(id, t) ?? kinematicState(t, v3(), v3());
   }
 

@@ -7,7 +7,7 @@ import { SatelliteDef } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
-import { SolarSystemParts, motionOf, solarSystemParts } from './test-helpers';
+import { SolarSystemParts, motionOf, solarSystemParts, stateOf } from './test-helpers';
 import { cross, dot, len, norm, sub } from '../../src/math/vec3';
 
 // id から静的事実を引くための太陽系。
@@ -75,8 +75,8 @@ const NO_PRECESSION: readonly string[] = [
 const SATURN_POLE_ECI = raDecToEci(40.589, 83.537);
 
 function orbitNormal(parts: SolarSystemParts, id: string, planet: string, t: number) {
-  const satellite = motionOf(parts, id).stateAt(t);
-  const primary = motionOf(parts, planet).stateAt(t);
+  const satellite = stateOf(parts, id, t);
+  const primary = stateOf(parts, planet, t);
   return norm(cross(sub(satellite.r, primary.r), sub(satellite.v, primary.v)));
 }
 

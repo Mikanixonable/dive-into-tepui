@@ -6,7 +6,7 @@ import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import { AtmosphereDef } from '../../../physics/atmosphere';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/planet-orbit';
@@ -181,9 +181,9 @@ function earthAuroras(): readonly Aurora[] {
 // earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: HelioEphemeris | null, origin: EciOrigin, earthSpinPhase0 = 0,
+  pack: HelioEphemeris | null, earthSpinPhase0 = 0,
 ): Record<EarthSystemBodyId, CelestialEntity> {
-  const earth = planetSystem(planetDefAtEpoch(EARTH, phases, epochOffsetSec), sun, pack, origin, earthSpinPhase0);
+  const earth = planetSystem(planetDefAtEpoch(EARTH, phases, epochOffsetSec), sun, pack, earthSpinPhase0);
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
@@ -192,7 +192,7 @@ export function earthSystem(
       GeostationaryOverlay.of(earth.body),
     ),
     moon: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(MOON, phases, epochOffsetSec), earth, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(MOON, phases, epochOffsetSec), earth, pack),
       EARTH_SYSTEM_NAMES.moon, 'satellite',
       // 平均輝度 0.3180(A_B は公表ボンド)
       CelestialSurface.textured({ url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844] }),

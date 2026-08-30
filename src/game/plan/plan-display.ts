@@ -238,11 +238,11 @@ export class PlanDisplay {
     const apCenter = final.apoapsisCenter;
     let peDist = 0;
     if (pe && peCenter) {
-      peDist = len(sub(pe.r, this.celestialSystem.entityOf(peCenter.id).motion.stateAt(pe.t).r));
+      peDist = len(sub(pe.r, this.celestialSystem.stateAt(peCenter.id, pe.t).r));
     }
     let apDist = 0;
     if (ap && apCenter) {
-      apDist = len(sub(ap.r, this.celestialSystem.entityOf(apCenter.id).motion.stateAt(ap.t).r));
+      apDist = len(sub(ap.r, this.celestialSystem.stateAt(apCenter.id, ap.t).r));
     }
     // 中心天体が遷移の前後で変わる場合、異なる中心からの距離を比較して円軌道と判定しない。
     if (pe && ap && peCenter && apCenter && peCenter.id === apCenter.id
