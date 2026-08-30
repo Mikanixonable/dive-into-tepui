@@ -116,6 +116,7 @@ export class CelestialSystem implements CelestialBodyWindows {
       (m) => m instanceof OrbitingMotion && m.def.atmosphere !== undefined,
     );
     this.referenceFrames = new ReferenceFrames(this.motions, origin.motion);
+    // 天体1体ぶんの値は個体が答えるので、その供給源(ECI 原点・暦)はここで1度だけ配る。
     for (const motion of this.motions) motion.bindEciOrigin(origin.motion);
     if (absoluteSource !== null) {
       for (const motion of this.motions) motion.bindEphemeris(absoluteSource.bodyEphemerisOf(motion.id));
