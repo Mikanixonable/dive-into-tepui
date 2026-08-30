@@ -68,6 +68,9 @@ const UPPER_LIFT_HUMIDITY = 3;
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
 const PRESSURE_BAND_AMPLITUDE = 8;
 
+// 大循環の帯の角速度 [°/日] を、この天体の表面での速さ [m/s] へ直す係数。
+const BAND_RATE_TO_SPEED = (THREE.MathUtils.degToRad(1) / 86400) * R_EARTH;
+
 // 気圧の勾配を取る中心差分の刻み [rad]。台風の芯の広がり(250 km ≈ 0.039 rad)より細かく、
 // 気圧の写しの texel(全球で 6.1e-3 rad)より粗い。
 const GRADIENT_STEP = 0.01;
@@ -233,9 +236,11 @@ export class WeatherModel {
     );
   }
 
-  // 単位方向 direction における大循環の平均風 [°/日](x が東向き、y が北向き)。
+  // 単位方向 direction における大循環の平均風(東向き・北向きの成分 [m/s])。
   public meanWindAt(direction: Vec3Node): Vec2Node {
-    return this.circulation.meanWindAt(direction);
+    // 東西は緯線に沿って進むので、同じ角速度でも高緯度ほど遅い。
+    const mean = this.circulation.meanWindAt(direction);
+    return vec2(mean.x.mul(cos(latitudeOf(direction))), mean.y).mul(BAND_RATE_TO_SPEED);
   }
 
   // 移流前の対流の強弱(0 中心の高周波)。湿度と別の写しへ焼き、別の風で流す。
