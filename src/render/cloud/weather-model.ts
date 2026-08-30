@@ -1,10 +1,7 @@
 // 状態を持たない天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流と
 // 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
 // 見えのための調整値。
-import {
-  abs, clamp, cos, cross, dot, exp, float, fract, length, max, min, mix, normalize, sin, tanh, uniform, vec2, vec3,
-  vec4,
-} from 'three/tsl';
+import { abs, clamp, cos, dot, exp, float, fract, max, mix, normalize, tanh, uniform, vec2, vec3, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../physics/solar-system';
@@ -13,6 +10,7 @@ import { CirculatingNoise, resolvableTexelAngle } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
+import { FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
 import type { ClimateMap } from './climate-map';
 import type { FieldProjection } from './field-projection';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
@@ -67,24 +65,15 @@ const UPPER_LIFT_HUMIDITY = 3;
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
 const PRESSURE_BAND_AMPLITUDE = 8;
 
-// 気圧の勾配を取る中心差分の刻み [rad]。台風の広がり(900 km ≈ 0.14 rad)より小さく、
-// 気圧の写しの texel より数倍大きい。
+// 気圧の勾配を取る中心差分の刻み [rad]。台風の芯の広がり(250 km ≈ 0.039 rad)より細かく、
+// 気圧の写しの texel(全球で 6.1e-3 rad)より粗い。
 const GRADIENT_STEP = 0.01;
-// 風の利得 [m/s あたり hPa/rad]。流入は気圧の低い方へ、地衡風は等圧線に沿って(緯度の正弦に比例)。
-// 流入と地衡風の比が、風が等圧線を横切る角を決める。
-const INFLOW_GAIN = 0.15;
-const GEOSTROPHIC_GAIN = 0.6;
-// 対流を流す風で流入に掛ける重み。横切る角が深くなり、湿度を流す風と 20° 違う向きへ伸びる
-// (45°・勾配 48 hPa/rad で 11.6° → 31.7°)。同じ風で流すと 2 枚が同じ向きへ伸びて、
-// 掛け合わせても筋のままになる。
-const CONVECTION_INFLOW_WEIGHT = 3;
-// 流れの曲がりが流入を細らせる度合い [1 あたり hPa/rad]。曲がった流れでは遠心力がコリオリに
-// 上乗せされて釣り合いを受け持つぶん、等圧線を横切る流入が減る。勾配が急なほど強く効くので、
-// 台風の芯では横切る角が数分の一になる。これが無いと角が緯度だけの関数になり、熱帯の台風が
-// 中緯度の低気圧より緩く巻く。
-const CURVATURE_GAIN = 0.015;
-// 風速の上限 [m/s]。台風の中心近くの勾配で地衡風が発散するのを抑える。
-const WIND_CAP = 50;
+// 等圧線方向の 2 階微分を取る刻み [rad]。写しは半精度で、2 階差分に乗る量子化の雑音は刻みの二乗で
+// 効く。勾配と同じ刻みで取ると、帯とノイズだけの平らな所で曲がりが雑音に埋もれる。
+const BEND_STEP = 0.02;
+// 対流を流す風の摩擦 [1/s]。湿度を流す風より強く取ると、等圧線を深く横切って 20〜30° 違う向きへ
+// 伸びる。同じ風で流すと 2 枚が同じ向きへ伸びて、掛け合わせても筋のままになる。
+const CONVECTION_FRICTION = 3 * FRICTION_RATE;
 
 // 移流の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
 const ADVECTION_PERIOD = 12 * 3600;
@@ -173,7 +162,8 @@ export class WeatherModel {
     const east = eastAt(direction);
     const north = northAt(direction);
 
-    // 気圧の写しの 4 点差分から勾配(接ベクトル [hPa/rad])。
+    // 気圧の写しの 4 点差分から勾配(接ベクトル [hPa/rad])、等圧線方向の 2 点差分からその向きの
+    // 2 階微分 [hPa/rad²]。
     const pressure = this.pressure.at(direction).r;
     const eastStep = east.mul(GRADIENT_STEP);
     const northStep = north.mul(GRADIENT_STEP);
@@ -183,13 +173,16 @@ export class WeatherModel {
     const pressureSouth = this.pressure.at(normalize(direction.sub(northStep))).r;
     const gradient = east.mul(pressureEast.sub(pressureWest)).add(north.mul(pressureNorth.sub(pressureSouth)))
       .div(2 * GRADIENT_STEP);
+    const isobar = isobarAt(direction, gradient);
+    const isobarStep = isobar.mul(BEND_STEP);
+    const pressureAhead = this.pressure.at(normalize(direction.add(isobarStep))).r;
+    const pressureBehind = this.pressure.at(normalize(direction.sub(isobarStep))).r;
+    const bend = pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2);
 
-    // 風 = 低い方への流入 + 等圧線に沿う地衡風(コリオリ力の向きは半球で反転)。流入は流れの
-    // 曲がりのぶん細る。
-    const inflow = gradient.mul(float(-INFLOW_GAIN).div(length(gradient).mul(CURVATURE_GAIN).add(1)));
-    const geostrophic = cross(direction, gradient).mul(sin(latitude).mul(GEOSTROPHIC_GAIN));
-    const wind = capWind(inflow.add(geostrophic));
-    const convectionWind = capWind(inflow.mul(CONVECTION_INFLOW_WEIGHT).add(geostrophic)).mul(CONVECTION_ADVECTION);
+    // 湿度と対流は、摩擦の違う 2 本の風で流す。
+    const wind = balancedWind(gradient, isobar, bend, latitude, FRICTION_RATE);
+    const convectionWind = balancedWind(gradient, isobar, bend, latitude, CONVECTION_FRICTION)
+      .mul(CONVECTION_ADVECTION);
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分。
     const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
@@ -260,11 +253,6 @@ export class WeatherModel {
     this.humiditySource.dispose();
     this.convectionSource.dispose();
   }
-}
-
-// 風速を WIND_CAP で頭打ちにする。
-function capWind(wind: Vec3Node): Vec3Node {
-  return wind.mul(min(float(1), float(WIND_CAP).div(max(length(wind), 1e-3))));
 }
 
 // 気圧の偏差 [hPa] が生む上昇流 [m/s]。低気圧で正、高気圧で負。
