@@ -233,6 +233,11 @@ export class WeatherModel {
     );
   }
 
+  // 単位方向 direction における大循環の平均風 [°/日](x が東向き、y が北向き)。
+  public meanWindAt(direction: Vec3Node): Vec2Node {
+    return this.circulation.meanWindAt(direction);
+  }
+
   // 移流前の対流の強弱(0 中心の高周波)。湿度と別の写しへ焼き、別の風で流す。
   public convectionSourceAt(direction: Vec3Node): FloatNode {
     return this.convectionNoise.at(direction).mul(CONVECTION_NOISE_AMPLITUDE);
