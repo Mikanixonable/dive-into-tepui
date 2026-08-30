@@ -270,19 +270,19 @@ export class ChebyshevEphemeris {
     const selected = this.segmentOf(bodyId, time);
     const evaluated = evaluateSegment(selected.segment, time);
     return {
-      state: kinematicState(time, evaluated.position, evaluated.velocity),
+      state: kinematicState<'barycentric'>(time, evaluated.position, evaluated.velocity),
       segment: selected.segment,
       segmentIndex: selected.index,
     };
   }
 
-  stateOf(bodyId: string, time: number): KinematicState {
+  stateOf(bodyId: string, time: number): KinematicState<'barycentric'> {
     return this.evaluate(bodyId, time).state;
   }
 
   // Explicit synonym for callers whose time source is a simulation epoch in SI
   // seconds. stateOf is retained as the concise physics-layer convention.
-  stateAtSeconds(bodyId: string, secondsSinceEpoch: number): KinematicState {
+  stateAtSeconds(bodyId: string, secondsSinceEpoch: number): KinematicState<'barycentric'> {
     return this.stateOf(bodyId, secondsSinceEpoch);
   }
 
