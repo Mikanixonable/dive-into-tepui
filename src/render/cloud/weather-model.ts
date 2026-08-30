@@ -19,7 +19,7 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、風は東向き・北向きの成分 [m/s]、
 // 上昇流は [m/s](地形と気圧による、負なら下降)、湿度は 0..1(humidity が地表付近、
-// upperHumidity が上層)、対流は 0..1 の深さ(深いほど雲頂が高い)。
+// upperHumidity が上層)、対流は対流セルの強弱(0 中心の高周波)。
 export type WeatherSample = {
   readonly pressure: FloatNode;
   readonly wind: Vec2Node;
@@ -34,16 +34,16 @@ export type WeatherSample = {
 // 関数なので、段を増やすとノイズの格子が雲へそのまま出る。
 const PRESSURE_NOISE = [1.2, 1] as const;
 // 地表付近は湿度と対流の 2 枚で周波数を分担する。湿度の基準の角波長(1270 km)が雲塊の配置を、
-// 対流の最上段(159 km)が粒の細かさを決める。**対流の最上段は対流の移流の 1 歩より大きく取る**
-// — 下回ると、模様が変位場に沿って引き伸ばされ、粒ではなく筋の束になる。上層はこれ以上段を
-// 減らせない — 薄い雲は光学的厚みが 1 に届かず下地が透けるので、上の段が縁ではなく繊維の濃淡と
-// して直に見える。
+// 対流(159 km から 5 km)が積雲の粒の細かさを決める。**対流は最上段まで写しに載らないのが
+// 普通で、載る段数は写しの texel が決める** — 遠景では上の段だけが残り、寄るほど細かい粒が出る。
+// 上層はこれ以上段を減らせない — 薄い雲は光学的厚みが 1 に届かず下地が透けるので、上の段が縁では
+// なく繊維の濃淡として直に見える。
 const HUMIDITY_NOISE = [5, 3] as const;
-const CONVECTION_NOISE = [20, 2] as const;
+const CONVECTION_NOISE = [40, 6] as const;
 const UPPER_HUMIDITY_NOISE = [3.2, 5] as const;
 const PRESSURE_NOISE_AMPLITUDE = 18;
 const HUMIDITY_NOISE_AMPLITUDE = 0.3;
-const CONVECTION_NOISE_AMPLITUDE = 0.35;
+const CONVECTION_NOISE_AMPLITUDE = 0.15;
 const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
 
 // 気圧の偏差から出る上昇流。利得 [m/s] が高気圧側の吹きおろしの上限で、低気圧側は圧力の尺度
@@ -59,12 +59,10 @@ const LIFT_LIMIT = 0.06;
 // 頭打ちに達し、気候と無関係な地形の縞が年中貼り付く。慢性的な湿潤・乾燥は平年の雲量が持つので、
 // ここは低気圧が山へぶつかったときだけ効く高さへ落とす。
 const TERRAIN_LIFT_GAIN = 0.35;
-// 上昇流の利得。上昇流は地表付近の湿度へ(下降で乾く)、上向きの分だけが上層の湿度と対流へ効く
-// [per m/s]。対流の利得は、上昇流が頭打ちに張り付く眼壁と螺旋帯でノイズの振れ幅を超える高さに取る
-// — そこで対流が飽和して、雲頂が上限まで立つ。
+// 上昇流の利得。上昇流は地表付近の湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く
+// [per m/s]。
 const LIFT_HUMIDITY = 5;
 const UPPER_LIFT_HUMIDITY = 3;
-const CONVECTION_LIFT = 3;
 
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
 const PRESSURE_BAND_AMPLITUDE = 8;
@@ -90,9 +88,9 @@ const WIND_CAP = 50;
 
 // 移流の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
 const ADVECTION_PERIOD = 12 * 3600;
-// 対流の移流の変位(湿度の変位に対する比)。対流は筋へ伸ばさずわずかに変形させるだけなので、
-// 1 歩は並の風(20 m/s)で 86 km と、対流の最上段より小さくなる。
-const CONVECTION_ADVECTION = 0.1;
+// 対流の移流の変位(湿度の変位に対する比)。1 歩は並の風(20 m/s)で 130 km と、写しに載る粒
+// (遠景で 40 km、寄って 5 km)より大きいので、粒は流れの向きへ伸びる。
+const CONVECTION_ADVECTION = 0.15;
 // 台風の目。移流の後の湿度をこれだけ下げる。目は渦とともに動く定常の構造なので、風に流さない。
 // 眼壁は上昇流が頭打ちに張り付いて飽和しているので、そこを貫く深さが要る。
 const TYPHOON_EYE_DRYNESS = 0.55;
@@ -100,13 +98,11 @@ const TYPHOON_EYE_DRYNESS = 0.55;
 // 地表付近と上層で別に持つ。重みは、雲量の地理的な差が凝結のしきい値をまたぐ幅に取る — 小さく
 // 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
 // 平年の雲量図がそのまま貼り付く。底上げは、重みを変えても平年並みの土地の湿度が動かないように
-// 取る(平年の雲量の中央値ぶんを差し引く)。対流は平年の雲量を受けないので底上げだけを持ち、
-// 湿度と同じ 0..1 の目盛りに乗る。
+// 取る(平年の雲量の中央値ぶんを差し引く)。
 const HUMIDITY_BASE = 0.246;
 const MEAN_CLOUDINESS_WEIGHT = 0.5;
 const UPPER_HUMIDITY_BASE = 0.227;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.4;
-const CONVECTION_BASE = 0.5;
 
 export class WeatherModel {
   private readonly circulation = new Circulation(SURFACE_BANDS);
@@ -181,8 +177,7 @@ export class WeatherModel {
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)));
 
     // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足し、台風の目のぶんを引いたもの。
-    // 後の 3 つは移流を通らないので、気候と地形と渦に貼り付いたまま歪まない。対流も同じく、
-    // わずかに流した写しへ上昇流を足す。
+    // 後の 3 つは移流を通らないので、気候と地形と渦に貼り付いたまま歪まない。
     const advected = this.advected(direction, wind, convectionWind);
     const meanCloudiness = this.climate.meanCloudiness(direction);
     const eye = this.cyclones.typhoonEyeAt(direction).mul(TYPHOON_EYE_DRYNESS);
@@ -191,9 +186,8 @@ export class WeatherModel {
     const upperHumidity = clamp(
       advected.y.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT)).add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)),
       0, 1);
-    const convection = advected.z.add(max(lift, 0).mul(CONVECTION_LIFT));
 
-    return { pressure, wind: components(wind), lift, humidity, upperHumidity, convection };
+    return { pressure, wind: components(wind), lift, humidity, upperHumidity, convection: advected.z };
   }
 
   // 写しへ焼く気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。読むのは pressure.at()。
@@ -202,7 +196,7 @@ export class WeatherModel {
     return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE)).add(this.cyclones.pressureAt(direction));
   }
 
-  // 移流前の場(x が地表付近の湿度、y が上層の湿度、z が対流)。ここへ入れたものが風で流れる。
+  // 移流前の場(x が地表付近の湿度、y が上層の湿度、z が対流の強弱)。ここへ入れたものが風で流れる。
   // 写しへ焼かれ、advected() が風上へ遡って読む。
   //
   // **平年の雲量はここへ入れない。** 移流の変位は雲を筋に引くのに要る大きさなので、通すと気候の
@@ -212,7 +206,7 @@ export class WeatherModel {
     return vec3(
       float(HUMIDITY_BASE).add(this.humidityNoise.at(direction).mul(HUMIDITY_NOISE_AMPLITUDE)),
       float(UPPER_HUMIDITY_BASE).add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)),
-      float(CONVECTION_BASE).add(this.convectionNoise.at(direction).mul(CONVECTION_NOISE_AMPLITUDE)),
+      this.convectionNoise.at(direction).mul(CONVECTION_NOISE_AMPLITUDE),
     );
   }
 
