@@ -37,7 +37,7 @@
 | `CelestialMotion`(全体) | **ECI 原点天体の一式** | 恒星中心 + 太陽系重心 | `eciOriginCache`(`:123`) | **✕ 他天体の値を全天体が持っている** |
 | `CelestialSystem` | 天体の集合 | ECI | `allCache` ほか3本(`celestial-system.ts:84-86`) | ○(集合を扱うのは系) |
 | `DynamicEntity` | 機体の状態 | ECI | — | ○ |
-| `FrameAnchors` | 1フレームぶんの天体配列 | ECI | フレーム単位 + 文字列キーの1件メモ(`frame-anchors.ts:31-32`) | 文字列キーは別件(→ 争点D) |
+| `FrameAnchors` | 1フレームぶんの天体配列 | ECI | フレーム単位 + 文字列キーの1件メモ(`frame-anchors.ts:31-32`) | 文字列キーは別件(→ 2.5 保留) |
 | `FloatingOrigin` | 描画原点 | ECI | フレーム単位 | ○ |
 
 **向きの量は原点に依らない。** 自転軸・軌道法線・2次重力場の極・大気の共回転軸・姿勢
@@ -139,18 +139,31 @@ ECI で揃っている必要がある。
 | **ECI 値の解決口を注入する**(`FrameAnchorSource` と同じ形。`(id, t) => KinematicState`) | `ReferenceFrames` は physics に残る | 口が1つ増える。既存の `FrameAnchorSource.bodies` は**1フレームの固定時刻スナップショット**で、任意の t に答えられないので流用できない(`frame-anchors.ts:47`) |
 | **`ReferenceFrames` を game/celestial へ移す** | 口が増えない。ECI を知る層が game に揃う | physics から参照フレームが消える。`frame.ts`(純関数)との距離が開く |
 
-### 争点D. 変換器は誰で、何をキャッシュするか
+### 争点D. 変換器とキャッシュの持ち主(**決着**)
 
-いまの `eciOriginCache` の中身 —「その時刻の ECI 原点天体の重心中心値・恒星中心値・加速度」と
-「どちらの供給源か」— は、**天体ではなく変換器が1時刻ぶん持つのが自然**。争点は変換器の
-正体と、天体1体ぶんの ECI 値(いまの `eciCache`)を残すかどうか。
+**変換器の正本は `CelestialSystem` が持つ。** いまの `eciOriginCache` の中身 —「その時刻の
+ECI 原点天体の値と、どちらの供給源か」— は天体1体のものではないので、`CelestialMotion` から
+外して系へ移す。
 
-- 変換器の候補: `CelestialSystem` が持つ値オブジェクト / `CelestialEntity` が結ぶもの /
-  `ReferenceFrames` の `inertialFrame` に相当するもの。
-- `eciCache` の実測(`refactor_orbit_ephemeris.md` 論点2): 積分パスでヒット率 **0.6%**、
-  表示パスで **33%**。中身は引き算1回ではなく **1体あたり2回の姿勢評価**(`degree2At` と
-  `atmosphereAt` がそれぞれ `orientationAt` を引く)を含む。
-- `FrameAnchors.attractorCache*` の文字列キーはこの整理とは独立の別件。
+**天体1体ぶんの ECI キャッシュは `CelestialEntity` が持つ。** 消去法で決まる:
+
+- **ECI 変換後の状態を知っている必要がある** → `CelestialMotion` は落ちる(方針により ECI を
+  知らない)。
+- **集合化する前である必要がある** → `CelestialSystem` は落ちる(系が扱うのは集合)。
+
+**配り方は参照を結ぶ形にする(`bindEphemeris` と同型)。** 引数で渡す案は
+「個体の状態を減らす」動機だったが、**個体は ECI キャッシュを持つのでどのみち状態を持つ** —
+減らないので動機が立たない。加えて、ECI 値を引くのは個体の内側の深い場所
+(`sync` から呼ばれる `sphere-entity.ts:85` / `point-entity.ts:139` `:181` /
+`star-entity.ts:58` と、`referenceElementsAt` ほか `celestial-entity.ts` の6箇所)で、
+`sync` の引数(`fo` / `displayTime` / `cameraSystem` / `star` / `graphics` / `style`)には
+変換器が無い。引数で配ると**この経路すべてへ引数を通すことになる。**
+
+**キャッシュが要るかどうかは別問題で、未測定。** `eciCache` の実測
+(`refactor_orbit_ephemeris.md` 論点2)は積分パスでヒット率 **0.6%**、表示パスで **33%**。
+中身は引き算1回ではなく **1体あたり2回の姿勢評価**(`degree2At` と `atmosphereAt` が
+それぞれ `orientationAt` を引く)を含む。**持ち主が決まっただけで、置くかどうかは
+移してから測る。**
 
 ### 争点E. branded type をどこまで広げるか
 
@@ -173,6 +186,14 @@ ECI で揃っている必要がある。
 ---
 
 ## 2.5 別作業へ回すもの
+
+### `FrameAnchors` の文字列キー(**保留**)
+
+`FrameAnchors.attractorOf`(`src/game/frame-anchors.ts:31-32`, `:54-58`)は
+フレーム番号・id・時刻を繋いだ**文字列キー**で直近1件を憶える — 毎フレーム走る経路に
+文字列生成が入っている。この整理とは独立の別件で、**まず実測**し、効いていて
+なお重いならもっといい持ち方を探して差し替える。効いていなければ消す。
+
 
 ### なぜ `CelestialBody`(スナップショット)が要るのか
 
@@ -215,8 +236,9 @@ ECI で揃っている必要がある。
 2. **争点E を決める。** 争点B は決着済み(型引数化しない/無標 ECI をやめる)なので、
    残るのは素の `Vec3` をどこまで守るか。無標 ECI の書き換えは機械的なので、
    タグの意味が変わる争点A の後にまとめて通す。
-3. **争点C・D を決めて、変換器を置く。** ここで `eciCache` / `eciOriginCache` が
-   `CelestialMotion` から外れる。
+3. **争点C を決めて、変換器を置く。** 変換器の正本は `CelestialSystem`、個体へは参照を結ぶ
+   (争点D で決着)。ここで `eciCache` / `eciOriginCache` が `CelestialMotion` から外れ、
+   ECI 変換が `CelestialEntity` へ移る。`ReferenceFrames` へ何を渡すかが争点C。
 4. **全天体に自分の位置のキャッシュを持たせる。** いま `SatelliteMotion` は星系原点の値を
    毎回組み直している(`celestial-motion.ts:496`)。変換器がそれを引く形になると引かれる
    回数が増えるので、ここで畳む。
