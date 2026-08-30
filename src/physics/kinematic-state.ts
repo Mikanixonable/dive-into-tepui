@@ -18,10 +18,9 @@ import { Vec3, add, cross, norm, sub, v3 } from '../math/vec3';
 // - `icrf` — 太陽系重心中心・ICRF 軸。暦パックの生の座標。
 export type FrameTag = 'eci' | 'analytic' | 'primaryRel' | 'packed' | 'icrf';
 
-// 原点(と供給源)の札を付けた位置ベクトル。**`Vec3` の部分型**なので既存のベクトル演算へは
-// そのまま渡せるが、逆はできない — `KinematicState` から取り出した `.r` / `.v` が素の `Vec3` へ
-// 落ちる漏れ口を、ここで塞ぐ。演算の結果は素の `Vec3` に戻る(位置 − 位置は変位であって
-// 位置ではない)ので、位置として名乗り直すには `kinematicState` を通す。
+// 原点(と供給源)の札を付けた位置ベクトル。**`Vec3` の部分型**なので既存のベクトル演算へ
+// そのまま渡せる。演算の結果は素の `Vec3` に戻る(位置 − 位置は変位であって位置ではない)ので、
+// 位置として名乗り直すには `kinematicState` を通す。
 export type FramedVec3<F extends FrameTag> = Vec3 & { readonly __originOf: F };
 
 // ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
@@ -29,17 +28,15 @@ export type FramedVec3<F extends FrameTag> = Vec3 & { readonly __originOf: F };
 // できなくなるため)。t を state 自身が持つので「状態」と「その時刻」が引数として
 // 分かれて食い違うことがない — 予測点列もエンティティの履歴
 // (dynamic/dynamic-entity/dynamic-entity.ts)も同じこの型で表す。
-// 型引数は原点と供給源(FrameTag)。**型注釈側にだけ既定 'eci' がある** — ECI を読む側は
-// `KinematicState` と書けるが、組み立てる `kinematicState()` には既定が無い。
+// 型引数は原点と供給源(FrameTag)。既定が 'eci' なので、ECI を読む側は型引数を書かなくてよい。
 export type KinematicState<F extends FrameTag = 'eci'> = {
   readonly t: number; // 絶対 simTime [s](時刻軸の契約は CODING-RULE 1.9)
   readonly r: FramedVec3<F>; // 位置 [m]
   readonly v: FramedVec3<F>; // 速度 [m/s]
 } & { readonly __frame: F; }
 
-// KinematicState を組み立てる唯一の入口。**型引数に既定は無い** — ECI を組むときも
-// `kinematicState<'eci'>(...)` と書く。組み立てが原点を黙って選ぶことのほうが、書く量より
-// 高くつく(読む側の型注釈 `KinematicState` は ECI の短縮形として残っている)。
+// KinematicState を組み立てる唯一の入口。ECI を組むときも `kinematicState<'eci'>(...)` と
+// 型引数を書く — 組み立てが原点を黙って選ぶことのほうが、書く量より高くつく。
 export function kinematicState<F extends FrameTag>(t: number, r: Vec3, v: Vec3): KinematicState<F> {
   return { t, r, v } as KinematicState<F>;
 }

@@ -1,6 +1,6 @@
 // 天体1体の運動。解析暦・暦パックのどちらでも太陽系重心中心の位置・速度・加速度を合成し、
-// 自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。**答えるのは自分がどこに
-// いるかだけ**で、他天体との関係も ECI も知らない(ECI 化は eci-transform.ts)。
+// 自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。**答えるのは自分1体ぶんの
+// 値**で、他天体との関係はここより上の層が組む。
 // 恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
 // 評価結果は時刻 t をキーにした固定長リング(TimeRing)でメモ化する。
 // THREE/DOM 非依存。
@@ -195,7 +195,7 @@ export class StarMotion extends CelestialMotion {
     this.systems.push(system);
   }
 
-  // 恒星の太陽系重心状態。全惑星-衛星系がこれを足して自分の位置を組むので、1度へ畳む。
+  // 恒星の太陽系重心状態。同じ時刻に多数から引かれるので1度へ畳む。
   analyticStateAt(t: number): KinematicState<'analytic'> {
     const cached = this.analyticCache.get(t);
     if (cached !== undefined) return cached;
@@ -410,9 +410,8 @@ export class PlanetMotion extends OrbitingMotion {
     );
   }
 
-  // この状態は自分の ECI 化・自分の二体加速度・全衛星の絶対位置から引かれるので、1時刻あたり
-  // 2 + 衛星数 回になる。重心補正が全衛星の相対位置を要るぶん重いので、そのぶんをここで畳む。
-  // 系のキャッシュは惑星本体と1対1なので、ここで一緒に数える。
+  // この状態は1時刻あたり 2 + 衛星数 回引かれる。重心補正が全衛星の相対位置を要るぶん重いので、
+  // そのぶんをここで畳む。系のキャッシュは惑星本体と1対1なので、ここで一緒に数える。
   get cacheStats(): TimeCacheStats {
     return addTimeCacheStats(
       addTimeCacheStats(super.cacheStats, this.analyticCache.stats), this.system.cacheStats,

@@ -21,7 +21,7 @@ export class PlanetSystem {
 
   // 系の重心の主星相対状態。重心の軌道は中心が主星なので、二体解がそのまま主星相対になる。
   // **主星の位置を経由しない**ので、主星がこれを集めて自分の重心相対位置を組んでも循環しない。
-  // 質量を持つ系では主星の重心相対位置と自分の絶対位置の両方から引かれるので、1度へ畳む。
+  // 同じ時刻に複数回引かれるので1度へ畳む。
   starRelStateAt(t: number): KinematicState<'primaryRel'> {
     const cached = this.starRelCache.get(t);
     if (cached !== undefined) return cached;
