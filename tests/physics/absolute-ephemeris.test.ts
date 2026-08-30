@@ -32,21 +32,37 @@ export function register(): void {
     assert.equal(source.bodyEphemerisOf('mars'), null);
   });
 
-  // 恒星中心化を持たないことの検査。ECI 化は「自分 − ECI 原点天体」の差なので、恒星をどこへ
-  // 置いてもその項は現れない。**恒星を引いてから差を取る実装へ戻すと、恒星の位置が丸めを
-  // 通して結果へ漏れる** — この検査はその漏れを拒む。
-  test('absolute ephemeris: 恒星をどこへ置いても ECI 位置は変わらない', () => {
-    const withStarAt = (star: ReturnType<typeof v3>): AbsoluteEphemeris =>
-      testEphemerisSource(-1e9, 1e9, (id, t) => {
-        if (id === 'sun') return { r: star, v: v3(0, 0, 0) };
-        if (id === 'earth') return { r: v3(1.5e11 + t, 2e6, -3e6), v: v3(1, 0, 0) };
-        if (id === 'mars') return { r: v3(-2.2e11 + t, 3e6, 4e10), v: v3(1, 0, 0) };
-        return null;
-      });
-    const atOrigin = solarSystemParts({}, TEST_EPOCH, withStarAt(v3(0, 0, 0)));
-    const displaced = solarSystemParts({}, TEST_EPOCH, withStarAt(v3(7e9, -4e9, 2e9)));
-    for (const t of [0, 3600, -3600]) {
-      assert.deepEqual(stateOf(displaced, 'mars', t), stateOf(atOrigin, 'mars', t));
+  // 恒星中心化を持たないことの検査。ECI 化は「自分 − ECI 原点天体」の差で、恒星はどちらの項
+  // にも現れない。**恒星を引いてから差を取る実装では、恒星が収録されていない暦は使えなかった**
+  // (供給源の構築時に例外になった)。恒星を含まない暦でパック経路が通ることがその証拠になる。
+  test('absolute ephemeris: 恒星が収録されていない暦でもパック経路を通る', () => {
+    const withoutStar = testEphemerisSource(-1e9, 1e9, (id, t) => {
+      if (id === 'earth') return { r: v3(1.5e11 + t, 2e6, -3e6), v: v3(1, 0, 0) };
+      if (id === 'mars') return { r: v3(-2.2e11 + t, 3e6, 4e10), v: v3(1, 0, 0) };
+      return null;
+    });
+    assert.equal(withoutStar.bodyEphemerisOf('sun'), null);
+    const parts = solarSystemParts({}, TEST_EPOCH, withoutStar);
+    // 地球(ECI 原点)と火星はどちらもパック由来なので、その差が素の重心座標の差になる。
+    assert.deepEqual(stateOf(parts, 'mars', 0).r, icrfToGameEci(v3(-2.2e11 - 1.5e11, 1e6, 4e10 + 3e6)));
+    // 恒星は暦を持たないので解析経路へ落ちる。例外にならないことが要点。
+    assert.ok(Number.isFinite(stateOf(parts, 'sun', 0).r.x));
+  });
+
+  // 回転基準系・軌道法線は「自分と主天体の**両方が直接収録されている**」ときだけパック由来に
+  // なる。衛星の補完(親 + 解析の相対)を混ぜると解析の周期項が入り、基底が平均要素基準から
+  // 実位置基準へ変わって最大 2.5° 動く(satellite-orbit.ts)。**この検査はその混入を拒む。**
+  test('absolute ephemeris: 未収録の衛星の軌道法線には親からの補完を混ぜない', () => {
+    const earthOnly = testEphemerisSource(-1e9, 1e9, (id, t) => (
+      id === 'earth' ? { r: v3(1.5e11 + t, 2e6, -3e6), v: v3(1, 0, 0) } : null
+    ));
+    const packed = solarSystemParts({}, TEST_EPOCH, earthOnly);
+    const analytic = solarSystemParts({});
+    for (const t of [0, 8.64e4, 3.156e6]) {
+      assert.deepEqual(
+        orbitingMotionOf(packed, 'moon').orbitNormalAt(t),
+        orbitingMotionOf(analytic, 'moon').orbitNormalAt(t),
+      );
     }
   });
 
