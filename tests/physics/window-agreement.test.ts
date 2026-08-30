@@ -1,7 +1,7 @@
 // 実シミュレーションと積分弧は、同じ問い(この物体にどの天体が効くか)へ別々の絞り込みで答える。
 // 探し方が違うのは同時性から来る正当な差だが、答えが食い違ってよい理由はない。この2つの窓が
 // 同じ位置・同じ時刻で一致することを、重力と表面判定の両方について固定する。
-import { lagrangeOf, motionOf, orbitingMotionOf, solarSystemParts } from './test-helpers';
+import { lagrangeOf, motionOf, orbitingMotionOf, solarSystemParts, stateOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { attractorAccel } from '../../src/physics/celestial-body';
@@ -27,7 +27,7 @@ const WINDOWS = PARTS.windows;
 // 弧が候補として引く天体一式。実シミュレーション側の窓と同じ運動から組む。
 const ARC_SOURCES: FutureCelestialBodyProvider = {
   defs: PARTS.bodies.map((m) => m.def),
-  celestialBodyAt: (id, t) => motionOf(PARTS, id).at(t),
+  celestialBodyAt: (id, t) => PARTS.windows.bodyAt(id, t),
 };
 
 const DAY = 86400;
@@ -62,7 +62,7 @@ const SITES: readonly Site[] = [
     name: '低月周回軌道',
     // 月の反地球側 100km 上空を、白道面内で回る。
     stateAt: (t) => {
-      const moon = orbitingMotionOf(PARTS, 'moon').stateAt(t);
+      const moon = stateOf(PARTS, 'moon', t);
       const offset = scale(norm(moon.r), R_MOON + 100e3);
       return circularOrbitState(moon, MU_MOON, offset, orbitingMotionOf(PARTS, 'moon').orbitNormalAt(t));
     },
@@ -81,10 +81,10 @@ const SITES: readonly Site[] = [
     name: '主帯',
     // ケレスと同じ日心距離・同じ軌道面で、公転方向へ 90° 進んだ点。
     stateAt: (t) => {
-      const sun = motionOf(PARTS, 'sun').stateAt(t);
+      const sun = stateOf(PARTS, 'sun', t);
       const ceres = orbitingMotionOf(PARTS, 'ceres');
       const normal = ceres.orbitNormalAt(t);
-      const offset = cross(normal, sub(ceres.stateAt(t).r, sun.r));
+      const offset = cross(normal, sub(stateOf(PARTS, 'ceres', t).r, sun.r));
       return circularOrbitState(sun, MU_SUN, offset, normal);
     },
   },
@@ -135,7 +135,7 @@ const SURFACE_SITES: readonly SurfaceSite[] = [
 
 // bodyId の表面から 1km 上空を、表面へ向かって降りていく状態。向きは任意でよいので +X に取る。
 function descentState(bodyId: string, t: number): KinematicState {
-  const body = motionOf(PARTS, bodyId).at(t);
+  const body = PARTS.windows.bodyAt(bodyId, t);
   const up = v3(1, 0, 0);
   return kinematicState(
     t,

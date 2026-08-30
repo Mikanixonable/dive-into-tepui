@@ -12,7 +12,7 @@ import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { EPOCH_T_OFFSET } from '../../src/game/celestial/solar-system/constants';
 import { keplerOrbitAtEpoch, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { scale, sub, v3 } from '../../src/math/vec3';
-import { motionOf, solarSystemParts } from './test-helpers';
+import { motionOf, solarSystemParts, stateOf } from './test-helpers';
 
 // 元期・1日後・1年後・1年前。永年変化と周期項の両方が効く幅を取る。
 const TIMES = [0, 8.64e4, 3.156e7, -3.156e7];
@@ -173,7 +173,7 @@ export function register(): void {
     parts: ReturnType<typeof solarSystemParts>, id: string, rows: Baseline,
   ): void => {
     TIMES.forEach((t, i) => {
-      const s = motionOf(parts, id).stateAt(t);
+      const s = stateOf(parts, id, t);
       assert.deepEqual([s.r.x, s.r.y, s.r.z, s.v.x, s.v.y, s.v.z], rows[i], `${id} t=${t}`);
     });
   };
@@ -193,7 +193,7 @@ export function register(): void {
   test('eci-baseline: 重心補正(太陽の地心位置と純ケプラー地球の差)が固定値と一致する', () => {
     const orbit = keplerOrbitAtEpoch(EARTH.orbit, 0, EPOCH_T_OFFSET);
     TIMES.slice(0, BARY_OFFSET.length).forEach((t, i) => {
-      const d = sub(motionOf(analytic, 'sun').stateAt(t).r, scale(keplerOrbitState(orbit, t).r, -1));
+      const d = sub(stateOf(analytic, 'sun', t).r, scale(keplerOrbitState(orbit, t).r, -1));
       assert.deepEqual([d.x, d.y, d.z], BARY_OFFSET[i], `bary t=${t}`);
     });
   });

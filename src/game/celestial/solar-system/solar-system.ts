@@ -2,7 +2,7 @@
 // CelestialSystem を返す。ECI の中心(originId)は呼び出し側の選択で、同じ太陽系を別の原点で
 // 組める。高精度暦パックを渡すと、その有効期間だけパック経路を通る。
 import { AbsoluteEphemeris, HelioEphemeris } from '../../../physics/absolute-ephemeris';
-import { EciOrigin, PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
+import { PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
@@ -52,11 +52,10 @@ export function solarSystem(
   originId: SolarSystemId, phases: PhaseOffsets, earthSpinPhase0: number,
   absoluteSource: AbsoluteEphemeris | null, epochOffsetSec: number, epochJdTdb: number,
 ): CelestialSystem {
-  const origin = new EciOrigin();
   const pack = absoluteSource === null
     ? null
     : new HelioEphemeris(absoluteSource, SUN.id, epochJdTdb);
-  const sunMotion = new StarMotion(SUN, pack, origin);
+  const sunMotion = new StarMotion(SUN, pack);
   // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
   const sun = new StarEntity(
     sunMotion, SOLAR_SYSTEM_BODY_NAMES.sun, SUN_LIGHT_COLOR,
@@ -64,22 +63,20 @@ export function solarSystem(
 
   // 全天体を系ごとの宣言順に並べたもの。重力源配列・天体一覧の順序はこれで決まる。
   const entities: readonly CelestialEntity[] = [
-    ...Object.values(earthSystem(sunMotion, phases, epochOffsetSec, pack, origin, earthSpinPhase0)),
-    ...Object.values(innerPlanets(sunMotion, phases, epochOffsetSec, pack, origin)),
-    ...Object.values(marsSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
-    ...Object.values(jupiterSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
-    ...Object.values(saturnSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
-    ...Object.values(uranusSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
-    ...Object.values(neptuneSystem(sunMotion, phases, epochOffsetSec, pack, origin)),
-    ...Object.values(dwarfPlanets(sunMotion, phases, epochOffsetSec, pack, origin)),
-    ...Object.values(smallBodies(sunMotion, phases, epochOffsetSec, pack, origin)),
+    ...Object.values(earthSystem(sunMotion, phases, epochOffsetSec, pack, earthSpinPhase0)),
+    ...Object.values(innerPlanets(sunMotion, phases, epochOffsetSec, pack)),
+    ...Object.values(marsSystem(sunMotion, phases, epochOffsetSec, pack)),
+    ...Object.values(jupiterSystem(sunMotion, phases, epochOffsetSec, pack)),
+    ...Object.values(saturnSystem(sunMotion, phases, epochOffsetSec, pack)),
+    ...Object.values(uranusSystem(sunMotion, phases, epochOffsetSec, pack)),
+    ...Object.values(neptuneSystem(sunMotion, phases, epochOffsetSec, pack)),
+    ...Object.values(dwarfPlanets(sunMotion, phases, epochOffsetSec, pack)),
+    ...Object.values(smallBodies(sunMotion, phases, epochOffsetSec, pack)),
     sun,
   ];
 
-  // 木が揃ってから ECI の中心を結ぶ。中心天体自身も自分を参照するので、この順序は崩せない。
   const originEntity = entities.find((b) => b.id === originId);
   if (originEntity === undefined) throw new Error(`solarSystem: 太陽系に無い原点 id: ${originId}`);
-  origin.set(originEntity.motion);
 
   return new CelestialSystem(entities, originEntity, phases, new PointFieldView(generatePointField()));
 }
