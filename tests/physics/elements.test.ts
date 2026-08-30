@@ -30,7 +30,7 @@ export function register(): void {
     const a = R_EARTH + 500e3;
     const s = stateFromOrbitalElements(1234, a, 0.05, (51.6 * Math.PI) / 180, 0.7, 1.1, 2.3, MU_EARTH);
     const el = orbitalElementsOf(s, EARTH) as OrbitalElements;
-    assert.equal(el.epoch?.t, 1234, '状態から組んだ要素は元期を持つ');
+    assert.equal(el.phaseRef?.t, 1234, '状態から組んだ要素は位相の基準を持つ');
     const back = stateOnOrbitAt(el, 1234);
     assert.ok(back, "元期を持つ楕円要素は時刻から状態を答える");
     assert.ok(len(sub(back!.r, s.r)) / len(s.r) < 1e-12, `位置: ${len(sub(back!.r, s.r))}`);
@@ -39,7 +39,7 @@ export function register(): void {
 
   test('elements: 位相を持たない参照軌道は時刻から状態を答えない', () => {
     const el = orbitalElementsFromClassical(R_EARTH + 800e3, 0, 98, 0, 0, EARTH);
-    assert.equal(el.epoch, null);
+    assert.equal(el.phaseRef, null);
     assert.equal(stateOnOrbitAt(el, 0), null);
   });
 

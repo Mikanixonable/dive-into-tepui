@@ -58,8 +58,8 @@ const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
 const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
-// 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime の
-// epoch で展開する。orbitLineColor は旧セーブデータには無いため、無ければ accent から導く。
+// 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime 付きの
+// 状態として展開する。orbitLineColor は旧セーブデータには無いため、無ければ accent から導く。
 type EnemyInit =
   | {
     readonly name: string;
