@@ -1,8 +1,7 @@
 // tests/perf/ 配下の各実験が共有する土台。ゲーム本体と同じ調整値の再 export、LEO の初期状態と
 // 天体窓の生成、刻み幅固定の積分、結果の比較と整形を持つ。
 import { solarSystemParts } from 'physics/test-helpers';
-import { CelestialBodyWindows } from '../../src/physics/celestial-body-windows';
-import { nearestAtmosphereBody } from '../../src/physics/celestial-body';
+import { CelestialBodyWindows, nearestAtmosphereBody } from '../../src/physics/celestial-body';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
@@ -40,7 +39,7 @@ export function initialLeoState(): KinematicState {
 
 // 解析モデル(.epk パックなし)の天体窓 — 現実の太陽系・地球原点・既定エポック。
 export function buildWindows(): CelestialBodyWindows {
-  return solarSystemParts().windows;
+  return solarSystemParts().system;
 }
 
 // 1ステップぶん、ステップ中点の時刻で重力源を解決してから stepDynamics を呼ぶ。重力源は窓を
