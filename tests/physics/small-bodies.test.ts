@@ -5,15 +5,14 @@ import { test } from '../harness';
 import { PlanetDef } from '../../src/physics/celestial-motion';
 import { MU_SUN } from '../../src/game/celestial/solar-system/constants';
 import { keplerPeriod } from '../../src/physics/elements';
-import { keplerOrbitState } from '../../src/physics/kepler-orbit';
-import { PlanetOrbit } from '../../src/physics/planet-orbit';
+import { KeplerOrbit, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { motionOf, solarSystemParts } from './test-helpers';
 import { len, scale, sub } from '../../src/math/vec3';
 
 // id から静的事実を引くための太陽系。
 const DEFS = solarSystemParts();
 
-function planetOrbitOf(id: string): PlanetOrbit {
+function planetOrbitOf(id: string): KeplerOrbit {
   return (motionOf(DEFS, id).def as PlanetDef).orbit;
 }
 
