@@ -23,6 +23,7 @@ import { CelestialSurface } from '../../render/celestial-surface';
 import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-entity-def';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
+import { SIM_EPOCH } from '../sim-epoch';
 import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
 import { StarEntity } from '../celestial/celestial-entity/star-entity';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
@@ -83,7 +84,7 @@ export class StageDebugAltSystem extends Stage {
   static async createCelestialSystem(phaseOffsets: PhaseOffsets, _earthSpinPhase0: number): Promise<CelestialSystem> {
     const bodies = zephyrusSystemMotions(phaseOffsets).map(fallbackEntity);
     const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
-    return new CelestialSystem(bodies, origin, phaseOffsets);
+    return new CelestialSystem(bodies, origin, phaseOffsets, SIM_EPOCH);
   }
   static readonly selectLabel = 'DEBUG(架空星系)';
   static readonly selectSub = '【デバッグ】恒星0個・架空天体2体のレジストリで起動する';

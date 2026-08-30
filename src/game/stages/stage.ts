@@ -25,7 +25,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAtOrNull } from '../../physics/ephemeris-profile';
-import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../sim-epoch';
+import { SIM_EPOCH } from '../sim-epoch';
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { PhaseOffsets } from '../../physics/celestial-motion';
@@ -105,12 +105,12 @@ export abstract class Stage {
     phaseOffsets: PhaseOffsets, earthSpinPhase0: number, onProgress?: (ratio: number) => void,
     startSimTime = 0,
   ): Promise<CelestialSystem> {
-    const startJdTdb = SIM_EPOCH_JD_TDB + startSimTime / 86400;
+    const startJdTdb = SIM_EPOCH.value + startSimTime / 86400;
     const profile = profileAtOrNull(startJdTdb);
     const pack = profile === null ? null : await loadAbsoluteEphemeris(
       profile.id, profile.validStartJdTdb, profile.validEndJdTdb, onProgress,
     );
-    return solarSystem('earth', phaseOffsets, earthSpinPhase0, pack, SIM_EPOCH_ET, SIM_EPOCH_JD_TDB);
+    return solarSystem('earth', phaseOffsets, earthSpinPhase0, pack, SIM_EPOCH);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;

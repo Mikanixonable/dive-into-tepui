@@ -281,64 +281,6 @@ simTime 1軸だけなので、**`+` / `-` をヘルパ呼び出しへ置き換�
 
 ## 手順
 
-### 手順1. SPEC と CODING-RULE に規範を書く
-
-**目的.** 仕様と規範を先に置く。以降の手順は、この2文書から外れているものを直す作業になる。
-**GAME.md 9.0 は既に正しいので触らない** — 実装がそちらへ寄る。**コードは変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `DEVELOP/SPEC/SAVE.md:41` | 「保存されている天文暦の元期・精度・データが現在のものと一致しないスナップショットは読み込めない」→ **「スナップショットはそのランの元期(simTime=0 が指す絶対時刻)を保存し、読み込むとその元期でランを組み直す。元期の違いは読み込みを妨げない。天体暦のデータそのもの(プロファイル・pack・形式版)が現在のものと一致しないスナップショットは読み込めない」** |
-| `DEVELOP/SPEC/SAVE.md:52` 付近(保存される内容) | 「**そのランの元期**(simTime=0 が指す絶対時刻)」を項目として足す |
-| `DEVELOP/SPEC/GAME.md` 1節(ステージ選択) | **開始日時の指定画面を挟むのはステージごとの設定である**ことを1文足す(いまは「クリエイティブモードを選ぶと」と書かれていて、どのステージが挟むかがステージ側の属性だと読めない)。9.0 本文は据置 |
-| `DEVELOP/CODING-RULE.md` | 1.8「座標系の境界」の直後に **1.9「時刻軸の境界」** を新設し、以降の節番号を繰り下げる。内容は「決めたこと 7」の 1〜7 と、3軸の変換式・ET/JD_TDB がなぜ両方あるか(データの語彙であって物理ではない)を2〜3文 |
-| `CLAUDE.md` / `.claude/skills/ui-design/SKILL.md` ほか | `CODING-RULE 1.x` への参照を繰り下げに追従。`grep -rn "CODING-RULE 1\.\|CODING-RULE.md 1\." . --include=*.md` で洗い出す |
-
-**達成条件と検証**
-
-- `grep -n "時刻軸の境界" DEVELOP/CODING-RULE.md` が 1 件。
-- `grep -n "元期" DEVELOP/SPEC/SAVE.md` が「継承する」側の記述になっている。
-- `grep -rn "CODING-RULE 1\.[0-9]" CLAUDE.md .claude DEVELOP` の各参照先の節見出しが、
-  指している内容と一致していること(目視で1件ずつ)。
-- `npm run typecheck`。
-
----
-
-### 手順2. 元期を保持する値を1つに落とし、`CelestialSystem` が持つ
-
-**目的.** 「決めたこと 6-(c)」を、検査ではなく**構造**で閉じる。同じ瞬間を2つ保持している限り、
-一致は呼び出し側の注意でしか保てない。あわせて **元期の持ち主を決める** — 手順3・4 でこの値の
-出所を移すための土台。**この時点で挙動は変えない**(値はまだ `sim-epoch.ts` の定数)。
-
-`CelestialSystem` が持ち主なのは、`phaseOffsets` と同じ立場だから — 構築時に受け取り、
-系全体がそれを基準に組まれ、`serialize()` でセーブへ出す値の集合に元期が加わるだけ。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/sim-epoch.ts:10-11` | `SIM_EPOCH_JD_TDB`(number)と `SIM_EPOCH_ET` を消し、**`export const SIM_EPOCH: TdbJulianDate = calendarDateToJulianDate(SIM_EPOCH_CALENDAR_TDB)` の1本だけ**にする。`TdbJulianDate` は `physics/time` に既にある型で、新しい型は作らない |
-| `src/game/celestial/solar-system/solar-system.ts:51-57` | 引数 `epochOffsetSec: number, epochJdTdb: number` → **`epoch: TdbJulianDate` の1つ**。先頭で `const simZeroEt = ephemerisSeconds(epoch);` を1回だけ導出し、9系へはこの `number` を渡す(導出したローカルであって、第2の正本ではない)。`new HelioEphemeris(absoluteSource, SUN.id, epoch.value)` — この引数は手順5 で消える |
-| 同 `:81` | `CelestialSystem` へ `epoch` を渡す |
-| `src/game/celestial/celestial-system.ts:88-100,188-192` | コンストラクタに `readonly epoch: TdbJulianDate` を追加し、`serialize()` の戻りへ `epoch` を足す |
-| `src/game/stages/stage-debug-alt-system.ts:83-87` | `new CelestialSystem(...)` へ元期を渡す(架空星系も表示のために元期を要る) |
-| `src/game/stages/stage.ts:28,108,113` | `SIM_EPOCH_ET` / `SIM_EPOCH_JD_TDB` → `SIM_EPOCH`。`startJdTdb = SIM_EPOCH.value + startSimTime / 86400`、`solarSystem(..., pack, SIM_EPOCH)` |
-| `src/game/save/ephemeris-context.ts:3,15,22` | `SIM_EPOCH_JD_TDB` → `SIM_EPOCH.value` |
-| `tests/physics/test-helpers.ts:28-35` | `solarSystemParts` の引数を `epoch: TdbJulianDate = createJulianDate('TDB', J2000_JULIAN_DATE + EPOCH_T_OFFSET / SECONDS_PER_DAY)` の1つへ。**既定引数で片方をもう片方から導いていた式が消える**(それがこの手順の本体) |
-| `tests/physics/celestial-eci-baseline.test.ts:170` | `solarSystemParts({}, EPOCH_T_OFFSET, SOURCE, J2000_JD)` を1引数版へ |
-
-**達成条件と検証**
-
-- `grep -rn "SIM_EPOCH_ET\|SIM_EPOCH_JD_TDB" src/ tests/` が **0 件**。
-- `solarSystem` と `solarSystemParts` の引数に元期を表すものが **1 つずつ**であること(目視)。
-- `npm run typecheck`、`npm run test:physics`、`npm run test:game`。
-- `tests/physics/celestial-eci-baseline.test.ts` が通る(暦パック経路と解析経路の一致検査。
-  元期の取り違えがあれば真っ先に落ちる)。
-
----
-
 ### 手順3. `sim-epoch.ts` を解体し、元期をステージの宣言にする
 
 **目的.** 「決めたこと 1」の実施。作中の日時は**ステージが持つ設定**であって、リポジトリ全体が
@@ -550,8 +492,6 @@ simTime が大きくなっても、無音のフリーズを検知する砦が効
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 1 | 文書 3 + 参照追従 数件 | SAVE.md 2 箇所 + GAME.md 1 文 + CODING-RULE 1 節 + `grep -rn "CODING-RULE 1\.[0-9]"` の件数 |
-| 2 | src 6 ファイル・tests 3 ファイル | `SIM_EPOCH_ET`/`SIM_EPOCH_JD_TDB` の参照 13 箇所 + `CelestialSystem` の1フィールド |
 | 3 | src 15 ファイル・tests 0 | ステージ 8 クラス × 1〜2 行 + `sim-epoch.ts` の 7 importer + `hud/utils.ts` へ 1 関数 + ファイル削除 |
 | 4 | src 8 ファイル・tests 1 ファイル | `startSimTime` 経路 13 箇所 + save 3 ファイル + 新規テスト3本。**判断が最も要る手順** |
 | 5 | src 6 ファイル・tests 5 ファイル | `JdTdb` 参照のうち評価経路にある 25 箇所(`absolute-ephemeris.ts` 17 + `packed-absolute-ephemeris.ts` 8)+ catalog/stage/solar-system の追従 |
@@ -570,7 +510,7 @@ simTime が大きくなっても、無音のフリーズを検知する砦が効
 
 | リスク | 影響 | 露見する場所 |
 | --- | --- | --- |
-| 手順2 で `{ jdTdb, etSeconds }` のような**両方を持つ構造**を作る | 同じ瞬間を2つ保持する形が残り、手順2 の目的そのものが達成されない。**正本は `TdbJulianDate` 1つ、ET は都度導出** | 手順2。達成目標6 |
+| `tests/physics/celestial-eci-baseline.test.ts` の固定値がまた動く | **手順2 で1度だけ再収録済み**(テストの元期が ET 由来から JD 由来へ変わり、畳み込みが 7.98e-6 s ずれたぶん。全天体で 0.35 m 以下、`t + 7.978640496730804e-6` で評価すると旧値に相対 1e-12 で一致することを確認済み)。**手順3 以降でこの値が動いたら、それは元期のずれではなく構造の破壊である** | 手順3〜8。動いたら再収録せず原因を探す |
 | `solarSystem` 内で導出した `simZeroEt` を、フィールドやモジュール定数として保持する | 同じ形が別の場所に生える。**関数ローカルに留めて9系へ引数として渡すだけ**にすること | 手順2・8 |
 | `Stage` 基底に `epoch` の既定値を置く | 宣言し忘れが型検査に落ちなくなり、共有定数へ静かに戻る。**既定を置かないこと自体が enforcement** | 手順3。達成目標3(1つ消して型エラーになることを確かめる) |
 | `STORY_EPOCH` を `stage.ts` の外から import する | 「共有財にハードコードしない」という手順3 の目的が消える。**参照してよいのはステージクラスの静的宣言だけ** | 手順3。`grep -rn "STORY_EPOCH" src/` がステージ 8 ファイル + `stage.ts` に限られること |

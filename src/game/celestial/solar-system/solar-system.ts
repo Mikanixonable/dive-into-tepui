@@ -5,6 +5,7 @@ import { AbsoluteEphemeris, HelioEphemeris } from '../../../physics/absolute-eph
 import { PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
+import { ephemerisSeconds, TdbJulianDate } from '../../../physics/time';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { StarEntity } from '../celestial-entity/star-entity';
 import { PointFieldView } from '../point-field-view';
@@ -46,15 +47,18 @@ export function solarSystemBodyName(id: string): string {
 }
 
 // 太陽系の CelestialSystem を組む。originId は ECI の中心天体(ステージの選択)、
-// earthSpinPhase0 は地球の自転初期位相 [rad]。absoluteSource を渡すと、その有効期間だけ
-// 高精度暦パック経路を通る(epochJdTdb はそのパックの元期)。
+// earthSpinPhase0 は地球の自転初期位相 [rad]、epoch は simTime=0 が指す絶対時刻。
+// absoluteSource を渡すと、その有効期間だけ高精度暦パック経路を通る。
 export function solarSystem(
   originId: SolarSystemId, phases: PhaseOffsets, earthSpinPhase0: number,
-  absoluteSource: AbsoluteEphemeris | null, epochOffsetSec: number, epochJdTdb: number,
+  absoluteSource: AbsoluteEphemeris | null, epoch: TdbJulianDate,
 ): CelestialSystem {
+  // 要素・極モデルの元期(J2000)から simTime=0 へ畳むための秒数。元期の唯一の表現である
+  // epoch からその場で導く — 別の値として持ち回ると、片方だけが古くなる。
+  const simZeroEt = ephemerisSeconds(epoch);
   const pack = absoluteSource === null
     ? null
-    : new HelioEphemeris(absoluteSource, SUN.id, epochJdTdb);
+    : new HelioEphemeris(absoluteSource, SUN.id, epoch.value);
   const sunMotion = new StarMotion(SUN, pack);
   // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
   const sun = new StarEntity(
@@ -63,20 +67,21 @@ export function solarSystem(
 
   // 全天体を系ごとの宣言順に並べたもの。重力源配列・天体一覧の順序はこれで決まる。
   const entities: readonly CelestialEntity[] = [
-    ...Object.values(earthSystem(sunMotion, phases, epochOffsetSec, pack, earthSpinPhase0)),
-    ...Object.values(innerPlanets(sunMotion, phases, epochOffsetSec, pack)),
-    ...Object.values(marsSystem(sunMotion, phases, epochOffsetSec, pack)),
-    ...Object.values(jupiterSystem(sunMotion, phases, epochOffsetSec, pack)),
-    ...Object.values(saturnSystem(sunMotion, phases, epochOffsetSec, pack)),
-    ...Object.values(uranusSystem(sunMotion, phases, epochOffsetSec, pack)),
-    ...Object.values(neptuneSystem(sunMotion, phases, epochOffsetSec, pack)),
-    ...Object.values(dwarfPlanets(sunMotion, phases, epochOffsetSec, pack)),
-    ...Object.values(smallBodies(sunMotion, phases, epochOffsetSec, pack)),
+    ...Object.values(earthSystem(sunMotion, phases, simZeroEt, pack, earthSpinPhase0)),
+    ...Object.values(innerPlanets(sunMotion, phases, simZeroEt, pack)),
+    ...Object.values(marsSystem(sunMotion, phases, simZeroEt, pack)),
+    ...Object.values(jupiterSystem(sunMotion, phases, simZeroEt, pack)),
+    ...Object.values(saturnSystem(sunMotion, phases, simZeroEt, pack)),
+    ...Object.values(uranusSystem(sunMotion, phases, simZeroEt, pack)),
+    ...Object.values(neptuneSystem(sunMotion, phases, simZeroEt, pack)),
+    ...Object.values(dwarfPlanets(sunMotion, phases, simZeroEt, pack)),
+    ...Object.values(smallBodies(sunMotion, phases, simZeroEt, pack)),
     sun,
   ];
 
   const originEntity = entities.find((b) => b.id === originId);
   if (originEntity === undefined) throw new Error(`solarSystem: 太陽系に無い原点 id: ${originId}`);
 
-  return new CelestialSystem(entities, originEntity, phases, new PointFieldView(generatePointField()));
+  return new CelestialSystem(
+    entities, originEntity, phases, epoch, new PointFieldView(generatePointField()));
 }
