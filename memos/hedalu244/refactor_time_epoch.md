@@ -281,34 +281,6 @@ simTime 1軸だけなので、**`+` / `-` をヘルパ呼び出しへ置き換�
 
 ## 手順
 
-### 手順6. dynamic 層の絶対秒 ε を「実際に進んだか」の判定へ置き換える
-
-**目的.** 契約 6 の実施。手順4 で simTime は 0 から始まるようになったので、これは**もう
-既知の破綻を塞ぐ手当てではなく、判定を元期の選び方から独立させる作業**になる。刻みが進んだ
-かどうかを、絶対秒の閾値ではなく浮動小数の実際の挙動で判定する。長時間の高倍率ランで
-simTime が大きくなっても、無音のフリーズを検知する砦が効き続ける。**退化ケースの挙動だけが
-変わる。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/simulator.ts:89` | `while (this.simTime < targetTime - 1e-9)` → `while (this.simTime < targetTime)`。前進しない場合はループ内の打ち切りが引き受ける |
-| 同 `:94` | `if (subDt <= 1e-9)` → `if (this.simTime + subDt <= this.simTime)`。**「足しても進まない」ことそのものを判定する** |
-| 同 `:107` | `this.simTime += 1e-6` → `this.simTime = targetTime`。ULP 未満の加算で逃げるのではなく、そのフレームぶんを消費して必ず終わらせる。ログ文言も実態へ合わせる |
-| `src/game/dynamic/time-step.ts:12-21` | `simulationStepDuration` は相対量を返しているので大きさに依らない。**触らない** |
-| `src/game/dynamic/entity-contact-response.ts:90` | `Math.abs(a.state.t - b.state.t) <= 1e-6` は残す。同一サブステップの個体は同じ `endTime` へビット一致で着地するので、|simTime| が大きい構成では実質 `===` に締まるだけで緩みはしない。**判断の根拠をコメント1行で残す** |
-| `tests/game/`(新規 or 既存の simulator 系) | `initialSimTime = 5.7e11` で `advance` を回し、**simTime が単調に増え、targetTime へ到達する**ことを検査するテストを1本足す |
-
-**達成条件と検証**
-
-- `grep -n "1e-9\|1e-6" src/game/dynamic/simulator.ts` が **0 件**。
-- `npm run test:game` — 新規テスト「巨大な simTime でも advance が targetTime へ到達する」が通る。
-  **修正前に先に書いて落ちることを確認する。**
-- `npm run typecheck`、`npm run test`(全層)。
-
----
-
 ### 手順7. `epoch` 1語を軸ごとの語へ解体する
 
 **目的.** 契約が決まったので、`epoch` が3つの別物を指している状態を解く。
@@ -387,7 +359,6 @@ simTime が大きくなっても、無音のフリーズを検知する砦が効
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 6 | src 2 ファイル・tests 1 ファイル | 判定 3 箇所 + 新規テスト1本 |
 | 7 | src 14 ファイル・tests 8 ファイル | `AtEpoch` 151 + `epochOffsetSec` 122(手順2 後)+ `OrbitEpoch` 11 = 284 件。うち約 250 件は9系ファイルの `planetDefForSimZero(X, phases, simZeroEt)` 形の同一パターン |
 | 8 | src 3 ファイル・tests 4 ファイル | `EPOCH_T_OFFSET` 参照 13 箇所 + 新規テスト1本 |
 

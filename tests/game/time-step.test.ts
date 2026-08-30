@@ -36,6 +36,21 @@ export function register(): void {
     assert.equal(simulationStepDuration(100, 200, 20, 150), 20);
   });
 
+  // simTime の分解能は |simTime|·2⁻⁵² なので、刻みが前進するかどうかは絶対秒のしきい値では
+  // 決まらない(CODING-RULE 1.9)。simulator は `simTime + subDt <= simTime` で判定するので、
+  // ここでは大きな simTime でも刻みがその判定を満たすことを押さえる。
+  test('time-step: 巨大な simTime でも刻みは実際に前進する', () => {
+    // 遠未来の元期を J2000 ET 秒で表したときと同じ桁。ULP は 1.22e-4 s ある。
+    const huge = 571665664800;
+    const maxStep = 1 / 60;
+    const subDt = simulationStepDuration(huge, huge + 1, maxStep, null);
+    assert.ok(subDt > 0, `subDt=${subDt}`);
+    assert.ok(huge + subDt > huge, '足しても進まない刻みを返してはならない');
+    // 一方、絶対秒の ε はこの桁では意味を失う — 旧実装がここで壊れていた。
+    assert.equal(huge + 1e-6, huge);
+    assert.equal(huge - 1e-9, huge);
+  });
+
   test('time-step: 大気の上限は高度に対して単調で、しきい値による飛びを持たない', () => {
     // 刻みを縛るのは連続量(密度とスケールハイト)だけなので、高度をどれだけ細かく掃いても
     // 隣り合う高度の間で刻みが跳ねてはならない。跳べば、ある高度を跨いだ瞬間に費用と精度が
