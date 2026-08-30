@@ -6,7 +6,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
-import { TickLabelMode, elementTimeLabel } from '../hud/orbit/calendar-ticks';
+import { TimeLabelSetting, elementTimeLabel } from '../hud/orbit/calendar-ticks';
 import type { MarkerManager } from './marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker-glyphs';
 import type { ProjectFn } from '../camera/camera-system';
@@ -35,7 +35,7 @@ export class EquatorNodeMarkerPair {
   // 慣性系で表示時刻へ写す。
   updateOnEllipse(
     displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
-    timeLabel: { readonly mode: TickLabelMode; readonly show: boolean; readonly nowSimTime: number },
+    timeLabel: TimeLabelSetting,
   ): void {
     this.update(
       null, displayTime, celestialSystem, frameAnchors,
@@ -48,7 +48,7 @@ export class EquatorNodeMarkerPair {
   updateOnPath(
     frame: ReferenceFrame, displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
     state: KinematicState, paths: readonly (readonly KinematicState[])[],
-    timeLabel: { readonly mode: TickLabelMode; readonly show: boolean; readonly nowSimTime: number },
+    timeLabel: TimeLabelSetting,
   ): void {
     this.update(frame, displayTime, celestialSystem, frameAnchors, state, paths, timeLabel);
   }
@@ -58,7 +58,7 @@ export class EquatorNodeMarkerPair {
   private update(
     frame: ReferenceFrame | null, displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
     state: KinematicState | null, paths: readonly (readonly KinematicState[])[],
-    timeLabel: { readonly mode: TickLabelMode; readonly show: boolean; readonly nowSimTime: number },
+    timeLabel: TimeLabelSetting,
   ): void {
     this.icons = [];
     this.celestialBodies = frameAnchors.bodies;
@@ -81,7 +81,7 @@ export class EquatorNodeMarkerPair {
 
     // PREDICT パネルの「軌道要素の時刻を表示」がONのときだけ通過時刻を併記する。
     const labelWithTime = (base: string, t: number): string =>
-      timeLabel.show ? `${base} ${elementTimeLabel(t, timeLabel.mode, timeLabel.nowSimTime)}` : base;
+      timeLabel.show ? `${base} ${elementTimeLabel(t, timeLabel)}` : base;
     this.icons = [
       {
         id: this.anKey, name: `${this.owner.name}の${centerName}赤道昇交点`, kind: 'eqnode',

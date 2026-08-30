@@ -5,7 +5,9 @@ import { UnlockManager } from './unlock-manager';
 import type { StageClass } from './stages/stage';
 import { StageDebug } from './stages/stage-debug';
 import { Button, TabBar, ValueInput } from './hud/widgets';
-import { dateStringToSimTime, SIM_EPOCH_CALENDAR_TDB } from './sim-epoch';
+import {
+  calendarDateToJulianDate, ephemerisSeconds, julianDateToCalendarDate, parseCalendarDate,
+} from '../physics/time';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { MQ_COMPACT, MQ_SHORT } from './hud/breakpoints';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
@@ -387,7 +389,7 @@ export function selectStage(
         listDiv.appendChild(row);
         if (enabled) {
           row.addEventListener('click', () => {
-            if (stageClass.id === 'creative') openDateTimeStep(stageClass);
+            if (stageClass.picksStartEpoch) openDateTimeStep(stageClass);
             else done(stageClass);
           });
         }
@@ -431,18 +433,14 @@ export function selectStage(
     dateTimeDiv.appendChild(actionsDiv);
     windowDiv.appendChild(dateTimeDiv);
 
-    const epoch = SIM_EPOCH_CALENDAR_TDB;
-    const fieldDefs: readonly [label: string, initial: number][] = [
-      ['年', epoch.year], ['月', epoch.month], ['日', epoch.day], ['時', epoch.hour], ['分', epoch.minute],
-    ];
-    const inputs = fieldDefs.map(([label, initial]) => {
+    const fieldLabels = ['年', '月', '日', '時', '分'] as const;
+    const inputs = fieldLabels.map((label) => {
       const field = document.createElement('label');
       field.className = 'ss-datetime-field';
       const span = document.createElement('span');
       span.textContent = label;
       field.appendChild(span);
       const input = new ValueInput({ type: 'number', step: 1 }, () => validate());
-      input.setValue(String(initial));
       input.element.addEventListener('input', () => validate());
       field.appendChild(input.element);
       fieldsDiv.appendChild(field);
@@ -466,13 +464,19 @@ export function selectStage(
 
     // 年+2桁パディングした月日時分から parseCalendarDate が要求する拡張ISO形式を組み立てる。
     const pad2 = (n: number) => String(n).padStart(2, '0');
-    // 5欄の入力値から simTime オフセットを求める。数値でない/存在しない日時なら null。
+    // 5欄の入力値から、そのステージの元期からのオフセット秒を求める。
+    // 数値でない/存在しない日時なら null。
     const readSimTime = (): number | null => {
       if (inputs.some((input) => input.element.value.trim() === '' || !isFinite(Number(input.element.value)))) return null;
       const [year, month, day, hour, minute] = inputs.map((input) => Number(input.element.value)) as [number, number, number, number, number];
       if (year < 0) return null;
       const iso = `${String(year).padStart(4, '0')}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}:00`;
-      return dateStringToSimTime(iso);
+      try {
+        const chosen = calendarDateToJulianDate(parseCalendarDate(iso, 'TDB'));
+        return ephemerisSeconds(chosen) - ephemerisSeconds(pendingCreativeStage!.epoch);
+      } catch {
+        return null;
+      }
     };
     // 入力のたびに確定ボタンの有効/無効とエラーメッセージを更新する。
     const validate = () => {
@@ -490,6 +494,11 @@ export function selectStage(
     // 開いている間は他ステージのショートカットキーも止める。
     const openDateTimeStep = (stageClass: StageClass) => {
       pendingCreativeStage = stageClass;
+      // 欄の既定値はそのステージが宣言した日時(GAME.md 9.0)。ステージごとに違うので開くたびに入れる。
+      const epoch = julianDateToCalendarDate(stageClass.epoch);
+      const initials = [epoch.year, epoch.month, epoch.day, epoch.hour, epoch.minute];
+      inputs.forEach((input, i) => input.setValue(String(initials[i])));
+      validate();
       dateTimeStepOpen = true;
       listDiv.classList.add('hidden');
       tabBar.element.classList.add('hidden');

@@ -5,9 +5,10 @@ import { autoOrbitReference } from '../orbit-reference';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
-import { CURRENT_EPHEMERIS_CONTEXT, isEphemerisContextCompatible } from './ephemeris-context';
+import { ephemerisContextFor, isEphemerisContextCompatible } from './ephemeris-context';
 import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData, SnapshotKind, SnapshotMeta } from './save-data';
 import type { OrbitInfo } from '../hud/orbit/orbit-info';
+import type { TdbJulianDate } from '../../physics/time';
 
 // Game の実行状態と GameSaveData の相互変換、およびストア/スロットへの出し入れを担う。
 export class SnapshotService {
@@ -49,7 +50,7 @@ export class SnapshotService {
 
   // snapshotId のスナップショット本体を取得する。本体欠損・バージョン不一致・
   // 起動先ステージとの不一致のいずれかなら null。
-  load(snapshotId: string, expectedStageId: string): GameSaveData | null {
+  load(snapshotId: string, expectedStageId: string, epoch: TdbJulianDate): GameSaveData | null {
     const data = this.store.readSnapshot(snapshotId);
     if (data === null) return null;
     if (data.version !== SAVE_VERSION) return null;
@@ -60,7 +61,7 @@ export class SnapshotService {
     // 異なる epoch/profile/pack で絶対天体状態が曖昧になるデータを拒否する。
     if (!isEphemerisContextCompatible(
       (normalizedData as { ephemerisContext?: unknown }).ephemerisContext,
-      CURRENT_EPHEMERIS_CONTEXT,
+      ephemerisContextFor(epoch),
     )) return null;
     return normalizedData;
   }
@@ -93,7 +94,7 @@ function buildSaveData(game: Game): GameSaveData {
     version: SAVE_VERSION,
     stageId: game.activeStage.id,
     simTime: game.simTime,
-    ephemerisContext: { ...CURRENT_EPHEMERIS_CONTEXT },
+    ephemerisContext: { ...ephemerisContextFor(game.celestialSystem.epoch) },
     phaseOffsets,
     earthSpinPhase0,
     players: game.dynamicSystem.players.map(p => p.serialize()),
