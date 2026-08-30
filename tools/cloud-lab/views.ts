@@ -8,7 +8,7 @@ import type { WeatherModel } from '../../src/render/cloud/weather-model';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
-  | 'elevation' | 'meanCloudiness'
+  | 'elevation' | 'meanCloudiness' | 'meanWind'
   | 'pressure' | 'wind' | 'lift'
   | 'humiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'humidity' | 'upperHumidity' | 'convection'
@@ -26,8 +26,8 @@ export type CloudLabView = {
 
 // 表示値 0..1 へ写すときの目盛り。雲頂高度は 0..15000 m、薄い雲の光学的厚みは 0..1、気圧は
 // −70..+30 hPa、上昇流は ±0.1 m/s を、対流は ±0.5 をそれぞれ 0.5 中心に、風は ±45 m/s(台風の芯の
-// 風速まで飽和させない幅)を 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
-// 被覆率と湿度はそのまま出す。
+// 風速まで飽和させない幅)、平均風は ±12°/日(地表付近の帯を飽和させない幅)を 0.5 中心の
+// R(東)G(北)に、速さを B に、標高は 0..8000 m。被覆率と湿度はそのまま出す。
 const CLOUD_TOP_SPAN = 15000;
 const CONVECTION_SPAN = 0.5;
 const TRANSLUCENT_SPAN = 1;
@@ -35,18 +35,20 @@ const PRESSURE_MIN = -70;
 const PRESSURE_SPAN = 100;
 const LIFT_SPAN = 0.1;
 const WIND_SPAN = 45;
+const MEAN_WIND_SPAN = 12;
 const ELEVATION_SPAN = 8000;
 
-// 風 [m/s] の東・北成分を 0.5 中心の RG に、速さを B に。
-function windColor(wind: Vec2Node): Vec3Node {
-  return vec3(wind.x.div(2 * WIND_SPAN).add(0.5), wind.y.div(2 * WIND_SPAN).add(0.5), length(wind).div(WIND_SPAN));
+// 風の東・北成分を 0.5 中心の RG に、速さを B に。span は R と G が飽和する幅で、単位は wind に従う。
+function windColor(wind: Vec2Node, span: number): Vec3Node {
+  return vec3(wind.x.div(2 * span).add(0.5), wind.y.div(2 * span).add(0.5), length(wind).div(span));
 }
 
 export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'elevation', label: '標高', readsCloud: false, color: (d, _m, climate) => vec3(climate.elevation(d).div(ELEVATION_SPAN)) },
   { id: 'meanCloudiness', label: '平年の雲量', readsCloud: false, color: (d, _m, climate) => vec3(climate.meanCloudiness(d)) },
+  { id: 'meanWind', label: '平均風', readsCloud: false, color: (d, model) => windColor(model.meanWindAt(d), MEAN_WIND_SPAN) },
   { id: 'pressure', label: '気圧', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
-  { id: 'wind', label: '風', readsCloud: false, color: (d, model) => windColor(model.weatherAt(d).wind) },
+  { id: 'wind', label: '風', readsCloud: false, color: (d, model) => windColor(model.weatherAt(d).wind, WIND_SPAN) },
   { id: 'lift', label: '上昇流', readsCloud: false, color: (d, model) => vec3(model.weatherAt(d).lift.div(2 * LIFT_SPAN).add(0.5)) },
   { id: 'humiditySource', label: '移流前の湿度', readsCloud: false, color: (d, model) => vec3(model.humiditySourceAt(d).x) },
   { id: 'upperHumiditySource', label: '移流前の上層湿度', readsCloud: false, color: (d, model) => vec3(model.humiditySourceAt(d).y) },
