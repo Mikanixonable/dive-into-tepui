@@ -12,10 +12,13 @@ export type CloudSample = {
   readonly translucent: FloatNode;
 };
 
-// 被覆率の足切りの縁。湿度に対流の強弱を足したものを渡すので、湿度が上の縁を超えている所は
-// 対流が下がっても覆われたままで、**湿度が縁のあいだにある所だけが対流の周波数で千切れる。**
-const COVERAGE_ONSET = 0.38;
-const COVERAGE_FULL = 0.90;
+// 被覆率の足切りの縁と、そこへ足す対流の重み。湿度に対流の強弱を足したものを渡すので、湿度が上の
+// 縁を超えている所は対流が下がっても覆われたままで、**湿度が縁のあいだにある所だけが対流の周波数で
+// 千切れる。** 縁の幅は、重みを掛けた対流が振れる幅(±0.12)と同じに取る — 湿った所はすぐ飽和し、
+// そこから先の起伏は雲頂高度が持つ。
+const COVERAGE_ONSET = 0.62;
+const COVERAGE_FULL = 0.80;
+const CONVECTION_GAIN = 0.8;
 // 雲頂の高さ [m]。雲底から、対流の深さが 1 に漸近する高さまで。
 const CLOUD_BASE_HEIGHT = 1000;
 const CLOUD_TOP_SPAN = 14000;
@@ -26,9 +29,9 @@ const CLOUD_TOP_SPAN = 14000;
 const CLOUD_TOP_LIFT = 82;
 const CLOUD_TOP_RELIEF = 3.3;
 const CLOUD_TOP_BIAS = 2;
-// 薄い雲は、上層の湿度がしきい値を超えた分に比例して光学的厚みが増える。上端で 0.9 に届く
+// 薄い雲は、上層の湿度がしきい値を超えた分に比例して光学的厚みが増える。上端で 0.72 に届く
 // — 巻雲は厚みが 1 に届かず、下地が透けたまま見える。
-const TRANSLUCENT_ONSET = 0.4;
+const TRANSLUCENT_ONSET = 0.52;
 const TRANSLUCENT_GAIN = 1.5;
 
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した 1 本の足切りから、
@@ -38,7 +41,7 @@ export function condense(weather: WeatherSample): CloudSample {
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT)
     .add(weather.convection.mul(CLOUD_TOP_RELIEF)).sub(CLOUD_TOP_BIAS);
   return {
-    coverage: smoothstep(COVERAGE_ONSET, COVERAGE_FULL, weather.humidity.add(weather.convection)),
+    coverage: smoothstep(COVERAGE_ONSET, COVERAGE_FULL, weather.humidity.add(weather.convection.mul(CONVECTION_GAIN))),
     cloudTop: float(1).add(exp(depth.negate())).reciprocal().mul(CLOUD_TOP_SPAN).add(CLOUD_BASE_HEIGHT),
     translucent: max(weather.upperHumidity.sub(TRANSLUCENT_ONSET), 0).mul(TRANSLUCENT_GAIN),
   };

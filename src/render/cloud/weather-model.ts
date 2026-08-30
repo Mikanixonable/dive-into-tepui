@@ -33,14 +33,14 @@ export type WeatherSample = {
 // 気圧は 1 段しか持たない。総観規模より細かい構造を実際に持たないうえ、上昇流が気圧そのものの
 // 関数なので、段を増やすとノイズの格子が雲へそのまま出る。
 const PRESSURE_NOISE = [1.2, 1] as const;
-// 地表付近は湿度と対流の 2 枚で周波数を分担する。湿度の基準の角波長(1270 km)が雲塊の配置を、
-// 対流(159 km から 5 km)が積雲の粒の細かさを決める。**対流は最上段まで写しに載らないのが
-// 普通で、載る段数は写しの texel が決める** — 遠景では上の段だけが残り、寄るほど細かい粒が出る。
-// 上層はこれ以上段を減らせない — 薄い雲は光学的厚みが 1 に届かず下地が透けるので、上の段が縁では
-// なく繊維の濃淡として直に見える。
-const HUMIDITY_NOISE = [5, 3] as const;
-const CONVECTION_NOISE = [40, 6] as const;
-const UPPER_HUMIDITY_NOISE = [3.2, 5] as const;
+// 地表付近は湿度と対流の 2 枚で周波数を分担する。湿度の基準の角波長(800 km)が雲塊の配置を、
+// 対流(80 km と 40 km の 2 段)が積雲の粒の細かさを決める。**対流が載るかどうかは写しの texel が
+// 決める** — 40 km/texel より粗い写しでは 2 段とも落ちて湿度だけの滑らかな塊になり、10 km/texel
+// まで寄れば 2 段とも乗る。上層はこれ以上段を減らせない — 薄い雲は光学的厚みが 1 に届かず下地が透けるので、
+// 細かい段が縁ではなく繊維の濃淡として直に見える。
+const HUMIDITY_NOISE = [8, 4] as const;
+const CONVECTION_NOISE = [80, 2] as const;
+const UPPER_HUMIDITY_NOISE = [6, 4] as const;
 const PRESSURE_NOISE_AMPLITUDE = 18;
 const HUMIDITY_NOISE_AMPLITUDE = 0.3;
 const CONVECTION_NOISE_AMPLITUDE = 0.15;
@@ -88,9 +88,9 @@ const WIND_CAP = 50;
 
 // 移流の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
 const ADVECTION_PERIOD = 12 * 3600;
-// 対流の移流の変位(湿度の変位に対する比)。1 歩は並の風(20 m/s)で 130 km と、写しに載る粒
-// (遠景で 40 km、寄って 5 km)より大きいので、粒は流れの向きへ伸びる。
-const CONVECTION_ADVECTION = 0.15;
+// 対流を流す風に掛ける倍率。1 周期の変位は並の風(20 m/s)で 260 km と、写しに載る粒(80〜40 km)
+// より大きいので、粒は流れの向きへ伸びる。
+const CONVECTION_ADVECTION = 0.3;
 // 台風の目。移流の後の湿度をこれだけ下げる。目は渦とともに動く定常の構造なので、風に流さない。
 // 眼壁は上昇流が頭打ちに張り付いて飽和しているので、そこを貫く深さが要る。
 const TYPHOON_EYE_DRYNESS = 0.55;
@@ -169,7 +169,7 @@ export class WeatherModel {
     const inflow = gradient.mul(float(-INFLOW_GAIN).div(length(gradient).mul(CURVATURE_GAIN).add(1)));
     const geostrophic = cross(direction, gradient).mul(sin(latitude).mul(GEOSTROPHIC_GAIN));
     const wind = capWind(inflow.add(geostrophic));
-    const convectionWind = capWind(inflow.mul(CONVECTION_INFLOW_WEIGHT).add(geostrophic));
+    const convectionWind = capWind(inflow.mul(CONVECTION_INFLOW_WEIGHT).add(geostrophic)).mul(CONVECTION_ADVECTION);
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分。
     const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
@@ -212,19 +212,19 @@ export class WeatherModel {
 
   // 移流前の写しを風で流したもの(x が地表付近の湿度、y が上層の湿度、z が対流)。周期の半分
   // ずれた 2 位相を三角波で混ぜるので、流れの変位が周期ぶんで頭打ちになり、渦に巻き込まれた模様が
-  // 無限に細くならない。湿度と対流は別の風・別の変位で流すので、伸びた先でも 2 枚の向きが揃わない。
+  // 無限に細くならない。湿度と対流は向きも速さも違う風で流すので、伸びた先でも 2 枚の向きが揃わない。
   private advected(direction: Vec3Node, wind: Vec3Node, convectionWind: Vec3Node): Vec3Node {
     const phaseA = this.advectionCycle;
     const phaseB = fract(phaseA.add(0.5));
     const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
-    // 位相 phase(周期に対する比)だけ flow の風上へ遡った点の源。span は変位の倍率。
-    const sourceAt = (flow: Vec3Node, phase: FloatNode, span: number): Vec4Node =>
-      this.advectionSource.at(normalize(direction.sub(flow.mul(phase.mul((span * ADVECTION_PERIOD) / R_EARTH)))));
+    // 位相 phase(周期に対する比)だけ flow の風上へ遡った点の源。
+    const sourceAt = (flow: Vec3Node, phase: FloatNode): Vec4Node =>
+      this.advectionSource.at(normalize(direction.sub(flow.mul(phase.mul(ADVECTION_PERIOD / R_EARTH)))));
     return vec3(
-      mix(sourceAt(wind, phaseB, 1).xy, sourceAt(wind, phaseA, 1).xy, weightA),
+      mix(sourceAt(wind, phaseB).xy, sourceAt(wind, phaseA).xy, weightA),
       mix(
-        sourceAt(convectionWind, phaseB, CONVECTION_ADVECTION).z,
-        sourceAt(convectionWind, phaseA, CONVECTION_ADVECTION).z, weightA),
+        sourceAt(convectionWind, phaseB).z,
+        sourceAt(convectionWind, phaseA).z, weightA),
     );
   }
 
