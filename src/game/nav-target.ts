@@ -4,7 +4,7 @@
 import { Vec3, v3, add, len, sub } from '../math/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { CelestialBody, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
-import type { LagrangePoints } from '../physics/lagrange';
+import { LagrangePoints, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { OrbitingMotion, type CelestialMotion } from '../physics/celestial-motion';
 import { qRotate } from '../physics/attitude';
@@ -249,10 +249,12 @@ export class NavTarget {
     const match = /^(.+)-l([1-5])$/.exec(id);
     if (match) {
       const secondary = celestialSystem.find(match[1]!)?.motion ?? null;
-      if (secondary instanceof OrbitingMotion) {
+      const frame = secondary instanceof OrbitingMotion
+        ? secondaryFrameOf(celestialBodies, secondary, t) : null;
+      if (frame !== null) {
         const point = `L${match[2]}` as keyof LagrangePoints;
         return {
-          id, state: secondary.lagrangeStateAt(point, t), hasMass: false,
+          id, state: lagrangeStateOf(point, frame), hasMass: false,
           attractor: null, entity: null, fixed: true,
         };
       }

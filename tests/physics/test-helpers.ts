@@ -1,6 +1,9 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
 import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
+import {
+  LagrangePoints, SecondaryFrame, lagrangePointsOf, secondaryFrameOf,
+} from '../../src/physics/lagrange';
 import type { CelestialBodyWindows } from '../../src/physics/celestial-body-windows';
 import { CelestialMotion, OrbitingMotion, PhaseOffsets } from '../../src/physics/celestial-motion';
 import { FrameRotation } from '../../src/physics/kepler-orbit';
@@ -43,6 +46,20 @@ export function orbitingMotionOf(parts: SolarSystemParts, id: string): OrbitingM
   const motion = motionOf(parts, id);
   if (!(motion instanceof OrbitingMotion)) throw new Error(`公転していない天体 id: ${id}`);
   return motion;
+}
+
+// 天体 id の時刻 t におけるラグランジュ点(ECI)。公転していない・主天体が引けない id は例外。
+export function lagrangeOf(parts: SolarSystemParts, id: string, t: number): LagrangePoints {
+  const frame = secondaryFrameOf(parts.windows.celestialBodiesAt(t), orbitingMotionOf(parts, id), t);
+  if (frame === null) throw new Error(`ラグランジュ点を組めない天体 id: ${id}`);
+  return lagrangePointsOf(frame);
+}
+
+// 天体 id の時刻 t における SecondaryFrame。組めない id は例外。
+export function secondaryFrameFor(parts: SolarSystemParts, id: string, t: number): SecondaryFrame {
+  const frame = secondaryFrameOf(parts.windows.celestialBodiesAt(t), orbitingMotionOf(parts, id), t);
+  if (frame === null) throw new Error(`SecondaryFrame を組めない天体 id: ${id}`);
+  return frame;
 }
 
 // 天体 id の時刻 t での ECI 位置。
