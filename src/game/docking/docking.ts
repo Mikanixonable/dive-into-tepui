@@ -177,7 +177,7 @@ export class Docking {
     } else {
       this.dockedPairs.set(ship.id, target);
       // 相対速度をゼロにする
-      ship.state = kinematicState(ship.state.t, ship.state.r, target.state.v);
+      ship.state = kinematicState<'eci'>(ship.state.t, ship.state.r, target.state.v);
       this.hud.hint(`${ship.name} が ${target.name || '対象'} にドッキングしました`);
     }
   }
@@ -231,7 +231,7 @@ export class Docking {
         continue;
       }
       // 速度を完全同期
-      ship.state = kinematicState(ship.state.t, ship.state.r, target.state.v);
+      ship.state = kinematicState<'eci'>(ship.state.t, ship.state.r, target.state.v);
     }
   }
 
@@ -326,7 +326,7 @@ export class Docking {
       base.state.v.z + slotNormal.z * 2.5,
     );
 
-    ship.state = kinematicState(base.state.t, launchPos, launchVel);
+    ship.state = kinematicState<'eci'>(base.state.t, launchPos, launchVel);
     this.entities.addPlayer(ship);
     this.activePlayers.set(ship);
     this.viewManager.setView('combat');

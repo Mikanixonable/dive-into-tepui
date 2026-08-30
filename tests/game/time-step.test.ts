@@ -16,14 +16,14 @@ const UNIT_ATMOSPHERE: Atmosphere = {
 // center を中心に静止した、大気を持つ/持たない天体。
 function body(atmosphere: Atmosphere | null, center = v3()): CelestialBody {
   return {
-    id: 'b', mu: 1e6, radius: 1000, state: kinematicState(0, center, v3()), accel: v3(),
+    id: 'b', mu: 1e6, radius: 1000, state: kinematicState<'eci'>(0, center, v3()), accel: v3(),
     degree2: null, atmosphere, isStar: false,
   };
 }
 
 // 高度 alt を降下速度 rate で降りている状態。
 function descending(alt: number, rate = 100): KinematicState {
-  return kinematicState(0, v3(1000 + alt, 0, 0), v3(-rate, 0, 0));
+  return kinematicState<'eci'>(0, v3(1000 + alt, 0, 0), v3(-rate, 0, 0));
 }
 
 export function register(): void {
@@ -96,7 +96,7 @@ export function register(): void {
     // 抗力の逆時定数 λ は bcInv に比例する。降下していない状態で見る — 沈み込みの上限は
     // 弾道係数に依らないので、降下中はそちらが先に効いて差が出ないことがある。
     const bodies = [body(UNIT_ATMOSPHERE)];
-    const level = kinematicState(0, v3(1000, 0, 0), v3(0, 0, 100));
+    const level = kinematicState<'eci'>(0, v3(1000, 0, 0), v3(0, 0, 100));
     assert.ok(atmosphericMaxStep(level, 1e-2, bodies) < atmosphericMaxStep(level, 1e-3, bodies));
   });
 
@@ -104,7 +104,7 @@ export function register(): void {
     // 天体を原点から遠くへ置く。原点基準で測っていれば「はるか高空」に見えるが、その天体から
     // 見れば大気の底にいる。
     const center = v3(0, 0, 5e7);
-    const inside = kinematicState(0, v3(0, 0, 5e7 + 1000), v3(0, 0, -100));
+    const inside = kinematicState<'eci'>(0, v3(0, 0, 5e7 + 1000), v3(0, 0, -100));
     const atCenter = descending(0);
     assert.equal(
       atmosphericMaxStep(inside, 1e-3, [body(UNIT_ATMOSPHERE, center)]),
@@ -113,7 +113,7 @@ export function register(): void {
 
   test('time-step: 上昇中でも、濃い空気の中なら刻みは縮む', () => {
     // 縛っているのは境界までの猶予ではなく、いま浴びている抗力そのもの。
-    const climbing = kinematicState(0, v3(1000, 0, 0), v3(100, 0, 0));
+    const climbing = kinematicState<'eci'>(0, v3(1000, 0, 0), v3(100, 0, 0));
     assert.ok(atmosphericMaxStep(climbing, 1e-3, [body(UNIT_ATMOSPHERE)]) < 20);
   });
 

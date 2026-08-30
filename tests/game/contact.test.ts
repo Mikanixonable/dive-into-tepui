@@ -19,8 +19,8 @@ import { Vec3, scale, v3 } from '../../src/math/vec3';
 function contact(selfV: Vec3, otherV: Vec3, normal: Vec3): Contact {
   return {
     t: 0, point: v3(), normal,
-    selfState: kinematicState(0, v3(), selfV),
-    otherState: kinematicState(0, v3(), otherV),
+    selfState: kinematicState<'eci'>(0, v3(), selfV),
+    otherState: kinematicState<'eci'>(0, v3(), otherV),
   };
 }
 
@@ -48,8 +48,8 @@ export function register(): void {
   test('contact: 物体どうしの反発が起きたとき、両当事者の見る接近速度は正で一致する', () => {
     // resolveSphereCollision が bounced を立てるのは接近しているときだけなので、そこから
     // 組んだ記述の接近速度が 0 になるなら、法線の向きか符号のどちらかが食い違っている。
-    const a = { state: kinematicState(0, v3(0, 0, 0), v3()), radius: 1, invMass: 1 };
-    const b = { state: kinematicState(0, v3(1.5, 0, 0), v3(-10, 0, 0)), radius: 1, invMass: 1 };
+    const a = { state: kinematicState<'eci'>(0, v3(0, 0, 0), v3()), radius: 1, invMass: 1 };
+    const b = { state: kinematicState<'eci'>(0, v3(1.5, 0, 0), v3(-10, 0, 0)), radius: 1, invMass: 1 };
     const response = resolveSphereCollision(a, b, 0.4);
     assert.ok(response !== null && response.bounced, '前提: 正面衝突で反発が起きる');
     // 解決器は同じ結果から self/other を入れ替えた記述を2つ作り、法線も反転させる。
@@ -61,8 +61,8 @@ export function register(): void {
 
   test('contact: 天体表面との反発が起きたときも、接近速度は正になる', () => {
     // 表面接触の法線は「動く側 → 相手」で、受け手はいつも動く側。
-    const moving = { state: kinematicState(0, v3(0, 0, 0), v3(8, 0, 0)), radius: 1 };
-    const fixed = { state: kinematicState(0, v3(1.5, 0, 0), v3()), radius: 1 };
+    const moving = { state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(8, 0, 0)), radius: 1 };
+    const fixed = { state: kinematicState<'eci'>(0, v3(1.5, 0, 0), v3()), radius: 1 };
     const geometry = sphereContactGeometry(moving, fixed);
     const response = geometry === null ? null : distributeFixedContact(moving, fixed, 0.4, geometry);
     assert.ok(response !== null && response.bounced, '前提: 表面へ突っ込めば反発が起きる');

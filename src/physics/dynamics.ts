@@ -85,7 +85,7 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
   const a4 = accel(s.t + dt, r4x, r4y, r4z, v4x, v4y, v4z);
   const kv4x = a4.x, kv4y = a4.y, kv4z = a4.z;
 
-  return kinematicState(
+  return kinematicState<'eci'>(
     s.t + dt,
     v3(
       r0x + h6 * (kr1x + kr4x + 2 * (kr2x + kr3x)),

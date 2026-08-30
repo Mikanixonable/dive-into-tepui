@@ -34,7 +34,7 @@ export function initialLeoState(): KinematicState {
   const r0 = R_EARTH + INITIAL_ALT;
   const vCirc = Math.sqrt(MU_EARTH / r0);
   const inc = (INITIAL_INC_DEG * Math.PI) / 180;
-  return kinematicState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
+  return kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
 }
 
 // 解析モデル(.epk パックなし)の天体窓 — 現実の太陽系・地球原点・既定エポック。

@@ -27,7 +27,7 @@ import type { ProteinDisplaySettings } from '../../protein/protein-display';
 function phasedState(base: KinematicState, dAlong: number): KinematicState {
   const hHat = orbitAxes(base).nrm;
   const ang = dAlong / len(base.r);
-  return kinematicState(base.t, rotateAxis(base.r, hHat, ang), rotateAxis(base.v, hHat, ang));
+  return kinematicState<'eci'>(base.t, rotateAxis(base.r, hHat, ang), rotateAxis(base.v, hHat, ang));
 }
 
 // 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体): ランダム姿勢+角速度。
@@ -78,8 +78,8 @@ export function proteinFormationSpawns(
 ): readonly { assetId: ProteinAssetId; build: () => Enemy }[] {
   const towardPlayer = norm(v3(playerPosition.x - centerState.r.x, playerPosition.y - centerState.r.y, playerPosition.z - centerState.r.z));
   const offset = 450;
-  const shieldState = kinematicState(centerState.t, addScaled(centerState.r, towardPlayer, offset), centerState.v);
-  const energyState = kinematicState(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
+  const shieldState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, offset), centerState.v);
+  const energyState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
   return [
     {
       assetId: 'pdb-5i4r',
@@ -107,7 +107,7 @@ export function generateCoellipticEnemy(
 ): Enemy {
   const phased = phasedState(base, dAlong);
   const altitude = len(base.r) + altitudeOffset;
-  const state: KinematicState = kinematicState(
+  const state: KinematicState = kinematicState<'eci'>(
     phased.t,
     scale(norm(phased.r), altitude),
     scale(norm(phased.v), Math.sqrt(MU_EARTH / altitude)),
@@ -120,7 +120,7 @@ export function generateCrossingEnemy(
   name: string, base: KinematicState, dAlong: number, hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   const phased = phasedState(base, dAlong);
-  const state: KinematicState = kinematicState(phased.t, phased.r, rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180));
+  const state: KinematicState = kinematicState<'eci'>(phased.t, phased.r, rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180));
   return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, worldSfx, fx, scene);
 }
 
@@ -129,7 +129,7 @@ export function generateEllipticEnemy(
   name: string, base: KinematicState, dAlong: number, hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   const phased = phasedState(base, dAlong);
-  const state: KinematicState = kinematicState(phased.t, phased.r, scale(phased.v, 1.006));
+  const state: KinematicState = kinematicState<'eci'>(phased.t, phased.r, scale(phased.v, 1.006));
   return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, worldSfx, fx, scene);
 }
 

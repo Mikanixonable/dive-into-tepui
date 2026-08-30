@@ -64,7 +64,7 @@ function extrapolatedTailStates(
   const count = Math.min(MAX_EXTRAPOLATED_SAMPLES, Math.max(2, Math.ceil(span / target)));
   return extrapolatedRelativeStates(tip, center, to, count).map((s) => {
     const centerState = celestialSystem.stateAt(center.id, s.t);
-    return kinematicState(s.t, add(s.r, centerState.r), add(s.v, centerState.v));
+    return kinematicState<'eci'>(s.t, add(s.r, centerState.r), add(s.v, centerState.v));
   });
 }
 
@@ -132,7 +132,7 @@ export class TrajectoryLine {
       const queue = new StateQueue(Math.max(1, combined.length));
       for (const s of combined) {
         const rel = toFrameState(celestialSystem.frames.transformAt(frame, s.t, frameAnchors), s);
-        queue.push(kinematicState(s.t, rel.r, rel.v));
+        queue.push(kinematicState<'eci'>(s.t, rel.r, rel.v));
       }
       this.baked = queue;
       this.bakedTimes = combined.map((s) => s.t);

@@ -14,14 +14,14 @@ import { qFromAxisAngle, qRotate } from '../../src/physics/attitude';
 const EARTH_POLE = v3(0, 1, 0);
 const EARTH_DEGREE2: Degree2Gravity = { j2: J2_EARTH, refRadius: R_EARTH_EQ, pole: EARTH_POLE, tesseral: null };
 const EARTH: CelestialBody = {
-  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(),
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(),
   degree2: EARTH_DEGREE2, atmosphere: null, isStar: false,
 };
 
 function circularState() {
   const r0 = R_EARTH + 420e3;
   const vc = Math.sqrt(MU_EARTH / r0);
-  return kinematicState(0, v3(r0, 0, 0), v3(0, vc, 0));
+  return kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, vc, 0));
 }
 
 function rot(v: Vec3, axis: Vec3, angle: number): Vec3 {
@@ -85,7 +85,7 @@ function legacyAccel(r: Vec3, sunPos: Vec3, moonPos: Vec3): Vec3 {
 
 // 原点に静止した点質量の地球(2次重力場なし)。
 const STATIC_EARTH: CelestialBody = {
-  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(),
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(),
   degree2: null, atmosphere: null, isStar: false,
 };
 const EARTH_MOON_DIST = 3.844e8; // 地球-月間距離(円軌道近似)[m]
@@ -103,7 +103,7 @@ function earthMoonWindowAt(t: number): readonly CelestialBody[] {
   const a = v3(-EARTH_MOON_OMEGA * EARTH_MOON_OMEGA * r.x, 0, -EARTH_MOON_OMEGA * EARTH_MOON_OMEGA * r.z);
   return [
     STATIC_EARTH,
-    { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(t, r, v), accel: a, degree2: null, atmosphere: null, isStar: false },
+    { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState<'eci'>(t, r, v), accel: a, degree2: null, atmosphere: null, isStar: false },
   ];
 }
 
@@ -115,8 +115,8 @@ export function register(): void {
     const moonPos = v3(3.8e8, 0, 0);
     const attractors: readonly CelestialBody[] = [
       EARTH,
-      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, moonPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false },
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: true },
+      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState<'eci'>(0, moonPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState<'eci'>(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: true },
     ];
 
     const viaNew = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, null);
@@ -172,7 +172,7 @@ export function register(): void {
     const a = R_MOON + 100e3;
     const period = keplerPeriod(a, MU_MOON); // ~7,066s
     const rel0 = stateFromOrbitalElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
-    let s = kinematicState(0, add(rel0.r, moon0.state.r), add(rel0.v, moon0.state.v));
+    let s = kinematicState<'eci'>(0, add(rel0.r, moon0.state.r), add(rel0.v, moon0.state.v));
 
     const dt = 5;
     const steps = Math.round(period / dt);
@@ -195,7 +195,7 @@ export function register(): void {
     const alt = 420e3;
     const r0 = R_EARTH + alt;
     const vCirc = Math.sqrt(MU_EARTH / r0);
-    let s = kinematicState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
+    let s = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, 0, vCirc));
     const period = 2 * Math.PI * Math.sqrt((r0 * r0 * r0) / MU_EARTH);
     const e0 = 0.5 * vCirc * vCirc - MU_EARTH / r0;
 
@@ -352,18 +352,18 @@ export function register(): void {
     const sunPos = v3(1.495978707e11, 0, 0);
     const attractors: readonly CelestialBody[] = [
       EARTH,
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: true },
+      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState<'eci'>(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: true },
     ];
     const dt = 100;
     const srpCoeff = 1e-2;
     const speed = Math.sqrt(MU_EARTH / 7e6);
 
-    const sunlitStart = kinematicState(0, v3(7e6, 0, 0), v3(0, 0, speed));
+    const sunlitStart = kinematicState<'eci'>(0, v3(7e6, 0, 0), v3(0, 0, speed));
     const withSrp = stepDynamics(sunlitStart, dt, attractors, attractors, null, 0, srpCoeff, null);
     const withoutSrp = stepDynamics(sunlitStart, dt, attractors, attractors, null, 0, 0, null);
     assert.ok(len(sub(withSrp.v, withoutSrp.v)) > 0, 'a sunlit object should feel solar radiation pressure');
 
-    const umbraStart = kinematicState(0, v3(-7e6, 0, 0), v3(0, 0, speed));
+    const umbraStart = kinematicState<'eci'>(0, v3(-7e6, 0, 0), v3(0, 0, speed));
     const shadowedWith = stepDynamics(umbraStart, dt, attractors, attractors, null, 0, srpCoeff, null);
     const shadowedWithout = stepDynamics(umbraStart, dt, attractors, attractors, null, 0, 0, null);
     assert.deepEqual(shadowedWith, shadowedWithout, 'an object in the umbra should feel nothing');
@@ -374,15 +374,15 @@ export function register(): void {
     // 位置を固定したまま遮蔽体の窓だけを変えて確かめる。
     const sun: CelestialBody = {
       id: 'sun', mu: MU_SUN, radius: R_SUN,
-      state: kinematicState(0, v3(1.495978707e11, 0, 0), v3()), accel: v3(),
+      state: kinematicState<'eci'>(0, v3(1.495978707e11, 0, 0), v3()), accel: v3(),
       degree2: null, atmosphere: null, isStar: true,
     };
     // 原点に置いた、重力を持たない不透明な球。gravityAttractorsAt はこれを返さない。
     const darkBody: CelestialBody = {
-      id: 'dark', mu: 0, radius: R_EARTH, state: kinematicState(0, v3(), v3()), accel: v3(),
+      id: 'dark', mu: 0, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(),
       degree2: null, atmosphere: null, isStar: false,
     };
-    const start = kinematicState(0, v3(-7e6, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / 7e6)));
+    const start = kinematicState<'eci'>(0, v3(-7e6, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / 7e6)));
     const dt = 100;
     const srpCoeff = 1e-2;
 
@@ -413,7 +413,7 @@ export function register(): void {
     const vc = Math.sqrt(MU_MOON / a);
     const period = 2 * Math.PI * Math.sqrt((a * a * a) / MU_MOON); // ~7071s
     const moon0 = earthMoonWindowAt(0).find((b) => b.id === 'moon')!;
-    const initial = kinematicState(0, add(moon0.state.r, v3(a, 0, 0)), add(moon0.state.v, v3(0, 0, vc)));
+    const initial = kinematicState<'eci'>(0, add(moon0.state.r, v3(a, 0, 0)), add(moon0.state.v, v3(0, 0, vc)));
 
     // 各ステップで窓をステップ中点で1回だけ解決し、stepDynamics へ渡す
     // (Simulator.substep が実運用で踏む経路そのもの)。

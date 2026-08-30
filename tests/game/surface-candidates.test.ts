@@ -17,7 +17,7 @@ import {
 // 位置・速度・半径だけを持つ天体。重力も大気も表面判定には効かない。
 function body(id: string, r: Vec3, v: Vec3, radius: number): CelestialBody {
   return {
-    id, mu: 0, radius, state: kinematicState(0, r, v), accel: v3(),
+    id, mu: 0, radius, state: kinematicState<'eci'>(0, r, v), accel: v3(),
     degree2: null, atmosphere: null, isStar: false,
   };
 }
@@ -26,8 +26,8 @@ function body(id: string, r: Vec3, v: Vec3, radius: number): CelestialBody {
 // 離れるので、絞り込みが弦だけで測っていれば落としうる。
 function participant(r0: Vec3, v0: Vec3, a: Vec3, dt: number, radius: number): SurfaceParticipant {
   return {
-    prevState: kinematicState(0, r0, v0),
-    state: kinematicState(
+    prevState: kinematicState<'eci'>(0, r0, v0),
+    state: kinematicState<'eci'>(
       dt,
       v3(
         r0.x + v0.x * dt + 0.5 * a.x * dt * dt,
@@ -109,8 +109,8 @@ export function register(): void {
     // 弦は原点から 650m 離れたまま素通りするのに、曲線は原点まで潜り込む配置を作る。
     const target = body('bulge', v3(), v3(), 150);
     const p = {
-      prevState: kinematicState(0, v3(-20, 650, 0), v3(40, -3000, 0)),
-      state: kinematicState(1, v3(20, 650, 0), v3(40, 3000, 0)),
+      prevState: kinematicState<'eci'>(0, v3(-20, 650, 0), v3(40, -3000, 0)),
+      state: kinematicState<'eci'>(1, v3(20, 650, 0), v3(40, 3000, 0)),
       radius: 0,
     };
     // 前提が崩れていればこのテストは何も試験していないので、両方を明示的に確かめる。
@@ -164,7 +164,7 @@ export function register(): void {
       const radius = rand() * 30;
       // 一定加速度の軌跡を、絶対時刻 t から dt だけ切り出した区間。
       const cut = (t: number, dt: number): SurfaceParticipant => {
-        const at = (s: number) => kinematicState(
+        const at = (s: number) => kinematicState<'eci'>(
           s,
           v3(r0.x + v0.x * s + 0.5 * a.x * s * s, r0.y + v0.y * s + 0.5 * a.y * s * s,
             r0.z + v0.z * s + 0.5 * a.z * s * s),
