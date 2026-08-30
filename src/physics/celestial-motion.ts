@@ -148,7 +148,8 @@ export abstract class CelestialMotion {
     return spinRateOf(this.def);
   }
 
-  // 保持する時刻キャッシュを合算した照合の累計。
+  // 保持する時刻キャッシュを合算した照合の累計。恒星は時刻キャッシュを持たない(位置は定数、
+  // 姿勢・重力場・大気は無い)ので、既定は空。
   get cacheStats(): TimeCacheStats {
     return { hits: 0, misses: 0 };
   }
@@ -358,6 +359,8 @@ export class PlanetMotion extends OrbitingMotion {
     return twoBodyAccel(this.helioStateAt(t).r, starMu + this.def.mu);
   }
 
+  // 日心状態は自分の ECI 化と全衛星の恒星中心化から引かれるので、1時刻あたり 1 + 衛星数 回に
+  // なる。重心補正が全衛星の相対位置を要るぶん重いので、そのぶんをここで畳む。
   get cacheStats(): TimeCacheStats {
     return addTimeCacheStats(super.cacheStats, this.helioCache.stats);
   }
@@ -431,6 +434,8 @@ export class SatelliteMotion extends OrbitingMotion {
     );
   }
 
+  // 惑星相対の位置は、自分の恒星中心化・加速度・惑星本体の重心補正・暦パックの補完から
+  // 引かれるので、1時刻あたり4回前後になる。周期項の総和がそのたびに走るので畳む。
   get cacheStats(): TimeCacheStats {
     return addTimeCacheStats(super.cacheStats, this.relCache.stats);
   }
