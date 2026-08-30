@@ -4,8 +4,9 @@ import marsTextureUrl from '../../../assets/2k_mars.jpg';
 import phobosTextureUrl from '../../../assets/2k_phobos.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
+import { planetSystem } from '../../../physics/planet-system';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { MU_MARS } from './constants';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
@@ -88,10 +89,10 @@ export function marsSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
   pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<MarsSystemBodyId, CelestialEntity> {
-  const mars = new PlanetMotion(planetDefAtEpoch(MARS, phases, epochOffsetSec), sun, pack, origin);
+  const mars = planetSystem(planetDefAtEpoch(MARS, phases, epochOffsetSec), sun, pack, origin);
   return {
     mars: new PointEntity(
-      mars, MARS_SYSTEM_NAMES.mars, 'planet', CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS,
+      mars.body, MARS_SYSTEM_NAMES.mars, 'planet', CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS,
     ),
     phobos: new SphereEntity(
       new SatelliteMotion(satelliteDefAtEpoch(PHOBOS, phases, epochOffsetSec), mars, pack, origin),

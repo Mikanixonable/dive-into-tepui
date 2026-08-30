@@ -7,6 +7,7 @@ import { test } from '../harness';
 import {
   EciOrigin, PlanetDef, planetDefAtEpoch, satelliteDefAtEpoch, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../src/physics/celestial-motion';
+import { planetSystem } from '../../src/physics/planet-system';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { EPOCH_T_OFFSET } from '../../src/game/celestial/solar-system/constants';
@@ -25,12 +26,12 @@ const DEFS = solarSystemParts();
 function withoutSatellite(primaryDef: PlanetDef): PlanetMotion {
   const origin = new EciOrigin();
   const sun = new StarMotion(SUN, null, origin);
-  const earth = new PlanetMotion(planetDefAtEpoch(EARTH, {}, EPOCH_T_OFFSET), sun, null, origin);
-  // 月は構築するだけで地球の重心補正の対象として登録される。
+  const earth = planetSystem(planetDefAtEpoch(EARTH, {}, EPOCH_T_OFFSET), sun, null, origin);
+  // 月は構築するだけで地球-月系の重心補正の対象として登録される。
   new SatelliteMotion(satelliteDefAtEpoch(MOON, {}, EPOCH_T_OFFSET), earth, null, origin);
-  const bare = new PlanetMotion(planetDefAtEpoch(primaryDef, {}, EPOCH_T_OFFSET), sun, null, origin);
-  origin.set(earth);
-  return bare;
+  const bare = planetSystem(planetDefAtEpoch(primaryDef, {}, EPOCH_T_OFFSET), sun, null, origin);
+  origin.set(earth.body);
+  return bare.body;
 }
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
