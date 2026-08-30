@@ -3,6 +3,7 @@
 // (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion } from '../../../physics/celestial-motion';
+import { CelestialBody } from '../../../physics/celestial-body';
 import { SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialSystem } from '../celestial-system';
 import { Vec3 } from '../../../math/vec3';
@@ -303,33 +304,33 @@ export class OrbitGuideLines {
     }
     if (entry.familyId === 'sunSync') {
       const s = settings.sunSync;
-      const earth = this.earthMotion();
-      return earth === null ? null : sunSyncRepeatGroundTrackLoop(t, earth, s.repeatDays, s.revsPerRepeat);
+      const earth = this.earthBodyAt(t);
+      return earth === null ? null : sunSyncRepeatGroundTrackLoop(earth, s.repeatDays, s.revsPerRepeat);
     }
     if (entry.familyId === 'dawnDusk') {
       const d = settings.dawnDusk;
-      const earth = this.earthMotion();
+      const earth = this.earthBodyAt(t);
       return earth === null ? null : dawnDuskGuideLoop(
-        t, earth, (r, tt) => this.celestialSystem.sunDirFrom(r, tt), d.repeatDays, d.revsPerRepeat, d.localTime);
+        earth, (r, tt) => this.celestialSystem.sunDirFrom(r, tt), d.repeatDays, d.revsPerRepeat, d.localTime);
     }
     if (entry.familyId === 'molniya') {
       const m = settings.molniya;
-      const earth = this.earthMotion();
-      return earth === null ? null : molniyaGuideLoop(t, earth, m.perigeeAltitude, m.raan);
+      const earth = this.earthBodyAt(t);
+      return earth === null ? null : molniyaGuideLoop(earth, this.earthSpinRate(), m.perigeeAltitude, m.raan);
     }
     if (entry.familyId === 'tundra') {
       const u = settings.tundra;
-      const earth = this.earthMotion();
-      return earth === null ? null : tundraGuideLoop(t, earth, u.perigeeAltitude, u.raan);
+      const earth = this.earthBodyAt(t);
+      return earth === null ? null : tundraGuideLoop(earth, this.earthSpinRate(), u.perigeeAltitude, u.raan);
     }
     const kind = effectiveKind(settings, entry.familyId);
     if (!kind || entry.system === null) return null;
     const system = this.catalog.systemFor(entry.system);
     if (!system) return null;
     const s = sValueFor(kind, entry.index, entry.count);
-    const secondary = this.guideSecondaryOf(entry.system);
+    const secondary = this.guideFrameOf(entry.system, t);
     if (secondary === null) return null;
-    return catalogLoop(t, secondary, system, entry.familyId, s);
+    return catalogLoop(secondary, system, entry.familyId, s);
   }
 
   // 系の副天体まわりの CR3BP 量を組むための、その時刻の ECI 値一式。副天体が居ない・
@@ -343,6 +344,16 @@ export class OrbitGuideLines {
   private guideSecondaryOf(system: CatalogSystemId): OrbitingMotion | null {
     const motion = this.celestialSystem.find(guideSecondary(system))?.motion;
     return motion instanceof OrbitingMotion ? motion : null;
+  }
+
+  // 地球の時刻 t での ECI 瞬間値。地球を持たない星系では null(地球専用の参照軌道は描かない)。
+  private earthBodyAt(t: number): CelestialBody | null {
+    return this.celestialSystem.has('earth') ? this.celestialSystem.celestialBodyAt('earth', t) : null;
+  }
+
+  // 地球の自転角速度 [rad/s]。自転モデルを持たない・地球が居ないなら null。
+  private earthSpinRate(): number | null {
+    return this.earthMotion()?.spinRate ?? null;
   }
 
   // 地球の運動。地球を持たない星系では null(地球専用の参照軌道は描かない)。

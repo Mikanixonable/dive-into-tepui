@@ -6,24 +6,31 @@ import type { CelestialMotion } from '../../physics/celestial-motion';
 import { KinematicState } from '../../physics/kinematic-state';
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 
-// t <= trajectory の現在時刻なら保持区間の内挿(at)、それより先なら centerMotion が表す天体
+// 外挿の中心天体。運動そのものは ECI を答えないので、ECI 状態を引く口を別に持つ
+// (CelestialEntity がこの形を満たす)。
+export type OrbitCenter = {
+  readonly motion: CelestialMotion;
+  stateAt(t: number): KinematicState;
+};
+
+// t <= trajectory の現在時刻なら保持区間の内挿(at)、それより先なら center が表す天体
 // まわりの二体ケプラー外挿(extrapolatedAt)で答える。両者とも先端以前は内挿に落ちる
 // (DynamicTrajectory.extrapolatedAt 自身の契約)ので、ここでは呼び分けを気にせず
-// extrapolatedAt を呼ぶだけでよい。centerMotion は外挿が必要になったときにだけ引く。
+// extrapolatedAt を呼ぶだけでよい。center は外挿が必要になったときにだけ引く。
 function trajectoryStateAt(
-  trajectory: DynamicTrajectory, t: number, centerMotion: CelestialMotion,
+  trajectory: DynamicTrajectory, t: number, center: OrbitCenter,
 ): KinematicState | null {
   if (t <= trajectory.state.t) return trajectory.at(t);
-  return trajectory.extrapolatedAt(t, centerMotion.stateAt(t));
+  return trajectory.extrapolatedAt(t, center.stateAt(t));
 }
 
 // エンティティ(艦・基地)の時刻 t の状態。predicted を持たない(＝未来を予測しない種別の)
 // エンティティでは、t が現在時刻より先なら求まらない。
 export function entityStateAt(
-  entity: DynamicEntity, t: number, centerMotion: CelestialMotion,
+  entity: DynamicEntity, t: number, center: OrbitCenter,
 ): KinematicState | null {
   if (t <= entity.state.t) return entity.actual.at(t);
   const predicted = entity.predicted;
   if (predicted === null) return null;
-  return trajectoryStateAt(predicted, t, centerMotion);
+  return trajectoryStateAt(predicted, t, center);
 }

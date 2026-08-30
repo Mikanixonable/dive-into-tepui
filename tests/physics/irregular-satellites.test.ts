@@ -6,7 +6,7 @@ import { SatelliteDef } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
-import { motionOf, solarSystemParts } from './test-helpers';
+import { motionOf, solarSystemParts, stateOf } from './test-helpers';
 import { cross, dot, len, scale, sub } from '../../src/math/vec3';
 
 // id から静的事実を引くための太陽系。
@@ -45,8 +45,8 @@ export function register(): void {
   test('irregular-satellites: 傾斜角どおりの向きに公転する(逆行4体は角運動量が黄道極と逆向き)', () => {
     for (const [id, , retrograde] of CASES) {
       const t = 1e7;
-      const satellite = motionOf(parts, id).stateAt(t);
-      const planet = motionOf(parts, planetOf(id)).stateAt(t);
+      const satellite = stateOf(parts, id, t);
+      const planet = stateOf(parts, planetOf(id), t);
       const h = cross(sub(satellite.r, planet.r), sub(satellite.v, planet.v));
       const sign = dot(h, ECL_POLE_ECI);
       if (retrograde) assert.ok(sign < 0, `${id} が順行している: ${sign}`);

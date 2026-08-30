@@ -443,6 +443,7 @@ export class MapCamera {
     const result = resolveFocusTarget(
       this._focus, candidates, displayTime, frameAnchors,
       this.celestialSystem.frames, this.celestialMotionOf,
+      (id, t) => this.celestialSystem.stateAt(id, t),
       { missingFocusFrames: this.missingFocusFrames, lastResolvedFocus: this.lastResolvedFocus },
     );
     this.missingFocusFrames = result.missingFocusFrames;

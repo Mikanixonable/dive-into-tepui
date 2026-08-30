@@ -5,8 +5,9 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
-  EciOrigin, PlanetDef, planetDefAtEpoch, satelliteDefAtEpoch, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
+  PlanetDef, planetDefAtEpoch, satelliteDefAtEpoch, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../src/physics/celestial-motion';
+import { CelestialBodyWindows } from '../../src/physics/celestial-body-windows';
 import { planetSystem } from '../../src/physics/planet-system';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
@@ -15,23 +16,22 @@ import { PLUTO } from '../../src/game/celestial/solar-system/dwarf-planets';
 import { EARTH, MOON } from '../../src/game/celestial/solar-system/earth-system';
 import { ORCUS, QUAOAR } from '../../src/game/celestial/solar-system/small-bodies';
 import { SUN } from '../../src/game/celestial/solar-system/sun';
-import { SolarSystemParts, motionOf, orbitingMotionOf, solarSystemParts } from './test-helpers';
-import { add, cross, dot, len, norm, scale, sub } from '../../src/math/vec3';
+import { SolarSystemParts, motionOf, orbitingMotionOf, solarSystemParts, stateOf } from './test-helpers';
+import { Vec3, add, cross, dot, len, norm, scale, sub } from '../../src/math/vec3';
 
 // id から静的事実を引くための太陽系。
 const DEFS = solarSystemParts();
 
-// 衛星を1体も登録せずに組んだ primaryDef の惑星の運動。原点(地球)側は本来どおり月まで
-// 組む — 原点天体の日心位置がずれると ECI 位置の比較にならない。
-function withoutSatellite(primaryDef: PlanetDef): PlanetMotion {
-  const origin = new EciOrigin();
-  const sun = new StarMotion(SUN, null, origin);
-  const earth = planetSystem(planetDefAtEpoch(EARTH, {}, EPOCH_T_OFFSET), sun, null, origin);
+// 衛星を1体も登録せずに組んだ primaryDef の惑星の、時刻 t での ECI 位置。原点(地球)側は
+// 本来どおり月まで組む — 原点天体の日心位置がずれると ECI 位置の比較にならない。
+function withoutSatellitePosition(primaryDef: PlanetDef, t: number): Vec3 {
+  const sun = new StarMotion(SUN, null);
+  const earth = planetSystem(planetDefAtEpoch(EARTH, {}, EPOCH_T_OFFSET), sun, null);
   // 月は構築するだけで地球-月系の重心補正の対象として登録される。
-  new SatelliteMotion(satelliteDefAtEpoch(MOON, {}, EPOCH_T_OFFSET), earth, null, origin);
-  const bare = planetSystem(planetDefAtEpoch(primaryDef, {}, EPOCH_T_OFFSET), sun, null, origin);
-  origin.set(earth.body);
-  return bare.body;
+  new SatelliteMotion(satelliteDefAtEpoch(MOON, {}, EPOCH_T_OFFSET), earth, null);
+  const bare = planetSystem(planetDefAtEpoch(primaryDef, {}, EPOCH_T_OFFSET), sun, null);
+  const windows = new CelestialBodyWindows([sun, earth.body, bare.body], earth.body);
+  return windows.stateAt(bare.body.id, t).r;
 }
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
@@ -64,8 +64,8 @@ const CASES: readonly [string, number][] = [
 const URANUS_MOONS: readonly string[] = ['miranda', 'ariel', 'umbriel', 'titania', 'oberon'];
 
 function orbitNormal(parts: SolarSystemParts, id: string, planet: string, t: number) {
-  const satellite = motionOf(parts, id).stateAt(t);
-  const primary = motionOf(parts, planet).stateAt(t);
+  const satellite = stateOf(parts, id, t);
+  const primary = stateOf(parts, planet, t);
   return norm(cross(sub(satellite.r, primary.r), sub(satellite.v, primary.v)));
 }
 
@@ -106,8 +106,8 @@ export function register(): void {
     const steps = 400;
     for (let i = 0; i < steps; i++) {
       const t = (periodSec * i) / steps;
-      const rPluto = orbitingMotionOf(parts, 'pluto').stateAt(t).r;
-      const rCharon = orbitingMotionOf(parts, 'charon').stateAt(t).r;
+      const rPluto = stateOf(parts, 'pluto', t).r;
+      const rCharon = stateOf(parts, 'charon', t).r;
       const barycenter = scale(add(scale(rPluto, muPluto), scale(rCharon, muCharon)), 1 / (muPluto + muCharon));
       maxOffset = Math.max(maxOffset, len(sub(rPluto, barycenter)));
     }
@@ -129,9 +129,9 @@ export function register(): void {
   // 相対位置は正しいままなので、主天体の日心位置を直に見ないと分からない。
   test('equatorial-satellites: 主天体の質量が未測定の系では、衛星を足しても主天体が動かない', () => {
     for (const [primary, satellite] of [['quaoar', 'weywot'], ['orcus', 'vanth']] as const) {
-      const bare = withoutSatellite(primary === 'quaoar' ? QUAOAR : ORCUS);
       const t = 1e6;
-      const moved = len(sub(motionOf(parts, primary).stateAt(t).r, bare.stateAt(t).r));
+      const bare = withoutSatellitePosition(primary === 'quaoar' ? QUAOAR : ORCUS, t);
+      const moved = len(sub(stateOf(parts, primary, t).r, bare));
       assert.ok(moved < 1, `${primary} が ${satellite} の有無で ${moved} m 動いている`);
     }
   });

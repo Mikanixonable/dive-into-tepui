@@ -16,7 +16,7 @@ import { meridianDirection } from '../../src/physics/body-orientation';
 import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
 import {
-  assertOmegaMatchesBasis, lagrangeOf, motionOf, orbitingMotionOf, solarSystemParts,
+  assertOmegaMatchesBasis, lagrangeOf, motionOf, orbitingMotionOf, positionOf, solarSystemParts, stateOf,
 } from './test-helpers';
 
 // 定義だけを引くための太陽系(id から静的事実を取り出す口としてだけ使う)。
@@ -42,7 +42,7 @@ export function register(): void {
 
   test('celestial-motion: 地球は ECI 原点に厳密に静止する', () => {
     for (const t of [0, 1e6, 1e8]) {
-      const s = orbitingMotionOf(parts, 'earth').stateAt(t);
+      const s = stateOf(parts, 'earth', t);
       assert.deepEqual(s.r, v3(0, 0, 0));
       assert.deepEqual(s.v, v3(0, 0, 0));
     }
@@ -53,7 +53,7 @@ export function register(): void {
     let maxD = 0;
     for (let i = 0; i < 32; i++) {
       const t = (i / 32) * YEAR;
-      const d = len(motionOf(parts, 'sun').stateAt(t).r);
+      const d = len(stateOf(parts, 'sun', t).r);
       minD = Math.min(minD, d);
       maxD = Math.max(maxD, d);
     }
@@ -66,11 +66,11 @@ export function register(): void {
   // 日心地球位置(= -太陽の地心位置)だけ ECI へ平行移動した値とも一致しなければならない。
   test('celestial-motion: 重心の不変条件(質量加重平均 = 惑星の軌道要素の重心を ECI 化した値、位置・速度とも)', () => {
     for (const t of [0, 1e6, 3e8]) {
-      const moonState = orbitingMotionOf(parts, 'moon').stateAt(t);
+      const moonState = stateOf(parts, 'moon', t);
       const wMoon = MU_MOON / (MU_EARTH + MU_MOON);
       const baryFromMass = { r: scale(moonState.r, wMoon), v: scale(moonState.v, wMoon) };
 
-      const sunEci = motionOf(parts, 'sun').stateAt(t);
+      const sunEci = stateOf(parts, 'sun', t);
       const earthHelio = { r: scale(sunEci.r, -1), v: scale(sunEci.v, -1) }; // 太陽は日心原点
       const baryHelio = keplerOrbitState(keplerOrbitAtEpoch(EARTH_ORBIT, 0.3, EPOCH_T_OFFSET), t);
       const baryFromKepler = { r: sub(baryHelio.r, earthHelio.r), v: sub(baryHelio.v, earthHelio.v) };
@@ -89,7 +89,7 @@ export function register(): void {
     const diffAt = (t: number) => {
       const bary = keplerOrbitState(keplerOrbitAtEpoch(EARTH_ORBIT, 0.3, EPOCH_T_OFFSET), t);
       const pureKeplerSunEci = scale(bary.r, -1);
-      return sub(motionOf(parts, 'sun').stateAt(t).r, pureKeplerSunEci);
+      return sub(stateOf(parts, 'sun', t).r, pureKeplerSunEci);
     };
 
     const d0 = diffAt(1e6);
@@ -97,7 +97,7 @@ export function register(): void {
     assert.ok(mag > 4.0e6 && mag < 5.0e6, `重心補正ぶんのずれ: ${mag} m`);
 
     // 補正ベクトルは月方向を向く(地球は重心を挟んで月と反対側にずれるので、地球→重心は月方向)。
-    const moonDir = norm(orbitingMotionOf(parts, 'moon').stateAt(1e6).r);
+    const moonDir = norm(stateOf(parts, 'moon', 1e6).r);
     assert.ok(dot(norm(d0), moonDir) > 0.99, '補正ベクトルは月方向を向く');
 
     // 恒星月周期で振れる(昇交点・近点歳差は1周期では無視できるほど小さい)。
@@ -107,7 +107,7 @@ export function register(): void {
 
   test('celestial-motion: 太陽-地球ラグランジュ点の無次元距離比は文献値と一致する(0.00997/0.01004)', () => {
     for (const t of [0, 1e7, 1e9]) {
-      const sunDist = len(motionOf(parts, 'sun').stateAt(t).r);
+      const sunDist = len(stateOf(parts, 'sun', t).r);
       const { L1, L2 } = lagrangeOf(parts, 'earth', t);
       assert.ok(Math.abs(len(L1) / sunDist - 0.00997) < 1e-3, `L1 比: ${len(L1) / sunDist}`);
       assert.ok(Math.abs(len(L2) / sunDist - 0.01004) < 1e-3, `L2 比: ${len(L2) / sunDist}`);
@@ -117,7 +117,7 @@ export function register(): void {
   test('celestial-motion: 地球-月ラグランジュ点は白道面内にあり、L1/L2 は文献値の距離比になる(0.15093/0.16783)', () => {
     const moon = orbitingMotionOf(parts, 'moon');
     for (const t of [0, 1e6, 1e8]) {
-      const moonPos = moon.stateAt(t).r;
+      const moonPos = stateOf(parts, 'moon', t).r;
       const R = len(moonPos);
       const n = moon.orbitNormalAt(t);
       const { L1, L2, L4, L5 } = lagrangeOf(parts, 'moon', t);
@@ -136,7 +136,7 @@ export function register(): void {
   test('celestial-motion: 地球-月ラグランジュ点の L1/L2 は月の内外、L3 は反月方向、L4/L5 は正三角形', () => {
     const moon = orbitingMotionOf(parts, 'moon');
     for (const t of [0, 1e6, 1e8]) {
-      const moonPos = moon.stateAt(t).r;
+      const moonPos = stateOf(parts, 'moon', t).r;
       const R = len(moonPos);
       const mHat = norm(moonPos);
       const n = moon.orbitNormalAt(t);
@@ -161,7 +161,7 @@ export function register(): void {
     const earth = orbitingMotionOf(parts, 'earth');
     const mu = MU_EARTH / (MU_SUN_LOCAL + MU_EARTH);
     for (const t of [0, 1e7, 1e9]) {
-      const sPos = motionOf(parts, 'sun').stateAt(t).r;
+      const sPos = stateOf(parts, 'sun', t).r;
       const R = len(sPos);
       const sHat = norm(sPos);
       const n = earth.orbitNormalAt(t);
@@ -191,13 +191,13 @@ export function register(): void {
   // とどまる。昇交点・近点の歳差を平均黄経に混ぜると、この差が年オーダーで単調に開く
   // (1年で -19° 級)ため、長期の時間加速で月とラグランジュ点が実位置から外れる。
   test('celestial-motion: 月の黄経は恒星月の平均運動で進む(歳差ぶんの遅速がない)', () => {
-    const moon = orbitingMotionOf(solarSystemParts({ moon: 0 }), 'moon');
+    const moonParts = solarSystemParts({ moon: 0 });
     const MOON_ECC = 0.0549;
     const maxCenterDeg = (2 * MOON_ECC * 180) / Math.PI + 0.5;
     for (const days of [27.321661, 365.25, 3652.5]) {
       const t = days * 86400;
       const mean = (2 * Math.PI * (t + EPOCH_T_OFFSET)) / MOON_PERIOD;
-      let lon = eclipticLongitude(moon.stateAt(t).r);
+      let lon = eclipticLongitude(stateOf(moonParts, 'moon', t).r);
       lon += 2 * Math.PI * Math.round((mean - lon) / (2 * Math.PI)); // mean に最も近い分枝へ
       const errDeg = ((lon - mean) * 180) / Math.PI;
       assert.ok(Math.abs(errDeg) < maxCenterDeg, `黄経の平均運動からのずれ (t=${days}日): ${errDeg}°`);
@@ -221,7 +221,7 @@ export function register(): void {
   // EPOCH_T_OFFSET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。
   // 平均黄経で合わせているぶん、中心差(地球の e=0.0167 で最大 1.9°)だけ真の方向はずれる。
   test('celestial-motion: t=0 では太陽が +X 方向(昼側)にある', () => {
-    const dir = norm(motionOf(solarSystemParts({}), 'sun').stateAt(0).r);
+    const dir = norm(positionOf(solarSystemParts({}), 'sun', 0));
     const offDeg = (Math.acos(dir.x / len(dir)) * 180) / Math.PI;
     assert.ok(offDeg < 3, `t=0 の太陽方向が +X から離れている: ${offDeg}°`);
   });
@@ -233,9 +233,9 @@ export function register(): void {
   test('celestial-motion: 地球と木星の日心黄経差は t=−EPOCH_T_OFFSET で J2000 の表の値と一致する', () => {
     const m = solarSystemParts({});
     const t = -EPOCH_T_OFFSET;
-    const sun = motionOf(m, 'sun').stateAt(t).r;
+    const sun = stateOf(m, 'sun', t).r;
     const earthHelio = scale(sun, -1);
-    const jupiterHelio = sub(orbitingMotionOf(m, 'jupiter').stateAt(t).r, sun);
+    const jupiterHelio = sub(stateOf(m, 'jupiter', t).r, sun);
     const diffDeg = ((eclipticLongitude(jupiterHelio) - eclipticLongitude(earthHelio)) * 180) / Math.PI;
     const expectedDeg = 34.39644051 - 100.46457166;
     const errDeg = ((diffDeg - expectedDeg + 540) % 360) - 180;
@@ -306,8 +306,8 @@ export function register(): void {
     const t = 1e7;
     const neptune = orbitingMotionOf(parts, 'neptune');
     const triton = orbitingMotionOf(parts, 'triton');
-    const rel = sub(triton.stateAt(t).r, neptune.stateAt(t).r);
-    const relVel = sub(triton.stateAt(t).v, neptune.stateAt(t).v);
+    const rel = sub(stateOf(parts, 'triton', t).r, stateOf(parts, 'neptune', t).r);
+    const relVel = sub(stateOf(parts, 'triton', t).v, stateOf(parts, 'neptune', t).v);
     const h = cross(rel, relVel);
     const pole = neptune.orientationAt(t)!.axis;
     assert.ok(dot(h, pole) < 0, `トリトンの軌道角運動量が順行している: ${dot(norm(h), pole)}`);
@@ -418,22 +418,23 @@ export function register(): void {
       v: id === 'moon' ? v3(0, 1e3, 0) : v3(0, 0, 0),
     }),
   };
-  const analyticOnlyMoon = orbitingMotionOf(solarSystemParts({}), 'moon');
-  const preciseMoon = orbitingMotionOf(solarSystemParts({}, EPOCH_T_OFFSET, mockPrecise, preciseEpochJdTdb), 'moon');
+  const analyticParts = solarSystemParts({});
+  const preciseParts = solarSystemParts({}, EPOCH_T_OFFSET, mockPrecise, preciseEpochJdTdb);
+  const preciseMoon = orbitingMotionOf(preciseParts, 'moon');
   const tOutsideValidity = (preciseValidDays + 5) * DAY;
 
   test('celestial-motion: 高精度暦パックの有効期間内では pack 由来の値を返す', () => {
-    const s = preciseMoon.stateAt(0);
+    const s = stateOf(preciseParts, 'moon', 0);
     assert.ok(len(s.r) > 0 && Number.isFinite(len(s.r)));
-    assert.notEqual(s.r.x, analyticOnlyMoon.stateAt(0).r.x);
+    assert.notEqual(s.r.x, stateOf(analyticParts, 'moon', 0).r.x);
   });
 
   test('celestial-motion: 有効期間を過ぎると例外を投げずに解析暦へフォールバックする', () => {
-    assert.doesNotThrow(() => preciseMoon.stateAt(tOutsideValidity));
+    assert.doesNotThrow(() => stateOf(preciseParts, 'moon', tOutsideValidity));
     assert.doesNotThrow(() => preciseMoon.orbitFrameRotationAt(tOutsideValidity));
     assert.doesNotThrow(() => preciseMoon.orbitNormalAt(tOutsideValidity));
-    const fallback = preciseMoon.stateAt(tOutsideValidity);
-    const analytic = analyticOnlyMoon.stateAt(tOutsideValidity);
+    const fallback = stateOf(preciseParts, 'moon', tOutsideValidity);
+    const analytic = stateOf(analyticParts, 'moon', tOutsideValidity);
     assert.ok(len(sub(fallback.r, analytic.r)) < 1e-3, `期間外は解析暦と一致するはず: ${JSON.stringify(fallback.r)} vs ${JSON.stringify(analytic.r)}`);
   });
 }

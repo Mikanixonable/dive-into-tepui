@@ -1,12 +1,13 @@
-// 天体1体の運動。恒星中心の位置・速度・加速度を合成し、ECI(原点天体中心)へ落とした瞬間値
-// (CelestialBody)と、自転姿勢・2次重力場・大気・公転回転基準系・ラグランジュ点を時刻から答える。
-// 恒星/惑星/衛星の違いはクラスで表し、衛星→惑星・惑星→恒星の関係は構築時の参照で持つ。
+// 天体1体の運動。**恒星中心まで**の位置・速度・加速度を合成し、自転姿勢・2次重力場・大気・
+// 公転回転基準系を時刻から答える。原点をどこに置くかは系レベルの選択なので、ECI 化は
+// celestial-body-windows.ts が行い、ここは原点天体を知らない。
+// 恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
 // 評価結果は時刻 t をキーにした固定長リング(TimeRing)でメモ化する。
 // THREE/DOM 非依存。
 import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp } from './attitude';
 import { HelioEphemeris } from './absolute-ephemeris';
-import { CelestialBody, Degree2Gravity, celestialBodyStateAt } from './celestial-body';
+import { Degree2Gravity } from './celestial-body';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import {
@@ -20,11 +21,11 @@ import {
   Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelAtEpoch,
 } from './celestial-body-def';
 import {
-  KinematicState, addPrimaryRelative, kinematicState, toEci, toPrimaryRelative,
+  KinematicState, addPrimaryRelative, kinematicState, toPrimaryRelative,
 } from './kinematic-state';
 import { SECONDS_PER_DAY } from './time';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
-import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../math/vec3';
+import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, v3 } from '../math/vec3';
 
 // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
 export type BodyOrientation = { readonly axis: Vec3; readonly spinAngle: number };
@@ -95,33 +96,6 @@ export function satelliteDefAtEpoch(
   };
 }
 
-// ECI の中心天体。中心天体自身も自分を参照する循環があるため、全 motion を作り終えてから
-// set で1度だけ結ぶ。
-export class EciOrigin {
-  private center: CelestialMotion | null = null;
-  // 原点天体の暦パック状態は全天体が同じ時刻で引くので、時刻ごとに1回へ畳む。
-  private readonly packedCache = new TimeRing<KinematicState<'helio'> | null>();
-
-  // 中心天体。set より前に読むと例外。
-  get motion(): CelestialMotion {
-    if (this.center === null) throw new Error('EciOrigin: 中心天体が設定される前に参照された');
-    return this.center;
-  }
-
-  // 中心天体を決める。2度目の呼び出しは例外。
-  set(motion: CelestialMotion): void {
-    if (this.center !== null) throw new Error(`EciOrigin: 中心天体は1度だけ設定できる(${this.center.id} → ${motion.id})`);
-    this.center = motion;
-  }
-
-  // 暦パックが答える中心天体の恒星中心状態。パックが答えられなければ null。
-  packedHelioStateAt(t: number): KinematicState<'helio'> | null {
-    const cached = this.packedCache.get(t);
-    if (cached !== undefined) return cached;
-    return this.packedCache.put(t, this.motion.packedHelioStateAt(t));
-  }
-}
-
 export abstract class CelestialMotion {
   abstract readonly def: CelestialBodyDef;
   abstract readonly kind: CelestialKind;
@@ -129,13 +103,9 @@ export abstract class CelestialMotion {
   // 主天体。惑星なら恒星(恒星の無い星系では null)、衛星ならその惑星、恒星自身は null。
   abstract get primary(): CelestialMotion | null;
 
-  // 時刻 pivot の CelestialBody のメモ。
-  private readonly bodyCache = new TimeRing<CelestialBody>();
-
   protected constructor(
     // 高精度暦パック。持たない構成では null。
     protected readonly precise: HelioEphemeris | null,
-    private readonly origin: EciOrigin,
     // 自転の初期位相 [rad]。eciPole の自転モデルの位相原点をこれだけ進める(iau は w0 が、
     // 同期回転は軌道が位相を持つ)。
     readonly spinPhase0: number = 0,
@@ -163,26 +133,6 @@ export abstract class CelestialMotion {
   // 大気を時刻 t の自転軸込みで解決する。大気を持たない天体は null。
   abstract atmosphereAt(t: number): Atmosphere | null;
 
-  // 時刻 pivot の厳密な ECI 状態・加速度と、姿勢込みの重力場・大気。同一 pivot には同一参照が
-  // 返るので、**呼び出し側はこの値を書き換えてはならない。**
-  at(pivot: number): CelestialBody {
-    const cached = this.bodyCache.get(pivot);
-    if (cached !== undefined) return cached;
-    const def = this.def;
-    return this.bodyCache.put(pivot, {
-      id: def.id, mu: def.mu, radius: def.radius,
-      state: this.eciStateAt(pivot), accel: this.eciAccelAt(pivot),
-      degree2: this.degree2At(pivot), atmosphere: this.atmosphereAt(pivot),
-      isStar: this.kind === 'star',
-    });
-  }
-
-  // pivot で厳密に引いた値から時刻 t へ2次で外挿した ECI 位置・速度。t を省くと pivot 自身の
-  // 厳密な値。|t − pivot| は積分1歩の幅程度に収め、pivot の種類をむやみに増やさないこと。
-  stateAt(pivot: number, t: number = pivot): KinematicState {
-    return celestialBodyStateAt(this.at(pivot), t);
-  }
-
   // 自転に固定した回転基準系(ẑ = 自転軸、x̂ = 本初子午線方向)。自転モデルを持たない天体では null。
   // 逆行自転する天体でも ẑ は IAU の「北極」のままで、逆行は omega の符号に現れる
   // (DEVELOP/SPEC/CELESTIAL.md 8節)— x̂ が IAU の極を基準に定義されているため。
@@ -200,31 +150,7 @@ export abstract class CelestialMotion {
 
   // 保持する時刻キャッシュを合算した照合の累計。
   get cacheStats(): TimeCacheStats {
-    return this.bodyCache.stats;
-  }
-
-  // 時刻 t の厳密な ECI(原点天体中心)位置・速度。両方の供給源が恒星中心で答えるので、
-  // ECI への変換はここでの1回の減算だけ。原点天体自身は同じ計算を2回引いて厳密に 0 になる。
-  //
-  // **この天体と ECI 原点天体は、必ず同じ供給源から引く。** 暦パックと解析暦は同じ天体に
-  // 対して別の位置を答えるので、片方をパック・片方を解析で引くと、その差がそのまま相対位置の
-  // 誤りになる。暦パックは両端を答えられる期間だけ使い、答えられなければ両端とも解析暦へ
-  // 落とす(CELESTIAL.md 2.2)。
-  private eciStateAt(t: number): KinematicState {
-    return this.packedEciStateAt(t) ?? this.analyticEciStateAt(t);
-  }
-
-  // 暦パックだけで組んだ ECI 位置・速度。この天体か ECI 原点天体をパックが答えられなければ null。
-  private packedEciStateAt(t: number): KinematicState | null {
-    const body = this.packedHelioStateAt(t);
-    if (body === null) return null;
-    const origin = this.origin.packedHelioStateAt(t);
-    return origin === null ? null : toEci(t, body, origin);
-  }
-
-  // 解析暦だけで組んだ ECI 位置・速度。
-  private analyticEciStateAt(t: number): KinematicState {
-    return toEci(t, this.helioStateAt(t), this.origin.motion.helioStateAt(t));
+    return { hits: 0, misses: 0 };
   }
 
   // 暦パックが答えるこの天体の恒星中心位置・速度。パックを持たない・有効期間外・この天体を
@@ -240,20 +166,15 @@ export abstract class CelestialMotion {
     return precise.hasBody(this.id) ? precise.stateOf(this.id, t) : null;
   }
 
-  // 時刻 t の ECI 加速度。ECI 原点自身が自由落下する非慣性系なので、原点天体の日心加速度を
-  // 差し引く。原点天体自身は同じ計算を2回引くので厳密に v3() になる。
-  private eciAccelAt(t: number): Vec3 {
-    return sub(this.helioAccelAt(t), this.origin.motion.helioAccelAt(t));
-  }
 }
 
 export class StarMotion extends CelestialMotion {
   readonly kind: CelestialKind = 'star';
 
   constructor(
-    readonly def: StarDef, precise: HelioEphemeris | null, origin: EciOrigin,
+    readonly def: StarDef, precise: HelioEphemeris | null,
   ) {
-    super(precise, origin);
+    super(precise);
   }
 
   // 恒星は階層の根。
@@ -416,9 +337,9 @@ export class PlanetMotion extends OrbitingMotion {
   // を使う** — 系と本体を結び忘れずに作れる唯一の入口。
   constructor(
     readonly def: PlanetDef, readonly star: StarMotion | null, readonly system: PlanetSystem,
-    precise: HelioEphemeris | null, origin: EciOrigin, spinPhase0 = 0,
+    precise: HelioEphemeris | null, spinPhase0 = 0,
   ) {
-    super(precise, origin, spinPhase0);
+    super(precise, spinPhase0);
   }
 
   get primary(): CelestialMotion | null { return this.star; }
@@ -477,9 +398,9 @@ export class SatelliteMotion extends OrbitingMotion {
   // 日心状態を初めて引く前に全衛星を作り終えていなければならない。
   constructor(
     readonly def: SatelliteDef, readonly system: PlanetSystem,
-    precise: HelioEphemeris | null, origin: EciOrigin,
+    precise: HelioEphemeris | null,
   ) {
-    super(precise, origin);
+    super(precise);
     system.addSatellite(this);
   }
 

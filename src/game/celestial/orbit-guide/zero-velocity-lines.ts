@@ -8,6 +8,7 @@
 import * as THREE from 'three/webgpu';
 import { CurveKnots } from '../../../render/curve';
 import { OrbitingMotion } from '../../../physics/celestial-motion';
+import { secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialSystem } from '../celestial-system';
 import { Vec3 } from '../../../math/vec3';
 import { guideSecondary, rotatingFrame } from '../../../physics/orbit-guide';
@@ -211,8 +212,9 @@ export class ZeroVelocityLines {
       if (frame === undefined) {
         const mu = this.muFor(system);
         const motion = this.celestialSystem.find(guideSecondary(system))?.motion;
-        frame = mu === null || !(motion instanceof OrbitingMotion)
-          ? null : rotatingFrame(displayTime, motion, mu);
+        const secondary = mu === null || !(motion instanceof OrbitingMotion) ? null
+          : secondaryFrameOf(this.celestialSystem.celestialBodiesAt(displayTime), motion, displayTime);
+        frame = secondary === null || mu === null ? null : rotatingFrame(secondary, mu);
         frames.set(system, frame);
       }
       if (!frame) {

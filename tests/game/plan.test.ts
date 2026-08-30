@@ -1,5 +1,5 @@
 // 計画の区間長・アプシス高度が、その場で最も強く引く天体を中心として求まることの回帰。
-import { motionOf, solarSystemParts } from '../physics/test-helpers';
+import { motionOf, solarSystemParts, stateOf } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { MU_MOON, R_MOON } from '../../src/game/celestial/solar-system/constants';
 import { orbitalElementsOf, strongestAttractor } from '../../src/physics/celestial-body';
@@ -18,7 +18,7 @@ export function register(): void {
     const radius = R_MOON + 100_000;
     const relativeR = v3(radius, 0, 0);
     const relativeV = v3(0, 0, Math.sqrt(MU_MOON / radius));
-    const moonState = motionOf(parts, 'moon').stateAt(t);
+    const moonState = stateOf(parts, 'moon', t);
     const state = kinematicState(
       t,
       add(moonState.r, relativeR),

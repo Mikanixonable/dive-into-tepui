@@ -136,7 +136,7 @@ export class PointEntity extends CelestialEntity {
     graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
-    const pos = this.motion.stateAt(displayTime).r;
+    const pos = this.stateAt(displayTime).r;
     const apparentDiameterPx = this.lodApparentDiameterPx(
       2 * this.outerRadius, cameraSystem.activeCameraScale(pos), graphics);
     if (!showsPhysicalSphere(apparentDiameterPx)) {
@@ -177,7 +177,8 @@ export class PointEntity extends CelestialEntity {
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
     markerManager: MarkerManager | null, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
-    this.mapOverlay?.sync(fo, displayTime, cameraSystem, markerManager, celestialBodies, visible);
+    this.mapOverlay?.sync(
+      this.bodyAt(displayTime), fo, cameraSystem, markerManager, celestialBodies, visible);
   }
 
   // オーロラの波打ち・明滅を表示時刻へ進める。
@@ -205,7 +206,7 @@ export class PointEntity extends CelestialEntity {
     cameraQuaternion: THREE.Quaternion,
   ): void {
     const observerDistance = p.length();
-    const sunDir = star === null ? v3(1, 0, 0) : norm(sub(star.motion.stateAt(displayTime).r, pos));
+    const sunDir = star === null ? v3(1, 0, 0) : norm(sub(star.stateAt(displayTime).r, pos));
     // 位相角は天体から見た恒星方向と観測者方向の成す角。観測者は描画原点なので -p̂ で、
     // フローティングオリジンは平行移動しかしないため、描画座標の向きは ECI の向きと一致する。
     tmpToObserver.copy(p).negate().normalize();

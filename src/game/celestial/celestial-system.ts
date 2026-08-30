@@ -4,6 +4,7 @@ import { CelestialBodyDef, CelestialMotion, PhaseOffsets } from '../../physics/c
 import { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { ReferenceFrames } from '../../physics/reference-frames';
 import { CelestialBody } from '../../physics/celestial-body';
+import { KinematicState } from '../../physics/kinematic-state';
 import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitLine } from '../lines/orbit-line';
@@ -91,8 +92,9 @@ export class CelestialSystem {
     private readonly pointFieldView: PointFieldView | null = null,
   ) {
     this.motions = entities.map((b) => b.motion);
-    this.referenceFrames = new ReferenceFrames(this.motions, origin.motion);
-    this.bodyWindows = new CelestialBodyWindows(this.motions);
+    this.bodyWindows = new CelestialBodyWindows(this.motions, origin.motion);
+    this.referenceFrames = new ReferenceFrames(this.bodyWindows, this.motions, origin.motion);
+    for (const entity of entities) entity.bindWindows(this.bodyWindows);
     this.entitiesById = new Map(entities.map((b) => [b.id, b]));
     this.starEntity = entities.find((b): b is StarEntity => b instanceof StarEntity) ?? null;
   }
@@ -158,7 +160,13 @@ export class CelestialSystem {
   gravityAttractorsAt(t: number): readonly CelestialBody[] { return this.windows.gravityAttractorsAt(t); }
 
   // 1天体ぶんの時刻 t での重力源表現。予測弧の候補供給(FutureCelestialBodyProvider)もこれで満たす。
-  celestialBodyAt(id: string, t: number): CelestialBody { return this.entityOf(id).motion.at(t); }
+  celestialBodyAt(id: string, t: number): CelestialBody { return this.windows.bodyAt(id, t); }
+
+  // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと
+  // pivot 自身の厳密な値。
+  stateAt(id: string, pivot: number, t: number = pivot): KinematicState {
+    return this.windows.stateAt(id, pivot, t);
+  }
 
   // 指定時刻の大気を持つ天体(宣言順)。抗力を掛ける1体を選ぶ側が引く窓。
   atmosphereCelestialBodiesAt(t: number): readonly CelestialBody[] {
@@ -174,7 +182,7 @@ export class CelestialSystem {
   // ECI の点 r から見た恒星方向の単位ベクトル。恒星が無い星系では無害な既定方向(+X)を返す。
   sunDirFrom(r: Vec3, t: number): Vec3 {
     const star = this.starEntity;
-    return star === null ? v3(1, 0, 0) : norm(sub(star.motion.stateAt(t).r, r));
+    return star === null ? v3(1, 0, 0) : norm(sub(this.stateAt(star.id, t).r, r));
   }
 
   // 星系の再構築に要る値のスナップショット(セーブ用)。phaseOffsets は構築時に受け取った
@@ -202,7 +210,7 @@ export class CelestialSystem {
     const pointField = this.pointFieldView;
     if (!overviewMode || star === null || pointField === null || !graphics.pointField) return;
     this.buildPointField(pointField);
-    pointField.update(t, true, star.motion);
+    pointField.update(t, true, this.stateAt(star.id, t).r);
   }
 
   // 軌道ガイドタブ(表示パネル5.2節)の設定。ゲーム側が変更のたびに渡す。
@@ -251,7 +259,7 @@ export class CelestialSystem {
     const sunPos = starMotion === null
       ? this.toThreeNormal(this.sunDirFrom(floatingOrigin.r, displayTime))
         .multiplyScalar(STARLESS_SUN_DISTANCE)
-      : floatingOrigin.RtoThreeV3(starMotion.stateAt(displayTime).r);
+      : floatingOrigin.RtoThreeV3(this.stateAt(starMotion.id, displayTime).r);
     // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
@@ -336,7 +344,7 @@ export class CelestialSystem {
       const rings = body.rings;
       if (rings === null) return [];
       return [{
-        center: body.motion.stateAt(displayTime).r,
+        center: this.stateAt(body.id, displayTime).r,
         axis: body.motion.orientationAt(displayTime)?.axis ?? null,
         radius: body.def.radius,
         bands: rings.bands.map((band) => ({

@@ -2,7 +2,7 @@
 // 無次元形状を、その瞬間の実際の天体位置・公転面から組んだ回転座標系へ載せて返す。
 // リサジュー軌道だけは連続な族として焼き込まないので、Richardson の解析近似から直に組む。
 import type { CelestialBody } from './celestial-body';
-import { CelestialMotion, OrbitingMotion } from './celestial-motion';
+
 import { Vec3Tuple } from './cr3bp';
 import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
 import type { SecondaryFrame } from './lagrange';
@@ -68,18 +68,15 @@ interface RotatingFrame {
 // その瞬間の天体位置から系の回転基底を組む。副天体の解決(guideSecondary の id を星系から
 // 引くこと)は呼び出し側の仕事で、主星を持たない副天体では null。
 // 焼き込みは重心原点なので、原点も重心へ置く(質量比はカタログが持つ値を使う)。
-export function rotatingFrame(t: number, secondary: OrbitingMotion, mu: number): RotatingFrame | null {
-  const primaryMotion = secondary.primary;
-  if (primaryMotion === null) return null;
-
-  const primaryPos = primaryMotion.stateAt(t).r;
-  const secondaryPos = secondary.stateAt(t).r;
+export function rotatingFrame(system: SecondaryFrame, mu: number): RotatingFrame | null {
+  const primaryPos = system.primary.state.r;
+  const secondaryPos = system.secondary.state.r;
   const rVec = sub(secondaryPos, primaryPos);
   const unit = len(rVec);
   if (!(unit > 0)) return null;
 
   const xHat = scale(rVec, 1 / unit);
-  const zHat = norm(secondary.orbitNormalAt(t));
+  const zHat = norm(system.normal);
   const yHat = norm(cross(zHat, xHat));
   // 重心は主天体から副天体へ向かって mu の位置にある。
   const origin = add(primaryPos, scale(xHat, mu * unit));
@@ -130,12 +127,11 @@ function bracketMember(family: CatalogFamily, s: number): { lo: number; hi: numb
 // 族の s の位置にある軌道を、ECI [m] のガイド線として返す。s は 0 が族の始端、1 が終端で、
 // 範囲外は端で頭打ちになる。系や族がカタログに無い、あるいはレジストリに天体が無ければ null。
 export function catalogLoop(
-  t: number, secondary: OrbitingMotion, catalog: CatalogSystem,
-  familyId: string, s: number,
+  system: SecondaryFrame, catalog: CatalogSystem, familyId: string, s: number,
 ): GuideLoop | null {
   const family = catalog.families[familyId];
   if (family === undefined || family.members.length === 0) return null;
-  const frame = rotatingFrame(t, secondary, catalog.mu);
+  const frame = rotatingFrame(system, catalog.mu);
   if (frame === null) return null;
 
   const values = familyPoints(family);
@@ -239,43 +235,45 @@ function elementsLoop(elements: OrbitalElements | null, centerEci: Vec3): GuideL
 
 // 太陽同期準回帰軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
 export function sunSyncRepeatGroundTrackLoop(
-  t: number, earth: CelestialMotion, repeatDays: number, revsPerRepeat: number,
+  earth: CelestialBody, repeatDays: number, revsPerRepeat: number,
 ): GuideLoop | null {
   return elementsLoop(
-    sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat, earth.at(t)), earth.stateAt(t).r);
+    sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat, earth), earth.state.r);
 }
 
 // 太陽方向の昇交点赤経(elements.ts の orbitPlaneBasis の規約: raan=0 で昇交点は +X 方向、
 // raan を Y 軸まわりに正転すると昇交点は -Z 側へ回る)を、その瞬間の太陽方向から逆算する。
 export function dawnDuskGuideLoop(
-  t: number, earth: CelestialMotion, sunDirFrom: (r: Vec3, t: number) => Vec3,
+  earth: CelestialBody, sunDirFrom: (r: Vec3, t: number) => Vec3,
   repeatDays: number, revsPerRepeat: number, localTime: LocalTime,
 ): GuideLoop | null {
-  const earthPos = earth.stateAt(t).r;
-  const sunDir = sunDirFrom(earthPos, t);
+  const earthPos = earth.state.r;
+  const sunDir = sunDirFrom(earthPos, earth.state.t);
   const sunRaanDeg = (Math.atan2(-sunDir.z, sunDir.x) * 180) / Math.PI;
   return elementsLoop(
-    dawnDuskElements(repeatDays, revsPerRepeat, localTime, sunRaanDeg, earth.at(t)), earthPos);
+    dawnDuskElements(repeatDays, revsPerRepeat, localTime, sunRaanDeg, earth), earthPos);
 }
 
 // 自転周期に共鳴する参照軌道(モルニヤ・ツンドラ)の共通部。自転モデルを持たない天体では
 // 共鳴の基準が無いので線を引かない。
 function spinResonantLoop(
-  t: number, earth: CelestialMotion,
+  earth: CelestialBody, spinRate: number | null,
   elementsOf: (planet: CelestialBody, spinPeriod: number) => OrbitalElements,
 ): GuideLoop | null {
-  const spinRate = earth.spinRate;
   if (spinRate === null || spinRate === 0) return null;
-  return elementsLoop(
-    elementsOf(earth.at(t), Math.abs((2 * Math.PI) / spinRate)), earth.stateAt(t).r);
+  return elementsLoop(elementsOf(earth, Math.abs((2 * Math.PI) / spinRate)), earth.state.r);
 }
 
 // モルニヤ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
-export function molniyaGuideLoop(t: number, earth: CelestialMotion, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
-  return spinResonantLoop(t, earth, (planet, spinPeriod) => molniyaElements(perigeeAltitude, raanDeg, planet, spinPeriod));
+export function molniyaGuideLoop(
+  earth: CelestialBody, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
+): GuideLoop | null {
+  return spinResonantLoop(earth, spinRate, (p, spin) => molniyaElements(perigeeAltitude, raanDeg, p, spin));
 }
 
 // ツンドラ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
-export function tundraGuideLoop(t: number, earth: CelestialMotion, perigeeAltitude: number, raanDeg: number): GuideLoop | null {
-  return spinResonantLoop(t, earth, (planet, spinPeriod) => tundraElements(perigeeAltitude, raanDeg, planet, spinPeriod));
+export function tundraGuideLoop(
+  earth: CelestialBody, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
+): GuideLoop | null {
+  return spinResonantLoop(earth, spinRate, (p, spin) => tundraElements(perigeeAltitude, raanDeg, p, spin));
 }

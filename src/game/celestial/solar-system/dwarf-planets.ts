@@ -1,7 +1,7 @@
 // 準惑星・大型小惑星とその衛星。静的事実・運動・見た目を1体につき1箇所で組む。
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
@@ -278,27 +278,27 @@ export const DWARF_PLANET_NAMES: Record<DwarfPlanetId, string> = {
 // 準惑星・大型小惑星とその衛星を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function dwarfPlanets(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
-  pack: HelioEphemeris | null, origin: EciOrigin,
+  pack: HelioEphemeris | null,
 ): Record<DwarfPlanetId, CelestialEntity> {
   // 衛星を持つ天体の運動は、子の主天体として渡すため先に組む。
-  const pluto = planetSystem(planetDefAtEpoch(PLUTO, phases, epochOffsetSec), sun, pack, origin);
-  const haumea = planetSystem(planetDefAtEpoch(HAUMEA, phases, epochOffsetSec), sun, pack, origin);
-  const eris = planetSystem(planetDefAtEpoch(ERIS, phases, epochOffsetSec), sun, pack, origin);
+  const pluto = planetSystem(planetDefAtEpoch(PLUTO, phases, epochOffsetSec), sun, pack);
+  const haumea = planetSystem(planetDefAtEpoch(HAUMEA, phases, epochOffsetSec), sun, pack);
+  const eris = planetSystem(planetDefAtEpoch(ERIS, phases, epochOffsetSec), sun, pack);
   return {
     ceres: new SphereEntity(
-      planetSystem(planetDefAtEpoch(CERES, phases, epochOffsetSec), sun, pack, origin).body,
+      planetSystem(planetDefAtEpoch(CERES, phases, epochOffsetSec), sun, pack).body,
       DWARF_PLANET_NAMES.ceres, 'dwarf',
       // A_B=0.035(幾何 0.090 x q=0.393)
       CelestialSurface.solid([0.0382, 0.0345, 0.0310]),
     ),
     vesta: new SphereEntity(
-      planetSystem(planetDefAtEpoch(VESTA, phases, epochOffsetSec), sun, pack, origin).body,
+      planetSystem(planetDefAtEpoch(VESTA, phases, epochOffsetSec), sun, pack).body,
       DWARF_PLANET_NAMES.vesta, 'smallBody',
       // A_B=0.195(幾何 0.423 x q=0.461)
       CelestialSurface.solid([0.2156, 0.1925, 0.1593]),
     ),
     pallas: new SphereEntity(
-      planetSystem(planetDefAtEpoch(PALLAS, phases, epochOffsetSec), sun, pack, origin).body,
+      planetSystem(planetDefAtEpoch(PALLAS, phases, epochOffsetSec), sun, pack).body,
       DWARF_PLANET_NAMES.pallas, 'smallBody',
       // A_B=0.061(幾何 0.155 x q=0.393)
       CelestialSurface.solid([0.0616, 0.0616, 0.0533]),
@@ -309,31 +309,31 @@ export function dwarfPlanets(
       CelestialSurface.solid([0.9026, 0.6880, 0.4994]),
     ),
     charon: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(CHARON, phases, epochOffsetSec), pluto, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(CHARON, phases, epochOffsetSec), pluto, pack),
       DWARF_PLANET_NAMES.charon, 'satellite',
       // A_B=0.21(幾何 0.38 x q=0.564)
       CelestialSurface.solid([0.2182, 0.2090, 0.1957]),
     ),
     styx: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(STYX, phases, epochOffsetSec), pluto, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(STYX, phases, epochOffsetSec), pluto, pack),
       DWARF_PLANET_NAMES.styx, 'satellite',
       // A_B=0.37(幾何 0.65 x q=0.564)
       CelestialSurface.solid([0.4236, 0.3598, 0.3131]),
     ),
     nix: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(NIX, phases, epochOffsetSec), pluto, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(NIX, phases, epochOffsetSec), pluto, pack),
       DWARF_PLANET_NAMES.nix, 'satellite',
       // A_B=0.32(幾何 0.56 x q=0.564)
       CelestialSurface.solid([0.3664, 0.3112, 0.2708]),
     ),
     kerberos: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(KERBEROS, phases, epochOffsetSec), pluto, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(KERBEROS, phases, epochOffsetSec), pluto, pack),
       DWARF_PLANET_NAMES.kerberos, 'satellite',
       // A_B=0.32(幾何 0.56 x q=0.564)
       CelestialSurface.solid([0.3664, 0.3112, 0.2708]),
     ),
     hydra: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(HYDRA, phases, epochOffsetSec), pluto, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(HYDRA, phases, epochOffsetSec), pluto, pack),
       DWARF_PLANET_NAMES.hydra, 'satellite',
       // A_B=0.47(幾何 0.83 x q=0.564)
       CelestialSurface.solid([0.5381, 0.4570, 0.3977]),
@@ -344,19 +344,19 @@ export function dwarfPlanets(
       CelestialSurface.solid([0.2900, 0.2900, 0.2900]),
     ),
     hiiaka: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(HIIAKA, phases, epochOffsetSec), haumea, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(HIIAKA, phases, epochOffsetSec), haumea, pack),
       DWARF_PLANET_NAMES.hiiaka, 'satellite',
       // A_B=0.28(分類既定 幾何 0.5 x q=0.564(母天体ハウメアと同じ氷質を仮定))
       CelestialSurface.solid([0.3206, 0.2723, 0.2369]),
     ),
     namaka: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(NAMAKA, phases, epochOffsetSec), haumea, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(NAMAKA, phases, epochOffsetSec), haumea, pack),
       DWARF_PLANET_NAMES.namaka, 'satellite',
       // A_B=0.28(分類既定 幾何 0.5 x q=0.564(母天体ハウメアと同じ氷質を仮定))
       CelestialSurface.solid([0.3206, 0.2723, 0.2369]),
     ),
     makemake: new SphereEntity(
-      planetSystem(planetDefAtEpoch(MAKEMAKE, phases, epochOffsetSec), sun, pack, origin).body,
+      planetSystem(planetDefAtEpoch(MAKEMAKE, phases, epochOffsetSec), sun, pack).body,
       DWARF_PLANET_NAMES.makemake, 'dwarf',
       // A_B=0.46(幾何 0.81 x q=0.564)
       CelestialSurface.solid([0.7020, 0.4110, 0.2331]),
@@ -367,7 +367,7 @@ export function dwarfPlanets(
       CelestialSurface.solid([0.5400, 0.5400, 0.5400]),
     ),
     dysnomia: new SphereEntity(
-      new SatelliteMotion(satelliteDefAtEpoch(DYSNOMIA, phases, epochOffsetSec), eris, pack, origin),
+      new SatelliteMotion(satelliteDefAtEpoch(DYSNOMIA, phases, epochOffsetSec), eris, pack),
       DWARF_PLANET_NAMES.dysnomia, 'satellite',
       // A_B=0.016(幾何 0.04 x q=0.393)
       CelestialSurface.solid([0.0183, 0.0156, 0.0135]),

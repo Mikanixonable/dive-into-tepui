@@ -72,7 +72,7 @@ export class EquatorNodeMarkerPair {
 
     const displayFrame = frame ?? celestialSystem.frames.frameFor(center.id);
     const unbakeTf = celestialSystem.frames.transformAt(displayFrame, displayTime, frameAnchors);
-    const crossings = solveEquatorCrossings(state, center, eqNormal, paths, (t) => celestialSystem.entityOf(center.id).motion.stateAt(t).r);
+    const crossings = solveEquatorCrossings(state, center, eqNormal, paths, (t) => celestialSystem.stateAt(center.id, t).r);
     if (!crossings) return;
 
     const centerName = celestialSystem.nameOf(center.id);

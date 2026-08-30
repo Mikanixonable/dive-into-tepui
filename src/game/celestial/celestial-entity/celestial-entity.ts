@@ -4,6 +4,8 @@ import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
 import { CelestialBody, orbitalElementsOf } from '../../../physics/celestial-body';
+import { CelestialBodyWindows } from '../../../physics/celestial-body-windows';
+import { KinematicState } from '../../../physics/kinematic-state';
 import { OrbitalElements } from '../../../physics/elements';
 import { OrbitLine } from '../../lines/orbit-line';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
@@ -51,6 +53,36 @@ export abstract class CelestialEntity {
     readonly atmosphereOptics: AtmosphereOptics | null,
   ) {}
 
+  // 自分の ECI 瞬間値を引く窓。ECI 化は窓の中でしか起きないので、個体はどの天体が原点かを
+  // 知らない。CelestialSystem が構築直後に1度だけ差し込む。
+  private eciWindows: CelestialBodyWindows | null = null;
+
+  // ECI の窓を結ぶ。2度目の呼び出しは例外。
+  bindWindows(windows: CelestialBodyWindows): void {
+    if (this.eciWindows !== null) throw new Error(`CelestialEntity: ${this.id} の ECI 窓は1度だけ結べる`);
+    this.eciWindows = windows;
+  }
+
+  // 自分の時刻 t での ECI 瞬間値。
+  bodyAt(t: number): CelestialBody {
+    return this.windows.bodyAt(this.id, t);
+  }
+
+  // 自分の時刻 t での ECI 位置・速度。
+  stateAt(t: number): KinematicState {
+    return this.windows.stateAt(this.id, t);
+  }
+
+  // 他の登録天体の時刻 t での ECI 位置・速度。
+  protected stateOf(id: string, t: number): KinematicState {
+    return this.windows.stateAt(id, t);
+  }
+
+  private get windows(): CelestialBodyWindows {
+    if (this.eciWindows === null) throw new Error(`CelestialEntity: ${this.id} の ECI 窓が結ばれていない`);
+    return this.eciWindows;
+  }
+
   // この天体を光源として扱うときの色つきアルベド(Rec.709 輝度 = ボンドアルベド)。
   // 自発光の恒星と、測光を持たない表面では null。
   abstract get lightSourceAlbedo(): Albedo | null;
@@ -86,10 +118,10 @@ export abstract class CelestialEntity {
     if (centerMotion === null) return null;
     const centerDef = centerMotion.def;
     const center: CelestialBody = {
-      id: centerMotion.id, mu: centerDef.mu, radius: centerDef.radius, state: centerMotion.stateAt(t),
+      id: centerMotion.id, mu: centerDef.mu, radius: centerDef.radius, state: this.stateOf(centerMotion.id, t),
       accel: v3(), degree2: null, atmosphere: null, isStar: centerMotion.kind === 'star',
     };
-    return orbitalElementsOf(this.motion.stateAt(t), center);
+    return orbitalElementsOf(this.stateAt(t), center);
   }
 
   // 参照軌道線を表示時刻の接触軌道要素と濃さへ同期する(実体が無ければ生成して scene へ登録)。
@@ -112,7 +144,7 @@ export abstract class CelestialEntity {
     const isSatellite = this.motion.kind === 'satellite';
     const nearDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : PLANET_ORBIT_LINE_FADE_NEAR_DIST;
     const farDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_FAR_DIST : PLANET_ORBIT_LINE_FADE_FAR_DIST;
-    const dist = len(sub(this.motion.stateAt(simTime).r, cameraPos));
+    const dist = len(sub(this.stateAt(simTime).r, cameraPos));
     const t = Math.min(1, Math.max(0, (dist - nearDist) / (farDist - nearDist)));
     return t * REFERENCE_LINE_OPACITY;
   }
@@ -126,7 +158,7 @@ export abstract class CelestialEntity {
   // cameraPos から見たこの天体の視半径。影を落としうるか・環をどれで代表させるかの尺度で、
   // 大きく見える天体ほどその影が画面に写っている何かへ落ちる見込みが高い。
   apparentRadiusFrom(cameraPos: Vec3, simTime: number): number {
-    const center = this.motion.stateAt(simTime).r;
+    const center = this.stateAt(simTime).r;
     return this.def.radius / Math.max(1, len(sub(center, cameraPos)));
   }
 
@@ -138,7 +170,7 @@ export abstract class CelestialEntity {
   ): AtmosphereCandidate | null {
     const optics = this.atmosphereOptics;
     if (optics === null) return null;
-    const center = this.motion.stateAt(displayTime).r;
+    const center = this.stateAt(displayTime).r;
     return {
       body: { center: fo.RtoThreeV3(center), surfaceRadius: this.def.radius, optics },
       distance: len(sub(cameraPos, center)),
@@ -165,7 +197,7 @@ export abstract class CelestialEntity {
   // 扱いと揃える。
   protected sunIrradianceAt(star: StarEntity | null, pos: Vec3, displayTime: number): number {
     if (star === null) return SUN_IRRADIANCE_1AU;
-    const d = len(sub(pos, star.motion.stateAt(displayTime).r));
+    const d = len(sub(pos, star.stateAt(displayTime).r));
     if (d <= 0) return SUN_IRRADIANCE_1AU;
     return irradianceAtDistance(star.radiantIntensity, d);
   }

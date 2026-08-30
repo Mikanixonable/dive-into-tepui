@@ -1,6 +1,7 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
 import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
+import { KinematicState } from '../../src/physics/kinematic-state';
 import {
   LagrangePoints, SecondaryFrame, lagrangePointsOf, secondaryFrameOf,
 } from '../../src/physics/lagrange';
@@ -62,9 +63,14 @@ export function secondaryFrameFor(parts: SolarSystemParts, id: string, t: number
   return frame;
 }
 
+// 天体 id の時刻 t での ECI 位置・速度。
+export function stateOf(parts: SolarSystemParts, id: string, t: number): KinematicState {
+  return parts.windows.stateAt(id, t);
+}
+
 // 天体 id の時刻 t での ECI 位置。
 export function positionOf(parts: SolarSystemParts, id: string, t: number): Vec3 {
-  return motionOf(parts, id).stateAt(t).r;
+  return stateOf(parts, id, t).r;
 }
 
 // 回転基準系の角速度が姿勢の時間微分と整合するか(基底の各軸で ḃ = ω×b)を中心差分で確かめる。
