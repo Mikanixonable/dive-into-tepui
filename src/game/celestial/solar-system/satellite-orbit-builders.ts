@@ -6,6 +6,9 @@ import { IauPole, equatorBasis } from './poles';
 
 // 親惑星の赤道面を基準面に取る衛星の二体ケプラー軌道。要素は JPL Solar System Dynamics の
 // 衛星平均要素(親惑星の赤道面基準)。歳差・周期摂動は実測値を持たないので置かない。
+// 公転周期は相対軌道の n²a³ = G(M+m) ではなく planetMu(= GM)だけから導く — 公表された
+// a と周期の組は、その丸め精度では GM 側と整合しており、衛星質量を足すと公表値から遠のく
+// (トリトンで +12 ppm → −92 ppm)。
 export function equatorialSatelliteOrbit(p: {
   a: number;
   e: number;
