@@ -3,12 +3,11 @@
 import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../../physics/celestial-body';
 import type { OrbitalElements } from '../../../physics/elements';
 import { semiMajorFromPeriod } from '../../../physics/elements';
-import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { latLonOf } from '../../../physics/body-orientation';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { dot, len, sub } from '../../../math/vec3';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
-import { entityStateAt } from '../../dynamic/entity-state-at';
+import { OrbitCenter, entityStateAt } from '../../dynamic/entity-state-at';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { OrbitReference } from '../../orbit-reference';
 import { relativeInclinationDeg } from './orbit-info';
@@ -63,15 +62,15 @@ export function altitudeSeries(
   }
 
   const currentAlt = altitudeOf(entity.state, reference.state, center);
-  const centerMotion = celestialSystem.entityOf(center.id).motion;
+  const centerEntity = celestialSystem.entityOf(center.id);
   const samples: AltitudeSample[] = [];
   let truncated = false;
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     // 外挿できない時刻に達したら、そこで列を止める(0/NaN で埋めない)。
-    const state = entityStateAt(entity, t, centerMotion);
+    const state = entityStateAt(entity, t, centerEntity);
     if (state === null) { truncated = true; break; }
-    const centerState = centerMotion.stateAt(t);
+    const centerState = centerEntity.stateAt(t);
     samples.push({ t: t - now, alt: altitudeOf(state, centerState, center) });
   }
   return { samples, currentAlt, truncated };
@@ -91,17 +90,17 @@ function phaseAngleOn(el: OrbitalElements, positionRelCenter: KinematicState['r'
 // ターゲット(target)の状態と軌道要素を、他の対象と同じ形(状態取得関数 + 軌道要素)へ揃える。
 export function resolveTarget(
   target: ApproachTargetSource, celestialSystem: CelestialSystem,
-): { stateAt: (t: number, centerMotion: CelestialMotion) => KinematicState | null; currentR: KinematicState['r'] } {
+): { stateAt: (t: number, center: OrbitCenter) => KinematicState | null; currentR: KinematicState['r'] } {
   // 艦・基地は predicted(将来は外挿できないことがある)、天体は自身の運動(常に解析的に解ける)。
   if (target.kind === 'entity') {
     return {
-      stateAt: (t, centerMotion) => entityStateAt(target.entity, t, centerMotion),
+      stateAt: (t, center) => entityStateAt(target.entity, t, center),
       currentR: target.entity.state.r,
     };
   }
-  const targetMotion = celestialSystem.entityOf(target.body.id).motion;
+  const targetEntity = celestialSystem.entityOf(target.body.id);
   return {
-    stateAt: (t) => targetMotion.stateAt(t),
+    stateAt: (t) => targetEntity.stateAt(t),
     currentR: target.body.state.r,
   };
 }
@@ -147,17 +146,17 @@ export function approachSeries(
     return { samples: [], relIncDeg, truncated: true };
   }
 
-  const centerMotion = celestialSystem.entityOf(center.id).motion;
+  const centerEntity = celestialSystem.entityOf(center.id);
   const samples: (ApproachSample | null)[] = [];
   let truncated = false;
   let lastTheta: number | null = null;
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     // どちらかが外挿できなくなった時点で列を止める。
-    const shipState = entityStateAt(ship, t, centerMotion);
-    const targetState = resolved.stateAt(t, centerMotion);
+    const shipState = entityStateAt(ship, t, centerEntity);
+    const targetState = resolved.stateAt(t, centerEntity);
     if (shipState === null || targetState === null) { truncated = true; break; }
-    const centerState = centerMotion.stateAt(t);
+    const centerState = centerEntity.stateAt(t);
     const shipRel = sub(shipState.r, centerState.r);
     const targetRel = sub(targetState.r, centerState.r);
     const theta = wrapAngle(phaseAngleOn(targetEl, shipRel) - phaseAngleOn(targetEl, targetRel));
@@ -181,8 +180,10 @@ export interface ProjectionSeries {
 
 // state(中心天体相対ではなく ECI)を中心天体の時刻 t での自転を通じて緯度経度へ変換する。
 // 中心天体が自転モデルを持たなければ null。
-function projectionSampleAt(state: KinematicState, centerState: KinematicState, centerMotion: CelestialMotion, t: number): ProjectionSample | null {
-  const orientation = centerMotion.orientationAt(t);
+function projectionSampleAt(
+  state: KinematicState, centerState: KinematicState, center: OrbitCenter, t: number,
+): ProjectionSample | null {
+  const orientation = center.motion.orientationAt(t);
   if (orientation === null) return null;
   const { latRad, lonRad } = latLonOf(sub(state.r, centerState.r), orientation.axis, orientation.spinAngle);
   return { latDeg: (latRad * 180) / Math.PI, lonDeg: (lonRad * 180) / Math.PI };
@@ -192,7 +193,7 @@ function projectionSampleAt(state: KinematicState, centerState: KinematicState, 
 // 中心天体が自転モデルを持たない場合は null。
 export function projectionSeries(
   stateAt: (t: number) => KinematicState | null,
-  centerMotion: CelestialMotion,
+  center: OrbitCenter,
   now: number,
   spanSec: number,
   sampleCount: number,
@@ -200,7 +201,7 @@ export function projectionSeries(
   // 現在時刻の経緯度。中心天体が自転モデルを持たなければここで打ち切る。
   const currentState = stateAt(now);
   if (currentState === null) return null;
-  const current = projectionSampleAt(currentState, centerMotion.stateAt(now), centerMotion, now);
+  const current = projectionSampleAt(currentState, center.stateAt(now), center, now);
   if (current === null) return null;
 
   if (spanSec <= 0 || sampleCount <= 0 || !isFinite(spanSec) || !Number.isFinite(sampleCount)) {
@@ -215,7 +216,7 @@ export function projectionSeries(
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     const state = stateAt(t);
-    const sample = state === null ? null : projectionSampleAt(state, centerMotion.stateAt(t), centerMotion, t);
+    const sample = state === null ? null : projectionSampleAt(state, center.stateAt(t), center, t);
     if (sample === null) { truncated = true; break; }
     if (lastLonDeg !== null && Math.abs(sample.lonDeg - lastLonDeg) > 180) samples.push(null);
     lastLonDeg = sample.lonDeg;

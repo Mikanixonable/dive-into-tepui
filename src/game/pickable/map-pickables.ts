@@ -164,7 +164,7 @@ export class MapPickables {
     // 太陽系順の並べ替え基準。恒星の無いレジストリでは undefined のまま(呼び出し側が
     // 自機距離へ委譲する)。
     const star = this.celestialSystem.star;
-    const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
+    const starPos = star === null ? null : star.stateAt(displayTime).r;
     if (starPos) for (const item of this.candidateItems) item.distanceFromStar = len(sub(item.pos, starPos));
 
     // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。

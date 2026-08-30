@@ -1,7 +1,7 @@
 // frame.ts と reference-frames.ts の回帰テスト: 座標系(原点天体 × 回転)の同一性と、その
 // 時刻ごとの剛体運動による点・KinematicState の順逆変換(恒等・往復・既知回転角・速度の
 // 有限差分検証・bake+un-bake 合成・原点が動く系)。
-import { orbitingMotionOf, positionOf, solarSystemParts } from './test-helpers';
+import { orbitingMotionOf, positionOf, solarSystemParts, stateOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { MU_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
@@ -271,7 +271,7 @@ export function register(): void {
 
   test('frame: revolution の回転対象が登録天体でないとき、基底の x̂ は attractorOf が答えた主天体→対象の向き(frame.center とは独立)', () => {
     const t = 8888;
-    const earth = orbitingMotionOf(parts, 'earth').stateAt(t);
+    const earth = stateOf(parts, 'earth', t);
     // 地球のまわりを回る架空の機体(地球からのオフセット + 円軌道ふうの速度で相対角運動量を持たせる)。
     const shipState = kinematicState(t, add(earth.r, v3(1e7, 0, 0)), add(earth.v, v3(0, 3000, 500)));
     const source: FrameAnchorSource = { bodies: [], stateOf: () => shipState, attractorOf: () => 'earth' };
@@ -292,7 +292,7 @@ export function register(): void {
     const r = 7e6;
     const omega = Math.sqrt(MU_EARTH / (r * r * r));
     const shipStateAt = (t: number): KinematicState => {
-      const earth = orbitingMotionOf(parts, 'earth').stateAt(t);
+      const earth = stateOf(parts, 'earth', t);
       const angle = omega * t;
       const relR = v3(r * Math.cos(angle), r * Math.sin(angle), 0);
       const relV = v3(-r * omega * Math.sin(angle), r * omega * Math.cos(angle), 0);

@@ -22,11 +22,13 @@ export function register(): void {
   const motionOf = (id: string): CelestialMotion | null => (
     PARTS.bodies.find((m) => m.id === id) ?? null
   );
+  // 登録天体の ECI 状態の引き手(CelestialSystem.stateAt と同じ契約)。
+  const stateOf = (id: string, t: number): KinematicState => PARTS.windows.stateAt(id, t);
 
   test('focus-target: 天体 id は その運動の ECI 位置を返す', () => {
     const anchors = stubAnchors({});
-    const result = resolveFocusTarget({ kind: 'object', id: 'moon' }, [], 0, anchors, frames, motionOf, ORIGIN_STATE);
-    assert.deepEqual(result.pos, motionInParts(PARTS, 'moon').stateAt(0).r);
+    const result = resolveFocusTarget({ kind: 'object', id: 'moon' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
+    assert.deepEqual(result.pos, PARTS.windows.stateAt('moon', 0).r);
     assert.equal(result.missingFocusFrames, 0);
   });
 
@@ -34,7 +36,7 @@ export function register(): void {
     const shipState = kinematicState(0, v3(7e6, 0, 0), v3(0, 7500, 0));
     const anchors = stubAnchors({ '@activeShip': shipState });
     const result = resolveFocusTarget(
-      { kind: 'object', id: '@activeShip' }, [], 0, anchors, frames, motionOf, ORIGIN_STATE);
+      { kind: 'object', id: '@activeShip' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
     assert.equal(result.pos, shipState.r);
   });
 
@@ -43,7 +45,7 @@ export function register(): void {
     const staleCandidates: readonly FocusCandidate[] = [{ id: 'Ship-1', pos: v3(1, 1, 1) }];
     const anchors = stubAnchors({ 'Ship-1': freshState });
     const result = resolveFocusTarget(
-      { kind: 'object', id: 'Ship-1' }, staleCandidates, 0, anchors, frames, motionOf, ORIGIN_STATE);
+      { kind: 'object', id: 'Ship-1' }, staleCandidates, 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
     assert.deepEqual(result.pos, freshState.r);
     assert.notDeepEqual(result.pos, v3(1, 1, 1));
   });
@@ -52,7 +54,7 @@ export function register(): void {
     const candidates: readonly FocusCandidate[] = [{ id: 'apsis-1', pos: v3(9, 8, 7) }];
     const anchors = stubAnchors({});
     const result = resolveFocusTarget(
-      { kind: 'object', id: 'apsis-1' }, candidates, 0, anchors, frames, motionOf, ORIGIN_STATE);
+      { kind: 'object', id: 'apsis-1' }, candidates, 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
     assert.deepEqual(result.pos, v3(9, 8, 7));
     assert.equal(result.missingFocusFrames, 0);
   });
@@ -60,10 +62,10 @@ export function register(): void {
   test('focus-target: 2フレーム連続で全経路が null なら fallToOrigin', () => {
     const anchors = stubAnchors({});
     const first = resolveFocusTarget(
-      { kind: 'object', id: 'nowhere' }, [], 0, anchors, frames, motionOf, ORIGIN_STATE);
+      { kind: 'object', id: 'nowhere' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
     assert.equal(first.fallToOrigin, false);
     assert.equal(first.missingFocusFrames, 1);
-    const second = resolveFocusTarget({ kind: 'object', id: 'nowhere' }, [], 0, anchors, frames, motionOf, first);
+    const second = resolveFocusTarget({ kind: 'object', id: 'nowhere' }, [], 0, anchors, frames, motionOf, stateOf, first);
     assert.equal(second.fallToOrigin, true);
     assert.equal(second.missingFocusFrames, 2);
   });
@@ -71,7 +73,7 @@ export function register(): void {
   test('focus-target: 1フレームだけ解決失敗なら lastResolvedFocus を保ち fallToOrigin にならない', () => {
     const anchors = stubAnchors({});
     const result = resolveFocusTarget(
-      { kind: 'object', id: 'nowhere' }, [], 0, anchors, frames, motionOf, ORIGIN_STATE);
+      { kind: 'object', id: 'nowhere' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
     assert.equal(result.fallToOrigin, false);
     assert.deepEqual(result.pos, ORIGIN_STATE.lastResolvedFocus);
     assert.deepEqual(result.lastResolvedFocus, ORIGIN_STATE.lastResolvedFocus);

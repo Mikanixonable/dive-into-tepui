@@ -5,9 +5,7 @@
 // (重心の平均角から太陽方向を取る)→ 惑星本体(重心 − 衛星ぶん)→ 衛星の恒星中心。
 // THREE/DOM 非依存。
 import { HelioEphemeris } from './absolute-ephemeris';
-import {
-  EciOrigin, PlanetDef, PlanetMotion, SatelliteMotion, StarMotion,
-} from './celestial-motion';
+import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
 import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { PlanetAngles, planetAngles } from './planet-orbit';
@@ -60,10 +58,9 @@ export class PlanetSystem {
 // 惑星本体と、その系の重心をまとめて組む。衛星を持つ系では、返った PlanetSystem をそのまま
 // 衛星へ渡す。star は主星(恒星を持たない星系では null)、spinPhase0 は自転の初期位相 [rad]。
 export function planetSystem(
-  def: PlanetDef, star: StarMotion | null, ephemeris: HelioEphemeris | null,
-  origin: EciOrigin, spinPhase0 = 0,
+  def: PlanetDef, star: StarMotion | null, ephemeris: HelioEphemeris | null, spinPhase0 = 0,
 ): PlanetSystem {
   const system = new PlanetSystem(def.orbit);
-  system.setBody(new PlanetMotion(def, star, system, ephemeris, origin, spinPhase0));
+  system.setBody(new PlanetMotion(def, star, system, ephemeris, spinPhase0));
   return system;
 }
