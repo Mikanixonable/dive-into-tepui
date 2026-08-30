@@ -1,5 +1,7 @@
-import { AbsoluteEphemeris, BarycentricState } from './absolute-ephemeris';
+import { AbsoluteEphemeris, BarycentricState, icrfToGameEci } from './absolute-ephemeris';
+import { BodyEphemeris } from './body-ephemeris';
 import { ChebyshevEphemeris } from './ephemeris-pack/evaluator';
+import { KinematicState, kinematicState } from './kinematic-state';
 import {
   DecodedEphemerisPack, EphemerisPackFormatError, decodeEphemerisPack, toEvaluatorEphemerisPack,
 } from './ephemeris-pack/format';
@@ -36,6 +38,35 @@ export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
     if (!Number.isFinite(simTime)) throw new RangeError(`simTime は有限値でなければならない: ${simTime}`);
     const state = this.evaluator.stateOf(id, simTime);
     return { r: state.r, v: state.v };
+  }
+
+  // 天体 id の1体ぶんを切り出した暦。有効期間は**その天体自身のセグメント範囲**から取る
+  // (pack 共通の範囲ではない)。収録していなければ null。
+  bodyEphemerisOf(id: string): BodyEphemeris | null {
+    const body = this.evaluator.pack.bodies.find((candidate) => candidate.id === id);
+    if (body === undefined) return null;
+    const segments = body.segments;
+    return new PackedBodyEphemeris(
+      this.evaluator, id, segments[0]!.start, segments[segments.length - 1]!.end,
+    );
+  }
+}
+
+// 系全体の評価器から天体1体ぶんだけを見せる窓。id は構築時に固定され、評価のたびには
+// 引き直さない。**ICRF 軸からゲーム ECI 軸への置き換えはここで済ませる** — 原点の付け替えは
+// しないので、答えるのは太陽系重心中心のまま。
+class PackedBodyEphemeris implements BodyEphemeris {
+  constructor(
+    private readonly evaluator: ChebyshevEphemeris,
+    private readonly id: string,
+    readonly validStartSimTime: number,
+    readonly validEndSimTime: number,
+  ) {}
+
+  stateAt(simTime: number): KinematicState<'barycentric'> {
+    if (!Number.isFinite(simTime)) throw new RangeError(`simTime は有限値でなければならない: ${simTime}`);
+    const state = this.evaluator.stateOf(this.id, simTime);
+    return kinematicState<'barycentric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
   }
 }
 
