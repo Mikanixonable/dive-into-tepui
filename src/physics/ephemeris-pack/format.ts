@@ -347,12 +347,6 @@ export function decodeEphemerisPack(input: Uint8Array): DecodedEphemerisPack {
   return { manifest, payload, payloadBytes, manifestJson };
 }
 
-/**
- * Adapt a decoded binary pack to the existing Chebyshev evaluator contract.
- * The adapter is intentionally explicit: evaluator times remain J2000-ET
- * seconds, while the binary manifest retains the authoritative ICRF/TDB
- * frame and epoch metadata.
- */
 // 復号済みの pack を評価器の入力へ写す。timeOriginSec を渡すと、セグメント境界をその原点
 // からの秒へ寄せる — 評価器はワイヤ形式の J2000 ET 秒を知らずに済み、呼び出し側が決めた
 // 時刻軸だけで引ける。**manifest 側と bodies 側は同じ segments から組むので、片方だけが
@@ -402,5 +396,5 @@ export function toEvaluatorEphemerisPack(
       })),
     },
     bodies: bodyPacks,
-  } as unknown as CanonicalEvaluatorEphemerisPack;
+  };
 }
