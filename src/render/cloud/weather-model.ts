@@ -67,9 +67,14 @@ const PRESSURE_BAND_AMPLITUDE = 8;
 // 気圧の写しの texel より数倍大きい。
 const GRADIENT_STEP = 0.01;
 // 風の利得 [m/s あたり hPa/rad]。流入は気圧の低い方へ、地衡風は等圧線に沿って(緯度の正弦に比例)。
-// 流入と地衡風の比が、風が等圧線を横切る角(中緯度で 20° 前後)を決める。
+// 流入と地衡風の比が、風が等圧線を横切る角を決める。
 const INFLOW_GAIN = 0.15;
 const GEOSTROPHIC_GAIN = 0.6;
+// 流れの曲がりが流入を細らせる度合い [1 あたり hPa/rad]。曲がった流れでは遠心力がコリオリに
+// 上乗せされて釣り合いを受け持つぶん、等圧線を横切る流入が減る。勾配が急なほど強く効くので、
+// 台風の芯では横切る角が数分の一になる。これが無いと角が緯度だけの関数になり、熱帯の台風が
+// 中緯度の低気圧より緩く巻く。
+const CURVATURE_GAIN = 0.015;
 // 風速の上限 [m/s]。台風の中心近くの勾配で地衡風が発散するのを抑える。
 const WIND_CAP = 50;
 
@@ -141,8 +146,9 @@ export class WeatherModel {
     const gradient = east.mul(pressureEast.sub(pressureWest)).add(north.mul(pressureNorth.sub(pressureSouth)))
       .div(2 * GRADIENT_STEP);
 
-    // 風 = 低い方への流入 + 等圧線に沿う地衡風(コリオリ力の向きは半球で反転)。
-    const inflow = gradient.mul(-INFLOW_GAIN);
+    // 風 = 低い方への流入 + 等圧線に沿う地衡風(コリオリ力の向きは半球で反転)。流入は流れの
+    // 曲がりのぶん細る。
+    const inflow = gradient.mul(float(-INFLOW_GAIN).div(length(gradient).mul(CURVATURE_GAIN).add(1)));
     const geostrophic = cross(direction, gradient).mul(sin(latitude).mul(GEOSTROPHIC_GAIN));
     const wind = capWind(inflow.add(geostrophic));
 
