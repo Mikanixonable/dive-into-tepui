@@ -4,16 +4,14 @@ import * as THREE from 'three/webgpu';
 import { dot, exp, float, uniform } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
-// 台風。中心の緯度 [rad]、時刻 0 の経度 [rad]、西進の速さ [m/s]、深さ [hPa]、半径 [m]。
-// 半径は目の大きさではなく、渦の広がり。雲が一面に覆う円盤はこの 0.95 倍(収束が正の範囲)、
-// その外側に下降で乾いた環が同じだけ続く。
+// 台風。中心の緯度 [rad]、時刻 0 の経度 [rad]、西進の速さ [m/s]、深さ [hPa]、渦の広がり [m]。
 const TYPHOON_LATITUDE = THREE.MathUtils.degToRad(15);
 const TYPHOON_LONGITUDE = THREE.MathUtils.degToRad(140);
 const TYPHOON_DRIFT = -8;
 const TYPHOON_DEPTH = 35;
 const TYPHOON_RADIUS = 700e3;
 // 目の半径 [m]。中心からこの広がりで湿度が落ちる。
-const TYPHOON_EYE_RADIUS = 790e3;
+const TYPHOON_EYE_RADIUS = 150e3;
 
 // 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、半径 [m]
 // (番号で最小から幅のあいだへ散らす)、中心の緯度の範囲 [rad]。寿命の中で深さは山形に変わり、
