@@ -23,6 +23,7 @@ import { CelestialSurface } from '../../render/celestial-surface';
 import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-entity-def';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
+import type { TdbJulianDate } from '../../physics/time';
 import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
 import { StarEntity } from '../celestial/celestial-entity/star-entity';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
@@ -81,10 +82,12 @@ function fallbackEntity(motion: CelestialMotion): CelestialEntity {
 export class StageDebugAltSystem extends Stage {
   static readonly id = 'debug-alt-system' as const;
   static readonly epoch = STORY_EPOCH;
-  static async createCelestialSystem(phaseOffsets: PhaseOffsets, _earthSpinPhase0: number): Promise<CelestialSystem> {
+  static async createCelestialSystem(
+    phaseOffsets: PhaseOffsets, _earthSpinPhase0: number, epoch: TdbJulianDate,
+  ): Promise<CelestialSystem> {
     const bodies = zephyrusSystemMotions(phaseOffsets).map(fallbackEntity);
     const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
-    return new CelestialSystem(bodies, origin, phaseOffsets, StageDebugAltSystem.epoch);
+    return new CelestialSystem(bodies, origin, phaseOffsets, epoch);
   }
   static readonly selectLabel = 'DEBUG(架空星系)';
   static readonly selectSub = '【デバッグ】恒星0個・架空天体2体のレジストリで起動する';
