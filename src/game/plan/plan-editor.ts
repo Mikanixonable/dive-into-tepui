@@ -30,7 +30,7 @@ import { focusPoint } from '../camera/focus-target';
 import { CelestialBody, bodyAnchorSource, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { FrameAnchorSource, toFrameState } from '../../physics/frame';
 import type { PredictedArc } from '../dynamic/predicted-arc';
-import type { DisplayWindow } from '../display-window-manager';
+import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
@@ -656,9 +656,7 @@ export class PlanEditor {
   private updateEquatorNodes(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource): void {
     const ship = this.ship;
     if (!ship) return;
-    const timeLabel = {
-      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
-    };
+    const timeLabel = timeLabelSettingOf(displayWindow);
     ship.ensureEquatorNodes(this.markerManager).updateOnPath(
       displayWindow.frame, displayWindow.displayTime, this.celestialSystem, frameAnchors,
       ship.state, this.planDisplay.path.displayedSamples(), timeLabel,

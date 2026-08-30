@@ -1,6 +1,6 @@
 import { EPHEMERIS_PACK_VERSION } from '../../physics/ephemeris-pack/format';
 import { profileAt } from '../../physics/ephemeris-profile';
-import { SIM_EPOCH } from '../sim-epoch';
+import type { TdbJulianDate } from '../../physics/time';
 
 // Keep this small compatibility module independent from entity save types. In
 // particular, the physics test build can exercise it without pulling the DOM
@@ -12,18 +12,23 @@ export interface EphemerisContextValue {
   packFormatVersion: number;
 }
 
-const currentProfile = profileAt(SIM_EPOCH.value);
-
 // The catalog selects the pack by this profile id. Keeping that catalog key in
 // the save makes the context stable without copying any ephemeris coefficients
 // into save data. The format version additionally rejects packs that cannot be
 // interpreted by the current evaluator.
-export const CURRENT_EPHEMERIS_CONTEXT: Readonly<EphemerisContextValue> = Object.freeze({
-  epochJdTdb: SIM_EPOCH.value,
-  profileId: currentProfile.id,
-  packId: currentProfile.packId,
-  packFormatVersion: EPHEMERIS_PACK_VERSION,
-});
+//
+// This takes the run's epoch rather than reading a shared constant: the epoch is
+// a per-run value, and this module must stay free of the game graph so the
+// physics test build can exercise it.
+export function ephemerisContextFor(epoch: TdbJulianDate): Readonly<EphemerisContextValue> {
+  const profile = profileAt(epoch.value);
+  return Object.freeze({
+    epochJdTdb: epoch.value,
+    profileId: profile.id,
+    packId: profile.packId,
+    packFormatVersion: EPHEMERIS_PACK_VERSION,
+  });
+}
 
 export type EphemerisContextStatus = 'legacy' | 'compatible' | 'incompatible';
 
@@ -48,7 +53,7 @@ function isValidContext(value: unknown): value is EphemerisContextValue {
 
 export function ephemerisContextStatus(
   saved: unknown,
-  current: Readonly<EphemerisContextValue> = CURRENT_EPHEMERIS_CONTEXT,
+  current: Readonly<EphemerisContextValue>,
 ): EphemerisContextStatus {
   // Absence is the explicitly supported legacy migration path. null and any
   // malformed value are explicit-but-invalid context and must not be treated
@@ -66,7 +71,7 @@ export function ephemerisContextStatus(
 
 export function isEphemerisContextCompatible(
   saved: unknown,
-  current: Readonly<EphemerisContextValue> = CURRENT_EPHEMERIS_CONTEXT,
+  current: Readonly<EphemerisContextValue>,
 ): boolean {
   return ephemerisContextStatus(saved, current) !== 'incompatible';
 }

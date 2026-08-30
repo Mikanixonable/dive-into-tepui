@@ -26,7 +26,7 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { DisplayWindow } from '../display-window-manager';
+import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { GameSaveData } from '../save/save-data';
 import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
@@ -461,9 +461,7 @@ export class DynamicSystem {
     overviewMode: boolean, displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
     if (!overviewMode) return;
-    const timeLabel = {
-      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
-    };
+    const timeLabel = timeLabelSettingOf(displayWindow);
     for (const base of this.bases) {
       if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
     }

@@ -1,6 +1,6 @@
 // デバッグ用ステージ: 敵集団1つのみを配置し、勝敗を発生させずに検証を続けられる。
 // 敵の射撃 ON/OFF をパネルから切り替えられる。タイトルの通常ボタン列には出ない。
-import { Stage, type StageDeps } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../hud/widgets';
 import * as C from '../const';
@@ -11,6 +11,7 @@ import type { StageSaveData } from '../save/save-data';
 
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
+  static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'DEBUG';
   static readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
   static readonly hiddenFromSelect = true;

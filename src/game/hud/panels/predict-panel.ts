@@ -3,7 +3,6 @@ import * as C from '../../const';
 import { Button, PREDICT_TOGGLE_LABELS, SegmentedControl, Slider, ToggleSwitch, ValueInput } from '../widgets';
 import { wirePanelCollapse } from '../panel-shell';
 import { fmtDateTime, fmtDuration } from '../utils';
-import { SIM_EPOCH_SEC } from '../../sim-epoch';
 import type { DisplayDurationKey, DisplayPastDurationKey } from '../../display-window-manager';
 import type { TickLabelMode } from '../orbit/calendar-ticks';
 import type { DisplayTick } from '../orbit/tick-scale';
@@ -240,6 +239,8 @@ export interface PredictPanelState {
   readonly showElementTimes: boolean;
   readonly duration: number;
   readonly displayTime: number;
+  // ランの元期(simTime=0)の unix 秒相当。displayTime を足すと絶対日時になる。
+  readonly epochUnixSec: number;
   readonly sliderSteps: number;
   readonly sliderT: number;
   readonly predictionRatio: number;
@@ -430,7 +431,7 @@ export class PredictPanel {
     this.tickLabelModeSwitch.setOn(state.tickLabelMode === 'relative');
     this.showElementTimesSwitch.setOn(state.showElementTimes);
     this.renderSlider(state.sliderSteps, state.sliderT, state.predictionRatio);
-    this.renderAbsoluteLabel(state.displayTime);
+    this.renderAbsoluteLabel(state.epochUnixSec + state.displayTime);
     if (!this.jumpToggle.editing) this.renderElapsedLabel(state.sliderT * state.duration);
     this.renderTicks(state.ticks);
   }
@@ -463,8 +464,8 @@ export class PredictPanel {
 
   // 表示時刻を UTC の絶対日時で出す。T+ 表記は目盛りと同じ粗い単位なので、
   // 正確な時刻はこちらが受け持つ。
-  private renderAbsoluteLabel(displayTime: number): void {
-    const text = fmtDateTime(SIM_EPOCH_SEC + displayTime);
+  private renderAbsoluteLabel(displayUnixSec: number): void {
+    const text = fmtDateTime(displayUnixSec);
     if (this.absoluteLabel.textContent !== text) this.absoluteLabel.textContent = text;
   }
 

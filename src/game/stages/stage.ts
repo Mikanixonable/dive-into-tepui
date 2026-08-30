@@ -25,7 +25,13 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
 import { profileAtOrNull } from '../../physics/ephemeris-profile';
-import { SIM_EPOCH } from '../sim-epoch';
+import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
+
+// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
+// 自分の epoch としてこれを宣言する — ステージに別の日時を与えるのはその1行を変えるだけ。
+// **この定数を stage.ts の外から import しない**(元期は共有の定数ではなく、ステージの宣言)。
+export const STORY_EPOCH: TdbJulianDate =
+  calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { PhaseOffsets } from '../../physics/celestial-motion';
@@ -69,6 +75,11 @@ export interface StageClass {
     phaseOffsets: PhaseOffsets, earthSpinPhase0: number, onProgress?: (ratio: number) => void,
     startSimTime?: number,
   ): Promise<CelestialSystem>;
+  // simTime=0 に置く絶対時刻。**基底に既定値は無く、全ステージが自分で宣言する** —
+  // 置くと宣言し忘れが型検査に落ちなくなり、元期が共有の定数へ静かに戻る。
+  readonly epoch: TdbJulianDate;
+  // 開始前にプレイヤーへ開始日時を選ばせるか(GAME.md 9.0)。選ばせないステージは epoch で始まる。
+  readonly picksStartEpoch: boolean;
   // 選択画面が読む項目。
   readonly selectLabel: string;
   readonly selectSub: string;
@@ -105,17 +116,19 @@ export abstract class Stage {
     phaseOffsets: PhaseOffsets, earthSpinPhase0: number, onProgress?: (ratio: number) => void,
     startSimTime = 0,
   ): Promise<CelestialSystem> {
-    const startJdTdb = SIM_EPOCH.value + startSimTime / 86400;
+    const startJdTdb = STORY_EPOCH.value + startSimTime / 86400;
     const profile = profileAtOrNull(startJdTdb);
     const pack = profile === null ? null : await loadAbsoluteEphemeris(
       profile.id, profile.validStartJdTdb, profile.validEndJdTdb, onProgress,
     );
-    return solarSystem('earth', phaseOffsets, earthSpinPhase0, pack, SIM_EPOCH);
+    return solarSystem('earth', phaseOffsets, earthSpinPhase0, pack, STORY_EPOCH);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;
   // タイトルのステージ選択ボタン列に並べない。
   public static readonly hiddenFromSelect: boolean = false;
+  // 開始前に開始日時の指定画面を挟まない。挟むステージだけが true を宣言する。
+  public static readonly picksStartEpoch: boolean = false;
   // 選択画面でこのステージを並べるタブの名前。表示のまとまりだけを決め、挙動には影響しない。
   public static readonly selectGroup: string = 'ステージモード';
 
