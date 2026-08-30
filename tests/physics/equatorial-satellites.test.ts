@@ -5,7 +5,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
-  PlanetDef, planetDefAtEpoch, satelliteDefAtEpoch, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
+  PlanetDef, planetDefForSimZero, satelliteDefForSimZero, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
 } from '../../src/physics/celestial-motion';
 import { CelestialBodyWindows } from '../../src/physics/celestial-body-windows';
 import { planetSystem } from '../../src/physics/planet-system';
@@ -26,10 +26,10 @@ const DEFS = solarSystemParts();
 // 本来どおり月まで組む — 原点天体の日心位置がずれると ECI 位置の比較にならない。
 function withoutSatellitePosition(primaryDef: PlanetDef, t: number): Vec3 {
   const sun = new StarMotion(SUN, null);
-  const earth = planetSystem(planetDefAtEpoch(EARTH, {}, EPOCH_T_OFFSET), sun, null);
+  const earth = planetSystem(planetDefForSimZero(EARTH, {}, EPOCH_T_OFFSET), sun, null);
   // 月は構築するだけで地球-月系の重心補正の対象として登録される。
-  new SatelliteMotion(satelliteDefAtEpoch(MOON, {}, EPOCH_T_OFFSET), earth, null);
-  const bare = planetSystem(planetDefAtEpoch(primaryDef, {}, EPOCH_T_OFFSET), sun, null);
+  new SatelliteMotion(satelliteDefForSimZero(MOON, {}, EPOCH_T_OFFSET), earth, null);
+  const bare = planetSystem(planetDefForSimZero(primaryDef, {}, EPOCH_T_OFFSET), sun, null);
   const windows = new CelestialBodyWindows([sun, earth.body, bare.body], earth.body);
   return windows.stateAt(bare.body.id, t).r;
 }
