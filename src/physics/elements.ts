@@ -2,7 +2,7 @@
 // 軌道要素は「どの天体を中心に取ったか」まで含めて初めて意味が定まるため、OrbitalElements 自身が
 // 中心天体(CelestialBody)を保持する。THREE/DOM 非依存の純粋関数群。
 import type { CelestialBody } from './celestial-body';
-import { FrameTag, KinematicState, kinematicState } from './kinematic-state';
+import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../math/vec3';
 
 // 軌道上の位相の基準 — 時刻 t におけるこの軌道上の真近点角が nu。形だけを指定した参照軌道は
@@ -34,12 +34,9 @@ export function semiMajorFromPeriod(period: number, mu: number): number {
   return Math.cbrt((mu * period * period) / (4 * Math.PI * Math.PI));
 }
 
-// 中心天体相対の状態から古典軌道要素を求める。rel は center 相対(center 自身の位置・速度を
-// 差し引いた後)の状態ベクトルでなければならない — 絶対 ECI 座標をそのまま渡すと、center が
-// 原点(地球)でない限り誤った要素になる。絶対 ECI からの呼び出しは celestial-body.ts の
-// orbitalElementsOf に一本化する。半径・角運動量が縮退している場合は null。
+// center 相対の状態から古典軌道要素を求める。半径・角運動量が縮退している場合は null。
 export function orbitalElementsFromState(
-  rel: KinematicState<FrameTag>, center: CelestialBody,
+  rel: KinematicState<'primaryRel'>, center: CelestialBody,
 ): OrbitalElements | null {
   const r = rel.r;
   const v = rel.v;
