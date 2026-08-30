@@ -308,6 +308,7 @@ simTime 1軸だけなので、**`+` / `-` をヘルパ呼び出しへ置き換�
 | HUD の日時表示に、ランの元期ではなく `STORY_EPOCH` を渡す箇所が残る | 2026 開始のランで日時表示だけ 20115 年になる。**HUD は目視でしか気付けない** | 手順3・4。`grep -rn "STORY_EPOCH" src/game/hud src/game/plan` が 0 件であること |
 | `stage-select` の日時欄の既定値を「前回のランの元期」にする | 既定値は**そのステージが宣言した日時**。GAME.md 9.0「既定値はエポック」に反する | 手順3・4 |
 | rebase で manifest 側のセグメント時刻だけを引き、bodies 側を引き忘れる(または逆) | `validateManifest` の `metadata.start !== segment.start` で**構築時に例外**。起動できなくなるので静かには壊れないが、原因が rebase だと気付きにくい | 手順5。両方を同じ関数の中で引くこと |
+| 暦 pack の被覆判定を、元期起点の simTime へ寄せてから比べる | 要求側と pack 側で減算の順序が変わり、**期間の内側にある元期が数 µs のずれで弾かれる**(遠未来の期間 +123.456 日で実際に起きた)。起動時 RangeError で暦が読めなくなる。判定は pack 自身の時刻軸(J2000 ET 秒)で行うこと | 手順5。`tests/physics/ephemeris-profile.test.ts` の被覆判定テスト |
 | rebase の減算が桁落ちすると思って避ける | 実際には桁落ちしない — 5.7e11 同士の差 1e8 は ULP 1.5e-8 で表現でき、**減算は誤差なし**。避けると手順5 の意味が消える | 手順5 |
 | 手順5 で `ephemeris-profile.ts` の `*JdTdb` まで simTime へ寄せる | プロファイルは**元期を知らない**(元期の選択より先に引かれる)。simTime へ寄せると循環する | 手順5。`ephemeris-profile.ts` は触らないと明記済み |
 | `.epk` の manifest キーや `EPHEMERIS_PACK_VERSION` の**値**を触る | 既存 `.epk` 2本が読めなくなる。復号(`format.ts`)には一切触らず、rebase は復号**後**に行うこと | 手順5。達成目標14 |

@@ -2,7 +2,7 @@ import modernPackUrl from '../assets/ephemeris/modern-2026-10y.epk';
 import farFuturePackUrl from '../assets/ephemeris/far-future-20115-10y.epk';
 import { AbsoluteEphemeris } from './absolute-ephemeris';
 import { EphemerisProfileId, profileAt } from './ephemeris-profile';
-import { SECONDS_PER_DAY, TdbJulianDate } from './time';
+import { ephemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from './time';
 import { loadPackedAbsoluteEphemeris } from './packed-absolute-ephemeris';
 
 const PACK_URLS: Readonly<Record<EphemerisProfileId, string>> = {
@@ -58,12 +58,16 @@ export async function loadAbsoluteEphemeris(
       `actual ${String(source.decoded.manifest.payloadSha256)}`,
     );
   }
-  // pack はもう simTime で話すので、要求期間のほうを元期起点へ寄せて比べる。
-  const requiredEndSimTime = (requiredEndJdTdb - epoch.value) * SECONDS_PER_DAY;
-  if (source.validStartSimTime > 0 || requiredEndSimTime > source.validEndSimTime) {
+  // 覆っているかは絶対時刻の問いなので、**pack 自身の時刻軸(J2000 ET 秒)で比べる。**
+  // simTime へ寄せてから比べると、要求側と pack 側で減算の順序が変わって同じ瞬間が
+  // 数 µs ずれ、期間の内側にある元期を弾いてしまう。
+  const requestedStartEt = ephemerisSeconds(epoch);
+  const requestedEndEt = (requiredEndJdTdb - J2000_JULIAN_DATE) * SECONDS_PER_DAY;
+  const packEt = source.decoded.manifest;
+  if (requestedStartEt < packEt.validStart || requestedEndEt > packEt.validEnd) {
     throw new RangeError(
-      `天体暦packが要求期間を覆わない: request=[0, ${requiredEndSimTime}] simTime, ` +
-      `pack=[${source.validStartSimTime}, ${source.validEndSimTime}] simTime`,
+      `天体暦packが要求期間を覆わない: request=[${requestedStartEt}, ${requestedEndEt}] ET, ` +
+      `pack=[${packEt.validStart}, ${packEt.validEnd}] ET`,
     );
   }
   return source;
