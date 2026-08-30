@@ -4,6 +4,7 @@ import { CelestialBody, strongestAttractor } from '../../physics/celestial-body'
 import { ProjectFn } from './camera-system';
 import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../marker/marker-manager';
 import { OrbitingMotion } from '../../physics/celestial-motion';
+import { lagrangePointsOf, secondaryFrameOf } from '../../physics/lagrange';
 import { occlusionOpacity } from '../../physics/occlusion';
 import { MapDisplayToggles } from '../map/display-toggles';
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
@@ -290,7 +291,9 @@ export class FocusMarkers {
     }
     for (const { id, name, motion, points } of this.lagrangeSources) {
       if (!visibilityPolicy.body(id).category) continue;
-      const l = motion.lagrangeAt(t);
+      const frame = secondaryFrameOf(this.celestialSystem.celestialBodiesAt(t), motion, t);
+      if (frame === null) continue;
+      const l = lagrangePointsOf(frame);
       for (const n of points) {
         const lagrangeId = `${id}-l${n}`;
         if (visibilityPolicy.body(lagrangeId).pickable) {
@@ -320,7 +323,7 @@ export class FocusMarkers {
   }
 
   // 表示時刻 t の各ラベル座標を求め直す。表示対象の外にある天体は座標計算ごと飛ばす —
-  // 登録天体が増えるほど lagrangeAt(1天体あたり positionOf 2回 + 回転系1回)が効くため。
+  // 登録天体が増えるほどラグランジュ点の解決(1天体あたり位置2回 + 回転系1回)が効くため。
   // visibilityPolicy は同じフレームの update 位相で確定させた表示ポリシーを渡す。マーカー・
   // 選択候補・参照線が同じインスタンスを読むことで、個別実装の解釈ずれをなくす。
   update(
@@ -343,7 +346,9 @@ export class FocusMarkers {
     if (toggles.lagrangeVisible && toggles.lagrangeName) {
       for (const { id, name, motion, points } of this.lagrangeSources) {
         if (!visibilityPolicy.body(id).category) continue;
-        const l = motion.lagrangeAt(t);
+        const frame = secondaryFrameOf(celestialBodies, motion, t);
+        if (frame === null) continue;
+        const l = lagrangePointsOf(frame);
         for (const n of points) {
           const lagrangeId = `${id}-l${n}`;
           const visibility = visibilityPolicy.body(lagrangeId);

@@ -4,7 +4,7 @@
 // 評価結果は時刻 t をキーにした固定長リング(TimeRing)でメモ化する。
 // THREE/DOM 非依存。
 import { Atmosphere, AtmosphereDef } from './atmosphere';
-import { qFromForwardUp, qRotate } from './attitude';
+import { qFromForwardUp } from './attitude';
 import { HelioEphemeris } from './absolute-ephemeris';
 import { CelestialBody, Degree2Gravity, celestialBodyStateAt } from './celestial-body';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
@@ -13,9 +13,7 @@ import {
   FrameRotation, JULIAN_CENTURY, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal,
   keplerOrbitAtEpoch, keplerOrbitRotation,
 } from './kepler-orbit';
-import {
-  LagrangePoints, collinearClearanceRatio, hasStableTriangularPoints, lagrangePoints,
-} from './lagrange';
+import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
 import type { PlanetSystem } from './planet-system';
 import { SatelliteOrbit, satelliteOrbitAtEpoch, satelliteState } from './satellite-orbit';
 import {
@@ -317,31 +315,6 @@ export abstract class OrbitingMotion extends CelestialMotion {
     const packed = this.packedPrimaryRelStateAt(t);
     if (packed !== null) return norm(cross(packed.r, packed.v));
     return keplerOrbitNormal(this.keplerOrbit, t);
-  }
-
-  // 自分を副天体とする円制限三体問題のラグランジュ点。回転系は orbitFrameRotationAt の姿勢
-  // (x̂ = 主天体→副天体)そのものを使う。主天体が無ければ例外。
-  lagrangeAt(t: number): LagrangePoints {
-    const primary = this.primary;
-    if (primary === null) throw new Error(`lagrangeAt: ${this.id} に主星が無いレジストリではラグランジュ点は定義できない`);
-    const primaryPos = primary.stateAt(t).r;
-    const secondaryPos = this.stateAt(t).r;
-    const R = len(sub(secondaryPos, primaryPos));
-    const { q } = this.orbitFrameRotationAt(t);
-    const mu = this.def.mu / (primary.def.mu + this.def.mu);
-    return lagrangePoints(mu, (x, y) => add(primaryPos, qRotate(q, v3(R * x, R * y, 0))));
-  }
-
-  // ラグランジュ点1点の ECI 状態(位置・速度)。回転系の角速度 omega と主天体の速度から
-  // v = v_primary + omega × (r − r_primary) として合成する(5点とも同じ剛体回転系に乗って
-  // いるため omega は共通)。主天体が無ければ例外。
-  lagrangeStateAt(point: keyof LagrangePoints, t: number): KinematicState {
-    const primary = this.primary;
-    if (primary === null) throw new Error(`lagrangeStateAt: ${this.id} に主星が無いレジストリではラグランジュ点は定義できない`);
-    const primaryState = primary.stateAt(t);
-    const r = this.lagrangeAt(t)[point];
-    const { omega } = this.orbitFrameRotationAt(t);
-    return kinematicState(t, r, add(primaryState.v, cross(omega, sub(r, primaryState.r))));
   }
 
   // 共線点(L1/L2/L3)が行き先として意味を持つか。副天体が軽いほどヒル半径が縮んで L1 が

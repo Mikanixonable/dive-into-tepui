@@ -1,6 +1,11 @@
 // 円制限三体問題のラグランジュ点。共線点 γ の求解と、回転系での5点の無次元座標、および
 // 5点それぞれが力学的に意味を持つかの判定。
-import { Vec3 } from '../math/vec3';
+import { qRotate } from './attitude';
+import type { CelestialBody } from './celestial-body';
+import type { OrbitingMotion } from './celestial-motion';
+import type { FrameRotation } from './kepler-orbit';
+import { KinematicState, kinematicState } from './kinematic-state';
+import { Vec3, add, cross, len, sub, v3 } from '../math/vec3';
 
 // L4/L5 が線形安定でいられる質量比 mu = m2/(m1+m2) の上限(Routh/Gascheau の基準)。
 // 27mu(1−mu) < 1 の解で、同値な表現は m1/m2 > (25+3√69)/2 ≈ 24.96。
@@ -77,4 +82,47 @@ export function lagrangePoints(mu: number, place: (x: number, y: number) => Vec3
     L4: place(0.5, s60),
     L5: place(0.5, -s60),
   };
+}
+
+// 円制限三体問題の量(ラグランジュ点・共線点まわりの局所基底・ガイド軌道)を組むのに要る、
+// ある時刻の副天体系。**位置はすべて ECI で、原点の解決は済んでいる** — この型を受け取る側は
+// 天体暦にも ECI 原点にも触らない。
+export type SecondaryFrame = {
+  readonly secondary: CelestialBody; // 副天体の ECI 瞬間値
+  readonly primary: CelestialBody; // 主天体の ECI 瞬間値
+  readonly rotation: FrameRotation; // 副天体の公転回転基準系(x̂ = 主天体→副天体)
+  readonly normal: Vec3; // 公転面法線(単位ベクトル、ECI)
+};
+
+// 同時刻の ECI 天体配列と副天体の運動から SecondaryFrame を組む。副天体に主天体が無い、
+// または配列にどちらかが載っていなければ null。
+export function secondaryFrameOf(
+  bodies: readonly CelestialBody[], motion: OrbitingMotion, t: number,
+): SecondaryFrame | null {
+  const primaryId = motion.primary?.id;
+  if (primaryId === undefined) return null;
+  const secondary = bodies.find((b) => b.id === motion.id);
+  const primary = bodies.find((b) => b.id === primaryId);
+  if (secondary === undefined || primary === undefined) return null;
+  return { secondary, primary, rotation: motion.orbitFrameRotationAt(t), normal: motion.orbitNormalAt(t) };
+}
+
+// 副天体を基準にした5点の ECI 位置。
+export function lagrangePointsOf(frame: SecondaryFrame): LagrangePoints {
+  const { secondary, primary } = frame;
+  const R = len(sub(secondary.state.r, primary.state.r));
+  const mu = secondary.mu / (primary.mu + secondary.mu);
+  return lagrangePoints(mu, (x, y) => add(primary.state.r, qRotate(frame.rotation.q, v3(R * x, R * y, 0))));
+}
+
+// ラグランジュ点1点の ECI 状態。回転系の角速度 omega と主天体の速度から
+// v = v_primary + omega × (r − r_primary) として合成する(5点とも同じ剛体回転系に乗って
+// いるため omega は共通)。
+export function lagrangeStateOf(point: keyof LagrangePoints, frame: SecondaryFrame): KinematicState {
+  const { primary, rotation } = frame;
+  const r = lagrangePointsOf(frame)[point];
+  return kinematicState(
+    frame.secondary.state.t, r,
+    add(primary.state.v, cross(rotation.omega, sub(r, primary.state.r))),
+  );
 }
