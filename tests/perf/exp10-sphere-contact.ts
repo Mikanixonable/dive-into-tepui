@@ -14,8 +14,8 @@ function sweeps(): readonly Sweep[] {
   const leo = circular(EARTH, 413e3);
   const earthFall = freeFall(EARTH);
   // 動径方向へ落として、区間の途中で地表へ届かせる。
-  const descending = kinematicState(0, circular(EARTH, 60e3).r, add(circular(EARTH, 60e3).v, v3(-4000, 0, 0)));
-  const far = kinematicState(0, v3(7.8e11, 0, 0), v3());
+  const descending = kinematicState<'eci'>(0, circular(EARTH, 60e3).r, add(circular(EARTH, 60e3).v, v3(-4000, 0, 0)));
+  const far = kinematicState<'eci'>(0, v3(7.8e11, 0, 0), v3());
   return [
     againstBody('周回中の地球(触れない)', EARTH, leo, STEP_DT, earthFall),
     sweepOf('遠方の天体(木星の距離)', leo, far, STEP_DT, earthFall, still, 7.1e7),

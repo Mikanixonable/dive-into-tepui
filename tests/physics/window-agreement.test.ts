@@ -44,7 +44,7 @@ type Site = {
 // 両者は直交していなければならない。
 function circularOrbitState(center: KinematicState, mu: number, offset: Vec3, normal: Vec3): KinematicState {
   const prograde = norm(cross(normal, offset));
-  return kinematicState(center.t, add(center.r, offset), addScaled(center.v, prograde, Math.sqrt(mu / len(offset))));
+  return kinematicState<'eci'>(center.t, add(center.r, offset), addScaled(center.v, prograde, Math.sqrt(mu / len(offset))));
 }
 
 const SITES: readonly Site[] = [
@@ -55,7 +55,7 @@ const SITES: readonly Site[] = [
       const r0 = R_EARTH + INITIAL_ALT;
       const inc = (INITIAL_INC_DEG * Math.PI) / 180;
       const speed = Math.sqrt(MU_EARTH / r0);
-      return kinematicState(t, v3(r0, 0, 0), v3(0, speed * Math.sin(inc), -speed * Math.cos(inc)));
+      return kinematicState<'eci'>(t, v3(r0, 0, 0), v3(0, speed * Math.sin(inc), -speed * Math.cos(inc)));
     },
   },
   {
@@ -74,7 +74,7 @@ const SITES: readonly Site[] = [
       const dt = 1;
       const back = lagrangeOf(PARTS, 'earth', t - dt).L2;
       const fwd = lagrangeOf(PARTS, 'earth', t + dt).L2;
-      return kinematicState(t, lagrangeOf(PARTS, 'earth', t).L2, scale(sub(fwd, back), 1 / (2 * dt)));
+      return kinematicState<'eci'>(t, lagrangeOf(PARTS, 'earth', t).L2, scale(sub(fwd, back), 1 / (2 * dt)));
     },
   },
   {
@@ -137,7 +137,7 @@ const SURFACE_SITES: readonly SurfaceSite[] = [
 function descentState(bodyId: string, t: number): KinematicState {
   const body = PARTS.system.celestialBodyAt(bodyId, t);
   const up = v3(1, 0, 0);
-  return kinematicState(
+  return kinematicState<'eci'>(
     t,
     addScaled(body.state.r, up, body.radius + 1e3),
     addScaled(body.state.v, up, -100),

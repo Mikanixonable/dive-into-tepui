@@ -421,7 +421,7 @@ export class PlanEditor {
       dot(dvWorldOld, axesOld.radOut),
     );
 
-    const newPreBurnState = kinematicState(sample.t, sample.r, baseV);
+    const newPreBurnState = kinematicState<'eci'>(sample.t, sample.r, baseV);
     const axesNew = orbitAxes(this.bodyState(newPreBurnState));
     const newDvWorld = v3(
       axesNew.pro.x * dvLocal.x + axesNew.nrm.x * dvLocal.y + axesNew.radOut.x * dvLocal.z,
@@ -429,7 +429,7 @@ export class PlanEditor {
       axesNew.pro.z * dvLocal.x + axesNew.nrm.z * dvLocal.y + axesNew.radOut.z * dvLocal.z,
     );
 
-    return kinematicState(sample.t, sample.r, add(baseV, newDvWorld));
+    return kinematicState<'eci'>(sample.t, sample.r, add(baseV, newDvWorld));
   }
 
   // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv を加算する。ドラッグ・ラッチ・
@@ -461,7 +461,7 @@ export class PlanEditor {
     // 入力は「到着時の軌道基準枠」を基準とした絶対量とする。
     const bodyArr = this.bodyState(arr);
     const dvWorld = fromOrbitAxes(bodyArr, v3(pro, nrm, rad));
-    this.selectedNode = plan.replaceNode(this.selectedNodeIdx, kinematicState(node.t, node.r, add(arr.v, dvWorld)));
+    this.selectedNode = plan.replaceNode(this.selectedNodeIdx, kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld)));
     this._uiSfx.warp();
   }
 
@@ -484,7 +484,7 @@ export class PlanEditor {
   // state の時刻のまま KinematicState へ包み直す。
   private relativeToBody(state: KinematicState, center: CelestialBody): KinematicState {
     const rel = toFrameState(frameOfCelestialBody(center), state);
-    return kinematicState(state.t, rel.r, rel.v);
+    return kinematicState<'eci'>(state.t, rel.r, rel.v);
   }
 
   // 軌道要素とΔv方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。

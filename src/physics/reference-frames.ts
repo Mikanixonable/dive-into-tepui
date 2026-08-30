@@ -106,7 +106,7 @@ export class ReferenceFrames {
   private anchorStateAt(id: string, t: number, source: FrameAnchorSource): KinematicState {
     const motion = this.motionsById[id];
     if (motion !== undefined) return motion.eciStateAt(t);
-    return source.stateOf(id, t) ?? kinematicState(t, v3(), v3());
+    return source.stateOf(id, t) ?? kinematicState<'eci'>(t, v3(), v3());
   }
 
   // 天体 id の運動。登録されていない id を渡すと例外になる。

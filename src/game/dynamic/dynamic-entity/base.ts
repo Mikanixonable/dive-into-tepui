@@ -145,7 +145,7 @@ export class Base extends DynamicEntity implements Controllable {
   ) {
     const { state, name, att, id } = 'saved' in init
       ? {
-        state: kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
+        state: kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
         name: init.saved.name || '基地',
         att: undefined,
         id: init.saved.id,

@@ -226,7 +226,7 @@ export function stateFromOrbitalElements(
   const { pHat, qHat } = orbitPlaneBasis(inc, raan, argp);
   const p = a * (1 - e * e);
   const k = Math.sqrt(mu / p);
-  return kinematicState(
+  return kinematicState<'eci'>(
     t,
     positionFromOrbitalElements(a, e, inc, raan, argp, nu),
     addScaled(scale(pHat, -k * Math.sin(nu)), qHat, k * (e + Math.cos(nu))),

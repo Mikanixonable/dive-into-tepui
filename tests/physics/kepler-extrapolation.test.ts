@@ -10,7 +10,7 @@ import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constan
 import { len, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
-const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
+const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: false };
 
 // tip から t までを stepDynamics(bcInv=0, srpCoeff=0, thrust=null) で密に積分した基準値。
 // EARTH は原点に静止しているので、返り値はそのまま中心天体相対 = 絶対 ECI になる。
@@ -46,7 +46,7 @@ export function register(): void {
     const a = R_EARTH + 500e3;
     const vc = Math.sqrt(MU_EARTH / a);
     const period = keplerPeriod(a, MU_EARTH);
-    const tip = kinematicState(1000, v3(a, 0, 0), v3(0, vc, 0));
+    const tip = kinematicState<'eci'>(1000, v3(a, 0, 0), v3(0, vc, 0));
 
     const back = extrapolatedRelativeState(tip, EARTH, tip.t + period);
     assert.ok(back, 'expected a valid extrapolation');
@@ -150,18 +150,18 @@ export function register(): void {
     // 脱出速度ちょうど: 放物線軌道で長半径が非有限になる。
     const r0 = R_EARTH + 500e3;
     const escapeSpeed = Math.sqrt((2 * MU_EARTH) / r0);
-    const parabolic = kinematicState(0, v3(r0, 0, 0), v3(0, escapeSpeed, 0));
+    const parabolic = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, escapeSpeed, 0));
     assert.equal(extrapolatedRelativeState(parabolic, EARTH, 1000), null);
     assert.deepEqual(extrapolatedRelativeStates(parabolic, EARTH, 1000, 5), []);
 
     const noMu: CelestialBody = { ...EARTH, mu: 0 };
-    const circular = kinematicState(0, v3(r0, 0, 0), v3(0, 7000, 0));
+    const circular = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, 7000, 0));
     assert.equal(extrapolatedRelativeState(circular, noMu, 1000), null);
     assert.deepEqual(extrapolatedRelativeStates(circular, noMu, 1000, 5), []);
   });
 
   test('kepler-extrapolation: count<=0 や untilT<=tip.t では空配列', () => {
-    const tip = kinematicState(1000, v3(R_EARTH + 500e3, 0, 0), v3(0, 7600, 0));
+    const tip = kinematicState<'eci'>(1000, v3(R_EARTH + 500e3, 0, 0), v3(0, 7600, 0));
     assert.deepEqual(extrapolatedRelativeStates(tip, EARTH, 5000, 0), []);
     assert.deepEqual(extrapolatedRelativeStates(tip, EARTH, 5000, -3), []);
     assert.deepEqual(extrapolatedRelativeStates(tip, EARTH, tip.t, 5), []);

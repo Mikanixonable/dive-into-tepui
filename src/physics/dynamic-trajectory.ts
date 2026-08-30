@@ -114,6 +114,6 @@ export class DynamicTrajectory {
     if (t <= tip.t || this._extrapolationCenter === null) return this.at(t);
     const rel = extrapolatedRelativeState(tip, this._extrapolationCenter, t);
     if (rel === null) return null;
-    return kinematicState(t, add(rel.r, centerStateAtT.r), add(rel.v, centerStateAtT.v));
+    return kinematicState<'eci'>(t, add(rel.r, centerStateAtT.r), add(rel.v, centerStateAtT.v));
   }
 }

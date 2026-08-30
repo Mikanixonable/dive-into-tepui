@@ -109,7 +109,7 @@ export class StageDebugAltSystem extends Stage {
     const primary = this._celestialSystem.celestialBodiesAt(t).find((a) => a.id === PRIMARY_ID)!;
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.mu);
     this.addPlayer({
-      state: kinematicState(t, add(primary.state.r, rel.r), add(primary.state.v, rel.v)),
+      state: kinematicState<'eci'>(t, add(primary.state.r, rel.r), add(primary.state.v, rel.v)),
       ammo: { mags: 20, rounds: C.MAG_ROUNDS },
     });
   }

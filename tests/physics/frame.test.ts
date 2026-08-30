@@ -42,7 +42,7 @@ export function register(): void {
   const SUN_INERTIAL = findFrame(referenceFrames.frames, 'sun', null);
   const MOON_INERTIAL = findFrame(referenceFrames.frames, 'moon', null);
   // bake 時刻は state 自身のエポック(t)なので、時刻はここで与える。
-  const stateAt = (t: number): KinematicState => kinematicState(t, v3(6.8e6, 5e5, 3e6), v3(-1200, 300, 7400));
+  const stateAt = (t: number): KinematicState => kinematicState<'eci'>(t, v3(6.8e6, 5e5, 3e6), v3(-1200, 300, 7400));
 
   test('reference-frames: frameOf は同じ対に同じ参照を返し、inertialFrame/frames/frameFor と一致する', () => {
     assert.equal(referenceFrames.frameOf('earth', null), referenceFrames.frameOf('earth', null));
@@ -117,7 +117,7 @@ export function register(): void {
     // 慣性系で等速直線運動する点の、回転系位置を中心差分して速度を近似する。回転系自体が
     // 時刻とともに向きを変えるので、各時刻ごとにその時刻の座標系変換で bake する。
     const rRelAt = (t: number): Vec3 =>
-      toFrameState(referenceFrames.transformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS), kinematicState(t, addScaled(s.r, s.v, t - t0), s.v)).r;
+      toFrameState(referenceFrames.transformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS), kinematicState<'eci'>(t, addScaled(s.r, s.v, t - t0), s.v)).r;
     const vFd = scale(sub(rRelAt(t0 + dt), rRelAt(t0 - dt)), 1 / (2 * dt));
     const vAnalytic = toFrameState(referenceFrames.transformAt(SUN_EARTH_ROTATING, t0, NO_ANCHORS), s).v;
     // ω×r 項(~1.4 m/s)を落とすと数 m/s ずれる。有限差分自体は 1e-3 m/s より高精度。
@@ -196,7 +196,7 @@ export function register(): void {
     const s = stateAt(t0);
     const dt = 1;
     const rRelAt = (t: number): Vec3 =>
-      toFrameState(referenceFrames.transformAt(MOON_ROTATING, t, NO_ANCHORS), kinematicState(t, addScaled(s.r, s.v, t - t0), s.v)).r;
+      toFrameState(referenceFrames.transformAt(MOON_ROTATING, t, NO_ANCHORS), kinematicState<'eci'>(t, addScaled(s.r, s.v, t - t0), s.v)).r;
     const vFd = scale(sub(rRelAt(t0 + dt), rRelAt(t0 - dt)), 1 / (2 * dt));
     const vAnalytic = toFrameState(referenceFrames.transformAt(MOON_ROTATING, t0, NO_ANCHORS), s).v;
     assert.ok(len(sub(vFd, vAnalytic)) < 1e-2, `v mismatch: ${JSON.stringify(vFd)} vs ${JSON.stringify(vAnalytic)}`);
@@ -210,7 +210,7 @@ export function register(): void {
     const tf = referenceFrames.transformAt(frame, t, bodyAnchorSource([]));
     // 座標系相対で (R, 0, 0) に置いた点を ECI へ戻し、自転とともに動く速度を与える。
     const r = qRotate(tf.q, v3(R_EARTH_EQ, 0, 0));
-    const rel = toFrameState(tf, kinematicState(t, r, cross(tf.omega, r)));
+    const rel = toFrameState(tf, kinematicState<'eci'>(t, r, cross(tf.omega, r)));
     assert.ok(len(rel.v) < 1e-6, `|v_rel|: ${len(rel.v)} m/s`);
     assert.ok(len(sub(rel.r, v3(R_EARTH_EQ, 0, 0))) < 1e-6, `r_rel: ${JSON.stringify(rel.r)}`);
   });
@@ -238,7 +238,7 @@ export function register(): void {
 
   test('frame: center が役割トークンのとき、source が返した状態が原点になる', () => {
     const t = 4321;
-    const shipState = kinematicState(t, v3(7e6, 1e6, 2e6), v3(100, 200, 300));
+    const shipState = kinematicState<'eci'>(t, v3(7e6, 1e6, 2e6), v3(100, 200, 300));
     const source: FrameAnchorSource = { bodies: [], stateOf: () => shipState, attractorOf: () => null };
     const frame: ReferenceFrame = { center: SHIP, rotatingWith: null };
     const tf = referenceFrames.transformAt(frame, t, source);
@@ -247,7 +247,7 @@ export function register(): void {
   });
 
   test('frame: 役割トークンが1フレーム解決できなくても直前の原点を保ち、2フレーム連続で解決できなくなって初めて ECI 原点へ落ちる', () => {
-    const shipState = kinematicState(0, v3(7e6, 1e6, 2e6), v3(100, 200, 300));
+    const shipState = kinematicState<'eci'>(0, v3(7e6, 1e6, 2e6), v3(100, 200, 300));
     // frame-anchors.ts の FrameAnchors が満たす契約(1回目の欠落は直前値を保ち、2回連続で
     // 初めて null を返す)を、ここではスタブ自身に持たせて検証する。
     let misses = 0;
@@ -273,7 +273,7 @@ export function register(): void {
     const t = 8888;
     const earth = stateOf(parts, 'earth', t);
     // 地球のまわりを回る架空の機体(地球からのオフセット + 円軌道ふうの速度で相対角運動量を持たせる)。
-    const shipState = kinematicState(t, add(earth.r, v3(1e7, 0, 0)), add(earth.v, v3(0, 3000, 500)));
+    const shipState = kinematicState<'eci'>(t, add(earth.r, v3(1e7, 0, 0)), add(earth.v, v3(0, 3000, 500)));
     const source: FrameAnchorSource = { bodies: [], stateOf: () => shipState, attractorOf: () => 'earth' };
     // 原点は太陽 — 主天体(地球)とは別の天体にして、基底が frame.center に依らないことを確かめる。
     const frame: ReferenceFrame = { center: 'sun', rotatingWith: { kind: 'revolution', id: SHIP } };
@@ -296,7 +296,7 @@ export function register(): void {
       const angle = omega * t;
       const relR = v3(r * Math.cos(angle), r * Math.sin(angle), 0);
       const relV = v3(-r * omega * Math.sin(angle), r * omega * Math.cos(angle), 0);
-      return kinematicState(t, add(earth.r, relR), add(earth.v, relV));
+      return kinematicState<'eci'>(t, add(earth.r, relR), add(earth.v, relV));
     };
     const anchors = new FrameAnchors({
       entityState: () => null,

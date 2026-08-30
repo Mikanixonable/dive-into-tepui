@@ -121,7 +121,7 @@ export function lagrangePointsOf(frame: SecondaryFrame): LagrangePoints {
 export function lagrangeStateOf(point: keyof LagrangePoints, frame: SecondaryFrame): KinematicState {
   const { primary, rotation } = frame;
   const r = lagrangePointsOf(frame)[point];
-  return kinematicState(
+  return kinematicState<'eci'>(
     frame.secondary.state.t, r,
     add(primary.state.v, cross(rotation.omega, sub(r, primary.state.r))),
   );

@@ -174,6 +174,6 @@ export class Plan {
   applyNodeDv(idx: number, dvWorld: Vec3): KinematicState | null {
     const node = this.data?.nodes[idx];
     if (!node) return null;
-    return this.replaceNode(idx, kinematicState(node.t, node.r, add(node.v, dvWorld)));
+    return this.replaceNode(idx, kinematicState<'eci'>(node.t, node.r, add(node.v, dvWorld)));
   }
 }

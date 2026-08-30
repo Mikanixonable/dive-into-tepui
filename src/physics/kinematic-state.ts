@@ -30,9 +30,10 @@ export type KinematicState<F extends FrameTag = 'eci'> = {
   readonly v: Vec3; // 速度 [m/s]
 } & { readonly __frame: F; }
 
-// KinematicState を組み立てる唯一の入口。ECI 以外を組むときは型引数を明示する
-// (`kinematicState<'analytic'>(...)`)— 書き忘れると暗黙に ECI を名乗ることになる。
-export function kinematicState<F extends FrameTag = 'eci'>(t: number, r: Vec3, v: Vec3): KinematicState<F> {
+// KinematicState を組み立てる唯一の入口。**型引数に既定は無い** — ECI を組むときも
+// `kinematicState<'eci'>(...)` と書く。組み立てが原点を黙って選ぶことのほうが、書く量より
+// 高くつく(読む側の型注釈 `KinematicState` は ECI の短縮形として残っている)。
+export function kinematicState<F extends FrameTag>(t: number, r: Vec3, v: Vec3): KinematicState<F> {
   return { t, r, v } as KinematicState<F>;
 }
 
@@ -49,7 +50,7 @@ export function toPrimaryRelative<F extends FrameTag>(
 export function toEci<F extends FrameTag>(
   t: number, body: KinematicState<F>, origin: KinematicState<F>,
 ): KinematicState {
-  return kinematicState(t, sub(body.r, origin.r), sub(body.v, origin.v));
+  return kinematicState<'eci'>(t, sub(body.r, origin.r), sub(body.v, origin.v));
 }
 
 // 主天体相対を、その主天体の状態へ足し戻したもの。**主天体をどの原点で測っていても

@@ -56,7 +56,7 @@ export class DetachedBooster extends DynamicEntity {
     const restored = 'saved' in init;
     const stage = restored ? { ...init.saved.stage, id: init.saved.id } : { ...init.stage };
     const state = restored
-      ? kinematicState(
+      ? kinematicState<'eci'>(
         init.simTime,
         v3(init.saved.r.x, init.saved.r.y, init.saved.r.z),
         v3(init.saved.v.x, init.saved.v.y, init.saved.v.z),

@@ -10,7 +10,7 @@ import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constan
 import { qRotate } from '../../src/physics/attitude';
 import { dot, len, scale, sub, v3 } from '../../src/math/vec3';
 
-const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
+const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
 
 // 永年変化率をすべて 0 にした固定楕円(比較用)。
 const STATIC_ORBIT: KeplerOrbit = {

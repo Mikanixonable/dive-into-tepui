@@ -7,7 +7,7 @@ import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 
 function stateAt(t: number) {
-  return kinematicState(t, v3(t, 0, 0), v3(1, 0, 0));
+  return kinematicState<'eci'>(t, v3(t, 0, 0), v3(1, 0, 0));
 }
 
 export function register(): void {
@@ -55,7 +55,7 @@ export function register(): void {
   test('state-queue: pushing a duplicate timestamp replaces the existing sample', () => {
     const q = new StateQueue();
     q.push(stateAt(0));
-    q.push(kinematicState(10, v3(999, 0, 0), v3(0, 0, 0)));
+    q.push(kinematicState<'eci'>(10, v3(999, 0, 0), v3(0, 0, 0)));
     q.push(stateAt(10)); // 同時刻の再 push は前のものを置き換える
     assert.equal(q.size, 2);
     assert.equal(q.at(10)!.r.x, 10);
