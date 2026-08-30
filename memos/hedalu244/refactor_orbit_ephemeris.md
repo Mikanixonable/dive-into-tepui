@@ -361,6 +361,35 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 
 ## 手順
 
+### 手順5 の前に決めること — ECI を返す物理 API をどうするか
+
+**着手して分かったこと。** `CelestialMotion` から ECI を外すと、**ECI を返す派生 API も
+まとめて動く**。計画はこれを見落としていて、見積り(約 190 行)は実態と合っていない。
+
+`CelestialMotion` / `OrbitingMotion` が返す ECI 値は `at` / `stateAt` だけではない:
+
+| API | 原点に依存するか |
+| --- | --- |
+| `at(pivot)` / `stateAt(pivot, t)` | **する** |
+| `lagrangeAt(t)` / `lagrangeStateAt(point, t)` | **する**(内部で `stateAt` を引く) |
+| `orbitFrameRotationAt` / `orbitNormalAt` / `spinRotationAt` | しない(向きだけ) |
+
+`lagrangeAt` は `physics/halo.ts` の `collinearFrame` → `lissajousState` / `haloState`、
+`physics/orbit-guide.ts` の各ガイド線、`focus-markers` / `nav-target` / `creative-stage` から
+引かれている(6 ファイル・21 箇所)。直接の `stateAt` / `at` は 20 ファイル・47 箇所。
+
+**実測の規模: 約 30 ファイル・400〜600 行。** うえに `physics/halo.ts` と
+`physics/orbit-guide.ts` が windows(= 系レベルのオブジェクト)へ依存するようになる。
+
+**選べる形**
+
+| | 何をするか | 規模 | 「ECI 変換は系だけが行う」 |
+| --- | --- | --- | --- |
+| **A** | 計画どおり。ECI を返す物理 API も windows を受け取る | 約 500 行 / 30 ファイル | 達成する。ただし windows が physics の奥まで入る |
+| **B** | ECI を返す派生量(`lagrangeAt` ほか)を `OrbitingMotion` から外し、**ECI の `CelestialBody` を受け取る自由関数**にする。motion は恒星中心までを答える | 約 550 行 / 30 ファイル | 達成する。physics は windows を知らずに済む |
+| **C** | 構築点からだけ `origin` を外す。`CelestialMotion` は ECI を答え続けるが、原点は木の根から辿る | 約 150 行 / 12 ファイル | **達成しない**(motion は原点を知り続ける)。104 の構築点から `origin` は消え、原点の評価は1回に畳める |
+| **D** | 手順5 を見送り、手順6 だけ実施して締める | 0 | 達成しない |
+
 ### 手順5. ECI 化を `CelestialBodyWindows` へ引き上げる
 
 **目的.** ECI の原点をどこに置くかは**系レベルの選択**なのに、いま `EciOrigin` を天体1体ごとの
