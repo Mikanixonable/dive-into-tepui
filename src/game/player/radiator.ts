@@ -53,7 +53,7 @@ function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: 
 export class RadiatorFold extends DynamicEntity {
   // 位置は毎フレーム collisionFolds が置き直すので、ここでは原点で仮生成する。
   constructor(readonly side: RadiatorSide, readonly foldIndex: number, private readonly owner: Player) {
-    super(kinematicState(0, v3(), v3()), new THREE.Object3D());
+    super(kinematicState<'eci'>(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
     this.radius = RADIATOR_SEGMENT_LENGTH / 2;
     this.collides = true;
@@ -211,7 +211,7 @@ export class RadiatorSystem {
         const bodyOffset = foldLocalPosition(side, fold.foldIndex, even, odd);
         const worldPos = add(shipR, qRotate(att.q, bodyOffset));
         const worldVel = add(shipV, qRotate(att.q, cross(att.w, bodyOffset)));
-        fold.state = kinematicState(t, worldPos, worldVel);
+        fold.state = kinematicState<'eci'>(t, worldPos, worldVel);
         result.push(fold);
       }
     }

@@ -6,10 +6,10 @@ import { KinematicState, kinematicState } from '../../src/physics/kinematic-stat
 import { v3 } from '../../src/math/vec3';
 
 export function register(): void {
-  const shipState = kinematicState(0, v3(7e6, 0, 0), v3(0, 7500, 0));
+  const shipState = kinematicState<'eci'>(0, v3(7e6, 0, 0), v3(0, 7500, 0));
   // t に応じて違う状態を返す(円軌道ふうに x を t だけ進める)。stateOf(id, t) が実際に
   // 渡された t の状態を返しているかを、固定値を返すスタブでは見逃してしまうため。
-  const shipStateAt = (t: number): KinematicState => t === 0 ? shipState : kinematicState(t, v3(7e6 + t, 0, 0), v3(0, 7500, 0));
+  const shipStateAt = (t: number): KinematicState => t === 0 ? shipState : kinematicState<'eci'>(t, v3(7e6 + t, 0, 0), v3(0, 7500, 0));
 
   function anchorsWithShip(): { anchors: FrameAnchors; setShip: (s: KinematicState | null) => void } {
     let ship: ((t: number) => KinematicState) | null = shipStateAt;

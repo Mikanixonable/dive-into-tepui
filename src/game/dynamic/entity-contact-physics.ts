@@ -38,7 +38,7 @@ function replaceIfMoved(
   changed: Set<DynamicEntity>,
 ): void {
   if (sameVec(before.r, after.r) && sameVec(before.v, after.v)) return;
-  working.set(e, kinematicState(e.state.t, after.r, after.v));
+  working.set(e, kinematicState<'eci'>(e.state.t, after.r, after.v));
   changed.add(e);
 }
 

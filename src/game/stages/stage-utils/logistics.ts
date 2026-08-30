@@ -60,7 +60,7 @@ export class Logistics {
     // ずらした位置・速度と、ランダムな姿勢で補給エンティティを作る
     const ammoPickup = new AmmoPickup(
       {
-        state: kinematicState(
+        state: kinematicState<'eci'>(
           player.state.t,
           rotateAxis(r, hHat, ang),
           add(rotateAxis(v, hHat, ang), randVec(1.5)),
@@ -91,7 +91,7 @@ export class Logistics {
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     const fuelPickup = new RcsFuelPickup(
       {
-        state: kinematicState(
+        state: kinematicState<'eci'>(
           player.state.t,
           rotateAxis(r, hHat, ang),
           add(rotateAxis(v, hHat, ang), randVec(1.5)),

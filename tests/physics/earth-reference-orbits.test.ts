@@ -12,7 +12,7 @@ import { v3 } from '../../src/math/vec3';
 // 中心天体。昇交点の向きだけを見るので、原点に静止した地球で足りる。
 const EARTH: CelestialBody = {
   id: 'earth', mu: MU_EARTH, radius: R_EARTH_EQ,
-  state: kinematicState(0, v3(), v3()), accel: v3(),
+  state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(),
   degree2: { j2: J2_EARTH, refRadius: R_EARTH_EQ, pole: ECI_POLE, tesseral: null },
   atmosphere: null, isStar: false,
 };

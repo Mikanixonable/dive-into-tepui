@@ -25,7 +25,7 @@ function clamp(v: number, lo: number, hi: number): number {
 export class BeltSection extends DynamicEntity {
   // 節点インデックス beltIndex に対応するプロキシを、吊り元の艦 owner とともに生成する。
   constructor(readonly beltIndex: number, private readonly owner: DynamicEntity) {
-    super(kinematicState(0, v3(), v3()), new THREE.Object3D());
+    super(kinematicState<'eci'>(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
     this.radius = 0.8;
     this.collides = true;
@@ -253,7 +253,7 @@ export class BeltPhysics {
       const v_body_total = add(v_verlet, v_tangential);
 
       // ワールド座標系へ変換する
-      s.state = kinematicState(
+      s.state = kinematicState<'eci'>(
         s.state.t,
         add(baseR, qRotate(att.q, bp)),
         add(baseV, qRotate(att.q, v_body_total)),

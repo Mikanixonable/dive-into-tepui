@@ -12,7 +12,7 @@ const ZERO = v3(0, 0, 0);
 
 // 地心から見て +X 方向 1 AU に太陽を置く。
 function sunAt(distance: number): CelestialBody {
-  return { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, v3(distance, 0, 0), ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: true };
+  return { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState<'eci'>(0, v3(distance, 0, 0), ZERO), accel: ZERO, degree2: null, atmosphere: null, isStar: true };
 }
 
 export function register(): void {

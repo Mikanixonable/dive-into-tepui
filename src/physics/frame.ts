@@ -81,7 +81,7 @@ export type FrameKinematicState = { r: Vec3; v: Vec3; } & { readonly __tag: 'fra
 
 // FrameKinematicState を組み立てる、toFrameState 以外で唯一信頼できる入口。軌道要素から解析的に
 // 求めた近地点位置のように「すでに座標系相対と分かっている r/v」を toInertialState へ渡すために
-// 使う — kinematicState() が KinematicState に対して果たす役割と同じ。
+// 使う — kinematicState<'eci'>() が KinematicState に対して果たす役割と同じ。
 export function frameKinematicState(r: Vec3, v: Vec3): FrameKinematicState {
   return { r, v } as FrameKinematicState;
 }
@@ -134,7 +134,7 @@ export function toFrameState(tf: FrameTransform, s: KinematicState): FrameKinema
 export function toInertialState(tf: FrameTransform, t: number, s: FrameKinematicState): KinematicState {
   const r = add(qRotate(tf.q, s.r), tf.origin);
   const v = add(add(tf.originVel, qRotate(tf.q, s.v)), cross(tf.omega, sub(r, tf.origin)));
-  return kinematicState(t, r, v);
+  return kinematicState<'eci'>(t, r, v);
 }
 
 // 時刻 t における位置 r (慣性系) を、表示時刻 displayTime の frame 基準系に un-bake して求める

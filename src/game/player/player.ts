@@ -142,7 +142,7 @@ export class Player extends Ship {
   ) {
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init
-      ? kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z))
+      ? kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z))
       : (init.state ?? Player.makeInitialState());
     const id = 'saved' in init ? init.saved.id : (init.id ?? name);
     const att: Attitude = 'saved' in init
@@ -193,14 +193,14 @@ export class Player extends Ship {
       if (saved.plan) {
         // 保存された起点を addNode の from として与える。最初の1件が通った時点でその起点が
         // 凍結され、2件目以降は凍結済みの起点に対して判定される。
-        const anchor = kinematicState(
+        const anchor = kinematicState<'eci'>(
           saved.plan.anchor.t,
           v3(saved.plan.anchor.r.x, saved.plan.anchor.r.y, saved.plan.anchor.r.z),
           v3(saved.plan.anchor.v.x, saved.plan.anchor.v.y, saved.plan.anchor.v.z),
         );
         let rejected = 0;
         for (const n of saved.plan.nodes) {
-          const idx = this.plan.addNode(kinematicState(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
+          const idx = this.plan.addNode(kinematicState<'eci'>(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
           if (idx < 0) rejected++;
         }
         if (rejected > 0) _hud.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
@@ -213,7 +213,7 @@ export class Player extends Ship {
     const r0 = R_EARTH + C.INITIAL_ALT;
     const vCirc = Math.sqrt(MU_EARTH / r0);
     const inc = (C.INITIAL_INC_DEG * Math.PI) / 180;
-    return kinematicState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
+    return kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
   // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
@@ -328,11 +328,11 @@ export class Player extends Ship {
       BOOSTER_SEPARATION_SPEED,
     );
     const t = this.state.t;
-    this.state = kinematicState(t, this.state.r, separated.player);
+    this.state = kinematicState<'eci'>(t, this.state.r, separated.player);
     this._fx.spawnBoosterSeparation(t, jointR, separated.player, separated.booster, this.att);
     const detached = new DetachedBooster({
       stage: detachedStage,
-      state: kinematicState(t, boosterR, separated.booster),
+      state: kinematicState<'eci'>(t, boosterR, separated.booster),
       att: {
         // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
         // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
@@ -347,7 +347,7 @@ export class Player extends Ship {
     this.boosterThrust = null;
     this.lastBoosterBurnRatio = 0;
     this.rebuildBoosterModels();
-    this._fx.spawnGasPuff(kinematicState(t, jointR, this.state.v));
+    this._fx.spawnGasPuff(kinematicState<'eci'>(t, jointR, this.state.v));
     this._worldSfx.decouple();
     this.invalidatePrediction();
     this._hud.hint(`ブースター分離: 残り ${this.boosters.stages.length} 段`);
@@ -639,11 +639,11 @@ export class Player extends Ship {
   private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
     this._worldSfx.hit(len(sub(impactPoint, this.state.r)));
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
+      this._fx.spawnPlasmaFlash(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(kinematicState(this.state.t, impactPoint, this.state.v));
+      this._fx.spawnBulletFlash(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
     }
-    this._fx.spawnGasPuff(kinematicState(this.state.t, impactPoint, this.state.v));
+    this._fx.spawnGasPuff(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
   }
 
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。

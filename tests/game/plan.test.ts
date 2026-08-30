@@ -19,7 +19,7 @@ export function register(): void {
     const relativeR = v3(radius, 0, 0);
     const relativeV = v3(0, 0, Math.sqrt(MU_MOON / radius));
     const moonState = stateOf(parts, 'moon', t);
-    const state = kinematicState(
+    const state = kinematicState<'eci'>(
       t,
       add(moonState.r, relativeR),
       add(moonState.v, relativeV),
@@ -51,7 +51,7 @@ export function register(): void {
     const ra = R_EARTH + 35_000e3;
     const a = (rp + ra) / 2;
     const vp = Math.sqrt(MU_EARTH * (2 / rp - 1 / a));
-    const state = kinematicState(t, v3(rp, 0, 0), v3(0, 0, vp));
+    const state = kinematicState<'eci'>(t, v3(rp, 0, 0), v3(0, 0, vp));
     const celestialBodies = system.celestialBodiesAt(t);
 
     const expected = keplerPeriod(a, MU_EARTH);
@@ -66,7 +66,7 @@ export function register(): void {
     const { system } = solarSystemParts({ sun: 0, moon: 0 });
     const t = 1000;
     const rp = R_EARTH + 400e3;
-    const state = kinematicState(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));
+    const state = kinematicState<'eci'>(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));
     const celestialBodies = system.celestialBodiesAt(t);
     const period = orbitPeriodOf(state, celestialBodies);
 
@@ -82,8 +82,8 @@ export function register(): void {
   });
 
   test('plan: 起点が凍結されるのはノードがある間だけ', () => {
-    const ship = kinematicState(0, v3(R_EARTH + 400e3, 0, 0), v3(0, 0, 7670));
-    const later = kinematicState(100, v3(R_EARTH + 500e3, 0, 0), v3(0, 0, 7600));
+    const ship = kinematicState<'eci'>(0, v3(R_EARTH + 400e3, 0, 0), v3(0, 0, 7670));
+    const later = kinematicState<'eci'>(100, v3(R_EARTH + 500e3, 0, 0), v3(0, 0, 7600));
     const plan = new Plan();
 
     // ノードが1件も無い間は、起点は毎回渡された自機状態そのもの。
@@ -91,7 +91,7 @@ export function register(): void {
     assert.equal(plan.frozenData(), null);
 
     // 1件目を置いた時点で起点が凍結し、以降 anchorOr の引数は無視される。
-    assert.equal(plan.addNode(kinematicState(50, ship.r, ship.v), ship), 0);
+    assert.equal(plan.addNode(kinematicState<'eci'>(50, ship.r, ship.v), ship), 0);
     assert.equal(plan.anchorOr(later), ship);
     assert.equal(plan.frozenData()?.anchor, ship);
 
@@ -102,10 +102,10 @@ export function register(): void {
   });
 
   test('plan: 全ノードを消化すると起点も落ち、revision は空を跨いでも増え続ける', () => {
-    const ship = kinematicState(0, v3(R_EARTH + 400e3, 0, 0), v3(0, 0, 7670));
-    const reached = kinematicState(60, v3(R_EARTH + 410e3, 0, 0), v3(0, 0, 7660));
+    const ship = kinematicState<'eci'>(0, v3(R_EARTH + 400e3, 0, 0), v3(0, 0, 7670));
+    const reached = kinematicState<'eci'>(60, v3(R_EARTH + 410e3, 0, 0), v3(0, 0, 7660));
     const plan = new Plan();
-    plan.addNode(kinematicState(50, ship.r, ship.v), ship);
+    plan.addNode(kinematicState<'eci'>(50, ship.r, ship.v), ship);
     const revAfterAdd = plan.revision;
 
     assert.equal(plan.consumeNodesUpTo(55, reached), 1);
@@ -114,7 +114,7 @@ export function register(): void {
     assert.ok(plan.revision > revAfterAdd);
 
     // 空にしてから積み直しても世代値は単調に増える(キャッシュ鍵として衝突しない)。
-    plan.addNode(kinematicState(200, ship.r, ship.v), ship);
+    plan.addNode(kinematicState<'eci'>(200, ship.r, ship.v), ship);
     assert.ok(plan.revision > revAfterAdd + 1);
   });
 }
