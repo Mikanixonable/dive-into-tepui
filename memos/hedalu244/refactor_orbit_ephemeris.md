@@ -283,7 +283,6 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 
 | 手順 | 何を |
 | --- | --- |
-| 6 | キャッシュの棚卸し |
 
 ### 前提: 挙動不変の物差し
 
@@ -371,31 +370,12 @@ CR3BP の量は `SecondaryFrame`(`physics/lagrange.ts`)を受け取る自由関�
 
 ## 手順
 
-### 手順6. キャッシュの棚卸し
-
-**目的.** 手順4・5 で要らなくなったキャッシュを消し、**残ったものが何を守っているのか**を
-コードに1文ずつ書く。一元化はしない(「やらないこと」参照)。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/celestial-body-windows.ts` | 原点天体の恒星中心状態・加速度のキャッシュ(手順5 で追加したもの)に、「全天体が同じ t で同じ原点を引くので1回へ畳む」ことを1文で書く |
-| `src/physics/celestial-motion.ts` | 残る `helioCache`(惑星)・`relCache`(衛星)それぞれに、何回引かれるから要るのかを1文で書く。`cacheStats` の合算対象から消えたキャッシュを外す |
-| `src/physics/absolute-ephemeris.ts:36-37,71-77` | `lastStarJdTdb` / `lastStarState` の1件メモが手順5 の後も要るかを、`celestialSystem.perfCounts` の hit/miss で確かめる。要らなければ消す |
-| `src/physics/celestial-body-windows.ts:54` | 上で消したものがあれば `addTimeCacheStats` の合算を追従 |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test`(全層)が通る。
-`npm run dev` で perf-meter の時刻キャッシュのヒット/ミスを見て、**構造を変える前と比べてミスが
-増えていない**こと(増えていれば畳み方を間違えている)。
-
 ## 見積り
 
 触る行数は grep の実測から出す(いずれも `tests/dist/` を除く)。
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 6 | 約 15 | キャッシュ4箇所の判断とコメント |
 
 合計およそ 15 行。**手順5 が最大**で、そのうち 104 は引数1つの削除(機械的)、47 は受け手の
 差し替え(1行ずつ確認が要る)。手順4・5 で同じ 104 箇所を2度触るが、2度目は削除だけになる。
