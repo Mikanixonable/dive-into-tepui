@@ -15,7 +15,9 @@ import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
-import { assertOmegaMatchesBasis, motionOf, orbitingMotionOf, solarSystemParts } from './test-helpers';
+import {
+  assertOmegaMatchesBasis, lagrangeOf, motionOf, orbitingMotionOf, solarSystemParts,
+} from './test-helpers';
 
 // 定義だけを引くための太陽系(id から静的事実を取り出す口としてだけ使う)。
 const DEFS = solarSystemParts();
@@ -106,7 +108,7 @@ export function register(): void {
   test('celestial-motion: 太陽-地球ラグランジュ点の無次元距離比は文献値と一致する(0.00997/0.01004)', () => {
     for (const t of [0, 1e7, 1e9]) {
       const sunDist = len(motionOf(parts, 'sun').stateAt(t).r);
-      const { L1, L2 } = orbitingMotionOf(parts, 'earth').lagrangeAt(t);
+      const { L1, L2 } = lagrangeOf(parts, 'earth', t);
       assert.ok(Math.abs(len(L1) / sunDist - 0.00997) < 1e-3, `L1 比: ${len(L1) / sunDist}`);
       assert.ok(Math.abs(len(L2) / sunDist - 0.01004) < 1e-3, `L2 比: ${len(L2) / sunDist}`);
     }
@@ -118,7 +120,7 @@ export function register(): void {
       const moonPos = moon.stateAt(t).r;
       const R = len(moonPos);
       const n = moon.orbitNormalAt(t);
-      const { L1, L2, L4, L5 } = moon.lagrangeAt(t);
+      const { L1, L2, L4, L5 } = lagrangeOf(parts, 'moon', t);
       for (const [name, p] of [['L1', L1], ['L2', L2], ['L4', L4], ['L5', L5]] as const) {
         assert.ok(Math.abs(dot(p, n)) < 1e-6 * R, `${name} が白道面から外れる (t=${t})`);
       }
@@ -138,7 +140,7 @@ export function register(): void {
       const R = len(moonPos);
       const mHat = norm(moonPos);
       const n = moon.orbitNormalAt(t);
-      const { L1, L2, L3, L4, L5 } = moon.lagrangeAt(t);
+      const { L1, L2, L3, L4, L5 } = lagrangeOf(parts, 'moon', t);
       assert.ok(len(L1) < R && len(L2) > R, `L1/L2 の内外 (t=${t})`);
       // 同じ理由で厳密な反対方向(-1)からは最大 1.4° ほどずれうる。
       assert.ok(dot(norm(L3), mHat) < -0.999, `L3 が反月方向でない (t=${t})`);
@@ -163,7 +165,7 @@ export function register(): void {
       const R = len(sPos);
       const sHat = norm(sPos);
       const n = earth.orbitNormalAt(t);
-      const { L1, L2, L3, L4, L5 } = earth.lagrangeAt(t);
+      const { L1, L2, L3, L4, L5 } = lagrangeOf(parts, 'earth', t);
       // 地心を原点に測るので、L点は地球自身の重心まわりの首振り(最大 4,673 km、うち白道の
       // 傾き 5.145° ぶんの約 420 km が黄道面外)を丸ごと引き継ぐ。許容はその桁で取る。
       for (const [name, p] of [['L1', L1], ['L2', L2], ['L3', L3], ['L4', L4], ['L5', L5]] as const) {

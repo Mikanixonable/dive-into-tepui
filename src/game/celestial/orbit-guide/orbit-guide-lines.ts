@@ -3,6 +3,7 @@
 // (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion } from '../../../physics/celestial-motion';
+import { SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialSystem } from '../celestial-system';
 import { Vec3 } from '../../../math/vec3';
 import {
@@ -293,10 +294,10 @@ export class OrbitGuideLines {
   private computeLoop(entry: GuideLineEntry, t: number, settings: OrbitGuideSettings): GuideLoop | null {
     if (entry.familyId === 'lissajous') {
       const l = settings.lissajous;
-      const secondary = this.guideSecondaryOf(entry.system as CatalogSystemId);
-      if (secondary === null) return null;
+      const system = this.guideFrameOf(entry.system as CatalogSystemId, t);
+      if (system === null) return null;
       return lissajousLoop(
-        t, secondary, entry.point as GuidePoint,
+        system, entry.point as GuidePoint,
         l.inPlane, l.outOfPlane, l.inPlanePhase, l.outOfPlanePhase, l.cycles,
       );
     }
@@ -329,6 +330,13 @@ export class OrbitGuideLines {
     const secondary = this.guideSecondaryOf(entry.system);
     if (secondary === null) return null;
     return catalogLoop(t, secondary, system, entry.familyId, s);
+  }
+
+  // 系の副天体まわりの CR3BP 量を組むための、その時刻の ECI 値一式。副天体が居ない・
+  // 公転していない・主天体が引けないなら null(その系のガイドは描かない)。
+  private guideFrameOf(system: CatalogSystemId, t: number): SecondaryFrame | null {
+    const motion = this.guideSecondaryOf(system);
+    return motion === null ? null : secondaryFrameOf(this.celestialSystem.celestialBodiesAt(t), motion, t);
   }
 
   // 系の副天体の運動。星系に居ない・公転していないなら null(その系のガイドは描かない)。

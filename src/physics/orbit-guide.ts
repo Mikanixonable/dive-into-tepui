@@ -5,6 +5,7 @@ import type { CelestialBody } from './celestial-body';
 import { CelestialMotion, OrbitingMotion } from './celestial-motion';
 import { Vec3Tuple } from './cr3bp';
 import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
+import type { SecondaryFrame } from './lagrange';
 import {
   CATALOG_STRIDE, CatalogFamily, CatalogSystem, CatalogSystemId, decodeCatalogPoints,
 } from './orbit-catalog';
@@ -197,13 +198,12 @@ function lerp(a: number, b: number, f: number): number {
 // R*gamma が数桁違うため、メートルではなく比で受け取ることでどの系でも同じ値が Richardson
 // 近似の妥当域(目安 0〜0.5)に収まる。
 export function lissajousLoop(
-  t: number, secondary: OrbitingMotion, point: GuidePoint,
+  system: SecondaryFrame, point: GuidePoint,
   inPlane: number, outOfPlane: number, inPlanePhase: number, outOfPlanePhase: number,
   cycles: number,
 ): GuideLoop | null {
-  if (secondary.primary === null) return null;
   // 振幅に依らない係数は1度だけ求め、位相だけを u から動かす。
-  const frame: CollinearFrame = collinearFrame(secondary, point, t);
+  const frame: CollinearFrame = collinearFrame(system, point);
   const coeffs = richardsonCoefficients(frame);
   const deltaN = point === 'L2' ? -1 : 1;
   const unit = frame.r * frame.gamma;
