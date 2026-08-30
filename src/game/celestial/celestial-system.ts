@@ -5,7 +5,7 @@ import {
 } from '../../physics/celestial-motion';
 import { AbsoluteEphemeris } from '../../physics/absolute-ephemeris';
 import { EciTransform } from '../../physics/eci-transform';
-import { ReferenceFrames } from '../../physics/reference-frames';
+import { ReferenceFrames } from './reference-frames';
 import {
   CelestialBody, CelestialBodyWindows, celestialBodyStateAt,
 } from '../../physics/celestial-body';
