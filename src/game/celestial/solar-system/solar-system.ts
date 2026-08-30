@@ -83,5 +83,5 @@ export function solarSystem(
   if (originEntity === undefined) throw new Error(`solarSystem: 太陽系に無い原点 id: ${originId}`);
 
   return new CelestialSystem(
-    entities, originEntity, phases, epoch, new PointFieldView(generatePointField()));
+    entities, originEntity, phases, epoch, new PointFieldView(generatePointField(simZeroEt)));
 }

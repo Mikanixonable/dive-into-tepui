@@ -281,44 +281,10 @@ simTime 1軸だけなので、**`+` / `-` をヘルパ呼び出しへ置き換�
 
 ## 手順
 
-### 手順8. 点群の元期を太陽系本体へ揃える(バグ修正)
-
-**目的.** 「決めたこと 6-(a)」を直す。**この手順は挙動を変える** — トロヤ群・ヒルダ群の
-生成位置が動き、`DEVELOP/SPEC/CELESTIAL.md` 10節の記述どおりになる。併せて **テストの基準を
-自己参照から実際の木星へ付け替える**(現状のテストはこのバグを構造上検出できない)。
-契約と構造が揃ったあとに置くことで、**修正が「元期は1つ」の規則に沿った形にしかならない**
-ようにする。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/solar-system/point-field.ts:7,135-138` | `jupiterMeanLongitude(t: number)` → `jupiterMeanLongitude(t: number, simZeroEt: number)`。`EPOCH_T_OFFSET` の import と使用を落とす |
-| 同 `:210-219` | `generatePointField(seed?)` → `generatePointField(simZeroEt: number, seed: number = ASTEROID_SEED)`。`jupiterMeanLongitude(0, simZeroEt)` を渡す |
-| `src/game/celestial/solar-system/solar-system.ts:81` | `generatePointField(simZeroEt)`(手順2 で導出済みのローカルをそのまま渡す) |
-| `src/game/celestial/solar-system/constants.ts:3-10` | `EPOCH_T_OFFSET` を削除。**本番の元期ではなくなったので `src/` に残す理由が無い**(唯一の利用者がこのバグだった) |
-| `tests/physics/test-helpers.ts` | `TEST_SIM_ZERO_ET = 6972197.1872752225` を新設(値は `EPOCH_T_OFFSET` をそのまま移す)。導出の説明コメントも移す。手順2 で入れた既定引数もこれを使う |
-| `tests/physics/celestial-motion.test.ts:9,75,90,199,221,229,233` / `tests/physics/celestial-eci-baseline.test.ts:12,170,194` | `EPOCH_T_OFFSET` の import 元をテストヘルパへ、名前を `TEST_SIM_ZERO_ET` へ |
-| `tests/game/point-field.test.ts:6,32-33,40,54-55,67,76,88,91` | `generatePointField(...)` / `jupiterMeanLongitude(...)` に元期を渡す。**新規テストを1本足す** — `solarSystemParts` から `motionOf(parts,'jupiter').helioStateAt(t)` の日心黄経を求め、`jupiterMeanLongitude(t, simZeroEt)` との差が **±6° 以内**(木星の e=0.0484 による中心差の上界 2·e ≒ 5.5°)であることを検査する。既存のトロヤ群 ±35° 検査はそのまま残す |
-
-**達成条件と検証**
-
-- `grep -rn "EPOCH_T_OFFSET" src/` が **0 件**。
-- `grep -rniE "\bepoch\b" src/` の残りから `EPOCH_T_OFFSET` が消える(手順7 で残した1件)。
-- `npm run test:game` — 新規テスト「木星の平均黄経の基準が実際の木星と一致する」が通る。
-- **修正前に新規テストを先に書いて落ちることを確認する**(既定元期での差 17.31° > 6°)。
-  落ちなければ、テストがまた自己参照になっている。
-- `npm run test:physics`(`EPOCH_T_OFFSET` を使うテスト群が移動後も通ること)。
-- 目視: マップビューで木星まで引き、**トロヤ群の2つの雲が木星の前後 60° に付いている**こと。
-- `npm run typecheck`、`npm run test`(全層)。
-
----
-
 ## 見積り
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 8 | src 3 ファイル・tests 4 ファイル | `EPOCH_T_OFFSET` 参照 13 箇所 + 新規テスト1本 |
 
 **件数の大半は手順7** で、`\b` 境界付きの一括置換で機械的に片付く。**判断が要るのは手順4**
 (元期の出所と読み込み規則)と**手順5**(型の口の設計)の2つ。

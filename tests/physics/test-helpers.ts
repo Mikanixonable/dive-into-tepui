@@ -9,7 +9,13 @@ import type { CelestialBodyWindows } from '../../src/physics/celestial-body-wind
 import { CelestialMotion, OrbitingMotion, PhaseOffsets } from '../../src/physics/celestial-motion';
 import { FrameRotation } from '../../src/physics/kepler-orbit';
 import type { ReferenceFrames } from '../../src/physics/reference-frames';
-import { EPOCH_T_OFFSET } from '../../src/game/celestial/solar-system/constants';
+// 回帰テストが simTime = 0 に置く瞬間の、J2000 からの秒数。地球から見て太陽が +X 方向
+// (昼側)にある — すなわち地球の日心黄経が π になる — 瞬間へ合わせてある。
+// 導出: 地球の平均黄経 L(t) = l0 + L̇·t を L = 180° と置いて解く。
+//   (180° − 100.46457166°) / 35999.37244981 [deg/Cy] × JULIAN_CENTURY = 6.9721972e6 s。
+// 中心差(真黄経と平均黄経の差)は地球の e = 0.0167 で高々 ±1.9° あるが、これは見た目の
+// 昼夜を合わせるためのアンカーなので平均黄経で足りる。
+export const TEST_SIM_ZERO_ET = 6972197.1872752225;
 import { solarSystem } from '../../src/game/celestial/solar-system/solar-system';
 import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../../src/physics/time';
 import { Vec3, cross, len, scale, sub, v3 } from '../../src/math/vec3';
@@ -23,10 +29,10 @@ export type SolarSystemParts = {
   readonly referenceFrames: ReferenceFrames;
 };
 
-// 回帰テストが既定で使う元期。EPOCH_T_OFFSET は「simTime=0 を、地球の日心黄経が π になる
+// 回帰テストが既定で使う元期。TEST_SIM_ZERO_ET は「simTime=0 を、地球の日心黄経が π になる
 // 瞬間へ合わせる」ための J2000 からの秒数で、その瞬間を絶対時刻として表したものがこれ。
 export const TEST_EPOCH: TdbJulianDate =
-  createJulianDate('TDB', J2000_JULIAN_DATE + EPOCH_T_OFFSET / SECONDS_PER_DAY);
+  createJulianDate('TDB', J2000_JULIAN_DATE + TEST_SIM_ZERO_ET / SECONDS_PER_DAY);
 
 // 現実の太陽系を地球原点で組む。phases は天体ごとの平均黄経の初期位相 [rad]、
 // epoch は simTime=0 が指す絶対時刻。absoluteSource を渡すと、その有効期間だけ
