@@ -10,7 +10,7 @@ import { Vec3, add, cross, norm, sub, v3 } from '../math/vec3';
 // - `helio` — 恒星(星系の階層の根)中心。
 // - `primaryRel` — 主天体中心(惑星なら恒星、衛星なら惑星、軌道要素なら el.center)。
 // - `barycentric` — 太陽系重心中心。暦パックが外向きに答える原点。
-// - `icrf` — 太陽系重心中心・**ICRF 軸**。暦パックの生の座標で、復号の内側にだけ現れる。
+// - `icrf` — 太陽系重心中心・ICRF 軸。暦パックの生の座標。
 export type FrameTag = 'eci' | 'helio' | 'primaryRel' | 'barycentric' | 'icrf';
 
 // ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
