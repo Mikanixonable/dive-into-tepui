@@ -1,7 +1,6 @@
-// 天体1体の運動。解析暦では**恒星中心まで**、暦パックでは**太陽系重心中心まで**の位置・
-// 速度・加速度を合成し、自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。原点を
-// どこに置くかは系レベルの選択なので、ECI 化は celestial-body-windows.ts が行い、ここは
-// 原点天体を知らない。暦は**自分1体ぶんだけ**を持ち(bindEphemeris)、系全体の暦を知らない。
+// 天体1体の運動。解析暦では恒星中心まで、暦パックでは太陽系重心中心までの位置・速度・
+// 加速度を合成し、自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。原点をどこへ
+// 置くかは系レベルの選択なので、ECI 化は celestial-body-windows.ts が担う。
 // 恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
 // 評価結果は時刻 t をキーにした固定長リング(TimeRing)でメモ化する。
 // THREE/DOM 非依存。
@@ -104,8 +103,7 @@ export abstract class CelestialMotion {
   // 主天体。惑星なら恒星(恒星の無い星系では null)、衛星ならその惑星、恒星自身は null。
   abstract get primary(): CelestialMotion | null;
 
-  // この天体1体ぶんの高精度暦。**系全体の暦ではない** — 収録されていない天体では null で、
-  // 「収録されているか」は構築時に確定する。CelestialSystem が構築直後に1度だけ差し込む。
+  // この天体1体ぶんの高精度暦。暦に収録されていない天体では null。
   private bodyEphemeris: BodyEphemeris | null = null;
 
   protected constructor(
@@ -114,8 +112,7 @@ export abstract class CelestialMotion {
     readonly spinPhase0: number = 0,
   ) {}
 
-  // 自分の暦を結ぶ。**暦を持たない構成でも null で1度呼ぶ** — 呼ばれないままの天体は
-  // 暦を持たないものとして解析経路だけを通る。
+  // 自分の暦を結ぶ。結ぶまでの間と、null を結んだ後は、解析暦が位置を答える。
   bindEphemeris(ephemeris: BodyEphemeris | null): void {
     this.bodyEphemeris = ephemeris;
   }
@@ -163,9 +160,7 @@ export abstract class CelestialMotion {
     return { hits: 0, misses: 0 };
   }
 
-  // **自分自身が暦に収録されている場合の**重心中心位置・速度。暦を持たない・有効期間外なら
-  // null。派生クラスが補完を足す packedStateAt とは別物で、**補完を混ぜてはいけない場所**
-  // (回転基準系・軌道法線)はこちらを使う。
+  // 自分自身が暦に収録されている範囲での重心中心位置・速度。収録外・有効期間外では null。
   ownPackedStateAt(t: number): KinematicState<'barycentric'> | null {
     const ephemeris = this.bodyEphemeris;
     if (ephemeris === null) return null;
@@ -174,7 +169,6 @@ export abstract class CelestialMotion {
   }
 
   // 暦パックが答えるこの天体の重心中心位置・速度。答えられなければ null。
-  // 衛星は自分が未収録でも親から補うので、この口は派生クラスが上書きしうる。
   packedStateAt(t: number): KinematicState<'barycentric'> | null {
     return this.ownPackedStateAt(t);
   }
@@ -326,13 +320,12 @@ export abstract class OrbitingMotion extends CelestialMotion {
     return this.def.mu / (primaryMu + this.def.mu);
   }
 
-  // 暦パックが自分と主天体の両方を**直接**収録している有効期間での、主天体相対の位置・速度。
-  // 引けなければ null。**衛星の補完(親 + 解析の相対)は使わない** — 使うと解析の周期項が
-  // 入り、回転基準系が平均要素基準から実位置基準へ変わってしまう(satellite-orbit.ts の
-  // 2.5° のずれの話)。
+  // 暦パックが自分と主天体の両方を直接収録している有効期間での、主天体相対の位置・速度。
+  // 引けなければ null。
   private packedPrimaryRelStateAt(t: number): KinematicState<'primaryRel'> | null {
     const primary = this.primary;
     if (primary === null) return null;
+    // packedStateAt へ替えると衛星の周期項が入り、回転基準系が実位置基準へ 2.5° 動く。
     const own = this.ownPackedStateAt(t);
     const primaryState = primary.ownPackedStateAt(t);
     if (own === null || primaryState === null) return null;

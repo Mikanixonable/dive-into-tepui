@@ -9,9 +9,9 @@ import { KinematicState, toEci } from './kinematic-state';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 import { Vec3, sub } from '../math/vec3';
 
-// 時刻 t における ECI 原点天体の状態。**2つの経路は原点が違う**(暦パックは太陽系重心中心、
-// 解析暦は恒星中心)が、ECI 化はどちらも同じ経路どうしの差なので原点は打ち消える。
-// ephemeris が null なら暦パックはこの時刻を答えられないので、全天体が解析経路へ落ちる。
+// 時刻 t における ECI 原点天体の状態。暦パックは太陽系重心中心、解析暦は恒星中心で答えるが、
+// ECI 化は同じ経路どうしの差を取るので原点は打ち消える。ephemeris が null の時刻は、
+// 全天体が解析経路へ落ちる。
 type OriginState = {
   readonly ephemeris: KinematicState<'barycentric'> | null;
   readonly analytic: KinematicState<'helio'>;
