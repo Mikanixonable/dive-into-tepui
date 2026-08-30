@@ -10,6 +10,8 @@ export type FieldProjection = {
   readonly height: number;
   readonly wrapS: THREE.Wrapping;
   readonly wrapT: THREE.Wrapping;
+  // 1 texel が張る角 [rad](写しの中でいちばん細かい所)。標本化できない細かさを畳むのに使う。
+  readonly texelAngle: FloatNode;
   // uv(0..1)の指す単位方向。1 texel を焼くのに 1 回走る。
   directionAt(uv: Vec2Node): Vec3Node;
   // 単位方向を写す uv(0..1)。1 texel を焼くのに何度も走るので、費用はこちらが効く。
@@ -39,10 +41,12 @@ export class EquirectProjection implements FieldProjection {
   public readonly width: number;
   public readonly wrapS: THREE.Wrapping = THREE.RepeatWrapping;
   public readonly wrapT: THREE.Wrapping = THREE.ClampToEdgeWrapping;
+  public readonly texelAngle: FloatNode;
 
   // height は緯度 180° を割る texel 数。幅はその 2 倍。
   public constructor(public readonly height: number) {
     this.width = height * 2;
+    this.texelAngle = float(Math.PI / height);
   }
 
   public directionAt(uv: Vec2Node): Vec3Node {
@@ -72,11 +76,15 @@ export class OrthographicCap implements FieldProjection {
   private readonly east: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly north: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly sinRadius: FloatUniform = uniform(0);
+  // 投影面は円板の直径を size texel で割るので、中心での 1 texel は 2 sin(半径) / size [rad]。
+  // 外周へ向かって texel は角度としては粗くなるが、それは球の傾きぶんで、画面上では一定に見える。
+  public readonly texelAngle: FloatNode;
 
   // size は写しの 1 辺の texel 数。中心と半径の意味は aim() と同じ。
   public constructor(size: number, latitude: number, longitude: number, radius: number) {
     this.width = size;
     this.height = size;
+    this.texelAngle = this.sinRadius.mul(2 / size);
     this.aim(latitude, longitude, radius);
   }
 
