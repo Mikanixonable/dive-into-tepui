@@ -4,15 +4,23 @@
 import { If, Loop, clamp, exp2, float, floor, greaterThan, int, log2 } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import type { Circulation } from './circulation';
+import type { FieldProjection } from './field-projection';
 import type { FloatNode, IntNode, Vec3Node } from '../tsl-types';
 
 // 段が振幅 1 に達する、1 波長あたりの texel 数の逆数(0.25 = 4 texel)。ここから周波数 2 倍
 // (= Nyquist の 2 texel)までのあいだで、段の振幅を 1 から 0 へ渡す。
 const OCTAVE_FADE_START = 0.25;
 
-// frequency から始まる octaves 段が、どれも振幅 1 で乗る 1 texel の角 [rad] の上限。これより
-// 細かく焼いても段は増えないので、写しをどこまで粗くしてよいかがここから決まる。
-export function resolvableTexelAngle(frequency: number, octaves: number): number {
+// noises([周波数, 段数] の並び)がどれも振幅 1 で乗る範囲で、projection の何分の一の細かさまで
+// 粗く焼いてよいか。2 の冪で返す。
+export function coarsenessFor(projection: FieldProjection, ...noises: readonly (readonly [number, number])[]): number {
+  const room = Math.min(...noises.map(([frequency, octaves]) => resolvableTexelAngle(frequency, octaves)))
+    / projection.texelAngleValue;
+  return Math.max(1, 2 ** Math.floor(Math.log2(room)));
+}
+
+// frequency から始まる octaves 段が、どれも振幅 1 で乗る 1 texel の角 [rad] の上限。
+function resolvableTexelAngle(frequency: number, octaves: number): number {
   return OCTAVE_FADE_START / (frequency * 2 ** (octaves - 1));
 }
 
