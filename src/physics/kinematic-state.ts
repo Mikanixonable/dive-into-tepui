@@ -2,15 +2,16 @@
 // エルミート補間)。THREE/DOM 非依存の純粋関数群。
 import { Vec3, add, cross, norm, sub, v3 } from '../math/vec3';
 
-// 位置・速度をどの原点で測っているか。軸はどれもゲーム ECI 軸(barycentric だけ ICRF 軸)で、
+// 位置・速度をどの原点で測っているか。軸はどれもゲーム ECI 軸(icrf だけ ICRF 軸)で、
 // 違うのは原点だけ。**原点の違いは値からは見分けられない**ので、型で持たせて取り違えを
 // 型検査に拾わせる。
 //
 // - `eci` — ECI 原点天体(ステージが選ぶ中心天体)中心。無標の既定。
 // - `helio` — 恒星(星系の階層の根)中心。
 // - `primaryRel` — 主天体中心(惑星なら恒星、衛星なら惑星、軌道要素なら el.center)。
-// - `barycentric` — 太陽系重心中心・ICRF 軸。暦パックの生の座標。
-export type FrameTag = 'eci' | 'helio' | 'primaryRel' | 'barycentric';
+// - `barycentric` — 太陽系重心中心。暦パックが外向きに答える原点。
+// - `icrf` — 太陽系重心中心・**ICRF 軸**。暦パックの生の座標で、復号の内側にだけ現れる。
+export type FrameTag = 'eci' | 'helio' | 'primaryRel' | 'barycentric' | 'icrf';
 
 // ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
 // KinematicState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
@@ -46,11 +47,12 @@ export function toEci<F extends FrameTag>(
   return kinematicState(t, sub(body.r, origin.r), sub(body.v, origin.v));
 }
 
-// 主天体相対を、その主天体の恒星中心状態へ足し戻したもの。
-export function addPrimaryRelative(
-  primary: KinematicState<'helio'>, rel: KinematicState<'primaryRel'>,
-): KinematicState<'helio'> {
-  return kinematicState<'helio'>(primary.t, add(primary.r, rel.r), add(primary.v, rel.v));
+// 主天体相対を、その主天体の状態へ足し戻したもの。**主天体をどの原点で測っていても
+// 足し戻せる**(相対量は原点に依らない)ので、返る原点は主天体側のものを引き継ぐ。
+export function addPrimaryRelative<F extends FrameTag>(
+  primary: KinematicState<F>, rel: KinematicState<'primaryRel'>,
+): KinematicState<F> {
+  return kinematicState<F>(primary.t, add(primary.r, rel.r), add(primary.v, rel.v));
 }
 
 // 軌道基底: 進行方向・軌道面法線・面内で進行方向に直交する向きからなる正規直交系。
