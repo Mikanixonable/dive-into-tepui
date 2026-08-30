@@ -4,7 +4,7 @@
 // 各群は PointFieldDef 1つのデータで駆動する — 群を増やすには POINT_FIELD_DEFS に要素を足すだけ
 // でよく、生成コード自体に群固有の分岐を増やさない。
 import { AU } from '../../../physics/planet-orbit';
-import { EPOCH_T_OFFSET, MU_SUN } from './constants';
+import { MU_SUN } from './constants';
 import { JUPITER } from './jupiter-system';
 import { mulberry32 } from '../../../math/random';
 import type { PointElements, PointField } from '../point-field';
@@ -131,10 +131,12 @@ function uniform(rand: () => number, [min, max]: readonly [number, number]): num
 }
 
 // 木星の平均黄経 [rad]。トロヤ群・ヒルダ群の共鳴基準にしか使わないので、位置の3段合成では
-// なく平均黄経の一次式だけを引く。
-export function jupiterMeanLongitude(t: number): number {
+// なく平均黄経の一次式だけを引く。**simZeroEt はこの星系を組んだ元期でなければならない** —
+// 要素は J2000 元期のままなので、ここで畳む量が本体の畳み込み(planetDefForSimZero)と
+// 食い違うと、トロヤ群が木星から外れた位置に生成される。
+export function jupiterMeanLongitude(t: number, simZeroEt: number): number {
   const orbit = JUPITER.orbit;
-  return orbit.l0 + orbit.lRate * (t + EPOCH_T_OFFSET);
+  return orbit.l0 + orbit.lRate * (t + simZeroEt);
 }
 
 // gaps の中心へ近いほど高い確率で棄却しながら、軌道長半径 [AU] を1つ引く。空隙は複数ありうる
@@ -206,10 +208,10 @@ function generatePoint(
   return { a, e, inc, raan, lonPeri, l0, meanMotion };
 }
 
-// seed から点群全体を生成する。同じ seed からは必ず同じ結果になる。
-export function generatePointField(seed: number = ASTEROID_SEED): PointField {
+// seed から点群全体を生成する。同じ seed と同じ元期からは必ず同じ結果になる。
+export function generatePointField(simZeroEt: number, seed: number = ASTEROID_SEED): PointField {
   const rand = mulberry32(seed);
-  const jupiterLambda0 = jupiterMeanLongitude(0);
+  const jupiterLambda0 = jupiterMeanLongitude(0, simZeroEt);
   const jupiterLRate = JUPITER.orbit.lRate;
   return POINT_FIELD_DEFS.map((def) => ({
     id: def.id,
