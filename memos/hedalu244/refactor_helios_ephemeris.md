@@ -1,7 +1,10 @@
 # HelioEphemeris の解体 — 暦の供給源を天体ごとに割る
 
 `refactor_orbit_ephemeris.md` の論点1(暦の供給源が 100 の構築点へ配られている)の検討を、
-ここへ分けた。行番号・件数のスナップショットは **`6161c5b3`**。
+ここへ分けた。
+
+**1〜6節は実施前(`6161c5b3` 時点)の検討記録**で、行番号・コード片はその時点のもの。
+**実施の結果は7節。** 現状はコードを見ること。
 
 ---
 
@@ -175,6 +178,9 @@ BodyEphemeris = {
 }
 ```
 
+(実装では `stateAt(simTime): KinematicState<'barycentric'>` になった — 軸置換だけはここで
+済ませたほうが、衛星の補完で ICRF とゲーム軸を足す事故を型で防げるため。)
+
 `HelioEphemeris` は**消える。** `AbsoluteEphemeris` は「id → `BodyEphemeris | null`」を
 構築時に1度だけ答える工場になる(評価時には呼ばれない)。
 
@@ -229,21 +235,43 @@ for (const m of this.motions) m.bindEphemeris(pack?.bodyEphemerisOf(m.id) ?? nul
 
 ---
 
-## 7. 未確定 — 決める前に確かめること
+## 7. 実施の結果(`5f9c61c5` まで)
 
-1. **`.epk` から天体1体ぶんを切り出せるか。** `ChebyshevEphemeris` は既に
-   `bodiesById: Map<string, IndexedBody>` を内部に持つ(`evaluator.ts:227`)ので、
-   1体ぶんの `IndexedBody` を包んで返せば済むはず。**要確認。**
-2. **有効期間を天体ごとに持つか、パック共通で持つか。** いまは `manifest.validStart/End` が
-   パック共通。天体ごとのセグメント範囲から導けるが、11 天体で違うのかを確かめる。
-3. **フレームタグ。** 恒星中心化を落とすとパック経路は `'barycentric'`、解析経路は `'helio'` を
-   話す。`toEci<F>` はどちらでも通る(枝ごとに F が揃うため)が、
-   `addPrimaryRelative` は `'helio'` 固定なので総称化が要る。
-4. **`icrfToGameEci` の名前**(軸置換なのに ECI と名乗る)は `rename-ephemeris.md` へ。
+**δ は実施済み。** 7節にあった「決める前に確かめること」はすべて解決した。
+
+| 当時の未確定 | 結果 |
+| --- | --- |
+| `.epk` から1体ぶんを切り出せるか | **切り出せた。** `ChebyshevEphemeris.pack` が public で、`bodies[].segments` は `toEvaluatorEphemerisPack` が既に simTime へ寄せている。評価器へ口を足す必要は無かった |
+| 有効期間を天体ごとに持つか | **天体ごとに持たせた。** 同梱 pack 2本では 11 天体すべてが pack 全体と同じ範囲だと実測したが、形式は天体ごとに違う値を許すので自分のセグメント範囲から取る |
+| フレームタグ | `FrameTag` へ `'icrf'`(重心中心・ICRF 軸、復号の内側だけ)を新設し、`'barycentric'` を「重心中心・**ゲーム ECI 軸**」に定義し直した。`addPrimaryRelative` は原点について総称化した |
+| `icrfToGameEci` の名前 | **未着手。** 軸置換なのに ECI と名乗る問題は `rename-ephemeris.md` へ |
+
+### 実施で分かった、計画時に見えていなかったこと
+
+- **`celestial-eci-baseline` の月の1成分が 1.86e-9 m(相対 1.3e-16 ≒ 1 ULP)動いた。**
+  直接パック経路の天体はビット単位で一致し、動いたのは衛星の補完経路
+  (`(E+rel)−E` の E が「恒星中心の地球」から「重心中心の地球」へ変わったぶんの丸め)だけ。
+  事前に乱数 16000 試行で「0.6% が食い違い、最大 2.98e-8 m」と測ってあったとおりの範囲。
+- **恒星が暦に収録されている必要が無くなった。** 以前は供給源の構築時に恒星を要求して例外を
+  投げていた(恒星中心化のため)。これは観測できる差なのでテストにした。
+- **回転基準系への補完の混入を拒む検査**を足した。`ownPackedStateAt` を `packedStateAt` へ
+  替えると落ちることを確かめてある(混ぜると基底が平均要素基準から実位置基準へ変わって
+  最大 2.5° 動く)。
+- **`ChebyshevEphemeris.bodyIds()` が完全に不要になった**(収録判定が構築時の切り出しへ移った
+  ため)ので削除した。
+
+### 動かしていないもの
+
+- **`packedPrimaryRelStateAt` の2枝**(パック枝=実状態 / 解析枝=平均要素)。
+  `ownPackedStateAt` を `packedStateAt` と分けることで、δ はこの判断に触れずに済んだ。
+  **2.5° を動かしてよいかは未決のまま。**
 
 ## 8. 次の手
 
-δ を採るなら、順序は **7-1 の確認 → 型の設計(`BodyEphemeris`)→ `bindEphemeris` の導入 →
-恒星中心化の削除 → 構築点 100 の引数削除** で、最後の1つだけが機械作業。
-`tests/physics/celestial-eci-baseline.test.ts` の固定値が動くかは、恒星の打ち消しが
-厳密であるぶん**動かないはず** — 動いたら丸めの差ではなく構造の破壊を疑う。
+1. **回転基準系の2枝**(`refactor_orbit_ephemeris.md` 1.4)。有効期間の端で最大 2.5° 飛ぶ
+   不連続を潰すかどうか。潰す前に月の ω の揺れを数値化する。
+2. **論点3 のキャッシュ。** `HelioEphemeris` の恒星1件メモは δ で消えたので**残りは5つ**。
+   測定してから消す。
+3. **論点4 の残り。** `HelioEphemeris` の段が消えて6段→5段。`PackedAbsoluteEphemeris` を畳むか、
+   `AbsoluteEphemeris` interface を畳むかは**連星系の確度次第**で、ユーザーへ問う必要がある。
+4. `icrfToGameEci` の改名は `rename-ephemeris.md` へ。

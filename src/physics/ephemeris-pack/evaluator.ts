@@ -250,10 +250,6 @@ export class ChebyshevEphemeris {
     }
   }
 
-  bodyIds(): readonly string[] {
-    return Object.freeze([...this.bodiesById.keys()]);
-  }
-
   segmentOf(bodyId: string, time: number): { readonly segment: ChebyshevSegment; readonly index: number } {
     const indexed = this.bodiesById.get(bodyId);
     if (indexed === undefined) throw new ChebyshevBodyNotFoundError(bodyId);

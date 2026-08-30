@@ -6,11 +6,15 @@
 
 ---
 
-## 1. 暦の供給源が 100 の構築点へ配られている ← **検討は `refactor_helios_ephemeris.md` へ移した**
+## 1. 暦の供給源が 100 の構築点へ配られている → **解消済み(`5f9c61c5`)**
 
-> 以下は移設前の検討(案α/β/γ)。**対抗案として「暦を天体ごとに割る」が出て、それを含む
-> 合成案 δ が `refactor_helios_ephemeris.md` にある。そちらが現行の検討。**
-> ここの 1.1〜1.4 は問題の構造を説明する部分として残す。
+**合成案 δ で片付いた。** 暦は天体1体ぶん(`BodyEphemeris`)に割られ、`CelestialSystem` が
+`bindWindows` の隣で配る。構築点から `pack` が完全に消え、「収録されているか」の id 引きが
+評価から消えた。恒星中心化も削除した(全消費点で厳密に打ち消えるため)。
+**経緯と実施結果は `refactor_helios_ephemeris.md`。**
+
+**1.4 だけがまだ生きている** — 回転基準系の2枝の食い違い(有効期間の端で最大 2.5° 飛ぶ)は
+δ では動かしていない。以下 1.1〜1.3 は解消前の記録。
 
 ### 1.1 いま何が起きているか
 
@@ -160,6 +164,7 @@ branded number は当てない(軸を減らして守る対象を消した)。**�
 
 前回の「一元化はしない」という結論は、**誰も要求していない問い**(全部を 1 個の Map へ畳むか)
 に答えていた。答えるべきは**1本ずつの是非**で、これは未評価のまま残っている。
+**うち1つ(#5)は δ で消えたので、残りは5つ。**
 
 | # | 持ち主 | 形 | 疑うべき点 |
 | --- | --- | --- | --- |
@@ -167,7 +172,7 @@ branded number は当てない(軸を減らして守る対象を消した)。**�
 | 2 | 同 `bodyCaches[n]`(`:28`)/ `originCache`(`:29`) | `TimeRing` ×(N+1) | 実質がある(天体1体の ECI 値と原点)。ただし `originCache` は全天体が同じ t で引く前提の畳みで、**1件メモで足りる可能性** |
 | 3 | `PlanetMotion.helioCache`(`celestial-motion.ts:333`) | `TimeRing` | 窓が ECI 値を天体ごとに畳んだ**後**でも、1時刻あたり複数回引かれるか。引き手は 窓の解析経路・`helioAccelAt`・衛星の `helioStateAt`・系の重心補正 |
 | 4 | `SatelliteMotion.relCache`(`:398`) | `TimeRing` | コメントは「1時刻あたり4回前後」と書くが、**その数字が ECI キャッシュを窓へ集める前のものかどうか**が未確認 |
-| 5 | `HelioEphemeris` の恒星1件メモ(`absolute-ephemeris.ts:38-39`) | 1件 | 理由は明確(天体数ぶんの Chebyshev 評価が1回に畳まれる)。疑うのは**1件で足りるか** — RK4 が t と t+dt/2 を交互に引くと毎回外れる |
+| ~~5~~ | ~~`HelioEphemeris` の恒星1件メモ~~ | — | **消滅済み(`5f9c61c5`)。** 必ず打ち消える減算を安くするためだけに在った |
 | 6 | `FrameAnchors.attractorCache*`(`game/frame-anchors.ts:31-32`) | **文字列キー**の1件メモ | 他の5つと全く別物。`${frameIndex}|${id}|${t}` を**毎回組んでいる** — 毎フレーム走る経路に文字列生成が入っている。TimeRing へ寄せるか、そもそも要るか |
 
 **次にやること(測定が先)。** `TimeRing.stats` は既に各インスタンスが持っているのに、
@@ -191,8 +196,8 @@ branded number は当てない(軸を減らして守る対象を消した)。**�
 | `CanonicalEvaluatorEphemerisPack` | `toEvaluatorEphemerisPack` 1箇所 | `ChebyshevEphemeris` の入力のみ |
 | `ChebyshevEphemeris` | `packed-absolute-ephemeris.ts:23` 1箇所 | **`bodyIds()` と `stateAtSeconds()` の2つだけ** |
 | `AbsoluteEphemeris`(interface) | — | **実装は `PackedAbsoluteEphemeris` ただ1つ** |
-| `PackedAbsoluteEphemeris` | `ephemeris-catalog.ts` 1箇所 | `HelioEphemeris` の構築のみ |
-| `HelioEphemeris` | `solar-system.ts:60` 1箇所 | 天体 100 体(論点1) |
+| `PackedAbsoluteEphemeris` | `ephemeris-catalog.ts` 1箇所 | `bodyEphemerisOf` のみ |
+| ~~`HelioEphemeris`~~ | — | **削除済み(`5f9c61c5`)。6段が5段になった** |
 
 **時刻軸変換が構築時へ移った結果、実際に薄くなったもの:**
 
@@ -220,9 +225,10 @@ branded number は当てない(軸を減らして守る対象を消した)。**�
 
 ## 次の手
 
-1. **論点1。** `precise` を天体から窓へ移す。**要判断は 1.4 の1点だけ**(2枝の食い違いを
-   実状態側へ寄せるか = γ / 値を動かさないか = β)。決める前に月の ω の揺れを数値化する。
-   残りは構築点 100 の引数削除という機械作業。
-2. ~~論点4 の「判断不要ぶん」を削る~~ → **実施済み。** 残りは連星系の確度を問うてから。
-3. **論点3 は測定が先。** 内訳を出してから、消せるキャッシュを消す。
-4. 名前の問題は `rename-ephemeris.md` へ。
+1. ~~論点1~~ → **解消済み**(`refactor_helios_ephemeris.md`)。
+2. **1.4 の2枝**だけが残る。回転基準系が有効期間の端で最大 2.5° 飛ぶ不連続を潰すか。
+   **要判断**で、決める前に月の ω の揺れを数値化する。
+3. **論点3 は測定が先。** 残り5つの内訳を出してから、消せるキャッシュを消す。
+4. **論点4 の残り**(`PackedAbsoluteEphemeris` を畳むか、`AbsoluteEphemeris` interface を
+   畳むか)は**連星系の確度次第**で、ユーザーへ問う必要がある。
+5. 名前の問題(`icrfToGameEci` が軸置換なのに ECI と名乗る等)は `rename-ephemeris.md` へ。
