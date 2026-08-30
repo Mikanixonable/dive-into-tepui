@@ -6,7 +6,7 @@
 // THREE/DOM 非依存。
 import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp } from './attitude';
-import { BodyEphemeris } from './body-ephemeris';
+import { BodyEphemeris, boundStateAt } from './body-ephemeris';
 import { Degree2Gravity } from './celestial-body';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
@@ -161,10 +161,7 @@ export abstract class CelestialMotion {
 
   // 自分自身が暦に収録されている範囲での重心中心位置・速度。収録外・有効期間外では null。
   ownPackedStateAt(t: number): KinematicState<'packed'> | null {
-    const ephemeris = this.bodyEphemeris;
-    if (ephemeris === null) return null;
-    if (t < ephemeris.validStartSimTime || t > ephemeris.validEndSimTime) return null;
-    return ephemeris.stateAt(t);
+    return boundStateAt(this.bodyEphemeris, t);
   }
 
   // 暦パックが答えるこの天体の重心中心位置・速度。答えられなければ null。
@@ -272,7 +269,7 @@ export abstract class OrbitingMotion extends CelestialMotion {
   // 含めないので、この基底は実位置の x̂ 軸から最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
   orbitFrameRotationAt(t: number): FrameRotation {
     // 暦パックが引ける期間では、相対角運動量から基底と角速度をその場で組む。
-    const packed = this.packedPrimaryRelStateAt(t);
+    const packed = this.packedOrbitRelStateAt(t);
     if (packed !== null) {
       const h = cross(packed.r, packed.v);
       const xHat = norm(packed.r);
@@ -286,7 +283,7 @@ export abstract class OrbitingMotion extends CelestialMotion {
 
   // 軌道面の法線(単位ベクトル、ECI)。
   orbitNormalAt(t: number): Vec3 {
-    const packed = this.packedPrimaryRelStateAt(t);
+    const packed = this.packedOrbitRelStateAt(t);
     if (packed !== null) return norm(cross(packed.r, packed.v));
     return keplerOrbitNormal(this.keplerOrbit, t);
   }
@@ -368,13 +365,19 @@ export abstract class OrbitingMotion extends CelestialMotion {
     return this.def.mu / (primaryMu + this.def.mu);
   }
 
-  // 暦パックが自分と主天体の両方を直接収録している有効期間での、主天体相対の位置・速度。
-  // 引けなければ null。
-  private packedPrimaryRelStateAt(t: number): KinematicState<'primaryRel'> | null {
+  // 自分の軌道要素が乗っている点を暦が直接収録している範囲での状態。既定は自分自身で、
+  // 惑星は系の重心を答える(惑星の要素は本体ではなく系の重心の軌道なので)。
+  protected orbitPointPackedStateAt(t: number): KinematicState<'packed'> | null {
+    return this.ownPackedStateAt(t);
+  }
+
+  // 暦パックが自分の軌道の中心天体と、その軌道が乗っている点の両方を直接収録している
+  // 有効期間での相対位置・速度。引けなければ null。
+  private packedOrbitRelStateAt(t: number): KinematicState<'primaryRel'> | null {
     const primary = this.primary;
     if (primary === null) return null;
-    // packedStateAt へ替えると衛星の周期項が入り、回転基準系が実位置基準へ 2.5° 動く。
-    const own = this.ownPackedStateAt(t);
+    // 合成した packedStateAt へ替えると衛星の周期項が入り、回転基準系が実位置基準へ 2.5° 動く。
+    const own = this.orbitPointPackedStateAt(t);
     const primaryState = primary.ownPackedStateAt(t);
     if (own === null || primaryState === null) return null;
     return toPrimaryRelative(t, own, primaryState);
@@ -399,6 +402,21 @@ export class PlanetMotion extends OrbitingMotion {
 
   get primary(): CelestialMotion | null { return this.star; }
   get keplerOrbit(): KeplerOrbit { return this.system.orbit; }
+
+  // 惑星の軌道要素が乗っているのは本体ではなく系の重心。
+  protected override orbitPointPackedStateAt(t: number): KinematicState<'packed'> | null {
+    return this.system.ownPackedStateAt(t) ?? this.ownPackedStateAt(t);
+  }
+
+  // 本体を収録していない系は、収録された系の重心から重心オフセットぶんを差し引いて補う。
+  override packedStateAt(t: number): KinematicState<'packed'> | null {
+    const own = this.ownPackedStateAt(t);
+    if (own !== null) return own;
+    const bary = this.system.ownPackedStateAt(t);
+    if (bary === null) return null;
+    return addPrimaryRelative(
+      bary, toPrimaryRelative(t, this.analyticStateAt(t), this.system.analyticStateAt(t)));
+  }
 
   // 惑星本体の太陽系重心状態。
   analyticStateAt(t: number): KinematicState<'analytic'> {
@@ -498,11 +516,11 @@ export class SatelliteMotion extends OrbitingMotion {
     return addTimeCacheStats(super.cacheStats, this.relCache.stats);
   }
 
-  // 未収録の衛星は、収録済みの惑星へ惑星相対モデルを足して補う。
+  // 未収録の衛星は、暦パックが答える惑星本体へ惑星相対モデルを足して補う。
   override packedStateAt(t: number): KinematicState<'packed'> | null {
     const own = this.ownPackedStateAt(t);
     if (own !== null) return own;
-    const planet = this.planet.ownPackedStateAt(t);
+    const planet = this.planet.packedStateAt(t);
     return planet === null ? null : addPrimaryRelative(planet, this.relStateAt(t));
   }
 

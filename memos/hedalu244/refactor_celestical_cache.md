@@ -456,88 +456,17 @@ addPrimaryRelative(planet.analyticStateAt(t), system.starRelStateAt(t)) // 惑�
 どちらも mm を問題にしない。**したがって「惑星系重心相対の補助キャッシュ」は
 いま置く必要がない**(置く判断は、mm を問題にする利用者が現れたときに戻す)。
 
-### 手順3 — 暦パックに点の種別を持たせ、系重心の暦を系へ結ぶ(**6.1 の修正**)
-
-**目的**: 基準①②。手順2 で系重心が一人前のノードになっているので、**結び先を変えるだけ。**
-
-**手順2 から持ち越し**: `PlanetSystem` に **id** を与え(`planetSystem()` が `def.id` から作る)、
-`bindEphemeris` / `ownPackedStateAt` / `packedStateAt` を持たせる。手順2 で入れると
-使い道が無いまま置かれるので、こちらへ寄せた。
-
-**変更箇所**: `ephemeris-pack/format.ts`(manifest)・`packed-absolute-ephemeris.ts`・
-`celestial-system.ts:125`・`celestial-motion.ts`(`packedStateAt` 群)・
-`tools/ephemeris/generate.py` と `cli.mjs`
-
-**係数(実データ)は作り直さない。manifest だけを Node で編集する。** 実測で確かめた:
-
-| 確かめたこと | 結果 |
-| --- | --- |
-| `cli.mjs unpack` → `pack` の往復 | **ファイル全体がバイト完全一致**(実際の `modern-2026-10y.epk` で確認) |
-| `payloadSha256` の範囲 | **payload バイトだけ**(`format.ts` 冒頭の仕様どおり)。manifest を変えても不変 |
-| manifest へ `bodyPoints` を足して repack | payload SHA-256 `343c7b46…` のまま。`cli.mjs verify` 通過。**+182 byte** |
-| 未知キーの扱い | `validateManifest`(`format.ts:207`)が `return { ...value, series }` なので**トップレベルは素通し** |
-
-→ **`ephemeris-profile.ts` の `packId` は書き換え不要**(payload の digest なので不変)。
-→ **編集した pack は今日のコードのまま読み込める**ので、pack の編集とコードの変更は
-**独立に入れられる**(どちらが先でもよい)。
-→ **Python 環境も `.bsp` カーネルも要らない。** `npm run` すら要らず `node` 1つ。
-
-**series の中には足せない。** `validateManifest` は series を既知6フィールドから作り直すので
-未知キーが剥がれ、`canonicalJson(manifest) !== manifestJson`(`format.ts:341`)で弾かれる。
-**トップレベルの表にする** — ついでに 10,054 セグメントぶんの重複も避けられる。
-
-```json
-"bodyPoints": { "mars": "systemBarycenter", "jupiter": "systemBarycenter",
-                "saturn": "systemBarycenter", "uranus": "systemBarycenter",
-                "neptune": "systemBarycenter", "pluto": "systemBarycenter" }
-```
-
-- **同梱の2つの pack の manifest を編集する。** 手順は
-  `cli.mjs unpack` → JSON の `manifest.bodyPoints` を足す → `cli.mjs pack`。
-  far-future 側も `BODIES` が同じなので同じ表になる。
-- **`generate.py` を直して `bodyPoints` を書き出すようにする**(走らせる必要はない。
-  次に誰かが pack を作ったとき、欄が欠けて黙ってバグが戻るのを防ぐため)。
-- **パック経路でも系の重心不変条件を測る**(手順1 から移した。**比較対象になる「暦パックが
-  答える系重心」がこの手順まで存在しないので、手順1 では書けなかった**)。系重心を収録した
-  合成供給源を `testEphemerisSource` で組み、`Σμ_i·R_i^packed = μ_sys·R_b^packed` を確かめる。
-  **6.1 の回帰テストはこれ。**
-- **同梱 pack が `bodyPoints` を宣言していることをテストで押さえる**(`tests/repo-assets.ts`
-  経由でリポジトリのファイルを読む)。**上の「黙って戻る」穴を塞ぐのはこのテスト。**
-- **点の種別を答える口を `AbsoluteEphemeris` へ足す**:
-  `pointKindOf(id): 'body' | 'systemBarycenter'`。`PackedAbsoluteEphemeris` は
-  `manifest.bodyPoints[id] ?? 'body'`。テスト用の合成供給源は `'body'` を返す。
-- **結線**(`celestial-system.ts`): `systemBarycenter` なら `PlanetSystem` へ、
-  `body` なら `CelestialMotion` へ結ぶ。
-
-**コード側に「format v1 ではこの id が系重心」という表は置かない。** pack 自身に
-書けるのだから、置く理由が無い(置くと pack と表の二重管理になる)。
-- **`packedStateAt` を三段に揃える**:
-
-  ```
-  PlanetSystem.packedStateAt      = 自分の pack ⟋ 本体の pack + Σ w_k·r_k ⟋ null
-  PlanetMotion.packedStateAt      = 自分の pack ⟋ 系の pack − Σ w_k·r_k ⟋ null
-  SatelliteMotion.packedStateAt   = 自分の pack ⟋ 系の pack − Σ w_k·r_k + r_k ⟋ null
-  ```
-
-  どれも「絶対(パック) + 相対(解析)」で、既存の不変条件の中に収まる。地球系(本体を収録)
-  でも木星系(系重心を収録)でも同じ式が立つ。
-
-**落とし穴**: `OrbitingMotion.packedPrimaryRelStateAt`(`orbitNormalAt` /
-`orbitFrameRotationAt` が使う)は**いま巨大惑星で系重心の日心運動を見ており、要素が
-系重心のものなので偶然正しい**。手順3 で `ownPackedStateAt` が本体を答えるようになると
-**ここは本体の運動に変わる**。軌道法線としてはどちらでも 1e-7 rad の差だが、
-**意図して選び直す** — 系重心側を取るなら `PlanetSystem` から引く形にする。
-
-**検証**: 手順1の**パック経路**のテスト。**Python 環境も `.bsp` カーネルも要らない。**
-`celestial-eci-baseline.test.ts` の期待値を取り直す —
-**これは意図してモデルを変える(火星〜冥王星とその衛星が 0〜2,128 km 動く)手順なので、
-取り直してよい唯一の手順。**
-
 ### 手順4 — 系の内訳を1件のレコードへ畳み、`relCache` と `PlanetMotion.analyticCache` を消す
 
 **目的**: 基準②③④。**惑星相対を保持値・公開値から外す**最後の1件。
 
 **変更箇所**: `planet-system.ts`・`celestial-motion.ts`(`PlanetMotion` / `SatelliteMotion`)
+
+**手順3 で分かったこと**: `PlanetSystem` には `ownPackedStateAt`(暦が重心を直接収録して
+いる範囲)だけを置き、**「本体の pack + 重心オフセット」で重心を合成する口は置かなかった** —
+本番の呼び出し元が無いうえ、地球のように構成天体が個別に収録されている系では、解析の月と
+DE440 の月の位相差ぶん **8.4e6 m** ずれる劣った合成になるため。重心が要るなら
+`Σμ_i·R_i^packed/μ_sys` で組むべきで、そのときに書く。
 
 ```
 PlanetSystem.membersAt(t)                ← 1系・1時刻につき1件。TimeRing で畳む

@@ -14,7 +14,7 @@ import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState } 
 import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { Vec3, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
-import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
+import { AbsoluteEphemeris, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
 import {
   assertOmegaMatchesBasis, lagrangeOf, motionOf, orbitingMotionOf, positionOf, solarSystemParts, stateOf,
   SolarSystemParts, testEphemerisSource, TEST_EPOCH, TEST_SIM_ZERO_ET,
@@ -183,6 +183,60 @@ export function register(): void {
     }
     assert.ok(Math.abs(minDist / 356.4e6 - 1) < 5e-3, `近地点: ${minDist} m`);
     assert.ok(Math.abs(maxDist / 406.7e6 - 1) < 5e-3, `遠地点: ${maxDist} m`);
+  });
+
+  // 暦は id ごとに天体本体か惑星系の重心かを収録している(manifest の bodyPoints)。
+  // **収録した点が系の重心なら、その系列が着地するのは重心であって惑星本体ではない** —
+  // 本体として扱うと系がまるごとずれる(木星系で 68 km、冥王星系で 2,128 km)。
+  // 収録値そのものと突き合わせるのは、着地点を取り違えても不変条件だけなら両辺が一緒に
+  // ずれて通ってしまうため。
+  const JUPITER_BARY_ICRF = (t: number): Vec3 => v3(-7.8e11, 2e9 * (t / DAY), 4e10);
+  const baryPackSource = testEphemerisSource(
+    -500 * DAY, 500 * DAY,
+    (id, t) => {
+      if (id === 'sun') return { r: v3(1e6 * (t / DAY), 2e6, -3e6), v: v3(1e6 / DAY, 0, 0) };
+      if (id === 'earth') return { r: v3(1.5e11, 3e8 * (t / DAY), -3e6), v: v3(0, 3e8 / DAY, 0) };
+      if (id === 'jupiter') return { r: JUPITER_BARY_ICRF(t), v: v3(0, 2e9 / DAY, 0) };
+      return null;
+    },
+    { jupiter: 'systemBarycenter' },
+  );
+  const baryPackParts = solarSystemParts({}, TEST_EPOCH, baryPackSource);
+
+  test('celestial-motion: 系の重心を収録した暦パックの系列は、惑星本体ではなく系の重心に着地する', () => {
+    const jupiter = planetMotionOf(baryPackParts, 'jupiter');
+    for (const t of [0, 1e6, -1e6]) {
+      const bary = jupiter.system.ownPackedStateAt(t);
+      const body = jupiter.packedStateAt(t);
+      assert.ok(bary !== null && body !== null, `暦パック経路が引けない (t=${t})`);
+      assert.ok(len(sub(bary.r, icrfToGameEci(JUPITER_BARY_ICRF(t)))) < 1e-6,
+        `系の重心が収録値と一致しない (t=${t}): ${len(sub(bary.r, icrfToGameEci(JUPITER_BARY_ICRF(t))))} m`);
+      // 本体は重心から重心オフセットぶん離れる。解析経路のオフセットと一致しなければならない。
+      const offset = sub(jupiter.analyticStateAt(t).r, jupiter.system.analyticStateAt(t).r);
+      assert.ok(len(offset) > 1e4, `木星系の重心オフセットが小さすぎる (t=${t}): ${len(offset)} m`);
+      assert.ok(len(sub(sub(body.r, bary.r), offset)) < 1e-2, `本体の置き場が重心オフセットと合わない (t=${t})`);
+    }
+  });
+
+  // 着地点が正しくても合成を誤れば系の内訳が崩れるので、解析経路と同じ不変条件をパック経路でも測る。
+  test('celestial-motion: 系の重心を収録した暦パック経路でも系の重心不変条件が成り立つ', () => {
+    const jupiter = planetMotionOf(baryPackParts, 'jupiter');
+    const moons = jupiter.system.satellites;
+    let muSys = jupiter.def.mu;
+    for (const moon of moons) muSys += moon.def.mu;
+
+    for (const t of [0, 1e6, -1e6]) {
+      const body = jupiter.packedStateAt(t);
+      const bary = jupiter.system.ownPackedStateAt(t);
+      assert.ok(body !== null && bary !== null, `暦パック経路が引けない (t=${t})`);
+      let r: Vec3 = scale(body.r, jupiter.def.mu / muSys);
+      for (const moon of moons) {
+        const moonState = moon.packedStateAt(t);
+        assert.ok(moonState !== null, `${moon.id} の暦パック経路が引けない (t=${t})`);
+        r = addScaled(r, moonState.r, moon.def.mu / muSys);
+      }
+      assert.ok(len(sub(r, bary.r)) < 1e-2, `木星系の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
+    }
   });
 
   // 地球を完全なケプラー軌道(重心補正なし)に置いた場合の太陽の地心位置との差は、

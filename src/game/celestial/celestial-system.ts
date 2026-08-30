@@ -1,7 +1,7 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
 import {
-  CelestialBodyDef, CelestialMotion, OrbitingMotion, PhaseOffsets,
+  CelestialBodyDef, CelestialMotion, OrbitingMotion, PhaseOffsets, PlanetMotion,
 } from '../../physics/celestial-motion';
 import { AbsoluteEphemeris } from '../../physics/absolute-ephemeris';
 import { EciTransform } from '../../physics/eci-transform';
@@ -49,6 +49,26 @@ import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide/
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
+
+// 高精度暦を天体1体ぶんへ切り分けて配る。**暦は id ごとに天体本体を収録している場合と
+// 惑星系の重心を収録している場合があり、結び先のノードがそれで分かれる**(JPL の SPK が
+// 火星以遠では系の重心しか持たないため)。宣言と食い違う点へ結ぶと、その系がまるごと
+// 重心オフセットぶんずれる。
+function bindEphemerides(motions: readonly CelestialMotion[], source: AbsoluteEphemeris): void {
+  for (const motion of motions) {
+    const isBody = source.pointKindOf(motion.id) === 'body';
+    motion.bindEphemeris(isBody ? source.bodyEphemerisOf(motion.id) : null);
+  }
+  // 系の重心を収録した系列は天体1体ぶんではないので、惑星系のほうへ結ぶ。惑星本体と衛星は
+  // そこから重心オフセットを差し引いて/足して組む。
+  const systems = new Set(motions
+    .filter((m): m is PlanetMotion => m instanceof PlanetMotion)
+    .map((m) => m.system));
+  for (const system of systems) {
+    const isBarycenter = source.pointKindOf(system.id) === 'systemBarycenter';
+    system.bindEphemeris(isBarycenter ? source.bodyEphemerisOf(system.id) : null);
+  }
+}
 
 export class CelestialSystem implements CelestialBodyWindows {
   private scene!: THREE.Scene;
@@ -121,9 +141,7 @@ export class CelestialSystem implements CelestialBodyWindows {
     this.referenceFrames = new ReferenceFrames(this.motions, this.eciTransform);
     // 天体1体ぶんの値は個体が答えるので、その供給源(ECI 変換器・暦)はここで1度だけ配る。
     for (const entity of entities) entity.bindEciTransform(this.eciTransform);
-    if (absoluteSource !== null) {
-      for (const motion of this.motions) motion.bindEphemeris(absoluteSource.bodyEphemerisOf(motion.id));
-    }
+    if (absoluteSource !== null) bindEphemerides(this.motions, absoluteSource);
     this.entitiesById = new Map(entities.map((b) => [b.id, b]));
     this.starEntity = entities.find((b): b is StarEntity => b instanceof StarEntity) ?? null;
   }

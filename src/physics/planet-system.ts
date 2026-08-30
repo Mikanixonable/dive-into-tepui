@@ -5,6 +5,7 @@
 // 衛星の惑星相対(重心の平均角から太陽方向を取る)→ 重心の太陽系重心位置(主星の畳み込みが
 // 配る)→ 惑星本体(重心 − 衛星ぶん)→ 衛星の太陽系重心位置。
 // THREE/DOM 非依存。
+import { BodyEphemeris, boundStateAt } from './body-ephemeris';
 import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
 import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
 import { KinematicState, addPrimaryRelative, kinematicState } from './kinematic-state';
@@ -16,8 +17,22 @@ export class PlanetSystem {
   private readonly analyticCache = new TimeRing<KinematicState<'analytic'>>();
   private planetBody: PlanetMotion | null = null;
 
-  // orbit は系の重心が主星まわりに描く軌道。
-  constructor(readonly orbit: KeplerOrbit) {}
+  // 系の重心を直接収録した高精度暦。収録されていなければ null。
+  private baryEphemeris: BodyEphemeris | null = null;
+
+  // id は惑星本体と同じ(系と本体は1対1)。暦を id で結ぶのに要る。orbit は系の重心が
+  // 主星まわりに描く軌道。
+  constructor(readonly id: string, readonly orbit: KeplerOrbit) {}
+
+  // 系の重心の暦を結ぶ。暦が惑星本体のほうを収録している系では null のままになる。
+  bindEphemeris(ephemeris: BodyEphemeris | null): void {
+    this.baryEphemeris = ephemeris;
+  }
+
+  // 系の重心を暦が直接収録している範囲での状態。収録外・有効期間外では null。
+  ownPackedStateAt(t: number): KinematicState<'packed'> | null {
+    return boundStateAt(this.baryEphemeris, t);
+  }
 
   // 系の重心の太陽系重心状態。同じ時刻に複数回引かれるので1度へ畳む。
   analyticStateAt(t: number): KinematicState<'analytic'> {
@@ -91,7 +106,7 @@ export class PlanetSystem {
 export function planetSystem(
   def: PlanetDef, star: StarMotion | null, spinPhase0 = 0,
 ): PlanetSystem {
-  const system = new PlanetSystem(def.orbit);
+  const system = new PlanetSystem(def.id, def.orbit);
   system.setBody(new PlanetMotion(def, star, system, spinPhase0));
   // 主星の重心相対位置にはこの系ぶんの質量と位置が要るので、作った時点で登録する。
   star?.addPlanetSystem(system);

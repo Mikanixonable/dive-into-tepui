@@ -1,5 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { createHash, webcrypto } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { test } from '../harness';
 import {
   buildEphemerisPackData, encodeEphemerisPack, encodeFloat64Payload,
@@ -7,6 +9,7 @@ import {
 import {
   PackedAbsoluteEphemeris, loadPackedAbsoluteEphemeris,
 } from '../../src/physics/packed-absolute-ephemeris';
+import { EPHEMERIS_PROFILES } from '../../src/physics/ephemeris-profile';
 import { icrfToGameEci } from '../../src/physics/absolute-ephemeris';
 import { v3 } from '../../src/math/vec3';
 import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY } from '../../src/physics/time';
@@ -35,7 +38,34 @@ function fixture(corrupt = false): Uint8Array {
   return bytes;
 }
 
+// 同梱 pack のファイル名。profile の id からは決まらないので、ここだけは並べて持つ。
+const SHIPPED_PACKS = {
+  'modern-de440': 'modern-2026-10y.epk',
+  'far-future-20000': 'far-future-20115-10y.epk',
+} as const;
+
+// JPL の SPK は火星以遠の本体を持たないので、同梱 pack のこれらの系列は惑星系の重心を収録して
+// いる。**宣言が欠けると 'body' と解釈され、その系がまるごと重心オフセットぶんずれる**
+// (冥王星系で 2,128 km)ので、宣言そのものをここで押さえる。
+const SYSTEM_BARYCENTER_BODIES = ['mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'];
+
 export function register(): void {
+  for (const [profileId, fileName] of Object.entries(SHIPPED_PACKS)) {
+    test(`packed absolute ephemeris: 同梱 pack ${fileName} は収録している点を宣言する`, () => {
+      const bytes = readFileSync(resolve(process.cwd(), 'src/assets/ephemeris', fileName));
+      const source = PackedAbsoluteEphemeris.fromTrustedBytes(new Uint8Array(bytes), J2000);
+      for (const id of SYSTEM_BARYCENTER_BODIES) {
+        assert.equal(source.pointKindOf(id), 'systemBarycenter', `${fileName} の ${id}`);
+      }
+      for (const id of ['sun', 'mercury', 'venus', 'earth', 'moon']) {
+        assert.equal(source.pointKindOf(id), 'body', `${fileName} の ${id}`);
+      }
+      // manifest を書き換えても係数は変わらないことの担保(packId は payload の digest)。
+      const expected = EPHEMERIS_PROFILES[profileId as keyof typeof SHIPPED_PACKS].packId;
+      assert.equal(source.decoded.manifest.payloadSha256, expected.slice(expected.lastIndexOf('@') + 1));
+    });
+  }
+
   test('packed absolute ephemeris: 元期 J2000 なら pack の ET 秒がそのまま simTime になる', () => {
     const earth = PackedAbsoluteEphemeris.fromTrustedBytes(fixture(), J2000).bodyEphemerisOf('earth');
     assert.ok(earth !== null);
