@@ -5,6 +5,7 @@ import { CelestialBodyWindows } from '../../physics/celestial-body-windows';
 import { ReferenceFrames } from '../../physics/reference-frames';
 import { CelestialBody } from '../../physics/celestial-body';
 import { KinematicState } from '../../physics/kinematic-state';
+import type { TdbJulianDate } from '../../physics/time';
 import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import type { MarkerManager } from '../marker/marker-manager';
 import { OrbitLine } from '../lines/orbit-line';
@@ -82,13 +83,15 @@ export class CelestialSystem {
 
   // entities はこの星系の全天体(宣言順。重力源配列・一覧の順序もこれで決まる)、origin は
   // その中の ECI 中心天体。phaseOffsets は motion を組むのに使った初期位相(セーブでそのまま
-  // 返すために保持する)。THREE の資源はここでは受け取らない — build(scene, …) が登録する。
+  // 返すために保持する)。epoch は simTime=0 が指す絶対時刻で、この星系はすべてそれを基準に
+  // 組まれている。THREE の資源はここでは受け取らない — build(scene, …) が登録する。
   // pointFieldView はこの星系に付随する小天体の点群(持たない星系では null)。マップへ入るまで
   // 資源を確保しない表示なので、シーンへの登録は最初のマップ更新まで遅らせる。
   constructor(
     readonly entities: readonly CelestialEntity[],
     readonly origin: CelestialEntity,
     private readonly phaseOffsets: PhaseOffsets,
+    readonly epoch: TdbJulianDate,
     private readonly pointFieldView: PointFieldView | null = null,
   ) {
     this.motions = entities.map((b) => b.motion);

@@ -17,6 +17,7 @@ import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
 import {
   assertOmegaMatchesBasis, lagrangeOf, motionOf, orbitingMotionOf, positionOf, solarSystemParts, stateOf,
+  TEST_EPOCH,
 } from './test-helpers';
 
 // 定義だけを引くための太陽系(id から静的事実を取り出す口としてだけ使う)。
@@ -407,11 +408,10 @@ export function register(): void {
   // 高精度暦パックの有効期間(CELESTIAL.md 2.2)を10日間だけに絞ったモックで、期間内/外の
   // 境界をまたいで stateAt/orbitFrameRotationAt/orbitNormalAt を呼ぶ。恒星は系の根として
   // 必ず収録されていなければならない(HelioEphemeris の構築条件)。
-  const preciseEpochJdTdb = 2451545;
   const preciseValidDays = 10;
   const mockPrecise: AbsoluteEphemeris = {
-    validStartJdTdb: preciseEpochJdTdb,
-    validEndJdTdb: preciseEpochJdTdb + preciseValidDays,
+    validStartJdTdb: TEST_EPOCH.value,
+    validEndJdTdb: TEST_EPOCH.value + preciseValidDays,
     hasBody: (id) => id === 'sun' || id === 'earth' || id === 'moon',
     barycentricStateOf: (id) => ({
       r: id === 'moon' ? v3(4e8, 0, 0) : v3(0, 0, 0),
@@ -419,7 +419,7 @@ export function register(): void {
     }),
   };
   const analyticParts = solarSystemParts({});
-  const preciseParts = solarSystemParts({}, EPOCH_T_OFFSET, mockPrecise, preciseEpochJdTdb);
+  const preciseParts = solarSystemParts({}, TEST_EPOCH, mockPrecise);
   const preciseMoon = orbitingMotionOf(preciseParts, 'moon');
   const tOutsideValidity = (preciseValidDays + 5) * DAY;
 
