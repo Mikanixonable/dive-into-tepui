@@ -34,7 +34,7 @@ export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
 
   barycentricStateOf(id: string, simTime: number): BarycentricState {
     if (!Number.isFinite(simTime)) throw new RangeError(`simTime は有限値でなければならない: ${simTime}`);
-    const state = this.evaluator.stateAtSeconds(id, simTime);
+    const state = this.evaluator.stateOf(id, simTime);
     return { r: state.r, v: state.v };
   }
 }
