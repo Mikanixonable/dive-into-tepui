@@ -31,8 +31,8 @@ export function icrfToGameEci(a: Vec3): Vec3 {
 // 恒星(系の階層の根)を中心に、ゲーム ECI 軸で答える暦。**ECI 原点天体を引くのは呼び出し側の
 // 仕事** — 解析暦も同じ恒星中心を返すので、どちらの供給源から引いても同じ形の答えになる。
 export class HelioEphemeris {
-  // 直前に引いた時刻の恒星の状態。同じ時刻で複数の天体を引くとき、恒星側の評価は
-  // 天体ごとに同じ値を返すので1回で足りる。
+  // 直前に引いた時刻の恒星の状態。1時刻ぶんの ECI 化では全天体が同じ jdTdb でこれを引くので、
+  // 1段だけ憶えれば天体数ぶんの Chebyshev 評価が1回に畳まれる。
   private lastStarJdTdb = NaN;
   private lastStarState: BarycentricState | null = null;
 
