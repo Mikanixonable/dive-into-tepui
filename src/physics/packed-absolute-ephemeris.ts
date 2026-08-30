@@ -1,4 +1,4 @@
-import { AbsoluteEphemeris, icrfToGameEci } from './absolute-ephemeris';
+import { AbsoluteEphemeris, EphemerisPointKind, icrfToGameEci } from './absolute-ephemeris';
 import { BodyEphemeris } from './body-ephemeris';
 import { ChebyshevEphemeris } from './ephemeris-pack/evaluator';
 import { KinematicState, kinematicState } from './kinematic-state';
@@ -22,6 +22,11 @@ export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
 
   static fromTrustedBytes(bytes: Uint8Array, epoch: TdbJulianDate): PackedAbsoluteEphemeris {
     return new PackedAbsoluteEphemeris(decodeEphemerisPack(bytes), epoch);
+  }
+
+  // 天体 id が収録している点。manifest が宣言していない id は天体本体。
+  pointKindOf(id: string): EphemerisPointKind {
+    return this.decoded.manifest.bodyPoints?.[id] ?? 'body';
   }
 
   // 天体 id の1体ぶんを切り出した暦。有効期間はその天体自身のセグメント範囲。
