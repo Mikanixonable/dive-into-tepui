@@ -10,7 +10,7 @@ import { CirculatingNoise, resolvableTexelAngle } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
-import { FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
+import { FRICTION_RATE, balancedWind, isobarAt, windStep } from './wind-law';
 import type { ClimateMap } from './climate-map';
 import type { FieldProjection } from './field-projection';
 import type { BalancedWind } from './wind-law';
@@ -236,7 +236,7 @@ export class WeatherModel {
     const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
     // seconds 秒だけ flow に流された点の source。負に取れば風上へ遡る。
     const sourceAt = (source: BakedField, flow: BalancedWind, seconds: FloatNode): Vec4Node =>
-      source.at(normalize(direction.add(flow.velocity.mul(seconds.div(R_EARTH)))));
+      source.at(normalize(direction.add(windStep(flow, direction, seconds).div(R_EARTH))));
     // 遡る秒数 [s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
     const stepA = phaseA.mul(-ADVECTION_PERIOD);
     const stepB = phaseB.mul(-ADVECTION_PERIOD);
