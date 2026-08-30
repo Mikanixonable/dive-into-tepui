@@ -3,18 +3,22 @@
 // イアペトゥス・フェーベの黄道傾斜が公表値と合うこと。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { Ephemeris } from '../../src/physics/ephemeris';
+import { SatelliteDef } from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
+import { solarSystemEphemeris } from './test-helpers';
 import { cross, dot, len, norm, sub } from '../../src/math/vec3';
 
+// id から静的事実を引くための天体暦。
+const DEFS = solarSystemEphemeris();
+
 function satelliteOrbitOf(id: string): SatelliteOrbit {
-  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).orbit;
+  return (DEFS.motionOf(id).def as SatelliteDef).orbit;
 }
 function planetOf(id: string): string {
-  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).planet;
+  return DEFS.motionOf(id).primary!.id;
 }
 
 const JULIAN_YEAR_DAYS = 365.25;
@@ -78,7 +82,7 @@ function orbitNormal(eph: Ephemeris, id: string, planet: string, t: number) {
 }
 
 export function register(): void {
-  const eph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {});
+  const eph = solarSystemEphemeris({});
 
   test('laplace-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {
     for (const [id, periodDays] of CASES) {
@@ -163,7 +167,7 @@ export function register(): void {
 
   test('laplace-satellites: 半径・重力定数が有限で正(ダフニスのみ mu=0)', () => {
     for (const [id] of CASES) {
-      const def = bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>;
+      const def = DEFS.motionOf(id).def as SatelliteDef;
       assert.ok(Number.isFinite(def.radius) && def.radius > 0, `${id} の radius`);
       if (id === 'daphnis') assert.equal(def.mu, 0);
       else assert.ok(Number.isFinite(def.mu) && def.mu > 0, `${id} の mu`);

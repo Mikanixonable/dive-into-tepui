@@ -1,6 +1,6 @@
 // MapPickable の列を、選択ウィジェット(ObjectPicker)向けのジャンル別グループへ組む純関数。
 // マーカー(近地点/遠地点・相対AN/DN・赤道昇降交点・空クリック)はオブジェクトではないので出さない。
-import type { CelestialRegistry } from '../../physics/solar-system';
+import type { Ephemeris } from '../../physics/ephemeris';
 import { bodyClassOf } from '../celestial/body-class';
 import { celestialBodyName } from './frame/frame-labels';
 import type { MapPickable } from '../pickable/map-pickable';
@@ -27,7 +27,7 @@ export function lagrangePoint(id: string): { readonly parentId: string; readonly
 
 // items をジャンル別にグループ分けする。値は MapPickable.id。空のグループは返さない。
 export function groupPickables(
-  registry: CelestialRegistry, items: readonly MapPickable[], includeAllRegistryBodies = false,
+  ephemeris: Ephemeris, items: readonly MapPickable[], includeAllRegistryBodies = false,
 ): readonly ObjectPickerGroup<string>[] {
   const byLabel = new Map<typeof GROUP_LABELS[number], [string, string][]>();
   const bodyIds = new Set<string>();
@@ -43,7 +43,7 @@ export function groupPickables(
       case 'body':
         bodyIds.add(item.id);
         if (LAGRANGE_ID.test(item.id)) { push('ラグランジュ点', item.id, item.name); break; }
-        switch (bodyClassOf(registry, item.id)) {
+        switch (bodyClassOf(ephemeris, item.id)) {
           case 'star': push('恒星', item.id, item.name); break;
           case 'planet': push('惑星', item.id, item.name); break;
           case 'dwarf': push('準惑星', item.id, item.name); break;
@@ -63,9 +63,9 @@ export function groupPickables(
   // includeAllRegistryBodies が true なら「表示中の候補」に限らず、表示設定で
   // 除外された天体も含めて登録済み天体を全件補う。
   if (includeAllRegistryBodies) {
-    for (const id of Object.keys(registry)) {
+    for (const id of Object.keys(ephemeris.registry)) {
       if (bodyIds.has(id)) continue;
-      switch (bodyClassOf(registry, id)) {
+      switch (bodyClassOf(ephemeris, id)) {
         case 'star': push('恒星', id, celestialBodyName(id)); break;
         case 'planet': push('惑星', id, celestialBodyName(id)); break;
         case 'dwarf': push('準惑星', id, celestialBodyName(id)); break;

@@ -23,7 +23,6 @@ import { MenuAction, MenuCommon, MenuItem, type PauseMenu } from '../hud/windows
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/celestial-body';
-import { primaryOf } from '../../physics/solar-system';
 import type { MapPickables } from './map-pickables';
 
 interface PickHandler {
@@ -36,14 +35,14 @@ const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
 
 // 天体候補の親を解決する。通常の天体はレジストリから primaryOf で、ラグランジュ点は
 // ID の親部分から解決する。MapPickable は通常天体と派生したラグランジュ点をどちらも
-// kind:'body' で表すため、未登録の文字列を primaryOf へ渡さない境界をここに置く。
+// kind:'body' で表すため、未登録の文字列を主天体の解決へ渡さない境界をここに置く。
 // undefined は候補が不正/古い、null は恒星など親を持たない天体を表す。
 export function bodyParentId(ephemeris: Ephemeris, id: string): string | null | undefined {
   const registry = ephemeris.registry;
   const lagrangeParent = LAGRANGE_ID.test(id) ? lagrangeParentId(id) : undefined;
   if (lagrangeParent !== undefined) return lagrangeParent in registry ? lagrangeParent : undefined;
   if (!(id in registry)) return undefined;
-  return primaryOf(registry, id);
+  return ephemeris.motionOf(id).primary?.id ?? null;
 }
 
 export class MapPickableMenu {

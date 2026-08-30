@@ -13,8 +13,6 @@
 // 地球中心二体 + J2 + 抗力 + 日月三体であって制限三体問題そのものではないため、ここで返した
 // 状態を実際にゲーム内で積分すると軌道はドリフトする。
 import { Ephemeris } from './ephemeris';
-import { OrbitingId } from './celestial-body';
-import { bodyDef, primaryOf } from './solar-system';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from '../math/vec3';
 import { Vec3Tuple } from './cr3bp';
@@ -89,10 +87,11 @@ export function collinearLocalToBarycentric(params: CollinearParams, local: Vec3
 // 位置・回転フレームは ephemeris.ts の既存 API から取得し、質量比・距離比だけをここで
 // 計算する。gamma は ephemeris.ts が内部に持つ近似値を公開していないため、公開済みの
 // L点座標から逆算して一貫性を取る。
-export function collinearFrame(secondary: OrbitingId, point: CollinearPoint, t: number, ephemeris: Ephemeris): CollinearFrame {
-  const def = bodyDef(ephemeris.registry, secondary);
-  const primary = primaryOf(ephemeris.registry, secondary);
-  if (primary === null) throw new Error(`collinearFrame: ${secondary} に主星が無いレジストリでは共線点は定義できない`);
+export function collinearFrame(secondary: string, point: CollinearPoint, t: number, ephemeris: Ephemeris): CollinearFrame {
+  const motion = ephemeris.motionOf(secondary);
+  const primaryMotion = motion.primary;
+  if (primaryMotion === null) throw new Error(`collinearFrame: ${secondary} に主星が無いレジストリでは共線点は定義できない`);
+  const primary = primaryMotion.id;
   const primaryPos = ephemeris.positionOf(primary, t);
   const secondaryPos = ephemeris.positionOf(secondary, t);
   const omega = ephemeris.orbitFrameRotationAt(secondary, t).omega;
@@ -100,7 +99,7 @@ export function collinearFrame(secondary: OrbitingId, point: CollinearPoint, t: 
   // (kepler-orbit.ts 参照)ので、omega の向きそのものが公転面法線と一致するとは限らない。
   // 歳差の有無によらず正しい公転面法線を orbitNormalAt から直接取る。
   const normal = ephemeris.orbitNormalAt(secondary, t);
-  const mu = def.mu / (bodyDef(ephemeris.registry, primary).mu + def.mu);
+  const mu = motion.def.mu / (primaryMotion.def.mu + motion.def.mu);
   const origin = ephemeris.lagrangeAt(secondary, t)[point];
 
   const rVec = sub(secondaryPos, primaryPos);
@@ -120,7 +119,7 @@ export function collinearFrame(secondary: OrbitingId, point: CollinearPoint, t: 
 }
 
 export interface LissajousParams {
-  readonly secondary: OrbitingId;
+  readonly secondary: string;
   readonly point: CollinearPoint;
   readonly ax: number; // 面内振幅 [m]
   readonly az: number; // 面外振幅 [m]
@@ -129,7 +128,7 @@ export interface LissajousParams {
 }
 
 export interface HaloParams {
-  readonly secondary: OrbitingId;
+  readonly secondary: string;
   readonly point: CollinearPoint;
   readonly az: number; // 面外振幅 [m](面内振幅は三次の振幅拘束から決まる)
   readonly phase?: number; // 面内位相 [rad]、既定 0
