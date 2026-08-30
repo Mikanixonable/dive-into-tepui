@@ -18,7 +18,7 @@ import type { ChoiceValue, GraphicsOptionKey, GraphicsSettingsData } from '../..
 import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/planet-orbit';
-import { R_SUN } from '../../src/physics/solar-system';
+import { R_SUN } from '../../src/physics/solar-system/constants';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
 import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';

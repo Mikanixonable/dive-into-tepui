@@ -3,7 +3,7 @@
 // 新しい軌道計算はしない。中心天体の選定・要素化・真近点角の算出は celestial-body.ts/elements.ts の
 // 既存関数(strongestAttractor/elementsAround/trueAnomalyAt/apsisAltitudes)をそのまま使う。
 import { KinematicState } from '../../physics/kinematic-state';
-import { CelestialBody, CelestialBodyId, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { CelestialBody, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { OrbitalElements, apsisAltitudes, trueAnomalyAt } from '../../physics/elements';
 import { toFrameState } from '../../physics/frame';
 import { Vec3, cross, dot, len, norm, v3 } from '../../math/vec3';
@@ -29,7 +29,7 @@ function raanArgpFromBasis(el: OrbitalElements): { raanDeg: number; argpDeg: num
 // 公転天体のみなので、恒星が選ばれた場合は ECI 原点(origin)へ落とす。放物線・双曲線軌道
 // (e>=1)は遠地点高度も基準天体の選択も意味を持たないため null。
 export function elementsFormFromState(
-  state: KinematicState, celestialBodies: readonly CelestialBody[], origin: CelestialBodyId,
+  state: KinematicState, celestialBodies: readonly CelestialBody[], origin: string,
 ): ElementsForm | null {
   const strongest = strongestAttractor(state.r, celestialBodies);
   const center = strongest.isStar ? celestialBodies.find((a) => a.id === origin) ?? strongest : strongest;

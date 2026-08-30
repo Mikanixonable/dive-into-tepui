@@ -2,7 +2,7 @@
 // 中で生まれて発達して消える。中心と深さは時刻の閉じた関数で、どの時刻へ飛んでも同じ配置になる。
 import * as THREE from 'three/webgpu';
 import { dot, exp, float, inverseSqrt, uniform } from 'three/tsl';
-import { R_EARTH } from '../../physics/solar-system';
+import { R_EARTH } from '../../physics/solar-system/constants';
 import { coreCrossingAngle } from './wind-law';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 

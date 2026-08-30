@@ -1,12 +1,11 @@
 // frame.ts の回帰テスト: 座標系(原点天体 × 回転)の点・KinematicState 順逆変換
 // （恒等・往復・既知回転角・速度の有限差分検証・bake+un-bake 合成・原点が動く系）。
+import { solarSystemEphemeris } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { SOLAR_SYSTEM, MU_EARTH } from '../../src/physics/solar-system';
+import { MU_EARTH } from '../../src/physics/solar-system/constants';
 import { FrameAnchors } from '../../src/game/frame-anchors';
-import { CelestialBodyId } from '../../src/physics/celestial-body';
-import { FrameAnchorId, FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
+import { FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Vec3, add, addScaled, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
@@ -20,7 +19,7 @@ function closeState(a: KinematicState, b: KinematicState, tol = 1e-6): boolean {
   return close(a.r, b.r, tol) && close(a.v, b.v, tol);
 }
 
-function findFrame(frames: readonly ReferenceFrame[], center: CelestialBodyId, rotatingWithId: CelestialBodyId | null): ReferenceFrame {
+function findFrame(frames: readonly ReferenceFrame[], center: string, rotatingWithId: string | null): ReferenceFrame {
   const f = frames.find((f) => f.center === center
     && (rotatingWithId === null ? f.rotatingWith === null : f.rotatingWith?.id === rotatingWithId));
   if (!f) throw new Error(`frame not found: ${center}/${rotatingWithId}`);
@@ -31,7 +30,7 @@ function findFrame(frames: readonly ReferenceFrame[], center: CelestialBodyId, r
 const NO_ANCHORS: FrameAnchorSource = { bodies: [], stateOf: () => null, attractorOf: () => null };
 
 export function register(): void {
-  const eph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.4 }); // 太陽・月とも初期位相を固定して決定的にする
+  const eph = solarSystemEphemeris({ moon: 0.4 }); // 太陽・月とも初期位相を固定して決定的にする
   const EARTH_INERTIAL = findFrame(eph.frames, 'earth', null);
   const SUN_EARTH_ROTATING = findFrame(eph.frames, 'earth', 'earth');
   const MOON_ROTATING = findFrame(eph.frames, 'earth', 'moon');
@@ -194,7 +193,7 @@ export function register(): void {
   // FrameAnchorSource: 役割トークン・機体など registry に無い基準・回転対象の解決(frame-anchors.ts の
   // 実装が満たすべき契約)。frameTransformAt/anchorStateAt 自身は毎回 source.stateOf を引くだけで
   // 状態を持たないので、"直前の状態を保つ" 側の責務は呼び出す source のスタブが担う。
-  const SHIP: FrameAnchorId = '@activeShip';
+  const SHIP: string = '@activeShip';
 
   test('frame: center が役割トークンのとき、source が返した状態が原点になる', () => {
     const t = 4321;
