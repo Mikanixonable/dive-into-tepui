@@ -22,6 +22,7 @@ import type { FrameSections } from './frame-sections';
 import type { CelestialSystem } from './game/celestial/celestial-system';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
+import { createJulianDate, TdbJulianDate } from './physics/time';
 
 // アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
 // そのステージクラスを返す。再開できる情報が無ければ null。
@@ -39,14 +40,20 @@ function fallbackResult(phase: GamePhase): StageResult {
   return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
 }
 
+// スナップショットが持つ元期。無い(旧形式)なら null。
+function savedEpoch(save: GameSaveData | undefined): TdbJulianDate | null {
+  const jdTdb = save?.ephemerisContext?.epochJdTdb;
+  return jdTdb === undefined ? null : createJulianDate('TDB', jdTdb);
+}
+
 // ローディング表示の下で、このステージの星系を組む。
 async function initCelestialSystem(
   stageClass: StageClass, phaseOffsets: Partial<Record<string, number>>, earthSpinPhase0: number,
-  startSimTime?: number,
+  epoch: TdbJulianDate,
 ): Promise<CelestialSystem> {
   showLoading();
   try {
-    return await stageClass.createCelestialSystem(phaseOffsets, earthSpinPhase0, setLoadingProgress, startSimTime);
+    return await stageClass.createCelestialSystem(phaseOffsets, earthSpinPhase0, epoch, setLoadingProgress);
   } finally {
     hideLoading();
   }
@@ -88,8 +95,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (this.transitioning) return;
     this.transitioning = true;
     try {
-      const { stageClass, startSimTime } = await this.resolveStage();
-      await this.startRun(stageClass, undefined, startSimTime);
+      const { stageClass, startEpoch } = await this.resolveStage();
+      await this.startRun(stageClass, undefined, startEpoch);
     } finally {
       this.transitioning = false;
     }
@@ -97,7 +104,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // ?title=1 は選択画面へ強制する。?stage= は共有リンク・デバッグ用の明示指定として最優先。
   // どちらも無ければアクティブスロットの直近起動を再開し、それも無ければ選択画面を出す。
-  private async resolveStage(): Promise<{ stageClass: StageClass; startSimTime?: number }> {
+  private async resolveStage(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
     const params = new URLSearchParams(location.search);
     if (params.get('title') !== '1') {
       const fromParam = findStageClass(params.get('stage'));
@@ -109,7 +116,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   }
 
   // 選択画面を出し、選ばれたステージクラス(クリエイティブなら開始日時も)で解決される Promise を返す。
-  private selectStageScreen(): Promise<{ stageClass: StageClass; startSimTime?: number }> {
+  private selectStageScreen(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
     return selectStage(
       this.unlockManager,
       () => { if (!this.hud.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
@@ -129,17 +136,21 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   }
 
   // 現在の周回を畳んだ上で、天体暦の構築から Game の生成までを行い、起動をスロットへ記録する。
-  private async startRun(stageClass: StageClass, snapshotId?: string, startSimTime?: number): Promise<void> {
+  private async startRun(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): Promise<void> {
     this.endRun();
-    const initialSave = this.initialSaveFor(stageClass, snapshotId, startSimTime);
+    const initialSave = this.initialSaveFor(stageClass, snapshotId, startEpoch);
+    // このランの元期。スナップショットを読むならその元期をそのまま継ぐ(照合はしない) —
+    // 保存されている simTime はその元期からの経過秒なので、別の元期で組むと全天体がずれる。
+    // 次に開始日時の指定、最後にステージの宣言。**星系を組む前に決まっていなければならない。**
+    const epoch = savedEpoch(initialSave) ?? startEpoch ?? stageClass.epoch;
     // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
     const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
     const celestialSystem = await initCelestialSystem(
-      stageClass, initialSave?.phaseOffsets ?? {}, earthSpinPhase0, startSimTime,
+      stageClass, initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch,
     );
     this.game = new Game(
       this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu, this.unlockManager,
-      this.sections, celestialSystem, this.pipeline, initialSave, startSimTime,
+      this.sections, celestialSystem, this.pipeline, initialSave,
     );
     // AudioContext は実際のユーザー操作でしか作れないため、unlock は入力エッジの発火点へ配線する。
     // Input は周回ごとに作り直されるので、配線もそのたびに張り直す。
@@ -153,20 +164,20 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // snapshotId を最優先で使う。無ければ、起動するステージがアクティブスロットの直前起動と
   // 同じ場合(=そのスロットで進行中だった周回の再開)に限り、そのステージの最新スナップショット
-  // を自動で復元する。startSimTime が明示されている(クリエイティブモードの開始日時指定画面で
-  // 選んだ)場合は、その日時を新規開始の起点として使うべきなので自動復元の対象から外す —
-  // 外さないと直前セッションのスナップショットの simTime が指定日時を上書きしてしまう。
+  // を自動で復元する。startEpoch が明示されている(開始日時の指定画面で選んだ)場合は、その
+  // 日時を新規開始の元期として使うべきなので自動復元の対象から外す — 外さないと直前セッションの
+  // スナップショットの元期が指定日時を上書きしてしまう。
   // noteLaunched は Game 構築後に呼ばれるため、この時点の lastStageId は今回の起動より前の
   // 値を指している。本体の欠損・バージョン不一致・ステージ不一致は SnapshotService.load() に
   // 判定させ、復元できない場合は通常の新規起動状態をそのまま使う。
-  private initialSaveFor(stageClass: StageClass, snapshotId?: string, startSimTime?: number): GameSaveData | undefined {
+  private initialSaveFor(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): GameSaveData | undefined {
     const activeSlotId = this.slots.activeSlotId;
-    const resumesLastLaunchedStage = startSimTime === undefined
+    const resumesLastLaunchedStage = startEpoch === undefined
       && activeSlotId !== null && this.slots.activeSlot()?.lastStageId === stageClass.id;
     const initialSnapshotId = snapshotId
       ?? (resumesLastLaunchedStage ? this.slots.latestSnapshot(activeSlotId, stageClass.id)?.id ?? null : null);
     const initialSave = initialSnapshotId !== null
-      ? this.snapshotService.load(initialSnapshotId, stageClass.id, stageClass.epoch) ?? undefined
+      ? this.snapshotService.load(initialSnapshotId, stageClass.id) ?? undefined
       : undefined;
     // ロードした時点より後の自動スナップショットは、もう起きなかった未来なので破棄する。
     if (initialSave && initialSnapshotId !== null) this.slots.discardAfter(initialSnapshotId);
@@ -217,7 +228,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
     this.selectStageScreen()
-      .then(({ stageClass, startSimTime }) => this.startRun(stageClass, undefined, startSimTime))
+      .then(({ stageClass, startEpoch }) => this.startRun(stageClass, undefined, startEpoch))
       .catch((err) => this.fail(err))
       .finally(() => { this.transitioning = false; });
   }
@@ -240,10 +251,10 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.transitioning = true;
     this.endRun();
     const resumed = resumableStageClass(this.unlockManager, this.slots);
-    const resolved: Promise<{ stageClass: StageClass; startSimTime?: number }> =
+    const resolved: Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> =
       resumed !== null ? Promise.resolve({ stageClass: resumed }) : this.selectStageScreen();
     resolved
-      .then(({ stageClass, startSimTime }) => this.startRun(stageClass, undefined, startSimTime))
+      .then(({ stageClass, startEpoch }) => this.startRun(stageClass, undefined, startEpoch))
       .catch((err) => this.fail(err))
       .finally(() => { this.transitioning = false; });
   }
