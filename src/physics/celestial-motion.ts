@@ -1,12 +1,13 @@
-// 天体1体の運動。**恒星中心まで**の位置・速度・加速度を合成し、自転姿勢・2次重力場・大気・
-// 公転回転基準系を時刻から答える。原点をどこに置くかは系レベルの選択なので、ECI 化は
-// celestial-body-windows.ts が行い、ここは原点天体を知らない。
+// 天体1体の運動。解析暦では**恒星中心まで**、暦パックでは**太陽系重心中心まで**の位置・
+// 速度・加速度を合成し、自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。原点を
+// どこに置くかは系レベルの選択なので、ECI 化は celestial-body-windows.ts が行い、ここは
+// 原点天体を知らない。暦は**自分1体ぶんだけ**を持ち(bindEphemeris)、系全体の暦を知らない。
 // 恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
 // 評価結果は時刻 t をキーにした固定長リング(TimeRing)でメモ化する。
 // THREE/DOM 非依存。
 import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp } from './attitude';
-import { HelioEphemeris } from './absolute-ephemeris';
+import { BodyEphemeris } from './body-ephemeris';
 import { Degree2Gravity } from './celestial-body';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
@@ -103,13 +104,21 @@ export abstract class CelestialMotion {
   // 主天体。惑星なら恒星(恒星の無い星系では null)、衛星ならその惑星、恒星自身は null。
   abstract get primary(): CelestialMotion | null;
 
+  // この天体1体ぶんの高精度暦。**系全体の暦ではない** — 収録されていない天体では null で、
+  // 「収録されているか」は構築時に確定する。CelestialSystem が構築直後に1度だけ差し込む。
+  private bodyEphemeris: BodyEphemeris | null = null;
+
   protected constructor(
-    // 高精度暦パック。持たない構成では null。
-    protected readonly precise: HelioEphemeris | null,
     // 自転の初期位相 [rad]。eciPole の自転モデルの位相原点をこれだけ進める(iau は w0 が、
     // 同期回転は軌道が位相を持つ)。
     readonly spinPhase0: number = 0,
   ) {}
+
+  // 自分の暦を結ぶ。**暦を持たない構成でも null で1度呼ぶ** — 呼ばれないままの天体は
+  // 暦を持たないものとして解析経路だけを通る。
+  bindEphemeris(ephemeris: BodyEphemeris | null): void {
+    this.bodyEphemeris = ephemeris;
+  }
 
   get id(): string {
     return this.def.id;
@@ -154,17 +163,20 @@ export abstract class CelestialMotion {
     return { hits: 0, misses: 0 };
   }
 
-  // 暦パックが答えるこの天体の恒星中心位置・速度。パックを持たない・有効期間外・この天体を
-  // 答えられないのいずれかなら null。
-  packedHelioStateAt(t: number): KinematicState<'helio'> | null {
-    const precise = this.precise;
-    if (precise === null || !precise.isValidAt(t)) return null;
-    return this.packedStateAt(precise, t);
+  // **自分自身が暦に収録されている場合の**重心中心位置・速度。暦を持たない・有効期間外なら
+  // null。派生クラスが補完を足す packedStateAt とは別物で、**補完を混ぜてはいけない場所**
+  // (回転基準系・軌道法線)はこちらを使う。
+  ownPackedStateAt(t: number): KinematicState<'barycentric'> | null {
+    const ephemeris = this.bodyEphemeris;
+    if (ephemeris === null) return null;
+    if (t < ephemeris.validStartSimTime || t > ephemeris.validEndSimTime) return null;
+    return ephemeris.stateAt(t);
   }
 
-  // 暦パックが収録するこの天体の恒星中心位置・速度。収録されていなければ null。
-  protected packedStateAt(precise: HelioEphemeris, t: number): KinematicState<'helio'> | null {
-    return precise.hasBody(this.id) ? precise.stateOf(this.id, t) : null;
+  // 暦パックが答えるこの天体の重心中心位置・速度。答えられなければ null。
+  // 衛星は自分が未収録でも親から補うので、この口は派生クラスが上書きしうる。
+  packedStateAt(t: number): KinematicState<'barycentric'> | null {
+    return this.ownPackedStateAt(t);
   }
 
 }
@@ -172,10 +184,8 @@ export abstract class CelestialMotion {
 export class StarMotion extends CelestialMotion {
   readonly kind: CelestialKind = 'star';
 
-  constructor(
-    readonly def: StarDef, precise: HelioEphemeris | null,
-  ) {
-    super(precise);
+  constructor(readonly def: StarDef) {
+    super();
   }
 
   // 恒星は階層の根。
@@ -316,14 +326,17 @@ export abstract class OrbitingMotion extends CelestialMotion {
     return this.def.mu / (primaryMu + this.def.mu);
   }
 
-  // 暦パックが自分と主天体の両方を収録している有効期間での、主天体相対の位置・速度。
-  // 引けなければ null。
+  // 暦パックが自分と主天体の両方を**直接**収録している有効期間での、主天体相対の位置・速度。
+  // 引けなければ null。**衛星の補完(親 + 解析の相対)は使わない** — 使うと解析の周期項が
+  // 入り、回転基準系が平均要素基準から実位置基準へ変わってしまう(satellite-orbit.ts の
+  // 2.5° のずれの話)。
   private packedPrimaryRelStateAt(t: number): KinematicState<'primaryRel'> | null {
-    const precise = this.precise;
     const primary = this.primary;
-    if (precise === null || primary === null) return null;
-    if (!precise.isValidAt(t) || !precise.hasBody(this.id) || !precise.hasBody(primary.id)) return null;
-    return toPrimaryRelative(t, precise.stateOf(this.id, t), precise.stateOf(primary.id, t));
+    if (primary === null) return null;
+    const own = this.ownPackedStateAt(t);
+    const primaryState = primary.ownPackedStateAt(t);
+    if (own === null || primaryState === null) return null;
+    return toPrimaryRelative(t, own, primaryState);
   }
 }
 
@@ -338,9 +351,9 @@ export class PlanetMotion extends OrbitingMotion {
   // を使う** — 系と本体を結び忘れずに作れる唯一の入口。
   constructor(
     readonly def: PlanetDef, readonly star: StarMotion | null, readonly system: PlanetSystem,
-    precise: HelioEphemeris | null, spinPhase0 = 0,
+    spinPhase0 = 0,
   ) {
-    super(precise, spinPhase0);
+    super(spinPhase0);
   }
 
   get primary(): CelestialMotion | null { return this.star; }
@@ -399,11 +412,8 @@ export class SatelliteMotion extends OrbitingMotion {
 
   // system は自分が属する惑星-衛星系。自分をその重心補正の対象として登録するので、惑星本体の
   // 日心状態を初めて引く前に全衛星を作り終えていなければならない。
-  constructor(
-    readonly def: SatelliteDef, readonly system: PlanetSystem,
-    precise: HelioEphemeris | null,
-  ) {
-    super(precise);
+  constructor(readonly def: SatelliteDef, readonly system: PlanetSystem) {
+    super();
     system.addSatellite(this);
   }
 
@@ -441,11 +451,11 @@ export class SatelliteMotion extends OrbitingMotion {
   }
 
   // 未収録の衛星は、収録済みの惑星へ惑星相対モデルを足して補う。
-  protected override packedStateAt(precise: HelioEphemeris, t: number): KinematicState<'helio'> | null {
-    const own = super.packedStateAt(precise, t);
+  override packedStateAt(t: number): KinematicState<'barycentric'> | null {
+    const own = this.ownPackedStateAt(t);
     if (own !== null) return own;
-    if (!precise.hasBody(this.planet.id)) return null;
-    return addPrimaryRelative(precise.stateOf(this.planet.id, t), this.relStateAt(t));
+    const planet = this.planet.ownPackedStateAt(t);
+    return planet === null ? null : addPrimaryRelative(planet, this.relStateAt(t));
   }
 
   // 惑星相対状態そのもの(キャッシュを経由しない評価)。

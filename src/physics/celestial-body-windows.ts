@@ -9,10 +9,11 @@ import { KinematicState, toEci } from './kinematic-state';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 import { Vec3, sub } from '../math/vec3';
 
-// 時刻 t における ECI 原点天体の恒星中心状態。ephemeris が null なら暦パックはこの時刻を
-// 答えられないので、全天体が解析経路へ落ちる。
+// 時刻 t における ECI 原点天体の状態。**2つの経路は原点が違う**(暦パックは太陽系重心中心、
+// 解析暦は恒星中心)が、ECI 化はどちらも同じ経路どうしの差なので原点は打ち消える。
+// ephemeris が null なら暦パックはこの時刻を答えられないので、全天体が解析経路へ落ちる。
 type OriginState = {
-  readonly ephemeris: KinematicState<'helio'> | null;
+  readonly ephemeris: KinematicState<'barycentric'> | null;
   readonly analytic: KinematicState<'helio'>;
   readonly accel: Vec3;
 };
@@ -108,7 +109,7 @@ export class CelestialBodyWindows {
     const origin = this.originAt(t);
     // 原点が暦パックで引けない時刻では、この天体も引かずに解析経路へ揃える。
     const originEphemeris = origin.ephemeris;
-    const ephemeris = originEphemeris === null ? null : motion.packedHelioStateAt(t);
+    const ephemeris = originEphemeris === null ? null : motion.packedStateAt(t);
     return cache.put(t, {
       id: def.id, mu: def.mu, radius: def.radius,
       state: ephemeris === null || originEphemeris === null
@@ -125,7 +126,7 @@ export class CelestialBodyWindows {
     const cached = this.originCache.get(t);
     if (cached !== undefined) return cached;
     return this.originCache.put(t, {
-      ephemeris: this.origin.packedHelioStateAt(t),
+      ephemeris: this.origin.packedStateAt(t),
       analytic: this.origin.helioStateAt(t),
       accel: this.origin.helioAccelAt(t),
     });

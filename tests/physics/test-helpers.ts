@@ -1,6 +1,6 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
-import { AbsoluteEphemeris, BarycentricState, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
+import { AbsoluteEphemeris, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
 import { BodyEphemeris } from '../../src/physics/body-ephemeris';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { KinematicState } from '../../src/physics/kinematic-state';
@@ -105,29 +105,20 @@ export function assertOmegaMatchesBasis(rot: (t: number) => FrameRotation, t: nu
 export function testEphemerisSource(
   validStartSimTime: number,
   validEndSimTime: number,
-  stateOf: (id: string, simTime: number) => BarycentricState | null,
+  stateOf: (id: string, simTime: number) => { readonly r: Vec3; readonly v: Vec3 } | null,
 ): AbsoluteEphemeris {
-  const bodyEphemerisOf = (id: string): BodyEphemeris | null => {
-    if (stateOf(id, validStartSimTime) === null) return null;
-    return {
-      validStartSimTime,
-      validEndSimTime,
-      stateAt: (simTime: number) => {
-        const state = stateOf(id, simTime);
-        if (state === null) throw new Error(`testEphemerisSource: 収録していない天体 id: ${id}`);
-        return kinematicState<'barycentric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
-      },
-    };
-  };
   return {
-    validStartSimTime,
-    validEndSimTime,
-    hasBody: (id) => stateOf(id, validStartSimTime) !== null,
-    barycentricStateOf: (id, simTime) => {
-      const state = stateOf(id, simTime);
-      if (state === null) throw new Error(`testEphemerisSource: 収録していない天体 id: ${id}`);
-      return state;
+    bodyEphemerisOf: (id: string): BodyEphemeris | null => {
+      if (stateOf(id, validStartSimTime) === null) return null;
+      return {
+        validStartSimTime,
+        validEndSimTime,
+        stateAt: (simTime: number) => {
+          const state = stateOf(id, simTime);
+          if (state === null) throw new Error(`testEphemerisSource: 収録していない天体 id: ${id}`);
+          return kinematicState<'barycentric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
+        },
+      };
     },
-    bodyEphemerisOf,
   };
 }
