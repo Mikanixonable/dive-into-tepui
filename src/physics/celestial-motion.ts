@@ -11,12 +11,12 @@ import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedT
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import {
   FrameRotation, JULIAN_CENTURY, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal,
-  keplerOrbitAtEpoch, keplerOrbitRotation, keplerOrbitState,
+  keplerOrbitAtEpoch, keplerOrbitRotation,
 } from './kepler-orbit';
 import {
   LagrangePoints, collinearClearanceRatio, hasStableTriangularPoints, lagrangePoints,
 } from './lagrange';
-import { planetAngles } from './planet-orbit';
+import type { PlanetSystem } from './planet-system';
 import { SatelliteOrbit, satelliteOrbitAtEpoch, satelliteState } from './satellite-orbit';
 import {
   Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelAtEpoch,
@@ -435,28 +435,21 @@ export abstract class OrbitingMotion extends CelestialMotion {
 export class PlanetMotion extends OrbitingMotion {
   readonly kind: CelestialKind = 'planet';
 
-  private readonly moons: SatelliteMotion[] = [];
   private readonly helioCache = new TimeRing<KinematicState<'helio'>>();
 
-  // star は主星。恒星を持たない星系では null を渡す。spinPhase0 は自転の初期位相 [rad]
-  // (eciPole の自転モデルを持つ惑星だけが意味を持つ)。
+  // star は主星。恒星を持たない星系では null を渡す。system は自分が属する惑星-衛星系で、
+  // 軌道と衛星の一覧はそちらが持つ。spinPhase0 は自転の初期位相 [rad](eciPole の自転
+  // モデルを持つ惑星だけが意味を持つ)。**組むときは planet-system.ts の planetSystem()
+  // を使う** — 系と本体を結び忘れずに作れる唯一の入口。
   constructor(
-    readonly def: PlanetDef, readonly star: StarMotion | null,
+    readonly def: PlanetDef, readonly star: StarMotion | null, readonly system: PlanetSystem,
     precise: HelioEphemeris | null, origin: EciOrigin, spinPhase0 = 0,
   ) {
     super(precise, origin, spinPhase0);
   }
 
   get primary(): CelestialMotion | null { return this.star; }
-  get keplerOrbit(): KeplerOrbit { return this.def.orbit; }
-
-  // この惑星を回る衛星(登録順)。
-  get satellites(): readonly SatelliteMotion[] { return this.moons; }
-
-  // 衛星をこの惑星の重心補正の対象として登録する。
-  addSatellite(satellite: SatelliteMotion): void {
-    this.moons.push(satellite);
-  }
+  get keplerOrbit(): KeplerOrbit { return this.system.orbit; }
 
   // 惑星本体の日心状態。
   helioStateAt(t: number): KinematicState<'helio'> {
@@ -478,8 +471,9 @@ export class PlanetMotion extends OrbitingMotion {
   // 重心の日心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)ぶんを引く
   // (重心補正。位置・速度の両方に効く)。
   private computeHelioStateAt(t: number): KinematicState<'helio'> {
-    const bary = this.baryHelioStateAt(t);
-    if (this.moons.length === 0) return bary;
+    const bary = this.system.helioStateAt(t);
+    const moons = this.system.satellites;
+    if (moons.length === 0) return bary;
     // mu = 0 は「質量が未測定」であって質量0ではない。本体の質量が分からない系では重心の
     // 位置も決まらないので、補正せず本体を重心に置いたままにする — 補正すると衛星の質量比が
     // 1 になり、本体が衛星との距離ぶんまるごとずれる。
@@ -487,24 +481,17 @@ export class PlanetMotion extends OrbitingMotion {
 
     // 重心を分け合う全質量(惑星本体 + 全衛星)に対する各衛星の比で、重心から差し引く量を決める。
     let muTotal = this.def.mu;
-    for (const moon of this.moons) muTotal += moon.def.mu;
+    for (const moon of moons) muTotal += moon.def.mu;
 
     let r = bary.r;
     let v = bary.v;
-    for (const moon of this.moons) {
+    for (const moon of moons) {
       const rel = moon.relStateAt(t);
       const w = moon.def.mu / muTotal;
       r = addScaled(r, rel.r, -w);
       v = addScaled(v, rel.v, -w);
     }
     return kinematicState<'helio'>(t, r, v);
-  }
-
-  // 惑星-衛星系重心の日心状態。惑星の軌道は中心が恒星なので、主天体相対がそのまま恒星中心
-  // になる — 原点の読み替えはここだけで起きる。
-  private baryHelioStateAt(t: number): KinematicState<'helio'> {
-    const s = keplerOrbitState(this.def.orbit, t);
-    return kinematicState<'helio'>(t, s.r, s.v);
   }
 }
 
@@ -513,21 +500,24 @@ export class SatelliteMotion extends OrbitingMotion {
 
   private readonly relCache = new TimeRing<KinematicState<'primaryRel'>>();
 
-  // 自分を planet の重心補正の対象として登録する。惑星本体の位置はこの登録に依存するので、
-  // 惑星の日心状態を初めて引く前に全衛星を作り終えていなければならない。
+  // system は自分が属する惑星-衛星系。自分をその重心補正の対象として登録するので、惑星本体の
+  // 日心状態を初めて引く前に全衛星を作り終えていなければならない。
   constructor(
-    readonly def: SatelliteDef, readonly planet: PlanetMotion,
+    readonly def: SatelliteDef, readonly system: PlanetSystem,
     precise: HelioEphemeris | null, origin: EciOrigin,
   ) {
     super(precise, origin);
-    planet.addSatellite(this);
+    system.addSatellite(this);
   }
+
+  // 主天体である惑星本体。
+  get planet(): PlanetMotion { return this.system.body; }
 
   get primary(): CelestialMotion { return this.planet; }
   get keplerOrbit(): KeplerOrbit { return this.def.orbit.kepler; }
 
-  // 惑星相対の位置・速度。太陽の方向は惑星-衛星系重心の軌道が持つ平均角度(planetAngles)
-  // から取るので循環しない。
+  // 惑星相対の位置・速度。太陽の方向は系の重心が持つ平均角から取るので、惑星本体の位置に
+  // 依存しない。
   relStateAt(t: number): KinematicState<'primaryRel'> {
     const cached = this.relCache.get(t);
     if (cached !== undefined) return cached;
@@ -561,6 +551,6 @@ export class SatelliteMotion extends OrbitingMotion {
 
   // 惑星相対状態そのもの(キャッシュを経由しない評価)。
   private computeRelStateAt(t: number): KinematicState<'primaryRel'> {
-    return satelliteState(this.def.orbit, planetAngles(this.planet.def.orbit, t), t);
+    return satelliteState(this.def.orbit, this.system.anglesAt(t), t);
   }
 }
