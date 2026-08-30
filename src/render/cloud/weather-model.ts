@@ -1,7 +1,9 @@
 // 状態を持たない天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流と
 // 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
 // 見えのための調整値。
-import { abs, clamp, cos, dot, exp, float, fract, max, mix, normalize, tanh, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import {
+  abs, clamp, cos, dot, exp, float, fract, inverseSqrt, max, mix, normalize, tanh, uniform, vec2, vec3, vec4,
+} from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../physics/solar-system';
@@ -77,10 +79,16 @@ const BEND_STEP = 0.02;
 const CONVECTION_FRICTION = 3 * FRICTION_RATE;
 
 // 移流の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
-const ADVECTION_PERIOD = 12 * 3600;
+// **背景の雲がどれだけ伸びるかを決めるのはここ。** 伸びは 1 歩のあいだに風が空間で変わる量から出る
+// ので、風そのものを速くしても増えず、歩を長く取ったぶんだけ増える。
+const ADVECTION_PERIOD = 20 * 3600;
 // 対流を流す 1 歩を、湿度の 1 歩の何倍の長さに取るか。1 周期の変位が写しに載る粒(80〜40 km)より
-// 大きいと、粒は流れの向きへ伸びる。並の対流の風(3.6 m/s)で 200 km。
+// 大きいと、粒は流れの向きへ伸びる。
 const CONVECTION_ADVECTION = 1.3;
+// 対流の 1 歩が渦のまわりを巻く角の上限 [rad]。台風の芯では流れが 3 周ぶん巻き、半径ごとに違う角だけ
+// 捻れた粒が髪のような筋へ潰れる。1 歩をここへ漸近するまで縮めると、縮むのは芯から 600 km の内側だけで、
+// 巻きの浅い背景(0.9 rad)は 6% しか変わらない。
+const CONVECTION_WINDING = 2.5;
 // 渦の目。移流の後の湿度をこれだけ下げる。目は渦とともに動く定常の構造なので、風に流さない。
 // 眼壁は上昇流が頭打ちに張り付いて飽和しているので、そこを貫く深さが要る。
 const EYE_DRYNESS = 0.55;
@@ -240,13 +248,17 @@ export class WeatherModel {
     // 遡る秒数 [s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
     const stepA = phaseA.mul(-ADVECTION_PERIOD);
     const stepB = phaseB.mul(-ADVECTION_PERIOD);
+    // 対流の 1 歩の倍率。巻きが CONVECTION_WINDING を超える渦の中だけ縮み、超えない所では
+    // CONVECTION_ADVECTION 倍のまま。
+    const winding = abs(convectionWind.turn).mul(ADVECTION_PERIOD * CONVECTION_ADVECTION / CONVECTION_WINDING);
+    const convectionStep = inverseSqrt(winding.mul(winding).add(1)).mul(CONVECTION_ADVECTION);
     const humidity = this.humiditySource;
     const convection = this.convectionSource;
     return vec3(
       mix(sourceAt(humidity, wind, stepB).xy, sourceAt(humidity, wind, stepA).xy, weightA),
       mix(
-        sourceAt(convection, convectionWind, stepB.mul(CONVECTION_ADVECTION)).r,
-        sourceAt(convection, convectionWind, stepA.mul(CONVECTION_ADVECTION)).r, weightA),
+        sourceAt(convection, convectionWind, stepB.mul(convectionStep)).r,
+        sourceAt(convection, convectionWind, stepA.mul(convectionStep)).r, weightA),
     );
   }
 
