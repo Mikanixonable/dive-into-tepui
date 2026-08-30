@@ -35,8 +35,8 @@ export type BodyOrientation = { readonly axis: Vec3; readonly spinAngle: number 
 // 恒星中心で答えるが、ECI 化は同じ経路どうしの差を取るので原点は打ち消える。ephemeris が
 // null の時刻は、全天体が解析経路へ落ちる。
 type EciOriginState = {
-  readonly ephemeris: KinematicState<'barycentric'> | null;
-  readonly analytic: KinematicState<'helio'>;
+  readonly ephemeris: KinematicState<'packed'> | null;
+  readonly analytic: KinematicState<'analytic'>;
   readonly accel: Vec3;
 };
 
@@ -144,12 +144,12 @@ export abstract class CelestialMotion {
   }
 
   // 恒星中心の位置・速度。
-  abstract helioStateAt(t: number): KinematicState<'helio'>;
+  abstract analyticStateAt(t: number): KinematicState<'analytic'>;
 
   // 恒星中心の加速度。解析式の厳密な二階微分ではなく主天体まわりの二体近似 — 用途は RK4 の
   // 各段の時刻へ位置を外挿する2次補正項なので、この近似の誤差(太陽の潮汐項を落とすぶん、
   // 月で0.5%程度)は結果に効かない。
-  abstract helioAccelAt(t: number): Vec3;
+  abstract analyticAccelAt(t: number): Vec3;
 
   // 自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。自転モデルを持たない天体は null。
   // 位相は body-orientation.ts の基準方向(天体赤道と ECI 赤道の昇交点)から測る。
@@ -183,7 +183,7 @@ export abstract class CelestialMotion {
   }
 
   // 自分自身が暦に収録されている範囲での重心中心位置・速度。収録外・有効期間外では null。
-  ownPackedStateAt(t: number): KinematicState<'barycentric'> | null {
+  ownPackedStateAt(t: number): KinematicState<'packed'> | null {
     const ephemeris = this.bodyEphemeris;
     if (ephemeris === null) return null;
     if (t < ephemeris.validStartSimTime || t > ephemeris.validEndSimTime) return null;
@@ -191,7 +191,7 @@ export abstract class CelestialMotion {
   }
 
   // 暦パックが答えるこの天体の重心中心位置・速度。答えられなければ null。
-  packedStateAt(t: number): KinematicState<'barycentric'> | null {
+  packedStateAt(t: number): KinematicState<'packed'> | null {
     return this.ownPackedStateAt(t);
   }
 
@@ -215,9 +215,9 @@ export abstract class CelestialMotion {
     return this.eciCache.put(t, {
       id: def.id, mu: def.mu, radius: def.radius,
       state: ephemeris === null || originEphemeris === null
-        ? toEci(t, this.helioStateAt(t), origin.analytic)
+        ? toEci(t, this.analyticStateAt(t), origin.analytic)
         : toEci(t, ephemeris, originEphemeris),
-      accel: sub(this.helioAccelAt(t), origin.accel),
+      accel: sub(this.analyticAccelAt(t), origin.accel),
       degree2: this.degree2At(t), atmosphere: this.atmosphereAt(t),
       isStar: this.kind === 'star',
     });
@@ -230,8 +230,8 @@ export abstract class CelestialMotion {
     if (cached !== undefined) return cached;
     return this.eciOriginCache.put(t, {
       ephemeris: this.packedStateAt(t),
-      analytic: this.helioStateAt(t),
-      accel: this.helioAccelAt(t),
+      analytic: this.analyticStateAt(t),
+      accel: this.analyticAccelAt(t),
     });
   }
 
@@ -254,12 +254,12 @@ export class StarMotion extends CelestialMotion {
   get primary(): CelestialMotion | null { return null; }
 
   // 恒星は日心座標系の原点そのもの。
-  helioStateAt(t: number): KinematicState<'helio'> {
-    return kinematicState<'helio'>(t, v3(0, 0, 0), v3(0, 0, 0));
+  analyticStateAt(t: number): KinematicState<'analytic'> {
+    return kinematicState<'analytic'>(t, v3(0, 0, 0), v3(0, 0, 0));
   }
 
   // 日心座標系の原点そのものなので静止している。
-  helioAccelAt(): Vec3 {
+  analyticAccelAt(): Vec3 {
     return v3();
   }
 
@@ -404,7 +404,7 @@ export abstract class OrbitingMotion extends CelestialMotion {
 export class PlanetMotion extends OrbitingMotion {
   readonly kind: CelestialKind = 'planet';
 
-  private readonly helioCache = new TimeRing<KinematicState<'helio'>>();
+  private readonly analyticCache = new TimeRing<KinematicState<'analytic'>>();
 
   // star は主星。恒星を持たない星系では null を渡す。system は自分が属する惑星-衛星系で、
   // 軌道と衛星の一覧はそちらが持つ。spinPhase0 は自転の初期位相 [rad](eciPole の自転
@@ -421,28 +421,28 @@ export class PlanetMotion extends OrbitingMotion {
   get keplerOrbit(): KeplerOrbit { return this.system.orbit; }
 
   // 惑星本体の日心状態。
-  helioStateAt(t: number): KinematicState<'helio'> {
-    const cached = this.helioCache.get(t);
+  analyticStateAt(t: number): KinematicState<'analytic'> {
+    const cached = this.analyticCache.get(t);
     if (cached !== undefined) return cached;
-    return this.helioCache.put(t, this.computeHelioStateAt(t));
+    return this.analyticCache.put(t, this.computeAnalyticStateAt(t));
   }
 
   // 主星まわりの二体加速度。
-  helioAccelAt(t: number): Vec3 {
+  analyticAccelAt(t: number): Vec3 {
     const starMu = this.star === null ? 0 : this.star.def.mu;
-    return twoBodyAccel(this.helioStateAt(t).r, starMu + this.def.mu);
+    return twoBodyAccel(this.analyticStateAt(t).r, starMu + this.def.mu);
   }
 
   // 日心状態は自分の ECI 化と全衛星の恒星中心化から引かれるので、1時刻あたり 1 + 衛星数 回に
   // なる。重心補正が全衛星の相対位置を要るぶん重いので、そのぶんをここで畳む。
   get cacheStats(): TimeCacheStats {
-    return addTimeCacheStats(super.cacheStats, this.helioCache.stats);
+    return addTimeCacheStats(super.cacheStats, this.analyticCache.stats);
   }
 
   // 重心の日心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)ぶんを引く
   // (重心補正。位置・速度の両方に効く)。
-  private computeHelioStateAt(t: number): KinematicState<'helio'> {
-    const bary = this.system.helioStateAt(t);
+  private computeAnalyticStateAt(t: number): KinematicState<'analytic'> {
+    const bary = this.system.analyticStateAt(t);
     const moons = this.system.satellites;
     if (moons.length === 0) return bary;
     // mu = 0 は「質量が未測定」であって質量0ではない。本体の質量が分からない系では重心の
@@ -462,7 +462,7 @@ export class PlanetMotion extends OrbitingMotion {
       r = addScaled(r, rel.r, -w);
       v = addScaled(v, rel.v, -w);
     }
-    return kinematicState<'helio'>(t, r, v);
+    return kinematicState<'analytic'>(t, r, v);
   }
 }
 
@@ -493,14 +493,14 @@ export class SatelliteMotion extends OrbitingMotion {
   }
 
   // 惑星本体の日心状態に惑星相対状態を足す。
-  helioStateAt(t: number): KinematicState<'helio'> {
-    return addPrimaryRelative(this.planet.helioStateAt(t), this.relStateAt(t));
+  analyticStateAt(t: number): KinematicState<'analytic'> {
+    return addPrimaryRelative(this.planet.analyticStateAt(t), this.relStateAt(t));
   }
 
   // 惑星本体の日心加速度に惑星まわりの二体加速度を足す。
-  helioAccelAt(t: number): Vec3 {
+  analyticAccelAt(t: number): Vec3 {
     return add(
-      this.planet.helioAccelAt(t),
+      this.planet.analyticAccelAt(t),
       twoBodyAccel(this.relStateAt(t).r, this.planet.def.mu + this.def.mu),
     );
   }
@@ -512,7 +512,7 @@ export class SatelliteMotion extends OrbitingMotion {
   }
 
   // 未収録の衛星は、収録済みの惑星へ惑星相対モデルを足して補う。
-  override packedStateAt(t: number): KinematicState<'barycentric'> | null {
+  override packedStateAt(t: number): KinematicState<'packed'> | null {
     const own = this.ownPackedStateAt(t);
     if (own !== null) return own;
     const planet = this.planet.ownPackedStateAt(t);
