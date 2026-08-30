@@ -8,9 +8,10 @@ import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import * as C from '../const';
 import {
-  CelestialMotion, EciOrigin, OrbitingMotion, PhaseOffsets, PlanetDef, PlanetMotion, SatelliteDef,
+  CelestialMotion, EciOrigin, OrbitingMotion, PhaseOffsets, PlanetDef, SatelliteDef,
   planetDefAtEpoch, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../physics/celestial-motion';
+import { planetSystem } from '../../physics/planet-system';
 import { planetOrbit } from '../../physics/planet-orbit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
@@ -62,10 +63,10 @@ const ZEPHYRUS_I: SatelliteDef = {
 // 架空星系の運動を組む。恒星が無いので惑星の主星は null になる。
 function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[] {
   const origin = new EciOrigin();
-  const zephyrus = new PlanetMotion(planetDefAtEpoch(ZEPHYRUS, phases, 0), null, null, origin);
+  const zephyrus = planetSystem(planetDefAtEpoch(ZEPHYRUS, phases, 0), null, null, origin);
   const zephyrusI = new SatelliteMotion(satelliteDefAtEpoch(ZEPHYRUS_I, phases, 0), zephyrus, null, origin);
-  origin.set(zephyrus);
-  return [zephyrus, zephyrusI];
+  origin.set(zephyrus.body);
+  return [zephyrus.body, zephyrusI];
 }
 
 // 架空天体の見た目: 恒星なら太陽の見た目、それ以外は単色球。表示名は id をそのまま使う。
