@@ -86,8 +86,6 @@ export class CelestialSystem implements CelestialBodyWindows {
 
   // 同一時刻の集合。値は天体1体ずつが答えるので、ここが畳むのは配列の同一参照だけ。
   private readonly allCache = new TimeRing<readonly CelestialBody[]>();
-  private readonly gravityCache = new TimeRing<readonly CelestialBody[]>();
-  private readonly atmosphereCache = new TimeRing<readonly CelestialBody[]>();
 
   // 点群をシーンへ登録済みか。マップへ入るまで登録しない。
   private pointFieldBuilt = false;
@@ -184,7 +182,8 @@ export class CelestialSystem implements CelestialBodyWindows {
   // ---------------------------------------------------------- 系レベルの物理
 
   // 指定時刻の全登録天体(宣言順)。同一 t には同一の配列参照が返るので、**呼び出し側は
-  // この配列と要素を書き換えてはならない**(gravityAttractorsAt / atmosphere… も同じ)。
+  // この配列と要素を書き換えてはならない。** 天体1体ぶんの値は個体が畳んでいるので、
+  // gravityAttractorsAt / atmosphereCelestialBodiesAt が返す配列の要素もこれと同じ参照になる。
   celestialBodiesAt(t: number): readonly CelestialBody[] {
     const cached = this.allCache.get(t);
     if (cached !== undefined) return cached;
@@ -193,16 +192,12 @@ export class CelestialSystem implements CelestialBodyWindows {
 
   // 指定時刻の重力源天体(mu が 0 でないもの、宣言順)。
   gravityAttractorsAt(t: number): readonly CelestialBody[] {
-    const cached = this.gravityCache.get(t);
-    if (cached !== undefined) return cached;
-    return this.gravityCache.put(t, this.gravityEntities.map((b) => b.bodyAt(t)));
+    return this.gravityEntities.map((b) => b.bodyAt(t));
   }
 
   // 指定時刻の大気を持つ天体(宣言順)。抗力を掛ける1体を選ぶ側が引く窓。
   atmosphereCelestialBodiesAt(t: number): readonly CelestialBody[] {
-    const cached = this.atmosphereCache.get(t);
-    if (cached !== undefined) return cached;
-    return this.atmosphereCache.put(t, this.atmosphereEntities.map((b) => b.bodyAt(t)));
+    return this.atmosphereEntities.map((b) => b.bodyAt(t));
   }
 
   // 1天体ぶんの時刻 t での重力源表現。予測弧の候補供給(FutureCelestialBodyProvider)もこれで満たす。
@@ -235,9 +230,7 @@ export class CelestialSystem implements CelestialBodyWindows {
     timeCacheHits: number; timeCacheMisses: number;
   } {
     const celestialBodies = this.allCache.stats;
-    let time = addTimeCacheStats(this.allCache.stats, this.gravityCache.stats);
-    time = addTimeCacheStats(time, this.atmosphereCache.stats);
-    time = addTimeCacheStats(time, this.eciTransform.cacheStats);
+    let time = addTimeCacheStats(this.allCache.stats, this.eciTransform.cacheStats);
     for (const entity of this.entities) time = addTimeCacheStats(time, entity.cacheStats);
     for (const motion of this.motions) time = addTimeCacheStats(time, motion.cacheStats);
     return {

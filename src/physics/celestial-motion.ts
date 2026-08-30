@@ -412,8 +412,11 @@ export class PlanetMotion extends OrbitingMotion {
 
   // この状態は自分の ECI 化・自分の二体加速度・全衛星の絶対位置から引かれるので、1時刻あたり
   // 2 + 衛星数 回になる。重心補正が全衛星の相対位置を要るぶん重いので、そのぶんをここで畳む。
+  // 系のキャッシュは惑星本体と1対1なので、ここで一緒に数える。
   get cacheStats(): TimeCacheStats {
-    return addTimeCacheStats(super.cacheStats, this.analyticCache.stats);
+    return addTimeCacheStats(
+      addTimeCacheStats(super.cacheStats, this.analyticCache.stats), this.system.cacheStats,
+    );
   }
 
   // 系の重心の太陽系重心状態から、Σ(μ_衛星/(μ_惑星+Σμ_衛星))·r_衛星(惑星相対)ぶんを引く
