@@ -270,13 +270,13 @@ export class ChebyshevEphemeris {
     const selected = this.segmentOf(bodyId, time);
     const evaluated = evaluateSegment(selected.segment, time);
     return {
-      state: kinematicState<'barycentric'>(time, evaluated.position, evaluated.velocity),
+      state: kinematicState<'icrf'>(time, evaluated.position, evaluated.velocity),
       segment: selected.segment,
       segmentIndex: selected.index,
     };
   }
 
-  stateOf(bodyId: string, time: number): KinematicState<'barycentric'> {
+  stateOf(bodyId: string, time: number): KinematicState<'icrf'> {
     return this.evaluate(bodyId, time).state;
   }
 
