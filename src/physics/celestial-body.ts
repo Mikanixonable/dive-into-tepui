@@ -138,7 +138,7 @@ export function frameOfCelestialBody(center: CelestialBody): FrameTransform {
 // strongestAttractor などで選んだ center をそのまま渡す。
 export function orbitalElementsOf(s: KinematicState, center: CelestialBody): OrbitalElements | null {
   const rel = toFrameState(frameOfCelestialBody(center), s);
-  return orbitalElementsFromState(kinematicState(s.t, rel.r, rel.v), center);
+  return orbitalElementsFromState(kinematicState<'primaryRel'>(s.t, rel.r, rel.v), center);
 }
 
 // state が周回している(離心率 1 未満の)主天体。frame.ts の FrameAnchorSource.attractorOf の
