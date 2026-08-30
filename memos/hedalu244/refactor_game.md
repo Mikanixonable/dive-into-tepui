@@ -51,7 +51,7 @@
 艦がいないときに前の艦のモード表示が凍結して残る。**本来は仮想パッドごと畳むべきで、それは
 `ViewManager.applyChrome` の側の話。**
 
-### 3. `Game` の責務境界(CODING-RULE 1.2 / 1.9)
+### 3. `Game` の責務境界(CODING-RULE 1.2 / 1.10)
 
 `game/game.ts` にオーケストレーション以外のメンバー(`setControlledBase` / `advanceSimulation` /
 `handlePointerInput` / `objectName` / `viewBadgeContext` / `proteinMotionFrameSample` 等)があり、
