@@ -12,6 +12,8 @@ export type FieldProjection = {
   readonly wrapT: THREE.Wrapping;
   // 1 texel が張る角 [rad](写しの中でいちばん細かい所)。標本化できない細かさを畳むのに使う。
   readonly texelAngle: FloatNode;
+  // 同じ角のいまの値。写しをどこまで粗く焼いてよいかを CPU 側で決めるのに使う。
+  readonly texelAngleValue: number;
   // uv(0..1)の指す単位方向。1 texel を焼くのに 1 回走る。
   directionAt(uv: Vec2Node): Vec3Node;
   // 単位方向を写す uv(0..1)。1 texel を焼くのに何度も走るので、費用はこちらが効く。
@@ -42,11 +44,13 @@ export class EquirectProjection implements FieldProjection {
   public readonly wrapS: THREE.Wrapping = THREE.RepeatWrapping;
   public readonly wrapT: THREE.Wrapping = THREE.ClampToEdgeWrapping;
   public readonly texelAngle: FloatNode;
+  public readonly texelAngleValue: number;
 
   // height は緯度 180° を割る texel 数。幅はその 2 倍。
   public constructor(public readonly height: number) {
     this.width = height * 2;
-    this.texelAngle = float(Math.PI / height);
+    this.texelAngleValue = Math.PI / height;
+    this.texelAngle = float(this.texelAngleValue);
   }
 
   public directionAt(uv: Vec2Node): Vec3Node {
@@ -99,6 +103,10 @@ export class OrthographicCap implements FieldProjection {
     this.east.value.set(cosLongitude, 0, -sinLongitude);
     this.north.value.set(-sinLatitude * sinLongitude, cosLatitude, -sinLatitude * cosLongitude);
     this.sinRadius.value = Math.sin(radius);
+  }
+
+  public get texelAngleValue(): number {
+    return (this.sinRadius.value * 2) / this.width;
   }
 
   public directionAt(uv: Vec2Node): Vec3Node {
