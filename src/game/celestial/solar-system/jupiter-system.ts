@@ -6,8 +6,9 @@ import ioTextureUrl from '../../../assets/2k_io.jpg';
 import jupiterTextureUrl from '../../../assets/2k_jupiter.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
+import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/planet-orbit';
 import { MU_JUPITER } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
@@ -180,10 +181,10 @@ export function jupiterSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
   pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<JupiterSystemBodyId, CelestialEntity> {
-  const jupiter = new PlanetMotion(planetDefAtEpoch(JUPITER, phases, epochOffsetSec), sun, pack, origin);
+  const jupiter = planetSystem(planetDefAtEpoch(JUPITER, phases, epochOffsetSec), sun, pack, origin);
   return {
     jupiter: new PointEntity(
-      jupiter, JUPITER_SYSTEM_NAMES.jupiter, 'planet',
+      jupiter.body, JUPITER_SYSTEM_NAMES.jupiter, 'planet',
       // 平均輝度 0.4116(A_B は公表ボンド)
       CelestialSurface.textured({ url: jupiterTextureUrl, albedoScale: 1.2222, bondAlbedo: 0.503, averageHue: [1.0987, 0.9845, 0.8629] }),
     ),

@@ -1,8 +1,9 @@
 // 準惑星・大型小惑星とその衛星。静的事実・運動・見た目を1体につき1箇所で組む。
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
+import { planetSystem } from '../../../physics/planet-system';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { GRAVITATIONAL_CONSTANT } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
@@ -280,30 +281,30 @@ export function dwarfPlanets(
   pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<DwarfPlanetId, CelestialEntity> {
   // 衛星を持つ天体の運動は、子の主天体として渡すため先に組む。
-  const pluto = new PlanetMotion(planetDefAtEpoch(PLUTO, phases, epochOffsetSec), sun, pack, origin);
-  const haumea = new PlanetMotion(planetDefAtEpoch(HAUMEA, phases, epochOffsetSec), sun, pack, origin);
-  const eris = new PlanetMotion(planetDefAtEpoch(ERIS, phases, epochOffsetSec), sun, pack, origin);
+  const pluto = planetSystem(planetDefAtEpoch(PLUTO, phases, epochOffsetSec), sun, pack, origin);
+  const haumea = planetSystem(planetDefAtEpoch(HAUMEA, phases, epochOffsetSec), sun, pack, origin);
+  const eris = planetSystem(planetDefAtEpoch(ERIS, phases, epochOffsetSec), sun, pack, origin);
   return {
     ceres: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(CERES, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(CERES, phases, epochOffsetSec), sun, pack, origin).body,
       DWARF_PLANET_NAMES.ceres, 'dwarf',
       // A_B=0.035(幾何 0.090 x q=0.393)
       CelestialSurface.solid([0.0382, 0.0345, 0.0310]),
     ),
     vesta: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(VESTA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(VESTA, phases, epochOffsetSec), sun, pack, origin).body,
       DWARF_PLANET_NAMES.vesta, 'smallBody',
       // A_B=0.195(幾何 0.423 x q=0.461)
       CelestialSurface.solid([0.2156, 0.1925, 0.1593]),
     ),
     pallas: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(PALLAS, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(PALLAS, phases, epochOffsetSec), sun, pack, origin).body,
       DWARF_PLANET_NAMES.pallas, 'smallBody',
       // A_B=0.061(幾何 0.155 x q=0.393)
       CelestialSurface.solid([0.0616, 0.0616, 0.0533]),
     ),
     pluto: new SphereEntity(
-      pluto, DWARF_PLANET_NAMES.pluto, 'dwarf',
+      pluto.body, DWARF_PLANET_NAMES.pluto, 'dwarf',
       // A_B=0.72(公表ボンド 0.72(NASA Pluto Fact Sheet。幾何は 0.52))
       CelestialSurface.solid([0.9026, 0.6880, 0.4994]),
     ),
@@ -338,7 +339,7 @@ export function dwarfPlanets(
       CelestialSurface.solid([0.5381, 0.4570, 0.3977]),
     ),
     haumea: new SphereEntity(
-      haumea, DWARF_PLANET_NAMES.haumea, 'dwarf',
+      haumea.body, DWARF_PLANET_NAMES.haumea, 'dwarf',
       // A_B=0.29(幾何 0.51 x q=0.564)
       CelestialSurface.solid([0.2900, 0.2900, 0.2900]),
     ),
@@ -355,13 +356,13 @@ export function dwarfPlanets(
       CelestialSurface.solid([0.3206, 0.2723, 0.2369]),
     ),
     makemake: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(MAKEMAKE, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(MAKEMAKE, phases, epochOffsetSec), sun, pack, origin).body,
       DWARF_PLANET_NAMES.makemake, 'dwarf',
       // A_B=0.46(幾何 0.81 x q=0.564)
       CelestialSurface.solid([0.7020, 0.4110, 0.2331]),
     ),
     eris: new SphereEntity(
-      eris, DWARF_PLANET_NAMES.eris, 'dwarf',
+      eris.body, DWARF_PLANET_NAMES.eris, 'dwarf',
       // A_B=0.54(幾何 0.96 x q=0.564)
       CelestialSurface.solid([0.5400, 0.5400, 0.5400]),
     ),

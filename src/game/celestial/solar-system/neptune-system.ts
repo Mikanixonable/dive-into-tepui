@@ -2,8 +2,9 @@
 import neptuneTextureUrl from '../../../assets/2k_neptune.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
+import { planetSystem } from '../../../physics/planet-system';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { MU_NEPTUNE } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
@@ -69,10 +70,10 @@ export function neptuneSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
   pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<NeptuneSystemBodyId, CelestialEntity> {
-  const neptune = new PlanetMotion(planetDefAtEpoch(NEPTUNE, phases, epochOffsetSec), sun, pack, origin);
+  const neptune = planetSystem(planetDefAtEpoch(NEPTUNE, phases, epochOffsetSec), sun, pack, origin);
   return {
     neptune: new PointEntity(
-      neptune, NEPTUNE_SYSTEM_NAMES.neptune, 'planet',
+      neptune.body, NEPTUNE_SYSTEM_NAMES.neptune, 'planet',
       // 平均輝度 0.1228(A_B は公表ボンド)
       CelestialSurface.textured({ url: neptuneTextureUrl, albedoScale: 2.3609, bondAlbedo: 0.29, averageHue: [0.3358, 0.9100, 3.8476] }),
     ),

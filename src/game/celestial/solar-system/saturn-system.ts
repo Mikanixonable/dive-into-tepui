@@ -3,8 +3,9 @@ import saturnTextureUrl from '../../../assets/2k_saturn.jpg';
 import titanTextureUrl from '../../../assets/2k_titan.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
+import { planetSystem } from '../../../physics/planet-system';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
 import { MU_SATURN } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
@@ -193,10 +194,10 @@ export function saturnSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
   pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<SaturnSystemBodyId, CelestialEntity> {
-  const saturn = new PlanetMotion(planetDefAtEpoch(SATURN, phases, epochOffsetSec), sun, pack, origin);
+  const saturn = planetSystem(planetDefAtEpoch(SATURN, phases, epochOffsetSec), sun, pack, origin);
   return {
     // 惑星は戦闘ビューでは輝点スプライトとして描くので PointEntity。
-    saturn: new PointEntity(saturn, SATURN_SYSTEM_NAMES.saturn, 'planet', CelestialSurface.textured(SATURN_TEXTURE)),
+    saturn: new PointEntity(saturn.body, SATURN_SYSTEM_NAMES.saturn, 'planet', CelestialSurface.textured(SATURN_TEXTURE)),
     // パン A_B=0.28(幾何 0.5 x q=0.564)
     pan: new SphereEntity(
       new SatelliteMotion(satelliteDefAtEpoch(PAN, phases, epochOffsetSec), saturn, pack, origin),

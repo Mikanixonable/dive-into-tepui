@@ -1,8 +1,9 @@
 // 彗星核・小惑星・太陽系外縁天体。静的事実・運動・見た目を1体につき1箇所で組む。
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
+import { planetSystem } from '../../../physics/planet-system';
 import { keplerPeriod } from '../../../physics/elements';
 import { JULIAN_CENTURY, KeplerOrbit } from '../../../physics/kepler-orbit';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
@@ -396,27 +397,27 @@ export function smallBodies(
   pack: HelioEphemeris | null, origin: EciOrigin,
 ): Record<SmallBodyId, CelestialEntity> {
   // 衛星を持つ天体の運動は、子の主天体として渡すため先に組む。
-  const quaoar = new PlanetMotion(planetDefAtEpoch(QUAOAR, phases, epochOffsetSec), sun, pack, origin);
-  const orcus = new PlanetMotion(planetDefAtEpoch(ORCUS, phases, epochOffsetSec), sun, pack, origin);
+  const quaoar = planetSystem(planetDefAtEpoch(QUAOAR, phases, epochOffsetSec), sun, pack, origin);
+  const orcus = planetSystem(planetDefAtEpoch(ORCUS, phases, epochOffsetSec), sun, pack, origin);
   return {
     // ハレー彗星 A_B=0.016(幾何 0.04 x q=0.393)
     halley: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(HALLEY, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(HALLEY, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.halley, 'smallBody', CelestialSurface.solid([0.0160, 0.0160, 0.0160]),
     ),
     // エンケ彗星 A_B=0.02(幾何 0.05 x q=0.393)
     encke: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(ENCKE, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(ENCKE, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.encke, 'smallBody', CelestialSurface.solid([0.0200, 0.0200, 0.0200]),
     ),
     // セドナ A_B=0.15(幾何 0.32 x q=0.461)
     sedna: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(SEDNA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(SEDNA, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.sedna, 'dwarf', CelestialSurface.solid([0.1759, 0.1453, 0.1203]),
     ),
     // クワオアー A_B=0.05(幾何 0.109 x q=0.461)
     quaoar: new SphereEntity(
-      quaoar, SMALL_BODY_NAMES.quaoar, 'dwarf', CelestialSurface.solid([0.0616, 0.0479, 0.0363]),
+      quaoar.body, SMALL_BODY_NAMES.quaoar, 'dwarf', CelestialSurface.solid([0.0616, 0.0479, 0.0363]),
     ),
     // ウェイウォット A_B=0.046(分類既定 幾何 0.10 x q=0.461)
     weywot: new SphereEntity(
@@ -425,32 +426,32 @@ export function smallBodies(
     ),
     // カリクロー A_B=0.014(幾何 0.035 x q=0.393)
     chariklo: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(CHARIKLO, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(CHARIKLO, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.chariklo, 'smallBody', CelestialSurface.solid([0.0161, 0.0137, 0.0108]),
     ),
     // ヒギエア A_B=0.028(幾何 0.072 x q=0.393)
     hygiea: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(HYGIEA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(HYGIEA, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.hygiea, 'smallBody', CelestialSurface.solid([0.0301, 0.0278, 0.0239]),
     ),
     // エロス A_B=0.115(幾何 0.25 x q=0.461)
     eros: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(EROS, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(EROS, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.eros, 'smallBody', CelestialSurface.solid([0.1367, 0.1129, 0.0718]),
     ),
     // リュウグウ A_B=0.018(幾何 0.045 x q=0.393)
     ryugu: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(RYUGU, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(RYUGU, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.ryugu, 'smallBody', CelestialSurface.solid([0.0212, 0.0174, 0.0141]),
     ),
     // ベンヌ A_B=0.017(幾何 0.044 x q=0.393)
     bennu: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(BENNU, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(BENNU, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.bennu, 'smallBody', CelestialSurface.solid([0.0196, 0.0166, 0.0138]),
     ),
     // オルクス A_B=0.106(幾何 0.23 x q=0.461)
     orcus: new SphereEntity(
-      orcus, SMALL_BODY_NAMES.orcus, 'dwarf', CelestialSurface.solid([0.1053, 0.1053, 0.1146]),
+      orcus.body, SMALL_BODY_NAMES.orcus, 'dwarf', CelestialSurface.solid([0.1053, 0.1053, 0.1146]),
     ),
     // ヴァンス A_B=0.031(幾何 0.08 x q=0.393)
     vanth: new SphereEntity(
@@ -459,112 +460,112 @@ export function smallBodies(
     ),
     // ゴンゴン A_B=0.065(幾何 0.14 x q=0.461)
     gonggong: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(GONGGONG, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(GONGGONG, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.gonggong, 'dwarf', CelestialSurface.solid([0.1126, 0.0540, 0.0336]),
     ),
     // サラキア A_B=0.017(幾何 0.042 x q=0.393)
     salacia: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(SALACIA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(SALACIA, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.salacia, 'dwarf', CelestialSurface.solid([0.0151, 0.0171, 0.0216]),
     ),
     // ヴァルナ A_B=0.059(幾何 0.127 x q=0.461)
     varuna: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(VARUNA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(VARUNA, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.varuna, 'dwarf', CelestialSurface.solid([0.0645, 0.0585, 0.0476]),
     ),
     // イクシオン A_B=0.05(幾何 0.108 x q=0.461)
     ixion: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(IXION, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(IXION, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.ixion, 'dwarf', CelestialSurface.solid([0.0589, 0.0485, 0.0392]),
     ),
     // アロコス A_B=0.065(幾何 0.165 x q=0.393)
     arrokoth: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(ARROKOTH, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(ARROKOTH, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.arrokoth, 'smallBody', CelestialSurface.solid([0.1783, 0.0365, 0.0135]),
     ),
     // キロン A_B=0.063(幾何 0.16 x q=0.393)
     chiron: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(CHIRON, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(CHIRON, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.chiron, 'smallBody', CelestialSurface.solid([0.0695, 0.0623, 0.0512]),
     ),
     // インテラムニア A_B=0.029(幾何 0.074 x q=0.393)
     interamnia: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(INTERAMNIA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(INTERAMNIA, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.interamnia, 'smallBody', CelestialSurface.solid([0.0308, 0.0288, 0.0251]),
     ),
     // エウロパ (52) A_B=0.023(幾何 0.058 x q=0.393)
     europa52: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(EUROPA52, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(EUROPA52, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.europa52, 'smallBody', CelestialSurface.solid([0.0251, 0.0228, 0.0192]),
     ),
     // ダビダ A_B=0.021(幾何 0.054 x q=0.393)
     davida: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(DAVIDA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(DAVIDA, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.davida, 'smallBody', CelestialSurface.solid([0.0230, 0.0208, 0.0173]),
     ),
     // ジュノー A_B=0.11(幾何 0.238 x q=0.461)
     juno: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(JUNO, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(JUNO, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.juno, 'smallBody', CelestialSurface.solid([0.1285, 0.1070, 0.0849]),
     ),
     // プシケ A_B=0.055(幾何 0.12 x q=0.461)
     psyche: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(PSYCHE, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(PSYCHE, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.psyche, 'smallBody', CelestialSurface.solid([0.0606, 0.0540, 0.0479]),
     ),
     // エウノミア A_B=0.096(幾何 0.209 x q=0.461)
     eunomia: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(EUNOMIA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(EUNOMIA, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.eunomia, 'smallBody', CelestialSurface.solid([0.1125, 0.0942, 0.0654]),
     ),
     // シルビア A_B=0.018(幾何 0.045 x q=0.393)
     sylvia: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(SYLVIA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(SYLVIA, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.sylvia, 'smallBody', CelestialSurface.solid([0.0198, 0.0177, 0.0157]),
     ),
     // アポフィス A_B=0.161(幾何 0.35 x q=0.461)
     apophis: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(APOPHIS, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(APOPHIS, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.apophis, 'smallBody', CelestialSurface.solid([0.1698, 0.1595, 0.1496]),
     ),
     // ディディモス A_B=0.069(幾何 0.15 x q=0.461)
     didymos: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(DIDYMOS, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(DIDYMOS, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.didymos, 'smallBody', CelestialSurface.solid([0.0733, 0.0685, 0.0616]),
     ),
     // テンペル第1彗星 A_B=0.016(幾何 0.04 x q=0.393)
     tempel1: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(TEMPEL1, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(TEMPEL1, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.tempel1, 'smallBody', CelestialSurface.solid([0.0160, 0.0160, 0.0160]),
     ),
     // ワイルド第2彗星 A_B=0.012(幾何 0.03 x q=0.393)
     wild2: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(WILD2, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(WILD2, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.wild2, 'smallBody', CelestialSurface.solid([0.0120, 0.0120, 0.0120]),
     ),
     // ハートレー第2彗星 A_B=0.011(幾何 0.028 x q=0.393)
     hartley2: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(HARTLEY2, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(HARTLEY2, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.hartley2, 'smallBody', CelestialSurface.solid([0.0110, 0.0110, 0.0110]),
     ),
     // クルースン A_B=0.069(分類既定 幾何 0.15 x q=0.461)
     cruithne: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(CRUITHNE, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(CRUITHNE, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.cruithne, 'smallBody', CelestialSurface.solid([0.0763, 0.0682, 0.0557]),
     ),
     // カモオアレワ A_B=0.111(幾何 0.24 x q=0.461)
     kamooalewa: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(KAMOOALEWA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(KAMOOALEWA, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.kamooalewa, 'smallBody', CelestialSurface.solid([0.1394, 0.1073, 0.0643]),
     ),
     // 2010 TK7 A_B=0.039(分類既定 幾何 0.10 x q=0.393)
     tk7: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(TK7, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(TK7, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.tk7, 'smallBody', CelestialSurface.solid([0.0432, 0.0383, 0.0337]),
     ),
     // エウレカ A_B=0.18(幾何 0.39 x q=0.461)
     eureka: new SphereEntity(
-      new PlanetMotion(planetDefAtEpoch(EUREKA, phases, epochOffsetSec), sun, pack, origin),
+      planetSystem(planetDefAtEpoch(EUREKA, phases, epochOffsetSec), sun, pack, origin).body,
       SMALL_BODY_NAMES.eureka, 'smallBody', CelestialSurface.solid([0.2377, 0.1718, 0.0912]),
     ),
   };

@@ -283,7 +283,6 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 
 | 手順 | 何を |
 | --- | --- |
-| 4 | 惑星系重心をノードとして立てる |
 | 5 | ECI 化を `CelestialBodyWindows` へ引き上げる |
 | 6 | キャッシュの棚卸し |
 
@@ -308,6 +307,16 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 `kinematicState(...)` に型引数を書き忘れると暗黙に ECI を名乗るので、**非 ECI を組むときは
 必ず `kinematicState<'helio'>(...)` のように明示する。** 原点の読み替え(主天体相対 → 恒星中心)
 が起きるのは `PlanetMotion.baryHelioStateAt` の1箇所だけ。
+
+### 前提: 惑星-衛星系のノード
+
+`PlanetSystem`(`physics/planet-system.ts`)が系の重心の軌道と、その系の惑星本体・衛星を持つ。
+組む口は `planetSystem(def, star, ephemeris, origin, spinPhase0?)` ただ1つで、系と本体を結んだ
+状態で返る。衛星を持たない惑星も同じ形で作り、本体は `.body` で取り出す。
+
+評価の依存は一方向: `system.helioStateAt`(軌道だけ)→ `satellite.relStateAt`
+(`system.anglesAt` から太陽方向)→ `planet.helioStateAt`(重心 − 衛星ぶん)→
+`satellite.helioStateAt`。**衛星が惑星本体の位置を読む経路は無い。**
 
 ### 順序の根拠
 
@@ -337,7 +346,9 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 1. `grep -rn "EciOrigin" src/ tests/` が 0 件。
 2. `grep -rn "PlanetOrbit" src/ tests/` が 0 件。
 3. `grep -rniE "\beci\b" src/physics/celestial-motion.ts` が 0 件(ECI を知るのは windows だけ)。
-4. `grep -rn "addSatellite\|this.planet.def.orbit" src/` が 0 件(衛星が親の宣言を直接読まない)。
+4. `grep -rn "this.planet.def.orbit\|baryHelioStateAt" src/` が 0 件。`addSatellite` は
+   `PlanetSystem` の定義と `SatelliteMotion` の登録の2件だけで、**惑星本体を書き換える登録が
+   無い**(当初は `addSatellite` ごと 0 件と書いたが、登録先を系へ移す設計にしたので改めた)。
 5. `KinematicState<'helio'>` を `KinematicState`(= `<'eci'>`)へ代入するコードが**型エラーに
    なる** — 検査用に1行書いて `npm run typecheck` が落ちることを確かめ、消す。
 6. `new PlanetMotion`(50)/ `new SatelliteMotion`(52)/ `new StarMotion`(2)の引数から
@@ -349,38 +360,6 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
    ラベル・静止軌道リングが従来どおり出る。
 
 ## 手順
-
-### 手順4. 惑星系重心をノードとして立てる
-
-**目的.** `PlanetOrbit` が答える「系重心」と `PlanetMotion` が答える「惑星本体」が同じ型で
-区別されず、衛星が親の宣言(`this.planet.def.orbit`)を直接読むことで循環を回避している。
-**重心を独立したノードにして、重心 → 衛星 / 重心 → 惑星本体 → 衛星 という一方向の依存にする。**
-**この時点で挙動は変えない**(値は同じ式を同じ順で通る)。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/planet-system.ts`(新規) | `class PlanetSystem` — `orbit: KeplerOrbit` を持ち、`helioStateAt(t): KinematicState<'helio'>`(`keplerOrbitState` の結果をタグ替えする**唯一の場所**)と `angles(t): PlanetAngles`、`satellites: readonly SatelliteMotion[]`、`body: PlanetMotion` を答える。`addSatellite(s)` と `setBody(p)` は構築時に1度ずつ呼ぶ(`body` を set 前に読むと例外) |
-| `src/physics/celestial-motion.ts:440-513`(`PlanetMotion`) | constructor に `system: PlanetSystem` を受け、`system.setBody(this)` を呼ぶ。`keplerOrbit` は `system.orbit` を返す。`computeHelioStateAt` は `system.helioStateAt(t)` から `system.satellites` ぶんの重心補正を引く。`moons` 配列・`addSatellite`・`baryHelioStateAt` を削除 |
-| 同 `:515-576`(`SatelliteMotion`) | 第2引数を `planet: PlanetMotion` から `system: PlanetSystem` へ。constructor で `system.addSatellite(this)`。`primary` は `system.body`。`computeRelStateAt` は `system.angles(t)` を使い、`planetAngles(this.planet.def.orbit, t)` を廃止。`helioAccelAt` / `packedStateAt` の親参照は `system.body` 経由 |
-| 同 `:300` | `OrbitingMotion.keplerOrbit` を `protected` へ(外部消費者が無いことは確認済み) |
-| 同 `:19` | `planetAngles` の import が `planet-system.ts` へ移るので削除 |
-| `src/game/celestial/solar-system/earth-system.ts:185,194` | 惑星ごとに `new PlanetSystem(def.orbit)` を作り、`PlanetMotion` / `SatelliteMotion` へ渡す |
-| `src/game/celestial/solar-system/{mars,jupiter,saturn,uranus,neptune}-system.ts` | 同上(`PlanetMotion` 各1 + `SatelliteMotion` 各 2〜15) |
-| `src/game/celestial/solar-system/dwarf-planets.ts:283-369` | 同上(`PlanetMotion` 7・`SatelliteMotion` 8) |
-| `src/game/celestial/solar-system/inner-planets.ts:91,97`, `small-bodies.ts` | 衛星を持たない天体も**同じ形で** `PlanetSystem` を作る(分岐を作らない) |
-| `src/game/stages/stage-debug-alt-system.ts` | 同上(2箇所) |
-| `tests/physics/equatorial-satellites.test.ts` | 同上(4箇所) |
-
-**構築順**: `new PlanetSystem(orbit)` → `PlanetMotion` → 衛星群。惑星本体は `system.satellites` を
-**評価時に**読むので、構築の途中で評価しない限り順序は問わない(`solarSystem()` は全 entity を
-組み終えてから返す)。`SatelliteMotion` が `PlanetMotion` を構築時に要求しなくなるので、
-**子が親を書き換える `addSatellite` の相互登録が消える。**
-
-**達成条件と検証.** `npm run typecheck` / `npm run test:physics` / `npm run test:game` が通る。
-固定値テストが**1文字も変えずに通る**(とくに 4,673 km の重心補正の行)。
-`grep -rn "addSatellite\|this.planet.def.orbit\|baryHelioStateAt" src/` が 0 件。
 
 ### 手順5. ECI 化を `CelestialBodyWindows` へ引き上げる
 
@@ -437,11 +416,10 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 
 | 手順 | 触る箇所 | 導出 |
 | --- | --- | --- |
-| 4 | 約 165 | 新規1ファイル 約 60 行 + `celestial-motion.ts` 約 30 行 + 構築点 `new PlanetMotion` 50 + `new SatelliteMotion` 52 の親引数差し替え + `PlanetSystem` の生成 約 25 |
 | 5 | 約 190 | 構築点 104 からの引数削除 + 呼び出し移行 47(entity 8 + その他 39)+ windows/reference-frames/celestial-system 約 40 |
 | 6 | 約 15 | キャッシュ4箇所の判断とコメント |
 
-合計およそ 372 行。**手順5 が最大**で、そのうち 104 は引数1つの削除(機械的)、47 は受け手の
+合計およそ 205 行。**手順5 が最大**で、そのうち 104 は引数1つの削除(機械的)、47 は受け手の
 差し替え(1行ずつ確認が要る)。手順4・5 で同じ 104 箇所を2度触るが、2度目は削除だけになる。
 
 ## リスクと落とし穴
@@ -451,12 +429,12 @@ keplerOrbit / helioStateAt / helioAccelAt / relStateAt / packedHelioStateAt / sa
 | 天体と ECI 原点天体を**別の供給源**から引く | 暦パックと解析暦は同じ天体に別の位置を答えるので、差がそのまま相対位置の誤りになる。地球周回の軌道が静かにずれる | 手順5。windows の ECI 化で、天体ごとに「自分と同じ経路の原点」を引くこと。固定値テストの暦パック構成が検査 |
 | 原点天体自身の ECI が厳密に 0 にならない | 地球が原点に静止しなくなり、ECI の定義が崩れる | 手順5。`tests/physics/celestial-motion.test.ts:42` が検査 |
 | 惑星本体と系重心を取り違える | 地球なら 4,673 km ずれる。**絵では気付けない** | 手順4。固定値テストの重心補正の行と `celestial-motion.test.ts:66,87` が検査 |
-| `keplerOrbitState` の戻り値タグを `'helio'` にしてしまう | 惑星では中心が恒星なので**たまたま正しく、衛星では間違う。型検査は通る** | **確認済み**: `keplerOrbitState` は `'primaryRel'` を返し、恒星中心への読み替えは `PlanetMotion.baryHelioStateAt` の1箇所だけ。手順4 でその1箇所が `PlanetSystem.helioStateAt` へ移る |
+| `keplerOrbitState` の戻り値タグを `'helio'` にしてしまう | 惑星では中心が恒星なので**たまたま正しく、衛星では間違う。型検査は通る** | **確認済み**: `keplerOrbitState` は `'primaryRel'` を返し、恒星中心への読み替えは `PlanetSystem.helioStateAt` の1箇所だけ |
 | タグの既定を `'eci'` にしたことで、タグを**書き忘れた**関数が暗黙に ECI を名乗る | 取り違えが検出されないまま残り、以降の手順が無防備になる | **確認済み**: 2節の表の 13 段すべてにタグが付いた(`barycentricStateOf` は `BarycentricState` 型、`FrameKinematicState` は別の branded type で元から区別されている) |
 | `hermiteInterpolate` を総称化するとき両端のタグを縛り忘れる | 原点の違う2状態を補間して無意味な値になる | **確認済み**: `hermiteInterpolate<F>(a: KS<F>, b: KS<F>): KS<F>` で両端を縛った |
 | `PlanetSystem.satellites` が揃う前に惑星本体を評価する | 重心補正が抜けた位置がキャッシュへ入り、以後その時刻だけ間違い続ける | 手順4。`solarSystem()` が全 entity を返すまで評価が起きないことを確かめる |
-| `system.angles` を平均要素ではなく周期項込みで組む | 回転基準系の角速度が滑らかでなくなり、回転系のカメラが震える | 手順4。`angles` は `orbit`(平均要素)だけから組む |
-| `*AtEpoch` を通す位置がずれる | `keplerOrbitAtEpoch` は角を畳んでいる。畳む前の値を `PlanetSystem` へ渡すと、18,000 年規模のオフセットで丸めが支配し、地球軌道上でメートル規模の誤差になる | 手順4。`planetDefAtEpoch` を通した `def.orbit` を渡すこと |
+| `system.anglesAt` を平均要素ではなく周期項込みで組む | 回転基準系の角速度が滑らかでなくなり、回転系のカメラが震える | **確認済み**: `anglesAt` は `orbit` だけから組んでいる |
+| `*AtEpoch` を通す位置がずれる | `keplerOrbitAtEpoch` は角を畳んでいる。畳む前の値を `PlanetSystem` へ渡すと、18,000 年規模のオフセットで丸めが支配し、地球軌道上でメートル規模の誤差になる | **確認済み**: `planetSystem()` が受け取る def は `planetDefAtEpoch` を通したもので、`PlanetSystem` はその `def.orbit` をそのまま持つ |
 | `motion.stateAt(pivot, t)` の2引数を1引数へ潰す | 外挿の基準時刻が変わり、積分1歩ぶんの誤差が静かに入る | 手順5。`windows.stateAt(id, pivot, t)` でも2引数を保つ |
 | `CelestialEntity.sync` へ ECI を渡す形にしたとき、天体ごとに違う時刻で同期していた箇所が1時刻へ揃う(あるいは逆) | 表示だけがずれる | 手順5。`displayTime` が1つであることを確かめてから渡す |
 | 104 の構築点を2度触るので、片方だけ直した状態で commit する | 型が通らない中途半端な commit が残る | 手順4・5。各手順の中で全ファイルを揃えてから typecheck を通す |

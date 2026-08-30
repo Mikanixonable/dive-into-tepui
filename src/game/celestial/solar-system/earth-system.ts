@@ -6,8 +6,9 @@ import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import { HelioEphemeris } from '../../../physics/absolute-ephemeris';
 import { AtmosphereDef } from '../../../physics/atmosphere';
 import {
-  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, PlanetMotion, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
+  EciOrigin, PhaseOffsets, PlanetDef, planetDefAtEpoch, SatelliteDef, satelliteDefAtEpoch, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
+import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/planet-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
 import {
@@ -182,13 +183,13 @@ export function earthSystem(
   sun: StarMotion, phases: PhaseOffsets, epochOffsetSec: number,
   pack: HelioEphemeris | null, origin: EciOrigin, earthSpinPhase0 = 0,
 ): Record<EarthSystemBodyId, CelestialEntity> {
-  const earth = new PlanetMotion(planetDefAtEpoch(EARTH, phases, epochOffsetSec), sun, pack, origin, earthSpinPhase0);
+  const earth = planetSystem(planetDefAtEpoch(EARTH, phases, epochOffsetSec), sun, pack, origin, earthSpinPhase0);
   return {
     earth: new PointEntity(
-      earth, EARTH_SYSTEM_NAMES.earth, 'planet',
+      earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
       CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl),
       EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
-      GeostationaryOverlay.of(earth),
+      GeostationaryOverlay.of(earth.body),
     ),
     moon: new SphereEntity(
       new SatelliteMotion(satelliteDefAtEpoch(MOON, phases, epochOffsetSec), earth, pack, origin),
