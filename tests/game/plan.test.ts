@@ -13,7 +13,7 @@ import { test } from '../harness';
 export function register(): void {
   test('plan: 月周回の区間長・アプシスが月中心の状態と重力定数で求まる', () => {
     const parts = solarSystemParts({ moon: 0 });
-    const windows = parts.windows;
+    const system = parts.system;
     const t = 12345;
     const radius = R_MOON + 100_000;
     const relativeR = v3(radius, 0, 0);
@@ -24,7 +24,7 @@ export function register(): void {
       add(moonState.r, relativeR),
       add(moonState.v, relativeV),
     );
-    const celestialBodies = windows.celestialBodiesAt(t);
+    const celestialBodies = system.celestialBodiesAt(t);
 
     // 中心天体は設定ではなく状態から決まる。地球の μ で計算すると周期は約 1/9 になる。
     const center = strongestAttractor(state.r, celestialBodies);
@@ -35,7 +35,7 @@ export function register(): void {
 
     const plan = new Plan();
     const orbitDisplayDuration = { durationSec: (referencePeriod: number) => referencePeriod };
-    assert.ok(Math.abs(plan.nodeTimeRange(0, state, windows, orbitDisplayDuration).max - (t + expected)) < 1e-6);
+    assert.ok(Math.abs(plan.nodeTimeRange(0, state, system, orbitDisplayDuration).max - (t + expected)) < 1e-6);
 
     const el = orbitalElementsOf(state, center)!;
     assert.equal(el.center.mu, MU_MOON);
@@ -45,14 +45,14 @@ export function register(): void {
   });
 
   test('plan: 近地点付近の遷移軌道の区間長が近地点半径の円軌道周期に短縮されない', () => {
-    const { windows } = solarSystemParts({ sun: 0, moon: 0 });
+    const { system } = solarSystemParts({ sun: 0, moon: 0 });
     const t = 6789;
     const rp = R_EARTH + 400e3;
     const ra = R_EARTH + 35_000e3;
     const a = (rp + ra) / 2;
     const vp = Math.sqrt(MU_EARTH * (2 / rp - 1 / a));
     const state = kinematicState(t, v3(rp, 0, 0), v3(0, 0, vp));
-    const celestialBodies = windows.celestialBodiesAt(t);
+    const celestialBodies = system.celestialBodiesAt(t);
 
     const expected = keplerPeriod(a, MU_EARTH);
     const actual = orbitPeriodOf(state, celestialBodies);
@@ -63,22 +63,22 @@ export function register(): void {
   });
 
   test('plan: nodeTimeRange は DisplayDurationSource の表示期間にそのまま追従する', () => {
-    const { windows } = solarSystemParts({ sun: 0, moon: 0 });
+    const { system } = solarSystemParts({ sun: 0, moon: 0 });
     const t = 1000;
     const rp = R_EARTH + 400e3;
     const state = kinematicState(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));
-    const celestialBodies = windows.celestialBodiesAt(t);
+    const celestialBodies = system.celestialBodiesAt(t);
     const period = orbitPeriodOf(state, celestialBodies);
 
     const plan = new Plan();
 
     // 'orbit' 相当のスタブ: 参照期間(起点の軌道周期)をそのまま返す
     const orbitDuration = { durationSec: (referencePeriod: number) => referencePeriod };
-    assert.ok(Math.abs(plan.nodeTimeRange(0, state, windows, orbitDuration).max - (t + period)) < 1e-6);
+    assert.ok(Math.abs(plan.nodeTimeRange(0, state, system, orbitDuration).max - (t + period)) < 1e-6);
 
     // 固定プリセット相当のスタブ: 参照期間によらず一定値を返す
     const fixedDuration = { durationSec: () => 86400 };
-    assert.equal(plan.nodeTimeRange(0, state, windows, fixedDuration).max, t + 86400);
+    assert.equal(plan.nodeTimeRange(0, state, system, fixedDuration).max, t + 86400);
   });
 
   test('plan: 起点が凍結されるのはノードがある間だけ', () => {
