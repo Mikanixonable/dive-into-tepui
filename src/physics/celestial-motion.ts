@@ -16,7 +16,7 @@ import {
 import {
   LagrangePoints, collinearClearanceRatio, hasStableTriangularPoints, lagrangePoints,
 } from './lagrange';
-import { PlanetOrbit, planetAngles } from './planet-orbit';
+import { planetAngles } from './planet-orbit';
 import { SatelliteOrbit, satelliteOrbitAtEpoch, satelliteState } from './satellite-orbit';
 import {
   Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelAtEpoch,
@@ -39,7 +39,7 @@ export type PlanetDef = {
   readonly id: string;
   readonly mu: number;
   readonly radius: number;
-  readonly orbit: PlanetOrbit; // 中心は必ず恒星
+  readonly orbit: KeplerOrbit; // 中心は必ず恒星で、乗っているのは惑星本体ではなく惑星-衛星系の重心
   readonly pole?: PoleModel; // 省略時は自転軸を持たない
   readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
   readonly shape?: ShapeDef; // 省略時は radius による真球

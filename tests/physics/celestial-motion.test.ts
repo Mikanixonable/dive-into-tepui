@@ -9,9 +9,8 @@ import {
   EPOCH_T_OFFSET, MU_EARTH, MU_MOON, MU_SUN as MU_SUN_LOCAL, SIDEREAL_DAY,
 } from '../../src/game/celestial/solar-system/constants';
 import { EPS } from '../../src/physics/ecliptic';
-import { PlanetOrbit } from '../../src/physics/planet-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
-import { JULIAN_CENTURY, keplerOrbitAtEpoch, keplerOrbitState } from '../../src/physics/kepler-orbit';
+import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitAtEpoch, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
@@ -26,10 +25,10 @@ const MOON_PERIOD = 27.321661 * 86400;
 const DAY = 86400;
 // 地球-月重心の日心ケプラー軌道(地球の宣言そのもの)。重心不変条件の検証で、
 // 運動の合成結果と突き合わせる基準として使う。
-const EARTH_ORBIT: PlanetOrbit = EARTH.orbit;
+const EARTH_ORBIT: KeplerOrbit = EARTH.orbit;
 
 // テスト対象の id が惑星/衛星であることを前提に軌道モデルを取り出す。
-function planetOrbit(id: string): PlanetOrbit {
+function planetOrbit(id: string): KeplerOrbit {
   return (motionOf(DEFS, id).def as PlanetDef).orbit;
 }
 function satelliteOrbitOf(id: string): SatelliteOrbit {
@@ -61,9 +60,9 @@ export function register(): void {
   });
 
   // 重心補正の直接検証: ECI での重心位置は「地球は原点」なので (μ_e·0+μ_m·r_moon)/(μ_e+μ_m)
-  // に一致するはずで、これは PlanetOrbit(地球-月重心)から求めた日心重心位置を
+  // に一致するはずで、これは 惑星の軌道要素(地球-月重心)から求めた日心重心位置を
   // 日心地球位置(= -太陽の地心位置)だけ ECI へ平行移動した値とも一致しなければならない。
-  test('celestial-motion: 重心の不変条件(質量加重平均 = PlanetOrbit の重心を ECI 化した値、位置・速度とも)', () => {
+  test('celestial-motion: 重心の不変条件(質量加重平均 = 惑星の軌道要素の重心を ECI 化した値、位置・速度とも)', () => {
     for (const t of [0, 1e6, 3e8]) {
       const moonState = orbitingMotionOf(parts, 'moon').stateAt(t);
       const wMoon = MU_MOON / (MU_EARTH + MU_MOON);
