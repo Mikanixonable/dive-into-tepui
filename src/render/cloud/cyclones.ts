@@ -1,13 +1,16 @@
-// 気圧へ書き込む低気圧の谷: 熱帯を西進する台風 1 つと、中緯度を東進しながら生まれて消える低気圧。
-// 中心と深さは時刻の閉じた関数で、どの時刻へ飛んでも同じ配置になる。
+// 気圧へ書き込む低気圧の谷: 熱帯を西進する台風 1 つと、中緯度を東進する低気圧。どちらも寿命の
+// 中で生まれて発達して消える。中心と深さは時刻の閉じた関数で、どの時刻へ飛んでも同じ配置になる。
 import * as THREE from 'three/webgpu';
 import { dot, exp, float, uniform } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
-// 台風。中心の緯度 [rad]、時刻 0 の経度 [rad]、西進の速さ [m/s]、深さ [hPa]、渦の広がり [m]。
+// 台風。中心の緯度 [rad]、生まれる経度 [rad]、西進の速さ [m/s]、寿命 [s]、最深 [hPa]、
+// 渦の広がり [m]。雲は平年の雲量の上に乗って初めて凝結のしきい値を超えるので、生まれる経度と
+// 寿命は、進路が暖かい海(西太平洋)を出る前に衰えきる長さに取る。
 const TYPHOON_LATITUDE = THREE.MathUtils.degToRad(15);
-const TYPHOON_LONGITUDE = THREE.MathUtils.degToRad(140);
+const TYPHOON_LONGITUDE = THREE.MathUtils.degToRad(169);
 const TYPHOON_DRIFT = -8;
+const TYPHOON_LIFETIME = 9 * 86400;
 const TYPHOON_DEPTH = 35;
 const TYPHOON_RADIUS = 700e3;
 // 目の半径 [m]。中心からこの広がりで湿度が落ちる。
@@ -70,10 +73,14 @@ export class Cyclones {
 
   // 時刻 [s] の配置を uniform へ写す。
   public syncTime(seconds: number): void {
-    this.typhoon.depth.value = TYPHOON_DEPTH;
+    // 台風は寿命ごとに生まれ直す。時刻 0 が最盛期になるよう位相を半周期ずらす。
+    const typhoonAge = seconds / TYPHOON_LIFETIME + 0.5;
+    const typhoonLife = typhoonAge - Math.floor(typhoonAge);
+    this.typhoon.depth.value = TYPHOON_DEPTH * Math.sin(Math.PI * typhoonLife);
     this.typhoon.place(
       TYPHOON_LATITUDE,
-      TYPHOON_LONGITUDE + (TYPHOON_DRIFT / (this.radius * Math.cos(TYPHOON_LATITUDE))) * seconds,
+      TYPHOON_LONGITUDE
+        + (TYPHOON_DRIFT / (this.radius * Math.cos(TYPHOON_LATITUDE))) * typhoonLife * TYPHOON_LIFETIME,
     );
 
     // 低気圧は寿命ごとに世代が進み、世代と番号のハッシュで生まれる経度・緯度が決まる。
