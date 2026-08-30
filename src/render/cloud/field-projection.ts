@@ -24,7 +24,7 @@ export type FieldProjection = {
 
 // 正距円筒図法の uv から単位方向へ。u は経度(0.5 が本初子午線 +Z、東が +X)、v は緯度
 // (0 が北極 +Y)。
-export function directionFromEquirectUv(uv: Vec2Node): Vec3Node {
+function directionFromEquirectUv(uv: Vec2Node): Vec3Node {
   const longitude = uv.x.sub(0.5).mul(2 * Math.PI);
   const latitude = uv.y.sub(0.5).negate().mul(Math.PI);
   const flat = cos(latitude);

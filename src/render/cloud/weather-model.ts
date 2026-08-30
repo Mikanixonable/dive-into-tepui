@@ -2,7 +2,7 @@
 // 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
 // 見えのための調整値。
 import {
-  abs, clamp, cos, dot, exp, float, fract, inverseSqrt, max, mix, normalize, tanh, uniform, vec2, vec3, vec4,
+  abs, clamp, cos, dot, exp, float, fract, inverseSqrt, max, mix, normalize, tanh, uniform, vec2, vec4,
 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -31,6 +31,13 @@ export type WeatherSample = {
   readonly upperHumidity: FloatNode;
   readonly convection: FloatNode;
   readonly convectiveActivity: FloatNode;
+};
+
+// 風で流したあとの場。地表付近と上層の湿度は 0..1、対流は 0 中心の高周波。
+type AdvectedFields = {
+  readonly humidity: FloatNode;
+  readonly upperHumidity: FloatNode;
+  readonly convection: FloatNode;
 };
 
 // ノイズの段。段ごとに空間周波数(1 rad あたりの山の数)と段数を変える。
@@ -113,7 +120,7 @@ const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.4;
 export class WeatherModel {
   private readonly circulation = new Circulation(SURFACE_BANDS);
   private readonly upperCirculation = new Circulation(UPPER_BANDS);
-  private readonly cyclones = new Cyclones(R_EARTH);
+  private readonly cyclones = new Cyclones();
   // ノイズは焼く先の texel で標本化できない段を畳むので、写しの持ち方が決まってから組む。
   private readonly pressureNoise: CirculatingNoise;
   private readonly humidityNoise: CirculatingNoise;
@@ -207,11 +214,11 @@ export class WeatherModel {
     const meanCloudiness = this.climate.meanCloudiness(direction);
     const eye = this.cyclones.eyeAt(direction);
     const humidity = clamp(
-      advected.x.add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT)).add(lift.mul(LIFT_HUMIDITY))
+      advected.humidity.add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT)).add(lift.mul(LIFT_HUMIDITY))
         .sub(eye.mul(EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
-      advected.y.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT)).add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY))
-        .sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
+      advected.upperHumidity.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
+        .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
     return {
       pressure,
@@ -219,19 +226,19 @@ export class WeatherModel {
       lift,
       humidity,
       upperHumidity,
-      convection: advected.z,
+      convection: advected.convection,
       convectiveActivity: this.convectiveActivity.at(direction, lift),
     };
   }
 
-  // 写しへ焼く気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。読むのは pressure.at()。
+  // 気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。
   private pressureSourceAt(direction: Vec3Node): FloatNode {
     const band = cos(latitudeOf(direction).mul(6)).mul(-PRESSURE_BAND_AMPLITUDE);
-    return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE)).add(this.cyclones.pressureAt(direction));
+    return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE))
+      .add(this.cyclones.pressureAt(direction));
   }
 
-  // 移流前の湿度(x が地表付近、y が上層)。ここへ入れたものが風で流れる。写しへ焼かれ、
-  // advected() が風上へ遡って読む。
+  // 移流前の湿度(x が地表付近、y が上層)。ここへ入れたものが風で流れる。
   //
   // **平年の雲量はここへ入れない。** 移流の変位は雲を筋に引くのに要る大きさなので、通すと気候の
   // 分布がその変位ぶん歪んで読めなくなる — 慢性的な湿潤・乾燥は場所に貼り付いているべきもので、
@@ -255,10 +262,10 @@ export class WeatherModel {
     return this.convectionNoise.at(direction).mul(CONVECTION_NOISE_AMPLITUDE);
   }
 
-  // 移流前の写しを風で流したもの(x が地表付近の湿度、y が上層の湿度、z が対流)。周期の半分
-  // ずれた 2 位相を三角波で混ぜるので、流れの変位が周期ぶんで頭打ちになり、渦に巻き込まれた模様が
-  // 無限に細くならない。湿度と対流は向きも速さも違う風で流すので、伸びた先でも 2 枚の向きが揃わない。
-  private advected(direction: Vec3Node, wind: BalancedWind, convectionWind: BalancedWind): Vec3Node {
+  // 移流前の写しを風で流したもの。周期の半分ずれた 2 位相を三角波で混ぜるので、流れの変位が
+  // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならない。湿度と対流は向きも速さも
+  // 違う風で流すので、伸びた先でも 2 枚の向きが揃わない。
+  private advected(direction: Vec3Node, wind: BalancedWind, convectionWind: BalancedWind): AdvectedFields {
     const phaseA = this.advectionCycle;
     const phaseB = fract(phaseA.add(0.5));
     const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
@@ -274,12 +281,14 @@ export class WeatherModel {
     const convectionStep = inverseSqrt(winding.mul(winding).add(1)).mul(CONVECTION_ADVECTION);
     const humidity = this.humiditySource;
     const convection = this.convectionSource;
-    return vec3(
-      mix(sourceAt(humidity, wind, stepB).xy, sourceAt(humidity, wind, stepA).xy, weightA),
-      mix(
+    const humidities = mix(sourceAt(humidity, wind, stepB).xy, sourceAt(humidity, wind, stepA).xy, weightA);
+    return {
+      humidity: humidities.x,
+      upperHumidity: humidities.y,
+      convection: mix(
         sourceAt(convection, convectionWind, stepB.mul(convectionStep)).r,
         sourceAt(convection, convectionWind, stepA.mul(convectionStep)).r, weightA),
-    );
+    };
   }
 
   // 保持している GPU 資源を解放する。
