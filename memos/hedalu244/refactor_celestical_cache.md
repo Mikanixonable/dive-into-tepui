@@ -456,47 +456,11 @@ addPrimaryRelative(planet.analyticStateAt(t), system.starRelStateAt(t)) // 惑�
 どちらも mm を問題にしない。**したがって「惑星系重心相対の補助キャッシュ」は
 いま置く必要がない**(置く判断は、mm を問題にする利用者が現れたときに戻す)。
 
-### 手順4 — 系の内訳を1件のレコードへ畳み、`relCache` と `PlanetMotion.analyticCache` を消す
-
-**目的**: 基準②③④。**惑星相対を保持値・公開値から外す**最後の1件。
-
-**変更箇所**: `planet-system.ts`・`celestial-motion.ts`(`PlanetMotion` / `SatelliteMotion`)
-
-**手順3 で分かったこと**: `PlanetSystem` には `ownPackedStateAt`(暦が重心を直接収録して
-いる範囲)だけを置き、**「本体の pack + 重心オフセット」で重心を合成する口は置かなかった** —
-本番の呼び出し元が無いうえ、地球のように構成天体が個別に収録されている系では、解析の月と
-DE440 の月の位相差ぶん **8.4e6 m** ずれる劣った合成になるため。重心が要るなら
-`Σμ_i·R_i^packed/μ_sys` で組むべきで、そのときに書く。
-
-```
-PlanetSystem.membersAt(t)                ← 1系・1時刻につき1件。TimeRing で畳む
-├─ bary    : 系重心の太陽系重心状態        (手順2 で入れた analyticCache と同じもの)
-├─ body    : 惑星本体の太陽系重心状態      (= bary − Σ w_k·r_k)
-└─ sats[k] : 衛星の太陽系重心状態          (= body + r_k)
-```
-
-- 相対の二体解 `r_k` はレコード構築中の一時値。**保存しない。**
-- `PlanetMotion.analyticStateAt` / `SatelliteMotion.analyticStateAt` はレコードの引き当てになる。
-  `PlanetMotion.analyticCache` と `SatelliteMotion.relCache` は消える。
-- **惑星相対が要る2箇所**(`SatelliteMotion.analyticAccelAt` と手順3 の `packedStateAt`)は
-  `sats[k] − body` で作る。精度は 7.1(b)(最悪 2.2 mm、相対 1.8e-10)。
-- `SatelliteMotion.relStateAt` と `PlanetMotion.computeAnalyticStateAt` は消える。
-- **`TimeRing` は 144 本 → 47 本**(いま: 系 47 + 惑星 47 + 衛星 50)。
-  衛星1体の太陽系重心位置を引く費用も「32段の線形走査 ×2 + 加算」から
-  「32段の線形走査 + 配列添字」に減る。
-
-**評価回数は変わらない** — いまも `PlanetMotion.computeAnalyticStateAt` が全衛星の
-`relStateAt` を引くので、系のどれか1体が引かれた時点で M 体ぶん評価している。
-
-**落とし穴**:
-
-- **2.4節の取り違え。** `sats[k] − bary` は `r_k` ではない(月なら 379,730 km であって
-  384,400 km ではない)。`r_k` は `sats[k] − body`。手順1の地心距離テストがここを守る。
-- **惑星系重心相対を補助的に持つかは、いまは置かない**(7.1(b))。置くなら
-  `body − bary` と `sats[k] − bary` をレコードへ足すだけで、あとから入れられる。
-- `mu <= 0` の分岐(6.3節)はそのまま移す。**挙動を変えない。** 変えるなら別 commit。
-
-**検証**: 手順1のテスト・`npm run test:physics`・`perf-probe`。
+**実施後の実測**: 引き算で復元したことにより値が動いたのは
+`celestial-eci-baseline.test.ts` の「暦パック構成の moon」1件だけで、ずれは **4〜15 ulp
+(最大 1.9e-7 m)**。同 pack の解析経路と、他の全天体はビット一致のまま。
+`celestialBodiesAt`(98体・新しい t)は 174〜180 µs で手順2 と同等。
+`TimeRing` は **144 本 → 94 本**(系ごとに重心と内訳の2本。衛星と惑星本体は持たなくなった)。
 
 ### 手順5 — 名前・コメント・タグの是正
 
