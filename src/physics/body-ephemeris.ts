@@ -9,3 +9,10 @@ export interface BodyEphemeris {
   // 太陽系重心中心・ゲーム ECI 軸の位置・速度。範囲外の simTime を渡すと例外。
   stateAt(simTime: number): KinematicState<'packed'>;
 }
+
+// 結ばれた暦が答える位置・速度。結ばれていない・有効期間の外では null。
+export function boundStateAt(ephemeris: BodyEphemeris | null, t: number): KinematicState<'packed'> | null {
+  if (ephemeris === null) return null;
+  if (t < ephemeris.validStartSimTime || t > ephemeris.validEndSimTime) return null;
+  return ephemeris.stateAt(t);
+}
