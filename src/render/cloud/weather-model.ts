@@ -64,7 +64,7 @@ const TERRAIN_LIFT_GAIN = 0.35;
 // — そこで対流が飽和して、雲頂が上限まで立つ。
 const LIFT_HUMIDITY = 5;
 const UPPER_LIFT_HUMIDITY = 3;
-const CONVECTION_LIFT = 10;
+const CONVECTION_LIFT = 3;
 
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
 const PRESSURE_BAND_AMPLITUDE = 8;
@@ -111,11 +111,12 @@ const CONVECTION_BASE = 0.5;
 export class WeatherModel {
   private readonly circulation = new Circulation(SURFACE_BANDS);
   private readonly upperCirculation = new Circulation(UPPER_BANDS);
-  private readonly pressureNoise = new CirculatingNoise(this.circulation, ...PRESSURE_NOISE);
-  private readonly humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE);
-  private readonly convectionNoise = new CirculatingNoise(this.circulation, ...CONVECTION_NOISE);
-  private readonly upperHumidityNoise = new CirculatingNoise(this.upperCirculation, ...UPPER_HUMIDITY_NOISE);
   private readonly cyclones = new Cyclones(R_EARTH);
+  // ノイズは焼く先の texel で標本化できない段を畳むので、写しの持ち方が決まってから組む。
+  private readonly pressureNoise: CirculatingNoise;
+  private readonly humidityNoise: CirculatingNoise;
+  private readonly convectionNoise: CirculatingNoise;
+  private readonly upperHumidityNoise: CirculatingNoise;
   private readonly pressure: BakedField;
   private readonly advectionSource: BakedField;
   // 2 位相移流の周期の中の位置 0..1。
@@ -123,6 +124,11 @@ export class WeatherModel {
 
   // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方。
   public constructor(private readonly climate: ClimateMap, projection: FieldProjection) {
+    const texel = projection.texelAngle;
+    this.pressureNoise = new CirculatingNoise(this.circulation, ...PRESSURE_NOISE, texel);
+    this.humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE, texel);
+    this.convectionNoise = new CirculatingNoise(this.circulation, ...CONVECTION_NOISE, texel);
+    this.upperHumidityNoise = new CirculatingNoise(this.upperCirculation, ...UPPER_HUMIDITY_NOISE, texel);
     this.pressure = new BakedField(
       'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
     this.advectionSource = new BakedField(

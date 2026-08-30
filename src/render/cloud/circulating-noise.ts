@@ -1,20 +1,46 @@
-// 球面で切った 3D フラクタルノイズの 1 段。大気の大循環に乗せて標本化するので、模様は緯度帯ごとに
-// 違う向きへ流れながら形を変える。
-import { mx_fractal_noise_float } from 'three/tsl';
+// 球面で切った 3D フラクタルノイズ。大気の大循環に乗せて標本化するので、模様は緯度帯ごとに
+// 違う向きへ流れながら形を変える。焼く先の texel で標本化できない段は落とすが、落ちる境目の 1 段は
+// 端数の振幅で乗せる — 写しの解像度が連続に変われば、段が丸ごと現れたり消えたりしない。
+import { clamp, exp2, float, floor, int, log2, mx_fractal_noise_float, mx_noise_float } from 'three/tsl';
 import type { Circulation } from './circulation';
-import type { FloatNode, Vec3Node } from '../tsl-types';
+import type { FloatNode, IntNode, Vec3Node } from '../tsl-types';
+
+// 段が振幅 1 に達する、1 波長あたりの texel 数の逆数(0.25 = 4 texel)。ここから周波数 2 倍
+// (= Nyquist の 2 texel)までのあいだで、段の振幅を 1 から 0 へ渡す。
+const OCTAVE_FADE_START = 0.25;
 
 export class CirculatingNoise {
-  // frequency は 1 rad あたりの山の数、octaves は段数、circulation はこの段を運ぶ流れ。
+  // 振幅 1 で乗る段数と、その次の 1 段の周波数・振幅。texelAngle から出るだけで標本化する位置に
+  // 依らないので、位置ごとに組み直さない。
+  private readonly fullOctaves: IntNode;
+  private readonly partialFrequency: FloatNode;
+  private readonly partialAmplitude: FloatNode;
+
+  // frequency は最初の段の 1 rad あたりの山の数、octaves は段数、circulation はこの段を運ぶ流れ、
+  // texelAngle は焼く先の 1 texel が張る角 [rad]。
   public constructor(
     private readonly circulation: Circulation,
     private readonly frequency: number,
-    private readonly octaves: number,
-  ) {}
+    octaves: number,
+    texelAngle: FloatNode,
+  ) {
+    const level = clamp(log2(float(OCTAVE_FADE_START).div(texelAngle.mul(frequency))), -1, octaves - 1);
+    const resolved = floor(level);
+    this.fullOctaves = int(resolved.add(1));
+    this.partialFrequency = exp2(resolved.add(1));
+    this.partialAmplitude = exp2(resolved.add(1).negate()).mul(level.sub(resolved));
+  }
 
   // 単位方向 direction でのノイズ、おおむね −1..1。
   public at(direction: Vec3Node): FloatNode {
-    return this.circulation.carry(
-      direction, (position) => mx_fractal_noise_float(position.mul(this.frequency), this.octaves));
+    return this.circulation.carry(direction, (position) => this.fractalAt(position));
+  }
+
+  // 周波数 2 倍・振幅 1/2 で段を重ねた和。端数の段の振幅は、段数が 1 つ増える所で 1/2 段ぶんに
+  // 達するので、和は段数の境目で跳ばない。
+  private fractalAt(position: Vec3Node): FloatNode {
+    const scaled = position.mul(this.frequency);
+    return mx_fractal_noise_float(scaled, this.fullOctaves)
+      .add(mx_noise_float(scaled.mul(this.partialFrequency)).mul(this.partialAmplitude));
   }
 }

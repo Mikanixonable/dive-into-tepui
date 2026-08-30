@@ -34,7 +34,8 @@ export class CloudLabCanvas {
   // 左が全球の正距円筒、右が正射影の cap。並びが画面の左右と一致する。
   private readonly panes: readonly [CloudLabPane, CloudLabPane];
   private readonly capProjection: OrthographicCap;
-  private readonly materials: ReadonlyMap<CloudLabViewId, THREE.MeshBasicNodeMaterial>;
+  // 一度出した量のマテリアル。グラフを組むだけで天気の式が丸ごと展開されるので、出すまで組まない。
+  private readonly materials = new Map<CloudLabViewId, THREE.MeshBasicNodeMaterial>();
   private readonly quad: QuadMesh;
   // 撮影先。表示値をそのまま RGBA8 で受ける。
   private readonly captureTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
@@ -57,7 +58,7 @@ export class CloudLabCanvas {
     return new CloudLabCanvas(renderer, climate);
   }
 
-  // 2 面と、表示の種類ごとのマテリアルを一度だけ組む。
+  // 2 面と、起動時に出す量のマテリアルを組む。
   private constructor(private readonly renderer: WebGPURenderer, climate: ClimateMap) {
     this.capProjection = new OrthographicCap(
       CAP_SIZE, THREE.MathUtils.degToRad(this.capLatitude), THREE.MathUtils.degToRad(this.capLongitude),
@@ -66,15 +67,17 @@ export class CloudLabCanvas {
       new CloudLabPane(new EquirectProjection(VIEW_HEIGHT), climate),
       new CloudLabPane(this.capProjection, climate),
     ];
-    // ビューごとに別のマテリアル。選ばれた 1 つだけがコンパイルされる。
-    const materials = new Map<CloudLabViewId, THREE.MeshBasicNodeMaterial>();
-    for (const view of CLOUD_LAB_VIEWS) {
-      const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
-      material.colorNode = this.colorNode(view);
-      materials.set(view.id, material);
-    }
-    this.materials = materials;
-    this.quad = new QuadMesh(materials.get(this.view.id)!);
+    this.quad = new QuadMesh(this.materialFor(this.view));
+  }
+
+  // 量 view のマテリアル。無ければ組んで覚える。
+  private materialFor(view: CloudLabView): THREE.MeshBasicNodeMaterial {
+    const known = this.materials.get(view.id);
+    if (known) return known;
+    const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
+    material.colorNode = this.colorNode(view);
+    this.materials.set(view.id, material);
+    return material;
   }
 
   public get currentView(): CloudLabViewId { return this.view.id; }
@@ -86,7 +89,7 @@ export class CloudLabCanvas {
   // 表示する量を切り替えて描き直す。
   public show(id: CloudLabViewId): void {
     this.view = CLOUD_LAB_VIEWS.find((view) => view.id === id)!;
-    this.quad.material = this.materials.get(id)!;
+    this.quad.material = this.materialFor(this.view);
     this.render();
   }
 

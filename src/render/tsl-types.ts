@@ -7,6 +7,7 @@ export type FloatNode = THREE.Node<'float'>;
 export type Vec2Node = THREE.Node<'vec2'>;
 export type Vec3Node = THREE.Node<'vec3'>;
 export type Vec4Node = THREE.Node<'vec4'>;
+export type IntNode = THREE.Node<'int'>;
 export type BoolNode = THREE.Node<'bool'>;
 export type Mat3Node = THREE.Node<'mat3'>;
 
