@@ -6,7 +6,7 @@ import { test } from '../harness';
 import { PlanetDef, SatelliteDef } from '../../src/physics/celestial-motion';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import {
-  EPOCH_T_OFFSET, MU_EARTH, MU_MOON, MU_SUN as MU_SUN_LOCAL, SIDEREAL_DAY,
+  MU_EARTH, MU_MOON, MU_SUN as MU_SUN_LOCAL, SIDEREAL_DAY,
 } from '../../src/game/celestial/solar-system/constants';
 import { EPS } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
@@ -17,7 +17,7 @@ import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
 import {
   assertOmegaMatchesBasis, lagrangeOf, motionOf, orbitingMotionOf, positionOf, solarSystemParts, stateOf,
-  TEST_EPOCH,
+  TEST_EPOCH, TEST_SIM_ZERO_ET,
 } from './test-helpers';
 
 // 定義だけを引くための太陽系(id から静的事実を取り出す口としてだけ使う)。
@@ -73,7 +73,7 @@ export function register(): void {
 
       const sunEci = stateOf(parts, 'sun', t);
       const earthHelio = { r: scale(sunEci.r, -1), v: scale(sunEci.v, -1) }; // 太陽は日心原点
-      const baryHelio = keplerOrbitState(keplerOrbitForSimZero(EARTH_ORBIT, 0.3, EPOCH_T_OFFSET), t);
+      const baryHelio = keplerOrbitState(keplerOrbitForSimZero(EARTH_ORBIT, 0.3, TEST_SIM_ZERO_ET), t);
       const baryFromKepler = { r: sub(baryHelio.r, earthHelio.r), v: sub(baryHelio.v, earthHelio.v) };
 
       const rErr = len(sub(baryFromMass.r, baryFromKepler.r));
@@ -88,7 +88,7 @@ export function register(): void {
   // 4,673 km 前後になる(月の距離レンジ × 質量比 ≈ 4,331〜4,941 km)。
   test('celestial-motion: 太陽の地心位置は純ケプラー地球位置から重心補正ぶん(月の位相と共に振れる約4,673km)ずれる', () => {
     const diffAt = (t: number) => {
-      const bary = keplerOrbitState(keplerOrbitForSimZero(EARTH_ORBIT, 0.3, EPOCH_T_OFFSET), t);
+      const bary = keplerOrbitState(keplerOrbitForSimZero(EARTH_ORBIT, 0.3, TEST_SIM_ZERO_ET), t);
       const pureKeplerSunEci = scale(bary.r, -1);
       return sub(stateOf(parts, 'sun', t).r, pureKeplerSunEci);
     };
@@ -197,7 +197,7 @@ export function register(): void {
     const maxCenterDeg = (2 * MOON_ECC * 180) / Math.PI + 0.5;
     for (const days of [27.321661, 365.25, 3652.5]) {
       const t = days * 86400;
-      const mean = (2 * Math.PI * (t + EPOCH_T_OFFSET)) / MOON_PERIOD;
+      const mean = (2 * Math.PI * (t + TEST_SIM_ZERO_ET)) / MOON_PERIOD;
       let lon = eclipticLongitude(stateOf(moonParts, 'moon', t).r);
       lon += 2 * Math.PI * Math.round((mean - lon) / (2 * Math.PI)); // mean に最も近い分枝へ
       const errDeg = ((lon - mean) * 180) / Math.PI;
@@ -219,7 +219,7 @@ export function register(): void {
     assert.ok(Math.abs(maxDeg - 28.584) < 0.2, `最大傾斜: ${maxDeg}°`);
   });
 
-  // EPOCH_T_OFFSET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。
+  // TEST_SIM_ZERO_ET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。
   // 平均黄経で合わせているぶん、中心差(地球の e=0.0167 で最大 1.9°)だけ真の方向はずれる。
   test('celestial-motion: t=0 では太陽が +X 方向(昼側)にある', () => {
     const dir = norm(positionOf(solarSystemParts({}), 'sun', 0));
@@ -227,13 +227,13 @@ export function register(): void {
     assert.ok(offDeg < 3, `t=0 の太陽方向が +X から離れている: ${offDeg}°`);
   });
 
-  // 要素の元期は全天体で J2000 に揃っているので、評価時刻を EPOCH_T_OFFSET だけ戻した瞬間の
+  // 要素の元期は全天体で J2000 に揃っているので、評価時刻を TEST_SIM_ZERO_ET だけ戻した瞬間の
   // 日心黄経差は Standish 表の L(平均黄経)の差になる。実位置の黄経は真黄経なので、両天体の
   // 中心差(最大 2e: 地球 1.9°・木星 5.6°)ぶんまで離れうる — 元期不整合(78° 級)を捕まえる
   // にはこの幅で足りる。
-  test('celestial-motion: 地球と木星の日心黄経差は t=−EPOCH_T_OFFSET で J2000 の表の値と一致する', () => {
+  test('celestial-motion: 地球と木星の日心黄経差は t=−TEST_SIM_ZERO_ET で J2000 の表の値と一致する', () => {
     const m = solarSystemParts({});
-    const t = -EPOCH_T_OFFSET;
+    const t = -TEST_SIM_ZERO_ET;
     const sun = stateOf(m, 'sun', t).r;
     const earthHelio = scale(sun, -1);
     const jupiterHelio = sub(stateOf(m, 'jupiter', t).r, sun);
