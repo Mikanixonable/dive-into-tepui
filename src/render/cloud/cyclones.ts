@@ -2,6 +2,7 @@
 // 中で生まれて発達して消える。中心と深さは時刻の閉じた関数で、どの時刻へ飛んでも同じ配置になる。
 import * as THREE from 'three/webgpu';
 import { dot, exp, float, inverseSqrt, uniform } from 'three/tsl';
+import { R_EARTH } from '../../physics/solar-system';
 import { coreCrossingAngle } from './wind-law';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
@@ -46,16 +47,14 @@ function hash(n: number): number {
 }
 
 // 谷 1 つ。中心の単位方向と深さ [hPa] は時刻ごとに書き換わり、広がり radius [m] と最盛期の
-// 落ち込み peakDepth [hPa] は固定。radiusOfBody はこの谷が乗る天体の半径 [m]。
+// 落ち込み peakDepth [hPa] は固定。
 class Trough {
-  public readonly center: Vec3Uniform = uniform(new THREE.Vector3());
-  public readonly depth: FloatUniform = uniform(0);
+  private readonly center: Vec3Uniform = uniform(new THREE.Vector3());
+  private readonly depth: FloatUniform = uniform(0);
   // 目の濃さ 0..1。深さと広がりと緯度から出るので、同じ谷でも一生の中で現れて消える。
-  public readonly eyeStrength: FloatUniform = uniform(0);
+  private readonly eyeStrength: FloatUniform = uniform(0);
 
-  public constructor(
-    private readonly radiusOfBody: number, private readonly radius: number, private readonly peakDepth: number,
-  ) {}
+  public constructor(private readonly radius: number, private readonly peakDepth: number) {}
 
   // 中心を緯度・経度 [rad] へ置き、寿命の中の位置 life(0 で生まれ、0.5 で最盛期、1 で消える)に
   // 応じた深さと目にする。
@@ -67,7 +66,7 @@ class Trough {
     this.depth.value = depth;
     // 芯(勾配の消える点)での等圧線方向の 2 階微分 [hPa/rad²]。pressureAt の形を原点で開いたもの。
     const coreBend = depth
-      * ((this.radiusOfBody / this.radius) ** 2 + 2 * (this.radiusOfBody / TROUGH_REACH) ** 2);
+      * ((R_EARTH / this.radius) ** 2 + 2 * (R_EARTH / TROUGH_REACH) ** 2);
     this.eyeStrength.value = 1 - THREE.MathUtils.smoothstep(
       coreCrossingAngle(coreBend, latitude), EYE_ANGLE_FULL, EYE_ANGLE_NONE);
   }
@@ -86,8 +85,8 @@ class Trough {
   // 移流の伸びも半径に沿って滑らかに緩む。芯の巻きは 深さ/広がり² が単独で握り、裾と別に動かせる。
   public pressureAt(direction: Vec3Node): FloatNode {
     const chordSquared = this.chordSquared(direction);
-    return inverseSqrt(chordSquared.mul((this.radiusOfBody / this.radius) ** 2).add(1))
-      .mul(exp(chordSquared.mul(-((this.radiusOfBody / TROUGH_REACH) ** 2))))
+    return inverseSqrt(chordSquared.mul((R_EARTH / this.radius) ** 2).add(1))
+      .mul(exp(chordSquared.mul(-((R_EARTH / TROUGH_REACH) ** 2))))
       .mul(this.depth).negate();
   }
 
@@ -95,7 +94,7 @@ class Trough {
   // ガウスで、谷の芯より内側にだけ効く。
   public eyeAt(direction: Vec3Node): FloatNode {
     const radius = this.radius * EYE_FRACTION;
-    return exp(this.chordSquared(direction).mul(-((this.radiusOfBody / radius) ** 2))).mul(this.eyeStrength);
+    return exp(this.chordSquared(direction).mul(-((R_EARTH / radius) ** 2))).mul(this.eyeStrength);
   }
 }
 
@@ -105,11 +104,11 @@ export class Cyclones {
   // 気圧も目も種類を分けずに足す。台風も低気圧も、同じ 1 つの規則で効く。
   private readonly troughs: readonly Trough[];
 
-  // radius はこの天体の半径 [m]。
-  public constructor(private readonly radius: number) {
-    this.typhoon = new Trough(radius, TYPHOON_RADIUS, TYPHOON_DEPTH);
+  // 谷を組み、時刻 0 の配置で始める。
+  public constructor() {
+    this.typhoon = new Trough(TYPHOON_RADIUS, TYPHOON_DEPTH);
     this.lows = Array.from({ length: LOW_COUNT },
-      (_, i) => new Trough(radius, LOW_RADIUS_MIN + (i / LOW_COUNT) * LOW_RADIUS_SPAN, LOW_DEPTH));
+      (_, i) => new Trough(LOW_RADIUS_MIN + (i / LOW_COUNT) * LOW_RADIUS_SPAN, LOW_DEPTH));
     this.troughs = [this.typhoon, ...this.lows];
     this.syncTime(0);
   }
@@ -120,7 +119,7 @@ export class Cyclones {
     const typhoonAge = seconds / TYPHOON_LIFETIME + 0.5;
     const typhoonLife = typhoonAge - Math.floor(typhoonAge);
     const typhoonLongitude = TYPHOON_LONGITUDE
-      + (TYPHOON_DRIFT / (this.radius * Math.cos(TYPHOON_LATITUDE))) * typhoonLife * TYPHOON_LIFETIME;
+      + (TYPHOON_DRIFT / (R_EARTH * Math.cos(TYPHOON_LATITUDE))) * typhoonLife * TYPHOON_LIFETIME;
     this.typhoon.place(TYPHOON_LATITUDE, typhoonLongitude, typhoonLife);
 
     // 低気圧は寿命ごとに世代が進み、世代と番号のハッシュで生まれる経度・緯度が決まる。
@@ -132,22 +131,18 @@ export class Cyclones {
       const hemisphere = i % 2 === 0 ? 1 : -1;
       const latitude = hemisphere * (LOW_LATITUDE_MIN + hash(seed) * LOW_LATITUDE_SPAN);
       const longitude = hash(seed + 0.5) * 2 * Math.PI
-        + (LOW_DRIFT / (this.radius * Math.cos(latitude))) * life * LOW_LIFETIME;
+        + (LOW_DRIFT / (R_EARTH * Math.cos(latitude))) * life * LOW_LIFETIME;
       low.place(latitude, longitude, life);
     }
   }
 
   // 単位方向 direction での気圧の落ち込みの合計 [hPa](0 以下)。
   public pressureAt(direction: Vec3Node): FloatNode {
-    let sum: FloatNode = float(0);
-    for (const trough of this.troughs) sum = sum.add(trough.pressureAt(direction));
-    return sum;
+    return this.troughs.reduce<FloatNode>((sum, trough) => sum.add(trough.pressureAt(direction)), float(0));
   }
 
   // 単位方向 direction での目の濃さの合計 0..1。
   public eyeAt(direction: Vec3Node): FloatNode {
-    let sum: FloatNode = float(0);
-    for (const trough of this.troughs) sum = sum.add(trough.eyeAt(direction));
-    return sum;
+    return this.troughs.reduce<FloatNode>((sum, trough) => sum.add(trough.eyeAt(direction)), float(0));
   }
 }
