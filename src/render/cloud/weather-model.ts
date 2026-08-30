@@ -80,9 +80,9 @@ const ADVECTION_PERIOD = 12 * 3600;
 // 対流を流す風に掛ける倍率。1 周期の変位は並の風(20 m/s)で 260 km と、写しに載る粒(80〜40 km)
 // より大きいので、粒は流れの向きへ伸びる。
 const CONVECTION_ADVECTION = 0.3;
-// 台風の目。移流の後の湿度をこれだけ下げる。目は渦とともに動く定常の構造なので、風に流さない。
+// 渦の目。移流の後の湿度をこれだけ下げる。目は渦とともに動く定常の構造なので、風に流さない。
 // 眼壁は上昇流が頭打ちに張り付いて飽和しているので、そこを貫く深さが要る。
-const TYPHOON_EYE_DRYNESS = 0.55;
+const EYE_DRYNESS = 0.55;
 // 湿度の底上げ(移流前の源が持つ、平年の雲量を抜きにした値)と、移流後に足す平年の雲量の重み。
 // 地表付近と上層で別に持つ。重みは、雲量の地理的な差が凝結のしきい値をまたぐ幅に取る — 小さく
 // 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
@@ -189,11 +189,11 @@ export class WeatherModel {
     const terrainLift = dot(components(wind), this.climate.slope(direction)).mul(TERRAIN_LIFT_GAIN);
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)));
 
-    // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足し、台風の目のぶんを引いたもの。
+    // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足し、渦の目のぶんを引いたもの。
     // 後の 3 つは移流を通らないので、気候と地形と渦に貼り付いたまま歪まない。
     const advected = this.advected(direction, wind, convectionWind);
     const meanCloudiness = this.climate.meanCloudiness(direction);
-    const eye = this.cyclones.typhoonEyeAt(direction).mul(TYPHOON_EYE_DRYNESS);
+    const eye = this.cyclones.eyeAt(direction).mul(EYE_DRYNESS);
     const humidity = clamp(
       advected.x.add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT)).add(lift.mul(LIFT_HUMIDITY)).sub(eye), 0, 1);
     const upperHumidity = clamp(
