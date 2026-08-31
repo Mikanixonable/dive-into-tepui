@@ -27,6 +27,8 @@ export class TimeRing<T> {
   private next = 0;
   private hits = 0;
   private misses = 0;
+  // 直近に当たった段。積分の内側は同じ時刻を連続で引くので、走査の前にここだけを見る。
+  private lastHit = 0;
 
   // get の照合の累計。返る値には影響しない。
   get stats(): TimeCacheStats {
@@ -35,9 +37,14 @@ export class TimeRing<T> {
 
   // t に一致する保持値。無ければ undefined。
   get(t: number): T | undefined {
+    if (this.keys[this.lastHit] === t) {
+      this.hits++;
+      return this.values[this.lastHit];
+    }
     for (let i = 0; i < TIME_CACHE_SLOTS; i++) {
       if (this.keys[i] === t) {
         this.hits++;
+        this.lastHit = i;
         return this.values[i];
       }
     }
