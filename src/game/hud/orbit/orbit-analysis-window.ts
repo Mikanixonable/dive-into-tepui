@@ -1,18 +1,20 @@
 // 軌道分析パネル: 操作対象の未来の軌道を「高度」「接近」「投影」の3タブでグラフ表示する
-// ドラッグ可能ウィンドウ。外枠(ドラッグ・クリップ・ヘッダ・OverlayManager 登録)は
-// DraggableWindow に委譲し、ここではタブ・スケール入力欄の組み立てと、点列を
-// orbit-analysis-data.ts へ問い合わせて OrbitChart/OrbitProjectionChart へ渡すことだけを持つ。
+// ドラッグ可能ウィンドウ。タブ・スケール入力欄を組み立て、比較対象(接近・投影タブの
+// ターゲット)を解決・保持し、orbit-analysis-data.ts へ問い合わせた点列を
+// OrbitChart/OrbitProjectionChart へ渡す。ドラッグ・ホイール・ピンチ操作は PointerPanZoom が
+// 変換した値を、選択中タブのスケール・平行移動量へ反映する。
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Game } from '../../game';
 import type { GameEntity } from '../../game-entity/game-entity';
+import { SyncThrottle } from '../sync-throttle';
 import { DraggableWindow } from '../windows/draggable-window';
-import {
-  ChartAxis, ChartMark, ChartPoint, ChartSpec, OrbitChart, distanceAxis, timeAxis,
-} from './orbit-chart';
+import { ChartAxis, ChartMark, ChartPoint, ChartSpec, OrbitChart } from './orbit-chart';
+import { distanceAxis, timeAxis } from './orbit-chart-axes';
 import { OrbitProjectionTab, projectionTextureUrl } from './orbit-projection-tab';
 import { altitudeSeries, approachSeries, ApproachTargetSource } from './orbit-analysis-data';
 import { MQ_COMPACT } from '../breakpoints';
 import { Button, TabBar, ValueInput } from '../widgets';
+import { PointerPanZoom } from '../widgets/pointer-pan-zoom';
 import type { OverlayManager } from '../overlay-manager';
 
 export type AnalysisTab = 'altitude' | 'approach' | 'projection';
@@ -28,14 +30,12 @@ const APPROACH_SAMPLE_SPAN_SEC = 86400;
 // 接近タブは1日ぶんを描くため、高度タブと同じ密度では周回1つあたりの点が粗く、折れ線が
 // 角ばって見える。密度を底上げする倍率。
 const APPROACH_SAMPLE_MULTIPLIER = 4;
-// 両タブ共通のドラッグ/ホイール/ピンチ操作。感度は combat カメラのホイールズームに合わせる。
-const WHEEL_ZOOM_SENSITIVITY = 0.0015;
-const PINCH_ZOOM_SENSITIVITY = 0.004;
 const SCALE_MIN_KM = 1;
 const SCALE_MAX_KM = 1_000_000;
 
 const TAB_LABELS: Readonly<Record<AnalysisTab, string>> = { altitude: '高度', approach: '接近', projection: '投影' };
 
+// TabBar へ渡す選択肢。高度タブは常に選べ、接近・投影タブは条件が整ったときだけ加える。
 function tabItems(approachAvailable: boolean, projectionAvailable: boolean): readonly (readonly [AnalysisTab, string])[] {
   const tabs: AnalysisTab[] = ['altitude'];
   if (approachAvailable) tabs.push('approach');
@@ -43,9 +43,13 @@ function tabItems(approachAvailable: boolean, projectionAvailable: boolean): rea
   return tabs.map((tab) => [tab, TAB_LABELS[tab]] as const);
 }
 
-// 投影タブは平行移動・ズームはできるが、スケール入力欄は持たない(OrbitProjectionChart が
-// 中心経緯度・ズーム倍率を自分で保持する)。
+// 縦軸・横軸のスケール入力欄を持つタブ。投影タブはパン・ズームで表示範囲を操作する。
 type ScaleTab = 'altitude' | 'approach';
+
+// tab がスケール入力欄を持つタブかどうかを判定する型ガード。
+function isScaleTab(tab: AnalysisTab): tab is ScaleTab {
+  return tab === 'altitude' || tab === 'approach';
+}
 
 interface TabScale { yKm: number; x: number }
 
@@ -73,6 +77,7 @@ const STYLE = `
 
 let styleInjected = false;
 
+// STYLE を document.head へ一度だけ注入する。
 function ensureStyle(): void {
   if (styleInjected) return;
   styleInjected = true;
@@ -97,7 +102,7 @@ export class OrbitAnalysisWindow {
   private tab: AnalysisTab = 'altitude';
   private approachAvailable = false;
   private projectionAvailable = false;
-  private nextSyncAt = 0;
+  private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   // 縦軸(高度)の中心 [m]。null なら次の sync で現在高度に固定し直す。
   private altitudeCenterM: number | null = null;
   // 戦闘ビューでも未来の弧を伸ばし続けさせるため analysisPanelReader を立てている個体
@@ -116,15 +121,12 @@ export class OrbitAnalysisWindow {
   // 基準とした固定の軸で、平行移動すると「現在」の意味を失うため入力欄でのみ変更できる。
   private altitudeYBaselineKm: number = DEFAULT_SCALES.altitude.yKm;
   private resetBtn!: Button;
-  // ドラッグ/ピンチで押されているポインタ。中心(重心)の移動をパン、2本間の
-  // 距離の変化をズームに使う。
-  private readonly pointers = new Map<number, { x: number; y: number }>();
-  private lastPanPoint: { x: number; y: number } | null = null;
-  private lastPinchDist: number | null = null;
 
   // ESC・外側クリック・✕ ボタンのどの経路で閉じても発火する。
   public onClose: (() => void) | null = null;
 
+  // ウィンドウ・タブバー・2枚のチャート(高度/接近用・投影用)・相対傾斜角の表示行・
+  // スケール入力欄を組み立てる。
   public constructor(
     root: HTMLElement, clientX: number, clientY: number,
     overlayManager: OverlayManager, tempWindowGroup: string,
@@ -136,21 +138,21 @@ export class OrbitAnalysisWindow {
     this.win.element.classList.add('orbit-analysis');
     this.win.onClose = () => this.onClose?.();
 
+    // タブと、高度/接近タブ用・投影タブ用の2枚のチャートを積む(同時に見えるのは1枚だけ)。
     this.tabBar = new TabBar<AnalysisTab>(tabItems(false, false), (tab) => this.selectTab(tab));
     this.win.body.appendChild(this.tabBar.element);
     this.win.body.appendChild(this.chart.element);
     this.chart.element.classList.add('panzoom');
-    this.attachChartPanZoom(
-      this.chart.element, (dx, dy) => this.applyPan(dx, dy), (wd) => this.applyZoom(wd),
-    );
+    new PointerPanZoom(this.chart.element, (dx, dy) => this.applyPan(dx, dy), (wd) => this.applyZoom(wd));
     this.win.body.appendChild(this.projectionTab.chart.element);
     this.projectionTab.chart.element.classList.add('hidden', 'panzoom');
-    this.attachChartPanZoom(
+    new PointerPanZoom(
       this.projectionTab.chart.element,
       (dx, dy) => this.projectionTab.chart.pan(dx, dy),
       (wd) => this.projectionTab.chart.zoom(wd),
     );
 
+    // 接近タブでのみ表示する相対傾斜角の1行。
     const relIncLabel = document.createElement('span');
     relIncLabel.className = 'orbit-analysis-relinc-label';
     relIncLabel.textContent = '相対傾斜角';
@@ -161,16 +163,21 @@ export class OrbitAnalysisWindow {
     this.relIncRow.appendChild(this.relIncValue);
     this.win.body.appendChild(this.relIncRow);
 
+    // 縦軸・横軸のスケール入力欄とリセットボタン(投影タブでは hidden にする)。
     this.scalesRow = document.createElement('div');
     this.scalesRow.className = 'orbit-analysis-scales';
     const yField = this.buildScaleField(
-      '縦軸', 'km', () => this.scales[this.tab as ScaleTab].yKm, (v) => { this.commitScale('yKm', v); },
+      '縦軸', 'km',
+      () => (isScaleTab(this.tab) ? this.scales[this.tab].yKm : this.scales.altitude.yKm),
+      (v) => { this.commitScale('yKm', v); },
     );
     this.yInput = yField.input;
     this.yField = yField.element;
     this.scalesRow.appendChild(yField.element);
     const xField = this.buildScaleField(
-      '横軸', this.xUnitLabel(), () => this.scales[this.tab as ScaleTab].x, (v) => { this.commitScale('x', v); },
+      '横軸', this.xUnitLabel(),
+      () => (isScaleTab(this.tab) ? this.scales[this.tab].x : this.scales.altitude.x),
+      (v) => { this.commitScale('x', v); },
     );
     this.xInput = xField.input;
     this.xUnitEl = xField.unitEl;
@@ -189,6 +196,7 @@ export class OrbitAnalysisWindow {
     this.win.bringToFront();
   }
 
+  // ウィンドウを閉じ、立てていた analysisPanelReader フラグをすべて降ろす。
   public dispose(): void {
     this.setReaderEntity(null);
     this.setReaderTargetEntity(null);
@@ -205,20 +213,21 @@ export class OrbitAnalysisWindow {
     return next;
   }
 
+  // 操作対象が変わったら analysisPanelReader を付け替え、高度中心を次の sync で固定し直す。
   private setReaderEntity(entity: GameEntity | null): void {
     if (entity === this.readerEntity) return;
     this.readerEntity = OrbitAnalysisWindow.applyReader(this.readerEntity, entity);
     this.altitudeCenterM = null;
   }
 
+  // 接近/投影タブのターゲットが変わったら analysisPanelReader を付け替える。
   private setReaderTargetEntity(entity: GameEntity | null): void {
     this.readerTargetEntity = OrbitAnalysisWindow.applyReader(this.readerTargetEntity, entity);
   }
 
+  // 操作対象・ターゲットの状態から選択中タブの点列を求め、対応するチャートへ描く。
   public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
-    const now = performance.now();
-    if (now < this.nextSyncAt) return;
-    this.nextSyncAt = now + SYNC_INTERVAL_MS;
+    if (!this.throttle.due()) return;
 
     const entity = game.activeControllableEntity;
     this.setReaderEntity(entity);
@@ -234,6 +243,9 @@ export class OrbitAnalysisWindow {
       entity.state.r, celestialBodies, game.navTarget, game.entities, game.ephemeris, entity.state.t,
     );
     const sampleCount = this.sampleCount();
+
+    // 接近タブが選べるかどうかは、航法ターゲットが解決でき、かつ approachSeries が
+    // null を返さない(同じ主天体を周回している)かで決まる。
     const approachSource = this.resolveApproachTarget(game, celestialBodies);
     this.setReaderTargetEntity(approachSource?.kind === 'entity' ? approachSource.entity : null);
     const approach = approachSource
@@ -244,10 +256,12 @@ export class OrbitAnalysisWindow {
       : null;
     this.approachAvailable = approach !== null;
 
+    // 投影タブが選べるかどうかは、操作対象の基準天体が円筒図法テクスチャを持つかで決まる。
     const projectionCenter = reference.attractor;
     const textureUrl = projectionCenter ? projectionTextureUrl(projectionCenter.id) : null;
     this.projectionAvailable = textureUrl !== null;
 
+    // タブの選択肢を更新し、選択中タブが選べなくなっていたら高度タブへ戻す。
     this.tabBar.setItems(tabItems(this.approachAvailable, this.projectionAvailable));
     if (this.tab === 'approach' && !this.approachAvailable) this.selectTab('altitude');
     if (this.tab === 'projection' && !this.projectionAvailable) this.selectTab('altitude');
@@ -256,6 +270,7 @@ export class OrbitAnalysisWindow {
     this.chart.element.classList.toggle('hidden', this.tab === 'projection');
     this.projectionTab.chart.element.classList.toggle('hidden', this.tab !== 'projection');
 
+    // 選択中タブの点列を求め、対応するチャートへ描く。
     if (this.tab === 'altitude') {
       const altitude = altitudeSeries(
         entity, reference, game.ephemeris, entity.state.t, this.scales.altitude.x * 3600, sampleCount,
@@ -272,6 +287,7 @@ export class OrbitAnalysisWindow {
     }
   }
 
+  // タブを切り替え、表示範囲を開いた時点の状態へ戻し、タブごとの表示要素を出し分ける。
   private selectTab(tab: AnalysisTab): void {
     this.tab = tab;
     this.resetView();
@@ -286,13 +302,16 @@ export class OrbitAnalysisWindow {
   // 全球表示(中心経緯度0・最大縮小)を戻す。
   private resetView(): void {
     if (this.tab === 'altitude') {
+      // 縦軸の中心を次の sync で現在高度に固定し直し、スケールを直近の既定値へ戻す。
       this.altitudeCenterM = null;
       this.scales.altitude = { ...this.scales.altitude, yKm: this.altitudeYBaselineKm };
     } else if (this.tab === 'approach') {
+      // 平行移動を0へ、スケールを直近の既定値へ戻す。
       this.approachPan.x = 0;
       this.approachPan.y = 0;
       this.scales.approach = { ...this.approachBaselineScale };
     } else {
+      // 投影タブは表示範囲の中心・ズームをチャート自身が持つ。
       this.projectionTab.chart.resetView();
     }
     this.refreshScaleInputs();
@@ -307,15 +326,16 @@ export class OrbitAnalysisWindow {
     this.xUnitEl.textContent = this.xUnitLabel();
   }
 
+  // 横軸の単位。高度タブは経過時間(時間)、接近タブは水平距離(km)。
   private xUnitLabel(): string {
     return this.tab === 'altitude' ? 'h' : 'km';
   }
 
   // 数値入力欄で手入力確定されたスケールを反映する。接近タブでの確定は、リセットで
   // 戻る先(approachBaselineScale)も同時に更新する — 手入力は新しい既定値の指定として扱う。
-  // scalesRow は投影タブでは隠れており、この呼び出しは altitude/approach でしか起こらない。
   private commitScale(field: keyof TabScale, v: number): void {
-    this.scales[this.tab as ScaleTab][field] = v;
+    if (!isScaleTab(this.tab)) return;
+    this.scales[this.tab][field] = v;
     if (this.tab === 'approach') this.approachBaselineScale = { ...this.scales.approach };
     else if (field === 'yKm') this.altitudeYBaselineKm = v;
   }
@@ -330,6 +350,7 @@ export class OrbitAnalysisWindow {
     labelEl.className = 'orbit-analysis-scale-label';
     labelEl.textContent = label;
     wrap.appendChild(labelEl);
+    // 確定値が不正なら getCurrent() の値へ戻す。有効なら onValid で反映してから表示を揃える。
     const input = new ValueInput({ type: 'number', step: 1 }, (text) => {
       const v = Number(text);
       if (!isFinite(v) || v <= 0) { input.setValue(String(getCurrent())); return; }
@@ -344,29 +365,35 @@ export class OrbitAnalysisWindow {
     return { element: wrap, input, unitEl };
   }
 
+  // チャートの表示幅から、点列のサンプル数を求める(密度を一定に保つ)。
   private sampleCount(): number {
     const width = this.chart.element.clientWidth || 300;
     return Math.max(MIN_SAMPLES, Math.min(MAX_SAMPLES, Math.round(width / SAMPLE_PX_PER_POINT)));
   }
 
+  // tab のスケール・平行移動量から、OrbitChart へ渡す x軸・y軸を組み立てる。
   private axesFor(tab: AnalysisTab, currentAltM: number): { x: ChartAxis; y: ChartAxis } {
     if (tab === 'altitude') {
+      // 横軸は経過時間の固定軸、縦軸は currentAltM を中心とした高度軸(下端は0でクリップ)。
       return {
         x: timeAxis(this.scales.altitude.x * 3600, MAX_TICKS, '経過時間'),
         y: distanceAxis(currentAltM, this.scales.altitude.yKm * 1000, MAX_TICKS, '高度', true),
       };
     }
+    // 縦横とも approachPan を中心とした距離軸。
     return {
       x: distanceAxis(this.approachPan.x, this.scales.approach.x * 1000, MAX_TICKS, '水平距離'),
       y: distanceAxis(this.approachPan.y, this.scales.approach.yKm * 1000, MAX_TICKS, '相対高度'),
     };
   }
 
+  // 点列が無い状態で軸だけを表示し、案内文を出す ChartSpec。
   private emptySpec(message: string): ChartSpec {
     const axes = this.axesFor(this.tab, 0);
     return { points: [], x: axes.x, y: axes.y, marks: [], emptyMessage: message };
   }
 
+  // 高度タブの ChartSpec。series が null(基準が重力中心でない)なら案内文だけを出す。
   private altitudeSpec(series: ReturnType<typeof altitudeSeries>): ChartSpec {
     if (series === null) {
       const axes = this.axesFor('altitude', 0);
@@ -375,6 +402,7 @@ export class OrbitAnalysisWindow {
         emptyMessage: '基準が重力中心ではないため高度を定義できません',
       };
     }
+    // 縦軸の中心は開いた/タブを選び直した時点の現在高度に固定する。
     if (this.altitudeCenterM === null) this.altitudeCenterM = series.currentAlt;
     const axes = this.axesFor('altitude', this.altitudeCenterM);
     const points: (ChartPoint | null)[] = series.samples.map((s) => ({ x: s.t, y: s.alt }));
@@ -383,6 +411,7 @@ export class OrbitAnalysisWindow {
     return { points, x: axes.x, y: axes.y, marks };
   }
 
+  // 接近タブの ChartSpec。原点(ターゲット位置)と操作対象の現在位置の丸マークを添える。
   private approachSpec(series: NonNullable<ReturnType<typeof approachSeries>>): ChartSpec {
     const axes = this.axesFor('approach', 0);
     const points: (ChartPoint | null)[] = series.samples.map((s) => (s ? { x: s.x, y: s.y } : null));
@@ -392,59 +421,6 @@ export class OrbitAnalysisWindow {
     return { points, x: axes.x, y: axes.y, marks };
   }
 
-  // チャートへドラッグ(パン)・ホイール/ピンチ(ズーム)を配線する。どのタブ/チャートに
-  // 対しても同じ配線を使い、実際にどの状態が動くかは onPan/onZoom へ渡す。パネルの canvas に
-  // 閉じた操作なので、Input クラスの画面全体入力管理は経由しない。
-  private attachChartPanZoom(
-    el: HTMLElement, onPan: (dxPx: number, dyPx: number) => void, onZoom: (wheelDelta: number) => void,
-  ): void {
-    el.addEventListener('pointerdown', (e) => {
-      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      el.setPointerCapture(e.pointerId);
-      this.lastPanPoint = null;
-      this.lastPinchDist = null;
-    });
-    el.addEventListener('pointermove', (e) => {
-      if (!this.pointers.has(e.pointerId)) return;
-      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      this.handlePanZoomMove(onPan, onZoom);
-    });
-    const release = (e: PointerEvent): void => {
-      this.pointers.delete(e.pointerId);
-      this.lastPanPoint = null;
-      this.lastPinchDist = null;
-    };
-    el.addEventListener('pointerup', release);
-    el.addEventListener('pointercancel', release);
-    el.addEventListener('wheel', (e) => {
-      // ページスクロールへ渡さない。ブラウザ既定の passive では効かないため、
-      // このリスナー自体を { passive: false } で登録している。
-      e.preventDefault();
-      onZoom(e.deltaY * WHEEL_ZOOM_SENSITIVITY);
-    }, { passive: false });
-  }
-
-  // 押されている全ポインタの重心の移動をパンへ、2本のときの距離の変化をズームへ変換する。
-  private handlePanZoomMove(onPan: (dxPx: number, dyPx: number) => void, onZoom: (wheelDelta: number) => void): void {
-    const points = [...this.pointers.values()];
-    const centroid = {
-      x: points.reduce((s, p) => s + p.x, 0) / points.length,
-      y: points.reduce((s, p) => s + p.y, 0) / points.length,
-    };
-    if (this.lastPanPoint) onPan(centroid.x - this.lastPanPoint.x, centroid.y - this.lastPanPoint.y);
-    this.lastPanPoint = centroid;
-
-    // 3本目以降が触れても先頭2本の距離だけを見る — Map の挿入順で決まる。
-    const [a, b] = points;
-    if (a && b && points.length >= 2) {
-      const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      if (this.lastPinchDist !== null) onZoom(-(dist - this.lastPinchDist) * PINCH_ZOOM_SENSITIVITY);
-      this.lastPinchDist = dist;
-    } else {
-      this.lastPinchDist = null;
-    }
-  }
-
   // ドラッグ移動量 [px] を軸の値へ換算してパンへ加える。接近タブは縦横とも平行移動するが、
   // 高度タブは横軸(経過時間)が現在時刻基準の固定軸なので縦軸(高度中心)だけを動かす。
   // プロット寸法が未確定(初回描画前)なら何もしない。
@@ -452,11 +428,13 @@ export class OrbitAnalysisWindow {
     const size = this.chart.plotPixelSize();
     if (!size) return;
     if (this.tab === 'approach') {
+      // 縦横とも現在のスケールに応じて m へ換算し、パン位置へ加える。
       const spanXM = this.scales.approach.x * 1000;
       const spanYM = this.scales.approach.yKm * 1000;
       this.approachPan.x -= (dxPx / size.width) * spanXM;
       this.approachPan.y += (dyPx / size.height) * spanYM;
     } else {
+      // 縦軸(高度)のスケールに応じて m へ換算し、中心へ加える。
       const spanYM = this.scales.altitude.yKm * 1000;
       this.altitudeCenterM = (this.altitudeCenterM ?? 0) + (dyPx / size.height) * spanYM;
     }
@@ -484,10 +462,7 @@ export class OrbitAnalysisWindow {
     if (id === null) return null;
     const body = celestialBodies.find((b) => b.id === id);
     if (body) return { kind: 'celestialBody', body };
-    const entity = game.entities.findEnemy(id)
-      ?? game.entities.players.find((p) => p.id === id)
-      ?? game.entities.bases.find((b) => b.id === id && b.alive)
-      ?? null;
+    const entity = game.entities.findAliveCombatTarget(id);
     return entity ? { kind: 'entity', entity } : null;
   }
 }

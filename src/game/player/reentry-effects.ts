@@ -1,6 +1,6 @@
 // 再突入時に機首前方へ出るプラズマ状の燃焼エフェクト。強度は動圧から毎フレーム導けるため状態を持たない。
 import * as THREE from 'three/webgpu';
-import { Vec3, addScaled, lenSq, norm } from '../../physics/vec3';
+import { Vec3, addScaled, lenSq, norm } from '../../math/vec3';
 import { Billboard } from '../../render/billboard';
 import {
   REENTRY_CORE_BRIGHTNESS, REENTRY_CORE_COLOR, REENTRY_CORE_OFFSET, REENTRY_CORE_SIZE_RATIO,
@@ -8,8 +8,10 @@ import {
   REENTRY_SIZE_MIN, REENTRY_SIZE_SPAN,
 } from '../../render/vfx-style';
 import type { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
-import * as C from '../const';
+import { FloatingOrigin } from '../camera/floating-origin';
+
+const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める動圧 [Pa]
+const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度になる動圧 [Pa]
 
 export class ReentryEffects {
   private readonly core = new Billboard(REENTRY_CORE_COLOR);
@@ -24,7 +26,7 @@ export class ReentryEffects {
   // 燃焼の表示を qdyn に応じた強度で速度方向前方に同期する。visible=false または
   // 強度 0 では隠す。
   sync(fo: FloatingOrigin, r: Vec3, v: Vec3, qdyn: number, visible: boolean, camera: CameraSystem): void {
-    const t = (qdyn - C.REENTRY_GLOW_MIN_Q) / (C.REENTRY_GLOW_FULL_Q - C.REENTRY_GLOW_MIN_Q);
+    const t = (qdyn - REENTRY_GLOW_MIN_Q) / (REENTRY_GLOW_FULL_Q - REENTRY_GLOW_MIN_Q);
     const intensity = Math.max(0, Math.min(1, t));
     if (!visible || intensity <= 0) {
       this.core.hide();

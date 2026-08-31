@@ -2,18 +2,10 @@
 // (地球は原点に静止)。THREE/DOM 非依存の純関数群。
 import { Atmosphere } from './atmosphere';
 import { Quat } from './attitude';
-import { FrameAnchorId, FrameAnchorSource, FrameTransform, toFrameState } from './frame';
+import { FrameAnchorSource, FrameTransform, toFrameState } from './frame';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { OrbitalElements, orbitalElementsFromState, keplerPeriod } from './elements';
-import { Vec3, addScaled, lenSq, len, sub, v3 } from './vec3';
-
-// 天体の識別子。具体的なレジストリ(solar-system.ts の SOLAR_SYSTEM など)が実行時に
-// 差し替え可能なので、ここでは閉じた union にできない — 網羅性の強制は各レジストリの
-// keyof(SolarSystemId 等)が個別に持つ。
-export type CelestialBodyId = string;
-// 公転している天体を指すべき引数の注釈(型としては CelestialBodyId と同じで強制力は無い)。
-// 回転基準系・軌道法線・ラグランジュ点は、公転を持たない恒星には存在しない。
-export type OrbitingId = CelestialBodyId;
+import { Vec3, addScaled, lenSq, len, sub, v3 } from '../math/vec3';
 
 // 2次重力場の非軸対称成分(赤道断面の楕円性)。主軸座標系で表すため S22 は恒等的に 0 になり、
 // 長軸の向きだけで姿勢が決まる。
@@ -32,7 +24,7 @@ export type Degree2Gravity = {
 };
 
 export type CelestialBody = {
-  readonly id: CelestialBodyId;
+  readonly id: string;
   readonly mu: number; // GM [m^3/s^2]
   readonly radius: number; // 表面半径 [m]。形状(solar-system.ts の ShapeDef)を持つ天体では
   // その外接球の半径 — 衝突・高度判定を楕円体化しない当面の間、極方向で安全側に倒す選択
@@ -164,8 +156,8 @@ export function orbitingAttractorOf(state: KinematicState, bodies: readonly Cele
 export function bodyAnchorSource(bodies: readonly CelestialBody[]): FrameAnchorSource {
   return {
     bodies,
-    stateOf: (id: FrameAnchorId) => bodies.find((b) => b.id === id)?.state ?? null,
-    attractorOf: (id: FrameAnchorId) => {
+    stateOf: (id: string) => bodies.find((b) => b.id === id)?.state ?? null,
+    attractorOf: (id: string) => {
       const state = bodies.find((b) => b.id === id)?.state;
       return state ? orbitingAttractorOf(state, bodies)?.id ?? null : null;
     },

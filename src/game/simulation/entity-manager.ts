@@ -1,16 +1,17 @@
 // エンティティ配列の保持・追加・上限管理・寿命回収・描画同期。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../../physics/vec3';
-import type { Viewpoint } from '../../physics/projection';
+import { Vec3 } from '../../math/vec3';
+import type { Viewpoint } from '../../math/projection';
 import { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
 import { GameEntity } from '../game-entity/game-entity';
 import { AmmoPickup } from '../game-entity/ammo-pickup';
 import { RcsFuelPickup } from '../game-entity/rcs-fuel-pickup';
 import { DebrisPiece } from '../game-entity/debris-piece';
-import { Enemy, proteinAssetIdForEnemyKind } from '../game-entity/enemy';
+import { Enemy } from '../game-entity/enemy';
+import { proteinAssetIdForEnemyKind } from '../game-entity/enemy-kind';
 import { isProteinAssetReady, type ProteinAssetId } from '../protein/protein-asset-loader';
 import { Bullet } from '../game-entity/bullet';
 import { Base } from '../game-entity/base';
@@ -26,7 +27,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { Ephemeris } from '../../physics/ephemeris';
 import type { DisplayWindow } from '../display-window-manager';
-import type { GameSaveData } from '../save-data';
+import type { GameSaveData } from '../save/save-data';
 import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';
@@ -34,6 +35,10 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { PerfCounts } from '../../perf-meter';
 import type { OrbitReference } from '../orbit-reference';
 import type { ProteinMotionFrameSample, ProteinMotionLod } from '../../protein-motion-metrics';
+
+const MAX_DETACHED_BOOSTERS = 64;
+
+const MAX_DEBRIS = 600;
 
 export class EntityManager {
   readonly enemies: Enemy[] = [];
@@ -80,7 +85,7 @@ export class EntityManager {
     this.casingPool = new InstancedPool(
       scene, casingBody.geometry, casingBody.material, C.MAX_CASINGS, false, 0, true);
     this.debrisFragmentPools = debrisFragment.geometries.map(
-      (geo) => new InstancedPool(scene, geo, debrisFragment.material, C.MAX_DEBRIS, true, 0, true));
+      (geo) => new InstancedPool(scene, geo, debrisFragment.material, MAX_DEBRIS, true, 0, true));
     this.effects = new EffectsSystem(scene, this, worldSfx);
     if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
   }
@@ -96,7 +101,7 @@ export class EntityManager {
     for (const data of save.enemies) {
       this.spawnEnemyWhenReady(
         proteinAssetIdForEnemyKind(data.enemyKind),
-        () => new Enemy({ saved: data, simTime }, hud, worldSfx, this.effects, scene),
+        () => new Enemy({ saved: data, simTime }, worldSfx, this.effects, scene),
       );
     }
     for (const data of save.ammoPickups) {
@@ -224,6 +229,16 @@ export class EntityManager {
     return this.enemies.find((e) => e.id === id) ?? null;
   }
 
+  // id で名指しされた、生存中の戦闘対象(敵・自機・基地)を返す。天体・ラグランジュ点は
+  // 実体を持たないため対象外。
+  findAliveCombatTarget(id: string): CombatTarget | null {
+    const enemy = this.findEnemy(id);
+    return (enemy?.alive ? enemy : null)
+      ?? this.findPlayer(id)
+      ?? this.bases.find((b) => b.id === id && b.alive)
+      ?? null;
+  }
+
   // 弾を登録する。上限を超えた分は古いものから破棄する。
   addBullet(bullet: Bullet): void {
     this.addCapped(this.bullets, bullet, C.MAX_BULLETS * 3);
@@ -232,7 +247,7 @@ export class EntityManager {
   // 破片を種別(薬莢/その他)ごとの配列へ登録する。上限を超えた分は古いものから破棄する。
   addDebris(piece: DebrisPiece): void {
     if (piece.kind === 'casing') this.addCapped(this.casings, piece, C.MAX_CASINGS);
-    else this.addCapped(this.debris, piece, C.MAX_DEBRIS);
+    else this.addCapped(this.debris, piece, MAX_DEBRIS);
   }
 
   // 弾薬ピックアップを登録する。
@@ -249,7 +264,7 @@ export class EntityManager {
 
   // 分離済みブースターを登録する。古いものから上限回収し、無制限に残骸を増やさない。
   addDetachedBooster(booster: DetachedBooster): void {
-    this.addCapped(this.detachedBoosters, booster, C.MAX_DETACHED_BOOSTERS);
+    this.addCapped(this.detachedBoosters, booster, MAX_DETACHED_BOOSTERS);
   }
 
   // 基地を登録する。

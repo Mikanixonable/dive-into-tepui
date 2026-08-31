@@ -11,7 +11,7 @@ import { selectStage } from './game/stage-select';
 import type { UnlockManager } from './game/unlock-manager';
 import type { SaveSlots } from './game/save/save-slots';
 import type { SnapshotService } from './game/save/snapshot-service';
-import type { GameSaveData } from './game/save-data';
+import type { GameSaveData } from './game/save/save-data';
 import type { AudioEngine } from './audio/audio-engine';
 import type { Bgm } from './audio/bgm/bgm';
 import type { WorldSfx } from './audio/sfx/world-sfx';
@@ -20,7 +20,6 @@ import type { GameScene } from './render/scene';
 import type { RenderPipeline } from './render/pipeline/render-pipeline';
 import type { FrameSections } from './frame-sections';
 import type { Ephemeris } from './physics/ephemeris';
-import type { CelestialBodyId } from './physics/celestial-body';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 
@@ -42,7 +41,7 @@ function fallbackResult(phase: GamePhase): StageResult {
 
 // ローディング表示の下で、このステージの天体暦を組む。
 async function initEphemeris(
-  stageClass: StageClass, phaseOffsets: Partial<Record<CelestialBodyId, number>>, startSimTime?: number,
+  stageClass: StageClass, phaseOffsets: Partial<Record<string, number>>, startSimTime?: number,
 ): Promise<Ephemeris> {
   showLoading();
   try {
@@ -206,11 +205,14 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       .finally(() => { this.transitioning = false; });
   }
 
-  // 選択画面を出し直し、選ばれたステージで作り直す。
+  // 選択画面を出し直し、選ばれたステージで作り直す。noteRunEnded で「直前に遊んでいたステージ」を
+  // クリアし、リロード時の復元(resolveStage)がタイトル画面へフォールバックできるようにする。
   returnToTitle(): void {
     if (this.transitioning) return;
     this.transitioning = true;
     this.endRun();
+    const activeSlotId = this.slots.activeSlotId;
+    if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
     this.selectStageScreen()
       .then(({ stageClass, startSimTime }) => this.startRun(stageClass, undefined, startSimTime))
       .catch((err) => this.fail(err))

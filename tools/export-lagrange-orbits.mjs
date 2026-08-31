@@ -1,6 +1,8 @@
-// CR3BP 周期軌道族の焼き込みツール。assets-src/orbits/<系>.json(JPL から取得し間引いた初期条件、
-// tools/fetch-orbit-catalog.mjs が生成)を読み、各メンバーをその系の JPL μ で1周期積分して
-// src/physics/orbit-catalog.ts の OrbitCatalog 形式へ落とす。API へは接続しない。
+// CR3BP 周期軌道族の焼き込みツール。assets-src/orbits/<系>.json(JPL から取得した族あたり120件の
+// 初期条件、tools/fetch-orbit-catalog.mjs が生成)を読み、各メンバーをその系の JPL μ で1周期積分し、
+// 閉合しないメンバーと主星・副星に衝突するメンバーを落としたうえで、残ったものから族あたり
+// MEMBERS_PER_FAMILY 件を選び直して src/physics/orbit-catalog.ts の OrbitCatalog 形式へ落とす。
+// API へは接続しない。
 //
 // 実行: node tools/export-lagrange-orbits.mjs
 //
@@ -8,11 +10,17 @@
 // 「種」として扱い、その μ のまま積分した無次元形状をそのまま焼き込む(微分修正はかけ直さない)。
 // 実スケールへの写像・実際の天体位置への配置は実行時(orbit-guide.ts 側)の責務。
 //
+// 使えるメンバー(閉合残差が許容内 かつ 主星・副星いずれにも衝突しない)が連続する区間だけを
+// 族として出す(DEVELOP/SPEC/MAP.md「ガイド線の正確さ」)。1つの族が複数の区間に分かれたときは
+// tools/orbit-family.mjs の segmentFamilyKey で区間ごとに族 id を振り、各区間の中で
+// thinByChordLength により弧長等間隔の MEMBERS_PER_FAMILY 件へ選び直す。
+//
 // 同じ入力(assets-src/orbits/ の内容)からは常に同じ出力を書く。
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPhysicsModules } from './compile-physics.mjs';
+import { keepLongEnough, segmentFamilyKey, splitSegmentKey, thinByChordLength } from './orbit-family.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const cacheDir = join(repoRoot, 'assets-src', 'orbits');
@@ -38,27 +46,35 @@ const BUNDLE_SIZE_TARGET = 4.9 * 1024 * 1024;
 const PROPAGATE_STEPS = 16000;
 // 周期軌道として認める閉合残差(軌道の広がりに対する比)。超えたメンバーは除外する。
 const CLOSURE_TOLERANCE = 1e-3;
+// 区間(使えるメンバーが連続する範囲)ごとに焼き込むメンバー数。取得側は族あたり120件を
+// 保存するが、120件すべてを焼き込むとバンドル・遅延ロードファイルのサイズが現状の4倍に
+// 膨らむため、弧長等間隔で選び直してサイズを現状のまま保つ。
+const MEMBERS_PER_FAMILY = 30;
+// 族が複数の区間へ分かれたとき、この件数に満たない区間は断片とみなして出さない。
+// 区間が1つしか無い族(分かれなかった族)には効かせない。
+const MIN_SEGMENT_LENGTH = 3;
 
-const physics = loadPhysicsModules(['cr3bp', 'solar-system']);
-const { cr3bp, solarSystem } = physics;
+const physics = loadPhysicsModules([
+  'cr3bp', 'solar-system/sun', 'solar-system/earth-system', 'solar-system/mars-system',
+  'solar-system/jupiter-system', 'solar-system/saturn-system',
+]);
+const { cr3bp, sun, earthSystem, marsSystem, jupiterSystem, saturnSystem } = physics;
 
-// 系の主天体 id(src/physics/solar-system.ts の SOLAR_SYSTEM キーと対応)。JPL の族データは
-// 副天体の半径しか返さないため、主天体への衝突判定にはゲームのレジストリの半径を使う。
-const PRIMARY_BODY = {
-  'earth-moon': 'earth',
-  'sun-earth': 'sun',
-  'sun-mars': 'sun',
-  'jupiter-europa': 'jupiter',
-  'saturn-titan': 'saturn',
-  'saturn-enceladus': 'saturn',
-  'mars-phobos': 'mars',
+// 系の主天体の定義。JPL の族データは副天体の半径しか返さないため、主天体への衝突判定には
+// ゲームの定義の半径を使う。
+const PRIMARY_DEF = {
+  'earth-moon': earthSystem.EARTH,
+  'sun-earth': sun.SUN,
+  'sun-mars': sun.SUN,
+  'jupiter-europa': jupiterSystem.JUPITER,
+  'saturn-titan': saturnSystem.SATURN,
+  'saturn-enceladus': saturnSystem.SATURN,
+  'mars-phobos': marsSystem.MARS,
 };
 
 // 系の主天体の半径 [km]。
 function primaryRadiusKm(system) {
-  const bodyId = PRIMARY_BODY[system];
-  const body = solarSystem.SOLAR_SYSTEM[bodyId];
-  return body.radius / 1000;
+  return PRIMARY_DEF[system].radius / 1000;
 }
 
 // 点列の中心から最も離れた点までの距離。閉合残差を測る物差しにする。
@@ -100,88 +116,114 @@ function bakeMember(mu, lunit, raw, samples) {
   };
 }
 
-// 1系ぶんのキャッシュを焼き込む。excluded に除外したメンバーの報告を積む。
+// 族1本ぶんの点列チャンク(Float32Array, samples*STRIDE)から orbitSize を求める。
+// 軌道そのものの大きさで比べる。重心からの距離で測ると、副天体を回る小さな軌道でも
+// 重心から遠ければ「大きい」と誤判定してしまう。
+function chunkSize(chunk, samples) {
+  const points = [];
+  for (let i = 0; i < samples; i++) {
+    const o = i * STRIDE;
+    points.push([chunk[o], chunk[o + 1], chunk[o + 2]]);
+  }
+  return orbitSize(points);
+}
+
+// 使えるメンバー(閉合し、主星・副星いずれにも衝突しない)が連続する区間1本を、族の1エントリ
+// (OrbitCatalog の1族ぶん)へ焼く。区間内から弧長等間隔で MEMBERS_PER_FAMILY 件を選び直す。
+function bakeSegment(baked, samples) {
+  // thinByChordLength は行の先頭6要素(状態ベクトル)しか見ないので、状態を先頭に置き、
+  // 選ばれた行から元の baked エントリを引けるよう自身への参照を末尾に添える。
+  const rows = baked.map((entry) => [...entry.raw.state, entry]);
+  const picked = thinByChordLength(rows, MEMBERS_PER_FAMILY).map((row) => row[row.length - 1]);
+
+  let records = picked.map((entry) => ({
+    period: entry.period,
+    jacobi: entry.jacobi,
+    stability: entry.stability,
+  }));
+  let pointChunks = picked.map((entry) => {
+    const chunk = new Float32Array(samples * STRIDE);
+    entry.points.forEach((p, j) => chunk.set(p, j * STRIDE));
+    return chunk;
+  });
+
+  // s=0 を必ず「小さい側」に揃える。JPL が族を返す向きは族によって違うので、区間の両端の
+  // 広がりを比べて必要なら反転する。こうしないと、同じ 0 が族によって小振幅だったり
+  // 大振幅だったりして、族範囲スライダーの意味が族ごとに変わってしまう。
+  if (records.length > 1 && chunkSize(pointChunks[0], samples) > chunkSize(pointChunks[pointChunks.length - 1], samples)) {
+    records.reverse();
+    pointChunks.reverse();
+  }
+
+  // s は「区間に沿った位置」として区間ごとに 0..1 へ割り振る。
+  const kept = records.length;
+  records.forEach((record, i) => { record.s = kept > 1 ? i / (kept - 1) : 0; });
+
+  const merged = new Float32Array(records.length * samples * STRIDE);
+  pointChunks.forEach((chunk, i) => merged.set(chunk, i * samples * STRIDE));
+  return {
+    members: records,
+    samples,
+    points: Buffer.from(merged.buffer, merged.byteOffset, merged.byteLength).toString('base64'),
+  };
+}
+
+// 1系ぶんのキャッシュを焼き込む。excluded に除外したメンバー・区間の報告を積む。
 function bakeSystem(cache, samples, excluded) {
   const primaryRadius = primaryRadiusKm(cache.system);
-  const families = {};
+  // 区間を除いた族 id ごとに、使えるメンバーの区間を集める。取得側が既に区間へ分けた族を
+  // ここでさらに分けることがあるため、番号は最後に基底の族ごとへ通しで振り直す — 番号を
+  // 入れ子にすると(`axial-L1#1#2`)id を解釈できなくなる。
+  const byBaseKey = new Map();
   for (const [familyKey, family] of Object.entries(cache.families)) {
-    let records = [];
-    let pointChunks = [];
-    let collidesFlags = [];
-    family.members.forEach((raw, i) => {
-      const baked = bakeMember(cache.mu, cache.lunit, raw, samples);
-      if (!baked.ok) {
-        excluded.push(`${cache.system} ${familyKey}[${i}]: 閉合残差 ${baked.residual.toExponential(2)}`);
-        return;
+    const { baseKey, segment: cacheSegment } = splitSegmentKey(familyKey);
+    // 各メンバーについて「使えるか」(閉合残差が許容内 かつ 主星・副星いずれにも衝突しない)を
+    // 求める。閉合しないメンバーは baked を null にし、この時点で報告する。
+    const baked = family.members.map((raw, i) => {
+      const result = bakeMember(cache.mu, cache.lunit, raw, samples);
+      if (!result.ok) {
+        excluded.push(`${cache.system} ${familyKey}[${i}]: 閉合残差 ${result.residual.toExponential(2)}`);
+        return null;
       }
-      records.push({
-        period: baked.period,
-        jacobi: baked.jacobi,
-        stability: baked.stability,
-      });
-      collidesFlags.push(baked.perilune < cache.secondaryRadius || baked.periapsis < primaryRadius);
-      const chunk = new Float32Array(samples * STRIDE);
-      baked.points.forEach((p, j) => chunk.set(p, j * STRIDE));
-      pointChunks.push(chunk);
+      const collides = result.perilune < cache.secondaryRadius || result.periapsis < primaryRadius;
+      return { raw, ...result, collides };
     });
 
-    // 主天体・副天体いずれかに衝突する(近点距離が半径未満の)メンバーを族の端から連続して
-    // 落とす。族は振幅について連続な列なので、途中に穴を開けないよう両端からだけ削る。
-    let start = 0;
-    while (start < records.length && collidesFlags[start]) start++;
-    let end = records.length - 1;
-    while (end >= start && collidesFlags[end]) end--;
-    const trimmedCount = start + (records.length - 1 - end);
-    if (trimmedCount > 0) {
-      excluded.push(`${cache.system} ${familyKey}: 主星または副星に衝突するメンバーを族の端から ${trimmedCount} 件除外`);
-    }
-    records = records.slice(start, end + 1);
-    pointChunks = pointChunks.slice(start, end + 1);
-    collidesFlags = collidesFlags.slice(start, end + 1);
-    // 端を落としてもなお内部に衝突メンバーが残っていれば(通常は起きない)個別に除外する。
-    const innerCollisions = collidesFlags.filter(Boolean).length;
-    if (innerCollisions > 0) {
-      excluded.push(`${cache.system} ${familyKey}: 族の端以外で主星または副星に衝突するメンバーが ${innerCollisions} 件見つかったため個別に除外`);
-      records = records.filter((_, i) => !collidesFlags[i]);
-      pointChunks = pointChunks.filter((_, i) => !collidesFlags[i]);
+    // 使えるメンバーが連続する区間へ分ける。族の途中で使えないメンバーが挟まっていても、
+    // その前後は別々の区間として残す(族の途中に穴を開けない)。
+    const segments = [];
+    let segStart = -1;
+    for (let i = 0; i <= baked.length; i++) {
+      const usable = i < baked.length && baked[i] !== null && !baked[i].collides;
+      if (usable && segStart < 0) segStart = i;
+      if (!usable && segStart >= 0) {
+        segments.push(baked.slice(segStart, i));
+        segStart = -1;
+      }
     }
 
-    if (records.length === 0) {
+    const validSegments = keepLongEnough(segments, MIN_SEGMENT_LENGTH);
+    for (const segment of segments) {
+      if (!validSegments.includes(segment)) {
+        excluded.push(`${cache.system} ${familyKey}: 使えるメンバーが ${segment.length} 件しか連続しない区間を除外`);
+      }
+    }
+
+    if (validSegments.length === 0) {
       excluded.push(`${cache.system} ${familyKey}: 閉合し主星・副星に衝突しないメンバーが1件も無いため出力しない`);
       continue;
     }
-    // s=0 を必ず「小さい側」に揃える。JPL が族を返す向きは族によって違うので、両端の広がりを
-    // 比べて必要なら反転する。こうしないと、同じ 0 が族によって小振幅だったり大振幅だったり
-    // して、族範囲スライダーの意味が族ごとに変わってしまう。
-    if (records.length > 1) {
-      // 軌道そのものの大きさで比べる。重心からの距離で測ると、副天体を回る小さな軌道でも
-      // 重心から遠ければ「大きい」と誤判定してしまう。
-      const sizeOf = (chunk) => {
-        const points = [];
-        for (let i = 0; i < samples; i++) {
-          const o = i * STRIDE;
-          points.push([chunk[o], chunk[o + 1], chunk[o + 2]]);
-        }
-        return orbitSize(points);
-      };
-      if (sizeOf(pointChunks[0]) > sizeOf(pointChunks[pointChunks.length - 1])) {
-        records.reverse();
-        pointChunks.reverse();
-      }
-    }
 
-    // s は「焼けた族に沿った位置」なので、閉合しないメンバーを落とし終えてから 0..1 へ割り振る。
-    // 除外前の添字で振ると、端が落ちた族の s が 0 や 1 から始まらなくなる。
-    const kept = records.length;
-    records.forEach((record, i) => { record.s = kept > 1 ? i / (kept - 1) : 0; });
+    if (!byBaseKey.has(baseKey)) byBaseKey.set(baseKey, []);
+    for (const segment of validSegments) byBaseKey.get(baseKey).push({ cacheSegment, segment });
+  }
 
-    const merged = new Float32Array(records.length * samples * STRIDE);
-    pointChunks.forEach((chunk, i) => merged.set(chunk, i * samples * STRIDE));
-    families[familyKey] = {
-      members: records,
-      samples,
-      points: Buffer.from(merged.buffer, merged.byteOffset, merged.byteLength).toString('base64'),
-    };
+  const families = {};
+  for (const [baseKey, entries] of byBaseKey) {
+    entries.sort((a, b) => a.cacheSegment - b.cacheSegment);
+    entries.forEach(({ segment }, index) => {
+      families[segmentFamilyKey(baseKey, index, entries.length)] = bakeSegment(segment, samples);
+    });
   }
   return {
     mu: cache.mu,

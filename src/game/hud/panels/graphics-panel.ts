@@ -1,19 +1,23 @@
 // 設定メニューの「描画」面。品質プリセットと、描画品質設定の全項目を群ごとに並べる。
-// **項目の増減にこのファイルは追随しない** — 並びも見出しも設定側の表が決める。
+// 並びも見出しも GRAPHICS_GROUPS・GRAPHICS_OPTIONS の表からそのまま組む。
 import {
   GRAPHICS_GROUPS, GRAPHICS_OPTIONS, GraphicsSettings, graphicsOptionKeys,
-  type GraphicsOptionKey, type QualityPreset,
+  type ChoiceValue, type GraphicsOptionKey, type QualityPreset,
 } from '../../../render/graphics-settings';
-import { SegmentedControl, ToggleSwitch } from '../widgets';
+import { Pulldown, SegmentedControl, ToggleSwitch, type PulldownColumn } from '../widgets';
 
 const PRESET_ITEMS: readonly (readonly [QualityPreset, string])[] = [
   ['low', '低'], ['medium', '中'], ['high', '高'],
 ];
 
-// 項目1つぶんのコントロール。sync() が現在値から点灯を引き直すために持つ。
-type OptionControl =
-  | { readonly kind: 'toggle'; readonly key: GraphicsOptionKey; readonly widget: ToggleSwitch }
-  | { readonly kind: 'choice'; readonly key: GraphicsOptionKey; readonly widget: SegmentedControl<number> };
+// プルダウンで選ぶ項目の列。描画設定の項目はどれも1列しか持たない。
+type SelectColumns = readonly [PulldownColumn<ChoiceValue>];
+
+// 項目1つぶんのコントロール。現在値から点灯を引き直す口だけを持つ。
+interface OptionControl {
+  readonly key: GraphicsOptionKey;
+  readonly show: (value: boolean | ChoiceValue) => void;
+}
 
 export class GraphicsPanel {
   public readonly element: HTMLElement;
@@ -52,35 +56,37 @@ export class GraphicsPanel {
     this.sync();
   }
 
-  // 項目1つぶんのコントロールを組んで節へ並べる。選択肢はセグメントコントロール、真偽は
-  // トグルスイッチ — 2値の ON/OFF にセグメントコントロールを使わない。
+  // 項目1つぶんのコントロールを組んで節へ並べる。真偽はトグルスイッチ — 2値の ON/OFF に
+  // セグメントコントロールを使わない。選択肢の並べ方は表の kind が決める。
   private addControl(section: HTMLElement, key: GraphicsOptionKey): OptionControl {
     const option = GRAPHICS_OPTIONS[key];
-    // 種別で組み立てが分かれるので、返り値も種別つきで返して点灯の引き直しを一意にする。
     if (option.kind === 'toggle') {
-      const widget = new ToggleSwitch(option.label, (on) => {
-        this.graphics.setOption(key, on);
-        this.sync();
-      });
+      const widget = new ToggleSwitch(option.label, (on) => this.write(key, on));
       section.appendChild(widget.element);
-      return { kind: 'toggle', key, widget };
+      return { key, show: (value) => widget.setOn(value === true) };
     }
-    const widget = new SegmentedControl<number>(option.label, option.items, (value) => {
-      this.graphics.setOption(key, value);
-      this.sync();
-    });
+    // 反映ボタンは添えない — 見比べながら選ぶものなので、選び直した時点で画面へ出す。
+    if (option.kind === 'select') {
+      const columns: SelectColumns = [{ items: option.items }];
+      const widget = new Pulldown(option.label, columns, null, ([value]) => this.write(key, value));
+      section.appendChild(widget.element);
+      return { key, show: (value) => { if (typeof value !== 'boolean') widget.setSelected(0, value); } };
+    }
+    const widget = new SegmentedControl<ChoiceValue>(option.label, option.items, (value) => this.write(key, value));
     section.appendChild(widget.element);
-    return { kind: 'choice', key, widget };
+    return { key, show: (value) => widget.setSelected(typeof value === 'boolean' ? null : value) };
+  }
+
+  // 項目1つを書き換えてから、全コントロールの点灯を引き直す。
+  private write(key: GraphicsOptionKey, value: boolean | ChoiceValue): void {
+    this.graphics.setOption(key, value);
+    this.sync();
   }
 
   // 各コントロールの点灯を現在の設定値へ合わせる。プリセットはどれとも一致しなければ全消灯。
   private sync(): void {
     const data = this.graphics.current;
     this.preset.setSelected(this.graphics.matchingPreset());
-    for (const control of this.controls) {
-      const value = data[control.key];
-      if (control.kind === 'toggle') control.widget.setOn(value === true);
-      else control.widget.setSelected(typeof value === 'number' ? value : null);
-    }
+    for (const control of this.controls) control.show(data[control.key]);
   }
 }

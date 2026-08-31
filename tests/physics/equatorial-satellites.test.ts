@@ -3,21 +3,42 @@
 // 実際に連星(共通重心が冥王星本体の外側にある)であること、および未測定 GM が 0 として
 // 登録されていること。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { bodyDef, CelestialBodyDef, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { test } from '../harness';
+import { EPOCH_T_OFFSET, Ephemeris } from '../../src/physics/ephemeris';
+import {
+  EciOrigin, PlanetDef, PlanetMotion, SatelliteDef, StarMotion,
+} from '../../src/physics/celestial-motion';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
-import { add, cross, dot, len, norm, scale, sub } from '../../src/physics/vec3';
+import { PLUTO } from '../../src/physics/solar-system/dwarf-planets';
+import { earthSystem } from '../../src/physics/solar-system/earth-system';
+import { ORCUS, QUAOAR } from '../../src/physics/solar-system/small-bodies';
+import { SUN } from '../../src/physics/solar-system/sun';
+import { solarSystemEphemeris } from './test-helpers';
+import { add, cross, dot, len, norm, scale, sub } from '../../src/math/vec3';
+
+// id から静的事実を引くための天体暦。
+const DEFS = solarSystemEphemeris();
+
+// 衛星を1体も登録せずに primaryDef の惑星だけを組んだ天体暦。原点(地球)側は本来どおり
+// 月まで組む — 原点天体の日心位置がずれると ECI 位置の比較にならない。
+function withoutSatellite(primaryDef: PlanetDef): Ephemeris {
+  const origin = new EciOrigin();
+  const sun = new StarMotion(SUN, 0, EPOCH_T_OFFSET, null, origin);
+  const { earth } = earthSystem(sun, {}, EPOCH_T_OFFSET, null, origin);
+  const bare = new PlanetMotion(primaryDef, sun, 0, EPOCH_T_OFFSET, null, origin);
+  origin.set(earth);
+  return new Ephemeris([earth, bare, sun], 'earth', {});
+}
 
 function satelliteOrbitOf(id: string): SatelliteOrbit {
-  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).orbit;
+  return (DEFS.motionOf(id).def as SatelliteDef).orbit;
 }
 function planetOf(id: string): string {
-  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).planet;
+  return DEFS.motionOf(id).primary!.id;
 }
 function muOf(id: string): number {
-  return bodyDef(SOLAR_SYSTEM, id).mu;
+  return DEFS.motionOf(id).def.mu;
 }
 
 // [id, JPL 公開周期(日)]。
@@ -49,7 +70,7 @@ function orbitNormal(eph: Ephemeris, id: string, planet: string, t: number) {
 }
 
 export function register(): void {
-  const eph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {});
+  const eph = solarSystemEphemeris({});
 
   test('equatorial-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {
     for (const [id, periodDays] of CASES) {
@@ -92,7 +113,7 @@ export function register(): void {
     }
     const maxOffsetKm = maxOffset / 1e3;
     assert.ok(Math.abs(maxOffsetKm - 2130) < 200, `共通重心までの振幅: ${maxOffsetKm} km`);
-    const plutoRadiusKm = bodyDef(SOLAR_SYSTEM, 'pluto').radius / 1e3;
+    const plutoRadiusKm = PLUTO.radius / 1e3;
     assert.ok(maxOffsetKm > plutoRadiusKm, '共通重心が冥王星本体の内側に収まっている(連星になっていない)');
   });
 
@@ -108,9 +129,7 @@ export function register(): void {
   // 相対位置は正しいままなので、主天体の日心位置を直に見ないと分からない。
   test('equatorial-satellites: 主天体の質量が未測定の系では、衛星を足しても主天体が動かない', () => {
     for (const [primary, satellite] of [['quaoar', 'weywot'], ['orcus', 'vanth']] as const) {
-      const withoutSatellite = { ...SOLAR_SYSTEM } as Record<string, CelestialBodyDef>;
-      delete withoutSatellite[satellite];
-      const bare = new Ephemeris(withoutSatellite, 'earth', EPOCH_T_OFFSET, {});
+      const bare = withoutSatellite(primary === 'quaoar' ? QUAOAR : ORCUS);
       const t = 1e6;
       const moved = len(sub(eph.stateOf(primary, t).r, bare.stateOf(primary, t).r));
       assert.ok(moved < 1, `${primary} が ${satellite} の有無で ${moved} m 動いている`);
