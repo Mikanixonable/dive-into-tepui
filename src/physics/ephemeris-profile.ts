@@ -40,13 +40,13 @@ export const EPHEMERIS_PROFILES: Readonly<Record<EphemerisProfileId, EphemerisPr
 export class UnsupportedEphemerisEpochError extends RangeError {
   constructor(readonly jdTdb: number, readonly requestedProfile?: EphemerisProfileId) {
     super(requestedProfile === undefined
-      ? `JD_TDB=${jdTdb} を高精度に扱える天体暦プロファイルが無い`
+      ? `JD_TDB=${jdTdb} に数値暦を持つ天体暦プロファイルが無い`
       : `JD_TDB=${jdTdb} は天体暦プロファイル ${requestedProfile} の有効期間外`);
     this.name = 'UnsupportedEphemerisEpochError';
   }
 }
 
-// jdTdb を高精度に扱えるプロファイル。無ければ null(この時代は CELESTIAL.md 2.2 の
+// jdTdb に数値暦を持つプロファイル。無ければ null(この時代は CELESTIAL.md 2.2 の
 // とおり解析暦だけで扱う、正常な状態)。有効期間は重ならない。将来重なるプロファイルを
 // 追加するときは、暗黙の優先順位ではなく呼び出し側に requestedProfile を要求するよう変更する。
 export function profileAtOrNull(jdTdb: number): EphemerisProfile | null {
@@ -57,7 +57,7 @@ export function profileAtOrNull(jdTdb: number): EphemerisProfile | null {
   return null;
 }
 
-// jdTdb を高精度に扱えるプロファイル。無ければ例外(requestedProfile を指定すれば、
+// jdTdb に数値暦を持つプロファイル。無ければ例外(requestedProfile を指定すれば、
 // その1つが範囲を覆っているかだけを問う)。
 export function profileAt(
   jdTdb: number,
