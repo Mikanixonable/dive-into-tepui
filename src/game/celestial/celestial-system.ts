@@ -6,9 +6,7 @@ import {
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/point-ephemeris';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
-import {
-  CelestialBody, CelestialBodyWindows, celestialBodyStateAt,
-} from '../../physics/celestial-body';
+import { CelestialBody, CelestialBodyWindows } from '../../physics/celestial-body';
 import { TimeRing, addTimeCacheStats } from '../../physics/time-ring';
 import { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
@@ -222,7 +220,7 @@ export class CelestialSystem implements CelestialBodyWindows {
   // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと
   // pivot 自身の厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
   stateAt(id: string, pivot: number, t: number = pivot): KinematicState {
-    return celestialBodyStateAt(this.celestialBodyAt(id, pivot), t);
+    return this.entityOf(id).stateAt(pivot, t);
   }
 
   // 座標系の同一性(同じ対に同じ参照)と、天体でない基準の解決。
