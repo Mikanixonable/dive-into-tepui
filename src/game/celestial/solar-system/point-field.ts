@@ -3,7 +3,7 @@
 // 載せない。THREE 非依存に保ってあり、生成の決定性と分布は tests/physics で検査する。
 // 各群は PointFieldDef 1つのデータで駆動する — 群を増やすには POINT_FIELD_DEFS に要素を足すだけ
 // でよく、生成コード自体に群固有の分岐を増やさない。
-import { AU } from '../../../physics/planet-orbit';
+import { AU } from '../../../physics/astronomical-unit';
 import { MU_SUN } from './constants';
 import { JUPITER } from './jupiter-system';
 import { mulberry32 } from '../../../math/random';

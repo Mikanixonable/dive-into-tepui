@@ -7,7 +7,7 @@ import { generatePointField, jupiterMeanLongitude } from '../../src/game/celesti
 import {
   PointElements, PointField, pointPositionAt,
 } from '../../src/game/celestial/point-field';
-import { AU } from '../../src/physics/planet-orbit';
+import { AU } from '../../src/physics/astronomical-unit';
 import { eciToEcl } from '../../src/physics/ecliptic';
 import type { Vec3 } from '../../src/math/vec3';
 import { motionOf, solarSystemParts, TEST_EPOCH, TEST_SIM_ZERO_ET } from '../physics/test-helpers';

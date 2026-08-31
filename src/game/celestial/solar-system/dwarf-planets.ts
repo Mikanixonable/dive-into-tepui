@@ -3,7 +3,8 @@ import {
   PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
-import { AU, planetOrbit } from '../../../physics/planet-orbit';
+import { planetOrbit } from '../../../physics/kepler-orbit';
+import { AU } from '../../../physics/astronomical-unit';
 import { GRAVITATIONAL_CONSTANT } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';

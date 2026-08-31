@@ -12,7 +12,8 @@ import {
   planetDefForSimZero, satelliteDefForSimZero, SatelliteMotion, StarMotion,
 } from '../../physics/celestial-motion';
 import { planetSystem } from '../../physics/planet-system';
-import { AU, planetOrbit } from '../../physics/planet-orbit';
+import { planetOrbit } from '../../physics/kepler-orbit';
+import { AU } from '../../physics/astronomical-unit';
 import { JULIAN_CENTURY } from '../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';

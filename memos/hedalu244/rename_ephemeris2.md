@@ -481,11 +481,9 @@ numericEphemeris ではない** — 規範3 の `numeric` の限定がここで�
 **手順4(原点を名前に出す)も実施済み。** `src/physics/` に残る無標の `stateOf` は
 `FrameAnchorSource`(ECI)とその実装の2箇所だけで、これは CODING-RULE 2.1 に書いた例外そのもの。
 
-### 手順5. `planet-orbit.ts` のファイル名を中身へ合わせる
-
-行き先(`planet-orbit-elements.ts` か `kepler-orbit.ts` への吸収)は着手時に決める。
-
-**検証.** `npm run typecheck` / `npm run test:physics`。
+**手順5(`planet-orbit.ts` の解体)も実施済み。** 計画の2案はどちらも採らず、
+`AU` を `astronomical-unit.ts` へ、`planetOrbit()` / `planetAngles()` を `kepler-orbit.ts` へ
+分割した(理由は commit を参照)。
 
 ### 手順6. 線・当たり判定の名前を実装へ合わせる
 

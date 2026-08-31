@@ -10,7 +10,7 @@ import {
   sphereNoseRadius, stepTemperature, stepThermalDeviation,
 } from '../../src/physics/thermal';
 import { SOLAR_CONSTANT } from '../../src/physics/srp';
-import { AU } from '../../src/physics/planet-orbit';
+import { AU } from '../../src/physics/astronomical-unit';
 
 const ENV_TEMP = 255;
 const SG_CONST = 1.7415e-4; // 地球大気の Sutton–Graves 定数 [kg^0.5/m]

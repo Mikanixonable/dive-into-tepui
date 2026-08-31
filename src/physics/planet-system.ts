@@ -12,7 +12,7 @@ import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
 import {
   KinematicState, addPrimaryRelative, kinematicState, toPrimaryRelative,
 } from './kinematic-state';
-import { PlanetAngles, planetAngles } from './planet-orbit';
+import { PlanetAngles, planetAngles } from './kepler-orbit';
 import { satelliteState } from './satellite-orbit';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 
