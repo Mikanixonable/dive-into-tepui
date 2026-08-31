@@ -474,20 +474,9 @@ numericEphemeris ではない** — 規範3 の `numeric` の限定がここで�
 **手順2(器の語を1層へ寄せる)も実施済み。** `.epk` の payload SHA-256 は
 `343c7b46…b286505`(10054 segment)で変わっていない。
 
-### 手順3. 供給源の語を `packed` → `numeric` へ
-
-2.3「供給源」の表の10件。**`FrameTag` から先に直す** — タグを変えると型検査が全経路を洗い出す。
-
-コメントは 2.4 の表に従って同じ commit で揃える(`celestial-motion.ts:149`、
-`planet-system.ts:32`、`eci-transform.ts` の冒頭、`celestial-system.ts:50,117`、
-`solar-system.ts:3,51`、`stage.ts:113`、`ephemeris-profile.ts:43,49,60`)。
-
-テストの `preciseParts` / `preciseMoon` / `preciseValidDays` / `mockPrecise`(13 行)も
-`numeric*` へ揃える。
-
-**検証.** `npm run typecheck` / `npm run test:physics` / `npm run test:game`。
-`grep -rniE "packed" src/ tests/` が 0 件(`unpack` と `celestial-eci-baseline.test.ts` の定数 `PACKED` を除く)。
-`grep -rniE "precise" src/ tests/` が `doPreciseReentry` の6行だけ。達成目標7。
+**手順3(供給源の語を `packed` → `numeric` へ)も実施済み。**
+`src/render/thermal-emissive.ts` の `packed` は3つの float を vec3 へ詰めた頂点属性で、
+**語の意味として正しいので残した。**
 
 ### 手順4. 原点を名前に出す(違反2口)
 
