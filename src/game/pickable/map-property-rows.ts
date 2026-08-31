@@ -210,7 +210,7 @@ export class MapPropertyRows {
     target: MapPickable, celestialBodies: readonly CelestialMotion[], pivot: number, simTime: number,
   ): PropertyRow[] {
     const center = strongestAttractor(target.pos, celestialBodies, pivot);
-    const alt = len(sub(target.pos, center.positionAt(pivot, pivot))) - center.def.radius;
+    const alt = len(sub(target.pos, center.positionAt(pivot))) - center.def.radius;
     const rows: PropertyRow[] = [];
     if (target.ownerName) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
     rows.push({ key: 'alt', label: '高度', value: fmtDist(alt) });

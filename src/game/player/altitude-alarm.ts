@@ -34,10 +34,10 @@ export class AltitudeAlarm {
   update(
     dt: number, r: Vec3, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
   ): void {
-    const atm = atmosphereBody?.atmosphereAt(atmospherePivot) ?? null;
+    if (atmosphereBody === null) return;
+    const atm = atmosphereBody.atmosphereAt(atmospherePivot);
     if (atm === null) return;
-    const bodyPos = atmosphereBody!.positionAt(atmospherePivot, atmospherePivot);
-    this.step(dt, ellipsoidAltitude(sub(r, bodyPos), atm));
+    this.step(dt, ellipsoidAltitude(sub(r, atmosphereBody.positionAt(atmospherePivot)), atm));
   }
 
   // 平滑化を1歩進め、降下率としきい値の走破を見る。

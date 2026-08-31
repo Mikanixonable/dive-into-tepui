@@ -18,12 +18,12 @@ export class AeroLoad {
   update(
     r: Vec3, v: Vec3, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
   ): void {
-    const atm = atmosphereBody?.atmosphereAt(atmospherePivot) ?? null;
-    if (atm === null) {
+    const atm = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(atmospherePivot);
+    if (atmosphereBody === null || atm === null) {
       this.qdyn = 0;
       return;
     }
-    const bodyState = atmosphereBody!.stateAt(atmospherePivot);
+    const bodyState = atmosphereBody.stateAt(atmospherePivot);
     const { density, speed } = airflow(sub(r, bodyState.r), sub(v, bodyState.v), atm);
     this.qdyn = 0.5 * density * speed * speed;
   }

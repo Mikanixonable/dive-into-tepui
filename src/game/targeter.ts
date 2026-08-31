@@ -146,7 +146,7 @@ export class Targeter {
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
-    celestialSystem: CelestialSystem, celestialBodies: readonly CelestialMotion[],
+    celestialBodies: readonly CelestialMotion[],
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
@@ -172,8 +172,7 @@ export class Targeter {
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && overviewMode
-          ? mapPlanetFadeOpacity(
-            nearestPlanetDistance(ds.r, celestialSystem, celestialBodies, displayTime))
+          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, celestialBodies, displayTime))
           : 1;
       this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
     }
