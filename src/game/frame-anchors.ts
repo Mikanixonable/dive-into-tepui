@@ -6,6 +6,7 @@ import { orbitingAttractorOf } from '../physics/attractor';
 import { CelestialMotion } from '../physics/celestial-motion';
 import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
 import { KinematicState } from '../physics/kinematic-state';
+import type { CelestialSystem } from './celestial/celestial-system';
 
 // 解決に要る問い合わせをまとめた受け口。ゲーム側の型ではなく状態だけを受け取ることで、
 // 参照フレームの解決がエンティティ管理や航法ターゲットの都合から独立する。
@@ -24,7 +25,6 @@ export interface AnchorTargets {
 type RoleHold = { state: KinematicState | null; misses: number; missFrame: number };
 
 export class FrameAnchors implements FrameAnchorSource {
-  bodies: readonly CelestialMotion[] = [];
   // bodies の位置を厳密に引く時刻。update が表示時刻で置く。
   bodiesPivot = 0;
 
@@ -34,12 +34,15 @@ export class FrameAnchors implements FrameAnchorSource {
   private attractorCacheKey: string | null = null;
   private attractorCacheValue: string | null = null;
 
-  constructor(private readonly targets: AnchorTargets) {}
+  constructor(
+    private readonly celestialSystem: CelestialSystem,
+    private readonly targets: AnchorTargets,
+  ) {}
 
-  // 以降の解決が使う天体一覧と、その位置を厳密に引く表示時刻を差し込む。update / sync
-  // それぞれの先頭で1度呼ぶ。
-  update(bodies: readonly CelestialMotion[], bodiesPivot: number): void {
-    this.bodies = bodies;
+  get bodies(): readonly CelestialMotion[] { return this.celestialSystem.celestialMotions; }
+
+  // 天体の位置を厳密に引く表示時刻を差し込む。update / sync それぞれの先頭で1度呼ぶ。
+  update(bodiesPivot: number): void {
     this.bodiesPivot = bodiesPivot;
     this.frameIndex++;
   }
@@ -49,7 +52,7 @@ export class FrameAnchors implements FrameAnchorSource {
     const role = frameRoleOf(id);
     if (role !== null) return this.heldRoleState(role, this.resolveRoleState(role, t));
     return this.targets.entityState(id, t)
-      ?? this.bodies.find((b) => b.id === id)?.stateAt(this.bodiesPivot) ?? null;
+      ?? this.celestialSystem.find(id)?.motion.stateAt(this.bodiesPivot) ?? null;
   }
 
   // 基準 id が公転している主天体。離心率1未満の周回軌道にないなら null。

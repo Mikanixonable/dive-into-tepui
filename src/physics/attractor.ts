@@ -98,13 +98,16 @@ export function orbitingAttractorOf(
 export function bodyAnchorSource(
   bodies: readonly CelestialMotion[], bodiesPivot: number,
 ): FrameAnchorSource {
+  const byId = new Map(bodies.map((body) => [body.id, body]));
+  const stateOf = (id: string): KinematicState | null =>
+    byId.get(id)?.stateAt(bodiesPivot) ?? null;
   return {
     bodies,
     bodiesPivot,
-    stateOf: (id: string) => bodies.find((b) => b.id === id)?.stateAt(bodiesPivot) ?? null,
+    stateOf,
     attractorOf: (id: string) => {
-      const state = bodies.find((b) => b.id === id)?.stateAt(bodiesPivot);
-      return state ? orbitingAttractorOf(state, bodies, bodiesPivot)?.id ?? null : null;
+      const state = stateOf(id);
+      return state !== null ? orbitingAttractorOf(state, bodies, bodiesPivot)?.id ?? null : null;
     },
   };
 }

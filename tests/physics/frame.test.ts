@@ -304,14 +304,14 @@ export function register(): void {
       const relV = v3(-r * omega * Math.sin(angle), r * omega * Math.cos(angle), 0);
       return kinematicState<'eci'>(t, add(earth.r, relR), add(earth.v, relV));
     };
-    const anchors = new FrameAnchors({
+    const anchors = new FrameAnchors(windows, {
       entityState: () => null,
       activeShipState: (t) => shipStateAt(t),
       navTargetState: () => null,
     });
     const frame = referenceFrames.frameOf(SHIP, { kind: 'revolution', id: SHIP });
     for (const t of [t0, t0 + 500, t0 + 3600, t0 + 43200]) {
-      anchors.update(windows.celestialMotions, 0);
+      anchors.update(0);
       const tf = referenceFrames.transformAt(frame, t, anchors);
       const rel = toFrameState(tf, shipStateAt(t));
       assert.ok(close(rel.r, v3(), 1), `t=${t}: ${JSON.stringify(rel.r)}`);
