@@ -79,10 +79,9 @@ export function maxOccludedFraction(
 // 複数天体による遮蔽は各々の減光率の積で合成する — 2天体が同時に太陽面へ重なって
 // 掩蔽し合う状況は現実的に起きないため、重なり領域を厳密に扱うより素直な近似とした。
 export function sunlitFactor(
-  r: Vec3, star: CelestialMotion, starPivot: number,
-  celestialBodies: readonly CelestialMotion[], occluderPivot: number,
+  r: Vec3, star: CelestialMotion, celestialBodies: readonly CelestialMotion[], pivot: number,
 ): number {
-  const s = star.positionAt(starPivot, starPivot);
+  const s = star.positionAt(pivot, pivot);
   const tx = s.x - r.x, ty = s.y - r.y, tz = s.z - r.z;
   const sunDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
   if (sunDist < 1) return 1; // 位置が恒星に一致(退化)
@@ -93,7 +92,7 @@ export function sunlitFactor(
   let lit = 1;
   for (const occluder of celestialBodies) {
     lit *= occludedFraction(
-      r, tx * inv, ty * inv, tz * inv, sunDist, sinSunAng, sunAngRadius, occluder, occluderPivot);
+      r, tx * inv, ty * inv, tz * inv, sunDist, sinSunAng, sunAngRadius, occluder, pivot);
     if (lit === 0) return 0; // 本影に入った時点で、以降の遮蔽体を見ても答えは変わらない
   }
   return Math.min(1, Math.max(0, lit));

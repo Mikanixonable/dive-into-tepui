@@ -107,7 +107,7 @@ function substepInterval(from: KinematicState, dt: number): SurfaceParticipant {
   const mid = WINDOWS.gravityMotions;
   return {
     prevState: from,
-    state: stepDynamics(from, dt, mid, 0, [], 0, null, 0, 0, null),
+    state: stepDynamics(from, dt, mid, [], null, 0, 0, 0, null),
     radius: PLAYER_HULL_RADIUS,
   };
 }

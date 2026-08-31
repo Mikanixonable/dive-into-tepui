@@ -105,9 +105,9 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
 // 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)と、2次重力場を
 // 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。天体の同定は天体が自分で持つ2次重力場に
 // 委ねるので、ここに固有名の分岐は現れない。t は accel を評価すべき絶対時刻(RK4 の各段の
-// 時刻)で、重力項(質点・2次重力場とも)は天体位置を attractorPivot からその時刻へ外挿して
+// 時刻)で、重力項(質点・2次重力場とも)は天体位置を pivot からその時刻へ外挿して
 // から評価する — 距離の3乗で効く重力はステップ幅ぶんの天体の移動が精度を左右するため。
-// 日照率(sunlitFactor)と輻射圧の太陽方向はそれぞれの pivot に据え置く: 遮蔽の幾何と
+// 日照率(sunlitFactor)と輻射圧の太陽方向は pivot に据え置く: 遮蔽の幾何と
 // 1AU 先の太陽方向はステップ内での天体の移動にほとんど左右されず、外挿する意味が無い。
 // 遮蔽体 occluders は attractors とは別の窓で受け取る — 太陽を隠せるかは半径と位置の幾何で
 // 決まり、重力を及ぼすかとは無関係だから。大気抵抗は atmosphereBody ただ1体から掛かる
@@ -118,37 +118,36 @@ function totalAccel(
   r: Vec3,
   v: Vec3,
   attractors: readonly CelestialMotion[],
-  attractorPivot: number,
   occluders: readonly CelestialMotion[],
-  occluderPivot: number,
   atmosphereBody: CelestialMotion | null,
+  pivot: number,
   bcInv: number,
   srpCoeff: number,
   dt: number,
 ): Vec3 {
   let ax = 0, ay = 0, az = 0;
   for (const attractor of attractors) {
-    const g = attractorAccel(r, attractor, attractorPivot, t);
+    const g = attractorAccel(r, attractor, pivot, t);
     ax += g.x; ay += g.y; az += g.z;
     // 2次重力場は天体中心からの相対位置で評価する(質点重力と違い ECI 原点基準では組めない)。
-    const degree2 = attractor.degree2At(attractorPivot);
+    const degree2 = attractor.degree2At(pivot);
     if (degree2 !== null) {
-      const b = attractor.positionAt(attractorPivot, t);
+      const b = attractor.positionAt(pivot, t);
       const d2 = degree2Accel(v3(r.x - b.x, r.y - b.y, r.z - b.z), attractor.def.mu, degree2);
       ax += d2.x; ay += d2.y; az += d2.z;
     }
     // 恒星ぶんの輻射圧をすべて加算する(恒星0個なら寄与0)。
     if (attractor.kind === 'star' && srpCoeff !== 0) {
-      const sunlit = sunlitFactor(r, attractor, attractorPivot, occluders, occluderPivot);
-      const srp = srpAccel(r, attractor, attractorPivot, srpCoeff, sunlit);
+      const sunlit = sunlitFactor(r, attractor, occluders, pivot);
+      const srp = srpAccel(r, attractor, pivot, srpCoeff, sunlit);
       ax += srp.x; ay += srp.y; az += srp.z;
     }
   }
-  const atmosphere = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(attractorPivot);
+  const atmosphere = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(pivot);
   if (atmosphereBody === null || atmosphere === null) return v3(ax, ay, az);
   // 抗力はその天体の中心を基準に測る。天体位置は重力項と同じくこの段の時刻へ外挿する。
-  const atmosphereState = atmosphereBody.stateAt(attractorPivot);
-  const b = atmosphereBody.positionAt(attractorPivot, t);
+  const atmosphereState = atmosphereBody.stateAt(pivot);
+  const b = atmosphereBody.positionAt(pivot, t);
   const drag = dragAccel(
     v3(r.x - b.x, r.y - b.y, r.z - b.z), sub(v, atmosphereState.v), bcInv, atmosphere, dt,
   );
@@ -159,25 +158,23 @@ function totalAccel(
 // ステップぶん呼び出し側が確定させた重力源一覧、occluders は同じく確定させた遮蔽体一覧
 // (日照率だけに使う。重力の絞り込みとは別の関心事なので別の引数で受け取る)。
 // atmosphereBody は抗力を及ぼす**ただ1体**の大気天体(attractor.ts の
-// nearestAtmosphereBody)で、null なら抗力は恒等的にゼロ。attractorPivot / occluderPivot は
-// それぞれの一覧を厳密に引いた時刻。
+// nearestAtmosphereBody)で、null なら抗力は恒等的にゼロ。pivot は天体一式を厳密に引いた時刻。
 // bcInv/srpCoeff/thrust は種別ごとに異なるため引数で受け取り、モジュール内に既定値を持たない。
 export function stepDynamics(
   state: KinematicState,
   dt: number,
   attractors: readonly CelestialMotion[],
-  attractorPivot: number,
   occluders: readonly CelestialMotion[],
-  occluderPivot: number,
   atmosphereBody: CelestialMotion | null,
+  pivot: number,
   bcInv: number,
   srpCoeff: number,
   thrust: Vec3 | null,
 ): KinematicState {
   return stepRK4(state, dt, (t, rx, ry, rz, vx, vy, vz) => {
     const a = totalAccel(
-      t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, attractorPivot, occluders, occluderPivot,
-      atmosphereBody, bcInv, srpCoeff, dt);
+      t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, occluders, atmosphereBody,
+      pivot, bcInv, srpCoeff, dt);
     return thrust ? add(a, thrust) : a;
   });
 }

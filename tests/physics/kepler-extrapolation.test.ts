@@ -19,7 +19,7 @@ function integrate(tip: KinematicState, t: number, dt: number): KinematicState {
   let s = tip;
   const steps = Math.round((t - tip.t) / dt);
   for (let i = 0; i < steps; i++) {
-    s = stepDynamics(s, dt, [EARTH], 0, [], 0, null, 0, 0, null);
+    s = stepDynamics(s, dt, [EARTH], [], null, 0, 0, 0, null);
   }
   return s;
 }

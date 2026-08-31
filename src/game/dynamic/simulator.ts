@@ -126,7 +126,7 @@ export class Simulator {
       // simTime から外れ、履歴を持たない種別(弾・薬莢)が表示時刻と一致しなくなる。
       const endTime = this.simTime + subDt;
       this.surfaceContactPhysics.beginSubstep(
-        this.bodies.surface, this.bodies.surfacePivot, this.simTime, endTime);
+        this.bodies.surface, this.bodies.pivot, this.simTime, endTime);
       this.substep(endTime, subDt, activeStage);
       this.simTime = endTime;
       this.sections.exit(SECTION.orbit);
@@ -199,19 +199,19 @@ export class Simulator {
     for (const e of this.entities.all()) {
       if (!e.alive) continue;
       // 抗力をもう積めない個体は、進める前に失う — 積んでも正確な軌道は得られない。
-      if (e.outpacedByDrag(dt, this.bodies.atmosphere, this.bodies.gravityPivot)) {
+      if (e.outpacedByDrag(dt, this.bodies.atmosphere, this.bodies.pivot)) {
         e.alive = false;
         continue;
       }
       const near = this.bodies.attractorsNear(e.state.r);
       const atmosphereBody = this.bodies.atmosphereBodyNear(e.state.r);
-      const divisions = e.substepDivisions(dt, this.bodies.atmosphere, this.bodies.gravityPivot);
+      const divisions = e.substepDivisions(dt, this.bodies.atmosphere, this.bodies.pivot);
       const step = dt / divisions;
       for (let i = 0; i < divisions && e.alive; i++) {
         const integrated = e.stepSimulation(
           i === divisions - 1 ? endTime - e.state.t : step,
           near, this.bodies.surface, atmosphereBody, this.bodies.star,
-          this.bodies.gravityPivot, this.bodies.surfacePivot, activeStage);
+          this.bodies.pivot, activeStage);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
         if (divisions > 1) this.surfaceContactPhysics.resolveOne(e, activeStage);
