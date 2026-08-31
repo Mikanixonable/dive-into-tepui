@@ -237,9 +237,8 @@ export class CreativeStage extends Stage {
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
   // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
   openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
-    const celestialBodies = this._celestialSystem.celestialMotions;
     const form = elementsFormFromState(
-      state, celestialBodies, state.t, this._celestialSystem.origin.id);
+      state, this._celestialSystem, state.t, this._celestialSystem.origin.id);
     if (form && validateBaseReferenceFields(objectType, 'elements', form.celestialBody).length === 0) {
       this.placerPanel.open({ kind: 'form', objectType, form });
       return;
@@ -387,7 +386,7 @@ export class CreativeStage extends Stage {
   // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
   // 要る情報がすべてここから出る。
   private referenceCelestialBody(form: ElementsForm): CelestialMotion {
-    return this._celestialSystem.celestialMotions.find((b) => b.id === form.celestialBody)!;
+    return this._celestialSystem.motionOf(form.celestialBody);
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換

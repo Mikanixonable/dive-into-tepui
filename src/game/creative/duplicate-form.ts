@@ -4,12 +4,12 @@
 // 既存関数(strongestAttractor/elementsAround/trueAnomalyAt/apsisAltitudes)をそのまま使う。
 import { KinematicState } from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf } from '../../physics/elements';
 import { frameOfCelestialBody } from '../../physics/frame';
 import { OrbitalElements, apsisAltitudes, trueAnomalyAt } from '../../physics/elements';
 import { toFrameState } from '../../physics/frame';
 import { Vec3, cross, dot, len, norm, v3 } from '../../math/vec3';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ElementsForm } from './object-placer-panel';
 
 const RAD_TO_DEG = 180 / Math.PI;
@@ -32,11 +32,11 @@ function raanArgpFromBasis(el: OrbitalElements): { raanDeg: number; argpDeg: num
 // 公転天体のみなので、恒星が選ばれた場合は ECI 原点(origin)へ落とす。放物線・双曲線軌道
 // (e>=1)は遠地点高度も基準天体の選択も意味を持たないため null。
 export function elementsFormFromState(
-  state: KinematicState, celestialBodies: readonly CelestialMotion[], pivot: number, origin: string,
+  state: KinematicState, celestialSystem: CelestialSystem, pivot: number, origin: string,
 ): ElementsForm | null {
-  const strongest = strongestAttractor(state.r, celestialBodies, pivot);
+  const strongest = strongestAttractor(state.r, celestialSystem.celestialMotions, pivot);
   const center = strongest.kind === 'star'
-    ? celestialBodies.find((a) => a.id === origin) ?? strongest : strongest;
+    ? celestialSystem.find(origin)?.motion ?? strongest : strongest;
   const el = orbitalElementsOf(state, center, pivot);
   if (!el || el.e >= 1) return null;
 

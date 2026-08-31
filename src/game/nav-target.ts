@@ -247,11 +247,9 @@ export class NavTarget {
   ): OrbitReference | null {
     const id = this.targetId;
     if (id === null) return null;
-    if (celestialSystem.find(id)?.motion instanceof OrbitingMotion) {
-      const attractor = celestialBodies.find((a) => a.id === id);
-      if (attractor) {
-        return { id, state: attractor.stateAt(t), hasMass: true, attractor, entity: null, fixed: true };
-      }
+    const attractor = celestialSystem.find(id)?.motion;
+    if (attractor instanceof OrbitingMotion) {
+      return { id, state: attractor.stateAt(t), hasMass: true, attractor, entity: null, fixed: true };
     }
     const lagrange = lagrangePointOf(id);
     if (lagrange !== null) {
