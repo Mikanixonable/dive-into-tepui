@@ -412,16 +412,15 @@ export class DynamicEntity {
     occluders: readonly CelestialMotion[],
     atmosphereBody: CelestialMotion | null,
     star: CelestialMotion | null,
-    gravityPivot: number,
-    surfacePivot: number,
+    pivot: number,
     activeStage: Stage,
   ): boolean {
-    const integrated = !this.followPredicted(this.state.t + dt, celestialBodies, gravityPivot);
+    const integrated = !this.followPredicted(this.state.t + dt, celestialBodies, pivot);
     if (integrated) {
       this.actual.step(
-        dt, celestialBodies, gravityPivot, occluders, surfacePivot, atmosphereBody,
+        dt, celestialBodies, occluders, atmosphereBody, pivot,
         this.bcInv, this.srpCoeff, this.thrust,
-        this.historySampleInterval(celestialBodies, gravityPivot), this.historyDuration,
+        this.historySampleInterval(celestialBodies, pivot), this.historyDuration,
       );
       // 積分した弧はもう現実を表さない。ある時間帯の状態を決める積分を常に1本に保つ。
       this.invalidatePrediction();
@@ -431,14 +430,14 @@ export class DynamicEntity {
     // 日照率は遮蔽体の数だけ走るため、熱を蓄えない種別(弾)には引かせない — 受動的な環境を
     // 持つ種別はどれも熱を蓄える。
     const sun = this.specificHeat > 0 ? star : null;
-    const toSun = sun === null ? v3() : sub(sun.positionAt(surfacePivot, surfacePivot), this.state.r);
+    const toSun = sun === null ? v3() : sub(sun.positionAt(pivot, pivot), this.state.r);
     const sunDist = len(toSun);
     const sunDir = sunDist > 0 ? scale(toSun, 1 / sunDist) : v3();
     const sunlit = sun === null
-      ? 0 : sunlitFactor(this.state.r, sun, surfacePivot, occluders, surfacePivot);
+      ? 0 : sunlitFactor(this.state.r, sun, occluders, pivot);
     // 環境を先に進める。放熱面の展開のように、熱収支が読む値をここで書き換える種別がある。
-    this.stepEnvironment(dt, atmosphereBody, gravityPivot, sunlit, sunDir);
-    this.stepThermal(dt, atmosphereBody, gravityPivot, sunDist, sunlit, sunDir, activeStage);
+    this.stepEnvironment(dt, atmosphereBody, pivot, sunlit, sunDir);
+    this.stepThermal(dt, atmosphereBody, pivot, sunDist, sunlit, sunDir, activeStage);
     return integrated;
   }
 
