@@ -8,7 +8,10 @@
 import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp } from './attitude';
 import { PointEphemeris, boundStateAt } from './point-ephemeris';
-import { Degree2Gravity } from './celestial-body';
+import {
+  CelestialBody, Degree2Gravity, celestialBodyPositionAt, celestialBodyStateAt,
+} from './celestial-body';
+import type { EciTransform } from './eci-transform';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import {
@@ -25,11 +28,20 @@ import {
   KinematicState, addPrimaryRelative, kinematicState, toPrimaryRelative,
 } from './kinematic-state';
 import { SECONDS_PER_DAY } from './time';
-import { NO_TIME_CACHE, TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
+import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../math/vec3';
 
 // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
 export type BodyOrientation = { readonly axis: Vec3; readonly spinAngle: number };
+
+// 天体1体の、ある時刻での ECI の値ひとそろい。位置・速度とその2階微分が近傍時刻への外挿を
+// 支え、向きの量は姿勢を解決済みの形で持つ。
+type EciValues = {
+  readonly state: KinematicState;
+  readonly accel: Vec3; // ECI 加速度 [m/s²]
+  readonly degree2: Degree2Gravity | null;
+  readonly atmosphere: Atmosphere | null;
+};
 
 // 天体ごとの平均黄経の初期位相 [rad]。未指定の天体は 0 として扱う。
 export type PhaseOffsets = Partial<Record<string, number>>;
@@ -107,6 +119,11 @@ export abstract class CelestialMotion {
   // この天体1体ぶんの高精度暦。暦に収録されていない天体では null。
   private bodyEphemeris: PointEphemeris | null = null;
 
+  // ECI 化の変換器。どの天体を原点に置くかは系レベルの選択なので、系から結んでもらう。
+  private eciTransform: EciTransform | null = null;
+
+  private readonly eciCache = new TimeRing<EciValues>();
+
   protected constructor(
     // 自転の初期位相 [rad]。eciPole の自転モデルの位相原点をこれだけ進める(iau は w0 が、
     // 同期回転は軌道が位相を持つ)。
@@ -116,6 +133,44 @@ export abstract class CelestialMotion {
   // 自分の暦を結ぶ。結ぶまでの間と、null を結んだ後は、解析暦が位置を答える。
   bindEphemeris(ephemeris: PointEphemeris | null): void {
     this.bodyEphemeris = ephemeris;
+  }
+
+  // ECI 化の変換器を結ぶ。結ぶまでは ECI の値を答えられない。
+  bindEciTransform(transform: EciTransform): void {
+    this.eciTransform = transform;
+  }
+
+  // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと pivot 自身の
+  // 厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
+  stateAt(pivot: number, t: number = pivot): KinematicState {
+    return celestialBodyStateAt(this.celestialBodyAt(pivot), t);
+  }
+
+  // 同じ外挿で位置だけを答える。
+  positionAt(pivot: number, t: number): Vec3 {
+    return celestialBodyPositionAt(this.celestialBodyAt(pivot), t);
+  }
+
+  // 時刻 pivot の姿勢込みの2次重力場。2次重力場を持たない天体は null。
+  degree2At(pivot: number): Degree2Gravity | null {
+    return this.eciAt(pivot).degree2;
+  }
+
+  // 時刻 pivot の自転軸込みの大気。大気を持たない天体は null。
+  atmosphereAt(pivot: number): Atmosphere | null {
+    return this.eciAt(pivot).atmosphere;
+  }
+
+  // 時刻 pivot での厳密な ECI 瞬間値。**呼び出し側はこの値を書き換えてはならない。**
+  celestialBodyAt(pivot: number): CelestialBody {
+    const def = this.def;
+    const eci = this.eciAt(pivot);
+    return {
+      id: def.id, mu: def.mu, radius: def.radius,
+      state: eci.state, accel: eci.accel,
+      degree2: eci.degree2, atmosphere: eci.atmosphere,
+      isStar: this.kind === 'star',
+    };
   }
 
   get id(): string {
@@ -135,10 +190,10 @@ export abstract class CelestialMotion {
   abstract orientationAt(t: number): BodyOrientation | null;
 
   // 2次重力場を時刻 t の姿勢込みで解決する。2次重力場を持たない天体は null。
-  abstract degree2At(t: number): Degree2Gravity | null;
+  protected abstract computeDegree2At(t: number): Degree2Gravity | null;
 
   // 大気を時刻 t の自転軸込みで解決する。大気を持たない天体は null。
-  abstract atmosphereAt(t: number): Atmosphere | null;
+  protected abstract computeAtmosphereAt(t: number): Atmosphere | null;
 
   // 自転に固定した回転基準系(ẑ = 自転軸、x̂ = 本初子午線方向)。自転モデルを持たない天体では null。
   // 逆行自転する天体でも ẑ は IAU の「北極」のままで、逆行は omega の符号に現れる
@@ -155,9 +210,30 @@ export abstract class CelestialMotion {
     return spinRateOf(this.def);
   }
 
-  // 保持する時刻キャッシュを合算した照合の累計。基底は何も持たないので、畳むのは派生側。
+  // 保持する時刻キャッシュを合算した照合の累計。
   get cacheStats(): TimeCacheStats {
-    return NO_TIME_CACHE;
+    return this.eciCache.stats;
+  }
+
+  // 時刻 pivot の ECI の値ひとそろい。姿勢の解決もここへ畳むので、同じ pivot なら
+  // 2次重力場も大気も1度しか組み直さない。
+  private eciAt(pivot: number): EciValues {
+    const cached = this.eciCache.get(pivot);
+    if (cached !== undefined) return cached;
+    const eci = this.eci;
+    return this.eciCache.put(pivot, {
+      state: eci.stateAt(pivot, this),
+      accel: eci.accelAt(pivot, this),
+      degree2: this.computeDegree2At(pivot),
+      atmosphere: this.computeAtmosphereAt(pivot),
+    });
+  }
+
+  // bindEciTransform より前に読むと例外。
+  private get eci(): EciTransform {
+    const transform = this.eciTransform;
+    if (transform === null) throw new Error(`CelestialMotion: ${this.id} の ECI 変換器が結ばれていない`);
+    return transform;
   }
 
   // 自分自身が暦に収録されている範囲での重心中心位置・速度。収録外・有効期間外では null。
@@ -246,12 +322,12 @@ export class StarMotion extends CelestialMotion {
   }
 
   // 恒星は質点として扱う。
-  degree2At(): Degree2Gravity | null {
+  protected computeDegree2At(): Degree2Gravity | null {
     return null;
   }
 
   // 恒星は大気を持たない。
-  atmosphereAt(): Atmosphere | null {
+  protected computeAtmosphereAt(): Atmosphere | null {
     return null;
   }
 }
@@ -332,7 +408,7 @@ export abstract class OrbitingMotion extends CelestialMotion {
   }
 
   // 主軸座標系の長軸は本初子午線と同じ向き(C22 項は2回対称なので符号は効かない)。
-  degree2At(t: number): Degree2Gravity | null {
+  protected computeDegree2At(t: number): Degree2Gravity | null {
     const model = this.def.degree2;
     if (model === undefined) return null;
     const orientation = this.orientationAt(t);
@@ -345,7 +421,7 @@ export abstract class OrbitingMotion extends CelestialMotion {
   }
 
   // 大気は自転軸を共回転の軸として要求するので、姿勢を持たない天体は大気を持てない。
-  atmosphereAt(t: number): Atmosphere | null {
+  protected computeAtmosphereAt(t: number): Atmosphere | null {
     const model = this.def.atmosphere;
     if (model === undefined) return null;
     const orientation = this.orientationAt(t);
