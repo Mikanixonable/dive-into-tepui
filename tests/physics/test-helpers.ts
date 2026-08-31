@@ -1,7 +1,7 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
-import { AbsoluteEphemeris, EphemerisPointKind, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
-import { BodyEphemeris } from '../../src/physics/body-ephemeris';
+import { AbsoluteEphemeris, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
+import { EphemerisPointKind, PointEphemeris } from '../../src/physics/point-ephemeris';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { KinematicState } from '../../src/physics/kinematic-state';
 import {
@@ -111,7 +111,7 @@ export function testEphemerisSource(
 ): AbsoluteEphemeris {
   return {
     pointKindOf: (id: string): EphemerisPointKind => pointKinds[id] ?? 'body',
-    bodyEphemerisOf: (id: string): BodyEphemeris | null => {
+    pointEphemerisOf: (id: string): PointEphemeris | null => {
       if (stateOf(id, validStartSimTime) === null) return null;
       return {
         validStartSimTime,
