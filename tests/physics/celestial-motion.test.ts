@@ -10,7 +10,9 @@ import {
 } from '../../src/game/celestial/solar-system/constants';
 import { EPS } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
-import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState } from '../../src/physics/kepler-orbit';
+import {
+  JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitNormal, keplerOrbitState,
+} from '../../src/physics/kepler-orbit';
 import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { Vec3, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
@@ -299,14 +301,15 @@ export function register(): void {
       const n = moon.orbitNormalAt(t);
       const { L1, L2, L3, L4, L5 } = lagrangeOf(parts, 'moon', t);
       assert.ok(len(L1) < R && len(L2) > R, `L1/L2 の内外 (t=${t})`);
-      // 同じ理由で厳密な反対方向(-1)からは最大 1.4° ほどずれうる。
-      assert.ok(dot(norm(L3), mHat) < -0.999, `L3 が反月方向でない (t=${t})`);
+      // 回転基準系は月の実位置から組むので、L3 は実位置の厳密な反対方向に来る
+      // (平均要素で組んでいた頃は最大 1.4° ずれていた)。
+      assert.ok(dot(norm(L3), mHat) < -0.9999999999, `L3 が反月方向でない (t=${t}): ${dot(norm(L3), mHat)}`);
       const lead = cross(n, mHat); // 公転前方
       for (const [name, p, sign] of [['L4', L4, 1], ['L5', L5, -1]] as const) {
         assert.ok(Math.abs(len(p) - R) < 1e-6 * R, `${name} の軌道半径 (t=${t}): ${len(p)}`);
-        // L4/L5 は回転系(平均要素)の正三角形、moonPos は周期摂動込みの実位置なので
-        // 最大 1.4° ぶんの角度ずれが距離へ乗る。
-        assert.ok(Math.abs(len(sub(p, moonPos)) - R) < 3e-2 * R, `${name} と月の距離 (t=${t})`);
+        // 回転基準系と moonPos がどちらも実位置基準になったので、正三角形は丸め誤差まで
+        // 厳密(平均要素で組んでいた頃は角度ずれが距離へ乗り、3% の許容が要った)。
+        assert.ok(Math.abs(len(sub(p, moonPos)) - R) < 1e-12 * R, `${name} と月の距離 (t=${t}): ${Math.abs(len(sub(p, moonPos)) - R) / R}`);
         assert.ok(sign * dot(norm(p), lead) > 0, `${name} の前後 (t=${t})`);
       }
     }
@@ -361,18 +364,35 @@ export function register(): void {
     }
   });
 
-  test('celestial-motion: 月の orbitNormalAt は昇交点歳差で赤道傾斜 18.3°〜28.6° を掃く', () => {
+  // 公表されている 18.3°〜28.6° は**平均軌道面**の傾斜なので、平均要素の法線で測る。
+  // orbitNormalAt が答えるのは接触軌道面(周期項込み)で、こちらは下のテストが押さえる。
+  test('celestial-motion: 月の平均軌道面は昇交点歳差で赤道傾斜 18.3°〜28.6° を掃く', () => {
     const NODE_PERIOD = 18.612958 * 365.25 * 86400;
     let minDeg = 180;
     let maxDeg = 0;
     for (let i = 0; i < 64; i++) {
-      const n = orbitingMotionOf(parts, 'moon').orbitNormalAt((i / 64) * NODE_PERIOD);
+      const n = keplerOrbitNormal(orbitingMotionOf(parts, 'moon').keplerOrbit, (i / 64) * NODE_PERIOD);
       const deg = (Math.acos(Math.max(-1, Math.min(1, dot(n, v3(0, 1, 0))))) * 180) / Math.PI;
       minDeg = Math.min(minDeg, deg);
       maxDeg = Math.max(maxDeg, deg);
     }
     assert.ok(Math.abs(minDeg - 18.294) < 0.2, `最小傾斜: ${minDeg}°`);
     assert.ok(Math.abs(maxDeg - 28.584) < 0.2, `最大傾斜: ${maxDeg}°`);
+  });
+
+  // orbitNormalAt は接触軌道面(太陽摂動の周期項を含む実状態から組む)を答える。平均軌道面の
+  // まわりを揺れるだけで、離れ続けることはない — 節周期1回で最大 0.81°(実測)。
+  test('celestial-motion: 月の接触軌道面は平均軌道面から 1° 以上離れない', () => {
+    const NODE_PERIOD = 18.612958 * 365.25 * 86400;
+    const moon = orbitingMotionOf(parts, 'moon');
+    let maxDeg = 0;
+    for (let i = 0; i < 4000; i++) {
+      const t = (i / 4000) * NODE_PERIOD;
+      const d = dot(moon.orbitNormalAt(t), keplerOrbitNormal(moon.keplerOrbit, t));
+      maxDeg = Math.max(maxDeg, (Math.acos(Math.max(-1, Math.min(1, d))) * 180) / Math.PI);
+    }
+    assert.ok(maxDeg > 0.2, `周期項が入っていない: ${maxDeg}°`);
+    assert.ok(maxDeg < 1, `接触軌道面が平均から離れすぎる: ${maxDeg}°`);
   });
 
   // TEST_SIM_ZERO_ET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。

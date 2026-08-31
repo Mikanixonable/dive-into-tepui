@@ -266,27 +266,26 @@ export abstract class OrbitingMotion extends CelestialMotion {
   // 二体部分の軌道。衛星は周期摂動項を含まない平均要素。
   abstract get keplerOrbit(): KeplerOrbit;
 
-  // 自分に固定した回転基準系(x̂ = 主天体→自分、ẑ = 軌道面法線)。衛星の周期項は平均要素に
-  // 含めないので、この基底は実位置の x̂ 軸から最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
+  // 自分に固定した回転基準系(x̂ = 主天体→自分、ẑ = 軌道面法線: SPEC/CELESTIAL.md 8節)。
+  // **基底は常に実状態から組む** — 供給源が暦パックでも解析暦でも同じ定義なので、パックの
+  // 有効期間の端をまたいでも定義は変わらない。角運動量が縮退している時だけ、平面が決まらない
+  // ので二体要素へ落ちる。
   orbitFrameRotationAt(t: number): FrameRotation {
-    // 暦パックが引ける期間では、相対角運動量から基底と角速度をその場で組む。
-    const packed = this.packedOrbitRelStateAt(t);
-    if (packed !== null) {
-      const h = cross(packed.r, packed.v);
-      const xHat = norm(packed.r);
-      const zHat = norm(h);
-      const yHat = cross(zHat, xHat);
-      const q = qFromForwardUp(zHat, yHat);
-      if (q !== null) return { q, omega: scale(zHat, len(h) / (len(packed.r) * len(packed.r))) };
-    }
-    return keplerOrbitRotation(this.keplerOrbit, t);
+    const rel = this.orbitRelStateAt(t);
+    const h = cross(rel.r, rel.v);
+    const xHat = norm(rel.r);
+    const zHat = norm(h);
+    const yHat = cross(zHat, xHat);
+    const q = qFromForwardUp(zHat, yHat);
+    if (q === null) return keplerOrbitRotation(this.keplerOrbit, t);
+    return { q, omega: scale(zHat, len(h) / (len(rel.r) * len(rel.r))) };
   }
 
-  // 軌道面の法線(単位ベクトル、ECI)。
+  // 軌道面の法線(単位ベクトル、ECI)。基底と同じく実状態から組む。
   orbitNormalAt(t: number): Vec3 {
-    const packed = this.packedOrbitRelStateAt(t);
-    if (packed !== null) return norm(cross(packed.r, packed.v));
-    return keplerOrbitNormal(this.keplerOrbit, t);
+    const rel = this.orbitRelStateAt(t);
+    const h = cross(rel.r, rel.v);
+    return lenSq(h) > 0 ? norm(h) : keplerOrbitNormal(this.keplerOrbit, t);
   }
 
   // 共線点(L1/L2/L3)が行き先として意味を持つか。副天体が軽いほどヒル半径が縮んで L1 が
@@ -372,12 +371,24 @@ export abstract class OrbitingMotion extends CelestialMotion {
     return this.ownPackedStateAt(t);
   }
 
+  // 自分の軌道が乗っている点の、主天体に対する実位置・実速度。**周期項を含む。**
+  // 暦パックが自分の軌道点と主天体の両方を直接収録している期間はパック由来、それ以外は
+  // 解析暦由来。どちらも同じ「実状態」なので、境界で定義は変わらない。
+  private orbitRelStateAt(t: number): KinematicState<'primaryRel'> {
+    return this.packedOrbitRelStateAt(t) ?? this.analyticOrbitRelStateAt(t);
+  }
+
+  // 解析暦での、自分の軌道が乗っている点の主天体相対状態。惑星は系の重心、衛星は自分自身。
+  protected abstract analyticOrbitRelStateAt(t: number): KinematicState<'primaryRel'>;
+
   // 暦パックが自分の軌道の中心天体と、その軌道が乗っている点の両方を直接収録している
   // 有効期間での相対位置・速度。引けなければ null。
   private packedOrbitRelStateAt(t: number): KinematicState<'primaryRel'> | null {
     const primary = this.primary;
     if (primary === null) return null;
-    // 合成した packedStateAt へ替えると衛星の周期項が入り、回転基準系が実位置基準へ 2.5° 動く。
+    // 合成した packedStateAt を使わないのは、未収録の衛星に「収録済みの親 + 解析の相対」を
+    // 足し込むと、主天体を引いた差が結局その解析の相対そのものになるため — パック由来と
+    // 名乗る値が実は解析由来になる。引けないなら解析経路だと分かる形にしておく。
     const own = this.orbitPointPackedStateAt(t);
     const primaryState = primary.ownPackedStateAt(t);
     if (own === null || primaryState === null) return null;
@@ -405,6 +416,11 @@ export class PlanetMotion extends OrbitingMotion {
   // 惑星の軌道要素が乗っているのは本体ではなく系の重心。
   protected override orbitPointPackedStateAt(t: number): KinematicState<'packed'> | null {
     return this.system.ownPackedStateAt(t) ?? this.ownPackedStateAt(t);
+  }
+
+  // 系の重心の主星相対状態。解析暦での惑星の運動は純粋な二体解なので、これが実状態そのもの。
+  protected override analyticOrbitRelStateAt(t: number): KinematicState<'primaryRel'> {
+    return keplerOrbitState(this.system.orbit, t);
   }
 
   // 本体を収録していない系は、収録された系の重心から重心オフセットぶんを差し引いて補う。
@@ -461,6 +477,11 @@ export class SatelliteMotion extends OrbitingMotion {
   // 衛星の太陽系重心状態。
   analyticStateAt(t: number): KinematicState<'analytic'> {
     return this.system.satelliteStateAt(this.index, t);
+  }
+
+  // 惑星本体相対の実状態。周期摂動項を含む(平均要素の二体解ではない)。
+  protected override analyticOrbitRelStateAt(t: number): KinematicState<'primaryRel'> {
+    return this.system.satelliteRelStateAt(this.index, t);
   }
 
   // 惑星本体の加速度に惑星まわりの二体加速度を足す。

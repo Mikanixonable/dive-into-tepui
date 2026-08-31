@@ -5,6 +5,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { cassiniSpinAxis, meridianDirection, orthogonalizedTo } from '../../src/physics/body-orientation';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
+import { keplerOrbitNormal } from '../../src/physics/kepler-orbit';
 import { MOON_OBLIQUITY } from '../../src/game/celestial/solar-system/constants';
 import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
@@ -63,15 +64,17 @@ export function register(): void {
     }
   });
 
-  test('celestial-motion: the moon spin axis sits 6.688deg from its own orbit normal, opposite the ecliptic pole', () => {
+  // カッシーニ状態の 6.688° は**平均軌道面**に対する傾斜なので、平均要素の法線で測る
+  // (orbitNormalAt が答える接触軌道面は周期項ぶん揺れ、この離角も 5.99°〜7.34° を振れる)。
+  test('celestial-motion: the moon spin axis sits 6.688deg from its mean orbit normal, opposite the ecliptic pole', () => {
     // 自転軸を軌道面法線で代用していれば、この離角は 0 になる。
     const parts = solarSystemParts({ moon: 0.2 });
     const windows = parts.system;
     for (const t of [0, 5e7, 2e8]) {
       const moon = windows.celestialBodiesAt(t).find((b) => b.id === 'moon')!;
-      const normal = orbitingMotionOf(parts, 'moon').orbitNormalAt(t);
+      const normal = keplerOrbitNormal(orbitingMotionOf(parts, 'moon').keplerOrbit, t);
       const sep = angleBetween(moon.degree2!.pole, normal) * R2D;
-      assert.ok(Math.abs(sep - 6.688) < 0.02, `spin-axis to orbit-normal separation at t=${t}: ${sep} deg`);
+      assert.ok(Math.abs(sep - 6.688) < 0.02, `spin-axis to mean orbit-normal separation at t=${t}: ${sep} deg`);
     }
   });
 
