@@ -121,7 +121,7 @@ export function testEphemerisPoints(
     const ephemeris: PointEphemeris = {
       validStartSimTime,
       validEndSimTime,
-      stateAt: (simTime: number) => {
+      baryStateAt: (simTime: number) => {
         const state = stateOf(simTime);
         return kinematicState<'numeric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
       },

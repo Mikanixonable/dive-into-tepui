@@ -55,7 +55,7 @@ export function register(): void {
 
   test('chebyshev: evaluates SI position and interval-scaled velocity as KinematicState', () => {
     const eph = new ChebyshevEphemeris(pack);
-    const state = eph.stateOf('probe', 2.5);
+    const state = eph.icrfStateAt('probe', 2.5);
     assertVec3Close(state.r, v3(10, 0.5, 1));
     assertVec3Close(state.v, v3(0, 0.6, -0.8));
     assert.equal(state.t, 2.5);
@@ -67,14 +67,14 @@ export function register(): void {
     assert.equal(findChebyshevSegmentIndex(pack.bodies[0]!.segments, 10), 1);
     assert.equal(findChebyshevSegmentIndex(pack.bodies[0]!.segments, 20), 1);
     // t=10 は2つめのセグメント(定数係数 [[30],[40],[50]])が担う。値で選択を押さえる。
-    assertVec3Close(new ChebyshevEphemeris(pack).stateOf('probe', 10).r, v3(30, 40, 50));
+    assertVec3Close(new ChebyshevEphemeris(pack).icrfStateAt('probe', 10).r, v3(30, 40, 50));
   });
 
   test('chebyshev: missing bodies and times outside validity are explicit errors', () => {
     const eph = new ChebyshevEphemeris(pack);
-    assert.throws(() => eph.stateOf('missing', 1), ChebyshevBodyNotFoundError);
-    assert.throws(() => eph.stateOf('probe', -1), ChebyshevTimeOutOfRangeError);
-    assert.throws(() => eph.stateOf('probe', 21), ChebyshevTimeOutOfRangeError);
+    assert.throws(() => eph.icrfStateAt('missing', 1), ChebyshevBodyNotFoundError);
+    assert.throws(() => eph.icrfStateAt('probe', -1), ChebyshevTimeOutOfRangeError);
+    assert.throws(() => eph.icrfStateAt('probe', 21), ChebyshevTimeOutOfRangeError);
   });
 
   // 評価器は入力の係数配列をコピーせず参照する(4.3 MB の pack で複製が 13 MB を占めるため)。
@@ -92,10 +92,10 @@ export function register(): void {
       bodies: [{ id: 'fixed', segments: [{ start: 0, end: 2, coefficients: [coefficients, [0, 0], [0, 0]] }] }],
     };
     const eph = new ChebyshevEphemeris(input);
-    const first = eph.stateOf('fixed', 1);
-    assert.deepEqual(eph.stateOf('fixed', 1), first);
+    const first = eph.icrfStateAt('fixed', 1);
+    assert.deepEqual(eph.icrfStateAt('fixed', 1), first);
     assert.equal(first.r.x, 5);
     coefficients[0] = 999;
-    assert.equal(eph.stateOf('fixed', 1).r.x, 999, '係数配列は複製されず参照されている');
+    assert.equal(eph.icrfStateAt('fixed', 1).r.x, 999, '係数配列は複製されず参照されている');
   });
 }
