@@ -5,8 +5,8 @@
 // THREE 非依存に保つ。
 import * as THREE from 'three/webgpu';
 import { Ephemeris } from '../../physics/ephemeris';
-import { Vec3, v3 } from '../../physics/vec3';
-import { FloatingOrigin } from '../floating-origin';
+import { Vec3, v3 } from '../../math/vec3';
+import { FloatingOrigin } from '../camera/floating-origin';
 import {
   PointElements, PointField, PointFieldGroup, generatePointField, pointPositionAt,
 } from './point-field';

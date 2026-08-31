@@ -10,20 +10,28 @@ import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
 import { celestialBodyName } from '../hud/frame/frame-labels';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { CollinearPoint } from '../../physics/halo';
-import { CelestialBodyId } from '../../physics/celestial-body';
-import { CelestialRegistry, MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system';
-import type { OrbitingId } from '../../physics/celestial-body';
+import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system/constants';
+import { MOON } from '../../physics/solar-system/earth-system';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { Ephemeris } from '../../physics/ephemeris';
-import * as C from '../const';
+import type { ObjectType } from '../random-name';
 import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, sunSyncInclinationDeg } from './orbit-form-fields';
+
+// ラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
+// 副天体ごとに主天体との距離が3桁近く違うため、妥当なオーダーを副天体ごとに別々に持つ。
+const HALO_AX_MOON_KM = 8000;
+const HALO_AZ_MOON_KM = 5000;
+const HALO_AX_EARTH_KM = 200000;
+const HALO_AZ_EARTH_KM = 120000;
+const HALO_AX_JUPITER_KM = 7000000;
+const HALO_AZ_JUPITER_KM = 4000000;
 import {
   SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
 } from './slider-field';
 
-export type ObjectType = 'player' | 'enemy' | 'ammo' | 'fuel' | 'base';
-export type ReferenceCelestialBody = CelestialBodyId;
+export type { ObjectType };
+export type ReferenceCelestialBody = string;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'lagrange';
 export type LagrangeOrbitKind = 'halo' | 'lissajous';
@@ -48,7 +56,7 @@ export type ElementsForm = {
 // 三次の振幅拘束で導出されるので入力値を持たない。リサジューは両方)。
 export type LagrangeForm = {
   readonly placementMode: 'lagrange';
-  readonly lagrangeSecondary: OrbitingId;
+  readonly lagrangeSecondary: string;
   readonly lagrangePoint: CollinearPoint;
 } & (
   | { readonly lagrangeOrbitKind: 'halo'; readonly azKm: number }
@@ -101,16 +109,16 @@ const LAGRANGE_ORBIT_KIND_ITEMS: readonly (readonly [LagrangeOrbitKind, string])
 
 // 副天体ごとに妥当なオーダーへ面内/面外振幅の既定値を切り替える(系ごとに主天体間距離が
 // 桁違いなため)。
-const LAGRANGE_DEFAULT_AMPLITUDE_KM: Partial<Record<OrbitingId, { ax: number; az: number }>> = {
-  moon: { ax: C.HALO_AX_MOON_KM, az: C.HALO_AZ_MOON_KM },
-  earth: { ax: C.HALO_AX_EARTH_KM, az: C.HALO_AZ_EARTH_KM },
-  jupiter: { ax: C.HALO_AX_JUPITER_KM, az: C.HALO_AZ_JUPITER_KM },
+const LAGRANGE_DEFAULT_AMPLITUDE_KM: Partial<Record<string, { ax: number; az: number }>> = {
+  moon: { ax: HALO_AX_MOON_KM, az: HALO_AZ_MOON_KM },
+  earth: { ax: HALO_AX_EARTH_KM, az: HALO_AZ_EARTH_KM },
+  jupiter: { ax: HALO_AX_JUPITER_KM, az: HALO_AZ_JUPITER_KM },
 };
 
 // 表に無い天体の既定振幅を主天体間距離から導くときの比。月の既定値と月の軌道長半径の比を
 // そのまま使うので、表に載っている天体と桁感が揃う。
-const AMPLITUDE_AX_RATIO = C.HALO_AX_MOON_KM / primaryDistanceKm('moon');
-const AMPLITUDE_AZ_RATIO = C.HALO_AZ_MOON_KM / primaryDistanceKm('moon');
+const AMPLITUDE_AX_RATIO = HALO_AX_MOON_KM / primaryDistanceKm(MOON);
+const AMPLITUDE_AZ_RATIO = HALO_AZ_MOON_KM / primaryDistanceKm(MOON);
 
 // 静止軌道の高度: 恒星日ちょうどの円軌道の半長軸から導出する(マジックナンバーで別途持たない)。
 const GEO_ALT_KM = (semiMajorFromPeriod(SIDEREAL_DAY, MU_EARTH) - R_EARTH) / 1e3;
@@ -162,7 +170,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private readonly raan: SliderRow;
   private readonly argp: SliderRow;
   private readonly nu: SliderRow;
-  private readonly lagrangeSecondary: ObjectPicker<OrbitingId>;
+  private readonly lagrangeSecondary: ObjectPicker<string>;
   private readonly lagrangePoint: SegmentedControl<CollinearPoint>;
   private readonly lagrangeOrbitKind: SegmentedControl<LagrangeOrbitKind>;
   private readonly libAx: HTMLInputElement;
@@ -172,7 +180,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   // 基地は敵の射程となる惑星近傍を避けるため、軌道要素指定の基準天体は月だけに絞る
   // (地球・木星は選択肢自体を出さない — placement-validation.ts の validateBaseReferenceFields と対にする)。
   private readonly baseCelestialBodyItems: readonly (readonly [ReferenceCelestialBody, string])[];
-  private readonly lagrangeSystemItems: readonly (readonly [OrbitingId, string])[];
+  private readonly lagrangeSystemItems: readonly (readonly [string, string])[];
   private readonly issueList: HTMLElement;
   private issueRows: readonly HTMLElement[] = [];
   private lastIssueKey = '';
@@ -181,13 +189,13 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private placementModeValue: PlacementMode = 'elements';
   private celestialBodyValue: ReferenceCelestialBody = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
-  private lagrangeSecondaryValue: OrbitingId = 'moon';
+  private lagrangeSecondaryValue: string = 'moon';
   private lagrangePointValue: CollinearPoint = 'L1';
   private lagrangeOrbitKindValue: LagrangeOrbitKind = 'halo';
 
   // 物体配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
   // ephemeris が実際に持つレジストリから組む。
-  private readonly registry: CelestialRegistry;
+  private readonly ephemeris: Ephemeris;
   // ObjectPicker のポップアップの親。パネル自身の overflow に切られないよう popup レイヤへ置く。
   private readonly popupRoot: HTMLElement;
 
@@ -196,9 +204,9 @@ export class ObjectPlacerPanel implements OverlayHandle {
     panelRoot: HTMLElement, popupRoot: HTMLElement, ephemeris: Ephemeris,
     private readonly overlayManager: OverlayManager,
   ) {
-    this.registry = ephemeris.registry;
+    this.ephemeris = ephemeris;
     this.popupRoot = popupRoot;
-    const orbitingIds = orbitingIdsOf(ephemeris.registry);
+    const orbitingIds = orbitingIdsOf(ephemeris);
     this.celestialBodyItems = orbitingIds.map((id) => [id, celestialBodyName(id)] as const);
     this.baseCelestialBodyItems = this.celestialBodyItems.filter(([id]) => id === 'moon');
     this.lagrangeSystemItems = lagrangeSystemItemsOf(ephemeris, orbitingIds);
@@ -295,7 +303,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
       celestialBodyControl.setSelected(v);
       this.refreshPresets();
     }, this.overlayManager);
-    celestialBodyControl.setGroups(bodyGroupsOf(this.registry, this.celestialBodyItems, this.celestialBodyValue));
+    celestialBodyControl.setGroups(bodyGroupsOf(this.ephemeris, this.celestialBodyItems, this.celestialBodyValue));
     celestialBodyControl.setSelected(this.celestialBodyValue);
     elementsGroup.appendChild(celestialBodyControl.element);
 
@@ -379,14 +387,14 @@ export class ObjectPlacerPanel implements OverlayHandle {
   // ラグランジュ点指定(ハロー/リサジュー)の一式を1つの div にまとめて返す。
   private buildLagrangeGroup(): {
     element: HTMLElement;
-    lagrangeSecondary: ObjectPicker<OrbitingId>;
+    lagrangeSecondary: ObjectPicker<string>;
     lagrangePoint: SegmentedControl<CollinearPoint>;
     lagrangeOrbitKind: SegmentedControl<LagrangeOrbitKind>;
     libAx: HTMLInputElement;
     libAz: HTMLInputElement;
   } {
     const lagrangeGroup = document.createElement('div');
-    const lagrangeSecondary = new ObjectPicker<OrbitingId>(
+    const lagrangeSecondary = new ObjectPicker<string>(
       this.popupRoot, '系', (v) => this.selectLagrangeSecondary(v), this.overlayManager,
     );
     lagrangeSecondary.setGroups([{ label: '', items: this.lagrangeSystemItems }]);
@@ -449,7 +457,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
       if (this.celestialBodyValue !== 'moon') this.celestialBodyValue = 'moon';
       this.celestialBody.setGroups([{ label: '', items: this.baseCelestialBodyItems }]);
     } else {
-      this.celestialBody.setGroups(bodyGroupsOf(this.registry, this.celestialBodyItems, this.celestialBodyValue));
+      this.celestialBody.setGroups(bodyGroupsOf(this.ephemeris, this.celestialBodyItems, this.celestialBodyValue));
     }
     this.celestialBody.setSelected(this.celestialBodyValue);
     this.refreshPresets();
@@ -474,7 +482,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   }
 
   // 副天体を切り替え、面内/面外振幅の既定値をその系のオーダーへ更新する。
-  private selectLagrangeSecondary(secondary: OrbitingId): void {
+  private selectLagrangeSecondary(secondary: string): void {
     this.lagrangeSecondaryValue = secondary;
     this.lagrangeSecondary.setSelected(secondary);
     const amp = this.defaultLagrangeAmplitude(secondary);
@@ -483,10 +491,10 @@ export class ObjectPlacerPanel implements OverlayHandle {
   }
 
   // 副天体ごとの面内/面外振幅の既定値を返す(系ごとに主天体間距離が桁違いなため)。
-  private defaultLagrangeAmplitude(secondary: OrbitingId): { ax: number; az: number } {
+  private defaultLagrangeAmplitude(secondary: string): { ax: number; az: number } {
     const listed = LAGRANGE_DEFAULT_AMPLITUDE_KM[secondary];
     if (listed !== undefined) return listed;
-    const distanceKm = primaryDistanceKm(secondary);
+    const distanceKm = primaryDistanceKm(this.ephemeris.motionOf(secondary).def);
     return { ax: distanceKm * AMPLITUDE_AX_RATIO, az: distanceKm * AMPLITUDE_AZ_RATIO };
   }
 

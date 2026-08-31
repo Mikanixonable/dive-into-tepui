@@ -8,6 +8,7 @@
 //
 // アルベドの取り方(ボンドアルベド、幾何アルベドからの位相積分)は celestial-albedo.ts と
 // 同じ規約に従う。惑星は NASA Planetary Fact Sheet のボンドアルベドをそのまま使える。
+import climateTextureUrl from '../assets/earth-climate.png';
 import mercuryTextureUrl from '../assets/2k_mercury.jpg';
 import venusTextureUrl from '../assets/2k_venus_atmosphere.jpg';
 import marsTextureUrl from '../assets/2k_mars.jpg';
@@ -61,6 +62,8 @@ const CELESTIAL_TEXTURES: Readonly<Record<string, CelestialTexture>> = {
 export const EARTH_TEXTURES = {
   surfaceUrl: earthTextureUrl,
   cloudsUrl: cloudsTextureUrl,
+  // 気候の事前分布(平均気温・平年の雲量・標高)。tools/export-climate.mjs が焼く。
+  climateUrl: climateTextureUrl,
   albedoScale: 0.9858,
   bondAlbedo: 0.306,
   averageHue: [0.9695, 0.9937, 1.1519],

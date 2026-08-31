@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { kinematicState } from '../../physics/kinematic-state';
-import { len, sub, v3, type Vec3 } from '../../physics/vec3';
+import { len, sub, v3, type Vec3 } from '../../math/vec3';
 import * as C from '../const';
 import { buildRcsFuelPickup } from '../../render/ships';
 import { GameEntity } from './game-entity';
@@ -10,7 +10,9 @@ import { fmtMarkerDist } from '../hud/utils';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import type { Attitude } from '../../physics/attitude';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { RcsFuelPickupSaveData } from '../save-data';
+import type { RcsFuelPickupSaveData } from '../save/save-data';
+
+const RCS_FUEL_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m]
 
 const idAllocator = new EntityIdAllocator('rcs-fuel-');
 
@@ -41,7 +43,7 @@ export class RcsFuelPickup extends GameEntity {
     super(state, buildRcsFuelPickup(), scene, att, idAllocator.next(id));
     this.name = ('saved' in init && init.saved.name) ? init.saved.name : 'RCS燃料';
     this.mass = 0;
-    this.radius = C.RCS_FUEL_PHYS_RADIUS;
+    this.radius = RCS_FUEL_PHYS_RADIUS;
     this.collides = true;
     this.contactDamageWeight = 0;
   }
@@ -69,7 +71,7 @@ export class RcsFuelPickup extends GameEntity {
       priority: C.MARKER_PRIORITY.AMMO,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: '#ffcf70',
+      bearingColor: C.COLOR_MARKER_FUEL,
       bearingSym: DIRECTION_GLYPH.bearing,
       bearingClass: 'mk-fuel mk-bearing-triangle',
       symMarkup: false,

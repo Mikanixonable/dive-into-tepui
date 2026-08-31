@@ -8,16 +8,17 @@
 import * as THREE from 'three/webgpu';
 import { CurveKnots } from '../../render/curve';
 import { Ephemeris } from '../../physics/ephemeris';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import { rotatingFrame } from '../../physics/orbit-guide';
 import { zeroVelocityCurveSet, SectionPlane } from '../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { GuideCurve } from './guide-curve';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { ZeroVelocitySettings } from './orbit-guide-settings';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
-import * as C from '../const';
+
+const COLOR_ZERO_VELOCITY_LINE = 0xd97a94;
 
 // 断面の描画範囲 [両天体間距離を1とする無次元単位]。主天体(原点寄り)・副天体(1−μ 付近)の
 // 双方と、その外側に開くヤコビ定数の低い曲線の一部までを含む値として 1.6 を採る
@@ -191,7 +192,7 @@ export class ZeroVelocityLines {
     }
     this.lines = this.shapes.map((shape) => {
       const curve = new GuideCurve(
-        { color: C.COLOR_ZERO_VELOCITY_LINE, opacity: settings.opacity, renderOrder: LINE_RENDER_ORDER.reference },
+        { color: COLOR_ZERO_VELOCITY_LINE, opacity: settings.opacity, renderOrder: LINE_RENDER_ORDER.reference },
       );
       this.scene.add(curve.line);
       return { shape, curve };

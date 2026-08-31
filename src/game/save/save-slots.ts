@@ -7,7 +7,7 @@ import {
   GameSaveData,
   SLOT_EXPORT_FORMAT,
   SLOT_EXPORT_VERSION,
-} from '../save-data';
+} from './save-data';
 import { SaveStore, SAVE_INDEX_VERSION } from './save-store';
 
 export const AUTO_SNAPSHOT_LIMIT = 12;

@@ -1,4 +1,4 @@
-import { Vec3, addScaled } from '../../physics/vec3';
+import { Vec3, addScaled } from '../../math/vec3';
 
 export interface BoosterSeparationVelocities {
   readonly player: Vec3;

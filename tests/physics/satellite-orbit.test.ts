@@ -1,12 +1,12 @@
 // satellite-orbit.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { planetAngles, planetOrbit } from '../../src/physics/planet-orbit';
 import { PerturbationTerm, satelliteOrbit, satelliteState } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { eciToEcl } from '../../src/physics/ecliptic';
-import { SOLAR_SYSTEM } from '../../src/physics/solar-system';
-import { len, scale, sub } from '../../src/physics/vec3';
+import { EARTH, MOON } from '../../src/physics/solar-system/earth-system';
+import { len, scale, sub } from '../../src/math/vec3';
 
 const R2D = 180 / Math.PI;
 
@@ -115,7 +115,7 @@ export function register(): void {
       terms.some((term) => term.d === 0 && term.m === 0 && term.f === 0 && term.mp !== 0);
     const hasMainInclinationTerm = (terms: readonly PerturbationTerm[]) =>
       terms.some((term) => term.d === 0 && term.m === 0 && term.mp === 0 && term.f !== 0);
-    const orbit = SOLAR_SYSTEM.moon.orbit;
+    const orbit = MOON.orbit;
     assert.equal(hasCenterOfEquationTerm(orbit.lonTerms), false, '中心差(引数がmpのみ)の二重計上');
     assert.equal(hasMainInclinationTerm(orbit.latTerms), false, '黄緯の主傾斜項(引数がfのみ)の二重計上');
   });
@@ -131,26 +131,26 @@ export function register(): void {
     }
   });
 
-  test('satellite-orbit: SOLAR_SYSTEM.moon の主要周期項の振幅が出典どおり(出差1.274°/二均差0.658°/年差0.186°/視差不等0.0347°)', () => {
+  test('satellite-orbit: 月の主要周期項の振幅が出典どおり(出差1.274°/二均差0.658°/年差0.186°/視差不等0.0347°)', () => {
     const findAmpDeg = (terms: readonly PerturbationTerm[], d: number, m: number, mp: number, f: number) => {
       const found = terms.find((term) => term.d === d && term.m === m && term.mp === mp && term.f === f);
       assert.ok(found, `引数 (d=${d},m=${m},mp=${mp},f=${f}) の項が見つからない`);
       return found!.amp * R2D;
     };
-    const { lonTerms } = SOLAR_SYSTEM.moon.orbit;
+    const { lonTerms } = MOON.orbit;
     assert.ok(Math.abs(findAmpDeg(lonTerms, 2, 0, -1, 0) - 1.274) < 0.001, '出差 evection');
     assert.ok(Math.abs(findAmpDeg(lonTerms, 2, 0, 0, 0) - 0.658) < 0.001, '二均差 variation');
     assert.ok(Math.abs(findAmpDeg(lonTerms, 0, 1, 0, 0) - -0.186) < 0.001, '年差 annual equation');
     assert.ok(Math.abs(findAmpDeg(lonTerms, 1, 0, 0, 0) - -0.0347) < 0.001, '視差不等 parallactic inequality');
   });
 
-  test('satellite-orbit: SOLAR_SYSTEM の実データで二体ケプラー解との黄経差の最大値が2.0°〜2.6°に収まる', () => {
+  test('satellite-orbit: 実データで二体ケプラー解との黄経差の最大値が2.0°〜2.6°に収まる', () => {
     // 大きく超えるなら中心差(mp のみの高調波)を周期項へ二重計上している。
-    const orbit = SOLAR_SYSTEM.moon.orbit;
+    const orbit = MOON.orbit;
     let maxDiffDeg = 0;
     for (let i = 0; i < 5000; i++) {
       const t = (i / 5000) * 2 * YEAR;
-      const angles = planetAngles(SOLAR_SYSTEM.earth.orbit, t, 0);
+      const angles = planetAngles(EARTH.orbit, t, 0);
       const base = keplerOrbitState(orbit.kepler, t, 0.4);
       const s = satelliteState(orbit, angles, t, 0.4);
       const lambdaBase = Math.atan2(eciToEcl(base.r).y, eciToEcl(base.r).x);
@@ -168,11 +168,11 @@ export function register(): void {
     assert.ok(maxDiffDeg > 2.0 && maxDiffDeg < 2.6, `二体解との黄経差の最大値: ${maxDiffDeg}`);
   });
 
-  test('satellite-orbit: SOLAR_SYSTEM の実周期項を加えても速度は位置の中心差分に一致する(相対1e-6)', () => {
-    const orbit = SOLAR_SYSTEM.moon.orbit;
+  test('satellite-orbit: 実周期項を加えても速度は位置の中心差分に一致する(相対1e-6)', () => {
+    const orbit = MOON.orbit;
     const dt = 10;
     for (const t of [0, 1e6, 1e8, 5e8]) {
-      const angles = (s: number) => planetAngles(SOLAR_SYSTEM.earth.orbit, s, 0);
+      const angles = (s: number) => planetAngles(EARTH.orbit, s, 0);
       const s0 = satelliteState(orbit, angles(t), t, 0.4);
       const sPlus = satelliteState(orbit, angles(t + dt), t + dt, 0.4);
       const sMinus = satelliteState(orbit, angles(t - dt), t - dt, 0.4);
@@ -182,8 +182,8 @@ export function register(): void {
     }
   });
 
-  test('satellite-orbit: SOLAR_SYSTEM の実周期項を加えても歳差周期は変わらない(昇交点18.61年/近点8.85年)', () => {
-    const orbit = SOLAR_SYSTEM.moon.orbit;
+  test('satellite-orbit: 実周期項を加えても歳差周期は変わらない(昇交点18.61年/近点8.85年)', () => {
+    const orbit = MOON.orbit;
     assert.ok(orbit.kepler.raanRate < 0, `昇交点が逆行でない: ${orbit.kepler.raanRate}`);
     assert.ok(orbit.kepler.lonPeriRate > 0, `近点が順行でない: ${orbit.kepler.lonPeriRate}`);
     assert.ok(
@@ -196,27 +196,27 @@ export function register(): void {
     );
   });
 
-  test('satellite-orbit: SOLAR_SYSTEM の実周期項を含めても月の平均地心距離は 385,000 km 前後になる', () => {
-    const orbit = SOLAR_SYSTEM.moon.orbit;
+  test('satellite-orbit: 実周期項を含めても月の平均地心距離は 385,000 km 前後になる', () => {
+    const orbit = MOON.orbit;
     const N = 4000;
     let sum = 0;
     for (let i = 0; i < N; i++) {
       const t = (i / N) * MOON_PERIOD * 20;
-      const angles = planetAngles(SOLAR_SYSTEM.earth.orbit, t, 0);
+      const angles = planetAngles(EARTH.orbit, t, 0);
       sum += len(satelliteState(orbit, angles, t, 0.4).r);
     }
     const mean = sum / N;
     assert.ok(Math.abs(mean - 3.85e8) < 2e6, `月の平均地心距離: ${mean}`);
   });
 
-  test('satellite-orbit: SOLAR_SYSTEM の実周期項で近地点は356,400〜370,400 km・遠地点は404,000〜406,700 km に収まる', () => {
+  test('satellite-orbit: 実周期項で近地点は356,400〜370,400 km・遠地点は404,000〜406,700 km に収まる', () => {
     // 近地点・遠地点は月ごとに離心率の周期変動で揺れる範囲を持つ(出典の実測範囲)。
     // 距離の極小・極大(前後のサンプルより低い/高い点)をそれぞれ集め、範囲内かを検査する —
     // これは距離項(distTerms)の転記ミスを最も直接に捕まえる検査になる。
-    const orbit = SOLAR_SYSTEM.moon.orbit;
+    const orbit = MOON.orbit;
     const N = 6000;
     const spanSec = MOON_PERIOD * 40; // 近点月(約27.55日)を40回以上含む
-    const dist = (t: number) => len(satelliteState(orbit, planetAngles(SOLAR_SYSTEM.earth.orbit, t, 0), t, 0.4).r);
+    const dist = (t: number) => len(satelliteState(orbit, planetAngles(EARTH.orbit, t, 0), t, 0.4).r);
     const perigees: number[] = [];
     const apogees: number[] = [];
     let prev = dist(0);

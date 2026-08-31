@@ -1,6 +1,6 @@
 import { EPHEMERIS_PACK_VERSION } from '../../physics/ephemeris-pack/format';
 import { profileAt } from '../../physics/ephemeris-profile';
-import { SIM_EPOCH_JD_TDB } from '../sim-epoch';
+import { SIM_EPOCH_JD_TDB } from '../simulation/sim-epoch';
 
 // Keep this small compatibility module independent from entity save types. In
 // particular, the physics test build can exercise it without pulling the DOM
