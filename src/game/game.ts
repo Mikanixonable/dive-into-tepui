@@ -325,9 +325,9 @@ export class Game {
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     const overviewMode = this.cameraSystem.overviewMode;
     const canDisplayFuture = !this.displayWindowManager.forceCurrent;
-    // このフレームの表示時刻の celestialBodies を差し込む: 以降の frameTransformAt 呼び出しは
-    // すべてこの frameAnchors を通す。
-    this.frameAnchors.update(this.celestialSystem.celestialMotions, this.simulator.simTime);
+    // このフレームの解決が使う天体一覧と、それを引く表示時刻を差し込む: 以降の
+    // frameTransformAt 呼び出しはすべてこの frameAnchors を通す。
+    this.frameAnchors.update(this.celestialSystem.celestialMotions, displayWindow.displayTime);
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._celestialSystem.update(displayWindow.displayTime, overviewMode, graphics);
     this.sections.enter(SECTION.plan);
@@ -515,13 +515,9 @@ export class Game {
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
-    // 現在時刻の配列は「いまの状態」を数値で読ませる HUD・プロパティ行が使い、表示時刻の配列は
-    // 画面に描く幾何(軌道線・折れ線・天体位置)が使う — 天体メッシュは displayTime に置かれるので、
-    // 楕円の中心天体位置や折れ線の un-bake を simTime で取ると同一画面上でずれる。
     const celestialBodies = this.celestialSystem.celestialMotions;
-    const displayCelestialBodies = this.celestialSystem.celestialMotions;
-    // sync フェーズの frameTransformAt 呼び出しも同じ表示時刻の celestialBodies を見るように揃える。
-    this.frameAnchors.update(displayCelestialBodies, displayWindow.displayTime);
+    // sync フェーズの frameTransformAt 呼び出しは、天体メッシュと同じ表示時刻で天体を引く。
+    this.frameAnchors.update(celestialBodies, displayTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
@@ -563,10 +559,10 @@ export class Game {
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
       player, combatTargets, this.dynamicSystem.ammoPickups, this.dynamicSystem.rcsFuelPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
-      this.celestialSystem, displayCelestialBodies,
+      celestialBodies,
     );
     this.cameraSystem.focusMarkers.syncSubLabels(
-      this.markerManager.combatMarkers, displayCelestialBodies, displayTime,
+      this.markerManager.combatMarkers, celestialBodies, displayTime,
       overviewMode, project, this.cameraSystem.activeCameraPos,
     );
     this.navTarget.sync(this.cameraSystem);
@@ -576,7 +572,7 @@ export class Game {
     if (this.viewManager.isMapView) {
       this.displayWindowManager.sync(player);
       this.frameControls.sync(
-        this.mapPickables.pickables, this.cameraSystem.activeCameraPos, celestialBodies, simTime, displayTime, overviewMode,
+        this.mapPickables.pickables, this.cameraSystem.activeCameraPos, simTime, displayTime, overviewMode,
       );
     }
     // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは

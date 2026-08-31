@@ -35,9 +35,9 @@ export function selectPlanetLights(
   const scored: { readonly light: PlanetLight; readonly irradiance: number }[] = [];
   for (const { celestialBody, albedo } of candidates) {
     if (celestialBody.kind === 'star' || celestialBody.def.radius <= 0) continue;
-    const pos = celestialBody.positionAt(pivot, pivot);
+    const pos = celestialBody.positionAt(pivot);
     // 主星の無い星系では、全天体が 1 天文単位相当の明るさで満相のまま照らされているとみなす。
-    const toSun = star === null ? null : sub(star.positionAt(pivot, pivot), pos);
+    const toSun = star === null ? null : sub(star.positionAt(pivot), pos);
     const sunIrradiance = toSun === null || starIntensity === null
       ? SUN_IRRADIANCE_1AU : irradianceAtDistance(starIntensity, len(toSun));
     const toReference = sub(reference, pos);

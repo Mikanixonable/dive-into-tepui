@@ -86,8 +86,8 @@ export class PlanPath {
   private celestialSystem: CelestialSystem | null = null;
   private unbakeTime = 0;
   // un-bake は update() が受け取った displayTime に固定される。同じフレーム中に ghost/impact/apsis/tick と
-  // 折れ線同期・ポインタ判定が何度も参照するため、update 単位で1回だけ組み立てる。天体暦の
-  // celestialBodies はフレームごとに差し替わりうるので、時刻だけでなく update() ごとに無効化する。
+  // 折れ線同期・ポインタ判定が何度も参照するため、update 単位で1回だけ組み立てる。天体を引く
+  // 時刻はフレームごとに動くので、時刻だけでなく update() ごとに無効化する。
   private unbakeTransform: FrameTransform | null = null;
   // 直近の update が受け取った FrameAnchorSource。toDisplay/toDisplayDir/nearestSample は
   // ポインタイベント起点でフレーム外から呼ばれうるため、update と同じ値をここから読む。

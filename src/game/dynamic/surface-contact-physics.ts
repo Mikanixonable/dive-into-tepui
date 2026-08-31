@@ -33,7 +33,7 @@ export class SurfaceContactPhysics {
   private readonly bodyScratch: CelestialMotion[] = [];
   private readonly candidates = new SurfaceCandidates();
   private readonly nearbyScratch: CelestialMotion[] = [];
-  // 天体の位置を厳密に引く時刻。beginSubstep が区間の開始時刻で置く。
+  // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、その区間の解決すべてで使う。
   private pivot = 0;
 
   // 区間 [tStart, tEnd] で触れうる天体の下ごしらえ。判定できる天体を選び、各天体の表面が
@@ -43,7 +43,7 @@ export class SurfaceContactPhysics {
     celestialBodies: readonly CelestialMotion[], pivot: number, tStart: number, tEnd: number,
   ): void {
     this.pivot = pivot;
-    this.collectCelestialBodies(celestialBodies, this.bodyScratch);
+    this.collectCelestialBodies(celestialBodies, pivot, this.bodyScratch);
     this.candidates.resetSpan(this.bodyScratch, pivot, tStart, tEnd);
   }
 
@@ -69,8 +69,8 @@ export class SurfaceContactPhysics {
     const hit = firstSurfaceContact(e.prevState, e.state, e.radius, candidates, this.pivot);
     if (hit === null) return;
 
-    // 天体の状態は個体の区間終端の時刻へ外挿してから渡す — 天体一式は区間の開始時刻で1回
-    // 組まれるので、そのままでは区間の終端と別の瞬間の値になる。
+    // 天体の状態は個体の区間終端の時刻へ外挿してから渡す — pivot は区間に1つなので、
+    // そのままでは接触の瞬間と別の時刻の値になる。
     const response = distributeFixedContact(
       { state: e.state, radius: e.radius },
       { state: hit.body.stateAt(this.pivot, e.state.t), radius: hit.body.def.radius },
@@ -101,10 +101,12 @@ export class SurfaceContactPhysics {
   }
 
   // 判定できる天体だけを out へ写す。out は呼び出し側が所有する。
-  private collectCelestialBodies(source: readonly CelestialMotion[], out: CelestialMotion[]): void {
+  private collectCelestialBodies(
+    source: readonly CelestialMotion[], pivot: number, out: CelestialMotion[],
+  ): void {
     out.length = 0;
     for (const celestialBody of source) {
-      if (isFiniteCelestialBody(celestialBody, this.pivot)) out.push(celestialBody);
+      if (isFiniteCelestialBody(celestialBody, pivot)) out.push(celestialBody);
     }
   }
 }

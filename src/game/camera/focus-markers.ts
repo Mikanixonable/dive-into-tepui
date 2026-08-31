@@ -184,8 +184,7 @@ export class FocusMarkers {
   // 直前のフレームに表示していたラベル id(集合から外れたものを隠すため)。
   private prevShownIds: readonly string[] = [];
 
-  private celestialBodies: readonly CelestialMotion[] = [];
-  // celestialBodies の位置を厳密に引く時刻。
+  // update が天体を厳密に引いた時刻。sync でのマップビュー遮蔽判定に使う。
   private celestialBodiesPivot = 0;
   private readonly labelsById = new Map<string, FocusLabel>();
   private readonly bodyPickableRecords = new Map<string, MutableMapPickable>();
@@ -281,7 +280,7 @@ export class FocusMarkers {
     // update を通らずに直接呼ばれる場合も既存の時刻仕様を保つ。通常の MapPickables 経路は
     // update が先に同じ policy で座標を作るため、下記の再計算分岐には入らない。
     const posOf = new Map(
-      this.celestialSystem.celestialMotions.map((a) => [a.id, a.positionAt(t, t)]));
+      this.celestialSystem.celestialMotions.map((a) => [a.id, a.positionAt(t)]));
     const drawn = new Map(this.allLabels.map((lbl) => [lbl.id, lbl.pickable]));
     this.cachedBodyPickables.length = 0;
     for (const body of this.celestialSystem.entities) {
@@ -375,7 +374,6 @@ export class FocusMarkers {
       shown.push(lbl);
     }
     this.shownLabels = shown;
-    this.celestialBodies = celestialBodies;
     this.celestialBodiesPivot = t;
     this.cachedBodyPickablesTime = t;
     this.cachedBodyPickablesPolicy = visibilityPolicy;
@@ -396,7 +394,8 @@ export class FocusMarkers {
     projectedForLabel.length = 0;
     projectedForIcon.length = 0;
     for (const lbl of this.shownLabels) {
-      const opacity = occlusionOpacity(cameraPos, lbl.pos, this.celestialBodies, this.celestialBodiesPivot);
+      const opacity = occlusionOpacity(
+        cameraPos, lbl.pos, this.celestialSystem.celestialMotions, this.celestialBodiesPivot);
       const occluded = opacity <= 0;
       const p = project(lbl.pos);
       frame.set(lbl.id, { occluded, opacity, x: p.x, y: p.y, front: p.front });

@@ -36,8 +36,8 @@ export class FrameAnchors implements FrameAnchorSource {
 
   constructor(private readonly targets: AnchorTargets) {}
 
-  // このフレームの celestialBodies を差し込む。毎フレーム、以降の解決で使う表示時刻の
-  // celestialBodies を渡して1度呼ぶ。
+  // 以降の解決が使う天体一覧と、その位置を厳密に引く表示時刻を差し込む。update / sync
+  // それぞれの先頭で1度呼ぶ。
   update(bodies: readonly CelestialMotion[], bodiesPivot: number): void {
     this.bodies = bodies;
     this.bodiesPivot = bodiesPivot;
@@ -55,7 +55,7 @@ export class FrameAnchors implements FrameAnchorSource {
   // 基準 id が公転している主天体。離心率1未満の周回軌道にないなら null。
   // 直近1件だけ憶える — 同じ id が同一フレーム内で重ねて問われ、探索は天体数に線形に効く。
   attractorOf(id: string, t: number): string | null {
-    // bodies はフレームごとに差し替わるので、キャッシュもフレームで区切る。
+    // 天体を引く時刻はフレームごとに動くので、キャッシュもフレームで区切る。
     const key = `${this.frameIndex}|${id}|${t}`;
     if (this.attractorCacheKey === key) return this.attractorCacheValue;
     const result = this.computeAttractorOf(id, t);
