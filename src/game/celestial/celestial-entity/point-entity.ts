@@ -178,7 +178,7 @@ export class PointEntity extends CelestialEntity {
     markerManager: MarkerManager | null, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     this.mapOverlay?.sync(
-      this.bodyAt(displayTime), fo, cameraSystem, markerManager, celestialBodies, visible);
+      this.motion.celestialBodyAt(displayTime), fo, cameraSystem, markerManager, celestialBodies, visible);
   }
 
   // オーロラの波打ち・明滅を表示時刻へ進める。

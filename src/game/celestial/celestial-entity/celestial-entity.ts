@@ -1,13 +1,10 @@
 // 天体1体。運動(CelestialMotion)と表示名・表示クラスを持ち、見た目(メッシュ・輝点スプライト・
 // 環など)をその運動へ同期する。位置・姿勢の正本は motion で、sync のたびにそこから引く。
-// **ECI 化はここが行う** — 系から結ばれた変換器で自分の1体ぶんを移し、時刻でメモ化する。
 import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
-import { CelestialBody, celestialBodyStateAt, orbitalElementsOf } from '../../../physics/celestial-body';
-import { EciTransform } from '../../../physics/eci-transform';
+import { CelestialBody, orbitalElementsOf } from '../../../physics/celestial-body';
 import { KinematicState } from '../../../physics/kinematic-state';
-import { TimeCacheStats, TimeRing } from '../../../physics/time-ring';
 import { OrbitalElements } from '../../../physics/elements';
 import { OrbitLine } from '../../lines/orbit-line';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
@@ -47,11 +44,6 @@ export abstract class CelestialEntity {
   // 持ち、出す/消すの判断だけを所有者(CelestialSystem)が sync/remove の呼び分けで行う。
   referenceLine: OrbitLine | null = null;
 
-  // ECI 化の変換器。どの天体を原点に置くかは系レベルの選択なので、系から結んでもらう。
-  private eciTransform: EciTransform | null = null;
-
-  private readonly eciCache = new TimeRing<CelestialBody>();
-
   // atmosphereOptics は大気の見えの光学パラメータ(大気を持たない・描かない天体では null)。
   protected constructor(
     readonly motion: CelestialMotion,
@@ -60,26 +52,11 @@ export abstract class CelestialEntity {
     readonly atmosphereOptics: AtmosphereOptics | null,
   ) {}
 
-  // ECI 化の変換器を結ぶ。結ぶまでは ECI 値を答えられない。
-  bindEciTransform(transform: EciTransform): void {
-    this.eciTransform = transform;
-  }
-
-  // 自分の時刻 pivot での厳密な ECI 瞬間値。**呼び出し側はこの値を書き換えてはならない。**
-  bodyAt(pivot: number): CelestialBody {
-    const cached = this.eciCache.get(pivot);
-    if (cached !== undefined) return cached;
-    return this.eciCache.put(pivot, this.eci.celestialBodyAt(pivot, this.motion));
-  }
-
   // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと pivot 自身の
   // 厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
   stateAt(pivot: number, t: number = pivot): KinematicState {
-    return celestialBodyStateAt(this.bodyAt(pivot), t);
+    return this.motion.stateAt(pivot, t);
   }
-
-  // 負荷確認ウィンドウが読む、自分の ECI 瞬間値の時刻キャッシュのヒット/ミス累計。
-  get cacheStats(): TimeCacheStats { return this.eciCache.stats; }
 
   // この天体を光源として扱うときの色つきアルベド(Rec.709 輝度 = ボンドアルベド)。
   // 自発光の恒星と、測光を持たない表面では null。
@@ -114,7 +91,7 @@ export abstract class CelestialEntity {
   referenceElementsAt(t: number): OrbitalElements | null {
     const centerMotion = this.motion.primary;
     if (centerMotion === null) return null;
-    return orbitalElementsOf(this.stateAt(t), this.eci.celestialBodyAt(t, centerMotion));
+    return orbitalElementsOf(this.stateAt(t), centerMotion.celestialBodyAt(t));
   }
 
   // 参照軌道線を表示時刻の接触軌道要素と濃さへ同期する(実体が無ければ生成して scene へ登録)。
@@ -193,13 +170,6 @@ export abstract class CelestialEntity {
     const d = len(sub(pos, star.stateAt(displayTime).r));
     if (d <= 0) return SUN_IRRADIANCE_1AU;
     return irradianceAtDistance(star.radiantIntensity, d);
-  }
-
-  // bindEciTransform より前に読むと例外。
-  private get eci(): EciTransform {
-    const transform = this.eciTransform;
-    if (transform === null) throw new Error(`CelestialEntity: ${this.id} の ECI 変換器が結ばれていない`);
-    return transform;
   }
 
   // LOD 段の選択と球体表示の閾値判定が通る見かけ直径 [px]。詳細度の設定はここで掛かる。

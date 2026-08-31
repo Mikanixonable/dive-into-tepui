@@ -4,8 +4,7 @@
 // 片方をパック・片方を解析で引くと、その差がそのまま相対位置の誤りになる。原点が暦パックで
 // 引ける時刻だけ両者をパックで引き、それ以外は両者を解析へ揃える。
 // THREE/DOM 非依存。
-import { CelestialBody } from './celestial-body';
-import { CelestialMotion } from './celestial-motion';
+import type { CelestialMotion } from './celestial-motion';
 import { KinematicState, toEci } from './kinematic-state';
 import { TimeCacheStats, TimeRing } from './time-ring';
 import { Vec3, sub } from '../math/vec3';
@@ -34,19 +33,9 @@ export class EciTransform {
     return this.translate(t, motion, this.originStateAt(t));
   }
 
-  // 時刻 t の ECI 瞬間値(スナップショット)。向きの量(2次重力場の極・大気の共回転軸)は
-  // 軸だけで決まるので原点変換の対象ではなく、天体からそのまま写す。加速度は供給源が
-  // 分かれない(暦パックは位置係数しか持たない)ので常に解析。
-  celestialBodyAt(t: number, motion: CelestialMotion): CelestialBody {
-    const def = motion.def;
-    const origin = this.originStateAt(t);
-    return {
-      id: def.id, mu: def.mu, radius: def.radius,
-      state: this.translate(t, motion, origin),
-      accel: sub(motion.analyticAccelAt(t), origin.accel),
-      degree2: motion.degree2At(t), atmosphere: motion.atmosphereAt(t),
-      isStar: motion.kind === 'star',
-    };
+  // 時刻 t の ECI 加速度。供給源が分かれない(暦パックは位置係数しか持たない)ので常に解析。
+  accelAt(t: number, motion: CelestialMotion): Vec3 {
+    return sub(motion.analyticAccelAt(t), this.originStateAt(t).accel);
   }
 
   // 負荷確認ウィンドウが読む、原点一式の時刻キャッシュのヒット/ミス累計。
