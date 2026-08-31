@@ -2,7 +2,8 @@
 import { motionOf, solarSystemParts, stateOf } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { MU_MOON, R_MOON } from '../../src/game/celestial/solar-system/constants';
-import { orbitalElementsOf, strongestAttractor } from '../../src/physics/celestial-body';
+import { strongestAttractor } from '../../src/physics/attractor';
+import { orbitalElementsOf } from '../../src/physics/elements';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { apsisAltitudes, keplerPeriod } from '../../src/physics/elements';
@@ -24,21 +25,21 @@ export function register(): void {
       add(moonState.r, relativeR),
       add(moonState.v, relativeV),
     );
-    const celestialBodies = system.celestialBodiesAt(t);
+    const celestialBodies = system.celestialMotions;
 
     // 中心天体は設定ではなく状態から決まる。地球の μ で計算すると周期は約 1/9 になる。
-    const center = strongestAttractor(state.r, celestialBodies);
+    const center = strongestAttractor(state.r, celestialBodies, t);
     assert.equal(center.id, 'moon');
 
     const expected = keplerPeriod(radius, MU_MOON);
-    assert.ok(Math.abs(orbitPeriodOf(state, celestialBodies) - expected) / expected < 1e-10);
+    assert.ok(Math.abs(orbitPeriodOf(state, celestialBodies, t) - expected) / expected < 1e-10);
 
     const plan = new Plan();
     const orbitDisplayDuration = { durationSec: (referencePeriod: number) => referencePeriod };
     assert.ok(Math.abs(plan.nodeTimeRange(0, state, system, orbitDisplayDuration).max - (t + expected)) < 1e-6);
 
-    const el = orbitalElementsOf(state, center)!;
-    assert.equal(el.center.mu, MU_MOON);
+    const el = orbitalElementsOf(state, center, t)!;
+    assert.equal(el.center.def.mu, MU_MOON);
     const apsis = apsisAltitudes(el);
     assert.ok(Math.abs(apsis.pe - 100_000) < 1, `近点高度: ${apsis.pe}`);
     assert.ok(Math.abs(apsis.ap - 100_000) < 1, `遠点高度: ${apsis.ap}`);
@@ -52,10 +53,10 @@ export function register(): void {
     const a = (rp + ra) / 2;
     const vp = Math.sqrt(MU_EARTH * (2 / rp - 1 / a));
     const state = kinematicState<'eci'>(t, v3(rp, 0, 0), v3(0, 0, vp));
-    const celestialBodies = system.celestialBodiesAt(t);
+    const celestialBodies = system.celestialMotions;
 
     const expected = keplerPeriod(a, MU_EARTH);
-    const actual = orbitPeriodOf(state, celestialBodies);
+    const actual = orbitPeriodOf(state, celestialBodies, t);
     assert.ok(Math.abs(actual - expected) / expected < 1e-6, `周期: ${actual}, 期待値: ${expected}`);
 
     const circularAtPerigee = keplerPeriod(rp, MU_EARTH);
@@ -67,8 +68,8 @@ export function register(): void {
     const t = 1000;
     const rp = R_EARTH + 400e3;
     const state = kinematicState<'eci'>(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));
-    const celestialBodies = system.celestialBodiesAt(t);
-    const period = orbitPeriodOf(state, celestialBodies);
+    const celestialBodies = system.celestialMotions;
+    const period = orbitPeriodOf(state, celestialBodies, t);
 
     const plan = new Plan();
 

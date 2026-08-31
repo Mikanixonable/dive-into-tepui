@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../math/vec3';
 import type { Viewpoint } from '../../math/projection';
-import { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
@@ -323,7 +323,7 @@ export class DynamicSystem {
   // 次艦への引き継ぎが要るため、除去は ActivePlayerController.reclaimDead が担う。
   cleanup(
     dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
-    atmosphereBodies: readonly CelestialBody[],
+    atmosphereBodies: readonly CelestialMotion[],
   ): void {
     this.processPendingEnemySpawns();
     for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);

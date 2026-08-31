@@ -94,7 +94,7 @@ export function register(): void {
   });
 
   test('atmosphere: a body without an atmosphere produces no drag at all', () => {
-    // 大気を持たない天体は CelestialBody.atmosphere が null になり、dragAccel まで到達しない。
+    // 大気を持たない天体は atmosphereAt が null になり、dragAccel まで到達しない。
     // ここではその手前の性質 — 大気があっても bcInv が 0 なら抗力はゼロ — と、
     // 大気があり bcInv が正なら実際に抗力が立つことの両方を固定する。
     const rLow = v3(EARTH_ATMOSPHERE.equatorRadius + 100e3, 0, 0);

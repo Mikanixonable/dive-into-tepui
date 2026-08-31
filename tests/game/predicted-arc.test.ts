@@ -3,9 +3,10 @@
 // ことを固定する — 依存すると PREDICT パネルの選択が実体の軌道と HUD の読みを変えてしまう。
 // consumable でない弧が requiredEnd に依存したままであることも併せて固定し、前者が
 // 「requiredEnd が誰にも効かなくなった」ことの確認になっていないようにする。
+import { fixedMotion } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialBody } from '../../src/physics/celestial-body';
+import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { EARTH_ATMOSPHERE } from '../../src/game/celestial/solar-system/earth-system';
@@ -25,13 +26,11 @@ function circularState(t = 0): KinematicState {
 // withAtmosphere を立てると、既定レジストリと同じ大気を載せた地球になる。
 function earthOnlyProvider(withAtmosphere = false): FutureCelestialBodyProvider {
   const atmosphere = withAtmosphere ? { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) } : null;
-  const earthAt = (t: number): CelestialBody => ({
-    id: 'earth', mu: MU_EARTH, radius: R_EARTH,
-    state: kinematicState<'eci'>(t, v3(), v3()), accel: v3(), degree2: null, atmosphere, isStar: false,
-  });
   return {
-    defs: [{ id: 'earth', mu: MU_EARTH, radius: R_EARTH }],
-    celestialBodyAt: (_id, t) => earthAt(t),
+    celestialMotions: [fixedMotion({
+      id: 'earth', mu: MU_EARTH, radius: R_EARTH,
+      state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(), degree2: null, atmosphere,
+    })],
   };
 }
 
@@ -75,13 +74,13 @@ export function register(): void {
     arc.simulationMaxStep = 20;
 
     const atmosphere = { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) };
-    const earth: CelestialBody = {
+    const earth: CelestialMotion = fixedMotion({
       id: 'earth', mu: MU_EARTH, radius: R_EARTH,
-      state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(), degree2: null, atmosphere, isStar: false,
-    };
+      state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(), degree2: null, atmosphere,
+    });
     let prev = arc.trajectory.state;
     for (let i = 0; i < 8; i++) {
-      const expected = Math.min(20, atmosphericMaxStep(prev, SHIP_BCINV, [earth]));
+      const expected = Math.min(20, atmosphericMaxStep(prev, SHIP_BCINV, [earth], 0));
       assert.ok(arc.step(), `step ${i} should grow`);
       const dt = arc.trajectory.state.t - prev.t;
       assert.ok(dt < 20, `step ${i}: 大気の中では上限より短いはず, got ${dt}`);

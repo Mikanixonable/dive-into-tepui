@@ -1,6 +1,8 @@
 // 軌道分析パネルがプロットする点列(高度タブ・接近タブ・投影タブ)を、既存の伝播・外挿の
 // 仕組みから導出する。距離は [m]、時間は [s]、角度は内部では [rad](公開する relIncDeg だけ [deg])。
-import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../../physics/celestial-body';
+import { strongestAttractor } from '../../../physics/attractor';
+import { CelestialMotion } from '../../../physics/celestial-motion';
+import { orbitalElementsOf } from '../../../physics/elements';
 import type { OrbitalElements } from '../../../physics/elements';
 import { semiMajorFromPeriod } from '../../../physics/elements';
 import { latLonOf } from '../../../physics/body-orientation';
@@ -34,11 +36,11 @@ export interface ApproachSeries {
 // approachSeries が null を返すので、この union に含めない。
 export type ApproachTargetSource =
   | { readonly kind: 'entity'; readonly entity: DynamicEntity }
-  | { readonly kind: 'celestialBody'; readonly body: CelestialBody };
+  | { readonly kind: 'celestialBody'; readonly body: CelestialMotion };
 
 // center 相対の高度。
-function altitudeOf(state: KinematicState, centerState: KinematicState, center: CelestialBody): number {
-  return len(sub(state.r, centerState.r)) - center.radius;
+function altitudeOf(state: KinematicState, centerState: KinematicState, center: CelestialMotion): number {
+  return len(sub(state.r, centerState.r)) - center.def.radius;
 }
 
 // 高度タブ: 現在時刻(now)から spanSec 先までを sampleCount 等分した各時刻の、reference が示す
@@ -89,7 +91,7 @@ function phaseAngleOn(el: OrbitalElements, positionRelCenter: Vec3): number {
 
 // ターゲット(target)の状態と軌道要素を、他の対象と同じ形(状態取得関数 + 軌道要素)へ揃える。
 export function resolveTarget(
-  target: ApproachTargetSource, celestialSystem: CelestialSystem,
+  target: ApproachTargetSource, celestialSystem: CelestialSystem, now: number,
 ): { stateAt: (t: number, center: OrbitCenter) => KinematicState | null; currentR: KinematicState['r'] } {
   // 艦・基地は predicted(将来は外挿できないことがある)、天体は自身の運動(常に解析的に解ける)。
   if (target.kind === 'entity') {
@@ -101,7 +103,7 @@ export function resolveTarget(
   const targetEntity = celestialSystem.entityOf(target.body.id);
   return {
     stateAt: (t) => targetEntity.stateAt(t),
-    currentR: target.body.state.r,
+    currentR: target.body.stateAt(now).r,
   };
 }
 
@@ -121,25 +123,25 @@ export function resolveTarget(
 export function approachSeries(
   ship: DynamicEntity,
   target: ApproachTargetSource,
-  celestialBodies: readonly CelestialBody[],
+  celestialBodies: readonly CelestialMotion[],
   celestialSystem: CelestialSystem,
   now: number,
   spanSec: number,
   sampleCount: number,
 ): ApproachSeries | null {
-  const resolved = resolveTarget(target, celestialSystem);
-  const selfCenter = strongestAttractor(ship.state.r, celestialBodies);
-  const targetCenter = strongestAttractor(resolved.currentR, celestialBodies);
+  const resolved = resolveTarget(target, celestialSystem, now);
+  const selfCenter = strongestAttractor(ship.state.r, celestialBodies, now);
+  const targetCenter = strongestAttractor(resolved.currentR, celestialBodies, now);
   if (selfCenter.id !== targetCenter.id) return null;
   const center = selfCenter;
 
-  const selfEl = ship.orbitalElementsAround(center);
+  const selfEl = ship.orbitalElementsAround(center, now);
   const targetEl = target.kind === 'entity'
-    ? target.entity.orbitalElementsAround(center)
-    : orbitalElementsOf(target.body.state, center);
+    ? target.entity.orbitalElementsAround(center, now)
+    : orbitalElementsOf(target.body.stateAt(now), center, now);
   if (selfEl === null || targetEl === null || !isFinite(targetEl.period)) return null;
 
-  const rCirc = semiMajorFromPeriod(targetEl.period, center.mu);
+  const rCirc = semiMajorFromPeriod(targetEl.period, center.def.mu);
   const relIncDeg = relativeInclinationDeg(selfEl.hHat, targetEl.hHat);
 
   if (spanSec <= 0 || sampleCount <= 0 || !isFinite(spanSec) || !Number.isFinite(sampleCount)) {

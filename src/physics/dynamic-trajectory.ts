@@ -5,7 +5,7 @@
 // ため、過去方向の履歴にも未来方向の予測列にも同じ実装をそのまま使える。
 import { KinematicState, kinematicState } from './kinematic-state';
 import { StateQueue } from './state-queue';
-import { CelestialBody } from './celestial-body';
+import type { CelestialMotion } from './celestial-motion';
 import { extrapolatedRelativeState } from './kepler-extrapolation';
 import { Vec3, add } from '../math/vec3';
 import { stepDynamics } from './dynamics';
@@ -22,9 +22,10 @@ export class DynamicTrajectory {
   // 早期 return は samples の参照同一性で判定するため、内容が変わっていない間は同じ配列参照を
   // 返し続けないと、呼び出し側が同一内容を渡しても毎フレーム焼き直しになってしまう。
   private _samplesCache: readonly KinematicState[] | null = null;
-  // 直近の step で渡された、先端位置で最も強く引く解析天体。extrapolatedAt が二体軌道の
-  // 中心に使う。
-  private _extrapolationCenter: CelestialBody | null = null;
+  // 直近の step で渡された、先端位置で最も強く引く解析天体と、それを厳密に引いた時刻。
+  // extrapolatedAt が二体軌道の中心に使う。
+  private _extrapolationCenter: CelestialMotion | null = null;
+  private _extrapolationCenterPivot = 0;
 
   // state・prevState をともに初期状態で始める。
   constructor(state: KinematicState) {
@@ -34,7 +35,9 @@ export class DynamicTrajectory {
 
   get state(): KinematicState { return this._samples.newest!; }
   get prevState(): KinematicState { return this._prevState; }
-  get extrapolationCenter(): CelestialBody | null { return this._extrapolationCenter; }
+  get extrapolationCenter(): CelestialMotion | null { return this._extrapolationCenter; }
+  // extrapolationCenter を厳密に引いた時刻。中心天体を持たない間の値に意味は無い。
+  get extrapolationCenterPivot(): number { return this._extrapolationCenterPivot; }
   // 列の最も古い端での間引き間隔 [s]。列がどれだけ粗いかは列自身の属性であり、積んだ後に
   // 呼び出し側の設定が変わっても、既に積んだサンプルの粗さは変わらない。保持窓が飽和した
   // 列では、この端が最も古い保持サンプルとその1つ新しい側を挟む補間区間にあたる。
@@ -48,20 +51,24 @@ export class DynamicTrajectory {
   // extrapolationCenter は extrapolatedAt が使う中心天体(省略時 null)。
   step(
     dt: number,
-    attractors: readonly CelestialBody[],
-    occluders: readonly CelestialBody[],
-    atmosphereBody: CelestialBody | null,
+    attractors: readonly CelestialMotion[],
+    attractorPivot: number,
+    occluders: readonly CelestialMotion[],
+    occluderPivot: number,
+    atmosphereBody: CelestialMotion | null,
     bcInv: number,
     srpCoeff: number,
     thrust: Vec3 | null,
     sampleInterval: number,
     keepDuration: number,
-    extrapolationCenter: CelestialBody | null = null,
+    extrapolationCenter: CelestialMotion | null = null,
   ): void {
     const next = stepDynamics(
-      this.state, dt, attractors, occluders, atmosphereBody, bcInv, srpCoeff, thrust);
+      this.state, dt, attractors, attractorPivot, occluders, occluderPivot, atmosphereBody,
+      bcInv, srpCoeff, thrust);
     this.advanceTip(next, sampleInterval, keepDuration);
     this._extrapolationCenter = extrapolationCenter;
+    this._extrapolationCenterPivot = attractorPivot;
   }
 
   // 積分せず、外から与えられた状態を先端にする。保持方針・prevState の更新は step と同じ。
@@ -112,7 +119,8 @@ export class DynamicTrajectory {
   extrapolatedAt(t: number, centerStateAtT: KinematicState): KinematicState | null {
     const tip = this.state;
     if (t <= tip.t || this._extrapolationCenter === null) return this.at(t);
-    const rel = extrapolatedRelativeState(tip, this._extrapolationCenter, t);
+    const rel = extrapolatedRelativeState(
+      tip, this._extrapolationCenter, this._extrapolationCenterPivot, t);
     if (rel === null) return null;
     return kinematicState<'eci'>(t, add(rel.r, centerStateAtT.r), add(rel.v, centerStateAtT.v));
   }

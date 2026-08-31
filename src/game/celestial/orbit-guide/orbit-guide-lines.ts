@@ -3,7 +3,6 @@
 // (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion } from '../../../physics/celestial-motion';
-import { CelestialBody } from '../../../physics/celestial-body';
 import { SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialSystem } from '../celestial-system';
 import { Vec3 } from '../../../math/vec3';
@@ -305,23 +304,27 @@ export class OrbitGuideLines {
     if (entry.familyId === 'sunSync') {
       const s = settings.sunSync;
       const earth = this.earthBodyAt(t);
-      return earth === null ? null : sunSyncRepeatGroundTrackLoop(earth, s.repeatDays, s.revsPerRepeat);
+      return earth === null ? null
+        : sunSyncRepeatGroundTrackLoop(earth, t, s.repeatDays, s.revsPerRepeat);
     }
     if (entry.familyId === 'dawnDusk') {
       const d = settings.dawnDusk;
       const earth = this.earthBodyAt(t);
       return earth === null ? null : dawnDuskGuideLoop(
-        earth, (r, tt) => this.celestialSystem.sunDirFrom(r, tt), d.repeatDays, d.revsPerRepeat, d.localTime);
+        earth, t, (r: Vec3, tt: number) => this.celestialSystem.sunDirFrom(r, tt),
+        d.repeatDays, d.revsPerRepeat, d.localTime);
     }
     if (entry.familyId === 'molniya') {
       const m = settings.molniya;
       const earth = this.earthBodyAt(t);
-      return earth === null ? null : molniyaGuideLoop(earth, this.earthSpinRate(), m.perigeeAltitude, m.raan);
+      return earth === null ? null
+        : molniyaGuideLoop(earth, t, this.earthSpinRate(), m.perigeeAltitude, m.raan);
     }
     if (entry.familyId === 'tundra') {
       const u = settings.tundra;
       const earth = this.earthBodyAt(t);
-      return earth === null ? null : tundraGuideLoop(earth, this.earthSpinRate(), u.perigeeAltitude, u.raan);
+      return earth === null ? null
+        : tundraGuideLoop(earth, t, this.earthSpinRate(), u.perigeeAltitude, u.raan);
     }
     const kind = effectiveKind(settings, entry.familyId);
     if (!kind || entry.system === null) return null;
@@ -337,7 +340,8 @@ export class OrbitGuideLines {
   // 公転していない・主天体が引けないなら null(その系のガイドは描かない)。
   private guideFrameOf(system: CatalogSystemId, t: number): SecondaryFrame | null {
     const motion = this.guideSecondaryOf(system);
-    return motion === null ? null : secondaryFrameOf(this.celestialSystem.celestialBodiesAt(t), motion, t);
+    return motion === null ? null
+      : secondaryFrameOf(this.celestialSystem.celestialMotions, t, motion, t);
   }
 
   // 系の副天体の運動。星系に居ない・公転していないなら null(その系のガイドは描かない)。
@@ -346,9 +350,9 @@ export class OrbitGuideLines {
     return motion instanceof OrbitingMotion ? motion : null;
   }
 
-  // 地球の時刻 t での ECI 瞬間値。地球を持たない星系では null(地球専用の参照軌道は描かない)。
-  private earthBodyAt(t: number): CelestialBody | null {
-    return this.celestialSystem.has('earth') ? this.celestialSystem.celestialBodyAt('earth', t) : null;
+  // 地球の運動。地球を持たない星系では null(地球専用の参照軌道は描かない)。
+  private earthBodyAt(_t: number): CelestialMotion | null {
+    return this.celestialSystem.has('earth') ? this.celestialSystem.motionOf('earth') : null;
   }
 
   // 地球の自転角速度 [rad/s]。自転モデルを持たない・地球が居ないなら null。
