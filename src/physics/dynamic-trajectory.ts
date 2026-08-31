@@ -52,10 +52,9 @@ export class DynamicTrajectory {
   step(
     dt: number,
     attractors: readonly CelestialMotion[],
-    attractorPivot: number,
     occluders: readonly CelestialMotion[],
-    occluderPivot: number,
     atmosphereBody: CelestialMotion | null,
+    pivot: number,
     bcInv: number,
     srpCoeff: number,
     thrust: Vec3 | null,
@@ -64,11 +63,10 @@ export class DynamicTrajectory {
     extrapolationCenter: CelestialMotion | null = null,
   ): void {
     const next = stepDynamics(
-      this.state, dt, attractors, attractorPivot, occluders, occluderPivot, atmosphereBody,
-      bcInv, srpCoeff, thrust);
+      this.state, dt, attractors, occluders, atmosphereBody, pivot, bcInv, srpCoeff, thrust);
     this.advanceTip(next, sampleInterval, keepDuration);
     this._extrapolationCenter = extrapolationCenter;
-    this._extrapolationCenterPivot = attractorPivot;
+    this._extrapolationCenterPivot = pivot;
   }
 
   // 積分せず、外から与えられた状態を先端にする。保持方針・prevState の更新は step と同じ。

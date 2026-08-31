@@ -46,7 +46,7 @@ export function selectPlanetLights(
     const cosAlpha = toSun === null ? 1 : dot(toSun, toReference) / (len(toSun) * dist);
     const phase = lambertPhase(Math.acos(Math.min(1, Math.max(-1, cosAlpha))));
     const sunlit = star === null
-      ? 1 : sunlitFactor(pos, star, pivot, bodies.filter((b) => b !== celestialBody), pivot);
+      ? 1 : sunlitFactor(pos, star, bodies.filter((b) => b !== celestialBody), pivot);
     const base = planetRadiance(albedo, sunIrradiance);
     const scale = phase * sunlit;
     const irradiance = Math.PI * rec709Luminance(base) * (celestialBody.def.radius / dist) ** 2 * scale;
