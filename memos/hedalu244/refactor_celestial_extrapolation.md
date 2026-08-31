@@ -16,7 +16,7 @@
 持ち回るものが凍結値から時刻へ変わることで、**「どの時刻で厳密に引き、どの時刻へ外挿して
 いるか」が呼び出しの形にそのまま現れる。** いまはこれを知るのに、値がどこで組まれてどこまで
 渡ったかを遡る必要がある。呼び出しの形に出れば、pivot の種類を減らす・区間を寄せるといった
-軽量化の余地を、コードを読むだけで探せるようになる — これも目的の一つ(手順6)。
+軽量化の余地を、コードを読むだけで探せるようになる — これも目的の一つ(手順5)。
 
 ## 決めたこと
 
@@ -34,9 +34,8 @@ A1 を採る。ECI 化とその時刻キャッシュは THREE に依らない物
 置く理由がない。原点をどの天体に置くかは系レベルの選択のままで、**構築引数ではなく
 `bindEciTransform` で結ぶ**(`bindEphemeris` と同型)。
 
-覆すなら手順2が変わる。A2 にすると手順2は「`physics/celestial-source.ts`(新規)を置き、
-`CelestialEntity` に実装させる」になり、手順3以降の引数の型が `CelestialMotion` から
-そのインタフェースへ替わるだけで、手順の並びは変わらない。
+A2 へ覆すなら、手順3以降の引数の型が `CelestialMotion` からそのインタフェースへ替わり、
+ECI の解決とキャッシュを `CelestialEntity` へ戻すことになる。手順の並びは変わらない。
 
 ### B. pivot は素の `number` 引数として持ち回る
 
@@ -72,21 +71,14 @@ export function attractorAccel(
 「天体 + その瞬間の状態」の対は、`CelestialMotion` と `KinematicState` の2フィールドへ割る。
 `accel` も `degree2` も `atmosphere` もこれらは要らないので、対を共有の型にする理由がない。
 
-### D. 手順1〜5 は精度を変えない。手順6 だけが近似を動かす
+### D. 手順4 までは精度を変えない。手順5 だけが近似を動かす
 
-現在の呼び出しはすべて「解決した時刻を pivot に、そこから外挿」の形で書ける。手順5 までを
+現在の呼び出しはすべて「解決した時刻を pivot に、そこから外挿」の形で書ける。手順4 までを
 写し終えた時点で、値はビット一致していなければならない。固定値テスト
 (`celestial-eci-baseline`)が合格の物差し。
 
-**手順6 は意図的にビット一致を崩す。** 1サブステップに現れる pivot を1つへ寄せる近似で、
-効果と代償が測れるのは手順5 まで終わってからなので、最後に置く。
-
-### E. `205d2a9f` を revert する
-
-`205d2a9f`(「天体の状態を引くとき pivot を必ず明示させる」)は `stateAt` の既定引数
-`t = pivot` を外し、17ファイル・30箇所を `stateAt(t, t)` へ書き換えたもの。外挿が物理層に
-散ったままでは pivot を明示する先が無く、`stateAt(t, t)` が並ぶだけになる。**手順1で戻す。**
-表示側は厳密な値しか要らないので既定引数のままでよく、pivot を明示するのは積分側だけになる。
+**手順5 は意図的にビット一致を崩す。** 1サブステップに現れる pivot を1つへ寄せる近似で、
+効果と代償が測れるのは手順4 まで終わってからなので、最後に置く。
 
 ## 達成目標
 
@@ -102,64 +94,14 @@ export function attractorAccel(
 
 ## 手順
 
-### 手順2. ECI の解決と時刻キャッシュを `CelestialMotion` へ下ろす
+### 手順3. 積分の経路を `CelestialMotion` + pivot へ移す
 
-**目的.** 物理層が名指しできる場所に、外挿の口とその土台のキャッシュを置く。
-**この時点で挙動は変えない** — `CelestialEntity` は同じ値を委譲で返す。
+**目的.** RK4 の各段・掃引接触・遮蔽・大気が自分で外挿するのをやめ、天体1体の口へ問い合わせる
+形にする。**天体一覧は時刻に依らなくなり、時刻ごとの解決は天体1体が畳む。**
 
-**目指す形**
-
-```ts
-// src/physics/celestial-motion.ts
-
-// pivot 1時刻ぶんの、解決済みの ECI の値。外挿の土台。
-type EciValues = {
-  readonly state: KinematicState;
-  readonly accel: Vec3;                        // ECI 加速度 [m/s²]
-  readonly degree2: Degree2Gravity | null;
-  readonly atmosphere: Atmosphere | null;
-};
-
-export abstract class CelestialMotion {
-  private readonly eciCache = new TimeRing<EciValues>();
-  private eciTransform: EciTransform | null = null;
-
-  // ECI 化の変換器を結ぶ。結ぶまでは ECI 値を答えられない。
-  bindEciTransform(transform: EciTransform): void;
-
-  // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと pivot 自身の
-  // 厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
-  stateAt(pivot: number, t: number = pivot): KinematicState;
-
-  // 同じ外挿の位置だけ。
-  positionAt(pivot: number, t: number): Vec3;
-
-  // pivot での姿勢込みの2次重力場・大気。持たない天体は null。
-  degree2At(pivot: number): Degree2Gravity | null;
-  atmosphereAt(pivot: number): Atmosphere | null;
-}
-```
-
-`degree2At` / `atmosphereAt` はいま呼ぶたびに姿勢を組み直している。`EciValues` へ畳むことで
-pivot ごとに1回になる。**この畳み込みが無いと、手順3で RK4 の各段が姿勢を組み直すことになる。**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/celestial-motion.ts` | 上の形を実装。`degree2At` / `atmosphereAt` を `eciCache` 経由へ差し替え、素の計算は private へ落とす |
-| `src/physics/eci-transform.ts` | `celestialBodyAt(t, motion)` を `EciValues` を返す形へ(`id`/`mu`/`radius`/`isStar` を落とす) |
-| `src/game/celestial/celestial-entity/celestial-entity.ts` | `eciCache` / `bindEciTransform` / `eci` を削除。`stateAt` は `this.motion.stateAt(pivot, t)` へ委譲。`bodyAt` は削除し、呼び出し元を手順4で置き換えるまでの間だけ `this.motion` 経由の同値を返す |
-| `src/game/celestial/celestial-system.ts` | `entity.bindEciTransform` を `motion.bindEciTransform` へ。`perfCounts` の集計元を差し替え |
-| `src/physics/celestial-body.ts` | `CelestialBody` から `state`/`accel`/`degree2`/`atmosphere` を読む経路が残るので、この手順では型はそのまま。`celestialBodyAt` の組み立てだけ `CelestialSystem` 側へ寄せる |
-| `tests/physics/equatorial-satellites.test.ts` | `new EciTransform(...).stateAt(t, motion)` を結び直しの形へ |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test`(全層)。
-`grep -rniE "eci" src/game/celestial/celestial-entity/celestial-entity.ts` が 0 件。
-`celestial-eci-baseline` の固定値が変わらない。
-
-### 手順3. 物理層の天体引数を `CelestialMotion` + pivot へ移す
-
-**目的.** RK4 の各段・掃引接触・遮蔽が自分で外挿するのをやめ、天体1体の口へ問い合わせる形に
-する。**外挿の実装が `celestial-motion.ts` の内側だけになる。**
+`stepDynamics` の引数を変えると、それを呼ぶ `DynamicTrajectory.step` →
+`DynamicEntity.stepSimulation` → `Simulator.substep` → `SubstepCelestialBodies` が同時に動く。
+**この鎖は途中で型検査を通せないので、1手順で通す。**
 
 **目指す形**
 
@@ -177,38 +119,10 @@ export function stepDynamics(
   srpCoeff: number,
   thrust: Vec3 | null,
 ): KinematicState;
-```
 
-`totalAccel` の中は `celestialBodyPositionAt(attractor, t)` が
-`attractor.positionAt(attractorPivot, t)` になるだけで、式は変わらない。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/celestial-body.ts` | `attractorAccel` / `strongestAttractor` / `nearestAtmosphereBody` / `localOrbitPeriod` / `orbitalElementsOf` / `orbitingAttractorOf` / `frameOfCelestialBody` / `bodyAnchorSource` を `CelestialMotion` + pivot へ。`celestialBodyPositionAt` / `celestialBodyStateAt` / `CelestialBody` / `CelestialBodyWindows` を削除し、残る自由関数を `celestial-motion.ts` か新しい引き取り先へ移してファイルを消す |
-| `src/physics/dynamics.ts` | 上のシグネチャ。`degree2` は `attractor.degree2At(attractorPivot)` |
-| `src/physics/surface-contact.ts` | `celestialBodyStateAt(body, next.t)` を `body.stateAt(pivot, next.t)` へ。pivot を引数に足す |
-| `src/physics/occlusion.ts` | 遮蔽体の位置を `occluder.positionAt(pivot, pivot)` へ(いまも外挿していないので pivot をそのまま渡す) |
-| `src/physics/srp.ts` / `src/physics/shadow.ts` | 同上 |
-| `src/physics/trajectory-features.ts` / `src/physics/orbit-solvers.ts` | `centerStateAt` / `centerPositionAt` の既定引数を `center.stateAt(pivot, t)` へ。pivot を引数に足す |
-| `src/physics/atmosphere.ts` | コメント中の `CelestialBody.radius` 参照を書き換え |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test:physics`。
-`grep -rn "celestialBodyPositionAt\|celestialBodyStateAt" src/physics/` が
-`celestial-motion.ts` の内側だけ。`ls src/physics/celestial-body.ts` が無い。
-
-### 手順4. 天体の窓と弧の一覧を `CelestialMotion` + pivot へ移す
-
-**目的.** 時刻ごとに配列を組み直す窓をやめる。**一覧は時刻に依らず、時刻ごとの解決は天体1体が
-畳む。** `CelestialSystem` の配列キャッシュが構造ごと消える。
-
-**目指す形**
-
-```ts
 // src/game/dynamic/substep-celestial-bodies.ts
 export class SubstepCelestialBodies {
-  // 区間 [simTime, simTime + dt] の窓を組み直す。
-  reset(system: CelestialSystem, simTime: number, dt: number): void;
-
+  reset(system: CelestialBodyWindows, simTime: number, dt: number): void;
   readonly gravityPivot: number;    // = simTime + dt / 2
   readonly surfacePivot: number;    // = simTime
   get surface(): readonly CelestialMotion[];
@@ -228,24 +142,41 @@ export function classifyAttractors(
 ): ClassifiedAttractors;
 ```
 
+`totalAccel` の中は `celestialBodyPositionAt(attractor, t)` が
+`attractor.positionAt(attractorPivot, t)` になるだけで、式は変わらない。
+
+**`CelestialBody` はこの手順では消えない。** 値オブジェクト(`OrbitalElements` /
+`SecondaryFrame` / `FrameAnchorSource`)と `DynamicTrajectory` の中心天体がまだ握っている。
+型と `celestial-body.ts` の解体は手順4。
+
+**変更が必要な箇所**
+
 | ファイル | 何をするか |
 | --- | --- |
-| `src/game/celestial/celestial-system.ts` | `allCache` を削除。`celestialBodiesAt(t)` / `gravityAttractorsAt(t)` / `atmosphereCelestialBodiesAt(t)` を時刻引数の無い一覧の getter へ。`celestialBodyAt(id, t)` を削除 |
-| `src/game/dynamic/substep-celestial-bodies.ts` | 上の形。分類は `gravityPivot` で組む |
-| `src/game/dynamic/attractors.ts` | 上の形。`SpatialGrid` へ載せる位置を `motion.positionAt(pivot, pivot)` で引く |
+| `src/physics/celestial-body.ts` | `attractorAccel` / `strongestAttractor` / `nearestAtmosphereBody` / `localOrbitPeriod` を `CelestialMotion` + pivot へ。`celestialBodyPositionAt` / `celestialBodyStateAt` は `celestial-motion.ts` の内側へ移して非公開にする |
+| `src/physics/dynamics.ts` | 上のシグネチャ。`degree2` は `attractor.degree2At(attractorPivot)`、大気は `atmosphereBody.atmosphereAt(atmospherePivot)` |
+| `src/physics/surface-contact.ts` | `celestialBodyStateAt(body, next.t)` を `body.stateAt(pivot, next.t)` へ。pivot を引数に足す |
+| `src/physics/occlusion.ts` / `srp.ts` / `shadow.ts` | 遮蔽体・恒星の位置を `positionAt(pivot, pivot)` へ。pivot を引数に足す |
+| `src/physics/dynamic-trajectory.ts` | `step` の天体引数と pivot。`_extrapolationCenter` を `CelestialMotion` とその pivot の2フィールドへ |
+| `src/game/celestial/celestial-system.ts` | `allCache` を削除。`celestialBodiesAt` / `gravityAttractorsAt` / `atmosphereCelestialBodiesAt` を時刻引数の無い一覧へ。`celestialBodyAt(id, t)` を `motionOf(id)` へ |
+| `src/game/dynamic/substep-celestial-bodies.ts` / `attractors.ts` | 上の形。分類は `gravityPivot` の位置で組む |
 | `src/game/dynamic/simulator.ts` | 2つの pivot を `stepSimulation` へ渡す |
-| `src/game/dynamic/dynamic-entity/dynamic-entity.ts` | `stepSimulation` / `historySampleInterval` の天体引数と pivot |
-| `src/game/dynamic/dynamic-entity/{bullet,contact,debris-piece,enemy}.ts` | 同じ引数の追従 |
+| `src/game/dynamic/dynamic-entity/dynamic-entity.ts` + `{bullet,contact,debris-piece,enemy}.ts` | `stepSimulation` / `historySampleInterval` / `checkLoss` の天体引数と pivot |
 | `src/game/dynamic/dynamic-system.ts` / `time-step.ts` / `surface-candidates.ts` / `surface-contact-physics.ts` | 天体引数と pivot |
-| `src/game/dynamic/arc-celestial-bodies.ts` / `predicted-arc.ts` | `FutureCelestialBodyProvider` を `CelestialMotion` の一覧へ。`resolve(t, …)` が返すのは一覧と pivot |
-| `src/physics/dynamic-trajectory.ts` | `step` の天体引数と pivot。`_extrapolationCenter` を `CelestialMotion` + その pivot の2フィールドへ |
-| `src/render/pipeline/{lighting/planet-light-select,sun-occlusion-select}.ts` | 天体引数と pivot |
+| `src/game/dynamic/arc-celestial-bodies.ts` / `predicted-arc.ts` | `FutureCelestialBodyProvider` を `CelestialMotion` の一覧へ。`resolve` が返すのは一覧、pivot は呼び出し側が持つ |
+| `src/render/pipeline/lighting/planet-light-select.ts` / `sun-occlusion-select.ts` | 天体引数と pivot |
+| `tests/physics/window-agreement.test.ts` / `tests/game/predicted-arc.test.ts` / `tests/game/surface-candidates.test.ts` | 供給の形に追従 |
 
-**達成条件と検証.** `npm run typecheck` / `npm run test`(全層)。
-`grep -rn "celestialBodiesAt(" src/` の呼び出しに時刻引数が無い。
-`window-agreement` と `predicted-arc` のテストが変更なしで通る。
+**達成条件と検証**
 
-### 手順5. 値オブジェクトから `CelestialBody` を外す
+- `npm run typecheck` / `npm run test`(全層)。
+- `grep -rn "celestialBodyPositionAt\|celestialBodyStateAt" src/ tests/` が
+  `src/physics/celestial-motion.ts` の内側だけ。
+- `grep -rn "celestialBodiesAt(" src/` の呼び出しに時刻引数が無い。
+- `celestial-eci-baseline` / `window-agreement` / `predicted-arc` が変更なしで通る。
+
+
+### 手順4. 値オブジェクトから `CelestialBody` を外し、`celestial-body.ts` を解体する
 
 **目的.** 「天体 + その瞬間の状態」を1つの凍結値で持っている型を、`CelestialMotion` と
 `KinematicState` の2フィールドへ割る。これで `CelestialBody` の最後の参照が消える。
@@ -291,7 +222,7 @@ export interface FrameAnchorSource {
 `grep -rn "CelestialBody" src/ tests/ DEVELOP/ CLAUDE.md .claude/` が 0 件。
 `npm run smoke:browser`。マップビューで参照軌道線・ラグランジュ点ラベル・静止軌道リングを見る。
 
-### 手順6. 1サブステップの pivot を中点1つへ寄せる
+### 手順5. 1サブステップの pivot を中点1つへ寄せる
 
 **目的.** pivot の種類が減るほど天体1体の時刻キャッシュが当たり、暦の評価回数が減る。
 **この手順だけは値が変わる** — 近似を1つ動かす。
@@ -330,14 +261,11 @@ export interface FrameAnchorSource {
 
 | 手順 | ファイル | 根拠 |
 | --- | --- | --- |
-| 1 | 17 | `205d2a9f` が触った数そのまま(revert) |
-| 2 | 6 | ECI 化に触るのは motion・変換器・entity・system と、その2テスト |
-| 3 | 9 | `src/physics/` で `CelestialBody` を受ける 18 ファイルのうち、値オブジェクト側(手順5)を除いた数 |
-| 4 | 16 | `src/game/dynamic/` 14 + `src/render/pipeline/` 2 |
-| 5 | 36 | `src/physics/` 6 + `src/game/` 30 |
-| 6 | 4 | サブステップの窓と、それを呼ぶ側 |
+| 3 | 25 | `src/physics/` 6 + `src/game/dynamic/` 14 + `src/render/pipeline/` 2 + テスト3 |
+| 4 | 36 | `src/physics/` 6 + `src/game/` 30 |
+| 5 | 4 | サブステップの窓と、それを呼ぶ側 |
 
-合計 **約 88 ファイル**(重複あり)。`CelestialBody` を参照するファイルは現状 74 で、うち 17 は
+実施済みの手順1(17ファイル・revert)と手順2(6ファイル)を含めた合計は **約 88 ファイル**(重複あり)。`CelestialBody` を参照するファイルは現状 74 で、うち 17 は
 型注釈だけを通しているので機械的に写せる。
 
 実行時コスト: `celestialBodyPositionAt` の直線コードの前に `TimeRing.get` の照合が入る。
