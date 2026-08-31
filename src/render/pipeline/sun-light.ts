@@ -3,7 +3,7 @@
 // 値は毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
-import { AU } from '../../physics/planet-orbit';
+import { AU } from '../../physics/astronomical-unit';
 import type { ColorUniform, FloatNode, FloatUniform, Vec3Uniform } from '../tsl-types';
 
 // 描画が扱う放射照度の目盛り。1 天文単位で太陽から届く放射照度をこの値に取る。

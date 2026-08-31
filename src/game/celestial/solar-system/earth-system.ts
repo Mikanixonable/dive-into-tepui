@@ -8,7 +8,7 @@ import {
   PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
-import { planetOrbit } from '../../../physics/planet-orbit';
+import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
 import {
   C22_MOON, J2_EARTH, J2_MOON, MOON_OBLIQUITY, MU_EARTH, MU_MOON, R_EARTH_EQ, R_MOON, R_MOON_GRAVITY,

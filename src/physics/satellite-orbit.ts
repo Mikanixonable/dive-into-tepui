@@ -12,7 +12,7 @@
 // 近地点 356,400〜370,400 km・遠地点 404,000〜406,700 km の実測範囲にほぼ収まる
 // (遠地点のみ切り詰めによる高次相関項の欠如で最大 0.05% ほど超えることがある)。
 import { Quat } from './attitude';
-import { PlanetAngles } from './planet-orbit';
+import { PlanetAngles } from './kepler-orbit';
 import { eclToEci, eciToEcl } from './ecliptic';
 import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState } from './kepler-orbit';
 import { KinematicState, kinematicState } from './kinematic-state';
