@@ -103,7 +103,7 @@ export class MapPickables {
     this.navTarget.update(
       this.activePlayers.current, this.entities, this.celestialSystem, displayWindow, this.frameAnchors);
 
-    // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
+    // 船の位置は表示時刻の stateAt — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;
     this.visibleItems.length = 0;
     this.activeRecordKeys.clear();
@@ -113,7 +113,7 @@ export class MapPickables {
     for (const ship of this.entities.players) {
       const vPlayer = visibilityPolicy.entity('player', ship === this.activePlayers.current);
       if (!vPlayer.pickable) continue;
-      const pos = ship.displayState(displayTime)?.r;
+      const pos = ship.stateAt(displayTime)?.r;
       if (pos) {
         const center = strongestAttractor(ship.state.r, celestialBodies, ship.state.t);
         const el = ship.orbitalElementsAround(center, ship.state.t);
@@ -129,25 +129,25 @@ export class MapPickables {
     for (const enemy of this.entities.enemies) {
       const vShip = visibilityPolicy.entity('ship');
       if (!enemy.alive || !vShip.pickable) continue;
-      const pos = enemy.displayState(displayTime)?.r;
+      const pos = enemy.stateAt(displayTime)?.r;
       if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'ship', undefined, undefined, undefined, vShip.label);
     }
     for (const ammoPickup of this.entities.ammoPickups) {
       const vAmmo = visibilityPolicy.entity('ammo');
       if (!ammoPickup.alive || !vAmmo.pickable) continue;
-      const pos = ammoPickup.displayState(displayTime)?.r;
+      const pos = ammoPickup.stateAt(displayTime)?.r;
       if (pos) this.addCandidate(ammoPickup.id, ammoPickup.name, pos, 'ammo', undefined, undefined, undefined, vAmmo.label);
     }
     for (const fuelPickup of this.entities.rcsFuelPickups) {
       const vFuel = visibilityPolicy.entity('fuel');
       if (!fuelPickup.alive || !vFuel.pickable) continue;
-      const pos = fuelPickup.displayState(displayTime)?.r;
+      const pos = fuelPickup.stateAt(displayTime)?.r;
       if (pos) this.addCandidate(fuelPickup.id, fuelPickup.name, pos, 'fuel', undefined, undefined, undefined, vFuel.label);
     }
     for (const base of this.entities.bases) {
       const vBase = visibilityPolicy.entity('base');
       if (!base.alive || !vBase.pickable) continue;
-      const pos = base.displayState(displayTime)?.r;
+      const pos = base.stateAt(displayTime)?.r;
       if (pos) this.addCandidate(
         base.id, base.name, pos, 'base', `格納 ${base.baseState.dockedVessels.length} 艇`,
         undefined, undefined, vBase.label,
