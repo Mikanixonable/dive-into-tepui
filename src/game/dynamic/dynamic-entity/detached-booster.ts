@@ -135,7 +135,7 @@ export class DetachedBooster extends DynamicEntity {
   ): void {
     super.sync(fo, displayTime);
     this.renderObject.visible &&= categoryVisible;
-    const displayState = this.displayState(displayTime);
+    const displayState = this.stateAt(displayTime);
     const effectAtCurrentTime = Math.abs(displayTime - this.state.t) <= 1e-6;
     if (displayState === null || !this.renderObject.visible || this.thrust === null
       || !effectAtCurrentTime || camera.zoomActive) {

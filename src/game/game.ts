@@ -153,8 +153,8 @@ export class Game {
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム表示時刻を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors(celestialSystem, {
-      entityState: (id, t) => this.dynamicSystem.all().find((e) => e.id === id && e.alive)?.displayState(t, celestialSystem) ?? null,
-      activeShipState: (t) => this.activeControllableEntity?.displayState(t, celestialSystem) ?? null,
+      entityState: (id, t) => this.dynamicSystem.all().find((e) => e.id === id && e.alive)?.stateAt(t, celestialSystem) ?? null,
+      activeShipState: (t) => this.activeControllableEntity?.stateAt(t, celestialSystem) ?? null,
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
