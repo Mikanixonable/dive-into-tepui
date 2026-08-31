@@ -216,8 +216,7 @@ export class StarMotion extends CelestialMotion {
   // 解いた r_i は捨てず、自分の位置が決まった時点で各系の太陽系重心状態へ組み直して配る —
   // **主星相対の値がここから外へ出ないのはこのため。**
   private computeAnalyticStateAt(t: number): KinematicState<'analytic'> {
-    // mu = 0 は「質量が未測定」であって質量0ではない。恒星の質量が分からない星系では重心の
-    // 位置も決まらないので、補正せず恒星を原点に置いたままにする。
+    // μ = 0 は「重力を無視すると宣言した」の意。その恒星は重心を動かさないので原点に置く。
     if (this.def.mu <= 0) return kinematicState<'analytic'>(t, v3(), v3());
 
     let muTotal = this.def.mu;
@@ -227,7 +226,7 @@ export class StarMotion extends CelestialMotion {
     let r = v3();
     let v = v3();
     for (const system of this.systems) {
-      // 質量が未測定の系は重心を動かさない。小天体はほとんどがこれなので、二体解を解く前に抜ける。
+      // 重力を無視すると宣言した系は重心を動かさないので、二体解を解く前に抜ける。
       const w = system.mu / muTotal;
       if (w === 0) continue;
       const rel = keplerOrbitState(system.orbit, t);
@@ -354,8 +353,9 @@ export abstract class OrbitingMotion extends CelestialMotion {
     return { ...model, pole: orientation.axis };
   }
 
-  // 主天体に対する質量比 mu = m2/(m1+m2)。どちらかの質量が未測定(mu = 0)なら null —
-  // 0 を比として通すと共線点を解く反復が発散し、1 を通すと L1 が主天体の中心に落ちる。
+  // 主天体に対する質量比 mu = m2/(m1+m2)。どちらかが重力を無視すると宣言されている
+  // (mu = 0)なら null — 0 を比として通すと共線点を解く反復が発散し、1 を通すと L1 が
+  // 主天体の中心に落ちる。
   private get massRatio(): number | null {
     const primaryMu = this.primary.def.mu;
     if (primaryMu <= 0 || this.def.mu <= 0) return null;
