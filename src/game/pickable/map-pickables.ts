@@ -16,7 +16,7 @@ import { len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import { isOccluded } from '../../physics/occlusion';
 import { apsisAltitudes } from '../../physics/elements';
-import { isPositionInFocusedSystem, NearbySystemTracker } from '../celestial/system-membership';
+import { NearbySystemTracker } from '../celestial/nearby-system-tracker';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
 import { MarkerManager } from '../marker/marker-manager';
 import type { DisplayWindow } from '../display-window-manager';
@@ -94,7 +94,7 @@ export class MapPickables {
       this.cameraSystem.mapDisplayToggles,
       focusId,
       this.nearbyTracker.membersAt(
-        this.celestialSystem.celestialMotions, this.cameraSystem.activeCameraPos, displayTime),
+        this.celestialSystem, this.cameraSystem.activeCameraPos, displayTime),
     );
     this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
@@ -185,7 +185,7 @@ export class MapPickables {
       // 判定は最強天体から親を辿るぶん高価なので、読まれない天体候補では省く。
       item.inFocusedSystem = item.kind === 'body'
         ? undefined
-        : isPositionInFocusedSystem(this.celestialSystem.celestialMotions, focusId, item.pos, displayTime);
+        : this.celestialSystem.isPositionInFocusedSystem(focusId, item.pos, displayTime);
     }
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
@@ -197,7 +197,7 @@ export class MapPickables {
     for (const item of this.candidateItems) {
       const included = item.kind === 'player'
         ? item.inFocusedSystem
-          ?? isPositionInFocusedSystem(this.celestialSystem.celestialMotions, focusId, item.pos, displayTime)
+          ?? this.celestialSystem.isPositionInFocusedSystem(focusId, item.pos, displayTime)
         : item.kind === 'body'
           ? true
           : !isOccluded(

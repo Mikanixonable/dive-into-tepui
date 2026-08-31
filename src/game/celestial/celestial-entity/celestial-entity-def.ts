@@ -1,5 +1,4 @@
-// 天体1体の見た目側の静的事実のうち、THREE に依存しない型。tests が node で実行する
-// モジュール(system-membership 等)はここから型だけを引く。
+// 天体1体の見た目側の静的事実のうち、THREE に依存しない型。
 import type { CelestialKind } from '../../../physics/celestial-motion';
 
 // 天体の表示上の重要度。運動の kind(恒星/惑星/衛星)が「中心天体が何か」という

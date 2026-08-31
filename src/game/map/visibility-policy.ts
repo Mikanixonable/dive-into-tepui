@@ -1,10 +1,6 @@
 // 天体とゲーム内 entity に共通するマップ表示ポリシー。
 // category/icon/label/orbit/pickable を各描画・選択系で個別に解釈しないための正本。
 // DynamicEntityKind は公開メソッド dynamic(kind) の引数型なので export したままにする。
-import {
-  ancestorsOf, motionById, sameSystemIds, type CelestialClassLookup,
-} from '../celestial/system-membership';
-import type { CelestialMotion } from '../../physics/celestial-motion';
 import { celestialClassVisible, celestialNameVisible, type MapDisplayToggles } from './display-toggles';
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -48,38 +44,38 @@ function focusSystemOf(celestialSystem: CelestialSystem, focusId: string | undef
 // すると操作の途中で行が明滅するので、カメラ位置から求めた重力系のメンバーで代用する。
 // focusId が undefined でも、nearbyIds に渡された近傍系は残す。
 export function alwaysFullyVisibleIds(
-  motions: readonly CelestialMotion[], bodyClass: CelestialClassLookup, focusId: string | undefined,
+  celestialSystem: CelestialSystem, focusId: string | undefined,
   nearbyIds: Iterable<string> = [],
   toggles?: MapDisplayToggles,
 ): ReadonlySet<string> {
-  const byId = motionById(motions);
+  // 未登録の id は 'planet' として扱う。トグルを渡されていない呼び出しはクラスで絞らない。
+  const classVisible = (id: string): boolean => toggles === undefined
+    || celestialClassVisible(celestialSystem.find(id)?.bodyClass ?? 'planet', toggles);
   const ids = new Set<string>();
-  for (const m of motions) {
-    if (m.kind === 'star') ids.add(m.id);
+  for (const motion of celestialSystem.celestialMotions) {
+    if (motion.kind === 'star') ids.add(motion.id);
   }
 
   // nearbyIds は systemMembersAt() など、呼び出し側がカメラ位置から求めた系の集合。
   // 未登録の重力源が混ざっても、ここは天体ラベルの集合なので無視する。
   for (const id of nearbyIds) {
-    if (byId.has(id) && (toggles === undefined || celestialClassVisible(bodyClass(id), toggles))) {
-      ids.add(id);
-    }
+    if (celestialSystem.has(id) && classVisible(id)) ids.add(id);
   }
 
   if (focusId === undefined) return ids;
 
-  for (const id of ancestorsOf(byId, focusId)) {
-    if (toggles === undefined || celestialClassVisible(bodyClass(id), toggles)) ids.add(id);
+  for (const id of celestialSystem.ancestorsOf(focusId)) {
+    if (classVisible(id)) ids.add(id);
   }
   // 兄弟は「惑星系の中の兄弟」に限る。恒星の子はすべて互いに兄弟なので、そこまで含めると
   // 惑星にフォーカスしただけで全太陽周回天体が出てしまう(惑星どうしの表示は planetOrbit/
   // planetName トグルが別途受け持つ)。
-  const focusParent = byId.get(focusId)?.primary ?? null;
+  const focusParent = celestialSystem.find(focusId)?.motion.primary ?? null;
   const siblingsMatter = focusParent !== null && focusParent.kind !== 'star';
-  for (const id of sameSystemIds(motions, focusId)) {
+  for (const id of celestialSystem.sameSystemIds(focusId)) {
     // focusId 自身は未登録(生存中の重力天体)でもありうるので、親を引く前に弾く。
-    if ((siblingsMatter || id === focusId || (byId.get(id)?.primary?.id ?? null) === focusId)
-      && (toggles === undefined || celestialClassVisible(bodyClass(id), toggles))) {
+    if ((siblingsMatter || id === focusId
+      || (celestialSystem.find(id)?.motion.primary?.id ?? null) === focusId) && classVisible(id)) {
       ids.add(id);
     }
   }
@@ -105,9 +101,7 @@ export class MapVisibilityPolicy {
     private readonly focusId?: string,
     nearbyIds: Iterable<string> = [],
   ) {
-    this.alwaysVisible = alwaysFullyVisibleIds(
-      celestialSystem.celestialMotions, (id) => celestialSystem.find(id)?.bodyClass ?? 'planet',
-      focusId, nearbyIds, toggles);
+    this.alwaysVisible = alwaysFullyVisibleIds(celestialSystem, focusId, nearbyIds, toggles);
     this.nearby = new Set(nearbyIds);
   }
 

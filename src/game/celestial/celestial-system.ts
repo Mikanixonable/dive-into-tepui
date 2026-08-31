@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import {
   CelestialBodyDef, CelestialMotion, CelestialMotions, OrbitingMotion, PhaseOffsets, PlanetMotion,
 } from '../../physics/celestial-motion';
+import { strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
@@ -187,6 +188,102 @@ export class CelestialSystem implements CelestialMotions {
 
   // 全登録天体の定義(宣言順)。
   get defs(): readonly CelestialBodyDef[] { return this.entities.map((b) => b.def); }
+
+  // ---------------------------------------------------------------- 系の所属
+
+  // 天体の木を親子関係と重力の効き方から辿り、「何がどの系に属するか」「いまどの系にいるか」を
+  // 答える。可視性・選択候補・一覧の並びがここを共有する。
+
+  // focusId と同じ親を持つ天体・その親・focusId 自身の id 集合。focusId 未指定なら空集合。
+  sameSystemIds(focusId: string | undefined): ReadonlySet<string> {
+    if (focusId === undefined) return new Set();
+    const parent = this.find(focusId)?.motion.primary?.id ?? null;
+    const ids = new Set<string>([focusId]);
+    if (parent !== null) ids.add(parent);
+    for (const motion of this.celestialMotions) {
+      const p = motion.primary?.id ?? null;
+      if (p === focusId || (parent !== null && p === parent)) ids.add(motion.id);
+    }
+    return ids;
+  }
+
+  // focus 天体と同じ惑星系に、position の主引力天体が属するかを返す。衛星をフォーカス
+  // した場合は親惑星を系の代表として扱い、親惑星周回・フォーカス衛星周回・同じ惑星の
+  // 別衛星周回をすべて含める。地球をフォーカスしている間は地球周回と月周回を含み、
+  // 土星周回のような別の惑星系は除く。画面上の遮蔽やカメラ距離では判定しないため、地球の
+  // 裏側に回った機体も引き続き対象になる。
+  //
+  // 天体以外(艦船・固定点など)へフォーカスしている場合は、どの天体系を表示するかを恣意的に
+  // 決めないため絞り込まない。これにより、対象艦へフォーカスした瞬間に他艦が消えない。
+  isPositionInFocusedSystem(focusId: string | undefined, position: Vec3, pivot: number): boolean {
+    const focus = focusId === undefined ? undefined : this.find(focusId)?.motion;
+    if (focus === undefined) return true;
+
+    const systemFocusId = focus.kind === 'satellite' ? focus.primary?.id ?? null : focus.id;
+    const initial = strongestAttractor(position, this.celestialMotions, pivot).id;
+    // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
+    if (this.find(initial)?.motion.kind === 'star') return true;
+    let current: string | null = initial;
+    // 壊れた親子定義でも停止するよう、登録数を上限にする。
+    for (let i = 0; current !== null && i <= this.entities.length; i++) {
+      if (current === systemFocusId) return true;
+      const motion: CelestialMotion | undefined = this.find(current)?.motion;
+      if (motion === undefined) return false;
+      current = motion.primary?.id ?? null;
+    }
+    return false;
+  }
+
+  // focusId の親を辿って主星まで遡った id の列(focusId 自身を含む)。
+  ancestorsOf(focusId: string): readonly string[] {
+    const chain: string[] = [];
+    let cur: string | null = focusId;
+    // 循環した親子定義でも止まるよう、登録数を上限にする。
+    for (let i = 0; cur !== null && i <= this.entities.length; i++) {
+      if (chain.includes(cur)) break;
+      chain.push(cur);
+      cur = this.find(cur)?.motion.primary?.id ?? null;
+    }
+    return chain;
+  }
+
+  // id から主星まで遡った id の列。未登録の id(生存中の重力天体)なら、その id 1つだけを返す。
+  chainFrom(id: string): readonly string[] {
+    return this.has(id) ? this.ancestorsOf(id) : [id];
+  }
+
+  // cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。
+  systemChainAt(cameraPos: Vec3, pivot: number): readonly string[] {
+    if (this.entities.length === 0) return [];
+    return this.chainFrom(strongestAttractor(cameraPos, this.celestialMotions, pivot).id);
+  }
+
+  // chain の列に、各天体の子(恒星の子は除く)を合わせた集合。近い順・各天体→その子の順に並ぶ
+  // 配列で返す(呼び出し側の選択肢が毎フレーム揺れないよう順序を固定する)。
+  membersFrom(chain: readonly string[]): readonly string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const id of chain) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        result.push(id);
+      }
+      // 主天体を持たない = 恒星(か未登録)。恒星の子は足さない — 足すと太陽を含む列で
+      // 全惑星が並んでしまう。
+      if ((this.find(id)?.motion.primary ?? null) === null) continue;
+      for (const child of this.celestialMotions) {
+        if (seen.has(child.id) || (child.primary?.id ?? null) !== id) continue;
+        seen.add(child.id);
+        result.push(child.id);
+      }
+    }
+    return result;
+  }
+
+  // systemChainAt の列に、各天体の子(恒星の子は除く)を合わせた集合。
+  systemMembersAt(cameraPos: Vec3, pivot: number): readonly string[] {
+    return this.membersFrom(this.systemChainAt(cameraPos, pivot));
+  }
 
   // ---------------------------------------------------------- 系レベルの物理
 
