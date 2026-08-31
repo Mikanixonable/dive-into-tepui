@@ -23,12 +23,12 @@ export function register(): void {
     PARTS.bodies.find((m) => m.id === id) ?? null
   );
   // 登録天体の ECI 状態の引き手(CelestialSystem.stateAt と同じ契約)。
-  const stateOf = (id: string, t: number): KinematicState => PARTS.system.stateAt(id, t);
+  const stateOf = (id: string, t: number): KinematicState => PARTS.system.stateAt(id, t, t);
 
   test('focus-target: 天体 id は その運動の ECI 位置を返す', () => {
     const anchors = stubAnchors({});
     const result = resolveFocusTarget({ kind: 'object', id: 'moon' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
-    assert.deepEqual(result.pos, PARTS.system.stateAt('moon', 0).r);
+    assert.deepEqual(result.pos, PARTS.system.stateAt('moon', 0, 0).r);
     assert.equal(result.missingFocusFrames, 0);
   });
 

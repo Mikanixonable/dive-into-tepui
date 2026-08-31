@@ -63,7 +63,7 @@ function extrapolatedTailStates(
   const target = extrapolationTargetInterval(baseInterval, span);
   const count = Math.min(MAX_EXTRAPOLATED_SAMPLES, Math.max(2, Math.ceil(span / target)));
   return extrapolatedRelativeStates(tip, center, to, count).map((s) => {
-    const centerState = celestialSystem.stateAt(center.id, s.t);
+    const centerState = celestialSystem.stateAt(center.id, s.t, s.t);
     return kinematicState<'eci'>(s.t, add(s.r, centerState.r), add(s.v, centerState.v));
   });
 }

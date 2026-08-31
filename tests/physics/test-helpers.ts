@@ -78,7 +78,7 @@ export function secondaryFrameFor(parts: SolarSystemParts, id: string, t: number
 
 // 天体 id の時刻 t での ECI 位置・速度。
 export function stateOf(parts: SolarSystemParts, id: string, t: number): KinematicState {
-  return parts.system.stateAt(id, t);
+  return parts.system.stateAt(id, t, t);
 }
 
 // 天体 id の時刻 t での ECI 位置。
