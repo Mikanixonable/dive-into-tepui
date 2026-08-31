@@ -7,7 +7,7 @@
 // THREE/DOM 非依存。
 import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp } from './attitude';
-import { PointEphemeris, boundStateAt } from './point-ephemeris';
+import { PointEphemeris, boundBaryStateAt } from './point-ephemeris';
 import type { EciTransform } from './eci-transform';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
@@ -258,7 +258,7 @@ export abstract class CelestialMotion {
 
   // 自分自身が暦に収録されている範囲での重心中心位置・速度。収録外・有効期間外では null。
   ownNumericStateAt(t: number): KinematicState<'numeric'> | null {
-    return boundStateAt(this.bodyEphemeris, t);
+    return boundBaryStateAt(this.bodyEphemeris, t);
   }
 
   // 数値暦が答えるこの天体の重心中心位置・速度。答えられなければ null。

@@ -257,7 +257,7 @@ export class ChebyshevEphemeris {
   }
 
   // 太陽系重心中心・ICRF 軸の位置・速度。time は pack を組んだ側が決めた時刻軸の秒。
-  stateOf(bodyId: string, time: number): KinematicState<'icrf'> {
+  icrfStateAt(bodyId: string, time: number): KinematicState<'icrf'> {
     const evaluated = evaluateSegment(this.segmentOf(bodyId, time), time);
     return kinematicState<'icrf'>(time, evaluated.position, evaluated.velocity);
   }

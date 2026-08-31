@@ -73,9 +73,9 @@ class ChebyshevPointEphemeris implements PointEphemeris {
     readonly validEndSimTime: number,
   ) {}
 
-  stateAt(simTime: number): KinematicState<'numeric'> {
+  baryStateAt(simTime: number): KinematicState<'numeric'> {
     if (!Number.isFinite(simTime)) throw new RangeError(`simTime は有限値でなければならない: ${simTime}`);
-    const state = this.evaluator.stateOf(this.id, simTime);
+    const state = this.evaluator.icrfStateAt(this.id, simTime);
     return kinematicState<'numeric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
   }
 }

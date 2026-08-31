@@ -15,14 +15,17 @@ export interface PointEphemeris {
   readonly validEndSimTime: number;
 
   // 太陽系重心中心・ゲーム ECI 軸の位置・速度。範囲外の simTime を渡すと例外。
-  stateAt(simTime: number): KinematicState<'numeric'>;
+  // **戻り値のタグは 'numeric' に固定されている** — 数値暦でない供給源(例えば TLE/SGP4)を
+  // ここへ足すなら、その供給源のための FrameTag を新設すること。同じタグを名乗ると、
+  // 別々の供給源から引いた位置を差し引く取り違えを型が止められなくなる。
+  baryStateAt(simTime: number): KinematicState<'numeric'>;
 }
 
 // 結ばれた暦が答える位置・速度。結ばれていない・有効期間の外では null。
-export function boundStateAt(ephemeris: PointEphemeris | null, t: number): KinematicState<'numeric'> | null {
+export function boundBaryStateAt(ephemeris: PointEphemeris | null, t: number): KinematicState<'numeric'> | null {
   if (ephemeris === null) return null;
   if (t < ephemeris.validStartSimTime || t > ephemeris.validEndSimTime) return null;
-  return ephemeris.stateAt(t);
+  return ephemeris.baryStateAt(t);
 }
 
 // 暦が収録している点の一覧。key は天体 id、kind はその id が本体か惑星系の重心か。

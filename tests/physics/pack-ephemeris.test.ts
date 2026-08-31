@@ -71,7 +71,7 @@ export function register(): void {
     const earth = PackEphemeris.fromTrustedBytes(fixture(), J2000)
       .ephemerisPoints().get('earth')?.ephemeris;
     assert.ok(earth !== undefined);
-    assert.deepEqual(earth.stateAt(0).r, icrfToGameEci(v3(1, 2, 3)));
+    assert.deepEqual(earth.baryStateAt(0).r, icrfToGameEci(v3(1, 2, 3)));
     assert.equal(earth.validStartSimTime, 0);
     assert.equal(earth.validEndSimTime, 10);
   });
@@ -87,7 +87,7 @@ export function register(): void {
     const shiftSec = shiftDays * SECONDS_PER_DAY;
     assert.equal(shifted.validStartSimTime, -shiftSec);
     assert.equal(shifted.validEndSimTime, 10 - shiftSec);
-    assert.deepEqual(shifted.stateAt(-shiftSec).r, icrfToGameEci(v3(1, 2, 3)));
+    assert.deepEqual(shifted.baryStateAt(-shiftSec).r, icrfToGameEci(v3(1, 2, 3)));
   });
 
   test('pack ephemeris: 収録していない天体は一覧に載らない', () => {

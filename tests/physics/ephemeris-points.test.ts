@@ -75,8 +75,8 @@ export function register(): void {
     const earth = source.get('earth');
     assert.ok(earth !== undefined);
     assert.equal(earth.kind, 'body');
-    assert.deepEqual(earth.ephemeris.stateAt(150).r, icrfToGameEci(v3(150, 300, 450)));
-    assert.deepEqual(earth.ephemeris.stateAt(150).v, icrfToGameEci(v3(1, 2, 3)));
-    assert.equal(earth.ephemeris.stateAt(150).t, 150);
+    assert.deepEqual(earth.ephemeris.baryStateAt(150).r, icrfToGameEci(v3(150, 300, 450)));
+    assert.deepEqual(earth.ephemeris.baryStateAt(150).v, icrfToGameEci(v3(1, 2, 3)));
+    assert.equal(earth.ephemeris.baryStateAt(150).t, 150);
   });
 }
