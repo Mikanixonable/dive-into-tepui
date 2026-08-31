@@ -118,6 +118,8 @@ export function register(): void {
     assert.equal(data.manifest.frame, 'ICRF-J2000');
     assert.equal(data.manifest.timeScale, 'TDB');
     assert.equal(evaluatorPack.manifest.bodies[0]?.segments[0]?.start, 0);
-    assert.deepEqual(evaluatorPack.bodies[0]?.segments[1]?.coefficients[2], [11, 12]);
+    // 係数は payload へのビュー(Float64Array)で返る — 複製しないため。
+    assert.deepEqual(
+      Array.from(evaluatorPack.bodies[0]!.segments[1]!.coefficients[2] as Float64Array), [11, 12]);
   });
 }
