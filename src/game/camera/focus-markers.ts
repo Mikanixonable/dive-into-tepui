@@ -1,23 +1,26 @@
 // マップモードのフォーカス対象(天体・ラグランジュ点)ラベルの算出と HUD マーカーへの反映。
-import { Vec3, v3, sub, len } from '../../physics/vec3';
-import { CelestialBody, CelestialBodyId, OrbitingId, strongestAttractor } from '../../physics/celestial-body';
-import { CelestialRegistry, primaryOf } from '../../physics/solar-system';
+import { Vec3, v3, sub, len } from '../../math/vec3';
+import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import { ProjectFn } from './camera-system';
-import { MarkerManager } from '../marker/marker-manager';
+import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../marker/marker-manager';
 import type { Ephemeris } from '../../physics/ephemeris';
 import { celestialBodyName } from '../hud/frame/frame-labels';
 import { occlusionOpacity } from '../../physics/occlusion';
 import { BodyClassToggles, NearbySystemTracker } from '../celestial/body-visibility';
 import { bodyClassOf, BodyClass } from '../celestial/body-class';
 import { MapVisibilityPolicy } from '../celestial/map-visibility';
-import {
-  DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, FOCUS_ICON_PRIORITY_PX, FOCUS_LABEL_PRIORITY_PX,
-  LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY,
-} from '../const';
-import type { MapPickable } from '../map-pickable';
+import { DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
+import type { MapPickable } from '../pickable/map-pickable';
 import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-glyphs';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
 import { resolveCrowdingWinner } from '../marker/crowding';
+
+// 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
+const FOCUS_LABEL_PRIORITY_PX = 40;
+
+// 位置の点(アイコン)側の混雑判定。名前(FOCUS_LABEL_PRIORITY_PX)より小さい値にし、名前だけが
+// 間引かれて点は残る距離帯を作る。
+const FOCUS_ICON_PRIORITY_PX = 16;
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number; dist: number };
@@ -57,23 +60,26 @@ export interface FocusLabel {
 }
 
 // ラグランジュ点の名前。所属天体を前に置き、一覧では親の直下に並ぶ。
-function lagrangeName(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
+function lagrangeName(id: string, n: 1 | 2 | 3 | 4 | 5): string {
   return `${celestialBodyName(id)}-L${n}`;
 }
 
 // ラグランジュ点のマーカー表記。地点名を上、所属天体を下の行に置く。
-function lagrangeMarkerLabel(id: OrbitingId, n: 1 | 2 | 3 | 4 | 5): string {
+function lagrangeMarkerLabel(id: string, n: 1 | 2 | 3 | 4 | 5): string {
   return `L${n}\n${celestialBodyName(id)}`;
 }
 
+// 陣営種別ごとのサブ行記号。mk-ally には専用の記号を持たせず、item.sym からの
+// フォールバックに委ねる。
+const SUB_LABEL_GLYPH_BY_KIND: Partial<Record<CombatMarkerKind, string>> = {
+  self: '▲', base: '⬡', enemy: '△', ammo: '▣', fuel: '◈',
+};
+
 // サブ行テキスト用のクリーンな Unicode 記号を取得する(SVG タグ文字列を避ける)。
 function cleanSubLabelGlyph(item: GroupedMarkerItem): string {
-  const cls = item.cls;
-  if (cls.includes('mk-self')) return '▲';
-  if (cls.includes('mk-base')) return '⬡';
-  if (cls.includes('mk-enemy')) return '△';
-  if (cls.includes('mk-ammo')) return '▣';
-  if (cls.includes('mk-fuel')) return '◈';
+  const kind = combatMarkerKindOf(item.cls);
+  const glyph = kind ? SUB_LABEL_GLYPH_BY_KIND[kind] : undefined;
+  if (glyph) return glyph;
   if (item.sym && !item.sym.trim().startsWith('<')) return item.sym.trim();
   return '▲';
 }
@@ -164,9 +170,9 @@ class CrowdingGrid {
 export class FocusMarkers {
   // 天体本体1つにつき1ラベル、ラグランジュ点が力学的に意味を持つ天体にはさらに L1〜L5 の
   // うち成立する点ぶんのラベルが並ぶ(表示名は「中心天体名-自分の名 Ln」)。
-  private readonly registryIds: readonly CelestialBodyId[];
+  private readonly registryIds: readonly string[];
   // ラグランジュ点ラベルを持つ天体と、そのうち成立する点の番号。
-  private readonly lagrangeSources: readonly { readonly id: OrbitingId; readonly points: readonly (1 | 2 | 3 | 4 | 5)[] }[];
+  private readonly lagrangeSources: readonly { readonly id: string; readonly points: readonly (1 | 2 | 3 | 4 | 5)[] }[];
   // トグル・フォーカスに関わらない全登録天体+全ラグランジュ点ラベルの全集合(id/isLagrange 目的)。
   readonly allLabels: readonly FocusLabel[];
   // このフレームで表示する対象に絞ったラベル。
@@ -202,10 +208,10 @@ export class FocusMarkers {
     const registry = ephemeris.registry;
     this.registryIds = Object.keys(registry);
     this.lagrangeSources = this.registryIds.flatMap((id) => {
-      if (registry[id]!.kind === 'star') return [];
+      if (ephemeris.motionOf(id).kind === 'star') return [];
       const collinear = ephemeris.hasUsableCollinearPoints(id, LAGRANGE_MIN_CLEARANCE_RATIO);
       // 小天体・準惑星は数が多く、L3・L4・L5 まで並べるとラベルが密集しすぎる。
-      const cls = bodyClassOf(registry, id);
+      const cls = bodyClassOf(ephemeris, id);
       const minor = cls === 'smallBody' || cls === 'dwarf';
       const triangular = !minor && ephemeris.hasStableTriangularPoints(id);
       const points = [
@@ -219,12 +225,12 @@ export class FocusMarkers {
     // レジストリは実行時に差し替えられるので、親子関係が循環していても停止し、同じ天体を
     // 二度並べないよう追加済みを覚えておく。
     const labels: FocusLabel[] = [];
-    const added = new Set<CelestialBodyId>();
+    const added = new Set<string>();
     const pointsOf = new Map(this.lagrangeSources.map((s) => [s.id, s.points]));
-    const appendBody = (id: CelestialBodyId, depth: number): void => {
+    const appendBody = (id: string, depth: number): void => {
       if (added.has(id)) return;
       added.add(id);
-      const cls = bodyClassOf(registry, id);
+      const cls = bodyClassOf(this.ephemeris, id);
       labels.push({
         id, name: celestialBodyName(id), markerLabel: celestialBodyName(id),
         pos: v3(0, 0, 0), kind: 'body', isLagrange: false, bodyClass: cls,
@@ -239,11 +245,11 @@ export class FocusMarkers {
         });
       }
       for (const child of this.registryIds) {
-        if (child !== id && primaryOf(registry, child) === id) appendBody(child, depth + 1);
+        if (child !== id && this.ephemeris.motionOf(child).primary?.id === id) appendBody(child, depth + 1);
       }
     };
     for (const id of this.registryIds) {
-      if (primaryOf(registry, id) === null) appendBody(id, 0);
+      if (this.ephemeris.motionOf(id).primary === null) appendBody(id, 0);
     }
     // 主星を持たない孤立した天体(親が登録されていないレジストリ・循環したレジストリ)も落とさない。
     for (const id of this.registryIds) appendBody(id, 0);
@@ -316,7 +322,7 @@ export class FocusMarkers {
   // 表示時刻 t の各ラベル座標を求め直す。表示対象の外にある天体は座標計算ごと飛ばす —
   // 登録天体が増えるほど lagrangeAt(1天体あたり positionOf 2回 + 回転系1回)が効くため。
   update(
-    t: number, focusId: CelestialBodyId | undefined, toggles: BodyClassToggles, cameraPos: Vec3,
+    t: number, focusId: string | undefined, toggles: BodyClassToggles, cameraPos: Vec3,
     sharedVisibilityPolicy?: MapVisibilityPolicy,
   ): void {
     const ephemeris = this.ephemeris;
@@ -325,12 +331,12 @@ export class FocusMarkers {
     // 「近さ」を固定距離で判定せず、既存の重力系判定を使うことで、地球/月や木星/衛星の
     // 境界を同じ規則で扱える。
     const nearby = sharedVisibilityPolicy === undefined
-      ? this.nearbyTracker.membersAt(ephemeris.registry, cameraPos, celestialBodies)
+      ? this.nearbyTracker.membersAt(ephemeris, cameraPos, celestialBodies)
       : [];
     // まず表示対象を決め、その中だけ座標を引く。表示の判断は marker/map-picker/参照線と
     // 同じ MapVisibilityPolicy を使い、個別実装の解釈ずれをなくす。
     const visibilityPolicy = sharedVisibilityPolicy
-      ?? new MapVisibilityPolicy(ephemeris.registry, toggles, focusId, nearby);
+      ?? new MapVisibilityPolicy(ephemeris, toggles, focusId, nearby);
 
     const positions: Record<string, Vec3> = {};
     const displayMap: Record<string, { icon: boolean; label: boolean }> = {};
@@ -467,7 +473,6 @@ export class FocusMarkers {
   // 距離 500万 km 以上: 第2段階の省略表示として 1行でアイコンと数のみ表示 (衛星系もまとめて表示・プレフィックスなし)
   syncSubLabels(
     groupedMarkers: GroupedMarkers,
-    registry: CelestialRegistry,
     celestialBodies: readonly CelestialBody[],
     overviewMode: boolean,
     project: ProjectFn,
@@ -493,7 +498,7 @@ export class FocusMarkers {
 
       if (isStage2) {
         // 第2段階 (500万km以上): 「月:」などのプレフィックスを表示せず、主親天体(地球等)へ集約
-        const primaryId = primaryOf(registry, center.id as OrbitingId);
+        const primaryId = this.ephemeris.motionOf(center.id).primary?.id ?? null;
         if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
           targetId = primaryId;
         } else if (this.bodyPickableRecords.get(center.id)?.pickable) {
@@ -507,10 +512,10 @@ export class FocusMarkers {
           targetId = center.id;
           prefix = '';
         } else {
-          const primaryId = primaryOf(registry, center.id as OrbitingId);
+          const primaryId = this.ephemeris.motionOf(center.id).primary?.id ?? null;
           if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
             targetId = primaryId;
-            prefix = `${celestialBodyName(center.id as CelestialBodyId)}: `;
+            prefix = `${celestialBodyName(center.id)}: `;
           }
         }
       }
@@ -542,11 +547,11 @@ export class FocusMarkers {
         let nFuel = 0;
 
         for (const entry of entries) {
-          const item = entry.item;
-          if (item.cls.includes('mk-enemy')) nEnemy++;
-          else if (item.cls.includes('mk-base')) nBase++;
-          else if (item.cls.includes('mk-ammo')) nAmmo++;
-          else if (item.cls.includes('mk-fuel')) nFuel++;
+          const kind = combatMarkerKindOf(entry.item.cls);
+          if (kind === 'enemy') nEnemy++;
+          else if (kind === 'base') nBase++;
+          else if (kind === 'ammo') nAmmo++;
+          else if (kind === 'fuel') nFuel++;
           else nAlly++;
         }
 

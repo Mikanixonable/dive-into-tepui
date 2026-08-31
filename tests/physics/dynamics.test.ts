@@ -1,14 +1,14 @@
 // dynamics.ts の回帰テスト。stepDynamics は DynamicTrajectory.step が使う唯一の 1 ステップ実装。
+import { solarSystemEphemeris } from './test-helpers';
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH, R_EARTH_EQ, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { MU_EARTH, R_EARTH, R_EARTH_EQ } from '../../src/physics/solar-system/constants';
 import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/physics/solar-system';
+import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/physics/solar-system/constants';
 import { CelestialBody, Degree2Gravity, orbitalElementsOf } from '../../src/physics/celestial-body';
 import { degree2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';
-import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { qFromAxisAngle, qRotate } from '../../src/physics/attitude';
 
 const EARTH_POLE = v3(0, 1, 0);
@@ -131,7 +131,7 @@ export function register(): void {
   test('dynamics: stepDynamics adds thrust on top of gravity', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }).celestialBodiesAt(0);
+    const attractors = solarSystemEphemeris({ moon: 0 }).celestialBodiesAt(0);
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
     const withThrust = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, thrust);
@@ -143,7 +143,7 @@ export function register(): void {
   test('dynamics: stepDynamics with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }).celestialBodiesAt(0);
+    const attractors = solarSystemEphemeris({ moon: 0 }).celestialBodiesAt(0);
     const earth = attractors.find((a) => a.id === 'earth')!;
     assert.ok(earth.atmosphere !== null, '前提: 既定レジストリの地球は大気を持つ');
 
@@ -156,7 +156,7 @@ export function register(): void {
   test('dynamics: 大気天体を渡さなければ、同じ位置・同じ bcInv でも抗力は恒等的にゼロ', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 }).celestialBodiesAt(0);
+    const attractors = solarSystemEphemeris({ moon: 0 }).celestialBodiesAt(0);
 
     const noAtmosphere = stepDynamics(s0, dt, attractors, attractors, null, 0.01, 0, null);
     const noDrag = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, null);
@@ -165,7 +165,7 @@ export function register(): void {
   });
 
   test('dynamics: a circular lunar orbit (surface +100km) returns to about the same moon-relative position after one revolution (measured, pinned)', () => {
-    const ephemeris = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 });
+    const ephemeris = solarSystemEphemeris({ moon: 0 });
     const attractors0 = ephemeris.celestialBodiesAt(0);
     const moon0 = attractors0.find((b) => b.id === 'moon')!;
     const a = R_MOON + 100e3;
@@ -393,7 +393,7 @@ export function register(): void {
   });
 
   test('dynamics: the moon carries a degree-2 field and the sun does not', () => {
-    const attractors = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0.3 }).celestialBodiesAt(1234);
+    const attractors = solarSystemEphemeris({ moon: 0.3 }).celestialBodiesAt(1234);
     const moon = attractors.find((b) => b.id === 'moon')!;
     const sun = attractors.find((b) => b.id === 'sun')!;
     assert.ok(moon.degree2 !== null, 'the moon should resolve a degree-2 field');

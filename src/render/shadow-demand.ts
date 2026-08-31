@@ -4,7 +4,7 @@
 // **粗が見えるのは受け手がカメラに近いときであって、遮蔽器が近いときではない。** 平行投影では
 // 影の実寸は遮蔽器の実寸に等しいので、画面上の粗さは影が落ちる面までの距離だけで決まる。
 // 遮蔽器も受け手も外接球で近似する — 偽陽性は「余分に細かい枠を作る」側へ倒れるので安全。
-import { metersPerPixelAtDepth } from '../physics/projection';
+import { metersPerPixelAtDepth } from '../math/projection';
 
 /**
  * 受け手が要求する texel の実寸 [m]。小さいほど厳しい。texelsPerPixel は画面 1 px あたり何 texel

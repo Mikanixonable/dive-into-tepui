@@ -7,8 +7,8 @@ import { Ephemeris } from '../../src/physics/ephemeris';
 import { orbitalElementsOf, strongestAttractor } from '../../src/physics/celestial-body';
 import { apsisAltitudes } from '../../src/physics/elements';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { v3 } from '../../src/physics/vec3';
-import { MU_MOON, R_MOON } from '../../src/physics/solar-system';
+import { v3 } from '../../src/math/vec3';
+import { MU_MOON, R_MOON } from '../../src/physics/solar-system/constants';
 import {
   MU_EARTH, R_EARTH, SUBSTEP_MAX_DT,
   buildEphemeris, initialLeoState, integrateFixedDt, posError,

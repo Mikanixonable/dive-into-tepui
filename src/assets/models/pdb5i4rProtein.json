@@ -78,6 +78,7 @@
     {
       "id": "primary-active-site",
       "label": "CdiA毒素ドメイン",
+      "abbreviation": "CdiA-Tox",
       "type": "active",
       "source": "game",
       "residues": [],
@@ -103,6 +104,7 @@
     {
       "id": "secondary-active-site",
       "label": "CdiI免疫ドメイン",
+      "abbreviation": "CdiI-Imm",
       "type": "active",
       "source": "game",
       "residues": [],
@@ -128,6 +130,7 @@
     {
       "id": "tertiary-active-site",
       "label": "EF-Tu(2) GTP結合部位",
+      "abbreviation": "EFTu2-GTP",
       "type": "active",
       "source": "game",
       "residues": [],
@@ -153,6 +156,7 @@
     {
       "id": "complex-interface",
       "label": "CdiA-EF-Tu界面",
+      "abbreviation": "CdiA-EFTu",
       "type": "interface",
       "source": "game",
       "residues": [],
@@ -176,6 +180,7 @@
     {
       "id": "structural-core",
       "label": "EF-Tu(1)コア",
+      "abbreviation": "EFTu1-Core",
       "type": "core",
       "source": "game",
       "residues": [],

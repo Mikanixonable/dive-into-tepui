@@ -10,9 +10,10 @@ import ts from 'typescript';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// src/physics/ の指定モジュールを解決済みの依存ごとコンパイルして読み込む。
-// 返り値の modules は指定した名前 → モジュールの実体。
-export function loadPhysicsModules(names = ['cr3bp', 'halo', 'lagrange', 'solar-system']) {
+// src/physics/ の指定モジュール(サブディレクトリは 'solar-system/sun' のようにパスで指定)を
+// 解決済みの依存ごとコンパイルして読み込む。返り値の modules のキーは基底名の camelCase
+// ('solar-system/earth-system' → earthSystem)。
+export function loadPhysicsModules(names = ['cr3bp', 'halo', 'lagrange', 'solar-system/solar-system']) {
   const outDir = mkdtempSync(join(tmpdir(), 'tepui-physics-'));
   const entries = names.map((name) => join(repoRoot, 'src', 'physics', `${name}.ts`));
   const program = ts.createProgram(entries, {
@@ -34,7 +35,7 @@ export function loadPhysicsModules(names = ['cr3bp', 'halo', 'lagrange', 'solar-
   const require = createRequire(import.meta.url);
   const modules = {};
   for (const name of names) {
-    const key = name.replace(/-(.)/g, (_, c) => c.toUpperCase());
+    const key = name.split('/').pop().replace(/-(.)/g, (_, c) => c.toUpperCase());
     modules[key] = require(join(outDir, 'src', 'physics', `${name}.js`));
   }
   return { ...modules, dispose: () => rmSync(outDir, { recursive: true, force: true }) };
