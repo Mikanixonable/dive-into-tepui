@@ -1,7 +1,7 @@
 // 天王星の衛星6個・冥王星の衛星5個・準惑星/小惑星の衛星5個(計16体)の回帰テスト:
 // JPL 公開値との公転周期の一致、天王星系が黄道に対し横倒しであること、冥王星-カロンが
-// 実際に連星(共通重心が冥王星本体の外側にある)であること、および未測定 GM が 0 として
-// 登録されていること。
+// 実際に連星(共通重心が冥王星本体の外側にある)であること、および登録天体がすべて μ を
+// 持つこと。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
@@ -115,37 +115,36 @@ export function register(): void {
     assert.ok(maxOffsetKm > plutoRadiusKm, '共通重心が冥王星本体の内側に収まっている(連星になっていない)');
   });
 
-  test('equatorial-satellites: 未測定 GM は 0、実測されているものは 0 でない', () => {
-    assert.ok(muOf('charon') > 0, 'カロンの GM は実測値を持つはず');
-    assert.equal(muOf('styx'), 0, 'ステュクスの GM は上限値のみ(未測定)');
-    assert.equal(muOf('kerberos'), 0, 'ケルベロスの GM は上限値のみ(未測定)');
-    assert.equal(muOf('puck'), 0, 'パックの GM は表に無い(未測定)');
+  // μ = 0 は「その天体の重力を無視すると宣言した」の意で、既定のレジストリはこの宣言を
+  // 使わない。GM が実測されていない天体にも推定値を置く、という方針をここで押さえる。
+  test('equatorial-satellites: 既定の登録天体はすべて μ を持つ', () => {
+    for (const motion of DEFS.bodies) {
+      assert.ok(Number.isFinite(motion.def.mu) && motion.def.mu > 0, `${motion.def.id} の μ`);
+    }
   });
 
-  // mu = 0 は「質量が未測定」であって質量0ではない。衛星だけが質量を持つ系で重心補正を
-  // 掛けると、衛星の質量比が 1 になって主天体が距離ぶんまるごとずれる — 主天体と衛星の
-  // 相対位置は正しいままなので、主天体の日心位置を直に見ないと分からない。
-  test('equatorial-satellites: 主天体の質量が未測定の系では、衛星を足しても主天体が動かない', () => {
-    for (const [primary, satellite] of [['quaoar', 'weywot'], ['orcus', 'vanth']] as const) {
+  // 衛星を持つ系の本体は、系重心から μ_衛星/μ_系 × 衛星距離ぶんずれた位置にある。本体と
+  // 衛星の相対位置は衛星の有無で変わらないので、本体の日心位置を直に見ないと出ない。
+  test('equatorial-satellites: 主天体は衛星ぶんの重心オフセットだけずれる', () => {
+    for (const [primary, def, expectedKm] of
+      [['quaoar', QUAOAR, 26.3], ['orcus', ORCUS, 1234]] as const) {
       const t = 1e6;
-      const bare = withoutSatellitePosition(primary === 'quaoar' ? QUAOAR : ORCUS, t);
-      const moved = len(sub(stateOf(parts, primary, t).r, bare));
-      assert.ok(moved < 1, `${primary} が ${satellite} の有無で ${moved} m 動いている`);
+      const bare = withoutSatellitePosition(def, t);
+      const movedKm = len(sub(stateOf(parts, primary, t).r, bare)) / 1e3;
+      assert.ok(Math.abs(movedKm - expectedKm) < expectedKm * 0.05,
+        `${primary} の重心オフセット: ${movedKm} km(期待 ${expectedKm} km)`);
     }
   });
 
-  // 質量比が決まらない系にラグランジュ点を作らせない(共線点を解く反復が発散するか、
-  // L1 が主天体の中心へ落ちる)。
-  test('equatorial-satellites: どちらかの質量が未測定の系はラグランジュ点を持たない', () => {
-    for (const id of ['quaoar', 'orcus', 'puck', 'styx', 'kerberos'] as const) {
-      assert.equal(orbitingMotionOf(parts, id).hasUsableCollinearPoints(10), false, `${id} の共線点`);
-      assert.equal(orbitingMotionOf(parts, id).hasStableTriangularPoints(), false, `${id} の三角点`);
+  // 質量比が決まらないのは μ = 0 を含む系だけなので、既定のレジストリではどの系でも決まる。
+  // ディディモスは質量比が 1e-19 台まで小さいので、「質量が小さい」ことと「質量比が
+  // 決まらない」ことが混ざっていないかをここで分ける。
+  test('equatorial-satellites: 質量の小さい天体でも質量比は決まる', () => {
+    for (const id of ['quaoar', 'orcus', 'puck', 'styx', 'kerberos', 'didymos'] as const) {
+      assert.equal(orbitingMotionOf(parts, id).hasStableTriangularPoints(), true, `${id} の三角点`);
     }
-    // 両方の質量が判明していれば持つ。ディディモスは質量比が 1e-19 台まで小さいので、
-    // 「質量が小さい」ことと「質量が未測定」ことが混ざっていないかを分ける。
     assert.equal(orbitingMotionOf(parts, 'moon').hasUsableCollinearPoints(10), true, '地球-月の共線点');
     assert.equal(orbitingMotionOf(parts, 'moon').hasStableTriangularPoints(), true, '地球-月の三角点');
     assert.equal(orbitingMotionOf(parts, 'didymos').hasUsableCollinearPoints(10), true, '太陽-ディディモスの共線点');
-    assert.equal(orbitingMotionOf(parts, 'didymos').hasStableTriangularPoints(), true, '太陽-ディディモスの三角点');
   });
 }

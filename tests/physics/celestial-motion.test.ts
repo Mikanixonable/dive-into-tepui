@@ -108,8 +108,6 @@ export function register(): void {
   // 持つ系まで含めて押さえる。許容は f64 の丸め(実測の最大はエリスの 2.0e-3 m)に対して5倍。
   test('celestial-motion: 系の重心不変条件(衛星を複数持つ系でも Σμ_i·R_i = μ_sys·R_b)', () => {
     for (const planet of systemsWithSatellites(parts)) {
-      // μ が未測定の惑星は重心補正を行わない。その逸脱は次のテストが押さえる。
-      if (planet.def.mu <= 0) continue;
       const moons = planet.system.satellites;
       let muSys = planet.def.mu;
       for (const moon of moons) muSys += moon.def.mu;
@@ -144,28 +142,6 @@ export function register(): void {
         r = addScaled(r, system.analyticStateAt(t).r, system.mu / muTotal);
       }
       assert.ok(len(r) < 1e-5, `太陽系重心が原点から外れる (t=${t}): ${len(r)} m`);
-    }
-  });
-
-  // μ が未測定(0)の惑星は比が決まらないので重心補正を行わず、本体を系重心に置いたままにする。
-  // **意図した逸脱であることをここで宣言しておく** — 系の質量が衛星にしか無いため、質量加重
-  // 平均は衛星の側へ寄り、上の不変条件はこの2系でだけ破れる。破れ幅は衛星の距離規模。
-  test('celestial-motion: μ が未測定の惑星(orcus / quaoar)は本体を系重心に置き、不変条件を破る', () => {
-    for (const id of ['orcus', 'quaoar']) {
-      const planet = planetMotionOf(parts, id);
-      assert.equal(planet.def.mu, 0, `${id} の μ が未測定(0)であることがこのテストの前提`);
-      const t = 1e6;
-      const bary = planet.system.analyticStateAt(t);
-      assert.ok(len(sub(planet.analyticStateAt(t).r, bary.r)) < 1e-6, `${id} の本体は系重心に一致する`);
-
-      let muSys = 0;
-      for (const moon of planet.system.satellites) muSys += moon.def.mu;
-      assert.ok(muSys > 0, `${id} の衛星は μ を持つ(でなければ破れ自体が起きない)`);
-      let r: Vec3 = v3();
-      for (const moon of planet.system.satellites) {
-        r = addScaled(r, moon.analyticStateAt(t).r, moon.def.mu / muSys);
-      }
-      assert.ok(len(sub(r, bary.r)) > 1e6, `${id} の破れは衛星の距離規模: ${len(sub(r, bary.r))} m`);
     }
   });
 
