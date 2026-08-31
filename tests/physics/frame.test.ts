@@ -160,11 +160,10 @@ export function register(): void {
       assert.ok(Math.abs(len(net.r) - len(s.r)) < 1e-6 * len(s.r), `${label}: 距離が変わった`);
       const before = dot(norm(s.r), norm(bodyPos(tSample)));
       const after = dot(norm(net.r), norm(bodyPos(tNow)));
-      // 太陽-地球回転系は解析的な地球-月重心方向を軸に取るため、太陽の実方向(月による
-      // 重心補正ぶん、~3e-5 rad 級で揺れる)からわずかにずれる。月回転系の軸は
-      // 月の平均要素(二体部分)のみで組まれ、月の実位置は太陽摂動の周期項ぶん
-      // そこから最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
-      const tol = label === '太陽-地球回転系' ? 1e-4 : 3e-2;
+      // 太陽-地球回転系の x̂ は地球-月重心の主星相対方向で、地球本体から見た太陽の実方向とは
+      // 重心補正ぶん(~3e-5 rad 級)ずれる。月回転系の x̂ は月の実位置そのものなので、残るのは
+      // 回転系自身の ω が軌道面歳差を含まないことによる誤差だけ。
+      const tol = label === '太陽-地球回転系' ? 1e-4 : 1e-3;
       assert.ok(Math.abs(before - after) < tol, `${label}: 天体との相対角が変わった (${before} vs ${after})`);
       // un-bake 後のエポックは描画時刻 tNow(bake 時刻ではない)。
       assert.equal(net.t, tNow);
@@ -179,27 +178,34 @@ export function register(): void {
     assert.ok(closeState(back, s), `round trip: ${JSON.stringify(back)} vs ${JSON.stringify(s)}`);
   });
 
-  test('frame: 月回転系では月がほぼ +X 軸上にある(周期摂動ぶん最大2.5°ずれる)', () => {
-    // 月回転系の基底(x̂ = 月方向)は二体部分(平均要素)のみで組まれるため、太陽摂動の
-    // 周期項ぶん月の実位置は x̂ 軸から最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
-    for (const t of [0, 3e5, 2.4e6, 1e8]) {
+  // SPEC/CELESTIAL.md 8節「回転の基底は『主天体→対象』の方向を x̂ に取る」。基底は実状態から
+  // 組むので、周期摂動を含んでいても対象は**厳密に** x̂ 上に来る。平均要素で組んでいた頃は
+  // 太陽摂動の周期項ぶん最大 2.5° ずれていた。
+  test('frame: 月回転系では月が厳密に +X 軸上にある', () => {
+    for (const t of [0, 3e5, 2.4e6, 5e7, 1e8, 3e8]) {
       const tf = referenceFrames.transformAt(MOON_ROTATING, t, NO_ANCHORS);
       const p = toFramePoint(tf, positionOf(parts, 'moon', t));
       const dist = len(v3(p.x, p.y, p.z));
-      const angleFromXDeg = (Math.acos(p.x / dist) * 180) / Math.PI;
-      assert.ok(angleFromXDeg < 2.5, `月の位置が x̂ から離れすぎる (t=${t}): ${angleFromXDeg}°`);
+      const angleFromXDeg = (Math.acos(Math.min(1, p.x / dist)) * 180) / Math.PI;
+      assert.ok(angleFromXDeg < 1e-6, `月の位置が x̂ から離れた (t=${t}): ${angleFromXDeg}°`);
     }
   });
 
+  // 公転回転系の ω は (r×v)/|r|²。これは x̂(= 主天体→対象)の回転を厳密に表すが、**軌道面
+  // 自身の歳差ぶんを含まない** — 接触軌道面の法線 ẑ が動く速さ(月で |ω| の 1.1%、2.7e-8 rad/s)
+  // がそのまま残差になる。この機体位置(|r| ≈ 7.5e6 m)では 0.014〜0.27 m/s(実測、t を 6 点)。
+  // **しきい値はその実測から引いた** — ω×r 項をまるごと落とすと 18〜22 m/s ずれるので、
+  // 落とし忘れは 36 倍の余裕で捕まる。
   test('frame: 月回転系の速度は回転系位置の時間微分に一致（有限差分, ω×r 項の検証）', () => {
-    const t0 = 2.4e6;
-    const s = stateAt(t0);
-    const dt = 1;
-    const rRelAt = (t: number): Vec3 =>
-      toFrameState(referenceFrames.transformAt(MOON_ROTATING, t, NO_ANCHORS), kinematicState<'eci'>(t, addScaled(s.r, s.v, t - t0), s.v)).r;
-    const vFd = scale(sub(rRelAt(t0 + dt), rRelAt(t0 - dt)), 1 / (2 * dt));
-    const vAnalytic = toFrameState(referenceFrames.transformAt(MOON_ROTATING, t0, NO_ANCHORS), s).v;
-    assert.ok(len(sub(vFd, vAnalytic)) < 1e-2, `v mismatch: ${JSON.stringify(vFd)} vs ${JSON.stringify(vAnalytic)}`);
+    for (const t0 of [0, 2.4e6, 5e7, 3e8]) {
+      const s = stateAt(t0);
+      const dt = 1;
+      const rRelAt = (t: number): Vec3 =>
+        toFrameState(referenceFrames.transformAt(MOON_ROTATING, t, NO_ANCHORS), kinematicState<'eci'>(t, addScaled(s.r, s.v, t - t0), s.v)).r;
+      const vFd = scale(sub(rRelAt(t0 + dt), rRelAt(t0 - dt)), 1 / (2 * dt));
+      const vAnalytic = toFrameState(referenceFrames.transformAt(MOON_ROTATING, t0, NO_ANCHORS), s).v;
+      assert.ok(len(sub(vFd, vAnalytic)) < 0.5, `v mismatch (t=${t0}): ${JSON.stringify(vFd)} vs ${JSON.stringify(vAnalytic)}`);
+    }
   });
 
   // 自転回転系の存在意義そのもの。omega を 0 のまま置くと位置だけは正しく変換されるので
