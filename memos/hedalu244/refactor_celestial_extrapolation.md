@@ -102,23 +102,6 @@ export function attractorAccel(
 
 ## 手順
 
-### 手順1. `205d2a9f` を revert する
-
-**目的.** 外挿が1箇所へ集まる前に pivot を明示させても、書く先が無い。既定引数を戻して
-表示側の呼び出しを元の形へ返す。**挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| — | `git revert 205d2a9f`。17ファイルが `stateAt(x, x)` から `stateAt(x)` へ戻り、`CelestialEntity.stateAt` / `CelestialSystem.stateAt` / `OrbitCenter.stateAt` に既定引数 `t = pivot` が戻る |
-
-`9d0b3dec`(外挿の口を `CelestialEntity` へ下ろした commit)は戻さない。手順2でその口が
-`CelestialMotion` へさらに降りる。
-
-**達成条件と検証.** `npm run typecheck` / `npm run test:game` / `npm run test:physics`。
-`grep -rn "stateAt([a-zA-Z0-9_.]*, [a-zA-Z0-9_.]*)" src/game/` が 0 件。
-
 ### 手順2. ECI の解決と時刻キャッシュを `CelestialMotion` へ下ろす
 
 **目的.** 物理層が名指しできる場所に、外挿の口とその土台のキャッシュを置く。
