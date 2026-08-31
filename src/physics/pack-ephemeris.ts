@@ -12,7 +12,7 @@ import { ephemerisSeconds, TdbJulianDate } from './time';
 // 評価のたびに巨大な定数を足し直さずに済むことと、遠未来の元期では ET 秒の ULP が
 // 1.2e-4 s あって要求した時刻がそのまま honor されないこと。
 // payload SHA-256は非同期loaderが検証する。同期コンストラクタは既に信頼済みのbytesだけを受ける。
-export class PackedAbsoluteEphemeris {
+export class PackEphemeris {
   private readonly evaluator: ChebyshevEphemeris;
   private readonly bodyPoints: Readonly<Record<string, EphemerisPointKind>>;
 
@@ -34,8 +34,8 @@ export class PackedAbsoluteEphemeris {
     this.payloadSha256 = decoded.manifest.payloadSha256;
   }
 
-  static fromTrustedBytes(bytes: Uint8Array, epoch: TdbJulianDate): PackedAbsoluteEphemeris {
-    return new PackedAbsoluteEphemeris(decodePack(bytes), epoch);
+  static fromTrustedBytes(bytes: Uint8Array, epoch: TdbJulianDate): PackEphemeris {
+    return new PackEphemeris(decodePack(bytes), epoch);
   }
 
   // 収録している全 id ぶんの暦と種別を1度で組む。**これが供給源の外向きの形** —
@@ -59,13 +59,13 @@ export class PackedAbsoluteEphemeris {
   private pointEphemerisOf(id: string): PointEphemeris | null {
     const range = this.evaluator.validRangeOf(id);
     if (range === null) return null;
-    return new PackedPointEphemeris(this.evaluator, id, range.start, range.end);
+    return new ChebyshevPointEphemeris(this.evaluator, id, range.start, range.end);
   }
 }
 
 // 評価器の1系列ぶんを PointEphemeris として見せる窓。id を構築時に固定し、ICRF 軸を
 // ゲーム ECI 軸へ写す。原点は太陽系重心のまま。
-class PackedPointEphemeris implements PointEphemeris {
+class ChebyshevPointEphemeris implements PointEphemeris {
   constructor(
     private readonly evaluator: ChebyshevEphemeris,
     private readonly id: string,
@@ -73,10 +73,10 @@ class PackedPointEphemeris implements PointEphemeris {
     readonly validEndSimTime: number,
   ) {}
 
-  stateAt(simTime: number): KinematicState<'packed'> {
+  stateAt(simTime: number): KinematicState<'numeric'> {
     if (!Number.isFinite(simTime)) throw new RangeError(`simTime は有限値でなければならない: ${simTime}`);
     const state = this.evaluator.stateOf(this.id, simTime);
-    return kinematicState<'packed'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
+    return kinematicState<'numeric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
   }
 }
 
@@ -92,10 +92,10 @@ export async function verifyEphemerisPayload(decoded: DecodedPack): Promise<void
   );
 }
 
-export async function loadPackedAbsoluteEphemeris(
+export async function loadPackEphemeris(
   bytes: Uint8Array, epoch: TdbJulianDate,
-): Promise<PackedAbsoluteEphemeris> {
+): Promise<PackEphemeris> {
   const decoded = decodePack(bytes);
   await verifyEphemerisPayload(decoded);
-  return new PackedAbsoluteEphemeris(decoded, epoch);
+  return new PackEphemeris(decoded, epoch);
 }

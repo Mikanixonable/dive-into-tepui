@@ -47,7 +47,7 @@ import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide/
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
-// 高精度暦が収録している点を、結び先のノードへ配る。**暦は id ごとに天体本体を収録して
+// 数値暦が収録している点を、結び先のノードへ配る。**暦は id ごとに天体本体を収録して
 // いる場合と惑星系の重心を収録している場合があり、結び先がそれで分かれる**(JPL の SPK が
 // 火星以遠では系の重心しか持たないため)。宣言と食い違う点へ結ぶとその系がまるごと重心
 // オフセットぶんずれるので、ephemerisPointOf は種別が合ったときだけ暦を返す。
@@ -114,7 +114,7 @@ export class CelestialSystem implements CelestialMotions {
   // 組まれている。THREE の資源はここでは受け取らない — build(scene, …) が登録する。
   // pointFieldView はこの星系に付随する小天体の点群(持たない星系では null)。マップへ入るまで
   // 資源を確保しない表示なので、シーンへの登録は最初のマップ更新まで遅らせる。
-  // ephemerisPoints は高精度暦が収録している点の一覧。結び先のノードへ配る。
+  // ephemerisPoints は数値暦が収録している点の一覧。結び先のノードへ配る。
   constructor(
     readonly entities: readonly CelestialEntity[],
     readonly origin: CelestialEntity,

@@ -20,7 +20,7 @@ const TIMES = [0, 8.64e4, 3.156e7, -3.156e7];
 // TIMES と同じ並びの [rx, ry, rz, vx, vy, vz]。単位は m と m/s。
 type Baseline = readonly (readonly number[])[];
 
-// 暦パック経路を通すためだけの供給源。位置は時刻の一次式で、物理的な意味は無い — 検査したいのは
+// 数値暦経路を通すためだけの供給源。位置は時刻の一次式で、物理的な意味は無い — 検査したいのは
 // 「どの天体がどちらの経路を通り、原点がどちらから引かれるか」の配線だけ。**月と木星をわざと
 // 外してある**: 月は「収録済みの親 + 解析の相対」、木星は「両端とも解析」へ落ちる経路を通り、
 // 地球(ECI 原点)と火星はパック経路を通る。一次式の原点を元期に置くので、simTime=0 では
@@ -116,8 +116,8 @@ const ANALYTIC: Readonly<Record<string, Baseline>> = {
   ],
 };
 
-// 上の SOURCE を暦パックとして渡して組んだ地球中心 ECI。
-const PACKED: Readonly<Record<string, Baseline>> = {
+// 上の SOURCE を数値暦として渡して組んだ地球中心 ECI。
+const NUMERIC: Readonly<Record<string, Baseline>> = {
   earth: [
     [0, 0, 0,
       0, 0, 0],
@@ -172,7 +172,7 @@ const BARY_OFFSET: Baseline = [
 
 export function register(): void {
   const analytic = solarSystemParts();
-  const packed = solarSystemParts({}, TEST_EPOCH, SOURCE);
+  const numeric = solarSystemParts({}, TEST_EPOCH, SOURCE);
 
   const assertBaseline = (
     parts: ReturnType<typeof solarSystemParts>, id: string, rows: Baseline,
@@ -189,9 +189,9 @@ export function register(): void {
     });
   }
 
-  for (const [id, rows] of Object.entries(PACKED)) {
-    test(`eci-baseline: 暦パック構成の ${id} の ECI 位置・速度が固定値と一致する`, () => {
-      assertBaseline(packed, id, rows);
+  for (const [id, rows] of Object.entries(NUMERIC)) {
+    test(`eci-baseline: 数値暦構成の ${id} の ECI 位置・速度が固定値と一致する`, () => {
+      assertBaseline(numeric, id, rows);
     });
   }
 

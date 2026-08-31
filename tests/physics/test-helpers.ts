@@ -44,7 +44,7 @@ export const TEST_EPOCH: TdbJulianDate =
 
 // 現実の太陽系を地球原点で組む。phases は天体ごとの平均黄経の初期位相 [rad]、
 // epoch は simTime=0 が指す絶対時刻。ephemerisPoints を渡すと、そこに載っている天体だけが
-// その有効期間で高精度暦パック経路を通る。
+// その有効期間で数値暦経路を通る。
 export function solarSystemParts(
   phases: PhaseOffsets = {},
   epoch: TdbJulianDate = TEST_EPOCH,
@@ -123,7 +123,7 @@ export function testEphemerisPoints(
       validEndSimTime,
       stateAt: (simTime: number) => {
         const state = stateOf(simTime);
-        return kinematicState<'packed'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
+        return kinematicState<'numeric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
       },
     };
     points.set(id, { kind: pointKinds[id] ?? 'body', ephemeris });

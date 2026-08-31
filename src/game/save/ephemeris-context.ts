@@ -8,7 +8,7 @@ import { createJulianDate, TdbJulianDate } from '../../physics/time';
 export interface EphemerisContextValue {
   // このランの元期(simTime=0 が指す絶対時刻)。**照合の対象ではなく、継承する値。**
   epochJdTdb: number;
-  // その元期が選ぶ暦プロファイルと暦データ。高精度暦を持たない時代では両方 null。
+  // その元期が選ぶ暦プロファイルと暦パック。数値暦を持たない時代では両方 null。
   profileId: string | null;
   packId: string | null;
   packFormatVersion: number;
@@ -47,7 +47,7 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-// 暦プロファイル/暦データの識別子。高精度暦を持たない時代では null。
+// 暦プロファイル/暦パックの識別子。数値暦を持たない時代では null。
 function isProfileRef(value: unknown): value is string | null {
   return value === null || (typeof value === 'string' && value.length > 0);
 }

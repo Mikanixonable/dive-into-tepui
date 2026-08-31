@@ -1,6 +1,6 @@
-// 天体1体の運動。解析暦・暦パックのどちらでも太陽系重心中心の位置・速度・加速度を合成し、
+// 天体1体の運動。解析暦・数値暦のどちらでも太陽系重心中心の位置・速度・加速度を合成し、
 // 自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。**答えるのは自分1体ぶんの
-// 値**で、他天体との関係はここより上の層が組む。暦パックが惑星系の重心しか収録していない
+// 値**で、他天体との関係はここより上の層が組む。数値暦が惑星系の重心しか収録していない
 // 系では、惑星本体と衛星はそこから重心オフセットを介して組む。
 // 恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
 // 評価結果は時刻 t をキーにした固定長リング(TimeRing)でメモ化する。
@@ -146,7 +146,7 @@ export abstract class CelestialMotion {
   // 主天体。惑星なら恒星、衛星ならその惑星、恒星自身は null。
   abstract get primary(): CelestialMotion | null;
 
-  // この天体1体ぶんの高精度暦。暦に収録されていない天体では null。
+  // この天体1体ぶんの数値暦。暦に収録されていない天体では null。
   private bodyEphemeris: PointEphemeris | null = null;
 
   // ECI 化の変換器。どの天体を原点に置くかは系レベルの選択なので、系から結んでもらう。
@@ -257,13 +257,13 @@ export abstract class CelestialMotion {
   }
 
   // 自分自身が暦に収録されている範囲での重心中心位置・速度。収録外・有効期間外では null。
-  ownPackedStateAt(t: number): KinematicState<'packed'> | null {
+  ownNumericStateAt(t: number): KinematicState<'numeric'> | null {
     return boundStateAt(this.bodyEphemeris, t);
   }
 
-  // 暦パックが答えるこの天体の重心中心位置・速度。答えられなければ null。
-  packedStateAt(t: number): KinematicState<'packed'> | null {
-    return this.ownPackedStateAt(t);
+  // 数値暦が答えるこの天体の重心中心位置・速度。答えられなければ null。
+  numericStateAt(t: number): KinematicState<'numeric'> | null {
+    return this.ownNumericStateAt(t);
   }
 
 }
@@ -363,7 +363,7 @@ export abstract class OrbitingMotion extends CelestialMotion {
   abstract get keplerOrbit(): KeplerOrbit;
 
   // 自分に固定した回転基準系(x̂ = 主天体→自分、ẑ = 軌道面法線: SPEC/CELESTIAL.md 8節)。
-  // **基底は常に実状態から組む** — 供給源が暦パックでも解析暦でも同じ定義なので、パックの
+  // **基底は常に実状態から組む** — 供給源が数値暦でも解析暦でも同じ定義なので、数値暦の
   // 有効期間の端をまたいでも定義は変わらない。角運動量が縮退している時だけ、平面が決まらない
   // ので二体要素へ落ちる。
   orbitFrameRotationAt(t: number): FrameRotation {
@@ -461,28 +461,28 @@ export abstract class OrbitingMotion extends CelestialMotion {
 
   // 自分の軌道要素が乗っている点を暦が直接収録している範囲での状態。既定は自分自身で、
   // 惑星は系の重心を答える(惑星の要素は本体ではなく系の重心の軌道なので)。
-  protected orbitPointPackedStateAt(t: number): KinematicState<'packed'> | null {
-    return this.ownPackedStateAt(t);
+  protected orbitPointNumericStateAt(t: number): KinematicState<'numeric'> | null {
+    return this.ownNumericStateAt(t);
   }
 
   // 自分の軌道が乗っている点の、主天体に対する実位置・実速度。**周期項を含む。**
-  // 暦パックが自分の軌道点と主天体の両方を直接収録している期間はパック由来、それ以外は
+  // 数値暦が自分の軌道点と主天体の両方を直接収録している期間は数値暦由来、それ以外は
   // 解析暦由来。どちらも同じ「実状態」なので、境界で定義は変わらない。
   private orbitRelStateAt(t: number): KinematicState<'primaryRel'> {
-    return this.packedOrbitRelStateAt(t) ?? this.analyticOrbitRelStateAt(t);
+    return this.numericOrbitRelStateAt(t) ?? this.analyticOrbitRelStateAt(t);
   }
 
   // 解析暦での、自分の軌道が乗っている点の主天体相対状態。惑星は系の重心、衛星は自分自身。
   protected abstract analyticOrbitRelStateAt(t: number): KinematicState<'primaryRel'>;
 
-  // 暦パックが自分の軌道の中心天体と、その軌道が乗っている点の両方を直接収録している
+  // 数値暦が自分の軌道の中心天体と、その軌道が乗っている点の両方を直接収録している
   // 有効期間での相対位置・速度。引けなければ null。
-  private packedOrbitRelStateAt(t: number): KinematicState<'primaryRel'> | null {
-    // 合成した packedStateAt を使わないのは、未収録の衛星に「収録済みの親 + 解析の相対」を
+  private numericOrbitRelStateAt(t: number): KinematicState<'primaryRel'> | null {
+    // 合成した numericStateAt を使わないのは、未収録の衛星に「収録済みの親 + 解析の相対」を
     // 足し込むと、主天体を引いた差が結局その解析の相対そのものになるため — パック由来と
     // 名乗る値が実は解析由来になる。引けないなら解析経路だと分かる形にしておく。
-    const own = this.orbitPointPackedStateAt(t);
-    const primaryState = this.primary.ownPackedStateAt(t);
+    const own = this.orbitPointNumericStateAt(t);
+    const primaryState = this.primary.ownNumericStateAt(t);
     if (own === null || primaryState === null) return null;
     return toPrimaryRelative(t, own, primaryState);
   }
@@ -505,8 +505,8 @@ export class PlanetMotion extends OrbitingMotion {
   get keplerOrbit(): KeplerOrbit { return this.system.orbit; }
 
   // 惑星の軌道要素が乗っているのは本体ではなく系の重心。
-  protected override orbitPointPackedStateAt(t: number): KinematicState<'packed'> | null {
-    return this.system.ownPackedStateAt(t) ?? this.ownPackedStateAt(t);
+  protected override orbitPointNumericStateAt(t: number): KinematicState<'numeric'> | null {
+    return this.system.ownNumericStateAt(t) ?? this.ownNumericStateAt(t);
   }
 
   // 系の重心の主星相対状態。解析暦での惑星の運動は純粋な二体解なので、これが実状態そのもの。
@@ -515,10 +515,10 @@ export class PlanetMotion extends OrbitingMotion {
   }
 
   // 本体を収録していない系は、収録された系の重心から重心オフセットぶんを差し引いて補う。
-  override packedStateAt(t: number): KinematicState<'packed'> | null {
-    const own = this.ownPackedStateAt(t);
+  override numericStateAt(t: number): KinematicState<'numeric'> | null {
+    const own = this.ownNumericStateAt(t);
     if (own !== null) return own;
-    const bary = this.system.ownPackedStateAt(t);
+    const bary = this.system.ownNumericStateAt(t);
     if (bary === null) return null;
     return addPrimaryRelative(
       bary, toPrimaryRelative(t, this.analyticStateAt(t), this.system.analyticStateAt(t)));
@@ -582,11 +582,11 @@ export class SatelliteMotion extends OrbitingMotion {
     );
   }
 
-  // 未収録の衛星は、暦パックが答える惑星本体へ惑星相対モデルを足して補う。
-  override packedStateAt(t: number): KinematicState<'packed'> | null {
-    const own = this.ownPackedStateAt(t);
+  // 未収録の衛星は、数値暦が答える惑星本体へ惑星相対モデルを足して補う。
+  override numericStateAt(t: number): KinematicState<'numeric'> | null {
+    const own = this.ownNumericStateAt(t);
     if (own !== null) return own;
-    const planet = this.planet.packedStateAt(t);
+    const planet = this.planet.numericStateAt(t);
     return planet === null ? null
       : addPrimaryRelative(planet, this.system.satelliteRelStateAt(this.index, t));
   }

@@ -29,7 +29,7 @@ export class PlanetSystem {
   private readonly membersCache = new TimeRing<SystemMembers>();
   private planetBody: PlanetMotion | null = null;
 
-  // 系の重心を直接収録した高精度暦。収録されていなければ null。
+  // 系の重心を直接収録した数値暦。収録されていなければ null。
   private baryEphemeris: PointEphemeris | null = null;
 
   // id は惑星本体と同じ(系と本体は1対1)。暦を id で結ぶのに要る。orbit は系の重心が
@@ -42,7 +42,7 @@ export class PlanetSystem {
   }
 
   // 系の重心を暦が直接収録している範囲での状態。収録外・有効期間外では null。
-  ownPackedStateAt(t: number): KinematicState<'packed'> | null {
+  ownNumericStateAt(t: number): KinematicState<'numeric'> | null {
     return boundStateAt(this.baryEphemeris, t);
   }
 
