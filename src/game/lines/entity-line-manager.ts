@@ -19,8 +19,8 @@ const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操�
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
 const LINE_STYLE = {
-  enemyOrbit: { color: C.COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
-  baseOrbit: { color: C.COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  enemyLine: { color: C.COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  baseLine: { color: C.COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
 } as const satisfies Record<string, LineStyle>;
 
 // ターゲットの軌道はほぼ自機の軌道と重なることが多く(近傍ランデブーを狙うため)、
@@ -74,9 +74,9 @@ export class EntityLineManager {
       // 戦闘ビューの自艦・使用条件を満たさない機体は、積分線の代わりに解析楕円で描く。
       const ownEllipse = showLines && !overviewMode;
       const fallbackEllipse = !trajectoryEligible && overviewMode && visibleWhenUntargeted && asTarget === null;
-      if (asTarget !== null && lineVisible) entity.showOrbitLine(asTarget);
-      else if (ownEllipse || fallbackEllipse) entity.showOrbitLine(styles.ellipse);
-      else entity.hideOrbitLine();
+      if (asTarget !== null && lineVisible) entity.showEllipseLine(asTarget);
+      else if (ownEllipse || fallbackEllipse) entity.showEllipseLine(styles.ellipse);
+      else entity.hideEllipseLine();
       if (showLines && !ownEllipse) entity.showPredictedLine(styles.predicted);
       else entity.hidePredictedLine();
       if (showLines && pastDuration > 0) entity.showActualLine(styles.actual);
@@ -98,7 +98,7 @@ export class EntityLineManager {
     for (const enemy of this.entities.enemies) {
       const visibility = visibilityPolicy?.entity('ship');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
-      const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyOrbit, color: enemy.orbitLineColor };
+      const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
       applyEntityLines(
         enemy, targetStyleOf(enemy), lineVisible, lineVisible && enemy.alive, overviewMode && enemy.showTrajectoryLine,
         sameTrajectoryStyle(enemyLineStyle),
@@ -108,7 +108,7 @@ export class EntityLineManager {
       const lineVisible = visibilityPolicy?.entity('base').orbit ?? false;
       applyEntityLines(
         base, targetStyleOf(base), lineVisible, lineVisible, overviewMode && base.showTrajectoryLine,
-        sameTrajectoryStyle(LINE_STYLE.baseOrbit),
+        sameTrajectoryStyle(LINE_STYLE.baseLine),
       );
     }
   }
@@ -125,7 +125,7 @@ export class EntityLineManager {
         const predictedTo = entity.predictionTruncated ? null : simTime + duration;
         entity.syncTrajectoryLines(
           frame, simTime, displayTime, pastDuration, predictedTo, celestialSystem, fo, camera, frameAnchors);
-        entity.syncOrbitLine(displayTime, celestialSystem, fo, camera, frameAnchors, orbitRef);
+        entity.syncEllipseLine(displayTime, celestialSystem, fo, camera, frameAnchors, orbitRef);
       }
     }
   }

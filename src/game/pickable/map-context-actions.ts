@@ -13,8 +13,8 @@ import { TEMP_WINDOW_GROUP } from '../hud/overlay-manager';
 import { LAGRANGE_ID, lagrangeParentId } from '../hud/object-groups';
 import { pickGlyph } from '../marker/pick-glyphs';
 import { MapPickable, pickNearest } from './map-pickable';
-import { OrbitPickable, pickNearestOrbit } from './orbit-pickable';
-import type { OrbitPickables } from './orbit-pickables';
+import { LinePickable, pickNearestLine } from './line-pickable';
+import type { LinePickables } from './line-pickables';
 import { focusTargetId } from '../camera/focus-target';
 import { PhysicalObjectListPanel } from '../hud/panels/physical-object-list-panel';
 import type { Input } from '../input/input';
@@ -61,15 +61,15 @@ interface PartWindowEntry {
   readonly partId: string;
 }
 
-interface OrbitWindowEntry {
+interface LineWindowEntry {
   readonly win: PropertyWindow<MenuAction>;
   readonly orbitKey: string;
 }
 
-const ORBIT_PICK_KIND_LABEL: Record<OrbitPickable['kind'], string> = {
+const ORBIT_PICK_KIND_LABEL: Record<LinePickable['kind'], string> = {
   'orbit-body': '公転軌道', 'orbit-ship': '船の軌道', 'orbit-guide': '軌道ガイド',
 };
-const ORBIT_CALC_METHOD_LABEL: Record<OrbitPickable['method'], string> = {
+const ORBIT_CALC_METHOD_LABEL: Record<LinePickable['method'], string> = {
   analytic: '解析軌道', predicted: '予測軌道', guide: '軌道ガイド',
 };
 
@@ -80,7 +80,7 @@ export class MapContextActions {
   // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
   private readonly partWindows = new Map<string, PartWindowEntry>();
-  private readonly orbitWindows = new Map<string, OrbitWindowEntry>();
+  private readonly lineWindows = new Map<string, LineWindowEntry>();
   private readonly physicalObjectListPanel: PhysicalObjectListPanel;
   private readonly propertyRows: MapPropertyRows;
   private readonly pickableMenu: MapPickableMenu;
@@ -112,7 +112,7 @@ export class MapContextActions {
     simSpeedManager: SimSpeedManager,
     pauseMenu: PauseMenu,
     private readonly pickables: MapPickables,
-    private readonly orbitPickables: OrbitPickables,
+    private readonly linePickables: LinePickables,
     private readonly activePlayers: ActivePlayerController,
     private readonly frameControls: FrameControls,
     activeStage: Stage,
@@ -172,11 +172,11 @@ export class MapContextActions {
   // (公転軌道・船の軌道・軌道ガイド)への当たり判定を試みる。当たれば軌道のプロパティ
   // ウィンドウを開いて消費する。handleEmptySpaceRightClick より前、editor.handleMapPointer
   // より後に呼ぶ(11節の判定順序)。
-  handleOrbitLineRightClick(input: Input): void {
+  handleLineRightClick(input: Input): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
-      const orbit = pickNearestOrbit(
-        this.orbitPickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
+      const orbit = pickNearestLine(
+        this.linePickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
         pickRadiusSq(ORBIT_LINE_PICK_PX_SQ, ORBIT_LINE_PICK_PX_SQ_COARSE),
       );
       if (!orbit) return false;
@@ -257,8 +257,8 @@ export class MapContextActions {
 
   // openPartPropertyWindow と同じパターン: 専用 Map で管理し、排他グループを持たせず
   // メインのプロパティウィンドウと共存させる。操作項目は持たない(12.1節)。
-  private openOrbitPropertyWindow(clientX: number, clientY: number, orbit: OrbitPickable): void {
-    const existing = this.orbitWindows.get(orbit.key);
+  private openOrbitPropertyWindow(clientX: number, clientY: number, orbit: LinePickable): void {
+    const existing = this.lineWindows.get(orbit.key);
     if (existing) {
       existing.win.moveTo(clientX, clientY);
       existing.win.bringToFront();
@@ -267,12 +267,12 @@ export class MapContextActions {
     const w = new PropertyWindow<MenuAction>(
       this.hud.layers.window, clientX, clientY, this.orbitWindowContent(orbit), this.hud.overlayManager,
     );
-    const entry: OrbitWindowEntry = { win: w, orbitKey: orbit.key };
-    this.orbitWindows.set(orbit.key, entry);
-    w.onClose = () => this.orbitWindows.delete(orbit.key);
+    const entry: LineWindowEntry = { win: w, orbitKey: orbit.key };
+    this.lineWindows.set(orbit.key, entry);
+    w.onClose = () => this.lineWindows.delete(orbit.key);
   }
 
-  private orbitWindowContent(orbit: OrbitPickable): PropertyWindowContent<MenuAction> {
+  private orbitWindowContent(orbit: LinePickable): PropertyWindowContent<MenuAction> {
     return {
       title: ORBIT_PICK_KIND_LABEL[orbit.kind],
       rows: [{ key: 'method', label: '計算方法', value: ORBIT_CALC_METHOD_LABEL[orbit.method] }],
@@ -285,7 +285,7 @@ export class MapContextActions {
   // 軌道の所属先(周回天体・船自身・ラグランジュ点/主星/副星)を、既存の MapPickable 候補列から
   // 引き直して関連項目にする。候補列に現れていない(表示・選択の対象から外れている)所属は
   // その回だけ出さない。
-  private relatedItemsForOrbit(orbit: OrbitPickable): readonly PropertyWindowRelatedItem[] {
+  private relatedItemsForOrbit(orbit: LinePickable): readonly PropertyWindowRelatedItem[] {
     const items: PropertyWindowRelatedItem[] = [];
     for (const ownerKey of orbit.ownerKeys) {
       const target = this.pickables.pickables.find((candidate) => this.windowKey(candidate) === ownerKey);
@@ -487,7 +487,7 @@ export class MapContextActions {
     this.physicalObjectListPanel.setVisible(overviewMode);
     // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
     // 戦闘中は候補列を更新せず、ウィンドウもないため、毎フレームの Map 生成と行導出を省く。
-    if (!overviewMode && this.windows.size === 0 && this.partWindows.size === 0 && this.orbitWindows.size === 0) return;
+    if (!overviewMode && this.windows.size === 0 && this.partWindows.size === 0 && this.lineWindows.size === 0) return;
     const items = this.pickables.pickables;
     if (overviewMode) {
       // ラグランジュ点は自分を持つ天体(衛星ならその衛星自身)、それ以外の天体は主星/主天体を
@@ -533,8 +533,8 @@ export class MapContextActions {
       ]);
       entry.win.syncItems(this.partWindowContent(ship, part).items);
     }
-    for (const [key, entry] of [...this.orbitWindows]) {
-      const orbit = this.orbitPickables.pickables.find((candidate) => candidate.key === key);
+    for (const [key, entry] of [...this.lineWindows]) {
+      const orbit = this.linePickables.pickables.find((candidate) => candidate.key === key);
       if (!orbit) { entry.win.close(); continue; }
       entry.win.syncRelatedItems(this.relatedItemsForOrbit(orbit), '所属');
     }
@@ -563,7 +563,7 @@ export class MapContextActions {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
     for (const entry of [...this.partWindows.values()]) entry.win.close();
-    for (const entry of [...this.orbitWindows.values()]) entry.win.close();
+    for (const entry of [...this.lineWindows.values()]) entry.win.close();
   }
 
   // 開いているメニュー・ウィンドウを畳んだうえで、常設の一覧パネルと自身のメニューを取り除く。

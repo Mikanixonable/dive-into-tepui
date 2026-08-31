@@ -31,7 +31,7 @@ import { ElementsForm, LagrangeForm, ObjectType, ReferenceCelestialBody, ObjectP
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { STAGE_CONTROL_ENEMY_SHAPES, StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
-import { OrbitLine } from '../lines/orbit-line';
+import { EllipseLine } from '../lines/ellipse-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
@@ -62,7 +62,7 @@ export class CreativeStage extends Stage {
   private readonly waveAttack: WaveAttack;
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
   private waveAttackEnabled: boolean;
-  private readonly previewOrbitLine: OrbitLine;
+  private readonly previewEllipseLine: EllipseLine;
   // 物体配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
@@ -97,8 +97,8 @@ export class CreativeStage extends Stage {
       this.proteinDisplay = restoredProtein.enemyKind.display;
     }
 
-    this.previewOrbitLine = new OrbitLine({ color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan });
-    this._scene.add(this.previewOrbitLine.line);
+    this.previewEllipseLine = new EllipseLine({ color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan });
+    this._scene.add(this.previewEllipseLine.line);
 
     this.placerPanel = new ObjectPlacerPanel(
       this._hud.mapRoot, this._hud.layers.popup, this._celestialSystem, this._hud.overlayManager,
@@ -297,11 +297,11 @@ export class CreativeStage extends Stage {
     displayTime: number,
   ): void {
     if (!this.preview) {
-      this.previewOrbitLine.sync(null, fo, camera);
+      this.previewEllipseLine.sync(null, fo, camera);
       this._markerManager.fadeOut('creative-preview');
       return;
     }
-    this.previewOrbitLine.sync(this.preview.elements, fo, camera);
+    this.previewEllipseLine.sync(this.preview.elements, fo, camera);
     if (overviewMode
       && isOccluded(cameraPos, this.preview.pos, celestialBodies, displayTime)) {
       this._markerManager.hide('creative-preview');
@@ -495,8 +495,8 @@ export class CreativeStage extends Stage {
   // 配置プレビューの軌道線・設定パネル・物体配置パネルを片付けたうえで super.dispose() を呼ぶ。
   dispose(): void {
     super.dispose();
-    this.previewOrbitLine.line.removeFromParent();
-    this.previewOrbitLine.dispose();
+    this.previewEllipseLine.line.removeFromParent();
+    this.previewEllipseLine.dispose();
     this.stageControlsPanel.element.remove();
     this.placerPanel.dispose();
   }
