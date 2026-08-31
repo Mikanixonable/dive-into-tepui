@@ -72,9 +72,9 @@ export abstract class CelestialEntity {
     return this.eciCache.put(pivot, this.eci.celestialBodyAt(pivot, this.motion));
   }
 
-  // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと pivot 自身の
-  // 厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
-  stateAt(pivot: number, t: number = pivot): KinematicState {
+  // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t に pivot と同じ値を
+  // 渡せば厳密な値になる。|t − pivot| は積分1歩の幅程度に収めること。
+  stateAt(pivot: number, t: number): KinematicState {
     return celestialBodyStateAt(this.bodyAt(pivot), t);
   }
 
@@ -114,7 +114,7 @@ export abstract class CelestialEntity {
   referenceElementsAt(t: number): OrbitalElements | null {
     const centerMotion = this.motion.primary;
     if (centerMotion === null) return null;
-    return orbitalElementsOf(this.stateAt(t), this.eci.celestialBodyAt(t, centerMotion));
+    return orbitalElementsOf(this.stateAt(t, t), this.eci.celestialBodyAt(t, centerMotion));
   }
 
   // 参照軌道線を表示時刻の接触軌道要素と濃さへ同期する(実体が無ければ生成して scene へ登録)。
@@ -137,7 +137,7 @@ export abstract class CelestialEntity {
     const isSatellite = this.motion.kind === 'satellite';
     const nearDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : PLANET_ORBIT_LINE_FADE_NEAR_DIST;
     const farDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_FAR_DIST : PLANET_ORBIT_LINE_FADE_FAR_DIST;
-    const dist = len(sub(this.stateAt(simTime).r, cameraPos));
+    const dist = len(sub(this.stateAt(simTime, simTime).r, cameraPos));
     const t = Math.min(1, Math.max(0, (dist - nearDist) / (farDist - nearDist)));
     return t * REFERENCE_LINE_OPACITY;
   }
@@ -151,7 +151,7 @@ export abstract class CelestialEntity {
   // cameraPos から見たこの天体の視半径。影を落としうるか・環をどれで代表させるかの尺度で、
   // 大きく見える天体ほどその影が画面に写っている何かへ落ちる見込みが高い。
   apparentRadiusFrom(cameraPos: Vec3, simTime: number): number {
-    const center = this.stateAt(simTime).r;
+    const center = this.stateAt(simTime, simTime).r;
     return this.def.radius / Math.max(1, len(sub(center, cameraPos)));
   }
 
@@ -163,7 +163,7 @@ export abstract class CelestialEntity {
   ): AtmosphereCandidate | null {
     const optics = this.atmosphereOptics;
     if (optics === null) return null;
-    const center = this.stateAt(displayTime).r;
+    const center = this.stateAt(displayTime, displayTime).r;
     return {
       body: { center: fo.RtoThreeV3(center), surfaceRadius: this.def.radius, optics },
       distance: len(sub(cameraPos, center)),
@@ -190,7 +190,7 @@ export abstract class CelestialEntity {
   // 扱いと揃える。
   protected sunIrradianceAt(star: StarEntity | null, pos: Vec3, displayTime: number): number {
     if (star === null) return SUN_IRRADIANCE_1AU;
-    const d = len(sub(pos, star.stateAt(displayTime).r));
+    const d = len(sub(pos, star.stateAt(displayTime, displayTime).r));
     if (d <= 0) return SUN_IRRADIANCE_1AU;
     return irradianceAtDistance(star.radiantIntensity, d);
   }
