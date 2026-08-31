@@ -53,8 +53,8 @@ export class OrbitReferenceSelector {
     celestialSystem: CelestialSystem, t: number,
   ): OrbitReference {
     if (this.mode === 'earth' || this.mode === 'moon') {
-      const found = celestialBodies.find((a) => a.id === this.mode);
-      if (found) {
+      const found = celestialSystem.find(this.mode)?.motion;
+      if (found !== undefined) {
         return {
           id: found.id, state: found.stateAt(t), hasMass: true, attractor: found,
           entity: null, fixed: true,
