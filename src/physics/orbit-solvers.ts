@@ -24,9 +24,8 @@ export interface OrbitCrossingsResult {
 // 折れ線の列(区間ごとに1本)で、渡されたときはその上を順に探して最初に見つかった昇交点・降交点を
 // 返す。空なら state の軌道要素から解析的に求める。ノード通過時刻 t における中心天体の ECI 位置は、
 // 呼び出し側が精密な天体暦を持っていれば centerPositionAt でそれを渡すこと — 既定の
-// 既定の pivot からの外挿は弾道近似でしかなく、月のように数時間〜数日先まで
-// 公転するものには不十分(表示側が精密暦で un-bake すると、この弾道外挿との差がそのまま交点位置の
-// ズレになる)。
+// centerPivot からの外挿は弾道近似でしかなく、月のように数時間〜数日先まで公転するものには
+// 不十分(表示側が精密暦で un-bake すると、この弾道外挿との差がそのまま交点位置のズレになる)。
 export function solveEquatorCrossings(
   state: KinematicState,
   center: CelestialMotion,

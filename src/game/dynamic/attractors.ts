@@ -62,7 +62,7 @@ export function classifyAttractors(
   }
   // セル一辺が grid 側の顔ぶれで決まるため、集め終えてからグリッドを作る。
   const grid = new SpatialGrid<CelestialMotion>(gridCellSize(gridded));
-  for (const a of gridded) grid.insert(a, a.positionAt(pivot, pivot));
+  for (const a of gridded) grid.insert(a, a.positionAt(pivot));
   return { always, grid };
 }
 

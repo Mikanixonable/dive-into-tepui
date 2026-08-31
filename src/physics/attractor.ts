@@ -14,7 +14,7 @@ import { Vec3, len, lenSq, sub, v3 } from '../math/vec3';
 // 第2項が距離ゼロで消え、直接引力そのものになる。距離ゼロの項は発散を避けて寄与ゼロとして扱う。
 // 毎ステップ全エンティティぶん走る経路なので、中間の Vec3 を作らずスカラで畳む。
 export function attractorAccel(
-  r: Vec3, attractor: CelestialMotion, pivot: number, t: number,
+  r: Vec3, attractor: CelestialMotion, pivot: number, t: number = pivot,
 ): Vec3 {
   const b = attractor.positionAt(pivot, t);
   const mu = attractor.def.mu;
@@ -52,7 +52,7 @@ export function strongestAttractor(
   let bestMagSq = -Infinity;
   for (let i = 0; i < attractors.length; i++) {
     const attractor = attractors[i]!;
-    const magSq = lenSq(attractorAccel(r, attractor, pivot, pivot));
+    const magSq = lenSq(attractorAccel(r, attractor, pivot));
     if (best === null || magSq > bestMagSq) { best = attractor; bestMagSq = magSq; }
   }
   return best!;
@@ -68,7 +68,7 @@ export function nearestAtmosphereBody(
   let bestDistSq = Infinity;
   for (const body of bodies) {
     if (body.atmosphereAt(pivot) === null) continue;
-    const distSq = lenSq(sub(r, body.positionAt(pivot, pivot)));
+    const distSq = lenSq(sub(r, body.positionAt(pivot)));
     if (distSq < bestDistSq) { best = body; bestDistSq = distSq; }
   }
   return best;
@@ -80,7 +80,7 @@ export function localOrbitPeriod(
   r: Vec3, attractors: readonly CelestialMotion[], pivot: number,
 ): number {
   const attractor = strongestAttractor(r, attractors, pivot);
-  return keplerPeriod(len(sub(r, attractor.positionAt(pivot, pivot))), attractor.def.mu);
+  return keplerPeriod(len(sub(r, attractor.positionAt(pivot))), attractor.def.mu);
 }
 
 // state が周回している(離心率 1 未満の)主天体。公転回転系の基底を組めるかどうかの判定は
@@ -94,7 +94,7 @@ export function orbitingAttractorOf(
   return elements !== null && elements.e < 1 ? attractor : null;
 }
 
-// 天体一覧だけを情報源にする FrameAnchorSource。天体以外の基準・回転対象は解決できない。
+// 天体一覧だけを情報源にする FrameAnchorSource。渡した天体に無い id へは null を答える。
 export function bodyAnchorSource(
   bodies: readonly CelestialMotion[], bodiesPivot: number,
 ): FrameAnchorSource {

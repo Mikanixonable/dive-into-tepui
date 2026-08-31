@@ -67,11 +67,10 @@ export class EquatorNodeMarkerPair {
     this.celestialBodies = frameAnchors.bodies;
     this.celestialBodiesPivot = frameAnchors.bodiesPivot;
     if (state === null) return;
-    // 解析楕円は displayTime の状態ベクトルから作るので、その中心選択も同じ時刻の天体を
-    // 使う。折れ線側は state が simTime のままなので、従来どおり state.t の天体を使う。
-    const centerBodies = frame === null ? frameAnchors.bodies : celestialSystem.celestialMotions;
-    const centerPivot = frame === null ? frameAnchors.bodiesPivot : displayTime;
-    const center = strongestAttractor(state.r, centerBodies, centerPivot);
+    // 中心天体は state 自身の時刻の天体位置で選ぶ — 解析楕円は displayTime、折れ線は
+    // simTime の状態ベクトルから作るので、時刻を揃えないと中心の選定だけが別の瞬間になる。
+    const centerPivot = state.t;
+    const center = strongestAttractor(state.r, celestialSystem.celestialMotions, centerPivot);
     const eqNormal = center.degree2At(centerPivot)?.pole;
     if (!eqNormal) return;
 
