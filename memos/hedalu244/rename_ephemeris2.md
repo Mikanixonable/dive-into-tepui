@@ -490,18 +490,7 @@ numericEphemeris ではない** — 規範3 の `numeric` の限定がここで�
 セーブのキーなので据置。`tools/perf-probe.mjs` の `setOrbitLineFor` は HUD の行ラベルを
 操作する関数でこの型とは無関係なので据置。
 
-### 手順7.(任意)`src/physics/ephemeris/` へ畳む
-
-`ephemeris-catalog` / `ephemeris-profile` / `pack-ephemeris` / `point-ephemeris` /
-`ephemeris-pack/` が `physics/` 直下に散っている。1ディレクトリへ畳めば族語をファイル名から
-落とせる(`catalog.ts` / `profile.ts` / `pack.ts` / `point.ts` / `pack-format.ts` /
-`pack-evaluator.ts` / `pack-types.ts`)。
-
-**`src/assets/ephemeris/` は据置。** `tools/ephemeris/cli.mjs:15` がフォーマット定義のパスを
-ハードコードしているので追従が要る — **これは `npm run typecheck` でも `npm run test` でも
-落ちない。**
-
-**検証.** `npm run typecheck` / `npm run test`(全層)/ 達成目標6 のコマンド。
+**手順7(`src/physics/ephemeris/` へ畳む)も実施済み。**
 
 ## 3.2 達成目標
 

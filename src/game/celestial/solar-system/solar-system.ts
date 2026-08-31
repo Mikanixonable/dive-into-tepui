@@ -1,7 +1,7 @@
 // 現実の太陽系。各系の構築関数を呼んで全天体の運動と見た目を組み、宣言順に並べた
 // CelestialSystem を返す。ECI の中心(originId)は呼び出し側の選択で、同じ太陽系を別の原点で
 // 組める。数値暦を渡すと、収録された天体はその有効期間で数値暦経路を通る。
-import { EphemerisPoints } from '../../../physics/point-ephemeris';
+import { EphemerisPoints } from '../../../physics/ephemeris/point';
 import { PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';

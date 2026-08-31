@@ -6,8 +6,8 @@ import {
   ChebyshevTimeOutOfRangeError,
   evaluateChebyshevWithDerivative,
   findChebyshevSegmentIndex,
-} from '../../src/physics/ephemeris-pack/evaluator';
-import { ChebyshevPack } from '../../src/physics/ephemeris-pack/types';
+} from '../../src/physics/ephemeris/pack-evaluator';
+import { ChebyshevPack } from '../../src/physics/ephemeris/pack-types';
 import { len, Vec3, v3 } from '../../src/math/vec3';
 
 function assertVec3Close(actual: Vec3, expected: Vec3, tolerance = 1e-12): void {
