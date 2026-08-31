@@ -1,5 +1,4 @@
-// ブースターの段構成・燃焼状態を表示する常設パネル。
-// このクラスはゲームのモデルを直接参照しない。ゲーム側で作った表示用の
+// ブースターの段構成・燃焼状態を表示する常設パネル。ゲーム側で作った表示用の
 // スナップショットを sync し、操作は setHandlers で注入されたコールバックへ渡す。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { Button } from '../widgets';
@@ -43,18 +42,22 @@ interface BurnManagementDom {
   readonly burnState: HTMLElement;
 }
 
+// 非有限値・負値を 0 へ丸める。
 function finiteNonNegative(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
+// 質量(kg)を桁区切り付きの表示文字列にする。
 function formatMass(value: number): string {
   return `${Math.round(finiteNonNegative(value)).toLocaleString()} kg`;
 }
 
+// 燃料の現在値/最大値(kg)を桁区切り付きの表示文字列にする。
 function formatFuel(value: number, max: number): string {
   return `${Math.round(finiteNonNegative(value)).toLocaleString()} / ${Math.round(finiteNonNegative(max)).toLocaleString()} kg`;
 }
 
+// 燃焼状態の内部文字列を日本語ラベルへ写す。未知の状態はそのまま返す。
 function stateLabel(state: string): string {
   const labels: Record<string, string> = {
     idle: '待機',
@@ -80,6 +83,7 @@ export class BurnManagementPanel {
   private handlers: BurnManagementPanelHandlers = {};
   private model: BurnManagementViewModel | null = null;
 
+  // 表示要素を els から取り出し、操作ボタン3種を組み立てる。
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
     this.dom = {
       stageCount: this.required('burn-stage-count'),
@@ -103,12 +107,15 @@ export class BurnManagementPanel {
     this.setButtonsEnabled(false, false, false);
   }
 
+  // els から id の要素を取り出す。無ければ HUD の DOM 構成が壊れているので例外にする。
   private required(id: string): HTMLElement {
     const element = this.els.get(id);
     if (!element) throw new Error(`BurnManagementPanel: missing HUD element ${id}`);
     return element;
   }
 
+  // burn-actions プレースホルダへ操作ボタンを1つ足す。key を渡すとキーボードショートカットの
+  // aria 属性も付く。
   private addButton(label: string, title: string, key: { label: string } | undefined, onClick: () => void): Button {
     const container = this.els.get('burn-actions');
     if (!container) throw new Error('BurnManagementPanel: missing HUD element burn-actions');
@@ -127,7 +134,7 @@ export class BurnManagementPanel {
   /** 表示モデルを同期する。null はブースターのない機体としてパネルを隠す。 */
   public sync(view: BurnManagementViewModel | null): void {
     this.model = view;
-    const panel = document.getElementById('burn-management-panel');
+    const panel = this.els.get('burn-management-panel');
     if (!panel) return;
     panel.classList.toggle('hidden', view === null);
     if (!view) {
@@ -147,7 +154,7 @@ export class BurnManagementPanel {
     this.dom.totalMass.textContent = formatMass(view.totalMass);
     this.dom.fuelValue.textContent = fuelText;
     this.dom.fuelFill.style.width = `${(fuelRatio * 100).toFixed(1)}%`;
-    this.dom.fuelMeter.classList.toggle('critical', fuelRatio <= 0.2);
+    this.dom.fuelFill.classList.toggle('danger', fuelRatio <= 0.2);
     this.dom.fuelMeter.setAttribute('aria-valuemin', '0');
     this.dom.fuelMeter.setAttribute('aria-valuemax', String(activeFuelMax));
     this.dom.fuelMeter.setAttribute('aria-valuenow', String(activeFuel));
@@ -158,7 +165,6 @@ export class BurnManagementPanel {
     const noFuel = activeFuelMax <= 0 || activeFuel <= 0;
     const atMax = maxStages !== null && stageCount >= maxStages;
     this.setButtonsEnabled(
-      // 「ブースター追加」は現段階では暫定 UI。ゲーム側が実装済みと明示した時だけ有効化する。
       (view.canAttach ?? false) && !atMax,
       (view.canToggleIgnition ?? true) && !noFuel,
       (view.canDecouple ?? true) && stageCount > 0,
@@ -166,6 +172,7 @@ export class BurnManagementPanel {
     this.ignitionButton.setOn(view.ignitionOn ?? (state === 'igniting' || state === 'burning'));
   }
 
+  // 3操作ボタンの有効/無効を一括で反映する。
   private setButtonsEnabled(attach: boolean, ignition: boolean, decouple: boolean): void {
     this.attachButton.setEnabled(attach);
     this.ignitionButton.setEnabled(ignition);

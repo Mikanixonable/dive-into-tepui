@@ -2,7 +2,7 @@
 // 対気速度・抗力加速度。固有名詞を持たず、大気の中身はすべて呼び出し側が渡す
 // Atmosphere に載っている。THREE/DOM 非依存の純粋関数。
 
-import { Vec3, cross, dot, len, scale, sub, v3 } from './vec3';
+import { Vec3, cross, dot, len, scale, sub, v3 } from '../math/vec3';
 
 // 区分指数モデルの1層: [基準高度 h0 [m], 基準密度 ρ0 [kg/m^3], スケールハイト H [m]]。
 // 基準高度の昇順に並べる。密度は H = R*T/(M·g) が層ごとに桁で違う(地球で 5.4〜268 km)

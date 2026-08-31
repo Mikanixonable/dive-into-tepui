@@ -11,7 +11,7 @@ import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
 import { Q_ECL_TO_ECI } from './ecliptic';
 import { eccentricAnomalyFromMean, positionFromOrbitalElements } from './elements';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, addScaled, cross, norm, scale, v3 } from './vec3';
+import { Vec3, addScaled, cross, norm, scale, v3 } from '../math/vec3';
 
 export const JULIAN_CENTURY = 100 * 365.25 * 86400; // [s]
 

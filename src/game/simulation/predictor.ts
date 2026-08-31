@@ -17,9 +17,13 @@ import { EntityManager } from './entity-manager';
 import { GameEntity } from '../game-entity/game-entity';
 import { Player } from '../player/player';
 import { simulationMaxStep } from './time-step';
-import type { FutureCelestialBodies } from './future-celestial-bodies';
+import type { Ephemeris } from '../../physics/ephemeris';
 import { PredictedArc } from './predicted-arc';
 import type { PerfCounts } from '../../perf-meter';
+
+// 消費される弧が、消費前線より過去側にも保持しておく余裕 [s]。保持窓の左端が前線に一致すると
+// at(前線) を挟む補間区間が消える。予測線の下端は simTime なので、余分に保持しても描画は変わらない。
+const ARC_RETAIN_MARGIN = 300;
 
 export class Predictor {
   private cursor = 0;
@@ -35,7 +39,7 @@ export class Predictor {
 
   constructor(
     private readonly entities: EntityManager,
-    private readonly futureCelestialBodies: FutureCelestialBodies,
+    private readonly ephemeris: Ephemeris,
   ) {}
 
   // Game.update の本流から無条件に(ポーズ中・決着後も)呼ぶ。simDt はこのフレームの時間送り
@@ -113,10 +117,10 @@ export class Predictor {
   private advanceBudget(
     e: GameEntity, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
   ): number {
-    const arc = e.ensurePredictedArc(this.futureCelestialBodies);
+    const arc = e.ensurePredictedArc(this.ephemeris);
     if (arc === null) return 0;
     arc.requiredEnd = simTime + horizon;
-    arc.retainFrom = simTime - C.ARC_RETAIN_MARGIN;
+    arc.retainFrom = simTime - ARC_RETAIN_MARGIN;
     arc.simulationMaxStep = maxStep;
     const consumed = this.grow(arc, budgetSteps);
     this.lastSteps += consumed;

@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromAxisAngle, qRotate } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, cross, dot, v3 } from '../../physics/vec3';
+import { Vec3, add, cross, dot, v3 } from '../../math/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_HINGE,
@@ -15,7 +15,11 @@ import { GameEntity } from '../game-entity/game-entity';
 import type { Contact } from '../game-entity/contact';
 import type { Stage } from '../stages/stage';
 import type { Player } from './player';
-import type { RadiatorSaveData } from '../save-data';
+import type { RadiatorSaveData } from '../save/save-data';
+
+const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
+
+const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
 
 export type RadiatorSide = 'up' | 'down';
 
@@ -188,7 +192,7 @@ export class RadiatorSystem {
       const { even, odd } = this.foldThetas(side);
       const cosEven = Math.abs(dot(this.worldNormal(even, att), sunDir));
       const cosOdd = Math.abs(dot(this.worldNormal(odd, att), sunDir));
-      return sum + C.RADIATOR_SOLAR_ABSORB * halfArea * (cosEven + cosOdd);
+      return sum + RADIATOR_SOLAR_ABSORB * halfArea * (cosEven + cosOdd);
     }, 0);
   }
 
@@ -197,7 +201,7 @@ export class RadiatorSystem {
   collisionFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
     const result: RadiatorFold[] = [];
     for (const side of ['up', 'down'] as const) {
-      if (this.panels[side].deploy < C.RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
+      if (this.panels[side].deploy < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
       const proxies = this.foldProxies[side];
       while (proxies.length < C.RADIATOR_FOLD_COUNT) proxies.push(new RadiatorFold(side, proxies.length, this.owner));
       const { even, odd } = this.foldThetas(side);

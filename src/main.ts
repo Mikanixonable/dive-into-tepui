@@ -202,6 +202,7 @@ async function main() {
   pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current);
 
   await launcher.start();
+  settingsView.restorePersistedOpenState();
 
   startAnimationLoop(launcher, graphics, renderStyle, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
 }

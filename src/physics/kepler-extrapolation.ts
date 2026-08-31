@@ -10,7 +10,7 @@ import {
   velocityOnOrbit,
 } from './elements';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { sub } from './vec3';
+import { sub } from '../math/vec3';
 
 // この外挿が前提とする離心率の上限。eccentricAnomalyFromMean のニュートン法が収束するとみなす
 // 範囲(既存の楕円ケプラーソルバの前提)。

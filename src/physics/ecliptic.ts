@@ -3,7 +3,7 @@
 // (自転軸・J2 対称軸・大気の共回転・天球グリッドが揃って前提とする基準)を動かす設計判断が
 // 別途必要なため、この近似の範囲外として扱う。
 import { Quat, qFromAxisAngle } from './attitude';
-import { Vec3, v3 } from './vec3';
+import { Vec3, v3 } from '../math/vec3';
 
 export const EPS = (23.439291 * Math.PI) / 180; // 黄道傾斜角
 
