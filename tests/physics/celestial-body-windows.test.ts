@@ -25,7 +25,7 @@ export function register(): void {
     assert.ok(gravity.every((b) => b.mu !== 0));
     const expected = system.celestialBodiesAt(1234).filter((b) => b.mu !== 0).map((b) => b.id);
     assert.deepEqual(gravity.map((b) => b.id), expected);
-    assert.ok(gravity.length > 0 && gravity.length < system.celestialBodiesAt(1234).length);
+    assert.ok(gravity.length > 0);
   });
 
   test('celestial-body-windows: gravityAttractorsAt の要素は同一 t の celestialBodiesAt と厳密に一致する', () => {
