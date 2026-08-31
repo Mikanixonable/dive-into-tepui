@@ -457,6 +457,14 @@ branded type だけがそれを表せる。
 **物体の分類ではない語をこの対に混ぜない。** とくに `ephemeris` はこの軸に載せない — 天体の位置
 データの供給源を指す語であって、`celestial` と同じ次元の分類ではない。
 
+### `entity`
+
+**`entity` は「物体ひとつの動きと見た目を統合するもの」。** `celestialEntity` も `dynamicEntity` も
+この意味で揃えてあり、族語が変わっても語の意味は変わらない。動きの正本は自分では持たず
+(`CelestialMotion` / `DynamicTrajectory`)、そこから引いた状態へ見た目を同期する。
+
+動きだけを扱うもの、見た目だけを扱うものに `entity` を付けない。
+
 ### `orbit` / `path` / `trajectory`
 
 - **`orbit`** — 解析的に解ける軌道。時刻から位置が閉じた式で決まるもの。
@@ -472,7 +480,7 @@ branded type だけがそれを表せる。
 - **単体の `body` を接辞にしない。** 天体は `celestialBody`、剛体一般が要るようになったら
   `rigidBody`。指すものがその場で一意に決まる狭いスコープ(ローカル変数・短いコールバック)に
   限って、無標の `body` でよい。
-- **天体は `celestialBody`。** `CelestialBodyDef` / `celestialMotions` / `SubstepCelestialBodies`。
+- **天体は `celestialBody`。** `CelestialBodyDef` / `SubstepCelestialBodies` / `ArcCelestialBodies`。
 - **機体は `ship`。** 機体に固定した座標系も `ship` で表す。
 - **重力源としての値は `attractor`。** ただし楕円の中心として渡すものは `center`。
 
