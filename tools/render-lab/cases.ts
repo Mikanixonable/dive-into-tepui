@@ -32,6 +32,7 @@ import { EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
+import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
 import { MARS } from '../../src/game/celestial/solar-system/mars-system';
@@ -871,7 +872,10 @@ function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLig
   const center = new THREE.Vector3(0, -0.15 * distance, -distance);
   const axis = v3(0.3, 0.9, 0.32);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, style);
+  view.sync(
+    center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT,
+    QUALITY_PRESETS.high, style,
+  );
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -905,7 +909,10 @@ function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: 
   camera.updateMatrixWorld(true);
   const axis = v3(0, 1, 0);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, style);
+  view.sync(
+    center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT,
+    QUALITY_PRESETS.high, style,
+  );
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,

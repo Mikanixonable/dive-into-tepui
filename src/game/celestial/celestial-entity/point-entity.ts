@@ -125,7 +125,7 @@ export class PointEntity extends CelestialEntity {
   setVisible(visible: boolean): void {
     this.group.visible = visible;
     this.billboard.mesh.visible = visible;
-    if (this.ring !== undefined) this.ring.group.visible = visible;
+    this.ring?.setVisible(visible);
   }
 
   // displayTime 時点の位置へ実体メッシュか輝点ビルボードのどちらかを同期する(常に片方は
@@ -155,21 +155,18 @@ export class PointEntity extends CelestialEntity {
     this.syncAuroras(displayTime, graphics.aurora);
     const orientation = this.motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
-    const rings = graphics.rings ? this.rings : null;
-    if (this.ring !== undefined) this.ring.group.visible = rings !== null;
     this.group.position.copy(fo.RtoThreeV3(pos));
     this.shapeGroup.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     this.billboard.hide();
-    if (this.ring !== undefined && rings !== null) {
-      this.ring.sync(
-        this.group.position,
-        orientation === null ? null : orientation.axis,
-        pos,
-        cameraSystem.activeCameraScale,
-        style,
-      );
-    }
+    this.ring?.sync(
+      this.group.position,
+      orientation === null ? null : orientation.axis,
+      pos,
+      cameraSystem.activeCameraScale,
+      graphics,
+      style,
+    );
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
@@ -196,7 +193,7 @@ export class PointEntity extends CelestialEntity {
     this.graticule.setVisible(false);
     this.surfaceMarkings?.setVisible(false);
     for (const aurora of this.auroras) aurora.mesh.visible = false;
-    if (this.ring !== undefined) this.ring.group.visible = false;
+    this.ring?.setVisible(false);
   }
 
   // 星殻上に、描画座標 p の方向だけを反映した輝点を置く。明るさは「いま観測者へ届く光の量」

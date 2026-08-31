@@ -15,6 +15,7 @@ import {
   RingVisualState,
 } from '../../../render/ring';
 import { ringPixelCoverage } from '../../../render/screen-lod';
+import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { SunLight } from '../../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
 import { ScaleFn } from '../../camera/camera-system';
@@ -85,14 +86,23 @@ export class RingView {
     this.visuals.push(visual);
   }
 
+  // 環全体の表示・非表示を切り替える。
+  setVisible(visible: boolean): void {
+    this.group.visible = visible;
+  }
+
   // pos/axis は本体メッシュと揃える。bodyPos/metersPerPixelAt は帯の被覆率減光に使う。
+  // graphics の設定に従って環の表示を切り替え、見せるときは姿勢と見かけ幅も合わせる。
   sync(
     pos: THREE.Vector3,
     axis: Vec3 | null,
     bodyPos: Vec3,
     metersPerPixelAt: ScaleFn,
+    graphics: GraphicsSettingsData,
     style: RenderStyle,
   ): void {
+    this.group.visible = graphics.rings;
+    if (!graphics.rings) return;
     // 模式図では環メッシュを隠し、輪郭円だけを見せる。
     const schematic = style === 'schematic';
     this.outlineInner.line.visible = schematic;
