@@ -14,8 +14,9 @@ export interface SurfaceContact {
 }
 
 // 区間 [prev, next] を渡る半径 radius の球が、bodies のうち最初に触れる天体。触れなければ null。
-// 触れ合ったとみなす距離は天体の表面半径に radius を足したもので、天体の側もその区間ぶん動く。
-// 区間を持たない(prev と next が同じ瞬間の)入力は掃引が定まらないので、区間終端の重なりだけを見る。
+// 触れ合ったとみなす距離は天体の表面半径に radius を足したもので、天体の側も pivot で厳密に
+// 引いた値から区間の両端へ外挿して動く。区間を持たない(prev と next が同じ瞬間の)入力は
+// 掃引が定まらないので、区間終端の重なりだけを見る。
 export function firstSurfaceContact(
   prev: KinematicState,
   next: KinematicState,

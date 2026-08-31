@@ -83,9 +83,8 @@ export class CelestialSystem implements CelestialMotions {
   private ambient!: AmbientSource;
   private atmosphere!: AtmospherePass;
   private readonly entitiesById: ReadonlyMap<string, CelestialEntity>;
-  // 全天体の運動(entities と同じ宣言順)。THREE 非依存の層(system-membership 等)へ列挙を
-  // 渡すときはこれを使う。
-  readonly motions: readonly CelestialMotion[];
+  // 全登録天体の運動(entities と同じ宣言順)。重力源配列・一覧の順序もこの並びで決まる。
+  readonly celestialMotions: readonly CelestialMotion[];
   // 主星の個体。恒星を持たない星系では null。
   private readonly starEntity: StarEntity | null;
   // 天体の値を ECI へ移す変換器。**どの天体を原点に置くかは系レベルの選択**なので正本はここが
@@ -124,16 +123,16 @@ export class CelestialSystem implements CelestialMotions {
     private readonly pointFieldView: PointFieldView | null = null,
     ephemerisPoints: EphemerisPoints | null = null,
   ) {
-    this.motions = entities.map((b) => b.motion);
-    this.gravityMotionList = this.motions.filter((m) => m.def.mu !== 0);
-    this.atmosphereMotionList = this.motions.filter(
+    this.celestialMotions = entities.map((b) => b.motion);
+    this.gravityMotionList = this.celestialMotions.filter((m) => m.def.mu !== 0);
+    this.atmosphereMotionList = this.celestialMotions.filter(
       (m) => m instanceof OrbitingMotion && m.def.atmosphere !== undefined,
     );
     this.eciTransform = new EciTransform(origin.motion);
-    this.referenceFrames = new ReferenceFrames(this.motions, this.eciTransform);
+    this.referenceFrames = new ReferenceFrames(this.celestialMotions, this.eciTransform);
     // 天体1体ぶんの値は運動が答えるので、その供給源(ECI 変換器・暦)はここで1度だけ配る。
-    for (const motion of this.motions) motion.bindEciTransform(this.eciTransform);
-    if (ephemerisPoints !== null) bindEphemerides(this.motions, ephemerisPoints);
+    for (const motion of this.celestialMotions) motion.bindEciTransform(this.eciTransform);
+    if (ephemerisPoints !== null) bindEphemerides(this.celestialMotions, ephemerisPoints);
     this.entitiesById = new Map(entities.map((b) => [b.id, b]));
     this.starEntity = entities.find((b): b is StarEntity => b instanceof StarEntity) ?? null;
   }
@@ -191,9 +190,6 @@ export class CelestialSystem implements CelestialMotions {
 
   // ---------------------------------------------------------- 系レベルの物理
 
-  // 全登録天体の運動(宣言順)。
-  get celestialMotions(): readonly CelestialMotion[] { return this.motions; }
-
   // 重力源天体の運動(mu が 0 でないもの、宣言順)。
   get gravityMotions(): readonly CelestialMotion[] { return this.gravityMotionList; }
 
@@ -227,7 +223,7 @@ export class CelestialSystem implements CelestialMotions {
   // 負荷確認ウィンドウが読む、天体窓の時刻キャッシュのヒット/ミス累計。
   perfCounts(): { timeCacheHits: number; timeCacheMisses: number } {
     let time = this.eciTransform.cacheStats;
-    for (const motion of this.motions) time = addTimeCacheStats(time, motion.cacheStats);
+    for (const motion of this.celestialMotions) time = addTimeCacheStats(time, motion.cacheStats);
     return { timeCacheHits: time.hits, timeCacheMisses: time.misses };
   }
 
@@ -319,7 +315,7 @@ export class CelestialSystem implements CelestialMotions {
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。出すかどうかの判断はここが持つ。
     for (const body of this.entities) {
       body.syncMapOverlay(
-        floatingOrigin, displayTime, cameraSystem, markerManager, this.motions,
+        floatingOrigin, displayTime, cameraSystem, markerManager, this.celestialMotions,
         cameraSystem.overviewMode && geostationaryOrbitVisible);
     }
     this.orbitGuideLines.sync(style, displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
@@ -333,7 +329,7 @@ export class CelestialSystem implements CelestialMotions {
   // 天体照の光源の候補を組んで選定へ渡し、**選ばれたものだけ**を描画座標へ移してライティング
   // 側のスロットへ入れる。基準点は露出と同じ注視点。
   private syncPlanetLights(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem): void {
-    const candidates = this.motions.map((celestialBody) => ({
+    const candidates = this.celestialMotions.map((celestialBody) => ({
       celestialBody,
       albedo: this.entityOf(celestialBody.id).lightSourceAlbedo ?? DEFAULT_ALBEDO,
     }));
@@ -341,7 +337,7 @@ export class CelestialSystem implements CelestialMotions {
       candidates, displayTime, this.starEntity?.radiantIntensity ?? null,
       cameraSystem.activeViewpoint.lookTarget);
     this.planetLight.set(lights.map((light) => ({
-      center: fo.RtoThreeV3(light.celestialBody.positionAt(displayTime, displayTime)),
+      center: fo.RtoThreeV3(light.celestialBody.positionAt(displayTime)),
       radius: light.celestialBody.def.radius,
       radiance: light.radiance,
     })));
@@ -353,14 +349,14 @@ export class CelestialSystem implements CelestialMotions {
   private syncOcclusion(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
   ): void {
-    const celestialBodies = this.motions;
+    const celestialBodies = this.celestialMotions;
     const focusId = focusTargetId(cameraSystem.mapCamera.focus);
     const focusPos = focusId === undefined
       ? null
-      : celestialBodies.find((body) => body.id === focusId)?.positionAt(displayTime, displayTime) ?? null;
+      : celestialBodies.find((body) => body.id === focusId)?.positionAt(displayTime) ?? null;
     this.sunOcclusion.setOccluders(
       selectOccluders(celestialBodies, displayTime, fo.r, focusPos).map((body): Occluder => (
-        { center: fo.RtoThreeV3(body.positionAt(displayTime, displayTime)), radius: body.def.radius }
+        { center: fo.RtoThreeV3(body.positionAt(displayTime)), radius: body.def.radius }
       )));
     this.syncRingShadow(fo, displayTime, graphics);
   }

@@ -128,6 +128,7 @@ export function planetDefForSimZero(def: PlanetDef, phases: PhaseOffsets, simZer
   };
 }
 
+// 衛星の宣言を、同じ規約で simTime 基準の宣言へ写す。
 export function satelliteDefForSimZero(
   def: SatelliteDef, phases: PhaseOffsets, simZeroEt: number,
 ): SatelliteDef {
@@ -177,7 +178,7 @@ export abstract class CelestialMotion {
 
   // 同じ外挿で位置だけを答える。**毎ステップ全エンティティぶん走る経路なので、位置だけで
   // 足りるところではこちらを使う** — stateAt は Vec3 を1つ余分に作る。
-  positionAt(pivot: number, t: number): Vec3 {
+  positionAt(pivot: number, t: number = pivot): Vec3 {
     return extrapolatedPosition(this.eciAt(pivot), t);
   }
 
@@ -191,6 +192,7 @@ export abstract class CelestialMotion {
     return this.eciAt(pivot).atmosphere;
   }
 
+  // 宣言された天体 id。
   get id(): string {
     return this.def.id;
   }
@@ -274,6 +276,7 @@ export class StarMotion extends CelestialMotion {
 
   private readonly analyticCache = new TimeRing<KinematicState<'analytic'>>();
 
+  // 惑星-衛星系は addPlanetSystem で後から登録する。
   constructor(readonly def: StarDef) {
     super();
   }
@@ -300,7 +303,7 @@ export class StarMotion extends CelestialMotion {
     return v3();
   }
 
-  // 重心相対位置は全惑星-衛星系ぶんの二体解から組む。
+  // 重心相対位置のキャッシュは恒星1体につき1つなので、ここで一緒に数える。
   get cacheStats(): TimeCacheStats {
     return addTimeCacheStats(super.cacheStats, this.analyticCache.stats);
   }

@@ -51,7 +51,7 @@ export function solarSystemParts(
   ephemerisPoints: EphemerisPoints | null = null,
 ): SolarSystemParts {
   const system = solarSystem('earth', phases, 0, ephemerisPoints, epoch);
-  return { bodies: system.motions, system, referenceFrames: system.frames };
+  return { bodies: system.celestialMotions, system, referenceFrames: system.frames };
 }
 
 // 天体 id の運動。太陽系に登録されていない id を渡すと例外。

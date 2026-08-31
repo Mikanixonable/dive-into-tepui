@@ -13,9 +13,6 @@ export interface TimeCacheStats {
   readonly misses: number;
 }
 
-// 時刻キャッシュを1つも持たない層が返す空の累計。
-export const NO_TIME_CACHE: TimeCacheStats = { hits: 0, misses: 0 };
-
 // 2つの累計の和。
 export function addTimeCacheStats(a: TimeCacheStats, b: TimeCacheStats): TimeCacheStats {
   return { hits: a.hits + b.hits, misses: a.misses + b.misses };

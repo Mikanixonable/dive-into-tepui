@@ -7,10 +7,12 @@ import type { CelestialClass } from './celestial-entity/celestial-entity-def';
 
 export type CelestialClassLookup = (id: string) => CelestialClass;
 
+// 天体 id から運動を引く表。親子を辿る問い合わせが繰り返し引くのでまとめて組む。
 export function motionById(motions: readonly CelestialMotion[]): ReadonlyMap<string, CelestialMotion> {
   return new Map(motions.map((m) => [m.id, m]));
 }
 
+// focusId と同じ親を持つ天体・その親・focusId 自身の id 集合。focusId 未指定なら空集合。
 export function sameSystemIds(motions: readonly CelestialMotion[], focusId: string | undefined): ReadonlySet<string> {
   if (focusId === undefined) return new Set();
   const parent = motions.find((m) => m.id === focusId)?.primary?.id ?? null;
@@ -35,7 +37,6 @@ export function isPositionInFocusedSystem(
   motions: readonly CelestialMotion[],
   focusId: string | undefined,
   position: Vec3,
-  celestialBodies: readonly CelestialMotion[],
   pivot: number,
 ): boolean {
   const byId = motionById(motions);
@@ -43,7 +44,7 @@ export function isPositionInFocusedSystem(
   if (focus === undefined) return true;
 
   const systemFocusId = focus.kind === 'satellite' ? focus.primary?.id ?? null : focus.id;
-  const initial = strongestAttractor(position, celestialBodies, pivot).id;
+  const initial = strongestAttractor(position, motions, pivot).id;
   // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
   if (byId.get(initial)?.kind === 'star') return true;
   let current: string | null = initial;
@@ -73,14 +74,14 @@ export function ancestorsOf(byId: ReadonlyMap<string, CelestialMotion>, focusId:
 // cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。
 // 最寄り天体が registry に未登録(生存中の重力天体)なら、その id 1つだけを返す。
 export function systemChainAt(
-  motions: readonly CelestialMotion[], cameraPos: Vec3,
-  celestialBodies: readonly CelestialMotion[], pivot: number,
+  motions: readonly CelestialMotion[], cameraPos: Vec3, pivot: number,
 ): readonly string[] {
-  if (celestialBodies.length === 0) return [];
-  const nearest = strongestAttractor(cameraPos, celestialBodies, pivot).id;
+  if (motions.length === 0) return [];
+  const nearest = strongestAttractor(cameraPos, motions, pivot).id;
   return chainFromNearest(motionById(motions), nearest);
 }
 
+// nearest から主星まで遡った id の列。nearest が未登録なら、その id 1つだけを返す。
 function chainFromNearest(byId: ReadonlyMap<string, CelestialMotion>, nearest: string): readonly string[] {
   if (!byId.has(nearest)) return [nearest];
   return ancestorsOf(byId, nearest);
@@ -111,11 +112,10 @@ function membersFromChain(
 
 // systemChainAt の列に、各天体の子(恒星の子は除く)を合わせた集合。
 export function systemMembersAt(
-  motions: readonly CelestialMotion[], cameraPos: Vec3,
-  celestialBodies: readonly CelestialMotion[], pivot: number,
+  motions: readonly CelestialMotion[], cameraPos: Vec3, pivot: number,
 ): readonly string[] {
   return membersFromChain(
-    motions, motionById(motions), systemChainAt(motions, cameraPos, celestialBodies, pivot));
+    motions, motionById(motions), systemChainAt(motions, cameraPos, pivot));
 }
 
 // strongestAttractor をそのまま「いまいる系」の判定に使うと、勢力圏が極端に狭い天体(主星から
@@ -128,33 +128,34 @@ const STICKY_MARGIN_SQ = 1.2 * 1.2;
 export class NearbySystemTracker {
   private previousId: string | null = null;
 
+  // 直前フレームの勝者を優遇したうえでの systemChainAt。
   chainAt(
-    motions: readonly CelestialMotion[], cameraPos: Vec3,
-    celestialBodies: readonly CelestialMotion[], pivot: number,
+    motions: readonly CelestialMotion[], cameraPos: Vec3, pivot: number,
   ): readonly string[] {
-    if (celestialBodies.length === 0) return [];
-    const nearest = this.pickNearest(cameraPos, celestialBodies, pivot);
+    if (motions.length === 0) return [];
+    const nearest = this.pickNearest(motions, cameraPos, pivot);
     this.previousId = nearest;
     return chainFromNearest(motionById(motions), nearest);
   }
 
+  // 直前フレームの勝者を優遇したうえでの systemMembersAt。
   membersAt(
-    motions: readonly CelestialMotion[], cameraPos: Vec3,
-    celestialBodies: readonly CelestialMotion[], pivot: number,
+    motions: readonly CelestialMotion[], cameraPos: Vec3, pivot: number,
   ): readonly string[] {
     return membersFromChain(
-      motions, motionById(motions), this.chainAt(motions, cameraPos, celestialBodies, pivot));
+      motions, motionById(motions), this.chainAt(motions, cameraPos, pivot));
   }
 
+  // 最も強く引く天体の id。直前フレームの勝者は STICKY_MARGIN_SQ 倍まで有利に扱う。
   private pickNearest(
-    cameraPos: Vec3, celestialBodies: readonly CelestialMotion[], pivot: number,
+    motions: readonly CelestialMotion[], cameraPos: Vec3, pivot: number,
   ): string {
-    const best = strongestAttractor(cameraPos, celestialBodies, pivot);
+    const best = strongestAttractor(cameraPos, motions, pivot);
     if (this.previousId === null || this.previousId === best.id) return best.id;
-    const previous = celestialBodies.find((a) => a.id === this.previousId);
+    const previous = motions.find((a) => a.id === this.previousId);
     if (previous === undefined) return best.id;
-    const bestAccel = lenSq(attractorAccel(cameraPos, best, pivot, pivot));
-    const prevAccel = lenSq(attractorAccel(cameraPos, previous, pivot, pivot));
+    const bestAccel = lenSq(attractorAccel(cameraPos, best, pivot));
+    const prevAccel = lenSq(attractorAccel(cameraPos, previous, pivot));
     return bestAccel > prevAccel * STICKY_MARGIN_SQ ? best.id : previous.id;
   }
 }

@@ -25,8 +25,10 @@ export type FutureCelestialBodyProvider = {
   readonly celestialMotions: readonly CelestialMotion[];
 };
 
-// 弧の1歩が読む天体一式。gravity は引力を持つ天体、collision は表面到達の相手。
+// 弧の1歩が読む天体一式。gravity は引力を持つ天体、collision は表面到達の相手、
+// pivot はこの一式を解決した(= 天体の位置を厳密に引いた)時刻。
 export type ArcCelestialBodyWindow = {
+  readonly pivot: number;
   readonly gravity: readonly CelestialMotion[];
   readonly collision: readonly CelestialMotion[];
 };
@@ -116,7 +118,7 @@ export class ArcCelestialBodies {
       if (w.candidate.mu !== 0) gravity.push(body);
       collision.push(body);
     }
-    return { gravity, collision };
+    return { pivot: t, gravity, collision };
   }
 }
 

@@ -68,7 +68,7 @@ export class GeostationaryOverlay {
     center: CelestialMotion, pivot: number, fo: FloatingOrigin, cameraSystem: CameraSystem,
     markerManager: MarkerManager | null, celestialBodies: readonly CelestialMotion[], visible: boolean,
   ): void {
-    const centerPos = center.positionAt(pivot, pivot);
+    const centerPos = center.positionAt(pivot);
     const elements = this.elementsAround(center, pivot);
     this.line.sync(visible ? elements : null, fo, cameraSystem.activeCamera);
     const dist = len(sub(centerPos, cameraSystem.activeCameraPos));
@@ -84,7 +84,7 @@ export class GeostationaryOverlay {
     this.line.dispose();
   }
 
-  // 中心天体の現在位置に置いた赤道面上の円軌道。
+  // 時刻 pivot の中心天体位置に置いた赤道面上の円軌道。
   private elementsAround(center: CelestialMotion, pivot: number): OrbitalElements {
     return orbitalElementsFromClassical(
       this.semiMajorAxis, NEAR_CIRCULAR_E, 0, 0, 0, center, center.stateAt(pivot));

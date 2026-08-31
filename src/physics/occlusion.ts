@@ -1,7 +1,7 @@
 // カメラ視点からワールド座標への視線が、いずれかの天体の球体に遮られているかどうかの
-// 純幾何判定(レイと球の交差)。マップビューでの軌道要素アイコンの表示可否とピック候補の
-// 選出可否は、この1関数を両方が呼ぶことで揃える — 見えているのに押せない/見えないのに
-// 押せる、という食い違いを防ぐ。
+// 純幾何判定(レイと球の交差)。天体の位置は pivot で引くので、判定する点と同じ時刻を渡す。
+// マップビューでの軌道要素アイコンの表示可否とピック候補の選出可否は、この1関数を両方が
+// 呼ぶことで揃える — 見えているのに押せない/見えないのに押せる、という食い違いを防ぐ。
 import type { CelestialMotion } from './celestial-motion';
 import { addScaled, dot, len, lenSq, sub, Vec3 } from '../math/vec3';
 
@@ -30,7 +30,7 @@ export function occlusionOpacity(
   let opacity = 1;
 
   for (const celestialBody of celestialBodies) {
-    const bodyPos = celestialBody.positionAt(pivot, pivot);
+    const bodyPos = celestialBody.positionAt(pivot);
     const radius = celestialBody.def.radius;
     const fromCelestialBodyToPoint = sub(point, bodyPos);
     if (lenSq(fromCelestialBodyToPoint) <= radius * radius) continue;
@@ -70,7 +70,7 @@ export function isOccluded(
   const dir = { x: toPoint.x / dist, y: toPoint.y / dist, z: toPoint.z / dist } as Vec3;
 
   for (const celestialBody of celestialBodies) {
-    const bodyPos = celestialBody.positionAt(pivot, pivot);
+    const bodyPos = celestialBody.positionAt(pivot);
     const radius = celestialBody.def.radius;
     const toCenter = sub(bodyPos, point);
     if (dot(toCenter, toCenter) <= radius * radius) continue; // 対象点自身がこの天体の内部/表面(その天体の中心ラベルなど)

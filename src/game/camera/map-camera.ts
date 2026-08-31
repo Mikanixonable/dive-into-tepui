@@ -215,7 +215,7 @@ export class MapCamera {
       const cameraPos = this.viewpoint.position;
       const pivot = this.frameAnchors.bodiesPivot;
       const nearest = strongestAttractor(cameraPos, this.frameAnchors.bodies, pivot);
-      const distToBody = len(sub(cameraPos, nearest.positionAt(pivot, pivot)));
+      const distToBody = len(sub(cameraPos, nearest.positionAt(pivot)));
       const PLANETARY_SCALE_THRESHOLD = 1e9; // 1,000,000 km in meters
 
       const nearestBody = this.celestialSystem.find(nearest.id);

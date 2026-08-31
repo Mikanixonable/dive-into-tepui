@@ -237,10 +237,9 @@ export class NavTarget {
     if (this.targetId === id) this.setInternal(null, null);
   }
 
-  // 現在のターゲットの時刻 t における位置・速度。天体は CelestialMotion.state、ラグランジュ点は
-  // 副天体の運動、船・基地は entity.displayState(t) から得る。天体以外は重力中心ではないため
-  // hasMass=false を返す。船・基地は軌道線を相対軌跡に切り替えられるよう entity 自身も添えて
-  // 返す。ターゲット未設定・解決不能なら null。
+  // 現在のターゲットの時刻 t における位置・速度。重力中心になれるのは登録天体だけで、
+  // ラグランジュ点・船・基地は hasMass=false で返る。船・基地は軌道線を相対軌跡へ切り替え
+  // られるよう entity 自身も添える。ターゲット未設定・解決不能なら null。
   resolveState(
     entities: DynamicSystem, celestialSystem: CelestialSystem,
     celestialBodies: readonly CelestialMotion[], t: number,

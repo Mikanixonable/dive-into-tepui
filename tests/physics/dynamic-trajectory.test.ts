@@ -182,8 +182,9 @@ export function register(): void {
 
   test('dynamic-trajectory: step に渡した中心天体が extrapolationCenter に反映され、reset で破棄される', () => {
     const e = new DynamicTrajectory(circularState());
-    e.step(10, ATTRACTORS, [], null, e.state.t + 5, 0, 0, null, 10, 1e6, EARTH);
-    assert.equal(e.extrapolationCenter, EARTH);
+    const pivot = e.state.t + 5;
+    e.step(10, ATTRACTORS, [], null, pivot, 0, 0, null, 10, 1e6, EARTH);
+    assert.deepEqual(e.extrapolationCenter, { celestialBody: EARTH, pivot });
 
     e.reset(kinematicState<'eci'>(e.state.t, v3(1, 0, 0), v3(0, 1, 0)));
     assert.equal(e.extrapolationCenter, null, '不連続な差し替えで中心天体は破棄される');

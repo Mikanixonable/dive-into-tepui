@@ -430,7 +430,7 @@ export class DynamicEntity {
     // 日照率は遮蔽体の数だけ走るため、熱を蓄えない種別(弾)には引かせない — 受動的な環境を
     // 持つ種別はどれも熱を蓄える。
     const sun = this.specificHeat > 0 ? star : null;
-    const toSun = sun === null ? v3() : sub(sun.positionAt(pivot, pivot), this.state.r);
+    const toSun = sun === null ? v3() : sub(sun.positionAt(pivot), this.state.r);
     const sunDist = len(toSun);
     const sunDir = sunDist > 0 ? scale(toSun, 1 / sunDist) : v3();
     const sunlit = sun === null
@@ -547,8 +547,9 @@ export class DynamicEntity {
     const predicted = this.predicted;
     const normal = predicted?.at(t) ?? null;
     if (normal !== null || celestialSystem === undefined) return normal;
-    if (predicted === null || this.predictionTruncated || predicted.extrapolationCenter === null) return null;
-    return predicted.extrapolatedAt(t, celestialSystem.stateAt(predicted.extrapolationCenter.id, t));
+    const center = predicted?.extrapolationCenter ?? null;
+    if (predicted === null || this.predictionTruncated || center === null) return null;
+    return predicted.extrapolatedAt(t, celestialSystem.stateAt(center.celestialBody.id, t));
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。

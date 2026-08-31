@@ -88,16 +88,13 @@ export class MapPickables {
     this._lastSimTime = simTime;
     const focusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     // 候補の位置は表示時刻のものなので、遮蔽・系の判定もその時刻の天体位置で行う。
-    // 現在時刻の配列は「いまの自艦の軌道」を読む項目だけが使う。
     const celestialBodies = this.celestialSystem.celestialMotions;
-    const displayCelestialBodies = this.celestialSystem.celestialMotions;
     const visibilityPolicy = new MapVisibilityPolicy(
       this.celestialSystem,
       this.cameraSystem.mapDisplayToggles,
       focusId,
       this.nearbyTracker.membersAt(
-        this.celestialSystem.motions, this.cameraSystem.activeCameraPos,
-        displayCelestialBodies, displayTime),
+        this.celestialSystem.celestialMotions, this.cameraSystem.activeCameraPos, displayTime),
     );
     this._visibilityPolicy = visibilityPolicy;
     this.cameraSystem.focusMarkers.update(
@@ -118,8 +115,8 @@ export class MapPickables {
       if (!vPlayer.pickable) continue;
       const pos = ship.displayState(displayTime)?.r;
       if (pos) {
-        const center = strongestAttractor(ship.state.r, celestialBodies, displayTime);
-        const el = ship.orbitalElementsAround(center, displayTime);
+        const center = strongestAttractor(ship.state.r, celestialBodies, ship.state.t);
+        const el = ship.orbitalElementsAround(center, ship.state.t);
         const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
         this.addCandidate(
           ship.id, ship.name, pos, 'player',
@@ -179,7 +176,7 @@ export class MapPickables {
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。天体の detail は一覧の行には表示されないが、
       // PhysicalObjectListOrder.matches() の検索が「名前・補助表示文字列」として読む
       // (DEVELOP/SPEC/MAP.md §10)ため、他種別と同じく組み立てておく。
-      const status = item.kind === 'ship' ? `${approaching ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'fuel' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'base' ? fmtDist(d) : item.kind === 'body' ? `${fmtDist(d)} · ${this.celestialSystem.nameOf(strongestAttractor(item.pos, displayCelestialBodies, displayTime).id)}` : item.detail;
+      const status = item.kind === 'ship' ? `${approaching ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'fuel' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'base' ? fmtDist(d) : item.kind === 'body' ? `${fmtDist(d)} · ${this.celestialSystem.nameOf(strongestAttractor(item.pos, celestialBodies, displayTime).id)}` : item.detail;
       item.detail = status;
       item.distance = d;
       item.approaching = approaching;
@@ -188,8 +185,7 @@ export class MapPickables {
       // 判定は最強天体から親を辿るぶん高価なので、読まれない天体候補では省く。
       item.inFocusedSystem = item.kind === 'body'
         ? undefined
-        : isPositionInFocusedSystem(
-          this.celestialSystem.motions, focusId, item.pos, displayCelestialBodies, displayTime);
+        : isPositionInFocusedSystem(this.celestialSystem.celestialMotions, focusId, item.pos, displayTime);
     }
 
     // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
@@ -200,12 +196,12 @@ export class MapPickables {
     // ピック対象から除く。
     for (const item of this.candidateItems) {
       const included = item.kind === 'player'
-        ? item.inFocusedSystem ?? isPositionInFocusedSystem(
-          this.celestialSystem.motions, focusId, item.pos, displayCelestialBodies, displayTime)
+        ? item.inFocusedSystem
+          ?? isPositionInFocusedSystem(this.celestialSystem.celestialMotions, focusId, item.pos, displayTime)
         : item.kind === 'body'
           ? true
           : !isOccluded(
-            this.cameraSystem.activeCameraPos, item.pos, displayCelestialBodies, displayTime);
+            this.cameraSystem.activeCameraPos, item.pos, celestialBodies, displayTime);
       if (included) this.visibleItems.push(item);
     }
     this.items = this.visibleItems;

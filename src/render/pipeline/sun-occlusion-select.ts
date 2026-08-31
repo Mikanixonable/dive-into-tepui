@@ -53,7 +53,7 @@ export function selectOccluders(
     .map((celestialBody) => ({
       celestialBody,
       apparent: apparentRadius(
-        celestialBody.def.radius, celestialBody.positionAt(pivot, pivot), cameraPos),
+        celestialBody.def.radius, celestialBody.positionAt(pivot), cameraPos),
     }))
     .sort((a, b) => b.apparent - a.apparent)
     .slice(0, MAX_OCCLUDERS)

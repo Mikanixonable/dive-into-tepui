@@ -1,5 +1,5 @@
-// 位置 r における日照率。天体暦(いつどこにいるか)ではなく、位置と各天体の現在位置・半径
-// から求める幾何。恒星・遮蔽天体をともに球とみなし、
+// 位置 r における日照率。天体暦(いつどこにいるか)ではなく、pivot で引いた各天体の位置と
+// 半径から求める幾何。恒星・遮蔽天体をともに球とみなし、
 // r から見た太陽円盤と遮蔽天体円盤の重なり面積比で減光率を出す — 本影(重なり=太陽円盤全体)・
 // 金環(遮蔽円盤が太陽円盤に内包)・半影(部分的に重なる)・完全日照(重なり無し)が場合分け
 // 無しに1つの閉じた式から出る。
@@ -26,10 +26,10 @@ function occludedFraction(
   r: Vec3,
   sunDirX: number, sunDirY: number, sunDirZ: number,
   sunDist: number, sinSunAng: number, sunAngRadius: number,
-  occluder: CelestialMotion, occluderPivot: number,
+  occluder: CelestialMotion, pivot: number,
 ): number {
   if (occluder.kind === 'star' || occluder.def.radius <= 0) return 1; // 恒星自身・半径0の天体は遮蔽器にしない
-  const b = occluder.positionAt(occluderPivot, occluderPivot);
+  const b = occluder.positionAt(pivot);
   const dx = b.x - r.x, dy = b.y - r.y, dz = b.z - r.z;
   const along = dx * sunDirX + dy * sunDirY + dz * sunDirZ;
   if (along <= 0 || along >= sunDist) return 1; // 艦より太陽から遠い側/背後にある天体は遮蔽しない
@@ -60,11 +60,11 @@ export function maxOccludedFraction(
   r: Vec3, star: CelestialMotion, body: CelestialMotion, pivot: number,
 ): number {
   if (body.kind === 'star' || body.def.radius <= 0) return 0;
-  const s = star.positionAt(pivot, pivot);
+  const s = star.positionAt(pivot);
   const tx = s.x - r.x, ty = s.y - r.y, tz = s.z - r.z;
   const sunDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
   if (sunDist < 1) return 0; // 位置が恒星に一致(退化)
-  const b = body.positionAt(pivot, pivot);
+  const b = body.positionAt(pivot);
   const dx = b.x - r.x, dy = b.y - r.y, dz = b.z - r.z;
   const along = (dx * tx + dy * ty + dz * tz) / sunDist;
   if (along <= 0 || along >= sunDist) return 0;
@@ -81,7 +81,7 @@ export function maxOccludedFraction(
 export function sunlitFactor(
   r: Vec3, star: CelestialMotion, celestialBodies: readonly CelestialMotion[], pivot: number,
 ): number {
-  const s = star.positionAt(pivot, pivot);
+  const s = star.positionAt(pivot);
   const tx = s.x - r.x, ty = s.y - r.y, tz = s.z - r.z;
   const sunDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
   if (sunDist < 1) return 1; // 位置が恒星に一致(退化)

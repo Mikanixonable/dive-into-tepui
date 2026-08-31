@@ -59,8 +59,6 @@ export class PredictedArc {
   // 前歩の中点で解決した窓の持ち越し。刻み幅と外挿・極値の中心天体の解決だけに使うので、
   // 半歩〜1フレーム古い内容で構わない(RK4 は鈍感、外挿中心は元から1歩古い)。
   private carriedSources: ArcCelestialBodyWindow | null = null;
-  // carriedSources を解決した時刻。carriedSources が null の間の値に意味は無い。
-  private carriedPivot = 0;
   // 要求された間引き下限(span / ARC_MAX_SAMPLES)の最も粗い値。周期由来の間隔は含めない —
   // 含めると、作り直しても同じ値になる粗さを理由に represents が毎フレーム作り直しを命じる。
   private _decimation = 0;
@@ -127,14 +125,12 @@ export class PredictedArc {
     this._decimation = Math.max(this._decimation, span / C.ARC_MAX_SAMPLES);
 
     // 中心窓は最初の1歩だけ先端時刻で解決し、以後は前歩の中点で解決した窓を持ち越す。
-    const heldPivot = this.carriedSources === null ? tip.t : this.carriedPivot;
     const held = this.carriedSources ?? this.bodies.resolve(tip.t, tip, 0);
-    const center = strongestAttractor(tip.r, held.gravity, heldPivot);
+    const center = strongestAttractor(tip.r, held.gravity, held.pivot);
 
     // その場の軌道周期が刻み幅とサンプル間隔の両方の基準になる。
-    const period = keplerPeriod(
-      len(sub(tip.r, center.positionAt(heldPivot, heldPivot))), center.def.mu);
-    const dt = this.stepDt(tip, span, period, held.collision, heldPivot);
+    const period = keplerPeriod(len(sub(tip.r, center.positionAt(held.pivot))), center.def.mu);
+    const dt = this.stepDt(tip, span, period, held.collision, held.pivot);
     // 消費される弧の間引きは表示期間(span)由来の項を使わない — 使うと PREDICT パネルの
     // 選択が実体の状態を変えてしまう。消費前線の近く(ARC_FINE_STEPS 歩ぶん)は毎歩保持し、
     // それより遠くは周期基準の間引きへ落とす。
@@ -144,12 +140,11 @@ export class PredictedArc {
 
     // RK4 の各ステップにはその中点時刻の重力源を渡す。実シミュレーションも各サブステップの
     // 中点で重力源を解決しており、弧だけ過去の天体位置を据え置かないようにする。
-    const midPivot = tip.t + dt / 2;
-    const mid = this.bodies.resolve(midPivot, tip, dt);
+    const mid = this.bodies.resolve(tip.t + dt / 2, tip, dt);
     // 遮蔽体には mid.collision を渡す — 弧が幾何の相手として追っている窓であり、重力を
     // 及ぼすかとは無関係に成員が決まる。登録天体の全数を毎歩解決することはできない。
     this._trajectory.step(
-      dt, mid.gravity, mid.collision, nearestAtmosphereBody(tip.r, mid.collision, midPivot), midPivot,
+      dt, mid.gravity, mid.collision, nearestAtmosphereBody(tip.r, mid.collision, mid.pivot), mid.pivot,
       this.bcInv, this.srpCoeff, null,
       sampleInterval, span, this.keplerTail ? center : null,
     );
@@ -162,11 +157,10 @@ export class PredictedArc {
       return true;
     }
 
-    (this._apsides ??= new ApsisTrack()).observe(center, heldPivot, tip, this._trajectory.state);
-    this.checkSurfaceReach(tip, mid.collision, midPivot);
+    (this._apsides ??= new ApsisTrack()).observe(center, held.pivot, tip, this._trajectory.state);
+    this.checkSurfaceReach(tip, mid.collision, mid.pivot);
 
     this.carriedSources = mid;
-    this.carriedPivot = midPivot;
     return true;
   }
 

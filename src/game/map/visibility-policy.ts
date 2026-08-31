@@ -105,7 +105,8 @@ export class MapVisibilityPolicy {
     nearbyIds: Iterable<string> = [],
   ) {
     this.alwaysVisible = alwaysFullyVisibleIds(
-      celestialSystem.motions, (id) => celestialSystem.find(id)?.bodyClass ?? 'planet', focusId, nearbyIds, toggles);
+      celestialSystem.celestialMotions, (id) => celestialSystem.find(id)?.bodyClass ?? 'planet',
+      focusId, nearbyIds, toggles);
     this.nearby = new Set(nearbyIds);
   }
 

@@ -15,7 +15,7 @@ export function srpAccel(
   r: Vec3, sun: CelestialMotion, sunPivot: number, srpCoeff: number, sunlit: number,
 ): Vec3 {
   if (srpCoeff === 0 || sunlit === 0) return v3();
-  const s = sun.positionAt(sunPivot, sunPivot);
+  const s = sun.positionAt(sunPivot);
   const dx = r.x - s.x;
   const dy = r.y - s.y;
   const dz = r.z - s.z;
