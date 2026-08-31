@@ -4,7 +4,6 @@ import {
   ChebyshevBodyPack,
   ChebyshevEphemerisPack,
   ChebyshevSegment,
-  ChebyshevVectorCoefficients,
   ReadonlyNumberArray,
 } from './types';
 
@@ -112,22 +111,21 @@ interface IndexedBody {
   readonly body: ChebyshevBodyPack;
 }
 
-function copyCoefficients(coefficients: ReadonlyNumberArray, label: string): ReadonlyNumberArray {
+// 係数列を検査する。**複製はしない** — 4.3 MB の pack で係数の複製が 13 MB を占めるため、
+// 入力をそのまま評価器の持ち物として使う(所有権は渡した側から移る)。
+function validateCoefficients(coefficients: ReadonlyNumberArray, label: string): void {
   if (!Number.isInteger(coefficients.length) || coefficients.length < 1) {
     throw new InvalidChebyshevPackError(`${label} must contain at least one coefficient`);
   }
-  const copy: number[] = [];
   for (let i = 0; i < coefficients.length; i++) {
     const value = coefficients[i];
     if (value === undefined || !Number.isFinite(value)) {
       throw new InvalidChebyshevPackError(`${label}[${i}] must be finite`);
     }
-    copy.push(value);
   }
-  return Object.freeze(copy);
 }
 
-function copySegment(segment: ChebyshevSegment, bodyId: string, index: number): ChebyshevSegment {
+function validateSegment(segment: ChebyshevSegment, bodyId: string, index: number): void {
   if (!Number.isFinite(segment.start) || !Number.isFinite(segment.end) || segment.end <= segment.start) {
     throw new InvalidChebyshevPackError(
       `${bodyId} segment ${index} must have finite start < end`,
@@ -140,29 +138,21 @@ function copySegment(segment: ChebyshevSegment, bodyId: string, index: number): 
   if (x.length !== y.length || x.length !== z.length) {
     throw new InvalidChebyshevPackError(`${bodyId} segment ${index} coefficient lengths must match`);
   }
-  return Object.freeze({
-    start: segment.start,
-    end: segment.end,
-    coefficients: Object.freeze([
-      copyCoefficients(x, `${bodyId} segment ${index} x`),
-      copyCoefficients(y, `${bodyId} segment ${index} y`),
-      copyCoefficients(z, `${bodyId} segment ${index} z`),
-    ]) as unknown as ChebyshevVectorCoefficients,
-  });
+  validateCoefficients(x, `${bodyId} segment ${index} x`);
+  validateCoefficients(y, `${bodyId} segment ${index} y`);
+  validateCoefficients(z, `${bodyId} segment ${index} z`);
 }
 
-function copyBody(body: ChebyshevBodyPack): ChebyshevBodyPack {
+function validateBody(body: ChebyshevBodyPack): void {
   if (body.id.length === 0) throw new InvalidChebyshevPackError('body id must not be empty');
-  const segments = body.segments.map((segment, index) => copySegment(segment, body.id, index));
+  const segments = body.segments;
+  if (segments.length === 0) throw new InvalidChebyshevPackError(`${body.id} must contain a segment`);
+  segments.forEach((segment, index) => validateSegment(segment, body.id, index));
   for (let i = 1; i < segments.length; i++) {
-    const previous = segments[i - 1]!;
-    const current = segments[i]!;
-    if (current.start < previous.end) {
+    if (segments[i]!.start < segments[i - 1]!.end) {
       throw new InvalidChebyshevPackError(`${body.id} segments overlap at index ${i}`);
     }
   }
-  if (segments.length === 0) throw new InvalidChebyshevPackError(`${body.id} must contain a segment`);
-  return Object.freeze({ id: body.id, segments: Object.freeze(segments) });
 }
 
 function validateManifest(pack: ChebyshevEphemerisPack, bodies: readonly ChebyshevBodyPack[]): void {
@@ -220,14 +210,18 @@ function evaluateSegment(segment: ChebyshevSegment, time: number): { position: V
   };
 }
 
+// 天体 id と時刻から位置・速度を答える評価器。**入力の係数配列はコピーせずそのまま参照する**
+// (4.3 MB の pack で複製が 13 MB を占めるため)。所有権は渡した側から移り、以後書き換えては
+// ならない。構築時に全セグメントを検査するので、壊れた pack はここで例外になる。
 export class ChebyshevEphemeris {
-  readonly pack: ChebyshevEphemerisPack;
   private readonly bodiesById = new Map<string, IndexedBody>();
 
+  // **manifest は保持しない。** 構築時の検証で使い切りで、以後読む者がいない —
+  // 抱えると 10054 個のセグメント metadata が pack と同じ寿命で残る。
   constructor(input: ChebyshevEphemerisPack) {
-    const bodies = input.bodies.map(copyBody);
+    const bodies = input.bodies;
+    for (const body of bodies) validateBody(body);
     validateManifest(input, bodies);
-    this.pack = Object.freeze({ manifest: input.manifest, bodies: Object.freeze(bodies) });
 
     for (const body of bodies) {
       if (this.bodiesById.has(body.id)) {
@@ -235,6 +229,18 @@ export class ChebyshevEphemeris {
       }
       this.bodiesById.set(body.id, { body });
     }
+  }
+
+  // 収録している天体 id(pack の並び順)。
+  get bodyIds(): readonly string[] {
+    return [...this.bodiesById.keys()];
+  }
+
+  // 天体 id が答えられる時刻の範囲。収録していなければ null。
+  validRangeOf(id: string): { readonly start: number; readonly end: number } | null {
+    const segments = this.bodiesById.get(id)?.body.segments;
+    if (segments === undefined) return null;
+    return { start: segments[0]!.start, end: segments[segments.length - 1]!.end };
   }
 
   // time を覆うセグメント。収録外の id と有効期間外の time は例外。

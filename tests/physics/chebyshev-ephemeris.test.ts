@@ -77,8 +77,11 @@ export function register(): void {
     assert.throws(() => eph.stateOf('probe', 21), ChebyshevTimeOutOfRangeError);
   });
 
-  test('chebyshev: repeated calls are deterministic and input coefficients are snapshotted', () => {
-    const coefficients = [3, 4];
+  // 評価器は入力の係数配列をコピーせず参照する(4.3 MB の pack で複製が 13 MB を占めるため)。
+  // 所有権は渡した側から移り、以後の書き換えは答えに出る — **この検査は複製が黙って
+  // 戻されたことを検出するために置いてある。**
+  test('chebyshev: 同じ時刻は何度でも同じ答えを返し、入力係数はコピーされない', () => {
+    const coefficients = [5, 0];
     const input: ChebyshevEphemerisPack = {
       manifest: {
         version: 1,
@@ -90,9 +93,9 @@ export function register(): void {
     };
     const eph = new ChebyshevEphemeris(input);
     const first = eph.stateOf('fixed', 1);
+    assert.deepEqual(eph.stateOf('fixed', 1), first);
+    assert.equal(first.r.x, 5);
     coefficients[0] = 999;
-    const second = eph.stateOf('fixed', 1);
-    assert.deepEqual(second, first);
-    assert.deepEqual(eph.stateOf('fixed', 1), second);
+    assert.equal(eph.stateOf('fixed', 1).r.x, 999, '係数配列は複製されず参照されている');
   });
 }

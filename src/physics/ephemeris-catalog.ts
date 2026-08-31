@@ -52,10 +52,10 @@ export async function loadAbsoluteEphemeris(
   const buffer = await readWithProgress(response, onProgress);
   const source = await loadPackedAbsoluteEphemeris(buffer, epoch);
   const expectedSha256 = profile.packId.slice(profile.packId.lastIndexOf('@') + 1);
-  if (source.decoded.manifest.payloadSha256 !== expectedSha256) {
+  if (source.payloadSha256 !== expectedSha256) {
     throw new Error(
       `天体暦packの識別子がcatalogと不一致: expected ${profile.packId}, ` +
-      `actual ${String(source.decoded.manifest.payloadSha256)}`,
+      `actual ${String(source.payloadSha256)}`,
     );
   }
   // 覆っているかは絶対時刻の問いなので、**pack 自身の時刻軸(J2000 ET 秒)で比べる。**
@@ -63,11 +63,10 @@ export async function loadAbsoluteEphemeris(
   // 数 µs ずれ、期間の内側にある元期を弾いてしまう。
   const requestedStartEt = ephemerisSeconds(epoch);
   const requestedEndEt = (requiredEndJdTdb - J2000_JULIAN_DATE) * SECONDS_PER_DAY;
-  const packEt = source.decoded.manifest;
-  if (requestedStartEt < packEt.validStart || requestedEndEt > packEt.validEnd) {
+  if (requestedStartEt < source.validStartEt || requestedEndEt > source.validEndEt) {
     throw new RangeError(
       `天体暦packが要求期間を覆わない: request=[${requestedStartEt}, ${requestedEndEt}] ET, ` +
-      `pack=[${packEt.validStart}, ${packEt.validEnd}] ET`,
+      `pack=[${source.validStartEt}, ${source.validEndEt}] ET`,
     );
   }
   return source;
