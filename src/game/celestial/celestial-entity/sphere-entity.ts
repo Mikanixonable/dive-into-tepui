@@ -73,7 +73,7 @@ export class SphereEntity extends CelestialEntity {
 
   setVisible(visible: boolean): void {
     this.group.visible = visible;
-    if (this.ring !== undefined) this.ring.group.visible = visible;
+    this.ring?.setVisible(visible);
   }
 
   // displayTime 時点の位置へ同期する。見かけ直径が閾値未満なら球自体(と環)を描かない。
@@ -100,19 +100,14 @@ export class SphereEntity extends CelestialEntity {
     const orientation = this.motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
-    const rings = graphics.rings ? this.rings : null;
-    if (this.ring !== undefined && rings !== null) {
-      this.ring.group.visible = true;
-      this.ring.sync(
-        this.group.position,
-        orientation === null ? null : orientation.axis,
-        pos,
-        cameraSystem.activeCameraScale,
-        style,
-      );
-    } else if (this.ring !== undefined) {
-      this.ring.group.visible = false;
-    }
+    this.ring?.sync(
+      this.group.position,
+      orientation === null ? null : orientation.axis,
+      pos,
+      cameraSystem.activeCameraScale,
+      graphics,
+      style,
+    );
   }
 
   // 見かけ直径が閾値未満のときの共通後始末: 表面と環を隠す。
@@ -120,7 +115,7 @@ export class SphereEntity extends CelestialEntity {
     this.surface.hide();
     this.graticule.setVisible(false);
     this.surfaceMarkings?.setVisible(false);
-    if (this.ring !== undefined) this.ring.group.visible = false;
+    this.ring?.setVisible(false);
   }
 
   // 表面とグリッドと表面ラインと環を解放し、group を親から外す。
