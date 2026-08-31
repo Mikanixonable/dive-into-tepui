@@ -42,7 +42,7 @@ export class EquatorNodeMarkerPair {
   ): void {
     this.update(
       null, displayTime, celestialSystem, frameAnchors,
-      this.owner.displayState(displayTime, celestialSystem), [], timeLabel,
+      this.owner.stateAt(displayTime, celestialSystem), [], timeLabel,
     );
   }
 

@@ -261,7 +261,7 @@ export class DynamicEntity {
     frameAnchors: FrameAnchorSource, orbitRef: OrbitReference | undefined,
   ): void {
     if (this.ellipseLine === null && this.targetRelativeLine === null) return;
-    const state = this.displayState(displayTime, celestialSystem);
+    const state = this.stateAt(displayTime, celestialSystem);
     if (state === null) {
       // 表示時刻の状態が求まらない: 両方隠す。
       this.hideOrbitEllipse(fo, camera);
@@ -277,7 +277,7 @@ export class DynamicEntity {
         this.scene?.add(line.line);
         this.targetRelativeLine = line;
       }
-      const targetPos = relativeTarget.displayState(displayTime, celestialSystem)?.r ?? relativeTarget.state.r;
+      const targetPos = relativeTarget.stateAt(displayTime, celestialSystem)?.r ?? relativeTarget.state.r;
       this.targetRelativeLine?.sync(state.r, targetPos, fo, camera);
       return;
     }
@@ -532,29 +532,26 @@ export class DynamicEntity {
     return true;
   }
 
-  // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。celestialSystem を渡すと、
-  // 予測列で答えられない未来時刻を、先端を中心天体まわりの二体軌道とみなして外挿した値で
-  // 答える(外挿もできなければ null)。
-  displayState(t: number, celestialSystem?: CelestialSystem): KinematicState | null {
-    if (t <= this.actual.state.t) {
-      const past = this.actual.at(t);
-      if (past !== null) return past;
-      // 履歴を持たない種別(弾・薬莢・破片)の保持列は先端1件だけなので、at() は t が先端時刻
-      // と完全に一致したときしか答えられない。積分の刻みの積み方や simTime の強制前進で先端が
-      // 丸め1つぶん外れただけで非表示になってしまうため、その1件をそのまま答えにする。
-      return this.historyDuration > 0 ? null : this.actual.state;
-    }
+  // 任意時刻 t の状態。実測列の内挿(過去)・予測列の内挿・予測列の先端を二体ケプラー軌道と
+  // みなした外挿を、呼び出し側が意識せず1呼び出しで引く。未来を予測しない種別と、予測が
+  // 打ち切られた(天体表面へ到達した)先の時刻では求まらない。外挿には中心天体の ECI 状態が
+  // 要るので、celestialSystem を渡さなければ予測列が持つ範囲までを答える。
+  stateAt(t: number, celestialSystem?: CelestialSystem): KinematicState | null {
+    if (t <= this.state.t) return this.actual.at(t);
     const predicted = this.predicted;
-    const normal = predicted?.at(t) ?? null;
-    if (normal !== null || celestialSystem === undefined) return normal;
-    const center = predicted?.extrapolationCenter ?? null;
-    if (predicted === null || this.predictionTruncated || center === null) return null;
+    if (predicted === null) return null;
+    // 予測列の先端以前は内挿で足りる。外挿が要るときにだけ中心天体の状態を引く。
+    if (t <= predicted.state.t) return predicted.at(t);
+    if (this.predictionTruncated || celestialSystem === undefined) return null;
+    // 中心天体は予測列が運んでいるものだけが正しい — 相対状態はその天体を原点に解かれている。
+    const center = predicted.extrapolationCenter;
+    if (center === null) return null;
     return predicted.extrapolatedAt(t, celestialSystem.stateAt(center.celestialBody.id, t));
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
   sync(fo: FloatingOrigin, displayTime: number, _viewer?: Viewpoint, _proteinVibrationEnabled = true): void {
-    const s = this.displayState(displayTime);
+    const s = this.stateAt(displayTime);
     if (s === null) {
       this.renderObject.visible = false;
       return;

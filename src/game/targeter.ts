@@ -141,8 +141,8 @@ export class Targeter {
   }
 
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。
-  // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
-  // 予測地平の先を指していて displayState を返せない対象と、可視性判定で選択不可の対象は出さない。
+  // 位置は機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
+  // 予測地平の先を指していて stateAt が答えられない対象と、可視性判定で選択不可の対象は出さない。
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
@@ -157,7 +157,7 @@ export class Targeter {
     for (const tgt of targets) {
       if (!tgt.alive) continue;
       this.aliveScratch.push(tgt);
-      const ds = tgt.displayState(displayTime);
+      const ds = tgt.stateAt(displayTime);
       if (!ds) continue;
       const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship'), tgt === player);
       if (visibility && !visibility.pickable) continue;
@@ -180,7 +180,7 @@ export class Targeter {
     // (上のループは生存個体しか通らないため、撃破直後に部位マーカーが残るのを防ぐ)。
     for (const tgt of targets) {
       if (!(tgt instanceof Enemy)) continue;
-      const ds = tgt.alive ? tgt.displayState(displayTime) : null;
+      const ds = tgt.alive ? tgt.stateAt(displayTime) : null;
       this.syncProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, overviewMode, project, cameraSystem.activeCameraPos);
     }
     for (const ammo of ammoPickups) {

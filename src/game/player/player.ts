@@ -689,7 +689,7 @@ export class Player extends Ship {
     orbitRef?: OrbitReference,
   ): void {
     // メッシュ本体の位置・姿勢
-    const displayState = this.displayState(displayTime);
+    const displayState = this.stateAt(displayTime);
     const mapEntityVisible = !camera.overviewMode || visibility === null || visibility.category;
     this.renderObject.visible = displayState !== null && mapEntityVisible && !(isActive && camera.zoomActive);
     if (displayState !== null) {
