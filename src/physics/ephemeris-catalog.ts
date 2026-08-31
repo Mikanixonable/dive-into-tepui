@@ -1,6 +1,6 @@
 import modernPackUrl from '../assets/ephemeris/modern-2026-10y.epk';
 import farFuturePackUrl from '../assets/ephemeris/far-future-20115-10y.epk';
-import { AbsoluteEphemeris } from './absolute-ephemeris';
+import { EphemerisPoints } from './point-ephemeris';
 import { EphemerisProfileId, profileAt } from './ephemeris-profile';
 import { ephemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from './time';
 import { loadPackedAbsoluteEphemeris } from './packed-absolute-ephemeris';
@@ -39,12 +39,12 @@ async function readWithProgress(response: Response, onProgress?: (ratio: number)
 // 得られない応答では呼ばない(偽の途中経過を出さないため)。
 // epoch はこのランの元期(simTime=0)。プロファイルの選択と要求期間の検査は絶対時刻
 // (JD_TDB)で行い、読み込んだ pack は元期起点の simTime で答えるようになる。
-export async function loadAbsoluteEphemeris(
+export async function loadEphemerisPoints(
   profileId: EphemerisProfileId,
   epoch: TdbJulianDate,
   requiredEndJdTdb = epoch.value,
   onProgress?: (ratio: number) => void,
-): Promise<AbsoluteEphemeris> {
+): Promise<EphemerisPoints> {
   const profile = profileAt(epoch.value, profileId);
   profileAt(requiredEndJdTdb, profileId);
   const response = await fetch(PACK_URLS[profileId]);
@@ -69,5 +69,5 @@ export async function loadAbsoluteEphemeris(
       `pack=[${source.validStartEt}, ${source.validEndEt}] ET`,
     );
   }
-  return source;
+  return source.ephemerisPoints();
 }

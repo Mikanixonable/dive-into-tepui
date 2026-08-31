@@ -23,7 +23,7 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
-import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
+import { loadEphemerisPoints } from '../../physics/ephemeris-catalog';
 import { profileAtOrNull } from '../../physics/ephemeris-profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
 
@@ -117,10 +117,10 @@ export abstract class Stage {
     onProgress?: (ratio: number) => void,
   ): Promise<CelestialSystem> {
     const profile = profileAtOrNull(epoch.value);
-    const pack = profile === null ? null : await loadAbsoluteEphemeris(
+    const ephemerisPoints = profile === null ? null : await loadEphemerisPoints(
       profile.id, epoch, profile.validEndJdTdb, onProgress,
     );
-    return solarSystem('earth', phaseOffsets, earthSpinPhase0, pack, epoch);
+    return solarSystem('earth', phaseOffsets, earthSpinPhase0, ephemerisPoints, epoch);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;
