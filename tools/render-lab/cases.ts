@@ -34,7 +34,7 @@ import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
 import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
-import { AU } from '../../src/physics/planet-orbit';
+import { AU } from '../../src/physics/astronomical-unit';
 import { MARS } from '../../src/game/celestial/solar-system/mars-system';
 import { SATURN } from '../../src/game/celestial/solar-system/saturn-system';
 import { type CelestialTexture } from '../../src/render/celestial-textures';

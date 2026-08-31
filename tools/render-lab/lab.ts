@@ -18,7 +18,7 @@ import { atmosphereDraws } from '../../src/render/atmosphere';
 import type { ChoiceValue, GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
-import { AU } from '../../src/physics/planet-orbit';
+import { AU } from '../../src/physics/astronomical-unit';
 import { R_SUN } from '../../src/game/celestial/solar-system/constants';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
