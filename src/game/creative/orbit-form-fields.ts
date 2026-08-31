@@ -34,8 +34,8 @@ export function bodyGroupsOf(
 export function lagrangeSystemItemsOf(
   celestialSystem: CelestialSystem, orbitingIds: readonly string[],
 ): readonly (readonly [string, string])[] {
-  // 共線点が行き先として意味を持つ系だけを出す。質量が未測定の天体では質量比が 0 になり、
-  // 共線点の距離比を解く反復が収束せず NaN の状態を返すため、選ばせてはいけない。
+  // 共線点が行き先として意味を持つ系だけを出す。重力を無視すると宣言した天体(μ = 0)では
+  // 質量比が 0 になり、共線点の距離比を解く反復が収束せず NaN の状態を返す。
   const usable = (id: string): boolean => {
     const motion = celestialSystem.entityOf(id).motion;
     return motion instanceof OrbitingMotion && motion.hasUsableCollinearPoints(C.LAGRANGE_MIN_CLEARANCE_RATIO);

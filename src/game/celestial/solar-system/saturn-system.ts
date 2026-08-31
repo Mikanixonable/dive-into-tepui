@@ -6,7 +6,7 @@ import {
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
-import { MU_SATURN } from './constants';
+import { GRAVITATIONAL_CONSTANT, MU_SATURN } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
@@ -47,7 +47,7 @@ export const SATURN: PlanetDef = {
 
 // 土星の輪の近くを回る羊飼い衛星・環境軌道衛星6個。基準面はタイタンと同じ土星系
 // ラプラス面。GM・平均半径は JPL Planetary Satellite Physical Parameters。歳差周期は
-// いずれも未測定。ダフニスのみ GM が未測定(mu: 0)で、半径も同表に無いため Wikipedia
+// いずれも未測定。ダフニスのみ GM が未測定で、半径も同表に無いため Wikipedia
 // "Daphnis (moon)"(平均直径 7.8±1.0 km、一次は測光サイズ推定)の値を使う。
 const PAN: SatelliteDef = {
   id: 'pan',
@@ -58,7 +58,9 @@ const PAN: SatelliteDef = {
 
 const DAPHNIS: SatelliteDef = {
   id: 'daphnis',
-  mu: 0,
+  // GM は未測定。同じ環に埋もれた羊飼い衛星で GM を持つパンと半径から求めた密度
+  // 365 kg/m^3 を半径に掛けた(環の擾乱から推定される 7.7e13 kg とも整合する)。
+  mu: GRAVITATIONAL_CONSTANT * 9.07e13,
   radius: 3.9e3,
   orbit: jplSatelliteOrbit({ a: 1.365e8, e: 0.000, incDeg: 0.0, periodDays: 0.594080, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
 };

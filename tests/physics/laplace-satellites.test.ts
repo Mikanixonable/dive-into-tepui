@@ -165,12 +165,11 @@ export function register(): void {
     assert.equal(planetOf('phoebe'), 'saturn');
   });
 
-  test('laplace-satellites: 半径・重力定数が有限で正(ダフニスのみ mu=0)', () => {
+  test('laplace-satellites: 半径・重力定数が有限で正', () => {
     for (const [id] of CASES) {
       const def = motionOf(DEFS, id).def as SatelliteDef;
       assert.ok(Number.isFinite(def.radius) && def.radius > 0, `${id} の radius`);
-      if (id === 'daphnis') assert.equal(def.mu, 0);
-      else assert.ok(Number.isFinite(def.mu) && def.mu > 0, `${id} の mu`);
+      assert.ok(Number.isFinite(def.mu) && def.mu > 0, `${id} の mu`);
     }
   });
 

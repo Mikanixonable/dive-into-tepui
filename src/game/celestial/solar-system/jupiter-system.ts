@@ -9,7 +9,7 @@ import {
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/planet-orbit';
-import { MU_JUPITER } from './constants';
+import { GRAVITATIONAL_CONSTANT, MU_JUPITER } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { PointEntity } from '../celestial-entity/point-entity';
@@ -113,6 +113,8 @@ const CALLISTO: SatelliteDef = {
 // 0(歳差なし)。GM・平均半径は Planetary Satellite Physical Parameters が一次だが、
 // エララ・アナンケ・カルメ・パシファエ・シノーペの半径はその表に無いため、Wikipedia
 // "List of natural satellites"(一次は Sheppard の測光サイズ推定)の値を使う。
+// この5体は GM も未測定なので、同じ捕獲小天体でただ一つ GM を持つヒマリアと半径から
+// 求めた密度 883 kg/m^3 を、それぞれの半径に掛けて質量を見積もる。
 const HIMALIA: SatelliteDef = {
   id: 'himalia',
   mu: 0.15155e9,
@@ -122,7 +124,7 @@ const HIMALIA: SatelliteDef = {
 
 const ELARA: SatelliteDef = {
   id: 'elara',
-  mu: 0,
+  mu: GRAVITATIONAL_CONSTANT * 2.36e17,
   radius: 3.995e4,
   orbit: jplSatelliteOrbit({ a: 1.171070e10, e: 0.212, incDeg: 27.8, periodDays: 258.8861, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
@@ -130,28 +132,28 @@ const ELARA: SatelliteDef = {
 // 傾斜角 90° 超が逆行を表す。
 const ANANKE: SatelliteDef = {
   id: 'ananke',
-  mu: 0,
+  mu: GRAVITATIONAL_CONSTANT * 1.14e16,
   radius: 1.455e4,
   orbit: jplSatelliteOrbit({ a: 2.10295e10, e: 0.238, incDeg: 147.6, periodDays: 623.1097, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
 const CARME: SatelliteDef = {
   id: 'carme',
-  mu: 0,
+  mu: GRAVITATIONAL_CONSTANT * 4.68e16,
   radius: 2.33e4,
   orbit: jplSatelliteOrbit({ a: 2.31392e10, e: 0.261, incDeg: 164.6, periodDays: 719.2806, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
 const PASIPHAE: SatelliteDef = {
   id: 'pasiphae',
-  mu: 0,
+  mu: GRAVITATIONAL_CONSTANT * 8.93e16,
   radius: 2.89e4,
   orbit: jplSatelliteOrbit({ a: 2.34632e10, e: 0.412, incDeg: 148.3, periodDays: 734.4215, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
 const SINOPE: SatelliteDef = {
   id: 'sinope',
-  mu: 0,
+  mu: GRAVITATIONAL_CONSTANT * 1.98e16,
   radius: 1.75e4,
   orbit: jplSatelliteOrbit({ a: 2.36793e10, e: 0.262, incDeg: 157.3, periodDays: 744.5951, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };

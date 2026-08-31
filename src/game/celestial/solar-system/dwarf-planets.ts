@@ -133,8 +133,9 @@ const CHARON: SatelliteDef = {
 
 const STYX: SatelliteDef = {
   id: 'styx',
-  // GM は上限値(< 0.0003 km^3/s^2)しか無く実測でないため 0 として扱う。
-  mu: 0,
+  // GM は上限値(< 0.0003 km^3/s^2)しか無い。この表のニクス・ヒドラが示す密度 1,000 kg/m^3 を
+  // 半径に掛けて見積もった(結果は上限値の 1/8 に収まる)。
+  mu: GRAVITATIONAL_CONSTANT * 5.89e14,
   radius: 5.2e3,
   orbit: jplSatelliteOrbit({ a: 43200e3, e: 0.025, incDeg: 0.0, periodDays: 20.16, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
 };
@@ -148,8 +149,8 @@ const NIX: SatelliteDef = {
 
 const KERBEROS: SatelliteDef = {
   id: 'kerberos',
-  // GM は上限値(< 0.0002 km^3/s^2)しか無く実測でないため 0 として扱う。
-  mu: 0,
+  // GM は上限値(< 0.0002 km^3/s^2)しか無い。ステュクスと同じ見積り方(密度 1,000 kg/m^3)。
+  mu: GRAVITATIONAL_CONSTANT * 9.05e14,
   radius: 6.0e3,
   orbit: jplSatelliteOrbit({ a: 58300e3, e: 0.010, incDeg: 0.4, periodDays: 32.17, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(PLUTO_POLE) }),
 };

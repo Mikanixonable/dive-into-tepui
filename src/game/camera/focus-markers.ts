@@ -209,14 +209,12 @@ export class FocusMarkers {
   constructor(private readonly markerManager: MarkerManager, private readonly celestialSystem: CelestialSystem) {
     this.lagrangeSources = celestialSystem.entities.flatMap((body) => {
       const motion = body.motion;
-      if (!(motion instanceof OrbitingMotion)) return [];
-      const collinear = motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO);
-      // 小天体・準惑星は数が多く、L3・L4・L5 まで並べるとラベルが密集しすぎる。
-      const minor = body.bodyClass === 'smallBody' || body.bodyClass === 'dwarf';
-      const triangular = !minor && motion.hasStableTriangularPoints();
+      // ラグランジュ点を出すと宣言した系だけが起点になる。全公転天体で出すと点の数が
+      // 天体数の数倍になり、ラベルが画面を埋める。
+      if (!(motion instanceof OrbitingMotion) || motion.def.lagrangeLabels !== true) return [];
       const points = [
-        ...(collinear ? (minor ? [1, 2] as const : [1, 2, 3] as const) : []),
-        ...(triangular ? [4, 5] as const : []),
+        ...(motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO) ? [1, 2, 3] as const : []),
+        ...(motion.hasStableTriangularPoints() ? [4, 5] as const : []),
       ];
       return points.length === 0 ? [] : [{ id: body.id, name: body.name, motion, points }];
     });

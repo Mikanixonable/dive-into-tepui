@@ -5,7 +5,7 @@ import {
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
 import { AU, planetOrbit } from '../../../physics/planet-orbit';
-import { MU_NEPTUNE } from './constants';
+import { GRAVITATIONAL_CONSTANT, MU_NEPTUNE } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { PointEntity } from '../celestial-entity/point-entity';
@@ -49,10 +49,12 @@ const TRITON: SatelliteDef = {
 };
 
 // ネレイド。トリトンの潮汐力に大きく乱された高離心率の遠方軌道で、黄道基準の平均要素を使う
-// (出典・GM/半径の扱いはヒマリア群と同じ)。GM は未測定。
+// (出典・GM/半径の扱いはヒマリア群と同じ)。
 const NEREID: SatelliteDef = {
   id: 'nereid',
-  mu: 0,
+  // GM は未測定。同じ捕獲された不規則衛星で GM を持つ土星のフォイベと半径から
+  // 求めた密度 1,643 kg/m^3 を半径に掛けた。
+  mu: GRAVITATIONAL_CONSTANT * 3.38e19,
   radius: 1.7e5,
   orbit: jplSatelliteOrbit({ a: 5.5139e9, e: 0.751, incDeg: 5.1, periodDays: 360.133039, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };

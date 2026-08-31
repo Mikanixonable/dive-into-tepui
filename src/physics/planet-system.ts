@@ -100,10 +100,7 @@ export class PlanetSystem {
     const angles = this.anglesAt(t);
     const rels = moons.map((moon) => satelliteState(moon.def.orbit, angles, t));
 
-    // mu = 0 は「質量が未測定」であって質量0ではない。本体の質量が分からない系では重心の
-    // 位置も決まらないので、補正せず本体を重心に置いたままにする — 補正すると衛星の質量比が
-    // 1 になり、本体が衛星との距離ぶんまるごとずれる。
-    const body = this.body.def.mu <= 0 ? bary : this.bodyFromBarycenter(bary, rels);
+    const body = this.bodyFromBarycenter(bary, rels);
     return { body, satellites: rels.map((rel) => addPrimaryRelative(body, rel)) };
   }
 
@@ -156,8 +153,14 @@ export class PlanetSystem {
     this.planetBody = body;
   }
 
-  // 衛星をこの系へ登録し、その登録順(satelliteStateAt に渡す index)を返す。
+  // 衛星をこの系へ登録し、その登録順(satelliteStateAt に渡す index)を返す。**本体が μ を
+  // 持たない系へは登録できない** — 重心を分け合う比が衛星だけで決まって本体の質量比が 0 に
+  // なり、本体が衛星との距離ぶんまるごとずれる。衛星の軌道長半径と周期があれば系の μ は
+  // ケプラー第3法則で必ず決まるので、この制約はどの系でも満たせる。
   addSatellite(satellite: SatelliteMotion): number {
+    if (this.body.def.mu <= 0) {
+      throw new Error(`PlanetSystem: μ を持たない ${this.id} へ衛星 ${satellite.def.id} は登録できない`);
+    }
     return this.moons.push(satellite) - 1;
   }
 }

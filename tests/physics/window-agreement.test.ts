@@ -119,18 +119,17 @@ function substepInterval(from: KinematicState, dt: number): SurfaceParticipant {
 // 絞り込みが実際に何かを通す「接触が差し迫った場所」でなければ比べる意味がない。
 type SurfaceSite = { readonly name: string; readonly bodyId: string };
 
-// 登録天体で最初に見つかる、重力を及ぼさないが半径を持つ天体。表面判定が重力の有無に
-// 依らないことは、この種の天体でしか見えない。
-function firstMasslessBodyId(): string {
-  const def = PARTS.bodies.map((m) => m.def).find((b) => b.mu === 0 && b.radius > 0);
-  assert.ok(def !== undefined, '既定の登録天体に mu=0 のものが無い');
-  return def.id;
+// 登録天体のうち μ が最も小さいもの。常時加算される重い天体から最も遠い側の経路
+// (グリッドへ載る側・弧の成員から抜けやすい側)を通る相手として選ぶ。
+function weakestGravityBodyId(): string {
+  const defs = PARTS.bodies.map((m) => m.def).filter((b) => b.radius > 0);
+  return defs.reduce((a, b) => (b.mu < a.mu ? b : a)).id;
 }
 
 const SURFACE_SITES: readonly SurfaceSite[] = [
   { name: '地球の表面直上', bodyId: 'earth' },
   { name: '月の表面直上', bodyId: 'moon' },
-  { name: '重力を持たない天体の表面直上', bodyId: firstMasslessBodyId() },
+  { name: '最も軽い天体の表面直上', bodyId: weakestGravityBodyId() },
 ];
 
 // bodyId の表面から 1km 上空を、表面へ向かって降りていく状態。向きは任意でよいので +X に取る。
