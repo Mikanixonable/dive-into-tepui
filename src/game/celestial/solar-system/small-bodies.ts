@@ -107,20 +107,25 @@ const ENCKE: PlanetDef = {
 // tempel1(JD2457470.5)・wild2(JD2458808.5)・
 // hartley2(JD2457152.5)・bennu(JD2455562.5)だけが上記と別の元期を持つ — この実装は
 // どの元期も simTime=0 に対応させるので、同一の実在時刻の空を再現しているわけではない。
-// GM は SBDB(なければ 0 = 質量未測定)、直径は SBDB または各天体の観測文献。
+// 直径は SBDB または各天体の観測文献。GM を SBDB が持つのはヒギエア・プシケ・エロス・
+// リュウグウ・ベンヌ・ディディモスだけなので、他は天体ごとに質量の出典か見積り方をその場に書く。
 // セドナのみ直径が未測定なので、掩蔽・熱赤外観測から広く引用される推定値(半径 500 km)を
 // 代わりに使う — 描画にも衝突判定にも半径が要るため、値が無いままにはできない。
 // 三軸半径 [km](a>=b>=c)は探査機・掩蔽・レーダー・適応光学など天体ごとに別の観測による。
 const SEDNA: PlanetDef = {
   id: 'sedna',
-  mu: 0,
+  // 質量は未測定。同規模の太陽系外縁天体(オルクス 1,190・クワオアー 1,790・ゴンゴン 1,740 kg/m^3)
+  // が示す密度の中央 1,500 kg/m^3 を、この表の半径に掛けて見積もった。
+  mu: GRAVITATIONAL_CONSTANT * 7.85e20,
   radius: 500000.0,
   orbit: sbdbOrbit({ aAu: 543.7195289, e: 0.8598825, incDeg: 11.9252758, raanDeg: 144.5061663, lonPeriDeg: 455.6049389, l0Deg: 814.2006333 }),
 };
 
 export const QUAOAR: PlanetDef = {
   id: 'quaoar',
-  mu: 0,
+  // GM は未測定だが、系の GM はウェイウォットの軌道長半径と周期からケプラー第3法則で 8.109e10
+  // と決まる。ここから衛星ぶんを引いた。含意する密度 1,790 kg/m^3 は外縁天体として妥当。
+  mu: 8.093e10,
   radius: 545000.0,
   rings: QUAOAR_RINGS,
   orbit: sbdbOrbit({ aAu: 43.1561765, e: 0.0352002, incDeg: 7.9915758, raanDeg: 188.9191248, lonPeriDeg: 352.1281758, l0Deg: 644.9769333 }),
@@ -136,7 +141,8 @@ const WEYWOT: SatelliteDef = {
 
 const CHARIKLO: PlanetDef = {
   id: 'chariklo',
-  mu: 0,
+  // 質量は環の力学から求めた 5.9〜6.9e18 kg(Morgado et al. 2021)の中央値。
+  mu: GRAVITATIONAL_CONSTANT * 6.4e18,
   radius: 143800.0, // 三軸の最長半軸(外接球)
   shape: { kind: 'triaxial', a: 143800.0, b: 135200.0, c: 99100.0 },
   rings: CHARIKLO_RINGS,
@@ -176,7 +182,9 @@ const BENNU: PlanetDef = {
 
 export const ORCUS: PlanetDef = {
   id: 'orcus',
-  mu: 0,
+  // GM は未測定だが、系の GM はヴァンスの軌道長半径と周期からケプラー第3法則で 4.237e10 と
+  // 決まる。ここから衛星ぶんを引いた。含意する密度 1,190 kg/m^3 は外縁天体として妥当。
+  mu: 3.656e10,
   radius: 479200.0,
   orbit: sbdbOrbit({ aAu: 39.377, e: 0.22052, incDeg: 20.5568, raanDeg: 268.4054, lonPeriDeg: 341.9739, l0Deg: 531.0712 }),
 };
@@ -191,35 +199,43 @@ const VANTH: SatelliteDef = {
 
 const GONGGONG: PlanetDef = {
   id: 'gonggong',
-  mu: 0,
+  // 質量は衛星シャンリュウの軌道から求めた実測値。衛星自体はこの表に登録していない。
+  mu: GRAVITATIONAL_CONSTANT * 1.75e21,
   radius: 615000.0,
   orbit: sbdbOrbit({ aAu: 66.867, e: 0.50425, incDeg: 30.8991, raanDeg: 336.8383, lonPeriDeg: 543.4615, l0Deg: 655.1263 }),
 };
 
 const SALACIA: PlanetDef = {
   id: 'salacia',
-  mu: 0,
+  // 質量は衛星アクタイアの軌道から求めた**系の合計**。衛星をこの表に登録していないので、
+  // 分割せずそのまま本体へ与えている(アクタイアは系の 4% 程度)。
+  mu: GRAVITATIONAL_CONSTANT * 4.861e20,
   radius: 419000.0,
   orbit: sbdbOrbit({ aAu: 42.055, e: 0.1046, incDeg: 23.9272, raanDeg: 280.2543, lonPeriDeg: 589.2316, l0Deg: 723.9095 }),
 };
 
 const VARUNA: PlanetDef = {
   id: 'varuna',
-  mu: 0,
+  // 質量は自転による扁平から求めた密度 992 kg/m^3(Lacerda & Jewitt 2007)に、掩蔽で得た
+  // 直径 654 km を掛けたもの。TODO: この半径は古い直径 900 km 由来で質量と整合しない —
+  // 掩蔽由来の半径 327 km へ揃えると、表面重力も外形も現在の観測に合う。
+  mu: GRAVITATIONAL_CONSTANT * 1.45e20,
   radius: 450000.0,
   orbit: sbdbOrbit({ aAu: 43.2, e: 0.051615, incDeg: 17.1405, raanDeg: 97.2158, lonPeriDeg: 370.5748, l0Deg: 486.2427 }),
 };
 
 const IXION: PlanetDef = {
   id: 'ixion',
-  mu: 0,
+  // 質量・密度とも未測定。同規模の外縁天体に共通する 1,000 kg/m^3 を、この表の半径に掛けた。
+  mu: GRAVITATIONAL_CONSTANT * 1.77e20,
   radius: 348390.0,
   orbit: sbdbOrbit({ aAu: 39.346, e: 0.24356, incDeg: 19.6625, raanDeg: 71.0808, lonPeriDeg: 371.7031, l0Deg: 666.6707 }),
 };
 
 const ARROKOTH: PlanetDef = {
   id: 'arrokoth',
-  mu: 0,
+  // 質量はニューホライズンズの接近観測から求めた公称値(Keane et al. 2022)。
+  mu: GRAVITATIONAL_CONSTANT * 7.485e14,
   radius: 17500.0, // 三軸の最長半軸(外接球)
   shape: { kind: 'triaxial', a: 17500.0, b: 10000.0, c: 5000.0 },
   orbit: sbdbOrbit({ aAu: 44.053, e: 0.03556, incDeg: 2.4506, raanDeg: 159.0377, lonPeriDeg: 347.8884, l0Deg: 658.8723 }),
@@ -227,7 +243,9 @@ const ARROKOTH: PlanetDef = {
 
 const CHIRON: PlanetDef = {
   id: 'chiron',
-  mu: 0,
+  // 質量は未測定。同じケンタウルス族で密度が実測されたカリクローの 800 kg/m^3 を、この表の
+  // 半径に掛けて見積もった。
+  mu: GRAVITATIONAL_CONSTANT * 8.38e17,
   radius: 63000.0, // 三軸の最長半軸(外接球)
   shape: { kind: 'triaxial', a: 63000.0, b: 54500.0, c: 34000.0 },
   orbit: sbdbOrbit({ aAu: 13.68427, e: 0.379766, incDeg: 6.93057, raanDeg: 209.2961, lonPeriDeg: 548.5839, l0Deg: 765.3038 }),
@@ -235,7 +253,9 @@ const CHIRON: PlanetDef = {
 
 const INTERAMNIA: PlanetDef = {
   id: 'interamnia',
-  mu: 0,
+  // 質量は VLT の掩蔽・測光解析による実測値。SBDB の GM(5 km^3/s^2、Landgraf 1992)は
+  // この直径に対し密度 5 g/cm^3 を含意し、C型としてありえないため採らない。
+  mu: GRAVITATIONAL_CONSTANT * 3.5e19,
   radius: 181000.0, // 三軸の最長半軸(外接球)
   shape: { kind: 'triaxial', a: 181000.0, b: 174000.0, c: 155000.0 },
   orbit: sbdbOrbit({ aAu: 3.056812, e: 0.155059, incDeg: 17.3153, raanDeg: 280.1672, lonPeriDeg: 374.2289, l0Deg: 595.3737 }),
@@ -243,14 +263,16 @@ const INTERAMNIA: PlanetDef = {
 
 const EUROPA52: PlanetDef = {
   id: 'europa52',
-  mu: 0,
+  // 質量は VLT の掩蔽・測光解析による実測値。
+  mu: GRAVITATIONAL_CONSTANT * 2.4e19,
   radius: 151959.0,
   orbit: sbdbOrbit({ aAu: 3.094136, e: 0.112483, incDeg: 7.4815, raanDeg: 128.5734, lonPeriDeg: 471.3774, l0Deg: 820.3002 }),
 };
 
 const DAVIDA: PlanetDef = {
   id: 'davida',
-  mu: 0,
+  // 質量は VLT の掩蔽・測光解析による実測値。
+  mu: GRAVITATIONAL_CONSTANT * 2.66e19,
   radius: 178500.0, // 三軸の最長半軸(外接球)
   shape: { kind: 'triaxial', a: 178500.0, b: 147000.0, c: 115500.0 },
   orbit: sbdbOrbit({ aAu: 3.161793, e: 0.189373, incDeg: 15.9498, raanDeg: 107.5541, lonPeriDeg: 444.084, l0Deg: 514.52 }),
@@ -258,14 +280,16 @@ const DAVIDA: PlanetDef = {
 
 const JUNO: PlanetDef = {
   id: 'juno',
-  mu: 0,
+  // 質量は VLT の掩蔽・測光解析による実測値。
+  mu: GRAVITATIONAL_CONSTANT * 2.7e19,
   radius: 123298.0,
   orbit: sbdbOrbit({ aAu: 2.67099, e: 0.2557, incDeg: 12.9866, raanDeg: 169.8116, lonPeriDeg: 417.7067, l0Deg: 680.439 }),
 };
 
 const PSYCHE: PlanetDef = {
   id: 'psyche',
-  mu: 0,
+  // GM は SBDB(Farnocchia et al. 2024)。
+  mu: 1.601e9,
   radius: 139000.0, // 三軸の最長半軸(外接球)
   shape: { kind: 'triaxial', a: 139000.0, b: 119000.0, c: 85500.0 },
   orbit: sbdbOrbit({ aAu: 2.92572, e: 0.134932, incDeg: 3.0987, raanDeg: 149.9754, lonPeriDeg: 380.0081, l0Deg: 459.7775 }),
@@ -273,7 +297,8 @@ const PSYCHE: PlanetDef = {
 
 const EUNOMIA: PlanetDef = {
   id: 'eunomia',
-  mu: 0,
+  // 質量は他の小惑星への摂動から求めた実測値(Siltala & Granvik 2022)。
+  mu: GRAVITATIONAL_CONSTANT * 3.026e19,
   radius: 170000.0, // 三軸の最長半軸(外接球)
   shape: { kind: 'triaxial', a: 170000.0, b: 124000.0, c: 114500.0 },
   orbit: sbdbOrbit({ aAu: 2.641959, e: 0.187771, incDeg: 11.7614, raanDeg: 292.8808, lonPeriDeg: 391.3421, l0Deg: 551.0312 }),
@@ -281,7 +306,8 @@ const EUNOMIA: PlanetDef = {
 
 const SYLVIA: PlanetDef = {
   id: 'sylvia',
-  mu: 0,
+  // 質量は2個の衛星の軌道から求めた実測値(Marchis et al. 2005)。衛星は登録していない。
+  mu: GRAVITATIONAL_CONSTANT * 1.476e19,
   radius: 181500.0, // 三軸の最長半軸(外接球)
   shape: { kind: 'triaxial', a: 181500.0, b: 124500.0, c: 95500.0 },
   orbit: sbdbOrbit({ aAu: 3.490931, e: 0.094242, incDeg: 10.8493, raanDeg: 72.946, lonPeriDeg: 340.0475, l0Deg: 463.9674 }),
@@ -289,7 +315,8 @@ const SYLVIA: PlanetDef = {
 
 const APOPHIS: PlanetDef = {
   id: 'apophis',
-  mu: 0,
+  // 質量は直径とS型の標準的な密度から置いた推定値(JPL の衝突リスク評価が使う値)。
+  mu: GRAVITATIONAL_CONSTANT * 6.1e10,
   radius: 170.0,
   orbit: sbdbOrbit({ aAu: 0.922359, e: 0.191149, incDeg: 3.340997, raanDeg: 203.8937, lonPeriDeg: 330.5733, l0Deg: 505.9037 }),
 };
@@ -304,35 +331,41 @@ const DIDYMOS: PlanetDef = {
 
 const TEMPEL1: PlanetDef = {
   id: 'tempel1',
-  mu: 0,
+  // 質量はディープインパクトが求めた密度 620 kg/m^3 と核の寸法から(A'Hearn et al. 2005)。
+  mu: GRAVITATIONAL_CONSTANT * 7.5e13,
   radius: 3000.0,
   orbit: sbdbOrbit({ aAu: 3.146134, e: 0.5097, incDeg: 10.4734, raanDeg: 68.7536, lonPeriDeg: 247.9509, l0Deg: 584.5363 }),
 };
 
 const WILD2: PlanetDef = {
   id: 'wild2',
-  mu: 0,
+  // 質量は核の寸法と彗星核の標準的な密度 600 kg/m^3 から。
+  mu: GRAVITATIONAL_CONSTANT * 2.3e13,
   radius: 2000.0,
   orbit: sbdbOrbit({ aAu: 3.449746, e: 0.5374, incDeg: 3.237, raanDeg: 136.1102, lonPeriDeg: 177.8354, l0Deg: 365.4321 }),
 };
 
 const HARTLEY2: PlanetDef = {
   id: 'hartley2',
-  mu: 0,
+  // 質量は EPOXI が求めた密度 200〜400 kg/m^3 と核の寸法から(Thomas et al. 2013)。
+  mu: GRAVITATIONAL_CONSTANT * 3.0e11,
   radius: 800.0,
   orbit: sbdbOrbit({ aAu: 3.475652, e: 0.6936, incDeg: 13.5995, raanDeg: 219.7422, lonPeriDeg: 401.064, l0Deg: 652.8462 }),
 };
 
 const CRUITHNE: PlanetDef = {
   id: 'cruithne',
-  mu: 0,
+  // 質量は未測定。この表の半径(NEOWISE の直径 2.07 km)に、S型の標準的な密度 2,000 kg/m^3
+  // を掛けた。
+  mu: GRAVITATIONAL_CONSTANT * 9.3e12,
   radius: 1035.5,
   orbit: sbdbOrbit({ aAu: 0.997797, e: 0.5149, incDeg: 19.8024, raanDeg: 126.1887, lonPeriDeg: 170.0717, l0Deg: 352.2041 }),
 };
 
 const KAMOOALEWA: PlanetDef = {
   id: 'kamooalewa',
-  mu: 0,
+  // 質量は未測定。この表の半径に、S型の標準的な密度 2,000 kg/m^3 を掛けた。
+  mu: GRAVITATIONAL_CONSTANT * 3.29e8,
   radius: 34.0, // 三軸の最長半軸(外接球)
   shape: { kind: 'triaxial', a: 34.0, b: 23.0, c: 19.5 },
   orbit: sbdbOrbit({ aAu: 1.00081, e: 0.10224, incDeg: 7.8026, raanDeg: 65.5932, lonPeriDeg: 369.9564, l0Deg: 613.3436 }),
@@ -340,14 +373,16 @@ const KAMOOALEWA: PlanetDef = {
 
 const TK7: PlanetDef = {
   id: 'tk7',
-  mu: 0,
+  // 質量は未測定。この表の半径に、S型の標準的な密度 2,000 kg/m^3 を掛けた。
+  mu: GRAVITATIONAL_CONSTANT * 5.7e10,
   radius: 189.5,
   orbit: sbdbOrbit({ aAu: 0.998508, e: 0.19027, incDeg: 20.9057, raanDeg: 96.4145, lonPeriDeg: 142.4843, l0Deg: 286.9046 }),
 };
 
 const EUREKA: PlanetDef = {
   id: 'eureka',
-  mu: 0,
+  // 質量は未測定。この表の半径に、S型の標準的な密度 2,000 kg/m^3 を掛けた。
+  mu: GRAVITATIONAL_CONSTANT * 6.94e12,
   radius: 939.0,
   orbit: sbdbOrbit({ aAu: 1.523573, e: 0.06485, incDeg: 20.2811, raanDeg: 245.0121, lonPeriDeg: 340.4941, l0Deg: 677.4051 }),
 };
