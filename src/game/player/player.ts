@@ -17,7 +17,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibility } from '../map/visibility-policy';
@@ -457,13 +457,14 @@ export class Player extends Ship {
   }
 
   protected override stepEnvironment(
-    dt: number, atmosphereBody: CelestialBody | null, sunlit: number, sunDir: Vec3,
+    dt: number, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
+    sunlit: number, sunDir: Vec3,
   ): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
     this.fire.stepBarrelThermal(dt);
-    this.aero.update(this.state.r, this.state.v, atmosphereBody);
-    this.altitudeAlarm.update(dt, this.state.r, atmosphereBody);
+    this.aero.update(this.state.r, this.state.v, atmosphereBody, atmospherePivot);
+    this.altitudeAlarm.update(dt, this.state.r, atmosphereBody, atmospherePivot);
     this.power.update(dt, sunlit, sunDir, this.att, this);
   }
 
@@ -566,7 +567,7 @@ export class Player extends Ship {
   }
 
   // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
-  collideWithCelestialBody(_body: CelestialBody, contact: Contact, activeStage: Stage): void {
+  collideWithCelestialBody(_body: CelestialMotion, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     this.damagedByContact(closingSpeed(contact), null, '天体の地表へ到達し機体は失われた', activeStage);
   }
@@ -612,7 +613,7 @@ export class Player extends Ship {
   // collideWithCelestialBody が扱う。
   checkLoss(
     _dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3,
-    _atmosphereBodies: readonly CelestialBody[],
+    _atmosphereBodies: readonly CelestialMotion[],
   ): void {
     if (!this.alive) return;
     if (!this.aero.overStructuralLimit) return;

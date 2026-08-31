@@ -1,6 +1,7 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る2点(EqAN/EqDN)の算出と、△▽ マーカー
 // としての表示・被選択物としての公開。
-import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { strongestAttractor } from '../../physics/attractor';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import { FrameAnchorSource, ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -20,8 +21,10 @@ interface EqNodeIcon extends MapPickable {
 
 export class EquatorNodeMarkerPair {
   private icons: readonly EqNodeIcon[] = [];
-  // update が求めた時点の CelestialBody[]。sync でのマップビュー遮蔽判定に使う。
-  private celestialBodies: readonly CelestialBody[] = [];
+  // update が求めた時点の CelestialMotion[]。sync でのマップビュー遮蔽判定に使う。
+  private celestialBodies: readonly CelestialMotion[] = [];
+  // celestialBodies の位置を厳密に引く時刻。
+  private celestialBodiesPivot = 0;
 
   private readonly anKey: string;
   private readonly dnKey: string;
@@ -62,17 +65,21 @@ export class EquatorNodeMarkerPair {
   ): void {
     this.icons = [];
     this.celestialBodies = frameAnchors.bodies;
+    this.celestialBodiesPivot = frameAnchors.bodiesPivot;
     if (state === null) return;
     // 解析楕円は displayTime の状態ベクトルから作るので、その中心選択も同じ時刻の天体を
     // 使う。折れ線側は state が simTime のままなので、従来どおり state.t の天体を使う。
-    const centerBodies = frame === null ? frameAnchors.bodies : celestialSystem.celestialBodiesAt(state.t);
-    const center = strongestAttractor(state.r, centerBodies);
-    const eqNormal = center.degree2?.pole;
+    const centerBodies = frame === null ? frameAnchors.bodies : celestialSystem.celestialMotions;
+    const centerPivot = frame === null ? frameAnchors.bodiesPivot : displayTime;
+    const center = strongestAttractor(state.r, centerBodies, centerPivot);
+    const eqNormal = center.degree2At(centerPivot)?.pole;
     if (!eqNormal) return;
 
     const displayFrame = frame ?? celestialSystem.frames.frameFor(center.id);
     const unbakeTf = celestialSystem.frames.transformAt(displayFrame, displayTime, frameAnchors);
-    const crossings = solveEquatorCrossings(state, center, eqNormal, paths, (t) => celestialSystem.stateAt(center.id, t).r);
+    const crossings = solveEquatorCrossings(
+      state, center, centerPivot, eqNormal, paths,
+      (t) => celestialSystem.stateAt(center.id, t).r);
     if (!crossings) return;
 
     const centerName = celestialSystem.nameOf(center.id);
@@ -111,7 +118,8 @@ export class EquatorNodeMarkerPair {
         this.markerManager.hide(icon.id);
       } else {
         this.markerManager.setNodePosition(
-          icon.id, 'mk-node', glyph, icon.pos, project, cameraPos, this.celestialBodies, true, icon.label,
+          icon.id, 'mk-node', glyph, icon.pos, project, cameraPos,
+          this.celestialBodies, this.celestialBodiesPivot, true, icon.label,
         );
       }
     }

@@ -8,9 +8,6 @@
 import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp } from './attitude';
 import { PointEphemeris, boundStateAt } from './point-ephemeris';
-import {
-  CelestialBody, Degree2Gravity, celestialBodyPositionAt, celestialBodyStateAt,
-} from './celestial-body';
 import type { EciTransform } from './eci-transform';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
@@ -22,7 +19,7 @@ import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
 import type { PlanetSystem } from './planet-system';
 import { SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
 import {
-  Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelForSimZero,
+  Degree2Gravity, Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelForSimZero,
 } from './celestial-body-def';
 import {
   KinematicState, addPrimaryRelative, kinematicState, toPrimaryRelative,
@@ -42,6 +39,27 @@ type EciValues = {
   readonly degree2: Degree2Gravity | null;
   readonly atmosphere: Atmosphere | null;
 };
+
+// state.t と accel から時刻 t での位置を弾道外挿する。天体は実質的に弾道運動しており、
+// 1ステップぶんの時間幅では3次以上の項が無視できるので2次で足りる。
+// **この外挿の唯一の定義箇所** — 他所で同じ式を書かないこと。
+function extrapolatedPosition(eci: EciValues, t: number): Vec3 {
+  const { r, v } = eci.state;
+  const s = t - eci.state.t;
+  if (s === 0) return r;
+  return v3(
+    r.x + v.x * s + 0.5 * eci.accel.x * s * s,
+    r.y + v.y * s + 0.5 * eci.accel.y * s * s,
+    r.z + v.z * s + 0.5 * eci.accel.z * s * s,
+  );
+}
+
+// 同じ外挿で、時刻 t での位置と速度を揃える。
+function extrapolatedState(eci: EciValues, t: number): KinematicState {
+  const s = t - eci.state.t;
+  if (s === 0) return eci.state;
+  return kinematicState<'eci'>(t, extrapolatedPosition(eci, t), addScaled(eci.state.v, eci.accel, s));
+}
 
 // 天体ごとの平均黄経の初期位相 [rad]。未指定の天体は 0 として扱う。
 export type PhaseOffsets = Partial<Record<string, number>>;
@@ -64,6 +82,17 @@ export type PlanetDef = {
 // 中心は必ず惑星で、その関係は SatelliteMotion が持つ参照が表す。
 export type SatelliteDef = Omit<PlanetDef, 'orbit'> & { readonly orbit: SatelliteOrbit };
 export type CelestialBodyDef = StarDef | PlanetDef | SatelliteDef;
+
+// 星系の天体を役割ごとの一覧として答える窓。積分・接触判定・抗力は個体ではなくこの一覧に
+// 対して回る。並びは天体の宣言順で、時刻ごとの解決は天体1体が畳む。
+export interface CelestialMotions {
+  // 全登録天体。中心天体は原点に静止。
+  readonly celestialMotions: readonly CelestialMotion[];
+  // mu が 0 でない天体。
+  readonly gravityMotions: readonly CelestialMotion[];
+  // 大気を持つ天体。抗力を掛ける1体を選ぶ側が引く。
+  readonly atmosphereMotions: readonly CelestialMotion[];
+}
 
 // 天体の分類。網羅的な分岐を書きたい呼び出し側のための札で、運動の合成そのものはクラスが担う。
 export type CelestialKind = 'star' | 'planet' | 'satellite';
@@ -143,12 +172,13 @@ export abstract class CelestialMotion {
   // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと pivot 自身の
   // 厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
   stateAt(pivot: number, t: number = pivot): KinematicState {
-    return celestialBodyStateAt(this.celestialBodyAt(pivot), t);
+    return extrapolatedState(this.eciAt(pivot), t);
   }
 
-  // 同じ外挿で位置だけを答える。
+  // 同じ外挿で位置だけを答える。**毎ステップ全エンティティぶん走る経路なので、位置だけで
+  // 足りるところではこちらを使う** — stateAt は Vec3 を1つ余分に作る。
   positionAt(pivot: number, t: number): Vec3 {
-    return celestialBodyPositionAt(this.celestialBodyAt(pivot), t);
+    return extrapolatedPosition(this.eciAt(pivot), t);
   }
 
   // 時刻 pivot の姿勢込みの2次重力場。2次重力場を持たない天体は null。
@@ -159,18 +189,6 @@ export abstract class CelestialMotion {
   // 時刻 pivot の自転軸込みの大気。大気を持たない天体は null。
   atmosphereAt(pivot: number): Atmosphere | null {
     return this.eciAt(pivot).atmosphere;
-  }
-
-  // 時刻 pivot での厳密な ECI 瞬間値。**呼び出し側はこの値を書き換えてはならない。**
-  celestialBodyAt(pivot: number): CelestialBody {
-    const def = this.def;
-    const eci = this.eciAt(pivot);
-    return {
-      id: def.id, mu: def.mu, radius: def.radius,
-      state: eci.state, accel: eci.accel,
-      degree2: eci.degree2, atmosphere: eci.atmosphere,
-      isStar: this.kind === 'star',
-    };
   }
 
   get id(): string {

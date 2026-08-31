@@ -1,22 +1,24 @@
 // ECI 位置から最寄りの登録惑星までの距離と、マップ用の距離フェードを求める。
-import type { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import { Vec3 } from '../../math/vec3';
 import type { CelestialSystem } from './celestial-system';
 
 const MAP_PLANET_SHIP_LABEL_START = 5e8;
 const MAP_PLANET_SHIP_LABEL_END = 1e9;
 
-type NearestPlanet = { readonly celestialBody: CelestialBody; readonly distance: number };
+type NearestPlanet = { readonly celestialBody: CelestialMotion; readonly distance: number };
 
 function findNearestPlanet(
-  position: Vec3, celestialSystem: CelestialSystem, celestialBodies: readonly CelestialBody[],
+  position: Vec3, celestialSystem: CelestialSystem,
+  celestialBodies: readonly CelestialMotion[], pivot: number,
 ): NearestPlanet | null {
   let nearest: NearestPlanet | null = null;
   for (const celestialBody of celestialBodies) {
     if (celestialSystem.find(celestialBody.id)?.motion.kind !== 'planet') continue;
-    const dx = position.x - celestialBody.state.r.x;
-    const dy = position.y - celestialBody.state.r.y;
-    const dz = position.z - celestialBody.state.r.z;
+    const pos = celestialBody.positionAt(pivot, pivot);
+    const dx = position.x - pos.x;
+    const dy = position.y - pos.y;
+    const dz = position.z - pos.z;
     const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (nearest === null || distance < nearest.distance) nearest = { celestialBody, distance };
   }
@@ -24,9 +26,10 @@ function findNearestPlanet(
 }
 
 export function nearestPlanetDistance(
-  position: Vec3, celestialSystem: CelestialSystem, celestialBodies: readonly CelestialBody[],
+  position: Vec3, celestialSystem: CelestialSystem,
+  celestialBodies: readonly CelestialMotion[], pivot: number,
 ): number | null {
-  return findNearestPlanet(position, celestialSystem, celestialBodies)?.distance ?? null;
+  return findNearestPlanet(position, celestialSystem, celestialBodies, pivot)?.distance ?? null;
 }
 
 export function mapPlanetFadeOpacity(distance: number | null): number {

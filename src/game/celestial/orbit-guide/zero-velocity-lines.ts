@@ -213,7 +213,7 @@ export class ZeroVelocityLines {
         const mu = this.muFor(system);
         const motion = this.celestialSystem.find(guideSecondary(system))?.motion;
         const secondary = mu === null || !(motion instanceof OrbitingMotion) ? null
-          : secondaryFrameOf(this.celestialSystem.celestialBodiesAt(displayTime), motion, displayTime);
+          : secondaryFrameOf(this.celestialSystem.celestialMotions, displayTime, motion, displayTime);
         frame = secondary === null || mu === null ? null : rotatingFrame(secondary, mu);
         frames.set(system, frame);
       }
