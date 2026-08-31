@@ -57,7 +57,7 @@ const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 function bindEphemerides(motions: readonly CelestialMotion[], source: AbsoluteEphemeris): void {
   for (const motion of motions) {
     const isBody = source.pointKindOf(motion.id) === 'body';
-    motion.bindEphemeris(isBody ? source.bodyEphemerisOf(motion.id) : null);
+    motion.bindEphemeris(isBody ? source.pointEphemerisOf(motion.id) : null);
   }
   // 系の重心を収録した系列は天体1体ぶんではないので、惑星系のほうへ結ぶ。惑星本体と衛星は
   // そこから重心オフセットを差し引いて/足して組む。
@@ -66,7 +66,7 @@ function bindEphemerides(motions: readonly CelestialMotion[], source: AbsoluteEp
     .map((m) => m.system));
   for (const system of systems) {
     const isBarycenter = source.pointKindOf(system.id) === 'systemBarycenter';
-    system.bindEphemeris(isBarycenter ? source.bodyEphemerisOf(system.id) : null);
+    system.bindEphemeris(isBarycenter ? source.pointEphemerisOf(system.id) : null);
   }
 }
 

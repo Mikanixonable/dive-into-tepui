@@ -6,7 +6,7 @@
 // 配る)→ 惑星本体(重心 − 衛星ぶん)→ 衛星の太陽系重心位置。
 // THREE/DOM 非依存。
 import { Vec3, addScaled } from '../math/vec3';
-import { BodyEphemeris, boundStateAt } from './body-ephemeris';
+import { PointEphemeris, boundStateAt } from './point-ephemeris';
 import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
 import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
 import {
@@ -30,14 +30,14 @@ export class PlanetSystem {
   private planetBody: PlanetMotion | null = null;
 
   // 系の重心を直接収録した高精度暦。収録されていなければ null。
-  private baryEphemeris: BodyEphemeris | null = null;
+  private baryEphemeris: PointEphemeris | null = null;
 
   // id は惑星本体と同じ(系と本体は1対1)。暦を id で結ぶのに要る。orbit は系の重心が
   // 主星まわりに描く軌道。
   constructor(readonly id: string, readonly orbit: KeplerOrbit) {}
 
   // 系の重心の暦を結ぶ。暦が惑星本体のほうを収録している系では null のままになる。
-  bindEphemeris(ephemeris: BodyEphemeris | null): void {
+  bindEphemeris(ephemeris: PointEphemeris | null): void {
     this.baryEphemeris = ephemeris;
   }
 

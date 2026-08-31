@@ -30,7 +30,7 @@
  * CLI verifies this field.
  */
 
-import type { EphemerisPointKind } from '../absolute-ephemeris';
+import type { EphemerisPointKind } from '../point-ephemeris';
 import type { ChebyshevEphemerisPack } from './types';
 
 export const EPHEMERIS_PACK_MAGIC = 'TEPUIEPK';

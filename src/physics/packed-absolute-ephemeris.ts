@@ -1,5 +1,5 @@
-import { AbsoluteEphemeris, EphemerisPointKind, icrfToGameEci } from './absolute-ephemeris';
-import { BodyEphemeris } from './body-ephemeris';
+import { AbsoluteEphemeris, icrfToGameEci } from './absolute-ephemeris';
+import { EphemerisPointKind, PointEphemeris } from './point-ephemeris';
 import { ChebyshevEphemeris } from './ephemeris-pack/evaluator';
 import { KinematicState, kinematicState } from './kinematic-state';
 import {
@@ -43,18 +43,18 @@ export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
     return this.bodyPoints[id] ?? 'body';
   }
 
-  // 天体 id の1体ぶんを切り出した暦。有効期間はその天体自身のセグメント範囲。
+  // 天体 id が収録している点1つぶんを切り出した暦。有効期間はその系列のセグメント範囲。
   // 収録していなければ null。
-  bodyEphemerisOf(id: string): BodyEphemeris | null {
+  pointEphemerisOf(id: string): PointEphemeris | null {
     const range = this.evaluator.validRangeOf(id);
     if (range === null) return null;
-    return new PackedBodyEphemeris(this.evaluator, id, range.start, range.end);
+    return new PackedPointEphemeris(this.evaluator, id, range.start, range.end);
   }
 }
 
-// 評価器の1天体ぶんを BodyEphemeris として見せる窓。id を構築時に固定し、ICRF 軸を
+// 評価器の1系列ぶんを PointEphemeris として見せる窓。id を構築時に固定し、ICRF 軸を
 // ゲーム ECI 軸へ写す。原点は太陽系重心のまま。
-class PackedBodyEphemeris implements BodyEphemeris {
+class PackedPointEphemeris implements PointEphemeris {
   constructor(
     private readonly evaluator: ChebyshevEphemeris,
     private readonly id: string,

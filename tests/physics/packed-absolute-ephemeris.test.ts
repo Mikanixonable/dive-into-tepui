@@ -67,7 +67,7 @@ export function register(): void {
   }
 
   test('packed absolute ephemeris: 元期 J2000 なら pack の ET 秒がそのまま simTime になる', () => {
-    const earth = PackedAbsoluteEphemeris.fromTrustedBytes(fixture(), J2000).bodyEphemerisOf('earth');
+    const earth = PackedAbsoluteEphemeris.fromTrustedBytes(fixture(), J2000).pointEphemerisOf('earth');
     assert.ok(earth !== null);
     assert.deepEqual(earth.stateAt(0).r, icrfToGameEci(v3(1, 2, 3)));
     assert.equal(earth.validStartSimTime, 0);
@@ -79,7 +79,7 @@ export function register(): void {
   test('packed absolute ephemeris: 元期をずらすと有効期間と評価時刻が同じだけ動く', () => {
     const shiftDays = 3;
     const shifted = PackedAbsoluteEphemeris.fromTrustedBytes(
-      fixture(), createJulianDate('TDB', J2000_JULIAN_DATE + shiftDays)).bodyEphemerisOf('earth');
+      fixture(), createJulianDate('TDB', J2000_JULIAN_DATE + shiftDays)).pointEphemerisOf('earth');
     assert.ok(shifted !== null);
     const shiftSec = shiftDays * SECONDS_PER_DAY;
     assert.equal(shifted.validStartSimTime, -shiftSec);
@@ -89,7 +89,7 @@ export function register(): void {
 
   test('packed absolute ephemeris: 収録していない天体の切り出しは null', () => {
     const source = PackedAbsoluteEphemeris.fromTrustedBytes(fixture(), J2000);
-    assert.equal(source.bodyEphemerisOf('mars'), null);
+    assert.equal(source.pointEphemerisOf('mars'), null);
   });
 
   test('packed absolute ephemeris: browser loaderはpayload改竄を拒否する', async () => {
