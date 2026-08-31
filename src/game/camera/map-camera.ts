@@ -7,7 +7,7 @@ import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
 import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, toFrameDir, toInertialDir } from '../../physics/frame';
-import { bodyAnchorSource, strongestAttractor } from '../../physics/celestial-body';
+import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
@@ -115,7 +115,7 @@ export class MapCamera {
   private displayTime = 0; // set cameraFrame の座標変換に使う。線・メッシュと同じ表示時刻に揃える。
   // 最新の update 呼び出しが受け取った FrameAnchorSource。reset/resetPan/cameraFrame setter は
   // フレームの外(入力ハンドラ)から呼ばれるため、update と同じ値をここから読む。
-  private frameAnchors: FrameAnchorSource = bodyAnchorSource([]);
+  private frameAnchors: FrameAnchorSource = bodyAnchorSource([], 0);
   private _focus: FocusTarget;
   private missingFocusFrames = 0;
   private lastResolvedFocus = v3();
@@ -173,7 +173,7 @@ export class MapCamera {
         };
     } else {
       this._cameraFrame = frames.inertialFrame;
-      const tf0 = frames.transformAt(this._cameraFrame, 0, bodyAnchorSource([]));
+      const tf0 = frames.transformAt(this._cameraFrame, 0, bodyAnchorSource([], 0));
       this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
       this.pan_r = toFrameDir(tf0, v3());
       this.up_r = toFrameDir(tf0, WORLD_UP);
@@ -213,8 +213,9 @@ export class MapCamera {
   private referenceUpAxisEci(): Vec3 {
     if (this.frameAnchors.bodies.length > 0) {
       const cameraPos = this.viewpoint.position;
-      const nearest = strongestAttractor(cameraPos, this.frameAnchors.bodies);
-      const distToBody = len(sub(cameraPos, nearest.state.r));
+      const pivot = this.frameAnchors.bodiesPivot;
+      const nearest = strongestAttractor(cameraPos, this.frameAnchors.bodies, pivot);
+      const distToBody = len(sub(cameraPos, nearest.positionAt(pivot, pivot)));
       const PLANETARY_SCALE_THRESHOLD = 1e9; // 1,000,000 km in meters
 
       const nearestBody = this.celestialSystem.find(nearest.id);

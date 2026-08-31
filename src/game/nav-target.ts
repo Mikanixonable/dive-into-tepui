@@ -3,7 +3,9 @@
 // ターゲットが敵・自艦・基地(CombatTarget)の場合は、Targeter の射撃・照準補助の基準にもなる。
 import { Vec3, v3, add, len, sub } from '../math/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
-import { CelestialBody, frameOfCelestialBody, strongestAttractor } from '../physics/celestial-body';
+import { strongestAttractor } from '../physics/attractor';
+import { CelestialMotion } from '../physics/celestial-motion';
+import { frameOfCelestialBody } from '../physics/frame';
 import { LagrangePoints, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { OrbitingMotion } from '../physics/celestial-motion';
@@ -79,8 +81,10 @@ export class NavTarget {
   // 周回していない、または区間内に極小が見つからなければ両方 null。
   private closestPos: Vec3 | null = null;
   private closestTime: number | null = null;
-  // update が求めた時点の CelestialBody[]。sync でのマップビュー遮蔽判定に使う。
-  private celestialBodies: readonly CelestialBody[] = [];
+  // update が求めた時点の CelestialMotion[]。sync でのマップビュー遮蔽判定に使う。
+  private celestialBodies: readonly CelestialMotion[] = [];
+  // celestialBodies の位置を厳密に引く時刻。
+  private celestialBodiesPivot = 0;
   private readonly pickableCache: MapPickable[] = [];
   // マーカーラベルへ通過時刻を併記するか(PREDICT パネルの設定)と、併記する表記の基準時刻。
   // update から sync まで持ち越すために保持する。
@@ -171,7 +175,7 @@ export class NavTarget {
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
   // positionOnOrbit は中心天体基準の相対位置を返すので、CelestialMotion.stateAt で通過時刻
   // anT/dnT における中心天体の精密な ECI 位置を求めて足し合わせ、絶対位置に直す — 概算の弾道
-  // 外挿(celestialBodyPositionAt)を使うと、表示側が精密暦で un-bake するのと基準がずれて、
+  // pivot からの外挿を使うと、表示側が精密暦で un-bake するのと基準がずれて、
   // 月周回では通過までの時間ぶん位置がずれる。位置は通過時刻で bake し、displayWindow の
   // 表示時刻で un-bake して描画座標系へ移す。
   update(
@@ -184,6 +188,7 @@ export class NavTarget {
     this.timeLabel = timeLabelSettingOf(displayWindow);
     this.ownerName = player?.name ?? null;
     this.celestialBodies = frameAnchors.bodies;
+    this.celestialBodiesPivot = frameAnchors.bodiesPivot;
     if (!this.targetId) { this.setReaderEntity(null); return; }
     // ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
     const target = entities.findAliveCombatTarget(this.targetId);
@@ -191,15 +196,15 @@ export class NavTarget {
     target?.ensureEquatorNodes(this.markerManager)
       .updateOnEllipse(displayTime, celestialSystem, frameAnchors, this.timeLabel);
     if (!player) return;
-    const stateCelestialBodies = celestialSystem.celestialBodiesAt(simTime);
-    const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies);
+    const stateCelestialBodies = celestialSystem.celestialMotions;
+    const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies, simTime);
     const unbakeTf = celestialSystem.frames.transformAt(frame, displayTime, frameAnchors);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
       unbakeToDisplayPoint(unbakeTf, celestialSystem.frames.transformAt(frame, t, frameAnchors), r);
 
     // 再接近点は AN/DN(軌道面が定まる必要がある)とは独立した条件 — 同じ中心天体さえ
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
-    if (target && strongestAttractor(target.state.r, stateCelestialBodies).id === playerCenter.id) {
+    if (target && strongestAttractor(target.state.r, stateCelestialBodies, simTime).id === playerCenter.id) {
       const found = findClosestApproach(player, target, celestialSystem.entityOf(playerCenter.id), simTime);
       if (found) {
         this.closestPos = toDisplay(found.pos, found.t);
@@ -207,7 +212,7 @@ export class NavTarget {
       }
     }
 
-    const playerEl = player.orbitalElementsAround(playerCenter);
+    const playerEl = player.orbitalElementsAround(playerCenter, simTime);
     if (!playerEl) return;
 
     const targetHat = this.resolvePlaneNormal(this.targetId, entities, celestialSystem, simTime);
@@ -216,7 +221,7 @@ export class NavTarget {
     const nodes = nodeAnomalies(playerEl, targetHat);
     if (!nodes) return;
 
-    const tf = frameOfCelestialBody(playerCenter);
+    const tf = frameOfCelestialBody(playerCenter, simTime);
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
@@ -232,24 +237,27 @@ export class NavTarget {
     if (this.targetId === id) this.setInternal(null, null);
   }
 
-  // 現在のターゲットの時刻 t における位置・速度。天体は CelestialBody.state、ラグランジュ点は
+  // 現在のターゲットの時刻 t における位置・速度。天体は CelestialMotion.state、ラグランジュ点は
   // 副天体の運動、船・基地は entity.displayState(t) から得る。天体以外は重力中心ではないため
   // hasMass=false を返す。船・基地は軌道線を相対軌跡に切り替えられるよう entity 自身も添えて
   // 返す。ターゲット未設定・解決不能なら null。
   resolveState(
-    entities: DynamicSystem, celestialSystem: CelestialSystem, celestialBodies: readonly CelestialBody[], t: number,
+    entities: DynamicSystem, celestialSystem: CelestialSystem,
+    celestialBodies: readonly CelestialMotion[], t: number,
   ): OrbitReference | null {
     const id = this.targetId;
     if (id === null) return null;
     if (celestialSystem.find(id)?.motion instanceof OrbitingMotion) {
       const attractor = celestialBodies.find((a) => a.id === id);
-      if (attractor) return { id, state: attractor.state, hasMass: true, attractor, entity: null, fixed: true };
+      if (attractor) {
+        return { id, state: attractor.stateAt(t), hasMass: true, attractor, entity: null, fixed: true };
+      }
     }
     const match = /^(.+)-l([1-5])$/.exec(id);
     if (match) {
       const secondary = celestialSystem.find(match[1]!)?.motion ?? null;
       const frame = secondary instanceof OrbitingMotion
-        ? secondaryFrameOf(celestialBodies, secondary, t) : null;
+        ? secondaryFrameOf(celestialBodies, t, secondary, t) : null;
       if (frame !== null) {
         const point = `L${match[2]}` as keyof LagrangePoints;
         return {
@@ -288,8 +296,8 @@ export class NavTarget {
     }
     const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
-    const center = strongestAttractor(entity.state.r, celestialSystem.celestialBodiesAt(t));
-    return entity.orbitalElementsAround(center)?.hHat ?? null;
+    const center = strongestAttractor(entity.state.r, celestialSystem.celestialMotions, t);
+    return entity.orbitalElementsAround(center, t)?.hHat ?? null;
   }
 
   // 右クリック対象として公開する AN/DN・再接近点アイコン。計算できているぶんだけ返す。
@@ -318,21 +326,21 @@ export class NavTarget {
     else {
       this.markerManager.setNodePosition(
         'nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, cameraPos,
-        this.celestialBodies, overviewMode, this.markerLabel('AN', this.anTime!),
+        this.celestialBodies, this.celestialBodiesPivot, overviewMode, this.markerLabel('AN', this.anTime!),
       );
     }
     if (!this.dnPos) this.markerManager.hide('nav-dn');
     else {
       this.markerManager.setNodePosition(
         'nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, cameraPos,
-        this.celestialBodies, overviewMode, this.markerLabel('DN', this.dnTime!),
+        this.celestialBodies, this.celestialBodiesPivot, overviewMode, this.markerLabel('DN', this.dnTime!),
       );
     }
     if (!this.closestPos) this.markerManager.hide('nav-ca');
     else {
       this.markerManager.setNodePosition(
         'nav-ca', 'mk-node', ORBIT_POINT_GLYPH.closestApproach, this.closestPos, project, cameraPos,
-        this.celestialBodies, overviewMode, this.markerLabel('再接近', this.closestTime!),
+        this.celestialBodies, this.celestialBodiesPivot, overviewMode, this.markerLabel('再接近', this.closestTime!),
       );
     }
   }

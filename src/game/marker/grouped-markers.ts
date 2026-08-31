@@ -11,7 +11,7 @@ import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { ActiveCelestialLabel } from '../camera/focus-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-glyphs';
-import type { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import { resolveCrowdingWinner } from './crowding';
 import * as C from '../const';
 
@@ -77,7 +77,7 @@ export class GroupedMarkers {
     overviewMode: boolean,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
-    celestialBodies: readonly CelestialBody[] = [],
+    celestialBodies: readonly CelestialMotion[] = [],
     cameraPos?: Vec3,
   ): void {
     const placed: PlacedItem[] = items.map(

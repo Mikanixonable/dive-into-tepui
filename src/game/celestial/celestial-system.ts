@@ -1,13 +1,12 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
 import {
-  CelestialBodyDef, CelestialMotion, OrbitingMotion, PhaseOffsets, PlanetMotion,
+  CelestialBodyDef, CelestialMotion, CelestialMotions, OrbitingMotion, PhaseOffsets, PlanetMotion,
 } from '../../physics/celestial-motion';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/point-ephemeris';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
-import { CelestialBody, CelestialBodyWindows } from '../../physics/celestial-body';
-import { TimeRing, addTimeCacheStats } from '../../physics/time-ring';
+import { addTimeCacheStats } from '../../physics/time-ring';
 import { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
 import { norm, sub, v3, Vec3 } from '../../math/vec3';
@@ -66,7 +65,7 @@ function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisP
   }
 }
 
-export class CelestialSystem implements CelestialBodyWindows {
+export class CelestialSystem implements CelestialMotions {
   private scene!: THREE.Scene;
   // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
   // モデルごと組まないので(NodeMaterial.setupLighting)、受け手を真っ黒にしないために
@@ -97,11 +96,8 @@ export class CelestialSystem implements CelestialBodyWindows {
 
   // mu が 0 でない天体と、大気を持つ天体(いずれも宣言順)。どちらも時刻に依らないので
   // 構築時に確定する。
-  private readonly gravityEntities: readonly CelestialEntity[];
-  private readonly atmosphereEntities: readonly CelestialEntity[];
-
-  // 同一時刻の集合。値は天体1体ずつが答えるので、ここが畳むのは配列の同一参照だけ。
-  private readonly allCache = new TimeRing<readonly CelestialBody[]>();
+  private readonly gravityMotionList: readonly CelestialMotion[];
+  private readonly atmosphereMotionList: readonly CelestialMotion[];
 
   // 点群をシーンへ登録済みか。マップへ入るまで登録しない。
   private pointFieldBuilt = false;
@@ -129,9 +125,9 @@ export class CelestialSystem implements CelestialBodyWindows {
     ephemerisPoints: EphemerisPoints | null = null,
   ) {
     this.motions = entities.map((b) => b.motion);
-    this.gravityEntities = entities.filter((b) => b.def.mu !== 0);
-    this.atmosphereEntities = entities.filter(
-      (b) => b.motion instanceof OrbitingMotion && b.motion.def.atmosphere !== undefined,
+    this.gravityMotionList = this.motions.filter((m) => m.def.mu !== 0);
+    this.atmosphereMotionList = this.motions.filter(
+      (m) => m instanceof OrbitingMotion && m.def.atmosphere !== undefined,
     );
     this.eciTransform = new EciTransform(origin.motion);
     this.referenceFrames = new ReferenceFrames(this.motions, this.eciTransform);
@@ -195,27 +191,17 @@ export class CelestialSystem implements CelestialBodyWindows {
 
   // ---------------------------------------------------------- 系レベルの物理
 
-  // 指定時刻の全登録天体(宣言順)。同一 t には同一の配列参照が返るので、**呼び出し側は
-  // この配列と要素を書き換えてはならない。** 天体1体ぶんの値は個体が畳んでいるので、
-  // gravityAttractorsAt / atmosphereCelestialBodiesAt が返す配列の要素もこれと同じ参照になる。
-  celestialBodiesAt(t: number): readonly CelestialBody[] {
-    const cached = this.allCache.get(t);
-    if (cached !== undefined) return cached;
-    return this.allCache.put(t, this.motions.map((m) => m.celestialBodyAt(t)));
-  }
+  // 全登録天体の運動(宣言順)。
+  get celestialMotions(): readonly CelestialMotion[] { return this.motions; }
 
-  // 指定時刻の重力源天体(mu が 0 でないもの、宣言順)。
-  gravityAttractorsAt(t: number): readonly CelestialBody[] {
-    return this.gravityEntities.map((b) => b.motion.celestialBodyAt(t));
-  }
+  // 重力源天体の運動(mu が 0 でないもの、宣言順)。
+  get gravityMotions(): readonly CelestialMotion[] { return this.gravityMotionList; }
 
-  // 指定時刻の大気を持つ天体(宣言順)。抗力を掛ける1体を選ぶ側が引く窓。
-  atmosphereCelestialBodiesAt(t: number): readonly CelestialBody[] {
-    return this.atmosphereEntities.map((b) => b.motion.celestialBodyAt(t));
-  }
+  // 大気を持つ天体の運動(宣言順)。抗力を掛ける1体を選ぶ側が引く。
+  get atmosphereMotions(): readonly CelestialMotion[] { return this.atmosphereMotionList; }
 
-  // 1天体ぶんの時刻 t での重力源表現。予測弧の候補供給(FutureCelestialBodyProvider)もこれで満たす。
-  celestialBodyAt(id: string, t: number): CelestialBody { return this.entityOf(id).motion.celestialBodyAt(t); }
+  // 天体 id の運動。未登録の id を渡すと例外になる。
+  motionOf(id: string): CelestialMotion { return this.entityOf(id).motion; }
 
   // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと
   // pivot 自身の厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
@@ -239,17 +225,10 @@ export class CelestialSystem implements CelestialBodyWindows {
   }
 
   // 負荷確認ウィンドウが読む、天体窓の時刻キャッシュのヒット/ミス累計。
-  perfCounts(): {
-    celestialBodiesCacheHits: number; celestialBodiesCacheMisses: number;
-    timeCacheHits: number; timeCacheMisses: number;
-  } {
-    const celestialBodies = this.allCache.stats;
-    let time = addTimeCacheStats(this.allCache.stats, this.eciTransform.cacheStats);
+  perfCounts(): { timeCacheHits: number; timeCacheMisses: number } {
+    let time = this.eciTransform.cacheStats;
     for (const motion of this.motions) time = addTimeCacheStats(time, motion.cacheStats);
-    return {
-      celestialBodiesCacheHits: celestialBodies.hits, celestialBodiesCacheMisses: celestialBodies.misses,
-      timeCacheHits: time.hits, timeCacheMisses: time.misses,
-    };
+    return { timeCacheHits: time.hits, timeCacheMisses: time.misses };
   }
 
   // 表示時刻 t の点群の位置を更新する。
@@ -333,7 +312,6 @@ export class CelestialSystem implements CelestialBodyWindows {
       pointField?.sync(floatingOrigin, false, true, fixedBrightnessScale);
     }
     this.syncStars(cameraSystem, fixedBrightnessScale, gridVisibility.stars);
-    const celestialBodies = this.celestialBodiesAt(displayTime);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(
       displayTime, floatingOrigin, visibilityPolicy,
@@ -341,7 +319,7 @@ export class CelestialSystem implements CelestialBodyWindows {
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。出すかどうかの判断はここが持つ。
     for (const body of this.entities) {
       body.syncMapOverlay(
-        floatingOrigin, displayTime, cameraSystem, markerManager, celestialBodies,
+        floatingOrigin, displayTime, cameraSystem, markerManager, this.motions,
         cameraSystem.overviewMode && geostationaryOrbitVisible);
     }
     this.orbitGuideLines.sync(style, displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
@@ -355,15 +333,16 @@ export class CelestialSystem implements CelestialBodyWindows {
   // 天体照の光源の候補を組んで選定へ渡し、**選ばれたものだけ**を描画座標へ移してライティング
   // 側のスロットへ入れる。基準点は露出と同じ注視点。
   private syncPlanetLights(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem): void {
-    const candidates = this.celestialBodiesAt(displayTime).map((celestialBody) => ({
+    const candidates = this.motions.map((celestialBody) => ({
       celestialBody,
       albedo: this.entityOf(celestialBody.id).lightSourceAlbedo ?? DEFAULT_ALBEDO,
     }));
     const lights = selectPlanetLights(
-      candidates, this.starEntity?.radiantIntensity ?? null, cameraSystem.activeViewpoint.lookTarget);
+      candidates, displayTime, this.starEntity?.radiantIntensity ?? null,
+      cameraSystem.activeViewpoint.lookTarget);
     this.planetLight.set(lights.map((light) => ({
-      center: fo.RtoThreeV3(light.celestialBody.state.r),
-      radius: light.celestialBody.radius,
+      center: fo.RtoThreeV3(light.celestialBody.positionAt(displayTime, displayTime)),
+      radius: light.celestialBody.def.radius,
       radiance: light.radiance,
     })));
   }
@@ -374,13 +353,14 @@ export class CelestialSystem implements CelestialBodyWindows {
   private syncOcclusion(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
   ): void {
-    const celestialBodies = this.celestialBodiesAt(displayTime);
+    const celestialBodies = this.motions;
     const focusId = focusTargetId(cameraSystem.mapCamera.focus);
     const focusPos = focusId === undefined
-      ? null : celestialBodies.find((body) => body.id === focusId)?.state.r ?? null;
+      ? null
+      : celestialBodies.find((body) => body.id === focusId)?.positionAt(displayTime, displayTime) ?? null;
     this.sunOcclusion.setOccluders(
-      selectOccluders(celestialBodies, fo.r, focusPos).map((body): Occluder => (
-        { center: fo.RtoThreeV3(body.state.r), radius: body.radius }
+      selectOccluders(celestialBodies, displayTime, fo.r, focusPos).map((body): Occluder => (
+        { center: fo.RtoThreeV3(body.positionAt(displayTime, displayTime)), radius: body.def.radius }
       )));
     this.syncRingShadow(fo, displayTime, graphics);
   }

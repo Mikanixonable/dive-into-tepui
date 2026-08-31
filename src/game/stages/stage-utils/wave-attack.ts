@@ -13,7 +13,8 @@ import type { CelestialSystem } from '../../celestial/celestial-system';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes } from '../../../physics/elements';
 import { R_EARTH } from '../../celestial/solar-system/constants';
-import { orbitalElementsOf, strongestAttractor } from '../../../physics/celestial-body';
+import { strongestAttractor } from '../../../physics/attractor';
+import { orbitalElementsOf } from '../../../physics/elements';
 import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
 
@@ -195,10 +196,10 @@ function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number):
 // 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
 function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, celestialSystem: CelestialSystem): Vec3 {
   const minPeAlt = REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN;
-  const center = strongestAttractor(centerR, celestialSystem.celestialBodiesAt(t));
+  const center = strongestAttractor(centerR, celestialSystem.celestialMotions, t);
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
-    const el = orbitalElementsOf(kinematicState<'eci'>(t, centerR, v), center);
+    const el = orbitalElementsOf(kinematicState<'eci'>(t, centerR, v), center, t);
     return el !== null && apsisAltitudes(el).pe >= minPeAlt;
   };
   if (safe(centerV)) return centerV;

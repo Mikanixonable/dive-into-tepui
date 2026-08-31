@@ -6,7 +6,8 @@
 // 画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
-import { CelestialBody, bodyAnchorSource } from '../../physics/celestial-body';
+import { bodyAnchorSource } from '../../physics/attractor';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import { Vec3, v3 } from '../../math/vec3';
 import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -61,8 +62,8 @@ type SegmentSource = { arc: PredictedArc | null; from: number; to: number; owned
 export interface FinalSegment {
   readonly periapsis: KinematicState | null;
   readonly apoapsis: KinematicState | null;
-  readonly periapsisCenter: CelestialBody | null;
-  readonly apoapsisCenter: CelestialBody | null;
+  readonly periapsisCenter: CelestialMotion | null;
+  readonly apoapsisCenter: CelestialMotion | null;
 }
 
 export interface PlanPathSample {
@@ -90,7 +91,7 @@ export class PlanPath {
   private unbakeTransform: FrameTransform | null = null;
   // 直近の update が受け取った FrameAnchorSource。toDisplay/toDisplayDir/nearestSample は
   // ポインタイベント起点でフレーム外から呼ばれうるため、update と同じ値をここから読む。
-  private frameAnchors: FrameAnchorSource = bodyAnchorSource([]);
+  private frameAnchors: FrameAnchorSource = bodyAnchorSource([], 0);
   private project: ProjectFn | null = null;
   // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う(呼び出しは DOM
   // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
@@ -254,8 +255,8 @@ export class PlanPath {
 
   // 天体衝突が検出された地点と、その相手の天体(区間ごとに高々1つ)。今フレーム表示中の
   // 区間だけを対象にする。
-  impactPoints(): readonly { readonly state: KinematicState; readonly body: CelestialBody; readonly arcIdx: number }[] {
-    const out: { state: KinematicState; body: CelestialBody; arcIdx: number }[] = [];
+  impactPoints(): readonly { readonly state: KinematicState; readonly body: CelestialMotion; readonly arcIdx: number }[] {
+    const out: { state: KinematicState; body: CelestialMotion; arcIdx: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const impact = this.impactOf(this.sources[i]!);
       if (impact) out.push({ state: impact.state, body: impact.body, arcIdx: i });
@@ -348,7 +349,7 @@ export class PlanPath {
     const maxDSq = maxPx * maxPx;
     const cameraPos = this.cameraPos;
     const celestialSystem = this.celestialSystem;
-    const celestialBodies = cameraPos && celestialSystem ? celestialSystem.celestialBodiesAt(this.unbakeTime) : null;
+    const celestialBodies = cameraPos && celestialSystem ? celestialSystem.celestialMotions : null;
     // 表示座標への変換をサンプルごとに1回だけ行い、遮蔽判定と投影で共有する。un-bake 側の
     // 変換は時刻が固定なのでループの外で1回だけ引く。
     const unbakeTf = celestialSystem ? this.currentUnbakeTransform() : null;
@@ -363,7 +364,8 @@ export class PlanPath {
           : v3(s.r.x, s.r.y, s.r.z);
         // 天体に遮蔽されて画面上見えていない点は候補から除く — マップ右クリックの
         // ピック候補(map-picker.ts)と同じ判定を通す。
-        if (cameraPos && celestialBodies && isOccluded(cameraPos, pos, celestialBodies)) continue;
+        if (cameraPos && celestialBodies
+          && isOccluded(cameraPos, pos, celestialBodies, this.frameAnchors.bodiesPivot)) continue;
         const p = this.project ? this.project(pos) : OFFSCREEN;
         if (!p.front) continue;
         const dSq = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
@@ -500,7 +502,7 @@ function buildSegments(
     segments.push({ state0, end: node.t });
     state0 = node;
   }
-  const celestialBodies = celestialSystem.celestialBodiesAt(state0.t);
+  const celestialBodies = celestialSystem.celestialMotions;
   segments.push({ state0, end: state0.t + segmentDurationFrom(state0, celestialBodies, displayDuration) });
   return segments;
 }

@@ -4,7 +4,9 @@ import { KinematicState } from '../../../physics/kinematic-state';
 import { OrbitalElements } from '../../../physics/elements';
 import { Attitude, stepAttitude } from '../../../physics/attitude';
 import { DynamicTrajectory } from '../../../physics/dynamic-trajectory';
-import { CelestialBody, orbitalElementsOf, localOrbitPeriod, strongestAttractor } from '../../../physics/celestial-body';
+import { localOrbitPeriod, strongestAttractor } from '../../../physics/attractor';
+import { CelestialMotion } from '../../../physics/celestial-motion';
+import { orbitalElementsOf } from '../../../physics/elements';
 import { airflow } from '../../../physics/atmosphere';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
@@ -70,7 +72,7 @@ export class DynamicEntity {
   public readonly renderObject: THREE.Object3D;
   alive = true;
   mass = 1; // 剛体接触の換算質量
-  radius = 0; // 物理的な半径 [m]。0 = 点。CelestialBody.radius と同じ量
+  radius = 0; // 物理的な半径 [m]。0 = 点。CelestialMotion.radius と同じ量
   collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか
   // 濃い大気の中を、抗力が要求する細かい刻みで積むか。true の個体はサブステップの内側で
   // さらに分割され、熱・動圧と天体表面への到達もその刻みで解かれる。false の個体は大気圏に
@@ -212,8 +214,8 @@ export class DynamicEntity {
   }
 
   // center を中心とする接触軌道要素。中心は呼び出し側が選ぶ(例: strongestAttractor)。
-  orbitalElementsAround(center: CelestialBody): OrbitalElements | null {
-    return orbitalElementsOf(this.state, center);
+  orbitalElementsAround(center: CelestialMotion, centerPivot: number): OrbitalElements | null {
+    return orbitalElementsOf(this.state, center, centerPivot);
   }
 
   // 軌道楕円(または戦闘ビューで非質量ターゲット固定中の対象への直線)の線を style で出す。
@@ -288,8 +290,8 @@ export class DynamicEntity {
     // 質量天体に固定中はその天体中心、自動選択(未固定)なら自身にとって最も強く引く天体を中心に描く。
     const center = orbitRef?.fixed && orbitRef.attractor
       ? orbitRef.attractor
-      : strongestAttractor(state.r, frameAnchors.bodies);
-    this.orbitLine?.sync(orbitalElementsOf(state, center), fo, camera);
+      : strongestAttractor(state.r, frameAnchors.bodies, frameAnchors.bodiesPivot);
+    this.orbitLine?.sync(orbitalElementsOf(state, center, frameAnchors.bodiesPivot), fo, camera);
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
@@ -361,31 +363,40 @@ export class DynamicEntity {
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
   // 軌道周期を等分し、窓が長いときは保持サンプル数の上限側で頭打ちにする。
-  protected sampleInterval(celestialBodies: readonly CelestialBody[], state: KinematicState, keepDuration: number): number {
-    return trajectorySampleInterval(localOrbitPeriod(state.r, celestialBodies), keepDuration);
+  protected sampleInterval(
+    celestialBodies: readonly CelestialMotion[], pivot: number, state: KinematicState,
+    keepDuration: number,
+  ): number {
+    return trajectorySampleInterval(localOrbitPeriod(state.r, celestialBodies, pivot), keepDuration);
   }
 
   // 実状態の履歴へ積む間引き間隔 [s]。履歴を持たない種別は 0。
-  private historySampleInterval(celestialBodies: readonly CelestialBody[]): number {
+  private historySampleInterval(
+    celestialBodies: readonly CelestialMotion[], pivot: number,
+  ): number {
     return this.historyDuration > 0
-      ? this.sampleInterval(celestialBodies, this.state, this.historyDuration) : 0;
+      ? this.sampleInterval(celestialBodies, pivot, this.state, this.historyDuration) : 0;
   }
 
   // このサブステップを内側で何等分して進めるか。濃い大気の中では抗力が dt より短い刻みを
   // 要求するので、それに従う種別はここで 2 以上を返す。atmosphereBodies はその区間の大気天体
   // 一覧。
-  substepDivisions(dt: number, atmosphereBodies: readonly CelestialBody[]): number {
+  substepDivisions(
+    dt: number, atmosphereBodies: readonly CelestialMotion[], pivot: number,
+  ): number {
     if (!this.doPreciseReentry) return 1;
-    const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies);
+    const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies, pivot);
     return innerDt >= dt ? 1 : Math.ceil(dt / innerDt);
   }
 
   // 濃い大気に対して刻みが広すぎて、抗力をもう積めなくなったか。刻みを細かく割って積む種別は
   // 積めなくなることがないので常に false。true になった個体は、そこから先の軌道が正確では
   // ないので失われる — 物理ではなく積分器の都合による喪失。
-  outpacedByDrag(dt: number, atmosphereBodies: readonly CelestialBody[]): boolean {
+  outpacedByDrag(
+    dt: number, atmosphereBodies: readonly CelestialMotion[], pivot: number,
+  ): boolean {
     return !this.doPreciseReentry
-      && dragTakesFullAirspeed(this.state, this.bcInv, atmosphereBodies, dt);
+      && dragTakesFullAirspeed(this.state, this.bcInv, atmosphereBodies, pivot, dt);
   }
 
   // 1区間ぶん自分を進める。呼び出し側は生存を確かめてから呼ぶ。celestialBodies はこの区間の
@@ -397,17 +408,20 @@ export class DynamicEntity {
   // 個体に何が起きるかを変えない。積分したなら true を返す(負荷確認の集計だけがこれを読む)。
   stepSimulation(
     dt: number,
-    celestialBodies: readonly CelestialBody[],
-    occluders: readonly CelestialBody[],
-    atmosphereBody: CelestialBody | null,
-    star: CelestialBody | null,
+    celestialBodies: readonly CelestialMotion[],
+    occluders: readonly CelestialMotion[],
+    atmosphereBody: CelestialMotion | null,
+    star: CelestialMotion | null,
+    gravityPivot: number,
+    surfacePivot: number,
     activeStage: Stage,
   ): boolean {
-    const integrated = !this.followPredicted(this.state.t + dt, celestialBodies);
+    const integrated = !this.followPredicted(this.state.t + dt, celestialBodies, gravityPivot);
     if (integrated) {
       this.actual.step(
-        dt, celestialBodies, occluders, atmosphereBody, this.bcInv, this.srpCoeff, this.thrust,
-        this.historySampleInterval(celestialBodies), this.historyDuration,
+        dt, celestialBodies, gravityPivot, occluders, surfacePivot, atmosphereBody,
+        this.bcInv, this.srpCoeff, this.thrust,
+        this.historySampleInterval(celestialBodies, gravityPivot), this.historyDuration,
       );
       // 積分した弧はもう現実を表さない。ある時間帯の状態を決める積分を常に1本に保つ。
       this.invalidatePrediction();
@@ -417,13 +431,14 @@ export class DynamicEntity {
     // 日照率は遮蔽体の数だけ走るため、熱を蓄えない種別(弾)には引かせない — 受動的な環境を
     // 持つ種別はどれも熱を蓄える。
     const sun = this.specificHeat > 0 ? star : null;
-    const toSun = sun === null ? v3() : sub(sun.state.r, this.state.r);
+    const toSun = sun === null ? v3() : sub(sun.positionAt(surfacePivot, surfacePivot), this.state.r);
     const sunDist = len(toSun);
     const sunDir = sunDist > 0 ? scale(toSun, 1 / sunDist) : v3();
-    const sunlit = sun === null ? 0 : sunlitFactor(this.state.r, sun, occluders);
+    const sunlit = sun === null
+      ? 0 : sunlitFactor(this.state.r, sun, surfacePivot, occluders, surfacePivot);
     // 環境を先に進める。放熱面の展開のように、熱収支が読む値をここで書き換える種別がある。
-    this.stepEnvironment(dt, atmosphereBody, sunlit, sunDir);
-    this.stepThermal(dt, atmosphereBody, sunDist, sunlit, sunDir, activeStage);
+    this.stepEnvironment(dt, atmosphereBody, gravityPivot, sunlit, sunDir);
+    this.stepThermal(dt, atmosphereBody, gravityPivot, sunDist, sunlit, sunDir, activeStage);
     return integrated;
   }
 
@@ -445,17 +460,18 @@ export class DynamicEntity {
   // 焼失の判定をここへ置くのは、区間を細かく割って積む個体のためである。放射冷却は高温ほど
   // 速いので、粗い区間の終わりだけを見ると、加熱の山で上限を越えて戻ってきた個体を取り逃がす。
   private stepThermal(
-    dt: number, atmosphereBody: CelestialBody | null,
+    dt: number, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
     sunDist: number, sunlit: number, sunDir: Vec3, activeStage: Stage,
   ): void {
     if (this.specificHeat <= 0) return;
-    const atm = atmosphereBody?.atmosphere ?? null;
+    const atm = atmosphereBody?.atmosphereAt(atmospherePivot) ?? null;
     let heating = solarHeating(
       SOLAR_CONSTANT, sunDist, sunlit, this.solarAbsorbAreaPerMass(sunDir));
     if (atm !== null && this.bcInv > 0) {
+      const atmosphereState = atmosphereBody!.stateAt(atmospherePivot);
       const { density, speed } = airflow(
-        sub(this.state.r, atmosphereBody!.state.r),
-        sub(this.state.v, atmosphereBody!.state.v), atm);
+        sub(this.state.r, atmosphereState.r),
+        sub(this.state.v, atmosphereState.v), atm);
       heating += aeroHeating(
         density, speed, this.bcInv, C.SG_CONST,
         sphereNoseRadius(this.bcInv, C.DRAG_COEFFICIENT, this.bulkDensity),
@@ -477,7 +493,8 @@ export class DynamicEntity {
   // では持たない。atmosphereBody は自分が浴びるただ1体の大気天体、sunlit は日照率、sunDir は
   // 太陽方向の単位ベクトル。
   protected stepEnvironment(
-    _dt: number, _atmosphereBody: CelestialBody | null, _sunlit: number, _sunDir: Vec3,
+    _dt: number, _atmosphereBody: CelestialMotion | null, _atmospherePivot: number,
+    _sunlit: number, _sunDir: Vec3,
   ): void {
   }
 
@@ -504,13 +521,15 @@ export class DynamicEntity {
 
   // 予測列が時刻 t を持っていれば、その状態を先端にして true。持っていなければ何もせず false。
   // celestialBodies は履歴の間引き間隔を出すための重力源一覧。
-  private followPredicted(t: number, celestialBodies: readonly CelestialBody[]): boolean {
+  private followPredicted(
+    t: number, celestialBodies: readonly CelestialMotion[], pivot: number,
+  ): boolean {
     // 現行の予測弧は自由落下だけを表す。噴射中にそれを実状態へ消費すると、Player/RCSや
     // ブースターの加速度を丸ごと失うため、推力がある区間は必ず実積分へ落とす。
     if (this.thrust !== null) return false;
     const s = this._predictedArc?.trajectory.at(t) ?? null;
     if (s === null) return false;
-    this.actual.follow(s, this.historySampleInterval(celestialBodies), this.historyDuration);
+    this.actual.follow(s, this.historySampleInterval(celestialBodies, pivot), this.historyDuration);
     return true;
   }
 
@@ -558,7 +577,7 @@ export class DynamicEntity {
   // 消える種別(弾)のために一律で渡す。atmosphereBodies はその時刻の大気天体一覧。
   checkLoss(
     _dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3,
-    _atmosphereBodies: readonly CelestialBody[],
+    _atmosphereBodies: readonly CelestialMotion[],
   ): void {
   }
 
@@ -597,7 +616,7 @@ export class DynamicEntity {
   }
 
   // 天体の固体表面へ触れたときに自分に何が起きるか。既定は失われる。
-  collideWithCelestialBody(_body: CelestialBody, _contact: Contact, _activeStage: Stage): void {
+  collideWithCelestialBody(_body: CelestialMotion, _contact: Contact, _activeStage: Stage): void {
     this.alive = false;
   }
 

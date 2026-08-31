@@ -1,7 +1,8 @@
 // マップモードの「カメラ」「軌道フレーム」パネル オーケストレーター。
 // マップカメラの視点 (CameraFramePanel) と未来表示の描画基準 (TrajectoryFramePanel) を所有し、
 // カメラフォーカス変更時の軌道フレーム自動追随などの連動を疎結合に調停する。
-import { bodyAnchorSource, CelestialBody } from '../../../physics/celestial-body';
+import { bodyAnchorSource } from '../../../physics/attractor';
+import { CelestialMotion } from '../../../physics/celestial-motion';
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
@@ -79,7 +80,7 @@ export class FrameControls {
     const frame = star !== null ? frames.frameOf(star.id, null) : frames.inertialFrame;
     // 回さない(rotatingWith: null)ので基準は必ず登録天体 — 機体・役割トークンの解決は要らない。
     this.setFocus(focusPoint(
-      this.celestialSystem.frames, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([]),
+      this.celestialSystem.frames, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([], this.lastTime),
     ));
   }
 
@@ -96,11 +97,12 @@ export class FrameControls {
 
   // パネルの表示と選択肢・選択表示を、他モジュールの状態へ合わせる。
   public sync(
-    pickables: readonly MapPickable[], cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+    pickables: readonly MapPickable[], cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
     simTime: number, displayTime: number, visible: boolean,
   ): void {
     this.lastTime = simTime;
-    const members = visible ? systemMembersAt(this.celestialSystem.motions, cameraPos, celestialBodies) : [];
+    const members = visible
+      ? systemMembersAt(this.celestialSystem.motions, cameraPos, celestialBodies, displayTime) : [];
     // 役割が周回しているかどうかはパネルが見えているかと関係がないので、非表示でも判定する
     // — 見えていないあいだ空扱いにすると、パネルを畳んだだけで下の巻き戻しが走り、選択が消える。
     const validRoles = this.validRevolutionRoles(displayTime);

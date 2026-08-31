@@ -7,7 +7,13 @@ import { KinematicState } from '../../src/physics/kinematic-state';
 import {
   LagrangePoints, SecondaryFrame, lagrangePointsOf, secondaryFrameOf,
 } from '../../src/physics/lagrange';
-import { CelestialMotion, OrbitingMotion, PhaseOffsets } from '../../src/physics/celestial-motion';
+import {
+  BodyOrientation, CelestialBodyDef, CelestialKind, CelestialMotion, OrbitingMotion, PhaseOffsets,
+  StarDef,
+} from '../../src/physics/celestial-motion';
+import { EciTransform } from '../../src/physics/eci-transform';
+import type { Atmosphere } from '../../src/physics/atmosphere';
+import type { Degree2Gravity } from '../../src/physics/celestial-body-def';
 import { FrameRotation } from '../../src/physics/kepler-orbit';
 import type { ReferenceFrames } from '../../src/game/celestial/reference-frames';
 // 回帰テストが simTime = 0 に置く瞬間の、J2000 からの秒数。地球から見て太陽が +X 方向
@@ -20,7 +26,7 @@ export const TEST_SIM_ZERO_ET = 6972197.1872752225;
 import type { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import { solarSystem } from '../../src/game/celestial/solar-system/solar-system';
 import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../../src/physics/time';
-import { Vec3, cross, len, scale, sub, v3 } from '../../src/math/vec3';
+import { Vec3, addScaled, cross, len, scale, sub, v3 } from '../../src/math/vec3';
 import { qRotate } from '../../src/physics/attitude';
 
 // 地球原点で組んだ現実の太陽系。天体は宣言順(重力源配列・一覧の順序もこの並び)に並び、
@@ -64,14 +70,14 @@ export function orbitingMotionOf(parts: SolarSystemParts, id: string): OrbitingM
 
 // 天体 id の時刻 t におけるラグランジュ点(ECI)。公転していない・主天体が引けない id は例外。
 export function lagrangeOf(parts: SolarSystemParts, id: string, t: number): LagrangePoints {
-  const frame = secondaryFrameOf(parts.system.celestialBodiesAt(t), orbitingMotionOf(parts, id), t);
+  const frame = secondaryFrameOf(parts.system.celestialMotions, t, orbitingMotionOf(parts, id), t);
   if (frame === null) throw new Error(`ラグランジュ点を組めない天体 id: ${id}`);
   return lagrangePointsOf(frame);
 }
 
 // 天体 id の時刻 t における SecondaryFrame。組めない id は例外。
 export function secondaryFrameFor(parts: SolarSystemParts, id: string, t: number): SecondaryFrame {
-  const frame = secondaryFrameOf(parts.system.celestialBodiesAt(t), orbitingMotionOf(parts, id), t);
+  const frame = secondaryFrameOf(parts.system.celestialMotions, t, orbitingMotionOf(parts, id), t);
   if (frame === null) throw new Error(`SecondaryFrame を組めない天体 id: ${id}`);
   return frame;
 }
@@ -123,4 +129,72 @@ export function testEphemerisPoints(
     points.set(id, { kind: pointKinds[id] ?? 'body', ephemeris });
   }
   return points;
+}
+
+// 位置・速度・加速度と重力場・大気を宣言した値で答える天体の運動。ECI 原点には静止した基準を
+// 置くので、宣言した値がそのまま ECI 値になる。**回帰テストが天体1体を組むための道具**で、
+// 位置は anchor から等加速度で伸ばした二次曲線に乗る。
+class FixedMotion extends CelestialMotion {
+  readonly def: CelestialBodyDef;
+  readonly kind: CelestialKind;
+
+  constructor(
+    def: StarDef,
+    private readonly anchor: KinematicState,
+    private readonly accel: Vec3,
+    kind: CelestialKind,
+    private readonly degree2: Degree2Gravity | null,
+    private readonly atmosphere: Atmosphere | null,
+  ) {
+    super();
+    this.def = def;
+    this.kind = kind;
+  }
+
+  get primary(): CelestialMotion | null { return null; }
+
+  analyticStateAt(t: number): KinematicState<'analytic'> {
+    const s = t - this.anchor.t;
+    return kinematicState<'analytic'>(
+      t,
+      addScaled(addScaled(this.anchor.r, this.anchor.v, s), this.accel, 0.5 * s * s),
+      addScaled(this.anchor.v, this.accel, s),
+    );
+  }
+
+  analyticAccelAt(): Vec3 { return this.accel; }
+
+  orientationAt(): BodyOrientation | null { return null; }
+
+  protected computeDegree2At(): Degree2Gravity | null { return this.degree2; }
+
+  protected computeAtmosphereAt(): Atmosphere | null { return this.atmosphere; }
+}
+
+// ECI 原点に置く、太陽系重心に静止した基準。FixedMotion の ECI 化を恒等変換にする。
+const FIXED_ORIGIN = new FixedMotion(
+  { id: '@fixed-origin', mu: 0, radius: 0 },
+  kinematicState<'eci'>(0, v3(), v3()), v3(), 'star', null, null,
+);
+const FIXED_ECI = new EciTransform(FIXED_ORIGIN);
+
+// 宣言した瞬間値だけを答える天体を1体組む。state は anchor(その時刻で厳密)、accel は
+// そこから伸びる二次曲線の加速度。
+export function fixedMotion(spec: {
+  readonly id: string;
+  readonly mu: number;
+  readonly radius: number;
+  readonly state: KinematicState;
+  readonly accel?: Vec3;
+  readonly kind?: CelestialKind;
+  readonly degree2?: Degree2Gravity | null;
+  readonly atmosphere?: Atmosphere | null;
+}): CelestialMotion {
+  const motion = new FixedMotion(
+    { id: spec.id, mu: spec.mu, radius: spec.radius },
+    spec.state, spec.accel ?? v3(), spec.kind ?? 'planet',
+    spec.degree2 ?? null, spec.atmosphere ?? null,
+  );
+  motion.bindEciTransform(FIXED_ECI);
+  return motion;
 }

@@ -6,7 +6,7 @@ import { relativeInfo } from '../orbit/orbit-info';
 import { Ship } from '../../dynamic/dynamic-entity/ship';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
-import type { CelestialBody } from '../../../physics/celestial-body';
+import { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Game } from '../../game';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
 
@@ -41,7 +41,7 @@ export class TargetPanel {
 
   // 固定対象の有無を毎フレーム反映し、値の更新は間引く。celestialBodies は相対距離・速度の
   // 算出に使う。
-  public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
+  public sync(game: Game, celestialBodies: readonly CelestialMotion[]): void {
     const player = game.player;
     const target = player ? game.targeter.aliveTarget : null;
     // 表示/非表示はターゲット固定の有無に直結するので、更新間隔とは別に毎フレーム反映する。
@@ -53,7 +53,7 @@ export class TargetPanel {
       this.syncTarget(null);
       return;
     }
-    const relative = relativeInfo(player, target, celestialBodies);
+    const relative = relativeInfo(player, target, celestialBodies, player.state.t);
     this.syncTarget({
       name: target.name,
       distanceM: relative.dist,

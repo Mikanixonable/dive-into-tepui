@@ -8,7 +8,8 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
-import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
+import { orbitalElementsOf } from '../../physics/elements';
 import { haloState, lissajousState } from '../../physics/halo';
 import { secondaryFrameOf } from '../../physics/lagrange';
 import { OrbitingMotion } from '../../physics/celestial-motion';
@@ -217,7 +218,7 @@ export class CreativeStage extends Stage {
     this.mountStageControlsPanel(cameraSystem.overviewMode);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
-      cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._celestialSystem.celestialBodiesAt(displayTime),
+      cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._celestialSystem.celestialMotions,
     );
     this.placerPanel.setIssues(this.issues);
     this.stageControlsPanel.element.classList.remove('hidden');
@@ -235,8 +236,9 @@ export class CreativeStage extends Stage {
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
   // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
   openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
-    const celestialBodies = this._celestialSystem.celestialBodiesAt(this._simulator.simTime);
-    const form = elementsFormFromState(state, celestialBodies, this._celestialSystem.origin.id);
+    const celestialBodies = this._celestialSystem.celestialMotions;
+    const form = elementsFormFromState(
+      state, celestialBodies, state.t, this._celestialSystem.origin.id);
     if (form && validateBaseReferenceFields(objectType, 'elements', form.celestialBody).length === 0) {
       this.placerPanel.open({ kind: 'form', objectType, form });
       return;
@@ -252,7 +254,7 @@ export class CreativeStage extends Stage {
     try {
       const state = this.buildInitialState(form);
       // 楕円はフォームが選んだ基準天体中心で描く。
-      const elements = orbitalElementsOf(state, this.referenceCelestialBody(form));
+      const elements = orbitalElementsOf(state, this.referenceCelestialBody(form), state.t);
       return elements ? { elements, pos: state.r } : null;
     } catch {
       return null;
@@ -268,7 +270,7 @@ export class CreativeStage extends Stage {
     if (form.placementMode === 'elements') {
       const center = this.referenceCelestialBody(form);
       const common = {
-        centerRadius: center.radius, mu: center.mu, centerId: center.id,
+        centerRadius: center.def.radius, mu: center.def.mu, centerId: center.id,
         incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
       };
       issues.push(...validateEllipticPlacementFields(
@@ -290,7 +292,7 @@ export class CreativeStage extends Stage {
   // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
   private syncPreview(
     fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
-    overviewMode: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+    overviewMode: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
   ): void {
     if (!this.preview) {
       this.previewOrbitLine.sync(null, fo, camera);
@@ -298,7 +300,8 @@ export class CreativeStage extends Stage {
       return;
     }
     this.previewOrbitLine.sync(this.preview.elements, fo, camera);
-    if (overviewMode && isOccluded(cameraPos, this.preview.pos, celestialBodies)) {
+    if (overviewMode
+      && isOccluded(cameraPos, this.preview.pos, celestialBodies, this._simulator.simTime)) {
       this._markerManager.hide('creative-preview');
       return;
     }
@@ -369,7 +372,7 @@ export class CreativeStage extends Stage {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
     const t = this._simulator.simTime;
-    const system = secondaryFrameOf(this._celestialSystem.celestialBodiesAt(t), motion, t);
+    const system = secondaryFrameOf(this._celestialSystem.celestialMotions, t, motion, t);
     if (system === null) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} の主天体が引けない`);
     }
@@ -381,8 +384,8 @@ export class CreativeStage extends Stage {
 
   // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
   // 要る情報がすべてここから出る。
-  private referenceCelestialBody(form: ElementsForm): CelestialBody {
-    return this._celestialSystem.celestialBodiesAt(this._simulator.simTime).find((b) => b.id === form.celestialBody)!;
+  private referenceCelestialBody(form: ElementsForm): CelestialMotion {
+    return this._celestialSystem.celestialMotions.find((b) => b.id === form.celestialBody)!;
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
@@ -390,25 +393,28 @@ export class CreativeStage extends Stage {
   // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
   private buildElementsState(form: ElementsForm): KinematicState {
     const center = this.referenceCelestialBody(form);
+    const centerState = center.stateAt(this._simulator.simTime);
     let a: number;
     let e: number;
     if (form.sizeMode === 'apsides') {
-      const rp = center.radius + form.peAltKm * 1e3;
-      const ra = center.radius + form.apAltKm * 1e3;
+      const rp = center.def.radius + form.peAltKm * 1e3;
+      const ra = center.def.radius + form.apAltKm * 1e3;
       a = (rp + ra) / 2;
       e = (ra - rp) / (ra + rp);
     } else if (form.sizeMode === 'semiMajorEcc') {
       a = form.semiMajorKm * 1e3;
       e = form.eccentricity;
     } else {
-      a = semiMajorFromPeriod(form.periodHours * 3600, center.mu);
+      a = semiMajorFromPeriod(form.periodHours * 3600, center.def.mu);
       e = form.eccentricity;
     }
 
     const rel = stateFromOrbitalElements(
-      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, center.mu,
+      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
+      form.nuDeg * DEG, center.def.mu,
     );
-    return kinematicState<'eci'>(this._simulator.simTime, add(center.state.r, rel.r), add(center.state.v, rel.v));
+    return kinematicState<'eci'>(
+      this._simulator.simTime, add(centerState.r, rel.r), add(centerState.v, rel.v));
   }
 
   // フォームの値が物理的に成立するか検証する。computeFieldIssues と同じ検証呼び出しを共有し、

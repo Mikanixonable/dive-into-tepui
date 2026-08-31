@@ -22,8 +22,9 @@ export class SnapshotService {
     const player = game.player;
     const info = player
       ? orbitInfo(
-        player, autoOrbitReference(player.state.r, game.celestialSystem.celestialBodiesAt(game.simTime)),
-        (id) => game.celestialSystem.nameOf(id))
+        player,
+        autoOrbitReference(player.state.r, game.celestialSystem.celestialMotions, player.state.t),
+        player.state.t, (id: string) => game.celestialSystem.nameOf(id))
       : null;
     const meta: SnapshotMeta = {
       id: generateSnapshotId(),
