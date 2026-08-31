@@ -98,6 +98,7 @@ export function orbitingAttractorOf(
 export function bodyAnchorSource(
   bodies: readonly CelestialMotion[], bodiesPivot: number,
 ): FrameAnchorSource {
+  // 引き先は生成時に確定するので、id の表もここで1度だけ組む。
   const byId = new Map(bodies.map((body) => [body.id, body]));
   const stateOf = (id: string): KinematicState | null =>
     byId.get(id)?.stateAt(bodiesPivot) ?? null;
