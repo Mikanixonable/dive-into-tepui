@@ -7,7 +7,7 @@ import {
   evaluateChebyshevWithDerivative,
   findChebyshevSegmentIndex,
 } from '../../src/physics/ephemeris-pack/evaluator';
-import { ChebyshevEphemerisPack } from '../../src/physics/ephemeris-pack/types';
+import { ChebyshevPack } from '../../src/physics/ephemeris-pack/types';
 import { len, Vec3, v3 } from '../../src/math/vec3';
 
 function assertVec3Close(actual: Vec3, expected: Vec3, tolerance = 1e-12): void {
@@ -16,7 +16,7 @@ function assertVec3Close(actual: Vec3, expected: Vec3, tolerance = 1e-12): void 
   assert.ok(Math.abs(actual.z - expected.z) <= tolerance, `z: ${actual.z} vs ${expected.z}`);
 }
 
-const pack: ChebyshevEphemerisPack = {
+const pack: ChebyshevPack = {
   manifest: {
     version: 1,
     timeUnit: 's',
@@ -82,7 +82,7 @@ export function register(): void {
   // 戻されたことを検出するために置いてある。**
   test('chebyshev: 同じ時刻は何度でも同じ答えを返し、入力係数はコピーされない', () => {
     const coefficients = [5, 0];
-    const input: ChebyshevEphemerisPack = {
+    const input: ChebyshevPack = {
       manifest: {
         version: 1,
         timeUnit: 's',
