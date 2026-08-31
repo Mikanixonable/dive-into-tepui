@@ -6,7 +6,7 @@
 // 配る)→ 惑星本体(重心 − 衛星ぶん)→ 衛星の太陽系重心位置。
 // THREE/DOM 非依存。
 import { Vec3, addScaled } from '../math/vec3';
-import { PointEphemeris, boundStateAt } from './point-ephemeris';
+import { PointEphemeris, boundBaryStateAt } from './point-ephemeris';
 import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
 import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
 import {
@@ -43,7 +43,7 @@ export class PlanetSystem {
 
   // 系の重心を暦が直接収録している範囲での状態。収録外・有効期間外では null。
   ownNumericStateAt(t: number): KinematicState<'numeric'> | null {
-    return boundStateAt(this.baryEphemeris, t);
+    return boundBaryStateAt(this.baryEphemeris, t);
   }
 
   // 系の重心の太陽系重心状態。同じ時刻に複数回引かれるので1度へ畳む。
