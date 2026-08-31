@@ -34,11 +34,11 @@ export function register(): void {
     const earthOnly = testEphemerisPoints(-1e9, 1e9, {
       earth: (t) => ({ r: v3(1.5e11 + t, 2e6, -3e6), v: v3(1, 0, 0) }),
     });
-    const packed = solarSystemParts({}, TEST_EPOCH, earthOnly);
+    const numeric = solarSystemParts({}, TEST_EPOCH, earthOnly);
     const analytic = solarSystemParts({});
     for (const t of [0, 8.64e4, 3.156e6]) {
       assert.deepEqual(
-        orbitingMotionOf(packed, 'moon').orbitNormalAt(t),
+        orbitingMotionOf(numeric, 'moon').orbitNormalAt(t),
         orbitingMotionOf(analytic, 'moon').orbitNormalAt(t),
       );
     }

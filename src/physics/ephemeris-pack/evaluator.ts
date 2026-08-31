@@ -1,7 +1,7 @@
 import { KinematicState, kinematicState } from '../kinematic-state';
 import { Vec3, v3 } from '../../math/vec3';
 import {
-  ChebyshevBodyPack,
+  ChebyshevBodySegments,
   ChebyshevPack,
   ChebyshevSegment,
   ReadonlyNumberArray,
@@ -108,7 +108,7 @@ export function findChebyshevSegmentIndex(segments: readonly ChebyshevSegment[],
 }
 
 interface IndexedBody {
-  readonly body: ChebyshevBodyPack;
+  readonly body: ChebyshevBodySegments;
 }
 
 // 係数列を検査する。**複製はしない** — 4.3 MB の pack で係数の複製が 13 MB を占めるため、
@@ -143,7 +143,7 @@ function validateSegment(segment: ChebyshevSegment, bodyId: string, index: numbe
   validateCoefficients(z, `${bodyId} segment ${index} z`);
 }
 
-function validateBody(body: ChebyshevBodyPack): void {
+function validateBody(body: ChebyshevBodySegments): void {
   if (body.id.length === 0) throw new InvalidChebyshevPackError('body id must not be empty');
   const segments = body.segments;
   if (segments.length === 0) throw new InvalidChebyshevPackError(`${body.id} must contain a segment`);
@@ -155,7 +155,7 @@ function validateBody(body: ChebyshevBodyPack): void {
   }
 }
 
-function validateManifest(pack: ChebyshevPack, bodies: readonly ChebyshevBodyPack[]): void {
+function validateManifest(pack: ChebyshevPack, bodies: readonly ChebyshevBodySegments[]): void {
   if (!Number.isFinite(pack.manifest.version) || pack.manifest.version < 1) {
     throw new InvalidChebyshevPackError('manifest version must be a positive number');
   }

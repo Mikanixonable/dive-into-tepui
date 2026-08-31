@@ -49,8 +49,8 @@ export function register(): void {
     assert.equal(isEphemerisContextRestorable({ ...other }), true);
   });
 
-  // 高精度暦を持たない時代(解析暦だけで組む)を元期にしたランも保存・復元できる。
-  test('save ephemeris context: 高精度暦の無い元期でも暦情報を組めて復元できる', () => {
+  // 数値暦を持たない時代(解析暦だけで組む)を元期にしたランも保存・復元できる。
+  test('save ephemeris context: 数値暦の無い元期でも暦情報を組めて復元できる', () => {
     const analyticOnly = ephemerisContextFor(createJulianDate('TDB', 2451545));
     assert.equal(analyticOnly.profileId, null);
     assert.equal(analyticOnly.packId, null);

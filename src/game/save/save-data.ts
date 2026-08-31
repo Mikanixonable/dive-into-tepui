@@ -228,7 +228,7 @@ export interface SnapshotMeta {
 export interface EphemerisContext {
   // このランの元期(simTime=0 が指す絶対時刻)。読み込み側はこれを継承する。
   epochJdTdb: number;
-  // その元期が選ぶ暦プロファイルと暦データ。高精度暦を持たない時代では両方 null。
+  // その元期が選ぶ暦プロファイルと暦パック。数値暦を持たない時代では両方 null。
   profileId: string | null;
   packId: string | null;
   packFormatVersion: number;

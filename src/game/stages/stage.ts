@@ -110,7 +110,7 @@ export type StageResult = {
 
 export abstract class Stage {
   // 起動時に1度だけ組む星系。既定は現実の太陽系で、元期(simTime=0 が指す絶対時刻)が
-  // 近未来/遠未来いずれかの高精度期間に入っていれば精密暦パックを読み込み、どちらにも
+  // 近未来/遠未来いずれかの数値暦の期間に入っていれば暦パックを読み込み、どちらにも
   // 入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
   public static async createCelestialSystem(
     phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,

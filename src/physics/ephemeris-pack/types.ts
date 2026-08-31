@@ -41,12 +41,12 @@ export interface ChebyshevSegment {
   readonly coefficients: ChebyshevVectorCoefficients;
 }
 
-export interface ChebyshevBodyPack {
+export interface ChebyshevBodySegments {
   readonly id: string;
   readonly segments: readonly ChebyshevSegment[];
 }
 
 export interface ChebyshevPack {
   readonly manifest: ChebyshevManifest;
-  readonly bodies: readonly ChebyshevBodyPack[];
+  readonly bodies: readonly ChebyshevBodySegments[];
 }
