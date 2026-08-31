@@ -50,15 +50,9 @@ export class PlanetSystem {
   analyticStateAt(t: number): KinematicState<'analytic'> {
     const cached = this.analyticCache.get(t);
     if (cached !== undefined) return cached;
-    const star = this.body.star;
-    // 主星を持たない星系では、二体解の中心がそのまま原点。
-    if (star === null) {
-      const rel = keplerOrbitState(this.orbit, t);
-      return this.analyticCache.put(t, kinematicState<'analytic'>(t, rel.r, rel.v));
-    }
     // 主星は自分の重心相対位置を組む過程で質量を持つ系ぶんの二体解を解いており、その通しで
     // 各系の太陽系重心状態を配る。自分がその中にいれば、この呼び出しでキャッシュが埋まる。
-    const starState = star.analyticStateAt(t);
+    const starState = this.body.star.analyticStateAt(t);
     const filled = this.analyticCache.get(t);
     if (filled !== undefined) return filled;
     // 質量が未測定の系は主星の畳み込みに現れないので、自分で解く。
@@ -169,13 +163,13 @@ export class PlanetSystem {
 }
 
 // 惑星本体と、その系の重心をまとめて組む。衛星を持つ系では、返った PlanetSystem をそのまま
-// 衛星へ渡す。star は主星(恒星を持たない星系では null)、spinPhase0 は自転の初期位相 [rad]。
+// 衛星へ渡す。star は主星、spinPhase0 は自転の初期位相 [rad]。
 export function planetSystem(
-  def: PlanetDef, star: StarMotion | null, spinPhase0 = 0,
+  def: PlanetDef, star: StarMotion, spinPhase0 = 0,
 ): PlanetSystem {
   const system = new PlanetSystem(def.id, def.orbit);
   system.setBody(new PlanetMotion(def, star, system, spinPhase0));
   // 主星の重心相対位置にはこの系ぶんの質量と位置が要るので、作った時点で登録する。
-  star?.addPlanetSystem(system);
+  star.addPlanetSystem(system);
   return system;
 }
