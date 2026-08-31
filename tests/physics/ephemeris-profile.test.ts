@@ -26,7 +26,7 @@ export function register(): void {
     }
   });
 
-  // loadAbsoluteEphemeris は「pack が要求期間を覆うか」を pack 自身の時刻軸(J2000 ET 秒)で
+  // loadEphemerisPoints は「pack が要求期間を覆うか」を pack 自身の時刻軸(J2000 ET 秒)で
   // 比べる。**元期起点の simTime へ寄せてから比べてはならない** — 要求側と pack 側で減算の
   // 順序が変わり、期間の内側にある元期が数 µs のずれで弾かれる。
   test('ephemeris-profile: 期間内のどの元期でも pack の被覆判定が通る', () => {

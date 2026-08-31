@@ -1,7 +1,7 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
-import { AbsoluteEphemeris, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
-import { EphemerisPointKind, PointEphemeris } from '../../src/physics/point-ephemeris';
+import { icrfToGameEci } from '../../src/physics/icrf';
+import { EphemerisPointKind, EphemerisPoints, PointEphemeris } from '../../src/physics/point-ephemeris';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { KinematicState } from '../../src/physics/kinematic-state';
 import {
@@ -37,14 +37,14 @@ export const TEST_EPOCH: TdbJulianDate =
   createJulianDate('TDB', J2000_JULIAN_DATE + TEST_SIM_ZERO_ET / SECONDS_PER_DAY);
 
 // 現実の太陽系を地球原点で組む。phases は天体ごとの平均黄経の初期位相 [rad]、
-// epoch は simTime=0 が指す絶対時刻。absoluteSource を渡すと、その有効期間だけ
-// 高精度暦パック経路を通る。
+// epoch は simTime=0 が指す絶対時刻。ephemerisPoints を渡すと、そこに載っている天体だけが
+// その有効期間で高精度暦パック経路を通る。
 export function solarSystemParts(
   phases: PhaseOffsets = {},
   epoch: TdbJulianDate = TEST_EPOCH,
-  absoluteSource: AbsoluteEphemeris | null = null,
+  ephemerisPoints: EphemerisPoints | null = null,
 ): SolarSystemParts {
-  const system = solarSystem('earth', phases, 0, absoluteSource, epoch);
+  const system = solarSystem('earth', phases, 0, ephemerisPoints, epoch);
   return { bodies: system.motions, system, referenceFrames: system.frames };
 }
 
@@ -100,28 +100,27 @@ export function assertOmegaMatchesBasis(rot: (t: number) => FrameRotation, t: nu
   }
 }
 
-// 天体 id ごとの重心状態(ICRF 軸)を返す関数から、テスト用の暦供給源を組む。**収録して
-// いない天体には null を返させる** — 収録の有無をテスト側で二重に宣言せずに済む。
+// 天体 id ごとの重心状態(ICRF 軸)を閉じた式で与えて、テスト用の暦の一覧を組む。
+// **表に載せた id だけが収録されている** — どの天体がパック経路へ入り、どれが解析経路へ
+// 落ちるかは、この表の顔ぶれがそのまま決める。
 // pointKinds は天体本体でなく惑星系の重心を収録している id の宣言(既定は全部が本体)。
-export function testEphemerisSource(
+export function testEphemerisPoints(
   validStartSimTime: number,
   validEndSimTime: number,
-  stateOf: (id: string, simTime: number) => { readonly r: Vec3; readonly v: Vec3 } | null,
+  statesOf: Readonly<Record<string, (simTime: number) => { readonly r: Vec3; readonly v: Vec3 }>>,
   pointKinds: Readonly<Partial<Record<string, EphemerisPointKind>>> = {},
-): AbsoluteEphemeris {
-  return {
-    pointKindOf: (id: string): EphemerisPointKind => pointKinds[id] ?? 'body',
-    pointEphemerisOf: (id: string): PointEphemeris | null => {
-      if (stateOf(id, validStartSimTime) === null) return null;
-      return {
-        validStartSimTime,
-        validEndSimTime,
-        stateAt: (simTime: number) => {
-          const state = stateOf(id, simTime);
-          if (state === null) throw new Error(`testEphemerisSource: 収録していない天体 id: ${id}`);
-          return kinematicState<'packed'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
-        },
-      };
-    },
-  };
+): EphemerisPoints {
+  const points = new Map<string, { kind: EphemerisPointKind; ephemeris: PointEphemeris }>();
+  for (const [id, stateOf] of Object.entries(statesOf)) {
+    const ephemeris: PointEphemeris = {
+      validStartSimTime,
+      validEndSimTime,
+      stateAt: (simTime: number) => {
+        const state = stateOf(simTime);
+        return kinematicState<'packed'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));
+      },
+    };
+    points.set(id, { kind: pointKinds[id] ?? 'body', ephemeris });
+  }
+  return points;
 }

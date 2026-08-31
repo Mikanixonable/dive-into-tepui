@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import {
   CelestialBodyDef, CelestialMotion, OrbitingMotion, PhaseOffsets, PlanetMotion,
 } from '../../physics/celestial-motion';
-import { AbsoluteEphemeris } from '../../physics/absolute-ephemeris';
+import { EphemerisPoints, ephemerisPointOf } from '../../physics/point-ephemeris';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
 import {
@@ -50,14 +50,13 @@ import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide/
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
-// 高精度暦を天体1体ぶんへ切り分けて配る。**暦は id ごとに天体本体を収録している場合と
-// 惑星系の重心を収録している場合があり、結び先のノードがそれで分かれる**(JPL の SPK が
-// 火星以遠では系の重心しか持たないため)。宣言と食い違う点へ結ぶと、その系がまるごと
-// 重心オフセットぶんずれる。
-function bindEphemerides(motions: readonly CelestialMotion[], source: AbsoluteEphemeris): void {
+// 高精度暦が収録している点を、結び先のノードへ配る。**暦は id ごとに天体本体を収録して
+// いる場合と惑星系の重心を収録している場合があり、結び先がそれで分かれる**(JPL の SPK が
+// 火星以遠では系の重心しか持たないため)。宣言と食い違う点へ結ぶとその系がまるごと重心
+// オフセットぶんずれるので、ephemerisPointOf は種別が合ったときだけ暦を返す。
+function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisPoints): void {
   for (const motion of motions) {
-    const isBody = source.pointKindOf(motion.id) === 'body';
-    motion.bindEphemeris(isBody ? source.pointEphemerisOf(motion.id) : null);
+    motion.bindEphemeris(ephemerisPointOf(points, motion.id, 'body'));
   }
   // 系の重心を収録した系列は天体1体ぶんではないので、惑星系のほうへ結ぶ。惑星本体と衛星は
   // そこから重心オフセットを差し引いて/足して組む。
@@ -65,8 +64,7 @@ function bindEphemerides(motions: readonly CelestialMotion[], source: AbsoluteEp
     .filter((m): m is PlanetMotion => m instanceof PlanetMotion)
     .map((m) => m.system));
   for (const system of systems) {
-    const isBarycenter = source.pointKindOf(system.id) === 'systemBarycenter';
-    system.bindEphemeris(isBarycenter ? source.pointEphemerisOf(system.id) : null);
+    system.bindEphemeris(ephemerisPointOf(points, system.id, 'systemBarycenter'));
   }
 }
 
@@ -123,14 +121,14 @@ export class CelestialSystem implements CelestialBodyWindows {
   // 組まれている。THREE の資源はここでは受け取らない — build(scene, …) が登録する。
   // pointFieldView はこの星系に付随する小天体の点群(持たない星系では null)。マップへ入るまで
   // 資源を確保しない表示なので、シーンへの登録は最初のマップ更新まで遅らせる。
-  // absoluteSource は高精度暦の供給源。天体1体ぶんへ切り分けて各 motion へ配る。
+  // ephemerisPoints は高精度暦が収録している点の一覧。結び先のノードへ配る。
   constructor(
     readonly entities: readonly CelestialEntity[],
     readonly origin: CelestialEntity,
     private readonly phaseOffsets: PhaseOffsets,
     readonly epoch: TdbJulianDate,
     private readonly pointFieldView: PointFieldView | null = null,
-    absoluteSource: AbsoluteEphemeris | null = null,
+    ephemerisPoints: EphemerisPoints | null = null,
   ) {
     this.motions = entities.map((b) => b.motion);
     this.gravityEntities = entities.filter((b) => b.def.mu !== 0);
@@ -141,7 +139,7 @@ export class CelestialSystem implements CelestialBodyWindows {
     this.referenceFrames = new ReferenceFrames(this.motions, this.eciTransform);
     // 天体1体ぶんの値は個体が答えるので、その供給源(ECI 変換器・暦)はここで1度だけ配る。
     for (const entity of entities) entity.bindEciTransform(this.eciTransform);
-    if (absoluteSource !== null) bindEphemerides(this.motions, absoluteSource);
+    if (ephemerisPoints !== null) bindEphemerides(this.motions, ephemerisPoints);
     this.entitiesById = new Map(entities.map((b) => [b.id, b]));
     this.starEntity = entities.find((b): b is StarEntity => b instanceof StarEntity) ?? null;
   }

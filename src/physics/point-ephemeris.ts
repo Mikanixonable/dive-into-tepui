@@ -24,3 +24,23 @@ export function boundStateAt(ephemeris: PointEphemeris | null, t: number): Kinem
   if (t < ephemeris.validStartSimTime || t > ephemeris.validEndSimTime) return null;
   return ephemeris.stateAt(t);
 }
+
+// 暦が収録している点の一覧。key は天体 id、kind はその id が本体か惑星系の重心か。
+// **供給源はこの形へ解決してから渡す** — 天体1体ぶんへの切り出しは構築時に1度で済み、
+// 引く側が id と種別で2度問い合わせる必要も無くなる。id が載っていなければ未収録。
+export type EphemerisPoints = ReadonlyMap<string, EphemerisPoint>;
+
+export type EphemerisPoint = {
+  readonly kind: EphemerisPointKind;
+  readonly ephemeris: PointEphemeris;
+};
+
+// id が期待した種別で収録されているときだけ、その暦を返す。**種別が食い違えば null** —
+// 系の重心の系列を惑星本体へ結ぶと、その系がまるごと重心オフセットぶんずれる
+// (木星系で 68 km、冥王星系で 2,128 km)。
+export function ephemerisPointOf(
+  points: EphemerisPoints, id: string, kind: EphemerisPointKind,
+): PointEphemeris | null {
+  const point = points.get(id);
+  return point !== undefined && point.kind === kind ? point.ephemeris : null;
+}
