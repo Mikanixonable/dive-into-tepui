@@ -62,7 +62,7 @@ export function register(): void {
       }
       // manifest を書き換えても係数は変わらないことの担保(packId は payload の digest)。
       const expected = EPHEMERIS_PROFILES[profileId as keyof typeof SHIPPED_PACKS].packId;
-      assert.equal(source.decoded.manifest.payloadSha256, expected.slice(expected.lastIndexOf('@') + 1));
+      assert.equal(source.payloadSha256, expected.slice(expected.lastIndexOf('@') + 1));
     });
   }
 
