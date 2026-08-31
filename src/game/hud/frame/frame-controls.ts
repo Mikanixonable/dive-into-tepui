@@ -5,7 +5,6 @@ import { bodyAnchorSource } from '../../../physics/attractor';
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
-import { systemMembersAt } from '../../celestial/system-membership';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { MapCamera } from '../../camera/map-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
@@ -101,7 +100,7 @@ export class FrameControls {
   ): void {
     this.lastTime = simTime;
     const members = visible
-      ? systemMembersAt(this.celestialSystem.celestialMotions, cameraPos, displayTime) : [];
+      ? this.celestialSystem.systemMembersAt(cameraPos, displayTime) : [];
     // 役割が周回しているかどうかはパネルが見えているかと関係がないので、非表示でも判定する
     // — 見えていないあいだ空扱いにすると、パネルを畳んだだけで下の巻き戻しが走り、選択が消える。
     const validRoles = this.validRevolutionRoles(displayTime);
