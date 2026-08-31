@@ -14,10 +14,24 @@ import { ephemerisSeconds, TdbJulianDate } from './time';
 // payload SHA-256は非同期loaderが検証する。同期コンストラクタは既に信頼済みのbytesだけを受ける。
 export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
   private readonly evaluator: ChebyshevEphemeris;
+  private readonly bodyPoints: Readonly<Record<string, EphemerisPointKind>>;
 
-  constructor(readonly decoded: DecodedEphemerisPack, epoch: TdbJulianDate) {
+  // pack が実際に覆う絶対時刻の範囲(J2000 ET 秒)。**catalog が要求期間との被覆を判定する。**
+  readonly validStartEt: number;
+  readonly validEndEt: number;
+  // payload の SHA-256。catalog が profile の packId と突き合わせる。
+  readonly payloadSha256: string | undefined;
+
+  // **decoded は保持しない。** 係数は評価器が payload へのビューとして持ち、ここで要るのは
+  // manifest のごく一部だけ — 抱えたままにすると manifestJson(2.2 MB)と 10054 個の series
+  // オブジェクトが pack と同じ寿命で残る。
+  constructor(decoded: DecodedEphemerisPack, epoch: TdbJulianDate) {
     this.evaluator = new ChebyshevEphemeris(
       toEvaluatorEphemerisPack(decoded, ephemerisSeconds(epoch)));
+    this.bodyPoints = decoded.manifest.bodyPoints ?? {};
+    this.validStartEt = decoded.manifest.validStart;
+    this.validEndEt = decoded.manifest.validEnd;
+    this.payloadSha256 = decoded.manifest.payloadSha256;
   }
 
   static fromTrustedBytes(bytes: Uint8Array, epoch: TdbJulianDate): PackedAbsoluteEphemeris {
@@ -26,18 +40,15 @@ export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
 
   // 天体 id が収録している点。manifest が宣言していない id は天体本体。
   pointKindOf(id: string): EphemerisPointKind {
-    return this.decoded.manifest.bodyPoints?.[id] ?? 'body';
+    return this.bodyPoints[id] ?? 'body';
   }
 
   // 天体 id の1体ぶんを切り出した暦。有効期間はその天体自身のセグメント範囲。
   // 収録していなければ null。
   bodyEphemerisOf(id: string): BodyEphemeris | null {
-    const body = this.evaluator.pack.bodies.find((candidate) => candidate.id === id);
-    if (body === undefined) return null;
-    const segments = body.segments;
-    return new PackedBodyEphemeris(
-      this.evaluator, id, segments[0]!.start, segments[segments.length - 1]!.end,
-    );
+    const range = this.evaluator.validRangeOf(id);
+    if (range === null) return null;
+    return new PackedBodyEphemeris(this.evaluator, id, range.start, range.end);
   }
 }
 
