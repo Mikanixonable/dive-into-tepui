@@ -55,7 +55,7 @@ function stalenessPx(
     const nuBaked = trueAnomalyAt(baked, probe);
     const posError = len(sub(probe, positionOnOrbit(baked, nuBaked)));
     const velError = len(sub(velocityOnOrbit(el, nu), velocityOnOrbit(baked, nuBaked)));
-    const world = fo.RtoThreeV3(add(el.center.state.r, probe));
+    const world = fo.RtoThreeV3(add(el.centerState.r, probe));
     const mpp = cam.at(world.x, world.y, world.z);
     worst = Math.max(
       worst,
@@ -108,7 +108,7 @@ export class OrbitLine {
     // OrbitLineの頂点はECI相対、シーンもECI基準なので、回転クォータニオンは恒等にする。
     // 回転座標系はMapCameraの視点・姿勢で表現する。ここへ現在時刻のフレーム回転を掛けると、
     // 焼いた軌道形状だけが回転し続け、船の現在位置から外れていく。
-    this.curve.setTransform(fo.RtoThreeV3(el.center.state.r));
+    this.curve.setTransform(fo.RtoThreeV3(el.centerState.r));
 
     // 頂点は中心天体相対、平行移動は毎フレームの中心天体位置。中心が入れ替われば、別の天体を
     // 基準に焼いた形状をそのまま新しい中心へ動かすことになるので、ずれを測らずに焼き直す。
@@ -134,7 +134,7 @@ export class OrbitLine {
     const scratch = new THREE.Vector3();
     for (let i = 0; i <= count; i++) {
       sampler(i / count, scratch);
-      points.push(add(baked.center.state.r, v3(scratch.x, scratch.y, scratch.z)));
+      points.push(add(baked.centerState.r, v3(scratch.x, scratch.y, scratch.z)));
     }
     return points;
   }

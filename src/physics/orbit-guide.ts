@@ -1,7 +1,7 @@
 // マップのガイドとして描く軌道の曲線(ECI [m])。焼き込みカタログ(orbit-catalog.ts)の
 // 無次元形状を、その瞬間の実際の天体位置・公転面から組んだ回転座標系へ載せて返す。
 // リサジュー軌道だけは連続な族として焼き込まないので、Richardson の解析近似から直に組む。
-import type { CelestialBody } from './celestial-body';
+import type { CelestialMotion } from './celestial-motion';
 
 import { Vec3Tuple } from './cr3bp';
 import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
@@ -69,8 +69,8 @@ interface RotatingFrame {
 // 引くこと)は呼び出し側の仕事で、主星を持たない副天体では null。
 // 焼き込みは重心原点なので、原点も重心へ置く(質量比はカタログが持つ値を使う)。
 export function rotatingFrame(system: SecondaryFrame, mu: number): RotatingFrame | null {
-  const primaryPos = system.primary.state.r;
-  const secondaryPos = system.secondary.state.r;
+  const primaryPos = system.primaryState.r;
+  const secondaryPos = system.secondaryState.r;
   const rVec = sub(secondaryPos, primaryPos);
   const unit = len(rVec);
   if (!(unit > 0)) return null;
@@ -235,45 +235,51 @@ function elementsLoop(elements: OrbitalElements | null, centerEci: Vec3): GuideL
 
 // 太陽同期準回帰軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
 export function sunSyncRepeatGroundTrackLoop(
-  earth: CelestialBody, repeatDays: number, revsPerRepeat: number,
+  earth: CelestialMotion, earthPivot: number, repeatDays: number, revsPerRepeat: number,
 ): GuideLoop | null {
   return elementsLoop(
-    sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat, earth), earth.state.r);
+    sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat, earth, earthPivot),
+    earth.positionAt(earthPivot, earthPivot));
 }
 
 // 太陽方向の昇交点赤経(elements.ts の orbitPlaneBasis の規約: raan=0 で昇交点は +X 方向、
 // raan を Y 軸まわりに正転すると昇交点は -Z 側へ回る)を、その瞬間の太陽方向から逆算する。
 export function dawnDuskGuideLoop(
-  earth: CelestialBody, sunDirFrom: (r: Vec3, t: number) => Vec3,
+  earth: CelestialMotion, earthPivot: number, sunDirFrom: (r: Vec3, t: number) => Vec3,
   repeatDays: number, revsPerRepeat: number, localTime: LocalTime,
 ): GuideLoop | null {
-  const earthPos = earth.state.r;
-  const sunDir = sunDirFrom(earthPos, earth.state.t);
+  const earthPos = earth.positionAt(earthPivot, earthPivot);
+  const sunDir = sunDirFrom(earthPos, earthPivot);
   const sunRaanDeg = (Math.atan2(-sunDir.z, sunDir.x) * 180) / Math.PI;
   return elementsLoop(
-    dawnDuskElements(repeatDays, revsPerRepeat, localTime, sunRaanDeg, earth), earthPos);
+    dawnDuskElements(repeatDays, revsPerRepeat, localTime, sunRaanDeg, earth, earthPivot), earthPos);
 }
 
 // 自転周期に共鳴する参照軌道(モルニヤ・ツンドラ)の共通部。自転モデルを持たない天体では
 // 共鳴の基準が無いので線を引かない。
 function spinResonantLoop(
-  earth: CelestialBody, spinRate: number | null,
-  elementsOf: (planet: CelestialBody, spinPeriod: number) => OrbitalElements,
+  earth: CelestialMotion, earthPivot: number, spinRate: number | null,
+  elementsOf: (planet: CelestialMotion, spinPeriod: number) => OrbitalElements,
 ): GuideLoop | null {
   if (spinRate === null || spinRate === 0) return null;
-  return elementsLoop(elementsOf(earth, Math.abs((2 * Math.PI) / spinRate)), earth.state.r);
+  return elementsLoop(
+    elementsOf(earth, Math.abs((2 * Math.PI) / spinRate)), earth.positionAt(earthPivot, earthPivot));
 }
 
 // モルニヤ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
 export function molniyaGuideLoop(
-  earth: CelestialBody, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
+  earth: CelestialMotion, earthPivot: number, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
 ): GuideLoop | null {
-  return spinResonantLoop(earth, spinRate, (p, spin) => molniyaElements(perigeeAltitude, raanDeg, p, spin));
+  return spinResonantLoop(
+    earth, earthPivot, spinRate,
+    (p, spin) => molniyaElements(perigeeAltitude, raanDeg, p, earthPivot, spin));
 }
 
 // ツンドラ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
 export function tundraGuideLoop(
-  earth: CelestialBody, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
+  earth: CelestialMotion, earthPivot: number, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
 ): GuideLoop | null {
-  return spinResonantLoop(earth, spinRate, (p, spin) => tundraElements(perigeeAltitude, raanDeg, p, spin));
+  return spinResonantLoop(
+    earth, earthPivot, spinRate,
+    (p, spin) => tundraElements(perigeeAltitude, raanDeg, p, earthPivot, spin));
 }

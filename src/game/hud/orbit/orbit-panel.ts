@@ -4,7 +4,7 @@ import * as C from '../../const';
 import { fmtDist, fmtSpeed, fmtTime, setElementText } from '../utils';
 import { SyncThrottle } from '../sync-throttle';
 import { orbitInfo } from './orbit-info';
-import { CelestialBody } from '../../../physics/celestial-body';
+import { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Game } from '../../game';
 import type { OrbitReferenceMode } from '../../orbit-reference';
 import { Button, SegmentedControl } from '../widgets';
@@ -53,7 +53,7 @@ export class OrbitPanel {
   private game: Game | null = null;
 
   // 操作対象の基準・高度・速度・遠地点/近地点・傾斜角・周期・動圧・機体温度を DOM へ反映する。
-  public sync(game: Game, celestialBodies: readonly CelestialBody[], hideInOverview = true): void {
+  public sync(game: Game, celestialBodies: readonly CelestialMotion[], hideInOverview = true): void {
     this.game = game;
     const entity = game.activeControllableEntity;
     const el = this.els.get('hud-orbit');
@@ -69,7 +69,8 @@ export class OrbitPanel {
     const reference = game.orbitReference.resolve(
       entity.state.r, celestialBodies, game.navTarget, game.dynamicSystem, game.celestialSystem, entity.state.t,
     );
-    const oi = orbitInfo(entity, reference, (id) => game.celestialSystem.nameOf(id));
+    const oi = orbitInfo(
+      entity, reference, entity.state.t, (id: string) => game.celestialSystem.nameOf(id));
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);
     const ship = entity instanceof Player ? entity : null;

@@ -1,6 +1,7 @@
 // 軌道分析パネルの投影タブ: 背景テクスチャの読み込み・キャッシュを行い、操作対象・ターゲットの
 // 経緯度点列を OrbitProjectionChart へ渡す。
-import { CelestialBody, strongestAttractor } from '../../../physics/celestial-body';
+import { strongestAttractor } from '../../../physics/attractor';
+import { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import { entityStateAt } from '../../dynamic/entity-state-at';
@@ -27,8 +28,8 @@ export class OrbitProjectionTab {
   // 中心天体 center の反対側(遠地点付近)を通る軌道でも見失わないよう高度タブと同じ
   // サンプル数を使い、期間 spanSec はマップの未来表示(軌道予測パネル)が指す期間をそのまま使う。
   public draw(
-    game: Game, entity: DynamicEntity, center: CelestialBody, approachSource: ApproachTargetSource | null,
-    celestialBodies: readonly CelestialBody[], now: number, spanSec: number, sampleCount: number, textureUrl: string,
+    game: Game, entity: DynamicEntity, center: CelestialMotion, approachSource: ApproachTargetSource | null,
+    celestialBodies: readonly CelestialMotion[], now: number, spanSec: number, sampleCount: number, textureUrl: string,
   ): void {
     const centerEntity = game.celestialSystem.entityOf(center.id);
     // 操作対象自身の軌跡(塗り丸)。
@@ -45,8 +46,10 @@ export class OrbitProjectionTab {
       });
     }
     // ターゲットが同じ中心天体を周回していれば、その軌跡(縁だけの丸)も重ねる。
-    const resolvedTarget = approachSource ? resolveTarget(approachSource, game.celestialSystem) : null;
-    const target = resolvedTarget && strongestAttractor(resolvedTarget.currentR, celestialBodies).id === center.id
+    const resolvedTarget = approachSource
+      ? resolveTarget(approachSource, game.celestialSystem, now) : null;
+    const target = resolvedTarget
+      && strongestAttractor(resolvedTarget.currentR, celestialBodies, now).id === center.id
       ? projectionSeries(
         (t) => resolvedTarget.stateAt(t, centerEntity), centerEntity, now, spanSec, sampleCount,
       )

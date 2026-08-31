@@ -2,7 +2,7 @@
 // 純幾何判定(レイと球の交差)。マップビューでの軌道要素アイコンの表示可否とピック候補の
 // 選出可否は、この1関数を両方が呼ぶことで揃える — 見えているのに押せない/見えないのに
 // 押せる、という食い違いを防ぐ。
-import { KinematicState } from './kinematic-state';
+import type { CelestialMotion } from './celestial-motion';
 import { addScaled, dot, len, lenSq, sub, Vec3 } from '../math/vec3';
 
 // 手前側交点が対象点よりこの距離以上カメラ寄りのときだけ遮蔽と判定する余裕。対象点自身が
@@ -17,10 +17,11 @@ const OCCLUSION_FADE_END = 1.0;
 // ビューはカメラ距離が大きく変わるため、天体から対象までの ECI 距離を使うと画面上の
 // 惑星の大きさと閾値が一致しない。見かけの中心間角距離が 1.5R 以下をセーフゾーン
 // (完全非表示)、1.5R〜2R をフェード、2R 以上を完全表示とする。
-export function occlusionOpacity<T extends { readonly radius: number; readonly state: KinematicState }>(
+export function occlusionOpacity(
   cameraPos: Vec3,
   point: Vec3,
-  celestialBodies: readonly T[],
+  celestialBodies: readonly CelestialMotion[],
+  pivot: number,
 ): number {
   const toPoint = sub(point, cameraPos);
   const dist = len(toPoint);
@@ -29,9 +30,11 @@ export function occlusionOpacity<T extends { readonly radius: number; readonly s
   let opacity = 1;
 
   for (const celestialBody of celestialBodies) {
-    const fromCelestialBodyToPoint = sub(point, celestialBody.state.r);
-    if (lenSq(fromCelestialBodyToPoint) <= celestialBody.radius * celestialBody.radius) continue;
-    const oc = sub(celestialBody.state.r, cameraPos);
+    const bodyPos = celestialBody.positionAt(pivot, pivot);
+    const radius = celestialBody.def.radius;
+    const fromCelestialBodyToPoint = sub(point, bodyPos);
+    if (lenSq(fromCelestialBodyToPoint) <= radius * radius) continue;
+    const oc = sub(bodyPos, cameraPos);
     const centerDistance = len(oc);
     if (centerDistance < 1e-6) continue;
     const tca = dot(oc, dir);
@@ -43,7 +46,7 @@ export function occlusionOpacity<T extends { readonly radius: number; readonly s
     const centerDir = { x: oc.x / centerDistance, y: oc.y / centerDistance, z: oc.z / centerDistance } as Vec3;
     const separationCos = Math.max(-1, Math.min(1, dot(dir, centerDir)));
     const separation = Math.acos(separationCos);
-    const apparentRadius = Math.asin(Math.min(1, celestialBody.radius / centerDistance));
+    const apparentRadius = Math.asin(Math.min(1, radius / centerDistance));
     const normalizedSeparation = separation / Math.max(apparentRadius, 1e-12);
     const fade = Math.max(0, Math.min(1,
       (normalizedSeparation - OCCLUSION_FADE_END) / (OCCLUSION_FADE_START - OCCLUSION_FADE_END)));
@@ -53,10 +56,11 @@ export function occlusionOpacity<T extends { readonly radius: number; readonly s
 }
 
 // cameraPos から point への視線が celestialBodies のいずれかの球体に遮られていれば true。
-export function isOccluded<T extends { readonly radius: number; readonly state: KinematicState }>(
+export function isOccluded(
   cameraPos: Vec3,
   point: Vec3,
-  celestialBodies: readonly T[],
+  celestialBodies: readonly CelestialMotion[],
+  pivot: number,
 ): boolean {
   // 各天体についてレイと球の交差判定(判別式 d2 vs r2)を行い、手前側交点が
   // カメラと point の間に収まっていれば遮蔽とみなす。
@@ -66,10 +70,12 @@ export function isOccluded<T extends { readonly radius: number; readonly state: 
   const dir = { x: toPoint.x / dist, y: toPoint.y / dist, z: toPoint.z / dist } as Vec3;
 
   for (const celestialBody of celestialBodies) {
-    const toCenter = sub(celestialBody.state.r, point);
-    if (dot(toCenter, toCenter) <= celestialBody.radius * celestialBody.radius) continue; // 対象点自身がこの天体の内部/表面(その天体の中心ラベルなど)
+    const bodyPos = celestialBody.positionAt(pivot, pivot);
+    const radius = celestialBody.def.radius;
+    const toCenter = sub(bodyPos, point);
+    if (dot(toCenter, toCenter) <= radius * radius) continue; // 対象点自身がこの天体の内部/表面(その天体の中心ラベルなど)
 
-    const oc = sub(celestialBody.state.r, cameraPos);
+    const oc = sub(bodyPos, cameraPos);
     const tca = dot(oc, dir);
     if (tca <= 0) continue; // 天体はカメラの後方
     // d2 = |oc|² − tca² ではなく、視線への垂線ベクトルを先に作ってから2乗する。天体が
@@ -77,7 +83,7 @@ export function isOccluded<T extends { readonly radius: number; readonly state: 
     // 桁落ちで誤差が数千 m² 規模まで膨れ、半径が小さい天体の遮蔽判定を毎フレーム反転させる。
     const perp = addScaled(oc, dir, -tca);
     const d2 = lenSq(perp);
-    const r2 = celestialBody.radius * celestialBody.radius;
+    const r2 = radius * radius;
     if (d2 >= r2) continue; // 視線が球を外れる
     const thc = Math.sqrt(r2 - d2);
     const t0 = tca - thc; // 球の手前側交点までの距離

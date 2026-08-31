@@ -21,7 +21,7 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
-import { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ReferenceFrames } from '../celestial/reference-frames';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
@@ -57,12 +57,13 @@ function extrapolationTargetInterval(baseInterval: number, span: number): number
 // なので、各サンプル自身の時刻における center の ECI 状態を足し戻す。離心率が高すぎる・
 // 双曲線などで外挿できない場合は空配列。
 function extrapolatedTailStates(
-  tip: KinematicState, center: CelestialBody, to: number, baseInterval: number, celestialSystem: CelestialSystem,
+  tip: KinematicState, center: CelestialMotion, centerPivot: number, to: number,
+  baseInterval: number, celestialSystem: CelestialSystem,
 ): KinematicState[] {
   const span = to - tip.t;
   const target = extrapolationTargetInterval(baseInterval, span);
   const count = Math.min(MAX_EXTRAPOLATED_SAMPLES, Math.max(2, Math.ceil(span / target)));
-  return extrapolatedRelativeStates(tip, center, to, count).map((s) => {
+  return extrapolatedRelativeStates(tip, center, centerPivot, to, count).map((s) => {
     const centerState = celestialSystem.stateAt(center.id, s.t);
     return kinematicState<'eci'>(s.t, add(s.r, centerState.r), add(s.v, centerState.v));
   });
@@ -123,7 +124,9 @@ export class TrajectoryLine {
       this.lastSamples = samples;
       this.lastFrame = frame;
       const tail = extrapolating
-        ? extrapolatedTailStates(tip!, center!, to!, trajectory!.sampleInterval, celestialSystem)
+        ? extrapolatedTailStates(
+          tip!, center!, trajectory!.extrapolationCenterPivot, to!,
+          trajectory!.sampleInterval, celestialSystem)
         : [];
       const combined = tail.length > 0 ? [...samples, ...tail] : samples;
       // エルミート補間は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の

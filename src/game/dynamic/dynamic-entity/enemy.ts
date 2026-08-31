@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../../const';
 import { Ship } from './ship';
-import { CelestialBody } from '../../../physics/celestial-body';
+import { CelestialMotion } from '../../../physics/celestial-motion';
 
 import { DynamicEntity } from './dynamic-entity';
 import { closingSpeed, type Contact } from './contact';
@@ -367,7 +367,7 @@ export class Enemy extends Ship {
 
   // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になり、
   // 沈めば自然損耗として記録する。
-  collideWithCelestialBody(_body: CelestialBody, contact: Contact, activeStage: Stage): void {
+  collideWithCelestialBody(_body: CelestialMotion, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage);
   }

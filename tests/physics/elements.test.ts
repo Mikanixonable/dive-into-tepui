@@ -1,5 +1,6 @@
 // elements.ts の回帰テスト。ケプラー要素⇄状態ベクトルの往復精度は理論上「機械精度」であるべき
 // 値(解析的往復)。
+import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
@@ -17,19 +18,20 @@ import {
   trueAnomalyAt,
   velocityOnOrbit,
 } from '../../src/physics/elements';
-import { CelestialBody, orbitalElementsOf } from '../../src/physics/celestial-body';
+import { CelestialMotion } from '../../src/physics/celestial-motion';
+import { orbitalElementsOf } from '../../src/physics/elements';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { MU_MOON } from '../../src/game/celestial/solar-system/constants';
 import { dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
-const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
+const EARTH: CelestialMotion = fixedMotion({ id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null });
 
 export function register(): void {
   test('elements: stateOnOrbitAt は元期でその状態そのものを返す(機械精度)', () => {
     const a = R_EARTH + 500e3;
     const s = stateFromOrbitalElements(1234, a, 0.05, (51.6 * Math.PI) / 180, 0.7, 1.1, 2.3, MU_EARTH);
-    const el = orbitalElementsOf(s, EARTH) as OrbitalElements;
+    const el = orbitalElementsOf(s, EARTH, 0) as OrbitalElements;
     assert.equal(el.phaseRef?.t, 1234, '状態から組んだ要素は位相の基準を持つ');
     const back = stateOnOrbitAt(el, 1234);
     assert.ok(back, "元期を持つ楕円要素は時刻から状態を答える");
@@ -38,7 +40,7 @@ export function register(): void {
   });
 
   test('elements: 位相を持たない参照軌道は時刻から状態を答えない', () => {
-    const el = orbitalElementsFromClassical(R_EARTH + 800e3, 0, 98, 0, 0, EARTH);
+    const el = orbitalElementsFromClassical(R_EARTH + 800e3, 0, 98, 0, 0, EARTH, EARTH.stateAt(0));
     assert.equal(el.phaseRef, null);
     assert.equal(stateOnOrbitAt(el, 0), null);
   });
@@ -51,7 +53,7 @@ export function register(): void {
     const argp = 1.1;
     const nu = 2.3;
     const s = stateFromOrbitalElements(0, a, e, inc, raan, argp, nu, MU_EARTH);
-    const el = orbitalElementsOf(s, EARTH);
+    const el = orbitalElementsOf(s, EARTH, 0);
     assert.ok(el, 'orbitalElementsFromState should not be null for a bound elliptical orbit');
     const elx = el as OrbitalElements;
     assert.ok(Math.abs(elx.a - a) / a < 1e-9, `a round trip: ${elx.a} vs ${a}`);
@@ -81,7 +83,7 @@ export function register(): void {
     const e = 0.02;
     const inc = (28 * Math.PI) / 180;
     const s0 = stateFromOrbitalElements(0, a, e, inc, 0.3, 0.5, 0.9, MU_EARTH);
-    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const el = orbitalElementsOf(s0, EARTH, 0) as OrbitalElements;
     const nu = trueAnomalyAt(el, s0.r);
     assert.ok(Math.abs(nu - 0.9) < 1e-7, `trueAnomalyAt recovers nu: ${nu}`);
     const r2 = positionOnOrbit(el, nu);
@@ -95,7 +97,7 @@ export function register(): void {
     // そこでの速度は +Y 成分を持つ(南半球から北半球へ抜ける = 昇交点)はず。
     const a = R_EARTH + 500e3;
     const s0 = stateFromOrbitalElements(0, a, 0.05, (45 * Math.PI) / 180, 0, 0, 0, MU_EARTH);
-    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const el = orbitalElementsOf(s0, EARTH, 0) as OrbitalElements;
     const nodes = nodeAnomalies(el, v3(0, 1, 0));
     assert.ok(nodes, 'nodeAnomalies should resolve for an inclined orbit against the pole');
     const ascPos = norm(positionOnOrbit(el, nodes!.asc));
@@ -107,7 +109,7 @@ export function register(): void {
   test('elements: nodeAnomalies ascending/descending nodes are antipodal', () => {
     const a = R_EARTH + 700e3;
     const s0 = stateFromOrbitalElements(0, a, 0.1, (60 * Math.PI) / 180, 0.4, 0.2, 0, MU_EARTH);
-    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const el = orbitalElementsOf(s0, EARTH, 0) as OrbitalElements;
     const nodes = nodeAnomalies(el, v3(0, 1, 0));
     assert.ok(nodes);
     const ascDir = norm(positionOnOrbit(el, nodes!.asc));
@@ -118,14 +120,14 @@ export function register(): void {
   test('elements: nodeAnomalies returns null when the orbit plane matches the reference plane', () => {
     const a = R_EARTH + 500e3;
     const s0 = stateFromOrbitalElements(0, a, 0.05, (30 * Math.PI) / 180, 0.6, 0.3, 0, MU_EARTH);
-    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const el = orbitalElementsOf(s0, EARTH, 0) as OrbitalElements;
     assert.equal(nodeAnomalies(el, el.hHat), null, 'coincident planes have no well-defined line of nodes');
   });
 
   test('elements: nodeAnomalies is finite for a near-circular orbit', () => {
     const a = R_EARTH + 500e3;
     const s0 = stateFromOrbitalElements(0, a, 0, (45 * Math.PI) / 180, 0.2, 0, 0, MU_EARTH);
-    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const el = orbitalElementsOf(s0, EARTH, 0) as OrbitalElements;
     const nodes = nodeAnomalies(el, v3(0, 1, 0));
     assert.ok(nodes, 'nodeAnomalies should resolve for a circular orbit');
     assert.ok(isFinite(nodes!.asc) && isFinite(nodes!.desc), `finite anomalies: ${JSON.stringify(nodes)}`);
@@ -134,7 +136,7 @@ export function register(): void {
   test('elements: tofBetween(nu, nu) == 0 and tofBetween is period-periodic', () => {
     const a = R_EARTH + 500e3;
     const s0 = stateFromOrbitalElements(0, a, 0.01, 0.9, 0, 0, 0, MU_EARTH);
-    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const el = orbitalElementsOf(s0, EARTH, 0) as OrbitalElements;
     assert.equal(tofBetween(el, 1.2, 1.2), 0);
     const tHalf = tofBetween(el, 0, Math.PI);
     // 半周の飛行時間はほぼ半周期(離心率が小さいため近似的に対称)
@@ -147,7 +149,7 @@ export function register(): void {
   test('elements: timeSincePeriapsis(nu=0) == 0', () => {
     const a = R_EARTH + 500e3;
     const s0 = stateFromOrbitalElements(0, a, 0.1, 0.5, 0, 0, 0, MU_EARTH);
-    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const el = orbitalElementsOf(s0, EARTH, 0) as OrbitalElements;
     assert.equal(timeSincePeriapsis(el, 0), 0);
   });
 
@@ -157,7 +159,7 @@ export function register(): void {
     const e = 1.5;
     const a = rp / (1 - e); // 双曲線なので a < 0
     const s0 = stateFromOrbitalElements(0, a, e, 0.3, 0, 0, 0, MU_EARTH); // nu=0 = 近点
-    const el = orbitalElementsOf(s0, EARTH) as OrbitalElements;
+    const el = orbitalElementsOf(s0, EARTH, 0) as OrbitalElements;
     assert.ok(el.e >= 1, `orbit should be hyperbolic: e=${el.e}`);
     assert.ok(el.a < 0, `hyperbolic a should be negative: a=${el.a}`);
 

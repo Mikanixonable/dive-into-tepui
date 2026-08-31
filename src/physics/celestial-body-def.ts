@@ -51,6 +51,22 @@ export type Degree2GravityDef = {
   readonly refRadius: number; // 係数が定義された基準半径 [m]
 };
 
+// 2次重力場の非軸対称成分(赤道断面の楕円性)を、ある時刻の姿勢へ解決した形。主軸座標系で
+// 表すため S22 は恒等的に 0 になり、長軸の向きだけで姿勢が決まる。
+export type TesseralGravity = {
+  readonly c22: number;
+  readonly longAxis: Vec3; // 主軸座標系の長軸(単位ベクトル、ECI)
+};
+
+// 天体の2次(degree 2)の重力場を、ある時刻の姿勢へ解決した形。係数は非正規化。refRadius は
+// 係数が定義された基準半径で、地形としての表面半径とは別の量。
+export type Degree2Gravity = {
+  readonly j2: number; // 極方向の扁平(= −C20)
+  readonly refRadius: number; // [m]
+  readonly pole: Vec3; // 自転軸(単位ベクトル、ECI)
+  readonly tesseral: TesseralGravity | null; // null なら軸対称
+};
+
 // 天体の形状(歪み)。省略時は `radius` による真球。'spheroid' は回転楕円体(赤道半径=極半径
 // の2値)、'triaxial' は三軸楕円体(a >= b >= c、a が最長の赤道軸、b が残りの赤道軸、
 // c が最短の極軸)。出典は pck00011.tpc の BODY_RADII。値はいずれも半径 [m](直径ではない)

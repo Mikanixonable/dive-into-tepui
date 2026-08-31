@@ -3,7 +3,8 @@
 import {
   Atmosphere, airspeed, atmosphericDensity, atmosphericScaleHeight, ellipsoidAltitude,
 } from '../../physics/atmosphere';
-import { CelestialBody, nearestAtmosphereBody } from '../../physics/celestial-body';
+import { nearestAtmosphereBody } from '../../physics/attractor';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Vec3, dot, len, sub } from '../../math/vec3';
 import * as C from '../const';
@@ -56,13 +57,16 @@ function dragMaxStep(rRel: Vec3, vRel: Vec3, bcInv: number, mu: number, atm: Atm
 // それがいなければ Infinity(大気の無いところに上限は無い)。抵抗を受けない物体(bcInv = 0)も
 // 同じく Infinity。時間送りやイベント由来の上限との合成は呼び出し側が行う。
 export function atmosphericMaxStep(
-  state: KinematicState, bcInv: number, atmosphereBodies: readonly CelestialBody[],
+  state: KinematicState, bcInv: number,
+  atmosphereBodies: readonly CelestialMotion[], pivot: number,
 ): number {
   if (bcInv <= 0) return Infinity;
-  const body = nearestAtmosphereBody(state.r, atmosphereBodies);
-  if (body === null || body.atmosphere === null) return Infinity;
+  const body = nearestAtmosphereBody(state.r, atmosphereBodies, pivot);
+  const atmosphere = body === null ? null : body.atmosphereAt(pivot);
+  if (body === null || atmosphere === null) return Infinity;
+  const bodyState = body.stateAt(pivot);
   return dragMaxStep(
-    sub(state.r, body.state.r), sub(state.v, body.state.v), bcInv, body.mu, body.atmosphere);
+    sub(state.r, bodyState.r), sub(state.v, bodyState.v), bcInv, body.def.mu, atmosphere);
 }
 
 // 刻み dt のあいだに、抗力がその物体の対気速度を丸ごと奪い切るか。奪い切る幅で積んだ軌道は
@@ -72,12 +76,15 @@ export function atmosphericMaxStep(
 // 密度にも bcInv にも依らず、高い倍率では大気から遥かに離れた低軌道でも下回る — それを根拠に
 // すると、大気に触れていない物体まで巻き込んでしまう。
 export function dragTakesFullAirspeed(
-  state: KinematicState, bcInv: number, atmosphereBodies: readonly CelestialBody[], dt: number,
+  state: KinematicState, bcInv: number,
+  atmosphereBodies: readonly CelestialMotion[], pivot: number, dt: number,
 ): boolean {
   if (bcInv <= 0 || dt <= 0) return false;
-  const body = nearestAtmosphereBody(state.r, atmosphereBodies);
-  if (body === null || body.atmosphere === null) return false;
+  const body = nearestAtmosphereBody(state.r, atmosphereBodies, pivot);
+  const atmosphere = body === null ? null : body.atmosphereAt(pivot);
+  if (body === null || atmosphere === null) return false;
+  const bodyState = body.stateAt(pivot);
   const rate = dragRate(
-    sub(state.r, body.state.r), sub(state.v, body.state.v), bcInv, body.atmosphere);
+    sub(state.r, bodyState.r), sub(state.v, bodyState.v), bcInv, atmosphere);
   return rate * dt >= 1;
 }

@@ -3,7 +3,10 @@
 // 新しい軌道計算はしない。中心天体の選定・要素化・真近点角の算出は celestial-body.ts/elements.ts の
 // 既存関数(strongestAttractor/elementsAround/trueAnomalyAt/apsisAltitudes)をそのまま使う。
 import { KinematicState } from '../../physics/kinematic-state';
-import { CelestialBody, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { strongestAttractor } from '../../physics/attractor';
+import { CelestialMotion } from '../../physics/celestial-motion';
+import { orbitalElementsOf } from '../../physics/elements';
+import { frameOfCelestialBody } from '../../physics/frame';
 import { OrbitalElements, apsisAltitudes, trueAnomalyAt } from '../../physics/elements';
 import { toFrameState } from '../../physics/frame';
 import { Vec3, cross, dot, len, norm, v3 } from '../../math/vec3';
@@ -29,18 +32,19 @@ function raanArgpFromBasis(el: OrbitalElements): { raanDeg: number; argpDeg: num
 // 公転天体のみなので、恒星が選ばれた場合は ECI 原点(origin)へ落とす。放物線・双曲線軌道
 // (e>=1)は遠地点高度も基準天体の選択も意味を持たないため null。
 export function elementsFormFromState(
-  state: KinematicState, celestialBodies: readonly CelestialBody[], origin: string,
+  state: KinematicState, celestialBodies: readonly CelestialMotion[], pivot: number, origin: string,
 ): ElementsForm | null {
-  const strongest = strongestAttractor(state.r, celestialBodies);
-  const center = strongest.isStar ? celestialBodies.find((a) => a.id === origin) ?? strongest : strongest;
-  const el = orbitalElementsOf(state, center);
+  const strongest = strongestAttractor(state.r, celestialBodies, pivot);
+  const center = strongest.kind === 'star'
+    ? celestialBodies.find((a) => a.id === origin) ?? strongest : strongest;
+  const el = orbitalElementsOf(state, center, pivot);
   if (!el || el.e >= 1) return null;
 
   const { pe, ap } = apsisAltitudes(el);
   const { raanDeg, argpDeg } = raanArgpFromBasis(el);
   // trueAnomalyAt は中心天体相対の位置を要求する(elements.ts 参照) — 絶対 ECI のまま渡すと
   // 中心が地球でない限り誤った真近点角になる。
-  const relative = toFrameState(frameOfCelestialBody(center), state);
+  const relative = toFrameState(frameOfCelestialBody(center, pivot), state);
   const nuDeg = wrap360(trueAnomalyAt(el, relative.r) * RAD_TO_DEG);
 
   return {
