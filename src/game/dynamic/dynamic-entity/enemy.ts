@@ -246,7 +246,7 @@ export class Enemy extends Ship {
   }
 
   // 3km 以内マーカー用に、各機能部位の投影元位置と HUD 表示情報を並べる。displayPos は
-  // markerItem と同じ表示時刻の位置(displayState 経由)を渡すこと。
+  // markerItem と同じ表示時刻の位置(stateAt 経由)を渡すこと。
   proteinSiteMarkers(displayPos: Vec3): readonly {
     readonly id: string; readonly worldPos: Vec3; readonly abbreviation: string;
     readonly hp: number; readonly maxHp: number; readonly disabled: boolean; readonly attackable: boolean;
@@ -270,7 +270,7 @@ export class Enemy extends Ship {
   ): void {
     super.sync(fo, displayTime);
     if (this.proteinRuntime && this.renderObject.visible) {
-      const displayed = this.displayState(displayTime);
+      const displayed = this.stateAt(displayTime);
       const projectedDiameterPx = viewer && displayed
         ? apparentSizePx(this.radius * 2, metersPerPixel(viewer, displayed.r, window.innerHeight))
         : Number.POSITIVE_INFINITY;

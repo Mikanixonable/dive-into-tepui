@@ -14,7 +14,6 @@ import { goldenSectionMin } from '../math/optimize';
 import { Player } from './player/player';
 import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
 import type { DynamicSystem } from './dynamic/dynamic-system';
-import { OrbitCenter, entityStateAt } from './dynamic/entity-state-at';
 import type { CombatTarget } from './targeter';
 import { Hud } from './hud/hud';
 import { TimeLabelSetting, elementTimeLabel } from './hud/orbit/calendar-ticks';
@@ -42,11 +41,11 @@ const CLOSEST_APPROACH_REFINE_ITERATIONS = 20;
 // 探索で追い込む。どちらかの予測がその時刻まで届かない、または区間内に極小が無ければ null
 // (まだ近づいている途中、あるいは既に最接近を過ぎている)。
 function findClosestApproach(
-  player: DynamicEntity, target: DynamicEntity, center: OrbitCenter, simTime: number,
+  player: DynamicEntity, target: DynamicEntity, celestialSystem: CelestialSystem, simTime: number,
 ): { readonly pos: Vec3; readonly t: number } | null {
   const distAt = (t: number): number | null => {
-    const p = entityStateAt(player, t, center);
-    const q = entityStateAt(target, t, center);
+    const p = player.stateAt(t, celestialSystem);
+    const q = target.stateAt(t, celestialSystem);
     return p && q ? len(sub(p.r, q.r)) : null;
   };
   const step = CLOSEST_APPROACH_SPAN_SEC / CLOSEST_APPROACH_SAMPLES;
@@ -62,7 +61,7 @@ function findClosestApproach(
     const lo = simTime + (i - 1) * step;
     const hi = simTime + (i + 1) * step;
     const tMin = goldenSectionMin(lo, hi, (t) => distAt(t) ?? Infinity, CLOSEST_APPROACH_REFINE_ITERATIONS);
-    const p = entityStateAt(player, tMin, center);
+    const p = player.stateAt(tMin, celestialSystem);
     return p ? { pos: p.r, t: tMin } : null;
   }
   return null;
@@ -206,7 +205,7 @@ export class NavTarget {
     // 再接近点は AN/DN(軌道面が定まる必要がある)とは独立した条件 — 同じ中心天体さえ
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
     if (target && strongestAttractor(target.state.r, stateCelestialBodies, simTime).id === playerCenter.id) {
-      const found = findClosestApproach(player, target, celestialSystem.entityOf(playerCenter.id), simTime);
+      const found = findClosestApproach(player, target, celestialSystem, simTime);
       if (found) {
         this.closestPos = toDisplay(found.pos, found.t);
         this.closestTime = found.t;
@@ -267,7 +266,7 @@ export class NavTarget {
     const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
     return {
-      id, state: entity.displayState(t, celestialSystem) ?? entity.state, hasMass: false,
+      id, state: entity.stateAt(t, celestialSystem) ?? entity.state, hasMass: false,
       attractor: null, entity, fixed: true,
     };
   }

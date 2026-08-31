@@ -118,7 +118,7 @@ export class Bullet extends DynamicEntity {
     // 姿勢を持たないため、att.q ではなく射手に対する相対速度方向を向く。
     public sync(fo: FloatingOrigin, displayTime: number): void {
         // 表示できる時刻の範囲外なら非表示にする
-        const s = this.displayState(displayTime);
+        const s = this.stateAt(displayTime);
         if (s === null) {
             this.renderObject.visible = false;
             return;
@@ -127,7 +127,7 @@ export class Bullet extends DynamicEntity {
         this.renderObject.position.copy(fo.RtoThreeV3(s.r));
         // 射手の表示時刻の速度を差し引く。射手が無い旧来の呼び出しだけは
         // FloatingOrigin の速度基準へフォールバックする。
-        const reference = this.velocityReference?.displayState(displayTime);
+        const reference = this.velocityReference?.stateAt(displayTime);
         const relative = reference === null || reference === undefined ? null : sub(s.v, reference.v);
         const relVel = relative === null
             ? fo.VtoThreeV3(s.v)

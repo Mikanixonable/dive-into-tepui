@@ -4,7 +4,6 @@ import { strongestAttractor } from '../../../physics/attractor';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
-import { entityStateAt } from '../../dynamic/entity-state-at';
 import { ACCENT, ACCENT_SECONDARY } from '../../theme';
 import { ApproachTargetSource, projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { OrbitProjectionChart, ProjectionChartSpec, ProjectionSeriesSpec } from './orbit-projection-chart';
@@ -34,7 +33,7 @@ export class OrbitProjectionTab {
     const centerEntity = game.celestialSystem.entityOf(center.id);
     // 操作対象自身の軌跡(塗り丸)。
     const ship = projectionSeries(
-      (t) => entityStateAt(entity, t, centerEntity), centerEntity, now, spanSec, sampleCount,
+      (t) => entity.stateAt(t, game.celestialSystem), centerEntity, now, spanSec, sampleCount,
     );
     const series: ProjectionSeriesSpec[] = [];
     if (ship) {
@@ -51,7 +50,7 @@ export class OrbitProjectionTab {
     const target = resolvedTarget
       && strongestAttractor(resolvedTarget.currentR, celestialBodies, now).id === center.id
       ? projectionSeries(
-        (t) => resolvedTarget.stateAt(t, centerEntity), centerEntity, now, spanSec, sampleCount,
+        (t) => resolvedTarget.stateAt(t), centerEntity, now, spanSec, sampleCount,
       )
       : null;
     if (target) {

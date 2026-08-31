@@ -304,7 +304,7 @@ export class Base extends DynamicEntity implements Controllable {
     style: RenderStyle,
     visibility: MapVisibility | null = null,
   ): void {
-    const displayState = this.displayState(displayTime);
+    const displayState = this.stateAt(displayTime);
     const mapEntityVisible = !camera.overviewMode || visibility === null || visibility.category;
     this.renderObject.visible = displayState !== null && mapEntityVisible;
     if (displayState !== null) {

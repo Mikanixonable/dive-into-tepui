@@ -6,7 +6,7 @@ import { ENTITY_GLYPH } from '../../marker/marker-glyphs';
 import { currentThemePalette } from '../../theme';
 
 // 敵のマーカー表示項目を組み立てる。
-// pos/vel は機体メッシュと同じ表示時刻の状態(displayState 経由)を使う。role がターゲットで
+// pos/vel は機体メッシュと同じ表示時刻の状態(stateAt 経由)を使う。role がターゲットで
 // なければ通常の敵マーカーになる。sym は overviewMode に応じて呼び出し側が用意した HP 表示。
 // key は id(一意)から、ラベルは name(表示名)から作る — 複数の敵が同じ表示名を持ちうるため。
 export function buildEnemyMarkerItem(
