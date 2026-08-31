@@ -22,7 +22,7 @@ export function register(): void {
   test('shadow: sunlitFactor は遮蔽天体が無ければ常に 1', () => {
     const sun = star(AU);
     for (const r of [v3(1e6, 0, 0), v3(0, R_EARTH, 0), v3(-1e5, 7e6, 0)]) {
-      assert.equal(sunlitFactor(r, sun, 0, [], 0), 1, `r=${JSON.stringify(r)}`);
+      assert.equal(sunlitFactor(r, sun, [], 0), 1, `r=${JSON.stringify(r)}`);
     }
   });
 
@@ -30,7 +30,7 @@ export function register(): void {
     const sun = star(AU);
     const earth = body('earth', MU_EARTH, R_EARTH, 0);
     const r = v3(-R_EARTH * 2, 0, 0); // 反太陽側、地球の真後ろの軸上
-    assert.equal(sunlitFactor(r, sun, 0, [earth], 0), 0);
+    assert.equal(sunlitFactor(r, sun, [earth], 0), 0);
   });
 
   test('shadow: sunlitFactor は半影帯を横切ると 0..1 の間を単調に変化し、内側は本影で 0、外側は完全日照で 1 になる', () => {
@@ -45,12 +45,12 @@ export function register(): void {
     const steps = 12;
     for (let i = 0; i <= steps; i++) {
       const perp = (i / steps) * maxAngSep * Math.abs(along);
-      const lit = sunlitFactor(v3(along, perp, 0), sun, 0, [earth], 0);
+      const lit = sunlitFactor(v3(along, perp, 0), sun, [earth], 0);
       assert.ok(lit >= 0 && lit <= 1, `範囲外 (i=${i}): ${lit}`);
       assert.ok(lit >= prev - 1e-9, `軸から離れて減光が増さない (i=${i}): ${lit} < ${prev}`);
       prev = lit;
     }
-    assert.equal(sunlitFactor(v3(along, 0, 0), sun, 0, [earth], 0), 0, '軸上(本影の中心)は 0');
+    assert.equal(sunlitFactor(v3(along, 0, 0), sun, [earth], 0), 0, '軸上(本影の中心)は 0');
     assert.ok(prev > 0.99, '半影帯の外側でほぼ完全日照');
   });
 
@@ -59,7 +59,7 @@ export function register(): void {
     const moonDist = 3.844e8;
     const moon = body('moon', MU_MOON, R_MOON, moonDist);
     const r = v3(moonDist - R_MOON * 3, 0, 0); // 月を挟んで太陽の反対側、月からじゅうぶん近い本影
-    const lit = sunlitFactor(r, sun, 0, [moon], 0);
+    const lit = sunlitFactor(r, sun, [moon], 0);
     assert.ok(lit < 1, `月の影で減光しない: ${lit}`);
   });
 
@@ -68,7 +68,7 @@ export function register(): void {
     // 地球を艦の反太陽側(背後)に置く — 角度だけ見れば太陽と同一直線上だが、遮蔽ではない。
     const earthBehind = body('earth', MU_EARTH, R_EARTH, -1e7);
     const r = v3(0, 0, 0);
-    assert.equal(sunlitFactor(r, sun, 0, [earthBehind], 0), 1);
+    assert.equal(sunlitFactor(r, sun, [earthBehind], 0), 1);
   });
 
   test('shadow: 遮蔽円盤が太陽円盤に完全に内包される配置(金環)で 1-(r/R)^2 になる', () => {
@@ -81,7 +81,7 @@ export function register(): void {
     const rSun = R_SUN / AU;
     const rOcc = R_MOON / (moonDist);
     assert.ok(rOcc < rSun, '前提: 遮蔽円盤の方が小さい');
-    const lit = sunlitFactor(r, sun, 0, [moon], 0);
+    const lit = sunlitFactor(r, sun, [moon], 0);
     const expected = 1 - (rOcc / rSun) ** 2;
     assert.ok(Math.abs(lit - expected) / expected < 1e-6, `金環: got ${lit}, expected ${expected}`);
   });
@@ -102,7 +102,7 @@ export function register(): void {
     const litAt = (thetaDeg: number): number => {
       const theta = (thetaDeg * Math.PI) / 180;
       const r = v3(rOrbit * Math.cos(theta), rOrbit * Math.sin(theta), 0);
-      return sunlitFactor(r, sun, 0, [earth], 0);
+      return sunlitFactor(r, sun, [earth], 0);
     };
 
     // 二分探索で日照率が 0.5 を切る角度(ターミネータ)を求める。
@@ -134,7 +134,7 @@ export function register(): void {
     // 地球半径よりじゅうぶん内側に収める — 天体内部からは太陽が見えないはず。
     const r = v3(-1e5, 1e5, 0);
     assert.ok(len(sub(earth.stateAt(0).r, r)) < R_EARTH, '前提: r は地球の内部');
-    assert.equal(sunlitFactor(r, sun, 0, [earth], 0), 0);
+    assert.equal(sunlitFactor(r, sun, [earth], 0), 0);
   });
 
   test('shadow: maxOccludedFraction は実際の遮蔽率の上限になっている', () => {
@@ -147,7 +147,7 @@ export function register(): void {
         const along = occluder.stateAt(0).r.x + 1e6 * 2 ** (i % 10);
         const perp = (i / 40) * occluder.def.radius * 6;
         const r = v3(along, perp, 0);
-        const occluded = 1 - sunlitFactor(r, sun, 0, [occluder], 0);
+        const occluded = 1 - sunlitFactor(r, sun, [occluder], 0);
         const bound = maxOccludedFraction(r, sun, occluder, 0);
         assert.ok(
           occluded <= bound + 1e-12,
@@ -180,8 +180,8 @@ export function register(): void {
     for (const [name, r] of scenes) {
       const kept = all.filter((b) => maxOccludedFraction(r, sun, b, 0) >= threshold);
       assert.ok(kept.length < all.length, `${name}: 落ちる天体が1つも無い(前提が成立しない)`);
-      const exact = sunlitFactor(r, sun, 0, all, 0);
-      const truncated = sunlitFactor(r, sun, 0, kept, 0);
+      const exact = sunlitFactor(r, sun, all, 0);
+      const truncated = sunlitFactor(r, sun, kept, 0);
       assert.ok(
         Math.abs(exact - truncated) <= threshold,
         `${name}: 打ち切りの誤差が閾値を超えた exact=${exact} truncated=${truncated}`,
@@ -195,7 +195,7 @@ export function register(): void {
     const moon = body('moon', MU_MOON, R_MOON, 3.844e8);
     for (let i = 0; i < 20; i++) {
       const r = v3((i - 10) * 5e5, (i * 7 - 3) * 3e5, (i * i - 50) * 1e5);
-      const lit = sunlitFactor(r, sun, 0, [earth, moon], 0);
+      const lit = sunlitFactor(r, sun, [earth, moon], 0);
       assert.ok(lit >= 0 && lit <= 1, `範囲外: ${lit}`);
     }
   });

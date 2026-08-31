@@ -149,8 +149,7 @@ export class PredictedArc {
     // 遮蔽体には mid.collision を渡す — 弧が幾何の相手として追っている窓であり、重力を
     // 及ぼすかとは無関係に成員が決まる。登録天体の全数を毎歩解決することはできない。
     this._trajectory.step(
-      dt, mid.gravity, midPivot, mid.collision, midPivot,
-      nearestAtmosphereBody(tip.r, mid.collision, midPivot),
+      dt, mid.gravity, mid.collision, nearestAtmosphereBody(tip.r, mid.collision, midPivot), midPivot,
       this.bcInv, this.srpCoeff, null,
       sampleInterval, span, this.keplerTail ? center : null,
     );

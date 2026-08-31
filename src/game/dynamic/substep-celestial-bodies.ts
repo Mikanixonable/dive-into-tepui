@@ -13,29 +13,23 @@ export class SubstepCelestialBodies {
   private _atmosphere: readonly CelestialMotion[] = [];
   private _star: CelestialMotion | null = null;
   private readonly nearScratch: CelestialMotion[] = [];
-  // 重力源・大気を厳密に引く時刻(区間の中点)と、表面・遮蔽体を厳密に引く時刻(区間の開始)。
-  private _gravityPivot = 0;
-  private _surfacePivot = 0;
+  // 天体の位置を厳密に引く時刻。区間の中点に取るので、区間の両端までの外挿幅が dt/2 に収まる。
+  private _pivot = 0;
 
-  // 区間 [simTime, simTime + dt] の窓を組み直す。重力源と大気は区間の中点で解決し、表面と
-  // 遮蔽体は開始時刻で解決する — 遮蔽の幾何は区間内の天体の移動にほとんど左右されず、
-  // 表面の側は接触の解決が各個体の時刻へ引き直すため。
+  // 区間 [simTime, simTime + dt] の窓を組み直す。重力源・大気・表面・遮蔽体のすべてを
+  // 区間の中点で解決する。
   reset(windows: CelestialMotions, simTime: number, dt: number): void {
-    this._gravityPivot = simTime + dt / 2;
-    this._surfacePivot = simTime;
+    this._pivot = simTime + dt / 2;
     const sources = windows.gravityMotions;
     this._gravitySourceCount = sources.length;
-    this.classified = classifyAttractors(sources, this._gravityPivot);
+    this.classified = classifyAttractors(sources, this._pivot);
     this._surface = windows.celestialMotions;
     this._atmosphere = windows.atmosphereMotions;
     this._star = this._surface.find((b) => b.kind === 'star') ?? null;
   }
 
-  // 重力源・大気を厳密に引いた時刻。
-  get gravityPivot(): number { return this._gravityPivot; }
-
-  // 表面・遮蔽体を厳密に引いた時刻。
-  get surfacePivot(): number { return this._surfacePivot; }
+  // 天体の位置を厳密に引いた時刻。
+  get pivot(): number { return this._pivot; }
 
   // 表面を持ち、かつ太陽を隠しうる相手。半径と位置の幾何だけで決まるので、登録天体の全数。
   get surface(): readonly CelestialMotion[] { return this._surface; }
@@ -56,6 +50,6 @@ export class SubstepCelestialBodies {
 
   // 位置 r に抗力を及ぼすただ1体の大気天体。無ければ null。
   atmosphereBodyNear(r: Vec3): CelestialMotion | null {
-    return nearestAtmosphereBody(r, this._atmosphere, this._gravityPivot);
+    return nearestAtmosphereBody(r, this._atmosphere, this._pivot);
   }
 }
