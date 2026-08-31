@@ -151,7 +151,7 @@ export class Game {
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navTarget.restore(initialSave?.navTarget, this.dynamicSystem);
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
-    // 先頭で毎フレーム celestialBodies を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
+    // 先頭で毎フレーム表示時刻を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors(celestialSystem, {
       entityState: (id, t) => this.dynamicSystem.all().find((e) => e.id === id && e.alive)?.displayState(t, celestialSystem) ?? null,
       activeShipState: (t) => this.activeControllableEntity?.displayState(t, celestialSystem) ?? null,
@@ -325,8 +325,8 @@ export class Game {
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     const overviewMode = this.cameraSystem.overviewMode;
     const canDisplayFuture = !this.displayWindowManager.forceCurrent;
-    // このフレームの解決が使う天体一覧と、それを引く表示時刻を差し込む: 以降の
-    // frameTransformAt 呼び出しはすべてこの frameAnchors を通す。
+    // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
+    // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._celestialSystem.update(displayWindow.displayTime, overviewMode, graphics);
@@ -600,8 +600,8 @@ export class Game {
     }
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
-    if (this.viewManager.isMapView) this.mapHud.sync(this, celestialBodies);
-    else this.combatHud.sync(this, celestialBodies);
+    if (this.viewManager.isMapView) this.mapHud.sync(this);
+    else this.combatHud.sync(this);
     this._hud.tick();
 
     this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);

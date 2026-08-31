@@ -3,7 +3,6 @@
 // ターゲット)を解決・保持し、orbit-analysis-data.ts へ問い合わせた点列を
 // OrbitChart/OrbitProjectionChart へ渡す。ドラッグ・ホイール・ピンチ操作は PointerPanZoom が
 // 変換した値を、選択中タブのスケール・平行移動量へ反映する。
-import { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import { SyncThrottle } from '../sync-throttle';
@@ -226,8 +225,9 @@ export class OrbitAnalysisWindow {
   }
 
   // 操作対象・ターゲットの状態から選択中タブの点列を求め、対応するチャートへ描く。
-  public sync(game: Game, celestialBodies: readonly CelestialMotion[]): void {
+  public sync(game: Game): void {
     if (!this.throttle.due()) return;
+    const celestialBodies = game.celestialSystem.celestialMotions;
 
     const entity = game.activeControllableEntity;
     this.setReaderEntity(entity);
@@ -246,7 +246,7 @@ export class OrbitAnalysisWindow {
 
     // 接近タブが選べるかどうかは、航法ターゲットが解決でき、かつ approachSeries が
     // null を返さない(同じ主天体を周回している)かで決まる。
-    const approachSource = this.resolveApproachTarget(game, celestialBodies);
+    const approachSource = this.resolveApproachTarget(game);
     this.setReaderTargetEntity(approachSource?.kind === 'entity' ? approachSource.entity : null);
     const approach = approachSource
       ? approachSeries(
@@ -455,13 +455,11 @@ export class OrbitAnalysisWindow {
 
   // 現在の航法ターゲットを、接近タブの点列計算に渡せる形(艦・基地 or 天体)へ解決する。
   // ラグランジュ点など質量を持たない対象は解決せず、接近タブを出さない。
-  private resolveApproachTarget(
-    game: Game, celestialBodies: readonly CelestialMotion[],
-  ): ApproachTargetSource | null {
+  private resolveApproachTarget(game: Game): ApproachTargetSource | null {
     const id = game.navTarget.id;
     if (id === null) return null;
-    const body = celestialBodies.find((b) => b.id === id);
-    if (body) return { kind: 'celestialBody', body };
+    const body = game.celestialSystem.find(id)?.motion;
+    if (body !== undefined) return { kind: 'celestialBody', body };
     const entity = game.dynamicSystem.findAliveCombatTarget(id);
     return entity ? { kind: 'entity', entity } : null;
   }
