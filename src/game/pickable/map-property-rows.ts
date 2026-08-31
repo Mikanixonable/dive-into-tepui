@@ -38,7 +38,7 @@ export class MapPropertyRows {
       case 'base': return this.baseRows(target, celestialBodies, pivot, player);
       case 'ammo': return this.ammoPickupRows(target, celestialBodies, pivot, player);
       case 'fuel': return this.rcsFuelPickupRows(target, celestialBodies, pivot, player);
-      case 'body': return this.bodyRows(target, celestialBodies, pivot, player);
+      case 'body': return this.bodyRows(target, pivot, player);
       case 'apsis': return this.apsisRows(target, celestialBodies, pivot, simTime);
       case 'relnode': case 'eqnode': return this.nodeRows(target, celestialBodies, pivot, simTime);
       case 'empty-space': return [];
@@ -172,7 +172,7 @@ export class MapPropertyRows {
 
   // 実在の天体(この星系に登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
   // ラグランジュ点なら種別のみを出す。
-  private bodyRows(target: MapPickable, celestialBodies: readonly CelestialMotion[], pivot: number, player: Player | null): PropertyRow[] {
+  private bodyRows(target: MapPickable, pivot: number, player: Player | null): PropertyRow[] {
     const body = this.celestialSystem.find(target.id);
     const rows: PropertyRow[] = [];
     if (player) rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
@@ -189,9 +189,8 @@ export class MapPropertyRows {
       { key: 'radius', label: '半径', value: fmtDist(def.radius) },
     );
     if (motion.kind === 'star') return rows;
-    const primary = celestialBodies.find((b) => b.id === motion.primary?.id);
-    const self = celestialBodies.find((b) => b.id === def.id);
-    const el = primary && self ? orbitalElementsOf(self.stateAt(pivot), primary, pivot) : null;
+    const primary = motion.primary;
+    const el = primary !== null ? orbitalElementsOf(motion.stateAt(pivot), primary, pivot) : null;
     if (!el) return rows;
     const apsis = apsisAltitudes(el);
     const apSpec = getApsisLabelSpec('ap', el.center.id);
