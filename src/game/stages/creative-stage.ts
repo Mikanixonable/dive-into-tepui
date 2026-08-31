@@ -218,7 +218,8 @@ export class CreativeStage extends Stage {
     this.mountStageControlsPanel(cameraSystem.overviewMode);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
-      cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._celestialSystem.celestialMotions,
+      cameraSystem.overviewMode, cameraSystem.activeCameraPos,
+      this._celestialSystem.celestialMotions, displayTime,
     );
     this.placerPanel.setIssues(this.issues);
     this.stageControlsPanel.element.classList.remove('hidden');
@@ -293,6 +294,7 @@ export class CreativeStage extends Stage {
   private syncPreview(
     fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
     overviewMode: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
+    displayTime: number,
   ): void {
     if (!this.preview) {
       this.previewOrbitLine.sync(null, fo, camera);
@@ -301,7 +303,7 @@ export class CreativeStage extends Stage {
     }
     this.previewOrbitLine.sync(this.preview.elements, fo, camera);
     if (overviewMode
-      && isOccluded(cameraPos, this.preview.pos, celestialBodies, this._simulator.simTime)) {
+      && isOccluded(cameraPos, this.preview.pos, celestialBodies, displayTime)) {
       this._markerManager.hide('creative-preview');
       return;
     }

@@ -239,7 +239,7 @@ export function sunSyncRepeatGroundTrackLoop(
 ): GuideLoop | null {
   return elementsLoop(
     sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat, earth, earthPivot),
-    earth.positionAt(earthPivot, earthPivot));
+    earth.positionAt(earthPivot));
 }
 
 // 太陽方向の昇交点赤経(elements.ts の orbitPlaneBasis の規約: raan=0 で昇交点は +X 方向、
@@ -248,7 +248,7 @@ export function dawnDuskGuideLoop(
   earth: CelestialMotion, earthPivot: number, sunDirFrom: (r: Vec3, t: number) => Vec3,
   repeatDays: number, revsPerRepeat: number, localTime: LocalTime,
 ): GuideLoop | null {
-  const earthPos = earth.positionAt(earthPivot, earthPivot);
+  const earthPos = earth.positionAt(earthPivot);
   const sunDir = sunDirFrom(earthPos, earthPivot);
   const sunRaanDeg = (Math.atan2(-sunDir.z, sunDir.x) * 180) / Math.PI;
   return elementsLoop(
@@ -263,7 +263,7 @@ function spinResonantLoop(
 ): GuideLoop | null {
   if (spinRate === null || spinRate === 0) return null;
   return elementsLoop(
-    elementsOf(earth, Math.abs((2 * Math.PI) / spinRate)), earth.positionAt(earthPivot, earthPivot));
+    elementsOf(earth, Math.abs((2 * Math.PI) / spinRate)), earth.positionAt(earthPivot));
 }
 
 // モルニヤ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
