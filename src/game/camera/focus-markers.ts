@@ -10,6 +10,7 @@ import { occlusionOpacity } from '../../physics/occlusion';
 import { MapDisplayToggles } from '../map/display-toggles';
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../celestial/celestial-system';
+import { lagrangeId } from '../celestial/lagrange-id';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
 import { DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
 import type { MapPickable } from '../pickable/map-pickable';
@@ -240,7 +241,7 @@ export class FocusMarkers {
       });
       for (const n of pointsOf.get(id) ?? []) {
         labels.push({
-          id: `${id}-l${n}`, name: lagrangeName(body.name, n), markerLabel: lagrangeMarkerLabel(body.name, n),
+          id: lagrangeId(id, n), name: lagrangeName(body.name, n), markerLabel: lagrangeMarkerLabel(body.name, n),
           pos: v3(0, 0, 0),
           kind: 'body', isLagrange: true, bodyClass: cls, labelPriority: LABEL_PRIORITY.lagrange, depth: depth + 1,
           showIcon: false, showLabel: false, pickable: true,
@@ -296,10 +297,10 @@ export class FocusMarkers {
       if (frame === null) continue;
       const l = lagrangePointsOf(frame);
       for (const n of points) {
-        const lagrangeId = `${id}-l${n}`;
-        if (visibilityPolicy.body(lagrangeId).pickable) {
+        const pointId = lagrangeId(id, n);
+        if (visibilityPolicy.body(pointId).pickable) {
           this.cacheBodyPickable(
-            lagrangeId, lagrangeName(name, n), l[`L${n}`], drawn.get(lagrangeId) ?? true,
+            pointId, lagrangeName(name, n), l[`L${n}`], drawn.get(pointId) ?? true,
           );
         }
       }
@@ -351,13 +352,13 @@ export class FocusMarkers {
         if (frame === null) continue;
         const l = lagrangePointsOf(frame);
         for (const n of points) {
-          const lagrangeId = `${id}-l${n}`;
-          const visibility = visibilityPolicy.body(lagrangeId);
+          const pointId = lagrangeId(id, n);
+          const visibility = visibilityPolicy.body(pointId);
           if (!visibility.pickable) continue;
           const pos = l[`L${n}`];
-          positions[lagrangeId] = pos;
-          displayMap[lagrangeId] = { icon: visibility.icon, label: visibility.label };
-          this.cacheBodyPickable(lagrangeId, lagrangeName(name, n), pos, true);
+          positions[pointId] = pos;
+          displayMap[pointId] = { icon: visibility.icon, label: visibility.label };
+          this.cacheBodyPickable(pointId, lagrangeName(name, n), pos, true);
         }
       }
     }

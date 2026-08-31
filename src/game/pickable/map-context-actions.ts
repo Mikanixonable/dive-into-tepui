@@ -10,7 +10,7 @@ import {
   MenuAction, type PauseMenu,
 } from '../hud/windows';
 import { TEMP_WINDOW_GROUP } from '../hud/overlay-manager';
-import { LAGRANGE_ID, lagrangeParentId } from '../hud/object-groups';
+import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
 import { pickGlyph } from '../marker/pick-glyphs';
 import { MapPickable, pickNearest } from './map-pickable';
 import { LinePickable, pickNearestLine } from './line-pickable';
@@ -640,7 +640,7 @@ export class MapContextActions {
         onContextMenu: (clientX, clientY) => this.openPartPropertyWindow(ship, part, clientX, clientY),
       }));
     }
-    if (target.kind !== 'body' || LAGRANGE_ID.test(target.id) || !this.celestialSystem.has(target.id)) return [];
+    if (target.kind !== 'body' || isLagrangeId(target.id) || !this.celestialSystem.has(target.id)) return [];
     const related: { item: MapPickable; label: string }[] = [];
     for (const item of this.pickables.pickables) {
       if (item.id === target.id) continue;

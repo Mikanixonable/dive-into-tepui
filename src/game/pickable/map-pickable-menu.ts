@@ -3,7 +3,7 @@
 // 持つ — 「何が選べるか」と「選んだらどうなるか」を分けている。
 import { Hud } from '../hud/hud';
 import type { Base } from '../dynamic/dynamic-entity/base';
-import { LAGRANGE_ID, lagrangeParentId } from '../hud/object-groups';
+import { isLagrangeId, lagrangeParentId, lagrangePointOf } from '../celestial/lagrange-id';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from '../camera/focus-target';
 import { DynamicSystem } from '../dynamic/dynamic-system';
@@ -37,7 +37,7 @@ const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
 // 未登録の文字列を主天体の解決へ渡さない境界をここに置く。
 // undefined は候補が不正/古い、null は恒星など親を持たない天体を表す。
 export function bodyParentId(celestialSystem: CelestialSystem, id: string): string | null | undefined {
-  const lagrangeParent = LAGRANGE_ID.test(id) ? lagrangeParentId(id) : undefined;
+  const lagrangeParent = isLagrangeId(id) ? lagrangeParentId(id) : undefined;
   if (lagrangeParent !== undefined) return celestialSystem.has(lagrangeParent) ? lagrangeParent : undefined;
   const body = celestialSystem.find(id);
   if (body === null) return undefined;
@@ -93,9 +93,9 @@ export class MapPickableMenu {
     'body': {
       itemsFor: (target, simTime) => {
         let subLabel = '天体・ラグランジュ点';
-        const lagrangeMatch = target.id.match(/^(.+)-l[1-5]$/);
-        if (lagrangeMatch) {
-          const secondary = lagrangeMatch[1]!;
+        const lagrange = lagrangePointOf(target.id);
+        if (lagrange !== null) {
+          const secondary = lagrange.parentId;
           const primary = bodyParentId(this.celestialSystem, secondary);
           subLabel = primary === undefined || primary === null
             ? 'ラグランジュ点'
