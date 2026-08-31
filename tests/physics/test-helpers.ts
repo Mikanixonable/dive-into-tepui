@@ -1,7 +1,7 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
 import { icrfToGameEci } from '../../src/physics/icrf';
-import { EphemerisPointKind, EphemerisPoints, PointEphemeris } from '../../src/physics/point-ephemeris';
+import { EphemerisPointKind, EphemerisPoints, PointEphemeris } from '../../src/physics/ephemeris/point';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { KinematicState } from '../../src/physics/kinematic-state';
 import {

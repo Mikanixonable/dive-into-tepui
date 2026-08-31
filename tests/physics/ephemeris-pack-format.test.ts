@@ -8,7 +8,7 @@ import {
   encodePack,
   toChebyshevPack,
   validateManifest,
-} from '../../src/physics/ephemeris-pack/format';
+} from '../../src/physics/ephemeris/pack-format';
 
 const BASE = {
   format: 'tepui-ephemeris-pack' as const,

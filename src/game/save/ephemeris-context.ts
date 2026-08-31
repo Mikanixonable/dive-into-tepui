@@ -1,5 +1,5 @@
-import { EPHEMERIS_PACK_VERSION } from '../../physics/ephemeris-pack/format';
-import { profileAtOrNull } from '../../physics/ephemeris-profile';
+import { EPHEMERIS_PACK_VERSION } from '../../physics/ephemeris/pack-format';
+import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { createJulianDate, TdbJulianDate } from '../../physics/time';
 
 // Keep this small compatibility module independent from entity save types. In

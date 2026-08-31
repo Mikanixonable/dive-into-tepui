@@ -1,9 +1,9 @@
-import modernPackUrl from '../assets/ephemeris/modern-2026-10y.epk';
-import farFuturePackUrl from '../assets/ephemeris/far-future-20115-10y.epk';
-import { EphemerisPoints } from './point-ephemeris';
-import { EphemerisProfileId, profileAt } from './ephemeris-profile';
-import { ephemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from './time';
-import { loadPackEphemeris } from './pack-ephemeris';
+import modernPackUrl from '../../assets/ephemeris/modern-2026-10y.epk';
+import farFuturePackUrl from '../../assets/ephemeris/far-future-20115-10y.epk';
+import { EphemerisPoints } from './point';
+import { EphemerisProfileId, profileAt } from './profile';
+import { ephemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../time';
+import { loadPackEphemeris } from './pack';
 
 const PACK_URLS: Readonly<Record<EphemerisProfileId, string>> = {
   'modern-de440': modernPackUrl,

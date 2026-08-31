@@ -6,7 +6,7 @@
 // 配る)→ 惑星本体(重心 − 衛星ぶん)→ 衛星の太陽系重心位置。
 // THREE/DOM 非依存。
 import { Vec3, addScaled } from '../math/vec3';
-import { PointEphemeris, boundBaryStateAt } from './point-ephemeris';
+import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
 import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
 import {

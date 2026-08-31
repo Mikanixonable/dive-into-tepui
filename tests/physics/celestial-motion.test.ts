@@ -17,7 +17,7 @@ import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { Vec3, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { icrfToGameEci } from '../../src/physics/icrf';
-import { EphemerisPoints } from '../../src/physics/point-ephemeris';
+import { EphemerisPoints } from '../../src/physics/ephemeris/point';
 import {
   assertOmegaMatchesBasis, lagrangeOf, motionOf, orbitingMotionOf, positionOf, solarSystemParts, stateOf,
   SolarSystemParts, testEphemerisPoints, TEST_EPOCH, TEST_SIM_ZERO_ET,
