@@ -101,7 +101,7 @@ export abstract class CelestialMotion {
   abstract readonly def: CelestialBodyDef;
   abstract readonly kind: CelestialKind;
 
-  // 主天体。惑星なら恒星(恒星の無い星系では null)、衛星ならその惑星、恒星自身は null。
+  // 主天体。惑星なら恒星、衛星ならその惑星、恒星自身は null。
   abstract get primary(): CelestialMotion | null;
 
   // この天体1体ぶんの高精度暦。暦に収録されていない天体では null。
@@ -260,8 +260,8 @@ export class StarMotion extends CelestialMotion {
 export abstract class OrbitingMotion extends CelestialMotion {
   abstract readonly def: PlanetDef | SatelliteDef;
 
-  // 主天体。惑星なら恒星(恒星の無い星系では null)、衛星ならその惑星。
-  abstract get primary(): CelestialMotion | null;
+  // 主天体。惑星なら恒星、衛星ならその惑星。公転している以上、必ず持つ。
+  abstract get primary(): CelestialMotion;
 
   // 二体部分の軌道。衛星は周期摂動項を含まない平均要素。
   abstract get keplerOrbit(): KeplerOrbit;
@@ -354,13 +354,10 @@ export abstract class OrbitingMotion extends CelestialMotion {
     return { ...model, pole: orientation.axis };
   }
 
-  // 主天体に対する質量比 mu = m2/(m1+m2)。主天体が無い、またはどちらかの質量が未測定
-  // (mu = 0)なら null — 0 を比として通すと共線点を解く反復が発散し、1 を通すと L1 が
-  // 主天体の中心に落ちる。
+  // 主天体に対する質量比 mu = m2/(m1+m2)。どちらかの質量が未測定(mu = 0)なら null —
+  // 0 を比として通すと共線点を解く反復が発散し、1 を通すと L1 が主天体の中心に落ちる。
   private get massRatio(): number | null {
-    const primary = this.primary;
-    if (primary === null) return null;
-    const primaryMu = primary.def.mu;
+    const primaryMu = this.primary.def.mu;
     if (primaryMu <= 0 || this.def.mu <= 0) return null;
     return this.def.mu / (primaryMu + this.def.mu);
   }
@@ -384,13 +381,11 @@ export abstract class OrbitingMotion extends CelestialMotion {
   // 暦パックが自分の軌道の中心天体と、その軌道が乗っている点の両方を直接収録している
   // 有効期間での相対位置・速度。引けなければ null。
   private packedOrbitRelStateAt(t: number): KinematicState<'primaryRel'> | null {
-    const primary = this.primary;
-    if (primary === null) return null;
     // 合成した packedStateAt を使わないのは、未収録の衛星に「収録済みの親 + 解析の相対」を
     // 足し込むと、主天体を引いた差が結局その解析の相対そのものになるため — パック由来と
     // 名乗る値が実は解析由来になる。引けないなら解析経路だと分かる形にしておく。
     const own = this.orbitPointPackedStateAt(t);
-    const primaryState = primary.ownPackedStateAt(t);
+    const primaryState = this.primary.ownPackedStateAt(t);
     if (own === null || primaryState === null) return null;
     return toPrimaryRelative(t, own, primaryState);
   }
@@ -399,18 +394,17 @@ export abstract class OrbitingMotion extends CelestialMotion {
 export class PlanetMotion extends OrbitingMotion {
   readonly kind: CelestialKind = 'planet';
 
-  // star は主星。恒星を持たない星系では null を渡す。system は自分が属する惑星-衛星系で、
-  // 軌道と衛星の一覧はそちらが持つ。spinPhase0 は自転の初期位相 [rad](eciPole の自転
-  // モデルを持つ惑星だけが意味を持つ)。**組むときは planet-system.ts の planetSystem()
+  // star は主星。system は自分が属する惑星-衛星系で、軌道と衛星の一覧はそちらが持つ。
+  // spinPhase0 は自転の初期位相 [rad](eciPole の自転モデルを持つ惑星だけが意味を持つ)。**組むときは planet-system.ts の planetSystem()
   // を使う** — 系と本体を結び忘れずに作れる唯一の入口。
   constructor(
-    readonly def: PlanetDef, readonly star: StarMotion | null, readonly system: PlanetSystem,
+    readonly def: PlanetDef, readonly star: StarMotion, readonly system: PlanetSystem,
     spinPhase0 = 0,
   ) {
     super(spinPhase0);
   }
 
-  get primary(): CelestialMotion | null { return this.star; }
+  get primary(): CelestialMotion { return this.star; }
   get keplerOrbit(): KeplerOrbit { return this.system.orbit; }
 
   // 惑星の軌道要素が乗っているのは本体ではなく系の重心。
@@ -443,7 +437,6 @@ export class PlanetMotion extends OrbitingMotion {
   // 組む — 絶対位置をそのまま渡すと恒星の重心相対位置ぶん(この太陽系では 100 万 km 前後)誤る。
   analyticAccelAt(t: number): Vec3 {
     const star = this.star;
-    if (star === null) return twoBodyAccel(this.analyticStateAt(t).r, this.def.mu);
     return twoBodyAccel(
       sub(this.analyticStateAt(t).r, star.analyticStateAt(t).r), star.def.mu + this.def.mu,
     );
