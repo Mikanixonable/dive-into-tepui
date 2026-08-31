@@ -3,7 +3,7 @@ import farFuturePackUrl from '../assets/ephemeris/far-future-20115-10y.epk';
 import { EphemerisPoints } from './point-ephemeris';
 import { EphemerisProfileId, profileAt } from './ephemeris-profile';
 import { ephemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from './time';
-import { loadPackedAbsoluteEphemeris } from './packed-absolute-ephemeris';
+import { loadPackEphemeris } from './pack-ephemeris';
 
 const PACK_URLS: Readonly<Record<EphemerisProfileId, string>> = {
   'modern-de440': modernPackUrl,
@@ -50,7 +50,7 @@ export async function loadEphemerisPoints(
   const response = await fetch(PACK_URLS[profileId]);
   if (!response.ok) throw new Error(`天体暦packの取得に失敗: ${response.status} ${response.statusText}`);
   const buffer = await readWithProgress(response, onProgress);
-  const source = await loadPackedAbsoluteEphemeris(buffer, epoch);
+  const source = await loadPackEphemeris(buffer, epoch);
   const expectedSha256 = profile.packId.slice(profile.packId.lastIndexOf('@') + 1);
   if (source.payloadSha256 !== expectedSha256) {
     throw new Error(

@@ -175,7 +175,7 @@ export class NavTarget {
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
   // positionOnOrbit は中心天体基準の相対位置を返すので、CelestialMotion.stateAt で通過時刻
   // anT/dnT における中心天体の精密な ECI 位置を求めて足し合わせ、絶対位置に直す — 概算の弾道
-  // pivot からの外挿を使うと、表示側が精密暦で un-bake するのと基準がずれて、
+  // pivot からの外挿を使うと、表示側が数値暦で un-bake するのと基準がずれて、
   // 月周回では通過までの時間ぶん位置がずれる。位置は通過時刻で bake し、displayWindow の
   // 表示時刻で un-bake して描画座標系へ移す。
   update(

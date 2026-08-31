@@ -1,5 +1,5 @@
 // celestial-motion.ts の回帰テスト: 天体1体の運動の合成(恒星→重心→惑星/衛星、重心補正)、
-// 公転回転基準系から導くラグランジュ点、自転姿勢、高精度暦パックの有効期間の扱いが正しいこと。
+// 公転回転基準系から導くラグランジュ点、自転姿勢、数値暦の有効期間の扱いが正しいこと。
 // 個々の軌道モデルの精度は kepler-orbit.test.ts / satellite-orbit.test.ts が担う。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
@@ -181,12 +181,12 @@ export function register(): void {
   );
   const baryPackParts = solarSystemParts({}, TEST_EPOCH, baryPackSource);
 
-  test('celestial-motion: 系の重心を収録した暦パックの系列は、惑星本体ではなく系の重心に着地する', () => {
+  test('celestial-motion: 系の重心を収録した数値暦の系列は、惑星本体ではなく系の重心に着地する', () => {
     const jupiter = planetMotionOf(baryPackParts, 'jupiter');
     for (const t of [0, 1e6, -1e6]) {
-      const bary = jupiter.system.ownPackedStateAt(t);
-      const body = jupiter.packedStateAt(t);
-      assert.ok(bary !== null && body !== null, `暦パック経路が引けない (t=${t})`);
+      const bary = jupiter.system.ownNumericStateAt(t);
+      const body = jupiter.numericStateAt(t);
+      assert.ok(bary !== null && body !== null, `数値暦経路が引けない (t=${t})`);
       assert.ok(len(sub(bary.r, icrfToGameEci(JUPITER_BARY_ICRF(t)))) < 1e-6,
         `系の重心が収録値と一致しない (t=${t}): ${len(sub(bary.r, icrfToGameEci(JUPITER_BARY_ICRF(t))))} m`);
       // 本体は重心から重心オフセットぶん離れる。解析経路のオフセットと一致しなければならない。
@@ -197,20 +197,20 @@ export function register(): void {
   });
 
   // 着地点が正しくても合成を誤れば系の内訳が崩れるので、解析経路と同じ不変条件をパック経路でも測る。
-  test('celestial-motion: 系の重心を収録した暦パック経路でも系の重心不変条件が成り立つ', () => {
+  test('celestial-motion: 系の重心を収録した数値暦経路でも系の重心不変条件が成り立つ', () => {
     const jupiter = planetMotionOf(baryPackParts, 'jupiter');
     const moons = jupiter.system.satellites;
     let muSys = jupiter.def.mu;
     for (const moon of moons) muSys += moon.def.mu;
 
     for (const t of [0, 1e6, -1e6]) {
-      const body = jupiter.packedStateAt(t);
-      const bary = jupiter.system.ownPackedStateAt(t);
-      assert.ok(body !== null && bary !== null, `暦パック経路が引けない (t=${t})`);
+      const body = jupiter.numericStateAt(t);
+      const bary = jupiter.system.ownNumericStateAt(t);
+      assert.ok(body !== null && bary !== null, `数値暦経路が引けない (t=${t})`);
       let r: Vec3 = scale(body.r, jupiter.def.mu / muSys);
       for (const moon of moons) {
-        const moonState = moon.packedStateAt(t);
-        assert.ok(moonState !== null, `${moon.id} の暦パック経路が引けない (t=${t})`);
+        const moonState = moon.numericStateAt(t);
+        assert.ok(moonState !== null, `${moon.id} の数値暦経路が引けない (t=${t})`);
         r = addScaled(r, moonState.r, moon.def.mu / muSys);
       }
       assert.ok(len(sub(r, bary.r)) < 1e-2, `木星系の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
@@ -557,34 +557,34 @@ export function register(): void {
     assert.ok(dot(omega, axis) < 0, `dot: ${dot(omega, axis)}`);
   });
 
-  // 高精度暦パックの有効期間(CELESTIAL.md 2.2)を10日間だけに絞ったモックで、期間内/外の
+  // 数値暦の有効期間(CELESTIAL.md 2.2)を10日間だけに絞ったモックで、期間内/外の
   // 境界をまたいで stateAt/orbitFrameRotationAt/orbitNormalAt を呼ぶ。ECI 原点天体(地球)が
   // 収録されていなければどの天体もパック経路を通らないので、地球は入れておく。
-  const preciseValidDays = 10;
+  const numericValidDays = 10;
   const atOrigin = () => ({ r: v3(0, 0, 0), v: v3(0, 0, 0) });
-  const mockPrecise: EphemerisPoints = testEphemerisPoints(
-    0, preciseValidDays * DAY, {
+  const mockNumeric: EphemerisPoints = testEphemerisPoints(
+    0, numericValidDays * DAY, {
       sun: atOrigin,
       earth: atOrigin,
       moon: () => ({ r: v3(4e8, 0, 0), v: v3(0, 1e3, 0) }),
     },
   );
   const analyticParts = solarSystemParts({});
-  const preciseParts = solarSystemParts({}, TEST_EPOCH, mockPrecise);
-  const preciseMoon = orbitingMotionOf(preciseParts, 'moon');
-  const tOutsideValidity = (preciseValidDays + 5) * DAY;
+  const numericParts = solarSystemParts({}, TEST_EPOCH, mockNumeric);
+  const numericMoon = orbitingMotionOf(numericParts, 'moon');
+  const tOutsideValidity = (numericValidDays + 5) * DAY;
 
-  test('celestial-motion: 高精度暦パックの有効期間内では pack 由来の値を返す', () => {
-    const s = stateOf(preciseParts, 'moon', 0);
+  test('celestial-motion: 数値暦の有効期間内では数値暦由来の値を返す', () => {
+    const s = stateOf(numericParts, 'moon', 0);
     assert.ok(len(s.r) > 0 && Number.isFinite(len(s.r)));
     assert.notEqual(s.r.x, stateOf(analyticParts, 'moon', 0).r.x);
   });
 
   test('celestial-motion: 有効期間を過ぎると例外を投げずに解析暦へフォールバックする', () => {
-    assert.doesNotThrow(() => stateOf(preciseParts, 'moon', tOutsideValidity));
-    assert.doesNotThrow(() => preciseMoon.orbitFrameRotationAt(tOutsideValidity));
-    assert.doesNotThrow(() => preciseMoon.orbitNormalAt(tOutsideValidity));
-    const fallback = stateOf(preciseParts, 'moon', tOutsideValidity);
+    assert.doesNotThrow(() => stateOf(numericParts, 'moon', tOutsideValidity));
+    assert.doesNotThrow(() => numericMoon.orbitFrameRotationAt(tOutsideValidity));
+    assert.doesNotThrow(() => numericMoon.orbitNormalAt(tOutsideValidity));
+    const fallback = stateOf(numericParts, 'moon', tOutsideValidity);
     const analytic = stateOf(analyticParts, 'moon', tOutsideValidity);
     assert.ok(len(sub(fallback.r, analytic.r)) < 1e-3, `期間外は解析暦と一致するはず: ${JSON.stringify(fallback.r)} vs ${JSON.stringify(analytic.r)}`);
   });
