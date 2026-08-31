@@ -478,14 +478,8 @@ numericEphemeris ではない** — 規範3 の `numeric` の限定がここで�
 `src/render/thermal-emissive.ts` の `packed` は3つの float を vec3 へ詰めた頂点属性で、
 **語の意味として正しいので残した。**
 
-### 手順4. 原点を名前に出す(違反2口)
-
-`PointEphemeris.stateAt` → `baryStateAt`、`boundStateAt` → `boundBaryStateAt`、
-`ChebyshevEphemeris.stateOf` → `icrfStateAt`。
-`PointEphemeris` の冒頭へ「別の供給源の実装は自分の `FrameTag` を新設すること」を1文。
-
-**検証.** `npm run typecheck` / `npm run test:physics`。
-`grep -rn "stateOf" src/physics/` が `frame.ts` の `FrameAnchorSource.stateOf` だけになる。
+**手順4(原点を名前に出す)も実施済み。** `src/physics/` に残る無標の `stateOf` は
+`FrameAnchorSource`(ECI)とその実装の2箇所だけで、これは CODING-RULE 2.1 に書いた例外そのもの。
 
 ### 手順5. `planet-orbit.ts` のファイル名を中身へ合わせる
 
