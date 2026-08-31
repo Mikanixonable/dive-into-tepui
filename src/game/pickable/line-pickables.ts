@@ -8,6 +8,7 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { CameraSystem } from '../camera/camera-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
+import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { LineCalcMethod, LinePickable } from './line-pickable';
@@ -59,9 +60,9 @@ export class LinePickables {
     if (guide.system === null) return ['body:earth'];
     const secondary = guideSecondary(guide.system);
     const primary = this.celestialSystem.entityOf(secondary).motion.primary?.id ?? secondary;
-    return guide.point
-      ? [`body:${secondary}-l${guide.point.slice(1)}`, `body:${primary}`, `body:${secondary}`]
-      : [`body:${primary}`, `body:${secondary}`];
+    if (guide.point === null) return [`body:${primary}`, `body:${secondary}`];
+    const pointId = lagrangeId(secondary, Number(guide.point.slice(1)) as LagrangePointNumber);
+    return [`body:${pointId}`, `body:${primary}`, `body:${secondary}`];
   }
 
   // 船(自艦・敵・基地)1隻ぶんの軌道線を候補へ積む。表示方式(解析楕円 or 予測線・過去線)は
