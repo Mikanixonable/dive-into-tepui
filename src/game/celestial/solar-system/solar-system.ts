@@ -1,7 +1,7 @@
 // 現実の太陽系。各系の構築関数を呼んで全天体の運動と見た目を組み、宣言順に並べた
 // CelestialSystem を返す。ECI の中心(originId)は呼び出し側の選択で、同じ太陽系を別の原点で
 // 組める。高精度暦パックを渡すと、収録された天体はその有効期間でパック経路を通る。
-import { AbsoluteEphemeris } from '../../../physics/absolute-ephemeris';
+import { EphemerisPoints } from '../../../physics/point-ephemeris';
 import { PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
@@ -48,10 +48,10 @@ export function solarSystemBodyName(id: string): string {
 
 // 太陽系の CelestialSystem を組む。originId は ECI の中心天体(ステージの選択)、
 // earthSpinPhase0 は地球の自転初期位相 [rad]、epoch は simTime=0 が指す絶対時刻。
-// absoluteSource を渡すと、その有効期間だけ高精度暦パック経路を通る。
+// ephemerisPoints を渡すと、そこに載っている天体だけがその有効期間で高精度暦経路を通る。
 export function solarSystem(
   originId: SolarSystemId, phases: PhaseOffsets, earthSpinPhase0: number,
-  absoluteSource: AbsoluteEphemeris | null, epoch: TdbJulianDate,
+  ephemerisPoints: EphemerisPoints | null, epoch: TdbJulianDate,
 ): CelestialSystem {
   // 要素・極モデルの元期(J2000)から simTime=0 へ畳むための秒数。元期の唯一の表現である
   // epoch からその場で導く — 別の値として持ち回ると、片方だけが古くなる。
@@ -81,5 +81,5 @@ export function solarSystem(
 
   return new CelestialSystem(
     entities, originEntity, phases, epoch, new PointFieldView(generatePointField(simZeroEt)),
-    absoluteSource);
+    ephemerisPoints);
 }

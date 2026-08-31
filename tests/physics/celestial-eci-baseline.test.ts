@@ -7,12 +7,12 @@
 // よいのは意図してモデルを変えたときだけ(そのときは変えた理由をコミットに書く)。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
+import { EphemerisPoints } from '../../src/physics/point-ephemeris';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { keplerOrbitForSimZero, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { scale, sub, v3 } from '../../src/math/vec3';
 import { ephemerisSeconds, SECONDS_PER_DAY } from '../../src/physics/time';
-import { motionOf, solarSystemParts, stateOf, testEphemerisSource, TEST_EPOCH } from './test-helpers';
+import { motionOf, solarSystemParts, stateOf, testEphemerisPoints, TEST_EPOCH } from './test-helpers';
 
 // 元期・1日後・1年後・1年前。永年変化と周期項の両方が効く幅を取る。
 const TIMES = [0, 8.64e4, 3.156e7, -3.156e7];
@@ -25,17 +25,20 @@ type Baseline = readonly (readonly number[])[];
 // 外してある**: 月は「収録済みの親 + 解析の相対」、木星は「両端とも解析」へ落ちる経路を通り、
 // 地球(ECI 原点)と火星はパック経路を通る。一次式の原点を元期に置くので、simTime=0 では
 // どの天体も係数そのものの位置に立つ。
-const SOURCE: AbsoluteEphemeris = testEphemerisSource(
-  -500 * SECONDS_PER_DAY, 500 * SECONDS_PER_DAY, (id, t) => {
-    const d = t / SECONDS_PER_DAY;
-    if (id === 'sun') return { r: v3(1e6 * d, 2e6, -3e6), v: v3(1e6 / 86400, 0, 0) };
-    if (id === 'earth') {
+const SOURCE: EphemerisPoints = testEphemerisPoints(
+  -500 * SECONDS_PER_DAY, 500 * SECONDS_PER_DAY, {
+    sun: (t) => {
+      const d = t / SECONDS_PER_DAY;
+      return { r: v3(1e6 * d, 2e6, -3e6), v: v3(1e6 / 86400, 0, 0) };
+    },
+    earth: (t) => {
+      const d = t / SECONDS_PER_DAY;
       return { r: v3(1.5e11 + 1e6 * d, 2e6 + 3e8 * d, -3e6), v: v3(1e6 / 86400, 3e8 / 86400, 0) };
-    }
-    if (id === 'mars') {
+    },
+    mars: (t) => {
+      const d = t / SECONDS_PER_DAY;
       return { r: v3(-2.2e11 + 1e6 * d, 2e6 - 1e8 * d, 4e10), v: v3(1e6 / 86400, -1e8 / 86400, 0) };
-    }
-    return null;
+    },
   },
 );
 
