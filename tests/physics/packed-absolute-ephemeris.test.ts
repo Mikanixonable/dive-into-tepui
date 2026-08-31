@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test } from '../harness';
 import {
-  buildEphemerisPackData, encodeEphemerisPack, encodeFloat64Payload,
+  buildPackData, encodePack, encodeFloat64Payload,
 } from '../../src/physics/ephemeris-pack/format';
 import {
   PackedAbsoluteEphemeris, loadPackedAbsoluteEphemeris,
@@ -28,12 +28,12 @@ function fixture(corrupt = false): Uint8Array {
     validStart: 0,
     validEnd: 10,
   };
-  const data = buildEphemerisPackData(base, [{
+  const data = buildPackData(base, [{
     body: 'earth', start: 0, end: 10,
     coefficients: [[1], [2], [3]],
   }]);
   const digest = createHash('sha256').update(encodeFloat64Payload(data.payload)).digest('hex');
-  const bytes = encodeEphemerisPack({ ...data.manifest, payloadSha256: digest }, data.payload);
+  const bytes = encodePack({ ...data.manifest, payloadSha256: digest }, data.payload);
   if (corrupt) bytes[bytes.length - 1]! ^= 1;
   return bytes;
 }

@@ -46,7 +46,7 @@ export interface ChebyshevBodyPack {
   readonly segments: readonly ChebyshevSegment[];
 }
 
-export interface ChebyshevEphemerisPack {
+export interface ChebyshevPack {
   readonly manifest: ChebyshevManifest;
   readonly bodies: readonly ChebyshevBodyPack[];
 }
