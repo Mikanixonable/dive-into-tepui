@@ -450,7 +450,7 @@ export class CelestialSystem implements CelestialMotions {
     const focusId = focusTargetId(cameraSystem.mapCamera.focus);
     const focusPos = focusId === undefined
       ? null
-      : celestialBodies.find((body) => body.id === focusId)?.positionAt(displayTime) ?? null;
+      : this.find(focusId)?.motion.positionAt(displayTime) ?? null;
     this.sunOcclusion.setOccluders(
       selectOccluders(celestialBodies, displayTime, fo.r, focusPos).map((body): Occluder => (
         { center: fo.RtoThreeV3(body.positionAt(displayTime)), radius: body.def.radius }
