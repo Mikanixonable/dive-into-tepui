@@ -1,5 +1,5 @@
 // 太陽を公転する小天体32個の回帰テスト: lRate がケプラー第3法則と一致すること、
-// セドナ(高離心率)のケプラー往復精度、離心率・半径の妥当性、celestialBodiesAt からの取得。
+// セドナ(高離心率)のケプラー往復精度、離心率・半径の妥当性、celestialMotions からの取得。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { PlanetDef } from '../../src/physics/celestial-motion';
@@ -67,12 +67,12 @@ export function register(): void {
     }
   });
 
-  test('small-bodies: celestialBodiesAt から32体すべてが取れ、太陽からの距離が有限で正', () => {
+  test('small-bodies: celestialMotions から32体すべてが取れ、太陽からの距離が有限で正', () => {
     const celestialBodies = windows.celestialMotions;
     const sun = celestialBodies.find((a) => a.id === 'sun')!;
     for (const id of SMALL_BODY_IDS) {
       const a = celestialBodies.find((x) => x.id === id);
-      assert.ok(a !== undefined, `${id} が celestialBodiesAt に無い`);
+      assert.ok(a !== undefined, `${id} が celestialMotions に無い`);
       const dist = len(sub(a!.stateAt(0).r, sun.stateAt(0).r));
       assert.ok(Number.isFinite(dist) && dist > 0, `${id} の太陽からの距離`);
     }

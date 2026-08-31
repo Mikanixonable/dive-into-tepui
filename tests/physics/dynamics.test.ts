@@ -379,7 +379,7 @@ export function register(): void {
       state: kinematicState<'eci'>(0, v3(1.495978707e11, 0, 0), v3()), accel: v3(),
       degree2: null, atmosphere: null, kind: 'star',
     });
-    // 原点に置いた、重力を持たない不透明な球。gravityAttractorsAt はこれを返さない。
+    // 原点に置いた、重力を持たない不透明な球。gravityMotions はこれを返さない。
     const darkBody: CelestialMotion = fixedMotion({
       id: 'dark', mu: 0, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(),
       degree2: null, atmosphere: null,

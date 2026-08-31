@@ -45,7 +45,7 @@ export function buildWindows(): CelestialMotions {
 
 // 1ステップぶん、ステップ中点の時刻で重力源を解決してから stepDynamics を呼ぶ。重力源は窓を
 // そのまま渡す — 刻み幅の比較に絞り込みの有無が混ざらないようにする。
-// Simulator.substep がサブステップ中点で celestialBodiesAt を評価するのと同じ方針。
+// Simulator.substep がサブステップ中点を pivot に取るのと同じ方針。
 export function stepDynamicsAt(windows: CelestialMotions, state: KinematicState, dt: number): KinematicState {
   const tMid = state.t + dt / 2;
   const celestialBodies = windows.gravityMotions;
