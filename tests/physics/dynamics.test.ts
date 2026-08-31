@@ -121,7 +121,7 @@ export function register(): void {
       fixedMotion({ id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState<'eci'>(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, kind: 'star' }),
     ];
 
-    const viaNew = stepDynamics(s0, dt, attractors, 0, attractors, 0, null, 0, 0, null);
+    const viaNew = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, null);
     const viaLegacy = stepRK4(s0, dt, (_t, rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
 
     const posErr = len(sub(viaNew.r, viaLegacy.r)) / len(viaLegacy.r);
@@ -136,8 +136,8 @@ export function register(): void {
     const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
-    const withThrust = stepDynamics(s0, dt, attractors, 0, attractors, 0, null, 0, 0, thrust);
-    const withoutThrust = stepDynamics(s0, dt, attractors, 0, attractors, 0, null, 0, 0, null);
+    const withThrust = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, thrust);
+    const withoutThrust = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, null);
 
     assert.ok(len(sub(withThrust.v, withoutThrust.v)) > 1, 'thrust should visibly change the velocity');
   });
@@ -149,8 +149,8 @@ export function register(): void {
     const earth = attractors.find((a) => a.id === 'earth')!;
     assert.ok(earth.atmosphereAt(0) !== null, '前提: 既定レジストリの地球は大気を持つ');
 
-    const noDrag = stepDynamics(s0, dt, attractors, 0, attractors, 0, earth, 0, 0, null);
-    const withDrag = stepDynamics(s0, dt, attractors, 0, attractors, 0, earth, 0.01, 0, null);
+    const noDrag = stepDynamics(s0, dt, attractors, attractors, earth, 0, 0, 0, null);
+    const withDrag = stepDynamics(s0, dt, attractors, attractors, earth, 0, 0.01, 0, null);
 
     assert.ok(len(withDrag.v) < len(noDrag.v), 'drag should reduce orbital speed relative to the drag-free step');
   });
@@ -160,8 +160,8 @@ export function register(): void {
     const dt = 10;
     const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
 
-    const noAtmosphere = stepDynamics(s0, dt, attractors, 0, attractors, 0, null, 0.01, 0, null);
-    const noDrag = stepDynamics(s0, dt, attractors, 0, attractors, 0, null, 0, 0, null);
+    const noAtmosphere = stepDynamics(s0, dt, attractors, attractors, null, 0, 0.01, 0, null);
+    const noDrag = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, null);
 
     assert.deepEqual(noAtmosphere.v, noDrag.v);
   });
@@ -180,7 +180,7 @@ export function register(): void {
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
       const attractors = windows.celestialMotions;
-      s = stepDynamics(s, dt, attractors, 0, attractors, 0, null, 0, 0, null);
+      s = stepDynamics(s, dt, attractors, attractors, null, 0, 0, 0, null);
     }
 
     const relFinal = sub(s.r, positionOf(parts, 'moon', s.t));
@@ -361,13 +361,13 @@ export function register(): void {
     const speed = Math.sqrt(MU_EARTH / 7e6);
 
     const sunlitStart = kinematicState<'eci'>(0, v3(7e6, 0, 0), v3(0, 0, speed));
-    const withSrp = stepDynamics(sunlitStart, dt, attractors, 0, attractors, 0, null, 0, srpCoeff, null);
-    const withoutSrp = stepDynamics(sunlitStart, dt, attractors, 0, attractors, 0, null, 0, 0, null);
+    const withSrp = stepDynamics(sunlitStart, dt, attractors, attractors, null, 0, 0, srpCoeff, null);
+    const withoutSrp = stepDynamics(sunlitStart, dt, attractors, attractors, null, 0, 0, 0, null);
     assert.ok(len(sub(withSrp.v, withoutSrp.v)) > 0, 'a sunlit object should feel solar radiation pressure');
 
     const umbraStart = kinematicState<'eci'>(0, v3(-7e6, 0, 0), v3(0, 0, speed));
-    const shadowedWith = stepDynamics(umbraStart, dt, attractors, 0, attractors, 0, null, 0, srpCoeff, null);
-    const shadowedWithout = stepDynamics(umbraStart, dt, attractors, 0, attractors, 0, null, 0, 0, null);
+    const shadowedWith = stepDynamics(umbraStart, dt, attractors, attractors, null, 0, 0, srpCoeff, null);
+    const shadowedWithout = stepDynamics(umbraStart, dt, attractors, attractors, null, 0, 0, 0, null);
     assert.deepEqual(shadowedWith, shadowedWithout, 'an object in the umbra should feel nothing');
   });
 
@@ -388,9 +388,9 @@ export function register(): void {
     const dt = 100;
     const srpCoeff = 1e-2;
 
-    const noSrp = stepDynamics(start, dt, [sun], 0, [sun], 0, null, 0, 0, null);
-    const unshadowed = stepDynamics(start, dt, [sun], 0, [sun], 0, null, 0, srpCoeff, null);
-    const shadowed = stepDynamics(start, dt, [sun], 0, [sun, darkBody], 0, null, 0, srpCoeff, null);
+    const noSrp = stepDynamics(start, dt, [sun], [sun], null, 0, 0, 0, null);
+    const unshadowed = stepDynamics(start, dt, [sun], [sun], null, 0, 0, srpCoeff, null);
+    const shadowed = stepDynamics(start, dt, [sun], [sun, darkBody], null, 0, 0, srpCoeff, null);
     assert.ok(len(sub(unshadowed.v, noSrp.v)) > 0, '遮蔽体が無ければ輻射圧を受ける');
     assert.deepEqual(shadowed, noSrp, 'mu=0 の天体の本影の中では輻射圧を受けない');
   });
@@ -425,7 +425,7 @@ export function register(): void {
       let s = initial;
       for (let i = 0; i < steps; i++) {
         s = stepDynamics(
-          s, stepDt, earthMoonWindowAt(s.t + stepDt / 2), 0, [], 0, null, 0, 0, null);
+          s, stepDt, earthMoonWindowAt(s.t + stepDt / 2), [], null, 0, 0, 0, null);
       }
       return s;
     }
