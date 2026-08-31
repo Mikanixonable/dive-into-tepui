@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import {
   CelestialBodyDef, CelestialMotion, CelestialMotions, OrbitingMotion, PhaseOffsets, PlanetMotion,
 } from '../../physics/celestial-motion';
-import { EphemerisPoints, ephemerisPointOf } from '../../physics/point-ephemeris';
+import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
 import { addTimeCacheStats } from '../../physics/time-ring';

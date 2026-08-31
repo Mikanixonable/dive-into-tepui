@@ -5,7 +5,7 @@ import {
   ChebyshevPack,
   ChebyshevSegment,
   ReadonlyNumberArray,
-} from './types';
+} from './pack-types';
 
 export class InvalidChebyshevPackError extends Error {
   constructor(message: string) {

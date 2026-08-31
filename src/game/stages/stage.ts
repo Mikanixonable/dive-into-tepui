@@ -23,8 +23,8 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
-import { loadEphemerisPoints } from '../../physics/ephemeris-catalog';
-import { profileAtOrNull } from '../../physics/ephemeris-profile';
+import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
+import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
