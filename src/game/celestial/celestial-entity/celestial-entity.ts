@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
-import { CelestialBody, orbitalElementsOf } from '../../../physics/celestial-body';
+import { CelestialBody, celestialBodyStateAt, orbitalElementsOf } from '../../../physics/celestial-body';
 import { EciTransform } from '../../../physics/eci-transform';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { TimeCacheStats, TimeRing } from '../../../physics/time-ring';
@@ -65,16 +65,17 @@ export abstract class CelestialEntity {
     this.eciTransform = transform;
   }
 
-  // 自分の時刻 t での ECI 瞬間値。
-  bodyAt(t: number): CelestialBody {
-    const cached = this.eciCache.get(t);
+  // 自分の時刻 pivot での厳密な ECI 瞬間値。**呼び出し側はこの値を書き換えてはならない。**
+  bodyAt(pivot: number): CelestialBody {
+    const cached = this.eciCache.get(pivot);
     if (cached !== undefined) return cached;
-    return this.eciCache.put(t, this.eci.celestialBodyAt(t, this.motion));
+    return this.eciCache.put(pivot, this.eci.celestialBodyAt(pivot, this.motion));
   }
 
-  // 自分の時刻 t での ECI 位置・速度。
-  stateAt(t: number): KinematicState {
-    return this.bodyAt(t).state;
+  // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと pivot 自身の
+  // 厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
+  stateAt(pivot: number, t: number = pivot): KinematicState {
+    return celestialBodyStateAt(this.bodyAt(pivot), t);
   }
 
   // 負荷確認ウィンドウが読む、自分の ECI 瞬間値の時刻キャッシュのヒット/ミス累計。
