@@ -7,7 +7,7 @@
 // THREE/DOM 非依存。
 import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp } from './attitude';
-import { BodyEphemeris, boundStateAt } from './body-ephemeris';
+import { PointEphemeris, boundStateAt } from './point-ephemeris';
 import { Degree2Gravity } from './celestial-body';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
@@ -105,7 +105,7 @@ export abstract class CelestialMotion {
   abstract get primary(): CelestialMotion | null;
 
   // この天体1体ぶんの高精度暦。暦に収録されていない天体では null。
-  private bodyEphemeris: BodyEphemeris | null = null;
+  private bodyEphemeris: PointEphemeris | null = null;
 
   protected constructor(
     // 自転の初期位相 [rad]。eciPole の自転モデルの位相原点をこれだけ進める(iau は w0 が、
@@ -114,7 +114,7 @@ export abstract class CelestialMotion {
   ) {}
 
   // 自分の暦を結ぶ。結ぶまでの間と、null を結んだ後は、解析暦が位置を答える。
-  bindEphemeris(ephemeris: BodyEphemeris | null): void {
+  bindEphemeris(ephemeris: PointEphemeris | null): void {
     this.bodyEphemeris = ephemeris;
   }
 
