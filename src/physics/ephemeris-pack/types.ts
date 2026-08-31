@@ -1,5 +1,3 @@
-import { KinematicState } from '../kinematic-state';
-
 // An ArrayLike view keeps the evaluator independent of how coefficients arrived:
 // plain arrays, typed arrays, and other indexed coefficient stores are all valid.
 // The evaluator never writes through this interface.
@@ -35,9 +33,6 @@ export interface ChebyshevManifest {
   readonly bodies: readonly ChebyshevBodyManifest[];
   readonly timeUnit: 's';
   readonly positionUnit: 'm';
-  // Optional on the generic evaluator; required by the AbsoluteEphemeris adapter.
-  readonly coordinateFrame?: 'ICRF-J2000';
-  readonly timeScale?: 'TDB';
 }
 
 export interface ChebyshevSegment {
@@ -54,10 +49,4 @@ export interface ChebyshevBodyPack {
 export interface ChebyshevEphemerisPack {
   readonly manifest: ChebyshevManifest;
   readonly bodies: readonly ChebyshevBodyPack[];
-}
-
-export interface ChebyshevEvaluation {
-  readonly state: KinematicState<'icrf'>;
-  readonly segment: ChebyshevSegment;
-  readonly segmentIndex: number;
 }

@@ -113,8 +113,10 @@ export function register(): void {
       manifestJson: canonicalJson(data.manifest),
     });
     assert.deepEqual(evaluatorPack.manifest.bodies.map((body) => body.id), ['fixture']);
-    assert.equal(evaluatorPack.manifest.coordinateFrame, 'ICRF-J2000');
-    assert.equal(evaluatorPack.manifest.timeScale, 'TDB');
+    // 座標系と時刻系はワイヤ manifest が宣言し decodeEphemerisPack が検証する。
+    // 評価器側の manifest で言い直さない。
+    assert.equal(data.manifest.frame, 'ICRF-J2000');
+    assert.equal(data.manifest.timeScale, 'TDB');
     assert.equal(evaluatorPack.manifest.bodies[0]?.segments[0]?.start, 0);
     assert.deepEqual(evaluatorPack.bodies[0]?.segments[1]?.coefficients[2], [11, 12]);
   });

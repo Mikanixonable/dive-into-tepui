@@ -84,14 +84,6 @@ export interface DecodedEphemerisPack {
   readonly manifestJson: string;
 }
 
-/** Evaluator view with the canonical absolute-ephemeris metadata spelling. */
-export type CanonicalEvaluatorEphemerisPack = Omit<ChebyshevEphemerisPack, 'manifest'> & {
-  readonly manifest: Omit<ChebyshevEphemerisPack['manifest'], 'coordinateFrame' | 'timeScale'> & {
-    readonly coordinateFrame: 'ICRF-J2000';
-    readonly timeScale: 'TDB';
-  };
-};
-
 export class EphemerisPackFormatError extends Error {
   public constructor(message: string) {
     super(message);
@@ -366,7 +358,7 @@ export function decodeEphemerisPack(input: Uint8Array): DecodedEphemerisPack {
 // ずれることはない**(評価器の検証はこの一致を要求する)。
 export function toEvaluatorEphemerisPack(
   decoded: DecodedEphemerisPack, timeOriginSec = 0,
-): CanonicalEvaluatorEphemerisPack {
+): ChebyshevEphemerisPack {
   const bodies = new Map<string, {
     readonly id: string;
     readonly segments: Array<{
@@ -401,8 +393,6 @@ export function toEvaluatorEphemerisPack(
       version: decoded.manifest.version,
       timeUnit: 's',
       positionUnit: 'm',
-      coordinateFrame: 'ICRF-J2000',
-      timeScale: 'TDB',
       bodies: bodyPacks.map((body) => ({
         id: body.id,
         segments: body.segments.map(({ start, end, degree }) => ({ start, end, degree })),
