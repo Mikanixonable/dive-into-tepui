@@ -452,7 +452,7 @@ export class OrbitGuideLines {
     }
 
     for (const kind of REFERENCE_ORBIT_KINDS) {
-      if (settings[kind].on) this.addReferenceOrbitLine(kind);
+      if (settings[kind].on) this.addReferenceEllipseLine(kind);
     }
 
     this.onLineCountChange?.(this.lines.length);
@@ -474,7 +474,7 @@ export class OrbitGuideLines {
 
   // 地球専用参照軌道(基本群、太陽同期準回帰・ドーンダスク・モルニヤ・ツンドラ)の1本を
   // 組んでシーンへ加える。系トグルの対象外なので system は null。
-  private addReferenceOrbitLine(kind: ReferenceOrbitKind): void {
+  private addReferenceEllipseLine(kind: ReferenceOrbitKind): void {
     const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference });
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId: kind, system: null, point: null, index: 0, count: 1, lastLoop: null });

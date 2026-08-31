@@ -19,8 +19,8 @@ import { Vec3, len, scale, sub, v3 } from '../../../math/vec3';
 import type { Viewpoint } from '../../../math/projection';
 import type { SphereHit } from './base-collision';
 import { FloatingOrigin } from '../../camera/floating-origin';
-import { OrbitLine } from '../../lines/orbit-line';
-import { RelativeOrbitLine } from '../../lines/relative-orbit-line';
+import { EllipseLine } from '../../lines/ellipse-line';
+import { TargetRelativeLine } from '../../lines/target-relative-line';
 import { TrajectoryLine } from '../../lines/trajectory-line';
 import type { OrbitReference } from '../../orbit-reference';
 import { LineStyle } from '../../../render/line-style';
@@ -99,12 +99,12 @@ export class DynamicEntity {
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
   // 自身の軌道楕円を描く線。null = 持たない。
-  orbitLine: OrbitLine | null = null;
-  // 戦闘ビューで非質量の艦・基地に表示基準を固定中、orbitLine の代わりに対象との直線を描く線。
+  ellipseLine: EllipseLine | null = null;
+  // 戦闘ビューで非質量の艦・基地に表示基準を固定中、ellipseLine の代わりに対象との直線を描く線。
   // null = 持たない。
-  relativeOrbitLine: RelativeOrbitLine | null = null;
-  // showOrbitLine で渡された style。relativeOrbitLine を遅延生成するときに使い回す。
-  private orbitLineStyle: LineStyle | null = null;
+  targetRelativeLine: TargetRelativeLine | null = null;
+  // showEllipseLine で渡された style。targetRelativeLine を遅延生成するときに使い回す。
+  private ellipseLineStyle: LineStyle | null = null;
   // 自身の予測軌道を描く線。null = 持たない。
   predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
@@ -220,68 +220,68 @@ export class DynamicEntity {
 
   // 軌道楕円(または戦闘ビューで非質量ターゲット固定中の対象への直線)の線を style で出す。
   // 既に出ていれば style を塗り直す。
-  showOrbitLine(style: LineStyle): void {
-    this.orbitLineStyle = style;
-    if (this.orbitLine !== null) {
-      this.orbitLine.setStyle(style);
+  showEllipseLine(style: LineStyle): void {
+    this.ellipseLineStyle = style;
+    if (this.ellipseLine !== null) {
+      this.ellipseLine.setStyle(style);
     } else {
-      const line = new OrbitLine(style);
+      const line = new EllipseLine(style);
       this.scene?.add(line.line);
-      this.orbitLine = line;
+      this.ellipseLine = line;
     }
-    this.relativeOrbitLine?.setStyle(style);
+    this.targetRelativeLine?.setStyle(style);
   }
 
   // 軌道楕円・対象への直線を消す。出し直すと作り直しになる。
-  hideOrbitLine(): void {
-    this.orbitLineStyle = null;
-    if (this.orbitLine !== null) {
-      this.scene?.remove(this.orbitLine.line);
-      this.orbitLine.dispose();
-      this.orbitLine = null;
+  hideEllipseLine(): void {
+    this.ellipseLineStyle = null;
+    if (this.ellipseLine !== null) {
+      this.scene?.remove(this.ellipseLine.line);
+      this.ellipseLine.dispose();
+      this.ellipseLine = null;
     }
-    if (this.relativeOrbitLine !== null) {
-      this.scene?.remove(this.relativeOrbitLine.line);
-      this.relativeOrbitLine.dispose();
-      this.relativeOrbitLine = null;
+    if (this.targetRelativeLine !== null) {
+      this.scene?.remove(this.targetRelativeLine.line);
+      this.targetRelativeLine.dispose();
+      this.targetRelativeLine = null;
     }
   }
 
   // 軌道楕円を隠す(相対軌跡モードへ切り替える/状態が求まらないときに使う)。
   private hideOrbitEllipse(fo: FloatingOrigin, camera: THREE.Camera): void {
-    this.orbitLine?.sync(null, fo, camera);
+    this.ellipseLine?.sync(null, fo, camera);
   }
 
-  // orbitLine を表示時刻の状態に合わせる。線を持たなければ何もしない。displayTime が現在時刻
+  // ellipseLine を表示時刻の状態に合わせる。線を持たなければ何もしない。displayTime が現在時刻
   // より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。orbitRef が非質量の艦・基地
   // ターゲットを指すのは戦闘ビューだけ(EntityLineManager がマップビューでは orbitRef を渡さない)
   // ので、context.orbitRef の有無だけで戦闘ビュー/マップビューを判別できる。
-  syncOrbitLine(
+  syncEllipseLine(
     displayTime: number, celestialSystem: CelestialSystem, fo: FloatingOrigin, camera: THREE.Camera,
     frameAnchors: FrameAnchorSource, orbitRef: OrbitReference | undefined,
   ): void {
-    if (this.orbitLine === null && this.relativeOrbitLine === null) return;
+    if (this.ellipseLine === null && this.targetRelativeLine === null) return;
     const state = this.displayState(displayTime, celestialSystem);
     if (state === null) {
       // 表示時刻の状態が求まらない: 両方隠す。
       this.hideOrbitEllipse(fo, camera);
-      this.relativeOrbitLine?.hide();
+      this.targetRelativeLine?.hide();
       return;
     }
     // 非質量の艦・基地に固定中で、自分自身がその対象でなければ対象への直線モード。
     const relativeTarget = orbitRef?.fixed && !orbitRef.hasMass ? orbitRef.entity : null;
     if (relativeTarget !== null && relativeTarget !== this) {
       this.hideOrbitEllipse(fo, camera);
-      if (this.relativeOrbitLine === null && this.orbitLineStyle !== null) {
-        const line = new RelativeOrbitLine(this.orbitLineStyle);
+      if (this.targetRelativeLine === null && this.ellipseLineStyle !== null) {
+        const line = new TargetRelativeLine(this.ellipseLineStyle);
         this.scene?.add(line.line);
-        this.relativeOrbitLine = line;
+        this.targetRelativeLine = line;
       }
       const targetPos = relativeTarget.displayState(displayTime, celestialSystem)?.r ?? relativeTarget.state.r;
-      this.relativeOrbitLine?.sync(state.r, targetPos, fo, camera);
+      this.targetRelativeLine?.sync(state.r, targetPos, fo, camera);
       return;
     }
-    this.relativeOrbitLine?.hide();
+    this.targetRelativeLine?.hide();
     // 艦・基地以外の非質量対象(ラグランジュ点など)、または自分自身が対象のときは楕円も出さない。
     if (orbitRef?.fixed && !orbitRef.hasMass) {
       this.hideOrbitEllipse(fo, camera);
@@ -291,7 +291,7 @@ export class DynamicEntity {
     const center = orbitRef?.fixed && orbitRef.attractor
       ? orbitRef.attractor
       : strongestAttractor(state.r, frameAnchors.bodies, frameAnchors.bodiesPivot);
-    this.orbitLine?.sync(orbitalElementsOf(state, center, frameAnchors.bodiesPivot), fo, camera);
+    this.ellipseLine?.sync(orbitalElementsOf(state, center, frameAnchors.bodiesPivot), fo, camera);
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
@@ -630,7 +630,7 @@ export class DynamicEntity {
   dispose(): void {
     this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
-    this.hideOrbitLine();
+    this.hideEllipseLine();
     this.hidePredictedLine();
     this.hideActualLine();
     disposeOwnedRenderResources(this.renderObject);

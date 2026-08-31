@@ -1,5 +1,5 @@
 // 戦闘ビューでの右クリックが、生存中の実体(自艦・敵艦・基地)の3Dモデル表示領域に当たったかを
-// 判定する。map-pickable.ts / orbit-pickable.ts と同じ「画面座標から最も手前の候補を選ぶ」
+// 判定する。map-pickable.ts / line-pickable.ts と同じ「画面座標から最も手前の候補を選ぶ」
 // 当たり判定だが、対象が MapPickable の固定候補列ではなく DynamicSystem の実体そのものである点が
 // 異なる。
 import { Base } from '../dynamic/dynamic-entity/base';

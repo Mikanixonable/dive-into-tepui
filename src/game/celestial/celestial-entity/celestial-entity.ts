@@ -5,7 +5,7 @@ import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-mo
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
 import { OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
 import { KinematicState } from '../../../physics/kinematic-state';
-import { OrbitLine } from '../../lines/orbit-line';
+import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import type { MarkerManager } from '../../marker/marker-manager';
 import { CameraSystem } from '../../camera/camera-system';
@@ -41,7 +41,7 @@ const REFERENCE_LINE_OPACITY = 0.3;
 export abstract class CelestialEntity {
   // マップ専用の参照軌道線(衛星は親惑星中心、惑星は主星中心)。実体も濃さの決め方も個体が
   // 持ち、出す/消すの判断だけを所有者(CelestialSystem)が sync/remove の呼び分けで行う。
-  referenceLine: OrbitLine | null = null;
+  referenceLine: EllipseLine | null = null;
 
   // atmosphereOptics は大気の見えの光学パラメータ(大気を持たない・描かない天体では null)。
   protected constructor(
@@ -101,7 +101,7 @@ export abstract class CelestialEntity {
     const opacity = this.referenceLineOpacityFrom(cameraPos, simTime);
     if (this.referenceLine === null) {
       const color = this.motion.kind === 'satellite' ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
-      this.referenceLine = new OrbitLine({ color, opacity, renderOrder: LINE_RENDER_ORDER.reference });
+      this.referenceLine = new EllipseLine({ color, opacity, renderOrder: LINE_RENDER_ORDER.reference });
       scene.add(this.referenceLine.line);
     }
     this.referenceLine.sync(this.referenceElementsAt(simTime), fo, camera);
