@@ -101,7 +101,9 @@ export function attractorAccel(
 
 `stepDynamics` の引数を変えると、それを呼ぶ `DynamicTrajectory.step` →
 `DynamicEntity.stepSimulation` → `Simulator.substep` → `SubstepCelestialBodies` が同時に動く。
-**この鎖は途中で型検査を通せないので、1手順で通す。**
+さらに `strongestAttractor` は表示・HUD・計画から 25 箇所で呼ばれており、`celestialBodiesAt`
+の要素型を変えるとそこも同時に動く。**この鎖は途中で型検査を通せないので、`CelestialBody` の
+削除まで含めて1手順で通す。**
 
 **目指す形**
 
@@ -145,9 +147,10 @@ export function classifyAttractors(
 `totalAccel` の中は `celestialBodyPositionAt(attractor, t)` が
 `attractor.positionAt(attractorPivot, t)` になるだけで、式は変わらない。
 
-**`CelestialBody` はこの手順では消えない。** 値オブジェクト(`OrbitalElements` /
-`SecondaryFrame` / `FrameAnchorSource`)と `DynamicTrajectory` の中心天体がまだ握っている。
-型と `celestial-body.ts` の解体は手順4。
+**値オブジェクトもこの手順で移す。** `OrbitalElements.center` / `SecondaryFrame` /
+`FrameAnchorSource.bodies` / `DynamicTrajectory` の中心天体は、`CelestialMotion` と
+`KinematicState` の2フィールドへ割る(決めたこと C)。`strongestAttractor` を通る経路が
+これらへ直結しているので、切り離せない。
 
 **変更が必要な箇所**
 
@@ -165,7 +168,13 @@ export function classifyAttractors(
 | `src/game/dynamic/dynamic-system.ts` / `time-step.ts` / `surface-candidates.ts` / `surface-contact-physics.ts` | 天体引数と pivot |
 | `src/game/dynamic/arc-celestial-bodies.ts` / `predicted-arc.ts` | `FutureCelestialBodyProvider` を `CelestialMotion` の一覧へ。`resolve` が返すのは一覧、pivot は呼び出し側が持つ |
 | `src/render/pipeline/lighting/planet-light-select.ts` / `sun-occlusion-select.ts` | 天体引数と pivot |
-| `tests/physics/window-agreement.test.ts` / `tests/game/predicted-arc.test.ts` / `tests/game/surface-candidates.test.ts` | 供給の形に追従 |
+| `src/physics/elements.ts` | `OrbitalElements.center` を `CelestialMotion` と `centerState: KinematicState` の2フィールドへ |
+| `src/physics/lagrange.ts` / `orbit-guide.ts` / `earth-reference-orbits.ts` / `kepler-extrapolation.ts` / `orbit-solvers.ts` / `trajectory-features.ts` | 同じ割り方に追従 |
+| `src/physics/frame.ts` / `src/game/frame-anchors.ts` | `bodies` を `CelestialMotion` の一覧にし、`bodiesPivot` を足す |
+| `src/game/lines/orbit-line.ts` | `el.center.state.r` を `el.centerState.r` へ。**頂点ループの外へ巻き上げる** |
+| `src/game/` の表示・HUD・計画 30 ファイル(`hud/orbit/` 6・`plan/` 5・`creative/` 4・`marker/` 3・`pickable/` 5・`camera/` 2・`celestial/` 4・その他 1) | `strongestAttractor` ほかへ pivot を渡し、`body.state`/`body.mu` の読みを `positionAt` / `def` 経由へ |
+| `src/physics/celestial-body.ts` | 空になるので削除。`Degree2Gravity` / `TesseralGravity` は `celestial-body-def.ts` へ、`frameOfCelestialBody` / `orbitalElementsOf` / `orbitingAttractorOf` / `bodyAnchorSource` は `frame.ts` と `elements.ts` へ引き取らせる |
+| `tests/physics/window-agreement.test.ts` / `celestial-body.test.ts` / `frame.test.ts` / `tests/game/{predicted-arc,surface-candidates,plan,map-visibility}.test.ts` / `tests/perf/common.ts` | 供給の形に追従 |
 
 **達成条件と検証**
 
@@ -173,56 +182,14 @@ export function classifyAttractors(
 - `grep -rn "celestialBodyPositionAt\|celestialBodyStateAt" src/ tests/` が
   `src/physics/celestial-motion.ts` の内側だけ。
 - `grep -rn "celestialBodiesAt(" src/` の呼び出しに時刻引数が無い。
+- `grep -rn "CelestialBody" src/ tests/ DEVELOP/ CLAUDE.md .claude/` が 0 件。
+- `ls src/physics/celestial-body.ts` が無い。
+- `npm run build` / `npm run smoke:browser`。マップビューで参照軌道線・ラグランジュ点ラベル・
+  静止軌道リング・軌道パネルを見る。
 - `celestial-eci-baseline` / `window-agreement` / `predicted-arc` が変更なしで通る。
 
 
-### 手順4. 値オブジェクトから `CelestialBody` を外し、`celestial-body.ts` を解体する
-
-**目的.** 「天体 + その瞬間の状態」を1つの凍結値で持っている型を、`CelestialMotion` と
-`KinematicState` の2フィールドへ割る。これで `CelestialBody` の最後の参照が消える。
-
-**目指す形**
-
-```ts
-// src/physics/elements.ts
-export interface OrbitalElements {
-  // …(幾何の量は変わらない)
-  readonly center: CelestialMotion;      // 中心天体。mu と radius をここから読む
-  readonly centerState: KinematicState;  // その中心天体の、要素を組んだ瞬間の ECI 状態
-}
-
-// src/physics/lagrange.ts
-export type SecondaryFrame = {
-  readonly secondary: CelestialMotion;
-  readonly secondaryState: KinematicState;
-  readonly primary: CelestialMotion;
-  readonly primaryState: KinematicState;
-  readonly rotation: FrameRotation;
-  readonly normal: Vec3;
-};
-
-// src/physics/frame.ts
-export interface FrameAnchorSource {
-  readonly bodies: readonly CelestialMotion[];
-  readonly bodiesPivot: number;
-  stateOf(id: string, t: number): KinematicState | null;
-  attractorOf(id: string, t: number): string | null;
-}
-```
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/elements.ts` | `center` を2フィールドへ。`el.center.mu` / `el.center.radius` は `def` 経由 |
-| `src/physics/lagrange.ts` / `src/physics/orbit-guide.ts` / `src/physics/earth-reference-orbits.ts` / `src/physics/kepler-extrapolation.ts` | 同じ割り方に追従 |
-| `src/physics/frame.ts` / `src/game/frame-anchors.ts` | `bodies` と `bodiesPivot` |
-| `src/game/lines/orbit-line.ts` | `el.center.state.r` を `el.centerState.r` へ。**頂点ループの外へ巻き上げる** |
-| `src/game/` の残り 30 ファイル(`hud/orbit/` 6・`plan/` 5・`creative/` 4・`marker/` 3・`pickable/` 2・`player/` 3・`celestial/` 4・その他 3) | 型注釈と `body.state` 読みの追従 |
-
-**達成条件と検証.** `npm run typecheck` / `npm run test`(全層)/ `npm run build`。
-`grep -rn "CelestialBody" src/ tests/ DEVELOP/ CLAUDE.md .claude/` が 0 件。
-`npm run smoke:browser`。マップビューで参照軌道線・ラグランジュ点ラベル・静止軌道リングを見る。
-
-### 手順5. 1サブステップの pivot を中点1つへ寄せる
+### 手順4. 1サブステップの pivot を中点1つへ寄せる
 
 **目的.** pivot の種類が減るほど天体1体の時刻キャッシュが当たり、暦の評価回数が減る。
 **この手順だけは値が変わる** — 近似を1つ動かす。
