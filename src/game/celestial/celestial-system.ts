@@ -217,9 +217,9 @@ export class CelestialSystem implements CelestialBodyWindows {
   // 1天体ぶんの時刻 t での重力源表現。予測弧の候補供給(FutureCelestialBodyProvider)もこれで満たす。
   celestialBodyAt(id: string, t: number): CelestialBody { return this.entityOf(id).bodyAt(t); }
 
-  // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t に pivot と
-  // 同じ値を渡せば厳密な値になる。|t − pivot| は積分1歩の幅程度に収めること。
-  stateAt(id: string, pivot: number, t: number): KinematicState {
+  // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと
+  // pivot 自身の厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
+  stateAt(id: string, pivot: number, t: number = pivot): KinematicState {
     return this.entityOf(id).stateAt(pivot, t);
   }
 
@@ -229,7 +229,7 @@ export class CelestialSystem implements CelestialBodyWindows {
   // ECI の点 r から見た恒星方向の単位ベクトル。恒星が無い星系では無害な既定方向(+X)を返す。
   sunDirFrom(r: Vec3, t: number): Vec3 {
     const star = this.starEntity;
-    return star === null ? v3(1, 0, 0) : norm(sub(this.stateAt(star.id, t, t).r, r));
+    return star === null ? v3(1, 0, 0) : norm(sub(this.stateAt(star.id, t).r, r));
   }
 
   // 星系の再構築に要る値のスナップショット(セーブ用)。phaseOffsets は構築時に受け取った
@@ -259,7 +259,7 @@ export class CelestialSystem implements CelestialBodyWindows {
     const pointField = this.pointFieldView;
     if (!overviewMode || star === null || pointField === null || !graphics.pointField) return;
     this.buildPointField(pointField);
-    pointField.update(t, true, this.stateAt(star.id, t, t).r);
+    pointField.update(t, true, this.stateAt(star.id, t).r);
   }
 
   // 軌道ガイドタブ(表示パネル5.2節)の設定。ゲーム側が変更のたびに渡す。
@@ -308,7 +308,7 @@ export class CelestialSystem implements CelestialBodyWindows {
     const sunPos = starMotion === null
       ? this.toThreeNormal(this.sunDirFrom(floatingOrigin.r, displayTime))
         .multiplyScalar(STARLESS_SUN_DISTANCE)
-      : floatingOrigin.RtoThreeV3(this.stateAt(starMotion.id, displayTime, displayTime).r);
+      : floatingOrigin.RtoThreeV3(this.stateAt(starMotion.id, displayTime).r);
     // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
@@ -393,7 +393,7 @@ export class CelestialSystem implements CelestialBodyWindows {
       const rings = body.rings;
       if (rings === null) return [];
       return [{
-        center: this.stateAt(body.id, displayTime, displayTime).r,
+        center: this.stateAt(body.id, displayTime).r,
         axis: body.motion.orientationAt(displayTime)?.axis ?? null,
         radius: body.def.radius,
         bands: rings.bands.map((band) => ({

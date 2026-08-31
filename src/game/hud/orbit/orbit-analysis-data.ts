@@ -70,7 +70,7 @@ export function altitudeSeries(
     // 外挿できない時刻に達したら、そこで列を止める(0/NaN で埋めない)。
     const state = entityStateAt(entity, t, centerEntity);
     if (state === null) { truncated = true; break; }
-    const centerState = centerEntity.stateAt(t, t);
+    const centerState = centerEntity.stateAt(t);
     samples.push({ t: t - now, alt: altitudeOf(state, centerState, center) });
   }
   return { samples, currentAlt, truncated };
@@ -100,7 +100,7 @@ export function resolveTarget(
   }
   const targetEntity = celestialSystem.entityOf(target.body.id);
   return {
-    stateAt: (t) => targetEntity.stateAt(t, t),
+    stateAt: (t) => targetEntity.stateAt(t),
     currentR: target.body.state.r,
   };
 }
@@ -156,7 +156,7 @@ export function approachSeries(
     const shipState = entityStateAt(ship, t, centerEntity);
     const targetState = resolved.stateAt(t, centerEntity);
     if (shipState === null || targetState === null) { truncated = true; break; }
-    const centerState = centerEntity.stateAt(t, t);
+    const centerState = centerEntity.stateAt(t);
     const shipRel = sub(shipState.r, centerState.r);
     const targetRel = sub(targetState.r, centerState.r);
     const theta = wrapAngle(phaseAngleOn(targetEl, shipRel) - phaseAngleOn(targetEl, targetRel));
@@ -201,7 +201,7 @@ export function projectionSeries(
   // 現在時刻の経緯度。中心天体が自転モデルを持たなければここで打ち切る。
   const currentState = stateAt(now);
   if (currentState === null) return null;
-  const current = projectionSampleAt(currentState, center.stateAt(now, now), center, now);
+  const current = projectionSampleAt(currentState, center.stateAt(now), center, now);
   if (current === null) return null;
 
   if (spanSec <= 0 || sampleCount <= 0 || !isFinite(spanSec) || !Number.isFinite(sampleCount)) {
@@ -216,7 +216,7 @@ export function projectionSeries(
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     const state = stateAt(t);
-    const sample = state === null ? null : projectionSampleAt(state, center.stateAt(t, t), center, t);
+    const sample = state === null ? null : projectionSampleAt(state, center.stateAt(t), center, t);
     if (sample === null) { truncated = true; break; }
     if (lastLonDeg !== null && Math.abs(sample.lonDeg - lastLonDeg) > 180) samples.push(null);
     lastLonDeg = sample.lonDeg;
