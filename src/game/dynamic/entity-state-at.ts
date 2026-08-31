@@ -10,7 +10,7 @@ import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 // (CelestialEntity がこの形を満たす)。
 export type OrbitCenter = {
   readonly motion: CelestialMotion;
-  stateAt(pivot: number, t: number): KinematicState;
+  stateAt(t: number): KinematicState;
 };
 
 // t <= trajectory の現在時刻なら保持区間の内挿(at)、それより先なら center が表す天体
@@ -21,7 +21,7 @@ function trajectoryStateAt(
   trajectory: DynamicTrajectory, t: number, center: OrbitCenter,
 ): KinematicState | null {
   if (t <= trajectory.state.t) return trajectory.at(t);
-  return trajectory.extrapolatedAt(t, center.stateAt(t, t));
+  return trajectory.extrapolatedAt(t, center.stateAt(t));
 }
 
 // エンティティ(艦・基地)の時刻 t の状態。predicted を持たない(＝未来を予測しない種別の)

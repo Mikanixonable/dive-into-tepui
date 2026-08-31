@@ -220,8 +220,8 @@ export class NavTarget {
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
-    const anEci = add(celestialSystem.stateAt(playerCenter.id, anT, anT).r, positionOnOrbit(playerEl, nodes.asc));
-    const dnEci = add(celestialSystem.stateAt(playerCenter.id, dnT, dnT).r, positionOnOrbit(playerEl, nodes.desc));
+    const anEci = add(celestialSystem.stateAt(playerCenter.id, anT).r, positionOnOrbit(playerEl, nodes.asc));
+    const dnEci = add(celestialSystem.stateAt(playerCenter.id, dnT).r, positionOnOrbit(playerEl, nodes.desc));
     this.anPos = toDisplay(anEci, anT);
     this.dnPos = toDisplay(dnEci, dnT);
     this.anTime = anT;
