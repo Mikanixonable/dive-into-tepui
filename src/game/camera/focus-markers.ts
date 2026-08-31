@@ -1,6 +1,7 @@
 // マップモードのフォーカス対象(天体・ラグランジュ点)ラベルの算出と HUD マーカーへの反映。
 import { Vec3, v3, sub, len } from '../../math/vec3';
-import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { strongestAttractor } from '../../physics/attractor';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import { ProjectFn } from './camera-system';
 import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../marker/marker-manager';
 import { OrbitingMotion } from '../../physics/celestial-motion';
@@ -183,7 +184,9 @@ export class FocusMarkers {
   // 直前のフレームに表示していたラベル id(集合から外れたものを隠すため)。
   private prevShownIds: readonly string[] = [];
 
-  private celestialBodies: readonly CelestialBody[] = [];
+  private celestialBodies: readonly CelestialMotion[] = [];
+  // celestialBodies の位置を厳密に引く時刻。
+  private celestialBodiesPivot = 0;
   private readonly labelsById = new Map<string, FocusLabel>();
   private readonly bodyPickableRecords = new Map<string, MutableMapPickable>();
   private readonly cachedBodyPickables: MutableMapPickable[] = [];
@@ -277,7 +280,8 @@ export class FocusMarkers {
 
     // update を通らずに直接呼ばれる場合も既存の時刻仕様を保つ。通常の MapPickables 経路は
     // update が先に同じ policy で座標を作るため、下記の再計算分岐には入らない。
-    const posOf = new Map(this.celestialSystem.celestialBodiesAt(t).map((a) => [a.id, a.state.r]));
+    const posOf = new Map(
+      this.celestialSystem.celestialMotions.map((a) => [a.id, a.positionAt(t, t)]));
     const drawn = new Map(this.allLabels.map((lbl) => [lbl.id, lbl.pickable]));
     this.cachedBodyPickables.length = 0;
     for (const body of this.celestialSystem.entities) {
@@ -289,7 +293,7 @@ export class FocusMarkers {
     }
     for (const { id, name, motion, points } of this.lagrangeSources) {
       if (!visibilityPolicy.body(id).category) continue;
-      const frame = secondaryFrameOf(this.celestialSystem.celestialBodiesAt(t), motion, t);
+      const frame = secondaryFrameOf(this.celestialSystem.celestialMotions, t, motion, t);
       if (frame === null) continue;
       const l = lagrangePointsOf(frame);
       for (const n of points) {
@@ -328,7 +332,7 @@ export class FocusMarkers {
     t: number, toggles: MapDisplayToggles, visibilityPolicy: MapVisibilityPolicy,
   ): void {
     const celestialSystem = this.celestialSystem;
-    const celestialBodies = celestialSystem.celestialBodiesAt(t);
+    const celestialBodies = celestialSystem.celestialMotions;
 
     const positions: Record<string, Vec3> = {};
     const displayMap: Record<string, { icon: boolean; label: boolean }> = {};
@@ -344,7 +348,7 @@ export class FocusMarkers {
     if (toggles.lagrangeVisible && toggles.lagrangeName) {
       for (const { id, name, motion, points } of this.lagrangeSources) {
         if (!visibilityPolicy.body(id).category) continue;
-        const frame = secondaryFrameOf(celestialBodies, motion, t);
+        const frame = secondaryFrameOf(celestialBodies, t, motion, t);
         if (frame === null) continue;
         const l = lagrangePointsOf(frame);
         for (const n of points) {
@@ -372,6 +376,7 @@ export class FocusMarkers {
     }
     this.shownLabels = shown;
     this.celestialBodies = celestialBodies;
+    this.celestialBodiesPivot = t;
     this.cachedBodyPickablesTime = t;
     this.cachedBodyPickablesPolicy = visibilityPolicy;
   }
@@ -391,7 +396,7 @@ export class FocusMarkers {
     projectedForLabel.length = 0;
     projectedForIcon.length = 0;
     for (const lbl of this.shownLabels) {
-      const opacity = occlusionOpacity(cameraPos, lbl.pos, this.celestialBodies);
+      const opacity = occlusionOpacity(cameraPos, lbl.pos, this.celestialBodies, this.celestialBodiesPivot);
       const occluded = opacity <= 0;
       const p = project(lbl.pos);
       frame.set(lbl.id, { occluded, opacity, x: p.x, y: p.y, front: p.front });
@@ -467,7 +472,8 @@ export class FocusMarkers {
   // 距離 500万 km 以上: 第2段階の省略表示として 1行でアイコンと数のみ表示 (衛星系もまとめて表示・プレフィックスなし)
   syncSubLabels(
     groupedMarkers: GroupedMarkers,
-    celestialBodies: readonly CelestialBody[],
+    celestialBodies: readonly CelestialMotion[],
+    pivot: number,
     overviewMode: boolean,
     project: ProjectFn,
     cameraPos: Vec3,
@@ -482,7 +488,7 @@ export class FocusMarkers {
     const itemsByTargetBody = new Map<string, { prefix: string; item: GroupedMarkerItem }[]>();
 
     for (const item of hiddenItems) {
-      const center = strongestAttractor(item.pos, celestialBodies);
+      const center = strongestAttractor(item.pos, celestialBodies, pivot);
       const centerLbl = this.labelsById.get(center.id);
       const distToCenter = centerLbl ? len(sub(centerLbl.pos, cameraPos)) : Infinity;
       const isStage2 = distToCenter >= DIST_STAGE2_THRESHOLD;

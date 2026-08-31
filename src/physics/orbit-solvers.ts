@@ -1,5 +1,7 @@
 // 軌道上の特徴点(赤道交点 EqAN/EqDN、相対交点 AN/DN など)の計算を行う純粋物理計算層。
-import { CelestialBody, celestialBodyPositionAt, frameOfCelestialBody, orbitalElementsOf } from './celestial-body';
+import type { CelestialMotion } from './celestial-motion';
+import { frameOfCelestialBody } from './frame';
+import { orbitalElementsOf } from './elements';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from './elements';
 import { toFrameState } from './frame';
 import { KinematicState } from './kinematic-state';
@@ -22,15 +24,16 @@ export interface OrbitCrossingsResult {
 // 折れ線の列(区間ごとに1本)で、渡されたときはその上を順に探して最初に見つかった昇交点・降交点を
 // 返す。空なら state の軌道要素から解析的に求める。ノード通過時刻 t における中心天体の ECI 位置は、
 // 呼び出し側が精密な天体暦を持っていれば centerPositionAt でそれを渡すこと — 既定の
-// celestialBodyPositionAt は center.state 起点の弾道外挿でしかなく、月のように数時間〜数日先まで
+// 既定の pivot からの外挿は弾道近似でしかなく、月のように数時間〜数日先まで
 // 公転するものには不十分(表示側が精密暦で un-bake すると、この弾道外挿との差がそのまま交点位置の
 // ズレになる)。
 export function solveEquatorCrossings(
   state: KinematicState,
-  center: CelestialBody,
+  center: CelestialMotion,
+  centerPivot: number,
   eqNormal: Vec3,
   paths: readonly (readonly KinematicState[])[] = [],
-  centerPositionAt: (t: number) => Vec3 = (t) => celestialBodyPositionAt(center, t),
+  centerPositionAt: (t: number) => Vec3 = (t) => center.positionAt(centerPivot, t),
 ): OrbitCrossingsResult | null {
   if (paths.length > 0) {
     let asc: KinematicState | null = null;
@@ -44,11 +47,11 @@ export function solveEquatorCrossings(
     return asc && desc ? { asc, desc } : null;
   }
 
-  const el = orbitalElementsOf(state, center);
+  const el = orbitalElementsOf(state, center, centerPivot);
   const nodes = el && nodeAnomalies(el, eqNormal);
   if (!el || !nodes) return null;
 
-  const relative = toFrameState(frameOfCelestialBody(center), state);
+  const relative = toFrameState(frameOfCelestialBody(center, centerPivot), state);
   const nodeState = (nu: number): OrbitNodeState => {
     const dt = tofBetween(el, trueAnomalyAt(el, relative.r), nu);
     const t = state.t + (isFinite(dt) ? dt : 0);

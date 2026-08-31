@@ -9,7 +9,7 @@ import { PredictPanel } from './hud/panels/predict-panel';
 import { buildTicks } from './hud/orbit/tick-scale';
 import { epochUnixSeconds } from './hud/utils';
 import type { TickLabelMode, TimeLabelSetting } from './hud/orbit/calendar-ticks';
-import { strongestAttractor } from '../physics/celestial-body';
+import { strongestAttractor } from '../physics/attractor';
 import { ReferenceFrame } from '../physics/frame';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
@@ -251,8 +251,8 @@ export class DisplayWindowManager {
   // durationSec 側のフォールバックに委ねる。
   private currentOrbitPeriod(player: DynamicEntity | null, simTime: number): number {
     if (!player) return NaN;
-    const center = strongestAttractor(player.state.r, this.celestialSystem.celestialBodiesAt(simTime));
-    return player.orbitalElementsAround(center)?.period ?? NaN;
+    const center = strongestAttractor(player.state.r, this.celestialSystem.celestialMotions, simTime);
+    return player.orbitalElementsAround(center, simTime)?.period ?? NaN;
   }
 
   // 操作対象の予測軌道が表示期間のどこまで届いているかの割合(0..1)。

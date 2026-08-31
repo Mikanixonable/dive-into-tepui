@@ -3,7 +3,7 @@
 // r から見た太陽円盤と遮蔽天体円盤の重なり面積比で減光率を出す — 本影(重なり=太陽円盤全体)・
 // 金環(遮蔽円盤が太陽円盤に内包)・半影(部分的に重なる)・完全日照(重なり無し)が場合分け
 // 無しに1つの閉じた式から出る。
-import { CelestialBody } from './celestial-body';
+import type { CelestialMotion } from './celestial-motion';
 import { Vec3 } from '../math/vec3';
 
 // 2円(半径 r1, r2、中心距離 d、すべて同じ角度単位)の交差面積。
@@ -26,24 +26,24 @@ function occludedFraction(
   r: Vec3,
   sunDirX: number, sunDirY: number, sunDirZ: number,
   sunDist: number, sinSunAng: number, sunAngRadius: number,
-  occluder: CelestialBody,
+  occluder: CelestialMotion, occluderPivot: number,
 ): number {
-  if (occluder.isStar || occluder.radius <= 0) return 1; // 恒星自身・半径0の天体は遮蔽器にしない
-  const b = occluder.state.r;
+  if (occluder.kind === 'star' || occluder.def.radius <= 0) return 1; // 恒星自身・半径0の天体は遮蔽器にしない
+  const b = occluder.positionAt(occluderPivot, occluderPivot);
   const dx = b.x - r.x, dy = b.y - r.y, dz = b.z - r.z;
   const along = dx * sunDirX + dy * sunDirY + dz * sunDirZ;
   if (along <= 0 || along >= sunDist) return 1; // 艦より太陽から遠い側/背後にある天体は遮蔽しない
   const distSq = dx * dx + dy * dy + dz * dz;
   const dist = Math.sqrt(distSq);
-  if (dist <= occluder.radius) return 0; // 天体の内側なら太陽は見えない
+  if (dist <= occluder.def.radius) return 0; // 天体の内側なら太陽は見えない
   // 太陽線からの垂直距離が両円盤の視半径の和を超えていれば、重なりようがない。sin は
   // [0, π/2] で劣加法的(sin(a+b) ≤ sin a + sin b)なので、sin で測ったまま比べれば
   // 逆三角関数を通さずに安全側で落とせる — along > 0 なので離角は π/2 未満。
-  const reach = sinSunAng * dist + occluder.radius;
+  const reach = sinSunAng * dist + occluder.def.radius;
   if (distSq - along * along > reach * reach) return 1;
   // LEO のように天体のすぐ近くでは R/d が 1 に近づくので、視半径は asin を取る
   // (小角近似のままだと地球の影の境界が数十度ずれる)。
-  const occAngRadius = Math.asin(occluder.radius / dist);
+  const occAngRadius = Math.asin(occluder.def.radius / dist);
   const sep = Math.acos(Math.min(1, Math.max(-1, along / dist)));
   const overlap = circleOverlapArea(sunAngRadius, occAngRadius, sep);
   return 1 - overlap / (Math.PI * sunAngRadius * sunAngRadius);
@@ -56,39 +56,44 @@ function occludedFraction(
 //
 // 場合分けは occludedFraction と同じ: 恒星自身と半径 0 の天体は遮蔽器にならず、r より恒星から
 // 遠い側や背後にある天体も隠さない。天体の内側からは恒星が完全に隠れる。
-export function maxOccludedFraction(r: Vec3, star: CelestialBody, body: CelestialBody): number {
-  if (body.isStar || body.radius <= 0) return 0;
-  const s = star.state.r;
+export function maxOccludedFraction(
+  r: Vec3, star: CelestialMotion, body: CelestialMotion, pivot: number,
+): number {
+  if (body.kind === 'star' || body.def.radius <= 0) return 0;
+  const s = star.positionAt(pivot, pivot);
   const tx = s.x - r.x, ty = s.y - r.y, tz = s.z - r.z;
   const sunDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
   if (sunDist < 1) return 0; // 位置が恒星に一致(退化)
-  const b = body.state.r;
+  const b = body.positionAt(pivot, pivot);
   const dx = b.x - r.x, dy = b.y - r.y, dz = b.z - r.z;
   const along = (dx * tx + dy * ty + dz * tz) / sunDist;
   if (along <= 0 || along >= sunDist) return 0;
   const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  if (dist <= body.radius) return 1;
-  const occAngRadius = Math.asin(body.radius / dist);
-  const sunAngRadius = Math.asin(Math.min(1, star.radius / sunDist));
+  if (dist <= body.def.radius) return 1;
+  const occAngRadius = Math.asin(body.def.radius / dist);
+  const sunAngRadius = Math.asin(Math.min(1, star.def.radius / sunDist));
   return Math.min(1, (occAngRadius / sunAngRadius) ** 2);
 }
 
 // 位置 r における日照率 0..1。celestialBodies は遮蔽しうる全天体(恒星自身は無視する)。
 // 複数天体による遮蔽は各々の減光率の積で合成する — 2天体が同時に太陽面へ重なって
 // 掩蔽し合う状況は現実的に起きないため、重なり領域を厳密に扱うより素直な近似とした。
-export function sunlitFactor(r: Vec3, star: CelestialBody, celestialBodies: readonly CelestialBody[]): number {
-  const s = star.state.r;
+export function sunlitFactor(
+  r: Vec3, star: CelestialMotion, starPivot: number,
+  celestialBodies: readonly CelestialMotion[], occluderPivot: number,
+): number {
+  const s = star.positionAt(starPivot, starPivot);
   const tx = s.x - r.x, ty = s.y - r.y, tz = s.z - r.z;
   const sunDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
   if (sunDist < 1) return 1; // 位置が恒星に一致(退化)
   const inv = 1 / sunDist;
-  const sinSunAng = Math.min(1, star.radius / sunDist);
+  const sinSunAng = Math.min(1, star.def.radius / sunDist);
   const sunAngRadius = Math.asin(sinSunAng);
 
   let lit = 1;
   for (const occluder of celestialBodies) {
     lit *= occludedFraction(
-      r, tx * inv, ty * inv, tz * inv, sunDist, sinSunAng, sunAngRadius, occluder);
+      r, tx * inv, ty * inv, tz * inv, sunDist, sinSunAng, sunAngRadius, occluder, occluderPivot);
     if (lit === 0) return 0; // 本影に入った時点で、以降の遮蔽体を見ても答えは変わらない
   }
   return Math.min(1, Math.max(0, lit));

@@ -1,7 +1,8 @@
 // tests/perf/ 配下の各実験が共有する土台。ゲーム本体と同じ調整値の再 export、LEO の初期状態と
 // 天体窓の生成、刻み幅固定の積分、結果の比較と整形を持つ。
 import { solarSystemParts } from 'physics/test-helpers';
-import { CelestialBodyWindows, nearestAtmosphereBody } from '../../src/physics/celestial-body';
+import { nearestAtmosphereBody } from '../../src/physics/attractor';
+import { CelestialMotions } from '../../src/physics/celestial-motion';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
@@ -38,19 +39,19 @@ export function initialLeoState(): KinematicState {
 }
 
 // 解析モデル(.epk パックなし)の天体窓 — 現実の太陽系・地球原点・既定エポック。
-export function buildWindows(): CelestialBodyWindows {
+export function buildWindows(): CelestialMotions {
   return solarSystemParts().system;
 }
 
 // 1ステップぶん、ステップ中点の時刻で重力源を解決してから stepDynamics を呼ぶ。重力源は窓を
 // そのまま渡す — 刻み幅の比較に絞り込みの有無が混ざらないようにする。
 // Simulator.substep がサブステップ中点で celestialBodiesAt を評価するのと同じ方針。
-export function stepDynamicsAt(windows: CelestialBodyWindows, state: KinematicState, dt: number): KinematicState {
+export function stepDynamicsAt(windows: CelestialMotions, state: KinematicState, dt: number): KinematicState {
   const tMid = state.t + dt / 2;
-  const celestialBodies = windows.gravityAttractorsAt(tMid);
+  const celestialBodies = windows.gravityMotions;
   return stepDynamics(
-    state, dt, celestialBodies, windows.celestialBodiesAt(tMid),
-    nearestAtmosphereBody(state.r, windows.atmosphereCelestialBodiesAt(tMid)),
+    state, dt, celestialBodies, 0, windows.celestialMotions,
+    nearestAtmosphereBody(state.r, windows.atmosphereMotions, 0),
     SHIP_BCINV, 0, null,
   );
 }
@@ -59,7 +60,7 @@ export function stepDynamicsAt(windows: CelestialBodyWindows, state: KinematicSt
 // remaining の長さに縮めて targetT へ厳密に着地する — Simulator.advance が
 // ceil(simDt/SUBSTEP_MAX_DT) 個のサブステップへ割るのと同じ「最後の1歩だけ短くなる」構造。
 export function integrateFixedDt(
-  windows: CelestialBodyWindows,
+  windows: CelestialMotions,
   state: KinematicState,
   dt: number,
   targetT: number,
@@ -75,7 +76,7 @@ export function integrateFixedDt(
 // チェックポイント時刻の列へ順に着地しながら積分し、時刻→状態の Map を返す(1回の連続積分で
 // 全チェックポイントぶんを賄うので、チェックポイントごとに t=0 からやり直さない)。
 export function integrateToCheckpoints(
-  windows: CelestialBodyWindows,
+  windows: CelestialMotions,
   state0: KinematicState,
   dt: number,
   checkpoints: readonly number[],

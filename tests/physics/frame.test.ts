@@ -5,7 +5,7 @@ import { orbitingMotionOf, positionOf, solarSystemParts, stateOf } from './test-
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { MU_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
-import { bodyAnchorSource } from '../../src/physics/celestial-body';
+import { bodyAnchorSource } from '../../src/physics/attractor';
 import { FrameAnchors } from '../../src/game/frame-anchors';
 import { FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
@@ -29,7 +29,7 @@ function findFrame(frames: readonly ReferenceFrame[], center: string, rotatingWi
 }
 
 // 登録天体だけを参照するテストで使う空のスタブ。
-const NO_ANCHORS: FrameAnchorSource = { bodies: [], stateOf: () => null, attractorOf: () => null };
+const NO_ANCHORS: FrameAnchorSource = { bodies: [], bodiesPivot: 0, stateOf: () => null, attractorOf: () => null };
 
 export function register(): void {
   // 太陽・月とも初期位相を固定して決定的にする。
@@ -213,7 +213,7 @@ export function register(): void {
   test('frame: 自転回転系では地表に固定した点の座標系相対速度が 0 になる', () => {
     const t = 55555;
     const frame = referenceFrames.frameOf('earth', { kind: 'spin', id: 'earth' });
-    const tf = referenceFrames.transformAt(frame, t, bodyAnchorSource([]));
+    const tf = referenceFrames.transformAt(frame, t, bodyAnchorSource([], 0));
     // 座標系相対で (R, 0, 0) に置いた点を ECI へ戻し、自転とともに動く速度を与える。
     const r = qRotate(tf.q, v3(R_EARTH_EQ, 0, 0));
     const rel = toFrameState(tf, kinematicState<'eci'>(t, r, cross(tf.omega, r)));
@@ -245,7 +245,7 @@ export function register(): void {
   test('frame: center が役割トークンのとき、source が返した状態が原点になる', () => {
     const t = 4321;
     const shipState = kinematicState<'eci'>(t, v3(7e6, 1e6, 2e6), v3(100, 200, 300));
-    const source: FrameAnchorSource = { bodies: [], stateOf: () => shipState, attractorOf: () => null };
+    const source: FrameAnchorSource = { bodies: [], bodiesPivot: 0, stateOf: () => shipState, attractorOf: () => null };
     const frame: ReferenceFrame = { center: SHIP, rotatingWith: null };
     const tf = referenceFrames.transformAt(frame, t, source);
     assert.ok(close(tf.origin, shipState.r));
@@ -258,7 +258,7 @@ export function register(): void {
     // 初めて null を返す)を、ここではスタブ自身に持たせて検証する。
     let misses = 0;
     let held: KinematicState | null = null;
-    const source: FrameAnchorSource = { bodies: [], stateOf: () => null, attractorOf: () => null };
+    const source: FrameAnchorSource = { bodies: [], bodiesPivot: 0, stateOf: () => null, attractorOf: () => null };
     const hold = (resolved: KinematicState | null): KinematicState | null => {
       if (resolved !== null) { held = resolved; misses = 0; return resolved; }
       misses++;
@@ -280,7 +280,7 @@ export function register(): void {
     const earth = stateOf(parts, 'earth', t);
     // 地球のまわりを回る架空の機体(地球からのオフセット + 円軌道ふうの速度で相対角運動量を持たせる)。
     const shipState = kinematicState<'eci'>(t, add(earth.r, v3(1e7, 0, 0)), add(earth.v, v3(0, 3000, 500)));
-    const source: FrameAnchorSource = { bodies: [], stateOf: () => shipState, attractorOf: () => 'earth' };
+    const source: FrameAnchorSource = { bodies: [], bodiesPivot: 0, stateOf: () => shipState, attractorOf: () => 'earth' };
     // 原点は太陽 — 主天体(地球)とは別の天体にして、基底が frame.center に依らないことを確かめる。
     const frame: ReferenceFrame = { center: 'sun', rotatingWith: { kind: 'revolution', id: SHIP } };
     const tf = referenceFrames.transformAt(frame, t, source);
@@ -311,7 +311,7 @@ export function register(): void {
     });
     const frame = referenceFrames.frameOf(SHIP, { kind: 'revolution', id: SHIP });
     for (const t of [t0, t0 + 500, t0 + 3600, t0 + 43200]) {
-      anchors.update(windows.celestialBodiesAt(t));
+      anchors.update(windows.celestialMotions, 0);
       const tf = referenceFrames.transformAt(frame, t, anchors);
       const rel = toFrameState(tf, shipStateAt(t));
       assert.ok(close(rel.r, v3(), 1), `t=${t}: ${JSON.stringify(rel.r)}`);

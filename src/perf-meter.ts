@@ -22,7 +22,6 @@ export type PerfCounts = {
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
   simSubsteps: number; simIntegrated: number; simFollowed: number; gravitySources: number;
   planArcs: number; planSteps: number;
-  celestialBodiesCacheHits: number; celestialBodiesCacheMisses: number;
   timeCacheHits: number; timeCacheMisses: number;
   warp: number;
 };
@@ -94,8 +93,6 @@ export class PerfMeter {
   private frames = 0;
   private lastFlush = performance.now();
   // 前回フラッシュ時点の暦キャッシュ累計。表示する集計期間分の差分を取るために持つ。
-  private lastCelestialBodiesHits = 0;
-  private lastCelestialBodiesMisses = 0;
   private lastTimeHits = 0;
   private lastTimeMisses = 0;
   // 直近フラッシュで組んだ行。窓を開き直したときに空の窓を出さないために持つ。
@@ -275,12 +272,8 @@ export class PerfMeter {
     const totalAvg = totals.reduce((a, b) => a + b, 0) / frames;
     const totalSorted = [...totals].sort((a, b) => a - b);
     // 暦キャッシュは累計値なので、この集計期間に増えた分だけを見せる
-    const attrHits = c.celestialBodiesCacheHits - this.lastCelestialBodiesHits;
-    const attrMisses = c.celestialBodiesCacheMisses - this.lastCelestialBodiesMisses;
     const timeHits = c.timeCacheHits - this.lastTimeHits;
     const timeMisses = c.timeCacheMisses - this.lastTimeMisses;
-    this.lastCelestialBodiesHits = c.celestialBodiesCacheHits;
-    this.lastCelestialBodiesMisses = c.celestialBodiesCacheMisses;
     this.lastTimeHits = c.timeCacheHits;
     this.lastTimeMisses = c.timeCacheMisses;
     const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
@@ -307,7 +300,6 @@ export class PerfMeter {
       ...RATE_COUNTS.map((r, i) => this.countRow(r.key, r.label, r.group, this.rateStats[i]!, frames)),
       { key: 'arc-lead', label: '先端余裕', group: '予測', value: c.arcLead === null ? '—' : `${c.arcLead.toFixed(0)}s` },
 
-      { key: 'eph-attr', label: 'celestialBodiesAt', value: `hit ${attrHits} / miss ${attrMisses}`, group: '暦キャッシュ' },
       { key: 'eph-all', label: '全リング', value: `hit ${timeHits} / miss ${timeMisses}`, group: '暦キャッシュ' },
 
       { key: 'view', label: 'view', value: c.mapMode ? 'map' : 'combat', group: '表示' },

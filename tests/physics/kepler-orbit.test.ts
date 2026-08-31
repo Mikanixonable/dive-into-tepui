@@ -1,16 +1,16 @@
 // kepler-orbit.ts の回帰テスト。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { assertOmegaMatchesBasis } from './test-helpers';
+import { assertOmegaMatchesBasis, fixedMotion } from './test-helpers';
 import { OrbitalElements, keplerPeriod, timeSincePeriapsis, trueAnomalyFromMean } from '../../src/physics/elements';
-import { CelestialBody } from '../../src/physics/celestial-body';
+import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { qRotate } from '../../src/physics/attitude';
 import { dot, len, scale, sub, v3 } from '../../src/math/vec3';
 
-const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
+const EARTH: CelestialMotion = fixedMotion({ id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null });
 
 // 永年変化率をすべて 0 にした固定楕円(比較用)。
 const STATIC_ORBIT: KeplerOrbit = {
@@ -73,7 +73,8 @@ export function register(): void {
     for (const e of [0, 0.0549, 0.3]) {
       const el: OrbitalElements = {
         a, e, p: a * (1 - e * e), incDeg: 0, period: keplerPeriod(a, MU_EARTH),
-        pHat: v3(1, 0, 0), qHat: v3(0, 1, 0), hHat: v3(0, 0, 1), phaseRef: null, center: EARTH,
+        pHat: v3(1, 0, 0), qHat: v3(0, 1, 0), hHat: v3(0, 0, 1), phaseRef: null,
+        center: EARTH, centerState: EARTH.stateAt(0),
       };
       const n = (2 * Math.PI) / el.period;
       for (const nu0 of [-2.5, -1, 0, 0.7, 2.9]) {

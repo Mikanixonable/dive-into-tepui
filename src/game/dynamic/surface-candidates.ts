@@ -8,13 +8,13 @@
 //     組み直さずにそのまま使える。
 //  2. narrow — 参加者の顔ぶれで決まる。区間を共有する多数を同じ窓で解くときだけ得になる
 //     (参加者が1つなら into と同じ判定を二度やることになる)。
-import { CelestialBody, celestialBodyStateAt } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, len, scale, sub, v3 } from '../../math/vec3';
 
 // 区間の始点位置と、そこから表面が区間内に届きうる距離。
 type BodyReach = {
-  readonly body: CelestialBody;
+  readonly body: CelestialMotion;
   readonly r0: Vec3;
   readonly reach: number;
 };
@@ -51,13 +51,15 @@ export class SurfaceCandidates {
 
   // 区間 [tStart, tEnd] のあいだに各天体の表面が届きうる範囲を求める。以降の into と narrow は
   // この上で答えるので、区間の内側をさらに細かく割って解く個体も組み直しを要さない。
-  resetSpan(bodies: readonly CelestialBody[], tStart: number, tEnd: number): void {
+  resetSpan(
+    bodies: readonly CelestialMotion[], pivot: number, tStart: number, tEnd: number,
+  ): void {
     this.spanning.length = 0;
     this.reachable.length = 0;
     if (!(tStart <= tEnd)) return;
     for (const body of bodies) {
-      const start = celestialBodyStateAt(body, tStart);
-      const reach = body.radius + intervalReach(start, celestialBodyStateAt(body, tEnd));
+      const start = body.stateAt(pivot, tStart);
+      const reach = body.def.radius + intervalReach(start, body.stateAt(pivot, tEnd));
       this.spanning.push({ body, r0: start.r, reach });
     }
     for (const candidate of this.spanning) this.reachable.push(candidate);
@@ -84,7 +86,7 @@ export class SurfaceCandidates {
   }
 
   // 参加者1つが区間内に触れうる天体だけを out へ書く。out は呼び出し側が所有する。
-  into(participant: SurfaceParticipant, out: CelestialBody[]): CelestialBody[] {
+  into(participant: SurfaceParticipant, out: CelestialMotion[]): CelestialMotion[] {
     out.length = 0;
     const { prevState } = participant;
     const reach = participant.radius + intervalReach(prevState, participant.state);

@@ -21,7 +21,7 @@ import { planExecutionLabel, type PlanExecutionMode } from '../player/player';
 import { MenuAction, MenuCommon, MenuItem, type PauseMenu } from '../hud/windows';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
-import { strongestAttractor } from '../../physics/celestial-body';
+import { strongestAttractor } from '../../physics/attractor';
 import type { MapPickables } from './map-pickables';
 
 interface PickHandler {
@@ -179,7 +179,8 @@ export class MapPickableMenu {
     },
     'apsis': {
       itemsFor: (target, simTime) => {
-        const centerId = strongestAttractor(target.pos, this.celestialSystem.celestialBodiesAt(simTime)).id;
+        const centerId = strongestAttractor(
+          target.pos, this.celestialSystem.celestialMotions, simTime).id;
         const peOrAp = target.id === 'apsisAp' ? 'ap' : 'pe';
         const spec = getApsisLabelSpec(peOrAp, centerId);
         return [
@@ -211,7 +212,7 @@ export class MapPickableMenu {
         const isAn = target.id.startsWith('eqan-');
         const spec = isAn ? ORBIT_ELEMENT_LABELS.eqAn : ORBIT_ELEMENT_LABELS.eqDn;
         const centerName = this.celestialSystem.nameOf(
-          strongestAttractor(target.pos, this.celestialSystem.celestialBodiesAt(simTime)).id);
+          strongestAttractor(target.pos, this.celestialSystem.celestialMotions, simTime).id);
         const label = `${centerName}${spec.nameJa}`;
         return [
           { type: 'header', label, subLabel: spec.nameEn },

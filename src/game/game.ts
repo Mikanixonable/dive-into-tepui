@@ -327,7 +327,7 @@ export class Game {
     const canDisplayFuture = !this.displayWindowManager.forceCurrent;
     // このフレームの表示時刻の celestialBodies を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
-    this.frameAnchors.update(this.celestialSystem.celestialBodiesAt(displayWindow.displayTime));
+    this.frameAnchors.update(this.celestialSystem.celestialMotions, this.simulator.simTime);
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._celestialSystem.update(displayWindow.displayTime, overviewMode, graphics);
     this.sections.enter(SECTION.plan);
@@ -423,7 +423,7 @@ export class Game {
     this.sections.enter(SECTION.plan);
     this.guide.update(
       this.player, this.simulator.simTime, this.editor.editMode,
-      this.celestialSystem.celestialBodiesAt(this.simulator.simTime),
+      this.celestialSystem.celestialMotions,
     );
     this.sections.exit(SECTION.plan);
   }
@@ -518,10 +518,10 @@ export class Game {
     // 現在時刻の配列は「いまの状態」を数値で読ませる HUD・プロパティ行が使い、表示時刻の配列は
     // 画面に描く幾何(軌道線・折れ線・天体位置)が使う — 天体メッシュは displayTime に置かれるので、
     // 楕円の中心天体位置や折れ線の un-bake を simTime で取ると同一画面上でずれる。
-    const celestialBodies = this.celestialSystem.celestialBodiesAt(simTime);
-    const displayCelestialBodies = this.celestialSystem.celestialBodiesAt(displayTime);
+    const celestialBodies = this.celestialSystem.celestialMotions;
+    const displayCelestialBodies = this.celestialSystem.celestialMotions;
     // sync フェーズの frameTransformAt 呼び出しも同じ表示時刻の celestialBodies を見るように揃える。
-    this.frameAnchors.update(displayCelestialBodies);
+    this.frameAnchors.update(displayCelestialBodies, displayWindow.displayTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
@@ -566,7 +566,7 @@ export class Game {
       this.celestialSystem, displayCelestialBodies,
     );
     this.cameraSystem.focusMarkers.syncSubLabels(
-      this.markerManager.combatMarkers, displayCelestialBodies,
+      this.markerManager.combatMarkers, displayCelestialBodies, displayTime,
       overviewMode, project, this.cameraSystem.activeCameraPos,
     );
     this.navTarget.sync(this.cameraSystem);

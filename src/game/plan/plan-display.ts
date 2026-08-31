@@ -2,7 +2,8 @@
 // (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { Vec3, len, sub } from '../../math/vec3';
-import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { strongestAttractor } from '../../physics/attractor';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../math/projection';
@@ -90,8 +91,10 @@ export class PlanDisplay {
   private tickIcons: readonly PlanTickIcon[] = [];
   private lastTickKeys: readonly string[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
-  // update が求めた時点の CelestialBody[]。sync でのマップビュー遮蔽判定に使う。
-  private celestialBodies: readonly CelestialBody[] = [];
+  // update が求めた時点の CelestialMotion[]。sync でのマップビュー遮蔽判定に使う。
+  private celestialBodies: readonly CelestialMotion[] = [];
+  // celestialBodies の位置を厳密に引く時刻。
+  private celestialBodiesPivot = 0;
 
   // 計画折れ線(PlanPath)を構築する。
   constructor(
@@ -119,7 +122,8 @@ export class PlanDisplay {
       return;
     }
     const { simTime, displayTime } = displayWindow;
-    this.celestialBodies = this.celestialSystem.celestialBodiesAt(displayTime);
+    this.celestialBodies = this.celestialSystem.celestialMotions;
+    this.celestialBodiesPivot = displayTime;
     this.path.update(
       planData, ship, this.celestialSystem, displayWindow.frame, simTime, displayTime, frameAnchors,
       celestialBodyProvider, displayWindow.duration,
@@ -195,7 +199,7 @@ export class PlanDisplay {
       this.markerManager.hide('plannedPlayer');
       return;
     }
-    if (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.celestialBodies)) {
+    if (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.celestialBodies, this.celestialBodiesPivot)) {
       this.markerManager.fadeOut('plannedPlayer');
       return;
     }
@@ -210,8 +214,9 @@ export class PlanDisplay {
   // 高度はその位置で最も強く引く天体の表面からの高さ。
   private plannedPlayerLabel(displayTime: number, simTime: number, r: Vec3): string {
     const tRel = displayTime - simTime;
-    const center = strongestAttractor(r, this.celestialBodies);
-    const alt = len(sub(r, center.state.r)) - center.radius;
+    const pivot = this.celestialBodiesPivot;
+    const center = strongestAttractor(r, this.celestialBodies, pivot);
+    const alt = len(sub(r, center.positionAt(pivot, pivot))) - center.def.radius;
     if (tRel <= 0) return `計画位置 高度 ${fmtMarkerDist(alt, 0)}`;
     const h = Math.floor(tRel / 3600);
     const m = Math.floor((tRel % 3600) / 60);
@@ -317,7 +322,7 @@ export class PlanDisplay {
       const icon = this.apsisIcons.find((m) => m.id === key);
       if (!icon) {
         this.markerManager.hide(key);
-      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
+      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies, this.celestialBodiesPivot)) {
         this.markerManager.fadeOut(key);
       } else {
         this.markerManager.setPosition(
@@ -334,7 +339,7 @@ export class PlanDisplay {
       const icon = this.impactIcons.find((m) => m.key === key);
       if (!icon) {
         this.markerManager.hide(key);
-      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
+      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies, this.celestialBodiesPivot)) {
         this.markerManager.fadeOut(key);
       } else {
         this.markerManager.setPosition(
@@ -360,7 +365,7 @@ export class PlanDisplay {
     for (const rank of ranksDesc) {
       for (let i = 0; i < n; i++) {
         if (icons[i]!.rank !== rank || !projected[i]!.front
-          || (overviewMode && isOccluded(cameraPos, icons[i]!.pos, this.celestialBodies))) continue;
+          || (overviewMode && isOccluded(cameraPos, icons[i]!.pos, this.celestialBodies, this.celestialBodiesPivot))) continue;
         if (this.isFarFromShown(projected, shown, i, minPxSq)) shown[i] = true;
       }
     }
@@ -377,7 +382,7 @@ export class PlanDisplay {
 
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
-      const occluded = overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies);
+      const occluded = overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies, this.celestialBodiesPivot);
       if (!shown[i] || occluded) {
         if (occluded) this.markerManager.fadeOut(icon.key);
         else this.markerManager.hide(icon.key);

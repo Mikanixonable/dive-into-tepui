@@ -17,7 +17,7 @@ import * as C from '../const';
 import { DynamicSystem } from './dynamic-system';
 import { Player } from '../player/player';
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { CelestialBody, CelestialBodyWindows } from '../../physics/celestial-body';
+import { CelestialMotion, CelestialMotions } from '../../physics/celestial-motion';
 import type { Stage } from '../stages/stage';
 import { EntityContactPhysics } from './entity-contact-physics';
 import { SurfaceContactPhysics } from './surface-contact-physics';
@@ -59,7 +59,7 @@ export class Simulator {
   // entities/windows/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
   constructor(
     private readonly entities: DynamicSystem,
-    private readonly windows: CelestialBodyWindows,
+    private readonly windows: CelestialMotions,
     private readonly sections: FrameSections,
     initialSimTime = 0,
   ) {
@@ -125,7 +125,8 @@ export class Simulator {
       // (substep)。刻み幅を各自で積ませると、細分した個体の先端時刻が丸め誤差ぶん
       // simTime から外れ、履歴を持たない種別(弾・薬莢)が表示時刻と一致しなくなる。
       const endTime = this.simTime + subDt;
-      this.surfaceContactPhysics.beginSubstep(this.bodies.surface, this.simTime, endTime);
+      this.surfaceContactPhysics.beginSubstep(
+        this.bodies.surface, this.bodies.surfacePivot, this.simTime, endTime);
       this.substep(endTime, subDt, activeStage);
       this.simTime = endTime;
       this.sections.exit(SECTION.orbit);
@@ -174,8 +175,8 @@ export class Simulator {
   }
 
   // このサブステップで大気を持つ相手として扱う天体。焼失の判定に表面の窓は要らない。
-  private atmosphereBodies(): readonly CelestialBody[] {
-    return this.windows.atmosphereCelestialBodiesAt(this.simTime);
+  private atmosphereBodies(): readonly CelestialMotion[] {
+    return this.windows.atmosphereMotions;
   }
 
   // 生存する全個体を dt だけ進める。個体どうしに依存が無いので、順序は結果を変えない
@@ -198,18 +199,19 @@ export class Simulator {
     for (const e of this.entities.all()) {
       if (!e.alive) continue;
       // 抗力をもう積めない個体は、進める前に失う — 積んでも正確な軌道は得られない。
-      if (e.outpacedByDrag(dt, this.bodies.atmosphere)) {
+      if (e.outpacedByDrag(dt, this.bodies.atmosphere, this.bodies.gravityPivot)) {
         e.alive = false;
         continue;
       }
       const near = this.bodies.attractorsNear(e.state.r);
       const atmosphereBody = this.bodies.atmosphereBodyNear(e.state.r);
-      const divisions = e.substepDivisions(dt, this.bodies.atmosphere);
+      const divisions = e.substepDivisions(dt, this.bodies.atmosphere, this.bodies.gravityPivot);
       const step = dt / divisions;
       for (let i = 0; i < divisions && e.alive; i++) {
         const integrated = e.stepSimulation(
           i === divisions - 1 ? endTime - e.state.t : step,
-          near, this.bodies.surface, atmosphereBody, this.bodies.star, activeStage);
+          near, this.bodies.surface, atmosphereBody, this.bodies.star,
+          this.bodies.gravityPivot, this.bodies.surfacePivot, activeStage);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
         if (divisions > 1) this.surfaceContactPhysics.resolveOne(e, activeStage);

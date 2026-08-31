@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
 import { KinematicState } from '../../../physics/kinematic-state';
-import { CelestialBody } from '../../../physics/celestial-body';
+import { CelestialMotion } from '../../../physics/celestial-motion';
 
 import { FloatingOrigin } from '../../camera/floating-origin';
 import type { Stage } from '../../stages/stage';
@@ -102,7 +102,7 @@ export class Bullet extends DynamicEntity {
     // 判定もここで行う(substep ごとの位置だけを見る、意図的に雑な最接近判定)。
     public checkLoss(
         _dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3,
-        _atmosphereBodies: readonly CelestialBody[],
+        _atmosphereBodies: readonly CelestialMotion[],
     ): void {
         if (!this.alive) return;
         if (this.shooter === 'enemy' && !this.passedClose

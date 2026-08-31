@@ -86,14 +86,14 @@ export function collinearLocalToBarycentric(params: CollinearParams, local: Vec3
 // 質量比・距離比だけをここで計算する。gamma は lagrangePointsOf が内部に持つ近似値を
 // 公開していないため、求まった L点座標から逆算して一貫性を取る。
 export function collinearFrame(frame: SecondaryFrame, point: CollinearPoint): CollinearFrame {
-  const primaryPos = frame.primary.state.r;
-  const secondaryPos = frame.secondary.state.r;
+  const primaryPos = frame.primaryState.r;
+  const secondaryPos = frame.secondaryState.r;
   // 回転フレームの omega は公転面法線まわりの公転成分と昇交点歳差成分の和になりうる
   // (kepler-orbit.ts 参照)ので、omega の向きそのものが公転面法線と一致するとは限らない。
   // 歳差の有無によらず正しい公転面法線を frame.normal から取る。
   const omega = frame.rotation.omega;
   const normal = frame.normal;
-  const mu = frame.secondary.mu / (frame.primary.mu + frame.secondary.mu);
+  const mu = frame.secondary.def.mu / (frame.primary.def.mu + frame.secondary.def.mu);
   const origin = lagrangePointsOf(frame)[point];
 
   const rVec = sub(secondaryPos, primaryPos);
@@ -302,7 +302,7 @@ export function richardsonAmplitudeX(c: RichardsonCoefficients, az: number): num
 export function lissajousState(system: SecondaryFrame, params: LissajousParams): KinematicState {
   const frame = collinearFrame(system, params.point);
   return centerManifoldState(
-    system.secondary.state.t, frame, params.ax, params.az, params.phase ?? 0, params.psi ?? 0, frame.omegaZ,
+    system.secondaryState.t, frame, params.ax, params.az, params.phase ?? 0, params.psi ?? 0, frame.omegaZ,
   );
 }
 
@@ -314,7 +314,7 @@ export function haloState(system: SecondaryFrame, params: HaloParams): Kinematic
   // 拘束が成り立つ = 面内・面外の振動数が一致するので、面外も面内振動数 λ で駆動する。
   // 面外位相を π/2 ずらして面内の x と直交させ、閉じた三次元ループにする。
   return centerManifoldState(
-    system.secondary.state.t, frame, ax, params.az,
+    system.secondaryState.t, frame, ax, params.az,
     params.phase ?? 0, (params.phase ?? 0) + Math.PI / 2, frame.lambda,
   );
 }

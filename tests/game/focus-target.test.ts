@@ -12,7 +12,7 @@ import { v3 } from '../../src/math/vec3';
 const ORIGIN_STATE: FocusResolveState = { missingFocusFrames: 0, lastResolvedFocus: v3(1, 2, 3) };
 
 function stubAnchors(states: Partial<Record<string, KinematicState>>): FrameAnchorSource {
-  return { bodies: [], stateOf: (id) => states[id] ?? null, attractorOf: () => null };
+  return { bodies: [], bodiesPivot: 0, stateOf: (id) => states[id] ?? null, attractorOf: () => null };
 }
 
 export function register(): void {

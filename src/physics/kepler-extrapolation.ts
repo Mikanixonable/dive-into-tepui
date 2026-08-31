@@ -1,5 +1,6 @@
 // 予測列の先端を中心天体まわりの二体ケプラー軌道とみなして外挿する純関数群。THREE/DOM 非依存。
-import { CelestialBody, orbitalElementsOf } from './celestial-body';
+import type { CelestialMotion } from './celestial-motion';
+import { orbitalElementsOf } from './elements';
 import {
   OrbitalElements,
   eccentricAnomalyFromMean,
@@ -16,9 +17,11 @@ const MAX_ECCENTRICITY = 0.98;
 // tip を center まわりの二体軌道とみなしたときの軌道要素。位相の基準は要素自身が持つ。
 // 外挿できない場合(軌道要素が求まらない、離心率が MAX_ECCENTRICITY 以上、長半径が非有限・
 // 非正、center に質量が無い)は null。
-function findExtrapolationOrbit(tip: KinematicState, center: CelestialBody): OrbitalElements | null {
-  if (center.mu <= 0) return null;
-  const el = orbitalElementsOf(tip, center);
+function findExtrapolationOrbit(
+  tip: KinematicState, center: CelestialMotion, centerPivot: number,
+): OrbitalElements | null {
+  if (center.def.mu <= 0) return null;
+  const el = orbitalElementsOf(tip, center, centerPivot);
   if (el === null || el.e >= MAX_ECCENTRICITY || !isFinite(el.a) || el.a <= 0) return null;
   return el;
 }
@@ -27,9 +30,9 @@ function findExtrapolationOrbit(tip: KinematicState, center: CelestialBody): Orb
 // (位置・速度は ECI 方向のまま原点だけ center に取った相対値。絶対 ECI 化は center の
 // 位置・速度を足して行う)。外挿できない軌道では null。
 export function extrapolatedRelativeState(
-  tip: KinematicState, center: CelestialBody, t: number,
+  tip: KinematicState, center: CelestialMotion, centerPivot: number, t: number,
 ): KinematicState<'primaryRel'> | null {
-  const el = findExtrapolationOrbit(tip, center);
+  const el = findExtrapolationOrbit(tip, center, centerPivot);
   return el === null ? null : stateOnOrbitAt(el, t);
 }
 
@@ -42,10 +45,10 @@ function trueAnomalyFromEccentric(E: number, e: number): number {
 // tip 自身は含まない、最後の要素の時刻はちょうど untilT)。等時間刻みだと近点付近で弧長が
 // 粗くなるため E で等分する。外挿できない場合、count <= 0、untilT <= tip.t のいずれでも空配列。
 export function extrapolatedRelativeStates(
-  tip: KinematicState, center: CelestialBody, untilT: number, count: number,
+  tip: KinematicState, center: CelestialMotion, centerPivot: number, untilT: number, count: number,
 ): KinematicState<'primaryRel'>[] {
   if (count <= 0 || untilT <= tip.t) return [];
-  const el = findExtrapolationOrbit(tip, center);
+  const el = findExtrapolationOrbit(tip, center, centerPivot);
   if (el === null || el.phaseRef === null) return [];
   const nu0 = el.phaseRef.nu;
   const e = el.e;

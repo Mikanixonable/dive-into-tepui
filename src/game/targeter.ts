@@ -1,5 +1,5 @@
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
-import { CelestialBody } from '../physics/celestial-body';
+import { CelestialMotion } from '../physics/celestial-motion';
 import * as C from './const';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { Base } from './dynamic/dynamic-entity/base';
@@ -146,7 +146,7 @@ export class Targeter {
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
-    celestialSystem: CelestialSystem, celestialBodies: readonly CelestialBody[],
+    celestialSystem: CelestialSystem, celestialBodies: readonly CelestialMotion[],
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
@@ -168,11 +168,12 @@ export class Targeter {
       const item = tgt instanceof Player
         ? tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode, tgt === player)
         : tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies);
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies, displayTime);
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && overviewMode
-          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, celestialSystem, celestialBodies))
+          ? mapPlanetFadeOpacity(
+            nearestPlanetDistance(ds.r, celestialSystem, celestialBodies, displayTime))
           : 1;
       this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
     }
@@ -187,7 +188,7 @@ export class Targeter {
       if (!ammo.alive) continue;
       const visibility = visibilityPolicy?.entity('ammo');
       if (visibility && !visibility.pickable) continue;
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, celestialBodies);
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, celestialBodies, displayTime);
       const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(ammo.state.r, viewerPos))) : 1;
       this.pushMarkerItem(ammo.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
     }
@@ -195,7 +196,7 @@ export class Targeter {
       if (!fuel.alive) continue;
       const visibility = visibilityPolicy?.entity('fuel');
       if (visibility && !visibility.pickable) continue;
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, celestialBodies);
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, celestialBodies, displayTime);
       const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
       this.pushMarkerItem(fuel.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
     }

@@ -58,8 +58,8 @@ export function register(): void {
     const nodePeriod = 18.612958 * 365.25 * 86400;
     for (let i = 0; i <= 12; i++) {
       const t = (i / 12) * nodePeriod;
-      const moon = windows.celestialBodiesAt(t).find((b) => b.id === 'moon')!;
-      const tilt = angleBetween(moon.degree2!.pole, ECL_POLE_ECI) * R2D;
+      const moon = windows.celestialMotions.find((b) => b.id === 'moon')!;
+      const tilt = angleBetween(moon.degree2At(t)!.pole, ECL_POLE_ECI) * R2D;
       assert.ok(Math.abs(tilt - 1.543) < 0.01, `lunar obliquity at t=${t}: ${tilt} deg`);
     }
   });
@@ -71,9 +71,9 @@ export function register(): void {
     const parts = solarSystemParts({ moon: 0.2 });
     const windows = parts.system;
     for (const t of [0, 5e7, 2e8]) {
-      const moon = windows.celestialBodiesAt(t).find((b) => b.id === 'moon')!;
+      const moon = windows.celestialMotions.find((b) => b.id === 'moon')!;
       const normal = keplerOrbitNormal(orbitingMotionOf(parts, 'moon').keplerOrbit, t);
-      const sep = angleBetween(moon.degree2!.pole, normal) * R2D;
+      const sep = angleBetween(moon.degree2At(t)!.pole, normal) * R2D;
       assert.ok(Math.abs(sep - 6.688) < 0.02, `spin-axis to mean orbit-normal separation at t=${t}: ${sep} deg`);
     }
   });
@@ -85,12 +85,12 @@ export function register(): void {
     let maxSep = 0;
     for (let i = 0; i <= 40; i++) {
       const t = (i / 40) * 27.321661 * 86400;
-      const moon = windows.celestialBodiesAt(t).find((b) => b.id === 'moon')!;
-      const longAxis = moon.degree2!.tesseral!.longAxis;
-      assert.ok(Math.abs(dot(longAxis, moon.degree2!.pole)) < 1e-12, 'the long axis should stay perpendicular to the pole');
+      const moon = windows.celestialMotions.find((b) => b.id === 'moon')!;
+      const longAxis = moon.degree2At(t)!.tesseral!.longAxis;
+      assert.ok(Math.abs(dot(longAxis, moon.degree2At(t)!.pole)) < 1e-12, 'the long axis should stay perpendicular to the pole');
 
       // 実位置方向との離角。0 に張り付いていたら真方向で組んでしまっている。
-      const toMoon = norm(sub(moon.state.r, v3(0, 0, 0)));
+      const toMoon = norm(sub(moon.stateAt(t).r, v3(0, 0, 0)));
       const sep = Math.min(angleBetween(longAxis, toMoon), angleBetween(longAxis, sub(v3(0, 0, 0), toMoon))) * R2D;
       maxSep = Math.max(maxSep, sep);
     }
@@ -155,7 +155,7 @@ export function register(): void {
     const parts = solarSystemParts({ moon: 0.4 });
     const windows = parts.system;
     for (const t of [0, 5e6, 2e8]) {
-      const gravityPole = windows.celestialBodiesAt(t).find((b) => b.id === 'moon')!.degree2!.pole;
+      const gravityPole = windows.celestialMotions.find((b) => b.id === 'moon')!.degree2At(t)!.pole;
       const pole = orbitingMotionOf(parts, 'moon').orientationAt(t)!.axis;
       assert.ok(len(sub(pole, gravityPole)) < 1e-12, `moon pole disagreement at t=${t}`);
     }

@@ -8,7 +8,8 @@
 // 揃え続ける保守が発生する。弧が答えるのは「この自由落下の経路が固体表面へ到達するか」だけ。
 import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { CelestialBody, nearestAtmosphereBody, strongestAttractor } from '../../physics/celestial-body';
+import { nearestAtmosphereBody, strongestAttractor } from '../../physics/attractor';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
@@ -44,7 +45,7 @@ export function trajectorySampleInterval(period: number, keepDuration: number): 
 
 // 弧が打ち切られた、天体表面への到達。到達した瞬間の状態は経路を補間して求める。
 export interface BodyImpact {
-  readonly body: CelestialBody;
+  readonly body: CelestialMotion;
   readonly state: KinematicState;
 }
 
@@ -58,6 +59,8 @@ export class PredictedArc {
   // 前歩の中点で解決した窓の持ち越し。刻み幅と外挿・極値の中心天体の解決だけに使うので、
   // 半歩〜1フレーム古い内容で構わない(RK4 は鈍感、外挿中心は元から1歩古い)。
   private carriedSources: ArcCelestialBodyWindow | null = null;
+  // carriedSources を解決した時刻。carriedSources が null の間の値に意味は無い。
+  private carriedPivot = 0;
   // 要求された間引き下限(span / ARC_MAX_SAMPLES)の最も粗い値。周期由来の間隔は含めない —
   // 含めると、作り直しても同じ値になる粗さを理由に represents が毎フレーム作り直しを命じる。
   private _decimation = 0;
@@ -124,12 +127,14 @@ export class PredictedArc {
     this._decimation = Math.max(this._decimation, span / C.ARC_MAX_SAMPLES);
 
     // 中心窓は最初の1歩だけ先端時刻で解決し、以後は前歩の中点で解決した窓を持ち越す。
+    const heldPivot = this.carriedSources === null ? tip.t : this.carriedPivot;
     const held = this.carriedSources ?? this.bodies.resolve(tip.t, tip, 0);
-    const center = strongestAttractor(tip.r, held.gravity);
+    const center = strongestAttractor(tip.r, held.gravity, heldPivot);
 
     // その場の軌道周期が刻み幅とサンプル間隔の両方の基準になる。
-    const period = keplerPeriod(len(sub(tip.r, center.state.r)), center.mu);
-    const dt = this.stepDt(tip, span, period, held.collision);
+    const period = keplerPeriod(
+      len(sub(tip.r, center.positionAt(heldPivot, heldPivot))), center.def.mu);
+    const dt = this.stepDt(tip, span, period, held.collision, heldPivot);
     // 消費される弧の間引きは表示期間(span)由来の項を使わない — 使うと PREDICT パネルの
     // 選択が実体の状態を変えてしまう。消費前線の近く(ARC_FINE_STEPS 歩ぶん)は毎歩保持し、
     // それより遠くは周期基準の間引きへ落とす。
@@ -139,11 +144,13 @@ export class PredictedArc {
 
     // RK4 の各ステップにはその中点時刻の重力源を渡す。実シミュレーションも各サブステップの
     // 中点で重力源を解決しており、弧だけ過去の天体位置を据え置かないようにする。
-    const mid = this.bodies.resolve(tip.t + dt / 2, tip, dt);
+    const midPivot = tip.t + dt / 2;
+    const mid = this.bodies.resolve(midPivot, tip, dt);
     // 遮蔽体には mid.collision を渡す — 弧が幾何の相手として追っている窓であり、重力を
     // 及ぼすかとは無関係に成員が決まる。登録天体の全数を毎歩解決することはできない。
     this._trajectory.step(
-      dt, mid.gravity, mid.collision, nearestAtmosphereBody(tip.r, mid.collision),
+      dt, mid.gravity, midPivot, mid.collision, midPivot,
+      nearestAtmosphereBody(tip.r, mid.collision, midPivot),
       this.bcInv, this.srpCoeff, null,
       sampleInterval, span, this.keplerTail ? center : null,
     );
@@ -156,10 +163,11 @@ export class PredictedArc {
       return true;
     }
 
-    (this._apsides ??= new ApsisTrack()).observe(center, tip, this._trajectory.state);
-    this.checkSurfaceReach(tip, mid.collision);
+    (this._apsides ??= new ApsisTrack()).observe(center, heldPivot, tip, this._trajectory.state);
+    this.checkSurfaceReach(tip, mid.collision, midPivot);
 
     this.carriedSources = mid;
+    this.carriedPivot = midPivot;
     return true;
   }
 
@@ -174,22 +182,24 @@ export class PredictedArc {
   // 潰れ(Zeno)を断つためのもので、これがあるおかげで衝突コースは必ず有限歩で表面を跨ぎ、
   // 掃引判定が交差点を補間で求められる。
   private stepDt(
-    tip: KinematicState, span: number, period: number, collisionBodies: readonly CelestialBody[],
+    tip: KinematicState, span: number, period: number,
+    collisionBodies: readonly CelestialMotion[], pivot: number,
   ): number {
     let approachDt = Infinity;
     // 動径接近率が正(接近中)の天体だけを対象に、表面までの残距離ぶんの猶予を見る。
     for (const body of collisionBodies) {
-      const relR = sub(tip.r, body.state.r);
+      const bodyState = body.stateAt(pivot);
+      const relR = sub(tip.r, bodyState.r);
       const dist = len(relR);
-      const clearance = dist - body.radius;
+      const clearance = dist - body.def.radius;
       if (clearance <= 0) continue;
-      const closingRate = -dot(relR, sub(tip.v, body.state.v)) / dist;
+      const closingRate = -dot(relR, sub(tip.v, bodyState.v)) / dist;
       if (closingRate <= 1e-9) continue;
       approachDt = Math.min(approachDt, (clearance / closingRate) * ARC_APPROACH_SAFETY);
     }
     // 大気が要求する上限は下限 ARC_MIN_STEP_DT より優先される。下限は接近項の Zeno を断つため
     // のもので、抗力を積めない幅まで刻みを広げる権利は持たない。
-    const atmosphericDt = atmosphericMaxStep(tip, this.bcInv, collisionBodies);
+    const atmosphericDt = atmosphericMaxStep(tip, this.bcInv, collisionBodies, pivot);
     if (this.consumable) {
       return Math.min(approachDt, atmosphericDt, this.simulationMaxStep);
     }
@@ -202,9 +212,11 @@ export class PredictedArc {
 
   // 固体表面への到達の判定。触れた天体があれば、その接触時刻へ経路を補間した状態を到達点
   // として記録し、打ち切る。
-  private checkSurfaceReach(prev: KinematicState, collision: readonly CelestialBody[]): void {
+  private checkSurfaceReach(
+    prev: KinematicState, collision: readonly CelestialMotion[], pivot: number,
+  ): void {
     const next = this._trajectory.state;
-    const hit = firstSurfaceContact(prev, next, this.radius, collision);
+    const hit = firstSurfaceContact(prev, next, this.radius, collision, pivot);
     if (hit === null) return;
     this._impact = {
       body: hit.body,

@@ -33,8 +33,8 @@ import { Player } from '../player/player';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { Targeter } from '../targeter';
 import { v3 } from '../../math/vec3';
-import type { CelestialBody } from '../../physics/celestial-body';
-import { orbitingAttractorOf } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
+import { orbitingAttractorOf } from '../../physics/attractor';
 import type { MapPickables } from './map-pickables';
 import type { Part } from '../dynamic/dynamic-entity/parts';
 import { pickCombatEntityAtPoint } from './combat-pickable';
@@ -482,7 +482,7 @@ export class MapContextActions {
   // ウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)閉じる —
   // 未来ゴースト時刻で位置が求まらないだけのフレーム(displayState が null)は候補列
   // (pickables.pickables)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
-  sync(simTime: number, celestialBodies: readonly CelestialBody[], player: Player | null): void {
+  sync(simTime: number, celestialBodies: readonly CelestialMotion[], player: Player | null): void {
     const overviewMode = this.cameraSystem.overviewMode;
     this.physicalObjectListPanel.setVisible(overviewMode);
     // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
@@ -510,8 +510,11 @@ export class MapContextActions {
       entry.target = byKey.get(key) ?? entry.target;
       const { title, subtitle, items: menuItems } = this.windowParts(entry.target, simTime);
       entry.win.syncHeader(title, subtitle);
-      entry.win.syncRelatedItems(this.relatedItemsFor(entry.target, celestialBodies), this.relatedTitleFor(entry.target));
-      entry.win.syncRows(this.propertyRows.rowsFor(entry.target, celestialBodies, player, simTime));
+      entry.win.syncRelatedItems(
+        this.relatedItemsFor(entry.target, celestialBodies, simTime),
+        this.relatedTitleFor(entry.target));
+      entry.win.syncRows(
+        this.propertyRows.rowsFor(entry.target, celestialBodies, simTime, player, simTime));
       entry.win.syncItems(menuItems);
       entry.win.syncBadge(entry.target.id === this.lastFocusId);
     }
@@ -576,7 +579,7 @@ export class MapContextActions {
     const { title, subtitle, items } = this.windowParts(target, simTime);
     return {
       title, subtitle, icon: pickGlyph(target.kind, target.id, this.celestialSystem), rows: [], items,
-      relatedItems: this.relatedItemsFor(target, this.celestialSystem.celestialBodiesAt(simTime)),
+      relatedItems: this.relatedItemsFor(target, this.celestialSystem.celestialMotions, simTime),
       relatedTitle: this.relatedTitleFor(target),
       onRename: this.renameHandlerFor(target),
     };
@@ -622,7 +625,7 @@ export class MapContextActions {
   // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
   // 天体は静的な primaryOf、人工物は現在状態から orbitingAttractorOf で判定する。
   private relatedItemsFor(
-    target: MapPickable, celestialBodies: readonly CelestialBody[],
+    target: MapPickable, celestialBodies: readonly CelestialMotion[], pivot: number,
   ): readonly PropertyWindowRelatedItem[] {
     if (target.kind === 'player') {
       const ship = this.entities.findPlayer(target.id);
@@ -646,7 +649,8 @@ export class MapContextActions {
         isOrbiting = bodyParentId(this.celestialSystem, item.id) === target.id;
       } else {
         const state = this.stateOfPickable(item);
-        isOrbiting = state !== null && orbitingAttractorOf(state, celestialBodies)?.id === target.id;
+        isOrbiting = state !== null
+          && orbitingAttractorOf(state, celestialBodies, pivot)?.id === target.id;
       }
       if (isOrbiting) related.push({ item, label: item.name });
     }

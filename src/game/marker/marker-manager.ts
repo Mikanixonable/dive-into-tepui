@@ -14,7 +14,8 @@ import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
 import { resolveCrowdingWinner } from './crowding';
-import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { strongestAttractor } from '../../physics/attractor';
+import { CelestialMotion } from '../../physics/celestial-motion';
 
 const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 
@@ -261,12 +262,13 @@ export class MarkerManager {
     worldPos: Vec3,
     project: ProjectFn,
     cameraPos: Vec3,
-    celestialBodies: readonly CelestialBody[],
+    celestialBodies: readonly CelestialMotion[],
+    celestialBodiesPivot: number,
     overviewMode: boolean,
     label = '',
     priority?: number,
   ): void {
-    if (overviewMode && isOccluded(cameraPos, worldPos, celestialBodies)) {
+    if (overviewMode && isOccluded(cameraPos, worldPos, celestialBodies, celestialBodiesPivot)) {
       this.fadeOut(key);
     } else {
       this.setPosition(key, cls, sym, worldPos, project, label, 1, undefined, undefined, false, false, priority, cameraPos);
@@ -304,10 +306,12 @@ export class MarkerManager {
     vel: Vec3,
     project: ProjectFn,
     scale: ScaleFn,
-    celestialBodies: readonly CelestialBody[] = [],
+    celestialBodies: readonly CelestialMotion[] = [],
+    celestialBodiesPivot = 0,
   ): number | undefined {
-    const center = celestialBodies.length > 0 ? strongestAttractor(worldPos, celestialBodies) : null;
-    const relVel = center ? sub(vel, center.state.v) : vel;
+    const center = celestialBodies.length > 0
+      ? strongestAttractor(worldPos, celestialBodies, celestialBodiesPivot) : null;
+    const relVel = center ? sub(vel, center.stateAt(celestialBodiesPivot).v) : vel;
     const probe = Math.max(1, scale(worldPos) * 2);
     const p0 = project(worldPos);
     const p1 = project(addScaled(worldPos, norm(relVel), probe));

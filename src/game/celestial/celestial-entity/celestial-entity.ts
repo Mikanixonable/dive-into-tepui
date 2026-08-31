@@ -3,9 +3,8 @@
 import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
-import { CelestialBody, orbitalElementsOf } from '../../../physics/celestial-body';
+import { OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
 import { KinematicState } from '../../../physics/kinematic-state';
-import { OrbitalElements } from '../../../physics/elements';
 import { OrbitLine } from '../../lines/orbit-line';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import type { MarkerManager } from '../../marker/marker-manager';
@@ -87,11 +86,11 @@ export abstract class CelestialEntity {
   abstract dispose(): void;
 
   // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も
-  // ECI 上を動くので、固定 CelestialBody ではなくその時刻の状態を毎回引いて組む。恒星は null。
+  // ECI 上を動くので、固定 CelestialMotion ではなくその時刻の状態を毎回引いて組む。恒星は null。
   referenceElementsAt(t: number): OrbitalElements | null {
     const centerMotion = this.motion.primary;
     if (centerMotion === null) return null;
-    return orbitalElementsOf(this.stateAt(t), centerMotion.celestialBodyAt(t));
+    return orbitalElementsOf(this.stateAt(t), centerMotion, t);
   }
 
   // 参照軌道線を表示時刻の接触軌道要素と濃さへ同期する(実体が無ければ生成して scene へ登録)。
@@ -159,7 +158,7 @@ export abstract class CelestialEntity {
   // マップ専用の付随表示(静止軌道リングなど)のフック。既定では何も持たない。
   syncMapOverlay(
     _fo: FloatingOrigin, _displayTime: number, _cameraSystem: CameraSystem,
-    _markerManager: MarkerManager | null, _celestialBodies: readonly CelestialBody[], _visible: boolean,
+    _markerManager: MarkerManager | null, _celestialBodies: readonly CelestialMotion[], _visible: boolean,
   ): void {}
 
   // pos が恒星から受けている放射照度(render/pipeline/sun-light.ts の単位)。恒星を持たない

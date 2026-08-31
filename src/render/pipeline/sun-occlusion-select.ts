@@ -3,7 +3,7 @@
 import { maxOccludedFraction } from '../../physics/shadow';
 import { len, sub } from '../../math/vec3';
 import { MAX_OCCLUDERS } from './sun-occlusion';
-import type { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import type { Vec3 } from '../../math/vec3';
 import type { RingBand } from './sun-occlusion';
 import type { GraphicsSettingsData } from '../graphics-settings';
@@ -23,11 +23,12 @@ function apparentRadius(radius: number, center: Vec3, cameraPos: Vec3): number {
 // **カメラ位置だけで測ってはいけない** — 土星から引いたマップビューでは土星自身が閾値を
 // 切り、環の影が本体から消える。
 function castsVisibleShadow(
-  star: CelestialBody, celestialBody: CelestialBody, cameraPos: Vec3, focusPos: Vec3 | null,
+  star: CelestialMotion, celestialBody: CelestialMotion, pivot: number,
+  cameraPos: Vec3, focusPos: Vec3 | null,
 ): boolean {
-  if (maxOccludedFraction(cameraPos, star, celestialBody) >= MIN_OCCLUDED_FRACTION) return true;
+  if (maxOccludedFraction(cameraPos, star, celestialBody, pivot) >= MIN_OCCLUDED_FRACTION) return true;
   return focusPos !== null
-    && maxOccludedFraction(focusPos, star, celestialBody) >= MIN_OCCLUDED_FRACTION;
+    && maxOccludedFraction(focusPos, star, celestialBody, pivot) >= MIN_OCCLUDED_FRACTION;
 }
 
 // 環の影を落としうる天体 1 体ぶんの候補。すべて ECI。
@@ -43,14 +44,16 @@ export type RingShadowCandidate = {
 // **星系の全天体を渡すこと** — 恒星と半径 0 の天体はここで落とす。focusPos はマップの
 // 注視点(天体でない対象を注視しているなら null)。
 export function selectOccluders(
-  celestialBodies: readonly CelestialBody[], cameraPos: Vec3, focusPos: Vec3 | null,
-): readonly CelestialBody[] {
-  const star = celestialBodies.find((celestialBody) => celestialBody.isStar) ?? null;
+  celestialBodies: readonly CelestialMotion[], pivot: number, cameraPos: Vec3, focusPos: Vec3 | null,
+): readonly CelestialMotion[] {
+  const star = celestialBodies.find((celestialBody) => celestialBody.kind === 'star') ?? null;
   return celestialBodies
-    .filter((celestialBody) => !celestialBody.isStar && celestialBody.radius > 0
-      && (star === null || castsVisibleShadow(star, celestialBody, cameraPos, focusPos)))
+    .filter((celestialBody) => celestialBody.kind !== 'star' && celestialBody.def.radius > 0
+      && (star === null || castsVisibleShadow(star, celestialBody, pivot, cameraPos, focusPos)))
     .map((celestialBody) => ({
-      celestialBody, apparent: apparentRadius(celestialBody.radius, celestialBody.state.r, cameraPos),
+      celestialBody,
+      apparent: apparentRadius(
+        celestialBody.def.radius, celestialBody.positionAt(pivot, pivot), cameraPos),
     }))
     .sort((a, b) => b.apparent - a.apparent)
     .slice(0, MAX_OCCLUDERS)

@@ -18,7 +18,7 @@ export function register(): void {
       activeShipState: (t) => ship?.(t) ?? null,
       navTargetState: () => null,
     });
-    anchors.update([]);
+    anchors.update([], 0);
     return { anchors, setShip: (s) => { ship = s === null ? null : () => s; } };
   }
 
@@ -49,7 +49,7 @@ export function register(): void {
     anchors.stateOf('@activeShip', 0);
     setShip(null);
     assert.equal(anchors.stateOf('@activeShip', 0), shipState);
-    anchors.update([]);
+    anchors.update([], 0);
     assert.equal(anchors.stateOf('@activeShip', 0), null);
   });
 
@@ -58,11 +58,11 @@ export function register(): void {
     anchors.stateOf('@activeShip', 0);
     setShip(null);
     anchors.stateOf('@activeShip', 0);
-    anchors.update([]);
+    anchors.update([], 0);
     setShip(shipState);
     assert.equal(anchors.stateOf('@activeShip', 0), shipState);
     setShip(null);
-    anchors.update([]);
+    anchors.update([], 0);
     assert.equal(anchors.stateOf('@activeShip', 0), shipState, '猶予が戻っていない');
   });
 }

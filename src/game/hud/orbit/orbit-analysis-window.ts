@@ -3,7 +3,7 @@
 // ターゲット)を解決・保持し、orbit-analysis-data.ts へ問い合わせた点列を
 // OrbitChart/OrbitProjectionChart へ渡す。ドラッグ・ホイール・ピンチ操作は PointerPanZoom が
 // 変換した値を、選択中タブのスケール・平行移動量へ反映する。
-import type { CelestialBody } from '../../../physics/celestial-body';
+import { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import { SyncThrottle } from '../sync-throttle';
@@ -226,7 +226,7 @@ export class OrbitAnalysisWindow {
   }
 
   // 操作対象・ターゲットの状態から選択中タブの点列を求め、対応するチャートへ描く。
-  public sync(game: Game, celestialBodies: readonly CelestialBody[]): void {
+  public sync(game: Game, celestialBodies: readonly CelestialMotion[]): void {
     if (!this.throttle.due()) return;
 
     const entity = game.activeControllableEntity;
@@ -456,7 +456,7 @@ export class OrbitAnalysisWindow {
   // 現在の航法ターゲットを、接近タブの点列計算に渡せる形(艦・基地 or 天体)へ解決する。
   // ラグランジュ点など質量を持たない対象は解決せず、接近タブを出さない。
   private resolveApproachTarget(
-    game: Game, celestialBodies: readonly CelestialBody[],
+    game: Game, celestialBodies: readonly CelestialMotion[],
   ): ApproachTargetSource | null {
     const id = game.navTarget.id;
     if (id === null) return null;

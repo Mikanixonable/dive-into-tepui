@@ -2,8 +2,7 @@
 // 解決する代わりに、いま効きうる天体だけを成員として保持する。成員は解決するついでに抜ける
 // 条件を見る。成員でない候補は「最短でもこの時刻までは効き得ない」期限を持ち、その時刻が
 // 来たときだけ解決して入る条件を見る。
-// 候補の供給契約(FutureCelestialBodyProvider)を満たすのは CelestialSystem.celestialBodyAt。
-import type { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialBodyDef } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../math/vec3';
@@ -22,20 +21,19 @@ const ARC_BODY_LEAD_STEPS = 4;
 
 // 弧が天体を引く相手。候補の顔ぶれは弧を作った時点で確定する。
 export type FutureCelestialBodyProvider = {
-  // 積分が引きうる天体の、時刻に依らない素性。mu が 0 の天体は重力源にならない。
-  readonly defs: readonly Pick<CelestialBodyDef, 'id' | 'mu' | 'radius'>[];
-  // 候補1体の時刻 t での状態。
-  readonly celestialBodyAt: (id: string, t: number) => CelestialBody;
+  // 積分が引きうる天体の運動(宣言順)。mu が 0 の天体は重力源にならない。
+  readonly celestialMotions: readonly CelestialMotion[];
 };
 
 // 弧の1歩が読む天体一式。gravity は引力を持つ天体、collision は表面到達の相手。
 export type ArcCelestialBodyWindow = {
-  readonly gravity: readonly CelestialBody[];
-  readonly collision: readonly CelestialBody[];
+  readonly gravity: readonly CelestialMotion[];
+  readonly collision: readonly CelestialMotion[];
 };
 
 // 候補1体ぶんの成員判定の状態。
 type Watch = {
+  readonly motion: CelestialMotion;
   readonly candidate: Pick<CelestialBodyDef, 'id' | 'mu' | 'radius'>;
   // 引力が GRAVITY_NEGLIGIBLE_ACCEL を割ると言い切れる距離 [m]。直達項 mu/d² と ECI 原点補正項
   // mu/D² の和は 2mu/min(d,D)² を超えないので、min(d,D) がこれを上回れば寄与は無視できる。
@@ -48,16 +46,17 @@ type Watch = {
 
 // 候補の状態が「効き始める」までの猶予 [s]。重力(寄与が無視できなくなる距離まで)と表面到達
 // (半径まで)のうち早いほうを、保守的に見積もった接近速度で割る。
-function slackTime(w: Watch, body: CelestialBody, from: KinematicState): number {
-  const dist = len(sub(body.state.r, from.r));
+function slackTime(w: Watch, body: CelestialMotion, pivot: number, from: KinematicState): number {
+  const state = body.stateAt(pivot);
+  const dist = len(sub(state.r, from.r));
   // 原点補正項は問い合わせ位置に依らず天体の原点距離だけで決まるので、近いほうの距離で見る。
   const gravitySlack = w.candidate.mu === 0
     ? Infinity
-    : Math.min(dist, len(body.state.r)) - w.gravityReach;
-  const collisionSlack = dist - body.radius;
+    : Math.min(dist, len(state.r)) - w.gravityReach;
+  const collisionSlack = dist - body.def.radius;
   const slack = Math.min(gravitySlack, collisionSlack);
   if (slack <= 0) return 0;
-  const closing = (len(sub(body.state.v, from.v)) + len(body.state.v)) * ARC_BODY_CLOSING_SAFETY
+  const closing = (len(sub(state.v, from.v)) + len(state.v)) * ARC_BODY_CLOSING_SAFETY
     + ARC_BODY_CLOSING_MARGIN;
   return slack / closing;
 }
@@ -82,13 +81,14 @@ export class ArcCelestialBodies {
   lastRevisited = 0;
 
   // 候補の顔ぶれを構築時に確定させ、以後は1体ぶんの状態だけを sources へ問う。
-  constructor(private readonly sources: FutureCelestialBodyProvider) {
-    const candidates = sources.defs;
+  constructor(sources: FutureCelestialBodyProvider) {
+    const candidates = sources.celestialMotions.map((m) => m.def);
     const pinnedId = heaviestGravityId(candidates);
-    this.watches = candidates.map((candidate) => ({
-      candidate,
-      gravityReach: Math.sqrt(2 * candidate.mu / C.GRAVITY_NEGLIGIBLE_ACCEL),
-      pinned: candidate.id === pinnedId,
+    this.watches = sources.celestialMotions.map((motion) => ({
+      motion,
+      candidate: motion.def,
+      gravityReach: Math.sqrt(2 * motion.def.mu / C.GRAVITY_NEGLIGIBLE_ACCEL),
+      pinned: motion.id === pinnedId,
       member: false,
       nextVisitT: -Infinity,
     }));
@@ -100,16 +100,16 @@ export class ArcCelestialBodies {
   resolve(t: number, from: KinematicState, stepDt: number): ArcCelestialBodyWindow {
     // 次の歩で表面へ届きうる天体が一覧の外に残らないよう、刻み幅の数歩ぶん先まで入れておく。
     const lead = Math.max(stepDt, C.ARC_MIN_STEP_DT) * ARC_BODY_LEAD_STEPS;
-    const gravity: CelestialBody[] = [];
-    const collision: CelestialBody[] = [];
+    const gravity: CelestialMotion[] = [];
+    const collision: CelestialMotion[] = [];
     this.lastResolved = 0;
     this.lastRevisited = 0;
     for (const w of this.watches) {
       if (!w.member && w.nextVisitT > t) continue;
       if (!w.member) this.lastRevisited++;
-      const body = this.sources.celestialBodyAt(w.candidate.id, t);
+      const body = w.motion;
       this.lastResolved++;
-      const slack = slackTime(w, body, from);
+      const slack = slackTime(w, body, t, from);
       w.member = w.pinned || slack <= lead;
       w.nextVisitT = t + Math.max(0, slack - lead);
       if (!w.member) continue;

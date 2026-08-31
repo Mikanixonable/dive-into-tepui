@@ -1,15 +1,15 @@
 // 天体の表面との接触。ある区間を渡る球が、渡された天体のうちどれに最初に触れるかを1体選ぶ。
 // 触れたあとどうなるか(跳ね返る / 経路を打ち切る)は呼び出し側が決める。
 //
-// 天体を相手にするので CelestialBody を読むが、**依存はこの向きだけ**である — 重力のモジュールは
+// 天体を相手にするので天体の運動を読むが、**依存はこの向きだけ**である — 重力のモジュールは
 // 何が何を引くかにだけ答え、何が何に触れたかには答えない。
-import { CelestialBody, celestialBodyStateAt } from './celestial-body';
+import type { CelestialMotion } from './celestial-motion';
 import { ContactGeometry, sphereContactGeometry } from './collision-response';
 import { KinematicState } from './kinematic-state';
 
 // 区間内で最初に触れた天体と、その接触の幾何。
 export interface SurfaceContact {
-  readonly body: CelestialBody;
+  readonly body: CelestialMotion;
   readonly geometry: ContactGeometry;
 }
 
@@ -20,7 +20,8 @@ export function firstSurfaceContact(
   prev: KinematicState,
   next: KinematicState,
   radius: number,
-  bodies: readonly CelestialBody[],
+  bodies: readonly CelestialMotion[],
+  pivot: number,
 ): SurfaceContact | null {
   const swept = prev.t < next.t;
   let earliest: SurfaceContact | null = null;
@@ -29,9 +30,9 @@ export function firstSurfaceContact(
   for (const body of bodies) {
     const geometry = sphereContactGeometry(
       { state: next, radius },
-      { state: celestialBodyStateAt(body, next.t), radius: body.radius },
+      { state: body.stateAt(pivot, next.t), radius: body.def.radius },
       swept ? prev : undefined,
-      swept ? celestialBodyStateAt(body, prev.t) : undefined,
+      swept ? body.stateAt(pivot, prev.t) : undefined,
     );
     if (geometry === null) continue;
     if (earliest === null || geometry.toi < earliest.geometry.toi) earliest = { body, geometry };

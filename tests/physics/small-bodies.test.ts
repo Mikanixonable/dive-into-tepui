@@ -68,12 +68,12 @@ export function register(): void {
   });
 
   test('small-bodies: celestialBodiesAt から32体すべてが取れ、太陽からの距離が有限で正', () => {
-    const celestialBodies = windows.celestialBodiesAt(1e7);
+    const celestialBodies = windows.celestialMotions;
     const sun = celestialBodies.find((a) => a.id === 'sun')!;
     for (const id of SMALL_BODY_IDS) {
       const a = celestialBodies.find((x) => x.id === id);
       assert.ok(a !== undefined, `${id} が celestialBodiesAt に無い`);
-      const dist = len(sub(a!.state.r, sun.state.r));
+      const dist = len(sub(a!.stateAt(0).r, sun.stateAt(0).r));
       assert.ok(Number.isFinite(dist) && dist > 0, `${id} の太陽からの距離`);
     }
   });

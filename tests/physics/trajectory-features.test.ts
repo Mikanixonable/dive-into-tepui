@@ -1,15 +1,16 @@
 // trajectory-features.ts の回帰テスト。解析的なケプラー軌道をサンプリングした列に対して、
 // 折れ線走査/隣接ステップ判定が解析値と十分一致することを確認する。
+import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialBody } from '../../src/physics/celestial-body';
+import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { apsisCrossing, ApsisTrack, findEquatorCrossings } from '../../src/physics/trajectory-features';
 import { keplerPeriod, stateFromOrbitalElements, trueAnomalyFromMean } from '../../src/physics/elements';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { len, sub, v3 } from '../../src/math/vec3';
 
-const EARTH: CelestialBody = { id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false };
+const EARTH: CelestialMotion = fixedMotion({ id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null });
 
 // a/e/inc/raan/argp のケプラー軌道を、真近点角を等間隔に刻んで(粗く)サンプリングする。
 // 開始位相をわずかにずらすのは、近地点(nu=0)ぴったりが列の端に来ると走査が端点を
@@ -52,7 +53,7 @@ export function register(): void {
   test('trajectory-features: apsisCrossing finds periapsis between consecutive states straddling nu=0', () => {
     const prev = stateAtMeanAnomaly(a, e, incDeg, raan, argp, -dm);
     const next = stateAtMeanAnomaly(a, e, incDeg, raan, argp, dm);
-    const result = apsisCrossing(EARTH, prev, next);
+    const result = apsisCrossing(EARTH, 0, prev, next);
     assert.ok(result, 'periapsis crossing should be detected');
     assert.equal(result!.kind, 'periapsis');
     const expected = stateFromOrbitalElements(0, a, e, (incDeg * Math.PI) / 180, raan, argp, 0, MU_EARTH).r;
@@ -63,7 +64,7 @@ export function register(): void {
   test('trajectory-features: apsisCrossing finds apoapsis between consecutive states straddling nu=pi', () => {
     const prev = stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI - dm);
     const next = stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI + dm);
-    const result = apsisCrossing(EARTH, prev, next);
+    const result = apsisCrossing(EARTH, 0, prev, next);
     assert.ok(result, 'apoapsis crossing should be detected');
     assert.equal(result!.kind, 'apoapsis');
     const expected = stateFromOrbitalElements(0, a, e, (incDeg * Math.PI) / 180, raan, argp, Math.PI, MU_EARTH).r;
@@ -74,7 +75,7 @@ export function register(): void {
     // どちらも遠地点手前(まだ遠ざかり続けている脚)で、近地点にも遠地点にもまたがらない対。
     const prev = stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 4);
     const next = stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 2);
-    assert.equal(apsisCrossing(EARTH, prev, next), null);
+    assert.equal(apsisCrossing(EARTH, 0, prev, next), null);
   });
 
   test('trajectory-features: apsisCrossing returns null for a monotonically approaching pair (no crossing yet)', () => {
@@ -84,7 +85,7 @@ export function register(): void {
     // 判定へ変えた設計上の要点。
     const prev = stateAtMeanAnomaly(a, e, incDeg, raan, argp, -0.5);
     const next = stateAtMeanAnomaly(a, e, incDeg, raan, argp, -0.3);
-    assert.equal(apsisCrossing(EARTH, prev, next), null);
+    assert.equal(apsisCrossing(EARTH, 0, prev, next), null);
   });
 
   // 2周回ぶんの近地点・遠地点をまたぐステップ対を、時刻昇順(m=0 の近地点→m=π の遠地点→
@@ -98,10 +99,10 @@ export function register(): void {
   test('trajectory-features: ApsisTrack accumulates periapsis/apoapsis in ascending time order and answers the first', () => {
     const pairs = apsisStepPairs();
     const track = new ApsisTrack();
-    for (const [prev, next] of pairs) track.observe(EARTH, prev, next);
+    for (const [prev, next] of pairs) track.observe(EARTH, 0, prev, next);
 
-    const expectedFirstPeriapsis = apsisCrossing(EARTH, ...pairs[0]!)!.state;
-    const expectedFirstApoapsis = apsisCrossing(EARTH, ...pairs[1]!)!.state;
+    const expectedFirstPeriapsis = apsisCrossing(EARTH, 0, ...pairs[0]!)!.state;
+    const expectedFirstApoapsis = apsisCrossing(EARTH, 0, ...pairs[1]!)!.state;
     assert.deepEqual(track.periapsis, expectedFirstPeriapsis);
     assert.deepEqual(track.apoapsis, expectedFirstApoapsis);
     assert.ok(track.periapsis!.t < track.apoapsis!.t, 'periapsis should precede apoapsis in time');
@@ -109,10 +110,12 @@ export function register(): void {
 
   test('trajectory-features: ApsisTrack keeps the center used by each extremum', () => {
     const pairs = apsisStepPairs();
-    const moon: CelestialBody = { ...EARTH, id: 'moon' };
+    const moon: CelestialMotion = fixedMotion({
+      id: 'moon', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(), v3()),
+    });
     const track = new ApsisTrack();
-    track.observe(EARTH, ...pairs[0]!);
-    track.observe(moon, ...pairs[1]!);
+    track.observe(EARTH, 0, ...pairs[0]!);
+    track.observe(moon, 0, ...pairs[1]!);
 
     assert.equal(track.periapsisCenter?.id, 'earth');
     assert.equal(track.apoapsisCenter?.id, 'moon');
@@ -123,10 +126,10 @@ export function register(): void {
     const period = keplerPeriod(a, MU_EARTH);
     const pairs = apsisStepPairs();
     const track = new ApsisTrack();
-    for (const [prev, next] of pairs) track.observe(EARTH, prev, next);
+    for (const [prev, next] of pairs) track.observe(EARTH, 0, prev, next);
 
-    const expectedSecondPeriapsis = apsisCrossing(EARTH, ...pairs[2]!)!.state;
-    const expectedSecondApoapsis = apsisCrossing(EARTH, ...pairs[3]!)!.state;
+    const expectedSecondPeriapsis = apsisCrossing(EARTH, 0, ...pairs[2]!)!.state;
+    const expectedSecondApoapsis = apsisCrossing(EARTH, 0, ...pairs[3]!)!.state;
     // 1つめの近地点(t≈0)・遠地点(t≈period/2)は落ち、2つめ(t≈period, t≈1.5period)が先頭になる。
     track.dropBefore(period * 0.75);
     assert.deepEqual(track.periapsis, expectedSecondPeriapsis);
@@ -140,7 +143,7 @@ export function register(): void {
 
     // 遠地点手前でまだ遠ざかり続けている脚 — 符号反転がなく極値が見つからない対。
     track.observe(
-      EARTH,
+      EARTH, 0,
       stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 4),
       stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 2),
     );
@@ -154,9 +157,9 @@ export function register(): void {
     const inc2 = 51.6;
     const samples = sampleKeplerOrbit(a2, e2, inc2, 0, 0, 36);
     const pole = v3(0, 1, 0);
-    const { ascending, descending } = findEquatorCrossings(samples, () => EARTH.state.r, pole);
+    const { ascending, descending } = findEquatorCrossings(samples, () => EARTH.stateAt(0).r, pole);
     assert.ok(ascending && descending, 'both nodes should be found');
-    const scale = len(sub(ascending!.r, EARTH.state.r));
+    const scale = len(sub(ascending!.r, EARTH.stateAt(0).r));
     assert.ok(Math.abs(ascending!.r.y) / scale < 1e-3, `ascending node should sit at zero latitude: y=${ascending!.r.y}`);
     assert.ok(Math.abs(descending!.r.y) / scale < 1e-3, `descending node should sit at zero latitude: y=${descending!.r.y}`);
     // 昇交点は南→北(v の pole 成分が正)、降交点は北→南(負)へ渡る瞬間
