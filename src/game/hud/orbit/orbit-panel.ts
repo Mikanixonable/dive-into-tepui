@@ -4,7 +4,6 @@ import * as C from '../../const';
 import { fmtDist, fmtSpeed, fmtTime, setElementText } from '../utils';
 import { SyncThrottle } from '../sync-throttle';
 import { orbitInfo } from './orbit-info';
-import { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Game } from '../../game';
 import type { OrbitReferenceMode } from '../../orbit-reference';
 import { Button, SegmentedControl } from '../widgets';
@@ -53,8 +52,9 @@ export class OrbitPanel {
   private game: Game | null = null;
 
   // 操作対象の基準・高度・速度・遠地点/近地点・傾斜角・周期・動圧・機体温度を DOM へ反映する。
-  public sync(game: Game, celestialBodies: readonly CelestialMotion[], hideInOverview = true): void {
+  public sync(game: Game, hideInOverview = true): void {
     this.game = game;
+    const celestialBodies = game.celestialSystem.celestialMotions;
     const entity = game.activeControllableEntity;
     const el = this.els.get('hud-orbit');
     if (!entity) {
