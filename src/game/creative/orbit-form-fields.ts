@@ -1,4 +1,3 @@
-import { sameSystemIds } from '../celestial/system-membership';
 import { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import { ObjectPickerGroup } from '../hud/windows/object-picker';
 import { OrbitingMotion, type CelestialBodyDef } from '../../physics/celestial-motion';
@@ -18,7 +17,7 @@ export function orbitingIdsOf(celestialSystem: CelestialSystem): readonly string
 export function bodyGroupsOf(
   celestialSystem: CelestialSystem, items: readonly (readonly [string, string])[], selected: string,
 ): readonly ObjectPickerGroup<string>[] {
-  const near0 = sameSystemIds(celestialSystem.celestialMotions, selected);
+  const near0 = celestialSystem.sameSystemIds(selected);
   const near = items.filter(([id]) => near0.has(id));
   const byClass = (cls: CelestialClass) => items.filter(([id]) => celestialSystem.entityOf(id).bodyClass === cls);
   return [
