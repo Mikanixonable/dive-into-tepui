@@ -2,7 +2,7 @@ import { KinematicState, kinematicState } from '../kinematic-state';
 import { Vec3, v3 } from '../../math/vec3';
 import {
   ChebyshevBodyPack,
-  ChebyshevEphemerisPack,
+  ChebyshevPack,
   ChebyshevSegment,
   ReadonlyNumberArray,
 } from './types';
@@ -155,7 +155,7 @@ function validateBody(body: ChebyshevBodyPack): void {
   }
 }
 
-function validateManifest(pack: ChebyshevEphemerisPack, bodies: readonly ChebyshevBodyPack[]): void {
+function validateManifest(pack: ChebyshevPack, bodies: readonly ChebyshevBodyPack[]): void {
   if (!Number.isFinite(pack.manifest.version) || pack.manifest.version < 1) {
     throw new InvalidChebyshevPackError('manifest version must be a positive number');
   }
@@ -218,7 +218,7 @@ export class ChebyshevEphemeris {
 
   // **manifest は保持しない。** 構築時の検証で使い切りで、以後読む者がいない —
   // 抱えると 10054 個のセグメント metadata が pack と同じ寿命で残る。
-  constructor(input: ChebyshevEphemerisPack) {
+  constructor(input: ChebyshevPack) {
     const bodies = input.bodies;
     for (const body of bodies) validateBody(body);
     validateManifest(input, bodies);
