@@ -8,7 +8,7 @@ import {
   PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
 } from '../../../physics/celestial-motion';
 import { planetSystem } from '../../../physics/planet-system';
-import { planetOrbit } from '../../../physics/planet-orbit';
+import { planetOrbit } from '../../../physics/kepler-orbit';
 import { GRAVITATIONAL_CONSTANT, MU_JUPITER } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
