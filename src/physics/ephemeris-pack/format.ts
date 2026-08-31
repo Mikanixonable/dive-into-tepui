@@ -22,6 +22,11 @@
  * manifest. Version 1 uses barycentric ICRF/J2000 positions in metres and
  * times expressed as seconds from the J2000 ET epoch on the TDB scale.
  *
+ * The wire key for one body's one interval is `series`; the word in code is
+ * `segment` (`PackSegment`).  The wire spelling is frozen at version 1 — changing
+ * it would force a major version bump, which invalidates every existing save
+ * through `EphemerisContext.packFormatVersion`.
+ *
  * The manifest is canonical JSON: object keys are sorted recursively, arrays
  * retain their order, and no insignificant whitespace is emitted.  The
  * payloadSha256 field, when present, is the lowercase SHA-256 digest of only
@@ -31,7 +36,7 @@
  */
 
 import type { EphemerisPointKind } from '../point-ephemeris';
-import type { ChebyshevEphemerisPack } from './types';
+import type { ChebyshevPack } from './types';
 
 export const EPHEMERIS_PACK_MAGIC = 'TEPUIEPK';
 export const EPHEMERIS_PACK_FORMAT = 'tepui-ephemeris-pack';
@@ -39,7 +44,7 @@ export const EPHEMERIS_PACK_VERSION = 1;
 export const EPHEMERIS_PACK_MINOR_VERSION = 0;
 export const EPHEMERIS_PACK_HEADER_BYTES = 32;
 
-export interface EphemerisSeries {
+export interface PackSegment {
   readonly body: string;
   readonly start: number;
   readonly end: number;
@@ -48,7 +53,7 @@ export interface EphemerisSeries {
   readonly coefficientCount: number;
 }
 
-export interface EphemerisManifest {
+export interface PackManifest {
   readonly format: typeof EPHEMERIS_PACK_FORMAT;
   readonly version: typeof EPHEMERIS_PACK_VERSION;
   readonly frame: 'ICRF-J2000';
@@ -59,14 +64,14 @@ export interface EphemerisManifest {
   readonly timeUnit: 's';
   readonly validStart: number;
   readonly validEnd: number;
-  readonly series: readonly EphemerisSeries[];
+  readonly series: readonly PackSegment[];
   /** body ごとに収録している点。欠けている body は 'body'(天体そのものの中心)。 */
   readonly bodyPoints?: Readonly<Record<string, EphemerisPointKind>>;
   readonly payloadSha256?: string;
   readonly [key: string]: unknown;
 }
 
-export type EphemerisManifestBase = Omit<EphemerisManifest, 'series'>;
+export type PackManifestBase = Omit<PackManifest, 'series'>;
 
 export interface ChebyshevSegmentInput {
   readonly body: string;
@@ -76,18 +81,18 @@ export interface ChebyshevSegmentInput {
   readonly coefficients: readonly [readonly number[], readonly number[], readonly number[]];
 }
 
-export interface DecodedEphemerisPack {
-  readonly manifest: EphemerisManifest;
+export interface DecodedPack {
+  readonly manifest: PackManifest;
   readonly payload: Float64Array;
   /** The exact bytes hashed by manifest.payloadSha256. */
   readonly payloadBytes: Uint8Array;
   readonly manifestJson: string;
 }
 
-export class EphemerisPackFormatError extends Error {
+export class PackFormatError extends Error {
   public constructor(message: string) {
     super(message);
-    this.name = 'EphemerisPackFormatError';
+    this.name = 'PackFormatError';
   }
 }
 
@@ -97,21 +102,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function requireString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.length === 0) {
-    throw new EphemerisPackFormatError(`${field} must be a non-empty string`);
+    throw new PackFormatError(`${field} must be a non-empty string`);
   }
   return value;
 }
 
 function requireFiniteNumber(value: unknown, field: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new EphemerisPackFormatError(`${field} must be finite`);
+    throw new PackFormatError(`${field} must be finite`);
   }
   return value;
 }
 
 function requireNonNegativeInteger(value: unknown, field: string): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
-    throw new EphemerisPackFormatError(`${field} must be a non-negative safe integer`);
+    throw new PackFormatError(`${field} must be a non-negative safe integer`);
   }
   return value;
 }
@@ -120,7 +125,7 @@ function requireNonNegativeInteger(value: unknown, field: string): number {
 export function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'boolean' || typeof value === 'string' || typeof value === 'number') {
     if (typeof value === 'number' && !Number.isFinite(value)) {
-      throw new EphemerisPackFormatError('manifest cannot contain a non-finite number');
+      throw new PackFormatError('manifest cannot contain a non-finite number');
     }
     return JSON.stringify(value);
   }
@@ -128,55 +133,55 @@ export function canonicalJson(value: unknown): string {
     return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
   }
   if (!isRecord(value)) {
-    throw new EphemerisPackFormatError('manifest contains an unsupported JSON value');
+    throw new PackFormatError('manifest contains an unsupported JSON value');
   }
   const keys = Object.keys(value).sort();
   return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
 }
 
 /** Validate and return the manifest with its public shape narrowed. */
-export function validateManifest(value: unknown): EphemerisManifest {
-  if (!isRecord(value)) throw new EphemerisPackFormatError('manifest must be a JSON object');
+export function validateManifest(value: unknown): PackManifest {
+  if (!isRecord(value)) throw new PackFormatError('manifest must be a JSON object');
   if (value.format !== EPHEMERIS_PACK_FORMAT) {
-    throw new EphemerisPackFormatError(`unsupported manifest format: ${String(value.format)}`);
+    throw new PackFormatError(`unsupported manifest format: ${String(value.format)}`);
   }
   if (value.version !== EPHEMERIS_PACK_VERSION) {
-    throw new EphemerisPackFormatError(`unsupported manifest version: ${String(value.version)}`);
+    throw new PackFormatError(`unsupported manifest version: ${String(value.version)}`);
   }
-  if (value.frame !== 'ICRF-J2000') throw new EphemerisPackFormatError('frame must be ICRF-J2000');
-  if (value.timeScale !== 'TDB') throw new EphemerisPackFormatError('timeScale must be TDB');
-  if (value.timeOrigin !== 'J2000-ET') throw new EphemerisPackFormatError('timeOrigin must be J2000-ET');
-  if (value.positionUnit !== 'm') throw new EphemerisPackFormatError('positionUnit must be m');
-  if (value.timeUnit !== 's') throw new EphemerisPackFormatError('timeUnit must be s');
+  if (value.frame !== 'ICRF-J2000') throw new PackFormatError('frame must be ICRF-J2000');
+  if (value.timeScale !== 'TDB') throw new PackFormatError('timeScale must be TDB');
+  if (value.timeOrigin !== 'J2000-ET') throw new PackFormatError('timeOrigin must be J2000-ET');
+  if (value.positionUnit !== 'm') throw new PackFormatError('positionUnit must be m');
+  if (value.timeUnit !== 's') throw new PackFormatError('timeUnit must be s');
 
   const validStart = requireFiniteNumber(value.validStart, 'validStart');
   const validEnd = requireFiniteNumber(value.validEnd, 'validEnd');
-  if (!(validStart < validEnd)) throw new EphemerisPackFormatError('validStart must be less than validEnd');
+  if (!(validStart < validEnd)) throw new PackFormatError('validStart must be less than validEnd');
 
   if (!Array.isArray(value.series) || value.series.length === 0) {
-    throw new EphemerisPackFormatError('series must be a non-empty array');
+    throw new PackFormatError('series must be a non-empty array');
   }
-  const series: EphemerisSeries[] = [];
+  const series: PackSegment[] = [];
   let expectedOffset = 0;
   for (let i = 0; i < value.series.length; i++) {
     const raw = value.series[i];
-    if (!isRecord(raw)) throw new EphemerisPackFormatError(`series[${i}] must be an object`);
+    if (!isRecord(raw)) throw new PackFormatError(`series[${i}] must be an object`);
     const body = requireString(raw.body, `series[${i}].body`);
     const start = requireFiniteNumber(raw.start, `series[${i}].start`);
     const end = requireFiniteNumber(raw.end, `series[${i}].end`);
-    if (!(start < end)) throw new EphemerisPackFormatError(`series[${i}] start must be less than end`);
+    if (!(start < end)) throw new PackFormatError(`series[${i}] start must be less than end`);
     if (start < validStart || end > validEnd) {
-      throw new EphemerisPackFormatError(`series[${i}] range is outside manifest validity range`);
+      throw new PackFormatError(`series[${i}] range is outside manifest validity range`);
     }
     const degree = requireNonNegativeInteger(raw.degree, `series[${i}].degree`);
     const coefficientOffset = requireNonNegativeInteger(raw.coefficientOffset, `series[${i}].coefficientOffset`);
     const coefficientCount = requireNonNegativeInteger(raw.coefficientCount, `series[${i}].coefficientCount`);
     const expectedCount = 3 * (degree + 1);
     if (coefficientCount !== expectedCount) {
-      throw new EphemerisPackFormatError(`series[${i}] coefficientCount must be 3 * (degree + 1)`);
+      throw new PackFormatError(`series[${i}] coefficientCount must be 3 * (degree + 1)`);
     }
     if (coefficientOffset !== expectedOffset) {
-      throw new EphemerisPackFormatError(`series[${i}] coefficientOffset is not contiguous`);
+      throw new PackFormatError(`series[${i}] coefficientOffset is not contiguous`);
     }
     expectedOffset += coefficientCount;
     series.push({ body, start, end, degree, coefficientOffset, coefficientCount });
@@ -188,17 +193,17 @@ export function validateManifest(value: unknown): EphemerisManifest {
       const right = series[j];
       if (left === undefined || right === undefined || left.body !== right.body) continue;
       if (left.start < right.end && right.start < left.end) {
-        throw new EphemerisPackFormatError(`series[${i}] and series[${j}] overlap for body ${left.body}`);
+        throw new PackFormatError(`series[${i}] and series[${j}] overlap for body ${left.body}`);
       }
     }
   }
 
   const bodyPoints = value.bodyPoints;
   if (bodyPoints !== undefined) {
-    if (!isRecord(bodyPoints)) throw new EphemerisPackFormatError('bodyPoints must be a JSON object');
+    if (!isRecord(bodyPoints)) throw new PackFormatError('bodyPoints must be a JSON object');
     for (const [body, kind] of Object.entries(bodyPoints)) {
       if (kind !== 'body' && kind !== 'systemBarycenter') {
-        throw new EphemerisPackFormatError(`bodyPoints[${body}] must be body or systemBarycenter`);
+        throw new PackFormatError(`bodyPoints[${body}] must be body or systemBarycenter`);
       }
     }
   }
@@ -206,10 +211,10 @@ export function validateManifest(value: unknown): EphemerisManifest {
   const payloadSha256 = value.payloadSha256;
   if (payloadSha256 !== undefined &&
       (typeof payloadSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(payloadSha256))) {
-    throw new EphemerisPackFormatError('payloadSha256 must be 64 lowercase hexadecimal characters');
+    throw new PackFormatError('payloadSha256 must be 64 lowercase hexadecimal characters');
   }
 
-  return { ...value, series } as unknown as EphemerisManifest;
+  return { ...value, series } as unknown as PackManifest;
 }
 
 /** Encode numbers independently of host endianness. */
@@ -219,7 +224,7 @@ export function encodeFloat64Payload(values: ArrayLike<number>): Uint8Array {
   for (let i = 0; i < values.length; i++) {
     const value = values[i];
     if (value === undefined || !Number.isFinite(value)) {
-      throw new EphemerisPackFormatError(`payload[${i}] must be finite`);
+      throw new PackFormatError(`payload[${i}] must be finite`);
     }
     view.setFloat64(i * 8, value, true);
   }
@@ -227,23 +232,23 @@ export function encodeFloat64Payload(values: ArrayLike<number>): Uint8Array {
 }
 
 /** Build the manifest offsets and flattened X/Y/Z payload from JSON-friendly segments. */
-export function buildEphemerisPackData(
-  manifestBase: EphemerisManifestBase,
+export function buildPackData(
+  manifestBase: PackManifestBase,
   segments: readonly ChebyshevSegmentInput[],
-): { readonly manifest: EphemerisManifest; readonly payload: Float64Array } {
-  if (segments.length === 0) throw new EphemerisPackFormatError('at least one segment is required');
-  const series: EphemerisSeries[] = [];
+): { readonly manifest: PackManifest; readonly payload: Float64Array } {
+  if (segments.length === 0) throw new PackFormatError('at least one segment is required');
+  const series: PackSegment[] = [];
   const values: number[] = [];
   let coefficientOffset = 0;
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
-    if (segment === undefined) throw new EphemerisPackFormatError(`segment[${i}] is missing`);
+    if (segment === undefined) throw new PackFormatError(`segment[${i}] is missing`);
     const [x, y, z] = segment.coefficients;
     if (x.length === 0 || x.length !== y.length || x.length !== z.length) {
-      throw new EphemerisPackFormatError(`segment[${i}] must have equally sized, non-empty XYZ coefficients`);
+      throw new PackFormatError(`segment[${i}] must have equally sized, non-empty XYZ coefficients`);
     }
     for (const coefficient of [...x, ...y, ...z]) {
-      if (!Number.isFinite(coefficient)) throw new EphemerisPackFormatError(`segment[${i}] has a non-finite coefficient`);
+      if (!Number.isFinite(coefficient)) throw new PackFormatError(`segment[${i}] has a non-finite coefficient`);
     }
     const degree = x.length - 1;
     const coefficientCount = 3 * x.length;
@@ -262,16 +267,16 @@ export function buildEphemerisPackData(
   return { manifest, payload: Float64Array.from(values) };
 }
 
-export function encodeEphemerisPack(manifestValue: unknown, payload: ArrayLike<number>): Uint8Array {
+export function encodePack(manifestValue: unknown, payload: ArrayLike<number>): Uint8Array {
   const manifest = validateManifest(manifestValue);
   const expectedValues = manifest.series.reduce((sum, item) => sum + item.coefficientCount, 0);
   if (payload.length !== expectedValues) {
-    throw new EphemerisPackFormatError(`payload has ${payload.length} values; expected ${expectedValues}`);
+    throw new PackFormatError(`payload has ${payload.length} values; expected ${expectedValues}`);
   }
   const manifestBytes = new TextEncoder().encode(canonicalJson(manifest));
   const payloadBytes = encodeFloat64Payload(payload);
   if (manifestBytes.length > 0xffffffff || payloadBytes.length > 0xffffffff) {
-    throw new EphemerisPackFormatError('manifest or payload is too large for version 1');
+    throw new PackFormatError('manifest or payload is too large for version 1');
   }
   const output = new Uint8Array(EPHEMERIS_PACK_HEADER_BYTES + manifestBytes.length + payloadBytes.length);
   const view = new DataView(output.buffer);
@@ -290,7 +295,7 @@ const HOST_IS_LITTLE_ENDIAN = new Uint8Array(Uint16Array.of(1).buffer)[0] === 1;
 
 /**
  * Read `count` little-endian Float64 values out of `bytes`.
- * Throws EphemerisPackFormatError if any value is non-finite.
+ * Throws PackFormatError if any value is non-finite.
  */
 function decodeFloat64Payload(bytes: Uint8Array, count: number): Float64Array {
   const payload = new Float64Array(count);
@@ -302,50 +307,50 @@ function decodeFloat64Payload(bytes: Uint8Array, count: number): Float64Array {
     for (let i = 0; i < count; i++) payload[i] = view.getFloat64(i * 8, true);
   }
   for (let i = 0; i < count; i++) {
-    if (!Number.isFinite(payload[i])) throw new EphemerisPackFormatError(`payload[${i}] is not finite`);
+    if (!Number.isFinite(payload[i])) throw new PackFormatError(`payload[${i}] is not finite`);
   }
   return payload;
 }
 
-export function decodeEphemerisPack(input: Uint8Array): DecodedEphemerisPack {
+export function decodePack(input: Uint8Array): DecodedPack {
   if (!(input instanceof Uint8Array) || input.length < EPHEMERIS_PACK_HEADER_BYTES) {
-    throw new EphemerisPackFormatError('pack is shorter than its header');
+    throw new PackFormatError('pack is shorter than its header');
   }
   const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
   for (let i = 0; i < EPHEMERIS_PACK_MAGIC.length; i++) {
-    if (input[i] !== EPHEMERIS_PACK_MAGIC.charCodeAt(i)) throw new EphemerisPackFormatError('bad pack magic');
+    if (input[i] !== EPHEMERIS_PACK_MAGIC.charCodeAt(i)) throw new PackFormatError('bad pack magic');
   }
   if (view.getUint16(8, true) !== EPHEMERIS_PACK_VERSION || view.getUint16(10, true) !== EPHEMERIS_PACK_MINOR_VERSION) {
-    throw new EphemerisPackFormatError('unsupported binary pack version');
+    throw new PackFormatError('unsupported binary pack version');
   }
-  if (view.getUint32(12, true) !== EPHEMERIS_PACK_HEADER_BYTES) throw new EphemerisPackFormatError('bad header size');
+  if (view.getUint32(12, true) !== EPHEMERIS_PACK_HEADER_BYTES) throw new PackFormatError('bad header size');
   if (view.getUint32(24, true) !== 0 || view.getUint32(28, true) !== 0) {
-    throw new EphemerisPackFormatError('reserved header bytes must be zero');
+    throw new PackFormatError('reserved header bytes must be zero');
   }
   const manifestLength = view.getUint32(16, true);
   const payloadLength = view.getUint32(20, true);
   const payloadStart = EPHEMERIS_PACK_HEADER_BYTES + manifestLength;
   if (payloadStart > input.length || payloadLength !== input.length - payloadStart) {
-    throw new EphemerisPackFormatError('pack length does not match its header');
+    throw new PackFormatError('pack length does not match its header');
   }
-  if (payloadLength % 8 !== 0) throw new EphemerisPackFormatError('payload length is not Float64-aligned');
+  if (payloadLength % 8 !== 0) throw new PackFormatError('payload length is not Float64-aligned');
 
   let manifestJson: string;
   try {
     manifestJson = new TextDecoder('utf-8', { fatal: true }).decode(input.subarray(EPHEMERIS_PACK_HEADER_BYTES, payloadStart));
   } catch {
-    throw new EphemerisPackFormatError('manifest is not valid UTF-8');
+    throw new PackFormatError('manifest is not valid UTF-8');
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(manifestJson) as unknown;
   } catch {
-    throw new EphemerisPackFormatError('manifest is not valid JSON');
+    throw new PackFormatError('manifest is not valid JSON');
   }
   const manifest = validateManifest(parsed);
-  if (canonicalJson(manifest) !== manifestJson) throw new EphemerisPackFormatError('manifest is not canonical JSON');
+  if (canonicalJson(manifest) !== manifestJson) throw new PackFormatError('manifest is not canonical JSON');
   const expectedValues = manifest.series.reduce((sum, item) => sum + item.coefficientCount, 0);
-  if (payloadLength !== expectedValues * 8) throw new EphemerisPackFormatError('payload length does not match manifest');
+  if (payloadLength !== expectedValues * 8) throw new PackFormatError('payload length does not match manifest');
 
   const payloadBytes = input.subarray(payloadStart);
   const payload = decodeFloat64Payload(payloadBytes, expectedValues);
@@ -358,9 +363,9 @@ export function decodeEphemerisPack(input: Uint8Array): DecodedEphemerisPack {
 // ずれることはない**(評価器の検証はこの一致を要求する)。
 // **係数は複製せず decoded.payload へのビューとして返す** — 返り値が生きているあいだ
 // payload も生き続ける。呼び出し側は payload を書き換えてはならない。
-export function toEvaluatorEphemerisPack(
-  decoded: DecodedEphemerisPack, timeOriginSec = 0,
-): ChebyshevEphemerisPack {
+export function toChebyshevPack(
+  decoded: DecodedPack, timeOriginSec = 0,
+): ChebyshevPack {
   const bodies = new Map<string, {
     readonly id: string;
     readonly segments: Array<{
