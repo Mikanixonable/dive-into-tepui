@@ -1,6 +1,6 @@
-// 右クリックの当たり判定にかける軌道線(公転軌道・船の軌道・軌道ガイド)の候補集合を1フレーム分
-// 組み立てる。サンプル点列そのものは各軌道線(OrbitLine/TrajectoryLine/OrbitGuideLines)が持つので、
-// ここは「いまフレームにどの軌道線が表示されているか」を集めるだけ。
+// 右クリックの当たり判定にかける線の候補集合を1フレーム分組み立てる。サンプル点列そのものは
+// 各描画クラス(EllipseLine/TrajectoryLine/TargetRelativeLine/OrbitGuideLines)が持つので、
+// ここは「いまフレームにどの線が表示されているか」を集めるだけ — マップ視点でなければ空になる。
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { guideSecondary } from '../../physics/orbit-guide';
 import type { Vec3 } from '../../math/vec3';
@@ -10,17 +10,17 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import { OrbitCalcMethod, OrbitPickable } from './orbit-pickable';
+import { LineCalcMethod, LinePickable } from './line-pickable';
 
 // 当たり判定用サンプル点数。描画の適応分割ほどの精度は要らず、画面上のピクセル半径内かの判定さえ
 // 通ればよいので、頂点予算より一段粗い固定値にする。
 const ORBIT_PICK_SAMPLES = 128;
 
-export class OrbitPickables {
-  private readonly items: OrbitPickable[] = [];
+export class LinePickables {
+  private readonly items: LinePickable[] = [];
 
   // このフレームの候補列。refresh の後に読む。
-  get pickables(): readonly OrbitPickable[] { return this.items; }
+  get pickables(): readonly LinePickable[] { return this.items; }
 
   constructor(
     private readonly entities: DynamicSystem,
@@ -35,7 +35,7 @@ export class OrbitPickables {
     if (!this.cameraSystem.overviewMode) return;
     const { frame, displayTime } = displayWindow;
 
-    for (const { id, line } of this.celestialSystem.referenceOrbitLines) {
+    for (const { id, line } of this.celestialSystem.referenceEllipseLines) {
       const points = line.samplePoints(ORBIT_PICK_SAMPLES);
       if (points.length < 2) continue;
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [`body:${id}`], points });
@@ -71,14 +71,14 @@ export class OrbitPickables {
     frame: ReferenceFrame, displayTime: number, frameAnchors: FrameAnchorSource,
   ): void {
     if (!entity.alive) return;
-    let method: OrbitCalcMethod;
+    let method: LineCalcMethod;
     let points: Vec3[];
-    if (entity.relativeOrbitLine !== null) {
+    if (entity.targetRelativeLine !== null) {
       method = 'analytic';
-      points = [...entity.relativeOrbitLine.samplePoints(ORBIT_PICK_SAMPLES)];
-    } else if (entity.orbitLine !== null) {
+      points = [...entity.targetRelativeLine.samplePoints(ORBIT_PICK_SAMPLES)];
+    } else if (entity.ellipseLine !== null) {
       method = 'analytic';
-      points = [...entity.orbitLine.samplePoints(ORBIT_PICK_SAMPLES)];
+      points = [...entity.ellipseLine.samplePoints(ORBIT_PICK_SAMPLES)];
     } else if (entity.predictedLine !== null || entity.actualLine !== null) {
       method = 'predicted';
       const frames = this.celestialSystem.frames;

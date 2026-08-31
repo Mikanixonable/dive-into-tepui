@@ -485,19 +485,10 @@ numericEphemeris ではない** — 規範3 の `numeric` の限定がここで�
 `AU` を `astronomical-unit.ts` へ、`planetOrbit()` / `planetAngles()` を `kepler-orbit.ts` へ
 分割した(理由は commit を参照)。
 
-### 手順6. 線・当たり判定の名前を実装へ合わせる
-
-2.3「線・当たり判定」の表の7件。**長い方から先に置換する**(`OrbitLine` は
-`RelativeOrbitLine` の部分文字列)。**`OrbitPickable` 族は型名だけを変え、`kind` / `method` の
-値の文字列は触らない**(セーブには入らないが、`ownerKeys` と `key` の綴り
-`` `${kind}:${id}` `` が `MapPickables.pickables` の突き合わせに使われている)。
-`orbitLineColor` は**セーブのキーなので runtime のフィールド名も据置**(`save-data.ts:140` /
-`enemy-save.ts:19`)。`trajectory-line.ts` 冒頭の「OrbitLine(解析的な楕円)の兄弟」も追従。
-
-**検証.** `npm run typecheck` / `npm run test:game` / `npm run test:render`。
-`grep -rn "OrbitLine\|OrbitPickable\|pickNearestOrbit" src/` が 0 件。
-マップで軌道線を右クリックしてウィンドウが開くこと(`kind` / `method` の値を触っていない証拠)。マップビューで地球周回の楕円・月の公転楕円・静止軌道リング・
-航法ターゲット基準の相対線が従来どおり描かれることを目で確認する(`/rendering-workflow`)。
+**手順6(線・当たり判定の名前)も実施済み。** `MapDisplayToggles.baseOrbit` は
+**マップ表示トグルの永続キー**なので据置(一度巻き込んで戻した)。`orbitLineColor` も
+セーブのキーなので据置。`tools/perf-probe.mjs` の `setOrbitLineFor` は HUD の行ラベルを
+操作する関数でこの型とは無関係なので据置。
 
 ### 手順7.(任意)`src/physics/ephemeris/` へ畳む
 
