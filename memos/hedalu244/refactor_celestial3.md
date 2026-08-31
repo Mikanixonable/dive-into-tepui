@@ -5,8 +5,9 @@
 `refactor_frame_transform.md` / `refactor_orbit_ephemeris.md` / `rename-ephemeris.md`(すべて破棄)。
 
 **回収時にすべての項目をコードで追い直した。**「見送り」「判断済み」とされていたものも含めて
-現況を確かめ、以下は**現在形**で書いてある。行番号・件数は **`9b9d88ca`** 時点の
+現況を確かめ、以下は**現在形**で書いてある。行番号・件数は **`bccc9573`** 時点の
 スナップショットであり、正本ではない — 食い違ったらコードを信じる。
+(2節は `4fa32d78`〜`bccc9573` で実施済み。他の節は `9b9d88ca` 時点の調査のまま。)
 
 再編の4軸(集合は `CelestialSystem` だけが扱う / `CelestialEntity` は自分のことだけ知る /
 時間元期の統一 / 座標系を層ごとに統一)は**どれも到達済み**で、以下は**その外側に残ったもの**。
@@ -17,8 +18,8 @@
 
 | # | 論点 | 状態 | 次にやること |
 | --- | --- | --- | --- |
-| 1 | 命名体系(`ephemeris` / `orbit` / `pack` / 原点を名前に出す) | **未着手。対象の9割が現存** | 現況へ引き直して実施 |
-| 2 | 暦側の層が6段 | **未着手。死にコード3件は独立に削れる** | 死にコードを削る → interface を畳むか判断 |
+| 1 | 命名体系(`ephemeris` / `orbit` / `pack` / 原点を名前に出す) | **未着手。ただし 2節 の作業で対象が減った** | 規範を CODING-RULE へ置いてから実施 |
+| 2 | 暦側の層が6段 | **解消済み**(`bccc9573` まで)。7節へ | — |
 | 3 | 回転基準系が2枝で食い違う | **未判断。未測定のまま** | ω の揺れを月で測る |
 | 4 | μ=0 の惑星が系の重心不変条件を破る | **方針未決。テストは宣言済み** | 「μ 未測定」の扱いを決める |
 | 5 | 恒星の無い星系で惑星の解析加速度が原点向き | **現存。コメントも無い** | 惑星を2体置くときに直す |
@@ -57,22 +58,13 @@
 | 手順 | 対象 | 件数 | 現況 |
 | --- | --- | --- | --- |
 | 1 | CODING-RULE への規範の記載 | — | **未着手。** `orbit` の定義は「解析的に解ける軌道」のまま(`CODING-RULE.md:462`)で、CR3BP 焼き込み族を排除してしまう。`ephemeris` / `pack` の節も、無標 `stateAt` が ECI を指す例外の明記も無い |
-| 2 | `orientationModelId` | 3 | **完全に死んでいる**(`ephemeris-profile.ts:13,28,38` の宣言だけ)。パックは自転を答えないのに、この宣言が名前だけで否定している |
-| 2 | `ChebyshevEphemeris.velocityOf` | 1 | **定義以外の参照が 0**(`evaluator.ts:283`) |
-| 2 | `ChebyshevEphemeris.segmentOf` | 2 | public だが呼ぶのは同クラスの `evaluate` だけ |
-| 2 | `ChebyshevEphemeris.positionOf` / `evaluate` | — | 本番の呼び出し元は無い。`positionOf` は `chebyshev-ephemeris.test.ts:64`、`evaluate` は同 `:71` だけ。`stateOf` は `packed-absolute-ephemeris.ts:56` が使う |
-| 2 | 公開フィールド `manifest` / `pack` | — | `pack` は `packed-absolute-ephemeris.ts:35` が引く。`manifest` は外から引かれていない |
 | 3 | `EphemerisSeries` → `PackSegment` | 4 | 現存。ワイヤのキー `series` は凍結(`cli.mjs:71,109` が読む) |
-| 5 | `AbsoluteEphemeris` → `BarycentricEphemeris` | 37 | 現存。**ただし interface が `pointKindOf` を得て2メソッドになった**ので、改名の意味が「原点を名前に出す」から少し広がっている |
-| 5 | `PackedAbsoluteEphemeris` → `ChebyshevBarycentricEphemeris` | 14 | 現存 |
-| 5 | `loadAbsoluteEphemeris` / `loadPackedAbsoluteEphemeris` | 4 / 5 | 現存 |
-| 5 | `solar-system.ts` / `celestial-system.ts` の `absoluteSource` | 2 | 現存(`solar-system.ts:54`・`celestial-system.ts:133`) |
+| 5 | `PackedAbsoluteEphemeris` → `ChebyshevBarycentricEphemeris` | 14 | 現存。**`ephemeris-catalog.ts` とその回帰テストの外へは出なくなった**ので、改名の波及は小さい |
+| 5 | `loadPackedAbsoluteEphemeris` | 5 | 現存 |
 | 6 | `EphemerisPackFormatError` → `PackFormatError` | 52 | 現存(量の大半) |
-| 6 | `ChebyshevEphemerisPack` → `ChebyshevPack` | 12 | 現存 |
+| 6 | `ChebyshevEphemerisPack` → `ChebyshevPack` | 9 | 現存 |
 | 6 | `EphemerisManifest` → `PackManifest` | 7 | 現存 |
 | 6 | `DecodedEphemerisPack` → `DecodedPack` | 6 | 現存 |
-| 6 | `CanonicalEvaluatorEphemerisPack` の解消 | 2 | 現存(`format.ts:88,369`) |
-| 4 | `stage.ts` の局所変数 `pack`(型は `AbsoluteEphemeris`) | 2 | 現存(`stage.ts:120,123`)。**solar-system 側の `pack` が消えたので、いまや同名の別物は無い** — 手順4 の主目的だった「境界で中身がすり替わる」問題は既に解けており、残るのは語の適切さだけ |
 | 4 | `planet-orbit.ts` のファイル名 | — | 現存。`PlanetOrbit` 型は無く(`grep` 0 件)、中身は `AU` / `planetOrbit()` / `PlanetAngles` / `planetAngles()` |
 | 8 | `OrbitLine` → `EllipseLine` | 51 | 現存 |
 | 8 | `RelativeOrbitLine` → `TargetRelativeLine` | 4 | 現存(軌道ではなく2点を結ぶ直線) |
@@ -81,39 +73,33 @@
 使える。** とくに「`ephemeris` / `orbit` を分ける2軸(共通原点か主天体相対か / 天体 id で引く表か
 1本の経路か)」と、ワイヤキー `series` を触ると既存セーブが全部 incompatible になる罠は現行のまま。
 
-**着手するなら手順2(死にコードの削除)から。** 他のどの判断にも依存せず、対象を確実に減らす。
+**手順2(死にコードの削除)と、手順5・6 のうち `AbsoluteEphemeris` 族・
+`CanonicalEvaluatorEphemerisPack` に当たるぶんは、2節の作業で消化済み。**
+残りは純粋な改名で、**着手前に規範(手順1: CODING-RULE への記載)を先に置く。**
 
 ---
 
-## 2. 暦側の層が6段
+## 2. 暦側の層 — 解消済み(`4fa32d78`〜`bccc9573`)
 
-| 段 | 生成点 | 消費される口 |
+**6段のうち2段が消え、1段が構築時限りになった。** 残るのは下の4つで、どれも別の仕事をしている。
+
+| 段 | 何をするか | 寿命 |
 | --- | --- | --- |
-| `.epk` バイト列 | — | `decodeEphemerisPack` |
-| `DecodedEphemerisPack` | `decodeEphemerisPack` 1箇所 | `manifest` / `payload` / `payloadBytes` |
-| `CanonicalEvaluatorEphemerisPack` | `toEvaluatorEphemerisPack` 1箇所 | `ChebyshevEphemeris` の入力のみ |
-| `ChebyshevEphemeris` | `packed-absolute-ephemeris.ts:19` 1箇所 | `stateOf()` と `pack` の2つだけ |
-| `AbsoluteEphemeris`(interface) | — | 実装は `PackedAbsoluteEphemeris` と `testEphemerisSource`(`tests/physics/test-helpers.ts:111`)の2つ |
-| `BodyEphemeris`(interface) | `bodyEphemerisOf` | 天体1体ごと。`PackedBodyEphemeris` が窓として被さる |
+| `.epk` バイト列 → `DecodedEphemerisPack` | ヘッダ解析・canonical JSON 検査・payload 長の検査 | **構築時限り**(以後は保持しない) |
+| → `ChebyshevEphemerisPack` | フラットな `series[]` を天体ごとに畳み、時刻軸を元期へ寄せる。**係数は payload へのビュー** | 評価器と同じ |
+| `ChebyshevEphemeris` | セグメントの二分探索と Chebyshev 評価 | pack と同じ |
+| `PointEphemeris` → `EphemerisPoints` | 1点ぶんの窓(id 固定・ICRF→ゲーム軸)と、その一覧 | 星系と同じ |
 
-**段の数は減っていない。** 再編で `BodyEphemeris` が「系の重心にも結べるもの」になり
-(`PlanetSystem.bindEphemeris`)、`AbsoluteEphemeris` が `pointKindOf` を得たぶん、**最下段の
-契約はむしろ増えている。**
+**消したもの**: `CanonicalEvaluatorEphemerisPack`(ワイヤ manifest が既に宣言・検証している
+事実を下流の型で言い直していただけ)、`AbsoluteEphemeris`(本番実装1つ・構築時限りのカタログ)。
+**`PointEphemeris` が表現の多態の継ぎ目として残った** — 暦パック以外の供給源(例えば TLE/SGP4)が
+来るとしたら、`AbsoluteEphemeris` の2つめの実装ではなくこの interface の実装になる。
 
-### 判断が要らないもの(先に削れる)
+副産物として、**係数の複製2回と読まれない manifest の抱え込みが消え、保持量が
+18.7 MB → 7.5 MB(係数 2.99 MB に対し 6.2x → 2.5x)、`stateAt` が 350.6 ns → 184.3 ns/call。**
 
-`velocityOf` は死んでいる。`segmentOf` は private にできる。`positionOf` / `evaluate` は
-テストだけが呼んでいる — テストが本当にその口を要るかを見てから決める。**1節の手順2 と同じ作業。**
-
-### 判断が要るもの
-
-- **`AbsoluteEphemeris` interface を畳むか。** 本番の実装は `PackedAbsoluteEphemeris` の1つに
-  確定している(連星系は解析暦 `KeplerOrbit` 側の拡張であって、`AbsoluteEphemeris` の2つめの
-  本番実装にはならない — **数値積分でしか位置が求まらない非周期の多体系は `DynamicSystem` 側の
-  予測シミュレーションと構造上相性が悪く、実現性を捨てている**)。残る2つめはテストヘルパ
-  だけなので、**差し替え口として要るのはテストの都合だけ**。
-- **`PackedAbsoluteEphemeris` を `ChebyshevEphemeris` へ畳むか。** 残っている実質は
-  「構築時の rebase + `bodyEphemerisOf` の切り出し + `pointKindOf`」。復号と SHA 検証は別の関数。
+**`game/` は暦パックの型を一切 import しなくなった** — `loadEphemerisPoints` が
+`ReadonlyMap` を返し、`PackedAbsoluteEphemeris` は `ephemeris-catalog.ts` の内側に閉じている。
 
 ---
 
@@ -145,7 +131,7 @@
 
 **触るときの注意:** `packedOrbitRelStateAt`(`:377`)は `orbitPointPackedStateAt`(直接収録のみ)を
 使っている。合成した `packedStateAt` へ替えると**解析枝が実位置基準へ変わって 2.5° 動く。**
-これを拒む検査が `tests/physics/absolute-ephemeris.test.ts:55` にあるので、意図して統一するなら
+これを拒む検査が `tests/physics/ephemeris-points.test.ts` にあるので、意図して統一するなら
 その検査ごと書き換えることになる。**コード側にも `celestial-motion.ts:380` に同じ警告がある。**
 
 ---
@@ -348,6 +334,8 @@ CODING-RULE 1.3 の層の向きに反するが、**色の所有者を `render/` 
 | **暦パックの火星〜冥王星が「惑星系重心」で収録され「惑星本体」として消費されている**(冥王星で 2,128 km) | **直っている。** `EphemerisPointKind = 'body' \| 'systemBarycenter'`(`absolute-ephemeris.ts:9`)を manifest が宣言し(`bodyPoints`)、`pointKindOf` が結び先を分ける。系重心は `PlanetSystem.bindEphemeris` へ、本体は `CelestialMotion` へ。本体を収録していない系は `PlanetMotion.packedStateAt`(`:411`)が系重心から重心オフセットを差し引いて補う |
 | `packedPrimaryRelStateAt` が巨大惑星で見る点(落とし穴) | **解けている。** `PlanetMotion.orbitPointPackedStateAt`(`:406`)が「惑星の軌道要素が乗っているのは本体ではなく系の重心」として系重心を返す。**軌道法線の入力が要素と整合した** |
 | ヒットしえない集合キャッシュ `gravityCache` / `atmosphereCache` | **消滅**(`grep` 0 件) |
+| `ChebyshevEphemeris.velocityOf` / `positionOf` / `evaluate` / `segmentOf` / `IndexedBody.starts`、`EphemerisProfile.orientationModelId` | **削除・private 化済み**(`4fa32d78`)。`starts` は 10054 要素を作って一度も読んでいなかった |
+| `AbsoluteEphemeris` interface を畳むか / `PackedAbsoluteEphemeris` を `ChebyshevEphemeris` へ畳むか | **前者は畳んだ**(`bccc9573`、2節)。**後者は畳まない** — `types.ts` が「Julian date はこの binary 非依存のコアから外し、明示的なアダプタ境界へ置く」と宣言しており、元期の畳み込みと軸の付け替えはその境界の仕事。評価器へ押し込むと宣言が崩れる |
 | `SatelliteMotion` の絶対位置にキャッシュを置くか(実測: 置かない) | **問い自体が消えた。** 衛星の絶対位置は `PlanetSystem.membersCache` が系まるごと1件で畳んでおり、`SatelliteMotion.analyticStateAt`(`:462`)はそれを引くだけ。**畳んでいるのは絶対のほうで、惑星本体相対は引き算で作る** — 当時検討した4案のどれとも違う形へ落ちた |
 | `relStateAt` が public なのは責務漏洩か(実測: 漏洩していない) | **形が変わって決着。** `SatelliteMotion.relStateAt` は無く、`PlanetSystem.satelliteRelStateAt` が唯一の公開口。呼ぶのは `celestial-motion.ts:470`(解析加速度)と `:480`(暦パックの補完)の2箇所だけで、どちらも `PlanetSystem` の外に居るために public になっている |
 | `PlanetSystem.starRelStateAt` は本当に主星相対か | **疑いは外れ。** そのメソッド自体が無くなり、主星相対の二体解は `StarMotion` の畳み込みが `receiveAnalyticState`(`planet-system.ts:70`)で太陽系重心相対にして配る形になった。**主星相対の値が外へ出ない** |
