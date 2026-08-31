@@ -7,7 +7,7 @@
 // よいのは意図してモデルを変えたときだけ(そのときは変えた理由をコミットに書く)。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { EphemerisPoints } from '../../src/physics/point-ephemeris';
+import { EphemerisPoints } from '../../src/physics/ephemeris/point';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { keplerOrbitForSimZero, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { scale, sub, v3 } from '../../src/math/vec3';

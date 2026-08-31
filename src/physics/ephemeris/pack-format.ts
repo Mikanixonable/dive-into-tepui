@@ -35,8 +35,8 @@
  * CLI verifies this field.
  */
 
-import type { EphemerisPointKind } from '../point-ephemeris';
-import type { ChebyshevPack } from './types';
+import type { EphemerisPointKind } from './point';
+import type { ChebyshevPack } from './pack-types';
 
 export const EPHEMERIS_PACK_MAGIC = 'TEPUIEPK';
 export const EPHEMERIS_PACK_FORMAT = 'tepui-ephemeris-pack';

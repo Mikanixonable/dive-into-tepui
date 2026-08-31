@@ -12,7 +12,7 @@ import ts from 'typescript';
 
 const toolDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(toolDir, '../..');
-const formatSourcePath = join(repoRoot, 'src/physics/ephemeris-pack/format.ts');
+const formatSourcePath = join(repoRoot, 'src/physics/ephemeris/pack-format.ts');
 
 const HELP = `
 Tepui ephemeris pack tool
