@@ -1,12 +1,13 @@
 // 中心天体まわりの軌道を、基準面に固定したケプラー要素と角度の永年変化率で表したものの評価。
 // 恒星/惑星/衛星のどの分類にも属さない、純粋な軌道の数学 — 変化率が何に由来するかは
-// planet-orbit.ts / satellite-orbit.ts の責務。
+// 呼び出し側(惑星は下の planetOrbit、衛星は satellite-orbit.ts)の責務。
 // 角度は平均黄経 L(公転周期でちょうど1周)→ 平均近点角 M = L − ϖ → 真近点角 ν の順に組む。
 // 昇交点・近点はどちらも歳差するので、L を軌道面内の角(昇交点からの緯度引数 u)へ直接
 // 使うと公転が歳差ぶんだけ遅速し、長期積分で位置が大きくずれる。
 // 傾斜・昇交点・近点はすべて basisToEci が指す基準面(黄道面、あるいは親惑星の赤道面)の
 // 上で測る。位置・速度だけでなく軌道法線・回転基準系もこの1つの回転を経由するので、
 // 基準面を変えても表示・ラグランジュ点・回転座標系が食い違うことはない。
+import { AU } from './astronomical-unit';
 import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
 import { Q_ECL_TO_ECI } from './ecliptic';
 import { eccentricAnomalyFromMean, positionFromOrbitalElements } from './elements';
@@ -195,4 +196,61 @@ export function keplerOrbitNormal(orbit: KeplerOrbit, t: number): Vec3 {
 export function keplerOrbitMeanDirection(orbit: KeplerOrbit, t: number): Vec3 {
   const a = orbitAngles(orbit, t);
   return directionFromAngles(orbit, a, a.uMean);
+}
+
+// 惑星: その惑星と衛星の共通重心が太陽まわりに描くケプラー軌道。惑星本体ではなく重心が
+// ケプラー軌道に乗る(地球は月に対し 1:81 と十分に軽くはなく、重心のまわりを 4,673 km の
+// 振幅で回っている)。要素の永年変化は他惑星からの摂動に由来し、世紀あたりの値で入力する。
+const DEG = Math.PI / 180;
+
+// 度・世紀単位で入力された惑星-衛星系重心の軌道要素を、KeplerOrbit のラジアン・秒単位へ変換する。
+export function planetOrbit(p: {
+  a: number;
+  e: number;
+  incDeg: number;
+  raanDeg: number;
+  lonPeriDeg: number;
+  l0Deg: number;
+  lRateDegPerCentury: number;
+  raanRateDegPerCentury: number;
+  incRateDegPerCentury: number;
+  lonPeriRateDegPerCentury: number;
+  eRatePerCentury: number;
+  aRatePerCenturyAu: number;
+}): KeplerOrbit {
+  // 度/世紀・au/世紀の入力単位を、KeplerOrbit のラジアン/秒単位へ一括変換するだけ。
+  return {
+    basisToEci: ECLIPTIC_BASIS,
+    a: p.a,
+    aRate: (p.aRatePerCenturyAu * AU) / JULIAN_CENTURY,
+    e: p.e,
+    eRate: p.eRatePerCentury / JULIAN_CENTURY,
+    inc: p.incDeg * DEG,
+    incRate: (p.incRateDegPerCentury * DEG) / JULIAN_CENTURY,
+    raan0: p.raanDeg * DEG,
+    raanRate: (p.raanRateDegPerCentury * DEG) / JULIAN_CENTURY,
+    lonPeri0: p.lonPeriDeg * DEG,
+    lonPeriRate: (p.lonPeriRateDegPerCentury * DEG) / JULIAN_CENTURY,
+    l0: p.l0Deg * DEG,
+    lRate: (p.lRateDegPerCentury * DEG) / JULIAN_CENTURY,
+  };
+}
+
+export type PlanetAngles = {
+  readonly meanAnomaly: number; // [rad]
+  readonly meanLongitude: number; // [rad]
+  readonly meanAnomalyRate: number; // [rad/s]
+  readonly meanLongitudeRate: number; // [rad/s]
+};
+
+// 衛星モデルが太陽方向を求めるのに要る角度。惑星-衛星系重心の軌道から取れるので循環しない。
+export function planetAngles(orbit: KeplerOrbit, t: number): PlanetAngles {
+  const lonPeri = orbit.lonPeri0 + orbit.lonPeriRate * t;
+  const meanLongitude = orbit.l0 + orbit.lRate * t;
+  return {
+    meanAnomaly: meanLongitude - lonPeri,
+    meanLongitude,
+    meanAnomalyRate: orbit.lRate - orbit.lonPeriRate,
+    meanLongitudeRate: orbit.lRate,
+  };
 }
