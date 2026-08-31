@@ -152,7 +152,7 @@ export class Game {
     this.navTarget.restore(initialSave?.navTarget, this.dynamicSystem);
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム celestialBodies を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
-    this.frameAnchors = new FrameAnchors({
+    this.frameAnchors = new FrameAnchors(celestialSystem, {
       entityState: (id, t) => this.dynamicSystem.all().find((e) => e.id === id && e.alive)?.displayState(t, celestialSystem) ?? null,
       activeShipState: (t) => this.activeControllableEntity?.displayState(t, celestialSystem) ?? null,
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
@@ -327,7 +327,7 @@ export class Game {
     const canDisplayFuture = !this.displayWindowManager.forceCurrent;
     // このフレームの解決が使う天体一覧と、それを引く表示時刻を差し込む: 以降の
     // frameTransformAt 呼び出しはすべてこの frameAnchors を通す。
-    this.frameAnchors.update(this.celestialSystem.celestialMotions, displayWindow.displayTime);
+    this.frameAnchors.update(displayWindow.displayTime);
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._celestialSystem.update(displayWindow.displayTime, overviewMode, graphics);
     this.sections.enter(SECTION.plan);
@@ -517,7 +517,7 @@ export class Game {
     const { displayTime, simTime } = displayWindow;
     const celestialBodies = this.celestialSystem.celestialMotions;
     // sync フェーズの frameTransformAt 呼び出しは、天体メッシュと同じ表示時刻で天体を引く。
-    this.frameAnchors.update(celestialBodies, displayTime);
+    this.frameAnchors.update(displayTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
