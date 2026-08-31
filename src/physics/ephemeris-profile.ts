@@ -10,7 +10,6 @@ export type EphemerisProfile = {
   readonly validEndJdTdb: number;
   readonly highAccuracyStartJdTdb: number;
   readonly highAccuracyEndJdTdb: number;
-  readonly orientationModelId: string;
   /** Published pack payload identity; changing coefficients invalidates saves. */
   readonly packId: string;
 };
@@ -25,7 +24,6 @@ export const EPHEMERIS_PROFILES: Readonly<Record<EphemerisProfileId, EphemerisPr
     validEndJdTdb: 2464694.0, // 10 Julian years later
     highAccuracyStartJdTdb: 2461041.5,
     highAccuracyEndJdTdb: 2464694.0,
-    orientationModelId: 'iau-pck-modern',
     packId: 'modern-de440@343c7b46a1b77c46b6f986d263666a62c227ac735209ae3b6ce89a751b286505',
   },
   'far-future-20000': {
@@ -35,7 +33,6 @@ export const EPHEMERIS_PROFILES: Readonly<Record<EphemerisProfileId, EphemerisPr
     validEndJdTdb: 9071698.25, // 10 Julian years later
     highAccuracyStartJdTdb: 9068045.75,
     highAccuracyEndJdTdb: 9071698.25,
-    orientationModelId: 'iau-long-term-canonical',
     packId: 'far-future-20000@a6eb7528b6b76818466fdb13d514817c223eb58ebcc14e85ae1a7f33cf343496',
   },
 };

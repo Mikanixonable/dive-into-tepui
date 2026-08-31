@@ -3,7 +3,6 @@ import { Vec3, v3 } from '../../math/vec3';
 import {
   ChebyshevBodyPack,
   ChebyshevEphemerisPack,
-  ChebyshevEvaluation,
   ChebyshevSegment,
   ChebyshevVectorCoefficients,
   ReadonlyNumberArray,
@@ -111,7 +110,6 @@ export function findChebyshevSegmentIndex(segments: readonly ChebyshevSegment[],
 
 interface IndexedBody {
   readonly body: ChebyshevBodyPack;
-  readonly starts: readonly number[];
 }
 
 function copyCoefficients(coefficients: ReadonlyNumberArray, label: string): ReadonlyNumberArray {
@@ -223,34 +221,24 @@ function evaluateSegment(segment: ChebyshevSegment, time: number): { position: V
 }
 
 export class ChebyshevEphemeris {
-  readonly manifest: ChebyshevEphemerisPack['manifest'];
   readonly pack: ChebyshevEphemerisPack;
   private readonly bodiesById = new Map<string, IndexedBody>();
 
   constructor(input: ChebyshevEphemerisPack) {
     const bodies = input.bodies.map(copyBody);
     validateManifest(input, bodies);
-    this.manifest = Object.freeze({
-      ...input.manifest,
-      bodies: Object.freeze(input.manifest.bodies.map((body) => Object.freeze({
-        ...body,
-        segments: Object.freeze(body.segments.map((segment) => Object.freeze({ ...segment }))),
-      }))),
-    });
-    this.pack = Object.freeze({ manifest: this.manifest, bodies: Object.freeze(bodies) });
+    this.pack = Object.freeze({ manifest: input.manifest, bodies: Object.freeze(bodies) });
 
     for (const body of bodies) {
       if (this.bodiesById.has(body.id)) {
         throw new InvalidChebyshevPackError(`duplicate body ${body.id}`);
       }
-      this.bodiesById.set(body.id, {
-        body,
-        starts: Object.freeze(body.segments.map((segment) => segment.start)),
-      });
+      this.bodiesById.set(body.id, { body });
     }
   }
 
-  segmentOf(bodyId: string, time: number): { readonly segment: ChebyshevSegment; readonly index: number } {
+  // time を覆うセグメント。収録外の id と有効期間外の time は例外。
+  private segmentOf(bodyId: string, time: number): ChebyshevSegment {
     const indexed = this.bodiesById.get(bodyId);
     if (indexed === undefined) throw new ChebyshevBodyNotFoundError(bodyId);
     const index = findChebyshevSegmentIndex(indexed.body.segments, time);
@@ -259,28 +247,12 @@ export class ChebyshevEphemeris {
       const last = indexed.body.segments[indexed.body.segments.length - 1]!;
       throw new ChebyshevTimeOutOfRangeError(bodyId, time, first.start, last.end);
     }
-    return { segment: indexed.body.segments[index]!, index };
+    return indexed.body.segments[index]!;
   }
 
-  evaluate(bodyId: string, time: number): ChebyshevEvaluation {
-    const selected = this.segmentOf(bodyId, time);
-    const evaluated = evaluateSegment(selected.segment, time);
-    return {
-      state: kinematicState<'icrf'>(time, evaluated.position, evaluated.velocity),
-      segment: selected.segment,
-      segmentIndex: selected.index,
-    };
-  }
-
+  // 太陽系重心中心・ICRF 軸の位置・速度。time は pack を組んだ側が決めた時刻軸の秒。
   stateOf(bodyId: string, time: number): KinematicState<'icrf'> {
-    return this.evaluate(bodyId, time).state;
-  }
-
-  positionOf(bodyId: string, time: number): Vec3 {
-    return this.evaluate(bodyId, time).state.r;
-  }
-
-  velocityOf(bodyId: string, time: number): Vec3 {
-    return this.evaluate(bodyId, time).state.v;
+    const evaluated = evaluateSegment(this.segmentOf(bodyId, time), time);
+    return kinematicState<'icrf'>(time, evaluated.position, evaluated.velocity);
   }
 }
