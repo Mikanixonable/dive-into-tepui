@@ -480,7 +480,7 @@ export class MapContextActions {
 
   // 軌道物体ウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
   // ウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)閉じる —
-  // 未来ゴースト時刻で位置が求まらないだけのフレーム(displayState が null)は候補列
+  // 未来ゴースト時刻で位置が求まらないだけのフレーム(stateAt が null)は候補列
   // (pickables.pickables)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
   sync(simTime: number, celestialBodies: readonly CelestialMotion[], player: Player | null): void {
     const overviewMode = this.cameraSystem.overviewMode;
