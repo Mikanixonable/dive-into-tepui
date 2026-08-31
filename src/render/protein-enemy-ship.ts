@@ -5,6 +5,7 @@ import {
   buildProteinLigands,
 } from './protein-atom-view';
 import { type ProteinMotionBinding } from './protein-motion-material';
+import { disposeOwnedRenderResources } from './dispose-owned-render-resources';
 import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
 import { buildProteinSilhouette } from './protein-silhouette-view';
 import { buildProteinRibbon, type ProteinRenderSource } from './protein-ribbon';
@@ -66,15 +67,7 @@ export function buildProteinEnemyShip(
 
 export function replaceProteinEnemyShip(target: THREE.Object3D, replacement: THREE.Object3D): void {
   for (const child of [...target.children]) {
-    child.traverse((nested) => {
-      const mesh = nested as THREE.Mesh;
-      if (!mesh.isMesh && !(nested as THREE.Line).isLine) return;
-      if (nested.userData.ownsGeometry) mesh.geometry.dispose();
-      if (nested.userData.ownsMaterial) {
-        if (Array.isArray(mesh.material)) mesh.material.forEach((material) => material.dispose());
-        else mesh.material.dispose();
-      }
-    });
+    disposeOwnedRenderResources(child);
     target.remove(child);
   }
   for (const child of [...replacement.children]) target.add(child);

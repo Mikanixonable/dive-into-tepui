@@ -16,7 +16,7 @@ import { PlanetAngles } from './planet-orbit';
 import { eclToEci, eciToEcl } from './ecliptic';
 import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitState } from './kepler-orbit';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { dot, len } from './vec3';
+import { dot, len } from '../math/vec3';
 
 const DEG = Math.PI / 180;
 

@@ -1,10 +1,10 @@
 // state-queue.ts のテスト。等速直線運動(r.x = t, v.x = 1)の状態を使うと、エルミート補間が
 // 厳密に線形へ一致するため、at() の結果を厳密等値で検証できる。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { StateQueue } from '../../src/physics/state-queue';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { v3 } from '../../src/physics/vec3';
+import { v3 } from '../../src/math/vec3';
 
 function stateAt(t: number) {
   return kinematicState(t, v3(t, 0, 0), v3(1, 0, 0));

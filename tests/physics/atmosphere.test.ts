@@ -3,10 +3,10 @@
 // テーブル値そのものはコード内の定数(理論値ではなく参照テーブル)なので、
 // ここでは「実装の性質」(連続、非負、単調減少)を検証する。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { Atmosphere, airspeed, atmosphericDensity, dragAccel, ellipsoidAltitude } from '../../src/physics/atmosphere';
-import { EARTH_ATMOSPHERE } from '../../src/physics/solar-system';
-import { len, v3 } from '../../src/physics/vec3';
+import { EARTH_ATMOSPHERE } from '../../src/physics/solar-system/earth-system';
+import { len, v3 } from '../../src/math/vec3';
 
 // ECI の極軸を自転軸とする地球の大気(Ephemeris.celestialBodyAt が組むのと同じ形)。
 const EARTH: Atmosphere = { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) };

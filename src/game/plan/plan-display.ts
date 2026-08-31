@@ -1,27 +1,50 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動と、表示時刻の計画上の自機位置ゴースト
 // (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import { Vec3, len, sub } from '../../physics/vec3';
+import { Vec3, len, sub } from '../../math/vec3';
 import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
-import { Projected } from '../../physics/projection';
+import { Projected } from '../../math/projection';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { SIM_EPOCH_SEC, fmtMarkerDist } from '../hud/utils';
+import { fmtMarkerDist } from '../hud/utils';
+import { SIM_EPOCH_SEC } from '../simulation/sim-epoch';
 import { celestialBodyName } from '../hud/frame/frame-labels';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { TickLabelMode, TickRank, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/orbit/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
-import { MapPickable } from '../map-pickable';
-import * as C from '../const';
+import { FloatingOrigin } from '../camera/floating-origin';
+import { MapPickable } from '../pickable/map-pickable';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import type { DisplayWindow } from '../display-window-manager';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
 import type { Controllable } from '../game-entity/controllable';
+
+// 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。両方見つかった
+// ときの (遠地点距離-近地点距離)/(遠地点距離+近地点距離) と比較する — これ未満は円に
+// 近くアプシスの方向が不定になるので両方隠す。
+const APSIS_MIN_ECC = 0.01;
+
+// 計画軌道上の UTC 暦目盛(plan/plan-display.ts)の間隔・本数を決める値。時・日・月のどの
+// 単位で刻むかは画面上の間隔で選ぶため、固定した時間間隔ではなく画面距離基準で間引く。
+const PLAN_TICK_MIN_PX = 40; // 目盛同士の最小画面間隔 [px]
+const PLAN_TICK_LABEL_MIN_PX = 90; // ラベルを付ける最小画面間隔 [px]
+const PLAN_TICK_MAX_COUNT = 400; // 日・月・年階級の目盛候補の上限本数
+
+// 時階級(1/3/6/12時間ごと)の目盛候補の上限本数。時階級の各刻みは互いに包含関係にある
+// (1時間ごとの列挙は3/6/12時間ごとの境界をすべて含む)ため、この上限に収まる限り常に
+// 最も細かい1時間ごとで列挙し、実際に画面へ出す粒度は sync 側の画面距離判定(間引き)に
+// 委ねる — そうしないと区間の長さだけで階級が丸ごと切り替わり、ズームに対して連続に
+// 見えなくなる。PLAN_TICK_MAX_COUNT より大きく取り、既定の最長表示区間(28日)でも
+// 1時間ごとの候補が丸ごと落ちないようにする。
+const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
+
+// 目盛点の半径 [px]。単位切替後も平均的な目盛の大きさが変わらないよう、絶対の階層ではなく
+// 現在表示中の最細目盛からの相対階層(0/1/2以上)で半径を引く。
+const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 
 // 近地点・遠地点アイコン。右クリックの被選択物であると同時に、表示するラベルを持つ。
 interface ApsisIcon extends MapPickable {
@@ -224,7 +247,7 @@ export class PlanDisplay {
     }
     // 中心天体が遷移の前後で変わる場合、異なる中心からの距離を比較して円軌道と判定しない。
     if (pe && ap && peCenter && apCenter && peCenter.id === apCenter.id
-      && (apDist - peDist) / (apDist + peDist) < C.APSIS_MIN_ECC) return [];
+      && (apDist - peDist) / (apDist + peDist) < APSIS_MIN_ECC) return [];
 
     const namePrefix = ownerName ? (this.path.nodeCount > 0 ? `${ownerName} (計画)` : ownerName) : undefined;
     const labelWithTime = (base: string, t: number): string =>
@@ -272,7 +295,7 @@ export class PlanDisplay {
     if (!range) return [];
     const boundaries = calendarBoundaries(
       SIM_EPOCH_SEC + range.min, SIM_EPOCH_SEC + range.max,
-      C.PLAN_TICK_MAX_COUNT, C.PLAN_TICK_HOUR_FAMILY_MAX_COUNT,
+      PLAN_TICK_MAX_COUNT, PLAN_TICK_HOUR_FAMILY_MAX_COUNT,
     );
     const icons: PlanTickIcon[] = [];
     for (const b of boundaries) {
@@ -335,7 +358,7 @@ export class PlanDisplay {
     const shown = new Array<boolean>(n).fill(false);
 
     const ranksDesc = [...new Set(icons.map((icon) => icon.rank))].sort((a, b) => b - a);
-    const minPxSq = C.PLAN_TICK_MIN_PX ** 2;
+    const minPxSq = PLAN_TICK_MIN_PX ** 2;
     for (const rank of ranksDesc) {
       for (let i = 0; i < n; i++) {
         if (icons[i]!.rank !== rank || !projected[i]!.front
@@ -351,8 +374,8 @@ export class PlanDisplay {
     for (let i = 0; i < n; i++) {
       if (shown[i] && (finestShown === null || icons[i]!.rank < finestShown)) finestShown = icons[i]!.rank;
     }
-    const labelMinPxSq = C.PLAN_TICK_LABEL_MIN_PX ** 2;
-    const maxDepth = C.PLAN_TICK_RADIUS_PX.length - 1;
+    const labelMinPxSq = PLAN_TICK_LABEL_MIN_PX ** 2;
+    const maxDepth = PLAN_TICK_RADIUS_PX.length - 1;
 
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
@@ -366,7 +389,7 @@ export class PlanDisplay {
       const depth = finestShown === null ? 0 : Math.min(Math.max(icon.rank - finestShown, 0), maxDepth);
       const label = this.isFarFromShown(projected, shown, i, labelMinPxSq) ? icon.label : '';
       this.markerManager.set(
-        icon.key, 'mk-plantick', tickSvg(C.PLAN_TICK_RADIUS_PX[depth]!), p.x, p.y, true,
+        icon.key, 'mk-plantick', tickSvg(PLAN_TICK_RADIUS_PX[depth]!), p.x, p.y, true,
         label, 1, undefined, undefined, true,
       );
     }

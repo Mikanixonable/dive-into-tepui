@@ -2,7 +2,7 @@
 // 最古になるよう常に降順で保つ。push は「最新のサンプル」を積む操作で、時刻が逆行/重複した
 // push は先頭側の同時刻以降(その push によって計算し直された区間)を破棄してから積み直す)
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
-import { Deque } from './deque';
+import { Deque } from '../math/deque';
 
 export class StateQueue {
   private readonly deque: Deque<KinematicState>;
@@ -80,7 +80,7 @@ export class StateQueue {
   }
 
   // 保持しているサンプルを古い順(= 内部の降順と逆順)の配列で返す。折れ線描画
-  // (game/trajectory-line.ts の TrajectoryLine.syncGeometry)は時系列順の配列を要求するため。
+  // (game/lines/trajectory-line.ts の TrajectoryLine.syncGeometry)は時系列順の配列を要求するため。
   toArrayOldestFirst(): KinematicState[] {
     const out: KinematicState[] = new Array(this.deque.size);
     for (let i = 0; i < this.deque.size; i++) out[i] = this.deque.at(this.deque.size - 1 - i);

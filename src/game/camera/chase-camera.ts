@@ -2,14 +2,16 @@
 // rot の意味は camFollowAttitude で切り替わる: true なら対象の姿勢に対する相対姿勢、false なら
 // ワールド(ECI)に対する絶対姿勢。切り替えは toggleFollowAttitude が対象の姿勢クオータニオンを
 // 掛け/割って読み替える。
-import { add, addScaled, cross, len, norm, scale, v3, Vec3 } from '../../physics/vec3';
+import { add, addScaled, cross, len, norm, scale, v3, Vec3 } from '../../math/vec3';
 import { MouseDelta } from '../input/input';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { GameEntity } from '../game-entity/game-entity';
-import { metersPerPixelAtDepth, Viewpoint } from '../../physics/projection';
-import { ChaseCameraSaveData } from '../save-data';
+import { metersPerPixelAtDepth, Viewpoint } from '../../math/projection';
+import { ChaseCameraSaveData } from '../save/save-data';
+
+const CAM_DRAG_ROTATE_RATE = 0.005; // マウスドラッグ [rad/px]
 
 // 初期視点: 機体後方やや上から見下ろす。
 const DEFAULT_ROT: Quat = qFromAxisAngle(v3(1, 0, 0), 0.3 - (10 * Math.PI) / 180);
@@ -102,7 +104,7 @@ export class ChaseCamera {
     const dragLen = len(dragVec);
     if (dragLen > 1e-9) {
       const axis = norm(cross(dragVec, view));
-      q = qMul(qFromAxisAngle(axis, dragLen * C.CAM_DRAG_ROTATE_RATE), q);
+      q = qMul(qFromAxisAngle(axis, dragLen * CAM_DRAG_ROTATE_RATE), q);
     }
     q = qNormalize(q);
 

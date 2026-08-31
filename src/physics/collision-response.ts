@@ -5,7 +5,7 @@
 // 幾何は両方の入口で共通で、分かれるのは補正の受け持ちだけ。不動な相手は質量ではなく型で
 // 表され、質量を持つのは反作用を受ける側だけ。その質量は 0(試験粒子 — 相手に力を及ぼさず
 // 自分だけが跳ね返る)から無限大(不動)までを取りうる。
-import { Vec3, add, addScaled, dot, scale, sub } from './vec3';
+import { Vec3, add, addScaled, dot, scale, sub } from '../math/vec3';
 import { KinematicState } from './kinematic-state';
 import { sweptSphereContact } from './sphere-contact';
 

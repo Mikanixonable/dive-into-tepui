@@ -3,7 +3,7 @@
 // PlayerThrottle 固有の状態(thrustVizDir/throttleIdx)には依存しない(RcsEffects が
 // PlayerThrottle 経由ではなく ship.torque を直接読むのと同じ理由・同じ形)。
 import * as THREE from 'three/webgpu';
-import { Vec3, addScaled, len, scale } from '../../physics/vec3';
+import { Vec3, addScaled, len, scale } from '../../math/vec3';
 import { Billboard } from '../../render/billboard';
 import {
   THRUST_PLUME_CORE_BRIGHTNESS, THRUST_PLUME_CORE_COLOR, THRUST_PLUME_CORE_OFFSET,
@@ -13,7 +13,7 @@ import {
 } from '../../render/vfx-style';
 import { SchematicThrustCone } from '../../render/schematic-thrust-cone';
 import type { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { RenderStyle } from '../../render/render-style';
 

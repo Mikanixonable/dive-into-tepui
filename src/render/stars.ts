@@ -7,7 +7,7 @@ import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from './billboard';
 import { glowMeanAlpha } from './glow-texture';
 import { showsPhysicalSphere } from './screen-lod';
 import { AU } from '../physics/planet-orbit';
-import { R_SUN } from '../physics/solar-system';
+import { R_SUN } from '../physics/solar-system/constants';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
 
@@ -41,7 +41,7 @@ export function createStars(): Stars {
   });
 
   const mesh = new THREE.Mesh(geo, mat);
-  // EnvironmentScene.sync が毎フレーム position をカメラ位置へ合わせる殻なので、
+  // CelestialSystem.sync が毎フレーム position をカメラ位置へ合わせる殻なので、
   // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
   mesh.frustumCulled = false;
   mesh.layers.set(WORLD_BACKGROUND_LAYER);

@@ -1,40 +1,46 @@
 // ephemeris.ts の回帰テスト: Ephemeris クラスの合成(恒星→重心→惑星/衛星、重心補正)
 // が正しいこと。個々の軌道モデルの精度は kepler-orbit.test.ts / satellite-orbit.test.ts が担う。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
-import { Ephemeris, EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
-import { CelestialBodyDef, MU_EARTH, R_EARTH_EQ, bodyDef } from '../../src/physics/solar-system';
-import { MU_MOON, MU_SUN as MU_SUN_LOCAL, SOLAR_SYSTEM } from '../../src/physics/solar-system';
+import { test } from '../harness';
+import { EPOCH_T_OFFSET } from '../../src/physics/ephemeris';
+import { PlanetDef, SatelliteDef } from '../../src/physics/celestial-motion';
+import { MU_EARTH, R_EARTH_EQ } from '../../src/physics/solar-system/constants';
+import { EARTH } from '../../src/physics/solar-system/earth-system';
+import { MU_MOON, MU_SUN as MU_SUN_LOCAL } from '../../src/physics/solar-system/constants';
 import { EPS } from '../../src/physics/ecliptic';
 import { PlanetOrbit } from '../../src/physics/planet-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { JULIAN_CENTURY, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
-import { SIDEREAL_DAY } from '../../src/physics/solar-system';
-import { cross, dot, len, norm, scale, sub, v3 } from '../../src/physics/vec3';
+import { SIDEREAL_DAY } from '../../src/physics/solar-system/constants';
+import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { toFrameState } from '../../src/physics/frame';
 import { bodyAnchorSource } from '../../src/physics/celestial-body';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { assertOmegaMatchesBasis } from './test-helpers';
+import { AbsoluteEphemeris } from '../../src/physics/absolute-ephemeris';
+import { assertOmegaMatchesBasis, solarSystemEphemeris } from './test-helpers';
+
+// 定義だけを引くための天体暦(id から静的事実を取り出す口としてだけ使う)。
+const EPH = solarSystemEphemeris();
 
 const YEAR = 365.25636 * 86400;
 const MOON_PERIOD = 27.321661 * 86400;
-// 地球-月重心の日心ケプラー軌道(SOLAR_SYSTEM の宣言そのもの)。重心不変条件の
+const DAY = 86400;
+// 地球-月重心の日心ケプラー軌道(地球の宣言そのもの)。重心不変条件の
 // 検証で Ephemeris の合成結果と突き合わせる基準として使う。
-const EARTH_ORBIT: PlanetOrbit = (SOLAR_SYSTEM.earth as { orbit: PlanetOrbit }).orbit;
+const EARTH_ORBIT: PlanetOrbit = EARTH.orbit;
 
-// テスト対象の id が惑星/衛星であることを前提に軌道モデルを取り出す(SOLAR_SYSTEM 自身は
-// 各エントリの具体型を保つが、動的な id 引数を介すと判別できなくなるため断定する)。
+// テスト対象の id が惑星/衛星であることを前提に軌道モデルを取り出す。
 function planetOrbit(id: string): PlanetOrbit {
-  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'planet' }>).orbit;
+  return (EPH.motionOf(id).def as PlanetDef).orbit;
 }
 function satelliteOrbitOf(id: string): SatelliteOrbit {
-  return (bodyDef(SOLAR_SYSTEM, id) as Extract<CelestialBodyDef, { kind: 'satellite' }>).orbit;
+  return (EPH.motionOf(id).def as SatelliteDef).orbit;
 }
 
 export function register(): void {
-  const eph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
+  const eph = solarSystemEphemeris({ earth: 0.3, moon: 0.4 });
 
   test('ephemeris: frameOf は同じ対に同じ参照を返し、inertialFrame/frames/frameFor と一致する', () => {
     assert.equal(eph.frameOf('earth', null), eph.frameOf('earth', null));
@@ -202,7 +208,7 @@ export function register(): void {
   // とどまる。昇交点・近点の歳差を平均黄経に混ぜると、この差が年オーダーで単調に開く
   // (1年で -19° 級)ため、長期の時間加速で月とラグランジュ点が実位置から外れる。
   test('ephemeris: 月の黄経は恒星月の平均運動で進む(歳差ぶんの遅速がない)', () => {
-    const moonEph = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { moon: 0 });
+    const moonEph = solarSystemEphemeris({ moon: 0 });
     const MOON_ECC = 0.0549;
     const maxCenterDeg = (2 * MOON_ECC * 180) / Math.PI + 0.5;
     for (const days of [27.321661, 365.25, 3652.5]) {
@@ -241,14 +247,14 @@ export function register(): void {
     }
   });
 
-  test('ephemeris: celestialBodiesAt は SOLAR_SYSTEM の宣言順で、地球は静止・半径は赤道半径 R_EARTH_EQ', () => {
+  test('ephemeris: celestialBodiesAt は太陽系の宣言順で、地球は静止・半径は赤道半径 R_EARTH_EQ', () => {
     const celestialBodies = eph.celestialBodiesAt(1234);
     assert.deepEqual(celestialBodies.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'apophis', 'didymos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);
     assert.equal(celestialBodies[0]!.radius, R_EARTH_EQ);
   });
 
   test('ephemeris: 同一 t の celestialBodiesAt は同一配列参照を返す', () => {
-    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
+    const e = solarSystemEphemeris({ earth: 0.3, moon: 0.4 });
     assert.equal(e.celestialBodiesAt(1234), e.celestialBodiesAt(1234));
   });
 
@@ -274,13 +280,13 @@ export function register(): void {
   });
 
   test('ephemeris: 同一 t の gravityAttractorsAt は同一配列参照を返す', () => {
-    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
+    const e = solarSystemEphemeris({ earth: 0.3, moon: 0.4 });
     assert.equal(e.gravityAttractorsAt(1234), e.gravityAttractorsAt(1234));
     assert.notEqual(e.gravityAttractorsAt(1234), e.celestialBodiesAt(1234));
   });
 
   test('ephemeris: 異なる t では再計算され、値が変わる', () => {
-    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
+    const e = solarSystemEphemeris({ earth: 0.3, moon: 0.4 });
     const a = e.celestialBodiesAt(0);
     const b = e.celestialBodiesAt(1e5);
     assert.notEqual(a, b);
@@ -292,8 +298,8 @@ export function register(): void {
   });
 
   test('ephemeris: 位相オフセットが違えば同じ時刻でも別の位置になる', () => {
-    const a = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 0.4 });
-    const b = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, { earth: 0.3, moon: 2.1 });
+    const a = solarSystemEphemeris({ earth: 0.3, moon: 0.4 });
+    const b = solarSystemEphemeris({ earth: 0.3, moon: 2.1 });
     const moonA = a.celestialBodiesAt(1234).find((x) => x.id === 'moon')!.state.r;
     const moonB = b.celestialBodiesAt(1234).find((x) => x.id === 'moon')!.state.r;
     assert.ok(len(sub(moonA, moonB)) > 1e6, `位相オフセットが反映されていない: ${len(sub(moonA, moonB))}`);
@@ -304,7 +310,7 @@ export function register(): void {
   // EPOCH_T_OFFSET はこの見た目の条件そのものから逆算された定数なので、これはその逆算の検算。
   // 平均黄経で合わせているぶん、中心差(地球の e=0.0167 で最大 1.9°)だけ真の方向はずれる。
   test('ephemeris: t=0 では太陽が +X 方向(昼側)にある', () => {
-    const dir = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {}).sunDirFrom(v3(0, 0, 0), 0);
+    const dir = solarSystemEphemeris({}).sunDirFrom(v3(0, 0, 0), 0);
     const offDeg = (Math.acos(dir.x / len(dir)) * 180) / Math.PI;
     assert.ok(offDeg < 3, `t=0 の太陽方向が +X から離れている: ${offDeg}°`);
   });
@@ -314,7 +320,7 @@ export function register(): void {
   // 中心差(最大 2e: 地球 1.9°・木星 5.6°)ぶんまで離れうる — 元期不整合(78° 級)を捕まえる
   // にはこの幅で足りる。
   test('ephemeris: 地球と木星の日心黄経差は t=−EPOCH_T_OFFSET で J2000 の表の値と一致する', () => {
-    const e = new Ephemeris(SOLAR_SYSTEM, 'earth', EPOCH_T_OFFSET, {});
+    const e = solarSystemEphemeris({});
     const t = -EPOCH_T_OFFSET;
     const sun = e.positionOf('sun', t);
     const earthHelio = scale(sun, -1);
@@ -489,6 +495,38 @@ export function register(): void {
     const { axis } = eph.poleAt('venus', t)!;
     const { omega } = eph.spinRotationAt('venus', t)!;
     assert.ok(dot(omega, axis) < 0, `dot: ${dot(omega, axis)}`);
+  });
+
+  // 高精度暦パックの有効期間(CELESTIAL.md 2.2)を10日間だけに絞ったモックで、期間内/外の
+  // 境界をまたいで stateOf/orbitFrameRotationAt/orbitNormalAt を呼ぶ。
+  const preciseEpochJdTdb = 2451545;
+  const preciseValidDays = 10;
+  const mockPrecise: AbsoluteEphemeris = {
+    validStartJdTdb: preciseEpochJdTdb,
+    validEndJdTdb: preciseEpochJdTdb + preciseValidDays,
+    hasBody: (id) => id === 'earth' || id === 'moon',
+    barycentricStateOf: (id) => ({
+      r: id === 'earth' ? v3(0, 0, 0) : v3(4e8, 0, 0),
+      v: id === 'earth' ? v3(0, 0, 0) : v3(0, 1e3, 0),
+    }),
+  };
+  const analyticOnly = solarSystemEphemeris({});
+  const withPrecise = solarSystemEphemeris({}, EPOCH_T_OFFSET, mockPrecise, preciseEpochJdTdb);
+  const tOutsideValidity = (preciseValidDays + 5) * DAY;
+
+  test('ephemeris: 高精度暦パックの有効期間内では pack 由来の値を返す', () => {
+    const s = withPrecise.stateOf('moon', 0);
+    assert.ok(len(s.r) > 0 && Number.isFinite(len(s.r)));
+    assert.notEqual(s.r.x, analyticOnly.stateOf('moon', 0).r.x);
+  });
+
+  test('ephemeris: 有効期間を過ぎると例外を投げずに解析暦へフォールバックする', () => {
+    assert.doesNotThrow(() => withPrecise.stateOf('moon', tOutsideValidity));
+    assert.doesNotThrow(() => withPrecise.orbitFrameRotationAt('moon', tOutsideValidity));
+    assert.doesNotThrow(() => withPrecise.orbitNormalAt('moon', tOutsideValidity));
+    const fallback = withPrecise.stateOf('moon', tOutsideValidity);
+    const analytic = analyticOnly.stateOf('moon', tOutsideValidity);
+    assert.ok(len(sub(fallback.r, analytic.r)) < 1e-3, `期間外は解析暦と一致するはず: ${JSON.stringify(fallback.r)} vs ${JSON.stringify(analytic.r)}`);
   });
 }
 

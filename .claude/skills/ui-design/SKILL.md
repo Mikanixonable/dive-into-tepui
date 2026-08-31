@@ -78,4 +78,4 @@ description: HUD/UI/DOM/CSS(パネル・ウィンドウ・ボタン・入力欄�
   自分の変更範囲に当て、新しい違反を増やしていないか確認する(既存の違反をゼロにすることまでは
   求めない — それは別の変更セットで直すべき既存の gap であり、自分の変更が原因でないかだけを
   確かめる)。
-- 加えて `npm run typecheck`。`src/physics/` を触っていなければ `npm run test:physics` は不要。
+- 加えて `npm run typecheck`。触っていない層の回帰テストは走らせない。

@@ -12,6 +12,8 @@ const SQRT_2 = Math.sqrt(2);
 const SQRT_10 = Math.sqrt(10);
 const SQRT_50 = Math.sqrt(50);
 
+// metersPerPixel から表示に適した目盛り値(1/2/5 の倍数)を選び、対応する距離とバー幅を返す。
+// 不正な入力(0以下・非有限)には null を返す。
 export function mapScaleFor(metersPerPixel: number, targetPx = MAP_SCALE_TARGET_PX): MapScaleData | null {
   if (!Number.isFinite(metersPerPixel) || metersPerPixel <= 0 || !Number.isFinite(targetPx) || targetPx <= 0) return null;
 

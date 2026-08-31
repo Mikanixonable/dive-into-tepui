@@ -1,17 +1,16 @@
-// 軌道分析パネルがプロットする点列(高度タブ・接近タブ)を作る。伝播そのものは
-// physics/dynamic-trajectory.ts の DynamicTrajectory.extrapolatedAt / at と
-// physics/ephemeris.ts の Ephemeris.stateOf を呼ぶだけで、新しい積分・外挿コードは書かない。
-// 距離は [m]、時間は [s]、角度は内部では [rad](公開する relIncDeg だけ [deg])。
+// 軌道分析パネルがプロットする点列(高度タブ・接近タブ・投影タブ)を、既存の伝播・外挿の
+// 仕組みから導出する。距離は [m]、時間は [s]、角度は内部では [rad](公開する relIncDeg だけ [deg])。
 import { CelestialBody, orbitalElementsOf, strongestAttractor } from '../../../physics/celestial-body';
 import type { OrbitalElements } from '../../../physics/elements';
 import { semiMajorFromPeriod } from '../../../physics/elements';
 import type { Ephemeris } from '../../../physics/ephemeris';
 import { latLonOf } from '../../../physics/body-orientation';
 import { KinematicState } from '../../../physics/kinematic-state';
-import { dot, len, sub } from '../../../physics/vec3';
+import { dot, len, sub } from '../../../math/vec3';
 import type { GameEntity } from '../../game-entity/game-entity';
 import { entityStateAt } from '../../simulation/entity-state-at';
 import type { OrbitReference } from '../../orbit-reference';
+import { relativeInclinationDeg } from './orbit-info';
 
 export interface AltitudeSample { readonly t: number; readonly alt: number }
 
@@ -31,20 +30,20 @@ export interface ApproachSeries {
 }
 
 // 接近タブのターゲット側の伝播経路は種別ごとに違う(艦・基地は predicted、天体は
-// ephemeris.stateOf)ので、呼び出し側がどちらかを選んで渡す。ラグランジュ点など質量を持たない
-// 対象は period が求まらず approachSeries が null を返すので、この union に含めない。
+// ephemeris.stateOf)。ラグランジュ点など質量を持たない対象は period が求まらず
+// approachSeries が null を返すので、この union に含めない。
 export type ApproachTargetSource =
   | { readonly kind: 'entity'; readonly entity: GameEntity }
   | { readonly kind: 'celestialBody'; readonly body: CelestialBody };
 
-// center 相対の高度(orbit-info.ts の orbitInfo と同じ式)。
+// center 相対の高度。
 function altitudeOf(state: KinematicState, centerState: KinematicState, center: CelestialBody): number {
   return len(sub(state.r, centerState.r)) - center.radius;
 }
 
 // 高度タブ: 現在時刻(now)から spanSec 先までを sampleCount 等分した各時刻の、reference が示す
-// 基準天体からの高度。reference は Orbit パネルの基準選択(自動/地球/月/航法ターゲット)に従って
-// 呼び出し側が解決したものをそのまま渡す — ここでは strongestAttractor を呼び直さない。
+// 基準天体からの高度。reference の解決は呼び出し側の責務で、ここでは渡された基準をそのまま使い、
+// strongestAttractor を呼び直さない。
 // reference が重力中心を持たない(attractor === null)場合は高度が定義できないので null。
 // 予測が外挿できず null が返った時刻で打ち切り、それより先のサンプルは作らない(0/NaN で
 // 埋めない)。
@@ -88,7 +87,6 @@ function phaseAngleOn(el: OrbitalElements, positionRelCenter: KinematicState['r'
 }
 
 // ターゲット(target)の状態と軌道要素を、他の対象と同じ形(状態取得関数 + 軌道要素)へ揃える。
-// 接近タブ・投影タブの両方が、ターゲットの状態取得に同じこの関数を使う。
 export function resolveTarget(
   target: ApproachTargetSource,
 ): { stateAt: (t: number, center: CelestialBody, ephemeris: Ephemeris) => KinematicState | null; currentR: KinematicState['r'] } {
@@ -108,9 +106,8 @@ export function resolveTarget(
 // 接近タブ: ship と target が同じ主天体 C を周回しているときだけ、C まわりの位相差を
 // 「target と同じ周期の真円軌道」の弧長へ換算した水平距離と、相対高度の点列を返す。
 //
-// 「同じ天体を周回しているか」の判定は orbit-info.ts の relativeInfo と同じ式
-// (双方に strongestAttractor を当てて id を比較)を使う — ここで center が一致した後に
-// 求める selfEl/targetEl の hHat が、そのまま relIncDeg(relativeInfo と同じ定義)の材料になる。
+// 「同じ天体を周回しているか」は双方に strongestAttractor を当てて id を比較して判定する。
+// center が一致した後に求める selfEl/targetEl の hHat が、そのまま relIncDeg の材料になる。
 //
 // 位相差の符号は target の hHat まわり(pHat→qHat の向き。trueAnomalyAt と同じ基底)で取り、
 // ship の位相角から target の位相角を引いた差を (-pi, pi] へ折り返す — 正 = target から見て
@@ -141,7 +138,7 @@ export function approachSeries(
   if (selfEl === null || targetEl === null || !isFinite(targetEl.period)) return null;
 
   const rCirc = semiMajorFromPeriod(targetEl.period, center.mu);
-  const relIncDeg = (Math.acos(Math.max(-1, Math.min(1, dot(selfEl.hHat, targetEl.hHat)))) * 180) / Math.PI;
+  const relIncDeg = relativeInclinationDeg(selfEl.hHat, targetEl.hHat);
 
   if (spanSec <= 0 || sampleCount <= 0 || !isFinite(spanSec) || !Number.isFinite(sampleCount)) {
     return { samples: [], relIncDeg, truncated: true };
@@ -197,6 +194,7 @@ export function projectionSeries(
   spanSec: number,
   sampleCount: number,
 ): ProjectionSeries | null {
+  // 現在時刻の経緯度。center が自転モデルを持たなければここで打ち切る。
   const currentState = stateAt(now);
   if (currentState === null) return null;
   const current = projectionSampleAt(currentState, ephemeris.stateOf(center.id, now), center, ephemeris, now);
@@ -206,6 +204,8 @@ export function projectionSeries(
     return { current, samples: [], truncated: true };
   }
 
+  // 未来へ等間隔でサンプリングし、外挿できなくなった時点で打ち切る。経度180度をまたぐ跳びは
+  // null を挟んで線が切れることを示す。
   const samples: (ProjectionSample | null)[] = [];
   let truncated = false;
   let lastLonDeg: number | null = null;

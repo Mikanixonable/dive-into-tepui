@@ -3,11 +3,11 @@
 // 表示スタイルで組み方が変わるケース(環・地球)は、受け取った style をゲーム本体と同じ
 // sync / setVisible へそのまま流す — スタイルの切り替えは呼び出し側がケースを組み直して行う。
 import * as THREE from 'three/webgpu';
-import { exp, float, max, select, uv, vec3 } from 'three/tsl';
+import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { lightSourceAlbedoOf, rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
 import { createEarth } from '../../src/render/earth';
-import { R_EARTH, R_SUN } from '../../src/physics/solar-system';
+import { R_EARTH, R_SUN } from '../../src/physics/solar-system/constants';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
@@ -19,18 +19,20 @@ import {
 } from '../../src/render/thermal-emissive';
 import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
-import type { AtmosphereBody } from '../../src/render/pipeline/atmosphere-pass';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
-import { ATMOSPHERE_OPTICS } from '../../src/render/atmosphere-params';
+import type { FloatNode } from '../../src/render/tsl-types';
+import { ATMOSPHERE_OPTICS, type AtmosphereBody } from '../../src/render/atmosphere';
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/planet-orbit';
-import { bodyDef, SOLAR_SYSTEM, type RingBandDef } from '../../src/physics/solar-system';
+import { type RingBandDef } from '../../src/physics/solar-system/celestial-body-def';
+import { MARS } from '../../src/physics/solar-system/mars-system';
+import { SATURN } from '../../src/physics/solar-system/saturn-system';
 import { textureOf, type CelestialTexture } from '../../src/render/celestial-textures';
-import { apparentSizePx, metersPerPixelAtDepth } from '../../src/physics/projection';
-import { v3 } from '../../src/physics/vec3';
+import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection';
+import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
 import type { ProteinLabCaseMetadata } from './protein-cases';
@@ -45,11 +47,10 @@ const FOV_DEG = 50;
 // **寄り切った先へ物体を置くケースは、この値から距離を逆算する。**
 export const MAX_CAMERA_DISTANCE_LOG = 2;
 
-// 土星ケースが使う実データの環。planet 以外は rings を持たないので、ここで判別を閉じる。
+// 土星ケースが使う実データの環。
 const SATURN_RINGS = (() => {
-  const def = bodyDef(SOLAR_SYSTEM, 'saturn');
-  if (def.kind !== 'planet' || def.rings === undefined) throw new Error('saturn has no rings');
-  return def.rings;
+  if (SATURN.rings === undefined) throw new Error('saturn has no rings');
+  return SATURN.rings;
 })();
 
 // 環の帯を遮蔽パスへ渡す形へ直す。半径は描画座標と同じメートルのまま。
@@ -572,8 +573,11 @@ function marchSlab(): LabCase {
     source: vec3(0, 0, 0),
   });
   const analytic = exp(thickness.mul(-SLAB_EXTINCTION));
-  const even = rayMarch(SLAB_STEPS, (f) => thickness.mul(f), medium).transmittance.x;
-  const bunched = rayMarch(SLAB_STEPS, (f) => thickness.mul(f.mul(f)), medium).transmittance.x;
+  // 積分は toVar と Loop を使うので、Fn の中で組む。
+  const transmittanceOf = (warp: (fraction: FloatNode) => FloatNode): FloatNode =>
+    Fn(() => rayMarch(float(SLAB_STEPS), warp, medium).transmittance.x)();
+  const even = transmittanceOf((f) => thickness.mul(f));
+  const bunched = transmittanceOf((f) => thickness.mul(f.mul(f)));
   const error = max(even.sub(analytic).abs(), bunched.sub(analytic).abs()).mul(SLAB_ERROR_GAIN);
   const band = uv().y.mul(4).floor();
   const value = select(
@@ -651,7 +655,7 @@ function earthEclipse(style: RenderStyle): LabCase {
 
 // 地球と火星のケースの寸法 [m]。**距離のつまみを縮め切った位置が火星の大気の中**へ来るよう、
 // 火星までの距離を到達高度から逆算する。カメラの高度は地球の大気の裾(高度 116km)の内側。
-const MARS_RADIUS = bodyDef(SOLAR_SYSTEM, 'mars').radius;
+const MARS_RADIUS = MARS.radius;
 const MARS_ARRIVAL_ALTITUDE = 4e4;
 const EARTH_MARS_DISTANCE = (MARS_RADIUS + MARS_ARRIVAL_ALTITUDE) * 10 ** MAX_CAMERA_DISTANCE_LOG;
 const EARTH_MARS_CAMERA_ALTITUDE = 1e5;

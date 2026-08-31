@@ -12,16 +12,17 @@ import {
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { ATMOSPHERE_QUALITY, QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
-import { ATMOSPHERE_DETAIL, ATMOSPHERE_DETAIL_OF_QUALITY } from '../../src/render/pipeline/atmosphere-pass';
-import { rankAtmospheres } from '../../src/render/atmosphere-params';
-import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
+import { atmosphereDraws } from '../../src/render/atmosphere';
+import type { ChoiceValue, GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { lambertPhase } from '../../src/physics/lambert-sphere';
+import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/planet-orbit';
-import { R_SUN } from '../../src/physics/solar-system';
+import { R_SUN } from '../../src/physics/solar-system/constants';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
 import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
+import { pixelsToPngDataUrl } from '../lab-png';
 
 export interface LabDistribution {
   readonly avg: number;
@@ -60,6 +61,13 @@ const ORIGIN_TO_LIGHT = new THREE.Vector3();
 
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
+
+// つまみを出す描画品質設定の項目。**ここを変えたときだけ、この環境が描くものが変わる** —
+// 残りの項目はゲーム本体の側(天体の組み立て・HUD)が読むので、ここでは動かしても何も起きない。
+export const PIPELINE_GRAPHICS_KEYS = [
+  'lens', 'msaa', 'antialias', 'exposureCompensation', 'filmLut', 'atmosphere', 'sunLightModel',
+  'planetLightCount', 'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
+] as const satisfies readonly GraphicsOptionKey[];
 
 // カメラのズーム(画角を狭める倍率)の常用対数の上限。0 がケース既定の画角。
 export const MAX_CAMERA_ZOOM_LOG = 2;
@@ -155,7 +163,7 @@ export class LabView {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
-      canvas, antialias: QUALITY_PRESETS.high.antialias, reversedDepthBuffer: true,
+      canvas, trackTimestamp: true, reversedDepthBuffer: true,
     });
     renderer.setOpaqueSort(reversedOpaqueSort);
     renderer.setTransparentSort(reversedTransparentSort);
@@ -202,7 +210,7 @@ export class LabView {
   get graphics(): GraphicsSettingsData { return this.graphicsData; }
 
   // 描画品質設定の項目を1つ差し替え、パイプラインへ押し出してその場で描き直す。
-  setGraphicsOption(key: GraphicsOptionKey, value: boolean | number): void {
+  setGraphicsOption(key: GraphicsOptionKey, value: boolean | ChoiceValue): void {
     this.graphicsData = withGraphicsOption(this.graphicsData, key, value);
     this.pipeline.applyGraphics(this.graphicsData);
     this.render();
@@ -336,24 +344,26 @@ export class LabView {
     this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    // 天体の並べ替えと濃い表現の重みは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
-    const quality = this.graphicsData.atmosphere;
-    const detail = ATMOSPHERE_DETAIL_OF_QUALITY[quality];
-    const { bodies, denseWeight } = rankAtmospheres((this.current.atmospheres ?? []).map((body) => ({
-      body, altitude: camera.position.distanceTo(body.center) - body.surfaceRadius,
-    })));
-    this.pipeline.atmosphere.setBodies(
-      quality === ATMOSPHERE_QUALITY.off ? [] : bodies,
-      detail, detail === ATMOSPHERE_DETAIL.none ? 0 : denseWeight,
-    );
+    // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
+    this.pipeline.atmosphere.setDraws(atmosphereDraws(
+      (this.current.atmospheres ?? []).map((body) => {
+        const distance = camera.position.distanceTo(body.center);
+        return { body, distance, metersPerPixel: metersPerPixelAtDepth(camera.fov, distance, VIEW_HEIGHT) };
+      }),
+      this.graphicsData.atmosphere,
+    ));
     const startedAt = performance.now();
     this.pipeline.render(this.scene, camera, this.style);
     this.lastRenderCpuMs = performance.now() - startedAt;
     this.gpu.resolve();
   }
 
-  async measure(name: CaseName, warmupFrames = 6, sampleFrames = 30): Promise<LabMeasurement> {
+  // ケースを表示して測る。angles を渡すと、ケース既定の観察の向きへそれを重ねてから測る。
+  async measure(
+    name: CaseName, angles: Partial<LabViewAngles> = {}, warmupFrames = 6, sampleFrames = 30,
+  ): Promise<LabMeasurement> {
     this.show(name);
+    this.setViewAngles(angles);
     await this.gpu.waitForResolve();
     this.gpu.reset();
 
@@ -406,7 +416,7 @@ export class LabView {
       this.renderer.setOutputRenderTarget(null);
     }
     const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
-    return toPng(new Uint8Array(pixels.buffer));
+    return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
   }
 }
 
@@ -440,14 +450,4 @@ function distribution(values: readonly number[]): LabDistribution {
     p95: percentile(sorted, 0.95),
     max: sorted[sorted.length - 1] ?? 0,
   };
-}
-
-// 読み出した RGBA 画素を PNG のデータ URL にする。
-function toPng(pixels: Uint8Array): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = VIEW_WIDTH;
-  canvas.height = VIEW_HEIGHT;
-  const context = canvas.getContext('2d')!;
-  context.putImageData(new ImageData(new Uint8ClampedArray(pixels), VIEW_WIDTH, VIEW_HEIGHT), 0, 0);
-  return canvas.toDataURL('image/png');
 }

@@ -2,10 +2,10 @@
 // 描画原点の移動へ毎フレーム追随させる。描かれている曲線上の点を ECI 絶対座標で引く口も
 // 持つので、進行方向マーカーと当たり判定は線と同じ曲線を読める。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../../physics/vec3';
+import { Vec3 } from '../../math/vec3';
 import { Curve, CurveColorSampler, CurveKnots, CurveSampler } from '../../render/curve';
 import { LineStyle } from '../../render/line-style';
-import { FloatingOrigin } from '../floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 
 export class GuideCurve {
   private readonly curve: Curve;

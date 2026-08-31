@@ -3,8 +3,8 @@
 import * as THREE from 'three/webgpu';
 import type { RenderStyle } from '../../render/render-style';
 import { spinOrientation } from '../../physics/body-orientation';
-import { RingBandDef, RingSystemDef } from '../../physics/solar-system';
-import { Vec3 } from '../../physics/vec3';
+import { RingBandDef, RingSystemDef } from '../../physics/solar-system/celestial-body-def';
+import { Vec3 } from '../../math/vec3';
 import { createOutlineCircle, OutlineCircle } from '../../render/outline-circle';
 import {
   RING_TILT,
@@ -19,15 +19,10 @@ import type { SunLight } from '../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import { ScaleFn } from '../camera/camera-system';
 
-// thickness===0 の帯を annulus(面)/line(線)どちらで表すかの分かれ目[m]。土星の主環群や
-// 天王星のダスト帯(ζ/ν/μ)のような数千km幅の帯は annulus のまま実幅を見せ、天王星の
-// 名前付きringlet(数km〜数十km)のように常にサブピクセル同然の帯は、GPUラスタライズで
-// 消えうる面を避けて常に線1本で表す。
-const RING_LINE_WIDTH_THRESHOLD_M = 1_500_000;
-
 type CoverageBand = {
   readonly widthMeters: number;
-  readonly visual: RingVisual;
+  readonly annulus: RingVisual;
+  readonly line: RingVisual;
 };
 
 export class RingView {
@@ -49,10 +44,7 @@ export class RingView {
     sunLight: SunLight,
   ) {
     for (const band of rings.bands) {
-      const built = this.buildBand(band, bodyRadius, sunOcclusion, sunLight);
-      built.object.traverse((o) => { o.renderOrder = renderOrder; });
-      this.group.add(built.object);
-      this.visuals.push(built);
+      this.buildBand(band, bodyRadius, renderOrder, sunOcclusion, sunLight);
     }
     // 模式図で出す輪郭円は帯ごとではなく環全体の最内・最外の2本だけとする。
     const innerRadius = Math.min(...rings.bands.map((band) => band.innerRadius)) / bodyRadius;
@@ -67,22 +59,30 @@ export class RingView {
     this.group.add(this.outlineInner.line, this.outlineOuter.line);
   }
 
-  // 帯1本ぶんの RingVisual を組む。半径は「本体半径 = 1」単位へ換算して渡す。厚みのある帯は
-  // 拡散した雲なので扁平トーラス、厚み0の帯は実幅で annulus/line を選び、選んだ側だけを控える。
+  // 帯1本ぶんの RingVisual を組み、group・visuals へ登録する。半径は「本体半径 = 1」単位へ
+  // 換算して渡す。厚みのある帯は拡散した雲なので扁平トーラス1つ。厚み0の帯は annulus と line
+  // の両方を組んでおき、sync() が見かけ幅(1px判定)でどちらを見せるか毎フレーム選び直す。
   private buildBand(
-    band: RingBandDef, bodyRadius: number, sunOcclusion: SunOcclusion, sunLight: SunLight,
-  ): RingVisual {
+    band: RingBandDef, bodyRadius: number, renderOrder: number, sunOcclusion: SunOcclusion, sunLight: SunLight,
+  ): void {
     const inner = band.innerRadius / bodyRadius;
     const outer = band.outerRadius / bodyRadius;
     if (band.thickness > 0) {
-      return createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius, sunOcclusion, sunLight);
+      this.addVisual(createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius, sunOcclusion, sunLight), renderOrder);
+      return;
     }
-    const widthMeters = band.outerRadius - band.innerRadius;
-    const visual = widthMeters >= RING_LINE_WIDTH_THRESHOLD_M
-      ? createAnnulusRing(band.optics, inner, outer, sunOcclusion, sunLight, band.arcs)
-      : createRingLine(band.optics, (inner + outer) / 2, sunOcclusion, sunLight, band.arcs);
-    this.coverageBands.push({ widthMeters, visual });
-    return visual;
+    const annulus = createAnnulusRing(band.optics, inner, outer, sunOcclusion, sunLight, band.arcs);
+    const line = createRingLine(band.optics, (inner + outer) / 2, sunOcclusion, sunLight, band.arcs);
+    this.addVisual(annulus, renderOrder);
+    this.addVisual(line, renderOrder);
+    this.coverageBands.push({ widthMeters: band.outerRadius - band.innerRadius, annulus, line });
+  }
+
+  // renderOrder を子オブジェクトすべてへ設定し、group・visuals へ登録する。
+  private addVisual(visual: RingVisual, renderOrder: number): void {
+    visual.object.traverse((o) => { o.renderOrder = renderOrder; });
+    this.group.add(visual.object);
+    this.visuals.push(visual);
   }
 
   // pos/axis は本体メッシュと揃える。bodyPos/metersPerPixelAt は帯の被覆率減光に使う。
@@ -111,8 +111,13 @@ export class RingView {
     for (const visual of this.visuals) visual.sync(state);
     if (this.coverageBands.length === 0) return;
     const mpp = metersPerPixelAt(bodyPos);
+    // 見かけの幅(px、1を超えてもクランプしない生の値)が1を割った帯だけ line へ切り替える。
     for (const band of this.coverageBands) {
-      band.visual.sync({ ...state, coverage: ringPixelCoverage(band.widthMeters, mpp) });
+      const showAnnulus = band.widthMeters / mpp >= 1;
+      band.annulus.object.visible = showAnnulus && !schematic;
+      band.line.object.visible = !showAnnulus && !schematic;
+      band.annulus.sync({ ...state, coverage: 1 });
+      band.line.sync({ ...state, coverage: ringPixelCoverage(band.widthMeters, mpp) });
     }
   }
 

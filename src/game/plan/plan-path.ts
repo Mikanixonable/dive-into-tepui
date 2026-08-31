@@ -7,13 +7,13 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { CelestialBody, bodyAnchorSource } from '../../physics/celestial-body';
-import { Vec3, v3 } from '../../physics/vec3';
+import { Vec3, v3 } from '../../math/vec3';
 import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { Ephemeris } from '../../physics/ephemeris';
-import { Projected } from '../../physics/projection';
+import { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
-import { FloatingOrigin } from '../floating-origin';
-import { TrajectoryLine } from '../trajectory-line';
+import { FloatingOrigin } from '../camera/floating-origin';
+import { TrajectoryLine } from '../lines/trajectory-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
@@ -21,8 +21,19 @@ import { BodyImpact, PredictedArc } from '../simulation/predicted-arc';
 import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
 import type { Controllable } from '../game-entity/controllable';
 import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
-import { goldenSectionMin } from '../../physics/optimize';
+import { goldenSectionMin } from '../../math/optimize';
 import * as C from '../const';
+
+// 折れ線が自分自身に重なる(周回を跨いで表示期間が延びた)場合、最短画面距離からこの
+// 許容差以内の候補のうち最も早い時刻のものを選ぶ [px]
+const NEAREST_SAMPLE_TIE_PX = 3;
+
+// 計画軌道の折れ線を破線で描くときの、破線1本・間隔の画面上の長さ [px] と不透明度。
+// 実距離ではなく画面ピクセルで持つのは、マップの倍率が数桁変わるため実距離で固定すると
+// 拡大時は数本の線分に、縮小時はサブピクセルになって実線と区別できなくなるため。
+const PLAN_ARC_DASH_PX = 8;
+const PLAN_ARC_GAP_PX = 6;
+const PLAN_ARC_OPACITY = 0.85;
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
@@ -218,13 +229,13 @@ export class PlanPath {
       }
       line.setVisible(true);
       const samples = this.samplesOf(i, source);
-      let dashSize = C.PLAN_ARC_DASH_PX;
-      let gapSize = C.PLAN_ARC_GAP_PX;
+      let dashSize = PLAN_ARC_DASH_PX;
+      let gapSize = PLAN_ARC_GAP_PX;
       if (samples.length > 0) {
         const mid = samples[Math.floor(samples.length / 2)]!;
         const mpp = scale(this.toDisplay(mid.r, mid.t));
-        dashSize = C.PLAN_ARC_DASH_PX * mpp;
-        gapSize = C.PLAN_ARC_GAP_PX * mpp;
+        dashSize = PLAN_ARC_DASH_PX * mpp;
+        gapSize = PLAN_ARC_GAP_PX * mpp;
       }
       line.setDash(dashSize, gapSize);
       // 計画全体が表示期間より長くても、折れ線は表示窓内だけを描く。
@@ -364,7 +375,7 @@ export class PlanPath {
     // 画面最短距離の候補が属する arc だけを tie-break の対象にする。
     let nearest = candidates[0]!;
     for (const c of candidates) if (c.dSq < nearest.dSq) nearest = c;
-    const toleranceDSq = (Math.sqrt(nearest.dSq) + C.NEAREST_SAMPLE_TIE_PX) ** 2;
+    const toleranceDSq = (Math.sqrt(nearest.dSq) + NEAREST_SAMPLE_TIE_PX) ** 2;
 
     // referenceT が -Infinity なら全候補が同点になり、最後の t 昇順の同点判定だけで最早時刻に落ち着く。
     let best: typeof candidates[number] | null = null;
@@ -466,8 +477,8 @@ export class PlanPath {
     while (this.lines.length <= i) {
       const idx = this.lines.length;
       const line = new TrajectoryLine({
-        color: arcColor(idx), opacity: C.PLAN_ARC_OPACITY, renderOrder: LINE_RENDER_ORDER.plan,
-        dash: { dashSize: C.PLAN_ARC_DASH_PX, gapSize: C.PLAN_ARC_GAP_PX },
+        color: arcColor(idx), opacity: PLAN_ARC_OPACITY, renderOrder: LINE_RENDER_ORDER.plan,
+        dash: { dashSize: PLAN_ARC_DASH_PX, gapSize: PLAN_ARC_GAP_PX },
       });
       this.lines.push(line);
       this.group.add(line.line);

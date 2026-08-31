@@ -5,8 +5,8 @@
 // 符号反転を直接見て求める — どちらも同じ黄金分割探索/二分法の補間機構を使う。
 import { CelestialBody, celestialBodyStateAt } from './celestial-body';
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
-import { goldenSectionMin } from './optimize';
-import { dot, len, sub, Vec3 } from './vec3';
+import { goldenSectionMin } from '../math/optimize';
+import { dot, len, sub, Vec3 } from '../math/vec3';
 
 // 極値探索・交点二分法の反復回数。固定回数にしているのは、収束判定にすると反復回数が
 // フレームごとに変動し、その分だけ結果がわずかに揺れるため。

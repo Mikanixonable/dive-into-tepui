@@ -1,8 +1,7 @@
 // 時刻付きの太陽系重心状態を供給する層と、ゲームが使う中心天体基準へ落とす層。
 // 暦データの表現(Chebyshev/SPK/テスト用解析解)と座標原点の選択を分離する。
-import { CelestialBodyId } from './celestial-body';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, sub, v3 } from './vec3';
+import { Vec3, sub, v3 } from '../math/vec3';
 
 export type BarycentricState = {
   readonly r: Vec3; // ICRF/J2000 [m]
@@ -12,12 +11,12 @@ export type BarycentricState = {
 export interface AbsoluteEphemeris {
   readonly validStartJdTdb: number;
   readonly validEndJdTdb: number;
-  hasBody(id: CelestialBodyId): boolean;
-  barycentricStateOf(id: CelestialBodyId, jdTdb: number): BarycentricState;
+  hasBody(id: string): boolean;
+  barycentricStateOf(id: string, jdTdb: number): BarycentricState;
 }
 
 export class MissingEphemerisBodyError extends Error {
-  constructor(readonly bodyId: CelestialBodyId) {
+  constructor(readonly bodyId: string) {
     super(`天体暦に天体 ${bodyId} が含まれていない`);
     this.name = 'MissingEphemerisBodyError';
   }
@@ -37,18 +36,24 @@ export class OriginCenteredEphemeris {
 
   constructor(
     private readonly absolute: AbsoluteEphemeris,
-    readonly originId: CelestialBodyId,
+    readonly originId: string,
     readonly epochJdTdb: number,
   ) {
     if (!absolute.hasBody(originId)) throw new MissingEphemerisBodyError(originId);
   }
 
-  hasBody(id: CelestialBodyId): boolean {
+  hasBody(id: string): boolean {
     return this.absolute.hasBody(id);
   }
 
+  // simTime に対応する jdTdb が absolute の有効期間内かどうか。
+  isValidAt(simTime: number): boolean {
+    const jdTdb = this.epochJdTdb + simTime / 86400;
+    return jdTdb >= this.absolute.validStartJdTdb && jdTdb <= this.absolute.validEndJdTdb;
+  }
+
   // 天体 id の、originId 中心・ゲーム ECI 軸の状態。収録されていない天体は例外を投げる。
-  stateOf(id: CelestialBodyId, simTime: number): KinematicState {
+  stateOf(id: string, simTime: number): KinematicState {
     if (!this.absolute.hasBody(id)) throw new MissingEphemerisBodyError(id);
     const jdTdb = this.epochJdTdb + simTime / 86400;
     const body = this.absolute.barycentricStateOf(id, jdTdb);

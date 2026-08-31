@@ -5,15 +5,30 @@ import { bodyAnchorSource, CelestialBody } from '../../../physics/celestial-body
 import type { Ephemeris } from '../../../physics/ephemeris';
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
-import { Vec3 } from '../../../physics/vec3';
+import { Vec3 } from '../../../math/vec3';
 import { systemMembersAt } from '../../celestial/body-visibility';
 import { MapCamera } from '../../camera/map-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
-import type { MapPickable } from '../../map-pickable';
+import type { MapPickable } from '../../pickable/map-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../overlay-manager';
+import { hudRail } from '../hud-root';
 import { CameraFramePanel } from './camera-frame-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
+
+// カメラ・軌道フレーム両パネル共通の枠組みを組み立てる(id/クラス付与・pointerdown 抑止・
+// タイトル生成・hudRail への追加)。中身の子要素は各パネル側が追加する。
+export function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
+  const panel = document.createElement('div');
+  panel.id = id;
+  panel.className = 'panel hidden hud-frame-controls';
+  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+  const title = document.createElement('h3');
+  title.textContent = titleText;
+  panel.appendChild(title);
+  hudRail(root, 'left').appendChild(panel);
+  return panel;
+}
 
 export class FrameControls {
   private readonly cameraPanel: CameraFramePanel;
@@ -21,6 +36,7 @@ export class FrameControls {
   // 固定解除は DOM イベント(フレームの外)から起きるので、直近の sync が見た時刻を控える。
   private lastTime = 0;
 
+  // panelRoot・popupRoot はカメラ/軌道フレーム両パネルへそのまま渡す設置先。
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
@@ -80,7 +96,7 @@ export class FrameControls {
     simTime: number, displayTime: number, visible: boolean,
   ): void {
     this.lastTime = simTime;
-    const members = visible ? systemMembersAt(this.ephemeris.registry, cameraPos, celestialBodies) : [];
+    const members = visible ? systemMembersAt(this.ephemeris, cameraPos, celestialBodies) : [];
     // 役割が周回しているかどうかはパネルが見えているかと関係がないので、非表示でも判定する
     // — 見えていないあいだ空扱いにすると、パネルを畳んだだけで下の巻き戻しが走り、選択が消える。
     const validRoles = this.validRevolutionRoles(displayTime);
@@ -99,7 +115,7 @@ export class FrameControls {
   }
 
   // 両パネルと、保持している座標系選択ゾーンを片付ける。
-  dispose(): void {
+  public dispose(): void {
     this.cameraPanel.dispose();
     this.trajectoryPanel.dispose();
   }

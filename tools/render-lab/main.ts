@@ -2,16 +2,18 @@
 // ゲーム本体と同じ描画経路で描く。
 import { startProteinAssetPreload } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
-import { PIPELINE_GRAPHICS_KEYS } from '../../src/render/pipeline/render-pipeline';
 import { AMBIENT_STRONG, AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
-import { GRAPHICS_OPTIONS, type GraphicsOptionKey } from '../../src/render/graphics-settings';
+import { GRAPHICS_OPTIONS, type ChoiceValue, type GraphicsOptionKey } from '../../src/render/graphics-settings';
 import { CASE_NAMES, MAX_CAMERA_DISTANCE_LOG, sunDiameterPx, type CaseName } from './cases';
 import {
   LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM_LOG, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
-  type LabMeasurement, type LabViewAngles,
+  PIPELINE_GRAPHICS_KEYS, type LabMeasurement, type LabViewAngles,
 } from './lab';
 import { AU } from '../../src/physics/planet-orbit';
+import {
+  buildButtonRow, buildChoiceField, buildSelectField, buildSlider, buildToggleField, setRowEnabled,
+} from '../lab-controls';
 
 declare global {
   interface Window {
@@ -23,101 +25,10 @@ declare global {
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
-      setGraphicsOption: (key: GraphicsOptionKey, value: boolean | number) => void;
-      measure: (name: CaseName) => Promise<LabMeasurement>;
+      setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
+      measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
     };
   }
-}
-
-// row の中に選択肢ぶんのボタンを並べ、押されたら select を呼ぶ。返り値で選択の見た目を更新する。
-function buildButtonRow<T extends string>(
-  rowId: string, entries: readonly (readonly [T, string])[], select: (value: T) => void,
-): (active: T) => void {
-  const row = document.getElementById(rowId)!;
-  const buttons = new Map<T, HTMLButtonElement>();
-  for (const [value, label] of entries) {
-    const button = document.createElement('button');
-    button.textContent = label;
-    button.addEventListener('click', () => select(value));
-    row.appendChild(button);
-    buttons.set(value, button);
-  }
-  return (active) => {
-    for (const [value, button] of buttons) button.classList.toggle('active', value === active);
-  };
-}
-
-// row の中のボタンをまとめて押せる/押せないにする。
-function setRowEnabled(rowId: string, enabled: boolean): void {
-  document.getElementById(rowId)!.querySelectorAll('button').forEach((button) => {
-    button.disabled = !enabled;
-  });
-}
-
-// row の中に、見出しを添えた排他選択を1組足す。返り値で選択の見た目を更新する。
-function buildChoiceField<T>(
-  rowId: string, label: string, entries: readonly (readonly [T, string])[], select: (value: T) => void,
-): (active: T) => void {
-  const field = document.createElement('div');
-  field.className = 'field';
-  const name = document.createElement('span');
-  name.textContent = label;
-  field.appendChild(name);
-  // 選択肢は entries の順に並べる。値そのものを鍵に持ち、点灯はここから引き直す。
-  const buttons = new Map<T, HTMLButtonElement>();
-  for (const [value, text] of entries) {
-    const button = document.createElement('button');
-    button.textContent = text;
-    button.addEventListener('click', () => select(value));
-    field.appendChild(button);
-    buttons.set(value, button);
-  }
-  document.getElementById(rowId)!.appendChild(field);
-  return (active) => {
-    for (const [value, button] of buttons) button.classList.toggle('active', value === active);
-  };
-}
-
-// row の中に、押すたびに裏返るボタンを1つ足す。ボタンの文字がそのまま見出しになる。
-function buildToggleField(rowId: string, label: string, select: (on: boolean) => void): (on: boolean) => void {
-  const button = document.createElement('button');
-  button.textContent = label;
-  let on = false;
-  button.addEventListener('click', () => select(!on));
-  document.getElementById(rowId)!.appendChild(button);
-  return (next) => {
-    on = next;
-    button.classList.toggle('active', on);
-  };
-}
-
-// row の中にスライダーを1本足す。動かすと change を呼び、そのあと format() が返す文字を隣へ出す
-// (呼ぶ順は逆にできない — 値の正本は change の書き込み先にあるため)。返り値でつまみを合わせる。
-function buildSlider(
-  rowId: string, label: string, min: number, max: number, step: number,
-  format: () => string, change: (value: number) => void,
-): (value: number) => void {
-  const row = document.getElementById(rowId)!;
-  const field = document.createElement('label');
-  field.className = 'field';
-  const name = document.createElement('span');
-  name.textContent = label;
-  const input = document.createElement('input');
-  input.type = 'range';
-  input.min = String(min);
-  input.max = String(max);
-  input.step = String(step);
-  const readout = document.createElement('output');
-  input.addEventListener('input', () => {
-    change(Number(input.value));
-    readout.textContent = format();
-  });
-  field.append(name, input, readout);
-  row.appendChild(field);
-  return (value) => {
-    input.value = String(value);
-    readout.textContent = format();
-  };
 }
 
 async function init(): Promise<void> {
@@ -205,13 +116,14 @@ async function init(): Promise<void> {
       graphicsMarks.push(() => mark(view.graphics[key] === true));
       continue;
     }
-    const mark = buildChoiceField<number>('graphics', option.label, option.items, (value) => {
+    const build = option.kind === 'select' ? buildSelectField<ChoiceValue> : buildChoiceField<ChoiceValue>;
+    const mark = build('graphics', option.label, option.items, (value) => {
       view.setGraphicsOption(key, value);
       syncGraphics();
     });
     graphicsMarks.push(() => {
       const value = view.graphics[key];
-      if (typeof value === 'number') mark(value);
+      if (typeof value !== 'boolean') mark(value);
     });
   }
   syncGraphics();
@@ -239,7 +151,7 @@ async function init(): Promise<void> {
     setStyle: selectStyle,
     setTarget: (target) => { markTarget(target); view.showDebugTarget(target); },
     setGraphicsOption: (key, value) => { view.setGraphicsOption(key, value); syncGraphics(); },
-    measure: (name) => view.measure(name),
+    measure: (name, angles) => view.measure(name, angles),
   };
 }
 

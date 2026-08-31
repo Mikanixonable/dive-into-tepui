@@ -1,7 +1,6 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
-import { FloatingOrigin } from './floating-origin';
-import { v3 } from '../physics/vec3';
+import { v3 } from '../math/vec3';
 import type { PerfCounts } from '../perf-meter';
 import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
 import { FrameSections, SECTION } from '../frame-sections';
@@ -17,10 +16,9 @@ import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
 import { DisplayWindowManager } from './display-window-manager';
 import { PlanGuide } from './plan/plan-guide';
-import { SimSpeedManager } from './sim-speed-manager';
+import { SimSpeedManager } from './simulation/sim-speed-manager';
 import { EntityManager } from './simulation/entity-manager';
-import { FutureCelestialBodies } from './simulation/future-celestial-bodies';
-import { EntityLineManager } from './entity-line-manager';
+import { EntityLineManager } from './lines/entity-line-manager';
 import { Simulator } from './simulation/simulator';
 import { Predictor } from './simulation/predictor';
 import { Input } from './input/input';
@@ -33,21 +31,21 @@ import { GameScene } from '../render/scene';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import type { RenderStyle } from '../render/render-style';
-import { EnvironmentScene } from './celestial/environment-scene';
+import { CelestialSystem } from './celestial/celestial-system';
 import type { Ephemeris } from '../physics/ephemeris';
 import { ViewManager } from './view-manager';
-import { NanWatchdog } from './nan-watchdog';
+import { NanWatchdog } from './simulation/nan-watchdog';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
 import { OrbitReferenceSelector } from './orbit-reference';
-import { MapPickables } from './map-pickables';
-import { OrbitPickables } from './orbit-pickables';
-import { MapContextActions } from './map-context-actions';
+import { MapPickables } from './pickable/map-pickables';
+import { OrbitPickables } from './pickable/orbit-pickables';
+import { MapContextActions } from './pickable/map-context-actions';
 import { Navball } from './navball/navball';
-import { GameSaveData } from './save-data';
+import { GameSaveData } from './save/save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
-import { Docking } from './docking';
-import { DockingGuide } from './docking-guide';
+import { Docking } from './docking/docking';
+import { DockingGuide } from './docking/docking-guide';
 import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 import { CombatHudController, MapHudController } from './hud/view-hud-controller';
@@ -64,8 +62,7 @@ export class Game {
   private readonly _uiSfx: UiSfx;
   private readonly pauseMenu: PauseMenu;
   private readonly markerManager: MarkerManager;
-  private readonly _ephemeris: Ephemeris;
-  get ephemeris(): Ephemeris { return this._ephemeris; }
+  get ephemeris(): Ephemeris { return this.celestialSystem.ephemeris; }
   readonly cameraSystem: CameraSystem;
   // 操作対象艦(0..n 隻のうちどれを操作するか)の切替を持つ。
   readonly activePlayers: ActiveControllableController;
@@ -93,8 +90,8 @@ export class Game {
   private _isPaused = false;
   get isPaused(): boolean { return this._isPaused; }
 
-  private readonly _environment: EnvironmentScene;
-  get environment(): EnvironmentScene { return this._environment; }
+  private readonly _celestialSystem: CelestialSystem;
+  get celestialSystem(): CelestialSystem { return this._celestialSystem; }
   private readonly navball: Navball;
 
   private readonly unlockManager: UnlockManager;
@@ -104,7 +101,6 @@ export class Game {
   readonly frameAnchors: FrameAnchors;
   readonly orbitReference = new OrbitReferenceSelector();
   readonly entities: EntityManager;
-  private readonly futureCelestialBodies: FutureCelestialBodies;
   private readonly entityLines: EntityLineManager;
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
@@ -143,19 +139,16 @@ export class Game {
     this.pauseMenu = pauseMenu;
     this.unlockManager = unlockManager;
 
-    this._ephemeris = ephemeris;
-
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
     this.entities = new EntityManager(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
-    this.futureCelestialBodies = new FutureCelestialBodies(this.ephemeris);
     this.entityLines = new EntityLineManager(this.entities);
-    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, this.ephemeris);
+    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, ephemeris);
 
     this.cameraSystem = new CameraSystem(
       this._hud,
       this.markerManager,
-      this.ephemeris,
+      ephemeris,
       initialSave?.camera,
     );
     this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);
@@ -164,23 +157,23 @@ export class Game {
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム celestialBodies を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors({
-      entityState: (id, t) => this.entities.all().find((e) => e.id === id && e.alive)?.displayState(t, this.ephemeris) ?? null,
-      activeShipState: (t) => this.activeControllableEntity?.displayState(t, this.ephemeris) ?? null,
-      navTargetState: (bodies, t) => this.navTarget.resolveState(this.entities, this.ephemeris, bodies, t)?.state ?? null,
+      entityState: (id, t) => this.entities.all().find((e) => e.id === id && e.alive)?.displayState(t, ephemeris) ?? null,
+      activeShipState: (t) => this.activeControllableEntity?.displayState(t, ephemeris) ?? null,
+      navTargetState: (bodies, t) => this.navTarget.resolveState(this.entities, ephemeris, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
-      this._hud.mapRoot, this._hud.layers.popup, this.ephemeris, this.cameraSystem.mapCamera,
+      this._hud.mapRoot, this._hud.layers.popup, ephemeris, this.cameraSystem.mapCamera,
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.entities);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
-    this._environment = new EnvironmentScene(
-      this._scene, this.ephemeris, pipeline.sunLight, pipeline.exposure,
+    this._celestialSystem = new CelestialSystem(
+      this._scene, ephemeris, pipeline.sunLight, pipeline.exposure,
       pipeline.sunOcclusion, pipeline.planetLight, pipeline.ambient, pipeline.atmosphere, earthSpinPhase0);
-    this.navball.onOrbitGuideSettingsChange = (settings) => this._environment.setOrbitGuideSettings(settings);
-    this._environment.setOrbitGuideSettings(this.navball.orbitGuideSettings);
+    this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
+    this._celestialSystem.setOrbitGuideSettings(this.navball.orbitGuideSettings);
     // 線が増えすぎたときの警告を UI へ戻す。
-    this._environment.orbitGuide.setOnLineCountChange(
+    this._celestialSystem.orbitGuide.setOnLineCountChange(
       (count) => this.cameraSystem.viewOptionsPanel.setOrbitGuideLineCount(count),
     );
     this.activePlayers = new ActiveControllableController(
@@ -198,8 +191,7 @@ export class Game {
       this._hud,
       this._uiSfx,
       this.simSpeedManager,
-      this.ephemeris,
-      this.futureCelestialBodies,
+      ephemeris,
       this._scene,
       this.markerManager,
       this.activePlayers,
@@ -219,22 +211,22 @@ export class Game {
     this.combatHud = new CombatHudController(this._hud);
     this.mapHud = new MapHudController(this._hud);
 
-    this.simulator = new Simulator(this.entities, this.ephemeris, sections, initialSave?.simTime ?? initialSimTime ?? 0);
-    this.predictor = new Predictor(this.entities, this.futureCelestialBodies);
+    this.simulator = new Simulator(this.entities, ephemeris, sections, initialSave?.simTime ?? initialSimTime ?? 0);
+    this.predictor = new Predictor(this.entities, ephemeris);
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.entities, this.unlockManager,
-      this.entities.effects, this.markerManager, this.ephemeris, this.simulator, this.activePlayers,
+      this.entities.effects, this.markerManager, ephemeris, this.simulator, this.activePlayers,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
-      this.activePlayers, this.entities, this.ephemeris, this.navTarget, this.cameraSystem, this.editor, this.markerManager,
+      this.activePlayers, this.entities, ephemeris, this.navTarget, this.cameraSystem, this.editor, this.markerManager,
       this.frameAnchors,
     );
-    this.orbitPickables = new OrbitPickables(this.entities, this._environment, this.ephemeris, this.cameraSystem);
+    this.orbitPickables = new OrbitPickables(this.entities, this._celestialSystem, ephemeris, this.cameraSystem);
     this.mapActions = new MapContextActions(
-      this._hud, this.entities, this.ephemeris, this.navTarget,
+      this._hud, this.entities, ephemeris, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.orbitPickables,
       this.activePlayers, this.frameControls, this.activeStage, this.targeter,
     );
@@ -309,7 +301,7 @@ export class Game {
     this.touchControls?.dispose();
     this.input.dispose();
     this.editor.dispose();
-    this._environment.dispose();
+    this._celestialSystem.dispose();
     this.frameControls.dispose();
     this.cameraSystem.dispose();
     this.displayWindowManager.dispose();
@@ -341,7 +333,7 @@ export class Game {
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(this.ephemeris.celestialBodiesAt(displayWindow.displayTime));
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
-    this._environment.update(displayWindow.displayTime, overviewMode, graphics);
+    this._celestialSystem.update(displayWindow.displayTime, overviewMode, graphics);
     this.sections.enter(SECTION.plan);
     this.editor.update(displayWindow, this.frameAnchors);
     this.sections.exit(SECTION.plan);
@@ -525,10 +517,6 @@ export class Game {
     // update() が確定させた表示窓をそのまま読める。
     const displayWindow = this.displayWindowManager.current;
     this.viewBadge.sync(this.activeStage.stageClass.selectLabel, this.viewBadgeContext());
-    // 原点(位置)はアクティブカメラの ECI 位置 — cameraSystem.update() は update フェーズの
-    // 毎フレーム呼ばれるので、この sync の時点で activeCameraPos は確定済み。
-    // 速度基準は自機のまま(弾の相対速度描画・再突入エフェクトが前提とする値で、原点とは別concern)。
-    const fo = new FloatingOrigin(this.cameraSystem.activeCameraPos, activeControllable?.state.v ?? v3());
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
@@ -540,8 +528,9 @@ export class Game {
     // sync フェーズの frameTransformAt 呼び出しも同じ表示時刻の celestialBodies を見るように揃える。
     this.frameAnchors.update(displayCelestialBodies);
 
-    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列を読む。
-    this.cameraSystem.sync(fo);
+    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
+    // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
+    const fo = this.cameraSystem.sync(activeControllable?.state.v ?? v3());
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
@@ -552,14 +541,19 @@ export class Game {
     // 別に、除外なしの一覧を使う。
     const combatTargets = this.entities.getCombatTargets(null);
 
-    this._environment.sync(
+    this._celestialSystem.sync(
       fo, displayTime,
       this.cameraSystem, graphics, style, this.navball.gridVisibility, visibilityPolicy,
       this.markerManager,
     );
 
-    const orbitRef = player
-      ? this.orbitReference.resolve(player.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, player.state.t)
+    // 基地操作中もその基地を基準に軌道パネルが解決するのと揃える(orbit-panel.ts も同じ
+    // activeControllableEntity を使う) — player だけを見ると、基地操作中は常に undefined になり
+    // 軌道パネルの表示と3D軌道線の基準がずれる。
+    const orbitRef = activeControllable
+      ? this.orbitReference.resolve(
+        activeControllable.state.r, celestialBodies, this.navTarget, this.entities, this.ephemeris, activeControllable.state.t,
+      )
       : undefined;
     this.entities.syncPlayers(player, fo, this.cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
     this.entities.syncDetachedBoosters(fo, this.cameraSystem, displayTime, style, visibilityPolicy);
@@ -574,10 +568,10 @@ export class Game {
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
       player, combatTargets, this.entities.ammoPickups, this.entities.rcsFuelPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
-      this.ephemeris.registry, displayCelestialBodies,
+      this.ephemeris, displayCelestialBodies,
     );
     this.cameraSystem.focusMarkers.syncSubLabels(
-      this.markerManager.combatMarkers, this.ephemeris.registry, displayCelestialBodies,
+      this.markerManager.combatMarkers, displayCelestialBodies,
       overviewMode, project, this.cameraSystem.activeCameraPos,
     );
     this.navTarget.sync(this.cameraSystem);
@@ -596,9 +590,15 @@ export class Game {
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    this.entityLines.sync(displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris);
+    // 軌道線(3D描画)は戦闘ビューだけ orbitRef の固定設定に従う。マップビューは軌道情報パネルの
+    // 設定に関わらず常に自動選択のまま描く(orbit-info.ts の数値表示・軌道要素アイコンは
+    // syncPlayers 側で orbitRef をそのまま使うので、この絞り込みの影響を受けない)。
+    this.entityLines.sync(
+      displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this.ephemeris,
+      overviewMode ? undefined : orbitRef,
+    );
     // 軌道線の右クリック当たり判定向けの候補列。各軌道線が今フレーム焼いたサンプルを読むため、
-    // environment.sync/entityLines.sync の後に組む。
+    // celestialSystem.sync/entityLines.sync の後に組む。
     this.orbitPickables.refresh(displayWindow, this.frameAnchors);
 
     if (player) {
@@ -636,7 +636,7 @@ export class Game {
       ...this.predictor.perfCounts(),
       ...this.simulator.perfCounts(),
       ...this.editor.perfCounts(),
-      ...this._ephemeris.perfCounts(),
+      ...this.ephemeris.perfCounts(),
       ...this.mapPickables.perfCounts(),
       displayDurationSec: this.displayWindowManager.current.duration,
       warp: this.simSpeedManager.simSpeed,

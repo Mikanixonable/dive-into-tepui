@@ -1,12 +1,12 @@
 // surface-contact.ts の回帰テスト。窓の中から「最初に触れる1体」を選ぶところだけを見る
 // (掃引の幾何そのものは sphere-contact.test.ts、反発の分配は collision-response.test.ts)。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { firstSurfaceContact } from '../../src/physics/surface-contact';
 import { hermiteInterpolate, kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system';
-import { len, sub, v3 } from '../../src/physics/vec3';
+import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system/constants';
+import { len, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
 const EARTH: CelestialBody = {

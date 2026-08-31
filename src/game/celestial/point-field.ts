@@ -1,5 +1,5 @@
 // 小惑星帯・木星トロヤ群・ヒルダ群・カイパーベルト・散乱円盤の点群を、軌道要素の統計分布として
-// 生成し位置を評価する。表示専用なので CelestialBodyId 系(重力源・ピック対象・フォーカス対象)には
+// 生成し位置を評価する。表示専用なので天体 id で引く経路(重力源・ピック対象・フォーカス対象)には
 // 載せない。THREE 非依存に保ってあり、生成の決定性と分布は tests/physics で検査する。
 // 各群は PointFieldDef 1つのデータで駆動する — 群を増やすには POINT_FIELD_DEFS に要素を足すだけ
 // でよく、生成コード自体に群固有の分岐を増やさない。
@@ -7,10 +7,11 @@ import { Q_ECLY_TO_ECI } from '../../physics/ecliptic';
 import { positionFromOrbitalElements, trueAnomalyFromMean } from '../../physics/elements';
 import { EPOCH_T_OFFSET } from '../../physics/ephemeris';
 import { AU } from '../../physics/planet-orbit';
-import { MU_SUN, SOLAR_SYSTEM } from '../../physics/solar-system';
+import { MU_SUN } from '../../physics/solar-system/constants';
+import { JUPITER } from '../../physics/solar-system/jupiter-system';
 import { qRotate } from '../../physics/attitude';
-import { mulberry32 } from '../../physics/random';
-import { Vec3 } from '../../physics/vec3';
+import { mulberry32 } from '../../math/random';
+import { Vec3 } from '../../math/vec3';
 
 // 1点の軌道。平均運動を要素と一緒に持つのは、位置評価が毎フレーム全点に及ぶため
 // (a から毎回 sqrt を引くのを避ける)。
@@ -63,7 +64,7 @@ const GAP_SIGMA_AU = 0.04;
 // 棄却法が病的な乱数列で止まらなくなるのを防ぐ上限。到達したらその標本をそのまま採る。
 const MAX_REJECTION_TRIES = 64;
 
-const JUPITER_A_AU = SOLAR_SYSTEM.jupiter.orbit.a / AU;
+const JUPITER_A_AU = JUPITER.orbit.a / AU;
 
 export const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
   {
@@ -135,7 +136,7 @@ function uniform(rand: () => number, [min, max]: readonly [number, number]): num
 // 木星の平均黄経 [rad]。トロヤ群・ヒルダ群の共鳴基準にしか使わないので、Ephemeris の3段合成
 // ではなく平均黄経の一次式だけを引く。
 export function jupiterMeanLongitude(t: number): number {
-  const orbit = SOLAR_SYSTEM.jupiter.orbit;
+  const orbit = JUPITER.orbit;
   return orbit.l0 + orbit.lRate * (t + EPOCH_T_OFFSET);
 }
 
@@ -212,7 +213,7 @@ function generatePoint(
 export function generatePointField(seed: number = ASTEROID_SEED): PointField {
   const rand = mulberry32(seed);
   const jupiterLambda0 = jupiterMeanLongitude(0);
-  const jupiterLRate = SOLAR_SYSTEM.jupiter.orbit.lRate;
+  const jupiterLRate = JUPITER.orbit.lRate;
   return POINT_FIELD_DEFS.map((def) => ({
     id: def.id,
     points: Array.from({ length: def.count }, () => generatePoint(rand, def, jupiterLambda0, jupiterLRate)),

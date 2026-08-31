@@ -52,13 +52,13 @@ Game
 | 名前 | 場所 | 中身 | 引く側 |
 | --- | --- | --- | --- |
 | `CelestialRegistry` | `physics/solar-system.ts` | `Record<id, CelestialBodyDef>` | `Ephemeris` |
-| `CELESTIAL_VIEWS` | `game/celestial/celestial-registry.ts` | `Record<SolarSystemId, {name, create()}>` | `EnvironmentScene` |
+| `CELESTIAL_APPEARANCES` | `game/celestial/celestial-appearance.ts` | `Record<SolarSystemId, {name, create()}>` | `EnvironmentScene` |
 
 両者を突き合わせるのは `environment-scene.ts:121-123` の1箇所だけ:
 
 ```ts
 this.bodies = Object.keys(registry).map((id) =>
-  id in CELESTIAL_VIEWS ? CELESTIAL_VIEWS[id as SolarSystemId].create() : fallbackCelestialView(registry, id));
+  id in CELESTIAL_APPEARANCES ? CELESTIAL_APPEARANCES[id as SolarSystemId].create() : fallbackCelestialAppearance(registry, id));
 ```
 
 ## GameEntity 側との対応
@@ -87,20 +87,20 @@ this.bodies = Object.keys(registry).map((id) =>
 
 ## 是正候補
 
-### 1. `CELESTIAL_VIEWS` が実行中のレジストリではなく `SOLAR_SYSTEM` を直接引いている
+### 1. `CELESTIAL_APPEARANCES` が実行中のレジストリではなく `SOLAR_SYSTEM` を直接引いている
 
 `planetEntry` / `satelliteEntry` / `texturedSatelliteEntry` / `solidPlanetEntry` /
 `shapeOf` / `ringsOf` はすべて `bodyDef(SOLAR_SYSTEM, id)` を呼び、半径・形状・環を
-**現実の太陽系から**取る。`registry` を見るのは `fallbackCelestialView` だけ。
+**現実の太陽系から**取る。`registry` を見るのは `fallbackCelestialAppearance` だけ。
 
 現在の `ALT_REGISTRY` は `zephyrus` / `zephyrus-i` という衝突しない id を使うため実害は
 出ていないが、代替レジストリが太陽系と同じ id を別のパラメータで再定義した瞬間、
 **見た目だけが現実の太陽系の値で描かれる。** 静的パラメータの正本が2箇所になる。
 
-### 2. 「registry」という語が2つの別物を指している
+### 2. 「registry」という語が2つの別物を指していた(解消済み)
 
-`CelestialRegistry`(静的事実の表)と `celestial-registry.ts`(見た目の表)。
-CODING-RULE の「類義語の混雑」「曖昧な区別」に当たる。どちらかを改名する。
+見た目の表を `celestial-appearance.ts`(`CELESTIAL_APPEARANCES` /
+`CelestialAppearance` / `fallbackCelestialAppearance`)へ改めた。
 
 ### 3. 天体の参照軌道線の持ち主が、エンティティ側と逆
 
@@ -127,9 +127,80 @@ CODING-RULE の「類義語の混雑」「曖昧な区別」に当たる。ど�
 
 ## 未確定
 
-- 是正 1 の直し方 — `CELESTIAL_VIEWS` の各 entry を `create(def: CelestialBodyDef)` の形に
+- 是正 1 の直し方 — `CELESTIAL_APPEARANCES` の各 entry を `create(def: CelestialBodyDef)` の形に
   変えて呼び出し側から渡すのが素直だが、`EarthView` / `SunView` が引数を取らないので
   署名が揃わない。
 - 是正 3 の向き — 天体側を `CelestialView` 所有へ寄せるのか、エンティティ側を
   `EntityLineManager` へ寄せきるのか。
 - 是正 4 を `refactor_predict_simulation_v2.md` の作業と同時にやるか、切り離すか。
+  (追記 `33748733`: このファイルはもう存在しない。外部文書を待たず、下の再編の中で判断する。)
+
+---
+
+# 追記(`33748733`): モジュール構成調査からの合流
+
+モジュール構成の全体調査(`module_restructure.md`、2026-08-28)のうち、天体まわりの論点を
+この文書へ移した。以下は `33748733` 時点のスナップショット。
+
+## 是正候補 1〜5 の再検証 — 5件すべて現存
+
+- **候補1(SOLAR_SYSTEM 直引き)**: `planetEntry` / `ringsOf` / `shapeOf` / `satelliteEntry` /
+  `texturedSatelliteEntry` / `solidPlanetEntry` は依然 `bodyDef(SOLAR_SYSTEM, id)` を呼ぶ
+  (`celestial-appearance.ts:37,48,54,63,74,84`、`moon` エントリ直書きが `:103`)。
+  `registry` を見るのは `fallbackCelestialAppearance` だけ。突き合わせ箇所は
+  `environment-scene.ts:171-174` へ行番号が移動(引数増のため)。
+- **候補2(registry の語)**: 未変更。`environment-scene.ts` は `CelestialRegistry`(:5)と
+  `./celestial-appearance`(:38)を同じファイルで両方 import している。
+- **候補3(参照線の持ち主)**: 未変更。`environment-scene.ts:126` の
+  `referenceLines: Map<OrbitingId, OrbitLine>` が実体も判断(:390-428)も持つ。
+  エンティティ側(実体=個体、判断=`EntityLineManager`)との非対称のまま。
+- **候補4(型4通り)**: 未変更。`FutureCelestialBodyProvider`(`arc-bodies.ts:18-22`)は
+  `candidates()` と `celestialBodyAt(id, t)` の2メソッドを要求する形へ変化。
+  さらに5通り目として `environment-scene.ts:544-547` が `CelestialBody` を手書きリテラルで
+  捏造している(`orbitalElementsOf` へ渡すためだけに `accel: v3(), degree2: null` 等を埋める)。
+- **候補5(CelestialBody のフィールド保持)**: 行番号まで同一(`dynamic-trajectory.ts:27`)。
+  外部の読み手 `game-entity.ts:473-474` は保持スナップショットの `state` を使わず、
+  `id` だけ取り出して `ephemeris.stateOf(..., t)` を引き直している。
+
+## 見た目の事実の分散(新規の記録)
+
+天体1体の「見た目」を成立させる表が5つに割れている:
+
+| 表 | 場所 | 網羅性 |
+| --- | --- | --- |
+| 環の光学(τ・単一散乱アルベド・位相 g) | `physics/solar-system.ts:143-159`(`RingOpticsDef`)、実値 `:393-405`(`SATURN_RINGS`) | `CelestialBodyDef` の一部。**見た目の量が physics にある** |
+| `CELESTIAL_ALBEDO`(82天体の線形 RGB ボンドアルベド) | `render/celestial-albedo.ts:34-117` | 緩い `Record<string,_>`、網羅強制なし |
+| `CELESTIAL_TEXTURES` / `EARTH_TEXTURES`(url・albedoScale・bondAlbedo・averageHue) | `render/celestial-textures.ts:39-67` | 同上 |
+| `ATMOSPHERE_OPTICS`(earth / mars。「大気の見た目を持つ天体」の正本) | `render/atmosphere.ts:20-39` | 同上。physics 側 `AtmosphereDef`(抗力用の密度層)とは別の分布 |
+| `CELESTIAL_APPEARANCES`(日本語名 + View 選択) | `game/celestial/celestial-appearance.ts:97-203` | `SolarSystemId` で網羅 |
+
+付随する事実:
+
+- 「その天体の色」を知るには texture 表と albedo 表の**両方**を通る関数を経由する
+  (`celestial-albedo.ts:26,131,144` が texture 側へ分岐する)。
+- 「月だけ表面ラインを持つ」は `celestial-appearance.ts:104` の手書きファクトリ1行で表現され、
+  `SphereView` の第8引数を使うのはこの1箇所のみ。
+- 参照軌道線の色(`SATELLITE_REFERENCE_LINE_COLOR` 等)は `environment-scene.ts:64-65` に直置き。
+- render → physics の import は13箇所(`ring.ts:18` が環の光学定義を physics から引く、等)。
+  game/celestial → render の import は albedo / texture / atmosphere-optics /
+  メッシュ部品(`CelestialSurface` / `MoonSurfaceMarkings` / `createSun` 等)に及ぶ。
+  この分担自体は `celestial-appearance.ts:4-5` のコメントで意図されたもの。
+
+## 再編の方向(ユーザー判断、2026-08-28)— これから具体化する
+
+**目的は「見た目の集約」ではない。** 単に1箇所へ集めるだけでは、そのモジュールが肥大するだけ。
+
+- **天体レジストリの登録/削除を整理する。** そのために管理データ構造と各天体を表すクラスを
+  整理し、各天体のデータや個別の事象(リング・オーロラ・大気など)を**多態的に**扱う。
+  表による集約ではなく、再分割を含む。
+- **`solar-system.ts` の分離を含む**(大気や輪の実データはその天体のクラスへ)。
+  当初「地学系の分離」と呼んでいた懸念の実体はこれ(atmosphere / thermal 等の関数群ではない)。
+- 太陽系を表すコードが physics / game / render に跨って肥大しているため、
+  **`src/` 直下に `celestial/` を新設することも視野に入れる。**
+- `FutureCelestialBodies` との密結合は合意済みで、この再編の中で扱う
+  (旧 `refactor_predict_simulation_v2.md` の結論待ちという条件は消滅 — ファイルが存在しない)。
+- 参照線の持ち主の非対称(候補3)も、この再編と結合して「どちらの形が正しいか」を決める。
+- 候補1(SOLAR_SYSTEM 直引き)の直し方も、再編後の形が決まってから。
+
+どのように問題があり、どのように是正可能かをここで練るのが次の作業。上の保持木・
+型の対応表・見た目の分散が、その検討の材料になる。

@@ -1,12 +1,12 @@
 // srp.ts の回帰テスト。大気抵抗が消える高軌道では、これが物体に働く唯一の非重力摂動になる。
 import * as assert from 'node:assert/strict';
-import { test } from './harness';
+import { test } from '../harness';
 import { CelestialBody } from '../../src/physics/celestial-body';
 import { SOLAR_PRESSURE_1AU, srpAccel } from '../../src/physics/srp';
 import { AU } from '../../src/physics/planet-orbit';
-import { MU_SUN, R_SUN } from '../../src/physics/solar-system';
+import { MU_SUN, R_SUN } from '../../src/physics/solar-system/constants';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { cross, dot, len, norm, sub, v3 } from '../../src/physics/vec3';
+import { cross, dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
 

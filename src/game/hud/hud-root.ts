@@ -8,9 +8,7 @@ import { HelpPanel } from './windows/help-panel';
 import {
   PanelShell,
   type HudWorldView,
-  loadPanelCollapsed,
-  onPanelCollapsedViewChange,
-  savePanelCollapsed,
+  wirePanelCollapse,
 } from './panel-shell';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
@@ -19,9 +17,7 @@ import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { isCompactViewport } from './breakpoints';
 import { startViewportTracking } from './viewport';
-import {
-  buildCollapseToggle, syncCollapseToggle, WIDGET_STYLE,
-} from './widgets';
+import { WIDGET_STYLE } from './widgets';
 import type { OverlayLayers } from './overlay-layer';
 import type { CollapseToggleLabels } from './widgets';
 export {
@@ -71,6 +67,7 @@ export function hudRail(root: HTMLElement, side: 'left' | 'right'): HTMLElement 
   return root.querySelector<HTMLElement>(`.hud-rail-${side}`) ?? root;
 }
 
+// レール収納トグルの字形と読み上げ名を、開く向き(左右)から組む。
 function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
   const label = side === 'left' ? '左' : '右';
   return {
@@ -86,28 +83,29 @@ function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
 function buildRailToggle(
   root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: HudWorldView,
 ): void {
-  const railId = `hud-rail-${side}`;
-  const toggle = buildCollapseToggle(
-    root, `hud-${view}-rail-toggle-${side}`, `rail-toggle rail-toggle-${side}`, rail, railToggleLabels(side),
-  );
-  const applyCollapsedState = (): void => {
-    const collapsed = loadPanelCollapsed(railId) ?? isCompactViewport();
-    rail.classList.toggle('collapsed', collapsed);
-    syncCollapseToggle(toggle, rail, railToggleLabels(side));
-  };
-  applyCollapsedState();
-  onPanelCollapsedViewChange(applyCollapsedState);
-  toggle.addEventListener('click', () => savePanelCollapsed(railId, rail.classList.contains('collapsed')));
+  wirePanelCollapse({
+    toggleRoot: root,
+    toggleId: `hud-${view}-rail-toggle-${side}`,
+    toggleClassName: `rail-toggle rail-toggle-${side}`,
+    target: rail,
+    labels: railToggleLabels(side),
+    storageId: `hud-rail-${side}`,
+    defaultCollapsed: () => isCompactViewport(),
+  });
 }
 
+// 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
 function buildWorldRoot(parent: HTMLElement, id: string, view: HudWorldView): HudWorldRoot {
+  // ビューのルート要素を作る。
   const element = createHudElement('div', id, parent, `hud-world-root hud-${view}-root`);
+  // 左右のレールを子として組む。
   const leftRail = createHudElement(
     'div', `${id}-rail-left`, element, 'hud-rail hud-rail-left',
   );
   const rightRail = createHudElement(
     'div', `${id}-rail-right`, element, 'hud-rail hud-rail-right',
   );
+  // 各レールの収納トグルを配線する。
   buildRailToggle(element, leftRail, 'left', view);
   buildRailToggle(element, rightRail, 'right', view);
   return { element, leftRail, rightRail };
@@ -115,6 +113,7 @@ function buildWorldRoot(parent: HTMLElement, id: string, view: HudWorldView): Hu
 
 // PanelShell が組んだ見出し・本文・開閉ボタンを、アクセシブルな一領域として関連付ける。
 function configureCombatPanel(panel: PanelShell): void {
+  // 見出しと本文を id で結び、region として関連付ける。
   const titleId = `${panel.el.id}-title`;
   const bodyId = `${panel.el.id}-body`;
   panel.el.classList.add('combat-panel');
@@ -123,6 +122,7 @@ function configureCombatPanel(panel: PanelShell): void {
   panel.titleEl.id = titleId;
   panel.body.id = bodyId;
 
+  // 開閉ボタンへ aria 属性を与え、開閉状態が変わるたびに読み上げ名を更新する。
   const toggle = panel.el.querySelector<HTMLElement>('.panel-shell-collapse');
   if (!toggle) return;
   toggle.setAttribute('type', 'button');
@@ -141,6 +141,7 @@ function injectStyle(): void {
 
 // マーカーのリード線を描く SVG オーバーレイを作る。
 function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
+  // 画面全体に重ねる透過 SVG 要素を用意する。
   const svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svgOverlay.setAttribute('aria-hidden', 'true');
   svgOverlay.style.position = 'absolute';
@@ -149,13 +150,13 @@ function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
   svgOverlay.style.height = '100%';
   svgOverlay.style.pointerEvents = 'none';
   svgOverlay.style.zIndex = '0';
+  // 呼び出し元のレイヤへ組み込む。
   root.appendChild(svgOverlay);
   return svgOverlay;
 }
 
-// 常設の情報パネル(VESSEL/ORBIT/TARGET/CONTACTS)を左右のドックへ組む。左右レールの
-// 収納トグルと各 PanelShell の折りたたみは、現在ビューの永続状態を利用する。
-function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
+// 常設 VESSEL パネルを右レールへ組む。
+function buildVesselStatusPanel(rightRail: HTMLElement): void {
   const status = new PanelShell(rightRail, 'hud-vessel-status', 'Vessel');
   configureCombatPanel(status);
   status.body.innerHTML = `
@@ -163,9 +164,9 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       <div class="row metric">
         <dt class="k">RCS燃料</dt>
         <dd class="v vessel-meter-readout">
-          <span class="vessel-meter" data-id="rcs-fuel-meter" role="progressbar"
+          <span class="vessel-meter w-meter-track" data-id="rcs-fuel-meter" role="progressbar"
             aria-label="RCS燃料" aria-valuemin="0">
-            <span class="vessel-meter-fill" data-id="rcs-fuel-fill"></span>
+            <span class="w-meter-fill" data-id="rcs-fuel-fill"></span>
           </span>
           <output class="vessel-meter-value" data-id="rcs-fuel-value">—</output>
         </dd>
@@ -199,7 +200,10 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
     <div class="vessel-deploy-controls" data-id="vessel-deploy-controls" role="group" aria-label="太陽電池パドル・放熱板の収納展開"></div>
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
     <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
+}
 
+// 常設 ORBIT パネルを左レールへ組む。マップビューと compact 幅では畳んで始める。
+function buildOrbitInfoPanel(leftRail: HTMLElement): void {
   const orbit = new PanelShell(
     leftRail, 'hud-orbit', 'Orbit', (view) => view === 'map' || isCompactViewport(),
   );
@@ -225,6 +229,10 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
 
   // ブースター燃焼管理は戦闘/マップで同じ DOM を移動して使う。ゲーム状態を直接
   // 参照する controller は Hud 側へ注入し、ここでは表示用のシェルだけを組む。
+}
+
+// ブースター燃焼管理パネルを左レールへ組む。
+function buildBurnManagementPanel(leftRail: HTMLElement): void {
   const burnManagement = new PanelShell(
     leftRail, 'burn-management-panel', '燃焼管理',
   );
@@ -240,9 +248,9 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       <div class="row metric">
         <dt class="k">最後尾燃料</dt>
         <dd class="v burn-fuel-readout">
-          <span class="burn-fuel-meter" data-id="burn-active-fuel-meter" role="progressbar"
+          <span class="burn-fuel-meter w-meter-track" data-id="burn-active-fuel-meter" role="progressbar"
             aria-label="最後尾ブースター燃料" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
-            <span class="burn-fuel-fill" data-id="burn-active-fuel-fill"></span>
+            <span class="w-meter-fill" data-id="burn-active-fuel-fill"></span>
           </span>
           <output class="burn-fuel-value" data-id="burn-active-fuel-value">—</output>
         </dd>
@@ -252,7 +260,10 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       </div>
     </dl>
     <div class="panel-actions burn-actions" data-id="burn-actions" role="group" aria-label="ブースター操作"></div>`;
+}
 
+// 常設 TARGET パネルを右レールへ組む。ロック対象が無い間は隠す。
+function buildTargetPanel(rightRail: HTMLElement): void {
   const target = new PanelShell(rightRail, 'hud-target', 'Target');
   configureCombatPanel(target);
   target.setHidden(true);
@@ -275,9 +286,9 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
           <dt class="k">相対速度</dt><dd class="v"><output data-id="tgt-relative-speed">—</output></dd>
         </div>
         <div class="row metric"><dt class="k">装甲</dt><dd class="v armor-readout">
-          <span class="armor-meter" data-id="tgt-armor-meter" role="progressbar"
+          <span class="armor-meter w-meter-track" data-id="tgt-armor-meter" role="progressbar"
             aria-label="ターゲットの装甲" aria-valuemin="0">
-            <span class="armor-meter-fill" data-id="tgt-armor-fill"></span>
+            <span class="w-meter-fill" data-id="tgt-armor-fill"></span>
           </span>
           <output class="armor-value" data-id="tgt-armor-value">—</output>
         </dd></div>
@@ -289,7 +300,10 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
       </section>
       <p class="target-help">軌道要素は右クリックで表示</p>
     </div>`;
+}
 
+// 常設 CONTACTS パネルを右レールへ組む。件数バッジを見出しへ添える。
+function buildEnemiesPanel(rightRail: HTMLElement): void {
   const enemies = new PanelShell(rightRail, 'hud-enemies', 'Enemies', isCompactViewport());
   configureCombatPanel(enemies);
   const count = document.createElement('span');
@@ -298,14 +312,24 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   count.textContent = '—';
   enemies.titleEl.append(' ', count);
   enemies.body.innerHTML = `<ol class="contact-list" data-id="elist" aria-label="距離順の戦闘対象"></ol>`;
+}
 
+// 常設の情報パネル群を左右のドックへ組む。
+function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
+  buildVesselStatusPanel(rightRail);
+  buildOrbitInfoPanel(leftRail);
+  buildBurnManagementPanel(leftRail);
+  buildTargetPanel(rightRail);
+  buildEnemiesPanel(rightRail);
 }
 
 // マップ視点の縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
 function buildMapScale(root: HTMLElement): void {
+  // 縮尺表示の要素を作る。
   const mapScale = createHudElement('div', 'hud-map-scale', root);
   mapScale.dataset.id = 'map-scale';
   mapScale.setAttribute('aria-label', 'マップ縮尺');
+  // 数値表示と目盛りルーラーを組む。
   mapScale.innerHTML = `
     <div><span class="map-scale-value" data-id="map-scale-value"></span></div>
     <div class="map-scale-ruler" data-id="map-scale-ruler">
@@ -318,8 +342,10 @@ function buildMapScale(root: HTMLElement): void {
 // 画面全体のトップバーを組む。1行目はビュー切替と現在の対象バッジ(ViewBadge が中身を組む)、
 // 2行目は MET・時間加速・NODE WARP。
 function buildTopBar(root: HTMLElement): void {
+  // トップバー本体の section 要素を作る。
   const bar = createHudElement('section', 'hud-topbar', root);
   bar.setAttribute('aria-label', 'Mission status');
+  // ビュー切替行と、MET・時間加速・NODE WARP の行を組み立てる。
   bar.innerHTML = `
     <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
     <div class="gs-row">
@@ -333,17 +359,20 @@ function buildTopBar(root: HTMLElement): void {
 
 // 追従カメラの視点リセットボタンを組む。
 function buildChaseReset(root: HTMLElement): void {
+  // リセットボタン本体を作る。
   const chaseReset = createHudElement('button', 'hud-chase-reset', root);
   chaseReset.setAttribute('type', 'button');
   chaseReset.setAttribute('aria-label', '視点をリセット');
   chaseReset.setAttribute('title', '視点をリセット');
   chaseReset.dataset.id = 'chase-reset';
+  // リセットを示す矢印アイコンを描く。
   chaseReset.innerHTML = `
     <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2"
       fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
       <path d="M3 3v5h5"></path>
     </svg>`;
+  // キーボード操作でもポインタ操作と同じ経路で処理されるよう、Enter/Space を pointerdown へ変換する。
   chaseReset.addEventListener('keydown', (event) => {
     if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
     event.preventDefault();
@@ -351,12 +380,22 @@ function buildChaseReset(root: HTMLElement): void {
   });
 }
 
+// H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
+function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
+  const badge = createHudElement('button', 'hud-help-badge', root);
+  badge.setAttribute('type', 'button');
+  badge.setAttribute('aria-label', '操作ガイドを開く');
+  badge.setAttribute('title', '操作ガイドを開く');
+  badge.textContent = '?';
+  badge.addEventListener('click', () => helpPanel.open());
+}
+
 // data-id 属性を持つ要素を、その id をキーにした Map にまとめて返す。
 function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   const els = new Map<string, HTMLElement>();
-  root.querySelectorAll<HTMLElement>('[data-id]').forEach((e) => {
-    els.set(e.dataset['id']!, e);
-  });
+  for (const element of Array.from(root.querySelectorAll<HTMLElement>('[data-id]'))) {
+    els.set(element.dataset['id']!, element);
+  }
   return els;
 }
 
@@ -382,10 +421,10 @@ export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
   const overlayShield = createHudElement('div', 'hud-overlay-shield', layers.gate);
   const overlayManager = new OverlayManager(overlayShield, layers.gate);
 
-  createHudElement('div', 'hud-hint', layers.notify);
   createHudElement('div', 'hud-toast', layers.notify);
 
   const helpPanel = new HelpPanel(layers.system, overlayManager);
+  buildHelpBadge(layers.panel, helpPanel);
 
   createHudElement('div', 'hud-result', layers.system);
 
