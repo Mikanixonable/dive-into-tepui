@@ -24,6 +24,7 @@ import { CameraSystem } from './camera/camera-system';
 import { MapPickable } from './pickable/map-pickable';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialSystem } from './celestial/celestial-system';
+import { lagrangePointOf } from './celestial/lagrange-id';
 import type { OrbitReference } from './orbit-reference';
 
 const Z_HAT: Vec3 = v3(0, 0, 1);
@@ -252,13 +253,13 @@ export class NavTarget {
         return { id, state: attractor.stateAt(t), hasMass: true, attractor, entity: null, fixed: true };
       }
     }
-    const match = /^(.+)-l([1-5])$/.exec(id);
-    if (match) {
-      const secondary = celestialSystem.find(match[1]!)?.motion ?? null;
+    const lagrange = lagrangePointOf(id);
+    if (lagrange !== null) {
+      const secondary = celestialSystem.find(lagrange.parentId)?.motion ?? null;
       const frame = secondary instanceof OrbitingMotion
         ? secondaryFrameOf(celestialBodies, t, secondary, t) : null;
       if (frame !== null) {
-        const point = `L${match[2]}` as keyof LagrangePoints;
+        const point = `L${lagrange.point}` as keyof LagrangePoints;
         return {
           id, state: lagrangeStateOf(point, frame), hasMass: false,
           attractor: null, entity: null, fixed: true,
@@ -288,8 +289,8 @@ export class NavTarget {
     }
     // 副天体がレジストリに実在する公転天体のときだけラグランジュ点として解釈する。そうしないと
     // 同じ形の名前を持つ船が天体として誤って解決される。
-    const secondary = /^(.+)-l[1-5]$/.exec(id)?.[1];
-    const secondaryMotion = secondary === undefined ? undefined : celestialSystem.find(secondary)?.motion;
+    const lagrange = lagrangePointOf(id);
+    const secondaryMotion = lagrange === null ? undefined : celestialSystem.find(lagrange.parentId)?.motion;
     if (secondaryMotion instanceof OrbitingMotion) {
       return qRotate(secondaryMotion.orbitFrameRotationAt(t).q, Z_HAT);
     }

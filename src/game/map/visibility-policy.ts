@@ -8,6 +8,7 @@ import type { CelestialMotion } from '../../physics/celestial-motion';
 import { celestialClassVisible, celestialNameVisible, type MapDisplayToggles } from './display-toggles';
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../celestial/celestial-system';
+import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
 
 export type DynamicEntityKind = 'player' | 'ship' | 'ammo' | 'fuel' | 'base';
 
@@ -35,7 +36,7 @@ const ENTITY_KEYS: Record<DynamicEntityKind, {
 // id は所属天体の id へ戻してから引く。天体でない・恒星をフォーカスしているなら null。
 function focusSystemOf(celestialSystem: CelestialSystem, focusId: string | undefined): string | null {
   if (focusId === undefined) return null;
-  const body = celestialSystem.find(focusId.replace(/-l[1-5]$/, ''));
+  const body = celestialSystem.find(lagrangeParentId(focusId));
   if (body === null) return null;
   const motion = body.motion;
   if (motion.kind === 'planet') return motion.id;
@@ -120,7 +121,7 @@ export class MapVisibilityPolicy {
   }
 
   private computeBody(id: string): MapVisibility {
-    if (/-l[1-5]$/.test(id)) {
+    if (isLagrangeId(id)) {
       const category = this.toggles.lagrangeVisible;
       const shown = category && this.toggles.lagrangeName;
       return { category, icon: shown, label: shown, orbit: false, pickable: shown };

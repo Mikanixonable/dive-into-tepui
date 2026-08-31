@@ -7,7 +7,8 @@ import type { MapPickable } from '../../pickable/map-pickable';
 import { SegmentedControl } from '../widgets';
 import { injectOnce } from '../widgets/inject-style';
 import { frameRoleAnchorId, frameRoleName } from './frame-labels';
-import { groupPickables, LAGRANGE_ID, lagrangeParentId } from '../object-groups';
+import { isLagrangeId, lagrangeParentId } from '../../celestial/lagrange-id';
+import { groupPickables } from '../object-groups';
 import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
 import type { OverlayManager } from '../overlay-manager';
 
@@ -71,7 +72,7 @@ export class AnchorZone {
     // 絞った天体を親に持つラグランジュ点も、クイックボタンの対象へ加える。
     const lagrangeIds: string[] = [];
     for (const p of pickables) {
-      if (p.kind !== 'body' || !LAGRANGE_ID.test(p.id)) continue;
+      if (p.kind !== 'body' || !isLagrangeId(p.id)) continue;
       if (baseIdSet.has(lagrangeParentId(p.id))) lagrangeIds.push(p.id);
     }
 

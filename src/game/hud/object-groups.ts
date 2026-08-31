@@ -1,27 +1,11 @@
 // MapPickable の列を、選択ウィジェット(ObjectPicker)向けのジャンル別グループへ組む純関数。
 // マーカー(近地点/遠地点・相対AN/DN・赤道昇降交点・空クリック)はオブジェクトではないので出さない。
+import { isLagrangeId } from '../celestial/lagrange-id';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapPickable } from '../pickable/map-pickable';
 import type { ObjectPickerGroup } from './windows/object-picker';
 
 const GROUP_LABELS = ['恒星', '惑星', '準惑星', '衛星', '小天体', 'ラグランジュ点', '自艦', '敵', '基地', '弾薬', 'RCS燃料'] as const;
-
-// id が `${親id}-l1`〜`${親id}-l5` の形かどうか(FocusMarkers のラグランジュ点ラベルの命名)。
-export const LAGRANGE_ID = /-l[1-5]$/;
-
-// 同じ命名を親天体と点番号へ分解する形。LAGRANGE_ID と別々に育てないよう並べて置く。
-const LAGRANGE_POINT_ID = /^(.+)-l([1-5])$/;
-
-// ラグランジュ点 id からその親天体の id を取り出す。ラグランジュ点でない id を渡すと無変換で返る。
-export function lagrangeParentId(id: string): string {
-  return id.replace(LAGRANGE_ID, '');
-}
-
-// ラグランジュ点 id を親天体と点番号へ分解する。ラグランジュ点でなければ null。
-export function lagrangePoint(id: string): { readonly parentId: string; readonly point: number } | null {
-  const match = LAGRANGE_POINT_ID.exec(id);
-  return match ? { parentId: match[1]!, point: Number(match[2]) } : null;
-}
 
 // items をジャンル別にグループ分けする。値は MapPickable.id。空のグループは返さない。
 export function groupPickables(
@@ -40,7 +24,7 @@ export function groupPickables(
     switch (item.kind) {
       case 'body':
         bodyIds.add(item.id);
-        if (LAGRANGE_ID.test(item.id)) { push('ラグランジュ点', item.id, item.name); break; }
+        if (isLagrangeId(item.id)) { push('ラグランジュ点', item.id, item.name); break; }
         switch (celestialSystem.entityOf(item.id).bodyClass) {
           case 'star': push('恒星', item.id, item.name); break;
           case 'planet': push('惑星', item.id, item.name); break;

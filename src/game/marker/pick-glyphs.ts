@@ -2,7 +2,7 @@
 // 記号そのものの定義は marker-glyphs.ts(文字)と marker-shapes.ts(SVG)が持ち、ここは
 // 「どの種別にどれを使うか」だけを決める — 一覧パネルとプロパティウィンドウで同じ種別が
 // 別の形に見えないようにするため、両者はこの関数だけを通す。
-import { LAGRANGE_ID } from '../hud/object-groups';
+import { isLagrangeId } from '../celestial/lagrange-id';
 import { bodyEntityGlyph, ENTITY_GLYPH, ORBIT_POINT_GLYPH } from './marker-glyphs';
 import { baseMarkerSvg, shipMarkerSvg } from './marker-shapes';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -37,7 +37,7 @@ export function pickGlyphSvg(kind: MapPickKind): string | null {
 // kind/id に対応する文字グリフ。SVG を持つ種別でも、SVG を描けない場所のために必ず返る。
 export function pickGlyphText(kind: MapPickKind, id: string, celestialSystem: CelestialSystem): string {
   if (kind !== 'body') return TEXT_GLYPHS[kind];
-  if (LAGRANGE_ID.test(id)) return ENTITY_GLYPH.lagrange;
+  if (isLagrangeId(id)) return ENTITY_GLYPH.lagrange;
   return bodyEntityGlyph(celestialSystem.find(id)?.bodyClass ?? 'planet');
 }
 

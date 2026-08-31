@@ -1,4 +1,4 @@
-import { LAGRANGE_ID, lagrangePoint } from '../object-groups';
+import { isLagrangeId, lagrangePointOf } from '../../celestial/lagrange-id';
 import type { CelestialClass } from '../../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
@@ -31,7 +31,7 @@ export const SORTS: readonly (readonly [PhysicalObjectListSort, string])[] = [
   ['name', '名前'],
 ];
 
-type LagrangeSortKey = ReturnType<typeof lagrangePoint>;
+type LagrangeSortKey = ReturnType<typeof lagrangePointOf>;
 
 // refreshInputs() が変化検知に使う、前フレームの候補1件ぶんの記録。id をキーにした別配列で
 // 対応付けると増減のたびに整合性が崩れるので、1件を1レコードにまとめて保持する。
@@ -91,8 +91,8 @@ export class PhysicalObjectListOrder {
       return (item.kind === 'player' || item.kind === 'ammo' || item.kind === 'fuel' || item.kind === 'base') && item.inFocusedSystem !== false;
     }
     if (this.filter === 'enemy') return item.kind === 'ship' && item.inFocusedSystem !== false;
-    if (this.filter === 'lagrange') return item.kind === 'body' && LAGRANGE_ID.test(item.id);
-    return item.kind === 'body' && !LAGRANGE_ID.test(item.id)
+    if (this.filter === 'lagrange') return item.kind === 'body' && isLagrangeId(item.id);
+    return item.kind === 'body' && !isLagrangeId(item.id)
       && this.celestialSystem.entityOf(item.id).bodyClass === this.filter;
   }
 
@@ -189,7 +189,7 @@ export class PhysicalObjectListOrder {
     return (distanceTie ? 0 : dist) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
   }
 
-  // lagrangePoint() は正規表現 exec とオブジェクト割り当てを伴うが、id は不変なので結果は
+  // lagrangePointOf() は正規表現 exec とオブジェクト割り当てを伴うが、id は不変なので結果は
   // 変わらない。orderStillSorted() が毎フレーム全 ids ぶん compare() を呼ぶので、id ごとに
   // 一度だけ計算して使い回す。ラグランジュ点は天体だけが持つので、他の種別はキャッシュへ
   // 載せずに弾く — 使い捨ての id で器が膨らむのを防ぐ。
@@ -197,7 +197,7 @@ export class PhysicalObjectListOrder {
     if (item.kind !== 'body') return null;
     const cached = this.lagrangeSortKeyCache.get(item.id);
     if (cached !== undefined) return cached;
-    const key = lagrangePoint(item.id);
+    const key = lagrangePointOf(item.id);
     this.lagrangeSortKeyCache.set(item.id, key);
     return key;
   }
