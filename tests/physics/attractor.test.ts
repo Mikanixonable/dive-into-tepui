@@ -123,14 +123,14 @@ export function register(): void {
     assert.ok(Math.abs(half - expected) / expected < 1e-6, `半周期の飛行時間: ${half} vs ${expected}`);
   });
 
-  test('celestialMotions: celestialBodiesAt は同一 t を引くたび同じ値を返す', () => {
+  test('celestialMotions: 同じ pivot を引くたび同じ値を返す', () => {
     const windows = solarSystemParts({ earth: 0.1, moon: 0.2 }).system;
     const a = windows.celestialMotions;
     const b = windows.celestialMotions;
     assert.deepEqual(a, b);
   });
 
-  test('celestialMotions: celestialBodiesAt は太陽系の宣言順で、天体の運動と整合する', () => {
+  test('celestialMotions: 太陽系の宣言順で並び、天体の運動と整合する', () => {
     const parts = solarSystemParts({ earth: 0.1, moon: 0.2 });
     const windows = parts.system;
     const celestialBodies = windows.celestialMotions;
