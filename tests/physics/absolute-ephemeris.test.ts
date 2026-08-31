@@ -20,7 +20,7 @@ export function register(): void {
   });
 
   test('absolute ephemeris: 1体ぶんの暦は重心中心のままゲーム軸で答える', () => {
-    const earth = source.bodyEphemerisOf('earth');
+    const earth = source.pointEphemerisOf('earth');
     assert.ok(earth !== null);
     // 恒星を引かない — 原点は太陽系重心のまま。軸だけがゲーム軸へ写る。
     assert.deepEqual(earth.stateAt(150).r, icrfToGameEci(v3(150, 300, 450)));
@@ -29,7 +29,7 @@ export function register(): void {
   });
 
   test('absolute ephemeris: 収録していない天体の切り出しは null', () => {
-    assert.equal(source.bodyEphemerisOf('mars'), null);
+    assert.equal(source.pointEphemerisOf('mars'), null);
   });
 
   // 恒星中心化を持たないことの検査。ECI 化は「自分 − ECI 原点天体」の差で、恒星はどちらの項
@@ -41,7 +41,7 @@ export function register(): void {
       if (id === 'mars') return { r: v3(-2.2e11 + t, 3e6, 4e10), v: v3(1, 0, 0) };
       return null;
     });
-    assert.equal(withoutStar.bodyEphemerisOf('sun'), null);
+    assert.equal(withoutStar.pointEphemerisOf('sun'), null);
     const parts = solarSystemParts({}, TEST_EPOCH, withoutStar);
     // 地球(ECI 原点)と火星はどちらもパック由来なので、その差が素の重心座標の差になる。
     assert.deepEqual(stateOf(parts, 'mars', 0).r, icrfToGameEci(v3(-2.2e11 - 1.5e11, 1e6, 4e10 + 3e6)));
