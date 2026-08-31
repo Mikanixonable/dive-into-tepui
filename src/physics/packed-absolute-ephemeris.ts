@@ -1,5 +1,5 @@
-import { AbsoluteEphemeris, icrfToGameEci } from './absolute-ephemeris';
-import { EphemerisPointKind, PointEphemeris } from './point-ephemeris';
+import { icrfToGameEci } from './icrf';
+import { EphemerisPointKind, EphemerisPoints, PointEphemeris } from './point-ephemeris';
 import { ChebyshevEphemeris } from './ephemeris-pack/evaluator';
 import { KinematicState, kinematicState } from './kinematic-state';
 import {
@@ -12,7 +12,7 @@ import { ephemerisSeconds, TdbJulianDate } from './time';
 // 評価のたびに巨大な定数を足し直さずに済むことと、遠未来の元期では ET 秒の ULP が
 // 1.2e-4 s あって要求した時刻がそのまま honor されないこと。
 // payload SHA-256は非同期loaderが検証する。同期コンストラクタは既に信頼済みのbytesだけを受ける。
-export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
+export class PackedAbsoluteEphemeris {
   private readonly evaluator: ChebyshevEphemeris;
   private readonly bodyPoints: Readonly<Record<string, EphemerisPointKind>>;
 
@@ -38,14 +38,25 @@ export class PackedAbsoluteEphemeris implements AbsoluteEphemeris {
     return new PackedAbsoluteEphemeris(decodeEphemerisPack(bytes), epoch);
   }
 
+  // 収録している全 id ぶんの暦と種別を1度で組む。**これが供給源の外向きの形** —
+  // 引く側は id と種別で問い合わせ直さず、解決済みの一覧を受け取る。
+  ephemerisPoints(): EphemerisPoints {
+    const points = new Map<string, { kind: EphemerisPointKind; ephemeris: PointEphemeris }>();
+    for (const id of this.evaluator.bodyIds) {
+      const ephemeris = this.pointEphemerisOf(id);
+      if (ephemeris !== null) points.set(id, { kind: this.pointKindOf(id), ephemeris });
+    }
+    return points;
+  }
+
   // 天体 id が収録している点。manifest が宣言していない id は天体本体。
-  pointKindOf(id: string): EphemerisPointKind {
+  private pointKindOf(id: string): EphemerisPointKind {
     return this.bodyPoints[id] ?? 'body';
   }
 
   // 天体 id が収録している点1つぶんを切り出した暦。有効期間はその系列のセグメント範囲。
   // 収録していなければ null。
-  pointEphemerisOf(id: string): PointEphemeris | null {
+  private pointEphemerisOf(id: string): PointEphemeris | null {
     const range = this.evaluator.validRangeOf(id);
     if (range === null) return null;
     return new PackedPointEphemeris(this.evaluator, id, range.start, range.end);

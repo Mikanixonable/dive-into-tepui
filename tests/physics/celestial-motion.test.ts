@@ -14,10 +14,11 @@ import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState } 
 import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { Vec3, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
-import { AbsoluteEphemeris, icrfToGameEci } from '../../src/physics/absolute-ephemeris';
+import { icrfToGameEci } from '../../src/physics/icrf';
+import { EphemerisPoints } from '../../src/physics/point-ephemeris';
 import {
   assertOmegaMatchesBasis, lagrangeOf, motionOf, orbitingMotionOf, positionOf, solarSystemParts, stateOf,
-  SolarSystemParts, testEphemerisSource, TEST_EPOCH, TEST_SIM_ZERO_ET,
+  SolarSystemParts, testEphemerisPoints, TEST_EPOCH, TEST_SIM_ZERO_ET,
 } from './test-helpers';
 
 // 定義だけを引くための太陽系(id から静的事実を取り出す口としてだけ使う)。
@@ -191,13 +192,12 @@ export function register(): void {
   // 収録値そのものと突き合わせるのは、着地点を取り違えても不変条件だけなら両辺が一緒に
   // ずれて通ってしまうため。
   const JUPITER_BARY_ICRF = (t: number): Vec3 => v3(-7.8e11, 2e9 * (t / DAY), 4e10);
-  const baryPackSource = testEphemerisSource(
+  const baryPackSource = testEphemerisPoints(
     -500 * DAY, 500 * DAY,
-    (id, t) => {
-      if (id === 'sun') return { r: v3(1e6 * (t / DAY), 2e6, -3e6), v: v3(1e6 / DAY, 0, 0) };
-      if (id === 'earth') return { r: v3(1.5e11, 3e8 * (t / DAY), -3e6), v: v3(0, 3e8 / DAY, 0) };
-      if (id === 'jupiter') return { r: JUPITER_BARY_ICRF(t), v: v3(0, 2e9 / DAY, 0) };
-      return null;
+    {
+      sun: (t) => ({ r: v3(1e6 * (t / DAY), 2e6, -3e6), v: v3(1e6 / DAY, 0, 0) }),
+      earth: (t) => ({ r: v3(1.5e11, 3e8 * (t / DAY), -3e6), v: v3(0, 3e8 / DAY, 0) }),
+      jupiter: (t) => ({ r: JUPITER_BARY_ICRF(t), v: v3(0, 2e9 / DAY, 0) }),
     },
     { jupiter: 'systemBarycenter' },
   );
@@ -565,13 +565,12 @@ export function register(): void {
   // 境界をまたいで stateAt/orbitFrameRotationAt/orbitNormalAt を呼ぶ。ECI 原点天体(地球)が
   // 収録されていなければどの天体もパック経路を通らないので、地球は入れておく。
   const preciseValidDays = 10;
-  const mockPrecise: AbsoluteEphemeris = testEphemerisSource(
-    0, preciseValidDays * DAY, (id) => {
-      if (id !== 'sun' && id !== 'earth' && id !== 'moon') return null;
-      return {
-        r: id === 'moon' ? v3(4e8, 0, 0) : v3(0, 0, 0),
-        v: id === 'moon' ? v3(0, 1e3, 0) : v3(0, 0, 0),
-      };
+  const atOrigin = () => ({ r: v3(0, 0, 0), v: v3(0, 0, 0) });
+  const mockPrecise: EphemerisPoints = testEphemerisPoints(
+    0, preciseValidDays * DAY, {
+      sun: atOrigin,
+      earth: atOrigin,
+      moon: () => ({ r: v3(4e8, 0, 0), v: v3(0, 1e3, 0) }),
     },
   );
   const analyticParts = solarSystemParts({});
