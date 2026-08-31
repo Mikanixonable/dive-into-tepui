@@ -1,17 +1,21 @@
-// 右クリックの当たり判定にかける軌道線(公転軌道・船の軌道・軌道ガイド)の共通形と、
-// 画面上でクリック位置に最も近い軌道線を選ぶ処理。MapPickable(点)と違い、線分の列に対して
-// 最短距離で当たり判定する。
+// 右クリックの当たり判定にかける線(公転軌道・船の軌道・軌道ガイド・ターゲット相対の直線)の
+// 共通形と、画面上でクリック位置に最も近いものを選ぶ処理。MapPickable(点)と違い、線分の列に
+// 対して最短距離で当たり判定する。
+// **`orbit` ではなく `line`** — 持っているのは ECI の点列だけで基準となる重力源を伴わず
+// (CODING-RULE 2.2 の `orbit`)、軌道ガイドには物体が乗っておらず、method が 'predicted' の
+// ときは中身が積分した軌跡そのもの。`kind` / `method` の**値**は「何を描いた線か」のラベル
+// なので `orbit-*` のまま。
 import { Vec3 } from '../../math/vec3';
 import type { ProjectFn } from '../camera/camera-system';
 
-export type OrbitPickKind = 'orbit-body' | 'orbit-ship' | 'orbit-guide';
-export type OrbitCalcMethod = 'analytic' | 'predicted' | 'guide';
+export type LinePickKind = 'orbit-body' | 'orbit-ship' | 'orbit-guide';
+export type LineCalcMethod = 'analytic' | 'predicted' | 'guide';
 
-export interface OrbitPickable {
-  // orbitWindows のキー。対象1つにつき高々1枚のウィンドウを保つのに使う。
+export interface LinePickable {
+  // lineWindows のキー。対象1つにつき高々1枚のウィンドウを保つのに使う。
   readonly key: string;
-  readonly kind: OrbitPickKind;
-  readonly method: OrbitCalcMethod;
+  readonly kind: LinePickKind;
+  readonly method: LineCalcMethod;
   // 所属する対象を指す MapPickable のキー(`${kind}:${id}`)。プロパティウィンドウの
   // 関連項目は、これで MapPickables.pickables から現在の対象を引き直して組む。
   readonly ownerKeys: readonly string[];
@@ -35,10 +39,10 @@ function distanceSqToSegment(px: number, py: number, ax: number, ay: number, bx:
 
 // orbits を画面へ射影し、(x, y) から最短距離が radiusPxSq [px^2] 以内で最も近いものを返す。
 // 圏外・視界の裏側の点は候補にしない。
-export function pickNearestOrbit(
-  orbits: readonly OrbitPickable[], x: number, y: number, project: ProjectFn, radiusPxSq: number,
-): OrbitPickable | null {
-  let best: OrbitPickable | null = null;
+export function pickNearestLine(
+  orbits: readonly LinePickable[], x: number, y: number, project: ProjectFn, radiusPxSq: number,
+): LinePickable | null {
+  let best: LinePickable | null = null;
   let bestDistSq = radiusPxSq;
   for (const orbit of orbits) {
     let prevX = 0, prevY = 0, hasPrev = false;

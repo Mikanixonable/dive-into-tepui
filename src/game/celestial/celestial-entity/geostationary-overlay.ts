@@ -9,7 +9,7 @@ import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import * as C from '../../const';
-import { OrbitLine } from '../../lines/orbit-line';
+import { EllipseLine } from '../../lines/ellipse-line';
 import type { MarkerManager } from '../../marker/marker-manager';
 
 // リングとラベルは中心天体から 240,000km で薄れ始め 720,000km で消える。
@@ -35,7 +35,7 @@ function altitudeLabel(altitude: number): string {
 }
 
 export class GeostationaryOverlay {
-  private readonly line = new OrbitLine(
+  private readonly line = new EllipseLine(
     { color: 0x8b93a0, opacity: 0.2, renderOrder: LINE_RENDER_ORDER.reference });
   // 同期軌道の長半径 [m] と、その高度を書いたラベル。
   private readonly semiMajorAxis: number;

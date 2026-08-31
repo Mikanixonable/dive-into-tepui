@@ -1,8 +1,8 @@
 // 非質量ターゲット(艦・基地)基準時、戦闘ビューでケプラー軌道要素からは描けない軌道楕円の
-// 代わりに描く、対象とのいまの位置を結ぶ解析的な直線。OrbitLine の兄弟だが、未来予測には
+// 代わりに描く、対象とのいまの位置を結ぶ解析的な直線。EllipseLine の兄弟だが、未来予測には
 // 依存しない — 双方の「いま」の位置さえ分かれば描けるので、対象の未来予測が伸びていない状況
 // (戦闘ビューでは navTargetReader が立たず、ターゲットの predicted が常に null になりうる)
-// でも常に描ける。対象のいまの位置を平行移動の基準にする点は OrbitLine が中心天体のいまの
+// でも常に描ける。対象のいまの位置を平行移動の基準にする点は EllipseLine が中心天体のいまの
 // 位置を基準にするのと同じ考え方。
 import * as THREE from 'three/webgpu';
 import { add, sub, v3, Vec3 } from '../../math/vec3';
@@ -10,7 +10,7 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { Curve, CurveKnots } from '../../render/curve';
 import { LineStyle } from '../../render/line-style';
 
-export class RelativeOrbitLine {
+export class TargetRelativeLine {
   private readonly curve: Curve;
   readonly line: THREE.Object3D;
   // 直近に curve.setTransform へ渡した対象の位置(ECI)。samplePoints の絶対座標化に使う。

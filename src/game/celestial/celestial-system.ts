@@ -11,7 +11,7 @@ import { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
 import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import type { MarkerManager } from '../marker/marker-manager';
-import { OrbitLine } from '../lines/orbit-line';
+import { EllipseLine } from '../lines/ellipse-line';
 import { celestialShellScale, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
@@ -244,7 +244,7 @@ export class CelestialSystem implements CelestialMotions {
   }
 
   // 公転天体1体につき1本の参照軌道線(右クリックの当たり判定向け)。線を持つ個体だけを列挙する。
-  get referenceOrbitLines(): readonly { readonly id: string; readonly line: OrbitLine }[] {
+  get referenceEllipseLines(): readonly { readonly id: string; readonly line: EllipseLine }[] {
     return this.entities.flatMap((b) => (b.referenceLine === null ? [] : [{ id: b.id, line: b.referenceLine }]));
   }
 

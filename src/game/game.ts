@@ -38,7 +38,7 @@ import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
 import { OrbitReferenceSelector } from './orbit-reference';
 import { MapPickables } from './pickable/map-pickables';
-import { OrbitPickables } from './pickable/orbit-pickables';
+import { LinePickables } from './pickable/line-pickables';
 import { MapContextActions } from './pickable/map-context-actions';
 import { Navball } from './navball/navball';
 import { GameSaveData } from './save/save-data';
@@ -77,7 +77,7 @@ export class Game {
   private readonly guide: PlanGuide;
   readonly viewManager: ViewManager;
   private readonly mapPickables: MapPickables;
-  private readonly orbitPickables: OrbitPickables;
+  private readonly linePickables: LinePickables;
   private readonly mapActions: MapContextActions;
 
   readonly activeStage: Stage;
@@ -220,10 +220,10 @@ export class Game {
       this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem, this.editor,
       this.markerManager, this.frameAnchors,
     );
-    this.orbitPickables = new OrbitPickables(this.dynamicSystem, this._celestialSystem, this.cameraSystem);
+    this.linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem, this.cameraSystem);
     this.mapActions = new MapContextActions(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
-      this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.orbitPickables,
+      this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.linePickables,
       this.activePlayers, this.frameControls, this.activeStage, this.targeter,
     );
 
@@ -456,7 +456,7 @@ export class Game {
     this.mapActions.handleLeftClick(this.input);
     this.mapActions.handleDoubleClick(this.input);
     this.editor.handleMapPointer(this.input);
-    this.mapActions.handleOrbitLineRightClick(this.input);
+    this.mapActions.handleLineRightClick(this.input);
     this.mapActions.handleEmptySpaceRightClick(this.input, simTime);
   }
 
@@ -590,7 +590,7 @@ export class Game {
     );
     // 軌道線の右クリック当たり判定向けの候補列。各軌道線が今フレーム焼いたサンプルを読むため、
     // celestialSystem.sync/entityLines.sync の後に組む。
-    this.orbitPickables.refresh(displayWindow, this.frameAnchors);
+    this.linePickables.refresh(displayWindow, this.frameAnchors);
 
     if (player) {
       this.touchControls?.syncModeButtons(
