@@ -2,7 +2,7 @@
 // 惑星系の重心かを収録していて(EphemerisPointKind)、同梱パックでは 11 件のうち 6 件
 // (mars/jupiter/saturn/uranus/neptune/pluto)が系の重心。どの点のものかは、この値を保持
 // している側(CelestialMotion か PlanetSystem)が決める。
-import { KinematicState } from './kinematic-state';
+import { KinematicState } from '../kinematic-state';
 
 // 暦が id ごとに収録している点。天体そのものの中心か、その天体を含む惑星系の重心か。
 // **1つの暦の中で id ごとに違いうる** — JPL の SPK は地球と月を本体まで分解する一方、

@@ -5,11 +5,11 @@ import { resolve } from 'node:path';
 import { test } from '../harness';
 import {
   buildPackData, encodePack, encodeFloat64Payload,
-} from '../../src/physics/ephemeris-pack/format';
+} from '../../src/physics/ephemeris/pack-format';
 import {
   PackEphemeris, loadPackEphemeris,
-} from '../../src/physics/pack-ephemeris';
-import { EPHEMERIS_PROFILES } from '../../src/physics/ephemeris-profile';
+} from '../../src/physics/ephemeris/pack';
+import { EPHEMERIS_PROFILES } from '../../src/physics/ephemeris/profile';
 import { icrfToGameEci } from '../../src/physics/icrf';
 import { v3 } from '../../src/math/vec3';
 import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY } from '../../src/physics/time';

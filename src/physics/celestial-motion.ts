@@ -7,7 +7,7 @@
 // THREE/DOM 非依存。
 import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp } from './attitude';
-import { PointEphemeris, boundBaryStateAt } from './point-ephemeris';
+import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import type { EciTransform } from './eci-transform';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';

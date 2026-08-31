@@ -5,7 +5,7 @@ import {
   isEphemerisContextCompatible,
   isEphemerisContextRestorable,
 } from '../../src/game/save/ephemeris-context';
-import { EPHEMERIS_PROFILES } from '../../src/physics/ephemeris-profile';
+import { EPHEMERIS_PROFILES } from '../../src/physics/ephemeris/profile';
 import { createJulianDate } from '../../src/physics/time';
 import { test } from '../harness';
 

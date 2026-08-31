@@ -12,7 +12,7 @@ TDB and all manifest/segment times are seconds from the J2000 ET epoch
 dates. Earth-centered conversion belongs to the later consumer stage.
 
 The binary layout is documented at the top of
-`src/physics/ephemeris-pack/format.ts`: a 32-byte little-endian header,
+`src/physics/ephemeris/pack-format.ts`: a 32-byte little-endian header,
 canonical UTF-8 JSON manifest, then contiguous little-endian Float64 values.
 For each series, coefficients are ordered X, Y, Z and each component has
 `degree + 1` values. The manifest's `payloadSha256` is the SHA-256 digest of
