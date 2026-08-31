@@ -356,6 +356,8 @@ export function decodeEphemerisPack(input: Uint8Array): DecodedEphemerisPack {
 // からの秒へ寄せる — 評価器はワイヤ形式の J2000 ET 秒を知らずに済み、呼び出し側が決めた
 // 時刻軸だけで引ける。**manifest 側と bodies 側は同じ segments から組むので、片方だけが
 // ずれることはない**(評価器の検証はこの一致を要求する)。
+// **係数は複製せず decoded.payload へのビューとして返す** — 返り値が生きているあいだ
+// payload も生き続ける。呼び出し側は payload を書き換えてはならない。
 export function toEvaluatorEphemerisPack(
   decoded: DecodedEphemerisPack, timeOriginSec = 0,
 ): ChebyshevEphemerisPack {
@@ -365,7 +367,7 @@ export function toEvaluatorEphemerisPack(
       readonly start: number;
       readonly end: number;
       readonly degree: number;
-      readonly coefficients: [number[], number[], number[]];
+      readonly coefficients: [Float64Array, Float64Array, Float64Array];
     }>;
   }>();
   for (const series of decoded.manifest.series) {
@@ -380,10 +382,13 @@ export function toEvaluatorEphemerisPack(
       start: series.start - timeOriginSec,
       end: series.end - timeOriginSec,
       degree: series.degree,
+      // **係数はコピーせず payload へのビューで持つ。** coefficientOffset は Float64 の
+      // 要素単位なので subarray は常に 8 バイト境界に揃う(decodeFloat64Payload が確保する
+      // Float64Array がそもそも揃っている)。復号した payload をこの pack が生かし続ける。
       coefficients: [
-        Array.from(decoded.payload.slice(offset, offset + componentLength)),
-        Array.from(decoded.payload.slice(offset + componentLength, offset + 2 * componentLength)),
-        Array.from(decoded.payload.slice(offset + 2 * componentLength, offset + 3 * componentLength)),
+        decoded.payload.subarray(offset, offset + componentLength),
+        decoded.payload.subarray(offset + componentLength, offset + 2 * componentLength),
+        decoded.payload.subarray(offset + 2 * componentLength, offset + 3 * componentLength),
       ],
     });
   }
