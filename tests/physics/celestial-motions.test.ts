@@ -20,7 +20,7 @@ export function register(): void {
     assert.equal(w.celestialMotions, w.celestialMotions);
   });
 
-  test('celestialMotions: gravityAttractorsAt は mu が 0 でない天体だけを宣言順で返す', () => {
+  test('celestialMotions: gravityMotions は mu が 0 でない天体だけを宣言順で返す', () => {
     const gravity = system.gravityMotions;
     assert.ok(gravity.every((b) => b.def.mu !== 0));
     const expected = system.celestialMotions.filter((b) => b.def.mu !== 0).map((b) => b.id);
@@ -28,7 +28,7 @@ export function register(): void {
     assert.ok(gravity.length > 0);
   });
 
-  test('celestialMotions: gravityAttractorsAt の要素は同一 t の celestialBodiesAt と厳密に一致する', () => {
+  test('celestialMotions: gravityMotions の要素は celestialMotions と同一参照になる', () => {
     const t = 4321;
     const all = new Map(system.celestialMotions.map((b) => [b.id, b]));
     for (const g of system.gravityMotions) {
