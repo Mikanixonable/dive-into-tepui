@@ -3,7 +3,7 @@ import { EphemerisPointKind, EphemerisPoints, PointEphemeris } from './point-eph
 import { ChebyshevEphemeris } from './ephemeris-pack/evaluator';
 import { KinematicState, kinematicState } from './kinematic-state';
 import {
-  DecodedEphemerisPack, EphemerisPackFormatError, decodeEphemerisPack, toEvaluatorEphemerisPack,
+  DecodedPack, PackFormatError, decodePack, toChebyshevPack,
 } from './ephemeris-pack/format';
 import { ephemerisSeconds, TdbJulianDate } from './time';
 
@@ -25,9 +25,9 @@ export class PackedAbsoluteEphemeris {
   // **decoded は保持しない。** 係数は評価器が payload へのビューとして持ち、ここで要るのは
   // manifest のごく一部だけ — 抱えたままにすると manifestJson(2.2 MB)と 10054 個の series
   // オブジェクトが pack と同じ寿命で残る。
-  constructor(decoded: DecodedEphemerisPack, epoch: TdbJulianDate) {
+  constructor(decoded: DecodedPack, epoch: TdbJulianDate) {
     this.evaluator = new ChebyshevEphemeris(
-      toEvaluatorEphemerisPack(decoded, ephemerisSeconds(epoch)));
+      toChebyshevPack(decoded, ephemerisSeconds(epoch)));
     this.bodyPoints = decoded.manifest.bodyPoints ?? {};
     this.validStartEt = decoded.manifest.validStart;
     this.validEndEt = decoded.manifest.validEnd;
@@ -35,7 +35,7 @@ export class PackedAbsoluteEphemeris {
   }
 
   static fromTrustedBytes(bytes: Uint8Array, epoch: TdbJulianDate): PackedAbsoluteEphemeris {
-    return new PackedAbsoluteEphemeris(decodeEphemerisPack(bytes), epoch);
+    return new PackedAbsoluteEphemeris(decodePack(bytes), epoch);
   }
 
   // 収録している全 id ぶんの暦と種別を1度で組む。**これが供給源の外向きの形** —
@@ -80,14 +80,14 @@ class PackedPointEphemeris implements PointEphemeris {
   }
 }
 
-export async function verifyEphemerisPayload(decoded: DecodedEphemerisPack): Promise<void> {
+export async function verifyEphemerisPayload(decoded: DecodedPack): Promise<void> {
   const expected = decoded.manifest.payloadSha256;
-  if (expected === undefined) throw new EphemerisPackFormatError('payloadSha256が無い暦packは読み込めない');
-  if (!globalThis.crypto?.subtle) throw new EphemerisPackFormatError('SHA-256を検証できない実行環境');
+  if (expected === undefined) throw new PackFormatError('payloadSha256が無い暦packは読み込めない');
+  if (!globalThis.crypto?.subtle) throw new PackFormatError('SHA-256を検証できない実行環境');
   const bytes = decoded.payloadBytes as Uint8Array<ArrayBuffer>;
   const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes));
   const actual = [...digest].map((value) => value.toString(16).padStart(2, '0')).join('');
-  if (actual !== expected) throw new EphemerisPackFormatError(
+  if (actual !== expected) throw new PackFormatError(
     `payload SHA-256不一致: expected ${expected}, actual ${actual}`,
   );
 }
@@ -95,7 +95,7 @@ export async function verifyEphemerisPayload(decoded: DecodedEphemerisPack): Pro
 export async function loadPackedAbsoluteEphemeris(
   bytes: Uint8Array, epoch: TdbJulianDate,
 ): Promise<PackedAbsoluteEphemeris> {
-  const decoded = decodeEphemerisPack(bytes);
+  const decoded = decodePack(bytes);
   await verifyEphemerisPayload(decoded);
   return new PackedAbsoluteEphemeris(decoded, epoch);
 }
