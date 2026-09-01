@@ -63,20 +63,20 @@ export type LagrangeForm = {
 
 // 確定時点のフォーム値。placementMode を判別子とし、選ばれた配置方法(・サイズ/形・軌道種別)が
 // 実際に使う値だけを持つ。
-export type ObjectPlacerForm = { readonly objectType: DynamicEntityKind } & (ElementsForm | LagrangeForm);
+export type ObjectPlacerForm = { readonly entityKind: DynamicEntityKind } & (ElementsForm | LagrangeForm);
 
 // open() の事前入力: 'body' は基準天体だけをその値へ合わせる(他のフィールドは前回の値のまま) —
-// マップの現在フォーカスを新規配置の初期値にする経路。'objectType' は種類だけを合わせる —
+// マップの現在フォーカスを新規配置の初期値にする経路。'entityKind' は種類だけを合わせる —
 // 複製元の軌道要素一式は引き継げない(または引き継ぐと基地の基準天体制約に反する)ときの経路。
-// 'form' は種類を objectType に固定し、軌道要素一式をその値へ書き換える —
+// 'form' は種類を entityKind に固定し、軌道要素一式をその値へ書き換える —
 // 軌道要素をそのまま引き継げる複製の経路。
 export type ObjectPlacerPreset =
   | { readonly kind: 'body'; readonly celestialBody: ReferenceCelestialBody }
-  | { readonly kind: 'objectType'; readonly objectType: DynamicEntityKind }
-  | { readonly kind: 'form'; readonly objectType: DynamicEntityKind; readonly form: ElementsForm };
+  | { readonly kind: 'entityKind'; readonly entityKind: DynamicEntityKind }
+  | { readonly kind: 'form'; readonly entityKind: DynamicEntityKind; readonly form: ElementsForm };
 
 // アイコンはマップ実マーカーと同じ形状(自機=鏃の塗りつぶし、敵機=鏃の中抜き、基地=正七角形)。
-const OBJECT_TYPE_ITEMS: readonly (readonly [DynamicEntityKind, string, string])[] = [
+const ENTITY_KIND_ITEMS: readonly (readonly [DynamicEntityKind, string, string])[] = [
   ['player', '自機', shipMarkerSvg(true)],
   ['enemy', '敵機', shipMarkerSvg(false)],
   ['ammo', '弾薬', ENTITY_GLYPH.ammo],
@@ -151,7 +151,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   get isOpen(): boolean { return this._isOpen; }
 
   private readonly panel: HTMLElement;
-  private readonly objectType: SegmentedControl<DynamicEntityKind>;
+  private readonly entityKind: SegmentedControl<DynamicEntityKind>;
   private readonly placementMode: SegmentedControl<PlacementMode>;
   private readonly placementGroups: Record<PlacementMode, HTMLElement>;
   private readonly celestialBody: ObjectPicker<ReferenceCelestialBody>;
@@ -183,7 +183,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private issueRows: readonly HTMLElement[] = [];
   private lastIssueKey = '';
 
-  private objectTypeValue: DynamicEntityKind = 'player';
+  private entityKindValue: DynamicEntityKind = 'player';
   private placementModeValue: PlacementMode = 'elements';
   private celestialBodyValue: ReferenceCelestialBody = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
@@ -226,9 +226,9 @@ export class ObjectPlacerPanel implements OverlayHandle {
     header.appendChild(new CloseButton(() => this.close()).element);
     this.panel.appendChild(header);
 
-    this.objectType = new SegmentedControl('種類', OBJECT_TYPE_ITEMS, (v) => this.selectObjectType(v));
-    this.objectType.setSelected(this.objectTypeValue);
-    this.panel.appendChild(this.objectType.element);
+    this.entityKind = new SegmentedControl('種類', ENTITY_KIND_ITEMS, (v) => this.selectEntityKind(v));
+    this.entityKind.setSelected(this.entityKindValue);
+    this.panel.appendChild(this.entityKind.element);
 
     this.placementMode = new SegmentedControl('配置方法', PLACEMENT_MODE_ITEMS, (v) => this.selectPlacementMode(v));
     this.panel.appendChild(this.placementMode.element);
@@ -448,9 +448,9 @@ export class ObjectPlacerPanel implements OverlayHandle {
   // 種類を切り替える。基地は月基準の軌道要素かラグランジュ点指定でしか設置できない
   // (placement-validation.ts の validateBaseReferenceFields と対応)ので、基準天体の選択肢を
   // 月だけに絞り、月以外が選ばれていたら月へ寄せ直す。基地以外へ戻したら選択肢も元に戻す。
-  private selectObjectType(v: DynamicEntityKind): void {
-    this.objectTypeValue = v;
-    this.objectType.setSelected(v);
+  private selectEntityKind(v: DynamicEntityKind): void {
+    this.entityKindValue = v;
+    this.entityKind.setSelected(v);
     if (v === 'base') {
       if (this.celestialBodyValue !== 'moon') this.celestialBodyValue = 'moon';
       this.celestialBody.setGroups([{ label: '', items: this.baseCelestialBodyItems }]);
@@ -508,7 +508,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   // 現在のフォームの値を、選ばれた組・種別が使う値だけを読み取って ObjectPlacerForm へ組む。
   // プレビュー用にも使用。
   getForm(): ObjectPlacerForm {
-    const objectType = this.objectTypeValue;
+    const entityKind = this.entityKindValue;
     if (this.placementModeValue === 'lagrange') {
       const common = {
         placementMode: 'lagrange' as const,
@@ -516,10 +516,10 @@ export class ObjectPlacerPanel implements OverlayHandle {
         lagrangePoint: this.lagrangePointValue,
       };
       if (this.lagrangeOrbitKindValue === 'halo') {
-        return { objectType, ...common, lagrangeOrbitKind: 'halo', azKm: Number(this.libAz.value) };
+        return { entityKind, ...common, lagrangeOrbitKind: 'halo', azKm: Number(this.libAz.value) };
       }
       return {
-        objectType, ...common, lagrangeOrbitKind: 'lissajous',
+        entityKind, ...common, lagrangeOrbitKind: 'lissajous',
         axKm: Number(this.libAx.value), azKm: Number(this.libAz.value),
       };
     }
@@ -533,17 +533,17 @@ export class ObjectPlacerPanel implements OverlayHandle {
     };
     if (this.sizeModeValue === 'apsides') {
       return {
-        objectType, ...common, sizeMode: 'apsides',
+        entityKind, ...common, sizeMode: 'apsides',
         peAltKm: Number(this.peAlt.input.value), apAltKm: Number(this.apAlt.input.value),
       };
     } else if (this.sizeModeValue === 'semiMajorEcc') {
       return {
-        objectType, ...common, sizeMode: 'semiMajorEcc',
+        entityKind, ...common, sizeMode: 'semiMajorEcc',
         semiMajorKm: Number(this.semiMajor.input.value), eccentricity: Number(this.eccSemiMajor.input.value),
       };
     } else {
       return {
-        objectType, ...common, sizeMode: 'periodEcc',
+        entityKind, ...common, sizeMode: 'periodEcc',
         periodHours: Number(this.period.input.value), eccentricity: Number(this.eccPeriod.input.value),
       };
     }
@@ -597,12 +597,12 @@ export class ObjectPlacerPanel implements OverlayHandle {
   // 'body' は基準天体が現在の種類で選べる ID のときだけ差し替える。
   open(preset?: ObjectPlacerPreset): void {
     if (preset?.kind === 'form') {
-      this.selectObjectType(preset.objectType);
+      this.selectEntityKind(preset.entityKind);
       this.applyElementsForm(preset.form);
-    } else if (preset?.kind === 'objectType') {
-      this.selectObjectType(preset.objectType);
+    } else if (preset?.kind === 'entityKind') {
+      this.selectEntityKind(preset.entityKind);
     } else if (preset?.kind === 'body') {
-      const allowed = this.objectTypeValue === 'base' ? this.baseCelestialBodyItems : this.celestialBodyItems;
+      const allowed = this.entityKindValue === 'base' ? this.baseCelestialBodyItems : this.celestialBodyItems;
       if (allowed.some(([id]) => id === preset.celestialBody)) {
         this.celestialBodyValue = preset.celestialBody;
         this.celestialBody.setSelected(this.celestialBodyValue);
