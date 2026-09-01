@@ -71,6 +71,11 @@ export interface MapPickable {
   // 名前を書き換えられる対象だけが持つ。改名できない対象は null。
   readonly mapRename: ((name: string) => void) | null;
 
+  // マップの左クリックで選ばれたときの振る舞い。左クリックで掴めない対象は null。
+  readonly selectOnMap: ((commands: MapCommands, clientX: number, clientY: number) => void) | null;
+  // マップの注視点が自分へ移ったときに、注視の移動に加えて起きること。何も起きない対象は null。
+  readonly onMapFocus: ((commands: MapCommands) => void) | null;
+
   // 視線が、pos に描かれているこの対象の本体へ当たるか。pos は mapPosAt が答えた、いま
   // 描かれている位置。本体を持たず、マーカーだけで示される対象は常に false。
   hitBodyByRay(ray: Ray, pos: Vec3): boolean;

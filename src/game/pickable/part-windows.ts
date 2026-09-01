@@ -64,9 +64,9 @@ export class PartWindows {
   }
 
   // その艦の部品ウィンドウをすべて畳む。
-  closeForShip(ship: Player): void {
+  closeFor(shipId: string): void {
     for (const entry of [...this.windows.values()]) {
-      if (entry.ship === ship) entry.win.close();
+      if (entry.ship.id === shipId) entry.win.close();
     }
   }
 

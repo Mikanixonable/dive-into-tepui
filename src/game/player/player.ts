@@ -775,4 +775,15 @@ export class Player extends Ship implements Controllable, MapPickable {
   }
 
   public readonly mapRename = (name: string): void => { this.name = name; };
+
+  // 単クリックはプロパティウィンドウを開くだけに留め、操作対象は変えない。
+  public readonly selectOnMap = (commands: MapCommands, clientX: number, clientY: number): void => {
+    commands.openProperties(this, clientX, clientY);
+  };
+
+  // 注視されたら操作対象にもなる(操作艦を切り替える最速の手段)。
+  public readonly onMapFocus = (commands: MapCommands): void => {
+    commands.setActivePlayer(this);
+    commands.hint(`${this.name} を操作対象に設定`);
+  };
 }

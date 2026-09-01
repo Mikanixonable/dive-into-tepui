@@ -56,7 +56,9 @@ export class EmptySpacePickable implements MapPickable {
   // 宇宙空間そのものを指すので、示せる値は空になる。
   public mapPropertyRows(): readonly PropertyRow[] { return []; }
 
-  public readonly mapRename = null;
+  public readonly mapRename = null;
+  public readonly selectOnMap = null;
+  public readonly onMapFocus = null;
 
   public listDetail(): string { return ''; }
   public listSearchText(): string { return ''; }

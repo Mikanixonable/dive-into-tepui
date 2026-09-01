@@ -103,7 +103,9 @@ export class LagrangePointMarker implements MapPickable {
     return rows;
   }
 
-  public readonly mapRename = null;
+  public readonly mapRename = null;
+  public readonly selectOnMap = null;
+  public readonly onMapFocus = null;
 
   public listDetail(): string { return ''; }
 
