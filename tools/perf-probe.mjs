@@ -31,9 +31,9 @@ import { openChromeSession, sleep } from './chrome-session.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const staticPort = 8766;
 
-// ---- src/game/const.ts SIM_SPEED_LEVELS / src/game/input/key-mapping.ts の写し -----------------
+// ---- src/game/dynamic/sim-speed-manager.ts SIM_SPEED_LEVELS / src/game/input/key-mapping.ts の写し ----
 // (import はできない — ビルド済み docs/ を外側から駆動するだけなので、値をここに複製する。
-//  ズレが心配なら `grep SIM_SPEED_LEVELS src/game/const.ts` で照合すること。)
+//  ズレが心配なら `grep SIM_SPEED_LEVELS src/game/dynamic/sim-speed-manager.ts` で照合すること。)
 const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072];
 const KEY_WARP_FASTER = { key: '.', code: 'Period', keyCode: 190 };
 const KEY_MAP_MODE = { key: 'm', code: 'KeyM', keyCode: 77 };

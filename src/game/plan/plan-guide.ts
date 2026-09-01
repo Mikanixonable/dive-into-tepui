@@ -5,7 +5,6 @@ import { strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf } from '../../physics/elements';
 import { addScaled, dot, len, norm, sub } from '../../math/vec3';
-import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { fmtDist, fmtSpeed, fmtTime } from '../hud/utils';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
@@ -15,6 +14,7 @@ import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH, COLOR_MARKER_NODE } from '../marker
 import type { Player } from '../player/player';
 import type { PlanPath } from './plan-path';
 import { THROTTLE_LEVELS } from '../player/player-throttle';
+import { NODE_APPROACH_LEAD } from './plan';
 
 // マニューバ達成判定(計画軌道への接近許容)
 const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
@@ -47,7 +47,7 @@ export class PlanGuide {
     const node = plan.firstNode();
     // 実行の窓に入るまでは通知しない。窓の手前では自機はまだ噴射前の軌道にいるので、
     // 目標軌道との近さを見ても達成の判定にならない。
-    if (node && simTime >= node.t - C.NODE_APPROACH_LEAD) {
+    if (node && simTime >= node.t - NODE_APPROACH_LEAD) {
       this.notifyApproach(node);
       this.notifyAchieved(node, player, celestialBodies, simTime);
     }

@@ -1,11 +1,11 @@
 // 未来表示の操作パネル(期間ピル・スクラバー・目盛り)。3行構成: 期間選択 / スクラブバー+T+読み値 / 目盛り。
-import * as C from '../../const';
 import { Button, PREDICT_TOGGLE_LABELS, SegmentedControl, Slider, ToggleSwitch, ValueInput } from '../widgets';
 import { wirePanelCollapse } from '../panel-shell';
 import { fmtDateTime, fmtDuration } from '../utils';
 import type { DisplayDurationKey, DisplayPastDurationKey } from '../../display-window-manager';
 import type { TickLabelMode } from '../orbit/calendar-ticks';
 import type { DisplayTick } from '../orbit/tick-scale';
+import { DISPLAY_DURATION_MAX, APERIODIC_ARC_DURATION } from '../../display-window-manager';
 
 // 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
 // サンプルが1件も残らず、どの時刻も引けない列になる。
@@ -226,7 +226,7 @@ class DurationPillRow<K extends string, Kd extends K | 'custom'> {
   // ユーザー入力を壊さないよう書き換えない。
   public render(key: Kd, currentSec: number): void {
     for (const [k, btn] of this.buttons) btn.setOn(key === k);
-    if (!this.input.focused) this.input.syncSec(currentSec, DISPLAY_DURATION_MIN, C.DISPLAY_DURATION_MAX);
+    if (!this.input.focused) this.input.syncSec(currentSec, DISPLAY_DURATION_MIN, DISPLAY_DURATION_MAX);
   }
 }
 
@@ -272,7 +272,7 @@ export class PredictPanel {
   private readonly unsubscribeCollapsedView: () => void;
 
   private sliderSteps = 1000;
-  private currentDuration = C.APERIODIC_ARC_DURATION;
+  private currentDuration = APERIODIC_ARC_DURATION;
   private lastTrackRatio = 1;
 
   // PREDICT パネルの DOM を組み立て、root へ追加する。

@@ -28,7 +28,6 @@ import type { CelestialSystem } from '../../celestial/celestial-system';
 import { PredictedArc, trajectorySampleInterval } from '../../dynamic/predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../../dynamic/time-step';
 import type { FutureCelestialBodyProvider } from '../../dynamic/arc-celestial-bodies';
-import * as C from '../../const';
 import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
@@ -36,6 +35,7 @@ import { EquatorNodeMarkerPair } from '../../marker/equator-node-marker-pair';
 import type { MarkerManager } from '../../marker/marker-manager';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../../render/thermal-emissive';
+import { DISPLAY_DURATION_MAX } from '../../display-window-manager';
 
 // 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
 // 戻すのに使う。物体ごとに変えると bcInv の意味が種別で変わってしまうので、1つに固定する。
@@ -59,7 +59,7 @@ export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
 
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
 // ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
-const HISTORY_DURATION_MAX = C.DISPLAY_DURATION_MAX;
+const HISTORY_DURATION_MAX = DISPLAY_DURATION_MAX;
 
 // エンティティ1体が出している軌道線。楕円と対象への直線は排他で、同時には持たない。
 // center が null なら、毎フレームその瞬間最も強く引いている天体を中心に描く。

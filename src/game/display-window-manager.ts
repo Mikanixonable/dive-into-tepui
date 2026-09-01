@@ -4,7 +4,6 @@
 // 束ねたもので、時間の窓だけを指す語ではない。どちらも画面全体で1つに揃っていなければ
 // ならない — 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えば
 // メッシュとマーカーが別の瞬間を指す。
-import * as C from './const';
 import { PredictPanel } from './hud/panels/predict-panel';
 import { buildTicks } from './hud/orbit/tick-scale';
 import { epochUnixSeconds } from './hud/utils';
@@ -13,6 +12,10 @@ import { strongestAttractor } from '../physics/attractor';
 import { ReferenceFrame } from '../physics/frame';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+
+export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
+// 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
+export const APERIODIC_ARC_DURATION = 86400;
 
 const DISPLAY_DUR_DAY = 86400; // 1日
 const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
@@ -97,7 +100,7 @@ export class DisplayWindowManager {
     this.epochUnixSec = epochUnixSeconds(celestialSystem.epoch);
     this._current = {
       frame: this._frame, simTime: 0, referencePeriod: NaN,
-      duration: C.APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0,
+      duration: APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0,
       tickLabelMode: this._tickLabelMode, showElementTimes: this._showElementTimes,
       epochUnixSec: this.epochUnixSec,
     };
@@ -190,7 +193,7 @@ export class DisplayWindowManager {
   // APERIODIC_ARC_DURATION にフォールバックする。
   durationSec(referencePeriod: number): number {
     if (this.durationKey === 'orbit') {
-      return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : C.APERIODIC_ARC_DURATION;
+      return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : APERIODIC_ARC_DURATION;
     }
     if (this.durationKey === 'custom') return this.customDurationSec;
     return FIXED_DURATION_SEC[this.durationKey];
@@ -200,7 +203,7 @@ export class DisplayWindowManager {
   pastDurationSec(referencePeriod: number): number {
     if (this.pastDurationKey === 'none') return 0;
     if (this.pastDurationKey === 'orbit') {
-      return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : C.APERIODIC_ARC_DURATION;
+      return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : APERIODIC_ARC_DURATION;
     }
     if (this.pastDurationKey === 'custom') return this.customPastDurationSec;
     return FIXED_DURATION_SEC[this.pastDurationKey];

@@ -19,7 +19,7 @@ const SMALL_DEBRIS_BCINV = 8e-3;
 const DRAG_COEFFICIENT = 2.2;
 const HULL_EMISS = 0.85;
 
-// 灰色体とみなした物体が太陽光を受ける実効面積の比 [m^2/kg](game/const.ts と同じ導き方)。
+// 灰色体とみなした物体が太陽光を受ける実効面積の比 [m^2/kg](dynamic-entity.ts と同じ導き方)。
 function solarAbsorbAreaPerMass(bcInv: number): number {
   return (HULL_EMISS * bcInv) / DRAG_COEFFICIENT;
 }

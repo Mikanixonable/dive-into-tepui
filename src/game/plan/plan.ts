@@ -7,6 +7,10 @@ import { CelestialMotion, CelestialMotions } from '../../physics/celestial-motio
 import { orbitalElementsOf } from '../../physics/elements';
 
 // segmentDurationFrom が要求する表示窓の部分だけを切り出した形。
+// ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。噴射準備の通知・達成判定の開始・
+// 自動ワープの解除がこの1点を共有する。
+export const NODE_APPROACH_LEAD = 10;
+
 export interface DisplayDurationSource {
   durationSec(referencePeriod: number): number;
 }
