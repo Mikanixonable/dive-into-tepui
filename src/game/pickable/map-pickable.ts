@@ -1,5 +1,7 @@
 // マップ上で右クリックの被選択対象になりうるものの共通形と、画面上で最も近い候補を選ぶ処理。
-import type { Vec3 } from '../../math/vec3';
+import { lenSq, sub, type Vec3 } from '../../math/vec3';
+import type { Ray } from '../../math/ray';
+import type { Projected } from '../../math/projection';
 import type { ProjectFn } from '../camera/camera-system';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -68,25 +70,26 @@ export interface MapPickable {
   ): readonly PropertyRow[];
   // 名前を書き換えられる対象だけが持つ。改名できない対象は null。
   readonly mapRename: ((name: string) => void) | null;
+
+  // 視線が、pos に描かれているこの対象の本体へ当たるか。pos は mapPosAt が答えた、いま
+  // 描かれている位置。本体を持たず、マーカーだけで示される対象は常に false。
+  hitBodyByRay(ray: Ray, pos: Vec3): boolean;
 }
 
-// items を project で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを返す。
-// posOf が null を返す項目は候補から外れる。圏外なら null。
+// items を screenPosOf で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを
+// 返す。null を返す項目と視点の背後の項目は候補から外れる。圏外なら null。
 export function pickNearest<T>(
   items: readonly T[],
-  posOf: (item: T) => Vec3 | null,
+  screenPosOf: (item: T) => Projected | null,
   x: number,
   y: number,
-  project: ProjectFn,
   radiusPxSq: number,
 ): T | null {
   let best: T | null = null;
   let bestDistSq = radiusPxSq;
   for (const item of items) {
-    const pos = posOf(item);
-    if (pos === null) continue;
-    const p = project(pos);
-    if (!p.front) continue;
+    const p = screenPosOf(item);
+    if (p === null || !p.front) continue;
     const dx = p.x - x;
     const dy = p.y - y;
     const distSq = dx * dx + dy * dy;
@@ -94,6 +97,32 @@ export function pickNearest<T>(
       bestDistSq = distSq;
       best = item;
     }
+  }
+  return best;
+}
+
+// 表示時刻のマーカー位置を画面へ射影する。位置が求まらないフレームは null。
+export function projectMarker(
+  item: MapPickable, displayTime: number, project: ProjectFn,
+): Projected | null {
+  const pos = item.mapPosAt(displayTime);
+  return pos === null ? null : project(pos);
+}
+
+// 視線が本体に当たった候補のうち、視点(= 視線の始点)にもっとも近いものを返す。当たらなければ
+// null。位置が求まらない候補は本体判定に掛けない。
+export function pickFrontmostBody(
+  items: readonly MapPickable[], ray: Ray, displayTime: number,
+): MapPickable | null {
+  let best: MapPickable | null = null;
+  let bestDistSq = Infinity;
+  for (const item of items) {
+    const pos = item.mapPosAt(displayTime);
+    if (pos === null) continue;
+    const distSq = lenSq(sub(pos, ray.origin));
+    if (distSq >= bestDistSq || !item.hitBodyByRay(ray, pos)) continue;
+    bestDistSq = distSq;
+    best = item;
   }
   return best;
 }
