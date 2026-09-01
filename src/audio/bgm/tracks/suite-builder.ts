@@ -9,7 +9,7 @@ const VOICE_A_HARMONIC_LENGTH_RATIO = 0.7;
 const VOICE_B_LENGTH_RATIO = 1.1;
 const VOICE_B_STEP_OFFSET = 0.5;
 
-export interface SectionSpec {
+interface SectionSpec {
   lengthSteps: number;
   stepDur: number;
   scale: number[];
