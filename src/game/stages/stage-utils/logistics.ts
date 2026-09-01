@@ -4,8 +4,8 @@ import { randomQuat } from '../../../physics/attitude';
 import { randSym } from '../../../math/random';
 import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec3';
 import * as C from '../../const';
-import { AmmoPickup } from '../../dynamic/dynamic-entity/ammo-pickup';
-import { RcsFuelPickup } from '../../dynamic/dynamic-entity/rcs-fuel-pickup';
+import { AmmoPickup, AMMO_PICKUP_RADIUS } from '../../dynamic/dynamic-entity/ammo-pickup';
+import { RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT } from '../../dynamic/dynamic-entity/rcs-fuel-pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
@@ -167,7 +167,7 @@ export class Logistics {
       if (!ammoPickup.alive) continue;
       if (
         lenSq(sub(ammoPickup.state.r, player.state.r))
-        >= C.AMMO_PICKUP_RADIUS * C.AMMO_PICKUP_RADIUS
+        >= AMMO_PICKUP_RADIUS * AMMO_PICKUP_RADIUS
       ) continue;
       ammoPickup.alive = false;
       player.onPickup(AMMO_PICKUP_MAGS);
@@ -182,10 +182,10 @@ export class Logistics {
       if (!pickup.alive) continue;
       if (
         lenSq(sub(pickup.state.r, player.state.r))
-        >= C.RCS_FUEL_PICKUP_RADIUS * C.RCS_FUEL_PICKUP_RADIUS
+        >= RCS_FUEL_PICKUP_RADIUS * RCS_FUEL_PICKUP_RADIUS
       ) continue;
       pickup.alive = false;
-      const added = player.refuelFuel(C.RCS_FUEL_PICKUP_AMOUNT);
+      const added = player.refuelFuel(RCS_FUEL_PICKUP_AMOUNT);
       this._worldSfx.pickup();
       this._hud.hint(`補給取り込み — RCS燃料 +${Math.round(added)} kg`, 3000);
     }

@@ -37,6 +37,26 @@ import type { MarkerManager } from '../../marker/marker-manager';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../../render/thermal-emissive';
 
+// 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
+// 戻すのに使う。物体ごとに変えると bcInv の意味が種別で変わってしまうので、1つに固定する。
+const DRAG_COEFFICIENT = 2.2;
+// 断面積のうち、よどみ点の加熱を実際に受ける割合。
+const STAGNATION_AREA_FRACTION = 0.6;
+const SG_CONST = 1.7415e-4; // Sutton–Graves 定数(地球) [kg^0.5/m]
+export const HULL_EMISS = 0.85; // 放射率
+export const ENV_TEMP = 255; // 放射平衡の環境温度 [K]
+
+// 破片・薬莢・弾薬に共通の材質。アルミ合金相当。
+export const SMALL_DEBRIS_BCINV = 8e-3; // 弾道係数の逆数 Cd·A/m [m^2/kg]
+export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 輻射圧係数 × 断面積質量比 C_R·A/m [m^2/kg]
+export const SMALL_DEBRIS_BULK_DENSITY = 2700; // [kg/m^3]
+export const SMALL_DEBRIS_SPECIFIC_HEAT = 900; // [J/(kg·K)]
+// 球とみなした断面積比(bcInv/Cd)の 4 倍。
+export const SMALL_DEBRIS_RADIATING_AREA_PER_MASS = 0.01455; // [m^2/kg]
+// アルミ合金の融点。降下してくる破片がこの温度に達するのは、地球の大気では高度 60 km 付近
+// — 平衡温度はもっと高いところで既にこれを超えるが、再突入は速すぎて平衡に達しない。
+export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
+
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
 // ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
 const HISTORY_DURATION_MAX = C.DISPLAY_DURATION_MAX;
@@ -121,22 +141,22 @@ export class DynamicEntity {
 
   // --- 熱(physics/thermal.ts の比量モデル) ---
   // 現在の平均温度 [K]。
-  temperature = C.ENV_TEMP;
+  temperature = ENV_TEMP;
   // 局所的に過熱した部分が平均より高い温度差 [K]。0 = 全体が等温。
   protected thermalDeviation = 0;
   // 比熱 [J/(kg·K)]。**0 = 熱を蓄えない種別**で、温度は動かない。
   protected readonly specificHeat: number = 0;
   // 材質の密度 [kg/m^3]。よどみ点の曲率半径を bcInv から戻すのに使う。
-  protected readonly bulkDensity: number = C.SMALL_DEBRIS_BULK_DENSITY;
+  protected readonly bulkDensity: number = SMALL_DEBRIS_BULK_DENSITY;
   // いまの輻射面積の比 [m^2/kg]。展開して面積が変わる放熱面を持つ種別は override する。
   protected get radiatingAreaPerMass(): number { return 0; }
   // 輻射率。
-  protected readonly emissivity: number = C.HULL_EMISS;
+  protected readonly emissivity: number = HULL_EMISS;
   // 太陽光を受ける面積の比 [m^2/kg]。吸収率を織り込んだ実効値で、既定は球とみなした断面積
   // (bcInv/Cd)に外殻の吸収率(灰色体とみなし輻射率に等しい)を掛けたもの。展開して受光面が
   // 増える種別は sunDir を見て override する。
   protected solarAbsorbAreaPerMass(_sunDir: Vec3): number {
-    return (this.emissivity * this.bcInv) / C.DRAG_COEFFICIENT;
+    return (this.emissivity * this.bcInv) / DRAG_COEFFICIENT;
   }
   // これを超えると焼失する温度 [K]。既定 Infinity = 熱では失われない。
   protected readonly maxTemperature: number = Infinity;
@@ -461,12 +481,12 @@ export class DynamicEntity {
         sub(this.state.r, atmosphereState.r),
         sub(this.state.v, atmosphereState.v), atm);
       heating += aeroHeating(
-        density, speed, this.bcInv, C.SG_CONST,
-        sphereNoseRadius(this.bcInv, C.DRAG_COEFFICIENT, this.bulkDensity),
-        (C.STAGNATION_AREA_FRACTION * this.bcInv) / C.DRAG_COEFFICIENT);
+        density, speed, this.bcInv, SG_CONST,
+        sphereNoseRadius(this.bcInv, DRAG_COEFFICIENT, this.bulkDensity),
+        (STAGNATION_AREA_FRACTION * this.bcInv) / DRAG_COEFFICIENT);
     }
     const cooling = radiativeCooling(
-      this.temperature, C.ENV_TEMP, this.emissivity, this.radiatingAreaPerMass,
+      this.temperature, ENV_TEMP, this.emissivity, this.radiatingAreaPerMass,
       this.specificHeat, dt);
     this.temperature = stepTemperature(this.temperature, heating - cooling, this.specificHeat, dt)
       + this.pendingSpecificHeat / this.specificHeat;

@@ -3,6 +3,7 @@
 // 検索・フィルタ判定の純関数。
 import * as C from '../../const';
 import { KEY_MAPPING as K, type KeyBinding } from '../../input/key-mapping';
+import { MAX_PHYS_SIM_SPEED } from '../../dynamic/sim-speed-manager';
 
 export type HelpMode = 'combat' | 'map';
 export type HelpInput = 'keyboard' | 'mouse' | 'touch';
@@ -115,7 +116,7 @@ export const HELP_ENTRIES: readonly HelpEntry[] = [
   },
   {
     id: 'fire', category: 'combat', label: '機関砲発射',
-    description: `機関砲を発射する。ワープ ×${C.MAX_PHYS_SIM_SPEED} 以下で操作できる。`,
+    description: `機関砲を発射する。ワープ ×${MAX_PHYS_SIM_SPEED} 以下で操作できる。`,
     keys: [K.fire], inputs: ['keyboard', 'mouse'], scope: 'combat', behavior: 'hold',
   },
   {
