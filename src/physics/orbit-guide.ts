@@ -5,7 +5,7 @@ import type { CelestialMotion } from './celestial-motion';
 
 import { Vec3Tuple } from './cr3bp';
 import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
-import type { SecondaryFrame } from './lagrange';
+import type { CollinearPoint, SecondaryFrame } from './lagrange';
 import {
   CATALOG_STRIDE, CatalogFamily, CatalogSystem, CatalogSystemId, decodeCatalogPoints,
 } from './orbit-catalog';
@@ -15,12 +15,10 @@ import {
 import { OrbitalElements, positionOnOrbit, trueAnomalyFromMean } from './elements';
 import { Vec3, add, cross, len, norm, scale, sub } from '../math/vec3';
 
-export type GuidePoint = 'L1' | 'L2' | 'L3';
-
 // ガイド線の曲線の渡し方。閉じた式で書けるものは関数、焼き込みの離散サンプルしか無いものは
 // 節点列で渡す。どちらもパラメータ u は「周期に対する経過時刻の割合」で、進行方向マーカーが
 // 実際の軌道速度に比例して動く。
-export type GuideShape =
+type GuideShape =
   | { readonly kind: 'analytic'; readonly positionAt: (u: number) => Vec3 }
   | {
     readonly kind: 'knots';
@@ -194,7 +192,7 @@ function lerp(a: number, b: number, f: number): number {
 // R*gamma が数桁違うため、メートルではなく比で受け取ることでどの系でも同じ値が Richardson
 // 近似の妥当域(目安 0〜0.5)に収まる。
 export function lissajousLoop(
-  system: SecondaryFrame, point: GuidePoint,
+  system: SecondaryFrame, point: CollinearPoint,
   inPlane: number, outOfPlane: number, inPlanePhase: number, outOfPlanePhase: number,
   cycles: number,
 ): GuideLoop | null {

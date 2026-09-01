@@ -7,7 +7,7 @@ import {
   drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore, type BackingStoreState,
 } from './chart-canvas';
 
-export interface ProjectionPoint { readonly lonDeg: number; readonly latDeg: number }
+interface ProjectionPoint { readonly lonDeg: number; readonly latDeg: number }
 
 export interface ProjectionSeriesSpec {
   readonly points: readonly (ProjectionPoint | null)[];

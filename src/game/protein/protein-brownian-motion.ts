@@ -7,7 +7,7 @@
  * Negative and non-finite sample times are clamped to zero by `sampleAt`.
  */
 
-export interface ProteinBrownianModeParameters {
+interface ProteinBrownianModeParameters {
   readonly relaxationRate: number;
   readonly rmsAmplitude: number;
 }

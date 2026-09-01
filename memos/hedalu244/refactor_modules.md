@@ -4,6 +4,8 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 探した結果と、論点ごとの修正方針。
 
 コード計測はすべて **53071459** 時点。行数・参照数を根拠にしているので、着手前に測り直す。
+**論点1・7・16 の実施(`57ffe943`)で `pickable/` `marker/` `camera/` の数字は大きく動いている。**
+再測して更新した節には、その旨を書いてある。
 
 ---
 
@@ -78,13 +80,13 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 
 | # | 論点 | 診断 | 規模 | 優先 |
 | --- | --- | --- | --- | --- |
-| 1 | `MapPickable.kind` の 10 値 union | **多態で分ける** | 7モジュール 2,177行 / 分岐65箇所 | **切り出し済み** |
+| 1 | `MapPickable.kind` の 10 値 union | **多態で分ける** | 7モジュール 2,177行 / 分岐65箇所 | **実施済** |
 | 2 | BVH・三角形衝突の重複実装 | **重複の解消 + 置き場所** | 2モジュール 825行 | **実施済** |
 | 3 | `base-station-model.ts` の 845 行 1 関数 | **手続きの切り出し** | 852行 | **実施済** |
 | 4 | `game/const.ts` の 104 定数 | **所有者へ戻す** | 319行 / 参照76モジュール | **実施済** |
 | 5 | `hud/style/` の 22 ファイルと結合ハブ | **短すぎるモジュールの多数** | 22モジュール 1,980行 | 中 |
 | 6 | `marker-manager.ts` のラベル間引き同居 | **手続きの切り出し** | 659行 | 中 |
-| 7 | `camera/focus-markers.ts` の4責務 | **分割 + 置き場所** | 609行 | **切り出し済み** |
+| 7 | `camera/focus-markers.ts` の4責務 | **分割 + 置き場所** | 609行 | **実施済** |
 | 8 | Player のブースター運用が正本割れ | **責務の集約** | 818 + 201行 | 中 |
 | 9 | `plan-editor.ts` の5責務 | **分割** | 726行 | 中 |
 | 10 | 「ラベル付き入力行」の重複 | **共通化(要判断)** | 4箇所 | 中 |
@@ -93,17 +95,105 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 | 13 | `overviewMode` が23モジュールの署名に漏れる | **要判断(保留)** | 署名23 / 分岐28 | 要相談 |
 | 14 | `DynamicSystem` の種別手展開 | **要判断(保留)** | 575行 | 要相談 |
 | 15 | 「戦闘/マップ」の軸に**5つの語彙** | **型の重複。1つに畳む** | 型4 + boolean 1 | **実施済**(型4→1。boolean は論点13) |
-| 16 | エンティティ種別の語彙が**5つ** | **型の重複。1つに畳む** | 型5 | **切り出し済み** |
+| 16 | エンティティ種別の語彙が**5つ** | **型の重複。1つに畳む** | 型5 | **実施済** |
 | 17 | `OrbitAnalysisWindow` のタブが**半分だけ切り出し** | **多態で分ける** | 466行 / 分岐約30 | 中 |
 | 18 | `Player`/`Base` を消費側が `instanceof` で判別し直す | **多態の復元** | 26箇所 / 11モジュール | 中 |
-| 19 | その他の重複 union(`L1..L3` 等) | **型の重複。1つに畳む** | 3組 | 低(即実施可) |
+| 19 | その他の重複 union(`L1..L3` 等) | **型の重複。1つに畳む** | 3組 | **実施済** |
 | 20 | `MapCamera` の2つの非 on/off 2分 | **要検討** | 531行 / 分岐12 | 低 |
 
 ---
 
-## 論点1 — `MapPickable.kind` の 10 値 union(切り出し済み)
+## 論点1 — `MapPickable.kind` の 10 値 union(実施済)
 
-**切り出し済み。`refactor_pickable_focus.md` で対処する。**
+論点7・16 と合わせて1つの計画として実施した(`a77c1cc4` ‥ `57ffe943` の10手順)。
+`npm run typecheck` / `npm run test` 653件 通過。**実行時の目視確認は未実施。**
+
+- `MapPickKind`(10値)は消えた。`MapPickable` は identity / 位置 / 可視 / 一覧 / 操作の口を持つ
+  interface になり、`Player` / `Enemy` / `Base` / `AmmoPickup` / `RcsFuelPickup` /
+  `CelestialEntity` と、新設した `ApsisMarker` / `RelativeNodeMarker` / `EquatorNodeMarker` /
+  `LagrangePointMarker` / `EmptySpacePickable` が実装する。冒頭の表の 86 箇所の `kind` 分岐は 0 件。
+- `pickable/map-pickable-menu.ts`(463)/ `map-property-rows.ts`(233)/ `marker/pick-glyphs.ts`(48)/
+  `camera/focus-markers.ts`(517)は削除。天体ラベルは `marker/celestial-markers.ts` +
+  `celestial-sub-labels.ts` へ移り、`camera/` から天体ラベルの知識が消えた(論点7)。
+- 操作の受け口は `pickable/map-commands.ts` の `MapCommands`。実体は `Docking` / `PlanEditor` /
+  `Hud` を値 import できない(実行時循環)ので、この口だけを見る。
+- 候補列のキャッシュ(`itemRecords` / `cachedBodyPickables` / `syncVisibility`)は全廃した。
+  「画面に出ているか」の正本は `MarkerManager.shows(key)` 1つ。
+- ピックは「マーカー → 本体」の2段になった(SPEC/MAP.md §11)。`MapPickable.hitBodyByRay` と
+  `math/ray.ts` を新設。
+
+行数(下の是正まで含めた現在値): `map-context-actions.ts` 687→556、`map-pickables.ts` 262→117、
+`focus-markers.ts` 517→0、`player.ts` 625→777、`base.ts` 376→512。**実体側が伸びるのは
+織り込み済み**(1ファイルが1つの物体を言い切る形になるための増加)。
+`map-context-actions.ts` だけが見込み(350前後)を外し、`MapCommands` の実装21メンバーが
+残って 550 行台で止まっている。
+
+### 実施後に `/refactor` / `/comment-cleanup` で直したもの
+
+- **軌道上の点マーカー3種の共通形を抽出。** `ApsisMarker` / `EquatorNodeMarker` /
+  `RelativeNodeMarker` は `runMapMenu` が一字一句同じで、`MapPickable` の定型フィールド・
+  `mapPosAt` / `hitBodyByRay` / `mapVisibility` / `shownOnMap` / `gone` / `sync` / `list*` も
+  同形だった。`marker/orbit-point-marker.ts` の `OrbitPointMarker` へ寄せて 391→297 行。
+- `MapPickables` の `items` が `candidateItems` と常に同一参照で、`refresh` 末尾が自己代入
+  だった(規約 1.6)。フィールドごと削除。
+- `LineOcclusion`(`cameraPos`/`celestialBodies`/`pivot` を束ねるだけの型、参照1箇所)を廃し、
+  3引数を直接渡す形に(規約 1.6「情報をまとめるためだけの型を作らない」)。
+- `EquatorNodeMarkerPair.updateOnPath` が同一シグネチャの private `update` を呼ぶだけの
+  ラッパーだった。`MapContextActions.windowKey(target) => target.id` も同じ。どちらも畳んだ。
+- 残骸: `focus-target.ts` のコメントが削除済みの `apsis`/`relnode`/`eqnode` を指していた。
+  `marker-manager.ts` の `mk-relnode` / `mk-eqnode` はどこからも出力されない CSS クラス名。
+- コメント: `runMapMenu` の説明が5クラスで `MapPickable` の宣言と一字一句同じ(規約 3.3-12)。
+  `line-pickable.ts` の命名の弁明(3.4)、`combat-pick.ts` の他モジュールとの対比(3.3-8)、
+  モジュール冒頭の「〜は X が持つ」「〜だけを持つ」(3.3-2/8)を除去。
+
+### 宿題 — この再編が残した問題
+
+**(a) `MapContextActions` に `instanceof` が9箇所残っている**(うち `Player`/`Base` が7、
+`CelestialEntity` が1、`Base` の台帳判定が1)。`handleLeftClick` の候補絞り込み・
+`selectPickable`・`relatedItemsFor` / `relatedTitleFor` で、「被選択物自身が答える」形の手前で
+止まっている。`MapPickable` に口を足す仕様変更を含むので `/modify-feature` 案件。
+**論点18 と同じ形なので、そちらと1回で見る。**
+
+**(b) `PhysicalObjectListOrder.matches` が `instanceof LagrangePointMarker` /
+`instanceof CelestialEntity` で絞り込んでいる。** `PhysicalObjectListFilter` と
+`ObjectPickerGenre` がほぼ並行な軸を二重に持っている状態。これも (a) と同じ回で。
+
+**(c) `AmmoPickup` と `RcsFuelPickup` の `MapPickable` 実装がほぼ全同。**
+`mapMenuItems` / `runMapMenu` / `listCounted` / `listSearchText` / `mapPropertyRows` が
+半径と補給量以外は同じ。旧 `switch (kind)` を多態へ開いた副作用。共通の `Pickup` 基底は
+作れるが、規約 1.5 の判断(今後個別に調整されうるか)がコードからは決まらず、
+`SPEC/MAP.md` に「未確定の案」節も無い。**着手前にユーザーへ問う。**
+
+**(d) `MapContextActions.setDocking` は二段初期化**(規約 1.11)。`Docking` の生成順に依存する
+ので、`Game` の配線を触らないと直らない。
+
+**(e) クロージャ注入が2つ**(規約 1.12)。`OrbitLineWindows` の `openOwnerWindow` と
+`CelestialSubLabels.sync` の `labelStateOf`。どちらも循環依存の回避策で、解くには所有関係の
+見直しが要る。あわせて `MapContextActions` のコンストラクタ引数は16個(規約 1.4)。
+
+**(f) 自ファイル内でしか使われていない `export`(実施済)。** `src/` 全体を走査し、他ファイル
+(`src/` `tests/` `tools/` `public/`、コメント中の言及は除く)から一度も参照されない宣言 259 件の
+`export` を落とした(117 ファイル)。うち自ファイル内でも参照が無かった 6 件は宣言ごと削除し、
+連鎖で不要になった `collinearBarycentricX` も落とした — `setProteinAnchorPosition` /
+`cr3bpJacobi` / `sampleOrbitByArcLength` / `collinearLocalToBarycentric` /
+`RADIATOR_OBJECT_NAMES` / `isCoarsePointer`。`export` を残した例外が2組ある。
+`sphere-contact.sweptSagitta` はモジュール冒頭が名指しで「消してはならない」としている枠。
+`theme.SIGNAL` は `ACCENT_SECONDARY` の `@deprecated` が移行先として指している。
+
+**(f') 残った判断 — `physics/time/index.ts` の TDB 変換一式。** `convertJulianDate` /
+`utcToTdb` / `tdbToUtc` / `ttToTdb` / `tdbToTt` と `TdbOffsetProvider` /
+`AstronomicalTimeOffsetProvider` は、どこからも参照されていない。落とすと連鎖で全部が死に、
+モジュール冒頭が「leap second が要るなら SPICE/offset adapter を渡せ」と文書化している
+provider 拡張点ごと消える。**capability を消すかどうかの判断なので、機械的な (f) からは外した。**
+
+**(g) 戦闘ビューの古い候補列(実施済)。** `MapPickables.refresh` はマップ視点でない回に
+`candidateItems` を空にするようになった。`perfCounts` の `mapItems` にあった `overviewMode`
+ガードは冗長になったので外した。これに伴う表示上の帰結が2つ — 戦闘ビューで開いた
+プロパティウィンドウの関連項目は、古い列ではなく空になる。`Game.objectName` は候補列に
+無い対象を実体・天体・id の順に落とすので、アプシス/交点/ラグランジュ点にフォーカスした
+まま戦闘ビューへ移ると、ビューバッジの Focus が名前ではなく id になる(同メソッドの
+コメントが元から想定している経路)。
+
 ---
 
 ## 論点2 — BVH・三角形衝突の重複実装(実施済)
@@ -307,19 +397,23 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 
 `relaxLabelRects` は移した先で**さらに分ける**(矩形の初期配置 / 反発の反復 / 収束後の適用)。
 
-### 前提
+### 前提(論点7 の完了で更新)
 
-論点7 と同時に見ること。**ラベル混雑の解決は現在3箇所にある**:
-`marker-manager.thinByPriority`、`camera/focus-markers.ts` の `CrowdingGrid`(103-170)、
-`marker/grouped-markers.ts`。共有しているのは `marker/crowding.ts`(31行)の
-`resolveCrowdingWinner` だけ。3つを1つにできるかは**先に SPEC/MAP.md 7.2 を読んで、
+**ラベル混雑の解決は依然として3箇所にある**が、置き場所は動いた:
+`marker-manager.thinByPriority`、`marker/crowding.ts` の `CrowdingGrid`(論点7 で
+`focus-markers.ts` から移設。`marker/celestial-markers.ts` が名前用とアイコン用に2つ持つ)、
+`marker/grouped-markers.ts`。3つを1つにできるかは**先に SPEC/MAP.md 7.2 を読んで、
 「別々の挙動であるべきか」を確かめる。** 別々であるべきなら統合しない。
+
+`crowding.ts` は 31 → 122 行になっており、ヒステリシス(前フレームの隠し集合)を持つ。
+`marker-manager` から間引きを切り出すとき、**そこへ寄せられるかを先に見る。**
 
 ---
 
-## 論点7 — `camera/focus-markers.ts` の4責務(切り出し済み)
+## 論点7 — `camera/focus-markers.ts` の4責務(実施済)
 
-**切り出し済み。`refactor_pickable_focus.md` で対処する。**
+**実施済。論点1 と同じ計画で対処した。**
+
 ---
 
 ## 論点8 — Player のブースター運用が正本割れ(実施済)
@@ -544,9 +638,9 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 
 ---
 
-## 論点16 — エンティティ種別の語彙が5つ(切り出し済み)
+## 論点16 — エンティティ種別の語彙が5つ(実施済)
 
-**切り出し済み。`refactor_pickable_focus.md` で対処する。**
+**実施済。論点1 と同じ計画で対処した。**
 
 ---
 
@@ -619,16 +713,21 @@ interface AnalysisTabView {
 
 ### 症状
 
-`instanceof` の出現をクラス別に数えると、`Player`(16)と `Base`(13)が突出している。
-両者は `Controllable` を実装する対だが、**消費側が26箇所で型を判別し直している。**
+`instanceof` の出現をクラス別に数えると、`Player` と `Base` が突出している。両者は
+`Controllable` を実装する対だが、**消費側が型を判別し直している。**(論点1 の完了後に再測。
+調査時は 26 箇所、いま 29 箇所)
 
 | モジュール | 箇所 |
 | --- | --- |
 | `hud/panels/vessel-panel.ts` | 8 |
+| `pickable/map-context-actions.ts` | 7 |
 | `hud/windows/resource-transfer-dialog.ts` | 5 |
 | `docking/docking.ts` | 3 |
-| `targeter.ts` / `pickable/map-context-actions.ts` | 各2 |
-| `pickable/combat-pickable.ts` / `hud/orbit/orbit-panel.ts` / `dynamic/entity-contact-response.ts` / `dynamic-entity/debris-piece.ts` / `dynamic-entity/bullet.ts` / `camera/combat-camera-system.ts` | 各1 |
+| `targeter.ts` / `hud/orbit/orbit-panel.ts` / `dynamic/entity-contact-response.ts` / `dynamic-entity/debris-piece.ts` / `dynamic-entity/bullet.ts` / `camera/combat-camera-system.ts` | 各1 |
+
+`map-context-actions.ts` の7箇所は論点1 の宿題 (a) と同じもの。被選択物を多態にしたのに、
+「自艦・基地だけ左クリックで掴める」「自艦のときだけ搭載部品を関連項目に出す」の2つが
+`instanceof` のまま残っている。
 
 `vessel-panel.ts` の `sync`(98行)が典型で、同じ1つのパネルを描くために8回判別する:
 
@@ -678,22 +777,35 @@ else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
 
 ---
 
-## 論点19 — その他の重複 union
+## 論点19 — その他の重複 union(実施済)
 
-型別名を全部集めた副産物。どれも規約 1.6「同一の意味、同一の情報量を持つ型を複数作ること」。
+ラグランジュ点の呼び名を `physics/lagrange.ts` 1箇所へ集めた。**この語を所有しているのは
+ラグランジュ点そのもののモジュール**で、ハロー軌道(`halo.ts`)にもゼロ速度曲線
+(`zero-velocity.ts`)にも属していない。
 
-| 重複 | 場所 | 修正 |
-| --- | --- | --- |
-| `CollinearPoint` = `GuidePoint` = `'L1' \| 'L2' \| 'L3'` | `physics/halo.ts:19` / `physics/orbit-guide.ts:18` | 1つに。`LagrangeLabel`(`physics/zero-velocity.ts:8`、5値)との関係を `Extract` で表す |
-| `FixedDurationKey` ⊂ `DisplayDurationKey` | `hud/panels/predict-panel.ts:14` / `display-window-manager.ts:22` | `Exclude<DisplayDurationKey, 'custom'>` にする。値を書き写さない |
+- `LagrangeLabel`(5値)を `zero-velocity.ts` から移し、隣へ
+  `CollinearPoint = Extract<LagrangeLabel, 'L1' | 'L2' | 'L3'>` を置いた。`halo.ts` の
+  `CollinearPoint` と `orbit-guide.ts` の `GuidePoint` は消え、旧名 `GuidePoint` は 0 件。
+- **同じ集合を書き写していた残り2つも畳んだ。** `LagrangePoints` は
+  `Readonly<Record<LagrangeLabel, Vec3>>` になり、`collinearGamma` の引数に直書きされていた
+  3値は `CollinearPoint` になった。`keyof LagrangePoints` で受けていた `lagrangeStateOf` と
+  `nav-target.ts` の断言も `LagrangeLabel` へ。
+- **再エクスポートは置いていない**(規約 1.6「同じ値へ入口を2つ作らない」)。
+  `zero-velocity-section.ts` / `orbit-guide-catalog.ts` / `object-placer-panel.ts` /
+  `orbit-guide-lines.ts` とテスト2本は `physics/lagrange` から直接受ける。
 
-`EphemerisScale`(`'TT' | 'TDB'`)⊂ `TimeScale`(`'UTC' | 'TT' | 'TDB'`)は**畳まない。**
-`JulianDate<EphemerisScale>` のように**型引数の制約**として使われていて、
-「この口は UTC を受け取らない」という主張そのもの。値の写しではない。
+`predict-panel.ts` の `FixedDurationKey` / `FixedPastDurationKey` は
+`Exclude<DisplayDurationKey, 'custom'>` / `Exclude<DisplayPastDurationKey, 'custom'>` になった。
+5値・6値を書き写していたのが消え、期間キーの正本は `display-window-manager.ts` だけになる。
 
-`SolarSide` = `RadiatorSide` = `'up' \| 'down'`(`player/power.ts:11` / `player/radiator.ts:24`)は
-**畳まない。** 太陽電池の面と放熱板の面は別の部品で、片方だけ枚数が変わりうる。
-値が一致しているのは偶然で、規約 1.6 の「たまたま同時に切り替わるものは別個にする」に従う。
+型定義だけの変更なので振る舞いは変わらない。`npm run typecheck` / `test:physics` 432件 /
+`test:game` 161件 / `test:math` 42件 通過。
+
+**畳まなかったもの。** `EphemerisScale`(`'TT' | 'TDB'`)⊂ `TimeScale` は
+`JulianDate<EphemerisScale>` のように**型引数の制約**として使われていて、「この口は UTC を
+受け取らない」という主張そのもの。値の写しではない。`SolarSide` / `RadiatorSide`(ともに
+`'up' | 'down'`、`player/power.ts` / `player/radiator.ts`)は別部品で、片方だけ枚数が
+変わりうる — 規約 1.6 の「たまたま同時に切り替わるものは別個にする」に従う。
 
 ---
 
@@ -756,29 +868,43 @@ else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
 | `instanceof OrbitingMotion`(13箇所) | 型の絞り込み | 8箇所が `if (!(x instanceof OrbitingMotion)) return/throw` のガードで、**能力の有無**を絞っている。`instanceof Player`/`Base` と違い、分岐の先で別の振る舞いを書いていない |
 | `CelestialClass`(5値)/ `CelestialKind`(3値) | 分類 union | 規約 1.8 が明示的に許可。分類が閉じているという主張そのもの。粒度が違うので2つあってよい |
 | `SolarSide` / `RadiatorSide`(ともに `'up' \| 'down'`) | 値が一致 | 別部品。片方だけ枚数が変わりうるので畳まない(論点19 参照) |
-| `MenuAction`(22値) | 22値 union | メニュー項目の識別子。`map-pickable-menu` の30箇所は**項目ごとの処理**であって、同じ処理が種別で分岐しているのではない。論点1 で具象へ分配される |
+| `MenuAction`(22値) | 22値 union | メニュー項目の識別子。分岐は**項目ごとの処理**であって、同じ処理が種別で分岐しているのではない。論点1 で各被選択物の `runMapMenu` へ分配済み |
 
 ---
 
 ## 実施順序
 
-**論点1・7・16 はこの文書から切り出し、`refactor_pickable_focus.md` が持つ。** 下の順序には
-含めない。論点13 の一部と論点18 はそちらの完了後に着手する。
+**実施済: 論点1 / 2 / 3 / 4 / 7 / 8 / 11 / 12 / 15 / 16 / 19。** 残りは 5 / 6 / 9 / 10 /
+13 / 14 / 17 / 18 / 20。
 
-1. **型の重複を先に潰す** — **論点15**(ビューの型4本→1本)/ **論点19**(`L1..L3` 等)。
-   **振る舞いを一切変えない改名なので、単独で安全に入る。** 規約 1.11 に従い旧名を 0 件にする。
-   論点13 と論点17 の議論は、型が1本になってからのほうが早い。
-2. ~~**論点12**(`partFromSaveData`)と **論点11**(`view-hud-controller`)~~ — **実施済。**
-3. ~~**論点2**(BVH の重複)~~ — **実施済。**
-4. ~~**論点3**(`base-station-model`)~~ — **実施済。** **論点4**(`const.ts`)は機械的。
-5. **論点18**(`Player`/`Base` の `instanceof`)— 被選択物の多態化の後。
-   `vessel-panel` / `resource-transfer-dialog` / `target-panel` をまとめて。
-6. **論点6**(`marker-manager`)— 天体ラベルの移設と同時に、ラベル混雑3実装の統合可否を
-   1回で決める。
-7. **論点17**(軌道分析タブの多態化)/ ~~**論点8**(`PlayerBoosters`)~~ **実施済** /
-   **論点5**(`hud/style/`)/ **論点10**(入力行)— 独立。手が空いたときに。
-8. **論点9**(`plan-editor`)— `plan/` 全体を見るときに。
-9. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。論点20 は先に実測が要る。
+**論点1・7・16 の完了で、それを条件にしていた論点18 と論点13 の前提が揃った。**
+論点15 の完了で、ビューの型は `WorldView` 1本になっている。
+
+1. **論点18**(`Player`/`Base` の `instanceof`)— **論点1 の完了で着手可能になった本命。**
+   調査時 26 箇所 → 現在 29 箇所(再編で `map-context-actions.ts` 側が増えた)。
+   `vessel-panel` / `resource-transfer-dialog` / `target-panel` に加えて、
+   **論点1 の宿題 (a)(b) も同じ形なので1回で見る。** `Controllable` に
+   `vesselStatus(): VesselStatusView` を足す案は論点18 の節にある。
+2. **論点1 の宿題 (c)(d)(e)(f')** — **(f)(g) は実施済。** (c) は規約 1.5 の判断が要るので
+   **着手前にユーザーへ問う。**(f') も同じく判断待ち — `physics/time/index.ts` の TDB 変換一式を
+   capability ごと消すかどうか。(d)(e) は `Game` の配線に触るので、単独では割に合わない —
+   `map-context-actions.ts` を 400 行未満へ割る判断(= `MapCommands` の実装をウィンドウ台帳から
+   引き剥がすか。剥がすと台帳へのコールバックが増えるので、論点1 ではあえて同居させた)と
+   同時に決める。
+3. **論点6**(`marker-manager` のラベル間引き)— **論点7 の完了で前提が変わった。**
+   `focus-markers.CrowdingGrid` は `marker/crowding.ts`(122行)へ移り、間引きの実装は
+   `marker-manager.thinByPriority` / `crowding.CrowdingGrid` / `grouped-markers` の3つ。
+   `marker-manager.ts` は 670 行で `relaxLabelRects` の 134 行 1 メソッドも残っている。
+   **切り出しと、3実装の統合可否(先に SPEC/MAP.md 7.2 を読む)を1回で決める。**
+4. **論点17**(軌道分析タブの多態化)— 466 行のまま。**論点1 と同じ形の修正なので手本がある**
+   (`orbit-projection-tab.ts` だけが外にある現状は、規約 1.2 が名指しする「片側だけ切り出し」)。
+5. **論点5**(`hud/style/` 22→10)/ **論点10**(ラベル付き入力行)— 独立。手が空いたときに。
+6. **論点9**(`plan-editor` 718行)— `plan/` 全体(`plan-path.ts` を含む)を見るときに。
+7. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。
+   - **論点13** は論点15 の完了で議論の前提が揃った。ただし `overviewMode: boolean` は
+     署名 23 → 25 モジュールへ広がっている(再編で `MapCommands.overviewMode` が増えた)。
+     `boolean` のままにするか `WorldView` を渡すか、`ViewManager` 経由で経路ごと分けるか。
+   - **論点20** は先に実測(`MapCamera` 625 行のうちどれだけが片方だけの経路か)が要る。
 
 各段階の検証は変更箇所に対応させる(`npm run typecheck` は常に。`src/game/` を触ったら
 `npm run test:game`、`src/physics/`・`src/math/` を触ったら該当層)。**main へ送る前は

@@ -118,7 +118,7 @@ export class EntityLineManager {
       );
     }
     for (const enemy of this.entities.enemies) {
-      const visibility = visibilityPolicy?.entity('ship');
+      const visibility = visibilityPolicy?.entity('enemy');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
       applyEntityLines(
