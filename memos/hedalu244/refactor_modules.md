@@ -171,14 +171,28 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 `CelestialSubLabels.sync` の `labelStateOf`。どちらも循環依存の回避策で、解くには所有関係の
 見直しが要る。あわせて `MapContextActions` のコンストラクタ引数は16個(規約 1.4)。
 
-**(f) 自ファイル内でしか使われていない `export` が残っている。** `FocusResolveResult` /
-`CelestialMarkerItem` / `LinePickKind` / `RowTreeActions` / `CalendarTick` / `elementTimeLabel` /
-`OrbitLine` / `NODE_PICK_PX` ほか。機械的に落とせる。
+**(f) 自ファイル内でしか使われていない `export`(実施済)。** `src/` 全体を走査し、他ファイル
+(`src/` `tests/` `tools/` `public/`、コメント中の言及は除く)から一度も参照されない宣言 259 件の
+`export` を落とした(117 ファイル)。うち自ファイル内でも参照が無かった 6 件は宣言ごと削除し、
+連鎖で不要になった `collinearBarycentricX` も落とした — `setProteinAnchorPosition` /
+`cr3bpJacobi` / `sampleOrbitByArcLength` / `collinearLocalToBarycentric` /
+`RADIATOR_OBJECT_NAMES` / `isCoarsePointer`。`export` を残した例外が2組ある。
+`sphere-contact.sweptSagitta` はモジュール冒頭が名指しで「消してはならない」としている枠。
+`theme.SIGNAL` は `ACCENT_SECONDARY` の `@deprecated` が移行先として指している。
 
-**(g) 戦闘ビューで `MapPickables.pickables` が前フレームの候補列を返す。** `refresh` はマップ
-視点でなければ即 return するので候補列を掃除しない。戦闘ビューで開いたプロパティウィンドウの
-`relatedItemsFor` がその古い列を読む。**再編前からの挙動**だが、キャッシュを全廃した今この
-1箇所だけが「前フレームの値」を持っている。
+**(f') 残った判断 — `physics/time/index.ts` の TDB 変換一式。** `convertJulianDate` /
+`utcToTdb` / `tdbToUtc` / `ttToTdb` / `tdbToTt` と `TdbOffsetProvider` /
+`AstronomicalTimeOffsetProvider` は、どこからも参照されていない。落とすと連鎖で全部が死に、
+モジュール冒頭が「leap second が要るなら SPICE/offset adapter を渡せ」と文書化している
+provider 拡張点ごと消える。**capability を消すかどうかの判断なので、機械的な (f) からは外した。**
+
+**(g) 戦闘ビューの古い候補列(実施済)。** `MapPickables.refresh` はマップ視点でない回に
+`candidateItems` を空にするようになった。`perfCounts` の `mapItems` にあった `overviewMode`
+ガードは冗長になったので外した。これに伴う表示上の帰結が2つ — 戦闘ビューで開いた
+プロパティウィンドウの関連項目は、古い列ではなく空になる。`Game.objectName` は候補列に
+無い対象を実体・天体・id の順に落とすので、アプシス/交点/ラグランジュ点にフォーカスした
+まま戦闘ビューへ移ると、ビューバッジの Focus が名前ではなく id になる(同メソッドの
+コメントが元から想定している経路)。
 
 ---
 
@@ -871,8 +885,9 @@ else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
    `vessel-panel` / `resource-transfer-dialog` / `target-panel` に加えて、
    **論点1 の宿題 (a)(b) も同じ形なので1回で見る。** `Controllable` に
    `vesselStatus(): VesselStatusView` を足す案は論点18 の節にある。
-2. **論点1 の宿題 (c)(d)(e)(f)(g)** — (f) は機械的に落とせる。(c) は規約 1.5 の判断が要るので
-   **着手前にユーザーへ問う。**(d)(e) は `Game` の配線に触るので、単独では割に合わない —
+2. **論点1 の宿題 (c)(d)(e)(f')** — **(f)(g) は実施済。** (c) は規約 1.5 の判断が要るので
+   **着手前にユーザーへ問う。**(f') も同じく判断待ち — `physics/time/index.ts` の TDB 変換一式を
+   capability ごと消すかどうか。(d)(e) は `Game` の配線に触るので、単独では割に合わない —
    `map-context-actions.ts` を 400 行未満へ割る判断(= `MapCommands` の実装をウィンドウ台帳から
    引き剥がすか。剥がすと台帳へのコールバックが増えるので、論点1 ではあえて同居させた)と
    同時に決める。
