@@ -86,6 +86,7 @@ const MAP_DISPLAY_CATEGORIES: readonly MapDisplayCategory[] = [
   { category: 'baseVisible', name: 'baseName', orbit: 'baseOrbit', children: ['baseName', 'baseOrbit'] },
 ];
 
+// そのトグルキーを親に持つ表示カテゴリ。カテゴリの親キーでなければ undefined。
 function mapDisplayCategoryOf(category: keyof MapDisplayToggles): MapDisplayCategory | undefined {
   return MAP_DISPLAY_CATEGORIES.find((entry) => entry.category === category);
 }

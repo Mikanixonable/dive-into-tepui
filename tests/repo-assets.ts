@@ -26,9 +26,12 @@ host._resolveFilename = function (request, parent, ...rest): string {
   return resolveFilename.call(this, request, parent, ...rest);
 };
 
-// 天体テクスチャは webpack の asset/resource ローダーが最終出力 URL の文字列へ変換する。
+// 画像は webpack の asset/resource ローダーが最終出力 URL の文字列へ変換する。
 // node には同じ変換が無いので、実ファイルのパスを既定 export として返す。
 // webpack 用に `require` がグローバル宣言されているので、node のローダー登録はここで作る。
-createRequire(__filename).extensions['.jpg'] = (module, filename) => {
-  module.exports = filename;
-};
+const nodeRequire = createRequire(__filename);
+for (const extension of ['.jpg', '.png']) {
+  nodeRequire.extensions[extension] = (module, filename) => {
+    module.exports = filename;
+  };
+}

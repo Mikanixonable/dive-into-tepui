@@ -63,7 +63,7 @@ import type { BurnManagementViewModel } from '../hud/panels/burn-management-pane
 const SHIP_PORT_OFFSET = v3(0, 0, 3.0);
 
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
-// 船体への直撃(PLAYER_BULLET_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
+// 船体への直撃(PLASMA_BULLET_DAMAGE)より軽い。損耗はドックで修理するまで戻らない。
 const RADIATOR_BULLET_DAMAGE = 0.25;
 
 const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱量 [J]

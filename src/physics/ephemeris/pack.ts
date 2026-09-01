@@ -34,6 +34,7 @@ export class PackEphemeris {
     this.payloadSha256 = decoded.manifest.payloadSha256;
   }
 
+  // 出所が保証されたバイト列から組む。payload の SHA-256 照合を省くぶん同期的に返る。
   static fromTrustedBytes(bytes: Uint8Array, epoch: TdbJulianDate): PackEphemeris {
     return new PackEphemeris(decodePack(bytes), epoch);
   }
@@ -73,6 +74,7 @@ class ChebyshevPointEphemeris implements PointEphemeris {
     readonly validEndSimTime: number,
   ) {}
 
+  // simTime での太陽系重心原点・ゲーム ECI 軸の位置速度。simTime が有限でなければ RangeError。
   baryStateAt(simTime: number): KinematicState<'numeric'> {
     if (!Number.isFinite(simTime)) throw new RangeError(`simTime は有限値でなければならない: ${simTime}`);
     const state = this.evaluator.icrfStateAt(this.id, simTime);
@@ -80,6 +82,8 @@ class ChebyshevPointEphemeris implements PointEphemeris {
   }
 }
 
+// decoded の payload が manifest の SHA-256 と一致することを確かめる。ダイジェストを持たない
+// pack、照合できない実行環境、不一致のいずれでも PackFormatError を投げる。
 export async function verifyEphemerisPayload(decoded: DecodedPack): Promise<void> {
   const expected = decoded.manifest.payloadSha256;
   if (expected === undefined) throw new PackFormatError('payloadSha256が無い暦packは読み込めない');
@@ -92,6 +96,7 @@ export async function verifyEphemerisPayload(decoded: DecodedPack): Promise<void
   );
 }
 
+// バイト列を解いて payload を照合してから暦を組む。照合に通らなければ PackFormatError。
 export async function loadPackEphemeris(
   bytes: Uint8Array, epoch: TdbJulianDate,
 ): Promise<PackEphemeris> {

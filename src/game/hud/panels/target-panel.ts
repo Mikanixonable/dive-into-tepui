@@ -4,7 +4,7 @@ import { fmtDist, fmtSpeed, setElementText } from '../utils';
 import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../orbit/orbit-info';
 import { Ship } from '../../dynamic/dynamic-entity/ship';
-import { Enemy } from '../../dynamic/dynamic-entity/enemy';
+import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { Game } from '../../game';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
@@ -61,7 +61,7 @@ export class TargetPanel {
       // 基地は装甲を持たないので、ロック中は満タン相当の目安値を出す。
       hp: target instanceof Ship ? target.hp : BASE_ARMOR_PLACEHOLDER,
       maxHp: target instanceof Ship ? target.maxHp : BASE_ARMOR_PLACEHOLDER,
-      protein: target instanceof Enemy ? target.proteinHudSnapshot : null,
+      protein: target instanceof ProteinEnemy ? target.hudSnapshot : null,
     });
   }
 
