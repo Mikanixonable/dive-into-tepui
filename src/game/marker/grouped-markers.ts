@@ -11,9 +11,7 @@ import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { ActiveCelestialLabel } from '../camera/focus-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-glyphs';
-import type { CelestialBody } from '../../physics/celestial-body';
-import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
-import type { Ephemeris } from '../../physics/ephemeris';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import { resolveCrowdingWinner } from './crowding';
 import * as C from '../const';
 
@@ -79,12 +77,8 @@ export class GroupedMarkers {
     overviewMode: boolean,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
-    celestialBodies: readonly CelestialBody[] = [],
+    celestialBodies: readonly CelestialMotion[] = [],
     cameraPos?: Vec3,
-    frame?: ReferenceFrame,
-    displayTime?: number,
-    ephemeris?: Ephemeris,
-    frameAnchors?: FrameAnchorSource,
   ): void {
     const placed: PlacedItem[] = items.map(
       (item) => ({ item, p: project(item.pos), dist: cameraPos ? len(sub(item.pos, cameraPos)) : undefined, count: 1, labeled: true }),
@@ -105,7 +99,7 @@ export class GroupedMarkers {
       }
       const label = m.labeled ? this.label(m.item, m.count, m.groupMembers) : '';
       const rotationDeg = overviewMode
-        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, celestialBodies, frame, displayTime, ephemeris, frameAnchors)
+        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, celestialBodies)
         : undefined;
       this.markerManager.set(
         m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, opacity, m.item.color,

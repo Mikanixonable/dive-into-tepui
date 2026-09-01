@@ -14,8 +14,8 @@ function swept(
 ): SweptSphereContact | null {
   const av = sub(a1, a0), bv = sub(b1, b0);
   return sweptSphereContact(
-    kinematicState(0, a0, av), kinematicState(1, a1, av),
-    kinematicState(0, b0, bv), kinematicState(1, b1, bv),
+    kinematicState<'eci'>(0, a0, av), kinematicState<'eci'>(1, a1, av),
+    kinematicState<'eci'>(0, b0, bv), kinematicState<'eci'>(1, b1, bv),
     radiusSum);
 }
 
@@ -26,7 +26,7 @@ function sweptCurved(
 ): SweptSphereContact | null {
   const bv = scale(sub(b1, b0), 1 / (next.t - prev.t));
   return sweptSphereContact(
-    prev, next, kinematicState(prev.t, b0, bv), kinematicState(next.t, b1, bv), radiusSum);
+    prev, next, kinematicState<'eci'>(prev.t, b0, bv), kinematicState<'eci'>(next.t, b1, bv), radiusSum);
 }
 
 export function register(): void {
@@ -73,8 +73,8 @@ export function register(): void {
   });
 
   test('Hermite swept sphere: detects a moving-body pass when both endpoints are outside', () => {
-    const prev = kinematicState(0, v3(-10, 0, 0), v3(20, 0, 0));
-    const next = kinematicState(1, v3(10, 0, 0), v3(20, 0, 0));
+    const prev = kinematicState<'eci'>(0, v3(-10, 0, 0), v3(20, 0, 0));
+    const next = kinematicState<'eci'>(1, v3(10, 0, 0), v3(20, 0, 0));
     const toi = sweptCurved(prev, next, v3(0, -10, 0), v3(0, 10, 0), 2)?.crossing?.toi;
     assert.ok(toi !== undefined);
     const expected = 0.5 - Math.sqrt(2) / 20;
@@ -83,8 +83,8 @@ export function register(): void {
 
   // 端点の速度を接線に取るので、弦をたどるより遅く抜ける。脱出の瞬間も曲線の上で解く。
   test('Hermite swept sphere: 始点で重なっている区間は曲線の上で脱出を解く', () => {
-    const prev = kinematicState(0, v3(1, 0, 0), v3(1, 0, 0));
-    const next = kinematicState(1, v3(3, 0, 0), v3(1, 0, 0));
+    const prev = kinematicState<'eci'>(0, v3(1, 0, 0), v3(1, 0, 0));
+    const next = kinematicState<'eci'>(1, v3(3, 0, 0), v3(1, 0, 0));
     const contact = sweptCurved(prev, next, v3(), v3(), 2);
     assert.ok(contact);
     assert.equal(contact.startsInside, true);
@@ -95,16 +95,16 @@ export function register(): void {
   // 弦は天体から離れているのに Hermite 曲線が膨らんで天体を掠める配置。掃引前の棄却が
   // 弦の長さで近似されていると、この通過を取りこぼす。
   test('Hermite swept sphere: 弦は外れていても曲線が膨らんで届く通過を捕まえる', () => {
-    const prev = kinematicState(0, v3(-1000, 900, 0), v3(3000, -5400, 0));
-    const next = kinematicState(1, v3(1000, 900, 0), v3(3000, 5400, 0));
+    const prev = kinematicState<'eci'>(0, v3(-1000, 900, 0), v3(3000, -5400, 0));
+    const next = kinematicState<'eci'>(1, v3(1000, 900, 0), v3(3000, 5400, 0));
     assert.equal(swept(v3(), v3(), v3(-1000, 900, 0), v3(1000, 900, 0), 700)?.crossing, null);
     const toi = sweptCurved(prev, next, v3(), v3(), 700)?.crossing?.toi;
     assert.ok(toi !== undefined && toi > 0 && toi < 1, `unexpected bulge TOI: ${toi}`);
   });
 
   test('Hermite swept sphere: 制御点の箱ごと球から離れた天体は跨ぎなし', () => {
-    const prev = kinematicState(0, v3(-10, 0, 0), v3(20, 0, 0));
-    const next = kinematicState(1, v3(10, 0, 0), v3(20, 0, 0));
+    const prev = kinematicState<'eci'>(0, v3(-10, 0, 0), v3(20, 0, 0));
+    const next = kinematicState<'eci'>(1, v3(10, 0, 0), v3(20, 0, 0));
     assert.equal(sweptCurved(prev, next, v3(1e9, 0, 0), v3(1e9, 0, 0), 1000)?.crossing, null);
   });
 

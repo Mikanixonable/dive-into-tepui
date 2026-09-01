@@ -4,7 +4,6 @@
 import { AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../../save/save-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../utils';
-import { celestialBodyName } from '../frame/frame-labels';
 import { Button, Meter, TabBar } from '../widgets';
 import { injectOnce } from '../widgets/inject-style';
 import { smallBtn, stageLabel } from './save-browser-shared';
@@ -62,6 +61,8 @@ export interface SnapshotPaneCallbacks {
   readonly onRenameSnapshot: (snapshotId: string) => void;
   readonly onDeleteSnapshot: (snapshotId: string) => void;
   readonly onBranch: (slotId: string, snapshotId: string) => void;
+  // 天体 id → 表示名。実行中の周回の celestialSystem から引く(周回が無ければ id のまま)。
+  readonly nameOf: (id: string) => string;
 }
 
 // 右ペイン(スナップショット一覧)を組み立てる。slot が null なら選択待ちの案内だけを返す。
@@ -186,7 +187,7 @@ function buildSnapshotCard(
 
   const row2 = document.createElement('div');
   row2.className = 'sb-snap-row';
-  row2.textContent = `${celestialBodyName(s.centerBodyId)} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
+  row2.textContent = `${callbacks.nameOf(s.centerBodyId)} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
   card.appendChild(row2);
 
   // このパネルの主役はセーブ操作であって HP 表示ではないため、常にモノトーンで塗る(danger 色は使わない)。

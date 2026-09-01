@@ -7,6 +7,7 @@
 // その要素が絵から消える」もの — 単独のメッシュ/描画物として存在しない要素は切れない。
 // 選択肢で持つものは、品質と負荷を刻んで釣り合わせる値か、絵の見え方を選ばせる値。
 
+import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
 const STORAGE_KEY = 'tepui.settings.graphics';
@@ -47,10 +48,6 @@ type ChoiceOption = {
 };
 
 export type GraphicsOption = ToggleOption | ChoiceOption;
-
-// 大気の描き方の段。上げるほど、大気ぜんぶへ配れる精細さの合計が増える。
-export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
-export type AtmosphereQuality = (typeof ATMOSPHERE_QUALITY)[keyof typeof ATMOSPHERE_QUALITY];
 
 export const GRAPHICS_OPTIONS = {
   // devicePixelRatio へ掛ける描画解像度の倍率。

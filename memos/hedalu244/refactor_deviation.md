@@ -27,7 +27,7 @@
 
 ### 1-1. `FutureCelestialBodyProvider` が「クラスの契約」なのに関数型の `type`
 
-`src/game/simulation/arc-bodies.ts:18-22`
+`src/game/dynamic/arc-celestial-bodies.ts:18-22`
 
 ```ts
 export type FutureCelestialBodyProvider = {
@@ -39,7 +39,7 @@ export type FutureCelestialBodyProvider = {
 実装しているのは `FutureCelestialBodies` というクラス1つだけ
 (`src/game/simulation/future-celestial-bodies.ts:6` で `implements` している)。
 
-**既存の CODING-RULE 1.11 に既に違反している** — 「オブジェクトの公開契約と、クラスが実装できる
+**既存の CODING-RULE 1.12 に既に違反している** — 「オブジェクトの公開契約と、クラスが実装できる
 契約には `interface` を使う。union、intersection、mapped type、関数型には `type` を使う。」
 メソッドを持つ `interface` にすれば、下の 2-1 の「クロージャではなく参照を渡す」とも揃う。
 なお `Ctx` 型ほどの害はない — 寄せ集めではなく、実装が1つに定まった契約なので。
@@ -57,7 +57,7 @@ export type FutureCelestialBodyProvider = {
 
 ### 2-1. 渡すのはクロージャではなくオブジェクトの参照 【違反あり】
 
-出典: 旧 `refactor-fixed` §7 / `naming.md` A-7。現在の CODING-RULE 1.11 には
+出典: 旧 `refactor-fixed` §7 / `naming.md` A-7。現在の CODING-RULE 1.12 には
 **弱められた1行だけ**が残っている:
 
 > - **不要なクロージャ注入は行わない。** 特定のオブジェクトに影響を及ぼしたいなら、その mutable な
@@ -91,7 +91,7 @@ export type FutureCelestialBodyProvider = {
   ```
   `(r, t) => this.planDisplay.path.projectPoint(r, t)` は旧規則が名指しした
   `(t) => other.sample(t)` そのもの。受け側は `src/game/plan/plan-axis-drag.ts:19-23`。
-- `src/game/simulation/arc-bodies.ts:18-22` — 上の 1-1 と同じ箇所。実装が1クラスに定まっている
+- `src/game/dynamic/arc-celestial-bodies.ts:18-22` — 上の 1-1 と同じ箇所。実装が1クラスに定まっている
   契約を、関数プロパティ2本の袋にしている。
 
 > **注記**: `ProjectFn` 例外は現行コードにも生きている(`CameraSystem.activeCameraProjection`)。
@@ -158,7 +158,7 @@ CODING-RULE.md には `_` 接頭辞の規約が**どちらの意味でも1行も
   `src/game/camera/camera-system.ts:156-157` も同じ形。
 - `src/game/camera/chase-camera.ts:36` — `private readonly _hud: Hud`。:77 で使うが、
   対になる public getter `hud` は無い。**getter の裏当てでもない。**
-- `src/game/game-entity/bullet.ts:39` — `private readonly _worldSfx: WorldSfx`。同上(:106 で使用、
+- `src/game/dynamic/dynamic-entity/bullet.ts:39` — `private readonly _worldSfx: WorldSfx`。同上(:106 で使用、
   getter 無し)。
 
 これは規則を復元するだけでは決まらない — **`_` にどちらの意味を割り当てるか(あるいは両方やめるか)

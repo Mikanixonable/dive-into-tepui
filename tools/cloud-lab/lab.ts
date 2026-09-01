@@ -3,7 +3,8 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, If, screenUV, vec2, vec3 } from 'three/tsl';
-import { EARTH_TEXTURES } from '../../src/render/celestial-textures';
+// 地球の気候の事前分布。tools/export-climate.mjs が焼く。
+import climateTextureUrl from '../../src/assets/earth-climate.png';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
 import { EquirectProjection, OrthographicCap } from '../../src/render/cloud/field-projection';
 import { pixelsToPngDataUrl } from '../lab-png';
@@ -53,7 +54,7 @@ export class CloudLabCanvas {
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     await renderer.init();
-    const climate = await ClimateMap.load(EARTH_TEXTURES.climateUrl);
+    const climate = await ClimateMap.load(climateTextureUrl);
     return new CloudLabCanvas(renderer, climate);
   }
 

@@ -1,6 +1,6 @@
-import { AnyPart } from '../game-entity/parts';
-import type { EnemyKind } from '../game-entity/enemy-kind';
-import type { FormationRole } from '../game-entity/enemy-formation';
+import { AnyPart } from '../dynamic/dynamic-entity/parts';
+import type { EnemyKind } from '../dynamic/dynamic-entity/enemy-kind';
+import type { FormationRole } from '../dynamic/dynamic-entity/enemy-formation';
 import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
@@ -226,9 +226,11 @@ export interface SnapshotMeta {
 // このフィールドは後方互換のため GameSaveData では任意とする。旧形式には無く、
 // 旧スナップショットは SnapshotService が従来どおり復元を試みる。
 export interface EphemerisContext {
+  // このランの元期(simTime=0 が指す絶対時刻)。読み込み側はこれを継承する。
   epochJdTdb: number;
-  profileId: string;
-  packId: string;
+  // その元期が選ぶ暦プロファイルと暦パック。数値暦を持たない時代では両方 null。
+  profileId: string | null;
+  packId: string | null;
   packFormatVersion: number;
 }
 
@@ -330,7 +332,10 @@ export interface GameSaveData {
   version: number;
   stageId: string;
   simTime: number;
-  /** 旧スナップショットには無い。存在する場合は現在の暦と一致しなければ復元しない。 */
+  /**
+   * そのランの元期と、それが選ぶ暦データの識別。旧スナップショットには無い。
+   * 元期は読み込み側が継承する値で、照合するのは暦データのほうだけ。
+   */
   ephemerisContext?: EphemerisContext;
   phaseOffsets: Partial<Record<string, number>>;
   /** 旧スナップショットには無い。存在しなければ地球の自転初期位相は復元されない。 */

@@ -2,7 +2,6 @@
 // 自機の有無に関係なく常に出す画面全体の状態。
 import { SyncThrottle } from '../sync-throttle';
 import { fmtDateTime, fmtElapsedUnits, setElementText, fmtTime } from '../utils';
-import { SIM_EPOCH_SEC } from '../../simulation/sim-epoch';
 import type { Game } from '../../game';
 import * as C from '../../const';
 
@@ -15,7 +14,8 @@ export class TopBar {
 
   // MET を毎フレーム、時間加速と NODE WARP の残りを間引いて反映する。
   public sync(game: Game): void {
-    setElementText(this.els, 'met', `${fmtDateTime(SIM_EPOCH_SEC + game.simulator.simTime)} / T+ ${fmtElapsedUnits(game.simulator.simTime)}`);
+    const epochUnixSec = game.displayWindowManager.current.epochUnixSec;
+    setElementText(this.els, 'met', `${fmtDateTime(epochUnixSec + game.simulator.simTime)} / T+ ${fmtElapsedUnits(game.simulator.simTime)}`);
 
     if (!this.throttle.due()) return;
 

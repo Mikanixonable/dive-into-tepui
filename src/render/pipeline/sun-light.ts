@@ -3,27 +3,31 @@
 // 値は毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
-import { AU } from '../../physics/planet-orbit';
+import { AU } from '../../physics/astronomical-unit';
 import type { ColorUniform, FloatNode, FloatUniform, Vec3Uniform } from '../tsl-types';
 
-// 描画が扱う放射照度の単位。1 天文単位で太陽から届く放射照度をこの値に取る。
+// 描画が扱う放射照度の目盛り。1 天文単位で太陽から届く放射照度をこの値に取る。
 //
 // 単位は SI ではなく `SOLAR_CONSTANT / π = 433.2 W/m²` で、1 天文単位での値が π になるよう
 // 選んである。ランバート BRDF の 1/π がこれを打ち消すので、**太陽に正対したアルベド A の
 // 完全拡散面は 1 天文単位で表示値 A になる** — 露出係数を持たずに済むのはこのため。
+// 恒星ごとの色と放射強度は恒星の側が持ち、set() で渡される。
 export const SUN_IRRADIANCE_1AU = Math.PI;
 
-// 恒星の放射強度。SUN_IRRADIANCE_1AU は 1 天文単位で受ける放射照度なので、そのぶんの逆二乗を
-// 戻したもの。set() の intensity にはこれを渡す。
-export const SUN_RADIANT_INTENSITY = SUN_IRRADIANCE_1AU * AU * AU;
+// 目盛りの基準になる恒星の放射強度 — 1 天文単位で SUN_IRRADIANCE_1AU を届ける量で、上の
+// 目盛りの定義を放射強度として書き直したもの。放射強度が分かっていない恒星にもこれを与える。
+export const REFERENCE_STAR_RADIANT_INTENSITY = SUN_IRRADIANCE_1AU * AU * AU;
 
-// 恒星から distance [m] の点が受ける放射照度(CPU 側で引く版)。
-export function sunIrradianceAtDistance(distance: number): number {
-  return SUN_RADIANT_INTENSITY / (distance * distance);
+// 恒星を持たない星系で仮に置く光源。**基準強度どおりの放射照度が届く距離**へ、色の手がかりが
+// 無いので無彩色で、半径 0(誰も遮らない)で置く。
+export const STARLESS_SUN_DISTANCE = AU;
+export const STARLESS_SUN_RADIUS = 0;
+export const STARLESS_SUN_COLOR = new THREE.Color(1, 1, 1);
+
+// 放射強度 intensity の恒星から distance [m] の点が受ける放射照度(CPU 側で引く版)。
+export function irradianceAtDistance(intensity: number, distance: number): number {
+  return intensity / (distance * distance);
 }
-
-// 恒星光の色。5772 K(太陽の実効温度)の黒体を sRGB へ写した色にほぼ一致する。
-export const SUN_COLOR = new THREE.Color(0xfff4e0);
 
 export class SunLight {
   private readonly positionUniform: Vec3Uniform;

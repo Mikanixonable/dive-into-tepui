@@ -25,7 +25,7 @@ Orbit パネル(戦闘ビュー左レールの常設パネル `#hud-orbit`)か�
 
 | 要るもの | 既存 | 判定 |
 | --- | --- | --- |
-| 将来時刻の状態 | `DynamicTrajectory.extrapolatedAt(t, centerStateAtT)`(`src/physics/dynamic-trajectory.ts:112`)。艦からは `entity.predicted`(`src/game/game-entity/game-entity.ts:134`)で辿る | **そのまま呼ぶ。伝播コードを新規に書かない** |
+| 将来時刻の状態 | `DynamicTrajectory.extrapolatedAt(t, centerStateAtT)`(`src/physics/dynamic-trajectory.ts:112`)。艦からは `entity.predicted`(`src/game/dynamic/dynamic-entity/dynamic-entity.ts:134`)で辿る | **そのまま呼ぶ。伝播コードを新規に書かない** |
 | 中心天体の将来位置 | `ephemeris.stateOf(id, t)`。`src/game/trajectory-line.ts:54` `extrapolatedTailStates()` が「相対外挿+中心を足し戻す」の見本 | 同じ形を踏襲 |
 | 高度の定義 | `orbitInfo()`(`src/game/hud/orbit-info.ts:25`)の `len(rel.r) - attractor.radius` | 時間軸へ拡張して再利用 |
 | 主天体の決定 | `strongestAttractor(r, celestialBodies)`(`src/physics/celestial-body.ts:103`) | そのまま |
@@ -147,7 +147,7 @@ DraggableWindow(title: '軌道分析', clipped: true, tempWindowGroup: 未指定
 - 解像度は `devicePixelRatio` を掛けたバッキングストアで持ち、CSS 側は幅 100 % ×
   固定アスペクト。`onViewportChange` でサイズを取り直す。
 - **色は `src/game/theme.ts` の TypeScript 側トークン定数を直接読む**(`TEXT_DIM`, `ACCENT`,
-  `EDGE` など)。canvas にカスタムプロパティは届かないので、これは CODING-RULE 1.12 が
+  `EDGE` など)。canvas にカスタムプロパティは届かないので、これは CODING-RULE 1.13 が
   認めている経路そのもの。**リテラルの色を書かない。**
 - 描くもの: 枠と軸、横軸目盛(`chooseTickInterval` の間隔+`fmtDuration`)、縦軸目盛
   (指定幅を等分)、折れ線1本、現在位置(t=0)の点。
@@ -306,7 +306,7 @@ Step 1 は `PropertyWindow` の全域に触るので配らない。
 
 - `extrapolatedRelativeState` は毎回ケプラー方程式を解く(反復 ≒ 10 回、三角関数を数回)。
   ≒ 1 µs/点。
-- `ephemeris.stateOf` は解析暦の評価。≒ 1 µs/点(登録天体1つぶん)。
+- `CelestialMotion.stateAt` は天体1体の評価。≒ 1 µs/点(登録天体1つぶん)。
 - 高度タブ = 200 点 × 2 µs ≒ **0.4 ms**。接近タブ = 双方ぶんで **0.8 ms**。
 - canvas の描画は 200 セグメントの `lineTo` + 目盛 20 本 ≒ 0.1 ms。
 

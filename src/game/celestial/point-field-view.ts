@@ -4,25 +4,9 @@
 // 大きく異なるため — 群ごとの見た目は表示専用のこの層だけが持ち、point-field.ts の分布定義は
 // THREE 非依存に保つ。
 import * as THREE from 'three/webgpu';
-import { Ephemeris } from '../../physics/ephemeris';
 import { Vec3, v3 } from '../../math/vec3';
 import { FloatingOrigin } from '../camera/floating-origin';
-import {
-  PointElements, PointField, PointFieldGroup, generatePointField, pointPositionAt,
-} from './point-field';
-
-// 群ごとの描画半径 [m] と色。カイパーベルト・散乱円盤はメインベルト・トロヤ群/ヒルダ群より
-// 一桁遠いので、同じ描画半径では見えなくなる分だけ大きくしてある。
-const GROUP_VIEW: Readonly<Record<string, { readonly drawRadius: number; readonly color: number }>> = {
-  'main-belt': { drawRadius: 3e7, color: 0x777777 },
-  'trojan-l4': { drawRadius: 3e7, color: 0x777777 },
-  'trojan-l5': { drawRadius: 3e7, color: 0x777777 },
-  hilda: { drawRadius: 3e7, color: 0x777777 },
-  'kuiper-cold': { drawRadius: 1.2e8, color: 0x5588aa },
-  'kuiper-hot': { drawRadius: 1.2e8, color: 0x5588aa },
-  'scattered-disk': { drawRadius: 1.2e8, color: 0xaa8855 },
-};
-const FALLBACK_VIEW = { drawRadius: 3e7, color: 0x777777 };
+import { PointElements, PointField, PointFieldGroup, pointPositionAt } from './point-field';
 
 // 1フレームで位置を引き直す点の割合の逆数。外側の群ほど公転が遅いので、マップのズーム域では
 // 数フレーム遅れた位置と現在位置は1画素も違わない。点数がメインベルト+トロヤ群単体の頃の倍に
@@ -52,12 +36,11 @@ class PointFieldGroupView {
   constructor(group: PointFieldGroup) {
     this.points = group.points;
     this.positions = this.points.map(() => v3(0, 0, 0));
-    const view = GROUP_VIEW[group.id] ?? FALLBACK_VIEW;
     // 正四面体を使うのは、全インスタンスが同じ姿勢で並ぶため — 平板だと視線方向によっては
     // 群全体が同時に消える。
-    const geom = new THREE.TetrahedronGeometry(view.drawRadius);
-    this.material = new THREE.MeshBasicMaterial({ color: view.color, depthWrite: false });
-    this.baseColor = new THREE.Color(view.color);
+    const geom = new THREE.TetrahedronGeometry(group.drawRadius);
+    this.material = new THREE.MeshBasicMaterial({ color: group.color, depthWrite: false });
+    this.baseColor = new THREE.Color(group.color);
     this.mesh = new THREE.InstancedMesh(geom, this.material, this.points.length);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     // 個体が群の軌道全域(main-belt〜kuiper-belt は AU スケール)へ散らばるため、
@@ -116,31 +99,32 @@ class PointFieldGroupView {
 }
 
 export class PointFieldView {
-  private readonly groups: readonly PointFieldGroupView[];
-  // 現在のレジストリに恒星が実在するか。無ければ点群は太陽中心の座標を持てないので非表示にする。
+  // 群ごとの描画。**11,200点の軌道要素と instance buffer は build まで確保しない** —
+  // マップを一度も開かないプレイでは要らないため。
+  private groups: readonly PointFieldGroupView[] = [];
+  // 現在の星系に恒星が実在するか。無ければ点群は太陽中心の座標を持てないので非表示にする。
   private hasStar = true;
   // update は map の表示中だけ呼ばれるため、false から true へ戻るフレームを再入場とみなす。
   private mapActive = false;
 
-  // 点群を生成し、群ごとに描画用の InstancedMesh を組む。
-  constructor(field: PointField = generatePointField()) {
-    this.groups = field.map((group) => new PointFieldGroupView(group));
-  }
+  // field はこの星系に付随する生成済みの点群。どんな分布から作られたかはここでは問わない。
+  constructor(private readonly field: PointField) {}
 
-  // 点群をシーンへ登録する。
+  // 群ごとに描画用の InstancedMesh を組んでシーンへ登録する。
   build(scene: THREE.Scene): void {
+    this.groups = this.field.map((group) => new PointFieldGroupView(group));
     for (const group of this.groups) group.build(scene);
   }
 
-  // 表示時刻 t の点の位置を引き直す。広範囲視点でないときは何もしない — 戦闘視点では
-  // 描かれないので位置を求める意味がない。
-  update(t: number, overviewMode: boolean, ephemeris: Ephemeris): void {
-    this.hasStar = ephemeris.starId !== null;
-    if (!overviewMode || ephemeris.starId === null) {
+  // 表示時刻 t の点の位置を引き直す。starPos はこの星系の恒星の ECI 位置で、恒星を持たない星系では
+  // null。広範囲視点でないときは何もしない — 戦闘視点では描かれないので位置を求める意味がない。
+  update(t: number, overviewMode: boolean, starPos: Vec3 | null): void {
+    this.hasStar = starPos !== null;
+    if (!overviewMode || starPos === null) {
       this.mapActive = false;
       return;
     }
-    const sunPos = ephemeris.positionOf(ephemeris.starId, t);
+    const sunPos = starPos;
     const reentered = !this.mapActive;
     this.mapActive = true;
     for (const group of this.groups) group.update(t, sunPos, reentered);

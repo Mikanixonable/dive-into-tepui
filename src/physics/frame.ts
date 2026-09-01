@@ -5,13 +5,12 @@
 // 「方向」(変位・速度差・上方向など。回転のみで変換)を取り違えると静かに壊れるため、
 // この2つを別の型にしている。
 //
-// 座標系の中身(その時刻の原点・姿勢・角速度 = FrameTransform)は ReferenceFrames が組む。
-// ここは変換値を受け取って変換するだけの純関数群で、ReferenceFrames を import しない —
-// これにより frame.ts と reference-frames.ts の間に循環依存が生まれない。
+// 座標系の中身(その時刻の原点・姿勢・角速度 = FrameTransform)は game/celestial の
+// ReferenceFrames が組む。ここは渡された FrameTransform だけで値を変換する純関数群。
 //
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
-import { CelestialBody } from './celestial-body';
+import type { CelestialMotion } from './celestial-motion';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { add, cross, sub, v3, Vec3 } from '../math/vec3';
 import { Quat, qInvert, qRotate } from './attitude';
@@ -48,7 +47,9 @@ export function frameRoleOf(id: string): FrameRole | null {
 // これ越しにしか未登録の基準へ触れない。
 export interface FrameAnchorSource {
   // このフレームの重力天体一覧。
-  readonly bodies: readonly CelestialBody[];
+  readonly bodies: readonly CelestialMotion[];
+  // bodies の位置を厳密に引く時刻。
+  readonly bodiesPivot: number;
   // 登録天体でない基準(生存中の重力天体・機体・役割トークン)の ECI 状態。解決できなければ null。
   stateOf(id: string, t: number): KinematicState | null;
   // その基準が公転している主天体。公転回転系を組めないなら null。
@@ -81,7 +82,7 @@ export type FrameKinematicState = { r: Vec3; v: Vec3; } & { readonly __tag: 'fra
 
 // FrameKinematicState を組み立てる、toFrameState 以外で唯一信頼できる入口。軌道要素から解析的に
 // 求めた近地点位置のように「すでに座標系相対と分かっている r/v」を toInertialState へ渡すために
-// 使う — kinematicState() が KinematicState に対して果たす役割と同じ。
+// 使う — kinematicState<'eci'>() が KinematicState に対して果たす役割と同じ。
 export function frameKinematicState(r: Vec3, v: Vec3): FrameKinematicState {
   return { r, v } as FrameKinematicState;
 }
@@ -134,7 +135,7 @@ export function toFrameState(tf: FrameTransform, s: KinematicState): FrameKinema
 export function toInertialState(tf: FrameTransform, t: number, s: FrameKinematicState): KinematicState {
   const r = add(qRotate(tf.q, s.r), tf.origin);
   const v = add(add(tf.originVel, qRotate(tf.q, s.v)), cross(tf.omega, sub(r, tf.origin)));
-  return kinematicState(t, r, v);
+  return kinematicState<'eci'>(t, r, v);
 }
 
 // 時刻 t における位置 r (慣性系) を、表示時刻 displayTime の frame 基準系に un-bake して求める
@@ -144,4 +145,11 @@ export function unbakeToDisplayPoint(
   r: Vec3,
 ): Vec3 {
   return toInertialPoint(unbakeTf, toFramePoint(pointTf, r));
+}
+
+// center を原点とする ECI 恒等姿勢の座標系変換。ReferenceFrame
+// ({center: center.id, rotatingWith: null}) と等価な変換を、天体1体から直に組む。
+export function frameOfCelestialBody(center: CelestialMotion, pivot: number): FrameTransform {
+  const state = center.stateAt(pivot);
+  return { origin: state.r, originVel: state.v, q: { x: 0, y: 0, z: 0, w: 1 }, omega: v3() };
 }

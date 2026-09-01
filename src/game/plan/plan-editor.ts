@@ -6,7 +6,7 @@ import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../
 import { OrbitalElements } from '../../physics/elements';
 import { Projected } from '../../math/projection';
 import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
@@ -22,15 +22,18 @@ import { PlanGizmo3D } from './plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan, PlanData } from './plan';
 import { PlanDisplay } from './plan-display';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
-import type { Controllable } from '../game-entity/controllable';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import { focusPoint } from '../camera/focus-target';
-import { CelestialBody, bodyAnchorSource, orbitalElementsOf, frameOfCelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
+import { CelestialMotion } from '../../physics/celestial-motion';
+import { orbitalElementsOf } from '../../physics/elements';
+import { frameOfCelestialBody } from '../../physics/frame';
 import { FrameAnchorSource, toFrameState } from '../../physics/frame';
-import type { PredictedArc } from '../simulation/predicted-arc';
-import type { DisplayWindow } from '../display-window-manager';
+import type { PredictedArc } from '../dynamic/predicted-arc';
+import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
 export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
@@ -96,14 +99,14 @@ export class PlanEditor {
     private readonly _hud: Hud,
     private readonly _uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
     private readonly activePlayers: ActivePlayerController,
     private readonly displayDuration: DisplayDurationSource,
     private readonly frameControls: FrameControls,
   ) {
-    this.planDisplay = new PlanDisplay(scene, markerManager, ephemeris, displayDuration);
+    this.planDisplay = new PlanDisplay(scene, markerManager, celestialSystem, displayDuration);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup, this._hud.overlayManager);
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup, this._hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D();
@@ -155,7 +158,7 @@ export class PlanEditor {
     g.onMenuFocus = (idx) => {
       const n = this.plan?.nodes[idx];
       if (n) this.frameControls.setFocus(
-        focusPoint(this.ephemeris, this.ephemeris.inertialFrame, n.r, n.t, bodyAnchorSource([])));
+        focusPoint(this.celestialSystem.frames, this.celestialSystem.frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
     };
   }
 
@@ -341,7 +344,7 @@ export class PlanEditor {
     const arriving = this.planDisplay.path.arrivalStates();
     const picked = this.planDisplay.path.nearestSample(
       clientX, clientY, Infinity, node.t,
-      ship.plan.nodeTimeRange(idx, ship.state, this.ephemeris, this.displayDuration),
+      ship.plan.nodeTimeRange(idx, ship.state, this.celestialSystem, this.displayDuration),
     );
     if (picked) {
       this.selectedNode = ship.plan.replaceNode(
@@ -363,7 +366,7 @@ export class PlanEditor {
     if (!node) return;
     const hasDownstreamNodes = idx < plan.nodes.length - 1;
     const targetT = this.simTime + secondsFromNow;
-    const range = plan.nodeTimeRange(idx, ship.state, this.ephemeris, this.displayDuration);
+    const range = plan.nodeTimeRange(idx, ship.state, this.celestialSystem, this.displayDuration);
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
       this._hud.hint('ノード位置は許可された軌道区間内で指定してください');
@@ -405,7 +408,8 @@ export class PlanEditor {
     // 含んだ速度になっているので、加算前(プレバーン)の速度へ戻してから改めて Δv を組み立てる。
     // 置ける時刻範囲は直前の状態から表示期間ぶん伸びるため、2つ以上先の arc の
     // サンプルが範囲に入りうる — 自ノードぶんだけ引くと中間ノードの Δv が残る。
-    let baseV = sample.v;
+    // 速度 − Δv = 速度。演算の途中は札の落ちた素の Vec3 になる。
+    let baseV: Vec3 = sample.v;
     for (let i = idx; i < arcIdx; i++) {
       const passed = plan.nodes[i];
       const passedArr = arriving[i];
@@ -421,7 +425,7 @@ export class PlanEditor {
       dot(dvWorldOld, axesOld.radOut),
     );
 
-    const newPreBurnState = kinematicState(sample.t, sample.r, baseV);
+    const newPreBurnState = kinematicState<'eci'>(sample.t, sample.r, baseV);
     const axesNew = orbitAxes(this.bodyState(newPreBurnState));
     const newDvWorld = v3(
       axesNew.pro.x * dvLocal.x + axesNew.nrm.x * dvLocal.y + axesNew.radOut.x * dvLocal.z,
@@ -429,7 +433,7 @@ export class PlanEditor {
       axesNew.pro.z * dvLocal.x + axesNew.nrm.z * dvLocal.y + axesNew.radOut.z * dvLocal.z,
     );
 
-    return kinematicState(sample.t, sample.r, add(baseV, newDvWorld));
+    return kinematicState<'eci'>(sample.t, sample.r, add(baseV, newDvWorld));
   }
 
   // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv を加算する。ドラッグ・ラッチ・
@@ -461,7 +465,7 @@ export class PlanEditor {
     // 入力は「到着時の軌道基準枠」を基準とした絶対量とする。
     const bodyArr = this.bodyState(arr);
     const dvWorld = fromOrbitAxes(bodyArr, v3(pro, nrm, rad));
-    this.selectedNode = plan.replaceNode(this.selectedNodeIdx, kinematicState(node.t, node.r, add(arr.v, dvWorld)));
+    this.selectedNode = plan.replaceNode(this.selectedNodeIdx, kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld)));
     this._uiSfx.warp();
   }
 
@@ -482,14 +486,15 @@ export class PlanEditor {
 
   // center 相対状態。orbitAxes が KinematicState を要求するので、座標系相対の r/v を
   // state の時刻のまま KinematicState へ包み直す。
-  private relativeToBody(state: KinematicState, center: CelestialBody): KinematicState {
-    const rel = toFrameState(frameOfCelestialBody(center), state);
-    return kinematicState(state.t, rel.r, rel.v);
+  private relativeToBody(state: KinematicState, center: CelestialMotion): KinematicState {
+    const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
+    return kinematicState<'eci'>(state.t, rel.r, rel.v);
   }
 
   // 軌道要素とΔv方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
   private bodyState(state: KinematicState): KinematicState {
-    return this.relativeToBody(state, strongestAttractor(state.r, this.ephemeris.celestialBodiesAt(state.t)));
+    return this.relativeToBody(
+      state, strongestAttractor(state.r, this.celestialSystem.celestialMotions, state.t));
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
@@ -597,7 +602,8 @@ export class PlanEditor {
     let nodeSecondsFromNow: number | null = null;
     // 高度・大気圏警告の基準は、選択中ノード(無ければ計画の起点)で最も強く引く天体。
     const centerState = (this.selectedNodeIdx !== null ? plan.nodes[this.selectedNodeIdx] : null) ?? plan.anchorOr(ship.state);
-    const center = strongestAttractor(centerState.r, this.ephemeris.celestialBodiesAt(centerState.t));
+    const center = strongestAttractor(
+      centerState.r, this.celestialSystem.celestialMotions, centerState.t);
     if (this.selectedNodeIdx !== null) {
       const node = plan.nodes[this.selectedNodeIdx];
       const arr = arriving[this.selectedNodeIdx];
@@ -605,7 +611,7 @@ export class PlanEditor {
         nodeSecondsFromNow = node.t - simTime;
         const bodyNode = this.relativeToBody(node, center);
         const bodyArr = this.relativeToBody(arr, center);
-        selEl = orbitalElementsOf(node, center);
+        selEl = orbitalElementsOf(node, center, node.t);
 
         // 到着時基準でのローカルΔv成分を計算
         const dvWorld = sub(bodyNode.v, bodyArr.v);
@@ -614,7 +620,7 @@ export class PlanEditor {
       }
     }
     // 大気圏警告は「このゲームで大気を持つのは地球だけ」という物理モデル自体の意図的な
-    // 簡略化に基づく(CLAUDE.md 既述)ので、ECI 原点(ephemeris.originId)ではなく
+    // 簡略化に基づく(CLAUDE.md 既述)ので、ECI 原点ではなく
     // 地球という天体そのものへの一致で判定する — レジストリに地球が無ければ常に false になり、
     // クラッシュも誤警告もしない。
     this.panel.sync(
@@ -647,7 +653,7 @@ export class PlanEditor {
       this.closeMenu();
     }
     this.simTime = displayWindow.simTime;
-    this.planDisplay.update(this.displayedPlan, displayWindow, this.ephemeris, ship, frameAnchors);
+    this.planDisplay.update(this.displayedPlan, displayWindow, this.celestialSystem, ship, frameAnchors);
     this.updateEquatorNodes(displayWindow, frameAnchors);
   }
 
@@ -656,11 +662,9 @@ export class PlanEditor {
   private updateEquatorNodes(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource): void {
     const ship = this.ship;
     if (!ship) return;
-    const timeLabel = {
-      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
-    };
+    const timeLabel = timeLabelSettingOf(displayWindow);
     ship.ensureEquatorNodes(this.markerManager).updateOnPath(
-      displayWindow.frame, displayWindow.displayTime, this.ephemeris, frameAnchors,
+      displayWindow.frame, displayWindow.displayTime, this.celestialSystem, frameAnchors,
       ship.state, this.planDisplay.path.displayedSamples(), timeLabel,
     );
   }

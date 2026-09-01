@@ -2,19 +2,19 @@
 import * as THREE from 'three/webgpu';
 import { qRotate, randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
-import { R_EARTH_EQ } from '../../physics/solar-system/constants';
+import { R_EARTH_EQ } from '../celestial/solar-system/constants';
 import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
-import { Ship } from '../game-entity/ship';
-import { Bullet } from '../game-entity/bullet';
-import type { EntityManager } from '../simulation/entity-manager';
+import { Ship } from '../dynamic/dynamic-entity/ship';
+import { Bullet } from '../dynamic/dynamic-entity/bullet';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { Stage } from '../stages/stage';
@@ -146,8 +146,8 @@ export class PlayerFire {
     dt: number,
     input: Input,
     activeStage: Stage,
-    entities: EntityManager,
-    ephemeris: Ephemeris,
+    entities: DynamicSystem,
+    celestialSystem: CelestialSystem,
   ): void {
     this.tickReloadTimer(dt);
 
@@ -178,7 +178,7 @@ export class PlayerFire {
       return;
     }
 
-    this.fireCycle(activeStage, entities, ephemeris);
+    this.fireCycle(activeStage, entities, celestialSystem);
   }
 
   // クールダウンタイマーを dt だけ減らす。
@@ -190,8 +190,8 @@ export class PlayerFire {
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(
     activeStage: Stage,
-    entities: EntityManager,
-    ephemeris: Ephemeris,
+    entities: DynamicSystem,
+    celestialSystem: CelestialSystem,
   ): void {
     const justStartedFiring = !this.wasFiring;
     this.wasFiring = true;
@@ -211,7 +211,7 @@ export class PlayerFire {
 
     const result = this.consume();
 
-    this.fireGun(activeStage, entities, ephemeris);
+    this.fireGun(activeStage, entities, celestialSystem);
     switch (result) {
       case 'empty':
       case 'normal':
@@ -272,8 +272,8 @@ export class PlayerFire {
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
   private fireGun(
     activeStage: Stage,
-    entities: EntityManager,
-    ephemeris: Ephemeris,
+    entities: DynamicSystem,
+    celestialSystem: CelestialSystem,
   ): void {
     const fwd = qRotate(this.player.att.q, v3(0, 0, 1));
 
@@ -282,9 +282,9 @@ export class PlayerFire {
     this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
     const muzzle = add(this.player.state.r, qRotate(this.player.att.q, v3(mo.x, mo.y, mo.z)));
 
-    this.spawnBullet(this.player, muzzle, fwd, entities, ephemeris);
+    this.spawnBullet(this.player, muzzle, fwd, entities, celestialSystem);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
-    this.player.state = kinematicState(
+    this.player.state = kinematicState<'eci'>(
       this.player.state.t,
       this.player.state.r,
       addScaled(this.player.state.v, fwd, -RECOIL_DV),
@@ -300,15 +300,15 @@ export class PlayerFire {
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, entities: EntityManager, ephemeris: Ephemeris,
+    ship: Ship, muzzle: Vec3, fwd: Vec3, entities: DynamicSystem, celestialSystem: CelestialSystem,
   ): void {
-    const sunDir = ephemeris.sunDirFrom(ship.state.r, ship.state.t);
+    const sunDir = celestialSystem.sunDirFrom(ship.state.r, ship.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
     const bullet = new Bullet(
-      kinematicState(
+      kinematicState<'eci'>(
         ship.state.t,
         addScaled(muzzle, fwd, 1.5),
         addScaled(ship.state.v, dir, ship.averageMuzzleVelocity),
@@ -331,7 +331,7 @@ export class PlayerFire {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const up = qRotate(ship.att.q, v3(0, 1, 0));
     this._fx.spawnCasing(
-      kinematicState(
+      kinematicState<'eci'>(
         ship.state.t,
         add(muzzle, scale(right, -1.4)),
         add(
@@ -350,7 +350,7 @@ export class PlayerFire {
 
   // マズルフラッシュ: 発射した側の砲口の少し先に出す。
   private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3): void {
-    this._fx.spawnMuzzleFlash(kinematicState(ship.state.t, addScaled(muzzle, fwd, 1.2), ship.state.v));
+    this._fx.spawnMuzzleFlash(kinematicState<'eci'>(ship.state.t, addScaled(muzzle, fwd, 1.2), ship.state.v));
   }
 
   // 装着している砲身の温度を dt だけ進める。発砲で入った熱は刻みの分け方に依らず一度だけ
@@ -379,7 +379,7 @@ export class PlayerFire {
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.att.q, v3(0, -1, 0));
     this._fx.spawnBarrel(
-      kinematicState(
+      kinematicState<'eci'>(
         ship.state.t,
         add(ship.state.r, qRotate(ship.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
         add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
@@ -404,7 +404,7 @@ export class PlayerFire {
     const right = qRotate(ship.att.q, v3(1, 0, 0));
     const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));
     this._fx.spawnMagazineFrame(
-      kinematicState(
+      kinematicState<'eci'>(
         ship.state.t,
         portWorld,
         add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),

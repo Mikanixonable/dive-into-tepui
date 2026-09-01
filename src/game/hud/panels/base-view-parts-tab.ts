@@ -1,5 +1,5 @@
-import type { Base, DockedVesselEntry } from '../../game-entity/base';
-import type { AnyPart, Part, RcsTankPart } from '../../game-entity/parts';
+import type { Base, DockedVesselEntry } from '../../dynamic/dynamic-entity/base';
+import type { AnyPart, Part, RcsTankPart } from '../../dynamic/dynamic-entity/parts';
 import { Button, Meter } from '../widgets';
 import type { BasePanel } from './base-view';
 import {
