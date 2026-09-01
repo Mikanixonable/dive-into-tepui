@@ -81,8 +81,8 @@ export class EntityLineManager {
     const playerActualStyleOf = (isActive: boolean): LineStyle => (
       { color: isActive ? palette.accent : COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.3, renderOrder: LINE_RENDER_ORDER.predicted }
     );
-    // 1体分の判定材料から、解析楕円/予測線/過去線の出す/消す/スタイルを決める。ターゲットである間は
-    // 常に asTarget のスタイルで解析楕円を維持し、予測線・過去線には切り替えない。lineVisible は
+    // 1体分の判定材料から、軌道線/予測線/過去線の出す/消す/スタイルを決める。ターゲットである間は
+    // 常に asTarget のスタイルで軌道線を維持し、予測線・過去線には切り替えない。lineVisible は
     // ターゲット強調時にも及ぶ表示可否、visibleWhenUntargeted はそれに加えてターゲットでないときだけ
     // 課される表示可否(敵の生存判定など)を表す。
     const applyEntityLines = (
@@ -94,9 +94,9 @@ export class EntityLineManager {
       // 戦闘ビューの自艦・使用条件を満たさない機体は、積分線の代わりに解析楕円で描く。
       const ownEllipse = showLines && !overviewMode;
       const fallbackEllipse = !trajectoryEligible && overviewMode && visibleWhenUntargeted && asTarget === null;
-      const orbitLineStyle = asTarget !== null && lineVisible ? asTarget
-        : ownEllipse || fallbackEllipse ? styles.ellipse
-          : null;
+      const orbitLineStyle = asTarget !== null && lineVisible
+        ? asTarget
+        : (ownEllipse || fallbackEllipse ? styles.ellipse : null);
       applyOrbitLine(entity, orbitLineStyle, lineOrbitRef);
       if (showLines && !ownEllipse) entity.showPredictedLine(styles.predicted);
       else entity.hidePredictedLine();
