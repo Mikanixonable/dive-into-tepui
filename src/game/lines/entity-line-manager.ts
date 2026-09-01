@@ -13,7 +13,7 @@ import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { DisplayWindow } from '../display-window-manager';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { OrbitReference } from '../orbit-reference';
+import { orbitLineBasisOf, type OrbitReference } from '../orbit-reference';
 
 const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 
@@ -39,6 +39,22 @@ function sameTrajectoryStyle(style: LineStyle): TrajectoryStyles {
   return { ellipse: style, predicted: style, actual: style };
 }
 
+// 軌道線を出す/消す。style が null なら出さない。出す場合にどの基準で描くかは orbitRef が決める。
+function applyOrbitLine(
+  entity: DynamicEntity, style: LineStyle | null, orbitRef: OrbitReference | undefined,
+): void {
+  if (style === null) {
+    entity.hideOrbitLine();
+    return;
+  }
+  const basis = orbitLineBasisOf(orbitRef, entity);
+  switch (basis.kind) {
+    case 'ellipse': entity.showEllipseLine(style, basis.center); break;
+    case 'relative': entity.showTargetRelativeLine(style, basis.target); break;
+    case 'none': entity.hideOrbitLine(); break;
+  }
+}
+
 export class EntityLineManager {
   constructor(private readonly entities: DynamicSystem) {}
 
@@ -47,8 +63,12 @@ export class EntityLineManager {
   update(
     activePlayer: Player | null, primaryTarget: CombatTarget | null,
     overviewMode: boolean, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
+    orbitRef: OrbitReference | undefined,
   ): void {
     const { pastDuration } = displayWindow;
+    // マップビューは軌道情報パネルの固定設定に従わず、常に自動選択(最も強く引く天体)で描く
+    // (ORBIT.md「軌道線(3D描画)の基準天体」)。数値表示・軌道要素アイコンはこの絞り込みを受けない。
+    const lineOrbitRef = overviewMode ? undefined : orbitRef;
     const palette = currentThemePalette();
     const primaryStyle: LineStyle = { color: palette.signal, opacity: TARGET_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.target };
     const targetStyleOf = (e: CombatTarget): LineStyle | null => e === primaryTarget ? primaryStyle : null;
@@ -74,9 +94,10 @@ export class EntityLineManager {
       // 戦闘ビューの自艦・使用条件を満たさない機体は、積分線の代わりに解析楕円で描く。
       const ownEllipse = showLines && !overviewMode;
       const fallbackEllipse = !trajectoryEligible && overviewMode && visibleWhenUntargeted && asTarget === null;
-      if (asTarget !== null && lineVisible) entity.showEllipseLine(asTarget);
-      else if (ownEllipse || fallbackEllipse) entity.showEllipseLine(styles.ellipse);
-      else entity.hideEllipseLine();
+      const orbitLineStyle = asTarget !== null && lineVisible ? asTarget
+        : ownEllipse || fallbackEllipse ? styles.ellipse
+          : null;
+      applyOrbitLine(entity, orbitLineStyle, lineOrbitRef);
       if (showLines && !ownEllipse) entity.showPredictedLine(styles.predicted);
       else entity.hidePredictedLine();
       if (showLines && pastDuration > 0) entity.showActualLine(styles.actual);
@@ -117,7 +138,7 @@ export class EntityLineManager {
   // ここでは全個体へ一律に呼ぶ。
   sync(
     displayWindow: DisplayWindow, fo: FloatingOrigin, camera: THREE.Camera,
-    frameAnchors: FrameAnchorSource, celestialSystem: CelestialSystem, orbitRef: OrbitReference | undefined,
+    frameAnchors: FrameAnchorSource, celestialSystem: CelestialSystem,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     for (const group of this.lineOwners) {
@@ -125,7 +146,7 @@ export class EntityLineManager {
         const predictedTo = entity.predictionTruncated ? null : simTime + duration;
         entity.syncTrajectoryLines(
           frame, simTime, displayTime, pastDuration, predictedTo, celestialSystem, fo, camera, frameAnchors);
-        entity.syncEllipseLine(displayTime, celestialSystem, fo, camera, frameAnchors, orbitRef);
+        entity.syncOrbitLine(displayTime, celestialSystem, fo, camera, frameAnchors);
       }
     }
   }
