@@ -220,6 +220,7 @@ export abstract class Enemy extends Ship implements MapPickable {
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
       key: this.markerKey,
+      kind: this.mapKind,
       cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
       sym: overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
