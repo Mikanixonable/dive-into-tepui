@@ -52,7 +52,10 @@ import { MARKER_PRIORITY } from '../marker/marker-manager';
 import { strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
 import { fmtDist } from '../hud/utils';
+import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { MapPickKind, MapPickable } from '../pickable/map-pickable';
+import type { MapCommands } from '../pickable/map-commands';
+import type { MenuItem } from '../hud/windows/context-menu';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
@@ -76,6 +79,9 @@ const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 
 // 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
 export type PlanExecutionMode = 'off' | 'instant';
+
+// 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
+const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
 
 const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '自動実行' };
 
@@ -670,5 +676,70 @@ export class Player extends Ship implements MapPickable {
   // 操作中の自艦を一覧の先頭へ出す。
   public listPriority(activePlayer: Player | null): number {
     return this === activePlayer ? -100 : 0;
+  }
+
+  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
+  public mapMenuItems(
+    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[] {
+    const isActive = this === commands.activePlayer;
+    const activate: MenuItem<MenuAction> = isActive
+      ? { label: '操作対象を解除', act: 'deactivate' }
+      : { label: '操作対象にする', act: 'activate' };
+    const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
+    const planExecLabel = `軌道計画の実行: ${planExecutionLabel(this.planExecution)}`;
+    const planExec: readonly MenuItem<MenuAction>[] = commands.executesPlans
+      ? [{ label: planExecLabel, act: 'planExecCycle', keepOpen: true }]
+      : [];
+
+    const dockState = commands.dockState(this);
+    const dockItems: readonly MenuItem<MenuAction>[] =
+      dockState === 'docked' ? [MenuCommon.transferResources(), MenuCommon.undock()]
+        : dockState === 'dockable' ? [MenuCommon.dock()]
+          : [];
+
+    // 操作対象の自艦は常に予測線・過去線固定なのでトグル自体を出さない。
+    const trajectoryItem: readonly MenuItem<MenuAction>[] = isActive
+      ? [] : [MenuCommon.trajectoryLine(this.showTrajectoryLine)];
+
+    return [
+      ...MenuCommon.targetItems(commands, this.id, simTime),
+      ...dockItems,
+      ...planExec,
+      activate,
+      MenuCommon.focus(),
+      ...trajectoryItem,
+      ...MenuCommon.duplicateItems(commands),
+      ...remove,
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // 選ばれた操作を実行する。自分が出していない act では何もしない。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    if (act === 'toggleTrajectoryLine') {
+      this.showTrajectoryLine = !this.showTrajectoryLine;
+    } else if (act === 'dock') {
+      commands.dock(this);
+    } else if (act === 'undock') {
+      commands.undock();
+    } else if (act === 'transferResources') {
+      commands.transferResources(this);
+    } else if (act === 'activate') {
+      commands.setActivePlayer(this);
+    } else if (act === 'deactivate') {
+      if (this === commands.activePlayer) commands.setActivePlayer(null);
+    } else if (act === 'planExecCycle') {
+      const i = PLAN_EXECUTION_MODES.indexOf(this.planExecution);
+      this.planExecution = PLAN_EXECUTION_MODES[(i + 1) % PLAN_EXECUTION_MODES.length]!;
+    } else if (act === 'duplicate') {
+      commands.duplicate(this.mapKind, this.state);
+    } else if (act === 'delete') {
+      commands.removePlayer(this);
+    } else if (act === 'focus') {
+      commands.focus(this.id, this.name);
+    } else if (act === 'target') {
+      commands.toggleNavTarget(this.id, this.name);
+    }
   }
 }

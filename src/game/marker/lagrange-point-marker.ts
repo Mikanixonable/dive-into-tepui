@@ -4,8 +4,11 @@ import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import type { Vec3 } from '../../math/vec3';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import { bodySearchText } from '../pickable/body-search-text';
+import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { CelestialSystem } from '../celestial/celestial-system';
+import type { MapCommands } from '../pickable/map-commands';
 import type { MapPickable } from '../pickable/map-pickable';
+import type { MenuItem } from '../hud/windows/context-menu';
 import type { Player } from '../player/player';
 import type { MarkerManager } from './marker-manager';
 
@@ -45,6 +48,31 @@ export class LagrangePointMarker implements MapPickable {
   // ラグランジュ点は天体と別の表示トグルを持つ。
   public mapVisibility(policy: MapVisibilityPolicy): MapVisibility { return policy.body(this.id); }
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+
+  // メニューに出す操作項目。ヘッダーの副題には、この地点を定める2天体の対を出す。
+  public mapMenuItems(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[] {
+    const primaryId = celestialSystem.bodyParentId(this.parentId);
+    const subLabel = primaryId === undefined || primaryId === null
+      ? 'ラグランジュ点'
+      : `${celestialSystem.nameOf(primaryId)}-${celestialSystem.nameOf(this.parentId)} ラグランジュ点`;
+    return [
+      { type: 'header', label: this.name, subLabel },
+      MenuCommon.focus(),
+      ...MenuCommon.targetItems(commands, this.id, simTime),
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // 選ばれた操作を実行する。フォーカスの移動と航法ターゲットの設定・解除を持つ。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    if (act === 'focus') {
+      commands.focus(this.id, this.name);
+    } else if (act === 'target') {
+      commands.toggleNavTarget(this.id, this.name);
+    }
+  }
 
   public listDetail(): string { return ''; }
 
