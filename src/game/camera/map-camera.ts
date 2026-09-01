@@ -11,8 +11,7 @@ import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion'
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
-import { MapPickable } from '../pickable/map-pickable';
-import { FocusTarget, resolveFocusTarget } from './focus-target';
+import { FocusTarget, resolveFocusTarget, type FocusCandidate } from './focus-target';
 import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save/save-data';
 
 // 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
@@ -442,7 +441,7 @@ export class MapCamera {
 
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
   // point は座標系が回っていれば ECI 座標が動くため、毎フレーム焼き直す。
-  private resolveFocus(candidates: readonly MapPickable[], displayTime: number, frameAnchors: FrameAnchorSource): Vec3 {
+  private resolveFocus(candidates: readonly FocusCandidate[], displayTime: number, frameAnchors: FrameAnchorSource): Vec3 {
     const result = resolveFocusTarget(
       this._focus, candidates, displayTime, frameAnchors,
       this.celestialSystem.frames, this.celestialMotionOf,
@@ -497,7 +496,7 @@ export class MapCamera {
     keyYawRad: number,
     keyPitchRad: number,
     displayTime: number,
-    candidates: readonly MapPickable[],
+    candidates: readonly FocusCandidate[],
     frameAnchors: FrameAnchorSource,
   ): void {
     this.displayTime = displayTime;
