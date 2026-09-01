@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
-import { Vec3, add, scale, v3, len, sub } from '../../math/vec3';
+import { Vec3, add, v3, len, sub } from '../../math/vec3';
 import { fmtMarkerDist } from '../hud/utils';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { Ship, SHIP_RADIATING_AREA_PER_MASS, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
@@ -46,15 +46,7 @@ import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
 } from '../../render/vfx-style';
-import { BoosterStack, boosterAverageAcceleration, boosterSeparationVelocities, nextBoosterId, type BoosterStage } from './booster-stack';
-import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
-import {
-  BOOSTER_STAGE_DIMENSIONS,
-  BoosterPlumeSet,
-  buildBoosterStage,
-  type BoosterStage as BoosterStageModel,
-} from '../../render/booster';
-import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
+import { PlayerBoosters } from './player-boosters';
 import { MARKER_PRIORITY } from '../marker/marker-manager';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
@@ -70,18 +62,6 @@ const SHIP_PORT_OFFSET = v3(0, 0, 3.0);
 const RADIATOR_BULLET_DAMAGE = 0.25;
 
 const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱量 [J]
-
-// 分離式ブースターの標準段。自機 1,000 kg と並べたとき、1段あたりの乾燥+満載質量
-// 1,000 kg、推力 0.6 MN で約 300 m/s² となるようにする。燃料 800 kg を 80 kg/s
-// で燃やし切るので、通常のフレーム刻みでも十数秒の燃焼と最後の燃料切れを扱える。
-const BOOSTER_DEFAULT_DRY_MASS = 200; // [kg]
-const BOOSTER_DEFAULT_MAX_FUEL = 800; // [kg]
-const BOOSTER_DEFAULT_THRUST = 6e5; // [N]
-const BOOSTER_DEFAULT_FUEL_RATE = 80; // [kg/s]
-const BOOSTER_MAX_ATTACHED = 4;
-const BOOSTER_MOUNT_Z = -4.0; // 船体中心から最初の段の前端まで [m]
-const BOOSTER_SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
-const BOOSTER_COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
 
 const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
 
@@ -115,14 +95,10 @@ export class Player extends Ship {
   readonly altitudeAlarm: AltitudeAlarm;
   readonly radiator: RadiatorSystem;
   readonly power: PowerSystem;
-  readonly boosters: BoosterStack;
+  readonly boosters: PlayerBoosters;
 
   private readonly thrustEffects: ThrustEffects;
-  private readonly boosterPlumes: BoosterPlumeSet;
-  private readonly boosterModels: BoosterStageModel[] = [];
   private rcsThrust: Vec3 | null = null;
-  private boosterThrust: Vec3 | null = null;
-  private lastBoosterBurnRatio = 0;
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
@@ -162,10 +138,6 @@ export class Player extends Ship {
     this.doPreciseReentry = true;
 
     const saved = 'saved' in init ? init.saved : undefined;
-    this.boosters = saved?.boosters
-      ? BoosterStack.importData(saved.boosters)
-      : new BoosterStack();
-    for (const stage of this.boosters.stages) nextBoosterId(stage.id);
     this.throttle = new PlayerThrottle(_hud, saved?.throttle);
     this.fire = new PlayerFire(this, _hud, _worldSfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.belt = new Belt(this.renderObject, this);
@@ -175,12 +147,11 @@ export class Player extends Ship {
     this.radiator = new RadiatorSystem(this.renderObject, this, saved?.radiator);
     this.power = new PowerSystem(this.renderObject, saved?.power);
     this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
-    this.boosterPlumes = new BoosterPlumeSet(_scene);
     this.rcsEffects = new RcsEffects(_scene, _worldSfx);
     this.reentryEffects = new ReentryEffects(_scene);
     this.markers = new PlayerMarkers(markerManager, this.id);
-    this.rebuildBoosterModels();
-    this.refreshBoosterMassAndInertia();
+    // 段の模型を船体へ足し、段のぶんの質量と慣性を載せるので、船体側の部品より後に組む。
+    this.boosters = new PlayerBoosters(this, _hud, _worldSfx, _scene, _fx, saved?.boosters);
 
     if (saved) {
       // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。'powered' だった
@@ -269,157 +240,6 @@ export class Player extends Ship {
     this.fire.refillFull();
   }
 
-  // 暫定の燃焼管理パネルから標準ブースターを最後尾へ追加する。
-  attachBooster(): boolean {
-    if (this.boosters.stages.length >= BOOSTER_MAX_ATTACHED) {
-      this._hud.hint(`ブースターは最大 ${BOOSTER_MAX_ATTACHED} 段です`);
-      return false;
-    }
-    const stage: BoosterStage = {
-      id: nextBoosterId(),
-      dryMass: BOOSTER_DEFAULT_DRY_MASS,
-      fuel: BOOSTER_DEFAULT_MAX_FUEL,
-      maxFuel: BOOSTER_DEFAULT_MAX_FUEL,
-      thrust: BOOSTER_DEFAULT_THRUST,
-      fuelRate: BOOSTER_DEFAULT_FUEL_RATE,
-      ignited: false,
-    };
-    this.boosters.attach(stage);
-    this.rebuildBoosterModels();
-    this.refreshBoosterMassAndInertia();
-    this.invalidatePrediction();
-    this._hud.hint(`ブースターを追加: ${this.boosters.stages.length} 段`);
-    return true;
-  }
-
-  toggleBoosterIgnition(): boolean {
-    const active = this.activeBooster();
-    if (!active) {
-      this._hud.hint('点火できるブースターがありません');
-      return false;
-    }
-    const ignited = this.boosters.toggleIgnition();
-    this.invalidatePrediction();
-    this._hud.hint(active.fuel <= 0
-      ? '最後尾ブースターは燃料切れです'
-      : `ブースター燃焼: ${ignited ? 'ON' : 'OFF'}`);
-    return ignited;
-  }
-
-  // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
-  decoupleBooster(entities: DynamicSystem): boolean {
-    const stageIndex = this.boosters.stages.length - 1;
-    if (stageIndex < 0) {
-      this._hud.hint('分離できるブースターがありません');
-      return false;
-    }
-    const frontZ = BOOSTER_MOUNT_Z - stageIndex * BOOSTER_STAGE_DIMENSIONS.length;
-    const centerZ = frontZ
-      + (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
-    const jointR = add(this.state.r, qRotate(this.att.q, v3(0, 0, frontZ)));
-    const boosterR = add(this.state.r, qRotate(this.att.q, v3(0, 0, centerZ)));
-    const detachedStage = this.boosters.detachOutermost()!;
-    const boosterMass = detachedStage.dryMass + detachedStage.fuel;
-    this.refreshBoosterMassAndInertia();
-
-    const forward = qRotate(this.att.q, v3(0, 0, 1));
-    const separated = boosterSeparationVelocities(
-      this.state.v,
-      forward,
-      this.mass,
-      boosterMass,
-      BOOSTER_SEPARATION_SPEED,
-    );
-    const t = this.state.t;
-    this.state = kinematicState<'eci'>(t, this.state.r, separated.player);
-    this._fx.spawnBoosterSeparation(t, jointR, separated.player, separated.booster, this.att);
-    const detached = new DetachedBooster({
-      stage: detachedStage,
-      state: kinematicState<'eci'>(t, boosterR, separated.booster),
-      att: {
-        // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
-        // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
-        q: { ...this.att.q },
-        w: { ...this.att.w },
-        inertia: v3(1, 1, 0.4),
-      },
-      collisionEnableAt: t + BOOSTER_COLLISION_GRACE,
-    }, this.playerScene);
-    entities.addDetachedBooster(detached);
-
-    this.boosterThrust = null;
-    this.lastBoosterBurnRatio = 0;
-    this.rebuildBoosterModels();
-    this._fx.spawnGasPuff(kinematicState<'eci'>(t, jointR, this.state.v));
-    this._worldSfx.decouple();
-    this.invalidatePrediction();
-    this._hud.hint(`ブースター分離: 残り ${this.boosters.stages.length} 段`);
-    return true;
-  }
-
-  boosterManagementViewModel(): BurnManagementViewModel {
-    const active = this.activeBooster();
-    return {
-      stageCount: this.boosters.stages.length,
-      maxStages: BOOSTER_MAX_ATTACHED,
-      totalMass: this.mass,
-      activeFuel: active?.fuel ?? 0,
-      activeFuelMax: active?.maxFuel ?? 0,
-      burnState: !active ? 'idle' : active.fuel <= 0 ? 'empty' : active.ignited ? 'burning' : 'ready',
-      ignitionOn: active?.ignited ?? false,
-      canAttach: this.boosters.stages.length < BOOSTER_MAX_ATTACHED,
-      canToggleIgnition: active !== undefined && active.fuel > 0,
-      canDecouple: active !== undefined,
-    };
-  }
-
-  private activeBooster(): BoosterStage | undefined {
-    const stages = this.boosters.stages;
-    return stages[stages.length - 1];
-  }
-
-  private rebuildBoosterModels(): void {
-    for (const model of this.boosterModels) model.dispose();
-    this.boosterModels.length = 0;
-    for (let i = 0; i < this.boosters.stages.length; i++) {
-      // 段間カバーは内側段の後端にだけ残す。最後尾段にはカバーが無く、
-      // 分離時はこの接続部を爆砕ボルトと一緒にデブリへ移す。
-      const model = buildBoosterStage({ interstageCover: i < this.boosters.stages.length - 1 });
-      model.position.z = BOOSTER_MOUNT_Z - i * BOOSTER_STAGE_DIMENSIONS.length;
-      this.renderObject.add(model);
-      this.boosterModels.push(model);
-    }
-  }
-
-  private refreshBoosterMassAndInertia(): void {
-    this.mass = PLAYER_MASS + this.boosters.totalMass;
-    const massRatio = this.mass / PLAYER_MASS;
-    const lengthFactor = 1 + 0.35 * this.boosters.stages.length ** 2;
-    this.att = {
-      ...this.att,
-      inertia: v3(
-        PLAYER_INERTIA_PITCH * massRatio * lengthFactor,
-        PLAYER_INERTIA_YAW * massRatio * lengthFactor,
-        PLAYER_INERTIA_ROLL * massRatio,
-      ),
-    };
-  }
-
-  private stepAttachedBooster(simDt: number): Vec3 | null {
-    const massBefore = PLAYER_MASS + this.boosters.totalMass;
-    const burn = this.boosters.step(simDt);
-    this.refreshBoosterMassAndInertia();
-    this.lastBoosterBurnRatio = burn.burnRatio;
-    const averageAcceleration = boosterAverageAcceleration(burn, massBefore, this.mass);
-    if (averageAcceleration <= 0) return null;
-    return scale(qRotate(this.att.q, v3(0, 0, 1)), averageAcceleration);
-  }
-
-  private combinedThrust(rcs: Vec3 | null, booster: Vec3 | null): Vec3 | null {
-    if (rcs && booster) return add(rcs, booster);
-    return rcs ?? booster;
-  }
-
   // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦はこのフレーム操作されないので、
   // 次フレームへ持ち越してはならない連続指令をここで畳む。受動状態(ベルト物理・HP自然回復)は
   // 操作の可否によらず進める。
@@ -433,21 +253,24 @@ export class Player extends Ship {
   ): void {
     this.updatePassive(dt);
     if (input !== null) this.handleEdgeInput(input, entities);
-    const boosterThrust = this.stepAttachedBooster(simDt);
+    // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
     if (input === null) {
       this.clearTransientCommands();
-      this.boosterThrust = boosterThrust;
-      this.thrust = boosterThrust;
+      this.boosters.step(simDt);
+      this.thrust = this.boosters.thrust;
       return;
     }
+    this.boosters.step(simDt);
     this.updateTorque(input, dt, simDt);
 
     this.fire.updateFireState(dt, input, activeStage, entities, celestialSystem);
 
     this.throttle.updateThrustLatches(input);
     this.rcsThrust = this.throttle.updateThrustState(input, this.att, simDt, this);
-    this.boosterThrust = boosterThrust;
-    this.thrust = this.combinedThrust(this.rcsThrust, this.boosterThrust);
+    const boosterThrust = this.boosters.thrust;
+    this.thrust = this.rcsThrust && boosterThrust
+      ? add(this.rcsThrust, boosterThrust)
+      : this.rcsThrust ?? boosterThrust;
     // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
     if (this.thrust !== null) this.invalidatePrediction();
   }
@@ -488,7 +311,7 @@ export class Player extends Ship {
   clearTransientCommands(): void {
     this.thrust = null;
     this.rcsThrust = null;
-    this.boosterThrust = null;
+    this.boosters.clearThrust();
     this.torque = v3();
     this.throttle.clearTransientState();
     this.fire.stopFiring();
@@ -516,8 +339,8 @@ export class Player extends Ship {
       case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
       case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
       case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
-      case K.boosterDecouple.code: this.decoupleBooster(entities); return true;
-      case K.boosterIgnitionToggle.code: this.toggleBoosterIgnition(); return true;
+      case K.boosterDecouple.code: this.boosters.decouple(entities); return true;
+      case K.boosterIgnitionToggle.code: this.boosters.toggleIgnition(); return true;
       case K.radiatorDeployLeft.code: this.radiator.toggle('up'); return true;
       case K.radiatorDeployRight.code: this.radiator.toggle('down'); return true;
       case K.solarDeployLeft.code: this.power.toggle('up'); return true;
@@ -708,26 +531,9 @@ export class Player extends Ship {
     const effectVisible = displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     this.thrustEffects.sync(fo, effectState.r, this.rcsThrust, maxAccel, effectVisible, false, camera, style);
-    const activeIndex = this.boosters.stages.length - 1;
-    const boosterEffectAtCurrentTime = Math.abs(displayTime - this.state.t) <= 1e-6;
-    if (activeIndex >= 0 && this.boosterThrust !== null && effectVisible
-      && boosterEffectAtCurrentTime && !camera.zoomActive) {
-      const nozzleZ = BOOSTER_MOUNT_Z
-        - activeIndex * BOOSTER_STAGE_DIMENSIONS.length
-        + BOOSTER_STAGE_DIMENSIONS.nozzleExitZ;
-      const nozzleWorld = add(effectState.r, qRotate(this.att.q, v3(0, 0, nozzleZ)));
-      const tail = qRotate(this.att.q, v3(0, 0, -1));
-      this.boosterPlumes.sync([{
-        position: fo.RtoThreeV3(nozzleWorld),
-        direction: new THREE.Vector3(tail.x, tail.y, tail.z),
-        intensity: Math.max(0.25, this.lastBoosterBurnRatio),
-        visible: true,
-      }], camera.activeCamera.quaternion, style);
-    } else {
-      this.boosterPlumes.sync([], camera.activeCamera.quaternion, style);
-    }
+    this.boosters.sync(fo, effectState.r, displayTime, effectVisible, camera, style);
     if (isActive) {
-      this._worldSfx.setThrust(effectVisible && (this.rcsThrust !== null || this.boosterThrust !== null));
+      this._worldSfx.setThrust(effectVisible && (this.rcsThrust !== null || this.boosters.thrust !== null));
     }
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isActive);
     this.reentryEffects.sync(fo, effectState.r, effectState.v, this.aero.qdyn, effectVisible, camera);
@@ -776,9 +582,7 @@ export class Player extends Ship {
     this.clearTransientCommands();
     this.markers.dispose();
     this.thrustEffects.dispose(this.playerScene);
-    this.boosterPlumes.dispose();
-    for (const model of this.boosterModels) model.dispose();
-    this.boosterModels.length = 0;
+    this.boosters.dispose();
     this.rcsEffects.dispose(this.playerScene);
     this.reentryEffects.dispose(this.playerScene);
     super.dispose();
@@ -804,7 +608,7 @@ export class Player extends Ship {
       fineAttitude: this.fineAttitude,
       showTrajectoryLine: this.showTrajectoryLine,
       plan: this.serializePlan(),
-      boosters: this.boosters.exportData(),
+      boosters: this.boosters.serialize(),
     };
   }
 
