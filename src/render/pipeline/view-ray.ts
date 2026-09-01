@@ -12,7 +12,7 @@ import { float, getViewPosition, normalize, screenUV, texture } from 'three/tsl'
 import type { Mat4Uniform, Vec2Node, Vec3Node } from '../tsl-types';
 
 // その画素を通る視線。origin は近平面上の点、direction はカメラから遠ざかる単位ベクトル。
-export type ViewRay = {
+type ViewRay = {
   readonly origin: Vec3Node;
   readonly direction: Vec3Node;
 };

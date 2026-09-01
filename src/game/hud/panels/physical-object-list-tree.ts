@@ -10,7 +10,7 @@ const EMPTY_IDS: readonly string[] = [];
 
 // 行のダブルクリック/F/T/右クリックの通知先。呼び出し側が随時差し替えるため、生成時に
 // コピーせずフィールドそのものを読む。
-export interface RowTreeActions {
+interface RowTreeActions {
   onFocus: ((id: string) => void) | null;
   onNavTarget: ((id: string) => void) | null;
   onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null;

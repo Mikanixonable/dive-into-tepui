@@ -60,7 +60,7 @@ export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
 
 // エンティティ1体が出している軌道線。楕円と対象への直線は排他で、同時には持たない。
 // center が null なら、毎フレームその瞬間最も強く引いている天体を中心に描く。
-export type OrbitLine =
+type OrbitLine =
   | { readonly kind: 'ellipse'; readonly line: EllipseLine; readonly center: CelestialMotion | null }
   | { readonly kind: 'relative'; readonly line: TargetRelativeLine; readonly target: DynamicEntity };
 

@@ -8,14 +8,14 @@ import { KinematicState } from './kinematic-state';
 import { findEquatorCrossings } from './trajectory-features';
 import { Vec3, add } from '../math/vec3';
 
-export interface OrbitNodeState {
+interface OrbitNodeState {
   // ノード通過位置(ECI)。**中心天体の位置 + 軌道上の相対位置**というアフィン和で組むので、
   // KinematicState の原点札は付かない — 札は状態ベクトルから取り出したものだけが持つ。
   readonly r: Vec3;
   readonly t: KinematicState['t'];
 }
 
-export interface OrbitCrossingsResult {
+interface OrbitCrossingsResult {
   readonly asc: OrbitNodeState;
   readonly desc: OrbitNodeState;
 }

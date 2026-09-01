@@ -21,7 +21,7 @@ export const GRAPHICS_GROUPS = [
   ['light', '光源'],
   ['shadow', '影の詳細'],
 ] as const;
-export type GraphicsGroup = (typeof GRAPHICS_GROUPS)[number][0];
+type GraphicsGroup = (typeof GRAPHICS_GROUPS)[number][0];
 
 type PresetValues<V> = Readonly<Record<QualityPreset, V>>;
 
@@ -47,7 +47,7 @@ type ChoiceOption = {
   readonly presets: PresetValues<ChoiceValue>;
 };
 
-export type GraphicsOption = ToggleOption | ChoiceOption;
+type GraphicsOption = ToggleOption | ChoiceOption;
 
 export const GRAPHICS_OPTIONS = {
   // devicePixelRatio へ掛ける描画解像度の倍率。

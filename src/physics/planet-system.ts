@@ -18,7 +18,7 @@ import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 
 // 系に属する天体1時刻ぶんの位置・速度。**どれも太陽系重心相対**で、惑星本体相対の二体解は
 // これを組む途中の一時値として現れるだけ。satellites の並びは addSatellite の登録順。
-export type SystemMembers = {
+type SystemMembers = {
   readonly body: KinematicState<'analytic'>;
   readonly satellites: readonly KinematicState<'analytic'>[];
 };

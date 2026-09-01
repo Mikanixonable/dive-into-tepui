@@ -230,7 +230,7 @@ class DurationPillRow<K extends string, Kd extends K | 'custom'> {
   }
 }
 
-export interface PredictPanelState {
+interface PredictPanelState {
   readonly visible: boolean;
   readonly durationKey: DisplayDurationKey;
   readonly pastDurationKey: DisplayPastDurationKey;

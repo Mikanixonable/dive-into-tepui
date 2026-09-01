@@ -7,7 +7,7 @@ import {
   ReadonlyNumberArray,
 } from './pack-types';
 
-export class InvalidChebyshevPackError extends Error {
+class InvalidChebyshevPackError extends Error {
   constructor(message: string) {
     super(`Invalid Chebyshev ephemeris pack: ${message}`);
     this.name = 'InvalidChebyshevPackError';
@@ -40,7 +40,7 @@ export class ChebyshevTimeOutOfRangeError extends RangeError {
   }
 }
 
-export interface ChebyshevValueAndDerivative {
+interface ChebyshevValueAndDerivative {
   readonly value: number;
   readonly derivative: number;
 }

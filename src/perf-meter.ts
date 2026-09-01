@@ -26,7 +26,7 @@ export type PerfCounts = {
   warp: number;
 };
 
-export interface PerfCountSource {
+interface PerfCountSource {
   perfCounts(): PerfCounts;
   proteinMotionFrameSample(): ProteinMotionFrameSample;
 }
