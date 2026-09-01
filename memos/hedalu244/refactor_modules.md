@@ -98,7 +98,7 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 | 16 | エンティティ種別の語彙が**5つ** | **型の重複。1つに畳む** | 型5 | **実施済** |
 | 17 | `OrbitAnalysisWindow` のタブが**半分だけ切り出し** | **多態で分ける** | 466行 / 分岐約30 | 中 |
 | 18 | `Player`/`Base` を消費側が `instanceof` で判別し直す | **多態の復元** | 26箇所 / 11モジュール | 中 |
-| 19 | その他の重複 union(`L1..L3` 等) | **型の重複。1つに畳む** | 3組 | 低(即実施可) |
+| 19 | その他の重複 union(`L1..L3` 等) | **型の重複。1つに畳む** | 3組 | **実施済** |
 | 20 | `MapCamera` の2つの非 on/off 2分 | **要検討** | 531行 / 分岐12 | 低 |
 
 ---
@@ -763,22 +763,35 @@ else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
 
 ---
 
-## 論点19 — その他の重複 union
+## 論点19 — その他の重複 union(実施済)
 
-型別名を全部集めた副産物。どれも規約 1.6「同一の意味、同一の情報量を持つ型を複数作ること」。
+ラグランジュ点の呼び名を `physics/lagrange.ts` 1箇所へ集めた。**この語を所有しているのは
+ラグランジュ点そのもののモジュール**で、ハロー軌道(`halo.ts`)にもゼロ速度曲線
+(`zero-velocity.ts`)にも属していない。
 
-| 重複 | 場所 | 修正 |
-| --- | --- | --- |
-| `CollinearPoint` = `GuidePoint` = `'L1' \| 'L2' \| 'L3'` | `physics/halo.ts:19` / `physics/orbit-guide.ts:18` | 1つに。`LagrangeLabel`(`physics/zero-velocity.ts:8`、5値)との関係を `Extract` で表す |
-| `FixedDurationKey` ⊂ `DisplayDurationKey` | `hud/panels/predict-panel.ts:14` / `display-window-manager.ts:22` | `Exclude<DisplayDurationKey, 'custom'>` にする。値を書き写さない |
+- `LagrangeLabel`(5値)を `zero-velocity.ts` から移し、隣へ
+  `CollinearPoint = Extract<LagrangeLabel, 'L1' | 'L2' | 'L3'>` を置いた。`halo.ts` の
+  `CollinearPoint` と `orbit-guide.ts` の `GuidePoint` は消え、旧名 `GuidePoint` は 0 件。
+- **同じ集合を書き写していた残り2つも畳んだ。** `LagrangePoints` は
+  `Readonly<Record<LagrangeLabel, Vec3>>` になり、`collinearGamma` の引数に直書きされていた
+  3値は `CollinearPoint` になった。`keyof LagrangePoints` で受けていた `lagrangeStateOf` と
+  `nav-target.ts` の断言も `LagrangeLabel` へ。
+- **再エクスポートは置いていない**(規約 1.6「同じ値へ入口を2つ作らない」)。
+  `zero-velocity-section.ts` / `orbit-guide-catalog.ts` / `object-placer-panel.ts` /
+  `orbit-guide-lines.ts` とテスト2本は `physics/lagrange` から直接受ける。
 
-`EphemerisScale`(`'TT' | 'TDB'`)⊂ `TimeScale`(`'UTC' | 'TT' | 'TDB'`)は**畳まない。**
-`JulianDate<EphemerisScale>` のように**型引数の制約**として使われていて、
-「この口は UTC を受け取らない」という主張そのもの。値の写しではない。
+`predict-panel.ts` の `FixedDurationKey` / `FixedPastDurationKey` は
+`Exclude<DisplayDurationKey, 'custom'>` / `Exclude<DisplayPastDurationKey, 'custom'>` になった。
+5値・6値を書き写していたのが消え、期間キーの正本は `display-window-manager.ts` だけになる。
 
-`SolarSide` = `RadiatorSide` = `'up' \| 'down'`(`player/power.ts:11` / `player/radiator.ts:24`)は
-**畳まない。** 太陽電池の面と放熱板の面は別の部品で、片方だけ枚数が変わりうる。
-値が一致しているのは偶然で、規約 1.6 の「たまたま同時に切り替わるものは別個にする」に従う。
+型定義だけの変更なので振る舞いは変わらない。`npm run typecheck` / `test:physics` 432件 /
+`test:game` 161件 / `test:math` 42件 通過。
+
+**畳まなかったもの。** `EphemerisScale`(`'TT' | 'TDB'`)⊂ `TimeScale` は
+`JulianDate<EphemerisScale>` のように**型引数の制約**として使われていて、「この口は UTC を
+受け取らない」という主張そのもの。値の写しではない。`SolarSide` / `RadiatorSide`(ともに
+`'up' | 'down'`、`player/power.ts` / `player/radiator.ts`)は別部品で、片方だけ枚数が
+変わりうる — 規約 1.6 の「たまたま同時に切り替わるものは別個にする」に従う。
 
 ---
 
@@ -847,35 +860,32 @@ else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
 
 ## 実施順序
 
-**実施済: 論点1 / 2 / 3 / 4 / 7 / 8 / 11 / 12 / 15 / 16。** 残りは 5 / 6 / 9 / 10 / 13 / 14 /
-17 / 18 / 19 / 20。
+**実施済: 論点1 / 2 / 3 / 4 / 7 / 8 / 11 / 12 / 15 / 16 / 19。** 残りは 5 / 6 / 9 / 10 /
+13 / 14 / 17 / 18 / 20。
 
 **論点1・7・16 の完了で、それを条件にしていた論点18 と論点13 の前提が揃った。**
 論点15 の完了で、ビューの型は `WorldView` 1本になっている。
 
-1. **論点19**(`CollinearPoint` = `GuidePoint`、`FixedDurationKey` ⊂ `DisplayDurationKey`)
-   — **まずこれ。** 振る舞いを変えない改名なので単独で安全に入る。規約 1.11 に従い旧名を
-   0 件にする。論点15 と対で挙げていた片割れで、こちらだけ残っている。
-2. **論点18**(`Player`/`Base` の `instanceof`)— **論点1 の完了で着手可能になった本命。**
+1. **論点18**(`Player`/`Base` の `instanceof`)— **論点1 の完了で着手可能になった本命。**
    調査時 26 箇所 → 現在 29 箇所(再編で `map-context-actions.ts` 側が増えた)。
    `vessel-panel` / `resource-transfer-dialog` / `target-panel` に加えて、
    **論点1 の宿題 (a)(b) も同じ形なので1回で見る。** `Controllable` に
    `vesselStatus(): VesselStatusView` を足す案は論点18 の節にある。
-3. **論点1 の宿題 (c)(d)(e)(f)(g)** — (f) は機械的に落とせる。(c) は規約 1.5 の判断が要るので
+2. **論点1 の宿題 (c)(d)(e)(f)(g)** — (f) は機械的に落とせる。(c) は規約 1.5 の判断が要るので
    **着手前にユーザーへ問う。**(d)(e) は `Game` の配線に触るので、単独では割に合わない —
    `map-context-actions.ts` を 400 行未満へ割る判断(= `MapCommands` の実装をウィンドウ台帳から
    引き剥がすか。剥がすと台帳へのコールバックが増えるので、論点1 ではあえて同居させた)と
    同時に決める。
-4. **論点6**(`marker-manager` のラベル間引き)— **論点7 の完了で前提が変わった。**
+3. **論点6**(`marker-manager` のラベル間引き)— **論点7 の完了で前提が変わった。**
    `focus-markers.CrowdingGrid` は `marker/crowding.ts`(122行)へ移り、間引きの実装は
    `marker-manager.thinByPriority` / `crowding.CrowdingGrid` / `grouped-markers` の3つ。
    `marker-manager.ts` は 670 行で `relaxLabelRects` の 134 行 1 メソッドも残っている。
    **切り出しと、3実装の統合可否(先に SPEC/MAP.md 7.2 を読む)を1回で決める。**
-5. **論点17**(軌道分析タブの多態化)— 466 行のまま。**論点1 と同じ形の修正なので手本がある**
+4. **論点17**(軌道分析タブの多態化)— 466 行のまま。**論点1 と同じ形の修正なので手本がある**
    (`orbit-projection-tab.ts` だけが外にある現状は、規約 1.2 が名指しする「片側だけ切り出し」)。
-6. **論点5**(`hud/style/` 22→10)/ **論点10**(ラベル付き入力行)— 独立。手が空いたときに。
-7. **論点9**(`plan-editor` 718行)— `plan/` 全体(`plan-path.ts` を含む)を見るときに。
-8. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。
+5. **論点5**(`hud/style/` 22→10)/ **論点10**(ラベル付き入力行)— 独立。手が空いたときに。
+6. **論点9**(`plan-editor` 718行)— `plan/` 全体(`plan-path.ts` を含む)を見るときに。
+7. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。
    - **論点13** は論点15 の完了で議論の前提が揃った。ただし `overviewMode: boolean` は
      署名 23 → 25 モジュールへ広がっている(再編で `MapCommands.overviewMode` が増えた)。
      `boolean` のままにするか `WorldView` を渡すか、`ViewManager` 経由で経路ごと分けるか。

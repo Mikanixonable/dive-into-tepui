@@ -11,12 +11,10 @@
 // haloState/lissajousState が返す位置・速度は一次の線形解にとどまる。またゲームの積分器は
 // 地球中心二体 + J2 + 抗力 + 日月三体であって制限三体問題そのものではないため、ここで返した
 // 状態を実際にゲーム内で積分すると軌道はドリフトする。
-import { SecondaryFrame, lagrangePointsOf } from './lagrange';
+import { CollinearPoint, SecondaryFrame, lagrangePointsOf } from './lagrange';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from '../math/vec3';
 import { Vec3Tuple } from './cr3bp';
-
-export type CollinearPoint = 'L1' | 'L2' | 'L3';
 
 // 共線ラグランジュ点まわりの回転局所基底と、その点の無次元パラメータ。
 // origin: L点の ECI 位置。xHat: 主天体→副天体方向。zHat: 系の公転面法線。
