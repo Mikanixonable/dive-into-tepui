@@ -71,10 +71,14 @@ export class GeostationaryOverlay {
   ): void {
     const centerPos = center.positionAt(pivot);
     const elements = this.elementsAround(center, pivot);
-    this.line.sync(visible ? elements : null, fo, cameraSystem.activeCamera);
     const dist = len(sub(centerPos, cameraSystem.activeCameraPos));
     const fade = 1.0 - Math.min(1, Math.max(0, (dist - FADE_NEAR_DIST) / FADE_SPAN));
-    if (visible) this.line.setOpacity(RING_OPACITY * fade);
+    if (visible) {
+      this.line.sync(elements, fo, cameraSystem.activeCamera);
+      this.line.setOpacity(RING_OPACITY * fade);
+    } else {
+      this.line.hide();
+    }
     this.syncLabel(
       elements, centerPos, pivot, fade, cameraSystem, markerManager, celestialBodies, visible);
   }
