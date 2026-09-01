@@ -3,6 +3,14 @@
 // この層は Three.js や Player を知らず、船体側から最後尾へ並ぶ段の配列だけを持つ。
 // 推力と燃料の更新をここへ閉じ込めることで、描画フレームの刻みが燃料切れをまたいでも
 // 実際に燃焼していた時間だけを上位の運動方程式へ渡せる。
+import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
+
+const idAllocator = new EntityIdAllocator('booster-');
+
+// 接続中の段と分離後エンティティで同じ ID を引き継ぐ。
+export function nextBoosterId(restoredId?: string): string {
+  return idAllocator.next(restoredId);
+}
 
 /** 燃料を含む、スタック内の一段の可変状態。質量の単位は kg、推力は N。 */
 export interface BoosterStage {
