@@ -35,7 +35,7 @@ import type { CelestialMarkers } from '../marker/celestial-markers';
 import { EmptySpacePickable } from './empty-space-pickable';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { MapPickables } from './map-pickables';
-import { pickCombatEntityAtPoint } from './combat-pickable';
+import { pickCombatEntityAtPoint } from './combat-pick';
 import { PartWindows } from './part-windows';
 import { OrbitLineWindows } from './orbit-line-windows';
 import type { DockState, MapCommands } from './map-commands';
