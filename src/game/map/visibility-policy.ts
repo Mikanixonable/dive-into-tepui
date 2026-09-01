@@ -1,6 +1,5 @@
 // 天体とゲーム内 entity に共通するマップ表示ポリシー。
 // category/icon/label/orbit/pickable を各描画・選択系で個別に解釈しないための正本。
-// DynamicEntityKind は公開メソッド dynamic(kind) の引数型なので export したままにする。
 import { celestialClassVisible, celestialNameVisible, type MapDisplayToggles } from './display-toggles';
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -82,6 +81,7 @@ export function alwaysFullyVisibleIds(
   return ids;
 }
 
+// すべての項目を伏せた判定。カテゴリが閉じていれば、残りの項目は問わずこれになる。
 function noVisibility(): MapVisibility {
   return { category: false, icon: false, label: false, orbit: false, pickable: false };
 }
@@ -95,6 +95,8 @@ export class MapVisibilityPolicy {
   private readonly bodyResults = new Map<string, MapVisibility>();
   private readonly entityResults = new Map<string, MapVisibility>();
 
+  // focusId は注視中の対象、nearbyIds は近傍として常時表示へ格上げする天体の id。どちらも
+  // 省くと格上げが効かず、トグルだけで決まる。
   constructor(
     private readonly celestialSystem: CelestialSystem,
     private readonly toggles: MapDisplayToggles,
@@ -105,6 +107,7 @@ export class MapVisibilityPolicy {
     this.nearby = new Set(nearbyIds);
   }
 
+  // 天体 id あるいはラグランジュ点 id の表示判定。星系に無い id はすべて伏せた判定になる。
   body(id: string): MapVisibility {
     const cached = this.bodyResults.get(id);
     if (cached !== undefined) return cached;
@@ -114,12 +117,15 @@ export class MapVisibilityPolicy {
     return result;
   }
 
+  // body() の判定そのもの。ラグランジュ点は専用の2トグルだけで決まり、天体は分類トグルが
+  // 開いていることを前提に、名前と軌道線をそれぞれの規則で決める。
   private computeBody(id: string): MapVisibility {
     if (isLagrangeId(id)) {
       const category = this.toggles.lagrangeVisible;
       const shown = category && this.toggles.lagrangeName;
       return { category, icon: shown, label: shown, orbit: false, pickable: shown };
     }
+    // 注視・近傍で格上げされた天体は、名前トグルが閉じていても名前とアイコンを出す。
     const body = this.celestialSystem.find(id);
     if (body === null) return noVisibility();
 
@@ -132,6 +138,7 @@ export class MapVisibilityPolicy {
     return { category, icon: shown, label: shown, orbit, pickable: shown };
   }
 
+  // ゲーム内 entity の種別ごとの表示判定。isActivePlayer はいま操作している自艦にだけ立てる。
   entity(kind: DynamicEntityKind, isActivePlayer = false): MapVisibility {
     const key = `${kind}:${isActivePlayer ? 'active' : 'inactive'}`;
     const cached = this.entityResults.get(key);
@@ -142,6 +149,7 @@ export class MapVisibilityPolicy {
     return result;
   }
 
+  // entity() の判定そのもの。種別ごとのトグル3本(カテゴリ・名前・軌道線)から決まる。
   private computeEntity(kind: DynamicEntityKind, isActivePlayer: boolean): MapVisibility {
     const keys = ENTITY_KEYS[kind];
     const categoryToggle = this.toggles[keys.category];
@@ -156,6 +164,9 @@ export class MapVisibilityPolicy {
     return { category, icon, label, orbit, pickable: icon || label };
   }
 
+  // その天体の軌道線を引くか。惑星・準惑星・小天体は分類のトグルだけで決まり、衛星はさらに
+  // 主惑星が地球か、注視中の系か、近傍のいずれかであることを要する(全惑星の衛星軌道が
+  // 一度に出ると読めなくなるため)。
   private orbitForBody(id: string, cls: CelestialClass): boolean {
     switch (cls) {
       case 'planet': return this.toggles.planetOrbit;

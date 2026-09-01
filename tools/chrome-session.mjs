@@ -1,6 +1,5 @@
-// ヘッドレス Chrome のセッション。静的配信・Chrome の探索と起動・CDP 接続・後片付けまでを
-// 一式で持つ。browser-smoke.mjs / perf-probe.mjs / render-lab-shot.mjs は openChromeSession()
-// を開いて、それぞれの検証・計測・撮影だけを書く。
+// ヘッドレス Chrome のセッション。静的配信・Chrome の探索と起動・CDP 接続・後片付けと、
+// ページの用意を待つ・ページが出した失敗を溜める、までを一式で持つ。
 import { accessSync, constants, mkdtempSync, rmSync, createReadStream, statSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -207,6 +206,30 @@ const LAUNCH_ARGS = [
   '--run-all-compositor-stages-before-draw',
   '--mute-audio',
 ];
+
+// expression が真を返すまで待つ。timeoutMs で諦めて label を添えて投げる。
+export async function waitFor(devTools, expression, label, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (await devTools.evaluate(expression)) return;
+    await sleep(200);
+  } while (Date.now() < deadline);
+  throw new Error(`Timed out waiting for ${label}.`);
+}
+
+// ページが出した致命的なイベントを文字にして溜める器。onEvent を openChromeSession へ渡し、
+// 作業が終わったところで fatalEvents を見る。
+export function collectFatalEvents() {
+  const fatalEvents = [];
+  return {
+    fatalEvents,
+    onEvent: (event) => {
+      if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event.params.exceptionDetails.exception?.description ?? event.params.exceptionDetails.text);
+      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event.params.args.map((arg) => arg.description ?? String(arg.value)).join(' '));
+      if (event.method === 'Inspector.targetCrashed') fatalEvents.push('renderer target crashed');
+    },
+  };
+}
 
 // serveDir を port で配り、ヘッドレス Chrome を上げ、CDP を繋いだ状態を返す。
 // windowSize({width,height})を渡すと、その大きさの窓と等倍の device metrics で開く。
