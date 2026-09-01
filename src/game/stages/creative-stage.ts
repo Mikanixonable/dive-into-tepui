@@ -297,7 +297,7 @@ export class CreativeStage extends Stage {
     displayTime: number,
   ): void {
     if (!this.preview) {
-      this.previewEllipseLine.sync(null, fo, camera);
+      this.previewEllipseLine.hide();
       this._markerManager.fadeOut('creative-preview');
       return;
     }

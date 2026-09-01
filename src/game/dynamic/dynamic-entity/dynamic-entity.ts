@@ -248,8 +248,8 @@ export class DynamicEntity {
   }
 
   // 軌道楕円を隠す(相対軌跡モードへ切り替える/状態が求まらないときに使う)。
-  private hideOrbitEllipse(fo: FloatingOrigin, camera: THREE.Camera): void {
-    this.ellipseLine?.sync(null, fo, camera);
+  private hideOrbitEllipse(): void {
+    this.ellipseLine?.hide();
   }
 
   // ellipseLine を表示時刻の状態に合わせる。線を持たなければ何もしない。displayTime が現在時刻
@@ -264,14 +264,14 @@ export class DynamicEntity {
     const state = this.stateAt(displayTime, celestialSystem);
     if (state === null) {
       // 表示時刻の状態が求まらない: 両方隠す。
-      this.hideOrbitEllipse(fo, camera);
+      this.hideOrbitEllipse();
       this.targetRelativeLine?.hide();
       return;
     }
     // 非質量の艦・基地に固定中で、自分自身がその対象でなければ対象への直線モード。
     const relativeTarget = orbitRef?.fixed && !orbitRef.hasMass ? orbitRef.entity : null;
     if (relativeTarget !== null && relativeTarget !== this) {
-      this.hideOrbitEllipse(fo, camera);
+      this.hideOrbitEllipse();
       if (this.targetRelativeLine === null && this.ellipseLineStyle !== null) {
         const line = new TargetRelativeLine(this.ellipseLineStyle);
         this.scene?.add(line.line);
@@ -284,14 +284,16 @@ export class DynamicEntity {
     this.targetRelativeLine?.hide();
     // 艦・基地以外の非質量対象(ラグランジュ点など)、または自分自身が対象のときは楕円も出さない。
     if (orbitRef?.fixed && !orbitRef.hasMass) {
-      this.hideOrbitEllipse(fo, camera);
+      this.hideOrbitEllipse();
       return;
     }
     // 質量天体に固定中はその天体中心、自動選択(未固定)なら自身にとって最も強く引く天体を中心に描く。
     const center = orbitRef?.fixed && orbitRef.attractor
       ? orbitRef.attractor
       : strongestAttractor(state.r, frameAnchors.bodies, frameAnchors.bodiesPivot);
-    this.ellipseLine?.sync(orbitalElementsOf(state, center, frameAnchors.bodiesPivot), fo, camera);
+    const elements = orbitalElementsOf(state, center, frameAnchors.bodiesPivot);
+    if (elements === null) this.hideOrbitEllipse();
+    else this.ellipseLine?.sync(elements, fo, camera);
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
