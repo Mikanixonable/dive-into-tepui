@@ -154,36 +154,6 @@ export する。** 陣形の供給条件は `DEVELOP/SPEC/COMBAT.md`「タンパ
 
 ## 手順
 
-### 手順 3. 残る `enemy-*.ts` 4 本を `enemy.ts` へインライン展開する
-
-**目的.** 委譲するだけのモジュールを消す。**この時点で挙動は変えない。** 手順 4 でクラスを割る
-とき、分岐の実体が 1 ファイルに揃っていたほうが、どの行がどちらの具象へ行くのかを見ながら
-動かせる。展開後の `enemy.ts` は一時的に 500 行の基準を超える(下の見積り参照)が、
-**手順 4 とセットで解消する。手順 3 で止めない。**
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-entity/enemy-render.ts` | **削除。** `buildEnemyRenderObject` を `enemy.ts` のコンストラクタ手前へ移す(手順 4 で kind の `if` ごと 2 クラスへ割れる) |
-| `src/game/dynamic/dynamic-entity/enemy-marker.ts` | **削除。** `buildEnemyMarkerItem` の本体を `Enemy.markerItem`(294〜297 行)へ畳み込む。委譲メソッドを消し、`id` / `name` / `sym` を `this` から直に読む |
-| `src/game/dynamic/dynamic-entity/enemy-save.ts` | **削除。** `serializeEnemy` の本体を `Enemy.serialize`(520〜522 行)へ畳み込む |
-| `src/game/dynamic/dynamic-entity/enemy-sun-glare.ts` | **削除。** `sunGlareSpreadScale` を `enemy.ts` のモジュールスコープ関数として移す(ゲームバランスの経験則なので `game/` に置いたままにする — `physics/` へは動かさない) |
-| `src/game/dynamic/dynamic-entity/enemy.ts` 37・39〜41 行 | 4 本の `import` を削除。移入に伴い `hud/utils` / `marker/marker-glyphs` / `theme` / `celestial/solar-system/constants` / `render/ships` の import を足す |
-| `src/game/dynamic/dynamic-entity/enemy.ts` 47・49 行 | `ENEMY_SCALE` / `PLAYER_BULLET_DAMAGE` の `export` を外す(`grep` の結果、コード上の参照は `enemy.ts` 内だけ。他所はコメント中の言及のみ) |
-
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `npm run test:game` / `npm run test:render` が通る。
-- `ls src/game/dynamic/dynamic-entity/enemy-*.ts` が 0 件。
-- `grep -rn "enemy-render\|enemy-marker\|enemy-save\|enemy-sun-glare" src tests` が 0 件。
-- `npm run dev` でクリエイティブステージを開き、敵マーカー(名前・距離・HP 三角形・画面外方位
-  三角形)が変更前と同じに出ること。プラズマ弾の散布が逆光で広がること(太陽を背にした敵と
-  太陽に向いた敵で弾の散り方が違う)。
-
----
-
 ### 手順 4. `Enemy` を抽象基底へ分け、`MetalEnemy` / `ProteinEnemy` と `enemy-dictionary.ts` を置く
 
 **目的.** 本題。`enemy.ts` に 43 箇所ある種別の分岐をクラスの違いへ置き換え、復元を
@@ -412,8 +382,22 @@ export interface ProteinEnemySaveData extends EnemySaveData {
 **達成条件と検証.**
 
 - `npm run typecheck` と `npm run test`(全層)が通る。
+- `npm run smoke:browser` が通る(起動と基本操作で実行時例外が出ないこと)。
 - 4 モジュールのそれぞれについて、ファイル先頭コメント 1 行で責務が言えること。
 - 「達成目標」の 1〜9 を 1 つずつ当てて、すべて満たされていること。
+
+**手順 3・4 の目視検証をここへまとめる。** 手順 3 は挙動不変で、手順 4 の目視項目に完全に
+含まれるため、`npm run dev` は最後に 1 回だけ通す。クリエイティブステージを開いて:
+
+1. 「敵を配置」で金属機体の敵が出る → 撃つと火花・ガスパフが出て、HP が減って撃破できる。
+2. 「陣形を生成」でタンパク質 3 体(5I4R / ルビスコ / ATP シンテターゼ)が出る。
+   部位マーカー(3km 以内)に略号と HP が並ぶ。
+3. 表示形態のセレクタを切り替えると、既に出ている 3 体すべての見た目が変わる。
+4. ATP シンテターゼを先に破壊すると、5I4R がプラズマを撃たなくなる。撃破直後に部位マーカーが
+   残らない。
+5. セーブ → タイトルへ戻る → ロードで、3 体が同じ表示形態・同じ部位 HP で戻る。
+6. 敵マーカー(名前・距離・HP 三角形・画面外方位三角形)が変更前と同じに出る。
+7. ステージ 00 のウェーブ敵が、機首をプログレードへ向けたまま回転せずに飛んでくる。
 
 ---
 
