@@ -6,6 +6,8 @@
 // ときは中身が積分した軌跡そのもの。`kind` / `method` の**値**は「何を描いた線か」のラベル
 // なので `orbit-*` のまま。
 import { Vec3 } from '../../math/vec3';
+import { isOccluded } from '../../physics/occlusion';
+import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { ProjectFn } from '../camera/camera-system';
 
 export type LinePickKind = 'orbit-body' | 'orbit-ship' | 'orbit-guide';
@@ -37,10 +39,18 @@ function distanceSqToSegment(px: number, py: number, ax: number, ay: number, bx:
   return ex * ex + ey * ey;
 }
 
+// 遮蔽判定に要るもの。天体の位置を引く時刻(pivot)は候補の点を求めた表示時刻と揃える。
+export interface LineOcclusion {
+  readonly cameraPos: Vec3;
+  readonly celestialBodies: readonly CelestialMotion[];
+  readonly pivot: number;
+}
+
 // orbits を画面へ射影し、(x, y) から最短距離が radiusPxSq [px^2] 以内で最も近いものを返す。
-// 圏外・視界の裏側の点は候補にしない。
+// 圏外・視界の裏側・天体に遮られた点は候補にせず、そこで線分を切る(SPEC/MAP.md §11)。
 export function pickNearestLine(
   orbits: readonly LinePickable[], x: number, y: number, project: ProjectFn, radiusPxSq: number,
+  occlusion: LineOcclusion,
 ): LinePickable | null {
   let best: LinePickable | null = null;
   let bestDistSq = radiusPxSq;
@@ -48,7 +58,8 @@ export function pickNearestLine(
     let prevX = 0, prevY = 0, hasPrev = false;
     for (const point of orbit.points) {
       const p = project(point);
-      if (!p.front) {
+      if (!p.front
+        || isOccluded(occlusion.cameraPos, point, occlusion.celestialBodies, occlusion.pivot)) {
         hasPrev = false;
         continue;
       }

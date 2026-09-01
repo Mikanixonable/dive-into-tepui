@@ -171,6 +171,11 @@ export class MapContextActions implements MapCommands {
       const orbit = pickNearestLine(
         this.linePickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
         pickRadiusSq(ORBIT_LINE_PICK_PX_SQ, ORBIT_LINE_PICK_PX_SQ_COARSE),
+        {
+          cameraPos: this.cameraSystem.activeCameraPos,
+          celestialBodies: this.celestialSystem.celestialMotions,
+          pivot: this.pickables.lastDisplayTime,
+        },
       );
       if (!orbit) return false;
       this.orbitLineWindows.open(p.x, p.y, orbit);
