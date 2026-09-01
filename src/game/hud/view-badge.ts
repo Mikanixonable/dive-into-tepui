@@ -1,4 +1,4 @@
-import type { ViewId, ViewManager } from '../view-manager';
+import type { WorldView, ViewManager } from '../view-manager';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from './overlay-manager';
 import { Button, ToggleSwitch } from './widgets';
@@ -7,7 +7,7 @@ import type { RenderStyleSetting } from '../../render/render-style';
 const GAME_TITLE = 'Dive into Tepui';
 const GAME_VERSION = `v${__APP_VERSION__}`;
 
-const VIEW_LABELS: Record<ViewId, string> = { combat: 'Combat', map: 'Map' };
+const VIEW_LABELS: Record<WorldView, string> = { combat: 'Combat', map: 'Map' };
 
 export interface ViewBadgeContext {
   readonly focus: string | null;
