@@ -7,6 +7,7 @@ import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import cloudsTextureUrl from '../../src/assets/8k_clouds.jpg';
+import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeAxes, type RingBandDef } from '../../src/physics/celestial-body-def';
@@ -604,7 +605,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle): THREE.Object3D {
   group.position.copy(center);
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
-  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl);
+  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
   surface.setCloudAmount(1);
