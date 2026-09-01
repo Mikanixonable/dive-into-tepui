@@ -39,6 +39,7 @@
 | 描画(`src/render/`・シェーダ)に触れる / 見た目を目で確かめる | `/rendering-workflow` |
 | 大きな変更を終えた / 規約からの逸脱が疑わしい | `/refactor` |
 | 大規模な変更のあと、コメントを一括点検する | `/comment-cleanup` |
+| main へ PR を送る / main へ直マージする | `/send-pr`(取り込み・点検・検証・本文まで) |
 | どこで何が起きているか当たりを付けたい | `/overview` |
 | 誰が状態を持っているか / どこで `new` されるか | `/ownership` |
 | いつ・どの順で・どんな条件で走るか(per-frame) | `/callstack` |
@@ -81,8 +82,7 @@
   回帰テストは触った層のものだけ — `src/physics/` なら `npm run test:physics`、以下同様に
   `test:math` / `test:game` / `test:render`。ヘッドレス実行検証(`/verify`)は
   ユーザーが実行時の動作確認を明示的に求めたときだけ。変更と無関係な検証に時間を使わない。
-  **例外は main へ送るとき** — そのときだけは変更箇所によらず全部回す(「ブランチと main への
-  マージ」)。
+  **例外は main へ送るとき** — そのときだけは変更箇所によらず全部回す(`/send-pr`)。
 - **共通化するかどうかは、参照箇所の数ではなく「今後も使う可能性があるか」で決める。** これは
   コードからは判別できないので、`DEVELOP/SPEC/` の該当ファイル末尾にある「未確定の案」節を見て、
   決まらなければユーザーに問う。ユーザーが可能性に言及したものは同節へ記録する。
@@ -93,35 +93,23 @@
 CI が生成するので、**手で触らない。** 変更は main / release 以外のブランチで行い、PR で main へ
 入れる(小規模なら直マージ)。
 
-**main へ入る時点で、CI が回す検証がすべて通っていなければならない。** CI
-(`.github/workflows/build.yml`)は `npm run typecheck` → `npm run test` → `npm run build`
-を順に回し、**どれか1つでも落ちれば deploy がそこで止まる** — `release` が更新されず、公開版が
-古いまま取り残される。自動テストが回らない状態が常態化するのも困るが、**デプロイが止まったまま
-常態化するほうがはるかにマズい。**
-
-したがって:
-
-- **main へマージする前・PR を送る前に、作業ブランチで `npm run typecheck` と
-  `npm run test`(全層)を通す。** 触った層がどこであっても、**このときだけは必ず回す。**
-  ローカルで通らないものを main へ送らない。
-- **赤いまま main へ送らない。** 原因が自分の変更の外にあっても同じ — 赤いものを通した時点から
-  先の deploy が全部止まる。自分の変更が原因でないなら、先にそれを直すか、**直さずに送る判断は
-  ユーザーに委ねる**(黙って送らない)。
+**main へ送るときの手順は `/send-pr` が正本。** main の取り込み・作業範囲の点検・検証・PR 本文
+までを持つ。**ここには書かない** — 何を通すか、落ちたときにどうするかは、そちらで決める。
 
 ## コマンド
 
 | コマンド | 用途 | いつ走らせるか |
 | --- | --- | --- |
 | `npm run typecheck` | 型検査 | **常に** |
-| `npm run test` | 全層の回帰テスト | **main へ送る前** |
+| `npm run test` | 全層の回帰テスト | **main へ送る前**(`/send-pr`) |
 | `npm run test:physics` | `src/physics/` の回帰テスト | `src/physics/` を触ったとき |
 | `npm run test:math` | `src/math/` の回帰テスト | `src/math/` を触ったとき |
 | `npm run test:game` | `src/game/` の回帰テスト | `src/game/` を触ったとき |
 | `npm run test:render` | `src/render/` の回帰テスト | `src/render/` を触ったとき |
 | `npm run dev` | 開発サーバ(http://localhost:8080) | 実機で動かすとき |
 | `npm run smoke:browser` | ヘッドレスでの起動・操作スモーク | 実行時の確認を求められたとき |
-| `npm run build` | `docs/` への本番ビルド | 通常不要(公開は CI が行う) |
-| `npm run ci` | 上記をまとめて通す | 大きな変更を締めるとき |
+| `npm run build` | `docs/` への本番ビルド | **main へ送る前**(`/send-pr`)。公開は CI が行う |
+| `npm run ci` | 上記 + アセット・テーマ・リリース物の点検 | 任意。main へ送る検証は `/send-pr` |
 | `npm run bgm-lab` | BGM の試聴環境(http://localhost:8081) | 曲を調整するとき |
 | `npm run render-lab` | 描画の実験環境(http://localhost:8082) | 描画を目で確かめるとき |
 | `npm run render-lab:shot` | 描画の実験環境の撮影(`.render-lab/shots/`) | 描画を画像で確かめるとき |
