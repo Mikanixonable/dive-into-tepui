@@ -130,6 +130,10 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
   get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
   get totalFuel(): number { return this.baseFuel; }
   get totalMaxFuel(): number { return BASE_MAX_FUEL; }
+  // 基地は装甲を持たない。撃たれても削れる耐久値そのものが無い。
+  readonly hp = null;
+  readonly maxHp = null;
+
   // 基地は機関砲・太陽電池パドル・放熱板を持たず、大気も受けない。
   readonly fire = null;
   readonly power = null;
