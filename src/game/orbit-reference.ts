@@ -23,6 +23,21 @@ export interface OrbitReference {
   readonly fixed: boolean;
 }
 
+// エンティティ1体の軌道線を何基準で描くか(ORBIT.md「軌道線(3D描画)の基準天体は、戦闘ビューと
+// マップビューで扱いが異なる」)。center が null なら、その瞬間最も強く引いている天体を中心にする。
+export type OrbitLineBasis =
+  | { readonly kind: 'ellipse'; readonly center: CelestialMotion | null }
+  | { readonly kind: 'relative'; readonly target: DynamicEntity }
+  | { readonly kind: 'none' };
+
+// fixed / hasMass / attractor / entity の組み合わせを解くのはここだけにする。
+export function orbitLineBasisOf(ref: OrbitReference | undefined, self: DynamicEntity): OrbitLineBasis {
+  if (ref === undefined || !ref.fixed) return { kind: 'ellipse', center: null };
+  if (ref.hasMass) return { kind: 'ellipse', center: ref.attractor };
+  if (ref.entity !== null && ref.entity !== self) return { kind: 'relative', target: ref.entity };
+  return { kind: 'none' };
+}
+
 // 常に strongestAttractor で基準を選ぶ(切替不可の場面向け)。プロパティウィンドウの
 // 「軌道」欄など、常設パネルの基準選択とは独立に軌道要素を出す場所が使う。
 export function autoOrbitReference(
