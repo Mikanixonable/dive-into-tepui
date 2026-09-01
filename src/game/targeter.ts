@@ -1,11 +1,11 @@
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
-import { CelestialBody } from '../physics/celestial-body';
+import { CelestialMotion } from '../physics/celestial-motion';
 import * as C from './const';
-import { Enemy } from './game-entity/enemy';
-import { Base } from './game-entity/base';
-import type { AmmoPickup } from './game-entity/ammo-pickup';
-import type { RcsFuelPickup } from './game-entity/rcs-fuel-pickup';
-import type { EntityManager } from './simulation/entity-manager';
+import { Enemy } from './dynamic/dynamic-entity/enemy';
+import { Base } from './dynamic/dynamic-entity/base';
+import type { AmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
+import type { RcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
+import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
 import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
@@ -14,11 +14,11 @@ import { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH } from './marker/marker-glyphs';
 import { pickNearest } from './pickable/map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
-import type { Ephemeris } from '../physics/ephemeris';
+import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
-import type { DisplayWindow } from './display-window-manager';
+import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
 import { KEY_MAPPING as K } from './input/key-mapping';
-import type { MapVisibility, MapVisibilityPolicy } from './celestial/map-visibility';
+import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
 import type { NavTarget } from './nav-target';
@@ -59,7 +59,7 @@ export class Targeter {
 
   constructor(
     private readonly markerManager: MarkerManager,
-    private readonly navTarget: NavTarget, private readonly entities: EntityManager,
+    private readonly navTarget: NavTarget, private readonly entities: DynamicSystem,
   ) {}
 
   // 現在の戦闘ターゲット。正本は NavTarget(航法ターゲットと状態を共有)が持ち、ここでは
@@ -90,19 +90,17 @@ export class Targeter {
 
   // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
   updateEquatorNodes(
-    overviewMode: boolean, displayWindow: DisplayWindow, ephemeris: Ephemeris, frameAnchors: FrameAnchorSource,
+    overviewMode: boolean, displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
     if (!overviewMode) return;
-    const timeLabel = {
-      mode: displayWindow.tickLabelMode, show: displayWindow.showElementTimes, nowSimTime: displayWindow.simTime,
-    };
+    const timeLabel = timeLabelSettingOf(displayWindow);
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .updateOnEllipse(displayWindow.displayTime, ephemeris, frameAnchors, timeLabel);
+      .updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
   // 通過した点をターゲット相対で記録する。既存の記録は経過時間を進め、寿命切れを捨てる。
-  updateBoardMarks(dt: number, player: Player | null, entities: EntityManager): void {
+  updateBoardMarks(dt: number, player: Player | null, entities: DynamicSystem): void {
     const target = this.aliveTarget;
     // 記録側と描画側で同じ aliveTarget を見る: target のままだと撃破後も死亡個体の
     // 凍結位置を基準に ✦ を残し続けてしまう。
@@ -148,7 +146,7 @@ export class Targeter {
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
-    ephemeris: Ephemeris, celestialBodies: readonly CelestialBody[],
+    celestialBodies: readonly CelestialMotion[],
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
@@ -170,11 +168,11 @@ export class Targeter {
       const item = tgt instanceof Player
         ? tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode, tgt === player)
         : tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies);
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies, displayTime);
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && overviewMode
-          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, ephemeris, celestialBodies))
+          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, celestialBodies, displayTime))
           : 1;
       this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
     }
@@ -189,7 +187,7 @@ export class Targeter {
       if (!ammo.alive) continue;
       const visibility = visibilityPolicy?.entity('ammo');
       if (visibility && !visibility.pickable) continue;
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, celestialBodies);
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, celestialBodies, displayTime);
       const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(ammo.state.r, viewerPos))) : 1;
       this.pushMarkerItem(ammo.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
     }
@@ -197,7 +195,7 @@ export class Targeter {
       if (!fuel.alive) continue;
       const visibility = visibilityPolicy?.entity('fuel');
       if (visibility && !visibility.pickable) continue;
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, celestialBodies);
+      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, celestialBodies, displayTime);
       const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
       this.pushMarkerItem(fuel.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
     }

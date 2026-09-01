@@ -1,22 +1,23 @@
 // 相互重力(小惑星どうし)の回帰テスト。
+import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialBody } from '../../src/physics/celestial-body';
+import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { Vec3, add, len, scale, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
 
-// 試験用の CelestialBody を組む。質点(degree2 なし)・非恒星・半径0で、重力の寄与だけを見る。
-function makeCelestialBody(id: string, mu: number, state: KinematicState): CelestialBody {
-  return { id, mu, radius: 0, state, accel: ZERO, degree2: null, atmosphere: null, isStar: false };
+// 試験用の CelestialMotion を組む。質点(degree2 なし)・非恒星・半径0で、重力の寄与だけを見る。
+function makeCelestialBody(id: string, mu: number, state: KinematicState): CelestialMotion {
+  return fixedMotion({ id, mu, radius: 0, state, accel: ZERO, degree2: null, atmosphere: null });
 }
 
 // 単一の attractor だけを重力源として1ステップ進める(自由伝播: 抵抗・輻射圧・推力なし)。
-function stepFree(state: KinematicState, dt: number, attractors: readonly CelestialBody[]): KinematicState {
-  return stepDynamics(state, dt, attractors, attractors, null, 0, 0, null);
+function stepFree(state: KinematicState, dt: number, attractors: readonly CelestialMotion[]): KinematicState {
+  return stepDynamics(state, dt, attractors, attractors, null, 0, 0, 0, null);
 }
 
 // dt ぶんのステップの間、相手の attractor 位置をステップ開始時点で固定する近似は
@@ -24,7 +25,7 @@ function stepFree(state: KinematicState, dt: number, attractors: readonly Celest
 // 外挿するだけで一次の遅れ誤差を消せる。相互重力の周期検算をわずかなステップ数で
 // 高精度に行うための、このテストだけの工夫。
 function atMidpoint(state: KinematicState, dt: number): KinematicState {
-  return kinematicState(state.t + dt / 2, add(state.r, scale(state.v, dt / 2)), state.v);
+  return kinematicState<'eci'>(state.t + dt / 2, add(state.r, scale(state.v, dt / 2)), state.v);
 }
 
 export function register(): void {
@@ -39,8 +40,8 @@ export function register(): void {
     const period = (2 * Math.PI) / omega;
     const v = omega * (d / 2);
 
-    let a = kinematicState(0, add(offset, v3(d / 2, 0, 0)), v3(0, v, 0));
-    let b = kinematicState(0, add(offset, v3(-d / 2, 0, 0)), v3(0, -v, 0));
+    let a = kinematicState<'eci'>(0, add(offset, v3(d / 2, 0, 0)), v3(0, v, 0));
+    let b = kinematicState<'eci'>(0, add(offset, v3(-d / 2, 0, 0)), v3(0, -v, 0));
 
     const steps = 4000;
     const dt = period / steps;
@@ -65,8 +66,8 @@ export function register(): void {
     const offset = v3(1e10, 0, 0);
     const omega = Math.sqrt((2 * mu) / (d * d * d));
     const v = omega * (d / 2);
-    let a = kinematicState(0, add(offset, v3(d / 2, 0, 0)), v3(0, v, 0));
-    let b = kinematicState(0, add(offset, v3(-d / 2, 0, 0)), v3(0, -v, 0));
+    let a = kinematicState<'eci'>(0, add(offset, v3(d / 2, 0, 0)), v3(0, v, 0));
+    let b = kinematicState<'eci'>(0, add(offset, v3(-d / 2, 0, 0)), v3(0, -v, 0));
 
     const momentum0 = add(scale(a.v, mu), scale(b.v, mu));
     const dt = (2 * Math.PI) / omega / 500;
@@ -89,9 +90,9 @@ export function register(): void {
     // 分離距離(~1e5〜1e6m)に対して mu を控えめに取り、近接遭遇のような急激な加速度変化を避ける
     // (相互重力そのものの精度ではなく、離散ステップが保存則をどれだけ保つかを見たいテストなので)。
     const muA = 1e9, muB = 2e9, muC = 1.5e9;
-    let a = kinematicState(0, add(offset, v3(3e5, 0, 0)), v3(0, 30, 5));
-    let b = kinematicState(0, add(offset, v3(-2e5, 3e5, 0)), v3(-20, -10, 0));
-    let c = kinematicState(0, add(offset, v3(0, -3e5, 2e5)), v3(15, 20, -8));
+    let a = kinematicState<'eci'>(0, add(offset, v3(3e5, 0, 0)), v3(0, 30, 5));
+    let b = kinematicState<'eci'>(0, add(offset, v3(-2e5, 3e5, 0)), v3(-20, -10, 0));
+    let c = kinematicState<'eci'>(0, add(offset, v3(0, -3e5, 2e5)), v3(15, 20, -8));
 
     const momentumOf = (a2: KinematicState, b2: KinematicState, c2: KinematicState): Vec3 =>
       add(add(scale(a2.v, muA), scale(b2.v, muB)), scale(c2.v, muC));
@@ -114,11 +115,11 @@ export function register(): void {
   });
 
   test('n-body: 地球+小天体で艦を積分すると、小天体の質量→0の極限で小天体なしの結果に収束する', () => {
-    const earth = makeCelestialBody('earth', MU_EARTH, kinematicState(0, ZERO, ZERO));
+    const earth = makeCelestialBody('earth', MU_EARTH, kinematicState<'eci'>(0, ZERO, ZERO));
     const shipR0 = v3(R_EARTH + 420e3, 0, 0);
     const shipV0 = v3(0, Math.sqrt(MU_EARTH / (R_EARTH + 420e3)), 0);
-    const ship0 = kinematicState(0, shipR0, shipV0);
-    const smallBodyPos = kinematicState(0, v3(R_EARTH + 420e3 + 2e4, 5e3, 0), ZERO);
+    const ship0 = kinematicState<'eci'>(0, shipR0, shipV0);
+    const smallBodyPos = kinematicState<'eci'>(0, v3(R_EARTH + 420e3 + 2e4, 5e3, 0), ZERO);
 
     const integrate = (muSmallBody: number): KinematicState => {
       const attractors = muSmallBody === 0 ? [earth] : [earth, makeCelestialBody('small-body', muSmallBody, smallBodyPos)];

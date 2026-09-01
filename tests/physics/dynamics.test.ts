@@ -1,27 +1,29 @@
 // dynamics.ts の回帰テスト。stepDynamics は DynamicTrajectory.step が使う唯一の 1 ステップ実装。
-import { solarSystemEphemeris } from './test-helpers';
+import { fixedMotion, positionOf, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH, R_EARTH_EQ } from '../../src/physics/solar-system/constants';
+import { MU_EARTH, R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
 import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
-import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/physics/solar-system/constants';
-import { CelestialBody, Degree2Gravity, orbitalElementsOf } from '../../src/physics/celestial-body';
+import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import { Degree2Gravity } from '../../src/physics/celestial-body-def';
+import { CelestialMotion } from '../../src/physics/celestial-motion';
+import { orbitalElementsOf } from '../../src/physics/elements';
 import { degree2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';
 import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { qFromAxisAngle, qRotate } from '../../src/physics/attitude';
 
 const EARTH_POLE = v3(0, 1, 0);
 const EARTH_DEGREE2: Degree2Gravity = { j2: J2_EARTH, refRadius: R_EARTH_EQ, pole: EARTH_POLE, tesseral: null };
-const EARTH: CelestialBody = {
-  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(),
-  degree2: EARTH_DEGREE2, atmosphere: null, isStar: false,
-};
+const EARTH: CelestialMotion = fixedMotion({
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(),
+  degree2: EARTH_DEGREE2, atmosphere: null,
+});
 
 function circularState() {
   const r0 = R_EARTH + 420e3;
   const vc = Math.sqrt(MU_EARTH / r0);
-  return kinematicState(0, v3(r0, 0, 0), v3(0, vc, 0));
+  return kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, vc, 0));
 }
 
 function rot(v: Vec3, axis: Vec3, angle: number): Vec3 {
@@ -84,18 +86,18 @@ function legacyAccel(r: Vec3, sunPos: Vec3, moonPos: Vec3): Vec3 {
 }
 
 // 原点に静止した点質量の地球(2次重力場なし)。
-const STATIC_EARTH: CelestialBody = {
-  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(),
-  degree2: null, atmosphere: null, isStar: false,
-};
+const STATIC_EARTH: CelestialMotion = fixedMotion({
+  id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(),
+  degree2: null, atmosphere: null,
+});
 const EARTH_MOON_DIST = 3.844e8; // 地球-月間距離(円軌道近似)[m]
 // 地球-月の重心を回る円軌道の角速度(縮約質量問題)。
 const EARTH_MOON_OMEGA = Math.sqrt((MU_EARTH + MU_MOON) / (EARTH_MOON_DIST * EARTH_MOON_DIST * EARTH_MOON_DIST));
 
 // 時刻 t における、円軌道を回る月を含む解析的な重力源窓(地球は原点に静止)。
-// state.t/r/v/accel のすべてを円運動の閉じた式で厳密に与えるので、celestialBodyPositionAt に
+// state.t/r/v/accel のすべてを円運動の閉じた式で厳密に与えるので、pivot からの外挿に
 // よる段ごとの外挿の正しさをこの窓自体の近似誤差と混同せずに測れる。
-function earthMoonWindowAt(t: number): readonly CelestialBody[] {
+function earthMoonWindowAt(t: number): readonly CelestialMotion[] {
   const theta = EARTH_MOON_OMEGA * t;
   const c = Math.cos(theta), s = Math.sin(theta);
   const r = v3(EARTH_MOON_DIST * c, 0, EARTH_MOON_DIST * s);
@@ -103,7 +105,7 @@ function earthMoonWindowAt(t: number): readonly CelestialBody[] {
   const a = v3(-EARTH_MOON_OMEGA * EARTH_MOON_OMEGA * r.x, 0, -EARTH_MOON_OMEGA * EARTH_MOON_OMEGA * r.z);
   return [
     STATIC_EARTH,
-    { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(t, r, v), accel: a, degree2: null, atmosphere: null, isStar: false },
+    fixedMotion({ id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState<'eci'>(t, r, v), accel: a, degree2: null, atmosphere: null }),
   ];
 }
 
@@ -113,13 +115,13 @@ export function register(): void {
     const dt = 10;
     const sunPos = v3(1.5e11, 0, 0);
     const moonPos = v3(3.8e8, 0, 0);
-    const attractors: readonly CelestialBody[] = [
+    const attractors: readonly CelestialMotion[] = [
       EARTH,
-      { id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState(0, moonPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: false },
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: true },
+      fixedMotion({ id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState<'eci'>(0, moonPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null }),
+      fixedMotion({ id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState<'eci'>(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, kind: 'star' }),
     ];
 
-    const viaNew = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, null);
+    const viaNew = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, null);
     const viaLegacy = stepRK4(s0, dt, (_t, rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
 
     const posErr = len(sub(viaNew.r, viaLegacy.r)) / len(viaLegacy.r);
@@ -131,11 +133,11 @@ export function register(): void {
   test('dynamics: stepDynamics adds thrust on top of gravity', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = solarSystemEphemeris({ moon: 0 }).celestialBodiesAt(0);
+    const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
-    const withThrust = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, thrust);
-    const withoutThrust = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, null);
+    const withThrust = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, thrust);
+    const withoutThrust = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, null);
 
     assert.ok(len(sub(withThrust.v, withoutThrust.v)) > 1, 'thrust should visibly change the velocity');
   });
@@ -143,12 +145,12 @@ export function register(): void {
   test('dynamics: stepDynamics with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = solarSystemEphemeris({ moon: 0 }).celestialBodiesAt(0);
+    const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
     const earth = attractors.find((a) => a.id === 'earth')!;
-    assert.ok(earth.atmosphere !== null, '前提: 既定レジストリの地球は大気を持つ');
+    assert.ok(earth.atmosphereAt(0) !== null, '前提: 既定レジストリの地球は大気を持つ');
 
-    const noDrag = stepDynamics(s0, dt, attractors, attractors, earth, 0, 0, null);
-    const withDrag = stepDynamics(s0, dt, attractors, attractors, earth, 0.01, 0, null);
+    const noDrag = stepDynamics(s0, dt, attractors, attractors, earth, 0, 0, 0, null);
+    const withDrag = stepDynamics(s0, dt, attractors, attractors, earth, 0, 0.01, 0, null);
 
     assert.ok(len(withDrag.v) < len(noDrag.v), 'drag should reduce orbital speed relative to the drag-free step');
   });
@@ -156,31 +158,32 @@ export function register(): void {
   test('dynamics: 大気天体を渡さなければ、同じ位置・同じ bcInv でも抗力は恒等的にゼロ', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = solarSystemEphemeris({ moon: 0 }).celestialBodiesAt(0);
+    const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
 
-    const noAtmosphere = stepDynamics(s0, dt, attractors, attractors, null, 0.01, 0, null);
-    const noDrag = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, null);
+    const noAtmosphere = stepDynamics(s0, dt, attractors, attractors, null, 0, 0.01, 0, null);
+    const noDrag = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, null);
 
     assert.deepEqual(noAtmosphere.v, noDrag.v);
   });
 
   test('dynamics: a circular lunar orbit (surface +100km) returns to about the same moon-relative position after one revolution (measured, pinned)', () => {
-    const ephemeris = solarSystemEphemeris({ moon: 0 });
-    const attractors0 = ephemeris.celestialBodiesAt(0);
+    const parts = solarSystemParts({ moon: 0 });
+    const windows = parts.system;
+    const attractors0 = windows.celestialMotions;
     const moon0 = attractors0.find((b) => b.id === 'moon')!;
     const a = R_MOON + 100e3;
     const period = keplerPeriod(a, MU_MOON); // ~7,066s
     const rel0 = stateFromOrbitalElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
-    let s = kinematicState(0, add(rel0.r, moon0.state.r), add(rel0.v, moon0.state.v));
+    let s = kinematicState<'eci'>(0, add(rel0.r, moon0.stateAt(0).r), add(rel0.v, moon0.stateAt(0).v));
 
     const dt = 5;
     const steps = Math.round(period / dt);
     for (let i = 0; i < steps; i++) {
-      const attractors = ephemeris.celestialBodiesAt(s.t + dt / 2);
-      s = stepDynamics(s, dt, attractors, attractors, null, 0, 0, null);
+      const attractors = windows.celestialMotions;
+      s = stepDynamics(s, dt, attractors, attractors, null, 0, 0, 0, null);
     }
 
-    const relFinal = sub(s.r, ephemeris.positionOf('moon', s.t));
+    const relFinal = sub(s.r, positionOf(parts, 'moon', s.t));
     const drift = len(sub(relFinal, rel0.r));
     // 地球(・太陽)の潮汐差ぶんの摂動がかかるので、月の二体問題の解には正確には戻らない。
     assert.ok(drift < 50e3, `moon-relative drift after 1 revolution: ${drift} m (expected within tens of km)`);
@@ -194,7 +197,7 @@ export function register(): void {
     const alt = 420e3;
     const r0 = R_EARTH + alt;
     const vCirc = Math.sqrt(MU_EARTH / r0);
-    let s = kinematicState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
+    let s = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, 0, vCirc));
     const period = 2 * Math.PI * Math.sqrt((r0 * r0 * r0) / MU_EARTH);
     const e0 = 0.5 * vCirc * vCirc - MU_EARTH / r0;
 
@@ -240,7 +243,7 @@ export function register(): void {
       });
     }
 
-    const el = orbitalElementsOf(s, EARTH) as OrbitalElements;
+    const el = orbitalElementsOf(s, EARTH, 0) as OrbitalElements;
     // RAAN(昇交点赤経) = atan2(hHat.x, -hHat.z) 的な導出でも良いが、ここでは
     // pHat/hHat から昇交点方向ベクトルを求め、その方位角(XZ平面, 基準X軸)を使う。
     // 昇交点方向 = Y(極軸) × hHat の正規化(軌道面と赤道面の交線)
@@ -349,59 +352,59 @@ export function register(): void {
     // 純関数 srpAccel が正しくても accel から呼ばれていなければ効かないので、積分側で確かめる。
     // 太陽を +X 1AU に置くと、+X 側の位置は日照、−X 側は地球の影の中に入る。
     const sunPos = v3(1.495978707e11, 0, 0);
-    const attractors: readonly CelestialBody[] = [
+    const attractors: readonly CelestialMotion[] = [
       EARTH,
-      { id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, isStar: true },
+      fixedMotion({ id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState<'eci'>(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, kind: 'star' }),
     ];
     const dt = 100;
     const srpCoeff = 1e-2;
     const speed = Math.sqrt(MU_EARTH / 7e6);
 
-    const sunlitStart = kinematicState(0, v3(7e6, 0, 0), v3(0, 0, speed));
-    const withSrp = stepDynamics(sunlitStart, dt, attractors, attractors, null, 0, srpCoeff, null);
-    const withoutSrp = stepDynamics(sunlitStart, dt, attractors, attractors, null, 0, 0, null);
+    const sunlitStart = kinematicState<'eci'>(0, v3(7e6, 0, 0), v3(0, 0, speed));
+    const withSrp = stepDynamics(sunlitStart, dt, attractors, attractors, null, 0, 0, srpCoeff, null);
+    const withoutSrp = stepDynamics(sunlitStart, dt, attractors, attractors, null, 0, 0, 0, null);
     assert.ok(len(sub(withSrp.v, withoutSrp.v)) > 0, 'a sunlit object should feel solar radiation pressure');
 
-    const umbraStart = kinematicState(0, v3(-7e6, 0, 0), v3(0, 0, speed));
-    const shadowedWith = stepDynamics(umbraStart, dt, attractors, attractors, null, 0, srpCoeff, null);
-    const shadowedWithout = stepDynamics(umbraStart, dt, attractors, attractors, null, 0, 0, null);
+    const umbraStart = kinematicState<'eci'>(0, v3(-7e6, 0, 0), v3(0, 0, speed));
+    const shadowedWith = stepDynamics(umbraStart, dt, attractors, attractors, null, 0, 0, srpCoeff, null);
+    const shadowedWithout = stepDynamics(umbraStart, dt, attractors, attractors, null, 0, 0, 0, null);
     assert.deepEqual(shadowedWith, shadowedWithout, 'an object in the umbra should feel nothing');
   });
 
   test('dynamics: 遮蔽体は重力源とは別の窓から決まる — mu=0 の天体でも太陽を隠す', () => {
     // 重力を及ぼさない天体にも半径はある。遮蔽の可否が重力の有無に依らないことを、重力源と
     // 位置を固定したまま遮蔽体の窓だけを変えて確かめる。
-    const sun: CelestialBody = {
+    const sun: CelestialMotion = fixedMotion({
       id: 'sun', mu: MU_SUN, radius: R_SUN,
-      state: kinematicState(0, v3(1.495978707e11, 0, 0), v3()), accel: v3(),
-      degree2: null, atmosphere: null, isStar: true,
-    };
-    // 原点に置いた、重力を持たない不透明な球。gravityAttractorsAt はこれを返さない。
-    const darkBody: CelestialBody = {
-      id: 'dark', mu: 0, radius: R_EARTH, state: kinematicState(0, v3(), v3()), accel: v3(),
-      degree2: null, atmosphere: null, isStar: false,
-    };
-    const start = kinematicState(0, v3(-7e6, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / 7e6)));
+      state: kinematicState<'eci'>(0, v3(1.495978707e11, 0, 0), v3()), accel: v3(),
+      degree2: null, atmosphere: null, kind: 'star',
+    });
+    // 原点に置いた、重力を持たない不透明な球。gravityMotions はこれを返さない。
+    const darkBody: CelestialMotion = fixedMotion({
+      id: 'dark', mu: 0, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(),
+      degree2: null, atmosphere: null,
+    });
+    const start = kinematicState<'eci'>(0, v3(-7e6, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / 7e6)));
     const dt = 100;
     const srpCoeff = 1e-2;
 
-    const noSrp = stepDynamics(start, dt, [sun], [sun], null, 0, 0, null);
-    const unshadowed = stepDynamics(start, dt, [sun], [sun], null, 0, srpCoeff, null);
-    const shadowed = stepDynamics(start, dt, [sun], [sun, darkBody], null, 0, srpCoeff, null);
+    const noSrp = stepDynamics(start, dt, [sun], [sun], null, 0, 0, 0, null);
+    const unshadowed = stepDynamics(start, dt, [sun], [sun], null, 0, 0, srpCoeff, null);
+    const shadowed = stepDynamics(start, dt, [sun], [sun, darkBody], null, 0, 0, srpCoeff, null);
     assert.ok(len(sub(unshadowed.v, noSrp.v)) > 0, '遮蔽体が無ければ輻射圧を受ける');
     assert.deepEqual(shadowed, noSrp, 'mu=0 の天体の本影の中では輻射圧を受けない');
   });
 
   test('dynamics: the moon carries a degree-2 field and the sun does not', () => {
-    const attractors = solarSystemEphemeris({ moon: 0.3 }).celestialBodiesAt(1234);
+    const attractors = solarSystemParts({ moon: 0.3 }).system.celestialMotions;
     const moon = attractors.find((b) => b.id === 'moon')!;
     const sun = attractors.find((b) => b.id === 'sun')!;
-    assert.ok(moon.degree2 !== null, 'the moon should resolve a degree-2 field');
-    assert.ok(moon.degree2!.tesseral !== null, 'the moon should not be treated as axisymmetric');
-    assert.equal(sun.degree2, null, 'the sun should stay a point mass');
+    assert.ok(moon.degree2At(0) !== null, 'the moon should resolve a degree-2 field');
+    assert.ok(moon.degree2At(0)!.tesseral !== null, 'the moon should not be treated as axisymmetric');
+    assert.equal(sun.degree2At(0), null, 'the sun should stay a point mass');
     // 基準半径は地形としての表面半径とは別の量なので、取り違えていないことを確かめる。
-    assert.equal(moon.degree2!.refRadius, R_MOON_GRAVITY);
-    assert.notEqual(moon.degree2!.refRadius, R_MOON);
+    assert.equal(moon.degree2At(0)!.refRadius, R_MOON_GRAVITY);
+    assert.notEqual(moon.degree2At(0)!.refRadius, R_MOON);
   });
 
   test("dynamics: stepDynamics keeps RK4's fourth-order convergence when the gravity source moves between stages", () => {
@@ -412,7 +415,7 @@ export function register(): void {
     const vc = Math.sqrt(MU_MOON / a);
     const period = 2 * Math.PI * Math.sqrt((a * a * a) / MU_MOON); // ~7071s
     const moon0 = earthMoonWindowAt(0).find((b) => b.id === 'moon')!;
-    const initial = kinematicState(0, add(moon0.state.r, v3(a, 0, 0)), add(moon0.state.v, v3(0, 0, vc)));
+    const initial = kinematicState<'eci'>(0, add(moon0.stateAt(0).r, v3(a, 0, 0)), add(moon0.stateAt(0).v, v3(0, 0, vc)));
 
     // 各ステップで窓をステップ中点で1回だけ解決し、stepDynamics へ渡す
     // (Simulator.substep が実運用で踏む経路そのもの)。
@@ -422,7 +425,7 @@ export function register(): void {
       let s = initial;
       for (let i = 0; i < steps; i++) {
         s = stepDynamics(
-          s, stepDt, earthMoonWindowAt(s.t + stepDt / 2), [], null, 0, 0, null);
+          s, stepDt, earthMoonWindowAt(s.t + stepDt / 2), [], null, 0, 0, 0, null);
       }
       return s;
     }

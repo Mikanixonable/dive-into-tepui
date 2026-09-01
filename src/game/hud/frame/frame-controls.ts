@@ -1,12 +1,11 @@
 // マップモードの「カメラ」「軌道フレーム」パネル オーケストレーター。
 // マップカメラの視点 (CameraFramePanel) と未来表示の描画基準 (TrajectoryFramePanel) を所有し、
 // カメラフォーカス変更時の軌道フレーム自動追随などの連動を疎結合に調停する。
-import { bodyAnchorSource, CelestialBody } from '../../../physics/celestial-body';
-import type { Ephemeris } from '../../../physics/ephemeris';
+import { bodyAnchorSource } from '../../../physics/attractor';
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
-import { systemMembersAt } from '../../celestial/body-visibility';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 import { MapCamera } from '../../camera/map-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
 import type { MapPickable } from '../../pickable/map-pickable';
@@ -40,20 +39,21 @@ export class FrameControls {
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     private readonly mapCamera: MapCamera,
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
-    this.cameraPanel = new CameraFramePanel(panelRoot, popupRoot, ephemeris, mapCamera, overlayManager);
-    this.trajectoryPanel = new TrajectoryFramePanel(panelRoot, popupRoot, ephemeris, displayWindow, overlayManager);
+    this.cameraPanel = new CameraFramePanel(panelRoot, popupRoot, celestialSystem, mapCamera, overlayManager);
+    this.trajectoryPanel = new TrajectoryFramePanel(
+      panelRoot, popupRoot, celestialSystem, displayWindow, overlayManager,
+    );
 
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
   }
 
-  // 離心率1未満の周回軌道にある役割だけを、回転ゾーンの「役割の公転」選択肢として返す
-  // (RotationZone は Ephemeris しか知らないため、判定はここで行う)。
+  // 離心率1未満の周回軌道にある役割だけを、回転ゾーンの「役割の公転」選択肢として返す。
   private validRevolutionRoles(t: number): readonly FrameRole[] {
     return FRAME_ROLES.filter((role) => this.frameAnchors.attractorOf(`@${role}`, t) !== null);
   }
@@ -73,10 +73,13 @@ export class FrameControls {
       this.setFocus({ kind: 'object', id });
       return;
     }
-    const starId = this.ephemeris.starId;
-    const frame = starId !== null ? this.ephemeris.frameOf(starId, null) : this.ephemeris.inertialFrame;
+    const frames = this.celestialSystem.frames;
+    const star = this.celestialSystem.star;
+    const frame = star !== null ? frames.frameOf(star.id, null) : frames.inertialFrame;
     // 回さない(rotatingWith: null)ので基準は必ず登録天体 — 機体・役割トークンの解決は要らない。
-    this.setFocus(focusPoint(this.ephemeris, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([])));
+    this.setFocus(focusPoint(
+      this.celestialSystem.frames, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([], this.lastTime),
+    ));
   }
 
   // マップカメラのフォーカスを target へ移す。追随が有効で target が登録天体を指しているときは
@@ -85,18 +88,19 @@ export class FrameControls {
     this.mapCamera.setFocusTarget(target);
     if (!this.trajectoryPanel.followCamera) return;
     const id = focusTargetId(target);
-    if (id !== undefined && id in this.ephemeris.registry) {
-      this.displayWindow.frame = this.ephemeris.frameOf(id, this.displayWindow.frame.rotatingWith);
+    if (id !== undefined && this.celestialSystem.has(id)) {
+      this.displayWindow.frame = this.celestialSystem.frames.frameOf(id, this.displayWindow.frame.rotatingWith);
     }
   }
 
   // パネルの表示と選択肢・選択表示を、他モジュールの状態へ合わせる。
   public sync(
-    pickables: readonly MapPickable[], cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+    pickables: readonly MapPickable[], cameraPos: Vec3,
     simTime: number, displayTime: number, visible: boolean,
   ): void {
     this.lastTime = simTime;
-    const members = visible ? systemMembersAt(this.ephemeris, cameraPos, celestialBodies) : [];
+    const members = visible
+      ? this.celestialSystem.systemMembersAt(cameraPos, displayTime) : [];
     // 役割が周回しているかどうかはパネルが見えているかと関係がないので、非表示でも判定する
     // — 見えていないあいだ空扱いにすると、パネルを畳んだだけで下の巻き戻しが走り、選択が消える。
     const validRoles = this.validRevolutionRoles(displayTime);
@@ -107,7 +111,7 @@ export class FrameControls {
       this.mapCamera.setCameraRotation(null);
     }
     if (this.isStaleRole(this.displayWindow.frame.rotatingWith, validRoles)) {
-      this.displayWindow.frame = this.ephemeris.frameOf(this.displayWindow.frame.center, null);
+      this.displayWindow.frame = this.celestialSystem.frames.frameOf(this.displayWindow.frame.center, null);
     }
 
     this.cameraPanel.sync(pickables, members, displayTime, validRoles, visible);

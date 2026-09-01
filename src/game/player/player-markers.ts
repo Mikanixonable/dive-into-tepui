@@ -43,7 +43,7 @@ export class PlayerMarkers {
   private syncOrbitAxes(state: KinematicState, project: ProjectFn, orbitRef?: OrbitReference): void {
     const pr = state.r;
     const relState = orbitRef
-      ? kinematicState(state.t, sub(state.r, orbitRef.state.r), sub(state.v, orbitRef.state.v))
+      ? kinematicState<'eci'>(state.t, sub(state.r, orbitRef.state.r), sub(state.v, orbitRef.state.v))
       : state;
     const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitAxes(relState);
 

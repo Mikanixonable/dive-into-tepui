@@ -32,8 +32,9 @@
 ### 1-1. GPU に ECI 絶対座標を載せない
 
 描画はすべてフローティングオリジン座標系(`THREE.Vector3`)で行う。具体的には
-**`src/render/**` から `Vec3` / `KinematicState` / `ReferenceFrame` / `Attractor` /
-`Ephemeris` / `OrbitalElements` / `FloatingOrigin` への import が 0 件**であること。
+**`src/render/**` から `Vec3` / `KinematicState` / `ReferenceFrame` /
+`CelestialMotion` / `OrbitalElements` / `FloatingOrigin` への import が 0 件**であること。
+`CelestialBody` だけは例外で、光源・遮蔽の選定を render が持つため ECI の値として渡る。
 シェーダへ渡す位置は G バッファでも影マップでも照度バッファでもすべて描画座標系。
 
 唯一の例外は `game/celestial/point-field-view.ts` の `instanceMatrix`(太陽中心の生座標を
@@ -74,7 +75,7 @@ f32 へ書く)。**補正は要らないと結論済み** — 誤差は「太陽
 `game/` に書いてよいのは「この天体が存在する」「この位置(ECI)にある」「破壊された」まで。
 「何 px だから点で描く」「`renderOrder` は 3」「色は `0x9a8a7a`」は `render/` の判断。
 
-`GameEntity.obj: THREE.Object3D` は不透明ハンドルとして許容するが、**`game/` 側で
+`DynamicEntity.obj: THREE.Object3D` は不透明ハンドルとして許容するが、**`game/` 側で
 material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 
 ### 1-4. 遮蔽の合成規約
@@ -98,7 +99,7 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
   `L̄ = (2/3)·A·E_b·Φ(α)/π` — `A` は色つきボンドアルベド(`lightSourceAlbedoOf()`。実写
   テクスチャ天体は実測平均色 × ボンドアルベド)、`E_b` はその天体の場所の太陽放射照度に天体の食
   (`sunlitFactor`)を掛けたもの、`Φ(α)` はランバート球の位相関数。**どの天体を載せるかは
-  `game/celestial/planet-light.ts` が決める** — 基準点へ届ける放射照度の強い順に採るだけで、
+  `render/pipeline/lighting/planet-light-select.ts` が決める** — 基準点へ届ける放射照度の強い順に採るだけで、
   閾値もヒステリシスも無い。本数を 1 に絞ると、低軌道で地球照と月面照が入れ替わる瞬間に絵が
   跳びうる — それを負荷と引き換えに選ぶのはプレイヤー。**露出には依存しない** — 表示値で打ち切る閾値を
   置くと露出係数(順応 × 露出補正)を読むことになり、露出設定でライティング段が変わってしまう。
@@ -230,7 +231,7 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 (艦は点ではなく自己影を持つ)。`physics/` は THREE に依存できず TSL は TS 関数を呼べないので
 共有は物理的に不可能。**全件走査は、GPU 側が遮蔽器を打ち切ることの誤差を測るオラクルになる。**
 
-例外は天体照の光源選定(`game/celestial/planet-light.ts`)— **光源になる天体の食**を
+例外は天体照の光源選定(`render/pipeline/lighting/planet-light-select.ts`)— **光源になる天体の食**を
 `sunlitFactor` で天体中心の 1 点で評価し、放射輝度へ掛ける。これは CPU 側の選定であって
 画素ごとの遮蔽ではない。
 
@@ -343,7 +344,7 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
   太陽の点光源モードと共有)。遮蔽は受けない(天体照の遮蔽は
   [`screenspace.md`](screenspace.md))。描画設定は `planetLightCount`(なし / 1 / 2)で、
   本数を超えたスロットは描画命令を出さない。
-  スロットへ何を載せるかとその放射輝度は §1-5(`game/celestial/planet-light.ts`)。
+  スロットへ何を載せるかとその放射輝度は §1-5(`render/pipeline/lighting/planet-light-select.ts`)。
 - **GPU 計測は描画命令ごとに `beginPass(GPU_PASS.lighting)` を申告**し、計測側が同一パスの
   複数回ぶんを足し合わせる — 負荷確認ウィンドウの行は 1 行のまま。
 
@@ -472,8 +473,8 @@ instanceMatrix の受け渡し経路を `count` から決め、最初の描画�
   べきか。見た目の変更を伴うかもしれない)、太陽の球と星殻(emissive を表現できるなら不透明パスへ。
   emissive が障害になるなら逆に両方を world から降ろす道もある)、小天体の点群、惑星の環
   (反射するマテリアルだが半透明という微妙な立ち位置)、惑星の輝点スプライト。
-- **`game/celestial/{sphere,point,sun,earth}-view.ts` 等を `render/celestial/` へ移せるか。**
-  これらは `Ephemeris` / `FloatingOrigin` / `Vec3` を読むので、そのまま移すと §1-1 を破る。
+- **`game/celestial/celestial-entity/*.ts` 等を `render/celestial/` へ移せるか。**
+  これらは `CelestialMotion` / `FloatingOrigin` / `Vec3` を読むので、そのまま移すと §1-1 を破る。
   移せるのは ECI を受け取らない部分だけ。**当面は動かさない。**
 - **月だけが LOD ラダーに乗らず 64×32 に固定されている。** テクスチャの経度原点を合わせるために
   ジオメトリを回すので、段ごとの共有ジオメトリを使えない(回すと他の天体まで一緒に回る)。

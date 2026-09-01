@@ -2,17 +2,16 @@
 // 選ばれた操作の実行先を対応づける。候補集合と表示可否は map-pickables.ts の MapPickables が
 // 持つ — 「何が選べるか」と「選んだらどうなるか」を分けている。
 import { Hud } from '../hud/hud';
-import type { Base } from '../game-entity/base';
-import { celestialBodyName } from '../hud/frame/frame-labels';
-import { LAGRANGE_ID, lagrangeParentId } from '../hud/object-groups';
+import type { Base } from '../dynamic/dynamic-entity/base';
+import { isLagrangeId, lagrangeParentId, lagrangePointOf } from '../celestial/lagrange-id';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from '../camera/focus-target';
-import { EntityManager } from '../simulation/entity-manager';
-import { Ephemeris } from '../../physics/ephemeris';
+import { DynamicSystem } from '../dynamic/dynamic-system';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
 import { PlanEditor } from '../plan/plan-editor';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
 import type { Docking } from '../docking/docking';
 import type { ActivePlayerController } from '../active-controllable-controller';
@@ -22,7 +21,7 @@ import { planExecutionLabel, type PlanExecutionMode } from '../player/player';
 import { MenuAction, MenuCommon, MenuItem, type PauseMenu } from '../hud/windows';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
-import { strongestAttractor } from '../../physics/celestial-body';
+import { strongestAttractor } from '../../physics/attractor';
 import type { MapPickables } from './map-pickables';
 
 interface PickHandler {
@@ -33,16 +32,16 @@ interface PickHandler {
 // 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
 const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
 
-// 天体候補の親を解決する。通常の天体はレジストリから primaryOf で、ラグランジュ点は
-// ID の親部分から解決する。MapPickable は通常天体と派生したラグランジュ点をどちらも
-// kind:'body' で表すため、未登録の文字列を主天体の解決へ渡さない境界をここに置く。
+// 天体候補の親を解決する。通常の天体は運動の主天体から、ラグランジュ点は ID の親部分から
+// 解決する。MapPickable は通常天体と派生したラグランジュ点をどちらも kind:'body' で表すため、
+// 未登録の文字列を主天体の解決へ渡さない境界をここに置く。
 // undefined は候補が不正/古い、null は恒星など親を持たない天体を表す。
-export function bodyParentId(ephemeris: Ephemeris, id: string): string | null | undefined {
-  const registry = ephemeris.registry;
-  const lagrangeParent = LAGRANGE_ID.test(id) ? lagrangeParentId(id) : undefined;
-  if (lagrangeParent !== undefined) return lagrangeParent in registry ? lagrangeParent : undefined;
-  if (!(id in registry)) return undefined;
-  return ephemeris.motionOf(id).primary?.id ?? null;
+export function bodyParentId(celestialSystem: CelestialSystem, id: string): string | null | undefined {
+  const lagrangeParent = isLagrangeId(id) ? lagrangeParentId(id) : undefined;
+  if (lagrangeParent !== undefined) return celestialSystem.has(lagrangeParent) ? lagrangeParent : undefined;
+  const body = celestialSystem.find(id);
+  if (body === null) return undefined;
+  return body.motion.primary?.id ?? null;
 }
 
 export class MapPickableMenu {
@@ -61,8 +60,8 @@ export class MapPickableMenu {
 
   constructor(
     private readonly hud: Hud,
-    private readonly entities: EntityManager,
-    private readonly ephemeris: Ephemeris,
+    private readonly entities: DynamicSystem,
+    private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
     private readonly editor: PlanEditor,
@@ -94,16 +93,16 @@ export class MapPickableMenu {
     'body': {
       itemsFor: (target, simTime) => {
         let subLabel = '天体・ラグランジュ点';
-        const lagrangeMatch = target.id.match(/^(.+)-l[1-5]$/);
-        if (lagrangeMatch) {
-          const secondary = lagrangeMatch[1]!;
-          const primary = bodyParentId(this.ephemeris, secondary);
+        const lagrange = lagrangePointOf(target.id);
+        if (lagrange !== null) {
+          const secondary = lagrange.parentId;
+          const primary = bodyParentId(this.celestialSystem, secondary);
           subLabel = primary === undefined || primary === null
             ? 'ラグランジュ点'
-            : `${celestialBodyName(primary)}-${celestialBodyName(secondary)} ラグランジュ点`;
-        } else if (target.id === this.ephemeris.originId) subLabel = '母星 (中心天体)';
+            : `${this.celestialSystem.nameOf(primary)}-${this.celestialSystem.nameOf(secondary)} ラグランジュ点`;
+        } else if (target.id === this.celestialSystem.origin.id) subLabel = '母星 (中心天体)';
         else if (target.id === 'moon') subLabel = '衛星 (月)';
-        else if (target.id === this.ephemeris.starId) subLabel = `恒星 (${target.name})`;
+        else if (target.id === this.celestialSystem.star?.id) subLabel = `恒星 (${target.name})`;
         return [
           { type: 'header', label: target.name, subLabel },
           MenuCommon.focus(),
@@ -180,7 +179,8 @@ export class MapPickableMenu {
     },
     'apsis': {
       itemsFor: (target, simTime) => {
-        const centerId = strongestAttractor(target.pos, this.ephemeris.celestialBodiesAt(simTime)).id;
+        const centerId = strongestAttractor(
+          target.pos, this.celestialSystem.celestialMotions, simTime).id;
         const peOrAp = target.id === 'apsisAp' ? 'ap' : 'pe';
         const spec = getApsisLabelSpec(peOrAp, centerId);
         return [
@@ -211,7 +211,8 @@ export class MapPickableMenu {
       itemsFor: (target, simTime) => {
         const isAn = target.id.startsWith('eqan-');
         const spec = isAn ? ORBIT_ELEMENT_LABELS.eqAn : ORBIT_ELEMENT_LABELS.eqDn;
-        const centerName = celestialBodyName(strongestAttractor(target.pos, this.ephemeris.celestialBodiesAt(simTime)).id);
+        const centerName = this.celestialSystem.nameOf(
+          strongestAttractor(target.pos, this.celestialSystem.celestialMotions, simTime).id);
         const label = `${centerName}${spec.nameJa}`;
         return [
           { type: 'header', label, subLabel: spec.nameEn },
@@ -385,7 +386,7 @@ export class MapPickableMenu {
   // AN/DN が出ないので項目自体を出さない。マップビュー・戦闘ビューどちらでも同じ項目を出す。
   private targetItems(target: MapPickable, simTime: number): readonly MenuItem<MenuAction>[] {
     if (target.id === this.navTarget.id) return [MenuCommon.target(true)];
-    const canTarget = this.navTarget.canTarget(target.id, this.entities, this.ephemeris, simTime);
+    const canTarget = this.navTarget.canTarget(target.id, this.entities, this.celestialSystem, simTime);
     return canTarget ? [MenuCommon.target(false)] : [];
   }
 

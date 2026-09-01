@@ -10,7 +10,7 @@ import {
 } from './guide-value-field';
 import type {
   CriticalInclinationSettings, DawnDuskSettings, DirectionMarkerMode, LocalTime, SunSyncSettings,
-} from '../../celestial/orbit-guide-settings';
+} from '../../celestial/orbit-guide/orbit-guide-settings';
 
 export interface ReferenceOrbitRow {
   readonly heading: Button;

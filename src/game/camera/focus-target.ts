@@ -2,7 +2,9 @@
 // 表す 'point' の判別共用体を持ち、毎フレームそれを ECI 位置へ解決する。
 import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint, toInertialPoint } from '../../physics/frame';
 import { Vec3, v3 } from '../../math/vec3';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { KinematicState } from '../../physics/kinematic-state';
+import type { ReferenceFrames } from '../celestial/reference-frames';
 
 export type FocusTarget =
   | { readonly kind: 'object'; readonly id: string }
@@ -15,9 +17,9 @@ export function focusTargetId(target: FocusTarget): string | undefined {
 
 // ECI 位置 pos(時刻 t)を frame に焼き込んだ固定点フォーカスを組む。
 export function focusPoint(
-  ephemeris: Ephemeris, frame: ReferenceFrame, pos: Vec3, t: number, frameAnchors: FrameAnchorSource,
+  frames: ReferenceFrames, frame: ReferenceFrame, pos: Vec3, t: number, frameAnchors: FrameAnchorSource,
 ): FocusTarget {
-  const tf = ephemeris.frameTransformAt(frame, t, frameAnchors);
+  const tf = frames.transformAt(frame, t, frameAnchors);
   return { kind: 'point', frame, point: toFramePoint(tf, pos) };
 }
 
@@ -44,27 +46,31 @@ export interface FocusResolveResult {
 }
 
 // 注視点を解決する。天体・原点・役割トークン・機体(自艦/敵/基地/弾薬)はその場で直接解決する。
+// celestialMotionOf は天体 id の運動を引く関数で、登録されていない id には null を返すこと。
 // candidates は apsis/relnode/eqnode マーカーやラグランジュ点など、frameAnchors にも
-// ephemeris.registry にも実体を持たない対象のためだけのフォールバックとして残る。
+// 天体にも実体を持たない対象のためだけのフォールバックとして残る。
 export function resolveFocusTarget(
   focus: FocusTarget,
   candidates: readonly FocusCandidate[],
   displayTime: number,
   frameAnchors: FrameAnchorSource,
-  ephemeris: Ephemeris,
+  frames: ReferenceFrames,
+  celestialMotionOf: (id: string) => CelestialMotion | null,
+  celestialStateOf: (id: string, t: number) => KinematicState,
   state: FocusResolveState,
 ): FocusResolveResult {
   if (focus.kind === 'point') {
-    const tf = ephemeris.frameTransformAt(focus.frame, displayTime, frameAnchors);
+    const tf = frames.transformAt(focus.frame, displayTime, frameAnchors);
     const pos = toInertialPoint(tf, focus.point);
     return { pos, missingFocusFrames: state.missingFocusFrames, lastResolvedFocus: pos, fallToOrigin: false };
   }
-  if (focus.id === ephemeris.originId) {
+  if (focus.id === frames.inertialFrame.center) {
     const pos = v3();
     return { pos, missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
   }
-  if (focus.id in ephemeris.registry) {
-    const pos = ephemeris.positionOf(focus.id, displayTime);
+  const motion = celestialMotionOf(focus.id);
+  if (motion !== null) {
+    const pos = celestialStateOf(focus.id, displayTime).r;
     return { pos, missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
   }
   const anchored = frameAnchors.stateOf(focus.id, displayTime);

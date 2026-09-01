@@ -14,7 +14,7 @@
 
 | 線 | 内容 | 描画 |
 |---|---|---|
-| 予測軌道 | `GameEntity.predictedTrajectory` を数値積分した、実際に起きる軌道 | **実線** |
+| 予測軌道 | `DynamicEntity.predictedTrajectory` を数値積分した、実際に起きる軌道 | **実線** |
 | 計画軌道 | マニューバノードが要求する、まだ実現していない軌道 | **破線** |
 | 天体表面に達した後 | — | **描かない**(到達地点の ✕ マーカーのみ残す) |
 
@@ -65,8 +65,8 @@
 
 ### 決定 2: 予測軌道線を描く対象は操作対象の自艦のみ
 
-敵(`src/game/game-entity/enemy.ts` の `Enemy.orbitLine`)と基地
-(`src/game/game-entity/base.ts` の `Base.orbitLine`)は解析楕円のまま変更しない。
+敵(`src/game/dynamic/dynamic-entity/enemy.ts` の `Enemy.orbitLine`)と基地
+(`src/game/dynamic/dynamic-entity/base.ts` の `Base.orbitLine`)は解析楕円のまま変更しない。
 `src/game/predicted-trajectory-line.ts` の `PredictedTrajectoryLine.sync` は対象集合を
 毎フレーム引数で受け取る形にするので、対象を敵へ広げるときは `src/game/game.ts` の
 呼び出し1箇所を変えるだけで済む。
@@ -226,15 +226,15 @@ export type ScaleFn = (worldPos: Vec3) => number;
 ### 3-9. `src/game/entity-line-set.ts`(新規)— エンティティ別の線の管理
 
 `src/game/debug-trajectory-line.ts` の `DebugTrajectoryLine` は
-`Map<GameEntity, SampledLine>` を持ち、対象に無いエンティティの線を `dispose` して
+`Map<DynamicEntity, SampledLine>` を持ち、対象に無いエンティティの線を `dispose` して
 GPU リソースの解放漏れを防いでいる。`PredictedTrajectoryLine` も同じ管理を必要とするため、
 この部分を切り出して両者で共有する。
 
 ```
 export class EntityLineSet {
   constructor(scene, factory: () => SampledLine)
-  lineFor(entity: GameEntity): SampledLine   // 無ければ生成してシーンへ追加
-  pruneTo(alive: ReadonlySet<GameEntity>): void  // 集合に無い線をシーンから外して dispose
+  lineFor(entity: DynamicEntity): SampledLine   // 無ければ生成してシーンへ追加
+  pruneTo(alive: ReadonlySet<DynamicEntity>): void  // 集合に無い線をシーンから外して dispose
 }
 ```
 
@@ -245,9 +245,9 @@ export class EntityLineSet {
 ```
 export class PredictedTrajectoryLine {
   constructor(scene: THREE.Scene)
-  sync(targets: readonly GameEntity[], frame: ReferenceFrame, simTime: number,
+  sync(targets: readonly DynamicEntity[], frame: ReferenceFrame, simTime: number,
        ephemeris: Ephemeris, fo: FloatingOrigin): void
-  hasLineFor(entity: GameEntity): boolean
+  hasLineFor(entity: DynamicEntity): boolean
 }
 ```
 
@@ -271,7 +271,7 @@ export class PredictedTrajectoryLine {
 
 ### 3-11. `src/game/debug-trajectory-line.ts` — `EntityLineSet` を使う形へ
 
-`Map<GameEntity, SampledLine>` の生成・prune・dispose を `EntityLineSet` へ委ねる。
+`Map<DynamicEntity, SampledLine>` の生成・prune・dispose を `EntityLineSet` へ委ねる。
 描く内容(過去の履歴 + 現在状態 + 未来の予測を1本に連結)と色 `0x40e0ff`、
 `?debugLines=1` による有効化は変更しない。
 
@@ -316,7 +316,7 @@ export class PredictedTrajectoryLine {
 
 ## 4-1. 残るリスク
 
-`predictedTrajectory` は `src/game/simulation/predictor.ts` の `Predictor.resyncPrediction` が
+`predictedTrajectory` は `src/game/dynamic/predictor.ts` の `Predictor.resyncPrediction` が
 実状態との乖離を検出すると破棄する。破棄された直後のフレームは折れ線が2頂点未満になるため、
 予測軌道線が消えて解析楕円が現れる。`Predictor` は破棄したリストを次フレームから予算内で
 描き直すので、乖離が頻発する状況(高倍率ワープ中、噴射中)では2本の線が交互に見える

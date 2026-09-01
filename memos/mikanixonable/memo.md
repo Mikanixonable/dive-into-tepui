@@ -404,7 +404,7 @@ interface EnemySaveData extends EntitySaveData {
 
 ### Phase 2: 基地エンティティの追加とラグランジュ点/ハロー軌道配置
 物理空間上に拠点となるオブジェクトを配置できるようにします。
-*   [ ] `GameEntity` を継承した `Base` クラスの作成（単純なステーションモデルを表示）。
+*   [ ] `DynamicEntity` を継承した `Base` クラスの作成（単純なステーションモデルを表示）。
 *   [ ] 基地の内部状態（所持金、保有パーツリスト、格納されている船リスト）のデータ構造定義。
 *   [ ] `OrbitObjectPlacer` (クリエイティブ用の配置UI) を拡張し、ターゲットに「L1」「L2」「Halo軌道」などを選べるようにし、エンティティとして「基地」をスポーン可能にする。
 *   [ ] 基地の右クリックメニューの実装（「アクティブにする」「収容する」等のコマンド追加）。
@@ -433,7 +433,7 @@ interface EnemySaveData extends EntitySaveData {
 
 2箇所に分かれています。
 
-色・不透明度の実際の値 — src/game/celestial/ring-view.ts:14-17
+色・不透明度の実際の値 — src/game/celestial/celestial-entity/ring-view.ts:14-17
 
 
 const RING_COLOR = 0x8899aa;   // 非テクスチャの帯(annulus/line共通の色)

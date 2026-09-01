@@ -4,8 +4,8 @@
 // ZeroVelocitySettings を組んで onChange へ渡す。
 import { Button, ToggleSwitch } from '../widgets';
 import type { LagrangeLabel } from '../../../physics/zero-velocity';
-import { lagrangePointJacobi } from '../../celestial/orbit-guide-catalog';
-import type { ZeroVelocitySettings } from '../../celestial/orbit-guide-settings';
+import { lagrangePointJacobi } from '../../celestial/orbit-guide/orbit-guide-catalog';
+import type { ZeroVelocitySettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import {
   JACOBI_MAPPING, OPACITY_MAPPING, ZERO_VELOCITY_COUNT_MAPPING, buildValueField, syncValueField,
   type ValueField,

@@ -11,15 +11,15 @@ import {
   type CollapseToggleLabels,
 } from '../widgets';
 import {
-  bodyClassDisplayMode,
-  nextBodyClassDisplayMode,
-  type BodyClassDisplayMode,
-  type BodyClassToggles,
-} from '../../celestial/body-visibility';
+  mapDisplayModeOf,
+  nextMapDisplayMode,
+  type MapDisplayMode,
+  type MapDisplayToggles,
+} from '../../map/display-toggles';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../celestial/orbit-guide-settings';
-import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../celestial/orbit-guide-settings';
+import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../celestial/orbit-guide/orbit-guide-settings';
+import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { OrbitGuideTab } from './orbit-guide-tab';
 import { ZeroVelocitySection } from './zero-velocity-section';
 import { wirePanelCollapse } from '../panel-shell';
@@ -67,9 +67,9 @@ function buildTabBody(tab: ViewOptionsTab): HTMLElement {
 // ——衛星の参照軌道線はフォーカス中の系かどうかで別途決まり、ラグランジュ点はそもそも軌道を持たない。
 interface BodyClassRow {
   readonly label: string;
-  readonly categoryKey: keyof BodyClassToggles;
-  readonly nameKey: keyof BodyClassToggles;
-  readonly orbitKey: keyof BodyClassToggles | null;
+  readonly categoryKey: keyof MapDisplayToggles;
+  readonly nameKey: keyof MapDisplayToggles;
+  readonly orbitKey: keyof MapDisplayToggles | null;
 }
 
 const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
@@ -97,13 +97,13 @@ const ENTITY_ROWS: readonly BodyClassRow[] = [
 
 // 対象クラスの表示状態を文字ではなく、ラベル・軌道・非表示を連想できる SVG で示す。
 // Button の共通アイコン枠へ入れるため、ここは信頼できる固定マークアップだけを返す。
-const BODY_CLASS_DISPLAY_ICONS: Readonly<Record<BodyClassDisplayMode, string>> = {
+const BODY_CLASS_DISPLAY_ICONS: Readonly<Record<MapDisplayMode, string>> = {
   hidden: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M5.1 5.1C3.4 6.5 2.4 8.4 2 12c.7 3.1 2.7 5.4 5.2 6.8"/><path d="M9.7 19.2c.7.2 1.5.3 2.3.3 5.4 0 9.2-4.4 10-7.5-.3-1.3-1-2.6-2.2-3.8"/></svg>',
   label: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h10.5L20 12l-5.5 7H4z"/><circle cx="8" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>',
   orbit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(-28 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(28 12 12)"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/></svg>',
 };
 
-function bodyClassDisplayIcon(mode: BodyClassDisplayMode): string {
+function bodyClassDisplayIcon(mode: MapDisplayMode): string {
   return BODY_CLASS_DISPLAY_ICONS[mode];
 }
 
@@ -167,7 +167,7 @@ function appendColumnLegend(parent: HTMLElement, columns: readonly ViewOptionCol
 }
 
 export class ViewOptionsPanel {
-  public onBodyClassModeChange: ((key: keyof BodyClassToggles, mode: BodyClassDisplayMode) => void) | null = null;
+  public onBodyClassModeChange: ((key: keyof MapDisplayToggles, mode: MapDisplayMode) => void) | null = null;
   public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
   public onOrbitGuideChange: ((settings: OrbitGuideSettings) => void) | null = null;
   public onZeroVelocityChange: ((settings: ZeroVelocitySettings) => void) | null = null;
@@ -181,7 +181,7 @@ export class ViewOptionsPanel {
   private readonly bodyClassModeButtons: readonly (readonly [BodyClassRow, Button, HTMLElement])[];
   // 各ボタンの現在状態の鏡映し。正本は setBodyClassToggles が受け取る boolean 組にあり、
   // ここはクリック時に次の3状態を決めるためだけに保つ。
-  private readonly bodyClassModes = new Map<keyof BodyClassToggles, BodyClassDisplayMode>();
+  private readonly bodyClassModes = new Map<keyof MapDisplayToggles, MapDisplayMode>();
 
   private readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, Button])[];
   private readonly gridCategoryButtons: readonly (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[];
@@ -269,7 +269,7 @@ export class ViewOptionsPanel {
         rowEl.className = 'body-class-row target-class-row';
         const modeButton = new Button(row.label, () => {
           const current = this.bodyClassModes.get(row.categoryKey) ?? 'hidden';
-          const next = nextBodyClassDisplayMode(current, row.orbitKey !== null);
+          const next = nextMapDisplayMode(current, row.orbitKey !== null);
           this.bodyClassModes.set(row.categoryKey, next);
           this.setBodyClassModeButton(modeButton, row.label, next, row.orbitKey !== null);
           this.onBodyClassModeChange?.(row.categoryKey, next);
@@ -374,11 +374,11 @@ export class ViewOptionsPanel {
   // ボタンの点灯・アイコン・説明文を、現在のモードへ合わせる。説明文には次にクリックしたときの
   // 遷移先も含める。
   private setBodyClassModeButton(
-    button: Button, label: string, mode: BodyClassDisplayMode, hasOrbit: boolean,
+    button: Button, label: string, mode: MapDisplayMode, hasOrbit: boolean,
   ): void {
     // 現在値と、次にクリックしたときの遷移先から説明文を組む。
     const modeLabel = mode === 'orbit' ? 'ラベル＋軌道' : mode === 'label' ? 'ラベル' : '非表示';
-    const next = nextBodyClassDisplayMode(mode, hasOrbit);
+    const next = nextMapDisplayMode(mode, hasOrbit);
     const nextLabel = next === 'orbit' ? 'ラベル＋軌道' : next === 'label' ? 'ラベル' : '非表示';
     const description = `${label}: ${modeLabel}。クリックで${nextLabel}`;
     // 点灯・アイコン・aria 属性へ反映する。
@@ -418,9 +418,9 @@ export class ViewOptionsPanel {
   }
 
   // クラス別の表示状態を現在値へ合わせる。
-  public setBodyClassToggles(toggles: BodyClassToggles): void {
+  public setBodyClassToggles(toggles: MapDisplayToggles): void {
     for (const [config, button, row] of this.bodyClassModeButtons) {
-      const mode = bodyClassDisplayMode(toggles, config.categoryKey);
+      const mode = mapDisplayModeOf(toggles, config.categoryKey);
       this.bodyClassModes.set(config.categoryKey, mode);
       this.setBodyClassModeButton(button, config.label, mode, config.orbitKey !== null);
       row.classList.toggle('category-off', mode === 'hidden');

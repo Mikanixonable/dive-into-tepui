@@ -5,13 +5,19 @@
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
-import { lightSourceAlbedoOf, rec709Luminance, type Albedo } from '../../src/render/celestial-albedo';
-import { createEarth } from '../../src/render/earth';
-import { R_EARTH, R_SUN } from '../../src/physics/solar-system/constants';
+import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
+import cloudsTextureUrl from '../../src/assets/8k_clouds.jpg';
+import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
+import { shapeAxes, type RingBandDef } from '../../src/physics/celestial-body-def';
+import { BodyGraticule } from '../../src/render/body-graticule';
+import { EarthCoastline } from '../../src/render/earth-coastline';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
-import { createSun, type Sun } from '../../src/render/stars';
+import { createStarSphere, type StarSphere } from '../../src/render/star-sphere';
+import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
+import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
@@ -21,16 +27,19 @@ import { HULL_EMISS } from '../../src/game/const';
 import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import type { FloatNode } from '../../src/render/tsl-types';
-import { ATMOSPHERE_OPTICS, type AtmosphereBody } from '../../src/render/atmosphere';
+import { type AtmosphereBody } from '../../src/render/atmosphere';
+import { EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
 import type { LineStyle } from '../../src/render/line-style';
-import { RingView } from '../../src/game/celestial/ring-view';
+import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
+import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
-import { AU } from '../../src/physics/planet-orbit';
-import { type RingBandDef } from '../../src/physics/solar-system/celestial-body-def';
-import { MARS } from '../../src/physics/solar-system/mars-system';
-import { SATURN } from '../../src/physics/solar-system/saturn-system';
-import { textureOf, type CelestialTexture } from '../../src/render/celestial-textures';
+import { AU } from '../../src/physics/astronomical-unit';
+import { MARS } from '../../src/game/celestial/solar-system/mars-system';
+import { SATURN } from '../../src/game/celestial/solar-system/saturn-system';
+import { type CelestialTexture } from '../../src/render/celestial-textures';
+import { MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
+import { SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
 import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection';
 import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
@@ -62,20 +71,20 @@ function occlusionBands(bands: readonly RingBandDef[]): readonly RingBand[] {
   }));
 }
 
+// 太陽面の輝度。放射強度を、面が張る立体角(π R²)で割ったもの。
+const SUN_SURFACE_RADIANCE = REFERENCE_STAR_RADIANT_INTENSITY / (Math.PI * R_SUN * R_SUN);
+
 // 全ケース共通の恒星方向。球の陰影と、呼び出し側が置く光源が同じ向きを使う。
 export const SUN_DIR = new THREE.Vector3(1, 0.35, 0.5).normalize();
-
-// 色みはそのままに、Rec.709 輝度がボンドアルベドと一致するよう倍率を合わせる。
-function scaleToBondAlbedo(hue: Albedo, bondAlbedo: number): Albedo {
-  const k = bondAlbedo / rec709Luminance(hue);
-  return [hue[0] * k, hue[1] * k, hue[2] * k];
-}
 
 // テスト用の球のアルベド。実在天体の値ではなく、線・深度・陰影を読むための識別色。
 const BLUE_SPHERE_ALBEDO: Albedo = [0.0242, 0.15, 0.4342];
 const GREY_SPHERE_ALBEDO: Albedo = [0.521, 0.4793, 0.4179];
 // 土星本体。実写テクスチャの平均色の色みを、その天体のボンドアルベドの輝度へ合わせたもの。
-const SATURN_ALBEDO: Albedo = scaleToBondAlbedo([1, 0.812, 0.530], textureOf('saturn')!.bondAlbedo);
+const SATURN_ALBEDO: Albedo = scaledToBondAlbedo([1, 0.812, 0.530], SATURN_TEXTURE.bondAlbedo);
+
+// 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
+const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURE.averageHue, EARTH_TEXTURE.bondAlbedo);
 
 // カメラは常に原点から -Z を見る。near はゲーム本体と同じ 2 m(深度分解能の導出がこの値に乗る)。
 const EYE = new THREE.Vector3(0, 0, 0);
@@ -91,7 +100,7 @@ export type LabCase = {
   readonly sunDistance?: number;
   // 恒星の見た目。持たせると、恒星の向きと距離のつまみに合わせて毎フレーム同期される
   // (持たないケースでは、つまみは光源と露出だけを動かす)。
-  readonly star?: Sun;
+  readonly star?: StarSphere;
   // 天体照の光源として置く天体。中心は描画座標、albedo は輝度がボンドアルベドに一致する
   // 線形 RGB。省略すると天体照は無い。
   readonly planetLights?: readonly {
@@ -433,7 +442,7 @@ function leo(): LabCase {
     ],
     camera,
     viewTarget: shipPosition,
-    planetLights: [{ center, radius: R_EARTH, albedo: lightSourceAlbedoOf('earth') }],
+    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
   };
 }
 
@@ -448,7 +457,7 @@ function earthshine(): LabCase {
     camera,
     sunDirection: new THREE.Vector3(0, 1, 0),
     viewTarget: shipPosition,
-    planetLights: [{ center, radius: R_EARTH, albedo: lightSourceAlbedoOf('earth') }],
+    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
   };
 }
 
@@ -588,16 +597,24 @@ function marchSlab(): LabCase {
   return { objects: [plane], camera };
 }
 
-// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。線の表示はスタイルへ従う。
+// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。雲を合成した地表と、模式図で
+// だけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。
 function earthAt(center: THREE.Vector3, style: RenderStyle): THREE.Object3D {
-  const built = createEarth();
-  built.group.position.copy(center);
-  built.setAuroraVisible(false);
-  built.setGraticuleVisible(style === 'schematic');
-  built.setCoastlineVisible(style === 'schematic');
-  built.syncSurfaceLod(CLOSE_UP_DIAMETER_PX);
-  built.tick(0);
-  return built.group;
+  const group = new THREE.Group();
+  group.position.copy(center);
+  const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
+  group.scale.set(axes.x, axes.y, axes.z);
+  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl);
+  surface.addTo(group);
+  surface.syncLod(CLOSE_UP_DIAMETER_PX);
+  surface.setCloudAmount(1);
+  const graticule = new BodyGraticule();
+  graticule.addTo(group);
+  graticule.setVisible(style === 'schematic');
+  const coastline = new EarthCoastline();
+  coastline.addTo(group);
+  coastline.setVisible(style === 'schematic');
+  return group;
 }
 
 // カメラ(原点)から見て、地球の地平線が視線から margin [rad] だけ下へ来る向きの地球中心。
@@ -618,8 +635,8 @@ function earth(style: RenderStyle): LabCase {
       sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER),
     ],
     camera,
-    atmospheres: [{ center, surfaceRadius: R_EARTH, optics: ATMOSPHERE_OPTICS.earth! }],
-    planetLights: [{ center, radius: R_EARTH, albedo: lightSourceAlbedoOf('earth') }],
+    atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
+    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
   };
 }
 
@@ -675,13 +692,13 @@ function earthMars(style: RenderStyle): LabCase {
   return {
     objects: [
       earthAt(earthCenter, style),
-      texturedSphere(textureOf('mars')!, MARS_RADIUS, marsCenter, CLOSE_UP_DIAMETER_PX),
+      texturedSphere(MARS_TEXTURE, MARS_RADIUS, marsCenter, CLOSE_UP_DIAMETER_PX),
     ],
     camera,
     viewTarget: marsCenter,
     atmospheres: [
-      { center: earthCenter, surfaceRadius: R_EARTH, optics: ATMOSPHERE_OPTICS.earth! },
-      { center: marsCenter, surfaceRadius: MARS_RADIUS, optics: ATMOSPHERE_OPTICS.mars! },
+      { center: earthCenter, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS },
+      { center: marsCenter, surfaceRadius: MARS_RADIUS, optics: MARS_ATMOSPHERE_OPTICS },
     ],
   };
 }
@@ -855,7 +872,10 @@ function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLig
   const center = new THREE.Vector3(0, -0.15 * distance, -distance);
   const axis = v3(0.3, 0.9, 0.32);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, style);
+  view.sync(
+    center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT,
+    QUALITY_PRESETS.high, style,
+  );
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -889,7 +909,10 @@ function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: 
   camera.updateMatrixWorld(true);
   const axis = v3(0, 1, 0);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, style);
+  view.sync(
+    center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT,
+    QUALITY_PRESETS.high, style,
+  );
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -937,7 +960,7 @@ function sunAt(distance: number): LabCase {
     camera,
     sunDirection: SUN_CASE_DIR,
     sunDistance: distance,
-    star: createSun(),
+    star: createStarSphere(SUN_SURFACE_COLOR, SUN_SURFACE_RADIANCE),
     viewTarget: SUN_CASE_SHIP_POSITION,
   };
 }

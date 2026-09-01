@@ -1,24 +1,27 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
 import type * as THREE from 'three/webgpu';
-import { Stage, type ObjectAuthoring, type StageDeps } from './stage';
+import { Stage, type ObjectAuthoring, type StageDeps, STORY_EPOCH } from './stage';
 import type { Player } from '../player/player';
-import { EntityIdAllocator } from '../game-entity/entity-id';
-import type { EntityManager } from '../simulation/entity-manager';
-import type { SimSpeedManager } from '../simulation/sim-speed-manager';
+import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { ENTITY_GLYPH } from '../marker/marker-glyphs';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
-import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
+import { orbitalElementsOf } from '../../physics/elements';
 import { haloState, lissajousState } from '../../physics/halo';
+import { secondaryFrameOf } from '../../physics/lagrange';
+import { OrbitingMotion } from '../../physics/celestial-motion';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import { qRotate } from '../../physics/attitude';
 import { Vec3, add, addScaled, v3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
-import { AmmoPickup } from '../game-entity/ammo-pickup';
-import { RcsFuelPickup } from '../game-entity/rcs-fuel-pickup';
-import { Base } from '../game-entity/base';
+import { AmmoPickup } from '../dynamic/dynamic-entity/ammo-pickup';
+import { RcsFuelPickup } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
+import { Base } from '../dynamic/dynamic-entity/base';
 import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy, proteinFormationSpawns } from './spawner/enemy-generator';
 import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, type ProteinDisplaySettings } from '../protein/protein-display';
 import { WaveAttack } from './stage-utils/wave-attack';
@@ -28,9 +31,9 @@ import { ElementsForm, LagrangeForm, ObjectType, ReferenceCelestialBody, ObjectP
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { STAGE_CONTROL_ENEMY_SHAPES, StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
-import { OrbitLine } from '../lines/orbit-line';
+import { EllipseLine } from '../lines/ellipse-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
-import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -42,6 +45,9 @@ const STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE = 2000;
 
 export class CreativeStage extends Stage {
   static readonly id = 'creative' as const;
+  static readonly epoch = STORY_EPOCH;
+  // 開始日時の指定画面を挟む唯一のステージ(GAME.md 9.0)。epoch はその欄の既定値になる。
+  static readonly picksStartEpoch = true;
   static readonly selectLabel = 'CREATIVE';
   static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   static readonly selectGroup = 'クリエイティブモード';
@@ -56,7 +62,7 @@ export class CreativeStage extends Stage {
   private readonly waveAttack: WaveAttack;
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
   private waveAttackEnabled: boolean;
-  private readonly previewOrbitLine: OrbitLine;
+  private readonly previewEllipseLine: EllipseLine;
   // 物体配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
   private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
   // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
@@ -91,14 +97,14 @@ export class CreativeStage extends Stage {
       this.proteinDisplay = restoredProtein.enemyKind.display;
     }
 
-    this.previewOrbitLine = new OrbitLine({ color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan });
-    this._scene.add(this.previewOrbitLine.line);
+    this.previewEllipseLine = new EllipseLine({ color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan });
+    this._scene.add(this.previewEllipseLine.line);
 
     this.placerPanel = new ObjectPlacerPanel(
-      this._hud.mapRoot, this._hud.layers.popup, this._ephemeris, this._hud.overlayManager,
+      this._hud.mapRoot, this._hud.layers.popup, this._celestialSystem, this._hud.overlayManager,
     );
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-    this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._ephemeris, savedCreative?.waveAttack);
+    this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
     this.stageControlsPanel = new StageControlsPanel(
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
@@ -152,7 +158,7 @@ export class CreativeStage extends Stage {
     const color = Number(colorValue);
     const forward = qRotate(player.att.q, v3(0, 0, 1));
     const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
-    const state = kinematicState(player.state.t, position, player.state.v);
+    const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
     const name = `MANUAL-${++this.manualEnemyCount}`;
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return;
@@ -183,7 +189,7 @@ export class CreativeStage extends Stage {
     }
     const forward = qRotate(player.att.q, v3(0, 0, 1));
     const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
-    const state = kinematicState(player.state.t, position, player.state.v);
+    const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
     const name = `FORMATION-${++this.manualFormationCount}`;
     const formationId = name;
     for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._worldSfx, this._fx, this._scene)) {
@@ -212,7 +218,8 @@ export class CreativeStage extends Stage {
     this.mountStageControlsPanel(cameraSystem.overviewMode);
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
-      cameraSystem.overviewMode, cameraSystem.activeCameraPos, this._ephemeris.celestialBodiesAt(displayTime),
+      cameraSystem.overviewMode, cameraSystem.activeCameraPos,
+      this._celestialSystem.celestialMotions, displayTime,
     );
     this.placerPanel.setIssues(this.issues);
     this.stageControlsPanel.element.classList.remove('hidden');
@@ -230,8 +237,8 @@ export class CreativeStage extends Stage {
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
   // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
   openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
-    const celestialBodies = this._ephemeris.celestialBodiesAt(this._simulator.simTime);
-    const form = elementsFormFromState(state, celestialBodies, this._ephemeris.originId);
+    const form = elementsFormFromState(
+      state, this._celestialSystem, state.t, this._celestialSystem.origin.id);
     if (form && validateBaseReferenceFields(objectType, 'elements', form.celestialBody).length === 0) {
       this.placerPanel.open({ kind: 'form', objectType, form });
       return;
@@ -247,7 +254,7 @@ export class CreativeStage extends Stage {
     try {
       const state = this.buildInitialState(form);
       // 楕円はフォームが選んだ基準天体中心で描く。
-      const elements = orbitalElementsOf(state, this.referenceCelestialBody(form));
+      const elements = orbitalElementsOf(state, this.referenceCelestialBody(form), state.t);
       return elements ? { elements, pos: state.r } : null;
     } catch {
       return null;
@@ -263,7 +270,7 @@ export class CreativeStage extends Stage {
     if (form.placementMode === 'elements') {
       const center = this.referenceCelestialBody(form);
       const common = {
-        centerRadius: center.radius, mu: center.mu, centerId: center.id,
+        centerRadius: center.def.radius, mu: center.def.mu, centerId: center.id,
         incDeg: form.incDeg, raanDeg: form.raanDeg, argpDeg: form.argpDeg, nuDeg: form.nuDeg,
       };
       issues.push(...validateEllipticPlacementFields(
@@ -285,15 +292,17 @@ export class CreativeStage extends Stage {
   // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
   private syncPreview(
     fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
-    overviewMode: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+    overviewMode: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
+    displayTime: number,
   ): void {
     if (!this.preview) {
-      this.previewOrbitLine.sync(null, fo, camera);
+      this.previewEllipseLine.sync(null, fo, camera);
       this._markerManager.fadeOut('creative-preview');
       return;
     }
-    this.previewOrbitLine.sync(this.preview.elements, fo, camera);
-    if (overviewMode && isOccluded(cameraPos, this.preview.pos, celestialBodies)) {
+    this.previewEllipseLine.sync(this.preview.elements, fo, camera);
+    if (overviewMode
+      && isOccluded(cameraPos, this.preview.pos, celestialBodies, displayTime)) {
       this._markerManager.hide('creative-preview');
       return;
     }
@@ -359,19 +368,25 @@ export class CreativeStage extends Stage {
   // 副天体・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
   // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォーム自体に面内振幅の値がない。
   private buildLagrangeState(form: LagrangeForm): KinematicState {
-    const common = { secondary: form.lagrangeSecondary, point: form.lagrangePoint };
-    if (form.lagrangeOrbitKind === 'halo') {
-      return haloState(this._simulator.simTime, this._ephemeris, { ...common, az: form.azKm * 1e3 });
+    const motion = this._celestialSystem.entityOf(form.lagrangeSecondary).motion;
+    if (!(motion instanceof OrbitingMotion)) {
+      throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
-    return lissajousState(this._simulator.simTime, this._ephemeris, {
-      ...common, ax: form.axKm * 1e3, az: form.azKm * 1e3,
-    });
+    const t = this._simulator.simTime;
+    const system = secondaryFrameOf(this._celestialSystem.celestialMotions, t, motion, t);
+    if (system === null) {
+      throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} の主天体が引けない`);
+    }
+    if (form.lagrangeOrbitKind === 'halo') {
+      return haloState(system, { point: form.lagrangePoint, az: form.azKm * 1e3 });
+    }
+    return lissajousState(system, { point: form.lagrangePoint, ax: form.axKm * 1e3, az: form.azKm * 1e3 });
   }
 
   // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
   // 要る情報がすべてここから出る。
-  private referenceCelestialBody(form: ElementsForm): CelestialBody {
-    return this._ephemeris.celestialBodiesAt(this._simulator.simTime).find((b) => b.id === form.celestialBody)!;
+  private referenceCelestialBody(form: ElementsForm): CelestialMotion {
+    return this._celestialSystem.motionOf(form.celestialBody);
   }
 
   // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
@@ -379,25 +394,28 @@ export class CreativeStage extends Stage {
   // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
   private buildElementsState(form: ElementsForm): KinematicState {
     const center = this.referenceCelestialBody(form);
+    const centerState = center.stateAt(this._simulator.simTime);
     let a: number;
     let e: number;
     if (form.sizeMode === 'apsides') {
-      const rp = center.radius + form.peAltKm * 1e3;
-      const ra = center.radius + form.apAltKm * 1e3;
+      const rp = center.def.radius + form.peAltKm * 1e3;
+      const ra = center.def.radius + form.apAltKm * 1e3;
       a = (rp + ra) / 2;
       e = (ra - rp) / (ra + rp);
     } else if (form.sizeMode === 'semiMajorEcc') {
       a = form.semiMajorKm * 1e3;
       e = form.eccentricity;
     } else {
-      a = semiMajorFromPeriod(form.periodHours * 3600, center.mu);
+      a = semiMajorFromPeriod(form.periodHours * 3600, center.def.mu);
       e = form.eccentricity;
     }
 
     const rel = stateFromOrbitalElements(
-      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG, form.nuDeg * DEG, center.mu,
+      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
+      form.nuDeg * DEG, center.def.mu,
     );
-    return kinematicState(this._simulator.simTime, add(center.state.r, rel.r), add(center.state.v, rel.v));
+    return kinematicState<'eci'>(
+      this._simulator.simTime, add(centerState.r, rel.r), add(centerState.v, rel.v));
   }
 
   // フォームの値が物理的に成立するか検証する。computeFieldIssues と同じ検証呼び出しを共有し、
@@ -416,7 +434,7 @@ export class CreativeStage extends Stage {
   // フィールド単位の検証結果を求め直す。既存敵の AI 行動は常に進める。トグルが制御するのは
   // 新規ウェーブの発生のみ(OFF の間は waveAttack.update を止め、既に出ている敵はそのまま残る)。
   // ノードの消化は Simulator のイベント境界(applySimulationEvents)で行う。
-  update(dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, player: Player | null, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
       this.behaveAllEnemies(player, this._entities, simTime, simSpeed);
@@ -476,8 +494,8 @@ export class CreativeStage extends Stage {
   // 配置プレビューの軌道線・設定パネル・物体配置パネルを片付けたうえで super.dispose() を呼ぶ。
   dispose(): void {
     super.dispose();
-    this.previewOrbitLine.line.removeFromParent();
-    this.previewOrbitLine.dispose();
+    this.previewEllipseLine.line.removeFromParent();
+    this.previewEllipseLine.dispose();
     this.stageControlsPanel.element.remove();
     this.placerPanel.dispose();
   }

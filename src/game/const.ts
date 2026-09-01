@@ -1,5 +1,5 @@
 // ゲームバランス・チューニング定数
-import type { GuideGroupId } from './celestial/orbit-guide-settings';
+import type { GuideGroupId } from './celestial/orbit-guide/orbit-guide-settings';
 
 // --- 基地ドッキング ---
 export const BASE_MAX_VESSELS = 4;      // 基地が保有・格納できる艦艇の最大数
@@ -113,12 +113,12 @@ export const DEBUG_LOAD_DEBRIS_MAX_DIST = 250000; // [m]
 export const DEBUG_LOAD_PLACEMENT_MIN_DIST = 5000; // 自機からの配置距離下限 [m]
 export const DEBUG_LOAD_RNG_SEED = 20260810;
 
-// --- 重力源の絞り込み(game/simulation/attractors.ts) ---
+// --- 重力源の絞り込み(game/dynamic/attractors.ts) ---
 // グリッドへ載せた天体を落としてよい引力の上限 [m/s^2]。セル一辺は、載せた天体の引力が
 // この値まで落ちる距離として天体構成から導かれる。
 export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-8;
 
-// --- 弧が引く天体の絞り込み(game/simulation/arc-bodies.ts) ---
+// --- 弧が引く天体の絞り込み(game/dynamic/arc-celestial-bodies.ts) ---
 
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152, 8388608, 33554432];
 export const MAX_PHYS_SIM_SPEED = 4; // 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(SimSpeedManager の can* が参照)
@@ -133,7 +133,7 @@ export const SUBSTEP_MAX_DT = 20; // 1サブステップの最大秒数 [s](Simu
 // 1周27歩(K=32)まで粗くすると数値減衰が実ドラッグと同等になり、待つだけで艦が倍の速さで落ちる。
 export const SUBSTEP_MAX_COUNT = 64;
 
-// 大気の中で刻みを縛る2つの上限(game/simulation/time-step.ts の atmosphericMaxStep)。
+// 大気の中で刻みを縛る2つの上限(game/dynamic/time-step.ts の atmosphericMaxStep)。
 // 抗力は陽的 RK4 にとって剛い項で、逆時定数 λ = ½ρ·s·bcInv が刻みに対して大きくなると、
 // 段ごとの抗力が増幅して1歩で発散する(抗力は速さの2乗なので振動ではなく暴走になる)。
 // DRAG_STEP_MAX_SPEED_LOSS は λ·dt の上限 = 1歩で抗力が奪ってよい対気速度の割合。
@@ -147,7 +147,7 @@ export const DRAG_STEP_MAX_SPEED_LOSS = 0.5;
 // DRAG_STEP_MAX_SCALE_HEIGHTS は、その沈み込みが密度を e^N 倍までしか変えないよう縛る。
 export const DRAG_STEP_MAX_SCALE_HEIGHTS = 0.5;
 
-// --- 接触判定(game/simulation/ の接触解決) ---
+// --- 接触判定(game/dynamic/ の接触解決) ---
 // 剛体接触の反発係数。天体の表面でも物体どうしでも同じ値を使う。
 export const CONTACT_RESTITUTION = 0.4;
 // 接触用27近傍グリッドのセル一辺の下限 [m]。全参加者の半径も相対変位も 0 という退化ケースで
@@ -203,7 +203,6 @@ export const OVERVIEW_CAMERA_FOV_MAX = 120; // 広範囲視点の最大垂直画
 // far とは独立に固定する。
 // far の下限(OVERVIEW_CAMERA_FAR_MIN)より 10% 内側に取る — 等しいと最小ズームで
 // 殻のジオメトリが far 平面上に乗り、視線方向の星・グリッドがクリップされる。
-export const CELESTIAL_SHELL_RADIUS = 1.35e10;
 export const NODE_DV_RATE = 300; // Δv 調整速度 [m/s per 実秒]
 export const NODE_DV_RATE_FINE = 30; // 微調整モード時
 // ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。噴射準備の通知・達成判定の開始・
@@ -218,7 +217,7 @@ export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定で�
 export const APERIODIC_ARC_DURATION = 86400;
 
 // --- エンティティの過去・未来状態列(physics/dynamic-trajectory.ts の DynamicTrajectory、
-// game/simulation/predicted-arc.ts の PredictedArc/Predictor) ---
+// game/dynamic/predicted-arc.ts の PredictedArc/Predictor) ---
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
 export const DEFAULT_HISTORY_DURATION = 10 * 86400; // 過去列を持つ種別(Ship・Base)の既定保持時間 [s]
 // 1周回あたりの予測列の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも

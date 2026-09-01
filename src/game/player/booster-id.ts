@@ -1,4 +1,4 @@
-import { EntityIdAllocator } from '../game-entity/entity-id';
+import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
 
 const allocator = new EntityIdAllocator('booster-');
 

@@ -1,4 +1,4 @@
-import type { Base, DockedVesselEntry } from '../../game-entity/base';
+import type { Base, DockedVesselEntry } from '../../dynamic/dynamic-entity/base';
 import * as C from '../../const';
 import { Button } from '../widgets';
 import type { BasePanel } from './base-view';

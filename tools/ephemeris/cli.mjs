@@ -12,7 +12,7 @@ import ts from 'typescript';
 
 const toolDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(toolDir, '../..');
-const formatSourcePath = join(repoRoot, 'src/physics/ephemeris-pack/format.ts');
+const formatSourcePath = join(repoRoot, 'src/physics/ephemeris/pack-format.ts');
 
 const HELP = `
 Tepui ephemeris pack tool
@@ -95,22 +95,22 @@ async function pack(format, inputPath, outputPath) {
     throw new Error('fixture manifest must be an object');
   }
   const { payloadSha256: _oldDigest, ...manifestBase } = sourceManifest;
-  const data = format.buildEphemerisPackData(manifestBase, segments);
+  const data = format.buildPackData(manifestBase, segments);
   const digest = payloadSha256(format.encodeFloat64Payload(data.payload));
   const manifest = { ...data.manifest, payloadSha256: digest };
-  const bytes = format.encodeEphemerisPack(manifest, data.payload);
+  const bytes = format.encodePack(manifest, data.payload);
   await writeFile(outputPath, bytes);
   console.log(`Packed ${segments.length} segment(s), ${bytes.length} bytes, payload SHA-256 ${digest}`);
 }
 
 async function verify(format, inputPath) {
-  const decoded = format.decodeEphemerisPack(new Uint8Array(await readFile(inputPath)));
+  const decoded = format.decodePack(new Uint8Array(await readFile(inputPath)));
   const digest = requireDigest(decoded);
   console.log(`Verified ${inputPath}: ${decoded.manifest.series.length} segment(s), payload SHA-256 ${digest}`);
 }
 
 async function unpack(format, inputPath, outputPath) {
-  const decoded = format.decodeEphemerisPack(new Uint8Array(await readFile(inputPath)));
+  const decoded = format.decodePack(new Uint8Array(await readFile(inputPath)));
   requireDigest(decoded);
   await writeFile(outputPath, `${JSON.stringify(unpackToJson(decoded), null, 2)}\n`, 'utf8');
   console.log(`Unpacked ${inputPath} to ${outputPath}`);

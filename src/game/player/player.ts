@@ -1,26 +1,26 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../physics/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, scale, v3, len, sub } from '../../math/vec3';
 import { fmtMarkerDist } from '../hud/utils';
 import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
-import { Ship } from '../game-entity/ship';
-import { Bullet } from '../game-entity/bullet';
-import type { GameEntity } from '../game-entity/game-entity';
-import type { EntityManager } from '../simulation/entity-manager';
-import { closingSpeed, type Contact } from '../game-entity/contact';
-import { contactDamageSpeed } from '../game-entity/contact-damage';
+import { Ship } from '../dynamic/dynamic-entity/ship';
+import { Bullet } from '../dynamic/dynamic-entity/bullet';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
+import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotion } from '../../physics/celestial-motion';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
-import type { MapVisibility } from '../celestial/map-visibility';
+import type { MapVisibility } from '../map/visibility-policy';
 import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
 import { PlayerThrottle } from './player-throttle';
@@ -38,10 +38,10 @@ import type { OrbitReference } from '../orbit-reference';
 import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
-import { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
-import { partFromSaveData, type AnyPart } from '../game-entity/parts';
+import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import {
@@ -50,7 +50,7 @@ import {
 import { BoosterStack, boosterAverageAcceleration, type BoosterStage } from './booster-stack';
 import { nextBoosterId } from './booster-id';
 import { boosterSeparationVelocities } from './booster-separation';
-import { DetachedBooster } from '../game-entity/detached-booster';
+import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
 import {
   BOOSTER_STAGE_DIMENSIONS,
   BoosterPlumeSet,
@@ -96,8 +96,8 @@ export function planExecutionLabel(mode: PlanExecutionMode): string {
 }
 
 // 新規配置は name/state/id/ammo を任意指定し、省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の
-// 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime の
-// epoch で展開する。
+// 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime 付きの
+// 状態として展開する。
 export type PlayerInit =
   | { readonly name?: string; readonly state?: KinematicState; readonly id?: string; readonly ammo?: AmmoLoad }
   | { readonly saved: PlayerSaveData; readonly simTime: number };
@@ -142,7 +142,7 @@ export class Player extends Ship {
   ) {
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init
-      ? kinematicState(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z))
+      ? kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z))
       : (init.state ?? Player.makeInitialState());
     const id = 'saved' in init ? init.saved.id : (init.id ?? name);
     const att: Attitude = 'saved' in init
@@ -193,14 +193,14 @@ export class Player extends Ship {
       if (saved.plan) {
         // 保存された起点を addNode の from として与える。最初の1件が通った時点でその起点が
         // 凍結され、2件目以降は凍結済みの起点に対して判定される。
-        const anchor = kinematicState(
+        const anchor = kinematicState<'eci'>(
           saved.plan.anchor.t,
           v3(saved.plan.anchor.r.x, saved.plan.anchor.r.y, saved.plan.anchor.r.z),
           v3(saved.plan.anchor.v.x, saved.plan.anchor.v.y, saved.plan.anchor.v.z),
         );
         let rejected = 0;
         for (const n of saved.plan.nodes) {
-          const idx = this.plan.addNode(kinematicState(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
+          const idx = this.plan.addNode(kinematicState<'eci'>(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
           if (idx < 0) rejected++;
         }
         if (rejected > 0) _hud.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
@@ -213,7 +213,7 @@ export class Player extends Ship {
     const r0 = R_EARTH + C.INITIAL_ALT;
     const vCirc = Math.sqrt(MU_EARTH / r0);
     const inc = (C.INITIAL_INC_DEG * Math.PI) / 180;
-    return kinematicState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
+    return kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
   // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
@@ -304,7 +304,7 @@ export class Player extends Ship {
   }
 
   // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
-  decoupleBooster(entities: EntityManager): boolean {
+  decoupleBooster(entities: DynamicSystem): boolean {
     const stageIndex = this.boosters.stages.length - 1;
     if (stageIndex < 0) {
       this._hud.hint('分離できるブースターがありません');
@@ -328,11 +328,11 @@ export class Player extends Ship {
       BOOSTER_SEPARATION_SPEED,
     );
     const t = this.state.t;
-    this.state = kinematicState(t, this.state.r, separated.player);
+    this.state = kinematicState<'eci'>(t, this.state.r, separated.player);
     this._fx.spawnBoosterSeparation(t, jointR, separated.player, separated.booster, this.att);
     const detached = new DetachedBooster({
       stage: detachedStage,
-      state: kinematicState(t, boosterR, separated.booster),
+      state: kinematicState<'eci'>(t, boosterR, separated.booster),
       att: {
         // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
         // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
@@ -347,7 +347,7 @@ export class Player extends Ship {
     this.boosterThrust = null;
     this.lastBoosterBurnRatio = 0;
     this.rebuildBoosterModels();
-    this._fx.spawnGasPuff(kinematicState(t, jointR, this.state.v));
+    this._fx.spawnGasPuff(kinematicState<'eci'>(t, jointR, this.state.v));
     this._worldSfx.decouple();
     this.invalidatePrediction();
     this._hud.hint(`ブースター分離: 残り ${this.boosters.stages.length} 段`);
@@ -424,9 +424,9 @@ export class Player extends Ship {
     input: Input | null,
     dt: number,
     simDt: number,
-    entities: EntityManager,
+    entities: DynamicSystem,
     activeStage: Stage,
-    ephemeris: Ephemeris,
+    celestialSystem: CelestialSystem,
   ): void {
     this.updatePassive(dt);
     if (input !== null) this.handleEdgeInput(input, entities);
@@ -439,7 +439,7 @@ export class Player extends Ship {
     }
     this.updateTorque(input, dt, simDt);
 
-    this.fire.updateFireState(dt, input, activeStage, entities, ephemeris);
+    this.fire.updateFireState(dt, input, activeStage, entities, celestialSystem);
 
     this.throttle.updateThrustLatches(input);
     this.rcsThrust = this.throttle.updateThrustState(input, this.att, simDt, this);
@@ -457,13 +457,14 @@ export class Player extends Ship {
   }
 
   protected override stepEnvironment(
-    dt: number, atmosphereBody: CelestialBody | null, sunlit: number, sunDir: Vec3,
+    dt: number, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
+    sunlit: number, sunDir: Vec3,
   ): void {
     if (!this.alive) return;
     this.radiator.update(dt, this.radiatorWear());
     this.fire.stepBarrelThermal(dt);
-    this.aero.update(this.state.r, this.state.v, atmosphereBody);
-    this.altitudeAlarm.update(dt, this.state.r, atmosphereBody);
+    this.aero.update(this.state.r, this.state.v, atmosphereBody, atmospherePivot);
+    this.altitudeAlarm.update(dt, this.state.r, atmosphereBody, atmospherePivot);
     this.power.update(dt, sunlit, sunDir, this.att, this);
   }
 
@@ -497,12 +498,12 @@ export class Player extends Ship {
   }
 
   // 自機側のキー(RCS減衰・プログレード・スロットル等)を1フレーム分消費する。
-  private handleEdgeInput(input: Input, entities: EntityManager): void {
+  private handleEdgeInput(input: Input, entities: DynamicSystem): void {
     input.takeKeys((code) => this.handleEdgePress(code, entities));
   }
 
   // 自機側キー1個を処理する。処理したキーは true を返し input.takeKeys に消費させる。
-  private handleEdgePress(code: string, entities: EntityManager): boolean {
+  private handleEdgePress(code: string, entities: DynamicSystem): boolean {
     switch (code) {
       case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
       case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;
@@ -554,7 +555,7 @@ export class Player extends Ship {
 
   // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
   // (どちらもゲームバランスの量で、物理の質量からは導かない)。
-  collideWithEntity(other: GameEntity, contact: Contact, activeStage: Stage): void {
+  collideWithEntity(other: DynamicEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
     if (other instanceof Bullet) {
@@ -566,14 +567,14 @@ export class Player extends Ship {
   }
 
   // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
-  collideWithCelestialBody(_body: CelestialBody, contact: Contact, activeStage: Stage): void {
+  collideWithCelestialBody(_body: CelestialMotion, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     this.damagedByContact(closingSpeed(contact), null, '天体の地表へ到達し機体は失われた', activeStage);
   }
 
   // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージの割り振り先が side のパーツに
   // 固定される点だけが collideWithEntity(機体本体)との違い。
-  collideAtRadiatorWithEntity(side: RadiatorSide, other: GameEntity, contact: Contact, activeStage: Stage): void {
+  collideAtRadiatorWithEntity(side: RadiatorSide, other: DynamicEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
 
     if (other instanceof Bullet) {
@@ -604,7 +605,7 @@ export class Player extends Ship {
   }
 
   // この艦の放熱板の、今フレームの接触代理一覧(展開中かつ健在な折りのみ)。
-  collisionFolds(simTime: number): GameEntity[] {
+  collisionFolds(simTime: number): DynamicEntity[] {
     return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
   }
 
@@ -612,7 +613,7 @@ export class Player extends Ship {
   // collideWithCelestialBody が扱う。
   checkLoss(
     _dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3,
-    _atmosphereBodies: readonly CelestialBody[],
+    _atmosphereBodies: readonly CelestialMotion[],
   ): void {
     if (!this.alive) return;
     if (!this.aero.overStructuralLimit) return;
@@ -639,11 +640,11 @@ export class Player extends Ship {
   private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
     this._worldSfx.hit(len(sub(impactPoint, this.state.r)));
     if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(kinematicState(this.state.t, impactPoint, this.state.v));
+      this._fx.spawnPlasmaFlash(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
     } else {
-      this._fx.spawnBulletFlash(kinematicState(this.state.t, impactPoint, this.state.v));
+      this._fx.spawnBulletFlash(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
     }
-    this._fx.spawnGasPuff(kinematicState(this.state.t, impactPoint, this.state.v));
+    this._fx.spawnGasPuff(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
   }
 
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。

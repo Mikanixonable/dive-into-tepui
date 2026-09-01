@@ -5,7 +5,7 @@ import { autoOrbitReference } from '../orbit-reference';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
-import { CURRENT_EPHEMERIS_CONTEXT, isEphemerisContextCompatible } from './ephemeris-context';
+import { ephemerisContextFor, isEphemerisContextRestorable } from './ephemeris-context';
 import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData, SnapshotKind, SnapshotMeta } from './save-data';
 import type { OrbitInfo } from '../hud/orbit/orbit-info';
 
@@ -20,7 +20,12 @@ export class SnapshotService {
     if (slotId === null) return null;
 
     const player = game.player;
-    const info = player ? orbitInfo(player, autoOrbitReference(player.state.r, game.ephemeris.celestialBodiesAt(game.simTime))) : null;
+    const info = player
+      ? orbitInfo(
+        player,
+        autoOrbitReference(player.state.r, game.celestialSystem.celestialMotions, player.state.t),
+        player.state.t, (id: string) => game.celestialSystem.nameOf(id))
+      : null;
     const meta: SnapshotMeta = {
       id: generateSnapshotId(),
       kind,
@@ -28,15 +33,15 @@ export class SnapshotService {
       name: name && name.length > 0 ? name : autoName(game.simTime, info),
       createdAtReal: Date.now(),
       simTime: game.simTime,
-      centerBodyId: info ? info.centerId : game.ephemeris.originId,
+      centerBodyId: info ? info.centerId : game.celestialSystem.origin.id,
       altitude: info ? info.alt : 0,
       speed: info ? info.spd : 0,
       hpRatio: player && player.maxHp > 0 ? Math.max(0, player.hp) / player.maxHp : 0,
       maxHp: player ? player.maxHp : 0,
       magazines: player ? player.magsLeft : 0,
-      money: game.entities.bases.reduce((sum, b) => sum + b.baseState.money, 0),
-      playerCount: game.entities.players.length,
-      enemyAliveCount: game.entities.enemies.filter(e => e.alive).length,
+      money: game.dynamicSystem.bases.reduce((sum, b) => sum + b.baseState.money, 0),
+      playerCount: game.dynamicSystem.players.length,
+      enemyAliveCount: game.dynamicSystem.enemies.filter(e => e.alive).length,
       phase: game.activeStage.phase,
     };
 
@@ -52,11 +57,10 @@ export class SnapshotService {
     const normalizedData = normalizePickupKeys(data);
     if (normalizedData === null) return null;
     if (expectedStageId !== normalizedData.stageId) return null;
-    // 暦情報が無いスナップショットは互換復元で読む。暦情報がある場合は、
-    // 異なる epoch/profile/pack で絶対天体状態が曖昧になるデータを拒否する。
-    if (!isEphemerisContextCompatible(
+    // 暦情報が無いスナップショットは互換復元で読む。元期は継承するので照合しないが、
+    // その元期が選ぶ暦データがいま手元にあるものと違うなら、絶対天体状態が曖昧になるので拒否する。
+    if (!isEphemerisContextRestorable(
       (normalizedData as { ephemerisContext?: unknown }).ephemerisContext,
-      CURRENT_EPHEMERIS_CONTEXT,
     )) return null;
     return normalizedData;
   }
@@ -84,20 +88,21 @@ function normalizePickupKeys(data: GameSaveData): GameSaveData | null {
 
 // 各エンティティ・ステージ自身の serialize を集めて1件ぶんのセーブ本体にする。
 function buildSaveData(game: Game): GameSaveData {
+  const { phaseOffsets, earthSpinPhase0 } = game.celestialSystem.serialize();
   return {
     version: SAVE_VERSION,
     stageId: game.activeStage.id,
     simTime: game.simTime,
-    ephemerisContext: { ...CURRENT_EPHEMERIS_CONTEXT },
-    phaseOffsets: game.ephemeris.getPhaseOffsets(),
-    earthSpinPhase0: game.celestialSystem.earthSpinPhase0(),
-    players: game.entities.players.map(p => p.serialize()),
+    ephemerisContext: { ...ephemerisContextFor(game.celestialSystem.epoch) },
+    phaseOffsets,
+    earthSpinPhase0,
+    players: game.dynamicSystem.players.map(p => p.serialize()),
     activePlayerId: game.player ? game.player.id : null,
-    enemies: game.entities.enemies.map(e => e.serialize()),
-    ammoPickups: game.entities.ammoPickups.map((ammoPickup) => ammoPickup.serialize()),
-    rcsFuelPickups: game.entities.rcsFuelPickups.map((pickup) => pickup.serialize()),
-    detachedBoosters: game.entities.detachedBoosters.map((booster) => booster.serialize()),
-    bases: game.entities.bases.map(b => b.serialize()),
+    enemies: game.dynamicSystem.enemies.map(e => e.serialize()),
+    ammoPickups: game.dynamicSystem.ammoPickups.map((ammoPickup) => ammoPickup.serialize()),
+    rcsFuelPickups: game.dynamicSystem.rcsFuelPickups.map((pickup) => pickup.serialize()),
+    detachedBoosters: game.dynamicSystem.detachedBoosters.map((booster) => booster.serialize()),
+    bases: game.dynamicSystem.bases.map(b => b.serialize()),
     stage: game.activeStage.serialize(),
     camera: { view: game.viewManager.serializeView(), ...game.cameraSystem.serialize() },
     navTarget: game.navTarget.id !== null ? { id: game.navTarget.id, name: game.navTarget.name! } : null,

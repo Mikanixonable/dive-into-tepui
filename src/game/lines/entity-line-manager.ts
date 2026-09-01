@@ -1,26 +1,26 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決める。
 // update が出す/消す/スタイルを決め、sync は既に出ている線の形状と変換を合わせる。
 import * as THREE from 'three/webgpu';
-import { Ephemeris } from '../../physics/ephemeris';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import * as C from '../const';
 import { FloatingOrigin } from '../camera/floating-origin';
-import type { GameEntity } from '../game-entity/game-entity';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { Player } from '../player/player';
 import { currentThemePalette } from '../theme';
 import type { CombatTarget } from '../targeter';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { DisplayWindow } from '../display-window-manager';
-import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { CelestialSystem } from '../celestial/celestial-system';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { OrbitReference } from '../orbit-reference';
 
 const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
 const LINE_STYLE = {
-  enemyOrbit: { color: C.COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
-  baseOrbit: { color: C.COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  enemyLine: { color: C.COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  baseLine: { color: C.COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
 } as const satisfies Record<string, LineStyle>;
 
 // ターゲットの軌道はほぼ自機の軌道と重なることが多く(近傍ランデブーを狙うため)、
@@ -40,7 +40,7 @@ function sameTrajectoryStyle(style: LineStyle): TrajectoryStyles {
 }
 
 export class EntityLineManager {
-  constructor(private readonly entities: EntityManager) {}
+  constructor(private readonly entities: DynamicSystem) {}
 
   // 出す/消す/スタイルを決める。判断材料(表示可否・ターゲット・操作艦・ビュー)が
   // このフレームの確定値になった後に呼ぶ。
@@ -66,7 +66,7 @@ export class EntityLineManager {
     // ターゲット強調時にも及ぶ表示可否、visibleWhenUntargeted はそれに加えてターゲットでないときだけ
     // 課される表示可否(敵の生存判定など)を表す。
     const applyEntityLines = (
-      entity: GameEntity, asTarget: LineStyle | null, lineVisible: boolean, visibleWhenUntargeted: boolean,
+      entity: DynamicEntity, asTarget: LineStyle | null, lineVisible: boolean, visibleWhenUntargeted: boolean,
       trajectoryEligible: boolean, styles: TrajectoryStyles,
     ): void => {
       // 予測線・過去線を使う条件が揃っているか。
@@ -74,9 +74,9 @@ export class EntityLineManager {
       // 戦闘ビューの自艦・使用条件を満たさない機体は、積分線の代わりに解析楕円で描く。
       const ownEllipse = showLines && !overviewMode;
       const fallbackEllipse = !trajectoryEligible && overviewMode && visibleWhenUntargeted && asTarget === null;
-      if (asTarget !== null && lineVisible) entity.showOrbitLine(asTarget);
-      else if (ownEllipse || fallbackEllipse) entity.showOrbitLine(styles.ellipse);
-      else entity.hideOrbitLine();
+      if (asTarget !== null && lineVisible) entity.showEllipseLine(asTarget);
+      else if (ownEllipse || fallbackEllipse) entity.showEllipseLine(styles.ellipse);
+      else entity.hideEllipseLine();
       if (showLines && !ownEllipse) entity.showPredictedLine(styles.predicted);
       else entity.hidePredictedLine();
       if (showLines && pastDuration > 0) entity.showActualLine(styles.actual);
@@ -98,7 +98,7 @@ export class EntityLineManager {
     for (const enemy of this.entities.enemies) {
       const visibility = visibilityPolicy?.entity('ship');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
-      const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyOrbit, color: enemy.orbitLineColor };
+      const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
       applyEntityLines(
         enemy, targetStyleOf(enemy), lineVisible, lineVisible && enemy.alive, overviewMode && enemy.showTrajectoryLine,
         sameTrajectoryStyle(enemyLineStyle),
@@ -108,7 +108,7 @@ export class EntityLineManager {
       const lineVisible = visibilityPolicy?.entity('base').orbit ?? false;
       applyEntityLines(
         base, targetStyleOf(base), lineVisible, lineVisible, overviewMode && base.showTrajectoryLine,
-        sameTrajectoryStyle(LINE_STYLE.baseOrbit),
+        sameTrajectoryStyle(LINE_STYLE.baseLine),
       );
     }
   }
@@ -117,21 +117,21 @@ export class EntityLineManager {
   // ここでは全個体へ一律に呼ぶ。
   sync(
     displayWindow: DisplayWindow, fo: FloatingOrigin, camera: THREE.Camera,
-    frameAnchors: FrameAnchorSource, ephemeris: Ephemeris, orbitRef: OrbitReference | undefined,
+    frameAnchors: FrameAnchorSource, celestialSystem: CelestialSystem, orbitRef: OrbitReference | undefined,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     for (const group of this.lineOwners) {
       for (const entity of group) {
         const predictedTo = entity.predictionTruncated ? null : simTime + duration;
         entity.syncTrajectoryLines(
-          frame, simTime, displayTime, pastDuration, predictedTo, ephemeris, fo, camera, frameAnchors);
-        entity.syncOrbitLine(displayTime, ephemeris, fo, camera, frameAnchors, orbitRef);
+          frame, simTime, displayTime, pastDuration, predictedTo, celestialSystem, fo, camera, frameAnchors);
+        entity.syncEllipseLine(displayTime, celestialSystem, fo, camera, frameAnchors, orbitRef);
       }
     }
   }
 
   // 線を持ちうるエンティティ。sync は種別を問わず同じ呼び出しで済むので、まとめて辿る。
-  private get lineOwners(): readonly (readonly GameEntity[])[] {
+  private get lineOwners(): readonly (readonly DynamicEntity[])[] {
     return [this.entities.players, this.entities.enemies, this.entities.bases];
   }
 }

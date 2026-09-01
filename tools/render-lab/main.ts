@@ -10,7 +10,7 @@ import {
   LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM_LOG, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
   PIPELINE_GRAPHICS_KEYS, type LabMeasurement, type LabViewAngles,
 } from './lab';
-import { AU } from '../../src/physics/planet-orbit';
+import { AU } from '../../src/physics/astronomical-unit';
 import {
   buildButtonRow, buildChoiceField, buildSelectField, buildSlider, buildToggleField, setRowEnabled,
 } from '../lab-controls';

@@ -6,7 +6,7 @@ import {
   normalizeOrbitGuideSettings,
   OrbitGuideSettings,
   saveOrbitGuideSettings,
-} from '../celestial/orbit-guide-settings';
+} from '../celestial/orbit-guide/orbit-guide-settings';
 import type { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 
 const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {

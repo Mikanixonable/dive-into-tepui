@@ -51,7 +51,7 @@ export class FlashEffectManager {
       fx.age += dt;
       if (fx.age >= fx.duration) return false;
       const s = fx.state;
-      fx.state = kinematicState(simTime, addScaled(s.r, s.v, simTime - s.t), s.v);
+      fx.state = kinematicState<'eci'>(simTime, addScaled(s.r, s.v, simTime - s.t), s.v);
       return true;
     });
   }

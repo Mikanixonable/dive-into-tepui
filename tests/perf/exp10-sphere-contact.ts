@@ -2,7 +2,7 @@
 // 弦・二次・三次を、棄却経路(箱で落ちる相手)と求根経路(表面を跨ぐ相手)に分けて測る。
 // 配置は二体問題の RK4 から作り、実シミュレーション側の刻みガードは通さない。
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { R_EARTH_EQ } from '../../src/physics/solar-system/constants';
+import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
 import { add, v3 } from '../../src/math/vec3';
 import {
   EARTH, SOLVERS, Solver, Sweep, againstBody, circular, companion, freeFall, solve, still, sweepOf,
@@ -14,8 +14,8 @@ function sweeps(): readonly Sweep[] {
   const leo = circular(EARTH, 413e3);
   const earthFall = freeFall(EARTH);
   // 動径方向へ落として、区間の途中で地表へ届かせる。
-  const descending = kinematicState(0, circular(EARTH, 60e3).r, add(circular(EARTH, 60e3).v, v3(-4000, 0, 0)));
-  const far = kinematicState(0, v3(7.8e11, 0, 0), v3());
+  const descending = kinematicState<'eci'>(0, circular(EARTH, 60e3).r, add(circular(EARTH, 60e3).v, v3(-4000, 0, 0)));
+  const far = kinematicState<'eci'>(0, v3(7.8e11, 0, 0), v3());
   return [
     againstBody('周回中の地球(触れない)', EARTH, leo, STEP_DT, earthFall),
     sweepOf('遠方の天体(木星の距離)', leo, far, STEP_DT, earthFall, still, 7.1e7),

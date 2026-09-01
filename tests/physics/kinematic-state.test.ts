@@ -7,7 +7,7 @@ import {
   kinematicState,
   orbitAxes,
 } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { stateFromOrbitalElements } from '../../src/physics/elements';
 import { stepRK4 } from '../../src/physics/dynamics';
 import { Vec3, dot, len, norm, sub, v3 } from '../../src/math/vec3';
@@ -25,7 +25,7 @@ export function register(): void {
     // 420km 円軌道を RK4 で 300 秒(周期の約 1/18)進め、その両端から中間時刻を補間する。
     const r0 = R_EARTH + 420e3;
     const vCirc = Math.sqrt(MU_EARTH / r0);
-    const a = kinematicState(0, v3(r0, 0, 0), v3(0, 0, vCirc));
+    const a = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, 0, vCirc));
     const span = 300;
     let b = a;
     for (let i = 0; i < span; i++) b = stepRK4(b, 1, (_t, rx, ry, rz) => earthGravity(v3(rx, ry, rz)));
@@ -53,13 +53,13 @@ export function register(): void {
   });
 
   test('kinematic-state: hermiteInterpolate rejects out-of-range t', () => {
-    const a = kinematicState(100, v3(R_EARTH + 420e3, 0, 0), v3(0, 0, 7660));
-    const b = kinematicState(200, v3(R_EARTH + 420e3, 0, 766e3), v3(-880, 0, 7610));
+    const a = kinematicState<'eci'>(100, v3(R_EARTH + 420e3, 0, 0), v3(0, 0, 7660));
+    const b = kinematicState<'eci'>(200, v3(R_EARTH + 420e3, 0, 766e3), v3(-880, 0, 7610));
 
     assert.throws(() => hermiteInterpolate(a, b, 250), /区間/, 'past the end');
     assert.throws(() => hermiteInterpolate(a, b, 50), /区間/, 'before the start');
     // 同時刻の2点は補間できない
-    assert.throws(() => hermiteInterpolate(a, kinematicState(a.t, b.r, b.v), a.t), /同時刻/);
+    assert.throws(() => hermiteInterpolate(a, kinematicState<'eci'>(a.t, b.r, b.v), a.t), /同時刻/);
   });
 
   test('kinematic-state: orbitAxes returns an orthonormal basis', () => {

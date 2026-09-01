@@ -88,7 +88,7 @@ leaving it where the fix will land.
 **Injection was narrowed so each consumer declares only the audio reach it actually uses**:
 `SimSpeedManager` / `PlanEditor` / `PlanGuide` take `UiSfx`; `Logistics` alone takes both (a
 spawn-notification blip plus the pickup sound); the entire entity/stage/docking graph
-(`Player`, `Enemy`, `Bullet`, `DebrisPiece`, `Base`, `EffectsSystem`, `EntityManager`,
+(`Player`, `Enemy`, `Bullet`, `DebrisPiece`, `Base`, `EffectsSystem`, `DynamicSystem`,
 `Docking`, `Launcher`, the spawners, `WaveAttack`) takes `WorldSfx`. `StageDeps` carries
 `worldSfx, uiSfx`.
 

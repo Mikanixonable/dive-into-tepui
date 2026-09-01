@@ -4,7 +4,7 @@ import { Attitude, Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../
 import { kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
-import { GameEntity } from '../game-entity/game-entity';
+import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 const MAG_CHAIN_MAX_ROLL_DEG = 15;  // ロール上限
 const MAG_CHAIN_MAX_PITCH_DEG = 45; // ピッチ上限(上下方向の折れ)
@@ -22,10 +22,10 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 // ベルトのリンク節点を剛体接触に参加させるためのプロキシ。
-export class BeltSection extends GameEntity {
+export class BeltSection extends DynamicEntity {
   // 節点インデックス beltIndex に対応するプロキシを、吊り元の艦 owner とともに生成する。
-  constructor(readonly beltIndex: number, private readonly owner: GameEntity) {
-    super(kinematicState(0, v3(), v3()), new THREE.Object3D());
+  constructor(readonly beltIndex: number, private readonly owner: DynamicEntity) {
+    super(kinematicState<'eci'>(0, v3(), v3()), new THREE.Object3D());
     this.mass = 5;
     this.radius = 0.8;
     this.collides = true;
@@ -33,7 +33,7 @@ export class BeltSection extends GameEntity {
   }
 
   // 吊り元の艦、およびそれに取り付いた他の実体(ベルトの他節点・放熱板の折り)とは接触しない。
-  contactsWith(other: GameEntity): boolean {
+  contactsWith(other: DynamicEntity): boolean {
     if (other === this.owner) return false;
     return other.attachedTo !== this.owner;
   }
@@ -52,7 +52,7 @@ export class BeltPhysics {
   // 給弾進みに応じて動く根本の固定点(機体座標系)。
   anchor: Vec3 = v3(MAG_BELT_ANCHOR_X, 0, 0);
 
-  constructor(private readonly linkCount: number, private readonly owner: GameEntity) {}
+  constructor(private readonly linkCount: number, private readonly owner: DynamicEntity) {}
 
   // リンクを1つ手前へ詰め、末尾に新しいリンクを継ぎ足す。
   shiftBeltNodes(): void {
@@ -253,7 +253,7 @@ export class BeltPhysics {
       const v_body_total = add(v_verlet, v_tangential);
 
       // ワールド座標系へ変換する
-      s.state = kinematicState(
+      s.state = kinematicState<'eci'>(
         s.state.t,
         add(baseR, qRotate(att.q, bp)),
         add(baseV, qRotate(att.q, v_body_total)),

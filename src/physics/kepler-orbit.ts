@@ -1,12 +1,13 @@
 // 中心天体まわりの軌道を、基準面に固定したケプラー要素と角度の永年変化率で表したものの評価。
 // 恒星/惑星/衛星のどの分類にも属さない、純粋な軌道の数学 — 変化率が何に由来するかは
-// planet-orbit.ts / satellite-orbit.ts の責務。
+// 呼び出し側(惑星は下の planetOrbit、衛星は satellite-orbit.ts)の責務。
 // 角度は平均黄経 L(公転周期でちょうど1周)→ 平均近点角 M = L − ϖ → 真近点角 ν の順に組む。
 // 昇交点・近点はどちらも歳差するので、L を軌道面内の角(昇交点からの緯度引数 u)へ直接
 // 使うと公転が歳差ぶんだけ遅速し、長期積分で位置が大きくずれる。
 // 傾斜・昇交点・近点はすべて basisToEci が指す基準面(黄道面、あるいは親惑星の赤道面)の
 // 上で測る。位置・速度だけでなく軌道法線・回転基準系もこの1つの回転を経由するので、
 // 基準面を変えても表示・ラグランジュ点・回転座標系が食い違うことはない。
+import { AU } from './astronomical-unit';
 import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
 import { Q_ECL_TO_ECI } from './ecliptic';
 import { eccentricAnomalyFromMean, positionFromOrbitalElements } from './elements';
@@ -64,14 +65,14 @@ type OrbitAngles = {
 // 標準の ν̇ = Ṁ(1+e cosν)²/(1−e²)^1.5 は a・e を定数とみなした式で、aRate/eRate ≠ 0(惑星要素の
 // 永年変化)では長半径そのものの変化、およびケプラー方程式 M = E − e sinE の e への依存ぶんが
 // Ė、ひいては ν̇/ṙ から抜け落ちる。
-function orbitAngles(orbit: KeplerOrbit, t: number, phaseOffset: number): OrbitAngles {
+function orbitAngles(orbit: KeplerOrbit, t: number): OrbitAngles {
   // 各要素を t=0 の値 + 永年変化率×t で t 時点へ進める。
   const a = orbit.a + orbit.aRate * t;
   const e = orbit.e + orbit.eRate * t;
   const inc = orbit.inc + orbit.incRate * t;
   const raan = orbit.raan0 + orbit.raanRate * t;
   const lonPeri = orbit.lonPeri0 + orbit.lonPeriRate * t;
-  const L = orbit.l0 + phaseOffset + orbit.lRate * t;
+  const L = orbit.l0 + orbit.lRate * t;
   const M = L - lonPeri;
   const mRate = orbit.lRate - orbit.lonPeriRate;
 
@@ -142,32 +143,114 @@ function rotationFromAngles(orbit: KeplerOrbit, a: OrbitAngles): FrameRotation {
   return { q, omega };
 }
 
+// 角を [0, 2π) へ畳む。
+function wrapAngle(x: number): number {
+  const TWO_PI = 2 * Math.PI;
+  return x - TWO_PI * Math.floor(x / TWO_PI);
+}
+
+// 要素の元期を simZeroEt ぶん進め、平均黄経へ初期位相 phase を足した軌道。永年変化は
+// すべて時刻の一次式なので、各要素へ「変化率 × オフセット」を加えるだけで移せる。
+//
+// **角は必ず畳む。** オフセットは 18,000 年規模になりうる — 畳まないと平均黄経が 1e5 rad まで
+// 積み上がり、そこでの ulp(1.5e-11 rad)が以降すべての評価の丸めを支配して、地球軌道上で
+// メートル規模の誤差になる。畳めば中間値が 100 rad 規模に収まり、丸めは 3 桁小さくなる。
+export function keplerOrbitForSimZero(orbit: KeplerOrbit, phase: number, simZeroEt: number): KeplerOrbit {
+  const s = simZeroEt;
+  return {
+    ...orbit,
+    a: orbit.a + orbit.aRate * s,
+    e: orbit.e + orbit.eRate * s,
+    inc: orbit.inc + orbit.incRate * s,
+    raan0: wrapAngle(orbit.raan0 + orbit.raanRate * s),
+    lonPeri0: wrapAngle(orbit.lonPeri0 + orbit.lonPeriRate * s),
+    l0: wrapAngle(orbit.l0 + phase + orbit.lRate * s),
+  };
+}
+
 // 中心天体中心・ECI 軸での状態。軌道は要素と平均黄経の変化率だけで決まるので、中心天体の
 // 重力定数は要らない(lRate が平均運動そのもの)。
 // 速度は、軌道面内の動径変化(ṙ·r̂)と回転基準系自身の角速度による見かけの移動(omega×r)の
 // 和として組む — 後者が昇交点・近点の歳差ぶんの寄与を担う。
-export function keplerOrbitState(orbit: KeplerOrbit, t: number, phaseOffset: number): KinematicState {
-  const a = orbitAngles(orbit, t, phaseOffset);
+export function keplerOrbitState(orbit: KeplerOrbit, t: number): KinematicState<'primaryRel'> {
+  const a = orbitAngles(orbit, t);
   const r = qRotate(qMul(orbit.basisToEci, Q_ZUP_TO_YUP), positionFromOrbitalElements(a.a, a.e, a.inc, a.raan, a.argp, a.nu));
   const { omega } = rotationFromAngles(orbit, a);
   const v = addScaled(cross(omega, r), norm(r), a.rDot);
-  return kinematicState(t, r, v);
+  return kinematicState<'primaryRel'>(t, r, v);
 }
 
 // この軌道に固定した回転基準系の t 時点の姿勢・角速度。
-export function keplerOrbitRotation(orbit: KeplerOrbit, t: number, phaseOffset: number): FrameRotation {
-  return rotationFromAngles(orbit, orbitAngles(orbit, t, phaseOffset));
+export function keplerOrbitRotation(orbit: KeplerOrbit, t: number): FrameRotation {
+  return rotationFromAngles(orbit, orbitAngles(orbit, t));
 }
 
 // 軌道面の法線(単位ベクトル、ECI)。
-export function keplerOrbitNormal(orbit: KeplerOrbit, t: number, phaseOffset: number): Vec3 {
-  return normalFromAngles(orbit, orbitAngles(orbit, t, phaseOffset));
+export function keplerOrbitNormal(orbit: KeplerOrbit, t: number): Vec3 {
+  return normalFromAngles(orbit, orbitAngles(orbit, t));
 }
 
 // 平均黄経が指す方向の単位ベクトル(ECI)。真近点角ではなく平均近点角で軌道面内の角を取るので、
 // 中心差のぶんだけ実位置とはずれる。公転周期でちょうど一定角速度で回るため、同期回転する
 // 天体の本初子午線が指す方向はこちらで表される。
-export function keplerOrbitMeanDirection(orbit: KeplerOrbit, t: number, phaseOffset: number): Vec3 {
-  const a = orbitAngles(orbit, t, phaseOffset);
+export function keplerOrbitMeanDirection(orbit: KeplerOrbit, t: number): Vec3 {
+  const a = orbitAngles(orbit, t);
   return directionFromAngles(orbit, a, a.uMean);
+}
+
+// 惑星: その惑星と衛星の共通重心が太陽まわりに描くケプラー軌道。惑星本体ではなく重心が
+// ケプラー軌道に乗る(地球は月に対し 1:81 と十分に軽くはなく、重心のまわりを 4,673 km の
+// 振幅で回っている)。要素の永年変化は他惑星からの摂動に由来し、世紀あたりの値で入力する。
+const DEG = Math.PI / 180;
+
+// 度・世紀単位で入力された惑星-衛星系重心の軌道要素を、KeplerOrbit のラジアン・秒単位へ変換する。
+export function planetOrbit(p: {
+  a: number;
+  e: number;
+  incDeg: number;
+  raanDeg: number;
+  lonPeriDeg: number;
+  l0Deg: number;
+  lRateDegPerCentury: number;
+  raanRateDegPerCentury: number;
+  incRateDegPerCentury: number;
+  lonPeriRateDegPerCentury: number;
+  eRatePerCentury: number;
+  aRatePerCenturyAu: number;
+}): KeplerOrbit {
+  // 度/世紀・au/世紀の入力単位を、KeplerOrbit のラジアン/秒単位へ一括変換するだけ。
+  return {
+    basisToEci: ECLIPTIC_BASIS,
+    a: p.a,
+    aRate: (p.aRatePerCenturyAu * AU) / JULIAN_CENTURY,
+    e: p.e,
+    eRate: p.eRatePerCentury / JULIAN_CENTURY,
+    inc: p.incDeg * DEG,
+    incRate: (p.incRateDegPerCentury * DEG) / JULIAN_CENTURY,
+    raan0: p.raanDeg * DEG,
+    raanRate: (p.raanRateDegPerCentury * DEG) / JULIAN_CENTURY,
+    lonPeri0: p.lonPeriDeg * DEG,
+    lonPeriRate: (p.lonPeriRateDegPerCentury * DEG) / JULIAN_CENTURY,
+    l0: p.l0Deg * DEG,
+    lRate: (p.lRateDegPerCentury * DEG) / JULIAN_CENTURY,
+  };
+}
+
+export type PlanetAngles = {
+  readonly meanAnomaly: number; // [rad]
+  readonly meanLongitude: number; // [rad]
+  readonly meanAnomalyRate: number; // [rad/s]
+  readonly meanLongitudeRate: number; // [rad/s]
+};
+
+// 衛星モデルが太陽方向を求めるのに要る角度。惑星-衛星系重心の軌道から取れるので循環しない。
+export function planetAngles(orbit: KeplerOrbit, t: number): PlanetAngles {
+  const lonPeri = orbit.lonPeri0 + orbit.lonPeriRate * t;
+  const meanLongitude = orbit.l0 + orbit.lRate * t;
+  return {
+    meanAnomaly: meanLongitude - lonPeri,
+    meanLongitude,
+    meanAnomalyRate: orbit.lRate - orbit.lonPeriRate,
+    meanLongitudeRate: orbit.lRate,
+  };
 }

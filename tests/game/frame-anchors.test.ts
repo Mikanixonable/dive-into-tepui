@@ -2,23 +2,27 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { FrameAnchors } from '../../src/game/frame-anchors';
+import { solarSystemParts } from '../physics/test-helpers';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 
 export function register(): void {
-  const shipState = kinematicState(0, v3(7e6, 0, 0), v3(0, 7500, 0));
+  // このテストが見るのは役割トークン(@activeShip)の解決と猶予だけなので、天体レジストリの
+  // 中身は結果に関わらない。
+  const parts = solarSystemParts();
+  const shipState = kinematicState<'eci'>(0, v3(7e6, 0, 0), v3(0, 7500, 0));
   // t に応じて違う状態を返す(円軌道ふうに x を t だけ進める)。stateOf(id, t) が実際に
   // 渡された t の状態を返しているかを、固定値を返すスタブでは見逃してしまうため。
-  const shipStateAt = (t: number): KinematicState => t === 0 ? shipState : kinematicState(t, v3(7e6 + t, 0, 0), v3(0, 7500, 0));
+  const shipStateAt = (t: number): KinematicState => t === 0 ? shipState : kinematicState<'eci'>(t, v3(7e6 + t, 0, 0), v3(0, 7500, 0));
 
   function anchorsWithShip(): { anchors: FrameAnchors; setShip: (s: KinematicState | null) => void } {
     let ship: ((t: number) => KinematicState) | null = shipStateAt;
-    const anchors = new FrameAnchors({
+    const anchors = new FrameAnchors(parts.system, {
       entityState: () => null,
       activeShipState: (t) => ship?.(t) ?? null,
       navTargetState: () => null,
     });
-    anchors.update([]);
+    anchors.update(0);
     return { anchors, setShip: (s) => { ship = s === null ? null : () => s; } };
   }
 
@@ -49,7 +53,7 @@ export function register(): void {
     anchors.stateOf('@activeShip', 0);
     setShip(null);
     assert.equal(anchors.stateOf('@activeShip', 0), shipState);
-    anchors.update([]);
+    anchors.update(0);
     assert.equal(anchors.stateOf('@activeShip', 0), null);
   });
 
@@ -58,11 +62,11 @@ export function register(): void {
     anchors.stateOf('@activeShip', 0);
     setShip(null);
     anchors.stateOf('@activeShip', 0);
-    anchors.update([]);
+    anchors.update(0);
     setShip(shipState);
     assert.equal(anchors.stateOf('@activeShip', 0), shipState);
     setShip(null);
-    anchors.update([]);
+    anchors.update(0);
     assert.equal(anchors.stateOf('@activeShip', 0), shipState, '猶予が戻っていない');
   });
 }

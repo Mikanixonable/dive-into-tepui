@@ -1,21 +1,69 @@
 // 状態ベクトル(KinematicState)そのものの定義と、それだけで完結する幾何演算(軌道基底・
 // エルミート補間)。THREE/DOM 非依存の純粋関数群。
-import { Vec3, cross, norm, v3 } from '../math/vec3';
+import { Vec3, add, cross, norm, sub, v3 } from '../math/vec3';
+
+// 位置・速度を**どの供給源から、どの原点で**測っているか。軸はどれもゲーム ECI 軸
+// (icrf だけ ICRF 軸)。**供給源の違いも原点の違いも値からは見分けられない**ので、型で
+// 持たせて取り違えを型検査に拾わせる。
+//
+// 守っている不変条件は「**絶対 − 絶対は供給源を揃える**」— 数値暦と解析暦は同じ天体に
+// 別の位置を答えるので、片方だけを差し替えると差がそのまま相対位置の誤りになる。
+// 一方「**絶対 + 相対は混ぜてよい**」ので、`primaryRel` は供給源を持たない
+// (解析の相対軌道を数値暦の惑星本体へ足す合成が、そのために要る)。
+//
+// - `eci` — ECI 原点天体(ステージが選ぶ中心天体)中心。無標の既定。
+// - `analytic` — 解析暦が答える位置。原点は太陽系重心で、恒星もその重心のまわりを動く。
+// - `numeric` — 数値暦が答える位置。原点は太陽系重心。
+// - `primaryRel` — 何かを中心に測った相対量。**中心が誰かは型に現れない**ので、
+//   足し先を取り違えても型検査は通る。組む側が中心を知っている必要がある。
+// - `icrf` — 太陽系重心中心・ICRF 軸。暦パックの生の座標。
+export type FrameTag = 'eci' | 'analytic' | 'primaryRel' | 'numeric' | 'icrf';
+
+// 原点(と供給源)の札を付けた位置ベクトル。**`Vec3` の部分型**なので既存のベクトル演算へ
+// そのまま渡せる。演算の結果は素の `Vec3` に戻る(位置 − 位置は変位であって位置ではない)ので、
+// 位置として名乗り直すには `kinematicState` を通す。
+export type FramedVec3<F extends FrameTag> = Vec3 & { readonly __originOf: F };
 
 // ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
 // KinematicState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
 // できなくなるため)。t を state 自身が持つので「状態」と「その時刻」が引数として
 // 分かれて食い違うことがない — 予測点列もエンティティの履歴
-// (game-entity/game-entity.ts)も同じこの型で表す。
-export type KinematicState = {
-  readonly t: number; // 絶対 simTime [s]
-  readonly r: Vec3; // ECI 位置 [m]
-  readonly v: Vec3; // ECI 速度 [m/s]
-} & { readonly __frame: 'inertial'; }
+// (dynamic/dynamic-entity/dynamic-entity.ts)も同じこの型で表す。
+// 型引数は原点と供給源(FrameTag)。既定が 'eci' なので、ECI を読む側は型引数を書かなくてよい。
+export type KinematicState<F extends FrameTag = 'eci'> = {
+  readonly t: number; // 絶対 simTime [s](時刻軸の契約は CODING-RULE 1.9)
+  readonly r: FramedVec3<F>; // 位置 [m]
+  readonly v: FramedVec3<F>; // 速度 [m/s]
+} & { readonly __frame: F; }
 
-// KinematicState を組み立てる唯一の入口。
-export function kinematicState(t: number, r: Vec3, v: Vec3): KinematicState {
-  return { t, r, v } as KinematicState;
+// KinematicState を組み立てる唯一の入口。ECI を組むときも `kinematicState<'eci'>(...)` と
+// 型引数を書く — 組み立てが原点を黙って選ぶことのほうが、書く量より高くつく。
+export function kinematicState<F extends FrameTag>(t: number, r: Vec3, v: Vec3): KinematicState<F> {
+  return { t, r, v } as KinematicState<F>;
+}
+
+// 主天体を原点に置き直した状態。**両者は同じ原点で測られていなければならない**(同じ F)。
+export function toPrimaryRelative<F extends FrameTag>(
+  t: number, body: KinematicState<F>, primary: KinematicState<F>,
+): KinematicState<'primaryRel'> {
+  return kinematicState<'primaryRel'>(t, sub(body.r, primary.r), sub(body.v, primary.v));
+}
+
+// ECI 原点天体を原点に置き直した状態。**両者は同じ原点で、かつ同じ供給源から引かれて
+// いなければならない** — 数値暦と解析暦は同じ天体に別の位置を答えるので、片方だけを
+// 差し替えると差がそのまま相対位置の誤りになる。
+export function toEci<F extends FrameTag>(
+  t: number, body: KinematicState<F>, origin: KinematicState<F>,
+): KinematicState {
+  return kinematicState<'eci'>(t, sub(body.r, origin.r), sub(body.v, origin.v));
+}
+
+// 主天体相対を、その主天体の状態へ足し戻したもの。**主天体をどの原点で測っていても
+// 足し戻せる**(相対量は原点に依らない)ので、返る原点は主天体側のものを引き継ぐ。
+export function addPrimaryRelative<F extends FrameTag>(
+  primary: KinematicState<F>, rel: KinematicState<'primaryRel'>,
+): KinematicState<F> {
+  return kinematicState<F>(primary.t, add(primary.r, rel.r), add(primary.v, rel.v));
 }
 
 // 軌道基底: 進行方向・軌道面法線・面内で進行方向に直交する向きからなる正規直交系。
@@ -28,14 +76,14 @@ export type OrbitAxes = {
 };
 
 // 状態ベクトルから軌道基底を組む。速度または角運動量が縮退していると各軸は NaN になる。
-export function orbitAxes(s: KinematicState): OrbitAxes {
+export function orbitAxes<F extends FrameTag>(s: KinematicState<F>): OrbitAxes {
   const pro = norm(s.v);
   const nrm = norm(cross(s.r, s.v));
   return { pro, nrm, radOut: cross(pro, nrm) };
 }
 
 // 軌道基底で表したベクトル(x=pro, y=nrm, z=radOut 成分)をワールド ECI へ変換する。
-export function fromOrbitAxes(s: KinematicState, x: Vec3): Vec3 {
+export function fromOrbitAxes<F extends FrameTag>(s: KinematicState<F>, x: Vec3): Vec3 {
   const { pro, nrm, radOut } = orbitAxes(s);
   return v3(
     pro.x * x.x + nrm.x * x.y + radOut.x * x.z,
@@ -49,11 +97,11 @@ export function fromOrbitAxes(s: KinematicState, x: Vec3): Vec3 {
 // a.t > b.t(逆順)でも同じ多項式が定まるので、順序は問わない。
 // 区間外の t は拒否する。多項式は区間外で急速に発散し、軌道として破綻した状態
 // (地球内部の位置、脱出速度を超える速度など)を平然と返すため。
-export function hermiteInterpolate(
-  a: KinematicState,
-  b: KinematicState,
+export function hermiteInterpolate<F extends FrameTag>(
+  a: KinematicState<F>,
+  b: KinematicState<F>,
   t: number,
-): KinematicState {
+): KinematicState<F> {
   const h = b.t - a.t;
   if (h === 0) throw new Error(`hermiteInterpolate: 両端が同時刻 (t=${a.t}) で補間できない`);
   if ((t - a.t) * (t - b.t) > 0) {
@@ -73,7 +121,7 @@ export function hermiteInterpolate(
     wr0 * a.r.z + wv0 * a.v.z + wr1 * b.r.z + wv1 * b.v.z,
   );
 
-  return kinematicState(
+  return kinematicState<F>(
     t,
     combine(w[0]!, w[1]! * h, w[2]!, w[3]! * h),
     combine(dw[0]! / h, dw[1]!, dw[2]! / h, dw[3]!),

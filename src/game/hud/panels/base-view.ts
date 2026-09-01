@@ -1,6 +1,6 @@
 // 基地パネル: 基地のプロパティウィンドウ内へ展開する運用UI。
 // 格納されている船の一覧、部品の確認・修理・換装、ショップを提供する。
-import type { Base } from '../../game-entity/base';
+import type { Base } from '../../dynamic/dynamic-entity/base';
 import type { Player } from '../../player/player';
 import { CloseButton, TabBar } from '../widgets';
 import { MQ_COMPACT, MQ_SHORT } from '../breakpoints';

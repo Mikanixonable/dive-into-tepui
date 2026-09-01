@@ -1,7 +1,7 @@
 // 艦の RCS タンク群に対する燃料の補給・移送・均等化。複数タンクをまたぐ配分の規則だけを
 // 持ち、どのタンクからどの順に汲むかをここで決める。
 import type { Player } from '../../player/player';
-import type { RcsTankPart } from '../../game-entity/parts';
+import type { RcsTankPart } from '../../dynamic/dynamic-entity/parts';
 
 // entity が搭載する RCS タンクを取り出す。
 export function rcsTanksOf(entity: Player): readonly RcsTankPart[] {

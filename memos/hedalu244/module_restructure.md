@@ -16,10 +16,10 @@
 - **定数は利用箇所と同居させる。** フォルダ集約ファイルではなく、使うモジュールの側へ。
 - **テストは減らしてよい。** 今はとにかく多い。
 - **見送り(今回はやらない)と決めたこと**:
-  - nan-watchdog の責務を EntityManager へ回収する案(検査の価値はフレーム位相の記録に
+  - nan-watchdog の責務を DynamicSystem へ回収する案(検査の価値はフレーム位相の記録に
     あり、呼び出しは orchestrator に残るため。将来のさらなる構造化の時に再考)
-  - simulation facade の新設(simulator / predictor / entity-manager は既に
-    `game/simulation/` に同居済み。facade はたらい回し層になる)
+  - simulation facade の新設(simulator / predictor / dynamic-system は既に
+    `game/dynamic/` に同居済み。facade はたらい回し層になる)
   - `export-models.mjs` の複製解消(three / three/webgpu 非互換という実制約。
     コメントに意図が明記されており、実害が出るまで触らない)
 
@@ -28,7 +28,7 @@
 
 ## 残っている宿題
 
-- `const.ts` に残る 108 export は、複数モジュールから参照されるもの。置き場をどう決めるかは
+- `const.ts` に残る 107 export は、複数モジュールから参照されるもの。置き場をどう決めるかは
   未定。
 - `guideKindDefaultColors` と、それが使う `GUIDE_GROUP_HUE` / `guideKindShade` / `lerpColor` は
   `const.ts` に残っている。軌道ガイドの色の所有者へまとめて移せるはずだが、移動先の判断が要る。

@@ -7,7 +7,7 @@
 // 局所量から熱流束を出すだけで収支を知らないので、超えないことは受け取る側で保証する。
 // 太陽光は力学エネルギーの散逸ではないので、この頭打ちは掛からない。
 
-import { AU } from './planet-orbit';
+import { AU } from './astronomical-unit';
 
 // ステファン・ボルツマン定数 [W/m²/K⁴]。
 export const STEFAN_BOLTZMANN = 5.670374419e-8;

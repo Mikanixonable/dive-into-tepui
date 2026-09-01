@@ -1,11 +1,11 @@
 // 軌道エンティティの基準・軌道要素・相対情報を導出する純粋関数群。
-import { CelestialBody, strongestAttractor } from '../../../physics/celestial-body';
+import { strongestAttractor } from '../../../physics/attractor';
+import { CelestialMotion } from '../../../physics/celestial-motion';
 import { apsisAltitudes } from '../../../physics/elements';
 import { kinematicState } from '../../../physics/kinematic-state';
 import { dot, len, sub, Vec3 } from '../../../math/vec3';
-import type { GameEntity } from '../../game-entity/game-entity';
+import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
-import { celestialBodyName } from '../frame/frame-labels';
 
 export interface OrbitInfo {
   centerId: string;
@@ -21,17 +21,19 @@ export interface OrbitInfo {
 // エンティティの現在状態から、reference が示す基準に対する高度・相対速度・遠地点・近地点・
 // 傾斜角・周期を導出する。速度は reference 自身の速度を差し引いた相対速度。reference が重力
 // 中心でない(attractor=null)場合、および要素が求まらない状態(双曲線軌道等)では
-// ap/pe/inc/period を NaN にする。
-export function orbitInfo(entity: GameEntity, reference: OrbitReference): OrbitInfo {
+// ap/pe/inc/period を NaN にする。nameOf は天体 id → 表示名(celestialSystem.nameOf)。
+export function orbitInfo(
+  entity: DynamicEntity, reference: OrbitReference, pivot: number, nameOf: (id: string) => string,
+): OrbitInfo {
   // reference 系での相対位置・速度(高度・相対速度の元)。
-  const rel = kinematicState(entity.state.t, sub(entity.state.r, reference.state.r), sub(entity.state.v, reference.state.v));
+  const rel = kinematicState<'eci'>(entity.state.t, sub(entity.state.r, reference.state.r), sub(entity.state.v, reference.state.v));
   // reference が重力中心のときだけ軌道要素・遠地点/近地点が求まる。
-  const el = reference.attractor ? entity.orbitalElementsAround(reference.attractor) : null;
+  const el = reference.attractor ? entity.orbitalElementsAround(reference.attractor, pivot) : null;
   const apsis = el ? apsisAltitudes(el) : null;
   return {
     centerId: reference.id,
-    centerName: celestialBodyName(reference.id),
-    alt: len(rel.r) - (reference.attractor?.radius ?? 0),
+    centerName: nameOf(reference.id),
+    alt: len(rel.r) - (reference.attractor?.def.radius ?? 0),
     spd: len(rel.v),
     apAlt: apsis ? apsis.ap : NaN,
     peAlt: apsis ? apsis.pe : NaN,
@@ -54,11 +56,14 @@ export interface RelativeInfo {
 
 // self から見た other の距離・接近速度・相対速度・相対傾斜角を導出する。相対傾斜角は
 // 双方の基準天体(strongestAttractor)が一致するときのみ意味を持ち、異なる場合は NaN にする。
-export function relativeInfo(self: GameEntity, other: GameEntity, celestialBodies: readonly CelestialBody[]): RelativeInfo {
-  const selfCenter = strongestAttractor(self.state.r, celestialBodies);
-  const otherCenter = strongestAttractor(other.state.r, celestialBodies);
-  const selfEl = self.orbitalElementsAround(selfCenter);
-  const otherEl = other.orbitalElementsAround(otherCenter);
+export function relativeInfo(
+  self: DynamicEntity, other: DynamicEntity,
+  celestialBodies: readonly CelestialMotion[], pivot: number,
+): RelativeInfo {
+  const selfCenter = strongestAttractor(self.state.r, celestialBodies, pivot);
+  const otherCenter = strongestAttractor(other.state.r, celestialBodies, pivot);
+  const selfEl = self.orbitalElementsAround(selfCenter, pivot);
+  const otherEl = other.orbitalElementsAround(otherCenter, pivot);
   const relP = sub(other.state.r, self.state.r);
   const relV = sub(other.state.v, self.state.v);
   const dist = len(relP);

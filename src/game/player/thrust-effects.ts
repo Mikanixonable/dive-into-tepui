@@ -1,5 +1,5 @@
 // マヌーバ噴射プルーム: 推力方向の逆側に置く発光ビルボード 2 枚(コア+アウター)+ エンジン音。
-// GameEntity 自身が持つ this.thrust(今フレームの推力ベクトルそのもの)を直接読む —
+// DynamicEntity 自身が持つ this.thrust(今フレームの推力ベクトルそのもの)を直接読む —
 // PlayerThrottle 固有の状態(thrustVizDir/throttleIdx)には依存しない(RcsEffects が
 // PlayerThrottle 経由ではなく ship.torque を直接読むのと同じ理由・同じ形)。
 import * as THREE from 'three/webgpu';

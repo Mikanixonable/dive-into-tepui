@@ -151,7 +151,7 @@
 
 代わりに**重力積分だけが別の窓を使う**: `Ephemeris.gravityAttractorsAt(t)`
 (`gravitySource: true` のみを返す)を新設し、これを引くのは
-`GameEntity.stepActual` / `GameEntity.stepPredicted`(Predictor 経由)/
+`DynamicEntity.stepActual` / `DynamicEntity.stepPredicted`(Predictor 経由)/
 `PlanArc.update` の3経路のみとする。`dynamics.ts` の `totalAccel` は RK4 の4ステージ×
 全エンティティで配列を舐めるため、重力側だけは要素数を5体に固定する必要がある。
 

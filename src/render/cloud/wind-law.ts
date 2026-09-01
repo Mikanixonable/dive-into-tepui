@@ -3,7 +3,7 @@
 // 地衡風の枝へ、谷が狭く深い所では遠心力が受け持って緯度に依らない枝へ落ちるので、**中緯度の
 // 低気圧も熱帯の台風も同じ式から出る。** 赤道でも高気圧側でも有限に留まる。
 import { abs, cos, cross, length, max, sin, sqrt, tanh } from 'three/tsl';
-import { R_EARTH, SIDEREAL_DAY } from '../../physics/solar-system/constants';
+import { R_EARTH, SIDEREAL_DAY } from '../../game/celestial/solar-system/constants';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
 // 摩擦の減衰率 [1/s]。1/k は風が摩擦で衰える時間で、4.7 h(海上の 8〜20 h と陸上の 3〜6 h のあいだ)。

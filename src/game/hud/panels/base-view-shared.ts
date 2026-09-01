@@ -1,5 +1,5 @@
 import { Button } from '../widgets';
-import type { AnyPart, Part, PartType, RcsTankPart } from '../../game-entity/parts';
+import type { AnyPart, Part, PartType, RcsTankPart } from '../../dynamic/dynamic-entity/parts';
 import * as C from '../../const';
 
 // 基地パネルの3タブ(格納艦艇/部品/ショップ)が共有する処理を持つ。

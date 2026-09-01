@@ -12,7 +12,7 @@ import type { SunLight } from './sun-light';
 
 export const MAX_OCCLUDERS = 4;
 
-// 環の帯の上限。登録上の最大は天王星の 13 帯(physics/solar-system.ts)なので、それを超える
+// 環の帯の上限。登録上の最大は天王星の 13 帯なので、それを超える
 // スロットは常に空になる — グラフは静的に展開されるので、空きスロットも毎画素の演算を食う。
 const MAX_RING_BANDS = 13;
 

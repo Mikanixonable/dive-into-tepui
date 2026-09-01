@@ -1,9 +1,15 @@
 // 古典軌道要素(OrbitalElements)の定義と、状態ベクトル⇄要素の変換・要素上のケプラー幾何。
 // 軌道要素は「どの天体を中心に取ったか」まで含めて初めて意味が定まるため、OrbitalElements 自身が
-// 中心天体(CelestialBody)を保持する。THREE/DOM 非依存の純粋関数群。
-import type { CelestialBody } from './celestial-body';
+// 中心天体とその瞬間の状態を保持する。THREE/DOM 非依存の純粋関数群。
+import type { CelestialMotion } from './celestial-motion';
+import { frameOfCelestialBody, toFrameState } from './frame';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../math/vec3';
+
+// 軌道上の位相の基準 — simTime が t のときのこの軌道上の真近点角が nu。**元期ではない**
+// (軌道要素そのものの元期は simTime=0)。形だけを指定した参照軌道は位相を持たないので、
+// この基準も持たない。
+export type OrbitPhaseRef = { readonly t: number; readonly nu: number };
 
 export interface OrbitalElements {
   a: number; // 軌道長半径 [m] (双曲線では負)
@@ -14,7 +20,9 @@ export interface OrbitalElements {
   pHat: Vec3; // 近地点方向(軌道面内)
   qHat: Vec3; // pHat と直交する軌道面内方向
   hHat: Vec3; // 軌道面法線
-  center: CelestialBody; // 中心天体。楕円をどの天体位置へ描画すべきかもこれで決まる。
+  phaseRef: OrbitPhaseRef | null; // 位相の基準。形だけを指定した参照軌道では null
+  center: CelestialMotion; // 中心天体。mu と表面半径をここから読む。
+  centerState: KinematicState; // 中心天体の、要素を組んだ瞬間の ECI 状態。楕円を描く位置もこれで決まる。
 }
 
 // 長半径 a の楕円軌道の公転周期 [s]。動径をそのまま渡せば、その高度を回る円軌道の周期
@@ -29,14 +37,13 @@ export function semiMajorFromPeriod(period: number, mu: number): number {
   return Math.cbrt((mu * period * period) / (4 * Math.PI * Math.PI));
 }
 
-// 中心天体相対の状態から古典軌道要素を求める。rel は center 相対(center 自身の位置・速度を
-// 差し引いた後)の状態ベクトルでなければならない — 絶対 ECI 座標をそのまま渡すと、center が
-// 原点(地球)でない限り誤った要素になる。絶対 ECI からの呼び出しは celestial-body.ts の
-// orbitalElementsOf に一本化する。半径・角運動量が縮退している場合は null。
-export function orbitalElementsFromState(rel: KinematicState, center: CelestialBody): OrbitalElements | null {
+// center 相対の状態から古典軌道要素を求める。半径・角運動量が縮退している場合は null。
+export function orbitalElementsFromState(
+  rel: KinematicState<'primaryRel'>, center: CelestialMotion, centerState: KinematicState,
+): OrbitalElements | null {
   const r = rel.r;
   const v = rel.v;
-  const mu = center.mu;
+  const mu = center.def.mu;
   const rMag = len(r);
   if (rMag < 1) return null;
   const h = cross(r, v);
@@ -56,7 +63,7 @@ export function orbitalElementsFromState(rel: KinematicState, center: CelestialB
   const incDeg = (Math.acos(Math.max(-1, Math.min(1, hHat.y))) * 180) / Math.PI;
 
   const elliptic = e < 1 && isFinite(a) && a > 0;
-  return {
+  const el: OrbitalElements = {
     a,
     e,
     p,
@@ -65,13 +72,18 @@ export function orbitalElementsFromState(rel: KinematicState, center: CelestialB
     pHat,
     qHat,
     hHat,
+    phaseRef: null,
     center,
+    centerState,
   };
+  // 真近点角は pHat/qHat 基準で測るので、要素を組み終えてからでないと出せない。
+  el.phaseRef = { t: rel.t, nu: trueAnomalyAt(el, r) };
+  return el;
 }
 
 // 中心天体表面からの近点・遠点高度。遠地点は楕円軌道のみ(双曲線・放物線は NaN)。
 export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } {
-  const centerRadius = el.center.radius;
+  const centerRadius = el.center.def.radius;
   return {
     pe: el.p / (1 + el.e) - centerRadius,
     ap: el.e < 1 && isFinite(el.a) ? el.a * (1 + el.e) - centerRadius : NaN,
@@ -122,7 +134,7 @@ export function timeSincePeriapsis(el: OrbitalElements, nu: number): number {
   if (el.e < 1) {
     const E = 2 * Math.atan2(Math.sqrt(1 - el.e) * Math.sin(nu / 2), Math.sqrt(1 + el.e) * Math.cos(nu / 2));
     const M = E - el.e * Math.sin(E);
-    return M / Math.sqrt(el.center.mu / (el.a * el.a * el.a));
+    return M / Math.sqrt(el.center.def.mu / (el.a * el.a * el.a));
   }
 
   // 双曲線離心近点角 H = 2 * atanh( sqrt((e-1)/(e+1)) * tan(nu/2) )
@@ -130,7 +142,7 @@ export function timeSincePeriapsis(el: OrbitalElements, nu: number): number {
   if (Math.abs(x) >= 1) return NaN; // 漸近線を超えており、その nu には到達しない
   const H = 2 * Math.atanh(x);
   const M = el.e * Math.sinh(H) - H; // 双曲線ケプラー方程式
-  return M / Math.sqrt(el.center.mu / (-el.a * -el.a * -el.a)); // a < 0 なので -a > 0
+  return M / Math.sqrt(el.center.def.mu / (-el.a * -el.a * -el.a)); // a < 0 なので -a > 0
 }
 
 // 真近点角 nu0 → nu1 への飛行時間 [s]。
@@ -149,9 +161,20 @@ export function positionOnOrbit(el: OrbitalElements, nu: number): Vec3 {
   return addScaled(scale(el.pHat, r * Math.cos(nu)), el.qHat, r * Math.sin(nu));
 }
 
+// 元期の位相から時刻 t まで進めた、中心天体相対の状態(ECI 軸)。位相の基準を持たない要素と、
+// 閉じない軌道(楕円でないもの)では null — 平均近点角から真近点角への逆変換が楕円に限られる。
+export function stateOnOrbitAt(el: OrbitalElements, t: number): KinematicState<'primaryRel'> | null {
+  const phaseRef = el.phaseRef;
+  if (phaseRef === null || !(el.period > 0) || !isFinite(el.period)) return null;
+  const n = (2 * Math.PI) / el.period; // 平均運動
+  const meanAnomaly = n * (timeSincePeriapsis(el, phaseRef.nu) + (t - phaseRef.t));
+  const nu = trueAnomalyFromMean(meanAnomaly, el.e);
+  return kinematicState<'primaryRel'>(t, positionOnOrbit(el, nu), velocityOnOrbit(el, nu));
+}
+
 // 軌道上の真近点角 nu における中心天体相対の速度(ECI 軸)。
 export function velocityOnOrbit(el: OrbitalElements, nu: number): Vec3 {
-  const k = Math.sqrt(el.center.mu / el.p);
+  const k = Math.sqrt(el.center.def.mu / el.p);
   return addScaled(scale(el.pHat, -k * Math.sin(nu)), el.qHat, k * (el.e + Math.cos(nu)));
 }
 
@@ -169,12 +192,14 @@ function orbitPlaneBasis(inc: number, raan: number, argp: number): { pHat: Vec3;
 // (Y = 北極)。角度はすべて [deg]。中心天体まわりの円〜楕円軌道を、状態ベクトルを介さず
 // 直接指定したいとき(地球専用の参照軌道など)に使う。
 export function orbitalElementsFromClassical(
-  a: number, e: number, incDeg: number, raanDeg: number, argpDeg: number, center: CelestialBody,
+  a: number, e: number, incDeg: number, raanDeg: number, argpDeg: number,
+  center: CelestialMotion, centerState: KinematicState,
 ): OrbitalElements {
   const deg = Math.PI / 180;
   const { pHat, qHat, hHat } = orbitPlaneBasis(incDeg * deg, raanDeg * deg, argpDeg * deg);
   return {
-    a, e, p: a * (1 - e * e), incDeg, period: keplerPeriod(a, center.mu), pHat, qHat, hHat, center,
+    a, e, p: a * (1 - e * e), incDeg, period: keplerPeriod(a, center.def.mu), pHat, qHat, hHat,
+    phaseRef: null, center, centerState,
   };
 }
 
@@ -205,9 +230,19 @@ export function stateFromOrbitalElements(
   const { pHat, qHat } = orbitPlaneBasis(inc, raan, argp);
   const p = a * (1 - e * e);
   const k = Math.sqrt(mu / p);
-  return kinematicState(
+  return kinematicState<'eci'>(
     t,
     positionFromOrbitalElements(a, e, inc, raan, argp, nu),
     addScaled(scale(pHat, -k * Math.sin(nu)), qHat, k * (e + Math.cos(nu))),
   );
+}
+
+// 天体 center を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が
+// strongestAttractor などで選んだ center をそのまま渡す。
+export function orbitalElementsOf(
+  s: KinematicState, center: CelestialMotion, pivot: number,
+): OrbitalElements | null {
+  const centerState = center.stateAt(pivot);
+  const rel = toFrameState(frameOfCelestialBody(center, pivot), s);
+  return orbitalElementsFromState(kinematicState<'primaryRel'>(s.t, rel.r, rel.v), center, centerState);
 }

@@ -1,12 +1,12 @@
 // tests/perf/ 配下の各実験が共有する土台。ゲーム本体と同じ調整値の再 export、LEO の初期状態と
-// Ephemeris の生成、刻み幅固定の積分、結果の比較と整形を持つ。
-import { solarSystemEphemeris } from 'physics/test-helpers';
-import { Ephemeris } from '../../src/physics/ephemeris';
-import { nearestAtmosphereBody } from '../../src/physics/celestial-body';
+// 天体窓の生成、刻み幅固定の積分、結果の比較と整形を持つ。
+import { solarSystemParts } from 'physics/test-helpers';
+import { nearestAtmosphereBody } from '../../src/physics/attractor';
+import { CelestialMotions } from '../../src/physics/celestial-motion';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
-import { MU_EARTH, R_EARTH } from '../../src/physics/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import {
   SHIP_BCINV,
   INITIAL_ALT, INITIAL_INC_DEG,
@@ -35,24 +35,23 @@ export function initialLeoState(): KinematicState {
   const r0 = R_EARTH + INITIAL_ALT;
   const vCirc = Math.sqrt(MU_EARTH / r0);
   const inc = (INITIAL_INC_DEG * Math.PI) / 180;
-  return kinematicState(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
+  return kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
 }
 
-// 解析モデル(.epk パックなし)の Ephemeris。tests/physics/ephemeris.test.ts と同じ
-// `solarSystemEphemeris()` 引数なし経路 — 現実の太陽系・地球原点・既定エポック。
-export function buildEphemeris(): Ephemeris {
-  return solarSystemEphemeris();
+// 解析モデル(.epk パックなし)の天体窓 — 現実の太陽系・地球原点・既定エポック。
+export function buildWindows(): CelestialMotions {
+  return solarSystemParts().system;
 }
 
 // 1ステップぶん、ステップ中点の時刻で重力源を解決してから stepDynamics を呼ぶ。重力源は窓を
 // そのまま渡す — 刻み幅の比較に絞り込みの有無が混ざらないようにする。
-// Simulator.substep がサブステップ中点で celestialBodiesAt を評価するのと同じ方針。
-export function stepDynamicsAt(ephemeris: Ephemeris, state: KinematicState, dt: number): KinematicState {
+// Simulator.substep がサブステップ中点を pivot に取るのと同じ方針。
+export function stepDynamicsAt(windows: CelestialMotions, state: KinematicState, dt: number): KinematicState {
   const tMid = state.t + dt / 2;
-  const celestialBodies = ephemeris.gravityAttractorsAt(tMid);
+  const celestialBodies = windows.gravityMotions;
   return stepDynamics(
-    state, dt, celestialBodies, ephemeris.celestialBodiesAt(tMid),
-    nearestAtmosphereBody(state.r, ephemeris.atmosphereCelestialBodiesAt(tMid)),
+    state, dt, celestialBodies, 0, windows.celestialMotions,
+    nearestAtmosphereBody(state.r, windows.atmosphereMotions, 0),
     SHIP_BCINV, 0, null,
   );
 }
@@ -61,7 +60,7 @@ export function stepDynamicsAt(ephemeris: Ephemeris, state: KinematicState, dt: 
 // remaining の長さに縮めて targetT へ厳密に着地する — Simulator.advance が
 // ceil(simDt/SUBSTEP_MAX_DT) 個のサブステップへ割るのと同じ「最後の1歩だけ短くなる」構造。
 export function integrateFixedDt(
-  ephemeris: Ephemeris,
+  windows: CelestialMotions,
   state: KinematicState,
   dt: number,
   targetT: number,
@@ -69,7 +68,7 @@ export function integrateFixedDt(
   let s = state;
   while (targetT - s.t > 1e-9) {
     const step = Math.min(dt, targetT - s.t);
-    s = stepDynamicsAt(ephemeris, s, step);
+    s = stepDynamicsAt(windows, s, step);
   }
   return s;
 }
@@ -77,7 +76,7 @@ export function integrateFixedDt(
 // チェックポイント時刻の列へ順に着地しながら積分し、時刻→状態の Map を返す(1回の連続積分で
 // 全チェックポイントぶんを賄うので、チェックポイントごとに t=0 からやり直さない)。
 export function integrateToCheckpoints(
-  ephemeris: Ephemeris,
+  windows: CelestialMotions,
   state0: KinematicState,
   dt: number,
   checkpoints: readonly number[],
@@ -85,7 +84,7 @@ export function integrateToCheckpoints(
   const out = new Map<number, KinematicState>();
   let s = state0;
   for (const t of checkpoints) {
-    s = integrateFixedDt(ephemeris, s, dt, t);
+    s = integrateFixedDt(windows, s, dt, t);
     out.set(t, s);
   }
   return out;

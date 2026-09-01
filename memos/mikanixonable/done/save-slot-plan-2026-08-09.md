@@ -271,7 +271,7 @@ z-index 帯は 40 の `[Esc]` メニューと同帯とし、`dom.ts` の STYLE �
 
 | 詰みの種類 | 既存の判定材料 | 実装 |
 |---|---|---|
-| 再突入 | `GameEntity` の `truncated`(予測積分が `hitCelestialBody` に達すると立つ) | `private truncated` に getter を足して読む。自機の予測が初めて truncate した瞬間が再突入 PNR |
+| 再突入 | `DynamicEntity` の `truncated`(予測積分が `hitCelestialBody` に達すると立つ) | `private truncated` に getter を足して読む。自機の予測が初めて truncate した瞬間が再突入 PNR |
 | 燃料切れ | `Ship.totalFuel` と、近地点を大気圏上へ上げるのに要る Δv | `orbitalElementsOf` から必要 Δv を出し、`totalFuel` から出せる Δv を下回った瞬間 |
 | 熱暴走 | `ThermalSystem.hullTemp` の上昇率とラジエーター残存 | 冷却能力 < 入熱が定常化した瞬間 |
 | 撃破 | 相対距離・相対速度が敵の射程内で単調減少 | 優先度低(§下記) |

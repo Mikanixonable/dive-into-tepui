@@ -1,33 +1,34 @@
-// 表面へ触れうる天体の絞り込み(game/simulation/surface-candidates.ts)の回帰テスト。
+// 表面へ触れうる天体の絞り込み(game/dynamic/surface-candidates.ts)の回帰テスト。
 // **絞り込みは判定器の答えを変えてはならない** — 触れうる相手を1つも落とさないことだけが
 // 正しさの条件で、これを破ると判定器そのものが呼ばれなくなる。つまり sphere-contact.test.ts の
 // ような判定器のテストでは絶対に見えない。総当たり(窓をそのまま渡す)と絞り込んだ窓とで
 // firstSurfaceContact の答えが一致することを、ここで固定する。
+import { fixedMotion } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialBody } from '../../src/physics/celestial-body';
+import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { firstSurfaceContact } from '../../src/physics/surface-contact';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { mulberry32, randSym } from '../../src/math/random';
 import { Vec3, v3 } from '../../src/math/vec3';
 import {
   SurfaceCandidates, type SurfaceParticipant,
-} from '../../src/game/simulation/surface-candidates';
+} from '../../src/game/dynamic/surface-candidates';
 
 // 位置・速度・半径だけを持つ天体。重力も大気も表面判定には効かない。
-function body(id: string, r: Vec3, v: Vec3, radius: number): CelestialBody {
-  return {
-    id, mu: 0, radius, state: kinematicState(0, r, v), accel: v3(),
-    degree2: null, atmosphere: null, isStar: false,
-  };
+function body(id: string, r: Vec3, v: Vec3, radius: number): CelestialMotion {
+  return fixedMotion({
+    id, mu: 0, radius, state: kinematicState<'eci'>(0, r, v), accel: v3(),
+    degree2: null, atmosphere: null,
+  });
 }
 
 // 区間 [0, dt] を、始点の位置・速度と一定加速度で渡る参加者。加速度があるぶん曲線は弦から
 // 離れるので、絞り込みが弦だけで測っていれば落としうる。
 function participant(r0: Vec3, v0: Vec3, a: Vec3, dt: number, radius: number): SurfaceParticipant {
   return {
-    prevState: kinematicState(0, r0, v0),
-    state: kinematicState(
+    prevState: kinematicState<'eci'>(0, r0, v0),
+    state: kinematicState<'eci'>(
       dt,
       v3(
         r0.x + v0.x * dt + 0.5 * a.x * dt * dt,
@@ -48,17 +49,17 @@ const spanEnd = (ps: readonly SurfaceParticipant[]): number =>
 
 // 絞り込んだ窓と総当たりとで firstSurfaceContact の答えを突き合わせ、到達した件数を返す。
 function assertAgreement(
-  label: string, participants: readonly SurfaceParticipant[], bodies: readonly CelestialBody[],
+  label: string, participants: readonly SurfaceParticipant[], bodies: readonly CelestialMotion[],
 ): number {
   const candidates = new SurfaceCandidates();
-  candidates.resetSpan(bodies, spanStart(participants), spanEnd(participants));
+  candidates.resetSpan(bodies, 0, spanStart(participants), spanEnd(participants));
   candidates.narrow(participants);
-  const out: CelestialBody[] = [];
+  const out: CelestialMotion[] = [];
   let reached = 0;
   for (let i = 0; i < participants.length; i++) {
     const p = participants[i]!;
-    const full = firstSurfaceContact(p.prevState, p.state, p.radius, bodies);
-    const narrowed = firstSurfaceContact(p.prevState, p.state, p.radius, candidates.into(p, out));
+    const full = firstSurfaceContact(p.prevState, p.state, p.radius, bodies, 0);
+    const narrowed = firstSurfaceContact(p.prevState, p.state, p.radius, candidates.into(p, out), 0);
     assert.equal(
       narrowed?.body.id ?? null, full?.body.id ?? null,
       `${label} 参加者 ${i}: 総当たり ${full?.body.id ?? 'なし'} に対し`
@@ -76,7 +77,7 @@ export function register(): void {
     let reached = 0;
     let placements = 0;
     for (let trial = 0; trial < 200; trial++) {
-      const bodies: CelestialBody[] = [];
+      const bodies: CelestialMotion[] = [];
       for (let i = 0; i < 8; i++) {
         bodies.push(body(
           `b${i}`,
@@ -109,17 +110,17 @@ export function register(): void {
     // 弦は原点から 650m 離れたまま素通りするのに、曲線は原点まで潜り込む配置を作る。
     const target = body('bulge', v3(), v3(), 150);
     const p = {
-      prevState: kinematicState(0, v3(-20, 650, 0), v3(40, -3000, 0)),
-      state: kinematicState(1, v3(20, 650, 0), v3(40, 3000, 0)),
+      prevState: kinematicState<'eci'>(0, v3(-20, 650, 0), v3(40, -3000, 0)),
+      state: kinematicState<'eci'>(1, v3(20, 650, 0), v3(40, 3000, 0)),
       radius: 0,
     };
     // 前提が崩れていればこのテストは何も試験していないので、両方を明示的に確かめる。
-    assert.ok(firstSurfaceContact(p.prevState, p.state, p.radius, [target]) !== null, '前提: 曲線は表面を跨ぐ');
+    assert.ok(firstSurfaceContact(p.prevState, p.state, p.radius, [target], 0) !== null, '前提: 曲線は表面を跨ぐ');
     const chordDistance = 650; // 弦は y=650 の直線で、半径 150 の球には触れない
-    assert.ok(chordDistance > target.radius, '前提: 弦は表面に触れない');
+    assert.ok(chordDistance > target.def.radius, '前提: 弦は表面に触れない');
 
     const candidates = new SurfaceCandidates();
-    candidates.resetSpan([target], 0, 1);
+    candidates.resetSpan([target], 0, 0, 1);
     candidates.narrow([p]);
     assert.deepEqual(candidates.into(p, []).map((b) => b.id), ['bulge']);
   });
@@ -128,12 +129,12 @@ export function register(): void {
     // 落とさないことだけでなく、実際に落としていることも見る — 全部通す実装でも
     // 「答えが一致する」ほうのテストは通ってしまう。
     const near = body('near', v3(0, 500, 0), v3(), 100);
-    const far: CelestialBody[] = [];
+    const far: CelestialMotion[] = [];
     for (let i = 0; i < 7; i++) far.push(body(`far${i}`, v3(1e9 * (i + 1), 0, 0), v3(), 100));
     const p = participant(v3(), v3(0, 400, 0), v3(), 1, 1);
 
     const candidates = new SurfaceCandidates();
-    candidates.resetSpan([near, ...far], 0, 1);
+    candidates.resetSpan([near, ...far], 0, 0, 1);
     candidates.narrow([p]);
     assert.equal(candidates.count, 1, '1段目を通るのは near だけ');
     assert.deepEqual(candidates.into(p, []).map((b) => b.id), ['near']);
@@ -148,7 +149,7 @@ export function register(): void {
     const divisions = 5;
     let checked = 0;
     for (let trial = 0; trial < 100; trial++) {
-      const bodies: CelestialBody[] = [];
+      const bodies: CelestialMotion[] = [];
       for (let i = 0; i < 8; i++) {
         bodies.push(body(
           `b${i}`,
@@ -164,7 +165,7 @@ export function register(): void {
       const radius = rand() * 30;
       // 一定加速度の軌跡を、絶対時刻 t から dt だけ切り出した区間。
       const cut = (t: number, dt: number): SurfaceParticipant => {
-        const at = (s: number) => kinematicState(
+        const at = (s: number) => kinematicState<'eci'>(
           s,
           v3(r0.x + v0.x * s + 0.5 * a.x * s * s, r0.y + v0.y * s + 0.5 * a.y * s * s,
             r0.z + v0.z * s + 0.5 * a.z * s * s),
@@ -174,12 +175,12 @@ export function register(): void {
       };
 
       const spanning = new SurfaceCandidates();
-      spanning.resetSpan(bodies, 0, span);
-      const out: CelestialBody[] = [];
+      spanning.resetSpan(bodies, 0, 0, span);
+      const out: CelestialMotion[] = [];
       for (let i = 0; i < divisions; i++) {
         const step = cut((i * span) / divisions, span / divisions);
         const exact = new SurfaceCandidates();
-        exact.resetSpan(bodies, step.prevState.t, step.state.t);
+        exact.resetSpan(bodies, 0, step.prevState.t, step.state.t);
         const strict = new Set(exact.into(step, []).map((b) => b.id));
         const loose = new Set(spanning.into(step, out).map((b) => b.id));
         for (const id of strict) {

@@ -3,8 +3,12 @@
 import { Button, Slider, ValueInput } from '../widgets';
 import {
   MAX_LINES_PER_KIND, MAX_ZERO_VELOCITY_CURVES, type DirectionMarkerMode,
-} from '../../celestial/orbit-guide-settings';
-import { SUN_SYNC_REVS_PER_DAY_RANGE } from '../../../physics/earth-reference-orbits';
+} from '../../celestial/orbit-guide/orbit-guide-settings';
+import { sunSyncRevsPerDayRange } from '../../../physics/earth-reference-orbits';
+import { J2_EARTH, MU_EARTH, R_EARTH_EQ } from '../../celestial/solar-system/constants';
+
+// 太陽同期条件が成立する「1日あたり周回数」の範囲。地球専用参照軌道の行だけが使う。
+const SUN_SYNC_REVS_PER_DAY_RANGE = sunSyncRevsPerDayRange(MU_EARTH, R_EARTH_EQ, J2_EARTH);
 
 // 進行方向マーカーの出し方(SegmentedControl の選択肢)。族・地球専用参照軌道の双方が使う。
 export const DIRECTION_ITEMS: readonly (readonly [DirectionMarkerMode, string])[] = [

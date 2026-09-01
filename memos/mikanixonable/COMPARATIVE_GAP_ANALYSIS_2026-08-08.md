@@ -124,7 +124,7 @@ GMAT や Orekit のような解析ツールが標準で持ち、このコード�
 - **現状**: `enemy.ts` に推力に関するコードは存在しない(`grep` で `thrust` が 0 件)。敵は軌道上を自由落下しながら、`intercept.ts` の `solveLeadTime` で偏差射撃してくるのみ。
 - **足りない点: 敵が一切軌道機動を行わない。** `SPEC.md` 14 節に「敵 AI(現状ターゲットは受動的で、回避・反撃を行わない)」として既出。CLAUDE.md も唯一の未実装項目として名指ししている。
   - **軌道力学ゲームとしては、これが最も本質的な欠落である。** 敵が機動しないということは、遭遇の幾何が最初の配置で決定してしまい、プレイヤーの軌道選択に対する応答が存在しないことを意味する。軌道力学が「読み合い」にならず、「移動手段」にとどまる。
-  - 実装のための土台は既にある。`Plan`/`PlanArc` による軌道計画の積分、`GameEntity.thrust` スロット、`Enemy.behave` の毎フレーム呼び出し、`CreativeStage.advanceFollowPlan` の「計画を自動追従する」機構(現在は自機用)がすべて揃っている。**敵に `Plan` を持たせて `followPlan` 相当を走らせるだけで、最小限の機動 AI は成立する。** CLAUDE.md が「`Player.behave` の推力即時反映は deliberately player-only であり、将来 `Enemy` の推力が即時リセットしない余地を残している」と書いているのは、この拡張を見越した設計判断である。
+  - 実装のための土台は既にある。`Plan`/`PlanArc` による軌道計画の積分、`DynamicEntity.thrust` スロット、`Enemy.behave` の毎フレーム呼び出し、`CreativeStage.advanceFollowPlan` の「計画を自動追従する」機構(現在は自機用)がすべて揃っている。**敵に `Plan` を持たせて `followPlan` 相当を走らせるだけで、最小限の機動 AI は成立する。** CLAUDE.md が「`Player.behave` の推力即時反映は deliberately player-only であり、将来 `Enemy` の推力が即時リセットしない余地を残している」と書いているのは、この拡張を見越した設計判断である。
 
 ### 3.3 プログレッションと目標設定
 

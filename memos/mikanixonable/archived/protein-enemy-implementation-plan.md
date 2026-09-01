@@ -463,7 +463,7 @@ GLBのPBRマテリアルを基礎とし、実行時に状態連動パラメー�
 ## 16. 既存コードとの接続点
 
 - `src/render/ships.ts`: 現行5I4R生成を移行中のフォールバックとして残す。
-- `src/game/game-entity/enemy.ts`: `ProteinRuntime`の所有、被弾委譲、活性部位射撃への分岐を追加する。
+- `src/game/dynamic/dynamic-entity/enemy.ts`: `ProteinRuntime`の所有、被弾委譲、活性部位射撃への分岐を追加する。
 - `src/game/stages/spawner/enemy-generator.ts`: タンパク質アセットIDを指定して生成できるようにする。
 - `src/game/hud/panels/target-panel.ts`: 構造安定性と主要部位HPを表示する。
 - `src/game/vfx/effects-system.ts`: タンパク質専用VFXの入口を追加する。

@@ -1,6 +1,6 @@
 // Stage 2: 第二ステージ(モルニヤ戦域)。ステージ1クリアで解放。
 import * as C from '../const';
-import { Stage, type StageDeps } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { ClearCounts } from '../unlock-manager';
 import {
@@ -9,12 +9,13 @@ import {
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
 import type { Player } from '../player/player';
-import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
 
 export class Stage2 extends Stage {
   static readonly id = '2' as const;
+  static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'stage 2';
   static readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
   static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
@@ -40,7 +41,7 @@ export class Stage2 extends Stage {
   }
 
   // 自機を置き、通常軌道の敵とモルニヤ級軌道の敵を混成配置する。
-  protected init(entities: EntityManager): void {
+  protected init(entities: DynamicSystem): void {
     const player = this.addPlayer();
     const base = player.state;
     const worldSfx = this._worldSfx;
@@ -55,7 +56,7 @@ export class Stage2 extends Stage {
     this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 3, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
   }
   // 敵の行動と補給品の湧きを進める。
-  update(_dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
 
     this.behaveAllEnemies(player, entities, simTime, simSpeed);

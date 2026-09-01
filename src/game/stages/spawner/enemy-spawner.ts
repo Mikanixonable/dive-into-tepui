@@ -1,5 +1,5 @@
 // 訓練クラスタ(stage0)の敵集団の配置・分散を計算し、直接 Enemy を生成する。
-// (EntityManager への登録は呼び出し側の Stage0 が Stage.addEnemy 経由で行う)。
+// (DynamicSystem への登録は呼び出し側の Stage0 が Stage.addEnemy 経由で行う)。
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { randSym } from '../../../math/random';
@@ -7,7 +7,7 @@ import { add, len, norm, scale } from '../../../math/vec3';
 import * as C from '../../const';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy } from '../../game-entity/enemy';
+import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
 
 const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
@@ -59,7 +59,7 @@ export function generateCluster(
       const offLen = len(off);
       if (offLen > safeRange) off = scale(off, safeRange / offLen);
 
-      const state: KinematicState = kinematicState(base.t, add(base.r, off), base.v);
+      const state: KinematicState = kinematicState<'eci'>(base.t, add(base.r, off), base.v);
       enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
     }
   }

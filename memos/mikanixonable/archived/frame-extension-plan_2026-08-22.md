@@ -112,7 +112,7 @@ export interface FrameAnchorSource {
 }
 ```
 
-実装はゲーム層に置く(`src/game/frame-anchors.ts` を新設)。`EntityManager` /
+実装はゲーム層に置く(`src/game/frame-anchors.ts` を新設)。`DynamicSystem` /
 `ActiveControllableController` / `NavTarget` / `strongestAttractor` を束ね、役割トークンと
 船 id を解決する。既存の `CelestialBody[]` 探索もここへ移す。
 

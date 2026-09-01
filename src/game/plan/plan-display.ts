@@ -2,16 +2,14 @@
 // (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
 import { Vec3, len, sub } from '../../math/vec3';
-import { CelestialBody, strongestAttractor } from '../../physics/celestial-body';
+import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../math/projection';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { fmtMarkerDist } from '../hud/utils';
-import { SIM_EPOCH_SEC } from '../simulation/sim-epoch';
-import { celestialBodyName } from '../hud/frame/frame-labels';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
-import { TickLabelMode, TickRank, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/orbit/calendar-ticks';
+import { TickRank, TimeLabelSetting, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/orbit/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
@@ -19,9 +17,9 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { MapPickable } from '../pickable/map-pickable';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
-import type { DisplayWindow } from '../display-window-manager';
-import type { FutureCelestialBodyProvider } from '../simulation/arc-bodies';
-import type { Controllable } from '../game-entity/controllable';
+import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
+import type { FutureCelestialBodyProvider } from '../dynamic/arc-celestial-bodies';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 
 // 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。両方見つかった
 // ときの (遠地点距離-近地点距離)/(遠地点距離+近地点距離) と比較する — これ未満は円に
@@ -92,14 +90,14 @@ export class PlanDisplay {
   private tickIcons: readonly PlanTickIcon[] = [];
   private lastTickKeys: readonly string[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
-  // update が求めた時点の CelestialBody[]。sync でのマップビュー遮蔽判定に使う。
-  private celestialBodies: readonly CelestialBody[] = [];
+  // update が天体を厳密に引いた時刻。sync でのマップビュー遮蔽判定に使う。
+  private celestialBodiesPivot = 0;
 
   // 計画折れ線(PlanPath)を構築する。
   constructor(
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
-    private readonly ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     displayDuration: DisplayDurationSource,
   ) {
     this.path = new PlanPath(scene, displayDuration);
@@ -121,16 +119,17 @@ export class PlanDisplay {
       return;
     }
     const { simTime, displayTime } = displayWindow;
-    this.celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
+    this.celestialBodiesPivot = displayTime;
     this.path.update(
-      planData, ship, this.ephemeris, displayWindow.frame, simTime, displayTime, frameAnchors,
+      planData, ship, this.celestialSystem, displayWindow.frame, simTime, displayTime, frameAnchors,
       celestialBodyProvider, displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);
     // 時刻併記の可否・表記は PREDICT パネルの設定(displayWindow 経由)にそのまま従う。
-    this.apsisIcons = this.apsisIconsOf(displayWindow.tickLabelMode, displayWindow.showElementTimes, simTime, ship?.name);
+    const timeLabel = timeLabelSettingOf(displayWindow);
+    this.apsisIcons = this.apsisIconsOf(timeLabel, ship?.name);
     this.impactIcons = this.impactIconsOf();
-    this.tickIcons = this.tickIconsOf(displayWindow.tickLabelMode, simTime);
+    this.tickIcons = this.tickIconsOf(timeLabel);
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。camera は
@@ -196,7 +195,7 @@ export class PlanDisplay {
       this.markerManager.hide('plannedPlayer');
       return;
     }
-    if (overviewMode && isOccluded(cameraPos, this.ghost.pos, this.celestialBodies)) {
+    if (overviewMode && this.occludedByCelestialBody(cameraPos, this.ghost.pos)) {
       this.markerManager.fadeOut('plannedPlayer');
       return;
     }
@@ -206,13 +205,19 @@ export class PlanDisplay {
     );
   }
 
+  // pos が update の時点の天体に隠れているか。update から sync まで持ち越した時刻で判定する。
+  private occludedByCelestialBody(cameraPos: Vec3, pos: Vec3): boolean {
+    return isOccluded(cameraPos, pos, this.celestialSystem.celestialMotions, this.celestialBodiesPivot);
+  }
+
   // ゴーストマーカーのラベル文字列(経過時間+高度)を組み立てる。現在時刻のゴーストは
   // 計画どおりに飛べていれば自機に重なるので、経過時間を添えず高度だけを出す。
   // 高度はその位置で最も強く引く天体の表面からの高さ。
   private plannedPlayerLabel(displayTime: number, simTime: number, r: Vec3): string {
     const tRel = displayTime - simTime;
-    const center = strongestAttractor(r, this.celestialBodies);
-    const alt = len(sub(r, center.state.r)) - center.radius;
+    const pivot = this.celestialBodiesPivot;
+    const center = strongestAttractor(r, this.celestialSystem.celestialMotions, pivot);
+    const alt = len(sub(r, center.positionAt(pivot))) - center.def.radius;
     if (tRel <= 0) return `計画位置 高度 ${fmtMarkerDist(alt, 0)}`;
     const h = Math.floor(tRel / 3600);
     const m = Math.floor((tRel % 3600) / 60);
@@ -225,9 +230,7 @@ export class PlanDisplay {
   // 両方揃っているときだけ、2点の中心からの距離比から離心率相当の値を求め、ほぼ円
   // (APSIS_MIN_ECC 未満)なら方向が不定として両方隠す — 片方しか無い場合(双曲線軌道等)は
   // この判定自体を行わず、そのまま出す。
-  private apsisIconsOf(
-    mode: TickLabelMode, showTime: boolean, nowSimTime: number, ownerName?: string,
-  ): readonly ApsisIcon[] {
+  private apsisIconsOf(timeLabel: TimeLabelSetting, ownerName?: string): readonly ApsisIcon[] {
     const final = this.path.finalSegment();
     if (!final) return [];
     const pe = final.periapsis;
@@ -239,11 +242,11 @@ export class PlanDisplay {
     const apCenter = final.apoapsisCenter;
     let peDist = 0;
     if (pe && peCenter) {
-      peDist = len(sub(pe.r, this.ephemeris.positionOf(peCenter.id, pe.t)));
+      peDist = len(sub(pe.r, this.celestialSystem.stateAt(peCenter.id, pe.t).r));
     }
     let apDist = 0;
     if (ap && apCenter) {
-      apDist = len(sub(ap.r, this.ephemeris.positionOf(apCenter.id, ap.t)));
+      apDist = len(sub(ap.r, this.celestialSystem.stateAt(apCenter.id, ap.t).r));
     }
     // 中心天体が遷移の前後で変わる場合、異なる中心からの距離を比較して円軌道と判定しない。
     if (pe && ap && peCenter && apCenter && peCenter.id === apCenter.id
@@ -251,7 +254,7 @@ export class PlanDisplay {
 
     const namePrefix = ownerName ? (this.path.nodeCount > 0 ? `${ownerName} (計画)` : ownerName) : undefined;
     const labelWithTime = (base: string, t: number): string =>
-      showTime ? `${base} ${elementTimeLabel(t, mode, nowSimTime)}` : base;
+      timeLabel.show ? `${base} ${elementTimeLabel(t, timeLabel)}` : base;
     const icons: ApsisIcon[] = [];
     if (pe && peCenter) {
       const peSpec = getApsisLabelSpec('pe', peCenter.id);
@@ -283,30 +286,31 @@ export class PlanDisplay {
     return this.path.impactPoints().flatMap(({ state, body, arcIdx }) => {
       const key = IMPACT_MARKER_KEYS[arcIdx];
       if (key === undefined) return [];
-      return [{ key, pos: this.path.toDisplay(state.r, state.t), label: `衝突 ${celestialBodyName(body.id)}` }];
+      return [{ key, pos: this.path.toDisplay(state.r, state.t), label: `衝突 ${this.celestialSystem.nameOf(body.id)}` }];
     });
   }
 
   // 表示中の折れ線が暦の区切り(時・日・月・年)を跨ぐ地点の目盛候補。実際に出すかどうかの
   // 間引きは画面判定が要るので sync 側(syncTickMarkers)の仕事。ラベルは mode に応じて
   // UTC カレンダーか simTime からの経過時間で書く — 目盛りを置く位置は暦の区切りのまま。
-  private tickIconsOf(mode: TickLabelMode, simTime: number): readonly PlanTickIcon[] {
+  private tickIconsOf(timeLabel: TimeLabelSetting): readonly PlanTickIcon[] {
     const range = this.path.timeRange();
     if (!range) return [];
+    const epochUnix = timeLabel.epochUnixSec;
     const boundaries = calendarBoundaries(
-      SIM_EPOCH_SEC + range.min, SIM_EPOCH_SEC + range.max,
+      epochUnix + range.min, epochUnix + range.max,
       PLAN_TICK_MAX_COUNT, PLAN_TICK_HOUR_FAMILY_MAX_COUNT,
     );
     const icons: PlanTickIcon[] = [];
     for (const b of boundaries) {
-      const t = b.unix - SIM_EPOCH_SEC;
+      const t = b.unix - epochUnix;
       const state = this.path.sampleAt(t);
       if (!state) continue;
       icons.push({
         key: `planTick:${b.unix}`,
         pos: this.path.toDisplay(state.r, t),
         rank: b.rank,
-        label: tickLabel(b.unix, b.rank, mode, SIM_EPOCH_SEC + simTime),
+        label: tickLabel(b.unix, b.rank, timeLabel.mode, epochUnix + timeLabel.nowSimTime),
       });
     }
     return icons;
@@ -319,7 +323,7 @@ export class PlanDisplay {
       const icon = this.apsisIcons.find((m) => m.id === key);
       if (!icon) {
         this.markerManager.hide(key);
-      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
+      } else if (overviewMode && this.occludedByCelestialBody(cameraPos, icon.pos)) {
         this.markerManager.fadeOut(key);
       } else {
         this.markerManager.setPosition(
@@ -336,7 +340,7 @@ export class PlanDisplay {
       const icon = this.impactIcons.find((m) => m.key === key);
       if (!icon) {
         this.markerManager.hide(key);
-      } else if (overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies)) {
+      } else if (overviewMode && this.occludedByCelestialBody(cameraPos, icon.pos)) {
         this.markerManager.fadeOut(key);
       } else {
         this.markerManager.setPosition(
@@ -362,7 +366,7 @@ export class PlanDisplay {
     for (const rank of ranksDesc) {
       for (let i = 0; i < n; i++) {
         if (icons[i]!.rank !== rank || !projected[i]!.front
-          || (overviewMode && isOccluded(cameraPos, icons[i]!.pos, this.celestialBodies))) continue;
+          || (overviewMode && this.occludedByCelestialBody(cameraPos, icons[i]!.pos))) continue;
         if (this.isFarFromShown(projected, shown, i, minPxSq)) shown[i] = true;
       }
     }
@@ -379,7 +383,7 @@ export class PlanDisplay {
 
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
-      const occluded = overviewMode && isOccluded(cameraPos, icon.pos, this.celestialBodies);
+      const occluded = overviewMode && this.occludedByCelestialBody(cameraPos, icon.pos);
       if (!shown[i] || occluded) {
         if (occluded) this.markerManager.fadeOut(icon.key);
         else this.markerManager.hide(icon.key);

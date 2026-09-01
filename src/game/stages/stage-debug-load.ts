@@ -1,11 +1,11 @@
 // デバッグ用ステージ: 破片を多数配置し、積分するエンティティ数の高負荷を常時再現する。
 // タイトルの通常ボタン列には出ない。
-import { Stage, type StageDeps } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { Player } from '../player/player';
-import type { EntityManager } from '../simulation/entity-manager';
-import type { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import * as C from '../const';
-import { DebrisPiece } from '../game-entity/debris-piece';
+import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { randomQuat } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../math/random';
@@ -17,6 +17,7 @@ import {
 
 export class StageDebugLoad extends Stage {
   static readonly id = 'debug-load' as const;
+  static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'DEBUG(高負荷)';
   static readonly selectSub = '【デバッグ】破片を多数配置し積分を高負荷にする・撃破しても終了しない';
   static readonly hiddenFromSelect = true;
@@ -32,19 +33,19 @@ export class StageDebugLoad extends Stage {
   }
 
   // 自機を置き、破片を自機の周囲へ散らす。
-  protected init(entities: EntityManager): void {
+  protected init(entities: DynamicSystem): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
     const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
     for (let i = 0; i < C.DEBUG_LOAD_DEBRIS_COUNT; i++) {
       const offset = randomOffset(rand, C.DEBUG_LOAD_DEBRIS_MAX_DIST);
-      const state = kinematicState(player.state.t, add(player.state.r, offset), player.state.v);
+      const state = kinematicState<'eci'>(player.state.t, add(player.state.r, offset), player.state.v);
       const size = DESTROY_FRAG_SIZE_MIN + rand() * (DESTROY_FRAG_SIZE_MAX - DESTROY_FRAG_SIZE_MIN);
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
       entities.addDebris(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));
     }
   }
 
-  update(_dt: number, player: Player | null, _entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, player: Player | null, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }

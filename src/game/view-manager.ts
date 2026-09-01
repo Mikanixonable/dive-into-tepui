@@ -9,7 +9,7 @@ import { DisplayWindowManager } from './display-window-manager';
 import { MapContextActions } from './pickable/map-context-actions';
 import type { ActiveControllableController } from './active-controllable-controller';
 import { setPanelCollapsedView } from './hud/panel-shell';
-import type { Base } from './game-entity/base';
+import type { Base } from './dynamic/dynamic-entity/base';
 
 export type ViewId = 'combat' | 'map';
 

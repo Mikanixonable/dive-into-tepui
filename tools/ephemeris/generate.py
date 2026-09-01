@@ -48,6 +48,13 @@ BODIES = (
     ("pluto", 9, 9.755e11),
 )
 
+# Which point each entry records.  DE440/441 resolve Mercury, Venus, Earth and
+# the Moon down to body centres (segments 1->199, 2->299, 3->399, 3->301) but
+# carry no equivalent for Mars outward, so those entries are the barycentre of
+# the planet and its satellites.  The consumer binds a barycentre series to the
+# planetary system rather than to the planet, so this must be declared.
+BODY_POINTS = {name: "systemBarycenter" for name, code, _ in BODIES if code in (4, 5, 6, 7, 8, 9)}
+
 
 def gregorian_jd(year: int, month: int, day: int, hour: int = 0,
                  minute: int = 0, second: float = 0.0) -> float:
@@ -197,6 +204,7 @@ def write_fixture(path: Path, source: str, start_jd: float, end_jd: float, segme
             "positionUnit": "m", "timeUnit": "s",
             "validStart": (start_jd - J2000) * DAY,
             "validEnd": (end_jd - J2000) * DAY,
+            "bodyPoints": BODY_POINTS,
             "sourceModel": source,
         },
         "segments": segments,

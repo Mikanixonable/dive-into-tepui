@@ -26,7 +26,7 @@
 3. **HP は現在「磁気装甲」という名前で2箇所に出ている。**
    `src/game/hud/panel.ts`(TARGET パネル内、`t.hp/t.maxHp` のバー)と
    `src/game/stages/stage-utils/stage-status-panel.ts:39`(自機ステータス)。
-   実体は `GameEntity.hp` / `maxHp` で、`Player.attacked` が
+   実体は `DynamicEntity.hp` / `maxHp` で、`Player.attacked` が
    `C.PLAYER_HIT_DAMAGE` を減算し、`Player.behave` 内の `hpRegen` が
    `C.HP_REGEN_RATE`(1 HP/s)で自然回復させる。
 4. **自機モデルは実行時に組み立てていない。** `tools/export-models.mjs` の

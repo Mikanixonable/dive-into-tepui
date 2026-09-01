@@ -27,8 +27,8 @@ function assertFinite(...vectors: readonly Vec3[]): void {
 
 function overlapPair(vA: Vec3, vB: Vec3, invMassA: number, invMassB: number, restitution: number) {
   return resolveSphereCollision(
-    { state: kinematicState(0, v3(-0.6, 0, 0), vA), radius: 1, invMass: invMassA },
-    { state: kinematicState(0, v3(0.6, 0, 0), vB), radius: 1, invMass: invMassB },
+    { state: kinematicState<'eci'>(0, v3(-0.6, 0, 0), vA), radius: 1, invMass: invMassA },
+    { state: kinematicState<'eci'>(0, v3(0.6, 0, 0), vB), radius: 1, invMass: invMassB },
     restitution,
   );
 }
@@ -42,8 +42,8 @@ export function register(): void {
     const bulletInvMass = 1 / 0.1;
     const enemyShare = enemyInvMass / (enemyInvMass + bulletInvMass);
     const response = distributeSphereContact(
-      { state: kinematicState(1 / 60, enemyEnd, v3(7680, 0, 0)), radius: 4, invMass: enemyInvMass },
-      { state: kinematicState(1 / 60, bulletEnd, v3(7000, 0, 0)), radius: 0.02, invMass: bulletInvMass },
+      { state: kinematicState<'eci'>(1 / 60, enemyEnd, v3(7680, 0, 0)), radius: 4, invMass: enemyInvMass },
+      { state: kinematicState<'eci'>(1 / 60, bulletEnd, v3(7000, 0, 0)), radius: 0.02, invMass: bulletInvMass },
       0.4,
       { normal: v3(-1, 0, 0), toi: 0.25, pushOut: depth, contactPoint: v3(32, 0, 0) },
     );
@@ -121,8 +121,8 @@ export function register(): void {
   // 反発の要否判定(vn)だけが壊れて非nullのまま返る — その場合も相手側(vB)は無傷。
   test('collision-response: 片側が非有限な位置なら null', () => {
     const res = resolveSphereCollision(
-      { state: kinematicState(0, v3(NaN, 0, 0), v3(1, 0, 0)), radius: 1, invMass: 1 },
-      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState<'eci'>(0, v3(NaN, 0, 0), v3(1, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState<'eci'>(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     );
     assert.equal(res, null);
@@ -130,8 +130,8 @@ export function register(): void {
 
   test('collision-response: 片側が非有限な速度は相手側の速度を書き換えない', () => {
     const res = resolveSphereCollision(
-      { state: kinematicState(0, v3(-0.6, 0, 0), v3(NaN, 0, 0)), radius: 1, invMass: 1 },
-      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState<'eci'>(0, v3(-0.6, 0, 0), v3(NaN, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState<'eci'>(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     )!;
     assert.ok(res !== null);
@@ -140,8 +140,8 @@ export function register(): void {
 
   test('collision-response: 片側が非有限な半径なら null', () => {
     const res = resolveSphereCollision(
-      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: NaN, invMass: 1 },
-      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState<'eci'>(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: NaN, invMass: 1 },
+      { state: kinematicState<'eci'>(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     );
     assert.equal(res, null);
@@ -149,8 +149,8 @@ export function register(): void {
 
   test('collision-response: 片側が非有限な逆質量なら null', () => {
     const res = resolveSphereCollision(
-      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1, invMass: NaN },
-      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState<'eci'>(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1, invMass: NaN },
+      { state: kinematicState<'eci'>(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     );
     assert.equal(res, null);
@@ -159,8 +159,8 @@ export function register(): void {
   // 質量0(逆質量Infinity)は試験粒子 — 相手に力を及ぼさず、自分だけが跳ね返る。
   test('collision-response: 質量0は相手を動かさず、自分だけが跳ね返る', () => {
     const res = resolveSphereCollision(
-      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1, invMass: Infinity },
-      { state: kinematicState(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
+      { state: kinematicState<'eci'>(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1, invMass: Infinity },
+      { state: kinematicState<'eci'>(0, v3(0.6, 0, 0), v3(-1, 0, 0)), radius: 1, invMass: 1 },
       0.5,
     )!;
     assert.ok(res !== null);
@@ -181,8 +181,8 @@ export function register(): void {
 
   test('collision-response: 質量0の球が天体へ接触しても非有限値を出さない', () => {
     const res = fixedContact(
-      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
-      { state: kinematicState(0, v3(0.6, 0, 0), v3()), radius: 1 },
+      { state: kinematicState<'eci'>(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
+      { state: kinematicState<'eci'>(0, v3(0.6, 0, 0), v3()), radius: 1 },
       0.5,
     )!;
     assert.ok(res !== null);
@@ -194,11 +194,11 @@ export function register(): void {
 
   test('collision-response: 天体との接触は中心間を半径和ちょうどへ揃える', () => {
     const res = fixedContact(
-      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
-      { state: kinematicState(0, v3(0.6, 0, 0), v3()), radius: 1 },
+      { state: kinematicState<'eci'>(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
+      { state: kinematicState<'eci'>(0, v3(0.6, 0, 0), v3()), radius: 1 },
       0.5,
-      kinematicState(-1, v3(-4, 0, 0), v3(1, 0, 0)),
-      kinematicState(-1, v3(0.6, 0, 0), v3()),
+      kinematicState<'eci'>(-1, v3(-4, 0, 0), v3(1, 0, 0)),
+      kinematicState<'eci'>(-1, v3(0.6, 0, 0), v3()),
     )!;
     assert.ok(res !== null);
     assert.ok(Math.abs(len(sub(v3(0.6, 0, 0), res.r)) - 2) < 1e-9);
@@ -255,8 +255,8 @@ export function register(): void {
   test('collision-response: 天体との接触では、動く側が散逸の半分を受け取る', () => {
     const restitution = 0.4;
     const res = fixedContact(
-      { state: kinematicState(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
-      { state: kinematicState(0, v3(0.6, 0, 0), v3()), radius: 1 },
+      { state: kinematicState<'eci'>(0, v3(-0.6, 0, 0), v3(1, 0, 0)), radius: 1 },
+      { state: kinematicState<'eci'>(0, v3(0.6, 0, 0), v3()), radius: 1 },
       restitution,
     )!;
     assert.ok(res.bounced);

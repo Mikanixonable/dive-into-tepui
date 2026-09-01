@@ -1,14 +1,16 @@
-// frame.ts の回帰テスト: 座標系(原点天体 × 回転)の点・KinematicState 順逆変換
-// （恒等・往復・既知回転角・速度の有限差分検証・bake+un-bake 合成・原点が動く系）。
-import { solarSystemEphemeris } from './test-helpers';
+// frame.ts と reference-frames.ts の回帰テスト: 座標系(原点天体 × 回転)の同一性と、その
+// 時刻ごとの剛体運動による点・KinematicState の順逆変換(恒等・往復・既知回転角・速度の
+// 有限差分検証・bake+un-bake 合成・原点が動く系)。
+import { orbitingMotionOf, positionOf, solarSystemParts, stateOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { MU_EARTH } from '../../src/physics/solar-system/constants';
+import { MU_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
+import { bodyAnchorSource } from '../../src/physics/attractor';
 import { FrameAnchors } from '../../src/game/frame-anchors';
 import { FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/physics/attitude';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Vec3, add, addScaled, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
+import { Vec3, add, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const YEAR = 365.25636 * 86400;
 
@@ -26,41 +28,67 @@ function findFrame(frames: readonly ReferenceFrame[], center: string, rotatingWi
   return f;
 }
 
-// registry 内天体だけを参照するテストで使う空のスタブ。
-const NO_ANCHORS: FrameAnchorSource = { bodies: [], stateOf: () => null, attractorOf: () => null };
+// 登録天体だけを参照するテストで使う空のスタブ。
+const NO_ANCHORS: FrameAnchorSource = { bodies: [], bodiesPivot: 0, stateOf: () => null, attractorOf: () => null };
 
 export function register(): void {
-  const eph = solarSystemEphemeris({ moon: 0.4 }); // 太陽・月とも初期位相を固定して決定的にする
-  const EARTH_INERTIAL = findFrame(eph.frames, 'earth', null);
-  const SUN_EARTH_ROTATING = findFrame(eph.frames, 'earth', 'earth');
-  const MOON_ROTATING = findFrame(eph.frames, 'earth', 'moon');
-  const SUN_INERTIAL = findFrame(eph.frames, 'sun', null);
-  const MOON_INERTIAL = findFrame(eph.frames, 'moon', null);
+  // 太陽・月とも初期位相を固定して決定的にする。
+  const parts = solarSystemParts({ moon: 0.4 });
+  const windows = parts.system;
+  const referenceFrames = parts.referenceFrames;
+  const EARTH_INERTIAL = findFrame(referenceFrames.frames, 'earth', null);
+  const SUN_EARTH_ROTATING = findFrame(referenceFrames.frames, 'earth', 'earth');
+  const MOON_ROTATING = findFrame(referenceFrames.frames, 'earth', 'moon');
+  const SUN_INERTIAL = findFrame(referenceFrames.frames, 'sun', null);
+  const MOON_INERTIAL = findFrame(referenceFrames.frames, 'moon', null);
   // bake 時刻は state 自身のエポック(t)なので、時刻はここで与える。
-  const stateAt = (t: number): KinematicState => kinematicState(t, v3(6.8e6, 5e5, 3e6), v3(-1200, 300, 7400));
+  const stateAt = (t: number): KinematicState => kinematicState<'eci'>(t, v3(6.8e6, 5e5, 3e6), v3(-1200, 300, 7400));
+
+  test('reference-frames: frameOf は同じ対に同じ参照を返し、inertialFrame/frames/frameFor と一致する', () => {
+    assert.equal(referenceFrames.frameOf('earth', null), referenceFrames.frameOf('earth', null));
+    assert.equal(
+      referenceFrames.frameOf('earth', { kind: 'revolution', id: 'moon' }),
+      referenceFrames.frameOf('earth', { kind: 'revolution', id: 'moon' }),
+    );
+    assert.equal(referenceFrames.frameOf('earth', null), referenceFrames.inertialFrame);
+    assert.equal(referenceFrames.frameOf('earth', null), referenceFrames.frameFor('earth'));
+    assert.equal(referenceFrames.frameOf('sun', null), referenceFrames.frameFor('sun'));
+    for (const frame of referenceFrames.frames) {
+      assert.equal(referenceFrames.frameOf(frame.center, frame.rotatingWith), frame);
+    }
+    assert.notEqual(
+      referenceFrames.frameOf('earth', { kind: 'revolution', id: 'moon' }),
+      referenceFrames.frameOf('earth', null),
+    );
+    // 同じ天体でも自転と公転は別の座標系で、rotatingWith オブジェクトも呼び出しごとに同一参照。
+    const spinEarth = referenceFrames.frameOf('earth', { kind: 'spin', id: 'earth' });
+    const revolutionEarth = referenceFrames.frameOf('earth', { kind: 'revolution', id: 'earth' });
+    assert.notEqual(spinEarth, revolutionEarth);
+    assert.equal(spinEarth.rotatingWith, referenceFrames.frameOf('earth', { kind: 'spin', id: 'earth' }).rotatingWith);
+  });
 
   test('frame: 地球中心慣性系は順逆とも恒等（state）', () => {
     const t = 12345;
     const s = stateAt(t);
-    const tf = eph.frameTransformAt(EARTH_INERTIAL, t, NO_ANCHORS);
+    const tf = referenceFrames.transformAt(EARTH_INERTIAL, t, NO_ANCHORS);
     assert.ok(closeState(toInertialState(tf, t, toFrameState(tf, s)), s));
   });
 
   test('frame: 太陽-地球回転系の往復は元に戻る（state・同一時刻）', () => {
     const t = YEAR / 4; // sunAz != 0
     const s = stateAt(t);
-    const tf = eph.frameTransformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS);
+    const tf = referenceFrames.transformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS);
     const back = toInertialState(tf, t, toFrameState(tf, s));
     assert.ok(closeState(back, s), `round trip: ${JSON.stringify(back)} vs ${JSON.stringify(s)}`);
   });
 
   test('frame: 太陽-地球回転系では太陽がほぼ -X 軸上に静止する(x̂ = 太陽→地球)', () => {
-    // 太陽-地球回転系の基底は orbitFrameRotationAt('earth', t)(x̂ = 太陽→地球-月重心の解析方向)。
+    // 太陽-地球回転系の基底は地球の orbitFrameRotationAt(x̂ = 太陽→地球-月重心の解析方向)。
     // 太陽の実際の地心方向は重心補正(4,673km 級)ぶんだけこの軸からずれるので、
     // 1AU に対して 1e-4 程度の緩い許容にする(軸そのものからのずれは物理的に正しい)。
     for (const t of [0, YEAR / 3, YEAR * 2.7]) {
-      const tf = eph.frameTransformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS);
-      const p = toFramePoint(tf, eph.positionOf('sun', t));
+      const tf = referenceFrames.transformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS);
+      const p = toFramePoint(tf, positionOf(parts, 'sun', t));
       const dist = len(v3(p.x, p.y, p.z));
       assert.ok(close(v3(p.x, p.y, p.z), v3(-dist, 0, 0), 1e-4), `太陽の位置 (t=${t}): ${JSON.stringify(p)}`);
     }
@@ -69,7 +97,7 @@ export function register(): void {
   test('frame: state 変換と point 変換は同じ位置を返す（太陽-地球回転系）', () => {
     const t = YEAR / 3;
     const s = stateAt(t);
-    const tf = eph.frameTransformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS);
+    const tf = referenceFrames.transformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS);
     const p = toFramePoint(tf, s.r);
     assert.ok(close(toFrameState(tf, s).r, v3(p.x, p.y, p.z)));
   });
@@ -77,7 +105,7 @@ export function register(): void {
   test('frame: point 変換の往復は元に戻る（太陽-地球回転系・同一時刻）', () => {
     const t = YEAR / 6;
     const s = stateAt(t);
-    const tf = eph.frameTransformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS);
+    const tf = referenceFrames.transformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS);
     const back = toInertialPoint(tf, toFramePoint(tf, s.r));
     assert.ok(close(back, s.r));
   });
@@ -89,15 +117,15 @@ export function register(): void {
     // 慣性系で等速直線運動する点の、回転系位置を中心差分して速度を近似する。回転系自体が
     // 時刻とともに向きを変えるので、各時刻ごとにその時刻の座標系変換で bake する。
     const rRelAt = (t: number): Vec3 =>
-      toFrameState(eph.frameTransformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS), kinematicState(t, addScaled(s.r, s.v, t - t0), s.v)).r;
+      toFrameState(referenceFrames.transformAt(SUN_EARTH_ROTATING, t, NO_ANCHORS), kinematicState<'eci'>(t, addScaled(s.r, s.v, t - t0), s.v)).r;
     const vFd = scale(sub(rRelAt(t0 + dt), rRelAt(t0 - dt)), 1 / (2 * dt));
-    const vAnalytic = toFrameState(eph.frameTransformAt(SUN_EARTH_ROTATING, t0, NO_ANCHORS), s).v;
+    const vAnalytic = toFrameState(referenceFrames.transformAt(SUN_EARTH_ROTATING, t0, NO_ANCHORS), s).v;
     // ω×r 項(~1.4 m/s)を落とすと数 m/s ずれる。有限差分自体は 1e-3 m/s より高精度。
     assert.ok(len(sub(vFd, vAnalytic)) < 1e-2, `v mismatch: ${JSON.stringify(vFd)} vs ${JSON.stringify(vAnalytic)}`);
   });
 
   test('frame: 地球中心慣性系の un-bake クォータニオンは恒等', () => {
-    const tf = eph.frameTransformAt(EARTH_INERTIAL, 12345, NO_ANCHORS);
+    const tf = referenceFrames.transformAt(EARTH_INERTIAL, 12345, NO_ANCHORS);
     assert.deepEqual(tf.q, { x: 0, y: 0, z: 0, w: 1 });
   });
 
@@ -107,8 +135,8 @@ export function register(): void {
     const tSample = YEAR / 5;
     const tNow = YEAR / 4;
     const s = stateAt(tSample);
-    const tfSample = eph.frameTransformAt(SUN_EARTH_ROTATING, tSample, NO_ANCHORS);
-    const tfNow = eph.frameTransformAt(SUN_EARTH_ROTATING, tNow, NO_ANCHORS);
+    const tfSample = referenceFrames.transformAt(SUN_EARTH_ROTATING, tSample, NO_ANCHORS);
+    const tfNow = referenceFrames.transformAt(SUN_EARTH_ROTATING, tNow, NO_ANCHORS);
     const baked = toFramePoint(tfSample, s.r);
     const viaQuat = add(qRotate(tfNow.q, v3(baked.x, baked.y, baked.z)), tfNow.origin);
     const viaPoint = toInertialPoint(tfNow, baked);
@@ -122,21 +150,20 @@ export function register(): void {
     const tNow = YEAR / 4;
     const s = stateAt(tSample);
     const cases = [
-      [SUN_EARTH_ROTATING, '太陽-地球回転系', (t: number) => eph.positionOf('sun', t)],
-      [MOON_ROTATING, '地球-月回転系', (t: number) => eph.positionOf('moon', t)],
+      [SUN_EARTH_ROTATING, '太陽-地球回転系', (t: number) => positionOf(parts, 'sun', t)],
+      [MOON_ROTATING, '地球-月回転系', (t: number) => positionOf(parts, 'moon', t)],
     ] as const;
     for (const [frame, label, bodyPos] of cases) {
-      const tfSample = eph.frameTransformAt(frame, tSample, NO_ANCHORS);
-      const tfNow = eph.frameTransformAt(frame, tNow, NO_ANCHORS);
+      const tfSample = referenceFrames.transformAt(frame, tSample, NO_ANCHORS);
+      const tfNow = referenceFrames.transformAt(frame, tNow, NO_ANCHORS);
       const net = toInertialState(tfNow, tNow, toFrameState(tfSample, s));
       assert.ok(Math.abs(len(net.r) - len(s.r)) < 1e-6 * len(s.r), `${label}: 距離が変わった`);
       const before = dot(norm(s.r), norm(bodyPos(tSample)));
       const after = dot(norm(net.r), norm(bodyPos(tNow)));
-      // 太陽-地球回転系は解析的な地球-月重心方向を軸に取るため、太陽の実方向(月による
-      // 重心補正ぶん、~3e-5 rad 級で揺れる)からわずかにずれる。月回転系の軸は
-      // 月の平均要素(二体部分)のみで組まれ、月の実位置は太陽摂動の周期項ぶん
-      // そこから最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
-      const tol = label === '太陽-地球回転系' ? 1e-4 : 3e-2;
+      // 太陽-地球回転系の x̂ は地球-月重心の主星相対方向で、地球本体から見た太陽の実方向とは
+      // 重心補正ぶん(~3e-5 rad 級)ずれる。月回転系の x̂ は月の実位置そのものなので、残るのは
+      // 回転系自身の ω が軌道面歳差を含まないことによる誤差だけ。
+      const tol = label === '太陽-地球回転系' ? 1e-4 : 1e-3;
       assert.ok(Math.abs(before - after) < tol, `${label}: 天体との相対角が変わった (${before} vs ${after})`);
       // un-bake 後のエポックは描画時刻 tNow(bake 時刻ではない)。
       assert.equal(net.t, tNow);
@@ -146,72 +173,92 @@ export function register(): void {
   test('frame: 月回転系の往復は元に戻る（state・同一時刻）', () => {
     const t = 1.3e6;
     const s = stateAt(t);
-    const tf = eph.frameTransformAt(MOON_ROTATING, t, NO_ANCHORS);
+    const tf = referenceFrames.transformAt(MOON_ROTATING, t, NO_ANCHORS);
     const back = toInertialState(tf, t, toFrameState(tf, s));
     assert.ok(closeState(back, s), `round trip: ${JSON.stringify(back)} vs ${JSON.stringify(s)}`);
   });
 
-  test('frame: 月回転系では月がほぼ +X 軸上にある(周期摂動ぶん最大2.5°ずれる)', () => {
-    // 月回転系の基底(x̂ = 月方向)は二体部分(平均要素)のみで組まれるため、太陽摂動の
-    // 周期項ぶん月の実位置は x̂ 軸から最大 2.5° ほどずれる(satellite-orbit.ts 参照)。
-    for (const t of [0, 3e5, 2.4e6, 1e8]) {
-      const tf = eph.frameTransformAt(MOON_ROTATING, t, NO_ANCHORS);
-      const p = toFramePoint(tf, eph.positionOf('moon', t));
+  // SPEC/CELESTIAL.md 8節「回転の基底は『主天体→対象』の方向を x̂ に取る」。基底は実状態から
+  // 組むので、周期摂動を含んでいても対象は**厳密に** x̂ 上に来る。平均要素で組んでいた頃は
+  // 太陽摂動の周期項ぶん最大 2.5° ずれていた。
+  test('frame: 月回転系では月が厳密に +X 軸上にある', () => {
+    for (const t of [0, 3e5, 2.4e6, 5e7, 1e8, 3e8]) {
+      const tf = referenceFrames.transformAt(MOON_ROTATING, t, NO_ANCHORS);
+      const p = toFramePoint(tf, positionOf(parts, 'moon', t));
       const dist = len(v3(p.x, p.y, p.z));
-      const angleFromXDeg = (Math.acos(p.x / dist) * 180) / Math.PI;
-      assert.ok(angleFromXDeg < 2.5, `月の位置が x̂ から離れすぎる (t=${t}): ${angleFromXDeg}°`);
+      const angleFromXDeg = (Math.acos(Math.min(1, p.x / dist)) * 180) / Math.PI;
+      assert.ok(angleFromXDeg < 1e-6, `月の位置が x̂ から離れた (t=${t}): ${angleFromXDeg}°`);
     }
   });
 
+  // 公転回転系の ω は (r×v)/|r|²。これは x̂(= 主天体→対象)の回転を厳密に表すが、**軌道面
+  // 自身の歳差ぶんを含まない** — 接触軌道面の法線 ẑ が動く速さ(月で |ω| の 1.1%、2.7e-8 rad/s)
+  // がそのまま残差になる。この機体位置(|r| ≈ 7.5e6 m)では 0.014〜0.27 m/s(実測、t を 6 点)。
+  // **しきい値はその実測から引いた** — ω×r 項をまるごと落とすと 18〜22 m/s ずれるので、
+  // 落とし忘れは 36 倍の余裕で捕まる。
   test('frame: 月回転系の速度は回転系位置の時間微分に一致（有限差分, ω×r 項の検証）', () => {
-    const t0 = 2.4e6;
-    const s = stateAt(t0);
-    const dt = 1;
-    const rRelAt = (t: number): Vec3 =>
-      toFrameState(eph.frameTransformAt(MOON_ROTATING, t, NO_ANCHORS), kinematicState(t, addScaled(s.r, s.v, t - t0), s.v)).r;
-    const vFd = scale(sub(rRelAt(t0 + dt), rRelAt(t0 - dt)), 1 / (2 * dt));
-    const vAnalytic = toFrameState(eph.frameTransformAt(MOON_ROTATING, t0, NO_ANCHORS), s).v;
-    assert.ok(len(sub(vFd, vAnalytic)) < 1e-2, `v mismatch: ${JSON.stringify(vFd)} vs ${JSON.stringify(vAnalytic)}`);
+    for (const t0 of [0, 2.4e6, 5e7, 3e8]) {
+      const s = stateAt(t0);
+      const dt = 1;
+      const rRelAt = (t: number): Vec3 =>
+        toFrameState(referenceFrames.transformAt(MOON_ROTATING, t, NO_ANCHORS), kinematicState<'eci'>(t, addScaled(s.r, s.v, t - t0), s.v)).r;
+      const vFd = scale(sub(rRelAt(t0 + dt), rRelAt(t0 - dt)), 1 / (2 * dt));
+      const vAnalytic = toFrameState(referenceFrames.transformAt(MOON_ROTATING, t0, NO_ANCHORS), s).v;
+      assert.ok(len(sub(vFd, vAnalytic)) < 0.5, `v mismatch (t=${t0}): ${JSON.stringify(vFd)} vs ${JSON.stringify(vAnalytic)}`);
+    }
+  });
+
+  // 自転回転系の存在意義そのもの。omega を 0 のまま置くと位置だけは正しく変換されるので
+  // 軌道線では気付けず、速度を通す量(座標系相対速度・計画バーンの Δv)だけが静かにずれる。
+  test('frame: 自転回転系では地表に固定した点の座標系相対速度が 0 になる', () => {
+    const t = 55555;
+    const frame = referenceFrames.frameOf('earth', { kind: 'spin', id: 'earth' });
+    const tf = referenceFrames.transformAt(frame, t, bodyAnchorSource([], 0));
+    // 座標系相対で (R, 0, 0) に置いた点を ECI へ戻し、自転とともに動く速度を与える。
+    const r = qRotate(tf.q, v3(R_EARTH_EQ, 0, 0));
+    const rel = toFrameState(tf, kinematicState<'eci'>(t, r, cross(tf.omega, r)));
+    assert.ok(len(rel.v) < 1e-6, `|v_rel|: ${len(rel.v)} m/s`);
+    assert.ok(len(sub(rel.r, v3(R_EARTH_EQ, 0, 0))) < 1e-6, `r_rel: ${JSON.stringify(rel.r)}`);
   });
 
   test('frame: 月中心慣性系では月は常に原点にいる', () => {
     for (const t of [0, YEAR / 4, YEAR * 1.7]) {
-      const tf = eph.frameTransformAt(MOON_INERTIAL, t, NO_ANCHORS);
-      const p = toFramePoint(tf, eph.positionOf('moon', t));
+      const tf = referenceFrames.transformAt(MOON_INERTIAL, t, NO_ANCHORS);
+      const p = toFramePoint(tf, positionOf(parts, 'moon', t));
       assert.ok(len(v3(p.x, p.y, p.z)) < 1e-6, `t=${t}: ${JSON.stringify(p)}`);
     }
   });
 
   test('frame: 太陽中心慣性系では太陽は常に原点にいる', () => {
     for (const t of [0, YEAR / 4, YEAR * 1.7]) {
-      const tf = eph.frameTransformAt(SUN_INERTIAL, t, NO_ANCHORS);
-      const p = toFramePoint(tf, eph.positionOf('sun', t));
+      const tf = referenceFrames.transformAt(SUN_INERTIAL, t, NO_ANCHORS);
+      const p = toFramePoint(tf, positionOf(parts, 'sun', t));
       assert.ok(len(v3(p.x, p.y, p.z)) < 1e-6, `t=${t}: ${JSON.stringify(p)}`);
     }
   });
 
-  // FrameAnchorSource: 役割トークン・機体など registry に無い基準・回転対象の解決(frame-anchors.ts の
-  // 実装が満たすべき契約)。frameTransformAt/anchorStateAt 自身は毎回 source.stateOf を引くだけで
+  // FrameAnchorSource: 役割トークン・機体など登録天体でない基準・回転対象の解決(frame-anchors.ts の
+  // 実装が満たすべき契約)。transformAt/anchorStateAt 自身は毎回 source.stateOf を引くだけで
   // 状態を持たないので、"直前の状態を保つ" 側の責務は呼び出す source のスタブが担う。
   const SHIP: string = '@activeShip';
 
   test('frame: center が役割トークンのとき、source が返した状態が原点になる', () => {
     const t = 4321;
-    const shipState = kinematicState(t, v3(7e6, 1e6, 2e6), v3(100, 200, 300));
-    const source: FrameAnchorSource = { bodies: [], stateOf: () => shipState, attractorOf: () => null };
+    const shipState = kinematicState<'eci'>(t, v3(7e6, 1e6, 2e6), v3(100, 200, 300));
+    const source: FrameAnchorSource = { bodies: [], bodiesPivot: 0, stateOf: () => shipState, attractorOf: () => null };
     const frame: ReferenceFrame = { center: SHIP, rotatingWith: null };
-    const tf = eph.frameTransformAt(frame, t, source);
+    const tf = referenceFrames.transformAt(frame, t, source);
     assert.ok(close(tf.origin, shipState.r));
     assert.ok(close(tf.originVel, shipState.v));
   });
 
   test('frame: 役割トークンが1フレーム解決できなくても直前の原点を保ち、2フレーム連続で解決できなくなって初めて ECI 原点へ落ちる', () => {
-    const shipState = kinematicState(0, v3(7e6, 1e6, 2e6), v3(100, 200, 300));
+    const shipState = kinematicState<'eci'>(0, v3(7e6, 1e6, 2e6), v3(100, 200, 300));
     // frame-anchors.ts の FrameAnchors が満たす契約(1回目の欠落は直前値を保ち、2回連続で
     // 初めて null を返す)を、ここではスタブ自身に持たせて検証する。
     let misses = 0;
     let held: KinematicState | null = null;
-    const source: FrameAnchorSource = { bodies: [], stateOf: () => null, attractorOf: () => null };
+    const source: FrameAnchorSource = { bodies: [], bodiesPivot: 0, stateOf: () => null, attractorOf: () => null };
     const hold = (resolved: KinematicState | null): KinematicState | null => {
       if (resolved !== null) { held = resolved; misses = 0; return resolved; }
       misses++;
@@ -222,21 +269,21 @@ export function register(): void {
     // フレーム1: 解決できる。フレーム2: 欠落(直前値を保つ)。フレーム3: 連続2回目の欠落(null へ)。
     const frame: ReferenceFrame = { center: SHIP, rotatingWith: null };
     source.stateOf = () => hold(shipState);
-    assert.ok(close(eph.frameTransformAt(frame, 0, source).origin, shipState.r), 'frame1: 解決できる');
+    assert.ok(close(referenceFrames.transformAt(frame, 0, source).origin, shipState.r), 'frame1: 解決できる');
     source.stateOf = () => hold(null);
-    assert.ok(close(eph.frameTransformAt(frame, 0, source).origin, shipState.r), 'frame2: 1回目の欠落は直前値を保つ');
-    assert.ok(close(eph.frameTransformAt(frame, 0, source).origin, v3()), 'frame3: 2回連続の欠落で ECI 原点へ落ちる');
+    assert.ok(close(referenceFrames.transformAt(frame, 0, source).origin, shipState.r), 'frame2: 1回目の欠落は直前値を保つ');
+    assert.ok(close(referenceFrames.transformAt(frame, 0, source).origin, v3()), 'frame3: 2回連続の欠落で ECI 原点へ落ちる');
   });
 
-  test('frame: revolution の回転対象が registry に無いとき、基底の x̂ は attractorOf が答えた主天体→対象の向き(frame.center とは独立)', () => {
+  test('frame: revolution の回転対象が登録天体でないとき、基底の x̂ は attractorOf が答えた主天体→対象の向き(frame.center とは独立)', () => {
     const t = 8888;
-    const earth = eph.stateOf('earth', t);
+    const earth = stateOf(parts, 'earth', t);
     // 地球のまわりを回る架空の機体(地球からのオフセット + 円軌道ふうの速度で相対角運動量を持たせる)。
-    const shipState = kinematicState(t, add(earth.r, v3(1e7, 0, 0)), add(earth.v, v3(0, 3000, 500)));
-    const source: FrameAnchorSource = { bodies: [], stateOf: () => shipState, attractorOf: () => 'earth' };
+    const shipState = kinematicState<'eci'>(t, add(earth.r, v3(1e7, 0, 0)), add(earth.v, v3(0, 3000, 500)));
+    const source: FrameAnchorSource = { bodies: [], bodiesPivot: 0, stateOf: () => shipState, attractorOf: () => 'earth' };
     // 原点は太陽 — 主天体(地球)とは別の天体にして、基底が frame.center に依らないことを確かめる。
     const frame: ReferenceFrame = { center: 'sun', rotatingWith: { kind: 'revolution', id: SHIP } };
-    const tf = eph.frameTransformAt(frame, t, source);
+    const tf = referenceFrames.transformAt(frame, t, source);
     const expectedXHatEci = norm(sub(shipState.r, earth.r));
     const xHatInFrame = toFrameDir(tf, expectedXHatEci);
     assert.ok(close(v3(xHatInFrame.x, xHatInFrame.y, xHatInFrame.z), v3(1, 0, 0), 1e-6));
@@ -251,21 +298,21 @@ export function register(): void {
     const r = 7e6;
     const omega = Math.sqrt(MU_EARTH / (r * r * r));
     const shipStateAt = (t: number): KinematicState => {
-      const earth = eph.stateOf('earth', t);
+      const earth = stateOf(parts, 'earth', t);
       const angle = omega * t;
       const relR = v3(r * Math.cos(angle), r * Math.sin(angle), 0);
       const relV = v3(-r * omega * Math.sin(angle), r * omega * Math.cos(angle), 0);
-      return kinematicState(t, add(earth.r, relR), add(earth.v, relV));
+      return kinematicState<'eci'>(t, add(earth.r, relR), add(earth.v, relV));
     };
-    const anchors = new FrameAnchors({
+    const anchors = new FrameAnchors(windows, {
       entityState: () => null,
       activeShipState: (t) => shipStateAt(t),
       navTargetState: () => null,
     });
-    const frame = eph.frameOf(SHIP, { kind: 'revolution', id: SHIP });
+    const frame = referenceFrames.frameOf(SHIP, { kind: 'revolution', id: SHIP });
     for (const t of [t0, t0 + 500, t0 + 3600, t0 + 43200]) {
-      anchors.update(eph.celestialBodiesAt(t));
-      const tf = eph.frameTransformAt(frame, t, anchors);
+      anchors.update(0);
+      const tf = referenceFrames.transformAt(frame, t, anchors);
       const rel = toFrameState(tf, shipStateAt(t));
       assert.ok(close(rel.r, v3(), 1), `t=${t}: ${JSON.stringify(rel.r)}`);
     }
