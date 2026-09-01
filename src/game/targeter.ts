@@ -10,6 +10,7 @@ import { Player } from './player/player';
 import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
+import type { CelestialMarkers } from './marker/celestial-markers';
 import { MarkerManager, MARKER_PRIORITY } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/map-pickable';
@@ -146,7 +147,7 @@ export class Targeter {
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
-    celestialBodies: readonly CelestialMotion[],
+    celestialBodies: readonly CelestialMotion[], celestialMarkers: CelestialMarkers,
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
@@ -199,7 +200,7 @@ export class Targeter {
       const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
       this.pushMarkerItem(fuel.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
     }
-    const celestialLabels = overviewMode ? cameraSystem.focusMarkers.activeLabels : [];
+    const celestialLabels = overviewMode ? celestialMarkers.activeLabels : [];
     this.markerManager.combatMarkers.sync(
       this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, celestialBodies,
       cameraSystem.activeCameraPos,

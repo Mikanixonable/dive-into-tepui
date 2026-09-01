@@ -14,6 +14,7 @@ import { apparentSizePx } from '../../../math/projection';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
 import { len, sub } from '../../../math/vec3';
 import { bodyEntityGlyph } from '../../marker/marker-identity';
+import { MARKER_PRIORITY } from '../../marker/marker-manager';
 import { bodySearchText } from '../../pickable/body-search-text';
 import { fmtDist, fmtTime } from '../../hud/utils';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
@@ -59,6 +60,15 @@ const BODY_PICKER_GENRES: Readonly<Record<CelestialClass, ObjectPickerGenre>> = 
   dwarf: '準惑星',
   satellite: '衛星',
   smallBody: '小天体',
+};
+
+// 惑星 > 準惑星 > 衛星・小惑星・彗星。恒星は太陽系の基準点なので、惑星と同じ最上位に置く。
+const BODY_LABEL_PRIORITY: Readonly<Record<CelestialClass, number>> = {
+  star: MARKER_PRIORITY.STAR_PLANET,
+  planet: MARKER_PRIORITY.STAR_PLANET,
+  dwarf: MARKER_PRIORITY.DWARF_PLANET,
+  satellite: MARKER_PRIORITY.SATELLITE_SMALL_BODY,
+  smallBody: MARKER_PRIORITY.SATELLITE_SMALL_BODY,
 };
 
 export abstract class CelestialEntity implements MapPickable {
@@ -202,6 +212,14 @@ export abstract class CelestialEntity implements MapPickable {
   ): number {
     return apparentSizePx(diameterMeters, metersPerPixel) * graphics.lodBias;
   }
+
+  // 天体ラベルとしての振る舞い。
+  // マップのマーカーへ描く表記。
+  public get markerLabel(): string { return this.name; }
+  // マーカーの CSS クラス。
+  public readonly markerClass = 'mk-poi';
+  // ラベルが混雑したときに優先して残す度合い。大きいほど残る。
+  public get labelPriority(): number { return BODY_LABEL_PRIORITY[this.bodyClass]; }
 
   // マップ上の被選択物としての振る舞い。
   public readonly ownerName = null;

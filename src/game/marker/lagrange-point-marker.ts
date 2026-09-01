@@ -7,6 +7,7 @@ import { bodySearchText } from '../pickable/body-search-text';
 import { fmtDist } from '../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
+import { MARKER_PRIORITY } from './marker-manager';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../hud/object-groups';
@@ -22,6 +23,10 @@ export class LagrangePointMarker implements MapPickable {
   public readonly name: string;
   // 地点名を上、所属天体を下の行に置く二行表記。
   public readonly markerLabel: string;
+  // マーカーの CSS クラス。
+  public readonly markerClass = 'mk-poi mk-lagrange';
+  // ラベルが混雑したときに優先して残す度合い。大きいほど残る。
+  public readonly labelPriority = MARKER_PRIORITY.LAGRANGE;
   public readonly ownerName = null;
   public readonly mapTime = null;
   public readonly mapState = null;

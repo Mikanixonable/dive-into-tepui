@@ -10,6 +10,7 @@ import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
+import { CelestialMarkers } from './marker/celestial-markers';
 import { ActiveControllableController } from './active-controllable-controller';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
@@ -59,6 +60,7 @@ export class Game {
   private readonly _uiSfx: UiSfx;
   private readonly pauseMenu: PauseMenu;
   private readonly markerManager: MarkerManager;
+  private readonly celestialMarkers: CelestialMarkers;
   readonly cameraSystem: CameraSystem;
   // 操作対象艦(0..n 隻のうちどれを操作するか)の切替を持つ。
   readonly activePlayers: ActiveControllableController;
@@ -140,12 +142,8 @@ export class Game {
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
-    this.cameraSystem = new CameraSystem(
-      this._hud,
-      this.markerManager,
-      celestialSystem,
-      initialSave?.camera,
-    );
+    this.cameraSystem = new CameraSystem(this._hud, celestialSystem, initialSave?.camera);
+    this.celestialMarkers = new CelestialMarkers(this.markerManager, celestialSystem);
     this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navTarget.restore(initialSave?.navTarget, this.dynamicSystem);
@@ -211,14 +209,15 @@ export class Game {
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
-      this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem, this.editor,
-      this.frameAnchors,
+      this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
+      this.celestialMarkers, this.editor, this.frameAnchors,
     );
     this.linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem, this.cameraSystem);
     this.mapActions = new MapContextActions(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.linePickables,
       this.activePlayers, this.frameControls, this.activeStage, this.targeter, this.markerManager,
+      this.celestialMarkers,
     );
 
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
@@ -517,6 +516,12 @@ export class Game {
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
     const fo = this.cameraSystem.sync(activeControllable?.state.v ?? v3());
+    // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
+    if (this.cameraSystem.overviewMode) {
+      this.celestialMarkers.syncLabels(this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos);
+    } else {
+      this.celestialMarkers.hideLabels();
+    }
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
@@ -546,9 +551,9 @@ export class Game {
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
       player, combatTargets, this.dynamicSystem.ammoPickups, this.dynamicSystem.rcsFuelPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
-      celestialBodies,
+      celestialBodies, this.celestialMarkers,
     );
-    this.cameraSystem.focusMarkers.syncSubLabels(
+    this.celestialMarkers.syncSubLabels(
       this.markerManager.combatMarkers, celestialBodies, displayTime,
       overviewMode, project, this.cameraSystem.activeCameraPos,
     );

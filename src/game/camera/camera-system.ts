@@ -4,10 +4,8 @@ import { CombatCameraSystem } from './combat-camera-system';
 import { MapCamera, OVERVIEW_CAMERA_MIN_DIST } from './map-camera';
 import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { catalogFamilyIndex } from '../celestial/orbit-guide/orbit-guide-catalog';
-import { FocusMarkers } from './focus-markers';
 import { applyMapDisplayMode, MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, normalizeMapDisplayToggles } from '../map/display-toggles';
-import { MapPickable } from '../pickable/map-pickable';
-import { MarkerManager } from '../marker/marker-manager';
+import type { FocusCandidate } from './focus-target';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { FloatingOrigin } from './floating-origin';
@@ -125,11 +123,9 @@ function radialScaleFromViewpoint(view: Viewpoint): ScaleFn {
 }
 
 // 戦闘ビュー(CombatCameraSystem)と広範囲視点(MapCamera)を切り替えて駆動する。
-// フォーカス候補ラベル(focusMarkers)も所有する。
 export class CameraSystem {
   readonly combatCamera: CombatCameraSystem;
   readonly mapCamera: MapCamera;
-  readonly focusMarkers: FocusMarkers;
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。天球グリッド・
   // 軌道ガイド側の配線は Navball が行う。
   readonly viewOptionsPanel: ViewOptionsPanel;
@@ -157,16 +153,13 @@ export class CameraSystem {
     }
   };
 
-  // 両カメラとフォーカス候補ラベルを構築し、常用ショートリストパネルの選択操作を配線する。
+  // 両カメラを構築し、常用ショートリストパネルの選択操作を配線する。
   // saved があれば両カメラをその視点から組む。
   constructor(
     _hud: Hud,
-    markerManager: MarkerManager,
     celestialSystem: CelestialSystem,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
-    // 両カメラとフォーカス候補ラベル
-    this.focusMarkers = new FocusMarkers(markerManager, celestialSystem);
     this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
     this.mapCamera = new MapCamera(_hud, celestialSystem, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
@@ -216,7 +209,7 @@ export class CameraSystem {
     displayTime: number,
     input: Input,
     dt: number,
-    mapPickables: readonly MapPickable[],
+    focusCandidates: readonly FocusCandidate[],
     frameAnchors: FrameAnchorSource,
   ): void {
     // 中クリックで視点リセット
@@ -248,7 +241,7 @@ export class CameraSystem {
     mouse.roll += keyRoll * CAM_KEY_ROLL_RATE * dt;
 
     if (this.overviewMode) {
-      this.mapCamera.update(mouse, keyYawRad, keyPitchRad, displayTime, mapPickables, frameAnchors);
+      this.mapCamera.update(mouse, keyYawRad, keyPitchRad, displayTime, focusCandidates, frameAnchors);
     }
     else {
       this.combatCamera.update(mouse, keyYawRad, keyPitchRad, dt, player, input);
@@ -263,14 +256,8 @@ export class CameraSystem {
     const fo = new FloatingOrigin(this.activeCameraPos, velocityReference);
     const active = this.overviewMode ? this.mapCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, active.viewpoint, active.near, active.far, fo);
-    // 広範囲視点のときだけ表示設定パネルとフォーカスラベルを表示する。
+    // 広範囲視点のときだけ表示設定パネルを出す。
     this.viewOptionsPanel.setVisible(this.overviewMode);
-
-    if (this.overviewMode) {
-      this.focusMarkers.syncLabels(this.activeCameraProjection, this.activeCameraPos);
-    } else {
-      this.focusMarkers.hideLabels();
-    }
     return fo;
   }
 
