@@ -141,6 +141,11 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
     return this.collisionGeom.raycast(rayOrigin, rayDir, maxDist, this.state.r, this.att.q, warpLevel);
   }
 
+  // 基地は外接球の中が大きく空いているので、メッシュへ当たったかまで見る。
+  override hitByRay(origin: Vec3, dir: Vec3, maxDist: number): boolean {
+    return this.raycast(origin, dir, maxDist) !== null;
+  }
+
   testSphereCollision(sphereCenter: Vec3, sphereRadius: number, warpLevel = 1): SphereHit | null {
     return this.collisionGeom.testSphereCollision(sphereCenter, sphereRadius, this.state.r, this.att.q, warpLevel);
   }
