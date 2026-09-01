@@ -100,7 +100,7 @@ export class DynamicSystem {
       this.addPlayer(new Player(hud, worldSfx, scene, this.effects, markerManager, { saved: data, simTime }));
     }
     for (const data of save.enemies) {
-      // 種別タグから具象クラスを引くところまでがここの仕事で、復元はそのクラスが行う。
+      // 種別タグから具象クラスを引き、知らない種別の敵は読み飛ばす。
       const enemyClass = findEnemyClass(data.kind);
       if (enemyClass === null) continue;
       this.spawnEnemyWhenReady(
