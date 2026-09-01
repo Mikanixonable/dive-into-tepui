@@ -408,8 +408,9 @@ interface ListSortKey {
 
 ## 実施の結果
 
-全9手順を実施した(a77c1cc4 / ff2531a1 / 3e7c9c3b / 10a6cd14 / c76ddea8 / e68dcb01 /
-471e94a3 / 7f2e1372 / 65d590f6)。`npm run typecheck` と `npm run test`(653/653)が通る。
+全9手順と、実測から足した手順10を実施した(a77c1cc4 / ff2531a1 / 3e7c9c3b / 10a6cd14 /
+c76ddea8 / e68dcb01 / 471e94a3 / 7f2e1372 / 65d590f6 / 8a63a5c6)。
+`npm run typecheck` と `npm run test`(653/653)が通る。
 
 ### 達成目標の点検
 
@@ -431,7 +432,7 @@ interface ListSortKey {
 
 | ファイル | 着手前 | 現在 |
 | --- | --- | --- |
-| `pickable/map-context-actions.ts` | 687 | **705** |
+| `pickable/map-context-actions.ts` | 687 | **560**(手順10 の分割前は 705) |
 | `pickable/map-pickables.ts` | 262 | 120 |
 | `camera/focus-markers.ts` | 517 | 0(`marker/celestial-markers.ts` 316 + `celestial-sub-labels.ts` 142 + `crowding.ts` へ 83 行) |
 | `player/player.ts` | 625 | 777 |
@@ -440,24 +441,15 @@ interface ListSortKey {
 実体側が伸びるのは織り込み済み(1ファイルが1つの物体を言い切る形になるための増加)。
 
 **`map-context-actions.ts` だけが見込みを外した。** 350 前後まで縮むと見ていたが、
-メニュー・行が出て行った代わりに `MapCommands` の実装(21 メンバー)が入り、差し引きで増えた。
-いま同居しているのは、プロパティウィンドウの台帳・クリックの振り分け・パーツウィンドウ・
-軌道線ウィンドウ・`MapCommands` の5つで、規約 1.2 に対して重い。
+メニュー・行が出て行った代わりに `MapCommands` の実装(21 メンバー)が入った。独自の台帳を
+持つ2つ(パーツウィンドウ・軌道線ウィンドウ)を `pickable/part-windows.ts` と
+`pickable/orbit-line-windows.ts` へ出して 560 行まで下げたが、**400 行には届いていない。**
 
-### 残っている手順
-
-**手順 10. `map-context-actions.ts` を責務で割る**
-
-- `pickable/part-windows.ts`(新規) — `openPartPropertyWindow` / `partWindowContent` /
-  `partWearText` / `setPartDeployment` / `closePartWindowsForShip` と `partWindows` 台帳。
-- `pickable/orbit-line-windows.ts`(新規) — `openOrbitPropertyWindow` /
-  `orbitWindowContent` / `relatedItemsForOrbit` と `lineWindows` 台帳、
-  `ORBIT_PICK_KIND_LABEL` / `ORBIT_CALC_METHOD_LABEL`。
-- 残る `MapContextActions` は「被選択物のウィンドウ台帳 + クリックの振り分け + MapCommands」。
-
-**達成条件と検証**: `src/game/pickable/` に 400 行を超えるファイルが無い。
-`npm run typecheck` / `npm run test:game`。`npm run dev` でパーツウィンドウ(自艦の
-「搭載部品」から開く)と軌道線のプロパティウィンドウが手順前と同じ。
+いま残っているのは「被選択物のウィンドウ台帳 + クリックの振り分け + `MapCommands` の実装」の
+3つ。`MapCommands` を別クラスへ出すと台帳へのコールバック(`isBasePanelExpanded`)を
+足すことになり、決めたこと5がそれを避けた判断そのものなので、**これ以上割るなら決めたこと5を
+覆すところから始まる。** クリックの振り分けだけを出す道もあるが、開く・畳む・フォーカスする先が
+すべて台帳側なので、薄いモジュールと引き換えにコールバックが増える。
 
 ---
 
