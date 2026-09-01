@@ -220,18 +220,11 @@ export class CelestialSystem implements CelestialMotions {
     if (focus === undefined) return true;
 
     const systemFocusId = focus.kind === 'satellite' ? focus.primary?.id ?? null : focus.id;
+    if (systemFocusId === null) return false;
     const initial = strongestAttractor(position, this.celestialMotions, pivot).id;
     // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
     if (this.find(initial)?.motion.kind === 'star') return true;
-    let current: string | null = initial;
-    // 壊れた親子定義でも停止するよう、登録数を上限にする。
-    for (let i = 0; current !== null && i <= this.entities.length; i++) {
-      if (current === systemFocusId) return true;
-      const motion: CelestialMotion | undefined = this.find(current)?.motion;
-      if (motion === undefined) return false;
-      current = motion.primary?.id ?? null;
-    }
-    return false;
+    return this.ancestorsOf(initial).includes(systemFocusId);
   }
 
   // focusId の親を辿って主星まで遡った id の列(focusId 自身を含む)。

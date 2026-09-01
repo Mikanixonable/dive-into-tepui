@@ -25,7 +25,7 @@
     "src/game/plan/plan.ts",
     "src/game/protein/protein-schema.ts",
     "src/game/protein/protein-combat-state.ts",
-    "src/game/game-entity/contact-damage.ts",
+    "src/game/dynamic/dynamic-entity/contact-damage.ts",
     "src/game/protein/protein-runtime.ts",
     "src/physics/sphere-contact.ts",
     "src/game/creative/placement-validation.ts",
