@@ -5,7 +5,7 @@
 **何を出したいか**(§1)、**何が何から出ているか**(§2)、**どこを触ると何が動くか**(§3)、
 **どこを削ると何が軽くなるか**(§4)。
 
-**相方は [`cloud_rendering.md`](cloud_rendering.md)。** こちらは**場に何を持たせるか**、向こうは
+**相方は [`../better_graphics/cloud_rendering.md`](../better_graphics/cloud_rendering.md)。** こちらは**場に何を持たせるか**、向こうは
 **その場をどう描くか**。
 
 **いまどこに居るか。** 生成側は `src/render/cloud/` にあり、**`cloud-lab` の中だけで動いている。**
