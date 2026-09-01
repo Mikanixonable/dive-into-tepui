@@ -183,27 +183,30 @@ Player」が並立する。
 **覆されたとき:** マーカー4種は `pickable/` の具象クラスのまま残し、手順9(描画責務の集約)を
 落とす。手順2〜6 の内容は変わらない。
 
-### 3. 種別語彙の統合は最初に置く
+### 3. 種別語彙は `DynamicEntityKind` 1つ(実施済み — a77c1cc4)
 
 `MapPickKind` は手順5で消えるが、`DynamicEntityKind` は**消えない** — 表示トグルの引き当て
 (`MapVisibilityPolicy.entity`)・軌道物体一覧の区画キー・ランダム命名・物体配置パネルの
 選択肢という、**表の鍵としての用途**が残る。これは振る舞いの分岐ではないので多態にしない
 (規約 1.8 が天体分類の switch を許しているのと同じ理由)。
 
-その鍵が `'ship'` と `'enemy'` に割れたままだと、手順5で一覧の区画キーを決めるときにどちらを
-採るかを再び迷う。**先に1つへ畳んでから始める。**
+いまコードは次の状態にある。
 
-### 4. 表示トグルのキーも `enemy` へ改名する
+- `dynamic/dynamic-entity/entity-kind.ts` が
+  `DynamicEntityKind = 'player' | 'enemy' | 'ammo' | 'fuel' | 'base'` を持つ唯一の所有者。
+  `ObjectType` は無い。
+- `Player` / `Enemy` / `Base` / `AmmoPickup` / `RcsFuelPickup` が
+  `public readonly mapKind: DynamicEntityKind` を名乗る。基底 `DynamicEntity` は持たない。
+- 表示トグルのキーは `enemyVisible` / `enemyName` / `enemyOrbit`。旧キーは既定値へ落ちる。
+- `MapPickKind` の `'ship'` は `'enemy'` になっている。
 
-`shipVisible` / `shipName` / `shipOrbit` → `enemyVisible` / `enemyName` / `enemyOrbit`。
-これらは `localStorage['tepui.mapDisplayToggles']` へ保存されているが、読み込みは
-`normalizeMapDisplayToggles({ ...DEFAULT_MAP_DISPLAY_TOGGLES, ...parsed })`
-(camera-system.ts:26-37)なので、旧キーは無視されて既定値(すべて `true`)が入る。
-**敵の表示を切っていた人は、更新後の初回だけ表示が戻る。** セーブスロットには入っていないので
-そちらへの影響はない。
+**残った疑問点。** `object-placer-panel.ts` の `objectType`(`ObjectPlacerForm.objectType` /
+`ObjectPlacerPreset` / `openObjectPlacerForDuplicate` の引数)が `DynamicEntityKind` と
+同じものを別の語で指している(規約 2.1 の類義語の混雑)。手順3で `MapCommands.duplicate` を
+通すときに `entityKind` へ揃える。
 
-**覆されたとき:** 手順1でトグルのキーだけ `ship*` のまま残し、`ENTITY_KEYS` の
-`enemy: { category: 'shipVisible', … }` という対応表で吸収する。他の手順は変わらない。
+`dynamic-system.ts` の `applyVisibility` に、分離ブースターが敵トグルへ従っていることへの
+TODO を置いた。挙動は変えていない。
 
 ### 5. `MapCommands` という役割インターフェースを立てる
 
@@ -288,7 +291,10 @@ interface ListSortKey {
 }
 ```
 
-**覆されたとき:** 手順5・6で `MapPickable` に `listDistance(viewer)` 等のメソッドを置き、
+**これは手順2で実施する。** 手順2が `itemRecords` を落とすと派生値の書き込み先が無くなる。
+手順5まで待つと、候補を包む1フレームだけの器を作って捨てることになり、決めたこと1に反する。
+
+**覆されたとき:** 手順2で `MapPickable` に `listDistance(viewer)` 等のメソッドを置き、
 一覧側の派生値を持たない。`compare` の呼び出し回数を実測してから決め直す。
 
 ---
@@ -317,59 +323,6 @@ interface ListSortKey {
 ---
 
 ## 手順
-
-### 手順 1. エンティティ種別の語彙を1つにする
-
-**目的**
-
-「その物体は何か」を表す型を1つにし、所有者を `dynamic/dynamic-entity/` へ移す。敵機を
-`'ship'` と呼ぶ用法を消す。**この時点で挙動は変えない**(表示トグルの localStorage キーだけ
-変わる — 決めたこと 4)。以降の手順が一覧の区画キー・記号・トグル引き当てに使う語彙を、
-ここで確定させる。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `dynamic/dynamic-entity/entity-kind.ts` | **(新規)** `export type DynamicEntityKind = 'player' \| 'enemy' \| 'ammo' \| 'fuel' \| 'base';` のみ。他を import しない(`entity-id.ts` と同じ粒度) |
-| `dynamic/dynamic-entity/dynamic-entity.ts` | 基底には `mapKind` を置かない — `Bullet` / `DebrisPiece` / `DetachedBooster` は種別を持たない。持つ具象だけが宣言する |
-| `player/player.ts` | `readonly mapKind: DynamicEntityKind = 'player'` |
-| `dynamic/dynamic-entity/enemy.ts` | `= 'enemy'` |
-| `dynamic/dynamic-entity/base.ts` | `= 'base'` |
-| `dynamic/dynamic-entity/ammo-pickup.ts` | `= 'ammo'` |
-| `dynamic/dynamic-entity/rcs-fuel-pickup.ts` | `= 'fuel'` |
-| `random-name.ts:5,38` | `ObjectType` の定義を削除して `DynamicEntityKind` を import。`generateRandomName(category: DynamicEntityKind)` |
-| `creative/object-placer-panel.ts:17,32,67,76-77,80,155,187,230,452,601,604` | 再 export(32)を削除(規約 1.6「同じ値へ入口を2つ作らない」)。`OBJECT_TYPE_ITEMS` の値は既に `'enemy'` なので変わらない |
-| `creative/placement-validation.ts:4,93` | import 先を差し替え |
-| `stages/stage.ts:23,98` / `stages/creative-stage.ts:31,240` | 同上 |
-| `map/visibility-policy.ts:8,18-27,142,153` | `DynamicEntityKind` の定義を削除して import。`ENTITY_KEYS` の `ship` キーを `enemy` へ |
-| `map/display-toggles.ts:23-24,54-55,83` | `shipVisible`/`shipName`/`shipOrbit` → `enemyVisible`/`enemyName`/`enemyOrbit` |
-| `hud/panels/view-options-panel.ts:92` | トグルキーの改名に追随 |
-| `dynamic/dynamic-system.ts:414,424,439,448-459` | `entity('ship')` → `entity('enemy')`。**457 の `DetachedBooster` は現状 `'ship'` トグルに従っている** — 挙動を変えずに `entity('enemy')` とし、なぜブースターが敵トグルに従うのかをコメントで明示する。理由が立たなければこの1行は触らず、疑問点として残す |
-| `lines/entity-line-manager.ts:109,120,129` | 同上 |
-| `targeter.ts:163` | `tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship')` → `tgt.mapKind` |
-| `pickable/map-pickable.ts:5` | `MapPickKind` の `'ship'` → `'enemy'`(この型自体は手順5で消える) |
-| `pickable/map-pickables.ts:130,152,164,168,175` | 値の改名 |
-| `pickable/map-pickable-menu.ts:115,411` | 同上 |
-| `pickable/map-context-actions.ts:477,549,680` | 同上 |
-| `pickable/map-property-rows.ts:37,95` | 同上 |
-| `pickable/line-pickables.ts:92` | `ownerKind` の値 |
-| `hud/object-groups.ts:37` | 同上 |
-| `hud/panels/physical-object-list-order.ts:93` | `this.filter === 'enemy'` と `item.kind === 'enemy'` が同じ語になる |
-| `hud/panels/physical-object-list-panel.ts:22` | `SECTIONS` の `{ kind: 'ship' }` → `{ kind: 'enemy' }` |
-| `marker/pick-glyphs.ts:16` | `TEXT_GLYPHS` のキー |
-
-**達成条件と検証**
-
-- `grep -rn "ObjectType" src/` が 0 件。
-- `grep -rn "'ship'" src/` が 0 件。
-- `grep -rn "shipVisible\|shipName\|shipOrbit" src/` が `render/line-style.ts` の
-  `LINE_RENDER_ORDER.shipOrbit`(機体一般の軌道線の描画順)だけになる。
-- `npm run typecheck` / `npm run test:game`。
-- `npm run dev` でマップビューを開き、表示設定パネルの「敵」トグルの3状態(軌道/名前/非表示)が
-  それぞれ効くこと、軌道物体一覧の「敵」区画に敵艦が出ること、絞り込み「敵」が効くことを見る。
-
----
 
 ### 手順 2. `MapPickable` を interface にして、実体・マーカーに実装させる
 
@@ -683,7 +636,6 @@ export interface MapPickable {
 
 | 手順 | 導出 | 見積り |
 | --- | --- | --- |
-| 1 | 改名 25 ファイル × 平均 3 箇所 = 75 箇所 × 0.5 分 + 目視 30 分 | 約 1.5 時間 |
 | 2 | 新規 5 ファイル + 実装 6 クラス + 供給元 5 ファイル + 型追随 8 ファイル + キャッシュ削除 2 箇所 | 約 4 時間 |
 | 3 | 分岐 10 種 × 7.5 分 + `MapCommands` 23 メンバー × 3 分 + 目視 40 分 | 約 3 時間 |
 | 4 | 分岐 9 種 × 7.5 分 + `orbit-rows` 切り出し + 目視 30 分 | 約 2 時間 |
@@ -692,7 +644,7 @@ export interface MapPickable {
 | 7 | `markerItem` 5 箇所 + 読み手 3 箇所 + 目視 20 分 | 約 1.5 時間 |
 | 8 | 609 行を 3 モジュールへ分割 + 呼び出し元 7 ファイル + 目視 40 分 | 約 4 時間 |
 | 9 | sync 4 種 × 20 分 + 目視 30 分 | 約 2 時間 |
-| **合計** | | **約 23.5 時間** |
+| **合計** | | **約 22 時間** |
 
 per-frame の費用の見積り: 候補列の再生成は `mapItems`(負荷確認ウィンドウで観測できる)ぶんの
 オブジェクト生成になる。天体 + ラグランジュ点 + 実体で 200 件規模なら
