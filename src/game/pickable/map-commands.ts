@@ -40,7 +40,7 @@ export interface MapCommands {
   // 操作中の自艦のドッキングを解除する。
   undock(): void;
   // 操作中の自艦と target の間で物資・電力を融通するダイアログを開く。
-  transferResources(target: DynamicEntity): void;
+  transferResources(target: Player): void;
   // state の軌道要素をプリセットした物体配置パネルを、kind の種類で開く。
   duplicate(kind: DynamicEntityKind, state: KinematicState): void;
   // 現在のフォーカスを基準天体の初期値として物体配置パネルを開く。

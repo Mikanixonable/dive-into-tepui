@@ -507,7 +507,7 @@ export class MapContextActions implements MapCommands {
     if (ship) this.docking?.undock(ship);
   }
 
-  transferResources(target: DynamicEntity): void {
+  transferResources(target: Player): void {
     const ship = this.activePlayers.current;
     if (ship) this.docking?.openTransfer(ship, target);
   }
