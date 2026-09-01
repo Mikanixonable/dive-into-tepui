@@ -22,7 +22,6 @@ import { FloatingOrigin } from '../../camera/floating-origin';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { TargetRelativeLine } from '../../lines/target-relative-line';
 import { TrajectoryLine } from '../../lines/trajectory-line';
-import type { OrbitReference } from '../../orbit-reference';
 import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
@@ -41,6 +40,12 @@ import { syncThermalState } from '../../../render/thermal-emissive';
 // 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
 // ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
 const HISTORY_DURATION_MAX = C.DISPLAY_DURATION_MAX;
+
+// エンティティ1体が出している軌道線。楕円と対象への直線は排他で、同時には持たない。
+// center が null なら、毎フレームその瞬間最も強く引いている天体を中心に描く。
+export type OrbitLine =
+  | { readonly kind: 'ellipse'; readonly line: EllipseLine; readonly center: CelestialMotion | null }
+  | { readonly kind: 'relative'; readonly line: TargetRelativeLine; readonly target: DynamicEntity };
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -98,13 +103,9 @@ export class DynamicEntity {
   }
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
-  // 自身の軌道楕円を描く線。null = 持たない。
-  ellipseLine: EllipseLine | null = null;
-  // 戦闘ビューで非質量の艦・基地に表示基準を固定中、ellipseLine の代わりに対象との直線を描く線。
-  // null = 持たない。
-  targetRelativeLine: TargetRelativeLine | null = null;
-  // showEllipseLine で渡された style。targetRelativeLine を遅延生成するときに使い回す。
-  private ellipseLineStyle: LineStyle | null = null;
+  private _orbitLine: OrbitLine | null = null;
+  // 自身の軌道線と、それを描く基準。null = 持たない。
+  get orbitLine(): OrbitLine | null { return this._orbitLine; }
   // 自身の予測軌道を描く線。null = 持たない。
   predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
@@ -218,82 +219,68 @@ export class DynamicEntity {
     return orbitalElementsOf(this.state, center, centerPivot);
   }
 
-  // 軌道楕円(または戦闘ビューで非質量ターゲット固定中の対象への直線)の線を style で出す。
-  // 既に出ていれば style を塗り直す。
-  showEllipseLine(style: LineStyle): void {
-    this.ellipseLineStyle = style;
-    if (this.ellipseLine !== null) {
-      this.ellipseLine.setStyle(style);
-    } else {
-      const line = new EllipseLine(style);
-      this.scene?.add(line.line);
-      this.ellipseLine = line;
+  // 軌道楕円を center 中心(null なら最も強く引く天体)で出す。対象への直線を出していたなら
+  // 捨てて置き換える。
+  showEllipseLine(style: LineStyle, center: CelestialMotion | null): void {
+    const kept = this._orbitLine?.kind === 'ellipse' ? this._orbitLine.line : null;
+    if (kept !== null) {
+      kept.setStyle(style);
+      this._orbitLine = { kind: 'ellipse', line: kept, center };
+      return;
     }
-    this.targetRelativeLine?.setStyle(style);
+    this.hideOrbitLine();
+    const line = new EllipseLine(style);
+    this.scene?.add(line.line);
+    this._orbitLine = { kind: 'ellipse', line, center };
   }
 
-  // 軌道楕円・対象への直線を消す。出し直すと作り直しになる。
-  hideEllipseLine(): void {
-    this.ellipseLineStyle = null;
-    if (this.ellipseLine !== null) {
-      this.scene?.remove(this.ellipseLine.line);
-      this.ellipseLine.dispose();
-      this.ellipseLine = null;
+  // 軌道楕円の代わりに、target とのいまの位置を結ぶ直線を出す。楕円を出していたなら捨てて置き換える。
+  showTargetRelativeLine(style: LineStyle, target: DynamicEntity): void {
+    const kept = this._orbitLine?.kind === 'relative' ? this._orbitLine.line : null;
+    if (kept !== null) {
+      kept.setStyle(style);
+      this._orbitLine = { kind: 'relative', line: kept, target };
+      return;
     }
-    if (this.targetRelativeLine !== null) {
-      this.scene?.remove(this.targetRelativeLine.line);
-      this.targetRelativeLine.dispose();
-      this.targetRelativeLine = null;
-    }
+    this.hideOrbitLine();
+    const line = new TargetRelativeLine(style);
+    this.scene?.add(line.line);
+    this._orbitLine = { kind: 'relative', line, target };
   }
 
-  // 軌道楕円を隠す(相対軌跡モードへ切り替える/状態が求まらないときに使う)。
-  private hideOrbitEllipse(): void {
-    this.ellipseLine?.hide();
+  // 軌道線を消す。出し直すと作り直しになる。
+  hideOrbitLine(): void {
+    if (this._orbitLine === null) return;
+    this.scene?.remove(this._orbitLine.line.line);
+    this._orbitLine.line.dispose();
+    this._orbitLine = null;
   }
 
-  // ellipseLine を表示時刻の状態に合わせる。線を持たなければ何もしない。displayTime が現在時刻
-  // より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。orbitRef が非質量の艦・基地
-  // ターゲットを指すのは戦闘ビューだけ(EntityLineManager がマップビューでは orbitRef を渡さない)
-  // ので、context.orbitRef の有無だけで戦闘ビュー/マップビューを判別できる。
-  syncEllipseLine(
+  // 軌道線を表示時刻の状態に合わせる。線を持たなければ何もしない。displayTime が現在時刻より
+  // 先なら、表示用の予測状態を使って船体と同じ時刻に揃える。対象への直線は未来予測に依存しない
+  // ので、対象の未来が引けなければ対象のいまの位置で結ぶ。
+  syncOrbitLine(
     displayTime: number, celestialSystem: CelestialSystem, fo: FloatingOrigin, camera: THREE.Camera,
-    frameAnchors: FrameAnchorSource, orbitRef: OrbitReference | undefined,
+    frameAnchors: FrameAnchorSource,
   ): void {
-    if (this.ellipseLine === null && this.targetRelativeLine === null) return;
+    const orbitLine = this._orbitLine;
+    if (orbitLine === null) return;
     const state = this.stateAt(displayTime, celestialSystem);
     if (state === null) {
-      // 表示時刻の状態が求まらない: 両方隠す。
-      this.hideOrbitEllipse();
-      this.targetRelativeLine?.hide();
+      orbitLine.line.hide();
       return;
     }
-    // 非質量の艦・基地に固定中で、自分自身がその対象でなければ対象への直線モード。
-    const relativeTarget = orbitRef?.fixed && !orbitRef.hasMass ? orbitRef.entity : null;
-    if (relativeTarget !== null && relativeTarget !== this) {
-      this.hideOrbitEllipse();
-      if (this.targetRelativeLine === null && this.ellipseLineStyle !== null) {
-        const line = new TargetRelativeLine(this.ellipseLineStyle);
-        this.scene?.add(line.line);
-        this.targetRelativeLine = line;
-      }
-      const targetPos = relativeTarget.stateAt(displayTime, celestialSystem)?.r ?? relativeTarget.state.r;
-      this.targetRelativeLine?.sync(state.r, targetPos, fo, camera);
+    if (orbitLine.kind === 'relative') {
+      const { target } = orbitLine;
+      const targetPos = target.stateAt(displayTime, celestialSystem)?.r ?? target.state.r;
+      orbitLine.line.sync(state.r, targetPos, fo, camera);
       return;
     }
-    this.targetRelativeLine?.hide();
-    // 艦・基地以外の非質量対象(ラグランジュ点など)、または自分自身が対象のときは楕円も出さない。
-    if (orbitRef?.fixed && !orbitRef.hasMass) {
-      this.hideOrbitEllipse();
-      return;
-    }
-    // 質量天体に固定中はその天体中心、自動選択(未固定)なら自身にとって最も強く引く天体を中心に描く。
-    const center = orbitRef?.fixed && orbitRef.attractor
-      ? orbitRef.attractor
-      : strongestAttractor(state.r, frameAnchors.bodies, frameAnchors.bodiesPivot);
+    const center = orbitLine.center
+      ?? strongestAttractor(state.r, frameAnchors.bodies, frameAnchors.bodiesPivot);
     const elements = orbitalElementsOf(state, center, frameAnchors.bodiesPivot);
-    if (elements === null) this.hideOrbitEllipse();
-    else this.ellipseLine?.sync(elements, fo, camera);
+    if (elements === null) orbitLine.line.hide();
+    else orbitLine.line.sync(elements, fo, camera);
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
@@ -629,7 +616,7 @@ export class DynamicEntity {
   dispose(): void {
     this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
-    this.hideEllipseLine();
+    this.hideOrbitLine();
     this.hidePredictedLine();
     this.hideActualLine();
     disposeOwnedRenderResources(this.renderObject);

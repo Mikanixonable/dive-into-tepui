@@ -74,12 +74,9 @@ export class LinePickables {
     if (!entity.alive) return;
     let method: LineCalcMethod;
     let points: Vec3[];
-    if (entity.targetRelativeLine !== null) {
+    if (entity.orbitLine !== null) {
       method = 'analytic';
-      points = [...entity.targetRelativeLine.samplePoints(ORBIT_PICK_SAMPLES)];
-    } else if (entity.ellipseLine !== null) {
-      method = 'analytic';
-      points = [...entity.ellipseLine.samplePoints(ORBIT_PICK_SAMPLES)];
+      points = [...entity.orbitLine.line.samplePoints(ORBIT_PICK_SAMPLES)];
     } else if (entity.predictedLine !== null || entity.actualLine !== null) {
       method = 'predicted';
       const frames = this.celestialSystem.frames;
