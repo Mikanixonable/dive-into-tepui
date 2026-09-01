@@ -2,7 +2,7 @@ import type {
   ProteinActionDefinition, ProteinAssetDefinition, ProteinHudSnapshot, ProteinPhase, ProteinSaveData, ProteinSiteDefinition,
 } from './protein-schema';
 
-export interface ProteinDamageResult {
+interface ProteinDamageResult {
   readonly target: 'site' | 'integrity';
   readonly siteId: string | null;
   readonly damage: number;

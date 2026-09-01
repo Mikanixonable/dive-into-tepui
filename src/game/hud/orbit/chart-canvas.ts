@@ -8,7 +8,7 @@ export interface BackingStoreState {
   dpr: number;
 }
 
-export const CHART_ASPECT_RATIO = '16 / 9';
+const CHART_ASPECT_RATIO = '16 / 9';
 export const CHART_LINE_WIDTH = 1.5;
 export const CHART_MARK_RADIUS = 3;
 export const CHART_MARK_RING_WIDTH = 1;

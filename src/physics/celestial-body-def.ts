@@ -53,7 +53,7 @@ export type Degree2GravityDef = {
 
 // 2次重力場の非軸対称成分(赤道断面の楕円性)を、ある時刻の姿勢へ解決した形。主軸座標系で
 // 表すため S22 は恒等的に 0 になり、長軸の向きだけで姿勢が決まる。
-export type TesseralGravity = {
+type TesseralGravity = {
   readonly c22: number;
   readonly longAxis: Vec3; // 主軸座標系の長軸(単位ベクトル、ECI)
 };

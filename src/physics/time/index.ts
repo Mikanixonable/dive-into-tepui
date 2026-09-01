@@ -12,10 +12,10 @@
  * this module does not claim complete UTC leap-second support.
  */
 
-export type TimeScale = 'UTC' | 'TT' | 'TDB';
-export type EphemerisScale = 'TT' | 'TDB';
+type TimeScale = 'UTC' | 'TT' | 'TDB';
+type EphemerisScale = 'TT' | 'TDB';
 
-export interface CalendarFields {
+interface CalendarFields {
   readonly year: number;
   readonly month: number;
   readonly day: number;
@@ -24,16 +24,16 @@ export interface CalendarFields {
   readonly second: number;
 }
 
-export type CalendarDate<S extends TimeScale = TimeScale> = CalendarFields & { readonly scale: S };
-export type UtcCalendarDate = CalendarDate<'UTC'>;
+type CalendarDate<S extends TimeScale = TimeScale> = CalendarFields & { readonly scale: S };
+type UtcCalendarDate = CalendarDate<'UTC'>;
 
-export interface JulianDate<S extends TimeScale = TimeScale> {
+interface JulianDate<S extends TimeScale = TimeScale> {
   readonly value: number;
   readonly scale: S;
 }
 
-export type UtcJulianDate = JulianDate<'UTC'>;
-export type TtJulianDate = JulianDate<'TT'>;
+type UtcJulianDate = JulianDate<'UTC'>;
+type TtJulianDate = JulianDate<'TT'>;
 export type TdbJulianDate = JulianDate<'TDB'>;
 
 /**
@@ -53,7 +53,7 @@ export interface TdbOffsetProvider {
 
 export type AstronomicalTimeOffsetProvider = UtcOffsetProvider & TdbOffsetProvider;
 
-export const TT_MINUS_TAI_SECONDS = 32.184;
+const TT_MINUS_TAI_SECONDS = 32.184;
 export const J2000_JULIAN_DATE = 2451545.0;
 export const SECONDS_PER_DAY = 86400;
 
@@ -74,7 +74,7 @@ function assertScale(scale: string): asserts scale is TimeScale {
   }
 }
 
-export function daysInMonth(year: number, month: number): number {
+function daysInMonth(year: number, month: number): number {
   if (!isInteger(year)) throw new RangeError('year must be an integer');
   if (!isInteger(month) || month < 1 || month > 12) throw new RangeError('month must be an integer from 1 to 12');
   if (month === 2) return isGregorianLeapYear(year) ? 29 : 28;

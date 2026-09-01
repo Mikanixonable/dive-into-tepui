@@ -27,7 +27,7 @@ const GHOST_TAPS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0,
 // ゴーストの読み元。**締まったものから順に、1 段ずつ粗くなる縮小段を 3 枚と、滲みの像を 1 枚。**
 // 滲みの像は、解像度は 1 枚目と同じまま中身が画面いっぱいへ広がっているので、倍率を上げて光軸へ
 // 寄せても大きく薄いままでいる。
-export type GhostSources = readonly [THREE.Texture, THREE.Texture, THREE.Texture, THREE.Texture];
+type GhostSources = readonly [THREE.Texture, THREE.Texture, THREE.Texture, THREE.Texture];
 // 読み元 1 テクセルが、ゴーストの出力の何テクセルにあたるか。**ぼけ具合ではなく解像度の比**で、
 // タップの間隔をこれに合わせることが、像が 4 つへ割れないことを担保している。
 const GHOST_SOURCE_TEXELS: readonly [number, number, number, number] = [1, 2, 4, 1];

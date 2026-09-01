@@ -27,7 +27,7 @@ export interface BurnManagementViewModel {
   readonly burnStateDescription?: string;
 }
 
-export interface BurnManagementPanelHandlers {
+interface BurnManagementPanelHandlers {
   readonly onAttach?: () => void;
   readonly onToggleIgnition?: () => void;
   readonly onDecouple?: () => void;

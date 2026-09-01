@@ -5,7 +5,7 @@
 export const PROTEIN_MOTION_LODS = ['near', 'medium', 'far', 'marker'] as const;
 export type ProteinMotionLod = (typeof PROTEIN_MOTION_LODS)[number];
 
-export type ProteinMotionLodCounts = Readonly<Record<ProteinMotionLod, number>>;
+type ProteinMotionLodCounts = Readonly<Record<ProteinMotionLod, number>>;
 
 export interface ProteinMotionFrameSample {
   /** Motion controller が費やした CPU 時間 [ms]。render 全体の時間は含めない。 */
@@ -16,7 +16,7 @@ export interface ProteinMotionFrameSample {
   readonly lodCounts: Partial<ProteinMotionLodCounts>;
 }
 
-export interface ProteinMotionMetricsSink {
+interface ProteinMotionMetricsSink {
   record(sample: ProteinMotionFrameSample): void;
 }
 
@@ -27,7 +27,7 @@ export interface ProteinMotionMetricSummary {
   readonly lodCounts: ProteinMotionLodCounts;
 }
 
-export interface MetricDistribution {
+interface MetricDistribution {
   readonly avg: number;
   readonly p50: number;
   readonly p95: number;

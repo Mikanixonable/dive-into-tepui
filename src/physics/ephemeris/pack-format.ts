@@ -38,13 +38,13 @@
 import type { EphemerisPointKind } from './point';
 import type { ChebyshevPack } from './pack-types';
 
-export const EPHEMERIS_PACK_MAGIC = 'TEPUIEPK';
-export const EPHEMERIS_PACK_FORMAT = 'tepui-ephemeris-pack';
+const EPHEMERIS_PACK_MAGIC = 'TEPUIEPK';
+const EPHEMERIS_PACK_FORMAT = 'tepui-ephemeris-pack';
 export const EPHEMERIS_PACK_VERSION = 1;
-export const EPHEMERIS_PACK_MINOR_VERSION = 0;
-export const EPHEMERIS_PACK_HEADER_BYTES = 32;
+const EPHEMERIS_PACK_MINOR_VERSION = 0;
+const EPHEMERIS_PACK_HEADER_BYTES = 32;
 
-export interface PackSegment {
+interface PackSegment {
   readonly body: string;
   readonly start: number;
   readonly end: number;
@@ -53,7 +53,7 @@ export interface PackSegment {
   readonly coefficientCount: number;
 }
 
-export interface PackManifest {
+interface PackManifest {
   readonly format: typeof EPHEMERIS_PACK_FORMAT;
   readonly version: typeof EPHEMERIS_PACK_VERSION;
   readonly frame: 'ICRF-J2000';
@@ -71,9 +71,9 @@ export interface PackManifest {
   readonly [key: string]: unknown;
 }
 
-export type PackManifestBase = Omit<PackManifest, 'series'>;
+type PackManifestBase = Omit<PackManifest, 'series'>;
 
-export interface ChebyshevSegmentInput {
+interface ChebyshevSegmentInput {
   readonly body: string;
   readonly start: number;
   readonly end: number;

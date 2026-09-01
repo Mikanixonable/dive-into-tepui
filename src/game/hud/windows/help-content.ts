@@ -9,8 +9,8 @@ import type { WorldView } from '../../view-manager';
 
 export type HelpInput = 'keyboard' | 'mouse' | 'touch';
 export type HelpCategory = 'basic' | 'combat' | 'camera' | 'time' | 'map' | 'ui' | 'gesture';
-export type HelpScope = WorldView | 'both';
-export type HelpBehavior = 'press' | 'hold' | 'toggle' | 'drag' | 'gesture';
+type HelpScope = WorldView | 'both';
+type HelpBehavior = 'press' | 'hold' | 'toggle' | 'drag' | 'gesture';
 
 export interface HelpEntry {
   readonly id: string;

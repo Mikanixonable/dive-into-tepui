@@ -3,9 +3,9 @@
 // 併用する。各 CSS ファイルはここが export するメディアクエリ文字列だけを参照し、
 // 900px/520px 等の閾値を自分では書かない。
 
-export const COMPACT_MAX_WIDTH = 759; // これ以下が compact。
-export const MEDIUM_MAX_WIDTH = 1183; // これ以下が medium(compact を含む)。
-export const SHORT_MAX_HEIGHT = 499; // これ以下が short。
+const COMPACT_MAX_WIDTH = 759; // これ以下が compact。
+const MEDIUM_MAX_WIDTH = 1183; // これ以下が medium(compact を含む)。
+const SHORT_MAX_HEIGHT = 499; // これ以下が short。
 
 export const MQ_COARSE = '(pointer: coarse)';
 export const MQ_SHORT = `(max-height: ${SHORT_MAX_HEIGHT}px)`;
@@ -18,7 +18,7 @@ export const MQ_COMPACT = `(max-width: ${COMPACT_MAX_WIDTH}px)`;
 export const MQ_COARSE_SHORT = `${MQ_COARSE} and ${MQ_SHORT}`;
 
 // 現在のビューポート幅が compact かどうかをその場で判定する。pointer:coarse の判定
-// (pointer-precision.ts の isCoarsePointer)と異なり起動時に固定せず毎回評価する —
+// (pointer-precision.ts)と異なり起動時に固定せず毎回評価する —
 // 画面幅は回転・リサイズで実際に変わるため、頻繁に呼ばれる per-frame の経路ではなく
 // パネルを開く/組み立てるという離散的な瞬間に読む前提とし、都度の再評価で構わない。
 export function isCompactViewport(): boolean {

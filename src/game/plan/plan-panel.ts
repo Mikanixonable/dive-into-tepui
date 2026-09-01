@@ -10,7 +10,7 @@ import { fmtDist, fmtTime } from '../hud/utils';
 import { hudRail } from '../hud/hud-root';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 
-export interface DvButtons {
+interface DvButtons {
   readonly pro: HoldButton;
   readonly ret: HoldButton;
   readonly nrm: HoldButton;
@@ -19,7 +19,7 @@ export interface DvButtons {
   readonly in: HoldButton;
 }
 
-export interface PlanPanelNodeRow {
+interface PlanPanelNodeRow {
   readonly tRel: number;
   readonly dvMag: number;
   readonly selected: boolean;

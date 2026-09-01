@@ -1,9 +1,9 @@
-export type ProteinVec3 = readonly [number, number, number];
-export type ProteinSource = 'author' | 'computed' | 'game';
-export type ProteinSiteType = 'active' | 'interface' | 'core' | 'modification';
+type ProteinVec3 = readonly [number, number, number];
+type ProteinSource = 'author' | 'computed' | 'game';
+type ProteinSiteType = 'active' | 'interface' | 'core' | 'modification';
 export type ProteinPhase = 'intact' | 'exposed' | 'dissociated' | 'critical';
 
-export interface ProteinComponentDefinition {
+interface ProteinComponentDefinition {
   readonly id: string;
   readonly chains: readonly string[];
   readonly entities: readonly number[];
@@ -36,12 +36,12 @@ export interface ProteinActionDefinition {
   readonly kind: 'projectile';
 }
 
-export interface ProteinBondDefinition {
+interface ProteinBondDefinition {
   readonly from: string;
   readonly to: string;
 }
 
-export interface ProteinLigandDefinition {
+interface ProteinLigandDefinition {
   readonly id: string;
   readonly label: string;
   /** Three-letter residue name used by the structure asset (for example HEM). */
@@ -107,7 +107,7 @@ export interface ProteinMotionAsset {
   readonly amplitudeCalibration: 'b-factor-relative' | 'uncalibrated-display';
 }
 
-export interface ProteinMotionExpectedCounts {
+interface ProteinMotionExpectedCounts {
   readonly atomResidues: number;
   readonly backboneResidues: number;
   readonly surfaceResidues: number;
@@ -136,7 +136,7 @@ export interface ProteinAssetDefinition {
   readonly modificationSlots: readonly ProteinModificationDefinition[];
 }
 
-export interface ProteinSiteSaveData {
+interface ProteinSiteSaveData {
   id: string;
   hp: number;
   disabled: boolean;

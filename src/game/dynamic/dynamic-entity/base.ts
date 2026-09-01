@@ -89,7 +89,7 @@ export interface DockedVesselEntry {
   slotIndex: number;
 }
 
-export interface BaseState {
+interface BaseState {
   money: number;
   inventory: AnyPart[];
   dockedVessels: DockedVesselEntry[];

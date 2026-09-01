@@ -10,7 +10,7 @@ import { KinematicState } from './kinematic-state';
 import { Vec3, add, len, scale, v3 } from '../math/vec3';
 
 // 区間内で表面を跨いだ瞬間。
-export interface SurfaceCrossing {
+interface SurfaceCrossing {
   readonly toi: number; // 区間内の割合 0..1
   readonly normal: Vec3; // a から b へ向く接触法線
 }

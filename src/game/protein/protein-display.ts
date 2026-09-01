@@ -1,6 +1,6 @@
 export type ProteinRepresentation = 'molecular' | 'ribbon' | 'silhouette';
 
-export type ProteinMolecularColorMode = 'element';
+type ProteinMolecularColorMode = 'element';
 export type ProteinRibbonColorMode =
   | 'chain'
   | 'b-factor'

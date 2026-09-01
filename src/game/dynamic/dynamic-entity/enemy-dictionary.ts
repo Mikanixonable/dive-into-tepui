@@ -5,7 +5,7 @@ import { type EnemyClass } from './enemy';
 import { MetalEnemy } from './metal-enemy';
 import { ProteinEnemy } from './protein-enemy';
 
-export const ENEMY_CLASSES: readonly EnemyClass[] = [MetalEnemy, ProteinEnemy];
+const ENEMY_CLASSES: readonly EnemyClass[] = [MetalEnemy, ProteinEnemy];
 
 // セーブ由来の未検証文字列を含む種別タグから敵クラスを引く。該当が無ければ null。
 export function findEnemyClass(kind: string): EnemyClass | null {

@@ -44,7 +44,7 @@ const OVERVIEW_CAMERA_FAR_RATIO = 100;
 
 // 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
 // far の外に出ないための下限。
-export const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
+const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
 
 // OVERVIEW_CAMERA_MAX_DIST × OVERVIEW_CAMERA_FAR_RATIO と等しい値。これより小さいと
 // 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
@@ -66,7 +66,7 @@ const FRAME_UP = v3(0, 1, 0);
 const FRAME_RIGHT = v3(1, 0, 0);
 const EULER_PITCH_LIMIT = Math.PI / 2 - 1e-3;
 
-export type CameraRotationMode = 'quaternion' | 'euler';
+type CameraRotationMode = 'quaternion' | 'euler';
 export type CameraReferencePlane = 'ecliptic' | 'equator' | 'moonOrbit';
 export type CameraReferenceView = 'above' | 'side';
 

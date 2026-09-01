@@ -41,7 +41,7 @@ function createHudElement(tag: string, id: string, parent: HTMLElement, classNam
   return element;
 }
 
-export interface HudDomRefs {
+interface HudDomRefs {
   readonly root: HTMLElement;
   readonly layers: OverlayLayers;
   readonly combatRoot: HudWorldRoot;
@@ -53,7 +53,7 @@ export interface HudDomRefs {
 }
 
 /** 戦闘/マップそれぞれが所有する HUD の DOM ルート。 */
-export interface HudWorldRoot {
+interface HudWorldRoot {
   readonly element: HTMLElement;
   readonly leftRail: HTMLElement;
   readonly rightRail: HTMLElement;

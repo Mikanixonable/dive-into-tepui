@@ -43,9 +43,6 @@ export const MUZZLE_OFFSETS: { x: number; y: number; z: number }[] = [
   { x: 0, y: -0.55, z: 2.55 },
 ];
 
-// ラジエーターのヒンジ Group 名(機体座標系)。getObjectByName() で引く。
-export const RADIATOR_OBJECT_NAMES = { up: 'radiatorUp', down: 'radiatorDown' } as const;
-
 // 蛇腹1折りの一辺 [m]。tools/export-models.mjs と一致させる。
 export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
 
@@ -73,7 +70,7 @@ const loader = new THREE.ObjectLoader();
 // そうした用途のテンプレートは clone のたびに traverse してマテリアルを
 // 複製し直す。ここで扱うテンプレート自体は opacity 等を実行時に書き換えない
 // ものばかりだが、将来の変更に備えて一律で安全側(非共有)にしておく。
-export function cloneIndependent<T extends THREE.Object3D>(template: T): T {
+function cloneIndependent<T extends THREE.Object3D>(template: T): T {
   const clone = template.clone(true) as T;
   // 各メッシュのマテリアルを独立に複製する
   clone.traverse((child) => {

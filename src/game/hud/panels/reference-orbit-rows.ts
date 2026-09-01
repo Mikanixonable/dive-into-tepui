@@ -12,7 +12,7 @@ import type {
   CriticalInclinationSettings, DawnDuskSettings, DirectionMarkerMode, LocalTime, SunSyncSettings,
 } from '../../celestial/orbit-guide/orbit-guide-settings';
 
-export interface ReferenceOrbitRow {
+interface ReferenceOrbitRow {
   readonly heading: Button;
   readonly configPanel: HTMLElement;
   readonly colorInput: ValueInput;

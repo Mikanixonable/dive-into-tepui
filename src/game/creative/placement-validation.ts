@@ -11,7 +11,7 @@ export type PlacementFieldId =
 
 export type PlacementFieldIssue = { field: PlacementFieldId; message: string };
 
-export type EllipticSizeInput =
+type EllipticSizeInput =
   | { sizeMode: 'apsides'; peAltKm: number; apAltKm: number }
   | { sizeMode: 'semiMajorEcc'; semiMajorKm: number; eccentricity: number }
   | { sizeMode: 'periodEcc'; periodHours: number; eccentricity: number };
@@ -69,7 +69,7 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
   return issues;
 }
 
-export type LagrangePlacementInput =
+type LagrangePlacementInput =
   | { orbitKind: 'halo'; outOfPlaneAmplitudeKm: number }
   | { orbitKind: 'lissajous'; inPlaneAmplitudeKm: number; outOfPlaneAmplitudeKm: number };
 

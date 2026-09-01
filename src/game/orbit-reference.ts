@@ -25,7 +25,7 @@ export interface OrbitReference {
 
 // エンティティ1体の軌道線を何基準で描くか(ORBIT.md「軌道線(3D描画)の基準天体は、戦闘ビューと
 // マップビューで扱いが異なる」)。center が null なら、その瞬間最も強く引いている天体を中心にする。
-export type OrbitLineBasis =
+type OrbitLineBasis =
   | { readonly kind: 'ellipse'; readonly center: CelestialMotion | null }
   | { readonly kind: 'relative'; readonly target: DynamicEntity }
   | { readonly kind: 'none' };

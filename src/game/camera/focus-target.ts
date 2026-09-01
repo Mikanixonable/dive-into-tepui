@@ -38,7 +38,7 @@ export interface FocusResolveState {
   readonly lastResolvedFocus: Vec3;
 }
 
-export interface FocusResolveResult {
+interface FocusResolveResult {
   readonly pos: Vec3;
   readonly missingFocusFrames: number;
   readonly lastResolvedFocus: Vec3;

@@ -60,14 +60,14 @@ type SegmentSource = { arc: PredictedArc | null; from: number; to: number; owned
 // 最後のバーン後(これから乗る軌道)の区間で見つかったアプシス。
 // periapsis/apoapsis は、区間が地表到達等で打ち切られてその極値へ届かなければ null。
 // apsisCenter はその極値を検出した弧自身が答える中心天体。
-export interface FinalSegment {
+interface FinalSegment {
   readonly periapsis: KinematicState | null;
   readonly apoapsis: KinematicState | null;
   readonly periapsisCenter: CelestialMotion | null;
   readonly apoapsisCenter: CelestialMotion | null;
 }
 
-export interface PlanPathSample {
+interface PlanPathSample {
   readonly state: KinematicState;
   readonly arcIdx: number;
 }

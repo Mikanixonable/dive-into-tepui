@@ -27,7 +27,7 @@ const HATCH_DOCK_MIN_ALIGNMENT = 0.5;  // ハッチ正面コーンの最小内�
 const SLOT_DOCK_MAX_DIST = 50;         // 各ドックスロット前での最大ドッキング距離 [m]
 const SLOT_DOCK_MIN_ALIGNMENT = 0.5;   // スロット正面コーンの最小内積 (cos 60° = 0.5)
 
-export type DockingCandidateKind = 'slot' | 'hatch' | 'ship';
+type DockingCandidateKind = 'slot' | 'hatch' | 'ship';
 
 // 判定とガイドが共有する接続点の評価結果。canDock だけでなく各残差を公開することで、
 // 未整合・速度超過の接近もガイドに表示できる。

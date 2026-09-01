@@ -4,7 +4,7 @@ import { fmtDateTime, fmtDuration } from '../utils';
 // 目盛階数。数が大きいほど粗い単位 — 0:1時間 1:3時間 2:6時間 3:12時間 4:1日 5:1月 6:1年。
 export type TickRank = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
-export interface CalendarTick {
+interface CalendarTick {
   readonly unix: number;
   readonly rank: TickRank;
 }
@@ -193,7 +193,7 @@ export function tickLabel(
 // 'relative' は目盛りと同じ T+/- 形式、'absolute' は PREDICT パネルの絶対時刻表示と同じ
 // ISO 風の書式(ランの元期基準)を使う——暦の区切りに揃っていない任意の瞬間を表すため、
 // tickLabel の rank 依存の粗い書式(HH:00 など)よりこちらが適する。
-export function elementTimeLabel(simTimeT: number, label: TimeLabelSetting): string {
+function elementTimeLabel(simTimeT: number, label: TimeLabelSetting): string {
   if (label.mode === 'relative') {
     const delta = simTimeT - label.nowSimTime;
     const mag = Math.abs(delta);

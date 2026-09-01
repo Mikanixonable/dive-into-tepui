@@ -36,7 +36,7 @@ import type { PredictedArc } from '../dynamic/predicted-arc';
 import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
-export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
+const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 
 const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
 const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)

@@ -8,7 +8,7 @@ import { ContactGeometry, sphereContactGeometry } from './collision-response';
 import { KinematicState } from './kinematic-state';
 
 // 区間内で最初に触れた天体と、その接触の幾何。
-export interface SurfaceContact {
+interface SurfaceContact {
   readonly body: CelestialMotion;
   readonly geometry: ContactGeometry;
 }
