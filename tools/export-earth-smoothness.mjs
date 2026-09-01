@@ -21,8 +21,8 @@ import { encodeGrayPng } from './png.mjs';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePath = join(repoRoot, 'src', 'assets', 'earth.jpg');
 const outPath = join(repoRoot, 'src', 'assets', 'earth-smoothness.png');
-const port = 8768;
-const debugPort = 9445;
+const port = 8770;
+const debugPort = 9447;
 
 // 出力の大きさ。地表テクスチャ(8192×4096)の半分。ハイライトの広がりは波面の傾斜が決めていて
 // 海岸線の形では変わらないので、水陸の境が読める細かさがあればよい。
