@@ -7,7 +7,6 @@ import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
@@ -30,6 +29,8 @@ const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
 
 export const BARREL_MASS = 300; // [kg]
 
+export const MAG_ROUNDS = 32; // 1 マガジンの装弾数
+export const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
 const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
 const BULLET_SPREAD = 0.002; // 散布界 [rad]
 
@@ -66,8 +67,8 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 }
 
 export class PlayerFire {
-  rounds = C.MAG_ROUNDS;
-  mags = C.INITIAL_MAGS - 1;
+  rounds = MAG_ROUNDS;
+  mags = INITIAL_MAGS - 1;
   barrel = MAGS_PER_BARREL;
 
   // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。交換で切り離すときに
@@ -127,14 +128,14 @@ export class PlayerFire {
     this.mags += mags;
     if (this.rounds <= 0) { // 弾切れ状態だったならすぐにリロードする
       this.mags--;
-      this.rounds = C.MAG_ROUNDS;
+      this.rounds = MAG_ROUNDS;
     }
   }
 
   // 装填中の残弾・予備マガジン・バレル寿命を初期積載の状態まで満タンにする。
   refillFull(): void {
-    this.rounds = C.MAG_ROUNDS;
-    this.mags = C.INITIAL_MAGS - 1;
+    this.rounds = MAG_ROUNDS;
+    this.mags = INITIAL_MAGS - 1;
     this.barrel = MAGS_PER_BARREL;
   }
 
@@ -245,7 +246,7 @@ export class PlayerFire {
 
     // マガジンを撃ち尽くしたので次のマガジンへ
     this.mags--;
-    this.rounds = C.MAG_ROUNDS;
+    this.rounds = MAG_ROUNDS;
     this.barrel--;
     if (this.barrel > 0) return 'mag-reload';
 
@@ -258,10 +259,10 @@ export class PlayerFire {
     if (this.cooldown > 0) return false;
 
     // 予備マガジンがあり、かつ装填中のマガジンに実際に補充の余地があるときだけリロードする
-    const canReload = this.mags > 0 && this.rounds < C.MAG_ROUNDS;
+    const canReload = this.mags > 0 && this.rounds < MAG_ROUNDS;
     if (!canReload) return false;
     this.mags--;
-    this.rounds = C.MAG_ROUNDS;
+    this.rounds = MAG_ROUNDS;
     this.barrel = MAGS_PER_BARREL;
     this.cooldown = RELOAD_TIME;
     this._worldSfx.playReload();

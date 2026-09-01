@@ -1,7 +1,7 @@
 import { Button } from '../widgets';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../../dynamic/dynamic-entity/parts';
-import * as C from '../../const';
 import { PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL, MUZZLE_SPEED, FIRE_INTERVAL, ENEMY_BULLET_DAMAGE } from '../../dynamic/dynamic-entity/ship';
+import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/player-throttle';
 
 // 基地パネルの3タブ(格納艦艇/部品/ショップ)が共有する処理を持つ。
 // ショップカタログ・売却額・補給額といった価格計算と、dock-btn の見た目や
@@ -21,8 +21,8 @@ interface PartCatalogEntry {
 // SHOP_CATALOG の各値は、新造時の既定艦(重量 100 / 推力 PLAYER_MASS×最大スロットル /
 // 冷却 25 / 発電 50 / 発射レート 1÷FIRE_INTERVAL)と単位・桁を合わせる。ずれると、
 // 換装した瞬間に推力や耐久が別物になる。
-const DEFAULT_TORQUE = C.MAX_ANG_ACCEL * Math.max(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL);
-const DEFAULT_THRUST = PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
+const DEFAULT_TORQUE = MAX_ANG_ACCEL * Math.max(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL);
+const DEFAULT_THRUST = PLAYER_MASS * THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1]!;
 export const SHOP_CATALOG: readonly PartCatalogEntry[] = [
   { type: 'hull', name: 'Standard Hull', price: 5000, weight: 80, maxHp: 300, props: {} },
   { type: 'hull', name: 'Reinforced Hull', price: 12000, weight: 180, maxHp: 600, props: {} },

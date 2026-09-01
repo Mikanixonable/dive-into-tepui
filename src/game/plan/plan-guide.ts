@@ -14,6 +14,7 @@ import { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
 import type { Player } from '../player/player';
 import type { PlanPath } from './plan-path';
+import { THROTTLE_LEVELS } from '../player/player-throttle';
 
 // マニューバ達成判定(計画軌道への接近許容)
 const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
@@ -75,7 +76,7 @@ export class PlanGuide {
     const dvRem = sub(node.v, player.state.v);
     const mag = len(dvRem);
     const nodeDist = len(sub(node.r, player.state.r));
-    const maxAccel = C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1] ?? 1;
+    const maxAccel = THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1] ?? 1;
     const burnTime = maxAccel > 0 ? mag / maxAccel : 0;
     const shipPos = path.toDisplay(player.state.r, simTime);
     const burnDir = path.toDisplayDir(dvRem, simTime);
