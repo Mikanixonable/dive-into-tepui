@@ -40,8 +40,11 @@ import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-po
 import { currentThemePalette } from '../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/marker-manager';
+import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
+import type { MapCommands } from '../../pickable/map-commands';
+import type { MenuItem } from '../../hud/windows/context-menu';
 
 export const BASE_MAX_VESSELS = 4; // 基地が保有・格納できる艦艇の最大数
 const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
@@ -417,5 +420,55 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
     celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
   ): string {
     return this.listDetail(celestialSystem, activePlayer, displayTime);
+  }
+
+  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
+  public mapMenuItems(
+    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[] {
+    const { money, dockedVessels } = this.baseState;
+    const subLabel = `基地 / 所持金: ${money.toLocaleString()} Cr / 格納艦艇: ${dockedVessels.length}隻`;
+    const controlItem: MenuItem<MenuAction> = commands.controlledBase === this
+      ? { label: '操作対象を解除', act: 'deactivate' }
+      : { label: '操作対象にする', act: 'activate' };
+    const dockItems: readonly MenuItem<MenuAction>[] =
+      commands.dockState(this) === 'dockable' ? [MenuCommon.dock()] : [];
+
+    return [
+      { type: 'header', label: this.name, subLabel },
+      ...MenuCommon.targetItems(commands, this.id, simTime),
+      controlItem,
+      ...dockItems,
+      {
+        label: commands.isBasePanelExpanded(this) ? '基地パネルを収納' : '基地パネルを展開',
+        act: 'toggleBasePanel', keepOpen: true,
+      },
+      MenuCommon.focus(),
+      MenuCommon.trajectoryLine(this.showTrajectoryLine),
+      ...MenuCommon.duplicateItems(commands),
+      { label: '削除', act: 'delete' },
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // 選ばれた操作を実行する。自分が出していない act では何もしない。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    if (act === 'activate') {
+      commands.setControlledBase(this);
+    } else if (act === 'deactivate') {
+      if (commands.controlledBase === this) commands.setControlledBase(null);
+    } else if (act === 'toggleTrajectoryLine') {
+      this.showTrajectoryLine = !this.showTrajectoryLine;
+    } else if (act === 'dock') {
+      commands.dock(this);
+    } else if (act === 'delete') {
+      commands.removeBase(this);
+    } else if (act === 'duplicate') {
+      commands.duplicate(this.mapKind, this.state);
+    } else if (act === 'focus') {
+      commands.focus(this.id, this.name);
+    } else if (act === 'target') {
+      commands.toggleNavTarget(this.id, this.name);
+    }
   }
 }

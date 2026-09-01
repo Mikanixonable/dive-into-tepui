@@ -26,7 +26,10 @@ import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { EnemySaveData } from '../../save/save-data';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import { MARKER_PRIORITY, type MarkerManager } from '../../marker/marker-manager';
+import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
+import type { MapCommands } from '../../pickable/map-commands';
+import type { MenuItem } from '../../hud/windows/context-menu';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
@@ -466,5 +469,28 @@ export abstract class Enemy extends Ship implements MapPickable {
     if (activePlayer === null) return false;
     const d = len(sub(this.mapPosAt(displayTime) ?? this.state.r, activePlayer.state.r));
     return d < ENEMY_APPROACH_DIST;
+  }
+
+  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
+  public mapMenuItems(
+    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[] {
+    return [
+      ...MenuCommon.targetItems(commands, this.id, simTime),
+      MenuCommon.focus(),
+      MenuCommon.trajectoryLine(this.showTrajectoryLine),
+      ...MenuCommon.duplicateItems(commands),
+      { label: '削除', act: 'delete' },
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // 選ばれた操作を実行する。自分が出していない act では何もしない。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    if (act === 'delete') this.alive = false;
+    else if (act === 'toggleTrajectoryLine') this.showTrajectoryLine = !this.showTrajectoryLine;
+    else if (act === 'duplicate') commands.duplicate(this.mapKind, this.state);
+    else if (act === 'focus') commands.focus(this.id, this.name);
+    else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
   }
 }

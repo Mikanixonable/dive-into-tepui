@@ -7,6 +7,7 @@ import { strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
+import { isLagrangeId, lagrangeParentId } from './lagrange-id';
 import { addTimeCacheStats } from '../../physics/time-ring';
 import { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
@@ -225,6 +226,14 @@ export class CelestialSystem implements CelestialMotions {
     // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
     if (this.find(initial)?.motion.kind === 'star') return true;
     return this.ancestorsOf(initial).includes(systemFocusId);
+  }
+
+  // 天体 id あるいはラグランジュ点 id の親。undefined は id が不正/古いこと、null は恒星など
+  // 親を持たない天体を表す。ラグランジュ点は id の親部分へ戻してから引く。
+  bodyParentId(id: string): string | null | undefined {
+    const lagrangeParent = isLagrangeId(id) ? lagrangeParentId(id) : undefined;
+    if (lagrangeParent !== undefined) return this.has(lagrangeParent) ? lagrangeParent : undefined;
+    return this.find(id)?.motion.primary?.id ?? (this.has(id) ? null : undefined);
   }
 
   // focusId の親を辿って主星まで遡った id の列(focusId 自身を含む)。

@@ -236,10 +236,6 @@ export class Game {
       this.activePlayers, this.activeStage,
     );
     this.mapActions.setDocking(this.docking);
-    this.mapActions.setControlledBaseHandler(
-      (b) => this.setControlledBase(b),
-      () => this.controlledBase,
-    );
     this.viewManager.setControlledBaseProvider(() => this.controlledBase);
     this.dockingGuide = new DockingGuide(
       this._scene, this.markerManager, this.dynamicSystem, this.docking, this.viewManager,
@@ -252,10 +248,6 @@ export class Game {
     // ロード復元時の focus は MapCamera が直接持つだけで frameControls.setFocus() を経由しないため、
     // ここで明示的に同期しないと軌道表示の基準系がフォーカス天体に追随しない。
     this.frameControls.setFocus(this.cameraSystem.mapCamera.focus);
-  }
-
-  setControlledBase(base: Base | null): void {
-    this.activePlayers.setBase(base);
   }
 
   // ------------------------------------------------------------------ lifecycle

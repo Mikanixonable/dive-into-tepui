@@ -2,8 +2,11 @@
 // 持ち、中心天体に応じた呼称(近地点/近月点…)とマーカー用の略称を答える。
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
 import { getApsisLabelSpec, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
+import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { Vec3 } from '../../math/vec3';
+import type { MapCommands } from '../pickable/map-commands';
 import type { MapPickable } from '../pickable/map-pickable';
+import type { MenuItem } from '../hud/windows/context-menu';
 import type { MarkerManager } from './marker-manager';
 
 export class ApsisMarker implements MapPickable {
@@ -43,6 +46,31 @@ export class ApsisMarker implements MapPickable {
 
   public mapVisibility(): MapVisibility { return MARKER_VISIBILITY; }
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+
+  // メニューに出す操作項目。ヘッダーには中心天体に応じた呼称を出す。
+  public mapMenuItems(): readonly MenuItem<MenuAction>[] {
+    return [
+      { type: 'header', label: this.spec.nameJa, subLabel: this.spec.nameEn },
+      MenuCommon.warp(),
+      MenuCommon.addNode(),
+      MenuCommon.focus(),
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // 選ばれた操作を実行する。加速とノード追加は、通過時刻が求まっているフレームで効く。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    const t = this.mapTime;
+    if (act === 'warp') {
+      if (t !== null) commands.warpTo(t);
+    } else if (act === 'addNode') {
+      if (t !== null) commands.addNodeAt(t);
+    } else if (act === 'focus') {
+      commands.focus(this.id, this.name);
+    } else if (act === 'target') {
+      commands.toggleNavTarget(this.id, this.name);
+    }
+  }
 
   public listDetail(): string { return ''; }
   public listSearchText(): string { return ''; }
