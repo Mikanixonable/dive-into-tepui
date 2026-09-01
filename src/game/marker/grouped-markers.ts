@@ -10,10 +10,9 @@ import { Projected } from '../../math/projection';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { ActiveCelestialLabel } from '../camera/focus-markers';
 import type { MarkerManager } from './marker-manager';
-import { DIRECTION_GLYPH } from './marker-glyphs';
+import { DIRECTION_GLYPH } from './marker-identity';
 import { CelestialMotion } from '../../physics/celestial-motion';
-import { resolveCrowdingWinner } from './crowding';
-import * as C from '../const';
+import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
 
 export interface GroupedMarkerItem {
   key: string; // 対象を一意に識別するマーカーキー
@@ -175,7 +174,7 @@ export class GroupedMarkers {
           const pick = resolveCrowdingWinner(
             m.item.key, m.item.priority, m.dist, this.prevHiddenByCelestialLabel.has(m.item.key),
             c.id, c.priority, c.dist, false,
-            C.DEPTH_GUARD_RATIO, C.DEPTH_GUARD_EXIT_RATIO, true,
+            DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO, true,
           );
           if (pick !== 'a') continue;
           m.labeled = false;

@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Hud } from '../hud/hud';
 import { CombatCameraSystem } from './combat-camera-system';
-import { MapCamera } from './map-camera';
+import { MapCamera, OVERVIEW_CAMERA_MIN_DIST } from './map-camera';
 import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { catalogFamilyIndex } from '../celestial/orbit-guide/orbit-guide-catalog';
 import { FocusMarkers } from './focus-markers';
@@ -11,7 +11,6 @@ import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { FloatingOrigin } from './floating-origin';
-import * as C from '../const';
 import { Vec3, len, sub } from '../../math/vec3';
 import {
   metersPerPixel, metersPerPixelAtDistance, ndcToScreen, Projected, projectToNdc, Viewpoint,
@@ -46,6 +45,9 @@ function saveBodyClassToggles(v: MapDisplayToggles): void {
 
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
+// 矢印キーでの視点回転 [rad/s]。マウスドラッグと同じ感覚になる値。
+const CAM_KEY_YAW_RATE = 1.4;
+const CAM_KEY_PITCH_RATE = 1.0;
 const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
 const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
 
@@ -78,7 +80,7 @@ function syncCameraToViewpoint(camera: THREE.Camera, view: Viewpoint, near: numb
       projectionDirty = true;
     }
   } else if (camera instanceof THREE.OrthographicCamera) {
-    const halfHeight = Math.max(C.OVERVIEW_CAMERA_MIN_DIST * 1e-6, view.orthographicHalfHeight ?? 1);
+    const halfHeight = Math.max(OVERVIEW_CAMERA_MIN_DIST * 1e-6, view.orthographicHalfHeight ?? 1);
     const halfWidth = halfHeight * view.aspect;
     if (Math.abs(camera.left + halfWidth) > halfWidth * 1e-6
       || Math.abs(camera.right - halfWidth) > halfWidth * 1e-6
@@ -226,8 +228,10 @@ export class CameraSystem {
 
 
     // キー/マウスによる旋回入力をまとめる
-    const keyYaw = (input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0);
-    const keyPitch = (input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0);
+    const keyYawRad = ((input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0))
+      * CAM_KEY_YAW_RATE * dt;
+    const keyPitchRad = ((input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0))
+      * CAM_KEY_PITCH_RATE * dt;
     const keyRollLeft = input.down(K.cameraRollLeft);
     const keyRollRight = input.down(K.cameraRollRight);
     
@@ -244,10 +248,10 @@ export class CameraSystem {
     mouse.roll += keyRoll * CAM_KEY_ROLL_RATE * dt;
 
     if (this.overviewMode) {
-      this.mapCamera.update(mouse, keyYaw, keyPitch, dt, displayTime, mapPickables, frameAnchors);
+      this.mapCamera.update(mouse, keyYawRad, keyPitchRad, displayTime, mapPickables, frameAnchors);
     }
     else {
-      this.combatCamera.update(mouse, keyYaw, keyPitch, dt, player, input);
+      this.combatCamera.update(mouse, keyYawRad, keyPitchRad, dt, player, input);
     }
   }
 

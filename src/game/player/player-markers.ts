@@ -6,7 +6,7 @@ import { scale, sub, v3 } from '../../math/vec3';
 import type { OrbitReference } from '../orbit-reference';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';
-import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
+import { DIRECTION_GLYPH } from '../marker/marker-identity';
 
 // 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;

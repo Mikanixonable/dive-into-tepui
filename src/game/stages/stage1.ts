@@ -1,5 +1,4 @@
 // Stage 1: 第一ステージ(LEO 戦域)。
-import * as C from '../const';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import {
@@ -12,6 +11,7 @@ import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
+import { COLOR_ENEMY_ORBIT_LINE } from '../lines/entity-line-manager';
 
 export class Stage1 extends Stage {
   static readonly id = '1' as const;
@@ -42,11 +42,11 @@ export class Stage1 extends Stage {
     const fx = this._fx;
     const scene = this._scene;
     // 各種軌道パターンの敵を配置する
-    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 0xff4a3d, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
-    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 0xff7a2d, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
-    this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
-    this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
-    this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
   }
   // 1フレーム分、敵の行動と補給ロジスティクスを進める。
   update(_dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {

@@ -18,7 +18,7 @@ import type { CombatTarget } from './targeter';
 import { Hud } from './hud/hud';
 import { TimeLabelSetting, elementTimeLabel } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
-import { ORBIT_POINT_GLYPH } from './marker/marker-glyphs';
+import { ORBIT_POINT_GLYPH } from './marker/marker-identity';
 import { CameraSystem } from './camera/camera-system';
 import { MapPickable } from './pickable/map-pickable';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
