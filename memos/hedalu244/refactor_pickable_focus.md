@@ -137,6 +137,26 @@ src/game/dynamic/dynamic-entity/bullet.ts:26  Shooter           = 'player' | 'en
 `Shooter` は残してよい。弾がどちら側から出たかは**種別ではなく所属**で、2値であることに
 意味がある(規約 1.5「自機と敵の戦闘挙動は一般化しない」)。
 
+### いまの被選択物の口
+
+`MapPickable` は次を持つ(`src/game/pickable/map-pickable.ts` が正本)。`kind` は無い。
+
+- 同一性と存否: `id` / `name` / `gone` / `mapState` / `ownerName` / `mapTime`
+- 位置と可視: `mapPosAt` / `mapVisibility` / `shownOnMap` /
+  `hiddenBehindBodies` / `onlyInFocusedSystem`
+- 見た目: `mapGlyph` / `mapGlyphSvg`
+- 一覧: `listSection` / `pickerGenre` / `listDetail` / `listSearchText` /
+  `listCounted` / `listPriority`
+- 操作: `mapMenuItems` / `runMapMenu` / `mapPropertyRows` / `mapRename`
+
+ウィンドウ台帳のキーと軌道線の所属キーは対象の id そのもの(天体・実体・マーカーで id の
+名前空間が衝突しない)。台帳は開いた時点の対象を持ち続け、候補列から引き直さない。
+自艦・基地を名指しで扱うクリック処理は `instanceof` で絞る。
+
+**手順5で消えた到達不能な分岐。** プロパティウィンドウの副題は
+`(ownerName && 軌道点でない) ? '所属: …' : header.subLabel` を組んでいたが、`ownerName` を
+持つのは軌道点だけなので前半は成立しえない。副題は常にヘッダー項目のものになる。
+
 ### 修正後に期待される状態
 
 - 「右クリックされたら何を出し、選ばれたら何をするか」を、**その物体自身**が答える。
@@ -322,7 +342,7 @@ export interface MapCommands {
 **覆されたとき:** メニュー構築だけは実体の外(`pickable/` の具象クラス)に残す。手順4・5は
 そのまま実体へ移す。
 
-### 6. キャッシュは全部落とす
+### 6. キャッシュは全部落とす(実施済み — c76ddea8)
 
 `MapPickables.itemRecords` / `activeRecordKeys`、`FocusMarkers.bodyPickableRecords` /
 `cachedBodyPickables` / `cachedBodyPickablesTime` / `cachedBodyPickablesPolicy` は
@@ -331,9 +351,13 @@ export interface MapCommands {
 候補数は負荷確認ウィンドウの `mapItems` で観測できる(`MapPickables.perfCounts()`)。実測して
 困ったらそのとき戻す。
 
+一覧側の id キーのキャッシュ(`matchTextCache` / `lagrangeSortKeyCache` と、それを掃除する
+`dropStaleCaches`)も落ちた。検索文字列は絞り込み中しか組まず、ラグランジュ点の点番号は
+マーカーが値として持つ。
+
 **覆されたとき:** 手順2・6の一部が落ちるだけで、他の手順は変わらない。
 
-### 7. 一覧の並べ替えに使う派生値は一覧が持つ
+### 7. 一覧の並べ替えに使う派生値は一覧が持つ(実施済み — ff2531a1)
 
 `distance` / `distanceFromStar` / `inFocusedSystem` は `MapPickable` のフィールドから外す。
 これらは**軌道物体一覧の並べ替えと絞り込みにしか使われない**(`PhysicalObjectListOrder` の
@@ -383,72 +407,6 @@ interface ListSortKey {
 ---
 
 ## 手順
-
-### 手順 5. 一覧・選択ウィジェット・記号を実体・マーカーへ移す
-
-**目的**
-
-軌道物体一覧・`ObjectPicker` のジャンル分け・凡例記号の分岐を消し、**`MapPickKind` を
-削除する。** ここで `kind` に対する分岐が `src/` から無くなる。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `pickable/map-pickable.ts` | `MapPickKind` を削除。代わりに次を追加:<br>`readonly mapGlyph: string \| null`(文字記号。空域は null)<br>`readonly mapGlyphSvg: string \| null`(SVG を描ける場所用)<br>`readonly listSection: MapListSection \| null`(null = 一覧に出さない)<br>`readonly pickerGenre: ObjectPickerGenre \| null`(null = 選択ウィジェットに出さない)<br>`listDetail(celestialSystem, viewer: KinematicState \| null, displayTime: number): string`(行に**表示する**補助表示。天体は空文字)<br>`listSearchText(celestialSystem, viewer: KinematicState \| null, displayTime: number): string`(検索が**照合する**文字列。天体は距離と中心天体名を返す)<br>`listCounted(viewer: KinematicState \| null): boolean`(区画見出しの内訳に数えるか)<br>`readonly listPriority: number`(小さいほど先。既定 0) |
-| `hud/panels/physical-object-list-panel.ts:19-26,45-49,392-409` | `export type MapListSection = 'body' \| DynamicEntityKind;` を定義。`SECTIONS` はここに残す — 区画の順序と見出しはパネルの関心。`HEADER_SUMMARY` は `{ section, label }` だけを持ち、数える述語は `listCounted` へ |
-| `hud/object-groups.ts:8,11-58` | `ObjectPickerGenre` を定義(11 ジャンル)。`groupPickables` の switch(23-42)を削除し、`item.pickerGenre` で振り分けるだけにする。`includeAllCelestialBodies` の枝(47-58)は `CelestialEntity.pickerGenre` を読む |
-| `hud/panels/physical-object-list-order.ts:4,85-97,102-118,131-165,168-190,197-204` | `MapPickKind` の import を削除。`matches` の `item.kind === …` を `listSection` と `ListSortKey.inFocusedSystem` へ。`compare` は `ListSortKey`(決めたこと 7)を引く。`lagrangeSortKeyOf` は `LagrangePointMarker` が点番号を値として持つので、id からの正規表現解決ごと不要になる。`rebuildOrder` の `kind` 引数は `MapListSection` へ。`PrevInput.kind` も同様 |
-| `hud/panels/physical-object-list-tree.ts:75,82,89,91` | `pickGlyphSvg` / `pickGlyphText` を `item.mapGlyphSvg` / `item.mapGlyph` へ。`item.kind === 'body'` による detail の出し分け(89,91)は、天体の `listDetail` が空文字を返すことで消える |
-| `marker/pick-glyphs.ts` | **削除。** `TEXT_GLYPHS` / `SVG_GLYPHS` の各行は対応する実体・マーカーの `mapGlyph` / `mapGlyphSvg` へ。「一覧とプロパティウィンドウで同じ種別が別の形に見えない」という不変は、値が1箇所になることで自動的に保たれる |
-| `pickable/map-context-actions.ts` | `buildContent` の `pickGlyph(target.kind, …)` → `target.mapGlyphSvg ?? target.mapGlyph`。`windowKey` / `handleLeftClick` / `relatedItemsFor` に残る `kind` の参照も落とす |
-| (全実装) | `mapGlyph` / `mapGlyphSvg` / `listSection` / `pickerGenre` / `listDetail` / `listSearchText` / `listCounted` / `listPriority` を実装。中身は `map-pickables.ts:168-172` の三項演算子の連鎖を種別ごとに割ったもの。**表示と検索が分かれるのは天体だけ**で、他の種別は `listSearchText` が `listDetail` をそのまま返す |
-
-**達成条件と検証**
-
-- `grep -rn "MapPickKind" src/` が 0 件。
-- `src/game/marker/pick-glyphs.ts` が存在しない。
-- 冒頭の表の 86 箇所の分岐が 0 件。
-- `npm run typecheck` / `npm run test:game`。
-- `npm run dev`:
-  - 軌道物体一覧の6区画(天体/自艦/敵/弾薬/RCS燃料/基地)の顔ぶれ・件数・記号・補助表示・
-    並び(太陽系順/近さ/名前)・絞り込み(惑星〜ラグランジュ点/人工物/敵)・検索が手順前と同じ。
-  - 見出しの内訳「接近 N」「回収可 N」が正しい。
-  - 天体区画の親子ツリーと、「衛星」絞り込み時のクラスタ見出し(淡色の親惑星行)が崩れない。
-  - 木星 L4/L5 を出した状態で行が毎フレーム入れ替わらない。
-  - 座標系パネルのアンカー選択(`ObjectPicker`)のジャンル分けが同じで、11 ジャンル出る。
-
----
-
-### 手順 6. 候補列とウィンドウ台帳から寿命の混在を外す
-
-**目的**
-
-`MapPickables` を「今フレーム選べるものを並べるだけ」にし、`MapContextActions` のウィンドウ
-台帳が**対象そのものを保持する**形にする。いまは毎フレーム作り直す候補と、フレームを跨いで
-持つ target が同じ器で混ざっていて、`byKey` で毎フレーム引き直している。手順2〜5で対象が
-安定した同一性を持つオブジェクトになったので、この引き直しは不要になる。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `pickable/map-pickables.ts` | `refresh`(76-200)を、供給元が返す `MapPickable` を積むだけの形へ。可視・遮蔽の絞り込み(183-197)は残す |
-| `pickable/map-context-actions.ts:55,192-222,228-230,502-506` | `WindowEntry.target` を `readonly` にし、`sync` の `byKey` 引き直しを削除。`windowKey` は `${target.id}` だけで足りるか確認する — 天体・実体・マーカーの id 空間が衝突しないなら種別込みをやめる |
-| `pickable/line-pickable.ts:21` / `line-pickables.ts:42,52,92` | `ownerKeys` の `${kind}:${id}` を `windowKey` の変更に追随させる |
-
-**達成条件と検証**
-
-- `grep -rn "byKey" src/game/pickable/` が 0 件。
-- `npm run typecheck` / `npm run test:game`。
-- `npm run dev`:
-  - プロパティウィンドウを開いたまま未来ゴーストのスライダーを動かし、値が更新され続ける。
-  - ウィンドウを開いたまま対象が遮蔽・ラベル衝突で候補列から外れても閉じない。撃破・回収・
-    削除では閉じる。
-  - 軌道線を右クリックして開くウィンドウの「所属」欄から、所属先のプロパティウィンドウが開く。
-  - 天体のプロパティウィンドウの「周回物体」欄に、その天体を回る船・基地が出る。
-
----
 
 ### 手順 7. 戦闘マーカーの種別を値として渡す
 
@@ -551,12 +509,10 @@ interface ListSortKey {
 
 | 手順 | 導出 | 見積り |
 | --- | --- | --- |
-| 5 | 分岐 24 箇所 × 7.5 分 + `ListSortKey` の導入 + 目視 40 分 | 約 4 時間 |
-| 6 | 4 ファイル・寿命の整理のみ + 目視 20 分 | 約 1.5 時間 |
 | 7 | `markerItem` 5 箇所 + 読み手 3 箇所 + 目視 20 分 | 約 1.5 時間 |
 | 8 | 609 行を 3 モジュールへ分割 + 呼び出し元 7 ファイル + 目視 40 分 | 約 4 時間 |
 | 9 | sync 4 種 × 20 分 + 目視 30 分 | 約 2 時間 |
-| **合計** | | **約 13 時間** |
+| **合計** | | **約 7.5 時間** |
 
 per-frame の費用の見積り: 候補列の再生成は `mapItems`(負荷確認ウィンドウで観測できる)ぶんの
 オブジェクト生成になる。天体 + ラグランジュ点 + 実体で 200 件規模なら
