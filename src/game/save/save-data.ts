@@ -1,6 +1,5 @@
 import { AnyPart } from '../dynamic/dynamic-entity/parts';
-import type { EnemyKind } from '../dynamic/dynamic-entity/enemy-kind';
-import type { FormationRole } from '../dynamic/dynamic-entity/enemy-formation';
+import type { EnemyKind } from '../dynamic/dynamic-entity/enemy';
 import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
@@ -130,6 +129,9 @@ export interface BaseSaveData {
   // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
   showTrajectoryLine?: boolean;
 }
+
+// タンパク質陣形における敵の役割。
+export type FormationRole = 'attacker' | 'shield' | 'energy';
 
 export interface EnemySaveData extends EntitySaveData {
   enemyKind: EnemyKind;
