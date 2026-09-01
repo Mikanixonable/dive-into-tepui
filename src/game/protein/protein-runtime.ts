@@ -37,7 +37,7 @@ interface ProteinBondVisual {
   readonly toSiteId: string;
 }
 
-/** Owns gameplay state and display-only ANM/OU deformation for one enemy. */
+/** タンパク質敵1体の戦闘状態と、構造ゆらぎ(ANM/OU)による見た目の変形・結合線を保つ。 */
 export class ProteinRuntime {
   public readonly combat: ProteinCombatState;
   private readonly motion: ProteinMotionAsset;
@@ -62,12 +62,11 @@ export class ProteinRuntime {
     asset: ProteinAssetDefinition,
     motion: ProteinMotionAsset,
     saved?: ProteinSaveData,
-    legacyHealth?: number,
     seedKey = asset.id,
     motionBinding?: ProteinMotionBinding,
   ) {
     this.root = root;
-    this.combat = new ProteinCombatState(asset, saved, legacyHealth);
+    this.combat = new ProteinCombatState(asset, saved);
     this.motion = motion;
     this.controller = new ProteinMotionController(motion, seedKey);
     this.motionBinding = motionBinding ?? createProteinMotionBinding(
@@ -165,7 +164,6 @@ export class ProteinRuntime {
     this.controller.projectResidues(this.trackedResidues, this.trackedResidueOffsets);
     this.lastCpuMs = performance.now() - cpuStart;
     const scale = this.asset.coordinateScale;
-    const state = this.combat;
     for (const bond of this.bondVisuals) {
       const fromBase = this.baseSitePositions.get(bond.fromSiteId);
       const toBase = this.baseSitePositions.get(bond.toSiteId);
@@ -177,7 +175,8 @@ export class ProteinRuntime {
       positions.setXYZ(1, toBase.x + toOffset[0] * scale, toBase.y + toOffset[1] * scale, toBase.z + toOffset[2] * scale);
       positions.needsUpdate = true;
     }
-    this.bondMaterial.opacity = state.phase === 'intact' ? 0.42 : state.phase === 'critical' ? 0.12 : 0.68;
+    const phase = this.combat.phase;
+    this.bondMaterial.opacity = phase === 'intact' ? 0.42 : phase === 'critical' ? 0.12 : 0.68;
   }
 
   public activeSiteWorldPosition(origin: Vec3, attitude: Quat): Vec3 {
@@ -214,5 +213,4 @@ export class ProteinRuntime {
     this.bondMaterial.dispose();
     disposeProteinMotionBinding(this.motionBinding);
   }
-
 }

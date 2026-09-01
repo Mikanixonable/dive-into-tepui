@@ -156,8 +156,6 @@ export const CONTACT_RESTITUTION = 0.4;
 export const CONTACT_GRID_CELL_SIZE_FLOOR = 1;
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]。
-export const ENEMY_RADIUS = 180; // 視認性のため実機体よりかなり大きい当たり判定
-export const ENEMY_MAX_HP = 6;
 
 export const INITIAL_ALT = 420e3; // 自機初期高度 [m]
 export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
@@ -265,7 +263,6 @@ export const ARC_MIN_ITEM_STEPS = 16;
 
 // --- 第零ステージ(近接戦闘訓練) ---
 export const STAGE0_PER_GROUP = 10; // グループあたりの機数
-export const STAGE0_ENEMY_HP = 1; // 一撃撃破の軽量機
 export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
 
 // --- ステージ00(無限耐久サバイバル) ---
