@@ -322,56 +322,30 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 **切り出し済み。`refactor_pickable_focus.md` で対処する。**
 ---
 
-## 論点8 — Player のブースター運用が正本割れ
+## 論点8 — Player のブースター運用が正本割れ(実施済)
 
-### 症状
+「接続中のブースター段」の正本を `PlayerBoosters`(`player/player-boosters.ts`、261行)へ
+1つにまとめた。`PlayerFire` と同じ形で `Player` 本体・`Hud`・`WorldSfx`・`Scene`・
+`EffectsSystem` を受け取り、段スタック・既定諸元・模型・プルーム・質量慣性・分離・HUD 文言を
+全部持つ。`Player` は 818 → 625 行。
 
-`Player`(818行)は既に 13 個の下位オブジェクトを合成している
-(`throttle` / `fire` / `belt` / `aero` / `altitudeAlarm` / `radiator` / `power` /
-`thrustEffects` / `rcsEffects` / `reentryEffects` / `markers` / `boosterPlumes` / `boosters`)。
-**ブースターだけが例外で、運用が `Player` に直接書かれている。**
+- `Player` に委譲メソッドは残していない(規約 1.2)。`game.ts` / `hud.ts` は
+  `player.fire` / `player.throttle` と同じく `player.boosters` を直接呼ぶ。
+- `attach` / `toggleIgnition` / `decouple` の `boolean` は `game.ts` でも
+  `handleEdgePress` でも読まれていなかったので `void` にした。
+- `combinedThrust` は移さず `updatePlayerControls` へ畳んで消した。RCS と合成するのは
+  `Player` の関心なので。
+- `booster-id.ts`(8行)は `booster-stack.ts` へ畳んだ。`BoosterStage.id` を定義する
+  モジュールが採番の所有者になる。`detached-booster.ts` はそこから引く。
+- `booster-separation.ts`(28行)も `booster-stack.ts` へ畳んだ。**`player-boosters.ts` では
+  なく** — `SPEC/FLIGHT.md`「分離速度は船と段へ質量比で配り、並進運動量を保存する」は仕様に
+  明言された振る舞いで、規約 4.1 の「テストを書くもの」に当たる。`player-boosters.ts` は
+  `Player` 経由で `Hud`(DOM)を引くので node のテストから import できず、そこへ畳むと
+  テストを消すことになる。`booster-stack.ts` は THREE / `Player` 非依存で、同種の自由関数
+  `boosterAverageAcceleration` を既に持っている。テスト2件は `booster-stack.test.ts` へ移した。
+- `BoosterStack` クラスは数値の段スタックのまま。セーブ形式の単位として残る。
 
-`Player` 側にあるもの:
-
-- `attachBooster`(270-290) / `toggleBoosterIgnition`(292-304) / `decoupleBooster`(307-355)
-- `boosterManagementViewModel`(357-371) / `activeBooster`(373-376)
-- `rebuildBoosterModels`(378-389) / `refreshBoosterMassAndInertia`(391-403)
-- `stepAttachedBooster`(405-413) / `combinedThrust`(415-418)
-- 定数 8 本(`BOOSTER_DEFAULT_DRY_MASS` 〜 `BOOSTER_COLLISION_GRACE`)
-
-`BoosterStack`(201行)側にあるもの: `attach` / `toggleIgnition` / `step` /
-`detachOutermost` / `exportData` / `importData` のみ。
-
-さらに `player/booster-id.ts`(**8行**)は `EntityIdAllocator` を1つ持つだけのモジュールで、
-参照は `player.ts` と `dynamic-entity/detached-booster.ts` の2つ。
-`player/booster-separation.ts`(28行)は運動量保存で速度差を配る純関数1本で、
-参照は `player.ts` のみ。
-
-### 診断
-
-規約 1.6「正データが複数箇所に分散、重複しているデータ」。
-「接続中のブースター段」という1つの概念について、**段の数値は `BoosterStack`、
-既定値・見た目・質量慣性・分離・HUD 文言は `Player`** に割れている。
-`Player` が 818行なのはこれが主因ではないが、**`fire` / `belt` と同じ形になっていない
-のは一貫性の欠落。**
-
-### 修正
-
-`PlayerBoosters`(`player/player-boosters.ts`)を新設し、`PlayerFire` と同じ形にする
-(`Player` 本体・`Hud`・`THREE.Scene` を受け取り、自分で HUD 文言も模型も持つ)。
-
-- `BOOSTER_DEFAULT_*` / `BOOSTER_MAX_ATTACHED` / `BOOSTER_MOUNT_Z` /
-  `BOOSTER_SEPARATION_SPEED` / `BOOSTER_COLLISION_GRACE` を移す。
-- `booster-id.ts`(8行)を畳む。**`EntityIdAllocator` を1つ持つだけのモジュールに
-  責務はない。** 接続中の段と分離後の `DetachedBooster` で ID を引き継ぐ都合があるので、
-  畳む先は `BoosterStack`(セーブ形式の単位)にして、`detached-booster.ts` はそこから引く。
-- `booster-separation.ts`(28行)も畳む。運動量保存の式そのものは厳密な物理だが、
-  「船とブースターの2体」に特化しているので `physics/` へ出す価値もない。
-- `BoosterStack` は**数値の段スタックのまま残す**(`exportData` / `importData` を持つ
-  ので、セーブ形式の単位として意味がある)。
-
-`Player` は 818 → 700前後。**500行は超えたままだが、それは「同じ関心の実装が単に多い」
-(規約 1.2 の第4分類)なので、そこで止める。**
+`Player` は 500行を超えたままだが、残りは「同じ関心の実装が単に多い」(規約 1.2 の第4分類)。
 
 ---
 
@@ -801,7 +775,7 @@ else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
    `vessel-panel` / `resource-transfer-dialog` / `target-panel` をまとめて。
 6. **論点6**(`marker-manager`)— 天体ラベルの移設と同時に、ラベル混雑3実装の統合可否を
    1回で決める。
-7. **論点17**(軌道分析タブの多態化)/ **論点8**(`PlayerBoosters`)/
+7. **論点17**(軌道分析タブの多態化)/ ~~**論点8**(`PlayerBoosters`)~~ **実施済** /
    **論点5**(`hud/style/`)/ **論点10**(入力行)— 独立。手が空いたときに。
 8. **論点9**(`plan-editor`)— `plan/` 全体を見るときに。
 9. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。論点20 は先に実測が要る。
