@@ -5,7 +5,7 @@ import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry'
 import {
   DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, type ProteinDisplaySettings,
 } from '../../protein/protein-display';
-import { proteinAssetIdForEnemyKind, type EnemyKind } from './enemy-kind';
+import { proteinAssetIdForEnemyKind, type EnemyKind } from './enemy';
 
 // 敵の見た目を組み立てる。
 export function buildEnemyRenderObject(
