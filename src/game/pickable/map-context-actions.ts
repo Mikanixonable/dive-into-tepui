@@ -1,7 +1,7 @@
 // 被選択物(MapPickable)への右クリック/左クリック/ダブルクリックの解決と、プロパティ/パーツ/
 // 軌道ウィンドウのライフサイクル管理。候補集合と表示可否は map-pickables.ts の MapPickables
-// から読み、メニュー項目の構築・実行は MapPickableMenu、プロパティ行の構築は MapPropertyRows
-// が持つ — 「何が選べるか」「選んだらどうなるか」「どう表示するか」を分けている。
+// から読む。メニュー項目の構築・実行は被選択物自身が持つので、ここはその実行先を
+// MapCommands として差し出す。
 import { Hud } from '../hud/hud';
 import { Base } from '../dynamic/dynamic-entity/base';
 import {
@@ -39,7 +39,10 @@ import type { MapPickables } from './map-pickables';
 import type { Part } from '../dynamic/dynamic-entity/parts';
 import { pickCombatEntityAtPoint } from './combat-pickable';
 import { MapPropertyRows } from './map-property-rows';
-import { bodyParentId, MapPickableMenu } from './map-pickable-menu';
+import type { DockState, MapCommands } from './map-commands';
+import type { KinematicState } from '../../physics/kinematic-state';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
 const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
@@ -72,7 +75,7 @@ const ORBIT_CALC_METHOD_LABEL: Record<LinePickable['method'], string> = {
   analytic: '解析軌道', predicted: '予測軌道', guide: '軌道ガイド',
 };
 
-export class MapContextActions {
+export class MapContextActions implements MapCommands {
   // 'empty-space' は宇宙空間そのものでプロパティを持たないので、従来どおり ContextMenu を使う。
   private readonly menu: ContextMenu<MapPickable, MenuAction>;
   // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ
@@ -82,10 +85,9 @@ export class MapContextActions {
   private readonly lineWindows = new Map<string, LineWindowEntry>();
   private readonly physicalObjectListPanel: PhysicalObjectListPanel;
   private readonly propertyRows: MapPropertyRows;
-  private readonly pickableMenu: MapPickableMenu;
   private expandedBaseWindowKey: string | null = null;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
-  private readonly emptySpace = new EmptySpacePickable();
+  private readonly emptySpace: MapPickable = new EmptySpacePickable();
   // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
   // 最後にマップ視点だった時点の値のまま据え置く。
   private lastFocusId: string | undefined = undefined;
@@ -94,13 +96,8 @@ export class MapContextActions {
   setDocking(docking: Docking): void {
     this.docking = docking;
     docking.basePanel.onClose = () => this.collapseBasePanel();
-    this.pickableMenu.setDocking(docking);
   }
   private docking: Docking | null = null;
-
-  setControlledBaseHandler(handler: (base: Base | null) => void, getControlledBase: () => Base | null): void {
-    this.pickableMenu.setControlledBaseHandler(handler, getControlledBase);
-  }
 
   // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
   constructor(
@@ -109,24 +106,20 @@ export class MapContextActions {
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
-    editor: PlanEditor,
-    simSpeedManager: SimSpeedManager,
-    pauseMenu: PauseMenu,
+    private readonly editor: PlanEditor,
+    private readonly simSpeedManager: SimSpeedManager,
+    private readonly pauseMenu: PauseMenu,
     private readonly pickables: MapPickables,
     private readonly linePickables: LinePickables,
     private readonly activePlayers: ActivePlayerController,
     private readonly frameControls: FrameControls,
-    activeStage: Stage,
+    private readonly activeStage: Stage,
     private readonly targeter: Targeter,
     private readonly markerManager: MarkerManager,
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
-    this.menu.onSelect = (act, target) => this.pickableMenu.run(act, target);
+    this.menu.onSelect = (act, target) => target.runMapMenu(act, this);
     this.propertyRows = new MapPropertyRows(entities, activePlayers, celestialSystem, navTarget);
-    this.pickableMenu = new MapPickableMenu(
-      hud, entities, celestialSystem, navTarget, cameraSystem, editor, simSpeedManager, pauseMenu, pickables,
-      activePlayers, frameControls, activeStage, (target) => this.expandedBaseWindowKey === this.windowKey(target),
-    );
     this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialSystem);
     // 一覧の行は隠れている対象でも操作できる(SPEC/MAP.md §10) — pickable によるマップ上の
     // 衝突判定はマーカーのヒットテストにだけ適用され、一覧からの id 一致には適用しない。
@@ -214,7 +207,7 @@ export class MapContextActions {
         this.toggleBasePanel(key, entry);
         return;
       }
-      this.pickableMenu.run(act, entry.target);
+      entry.target.runMapMenu(act, this);
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => {
@@ -453,7 +446,7 @@ export class MapContextActions {
 
   private openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
     const target = this.emptySpace;
-    this.menu.open(clientX, clientY, target, this.pickableMenu.itemsFor(target, simTime));
+    this.menu.open(clientX, clientY, target, target.mapMenuItems(this, this.celestialSystem, simTime));
   }
 
   // 戦闘ビューの右クリック。ヒットした実体があればそのプロパティウィンドウを、なければ
@@ -586,7 +579,7 @@ export class MapContextActions {
   private windowParts(
     target: MapPickable, simTime: number,
   ): { title: string; subtitle?: string; items: PropertyWindowItem<MenuAction>[] } {
-    const all = this.pickableMenu.itemsFor(target, simTime);
+    const all = target.mapMenuItems(this, this.celestialSystem, simTime);
     const header = all.find((it) => it.type === 'header');
     // 戦闘ビューで開いたウィンドウは項目ショートカットを持たせない — [F]/[T] は自機の
     // 進行方向リセット/ターゲット選択が既に使っており、同じキーを両方へは配れない。
@@ -627,7 +620,7 @@ export class MapContextActions {
       if (item.id === target.id) continue;
       let isOrbiting = false;
       if (item.kind === 'body') {
-        isOrbiting = bodyParentId(this.celestialSystem, item.id) === target.id;
+        isOrbiting = this.celestialSystem.bodyParentId(item.id) === target.id;
       } else {
         const state = item.mapState;
         isOrbiting = state !== null
@@ -655,4 +648,100 @@ export class MapContextActions {
       ? '搭載部品' : '周回物体';
   }
 
+  // ------------------------------------------------------------- MapCommands
+
+  // マップの注視点を id へ移し、name で通知する。
+  focus(id: string, name: string): void {
+    this.frameControls.setFocus({ kind: 'object', id });
+    this.hud.hint(`${name} にフォーカス`);
+  }
+
+  toggleNavTarget(id: string, name: string): void {
+    this.navTarget.toggleTarget(id, name);
+  }
+
+  // 時刻 t まで時間を加速する。既に通過していれば通知だけ出す。
+  warpTo(t: number): void {
+    if (!this.simSpeedManager.startAutoWarpTo(t, this.pickables.lastSimTime)) {
+      this.hud.hint('この時刻は既に通過しています');
+    }
+  }
+
+  addNodeAt(t: number): void {
+    this.editor.addNodeAt(t);
+  }
+
+  // 操作対象の自艦を切り替える。null で未操作へ戻す。
+  setActivePlayer(ship: Player | null): void {
+    if (ship === null) this.activePlayers.setOrNull(null);
+    else this.activePlayers.set(ship);
+  }
+
+  removePlayer(ship: Player): void {
+    this.activePlayers.remove(ship);
+  }
+
+  setControlledBase(base: Base | null): void {
+    this.activePlayers.setBase(base);
+  }
+
+  // 基地を世界から取り除き、その基地を指していた操作対象・ドッキング先も外す。
+  removeBase(base: Base): void {
+    if (this.activePlayers.controlledBase === base) this.activePlayers.setBase(null);
+    this.docking?.clearActiveBaseIf(base);
+    base.alive = false;
+  }
+
+  dock(target: DynamicEntity): void {
+    const ship = this.activePlayers.current;
+    if (ship) this.docking?.dockTo(ship, target);
+  }
+
+  undock(): void {
+    const ship = this.activePlayers.current;
+    if (ship) this.docking?.undock(ship);
+  }
+
+  transferResources(target: DynamicEntity): void {
+    const ship = this.activePlayers.current;
+    if (ship) this.docking?.openTransfer(ship, target);
+  }
+
+  duplicate(kind: DynamicEntityKind, state: KinematicState): void {
+    this.activeStage.authoring?.openObjectPlacerForDuplicate(kind, state);
+  }
+
+  openObjectPlacer(): void {
+    this.activeStage.authoring?.openObjectPlacer(focusTargetId(this.cameraSystem.mapCamera.focus));
+  }
+
+  openSettings(): void {
+    this.pauseMenu.toggle(true);
+  }
+
+  get activePlayer(): Player | null { return this.activePlayers.current; }
+  get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
+  get canAuthor(): boolean { return this.activeStage.authoring !== null; }
+  get executesPlans(): boolean { return this.activeStage.executesPlans; }
+  get overviewMode(): boolean { return this.cameraSystem.overviewMode; }
+
+  isNavTarget(id: string): boolean {
+    return this.navTarget.id === id;
+  }
+
+  canNavTarget(id: string, simTime: number): boolean {
+    return this.navTarget.canTarget(id, this.entities, this.celestialSystem, simTime);
+  }
+
+  // 操作中の自艦から見た target とのドッキング状態。自艦がいない・自艦自身なら 'none'。
+  dockState(target: DynamicEntity): DockState {
+    const ship = this.activePlayers.current;
+    if (ship === null || this.docking === null || ship === target) return 'none';
+    if (this.docking.getDockedTarget(ship) === target) return 'docked';
+    return this.docking.canDock(ship, target) ? 'dockable' : 'none';
+  }
+
+  isBasePanelExpanded(base: Base): boolean {
+    return this.expandedBaseWindowKey === this.windowKey(base);
+  }
 }

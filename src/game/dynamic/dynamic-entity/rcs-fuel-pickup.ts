@@ -12,8 +12,11 @@ import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { RcsFuelPickupSaveData } from '../../save/save-data';
 import { MARKER_PRIORITY, type MarkerManager } from '../../marker/marker-manager';
+import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
+import type { MapCommands } from '../../pickable/map-commands';
+import type { MenuItem } from '../../hud/windows/context-menu';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Player } from '../../player/player';
 
@@ -132,5 +135,26 @@ export class RcsFuelPickup extends DynamicEntity implements MapPickable {
     if (activePlayer === null) return false;
     const d = len(sub(this.mapPosAt(displayTime) ?? this.state.r, activePlayer.state.r));
     return d <= RCS_FUEL_PICKUP_RADIUS;
+  }
+
+  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
+  public mapMenuItems(
+    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[] {
+    return [
+      MenuCommon.focus(),
+      ...MenuCommon.targetItems(commands, this.id, simTime),
+      ...MenuCommon.duplicateItems(commands),
+      { label: '削除', act: 'delete' },
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // 選ばれた操作を実行する。自分が出していない act では何もしない。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    if (act === 'delete') this.alive = false;
+    else if (act === 'duplicate') commands.duplicate(this.mapKind, this.state);
+    else if (act === 'focus') commands.focus(this.id, this.name);
+    else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
   }
 }

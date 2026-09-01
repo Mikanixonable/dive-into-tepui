@@ -14,6 +14,7 @@ import { apparentSizePx } from '../../../math/projection';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
 import { len, sub } from '../../../math/vec3';
 import { bodySearchText } from '../../pickable/body-search-text';
+import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { AtmosphereCandidate, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
@@ -25,6 +26,8 @@ import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
 import type { CelestialSystem } from '../celestial-system';
 import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
+import type { MapCommands } from '../../pickable/map-commands';
+import type { MenuItem } from '../../hud/windows/context-menu';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Player } from '../../player/player';
 
@@ -212,5 +215,27 @@ export abstract class CelestialEntity implements MapPickable {
     celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
   ): string {
     return bodySearchText(celestialSystem, this.mapPosAt(displayTime), activePlayer, displayTime);
+  }
+
+  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
+  public mapMenuItems(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[] {
+    const subLabel = this.id === celestialSystem.origin.id ? '母星 (中心天体)'
+      : this.id === 'moon' ? '衛星 (月)'
+        : this.id === celestialSystem.star?.id ? `恒星 (${this.name})`
+          : '天体・ラグランジュ点';
+    return [
+      { type: 'header', label: this.name, subLabel },
+      MenuCommon.focus(),
+      ...MenuCommon.targetItems(commands, this.id, simTime),
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // 選ばれた操作を実行する。自分が出していない act では何もしない。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    if (act === 'focus') commands.focus(this.id, this.name);
+    else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
   }
 }

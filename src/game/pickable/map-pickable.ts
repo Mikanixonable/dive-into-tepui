@@ -6,6 +6,9 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Player } from '../player/player';
+import type { MapCommands } from './map-commands';
+import type { MenuItem } from '../hud/windows/context-menu';
+import type { MenuAction } from '../hud/windows/menu-actions';
 
 export type MapPickKind = 'body' | 'enemy' | 'player' | 'apsis' | 'relnode' | 'ammo' | 'fuel' | 'empty-space' | 'eqnode' | 'base';
 
@@ -37,6 +40,14 @@ export interface MapPickable {
   listCounted(activePlayer: Player | null, displayTime: number): boolean;
   // 軌道物体一覧での表示順の優先度。小さいほど先に出る。
   listPriority(activePlayer: Player | null): number;
+
+  // 右クリックメニュー・プロパティウィンドウに出す操作項目。先頭の header 項目は
+  // ウィンドウのタイトル/サブタイトルへ抜き出される。
+  mapMenuItems(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[];
+  // 選ばれた操作を実行する。自分が出していない act では何もしない。
+  runMapMenu(act: MenuAction, commands: MapCommands): void;
 }
 
 // items を project で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを返す。
