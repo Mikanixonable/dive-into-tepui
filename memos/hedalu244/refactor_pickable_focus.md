@@ -238,7 +238,7 @@ Player」が並立する。
 `dynamic-system.ts` の `applyVisibility` に、分離ブースターが敵トグルへ従っていることへの
 TODO を置いた。挙動は変えていない。
 
-### 5. `MapCommands` という役割インターフェースを立てる
+### 5. `MapCommands` という役割インターフェース(実施済み — 3e7c9c3b)
 
 実体(`Player` / `Base` / …)は `Docking` / `PlanEditor` / `SimSpeedManager` / `PauseMenu` /
 `Hud` を**直接 import できない** — `docking/docking.ts` は `Player` を値 import しており、
@@ -289,8 +289,32 @@ export interface MapCommands {
 そこにあり、`toggleBasePanel` / `isBasePanelExpanded` はウィンドウ台帳を必要とするので、
 別クラスへ切ると台帳へのコールバックを足すことになる。
 
-**覆されたとき:** メニュー構築だけは実体の外(`pickable/` の具象クラス)に残す。手順3が
-「具象クラスへ移す」に変わり、手順4・5はそのまま実体へ移す。
+`src/game/pickable/map-commands.ts` にある実際の口は上の草案から次の点だけ違う。
+
+- `hint` は無い。フォーカスの通知は `focus`、ワープ不可の通知は `warpTo` が自分で出す。
+- `toggleBasePanel` は無い。その act はウィンドウ側が横取りするので、項目のラベルを決める
+  `isBasePanelExpanded` だけが要る。
+- `authoring` の代わりに `canAuthor: boolean` と `openObjectPlacer()` を置き、
+  `ObjectAuthoring` そのものは渡さない。
+- `overviewMode` を足した(空域の「オブジェクトを配置する」の可否)。
+- 基地の削除は `removeBase(base)` 1本にした(操作対象の解除・ドッキング先の解除・`alive` を含む)。
+
+**併せて消えたもの。** `MapContextActions.setControlledBaseHandler` と `Game.setControlledBase` は
+`activePlayers.setBase` への素通しだったので落とし、同じ操作の別経路だった `MenuAction` の
+`activateBase` / `deactivateBase` も削除した。`bodyParentId` は `CelestialSystem` のメソッドへ移した。
+「ターゲット設定」「複製」は `MenuCommon.targetItems` / `MenuCommon.duplicateItems` にある。
+
+**この手順で変わった挙動。**
+
+- 近点/遠点・赤道交点のヘッダーの呼称は、マーカーが `place` で受けた中心天体から引く
+  (従来は `strongestAttractor` で引き直していた)。マーカーの表記と必ず一致する方向の変化。
+- 「ノードを追加」で時刻が求まらないときの通知は消えた。時刻はマーカーが必ず持つ。
+
+**残った疑問点。** `CelestialEntity` の副題の既定値は `'天体・ラグランジュ点'` のままだが、
+ラグランジュ点はもうこのクラスへ来ない。文言を変えるなら `/modify-feature` を通す。
+
+**覆されたとき:** メニュー構築だけは実体の外(`pickable/` の具象クラス)に残す。手順4・5は
+そのまま実体へ移す。
 
 ### 6. キャッシュは全部落とす
 
@@ -354,49 +378,6 @@ interface ListSortKey {
 
 ## 手順
 
-### 手順 3. メニュー項目と実行を実体・マーカーへ移す
-
-**目的**
-
-`map-pickable-menu.ts` の 291 行のディスパッチ表を解体し、各物体が自分の項目と実行を持つ形に
-する。**この手順で `MapCommands` を新設する**(決めたこと 5)。表示される項目とその効果は
-変えない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `pickable/map-commands.ts` | **(新規)** `MapCommands` インターフェース(決めたこと 5 の署名) |
-| `pickable/map-pickable.ts` | `mapMenuItems(commands, celestialSystem, simTime)` / `runMapMenu(act, commands)` を追加 |
-| `pickable/map-pickable-menu.ts` | **削除。** `bodyParentId`(38-45)は `celestial/lagrange-id.ts` か `celestial-system.ts` へ移す(`map-context-actions.ts:648` が使う) |
-| `pickable/map-context-actions.ts` | `implements MapCommands`。`pickableMenu` フィールドを削除し、`this.menu.onSelect`(121)・`w.onSelect`(209)・`windowParts`(605)を `target.runMapMenu(act, this)` / `target.mapMenuItems(this, …)` へ。`renameHandlerFor` の呼び出しと `relatedTitleFor` を削除 |
-| `player/player.ts` | `map-pickable-menu.ts:227-294` の `'player'` ハンドラを移す |
-| `dynamic/dynamic-entity/enemy.ts` | 同 `'ship'` ハンドラ(115-141) |
-| `dynamic/dynamic-entity/base.ts` | 同 `'base'` ハンドラ(315-382) |
-| `dynamic/dynamic-entity/ammo-pickup.ts` / `rcs-fuel-pickup.ts` | 同 `'ammo'` / `'fuel'` ハンドラ(142-179)。**共通の基底は作らない** — 2種の違いは削除先だけで、`DynamicEntity` の直下に並ぶのが自然 |
-| `celestial/celestial-entity/celestial-entity.ts` | 同 `'body'` ハンドラ(93-114)。副題(母星/衛星/恒星の別)は天体自身が答える |
-| `marker/lagrange-point-marker.ts` | `'body'` ハンドラのラグランジュ点枝(96-103) |
-| `marker/apsis-marker.ts` / `relative-node-marker.ts` / `equator-node-marker.ts` | 同 `'apsis'` / `'relnode'` / `'eqnode'` ハンドラ(180-226)と `runApsisRelnode`(445-461)。時刻は各マーカーが必ず持つので、`editor.planDisplay.apsisTimeOf` / `navTarget.passTimeOf` へのフォールバックは消える |
-| `pickable/empty-space-pickable.ts` | 同 `'empty-space'` ハンドラ(295-314) |
-| `pickable/map-pickable-menu.ts` の `targetItems`(387) / `duplicateItems`(394) / `runDuplicate`(399) / `duplicateSourceFor`(409) / `runBodyShip`(436) | 「ターゲット設定」「複製」「フォーカス」は複数の種別が同じ項目を出す。**共通の項目ファクトリとして `hud/windows/menu-actions.ts` の `MenuCommon` へ寄せる** — 既にそこが「頻出する項目を組み立てる共通ファクトリ」を名乗っている。`duplicateSourceFor` の5分岐は `mapKind` と `state` が実体にあるので消える |
-| (全実装) | **`hud/windows/index.ts`(バレル)を import してはいけない** — バレルは `resource-transfer-dialog.ts` 経由で `Player` を値 import しており実行時の循環になる。`hud/windows/menu-actions` / `hud/windows/context-menu`(型のみ)を直接指す |
-
-**達成条件と検証**
-
-- `src/game/pickable/map-pickable-menu.ts` が存在しない。
-- `grep -rn "PickHandler\|handlers\[" src/game/pickable/` が 0 件。
-- `npm run typecheck` / `npm run test:game`。
-- `npm run dev`:
-  - 天体・自艦(操作中/非操作)・敵艦・基地・弾薬・RCS燃料・近点/遠点・AN/DN・赤道交点・
-    空域、**10 種すべて**を右クリックして、項目の並びと有効/無効が手順前と同じ。
-  - 自艦の「操作対象にする/解除」「軌道計画の実行」「複製」「削除」「ドッキング/資源移送/
-    分離」、基地の「基地パネルを展開/収納」「操作対象にする」、近点の「ワープ」
-    「ノードを追加」が動く。
-  - 戦闘ビューでの右クリック(実体ヒット/空域)も同じ項目が出て、ショートカット表記だけが
-    出ないこと。
-
----
-
 ### 手順 4. プロパティ行を実体・マーカーへ移す
 
 **目的**
@@ -411,7 +392,7 @@ interface ListSortKey {
 | `pickable/map-pickable.ts` | `mapPropertyRows(celestialSystem, celestialBodies, pivot, viewer: Player \| null, simTime, displayTime): readonly PropertyRow[]` と `readonly mapRename: ((name: string) => void) \| null` を追加。`displayTime` は位置を引き直すマーカー・天体の行に要る |
 | `pickable/orbit-rows.ts` | **(新規)** `map-property-rows.ts:50-73` の `orbitRows` を関数として切り出す。`DynamicEntity` を受け、基準天体・高度・速度・AP/PE/INC/PRD を返す |
 | `pickable/map-property-rows.ts` | **削除** |
-| `pickable/map-context-actions.ts:578-603` | `propertyRows` フィールドを削除。`syncRows` は `entry.target.mapPropertyRows(...)`、`buildContent` の `onRename` は `target.mapRename` |
+| `pickable/map-context-actions.ts` | `propertyRows` フィールドを削除。`syncRows` は `entry.target.mapPropertyRows(...)`、`buildContent` の `onRename` は `target.mapRename`。`renameHandlerFor` を削除し、`relatedTitleFor` は `target === activePlayers.current` で判定する(実体を id で引き直さない) |
 | `player/player.ts` | `playerRows`(75-91)。`mapRename` は `(name) => { this.name = name; }` |
 | `dynamic/dynamic-entity/enemy.ts` | `shipRows`(93-117) |
 | `dynamic/dynamic-entity/base.ts` | `baseRows`(119-132)。`mapRename` あり |
@@ -600,14 +581,13 @@ interface ListSortKey {
 
 | 手順 | 導出 | 見積り |
 | --- | --- | --- |
-| 3 | 分岐 10 種 × 7.5 分 + `MapCommands` 23 メンバー × 3 分 + 目視 40 分 | 約 3 時間 |
 | 4 | 分岐 9 種 × 7.5 分 + `orbit-rows` 切り出し + 目視 30 分 | 約 2 時間 |
 | 5 | 分岐 24 箇所 × 7.5 分 + `ListSortKey` の導入 + 目視 40 分 | 約 4 時間 |
 | 6 | 4 ファイル・寿命の整理のみ + 目視 20 分 | 約 1.5 時間 |
 | 7 | `markerItem` 5 箇所 + 読み手 3 箇所 + 目視 20 分 | 約 1.5 時間 |
 | 8 | 609 行を 3 モジュールへ分割 + 呼び出し元 7 ファイル + 目視 40 分 | 約 4 時間 |
 | 9 | sync 4 種 × 20 分 + 目視 30 分 | 約 2 時間 |
-| **合計** | | **約 18 時間** |
+| **合計** | | **約 15 時間** |
 
 per-frame の費用の見積り: 候補列の再生成は `mapItems`(負荷確認ウィンドウで観測できる)ぶんの
 オブジェクト生成になる。天体 + ラグランジュ点 + 実体で 200 件規模なら
