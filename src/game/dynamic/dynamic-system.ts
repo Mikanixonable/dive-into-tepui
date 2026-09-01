@@ -5,7 +5,6 @@ import type { Viewpoint } from '../../math/projection';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
-import * as C from '../const';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { AmmoPickup } from './dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
@@ -37,6 +36,8 @@ import type { PerfCounts } from '../../perf-meter';
 import type { OrbitReference } from '../orbit-reference';
 import type { ProteinMotionFrameSample, ProteinMotionLod } from '../../protein-motion-metrics';
 
+const MAX_BULLETS = 400;
+const MAX_CASINGS = 260;
 const MAX_DETACHED_BOOSTERS = 64;
 
 const MAX_DEBRIS = 600;
@@ -80,11 +81,11 @@ export class DynamicSystem {
     const plasmaBody = plasmaBodyResources();
     const casingBody = casingBodyResources();
     const debrisFragment = debrisFragmentResources();
-    this.bulletBodyPool = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, C.MAX_BULLETS * 3);
-    this.bulletHaloPool = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, C.MAX_BULLETS * 3);
-    this.plasmaPool = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, C.MAX_BULLETS * 3);
+    this.bulletBodyPool = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, MAX_BULLETS * 3);
+    this.bulletHaloPool = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, MAX_BULLETS * 3);
+    this.plasmaPool = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, MAX_BULLETS * 3);
     this.casingPool = new InstancedPool(
-      scene, casingBody.geometry, casingBody.material, C.MAX_CASINGS, false, 0, true);
+      scene, casingBody.geometry, casingBody.material, MAX_CASINGS, false, 0, true);
     this.debrisFragmentPools = debrisFragment.geometries.map(
       (geo) => new InstancedPool(scene, geo, debrisFragment.material, MAX_DEBRIS, true, 0, true));
     this.effects = new EffectsSystem(scene, this, worldSfx);
@@ -245,12 +246,12 @@ export class DynamicSystem {
 
   // 弾を登録する。上限を超えた分は古いものから破棄する。
   addBullet(bullet: Bullet): void {
-    this.addCapped(this.bullets, bullet, C.MAX_BULLETS * 3);
+    this.addCapped(this.bullets, bullet, MAX_BULLETS * 3);
   }
 
   // 破片を種別(薬莢/その他)ごとの配列へ登録する。上限を超えた分は古いものから破棄する。
   addDebris(piece: DebrisPiece): void {
-    if (piece.kind === 'casing') this.addCapped(this.casings, piece, C.MAX_CASINGS);
+    if (piece.kind === 'casing') this.addCapped(this.casings, piece, MAX_CASINGS);
     else this.addCapped(this.debris, piece, MAX_DEBRIS);
   }
 
