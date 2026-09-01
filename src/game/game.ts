@@ -175,12 +175,9 @@ export class Game {
       initialSave?.activePlayerId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
     this._hud.burnManagementPanel.setHandlers({
-      onAttach: () => { this.player?.attachBooster(); },
-      onToggleIgnition: () => { this.player?.toggleBoosterIgnition(); },
-      onDecouple: () => {
-        const player = this.player;
-        if (player) player.decoupleBooster(this.dynamicSystem);
-      },
+      onAttach: () => { this.player?.boosters.attach(); },
+      onToggleIgnition: () => { this.player?.boosters.toggleIgnition(); },
+      onDecouple: () => { this.player?.boosters.decouple(this.dynamicSystem); },
     });
     this.editor = new PlanEditor(
       this._hud,
