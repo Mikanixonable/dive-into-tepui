@@ -23,7 +23,8 @@ import { AmmoPickup } from '../dynamic/dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
 import { Base } from '../dynamic/dynamic-entity/base';
 import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy, proteinFormationSpawns } from './spawner/enemy-generator';
-import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, type ProteinDisplaySettings } from '../protein/protein-display';
+import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../protein/protein-display';
+import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
 import * as C from '../const';
@@ -92,10 +93,8 @@ export class CreativeStage extends Stage {
     for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
     for (const ammoPickup of this._entities.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
     for (const pickup of this._entities.rcsFuelPickups) this.rcsFuelPickupIdAllocator.next(pickup.id);
-    const restoredProtein = this._entities.enemies.find((enemy) => enemy.enemyKind.kind === 'protein' && isProteinDisplaySettings(enemy.enemyKind.display));
-    if (restoredProtein && restoredProtein.enemyKind.kind === 'protein' && isProteinDisplaySettings(restoredProtein.enemyKind.display)) {
-      this.proteinDisplay = restoredProtein.enemyKind.display;
-    }
+    const restoredProtein = this._entities.enemies.find((enemy) => enemy instanceof ProteinEnemy);
+    if (restoredProtein) this.proteinDisplay = restoredProtein.display;
 
     this.previewEllipseLine = new EllipseLine({ color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan });
     this._scene.add(this.previewEllipseLine.line);
@@ -128,7 +127,9 @@ export class CreativeStage extends Stage {
   }
 
   private applyProteinDisplay(display: ProteinDisplaySettings): void {
-    for (const enemy of this._entities.enemies) enemy.setProteinDisplay(display);
+    for (const enemy of this._entities.enemies) {
+      if (enemy instanceof ProteinEnemy) enemy.setDisplay(display);
+    }
   }
 
   private refillActivePlayerAmmo(): void {
@@ -163,7 +164,7 @@ export class CreativeStage extends Stage {
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return;
     if (shapeDefinition.kind === 'drifting') {
-      this.addEnemy(generateDriftingEnemy(name, state, C.ENEMY_MAX_HP, color, color, this._worldSfx, this._fx, this._scene), this._entities);
+      this.addEnemy(generateDriftingEnemy(name, state, color, color, this._worldSfx, this._fx, this._scene), this._entities);
       return;
     }
     if (shapeDefinition.kind === 'protein') {
@@ -175,7 +176,7 @@ export class CreativeStage extends Stage {
       return;
     }
     this.addEnemy(generateApproachingEnemy(
-      name, state, C.STAGE0_ENEMY_HP, color, color, shapeDefinition.typeIndex, undefined,
+      name, state, color, color, shapeDefinition.typeIndex, undefined,
       this._worldSfx, this._fx, this._scene,
     ), this._entities);
   }
@@ -330,7 +331,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${ship.name} を配置`);
       } else if (form.objectType === 'enemy') {
         const finalName = name.trim() || generateRandomName('enemy');
-        const enemy = generateDriftingEnemy(finalName, state, C.ENEMY_MAX_HP, '#ff6a00', '#ff6a00', this._worldSfx, this._fx, this._scene);
+        const enemy = generateDriftingEnemy(finalName, state, '#ff6a00', '#ff6a00', this._worldSfx, this._fx, this._scene);
         this._entities.addEnemy(enemy);
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.objectType === 'ammo') {
