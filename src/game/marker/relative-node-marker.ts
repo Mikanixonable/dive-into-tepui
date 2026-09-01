@@ -12,18 +12,23 @@ import type { MapPickable } from '../pickable/map-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
+import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { ProjectFn } from '../camera/camera-system';
+import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 
 // 交点種別ごとの、一覧やマーカーで名乗る呼称と、軌道要素としてのラベル。
 const RELATIVE_NODE_LABELS = {
-  an: { name: 'AN', spec: ORBIT_ELEMENT_LABELS.an },
-  dn: { name: 'DN', spec: ORBIT_ELEMENT_LABELS.dn },
-  ca: { name: '再接近点', spec: ORBIT_ELEMENT_LABELS.ca },
+  an: { name: 'AN', spec: ORBIT_ELEMENT_LABELS.an, glyph: ORBIT_POINT_GLYPH.ascendingNode },
+  dn: { name: 'DN', spec: ORBIT_ELEMENT_LABELS.dn, glyph: ORBIT_POINT_GLYPH.descendingNode },
+  ca: { name: '再接近点', spec: ORBIT_ELEMENT_LABELS.ca, glyph: ORBIT_POINT_GLYPH.closestApproach },
 } as const;
 
 export class RelativeNodeMarker implements MapPickable {
   public readonly id: string;
   public readonly name: string;
   public readonly markerLabel: string;
+  // マップのマーカーへ描く字形。一覧の記号(mapGlyph)とは別で、交点の昇降を描き分ける。
+  private readonly markerGlyph: string;
   public readonly mapState = null;
   public readonly mapGlyph = ORBIT_POINT_GLYPH.ascendingNode;
   public readonly mapGlyphSvg = null;
@@ -45,6 +50,20 @@ export class RelativeNodeMarker implements MapPickable {
     this.name = RELATIVE_NODE_LABELS[node].name;
     this.spec = RELATIVE_NODE_LABELS[node].spec;
     this.markerLabel = this.spec.short;
+    this.markerGlyph = RELATIVE_NODE_LABELS[node].glyph;
+  }
+
+  // △▽✧ マーカーを解いた位置へ置く。解けていないフレームと、天体に遮られたフレームは隠す。
+  public sync(
+    markers: MarkerManager, project: ProjectFn, cameraPos: Vec3,
+    celestialBodies: readonly CelestialMotion[], pivot: number, overviewMode: boolean,
+    timeLabel: TimeLabelSetting,
+  ): void {
+    if (this.pos === null) { markers.hide(this.id); return; }
+    markers.setNodePosition(
+      this.id, 'mk-node', this.markerGlyph, this.pos, project, cameraPos, celestialBodies, pivot,
+      overviewMode, orbitPointLabel(this.markerLabel, this.time, timeLabel),
+    );
   }
 
   // 今フレームの解を記録する。求まらなかったフレームは位置と時刻に null を渡す。
