@@ -13,6 +13,7 @@ import { FloatingOrigin } from '../../camera/floating-origin';
 import { apparentSizePx } from '../../../math/projection';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
 import { len, sub } from '../../../math/vec3';
+import { bodySearchText } from '../../pickable/body-search-text';
 import type { AtmosphereCandidate, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
@@ -22,6 +23,10 @@ import type { SunLight } from '../../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
+import type { CelestialSystem } from '../celestial-system';
+import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
+import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { Player } from '../../player/player';
 
 // 公転天体の参照軌道線の色: 衛星は月軌道線の色、惑星は木星軌道線の色を踏襲し、
 // 同じ種別の天体はすべて同じ色で引く。
@@ -38,7 +43,7 @@ const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 // 参照軌道線が完全表示のときの不透明度。
 const REFERENCE_LINE_OPACITY = 0.3;
 
-export abstract class CelestialEntity {
+export abstract class CelestialEntity implements MapPickable {
   // マップ専用の参照軌道線(衛星は親惑星中心、惑星は主星中心)。実体も濃さの決め方も個体が
   // 持ち、出す/消すの判断だけを所有者(CelestialSystem)が sync/remove の呼び分けで行う。
   referenceLine: EllipseLine | null = null;
@@ -178,5 +183,34 @@ export abstract class CelestialEntity {
     diameterMeters: number, metersPerPixel: number, graphics: GraphicsSettingsData,
   ): number {
     return apparentSizePx(diameterMeters, metersPerPixel) * graphics.lodBias;
+  }
+
+  // マップ上の被選択物としての振る舞い。
+  public readonly kind: MapPickKind = 'body';
+  public readonly ownerName = null;
+  public readonly mapTime = null;
+  public readonly gone = false;
+  public readonly mapState = null;
+  public listPriority(): number { return 0; }
+  public listCounted(): boolean { return false; }
+  public listDetail(): string { return ''; }
+
+  // 表示時刻の ECI 位置。
+  public mapPosAt(displayTime: number): Vec3 {
+    return this.stateAt(displayTime).r;
+  }
+
+  // 分類・名前トグルによる可否。
+  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
+    return policy.body(this.id);
+  }
+
+  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+
+  // 一覧の検索が照合する、自艦からの距離と中心天体の名前。
+  public listSearchText(
+    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+  ): string {
+    return bodySearchText(celestialSystem, this.mapPosAt(displayTime), activePlayer, displayTime);
   }
 }

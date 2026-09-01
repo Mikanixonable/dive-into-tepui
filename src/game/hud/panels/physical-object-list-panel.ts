@@ -13,6 +13,7 @@ import { PhysicalObjectListTree } from './physical-object-list-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
+import type { Player } from '../../player/player';
 import type { RowNode } from './physical-object-list-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
 
@@ -40,12 +41,9 @@ interface Section {
   savedExpanded: boolean | null;
 }
 
-// 区画見出しに添える内訳 — approaching/collectable を値として数え、label 付きで示す
-// (表示文言の部分一致に頼ると、文言を変えただけで数え上げが黙って壊れるため)。
-const HEADER_SUMMARY: Partial<Record<MapPickKind, { readonly field: 'approaching' | 'collectable'; readonly label: string }>> = {
-  enemy: { field: 'approaching', label: '接近' },
-  ammo: { field: 'collectable', label: '回収可' },
-  fuel: { field: 'collectable', label: '回収可' },
+// 区画見出しに添える内訳の見出し語。数える対象かどうかは候補自身(listCounted)が答える。
+const HEADER_SUMMARY: Partial<Record<MapPickKind, string>> = {
+  enemy: '接近', ammo: '回収可', fuel: '回収可',
 };
 
 // このパネル自身の折りたたみトグルの見た目。
@@ -290,6 +288,8 @@ export class PhysicalObjectListPanel {
     items: readonly MapPickable[],
     focusId: string | undefined,
     parentOf: ReadonlyMap<string, string>,
+    activePlayer: Player | null,
+    displayTime: number,
   ): void {
     // 本体が畳まれている間は完全に不可視(CSS が display:none)なので、行ツリーの差分同期を
     // 毎フレーム走らせない。次に開いたときは items/focusId の現在値から通常どおり組み直される
@@ -309,7 +309,8 @@ export class PhysicalObjectListPanel {
     this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
     const focusChanged = focusId !== this.lastFocusId;
     this.lastFocusId = focusId;
-    const inputsChanged = this.order.refreshInputs(items, parentOf);
+    const inputsChanged = this.order.refreshInputs(items, parentOf, activePlayer, displayTime, focusId);
+    this.rowTree.setFrame(activePlayer, displayTime);
 
     // フォーカスが切り替わった瞬間だけ、そこへ至る枝を自動展開する対象として渡す
     // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
@@ -355,7 +356,7 @@ export class PhysicalObjectListPanel {
         section.expanded = true;
         this.applyExpanded(section);
       }
-      this.syncHeader(section, kind, label);
+      this.syncHeader(section, kind, label, activePlayer, displayTime);
       totalMatched += section.order.ids.length;
 
       // 行は区画ごとの平坦な台帳が持つ。根から辿って今フレーム現れた id を集め、最後に
@@ -389,17 +390,19 @@ export class PhysicalObjectListPanel {
   // 区画見出しへ件数と状況の内訳を書き出す。表示行が無い区画は見出しごと隠す
   // (区画本体もあわせて隠す — 天体区画の一括開閉ボタンなど、見出し以外の常設要素が
   // 見出しだけ消えた場所に浮いて残らないようにする)。
-  private syncHeader(section: Section, kind: MapPickKind, label: string): void {
+  private syncHeader(
+    section: Section, kind: MapPickKind, label: string, activePlayer: Player | null, displayTime: number,
+  ): void {
     const ids = section.order.ids;
     const hasItems = ids.length > 0;
     section.header.classList.toggle('hidden', !hasItems);
     section.body.classList.toggle('hidden', !hasItems);
-    const summary = HEADER_SUMMARY[kind];
+    const summaryLabel = HEADER_SUMMARY[kind];
     let state = '';
-    if (summary) {
+    if (summaryLabel !== undefined) {
       let count = 0;
-      for (const id of ids) if (this.itemsByIdScratch.get(id)?.[summary.field]) count++;
-      state = ` · ${summary.label} ${count}`;
+      for (const id of ids) if (this.itemsByIdScratch.get(id)?.listCounted(activePlayer, displayTime)) count++;
+      state = ` · ${summaryLabel} ${count}`;
     }
     // 行側と同じく、変わっていなければ書き換えない(毎フレームの再代入はレイアウト再計算の元)。
     const text = `${label} (${ids.length})${state}`;

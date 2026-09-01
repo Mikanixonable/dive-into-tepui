@@ -29,7 +29,8 @@ export function focusPoint(
 // map-pickable.ts が入ると型検査が DOM 定義を要求して壊れる。
 export interface FocusCandidate {
   readonly id: string;
-  readonly pos: Vec3;
+  // 表示時刻の ECI 位置。求まらないフレームは null。
+  mapPosAt(displayTime: number): Vec3 | null;
 }
 
 export interface FocusResolveState {
@@ -77,9 +78,9 @@ export function resolveFocusTarget(
   if (anchored !== null) {
     return { pos: anchored.r, missingFocusFrames: 0, lastResolvedFocus: anchored.r, fallToOrigin: false };
   }
-  const candidate = candidates.find((c) => c.id === focus.id);
-  if (candidate) {
-    return { pos: candidate.pos, missingFocusFrames: 0, lastResolvedFocus: candidate.pos, fallToOrigin: false };
+  const candidatePos = candidates.find((c) => c.id === focus.id)?.mapPosAt(displayTime) ?? null;
+  if (candidatePos !== null) {
+    return { pos: candidatePos, missingFocusFrames: 0, lastResolvedFocus: candidatePos, fallToOrigin: false };
   }
   const missingFocusFrames = state.missingFocusFrames + 1;
   if (missingFocusFrames >= 2) {

@@ -10,12 +10,13 @@ import { occlusionOpacity } from '../../physics/occlusion';
 import { MapDisplayToggles } from '../map/display-toggles';
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { lagrangeId, LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
+import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MapPickable } from '../pickable/map-pickable';
 import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-identity';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
 import { resolveCrowdingWinner, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO } from '../marker/crowding';
+import { LagrangePointMarker } from '../marker/lagrange-point-marker';
 
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 const FOCUS_LABEL_PRIORITY_PX = 40;
@@ -24,7 +25,6 @@ const FOCUS_LABEL_PRIORITY_PX = 40;
 // 間引かれて点は残る距離帯を作る。
 const FOCUS_ICON_PRIORITY_PX = 16;
 
-type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 type ProjectedFocusLabel = { label: FocusLabel; x: number; y: number; dist: number };
 type FocusProjection = { occluded: boolean; opacity: number; x: number; y: number; front: boolean };
 
@@ -59,16 +59,6 @@ export interface FocusLabel {
   showLabel: boolean;
   // 遮蔽された対象や、アイコンもラベルも無い対象はフォーカス候補にしない。
   pickable: boolean;
-}
-
-// ラグランジュ点の名前。所属天体を前に置き、一覧では親の直下に並ぶ。
-function lagrangeName(bodyName: string, n: 1 | 2 | 3 | 4 | 5): string {
-  return `${bodyName}-L${n}`;
-}
-
-// ラグランジュ点のマーカー表記。地点名を上、所属天体を下の行に置く。
-function lagrangeMarkerLabel(bodyName: string, n: 1 | 2 | 3 | 4 | 5): string {
-  return `L${n}\n${bodyName}`;
 }
 
 // 陣営種別ごとのサブ行記号。mk-ally には専用の記号を持たせず、item.sym からの
@@ -170,12 +160,10 @@ class CrowdingGrid {
 }
 
 export class FocusMarkers {
-  // ラグランジュ点ラベルを持つ天体と、そのうち成立する点の番号(表示名は「天体名-Ln」)。
+  // ラグランジュ点マーカーを持つ天体と、そのうち成立する点のマーカー。
   private readonly lagrangeSources: readonly {
-    readonly id: string;
-    readonly name: string;
     readonly motion: OrbitingMotion;
-    readonly points: readonly (1 | 2 | 3 | 4 | 5)[];
+    readonly markers: readonly LagrangePointMarker[];
   }[];
   // トグル・フォーカスに関わらない全登録天体+全ラグランジュ点ラベルの全集合(id/isLagrange 目的)。
   readonly allLabels: readonly FocusLabel[];
@@ -187,10 +175,8 @@ export class FocusMarkers {
   // update が天体を厳密に引いた時刻。sync でのマップビュー遮蔽判定に使う。
   private celestialBodiesPivot = 0;
   private readonly labelsById = new Map<string, FocusLabel>();
-  private readonly bodyPickableRecords = new Map<string, MutableMapPickable>();
-  private readonly cachedBodyPickables: MutableMapPickable[] = [];
-  private cachedBodyPickablesTime: number | null = null;
-  private cachedBodyPickablesPolicy: MapVisibilityPolicy | null = null;
+  // update が座標を求めた天体とラグランジュ点マーカー。表示ポリシーを通ったものだけが並ぶ。
+  private readonly bodyPickableItems: MapPickable[] = [];
   private readonly frameScratch = new Map<string, FocusProjection>();
   private readonly distScratch = new Map<string, number>();
   private readonly projectedForLabel: ProjectedFocusLabel[] = [];
@@ -218,7 +204,8 @@ export class FocusMarkers {
         ...(motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO) ? [1, 2, 3] as const : []),
         ...(motion.hasStableTriangularPoints() ? [4, 5] as const : []),
       ];
-      return points.length === 0 ? [] : [{ id: body.id, name: body.name, motion, points }];
+      const markers = points.map((n) => new LagrangePointMarker(body.id, body.name, n));
+      return markers.length === 0 ? [] : [{ motion, markers }];
     });
 
     // 親を先に、その子を続けて並べる。一覧はこの順をそのまま使うので、並べ替えを持たない。
@@ -226,7 +213,7 @@ export class FocusMarkers {
     // 二度並べないよう追加済みを覚えておく。
     const labels: FocusLabel[] = [];
     const added = new Set<string>();
-    const pointsOf = new Map(this.lagrangeSources.map((s) => [s.id, s.points]));
+    const markersOf = new Map(this.lagrangeSources.map((s) => [s.markers[0]!.parentId, s.markers]));
     const appendBody = (id: string, depth: number): void => {
       if (added.has(id)) return;
       added.add(id);
@@ -238,9 +225,9 @@ export class FocusMarkers {
         labelPriority: LABEL_PRIORITY[cls], depth,
         showIcon: false, showLabel: false, pickable: true,
       });
-      for (const n of pointsOf.get(id) ?? []) {
+      for (const marker of markersOf.get(id) ?? []) {
         labels.push({
-          id: lagrangeId(id, n), name: lagrangeName(body.name, n), markerLabel: lagrangeMarkerLabel(body.name, n),
+          id: marker.id, name: marker.name, markerLabel: marker.markerLabel,
           pos: v3(0, 0, 0),
           kind: 'body', isLagrange: true, bodyClass: cls, labelPriority: LABEL_PRIORITY.lagrange, depth: depth + 1,
           showIcon: false, showLabel: false, pickable: true,
@@ -259,69 +246,8 @@ export class FocusMarkers {
     for (const label of labels) this.labelsById.set(label.id, label);
   }
 
-  isBodyPickable(id: string): boolean {
-    return this.labelsById.get(id)?.pickable ?? true;
-  }
-
-  // 表示中の天体・ラグランジュ点の時刻 t の座標。軌道物体一覧・右クリック候補も
-  // 同じ表示ポリシーを通し、非表示設定の対象を選べない状態にする。遮蔽やラベル衝突で
-  // マーカーを描かなかった対象は pickable: false を伴って出す — 表示設定で消えているわけでは
-  // ないので候補からは落とさず、画面に出ていない対象を掴めないことだけを表す。
-  bodyPickables(t: number, visibilityPolicy: MapVisibilityPolicy): readonly MapPickable[] {
-    if (this.cachedBodyPickablesTime === t && this.cachedBodyPickablesPolicy === visibilityPolicy) {
-      // syncLabels は遮蔽・ラベル衝突の結果だけ label.pickable を更新する。候補の配列と
-      // 座標はそのまま再利用し、ここではその結果だけを反映する。
-      for (const item of this.cachedBodyPickables) {
-        item.pickable = this.labelsById.get(item.id)?.pickable ?? true;
-      }
-      return this.cachedBodyPickables;
-    }
-
-    // update を通らずに直接呼ばれる場合も既存の時刻仕様を保つ。通常の MapPickables 経路は
-    // update が先に同じ policy で座標を作るため、下記の再計算分岐には入らない。
-    const posOf = new Map(
-      this.celestialSystem.celestialMotions.map((a) => [a.id, a.positionAt(t)]));
-    const drawn = new Map(this.allLabels.map((lbl) => [lbl.id, lbl.pickable]));
-    this.cachedBodyPickables.length = 0;
-    for (const body of this.celestialSystem.entities) {
-      if (!visibilityPolicy.body(body.id).pickable) continue;
-      const pos = posOf.get(body.id);
-      if (pos !== undefined) this.cacheBodyPickable(
-        body.id, body.name, pos, drawn.get(body.id) ?? true,
-      );
-    }
-    for (const { id, name, motion, points } of this.lagrangeSources) {
-      if (!visibilityPolicy.body(id).category) continue;
-      const frame = secondaryFrameOf(this.celestialSystem.celestialMotions, t, motion, t);
-      if (frame === null) continue;
-      const l = lagrangePointsOf(frame);
-      for (const n of points) {
-        const pointId = lagrangeId(id, n);
-        if (visibilityPolicy.body(pointId).pickable) {
-          this.cacheBodyPickable(
-            pointId, lagrangeName(name, n), l[`L${n}`], drawn.get(pointId) ?? true,
-          );
-        }
-      }
-    }
-    this.cachedBodyPickablesTime = t;
-    this.cachedBodyPickablesPolicy = visibilityPolicy;
-    return this.cachedBodyPickables;
-  }
-
-  private cacheBodyPickable(id: string, name: string, pos: Vec3, pickable: boolean): void {
-    let item = this.bodyPickableRecords.get(id);
-    if (item === undefined) {
-      item = { id, name, pos, kind: 'body', pickable };
-      this.bodyPickableRecords.set(id, item);
-    } else {
-      item.name = name;
-      item.pos = pos;
-      item.kind = 'body';
-      item.pickable = pickable;
-    }
-    this.cachedBodyPickables.push(item);
-  }
+  // update が座標を求めた天体・ラグランジュ点マーカー。表示ポリシーを通ったものだけが並ぶ。
+  get bodyPickables(): readonly MapPickable[] { return this.bodyPickableItems; }
 
   // 表示時刻 t の各ラベル座標を求め直す。表示対象の外にある天体は座標計算ごと飛ばす —
   // 登録天体が増えるほどラグランジュ点の解決(1天体あたり位置2回 + 回転系1回)が効くため。
@@ -335,29 +261,29 @@ export class FocusMarkers {
 
     const positions: Record<string, Vec3> = {};
     const displayMap: Record<string, { icon: boolean; label: boolean }> = {};
-    this.cachedBodyPickables.length = 0;
+    this.bodyPickableItems.length = 0;
     for (const body of celestialSystem.entities) {
       const visibility = visibilityPolicy.body(body.id);
       if (!visibility.pickable) continue;
       const pos = body.stateAt(t).r;
       positions[body.id] = pos;
       displayMap[body.id] = { icon: visibility.icon, label: visibility.label };
-      this.cacheBodyPickable(body.id, body.name, pos, true);
+      this.bodyPickableItems.push(body);
     }
     if (toggles.lagrangeVisible && toggles.lagrangeName) {
-      for (const { id, name, motion, points } of this.lagrangeSources) {
-        if (!visibilityPolicy.body(id).category) continue;
+      for (const { motion, markers } of this.lagrangeSources) {
+        if (!visibilityPolicy.body(markers[0]!.parentId).category) continue;
         const frame = secondaryFrameOf(celestialBodies, t, motion, t);
-        if (frame === null) continue;
+        if (frame === null) { for (const marker of markers) marker.place(null); continue; }
         const l = lagrangePointsOf(frame);
-        for (const n of points) {
-          const pointId = lagrangeId(id, n);
-          const visibility = visibilityPolicy.body(pointId);
+        for (const marker of markers) {
+          const visibility = visibilityPolicy.body(marker.id);
+          const pos = l[`L${marker.point}`];
+          marker.place(pos);
           if (!visibility.pickable) continue;
-          const pos = l[`L${n}`];
-          positions[pointId] = pos;
-          displayMap[pointId] = { icon: visibility.icon, label: visibility.label };
-          this.cacheBodyPickable(pointId, lagrangeName(name, n), pos, true);
+          positions[marker.id] = pos;
+          displayMap[marker.id] = { icon: visibility.icon, label: visibility.label };
+          this.bodyPickableItems.push(marker);
         }
       }
     }
@@ -375,8 +301,6 @@ export class FocusMarkers {
     }
     this.shownLabels = shown;
     this.celestialBodiesPivot = t;
-    this.cachedBodyPickablesTime = t;
-    this.cachedBodyPickablesPolicy = visibilityPolicy;
   }
 
   // update が求めた座標へラベルのマーカーを置く。天体に遮られているラベルは隠し、
@@ -418,8 +342,6 @@ export class FocusMarkers {
       const projectedState = frame.get(lbl.id);
       if (projectedState === undefined || projectedState.occluded) {
         lbl.pickable = false;
-        const rec = this.bodyPickableRecords.get(lbl.id);
-        if (rec) rec.pickable = false;
         if (projectedState?.occluded) this.markerManager.fadeOut(lbl.id);
         else this.markerManager.hide(lbl.id);
         continue;
@@ -429,14 +351,10 @@ export class FocusMarkers {
       const isIconVisible = lbl.showIcon && !hiddenIconByPriority.has(lbl.id);
       if (!isLabelVisible && !isIconVisible) {
         lbl.pickable = false;
-        const rec = this.bodyPickableRecords.get(lbl.id);
-        if (rec) rec.pickable = false;
         this.markerManager.hide(lbl.id);
         continue;
       }
       lbl.pickable = isLabelVisible || isIconVisible;
-      const rec = this.bodyPickableRecords.get(lbl.id);
-      if (rec) rec.pickable = lbl.pickable;
       if (projectedState.front && (isIconVisible || isLabelVisible)) {
         this.activeCelestialLabels.push({
           id: lbl.id,
@@ -498,21 +416,21 @@ export class FocusMarkers {
       if (isStage2) {
         // 第2段階 (500万km以上): 「月:」などのプレフィックスを表示せず、主親天体(地球等)へ集約
         const primaryId = this.celestialSystem.entityOf(center.id).motion.primary?.id ?? null;
-        if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
+        if (primaryId && this.labelsById.get(primaryId)?.pickable) {
           targetId = primaryId;
-        } else if (this.bodyPickableRecords.get(center.id)?.pickable) {
+        } else if (this.labelsById.get(center.id)?.pickable) {
           targetId = center.id;
         }
         prefix = '';
       } else {
         // 第1段階 (500万km未満): 直近天体ラベルがあればそこへ、なければ親天体へ「月:」プレフィックス付きで繰り上げ
-        const rec = this.bodyPickableRecords.get(center.id);
+        const rec = this.labelsById.get(center.id);
         if (rec?.pickable) {
           targetId = center.id;
           prefix = '';
         } else {
           const primaryId = this.celestialSystem.entityOf(center.id).motion.primary?.id ?? null;
-          if (primaryId && this.bodyPickableRecords.get(primaryId)?.pickable) {
+          if (primaryId && this.labelsById.get(primaryId)?.pickable) {
             targetId = primaryId;
             prefix = `${this.celestialSystem.nameOf(center.id)}: `;
           }

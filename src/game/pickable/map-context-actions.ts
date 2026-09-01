@@ -30,9 +30,9 @@ import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { Stage } from '../stages/stage';
 import { Player } from '../player/player';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { Targeter } from '../targeter';
-import { v3 } from '../../math/vec3';
+import type { MarkerManager } from '../marker/marker-manager';
+import { EmptySpacePickable } from './empty-space-pickable';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { MapPickables } from './map-pickables';
@@ -40,7 +40,6 @@ import type { Part } from '../dynamic/dynamic-entity/parts';
 import { pickCombatEntityAtPoint } from './combat-pickable';
 import { MapPropertyRows } from './map-property-rows';
 import { bodyParentId, MapPickableMenu } from './map-pickable-menu';
-import type { KinematicState } from '../../physics/kinematic-state';
 
 const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
 const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
@@ -85,6 +84,8 @@ export class MapContextActions {
   private readonly propertyRows: MapPropertyRows;
   private readonly pickableMenu: MapPickableMenu;
   private expandedBaseWindowKey: string | null = null;
+  // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
+  private readonly emptySpace = new EmptySpacePickable();
   // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
   // 最後にマップ視点だった時点の値のまま据え置く。
   private lastFocusId: string | undefined = undefined;
@@ -117,6 +118,7 @@ export class MapContextActions {
     private readonly frameControls: FrameControls,
     activeStage: Stage,
     private readonly targeter: Targeter,
+    private readonly markerManager: MarkerManager,
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.pickableMenu.run(act, target);
@@ -143,11 +145,11 @@ export class MapContextActions {
     };
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
       const enemy = this.entities.enemies.find((e) => e.id === id);
-      if (enemy) this.openPropertyWindow(clientX, clientY, this.entityToPickable(enemy), this.pickables.lastSimTime);
+      if (enemy) this.openPropertyWindow(clientX, clientY, enemy, this.pickables.lastSimTime);
     };
     this.hud.targetPanel.onSelectRight = (clientX, clientY) => {
       const target = this.targeter.aliveTarget;
-      if (target) this.openPropertyWindow(clientX, clientY, this.entityToPickable(target), this.pickables.lastSimTime);
+      if (target) this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
     };
   }
 
@@ -157,9 +159,10 @@ export class MapContextActions {
   handleMapRightClick(input: Input, simTime: number): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
-      const candidates = this.pickables.pickables.filter((item) => item.pickable !== false);
       const target = pickNearest(
-        candidates, p.x, p.y, this.cameraSystem.activeCameraProjection,
+        this.pickables.pickables.filter((item) => item.shownOnMap(this.markerManager)),
+        (item) => item.mapPosAt(this.pickables.lastDisplayTime),
+        p.x, p.y, this.cameraSystem.activeCameraProjection,
         pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE),
       );
       if (!target) return false;
@@ -381,8 +384,11 @@ export class MapContextActions {
   handleLeftClick(input: Input): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
-      const candidates = this.pickables.pickables.filter((i) => (i.kind === 'player' || i.kind === 'base') && i.pickable !== false);
-      const target = pickNearest(candidates, p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE));
+      const candidates = this.pickables.pickables.filter(
+        (i) => (i.kind === 'player' || i.kind === 'base') && i.shownOnMap(this.markerManager));
+      const target = pickNearest(
+        candidates, (item) => item.mapPosAt(this.pickables.lastDisplayTime),
+        p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE));
       if (!target) return false;
       this.selectPickable(target, p.x, p.y);
       return true;
@@ -396,7 +402,8 @@ export class MapContextActions {
     if (!this.cameraSystem.overviewMode) return;
     input.takeDoubleClicks((p) => {
       const target = pickNearest(
-        this.pickables.pickables.filter((item) => item.pickable !== false),
+        this.pickables.pickables.filter((item) => item.shownOnMap(this.markerManager)),
+        (item) => item.mapPosAt(this.pickables.lastDisplayTime),
         p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE),
       );
       if (!target) return false;
@@ -445,7 +452,7 @@ export class MapContextActions {
   }
 
   private openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
-    const target: MapPickable = { id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' };
+    const target = this.emptySpace;
     this.menu.open(clientX, clientY, target, this.pickableMenu.itemsFor(target, simTime));
   }
 
@@ -460,7 +467,7 @@ export class MapContextActions {
         this.entities, this.cameraSystem.activeViewpoint, this.cameraSystem.activeCameraProjection, p.x, p.y,
       );
       if (hitEntity) {
-        this.openPropertyWindow(p.x, p.y, this.entityToPickable(hitEntity), simTime);
+        this.openPropertyWindow(p.x, p.y, hitEntity, simTime);
       } else {
         this.openEmptySpaceMenu(p.x, p.y, simTime);
       }
@@ -468,21 +475,13 @@ export class MapContextActions {
     });
   }
 
-  private entityToPickable(entity: DynamicEntity): MapPickable {
-    if (entity instanceof Player) {
-      return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'player' };
-    }
-    if (entity instanceof Base) {
-      return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'base' };
-    }
-    return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'enemy' };
-  }
-
   // 軌道物体ウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
   // ウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)閉じる —
   // 未来ゴースト時刻で位置が求まらないだけのフレーム(stateAt が null)は候補列
   // (pickables.pickables)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
-  sync(simTime: number, celestialBodies: readonly CelestialMotion[], player: Player | null): void {
+  sync(
+    simTime: number, displayTime: number, celestialBodies: readonly CelestialMotion[], player: Player | null,
+  ): void {
     const overviewMode = this.cameraSystem.overviewMode;
     this.physicalObjectListPanel.setVisible(overviewMode);
     // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
@@ -499,12 +498,12 @@ export class MapContextActions {
         if (parent !== null) parentOf.set(l.id, parent);
       }
       this.lastFocusId = focusTargetId(this.cameraSystem.mapCamera.focus);
-      this.physicalObjectListPanel.sync(items, this.lastFocusId, parentOf);
+      this.physicalObjectListPanel.sync(items, this.lastFocusId, parentOf, player, displayTime);
     }
 
     const byKey = new Map(items.map((i) => [this.windowKey(i), i]));
     for (const [key, entry] of [...this.windows]) {
-      if (this.isTargetGone(entry.target)) { this.closeWindow(key); continue; }
+      if (entry.target.gone) { this.closeWindow(key); continue; }
       // 候補列に載っていれば最新の位置を反映し、載っていなければ開いた時点の対象のまま
       // 据え置く(rows の導出はどの種別も実体の state を直接読むので、位置の鮮度は無関係)。
       entry.target = byKey.get(key) ?? entry.target;
@@ -514,7 +513,7 @@ export class MapContextActions {
         this.relatedItemsFor(entry.target, celestialBodies, simTime),
         this.relatedTitleFor(entry.target));
       entry.win.syncRows(
-        this.propertyRows.rowsFor(entry.target, celestialBodies, simTime, player, simTime));
+        this.propertyRows.rowsFor(entry.target, celestialBodies, simTime, player, simTime, displayTime));
       entry.win.syncItems(menuItems);
       entry.win.syncBadge(entry.target.id === this.lastFocusId);
     }
@@ -537,24 +536,6 @@ export class MapContextActions {
       const orbit = this.linePickables.pickables.find((candidate) => candidate.key === key);
       if (!orbit) { entry.win.close(); continue; }
       entry.win.syncRelatedItems(this.relatedItemsForOrbit(orbit), '所属');
-    }
-  }
-
-  // ウィンドウの対象そのものが消滅したかどうか。生きている実体を指す種別は alive を直接見て、
-  // 未来ゴースト時刻で位置が求まらないだけの休止フレームでは閉じないようにする。それ以外の
-  // 種別(天体・アプシス・AN/DN)は実体を持たないので、候補列に載っているかで判定する。
-  private isTargetGone(target: MapPickable): boolean {
-    switch (target.kind) {
-      case 'player': return this.entities.findPlayer(target.id) === undefined;
-      case 'enemy': return !(this.entities.findEnemy(target.id)?.alive ?? false);
-      case 'ammo': return !(
-        this.entities.ammoPickups.find((ammoPickup) => ammoPickup.id === target.id)?.alive ?? false
-      );
-      case 'fuel': return !(
-        this.entities.rcsFuelPickups.find((pickup) => pickup.id === target.id)?.alive ?? false
-      );
-      case 'base': return !(this.entities.findBase(target.id)?.alive ?? false);
-      default: return !this.pickables.pickables.some((i) => this.windowKey(i) === this.windowKey(target));
     }
   }
 
@@ -648,7 +629,7 @@ export class MapContextActions {
       if (item.kind === 'body') {
         isOrbiting = bodyParentId(this.celestialSystem, item.id) === target.id;
       } else {
-        const state = this.stateOfPickable(item);
+        const state = item.mapState;
         isOrbiting = state !== null
           && orbitingAttractorOf(state, celestialBodies, pivot)?.id === target.id;
       }
@@ -674,14 +655,4 @@ export class MapContextActions {
       ? '搭載部品' : '周回物体';
   }
 
-  private stateOfPickable(item: MapPickable): KinematicState | null {
-    switch (item.kind) {
-      case 'player': return this.entities.findPlayer(item.id)?.state ?? null;
-      case 'enemy': return this.entities.findEnemy(item.id)?.state ?? null;
-      case 'ammo': return this.entities.ammoPickups.find((ammo) => ammo.id === item.id)?.state ?? null;
-      case 'fuel': return this.entities.rcsFuelPickups.find((pickup) => pickup.id === item.id)?.state ?? null;
-      case 'base': return this.entities.findBase(item.id)?.state ?? null;
-      default: return null;
-    }
-  }
 }

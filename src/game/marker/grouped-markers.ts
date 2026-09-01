@@ -48,14 +48,9 @@ interface PlacedItem {
 export class GroupedMarkers {
   // 前フレームに出したキー。集合から消えた対象のマーカーを片付けるために覚えておく。
   private shownKeys: readonly string[] = [];
-  private readonly visibleKeys = new Set<string>();
   private readonly hiddenItemsList: GroupedMarkerItem[] = [];
   // 天体ラベルとの近接で前フレームに隠したキー(depth-guard のヒステリシス用)。
   private prevHiddenByCelestialLabel = new Set<string>();
-
-  isPickable(key: string): boolean {
-    return this.visibleKeys.has(key);
-  }
 
   getHiddenItems(): readonly GroupedMarkerItem[] {
     return this.hiddenItemsList;
@@ -113,15 +108,10 @@ export class GroupedMarkers {
       );
     }
 
-    this.visibleKeys.clear();
     this.hiddenItemsList.length = 0;
     const addedKeys = new Set<string>();
 
     for (const m of placed) {
-      const opacity = m.item.opacity ?? 1;
-      if (m.labeled && opacity > 0 && !m.item.occluded && m.p.front) {
-        this.visibleKeys.add(m.item.key);
-      }
       // 天体ラベルと近接してマーカーが非表示化され、かつ惑星に遮蔽(掩蔽)されていないオブジェクトのみを天体サブ行の候補とする
       if (m.hiddenByCelestialLabel && !m.item.occluded && m.p.front) {
         if (m.groupMembers && m.groupMembers.length > 0) {

@@ -271,8 +271,8 @@ export class Targeter {
   // クリック位置の許容半径内で画面上最も近い生存ターゲットを返す。範囲外なら null。
   // MapContextActions の戦闘ビュー右クリック(プロパティウィンドウを開く対象探し)が読む。
   pickTargetAt(click: PointerPoint, targets: readonly CombatTarget[], project: ProjectFn): CombatTarget | null {
-    const pickables = targets.filter((e) => e.alive).map((target) => ({ pos: target.state.r, target }));
-    const picked = pickNearest(pickables, click.x, click.y, project, pickRadiusSq(TARGET_LOCK_PICK_PX_SQ, TARGET_LOCK_PICK_PX_SQ_COARSE));
-    return picked?.target ?? null;
+    return pickNearest(
+      targets.filter((e) => e.alive), (target) => target.state.r,
+      click.x, click.y, project, pickRadiusSq(TARGET_LOCK_PICK_PX_SQ, TARGET_LOCK_PICK_PX_SQ_COARSE));
   }
 }

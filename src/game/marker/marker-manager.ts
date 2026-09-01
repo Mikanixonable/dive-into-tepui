@@ -378,6 +378,12 @@ export class MarkerManager {
   //          要素を消さずプールに残し、次に出すときの再生成コストを省く。
   // remove = 対象ごとにキーが増え続けるマーカー(敵・LEAD など)。対象が消えたら
   //          要素ごと捨てないと DOM とラベル衝突判定の走査対象が単調増加する。
+  // そのキーのマーカーを直前のフレームで画面へ出したか。遮蔽で薄れている途中も出していない扱い。
+  shows(key: string): boolean {
+    const m = this.markerDictionary.get(key);
+    return m !== undefined && !m.hidden && !m.occlusionHidden && !this.occlusionFadeTimers.has(key);
+  }
+
   hide(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m) return;

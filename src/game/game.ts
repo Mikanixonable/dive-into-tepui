@@ -212,13 +212,13 @@ export class Game {
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
       this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem, this.editor,
-      this.markerManager, this.frameAnchors,
+      this.frameAnchors,
     );
     this.linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem, this.cameraSystem);
     this.mapActions = new MapContextActions(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.linePickables,
-      this.activePlayers, this.frameControls, this.activeStage, this.targeter,
+      this.activePlayers, this.frameControls, this.activeStage, this.targeter, this.markerManager,
     );
 
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
@@ -562,7 +562,6 @@ export class Game {
     );
     this.navTarget.sync(this.cameraSystem);
     this.dynamicSystem.syncEquatorNodes(this.cameraSystem);
-    this.mapPickables.syncVisibility();
 
     if (this.viewManager.isMapView) {
       this.displayWindowManager.sync(player);
@@ -572,7 +571,7 @@ export class Game {
     }
     // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは
     // 最新値を表示し続ける必要がある。MapContextActions 側で窓が無ければ即時 return する。
-    this.mapActions.sync(simTime, celestialBodies, player);
+    this.mapActions.sync(simTime, displayTime, celestialBodies, player);
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。

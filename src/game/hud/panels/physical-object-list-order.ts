@@ -2,6 +2,8 @@ import { isLagrangeId, lagrangePointOf } from '../../celestial/lagrange-id';
 import type { CelestialClass } from '../../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
+import type { Player } from '../../player/player';
+import { len, sub } from '../../../math/vec3';
 
 // 1区画ぶんの表示順と親子構造を id で持つ。表示値(距離・詳細)は毎フレーム
 // 引き渡される MapPickable から読み直すため、ここには id しか置かない。
@@ -43,14 +45,18 @@ interface PrevInput {
   matched: boolean;
 }
 
-// 検索文字列と照合するための、id に対する「name + detail を小文字化した文字列」のキャッシュ。
-// name/detail のどちらかが変わったら作り直す(キャッシュキーは id だが、結果に影響する
-// name/detail 自体を保持して古さを判定する)。
-interface MatchTextCache {
-  name: string;
-  detail: string;
-  lower: string;
+// 一覧の1行が今フレームどこに並ぶかを決める値。候補そのものは MapPickable が持つ。
+interface ListSortKey {
+  readonly priority: number;         // 小さいほど先に出る
+  readonly distance: number;         // 自艦から [m]。自艦がいなければ 0
+  readonly distanceFromStar: number; // 恒星から [m]。恒星が無ければ distance と同値
+  readonly inFocusedSystem: boolean;
 }
+
+// 候補列に載っていない行が持つ並び順。絞り込みは通し、距離は最前に置く。
+const ABSENT_SORT_KEY: ListSortKey = {
+  priority: 0, distance: 0, distanceFromStar: 0, inFocusedSystem: true,
+};
 
 // 使い捨ての id(撃破された敵艦・回収された弾薬)がキャッシュに残り続けないよう、候補数の
 // 何倍まで溜めてよいかの係数。掃除はフレームに1度だけ行う — 取りこぼしのたびに掃除すると、
@@ -68,7 +74,10 @@ export class PhysicalObjectListOrder {
   private prevFilter: PhysicalObjectListFilter | null | undefined = undefined;
   // id は不変なので、id ごとの導出結果はフレームを跨いでキャッシュしてよい。
   private readonly lagrangeSortKeyCache = new Map<string, LagrangeSortKey>();
-  private readonly matchTextCache = new Map<string, MatchTextCache>();
+  // 今フレームの並べ替え・絞り込みの基準。refreshInputs が候補列から導き直す。
+  private readonly sortKeys = new Map<string, ListSortKey>();
+  private activePlayer: Player | null = null;
+  private displayTime = 0;
   // rebuildOrder() は毎フレーム呼ばれうるが、これらは組み直し中だけ使う scratch であり、
   // 呼び出し元へ参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
   private readonly matchedScratch: MapPickable[] = [];
@@ -87,10 +96,11 @@ export class PhysicalObjectListOrder {
   public matches(item: MapPickable): boolean {
     if (this.query && !this.matchText(item).includes(this.query)) return false;
     if (this.filter === null) return true;
+    const inFocusedSystem = this.sortKeyOf(item).inFocusedSystem;
     if (this.filter === 'artifact') {
-      return (item.kind === 'player' || item.kind === 'ammo' || item.kind === 'fuel' || item.kind === 'base') && item.inFocusedSystem !== false;
+      return (item.kind === 'player' || item.kind === 'ammo' || item.kind === 'fuel' || item.kind === 'base') && inFocusedSystem;
     }
-    if (this.filter === 'enemy') return item.kind === 'enemy' && item.inFocusedSystem !== false;
+    if (this.filter === 'enemy') return item.kind === 'enemy' && inFocusedSystem;
     if (this.filter === 'lagrange') return item.kind === 'body' && isLagrangeId(item.id);
     return item.kind === 'body' && !isLagrangeId(item.id)
       && this.celestialSystem.entityOf(item.id).bodyClass === this.filter;
@@ -98,8 +108,13 @@ export class PhysicalObjectListOrder {
 
   // 並べ替え・親子構造を決める入力(候補の顔ぶれ・表示名・種別・親・絞り込みの通過可否と
   // 絞り込み/並び順の選択)を前フレームと突き合わせ、変化していれば真を返して記録を更新する。
-  public refreshInputs(items: readonly MapPickable[], parentOf: ReadonlyMap<string, string>): boolean {
+  // 距離・所属系・優先度も候補列から導き直すので、他のメソッドより先に呼ぶこと。
+  public refreshInputs(
+    items: readonly MapPickable[], parentOf: ReadonlyMap<string, string>,
+    activePlayer: Player | null, displayTime: number, focusId: string | undefined,
+  ): boolean {
     this.dropStaleCaches(items.length);
+    this.rebuildSortKeys(items, activePlayer, displayTime, focusId);
     let changed = this.prevInputs.length !== items.length || this.prevSort !== this.sort || this.prevFilter !== this.filter;
     let i = 0;
     for (const item of items) {
@@ -117,6 +132,38 @@ export class PhysicalObjectListOrder {
     this.prevSort = this.sort;
     this.prevFilter = this.filter;
     return changed;
+  }
+
+  // 今フレームの自艦・表示時刻から、候補ごとの並べ替え基準を導き直す。恒星からの距離は
+  // 太陽系順、自艦からの距離は近さ順、所属系は人工物と敵の絞り込みが読む。
+  private rebuildSortKeys(
+    items: readonly MapPickable[], activePlayer: Player | null, displayTime: number,
+    focusId: string | undefined,
+  ): void {
+    this.activePlayer = activePlayer;
+    this.displayTime = displayTime;
+    this.sortKeys.clear();
+    const viewer = activePlayer?.state ?? null;
+    const star = this.celestialSystem.star;
+    const starPos = star === null ? null : star.stateAt(displayTime).r;
+    for (const item of items) {
+      const pos = item.mapPosAt(displayTime);
+      if (pos === null) continue;
+      const distance = viewer === null ? 0 : len(sub(pos, viewer.r));
+      // 所属系の判定は最強天体から親を辿るぶん高価なので、系そのものを表す天体では省く。
+      const inFocusedSystem = item.kind === 'body'
+        || this.celestialSystem.isPositionInFocusedSystem(focusId, pos, displayTime);
+      this.sortKeys.set(item.id, {
+        priority: item.listPriority(activePlayer),
+        distance,
+        distanceFromStar: starPos === null ? distance : len(sub(pos, starPos)),
+        inFocusedSystem,
+      });
+    }
+  }
+
+  private sortKeyOf(item: MapPickable): ListSortKey {
+    return this.sortKeys.get(item.id) ?? ABSENT_SORT_KEY;
   }
 
   // 保持している並び ids が、今フレームの値でも比較関数の順序を満たしているか。
@@ -168,7 +215,9 @@ export class PhysicalObjectListOrder {
   // 現在の並び順での a と b の前後関係。負なら a が先。
   private compare(a: MapPickable, b: MapPickable): number {
     if (this.sort === 'name') return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
-    const priority = (a.priority ?? 0) - (b.priority ?? 0);
+    const aKey = this.sortKeyOf(a);
+    const bKey = this.sortKeyOf(b);
+    const priority = aKey.priority - bKey.priority;
     if (priority !== 0) return priority;
 
     // 同じ親天体の L4/L5 は理論上同じ太陽距離にある。浮動小数点誤差で距離の大小を
@@ -179,10 +228,10 @@ export class PhysicalObjectListOrder {
       return aLagrange.point - bLagrange.point;
     }
 
-    // 太陽系順は恒星からの距離。恒星の無いレジストリでは distanceFromStar が undefined の
-    // ままなので、自機からの距離(近さ順)へ自然に委譲される。
-    const aDistance = this.sort === 'solar' ? (a.distanceFromStar ?? a.distance ?? 0) : (a.distance ?? 0);
-    const bDistance = this.sort === 'solar' ? (b.distanceFromStar ?? b.distance ?? 0) : (b.distance ?? 0);
+    // 太陽系順は恒星からの距離。恒星の無いレジストリでは距離が自機基準になるので、
+    // 近さ順へ自然に委譲される。
+    const aDistance = this.sort === 'solar' ? aKey.distanceFromStar : aKey.distance;
+    const bDistance = this.sort === 'solar' ? bKey.distanceFromStar : bKey.distance;
     const dist = aDistance - bDistance;
     const scale = Math.max(1, Math.abs(aDistance), Math.abs(bDistance));
     const distanceTie = Math.abs(dist) <= scale * 1e-12;
@@ -208,18 +257,12 @@ export class PhysicalObjectListOrder {
   private dropStaleCaches(itemCount: number): void {
     const limit = (itemCount + 1) * ID_KEYED_CACHE_SLACK;
     if (this.lagrangeSortKeyCache.size > limit) this.lagrangeSortKeyCache.clear();
-    if (this.matchTextCache.size > limit) this.matchTextCache.clear();
   }
 
-  // 検索対象文字列(name + detail を小文字化したもの)を id ごとに使い回す。name/detail が
-  // 前回と変わっていたら作り直すので、結果は常に今フレームの item の値を反映する。
+  // 検索語と照合する文字列。表示名と、対象が検索向けに出す補助表示を小文字で連ねる。
   private matchText(item: MapPickable): string {
-    const detail = item.detail ?? '';
-    const cached = this.matchTextCache.get(item.id);
-    if (cached && cached.name === item.name && cached.detail === detail) return cached.lower;
-    const lower = `${item.name} ${detail}`.toLocaleLowerCase();
-    this.matchTextCache.set(item.id, { name: item.name, detail, lower });
-    return lower;
+    const searchText = item.listSearchText(this.celestialSystem, this.activePlayer, this.displayTime);
+    return `${item.name} ${searchText}`.toLocaleLowerCase();
   }
 
   // ids の末尾へ、まだ登場していない親を追記する — 親自身はフィルタを通っていなくても、

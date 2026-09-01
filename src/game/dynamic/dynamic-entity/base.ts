@@ -22,7 +22,7 @@ import type { PlanExecutionMode } from '../../player/player';
 import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { MarkerRole } from '../../targeter';
-import { fmtMarkerDist } from '../../hud/utils';
+import { fmtDist, fmtMarkerDist } from '../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import type { RayHit, SphereHit } from '../../../math/triangle-mesh';
@@ -36,10 +36,12 @@ import { RcsEffects } from '../../player/rcs-effects';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../../render/render-style';
-import type { MapVisibility } from '../../map/visibility-policy';
+import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import { currentThemePalette } from '../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/marker-manager';
+import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
 
 export const BASE_MAX_VESSELS = 4; // 基地が保有・格納できる艦艇の最大数
 const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
@@ -93,7 +95,7 @@ type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
-export class Base extends DynamicEntity implements Controllable {
+export class Base extends DynamicEntity implements Controllable, MapPickable {
   public readonly mapKind: DynamicEntityKind = 'base';
 
   readonly collisionGeom = new BaseCollisionGeometry();
@@ -325,11 +327,15 @@ export class Base extends DynamicEntity implements Controllable {
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
   }
 
+  // 画面マーカーと被選択判定が同じ個体を指すためのキー。
+  private get markerKey(): string { return `base-${this.id}`; }
+
+  // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
   markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {
-      key: `base-${this.id}`,
+      key: this.markerKey,
       cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
       sym: baseMarkerSvg(),
       pos,
@@ -352,8 +358,8 @@ export class Base extends DynamicEntity implements Controllable {
       this.thrustEffects.dispose(this.scene);
       this.rcsEffects.dispose(this.scene);
     }
-    this.markerManager.remove(`base-${this.id}`);
-    this.markerManager.remove(`base-${this.id}-bearing`);
+    this.markerManager.remove(this.markerKey);
+    this.markerManager.remove(`${this.markerKey}-bearing`);
     // 格納艦は entities.players から外れているため、ここでしか回収できない。
     for (const entry of this.baseState.dockedVessels) entry.player.dispose();
     this.baseState.dockedVessels = [];
@@ -375,5 +381,41 @@ export class Base extends DynamicEntity implements Controllable {
       throttle: this.throttle.serialize(),
       showTrajectoryLine: this.showTrajectoryLine,
     };
+  }
+
+  // マップ上の被選択物としての振る舞い。
+  public readonly kind: MapPickKind = 'base';
+  public readonly ownerName = null;
+  public readonly mapTime = null;
+  public get gone(): boolean { return !this.alive; }
+  public get mapState(): KinematicState { return this.state; }
+  public listPriority(): number { return 0; }
+  public listCounted(): boolean { return false; }
+
+  // 表示時刻の ECI 位置。予測が届かない時刻では null。
+  public mapPosAt(displayTime: number): Vec3 | null {
+    return this.stateAt(displayTime)?.r ?? null;
+  }
+
+  // 基地カテゴリの表示トグルによる可否。
+  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
+    return policy.entity(this.mapKind);
+  }
+
+  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
+
+  // 自艦がいれば自艦からの距離、いなければ格納中の艦艇数。
+  public listDetail(
+    _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+  ): string {
+    if (activePlayer === null) return `格納 ${this.baseState.dockedVessels.length} 艇`;
+    return fmtDist(len(sub(this.mapPosAt(displayTime) ?? this.state.r, activePlayer.state.r)));
+  }
+
+  // 検索が照合する文字列。行の補助表示と同じ。
+  public listSearchText(
+    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+  ): string {
+    return this.listDetail(celestialSystem, activePlayer, displayTime);
   }
 }

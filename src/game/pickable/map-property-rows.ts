@@ -30,7 +30,7 @@ export class MapPropertyRows {
   // 種別ごとのプロパティ行。値の導出は sync フェーズで毎フレーム呼び直す(表示専用のため)。
   rowsFor(
     target: MapPickable, celestialBodies: readonly CelestialMotion[], pivot: number,
-    player: Player | null, simTime: number,
+    player: Player | null, simTime: number, displayTime: number,
   ): PropertyRow[] {
     switch (target.kind) {
       case 'player': return this.playerRows(target, celestialBodies, pivot);
@@ -38,9 +38,9 @@ export class MapPropertyRows {
       case 'base': return this.baseRows(target, celestialBodies, pivot, player);
       case 'ammo': return this.ammoPickupRows(target, celestialBodies, pivot, player);
       case 'fuel': return this.rcsFuelPickupRows(target, celestialBodies, pivot, player);
-      case 'body': return this.bodyRows(target, pivot, player);
-      case 'apsis': return this.apsisRows(target, celestialBodies, pivot, simTime);
-      case 'relnode': case 'eqnode': return this.nodeRows(target, celestialBodies, pivot, simTime);
+      case 'body': return this.bodyRows(target, pivot, player, displayTime);
+      case 'apsis': return this.apsisRows(target, celestialBodies, pivot, simTime, displayTime);
+      case 'relnode': case 'eqnode': return this.nodeRows(target, celestialBodies, pivot, simTime, displayTime);
       case 'empty-space': return [];
     }
   }
@@ -172,10 +172,13 @@ export class MapPropertyRows {
 
   // 実在の天体(この星系に登録された ID)なら種別・μ・半径・(公転していれば)軌道要素を、
   // ラグランジュ点なら種別のみを出す。
-  private bodyRows(target: MapPickable, pivot: number, player: Player | null): PropertyRow[] {
+  private bodyRows(
+    target: MapPickable, pivot: number, player: Player | null, displayTime: number,
+  ): PropertyRow[] {
     const body = this.celestialSystem.find(target.id);
+    const pos = target.mapPosAt(displayTime);
     const rows: PropertyRow[] = [];
-    if (player) rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(target.pos, player.state.r))) });
+    if (player && pos) rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(pos, player.state.r))) });
     if (body === null) {
       rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
       return rows;
@@ -207,27 +210,33 @@ export class MapPropertyRows {
   // Pe/Ap の別・AN/DN の別はタイトル側(header)に既に出ているので、ここには乗せない。
   private apsisRows(
     target: MapPickable, celestialBodies: readonly CelestialMotion[], pivot: number, simTime: number,
+    displayTime: number,
   ): PropertyRow[] {
-    const center = strongestAttractor(target.pos, celestialBodies, pivot);
-    const alt = len(sub(target.pos, center.positionAt(pivot))) - center.def.radius;
+    const pos = target.mapPosAt(displayTime);
+    if (pos === null) return [];
+    const center = strongestAttractor(pos, celestialBodies, pivot);
+    const alt = len(sub(pos, center.positionAt(pivot))) - center.def.radius;
     const rows: PropertyRow[] = [];
-    if (target.ownerName) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
+    if (target.ownerName !== null) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
     rows.push({ key: 'alt', label: '高度', value: fmtDist(alt) });
-    if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
+    if (target.mapTime !== null) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.mapTime - simTime)}` });
     return rows;
   }
 
   // AN/DN の別はタイトル側(header)に既に出ているので、ここでは対象名と通過時刻のみ出す。
   private nodeRows(
     target: MapPickable, celestialBodies: readonly CelestialMotion[], pivot: number, simTime: number,
+    displayTime: number,
   ): PropertyRow[] {
+    const pos = target.mapPosAt(displayTime);
+    if (pos === null) return [];
     const targetName = target.kind === 'relnode'
       ? (this.navTarget.name ?? '対象')
-      : this.celestialSystem.nameOf(strongestAttractor(target.pos, celestialBodies, pivot).id);
+      : this.celestialSystem.nameOf(strongestAttractor(pos, celestialBodies, pivot).id);
     const rows: PropertyRow[] = [];
-    if (target.ownerName) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
+    if (target.ownerName !== null) rows.push({ key: 'owner', label: '所属軌道', value: target.ownerName });
     rows.push({ key: 'target', label: '対象', value: targetName });
-    if (target.time !== undefined) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.time - simTime)}` });
+    if (target.mapTime !== null) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(target.mapTime - simTime)}` });
     return rows;
   }
 }
