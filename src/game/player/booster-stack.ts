@@ -3,6 +3,7 @@
 // この層は Three.js や Player を知らず、船体側から最後尾へ並ぶ段の配列だけを持つ。
 // 推力と燃料の更新をここへ閉じ込めることで、描画フレームの刻みが燃料切れをまたいでも
 // 実際に燃焼していた時間だけを上位の運動方程式へ渡せる。
+import { addScaled, type Vec3 } from '../../math/vec3';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
 
 const idAllocator = new EntityIdAllocator('booster-');
@@ -58,6 +59,33 @@ export function boosterAverageAcceleration(
   if (Math.abs(ratio - 1) < 1e-12) return result.averageThrust / massAfter;
   const logarithmicMeanMass = (massBefore - massAfter) / Math.log(ratio);
   return logarithmicMeanMass > 0 ? result.averageThrust / logarithmicMeanMass : 0;
+}
+
+export interface BoosterSeparationVelocities {
+  readonly player: Vec3;
+  readonly booster: Vec3;
+}
+
+// 機首方向 forward に対しブースターが船尾へ relativeSpeed で離れるよう、
+// 両者へ運動量を保存する速度差を配る。baseVelocity は分離直前の共通速度。
+export function boosterSeparationVelocities(
+  baseVelocity: Vec3,
+  forward: Vec3,
+  playerMass: number,
+  boosterMass: number,
+  relativeSpeed: number,
+): BoosterSeparationVelocities {
+  const totalMass = playerMass + boosterMass;
+  if (totalMass <= 0 || relativeSpeed <= 0) {
+    return { player: { ...baseVelocity }, booster: { ...baseVelocity } };
+  }
+
+  const playerDelta = relativeSpeed * boosterMass / totalMass;
+  const boosterDelta = -relativeSpeed * playerMass / totalMass;
+  return {
+    player: addScaled(baseVelocity, forward, playerDelta),
+    booster: addScaled(baseVelocity, forward, boosterDelta),
+  };
 }
 
 const NO_BURN: BoosterStepResult = Object.freeze({
