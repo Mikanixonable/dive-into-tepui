@@ -1,19 +1,11 @@
 // 固定リボンの BVH を使い、外接球で絞った静止球・掃引球との接触を判定する。
 import * as THREE from 'three/webgpu';
-import { add, cross, dot, len, norm, scale, sub, type Vec3, v3 } from '../../math/vec3';
+import { add, cross, dot, len, lenSq, norm, scale, sub, type Vec3, v3 } from '../../math/vec3';
+import {
+  type BVHNode, type SphereHit, type Triangle,
+  buildBVH, sphereCollideTriangles,
+} from '../../math/triangle-mesh';
 import { qInvert, qRotate, type Quat } from '../../physics/attitude';
-import type { SphereHit, Triangle } from '../dynamic/dynamic-entity/base-collision';
-
-interface BVHNode {
-  readonly min: Vec3;
-  readonly max: Vec3;
-  readonly triangles?: readonly Triangle[];
-  readonly left?: BVHNode;
-  readonly right?: BVHNode;
-}
-
-const LEAF_TRIANGLE_COUNT = 16;
-const MAX_BVH_DEPTH = 12;
 
 export class ProteinRibbonCollisionGeometry {
   readonly outerRadius: number;
@@ -24,7 +16,7 @@ export class ProteinRibbonCollisionGeometry {
   constructor(renderRoot: THREE.Object3D, rootScale: number) {
     this.rootScale = rootScale;
     const triangles = collectRibbonTriangles(renderRoot);
-    this.bvh = buildBVH(triangles, 0);
+    this.bvh = buildBVH(triangles);
 
     let radiusSq = 0;
     for (const triangle of triangles) {
@@ -37,8 +29,6 @@ export class ProteinRibbonCollisionGeometry {
   testSphereCollision(
     sphereCenter: Vec3, sphereRadius: number, center: Vec3, att: Quat,
   ): SphereHit | null {
-    if (this.bvh === null) return null;
-
     const distance = len(sub(sphereCenter, center));
     if (distance > this.outerRadius + sphereRadius) return null;
 
@@ -165,109 +155,4 @@ function collectRibbonTriangles(renderRoot: THREE.Object3D): Triangle[] {
     }
   });
   return triangles;
-}
-
-/** Vec3 の長さの二乗を返す。 */
-function lenSq(value: Vec3): number {
-  return dot(value, value);
-}
-
-/** 三角形群を最長軸の重心中央値で再帰分割する。 */
-function buildBVH(triangles: readonly Triangle[], depth: number): BVHNode | null {
-  if (triangles.length === 0) return null;
-
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  // ノード配下の全頂点を覆う AABB を求める。
-  for (const triangle of triangles) {
-    for (const point of [triangle.a, triangle.b, triangle.c]) {
-      minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x);
-      minY = Math.min(minY, point.y); maxY = Math.max(maxY, point.y);
-      minZ = Math.min(minZ, point.z); maxZ = Math.max(maxZ, point.z);
-    }
-  }
-  const min = v3(minX, minY, minZ);
-  const max = v3(maxX, maxY, maxZ);
-  if (triangles.length <= LEAF_TRIANGLE_COUNT || depth >= MAX_BVH_DEPTH) {
-    return { min, max, triangles: [...triangles] };
-  }
-
-  // 最長軸の中央値で分け、偏りにくい二分木を作る。
-  const extent = { x: maxX - minX, y: maxY - minY, z: maxZ - minZ };
-  const axis: 'x' | 'y' | 'z' = extent.x >= extent.y && extent.x >= extent.z
-    ? 'x' : extent.y >= extent.z ? 'y' : 'z';
-  const sorted = [...triangles].sort((left, right) => (
-    (left.a[axis] + left.b[axis] + left.c[axis]) / 3
-    - (right.a[axis] + right.b[axis] + right.c[axis]) / 3
-  ));
-  const middle = Math.floor(sorted.length / 2);
-  const left = buildBVH(sorted.slice(0, middle), depth + 1);
-  const right = buildBVH(sorted.slice(middle), depth + 1);
-  if (left === null || right === null) return { min, max, triangles: [...triangles] };
-  return { min, max, left, right };
-}
-
-/** BVH 内で球と交差する最も深い三角形接触を返す。 */
-function sphereCollideTriangles(
-  center: Vec3, radius: number, node: BVHNode,
-): { point: Vec3; normal: Vec3; depth: number } | null {
-  const expandedMin = sub(node.min, v3(radius, radius, radius));
-  const expandedMax = add(node.max, v3(radius, radius, radius));
-  if (center.x < expandedMin.x || center.x > expandedMax.x
-    || center.y < expandedMin.y || center.y > expandedMax.y
-    || center.z < expandedMin.z || center.z > expandedMax.z) return null;
-
-  // 葉では最近点までの距離を比較し、最大の貫入量を選ぶ。
-  if (node.triangles) {
-    let deepest: { point: Vec3; normal: Vec3; depth: number } | null = null;
-    for (const triangle of node.triangles) {
-      const closest = closestPointTriangle(center, triangle);
-      const difference = sub(center, closest);
-      const distance = len(difference);
-      if (distance >= radius) continue;
-      const depth = radius - distance;
-      if (deepest === null || depth > deepest.depth) {
-        deepest = {
-          point: closest,
-          normal: distance > 1e-6 ? norm(difference) : triangle.normal,
-          depth,
-        };
-      }
-    }
-    return deepest;
-  }
-
-  const leftHit = node.left ? sphereCollideTriangles(center, radius, node.left) : null;
-  const rightHit = node.right ? sphereCollideTriangles(center, radius, node.right) : null;
-  if (leftHit === null) return rightHit;
-  if (rightHit === null || leftHit.depth >= rightHit.depth) return leftHit;
-  return rightHit;
-}
-
-/** 点から三角形への最近点を Voronoi 領域ごとに求める。 */
-function closestPointTriangle(point: Vec3, triangle: Triangle): Vec3 {
-  // 頂点、辺、面の順に重心座標の符号から所属領域を絞り込む。
-  const { a, b, c } = triangle;
-  const ab = sub(b, a), ac = sub(c, a), ap = sub(point, a);
-  const d1 = dot(ab, ap), d2 = dot(ac, ap);
-  if (d1 <= 0 && d2 <= 0) return a;
-
-  const bp = sub(point, b);
-  const d3 = dot(ab, bp), d4 = dot(ac, bp);
-  if (d3 >= 0 && d4 <= d3) return b;
-  const vc = d1 * d4 - d3 * d2;
-  if (vc <= 0 && d1 >= 0 && d3 <= 0) return add(a, scale(ab, d1 / (d1 - d3)));
-
-  const cp = sub(point, c);
-  const d5 = dot(ab, cp), d6 = dot(ac, cp);
-  if (d6 >= 0 && d5 <= d6) return c;
-  const vb = d5 * d2 - d1 * d6;
-  if (vb <= 0 && d2 >= 0 && d6 <= 0) return add(a, scale(ac, d2 / (d2 - d6)));
-
-  const va = d3 * d6 - d5 * d4;
-  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
-    return add(b, scale(sub(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))));
-  }
-  const denominator = 1 / (va + vb + vc);
-  return add(a, add(scale(ab, vb * denominator), scale(ac, vc * denominator)));
 }
