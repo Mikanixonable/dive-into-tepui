@@ -28,7 +28,5 @@
 
 ## 残っている宿題
 
-- `const.ts` に残る 107 export は、複数モジュールから参照されるもの。置き場をどう決めるかは
-  未定。
-- `guideKindDefaultColors` と、それが使う `GUIDE_GROUP_HUE` / `guideKindShade` / `lerpColor` は
-  `const.ts` に残っている。軌道ガイドの色の所有者へまとめて移せるはずだが、移動先の判断が要る。
+- `const.ts` は解体して削除した(`refactor_modules.md` 論点4)。104 定数はすべて所有者モジュールへ
+  移り、`guideKindDefaultColors` とその補助は `hud/panels/guide-kind-def.ts` に居る。
