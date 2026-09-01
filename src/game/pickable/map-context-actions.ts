@@ -10,7 +10,6 @@ import {
   MenuAction, type PauseMenu,
 } from '../hud/windows';
 import { TEMP_WINDOW_GROUP } from '../hud/overlay-manager';
-import { lagrangeParentId } from '../celestial/lagrange-id';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { MapPickable, pickNearest } from './map-pickable';
 import { LinePickable, pickNearestLine } from './line-pickable';
@@ -32,6 +31,7 @@ import type { Stage } from '../stages/stage';
 import { Player } from '../player/player';
 import type { Targeter } from '../targeter';
 import type { MarkerManager } from '../marker/marker-manager';
+import type { CelestialMarkers } from '../marker/celestial-markers';
 import { EmptySpacePickable } from './empty-space-pickable';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { MapPickables } from './map-pickables';
@@ -113,6 +113,7 @@ export class MapContextActions implements MapCommands {
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
     private readonly markerManager: MarkerManager,
+    private readonly celestialMarkers: CelestialMarkers,
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => target.runMapMenu(act, this);
@@ -471,13 +472,11 @@ export class MapContextActions implements MapCommands {
     if (!overviewMode && this.windows.size === 0 && this.partWindows.size === 0 && this.lineWindows.size === 0) return;
     const items = this.pickables.pickables;
     if (overviewMode) {
-      // ラグランジュ点は自分を持つ天体(衛星ならその衛星自身)、それ以外の天体は主星/主天体を
-      // 親とする — 親が無ければ(恒星、もしくは主天体が未登録)undefined のままにして根として扱う。
+      // 親が無ければ(恒星、もしくは主天体が未登録)載せず、根として扱う。
       const parentOf = new Map<string, string>();
-      for (const l of this.cameraSystem.focusMarkers.allLabels) {
-        const parent = l.isLagrange
-          ? lagrangeParentId(l.id) : this.celestialSystem.entityOf(l.id).motion.primary?.id ?? null;
-        if (parent !== null) parentOf.set(l.id, parent);
+      for (const item of this.celestialMarkers.allItems) {
+        const parent = this.celestialSystem.bodyParentId(item.id);
+        if (parent !== undefined && parent !== null) parentOf.set(item.id, parent);
       }
       this.lastFocusId = focusTargetId(this.cameraSystem.mapCamera.focus);
       this.physicalObjectListPanel.sync(items, this.lastFocusId, parentOf, player, displayTime);

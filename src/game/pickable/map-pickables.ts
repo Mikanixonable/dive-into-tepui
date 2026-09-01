@@ -8,6 +8,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import { NavTarget } from '../nav-target';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { CameraSystem } from '../camera/camera-system';
+import type { CelestialMarkers } from '../marker/celestial-markers';
 import { PlanEditor } from '../plan/plan-editor';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import { isOccluded } from '../../physics/occlusion';
@@ -44,6 +45,7 @@ export class MapPickables {
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
+    private readonly celestialMarkers: CelestialMarkers,
     private readonly editor: PlanEditor,
     private readonly frameAnchors: FrameAnchorSource,
   ) {}
@@ -72,9 +74,7 @@ export class MapPickables {
         this.celestialSystem, this.cameraSystem.activeCameraPos, displayTime),
     );
     this._visibilityPolicy = visibilityPolicy;
-    this.cameraSystem.focusMarkers.update(
-      displayTime, this.cameraSystem.mapDisplayToggles, visibilityPolicy,
-    );
+    this.celestialMarkers.update(displayTime, this.cameraSystem.mapDisplayToggles, visibilityPolicy);
     this.navTarget.update(
       this.activePlayers.current, this.entities, this.celestialSystem, displayWindow, this.frameAnchors);
 
@@ -94,7 +94,7 @@ export class MapPickables {
     };
 
     this.candidateItems.length = 0;
-    for (const body of this.cameraSystem.focusMarkers.bodyPickables) append(body);
+    for (const body of this.celestialMarkers.bodyPickables) append(body);
     for (const ship of this.entities.players) append(ship);
     for (const enemy of this.entities.enemies) append(enemy);
     for (const ammoPickup of this.entities.ammoPickups) append(ammoPickup);
@@ -114,7 +114,7 @@ export class MapPickables {
     return {
       mapMode: overviewMode,
       mapItems: overviewMode ? this.items.length : 0,
-      mapLabels: overviewMode ? this.cameraSystem.focusMarkers.shownLabelCount : 0,
+      mapLabels: overviewMode ? this.celestialMarkers.shownLabelCount : 0,
     };
   }
 }
