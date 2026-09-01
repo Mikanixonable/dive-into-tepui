@@ -73,7 +73,7 @@ export function collinearClearanceRatio(mu: number, orbitRadius: number, seconda
 // 円制限三体問題のラグランジュ点。5点はいずれも回転系(原点 = 主天体、x̂ = 副天体方向、
 // ŷ = 副天体の公転前方)の固定点で、その無次元座標(軌道半径を 1 とする)は質量比
 // mu = m2/(m1+m2) だけで決まる。それを ECI [m] へ移す写像 place を受け取って組み立てる。
-export function lagrangePoints(mu: number, place: (x: number, y: number) => Vec3): LagrangePoints {
+function lagrangePoints(mu: number, place: (x: number, y: number) => Vec3): LagrangePoints {
   const s60 = Math.sqrt(3) / 2;
   return {
     L1: place(1 - collinearGamma(mu, 'L1'), 0),
