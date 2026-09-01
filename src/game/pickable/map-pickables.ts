@@ -55,7 +55,7 @@ export class MapPickables {
         item.pickable = focusMarkers.isBodyPickable(item.id);
       } else if (item.kind === 'player') {
         item.pickable = combatMarkers.isPickable(`player-${item.id}`);
-      } else if (item.kind === 'ship') {
+      } else if (item.kind === 'enemy') {
         item.pickable = combatMarkers.isPickable(`enemy-${item.id}`);
       } else if (item.kind === 'base') {
         item.pickable = combatMarkers.isPickable(`base-${item.id}`);
@@ -128,10 +128,10 @@ export class MapPickables {
       }
     }
     for (const enemy of this.entities.enemies) {
-      const vShip = visibilityPolicy.entity('ship');
-      if (!enemy.alive || !vShip.pickable) continue;
+      const vEnemy = visibilityPolicy.entity('enemy');
+      if (!enemy.alive || !vEnemy.pickable) continue;
       const pos = enemy.stateAt(displayTime)?.r;
-      if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'ship', undefined, undefined, undefined, vShip.label);
+      if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'enemy', undefined, undefined, undefined, vEnemy.label);
     }
     for (const ammoPickup of this.entities.ammoPickups) {
       const vAmmo = visibilityPolicy.entity('ammo');
@@ -170,14 +170,14 @@ export class MapPickables {
     const viewer = this.activePlayers.current?.state;
     if (viewer) for (const item of this.candidateItems) {
       const d = len(sub(item.pos, viewer.r));
-      const approaching = item.kind === 'ship' ? d < 2e5 : undefined;
+      const approaching = item.kind === 'enemy' ? d < 2e5 : undefined;
       const collectable = item.kind === 'ammo' ? d <= AMMO_PICKUP_RADIUS
         : item.kind === 'fuel' ? d <= RCS_FUEL_PICKUP_RADIUS
           : undefined;
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。天体の detail は一覧の行には表示されないが、
       // PhysicalObjectListOrder.matches() の検索が「名前・補助表示文字列」として読む
       // (DEVELOP/SPEC/MAP.md §10)ため、他種別と同じく組み立てておく。
-      const status = item.kind === 'ship' ? `${approaching ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'fuel' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'base' ? fmtDist(d) : item.kind === 'body' ? `${fmtDist(d)} · ${this.celestialSystem.nameOf(strongestAttractor(item.pos, celestialBodies, displayTime).id)}` : item.detail;
+      const status = item.kind === 'enemy' ? `${approaching ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'fuel' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'base' ? fmtDist(d) : item.kind === 'body' ? `${fmtDist(d)} · ${this.celestialSystem.nameOf(strongestAttractor(item.pos, celestialBodies, displayTime).id)}` : item.detail;
       item.detail = status;
       item.distance = d;
       item.approaching = approaching;

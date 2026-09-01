@@ -8,6 +8,7 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { Ship, SHIP_RADIATING_AREA_PER_MASS, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
@@ -88,6 +89,8 @@ export type PlayerInit =
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、それらを反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
 export class Player extends Ship {
+  public readonly mapKind: DynamicEntityKind = 'player';
+
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
   readonly belt: Belt;

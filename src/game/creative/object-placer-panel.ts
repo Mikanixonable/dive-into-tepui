@@ -14,7 +14,7 @@ import { MOON } from '../celestial/solar-system/earth-system';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { ObjectType } from '../random-name';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, sunSyncInclinationDeg } from './orbit-form-fields';
 
 // ラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
@@ -29,7 +29,6 @@ import {
   SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
 } from './slider-field';
 
-export type { ObjectType };
 export type ReferenceCelestialBody = string;
 export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
 export type PlacementMode = 'elements' | 'lagrange';
@@ -64,7 +63,7 @@ export type LagrangeForm = {
 
 // 確定時点のフォーム値。placementMode を判別子とし、選ばれた配置方法(・サイズ/形・軌道種別)が
 // 実際に使う値だけを持つ。
-export type ObjectPlacerForm = { readonly objectType: ObjectType } & (ElementsForm | LagrangeForm);
+export type ObjectPlacerForm = { readonly objectType: DynamicEntityKind } & (ElementsForm | LagrangeForm);
 
 // open() の事前入力: 'body' は基準天体だけをその値へ合わせる(他のフィールドは前回の値のまま) —
 // マップの現在フォーカスを新規配置の初期値にする経路。'objectType' は種類だけを合わせる —
@@ -73,11 +72,11 @@ export type ObjectPlacerForm = { readonly objectType: ObjectType } & (ElementsFo
 // 軌道要素をそのまま引き継げる複製の経路。
 export type ObjectPlacerPreset =
   | { readonly kind: 'body'; readonly celestialBody: ReferenceCelestialBody }
-  | { readonly kind: 'objectType'; readonly objectType: ObjectType }
-  | { readonly kind: 'form'; readonly objectType: ObjectType; readonly form: ElementsForm };
+  | { readonly kind: 'objectType'; readonly objectType: DynamicEntityKind }
+  | { readonly kind: 'form'; readonly objectType: DynamicEntityKind; readonly form: ElementsForm };
 
 // アイコンはマップ実マーカーと同じ形状(自機=鏃の塗りつぶし、敵機=鏃の中抜き、基地=正七角形)。
-const OBJECT_TYPE_ITEMS: readonly (readonly [ObjectType, string, string])[] = [
+const OBJECT_TYPE_ITEMS: readonly (readonly [DynamicEntityKind, string, string])[] = [
   ['player', '自機', shipMarkerSvg(true)],
   ['enemy', '敵機', shipMarkerSvg(false)],
   ['ammo', '弾薬', ENTITY_GLYPH.ammo],
@@ -152,7 +151,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   get isOpen(): boolean { return this._isOpen; }
 
   private readonly panel: HTMLElement;
-  private readonly objectType: SegmentedControl<ObjectType>;
+  private readonly objectType: SegmentedControl<DynamicEntityKind>;
   private readonly placementMode: SegmentedControl<PlacementMode>;
   private readonly placementGroups: Record<PlacementMode, HTMLElement>;
   private readonly celestialBody: ObjectPicker<ReferenceCelestialBody>;
@@ -184,7 +183,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private issueRows: readonly HTMLElement[] = [];
   private lastIssueKey = '';
 
-  private objectTypeValue: ObjectType = 'player';
+  private objectTypeValue: DynamicEntityKind = 'player';
   private placementModeValue: PlacementMode = 'elements';
   private celestialBodyValue: ReferenceCelestialBody = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
@@ -449,7 +448,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   // 種類を切り替える。基地は月基準の軌道要素かラグランジュ点指定でしか設置できない
   // (placement-validation.ts の validateBaseReferenceFields と対応)ので、基準天体の選択肢を
   // 月だけに絞り、月以外が選ばれていたら月へ寄せ直す。基地以外へ戻したら選択肢も元に戻す。
-  private selectObjectType(v: ObjectType): void {
+  private selectObjectType(v: DynamicEntityKind): void {
     this.objectTypeValue = v;
     this.objectType.setSelected(v);
     if (v === 'base') {

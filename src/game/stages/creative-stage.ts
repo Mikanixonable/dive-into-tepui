@@ -27,7 +27,8 @@ import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../protein
 import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
-import { ElementsForm, LagrangeForm, ObjectType, ReferenceCelestialBody, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
+import { ElementsForm, LagrangeForm, ReferenceCelestialBody, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { STAGE_CONTROL_ENEMY_SHAPES, StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
@@ -236,7 +237,7 @@ export class CreativeStage extends Stage {
   // 満たす値が求まったときだけ、その値をプリセットして開く。逆算できない状態(双曲線軌道など)や、
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
   // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
-  openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
+  openObjectPlacerForDuplicate(objectType: DynamicEntityKind, state: KinematicState): void {
     const form = elementsFormFromState(
       state, this._celestialSystem, state.t, this._celestialSystem.origin.id);
     if (form && validateBaseReferenceFields(objectType, 'elements', form.celestialBody).length === 0) {

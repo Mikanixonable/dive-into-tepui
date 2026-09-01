@@ -2,7 +2,7 @@ import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../
 import { CelestialMotion } from '../physics/celestial-motion';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
-import { Base } from './dynamic/dynamic-entity/base';
+import type { Base } from './dynamic/dynamic-entity/base';
 import type { AmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
 import type { RcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
 import type { DynamicSystem } from './dynamic/dynamic-system';
@@ -159,7 +159,7 @@ export class Targeter {
       this.aliveScratch.push(tgt);
       const ds = tgt.stateAt(displayTime);
       if (!ds) continue;
-      const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship'), tgt === player);
+      const visibility = visibilityPolicy?.entity(tgt.mapKind, tgt === player);
       if (visibility && !visibility.pickable) continue;
       // 戦闘ビューではカメラ直下の自機をマーカーで重ねて表示しない。マップビューでは
       // 他の自機と同じ位置マーカーが必要なので、操作対象かつ戦闘ビューのときだけ除外する。

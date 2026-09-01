@@ -1,7 +1,7 @@
 // Creative のフォーム入力をDOMやTHREEに依存せず検証する小さな境界。
 import { semiMajorFromPeriod } from '../../physics/elements';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
-import type { ObjectType } from '../random-name';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 
 // UI 側が「どの入力欄が悪いか」を示すための識別子。
 export type PlacementFieldId =
@@ -90,7 +90,7 @@ export function validateLagrangePlacementFields(input: LagrangePlacementInput): 
 // 基地は敵の射程となる惑星近傍を避け、月基準の軌道要素かラグランジュ点指定でのみ設置できる。
 // 問題がなければ空配列を返す。
 export function validateBaseReferenceFields(
-  objectType: ObjectType, placementMode: 'elements' | 'lagrange', celestialBody?: string,
+  objectType: DynamicEntityKind, placementMode: 'elements' | 'lagrange', celestialBody?: string,
 ): PlacementFieldIssue[] {
   if (objectType !== 'base') return [];
   if (placementMode === 'elements' && celestialBody !== 'moon') {

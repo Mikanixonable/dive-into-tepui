@@ -34,7 +34,7 @@ export class MapPropertyRows {
   ): PropertyRow[] {
     switch (target.kind) {
       case 'player': return this.playerRows(target, celestialBodies, pivot);
-      case 'ship': return this.shipRows(target, celestialBodies, pivot, player);
+      case 'enemy': return this.enemyRows(target, celestialBodies, pivot, player);
       case 'base': return this.baseRows(target, celestialBodies, pivot, player);
       case 'ammo': return this.ammoPickupRows(target, celestialBodies, pivot, player);
       case 'fuel': return this.rcsFuelPickupRows(target, celestialBodies, pivot, player);
@@ -90,7 +90,7 @@ export class MapPropertyRows {
 
   // 自艦がいなければ距離・接近速度・相対速度・相対傾斜角の行はそもそも出さない。
   // 装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、軌道要素・相対傾斜角は「軌道」グループの下に畳む。
-  private shipRows(
+  private enemyRows(
     target: MapPickable, celestialBodies: readonly CelestialMotion[], pivot: number,
     player: Player | null,
   ): PropertyRow[] {

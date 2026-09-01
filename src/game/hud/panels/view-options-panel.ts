@@ -89,7 +89,7 @@ const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
 
 const ENTITY_ROWS: readonly BodyClassRow[] = [
   { label: '自艦', categoryKey: 'playerVisible', nameKey: 'playerName', orbitKey: 'playerOrbit' },
-  { label: '敵', categoryKey: 'shipVisible', nameKey: 'shipName', orbitKey: 'shipOrbit' },
+  { label: '敵', categoryKey: 'enemyVisible', nameKey: 'enemyName', orbitKey: 'enemyOrbit' },
   { label: '弾薬', categoryKey: 'ammoVisible', nameKey: 'ammoName', orbitKey: 'ammoOrbit' },
   { label: 'RCS燃料', categoryKey: 'fuelVisible', nameKey: 'fuelName', orbitKey: 'fuelOrbit' },
   { label: '基地', categoryKey: 'baseVisible', nameKey: 'baseName', orbitKey: 'baseOrbit' },
