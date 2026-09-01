@@ -1,11 +1,13 @@
 import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { Projected } from '../../math/projection';
 import { Vec3, add, scale } from '../../math/vec3';
-import * as C from '../const';
 import { AxisHandleSpec } from './node-gizmo';
 
 // マップモードの DOM ギズモ(node-gizmo.ts): 選択中ノードの Δv アーム(6方向ハンドル)
 const NODE_GIZMO_HANDLE_PX = 42; // ノードからアームハンドルを離す距離 [px]
+
+export const NODE_DV_RATE = 300; // Δv 調整速度 [m/s per 実秒]
+export const NODE_DV_RATE_FINE = 30; // 微調整モード時
 
 const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s per 実秒]
 export const DV_RATE_MAX = 400; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
@@ -79,7 +81,7 @@ export class AxisDragGizmo {
 
   // Δv アームのラッチ前ドラッグ量を選択中ノードの Δv へ加算する。
   applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
-    const rate = (fineAttitude ? C.NODE_DV_RATE_FINE : C.NODE_DV_RATE) / 200;
+    const rate = (fineAttitude ? NODE_DV_RATE_FINE : NODE_DV_RATE) / 200;
     this.onApplyDv(axis, sign, deltaPx * rate);
   }
 
@@ -92,7 +94,7 @@ export class AxisDragGizmo {
       return;
     }
     this.dvHoldTime[idx] = (this.dvHoldTime[idx] ?? 0) + dt;
-    const fineScale = fineAttitude ? C.NODE_DV_RATE_FINE / C.NODE_DV_RATE : 1;
+    const fineScale = fineAttitude ? NODE_DV_RATE_FINE / NODE_DV_RATE : 1;
     this.onApplyDv(axis, sign, rampedDvRate(this.dvHoldTime[idx]!) * fineScale * dt);
   }
 

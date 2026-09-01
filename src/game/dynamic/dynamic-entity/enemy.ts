@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
-import * as C from '../../const';
-import { Ship } from './ship';
+import { Ship, MUZZLE_SPEED } from './ship';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 import { DynamicEntity } from './dynamic-entity';
 import { closingSpeed, type Contact } from './contact';
@@ -14,7 +13,7 @@ import { Bullet } from './bullet';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
 import { fmtMarkerDist } from '../../hud/utils';
-import { ENTITY_GLYPH } from '../../marker/marker-glyphs';
+import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { currentThemePalette } from '../../theme';
 import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
 import type { Quat } from '../../../physics/attitude';
@@ -25,6 +24,7 @@ import type { DynamicSystem } from '../../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { EnemySaveData } from '../../save/save-data';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
+import { MARKER_PRIORITY } from '../../marker/marker-manager';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
 // 達するのは、地球の大気では高度 80 km 付近。
@@ -37,11 +37,13 @@ export const ENEMY_SCALE = 20; // 見た目メッシュに掛けるスケール
 
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
 
-const PLASMA_BULLET_SPEED = C.MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
+const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
 const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
 const ENEMY_AI_MIN_RANGE = 50; // これより近いと射撃しない(至近距離) [m]
+// 交戦圏の半径 [m]。これより遠い自機は撃たず、ステージ00 の湧きもこの外へ出た敵を消す。
+export const STAGE00_MAX_RANGE = 30000;
 const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃する最大機数
 const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
@@ -190,12 +192,12 @@ export abstract class Enemy extends Ship {
   }
 
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
-  // (displayState 経由)を渡すこと。key を id から作るのは、表示名が敵どうしで重なりうるため。
+  // (stateAt 経由)を渡すこと。key を id から作るのは、表示名が敵どうしで重なりうるため。
   public markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
     // 代表選出の優先度: ターゲット > 距離が近い順 (天体 > 船・エンティティ)
-    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.ENEMY - dist / 1e9;
+    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
       key: `enemy-${this.id}`,
       cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
@@ -206,10 +208,10 @@ export abstract class Enemy extends Ship {
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
       // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。ターゲット中は第二アクセントカラーで強調する。
-      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ENEMY,
+      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.enemyShip,
       bearingClass: 'mk-dir mk-bearing-triangle',
-      color: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ENEMY,
+      color: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ENEMY,
       symMarkup: true,
     };
   }
@@ -311,7 +313,7 @@ export abstract class Enemy extends Ship {
       return;
     }
     const dist = len(sub(player.state.r, this.state.r));
-    if (!(dist < C.STAGE00_MAX_RANGE && dist > ENEMY_AI_MIN_RANGE)) return;
+    if (!(dist < STAGE00_MAX_RANGE && dist > ENEMY_AI_MIN_RANGE)) return;
 
     // バースト継続中なら次弾のタイミングだけ見る
     if (this.burstLeft && this.burstLeft > 0) {

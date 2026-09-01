@@ -5,15 +5,16 @@ import { strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf } from '../../physics/elements';
 import { addScaled, dot, len, norm, sub } from '../../math/vec3';
-import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { fmtDist, fmtSpeed, fmtTime } from '../hud/utils';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { ProjectFn } from '../camera/camera-system';
-import { MarkerManager } from '../marker/marker-manager';
-import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
+import { MarkerManager, MARKER_DIR_DIST } from '../marker/marker-manager';
+import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH, COLOR_MARKER_NODE } from '../marker/marker-identity';
 import type { Player } from '../player/player';
 import type { PlanPath } from './plan-path';
+import { THROTTLE_LEVELS } from '../player/player-throttle';
+import { NODE_APPROACH_LEAD } from './plan';
 
 // マニューバ達成判定(計画軌道への接近許容)
 const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
@@ -46,7 +47,7 @@ export class PlanGuide {
     const node = plan.firstNode();
     // 実行の窓に入るまでは通知しない。窓の手前では自機はまだ噴射前の軌道にいるので、
     // 目標軌道との近さを見ても達成の判定にならない。
-    if (node && simTime >= node.t - C.NODE_APPROACH_LEAD) {
+    if (node && simTime >= node.t - NODE_APPROACH_LEAD) {
       this.notifyApproach(node);
       this.notifyAchieved(node, player, celestialBodies, simTime);
     }
@@ -75,7 +76,7 @@ export class PlanGuide {
     const dvRem = sub(node.v, player.state.v);
     const mag = len(dvRem);
     const nodeDist = len(sub(node.r, player.state.r));
-    const maxAccel = C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1] ?? 1;
+    const maxAccel = THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1] ?? 1;
     const burnTime = maxAccel > 0 ? mag / maxAccel : 0;
     const shipPos = path.toDisplay(player.state.r, simTime);
     const burnDir = path.toDisplayDir(dvRem, simTime);
@@ -93,8 +94,8 @@ export class PlanGuide {
       `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(node.v))}`,
     );
     // 噴射方向が視界外(背面を含む)なら、敵・弾薬と同じ画面端の方位ガイドを出す。
-    const burnPoint = project(addScaled(shipPos, norm(burnDir), C.MARKER_DIR_DIST));
-    this.markerManager.setBearing('burn-bearing', 'mk-dir', DIRECTION_GLYPH.bearing, burnPoint, '', 0.7, C.COLOR_MARKER_NODE);
+    const burnPoint = project(addScaled(shipPos, norm(burnDir), MARKER_DIR_DIST));
+    this.markerManager.setBearing('burn-bearing', 'mk-dir', DIRECTION_GLYPH.bearing, burnPoint, '', 0.7, COLOR_MARKER_NODE);
   }
 
   // 実行の窓に入ったことを通知する。

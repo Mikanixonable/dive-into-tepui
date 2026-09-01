@@ -5,7 +5,7 @@ import type { Player } from '../player/player';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import { ENTITY_GLYPH } from '../marker/marker-glyphs';
+import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { CelestialMotion } from '../../physics/celestial-motion';
@@ -27,7 +27,6 @@ import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../protein
 import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
-import * as C from '../const';
 import { ElementsForm, LagrangeForm, ObjectType, ReferenceCelestialBody, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
@@ -297,7 +296,7 @@ export class CreativeStage extends Stage {
     displayTime: number,
   ): void {
     if (!this.preview) {
-      this.previewEllipseLine.sync(null, fo, camera);
+      this.previewEllipseLine.hide();
       this._markerManager.fadeOut('creative-preview');
       return;
     }
@@ -309,7 +308,7 @@ export class CreativeStage extends Stage {
     }
     this._markerManager.setPosition(
       'creative-preview', 'mk-self', ENTITY_GLYPH.preview, this.preview.pos, project,
-      'PREVIEW', 1, C.COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
+      'PREVIEW', 1, COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
     );
   }
 

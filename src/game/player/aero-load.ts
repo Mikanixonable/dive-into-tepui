@@ -3,7 +3,8 @@
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { airflow } from '../../physics/atmosphere';
 import { Vec3, sub } from '../../math/vec3';
-import * as C from '../const';
+
+export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]
 
 // 加熱の理由を「空力」と「内部」に分ける動圧 [Pa]。地球の大気では高度 133 km 相当で、これを
 // 下回る動圧では空力加熱が放射冷却に対して桁で小さい。
@@ -30,7 +31,7 @@ export class AeroLoad {
 
   // 動圧が構造限界を超えたか。
   get overStructuralLimit(): boolean {
-    return this.qdyn > C.MAX_DYN_PRESSURE;
+    return this.qdyn > MAX_DYN_PRESSURE;
   }
 
   // 空力加熱が効いている流れの中にいるか。これを下回る動圧では空力加熱は放射冷却に対して桁で

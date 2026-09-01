@@ -15,8 +15,7 @@ import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { dot, len, sub } from '../../math/vec3';
 import { ArcCelestialBodies, type ArcCelestialBodyWindow, type FutureCelestialBodyProvider } from './arc-celestial-bodies';
-import { atmosphericMaxStep } from './time-step';
-import * as C from '../const';
+import { atmosphericMaxStep, SUBSTEP_MAX_DT, ARC_MIN_STEP_DT } from './time-step';
 
 // 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
 // (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを
@@ -35,12 +34,31 @@ export const ARC_APPROACH_SAFETY = 0.5;
 // 512×34.1s = 8フレームぶんの前線をこの精度で覆う。
 export const ARC_FINE_STEPS = 512;
 
+export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
+export const DEFAULT_HISTORY_DURATION = 10 * 86400; // 過去列を持つ種別(Ship・Base)の既定保持時間 [s]
+// 1周回あたりの予測列の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
+// 遠方の長周期軌道でも精度が一定になる。同時にこれは遅い軌道のコスト上限でもあり、既定の
+// 表示期間では GEO 以遠でこの項が採用値になって、下限だけで刻む場合の 1/14(GEO)〜1/558(日心)
+// までステップ数が落ちる。離心軌道では1周の中でも刻みが変わる(モルニヤで近地点 20s /
+// 遠地点 331s)ので、定数刻みでは届かない「安くて同じ精度」の側に出られる。
+// 300 での形状誤差は GEO 28日 0.14km・モルニヤ1日 0.08km(実測)と、どのズームでもマップ
+// 1px 未満に収まる(LEO と低月周回では period/300 が ARC_MIN_STEP_DT を割るので、そちらの
+// 床が採用値になってこの値に依らない)。
+export const ARC_STEPS_PER_REV = 300;
+// 消費されない弧(計画の区間)の積分ステップ数・保持サンプル数の上限。
+// 弧の長さは表示期間(最大1年)に追従するので、1周回基準の刻みのままではステップ数もメモリも
+// 青天井になる。長い期間ではこれらが刻み幅と間引き間隔を決め、軌道の形の精度と引き換えに
+// 費用を頭打ちにする。刻み幅を決めるのは span > ARC_MAX_STEPS × ARC_MIN_STEP_DT(≒4.6日)の
+// ときだけ。ARC_MAX_SAMPLES は実状態の履歴の間引き(trajectorySampleInterval)でも使う。
+export const ARC_MAX_STEPS = 20000;
+export const ARC_MAX_SAMPLES = 10000;
+
 // keepDuration ぶんを保持する列へ積む最小間隔 [s]。軌道周期 period を TRAJECTORY_SAMPLES_PER_REV
 // 等分した値と、保持窓を ARC_MAX_SAMPLES 等分した値の大きい方(period が非有限なら
 // DEFAULT_HISTORY_DURATION で代用)。
 export function trajectorySampleInterval(period: number, keepDuration: number): number {
-  const span = isFinite(period) && period > 0 ? period : C.DEFAULT_HISTORY_DURATION;
-  return Math.max(span / C.TRAJECTORY_SAMPLES_PER_REV, keepDuration / C.ARC_MAX_SAMPLES);
+  const span = isFinite(period) && period > 0 ? period : DEFAULT_HISTORY_DURATION;
+  return Math.max(span / TRAJECTORY_SAMPLES_PER_REV, keepDuration / ARC_MAX_SAMPLES);
 }
 
 // 弧が打ち切られた、天体表面への到達。到達した瞬間の状態は経路を補間して求める。
@@ -67,7 +85,7 @@ export class PredictedArc {
   requiredEnd: number;
   retainFrom: number;
   // 実シミュレーションのサブステップ幅の上限 [s]。消費される弧はこれに刻みを揃える。
-  simulationMaxStep = C.SUBSTEP_MAX_DT;
+  simulationMaxStep = SUBSTEP_MAX_DT;
 
   // state0 を起点に先端を構築する。requiredEnd/retainFrom は state0.t で初期化され、
   // 所有者が書き換えるまで needsGrowth は偽のまま。radius はこの弧が表す物体の接触半径で、
@@ -112,7 +130,7 @@ export class PredictedArc {
   // 刻み幅(ARC_STEPS_PER_REV)でも決まり、そちらは作り直しても同じ値になるので、間隔を下限と
   // 比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
   represents(state0: KinematicState, end: number): boolean {
-    const sampleInterval = (end - this.state0.t) / C.ARC_MAX_SAMPLES;
+    const sampleInterval = (end - this.state0.t) / ARC_MAX_SAMPLES;
     if (this._decimation > sampleInterval * ARC_MAX_SAMPLE_COARSENING) return false;
     return state0 === this.state0;
   }
@@ -122,7 +140,7 @@ export class PredictedArc {
     if (!this.needsGrowth) return false;
     const tip = this._trajectory.state;
     const span = Math.max(0, this.requiredEnd - this.retainFrom);
-    this._decimation = Math.max(this._decimation, span / C.ARC_MAX_SAMPLES);
+    this._decimation = Math.max(this._decimation, span / ARC_MAX_SAMPLES);
 
     // 中心窓は最初の1歩だけ先端時刻で解決し、以後は前歩の中点で解決した窓を持ち越す。
     const held = this.carriedSources ?? this.bodies.resolve(tip.t, tip, 0);
@@ -196,11 +214,11 @@ export class PredictedArc {
     if (this.consumable) {
       return Math.min(approachDt, atmosphericDt, this.simulationMaxStep);
     }
-    const naturalDt = period / C.ARC_STEPS_PER_REV;
-    const coarseFloor = span / C.ARC_MAX_STEPS;
+    const naturalDt = period / ARC_STEPS_PER_REV;
+    const coarseFloor = span / ARC_MAX_STEPS;
     return Math.min(
       atmosphericDt,
-      Math.max(C.ARC_MIN_STEP_DT, Math.min(span, approachDt, Math.max(naturalDt, coarseFloor))));
+      Math.max(ARC_MIN_STEP_DT, Math.min(span, approachDt, Math.max(naturalDt, coarseFloor))));
   }
 
   // 固体表面への到達の判定。触れた天体があれば、その接触時刻へ経路を補間した状態を到達点

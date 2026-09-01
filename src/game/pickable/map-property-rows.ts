@@ -17,7 +17,7 @@ import { strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf } from '../../physics/elements';
 import { apsisAltitudes } from '../../physics/elements';
-import * as C from '../const';
+import { RCS_FUEL_PICKUP_AMOUNT } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
 
 export class MapPropertyRows {
   constructor(
@@ -165,7 +165,7 @@ export class MapPropertyRows {
         value: fmtDist(len(sub(pickup.state.r, player.state.r))),
       });
     }
-    rows.push({ key: 'amount', label: '補給量', value: `${C.RCS_FUEL_PICKUP_AMOUNT.toLocaleString()} kg` });
+    rows.push({ key: 'amount', label: '補給量', value: `${RCS_FUEL_PICKUP_AMOUNT.toLocaleString()} kg` });
     rows.push(...this.orbitRows(pickup, celestialBodies, pivot));
     return rows;
   }

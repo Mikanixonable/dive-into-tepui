@@ -2,7 +2,6 @@
 // 当て、当事者へ collideWithCelestialBody を呼ぶ。天体は状態を書き換えられないので個体ごとに
 // 独立に解け、解決の順序も件数の上限も要らない — 物体どうしの接触
 // (entity-contact-physics.ts)とは機構を共有しない。
-import * as C from '../const';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { distributeFixedContact } from '../../physics/collision-response';
 import { firstSurfaceContact } from '../../physics/surface-contact';
@@ -12,6 +11,7 @@ import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { Stage } from '../stages/stage';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { SurfaceCandidates } from './surface-candidates';
+import { CONTACT_RESTITUTION } from './entity-contact-response';
 
 // 天体との接触に参加するのは、独立した実体すべて。艦に取り付いた接触代理(ベルトの節点・
 // 放熱板の折り)は艦本体が代表するので参加しない。
@@ -74,7 +74,7 @@ export class SurfaceContactPhysics {
     const response = distributeFixedContact(
       { state: e.state, radius: e.radius },
       { state: hit.body.stateAt(this.pivot, e.state.t), radius: hit.body.def.radius },
-      C.CONTACT_RESTITUTION, hit.geometry);
+      CONTACT_RESTITUTION, hit.geometry);
 
     const before = e.state;
     // 位置も速度も動いていなければ書き戻さない — 書き戻しは予測弧を捨てる。

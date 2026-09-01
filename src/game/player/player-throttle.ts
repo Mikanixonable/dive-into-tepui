@@ -1,13 +1,18 @@
 // プレイヤーの並進スロットル・姿勢制御(RCS)・プログレードホールド。
 import { Attitude, attitudeAlignTorque, qRotate } from '../../physics/attitude';
 import { Vec3, add, norm, scale, v3 } from '../../math/vec3';
-import * as C from '../const';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import type { ThrottleSaveData } from '../save/save-data';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 
+// 並進推力(WSADQE の全 6 方向で共通)の出力 4 段階 [m/s^2]。[1]/[2]/[3]/[4] キーで切替、
+// 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
+export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];
+export const THROTTLE_LABELS = ['弱', '中', '強', '最強'] as const;
+
+export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
 const THROTTLE_DEFAULT_IDX = 1;
 
 // 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
@@ -93,7 +98,7 @@ export class PlayerThrottle {
   // 並進出力のプリセットを idx 段階目へ切り替える。
   setThrottlePreset(idx: number): void {
     this.throttleIdx = idx;
-    this._hud.hint(`並進出力: ${C.THROTTLE_LABELS[idx]!} (${C.THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
+    this._hud.hint(`並進出力: ${THROTTLE_LABELS[idx]!} (${THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
   }
 
   // スラスト方向の表示用状態と噴射ラッチを初期化する。
@@ -174,7 +179,7 @@ export class PlayerThrottle {
     // 全開加速度は推力/質量で決まる。スロットル段は THROTTLE_LEVELS の最大値に対する
     // 比としてそこへ掛けるので、既定パーツの艦では表示値(THROTTLE_LEVELS)と実加速度が一致する。
     const maxAccel = ship.mass > 0 ? ship.totalThrust / ship.mass : 0;
-    const presetScale = C.THROTTLE_LEVELS[this.throttleIdx]! / C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!;
+    const presetScale = THROTTLE_LEVELS[this.throttleIdx]! / THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1]!;
     let thrustAccel = maxAccel * presetScale;
 
     // 燃料残量に応じて実際の加速度を絞る
@@ -231,7 +236,7 @@ export class PlayerThrottle {
       
     const baseAngAccel = ship.totalTorque > 0
       ? ship.totalTorque / Math.max(inertia.x, inertia.y, inertia.z)
-      : C.MAX_ANG_ACCEL;
+      : MAX_ANG_ACCEL;
 
     const angScale = fineAttitude ? FINE_ATTITUDE_SCALE : 1;
     let maxAngAccel = baseAngAccel * angScale * rcsOutputFactor;

@@ -4,7 +4,6 @@
 // 装填/姿勢リセット/視点追従切替/ターゲット選択の4操作と、タッチ時のみのスロットル段は、
 // キー押下と同じ経路(Input.tapKey)で発火するボタンとしてここに持つ — タッチでも到達できるよう
 // にするための、キー入力の代替 UI。
-import * as C from '../../const';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { Button, SegmentedControl } from '../widgets';
 import { fmtAmmoStatus, setElementText } from '../utils';
@@ -16,6 +15,8 @@ import { Player } from '../../player/player';
 import type { RadiatorSide } from '../../player/radiator';
 import type { SolarSide } from '../../player/power';
 import { Base } from '../../dynamic/dynamic-entity/base';
+import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/player-throttle';
+import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -203,9 +204,9 @@ export class VesselPanel {
     const throttleIdx = throttleObj.throttle.throttleIdx;
     this.syncMeter(
       this.throttleMeter,
-      (throttleIdx + 1) / C.THROTTLE_LEVELS.length,
-      `${C.THROTTLE_LABELS[throttleIdx]} (${C.THROTTLE_LEVELS[throttleIdx]!.toFixed(1)} m/s²)`,
-      C.THROTTLE_LEVELS.length,
+      (throttleIdx + 1) / THROTTLE_LEVELS.length,
+      `${THROTTLE_LABELS[throttleIdx]} (${THROTTLE_LEVELS[throttleIdx]!.toFixed(1)} m/s²)`,
+      THROTTLE_LEVELS.length,
       throttleIdx + 1,
       false,
     );
@@ -220,11 +221,11 @@ export class VesselPanel {
       const qdynText = qdyn >= 1000 ? `${(qdyn / 1000).toFixed(2)} kPa` : `${qdyn.toFixed(0)} Pa`;
       this.syncMeter(
         this.qdynMeter,
-        qdyn / C.MAX_DYN_PRESSURE,
+        qdyn / MAX_DYN_PRESSURE,
         qdynText,
-        C.MAX_DYN_PRESSURE,
+        MAX_DYN_PRESSURE,
         qdyn,
-        qdyn > 0.5 * C.MAX_DYN_PRESSURE,
+        qdyn > 0.5 * MAX_DYN_PRESSURE,
       );
     }
 

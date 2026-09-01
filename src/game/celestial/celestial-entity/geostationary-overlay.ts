@@ -8,9 +8,9 @@ import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
-import * as C from '../../const';
 import { EllipseLine } from '../../lines/ellipse-line';
 import type { MarkerManager } from '../../marker/marker-manager';
+import { MARKER_PRIORITY } from '../../marker/marker-manager';
 
 // リングとラベルは中心天体から 240,000km で薄れ始め 720,000km で消える。
 const FADE_NEAR_DIST = 2.4e8;
@@ -71,10 +71,14 @@ export class GeostationaryOverlay {
   ): void {
     const centerPos = center.positionAt(pivot);
     const elements = this.elementsAround(center, pivot);
-    this.line.sync(visible ? elements : null, fo, cameraSystem.activeCamera);
     const dist = len(sub(centerPos, cameraSystem.activeCameraPos));
     const fade = 1.0 - Math.min(1, Math.max(0, (dist - FADE_NEAR_DIST) / FADE_SPAN));
-    if (visible) this.line.setOpacity(RING_OPACITY * fade);
+    if (visible) {
+      this.line.sync(elements, fo, cameraSystem.activeCamera);
+      this.line.setOpacity(RING_OPACITY * fade);
+    } else {
+      this.line.hide();
+    }
     this.syncLabel(
       elements, centerPos, pivot, fade, cameraSystem, markerManager, celestialBodies, visible);
   }
@@ -115,6 +119,6 @@ export class GeostationaryOverlay {
     }
     markerManager.set(
       MARKER_KEY, 'mk-geolabel', this.label, p.x, p.y, p.front, '', opacity,
-      undefined, undefined, false, true, C.MARKER_PRIORITY.ORBITAL_NODE, len(sub(pos, cameraPos)));
+      undefined, undefined, false, true, MARKER_PRIORITY.ORBITAL_NODE, len(sub(pos, cameraPos)));
   }
 }

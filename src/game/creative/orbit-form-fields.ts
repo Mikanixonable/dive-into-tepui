@@ -4,7 +4,7 @@ import { OrbitingMotion, type CelestialBodyDef } from '../../physics/celestial-m
 import { EARTH } from '../celestial/solar-system/earth-system';
 import { J2_EARTH, MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import * as C from '../const';
+import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 
 // ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙する。軌道要素指定の基準天体も
 // これを使う(公転していない恒星を周回の中心には選べない)。
@@ -37,7 +37,7 @@ export function lagrangeSystemItemsOf(
   // 質量比が 0 になり、共線点の距離比を解く反復が収束せず NaN の状態を返す。
   const usable = (id: string): boolean => {
     const motion = celestialSystem.entityOf(id).motion;
-    return motion instanceof OrbitingMotion && motion.hasUsableCollinearPoints(C.LAGRANGE_MIN_CLEARANCE_RATIO);
+    return motion instanceof OrbitingMotion && motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO);
   };
   return orbitingIds.filter(usable).map((id) => {
     const primary = celestialSystem.entityOf(id).motion.primary?.id ?? null;

@@ -10,13 +10,14 @@ import {
   RADIATOR_HINGE,
   RADIATOR_SEGMENT_LENGTH,
 } from '../../render/ships';
-import * as C from '../const';
 import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
 import type { Stage } from '../stages/stage';
 import type { Player } from './player';
 import type { RadiatorSaveData } from '../save/save-data';
 
+const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
+export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 
 const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
@@ -90,7 +91,7 @@ export class RadiatorSystem {
   public constructor(renderObject: THREE.Object3D, private readonly owner: Player, saved?: RadiatorSaveData) {
     const collect = (side: RadiatorSide, baseName: string): THREE.Object3D[] => {
       const namePrefix = baseName + (side === 'up' ? 'Up' : 'Down');
-      const found = Array.from({ length: C.RADIATOR_FOLD_COUNT }, (_, i) =>
+      const found = Array.from({ length: RADIATOR_FOLD_COUNT }, (_, i) =>
         renderObject.getObjectByName(`${namePrefix}Fold${i}`));
       if (found.some((f) => !f)) throw new Error(`${baseName} fold objects not found in ship model`);
       return found as THREE.Object3D[];
@@ -121,7 +122,7 @@ export class RadiatorSystem {
   // wear は放熱板パーツの残 HP 由来の損耗率で、修理はドックでしか行えない。
   update(dt: number, wear: Record<RadiatorSide, number>): void {
     this.wear = wear;
-    const step = dt / C.RADIATOR_DEPLOY_TIME;
+    const step = dt / RADIATOR_DEPLOY_TIME;
     for (const side of ['up', 'down'] as const) {
       const p = this.panels[side];
       if (p.deploy < p.deployTarget) p.deploy = Math.min(p.deployTarget, p.deploy + step);
@@ -203,7 +204,7 @@ export class RadiatorSystem {
     for (const side of ['up', 'down'] as const) {
       if (this.panels[side].deploy < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
       const proxies = this.foldProxies[side];
-      while (proxies.length < C.RADIATOR_FOLD_COUNT) proxies.push(new RadiatorFold(side, proxies.length, this.owner));
+      while (proxies.length < RADIATOR_FOLD_COUNT) proxies.push(new RadiatorFold(side, proxies.length, this.owner));
       const { even, odd } = this.foldThetas(side);
       // 各折りの機体座標系オフセットを、艦の位置・姿勢・角速度(回転による接線速度込み)で
       // world 座標へ変換する。

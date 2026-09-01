@@ -3,7 +3,6 @@ import { Attitude } from '../../../physics/attitude';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 import { Vec3 } from '../../../math/vec3';
-import * as C from '../../const';
 import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
@@ -18,13 +17,17 @@ import {
   buildBoosterExplosiveBoltMesh,
   buildBoosterInterstageCoverPanelMesh,
 } from '../../../render/booster';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import { Player } from '../../player/player';
 import { Bullet } from './bullet';
 
 const BARREL_BULK_DENSITY = 7850; // [kg/m^3]
 
 const BARREL_MAX_TEMP = 1700; // 鋼の融点 [K]
+// BARREL_MASS と掛けて砲身の熱容量 0.15 MJ/K。射撃発熱はこれを基準に決めてある。
+export const BARREL_SPECIFIC_HEAT = 500; // [J/(kg·K)]
+// 砲身の表面積 14 m² を BARREL_MASS で割った値。
+export const BARREL_RADIATING_AREA_PER_MASS = 0.047; // [m^2/kg]
 
 const BOOSTER_HARDWARE_LIFETIME = 2.4; // 段間カバー/爆砕ボルトの飛散表示時間 [s]
 
@@ -69,16 +72,16 @@ interface DebrisThermal {
 }
 
 const ALUMINIUM_DEBRIS: DebrisThermal = {
-  specificHeat: C.SMALL_DEBRIS_SPECIFIC_HEAT,
-  bulkDensity: C.SMALL_DEBRIS_BULK_DENSITY,
-  radiatingAreaPerMass: C.SMALL_DEBRIS_RADIATING_AREA_PER_MASS,
-  maxTemperature: C.SMALL_DEBRIS_MAX_TEMP,
+  specificHeat: SMALL_DEBRIS_SPECIFIC_HEAT,
+  bulkDensity: SMALL_DEBRIS_BULK_DENSITY,
+  radiatingAreaPerMass: SMALL_DEBRIS_RADIATING_AREA_PER_MASS,
+  maxTemperature: SMALL_DEBRIS_MAX_TEMP,
 };
 
 const STEEL_BARREL: DebrisThermal = {
-  specificHeat: C.BARREL_SPECIFIC_HEAT,
+  specificHeat: BARREL_SPECIFIC_HEAT,
   bulkDensity: BARREL_BULK_DENSITY,
-  radiatingAreaPerMass: C.BARREL_RADIATING_AREA_PER_MASS,
+  radiatingAreaPerMass: BARREL_RADIATING_AREA_PER_MASS,
   maxTemperature: BARREL_MAX_TEMP,
 };
 
@@ -88,8 +91,8 @@ function debrisThermal(kind: DebrisKind['kind']): DebrisThermal {
 }
 
 export class DebrisPiece extends DynamicEntity {
-  override readonly bcInv = C.SMALL_DEBRIS_BCINV;
-  protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
+  override readonly bcInv = SMALL_DEBRIS_BCINV;
+  protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;
   protected readonly specificHeat: number;
   protected readonly bulkDensity: number;
   protected readonly maxTemperature: number;

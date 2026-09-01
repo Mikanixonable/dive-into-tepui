@@ -2,11 +2,12 @@
 import * as THREE from 'three/webgpu';
 import { Attitude, Quat, qFromAxisAngle, qFromUnitVectors, qMul, qRotate } from '../../physics/attitude';
 import { Vec3, len, scale, sub } from '../../math/vec3';
-import * as C from '../const';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH, buildMagazineMesh } from '../../render/ships';
 import { BeltPhysics, BeltSection, X_AXIS } from './belt-physics';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { MAG_ROUNDS } from './player-fire';
 
+const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
 const IDENTITY_Q: Quat = { x: 0, y: 0, z: 0, w: 1 };
 
 export class Belt {
@@ -19,7 +20,7 @@ export class Belt {
   // 自身の節点との接触を除外するために使う吊り元の艦。
   public constructor(renderObject: THREE.Object3D, owner: DynamicEntity) {
     const group = new THREE.Group();
-    for (let i = 0; i < C.BELT_MAX_VISIBLE; i++) {
+    for (let i = 0; i < BELT_MAX_VISIBLE; i++) {
       const link = buildMagazineMesh();
       link.position.x = MAG_BELT_ANCHOR_X + (i + 0.5) * MAG_BELT_PITCH;
       group.add(link);
@@ -37,8 +38,8 @@ export class Belt {
     att: Attitude,
     thrustAccelVec: Vec3,
   ): void {
-    this.visibleCount = Math.min(magsLeft, C.BELT_MAX_VISIBLE);
-    const targetFeed = 1 - roundsInMag / C.MAG_ROUNDS;
+    this.visibleCount = Math.min(magsLeft, BELT_MAX_VISIBLE);
+    const targetFeed = 1 - roundsInMag / MAG_ROUNDS;
     if (targetFeed < this.feed - 0.5) {
       this.physics.shiftBeltNodes();
       this.feed = targetFeed;

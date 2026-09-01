@@ -4,11 +4,15 @@ import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { randSym } from '../../../math/random';
 import { add, len, norm, scale } from '../../../math/vec3';
-import * as C from '../../const';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
+import { COLOR_ENEMY_ORBIT_LINE } from '../../lines/entity-line-manager';
+
+export const STAGE0_PER_GROUP = 10; // グループあたりの機数
+export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
+export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
 
 const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
 
@@ -30,12 +34,12 @@ export function generateCluster(
   worldSfx: WorldSfx,
   fx: EffectsSystem,
   scene: THREE.Scene,
-  groupCount: number = C.COLOR_STAGE0_GROUP_ACCENTS.length,
-  perGroup: number = C.STAGE0_PER_GROUP,
+  groupCount: number = COLOR_STAGE0_GROUP_ACCENTS.length,
+  perGroup: number = STAGE0_PER_GROUP,
 ): readonly Enemy[] {
   const { pro, nrm } = orbitAxes(base);
   const rHat = norm(base.r);
-  const safeRange = C.STAGE0_MAX_RANGE * STAGE0_SAFE_RANGE_FACTOR; // マージンを残して確実に5km以内に収める
+  const safeRange = STAGE0_MAX_RANGE * STAGE0_SAFE_RANGE_FACTOR; // マージンを残して確実に5km以内に収める
   const enemies: Enemy[] = [];
 
   // グループごとの中心位置を、進行方向-法線平面の円周上に配置する。
@@ -48,7 +52,7 @@ export function generateCluster(
 
     // グループ中心へ個体ごとのジッターを加え、safeRange を超えたらクランプする。
     // groupCount が色・ラベルの定義数を超えても引けるよう、配列長で剰余を取る。
-    const accent = C.COLOR_STAGE0_GROUP_ACCENTS[gi % C.COLOR_STAGE0_GROUP_ACCENTS.length]!;
+    const accent = COLOR_STAGE0_GROUP_ACCENTS[gi % COLOR_STAGE0_GROUP_ACCENTS.length]!;
     const label = STAGE0_GROUP_LABELS[gi % STAGE0_GROUP_LABELS.length]!;
     for (let i = 0; i < perGroup; i++) {
       const jAlong = cAlong + randSym(STAGE0_JITTER_ALONG);
@@ -60,7 +64,7 @@ export function generateCluster(
       if (offLen > safeRange) off = scale(off, safeRange / offLen);
 
       const state: KinematicState = kinematicState<'eci'>(base.t, add(base.r, off), base.v);
-      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, accent, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, accent, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
     }
   }
   return enemies;

@@ -1,6 +1,5 @@
 // 常設 ORBIT パネル(#hud-orbit)の同期: 自艦の基準・高度・速度・遠地点/近地点・傾斜角・
 // 周期・動圧・機体温度、および基準切替のセグメントコントロール。戦闘/マップ共通。
-import * as C from '../../const';
 import { fmtDist, fmtSpeed, fmtTime, setElementText } from '../utils';
 import { SyncThrottle } from '../sync-throttle';
 import { orbitInfo } from './orbit-info';
@@ -10,6 +9,8 @@ import { Button, SegmentedControl } from '../widgets';
 
 import { getApsisLabelSpec } from './orbit-labels';
 import { Player } from '../../player/player';
+import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
+import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -92,7 +93,7 @@ export class OrbitPanel {
     if (qEl) {
       if (ship) {
         qEl.textContent = ship.aero.qdyn >= 10 ? `${(ship.aero.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
-        qEl.classList.toggle('warn-hot', ship.aero.qdyn > 0.5 * C.MAX_DYN_PRESSURE);
+        qEl.classList.toggle('warn-hot', ship.aero.qdyn > 0.5 * MAX_DYN_PRESSURE);
       } else {
         qEl.textContent = '---';
         qEl.classList.remove('warn-hot');
@@ -102,7 +103,7 @@ export class OrbitPanel {
     if (tEl) {
       if (ship) {
         tEl.textContent = `${ship.temperature.toFixed(0)} K`;
-        tEl.classList.toggle('warn-hot', ship.temperature > 0.7 * C.MAX_HULL_TEMP);
+        tEl.classList.toggle('warn-hot', ship.temperature > 0.7 * MAX_HULL_TEMP);
       } else {
         tEl.textContent = '---';
         tEl.classList.remove('warn-hot');

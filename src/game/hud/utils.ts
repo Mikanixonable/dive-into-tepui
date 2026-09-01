@@ -1,6 +1,6 @@
 // HUD 表示用の数値整形と、data-id で引いた要素への書き込み。
 import { julianDateToCalendarDate, TdbJulianDate } from '../../physics/time';
-import * as C from '../const';
+import { MAG_ROUNDS } from '../player/player-fire';
 
 // data-id マップから id の要素を引き、表示中の文字列と異なるときだけ書き換える。
 export function setElementText(els: ReadonlyMap<string, HTMLElement>, id: string, text: string): void {
@@ -87,7 +87,7 @@ export function fmtDuration(sec: number, unitHintSec: number): string {
 export function fmtAmmoStatus(roundsInMag: number, magsLeft: number, reloadTimer: number): string {
   if (reloadTimer > 0) return 'RELOADING...';
   if (roundsInMag <= 0 && magsLeft <= 0) return '弾切れ';
-  return `${roundsInMag}/${C.MAG_ROUNDS} +${magsLeft}連`;
+  return `${roundsInMag}/${MAG_ROUNDS} +${magsLeft}連`;
 }
 
 // "HH:MM:SS"

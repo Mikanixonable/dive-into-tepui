@@ -3,11 +3,12 @@
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../hud/widgets';
-import * as C from '../const';
 import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
+import { MAG_ROUNDS } from '../player/player-fire';
+import { STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST } from './stage-utils/logistics';
 
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
@@ -33,7 +34,7 @@ export class StageDebug extends Stage {
 
   // 自機を置き、敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
   protected init(entities: DynamicSystem): void {
-    const player = this.addPlayer({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
+    const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
     const enemies = generateWave(player.state, this.waveCount++, this._celestialSystem, this._worldSfx, this._fx, this._scene, 'random');
     for (const enemy of enemies) this.addEnemy(enemy, entities);
 
@@ -51,13 +52,13 @@ export class StageDebug extends Stage {
 
     // 弾薬をスポーンするボタン
     const spawnAmmoBtn = new Button('弾薬をスポーン', () => {
-      this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
+      this.logistics.spawnForPlayer(player, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST);
     });
     this.addStatusPanelWidget(spawnAmmoBtn.element);
 
     // RCS燃料をスポーンするボタン
     const spawnFuelBtn = new Button('RCS燃料をスポーン', () => {
-      this.logistics.spawnRcsFuelForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
+      this.logistics.spawnRcsFuelForPlayer(player, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST);
     });
     this.addStatusPanelWidget(spawnFuelBtn.element);
   }

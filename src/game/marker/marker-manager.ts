@@ -9,13 +9,32 @@
 // ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
 import { Vec3, addScaled, len, norm, sub } from '../../math/vec3';
 import { Projected } from '../../math/projection';
-import * as C from '../const';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
-import { resolveCrowdingWinner } from './crowding';
+import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
 import { strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion } from '../../physics/celestial-motion';
+
+// 方向マーカーを投影する仮想距離 [m]。実在の位置ではなく方向のみを示す。
+export const MARKER_DIR_DIST = 5e4;
+
+// マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
+export const MARKER_PRIORITY = {
+  STAR_PLANET: 5000,
+  DWARF_PLANET: 4000,
+  SATELLITE_SMALL_BODY: 3000,
+  LAGRANGE: 2000,
+  PRIMARY_TARGET: 900,
+  IMPACT: 850,
+  BASE: 700,
+  PLAYER: 600,
+  ENEMY: 500,
+  AMMO: 300,
+  MANEUVER_NODE: 150,
+  ORBITAL_NODE: 100,
+  PROTEIN_SITE: 50,
+} as const;
 
 const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 
@@ -65,19 +84,19 @@ interface ActiveLabel {
 // 個別の優先度を渡さなかったときに使う。
 function defaultPriorityForClass(key: string, cls: string): number {
   if (cls.includes('mk-poi')) {
-    return key.includes('-l') ? C.MARKER_PRIORITY.LAGRANGE : C.MARKER_PRIORITY.SATELLITE_SMALL_BODY;
+    return key.includes('-l') ? MARKER_PRIORITY.LAGRANGE : MARKER_PRIORITY.SATELLITE_SMALL_BODY;
   }
-  if (cls.includes('mk-target')) return C.MARKER_PRIORITY.PRIMARY_TARGET;
-  if (cls.includes('mk-impact')) return C.MARKER_PRIORITY.IMPACT;
+  if (cls.includes('mk-target')) return MARKER_PRIORITY.PRIMARY_TARGET;
+  if (cls.includes('mk-impact')) return MARKER_PRIORITY.IMPACT;
   // 陣営種別は combatMarkerKindOf の分類を正本とし、ここで独自に cls を読み直さない。
   const combatKind = combatMarkerKindOf(cls);
-  if (combatKind === 'base') return C.MARKER_PRIORITY.BASE;
-  if (combatKind === 'self' || combatKind === 'ally') return C.MARKER_PRIORITY.PLAYER;
-  if (combatKind === 'enemy') return C.MARKER_PRIORITY.ENEMY;
-  if (combatKind === 'ammo' || combatKind === 'fuel') return C.MARKER_PRIORITY.AMMO;
-  if (cls.includes('mk-mnode') || cls.includes('mk-burn')) return C.MARKER_PRIORITY.MANEUVER_NODE;
+  if (combatKind === 'base') return MARKER_PRIORITY.BASE;
+  if (combatKind === 'self' || combatKind === 'ally') return MARKER_PRIORITY.PLAYER;
+  if (combatKind === 'enemy') return MARKER_PRIORITY.ENEMY;
+  if (combatKind === 'ammo' || combatKind === 'fuel') return MARKER_PRIORITY.AMMO;
+  if (cls.includes('mk-mnode') || cls.includes('mk-burn')) return MARKER_PRIORITY.MANEUVER_NODE;
   if (cls.includes('mk-node') || cls.includes('mk-relnode') || cls.includes('mk-eqnode') || cls.includes('mk-boardpass')) {
-    return C.MARKER_PRIORITY.ORBITAL_NODE;
+    return MARKER_PRIORITY.ORBITAL_NODE;
   }
   return 0;
 }
@@ -293,7 +312,7 @@ export class MarkerManager {
     fixedLabel = false,
     priority?: number,
   ): void {
-    const p = project(addScaled(origin, norm(dir), C.MARKER_DIR_DIST));
+    const p = project(addScaled(origin, norm(dir), MARKER_DIR_DIST));
     this.set(key, cls, sym, p.x, p.y, p.front, label, opacity, color, rotationDeg, symMarkup, fixedLabel, priority);
   }
 
@@ -453,7 +472,7 @@ export class MarkerManager {
           const pick = resolveCrowdingWinner(
             a.key, a.priority, a.dist, a.prevLabelHiddenByPriority,
             b.key, b.priority, b.dist, b.prevLabelHiddenByPriority,
-            C.DEPTH_GUARD_RATIO, C.DEPTH_GUARD_EXIT_RATIO, false,
+            DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO, false,
           );
           if (pick === undefined) continue;
           const [loser, winner] = pick === 'a' ? [a, b] : [b, a];
