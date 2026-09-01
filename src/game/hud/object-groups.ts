@@ -1,5 +1,5 @@
 // MapPickable の列を、選択ウィジェット(ObjectPicker)向けのジャンル別グループへ組む純関数。
-// どのジャンルへ入るかは候補自身(pickerGenre)が答え、ここは並べ替えと空グループの除去だけを持つ。
+// どのジャンルへ入るかは候補自身(pickerGenre)が答えるので、ここは並べ替えと空グループの除去を行う。
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapPickable } from '../pickable/map-pickable';
 import type { ObjectPickerGroup } from './windows/object-picker';

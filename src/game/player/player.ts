@@ -726,7 +726,7 @@ export class Player extends Ship implements MapPickable {
     ];
   }
 
-  // 選ばれた操作を実行する。自分が出していない act では何もしない。
+  // mapMenuItems が出した操作を実行する。軌道線の表示と計画実行モードは自分の状態を、残りは commands を通す。
   public runMapMenu(act: MenuAction, commands: MapCommands): void {
     if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;

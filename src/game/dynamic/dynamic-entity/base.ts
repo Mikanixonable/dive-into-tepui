@@ -1,4 +1,4 @@
-// BaseState は public フィールド baseState の型なので、外から名指しできるよう export したままにする。
+// 軌道上の拠点。艦艇のドッキングと格納、部品と資金の保有、そこからの発艦を持つ。
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
@@ -468,7 +468,7 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
     ];
   }
 
-  // 選ばれた操作を実行する。自分が出していない act では何もしない。
+  // mapMenuItems が出した操作を実行する。軌道線の表示だけ自分の状態を書き換え、残りは commands を通す。
   public runMapMenu(act: MenuAction, commands: MapCommands): void {
     if (act === 'activate') {
       commands.setControlledBase(this);

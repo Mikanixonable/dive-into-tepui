@@ -164,7 +164,7 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
     ];
   }
 
-  // 選ばれた操作を実行する。自分が出していない act では何もしない。
+  // mapMenuItems が出した操作を実行する。削除は自分の alive を落とし、残りは commands を通す。
   public runMapMenu(act: MenuAction, commands: MapCommands): void {
     if (act === 'delete') this.alive = false;
     else if (act === 'duplicate') commands.duplicate(this.mapKind, this.state);

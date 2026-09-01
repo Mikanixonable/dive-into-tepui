@@ -1,7 +1,6 @@
 // マップの天体・ラグランジュ点のラベルを、集合として間引きながら HUD マーカーへ出す。
-// 1件ぶんの表記・記号・優先度はその対象自身が持ち、ここは「画面上で近すぎるものをどれだけ
-// 残すか」という、集合でしか決まらない判断だけを持つ。名前とアイコンは別々の混雑半径で
-// 間引くので、名前だけが消えてアイコンが残る距離帯ができる。
+// 画面上で近すぎるものをどれだけ残すかという、集合でしか決まらない判断を持つ。名前と
+// アイコンは別々の混雑半径で間引くので、名前だけが消えてアイコンが残る距離帯ができる。
 import { Vec3, v3, sub, len } from '../../math/vec3';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { lagrangePointsOf, secondaryFrameOf } from '../../physics/lagrange';
@@ -77,7 +76,7 @@ export class CelestialMarkers {
   }[];
   // トグル・フォーカスに関わらない全ラベル(天体とラグランジュ点、親を先に並べたもの)。
   private readonly labels: readonly CelestialLabel[];
-  // 同じ並びの対象そのもの。親子関係を id から引きたい呼び出し元が読む。
+  // 同じ並びの対象そのもの。id から親子関係を引くための一覧。
   readonly allItems: readonly CelestialMarkerItem[];
   private readonly labelsById = new Map<string, CelestialLabel>();
   // このフレームで表示する対象に絞ったラベル。
