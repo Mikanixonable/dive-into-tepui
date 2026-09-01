@@ -59,6 +59,11 @@ import {
 } from '../../render/booster';
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
 
+export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
+const HULL_START_TEMP = 273; // 初期機体温度 [K]
+
+const INITIAL_ALT = 420e3; // 初期高度 [m]
+const INITIAL_INC_DEG = 97.0; // 初期軌道傾斜角 [deg]
 // 艦首(+Z)の船体外側に置く単一の接続ポート。位置は姿勢から導出し、保存しない。
 const SHIP_PORT_OFFSET = v3(0, 0, 3.0);
 
@@ -149,7 +154,7 @@ export class Player extends Ship {
       ? { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: Player.INERTIA }
       : Player.progradeAttitude(state);
 
-    super(name, state, buildPlayerShip(), att, C.PLAYER_HULL_RADIUS, PLAYER_MAX_HP, _scene, id);
+    super(name, state, buildPlayerShip(), att, PLAYER_HULL_RADIUS, PLAYER_MAX_HP, _scene, id);
     this._hud = _hud;
     this._worldSfx = _worldSfx;
     this._fx = _fx;
@@ -168,7 +173,7 @@ export class Player extends Ship {
     this.belt = new Belt(this.renderObject, this);
     this.aero = new AeroLoad();
     this.altitudeAlarm = new AltitudeAlarm(_hud, _worldSfx);
-    this.temperature = saved?.thermal.hullTemp ?? C.HULL_START_TEMP;
+    this.temperature = saved?.thermal.hullTemp ?? HULL_START_TEMP;
     this.radiator = new RadiatorSystem(this.renderObject, this, saved?.radiator);
     this.power = new PowerSystem(this.renderObject, saved?.power);
     this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
@@ -210,9 +215,9 @@ export class Player extends Ship {
 
   // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
   private static makeInitialState(): KinematicState {
-    const r0 = R_EARTH + C.INITIAL_ALT;
+    const r0 = R_EARTH + INITIAL_ALT;
     const vCirc = Math.sqrt(MU_EARTH / r0);
-    const inc = (C.INITIAL_INC_DEG * Math.PI) / 180;
+    const inc = (INITIAL_INC_DEG * Math.PI) / 180;
     return kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 

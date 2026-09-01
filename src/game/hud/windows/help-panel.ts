@@ -4,7 +4,7 @@ import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import {
-  ARROW_KEYS, AUXILIARY_KEYS, BEHAVIOR_LABELS, HELP_CATEGORIES, HELP_ENTRIES, INPUT_LABELS, KEYBOARD_ROWS,
+  ARROW_KEYS, AUXILIARY_KEYS, BEHAVIOR_LABELS, HELP_CATEGORIES, helpEntries, INPUT_LABELS, KEYBOARD_ROWS,
   entryCodes, entryMatchesCode, normalize, scopeMatches,
   type HelpCategory, type HelpEntry, type HelpInput, type HelpMode, type KeyboardKeyDefinition,
 } from './help-content';
@@ -236,7 +236,7 @@ export class HelpPanel implements OverlayHandle {
   // 現在の検索語・入力方式・カテゴリ・表示モードのすべてに合致する操作項目を返す。
   private filteredEntries(): HelpEntry[] {
     const query = normalize(this.searchInput.value);
-    return HELP_ENTRIES.filter((entry) => {
+    return helpEntries().filter((entry) => {
       if (!scopeMatches(entry, this.mode)) return false;
       if (this.categoryFilter !== 'all' && entry.category !== this.categoryFilter) return false;
       if (this.inputFilter !== 'all' && !entry.inputs.includes(this.inputFilter)) return false;
@@ -253,7 +253,7 @@ export class HelpPanel implements OverlayHandle {
   // 現在の表示モードでキーボード図に描画すべき、キー割り当てを持つ操作項目を返す。
   // 検索語・入力方式・カテゴリのフィルタは反映しない — キーボード図自体は常に全体を示す。
   private activeKeyboardEntries(): HelpEntry[] {
-    return HELP_ENTRIES.filter((entry) => scopeMatches(entry, this.mode) && entry.inputs.includes('keyboard') && Boolean(entry.keys?.length));
+    return helpEntries().filter((entry) => scopeMatches(entry, this.mode) && entry.inputs.includes('keyboard') && Boolean(entry.keys?.length));
   }
 
   // 現在の状態(モード・フィルタ・検索語・選択)に合わせて、パネル全体を再描画する。
@@ -433,7 +433,7 @@ export class HelpPanel implements OverlayHandle {
   // 指定 id の操作項目をハイライト対象として選択し、一覧内の該当カードまでスクロールする。
   // 該当項目が存在しなければ何もしない。
   private selectEntry(entryId: string): void {
-    const entry = HELP_ENTRIES.find((item) => item.id === entryId);
+    const entry = helpEntries().find((item) => item.id === entryId);
     if (!entry) return;
     this.selectedEntryId = entryId;
     this.selectedCode = null;

@@ -8,6 +8,7 @@ import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
+import { MAG_ROUNDS } from '../player/player-fire';
 
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
@@ -33,7 +34,7 @@ export class StageDebug extends Stage {
 
   // 自機を置き、敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
   protected init(entities: DynamicSystem): void {
-    const player = this.addPlayer({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
+    const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
     const enemies = generateWave(player.state, this.waveCount++, this._celestialSystem, this._worldSfx, this._fx, this._scene, 'random');
     for (const enemy of enemies) this.addEnemy(enemy, entities);
 
