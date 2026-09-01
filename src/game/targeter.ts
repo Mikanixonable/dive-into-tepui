@@ -13,6 +13,7 @@ import type { GroupedMarkerItem } from './marker/grouped-markers';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import { MarkerManager, MARKER_PRIORITY } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
+import { pickNearest } from './pickable/map-pickable';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
 import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
@@ -71,17 +72,9 @@ export class Targeter {
   handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn, overviewMode: boolean): void {
     if (overviewMode) return;
     if (!input.takeKey(K.targetSelect)) return;
-    const next = targets
-      .filter((e) => e.alive)
-      .map((target) => {
-        const p = project(target.state.r);
-        const dx = p.x - window.innerWidth * 0.5;
-        const dy = p.y - window.innerHeight * 0.5;
-        return { target, d2: dx * dx + dy * dy, front: p.front };
-      })
-      .filter((x) => x.front)
-      .sort((a, b) => a.d2 - b.d2)[0]?.target ?? null;
-    this.navTarget.setCombatTarget(next);
+    this.navTarget.setCombatTarget(pickNearest(
+      targets.filter((e) => e.alive), (target) => project(target.state.r),
+      window.innerWidth * 0.5, window.innerHeight * 0.5, Infinity));
   }
 
   // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
