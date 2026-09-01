@@ -41,25 +41,16 @@ export class EquatorNodeMarkerPair {
     displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
     timeLabel: TimeLabelSetting,
   ): void {
-    this.update(
+    this.updateOnPath(
       null, displayTime, celestialSystem, frameAnchors,
       this.owner.stateAt(displayTime, celestialSystem), [], timeLabel,
     );
   }
 
   // 表示中の折れ線の上に交点を置く。paths(区間ごとのサンプル列、時刻昇順)が空なら state の
-  // 軌道要素から求める。位置は折れ線と同じ frame で写す。
-  updateOnPath(
-    frame: ReferenceFrame, displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
-    state: KinematicState, paths: readonly (readonly KinematicState[])[],
-    timeLabel: TimeLabelSetting,
-  ): void {
-    this.update(frame, displayTime, celestialSystem, frameAnchors, state, paths, timeLabel);
-  }
-
-  // 交点を求め直す。frame は交点位置を表示時刻へ写す座標系で、null なら中心天体の慣性系
+  // 軌道要素から求める。frame は交点位置を表示時刻へ写す座標系で、null なら中心天体の慣性系
   // (= 解析軌道楕円の置き方)。
-  private update(
+  updateOnPath(
     frame: ReferenceFrame | null, displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
     state: KinematicState | null, paths: readonly (readonly KinematicState[])[],
     timeLabel: TimeLabelSetting,
@@ -114,7 +105,7 @@ export class EquatorNodeMarkerPair {
       else {
         marker.sync(
           this.markerManager, project, cameraPos, this.celestialBodies, this.celestialBodiesPivot,
-          this.timeLabel,
+          true, this.timeLabel,
         );
       }
     }
