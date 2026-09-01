@@ -1,12 +1,10 @@
 import * as THREE from 'three/webgpu';
-import * as C from '../../const';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../../render/ships';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../../vfx/effects-system';
 import {
-  Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE, visualRadiusOf,
-  type EnemyPlacement, type EnemyRestore,
+  Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
 import type { MetalEnemySaveData } from '../../save/save-data';
 
@@ -15,6 +13,12 @@ import type { MetalEnemySaveData } from '../../save/save-data';
 // 等方でよい。
 const DRIFTING_INERTIA = v3(1, 1.1, 1.05);
 const TYPED_INERTIA = v3(1, 1, 1);
+
+// 実スケール適用後のメッシュを包む球の半径。弾丸・物理接触の両判定に共有する。
+function visualRadius(renderObject: THREE.Object3D): number {
+  const bounds = new THREE.Box3().setFromObject(renderObject);
+  return bounds.getBoundingSphere(new THREE.Sphere()).radius;
+}
 
 // 新規配置。typeIndex が null なら型番を持たない漂流機体、数値なら stage00 ウェーブ敵の
 // 機体テンプレート番号。
@@ -40,7 +44,7 @@ export class MetalEnemy extends Enemy {
     renderObject.scale.setScalar(ENEMY_SCALE);
     super(
       init, renderObject, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      visualRadiusOf(renderObject), C.ENEMY_MAX_HP, worldSfx, fx, scene,
+      visualRadius(renderObject), worldSfx, fx, scene,
     );
     this.typeIndex = typeIndex;
     // 部品単位の HP までは保存していないので、既定パーツ構成のまま総 HP を按分して戻す。
