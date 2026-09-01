@@ -26,6 +26,7 @@
     "export-lagrange-orbits": "node tools/export-lagrange-orbits.mjs",
     "coastline:fetch": "node tools/fetch-coastline-source.mjs",
     "export-coastline": "node tools/export-coastline.mjs",
+    "export-earth-smoothness": "node tools/export-earth-smoothness.mjs",
     "climate:fetch": "node tools/fetch-climate-source.mjs",
     "export-climate": "node tools/export-climate.mjs",
     "export-moon-features": "node tools/export-moon-features.mjs",
