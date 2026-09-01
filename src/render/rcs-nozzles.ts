@@ -2,7 +2,7 @@
 // 他モジュールを import してはならない — tools/export-models.mjs がこのファイルを
 // TypeScript のまま transpile して読み込む。
 
-export interface RcsNozzle {
+interface RcsNozzle {
   readonly pos: { readonly x: number; readonly y: number; readonly z: number }; // 取付位置 [m]
   readonly dir: { readonly x: number; readonly y: number; readonly z: number }; // 噴射方向(単位ベクトル)
 }

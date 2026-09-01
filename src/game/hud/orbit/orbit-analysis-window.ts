@@ -16,7 +16,7 @@ import { Button, TabBar, ValueInput } from '../widgets';
 import { PointerPanZoom } from '../widgets/pointer-pan-zoom';
 import type { OverlayManager } from '../overlay-manager';
 
-export type AnalysisTab = 'altitude' | 'approach' | 'projection';
+type AnalysisTab = 'altitude' | 'approach' | 'projection';
 
 const SYNC_INTERVAL_MS = 250;
 const MAX_TICKS = 6;

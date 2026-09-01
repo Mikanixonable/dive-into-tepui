@@ -35,9 +35,9 @@ function refineExtremum(
   return atParam(a, b, u);
 }
 
-export type ApsisKind = 'periapsis' | 'apoapsis';
+type ApsisKind = 'periapsis' | 'apoapsis';
 
-export interface ApsisCrossing {
+interface ApsisCrossing {
   readonly state: KinematicState;
   readonly kind: ApsisKind;
 }
@@ -154,7 +154,7 @@ function findCrossing(
 }
 
 // 赤道昇交点・降交点。どちらか片方だけ折れ線内に見つかる状況もあるので、それぞれ独立に返す。
-export interface EquatorCrossings {
+interface EquatorCrossings {
   readonly ascending: KinematicState | null;
   readonly descending: KinematicState | null;
 }

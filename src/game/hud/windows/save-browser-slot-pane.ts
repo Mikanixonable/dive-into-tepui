@@ -31,7 +31,7 @@ const STYLE = `
 }
 `;
 
-export interface SlotsPaneCallbacks {
+interface SlotsPaneCallbacks {
   readonly onSelectSlot: (id: string) => void;
   readonly onPlaySlot: (id: string) => void;
   readonly onRenameSlot: (id: string) => void;

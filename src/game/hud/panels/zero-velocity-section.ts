@@ -3,7 +3,7 @@
 // 透明度で設定させる。状態の正本を持たず、操作のたびに現在値の鏡映しから次の
 // ZeroVelocitySettings を組んで onChange へ渡す。
 import { Button, ToggleSwitch } from '../widgets';
-import type { LagrangeLabel } from '../../../physics/zero-velocity';
+import type { LagrangeLabel } from '../../../physics/lagrange';
 import { lagrangePointJacobi } from '../../celestial/orbit-guide/orbit-guide-catalog';
 import type { ZeroVelocitySettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import {

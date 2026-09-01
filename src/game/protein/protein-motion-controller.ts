@@ -67,7 +67,7 @@ const FAR_UPDATE_HZ = 15;
 /** LOD 切替時、旧 LOD の変位から新 LOD の変位へ表示上ブレンドする時間 [s]。 */
 export const PROTEIN_MOTION_LOD_FADE_DURATION_SEC = 0.25;
 
-export interface ProteinMotionControllerOptions {
+interface ProteinMotionControllerOptions {
   /** 表示専用の任意上書き値。物理的なモード振幅は asset のデータのままとする。 */
   readonly collectiveGain?: number;
   readonly localGain?: number;

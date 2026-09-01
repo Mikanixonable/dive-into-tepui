@@ -27,7 +27,7 @@ export const GPU_PASS_LABELS: readonly string[] = ['影', 'Gバッファ', '遮�
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
 
-export interface GpuTimingSnapshot {
+interface GpuTimingSnapshot {
   readonly supported: boolean;
   readonly elapsedMs: readonly number[];
 }

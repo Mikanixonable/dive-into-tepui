@@ -10,7 +10,7 @@ export interface Part {
   hp: number; // 0 = 破壊/機能停止
 }
 
-export interface HullPart extends Part {
+interface HullPart extends Part {
   readonly type: 'hull';
 }
 

@@ -7,7 +7,7 @@ import { Vec3, cross, dot, len, scale, sub, v3 } from '../math/vec3';
 // 区分指数モデルの1層: [基準高度 h0 [m], 基準密度 ρ0 [kg/m^3], スケールハイト H [m]]。
 // 基準高度の昇順に並べる。密度は H = R*T/(M·g) が層ごとに桁で違う(地球で 5.4〜268 km)
 // ため単一の指数では表せず、層に区切って初めて成り立つ。
-export type AtmosphereLayer = readonly [number, number, number];
+type AtmosphereLayer = readonly [number, number, number];
 
 // 天体の大気の静的な記述。基準楕円体は「平均海面」であり、衝突判定の外接球
 // (天体の表面半径)とは別の理由で選ばれた別の量なので、別の宣言として持つ。

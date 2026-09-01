@@ -17,7 +17,7 @@ import { sphereIrradianceFactor } from './sphere-light';
 export const MAX_PLANET_LIGHT_SLOTS = 2;
 
 // スロット 1 本の値。中心・半径は描画座標、放射輝度は色つき(SUN_IRRADIANCE_1AU の目盛り)。
-export type PlanetLightValue = {
+type PlanetLightValue = {
   readonly center: THREE.Vector3;
   readonly radius: number;
   readonly radiance: Albedo;

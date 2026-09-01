@@ -22,7 +22,7 @@ function visualRadius(renderObject: THREE.Object3D): number {
 
 // 新規配置。typeIndex が null なら型番を持たない漂流機体、数値なら stage00 ウェーブ敵の
 // 機体テンプレート番号。
-export type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
+type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
 
 // 金属機体の敵。艦と同じパーツ式の被弾モデルを持ち、判定形状は機体メッシュのバウンディング球。
 export class MetalEnemy extends Enemy {

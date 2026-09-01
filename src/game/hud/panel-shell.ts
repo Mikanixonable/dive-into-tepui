@@ -21,7 +21,7 @@ interface PanelCollapsedState {
 }
 
 type PanelCollapsedViewListener = (view: WorldView) => void;
-export type PanelDefaultCollapsed = boolean | ((view: WorldView) => boolean);
+type PanelDefaultCollapsed = boolean | ((view: WorldView) => boolean);
 
 let currentView: WorldView = 'combat';
 let cachedState: PanelCollapsedState | null = null;
@@ -92,7 +92,7 @@ export function setPanelCollapsedView(view: WorldView): void {
 }
 
 // 折りたたみUIがビュー切り替えを購読する。戻り値は将来の破棄時に使える解除関数。
-export function onPanelCollapsedViewChange(listener: PanelCollapsedViewListener): () => void {
+function onPanelCollapsedViewChange(listener: PanelCollapsedViewListener): () => void {
   viewListeners.add(listener);
   return () => viewListeners.delete(listener);
 }
@@ -110,7 +110,7 @@ export function savePanelCollapsed(id: string, collapsed: boolean): void {
   saveCollapsedState(state);
 }
 
-export interface PanelCollapseWiring {
+interface PanelCollapseWiring {
   readonly toggleRoot: HTMLElement;
   readonly toggleId: string;
   readonly toggleClassName: string;

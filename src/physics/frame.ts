@@ -78,12 +78,12 @@ export type FramePoint = { x: number; y: number; z: number } & { readonly __tag:
 export type FrameDir = { x: number; y: number; z: number } & { readonly __tag: 'frameDir'; };
 // 座標系相対の KinematicState。デフォルトの KinematicState とは __tag の有無で非互換にし、
 // 慣性系との取り違えを型で防ぐ(vec3.ts の Vec3 と同手法)。
-export type FrameKinematicState = { r: Vec3; v: Vec3; } & { readonly __tag: 'frameKinematicState'; };
+type FrameKinematicState = { r: Vec3; v: Vec3; } & { readonly __tag: 'frameKinematicState'; };
 
 // FrameKinematicState を組み立てる、toFrameState 以外で唯一信頼できる入口。軌道要素から解析的に
 // 求めた近地点位置のように「すでに座標系相対と分かっている r/v」を toInertialState へ渡すために
 // 使う — kinematicState<'eci'>() が KinematicState に対して果たす役割と同じ。
-export function frameKinematicState(r: Vec3, v: Vec3): FrameKinematicState {
+function frameKinematicState(r: Vec3, v: Vec3): FrameKinematicState {
   return { r, v } as FrameKinematicState;
 }
 

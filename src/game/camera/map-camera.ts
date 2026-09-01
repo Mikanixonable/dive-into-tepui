@@ -11,8 +11,7 @@ import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion'
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
-import { MapPickable } from '../pickable/map-pickable';
-import { FocusTarget, resolveFocusTarget } from './focus-target';
+import { FocusTarget, resolveFocusTarget, type FocusCandidate } from './focus-target';
 import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save/save-data';
 
 // 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
@@ -45,7 +44,7 @@ const OVERVIEW_CAMERA_FAR_RATIO = 100;
 
 // 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
 // far の外に出ないための下限。
-export const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
+const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
 
 // OVERVIEW_CAMERA_MAX_DIST × OVERVIEW_CAMERA_FAR_RATIO と等しい値。これより小さいと
 // 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
@@ -67,7 +66,7 @@ const FRAME_UP = v3(0, 1, 0);
 const FRAME_RIGHT = v3(1, 0, 0);
 const EULER_PITCH_LIMIT = Math.PI / 2 - 1e-3;
 
-export type CameraRotationMode = 'quaternion' | 'euler';
+type CameraRotationMode = 'quaternion' | 'euler';
 export type CameraReferencePlane = 'ecliptic' | 'equator' | 'moonOrbit';
 export type CameraReferenceView = 'above' | 'side';
 
@@ -442,7 +441,7 @@ export class MapCamera {
 
   // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
   // point は座標系が回っていれば ECI 座標が動くため、毎フレーム焼き直す。
-  private resolveFocus(candidates: readonly MapPickable[], displayTime: number, frameAnchors: FrameAnchorSource): Vec3 {
+  private resolveFocus(candidates: readonly FocusCandidate[], displayTime: number, frameAnchors: FrameAnchorSource): Vec3 {
     const result = resolveFocusTarget(
       this._focus, candidates, displayTime, frameAnchors,
       this.celestialSystem.frames, this.celestialMotionOf,
@@ -497,7 +496,7 @@ export class MapCamera {
     keyYawRad: number,
     keyPitchRad: number,
     displayTime: number,
-    candidates: readonly MapPickable[],
+    candidates: readonly FocusCandidate[],
     frameAnchors: FrameAnchorSource,
   ): void {
     this.displayTime = displayTime;

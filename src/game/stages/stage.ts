@@ -20,7 +20,7 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { Simulator } from '../dynamic/simulator';
 import type { StageSaveData } from '../save/save-data';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { ObjectType } from '../creative/object-placer-panel';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
@@ -95,7 +95,7 @@ export interface StageClass {
 // 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
 export interface ObjectAuthoring {
   openObjectPlacer(focusId?: string): void;
-  openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void;
+  openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void;
 }
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';

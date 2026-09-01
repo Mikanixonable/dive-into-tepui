@@ -12,7 +12,7 @@ import { SaveSlots } from './save-slots';
 // として妥当かどうかの検証だけを担う。索引の操作(SaveSlots)にも永続化
 // (SaveStore)にも属さない責務なので、ここに独立させる。
 
-export type ImportResult =
+type ImportResult =
   | { ok: true; slot: SaveSlotMeta }
   | { ok: false; reason: string };
 

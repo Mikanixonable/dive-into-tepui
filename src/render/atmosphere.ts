@@ -9,7 +9,7 @@ import { apparentSizePx } from '../math/projection';
 
 // 大気の描き方の段。上げるほど、大気ぜんぶへ配れる精細さの合計が増える。
 export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
-export type AtmosphereQuality = (typeof ATMOSPHERE_QUALITY)[keyof typeof ATMOSPHERE_QUALITY];
+type AtmosphereQuality = (typeof ATMOSPHERE_QUALITY)[keyof typeof ATMOSPHERE_QUALITY];
 
 // 大気 1 つぶんの光学パラメータ。散乱係数はいずれも基準球面(天体半径)での値 [1/m]。
 export type AtmosphereOptics = {

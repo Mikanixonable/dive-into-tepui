@@ -4,7 +4,7 @@ import type { CelestialMotion } from './celestial-motion';
 import { AU } from './astronomical-unit';
 import { Vec3, v3 } from '../math/vec3';
 
-export const SPEED_OF_LIGHT = 299792458; // 真空中の光速 [m/s](SI 定義値)
+const SPEED_OF_LIGHT = 299792458; // 真空中の光速 [m/s](SI 定義値)
 // 1天文単位における太陽の全波長放射照度 [W/m^2]。距離の2乗に反比例して弱まる。
 export const SOLAR_CONSTANT = 1361;
 // 完全吸収面が受ける輻射圧 [N/m^2]。放射照度を光速で割ったもので、独立した測定値ではない。
