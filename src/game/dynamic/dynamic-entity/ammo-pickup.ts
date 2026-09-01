@@ -1,16 +1,16 @@
 import * as THREE from 'three/webgpu';
 import { kinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
-import * as C from '../../const';
 import { buildAmmoPickup } from '../../../render/ships';
 import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import { EntityIdAllocator } from './entity-id';
-import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-glyphs';
+import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
 import { fmtMarkerDist } from '../../hud/utils';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { AmmoPickupSaveData } from '../../save/save-data';
+import { MARKER_PRIORITY } from '../../marker/marker-manager';
 
 const AMMO_PHYS_RADIUS = 1.3; // 物理接触用の半径 [m](見た目に近い実寸)
 // 取り込み距離 [m]。ゲームプレイ上の吸収判定で、物理サイズではない。
@@ -75,7 +75,7 @@ export class AmmoPickup extends DynamicEntity {
       sym: ENTITY_GLYPH.ammo,
       pos: this.state.r,
       vel: this.state.v,
-      priority: C.MARKER_PRIORITY.AMMO,
+      priority: MARKER_PRIORITY.AMMO,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
       bearingColor: 'var(--color-primary-hover)',
