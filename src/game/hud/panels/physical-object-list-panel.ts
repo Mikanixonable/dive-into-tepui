@@ -12,18 +12,22 @@ import { MQ_COARSE } from '../breakpoints';
 import { PhysicalObjectListTree } from './physical-object-list-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
+import type { MapPickable } from '../../pickable/map-pickable';
+import type { DynamicEntityKind } from '../../dynamic/dynamic-entity/entity-kind';
 import type { Player } from '../../player/player';
 import type { RowNode } from './physical-object-list-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
 
-const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
-  { kind: 'body', label: '天体' },
-  { kind: 'player', label: '自艦' },
-  { kind: 'enemy', label: '敵' },
-  { kind: 'ammo', label: '弾薬' },
-  { kind: 'fuel', label: 'RCS燃料' },
-  { kind: 'base', label: '基地' },
+// 軌道物体一覧の区画。天体はクラスをまたいで1区画にまとめ、人工物は種別ごとに分ける。
+export type MapListSection = 'body' | DynamicEntityKind;
+
+const SECTIONS: readonly { section: MapListSection; label: string }[] = [
+  { section: 'body', label: '天体' },
+  { section: 'player', label: '自艦' },
+  { section: 'enemy', label: '敵' },
+  { section: 'ammo', label: '弾薬' },
+  { section: 'fuel', label: 'RCS燃料' },
+  { section: 'base', label: '基地' },
 ];
 
 interface Section {
@@ -42,7 +46,7 @@ interface Section {
 }
 
 // 区画見出しに添える内訳の見出し語。数える対象かどうかは候補自身(listCounted)が答える。
-const HEADER_SUMMARY: Partial<Record<MapPickKind, string>> = {
+const HEADER_SUMMARY: Partial<Record<MapListSection, string>> = {
   enemy: '接近', ammo: '回収可', fuel: '回収可',
 };
 
@@ -111,7 +115,7 @@ export class PhysicalObjectListPanel {
 
   private readonly panel: HTMLElement;
   private readonly body: HTMLElement;
-  private readonly sections = new Map<MapPickKind, Section>();
+  private readonly sections = new Map<MapListSection, Section>();
   private readonly order: PhysicalObjectListOrder;
   private readonly rowTree: PhysicalObjectListTree;
   private lastFocusId: string | undefined = undefined;
@@ -213,8 +217,8 @@ export class PhysicalObjectListPanel {
     this.breadcrumb.className = 'physical-object-list-breadcrumb';
     body.appendChild(this.breadcrumb);
 
-    for (const { kind } of SECTIONS) {
-      const sectionId = `hud-physical-object-list-section-${kind}`;
+    for (const { section: sectionKey } of SECTIONS) {
+      const sectionId = `hud-physical-object-list-section-${sectionKey}`;
       const header = document.createElement('div');
       header.className = 'physical-object-list-section-header';
       header.tabIndex = 0;
@@ -250,12 +254,12 @@ export class PhysicalObjectListPanel {
         event.preventDefault();
         toggleSection();
       });
-      this.sections.set(kind, section);
+      this.sections.set(sectionKey, section);
       body.appendChild(header);
       // 入れ子を持つのは天体区画だけなので、一括開閉ボタンもここにだけ添える。区画本体の中
       // (先頭)へ置くことで、区画の折りたたみ・絞り込みでの表示切替へ自然と連動する
       // (区画の外に置くと、区画を畳んだり0件で見出しごと隠れたりしてもボタンだけ浮いて残る)。
-      if (kind === 'body') sectionBody.appendChild(this.buildTreeControls(section));
+      if (sectionKey === 'body') sectionBody.appendChild(this.buildTreeControls(section));
       body.appendChild(sectionBody);
       this.applyExpanded(section);
     }
@@ -344,19 +348,19 @@ export class PhysicalObjectListPanel {
     }
 
     let totalMatched = 0;
-    for (const { kind, label } of SECTIONS) {
-      const section = this.sections.get(kind)!;
+    for (const { section: sectionKey, label } of SECTIONS) {
+      const section = this.sections.get(sectionKey)!;
       // 距離順では距離が動くだけで正しい並びが変わりうるので、保持している順序が
       // 今フレームの値でも整列条件を満たすかを確かめ、崩れた時だけ組み直す。
       const reordered = inputsChanged || !this.order.orderStillSorted(section.order.ids, this.itemsByIdScratch);
-      if (reordered) this.order.rebuildOrder(kind, section.order, items, parentOf, this.itemsByIdScratch);
+      if (reordered) this.order.rebuildOrder(sectionKey, section.order, items, parentOf, this.itemsByIdScratch);
       // 一致行を持つ区画自体が畳まれていれば、絞り込みの変化に合わせて開く。
       if (filteringActive && filterChanged && section.order.ids.length > 0 && !section.expanded) {
         if (section.savedExpanded === null) section.savedExpanded = section.expanded;
         section.expanded = true;
         this.applyExpanded(section);
       }
-      this.syncHeader(section, kind, label, activePlayer, displayTime);
+      this.syncHeader(section, sectionKey, label, activePlayer, displayTime);
       totalMatched += section.order.ids.length;
 
       // 行は区画ごとの平坦な台帳が持つ。根から辿って今フレーム現れた id を集め、最後に
@@ -391,13 +395,14 @@ export class PhysicalObjectListPanel {
   // (区画本体もあわせて隠す — 天体区画の一括開閉ボタンなど、見出し以外の常設要素が
   // 見出しだけ消えた場所に浮いて残らないようにする)。
   private syncHeader(
-    section: Section, kind: MapPickKind, label: string, activePlayer: Player | null, displayTime: number,
+    section: Section, sectionKey: MapListSection, label: string, activePlayer: Player | null,
+    displayTime: number,
   ): void {
     const ids = section.order.ids;
     const hasItems = ids.length > 0;
     section.header.classList.toggle('hidden', !hasItems);
     section.body.classList.toggle('hidden', !hasItems);
-    const summaryLabel = HEADER_SUMMARY[kind];
+    const summaryLabel = HEADER_SUMMARY[sectionKey];
     let state = '';
     if (summaryLabel !== undefined) {
       let count = 0;

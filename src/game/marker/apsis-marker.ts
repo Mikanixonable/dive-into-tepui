@@ -5,6 +5,7 @@ import { getApsisLabelSpec, type OrbitLabelSpec } from '../hud/orbit/orbit-label
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { fmtDist, fmtTime } from '../hud/utils';
 import { len, sub, type Vec3 } from '../../math/vec3';
+import { ORBIT_POINT_GLYPH } from './marker-identity';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapCommands } from '../pickable/map-commands';
 import type { MapPickable } from '../pickable/map-pickable';
@@ -13,9 +14,14 @@ import type { PropertyRow } from '../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
 export class ApsisMarker implements MapPickable {
-  public readonly kind = 'apsis';
   public readonly id: string;
   public readonly mapState = null;
+  public readonly mapGlyph = ORBIT_POINT_GLYPH.apsis;
+  public readonly mapGlyphSvg = null;
+  public readonly listSection = null;
+  public readonly pickerGenre = null;
+  public readonly hiddenBehindBodies = true;
+  public readonly onlyInFocusedSystem = false;
 
   private pos: Vec3 | null = null;
   private time: number | null = null;
