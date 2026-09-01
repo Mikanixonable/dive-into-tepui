@@ -8,7 +8,7 @@ import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../math/projection';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { fmtMarkerDist } from '../hud/utils';
-import { TickRank, TimeLabelSetting, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/orbit/calendar-ticks';
+import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
@@ -307,29 +307,15 @@ export class PlanDisplay {
     return icons;
   }
 
-  // ◇ アプシスアイコンを update が求めた位置に置き、出ていないもの・マップビューで天体に
-  // 遮蔽されているものを隠す。
+  // 近地点・遠地点のマーカーを、それぞれが解いた位置へ置く。
   private syncApsisMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
+    const celestialBodies = this.celestialSystem.celestialMotions;
     for (const marker of [this.apsisPe, this.apsisAp]) {
-      const pos = marker.mapPosAt();
-      if (pos === null) {
-        this.markerManager.hide(marker.id);
-      } else if (overviewMode && this.occludedByCelestialBody(cameraPos, pos)) {
-        this.markerManager.fadeOut(marker.id);
-      } else {
-        this.markerManager.setPosition(
-          marker.id, 'mk-apsis', ORBIT_POINT_GLYPH.apsis, pos, project, this.apsisMarkerLabel(marker),
-          1, undefined, undefined, false, false, undefined, cameraPos,
-        );
-      }
+      marker.sync(
+        this.markerManager, project, cameraPos, celestialBodies, this.celestialBodiesPivot,
+        overviewMode, this.timeLabel,
+      );
     }
-  }
-
-  // アプシスマーカーへ出す略称。PREDICT パネルの設定が求めるときだけ通過時刻を併記する。
-  private apsisMarkerLabel(marker: ApsisMarker): string {
-    const t = marker.mapTime;
-    if (!this.timeLabel.show || t === null) return marker.markerLabel;
-    return `${marker.markerLabel} ${elementTimeLabel(t, this.timeLabel)}`;
   }
 
   // ✕ 衝突マーカーを update が求めた位置に置き、出ていないものを隠す。
