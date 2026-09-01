@@ -10,8 +10,8 @@ import {
   MenuAction, type PauseMenu,
 } from '../hud/windows';
 import { TEMP_WINDOW_GROUP } from '../hud/overlay-manager';
-import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
-import { pickGlyph } from '../marker/pick-glyphs';
+import { lagrangeParentId } from '../celestial/lagrange-id';
+import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { MapPickable, pickNearest } from './map-pickable';
 import { LinePickable, pickNearestLine } from './line-pickable';
 import type { LinePickables } from './line-pickables';
@@ -74,9 +74,9 @@ const ORBIT_CALC_METHOD_LABEL: Record<LinePickable['method'], string> = {
 };
 
 export class MapContextActions implements MapCommands {
-  // 'empty-space' は宇宙空間そのものでプロパティを持たないので、従来どおり ContextMenu を使う。
+  // 宇宙空間そのものはプロパティを持たないので、右クリックの落ち先には ContextMenu を使う。
   private readonly menu: ContextMenu<MapPickable, MenuAction>;
-  // 開いているプロパティウィンドウ。`${kind}:${id}` でオブジェクト1つにつき高々1枚に保つ
+  // 開いているプロパティウィンドウ。対象の id でオブジェクト1つにつき高々1枚に保つ
   // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
   private readonly partWindows = new Map<string, PartWindowEntry>();
@@ -199,7 +199,7 @@ export class MapContextActions implements MapCommands {
     // 操作項目のクリックは、クリップ済みか keepOpen(排他選択肢の切り替え)なら開いたままにする。
     // 「削除」は対象自体が消えるのでどちらでも閉じる。
     w.onSelect = (act, keepOpen) => {
-      if (act === 'toggleBasePanel' && entry.target.kind === 'base') {
+      if (act === 'toggleBasePanel' && entry.target instanceof Base) {
         this.toggleBasePanel(key, entry);
         return;
       }
@@ -211,14 +211,14 @@ export class MapContextActions implements MapCommands {
         this.expandedBaseWindowKey = null;
         this.docking?.closePanel();
       }
-      this.closePartWindowsForShip(entry.target.kind === 'player' ? entry.target.id : '');
+      this.closePartWindowsForShip(entry.target instanceof Player ? entry.target.id : '');
       this.forgetWindow(key);
     };
   }
 
-  // windows のキー。kind をまたいで id が衝突しないよう種別込みにする。
+  // windows のキー。天体・実体・マーカーは id の名前空間を共有しているので id で足りる。
   private windowKey(target: MapPickable): string {
-    return `${target.kind}:${target.id}`;
+    return target.id;
   }
 
   private partWindowKey(shipId: string, partId: string): string {
@@ -374,7 +374,7 @@ export class MapContextActions implements MapCommands {
     if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
       const candidates = this.pickables.pickables.filter(
-        (i) => (i.kind === 'player' || i.kind === 'base') && i.shownOnMap(this.markerManager));
+        (i) => (i instanceof Player || i instanceof Base) && i.shownOnMap(this.markerManager));
       const target = pickNearest(
         candidates, (item) => item.mapPosAt(this.pickables.lastDisplayTime),
         p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE));
@@ -540,7 +540,7 @@ export class MapContextActions implements MapCommands {
   private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
     return {
-      title, subtitle, icon: pickGlyph(target.kind, target.id, this.celestialSystem), rows: [], items,
+      title, subtitle, icon: target.mapGlyphSvg ?? target.mapGlyph, rows: [], items,
       relatedItems: this.relatedItemsFor(target, simTime),
       relatedTitle: this.relatedTitleFor(target),
       onRename: target.mapRename ?? undefined,
@@ -566,9 +566,7 @@ export class MapContextActions implements MapCommands {
         shortcut: showShortcuts ? it.shortcut : undefined,
         selected: it.selected, keepOpen: it.keepOpen,
       }));
-    const isOrbitPoint = target.kind === 'apsis' || target.kind === 'relnode' || target.kind === 'eqnode';
-    const subtitle = (target.ownerName && !isOrbitPoint) ? `所属: ${target.ownerName}` : header?.subLabel;
-    return { title: header?.label ?? target.name, subtitle, items };
+    return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
   }
 
   // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
@@ -583,18 +581,15 @@ export class MapContextActions implements MapCommands {
         onContextMenu: (clientX, clientY) => this.openPartPropertyWindow(activeShip, part, clientX, clientY),
       }));
     }
-    if (target.kind !== 'body' || isLagrangeId(target.id) || !this.celestialSystem.has(target.id)) return [];
+    if (!(target instanceof CelestialEntity)) return [];
     const related: { item: MapPickable; label: string }[] = [];
     for (const item of this.pickables.pickables) {
       if (item.id === target.id) continue;
-      let isOrbiting = false;
-      if (item.kind === 'body') {
-        isOrbiting = this.celestialSystem.bodyParentId(item.id) === target.id;
-      } else {
-        const state = item.mapState;
-        isOrbiting = state !== null
-          && orbitingAttractorOf(state, this.celestialSystem.celestialMotions, pivot)?.id === target.id;
-      }
+      // 天体・ラグランジュ点の親は静的に決まる。人工物は現在状態から引く。
+      const state = item.mapState;
+      const isOrbiting = state === null
+        ? this.celestialSystem.bodyParentId(item.id) === target.id
+        : orbitingAttractorOf(state, this.celestialSystem.celestialMotions, pivot)?.id === target.id;
       if (isOrbiting) related.push({ item, label: item.name });
     }
     related.sort((a, b) => a.label.localeCompare(b.label));
