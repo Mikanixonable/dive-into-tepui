@@ -25,6 +25,9 @@ const CLOUD_SHADOW_STRENGTH = 0.8;
 // 実写テクスチャの異方性フィルタ段数。斜めから見た地表の縞立ちを抑える。
 const SURFACE_ANISOTROPY = 16;
 
+// 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
+const CLOUD_ROUGHNESS = 1;
+
 // 分割段ごとの単位球ジオメトリを、その段を使う全天体で共有する。
 const sharedLodGeometries = new Map<SphereLodLevel, THREE.BufferGeometry>();
 function unitSphereGeometry(level: SphereLodLevel): THREE.BufferGeometry {
@@ -101,11 +104,14 @@ export class CelestialSurface {
   }
 
   // 地表テクスチャへ雲と雲影を焼き込んだ球面。cloudsUrl は雲の被覆率を赤チャンネルに持つ
-  // テクスチャ。texture の測光は合成後のアルベドとして測ったものを渡す。
-  static clouded(texture: CelestialTexture, cloudsUrl: string): CelestialSurface {
+  // テクスチャ、smoothnessUrl は地表の滑らかさ(1 − 粗さ)を持つグレースケールテクスチャ
+  // で、どちらもこの天体の地表と同じ正距円筒。texture の測光は合成後のアルベドとして測った
+  // ものを渡す。
+  static clouded(texture: CelestialTexture, cloudsUrl: string, smoothnessUrl: string): CelestialSurface {
     const surfaceMap = deferredTexture(texture.url, THREE.SRGBColorSpace);
     const cloudsMap = deferredTexture(cloudsUrl, THREE.NoColorSpace);
-    const material = new THREE.MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
+    const smoothnessMap = deferredTexture(smoothnessUrl, THREE.NoColorSpace);
+    const material = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
     const cloudAmount = uniform(1);
     const surfaceSample = textureNode(surfaceMap.texture, uv());
     // 雲そのものと、雲を太陽方向へずらして参照した地表側の影。
@@ -113,8 +119,12 @@ export class CelestialSurface {
     const shadowAlpha = textureNode(cloudsMap.texture, uv().add(vec2(CLOUD_SHADOW_OFFSET_U, 0.0))).r.mul(cloudAmount);
     const shaded = mix(surfaceSample, surfaceSample.mul(CLOUD_SHADOW_DEPTH), shadowAlpha.mul(CLOUD_SHADOW_STRENGTH));
     material.colorNode = mix(shaded, vec3(1, 1, 1), cloudAlpha).mul(texture.albedoScale);
+    // 雲は地表の滑らかさを覆い隠す。**粗さではなく滑らかさで持つ** — 画像が届くまでテクスチャは
+    // 0 を返すので、0 が拡散側に来る向きでなければ、届くまでの数フレームだけ地表が鏡面になる。
+    const smoothness = textureNode(smoothnessMap.texture, uv()).r;
+    material.roughnessNode = mix(smoothness.oneMinus(), CLOUD_ROUGHNESS, cloudAlpha);
     return new CelestialSurface(
-      material, [surfaceMap, cloudsMap], cloudAmount, photometryOf(texture), texture.url);
+      material, [surfaceMap, cloudsMap, smoothnessMap], cloudAmount, photometryOf(texture), texture.url);
   }
 
   // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド

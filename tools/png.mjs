@@ -1,5 +1,5 @@
 // 生成ツールが読み書きする最小限の PNG コーデック(依存なし)。8bit グレースケールの復号と、
-// 8bit RGB の符号化だけを持つ。
+// 8bit グレースケール / RGB の符号化を持つ。
 import { crc32, deflateSync, inflateSync } from 'node:zlib';
 
 const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -61,18 +61,28 @@ function paeth(a, b, c) {
   return pb <= pc ? b : c;
 }
 
+// 行優先のグレースケール8bit 画素列(width × height byte)を PNG のバイト列へ。
+export function encodeGrayPng(width, height, gray) {
+  return encodePng(width, height, gray, 1, 0);
+}
+
 // 行優先の RGB8 画素列(width × height × 3 byte)を PNG のバイト列へ。
 export function encodeRgbPng(width, height, rgb) {
-  const stride = width * 3;
+  return encodePng(width, height, rgb, 3, 2);
+}
+
+// channels byte/画素の走査線を、colorType の PNG として符号化する。行フィルタは使わない。
+function encodePng(width, height, pixels, channels, colorType) {
+  const stride = width * channels;
   const raw = Buffer.alloc((stride + 1) * height);
   for (let y = 0; y < height; y++) {
     raw[y * (stride + 1)] = 0;
-    raw.set(rgb.subarray(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
+    raw.set(pixels.subarray(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr.set([8, 2, 0, 0, 0], 8);
+  ihdr.set([8, colorType, 0, 0, 0], 8);
   return Buffer.concat([
     SIGNATURE,
     chunk('IHDR', ihdr),
