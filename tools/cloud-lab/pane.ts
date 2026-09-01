@@ -3,6 +3,7 @@
 import { WebGPURenderer } from 'three/webgpu';
 import { CloudField } from '../../src/render/cloud/cloud-field';
 import { WeatherModel } from '../../src/render/cloud/weather-model';
+import type * as THREE from 'three/webgpu';
 import type { ClimateMap } from '../../src/render/cloud/climate-map';
 import type { FieldProjection } from '../../src/render/cloud/field-projection';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
@@ -12,8 +13,11 @@ export class CloudLabPane {
   private readonly model: WeatherModel;
   private readonly cloud: CloudField;
 
-  // projection はこの面の持ち方。climate は面どうしで共有してよい(読むだけのテクスチャ)。
-  public constructor(private readonly projection: FieldProjection, private readonly climate: ClimateMap) {
+  // projection はこの面の持ち方。climate と photo は面どうしで共有してよい(読むだけのテクスチャ)。
+  public constructor(
+    private readonly projection: FieldProjection, private readonly climate: ClimateMap,
+    private readonly photo: THREE.Texture,
+  ) {
     this.model = new WeatherModel(climate, projection);
     this.cloud = new CloudField(this.model, projection);
   }
@@ -33,8 +37,8 @@ export class CloudLabPane {
   // この面の uv(0..1)に出す表示値 0..1 の色。投影が値を持たない範囲は黒。
   public colorAt(view: CloudLabView, uv: Vec2Node): Vec3Node {
     const direction = this.projection.directionAt(uv);
-    const color = view.reads === 'cloud'
-      ? view.color(direction, this.cloud)
+    const color = view.reads === 'cloud' ? view.color(direction, this.cloud)
+      : view.reads === 'photo' ? view.color(direction, this.photo)
       : view.color(direction, this.model, this.climate);
     return color.mul(this.projection.insideAt(uv));
   }
