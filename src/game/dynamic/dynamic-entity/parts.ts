@@ -77,14 +77,5 @@ export function createPart<TType extends PartType>(
 // セーブされた AnyPart の生データを createPart 経由で組み立てる。id も引き継ぐので、
 // セーブ前後でパーツの同一性(id)が保たれる。
 export function partFromSaveData(data: AnyPart): AnyPart {
-  switch (data.type) {
-    case 'hull': return createPart('hull', data);
-    case 'cockpit': return createPart('cockpit', data);
-    case 'armor': return createPart('armor', data);
-    case 'thruster': return createPart('thruster', data);
-    case 'rcs_tank': return createPart('rcs_tank', data);
-    case 'radiator': return createPart('radiator', data);
-    case 'solar_panel': return createPart('solar_panel', data);
-    case 'weapon': return createPart('weapon', data);
-  }
+  return createPart(data.type, data);
 }
