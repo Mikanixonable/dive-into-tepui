@@ -1,7 +1,5 @@
 // 戦闘ビューでの右クリックが、生存中の実体(自艦・敵艦・基地)のどれに当たったかを判定する。
-// map-pickable.ts / line-pickable.ts と同じ「画面座標から候補を選ぶ」当たり判定だが、対象が
-// マップの候補列ではなく DynamicSystem の実体そのもので、画面上のマーカー位置ではなく実体の
-// 形へ視線を通し、最も手前のものを選ぶ点が異なる。
+// 画面座標から実体の形へ視線を通し、最も手前のものを選ぶ。
 import type { CombatTarget } from '../targeter';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ProjectFn } from '../camera/camera-system';

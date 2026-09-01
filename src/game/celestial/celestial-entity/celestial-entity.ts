@@ -277,7 +277,7 @@ export abstract class CelestialEntity implements MapPickable {
     ];
   }
 
-  // 選ばれた操作を実行する。自分が出していない act では何もしない。
+  // mapMenuItems が出した操作を、すべて commands を通して実行する。
   public runMapMenu(act: MenuAction, commands: MapCommands): void {
     if (act === 'focus') commands.focus(this.id, this.name);
     else if (act === 'target') commands.toggleNavTarget(this.id, this.name);

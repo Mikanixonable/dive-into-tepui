@@ -1,5 +1,5 @@
-// マップ上の被選択物が起動できる操作と、項目のラベル・可否を決めるために要る現在の操作状態。
-// 実体・マーカーはこの口だけを見て自分のメニュー項目を組み、選ばれた操作を実行する。
+// マップ上の被選択物が起動できる操作と、項目のラベル・可否を決めるために要る現在の操作状態を
+// 差し出す口。
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Base } from '../dynamic/dynamic-entity/base';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
