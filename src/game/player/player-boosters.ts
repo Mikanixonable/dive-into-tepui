@@ -92,6 +92,7 @@ export class PlayerBoosters {
     this._hud.hint(`ブースターを追加: ${this.stack.stages.length} 段`);
   }
 
+  // 最後尾段の点火を切り替える。点けられなかった理由は HUD のヒントで返す。
   toggleIgnition(): void {
     const active = this.activeStage();
     if (!active) {
@@ -154,6 +155,7 @@ export class PlayerBoosters {
     this._hud.hint(`ブースター分離: 残り ${this.stack.stages.length} 段`);
   }
 
+  // 燃焼管理パネルへ渡す表示状態。操作の可否もここで決めてパネルへ伝える。
   managementViewModel(): BurnManagementViewModel {
     const active = this.activeStage();
     return {
