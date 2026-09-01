@@ -422,7 +422,7 @@ export class DynamicSystem {
     fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number, style: RenderStyle,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    const categoryVisible = visibilityPolicy?.entity('ship').category ?? true;
+    const categoryVisible = visibilityPolicy?.entity('enemy').category ?? true;
     for (const booster of this.detachedBoosters) {
       booster.syncBooster(fo, displayTime, cameraSystem, categoryVisible, style);
     }
@@ -447,15 +447,16 @@ export class DynamicSystem {
   applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null): void {
     if (!visibilityPolicy) return;
     for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
-    for (const enemy of this.enemies) if (!visibilityPolicy.entity('ship').category) enemy.renderObject.visible = false;
+    for (const enemy of this.enemies) if (!visibilityPolicy.entity('enemy').category) enemy.renderObject.visible = false;
     for (const ammoPickup of this.ammoPickups) {
       if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
     }
     for (const pickup of this.rcsFuelPickups) {
       if (!visibilityPolicy.entity('fuel').category) pickup.renderObject.visible = false;
     }
+    // TODO: 分離ブースターは自機由来なのに敵トグルへ従っている。妥当なトグルを決めて直す。
     for (const booster of this.detachedBoosters) {
-      if (!visibilityPolicy.entity('ship').category) booster.renderObject.visible = false;
+      if (!visibilityPolicy.entity('enemy').category) booster.renderObject.visible = false;
     }
     for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
   }

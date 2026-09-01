@@ -17,6 +17,7 @@ import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { currentThemePalette } from '../../theme';
 import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
 import type { Quat } from '../../../physics/attitude';
+import type { DynamicEntityKind } from './entity-kind';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
@@ -96,6 +97,8 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
 // 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
 export abstract class Enemy extends Ship {
+  public readonly mapKind: DynamicEntityKind = 'enemy';
+
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
   protected readonly maxTemperature = ENEMY_MAX_TEMP;
   public readonly accent: string | number; // マーカー色・集団識別。全敵が保持する
