@@ -1,15 +1,17 @@
 // ラグランジュ点を指す、実体を持たない被選択物。生成元が解いた時刻の位置を持ち、天体と同じ
 // 名前空間の id と、マップのマーカーへ出す二行表記を答える。
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
-import type { Vec3 } from '../../math/vec3';
+import { len, sub, type Vec3 } from '../../math/vec3';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import { bodySearchText } from '../pickable/body-search-text';
+import { fmtDist } from '../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapCommands } from '../pickable/map-commands';
 import type { MapPickable } from '../pickable/map-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { Player } from '../player/player';
+import type { PropertyRow } from '../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
 export class LagrangePointMarker implements MapPickable {
@@ -73,6 +75,20 @@ export class LagrangePointMarker implements MapPickable {
       commands.toggleNavTarget(this.id, this.name);
     }
   }
+
+  // 自艦からの距離と種別。自艦がいない、あるいは位置が解けていないフレームは距離が落ちる。
+  public mapPropertyRows(commands: MapCommands): readonly PropertyRow[] {
+    const viewer = commands.activePlayer;
+    const pos = this.mapPosAt();
+    const rows: PropertyRow[] = [];
+    if (viewer && pos) {
+      rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(pos, viewer.state.r))) });
+    }
+    rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
+    return rows;
+  }
+
+  public readonly mapRename = null;
 
   public listDetail(): string { return ''; }
 

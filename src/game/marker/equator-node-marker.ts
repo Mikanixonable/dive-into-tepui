@@ -3,10 +3,13 @@
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
 import { ORBIT_ELEMENT_LABELS, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { fmtTime } from '../hud/utils';
 import type { Vec3 } from '../../math/vec3';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapCommands } from '../pickable/map-commands';
 import type { MapPickable } from '../pickable/map-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
+import type { PropertyRow } from '../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
 // 交点種別ごとの、マーカーのキーに使う接頭辞と、軌道要素としてのラベル。
@@ -83,6 +86,19 @@ export class EquatorNodeMarker implements MapPickable {
       commands.toggleNavTarget(this.id, this.name);
     }
   }
+
+  // 所属軌道・中心天体の名前・通過までの残り時間。
+  public mapPropertyRows(
+    _commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  ): readonly PropertyRow[] {
+    const rows: PropertyRow[] = [];
+    if (this.owner !== null) rows.push({ key: 'owner', label: '所属軌道', value: this.owner });
+    rows.push({ key: 'target', label: '対象', value: this.center ?? '対象' });
+    if (this.time !== null) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(this.time - simTime)}` });
+    return rows;
+  }
+
+  public readonly mapRename = null;
 
   public listDetail(): string { return ''; }
   public listSearchText(): string { return ''; }

@@ -9,6 +9,7 @@ import type { Player } from '../player/player';
 import type { MapCommands } from './map-commands';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
+import type { PropertyRow } from '../hud/windows/property-window';
 
 export type MapPickKind = 'body' | 'enemy' | 'player' | 'apsis' | 'relnode' | 'ammo' | 'fuel' | 'empty-space' | 'eqnode' | 'base';
 
@@ -48,6 +49,14 @@ export interface MapPickable {
   ): readonly MenuItem<MenuAction>[];
   // 選ばれた操作を実行する。自分が出していない act では何もしない。
   runMapMenu(act: MenuAction, commands: MapCommands): void;
+
+  // プロパティウィンドウに出す行。simTime は天体位置を厳密に引く時刻、displayTime は
+  // 候補の位置を引き直す時刻。操作中の自艦・基地に依る行は commands から引く。
+  mapPropertyRows(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number, displayTime: number,
+  ): readonly PropertyRow[];
+  // 名前を書き換えられる対象だけが持つ。改名できない対象は null。
+  readonly mapRename: ((name: string) => void) | null;
 }
 
 // items を project で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを返す。

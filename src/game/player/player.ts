@@ -51,11 +51,13 @@ import { PlayerBoosters } from './player-boosters';
 import { MARKER_PRIORITY } from '../marker/marker-manager';
 import { strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
-import { fmtDist } from '../hud/utils';
+import { fmtAmmoStatus, fmtDist, fmtEnergy } from '../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { orbitRows } from '../pickable/orbit-rows';
 import type { MapPickKind, MapPickable } from '../pickable/map-pickable';
 import type { MapCommands } from '../pickable/map-commands';
 import type { MenuItem } from '../hud/windows/context-menu';
+import type { PropertyRow } from '../hud/windows/property-window';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
@@ -742,4 +744,25 @@ export class Player extends Ship implements MapPickable {
       commands.toggleNavTarget(this.id, this.name);
     }
   }
+
+  // プロパティウィンドウに出す行。装甲・温度・電力・弾薬を主要行とし、操作対象か・計画実行は
+  // 詳細トグル、軌道要素は「軌道」グループの下に畳む。
+  public mapPropertyRows(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly PropertyRow[] {
+    return [
+      {
+        key: 'operated', label: '操作対象か',
+        value: this === commands.activePlayer ? 'はい' : 'いいえ', collapsible: true,
+      },
+      { key: 'follow', label: '計画実行', value: planExecutionLabel(this.planExecution), collapsible: true },
+      { key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` },
+      { key: 'temp', label: '温度', value: `${this.temperature.toFixed(0)} K` },
+      { key: 'power', label: '電力', value: fmtEnergy(this.power.chargeJ) },
+      { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.roundsInMag, this.magsLeft, this.reloadTimer) },
+      ...orbitRows(this, celestialSystem, simTime),
+    ];
+  }
+
+  public readonly mapRename = (name: string): void => { this.name = name; };
 }

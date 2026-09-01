@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
-import { OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
+import { apsisAltitudes, OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
@@ -14,6 +14,8 @@ import { apparentSizePx } from '../../../math/projection';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
 import { len, sub } from '../../../math/vec3';
 import { bodySearchText } from '../../pickable/body-search-text';
+import { fmtDist, fmtTime } from '../../hud/utils';
+import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { AtmosphereCandidate, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Albedo } from '../../../render/celestial-albedo';
@@ -28,6 +30,7 @@ import type { CelestialSystem } from '../celestial-system';
 import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
 import type { MapCommands } from '../../pickable/map-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
+import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Player } from '../../player/player';
 
@@ -238,4 +241,42 @@ export abstract class CelestialEntity implements MapPickable {
     if (act === 'focus') commands.focus(this.id, this.name);
     else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
   }
+
+  // プロパティウィンドウに出す行。種別・μ・半径を主要行とし、公転していれば軌道要素を
+  // 「軌道」グループの下に畳む。viewer が null なら距離の行は落ちる。
+  public mapPropertyRows(
+    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number, displayTime: number,
+  ): readonly PropertyRow[] {
+    const viewer = commands.activePlayer;
+    const motion = this.motion;
+    const def = motion.def;
+    const rows: PropertyRow[] = [];
+    if (viewer !== null) {
+      const dist = len(sub(this.mapPosAt(displayTime), viewer.state.r));
+      rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(dist) });
+    }
+    const kindLabel = motion.kind === 'star' ? '恒星' : motion.kind === 'planet' ? '惑星' : '衛星';
+    rows.push(
+      { key: 'kind', label: '種別', value: kindLabel },
+      { key: 'mu', label: 'μ', value: `${def.mu.toExponential(3)} m³/s²` },
+      { key: 'radius', label: '半径', value: fmtDist(def.radius) },
+    );
+    // 軌道要素は公転天体だけが持つ。
+    if (motion.kind === 'star') return rows;
+    const primary = motion.primary;
+    const el = primary !== null ? orbitalElementsOf(motion.stateAt(simTime), primary, simTime) : null;
+    if (el === null) return rows;
+    const apsis = apsisAltitudes(el);
+    const apSpec = getApsisLabelSpec('ap', el.center.id);
+    const peSpec = getApsisLabelSpec('pe', el.center.id);
+    rows.push(
+      { key: 'ap', label: apSpec.full, value: fmtDist(apsis.ap), group: '軌道' },
+      { key: 'pe', label: peSpec.full, value: fmtDist(apsis.pe), group: '軌道' },
+      { key: 'inc', label: ORBIT_ELEMENT_LABELS.inc.full, value: `${el.incDeg.toFixed(2)}°`, group: '軌道' },
+      { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(el.period), group: '軌道' },
+    );
+    return rows;
+  }
+
+  public readonly mapRename = null;
 }
