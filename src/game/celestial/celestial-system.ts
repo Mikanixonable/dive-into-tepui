@@ -500,6 +500,7 @@ export class CelestialSystem implements CelestialMotions {
     this.stars.setFixedBrightnessScale(fixedBrightnessScale);
   }
 
+  // ECI の法線を描画座標のベクトルへ移し、単位長へそろえる。
   private toThreeNormal(normal: Vec3): THREE.Vector3 {
     return new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
   }
