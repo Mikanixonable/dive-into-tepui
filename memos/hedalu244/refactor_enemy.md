@@ -154,35 +154,6 @@ export する。** 陣形の供給条件は `DEVELOP/SPEC/COMBAT.md`「タンパ
 
 ## 手順
 
-### 手順 2. `enemy-kind.ts` / `enemy-formation.ts` を畳む
-
-**目的.** 委譲するだけのモジュール 2 本を消す。`FormationRole` は `save-data.ts` が持つ語彙なので
-そちらへ移し、残り(`EnemyKind` と 4 つの関数)はいったん `enemy.ts` へ入れる。
-`EnemyKind` は手順 4 でクラスへ吸収されて消えるので、ここでは移動先を作らない。
-**この時点で挙動は変えない。**
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/save/save-data.ts` | `FormationRole` の `import type`(3 行)を削除し、型定義そのものを移入する。`EnemyKind` の `import type`(2 行)は残す(`enemy.ts` から引く) |
-| `src/game/dynamic/dynamic-entity/enemy-kind.ts` | **削除。** `EnemyKind` / `LegacyPdb5i4rEnemyKind` / `proteinAssetIdForEnemyKind` / `normalizeEnemyKind` / `inertiaForEnemyKind` を `enemy.ts` へ移す |
-| `src/game/dynamic/dynamic-entity/enemy-formation.ts` | **削除。** `isFormationEnergyAvailable` と `FormationEnemyStatus` を `enemy.ts` へ移す |
-| `src/game/dynamic/dynamic-entity/enemy.ts` 36・38 行 | 上記 2 本の `import` を落とし、本体をファイル内へ置く。`FormationRole` は `save-data.ts` から `import type` |
-| `src/game/dynamic/dynamic-system.ts` 14 行 | `proteinAssetIdForEnemyKind` の import 元を `./dynamic-entity/enemy` へ |
-| `src/game/stages/spawner/enemy-generator.ts` 21〜22 行 | `inertiaForEnemyKind` / `EnemyKind` の import 元を `enemy` へ、`FormationRole` を `save-data` へ |
-| `tests/game/protein-formation.test.ts` 3 行 | import 元を `../../src/game/dynamic/dynamic-entity/enemy` へ |
-
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `npm run test:game` が通る(`protein-formation` が動いていること)。
-- `ls src/game/dynamic/dynamic-entity/enemy-kind.ts src/game/dynamic/dynamic-entity/enemy-formation.ts`
-  が両方 "No such file"。
-- `grep -rn "enemy-kind\|enemy-formation" src tests` が 0 件。
-
----
-
 ### 手順 3. 残る `enemy-*.ts` 4 本を `enemy.ts` へインライン展開する
 
 **目的.** 委譲するだけのモジュールを消す。**この時点で挙動は変えない。** 手順 4 でクラスを割る
