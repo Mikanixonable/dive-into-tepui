@@ -1,8 +1,7 @@
 // マップモードの「カメラ」パネル。カメラの注視対象・回転系・平行/透視投影・画角・基準面設定を担当する。
 import { FrameRole, frameRoleOf } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import * as C from '../../const';
-import { CameraReferencePlane, CameraReferenceView, MapCamera } from '../../camera/map-camera';
+import { CameraReferencePlane, CameraReferenceView, MapCamera, OVERVIEW_CAMERA_FOV_MIN, OVERVIEW_CAMERA_FOV_MAX } from '../../camera/map-camera';
 import { focusTargetId } from '../../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
@@ -70,15 +69,15 @@ export class CameraFramePanel {
     fovLabel.textContent = '画角';
     fovGroup.appendChild(fovLabel);
     this.fovSlider = new Slider({
-      min: C.OVERVIEW_CAMERA_FOV_MIN,
-      max: C.OVERVIEW_CAMERA_FOV_MAX,
+      min: OVERVIEW_CAMERA_FOV_MIN,
+      max: OVERVIEW_CAMERA_FOV_MAX,
       step: OVERVIEW_CAMERA_FOV_STEP,
     }, (value) => mapCamera.setFovDeg(value));
     fovGroup.appendChild(this.fovSlider.element);
     this.fovInput = new ValueInput({
       type: 'number',
-      min: C.OVERVIEW_CAMERA_FOV_MIN,
-      max: C.OVERVIEW_CAMERA_FOV_MAX,
+      min: OVERVIEW_CAMERA_FOV_MIN,
+      max: OVERVIEW_CAMERA_FOV_MAX,
       step: OVERVIEW_CAMERA_FOV_STEP,
     }, (text) => mapCamera.setFovDeg(Number(text)));
     fovGroup.appendChild(this.fovInput.element);

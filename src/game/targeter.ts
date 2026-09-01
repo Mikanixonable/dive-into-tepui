@@ -1,6 +1,5 @@
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
 import { CelestialMotion } from '../physics/celestial-motion';
-import * as C from './const';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import { Base } from './dynamic/dynamic-entity/base';
@@ -11,8 +10,8 @@ import { Player } from './player/player';
 import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
-import { MarkerManager } from './marker/marker-manager';
-import { DIRECTION_GLYPH } from './marker/marker-glyphs';
+import { MarkerManager, MARKER_PRIORITY } from './marker/marker-manager';
+import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
 import type { CelestialSystem } from './celestial/celestial-system';
@@ -235,8 +234,8 @@ export class Targeter {
       const key = `psite-${enemy.id}-${site.id}`;
       if (!inRange) { this.markerManager.hide(key); continue; }
       const label = `${site.abbreviation} ${Math.max(0, Math.round(site.hp))}/${site.maxHp}`;
-      const color = site.disabled ? 'var(--text-dim)' : site.attackable ? C.COLOR_MARKER_ENEMY : undefined;
-      this.markerManager.setPosition(key, 'mk-protein-site', '●', site.worldPos, project, label, 1, color, undefined, false, false, C.MARKER_PRIORITY.PROTEIN_SITE, cameraPos);
+      const color = site.disabled ? 'var(--text-dim)' : site.attackable ? COLOR_MARKER_ENEMY : undefined;
+      this.markerManager.setPosition(key, 'mk-protein-site', '●', site.worldPos, project, label, 1, color, undefined, false, false, MARKER_PRIORITY.PROTEIN_SITE, cameraPos);
     }
   }
 

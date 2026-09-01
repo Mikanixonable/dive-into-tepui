@@ -1,6 +1,6 @@
 // HUD 3D スクリーン投影マーカー CSS (.mk, 各種マーカーシンボル, ラベル, 重なり順).
-import * as C from '../../const';
 import { FILL_4, LIGHT_PALETTE } from '../../theme';
+import { COLOR_MARKER_ALLY, COLOR_MARKER_NODE, COLOR_MARKER_FUEL, COLOR_BASE } from '../../marker/marker-identity';
 
 const COLOR_MARKER_TGTDIR = '#ff7ab0';
 const COLOR_MARKER_BOARDPASS = '#ffffff';
@@ -68,14 +68,14 @@ export const MARKER_STYLE = `
 
 .mk-target { color: var(--color-signal); }
 .mk-enemy { color: var(--text-strong); }
-.mk-ally { color: ${C.COLOR_MARKER_ALLY}; }
+.mk-ally { color: ${COLOR_MARKER_ALLY}; }
 .mk-lead { color: var(--color-primary); }
 .mk-pro { color: var(--axis-prograde); }
 .mk-retro { color: var(--axis-prograde); }
 .mk-nrm { color: var(--axis-normal); }
 .mk-rad { color: var(--axis-radial); }
 .mk-tgtdir { color: ${COLOR_MARKER_TGTDIR}; }
-.mk-node { color: ${C.COLOR_MARKER_NODE}; }
+.mk-node { color: ${COLOR_MARKER_NODE}; }
 .mk-boardpass { color: ${COLOR_MARKER_BOARDPASS}; }
 .mk-boardpass .sym { font-size: var(--font-xxs); }
 .mk-mnode { color: var(--color-primary-hover); }
@@ -84,7 +84,7 @@ export const MARKER_STYLE = `
 .mk-burn { color: var(--color-primary); }
 .mk-self { color: ${COLOR_MARKER_SELF}; }
 .mk-ammo { color: var(--text-dim); }
-.mk-fuel { color: ${C.COLOR_MARKER_FUEL}; }
+.mk-fuel { color: ${COLOR_MARKER_FUEL}; }
 .mk-planned { color: ${COLOR_MARKER_PLANNED}; }
 .mk-apsis { color: ${COLOR_MARKER_PLANNED}; }
 .mk-impact { color: var(--color-error); }
@@ -104,7 +104,7 @@ export const MARKER_STYLE = `
 .mk-poi.mk-lagrange .lbl::first-line { font-size: var(--font-s); }
 #hud .mk-poi .lbl { margin-top: var(--space-2); padding: var(--space-1) var(--space-2); }
 
-.mk-base { color: ${C.COLOR_BASE_ORBIT_LINE}; text-shadow: 0 0 4px var(--bg); }
+.mk-base { color: ${COLOR_BASE}; text-shadow: 0 0 4px var(--bg); }
 .mk-geolabel { color: var(--text-dim); font-size: var(--font-xxs); pointer-events: none; }
 .mk-geolabel .sym { font-size: var(--font-xxs); letter-spacing: 1.2px; white-space: nowrap; text-shadow: 0 0 3px var(--bg); }
 

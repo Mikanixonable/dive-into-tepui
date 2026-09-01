@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import * as C from '../../const';
 import { Ship, MUZZLE_SPEED } from './ship';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 import { DynamicEntity } from './dynamic-entity';
@@ -14,7 +13,7 @@ import { Bullet } from './bullet';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
 import { fmtMarkerDist } from '../../hud/utils';
-import { ENTITY_GLYPH } from '../../marker/marker-glyphs';
+import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { currentThemePalette } from '../../theme';
 import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
 import type { Quat } from '../../../physics/attitude';
@@ -25,6 +24,7 @@ import type { DynamicSystem } from '../../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { EnemySaveData } from '../../save/save-data';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
+import { MARKER_PRIORITY } from '../../marker/marker-manager';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
 // 達するのは、地球の大気では高度 80 km 付近。
@@ -197,7 +197,7 @@ export abstract class Enemy extends Ship {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
     // 代表選出の優先度: ターゲット > 距離が近い順 (天体 > 船・エンティティ)
-    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.ENEMY - dist / 1e9;
+    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
       key: `enemy-${this.id}`,
       cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
@@ -208,10 +208,10 @@ export abstract class Enemy extends Ship {
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
       // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。ターゲット中は第二アクセントカラーで強調する。
-      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ENEMY,
+      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.enemyShip,
       bearingClass: 'mk-dir mk-bearing-triangle',
-      color: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ENEMY,
+      color: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ENEMY,
       symMarkup: true,
     };
   }

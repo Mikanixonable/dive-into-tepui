@@ -8,12 +8,11 @@ import * as THREE from 'three/webgpu';
 import { v3 } from '../../math/vec3';
 import { Input, MouseDelta } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Player } from '../player/player';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { Viewpoint } from '../../math/projection';
-import { ChaseCamera } from './chase-camera';
+import { ChaseCamera, BASE_FOV } from './chase-camera';
 import { GunsightCamera } from './gunsight-camera';
 import { ChaseCameraSaveData } from '../save/save-data';
 
@@ -37,7 +36,7 @@ function lerpViewpointFov(current: Viewpoint, target: Viewpoint, dt: number): Vi
 export class CombatCameraSystem {
   // 戦闘ビュー用のカメラ。アスペクト比は update() 毎に自己補正する。
   readonly camera = new THREE.PerspectiveCamera(
-    C.BASE_FOV,
+    BASE_FOV,
     window.innerWidth / window.innerHeight,
     COMBAT_CAMERA_NEAR,
     COMBAT_CAMERA_FAR,
@@ -50,7 +49,7 @@ export class CombatCameraSystem {
     position: v3(),
     up: v3(0, 1, 0),
     lookTarget: v3(),
-    fovDeg: C.BASE_FOV,
+    fovDeg: BASE_FOV,
     aspect: window.innerWidth / window.innerHeight,
   };
 
@@ -79,13 +78,13 @@ export class CombatCameraSystem {
 
   // ズーム状態を入力から求め、現在のモード(通常/ズーム)に応じて ChaseCamera/GunsightCamera の
   // どちらかを駆動して目標 Viewpoint を求め、fovDeg だけをそこへ指数的に近づけて viewpoint とする。
-  update(mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number, player: DynamicEntity | null, input: Input): void {
+  update(mouse: MouseDelta, keyYawRad: number, keyPitchRad: number, dt: number, player: DynamicEntity | null, input: Input): void {
     if (input.takeKey(K.followAttitudeToggle)) this.chaseCamera.toggleFollowAttitude(player);
     this.zoomActive = input.down(K.gunsightZoom);
     // 操作対象艦がいなければ照準先が無いので、ズーム要求は無視して追跡視点のままにする。
     const useGunsight = player instanceof Player && this.zoomActive;
     if (useGunsight) this.gunsightCamera.update(player);
-    else this.chaseCamera.update(mouse, keyYaw, keyPitch, dt, player);
+    else this.chaseCamera.update(mouse, keyYawRad, keyPitchRad, player);
     const target = useGunsight ? this.gunsightCamera.viewpoint : this.chaseCamera.viewpoint;
     this.viewpoint = lerpViewpointFov(this.viewpoint, target, dt);
   }
