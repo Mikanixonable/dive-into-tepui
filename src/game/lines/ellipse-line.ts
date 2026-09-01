@@ -96,12 +96,18 @@ export class EllipseLine {
     this.curve.setRenderOrder(renderOrder);
   }
 
+  // 曲線を消し、当たり判定向けのサンプル点も空にする(次回 sync までは何も返さない)。
+  hide(): void {
+    this.baked = null;
+    this.curve.setVisible(false);
+  }
+
   // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン、camera = 画面上のサジッタを実距離へ
-  // 換算するための描画カメラ。el が null なら軌道要素を持たない状態として非表示にする。
-  sync(el: OrbitalElements | null, fo: FloatingOrigin, camera: THREE.Camera): void {
-    if (!el || el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
-      this.baked = null;
-      this.curve.setVisible(false);
+  // 換算するための描画カメラ。楕円として描けない要素(離心率が 1 に近い・a が非有限か非正)を
+  // 渡したときは消える。
+  sync(el: OrbitalElements, fo: FloatingOrigin, camera: THREE.Camera): void {
+    if (el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
+      this.hide();
       return;
     }
 
