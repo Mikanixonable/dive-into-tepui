@@ -310,6 +310,12 @@ export interface MapCommands {
   (従来は `strongestAttractor` で引き直していた)。マーカーの表記と必ず一致する方向の変化。
 - 「ノードを追加」で時刻が求まらないときの通知は消えた。時刻はマーカーが必ず持つ。
 
+**プロパティ行も `MapCommands` を通す。** 基地の「操作対象か」は操作中の基地を要るので、
+行の導出に渡すのは自艦(`Player | null`)ではなく `MapCommands` にした
+(`mapPropertyRows(commands, celestialSystem, simTime, displayTime)`)。旧 `rowsFor` の
+`pivot` と `simTime` は呼び出し側で同じ値だったので1つに畳んである。軌道要素の行は
+`pickable/orbit-rows.ts` の `orbitRows(entity, celestialSystem, simTime)` が持つ。
+
 **残った疑問点。** `CelestialEntity` の副題の既定値は `'天体・ラグランジュ点'` のままだが、
 ラグランジュ点はもうこのクラスへ来ない。文言を変えるなら `/modify-feature` を通す。
 
@@ -378,42 +384,6 @@ interface ListSortKey {
 
 ## 手順
 
-### 手順 4. プロパティ行を実体・マーカーへ移す
-
-**目的**
-
-`MapPropertyRows.rowsFor` の9分岐を各物体へ移し、実体を id で引き直す6メソッドを消す。
-**この時点で行の内容は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `pickable/map-pickable.ts` | `mapPropertyRows(celestialSystem, celestialBodies, pivot, viewer: Player \| null, simTime, displayTime): readonly PropertyRow[]` と `readonly mapRename: ((name: string) => void) \| null` を追加。`displayTime` は位置を引き直すマーカー・天体の行に要る |
-| `pickable/orbit-rows.ts` | **(新規)** `map-property-rows.ts:50-73` の `orbitRows` を関数として切り出す。`DynamicEntity` を受け、基準天体・高度・速度・AP/PE/INC/PRD を返す |
-| `pickable/map-property-rows.ts` | **削除** |
-| `pickable/map-context-actions.ts` | `propertyRows` フィールドを削除。`syncRows` は `entry.target.mapPropertyRows(...)`、`buildContent` の `onRename` は `target.mapRename`。`renameHandlerFor` を削除し、`relatedTitleFor` は `target === activePlayers.current` で判定する(実体を id で引き直さない) |
-| `player/player.ts` | `playerRows`(75-91)。`mapRename` は `(name) => { this.name = name; }` |
-| `dynamic/dynamic-entity/enemy.ts` | `shipRows`(93-117) |
-| `dynamic/dynamic-entity/base.ts` | `baseRows`(119-132)。`mapRename` あり |
-| `dynamic/dynamic-entity/ammo-pickup.ts` / `rcs-fuel-pickup.ts` | `ammoPickupRows` / `rcsFuelPickupRows`(134-173) |
-| `celestial/celestial-entity/celestial-entity.ts` | `bodyRows`(175-206)の天体枝。`motion.kind` に対する switch は規約 1.8 が許すのでそのまま |
-| `marker/lagrange-point-marker.ts` | `bodyRows` のラグランジュ点枝(181-184) |
-| `marker/apsis-marker.ts` | `apsisRows`(208-219) |
-| `marker/relative-node-marker.ts` / `equator-node-marker.ts` | `nodeRows`(221-233)。対象名の求め方が違う(前者は航法ターゲット名、後者は中心天体名)ので、分岐ごと2つへ割れる |
-| `pickable/empty-space-pickable.ts` | 空配列 |
-
-**達成条件と検証**
-
-- `src/game/pickable/map-property-rows.ts` が存在しない。
-- `grep -rn "findPlayer(target.id)\|findEnemy(target.id)\|findBase(target.id)" src/` が 0 件。
-- `npm run typecheck` / `npm run test:game`。
-- `npm run dev`:10 種すべてのプロパティウィンドウを開き、行の顔ぶれ・順序・「詳細」トグルの
-  下に畳まれる行・「軌道」グループの中身が手順前と同じ。自艦と基地で改名できる。自艦がいない
-  状態(操作対象を解除)でも敵艦・基地の行が落ちない。
-
----
-
 ### 手順 5. 一覧・選択ウィジェット・記号を実体・マーカーへ移す
 
 **目的**
@@ -431,7 +401,7 @@ interface ListSortKey {
 | `hud/panels/physical-object-list-order.ts:4,85-97,102-118,131-165,168-190,197-204` | `MapPickKind` の import を削除。`matches` の `item.kind === …` を `listSection` と `ListSortKey.inFocusedSystem` へ。`compare` は `ListSortKey`(決めたこと 7)を引く。`lagrangeSortKeyOf` は `LagrangePointMarker` が点番号を値として持つので、id からの正規表現解決ごと不要になる。`rebuildOrder` の `kind` 引数は `MapListSection` へ。`PrevInput.kind` も同様 |
 | `hud/panels/physical-object-list-tree.ts:75,82,89,91` | `pickGlyphSvg` / `pickGlyphText` を `item.mapGlyphSvg` / `item.mapGlyph` へ。`item.kind === 'body'` による detail の出し分け(89,91)は、天体の `listDetail` が空文字を返すことで消える |
 | `marker/pick-glyphs.ts` | **削除。** `TEXT_GLYPHS` / `SVG_GLYPHS` の各行は対応する実体・マーカーの `mapGlyph` / `mapGlyphSvg` へ。「一覧とプロパティウィンドウで同じ種別が別の形に見えない」という不変は、値が1箇所になることで自動的に保たれる |
-| `pickable/map-context-actions.ts:581` | `pickGlyph(target.kind, …)` → `target.mapGlyphSvg ?? target.mapGlyph` |
+| `pickable/map-context-actions.ts` | `buildContent` の `pickGlyph(target.kind, …)` → `target.mapGlyphSvg ?? target.mapGlyph`。`windowKey` / `handleLeftClick` / `relatedItemsFor` に残る `kind` の参照も落とす |
 | (全実装) | `mapGlyph` / `mapGlyphSvg` / `listSection` / `pickerGenre` / `listDetail` / `listSearchText` / `listCounted` / `listPriority` を実装。中身は `map-pickables.ts:168-172` の三項演算子の連鎖を種別ごとに割ったもの。**表示と検索が分かれるのは天体だけ**で、他の種別は `listSearchText` が `listDetail` をそのまま返す |
 
 **達成条件と検証**
@@ -581,13 +551,12 @@ interface ListSortKey {
 
 | 手順 | 導出 | 見積り |
 | --- | --- | --- |
-| 4 | 分岐 9 種 × 7.5 分 + `orbit-rows` 切り出し + 目視 30 分 | 約 2 時間 |
 | 5 | 分岐 24 箇所 × 7.5 分 + `ListSortKey` の導入 + 目視 40 分 | 約 4 時間 |
 | 6 | 4 ファイル・寿命の整理のみ + 目視 20 分 | 約 1.5 時間 |
 | 7 | `markerItem` 5 箇所 + 読み手 3 箇所 + 目視 20 分 | 約 1.5 時間 |
 | 8 | 609 行を 3 モジュールへ分割 + 呼び出し元 7 ファイル + 目視 40 分 | 約 4 時間 |
 | 9 | sync 4 種 × 20 分 + 目視 30 分 | 約 2 時間 |
-| **合計** | | **約 15 時間** |
+| **合計** | | **約 13 時間** |
 
 per-frame の費用の見積り: 候補列の再生成は `mapItems`(負荷確認ウィンドウで観測できる)ぶんの
 オブジェクト生成になる。天体 + ラグランジュ点 + 実体で 200 件規模なら
