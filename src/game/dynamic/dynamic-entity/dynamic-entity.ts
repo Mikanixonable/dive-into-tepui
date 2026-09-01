@@ -57,10 +57,6 @@ export const SMALL_DEBRIS_RADIATING_AREA_PER_MASS = 0.01455; // [m^2/kg]
 // — 平衡温度はもっと高いところで既にこれを超えるが、再突入は速すぎて平衡に達しない。
 export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
 
-// 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
-// ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
-const HISTORY_DURATION_MAX = DISPLAY_DURATION_MAX;
-
 // エンティティ1体が出している軌道線。楕円と対象への直線は排他で、同時には持たない。
 // center が null なら、毎フレームその瞬間最も強く引いている天体を中心に描く。
 export type OrbitLine =
@@ -364,10 +360,12 @@ export class DynamicEntity {
   }
 
   // 過去表示に必要な履歴の保持時間 [s] を要求する。履歴を持たない種別(弾・薬莢・破片)は
-  // 無視する。実際の保持時間は種別ごとの既定値との大きい方。
+  // 無視する。実際の保持時間は種別ごとの既定値との大きい方。上限は表示期間の上限で、
+  // 保持サンプル数は間引きにより ARC_MAX_SAMPLES で頭打ちなので、これが決めるのは
+  // 間引きの粗さ(補間精度)の下限。
   requestHistoryDuration(sec: number): void {
     if (this.baseHistoryDuration <= 0) return;
-    this.requestedHistoryDuration = Math.max(0, Math.min(HISTORY_DURATION_MAX, sec));
+    this.requestedHistoryDuration = Math.max(0, Math.min(DISPLAY_DURATION_MAX, sec));
   }
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
