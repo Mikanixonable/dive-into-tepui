@@ -23,12 +23,15 @@ import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
 import type { DynamicSystem } from '../../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
-import type { EnemySaveData, FormationRole } from '../../save/save-data';
+import type { EnemySaveData } from '../../save/save-data';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
 // 達するのは、地球の大気では高度 80 km 付近。
 const ENEMY_MAX_TEMP = 500; // [K]
+
+const ENEMY_MAX_HP = 6; // 敵機の総 HP
+const ENEMY_MASS = 10000; // 敵機の質量 [kg]
 
 export const ENEMY_SCALE = 20; // 見た目メッシュに掛けるスケール
 
@@ -43,6 +46,9 @@ const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃す
 const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
 const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
+
+// タンパク質陣形における敵の役割。
+export type FormationRole = 'attacker' | 'shield' | 'energy';
 
 // スナップショットからの再開。全具象で共通でなければならない — EnemyClass の構築シグネチャが
 // この形を要求し、クラス辞書はこれだけを渡して復元する。
@@ -69,12 +75,6 @@ export interface EnemyClass {
   // 復元に fetch 済みアセットが要るなら、その id。要らなければ null。
   pendingAssetId(saved: EnemySaveData): ProteinAssetId | null;
   new (init: EnemyRestore, worldSfx: WorldSfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy;
-}
-
-// 描画メッシュの実スケール後バウンディング球の半径。弾丸・物理接触の両判定に共有する。
-export function visualRadiusOf(renderObject: THREE.Object3D): number {
-  const bounds = new THREE.Box3().setFromObject(renderObject);
-  return bounds.getBoundingSphere(new THREE.Sphere()).radius;
 }
 
 // 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
@@ -105,9 +105,9 @@ export abstract class Enemy extends Ship {
   public readonly orbitLineColor: string | number;
 
   // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
-  public lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
-  public burstLeft?: number; // バースト射撃の残弾
-  public burstDelay?: number; // 次のバースト弾までの残り時間
+  private lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
+  private burstLeft?: number; // バースト射撃の残弾
+  private burstDelay?: number; // 次のバースト弾までの残り時間
   private lastBehaviorSim?: number;
   // false の間はこの機体が射撃を行わない。移動・AI の他の判定には影響しない。
   public fireEnabled = true;
@@ -122,7 +122,6 @@ export abstract class Enemy extends Ship {
     renderObject: THREE.Object3D,
     inertia: Vec3,
     radius: number,
-    maxHp: number,
     worldSfx: WorldSfx,
     fx: EffectsSystem,
     scene?: THREE.Scene,
@@ -149,7 +148,7 @@ export abstract class Enemy extends Ship {
       : init;
     super(
       placed.name, placed.state, renderObject, { q: placed.q, w: placed.w, inertia },
-      radius, maxHp, scene, placed.id,
+      radius, ENEMY_MAX_HP, scene, placed.id,
     );
     this._worldSfx = worldSfx;
     this._fx = fx;
@@ -158,7 +157,7 @@ export abstract class Enemy extends Ship {
     this.waveId = placed.waveId;
     this.formationId = placed.formationId;
     this.formationRole = placed.formationRole;
-    this.mass = 10000;
+    this.mass = ENEMY_MASS;
     this.collides = true;
     this.doPreciseReentry = true;
 

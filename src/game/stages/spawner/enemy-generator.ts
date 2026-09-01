@@ -20,7 +20,7 @@ import type { EffectsSystem } from '../../vfx/effects-system';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
 import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
-import type { FormationRole } from '../../save/save-data';
+import type { FormationRole } from '../../dynamic/dynamic-entity/enemy';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 
@@ -37,7 +37,7 @@ function driftingAttitude(): { q: Quat; w: Vec3 } {
 }
 
 // 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体)。
-export function generateDriftingEnemy(name: string, state: KinematicState, _hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+export function generateDriftingEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
   return new MetalEnemy(
     { name, state, ...driftingAttitude(), accent, orbitLineColor, typeIndex: null },
     worldSfx, fx, scene,
@@ -91,13 +91,13 @@ export function proteinFormationSpawns(
 }
 
 // base から dAlong だけ進んだ位置に漂う敵を生成する。
-export function generatePhasedEnemy(name: string, base: KinematicState, dAlong: number, hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
-  return generateDriftingEnemy(name, phasedState(base, dAlong), hp, accent, orbitLineColor, worldSfx, fx, scene);
+export function generatePhasedEnemy(name: string, base: KinematicState, dAlong: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
+  return generateDriftingEnemy(name, phasedState(base, dAlong), accent, orbitLineColor, worldSfx, fx, scene);
 }
 
 // base から dAlong だけ進め、高度を altitudeOffset ぶんずらした円軌道上に敵を生成する。
 export function generateCoellipticEnemy(
-  name: string, base: KinematicState, dAlong: number, altitudeOffset: number, hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+  name: string, base: KinematicState, dAlong: number, altitudeOffset: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   const phased = phasedState(base, dAlong);
   const altitude = len(base.r) + altitudeOffset;
@@ -106,43 +106,43 @@ export function generateCoellipticEnemy(
     scale(norm(phased.r), altitude),
     scale(norm(phased.v), Math.sqrt(MU_EARTH / altitude)),
   );
-  return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, worldSfx, fx, scene);
+  return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene);
 }
 
 // base から dAlong だけ進め、軌道面をわずかに傾けた交差軌道上に敵を生成する。
 export function generateCrossingEnemy(
-  name: string, base: KinematicState, dAlong: number, hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+  name: string, base: KinematicState, dAlong: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   const phased = phasedState(base, dAlong);
   const state: KinematicState = kinematicState<'eci'>(phased.t, phased.r, rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180));
-  return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, worldSfx, fx, scene);
+  return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene);
 }
 
 // base から dAlong だけ進め、速度を増して離心軌道上に敵を生成する。
 export function generateEllipticEnemy(
-  name: string, base: KinematicState, dAlong: number, hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+  name: string, base: KinematicState, dAlong: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   const phased = phasedState(base, dAlong);
   const state: KinematicState = kinematicState<'eci'>(phased.t, phased.r, scale(phased.v, 1.006));
-  return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, worldSfx, fx, scene);
+  return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene);
 }
 
 // t = 生成時刻(state のエポック)。他のプリセットが base(自機状態)から引き継ぐのに対し、
 // この軌道は自機と無関係に軌道要素から作るので、時刻だけ呼び出し側から受け取る。
 export function generateMolniyaEnemy(
-  name: string, t: number, raan: number, nu: number, hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+  name: string, t: number, raan: number, nu: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   const rp = R_EARTH + 1200e3;
   const ra = R_EARTH + 39400e3;
   const a = (rp + ra) / 2;
   const e = (ra - rp) / (ra + rp);
   const state = stateFromOrbitalElements(t, a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu, MU_EARTH);
-  return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, worldSfx, fx, scene);
+  return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene);
 }
 
 // ステージ00ウェーブ敵: 自機へのフライパスなので、機首をプログレードに向けて生成する。
 export function generateApproachingEnemy(
-  name: string, state: KinematicState, _hp: number, accent: number, orbitLineColor: number, typeIndex: number, waveId: number | undefined, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
+  name: string, state: KinematicState, accent: number, orbitLineColor: number, typeIndex: number, waveId: number | undefined, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   return new MetalEnemy(
     {

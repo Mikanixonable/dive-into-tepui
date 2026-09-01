@@ -299,7 +299,7 @@ export function generateWave(player: KinematicState, waveNumber: number, celesti
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir);
     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, accent, typeIndex, waveNumber, worldSfx, fx, scene));
+    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, accent, accent, typeIndex, waveNumber, worldSfx, fx, scene));
   }
   return enemies;
 }
