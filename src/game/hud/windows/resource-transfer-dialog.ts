@@ -203,7 +203,7 @@ export class ResourceTransferDialog {
 
   // 弾薬(予備マガジン)の残量表示と、定量補充・全補給のボタンを組み立てる。
   private renderMagsSection(aMetrics: ResourceMetrics, bMetrics: ResourceMetrics): string {
-    // 名前欄は空のまま返し、applyNames が艦名・基地名を textContent で反映する。
+    // 名前欄は空のまま返し、applyNames が艦名を textContent で反映する。
     return `
       <div class="rt-section">
         <div class="rt-section-head">📦 弾薬 (Magazines)</div>
@@ -233,7 +233,7 @@ export class ResourceTransferDialog {
 
   // RCS 燃料の残量表示と、定量移送・満タン補給/均等化のボタンを組み立てる。
   private renderRcsSection(aMetrics: ResourceMetrics, bMetrics: ResourceMetrics): string {
-    // 名前欄は空のまま返し、applyNames が艦名・基地名を textContent で反映する。
+    // 名前欄は空のまま返し、applyNames が艦名を textContent で反映する。
     return `
       <div class="rt-section">
         <div class="rt-section-head">🚀 RCS 燃料 (Fuel)</div>
