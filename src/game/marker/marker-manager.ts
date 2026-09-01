@@ -93,9 +93,7 @@ function defaultPriorityForClass(key: string, cls: string): number {
   if (cls.includes('mk-enemy')) return MARKER_PRIORITY.ENEMY;
   if (cls.includes('mk-ammo') || cls.includes('mk-fuel')) return MARKER_PRIORITY.AMMO;
   if (cls.includes('mk-mnode') || cls.includes('mk-burn')) return MARKER_PRIORITY.MANEUVER_NODE;
-  if (cls.includes('mk-node') || cls.includes('mk-relnode') || cls.includes('mk-eqnode') || cls.includes('mk-boardpass')) {
-    return MARKER_PRIORITY.ORBITAL_NODE;
-  }
+  if (cls.includes('mk-node') || cls.includes('mk-boardpass')) return MARKER_PRIORITY.ORBITAL_NODE;
   return 0;
 }
 
@@ -607,8 +605,8 @@ export class MarkerManager {
           }
         }
 
-        // バケットの巡回順はセル配置に依存するため、元の全ペア走査と同じ
-        // i→j の順序に戻す。押し出しの累積結果を従来から変えにくくするため。
+        // 押し出しは累積するので結果が処理順に依る。バケットの巡回順はセル配置に依存して
+        // 揺れるため、添字の昇順へ均してから解決する。
         candidates.sort((left, right) => left - right);
         for (const j of candidates) {
           const b = active[j]!;
