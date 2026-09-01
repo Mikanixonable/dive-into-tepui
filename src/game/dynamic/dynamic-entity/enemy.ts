@@ -13,6 +13,8 @@ import { Bullet } from './bullet';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
 import { fmtDist, fmtMarkerDist, fmtSpeed } from '../../hud/utils';
+import { relativeInfo } from '../../hud/orbit/orbit-info';
+import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { currentThemePalette } from '../../theme';
 import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
@@ -30,6 +32,7 @@ import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
 import type { MapCommands } from '../../pickable/map-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
+import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
@@ -493,4 +496,33 @@ export abstract class Enemy extends Ship implements MapPickable {
     else if (act === 'focus') commands.focus(this.id, this.name);
     else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
   }
+
+  // プロパティウィンドウに出す行。装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、
+  // 軌道要素と相対傾斜角は「軌道」グループの下に畳む。viewer が null なら相対量の行は落ちる。
+  public mapPropertyRows(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly PropertyRow[] {
+    const viewer = commands.activePlayer;
+    const rel = viewer ? relativeInfo(viewer, this, celestialSystem.celestialMotions, simTime) : null;
+    const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` }];
+    // 自艦との相対量。
+    if (rel) {
+      rows.push(
+        { key: 'dist', label: '距離', value: fmtDist(rel.dist) },
+        { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing) },
+        { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), collapsible: true },
+      );
+    }
+    rows.push(...orbitRows(this, celestialSystem, simTime));
+    // 相対傾斜角は自艦の軌道面が基準なので、軌道要素と同じグループへ並べる。
+    if (rel) {
+      rows.push({
+        key: 'relinc', label: '相対傾斜 [AN/DN]',
+        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: '軌道',
+      });
+    }
+    return rows;
+  }
+
+  public readonly mapRename = null;
 }

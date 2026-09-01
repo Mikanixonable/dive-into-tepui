@@ -175,7 +175,7 @@ export class NavTarget {
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
     const ownerName = player?.name ?? null;
-    for (const marker of this.nodeMarkers) marker.place(null, null, ownerName);
+    for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, this.name);
     this.timeLabel = timeLabelSettingOf(displayWindow);
     this.celestialBodies = frameAnchors.bodies;
     this.celestialBodiesPivot = frameAnchors.bodiesPivot;
@@ -196,7 +196,7 @@ export class NavTarget {
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
     if (target && strongestAttractor(target.state.r, stateCelestialBodies, simTime).id === playerCenter.id) {
       const found = findClosestApproach(player, target, celestialSystem, simTime);
-      if (found) this.closestApproach.place(toDisplay(found.pos, found.t), found.t, ownerName);
+      if (found) this.closestApproach.place(toDisplay(found.pos, found.t), found.t, ownerName, this.name);
     }
 
     const playerEl = player.orbitalElementsAround(playerCenter, simTime);
@@ -214,8 +214,8 @@ export class NavTarget {
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
     const anEci = add(celestialSystem.stateAt(playerCenter.id, anT).r, positionOnOrbit(playerEl, nodes.asc));
     const dnEci = add(celestialSystem.stateAt(playerCenter.id, dnT).r, positionOnOrbit(playerEl, nodes.desc));
-    this.ascendingNode.place(toDisplay(anEci, anT), anT, ownerName);
-    this.descendingNode.place(toDisplay(dnEci, dnT), dnT, ownerName);
+    this.ascendingNode.place(toDisplay(anEci, anT), anT, ownerName, this.name);
+    this.descendingNode.place(toDisplay(dnEci, dnT), dnT, ownerName, this.name);
   }
 
   clearIfTargeting(id: string): void {

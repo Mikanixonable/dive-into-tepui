@@ -33,12 +33,10 @@ import { Player } from '../player/player';
 import type { Targeter } from '../targeter';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EmptySpacePickable } from './empty-space-pickable';
-import { CelestialMotion } from '../../physics/celestial-motion';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { MapPickables } from './map-pickables';
 import type { Part } from '../dynamic/dynamic-entity/parts';
 import { pickCombatEntityAtPoint } from './combat-pickable';
-import { MapPropertyRows } from './map-property-rows';
 import type { DockState, MapCommands } from './map-commands';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -84,7 +82,6 @@ export class MapContextActions implements MapCommands {
   private readonly partWindows = new Map<string, PartWindowEntry>();
   private readonly lineWindows = new Map<string, LineWindowEntry>();
   private readonly physicalObjectListPanel: PhysicalObjectListPanel;
-  private readonly propertyRows: MapPropertyRows;
   private expandedBaseWindowKey: string | null = null;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
   private readonly emptySpace: MapPickable = new EmptySpacePickable();
@@ -119,7 +116,6 @@ export class MapContextActions implements MapCommands {
   ) {
     this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => target.runMapMenu(act, this);
-    this.propertyRows = new MapPropertyRows(entities, activePlayers, celestialSystem, navTarget);
     this.physicalObjectListPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialSystem);
     // 一覧の行は隠れている対象でも操作できる(SPEC/MAP.md §10) — pickable によるマップ上の
     // 衝突判定はマーカーのヒットテストにだけ適用され、一覧からの id 一致には適用しない。
@@ -355,8 +351,8 @@ export class MapContextActions implements MapCommands {
       this.collapseBasePanel();
       return;
     }
-    const base = this.entities.findBase(entry.target.id);
-    if (!base || !this.docking) return;
+    const base = entry.target;
+    if (!(base instanceof Base) || !this.docking) return;
     this.collapseBasePanel();
     entry.win.setExpandedPanel(this.docking.openPanel(base));
     this.expandedBaseWindowKey = key;
@@ -411,12 +407,9 @@ export class MapContextActions implements MapCommands {
   private focusTarget(id: string, target: MapPickable | undefined): void {
     this.frameControls.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`);
-    if (target?.kind === 'player') {
-      const ship = this.entities.findPlayer(target.id);
-      if (ship) {
-        this.activePlayers.set(ship);
-        this.hud.hint(`${target.name} を操作対象に設定`);
-      }
+    if (target instanceof Player) {
+      this.activePlayers.set(target);
+      this.hud.hint(`${target.name} を操作対象に設定`);
     }
   }
 
@@ -424,12 +417,10 @@ export class MapContextActions implements MapCommands {
   // 基地も selectBase のみ呼んで基地パネルは展開しない。取り消せない操作は明示の項目
   // (プロパティウィンドウ)かダブルクリックに限る。
   private selectPickable(target: MapPickable, clientX: number, clientY: number): void {
-    if (target.kind === 'player') {
+    if (target instanceof Player) {
       this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
-    } else if (target.kind === 'base') {
-      const base = this.entities.findBase(target.id);
-      if (!base) return;
-      this.docking?.selectBase(base);
+    } else if (target instanceof Base) {
+      this.docking?.selectBase(target);
       this.hud.hint(`${target.name} を選択`);
     }
   }
@@ -472,9 +463,7 @@ export class MapContextActions implements MapCommands {
   // ウィンドウの値を最新化する。対象そのものが消滅していれば(撃破・回収・削除)閉じる —
   // 未来ゴースト時刻で位置が求まらないだけのフレーム(stateAt が null)は候補列
   // (pickables.pickables)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
-  sync(
-    simTime: number, displayTime: number, celestialBodies: readonly CelestialMotion[], player: Player | null,
-  ): void {
+  sync(simTime: number, displayTime: number, player: Player | null): void {
     const overviewMode = this.cameraSystem.overviewMode;
     this.physicalObjectListPanel.setVisible(overviewMode);
     // マップを離れると ViewManager.closeMap() が開いているウィンドウを閉じる。
@@ -503,10 +492,9 @@ export class MapContextActions implements MapCommands {
       const { title, subtitle, items: menuItems } = this.windowParts(entry.target, simTime);
       entry.win.syncHeader(title, subtitle);
       entry.win.syncRelatedItems(
-        this.relatedItemsFor(entry.target, celestialBodies, simTime),
-        this.relatedTitleFor(entry.target));
+        this.relatedItemsFor(entry.target, simTime), this.relatedTitleFor(entry.target));
       entry.win.syncRows(
-        this.propertyRows.rowsFor(entry.target, celestialBodies, simTime, player, simTime, displayTime));
+        entry.target.mapPropertyRows(this, this.celestialSystem, simTime, displayTime));
       entry.win.syncItems(menuItems);
       entry.win.syncBadge(entry.target.id === this.lastFocusId);
     }
@@ -553,23 +541,10 @@ export class MapContextActions implements MapCommands {
     const { title, subtitle, items } = this.windowParts(target, simTime);
     return {
       title, subtitle, icon: pickGlyph(target.kind, target.id, this.celestialSystem), rows: [], items,
-      relatedItems: this.relatedItemsFor(target, this.celestialSystem.celestialMotions, simTime),
+      relatedItems: this.relatedItemsFor(target, simTime),
       relatedTitle: this.relatedTitleFor(target),
-      onRename: this.renameHandlerFor(target),
+      onRename: target.mapRename ?? undefined,
     };
-  }
-
-  // 改名できる種別(自艦・基地)にだけコールバックを渡す。対象は id で引き直す —
-  // ウィンドウを開いた時点の MapPickable を直接束縛すると、以後の位置更新で
-  // 別の実体を指してしまう。
-  private renameHandlerFor(target: MapPickable): ((name: string) => void) | undefined {
-    if (target.kind === 'player') {
-      return (name) => { const ship = this.entities.findPlayer(target.id); if (ship) ship.name = name; };
-    }
-    if (target.kind === 'base') {
-      return (name) => { const base = this.entities.findBase(target.id); if (base) base.name = name; };
-    }
-    return undefined;
   }
 
   // タイトル・サブタイトルは到達まで T+… や所持金など、操作項目は操作対象か・追従状態・
@@ -598,20 +573,14 @@ export class MapContextActions implements MapCommands {
 
   // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
   // 天体は静的な primaryOf、人工物は現在状態から orbitingAttractorOf で判定する。
-  private relatedItemsFor(
-    target: MapPickable, celestialBodies: readonly CelestialMotion[], pivot: number,
-  ): readonly PropertyWindowRelatedItem[] {
-    if (target.kind === 'player') {
-      const ship = this.entities.findPlayer(target.id);
-      if (!ship || ship !== this.activePlayers.current) return [];
-      return ship.parts.map((part) => ({
+  private relatedItemsFor(target: MapPickable, pivot: number): readonly PropertyWindowRelatedItem[] {
+    const activeShip = this.activePlayers.current;
+    if (activeShip !== null && target === activeShip) {
+      return activeShip.parts.map((part) => ({
         id: part.id,
         label: part.name,
-        onFocus: () => {
-          this.frameControls.setFocus({ kind: 'object', id: ship.id });
-          this.hud.hint(`${part.name} を搭載する ${ship.name} にフォーカス`);
-        },
-        onContextMenu: (clientX, clientY) => this.openPartPropertyWindow(ship, part, clientX, clientY),
+        onFocus: () => this.focus(activeShip.id, `${part.name} を搭載する ${activeShip.name}`),
+        onContextMenu: (clientX, clientY) => this.openPartPropertyWindow(activeShip, part, clientX, clientY),
       }));
     }
     if (target.kind !== 'body' || isLagrangeId(target.id) || !this.celestialSystem.has(target.id)) return [];
@@ -624,7 +593,7 @@ export class MapContextActions implements MapCommands {
       } else {
         const state = item.mapState;
         isOrbiting = state !== null
-          && orbitingAttractorOf(state, celestialBodies, pivot)?.id === target.id;
+          && orbitingAttractorOf(state, this.celestialSystem.celestialMotions, pivot)?.id === target.id;
       }
       if (isOrbiting) related.push({ item, label: item.name });
     }
@@ -644,8 +613,7 @@ export class MapContextActions implements MapCommands {
   }
 
   private relatedTitleFor(target: MapPickable): string {
-    return target.kind === 'player' && this.entities.findPlayer(target.id) === this.activePlayers.current
-      ? '搭載部品' : '周回物体';
+    return target === this.activePlayers.current ? '搭載部品' : '周回物体';
   }
 
   // ------------------------------------------------------------- MapCommands

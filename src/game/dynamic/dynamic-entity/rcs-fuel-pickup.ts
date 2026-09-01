@@ -13,10 +13,12 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 import type { RcsFuelPickupSaveData } from '../../save/save-data';
 import { MARKER_PRIORITY, type MarkerManager } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
+import { orbitRows } from '../../pickable/orbit-rows';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
 import type { MapCommands } from '../../pickable/map-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
+import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Player } from '../../player/player';
 
@@ -157,4 +159,19 @@ export class RcsFuelPickup extends DynamicEntity implements MapPickable {
     else if (act === 'focus') commands.focus(this.id, this.name);
     else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
   }
+
+  // プロパティウィンドウに出す行。自艦からの距離と補給量を主要行とし、軌道要素は「軌道」
+  // グループの下に畳む。viewer が null なら距離の行は落ちる。
+  public mapPropertyRows(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly PropertyRow[] {
+    const viewer = commands.activePlayer;
+    const rows: PropertyRow[] = [];
+    if (viewer) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(this.state.r, viewer.state.r))) });
+    rows.push({ key: 'amount', label: '補給量', value: `${RCS_FUEL_PICKUP_AMOUNT.toLocaleString()} kg` });
+    rows.push(...orbitRows(this, celestialSystem, simTime));
+    return rows;
+  }
+
+  public readonly mapRename = null;
 }
