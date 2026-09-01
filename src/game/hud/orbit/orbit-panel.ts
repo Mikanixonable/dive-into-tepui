@@ -10,6 +10,7 @@ import { Button, SegmentedControl } from '../widgets';
 
 import { getApsisLabelSpec } from './orbit-labels';
 import { Player } from '../../player/player';
+import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -102,7 +103,7 @@ export class OrbitPanel {
     if (tEl) {
       if (ship) {
         tEl.textContent = `${ship.temperature.toFixed(0)} K`;
-        tEl.classList.toggle('warn-hot', ship.temperature > 0.7 * C.MAX_HULL_TEMP);
+        tEl.classList.toggle('warn-hot', ship.temperature > 0.7 * MAX_HULL_TEMP);
       } else {
         tEl.textContent = '---';
         tEl.classList.remove('warn-hot');

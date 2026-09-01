@@ -1,8 +1,8 @@
 import type { Base, DockedVesselEntry } from '../../dynamic/dynamic-entity/base';
-import * as C from '../../const';
 import { Button } from '../widgets';
 import type { BasePanel } from './base-view';
 import { buildSectionHeader, costLabel, NEW_VESSEL_COST, styleDockBtn } from './base-view-shared';
+import { BASE_MAX_VESSELS } from '../../dynamic/dynamic-entity/base';
 
 // 基地パネルの「格納艦艇」タブ: 発進する艦の選択と、既定構成での新造を担う。
 export class VesselsTabController {
@@ -16,7 +16,7 @@ export class VesselsTabController {
     frag.appendChild(buildSectionHeader(
       '格納艦艇',
       '発進する艦を選択するか、整備画面で搭載部品を確認します。',
-      `${ships.length} / ${C.BASE_MAX_VESSELS} 隻`,
+      `${ships.length} / ${BASE_MAX_VESSELS} 隻`,
     ));
     // 格納艦が居なければ案内文を、居れば一覧を出す。
     if (ships.length === 0) {
@@ -84,7 +84,7 @@ export class VesselsTabController {
   // 新造(既定パーツ一式の艦を1隻、格納艦へ加える)行。
   private buildNewVesselHeader(base: Base): HTMLElement {
     // ドックの空き・資金から新造の可否を決める。
-    const isFull = base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS;
+    const isFull = base.baseState.dockedVessels.length >= BASE_MAX_VESSELS;
     const canAfford = !isFull && (this.panel.freeProcurement || base.baseState.money >= NEW_VESSEL_COST);
     // 状況に応じた案内文。
     const row = document.createElement('div');
@@ -92,7 +92,7 @@ export class VesselsTabController {
     const label = document.createElement('span');
     label.className = 'dock-ship-label';
     label.textContent = isFull
-      ? `基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`
+      ? `基地のドックが満杯です (最大 ${BASE_MAX_VESSELS} 隻)`
       : '既定構成の艦艇を新造して格納庫へ追加します。';
     row.appendChild(label);
     // 新造ボタン。

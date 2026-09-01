@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import * as C from '../../const';
-import { Ship } from './ship';
+import { Ship, MUZZLE_SPEED } from './ship';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 import { DynamicEntity } from './dynamic-entity';
 import { closingSpeed, type Contact } from './contact';
@@ -37,11 +37,13 @@ export const ENEMY_SCALE = 20; // 見た目メッシュに掛けるスケール
 
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
 
-const PLASMA_BULLET_SPEED = C.MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
+const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
 const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
 const ENEMY_AI_MIN_RANGE = 50; // これより近いと射撃しない(至近距離) [m]
+// 交戦圏の半径 [m]。これより遠い自機は撃たず、ステージ00 の湧きもこの外へ出た敵を消す。
+export const STAGE00_MAX_RANGE = 30000;
 const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃する最大機数
 const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
@@ -311,7 +313,7 @@ export abstract class Enemy extends Ship {
       return;
     }
     const dist = len(sub(player.state.r, this.state.r));
-    if (!(dist < C.STAGE00_MAX_RANGE && dist > ENEMY_AI_MIN_RANGE)) return;
+    if (!(dist < STAGE00_MAX_RANGE && dist > ENEMY_AI_MIN_RANGE)) return;
 
     // バースト継続中なら次弾のタイミングだけ見る
     if (this.burstLeft && this.burstLeft > 0) {

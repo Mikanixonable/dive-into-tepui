@@ -6,7 +6,7 @@ import { Vec3, add, scale, v3, len, sub } from '../../math/vec3';
 import { fmtMarkerDist } from '../hud/utils';
 import { FloatingOrigin } from '../camera/floating-origin';
 import * as C from '../const';
-import { Ship } from '../dynamic/dynamic-entity/ship';
+import { Ship, SHIP_RADIATING_AREA_PER_MASS, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
@@ -154,7 +154,7 @@ export class Player extends Ship {
     this._worldSfx = _worldSfx;
     this._fx = _fx;
     this.playerScene = _scene;
-    this.mass = C.PLAYER_MASS;
+    this.mass = PLAYER_MASS;
     this.collides = true;
     this.doPreciseReentry = true;
 
@@ -218,7 +218,7 @@ export class Player extends Ship {
 
   // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
   // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
-  private static readonly INERTIA = v3(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL);
+  private static readonly INERTIA = v3(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL);
 
   // state の速度方向を機首、位置方向を上として姿勢を組む。
   private static progradeAttitude(state: KinematicState): Attitude {
@@ -389,21 +389,21 @@ export class Player extends Ship {
   }
 
   private refreshBoosterMassAndInertia(): void {
-    this.mass = C.PLAYER_MASS + this.boosters.totalMass;
-    const massRatio = this.mass / C.PLAYER_MASS;
+    this.mass = PLAYER_MASS + this.boosters.totalMass;
+    const massRatio = this.mass / PLAYER_MASS;
     const lengthFactor = 1 + 0.35 * this.boosters.stages.length ** 2;
     this.att = {
       ...this.att,
       inertia: v3(
-        C.PLAYER_INERTIA_PITCH * massRatio * lengthFactor,
-        C.PLAYER_INERTIA_YAW * massRatio * lengthFactor,
-        C.PLAYER_INERTIA_ROLL * massRatio,
+        PLAYER_INERTIA_PITCH * massRatio * lengthFactor,
+        PLAYER_INERTIA_YAW * massRatio * lengthFactor,
+        PLAYER_INERTIA_ROLL * massRatio,
       ),
     };
   }
 
   private stepAttachedBooster(simDt: number): Vec3 | null {
-    const massBefore = C.PLAYER_MASS + this.boosters.totalMass;
+    const massBefore = PLAYER_MASS + this.boosters.totalMass;
     const burn = this.boosters.step(simDt);
     this.refreshBoosterMassAndInertia();
     this.lastBoosterBurnRatio = burn.burnRatio;
@@ -470,14 +470,14 @@ export class Player extends Ship {
 
   // 艦体自体の放熱面積に、展開した放熱板のぶんを上乗せする。
   protected override get radiatingAreaPerMass(): number {
-    return C.SHIP_RADIATING_AREA_PER_MASS
-      + this.radiator.radiatingArea(this.totalCoolingRate) / C.PLAYER_MASS;
+    return SHIP_RADIATING_AREA_PER_MASS
+      + this.radiator.radiatingArea(this.totalCoolingRate) / PLAYER_MASS;
   }
 
   // 艦体の断面積に、展開した放熱板の日照面を上乗せする。
   protected override solarAbsorbAreaPerMass(sunDir: Vec3): number {
     return super.solarAbsorbAreaPerMass(sunDir)
-      + this.radiator.solarAbsorbArea(sunDir, this.att, this.totalCoolingRate) / C.PLAYER_MASS;
+      + this.radiator.solarAbsorbArea(sunDir, this.att, this.totalCoolingRate) / PLAYER_MASS;
   }
 
   // 操作できない間、次のフレームへ持ち越してはならない連続指令を畳む。
@@ -536,7 +536,7 @@ export class Player extends Ship {
   // 被弾によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら
   // 無作為なパーツへダメージが入る。
   private attackedByBullet(bullet: Bullet, impactPoint: Vec3, activeStage: Stage, side: RadiatorSide | null = null): void {
-    this.absorbHeat(BULLET_IMPACT_HEAT / C.PLAYER_MASS);
+    this.absorbHeat(BULLET_IMPACT_HEAT / PLAYER_MASS);
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
     this.applyDamageToParts(side === null ? bullet.damage : RADIATOR_BULLET_DAMAGE, damagedPart);
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side);

@@ -13,7 +13,6 @@
 // **この2点に起因しない部分は、両者で同じ答えでなければならない** — 個体1つと解析天体の
 // 関係(どの天体が引くか・表面へ到達したか・大気で焼失したか・刻みをどこまで広げてよいか)。
 // 探し方が違うのは同時性から来る正当な差だが、答えが違ってよい理由はない。
-import * as C from '../const';
 import { DynamicSystem } from './dynamic-system';
 import { Player } from '../player/player';
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
@@ -24,7 +23,7 @@ import { SurfaceContactPhysics } from './surface-contact-physics';
 import { SubstepCelestialBodies } from './substep-celestial-bodies';
 import { NextEventTime } from './next-event-time';
 import { v3 } from '../../math/vec3';
-import { simulationMaxStep, simulationStepDuration } from './time-step';
+import { simulationMaxStep, simulationStepDuration, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import type { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../../frame-sections';
 import type { PerfCounts } from '../../perf-meter';
@@ -86,7 +85,7 @@ export class Simulator {
     this.lastFollowedSteps = 0;
     const targetTime = this.simTime + simDt;
     while (this.simTime < targetTime) {
-      const maxStep = simulationMaxStep(simDt, C.SUBSTEP_MAX_DT, C.SUBSTEP_MAX_COUNT);
+      const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
       const eventTime = this.nextEventTime.at(this.simTime, activeStage, this.entities);
       const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
       // 丸めで前進しない刻みになったイベントは現在時刻で消費して前進を保証する。**絶対秒の

@@ -12,14 +12,16 @@ import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
-import { Ship } from '../dynamic/dynamic-entity/ship';
+import { Ship, PLAYER_MASS } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { Stage } from '../stages/stage';
 import { Player } from './player';
-import type { FireSaveData } from '../save/save-data';
+import type { FireSaveData } from '../save/save-data';import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-entity/dynamic-entity';
+import { BARREL_SPECIFIC_HEAT, BARREL_RADIATING_AREA_PER_MASS } from '../dynamic/dynamic-entity/debris-piece';
+
 
 const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 
@@ -70,7 +72,7 @@ export class PlayerFire {
 
   // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。交換で切り離すときに
   // そのまま排出されるデブリへ移る。
-  private barrelTemperature = C.ENV_TEMP;
+  private barrelTemperature = ENV_TEMP;
   private barrelDeviation = 0;
   // 刻みに依らない砲身への投入熱 [J]。次の熱計算で一度だけ温度へ変換する。
   private pendingBarrelJoules = 0;
@@ -93,7 +95,7 @@ export class PlayerFire {
       this.mags = init.saved.mags;
       this.rounds = init.saved.rounds;
       this.barrel = init.saved.barrel;
-      this.barrelTemperature = init.saved.barrelTemperature ?? C.ENV_TEMP;
+      this.barrelTemperature = init.saved.barrelTemperature ?? ENV_TEMP;
       this.barrelDeviation = init.saved.barrelDeviation ?? 0;
       this.cooldown = init.saved.cooldown;
       this.muzzleIdx = init.saved.muzzleIdx;
@@ -293,7 +295,7 @@ export class PlayerFire {
     this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
     activeStage.scoreCounter.recordShot();
-    this.player.absorbHeat(GUN_HEAT_PER_ROUND / C.PLAYER_MASS);
+    this.player.absorbHeat(GUN_HEAT_PER_ROUND / PLAYER_MASS);
     this.pendingBarrelJoules += GUN_BARREL_HEAT_PER_ROUND;
     this._worldSfx.fire();
   }
@@ -358,16 +360,16 @@ export class PlayerFire {
   stepBarrelThermal(dt: number): void {
     // 放射で冷え、温度差は薄まる。
     const cooling = radiativeCooling(
-      this.barrelTemperature, C.ENV_TEMP, C.HULL_EMISS, C.BARREL_RADIATING_AREA_PER_MASS,
-      C.BARREL_SPECIFIC_HEAT, dt);
+      this.barrelTemperature, ENV_TEMP, HULL_EMISS, BARREL_RADIATING_AREA_PER_MASS,
+      BARREL_SPECIFIC_HEAT, dt);
     this.barrelTemperature = stepTemperature(
-      this.barrelTemperature, -cooling, C.BARREL_SPECIFIC_HEAT, dt);
+      this.barrelTemperature, -cooling, BARREL_SPECIFIC_HEAT, dt);
     this.barrelDeviation = stepThermalDeviation(
-      this.barrelDeviation, this.barrelTemperature, C.HULL_EMISS,
-      C.BARREL_RADIATING_AREA_PER_MASS, C.BARREL_SPECIFIC_HEAT, dt);
+      this.barrelDeviation, this.barrelTemperature, HULL_EMISS,
+      BARREL_RADIATING_AREA_PER_MASS, BARREL_SPECIFIC_HEAT, dt);
     // 溜まっていた発射ガスの熱を、この区間で一度だけ温度へ変える。
     if (this.pendingBarrelJoules === 0) return;
-    const rise = this.pendingBarrelJoules / (BARREL_MASS * C.BARREL_SPECIFIC_HEAT);
+    const rise = this.pendingBarrelJoules / (BARREL_MASS * BARREL_SPECIFIC_HEAT);
     this.barrelTemperature += rise;
     this.barrelDeviation += rise;
     this.pendingBarrelJoules = 0;
@@ -392,7 +394,7 @@ export class PlayerFire {
       this.barrelTemperature,
       this.barrelDeviation,
     );
-    this.barrelTemperature = C.ENV_TEMP;
+    this.barrelTemperature = ENV_TEMP;
     this.barrelDeviation = 0;
     this.pendingBarrelJoules = 0;
   }

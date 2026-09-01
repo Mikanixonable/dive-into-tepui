@@ -3,7 +3,6 @@
 // 自身の責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する — 参加者は互いの状態を
 // 書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業マップと解決回数の
 // 上限が要る。
-import * as C from '../const';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { SpatialGrid } from '../../math/spatial-grid';
@@ -18,6 +17,11 @@ import type { Stage } from '../stages/stage';
 // 次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
 // 明示的な繰越処理は不要)。
 const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
+
+// 27近傍グリッドのセル一辺の下限 [m]。全参加者の半径も相対変位も 0 という退化ケースで
+// 一辺が 0 になるのを避けるためだけの値で、そのとき接触しうる距離自体が 0 なのでどんな正数でも
+// 判定は正しい。セルを細かく取っても空セルは持たない構造なので、最小の実用値として 1m を取る。
+const CONTACT_GRID_CELL_SIZE_FLOOR = 1;
 
 // 1 substep 分の接触候補1件。response が null なのは現在の状態では接触しないという意味で、
 // 当事者の状態が変われば非 null になりうる。resolved を立てた候補は以後選ばれない。
@@ -62,7 +66,7 @@ function contactCellSize(all: readonly DynamicEntity[], working: ReadonlyMap<Dyn
     const reach = e.radius + Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (reach > maxReach) maxReach = reach;
   }
-  return 2 * maxReach || C.CONTACT_GRID_CELL_SIZE_FLOOR;
+  return 2 * maxReach || CONTACT_GRID_CELL_SIZE_FLOOR;
 }
 
 export class EntityContactPhysics {

@@ -10,6 +10,10 @@ import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
+export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152, 8388608, 33554432];
+// 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(下の can* が参照)。
+export const MAX_PHYS_SIM_SPEED = 4;
+
 const AUTOWARP_MARGIN = 2;
 const AUTOWARP_STOP = 10;
 
@@ -24,7 +28,7 @@ export class SimSpeedManager {
 
   // 現在のワープ倍率。
   get simSpeed(): number {
-    return C.SIM_SPEED_LEVELS[this.levelIdx]!;
+    return SIM_SPEED_LEVELS[this.levelIdx]!;
   }
 
   // 自動ワープ中かどうか。
@@ -43,12 +47,12 @@ export class SimSpeedManager {
   // 敵の射撃が成立するかどうか。呼び出し側は simSpeed そのものを受け取って
   // 閾値判定するのではなく、ここを見る。
   get canShipAct(): boolean {
-    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
+    return this.simSpeed <= MAX_PHYS_SIM_SPEED;
   }
 
   // 現在のワープ倍率で剛体衝突を解決してよいかどうか。
   get canResolvePhysicalCollisions(): boolean {
-    return this.simSpeed <= C.MAX_PHYS_SIM_SPEED;
+    return this.simSpeed <= MAX_PHYS_SIM_SPEED;
   }
 
   // 現在のワープ倍率で補給を投入してよいかどうか。等倍(実時間)のときだけ投入するのは、
@@ -62,18 +66,18 @@ export class SimSpeedManager {
   // 上げたときは、自機の操作が効かなくなったことをヒントに併記する。
   shift(step: number): void {
     const next = this.levelIdx + step;
-    if (next < 0 || next >= C.SIM_SPEED_LEVELS.length) return;
-    this.setSpeed(C.SIM_SPEED_LEVELS[next]!);
+    if (next < 0 || next >= SIM_SPEED_LEVELS.length) return;
+    this.setSpeed(SIM_SPEED_LEVELS[next]!);
   }
 
   // UI のプルダウンから選ばれた時間加速倍率を適用する。
   setSpeed(speed: number): void {
-    const next = C.SIM_SPEED_LEVELS.indexOf(speed);
+    const next = SIM_SPEED_LEVELS.indexOf(speed);
     if (next < 0 || next === this.levelIdx) return;
     this.cancelAutoWarp();
     this.levelIdx = next;
     this._uiSfx.warp();
-    const gated = this.canShipAct ? '' : `(自機の操作はワープ ×${C.MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
+    const gated = this.canShipAct ? '' : `(自機の操作はワープ ×${MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
     this._hud.hint(`時間加速 ×${this.simSpeed}${gated}`);
   }
 
@@ -128,8 +132,8 @@ export class SimSpeedManager {
       return;
     }
     let idx = 0;
-    for (let i = 0; i < C.SIM_SPEED_LEVELS.length; i++) {
-      if (C.SIM_SPEED_LEVELS[i]! <= tRem / AUTOWARP_MARGIN) idx = i;
+    for (let i = 0; i < SIM_SPEED_LEVELS.length; i++) {
+      if (SIM_SPEED_LEVELS[i]! <= tRem / AUTOWARP_MARGIN) idx = i;
     }
     this.levelIdx = idx;
   }
@@ -143,8 +147,8 @@ export class SimSpeedManager {
     let tRem = this.autoWarpUntil - simTime;
     if (tRem <= AUTOWARP_STOP) return 0;
     let realSec = 0;
-    for (let i = C.SIM_SPEED_LEVELS.length - 1; i >= 0; i--) {
-      const s = C.SIM_SPEED_LEVELS[i]!;
+    for (let i = SIM_SPEED_LEVELS.length - 1; i >= 0; i--) {
+      const s = SIM_SPEED_LEVELS[i]!;
       if (s > tRem / AUTOWARP_MARGIN) continue;
       const lowerBound = Math.max(AUTOWARP_STOP, s * AUTOWARP_MARGIN);
       if (tRem <= lowerBound) continue;

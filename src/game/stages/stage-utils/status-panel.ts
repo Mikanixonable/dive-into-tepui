@@ -7,6 +7,7 @@ import * as C from '../../const';
 import type { Player } from '../../player/player';
 import { fmtEnergy } from '../../hud/utils';
 import { Meter } from '../../hud/widgets';
+import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
 
 export class StatusPanel {
   private readonly panel: HTMLElement;
@@ -60,16 +61,16 @@ export class StatusPanel {
     const { hp, maxHp } = player;
     const low = hp <= maxHp * LOW_HP_RATIO;
     const temp = Math.round(player.temperature);
-    const tempHigh = temp > 0.7 * C.MAX_HULL_TEMP;
+    const tempHigh = temp > 0.7 * MAX_HULL_TEMP;
     const chargeJ = player.power.chargeJ;
 
     this.hpMeter.setRatio(hp / maxHp);
     this.hpMeter.setDanger(low);
     this.hpMeter.setLabel(`${Math.floor(hp)} / ${maxHp}`);
 
-    this.tempMeter.setRatio(temp / C.MAX_HULL_TEMP);
+    this.tempMeter.setRatio(temp / MAX_HULL_TEMP);
     this.tempMeter.setDanger(tempHigh);
-    this.tempMeter.setLabel(`${temp} / ${C.MAX_HULL_TEMP} K`);
+    this.tempMeter.setLabel(`${temp} / ${MAX_HULL_TEMP} K`);
 
     this.powerMeter.setRatio(player.power.chargeRatio);
     this.powerMeter.setLabel(`${fmtEnergy(chargeJ)} / ${fmtEnergy(C.POWER_CAPACITY)}`);

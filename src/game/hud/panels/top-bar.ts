@@ -3,7 +3,7 @@
 import { SyncThrottle } from '../sync-throttle';
 import { fmtDateTime, fmtElapsedUnits, setElementText, fmtTime } from '../utils';
 import type { Game } from '../../game';
-import * as C from '../../const';
+import { SIM_SPEED_LEVELS } from '../../dynamic/sim-speed-manager';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -25,7 +25,7 @@ export class TopBar {
     const simSpeedEl = this.els.get('sim-speed');
     if (simSpeedEl instanceof HTMLSelectElement) {
       if (simSpeedEl.dataset['speedOptions'] !== 'ready') {
-        for (const speed of C.SIM_SPEED_LEVELS) {
+        for (const speed of SIM_SPEED_LEVELS) {
           const option = document.createElement('option');
           option.value = String(speed);
           option.textContent = `×${speed}`;

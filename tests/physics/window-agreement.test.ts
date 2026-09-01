@@ -9,16 +9,14 @@ import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/constants';
 import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
-import {
-  GRAVITY_NEGLIGIBLE_ACCEL, INITIAL_ALT, INITIAL_INC_DEG,
-  PLAYER_HULL_RADIUS, SUBSTEP_MAX_DT,
-} from '../../src/game/const';
+import { INITIAL_ALT, INITIAL_INC_DEG, PLAYER_HULL_RADIUS } from '../../src/game/const';
 import { ArcCelestialBodies, type FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-celestial-bodies';
-import { attractorsNearInto, classifyAttractors } from '../../src/game/dynamic/attractors';
+import { attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/game/dynamic/attractors';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/dynamic/surface-candidates';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
 import type { KinematicState } from '../../src/physics/kinematic-state';
 import type { Vec3 } from '../../src/math/vec3';
+import { SUBSTEP_MAX_DT } from '../../src/game/dynamic/time-step';
 
 // 現実の太陽系・地球原点の既定の登録天体。両方の窓へ同じ天体一式を供給する。
 const PARTS = solarSystemParts();

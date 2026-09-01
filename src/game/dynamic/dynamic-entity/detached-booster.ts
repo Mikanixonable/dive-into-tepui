@@ -5,7 +5,6 @@ import { add, scale, v3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { DetachedBoosterSaveData } from '../../save/save-data';
-import * as C from '../../const';
 import {
   BoosterStack,
   boosterAverageAcceleration,
@@ -18,8 +17,9 @@ import {
   buildBoosterStage,
   type BoosterStage as BoosterStageModel,
 } from '../../../render/booster';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import type { RenderStyle } from '../../../render/render-style';
+import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 
 const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
 
@@ -35,14 +35,14 @@ type DetachedBoosterInit =
 // 分離後の一段。接続時の燃料・点火状態を引き継ぎ、燃料切れまで自律的に燃焼する。
 export class DetachedBooster extends DynamicEntity {
   override readonly bcInv = 0.006;
-  protected readonly srpCoeff = C.SMALL_DEBRIS_SRP_COEFF;
-  protected readonly specificHeat = C.SMALL_DEBRIS_SPECIFIC_HEAT;
-  protected readonly bulkDensity = C.SMALL_DEBRIS_BULK_DENSITY;
+  protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;
+  protected readonly specificHeat = SMALL_DEBRIS_SPECIFIC_HEAT;
+  protected readonly bulkDensity = SMALL_DEBRIS_BULK_DENSITY;
   protected override get radiatingAreaPerMass(): number {
-    return C.SMALL_DEBRIS_RADIATING_AREA_PER_MASS;
+    return SMALL_DEBRIS_RADIATING_AREA_PER_MASS;
   }
-  protected readonly maxTemperature = C.SMALL_DEBRIS_MAX_TEMP;
-  protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;
+  protected readonly maxTemperature = SMALL_DEBRIS_MAX_TEMP;
+  protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
 
   private readonly stack: BoosterStack;
   private readonly model: BoosterStageModel;
