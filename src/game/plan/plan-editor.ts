@@ -5,6 +5,7 @@ import type * as THREE from 'three/webgpu';
 import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { Projected } from '../../math/projection';
+import { pickNearest } from '../pickable/map-pickable';
 import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { Hud } from '../hud/hud';
@@ -35,7 +36,7 @@ import type { PredictedArc } from '../dynamic/predicted-arc';
 import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
 
-export const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
+const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 
 const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
 const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
@@ -222,20 +223,12 @@ export class PlanEditor {
     return this.planDisplay.path.projectPoint(node.r, node.t);
   }
 
+  // クリック位置の許容半径内で画面上もっとも近いノードの番号。圏外なら null。
   private pickNodeAt(mx: number, my: number): number | null {
     const nodes = this.plan?.nodes ?? [];
-    let bestIdx: number | null = null;
-    let bestD = NODE_PICK_PX * NODE_PICK_PX;
-    for (let i = 0; i < nodes.length; i++) {
-      const p = this.nodeScreenPos(nodes[i]!);
-      if (!p.front) continue;
-      const d = (p.x - mx) ** 2 + (p.y - my) ** 2;
-      if (d < bestD) {
-        bestD = d;
-        bestIdx = i;
-      }
-    }
-    return bestIdx;
+    const node = pickNearest(
+      nodes, (n) => this.nodeScreenPos(n), mx, my, NODE_PICK_PX * NODE_PICK_PX);
+    return node === null ? null : nodes.indexOf(node);
   }
 
   // クリック位置に最も近い既存ノードを選択する。ヒットしなければ計画軌道上の最寄り点へ

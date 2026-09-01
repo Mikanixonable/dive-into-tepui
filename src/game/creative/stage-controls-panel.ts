@@ -10,7 +10,7 @@ import {
   type ProteinRepresentation,
 } from '../protein/protein-display';
 
-export type EnemyShapeDefinition =
+type EnemyShapeDefinition =
   | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
   | { readonly id: 'stage0-a' | 'stage0-b' | 'stage0-c'; readonly family: 'conventional'; readonly kind: 'stage0'; readonly typeIndex: number }
   | { readonly id: ProteinAssetId; readonly family: 'protein'; readonly kind: 'protein'; readonly assetId: ProteinAssetId };

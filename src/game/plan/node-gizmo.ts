@@ -59,7 +59,7 @@ export interface AxisHandleSpec {
 }
 
 // ラッチ中の Δv アーム。呼び出し側は毎フレーム読み、excessPx に応じたレートで積分する。
-export interface AxisLatchState {
+interface AxisLatchState {
   readonly axis: 0 | 1 | 2;
   readonly sign: 1 | -1;
   readonly excessPx: number;

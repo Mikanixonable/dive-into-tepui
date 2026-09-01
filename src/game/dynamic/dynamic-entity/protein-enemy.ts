@@ -29,13 +29,13 @@ import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
 
 // 新規配置。表示形態と着色は生成時に決め、以後は setDisplay で切り替える。
-export type ProteinEnemyPlacement = EnemyPlacement & {
+type ProteinEnemyPlacement = EnemyPlacement & {
   readonly assetId: ProteinAssetId;
   readonly display: ProteinDisplaySettings;
 };
 
 // HUD の部位マーカーが必要とする、1つの機能部位の投影元位置と表示情報。
-export type ProteinSiteMarker = {
+type ProteinSiteMarker = {
   readonly id: string;
   readonly worldPos: Vec3;
   readonly abbreviation: string;

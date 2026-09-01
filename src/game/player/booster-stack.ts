@@ -34,7 +34,7 @@ export interface BoosterStackData {
 }
 
 /** 1 回の step で最後尾段が発生した燃焼結果。 */
-export interface BoosterStepResult {
+interface BoosterStepResult {
   /** この dt 全体で平均した推力 [N]。フレーム途中で燃料が切れれば小さくなる。 */
   readonly thrust: number;
   /** thrust と同じ値を意味が明確な名前でも返す。 */
