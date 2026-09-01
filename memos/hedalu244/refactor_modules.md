@@ -79,7 +79,7 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 | # | 論点 | 診断 | 規模 | 優先 |
 | --- | --- | --- | --- | --- |
 | 1 | `MapPickable.kind` の 10 値 union | **多態で分ける** | 7モジュール 2,177行 / 分岐65箇所 | 最優先 |
-| 2 | BVH・三角形衝突の重複実装 | **重複の解消 + 置き場所** | 2モジュール 825行 | 高 |
+| 2 | BVH・三角形衝突の重複実装 | **重複の解消 + 置き場所** | 2モジュール 825行 | **実施済** |
 | 3 | `base-station-model.ts` の 845 行 1 関数 | **手続きの切り出し** | 852行 | 高 |
 | 4 | `game/const.ts` の 104 定数 | **所有者へ戻す** | 319行 / 参照76モジュール | 高 |
 | 5 | `hud/style/` の 22 ファイルと結合ハブ | **短すぎるモジュールの多数** | 22モジュール 1,980行 | 中 |
@@ -192,58 +192,25 @@ switch がまるごと通らなくなる。
 
 ---
 
-## 論点2 — BVH・三角形衝突の重複実装
+## 論点2 — BVH・三角形衝突の重複実装(実施済)
 
-### 症状
+`math/triangle-mesh.ts` を新設し、`Triangle` / `RayHit` / `SphereHit` / `BVHNode` と、BVH 構築・
+レイキャスト・球衝突・AABB 判定を集約した。base 側と protein 側の二重実装は消え、両者はこの
+モジュールを呼ぶだけになった。
 
-`game/dynamic/dynamic-entity/base-collision.ts`(552行)と
-`game/protein/protein-ribbon-collision.ts`(273行)が、**同じアルゴリズムを別々に実装している。**
+- **BVH の分割は中央値ソートへ統一した。** 構築は生成時の1回だけで毎フレームの費用にならない
+  ため、偏りに強い側を実測を待たずに採った。葉16枚・深さ12 は名前付き定数にした。
+  **基地側の木の形は変わるが、返る最近交差・最深接触は同じ。**
+- `BVHNode` を葉と枝の union にしたので、`left` / `right` の `?` と `!` は消えた。
+- `base-collision.ts` は「基地の当たり形状を組む」だけに戻した。OBB は箱の集合という基地固有の
+  形なのでここに残し、LOD1 / LOD2 の箱表を定数へ出し、読まれていなかった三角形配列を消した。
+  `base.ts` の隣にあるのでモジュール名はそのまま、`OBB` は非 export にした。
+- `protein-ribbon-collision.ts` のローカル再定義 `lenSq` は `math/vec3` のものへ寄せた。
+- 型の import 元は `base.ts` / `dynamic-entity.ts` / `entity-contact-response.ts` /
+  `protein-ribbon-collision.ts` の4モジュールを `math/triangle-mesh` へ差し替えた。
 
-| 実体 | base-collision | protein-ribbon-collision |
-| --- | --- | --- |
-| `BVHNode` | 32行 | 7行 |
-| BVH 構築 | `buildBVH` 263-310 | `buildBVH` 176-207 |
-| 球 vs 三角形 | `sphereCollideTriangles` 439-487 | `sphereCollideTriangles` 211-246 |
-| 最近点 | `closestPointTriangle` 515-551 | `closestPointTriangle` 248-272 |
-
-`closestPointTriangle` は**重心座標による領域絞り込みの同一実装**(変数名と一時変数の有無だけ
-が違う)。`buildBVH` は分割方法だけ違う(base は軸中点で二分、protein は軸中央値でソートして
-二分)が、**その差に理由は書かれていない。**
-
-さらに `Triangle` と `SphereHit` の型は `base-collision.ts` が export し、
-`protein-ribbon-collision.ts:5` と `dynamic/entity-contact-response.ts:6` と
-`dynamic-entity/dynamic-entity.ts:20` が**そこから import している。** 汎用の幾何型が
-「基地の当たり判定」という名前のファイルに住んでいて、名前が嘘になっている。
-
-### 診断
-
-規約 1.2「実装の重複」+ 1.3「境界は『厳密な数学・物理そのものか』」。
-三角形メッシュに対する BVH・レイキャスト・球衝突は**調整値を1つも含まない厳密な幾何**なので、
-`game/` にあるべきではない。
-
-### 修正
-
-1. 汎用部分を **`math/triangle-mesh.ts`(仮)** へ出す:
-   `Triangle` / `BVHNode` / `buildBVH` / `raycastTriangles` / `sphereCollideTriangles` /
-   `closestPointTriangle` / `rayIntersectsAABB` / `rayIntersectTriangle`。
-   `RayHit` / `SphereHit` もここが持つ。
-   - 分割方法は**どちらか一方に決める**。中央値ソートのほうが偏りに強いので protein 側を採る
-     のが妥当だが、基地の実測 fps を見てから決める。
-   - base 側の `triangles.length <= 16` / `depth >= 10` は名前付き定数にする(規約 1.12)。
-   - base 側の `left: this.buildBVH(...)!` の `!` を外す(規約 1.12。protein 側は
-     `null` を正しく扱っている)。
-2. `base-collision.ts` に残るのは **「基地の当たり形状を組む」だけ**:
-   `buildLOD0Geometry` / `buildLOD1Geometry` / `addBoxTriangles` / `OBB` と、OBB 専用の
-   `raycastOBBs` / `sphereCollideOBBs`。**OBB は箱の集合という基地固有の形なので残してよい**
-   — ただし OBB 自体の交差計算が汎用なら、それも `math/` へ。
-   残った本体はモジュール名を `base-collision-shape.ts` などへ寄せるか、
-   `base.ts` の隣に置き直す。
-3. `protein-ribbon-collision.ts` の `lenSq`(171行)はローカル再定義。`math/vec3` のものへ。
-
-### 見込み
-
-825行 → `math/` 側 350前後 + base 側 180前後 + protein 側 120前後。
-**「両方が同じバグを別々に踏む」状態が終わる**のが本命。
+825行 → math 218 + base 259 + protein 158。`npm run typecheck` / `test:math` 42件 /
+`test:game` 161件 通過。
 
 ---
 
@@ -1035,7 +1002,7 @@ else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
    `pickable/` に加えて `hud/object-groups.ts` と `hud/panels/physical-object-list-*.ts`、
    `ObjectType` / `DynamicEntityKind` / `CombatMarkerKind` の整理まで含める。
    **`MapPickKind` が消えるので、論点16 を別 PR にすると二度手間になる。**
-4. **論点2**(BVH の重複)— 論点1 と独立。並行できる。
+4. ~~**論点2**(BVH の重複)~~ — **実施済。**
 5. **論点3**(`base-station-model`)と **論点4**(`const.ts`)— どちらも機械的。並行できる。
 6. **論点18**(`Player`/`Base` の `instanceof`)— 論点1 の後。
    `vessel-panel` / `resource-transfer-dialog` / `target-panel` をまとめて。
