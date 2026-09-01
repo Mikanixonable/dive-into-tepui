@@ -41,10 +41,12 @@ import { currentThemePalette } from '../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
+import { orbitRows } from '../../pickable/orbit-rows';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
 import type { MapCommands } from '../../pickable/map-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
+import type { PropertyRow } from '../../hud/windows/property-window';
 
 export const BASE_MAX_VESSELS = 4; // 基地が保有・格納できる艦艇の最大数
 const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
@@ -471,4 +473,25 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
       commands.toggleNavTarget(this.id, this.name);
     }
   }
+
+  // プロパティウィンドウに出す行。所持金・格納艦艇数・自艦からの距離を主要行とし、操作対象かは
+  // 詳細トグル、軌道要素は「軌道」グループの下に畳む。自艦がいなければ距離の行は落ちる。
+  public mapPropertyRows(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly PropertyRow[] {
+    const viewer = commands.activePlayer;
+    const rows: PropertyRow[] = [
+      {
+        key: 'operated', label: '操作対象か',
+        value: commands.controlledBase === this ? 'はい' : 'いいえ', collapsible: true,
+      },
+      { key: 'money', label: '所持金', value: `${this.baseState.money.toLocaleString()} Cr` },
+      { key: 'vessels', label: '格納艦艇数', value: `${this.baseState.dockedVessels.length}` },
+    ];
+    if (viewer) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(this.state.r, viewer.state.r))) });
+    rows.push(...orbitRows(this, celestialSystem, simTime));
+    return rows;
+  }
+
+  public readonly mapRename = (name: string): void => { this.name = name; };
 }
