@@ -3,11 +3,11 @@
 // hudSubStatus() を返すステージでだけ現れる。CSS(#hud-stagestatus)は hud/hud-root.ts の STYLE に一元管理されている。
 
 const LOW_HP_RATIO = 0.3;
-import * as C from '../../const';
 import type { Player } from '../../player/player';
 import { fmtEnergy } from '../../hud/utils';
 import { Meter } from '../../hud/widgets';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
+import { POWER_CAPACITY } from '../../player/power';
 
 export class StatusPanel {
   private readonly panel: HTMLElement;
@@ -73,7 +73,7 @@ export class StatusPanel {
     this.tempMeter.setLabel(`${temp} / ${MAX_HULL_TEMP} K`);
 
     this.powerMeter.setRatio(player.power.chargeRatio);
-    this.powerMeter.setLabel(`${fmtEnergy(chargeJ)} / ${fmtEnergy(C.POWER_CAPACITY)}`);
+    this.powerMeter.setLabel(`${fmtEnergy(chargeJ)} / ${fmtEnergy(POWER_CAPACITY)}`);
 
     this.centerCol.classList.toggle('warn', low);
 
