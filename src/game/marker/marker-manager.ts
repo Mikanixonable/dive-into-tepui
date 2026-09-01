@@ -88,12 +88,10 @@ function defaultPriorityForClass(key: string, cls: string): number {
   }
   if (cls.includes('mk-target')) return MARKER_PRIORITY.PRIMARY_TARGET;
   if (cls.includes('mk-impact')) return MARKER_PRIORITY.IMPACT;
-  // 陣営種別は combatMarkerKindOf の分類を正本とし、ここで独自に cls を読み直さない。
-  const combatKind = combatMarkerKindOf(cls);
-  if (combatKind === 'base') return MARKER_PRIORITY.BASE;
-  if (combatKind === 'self' || combatKind === 'ally') return MARKER_PRIORITY.PLAYER;
-  if (combatKind === 'enemy') return MARKER_PRIORITY.ENEMY;
-  if (combatKind === 'ammo' || combatKind === 'fuel') return MARKER_PRIORITY.AMMO;
+  if (cls.includes('mk-base')) return MARKER_PRIORITY.BASE;
+  if (cls.includes('mk-self') || cls.includes('mk-ally')) return MARKER_PRIORITY.PLAYER;
+  if (cls.includes('mk-enemy')) return MARKER_PRIORITY.ENEMY;
+  if (cls.includes('mk-ammo') || cls.includes('mk-fuel')) return MARKER_PRIORITY.AMMO;
   if (cls.includes('mk-mnode') || cls.includes('mk-burn')) return MARKER_PRIORITY.MANEUVER_NODE;
   if (cls.includes('mk-node') || cls.includes('mk-relnode') || cls.includes('mk-eqnode') || cls.includes('mk-boardpass')) {
     return MARKER_PRIORITY.ORBITAL_NODE;
@@ -114,26 +112,16 @@ function canHideIconByPriority(m: MarkerRecord): boolean {
   return true;
 }
 
-export type CombatMarkerKind = 'self' | 'ally' | 'enemy' | 'base' | 'ammo' | 'fuel';
-
-// マーカーの CSS クラス文字列から陣営種別を判定する。cls に複数クラスが並んでいるときは
-// 先に一致した種別を返す。
-export function combatMarkerKindOf(cls: string): CombatMarkerKind | null {
-  if (cls.includes('mk-self')) return 'self';
-  if (cls.includes('mk-ally')) return 'ally';
-  if (cls.includes('mk-enemy')) return 'enemy';
-  if (cls.includes('mk-base')) return 'base';
-  if (cls.includes('mk-ammo')) return 'ammo';
-  if (cls.includes('mk-fuel')) return 'fuel';
-  return null;
-}
-
 // GroupedMarkers が管理する船・弾薬のクラス。この集合どうしのペアはクラスタ化(近接まとめ)で
 // 既にアイコンを残す/ラベルを合体する判断が付いているため、下の優先度間引きで重ねてアイコンを
 // 消さない(消すと GroupedMarkers が残したはずのアイコンが消える)。
+const COMBAT_MARKER_CLASSES = [
+  'mk-self', 'mk-ally', 'mk-enemy', 'mk-base', 'mk-ammo', 'mk-fuel', 'mk-target',
+];
+
 function isCombatMarker(m: MarkerRecord): boolean {
   const cls = m.root.className;
-  return combatMarkerKindOf(cls) !== null || cls.includes('mk-target');
+  return COMBAT_MARKER_CLASSES.some((c) => cls.includes(c));
 }
 
 // ラベルの概算矩形を入れる画面空間グリッドのセル幅。ラベルの幅は文字数に
