@@ -24,7 +24,7 @@ import { OrbitGuideTab } from './orbit-guide-tab';
 import { ZeroVelocitySection } from './zero-velocity-section';
 import { wirePanelCollapse } from '../panel-shell';
 
-export type ViewOptionsTab = 'target' | 'guide' | 'orbit';
+type ViewOptionsTab = 'target' | 'guide' | 'orbit';
 
 const TAB_ITEMS: readonly (readonly [ViewOptionsTab, string])[] = [
   ['target', '対象'],

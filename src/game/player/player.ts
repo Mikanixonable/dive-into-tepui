@@ -91,7 +91,7 @@ const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
 const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '自動実行' };
 
 // mode の表示ラベル(HUDのメニュー項目・プロパティ行が共有する)。
-export function planExecutionLabel(mode: PlanExecutionMode): string {
+function planExecutionLabel(mode: PlanExecutionMode): string {
   return PLAN_EXECUTION_LABELS[mode];
 }
 

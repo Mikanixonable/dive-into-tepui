@@ -47,7 +47,7 @@ export function relativeInclinationDeg(hHatA: Vec3, hHatB: Vec3): number {
   return (Math.acos(Math.max(-1, Math.min(1, dot(hHatA, hHatB)))) * 180) / Math.PI;
 }
 
-export interface RelativeInfo {
+interface RelativeInfo {
   dist: number;
   closing: number; // 接近速度 [m/s] (正 = 近づいている)
   relSpeed: number;

@@ -25,7 +25,7 @@ const LABEL_CROWDING_PX = 40;
 const ICON_CROWDING_PX = 16;
 
 // ラベル集合の1件ぶんに要る性質。天体とラグランジュ点マーカーが実装する。
-export interface CelestialMarkerItem {
+interface CelestialMarkerItem {
   readonly id: string;
   // マップのマーカーへ描く表記。
   readonly markerLabel: string;

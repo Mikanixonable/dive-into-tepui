@@ -26,7 +26,7 @@ export interface PhaseCycle {
 // --------------------------------------------------------------- phasing-composer
 
 // パルス声部へ重ねる倍音。整数比からわずかにずらすと、うなりが厚みになる。
-export interface VoiceHarmonic {
+interface VoiceHarmonic {
   ratio: number;
   instrument: string;
   lengthRatio: number; // stepDur に対する音長
@@ -100,7 +100,7 @@ export interface SuiteParams {
 // -------------------------------------------------------------- antipode-composer
 
 // 一定ステップごとに和音を短く打ち込む層。構成音は scale のインデックスで与える。
-export interface AntipodeStabLayer {
+interface AntipodeStabLayer {
   everySteps: number;
   repeatFor: number; // 同じ和音を何回続けて鳴らすか
   chords: number[][]; // 和音の構成音インデックス
@@ -111,7 +111,7 @@ export interface AntipodeStabLayer {
 
 // 一定ステップごとに notes を1つずつなぞる音型の層。stab と違い、そのステップでは
 // 1音だけを鳴らす。長さは指定せず、次の音が来るまでの間隔(stepDur * everySteps)を使う。
-export interface AntipodeArpLayer {
+interface AntipodeArpLayer {
   everySteps: number;
   notes: number[]; // 音型の構成音インデックス。1周期でここを先頭から順になぞる
   octaveOffset: number;

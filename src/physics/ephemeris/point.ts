@@ -33,7 +33,7 @@ export function boundBaryStateAt(ephemeris: PointEphemeris | null, t: number): K
 // 引く側が id と種別で2度問い合わせる必要も無くなる。id が載っていなければ未収録。
 export type EphemerisPoints = ReadonlyMap<string, EphemerisPoint>;
 
-export type EphemerisPoint = {
+type EphemerisPoint = {
   readonly kind: EphemerisPointKind;
   readonly ephemeris: PointEphemeris;
 };

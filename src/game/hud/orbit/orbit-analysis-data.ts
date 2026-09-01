@@ -14,17 +14,17 @@ import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { OrbitReference } from '../../orbit-reference';
 import { relativeInclinationDeg } from './orbit-info';
 
-export interface AltitudeSample { readonly t: number; readonly alt: number }
+interface AltitudeSample { readonly t: number; readonly alt: number }
 
-export interface AltitudeSeries {
+interface AltitudeSeries {
   readonly samples: readonly AltitudeSample[];
   readonly currentAlt: number;
   readonly truncated: boolean;
 }
 
-export interface ApproachSample { readonly x: number; readonly y: number }
+interface ApproachSample { readonly x: number; readonly y: number }
 
-export interface ApproachSeries {
+interface ApproachSeries {
   // null は「ここで線が切れる」印 — 位相差の折り返しをまたぐ隣り合う点の間に挟まる。
   readonly samples: readonly (ApproachSample | null)[];
   readonly relIncDeg: number;
@@ -171,9 +171,9 @@ export function approachSeries(
   return { samples, relIncDeg, truncated };
 }
 
-export interface ProjectionSample { readonly latDeg: number; readonly lonDeg: number }
+interface ProjectionSample { readonly latDeg: number; readonly lonDeg: number }
 
-export interface ProjectionSeries {
+interface ProjectionSeries {
   readonly current: ProjectionSample;
   // null は経度 ±180° をまたぐ跳びの印(接近タブの位相折り返しと同じ扱い)。
   readonly samples: readonly (ProjectionSample | null)[];
