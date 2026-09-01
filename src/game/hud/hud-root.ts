@@ -282,7 +282,7 @@ function buildTargetPanel(rightRail: HTMLElement): void {
         <div class="row metric">
           <dt class="k">相対速度</dt><dd class="v"><output data-id="tgt-relative-speed">—</output></dd>
         </div>
-        <div class="row metric"><dt class="k">装甲</dt><dd class="v armor-readout">
+        <div class="row metric" data-id="tgt-armor-row"><dt class="k">装甲</dt><dd class="v armor-readout">
           <span class="armor-meter w-meter-track" data-id="tgt-armor-meter" role="progressbar"
             aria-label="ターゲットの装甲" aria-valuemin="0">
             <span class="w-meter-fill" data-id="tgt-armor-fill"></span>
