@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { isFormationEnergyAvailable } from '../../src/game/dynamic/dynamic-entity/enemy';
+import { isFormationEnergyAvailable } from '../../src/game/dynamic/dynamic-entity/protein-enemy';
 import type { FormationRole } from '../../src/game/save/save-data';
 
 type FormationMember = {

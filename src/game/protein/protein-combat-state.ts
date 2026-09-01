@@ -19,10 +19,6 @@ interface SiteState {
   disabled: boolean;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
 export class ProteinCombatState {
   public readonly asset: ProteinAssetDefinition;
   public readonly integrityMaxHp: number;
@@ -33,12 +29,10 @@ export class ProteinCombatState {
   private selectedSiteId: string | null = null;
   private attackSiteCursor = 0;
 
-  public constructor(asset: ProteinAssetDefinition, saved?: ProteinSaveData, legacyHealth?: number) {
+  public constructor(asset: ProteinAssetDefinition, saved?: ProteinSaveData) {
     this.asset = asset;
     this.integrityMaxHp = asset.integrity.maxHp;
-    this.integrityHp = saved?.integrityHp ?? (legacyHealth === undefined
-      ? this.integrityMaxHp
-      : clamp(legacyHealth / 6, 0, 1) * this.integrityMaxHp);
+    this.integrityHp = saved?.integrityHp ?? this.integrityMaxHp;
     this.phase = saved?.phase ?? 'intact';
     this.siteStates = asset.sites.map((definition) => {
       const old = saved?.sites.find((site) => site.id === definition.id);

@@ -52,19 +52,6 @@ export function defaultProteinDisplayFor(representation: ProteinRepresentation):
 }
 
 /** 表示形態を持たない保存値を互換な表示設定へ変換する。 */
-export function proteinDisplayFromLegacyColorMode(colorMode: ProteinColorMode | undefined): ProteinDisplaySettings {
-  // 表示形態を推定できる固有モードを先に分岐し、残りを Ribbon として復元する。
-  if (colorMode === 'element') return { representation: 'molecular', colorMode };
-  if (colorMode === 'surface-charge' || colorMode === 'hydrophobicity') return { representation: 'silhouette', colorMode };
-  return {
-    representation: 'ribbon',
-    colorMode: colorMode === 'b-factor' || colorMode === 'rainbow' || colorMode === 'secondary-structure'
-      || colorMode === 'component'
-      ? colorMode
-      : 'chain',
-  };
-}
-
 /** 現在の表示形態と互換な着色だけを反映する。 */
 export function proteinDisplayWithColor(
   representation: ProteinRepresentation, colorMode: ProteinColorMode,

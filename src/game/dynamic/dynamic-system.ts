@@ -10,7 +10,9 @@ import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { AmmoPickup } from './dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
 import { DebrisPiece } from './dynamic-entity/debris-piece';
-import { Enemy, proteinAssetIdForEnemyKind } from './dynamic-entity/enemy';
+import { Enemy } from './dynamic-entity/enemy';
+import { findEnemyClass } from './dynamic-entity/enemy-dictionary';
+import { ProteinEnemy } from './dynamic-entity/protein-enemy';
 import { isProteinAssetReady, type ProteinAssetId } from '../protein/protein-asset-loader';
 import { Bullet } from './dynamic-entity/bullet';
 import { Base } from './dynamic-entity/base';
@@ -98,9 +100,12 @@ export class DynamicSystem {
       this.addPlayer(new Player(hud, worldSfx, scene, this.effects, markerManager, { saved: data, simTime }));
     }
     for (const data of save.enemies) {
+      // 種別タグから具象クラスを引くところまでがここの仕事で、復元はそのクラスが行う。
+      const enemyClass = findEnemyClass(data.kind);
+      if (enemyClass === null) continue;
       this.spawnEnemyWhenReady(
-        proteinAssetIdForEnemyKind(data.enemyKind),
-        () => new Enemy({ saved: data, simTime }, worldSfx, this.effects, scene),
+        enemyClass.pendingAssetId(data),
+        () => new enemyClass({ saved: data, simTime }, worldSfx, this.effects, scene),
       );
     }
     for (const data of save.ammoPickups) {
@@ -559,11 +564,11 @@ export class DynamicSystem {
     let uploadBytes = 0;
     const lodCounts: Partial<Record<ProteinMotionLod, number>> = {};
     for (const enemy of this.enemies) {
-      const runtime = enemy.proteinRuntime;
-      if (!runtime) continue;
-      cpuMs += runtime.cpuMs;
-      uploadBytes += runtime.uploadBytes;
-      lodCounts[runtime.lod] = (lodCounts[runtime.lod] ?? 0) + 1;
+      if (!(enemy instanceof ProteinEnemy)) continue;
+      const metrics = enemy.motionMetrics;
+      cpuMs += metrics.cpuMs;
+      uploadBytes += metrics.uploadBytes;
+      lodCounts[metrics.lod] = (lodCounts[metrics.lod] ?? 0) + 1;
     }
     return { cpuMs, uploadBytes, lodCounts };
   }

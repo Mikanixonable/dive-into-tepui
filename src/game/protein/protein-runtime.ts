@@ -61,13 +61,12 @@ export class ProteinRuntime {
     root: THREE.Object3D,
     asset: ProteinAssetDefinition,
     motion: ProteinMotionAsset,
-    saved?: ProteinSaveData,
-    legacyHealth?: number,
+    saved?: ProteinSaveData,
     seedKey = asset.id,
     motionBinding?: ProteinMotionBinding,
   ) {
     this.root = root;
-    this.combat = new ProteinCombatState(asset, saved, legacyHealth);
+    this.combat = new ProteinCombatState(asset, saved);
     this.motion = motion;
     this.controller = new ProteinMotionController(motion, seedKey);
     this.motionBinding = motionBinding ?? createProteinMotionBinding(
