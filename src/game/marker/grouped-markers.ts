@@ -161,7 +161,7 @@ export class GroupedMarkers {
         if (!m.labeled || !m.p.front) continue;
         for (const c of celestialLabels) {
           if (!c.labelVisible || Math.hypot(m.p.x - c.x, m.p.y - c.y) >= this.clusterRadiusPx) continue;
-          // 天体ラベル側(c)の前フレームの間引き状態はここでは追跡していない(focus-markers.ts が
+          // 天体ラベル側(c)の前フレームの間引き状態はここでは追跡していない(CelestialMarkers が
           // 別に持つ)ため、常に基準の depthGuardRatio を使う(false)。
           const pick = resolveCrowdingWinner(
             m.item.key, m.item.priority, m.dist, this.prevHiddenByCelestialLabel.has(m.item.key),
