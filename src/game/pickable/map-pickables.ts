@@ -1,6 +1,5 @@
-// マップ上の被選択物(MapPickable)の候補集合と、表示可否(MapVisibilityPolicy)を1フレーム分
-// 組み立てる。「何が選べるか」だけを答え、選んだ結果どうするか(ヒットテスト・メニュー・
-// プロパティウィンドウ)は map-context-actions.ts の MapContextActions が持つ。
+// マップ上で「何が選べるか」を1フレーム分組み立てる。被選択物(MapPickable)の候補集合と、
+// その回の表示可否(MapVisibilityPolicy)を答える。
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from '../camera/focus-target';
 import { DynamicSystem } from '../dynamic/dynamic-system';
@@ -19,14 +18,13 @@ import type { PerfCounts } from '../../perf-meter';
 
 export class MapPickables {
   private readonly candidateItems: MapPickable[] = [];
-  private items: readonly MapPickable[] = this.candidateItems;
   private _lastSimTime = 0;
   private _lastDisplayTime = 0;
   private _visibilityPolicy: MapVisibilityPolicy | null = null;
   private readonly nearbyTracker = new NearbySystemTracker();
 
   // このフレームの被選択物候補。refresh の後に読む。
-  get pickables(): readonly MapPickable[] { return this.items; }
+  get pickables(): readonly MapPickable[] { return this.candidateItems; }
 
   // このフレームの表示・選択可否。マップビュー以外では null。
   get visibilityPolicy(): MapVisibilityPolicy | null { return this._visibilityPolicy; }
@@ -105,7 +103,6 @@ export class MapPickables {
     for (const e of this.entities.all()) {
       if (e.equatorNodes) for (const node of e.equatorNodes.mapPickables()) append(node);
     }
-    this.items = this.candidateItems;
   }
 
   // 負荷確認ウィンドウが読む、マップ視点かどうかとその候補列/ラベル数。
@@ -113,7 +110,7 @@ export class MapPickables {
     const overviewMode = this.cameraSystem.overviewMode;
     return {
       mapMode: overviewMode,
-      mapItems: overviewMode ? this.items.length : 0,
+      mapItems: overviewMode ? this.candidateItems.length : 0,
       mapLabels: overviewMode ? this.celestialMarkers.shownLabelCount : 0,
     };
   }
