@@ -15,7 +15,8 @@ import {
 import { sunlitFactor } from '../../../physics/shadow';
 import { SOLAR_CONSTANT } from '../../../physics/srp';
 import { ApsisTrack } from '../../../physics/trajectory-features';
-import { Vec3, dot, len, lenSq, scale, sub, v3 } from '../../../math/vec3';
+import { Vec3, len, scale, sub, v3 } from '../../../math/vec3';
+import { hitsSphere, type Ray } from '../../../math/ray';
 import type { Viewpoint } from '../../../math/projection';
 import type { SphereHit } from '../../../math/triangle-mesh';
 import { FloatingOrigin } from '../../camera/floating-origin';
@@ -105,12 +106,10 @@ export class DynamicEntity {
   // 剛体接触で反作用を受け持つ質量 [kg]。0 なら相手に力を及ぼさず自分だけが跳ね返り、
   // 無限大なら押されない。
   get contactMass(): number { return this.mass; }
-  // 視線が maxDist [m] 以内でこの実体の形に当たるか。既定は半径 radius の球で当て、それより
-  // 細かい形を持つ種別が override する。
-  hitByRay(origin: Vec3, dir: Vec3, maxDist: number): boolean {
-    const toCenter = sub(this.state.r, origin);
-    const along = Math.max(0, Math.min(maxDist, dot(toCenter, dir)));
-    return lenSq(sub(toCenter, scale(dir, along))) <= this.radius * this.radius;
+  // 視線が、pos に描かれているこの実体の本体へ当たるか。既定は半径 radius の球で当て、
+  // それより細かい形を持つ種別が override する。
+  hitBodyByRay(ray: Ray, pos: Vec3): boolean {
+    return hitsSphere(ray, pos, this.radius);
   }
   // 特定の艦に取り付いた実体(ベルトの節点・放熱板の折りなど)であれば、その艦自身。
   // 独立した実体なら既定 null。

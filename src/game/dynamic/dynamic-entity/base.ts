@@ -7,6 +7,7 @@ import { KinematicState, kinematicState } from '../../../physics/kinematic-state
 import { Attitude } from '../../../physics/attitude';
 import { qRotate } from '../../../physics/attitude';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
+import type { Ray } from '../../../math/ray';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
 import { Player } from '../../player/player';
@@ -142,8 +143,9 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
   }
 
   // 基地は外接球の中が大きく空いているので、メッシュへ当たったかまで見る。
-  override hitByRay(origin: Vec3, dir: Vec3, maxDist: number): boolean {
-    return this.raycast(origin, dir, maxDist) !== null;
+  override hitBodyByRay(ray: Ray, pos: Vec3): boolean {
+    const reach = len(sub(pos, ray.origin)) + this.radius;
+    return this.collisionGeom.raycast(ray.origin, ray.dir, reach, pos, this.att.q, 1) !== null;
   }
 
   testSphereCollision(sphereCenter: Vec3, sphereRadius: number, warpLevel = 1): SphereHit | null {

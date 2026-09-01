@@ -27,14 +27,14 @@ export function pickCombatEntityAtPoint(
     const proj = project(pos);
     if (!proj.front) continue;
 
-    // 視点から対象までの距離。手前かどうかの比較にも、視線の探索距離にも使う。
+    // 視点から対象までの距離。手前かどうかの比較に使う。
     const depth = len(sub(pos, view.position));
     if (depth >= minDepth) continue;
 
     const dx = clientX - proj.x;
     const dy = clientY - proj.y;
     const nearCenter = dx * dx + dy * dy <= GRAB_RADIUS_PX * GRAB_RADIUS_PX;
-    if (!nearCenter && !entity.hitByRay(ray.origin, ray.dir, depth * 2)) continue;
+    if (!nearCenter && !entity.hitBodyByRay(ray, pos)) continue;
 
     minDepth = depth;
     bestEntity = entity;

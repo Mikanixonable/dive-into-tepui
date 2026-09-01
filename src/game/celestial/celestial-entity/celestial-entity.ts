@@ -23,6 +23,7 @@ import type { AtmosphereCandidate, AtmosphereOptics } from '../../../render/atmo
 import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
+import { hitsSphere, type Ray } from '../../../math/ray';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { SunLight } from '../../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
@@ -239,6 +240,11 @@ export abstract class CelestialEntity implements MapPickable {
   // 表示時刻の ECI 位置。
   public mapPosAt(displayTime: number): Vec3 {
     return this.stateAt(displayTime).r;
+  }
+
+  // 天体の本体は表面半径の球。
+  public hitBodyByRay(ray: Ray, pos: Vec3): boolean {
+    return hitsSphere(ray, pos, this.def.radius);
   }
 
   // 分類・名前トグルによる可否。

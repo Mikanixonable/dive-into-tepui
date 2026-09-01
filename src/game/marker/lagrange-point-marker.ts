@@ -59,6 +59,8 @@ export class LagrangePointMarker implements MapPickable {
 
   // 生成元が解いた時刻の位置。
   public mapPosAt(): Vec3 | null { return this.pos; }
+  // アイコンだけで示され、視線を通せる本体を持たない。
+  public hitBodyByRay(): boolean { return false; }
 
   // ラグランジュ点は天体と別の表示トグルを持つ。
   public mapVisibility(policy: MapVisibilityPolicy): MapVisibility { return policy.body(this.id); }
