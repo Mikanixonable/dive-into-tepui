@@ -46,8 +46,7 @@ import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
 } from '../../render/vfx-style';
-import { BoosterStack, boosterAverageAcceleration, type BoosterStage } from './booster-stack';
-import { nextBoosterId } from './booster-id';
+import { BoosterStack, boosterAverageAcceleration, nextBoosterId, type BoosterStage } from './booster-stack';
 import { boosterSeparationVelocities } from './booster-separation';
 import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
 import {

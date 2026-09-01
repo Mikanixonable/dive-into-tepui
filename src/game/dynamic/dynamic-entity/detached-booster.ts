@@ -8,9 +8,9 @@ import type { DetachedBoosterSaveData } from '../../save/save-data';
 import {
   BoosterStack,
   boosterAverageAcceleration,
+  nextBoosterId,
   type BoosterStage as BoosterStageState,
 } from '../../player/booster-stack';
-import { nextBoosterId } from '../../player/booster-id';
 import {
   BOOSTER_STAGE_DIMENSIONS,
   BoosterPlume,
