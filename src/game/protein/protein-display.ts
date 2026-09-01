@@ -51,7 +51,6 @@ export function defaultProteinDisplayFor(representation: ProteinRepresentation):
   return { representation, colorMode: 'chain' };
 }
 
-/** 表示形態を持たない保存値を互換な表示設定へ変換する。 */
 /** 現在の表示形態と互換な着色だけを反映する。 */
 export function proteinDisplayWithColor(
   representation: ProteinRepresentation, colorMode: ProteinColorMode,

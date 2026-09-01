@@ -1,4 +1,5 @@
 import { AnyPart } from '../dynamic/dynamic-entity/parts';
+import type { FormationRole } from '../dynamic/dynamic-entity/enemy';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../protein/protein-display';
 import type { GamePhase } from '../stages/stage';
@@ -131,9 +132,6 @@ export interface BaseSaveData {
   // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
   showTrajectoryLine?: boolean;
 }
-
-// タンパク質陣形における敵の役割。
-export type FormationRole = 'attacker' | 'shield' | 'energy';
 
 export interface EnemySaveData extends EntitySaveData {
   kind: 'metal-enemy' | 'protein-enemy';

@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import * as C from '../../const';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { apparentSizePx, metersPerPixel, type Viewpoint } from '../../../math/projection';
@@ -13,14 +12,17 @@ import { ProteinRibbonCollisionGeometry } from '../../protein/protein-ribbon-col
 import { createProteinMotionBinding } from '../../../render/protein-motion-material';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../protein/protein-display';
-import { Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
+import {
+  Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE,
+  type EnemyPlacement, type EnemyRestore, type FormationRole,
+} from './enemy';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
 import type { ProteinMotionLod } from '../../protein/protein-motion-controller';
 import type { FloatingOrigin } from '../../camera/floating-origin';
-import type { EnemySaveData, FormationRole, ProteinEnemySaveData } from '../../save/save-data';
+import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 
 // タンパク質の構造は揺らぐが、判定形状は常に静止したリボンに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
@@ -108,7 +110,7 @@ export class ProteinEnemy extends Enemy {
     // 新規生成のときだけ、タンパク質固有の名称を陣形役割・識別番号などの既存識別子の前へ冠する。
     super(
       'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
-      renderObject, PROTEIN_INERTIA, ribbonCollision.outerRadius, C.ENEMY_MAX_HP, worldSfx, fx, scene,
+      renderObject, PROTEIN_INERTIA, ribbonCollision.outerRadius, worldSfx, fx, scene,
     );
     this.assetId = assetId;
     this.displaySettings = display;
