@@ -34,7 +34,7 @@ export function groupPickables(
         }
         break;
       case 'player': push('自艦', item.id, item.name); break;
-      case 'ship': push('敵', item.id, item.name); break;
+      case 'enemy': push('敵', item.id, item.name); break;
       case 'base': push('基地', item.id, item.name); break;
       case 'ammo': push('弾薬', item.id, item.name); break;
       case 'fuel': push('RCS燃料', item.id, item.name); break;

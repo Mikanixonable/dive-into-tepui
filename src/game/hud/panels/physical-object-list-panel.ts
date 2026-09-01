@@ -19,7 +19,7 @@ import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } f
 const SECTIONS: readonly { kind: MapPickKind; label: string }[] = [
   { kind: 'body', label: '天体' },
   { kind: 'player', label: '自艦' },
-  { kind: 'ship', label: '敵' },
+  { kind: 'enemy', label: '敵' },
   { kind: 'ammo', label: '弾薬' },
   { kind: 'fuel', label: 'RCS燃料' },
   { kind: 'base', label: '基地' },
@@ -43,7 +43,7 @@ interface Section {
 // 区画見出しに添える内訳 — approaching/collectable を値として数え、label 付きで示す
 // (表示文言の部分一致に頼ると、文言を変えただけで数え上げが黙って壊れるため)。
 const HEADER_SUMMARY: Partial<Record<MapPickKind, { readonly field: 'approaching' | 'collectable'; readonly label: string }>> = {
-  ship: { field: 'approaching', label: '接近' },
+  enemy: { field: 'approaching', label: '接近' },
   ammo: { field: 'collectable', label: '回収可' },
   fuel: { field: 'collectable', label: '回収可' },
 };

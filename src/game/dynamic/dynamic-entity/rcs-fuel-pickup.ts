@@ -4,6 +4,7 @@ import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { buildRcsFuelPickup } from '../../../render/ships';
 import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import { EntityIdAllocator } from './entity-id';
+import type { DynamicEntityKind } from './entity-kind';
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_FUEL } from '../../marker/marker-identity';
 import { fmtMarkerDist } from '../../hud/utils';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
@@ -24,6 +25,8 @@ type RcsFuelPickupInit =
 
 // 軌道上の RCS 燃料補給。接近すると燃料を艦のタンクへ移す。
 export class RcsFuelPickup extends DynamicEntity {
+  public readonly mapKind: DynamicEntityKind = 'fuel';
+
   override readonly bcInv = SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;
   protected readonly specificHeat = SMALL_DEBRIS_SPECIFIC_HEAT;

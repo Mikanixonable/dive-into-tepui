@@ -1,6 +1,7 @@
 // BaseState は public フィールド baseState の型なので、外から名指しできるよう export したままにする。
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
+import type { DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
@@ -93,6 +94,8 @@ type BaseInit =
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
 export class Base extends DynamicEntity implements Controllable {
+  public readonly mapKind: DynamicEntityKind = 'base';
+
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
   protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;

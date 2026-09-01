@@ -20,8 +20,8 @@ export type MapDisplayToggles = {
   readonly lagrangeName: boolean;
   readonly playerVisible: boolean;
   readonly playerName: boolean; readonly playerOrbit: boolean;
-  readonly shipVisible: boolean;
-  readonly shipName: boolean; readonly shipOrbit: boolean;
+  readonly enemyVisible: boolean;
+  readonly enemyName: boolean; readonly enemyOrbit: boolean;
   readonly ammoVisible: boolean;
   readonly ammoName: boolean; readonly ammoOrbit: boolean;
   readonly fuelVisible: boolean;
@@ -51,8 +51,8 @@ export const DEFAULT_MAP_DISPLAY_TOGGLES: MapDisplayToggles = {
   lagrangeName: true,
   playerVisible: true,
   playerName: true, playerOrbit: true,
-  shipVisible: true,
-  shipName: true, shipOrbit: true,
+  enemyVisible: true,
+  enemyName: true, enemyOrbit: true,
   ammoVisible: true,
   ammoName: true, ammoOrbit: false,
   fuelVisible: true,
@@ -80,7 +80,7 @@ const MAP_DISPLAY_CATEGORIES: readonly MapDisplayCategory[] = [
   { category: 'smallBodyVisible', name: 'smallBodyName', orbit: 'smallBodyOrbit', children: ['smallBodyName', 'smallBodyOrbit'] },
   { category: 'lagrangeVisible', name: 'lagrangeName', orbit: null, children: ['lagrangeName'] },
   { category: 'playerVisible', name: 'playerName', orbit: 'playerOrbit', children: ['playerName', 'playerOrbit'] },
-  { category: 'shipVisible', name: 'shipName', orbit: 'shipOrbit', children: ['shipName', 'shipOrbit'] },
+  { category: 'enemyVisible', name: 'enemyName', orbit: 'enemyOrbit', children: ['enemyName', 'enemyOrbit'] },
   { category: 'ammoVisible', name: 'ammoName', orbit: 'ammoOrbit', children: ['ammoName', 'ammoOrbit'] },
   { category: 'fuelVisible', name: 'fuelName', orbit: 'fuelOrbit', children: ['fuelName', 'fuelOrbit'] },
   { category: 'baseVisible', name: 'baseName', orbit: 'baseOrbit', children: ['baseName', 'baseOrbit'] },

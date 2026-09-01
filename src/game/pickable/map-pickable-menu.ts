@@ -19,7 +19,7 @@ import type { FrameControls } from '../hud/frame/frame-controls';
 import type { Stage } from '../stages/stage';
 import { planExecutionLabel, type PlanExecutionMode } from '../player/player';
 import { MenuAction, MenuCommon, MenuItem, type PauseMenu } from '../hud/windows';
-import type { ObjectType } from '../creative/object-placer-panel';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/attractor';
 import type { MapPickables } from './map-pickables';
@@ -112,7 +112,7 @@ export class MapPickableMenu {
       },
       run: (act, target) => this.runBodyShip(act, target),
     },
-    'ship': {
+    'enemy': {
       itemsFor: (target, simTime) => {
         const enemy = this.entities.findEnemy(target.id);
         const trajectoryItem: readonly MenuItem<MenuAction>[] = enemy
@@ -406,13 +406,13 @@ export class MapPickableMenu {
 
   // MapPickable を、複製できる実体の種類とその現在状態へ解決する。複製できない種別(天体・
   // 近点/遠点アイコン・相対AN/DN)ではメニュー自体を出していないので、ここに到達しない。
-  private duplicateSourceFor(target: MapPickable): { objectType: ObjectType; state: KinematicState } | null {
+  private duplicateSourceFor(target: MapPickable): { objectType: DynamicEntityKind; state: KinematicState } | null {
     switch (target.kind) {
       case 'player': {
         const ship = this.entities.findPlayer(target.id);
         return ship ? { objectType: 'player', state: ship.state } : null;
       }
-      case 'ship': {
+      case 'enemy': {
         const enemy = this.entities.findEnemy(target.id);
         return enemy ? { objectType: 'enemy', state: enemy.state } : null;
       }
