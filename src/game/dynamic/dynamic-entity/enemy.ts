@@ -9,7 +9,7 @@ import { closingSpeed, type Contact } from './contact';
 import { collisionDamageFraction, contactDamageSpeed } from './contact-damage';
 import { Attitude } from '../../../physics/attitude';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
-import { add, len, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
+import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
 import { apparentSizePx, metersPerPixel, type Viewpoint } from '../../../math/projection';
 import { solveLeadTime } from '../../../physics/intercept';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
@@ -26,29 +26,30 @@ import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry'
 import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
 import { ProteinRuntime } from '../../protein/protein-runtime';
 import { ProteinRibbonCollisionGeometry } from '../../protein/protein-ribbon-collision';
-import { createProteinMotionBinding } from '../../../render/protein-motion-material';
+import { createProteinMotionBinding, type ProteinMotionBinding } from '../../../render/protein-motion-material';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import type { ProteinDamageResult } from '../../protein/protein-combat-state';
 import {
-  isProteinDisplaySettings, proteinDisplayFromLegacyColorMode,
+  DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, proteinDisplayFromLegacyColorMode,
   type ProteinColorMode, type ProteinDisplaySettings,
 } from '../../protein/protein-display';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import {
   ENEMY_DESTROY_FRAG_COLOR,
 } from '../../../render/vfx-style';
-import { buildEnemyRenderObject } from './enemy-render';
-import { sunGlareSpreadScale } from './enemy-sun-glare';
-import { buildEnemyMarkerItem } from './enemy-marker';
-import { serializeEnemy } from './enemy-save';
+import { buildEnemyShip, buildStage0EnemyShip } from '../../../render/ships';
+import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
+import { fmtMarkerDist } from '../../hud/utils';
+import { ENTITY_GLYPH } from '../../marker/marker-glyphs';
+import { currentThemePalette } from '../../theme';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
 // 達するのは、地球の大気では高度 80 km 付近。
 const ENEMY_MAX_TEMP = 500; // [K]
 
-export const ENEMY_SCALE = 20; // buildEnemyShip() の見た目メッシュに掛けるスケール
+const ENEMY_SCALE = 20; // buildEnemyShip() の見た目メッシュに掛けるスケール
 
-export const PLAYER_BULLET_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
+const PLAYER_BULLET_DAMAGE = 1.25; // 自機が被弾(自弾・プラズマ弾とも)した際のダメージ [HP]
 
 const PLASMA_BULLET_SPEED = C.MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
 const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
@@ -96,6 +97,40 @@ function normalizeEnemyKind(enemyKind: EnemyKind): EnemyKind {
 // を起こし、'stage0' は機首をプログレードへ向けたまま飛ぶので等方でよい。
 export function inertiaForEnemyKind(enemyKind: EnemyKind): Vec3 {
   return enemyKind.kind === 'stage0' ? v3(1, 1, 1) : v3(1, 1.1, 1.05);
+}
+
+// 敵の見た目を組み立てる。
+function buildEnemyRenderObject(
+  enemyKind: EnemyKind, accent: string | number, motionBinding?: ProteinMotionBinding,
+): THREE.Object3D {
+  if (enemyKind.kind === 'stage0') return buildStage0EnemyShip(accent, enemyKind.typeIndex);
+  // タンパク質型はカタログの登録アセットから、実際のタンパク質構造モデルを組む。
+  const proteinId = proteinAssetIdForEnemyKind(enemyKind);
+  if (proteinId !== null) {
+    const definition = proteinEnemyDefinitionFor(proteinId);
+    if (!definition) throw new Error(`No protein enemy definition registered for ${proteinId}`);
+    const display: ProteinDisplaySettings = enemyKind.kind === 'protein' && isProteinDisplaySettings(enemyKind.display)
+      ? enemyKind.display
+      : DEFAULT_PROTEIN_DISPLAY;
+    return definition.buildRenderObject(display, motionBinding);
+  }
+  // それ以外(drifting)は従来型の艦体メッシュ。
+  return buildEnemyShip(accent);
+}
+
+// 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
+// 順光では締まる。難易度調整のための経験則であって物理計算ではない。
+// pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
+function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
+  const along = dot(pos, sunDir);
+  if (along < 0 && lenSq(addScaled(pos, sunDir, -along)) < R_EARTH_EQ * R_EARTH_EQ) return 1;
+
+  const angle = (Math.acos(Math.max(-1, Math.min(1, dot(aimDir, sunDir)))) * 180) / Math.PI;
+  if (angle <= 5) return 2;
+  if (angle <= 30) return 1 + (30 - angle) / 25;
+  if (angle >= 160) return 0.5;
+  if (angle >= 130) return 1 - ((angle - 130) / 30) * 0.5;
+  return 1;
 }
 
 // 陣形の攻撃担当だけが必要とする、同じ陣形内の生存エネルギー役を都度集計する。
@@ -343,10 +378,31 @@ export class Enemy extends Ship {
 
 
 
-  // overviewMode では進行方向へ回るヘッダーアイコンを、戦闘ビューでは従来の切り欠き三角形を使う。
+  // 敵のマーカー表示項目を組み立てる。pos/vel は機体メッシュと同じ表示時刻の状態(displayState
+  // 経由)を使う。role がターゲットでなければ通常の敵マーカーになる。overviewMode では進行方向へ
+  // 回るヘッダーアイコンを、戦闘ビューでは従来の切り欠き三角形を使う。key は id(一意)から、
+  // ラベルは name(表示名)から作る — 複数の敵が同じ表示名を持ちうるため。
   markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
-    const sym = overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg();
-    return buildEnemyMarkerItem(this.id, this.name, role, viewerPos, pos, vel, overviewMode, sym);
+    // 距離は優先度(近いほど高)とラベル表示の両方に使う
+    const dist = len(sub(pos, viewerPos));
+    // 代表選出の優先度: ターゲット > 距離が近い順 (天体 > 船・エンティティ)
+    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.ENEMY - dist / 1e9;
+    return {
+      key: `enemy-${this.id}`,
+      cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
+      sym: overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
+      pos,
+      vel,
+      priority,
+      name: this.name,
+      detail: overviewMode ? '' : fmtMarkerDist(dist),
+      // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。ターゲット中は第二アクセントカラーで強調する。
+      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ENEMY,
+      bearingSym: ENTITY_GLYPH.enemyShip,
+      bearingClass: 'mk-dir mk-bearing-triangle',
+      color: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ENEMY,
+      symMarkup: true,
+    };
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
@@ -571,7 +627,29 @@ export class Enemy extends Ship {
 
   // セーブデータへ変換する。
   serialize(): EnemySaveData {
-    return serializeEnemy(this);
+    return {
+      id: this.id,
+      name: this.name,
+      kind: 'enemy',
+      // 運動状態・姿勢。
+      r: { ...this.state.r },
+      v: { ...this.state.v },
+      q: { ...this.att.q },
+      w: { ...this.att.w },
+      enemyKind: this.enemyKind,
+      alive: this.alive,
+      health: this.hp,
+      accent: this.accent,
+      orbitLineColor: this.orbitLineColor,
+      waveId: this.waveId,
+      // 陣形所属は無所属の単体敵も多いため、値がある場合だけキーを持たせる。
+      ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
+      ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
+      burstLeft: this.burstLeft,
+      burstDelay: this.burstDelay,
+      showTrajectoryLine: this.showTrajectoryLine,
+      protein: this.proteinRuntime?.combat.serialize(),
+    };
   }
 
   override dispose(): void {
