@@ -25,10 +25,10 @@ const BULLET_CLOSE_PASS_DIST = 40; // 敵弾が艦の至近を通過したとみ
 const tmpQuat = new THREE.Quaternion();
 
 // 弾を撃った主体
-export type Shooter = 'player' | 'enemy';
+type Shooter = 'player' | 'enemy';
 
 // 自弾(normal)と敵プラズマ弾(plasma)を区別する種別。
-export type BulletType = 'normal' | 'plasma';
+type BulletType = 'normal' | 'plasma';
 
 // 自弾と敵プラズマ弾の両方に使う。
 // geometry/material はビルダーが弾種ごとに共有するため、traverse による個別 dispose は行わない。

@@ -51,7 +51,7 @@ function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: 
 
 // 蛇腹1折りぶんの接触代理。艦の姿勢と展開度から一意に決まる剛体の取り付けなので、
 // ベルトと違い Verlet 解法は要らず、毎フレーム RadiatorSystem.collisionFolds が置き直すだけでよい。
-export class RadiatorFold extends DynamicEntity {
+class RadiatorFold extends DynamicEntity {
   // 位置は毎フレーム collisionFolds が置き直すので、ここでは原点で仮生成する。
   constructor(readonly side: RadiatorSide, readonly foldIndex: number, private readonly owner: Player) {
     super(kinematicState<'eci'>(0, v3(), v3()), new THREE.Object3D());

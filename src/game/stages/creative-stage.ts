@@ -27,7 +27,8 @@ import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../protein
 import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
-import { ElementsForm, LagrangeForm, ObjectType, ReferenceCelestialBody, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
+import { ElementsForm, LagrangeForm, ReferenceCelestialBody, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { validateEllipticPlacementFields, validateBaseReferenceFields, validateLagrangePlacementFields, PlacementFieldIssue } from '../creative/placement-validation';
 import { elementsFormFromState } from '../creative/duplicate-form';
 import { STAGE_CONTROL_ENEMY_SHAPES, StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
@@ -236,15 +237,15 @@ export class CreativeStage extends Stage {
   // 満たす値が求まったときだけ、その値をプリセットして開く。逆算できない状態(双曲線軌道など)や、
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
   // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
-  openObjectPlacerForDuplicate(objectType: ObjectType, state: KinematicState): void {
+  openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void {
     const form = elementsFormFromState(
       state, this._celestialSystem, state.t, this._celestialSystem.origin.id);
-    if (form && validateBaseReferenceFields(objectType, 'elements', form.celestialBody).length === 0) {
-      this.placerPanel.open({ kind: 'form', objectType, form });
+    if (form && validateBaseReferenceFields(entityKind, 'elements', form.celestialBody).length === 0) {
+      this.placerPanel.open({ kind: 'form', entityKind, form });
       return;
     }
     this._hud.hint('この軌道は要素として複製できないため、種類だけを引き継いだ新規配置として開きます');
-    this.placerPanel.open({ kind: 'objectType', objectType });
+    this.placerPanel.open({ kind: 'entityKind', entityKind });
   }
 
   // フォーム値から配置プレビューの軌道要素と位置を求める。軌道要素指定以外の配置方法・
@@ -265,7 +266,7 @@ export class CreativeStage extends Stage {
   // 同じ検証呼び出しを共有し、両者が食い違うことを防ぐ。
   private computeFieldIssues(form: ObjectPlacerForm): PlacementFieldIssue[] {
     const issues = [...validateBaseReferenceFields(
-      form.objectType, form.placementMode, form.placementMode === 'elements' ? form.celestialBody : undefined,
+      form.entityKind, form.placementMode, form.placementMode === 'elements' ? form.celestialBody : undefined,
     )];
     if (form.placementMode === 'elements') {
       const center = this.referenceCelestialBody(form);
@@ -314,7 +315,7 @@ export class CreativeStage extends Stage {
 
   // フォーム値から KinematicState を組み立て、配置する。
   private placeObject(name: string, form: ObjectPlacerForm): void {
-    if (form.objectType === 'player' && this._entities.players.length >= MAX_PLACED_SHIPS) {
+    if (form.entityKind === 'player' && this._entities.players.length >= MAX_PLACED_SHIPS) {
       this._hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
@@ -323,30 +324,30 @@ export class CreativeStage extends Stage {
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
       
-      if (form.objectType === 'player') {
+      if (form.entityKind === 'player') {
         const id = this.playerIdAllocator.next();
         const finalName = name.trim() || generateRandomName('player');
         const ship = this.addPlayer({ name: finalName, state, id });
         this._hud.hint(`${ship.name} を配置`);
-      } else if (form.objectType === 'enemy') {
+      } else if (form.entityKind === 'enemy') {
         const finalName = name.trim() || generateRandomName('enemy');
         const enemy = generateDriftingEnemy(finalName, state, '#ff6a00', '#ff6a00', this._worldSfx, this._fx, this._scene);
         this._entities.addEnemy(enemy);
         this._hud.hint(`${enemy.name} を配置`);
-      } else if (form.objectType === 'ammo') {
+      } else if (form.entityKind === 'ammo') {
         const id = this.ammoPickupIdAllocator.next();
         const ammoPickup = new AmmoPickup({ state, id }, this._scene);
         this._entities.addAmmoPickup(ammoPickup);
         const finalName = name.trim() || generateRandomName('ammo');
         this._hud.hint(`${finalName} を配置`);
-      } else if (form.objectType === 'fuel') {
+      } else if (form.entityKind === 'fuel') {
         const id = this.rcsFuelPickupIdAllocator.next();
         const pickup = new RcsFuelPickup({ state, id }, this._scene);
         this._entities.addRcsFuelPickup(pickup);
         const finalName = name.trim() || generateRandomName('fuel');
         pickup.name = finalName;
         this._hud.hint(`${finalName} を配置`);
-      } else if (form.objectType === 'base') {
+      } else if (form.entityKind === 'base') {
         const finalName = name.trim() || generateRandomName('base');
         const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._fx, this._markerManager);
         this._entities.addBase(base);

@@ -62,7 +62,7 @@ interface ProteinMotionRendererInternals {
 
 const proteinMotionRenderers = new Map<ProteinMotionRendererInternals, number>();
 
-export type ProteinMotionNodeMaterial =
+type ProteinMotionNodeMaterial =
   | THREE.LineBasicNodeMaterial
   | THREE.MeshBasicNodeMaterial
   | THREE.MeshStandardNodeMaterial;
@@ -207,7 +207,7 @@ function residueOffsetNode(binding: ProteinMotionBinding): THREE.Node<'vec3'> {
  * Because the positionNode belongs to the source object material, Three's
  * G-buffer and override-material shadow paths can carry the same node through.
  */
-export function applyProteinMotionBinding<T extends ProteinMotionNodeMaterial>(
+function applyProteinMotionBinding<T extends ProteinMotionNodeMaterial>(
   material: T,
   binding: ProteinMotionBinding,
 ): T {

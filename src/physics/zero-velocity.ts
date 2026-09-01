@@ -3,9 +3,8 @@
 // Ω(x,y,z) = (x²+y²)/2 + (1−μ)/r₁ + μ/r₂ とヤコビ定数 C = 2Ω − v² を扱う。
 // v² = 2Ω − C ≥ 0 が到達可能領域、2Ω − C < 0 が禁止領域なので、ゼロ速度曲線は
 // 断面上で f(u,v) = 2Ω − C = 0 となる等高線そのもの。マーチングスクエア法で追う。
-import { collinearGamma } from './lagrange';
+import { LagrangeLabel, collinearGamma } from './lagrange';
 
-export type LagrangeLabel = 'L1' | 'L2' | 'L3' | 'L4' | 'L5';
 export type SectionPlane = 'xy' | 'xz';
 
 // 両天体の位置ちょうどで 1/r が発散するのを避けるための下限。この桁まで近づけば

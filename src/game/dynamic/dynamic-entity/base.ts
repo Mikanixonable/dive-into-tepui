@@ -1,11 +1,13 @@
-// BaseState は public フィールド baseState の型なので、外から名指しできるよう export したままにする。
+// 軌道上の拠点。艦艇のドッキングと格納、部品と資金の保有、そこからの発艦を持つ。
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
+import type { DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
 import { qRotate } from '../../../physics/attitude';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
+import type { Ray } from '../../../math/ray';
 import type { AnyPart, Part } from './parts';
 import { partFromSaveData } from './parts';
 import { Player } from '../../player/player';
@@ -21,7 +23,7 @@ import type { PlanExecutionMode } from '../../player/player';
 import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { MarkerRole } from '../../targeter';
-import { fmtMarkerDist } from '../../hud/utils';
+import { fmtDist, fmtMarkerDist } from '../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import type { RayHit, SphereHit } from '../../../math/triangle-mesh';
@@ -35,10 +37,19 @@ import { RcsEffects } from '../../player/rcs-effects';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../../render/render-style';
-import type { MapVisibility } from '../../map/visibility-policy';
+import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import { currentThemePalette } from '../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/marker-manager';
+import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
+import { orbitRows } from '../../pickable/orbit-rows';
+import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { MapPickable } from '../../pickable/map-pickable';
+import type { MapCommands } from '../../pickable/map-commands';
+import type { MenuItem } from '../../hud/windows/context-menu';
+import type { PropertyRow } from '../../hud/windows/property-window';
+import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../../hud/object-groups';
 
 export const BASE_MAX_VESSELS = 4; // 基地が保有・格納できる艦艇の最大数
 const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
@@ -78,7 +89,7 @@ export interface DockedVesselEntry {
   slotIndex: number;
 }
 
-export interface BaseState {
+interface BaseState {
   money: number;
   inventory: AnyPart[];
   dockedVessels: DockedVesselEntry[];
@@ -92,7 +103,9 @@ type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
-export class Base extends DynamicEntity implements Controllable {
+export class Base extends DynamicEntity implements Controllable, MapPickable {
+  public readonly mapKind: DynamicEntityKind = 'base';
+
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
   protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
@@ -127,6 +140,12 @@ export class Base extends DynamicEntity implements Controllable {
 
   raycast(rayOrigin: Vec3, rayDir: Vec3, maxDist: number, warpLevel = 1): RayHit | null {
     return this.collisionGeom.raycast(rayOrigin, rayDir, maxDist, this.state.r, this.att.q, warpLevel);
+  }
+
+  // 基地は外接球の中が大きく空いているので、メッシュへ当たったかまで見る。
+  override hitBodyByRay(ray: Ray, pos: Vec3): boolean {
+    const reach = len(sub(pos, ray.origin)) + this.radius;
+    return this.collisionGeom.raycast(ray.origin, ray.dir, reach, pos, this.att.q, 1) !== null;
   }
 
   testSphereCollision(sphereCenter: Vec3, sphereRadius: number, warpLevel = 1): SphereHit | null {
@@ -322,11 +341,16 @@ export class Base extends DynamicEntity implements Controllable {
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
   }
 
+  // 画面マーカーと被選択判定が同じ個体を指すためのキー。
+  private get markerKey(): string { return `base-${this.id}`; }
+
+  // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
   markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {
-      key: `base-${this.id}`,
+      key: this.markerKey,
+      kind: this.mapKind,
       cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
       sym: baseMarkerSvg(),
       pos,
@@ -349,8 +373,8 @@ export class Base extends DynamicEntity implements Controllable {
       this.thrustEffects.dispose(this.scene);
       this.rcsEffects.dispose(this.scene);
     }
-    this.markerManager.remove(`base-${this.id}`);
-    this.markerManager.remove(`base-${this.id}-bearing`);
+    this.markerManager.remove(this.markerKey);
+    this.markerManager.remove(`${this.markerKey}-bearing`);
     // 格納艦は entities.players から外れているため、ここでしか回収できない。
     for (const entry of this.baseState.dockedVessels) entry.player.dispose();
     this.baseState.dockedVessels = [];
@@ -373,4 +397,116 @@ export class Base extends DynamicEntity implements Controllable {
       showTrajectoryLine: this.showTrajectoryLine,
     };
   }
+
+  // マップ上の被選択物としての振る舞い。
+  public readonly ownerName = null;
+  public readonly mapTime = null;
+  public get gone(): boolean { return !this.alive; }
+  public get mapState(): KinematicState { return this.state; }
+  public readonly mapGlyph = ENTITY_GLYPH.base;
+  public get mapGlyphSvg(): string { return baseMarkerSvg(); }
+  public readonly listSection: MapListSection = 'base';
+  public readonly pickerGenre: ObjectPickerGenre = '基地';
+  public readonly hiddenBehindBodies = true;
+  public readonly onlyInFocusedSystem = false;
+  public listPriority(): number { return 0; }
+  public listCounted(): boolean { return false; }
+
+  // 表示時刻の ECI 位置。予測が届かない時刻では null。
+  public mapPosAt(displayTime: number): Vec3 | null {
+    return this.stateAt(displayTime)?.r ?? null;
+  }
+
+  // 基地カテゴリの表示トグルによる可否。
+  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
+    return policy.entity(this.mapKind);
+  }
+
+  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
+
+  // 自艦がいれば自艦からの距離、いなければ格納中の艦艇数。
+  public listDetail(
+    _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+  ): string {
+    if (activePlayer === null) return `格納 ${this.baseState.dockedVessels.length} 艇`;
+    return fmtDist(len(sub(this.mapPosAt(displayTime) ?? this.state.r, activePlayer.state.r)));
+  }
+
+  // 検索が照合する文字列。行の補助表示と同じ。
+  public listSearchText(
+    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+  ): string {
+    return this.listDetail(celestialSystem, activePlayer, displayTime);
+  }
+
+  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
+  public mapMenuItems(
+    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[] {
+    const { money, dockedVessels } = this.baseState;
+    const subLabel = `基地 / 所持金: ${money.toLocaleString()} Cr / 格納艦艇: ${dockedVessels.length}隻`;
+    const controlItem: MenuItem<MenuAction> = commands.controlledBase === this
+      ? { label: '操作対象を解除', act: 'deactivate' }
+      : { label: '操作対象にする', act: 'activate' };
+    const dockItems: readonly MenuItem<MenuAction>[] =
+      commands.dockState(this) === 'dockable' ? [MenuCommon.dock()] : [];
+
+    return [
+      { type: 'header', label: this.name, subLabel },
+      ...MenuCommon.targetItems(commands, this.id, simTime),
+      controlItem,
+      ...dockItems,
+      {
+        label: commands.isBasePanelExpanded(this) ? '基地パネルを収納' : '基地パネルを展開',
+        act: 'toggleBasePanel', keepOpen: true,
+      },
+      MenuCommon.focus(),
+      MenuCommon.trajectoryLine(this.showTrajectoryLine),
+      ...MenuCommon.duplicateItems(commands),
+      { label: '削除', act: 'delete' },
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // mapMenuItems が出した操作を実行する。軌道線の表示だけ自分の状態を書き換え、残りは commands を通す。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    if (act === 'activate') {
+      commands.setControlledBase(this);
+    } else if (act === 'deactivate') {
+      if (commands.controlledBase === this) commands.setControlledBase(null);
+    } else if (act === 'toggleTrajectoryLine') {
+      this.showTrajectoryLine = !this.showTrajectoryLine;
+    } else if (act === 'dock') {
+      commands.dock(this);
+    } else if (act === 'delete') {
+      commands.removeBase(this);
+    } else if (act === 'duplicate') {
+      commands.duplicate(this.mapKind, this.state);
+    } else if (act === 'focus') {
+      commands.focus(this.id, this.name);
+    } else if (act === 'target') {
+      commands.toggleNavTarget(this.id, this.name);
+    }
+  }
+
+  // プロパティウィンドウに出す行。所持金・格納艦艇数・自艦からの距離を主要行とし、操作対象かは
+  // 詳細トグル、軌道要素は「軌道」グループの下に畳む。自艦がいなければ距離の行は落ちる。
+  public mapPropertyRows(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly PropertyRow[] {
+    const viewer = commands.activePlayer;
+    const rows: PropertyRow[] = [
+      {
+        key: 'operated', label: '操作対象か',
+        value: commands.controlledBase === this ? 'はい' : 'いいえ', collapsible: true,
+      },
+      { key: 'money', label: '所持金', value: `${this.baseState.money.toLocaleString()} Cr` },
+      { key: 'vessels', label: '格納艦艇数', value: `${this.baseState.dockedVessels.length}` },
+    ];
+    if (viewer) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(this.state.r, viewer.state.r))) });
+    rows.push(...orbitRows(this, celestialSystem, simTime));
+    return rows;
+  }
+
+  public readonly mapRename = (name: string): void => { this.name = name; };
 }
