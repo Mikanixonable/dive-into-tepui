@@ -92,6 +92,9 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
   return 1;
 }
 
+// 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、
+// 交戦圏離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は
+// 具象が持ち、共通処理は下の抽象メンバー越しにそれを使う。
 export abstract class Enemy extends Ship {
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
   protected readonly maxTemperature = ENEMY_MAX_TEMP;
@@ -124,6 +127,8 @@ export abstract class Enemy extends Ship {
     fx: EffectsSystem,
     scene?: THREE.Scene,
   ) {
+    // 復元と新規配置を同じ形へ均してから基底へ渡す。復元固有の項目(生死・バースト状態)だけを
+    // 下でもう一度 init から読む。
     const placed: EnemyPlacement = 'saved' in init
       ? {
         name: init.saved.name || '',

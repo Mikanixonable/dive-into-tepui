@@ -27,6 +27,7 @@ export class MetalEnemy extends Enemy {
 
   private readonly typeIndex: number | null;
 
+  // 機体テンプレートを選んでメッシュを組み、そのバウンディング球を接触半径にする。
   public constructor(
     init: MetalEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,

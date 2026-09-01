@@ -82,6 +82,8 @@ export class ProteinEnemy extends Enemy {
   private readonly ribbonCollision: ProteinRibbonCollisionGeometry;
   private displaySettings: ProteinDisplaySettings;
 
+  // アセットの取得が済んでいることを前提に、表示メッシュとリボン衝突形状を組む。まだなら投げる —
+  // 呼び出し側は EnemyClass.pendingAssetId で準備完了を待ってから構築する。
   public constructor(
     init: ProteinEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
