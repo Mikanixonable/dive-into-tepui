@@ -1,7 +1,6 @@
 // マップモードの地球中心広範囲視点カメラ。太陽回転系への切替とフォーカス対象の選択を持つ。
 import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../math/vec3';
-import * as C from '../const';
 import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
@@ -18,6 +17,9 @@ import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save/save-dat
 
 // 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
 // 視界に収められる引きの上限。
+export const OVERVIEW_CAMERA_MIN_DIST = 1e3; // 広範囲視点カメラの注視点までの距離 [m]
+export const OVERVIEW_CAMERA_FOV_MIN = 15; // 広範囲視点の最小垂直画角 [deg]
+export const OVERVIEW_CAMERA_FOV_MAX = 120; // 広範囲視点の最大垂直画角 [deg]
 const OVERVIEW_CAMERA_MAX_DIST = 1e14;
 
 // 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
@@ -184,7 +186,7 @@ export class MapCamera {
     const defaultHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
     const savedHalfHeight = saved?.orthographicHalfHeight;
     const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight) ? savedHalfHeight : defaultHalfHeight;
-    this.orthographicHalfHeight = Math.max(C.OVERVIEW_CAMERA_MIN_DIST * 1e-6,
+    this.orthographicHalfHeight = Math.max(OVERVIEW_CAMERA_MIN_DIST * 1e-6,
       Math.min(OVERVIEW_CAMERA_MAX_DIST, halfHeight));
     this.perspectiveCamera = new THREE.PerspectiveCamera(
       this.fovDeg,
@@ -200,7 +202,7 @@ export class MapCamera {
   }
 
   private clampFov(fovDeg: number): number {
-    return Math.max(C.OVERVIEW_CAMERA_FOV_MIN, Math.min(C.OVERVIEW_CAMERA_FOV_MAX,
+    return Math.max(OVERVIEW_CAMERA_FOV_MIN, Math.min(OVERVIEW_CAMERA_FOV_MAX,
       Number.isFinite(fovDeg) ? fovDeg : OVERVIEW_CAMERA_FOV));
   }
 
@@ -410,8 +412,8 @@ export class MapCamera {
   // フォーカスが天体でなければ通常の下限をそのまま使う。
   private get minDist(): number {
     const body = this._focus.kind === 'object' ? this.celestialSystem.find(this._focus.id) : null;
-    if (body === null) return C.OVERVIEW_CAMERA_MIN_DIST;
-    return Math.max(C.OVERVIEW_CAMERA_MIN_DIST, body.def.radius);
+    if (body === null) return OVERVIEW_CAMERA_MIN_DIST;
+    return Math.max(OVERVIEW_CAMERA_MIN_DIST, body.def.radius);
   }
 
   // ロールを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻し、パンでフォーカスから
@@ -492,9 +494,8 @@ export class MapCamera {
   // displayTime へ動いてカメラだけ現在時刻に取り残される。
   update(
     mouse: MouseDelta,
-    keyYaw: number,
-    keyPitch: number,
-    dt: number,
+    keyYawRad: number,
+    keyPitchRad: number,
     displayTime: number,
     candidates: readonly MapPickable[],
     frameAnchors: FrameAnchorSource,
@@ -523,26 +524,24 @@ export class MapCamera {
       ? this.dist
       : Math.max(this.minDist, Math.min(OVERVIEW_CAMERA_MAX_DIST, this.dist * zoomFactor));
     if (this.projectionMode === 'orthographic' && mouse.wheel !== 0) {
-      this.orthographicHalfHeight = Math.max(C.OVERVIEW_CAMERA_MIN_DIST * 1e-6,
+      this.orthographicHalfHeight = Math.max(OVERVIEW_CAMERA_MIN_DIST * 1e-6,
         Math.min(OVERVIEW_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
     }
     upEci = norm(addScaled(upEci, offEci, -dot(upEci, offEci) / dot(offEci, offEci)));
-    const yaw = mouse.dx * 0.005 - keyYaw * C.CAM_KEY_YAW_RATE * dt;
-    const pitch = mouse.dy * 0.005 + keyPitch * C.CAM_KEY_PITCH_RATE * dt;
+    const yaw = mouse.dx * 0.005 - keyYawRad;
+    const pitch = mouse.dy * 0.005 + keyPitchRad;
     if (this.rotationMode === 'quaternion') {
       // rotationQ の +Z は注視点からカメラへ向く軸。ドラッグの回転軸は、戦闘ビューと
       // 同じくドラッグ方向とこの視線軸の外積にする。cameraForward(-offFrame)を使うと
       // 左右ドラッグの回転符号が反転する。
-      const keyYawAngle = -keyYaw * C.CAM_KEY_YAW_RATE * dt;
-      const keyPitchAngle = keyPitch * C.CAM_KEY_PITCH_RATE * dt;
-      if (keyYawAngle !== 0) {
-        this.rotationQ = qNormalize(qMul(qFromAxisAngle(upFrame, keyYawAngle), this.rotationQ));
+      if (keyYawRad !== 0) {
+        this.rotationQ = qNormalize(qMul(qFromAxisAngle(upFrame, -keyYawRad), this.rotationQ));
       }
       offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
       upFrame = qRotate(this.rotationQ, FRAME_UP);
-      if (keyPitchAngle !== 0) {
+      if (keyPitchRad !== 0) {
         const right = norm(cross(norm(offFrame), upFrame));
-        this.rotationQ = qNormalize(qMul(qFromAxisAngle(right, keyPitchAngle), this.rotationQ));
+        this.rotationQ = qNormalize(qMul(qFromAxisAngle(right, keyPitchRad), this.rotationQ));
       }
 
       offFrame = qRotate(this.rotationQ, FRAME_FORWARD);

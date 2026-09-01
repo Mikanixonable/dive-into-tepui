@@ -5,7 +5,6 @@ import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, scale, v3, len, sub } from '../../math/vec3';
 import { fmtMarkerDist } from '../hud/utils';
 import { FloatingOrigin } from '../camera/floating-origin';
-import * as C from '../const';
 import { Ship, SHIP_RADIATING_AREA_PER_MASS, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
@@ -42,7 +41,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
-import { DIRECTION_GLYPH } from '../marker/marker-glyphs';
+import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
@@ -58,6 +57,7 @@ import {
   type BoosterStage as BoosterStageModel,
 } from '../../render/booster';
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
+import { MARKER_PRIORITY } from '../marker/marker-manager';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
@@ -750,9 +750,9 @@ export class Player extends Ship {
   // isActive はこの艦が操作対象かどうか(マップ上の自艦マーカーを他の僚艦と塗り分けるため)。
   markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean, isActive: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.PLAYER;
+    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.PLAYER;
     const kindCls = isActive ? 'mk-self' : 'mk-ally';
-    const color = role === 'primary' ? currentThemePalette().signal : isActive ? 'var(--color-primary)' : C.COLOR_MARKER_ALLY;
+    const color = role === 'primary' ? currentThemePalette().signal : isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY;
     return {
       key: `player-${this.id}`,
       cls: role === 'primary' ? `${kindCls} mk-target` : kindCls,
@@ -762,7 +762,7 @@ export class Player extends Ship {
       priority,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
+      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: dist <= ALLY_BEARING_MAX_DISTANCE,

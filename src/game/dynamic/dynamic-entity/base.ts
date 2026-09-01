@@ -22,9 +22,8 @@ import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { MarkerRole } from '../../targeter';
 import { fmtMarkerDist } from '../../hud/utils';
-import { ENTITY_GLYPH } from '../../marker/marker-glyphs';
+import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
-import * as C from '../../const';
 import type { RayHit, SphereHit } from '../../../math/triangle-mesh';
 import { BaseCollisionGeometry } from './base-collision';
 import { PlayerThrottle } from '../../player/player-throttle';
@@ -39,6 +38,7 @@ import type { RenderStyle } from '../../../render/render-style';
 import type { MapVisibility } from '../../map/visibility-policy';
 import { currentThemePalette } from '../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
+import { MARKER_PRIORITY } from '../../marker/marker-manager';
 
 export const BASE_MAX_VESSELS = 4; // 基地が保有・格納できる艦艇の最大数
 const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
@@ -324,7 +324,7 @@ export class Base extends DynamicEntity implements Controllable {
 
   markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.BASE - dist / 1e9;
+    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {
       key: `base-${this.id}`,
       cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
@@ -334,11 +334,11 @@ export class Base extends DynamicEntity implements Controllable {
       priority,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
+      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
       bearingSym: ENTITY_GLYPH.base,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: false,
-      color: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
+      color: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }

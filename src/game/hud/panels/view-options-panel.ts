@@ -1,7 +1,7 @@
 // 表示パネル(マップモード左レール): 「マップに何を出すか」という1つの問いに答える —
 // 対象・ガイド・軌道ガイドの3タブに分かれ、対象はラベル+軌道/ラベル/非表示を1ボタンで循環、
 // ガイドは天球グリッド(赤道・黄道・月軌道面・月赤道面)と星空のトグルを持つ。
-import { DIRECTION_GLYPH } from '../../marker/marker-glyphs';
+import { DIRECTION_GLYPH } from '../../marker/marker-identity';
 import { hudRail } from '../hud-root';
 import {
   Button,

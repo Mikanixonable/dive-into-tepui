@@ -4,7 +4,7 @@
 // 仕事なので、ここでは行わない。
 import { Button, CloseButton, SegmentedControl, ValueInput } from '../hud/widgets';
 import { ObjectPicker } from '../hud/windows/object-picker';
-import { ENTITY_GLYPH } from '../marker/marker-glyphs';
+import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';

@@ -11,7 +11,7 @@ import { fmtMarkerDist } from '../hud/utils';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { TickRank, TimeLabelSetting, calendarBoundaries, elementTimeLabel, tickLabel } from '../hud/orbit/calendar-ticks';
 import { MarkerManager } from '../marker/marker-manager';
-import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
+import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { MapPickable } from '../pickable/map-pickable';

@@ -3,7 +3,7 @@ import { Vec3, v3, sub, len } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { ProjectFn } from './camera-system';
-import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind } from '../marker/marker-manager';
+import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind, MARKER_PRIORITY } from '../marker/marker-manager';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { lagrangePointsOf, secondaryFrameOf } from '../../physics/lagrange';
 import { occlusionOpacity } from '../../physics/occlusion';
@@ -12,11 +12,11 @@ import type { CelestialClass } from '../celestial/celestial-entity/celestial-ent
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { lagrangeId } from '../celestial/lagrange-id';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
-import { DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, LAGRANGE_MIN_CLEARANCE_RATIO, MARKER_PRIORITY } from '../const';
+import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../const';
 import type { MapPickable } from '../pickable/map-pickable';
-import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-glyphs';
+import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-identity';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
-import { resolveCrowdingWinner } from '../marker/crowding';
+import { resolveCrowdingWinner, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO } from '../marker/crowding';
 
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
 const FOCUS_LABEL_PRIORITY_PX = 40;

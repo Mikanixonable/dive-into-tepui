@@ -4,7 +4,6 @@
 // 掛け/割って読み替える。
 import { add, addScaled, cross, len, norm, scale, v3, Vec3 } from '../../math/vec3';
 import { MouseDelta } from '../input/input';
-import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
@@ -17,6 +16,8 @@ const CAM_DRAG_ROTATE_RATE = 0.005; // マウスドラッグ [rad/px]
 const DEFAULT_ROT: Quat = qFromAxisAngle(v3(1, 0, 0), 0.3 - (10 * Math.PI) / 180);
 const DEFAULT_DIST = 38;
 
+export const BASE_FOV = 55; // 通常時の垂直画角 [deg]
+
 export class ChaseCamera {
   private rot: Quat = DEFAULT_ROT;
   dist = DEFAULT_DIST;
@@ -27,7 +28,7 @@ export class ChaseCamera {
     position: v3(),
     up: v3(0, 1, 0),
     lookTarget: v3(),
-    fovDeg: C.BASE_FOV,
+    fovDeg: BASE_FOV,
     aspect: window.innerWidth / window.innerHeight,
   };
 
@@ -84,7 +85,7 @@ export class ChaseCamera {
   // キー/マウス入力から rot/dist を更新し、対象の状態から viewpoint を組み直す。target が
   // null なら(操作対象艦が居ない)何もせず、viewpoint は直前の値のまま凍結する。
   update(
-    mouse: MouseDelta, keyYaw: number, keyPitch: number, dt: number,
+    mouse: MouseDelta, keyYawRad: number, keyPitchRad: number,
     target: DynamicEntity | null,
   ): void {
     if (!target) return;
@@ -94,8 +95,8 @@ export class ChaseCamera {
     const up = qRotate(q, v3(0, 1, 0));
     const view = qRotate(q, v3(0, 0, 1));
 
-    if (keyYaw !== 0) q = qMul(qFromAxisAngle(up, -keyYaw * C.CAM_KEY_YAW_RATE * dt), q);
-    if (keyPitch !== 0) q = qMul(qFromAxisAngle(right, keyPitch * C.CAM_KEY_PITCH_RATE * dt), q);
+    if (keyYawRad !== 0) q = qMul(qFromAxisAngle(up, -keyYawRad), q);
+    if (keyPitchRad !== 0) q = qMul(qFromAxisAngle(right, keyPitchRad), q);
     if (mouse.roll !== 0) q = qMul(qFromAxisAngle(view, mouse.roll), q);
 
     // ドラッグベクトルと視線ベクトルの外積を回転軸とする: 軸は視線と直交するので視線まわりの
@@ -113,7 +114,7 @@ export class ChaseCamera {
 
     // 中ボタンドラッグ等によるパン変位
     if (mouse.panDx !== 0 || mouse.panDy !== 0) {
-      const metersPerPixel = metersPerPixelAtDepth(C.BASE_FOV, this.dist, Math.max(1, window.innerHeight));
+      const metersPerPixel = metersPerPixelAtDepth(BASE_FOV, this.dist, Math.max(1, window.innerHeight));
       this.panEci = addScaled(this.panEci, right, mouse.panDx * metersPerPixel);
       this.panEci = addScaled(this.panEci, up, mouse.panDy * metersPerPixel);
     }
@@ -126,7 +127,7 @@ export class ChaseCamera {
       position: add(lookTarget, scale(qRotate(q, v3(0, 0, -1)), this.dist)),
       up: qRotate(q, v3(0, 1, 0)),
       lookTarget: lookTarget,
-      fovDeg: C.BASE_FOV,
+      fovDeg: BASE_FOV,
       aspect: window.innerWidth / window.innerHeight,
     };
   }

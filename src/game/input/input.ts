@@ -2,9 +2,10 @@
 // 1フレームぶんのエッジトリガ(押した瞬間のキー/クリック/右クリック/マウス移動量)を
 // update() で確定させる。エッジトリガは先着順の消費モデルで、
 // take* の handler が true を返したイベントはキューから取り除かれる。
-import { CLICK_MOVE_THRESHOLD } from '../const';
 import { KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
 
+// これ未満の累積移動量ならドラッグではなくクリック扱い [px]
+export const CLICK_MOVE_THRESHOLD = 6;
 const RIGHT_CLICK_MOVE_THRESHOLD = 50; // [px]
 const TOUCH_LONG_PRESS_MS = 500; // タッチの長押しを右クリックとみなすまでの静止時間 [ms]
 const TOUCH_LONG_PRESS_FEEDBACK_MS = 300; // 長押し成立前に視覚フィードバックを出すまでの時間 [ms]

@@ -8,8 +8,8 @@ import type { ViewManager } from '../view-manager';
 import type { Projected } from '../../math/projection';
 import type { Vec3 } from '../../math/vec3';
 import { currentThemePalette } from '../theme';
-import * as C from '../const';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
+import { MARKER_PRIORITY } from '../marker/marker-manager';
 
 const DOCK_GUIDE_SHOW_DIST = 300;       // [m] ガイドを表示するポート接続点までの距離
 
@@ -102,7 +102,7 @@ export class DockingGuide {
       + `相対速度 ${candidate.relSpeed.toFixed(1)} m/s`;
     this.markerManager.setPosition(
       GUIDE_MARKER_KEY, 'mk-docking-guide', '◎', candidate.position, project,
-      label, 1, color, undefined, false, true, C.MARKER_PRIORITY.PRIMARY_TARGET,
+      label, 1, color, undefined, false, true, MARKER_PRIORITY.PRIMARY_TARGET,
     );
   }
 

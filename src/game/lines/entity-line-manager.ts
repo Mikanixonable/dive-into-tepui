@@ -3,7 +3,6 @@
 import * as THREE from 'three/webgpu';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
-import * as C from '../const';
 import { FloatingOrigin } from '../camera/floating-origin';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { Player } from '../player/player';
@@ -14,13 +13,15 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import { orbitLineBasisOf, type OrbitReference } from '../orbit-reference';
+import { COLOR_BASE } from '../marker/marker-identity';
 
+export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
 
 // 役割ごとの軌道線の見た目(色・不透明度・描画順)を一括して決める表。
 const LINE_STYLE = {
-  enemyLine: { color: C.COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
-  baseLine: { color: C.COLOR_BASE_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  enemyLine: { color: COLOR_ENEMY_ORBIT_LINE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
+  baseLine: { color: COLOR_BASE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
 } as const satisfies Record<string, LineStyle>;
 
 // ターゲットの軌道はほぼ自機の軌道と重なることが多く(近傍ランデブーを狙うため)、
