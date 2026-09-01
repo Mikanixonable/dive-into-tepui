@@ -8,7 +8,7 @@ import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
-import { CollinearPoint } from '../../physics/halo';
+import { CollinearPoint } from '../../physics/lagrange';
 import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../celestial/solar-system/constants';
 import { MOON } from '../celestial/solar-system/earth-system';
 import { semiMajorFromPeriod } from '../../physics/elements';
