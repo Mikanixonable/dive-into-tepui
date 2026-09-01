@@ -523,7 +523,7 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
   public readonly mapRename = (name: string): void => { this.name = name; };
 
   // 単クリックは選択までに留め、基地パネルは展開しない。
-  public readonly selectOnMap = (commands: MapCommands): void => {
+  public readonly onMapSelect = (commands: MapCommands): void => {
     commands.selectBase(this);
     commands.hint(`${this.name} を選択`);
   };

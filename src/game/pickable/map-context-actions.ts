@@ -243,9 +243,9 @@ export class MapContextActions implements MapCommands {
     if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
       const target = this.pickAt(
-        this.pickables.pickables.filter((i) => i.selectOnMap !== null), p.x, p.y);
+        this.pickables.pickables.filter((i) => i.onMapSelect !== null), p.x, p.y);
       if (!target) return false;
-      target.selectOnMap?.(this, p.x, p.y);
+      target.onMapSelect?.(this, p.x, p.y);
       return true;
     });
   }
