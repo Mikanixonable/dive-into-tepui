@@ -10,7 +10,7 @@ export const WORLD_BACKGROUND_LAYER = 2;
 // 3D 空間に居るが物理的な明るさを持たない表示物(軌道線・軌跡線・天球グリッド・縮尺グリッド・
 // Δv ギズモ)の専用チャンネル。合成パスの後ろで描かれるので、露出もトーンマッピングも受けず、
 // 指定した色がそのまま画面へ出る。LIT_OPAQUE_LAYER と同じくチャンネル0からは外す。
-export const OVERLAY_LAYER = 3;
+const OVERLAY_LAYER = 3;
 // 太陽光の影を落とす不透明メッシュ(艦艇・基地・デブリなど)の層。**天体の球はここへ入れない** —
 // 球の影は遮蔽関数が解析式で厳密に解いており、シャドウマップにも入れると半影の途中で二重に効く。
 export const SUN_SHADOW_CASTER_LAYER = 4;

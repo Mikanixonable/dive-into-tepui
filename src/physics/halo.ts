@@ -14,7 +14,6 @@
 import { CollinearPoint, SecondaryFrame, lagrangePointsOf } from './lagrange';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, scale, sub } from '../math/vec3';
-import { Vec3Tuple } from './cr3bp';
 
 // 共線ラグランジュ点まわりの回転局所基底と、その点の無次元パラメータ。
 // origin: L点の ECI 位置。xHat: 主天体→副天体方向。zHat: 系の公転面法線。
@@ -57,27 +56,13 @@ function linearParams(c2: number): { lambda: number; omegaZ: number; kappa: numb
 
 // 質量比 mu だけから決まる共線点の無次元パラメータ。gamma は L点から最も近い天体までの
 // 距離比で、局所座標(x: 主天体→副天体、z: 公転面法線)の長さの単位でもある。
-export interface CollinearParams {
+interface CollinearParams {
   readonly point: CollinearPoint;
   readonly mu: number;
   readonly gamma: number;
   readonly lambda: number;
   readonly omegaZ: number;
   readonly kappa: number;
-}
-
-// CR3BP 回転系(重心原点、両天体間距離を 1)での共線点の x 座標。
-function collinearBarycentricX(params: CollinearParams): number {
-  const { mu, gamma, point } = params;
-  if (point === 'L1') return 1 - mu - gamma;
-  if (point === 'L2') return 1 - mu + gamma;
-  return -mu - gamma;
-}
-
-// L点局所座標(gamma 単位、原点=L点)の位置を CR3BP 回転系の座標へ移す。
-export function collinearLocalToBarycentric(params: CollinearParams, local: Vec3Tuple): Vec3Tuple {
-  const xL = collinearBarycentricX(params);
-  return [xL + params.gamma * local[0], params.gamma * local[1], params.gamma * local[2]];
 }
 
 // 指定した副天体・L点における共線点まわりの回転局所基底と線形化パラメータを組み立てる。
@@ -226,7 +211,7 @@ function centerManifoldState(
 // Richardson (1980) 三次近似の係数一式。長さはすべて gamma 単位、時間は τ=n·t 単位。
 // l1·Ax² + l2·Az² + delta = 0 が面内・面外の振動数を一致させる振幅拘束で、これが
 // 成り立つ振幅の組だけがハロー軌道になる。
-export interface RichardsonCoefficients {
+interface RichardsonCoefficients {
   readonly lambda: number;
   readonly k: number;
   readonly a21: number; readonly a22: number; readonly a23: number; readonly a24: number;
@@ -290,7 +275,7 @@ export function richardsonCoefficients(params: CollinearParams): RichardsonCoeff
 
 // 面外振幅 az(gamma 単位)に対応する面内振幅(gamma 単位)。az=0 での値が、平面リアプノフ
 // 軌道からハローが分岐する下限になる。
-export function richardsonAmplitudeX(c: RichardsonCoefficients, az: number): number {
+function richardsonAmplitudeX(c: RichardsonCoefficients, az: number): number {
   return Math.sqrt(-(c.delta + c.l2 * az * az) / c.l1);
 }
 

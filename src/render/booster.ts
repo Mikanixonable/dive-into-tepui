@@ -26,26 +26,26 @@ export const BOOSTER_STAGE_DIMENSIONS = Object.freeze({
 });
 
 /** 呼び出し側で寸法を参照しやすいようにした型。 */
-export type BoosterStageDimensions = typeof BOOSTER_STAGE_DIMENSIONS;
+type BoosterStageDimensions = typeof BOOSTER_STAGE_DIMENSIONS;
 
-export const BOOSTER_PLUME_CORE_COLOR = 0xaee6ff;
-export const BOOSTER_PLUME_OUTER_COLOR = 0x4f9fff;
-export const BOOSTER_PLUME_CORE_OFFSET = 0.55;
-export const BOOSTER_PLUME_OUTER_OFFSET = 1.35;
-export const BOOSTER_PLUME_CORE_SIZE = 0.95;
-export const BOOSTER_PLUME_OUTER_SIZE = 2.2;
+const BOOSTER_PLUME_CORE_COLOR = 0xaee6ff;
+const BOOSTER_PLUME_OUTER_COLOR = 0x4f9fff;
+const BOOSTER_PLUME_CORE_OFFSET = 0.55;
+const BOOSTER_PLUME_OUTER_OFFSET = 1.35;
+const BOOSTER_PLUME_CORE_SIZE = 0.95;
+const BOOSTER_PLUME_OUTER_SIZE = 2.2;
 
 // 段間接続部。カバーはノズルの外周を6枚のパネルで囲み、次段の前端を
 // 段間の隙間から見せずに一続きのブースターとして読めるようにする。
 export const BOOSTER_INTERSTAGE_COVER_SEGMENTS = 6;
 export const BOOSTER_INTERSTAGE_COVER_Z = -7.02;
-export const BOOSTER_INTERSTAGE_COVER_LENGTH = 1.66;
+const BOOSTER_INTERSTAGE_COVER_LENGTH = 1.66;
 export const BOOSTER_INTERSTAGE_COVER_RADIUS = 1.43;
-export const BOOSTER_INTERSTAGE_COVER_PANEL_RADIAL = 0.18;
-export const BOOSTER_INTERSTAGE_COVER_PANEL_TANGENTIAL = 0.72;
+const BOOSTER_INTERSTAGE_COVER_PANEL_RADIAL = 0.18;
+const BOOSTER_INTERSTAGE_COVER_PANEL_TANGENTIAL = 0.72;
 export const BOOSTER_INTERSTAGE_BOLT_Z = -7.78;
 
-export interface BoosterStageOptions {
+interface BoosterStageOptions {
   /** タンク外皮の色。 */
   readonly tankColor?: THREE.ColorRepresentation;
   /** 金属部品の色。 */
@@ -347,7 +347,7 @@ export function buildBoosterExplosiveBoltMesh(segment: number): THREE.Mesh {
   return mesh;
 }
 
-export interface BoosterPlumeSample {
+interface BoosterPlumeSample {
   /** ノズル出口のワールド座標。 */
   readonly position: THREE.Vector3;
   /** ノズルから船尾へ向くワールド方向。ゼロベクトルは非表示扱い。 */

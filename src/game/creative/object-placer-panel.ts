@@ -30,12 +30,12 @@ import {
 } from './slider-field';
 
 export type ReferenceCelestialBody = string;
-export type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
-export type PlacementMode = 'elements' | 'lagrange';
-export type LagrangeOrbitKind = 'halo' | 'lissajous';
+type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
+type PlacementMode = 'elements' | 'lagrange';
+type LagrangeOrbitKind = 'halo' | 'lissajous';
 
 // 軌道要素指定のサイズ/形: sizeMode が選んだ組の値だけを持つ。
-export type EllipticSizeForm =
+type EllipticSizeForm =
   | { readonly sizeMode: 'apsides'; readonly peAltKm: number; readonly apAltKm: number }
   | { readonly sizeMode: 'semiMajorEcc'; readonly semiMajorKm: number; readonly eccentricity: number }
   | { readonly sizeMode: 'periodEcc'; readonly periodHours: number; readonly eccentricity: number };
@@ -70,7 +70,7 @@ export type ObjectPlacerForm = { readonly entityKind: DynamicEntityKind } & (Ele
 // 複製元の軌道要素一式は引き継げない(または引き継ぐと基地の基準天体制約に反する)ときの経路。
 // 'form' は種類を entityKind に固定し、軌道要素一式をその値へ書き換える —
 // 軌道要素をそのまま引き継げる複製の経路。
-export type ObjectPlacerPreset =
+type ObjectPlacerPreset =
   | { readonly kind: 'body'; readonly celestialBody: ReferenceCelestialBody }
   | { readonly kind: 'entityKind'; readonly entityKind: DynamicEntityKind }
   | { readonly kind: 'form'; readonly entityKind: DynamicEntityKind; readonly form: ElementsForm };

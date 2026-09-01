@@ -13,7 +13,7 @@ export type MediumSample = {
 };
 
 // 区間を通り抜けたあとの透過率と、区間が視線へ足した放射輝度。
-export type RayMarchResult = {
+type RayMarchResult = {
   readonly transmittance: Vec3Node;
   readonly radiance: Vec3Node;
 };
