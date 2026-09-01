@@ -18,11 +18,10 @@ export type PerfCounts = {
   players: number; enemies: number; bullets: number; casings: number;
   debris: number; ammoPickups: number; rcsFuelPickups: number; bases: number;
   predicted: number; predictComplete: number; predictorSteps: number;
-  arcBodies: number; arcRevisits: number; arcLead: number | null;
+  arcCelestialBodies: number; arcRevisits: number; arcLead: number | null;
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
   simSubsteps: number; simIntegrated: number; simFollowed: number; gravitySources: number;
   planArcs: number; planSteps: number;
-  celestialBodiesCacheHits: number; celestialBodiesCacheMisses: number;
   timeCacheHits: number; timeCacheMisses: number;
   warp: number;
 };
@@ -40,7 +39,7 @@ const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (
   { key: 'pred-tracked', label: 'tracked', group: '予測', read: (c) => c.predicted },
   { key: 'pred-complete', label: 'complete', group: '予測', read: (c) => c.predictComplete },
   { key: 'pred-steps', label: 'steps', group: '予測', read: (c) => c.predictorSteps },
-  { key: 'arc-bodies', label: '解決天体', group: '予測', read: (c) => c.arcBodies },
+  { key: 'arc-celestial-bodies', label: '解決天体', group: '予測', read: (c) => c.arcCelestialBodies },
   { key: 'arc-revisits', label: '期限訪問', group: '予測', read: (c) => c.arcRevisits },
   { key: 'sim-substeps', label: 'substeps', group: 'シミュレーション', read: (c) => c.simSubsteps },
   { key: 'sim-integrated', label: '積分', group: 'シミュレーション', read: (c) => c.simIntegrated },
@@ -94,8 +93,6 @@ export class PerfMeter {
   private frames = 0;
   private lastFlush = performance.now();
   // 前回フラッシュ時点の暦キャッシュ累計。表示する集計期間分の差分を取るために持つ。
-  private lastCelestialBodiesHits = 0;
-  private lastCelestialBodiesMisses = 0;
   private lastTimeHits = 0;
   private lastTimeMisses = 0;
   // 直近フラッシュで組んだ行。窓を開き直したときに空の窓を出さないために持つ。
@@ -275,12 +272,8 @@ export class PerfMeter {
     const totalAvg = totals.reduce((a, b) => a + b, 0) / frames;
     const totalSorted = [...totals].sort((a, b) => a - b);
     // 暦キャッシュは累計値なので、この集計期間に増えた分だけを見せる
-    const attrHits = c.celestialBodiesCacheHits - this.lastCelestialBodiesHits;
-    const attrMisses = c.celestialBodiesCacheMisses - this.lastCelestialBodiesMisses;
     const timeHits = c.timeCacheHits - this.lastTimeHits;
     const timeMisses = c.timeCacheMisses - this.lastTimeMisses;
-    this.lastCelestialBodiesHits = c.celestialBodiesCacheHits;
-    this.lastCelestialBodiesMisses = c.celestialBodiesCacheMisses;
     this.lastTimeHits = c.timeCacheHits;
     this.lastTimeMisses = c.timeCacheMisses;
     const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
@@ -307,7 +300,6 @@ export class PerfMeter {
       ...RATE_COUNTS.map((r, i) => this.countRow(r.key, r.label, r.group, this.rateStats[i]!, frames)),
       { key: 'arc-lead', label: '先端余裕', group: '予測', value: c.arcLead === null ? '—' : `${c.arcLead.toFixed(0)}s` },
 
-      { key: 'eph-attr', label: 'celestialBodiesAt', value: `hit ${attrHits} / miss ${attrMisses}`, group: '暦キャッシュ' },
       { key: 'eph-all', label: '全リング', value: `hit ${timeHits} / miss ${timeMisses}`, group: '暦キャッシュ' },
 
       { key: 'view', label: 'view', value: c.mapMode ? 'map' : 'combat', group: '表示' },

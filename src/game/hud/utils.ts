@@ -1,4 +1,5 @@
 // HUD 表示用の数値整形と、data-id で引いた要素への書き込み。
+import { julianDateToCalendarDate, TdbJulianDate } from '../../physics/time';
 import * as C from '../const';
 
 // data-id マップから id の要素を引き、表示中の文字列と異なるときだけ書き換える。
@@ -35,9 +36,20 @@ export function fmtSpeed(ms: number): string {
   return `${ms.toFixed(1)} m/s`;
 }
 
+// ランの元期(simTime=0 が指す絶対時刻)を、fmtDateTime へ渡せる unix 秒相当へ写す。
+// simTime を足せばその瞬間の表示用 unix 秒になる。**Date.UTC は西暦 0〜99 年を 1900+year
+// へ写す**ので、年だけは setUTCFullYear で入れ直す — 開始日時は西暦0年以降を受ける。
+export function epochUnixSeconds(epoch: TdbJulianDate): number {
+  const c = julianDateToCalendarDate(epoch);
+  const date = new Date(0);
+  date.setUTCFullYear(c.year, c.month - 1, c.day);
+  date.setUTCHours(c.hour, c.minute, c.second, 0);
+  return date.getTime() / 1000;
+}
+
 // UTC 絶対時刻を ISO 8601 (例: "2026-08-08T14:16:00") で表記する。toISOString() の
-// 拡張年表記(4桁を超える年に符号を前置する形式)は SIM_EPOCH_TDB の遠未来年代と噛み合わないので
-// 使わず、各成分を直接取り出して組む。
+// 拡張年表記(4桁を超える年に符号を前置する形式)は遠未来の年代と噛み合わないので使わず、
+// 各成分を直接取り出して組む。
 export function fmtDateTime(unixSec: number): string {
   if (!isFinite(unixSec)) return '-------------------';
   const d = new Date(unixSec * 1000);

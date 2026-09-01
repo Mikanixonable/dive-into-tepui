@@ -3,7 +3,7 @@
 // ものには順応ぶんだけを打ち消す倍率を答える。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
-import { SUN_IRRADIANCE_1AU, sunIrradianceAtDistance } from './sun-light';
+import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from './sun-light';
 import type { FloatNode, FloatUniform } from '../tsl-types';
 
 // 順応の強さ。1 なら完全に順応して距離が絵から消え、0 なら順応しない。**太陽に正対した
@@ -17,11 +17,11 @@ export class Exposure {
   private adaptation = 1;
   private compensation = 1;
 
-  // 順応の基準点と恒星の位置(どちらも描画座標)を1フレーム分書く。**1 天文単位より内側へは
-  // 順応しない** — 較正(表示値 = アルベド)をそのまま残すためで、太陽へ寄っても係数が 1 で
-  // 止まるので画面が黒く沈むこともない。
-  setReference(reference: THREE.Vector3, sunPosition: THREE.Vector3): void {
-    const irradiance = sunIrradianceAtDistance(reference.distanceTo(sunPosition));
+  // 順応の基準点と恒星の位置(どちらも描画座標)、その恒星の放射強度を1フレーム分書く。
+  // **1 天文単位ぶんの放射照度より明るい側へは順応しない** — 較正(表示値 = アルベド)を
+  // そのまま残すためで、恒星へ寄っても係数が 1 で止まるので画面が黒く沈むこともない。
+  setReference(reference: THREE.Vector3, sunPosition: THREE.Vector3, sunIntensity: number): void {
+    const irradiance = irradianceAtDistance(sunIntensity, reference.distanceTo(sunPosition));
     this.adaptation = Math.max(1, (SUN_IRRADIANCE_1AU / irradiance) ** ADAPTATION_EXPONENT);
     this.refreshFactor();
   }

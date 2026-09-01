@@ -1,9 +1,9 @@
 // 操作対象（自機船 0..n 隻、および基地）の切替・削除と、それに伴う各所有者への伝播
 // (航法ターゲット・SFX、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
 import type { Player } from './player/player';
-import type { Base } from './game-entity/base';
-import type { Controllable } from './game-entity/controllable';
-import type { EntityManager } from './simulation/entity-manager';
+import type { Base } from './dynamic/dynamic-entity/base';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { CameraSystem } from './camera/camera-system';
 import type { NavTarget } from './nav-target';
 import type { WorldSfx } from '../audio/sfx/world-sfx';
@@ -17,7 +17,7 @@ export class ActiveControllableController {
   // の先頭、艦が0隻なら null。
   constructor(
     activePlayerId: string | null | undefined,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly cameraSystem: CameraSystem,
     private readonly navTarget: NavTarget,
     private readonly worldSfx: WorldSfx,

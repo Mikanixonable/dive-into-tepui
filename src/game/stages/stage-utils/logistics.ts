@@ -4,15 +4,15 @@ import { randomQuat } from '../../../physics/attitude';
 import { randSym } from '../../../math/random';
 import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec3';
 import * as C from '../../const';
-import { AmmoPickup } from '../../game-entity/ammo-pickup';
-import { RcsFuelPickup } from '../../game-entity/rcs-fuel-pickup';
+import { AmmoPickup } from '../../dynamic/dynamic-entity/ammo-pickup';
+import { RcsFuelPickup } from '../../dynamic/dynamic-entity/rcs-fuel-pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { UiSfx } from '../../../audio/sfx/ui-sfx';
 import { Player } from '../../player/player';
-import type { EntityManager } from '../../simulation/entity-manager';
-import type { SimSpeedManager } from '../../simulation/sim-speed-manager';
+import type { DynamicSystem } from '../../dynamic/dynamic-system';
+import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { LogisticsSaveData } from '../../save/save-data';
 
 const AMMO_PICKUP_MAGS = 6; // 補給 1 個の取り込みで増えるマガジン数
@@ -38,7 +38,7 @@ export class Logistics {
     private readonly _worldSfx: WorldSfx,
     private readonly _uiSfx: UiSfx,
     private readonly _scene: THREE.Scene,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     saved?: LogisticsSaveData,
   ) {
     this.resupplyCheckAt = saved?.resupplyCheckAt ?? 0;
@@ -60,7 +60,7 @@ export class Logistics {
     // ずらした位置・速度と、ランダムな姿勢で補給エンティティを作る
     const ammoPickup = new AmmoPickup(
       {
-        state: kinematicState(
+        state: kinematicState<'eci'>(
           player.state.t,
           rotateAxis(r, hHat, ang),
           add(rotateAxis(v, hHat, ang), randVec(1.5)),
@@ -91,7 +91,7 @@ export class Logistics {
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     const fuelPickup = new RcsFuelPickup(
       {
-        state: kinematicState(
+        state: kinematicState<'eci'>(
           player.state.t,
           rotateAxis(r, hHat, ang),
           add(rotateAxis(v, hHat, ang), randVec(1.5)),

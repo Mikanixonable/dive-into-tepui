@@ -122,7 +122,7 @@ export function srpAccel(r: Vec3, sun: Attractor, srpCoeff: number, sunlit: numb
 
 #### 1.6.2 エンティティ属性の追加
 
-`src/game/game-entity/game-entity.ts` の `GameEntity` に `bcInv` と並べて `srpCoeff` を追加する。既定値は 0(SRP を受けない)とし、`Ship` が艦艇用の値を、`DebrisPiece` / `Ammo` が破片用の値を上書きする。弾丸(`Bullet`)は寿命が数秒であり SRP の影響が完全に無視できるため 0 のままとする。
+`src/game/dynamic/dynamic-entity/dynamic-entity.ts` の `DynamicEntity` に `bcInv` と並べて `srpCoeff` を追加する。既定値は 0(SRP を受けない)とし、`Ship` が艦艇用の値を、`DebrisPiece` / `Ammo` が破片用の値を上書きする。弾丸(`Bullet`)は寿命が数秒であり SRP の影響が完全に無視できるため 0 のままとする。
 
 対応する定数を `src/game/const.ts` に追加する。命名は `bcInv` の定数群(`SHIP_BCINV` 等)に合わせ、`SHIP_SRP_COEFF` / `SMALL_DEBRIS_SRP_COEFF` とする。
 
@@ -134,8 +134,8 @@ export function srpAccel(r: Vec3, sun: Attractor, srpCoeff: number, sunlit: numb
 
 `stepDynamicsRK4` の呼び出し元は 3 箇所である。いずれも新しい引数を渡すよう変更する。
 
-- `src/game/game-entity/game-entity.ts` の `GameEntity.stepSim`(実機の積分)
-- `src/game/game-entity/game-entity.ts` の `GameEntity.stepPrediction`(予測軌道)
+- `src/game/dynamic/dynamic-entity/dynamic-entity.ts` の `DynamicEntity.stepSim`(実機の積分)
+- `src/game/dynamic/dynamic-entity/dynamic-entity.ts` の `DynamicEntity.stepPrediction`(予測軌道)
 - `src/game/plan/plan-arc.ts`(軌道計画の弧)
 
 軌道計画の弧は自機の軌道のみを扱うため、`SHIP_BCINV` を使っているのと同様に `SHIP_SRP_COEFF` を使う。
@@ -557,11 +557,11 @@ export type Attractor = {
 
 - **`strongestAttractor` と `localOrbitPeriod` は変更しない。** どちらも `attractorAccel`(質点重力)だけで判断する。`J2` / `C22` は「どの天体が支配的か」も「軌道運動の時間スケール」も変えないため、これらに 2 次項を混ぜる理由がない。
 - **`elementsAround` は変更しない。** 状態ベクトルから接触軌道要素を出す計算であり、重力場の形には依存しない。
-- **予測軌道 (`GameEntity.stepPrediction`) と軌道計画の弧 (`plan-arc.ts`) は変更不要で自動的に追従する。** どちらも `stepDynamicsRK4` に `bodies` を渡しており、2 次重力場は `Attractor` に載るため、引数の追加なしに反映される。
+- **予測軌道 (`DynamicEntity.stepPrediction`) と軌道計画の弧 (`plan-arc.ts`) は変更不要で自動的に追従する。** どちらも `stepDynamicsRK4` に `bodies` を渡しており、2 次重力場は `Attractor` に載るため、引数の追加なしに反映される。
 
 #### 3.10.4 性能に関する確認事項
 
-`src/physics/ephemeris.ts` の冒頭コメントは「メモ化はしない — 呼び出し順に依存する隠れた制約を作らず、毎回すべてを素直に評価する」と明記しており、実際に `attractorsAt(t)` は呼ばれるたびに太陽系の合成を最初から評価する。この呼び出しは `GameEntity.stepSim` からエンティティごと・積分ステップごとに走る。
+`src/physics/ephemeris.ts` の冒頭コメントは「メモ化はしない — 呼び出し順に依存する隠れた制約を作らず、毎回すべてを素直に評価する」と明記しており、実際に `attractorsAt(t)` は呼ばれるたびに太陽系の合成を最初から評価する。この呼び出しは `DynamicEntity.stepSim` からエンティティごと・積分ステップごとに走る。
 
 **`CLAUDE.md` には「`Ephemeris` が直前の参照をメモ化するので共有値が回収される」という趣旨の記述があるが、これはコードと一致していない。** 本計画の実装と同じ変更セットで `CLAUDE.md` のこの記述を修正する。
 
@@ -590,7 +590,7 @@ export type Attractor = {
 ### 第 2 段階: 太陽輻射圧
 
 7. `src/physics/srp.ts` を新設する(§1.6.1)。
-8. `GameEntity` に `srpCoeff` を追加し、`const.ts` に艦艇・破片用の定数を追加する(§1.6.2)。
+8. `DynamicEntity` に `srpCoeff` を追加し、`const.ts` に艦艇・破片用の定数を追加する(§1.6.2)。
 9. `accel` / `stepDynamicsRK4` に `srpCoeff` と `penumbra` を通し、呼び出し 3 箇所を更新する(§1.6.3)。
 
 この段階の完了時点で、**ラグランジュ点・月遷移軌道に置いた物体が長期的に太陽方向へ押される挙動が入る。** ハロー軌道の維持を扱う際の前提が整う。

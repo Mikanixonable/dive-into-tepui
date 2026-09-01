@@ -11,15 +11,15 @@
 import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat } from '../../../physics/attitude';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../../physics/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../../celestial/solar-system/constants';
 import { stateFromOrbitalElements } from '../../../physics/elements';
 import { randSym } from '../../../math/random';
 import { addScaled, len, norm, rotateAxis, scale, v3, type Vec3 } from '../../../math/vec3';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy } from '../../game-entity/enemy';
-import { inertiaForEnemyKind, type EnemyKind } from '../../game-entity/enemy-kind';
-import type { FormationRole } from '../../game-entity/enemy-formation';
+import { Enemy } from '../../dynamic/dynamic-entity/enemy';
+import { inertiaForEnemyKind, type EnemyKind } from '../../dynamic/dynamic-entity/enemy-kind';
+import type { FormationRole } from '../../dynamic/dynamic-entity/enemy-formation';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 
@@ -27,7 +27,7 @@ import type { ProteinDisplaySettings } from '../../protein/protein-display';
 function phasedState(base: KinematicState, dAlong: number): KinematicState {
   const hHat = orbitAxes(base).nrm;
   const ang = dAlong / len(base.r);
-  return kinematicState(base.t, rotateAxis(base.r, hHat, ang), rotateAxis(base.v, hHat, ang));
+  return kinematicState<'eci'>(base.t, rotateAxis(base.r, hHat, ang), rotateAxis(base.v, hHat, ang));
 }
 
 // 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体): ランダム姿勢+角速度。
@@ -67,7 +67,7 @@ function generateFreeEnemy(
   );
 }
 
-// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)を、共通の epoch・速度で組む配置と
+// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)を、共通の時刻・速度で組む配置と
 // 生成関数を返す。centerState を中心に、攻撃担当(5I4R)はその場、盾役(ルビスコ)はプレイヤー
 // 方向へ 450 m、エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離す。以後の隊列維持操舵はしない。
 // 各役は asset ごとに実体化タイミングが異なりうるため(SPEC/PROTEIN.md「出現」節)、呼び出し側が
@@ -78,8 +78,8 @@ export function proteinFormationSpawns(
 ): readonly { assetId: ProteinAssetId; build: () => Enemy }[] {
   const towardPlayer = norm(v3(playerPosition.x - centerState.r.x, playerPosition.y - centerState.r.y, playerPosition.z - centerState.r.z));
   const offset = 450;
-  const shieldState = kinematicState(centerState.t, addScaled(centerState.r, towardPlayer, offset), centerState.v);
-  const energyState = kinematicState(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
+  const shieldState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, offset), centerState.v);
+  const energyState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
   return [
     {
       assetId: 'pdb-5i4r',
@@ -107,7 +107,7 @@ export function generateCoellipticEnemy(
 ): Enemy {
   const phased = phasedState(base, dAlong);
   const altitude = len(base.r) + altitudeOffset;
-  const state: KinematicState = kinematicState(
+  const state: KinematicState = kinematicState<'eci'>(
     phased.t,
     scale(norm(phased.r), altitude),
     scale(norm(phased.v), Math.sqrt(MU_EARTH / altitude)),
@@ -120,7 +120,7 @@ export function generateCrossingEnemy(
   name: string, base: KinematicState, dAlong: number, hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   const phased = phasedState(base, dAlong);
-  const state: KinematicState = kinematicState(phased.t, phased.r, rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180));
+  const state: KinematicState = kinematicState<'eci'>(phased.t, phased.r, rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180));
   return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, worldSfx, fx, scene);
 }
 
@@ -129,7 +129,7 @@ export function generateEllipticEnemy(
   name: string, base: KinematicState, dAlong: number, hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
   const phased = phasedState(base, dAlong);
-  const state: KinematicState = kinematicState(phased.t, phased.r, scale(phased.v, 1.006));
+  const state: KinematicState = kinematicState<'eci'>(phased.t, phased.r, scale(phased.v, 1.006));
   return generateDriftingEnemy(name, state, hp, accent, orbitLineColor, worldSfx, fx, scene);
 }
 

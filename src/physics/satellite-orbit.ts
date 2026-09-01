@@ -6,15 +6,15 @@
 // 周期項は、二体部分(厳密ケプラー解)の上へ黄経・黄緯・動径の加算補正として重ねる —
 // 中心差(equation of the center、引数が衛星自身の平均近点角 mp のみの項)は二体解が
 // 既に出しているので表に含めてはならない。同様に黄緯の主傾斜項(引数が f のみ)も
-// 軌道傾斜の幾何が出す(採用基準・実採用数は solar-system.ts の MOON_LON_TERMS/
-// MOON_LAT_TERMS/MOON_DIST_TERMS のコメントを参照)。到達精度: 月では、二体ケプラー解
+// 軌道傾斜の幾何が出す(採用基準・実採用数は MOON_LON_TERMS/
+// MOON_LAT_TERMS/MOON_DIST_TERMS の表のコメントを参照)。到達精度: 月では、二体ケプラー解
 // との黄経差の最大値が約2.3°(採用14項の振幅和 ≈2.49° に対し実測はその9割強)、地心距離は
 // 近地点 356,400〜370,400 km・遠地点 404,000〜406,700 km の実測範囲にほぼ収まる
 // (遠地点のみ切り詰めによる高次相関項の欠如で最大 0.05% ほど超えることがある)。
 import { Quat } from './attitude';
-import { PlanetAngles } from './planet-orbit';
+import { PlanetAngles } from './kepler-orbit';
 import { eclToEci, eciToEcl } from './ecliptic';
-import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitState } from './kepler-orbit';
+import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState } from './kepler-orbit';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { dot, len } from '../math/vec3';
 
@@ -111,17 +111,26 @@ function sumPeriodicTerms(
 
 // 惑星中心・ECI 軸での状態。太陽の方向は planetAngles 経由で入る。二体部分の黄道座標
 // (黄経・黄緯・動径)を求め、その上に周期項の加算補正を重ねてから ECI 位置・速度へ戻す。
-// 回転基準系(kepler-orbit.ts の keplerOrbitRotation)と軌道法線は二体部分(平均要素)
-// だけから組まれ、周期項を含まない — 混ぜると角速度が滑らかでなくなるためで、
-// この結果、衛星の実位置は回転系の x̂ 軸から最大 2.5° ほどずれる(周期項の振幅の総和)。
+// **回転基準系と軌道法線はこの実状態から組む**(celestial-motion.ts の orbitFrameRotationAt /
+// orbitNormalAt)ので、周期項もそのまま入る — 衛星は回転系の x̂ 軸上に厳密に乗り、接触軌道面は
+// 平均軌道面のまわりを揺れる(月で最大 0.81°)。二体部分だけで組んでいた頃は x̂ から最大 2.5°
+// ずれていた。公表値と突き合わせる量(カッシーニ状態の傾斜・昇交点歳差の掃き)は平均軌道面に
+// 対して定義されているので、そちらは keplerOrbitNormal で測る。
+// 二体部分の元期を simZeroEt ぶん進め、平均黄経へ初期位相 phase を足した軌道。周期項の
+// 引数はすべて二体部分の角から組むので、畳むのは kepler だけでよい。
+export function satelliteOrbitForSimZero(
+  orbit: SatelliteOrbit, phase: number, simZeroEt: number,
+): SatelliteOrbit {
+  return { ...orbit, kepler: keplerOrbitForSimZero(orbit.kepler, phase, simZeroEt) };
+}
+
 export function satelliteState(
   orbit: SatelliteOrbit,
   planetAngles: PlanetAngles,
   t: number,
-  phaseOffset: number,
-): KinematicState {
+): KinematicState<'primaryRel'> {
   const k = orbit.kepler;
-  const base = keplerOrbitState(k, t, phaseOffset);
+  const base = keplerOrbitState(k, t);
   // 黄道座標への分解は黄道極を通る軌道で rho0 = hypot(x,y) → 0 となり速度が発散する。
   // 重ねる補正が1項も無いなら分解する意味自体が無いので、二体解をそのまま返す。
   if (orbit.lonTerms.length === 0 && orbit.latTerms.length === 0 && orbit.distTerms.length === 0) return base;
@@ -140,7 +149,7 @@ export function satelliteState(
 
   // 出典(Meeus)の基本角と同じ、太陽からの平均離角 D・太陽の平均近点角 M・衛星の平均近点角
   // M'・衛星の昇交点からの緯度引数 F(すべて平均角)。
-  const satL = k.l0 + phaseOffset + k.lRate * t;
+  const satL = k.l0 + k.lRate * t;
   const sunL = planetAngles.meanLongitude + Math.PI; // 見かけの太陽黄経 = 惑星の日心黄経 + π
   const d = satL - sunL;
   const m = planetAngles.meanAnomaly;
@@ -173,5 +182,5 @@ export function satelliteState(
   const vye = rDot * cosB * sinL - r * betaRate * sinB * sinL + r * lambdaRate * cosB * cosL;
   const vze = rDot * sinB + r * betaRate * cosB;
 
-  return kinematicState(t, eclToEci(xe, ye, ze), eclToEci(vxe, vye, vze));
+  return kinematicState<'primaryRel'>(t, eclToEci(xe, ye, ze), eclToEci(vxe, vye, vze));
 }

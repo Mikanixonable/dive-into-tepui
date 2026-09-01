@@ -10,7 +10,7 @@ import rawMotion from '../../src/assets/models/pdb5i4rMotion.json';
 import { ProteinCombatState } from '../../src/game/protein/protein-combat-state';
 import type { ProteinAssetDefinition, ProteinSiteDefinition } from '../../src/game/protein/protein-schema';
 import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
-import { collisionDamageFraction } from '../../src/game/game-entity/contact-damage';
+import { collisionDamageFraction } from '../../src/game/dynamic/dynamic-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
 import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';

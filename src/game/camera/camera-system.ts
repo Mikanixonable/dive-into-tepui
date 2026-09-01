@@ -3,9 +3,9 @@ import { Hud } from '../hud/hud';
 import { CombatCameraSystem } from './combat-camera-system';
 import { MapCamera } from './map-camera';
 import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
-import { catalogFamilyIndex } from '../celestial/orbit-guide-catalog';
+import { catalogFamilyIndex } from '../celestial/orbit-guide/orbit-guide-catalog';
 import { FocusMarkers } from './focus-markers';
-import { applyBodyClassDisplayMode, BodyClassToggles, DEFAULT_BODY_CLASS_TOGGLES, normalizeBodyClassToggles } from '../celestial/body-visibility';
+import { applyMapDisplayMode, MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, normalizeMapDisplayToggles } from '../map/display-toggles';
 import { MapPickable } from '../pickable/map-pickable';
 import { MarkerManager } from '../marker/marker-manager';
 import { Input } from '../input/input';
@@ -17,26 +17,26 @@ import {
   metersPerPixel, metersPerPixelAtDistance, ndcToScreen, Projected, projectToNdc, Viewpoint,
 } from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
-import type { Ephemeris } from '../../physics/ephemeris';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import { CameraSaveData } from '../save/save-data';
 
-const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.bodyClassToggles';
+const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.mapDisplayToggles';
 
 // localStorage から天体クラス別トグルを読み込む。取得できなければ既定値を返す。
-function loadBodyClassToggles(): BodyClassToggles {
+function loadBodyClassToggles(): MapDisplayToggles {
   try {
     const raw = localStorage.getItem(BODY_CLASS_TOGGLES_STORAGE_KEY);
-    if (!raw) return DEFAULT_BODY_CLASS_TOGGLES;
+    if (!raw) return DEFAULT_MAP_DISPLAY_TOGGLES;
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_BODY_CLASS_TOGGLES;
-    return normalizeBodyClassToggles({ ...DEFAULT_BODY_CLASS_TOGGLES, ...parsed });
+    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_MAP_DISPLAY_TOGGLES;
+    return normalizeMapDisplayToggles({ ...DEFAULT_MAP_DISPLAY_TOGGLES, ...parsed });
   } catch {
-    return DEFAULT_BODY_CLASS_TOGGLES;
+    return DEFAULT_MAP_DISPLAY_TOGGLES;
   }
 }
 
 // 天体クラス別トグルを localStorage へ保存する。
-function saveBodyClassToggles(v: BodyClassToggles): void {
+function saveBodyClassToggles(v: MapDisplayToggles): void {
   try {
     localStorage.setItem(BODY_CLASS_TOGGLES_STORAGE_KEY, JSON.stringify(v));
   } catch {
@@ -44,7 +44,7 @@ function saveBodyClassToggles(v: BodyClassToggles): void {
   }
 }
 
-import type { GameEntity } from '../game-entity/game-entity';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
 const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
@@ -136,10 +136,10 @@ export class CameraSystem {
   get overviewMode(): boolean { return this._overviewMode; }
 
   // クラスごとの天体表示トグル。マップのラベル・軌道物体一覧・配置UIの基準天体が
-  // この1つの状態を共有する(body-visibility.ts の visibleBodyIds に渡す)。フォーカスと
+  // この1つの状態を共有する(map/visibility-policy.ts へ渡す)。フォーカスと
   // 太陽系パネルを既に所有しているこのクラスが、同じ場所で持つ。
-  private _bodyClassToggles: BodyClassToggles = loadBodyClassToggles();
-  get bodyClassToggles(): BodyClassToggles { return this._bodyClassToggles; }
+  private _bodyClassToggles: MapDisplayToggles = loadBodyClassToggles();
+  get mapDisplayToggles(): MapDisplayToggles { return this._bodyClassToggles; }
 
   setMapMode(open: boolean): void { this._overviewMode = open; }
 
@@ -160,17 +160,17 @@ export class CameraSystem {
   constructor(
     _hud: Hud,
     markerManager: MarkerManager,
-    ephemeris: Ephemeris,
+    celestialSystem: CelestialSystem,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
     // 両カメラとフォーカス候補ラベル
-    this.focusMarkers = new FocusMarkers(markerManager, ephemeris);
+    this.focusMarkers = new FocusMarkers(markerManager, celestialSystem);
     this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
-    this.mapCamera = new MapCamera(_hud, ephemeris, saved?.overview);
+    this.mapCamera = new MapCamera(_hud, celestialSystem, saved?.overview);
     // 表示パネルと天体クラス側操作のコールバック
     this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot, catalogFamilyIndex());
     this.viewOptionsPanel.onBodyClassModeChange = (key, mode) => {
-      this._bodyClassToggles = applyBodyClassDisplayMode(this._bodyClassToggles, key, mode);
+      this._bodyClassToggles = applyMapDisplayMode(this._bodyClassToggles, key, mode);
       saveBodyClassToggles(this._bodyClassToggles);
       this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
     };
@@ -210,7 +210,7 @@ export class CameraSystem {
   // displayTime/frameAnchors は広範囲視点の座標系変換にのみ使う — 線・メッシュと同じ表示時刻でないと
   // 回転系選択時にカメラだけが現在時刻に取り残される。
   update(
-    player: GameEntity | null,
+    player: DynamicEntity | null,
     displayTime: number,
     input: Input,
     dt: number,

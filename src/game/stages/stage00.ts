@@ -1,15 +1,16 @@
 // Stage 00: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く。
 import * as C from '../const';
-import { Stage, type StageDeps } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { Player } from '../player/player';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { WaveAttack } from './stage-utils/wave-attack';
 import type { Stage00SaveData, StageSaveData } from '../save/save-data';
 
 export class Stage00 extends Stage {
   static readonly id = '00' as const;
+  static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'stage 00';
   static readonly selectSub = '【無限耐久サバイバル】 常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
   static readonly selectKeys = ['Digit0'];
@@ -21,7 +22,7 @@ export class Stage00 extends Stage {
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.waveAttack = new WaveAttack(
-      this._hud, this._worldSfx, this._fx, this._scene, this._ephemeris, saved as Stage00SaveData | undefined,
+      this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem, saved as Stage00SaveData | undefined,
     );
     this.begin();
   }
@@ -37,7 +38,7 @@ export class Stage00 extends Stage {
   }
 
   // 自機・弾薬ピックアップ・初期の敵ウェーブを配置する。
-  protected init(entities: EntityManager): void {
+  protected init(entities: DynamicSystem): void {
     const player = this.addPlayer();
     for (let i = 0; i < C.MAX_ACTIVE_AMMO_PICKUPS; i++) {
       this.logistics.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
@@ -47,7 +48,7 @@ export class Stage00 extends Stage {
   }
 
   // 敵の行動・補給・波状攻撃の更新を行う。
-  update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     if (!player) return;
 
     this.behaveAllEnemies(player, entities, simTime, simSpeed);
