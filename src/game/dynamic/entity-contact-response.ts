@@ -1,6 +1,5 @@
 // 接触ペア1組の反発の計算。当事者2体の現在状態から、押し戻し後の位置・速度と接触の幾何を
 // 出す。球でない当たり形状(基地)の吸収もここが引き受けるので、解決器の側は種別を見ない。
-import * as C from '../const';
 import { KinematicState } from '../../physics/kinematic-state';
 import { sub, scale, len, type Vec3 } from '../../math/vec3';
 import type { SphereHit } from '../../math/triangle-mesh';
@@ -10,6 +9,9 @@ import {
   CollisionResponse, ContactGeometry,
   distributeSphereContact, resolveSphereCollision,
 } from '../../physics/collision-response';
+
+// 剛体接触の反発係数。天体の表面でも物体どうしでも同じ値を使う。
+export const CONTACT_RESTITUTION = 0.4;
 
 // 基地の当たり形状は球ではないので、幾何だけを基地自身へ問い、受け持ちの分配は球どうしと
 // 共有する。触れていなければ null。
@@ -83,7 +85,7 @@ export function entityContactResponse(
     const geometry = baseContactGeometry(
       base, baseIsA ? b : a, baseIsA ? aWork : bWork, baseIsA ? bWork : aWork, baseIsA);
     return geometry === null
-      ? null : distributeSphereContact(bodyA, bodyB, C.CONTACT_RESTITUTION, geometry);
+      ? null : distributeSphereContact(bodyA, bodyB, CONTACT_RESTITUTION, geometry);
   }
 
   const sweptValid = a.prevState.t < a.state.t && b.prevState.t < b.state.t
@@ -94,13 +96,13 @@ export function entityContactResponse(
   if (a.usesCustomSphereCollision() || b.usesCustomSphereCollision()) {
     const custom = customContactGeometry(a, aWork, b, bWork, sweptValid);
     return custom === null
-      ? null : distributeSphereContact(bodyA, bodyB, C.CONTACT_RESTITUTION, custom);
+      ? null : distributeSphereContact(bodyA, bodyB, CONTACT_RESTITUTION, custom);
   }
 
   // 両者の prevState→state が同じ区間(時刻がほぼ一致)を成すときだけ掃引TOIを試す —
   // ずれていれば異なる瞬間の直前位置を結ぶ線分になり、掃引の意味を失う。
   return resolveSphereCollision(
-    bodyA, bodyB, C.CONTACT_RESTITUTION,
+    bodyA, bodyB, CONTACT_RESTITUTION,
     sweptValid ? a.prevState : undefined,
     sweptValid ? b.prevState : undefined,
   );

@@ -13,8 +13,8 @@ import { EARTH_ATMOSPHERE } from '../../src/game/celestial/solar-system/earth-sy
 import { len, v3 } from '../../src/math/vec3';
 import { PredictedArc } from '../../src/game/dynamic/predicted-arc';
 import { atmosphericMaxStep } from '../../src/game/dynamic/time-step';
-import { SHIP_BCINV } from '../../src/game/const';
 import type { FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-celestial-bodies';
+import { SHIP_BCINV } from '../../src/game/dynamic/dynamic-entity/ship';
 
 function circularState(t = 0): KinematicState {
   const r0 = R_EARTH + 420e3;
