@@ -26,6 +26,8 @@ export class EmptySpacePickable implements MapPickable {
 
   // 宇宙空間そのものを指すので、いつでも原点を返す。
   public mapPosAt(): Vec3 { return ORIGIN; }
+  // 宇宙空間そのものを指すので、視線を通せる本体を持たない。
+  public hitBodyByRay(): boolean { return false; }
 
   public mapVisibility(): MapVisibility { return MARKER_VISIBILITY; }
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }

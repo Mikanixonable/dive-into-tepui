@@ -11,7 +11,7 @@ import {
 } from '../hud/windows';
 import { TEMP_WINDOW_GROUP } from '../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
-import { MapPickable, pickNearest } from './map-pickable';
+import { MapPickable, pickFrontmostBody, pickNearest, projectMarker } from './map-pickable';
 import { pickNearestLine } from './line-pickable';
 import type { LinePickables } from './line-pickables';
 import { focusTargetId } from '../camera/focus-target';
@@ -42,6 +42,7 @@ import type { DockState, MapCommands } from './map-commands';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { rayThroughScreen } from '../../math/projection';
 
 const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
 const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
@@ -131,18 +132,29 @@ export class MapContextActions implements MapCommands {
     };
   }
 
-  // 右クリック位置の最寄りの被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
+  // 画面上の (x, y) に当たった被選択物。マーカーへ一定のピクセル半径で当て、外れたら
+  // 描かれている本体へ視線を通す(SPEC/MAP.md §11)。マーカー段はラベル衝突で非表示に
+  // なった対象を外すが、本体段は外さない — 円盤が見えているのに掴めないのは嘘になる。
+  private pickAt(candidates: readonly MapPickable[], x: number, y: number): MapPickable | null {
+    const project = this.cameraSystem.activeCameraProjection;
+    const displayTime = this.pickables.lastDisplayTime;
+    const marker = pickNearest(
+      candidates.filter((item) => item.shownOnMap(this.markerManager)),
+      (item) => projectMarker(item, displayTime, project),
+      x, y, pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE),
+    );
+    if (marker !== null) return marker;
+    const ray = rayThroughScreen(
+      this.cameraSystem.activeViewpoint, x, y, window.innerWidth, window.innerHeight);
+    return pickFrontmostBody(candidates, ray, displayTime);
+  }
+
+  // 右クリック位置の被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
   // 当たらなければ消費せず、handleEmptySpaceRightClick へ読み進める。
-  // ラベル衝突で非表示になった天体は、表示されている別のラベルの背後から拾わない。
   handleMapRightClick(input: Input, simTime: number): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
-      const target = pickNearest(
-        this.pickables.pickables.filter((item) => item.shownOnMap(this.markerManager)),
-        (item) => item.mapPosAt(this.pickables.lastDisplayTime),
-        p.x, p.y, this.cameraSystem.activeCameraProjection,
-        pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE),
-      );
+      const target = this.pickAt(this.pickables.pickables, p.x, p.y);
       if (!target) return false;
       this.openPropertyWindow(p.x, p.y, target, simTime);
       return true;
@@ -244,34 +256,26 @@ export class MapContextActions implements MapCommands {
     this.docking?.closePanel();
   }
 
-  // 左クリック位置の最寄りの自艦・基地を選択する。当たらなければ消費せず、PlanEditor の
+  // 左クリック位置の自艦・基地を選択する。当たらなければ消費せず、PlanEditor の
   // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
   // マーカーへの命中をノード配置より優先する)。マップ視点でなければ何もしない。
   handleLeftClick(input: Input): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
-      const candidates = this.pickables.pickables.filter(
-        (i) => (i instanceof Player || i instanceof Base) && i.shownOnMap(this.markerManager));
-      const target = pickNearest(
-        candidates, (item) => item.mapPosAt(this.pickables.lastDisplayTime),
-        p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE));
+      const target = this.pickAt(
+        this.pickables.pickables.filter((i) => i instanceof Player || i instanceof Base), p.x, p.y);
       if (!target) return false;
       this.selectPickable(target, p.x, p.y);
       return true;
     });
   }
 
-  // ダブルクリック位置の最寄りの被選択物へフォーカスを移し、自艦であれば操作対象にも切り替える。
-  // 種別を問わず候補列全体から探す。ラベル衝突で非表示になった天体は、表示されている別のラベルの
-  // 背後から拾わない。マップ視点でなければ何もしない。
+  // ダブルクリック位置の被選択物へフォーカスを移し、自艦であれば操作対象にも切り替える。
+  // 種別を問わず候補列全体から探す。マップ視点でなければ何もしない。
   handleDoubleClick(input: Input): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeDoubleClicks((p) => {
-      const target = pickNearest(
-        this.pickables.pickables.filter((item) => item.shownOnMap(this.markerManager)),
-        (item) => item.mapPosAt(this.pickables.lastDisplayTime),
-        p.x, p.y, this.cameraSystem.activeCameraProjection, pickRadiusSq(MAP_PICK_PX_SQ, MAP_PICK_PX_SQ_COARSE),
-      );
+      const target = this.pickAt(this.pickables.pickables, p.x, p.y);
       if (!target) return false;
       this.focusTarget(target.id, target);
       return true;

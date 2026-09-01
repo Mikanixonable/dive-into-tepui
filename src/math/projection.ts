@@ -4,6 +4,7 @@
 // だけから完結する。THREE.Object3D.lookAt / PerspectiveCamera と同じ基底構築・
 // 透視除算の数式を踏襲しており、fov は垂直画角 [deg]。
 import { Vec3, add, cross, dot, norm, scale, sub } from './vec3';
+import type { Ray } from './ray';
 
 export type Projected = { x: number; y: number; front: boolean };
 export type ProjectionMode = 'perspective' | 'orthographic';
@@ -97,9 +98,6 @@ export function metersPerPixel(view: Viewpoint, worldPos: Vec3, viewportHeight: 
   const forward = norm(sub(view.lookTarget, view.position));
   return metersPerPixelAtDistance(view, dot(sub(worldPos, view.position), forward), viewportHeight);
 }
-
-// 視線。始点と単位方向ベクトルの組で、どちらも絶対 ECI。
-export type Ray = { origin: Vec3; dir: Vec3 };
 
 // width×height のピクセル矩形の (x, y) を通る視線。projectToNdc + ndcToScreen の逆で、
 // **カメラ基底の組み方(up の再直交化)も投影側と揃える** — 揃えないと、画面上で当たって
