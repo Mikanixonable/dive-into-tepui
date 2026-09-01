@@ -8,7 +8,6 @@ import type { OrbitReferenceMode } from '../../orbit-reference';
 import { Button, SegmentedControl } from '../widgets';
 
 import { getApsisLabelSpec } from './orbit-labels';
-import { Player } from '../../player/player';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 
@@ -74,13 +73,12 @@ export class OrbitPanel {
       entity, reference, entity.state.t, (id: string) => game.celestialSystem.nameOf(id));
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);
-    const ship = entity instanceof Player ? entity : null;
     // 航法ターゲット基準で対象が重力天体でない(艦・基地・ラグランジュ点)場合は、
     // celestialBodyName の生 ID フォールバックより航法ターゲットの表示名を優先する。
     const centerName = !reference.attractor && game.navTarget.name ? game.navTarget.name : oi.centerName;
     setElementText(this.els, 'center', centerName);
     setElementText(this.els, 'alt', fmtDist(oi.alt));
-    this.els.get('alt')?.classList.toggle('warn-hot', ship?.altitudeAlarm.descendWarned ?? false);
+    this.els.get('alt')?.classList.toggle('warn-hot', entity.altitudeAlarm?.descendWarned ?? false);
     setElementText(this.els, 'spd', fmtSpeed(oi.spd));
     setElementText(this.els, 'ap-label', `${apSpec.nameJa} ${apSpec.short}`);
     setElementText(this.els, 'pe-label', `${peSpec.nameJa} ${peSpec.short}`);
@@ -88,12 +86,13 @@ export class OrbitPanel {
     setElementText(this.els, 'pe', fmtDist(oi.peAlt));
     setElementText(this.els, 'inc', isFinite(oi.incDeg) ? `${oi.incDeg.toFixed(2)}°` : '---');
     setElementText(this.els, 'prd', fmtTime(oi.period));
-    // 動圧・機体温度は閾値超過で警告表示にする。
+    // 動圧・機体温度は閾値超過で警告表示にする。動圧は大気を受ける操作対象だけが持つ。
     const qEl = this.els.get('qdyn');
+    const aero = entity.aero;
     if (qEl) {
-      if (ship) {
-        qEl.textContent = ship.aero.qdyn >= 10 ? `${(ship.aero.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
-        qEl.classList.toggle('warn-hot', ship.aero.qdyn > 0.5 * MAX_DYN_PRESSURE);
+      if (aero) {
+        qEl.textContent = aero.qdyn >= 10 ? `${(aero.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
+        qEl.classList.toggle('warn-hot', aero.qdyn > 0.5 * MAX_DYN_PRESSURE);
       } else {
         qEl.textContent = '---';
         qEl.classList.remove('warn-hot');
@@ -101,13 +100,8 @@ export class OrbitPanel {
     }
     const tEl = this.els.get('temp');
     if (tEl) {
-      if (ship) {
-        tEl.textContent = `${ship.temperature.toFixed(0)} K`;
-        tEl.classList.toggle('warn-hot', ship.temperature > 0.7 * MAX_HULL_TEMP);
-      } else {
-        tEl.textContent = '---';
-        tEl.classList.remove('warn-hot');
-      }
+      tEl.textContent = `${entity.temperature.toFixed(0)} K`;
+      tEl.classList.toggle('warn-hot', entity.temperature > 0.7 * MAX_HULL_TEMP);
     }
   }
 }
