@@ -14,6 +14,7 @@ import type { StageSaveData } from '../save/save-data';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
 } from '../../render/vfx-style';
+import { MAG_ROUNDS } from '../player/player-fire';
 
 export class StageDebugLoad extends Stage {
   static readonly id = 'debug-load' as const;
@@ -34,7 +35,7 @@ export class StageDebugLoad extends Stage {
 
   // 自機を置き、破片を自機の周囲へ散らす。
   protected init(entities: DynamicSystem): void {
-    const player = this.addPlayer({ ammo: { mags: 20, rounds: C.MAG_ROUNDS } });
+    const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
     const rand = mulberry32(C.DEBUG_LOAD_RNG_SEED);
     for (let i = 0; i < C.DEBUG_LOAD_DEBRIS_COUNT; i++) {
       const offset = randomOffset(rand, C.DEBUG_LOAD_DEBRIS_MAX_DIST);

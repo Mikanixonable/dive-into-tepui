@@ -9,7 +9,6 @@ import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/constants';
 import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
-import { INITIAL_ALT, INITIAL_INC_DEG, PLAYER_HULL_RADIUS } from '../../src/game/const';
 import { ArcCelestialBodies, type FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-celestial-bodies';
 import { attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/game/dynamic/attractors';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/dynamic/surface-candidates';
@@ -17,6 +16,12 @@ import { CelestialMotion } from '../../src/physics/celestial-motion';
 import type { KinematicState } from '../../src/physics/kinematic-state';
 import type { Vec3 } from '../../src/math/vec3';
 import { SUBSTEP_MAX_DT } from '../../src/game/dynamic/time-step';
+
+// 比べる場所を決めるだけの、この試験の走査条件。自機の初期軌道と同じ高度・傾斜角、
+// 半径は自機の剛体接触半径と同程度に取る。
+const SITE_ALT = 420e3; // [m]
+const SITE_INC_DEG = 97.0; // [deg]
+const SITE_RADIUS = 2.6; // [m]
 
 // 現実の太陽系・地球原点の既定の登録天体。両方の窓へ同じ天体一式を供給する。
 const PARTS = solarSystemParts();
@@ -45,10 +50,9 @@ function circularOrbitState(center: KinematicState, mu: number, offset: Vec3, no
 const SITES: readonly Site[] = [
   {
     name: 'LEO',
-    // 自機の初期軌道と同じ高度・傾斜角の円軌道。
     stateAt: (t) => {
-      const r0 = R_EARTH + INITIAL_ALT;
-      const inc = (INITIAL_INC_DEG * Math.PI) / 180;
+      const r0 = R_EARTH + SITE_ALT;
+      const inc = (SITE_INC_DEG * Math.PI) / 180;
       const speed = Math.sqrt(MU_EARTH / r0);
       return kinematicState<'eci'>(t, v3(r0, 0, 0), v3(0, speed * Math.sin(inc), -speed * Math.cos(inc)));
     },
@@ -106,7 +110,7 @@ function substepInterval(from: KinematicState, dt: number): SurfaceParticipant {
   return {
     prevState: from,
     state: stepDynamics(from, dt, mid, [], null, 0, 0, 0, null),
-    radius: PLAYER_HULL_RADIUS,
+    radius: SITE_RADIUS,
   };
 }
 
