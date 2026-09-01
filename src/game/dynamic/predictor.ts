@@ -12,11 +12,10 @@
 //     実シミュレーションの積分へ落ちるだけで壊れない。
 // **この2点に起因しない部分は、両者で同じ答えでなければならない** — 個体1つと解析天体の
 // 関係(どの天体が引くか・表面へ到達したか・大気で焼失したか・刻みをどこまで広げてよいか)。
-import * as C from '../const';
 import { DynamicSystem } from './dynamic-system';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { Player } from '../player/player';
-import { simulationMaxStep } from './time-step';
+import { simulationMaxStep, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { PredictedArc } from './predicted-arc';
 import type { PerfCounts } from '../../perf-meter';
@@ -24,6 +23,23 @@ import type { PerfCounts } from '../../perf-meter';
 // 消費される弧が、消費前線より過去側にも保持しておく余裕 [s]。保持窓の左端が前線に一致すると
 // at(前線) を挟む補間区間が消える。予測線の下端は simTime なので、余分に保持しても描画は変わらない。
 const ARC_RETAIN_MARGIN = 300;
+
+// 1フレームに配る積分ステップ数の上限。1歩 ≈ 0.025〜0.055ms(弧が保持する一覧ぶんの
+// 天体解決+掃引到達判定、ブラウザ実測)なので、成長中の予測・計画が1フレームに使うのは
+// ~15〜33ms まで。ここへ払った時間は積分側から返ってくる — 消費される弧の1歩は
+// simDt/SUBSTEP_MAX_COUNT 秒ぶんを覆い、高ワープではその区間の実シミュレーションのサブステップ
+// 数百回ぶんの積分を1歩で肩代わりする。消費されている個体を追い抜かせないだけで1体あたり
+// SUBSTEP_MAX_COUNT(=64)歩/フレームが要り、ホライズンへ伸ばすぶんはその上に乗る。
+const ARC_STEP_BUDGET = 600;
+// 1フレームの予算のうち、操作艦の弧+計画軌道の弧(interactive 枠)に割ける割合の上限。
+// 優先はするが独占はさせない — 計画の弧は他個体の予測を重力源・衝突判定の相手として読むため、
+// 編集直後の計画にこの枠を丸ごと食わせると、その依存先(background 側)の予測の成長が止まる。
+const ARC_INTERACTIVE_RATIO = 0.5;
+// background のラウンドロビンで1体に必ず渡すステップ数の下限。予測列の history に最初の
+// 保持サンプルが積まれるまでは at() がほぼ全時刻で null を返し、実シミュレーションが消費
+// できずに積分して弧を捨てるので、その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を
+// 下回る配分は作り直しを繰り返す。
+const ARC_MIN_ITEM_STEPS = 16;
 
 export class Predictor {
   private cursor = 0;
@@ -59,7 +75,7 @@ export class Predictor {
     this.lastPlanSteps = 0;
     this.lastBodies = 0;
     this.lastRevisits = 0;
-    const maxStep = simulationMaxStep(simDt, C.SUBSTEP_MAX_DT, C.SUBSTEP_MAX_COUNT);
+    const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
     for (const e of this.entities.all()) {
       if (!e.predictsFuture) continue;
       this.tracked++;
@@ -78,8 +94,8 @@ export class Predictor {
     // 止まってしまう。
     const others = targets.some((e) => e !== interactiveShip);
     let interactiveBudget = others
-      ? Math.floor(C.ARC_STEP_BUDGET * C.ARC_INTERACTIVE_RATIO) : C.ARC_STEP_BUDGET;
-    let budget = C.ARC_STEP_BUDGET;
+      ? Math.floor(ARC_STEP_BUDGET * ARC_INTERACTIVE_RATIO) : ARC_STEP_BUDGET;
+    let budget = ARC_STEP_BUDGET;
     if (interactiveShip) {
       const consumed = this.advanceBudget(interactiveShip, interactiveBudget, simTime, horizon, maxStep);
       budget -= consumed;
@@ -100,7 +116,7 @@ export class Predictor {
     while (budget > 0 && visited < targets.length) {
       const e = targets[(this.cursor + visited) % targets.length]!;
       if (e !== interactiveShip) {
-        const share = Math.max(C.ARC_MIN_ITEM_STEPS, Math.floor(budget / (targets.length - visited)));
+        const share = Math.max(ARC_MIN_ITEM_STEPS, Math.floor(budget / (targets.length - visited)));
         budget -= this.advanceBudget(e, Math.min(budget, share), simTime, horizon, maxStep);
       }
       visited++;

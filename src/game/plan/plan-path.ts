@@ -24,6 +24,7 @@ import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../math/optimize';
 import * as C from '../const';
+import { SHIP_BCINV, SHIP_SRP_COEFF } from '../dynamic/dynamic-entity/ship';
 
 // 折れ線が自分自身に重なる(周回を跨いで表示期間が延びた)場合、最短画面距離からこの
 // 許容差以内の候補のうち最も早い時刻のものを選ぶ [px]
@@ -152,7 +153,7 @@ export class PlanPath {
         // SHIP_SRP_COEFF)で積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを
         // 置くと、実際に積分し直した次のノードと繋がらなくなるため。
         arc = new PredictedArc(
-          seg.state0, celestialBodyProvider, C.PLAYER_HULL_RADIUS, C.SHIP_BCINV, C.SHIP_SRP_COEFF,
+          seg.state0, celestialBodyProvider, C.PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
           /* keplerTail */ false, /* consumable */ false,
         );
         this.lastRebuiltArcs++;

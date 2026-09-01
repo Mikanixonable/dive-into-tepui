@@ -38,7 +38,9 @@ import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../../render/render-style';
 import type { MapVisibility } from '../../map/visibility-policy';
 import { currentThemePalette } from '../../theme';
+import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 
+export const BASE_MAX_VESSELS = 4; // 基地が保有・格納できる艦艇の最大数
 const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
 const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
 const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
@@ -93,7 +95,7 @@ type BaseInit =
 export class Base extends DynamicEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
-  protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;
+  protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'off';
   fineAttitude = false;
@@ -183,7 +185,7 @@ export class Base extends DynamicEntity implements Controllable {
       const savedVessels = init.saved.dockedVessels ?? init.saved.dockedShips ?? [];
       this.baseState.dockedVessels = savedVessels.map((shipData, idx) => {
         const player = new Player(hud, worldSfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
-        const slotIndex = idx < C.BASE_MAX_VESSELS ? idx : 0;
+        const slotIndex = idx < BASE_MAX_VESSELS ? idx : 0;
         this.attachDockedVesselMesh(player, slotIndex);
         return {
           id: player.id,
@@ -223,7 +225,7 @@ export class Base extends DynamicEntity implements Controllable {
   // 利用可能な空きスロット番号(0..3)を返す。満杯なら null。
   getAvailableSlotIndex(): number | null {
     const occupied = new Set(this.baseState.dockedVessels.map((s) => s.slotIndex));
-    for (let i = 0; i < C.BASE_MAX_VESSELS; i++) {
+    for (let i = 0; i < BASE_MAX_VESSELS; i++) {
       if (!occupied.has(i)) return i;
     }
     return null;
