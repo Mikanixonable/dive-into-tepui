@@ -90,7 +90,7 @@ export class PhysicalObjectListOrder {
     if (this.filter === 'artifact') {
       return (item.kind === 'player' || item.kind === 'ammo' || item.kind === 'fuel' || item.kind === 'base') && item.inFocusedSystem !== false;
     }
-    if (this.filter === 'enemy') return item.kind === 'ship' && item.inFocusedSystem !== false;
+    if (this.filter === 'enemy') return item.kind === 'enemy' && item.inFocusedSystem !== false;
     if (this.filter === 'lagrange') return item.kind === 'body' && isLagrangeId(item.id);
     return item.kind === 'body' && !isLagrangeId(item.id)
       && this.celestialSystem.entityOf(item.id).bodyClass === this.filter;

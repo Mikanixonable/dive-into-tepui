@@ -43,7 +43,7 @@ export class LinePickables {
     }
 
     for (const ship of this.entities.players) this.addShipOrbit('player', ship, frame, displayTime, frameAnchors);
-    for (const enemy of this.entities.enemies) this.addShipOrbit('ship', enemy, frame, displayTime, frameAnchors);
+    for (const enemy of this.entities.enemies) this.addShipOrbit('enemy', enemy, frame, displayTime, frameAnchors);
     for (const base of this.entities.bases) this.addShipOrbit('base', base, frame, displayTime, frameAnchors);
 
     for (const guide of this.celestialSystem.orbitGuide.visibleLines(ORBIT_PICK_SAMPLES)) {
@@ -68,7 +68,7 @@ export class LinePickables {
   // 船(自艦・敵・基地)1隻ぶんの軌道線を候補へ積む。表示方式(解析楕円 or 予測線・過去線)は
   // EntityLineManager が既に決めているので、ここではどちらが出ているかを読むだけ。
   private addShipOrbit(
-    ownerKind: 'player' | 'ship' | 'base', entity: DynamicEntity,
+    ownerKind: 'player' | 'enemy' | 'base', entity: DynamicEntity,
     frame: ReferenceFrame, displayTime: number, frameAnchors: FrameAnchorSource,
   ): void {
     if (!entity.alive) return;

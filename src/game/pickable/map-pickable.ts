@@ -2,7 +2,7 @@
 import { Vec3 } from '../../math/vec3';
 import type { ProjectFn } from '../camera/camera-system';
 
-export type MapPickKind = 'body' | 'ship' | 'player' | 'apsis' | 'relnode' | 'ammo' | 'fuel' | 'empty-space' | 'eqnode' | 'base';
+export type MapPickKind = 'body' | 'enemy' | 'player' | 'apsis' | 'relnode' | 'ammo' | 'fuel' | 'empty-space' | 'eqnode' | 'base';
 
 export interface MapPickable {
   readonly id: string;

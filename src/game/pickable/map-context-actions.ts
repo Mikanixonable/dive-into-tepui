@@ -475,7 +475,7 @@ export class MapContextActions {
     if (entity instanceof Base) {
       return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'base' };
     }
-    return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'ship' };
+    return { id: entity.id, name: entity.name, pos: entity.state.r, kind: 'enemy' };
   }
 
   // 軌道物体ウィンドウをマップ視点である間は常設で表示し、開いている全プロパティ
@@ -546,7 +546,7 @@ export class MapContextActions {
   private isTargetGone(target: MapPickable): boolean {
     switch (target.kind) {
       case 'player': return this.entities.findPlayer(target.id) === undefined;
-      case 'ship': return !(this.entities.findEnemy(target.id)?.alive ?? false);
+      case 'enemy': return !(this.entities.findEnemy(target.id)?.alive ?? false);
       case 'ammo': return !(
         this.entities.ammoPickups.find((ammoPickup) => ammoPickup.id === target.id)?.alive ?? false
       );
@@ -677,7 +677,7 @@ export class MapContextActions {
   private stateOfPickable(item: MapPickable): KinematicState | null {
     switch (item.kind) {
       case 'player': return this.entities.findPlayer(item.id)?.state ?? null;
-      case 'ship': return this.entities.findEnemy(item.id)?.state ?? null;
+      case 'enemy': return this.entities.findEnemy(item.id)?.state ?? null;
       case 'ammo': return this.entities.ammoPickups.find((ammo) => ammo.id === item.id)?.state ?? null;
       case 'fuel': return this.entities.rcsFuelPickups.find((pickup) => pickup.id === item.id)?.state ?? null;
       case 'base': return this.entities.findBase(item.id)?.state ?? null;

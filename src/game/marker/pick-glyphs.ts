@@ -12,7 +12,7 @@ import type { MapPickKind } from '../pickable/map-pickable';
 // pickGlyph() の中で bodyEntityGlyph() から選ぶ。
 const TEXT_GLYPHS: Readonly<Record<Exclude<MapPickKind, 'body'>, string>> = {
   player: ENTITY_GLYPH.ship,
-  ship: ENTITY_GLYPH.enemyShip,
+  enemy: ENTITY_GLYPH.enemyShip,
   ammo: ENTITY_GLYPH.ammo,
   fuel: ENTITY_GLYPH.fuel,
   base: ENTITY_GLYPH.base,
@@ -22,10 +22,10 @@ const TEXT_GLYPHS: Readonly<Record<Exclude<MapPickKind, 'body'>, string>> = {
   'empty-space': '·',
 };
 
-// player/ship/base はマップ実マーカーと同じ SVG 形状を凡例にも使う。
+// player/enemy/base はマップ実マーカーと同じ SVG 形状を凡例にも使う。
 const SVG_GLYPHS: Partial<Readonly<Record<MapPickKind, string>>> = {
   player: shipMarkerSvg(true),
-  ship: shipMarkerSvg(false),
+  enemy: shipMarkerSvg(false),
   base: baseMarkerSvg(),
 };
 
