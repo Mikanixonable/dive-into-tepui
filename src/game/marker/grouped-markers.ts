@@ -12,10 +12,12 @@ import type { ActiveCelestialLabel } from '../camera/focus-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-identity';
 import { CelestialMotion } from '../../physics/celestial-motion';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
 
 export interface GroupedMarkerItem {
   key: string; // 対象を一意に識別するマーカーキー
+  readonly kind: DynamicEntityKind; // 天体ラベル下のサブ行が内訳を数えるための種別
   cls: string; // 画面内マーカーの CSS クラス
   sym: string; // 画面内マーカーの記号
   pos: Vec3; // ワールド位置 (ECI)

@@ -3,7 +3,7 @@ import { Vec3, v3, sub, len } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { ProjectFn } from './camera-system';
-import { combatMarkerKindOf, MarkerManager, type CombatMarkerKind, MARKER_PRIORITY } from '../marker/marker-manager';
+import { MarkerManager, MARKER_PRIORITY } from '../marker/marker-manager';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { lagrangePointsOf, secondaryFrameOf } from '../../physics/lagrange';
 import { occlusionOpacity } from '../../physics/occlusion';
@@ -16,6 +16,7 @@ import type { MapPickable } from '../pickable/map-pickable';
 import { ENTITY_GLYPH, bodyEntityGlyph } from '../marker/marker-identity';
 import type { GroupedMarkers, GroupedMarkerItem } from '../marker/grouped-markers';
 import { resolveCrowdingWinner, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO } from '../marker/crowding';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { LagrangePointMarker } from '../marker/lagrange-point-marker';
 
 // 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
@@ -61,20 +62,10 @@ export interface FocusLabel {
   pickable: boolean;
 }
 
-// 陣営種別ごとのサブ行記号。mk-ally には専用の記号を持たせず、item.sym からの
-// フォールバックに委ねる。
-const SUB_LABEL_GLYPH_BY_KIND: Partial<Record<CombatMarkerKind, string>> = {
-  self: '▲', base: '⬡', enemy: '△', ammo: '▣', fuel: '◈',
+// 種別ごとのサブ行記号。マーカー本体の記号は SVG なので、文字だけで組む行には使えない。
+const SUB_LABEL_GLYPH: Record<DynamicEntityKind, string> = {
+  player: '▲', base: '⬡', enemy: '△', ammo: '▣', fuel: '◈',
 };
-
-// サブ行テキスト用のクリーンな Unicode 記号を取得する(SVG タグ文字列を避ける)。
-function cleanSubLabelGlyph(item: GroupedMarkerItem): string {
-  const kind = combatMarkerKindOf(item.cls);
-  const glyph = kind ? SUB_LABEL_GLYPH_BY_KIND[kind] : undefined;
-  if (glyph) return glyph;
-  if (item.sym && !item.sym.trim().startsWith('<')) return item.sym.trim();
-  return '▲';
-}
 
 // 惑星 > 準惑星 > 衛星・小惑星・彗星 > ラグランジュ点。
 // 恒星は太陽系の基準点なので、惑星と同じ最上位として常に残す。
@@ -464,7 +455,7 @@ export class FocusMarkers {
         let nFuel = 0;
 
         for (const entry of entries) {
-          const kind = combatMarkerKindOf(entry.item.cls);
+          const kind = entry.item.kind;
           if (kind === 'enemy') nEnemy++;
           else if (kind === 'base') nBase++;
           else if (kind === 'ammo') nAmmo++;
@@ -490,13 +481,13 @@ export class FocusMarkers {
 
         if (total <= maxLines) {
           for (const entry of entries) {
-            const glyph = cleanSubLabelGlyph(entry.item);
+            const glyph = SUB_LABEL_GLYPH[entry.item.kind];
             subDivs.push(`<div class="lbl-sub">${entry.prefix}${glyph} ${entry.item.name}</div>`);
           }
         } else {
           for (let i = 0; i < 2; i++) {
             const entry = entries[i]!;
-            const glyph = cleanSubLabelGlyph(entry.item);
+            const glyph = SUB_LABEL_GLYPH[entry.item.kind];
             subDivs.push(`<div class="lbl-sub">${entry.prefix}${glyph} ${entry.item.name}</div>`);
           }
           subDivs.push(`<div class="lbl-sub">+${total - 2} 隻</div>`);

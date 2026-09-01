@@ -581,6 +581,7 @@ export class Player extends Ship implements MapPickable {
     const color = role === 'primary' ? currentThemePalette().signal : isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY;
     return {
       key: this.markerKey,
+      kind: this.mapKind,
       cls: role === 'primary' ? `${kindCls} mk-target` : kindCls,
       sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,

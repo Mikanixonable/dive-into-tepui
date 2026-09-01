@@ -88,6 +88,7 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
     const dist = len(sub(this.state.r, viewerPos));
     return {
       key: this.markerKey,
+      kind: this.mapKind,
       cls: 'mk-ammo',
       sym: ENTITY_GLYPH.ammo,
       pos: this.state.r,

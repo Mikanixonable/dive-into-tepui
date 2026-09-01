@@ -84,6 +84,7 @@ export class RcsFuelPickup extends DynamicEntity implements MapPickable {
     const dist = len(sub(this.state.r, viewerPos));
     return {
       key: this.markerKey,
+      kind: this.mapKind,
       cls: 'mk-fuel',
       sym: ENTITY_GLYPH.fuel,
       pos: this.state.r,
