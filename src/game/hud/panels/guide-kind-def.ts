@@ -5,13 +5,41 @@
 // 蝶形・トンボ形・共鳴・DRO は族 id ごとに独立した KindDef のまま扱う。それ以外(リヤプノフ・
 // 垂直・軸方向・ハロー・短周期・長周期・DPO・LPO)は、点/南北/東西/区間の軸を持つ小題として
 // まとめた CombinedKindDef になる。
-import { guideKindDefaultColors } from '../../const';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import { GUIDE_GROUPS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-settings';
 import {
   parseGuideKindId, type CombinedKindAxes, type ParsedGuideKindId,
 } from '../../celestial/orbit-guide/orbit-guide-kind-ids';
 
+
+// 軌道ガイドの群ごとの基準色相。群の中の種類は明度違いで分ける。
+// 静止軌道リング(0x8b93a0)と同じ控えめな系統でまとめる。
+const GUIDE_GROUP_HUE: Readonly<Record<GuideGroupId, number>> = {
+  collinear: 0x6fa3c9, // 青
+  triangular: 0xc9a969, // 橙
+  secondary: 0x6fc9b8, // 緑(DRO/DPO/LPO)
+  resonant: 0xb08bc9, // 紫
+};
+
+// color を towards との線形補間で t(0..1)だけ明るく/暗くした 0xRRGGBB を返す。
+function lerpColor(color: number, towards: number, t: number): number {
+  const r0 = (color >> 16) & 0xff, g0 = (color >> 8) & 0xff, b0 = color & 0xff;
+  const r1 = (towards >> 16) & 0xff, g1 = (towards >> 8) & 0xff, b1 = towards & 0xff;
+  return (Math.round(r0 + (r1 - r0) * t) << 16) | (Math.round(g0 + (g1 - g0) * t) << 8) | Math.round(b0 + (b1 - b0) * t);
+}
+
+// 群の色相を、群内での種類の並び順(index/count)に応じた明度違いへ展開する。
+function guideKindShade(group: GuideGroupId, index: number, count: number): number {
+  const base = GUIDE_GROUP_HUE[group];
+  if (count <= 1) return base;
+  return lerpColor(base, 0xffffff, 0.15 + 0.5 * (index / (count - 1)));
+}
+
+// GuideKindSettings の既定色(始・終)。始は上の shade、終はそこからさらに明るい側を採る。
+function guideKindDefaultColors(group: GuideGroupId, index: number, count: number): readonly [number, number] {
+  const start = guideKindShade(group, index, count);
+  return [start, lerpColor(start, 0xffffff, 0.35)];
+}
 // 4.1 の表の日本語訳+英語併記。族の base 名(id の先頭要素)をキーにする。
 const BASE_LABELS: Readonly<Record<string, string>> = {
   lyapunov: '平面リヤプノフ軌道(lyapunov)',

@@ -2,9 +2,10 @@ import * as THREE from 'three/webgpu';
 import { Attitude, qRotate } from '../../physics/attitude';
 import { Vec3, dot, v3 } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/srp';
-import * as C from '../const';
 import type { PowerSaveData } from '../save/save-data';
+import { RADIATOR_DEPLOY_TIME } from './radiator';
 
+export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
 const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
 const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
 
@@ -16,7 +17,7 @@ class Panel {
 }
 
 export class PowerSystem {
-  private charge = C.POWER_CAPACITY * 0.75; // 蓄電量 [J]、0..POWER_CAPACITY
+  private charge = POWER_CAPACITY * 0.75; // 蓄電量 [J]、0..POWER_CAPACITY
 
   private readonly panels: Record<SolarSide, Panel> = { up: new Panel(), down: new Panel() };
   private readonly solarFolds: Record<SolarSide, THREE.Object3D[]>;
@@ -50,7 +51,7 @@ export class PowerSystem {
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
   update(dt: number, sunlit: number, sunDir: Vec3, att: Attitude, ship: import('../dynamic/dynamic-entity/ship').Ship): void {
     // 展開度の更新
-    const step = dt / C.RADIATOR_DEPLOY_TIME; // 同じ速度を使用
+    const step = dt / RADIATOR_DEPLOY_TIME; // 同じ速度を使用
     for (const side of ['up', 'down'] as const) {
       const p = this.panels[side];
       if (p.deploy < p.deployTarget) p.deploy = Math.min(p.deployTarget, p.deploy + step);
@@ -65,7 +66,7 @@ export class PowerSystem {
     // 展開度 deployMult を掛けて、収納時は発電しないようにする
     const basePower = ship.totalPowerGeneration > 0 ? ship.totalPowerGeneration : SOLAR_CONSTANT * SOLAR_PANEL_EFFICIENCY * SOLAR_PANEL_AREA;
     const power = basePower * cosIncidence * sunlit * deployMult;
-    this.charge = Math.min(C.POWER_CAPACITY, this.charge + power * dt);
+    this.charge = Math.min(POWER_CAPACITY, this.charge + power * dt);
   }
 
   sync(): void {
@@ -90,7 +91,7 @@ export class PowerSystem {
 
   // HUD 表示用。0..1。
   get chargeRatio(): number {
-    return this.charge / C.POWER_CAPACITY;
+    return this.charge / POWER_CAPACITY;
   }
 
   // HUD 表示用。蓄電量そのもの [J]。
@@ -99,7 +100,7 @@ export class PowerSystem {
   }
 
   setChargeJ(val: number): void {
-    this.charge = Math.max(0, Math.min(C.POWER_CAPACITY, val));
+    this.charge = Math.max(0, Math.min(POWER_CAPACITY, val));
   }
 
   addChargeJ(delta: number): number {

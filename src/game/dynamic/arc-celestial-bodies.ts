@@ -6,7 +6,8 @@ import { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialBodyDef } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../math/vec3';
-import * as C from '../const';
+import { GRAVITY_NEGLIGIBLE_ACCEL } from './attractors';
+import { ARC_MIN_STEP_DT } from './time-step';
 
 // 一覧の外にある天体が「いつまで効き得ないか」を見積もるときの、相対速さの安全率と下限 [m/s]。
 // 見積りは保守的でありさえすればよく、精密である必要はない — 外れても訪問が1回増えるだけで、
@@ -89,7 +90,7 @@ export class ArcCelestialBodies {
     this.watches = sources.celestialMotions.map((motion) => ({
       motion,
       candidate: motion.def,
-      gravityReach: Math.sqrt(2 * motion.def.mu / C.GRAVITY_NEGLIGIBLE_ACCEL),
+      gravityReach: Math.sqrt(2 * motion.def.mu / GRAVITY_NEGLIGIBLE_ACCEL),
       pinned: motion.id === pinnedId,
       member: false,
       nextVisitT: -Infinity,
@@ -101,7 +102,7 @@ export class ArcCelestialBodies {
   // 新しく、呼び出し側が次の解決まで保持してよい。
   resolve(t: number, from: KinematicState, stepDt: number): ArcCelestialBodyWindow {
     // 次の歩で表面へ届きうる天体が一覧の外に残らないよう、刻み幅の数歩ぶん先まで入れておく。
-    const lead = Math.max(stepDt, C.ARC_MIN_STEP_DT) * ARC_BODY_LEAD_STEPS;
+    const lead = Math.max(stepDt, ARC_MIN_STEP_DT) * ARC_BODY_LEAD_STEPS;
     const gravity: CelestialMotion[] = [];
     const collision: CelestialMotion[] = [];
     this.lastResolved = 0;

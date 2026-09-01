@@ -1,7 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../../physics/attitude';
 import { KinematicState } from '../../../physics/kinematic-state';
-import * as C from '../../const';
 import { DynamicEntity } from './dynamic-entity';
 import { Part, PartType, createPart } from './parts';
 import { collisionDamageFraction } from './contact-damage';
@@ -15,15 +14,42 @@ import type {
   ThrusterPart,
   WeaponPart,
 } from './parts';
+import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
+import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/player-throttle';
+
+// 艦の材質・空力。大気抵抗は弾道係数の逆数 Cd·A/m [m^2/kg]、太陽輻射圧は輻射圧係数 ×
+// 断面積質量比 C_R·A/m [m^2/kg] で表す。
+export const SHIP_BCINV = 3.3e-3; // Cd≈2.2, A≈12m², m≈8t
+export const SHIP_SRP_COEFF = 1.56e-2; // C_R≈1.3, A≈12m², m=PLAYER_MASS
+// 宇宙機の実効密度で、曲率半径 0.6 m を与える値。
+export const SHIP_BULK_DENSITY = 833; // [kg/m^3]
+// PLAYER_MASS と掛けて外殻の熱容量 0.1 MJ/K。射撃・被弾の発熱量はこれを基準に決めてある。
+export const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
+// 艦体自体の放熱面積 70 m² を PLAYER_MASS で割った値。放熱板の展開ぶんはこれに上乗せする。
+export const SHIP_RADIATING_AREA_PER_MASS = 0.07; // [m^2/kg]
+export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]
+
+// 自機の質量 [kg]。既定パーツのスラスター推力はこの質量で THROTTLE_LEVELS の最大値の
+// 加速度になるよう決めてあるので、両者を別々に動かすと表示と実挙動がずれる。
+export const PLAYER_MASS = 1000;
+
+// 自機の主慣性モーメント(相対値、3軸とも異なる非対称形にしてジャニベコフ効果を起こす)
+export const PLAYER_INERTIA_PITCH = 1.0; // ピッチ軸(X)。3軸中の中間値 = 不安定軸
+export const PLAYER_INERTIA_YAW = 1.6; // ヨー軸(Y)
+export const PLAYER_INERTIA_ROLL = 0.5; // ロール軸(Z、機体前後)。細長い形状に見合って最小
+
+export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
+export const FIRE_INTERVAL = 0.06; // 発射間隔 [s]
+export const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
 export abstract class Ship extends DynamicEntity {
-  public override readonly bcInv = C.SHIP_BCINV;
-  protected readonly srpCoeff = C.SHIP_SRP_COEFF;
-  protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;
+  public override readonly bcInv = SHIP_BCINV;
+  protected readonly srpCoeff = SHIP_SRP_COEFF;
+  protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
   protected readonly predictedForGhost = true;
-  protected readonly specificHeat = C.SHIP_SPECIFIC_HEAT;
-  protected readonly bulkDensity = C.SHIP_BULK_DENSITY;
-  protected override get radiatingAreaPerMass(): number { return C.SHIP_RADIATING_AREA_PER_MASS; }
+  protected readonly specificHeat = SHIP_SPECIFIC_HEAT;
+  protected readonly bulkDensity = SHIP_BULK_DENSITY;
+  protected override get radiatingAreaPerMass(): number { return SHIP_RADIATING_AREA_PER_MASS; }
 
   private _hp!: number;
   private _maxHp!: number;
@@ -83,9 +109,9 @@ export abstract class Ship extends DynamicEntity {
       mk('cockpit', R.cockpit, { name: 'Cockpit' }),
       mk('thruster', R.thruster, {
         name: 'Standard RCS',
-        torque: C.MAX_ANG_ACCEL * Math.max(C.PLAYER_INERTIA_PITCH, C.PLAYER_INERTIA_YAW, C.PLAYER_INERTIA_ROLL),
+        torque: MAX_ANG_ACCEL * Math.max(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL),
         // 既定パーツだけを積んだ自機が、全開で THROTTLE_LEVELS の最大値の加速度になる推力。
-        thrust: C.PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!,
+        thrust: PLAYER_MASS * THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1]!,
         fuelConsumptionRate: 1,
       }),
       mk('rcs_tank', R.rcsTank, { name: 'Main RCS Tank', maxFuel: 1000, fuel: 1000 }),
@@ -95,7 +121,7 @@ export abstract class Ship extends DynamicEntity {
       mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: 50 }),
       mk('weapon', R.weapon, {
         name: 'Gatling Gun', weaponType: 'gatling',
-        fireRate: 1 / C.FIRE_INTERVAL, damage: C.ENEMY_BULLET_DAMAGE, muzzleVelocity: C.MUZZLE_SPEED,
+        fireRate: 1 / FIRE_INTERVAL, damage: ENEMY_BULLET_DAMAGE, muzzleVelocity: MUZZLE_SPEED,
       }),
       mk('armor', R.armor, { name: 'Light Armor', damageReduction: 0.2 }),
     ];

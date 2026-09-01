@@ -3,11 +3,14 @@
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { SpatialGrid } from '../../math/spatial-grid';
 import { Vec3 } from '../../math/vec3';
-import { GRAVITY_NEGLIGIBLE_ACCEL } from '../const';
 
 // 位置に依らず常に加算する重力源の本数。mu の重い順にこの数を採る。既定のレジストリでは
 // 月が14位なので、これを下回ると地球圏外の艦で月の寄与が消える。
 const GRAVITY_ALWAYS_COUNT = 15;
+
+// グリッドへ載せた天体を落としてよい引力の上限 [m/s^2]。セル一辺は、載せた天体の引力が
+// この値まで落ちる距離として天体構成から導かれる。
+export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-8;
 
 // 重力源一覧を、常に含める天体(always)と空間グリッドに載せる天体(grid)へ分けたもの。
 export type ClassifiedAttractors = {

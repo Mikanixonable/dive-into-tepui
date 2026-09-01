@@ -1,6 +1,5 @@
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
 import { CelestialMotion } from '../physics/celestial-motion';
-import * as C from './const';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import { Base } from './dynamic/dynamic-entity/base';
@@ -11,8 +10,8 @@ import { Player } from './player/player';
 import { Input, PointerPoint } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
-import { MarkerManager } from './marker/marker-manager';
-import { DIRECTION_GLYPH } from './marker/marker-glyphs';
+import { MarkerManager, MARKER_PRIORITY } from './marker/marker-manager';
+import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/map-pickable';
 import { pickRadiusSq } from './input/pointer-precision';
 import type { CelestialSystem } from './celestial/celestial-system';
@@ -142,8 +141,8 @@ export class Targeter {
   }
 
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。
-  // 位置は機体メッシュと同じ displayState — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
-  // 予測地平の先を指していて displayState を返せない対象と、可視性判定で選択不可の対象は出さない。
+  // 位置は機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
+  // 予測地平の先を指していて stateAt が答えられない対象と、可視性判定で選択不可の対象は出さない。
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
@@ -158,7 +157,7 @@ export class Targeter {
     for (const tgt of targets) {
       if (!tgt.alive) continue;
       this.aliveScratch.push(tgt);
-      const ds = tgt.displayState(displayTime);
+      const ds = tgt.stateAt(displayTime);
       if (!ds) continue;
       const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship'), tgt === player);
       if (visibility && !visibility.pickable) continue;
@@ -181,7 +180,7 @@ export class Targeter {
     // (上のループは生存個体しか通らないため、撃破直後に部位マーカーが残るのを防ぐ)。
     for (const tgt of targets) {
       if (!(tgt instanceof ProteinEnemy)) continue;
-      const ds = tgt.alive ? tgt.displayState(displayTime) : null;
+      const ds = tgt.alive ? tgt.stateAt(displayTime) : null;
       this.syncProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, overviewMode, project, cameraSystem.activeCameraPos);
     }
     for (const ammo of ammoPickups) {
@@ -235,8 +234,8 @@ export class Targeter {
       const key = `psite-${enemy.id}-${site.id}`;
       if (!inRange) { this.markerManager.hide(key); continue; }
       const label = `${site.abbreviation} ${Math.max(0, Math.round(site.hp))}/${site.maxHp}`;
-      const color = site.disabled ? 'var(--text-dim)' : site.attackable ? C.COLOR_MARKER_ENEMY : undefined;
-      this.markerManager.setPosition(key, 'mk-protein-site', '●', site.worldPos, project, label, 1, color, undefined, false, false, C.MARKER_PRIORITY.PROTEIN_SITE, cameraPos);
+      const color = site.disabled ? 'var(--text-dim)' : site.attackable ? COLOR_MARKER_ENEMY : undefined;
+      this.markerManager.setPosition(key, 'mk-protein-site', '●', site.worldPos, project, label, 1, color, undefined, false, false, MARKER_PRIORITY.PROTEIN_SITE, cameraPos);
     }
   }
 

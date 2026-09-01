@@ -1,5 +1,4 @@
 // Stage 2: 第二ステージ(モルニヤ戦域)。ステージ1クリアで解放。
-import * as C from '../const';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { ClearCounts } from '../unlock-manager';
@@ -12,6 +11,7 @@ import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
+import { COLOR_ENEMY_ORBIT_LINE } from '../lines/entity-line-manager';
 
 export class Stage2 extends Stage {
   static readonly id = '2' as const;
@@ -48,12 +48,12 @@ export class Stage2 extends Stage {
     const fx = this._fx;
     const scene = this._scene;
     // 通常軌道の敵
-    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 0xff4a3d, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
-    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 0xff7a2d, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
     // モルニヤ級の高楕円軌道の敵
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 0xe0409f, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 0xbf3dff, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 0xff2d6b, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
   }
   // 敵の行動と補給品の湧きを進める。
   update(_dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
