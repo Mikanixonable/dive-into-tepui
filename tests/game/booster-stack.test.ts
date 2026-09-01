@@ -1,11 +1,33 @@
-// 分離式ブースターの順序、最後尾限定の燃焼、燃料切れ途中の平均推力、保存復元を検証する。
+// 分離式ブースターの順序、最後尾限定の燃焼、燃料切れ途中の平均推力、保存復元、
+// 分離時の運動量保存を検証する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
+import { Vec3, add, dot, len, scale, sub, v3 } from '../../src/math/vec3';
 import {
+  BoosterSeparationVelocities,
   BoosterStack,
   boosterAverageAcceleration,
+  boosterSeparationVelocities,
   type BoosterStage,
 } from '../../src/game/player/booster-stack';
+
+function close(actual: number, expected: number, epsilon = 1e-9): void {
+  assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} != ${expected}`);
+}
+
+// ブースターから見た機体の離れ方。分離後の両速度の差。
+function relativeVelocity(velocities: BoosterSeparationVelocities): Vec3 {
+  return sub(velocities.booster, velocities.player);
+}
+
+// 分離後の並進運動量の総和。分離前の m*v と一致しなければならない。
+function totalMomentum(
+  velocities: BoosterSeparationVelocities,
+  playerMass: number,
+  boosterMass: number,
+): Vec3 {
+  return add(scale(velocities.player, playerMass), scale(velocities.booster, boosterMass));
+}
 
 function stage(id: string, fuel = 10, ignited = false): BoosterStage {
   return {
@@ -110,5 +132,23 @@ export function register(): void {
     // ve=thrust/fuelRate=500m/s、Δv=ve ln(m0/m1)。平均加速度はΔv/dt。
     const expected = 500 * Math.log(massBefore / massAfter) / dt;
     assert.ok(Math.abs(averageAcceleration - expected) < 1e-12);
+  });
+
+  test('booster separation: 相対速度は船尾方向で指定値になる', () => {
+    const forward = v3(0, 0, 1);
+    const velocities = boosterSeparationVelocities(v3(10, 20, 30), forward, 2_000, 1_000, 8);
+    const relative = relativeVelocity(velocities);
+    close(len(relative), 8);
+    close(dot(relative, forward), -8);
+  });
+
+  test('booster separation: 分離前後の並進運動量を保存する', () => {
+    const base = v3(100, -50, 25);
+    const playerMass = 1_750;
+    const boosterMass = 650;
+    const velocities = boosterSeparationVelocities(base, v3(0, 0, 1), playerMass, boosterMass, 8);
+    const after = totalMomentum(velocities, playerMass, boosterMass);
+    const before = scale(base, playerMass + boosterMass);
+    close(len(sub(after, before)), 0, 1e-8);
   });
 }
