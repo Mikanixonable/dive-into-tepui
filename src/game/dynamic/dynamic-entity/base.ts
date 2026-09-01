@@ -343,6 +343,7 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {
       key: this.markerKey,
+      kind: this.mapKind,
       cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
       sym: baseMarkerSvg(),
       pos,
