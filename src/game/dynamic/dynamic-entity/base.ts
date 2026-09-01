@@ -22,10 +22,10 @@ import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { MarkerRole } from '../../targeter';
 import { fmtMarkerDist } from '../../hud/utils';
-import { ENTITY_GLYPH } from '../../marker/marker-glyphs';
+import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
-import * as C from '../../const';
-import { BaseCollisionGeometry, RayHit, SphereHit } from './base-collision';
+import type { RayHit, SphereHit } from '../../../math/triangle-mesh';
+import { BaseCollisionGeometry } from './base-collision';
 import { PlayerThrottle } from '../../player/player-throttle';
 import type { Controllable } from './controllable';
 import type { Input } from '../../input/input';
@@ -37,7 +37,10 @@ import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../../render/render-style';
 import type { MapVisibility } from '../../map/visibility-policy';
 import { currentThemePalette } from '../../theme';
+import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
+import { MARKER_PRIORITY } from '../../marker/marker-manager';
 
+export const BASE_MAX_VESSELS = 4; // 基地が保有・格納できる艦艇の最大数
 const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
 const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
 const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
@@ -92,7 +95,7 @@ type BaseInit =
 export class Base extends DynamicEntity implements Controllable {
   readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
-  protected readonly baseHistoryDuration = C.DEFAULT_HISTORY_DURATION;
+  protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'off';
   fineAttitude = false;
@@ -182,7 +185,7 @@ export class Base extends DynamicEntity implements Controllable {
       const savedVessels = init.saved.dockedVessels ?? init.saved.dockedShips ?? [];
       this.baseState.dockedVessels = savedVessels.map((shipData, idx) => {
         const player = new Player(hud, worldSfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
-        const slotIndex = idx < C.BASE_MAX_VESSELS ? idx : 0;
+        const slotIndex = idx < BASE_MAX_VESSELS ? idx : 0;
         this.attachDockedVesselMesh(player, slotIndex);
         return {
           id: player.id,
@@ -222,7 +225,7 @@ export class Base extends DynamicEntity implements Controllable {
   // 利用可能な空きスロット番号(0..3)を返す。満杯なら null。
   getAvailableSlotIndex(): number | null {
     const occupied = new Set(this.baseState.dockedVessels.map((s) => s.slotIndex));
-    for (let i = 0; i < C.BASE_MAX_VESSELS; i++) {
+    for (let i = 0; i < BASE_MAX_VESSELS; i++) {
       if (!occupied.has(i)) return i;
     }
     return null;
@@ -304,7 +307,7 @@ export class Base extends DynamicEntity implements Controllable {
     style: RenderStyle,
     visibility: MapVisibility | null = null,
   ): void {
-    const displayState = this.displayState(displayTime);
+    const displayState = this.stateAt(displayTime);
     const mapEntityVisible = !camera.overviewMode || visibility === null || visibility.category;
     this.renderObject.visible = displayState !== null && mapEntityVisible;
     if (displayState !== null) {
@@ -321,7 +324,7 @@ export class Base extends DynamicEntity implements Controllable {
 
   markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? C.MARKER_PRIORITY.PRIMARY_TARGET : C.MARKER_PRIORITY.BASE - dist / 1e9;
+    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {
       key: `base-${this.id}`,
       cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
@@ -331,11 +334,11 @@ export class Base extends DynamicEntity implements Controllable {
       priority,
       name: this.name,
       detail: overviewMode ? '' : fmtMarkerDist(dist),
-      bearingColor: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
+      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
       bearingSym: ENTITY_GLYPH.base,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: false,
-      color: role === 'primary' ? currentThemePalette().signal : C.COLOR_MARKER_ALLY,
+      color: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }

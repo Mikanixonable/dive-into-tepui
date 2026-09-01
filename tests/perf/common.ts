@@ -7,20 +7,19 @@ import { kinematicState, KinematicState } from '../../src/physics/kinematic-stat
 import { v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
-import {
-  SHIP_BCINV,
-  INITIAL_ALT, INITIAL_INC_DEG,
-  GRAVITY_NEGLIGIBLE_ACCEL,
-  SUBSTEP_MAX_DT,
-  ARC_STEPS_PER_REV, ARC_MIN_STEP_DT, ARC_MAX_STEPS,
-  TRAJECTORY_SAMPLES_PER_REV, ARC_MAX_SAMPLES,
-  ARC_STEP_BUDGET, ARC_INTERACTIVE_RATIO,
-  ARC_MIN_ITEM_STEPS,
-  MAX_PHYS_SIM_SPEED, SIM_SPEED_LEVELS,
-} from '../../src/game/const';
+import { ARC_STEP_BUDGET, ARC_INTERACTIVE_RATIO, ARC_MIN_ITEM_STEPS } from '../../src/game/dynamic/predictor';
+import { SHIP_BCINV } from '../../src/game/dynamic/dynamic-entity/ship';
+import { GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/game/dynamic/attractors';
+import { SUBSTEP_MAX_DT, ARC_MIN_STEP_DT } from '../../src/game/dynamic/time-step';
+import { ARC_STEPS_PER_REV, ARC_MAX_STEPS, TRAJECTORY_SAMPLES_PER_REV, ARC_MAX_SAMPLES } from '../../src/game/dynamic/predicted-arc';
+import { MAX_PHYS_SIM_SPEED, SIM_SPEED_LEVELS } from '../../src/game/dynamic/sim-speed-manager';
+
+// 実験が基準にする LEO。自機の初期軌道(player/player.ts)と同じ高度・傾斜角。
+export const INITIAL_ALT = 420e3; // [m]
+export const INITIAL_INC_DEG = 97.0; // [deg]
 
 export {
-  MU_EARTH, R_EARTH, SHIP_BCINV, INITIAL_ALT, INITIAL_INC_DEG,
+  MU_EARTH, R_EARTH, SHIP_BCINV,
   GRAVITY_NEGLIGIBLE_ACCEL, SUBSTEP_MAX_DT,
   ARC_STEPS_PER_REV, ARC_MIN_STEP_DT, ARC_MAX_STEPS,
   TRAJECTORY_SAMPLES_PER_REV, ARC_MAX_SAMPLES,

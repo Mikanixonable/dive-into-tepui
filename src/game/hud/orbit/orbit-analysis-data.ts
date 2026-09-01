@@ -9,7 +9,7 @@ import { latLonOf } from '../../../physics/body-orientation';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { Vec3, dot, len, sub } from '../../../math/vec3';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
-import { OrbitCenter, entityStateAt } from '../../dynamic/entity-state-at';
+import type { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { OrbitReference } from '../../orbit-reference';
 import { relativeInclinationDeg } from './orbit-info';
@@ -70,7 +70,7 @@ export function altitudeSeries(
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     // 外挿できない時刻に達したら、そこで列を止める(0/NaN で埋めない)。
-    const state = entityStateAt(entity, t, centerEntity);
+    const state = entity.stateAt(t, celestialSystem);
     if (state === null) { truncated = true; break; }
     const centerState = centerEntity.stateAt(t);
     samples.push({ t: t - now, alt: altitudeOf(state, centerState, center) });
@@ -92,11 +92,11 @@ function phaseAngleOn(el: OrbitalElements, positionRelCenter: Vec3): number {
 // ターゲット(target)の状態と軌道要素を、他の対象と同じ形(状態取得関数 + 軌道要素)へ揃える。
 export function resolveTarget(
   target: ApproachTargetSource, celestialSystem: CelestialSystem, now: number,
-): { stateAt: (t: number, center: OrbitCenter) => KinematicState | null; currentR: KinematicState['r'] } {
+): { stateAt: (t: number) => KinematicState | null; currentR: KinematicState['r'] } {
   // 艦・基地は predicted(将来は外挿できないことがある)、天体は自身の運動(常に解析的に解ける)。
   if (target.kind === 'entity') {
     return {
-      stateAt: (t, center) => entityStateAt(target.entity, t, center),
+      stateAt: (t) => target.entity.stateAt(t, celestialSystem),
       currentR: target.entity.state.r,
     };
   }
@@ -155,8 +155,8 @@ export function approachSeries(
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     // どちらかが外挿できなくなった時点で列を止める。
-    const shipState = entityStateAt(ship, t, centerEntity);
-    const targetState = resolved.stateAt(t, centerEntity);
+    const shipState = ship.stateAt(t, celestialSystem);
+    const targetState = resolved.stateAt(t);
     if (shipState === null || targetState === null) { truncated = true; break; }
     const centerState = centerEntity.stateAt(t);
     const shipRel = sub(shipState.r, centerState.r);
@@ -183,7 +183,7 @@ export interface ProjectionSeries {
 // state(中心天体相対ではなく ECI)を中心天体の時刻 t での自転を通じて緯度経度へ変換する。
 // 中心天体が自転モデルを持たなければ null。
 function projectionSampleAt(
-  state: KinematicState, centerState: KinematicState, center: OrbitCenter, t: number,
+  state: KinematicState, centerState: KinematicState, center: CelestialEntity, t: number,
 ): ProjectionSample | null {
   const orientation = center.motion.orientationAt(t);
   if (orientation === null) return null;
@@ -191,11 +191,11 @@ function projectionSampleAt(
   return { latDeg: (latRad * 180) / Math.PI, lonDeg: (lonRad * 180) / Math.PI };
 }
 
-// 投影タブ: stateAt が返す位置を、centerMotion の自転を通じて緯度経度へ変換した点列。
+// 投影タブ: stateAt が返す位置を、center の自転を通じて緯度経度へ変換した点列。
 // 中心天体が自転モデルを持たない場合は null。
 export function projectionSeries(
   stateAt: (t: number) => KinematicState | null,
-  center: OrbitCenter,
+  center: CelestialEntity,
   now: number,
   spanSec: number,
   sampleCount: number,

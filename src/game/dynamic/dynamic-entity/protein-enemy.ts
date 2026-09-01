@@ -147,7 +147,7 @@ export class ProteinEnemy extends Enemy {
   }
 
   // 各機能部位の投影元位置と HUD 表示情報を並べる。displayPos には markerItem と同じ
-  // 表示時刻の位置(displayState 経由)を渡すこと。
+  // 表示時刻の位置(stateAt 経由)を渡すこと。
   public siteMarkers(displayPos: Vec3): readonly ProteinSiteMarker[] {
     return this.runtime.hudSnapshot.sites.map((site) => ({
       id: site.id,
@@ -167,7 +167,7 @@ export class ProteinEnemy extends Enemy {
   ): void {
     super.sync(fo, displayTime);
     if (!this.renderObject.visible) return;
-    const displayed = this.displayState(displayTime);
+    const displayed = this.stateAt(displayTime);
     const projectedDiameterPx = viewer && displayed
       ? apparentSizePx(this.radius * 2, metersPerPixel(viewer, displayed.r, window.innerHeight))
       : Number.POSITIVE_INFINITY;

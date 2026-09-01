@@ -4,7 +4,6 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../math/random';
 import { add, addScaled, randVec, scale, v3, Vec3 } from '../../math/vec3';
 import { FloatingOrigin } from '../camera/floating-origin';
-import * as C from '../const';
 import { DebrisKind, DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { FlashEffect, FlashEffectManager } from './flash-effect-manager';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
@@ -19,6 +18,8 @@ import {
   BOOSTER_INTERSTAGE_COVER_Z,
   BOOSTER_STAGE_DIMENSIONS,
 } from '../../render/booster';
+
+const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
 
 // フラッシュ・破片エフェクトの生成窓口。scene への注入をここに一元化し、破片は
 // entities へ追加する。フラッシュの毎フレーム更新・寿命管理は FlashEffectManager が持つ。
@@ -232,6 +233,6 @@ export class EffectsSystem {
 
   // マガジン撃ち尽くし時に排出される空マガジンの外枠。
   spawnMagazineFrame(state: KinematicState, att: Attitude): void {
-    this.spawnDebrisPiece(state, { kind: 'magazineFrame' }, att, C.EJECTED_MAG_PHYS_RADIUS);
+    this.spawnDebrisPiece(state, { kind: 'magazineFrame' }, att, EJECTED_MAG_PHYS_RADIUS);
   }
 }

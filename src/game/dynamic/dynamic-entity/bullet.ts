@@ -8,13 +8,15 @@ import { FloatingOrigin } from '../../camera/floating-origin';
 import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import { Vec3, lenSq, sub } from '../../../math/vec3';
-import * as C from '../../const';
 import { buildBulletMesh, buildPlasmaMesh } from '../../../render/ships';
 import { orientProjectile } from '../../../render/projectile-orientation';
 import { Enemy } from './enemy';
 import { Player } from '../../player/player';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 
+const BULLET_BCINV = 2e-4; // 弾道係数の逆数 Cd·A/m [m^2/kg]。高弾道係数でほとんど減速しない
+const BULLET_MASS = 0.1; // 剛体接触用質量 [kg](実体弾・プラズマ弾とも共通)
+const BULLET_RADIUS = 0.02; // 剛体接触用半径 [m]
 const BULLET_MAX_DIST = 30e3; // 自機からこれ以上離れた弾を消す [m]
 const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
 const BULLET_CLOSE_PASS_DIST = 40; // 敵弾が艦の至近を通過したとみなす距離 [m]
@@ -31,7 +33,7 @@ export type BulletType = 'normal' | 'plasma';
 // 自弾と敵プラズマ弾の両方に使う。
 // geometry/material はビルダーが弾種ごとに共有するため、traverse による個別 dispose は行わない。
 export class Bullet extends DynamicEntity {
-    public override readonly bcInv = C.BULLET_BCINV;
+    public override readonly bcInv = BULLET_BCINV;
     // 弾は姿勢を持たず、速度方向を向く(sync)。
     public readonly hasAttitude = false;
 
@@ -63,8 +65,8 @@ export class Bullet extends DynamicEntity {
         this.damage = damage;
         this._worldSfx = worldSfx;
         this.velocityReference = velocityReference ?? null;
-        this.mass = C.BULLET_MASS;
-        this.radius = C.BULLET_RADIUS;
+        this.mass = BULLET_MASS;
+        this.radius = BULLET_RADIUS;
         this.collides = true;
     }
 
@@ -118,7 +120,7 @@ export class Bullet extends DynamicEntity {
     // 姿勢を持たないため、att.q ではなく射手に対する相対速度方向を向く。
     public sync(fo: FloatingOrigin, displayTime: number): void {
         // 表示できる時刻の範囲外なら非表示にする
-        const s = this.displayState(displayTime);
+        const s = this.stateAt(displayTime);
         if (s === null) {
             this.renderObject.visible = false;
             return;
@@ -127,7 +129,7 @@ export class Bullet extends DynamicEntity {
         this.renderObject.position.copy(fo.RtoThreeV3(s.r));
         // 射手の表示時刻の速度を差し引く。射手が無い旧来の呼び出しだけは
         // FloatingOrigin の速度基準へフォールバックする。
-        const reference = this.velocityReference?.displayState(displayTime);
+        const reference = this.velocityReference?.stateAt(displayTime);
         const relative = reference === null || reference === undefined ? null : sub(s.v, reference.v);
         const relVel = relative === null
             ? fo.VtoThreeV3(s.v)

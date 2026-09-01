@@ -1,11 +1,11 @@
 // LEAD(見越し)マーカー: 自機の弾がその敵に命中する未来位置を示す。自機と敵の双方の
 // 状態に依存するため、Enemy にも Targeter にも属さない独立責務として切り出してある。
-import * as C from '../const';
 import { leadPoint } from '../../physics/intercept';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from './marker-manager';
 import type { CombatTarget } from '../targeter';
 import { Player } from '../player/player';
+import { COLOR_MARKER_ALLY } from './marker-identity';
 
 const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
@@ -41,7 +41,7 @@ export class LeadMarkers {
       // 主照準とは反対向き（逆三角形方向）の三尖星。線だけで描き、中央に
       // 小さな切り欠きを残すことで、敵マーカーや照準と識別しやすくする。
       const star = '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="LEAD"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 14.3V22"/><path d="M12 14.3V22" transform="rotate(120 12 12)"/><path d="M12 14.3V22" transform="rotate(240 12 12)"/></g></svg>';
-      const color = 'accentColor' in tgt ? (tgt as { accentColor: string }).accentColor : C.COLOR_MARKER_ALLY;
+      const color = 'accentColor' in tgt ? (tgt as { accentColor: string }).accentColor : COLOR_MARKER_ALLY;
       this.markerManager.setPosition(markerKey(tgt), 'mk-lead', star, lead, project, '', 1, color, undefined, true);
       shownKeys.push(markerKey(tgt));
     }
