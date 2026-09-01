@@ -97,7 +97,7 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 | 15 | 「戦闘/マップ」の軸に**5つの語彙** | **型の重複。1つに畳む** | 型4 + boolean 1 | **実施済**(型4→1。boolean は論点13) |
 | 16 | エンティティ種別の語彙が**5つ** | **型の重複。1つに畳む** | 型5 | **実施済** |
 | 17 | `OrbitAnalysisWindow` のタブが**半分だけ切り出し** | **多態で分ける** | 466行 / 分岐約30 | 中 |
-| 18 | `Player`/`Base` を消費側が `instanceof` で判別し直す | **多態の復元** | 26箇所 / 11モジュール | 中 |
+| 18 | `Player`/`Base` を消費側が `instanceof` で判別し直す | **多態の復元** | 26箇所 / 11モジュール | **実施済** |
 | 19 | その他の重複 union(`L1..L3` 等) | **型の重複。1つに畳む** | 3組 | **実施済** |
 | 20 | `MapCamera` の2つの非 on/off 2分 | **要検討** | 531行 / 分岐12 | 低 |
 
@@ -148,15 +148,12 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 
 ### 宿題 — この再編が残した問題
 
-**(a) `MapContextActions` に `instanceof` が9箇所残っている**(うち `Player`/`Base` が7、
-`CelestialEntity` が1、`Base` の台帳判定が1)。`handleLeftClick` の候補絞り込み・
-`selectPickable`・`relatedItemsFor` / `relatedTitleFor` で、「被選択物自身が答える」形の手前で
-止まっている。`MapPickable` に口を足す仕様変更を含むので `/modify-feature` 案件。
-**論点18 と同じ形なので、そちらと1回で見る。**
+**(a) `MapContextActions` の `Player`/`Base` 判別(実施済)。** 論点18 で片付いた。
+残る `instanceof` は `relatedItemsFor` の `CelestialEntity` 1箇所で、これは (b) 側。
 
 **(b) `PhysicalObjectListOrder.matches` が `instanceof LagrangePointMarker` /
 `instanceof CelestialEntity` で絞り込んでいる。** `PhysicalObjectListFilter` と
-`ObjectPickerGenre` がほぼ並行な軸を二重に持っている状態。これも (a) と同じ回で。
+`ObjectPickerGenre` がほぼ並行な軸を二重に持っている状態。
 
 **(c) `AmmoPickup` と `RcsFuelPickup` の `MapPickable` 実装がほぼ全同。**
 `mapMenuItems` / `runMapMenu` / `listCounted` / `listSearchText` / `mapPropertyRows` が
@@ -709,71 +706,36 @@ interface AnalysisTabView {
 
 ---
 
-## 論点18 — `Player` / `Base` を消費側が `instanceof` で判別し直している
+## 論点18 — `Player` / `Base` を消費側が `instanceof` で判別し直している(実施済)
 
-### 症状
+`Controllable` を `DynamicEntity` を継承した「操作対象が答えるもの」の口に育て、HUD と
+マップ操作から型判別を消した。`hud/` `pickable/` の `instanceof Player | Base | Ship` は
+**24 → 0 件**。残る 9 件は接触の帰結(docking / entity-contact-response / debris-piece)・
+戦闘(bullet)・照準カメラ・`markerItem` の署名ずれ(targeter)で、どれも別の軸。
 
-`instanceof` の出現をクラス別に数えると、`Player` と `Base` が突出している。両者は
-`Controllable` を実装する対だが、**消費側が型を判別し直している。**(論点1 の完了後に再測。
-調査時は 26 箇所、いま 29 箇所)
+- **`Controllable` が `id`/`name`/`mass`/`state`/`predictedArc`/`ensureEquatorNodes` を
+  書き写していた**ので、`extends DynamicEntity` にして 6 つ落とした。代わりに `throttle` /
+  `totalFuel` / `totalMaxFuel` と、搭載装備 `fire` / `power` / `radiator` / `aero` /
+  `altitudeAlarm`(持たない側は `null`)を載せた。**表示モデル型は作っていない** — 規約 1.6
+  「情報をまとめるためだけの型を作らない」に触れるうえ、パドル・放熱板は押して状態を変える
+  のでスナップショットでは表せない。`Game.activeControllableEntity` の戻り値も締めた。
+- **ダミー値を 2 つ消した。** `BASE_ARMOR_PLACEHOLDER`(基地の装甲を 1000 で埋めていた)は
+  `Base.hp = null` にして TARGET パネルが行ごと畳むようにし、`EMPTY_METRICS` は消えた。
+  `Base.fuel`/`maxFuel` は艦と同じ `totalFuel`/`totalMaxFuel` へ改名。
+- **論点1 の宿題 (a) も片付いた。** `MapPickable` に `onMapSelect` / `onMapFocus`
+  (`mapRename` と同じ「持たない対象は `null`」の形)を足し、`MapCommands` へ `hint` /
+  `openProperties` / `selectBase` / `toggleBasePanel` を追加。`MapContextActions` の
+  `instanceof` は 9 → 1(`CelestialEntity` だけ。これは宿題 (b) 側)。
+  `PartWindows.closeForShip(ship)` は `closeFor(shipId)` にした。
+- **資源融通ダイアログの基地半分は到達不能だった。** 入口は自艦の右クリックメニュー1箇所だけで
+  相手は常に `Player`、基地は項目を出さず `dockState` も `docked` にならない。基地在庫の区画・
+  無限供給の分岐ごと落として 494 → 378 行。艦↔基地のやり取りは基地パネルが持っている。
 
-| モジュール | 箇所 |
-| --- | --- |
-| `hud/panels/vessel-panel.ts` | 8 |
-| `pickable/map-context-actions.ts` | 7 |
-| `hud/windows/resource-transfer-dialog.ts` | 5 |
-| `docking/docking.ts` | 3 |
-| `targeter.ts` / `hud/orbit/orbit-panel.ts` / `dynamic/entity-contact-response.ts` / `dynamic-entity/debris-piece.ts` / `dynamic-entity/bullet.ts` / `camera/combat-camera-system.ts` | 各1 |
+**画面が変わったのは 3 点だけ**(いずれも `SPEC/UI-DESIGN.md` を先に更新した) — 基地を操作中の
+ORBIT パネルの機体温度が `---` から実値に、基地をロック中の TARGET パネルの装甲行が畳まれる、
+RCS燃料の「満タン補給 / 均等」ボタンが「均等」に。
 
-`map-context-actions.ts` の7箇所は論点1 の宿題 (a) と同じもの。被選択物を多態にしたのに、
-「自艦・基地だけ左クリックで掴める」「自艦のときだけ搭載部品を関連項目に出す」の2つが
-`instanceof` のまま残っている。
-
-`vessel-panel.ts` の `sync`(98行)が典型で、同じ1つのパネルを描くために8回判別する:
-
-```ts
-const throttleObj = target instanceof Player ? target : (target instanceof Base ? target : null);
-const hasQdyn = target instanceof Player;                       // 動圧は Player だけ
-const fineAtt = target instanceof Player ? target.fineAttitude : false;
-if (target instanceof Player) { currentFuel = target.totalFuel; … }
-else if (target instanceof Base) { currentFuel = target.fuel; … }
-if (target instanceof Player) { ammo.textContent = fmtAmmoStatus(…); }
-else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
-```
-
-`target-panel.ts` はさらに露骨で、`target instanceof Ship ? target.hp : BASE_ARMOR_PLACEHOLDER`
-— **型が合わないので定数で埋めている。**
-
-原因は `Controllable`(24行)が公開しているのが 13 メンバーだけで、
-`fuel` / `maxFuel` / `hp` / 状態読み値を含まないこと。
-
-### 診断
-
-規約 1.3:
-
-> **検出側やオーケストレータで当事者の型を分岐するコードは、この境界が破れているサインである。**
-
-規約 1.6「多態を保存し、復元する」と同じ発想で、**当事者が自分の分を答えるべき。**
-
-### 修正
-
-`Hud` が既に `BurnManagementViewModel` でこの形を持っている
-(`game.player?.boosterManagementViewModel()` — HUD は `Player` 型を知らない)。同じ形に揃える。
-
-1. `Controllable` に `vesselStatus(): VesselStatusView` を足し、`Player` と `Base` が
-   それぞれ自分の燃料・弾薬(または燃料)・動圧の有無・微調整状態を詰めて返す。
-   **「動圧を持たない」は `qdyn: number | null` で表す**(規約 1.6「不在は `T | null`」)。
-   `BASE_ARMOR_PLACEHOLDER` のようなダミー値は消す。
-2. `resource-transfer-dialog.ts` の5箇所も同じ経路にする。
-3. `docking.ts` / `entity-contact-response.ts` の `instanceof Base` は**接触の帰結**を
-   見ているので別件。規約 1.3「a と b の接触の帰結は a と b の責務」に照らして
-   別途見る(この文書では扱わない)。
-
-### 注意
-
-規約 1.5 が「**自機と敵の戦闘挙動は一般化しない**」と決めているが、**これは `Player` と
-`Base` の話で、しかも表示だけなので抵触しない。** 戦闘挙動(射撃・散布界・被弾判定)には
-触れないこと。
+`npm run typecheck` / `test:game` 161件 通過。**実機の目視は未実施。**
 
 ---
 
@@ -874,17 +836,14 @@ else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
 
 ## 実施順序
 
-**実施済: 論点1 / 2 / 3 / 4 / 7 / 8 / 11 / 12 / 15 / 16 / 19。** 残りは 5 / 6 / 9 / 10 /
-13 / 14 / 17 / 18 / 20。
+**実施済: 論点1 / 2 / 3 / 4 / 7 / 8 / 11 / 12 / 15 / 16 / 18 / 19。** 残りは 5 / 6 / 9 / 10 /
+13 / 14 / 17 / 20。
 
-**論点1・7・16 の完了で、それを条件にしていた論点18 と論点13 の前提が揃った。**
-論点15 の完了で、ビューの型は `WorldView` 1本になっている。
+**論点15 の完了で、ビューの型は `WorldView` 1本になっている。** 論点13 はその前提の上にある。
 
-1. **論点18**(`Player`/`Base` の `instanceof`)— **論点1 の完了で着手可能になった本命。**
-   調査時 26 箇所 → 現在 29 箇所(再編で `map-context-actions.ts` 側が増えた)。
-   `vessel-panel` / `resource-transfer-dialog` / `target-panel` に加えて、
-   **論点1 の宿題 (a)(b) も同じ形なので1回で見る。** `Controllable` に
-   `vesselStatus(): VesselStatusView` を足す案は論点18 の節にある。
+1. **論点1 の宿題 (b)** — `PhysicalObjectListOrder.matches` の `instanceof`。論点18 で (a) を
+   片付けたときに残した唯一の型判別で、`PhysicalObjectListFilter` と `ObjectPickerGenre` の
+   二重の軸をどう畳むかが本体。
 2. **論点1 の宿題 (c)(d)(e)(f')** — **(f)(g) は実施済。** (c) は規約 1.5 の判断が要るので
    **着手前にユーザーへ問う。**(f') も同じく判断待ち — `physics/time/index.ts` の TDB 変換一式を
    capability ごと消すかどうか。(d)(e) は `Game` の配線に触るので、単独では割に合わない —
