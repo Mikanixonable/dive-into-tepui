@@ -116,6 +116,7 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 | `npm run cloud-lab` | 雲の実験環境(http://localhost:8083) | 雲の生成を目で確かめるとき |
 | `npm run cloud-lab:shot` | 雲の実験環境の撮影(`.cloud-lab/shots/`) | 雲を画像で確かめるとき |
 | `npm run cloud-lab:compare` | 生成と実写の統計比較(`.cloud-lab/compare/`) | 雲の生成を実写(8k_clouds)と見比べるとき |
+| `npm run cloud-lab:separate` | 実写を被覆率・雲頂高度・薄い雲へ推定分離(`.cloud-lab/separated/`) | 実写から描画用の仮テクスチャを作るとき |
 | `npm run export-assets` | `src/assets/` の焼き込みアセット再生成 | モデルかノズル表を変えたときだけ |
 
 `npm run export-assets` は実行のたびに全アセットの識別子が振り直されるため、差分が識別子だけの
