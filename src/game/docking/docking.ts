@@ -191,7 +191,7 @@ export class Docking {
   }
 
   // ドッキング中の相手との物資・電力融通ダイアログを開く
-  openTransfer(ship: Player, target: DynamicEntity): void {
+  openTransfer(ship: Player, target: Player): void {
     this.transferDialog.open(ship, target);
   }
 
