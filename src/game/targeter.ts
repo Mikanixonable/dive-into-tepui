@@ -7,14 +7,12 @@ import type { AmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
 import type { RcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
-import { Input, PointerPoint } from './input/input';
+import { Input } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import { MarkerManager, MARKER_PRIORITY } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
-import { pickNearest } from './pickable/map-pickable';
-import { pickRadiusSq } from './input/pointer-precision';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
 import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
@@ -32,9 +30,6 @@ const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録し
 
 const MAP_AMMO_FADE_START = 5e7;
 const MAP_AMMO_FADE_END = 1e8;
-const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
-
-const TARGET_LOCK_PICK_PX_SQ_COARSE = 1936;
 
 const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
 
@@ -267,13 +262,5 @@ export class Targeter {
     const tgtDir = norm(sub(tgt.state.r, player.state.r));
     this.markerManager.setDirection('tgtdir', 'mk-tgtdir', DIRECTION_GLYPH.target, player.state.r, tgtDir, project);
     this.markerManager.setDirection('atgdir', 'mk-tgtdir', DIRECTION_GLYPH.antiTarget, player.state.r, scale(tgtDir, -1), project);
-  }
-
-  // クリック位置の許容半径内で画面上最も近い生存ターゲットを返す。範囲外なら null。
-  // MapContextActions の戦闘ビュー右クリック(プロパティウィンドウを開く対象探し)が読む。
-  pickTargetAt(click: PointerPoint, targets: readonly CombatTarget[], project: ProjectFn): CombatTarget | null {
-    return pickNearest(
-      targets.filter((e) => e.alive), (target) => target.state.r,
-      click.x, click.y, project, pickRadiusSq(TARGET_LOCK_PICK_PX_SQ, TARGET_LOCK_PICK_PX_SQ_COARSE));
   }
 }
