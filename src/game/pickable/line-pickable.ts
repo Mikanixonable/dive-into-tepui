@@ -1,10 +1,7 @@
 // 右クリックの当たり判定にかける線(公転軌道・船の軌道・軌道ガイド・ターゲット相対の直線)の
-// 共通形と、画面上でクリック位置に最も近いものを選ぶ処理。MapPickable(点)と違い、線分の列に
-// 対して最短距離で当たり判定する。
-// **`orbit` ではなく `line`** — 持っているのは ECI の点列だけで基準となる重力源を伴わず
-// (CODING-RULE 2.2 の `orbit`)、軌道ガイドには物体が乗っておらず、method が 'predicted' の
-// ときは中身が積分した軌跡そのもの。`kind` / `method` の**値**は「何を描いた線か」のラベル
-// なので `orbit-*` のまま。
+// 共通形と、画面上でクリック位置に最も近いものを選ぶ処理。線分の列に対して最短距離で当てる。
+// 運ぶのは ECI の点列だけで、基準となる重力源を伴わない。`kind` / `method` の値は
+// 「何を描いた線か」のラベル。
 import { Vec3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import type { CelestialMotion } from '../../physics/celestial-motion';
@@ -39,18 +36,13 @@ function distanceSqToSegment(px: number, py: number, ax: number, ay: number, bx:
   return ex * ex + ey * ey;
 }
 
-// 遮蔽判定に要るもの。天体の位置を引く時刻(pivot)は候補の点を求めた表示時刻と揃える。
-export interface LineOcclusion {
-  readonly cameraPos: Vec3;
-  readonly celestialBodies: readonly CelestialMotion[];
-  readonly pivot: number;
-}
-
 // orbits を画面へ射影し、(x, y) から最短距離が radiusPxSq [px^2] 以内で最も近いものを返す。
 // 圏外・視界の裏側・天体に遮られた点は候補にせず、そこで線分を切る(SPEC/MAP.md §11)。
+// 遮蔽は celestialBodies を pivot の時刻で引いて判定するので、pivot には候補の点を求めた
+// 表示時刻を渡す。
 export function pickNearestLine(
   orbits: readonly LinePickable[], x: number, y: number, project: ProjectFn, radiusPxSq: number,
-  occlusion: LineOcclusion,
+  cameraPos: Vec3, celestialBodies: readonly CelestialMotion[], pivot: number,
 ): LinePickable | null {
   let best: LinePickable | null = null;
   let bestDistSq = radiusPxSq;
@@ -58,8 +50,7 @@ export function pickNearestLine(
     let prevX = 0, prevY = 0, hasPrev = false;
     for (const point of orbit.points) {
       const p = project(point);
-      if (!p.front
-        || isOccluded(occlusion.cameraPos, point, occlusion.celestialBodies, occlusion.pivot)) {
+      if (!p.front || isOccluded(cameraPos, point, celestialBodies, pivot)) {
         hasPrev = false;
         continue;
       }

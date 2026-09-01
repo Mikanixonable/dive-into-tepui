@@ -1,7 +1,6 @@
 // 被選択物(MapPickable)への右クリック/左クリック/ダブルクリックの解決と、プロパティ/パーツ/
-// 軌道ウィンドウのライフサイクル管理。候補集合と表示可否は map-pickables.ts の MapPickables
-// から読む。メニュー項目の構築・実行は被選択物自身が持つので、ここはその実行先を
-// MapCommands として差し出す。
+// 軌道ウィンドウのライフサイクル管理。被選択物が組んだメニュー項目の実行先として、ゲーム側の
+// 操作一式を MapCommands の形で差し出す。
 import { Hud } from '../hud/hud';
 import { Base } from '../dynamic/dynamic-entity/base';
 import {
@@ -47,6 +46,7 @@ import { rayThroughScreen } from '../../math/projection';
 const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
 const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
 
+// pointer:coarse(指先)環境で使う、同じ2つの判定半径の2乗 [px^2]。
 const MAP_PICK_PX_SQ_COARSE = 1936;
 const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 
@@ -73,7 +73,7 @@ export class MapContextActions implements MapCommands {
   // 最後にマップ視点だった時点の値のまま据え置く。
   private lastFocusId: string | undefined = undefined;
 
-  // Docking は MapContextActions より後に生成されるので、生成後に登録する。
+  // ドッキングの実行先を登録する。登録するまでドッキング関連の項目は効かない。
   setDocking(docking: Docking): void {
     this.docking = docking;
     docking.basePanel.onClose = () => this.collapseBasePanel();
@@ -171,11 +171,8 @@ export class MapContextActions implements MapCommands {
       const orbit = pickNearestLine(
         this.linePickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
         pickRadiusSq(ORBIT_LINE_PICK_PX_SQ, ORBIT_LINE_PICK_PX_SQ_COARSE),
-        {
-          cameraPos: this.cameraSystem.activeCameraPos,
-          celestialBodies: this.celestialSystem.celestialMotions,
-          pivot: this.pickables.lastDisplayTime,
-        },
+        this.cameraSystem.activeCameraPos, this.celestialSystem.celestialMotions,
+        this.pickables.lastDisplayTime,
       );
       if (!orbit) return false;
       this.orbitLineWindows.open(p.x, p.y, orbit);
@@ -187,7 +184,7 @@ export class MapContextActions implements MapCommands {
   // 新規には開かない。一時ウィンドウ(非クリップ)どうしの排他は PropertyWindow 自身が
   // OverlayManager の TEMP_WINDOW_GROUP を通じて保つ。
   private openPropertyWindow(clientX: number, clientY: number, target: MapPickable, simTime: number): void {
-    const key = this.windowKey(target);
+    const key = target.id;
     const existing = this.windows.get(key);
     if (existing) {
       existing.win.moveTo(clientX, clientY);
@@ -220,11 +217,6 @@ export class MapContextActions implements MapCommands {
       if (entry.target instanceof Player) this.partWindows.closeForShip(entry.target);
       this.forgetWindow(key);
     };
-  }
-
-  // windows のキー。天体・実体・マーカーは id の名前空間を共有しているので id で足りる。
-  private windowKey(target: MapPickable): string {
-    return target.id;
   }
 
   // 台帳から外すだけで DOM 破棄はしない — ✕ ボタン自身が dispose 済みのときに呼ぶ経路。
@@ -453,14 +445,14 @@ export class MapContextActions implements MapCommands {
     }
     related.sort((a, b) => a.label.localeCompare(b.label));
     return related.map(({ item, label }) => ({
-      id: this.windowKey(item),
+      id: item.id,
       label,
       onFocus: () => {
         this.frameControls.setFocus({ kind: 'object', id: item.id });
         this.hud.hint(`${label} にフォーカス`);
       },
       onContextMenu: (clientX, clientY) => {
-        const current = this.pickables.pickables.find((candidate) => this.windowKey(candidate) === this.windowKey(item));
+        const current = this.pickables.pickables.find((candidate) => candidate.id === item.id);
         if (current) this.openPropertyWindow(clientX, clientY, current, this.pickables.lastSimTime);
       },
     }));
@@ -472,7 +464,6 @@ export class MapContextActions implements MapCommands {
 
   // ------------------------------------------------------------- MapCommands
 
-  // マップの注視点を id へ移し、name で通知する。
   focus(id: string, name: string): void {
     this.frameControls.setFocus({ kind: 'object', id });
     this.hud.hint(`${name} にフォーカス`);
@@ -482,7 +473,6 @@ export class MapContextActions implements MapCommands {
     this.navTarget.toggleTarget(id, name);
   }
 
-  // 時刻 t まで時間を加速する。既に通過していれば通知だけ出す。
   warpTo(t: number): void {
     if (!this.simSpeedManager.startAutoWarpTo(t, this.pickables.lastSimTime)) {
       this.hud.hint('この時刻は既に通過しています');
@@ -493,7 +483,6 @@ export class MapContextActions implements MapCommands {
     this.editor.addNodeAt(t);
   }
 
-  // 操作対象の自艦を切り替える。null で未操作へ戻す。
   setActivePlayer(ship: Player | null): void {
     if (ship === null) this.activePlayers.setOrNull(null);
     else this.activePlayers.set(ship);
@@ -507,7 +496,6 @@ export class MapContextActions implements MapCommands {
     this.activePlayers.setBase(base);
   }
 
-  // 基地を世界から取り除き、その基地を指していた操作対象・ドッキング先も外す。
   removeBase(base: Base): void {
     if (this.activePlayers.controlledBase === base) this.activePlayers.setBase(null);
     this.docking?.clearActiveBaseIf(base);
@@ -555,7 +543,6 @@ export class MapContextActions implements MapCommands {
     return this.navTarget.canTarget(id, this.entities, this.celestialSystem, simTime);
   }
 
-  // 操作中の自艦から見た target とのドッキング状態。自艦がいない・自艦自身なら 'none'。
   dockState(target: DynamicEntity): DockState {
     const ship = this.activePlayers.current;
     if (ship === null || this.docking === null || ship === target) return 'none';
@@ -564,6 +551,6 @@ export class MapContextActions implements MapCommands {
   }
 
   isBasePanelExpanded(base: Base): boolean {
-    return this.expandedBaseWindowKey === this.windowKey(base);
+    return this.expandedBaseWindowKey === base.id;
   }
 }
