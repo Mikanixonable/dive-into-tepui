@@ -248,7 +248,7 @@ export class ResourceTransferDialog {
               <button class="w-btn rt-btn-f-to-a" ${bMetrics.rcsFuel <= 0 ? 'disabled' : ''}>← ${RCS_FUEL_TRANSFER_STEP_KG}kg</button>
             </div>
             <div class="rt-btn-group">
-              <button class="w-btn rt-btn-f-bal" title="両艦の燃料比率を揃えます">満タン補給 / 均等</button>
+              <button class="w-btn rt-btn-f-bal" title="両艦の燃料比率を揃えます">均等</button>
             </div>
           </div>
           <div class="rt-card">
