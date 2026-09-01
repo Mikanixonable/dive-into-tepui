@@ -1,7 +1,6 @@
 // マップ上の被選択物(MapPickable)の候補集合と、表示可否(MapVisibilityPolicy)を1フレーム分
 // 組み立てる。「何が選べるか」だけを答え、選んだ結果どうするか(ヒットテスト・メニュー・
 // プロパティウィンドウ)は map-context-actions.ts の MapContextActions が持つ。
-import { fmtDist, fmtSpeed } from '../hud/utils';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from '../camera/focus-target';
 import { DynamicSystem } from '../dynamic/dynamic-system';
@@ -11,27 +10,17 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import { CameraSystem } from '../camera/camera-system';
 import { PlanEditor } from '../plan/plan-editor';
 import type { ActivePlayerController } from '../active-controllable-controller';
-import { len, sub } from '../../math/vec3';
-import { strongestAttractor } from '../../physics/attractor';
 import { isOccluded } from '../../physics/occlusion';
-import { apsisAltitudes } from '../../physics/elements';
 import { NearbySystemTracker } from '../celestial/nearby-system-tracker';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
-import { MarkerManager } from '../marker/marker-manager';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
-import { AMMO_PICKUP_RADIUS } from '../dynamic/dynamic-entity/ammo-pickup';
-import { RCS_FUEL_PICKUP_RADIUS } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
-
-type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 
 export class MapPickables {
-  private readonly candidateItems: MutableMapPickable[] = [];
-  private readonly visibleItems: MutableMapPickable[] = [];
-  private readonly itemRecords = new Map<string, MutableMapPickable>();
-  private readonly activeRecordKeys = new Set<string>();
+  private readonly candidateItems: MapPickable[] = [];
   private items: readonly MapPickable[] = this.candidateItems;
   private _lastSimTime = 0;
+  private _lastDisplayTime = 0;
   private _visibilityPolicy: MapVisibilityPolicy | null = null;
   private readonly nearbyTracker = new NearbySystemTracker();
 
@@ -45,23 +34,8 @@ export class MapPickables {
   // 同じ時刻で求め直すために読む。
   get lastSimTime(): number { return this._lastSimTime; }
 
-  // 画面描画・マーカー同期完了後に、最新の可視性状態(ラベル・アイコン非表示)を
-  // MapPickable.pickable へ反映する。
-  syncVisibility(): void {
-    const focusMarkers = this.cameraSystem.focusMarkers;
-    const combatMarkers = this.markerManager.combatMarkers;
-    for (const item of this.candidateItems) {
-      if (item.kind === 'body') {
-        item.pickable = focusMarkers.isBodyPickable(item.id);
-      } else if (item.kind === 'player') {
-        item.pickable = combatMarkers.isPickable(`player-${item.id}`);
-      } else if (item.kind === 'enemy') {
-        item.pickable = combatMarkers.isPickable(`enemy-${item.id}`);
-      } else if (item.kind === 'base') {
-        item.pickable = combatMarkers.isPickable(`base-${item.id}`);
-      }
-    }
-  }
+  // 直近の refresh が候補の位置を求めた表示時刻。候補の位置を引き直すときはこの時刻を渡す。
+  get lastDisplayTime(): number { return this._lastDisplayTime; }
 
   // 候補の供給元を参照として受け取る。
   constructor(
@@ -71,7 +45,6 @@ export class MapPickables {
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
     private readonly editor: PlanEditor,
-    private readonly markerManager: MarkerManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {}
 
@@ -87,6 +60,7 @@ export class MapPickables {
     }
     const { simTime, displayTime } = displayWindow;
     this._lastSimTime = simTime;
+    this._lastDisplayTime = displayTime;
     const focusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     // 候補の位置は表示時刻のものなので、遮蔽・系の判定もその時刻の天体位置で行う。
     const celestialBodies = this.celestialSystem.celestialMotions;
@@ -104,150 +78,37 @@ export class MapPickables {
     this.navTarget.update(
       this.activePlayers.current, this.entities, this.celestialSystem, displayWindow, this.frameAnchors);
 
-    // 船の位置は表示時刻の stateAt — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
-    this.candidateItems.length = 0;
-    this.visibleItems.length = 0;
-    this.activeRecordKeys.clear();
-    for (const item of this.cameraSystem.focusMarkers.bodyPickables(displayTime, visibilityPolicy)) {
-      this.appendPickable(item);
-    }
-    for (const ship of this.entities.players) {
-      const vPlayer = visibilityPolicy.entity('player', ship === this.activePlayers.current);
-      if (!vPlayer.pickable) continue;
-      const pos = ship.stateAt(displayTime)?.r;
-      if (pos) {
-        const center = strongestAttractor(ship.state.r, celestialBodies, ship.state.t);
-        const el = ship.orbitalElementsAround(center, ship.state.t);
-        const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
-        this.addCandidate(
-          ship.id, ship.name, pos, 'player',
-          `HP ${Math.round(ship.hp)}/${Math.round(ship.maxHp)} · PE ${pe}`,
-          ship === this.activePlayers.current ? -100 : 0,
-          undefined, vPlayer.label,
-        );
-      }
-    }
-    for (const enemy of this.entities.enemies) {
-      const vEnemy = visibilityPolicy.entity('enemy');
-      if (!enemy.alive || !vEnemy.pickable) continue;
-      const pos = enemy.stateAt(displayTime)?.r;
-      if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'enemy', undefined, undefined, undefined, vEnemy.label);
-    }
-    for (const ammoPickup of this.entities.ammoPickups) {
-      const vAmmo = visibilityPolicy.entity('ammo');
-      if (!ammoPickup.alive || !vAmmo.pickable) continue;
-      const pos = ammoPickup.stateAt(displayTime)?.r;
-      if (pos) this.addCandidate(ammoPickup.id, ammoPickup.name, pos, 'ammo', undefined, undefined, undefined, vAmmo.label);
-    }
-    for (const fuelPickup of this.entities.rcsFuelPickups) {
-      const vFuel = visibilityPolicy.entity('fuel');
-      if (!fuelPickup.alive || !vFuel.pickable) continue;
-      const pos = fuelPickup.stateAt(displayTime)?.r;
-      if (pos) this.addCandidate(fuelPickup.id, fuelPickup.name, pos, 'fuel', undefined, undefined, undefined, vFuel.label);
-    }
-    for (const base of this.entities.bases) {
-      const vBase = visibilityPolicy.entity('base');
-      if (!base.alive || !vBase.pickable) continue;
-      const pos = base.stateAt(displayTime)?.r;
-      if (pos) this.addCandidate(
-        base.id, base.name, pos, 'base', `格納 ${base.baseState.dockedVessels.length} 艇`,
-        undefined, undefined, vBase.label,
-      );
-    }
-    for (const item of this.navTarget.mapPickables()) this.appendPickable(item);
-    for (const item of this.editor.planDisplay.apsisMarkers) this.appendPickable(item);
-    for (const e of this.entities.all()) {
-      if (e.equatorNodes) for (const item of e.equatorNodes.mapPickables()) this.appendPickable(item);
-    }
-
-    // 太陽系順の並べ替え基準。恒星の無いレジストリでは undefined のまま(呼び出し側が
-    // 自機距離へ委譲する)。
-    const star = this.celestialSystem.star;
-    const starPos = star === null ? null : star.stateAt(displayTime).r;
-    if (starPos) for (const item of this.candidateItems) item.distanceFromStar = len(sub(item.pos, starPos));
-
-    // 自艦からの距離は一覧の実用順と補助情報にだけ使う。軌道予測はここで増やさない。
-    const viewer = this.activePlayers.current?.state;
-    if (viewer) for (const item of this.candidateItems) {
-      const d = len(sub(item.pos, viewer.r));
-      const approaching = item.kind === 'enemy' ? d < 2e5 : undefined;
-      const collectable = item.kind === 'ammo' ? d <= AMMO_PICKUP_RADIUS
-        : item.kind === 'fuel' ? d <= RCS_FUEL_PICKUP_RADIUS
-          : undefined;
-      // 相対速度は対の速度を持つ敵艦にだけ意味がある。天体の detail は一覧の行には表示されないが、
-      // PhysicalObjectListOrder.matches() の検索が「名前・補助表示文字列」として読む
-      // (DEVELOP/SPEC/MAP.md §10)ため、他種別と同じく組み立てておく。
-      const status = item.kind === 'enemy' ? `${approaching ? '接近' : '距離'} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.entities.findEnemy(item.id)?.state.v ?? viewer.v, viewer.v)))}` : item.kind === 'ammo' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'fuel' ? `${fmtDist(d)}${collectable ? ' · 回収可能' : ''}` : item.kind === 'base' ? fmtDist(d) : item.kind === 'body' ? `${fmtDist(d)} · ${this.celestialSystem.nameOf(strongestAttractor(item.pos, celestialBodies, displayTime).id)}` : item.detail;
-      item.detail = status;
-      item.distance = d;
-      item.approaching = approaching;
-      item.collectable = collectable;
-      // 所属系は天体以外にしか意味を持たない(天体は系そのものを表す行として常に一覧へ出す)。
-      // 判定は最強天体から親を辿るぶん高価なので、読まれない天体候補では省く。
-      item.inFocusedSystem = item.kind === 'body'
-        ? undefined
-        : this.celestialSystem.isPositionInFocusedSystem(focusId, item.pos, displayTime);
-    }
-
-    // マップビューでは player だけ、フォーカス天体の系に所属するかで候補を絞る。表示側と
-    // 同じ判定なので、地球の裏側の player は表示・選択でき、土星系の player はどちらにも
-    // 現れない。天体(body)は MapVisibilityPolicy が選んだ候補を維持する(カメラ遮蔽で
-    // 一覧や被選択候補から除くと、小衛星ナマカのように公転・カメラ移動に伴い
-    // 一覧の行が明滅してしまうため)。その他の候補(船・弾薬・基地・軌道点)は天体遮蔽で
-    // ピック対象から除く。
-    for (const item of this.candidateItems) {
+    const activePlayer = this.activePlayers.current;
+    // 候補1件を、消滅・表示トグル・位置の有無・所属系・遮蔽の順に通してこのフレームの候補列へ積む。
+    // player はフォーカス天体の系に所属するかで絞る — 表示側と同じ判定なので、地球の裏側の
+    // player は表示・選択でき、土星系の player はどちらにも現れない。天体(body)は
+    // MapVisibilityPolicy が選んだ候補を維持する(カメラ遮蔽で一覧や被選択候補から除くと、
+    // 小衛星ナマカのように公転・カメラ移動に伴い一覧の行が明滅してしまうため)。その他の
+    // 候補(船・弾薬・基地・軌道点)は天体遮蔽でピック対象から除く。
+    const append = (item: MapPickable): void => {
+      if (item.gone || !item.mapVisibility(visibilityPolicy, activePlayer).pickable) return;
+      const pos = item.mapPosAt(displayTime);
+      if (pos === null) return;
       const included = item.kind === 'player'
-        ? item.inFocusedSystem
-          ?? this.celestialSystem.isPositionInFocusedSystem(focusId, item.pos, displayTime)
+        ? this.celestialSystem.isPositionInFocusedSystem(focusId, pos, displayTime)
         : item.kind === 'body'
-          ? true
-          : !isOccluded(
-            this.cameraSystem.activeCameraPos, item.pos, celestialBodies, displayTime);
-      if (included) this.visibleItems.push(item);
-    }
-    this.items = this.visibleItems;
-    for (const key of this.itemRecords.keys()) {
-      if (!this.activeRecordKeys.has(key)) this.itemRecords.delete(key);
-    }
-  }
+          || !isOccluded(this.cameraSystem.activeCameraPos, pos, celestialBodies, displayTime);
+      if (included) this.candidateItems.push(item);
+    };
 
-  private appendPickable(item: MapPickable): void {
-    this.addCandidate(
-      item.id, item.name, item.pos, item.kind, item.detail, item.priority,
-      item.time, item.pickable, item.ownerName,
-    );
-  }
-
-  private addCandidate(
-    id: string, name: string, pos: MapPickable['pos'], kind: MapPickable['kind'],
-    detail?: string, priority?: number, time?: number, pickable?: boolean,
-    ownerName?: string,
-  ): void {
-    const key = `${kind}:${id}`;
-    this.activeRecordKeys.add(key);
-    let item = this.itemRecords.get(key);
-    if (item === undefined) {
-      item = { id, name, pos, kind };
-      this.itemRecords.set(key, item);
-    } else {
-      item.id = id;
-      item.name = name;
-      item.pos = pos;
-      item.kind = kind;
+    this.candidateItems.length = 0;
+    for (const body of this.cameraSystem.focusMarkers.bodyPickables) append(body);
+    for (const ship of this.entities.players) append(ship);
+    for (const enemy of this.entities.enemies) append(enemy);
+    for (const ammoPickup of this.entities.ammoPickups) append(ammoPickup);
+    for (const fuelPickup of this.entities.rcsFuelPickups) append(fuelPickup);
+    for (const base of this.entities.bases) append(base);
+    for (const node of this.navTarget.mapPickables()) append(node);
+    for (const apsis of this.editor.planDisplay.apsisMarkers) append(apsis);
+    for (const e of this.entities.all()) {
+      if (e.equatorNodes) for (const node of e.equatorNodes.mapPickables()) append(node);
     }
-    // 候補が同じ id で別種別へ変わる場合や、前フレームだけ持っていた補助値が残らない
-    // ように、候補へ追加するたびに全ての派生フィールドを上書きする。
-    item.detail = detail;
-    item.distance = undefined;
-    item.distanceFromStar = undefined;
-    item.approaching = undefined;
-    item.collectable = undefined;
-    item.priority = priority;
-    item.time = time;
-    item.inFocusedSystem = undefined;
-    item.pickable = pickable;
-    item.ownerName = ownerName;
-    this.candidateItems.push(item);
+    this.items = this.candidateItems;
   }
 
   // 負荷確認ウィンドウが読む、マップ視点かどうかとその候補列/ラベル数。
