@@ -88,8 +88,8 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 | 8 | Player のブースター運用が正本割れ | **責務の集約** | 818 + 201行 | 中 |
 | 9 | `plan-editor.ts` の5責務 | **分割** | 726行 | 中 |
 | 10 | 「ラベル付き入力行」の重複 | **共通化(要判断)** | 4箇所 | 中 |
-| 11 | `view-hud-controller.ts` | **たらい回し。畳む** | 32行 | 低(即実施可) |
-| 12 | `partFromSaveData` の8分岐 | **全腕同一。畳む** | parts.ts:79-90 | 低(即実施可) |
+| 11 | `view-hud-controller.ts` | **たらい回し。畳む** | 32行 | **実施済** |
+| 12 | `partFromSaveData` の8分岐 | **全腕同一。畳む** | parts.ts:79-90 | **実施済** |
 | 13 | `overviewMode` が23モジュールの署名に漏れる | **要判断(保留)** | 署名23 / 分岐28 | 要相談 |
 | 14 | `DynamicSystem` の種別手展開 | **要判断(保留)** | 575行 | 要相談 |
 | 15 | 「戦闘/マップ」の軸に**5つの語彙** | **型の重複。1つに畳む** | 型4 + boolean 1 | 高(型統合は即実施可) |
@@ -555,57 +555,35 @@ guideKindDefaultColors                         → hud/panels/guide-kind-def.ts
 
 ---
 
-## 論点11 — `hud/view-hud-controller.ts` は純粋なたらい回し
+## 論点11 — `hud/view-hud-controller.ts` は純粋なたらい回し(実施済)
 
-`game/hud/view-hud-controller.ts`(32行)の全体:
+`Hud` へ `syncPanels(view: HudWorldView, game: Game): void` を1本足し、`view-hud-controller.ts`
+(32行・2クラス)を削除した。`game.ts` の分岐2行は
+`this._hud.syncPanels(this.viewManager.current, this)` の1行になった — ビューの正本は
+`ViewManager` なので、`isMapView` から `'map'` / `'combat'` を組み直さず `current` をそのまま渡す。
 
-```ts
-export class CombatHudController {
-  public constructor(private readonly hud: Hud) {}
-  public sync(game: Game): void { /* hud の 7 パネルを sync するだけ */ }
-}
-export class MapHudController {
-  public constructor(private readonly hud: Hud) {}
-  public sync(game: Game): void { /* hud の 5 パネルを sync するだけ */ }
-}
-```
+- 2つの `sync` が共有していた4呼び出し(バーン管理・トップバー・軌道パネル・軌道分析)は1本に
+  寄せた。ビューで違うのは `orbitPanel.sync` の `hideInOverview`(戦闘 true / マップ false)と、
+  戦闘だけの vessel / target / enemies、マップだけの mapScaleBadge の3つだけ。
+  **戦闘ビューでの呼び出し順が「軌道パネル → 艦」へ入れ替わるが、各パネルは自分の DOM しか
+  触らないので表示は変わらない。**
+- 呼び出し元が消えて1行のラッパーになった `syncOrbitAnalysis` は `syncPanels` へ畳み込んだ。
+  `syncBurnManagement` も同じく消し、残る唯一の呼び出し元(`game.ts` の後始末)は
+  `burnManagementPanel.sync(null)` を直接呼ぶ — 隣の `setHandlers({})` と同じ形になった。
 
-`Hud` 以外の状態を持たず、`Hud` のメンバーを呼ぶ以外に何もしない。
-参照は `game.ts` の 5 行(111/112/209/210/601-602)だけ。
-
-**規約 1.2「責務がないモジュール。例えば不要なたらい回しをするだけの薄すぎるラッパー」。**
-
-### 修正
-
-`Hud` に `syncPanels(view: HudWorldView, game: Game): void` を1本足し、モジュールごと消す。
-`Hud` は既に `setWorldView(view)` を持っていて**どちらのビューかを知っている**ので、
-`game.ts:601-602` の分岐も一緒に消える。
+`npm run typecheck` / `test:game` 161件 通過。
 
 ---
 
-## 論点12 — `partFromSaveData` の8分岐は全腕が同一
+## 論点12 — `partFromSaveData` の8分岐は全腕が同一(実施済)
 
-`game/dynamic/dynamic-entity/parts.ts:79-90`:
+`return createPart(data.type, data);` の1行にした。8つの `case` は消えた。
 
-```ts
-export function partFromSaveData(data: AnyPart): AnyPart {
-  switch (data.type) {
-    case 'hull': return createPart('hull', data);
-    …8腕、すべて createPart(<自分のtype>, data)
-  }
-}
-```
+**アサーションは要らなかった。** `TType` が `PartType` 全体へ推論され、`Partial<ExtractPart<PartType>>`
+は準同型マップ型なので union へ分配されて `Partial<AnyPart>` になり、`data: AnyPart` がそのまま通る。
+戻り値も `ExtractPart<PartType>` = `AnyPart` で一致する。`createPart` の署名は触っていない。
 
-**8つの腕は全部同じことをしている。** ジェネリクスを通すためだけの手展開で、
-振る舞いの違いは1つも無い。規約 1.2「多態で書けるものを分岐で手展開すること」の
-一番退化した形。
-
-### 修正
-
-`createPart` のシグネチャを見直して `return createPart(data.type, data)` の1行にする。
-`ExtractPart<TType>` の推論が通らないなら、`partFromSaveData` の側で1回だけ
-アサーションする(規約 1.12 の「前提が型以外の仕組みで保証されている場合」に当たる —
-`data.type` と `data` が同じ値から来ていることは自明)。
+`npm run typecheck` / `test:game` 161件 通過。
 
 ---
 
@@ -994,8 +972,7 @@ else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
 1. **型の重複を先に潰す** — **論点15**(ビューの型4本→1本)/ **論点19**(`L1..L3` 等)。
    **振る舞いを一切変えない改名なので、単独で安全に入る。** 規約 1.11 に従い旧名を 0 件にする。
    論点13 と論点17 の議論は、型が1本になってからのほうが早い。
-2. **論点12**(`partFromSaveData`)と **論点11**(`view-hud-controller`)—
-   それぞれ 10 分程度。独立していて、他に一切影響しない。
+2. ~~**論点12**(`partFromSaveData`)と **論点11**(`view-hud-controller`)~~ — **実施済。**
 3. **論点1 + 論点16**(`MapPickable` の多態化と種別語彙の統合)— 最大。1つの PR で丸ごと。
    `pickable/` に加えて `hud/object-groups.ts` と `hud/panels/physical-object-list-*.ts`、
    `ObjectType` / `DynamicEntityKind` / `CombatMarkerKind` の整理まで含める。

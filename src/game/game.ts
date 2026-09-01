@@ -47,7 +47,6 @@ import { Docking } from './docking/docking';
 import { DockingGuide } from './docking/docking-guide';
 import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
-import { CombatHudController, MapHudController } from './hud/view-hud-controller';
 import { focusTargetId } from './camera/focus-target';
 
 export class Game {
@@ -108,8 +107,6 @@ export class Game {
   private readonly dockingGuide: DockingGuide;
   private readonly viewBadge: ViewBadge;
   readonly frameControls: FrameControls;
-  private readonly combatHud: CombatHudController;
-  private readonly mapHud: MapHudController;
   // 計測区間の境界を打つ先。集計と保持はこのオブジェクトが持つ。
   private readonly sections: FrameSections;
 
@@ -206,8 +203,6 @@ export class Game {
       else this.markerManager.hide('longpress');
     };
     this._hud.vesselPanel.setInput(this.input);
-    this.combatHud = new CombatHudController(this._hud);
-    this.mapHud = new MapHudController(this._hud);
 
     this.simulator = new Simulator(this.dynamicSystem, celestialSystem, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
@@ -293,7 +288,7 @@ export class Game {
     this._hud.root.classList.remove('creative-mode');
     this._hud.vesselPanel.setInput(null);
     this._hud.burnManagementPanel.setHandlers({});
-    this._hud.syncBurnManagement(null);
+    this._hud.burnManagementPanel.sync(null);
     this._worldSfx.setThrust(false);
     this._worldSfx.setRcs(false);
     this.touchControls?.dispose();
@@ -598,8 +593,7 @@ export class Game {
     }
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
-    if (this.viewManager.isMapView) this.mapHud.sync(this);
-    else this.combatHud.sync(this);
+    this._hud.syncPanels(this.viewManager.current, this);
     this._hud.tick();
 
     this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
