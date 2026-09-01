@@ -5,6 +5,8 @@ import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, If, screenUV, vec2, vec3 } from 'three/tsl';
 // 地球の気候の事前分布。tools/export-climate.mjs が焼く。
 import climateTextureUrl from '../../src/assets/earth-climate.png';
+// 実写の雲(ゲーム本体が地表へ貼っているもの)。「実写」ビューが比較のためだけに読む。
+import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
 import { EquirectProjection, OrthographicCap } from '../../src/render/cloud/field-projection';
 import { pixelsToPngDataUrl } from '../lab-png';
@@ -47,7 +49,8 @@ export class CloudLabCanvas {
   private capLongitude = DEFAULT_CAP_LONGITUDE;
   private capRadius = DEFAULT_CAP_RADIUS;
 
-  // レンダラを起こし、地球の気候を読み終えてから器を組む。
+  // レンダラを起こし、地球の気候と実写の雲を読み終えてから器を組む — 撮影が読み込みを
+  // 待たずに走っても、単色の面を写さないため。
   public static async create(canvas: HTMLCanvasElement): Promise<CloudLabCanvas> {
     const renderer = new WebGPURenderer({ canvas });
     renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT, false);
@@ -55,17 +58,27 @@ export class CloudLabCanvas {
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     await renderer.init();
     const climate = await ClimateMap.load(climateTextureUrl);
-    return new CloudLabCanvas(renderer, climate);
+    const photo = await new THREE.TextureLoader().loadAsync(cloudsPhotoUrl);
+    // 気候テクスチャと同じ向き(v = 0 が北極)・同じ生の値。表示は 8k を 1024×512 へ潰すので、
+    // ミップを切るとエイリアスがそのまま出る — ここだけはミップ付きで読む。
+    photo.wrapS = THREE.RepeatWrapping;
+    photo.wrapT = THREE.ClampToEdgeWrapping;
+    photo.flipY = false;
+    photo.generateMipmaps = true;
+    photo.minFilter = THREE.LinearMipmapLinearFilter;
+    photo.magFilter = THREE.LinearFilter;
+    photo.colorSpace = THREE.NoColorSpace;
+    return new CloudLabCanvas(renderer, climate, photo);
   }
 
   // 2 面と、起動時に出す量のマテリアルを組む。
-  private constructor(private readonly renderer: WebGPURenderer, climate: ClimateMap) {
+  private constructor(private readonly renderer: WebGPURenderer, climate: ClimateMap, photo: THREE.Texture) {
     this.capProjection = new OrthographicCap(
       CAP_SIZE, THREE.MathUtils.degToRad(this.capLatitude), THREE.MathUtils.degToRad(this.capLongitude),
       THREE.MathUtils.degToRad(this.capRadius));
     this.panes = [
-      new CloudLabPane(new EquirectProjection(VIEW_HEIGHT), climate),
-      new CloudLabPane(this.capProjection, climate),
+      new CloudLabPane(new EquirectProjection(VIEW_HEIGHT), climate, photo),
+      new CloudLabPane(this.capProjection, climate, photo),
     ];
     this.quad = new QuadMesh(this.materialFor(this.view));
   }

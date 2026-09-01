@@ -1,7 +1,9 @@
 // 雲の実験環境で表示できる量の表。並びがそのまま画面のボタンの並びで、構成の上流(気候の事前分布)から
 // 下流(雲)へ並ぶ。各ビューは表示値 0..1 の色を組み、その材料が天気のモデルなのか雲の写しなのかで
 // 2 種類に分かれる。
-import { length, vec3 } from 'three/tsl';
+import { exp, float, length, texture, vec3 } from 'three/tsl';
+import { equirectUvFromDirection } from '../../src/render/cloud/field-projection';
+import type * as THREE from 'three/webgpu';
 import type { CloudField } from '../../src/render/cloud/cloud-field';
 import type { ClimateMap } from '../../src/render/cloud/climate-map';
 import type { WeatherModel } from '../../src/render/cloud/weather-model';
@@ -12,16 +14,19 @@ export type CloudLabViewId =
   | 'pressure' | 'wind' | 'lift'
   | 'humiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'humidity' | 'upperHumidity' | 'convection' | 'convectiveActivity'
-  | 'coverage' | 'cloudTop' | 'translucent';
+  | 'coverage' | 'cloudTop' | 'translucent' | 'composite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
 // 写しから色を組む。焼く費用は雲の写しにしか掛からないので、面はこの区別を見て焼く量を決める。
+// 'photo' のビューは実写の雲テクスチャを読むだけで、生成の系には触れない — 生成と同じ図法・同じ
+// 解像度で実写を出し、他のビューと切り替えて見比べるためにある。
 export type CloudLabView = {
   readonly id: CloudLabViewId;
   readonly label: string;
 } & (
   | { readonly reads: 'weather'; readonly color: (d: Vec3Node, model: WeatherModel, climate: ClimateMap) => Vec3Node }
   | { readonly reads: 'cloud'; readonly color: (d: Vec3Node, cloud: CloudField) => Vec3Node }
+  | { readonly reads: 'photo'; readonly color: (d: Vec3Node, photo: THREE.Texture) => Vec3Node }
 );
 
 // 表示値 0..1 へ写すときの目盛り。雲頂高度は 0..15000 m、薄い雲の光学的厚みは 0..1、気圧は
@@ -76,6 +81,15 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     color: (d, cloud) => vec3(cloud.at(d).cloudTop.div(CLOUD_TOP_SPAN)) },
   { id: 'translucent', label: '薄い雲', reads: 'cloud',
     color: (d, cloud) => vec3(cloud.at(d).translucent.div(TRANSLUCENT_SPAN)) },
+  // 被覆率と薄い雲を 1 枚に重ねた見え。晴れた空が透ける割合 (1 − 被覆率)·e^(−τ) の補で、
+  // 加算と違って飽和しない。実写と見比べるための面で、描画側の合成の仕様ではない。
+  { id: 'composite', label: '合成', reads: 'cloud',
+    color: (d, cloud) => {
+      const cover = cloud.at(d);
+      return vec3(float(1).sub(float(1).sub(cover.coverage).mul(exp(cover.translucent.negate()))));
+    } },
+  { id: 'photo', label: '実写', reads: 'photo',
+    color: (d, photo) => texture(photo, equirectUvFromDirection(d)).rgb },
 ];
 
 // 起動時に出す量。並びが上流から下流なので、既定は先頭ではなく最終出力。
