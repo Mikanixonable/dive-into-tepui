@@ -87,7 +87,7 @@ export class Hud {
   // setWorldView が持ち、ここでは表に出ているパネルだけを毎フレーム更新する。
   public syncPanels(view: WorldView, game: Game): void {
     const map = view === 'map';
-    this.burnManagementPanel.sync(game.player?.boosterManagementViewModel() ?? null);
+    this.burnManagementPanel.sync(game.player?.boosters.managementViewModel() ?? null);
     this.topBar.sync(game);
     this.orbitPanel.sync(game, !map);
     if (map) {
