@@ -23,7 +23,7 @@ export class MapPickables {
   private _visibilityPolicy: MapVisibilityPolicy | null = null;
   private readonly nearbyTracker = new NearbySystemTracker();
 
-  // このフレームの被選択物候補。refresh の後に読む。
+  // このフレームの被選択物候補。refresh の後に読む。マップ視点でないフレームは空。
   get pickables(): readonly MapPickable[] { return this.candidateItems; }
 
   // このフレームの表示・選択可否。マップビュー以外では null。
@@ -55,6 +55,7 @@ export class MapPickables {
   // sync されるメッシュと座標が1ステップずれる。
   refresh(displayWindow: DisplayWindow): void {
     if (!this.cameraSystem.overviewMode) {
+      this.candidateItems.length = 0;
       this._visibilityPolicy = null;
       return;
     }
@@ -110,7 +111,7 @@ export class MapPickables {
     const overviewMode = this.cameraSystem.overviewMode;
     return {
       mapMode: overviewMode,
-      mapItems: overviewMode ? this.candidateItems.length : 0,
+      mapItems: this.candidateItems.length,
       mapLabels: overviewMode ? this.celestialMarkers.shownLabelCount : 0,
     };
   }
