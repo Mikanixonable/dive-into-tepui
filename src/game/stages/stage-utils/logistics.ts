@@ -3,7 +3,6 @@ import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../physics/attitude';
 import { randSym } from '../../../math/random';
 import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec3';
-import * as C from '../../const';
 import { AmmoPickup, AMMO_PICKUP_RADIUS } from '../../dynamic/dynamic-entity/ammo-pickup';
 import { RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT } from '../../dynamic/dynamic-entity/rcs-fuel-pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
@@ -14,6 +13,10 @@ import { Player } from '../../player/player';
 import type { DynamicSystem } from '../../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { LogisticsSaveData } from '../../save/save-data';
+
+export const MAX_ACTIVE_AMMO_PICKUPS = 3; // 同時に存在する補給の最大数
+export const STAGE00_LOGISTICS_MIN_DIST = 12.5; // 補給の配置距離 [m](自機から)
+export const STAGE00_LOGISTICS_MAX_DIST = 50;
 
 const AMMO_PICKUP_MAGS = 6; // 補給 1 個の取り込みで増えるマガジン数
 const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
@@ -126,7 +129,7 @@ export class Logistics {
     if (!canResupplyAmmo && !canResupplyFuel) return;
     if (simTime < this.resupplyCheckAt) return;
     this.resupplyCheckAt = simTime + LOGISTICS_CHECK_INTERVAL;
-    if (canResupplyAmmo && player.magsLeft < LOGISTICS_LOW_MAGS && this.liveAmmoPickupCount() < C.MAX_ACTIVE_AMMO_PICKUPS) {
+    if (canResupplyAmmo && player.magsLeft < LOGISTICS_LOW_MAGS && this.liveAmmoPickupCount() < MAX_ACTIVE_AMMO_PICKUPS) {
       this.spawnForPlayer(player);
     }
     if (canResupplyFuel && this.shouldResupplyFuel(player) && this.liveRcsFuelPickupCount() < MAX_ACTIVE_RCS_FUEL_PICKUPS) {
@@ -204,8 +207,8 @@ export class Logistics {
     if (!respawnOnDespawn) return;
     // 消えた分だけ新たに投入する
     let count = this.liveAmmoPickupCount();
-    for (let i = 0; i < respawn && count < C.MAX_ACTIVE_AMMO_PICKUPS; i++) {
-      this.spawnForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
+    for (let i = 0; i < respawn && count < MAX_ACTIVE_AMMO_PICKUPS; i++) {
+      this.spawnForPlayer(player, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST);
       count++;
     }
   }
@@ -222,7 +225,7 @@ export class Logistics {
     if (!respawnOnDespawn) return;
     let count = this.liveRcsFuelPickupCount();
     for (let i = 0; i < respawn && count < MAX_ACTIVE_RCS_FUEL_PICKUPS; i++) {
-      this.spawnRcsFuelForPlayer(player, C.STAGE00_LOGISTICS_MIN_DIST, C.STAGE00_LOGISTICS_MAX_DIST);
+      this.spawnRcsFuelForPlayer(player, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST);
       count++;
     }
   }
