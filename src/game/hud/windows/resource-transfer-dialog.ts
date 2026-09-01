@@ -1,13 +1,14 @@
 // ドッキング中の船同士・船と基地の間で電力・物資(弾薬・RCS燃料・パーツ)を融通するダイアログ。
 import { Player } from '../../player/player';
 import { Base } from '../../dynamic/dynamic-entity/base';
-import * as C from '../../const';
 import { fmtEnergy } from '../utils';
 import { injectOnce } from '../widgets/inject-style';
 import { balanceRcsFuel, rcsFuelTotals, rcsTanksOf, refillRcsFuel, transferRcsFuel } from './rcs-fuel-transfer';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import type { Part } from '../../dynamic/dynamic-entity/parts';
 import type { OverlayManager } from '../overlay-manager';
+import { INITIAL_MAGS } from '../../player/player-fire';
+import { POWER_CAPACITY } from '../../player/power';
 
 const STYLE = `
 #resource-transfer-dialog.rt-overlay {
@@ -398,9 +399,9 @@ export class ResourceTransferDialog {
 
     this.rootEl.querySelector('.rt-btn-p-all-a')?.addEventListener('click', () => {
       if (bBase) {
-        a.power.setChargeJ(C.POWER_CAPACITY);
+        a.power.setChargeJ(POWER_CAPACITY);
       } else if (bShip) {
-        const needed = C.POWER_CAPACITY - a.power.chargeJ;
+        const needed = POWER_CAPACITY - a.power.chargeJ;
         const transferred = Math.min(needed, bShip.power.chargeJ);
         bShip.power.addChargeJ(-transferred);
         a.power.addChargeJ(transferred);
@@ -439,7 +440,7 @@ export class ResourceTransferDialog {
 
     this.rootEl.querySelector('.rt-btn-m-all-a')?.addEventListener('click', () => {
       if (bBase) {
-        a.fire.mags = C.INITIAL_MAGS;
+        a.fire.mags = INITIAL_MAGS;
       } else if (bShip) {
         const transferred = bShip.fire.mags;
         a.fire.mags += transferred;

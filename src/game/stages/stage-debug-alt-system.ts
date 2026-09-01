@@ -6,7 +6,6 @@ import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import * as C from '../const';
 import {
   CelestialMotion, OrbitingMotion, PhaseOffsets, PlanetDef, SatelliteDef, StarDef,
   planetDefForSimZero, satelliteDefForSimZero, SatelliteMotion, StarMotion,
@@ -29,6 +28,7 @@ import type { TdbJulianDate } from '../../physics/time';
 import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
 import { StarEntity } from '../celestial/celestial-entity/star-entity';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
+import { MAG_ROUNDS } from '../player/player-fire';
 
 const STAR_ID = 'aeolus';
 const PRIMARY_ID = 'zephyrus';
@@ -119,7 +119,7 @@ export class StageDebugAltSystem extends Stage {
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.def.mu);
     this.addPlayer({
       state: kinematicState<'eci'>(t, add(primaryState.r, rel.r), add(primaryState.v, rel.v)),
-      ammo: { mags: 20, rounds: C.MAG_ROUNDS },
+      ammo: { mags: 20, rounds: MAG_ROUNDS },
     });
   }
 

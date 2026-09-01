@@ -1,7 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../../physics/attitude';
 import { KinematicState } from '../../../physics/kinematic-state';
-import * as C from '../../const';
 import { DynamicEntity } from './dynamic-entity';
 import { Part, PartType, createPart } from './parts';
 import { collisionDamageFraction } from './contact-damage';
@@ -16,6 +15,7 @@ import type {
   WeaponPart,
 } from './parts';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
+import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/player-throttle';
 
 // 艦の材質・空力。大気抵抗は弾道係数の逆数 Cd·A/m [m^2/kg]、太陽輻射圧は輻射圧係数 ×
 // 断面積質量比 C_R·A/m [m^2/kg] で表す。
@@ -109,9 +109,9 @@ export abstract class Ship extends DynamicEntity {
       mk('cockpit', R.cockpit, { name: 'Cockpit' }),
       mk('thruster', R.thruster, {
         name: 'Standard RCS',
-        torque: C.MAX_ANG_ACCEL * Math.max(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL),
+        torque: MAX_ANG_ACCEL * Math.max(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL),
         // 既定パーツだけを積んだ自機が、全開で THROTTLE_LEVELS の最大値の加速度になる推力。
-        thrust: PLAYER_MASS * C.THROTTLE_LEVELS[C.THROTTLE_LEVELS.length - 1]!,
+        thrust: PLAYER_MASS * THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1]!,
         fuelConsumptionRate: 1,
       }),
       mk('rcs_tank', R.rcsTank, { name: 'Main RCS Tank', maxFuel: 1000, fuel: 1000 }),

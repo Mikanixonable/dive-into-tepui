@@ -2,22 +2,10 @@
 import type { GuideGroupId } from './celestial/orbit-guide/orbit-guide-settings';
 
 // --- 空力加熱・構造限界 ---
-export const HULL_START_TEMP = 273; // 初期機体温度 [K]
-export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]
 
 // --- ラジエーター(上下2枚、個別展開) ---
-export const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
-export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 
 // --- 太陽電池による発電 ---
-export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
-
-// 並進推力(WSADQE の全 6 方向で共通)の出力 4 段階 [m/s^2]。[1]/[2]/[3]/[4] キーで切替、
-// 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
-export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];//エンジン出力、スロットル
-export const THROTTLE_LABELS = ['弱', '中', '強', '最強'] as const;
-
-export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
 
 export const BASE_FOV = 55; // 通常時の垂直画角 [deg]
 
@@ -26,14 +14,9 @@ export const CAM_KEY_YAW_RATE = 1.4;
 export const CAM_KEY_PITCH_RATE = 1.0;
 
 // --- 弾薬・マガジン ---
-export const MAG_ROUNDS = 32; // 1 マガジンの装弾数
-export const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
 export const MAX_ACTIVE_AMMO_PICKUPS = 3; // 同時に存在する補給の最大数
 // pointer:coarse(タッチ等)向けの上記3定数の緩和版。~44px半径。
 export const CLICK_MOVE_THRESHOLD = 6; // これ未満の累積移動量ならドラッグではなくクリック扱い [px]
-// 右ドラッグ後でもクリック扱いを許す、意図的に CLICK_MOVE_THRESHOLD より緩い閾値。
-export const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
-export const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
 
 // --- 高負荷デバッグステージ(stage-debug-load.ts)---
 // 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
@@ -41,11 +24,6 @@ export const DEBUG_LOAD_DEBRIS_COUNT = 500;
 export const DEBUG_LOAD_DEBRIS_MAX_DIST = 250000; // [m]
 export const DEBUG_LOAD_PLACEMENT_MIN_DIST = 5000; // 自機からの配置距離下限 [m]
 export const DEBUG_LOAD_RNG_SEED = 20260810;
-
-export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]。
-
-export const INITIAL_ALT = 420e3; // 自機初期高度 [m]
-export const INITIAL_INC_DEG = 97.0; // 自機初期軌道傾斜角 [deg]
 
 // --- HUD マーカー ---
 export const MARKER_DIR_DIST = 5e4; // 方向マーカーを投影する仮想距離 [m](実在の位置ではなく方向のみを示す)
