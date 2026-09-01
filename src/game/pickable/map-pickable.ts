@@ -72,7 +72,7 @@ export interface MapPickable {
   readonly mapRename: ((name: string) => void) | null;
 
   // マップの左クリックで選ばれたときの振る舞い。左クリックで掴めない対象は null。
-  readonly selectOnMap: ((commands: MapCommands, clientX: number, clientY: number) => void) | null;
+  readonly onMapSelect: ((commands: MapCommands, clientX: number, clientY: number) => void) | null;
   // マップの注視点が自分へ移ったときに、注視の移動に加えて起きること。何も起きない対象は null。
   readonly onMapFocus: ((commands: MapCommands) => void) | null;
 
