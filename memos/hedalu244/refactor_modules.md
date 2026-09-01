@@ -78,13 +78,13 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 
 | # | 論点 | 診断 | 規模 | 優先 |
 | --- | --- | --- | --- | --- |
-| 1 | `MapPickable.kind` の 10 値 union | **多態で分ける** | 7モジュール 2,177行 / 分岐65箇所 | 最優先 |
+| 1 | `MapPickable.kind` の 10 値 union | **多態で分ける** | 7モジュール 2,177行 / 分岐65箇所 | **切り出し済み** |
 | 2 | BVH・三角形衝突の重複実装 | **重複の解消 + 置き場所** | 2モジュール 825行 | **実施済** |
 | 3 | `base-station-model.ts` の 845 行 1 関数 | **手続きの切り出し** | 852行 | **実施済** |
-| 4 | `game/const.ts` の 104 定数 | **所有者へ戻す** | 319行 / 参照76モジュール | 高 |
+| 4 | `game/const.ts` の 104 定数 | **所有者へ戻す** | 319行 / 参照76モジュール | **実施済** |
 | 5 | `hud/style/` の 22 ファイルと結合ハブ | **短すぎるモジュールの多数** | 22モジュール 1,980行 | 中 |
 | 6 | `marker-manager.ts` のラベル間引き同居 | **手続きの切り出し** | 659行 | 中 |
-| 7 | `camera/focus-markers.ts` の4責務 | **分割 + 置き場所** | 609行 | 中 |
+| 7 | `camera/focus-markers.ts` の4責務 | **分割 + 置き場所** | 609行 | **切り出し済み** |
 | 8 | Player のブースター運用が正本割れ | **責務の集約** | 818 + 201行 | 中 |
 | 9 | `plan-editor.ts` の5責務 | **分割** | 726行 | 中 |
 | 10 | 「ラベル付き入力行」の重複 | **共通化(要判断)** | 4箇所 | 中 |
@@ -92,8 +92,8 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 | 12 | `partFromSaveData` の8分岐 | **全腕同一。畳む** | parts.ts:79-90 | **実施済** |
 | 13 | `overviewMode` が23モジュールの署名に漏れる | **要判断(保留)** | 署名23 / 分岐28 | 要相談 |
 | 14 | `DynamicSystem` の種別手展開 | **要判断(保留)** | 575行 | 要相談 |
-| 15 | 「戦闘/マップ」の軸に**5つの語彙** | **型の重複。1つに畳む** | 型4 + boolean 1 | 高(型統合は即実施可) |
-| 16 | エンティティ種別の語彙が**5つ** | **型の重複。1つに畳む** | 型5 | 高(論点1 と同時) |
+| 15 | 「戦闘/マップ」の軸に**5つの語彙** | **型の重複。1つに畳む** | 型4 + boolean 1 | **実施済**(型4→1。boolean は論点13) |
+| 16 | エンティティ種別の語彙が**5つ** | **型の重複。1つに畳む** | 型5 | **切り出し済み** |
 | 17 | `OrbitAnalysisWindow` のタブが**半分だけ切り出し** | **多態で分ける** | 466行 / 分岐約30 | 中 |
 | 18 | `Player`/`Base` を消費側が `instanceof` で判別し直す | **多態の復元** | 26箇所 / 11モジュール | 中 |
 | 19 | その他の重複 union(`L1..L3` 等) | **型の重複。1つに畳む** | 3組 | 低(即実施可) |
@@ -101,95 +101,9 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 
 ---
 
-## 論点1 — `MapPickable.kind` の 10 値 union(最優先)
+## 論点1 — `MapPickable.kind` の 10 値 union(切り出し済み)
 
-### 症状
-
-`map-pickable.ts:5` の
-
-```ts
-export type MapPickKind = 'body' | 'ship' | 'player' | 'apsis' | 'relnode' | 'ammo' | 'fuel'
-  | 'empty-space' | 'eqnode' | 'base';
-```
-
-が、**振る舞いを持たない素の struct のタグ**として置かれ、その振る舞いは全部外側の
-`switch` / `if` に手展開されている。enemy が `EnemyKind` でやっていたことと同型で、規模はこちらが
-大きい。
-
-### 証拠
-
-`MapPickKind` の値に対する分岐の箇所数:
-
-| モジュール | 行数 | 分岐 |
-| --- | --- | --- |
-| `pickable/map-context-actions.ts` | 687 | 23 |
-| `pickable/map-pickables.ts` | 261 | 11 |
-| `pickable/map-property-rows.ts` | 233 | 10 |
-| `pickable/map-pickable-menu.ts` | 463 | 7 + ディスパッチ表 |
-| `hud/object-groups.ts` | 63 | 7 |
-| `hud/panels/physical-object-list-order.ts` | 246 | 5 |
-| `hud/panels/physical-object-list-tree.ts` | 224 | 2 |
-
-さらに `MapPickable` は**種別ごとにしか意味を持たない optional フィールド**を並べている
-(`time` / `detail` / `approaching` / `collectable` / `distanceFromStar` / `priority` /
-`inFocusedSystem` / `ownerName` / `pickable`)。規約 1.6 の「不在は `T | null`」以前に、
-そもそも**ある種別には存在しえない値**が全種別に生えている。
-
-**決定的な証拠は `map-pickable-menu.ts:92-383` の
-`private readonly handlers: Record<MapPickable['kind'], PickHandler>`。** ここでは既に
-「種別ごとに `itemsFor` と `run` を持つ」ことが認められていて、それを**1クラスの中の
-291行のオブジェクトリテラルとして手で書いている。** 多態が必要だと気づいた上で、多態を使わずに
-表で代用している状態。
-
-### 診断
-
-規約 1.2 の「1つの `kind` で、多くのメソッドの大部分が切り替わっている」に真っ直ぐ当たる。
-`kind` を1つに固定すると、`map-context-actions.isTargetGone` / `stateOfPickable` /
-`renameHandlerFor` / `relatedItemsFor` / `windowParts`、`map-property-rows.rowsFor` の
-9分岐、`map-pickable-menu.handlers` の該当キー以外、`object-groups.groupPickables` の
-switch がまるごと通らなくなる。
-
-### 修正
-
-1. `MapPickable` を **interface + 具象クラス**にする。共通の口は
-   `id` / `name` / `pos`(データ)と、
-   - `isGone(entities): boolean`
-   - `stateAt(): KinematicState | null`
-   - `propertyRows(…): readonly PropertyRow[]`
-   - `menuItems(simTime): readonly MenuItem<MenuAction>[]` / `runMenu(act)`
-   - `groupLabel(): string | null`(一覧の区画見出し)
-   - `renameHandler(): ((name: string) => void) | null`
-   (メソッド。データの optional フィールドは各具象のフィールドへ落とす)
-2. 具象は `BodyPickable` / `ShipPickable` / `PlayerPickable` / `BasePickable` /
-   `AmmoPickable` / `RcsFuelPickable` / `ApsisPickable` / `RelNodePickable` /
-   `EqNodePickable` / `EmptySpacePickable`。**近い種別は基底を共有する**
-   (`apsis` / `relnode` / `eqnode` は `isOrbitPoint` で同じ扱いを受けているので
-   `OrbitPointPickable` 派生でよい。`ammo` / `fuel` も同様)。
-3. `map-pickable-menu.ts` の `handlers` 表を各具象の `menuItems` / `runMenu` へ移す。
-   表が消えたあとに残る `MapPickableMenu` は**メニュー DOM の表示制御だけ**になるので、
-   そこまで痩せたら `ContextMenu` 側へ畳めるか見る。
-4. `map-property-rows.ts` の `rowsFor` の9分岐は各具象の `propertyRows` へ。
-   共通の `orbitRows` は基底に残す。
-5. `object-groups.ts` / `physical-object-list-order.ts` / `-tree.ts` の分岐も同様に消す。
-   ただし**天体分類(`bodyClass`)に対する switch は残してよい** — 規約 1.8 が
-   明示的に許可している。
-
-### 注意
-
-- **`MapPickable` は毎フレーム作り直される表示用の候補列。** クラス化してもその性質は変えない
-  (キャッシュを足さない)。`MapPickables` が per-frame に `new` するだけ。
-- `MapContextActions` は開いているウィンドウの `target: MapPickable` を**フレームを跨いで
-  保持している**(`WindowEntry.target`、`sync` で `isTargetGone` を見て閉じる)。ここは
-  「毎フレーム作り直す candidate」と「保持している target」が同じ型で混ざっているので、
-  **具象化のついでに、保持側は id + 種別だけを持って毎フレーム引き直す形に変える**か、
-  少なくとも寿命の違いを明示する。
-
-### 見込み
-
-`map-context-actions.ts` 687 → 350前後、`map-pickable-menu.ts` 463 → 100前後、
-`map-property-rows.ts` 233 → 具象へ分散。具象10個ぶんの新ファイルが増えるが、
-**enemy と同じく1ファイルが1つの種別を全部言い切る形**になる。
-
+**切り出し済み。`refactor_pickable_focus.md` で対処する。**
 ---
 
 ## 論点2 — BVH・三角形衝突の重複実装(実施済)
@@ -239,72 +153,82 @@ switch がまるごと通らなくなる。
 
 ---
 
-## 論点4 — `game/const.ts` の 104 定数
+## 論点4 — `game/const.ts` の 104 定数(実施済)
 
-### 症状
+`src/game/const.ts` を削除した。104 定数すべてを、その値が意味を持つ規則の持ち主へ移し、
+参照が1モジュールに閉じる 21 件は export をやめた。**残置はゼロ** — 当初案は
+「本当に複数フォルダから参照されるもの」を 20〜30 件残すとしていたが、どれも所有者が決まった。
 
-`src/game/const.ts` は 319行・**104 export**・**76 モジュールから参照**されている。
-規約 1.6 が名指しで禁じている「フォルダごとの集約ファイル(`const.ts` の類)」そのもの。
+主な移動先:
 
-`memos/hedalu244/module_restructure.md` の「残っている宿題」に
-「`const.ts` に残る 107 export は、**複数モジュールから参照されるもの**」とあるが、
-**これは現状と合っていない。** 実測:
-
-- **参照モジュールが1つだけ**: 21 定数
-- **参照が1ディレクトリ内に閉じている**: 49 定数
-
-| 閉じている先 | 定数の数 |
+| 移した先 | 定数 |
 | --- | --- |
-| `game/dynamic/` | 16 |
-| `game/dynamic/dynamic-entity/` | 15 |
-| `game/player/` | 6 |
-| `game/camera/` | 4 |
-| `game/stages/` | 4 |
-| `game/plan/` | 2 |
-| `game/vfx/` / `game/hud/panels/` | 各1 |
+| `dynamic-entity/dynamic-entity.ts` | 比量モデルの係数・外殻の輻射率と環境温度・小破片の材質一式 |
+| `dynamic-entity/ship.ts` | 艦の弾道係数/SRP/材質・外殻温度限界・自機の質量と慣性・既定武装 |
+| `dynamic-entity/debris-piece.ts` | 砲身の比熱・放熱面積(`BARREL_MAX_TEMP` の隣) |
+| `dynamic/time-step.ts` | サブステップ上限・抗力の刻み上限・弧の刻み下限 |
+| `dynamic/predicted-arc.ts` / `predictor.ts` | 弧の刻み・保持サンプル数 / 予測予算 |
+| `dynamic/sim-speed-manager.ts` | ワープ段階と物理が有効な上限 |
+| `player/player-throttle.ts` | スロットル段階・表示名・角加速度 |
+| `player/player-fire.ts` / `belt.ts` / `radiator.ts` / `power.ts` / `aero-load.ts` | 弾薬・ベルト・放熱板・蓄電・動圧限界 |
+| `marker/marker-identity.ts`(旧 `marker-glyphs.ts`) | 陣営・対象の識別色 |
+| `marker/marker-manager.ts` / `crowding.ts` | マーカー優先度・方向距離 / 間引きのしきい値 |
+| `camera/camera-system.ts` / `chase-camera.ts` / `map-camera.ts` | キー回転速度 / 画角 / 広範囲視点の距離・画角 |
+| `plan/plan.ts` / `plan-axis-drag.ts` / `display-window-manager.ts` | ノード実行の窓 / Δv 調整速度 / 表示期間 |
+| `stages/spawner/enemy-spawner.ts` / `stage-utils/logistics.ts` | stage0 の編成・色 / 補給の配置 |
+| `celestial/lagrange-id.ts` / `hud/panels/guide-kind-def.ts` | 共線点を持たせる下限 / ガイド色の既定 |
 
-参照が1モジュールのもの(そのまま移して export をやめられる):
+### 所有者を決めた基準
 
-```
-BULLET_BCINV BULLET_MASS BULLET_RADIUS        → dynamic-entity/bullet.ts
-STAGNATION_AREA_FRACTION                       → dynamic-entity/dynamic-entity.ts
-SHIP_BULK_DENSITY SHIP_SPECIFIC_HEAT           → dynamic-entity/ship.ts
-AMMO_PHYS_RADIUS                               → dynamic-entity/ammo-pickup.ts
-MAX_BULLETS MAX_CASINGS                        → dynamic/dynamic-system.ts
-DRAG_STEP_MAX_SPEED_LOSS DRAG_STEP_MAX_SCALE_HEIGHTS → dynamic/time-step.ts
-CONTACT_GRID_CELL_SIZE_FLOOR                   → dynamic/entity-contact-physics.ts
-HULL_START_TEMP                                → player/player.ts
-RADIATOR_FOLD_COUNT                            → player/radiator.ts
-BELT_MAX_VISIBLE                               → player/belt.ts
-EJECTED_MAG_PHYS_RADIUS                        → vfx/effects-system.ts
-DEBUG_LOAD_DEBRIS_COUNT / _DEBRIS_MAX_DIST /
-  _PLACEMENT_MIN_DIST / _RNG_SEED              → stages/stage-debug-load.ts
-guideKindDefaultColors                         → hud/panels/guide-kind-def.ts
-```
+**`const.ts` は葉モジュールだったので、誰がモジュール評価時にその値を読んでも安全だった。**
+解体するとそれが崩れる — 循環 import の中で評価時に読むと、評価順によっては未初期化の値を掴む。
+typecheck にも型テストにも出ない。そこで TypeScript の AST で「モジュール評価時に読まれる参照」
+を全部洗い出し(関数本体とインスタンスプロパティ初期化子は除外、static と top-level は対象)、
+**その読み手へ実行時 import で到達しないモジュールを所有者に選んだ。**
 
-### 修正
+これで決まった、素直でない置き場:
 
-1. 上の21件を移し、**export をやめる**(規約 1.6「必要になってから export する」)。
-2. 1ディレクトリに閉じている残り28件を、そのディレクトリの**概念の所有者モジュール**へ移して
-   そこから export する。所有者の候補:
-   - 熱・弾道係数・SRP 係数 → `dynamic-entity/dynamic-entity.ts`(比量モデルを渡す側)
-   - 破片系 → `dynamic-entity/debris-piece.ts`
-   - 積分・接触の刻み → `dynamic/time-step.ts` / `dynamic/entity-contact-physics.ts`
-   - カメラ画角 → `camera/camera-system.ts`
-3. **本当に複数フォルダから参照されるもの**(`PLAYER_MASS` / `SIM_SPEED_LEVELS` /
-   `MARKER_PRIORITY` / `MAG_ROUNDS` / 色トークンなど)だけを `const.ts` に残す。
-   `MARKER_PRIORITY`(7ディレクトリ10モジュール)は `marker/` が所有者なので `marker/` へ、
-   色トークンは `theme.ts` 側へ寄せられる可能性がある。**残るのは 20〜30 件が目標。**
-4. `module_restructure.md` の「残っている宿題」を実測値へ直す(この文書の数字で置き換える)。
+- **砲身の熱定数は `player-fire.ts` ではなく `debris-piece.ts`。** 砲身の温度モデルは
+  player-fire にあるが、`debris-piece` が材質表を評価時に組み立てており、player-fire は
+  `player.ts` → `effects-system` 経由で debris-piece へ到達する。逆向きにはできない。
+- **自機の質量・慣性は `player.ts` ではなく `ship.ts`。** `Ship` の既定パーツがこの2つから
+  推力とトルクを決めており、`Player extends Ship` なので ship.ts → player.ts の import は
+  `class Player extends Ship` を壊しうる。艦の弾道係数・比熱・かさ密度が既にここに居るので、
+  質量と慣性はその族として収まる。
+- **拠点の識別色は `marker/marker-identity.ts`。** マーカーの CSS(`hud/style/marker-style.ts`)と
+  軌道線(`lines/entity-line-manager.ts`)の両方が評価時に読み、両者は互いに到達する。
+  葉に置くしかない。マーカーと軌道線で共有しているので `COLOR_BASE` へ改名した。
+- **弧の刻み下限 `ARC_MIN_STEP_DT` は `predicted-arc.ts` ではなく `time-step.ts`。**
+  `predicted-arc` → `arc-celestial-bodies` の向きがあり、後者もこの下限を読む。
 
-### 注意
+### ついでに直したもの
 
-`guideKindDefaultColors` とそれが使う `GUIDE_GROUP_HUE` / `guideKindShade` / `lerpColor` は
-`module_restructure.md` が「移動先の判断が要る」として保留したもの。**参照は
-`hud/panels/guide-kind-def.ts` の1件だけ**なので、そこへ移せば済む。
+- **`help-content.ts` の `HELP_ENTRIES` を `helpEntries()` にした。** 説明文がゲーム側の定数を
+  埋め込むが、その所有者(player-fire / player-throttle / sim-speed-manager)はいずれも
+  `hud/hud` 経由でこのモジュールへ到達する。**どの所有者を選んでも評価時参照が循環に乗る**ので、
+  組み立てを呼び出し時へ遅らせて断った。読み手は `help-panel.ts` の4箇所だけで、いずれも
+  ユーザー操作時の `render()` から呼ばれる。
+- **矢印キーの視点回転を `camera-system.ts` で角度にしてから渡すようにした。**
+  `chase-camera` と `map-camera` が同じ `keyYaw * RATE * dt` を計5箇所で書いており、両者は
+  互いを import しないので定数の置き場が無かった。camera-system が既にロール・パンで
+  採っている渡し方に揃え、重複は5→1、両カメラの `update` から `dt` が落ちた。
+- **`DynamicEntity` の `HISTORY_DURATION_MAX`(表示期間上限の別名)を畳んだ。**
+  評価時に読んでおり、`display-window-manager` は `predict-panel` 経由でここへ到達する。
+- `marker-glyphs.ts` を `marker-identity.ts` へ改名(字形だけを指す名前で色を持てないため)。
+- physics の試験(`window-agreement`)と perf の土台(`tests/perf/common.ts`)は、走査条件に
+  `Player` を持ち込まないよう局所定数にした。予測予算の3定数だけは `exp4` が値そのものを
+  検証対象にしているので `predictor.ts` から export している。
+
+### 残っている評価時参照
+
+解体後に残る「循環の中の評価時参照」は8組あるが、**どれも既存の `extends` が同じ評価順を
+既に要求している**組で、新しい壊れ方は増えていない:
+`debris-piece`(`extends DynamicEntity`)が小破片の材質を、`enemy` / `player`
+(`extends Ship`)が初速と慣性を読むもの。基底が未初期化ならクラス定義の側が先に落ちる。
+
+検証: `npm run typecheck` / `npm run test` 653件 / `npm run build` 通過。
 
 ---
-
 ## 論点5 — `hud/style/` の 22 ファイルと 2 つの結合ハブ
 
 ### 症状
@@ -393,40 +317,9 @@ guideKindDefaultColors                         → hud/panels/guide-kind-def.ts
 
 ---
 
-## 論点7 — `camera/focus-markers.ts` の4責務
+## 論点7 — `camera/focus-markers.ts` の4責務(切り出し済み)
 
-### 症状
-
-`game/camera/focus-markers.ts` は 609行で、次の4つを同居させている。
-
-1. **天体ラベルの構築** — `FocusLabel` の組み立て、ラグランジュ点の命名
-   (`lagrangeName` / `lagrangeMarkerLabel`)、分類別の優先度表(`LABEL_PRIORITY`)。
-2. **混雑の解決** — `CrowdingGrid` クラス(103-170)。
-3. **マーカーの同期** — `syncLabels`(386-468, 82行)、`syncSubLabels`(473-602, **129行**)。
-4. **`MapPickable` の生成** — `bodyPickables`(271-311)と `cacheBodyPickable`。
-   `MutableMapPickable` を作り、`cachedBodyPickablesTime` / `cachedBodyPickablesPolicy` で
-   キャッシュしている。
-
-### 診断
-
-- **置き場所が誤り。** `camera/` はカメラの姿勢・投影・追従を持つフォルダで、
-  「天体ラベルを何個出すか」も「どの被選択物があるか」もカメラの関心ではない。
-- 4 は論点1 と直結する。`MapPickable` を具象クラス化すると、ここは
-  `BodyPickable` を作って返すだけになる。
-- `syncSubLabels` の129行は規約違反。
-
-### 修正
-
-論点1 の後に着手する。
-
-1. `bodyPickables` / `cacheBodyPickable` を `pickable/` 側へ移す
-   (`BodyPickable` の生成は `MapPickables` が持つのが自然)。
-   **キャッシュは持ち込まない** — 毎フレーム作り直す(既定)。フレームレートで困ったら
-   そのとき測って戻す。
-2. 残りを `marker/celestial-labels.ts`(仮)として `game/marker/` へ移す。
-   `CrowdingGrid` は論点6 の `label-declutter` へ寄せられるか、同じ判断で決める。
-3. `syncSubLabels` を分割する。
-
+**切り出し済み。`refactor_pickable_focus.md` で対処する。**
 ---
 
 ## 論点8 — Player のブースター運用が正本割れ
@@ -654,103 +547,32 @@ guideKindDefaultColors                         → hud/panels/guide-kind-def.ts
 
 ---
 
-## 論点15 — 「戦闘ビュー / マップビュー」の軸に5つの語彙
+## 論点15 — 「戦闘ビュー / マップビュー」の軸に5つの語彙(実施済)
 
-### 症状
+同じ2値を指していた4つの型別名を `WorldView = 'combat' | 'map'` 1つへ畳んだ。所有者は
+`game/view-manager.ts` — 「どのワールドビューを表示しているかの正本」を宣言しているモジュール。
 
-たった2値の同じ軸に、**4つの型別名と1つの boolean** が並んでいる。
+- `ViewId` / `WorldViewId`(`view-manager.ts` の8行違いに同一定義で並んでいた)を統合。
+- `HudWorldView`(`hud/panel-shell.ts`)・`HelpMode`(`hud/windows/help-content.ts`)は
+  ローカル定義を消し、`view-manager.ts` から `import type` で受ける。`HelpScope` は
+  `WorldView | 'both'` になった。
+- **エイリアスの再エクスポートは残していない**(規約 1.11)。`hud-root.ts` / `hud.ts` /
+  `help-panel.ts` / `view-badge.ts` は所有者から直接 import する。旧名4つは 0 件。
 
-```
-src/game/view-manager.ts:14        export type ViewId       = 'combat' | 'map';
-src/game/view-manager.ts:22        export type WorldViewId  = 'combat' | 'map';
-src/game/hud/panel-shell.ts:12     export type HudWorldView = 'combat' | 'map';
-src/game/hud/windows/help-content.ts:7  export type HelpMode = 'combat' | 'map';
-src/game/camera/camera-system.ts:135    private _overviewMode = false;
-```
+`applyChrome()` にあった `map ? 'map' : 'combat'`(`worldView === 'map'` で作った boolean から
+同じ2値を組み直していた)も消し、`setPanelCollapsedView` / `hud.setWorldView` へ `this.worldView`
+をそのまま渡す。
 
-`ViewId` と `WorldViewId` は**同一ファイルの8行違いに、同一の定義**として並んでいる。
-しかも同じクラスの中で両方使われている:
+**論点13 には触れていない。** `setMapMode(open: boolean)` 3箇所と `overviewMode: boolean` は
+そのまま残してある — 型を `WorldView` へ置き換えるかは論点13 の判断待ち。
 
-```ts
-private worldView: WorldViewId;
-get current(): ViewId { return this.worldView; }
-get isMapView(): boolean  { return this.worldView === 'map'; }
-get isCombatView(): boolean { return this.worldView === 'combat'; }
-```
-
-さらに `CameraSystem.setMapMode(open: boolean)` / `PlanEditor.setMapMode(open: boolean)` と、
-論点13 の `overviewMode: boolean`(23モジュール)。**同じ2値に対する言い方が6つある。**
-
-### 診断
-
-規約 1.6「**同一の意味、同一の情報量を持つ型を複数作ること。これは重複実装である。**」と
-規約 2.1「類義語の混雑。同じものを異なる言葉で指している命名」に真っ直ぐ当たる。
-`isMapView` / `isCombatView` の対は規約 2.1「並列なものは両方を有標にする」を満たしているので
-そこは問題ない — 問題は**型が4つあること**。
-
-### 修正
-
-1. `WorldView = 'combat' | 'map'` を1つだけ残す。所有者は `view-manager.ts`
-   (「どのワールドビューを表示しているかの正本」とファイル先頭コメントが宣言している)。
-   `ViewId` / `WorldViewId` / `HudWorldView` / `HelpMode` を全部そこへ寄せる。
-   **規約 1.11 に従い、旧名は 0 件になるまで消す**(エイリアスの再エクスポートを残さない)。
-2. `HelpMode` は `help-content.ts` が持つ必要が無い — ヘルプの分類は `HelpCategory`(7値)の
-   ほうで、`HelpMode` はビューそのもの。
-3. `overviewMode: boolean` を `WorldView` へ置き換えるかは**論点13 として保留**。
-   型統合(1.)だけなら振る舞いを一切変えないので、先に単独で入れられる。
+型定義だけの変更なので振る舞いは変わらない。`npm run typecheck` / `test:game` 161件 通過。
 
 ---
 
-## 論点16 — エンティティ種別の語彙が5つ
+## 論点16 — エンティティ種別の語彙が5つ(切り出し済み)
 
-### 症状
-
-「その物体は何か」を表す union が5つある。
-
-```
-src/game/random-name.ts:5              ObjectType        = 'player' | 'enemy' | 'ammo' | 'fuel' | 'base'
-src/game/map/visibility-policy.ts:8    DynamicEntityKind = 'player' | 'ship'  | 'ammo' | 'fuel' | 'base'
-src/game/marker/marker-manager.ts:98   CombatMarkerKind  = 'self' | 'ally' | 'enemy' | 'base' | 'ammo' | 'fuel'
-src/game/pickable/map-pickable.ts:5    MapPickKind       = 'body' | 'ship' | 'player' | 'apsis' | 'relnode'
-                                                          | 'ammo' | 'fuel' | 'empty-space' | 'eqnode' | 'base'
-src/game/dynamic/dynamic-entity/bullet.ts:26  Shooter     = 'player' | 'enemy'
-```
-
-**`ObjectType` と `DynamicEntityKind` は同じ5要素の集合で、違いは `'enemy'` と `'ship'` という
-綴りだけ。** 同一の情報量を持つ型が2つある。
-
-`CombatMarkerKind` は `'self'` / `'ally'` を分けている点だけが違う — これは
-「自分か味方か」という**別の軸(視点)を種別に畳み込んだ**もので、規約 1.6
-「『たまたま』同時に切り替わるフラグは別個にする」に当たる。
-
-`ObjectType` の**定義が `random-name.ts`(ランダム命名ジェネレータ)にある。**
-ゲームの物体分類を、命名の都合で作られたモジュールが所有している。
-
-### 診断
-
-規約 1.6 の型の重複 + 規約 2.1 の類義語の混雑 + 定義の置き場所の誤り。
-値を共有しているせいで、分岐の計数もこの5つの間で混線する(検査の方法の注意を参照)。
-
-### 修正
-
-**論点1 と同じ PR で片付ける。** 論点1 で `MapPickable` を具象クラス化すると
-`MapPickKind` は消える。残る整理は:
-
-1. `ObjectType` と `DynamicEntityKind` を1つにする。型名は `DynamicEntityKind`
-   (規約 2.2 の `celestial` / `dynamic` の対に沿う)。所有者は `dynamic-entity/` 側へ移し、
-   `random-name.ts` は import する側になる。
-   **値は `'enemy'` 側を採る。** `'ship'` は**敵機だけ**を指しているのに、
-   同じ union の `'player'` も艦なので、名前が区別を言えていない — 規約 2.1
-   「曖昧な区別。区別すべきものを同じ名前で指す命名」。実際に破綻していて、
-   `physical-object-list-order.ts:93` は
-   `if (this.filter === 'enemy') return item.kind === 'ship' …` と**同じものを
-   2つの語で書き分けている。**
-2. `CombatMarkerKind` から視点の軸(`self` / `ally`)を外し、
-   「種別」+「自分か否か」の2つの値で表す。`combatMarkerKindOf(cls: string)` が
-   CSS クラス名から種別を復元しているのも、**表示文字列から値を読み戻している**ので
-   規約 1.6(正データの分散)に当たる。マーカー登録時に種別を値として渡す。
-3. `Shooter` は残してよい。弾がどちら側から出たかは**種別ではなく所属**で、
-   2値であることに意味がある(規約 1.5「自機と敵の戦闘挙動は一般化しない」)。
+**切り出し済み。`refactor_pickable_focus.md` で対処する。**
 
 ---
 
@@ -966,31 +788,24 @@ else if (target instanceof Base) { ammo.textContent = `Fuel: …`; }
 
 ## 実施順序
 
-**論点1 を先にやる。** 論点7 の `bodyPickables` と論点13 の一部が論点1 に依存していて、
-先に他所を触ると二度手間になる。
+**論点1・7・16 はこの文書から切り出し、`refactor_pickable_focus.md` が持つ。** 下の順序には
+含めない。論点13 の一部と論点18 はそちらの完了後に着手する。
 
 1. **型の重複を先に潰す** — **論点15**(ビューの型4本→1本)/ **論点19**(`L1..L3` 等)。
    **振る舞いを一切変えない改名なので、単独で安全に入る。** 規約 1.11 に従い旧名を 0 件にする。
    論点13 と論点17 の議論は、型が1本になってからのほうが早い。
 2. ~~**論点12**(`partFromSaveData`)と **論点11**(`view-hud-controller`)~~ — **実施済。**
-3. **論点1 + 論点16**(`MapPickable` の多態化と種別語彙の統合)— 最大。1つの PR で丸ごと。
-   `pickable/` に加えて `hud/object-groups.ts` と `hud/panels/physical-object-list-*.ts`、
-   `ObjectType` / `DynamicEntityKind` / `CombatMarkerKind` の整理まで含める。
-   **`MapPickKind` が消えるので、論点16 を別 PR にすると二度手間になる。**
-4. ~~**論点2**(BVH の重複)~~ — **実施済。**
-5. **論点3**(`base-station-model`)と **論点4**(`const.ts`)— どちらも機械的。並行できる。
-6. **論点18**(`Player`/`Base` の `instanceof`)— 論点1 の後。
+3. ~~**論点2**(BVH の重複)~~ — **実施済。**
+4. ~~**論点3**(`base-station-model`)~~ — **実施済。** **論点4**(`const.ts`)は機械的。
+5. **論点18**(`Player`/`Base` の `instanceof`)— 被選択物の多態化の後。
    `vessel-panel` / `resource-transfer-dialog` / `target-panel` をまとめて。
-7. **論点7**(`focus-markers`)— 論点1 の後。
-8. **論点6**(`marker-manager`)— 論点7 と同時に、ラベル混雑3実装の統合可否を1回で決める。
-9. **論点17**(軌道分析タブの多態化)/ **論点8**(`PlayerBoosters`)/
+6. **論点6**(`marker-manager`)— 天体ラベルの移設と同時に、ラベル混雑3実装の統合可否を
+   1回で決める。
+7. **論点17**(軌道分析タブの多態化)/ **論点8**(`PlayerBoosters`)/
    **論点5**(`hud/style/`)/ **論点10**(入力行)— 独立。手が空いたときに。
-10. **論点9**(`plan-editor`)— `plan/` 全体を見るときに。
-11. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。論点20 は先に実測が要る。
+8. **論点9**(`plan-editor`)— `plan/` 全体を見るときに。
+9. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。論点20 は先に実測が要る。
 
 各段階の検証は変更箇所に対応させる(`npm run typecheck` は常に。`src/game/` を触ったら
 `npm run test:game`、`src/physics/`・`src/math/` を触ったら該当層)。**main へ送る前は
 必ず `npm run test` を全層回す。**
-
-論点1・7 は画面に出るものが変わるので、**`/verify` か実機での目視を挟む**
-(マップの右クリックメニュー・プロパティウィンドウ・物体一覧・天体ラベルの間引き)。

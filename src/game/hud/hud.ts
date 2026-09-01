@@ -2,7 +2,7 @@
 // root/svgOverlay の公開・常設パネル群の所有と毎フレームの同期を担う。
 import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
-import type { HudWorldView } from './panel-shell';
+import type { WorldView } from '../view-manager';
 import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
@@ -85,7 +85,7 @@ export class Hud {
 
   // アクティブなビューの常設パネル一式を game の現在状態へ合わせる。DOM ルートの表示切替は
   // setWorldView が持ち、ここでは表に出ているパネルだけを毎フレーム更新する。
-  public syncPanels(view: HudWorldView, game: Game): void {
+  public syncPanels(view: WorldView, game: Game): void {
     const map = view === 'map';
     this.burnManagementPanel.sync(game.player?.boosterManagementViewModel() ?? null);
     this.topBar.sync(game);
@@ -101,7 +101,7 @@ export class Hud {
   }
 
   // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
-  public setWorldView(view: HudWorldView): void {
+  public setWorldView(view: WorldView): void {
     const map = view === 'map';
     this.helpPanel.setWorldView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');

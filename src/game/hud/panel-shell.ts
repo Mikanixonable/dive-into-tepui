@@ -8,8 +8,7 @@ import {
   syncCollapseToggle,
   type CollapseToggleLabels,
 } from './widgets';
-
-export type HudWorldView = 'combat' | 'map';
+import type { WorldView } from '../view-manager';
 
 const STORAGE_KEY = 'tepui.panelCollapsed.v2';
 const LEGACY_STORAGE_KEY = 'tepui.panelCollapsed';
@@ -21,10 +20,10 @@ interface PanelCollapsedState {
   map: PanelCollapsedBucket;
 }
 
-type PanelCollapsedViewListener = (view: HudWorldView) => void;
-export type PanelDefaultCollapsed = boolean | ((view: HudWorldView) => boolean);
+type PanelCollapsedViewListener = (view: WorldView) => void;
+export type PanelDefaultCollapsed = boolean | ((view: WorldView) => boolean);
 
-let currentView: HudWorldView = 'combat';
+let currentView: WorldView = 'combat';
 let cachedState: PanelCollapsedState | null = null;
 const viewListeners = new Set<PanelCollapsedViewListener>();
 
@@ -86,7 +85,7 @@ function saveCollapsedState(state: PanelCollapsedState): void {
 }
 
 // 現在のビューを切り替え、登録済みの折りたたみUIへ保存状態を再適用する。
-export function setPanelCollapsedView(view: HudWorldView): void {
+export function setPanelCollapsedView(view: WorldView): void {
   if (currentView === view) return;
   currentView = view;
   for (const listener of viewListeners) listener(view);
