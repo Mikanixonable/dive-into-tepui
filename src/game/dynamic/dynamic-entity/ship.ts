@@ -148,8 +148,7 @@ export abstract class Ship extends DynamicEntity {
     }
   }
 
-  // 既定パーツ構成のまま、総HPを total へ按分して揃える。部品単位のHPまでは持たない
-  // 呼び出し元(Enemy)向けで、initDefaultParts() 直後(全パーツ満タン)に呼ぶ想定。
+  // 既定パーツ構成のまま、総 HP を total へ按分して揃える。全パーツ満タンの状態から呼ぶこと。
   protected setOverallHp(total: number): void {
     const ratio = this.maxHp > 0 ? Math.max(0, Math.min(1, total / this.maxHp)) : 0;
     for (const p of this.parts) p.hp = p.maxHp * ratio;
