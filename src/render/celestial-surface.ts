@@ -1,4 +1,4 @@
-// 天体表面のメッシュ。分割段ラダーの各段ぶんの球を1つのアルベドで束ね、見かけ直径に応じて
+// 天体表面のメッシュ。分割段ラダーの各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて
 // 1段だけを見せる。艦艇と同じライトプリパスの受け手として立ち、陰影・遮蔽・逆二乗の減衰は
 // すべてパイプラインが与える。
 // **画像の取得は addTo まで遅らせる** — 取得は DOM を要するので、構築だけなら DOM の無い
@@ -30,6 +30,8 @@ const CLOUD_ROUGHNESS = 1;
 
 // 分割段ごとの単位球ジオメトリを、その段を使う全天体で共有する。
 const sharedLodGeometries = new Map<SphereLodLevel, THREE.BufferGeometry>();
+
+// その段の半径 1 の球。同じ段には同じ実体を返すので、呼び手はこれを書き換えない。
 function unitSphereGeometry(level: SphereLodLevel): THREE.BufferGeometry {
   let geometry = sharedLodGeometries.get(level);
   if (geometry === undefined) {
@@ -103,10 +105,9 @@ export class CelestialSurface {
     return new CelestialSurface(material, [map], null, photometryOf(texture), texture.url);
   }
 
-  // 地表テクスチャへ雲と雲影を焼き込んだ球面。cloudsUrl は雲の被覆率を赤チャンネルに持つ
-  // テクスチャ、smoothnessUrl は地表の滑らかさ(1 − 粗さ)を持つグレースケールテクスチャ
-  // で、どちらもこの天体の地表と同じ正距円筒。texture の測光は合成後のアルベドとして測った
-  // ものを渡す。
+  // 地表テクスチャへ雲と雲影を焼き込んだ球面。cloudsUrl は雲の被覆率を、smoothnessUrl は
+  // 地表の滑らかさ(1 − 粗さ)を赤チャンネルに持つ、地表と同じ正距円筒のテクスチャ。
+  // texture の測光は合成後のアルベドとして測ったものを渡す。
   static clouded(texture: CelestialTexture, cloudsUrl: string, smoothnessUrl: string): CelestialSurface {
     const surfaceMap = deferredTexture(texture.url, THREE.SRGBColorSpace);
     const cloudsMap = deferredTexture(cloudsUrl, THREE.NoColorSpace);
@@ -119,8 +120,8 @@ export class CelestialSurface {
     const shadowAlpha = textureNode(cloudsMap.texture, uv().add(vec2(CLOUD_SHADOW_OFFSET_U, 0.0))).r.mul(cloudAmount);
     const shaded = mix(surfaceSample, surfaceSample.mul(CLOUD_SHADOW_DEPTH), shadowAlpha.mul(CLOUD_SHADOW_STRENGTH));
     material.colorNode = mix(shaded, vec3(1, 1, 1), cloudAlpha).mul(texture.albedoScale);
-    // 雲は地表の滑らかさを覆い隠す。**粗さではなく滑らかさで持つ** — 画像が届くまでテクスチャは
-    // 0 を返すので、0 が拡散側に来る向きでなければ、届くまでの数フレームだけ地表が鏡面になる。
+    // **粗さではなく滑らかさで持つ** — 画像が届くまでテクスチャは 0 を返すので、0 が拡散側へ
+    // 来る向きでなければ、届くまでの数フレームだけ地表が鏡面になる。
     const smoothness = textureNode(smoothnessMap.texture, uv()).r;
     material.roughnessNode = mix(smoothness.oneMinus(), CLOUD_ROUGHNESS, cloudAlpha);
     return new CelestialSurface(
