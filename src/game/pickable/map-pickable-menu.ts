@@ -22,6 +22,7 @@ import { MenuAction, MenuCommon, MenuItem, type PauseMenu } from '../hud/windows
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/attractor';
+import { v3, type Vec3 } from '../../math/vec3';
 import type { MapPickables } from './map-pickables';
 
 interface PickHandler {
@@ -180,7 +181,7 @@ export class MapPickableMenu {
     'apsis': {
       itemsFor: (target, simTime) => {
         const centerId = strongestAttractor(
-          target.pos, this.celestialSystem.celestialMotions, simTime).id;
+          this.markerPos(target), this.celestialSystem.celestialMotions, simTime).id;
         const peOrAp = target.id === 'apsisAp' ? 'ap' : 'pe';
         const spec = getApsisLabelSpec(peOrAp, centerId);
         return [
@@ -212,7 +213,7 @@ export class MapPickableMenu {
         const isAn = target.id.startsWith('eqan-');
         const spec = isAn ? ORBIT_ELEMENT_LABELS.eqAn : ORBIT_ELEMENT_LABELS.eqDn;
         const centerName = this.celestialSystem.nameOf(
-          strongestAttractor(target.pos, this.celestialSystem.celestialMotions, simTime).id);
+          strongestAttractor(this.markerPos(target), this.celestialSystem.celestialMotions, simTime).id);
         const label = `${centerName}${spec.nameJa}`;
         return [
           { type: 'header', label, subLabel: spec.nameEn },
@@ -442,18 +443,18 @@ export class MapPickableMenu {
     }
   }
 
+  // 軌道上の点マーカーの表示時刻位置。候補列に載っている間は必ず求まる。
+  private markerPos(target: MapPickable): Vec3 {
+    return target.mapPosAt(this.pickables.lastDisplayTime) ?? v3();
+  }
+
   private runApsisRelnode(act: MenuAction, target: MapPickable): void {
+    const t = target.mapTime;
     if (act === 'warp') {
-      const t = target.time ?? (target.kind === 'apsis'
-        ? this.editor.planDisplay.apsisTimeOf(target.id)
-        : this.navTarget.passTimeOf(target.id));
       if (t !== null && !this.simSpeedManager.startAutoWarpTo(t, this.pickables.lastSimTime)) {
         this.hud.hint('この時刻は既に通過しています');
       }
     } else if (act === 'addNode') {
-      const t = target.time ?? (target.kind === 'apsis'
-        ? this.editor.planDisplay.apsisTimeOf(target.id)
-        : this.navTarget.passTimeOf(target.id));
       if (t !== null) this.editor.addNodeAt(t);
       else this.hud.hint('この時刻の計画軌道が求まりません');
     } else {

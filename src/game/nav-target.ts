@@ -19,6 +19,7 @@ import { Hud } from './hud/hud';
 import { TimeLabelSetting, elementTimeLabel } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
 import { ORBIT_POINT_GLYPH } from './marker/marker-identity';
+import { RelativeNodeMarker } from './marker/relative-node-marker';
 import { CameraSystem } from './camera/camera-system';
 import { MapPickable } from './pickable/map-pickable';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
@@ -70,25 +71,18 @@ function findClosestApproach(
 export class NavTarget {
   private targetId: string | null = null;
   private targetName: string | null = null;
-  private ownerName: string | null = null;
-  // 自機軌道上の AN/DN の絶対位置(地球中心)。対象の軌道面が定まらなければ両方 null。
-  private anPos: Vec3 | null = null;
-  private dnPos: Vec3 | null = null;
-  // AN/DN 通過の絶対時刻 [s]。自機軌道要素の現在真近点角からの飛行時間を加えて求める。
-  private anTime: number | null = null;
-  private dnTime: number | null = null;
-  // 再接近点(自艦とターゲットの相対距離が最初に極小になる位置・時刻)。同じ中心天体を
-  // 周回していない、または区間内に極小が見つからなければ両方 null。
-  private closestPos: Vec3 | null = null;
-  private closestTime: number | null = null;
+  // 自機軌道上の AN/DN。位置は絶対座標(地球中心)で、通過時刻は自機軌道要素の現在真近点角
+  // からの飛行時間を加えて求める。対象の軌道面が定まらなければどちらも解けない。
+  private readonly ascendingNode = new RelativeNodeMarker('an');
+  private readonly descendingNode = new RelativeNodeMarker('dn');
+  // 自艦とターゲットの相対距離が最初に極小になる点。同じ中心天体を周回していない、または
+  // 区間内に極小が見つからなければ解けない。
+  private readonly closestApproach = new RelativeNodeMarker('ca');
   // update が求めた時点の CelestialMotion[]。sync でのマップビュー遮蔽判定に使う。
   private celestialBodies: readonly CelestialMotion[] = [];
   // celestialBodies の位置を厳密に引く時刻。
   private celestialBodiesPivot = 0;
-  private readonly pickableCache: MapPickable[] = [];
-  // マーカーラベルへ通過時刻を併記するか(PREDICT パネルの設定)と、併記する表記の基準時刻。
-  // update から sync まで持ち越すために保持する。
-  // 通過時刻ラベルの設定。update ごとに表示窓から組み直す。
+  // 通過時刻ラベルの設定。update ごとに表示窓から組み直し、sync のラベル組み立てで読む。
   private timeLabel: TimeLabelSetting = {
     mode: 'absolute', show: false, nowSimTime: 0, epochUnixSec: 0,
   };
@@ -163,16 +157,13 @@ export class NavTarget {
     return entity && entity.alive ? entity : null;
   }
 
-  // AN/DN・再接近点の通過時刻 [s]。id は 'nav-an'/'nav-dn'/'nav-ca'。未計算・対象外なら null。
-  passTimeOf(id: string): number | null {
-    if (id === 'nav-an') return this.anTime;
-    if (id === 'nav-dn') return this.dnTime;
-    if (id === 'nav-ca') return this.closestTime;
-    return null;
+  private get nodeMarkers(): readonly RelativeNodeMarker[] {
+    return [this.ascendingNode, this.descendingNode, this.closestApproach];
   }
 
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
-  // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は両方 null にする。
+  // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は、
+  // どちらの交点も解けていない状態にする。
   // positionOnOrbit は中心天体基準の相対位置を返すので、CelestialMotion.stateAt で通過時刻
   // anT/dnT における中心天体の精密な ECI 位置を求めて足し合わせ、絶対位置に直す — 概算の弾道
   // pivot からの外挿を使うと、表示側が数値暦で un-bake するのと基準がずれて、
@@ -183,10 +174,9 @@ export class NavTarget {
     frameAnchors: FrameAnchorSource,
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
-    this.anPos = this.dnPos = this.anTime = this.dnTime = null;
-    this.closestPos = this.closestTime = null;
+    const ownerName = player?.name ?? null;
+    for (const marker of this.nodeMarkers) marker.place(null, null, ownerName);
     this.timeLabel = timeLabelSettingOf(displayWindow);
-    this.ownerName = player?.name ?? null;
     this.celestialBodies = frameAnchors.bodies;
     this.celestialBodiesPivot = frameAnchors.bodiesPivot;
     if (!this.targetId) { this.setReaderEntity(null); return; }
@@ -206,10 +196,7 @@ export class NavTarget {
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
     if (target && strongestAttractor(target.state.r, stateCelestialBodies, simTime).id === playerCenter.id) {
       const found = findClosestApproach(player, target, celestialSystem, simTime);
-      if (found) {
-        this.closestPos = toDisplay(found.pos, found.t);
-        this.closestTime = found.t;
-      }
+      if (found) this.closestApproach.place(toDisplay(found.pos, found.t), found.t, ownerName);
     }
 
     const playerEl = player.orbitalElementsAround(playerCenter, simTime);
@@ -227,10 +214,8 @@ export class NavTarget {
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
     const anEci = add(celestialSystem.stateAt(playerCenter.id, anT).r, positionOnOrbit(playerEl, nodes.asc));
     const dnEci = add(celestialSystem.stateAt(playerCenter.id, dnT).r, positionOnOrbit(playerEl, nodes.desc));
-    this.anPos = toDisplay(anEci, anT);
-    this.dnPos = toDisplay(dnEci, dnT);
-    this.anTime = anT;
-    this.dnTime = dnT;
+    this.ascendingNode.place(toDisplay(anEci, anT), anT, ownerName);
+    this.descendingNode.place(toDisplay(dnEci, dnT), dnT, ownerName);
   }
 
   clearIfTargeting(id: string): void {
@@ -298,47 +283,34 @@ export class NavTarget {
   }
 
   // 右クリック対象として公開する AN/DN・再接近点アイコン。計算できているぶんだけ返す。
-  mapPickables(): MapPickable[] {
-    this.pickableCache.length = 0;
-    const ownerName = this.ownerName ?? undefined;
-    if (this.anPos && this.anTime !== null) this.pickableCache.push({ id: 'nav-an', name: 'AN', pos: this.anPos, time: this.anTime, kind: 'relnode', ownerName });
-    if (this.dnPos && this.dnTime !== null) this.pickableCache.push({ id: 'nav-dn', name: 'DN', pos: this.dnPos, time: this.dnTime, kind: 'relnode', ownerName });
-    if (this.closestPos && this.closestTime !== null) {
-      this.pickableCache.push({ id: 'nav-ca', name: '再接近点', pos: this.closestPos, time: this.closestTime, kind: 'relnode', ownerName });
-    }
-    return this.pickableCache;
+  mapPickables(): readonly MapPickable[] {
+    return this.nodeMarkers.filter((marker) => !marker.gone);
   }
 
   // マーカーラベルへ通過時刻を併記するか(PREDICT パネルの設定)に応じたラベル文字列。
-  private markerLabel(base: string, t: number): string {
-    return this.timeLabel.show ? `${base} ${elementTimeLabel(t, this.timeLabel)}` : base;
+  private markerLabel(marker: RelativeNodeMarker): string {
+    const t = marker.mapTime;
+    if (!this.timeLabel.show || t === null) return marker.markerLabel;
+    return `${marker.markerLabel} ${elementTimeLabel(t, this.timeLabel)}`;
   }
 
   // マップビューでは、天体に遮蔽されて画面上見えていない AN/DN・再接近点を隠す(戦闘ビューでは効かせない)。
   sync(cameraSystem: CameraSystem): void {
-    const project = cameraSystem.activeCameraProjection;
-    const overviewMode = cameraSystem.overviewMode;
-    const cameraPos = cameraSystem.activeCameraPos;
-    if (!this.anPos) this.markerManager.hide('nav-an');
-    else {
-      this.markerManager.setNodePosition(
-        'nav-an', 'mk-node', ORBIT_POINT_GLYPH.ascendingNode, this.anPos, project, cameraPos,
-        this.celestialBodies, this.celestialBodiesPivot, overviewMode, this.markerLabel('AN', this.anTime!),
-      );
+    this.syncNodeMarker(this.ascendingNode, ORBIT_POINT_GLYPH.ascendingNode, cameraSystem);
+    this.syncNodeMarker(this.descendingNode, ORBIT_POINT_GLYPH.descendingNode, cameraSystem);
+    this.syncNodeMarker(this.closestApproach, ORBIT_POINT_GLYPH.closestApproach, cameraSystem);
+  }
+
+  // マーカーを update が求めた位置へ置く。求まっていなければ隠す。
+  private syncNodeMarker(marker: RelativeNodeMarker, glyph: string, cameraSystem: CameraSystem): void {
+    const pos = marker.mapPosAt();
+    if (pos === null) {
+      this.markerManager.hide(marker.id);
+      return;
     }
-    if (!this.dnPos) this.markerManager.hide('nav-dn');
-    else {
-      this.markerManager.setNodePosition(
-        'nav-dn', 'mk-node', ORBIT_POINT_GLYPH.descendingNode, this.dnPos, project, cameraPos,
-        this.celestialBodies, this.celestialBodiesPivot, overviewMode, this.markerLabel('DN', this.dnTime!),
-      );
-    }
-    if (!this.closestPos) this.markerManager.hide('nav-ca');
-    else {
-      this.markerManager.setNodePosition(
-        'nav-ca', 'mk-node', ORBIT_POINT_GLYPH.closestApproach, this.closestPos, project, cameraPos,
-        this.celestialBodies, this.celestialBodiesPivot, overviewMode, this.markerLabel('再接近', this.closestTime!),
-      );
-    }
+    this.markerManager.setNodePosition(
+      marker.id, 'mk-node', glyph, pos, cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
+      this.celestialBodies, this.celestialBodiesPivot, cameraSystem.overviewMode, this.markerLabel(marker),
+    );
   }
 }

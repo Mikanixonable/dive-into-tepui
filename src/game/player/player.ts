@@ -49,6 +49,11 @@ import {
 } from '../../render/vfx-style';
 import { PlayerBoosters } from './player-boosters';
 import { MARKER_PRIORITY } from '../marker/marker-manager';
+import { strongestAttractor } from '../../physics/attractor';
+import { apsisAltitudes } from '../../physics/elements';
+import { fmtDist } from '../hud/utils';
+import type { MapPickKind, MapPickable } from '../pickable/map-pickable';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
@@ -88,7 +93,7 @@ export type PlayerInit =
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、それらを反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
-export class Player extends Ship {
+export class Player extends Ship implements MapPickable {
   public readonly mapKind: DynamicEntityKind = 'player';
 
   readonly throttle: PlayerThrottle;
@@ -553,6 +558,9 @@ export class Player extends Ship {
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
   private disposed: boolean = false;
 
+  // 画面マーカーと被選択判定が同じ艦を指すためのキー。
+  private get markerKey(): string { return `player-${this.id}`; }
+
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
   // isActive はこの艦が操作対象かどうか(マップ上の自艦マーカーを他の僚艦と塗り分けるため)。
   markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean, isActive: boolean): GroupedMarkerItem {
@@ -561,7 +569,7 @@ export class Player extends Ship {
     const kindCls = isActive ? 'mk-self' : 'mk-ally';
     const color = role === 'primary' ? currentThemePalette().signal : isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY;
     return {
-      key: `player-${this.id}`,
+      key: this.markerKey,
       cls: role === 'primary' ? `${kindCls} mk-target` : kindCls,
       sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
@@ -624,5 +632,43 @@ export class Player extends Ship {
       anchor: { t: anchor.t, r: { ...anchor.r }, v: { ...anchor.v } },
       nodes: nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
     };
+  }
+
+  // マップ上の被選択物としての振る舞い。
+  public readonly kind: MapPickKind = 'player';
+  public readonly ownerName = null;
+  public readonly mapTime = null;
+  public get gone(): boolean { return !this.alive; }
+  public get mapState(): KinematicState { return this.state; }
+  public listCounted(): boolean { return false; }
+
+  // 表示時刻の ECI 位置。予測が届かない時刻では null。
+  public mapPosAt(displayTime: number): Vec3 | null {
+    return this.stateAt(displayTime)?.r ?? null;
+  }
+
+  // 自艦カテゴリの表示トグルによる可否。操作中の自艦は例外扱いになる。
+  public mapVisibility(policy: MapVisibilityPolicy, activePlayer: Player | null): MapVisibility {
+    return policy.entity(this.mapKind, this === activePlayer);
+  }
+
+  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
+
+  // 残 HP と、いま最も強く引かれている天体を中心とした近地点高度。
+  public listDetail(celestialSystem: CelestialSystem): string {
+    const center = strongestAttractor(this.state.r, celestialSystem.celestialMotions, this.state.t);
+    const el = this.orbitalElementsAround(center, this.state.t);
+    const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
+    return `HP ${Math.round(this.hp)}/${Math.round(this.maxHp)} · PE ${pe}`;
+  }
+
+  // 検索が照合する文字列。行の補助表示と同じ。
+  public listSearchText(celestialSystem: CelestialSystem): string {
+    return this.listDetail(celestialSystem);
+  }
+
+  // 操作中の自艦を一覧の先頭へ出す。
+  public listPriority(activePlayer: Player | null): number {
+    return this === activePlayer ? -100 : 0;
   }
 }

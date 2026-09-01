@@ -80,6 +80,11 @@ export function alwaysFullyVisibleIds(
   return ids;
 }
 
+// 表示トグルを持たない対象(軌道上の点マーカー)の判定。軌道線は元から引かない。
+export const MARKER_VISIBILITY: MapVisibility = {
+  category: true, icon: true, label: true, orbit: false, pickable: true,
+};
+
 // すべての項目を伏せた判定。カテゴリが閉じていれば、残りの項目は問わずこれになる。
 function noVisibility(): MapVisibility {
   return { category: false, icon: false, label: false, orbit: false, pickable: false };
