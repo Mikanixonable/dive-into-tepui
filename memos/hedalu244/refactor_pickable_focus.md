@@ -185,7 +185,7 @@ Player」が並立する。
 **覆されたとき:** 手順2〜5 を「具象クラスを作る」「実体へ畳む」の2段に割り直す。
 手順6以降は変わらない。
 
-### 2. 実体でないものはマーカークラスにする(実施済み — ff2531a1)
+### 2. 実体でないものはマーカークラスにする(実施済み — ff2531a1 / 65d590f6)
 
 `apsis` / `relnode` / `eqnode` / ラグランジュ点は実体ではない(積分の対象でもメッシュの
 持ち主でもない)が、**画面上に存在し、右クリックの挙動を持つ**。これは1つのオブジェクトの
@@ -406,124 +406,58 @@ interface ListSortKey {
 
 ---
 
-## 手順
+## 実施の結果
 
-### 手順 7. 戦闘マーカーの種別を値として渡す
+全9手順を実施した(a77c1cc4 / ff2531a1 / 3e7c9c3b / 10a6cd14 / c76ddea8 / e68dcb01 /
+471e94a3 / 7f2e1372 / 65d590f6)。`npm run typecheck` と `npm run test`(653/653)が通る。
 
-**目的**
+### 達成目標の点検
 
-`combatMarkerKindOf(cls: string)` が CSS クラス文字列から種別を読み戻しているのをやめ、
-マーカー登録時に値として渡す。同時に「自分か味方か」という視点の軸を種別から外す。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
+| # | 結果 |
 | --- | --- |
-| `marker/grouped-markers.ts:19-36` | `GroupedMarkerItem` に `readonly kind: DynamicEntityKind` と `readonly isSelf: boolean` を追加 |
-| `marker/marker-manager.ts:65-82,98-117` | `CombatMarkerKind` / `combatMarkerKindOf` / `isCombatMarker` を削除。`defaultPriorityForClass` の陣営枝を削除する前に、戦闘マーカーがすべて `markerItem` で `priority` を明示していて既定へ落ちる経路が無いことを確かめる |
-| `player/player.ts:745-766` | `markerItem` に `kind: 'player'`, `isSelf: isActive` を足す。`kindCls` の決め方(`mk-self` / `mk-ally`)は変えない |
-| `dynamic/dynamic-entity/enemy.ts:195-210` / `base.ts:320-340` / `ammo-pickup.ts:65-82` / `rcs-fuel-pickup.ts:62-79` | 同上 |
-| `camera/focus-markers.ts:75-89,543-566` | `SUB_LABEL_GLYPH_BY_KIND` / `cleanSubLabelGlyph` / 内訳集計を `item.kind` と `item.isSelf` で書き直す |
+| 1 | `MapPickKind` 0 件 ✓ |
+| 2 | `ObjectType` 0 件 ✓(`objectType` の識別子も `entityKind` へ揃えた) |
+| 3 | 敵機を指す `'ship'` 0 件 ✓。残る4件は機体一般(`DockingCandidateKind` と「取り付け艦」の行キー) |
+| 4 | `combatMarkerKindOf` / `CombatMarkerKind` 0 件 ✓ |
+| 5 | 冒頭の表の `kind` 分岐 0 件 ✓ |
+| 6 | 4ファイルとも存在しない ✓ |
+| 7 | `MutableMapPickable` / `cachedBodyPickables` / `itemRecords` / `syncVisibility` 0 件 ✓ |
+| 8 | 被選択物から実体を id で引き直す手続き 0 件 ✓ |
+| 9 | 100 行超の関数は 3 件で、いずれも着手前(e7a9e82e)と同じもの・同じ長さ ✓。`syncSubLabels`(129 行)は 3 つの段へ割れた |
+| 10 | ✓ |
+| 11 | **未実施** — 実行時の目視確認はしていない |
 
-**達成条件と検証**
+### 行数の実測
 
-- `grep -rn "combatMarkerKindOf\|CombatMarkerKind" src/` が 0 件。
-- `npm run typecheck` / `npm run test:game`。
-- `npm run dev`:マップで自艦・僚艦・敵・基地・弾薬・燃料のマーカーの色・記号・重なり順が
-  手順前と同じ。遠距離の天体ラベル下のサブ行(`△3 ▲1 ⬡1` の形)の内訳が正しい。
-
----
-
-### 手順 8. 天体ラベルを `CelestialEntity` とマーカー集合へ分ける
-
-**目的**
-
-`camera/focus-markers.ts` を解体し、`camera/` から天体ラベルの知識を出す。ラベルに要る性質は
-天体自身が持ち、集合でしか決まらない間引きだけを集合クラスが持つ。129 行の `syncSubLabels` を
-分ける。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `celestial/celestial-entity/celestial-entity.ts` | `markerLabel`(= `name`)と `labelPriority`(`focus-markers.ts:92-100` の `LABEL_PRIORITY` を `bodyClass` から引く)を持たせる。優先度の値は `game/const.ts` の `MARKER_PRIORITY` にあるので、所有者を天体側へ寄せられるか併せて見る |
-| `celestial/celestial-system.ts` | 親を先に子を後に並べた順序と `depth` を持たせる(`focus-markers.ts:236-267` のコンストラクタから移す)。`ancestorsOf` / `sameSystemIds` と同じ場所にあるべき情報 |
-| `marker/celestial-markers.ts` | **(新規)** `FocusMarkers` の残り(`update` / `syncLabels` / `activeLabels` / `shownLabelCount` / `hideLabels`)。`GroupedMarkers` と同じ形 — 各天体・ラグランジュ点マーカーが自分の項目を出し、集合が間引く |
-| `marker/celestial-sub-labels.ts` | **(新規)** `syncSubLabels`(473-602)。天体ラベルの下へ隠れた船をぶら下げる処理は、ラベルの間引きとは別の関心。第1段階(左揃えリスト)と第2段階(記号+個数)を別メソッドへ割り、いまマジックナンバーで置かれている `DIST_STAGE2_THRESHOLD = 5e9` と `maxLines = 3` を名前付き定数にする |
-| `marker/crowding.ts` | `CrowdingGrid`(`focus-markers.ts:103-170`)をここへ移す。`resolveCrowdingWinner` が既にここにある。**前フレームの隠し集合(ヒステリシス)を落とさない** |
-| `camera/focus-markers.ts` | **削除** |
-| `camera/camera-system.ts` | `focusMarkers` フィールドの持ち主を変える。天体マーカーはカメラではなく `MarkerManager` が持つ |
-| `game.ts:362,380,573,578,629` ほか | 呼び出し元の追随 |
-| `pickable/map-pickables.ts:88-90,104` | `focusMarkers.update` / `bodyPickables` の呼び出しを差し替え |
-| `targeter.ts:203` | `cameraSystem.focusMarkers.activeLabels` の参照先 |
-| `pickable/map-context-actions.ts:489` | `cameraSystem.focusMarkers.allLabels` の参照先。親子関係は `CelestialSystem` から引ける形になる |
-
-**達成条件と検証**
-
-- `src/game/camera/focus-markers.ts` が存在しない。
-- `grep -rn "Label\|Pickable" src/game/camera/` が `focus-target.ts` の `FocusCandidate` だけになる。
-- `src/game/` に 100 行超の関数が無い。
-- `npm run typecheck` / `npm run test:game` / `npm run test:render`。
-- `npm run dev`:
-  - マップをズームイン/アウトして、天体名とアイコンの間引きが手順前と同じ挙動
-    (名前だけ消えてアイコンが残る距離帯があること、**明滅しないこと**)。
-  - ラグランジュ点の2行表記(`L4` / 天体名)が出る。
-  - 天体に遮られたラベルがフェードアウトする。
-  - 遠距離でサブ行が第2段階(記号+個数)へ切り替わる。
-
----
-
-### 手順 9. マーカーの描画責務をマーカークラスへ集める
-
-**目的**
-
-手順2〜5で被選択物としての振る舞いはマーカークラスへ集まっているが、**マーカーを描く処理は
-所有者側に残っている**(`plan-display.syncApsisMarkers`、`nav-target.sync`、
-`equator-node-marker-pair.sync`)。同じ物の表示と挙動が2箇所に割れたままなので、描画を
-マーカー自身へ移す。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `marker/apsis-marker.ts` | `sync(markerManager, project, overviewMode, cameraPos, …)` を持つ。`plan-display.ts` の `syncApsisMarkers`(遮蔽時 `fadeOut`、非表示時 `hide`)を移す |
-| `marker/relative-node-marker.ts` | `nav-target.ts:317-345` の3ブロック(AN / DN / 再接近点)を1つのメソッドへ畳む。3ブロックは記号とラベルだけが違う |
-| `marker/equator-node-marker.ts` | `equator-node-marker-pair.ts:113-133` の `sync` を移す。`EquatorNodeMarkerPair` は「2点を解いて2つのマーカーを持つ」だけになる |
-| `marker/lagrange-point-marker.ts` | 手順8で `CelestialMarkers` へ寄せた描画のうち、ラグランジュ点固有(2行表記・`mk-lagrange` クラス・`ENTITY_GLYPH.lagrange`)をここへ |
-| `plan/plan-display.ts` / `nav-target.ts` / `marker/equator-node-marker-pair.ts` | 上記を取り除き、マーカーへ委譲するだけにする |
-
-**達成条件と検証**
-
-- `grep -rn "markerManager.setNodePosition\|markerManager.setPosition" src/game/plan/ src/game/nav-target.ts` が 0 件。
-- `npm run typecheck` / `npm run test:game`。
-- `npm run dev`:近点/遠点(◇)・AN/DN(△▽)・再接近点(✧)・赤道交点・ラグランジュ点(✦)の
-  マーカーが、位置・記号・ラベル(PREDICT パネルの「軌道要素の時刻を表示」ON/OFF の両方)・
-  遮蔽フェードとも手順前と同じ。
-
----
-
-## 見積り
-
-「移す分岐の数」と「触るファイルの数」から出す。1分岐の移送(切り出し・貼り付け・呼び出し元の
-差し替え・目視)を 5〜10 分、単純な改名 1 箇所を 0.5 分として積む。
-
-| 手順 | 導出 | 見積り |
+| ファイル | 着手前 | 現在 |
 | --- | --- | --- |
-| 7 | `markerItem` 5 箇所 + 読み手 3 箇所 + 目視 20 分 | 約 1.5 時間 |
-| 8 | 609 行を 3 モジュールへ分割 + 呼び出し元 7 ファイル + 目視 40 分 | 約 4 時間 |
-| 9 | sync 4 種 × 20 分 + 目視 30 分 | 約 2 時間 |
-| **合計** | | **約 7.5 時間** |
+| `pickable/map-context-actions.ts` | 687 | **705** |
+| `pickable/map-pickables.ts` | 262 | 120 |
+| `camera/focus-markers.ts` | 517 | 0(`marker/celestial-markers.ts` 316 + `celestial-sub-labels.ts` 142 + `crowding.ts` へ 83 行) |
+| `player/player.ts` | 625 | 777 |
+| `dynamic/dynamic-entity/base.ts` | 376 | 505 |
 
-per-frame の費用の見積り: 候補列の再生成は `mapItems`(負荷確認ウィンドウで観測できる)ぶんの
-オブジェクト生成になる。天体 + ラグランジュ点 + 実体で 200 件規模なら
-200 obj/frame × 60 fps = 12,000 obj/s で、いまの `itemRecords` 再利用が防いでいるのはこの量の
-短命オブジェクトだけ。**実測して困ってから戻す**(決めたこと 6)。
+実体側が伸びるのは織り込み済み(1ファイルが1つの物体を言い切る形になるための増加)。
 
-行数の見込み: `map-context-actions.ts` 687 → 350 前後、`map-pickable-menu.ts` 463 → 0、
-`map-property-rows.ts` 233 → 0、`focus-markers.ts` 609 → 0(3 モジュールへ分割)。
-実体側は `player.ts` が 818 → 950 前後、`base.ts` が 374 → 500 前後まで伸びる。
-**これは問題にしない** — 1ファイルが1つの物体を全部言い切る形になるための増加で、分割が
-要るなら別の軸(ブースター運用・ドッキング)で切る。
+**`map-context-actions.ts` だけが見込みを外した。** 350 前後まで縮むと見ていたが、
+メニュー・行が出て行った代わりに `MapCommands` の実装(21 メンバー)が入り、差し引きで増えた。
+いま同居しているのは、プロパティウィンドウの台帳・クリックの振り分け・パーツウィンドウ・
+軌道線ウィンドウ・`MapCommands` の5つで、規約 1.2 に対して重い。
+
+### 残っている手順
+
+**手順 10. `map-context-actions.ts` を責務で割る**
+
+- `pickable/part-windows.ts`(新規) — `openPartPropertyWindow` / `partWindowContent` /
+  `partWearText` / `setPartDeployment` / `closePartWindowsForShip` と `partWindows` 台帳。
+- `pickable/orbit-line-windows.ts`(新規) — `openOrbitPropertyWindow` /
+  `orbitWindowContent` / `relatedItemsForOrbit` と `lineWindows` 台帳、
+  `ORBIT_PICK_KIND_LABEL` / `ORBIT_CALC_METHOD_LABEL`。
+- 残る `MapContextActions` は「被選択物のウィンドウ台帳 + クリックの振り分け + MapCommands」。
+
+**達成条件と検証**: `src/game/pickable/` に 400 行を超えるファイルが無い。
+`npm run typecheck` / `npm run test:game`。`npm run dev` でパーツウィンドウ(自艦の
+「搭載部品」から開く)と軌道線のプロパティウィンドウが手順前と同じ。
 
 ---
 
