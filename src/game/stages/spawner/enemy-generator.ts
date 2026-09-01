@@ -1,7 +1,5 @@
-// 個々の敵機を、座標・色・機種などのパラメータから直接生成する。
-// 中間データ(spec/preset)は持たない — 呼び出し側(各 Stage、stages/)がこの関数を直接呼んで
-// Enemy を得る。意図的に異なる2つの姿勢方針(無秩序に漂う/プログレードで接近する)を
-// この1ファイルに並べて置き、互いを見比べやすくする。
+// 個々の敵機を、座標・色・機種などのパラメータから直接生成する。無秩序に漂う姿勢と
+// プログレードへ向けた姿勢の2方針を、見比べられるようこの1ファイルに並べて置く。
 //
 // **ここの軌道は「地球中心の ECI・平均半径の真球」を前提にした簡易な置き方である。** 高度は
 // ECI 原点からの距離で測り、周回速度は MU_EARTH から出す。これはゲームバランスのための
@@ -61,11 +59,10 @@ export function generateProteinEnemy(
   );
 }
 
-// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)を、共通の時刻・速度で組む配置と
-// 生成関数を返す。centerState を中心に、攻撃担当(5I4R)はその場、盾役(ルビスコ)はプレイヤー
-// 方向へ 450 m、エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離す。以後の隊列維持操舵はしない。
-// 各役は asset ごとに実体化タイミングが異なりうるため(SPEC/PROTEIN.md「出現」節)、呼び出し側が
-// 個別に準備完了を待てるよう、即座には構築せず assetId と build を役ごとに返す。
+// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)を、共通の時刻・速度で組む。
+// centerState を中心に、攻撃担当(5I4R)はその場、盾役(ルビスコ)はプレイヤー方向へ 450 m、
+// エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離す。役ごとに準備完了を待てるよう
+// (SPEC/PROTEIN.md「出現」節)、実体ではなく assetId と build の組を返す。
 export function proteinFormationSpawns(
   name: string, centerState: KinematicState, playerPosition: Vec3, display: ProteinDisplaySettings, formationId: string,
   worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
@@ -127,8 +124,7 @@ export function generateEllipticEnemy(
   return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene);
 }
 
-// t = 生成時刻(state のエポック)。他のプリセットが base(自機状態)から引き継ぐのに対し、
-// この軌道は自機と無関係に軌道要素から作るので、時刻だけ呼び出し側から受け取る。
+// 自機と無関係な軌道要素から作るモルニヤ軌道の敵。t は生成時刻(state のエポック)。
 export function generateMolniyaEnemy(
   name: string, t: number, raan: number, nu: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {

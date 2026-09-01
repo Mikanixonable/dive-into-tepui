@@ -23,7 +23,7 @@ export interface QuatSaveData {
 export interface EntitySaveData {
   id: string;
   name?: string;
-  // 具象クラスのタグ。読み込み機構はこれでクラスを引き当てる。
+  // 具象クラスのタグ。
   kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster';
   r: Vec3SaveData;
   v: Vec3SaveData;

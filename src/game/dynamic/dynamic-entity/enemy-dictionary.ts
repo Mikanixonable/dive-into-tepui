@@ -1,7 +1,6 @@
 // 敵クラスの一覧と、セーブの種別タグからの引き当て。
-//
-// **基底(enemy.ts)には置けない。** 置くと enemy.ts → 具象 → enemy.ts の実行時循環になり、
-// `class MetalEnemy extends Enemy` の評価時に Enemy が TDZ に入っていて落ちる。
+// enemy.ts へ畳むと enemy.ts → 具象 → enemy.ts の実行時循環になり、
+// `class MetalEnemy extends Enemy` の評価時に Enemy が TDZ で落ちる。
 import { type EnemyClass } from './enemy';
 import { MetalEnemy } from './metal-enemy';
 import { ProteinEnemy } from './protein-enemy';

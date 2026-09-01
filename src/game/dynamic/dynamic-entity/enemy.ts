@@ -50,8 +50,7 @@ const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 // タンパク質陣形における敵の役割。
 export type FormationRole = 'attacker' | 'shield' | 'energy';
 
-// スナップショットからの再開。全具象で共通でなければならない — EnemyClass の構築シグネチャが
-// この形を要求し、クラス辞書はこれだけを渡して復元する。
+// スナップショットからの再開。復元の腕は全具象で共通でなければならない。
 export type EnemyRestore = { readonly saved: EnemySaveData; readonly simTime: number };
 
 // 新規配置。具象ごとに固有の項目(機体テンプレート番号・タンパク質アセット)を足して使う。
@@ -92,9 +91,8 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
   return 1;
 }
 
-// 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、
-// 交戦圏離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は
-// 具象が持ち、共通処理は下の抽象メンバー越しにそれを使う。
+// 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
+// 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
 export abstract class Enemy extends Ship {
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
   protected readonly maxTemperature = ENEMY_MAX_TEMP;
@@ -126,8 +124,7 @@ export abstract class Enemy extends Ship {
     fx: EffectsSystem,
     scene?: THREE.Scene,
   ) {
-    // 復元と新規配置を同じ形へ均してから基底へ渡す。復元固有の項目(生死・バースト状態)だけを
-    // 下でもう一度 init から読む。
+    // 復元と新規配置を同じ形へ均してから基底へ渡す。
     const placed: EnemyPlacement = 'saved' in init
       ? {
         name: init.saved.name || '',
@@ -192,10 +189,8 @@ export abstract class Enemy extends Ship {
     return '#' + this.accent.toString(16).padStart(6, '0');
   }
 
-  // 敵のマーカー表示項目を組み立てる。pos/vel は機体メッシュと同じ表示時刻の状態(displayState
-  // 経由)を使う。role がターゲットでなければ通常の敵マーカーになる。overviewMode では進行方向へ
-  // 回るヘッダーアイコンを、戦闘ビューでは従来の切り欠き三角形を使う。key は id(一意)から、
-  // ラベルは name(表示名)から作る — 複数の敵が同じ表示名を持ちうるため。
+  // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
+  // (displayState 経由)を渡すこと。key を id から作るのは、表示名が敵どうしで重なりうるため。
   public markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
@@ -252,8 +247,7 @@ export abstract class Enemy extends Ship {
     this.destroyEffect();
   }
 
-  // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする
-  // (どちらもゲームバランスの量で、物理の質量からは導かない)。
+  // 他の実体との接触。ダメージはゲームバランスの量で、物理の質量からは導かない。
   public collideWithEntity(other: DynamicEntity, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     const simTime = contact.selfState.t;
@@ -267,8 +261,7 @@ export abstract class Enemy extends Ship {
     this.damagedByContact(contactDamageSpeed(other, contact), simTime, 'killed', activeStage);
   }
 
-  // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になり、
-  // 沈めば自然損耗として記録する。
+  // 天体の固体表面への接触。沈めば自然損耗(collision)として記録する。
   public collideWithCelestialBody(_body: CelestialMotion, contact: Contact, activeStage: Stage): void {
     if (!this.alive) return;
     this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage);
@@ -306,8 +299,8 @@ export abstract class Enemy extends Ship {
 
   // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
   public behave(simTime: number, player: Player, entities: DynamicSystem, simSpeed: SimSpeedManager, celestialSystem: CelestialSystem): void {
-    // 射撃間隔はsimulation timeで統一する。wall dtを混ぜると×4時だけバースト間隔が
-    // 4倍に引き伸ばされ、同じゲーム内時間でもwarp段によって弾数が変わっていた。
+    // 射撃間隔は simulation time で測る。wall dt を混ぜると、同じゲーム内時間でも
+    // warp 段によって弾数が変わる。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
     this.lastBehaviorSim = simTime;
     if (!simSpeed.canShipAct) return;
@@ -387,10 +380,6 @@ export abstract class Enemy extends Ship {
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma', this.plasmaDamage(),
       this._worldSfx, this.scene, this,
     );
-    // 弾の姿勢は Bullet.sync() に一本化する。プラズマの長軸(+Z)を、
-    // 浮動原点に対する実際の相対速度へ向けるため、発射方向(actualAim)を
-    // 直接 lookAt() するよりも、敵自身の速度を含む軌道と一致する。
-
     this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
 
     entities.addBullet(pb);
