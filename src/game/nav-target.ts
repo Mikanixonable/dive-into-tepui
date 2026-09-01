@@ -6,7 +6,7 @@ import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../ph
 import { strongestAttractor } from '../physics/attractor';
 import { CelestialMotion } from '../physics/celestial-motion';
 import { frameOfCelestialBody } from '../physics/frame';
-import { LagrangePoints, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
+import { LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { OrbitingMotion } from '../physics/celestial-motion';
 import { qRotate } from '../physics/attitude';
@@ -240,7 +240,7 @@ export class NavTarget {
       const frame = secondary instanceof OrbitingMotion
         ? secondaryFrameOf(celestialBodies, t, secondary, t) : null;
       if (frame !== null) {
-        const point = `L${lagrange.point}` as keyof LagrangePoints;
+        const point = `L${lagrange.point}` as LagrangeLabel;
         return {
           id, state: lagrangeStateOf(point, frame), hasMass: false,
           attractor: null, entity: null, fixed: true,

@@ -11,7 +11,9 @@ import { DISPLAY_DURATION_MAX, APERIODIC_ARC_DURATION } from '../../display-wind
 // サンプルが1件も残らず、どの時刻も引けない列になる。
 const DISPLAY_DURATION_MIN = 3600;
 
-type FixedDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth';
+// ピルで選べる期間。手動レンジ('custom')だけは入力欄が受け持つ。
+type FixedDurationKey = Exclude<DisplayDurationKey, 'custom'>;
+type FixedPastDurationKey = Exclude<DisplayPastDurationKey, 'custom'>;
 
 const FIXED_DURATIONS: readonly (readonly [FixedDurationKey, string])[] = [
   ['orbit', '1周'],
@@ -20,8 +22,6 @@ const FIXED_DURATIONS: readonly (readonly [FixedDurationKey, string])[] = [
   ['month', '1ヶ月'],
   ['threeMonth', '3ヶ月'],
 ];
-
-type FixedPastDurationKey = 'none' | FixedDurationKey;
 
 const FIXED_PAST_DURATIONS: readonly (readonly [FixedPastDurationKey, string])[] = [
   ['none', 'なし'],
