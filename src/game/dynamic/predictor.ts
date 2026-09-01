@@ -30,16 +30,16 @@ const ARC_RETAIN_MARGIN = 300;
 // simDt/SUBSTEP_MAX_COUNT 秒ぶんを覆い、高ワープではその区間の実シミュレーションのサブステップ
 // 数百回ぶんの積分を1歩で肩代わりする。消費されている個体を追い抜かせないだけで1体あたり
 // SUBSTEP_MAX_COUNT(=64)歩/フレームが要り、ホライズンへ伸ばすぶんはその上に乗る。
-const ARC_STEP_BUDGET = 600;
+export const ARC_STEP_BUDGET = 600;
 // 1フレームの予算のうち、操作艦の弧+計画軌道の弧(interactive 枠)に割ける割合の上限。
 // 優先はするが独占はさせない — 計画の弧は他個体の予測を重力源・衝突判定の相手として読むため、
 // 編集直後の計画にこの枠を丸ごと食わせると、その依存先(background 側)の予測の成長が止まる。
-const ARC_INTERACTIVE_RATIO = 0.5;
+export const ARC_INTERACTIVE_RATIO = 0.5;
 // background のラウンドロビンで1体に必ず渡すステップ数の下限。予測列の history に最初の
 // 保持サンプルが積まれるまでは at() がほぼ全時刻で null を返し、実シミュレーションが消費
 // できずに積分して弧を捨てるので、その1サンプル分(sampleInterval / 刻み幅 ≒ 10 ステップ)を
 // 下回る配分は作り直しを繰り返す。
-const ARC_MIN_ITEM_STEPS = 16;
+export const ARC_MIN_ITEM_STEPS = 16;
 
 export class Predictor {
   private cursor = 0;

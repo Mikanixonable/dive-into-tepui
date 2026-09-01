@@ -2,12 +2,12 @@
 // 「マニューバノードの実行時刻まで自動的に加速する」機能を担う。
 // マップモードの計画データそのものには依存しない — [N] キーの受け口と
 // どのノード時刻へ自動ワープするかは呼び出し側(PlanEditor)が決めて渡す。
-import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { KinematicState } from '../../physics/kinematic-state';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
+import { NODE_APPROACH_LEAD } from '../plan/plan';
 
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152, 8388608, 33554432];
@@ -83,7 +83,7 @@ export class SimSpeedManager {
 
   // 未来の指定時刻まで自動ワープする。既に到達窓へ入った時刻は受け付けない。
   startAutoWarpTo(time: number, simTime: number): boolean {
-    if (!isFinite(time) || time <= simTime + C.NODE_APPROACH_LEAD) return false;
+    if (!isFinite(time) || time <= simTime + NODE_APPROACH_LEAD) return false;
     this.autoWarpUntil = time;
     return true;
   }
@@ -123,7 +123,7 @@ export class SimSpeedManager {
   update(simTime: number): void {
     if (this.autoWarpUntil === null) return;
     const tRem = this.autoWarpUntil - simTime;
-    if (tRem <= C.NODE_APPROACH_LEAD) {
+    if (tRem <= NODE_APPROACH_LEAD) {
       this.autoWarpUntil = null;
       this.levelIdx = 0;
       // ここで return せずループへ落ちると、解除した直後の tRem からもう一度

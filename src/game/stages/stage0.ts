@@ -1,8 +1,7 @@
 // Stage 0: 近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック。タイムアップで終了。
-import * as C from '../const';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { generateCluster } from './spawner/enemy-spawner';
+import { generateCluster, STAGE0_PER_GROUP, STAGE0_MAX_RANGE, COLOR_STAGE0_GROUP_ACCENTS } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { ScoreCounter } from './stage-utils/score-counter';
 import type { Player } from '../player/player';
@@ -25,8 +24,8 @@ export class Stage0 extends Stage {
   static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'stage 0';
   static readonly selectSub =
-    `【近接戦闘訓練】 常時選択可。${C.STAGE0_MAX_RANGE / 1000}km以内に色分けされた敵集団 ` +
-    `約${C.STAGE0_PER_GROUP * C.COLOR_STAGE0_GROUP_ACCENTS.length}機、` +
+    `【近接戦闘訓練】 常時選択可。${STAGE0_MAX_RANGE / 1000}km以内に色分けされた敵集団 ` +
+    `約${STAGE0_PER_GROUP * COLOR_STAGE0_GROUP_ACCENTS.length}機、` +
     `制限時間${stage0TimeLimitMinutes()}分の撃墜数スコアアタック`;
   static readonly selectKeys = ['KeyT'];
 
@@ -44,7 +43,7 @@ export class Stage0 extends Stage {
   briefingHtml(): string {
     return (
       `<b>訓練ステージ: 制限時間 ${stage0TimeLimitMinutes()}分で何機撃墜できるか</b><br>` +
-      `周囲${C.STAGE0_MAX_RANGE / 1000}km以内の色分けされた集団を撃墜せよ — RCS の並進と回転の練習に最適<br>` +
+      `周囲${STAGE0_MAX_RANGE / 1000}km以内の色分けされた集団を撃墜せよ — RCS の並進と回転の練習に最適<br>` +
       '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
       `[${K.help.label}] キーで操作方法を表示`
     );
