@@ -319,7 +319,7 @@ export abstract class CelestialEntity implements MapPickable {
     return rows;
   }
 
-  public readonly mapRename = null;
+  public readonly mapRename = null;
   public readonly selectOnMap = null;
   public readonly onMapFocus = null;
 }
