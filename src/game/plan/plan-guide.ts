@@ -10,8 +10,8 @@ import { Hud } from '../hud/hud';
 import { fmtDist, fmtSpeed, fmtTime } from '../hud/utils';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { ProjectFn } from '../camera/camera-system';
-import { MarkerManager } from '../marker/marker-manager';
-import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-glyphs';
+import { MarkerManager, MARKER_DIR_DIST } from '../marker/marker-manager';
+import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH, COLOR_MARKER_NODE } from '../marker/marker-identity';
 import type { Player } from '../player/player';
 import type { PlanPath } from './plan-path';
 import { THROTTLE_LEVELS } from '../player/player-throttle';
@@ -94,8 +94,8 @@ export class PlanGuide {
       `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(node.v))}`,
     );
     // 噴射方向が視界外(背面を含む)なら、敵・弾薬と同じ画面端の方位ガイドを出す。
-    const burnPoint = project(addScaled(shipPos, norm(burnDir), C.MARKER_DIR_DIST));
-    this.markerManager.setBearing('burn-bearing', 'mk-dir', DIRECTION_GLYPH.bearing, burnPoint, '', 0.7, C.COLOR_MARKER_NODE);
+    const burnPoint = project(addScaled(shipPos, norm(burnDir), MARKER_DIR_DIST));
+    this.markerManager.setBearing('burn-bearing', 'mk-dir', DIRECTION_GLYPH.bearing, burnPoint, '', 0.7, COLOR_MARKER_NODE);
   }
 
   // 実行の窓に入ったことを通知する。

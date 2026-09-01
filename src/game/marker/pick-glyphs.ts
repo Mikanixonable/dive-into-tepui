@@ -1,9 +1,9 @@
 // MapPickKind → 一覧・プロパティウィンドウで添える形態記号の唯一の対応表。
-// 記号そのものの定義は marker-glyphs.ts(文字)と marker-shapes.ts(SVG)が持ち、ここは
+// 記号そのものの定義は marker-identity.ts(文字)と marker-shapes.ts(SVG)が持ち、ここは
 // 「どの種別にどれを使うか」だけを決める — 一覧パネルとプロパティウィンドウで同じ種別が
 // 別の形に見えないようにするため、両者はこの関数だけを通す。
 import { isLagrangeId } from '../celestial/lagrange-id';
-import { bodyEntityGlyph, ENTITY_GLYPH, ORBIT_POINT_GLYPH } from './marker-glyphs';
+import { bodyEntityGlyph, ENTITY_GLYPH, ORBIT_POINT_GLYPH } from './marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from './marker-shapes';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapPickKind } from '../pickable/map-pickable';
