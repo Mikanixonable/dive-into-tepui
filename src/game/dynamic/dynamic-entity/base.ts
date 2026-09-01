@@ -43,10 +43,12 @@ import { MARKER_PRIORITY } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
+import type { MapPickable } from '../../pickable/map-pickable';
 import type { MapCommands } from '../../pickable/map-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
+import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../../hud/object-groups';
 
 export const BASE_MAX_VESSELS = 4; // 基地が保有・格納できる艦艇の最大数
 const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
@@ -389,11 +391,16 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
   }
 
   // マップ上の被選択物としての振る舞い。
-  public readonly kind: MapPickKind = 'base';
   public readonly ownerName = null;
   public readonly mapTime = null;
   public get gone(): boolean { return !this.alive; }
   public get mapState(): KinematicState { return this.state; }
+  public readonly mapGlyph = ENTITY_GLYPH.base;
+  public get mapGlyphSvg(): string { return baseMarkerSvg(); }
+  public readonly listSection: MapListSection = 'base';
+  public readonly pickerGenre: ObjectPickerGenre = '基地';
+  public readonly hiddenBehindBodies = true;
+  public readonly onlyInFocusedSystem = false;
   public listPriority(): number { return 0; }
   public listCounted(): boolean { return false; }
 

@@ -16,8 +16,8 @@ export interface LinePickable {
   readonly key: string;
   readonly kind: LinePickKind;
   readonly method: LineCalcMethod;
-  // 所属する対象を指す MapPickable のキー(`${kind}:${id}`)。プロパティウィンドウの
-  // 関連項目は、これで MapPickables.pickables から現在の対象を引き直して組む。
+  // 所属する対象を指す被選択物の id。プロパティウィンドウの関連項目は、これで現在の対象を
+  // 引き直して組む。
   readonly ownerKeys: readonly string[];
   // 当たり判定・描画に使う ECI 絶対座標のサンプル点列(t 昇順)。
   readonly points: readonly Vec3[];

@@ -80,20 +80,17 @@ export class MapPickables {
 
     const activePlayer = this.activePlayers.current;
     // 候補1件を、消滅・表示トグル・位置の有無・所属系・遮蔽の順に通してこのフレームの候補列へ積む。
-    // player はフォーカス天体の系に所属するかで絞る — 表示側と同じ判定なので、地球の裏側の
-    // player は表示・選択でき、土星系の player はどちらにも現れない。天体(body)は
-    // MapVisibilityPolicy が選んだ候補を維持する(カメラ遮蔽で一覧や被選択候補から除くと、
-    // 小衛星ナマカのように公転・カメラ移動に伴い一覧の行が明滅してしまうため)。その他の
-    // 候補(船・弾薬・基地・軌道点)は天体遮蔽でピック対象から除く。
+    // 所属系と遮蔽をどう扱うかは候補自身が答える — 表示側と同じ判定なので、地球の裏側の
+    // 自艦は表示・選択でき、土星系の自艦はどちらにも現れない。
     const append = (item: MapPickable): void => {
       if (item.gone || !item.mapVisibility(visibilityPolicy, activePlayer).pickable) return;
       const pos = item.mapPosAt(displayTime);
       if (pos === null) return;
-      const included = item.kind === 'player'
-        ? this.celestialSystem.isPositionInFocusedSystem(focusId, pos, displayTime)
-        : item.kind === 'body'
-          || !isOccluded(this.cameraSystem.activeCameraPos, pos, celestialBodies, displayTime);
-      if (included) this.candidateItems.push(item);
+      if (item.onlyInFocusedSystem
+        && !this.celestialSystem.isPositionInFocusedSystem(focusId, pos, displayTime)) return;
+      if (item.hiddenBehindBodies
+        && isOccluded(this.cameraSystem.activeCameraPos, pos, celestialBodies, displayTime)) return;
+      this.candidateItems.push(item);
     };
 
     this.candidateItems.length = 0;

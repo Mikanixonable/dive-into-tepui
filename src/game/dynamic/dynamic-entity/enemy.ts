@@ -16,6 +16,7 @@ import { fmtDist, fmtMarkerDist, fmtSpeed } from '../../hud/utils';
 import { relativeInfo } from '../../hud/orbit/orbit-info';
 import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
+import { shipMarkerSvg } from '../../marker/marker-shapes';
 import { currentThemePalette } from '../../theme';
 import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
 import type { Quat } from '../../../physics/attitude';
@@ -29,10 +30,12 @@ import type { EnemySaveData } from '../../save/save-data';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import { MARKER_PRIORITY, type MarkerManager } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
-import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
+import type { MapPickable } from '../../pickable/map-pickable';
 import type { MapCommands } from '../../pickable/map-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
+import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../../hud/object-groups';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
@@ -430,11 +433,16 @@ export abstract class Enemy extends Ship implements MapPickable {
   }
 
   // マップ上の被選択物としての振る舞い。
-  public readonly kind: MapPickKind = 'enemy';
   public readonly ownerName = null;
   public readonly mapTime = null;
   public get gone(): boolean { return !this.alive; }
   public get mapState(): KinematicState { return this.state; }
+  public readonly mapGlyph = ENTITY_GLYPH.enemyShip;
+  public get mapGlyphSvg(): string { return shipMarkerSvg(false); }
+  public readonly listSection: MapListSection = 'enemy';
+  public readonly pickerGenre: ObjectPickerGenre = '敵';
+  public readonly hiddenBehindBodies = true;
+  public readonly onlyInFocusedSystem = false;
   public listPriority(): number { return 0; }
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
