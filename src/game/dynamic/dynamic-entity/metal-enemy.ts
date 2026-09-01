@@ -14,7 +14,7 @@ import type { MetalEnemySaveData } from '../../save/save-data';
 const DRIFTING_INERTIA = v3(1, 1.1, 1.05);
 const TYPED_INERTIA = v3(1, 1, 1);
 
-// 実スケール適用後のメッシュを包む球の半径。弾丸・物理接触の両判定に共有する。
+// 実スケール適用後のメッシュを包む球の半径。
 function visualRadius(renderObject: THREE.Object3D): number {
   const bounds = new THREE.Box3().setFromObject(renderObject);
   return bounds.getBoundingSphere(new THREE.Sphere()).radius;
