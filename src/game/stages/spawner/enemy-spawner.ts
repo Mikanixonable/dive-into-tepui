@@ -60,7 +60,7 @@ export function generateCluster(
       if (offLen > safeRange) off = scale(off, safeRange / offLen);
 
       const state: KinematicState = kinematicState<'eci'>(base.t, add(base.r, off), base.v);
-      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, C.STAGE0_ENEMY_HP, accent, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, accent, C.COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
     }
   }
   return enemies;

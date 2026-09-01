@@ -1,6 +1,7 @@
 import { AnyPart } from '../dynamic/dynamic-entity/parts';
-import type { EnemyKind } from '../dynamic/dynamic-entity/enemy-kind';
-import type { FormationRole } from '../dynamic/dynamic-entity/enemy-formation';
+import type { FormationRole } from '../dynamic/dynamic-entity/enemy';
+import type { ProteinAssetId } from '../protein/protein-asset-loader';
+import type { ProteinDisplaySettings } from '../protein/protein-display';
 import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
@@ -22,7 +23,8 @@ export interface QuatSaveData {
 export interface EntitySaveData {
   id: string;
   name?: string;
-  kind: 'player' | 'enemy' | 'ammo' | 'rcs-fuel' | 'booster';
+  // 具象クラスのタグ。
+  kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster';
   r: Vec3SaveData;
   v: Vec3SaveData;
   q: QuatSaveData;
@@ -132,12 +134,12 @@ export interface BaseSaveData {
 }
 
 export interface EnemySaveData extends EntitySaveData {
-  enemyKind: EnemyKind;
+  kind: 'metal-enemy' | 'protein-enemy';
   alive: boolean;
   health: number;
+  // マーカー色・集団識別と、マーカー・軌道線の色。
   accent: string | number;
-  // マーカー・軌道線の色。旧セーブデータには無いため任意(無ければ accent から導く)。
-  orbitLineColor?: string | number;
+  orbitLineColor: string | number;
   waveId?: number;
   // 陣形に属する敵だけが持つ識別子と役割。無ければ単体敵として復元する。
   formationId?: string;
@@ -145,10 +147,22 @@ export interface EnemySaveData extends EntitySaveData {
   // バースト射撃の残弾・次弾までの残り時間。未着手なら両方 undefined。
   burstLeft?: number;
   burstDelay?: number;
-  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
+  // プロパティウィンドウの軌道線表示トグル。無ければ既定 false。
   showTrajectoryLine?: boolean;
-  // タンパク質敵が持つ部位HP・フェーズ・修飾。旧セーブには存在しない。
-  protein?: ProteinSaveData;
+}
+
+export interface MetalEnemySaveData extends EnemySaveData {
+  kind: 'metal-enemy';
+  // 機体テンプレート番号。型番を持たない漂流機体は null。
+  typeIndex: number | null;
+}
+
+export interface ProteinEnemySaveData extends EnemySaveData {
+  kind: 'protein-enemy';
+  assetId: ProteinAssetId;
+  display: ProteinDisplaySettings;
+  // 機能部位の HP・フェーズ・修飾。
+  protein: ProteinSaveData;
 }
 
 export interface AmmoPickupSaveData extends EntitySaveData {
