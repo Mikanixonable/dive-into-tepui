@@ -17,7 +17,7 @@ import { SOLAR_CONSTANT } from '../../../physics/srp';
 import { ApsisTrack } from '../../../physics/trajectory-features';
 import { Vec3, len, scale, sub, v3 } from '../../../math/vec3';
 import type { Viewpoint } from '../../../math/projection';
-import type { SphereHit } from './base-collision';
+import type { SphereHit } from '../../../math/triangle-mesh';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { TargetRelativeLine } from '../../lines/target-relative-line';
