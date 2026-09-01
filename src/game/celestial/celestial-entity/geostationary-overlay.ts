@@ -41,6 +41,7 @@ export class GeostationaryOverlay {
   private readonly semiMajorAxis: number;
   private readonly label: string;
 
+  // semiMajorAxis [m] は of() が表面より外にあることを確かめた同期軌道の長半径。
   private constructor(motion: CelestialMotion, semiMajorAxis: number) {
     this.semiMajorAxis = semiMajorAxis;
     this.label = altitudeLabel(semiMajorAxis - motion.def.radius);
