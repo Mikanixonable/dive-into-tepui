@@ -21,7 +21,7 @@ import type { EnemyDeathCause, Stage } from '../../stages/stage';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { DynamicSystem } from '../../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
-import type { EnemySaveData } from '../../save/save-data';
+import type { EnemySaveData, FormationRole } from '../../save/save-data';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
 import { ProteinRuntime } from '../../protein/protein-runtime';
@@ -29,13 +29,15 @@ import { ProteinRibbonCollisionGeometry } from '../../protein/protein-ribbon-col
 import { createProteinMotionBinding } from '../../../render/protein-motion-material';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import type { ProteinDamageResult } from '../../protein/protein-combat-state';
-import type { ProteinDisplaySettings } from '../../protein/protein-display';
+import {
+  isProteinDisplaySettings, proteinDisplayFromLegacyColorMode,
+  type ProteinColorMode, type ProteinDisplaySettings,
+} from '../../protein/protein-display';
+import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import {
   ENEMY_DESTROY_FRAG_COLOR,
 } from '../../../render/vfx-style';
-import { proteinAssetIdForEnemyKind, normalizeEnemyKind, inertiaForEnemyKind, type EnemyKind } from './enemy-kind';
 import { buildEnemyRenderObject } from './enemy-render';
-import { isFormationEnergyAvailable, type FormationRole } from './enemy-formation';
 import { sunGlareSpreadScale } from './enemy-sun-glare';
 import { buildEnemyMarkerItem } from './enemy-marker';
 import { serializeEnemy } from './enemy-save';
@@ -57,6 +59,57 @@ const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃す
 const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
 const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
+
+// 敵の外見・生成方法を表す種別と、そこから導かれる値。
+type LegacyPdb5i4rEnemyKind = {
+  kind: 'pdb-5i4r';
+  colorMode?: ProteinColorMode;
+  display?: ProteinDisplaySettings;
+};
+
+export type EnemyKind =
+  | { kind: 'drifting' }
+  | { kind: 'stage0'; typeIndex: number }
+  | { kind: 'protein'; assetId: ProteinAssetId; display?: ProteinDisplaySettings }
+  | LegacyPdb5i4rEnemyKind;
+
+// タンパク質型の敵が使うタンパク質アセットの id。タンパク質型でなければ null。
+export function proteinAssetIdForEnemyKind(enemyKind: EnemyKind): ProteinAssetId | null {
+  if (enemyKind.kind === 'protein') return enemyKind.assetId;
+  if (enemyKind.kind === 'pdb-5i4r') return 'pdb-5i4r';
+  return null;
+}
+
+// 旧セーブデータの 'pdb-5i4r' 種別を、現行の 'protein' 種別へ読み替える。
+function normalizeEnemyKind(enemyKind: EnemyKind): EnemyKind {
+  if (enemyKind.kind !== 'pdb-5i4r') return enemyKind;
+  return {
+    kind: 'protein',
+    assetId: 'pdb-5i4r',
+    display: isProteinDisplaySettings(enemyKind.display)
+      ? enemyKind.display
+      : proteinDisplayFromLegacyColorMode(enemyKind.colorMode),
+  };
+}
+
+// enemyKind ごとの主慣性モーメント。'drifting' は非対称にしてジャニベコフ効果(中間軸不安定性)
+// を起こし、'stage0' は機首をプログレードへ向けたまま飛ぶので等方でよい。
+export function inertiaForEnemyKind(enemyKind: EnemyKind): Vec3 {
+  return enemyKind.kind === 'stage0' ? v3(1, 1, 1) : v3(1, 1.1, 1.05);
+}
+
+// 陣形の攻撃担当だけが必要とする、同じ陣形内の生存エネルギー役を都度集計する。
+// formationId が無い敵は単体敵として、従来どおり供給条件を満たすものとする。
+export function isFormationEnergyAvailable(
+  formationRole: FormationRole | undefined,
+  formationId: string | undefined,
+  enemies: readonly { readonly alive: boolean; readonly formationId?: string; readonly formationRole?: FormationRole }[],
+): boolean {
+  if (formationRole !== 'attacker' || formationId === undefined) return true;
+  return enemies.some((enemy) => (
+    enemy.alive && enemy.formationId === formationId && enemy.formationRole === 'energy'
+  ));
+}
 
 // 新規配置は各フィールドを直接渡し、スナップショットからの再開は saved を simTime 付きの
 // 状態として展開する。orbitLineColor は旧セーブデータには無いため、無ければ accent から導く。
