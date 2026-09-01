@@ -95,7 +95,7 @@ export interface StageClass {
 // 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
 export interface ObjectAuthoring {
   openObjectPlacer(focusId?: string): void;
-  openObjectPlacerForDuplicate(objectType: DynamicEntityKind, state: KinematicState): void;
+  openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void;
 }
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
