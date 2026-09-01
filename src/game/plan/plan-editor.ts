@@ -7,7 +7,6 @@ import { OrbitalElements } from '../../physics/elements';
 import { Projected } from '../../math/projection';
 import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import * as C from '../const';
 import { Hud } from '../hud/hud';
 import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
@@ -17,7 +16,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
-import { AxisDragGizmo } from './plan-axis-drag';
+import { AxisDragGizmo, NODE_DV_RATE, NODE_DV_RATE_FINE } from './plan-axis-drag';
 import { PlanGizmo3D } from './plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan, PlanData } from './plan';
@@ -578,7 +577,7 @@ export class PlanEditor {
     // ラッチ中の Δv アームは、閾値超過量に比例したレートで dt 秒分を加算し続ける。
     const latch = this.nodeGizmo.latch;
     if (latch) {
-      const fineScale = fine ? C.NODE_DV_RATE_FINE / C.NODE_DV_RATE : 1;
+      const fineScale = fine ? NODE_DV_RATE_FINE / NODE_DV_RATE : 1;
       // ラッチ後は基点からの超過距離に比例させる。ここを DV_RATE_MAX で
       // 飽和させると、一定距離以上のドラッグがすべて同じ Δv になり、
       // 「大きくドラッグするほど加速が増える」という操作感が失われる。

@@ -104,7 +104,9 @@ export abstract class CelestialEntity {
       this.referenceLine = new EllipseLine({ color, opacity, renderOrder: LINE_RENDER_ORDER.reference });
       scene.add(this.referenceLine.line);
     }
-    this.referenceLine.sync(this.referenceElementsAt(simTime), fo, camera);
+    const elements = this.referenceElementsAt(simTime);
+    if (elements === null) this.referenceLine.hide();
+    else this.referenceLine.sync(elements, fo, camera);
     this.referenceLine.setOpacity(opacity);
   }
 

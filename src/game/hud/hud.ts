@@ -1,13 +1,13 @@
 // DOM オーバーレイの HUD のシェル。トースト・ヘルプの表示と、
-// root/svgOverlay の公開・常設パネル群の所有を担う。
+// root/svgOverlay の公開・常設パネル群の所有と毎フレームの同期を担う。
 import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
-import type { HudWorldView } from './panel-shell';
+import type { WorldView } from '../view-manager';
 import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
 import { EnemiesPanel } from './panels/enemies-panel';
-import { BurnManagementPanel, type BurnManagementViewModel } from './panels/burn-management-panel';
+import { BurnManagementPanel } from './panels/burn-management-panel';
 import { TopBar } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
@@ -83,13 +83,25 @@ export class Hud {
     this.orbitAnalysisWindow = win;
   }
 
-  // 戦闘/マップ HUD コントローラの sync から呼ばれる。窓が無ければ何もしない。
-  public syncOrbitAnalysis(game: Game): void {
+  // アクティブなビューの常設パネル一式を game の現在状態へ合わせる。DOM ルートの表示切替は
+  // setWorldView が持ち、ここでは表に出ているパネルだけを毎フレーム更新する。
+  public syncPanels(view: WorldView, game: Game): void {
+    const map = view === 'map';
+    this.burnManagementPanel.sync(game.player?.boosters.managementViewModel() ?? null);
+    this.topBar.sync(game);
+    this.orbitPanel.sync(game, !map);
+    if (map) {
+      this.mapScaleBadge.sync(game);
+    } else {
+      this.vesselPanel.sync(game);
+      this.targetPanel.sync(game);
+      this.enemiesPanel.sync(game);
+    }
     this.orbitAnalysisWindow?.sync(game);
   }
 
   // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
-  public setWorldView(view: HudWorldView): void {
+  public setWorldView(view: WorldView): void {
     const map = view === 'map';
     this.helpPanel.setWorldView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
@@ -112,11 +124,6 @@ export class Hud {
     // 既存のビュー別スタイルが残る間も、共有 HUD の状態を同期しておく。
     this.root.classList.toggle('map-mode', map);
     this.root.classList.toggle('map-ui-active', map);
-  }
-
-  // ゲーム側で整えた表示用スナップショットだけを受け取り、Player 依存を HUD に持ち込まない。
-  public syncBurnManagement(view: BurnManagementViewModel | null): void {
-    this.burnManagementPanel.sync(view);
   }
 
   // 見出しを持たないメッセージのみ型トーストを durationMs だけ表示する。

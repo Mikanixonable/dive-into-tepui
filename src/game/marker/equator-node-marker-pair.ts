@@ -9,7 +9,7 @@ import { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
 import { TimeLabelSetting, elementTimeLabel } from '../hud/orbit/calendar-ticks';
 import type { MarkerManager } from './marker-manager';
-import { ORBIT_POINT_GLYPH } from './marker-glyphs';
+import { ORBIT_POINT_GLYPH } from './marker-identity';
 import type { ProjectFn } from '../camera/camera-system';
 import { MapPickable } from '../pickable/map-pickable';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
@@ -42,7 +42,7 @@ export class EquatorNodeMarkerPair {
   ): void {
     this.update(
       null, displayTime, celestialSystem, frameAnchors,
-      this.owner.displayState(displayTime, celestialSystem), [], timeLabel,
+      this.owner.stateAt(displayTime, celestialSystem), [], timeLabel,
     );
   }
 

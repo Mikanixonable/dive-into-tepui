@@ -1,12 +1,12 @@
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_2, SPACE_4 } from '../../theme';
-import { CLICK_MOVE_THRESHOLD } from '../../const';
 import { clampOverlayPosition, Point2 } from '../layout';
 import { onViewportChange } from '../viewport';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import {
   Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider,
 } from '../widgets';
+import { CLICK_MOVE_THRESHOLD } from '../../input/input';
 
 // 一時停止 / 設定パネル(#hud-pause-menu)。BGM 音量調整、セーブ、セーブデータ管理、負荷表示、
 // 設定ビューの呼び出し、タイトルへの復帰を提供し、ヘッダーのドラッグ移動と最小化を持つ。

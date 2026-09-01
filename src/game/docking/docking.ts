@@ -1,11 +1,10 @@
 import * as THREE from 'three/webgpu';
-import * as C from '../const';
 import { v3, len, sub, dot, norm } from '../../math/vec3';
 import { kinematicState } from '../../physics/kinematic-state';
 import { Hud } from '../hud/hud';
 import { BasePanel } from '../hud/panels/base-view';
 import { ResourceTransferDialog } from '../hud/windows/resource-transfer-dialog';
-import { Base } from '../dynamic/dynamic-entity/base';
+import { Base, BASE_MAX_VESSELS } from '../dynamic/dynamic-entity/base';
 import { Player } from '../player/player';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
@@ -130,8 +129,8 @@ export class Docking {
 
     if (target instanceof Base) {
       const occupied = new Set(target.baseState.dockedVessels.map((entry) => entry.slotIndex));
-      const capacityOk = target.baseState.dockedVessels.length < C.BASE_MAX_VESSELS;
-      for (let i = 0; i < C.BASE_MAX_VESSELS; i++) {
+      const capacityOk = target.baseState.dockedVessels.length < BASE_MAX_VESSELS;
+      for (let i = 0; i < BASE_MAX_VESSELS; i++) {
         if (occupied.has(i)) continue;
         const position = target.getSlotWorldPos(i);
         const normal = norm(target.getSlotWorldNormal(i));
@@ -241,8 +240,8 @@ export class Docking {
     if (!this.entities.players.includes(ship)) return;
     if (this.entities.bases.some((candidate) =>
       candidate.baseState.dockedVessels.some((entry) => entry.id === ship.id || entry.player === ship))) return;
-    if (base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS) {
-      this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`);
+    if (base.baseState.dockedVessels.length >= BASE_MAX_VESSELS) {
+      this.hud.hint(`基地のドックが満杯です (最大 ${BASE_MAX_VESSELS} 隻)`);
       return;
     }
     const candidate = this.bestDockingCandidate(ship, base);
@@ -280,8 +279,8 @@ export class Docking {
   }
 
   private buildVessel(base: Base): void {
-    if (base.baseState.dockedVessels.length >= C.BASE_MAX_VESSELS) {
-      this.hud.hint(`基地のドックが満杯です (最大 ${C.BASE_MAX_VESSELS} 隻)`);
+    if (base.baseState.dockedVessels.length >= BASE_MAX_VESSELS) {
+      this.hud.hint(`基地のドックが満杯です (最大 ${BASE_MAX_VESSELS} 隻)`);
       return;
     }
     const slotIndex = base.getAvailableSlotIndex() ?? 0;

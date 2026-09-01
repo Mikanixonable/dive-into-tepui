@@ -11,21 +11,19 @@ import type { ActiveControllableController } from './active-controllable-control
 import { setPanelCollapsedView } from './hud/panel-shell';
 import type { Base } from './dynamic/dynamic-entity/base';
 
-export type ViewId = 'combat' | 'map';
+export type WorldView = 'combat' | 'map';
 
 export interface ViewMenuItem {
   readonly id: string;
   readonly label: string;
-  readonly viewId: ViewId;
+  readonly viewId: WorldView;
 }
 
-export type WorldViewId = 'combat' | 'map';
-
 export class ViewManager {
-  private worldView: WorldViewId;
+  private worldView: WorldView;
   private controlledBaseProvider: (() => Base | null) | null = null;
 
-  get current(): ViewId { return this.worldView; }
+  get current(): WorldView { return this.worldView; }
 
   get isMapView(): boolean { return this.worldView === 'map'; }
   get isCombatView(): boolean { return this.worldView === 'combat'; }
@@ -38,7 +36,7 @@ export class ViewManager {
     private readonly mapActions: MapContextActions,
     private readonly activePlayers: ActiveControllableController,
     private readonly touchControls: TouchControls | null,
-    requestedView?: WorldViewId,
+    requestedView?: WorldView,
   ) {
     // 戦闘ビューは操作対象艦を前提とするので、遷移と同じ規則で入れるビューへ落とす。
     const requested = requestedView ?? 'combat';
@@ -53,7 +51,7 @@ export class ViewManager {
   // ビュー遷移の唯一の入口。遷移できない場合は何もしない。既に next にいる場合でも
   // applyChrome() は必ず走らせ、「この呼び出しの後、カメラ・計画編集・未来表示の各フラグは
   // 現在のビューに揃っている」という保証を遷移の有無に依らず成り立たせる。
-  setView(next: ViewId): void {
+  setView(next: WorldView): void {
     if (next === this.current) { this.applyChrome(); return; }
     if (!this.canEnter(next)) return;
 
@@ -69,13 +67,13 @@ export class ViewManager {
     this.applyChrome();
   }
 
-  serializeView(): WorldViewId {
+  serializeView(): WorldView {
     return this.worldView;
   }
 
   // ビュー選択 UI に並べる遷移先。現在のビュー自身と、いま入れないビューは含まない。
-  selectableViews(): readonly ViewId[] {
-    const all: readonly ViewId[] = ['combat', 'map'];
+  selectableViews(): readonly WorldView[] {
+    const all: readonly WorldView[] = ['combat', 'map'];
     return all.filter((v) => v !== this.current && this.canEnter(v));
   }
 
@@ -100,7 +98,7 @@ export class ViewManager {
   }
 
   // 戦闘ビューは操作対象の艦または基地が必要。
-  private canEnter(view: ViewId): boolean {
+  private canEnter(view: WorldView): boolean {
     if (view === 'combat') {
       return this.activePlayers.current !== null
         || (this.controlledBaseProvider?.() ?? null) !== null;
@@ -110,9 +108,9 @@ export class ViewManager {
 
   // 現在のビューに合わせて HUD の見た目と、カメラ・計画編集・未来表示・収納状態の各フラグを揃える。
   private applyChrome(): void {
+    setPanelCollapsedView(this.worldView);
+    this.hud.setWorldView(this.worldView);
     const map = this.worldView === 'map';
-    setPanelCollapsedView(map ? 'map' : 'combat');
-    this.hud.setWorldView(map ? 'map' : 'combat');
     this.touchControls?.setMapMode(map);
     this.cameraSystem.setMapMode(map);
     this.editor.setMapMode(map);

@@ -4,10 +4,11 @@ import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import {
-  ARROW_KEYS, AUXILIARY_KEYS, BEHAVIOR_LABELS, HELP_CATEGORIES, HELP_ENTRIES, INPUT_LABELS, KEYBOARD_ROWS,
+  ARROW_KEYS, AUXILIARY_KEYS, BEHAVIOR_LABELS, HELP_CATEGORIES, helpEntries, INPUT_LABELS, KEYBOARD_ROWS,
   entryCodes, entryMatchesCode, normalize, scopeMatches,
-  type HelpCategory, type HelpEntry, type HelpInput, type HelpMode, type KeyboardKeyDefinition,
+  type HelpCategory, type HelpEntry, type HelpInput, type KeyboardKeyDefinition,
 } from './help-content';
+import type { WorldView } from '../../view-manager';
 
 // HTML 属性値へ差し込む文字列をエスケープする。ラベル・説明文はユーザー操作の結果ではないが、
 // `<`/`&` を含む語(不等号表記など)が構造を壊さないようにする。
@@ -25,7 +26,7 @@ export class HelpPanel implements OverlayHandle {
   private readonly content: HTMLElement;
   private readonly liveStatus: HTMLElement;
   private _isOpen = false;
-  private mode: HelpMode = 'combat';
+  private mode: WorldView = 'combat';
   private inputFilter: HelpInput | 'all' = 'all';
   private categoryFilter: HelpCategory | 'all' = 'all';
   private selectedCode: string | null = null;
@@ -112,7 +113,7 @@ export class HelpPanel implements OverlayHandle {
 
   // ビュー切り替え時はヘルプの既定表示も同期する。タブから手動で選んだ場合でも、
   // 次にビューを切り替えた時点で現在の操作へ戻るため、常に迷子にならない。
-  public setWorldView(view: HelpMode): void {
+  public setWorldView(view: WorldView): void {
     if (this.mode === view) return;
     this.mode = view;
     this.selectedCode = null;
@@ -199,7 +200,7 @@ export class HelpPanel implements OverlayHandle {
       return;
     }
     // 表示モード / 入力方式 / カテゴリのタブは、選択を切り替えて再描画するだけの同じ形。
-    const mode = target.dataset['helpMode'] as HelpMode | undefined;
+    const mode = target.dataset['helpMode'] as WorldView | undefined;
     if (mode) {
       this.mode = mode;
       this.selectedCode = null;
@@ -236,7 +237,7 @@ export class HelpPanel implements OverlayHandle {
   // 現在の検索語・入力方式・カテゴリ・表示モードのすべてに合致する操作項目を返す。
   private filteredEntries(): HelpEntry[] {
     const query = normalize(this.searchInput.value);
-    return HELP_ENTRIES.filter((entry) => {
+    return helpEntries().filter((entry) => {
       if (!scopeMatches(entry, this.mode)) return false;
       if (this.categoryFilter !== 'all' && entry.category !== this.categoryFilter) return false;
       if (this.inputFilter !== 'all' && !entry.inputs.includes(this.inputFilter)) return false;
@@ -253,7 +254,7 @@ export class HelpPanel implements OverlayHandle {
   // 現在の表示モードでキーボード図に描画すべき、キー割り当てを持つ操作項目を返す。
   // 検索語・入力方式・カテゴリのフィルタは反映しない — キーボード図自体は常に全体を示す。
   private activeKeyboardEntries(): HelpEntry[] {
-    return HELP_ENTRIES.filter((entry) => scopeMatches(entry, this.mode) && entry.inputs.includes('keyboard') && Boolean(entry.keys?.length));
+    return helpEntries().filter((entry) => scopeMatches(entry, this.mode) && entry.inputs.includes('keyboard') && Boolean(entry.keys?.length));
   }
 
   // 現在の状態(モード・フィルタ・検索語・選択)に合わせて、パネル全体を再描画する。
@@ -433,7 +434,7 @@ export class HelpPanel implements OverlayHandle {
   // 指定 id の操作項目をハイライト対象として選択し、一覧内の該当カードまでスクロールする。
   // 該当項目が存在しなければ何もしない。
   private selectEntry(entryId: string): void {
-    const entry = HELP_ENTRIES.find((item) => item.id === entryId);
+    const entry = helpEntries().find((item) => item.id === entryId);
     if (!entry) return;
     this.selectedEntryId = entryId;
     this.selectedCode = null;

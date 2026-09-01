@@ -1,7 +1,6 @@
 // マップ上の被選択物(MapPickable)の候補集合と、表示可否(MapVisibilityPolicy)を1フレーム分
 // 組み立てる。「何が選べるか」だけを答え、選んだ結果どうするか(ヒットテスト・メニュー・
 // プロパティウィンドウ)は map-context-actions.ts の MapContextActions が持つ。
-import * as C from '../const';
 import { fmtDist, fmtSpeed } from '../hud/utils';
 import { MapPickable } from './map-pickable';
 import { focusTargetId } from '../camera/focus-target';
@@ -21,6 +20,8 @@ import { MapVisibilityPolicy } from '../map/visibility-policy';
 import { MarkerManager } from '../marker/marker-manager';
 import type { DisplayWindow } from '../display-window-manager';
 import type { PerfCounts } from '../../perf-meter';
+import { AMMO_PICKUP_RADIUS } from '../dynamic/dynamic-entity/ammo-pickup';
+import { RCS_FUEL_PICKUP_RADIUS } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
 
 type MutableMapPickable = { -readonly [K in keyof MapPickable]: MapPickable[K] };
 
@@ -103,7 +104,7 @@ export class MapPickables {
     this.navTarget.update(
       this.activePlayers.current, this.entities, this.celestialSystem, displayWindow, this.frameAnchors);
 
-    // 船の位置は表示時刻の displayState — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
+    // 船の位置は表示時刻の stateAt — 機体メッシュや敵マーカーと同じ未来ゴースト位置に揃える。
     this.candidateItems.length = 0;
     this.visibleItems.length = 0;
     this.activeRecordKeys.clear();
@@ -113,7 +114,7 @@ export class MapPickables {
     for (const ship of this.entities.players) {
       const vPlayer = visibilityPolicy.entity('player', ship === this.activePlayers.current);
       if (!vPlayer.pickable) continue;
-      const pos = ship.displayState(displayTime)?.r;
+      const pos = ship.stateAt(displayTime)?.r;
       if (pos) {
         const center = strongestAttractor(ship.state.r, celestialBodies, ship.state.t);
         const el = ship.orbitalElementsAround(center, ship.state.t);
@@ -129,25 +130,25 @@ export class MapPickables {
     for (const enemy of this.entities.enemies) {
       const vShip = visibilityPolicy.entity('ship');
       if (!enemy.alive || !vShip.pickable) continue;
-      const pos = enemy.displayState(displayTime)?.r;
+      const pos = enemy.stateAt(displayTime)?.r;
       if (pos) this.addCandidate(enemy.id, enemy.name, pos, 'ship', undefined, undefined, undefined, vShip.label);
     }
     for (const ammoPickup of this.entities.ammoPickups) {
       const vAmmo = visibilityPolicy.entity('ammo');
       if (!ammoPickup.alive || !vAmmo.pickable) continue;
-      const pos = ammoPickup.displayState(displayTime)?.r;
+      const pos = ammoPickup.stateAt(displayTime)?.r;
       if (pos) this.addCandidate(ammoPickup.id, ammoPickup.name, pos, 'ammo', undefined, undefined, undefined, vAmmo.label);
     }
     for (const fuelPickup of this.entities.rcsFuelPickups) {
       const vFuel = visibilityPolicy.entity('fuel');
       if (!fuelPickup.alive || !vFuel.pickable) continue;
-      const pos = fuelPickup.displayState(displayTime)?.r;
+      const pos = fuelPickup.stateAt(displayTime)?.r;
       if (pos) this.addCandidate(fuelPickup.id, fuelPickup.name, pos, 'fuel', undefined, undefined, undefined, vFuel.label);
     }
     for (const base of this.entities.bases) {
       const vBase = visibilityPolicy.entity('base');
       if (!base.alive || !vBase.pickable) continue;
-      const pos = base.displayState(displayTime)?.r;
+      const pos = base.stateAt(displayTime)?.r;
       if (pos) this.addCandidate(
         base.id, base.name, pos, 'base', `格納 ${base.baseState.dockedVessels.length} 艇`,
         undefined, undefined, vBase.label,
@@ -170,8 +171,8 @@ export class MapPickables {
     if (viewer) for (const item of this.candidateItems) {
       const d = len(sub(item.pos, viewer.r));
       const approaching = item.kind === 'ship' ? d < 2e5 : undefined;
-      const collectable = item.kind === 'ammo' ? d <= C.AMMO_PICKUP_RADIUS
-        : item.kind === 'fuel' ? d <= C.RCS_FUEL_PICKUP_RADIUS
+      const collectable = item.kind === 'ammo' ? d <= AMMO_PICKUP_RADIUS
+        : item.kind === 'fuel' ? d <= RCS_FUEL_PICKUP_RADIUS
           : undefined;
       // 相対速度は対の速度を持つ敵艦にだけ意味がある。天体の detail は一覧の行には表示されないが、
       // PhysicalObjectListOrder.matches() の検索が「名前・補助表示文字列」として読む

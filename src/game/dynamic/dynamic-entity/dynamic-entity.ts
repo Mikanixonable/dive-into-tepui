@@ -17,19 +17,17 @@ import { SOLAR_CONSTANT } from '../../../physics/srp';
 import { ApsisTrack } from '../../../physics/trajectory-features';
 import { Vec3, len, scale, sub, v3 } from '../../../math/vec3';
 import type { Viewpoint } from '../../../math/projection';
-import type { SphereHit } from './base-collision';
+import type { SphereHit } from '../../../math/triangle-mesh';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { TargetRelativeLine } from '../../lines/target-relative-line';
 import { TrajectoryLine } from '../../lines/trajectory-line';
-import type { OrbitReference } from '../../orbit-reference';
 import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { PredictedArc, trajectorySampleInterval } from '../../dynamic/predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../../dynamic/time-step';
 import type { FutureCelestialBodyProvider } from '../../dynamic/arc-celestial-bodies';
-import * as C from '../../const';
 import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
@@ -37,10 +35,33 @@ import { EquatorNodeMarkerPair } from '../../marker/equator-node-marker-pair';
 import type { MarkerManager } from '../../marker/marker-manager';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../../render/thermal-emissive';
+import { DISPLAY_DURATION_MAX } from '../../display-window-manager';
 
-// 過去表示の要求で伸ばせる保持時間の上限 [s]。保持サンプル数は間引きにより
-// ARC_MAX_SAMPLES で頭打ちなので、この値が決めるのは間引きの粗さ(補間精度)の下限。
-const HISTORY_DURATION_MAX = C.DISPLAY_DURATION_MAX;
+// 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
+// 戻すのに使う。物体ごとに変えると bcInv の意味が種別で変わってしまうので、1つに固定する。
+const DRAG_COEFFICIENT = 2.2;
+// 断面積のうち、よどみ点の加熱を実際に受ける割合。
+const STAGNATION_AREA_FRACTION = 0.6;
+const SG_CONST = 1.7415e-4; // Sutton–Graves 定数(地球) [kg^0.5/m]
+export const HULL_EMISS = 0.85; // 放射率
+export const ENV_TEMP = 255; // 放射平衡の環境温度 [K]
+
+// 破片・薬莢・弾薬に共通の材質。アルミ合金相当。
+export const SMALL_DEBRIS_BCINV = 8e-3; // 弾道係数の逆数 Cd·A/m [m^2/kg]
+export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // 輻射圧係数 × 断面積質量比 C_R·A/m [m^2/kg]
+export const SMALL_DEBRIS_BULK_DENSITY = 2700; // [kg/m^3]
+export const SMALL_DEBRIS_SPECIFIC_HEAT = 900; // [J/(kg·K)]
+// 球とみなした断面積比(bcInv/Cd)の 4 倍。
+export const SMALL_DEBRIS_RADIATING_AREA_PER_MASS = 0.01455; // [m^2/kg]
+// アルミ合金の融点。降下してくる破片がこの温度に達するのは、地球の大気では高度 60 km 付近
+// — 平衡温度はもっと高いところで既にこれを超えるが、再突入は速すぎて平衡に達しない。
+export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
+
+// エンティティ1体が出している軌道線。楕円と対象への直線は排他で、同時には持たない。
+// center が null なら、毎フレームその瞬間最も強く引いている天体を中心に描く。
+export type OrbitLine =
+  | { readonly kind: 'ellipse'; readonly line: EllipseLine; readonly center: CelestialMotion | null }
+  | { readonly kind: 'relative'; readonly line: TargetRelativeLine; readonly target: DynamicEntity };
 
 const identityAttitude = (): Attitude => ({
   q: { x: 0, y: 0, z: 0, w: 1 },
@@ -98,13 +119,9 @@ export class DynamicEntity {
   }
   // 機体座標系トルク。既定ゼロ = 自由回転。
   torque: Vec3 = v3();
-  // 自身の軌道楕円を描く線。null = 持たない。
-  ellipseLine: EllipseLine | null = null;
-  // 戦闘ビューで非質量の艦・基地に表示基準を固定中、ellipseLine の代わりに対象との直線を描く線。
-  // null = 持たない。
-  targetRelativeLine: TargetRelativeLine | null = null;
-  // showEllipseLine で渡された style。targetRelativeLine を遅延生成するときに使い回す。
-  private ellipseLineStyle: LineStyle | null = null;
+  private _orbitLine: OrbitLine | null = null;
+  // 自身の軌道線と、それを描く基準。null = 持たない。
+  get orbitLine(): OrbitLine | null { return this._orbitLine; }
   // 自身の予測軌道を描く線。null = 持たない。
   predictedLine: TrajectoryLine | null = null;
   // 過去に通ってきた軌跡の線。持たせるかは種別の判断。
@@ -120,22 +137,22 @@ export class DynamicEntity {
 
   // --- 熱(physics/thermal.ts の比量モデル) ---
   // 現在の平均温度 [K]。
-  temperature = C.ENV_TEMP;
+  temperature = ENV_TEMP;
   // 局所的に過熱した部分が平均より高い温度差 [K]。0 = 全体が等温。
   protected thermalDeviation = 0;
   // 比熱 [J/(kg·K)]。**0 = 熱を蓄えない種別**で、温度は動かない。
   protected readonly specificHeat: number = 0;
   // 材質の密度 [kg/m^3]。よどみ点の曲率半径を bcInv から戻すのに使う。
-  protected readonly bulkDensity: number = C.SMALL_DEBRIS_BULK_DENSITY;
+  protected readonly bulkDensity: number = SMALL_DEBRIS_BULK_DENSITY;
   // いまの輻射面積の比 [m^2/kg]。展開して面積が変わる放熱面を持つ種別は override する。
   protected get radiatingAreaPerMass(): number { return 0; }
   // 輻射率。
-  protected readonly emissivity: number = C.HULL_EMISS;
+  protected readonly emissivity: number = HULL_EMISS;
   // 太陽光を受ける面積の比 [m^2/kg]。吸収率を織り込んだ実効値で、既定は球とみなした断面積
   // (bcInv/Cd)に外殻の吸収率(灰色体とみなし輻射率に等しい)を掛けたもの。展開して受光面が
   // 増える種別は sunDir を見て override する。
   protected solarAbsorbAreaPerMass(_sunDir: Vec3): number {
-    return (this.emissivity * this.bcInv) / C.DRAG_COEFFICIENT;
+    return (this.emissivity * this.bcInv) / DRAG_COEFFICIENT;
   }
   // これを超えると焼失する温度 [K]。既定 Infinity = 熱では失われない。
   protected readonly maxTemperature: number = Infinity;
@@ -218,80 +235,68 @@ export class DynamicEntity {
     return orbitalElementsOf(this.state, center, centerPivot);
   }
 
-  // 軌道楕円(または戦闘ビューで非質量ターゲット固定中の対象への直線)の線を style で出す。
-  // 既に出ていれば style を塗り直す。
-  showEllipseLine(style: LineStyle): void {
-    this.ellipseLineStyle = style;
-    if (this.ellipseLine !== null) {
-      this.ellipseLine.setStyle(style);
-    } else {
-      const line = new EllipseLine(style);
-      this.scene?.add(line.line);
-      this.ellipseLine = line;
+  // 軌道楕円を center 中心(null なら最も強く引く天体)で出す。対象への直線を出していたなら
+  // 捨てて置き換える。
+  showEllipseLine(style: LineStyle, center: CelestialMotion | null): void {
+    const kept = this._orbitLine?.kind === 'ellipse' ? this._orbitLine.line : null;
+    if (kept !== null) {
+      kept.setStyle(style);
+      this._orbitLine = { kind: 'ellipse', line: kept, center };
+      return;
     }
-    this.targetRelativeLine?.setStyle(style);
+    this.hideOrbitLine();
+    const line = new EllipseLine(style);
+    this.scene?.add(line.line);
+    this._orbitLine = { kind: 'ellipse', line, center };
   }
 
-  // 軌道楕円・対象への直線を消す。出し直すと作り直しになる。
-  hideEllipseLine(): void {
-    this.ellipseLineStyle = null;
-    if (this.ellipseLine !== null) {
-      this.scene?.remove(this.ellipseLine.line);
-      this.ellipseLine.dispose();
-      this.ellipseLine = null;
+  // 軌道楕円の代わりに、target とのいまの位置を結ぶ直線を出す。楕円を出していたなら捨てて置き換える。
+  showTargetRelativeLine(style: LineStyle, target: DynamicEntity): void {
+    const kept = this._orbitLine?.kind === 'relative' ? this._orbitLine.line : null;
+    if (kept !== null) {
+      kept.setStyle(style);
+      this._orbitLine = { kind: 'relative', line: kept, target };
+      return;
     }
-    if (this.targetRelativeLine !== null) {
-      this.scene?.remove(this.targetRelativeLine.line);
-      this.targetRelativeLine.dispose();
-      this.targetRelativeLine = null;
-    }
+    this.hideOrbitLine();
+    const line = new TargetRelativeLine(style);
+    this.scene?.add(line.line);
+    this._orbitLine = { kind: 'relative', line, target };
   }
 
-  // 軌道楕円を隠す(相対軌跡モードへ切り替える/状態が求まらないときに使う)。
-  private hideOrbitEllipse(fo: FloatingOrigin, camera: THREE.Camera): void {
-    this.ellipseLine?.sync(null, fo, camera);
+  // 軌道線を消す。出し直すと作り直しになる。
+  hideOrbitLine(): void {
+    if (this._orbitLine === null) return;
+    this.scene?.remove(this._orbitLine.line.line);
+    this._orbitLine.line.dispose();
+    this._orbitLine = null;
   }
 
-  // ellipseLine を表示時刻の状態に合わせる。線を持たなければ何もしない。displayTime が現在時刻
-  // より先なら、表示用の予測状態を使って船体と同じ時刻に揃える。orbitRef が非質量の艦・基地
-  // ターゲットを指すのは戦闘ビューだけ(EntityLineManager がマップビューでは orbitRef を渡さない)
-  // ので、context.orbitRef の有無だけで戦闘ビュー/マップビューを判別できる。
-  syncEllipseLine(
+  // 軌道線を表示時刻の状態に合わせる。線を持たなければ何もしない。displayTime が現在時刻より
+  // 先なら、表示用の予測状態を使って船体と同じ時刻に揃える。対象への直線は未来予測に依存しない
+  // ので、対象の未来が引けなければ対象のいまの位置で結ぶ。
+  syncOrbitLine(
     displayTime: number, celestialSystem: CelestialSystem, fo: FloatingOrigin, camera: THREE.Camera,
-    frameAnchors: FrameAnchorSource, orbitRef: OrbitReference | undefined,
+    frameAnchors: FrameAnchorSource,
   ): void {
-    if (this.ellipseLine === null && this.targetRelativeLine === null) return;
-    const state = this.displayState(displayTime, celestialSystem);
+    const orbitLine = this._orbitLine;
+    if (orbitLine === null) return;
+    const state = this.stateAt(displayTime, celestialSystem);
     if (state === null) {
-      // 表示時刻の状態が求まらない: 両方隠す。
-      this.hideOrbitEllipse(fo, camera);
-      this.targetRelativeLine?.hide();
+      orbitLine.line.hide();
       return;
     }
-    // 非質量の艦・基地に固定中で、自分自身がその対象でなければ対象への直線モード。
-    const relativeTarget = orbitRef?.fixed && !orbitRef.hasMass ? orbitRef.entity : null;
-    if (relativeTarget !== null && relativeTarget !== this) {
-      this.hideOrbitEllipse(fo, camera);
-      if (this.targetRelativeLine === null && this.ellipseLineStyle !== null) {
-        const line = new TargetRelativeLine(this.ellipseLineStyle);
-        this.scene?.add(line.line);
-        this.targetRelativeLine = line;
-      }
-      const targetPos = relativeTarget.displayState(displayTime, celestialSystem)?.r ?? relativeTarget.state.r;
-      this.targetRelativeLine?.sync(state.r, targetPos, fo, camera);
+    if (orbitLine.kind === 'relative') {
+      const { target } = orbitLine;
+      const targetPos = target.stateAt(displayTime, celestialSystem)?.r ?? target.state.r;
+      orbitLine.line.sync(state.r, targetPos, fo, camera);
       return;
     }
-    this.targetRelativeLine?.hide();
-    // 艦・基地以外の非質量対象(ラグランジュ点など)、または自分自身が対象のときは楕円も出さない。
-    if (orbitRef?.fixed && !orbitRef.hasMass) {
-      this.hideOrbitEllipse(fo, camera);
-      return;
-    }
-    // 質量天体に固定中はその天体中心、自動選択(未固定)なら自身にとって最も強く引く天体を中心に描く。
-    const center = orbitRef?.fixed && orbitRef.attractor
-      ? orbitRef.attractor
-      : strongestAttractor(state.r, frameAnchors.bodies, frameAnchors.bodiesPivot);
-    this.ellipseLine?.sync(orbitalElementsOf(state, center, frameAnchors.bodiesPivot), fo, camera);
+    const center = orbitLine.center
+      ?? strongestAttractor(state.r, frameAnchors.bodies, frameAnchors.bodiesPivot);
+    const elements = orbitalElementsOf(state, center, frameAnchors.bodiesPivot);
+    if (elements === null) orbitLine.line.hide();
+    else orbitLine.line.sync(elements, fo, camera);
   }
 
   // 予測線を style で出す。既に出ていれば style を塗り直す。
@@ -355,10 +360,12 @@ export class DynamicEntity {
   }
 
   // 過去表示に必要な履歴の保持時間 [s] を要求する。履歴を持たない種別(弾・薬莢・破片)は
-  // 無視する。実際の保持時間は種別ごとの既定値との大きい方。
+  // 無視する。実際の保持時間は種別ごとの既定値との大きい方。上限は表示期間の上限で、
+  // 保持サンプル数は間引きにより ARC_MAX_SAMPLES で頭打ちなので、これが決めるのは
+  // 間引きの粗さ(補間精度)の下限。
   requestHistoryDuration(sec: number): void {
     if (this.baseHistoryDuration <= 0) return;
-    this.requestedHistoryDuration = Math.max(0, Math.min(HISTORY_DURATION_MAX, sec));
+    this.requestedHistoryDuration = Math.max(0, Math.min(DISPLAY_DURATION_MAX, sec));
   }
 
   // 保持窓が keepDuration の列へ積む最小間隔 [s]。その場で最も強く引く天体を中心とする
@@ -472,12 +479,12 @@ export class DynamicEntity {
         sub(this.state.r, atmosphereState.r),
         sub(this.state.v, atmosphereState.v), atm);
       heating += aeroHeating(
-        density, speed, this.bcInv, C.SG_CONST,
-        sphereNoseRadius(this.bcInv, C.DRAG_COEFFICIENT, this.bulkDensity),
-        (C.STAGNATION_AREA_FRACTION * this.bcInv) / C.DRAG_COEFFICIENT);
+        density, speed, this.bcInv, SG_CONST,
+        sphereNoseRadius(this.bcInv, DRAG_COEFFICIENT, this.bulkDensity),
+        (STAGNATION_AREA_FRACTION * this.bcInv) / DRAG_COEFFICIENT);
     }
     const cooling = radiativeCooling(
-      this.temperature, C.ENV_TEMP, this.emissivity, this.radiatingAreaPerMass,
+      this.temperature, ENV_TEMP, this.emissivity, this.radiatingAreaPerMass,
       this.specificHeat, dt);
     this.temperature = stepTemperature(this.temperature, heating - cooling, this.specificHeat, dt)
       + this.pendingSpecificHeat / this.specificHeat;
@@ -532,29 +539,26 @@ export class DynamicEntity {
     return true;
   }
 
-  // 表示時刻 t の状態。予測を持たない/予測期間を超えた時刻は null。celestialSystem を渡すと、
-  // 予測列で答えられない未来時刻を、先端を中心天体まわりの二体軌道とみなして外挿した値で
-  // 答える(外挿もできなければ null)。
-  displayState(t: number, celestialSystem?: CelestialSystem): KinematicState | null {
-    if (t <= this.actual.state.t) {
-      const past = this.actual.at(t);
-      if (past !== null) return past;
-      // 履歴を持たない種別(弾・薬莢・破片)の保持列は先端1件だけなので、at() は t が先端時刻
-      // と完全に一致したときしか答えられない。積分の刻みの積み方や simTime の強制前進で先端が
-      // 丸め1つぶん外れただけで非表示になってしまうため、その1件をそのまま答えにする。
-      return this.historyDuration > 0 ? null : this.actual.state;
-    }
+  // 任意時刻 t の状態。実測列の内挿(過去)・予測列の内挿・予測列の先端を二体ケプラー軌道と
+  // みなした外挿を、呼び出し側が意識せず1呼び出しで引く。未来を予測しない種別と、予測が
+  // 打ち切られた(天体表面へ到達した)先の時刻では求まらない。外挿には中心天体の ECI 状態が
+  // 要るので、celestialSystem を渡さなければ予測列が持つ範囲までを答える。
+  stateAt(t: number, celestialSystem?: CelestialSystem): KinematicState | null {
+    if (t <= this.state.t) return this.actual.at(t);
     const predicted = this.predicted;
-    const normal = predicted?.at(t) ?? null;
-    if (normal !== null || celestialSystem === undefined) return normal;
-    const center = predicted?.extrapolationCenter ?? null;
-    if (predicted === null || this.predictionTruncated || center === null) return null;
+    if (predicted === null) return null;
+    // 予測列の先端以前は内挿で足りる。外挿が要るときにだけ中心天体の状態を引く。
+    if (t <= predicted.state.t) return predicted.at(t);
+    if (this.predictionTruncated || celestialSystem === undefined) return null;
+    // 中心天体は予測列が運んでいるものだけが正しい — 相対状態はその天体を原点に解かれている。
+    const center = predicted.extrapolationCenter;
+    if (center === null) return null;
     return predicted.extrapolatedAt(t, celestialSystem.stateAt(center.celestialBody.id, t));
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
   sync(fo: FloatingOrigin, displayTime: number, _viewer?: Viewpoint, _proteinVibrationEnabled = true): void {
-    const s = this.displayState(displayTime);
+    const s = this.stateAt(displayTime);
     if (s === null) {
       this.renderObject.visible = false;
       return;
@@ -630,7 +634,7 @@ export class DynamicEntity {
   dispose(): void {
     this.scene?.remove(this.renderObject);
     this.equatorNodes?.dispose();
-    this.hideEllipseLine();
+    this.hideOrbitLine();
     this.hidePredictedLine();
     this.hideActualLine();
     disposeOwnedRenderResources(this.renderObject);

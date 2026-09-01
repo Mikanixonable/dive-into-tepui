@@ -36,7 +36,7 @@ import { ViewManager } from './view-manager';
 import { NanWatchdog } from './dynamic/nan-watchdog';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
-import { OrbitReferenceSelector } from './orbit-reference';
+import { OrbitReferenceSelector, type OrbitReference } from './orbit-reference';
 import { MapPickables } from './pickable/map-pickables';
 import { LinePickables } from './pickable/line-pickables';
 import { MapContextActions } from './pickable/map-context-actions';
@@ -47,7 +47,6 @@ import { Docking } from './docking/docking';
 import { DockingGuide } from './docking/docking-guide';
 import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
-import { CombatHudController, MapHudController } from './hud/view-hud-controller';
 import { focusTargetId } from './camera/focus-target';
 
 export class Game {
@@ -97,6 +96,8 @@ export class Game {
   readonly navTarget: NavTarget;
   readonly frameAnchors: FrameAnchors;
   readonly orbitReference = new OrbitReferenceSelector();
+  // このフレームの軌道要素・軌道線の基準。update が確定させ、同じ animate() の sync が読む。
+  private orbitRef: OrbitReference | undefined;
   readonly dynamicSystem: DynamicSystem;
   private readonly entityLines: EntityLineManager;
   readonly simulator: Simulator;
@@ -106,8 +107,6 @@ export class Game {
   private readonly dockingGuide: DockingGuide;
   private readonly viewBadge: ViewBadge;
   readonly frameControls: FrameControls;
-  private readonly combatHud: CombatHudController;
-  private readonly mapHud: MapHudController;
   // 計測区間の境界を打つ先。集計と保持はこのオブジェクトが持つ。
   private readonly sections: FrameSections;
 
@@ -153,8 +152,8 @@ export class Game {
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム表示時刻を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors(celestialSystem, {
-      entityState: (id, t) => this.dynamicSystem.all().find((e) => e.id === id && e.alive)?.displayState(t, celestialSystem) ?? null,
-      activeShipState: (t) => this.activeControllableEntity?.displayState(t, celestialSystem) ?? null,
+      entityState: (id, t) => this.dynamicSystem.all().find((e) => e.id === id && e.alive)?.stateAt(t, celestialSystem) ?? null,
+      activeShipState: (t) => this.activeControllableEntity?.stateAt(t, celestialSystem) ?? null,
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
@@ -176,12 +175,9 @@ export class Game {
       initialSave?.activePlayerId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
     this._hud.burnManagementPanel.setHandlers({
-      onAttach: () => { this.player?.attachBooster(); },
-      onToggleIgnition: () => { this.player?.toggleBoosterIgnition(); },
-      onDecouple: () => {
-        const player = this.player;
-        if (player) player.decoupleBooster(this.dynamicSystem);
-      },
+      onAttach: () => { this.player?.boosters.attach(); },
+      onToggleIgnition: () => { this.player?.boosters.toggleIgnition(); },
+      onDecouple: () => { this.player?.boosters.decouple(this.dynamicSystem); },
     });
     this.editor = new PlanEditor(
       this._hud,
@@ -204,8 +200,6 @@ export class Game {
       else this.markerManager.hide('longpress');
     };
     this._hud.vesselPanel.setInput(this.input);
-    this.combatHud = new CombatHudController(this._hud);
-    this.mapHud = new MapHudController(this._hud);
 
     this.simulator = new Simulator(this.dynamicSystem, celestialSystem, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
@@ -291,7 +285,7 @@ export class Game {
     this._hud.root.classList.remove('creative-mode');
     this._hud.vesselPanel.setInput(null);
     this._hud.burnManagementPanel.setHandlers({});
-    this._hud.syncBurnManagement(null);
+    this._hud.burnManagementPanel.sync(null);
     this._worldSfx.setThrust(false);
     this._worldSfx.setRcs(false);
     this.touchControls?.dispose();
@@ -363,10 +357,19 @@ export class Game {
     this.handlePointerInput();
     this.sections.exit(SECTION.pointer);
 
+    // 基地操作中もその基地を基準に軌道パネルが解決するのと揃える(orbit-panel.ts も同じ
+    // activeControllableEntity を使う) — player だけを見ると、基地操作中は常に undefined になり
+    // 軌道パネルの表示と3D軌道線の基準がずれる。
+    this.orbitRef = activeControllable
+      ? this.orbitReference.resolve(
+        activeControllable.state.r, this.celestialSystem.celestialMotions, this.navTarget,
+        this.dynamicSystem, this.celestialSystem, activeControllable.state.t,
+      )
+      : undefined;
     // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。
     this.entityLines.update(
       this.player, this.targeter.aliveTarget,
-      overviewMode, displayWindow, this.mapPickables.visibilityPolicy,
+      overviewMode, displayWindow, this.mapPickables.visibilityPolicy, this.orbitRef,
     );
   }
 
@@ -538,15 +541,7 @@ export class Game {
       this.markerManager,
     );
 
-    // 基地操作中もその基地を基準に軌道パネルが解決するのと揃える(orbit-panel.ts も同じ
-    // activeControllableEntity を使う) — player だけを見ると、基地操作中は常に undefined になり
-    // 軌道パネルの表示と3D軌道線の基準がずれる。
-    const orbitRef = activeControllable
-      ? this.orbitReference.resolve(
-        activeControllable.state.r, celestialBodies, this.navTarget, this.dynamicSystem, this.celestialSystem, activeControllable.state.t,
-      )
-      : undefined;
-    this.dynamicSystem.syncPlayers(player, fo, this.cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
+    this.dynamicSystem.syncPlayers(player, fo, this.cameraSystem, displayTime, style, visibilityPolicy, this.orbitRef);
     this.dynamicSystem.syncDetachedBoosters(fo, this.cameraSystem, displayTime, style, visibilityPolicy);
     this.dynamicSystem.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
@@ -581,13 +576,8 @@ export class Game {
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    // 軌道線(3D描画)は戦闘ビューだけ orbitRef の固定設定に従う。マップビューは軌道情報パネルの
-    // 設定に関わらず常に自動選択のまま描く(orbit-info.ts の数値表示・軌道要素アイコンは
-    // syncPlayers 側で orbitRef をそのまま使うので、この絞り込みの影響を受けない)。
     this.entityLines.sync(
-      displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this._celestialSystem,
-      overviewMode ? undefined : orbitRef,
-    );
+      displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this._celestialSystem);
     // 軌道線の右クリック当たり判定向けの候補列。各軌道線が今フレーム焼いたサンプルを読むため、
     // celestialSystem.sync/entityLines.sync の後に組む。
     this.linePickables.refresh(displayWindow, this.frameAnchors);
@@ -600,8 +590,7 @@ export class Game {
     }
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
-    if (this.viewManager.isMapView) this.mapHud.sync(this);
-    else this.combatHud.sync(this);
+    this._hud.syncPanels(this.viewManager.current, this);
     this._hud.tick();
 
     this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
