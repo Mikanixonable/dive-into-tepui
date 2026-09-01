@@ -12,6 +12,9 @@ import type { MapPickable } from '../pickable/map-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
+import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { ProjectFn } from '../camera/camera-system';
+import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 
 export class ApsisMarker implements MapPickable {
   public readonly id: string;
@@ -52,6 +55,19 @@ export class ApsisMarker implements MapPickable {
 
   // 生成元が解いた時刻の位置。
   public mapPosAt(): Vec3 | null { return this.pos; }
+
+  // ◇ マーカーを解いた位置へ置く。解けていないフレームと、天体に遮られたフレームは隠す。
+  public sync(
+    markers: MarkerManager, project: ProjectFn, cameraPos: Vec3,
+    celestialBodies: readonly CelestialMotion[], pivot: number, overviewMode: boolean,
+    timeLabel: TimeLabelSetting,
+  ): void {
+    if (this.pos === null) { markers.hide(this.id); return; }
+    markers.setNodePosition(
+      this.id, 'mk-apsis', this.mapGlyph, this.pos, project, cameraPos, celestialBodies, pivot,
+      overviewMode, orbitPointLabel(this.markerLabel, this.time, timeLabel),
+    );
+  }
 
   public mapVisibility(): MapVisibility { return MARKER_VISIBILITY; }
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }

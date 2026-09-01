@@ -16,9 +16,8 @@ import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { CombatTarget } from './targeter';
 import { Hud } from './hud/hud';
-import { TimeLabelSetting, elementTimeLabel } from './hud/orbit/calendar-ticks';
+import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
-import { ORBIT_POINT_GLYPH } from './marker/marker-identity';
 import { RelativeNodeMarker } from './marker/relative-node-marker';
 import { CameraSystem } from './camera/camera-system';
 import { MapPickable } from './pickable/map-pickable';
@@ -287,30 +286,13 @@ export class NavTarget {
     return this.nodeMarkers.filter((marker) => !marker.gone);
   }
 
-  // マーカーラベルへ通過時刻を併記するか(PREDICT パネルの設定)に応じたラベル文字列。
-  private markerLabel(marker: RelativeNodeMarker): string {
-    const t = marker.mapTime;
-    if (!this.timeLabel.show || t === null) return marker.markerLabel;
-    return `${marker.markerLabel} ${elementTimeLabel(t, this.timeLabel)}`;
-  }
-
   // マップビューでは、天体に遮蔽されて画面上見えていない AN/DN・再接近点を隠す(戦闘ビューでは効かせない)。
   sync(cameraSystem: CameraSystem): void {
-    this.syncNodeMarker(this.ascendingNode, ORBIT_POINT_GLYPH.ascendingNode, cameraSystem);
-    this.syncNodeMarker(this.descendingNode, ORBIT_POINT_GLYPH.descendingNode, cameraSystem);
-    this.syncNodeMarker(this.closestApproach, ORBIT_POINT_GLYPH.closestApproach, cameraSystem);
-  }
-
-  // マーカーを update が求めた位置へ置く。求まっていなければ隠す。
-  private syncNodeMarker(marker: RelativeNodeMarker, glyph: string, cameraSystem: CameraSystem): void {
-    const pos = marker.mapPosAt();
-    if (pos === null) {
-      this.markerManager.hide(marker.id);
-      return;
+    for (const marker of this.nodeMarkers) {
+      marker.sync(
+        this.markerManager, cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
+        this.celestialBodies, this.celestialBodiesPivot, cameraSystem.overviewMode, this.timeLabel,
+      );
     }
-    this.markerManager.setNodePosition(
-      marker.id, 'mk-node', glyph, pos, cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
-      this.celestialBodies, this.celestialBodiesPivot, cameraSystem.overviewMode, this.markerLabel(marker),
-    );
   }
 }

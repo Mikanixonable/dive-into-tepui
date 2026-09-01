@@ -7,10 +7,9 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
-import { TimeLabelSetting, elementTimeLabel } from '../hud/orbit/calendar-ticks';
+import { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
 import type { MarkerManager } from './marker-manager';
-import { ORBIT_POINT_GLYPH } from './marker-identity';
 import type { ProjectFn } from '../camera/camera-system';
 import { MapPickable } from '../pickable/map-pickable';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
@@ -110,30 +109,15 @@ export class EquatorNodeMarkerPair {
   sync(project: ProjectFn, show: boolean, cameraPos: Vec3): void {
     if (!this.solvedSinceSync) this.clearCrossings();
     this.solvedSinceSync = false;
-    this.syncMarker(this.ascending, ORBIT_POINT_GLYPH.ascendingNode, project, show, cameraPos);
-    this.syncMarker(this.descending, ORBIT_POINT_GLYPH.descendingNode, project, show, cameraPos);
-  }
-
-  // 交点マーカー1つを求まった位置へ置く。交点が無い・表示しないフレームは隠す。
-  private syncMarker(
-    marker: EquatorNodeMarker, glyph: string, project: ProjectFn, show: boolean, cameraPos: Vec3,
-  ): void {
-    const pos = marker.mapPosAt();
-    if (!show || pos === null) {
-      this.markerManager.hide(marker.id);
-      return;
+    for (const marker of [this.ascending, this.descending]) {
+      if (!show) this.markerManager.hide(marker.id);
+      else {
+        marker.sync(
+          this.markerManager, project, cameraPos, this.celestialBodies, this.celestialBodiesPivot,
+          this.timeLabel,
+        );
+      }
     }
-    this.markerManager.setNodePosition(
-      marker.id, 'mk-node', glyph, pos, project, cameraPos,
-      this.celestialBodies, this.celestialBodiesPivot, true, this.markerLabel(marker),
-    );
-  }
-
-  // マーカーへ出す略称。PREDICT パネルの「軌道要素の時刻を表示」がONのときだけ通過時刻を併記する。
-  private markerLabel(marker: EquatorNodeMarker): string {
-    const t = marker.mapTime;
-    if (!this.timeLabel.show || t === null) return marker.markerLabel;
-    return `${marker.markerLabel} ${elementTimeLabel(t, this.timeLabel)}`;
   }
 
   // マーカー要素ごと取り除く。

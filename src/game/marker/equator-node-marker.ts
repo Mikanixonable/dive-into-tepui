@@ -12,16 +12,21 @@ import type { MapPickable } from '../pickable/map-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
+import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { ProjectFn } from '../camera/camera-system';
+import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 
 // 交点種別ごとの、マーカーのキーに使う接頭辞と、軌道要素としてのラベル。
 const EQUATOR_NODE_LABELS = {
-  ascending: { idPrefix: 'eqan', spec: ORBIT_ELEMENT_LABELS.eqAn },
-  descending: { idPrefix: 'eqdn', spec: ORBIT_ELEMENT_LABELS.eqDn },
+  ascending: { idPrefix: 'eqan', spec: ORBIT_ELEMENT_LABELS.eqAn, glyph: ORBIT_POINT_GLYPH.ascendingNode },
+  descending: { idPrefix: 'eqdn', spec: ORBIT_ELEMENT_LABELS.eqDn, glyph: ORBIT_POINT_GLYPH.descendingNode },
 } as const;
 
 export class EquatorNodeMarker implements MapPickable {
   public readonly id: string;
   public readonly markerLabel: string;
+  // マップのマーカーへ描く字形。一覧の記号(mapGlyph)とは別で、交点の昇降を描き分ける。
+  private readonly markerGlyph: string;
   public readonly mapState = null;
   public readonly mapGlyph = ORBIT_POINT_GLYPH.descendingNode;
   public readonly mapGlyphSvg = null;
@@ -42,6 +47,19 @@ export class EquatorNodeMarker implements MapPickable {
     this.id = `${EQUATOR_NODE_LABELS[node].idPrefix}-${ownerId}`;
     this.spec = EQUATOR_NODE_LABELS[node].spec;
     this.markerLabel = this.spec.short;
+    this.markerGlyph = EQUATOR_NODE_LABELS[node].glyph;
+  }
+
+  // △▽ マーカーを解いた位置へ置く。解けていないフレームと、天体に遮られたフレームは隠す。
+  public sync(
+    markers: MarkerManager, project: ProjectFn, cameraPos: Vec3,
+    celestialBodies: readonly CelestialMotion[], pivot: number, timeLabel: TimeLabelSetting,
+  ): void {
+    if (this.pos === null) { markers.hide(this.id); return; }
+    markers.setNodePosition(
+      this.id, 'mk-node', this.markerGlyph, this.pos, project, cameraPos, celestialBodies, pivot,
+      true, orbitPointLabel(this.markerLabel, this.time, timeLabel),
+    );
   }
 
   // 今フレームの解を記録する。求まらなかったフレームはすべての引数に null を渡す。

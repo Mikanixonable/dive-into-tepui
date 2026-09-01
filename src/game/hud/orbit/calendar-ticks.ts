@@ -201,3 +201,8 @@ export function elementTimeLabel(simTimeT: number, label: TimeLabelSetting): str
   }
   return fmtDateTime(label.epochUnixSec + simTimeT);
 }
+
+// 軌道上の点マーカーへ出す表記。PREDICT パネルが求めるときだけ通過時刻を併記する。
+export function orbitPointLabel(base: string, simTimeT: number | null, label: TimeLabelSetting): string {
+  return label.show && simTimeT !== null ? `${base} ${elementTimeLabel(simTimeT, label)}` : base;
+}
