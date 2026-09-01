@@ -128,8 +128,14 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
   get totalThrust(): number { return BASE_THRUST; }
   get totalTorque(): number { return BASE_TORQUE; }
   get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
-  get fuel(): number { return this.baseFuel; }
-  get maxFuel(): number { return BASE_MAX_FUEL; }
+  get totalFuel(): number { return this.baseFuel; }
+  get totalMaxFuel(): number { return BASE_MAX_FUEL; }
+  // 基地は機関砲・太陽電池パドル・放熱板を持たず、大気も受けない。
+  readonly fire = null;
+  readonly power = null;
+  readonly radiator = null;
+  readonly aero = null;
+  readonly altitudeAlarm = null;
 
   consumeFuel(amount: number): number {
     if (amount <= 0) return 1.0;
