@@ -96,7 +96,7 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 | 14 | `DynamicSystem` の種別手展開 | **要判断(保留)** | 575行 | 要相談 |
 | 15 | 「戦闘/マップ」の軸に**5つの語彙** | **型の重複。1つに畳む** | 型4 + boolean 1 | **実施済**(型4→1。boolean は論点13) |
 | 16 | エンティティ種別の語彙が**5つ** | **型の重複。1つに畳む** | 型5 | **実施済** |
-| 17 | `OrbitAnalysisWindow` のタブが**半分だけ切り出し** | **多態で分ける** | 466行 / 分岐約30 | 中 |
+| 17 | `OrbitAnalysisWindow` のタブが**半分だけ切り出し** | **多態で分ける** | 466行 / 分岐約30 | **実施済** |
 | 18 | `Player`/`Base` を消費側が `instanceof` で判別し直す | **多態の復元** | 26箇所 / 11モジュール | **実施済** |
 | 19 | その他の重複 union(`L1..L3` 等) | **型の重複。1つに畳む** | 3組 | **実施済** |
 | 20 | `MapCamera` の2つの非 on/off 2分 | **要検討** | 531行 / 分岐12 | 低 |
@@ -479,7 +479,7 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 
 ### 症状
 
-`w-group` + 見出し + `ValueInput`(+ `Slider`)という**同じ形の行**が、少なくとも4箇所で
+`w-group` + 見出し + `ValueInput`(+ `Slider`)という**同じ形の行**が、少なくとも5箇所で
 別々に組まれている。
 
 | 場所 | 行数 | 参照 |
@@ -488,6 +488,7 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 | `hud/panels/guide-value-field.ts` | 240 | 軌道ガイドのみ |
 | `hud/panels/bgm-settings-panel.ts` | 178 | `new Slider` × 2 |
 | `hud/frame/camera-frame-panel.ts` | 161 | `new Slider` × 1 |
+| `hud/orbit/orbit-analysis-tab.ts` の `ScaleField` | 33 | 高度・接近タブ(論点17 で追加) |
 
 `new ValueInput(` は 10 モジュールに散っている。
 
@@ -641,68 +642,49 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 
 ---
 
-## 論点17 — `OrbitAnalysisWindow` のタブが半分だけ切り出されている
+## 論点17 — `OrbitAnalysisWindow` のタブが半分だけ切り出されている(実施済)
 
-### 症状
+3つのタブを `AnalysisTab` を実装する対等な具象にした。**タブ種別を見る分岐は 0 件。**
+`AnalysisTab` の3値 union・`TAB_LABELS`・`ScaleTab`・`isScaleTab`・既定スケールの Record が
+まとめて消えている。
 
-`game/hud/orbit/orbit-analysis-window.ts`(466行)は
-`AnalysisTab = 'altitude' | 'approach' | 'projection'`(3値)に対する分岐を
-**9本のメソッド・約30箇所**に持っている。
+| | 前 | 後 |
+| --- | --- | --- |
+| orbit-analysis-window.ts | 466 | 134 |
+| orbit-analysis-tab.ts(口 + `ScaleField` + リセット行) | — | 99 |
+| orbit-altitude-tab.ts | — | 108 |
+| orbit-approach-tab.ts | — | 167 |
+| orbit-projection-tab.ts | 80 | 110 |
+| **合計** | **546 行 / 2 モジュール** | **618 行 / 5 モジュール** |
 
-```
-266  if (this.tab === 'approach' && !this.approachAvailable) …
-270  this.chart.element.classList.toggle('hidden', this.tab === 'projection');
-271  this.projectionTab.chart.element.classList.toggle('hidden', this.tab !== 'projection');
-274  if (this.tab === 'altitude') { … } else if (this.tab === 'approach' …) { … }
-                                  else if (this.tab === 'projection' …) { … }
-295  this.relIncRow.classList.toggle('hidden', tab !== 'approach');
-296  this.yField.classList.toggle('hidden', tab === 'projection');
-323  if (this.tab === 'projection') return;
-331  return this.tab === 'altitude' ? 'h' : 'km';
-337  if (!isScaleTab(this.tab)) return;
-376  if (tab === 'altitude') { … }
-430  if (this.tab === 'approach') { … }
-```
+- **タブは文字列 id を持たない。** `TabBar<T>` は値を identity で比較するので
+  `TabBar<AnalysisTab>`(タブ自身がキー)にできた。union が丸ごと消えるのはこれが効いている。
+  高度タブへのフォールバックは `altitudeTab` フィールドへの参照。
+- **`tab.element` はタブバーより下の全部**(チャート・相対傾斜角の行・スケール入力欄・
+  リセット)。リセットボタンをウィンドウ側に残すと入力欄と同じ flex 行に置けず見た目が変わる
+  ので、3行の重複を払って各タブへ持たせた。CSS も DOM を組む側が `injectOnce` で注ぐ形に
+  揃え、手書きの `ensureStyle` は消えた。
+- **`available()` を `draw()` と分けた。** 接近タブの成立条件は `orbit-analysis-data.ts` へ
+  `sharedAttractor`(双方が同じ主天体を周回しているならその天体)として切り出し、
+  `approachSeries` 自身もそれを使う — 点列を組まずに成否だけを問える。
+  *採らなかった案*: `available()` で点列を丸ごと計算して `draw()` へ持ち越す形。1 sync 内でしか
+  正しくない値をフィールドへ置くことになり、規約 1.6 の整合性保持責務の漏洩にあたる。
+- **ついでに `orbit-chart-axes.ts` の `maxTicks` 引数を落とした。** 呼び出し 4 箇所すべてが
+  同じ値を渡していたので、目盛り本数の方針は軸を組む側が持つ。
 
-`isScaleTab(tab): tab is ScaleTab` というヘルパまで生えている — **「投影タブだけ他の2つと
-違う」という事実を型で言い直しただけ**で、分岐は残っている。
+**SPEC に無い挙動が2点変わった。**
 
-**そして `orbit-projection-tab.ts`(80行、単一参照)が既に存在する。** 投影タブだけが
-モジュールとして切り出され、高度タブと接近タブは本体に残り、**分岐も本体に残った。**
+1. ターゲットが同じ天体を**双曲線軌道で**回っている場合、接近タブが出る(空のグラフ +
+   相対傾斜角 `---`)。以前はタブ自体が消えていた。SPEC/PLAN.md 13 の成立条件は「同じ天体を
+   周回している」だけなので、そちら寄りに倒した。
+2. **操作対象が変わったとき、全タブの表示範囲がリセットされる。** 以前は高度タブの縦軸中心
+   だけを再固定していた(ズーム量は保持)。1タブ専用のフックを口へ足さずに済ませるための判断。
 
-### 診断
+**漏れが2つ直った** — 操作対象が消えたときに接近ターゲットの `analysisPanelReader` が降りずに
+残っていた件と、投影タブ選択中に操作対象が消えると隠れた canvas へ「操作対象がありません」を
+描いていた件。
 
-規約 1.2 が名指ししている形そのもの:
-
-> **分岐の片側だけを別ファイルへ切り出しても分岐は元の場所に残る**ので、何も解決しない。
-
-これは**ユーザーが疑った「安直に切り出しただけで構造的に整理されていない」の実例**であり、
-同時に「切り出したせいでモジュールが1本増えた」例でもある。
-
-### 修正
-
-3つのタブを対等な具象にする。共通の口は:
-
-```ts
-interface AnalysisTabView {
-  readonly id: AnalysisTab;
-  readonly label: string;
-  readonly element: HTMLElement;          // チャート本体
-  available(game: Game): boolean;         // タブバーに出すか
-  scaleFields(): ScaleFieldSpec | null;   // Y/X の入力欄。投影タブは null
-  draw(game: Game, …): void;
-  dispose(): void;
-}
-```
-
-- `AltitudeTab` / `ApproachTab` / `ProjectionTab`(既存の `OrbitProjectionTab` が原型)。
-- `isScaleTab` は `scaleFields() !== null` に置き換わって消える。
-- `OrbitAnalysisWindow` は**タブの列を持ち、選択されたものへ委譲するだけ**になる。
-- `orbit-chart.ts`(211) / `orbit-projection-chart.ts`(249) / `orbit-analysis-data.ts`(228)は
-  そのまま各タブの下請けとして残る。
-
-466行 → 200前後 + タブ3本。**ファイル数は増えるが、`orbit-projection-tab.ts` が
-「なぜこれだけ外にあるのか」を説明できない現状より良い。**
+`npm run typecheck` / `test:game` 161件 通過。**実機の目視は未実施。**
 
 ---
 
@@ -836,8 +818,8 @@ RCS燃料の「満タン補給 / 均等」ボタンが「均等」に。
 
 ## 実施順序
 
-**実施済: 論点1 / 2 / 3 / 4 / 7 / 8 / 11 / 12 / 15 / 16 / 18 / 19。** 残りは 5 / 6 / 9 / 10 /
-13 / 14 / 17 / 20。
+**実施済: 論点1 / 2 / 3 / 4 / 7 / 8 / 11 / 12 / 15 / 16 / 17 / 18 / 19。** 残りは 5 / 6 / 9 /
+10 / 13 / 14 / 20。
 
 **論点15 の完了で、ビューの型は `WorldView` 1本になっている。** 論点13 はその前提の上にある。
 
@@ -855,11 +837,9 @@ RCS燃料の「満タン補給 / 均等」ボタンが「均等」に。
    `marker-manager.thinByPriority` / `crowding.CrowdingGrid` / `grouped-markers` の3つ。
    `marker-manager.ts` は 670 行で `relaxLabelRects` の 134 行 1 メソッドも残っている。
    **切り出しと、3実装の統合可否(先に SPEC/MAP.md 7.2 を読む)を1回で決める。**
-4. **論点17**(軌道分析タブの多態化)— 466 行のまま。**論点1 と同じ形の修正なので手本がある**
-   (`orbit-projection-tab.ts` だけが外にある現状は、規約 1.2 が名指しする「片側だけ切り出し」)。
-5. **論点5**(`hud/style/` 22→10)/ **論点10**(ラベル付き入力行)— 独立。手が空いたときに。
-6. **論点9**(`plan-editor` 718行)— `plan/` 全体(`plan-path.ts` を含む)を見るときに。
-7. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。
+4. **論点5**(`hud/style/` 22→10)/ **論点10**(ラベル付き入力行)— 独立。手が空いたときに。
+5. **論点9**(`plan-editor` 718行)— `plan/` 全体(`plan-path.ts` を含む)を見るときに。
+6. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。
    - **論点13** は論点15 の完了で議論の前提が揃った。ただし `overviewMode: boolean` は
      署名 23 → 25 モジュールへ広がっている(再編で `MapCommands.overviewMode` が増えた)。
      `boolean` のままにするか `WorldView` を渡すか、`ViewManager` 経由で経路ごと分けるか。
