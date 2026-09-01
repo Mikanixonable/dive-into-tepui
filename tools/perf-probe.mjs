@@ -512,7 +512,7 @@ function defaultMatrix() {
     { label: 'stage1-map-warp1024-dur28d', stage: '1', warp: 1024, view: 'map', placeNode: false, duration: '28日', ...common, settleMs: 8000 },
     { label: 'stage1-map-warp65536-dur28d', stage: '1', warp: 65536, view: 'map', placeNode: false, duration: '28日', ...common, settleMs: 8000 },
 
-    // (f) 軌道線トグルの影響。DEFAULT_BODY_CLASS_TOGGLES は敵・基地・弾薬・自艦の
+    // (f) 軌道線トグルの影響。DEFAULT_MAP_DISPLAY_TOGGLES は敵・基地・弾薬・自艦の
     // Orbit をすべて既定 true にしているので、マップビューでは元から描かれている。
     // したがって測るべきは「開いた状態」ではなく既定 vs 切った状態。
     // stage00 は波状攻撃で敵数が増えるので、敵の軌道線が最も効く条件になる。

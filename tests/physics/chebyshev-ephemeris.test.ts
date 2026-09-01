@@ -6,8 +6,8 @@ import {
   ChebyshevTimeOutOfRangeError,
   evaluateChebyshevWithDerivative,
   findChebyshevSegmentIndex,
-} from '../../src/physics/ephemeris-pack/evaluator';
-import { ChebyshevEphemerisPack } from '../../src/physics/ephemeris-pack/types';
+} from '../../src/physics/ephemeris/pack-evaluator';
+import { ChebyshevPack } from '../../src/physics/ephemeris/pack-types';
 import { len, Vec3, v3 } from '../../src/math/vec3';
 
 function assertVec3Close(actual: Vec3, expected: Vec3, tolerance = 1e-12): void {
@@ -16,13 +16,11 @@ function assertVec3Close(actual: Vec3, expected: Vec3, tolerance = 1e-12): void 
   assert.ok(Math.abs(actual.z - expected.z) <= tolerance, `z: ${actual.z} vs ${expected.z}`);
 }
 
-const pack: ChebyshevEphemerisPack = {
+const pack: ChebyshevPack = {
   manifest: {
     version: 1,
     timeUnit: 's',
     positionUnit: 'm',
-    coordinateFrame: 'ICRF-J2000',
-    timeScale: 'TDB',
     bodies: [{
       id: 'probe',
       segments: [
@@ -57,30 +55,34 @@ export function register(): void {
 
   test('chebyshev: evaluates SI position and interval-scaled velocity as KinematicState', () => {
     const eph = new ChebyshevEphemeris(pack);
-    const state = eph.stateOf('probe', 2.5);
+    const state = eph.icrfStateAt('probe', 2.5);
     assertVec3Close(state.r, v3(10, 0.5, 1));
     assertVec3Close(state.v, v3(0, 0.6, -0.8));
     assert.equal(state.t, 2.5);
-    assert.ok(len(eph.positionOf('probe', 2.5)) > 0);
+    assert.ok(len(state.r) > 0);
   });
 
   test('chebyshev: indexed segment lookup handles both boundaries deterministically', () => {
     assert.equal(findChebyshevSegmentIndex(pack.bodies[0]!.segments, 0), 0);
     assert.equal(findChebyshevSegmentIndex(pack.bodies[0]!.segments, 10), 1);
     assert.equal(findChebyshevSegmentIndex(pack.bodies[0]!.segments, 20), 1);
-    assert.equal(new ChebyshevEphemeris(pack).evaluate('probe', 10).segmentIndex, 1);
+    // t=10 は2つめのセグメント(定数係数 [[30],[40],[50]])が担う。値で選択を押さえる。
+    assertVec3Close(new ChebyshevEphemeris(pack).icrfStateAt('probe', 10).r, v3(30, 40, 50));
   });
 
   test('chebyshev: missing bodies and times outside validity are explicit errors', () => {
     const eph = new ChebyshevEphemeris(pack);
-    assert.throws(() => eph.stateOf('missing', 1), ChebyshevBodyNotFoundError);
-    assert.throws(() => eph.stateOf('probe', -1), ChebyshevTimeOutOfRangeError);
-    assert.throws(() => eph.stateOf('probe', 21), ChebyshevTimeOutOfRangeError);
+    assert.throws(() => eph.icrfStateAt('missing', 1), ChebyshevBodyNotFoundError);
+    assert.throws(() => eph.icrfStateAt('probe', -1), ChebyshevTimeOutOfRangeError);
+    assert.throws(() => eph.icrfStateAt('probe', 21), ChebyshevTimeOutOfRangeError);
   });
 
-  test('chebyshev: repeated calls are deterministic and input coefficients are snapshotted', () => {
-    const coefficients = [3, 4];
-    const input: ChebyshevEphemerisPack = {
+  // 評価器は入力の係数配列をコピーせず参照する(4.3 MB の pack で複製が 13 MB を占めるため)。
+  // 所有権は渡した側から移り、以後の書き換えは答えに出る — **この検査は複製が黙って
+  // 戻されたことを検出するために置いてある。**
+  test('chebyshev: 同じ時刻は何度でも同じ答えを返し、入力係数はコピーされない', () => {
+    const coefficients = [5, 0];
+    const input: ChebyshevPack = {
       manifest: {
         version: 1,
         timeUnit: 's',
@@ -90,10 +92,10 @@ export function register(): void {
       bodies: [{ id: 'fixed', segments: [{ start: 0, end: 2, coefficients: [coefficients, [0, 0], [0, 0]] }] }],
     };
     const eph = new ChebyshevEphemeris(input);
-    const first = eph.stateOf('fixed', 1);
+    const first = eph.icrfStateAt('fixed', 1);
+    assert.deepEqual(eph.icrfStateAt('fixed', 1), first);
+    assert.equal(first.r.x, 5);
     coefficients[0] = 999;
-    const second = eph.stateOf('fixed', 1);
-    assert.deepEqual(second, first);
-    assert.deepEqual(eph.stateOf('fixed', 1), second);
+    assert.equal(eph.icrfStateAt('fixed', 1).r.x, 999, '係数配列は複製されず参照されている');
   });
 }

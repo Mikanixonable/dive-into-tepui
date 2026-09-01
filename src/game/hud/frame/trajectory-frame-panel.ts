@@ -1,10 +1,10 @@
 // マップモードの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
-import type { Ephemeris } from '../../../physics/ephemeris';
 import { FrameRole, frameRoleOf } from '../../../physics/frame';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../widgets';
-import { celestialBodyName, frameRoleName, rotationSourceLabel } from './frame-labels';
+import { frameRoleName, rotationSourceLabel } from './frame-labels';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable } from '../../pickable/map-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../overlay-manager';
@@ -23,7 +23,7 @@ export class TrajectoryFramePanel {
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
-    ephemeris: Ephemeris,
+    private readonly celestialSystem: CelestialSystem,
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
   ) {
@@ -31,18 +31,18 @@ export class TrajectoryFramePanel {
 
     // 描く線は必ずどこかの座標系に焼き込まれるので「どこにも固定しない」状態が無く、
     // 太陽系空間への固定はプルダウンの恒星そのものにあたる。
-    this.planCenterZone = new AnchorZone(popupRoot, '基準', ephemeris, null, overlayManager);
+    this.planCenterZone = new AnchorZone(popupRoot, '基準', celestialSystem, null, overlayManager);
     this.planCenterZone.element.classList.add('hud-frame-origin-zone');
     this.planCenterZone.onSelect = (id) => {
       if (id === null) return;
-      this.displayWindow.frame = ephemeris.frameOf(id, this.displayWindow.frame.rotatingWith);
+      this.displayWindow.frame = celestialSystem.frames.frameOf(id, this.displayWindow.frame.rotatingWith);
     };
     this.panel.appendChild(this.planCenterZone.element);
 
-    this.planRotationZone = new RotationZone('回転フレーム', ephemeris);
+    this.planRotationZone = new RotationZone('回転フレーム', celestialSystem);
     this.planRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.planRotationZone.onSelect = (rotatingWith) => {
-      this.displayWindow.frame = ephemeris.frameOf(this.displayWindow.frame.center, rotatingWith);
+      this.displayWindow.frame = celestialSystem.frames.frameOf(this.displayWindow.frame.center, rotatingWith);
     };
     this.panel.appendChild(this.planRotationZone.element);
 
@@ -59,9 +59,9 @@ export class TrajectoryFramePanel {
   private orbitSummaryText(): string {
     const centerId = this.displayWindow.frame.center;
     const centerRole = frameRoleOf(centerId);
-    const planCenter = centerRole !== null ? frameRoleName(centerRole) : celestialBodyName(centerId);
+    const planCenter = centerRole !== null ? frameRoleName(centerRole) : this.celestialSystem.nameOf(centerId);
     const planRot = this.displayWindow.frame.rotatingWith;
-    return `基準: ${planCenter}・${rotationSourceLabel(planRot)}`;
+    return `基準: ${planCenter}・${rotationSourceLabel(this.celestialSystem, planRot)}`;
   }
 
   // パネルの表示と各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。

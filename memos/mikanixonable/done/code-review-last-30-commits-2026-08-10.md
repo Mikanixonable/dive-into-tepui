@@ -59,7 +59,7 @@
 
 ### 根本修正方針
 
-`BodyClassToggles` を単なる boolean 集合として各所に配るのをやめ、entity と celestial body を共通に解決する `MapVisibilityPolicy` を作る。少なくとも以下を一つの resolver が返す。
+`MapDisplayToggles` を単なる boolean 集合として各所に配るのをやめ、entity と celestial body を共通に解決する `MapVisibilityPolicy` を作る。少なくとも以下を一つの resolver が返す。
 
 ```ts
 type MapVisibility = {
@@ -91,8 +91,8 @@ active player や現在フォーカス中の親天体を常時表示する例外
 - `src/game/plan/plan-arc.ts:62-79` の `refineSurfaceCrossing()` は、区間両端の clearance の符号が同じなら即座に `null` を返す。
 - `src/game/plan/plan-arc.ts:88-107` は先に `sweptSphereToi()` を通すが、線分の両端が表面外で途中だけ通過するケースでは、その後の endpoint sign check によって捨てられる。
 - `src/game/plan/plan-arc.ts:265-315` は start/mid の現在位置に対する `attractorsNear()` の結果だけを candidates にする。
-- `src/game/simulation/attractors.ts:62-83` の broadphase は空間グリッドの 27 近傍であり、区間中に移動してくる天体の swept volume を問い合わせていない。
-- `src/game/simulation/attractors.ts:20-22` の `gravityBodiesAt()` は `mu !== 0` だけを残す。太陽系データには `mu: 0` の天体が多数あるため、計画軌道の表面衝突対象から意図せず落ちる。
+- `src/game/dynamic/attractors.ts:62-83` の broadphase は空間グリッドの 27 近傍であり、区間中に移動してくる天体の swept volume を問い合わせていない。
+- `src/game/dynamic/attractors.ts:20-22` の `gravityBodiesAt()` は `mu !== 0` だけを残す。太陽系データには `mu: 0` の天体が多数あるため、計画軌道の表面衝突対象から意図せず落ちる。
 
 `stepDt()` の接近時間制限はこの問題の発生確率を下げるヒューリスティックであって、完全な衝突保証ではない。高離心率、速く移動する小天体、遠方で大きくなった timestep、両端の外側を通過する軌道で破綻する余地がある。
 
@@ -124,7 +124,7 @@ active player や現在フォーカス中の親天体を常時表示する例外
 - `src/game/plan/plan-arc.ts:243-250` は `dynamicAttractors` を「このフレームで一度だけ求めた値を全ステップで使い回す」と明記している。
 - `src/game/plan/plan-path.ts:61-80` はその配列を全 arc に渡す。
 - `src/game/game.ts:549-552` は `this.entities.attractors()`、つまり現在状態の動的 entity を渡している。
-- 一方、`src/game/simulation/attractors.ts:29-37` には既に `predictedAttractorsAt(ephemeris, entities, t)` があり、動的 entity の `displayState(t)` を使う正しい方向の部品が存在する。
+- 一方、`src/game/dynamic/attractors.ts:29-37` には既に `predictedAttractorsAt(ephemeris, entities, t)` があり、動的 entity の `displayState(t)` を使う正しい方向の部品が存在する。
 
 予測軌道の積分は動的 entity を現在位置に固定する一方、実シミュレーションは entity を移動させる。そのため、計画線・計画衝突・実際の軌道の間に時間が経つほど系統的な乖離が生じる。特に動的重力源や移動中の衝突体を追加するほど、表示の誤差ではなく意思決定を誤らせる問題になる。
 

@@ -1,19 +1,18 @@
 // 軌道分析パネルの投影タブ: 背景テクスチャの読み込み・キャッシュを行い、操作対象・ターゲットの
 // 経緯度点列を OrbitProjectionChart へ渡す。
-import { CelestialBody, strongestAttractor } from '../../../physics/celestial-body';
+import { strongestAttractor } from '../../../physics/attractor';
+import { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Game } from '../../game';
-import type { GameEntity } from '../../game-entity/game-entity';
-import { entityStateAt } from '../../simulation/entity-state-at';
-import { EARTH_TEXTURES, textureOf } from '../../../render/celestial-textures';
+import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import { entityStateAt } from '../../dynamic/entity-state-at';
 import { ACCENT, ACCENT_SECONDARY } from '../../theme';
 import { ApproachTargetSource, projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { OrbitProjectionChart, ProjectionChartSpec, ProjectionSeriesSpec } from './orbit-projection-chart';
 
 // id の天体が持つ円筒図法テクスチャの URL。実写テクスチャが無い天体(単色球扱い)は投影タブを
-// 出せないので null。地球は地表+雲を合成する専用テクスチャ(EARTH_TEXTURES)を持つため別扱い。
-export function projectionTextureUrl(id: string): string | null {
-  if (id === 'earth') return EARTH_TEXTURES.surfaceUrl;
-  return textureOf(id)?.url ?? null;
+// 出せないので null。
+export function projectionTextureUrl(game: Game, id: string): string | null {
+  return game.celestialSystem.find(id)?.surfaceTextureUrl ?? null;
 }
 
 export class OrbitProjectionTab {
@@ -29,12 +28,13 @@ export class OrbitProjectionTab {
   // 中心天体 center の反対側(遠地点付近)を通る軌道でも見失わないよう高度タブと同じ
   // サンプル数を使い、期間 spanSec はマップの未来表示(軌道予測パネル)が指す期間をそのまま使う。
   public draw(
-    game: Game, entity: GameEntity, center: CelestialBody, approachSource: ApproachTargetSource | null,
-    celestialBodies: readonly CelestialBody[], now: number, spanSec: number, sampleCount: number, textureUrl: string,
+    game: Game, entity: DynamicEntity, center: CelestialMotion, approachSource: ApproachTargetSource | null,
+    celestialBodies: readonly CelestialMotion[], now: number, spanSec: number, sampleCount: number, textureUrl: string,
   ): void {
+    const centerEntity = game.celestialSystem.entityOf(center.id);
     // 操作対象自身の軌跡(塗り丸)。
     const ship = projectionSeries(
-      (t) => entityStateAt(entity, t, center, game.ephemeris), center, game.ephemeris, now, spanSec, sampleCount,
+      (t) => entityStateAt(entity, t, centerEntity), centerEntity, now, spanSec, sampleCount,
     );
     const series: ProjectionSeriesSpec[] = [];
     if (ship) {
@@ -46,10 +46,12 @@ export class OrbitProjectionTab {
       });
     }
     // ターゲットが同じ中心天体を周回していれば、その軌跡(縁だけの丸)も重ねる。
-    const resolvedTarget = approachSource ? resolveTarget(approachSource) : null;
-    const target = resolvedTarget && strongestAttractor(resolvedTarget.currentR, celestialBodies).id === center.id
+    const resolvedTarget = approachSource
+      ? resolveTarget(approachSource, game.celestialSystem, now) : null;
+    const target = resolvedTarget
+      && strongestAttractor(resolvedTarget.currentR, celestialBodies, now).id === center.id
       ? projectionSeries(
-        (t) => resolvedTarget.stateAt(t, center, game.ephemeris), center, game.ephemeris, now, spanSec, sampleCount,
+        (t) => resolvedTarget.stateAt(t, centerEntity), centerEntity, now, spanSec, sampleCount,
       )
       : null;
     if (target) {

@@ -219,7 +219,7 @@ DOM を移動する方式(`hud.ts` が Orbit/燃焼管理へ行っているも�
 | ファイル | 何をするか |
 | --- | --- |
 | `src/render/outline-circle.ts`(新規) | 半径1・128分割の `LineLoop` を1つ作って共有するだけの下請け。環と太陽が同じものを使う |
-| `src/game/celestial/ring-view.ts` | 模式図のとき、環メッシュを隠し、代わりに環の帯定義の最内半径・最外半径の円を `markOverlay()` した `LineLoop` として描く。円は環の平面(既存の環メッシュと同じ姿勢)に置く |
+| `src/game/celestial/celestial-entity/ring-view.ts` | 模式図のとき、環メッシュを隠し、代わりに環の帯定義の最内半径・最外半径の円を `markOverlay()` した `LineLoop` として描く。円は環の平面(既存の環メッシュと同じ姿勢)に置く |
 | `src/game/celestial/sun-view.ts` | 模式図のとき、太陽メッシュとグローのビルボードを隠し、代わりに実位置・実半径の円を1つ描く。**カメラへ正対させる**(球のシルエットなので、環と違い平面の向きを持たない) |
 
 **達成条件と検証.** `npm run typecheck` が通る。`npm run dev` で土星を含む縮尺のマップを開き、

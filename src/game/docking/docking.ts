@@ -5,10 +5,10 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { Hud } from '../hud/hud';
 import { BasePanel } from '../hud/panels/base-view';
 import { ResourceTransferDialog } from '../hud/windows/resource-transfer-dialog';
-import { Base } from '../game-entity/base';
+import { Base } from '../dynamic/dynamic-entity/base';
 import { Player } from '../player/player';
-import type { GameEntity } from '../game-entity/game-entity';
-import type { EntityManager } from '../simulation/entity-manager';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { MapContextActions } from '../pickable/map-context-actions';
 import type { CameraSystem } from '../camera/camera-system';
 import type { ViewManager } from '../view-manager';
@@ -33,7 +33,7 @@ export type DockingCandidateKind = 'slot' | 'hatch' | 'ship';
 // 判定とガイドが共有する接続点の評価結果。canDock だけでなく各残差を公開することで、
 // 未整合・速度超過の接近もガイドに表示できる。
 export interface DockingCandidate {
-  readonly target: GameEntity;
+  readonly target: DynamicEntity;
   readonly kind: DockingCandidateKind;
   readonly position: ReturnType<typeof v3>;
   readonly normal: ReturnType<typeof v3>;
@@ -61,7 +61,7 @@ export class Docking {
   private nextBuiltVesselNo = 0;
 
   // 船と船、船と基地の物理ドッキングペア (shipId -> targetEntity)
-  private readonly dockedPairs = new Map<string, GameEntity>();
+  private readonly dockedPairs = new Map<string, DynamicEntity>();
 
   get activeBase(): Base | null { return this._activeBase; }
 
@@ -71,7 +71,7 @@ export class Docking {
     private readonly scene: THREE.Scene,
     private readonly effects: EffectsSystem,
     private readonly markerManager: MarkerManager,
-    private readonly entities: EntityManager,
+    private readonly entities: DynamicSystem,
     private readonly mapActions: MapContextActions,
     private readonly cameraSystem: CameraSystem,
     private readonly viewManager: ViewManager,
@@ -86,7 +86,7 @@ export class Docking {
   }
 
   // 指定艦がドッキングしている対象を取得。ドッキングしていなければ null。
-  getDockedTarget(ship: Player): GameEntity | null {
+  getDockedTarget(ship: Player): DynamicEntity | null {
     const target = this.dockedPairs.get(ship.id);
     if (!target || !target.alive) {
       if (target) this.dockedPairs.delete(ship.id);
@@ -96,13 +96,13 @@ export class Docking {
   }
 
   // 候補評価を正本にしたドッキング可能判定。
-  canDock(ship: Player, target: GameEntity): boolean {
+  canDock(ship: Player, target: DynamicEntity): boolean {
     return this.evaluateCandidates(ship, target).some((candidate) => candidate.canDock);
   }
 
   // 指定対象の候補を返す。基地の占有済みスロットは候補から除外し、ハッチは常に
   // 評価する(ただし満杯なら canDock は false)。
-  evaluateCandidates(ship: Player, target: GameEntity): DockingCandidate[] {
+  evaluateCandidates(ship: Player, target: DynamicEntity): DockingCandidate[] {
     if (!ship.alive || !target.alive || ship === target || this.getDockedTarget(ship) === target) return [];
     const portPos = ship.getPortWorldPos();
     const portNormal = norm(ship.getPortWorldNormal());
@@ -162,14 +162,14 @@ export class Docking {
     return candidates;
   }
 
-  private bestDockingCandidate(ship: Player, target: GameEntity): DockingCandidate | null {
+  private bestDockingCandidate(ship: Player, target: DynamicEntity): DockingCandidate | null {
     return this.evaluateCandidates(ship, target)
       .filter((candidate) => candidate.canDock)
       .sort((a, b) => a.distance - b.distance)[0] ?? null;
   }
 
   // 船または基地への物理ドッキングを実行。
-  dockTo(ship: Player, target: GameEntity): void {
+  dockTo(ship: Player, target: DynamicEntity): void {
     const candidate = this.bestDockingCandidate(ship, target);
     if (!candidate) return;
     if (target instanceof Base) {
@@ -177,7 +177,7 @@ export class Docking {
     } else {
       this.dockedPairs.set(ship.id, target);
       // 相対速度をゼロにする
-      ship.state = kinematicState(ship.state.t, ship.state.r, target.state.v);
+      ship.state = kinematicState<'eci'>(ship.state.t, ship.state.r, target.state.v);
       this.hud.hint(`${ship.name} が ${target.name || '対象'} にドッキングしました`);
     }
   }
@@ -192,7 +192,7 @@ export class Docking {
   }
 
   // ドッキング中の相手との物資・電力融通ダイアログを開く
-  openTransfer(ship: Player, target: GameEntity): void {
+  openTransfer(ship: Player, target: DynamicEntity): void {
     this.transferDialog.open(ship, target);
   }
 
@@ -231,7 +231,7 @@ export class Docking {
         continue;
       }
       // 速度を完全同期
-      ship.state = kinematicState(ship.state.t, ship.state.r, target.state.v);
+      ship.state = kinematicState<'eci'>(ship.state.t, ship.state.r, target.state.v);
     }
   }
 
@@ -326,7 +326,7 @@ export class Docking {
       base.state.v.z + slotNormal.z * 2.5,
     );
 
-    ship.state = kinematicState(base.state.t, launchPos, launchVel);
+    ship.state = kinematicState<'eci'>(base.state.t, launchPos, launchVel);
     this.entities.addPlayer(ship);
     this.activePlayers.set(ship);
     this.viewManager.setView('combat');

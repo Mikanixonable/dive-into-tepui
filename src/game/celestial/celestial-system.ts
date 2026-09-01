@@ -1,172 +1,159 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
-import { Ephemeris } from '../../physics/ephemeris';
-import { kinematicState } from '../../physics/kinematic-state';
-import { RingSystemDef } from '../../physics/solar-system/celestial-body-def';
-import { SolarSystemId } from '../../physics/solar-system/solar-system';
-import { OrbitalElements } from '../../physics/elements';
-import { AU } from '../../physics/planet-orbit';
-import { CelestialBody, orbitalElementsOf } from '../../physics/celestial-body';
-import { add, len, scale, sub, v3, Vec3 } from '../../math/vec3';
-import { isOccluded } from '../../physics/occlusion';
-import { maxOccludedFraction } from '../../physics/shadow';
+import {
+  CelestialBodyDef, CelestialMotion, CelestialMotions, OrbitingMotion, PhaseOffsets, PlanetMotion,
+} from '../../physics/celestial-motion';
+import { strongestAttractor } from '../../physics/attractor';
+import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
+import { EciTransform } from '../../physics/eci-transform';
+import { ReferenceFrames } from './reference-frames';
+import { addTimeCacheStats } from '../../physics/time-ring';
+import { KinematicState } from '../../physics/kinematic-state';
+import type { TdbJulianDate } from '../../physics/time';
+import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import type { MarkerManager } from '../marker/marker-manager';
-import { OrbitLine } from '../lines/orbit-line';
-import { createStars, Stars, STAR_SHELL_RADIUS } from '../../render/stars';
+import { EllipseLine } from '../lines/ellipse-line';
+import { celestialShellScale, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../camera/floating-origin';
-import * as C from '../const';
-import { PointFieldView } from './point-field-view';
 import { ScaleGridView } from './scale-grid-view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
-import { SUN_COLOR, SUN_RADIANT_INTENSITY, SunLight } from '../../render/pipeline/sun-light';
+import type { PointFieldView } from './point-field-view';
+import {
+  REFERENCE_STAR_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE,
+  STARLESS_SUN_RADIUS, SunLight,
+} from '../../render/pipeline/sun-light';
 import type { Exposure } from '../../render/pipeline/exposure';
 import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
-import { AMBIENT_STRONG, AMBIENT_WEAK, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
-import { selectPlanetLights } from './planet-light';
-import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
-import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
+import { ambientFraction, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
+import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
+import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
+import type { Occluder, SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import {
-  type AtmosphereCandidate, atmosphereDraws, atmosphereOpticsOf,
-} from '../../render/atmosphere';
+  selectOccluders, selectRingShadow, type RingShadowCandidate,
+} from '../../render/pipeline/sun-occlusion-select';
+import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
+import { atmosphereDraws } from '../../render/atmosphere';
 import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
-import { LINE_RENDER_ORDER } from '../../render/line-style';
-import { CelestialEntity } from './celestial-entity';
-import { CELESTIAL_APPEARANCES, fallbackCelestialAppearance } from './celestial-appearance';
-import { Earth } from './earth';
-import { BodyClassToggles, NearbySystemTracker } from './body-visibility';
-import { MapVisibilityPolicy } from './map-visibility';
-import { OrbitGuideLines } from './orbit-guide-lines';
-import { ZeroVelocityLines } from './zero-velocity-lines';
-import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide-settings';
-
-// 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、
-// FAR 以上なら完全表示、その間は距離に応じて線形にフェードインする。
-const PLANET_ORBIT_LINE_FADE_NEAR_DIST = 1e9; // 100万km
-const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10; // 1000万km
-const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
-const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
-
-// 参照軌道線が完全表示のときの不透明度。
-const REFERENCE_LINE_OPACITY = 0.3;
-
-// 静止軌道高度の参照リング。実在の衛星や特定経度を表すものではない定数。地球が現在の
-// レジストリに実在しないなら架空レジストリでは無意味なので組まない(constructor で判定)。
-function buildGeoElements(ephemeris: Ephemeris): OrbitalElements | null {
-  if (!('earth' in ephemeris.registry)) return null;
-  const earth = ephemeris.motionOf('earth').def;
-  const earthCelestialBody: CelestialBody = {
-    id: 'earth', mu: earth.mu, radius: earth.radius,
-    state: kinematicState(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null,
-    isStar: false,
-  };
-  return {
-    a: earth.radius + 35786e3, e: 1e-6, p: earth.radius + 35786e3, incDeg: 0, period: 86164,
-    hHat: v3(0, 1, 0), pHat: v3(1, 0, 0), qHat: v3(0, 0, -1), center: earthCelestialBody,
-  };
-}
-
-// 公転天体の参照軌道線の色: 衛星は月軌道線の色、惑星は木星軌道線の色を踏襲し、
-// 同じ種別の天体はすべて同じ色で引く。
-const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
-const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
-
-// 遮蔽器と環の持ち主を選ぶ尺度。カメラから見た視半径が大きい天体ほど、その影が画面に
-// 写っている何かへ落ちる見込みが高い。
-function apparentRadius(radius: number, center: Vec3, cameraPos: Vec3): number {
-  return radius / Math.max(1, len(sub(center, cameraPos)));
-}
-
-// 遮蔽器として残す最大遮蔽率の下限。これを下回る天体は、どの向きでも恒星面の 1% 未満しか
-// 隠せないので、落としても絵に出ない(physics/shadow.ts の maxOccludedFraction)。
-const MIN_OCCLUDED_FRACTION = 1e-2;
-
-// body が cameraPos か focusPos のどちらかから見て、絵に出るだけの影を落としうるか。
-// **カメラ位置だけで測ってはいけない** — 土星から引いたマップビューでは土星自身が閾値を
-// 切り、環の影が本体から消える。
-function castsVisibleShadow(
-  star: CelestialBody, body: CelestialBody, cameraPos: Vec3, focusPos: Vec3 | null,
-): boolean {
-  if (maxOccludedFraction(cameraPos, star, body) >= MIN_OCCLUDED_FRACTION) return true;
-  return focusPos !== null && maxOccludedFraction(focusPos, star, body) >= MIN_OCCLUDED_FRACTION;
-}
+import { CelestialEntity } from './celestial-entity/celestial-entity';
+import { StarEntity } from './celestial-entity/star-entity';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
+import { OrbitGuideLines } from './orbit-guide/orbit-guide-lines';
+import { ZeroVelocityLines } from './orbit-guide/zero-velocity-lines';
+import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide/orbit-guide-settings';
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
-// 恒星以外の全公転天体の id(registry の宣言順)。天体が増えれば参照線もここから自動で増える。
-function referenceLineIds(ephemeris: Ephemeris): readonly string[] {
-  return Object.keys(ephemeris.registry).filter((id) => ephemeris.motionOf(id).kind !== 'star');
+// 数値暦が収録している点を、結び先のノードへ配る。**暦は id ごとに天体本体を収録して
+// いる場合と惑星系の重心を収録している場合があり、結び先がそれで分かれる**(JPL の SPK が
+// 火星以遠では系の重心しか持たないため)。宣言と食い違う点へ結ぶとその系がまるごと重心
+// オフセットぶんずれるので、ephemerisPointOf は種別が合ったときだけ暦を返す。
+function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisPoints): void {
+  for (const motion of motions) {
+    motion.bindEphemeris(ephemerisPointOf(points, motion.id, 'body'));
+  }
+  // 系の重心を収録した系列は天体1体ぶんではないので、惑星系のほうへ結ぶ。惑星本体と衛星は
+  // そこから重心オフセットを差し引いて/足して組む。
+  const systems = new Set(motions
+    .filter((m): m is PlanetMotion => m instanceof PlanetMotion)
+    .map((m) => m.system));
+  for (const system of systems) {
+    system.bindEphemeris(ephemerisPointOf(points, system.id, 'systemBarycenter'));
+  }
 }
 
-// 一様な環境光の割合。マップビューでは読みやすさのため強く、戦闘ビューでは弱く、どちらも
-// 描画設定で切れる。
-function ambientFraction(overviewMode: boolean, graphics: GraphicsSettingsData): number {
-  if (overviewMode) return graphics.overviewAmbient ? AMBIENT_STRONG : 0;
-  return graphics.combatAmbient ? AMBIENT_WEAK : 0;
-}
-
-export class CelestialSystem {
-  private readonly scene: THREE.Scene;
+export class CelestialSystem implements CelestialMotions {
+  private scene!: THREE.Scene;
   // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
   // モデルごと組まないので(NodeMaterial.setupLighting)、受け手を真っ黒にしないために
   // 1 個だけ置いてある。マテリアルパスは direct() を無効化し indirect() を照度バッファの
   // 読み出しへ差し替えるため、この光源の色も強度もどこからも読まれない — 光の値の正本は
   // SunLight ただ 1 つ。
-  private readonly lightingAnchor: THREE.AmbientLight;
-  private readonly stars: Stars;
-  readonly celestialGrid: CelestialGrid;
-  private readonly scaleGrid: ScaleGridView;
-  private readonly bodies: readonly CelestialEntity[];
-  private readonly nearbyTracker = new NearbySystemTracker();
-  // 小惑星帯・トロヤ群の点群。天体暦から作られるマップ専用の表示なので、マップへ入るまで
-  // 生成しない。11,200点の軌道要素・mesh・instance bufferをロード時に確保しないため。
-  private pointFieldView: PointFieldView | null = null;
+  private lightingAnchor!: THREE.AmbientLight;
+  private stars!: Stars;
+  celestialGrid!: CelestialGrid;
+  private scaleGrid!: ScaleGridView;
+  private sunLight!: SunLight;
+  private exposure!: Exposure;
+  private sunOcclusion!: SunOcclusion;
+  private planetLight!: PlanetLightSource;
+  private ambient!: AmbientSource;
+  private atmosphere!: AtmospherePass;
+  private readonly entitiesById: ReadonlyMap<string, CelestialEntity>;
+  // 全登録天体の運動(entities と同じ宣言順)。重力源配列・一覧の順序もこの並びで決まる。
+  readonly celestialMotions: readonly CelestialMotion[];
+  // 主星の個体。恒星を持たない星系では null。
+  private readonly starEntity: StarEntity | null;
+  // 天体の値を ECI へ移す変換器。**どの天体を原点に置くかは系レベルの選択**なので正本はここが
+  // 持ち、個体へは参照を配る。
+  private readonly eciTransform: EciTransform;
+  // 座標系の同一性。entities の motion から組む。
+  private readonly referenceFrames: ReferenceFrames;
 
-  // 静止軌道高度の参照リングは実在の天体ではないので、以下の天体駆動の配列とは別に持つ。
-  // 地球が現在のレジストリに無ければ null(sync は非表示のまま何もしない)。
-  readonly geoLine = new OrbitLine({ color: 0x8b93a0, opacity: 0.2, renderOrder: LINE_RENDER_ORDER.reference });
-  private readonly geoElements: OrbitalElements | null;
-  // 公転天体1体につき1本、registry から自動生成する参照軌道線(衛星は親惑星中心、
-  // 惑星は太陽中心)。マップモード専用で、天体暦の状態から作られる表示なのでここが所有する。
-  private readonly referenceIds: readonly string[];
-  private readonly referenceLines: Map<string, OrbitLine>;
+  // mu が 0 でない天体と、大気を持つ天体(いずれも宣言順)。どちらも時刻に依らないので
+  // 構築時に確定する。
+  private readonly gravityMotionList: readonly CelestialMotion[];
+  private readonly atmosphereMotionList: readonly CelestialMotion[];
+
+  // 点群をシーンへ登録済みか。マップへ入るまで登録しない。
+  private pointFieldBuilt = false;
+
   // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
-  private readonly orbitGuideLines: OrbitGuideLines;
+  private orbitGuideLines!: OrbitGuideLines;
   // ゼロ速度曲線(ガイドタブ5.3節)。
-  private readonly zeroVelocityLines: ZeroVelocityLines;
+  private zeroVelocityLines!: ZeroVelocityLines;
   // 軌道ガイドタブの正本の鏡映し。静止軌道リング・ラベルの表示可否だけをここから読む。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
 
-  // ephemeris はこの系の天体の位置・姿勢を答える純サンプラで、天体ビューの配列がすべてここから
-  // 引く。sunLight はライティングパス(render/pipeline/)が読む恒星光の値オブジェクトで、
-  // RenderPipeline が所有するインスタンスをここへ書き込む。
-  // earthSpinPhase0 は地球の自転初期位相(地球が現在のレジストリに無ければ何もしない)。
+  // entities はこの星系の全天体(宣言順。重力源配列・一覧の順序もこれで決まる)、origin は
+  // その中の ECI 中心天体。phaseOffsets は motion を組むのに使った初期位相(セーブでそのまま
+  // 返すために保持する)。epoch は simTime=0 が指す絶対時刻で、この星系はすべてそれを基準に
+  // 組まれている。THREE の資源はここでは受け取らない — build(scene, …) が登録する。
+  // pointFieldView はこの星系に付随する小天体の点群(持たない星系では null)。マップへ入るまで
+  // 資源を確保しない表示なので、シーンへの登録は最初のマップ更新まで遅らせる。
+  // ephemerisPoints は数値暦が収録している点の一覧。結び先のノードへ配る。
   constructor(
-    scene: THREE.Scene,
-    readonly ephemeris: Ephemeris,
-    private readonly sunLight: SunLight,
-    private readonly exposure: Exposure,
-    private readonly sunOcclusion: SunOcclusion,
-    private readonly planetLight: PlanetLightSource,
-    private readonly ambient: AmbientSource,
-    private readonly atmosphere: AtmospherePass,
-    earthSpinPhase0: number,
+    readonly entities: readonly CelestialEntity[],
+    readonly origin: CelestialEntity,
+    private readonly phaseOffsets: PhaseOffsets,
+    readonly epoch: TdbJulianDate,
+    private readonly pointFieldView: PointFieldView | null = null,
+    ephemerisPoints: EphemerisPoints | null = null,
   ) {
-    this.scene = scene;
-    const registry = ephemeris.registry;
-    scene.add(this.geoLine.line);
-    this.geoElements = buildGeoElements(ephemeris);
-    this.referenceIds = referenceLineIds(ephemeris);
+    this.celestialMotions = entities.map((b) => b.motion);
+    this.gravityMotionList = this.celestialMotions.filter((m) => m.def.mu !== 0);
+    this.atmosphereMotionList = this.celestialMotions.filter(
+      (m) => m instanceof OrbitingMotion && m.def.atmosphere !== undefined,
+    );
+    this.eciTransform = new EciTransform(origin.motion);
+    this.referenceFrames = new ReferenceFrames(this.celestialMotions, this.eciTransform);
+    // 天体1体ぶんの値は運動が答えるので、その供給源(ECI 変換器・暦)はここで1度だけ配る。
+    for (const motion of this.celestialMotions) motion.bindEciTransform(this.eciTransform);
+    if (ephemerisPoints !== null) bindEphemerides(this.celestialMotions, ephemerisPoints);
+    this.entitiesById = new Map(entities.map((b) => [b.id, b]));
+    this.starEntity = entities.find((b): b is StarEntity => b instanceof StarEntity) ?? null;
+  }
 
-    // 参照線はマップで表示される天体だけが必要とする。全カタログぶんを起動時に
-    // GPUへ確保すると、非表示設定でも頂点バッファとオブジェクトが残り続ける。
-    this.referenceLines = new Map();
-    this.orbitGuideLines = new OrbitGuideLines(scene, ephemeris);
-    this.zeroVelocityLines = new ZeroVelocityLines(scene, ephemeris);
+  // シーンとライティングパスの値オブジェクト(RenderPipeline が所有)を受け取り、全天体の
+  // メッシュ・星野・グリッド・光源アンカーをシーンへ登録する。Game の構築中に1度だけ呼ぶ —
+  // update / sync はこの後でないと呼べない。
+  build(
+    scene: THREE.Scene, sunLight: SunLight, exposure: Exposure, sunOcclusion: SunOcclusion,
+    planetLight: PlanetLightSource, ambient: AmbientSource, atmosphere: AtmospherePass,
+  ): void {
+    this.scene = scene;
+    this.sunLight = sunLight;
+    this.exposure = exposure;
+    this.sunOcclusion = sunOcclusion;
+    this.planetLight = planetLight;
+    this.ambient = ambient;
+    this.atmosphere = atmosphere;
+    this.orbitGuideLines = new OrbitGuideLines(scene, this);
+    this.zeroVelocityLines = new ZeroVelocityLines(scene, this);
     this.lightingAnchor = new THREE.AmbientLight();
     scene.add(this.lightingAnchor);
     // レンダラーは光源自身の layers とカメラの layers が重ならないと光源をそのカメラの描画対象
@@ -177,23 +164,166 @@ export class CelestialSystem {
     scene.add(this.stars.mesh);
     this.celestialGrid = new CelestialGrid(scene);
     this.scaleGrid = new ScaleGridView(scene);
+    for (const body of this.entities) body.build(scene, sunOcclusion, sunLight);
+  }
 
-    this.bodies = Object.keys(registry).map((id) => {
-      const motion = ephemeris.motionOf(id);
-      return id in CELESTIAL_APPEARANCES
-        ? CELESTIAL_APPEARANCES[id as SolarSystemId].create(motion)
-        : fallbackCelestialAppearance(motion);
-    });
-    for (const body of this.bodies) body.build(scene, sunOcclusion, sunLight);
+  // ---------------------------------------------------------------- 天体の口
 
-    this.bodies.find((b): b is Earth => b instanceof Earth)?.setSpinPhase0(earthSpinPhase0);
+  // 天体 id の個体。未登録の id を渡すと例外になる。
+  entityOf(id: string): CelestialEntity {
+    const entity = this.entitiesById.get(id);
+    if (entity === undefined) throw new Error(`CelestialSystem: 登録されていない天体 id: ${id}`);
+    return entity;
+  }
+
+  find(id: string): CelestialEntity | null { return this.entitiesById.get(id) ?? null; }
+
+  has(id: string): boolean { return this.entitiesById.has(id); }
+
+  // 天体 id の表示名。未登録の id はそのまま返す(架空天体のラベルを例外で止めない)。
+  nameOf(id: string): string { return this.entitiesById.get(id)?.name ?? id; }
+
+  // 主星の個体。恒星を持たない星系では null。
+  get star(): StarEntity | null { return this.starEntity; }
+
+  // 全登録天体の定義(宣言順)。
+  get defs(): readonly CelestialBodyDef[] { return this.entities.map((b) => b.def); }
+
+  // ---------------------------------------------------------------- 系の所属
+
+  // 天体の木を親子関係と重力の効き方から辿り、「何がどの系に属するか」「いまどの系にいるか」を
+  // 答える。可視性・選択候補・一覧の並びがここを共有する。
+
+  // focusId と同じ親を持つ天体・その親・focusId 自身の id 集合。focusId 未指定なら空集合。
+  sameSystemIds(focusId: string | undefined): ReadonlySet<string> {
+    if (focusId === undefined) return new Set();
+    const parent = this.find(focusId)?.motion.primary?.id ?? null;
+    const ids = new Set<string>([focusId]);
+    if (parent !== null) ids.add(parent);
+    for (const motion of this.celestialMotions) {
+      const p = motion.primary?.id ?? null;
+      if (p === focusId || (parent !== null && p === parent)) ids.add(motion.id);
+    }
+    return ids;
+  }
+
+  // focus 天体と同じ惑星系に、position の主引力天体が属するかを返す。衛星をフォーカス
+  // した場合は親惑星を系の代表として扱い、親惑星周回・フォーカス衛星周回・同じ惑星の
+  // 別衛星周回をすべて含める。地球をフォーカスしている間は地球周回と月周回を含み、
+  // 土星周回のような別の惑星系は除く。画面上の遮蔽やカメラ距離では判定しないため、地球の
+  // 裏側に回った機体も引き続き対象になる。
+  //
+  // 天体以外(艦船・固定点など)へフォーカスしている場合は、どの天体系を表示するかを恣意的に
+  // 決めないため絞り込まない。これにより、対象艦へフォーカスした瞬間に他艦が消えない。
+  isPositionInFocusedSystem(focusId: string | undefined, position: Vec3, pivot: number): boolean {
+    const focus = focusId === undefined ? undefined : this.find(focusId)?.motion;
+    if (focus === undefined) return true;
+
+    const systemFocusId = focus.kind === 'satellite' ? focus.primary?.id ?? null : focus.id;
+    if (systemFocusId === null) return false;
+    const initial = strongestAttractor(position, this.celestialMotions, pivot).id;
+    // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
+    if (this.find(initial)?.motion.kind === 'star') return true;
+    return this.ancestorsOf(initial).includes(systemFocusId);
+  }
+
+  // focusId の親を辿って主星まで遡った id の列(focusId 自身を含む)。
+  ancestorsOf(focusId: string): readonly string[] {
+    const chain: string[] = [];
+    let cur: string | null = focusId;
+    // 循環した親子定義でも止まるよう、登録数を上限にする。
+    for (let i = 0; cur !== null && i <= this.entities.length; i++) {
+      if (chain.includes(cur)) break;
+      chain.push(cur);
+      cur = this.find(cur)?.motion.primary?.id ?? null;
+    }
+    return chain;
+  }
+
+  // id から主星まで遡った id の列。未登録の id(生存中の重力天体)なら、その id 1つだけを返す。
+  chainFrom(id: string): readonly string[] {
+    return this.has(id) ? this.ancestorsOf(id) : [id];
+  }
+
+  // cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。
+  systemChainAt(cameraPos: Vec3, pivot: number): readonly string[] {
+    if (this.entities.length === 0) return [];
+    return this.chainFrom(strongestAttractor(cameraPos, this.celestialMotions, pivot).id);
+  }
+
+  // chain の列に、各天体の子(恒星の子は除く)を合わせた集合。近い順・各天体→その子の順に並ぶ
+  // 配列で返す(呼び出し側の選択肢が毎フレーム揺れないよう順序を固定する)。
+  membersFrom(chain: readonly string[]): readonly string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const id of chain) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        result.push(id);
+      }
+      // 主天体を持たない = 恒星(か未登録)。恒星の子は足さない — 足すと太陽を含む列で
+      // 全惑星が並んでしまう。
+      if ((this.find(id)?.motion.primary ?? null) === null) continue;
+      for (const child of this.celestialMotions) {
+        if (seen.has(child.id) || (child.primary?.id ?? null) !== id) continue;
+        seen.add(child.id);
+        result.push(child.id);
+      }
+    }
+    return result;
+  }
+
+  // systemChainAt の列に、各天体の子(恒星の子は除く)を合わせた集合。
+  systemMembersAt(cameraPos: Vec3, pivot: number): readonly string[] {
+    return this.membersFrom(this.systemChainAt(cameraPos, pivot));
+  }
+
+  // ---------------------------------------------------------- 系レベルの物理
+
+  // 重力源天体の運動(mu が 0 でないもの、宣言順)。
+  get gravityMotions(): readonly CelestialMotion[] { return this.gravityMotionList; }
+
+  // 大気を持つ天体の運動(宣言順)。抗力を掛ける1体を選ぶ側が引く。
+  get atmosphereMotions(): readonly CelestialMotion[] { return this.atmosphereMotionList; }
+
+  // 天体 id の運動。未登録の id を渡すと例外になる。
+  motionOf(id: string): CelestialMotion { return this.entityOf(id).motion; }
+
+  // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと
+  // pivot 自身の厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
+  stateAt(id: string, pivot: number, t: number = pivot): KinematicState {
+    return this.entityOf(id).stateAt(pivot, t);
+  }
+
+  // 座標系の同一性(同じ対に同じ参照)と、天体でない基準の解決。
+  get frames(): ReferenceFrames { return this.referenceFrames; }
+
+  // ECI の点 r から見た恒星方向の単位ベクトル。恒星が無い星系では無害な既定方向(+X)を返す。
+  sunDirFrom(r: Vec3, t: number): Vec3 {
+    const star = this.starEntity;
+    return star === null ? v3(1, 0, 0) : norm(sub(this.stateAt(star.id, t).r, r));
+  }
+
+  // 星系の再構築に要る値のスナップショット(セーブ用)。phaseOffsets は構築時に受け取った
+  // record をそのまま返す(明示 0 のキーを落とさない)。
+  serialize(): { readonly phaseOffsets: PhaseOffsets; readonly earthSpinPhase0: number | undefined } {
+    return { phaseOffsets: { ...this.phaseOffsets }, earthSpinPhase0: this.earthSpinPhase0() };
+  }
+
+  // 負荷確認ウィンドウが読む、天体窓の時刻キャッシュのヒット/ミス累計。
+  perfCounts(): { timeCacheHits: number; timeCacheMisses: number } {
+    let time = this.eciTransform.cacheStats;
+    for (const motion of this.celestialMotions) time = addTimeCacheStats(time, motion.cacheStats);
+    return { timeCacheHits: time.hits, timeCacheMisses: time.misses };
   }
 
   // 表示時刻 t の点群の位置を更新する。
   update(t: number, overviewMode: boolean, graphics: GraphicsSettingsData): void {
-    if (!overviewMode || this.ephemeris.starId === null || !graphics.pointField) return;
-    const pointField = this.ensurePointField();
-    pointField.update(t, true, this.ephemeris);
+    const star = this.starEntity;
+    const pointField = this.pointFieldView;
+    if (!overviewMode || star === null || pointField === null || !graphics.pointField) return;
+    this.buildPointField(pointField);
+    pointField.update(t, true, this.stateAt(star.id, t).r);
   }
 
   // 軌道ガイドタブ(表示パネル5.2節)の設定。ゲーム側が変更のたびに渡す。
@@ -203,19 +333,24 @@ export class CelestialSystem {
     this.zeroVelocityLines.setSettings(settings.zeroVelocity);
   }
 
-  // 公転天体1体につき1本の参照軌道線(右クリックの当たり判定向け)。
-  get referenceOrbitLines(): ReadonlyMap<string, OrbitLine> { return this.referenceLines; }
+  // 公転天体1体につき1本の参照軌道線(右クリックの当たり判定向け)。線を持つ個体だけを列挙する。
+  get referenceEllipseLines(): readonly { readonly id: string; readonly line: EllipseLine }[] {
+    return this.entities.flatMap((b) => (b.referenceLine === null ? [] : [{ id: b.id, line: b.referenceLine }]));
+  }
 
   // ラグランジュ点まわりの軌道ガイド線(右クリックの当たり判定向け)。
   get orbitGuide(): OrbitGuideLines { return this.orbitGuideLines; }
 
-  // 地球の自転初期位相(セーブ用)。地球が現在のレジストリに無ければ undefined。
+  // ECI の極軸を自転軸とする天体(この座標系を定義している天体)の自転初期位相(セーブ用)。
+  // その天体が星系に無ければ undefined。
   earthSpinPhase0(): number | undefined {
-    const earth = this.bodies.find((b): b is Earth => b instanceof Earth);
-    return earth?.spinPhase0();
+    const pole = this.entities.find((b) => 'pole' in b.def && b.def.pole?.kind === 'eciPole');
+    return pole?.motion.spinPhase0;
   }
 
   // 天体ビュー・星・照明・遮蔽・参照線・天球グリッドを、この1フレームの表示状態に同期する。
+  // visibilityPolicy は**マップビューのとき非 null、戦闘ビューのとき null** を渡す。描かれる
+  // 対象と選べる対象が同じ判定から出るよう、同じフレームの update 位相で確定させたものを渡す。
   sync(
     floatingOrigin: FloatingOrigin,
     displayTime: number,
@@ -223,133 +358,125 @@ export class CelestialSystem {
     graphics: GraphicsSettingsData,
     style: RenderStyle,
     gridVisibility: CelestialGridVisibility,
-    sharedVisibilityPolicy: MapVisibilityPolicy | null = null,
-    markerManager: MarkerManager | null = null,
+    visibilityPolicy: MapVisibilityPolicy | null,
+    markerManager: MarkerManager | null,
   ): void {
-    // Game.sync が同じカメラ位置・表示時刻で組んだ policy を渡せるようにする。渡されない
-    // 既存経路ではここで一度だけ構築し、参照線にも同じインスタンスを渡す。
-    const nearbyIds = cameraSystem.overviewMode && sharedVisibilityPolicy === null
-      ? this.nearbyTracker.membersAt(this.ephemeris, cameraSystem.activeCameraPos, this.ephemeris.celestialBodiesAt(displayTime))
-      : [];
-    const visibilityPolicy = cameraSystem.overviewMode
-      ? sharedVisibilityPolicy ?? new MapVisibilityPolicy(
-        this.ephemeris,
-        cameraSystem.bodyClassToggles,
-        focusTargetId(cameraSystem.mapCamera.focus),
-        nearbyIds,
-      )
-      : null;
-    const starId = this.ephemeris.starId;
-    const star = starId === null ? null : this.ephemeris.motionOf(starId);
-    for (const body of this.bodies) {
-      body.setVisible(!cameraSystem.overviewMode || visibilityPolicy!.body(body.id).category);
+    const star = this.starEntity;
+    const starMotion = star?.motion ?? null;
+    for (const body of this.entities) {
+      body.setVisible(visibilityPolicy === null || visibilityPolicy.body(body.id).category);
       body.sync(floatingOrigin, displayTime, cameraSystem, star, graphics, style);
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。
-    const sunPos = star === null
-      ? this.toThreeNormal(this.ephemeris.sunDirFrom(floatingOrigin.r, displayTime)).multiplyScalar(AU)
-      : floatingOrigin.RtoThreeV3(star.stateAt(displayTime).r);
+    const sunPos = starMotion === null
+      ? this.toThreeNormal(this.sunDirFrom(floatingOrigin.r, displayTime))
+        .multiplyScalar(STARLESS_SUN_DISTANCE)
+      : floatingOrigin.RtoThreeV3(this.stateAt(starMotion.id, displayTime).r);
     // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
-    this.exposure.setReference(reference, sunPos);
-    this.sunLight.set(sunPos, star === null ? 0 : star.def.radius, SUN_COLOR, SUN_RADIANT_INTENSITY);
+    // 恒星を持たない星系では、1 天文単位の位置に置いた基準の恒星ぶんの光が届くものとして扱う。
+    const starIntensity = star?.radiantIntensity ?? REFERENCE_STAR_RADIANT_INTENSITY;
+    this.exposure.setReference(reference, sunPos, starIntensity);
+    this.sunLight.set(
+      sunPos, star?.def.radius ?? STARLESS_SUN_RADIUS,
+      star?.color ?? STARLESS_SUN_COLOR, starIntensity);
     this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem, graphics);
 
     const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
-    if (cameraSystem.overviewMode && this.ephemeris.starId !== null && graphics.pointField) {
-      this.ensurePointField().sync(
-        floatingOrigin, true, cameraSystem.bodyClassToggles.smallBodyVisible, fixedBrightnessScale,
+    const pointField = this.pointFieldView;
+    if (pointField !== null && cameraSystem.overviewMode && star !== null && graphics.pointField) {
+      this.buildPointField(pointField);
+      pointField.sync(
+        floatingOrigin, true, cameraSystem.mapDisplayToggles.smallBodyVisible, fixedBrightnessScale,
       );
-    } else {
-      this.pointFieldView?.sync(floatingOrigin, false, true, fixedBrightnessScale);
+    } else if (this.pointFieldBuilt) {
+      pointField?.sync(floatingOrigin, false, true, fixedBrightnessScale);
     }
     this.syncStars(cameraSystem, fixedBrightnessScale, gridVisibility.stars);
-    const celestialBodies = this.ephemeris.celestialBodiesAt(displayTime);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(
-      displayTime, floatingOrigin, cameraSystem.overviewMode,
-      geostationaryOrbitVisible,
-      focusTargetId(cameraSystem.mapCamera.focus), cameraSystem.bodyClassToggles,
-      visibilityPolicy, nearbyIds, cameraSystem.activeCamera, cameraSystem.activeCameraPos);
-    this.syncGeoLabels(
-      displayTime, cameraSystem.overviewMode, geostationaryOrbitVisible,
-      cameraSystem, markerManager, celestialBodies);
+      displayTime, floatingOrigin, visibilityPolicy,
+      cameraSystem.activeCamera, cameraSystem.activeCameraPos);
+    // 地球の静止軌道リングなど、天体固有のマップ付随表示。出すかどうかの判断はここが持つ。
+    for (const body of this.entities) {
+      body.syncMapOverlay(
+        floatingOrigin, displayTime, cameraSystem, markerManager, this.celestialMotions,
+        cameraSystem.overviewMode && geostationaryOrbitVisible);
+    }
     this.orbitGuideLines.sync(style, displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.zeroVelocityLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       style, gridVisibility, cameraSystem.activeCamera,
-      cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
-    this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this.ephemeris, gridVisibility);
+      celestialShellScale(cameraSystem.overviewMode));
+    this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, gridVisibility);
   }
 
-  // 天体照の光源を選び、描画座標へ移してライティング側のスロットへ渡す。基準点は露出と
-  // 同じ注視点。
+  // 天体照の光源の候補を組んで選定へ渡し、**選ばれたものだけ**を描画座標へ移してライティング
+  // 側のスロットへ入れる。基準点は露出と同じ注視点。
   private syncPlanetLights(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem): void {
-    const lights = selectPlanetLights(this.ephemeris, displayTime, cameraSystem.activeViewpoint.lookTarget);
+    const candidates = this.celestialMotions.map((celestialBody) => ({
+      celestialBody,
+      albedo: this.entityOf(celestialBody.id).lightSourceAlbedo ?? DEFAULT_ALBEDO,
+    }));
+    const lights = selectPlanetLights(
+      candidates, displayTime, this.starEntity?.radiantIntensity ?? null,
+      cameraSystem.activeViewpoint.lookTarget);
     this.planetLight.set(lights.map((light) => ({
-      center: fo.RtoThreeV3(light.body.state.r),
-      radius: light.body.radius,
+      center: fo.RtoThreeV3(light.celestialBody.positionAt(displayTime)),
+      radius: light.celestialBody.def.radius,
       radiance: light.radiance,
     })));
   }
 
-  // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。まず最大遮蔽率が閾値を切る天体を落とし、
-  // 残りをカメラから見た視半径の大きい順に MAX_OCCLUDERS 体まで採る — 恒星の視半径が同じなら
-  // 最大遮蔽率は視半径に比例するので、この並びは最大遮蔽率の降順と一致する。環は最上位の
-  // 環付き天体 1 体ぶん。
+  // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。候補を組んで選定へ回し、**選ばれた
+  // ものだけ**を描画座標へ移す。focusPos はマップの注視点で、艦など天体でない対象を注視して
+  // いるなら null。
   private syncOcclusion(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
   ): void {
-    const bodies = this.ephemeris.celestialBodiesAt(displayTime);
-    const star = bodies.find((body) => body.isStar);
+    const celestialBodies = this.celestialMotions;
     const focusId = focusTargetId(cameraSystem.mapCamera.focus);
     const focusPos = focusId === undefined
-      ? null : bodies.find((body) => body.id === focusId)?.state.r ?? null;
-    const ranked = bodies
-      .filter((body) => !body.isStar && body.radius > 0
-        && (star === undefined || castsVisibleShadow(star, body, fo.r, focusPos)))
-      .map((body) => ({ body, apparent: apparentRadius(body.radius, body.state.r, fo.r) }))
-      .sort((a, b) => b.apparent - a.apparent)
-      .slice(0, MAX_OCCLUDERS);
-    this.sunOcclusion.setOccluders(ranked.map(({ body }): Occluder => (
-      { center: fo.RtoThreeV3(body.state.r), radius: body.radius }
-    )));
+      ? null
+      : this.find(focusId)?.motion.positionAt(displayTime) ?? null;
+    this.sunOcclusion.setOccluders(
+      selectOccluders(celestialBodies, displayTime, fo.r, focusPos).map((body): Occluder => (
+        { center: fo.RtoThreeV3(body.positionAt(displayTime)), radius: body.def.radius }
+      )));
     this.syncRingShadow(fo, displayTime, graphics);
   }
 
-  // 環の影を落とす天体を1体選び、その帯を遮蔽パスへ渡す。画面に環付き天体が複数写る状況は
-  // 実質起きないので、最も大きく見える1体だけを扱う。
+  // 環を持つ天体を候補として選定へ回し、選ばれた1体の帯を遮蔽パスへ渡す。選ばれなければ
+  // 帯を空にする(影は落ちない)。
   private syncRingShadow(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
-    let ringed: { readonly id: string; readonly rings: RingSystemDef } | null = null;
-    let bestApparent = 0;
-    if (graphics.rings) {
-      for (const id of this.referenceIds) {
-        const def = this.ephemeris.motionOf(id).def;
-        if (!('rings' in def) || def.rings === undefined) continue;
-        const apparent = apparentRadius(def.radius, this.ephemeris.positionOf(id, displayTime), fo.r);
-        if (apparent <= bestApparent) continue;
-        bestApparent = apparent;
-        ringed = { id, rings: def.rings };
-      }
-    }
+    const candidates = this.entities.flatMap((body): RingShadowCandidate[] => {
+      const rings = body.rings;
+      if (rings === null) return [];
+      return [{
+        center: this.stateAt(body.id, displayTime).r,
+        axis: body.motion.orientationAt(displayTime)?.axis ?? null,
+        radius: body.def.radius,
+        bands: rings.bands.map((band) => ({
+          innerRadius: band.innerRadius,
+          outerRadius: band.outerRadius,
+          normalOpticalDepth: band.optics.normalOpticalDepth,
+        })),
+      }];
+    });
+    const ringed = selectRingShadow(candidates, fo.r, graphics);
     if (ringed === null) {
       this.sunOcclusion.setRings(ZERO_VECTOR, UP_VECTOR, []);
       return;
     }
-    const pole = this.ephemeris.poleAt(ringed.id, displayTime);
     this.sunOcclusion.setRings(
-      fo.RtoThreeV3(this.ephemeris.positionOf(ringed.id, displayTime)),
-      pole === null ? UP_VECTOR : this.toThreeNormal(pole.axis),
-      ringed.rings.bands.map((band) => ({
-        innerRadius: band.innerRadius,
-        outerRadius: band.outerRadius,
-        normalOpticalDepth: band.optics.normalOpticalDepth,
-      })),
+      fo.RtoThreeV3(ringed.center),
+      ringed.axis === null ? UP_VECTOR : this.toThreeNormal(ringed.axis),
+      ringed.bands,
     );
   }
 
@@ -357,215 +484,57 @@ export class CelestialSystem {
   private syncAtmosphere(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
   ): void {
-    this.atmosphere.setDraws(
-      atmosphereDraws(this.atmosphereCandidates(fo, displayTime, cameraSystem), graphics.atmosphere),
-    );
-  }
-
-  // 大気を持つ参照天体を、カメラからその中心までの距離と、その距離での画面尺度と一緒に集める。
-  // **尺度は直線距離で引く** — 深度で引くと、視点の背後にある天体が目の前にあるのと同じ尺度に
-  // なり、画面に写っていないのに予算を総取りする。
-  private atmosphereCandidates(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
-  ): readonly AtmosphereCandidate[] {
     const scale = cameraSystem.activeCameraRadialScale;
-    const candidates: AtmosphereCandidate[] = [];
-    for (const id of this.referenceIds) {
-      const optics = atmosphereOpticsOf(id);
-      if (optics === null) continue;
-      const surfaceRadius = this.ephemeris.motionOf(id).def.radius;
-      const center = this.ephemeris.positionOf(id, displayTime);
-      candidates.push({
-        body: { center: fo.RtoThreeV3(center), surfaceRadius, optics },
-        distance: len(sub(cameraSystem.activeCameraPos, center)),
-        metersPerPixel: scale(center),
-      });
-    }
-    return candidates;
+    const candidates = this.entities.flatMap((body) => {
+      const candidate = body.atmosphereCandidateAt(fo, displayTime, cameraSystem.activeCameraPos, scale);
+      return candidate === null ? [] : [candidate];
+    });
+    this.atmosphere.setDraws(atmosphereDraws(candidates, graphics.atmosphere));
   }
 
-  // 星球は描画原点(= カメラ)に固定した半径の殻。広範囲視点では CELESTIAL_SHELL_RADIUS まで
-  // 拡大する(far は dist に連動して毎フレーム変わるため、殻の拡大率はそこから独立させる)。
+  // 星球は描画原点(= カメラ)に固定した半径の殻。
   private syncStars(cameraSystem: CameraSystem, fixedBrightnessScale: number, visible: boolean): void {
     this.stars.mesh.position.set(0, 0, 0);
-    this.stars.mesh.scale.setScalar(cameraSystem.overviewMode ? C.CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS : 1.0);
+    this.stars.mesh.scale.setScalar(celestialShellScale(cameraSystem.overviewMode));
     this.stars.mesh.visible = visible;
     this.stars.setFixedBrightnessScale(fixedBrightnessScale);
   }
 
+  // ECI の法線を描画座標のベクトルへ移し、単位長へそろえる。
   private toThreeNormal(normal: Vec3): THREE.Vector3 {
     return new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
   }
 
-  // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。cameraPos はフェード
-  // 距離を測る基準(カメラの真の ECI 位置)。
+  // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。実体も濃さも個体が
+  // 持ち、ここは表示ポリシーから「出すか」だけを決めて個体へ指示する。
+  // cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
-    simTime: number, fo: FloatingOrigin, overviewMode: boolean, geostationaryOrbitVisible: boolean,
-    focusId: string | undefined,
-    toggles: BodyClassToggles, sharedVisibilityPolicy: MapVisibilityPolicy | null,
-    nearbyIds: readonly string[], camera: THREE.Camera, cameraPos: Vec3,
+    simTime: number, fo: FloatingOrigin, visibilityPolicy: MapVisibilityPolicy | null,
+    camera: THREE.Camera, cameraPos: Vec3,
   ): void {
-    if (!overviewMode) {
-      this.geoLine.sync(null, fo, camera);
-      for (const [id] of this.referenceLines) this.removeReferenceLine(id);
+    if (visibilityPolicy === null) {
+      for (const body of this.entities) body.removeReferenceLine();
       return;
     }
-    const visibilityPolicy = sharedVisibilityPolicy ?? new MapVisibilityPolicy(
-      this.ephemeris,
-      toggles,
-      focusId,
-      nearbyIds,
-    );
-    this.geoLine.sync(
-      geostationaryOrbitVisible ? this.geoElements : null,
-      fo, camera);
-    if (geostationaryOrbitVisible && 'earth' in this.ephemeris.registry) {
-      const earthPos = this.ephemeris.positionOf('earth', simTime);
-      const distToEarth = len(sub(earthPos, cameraPos));
-      // 静止軌道リングは 240,000km で薄れ始め 720,000km で消える。
-      const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 2.4e8) / 4.8e8));
-      this.geoLine.setOpacity(0.55 * geoFade);
-    }
-    for (const id of this.referenceIds) {
-      if (!visibilityPolicy.body(id).orbit) {
-        this.removeReferenceLine(id);
+    for (const body of this.entities) {
+      // 恒星は公転しないので線を持たない。非表示の間は実体ごと解放し、頂点バッファを残さない。
+      if (body.motion.kind === 'star' || !visibilityPolicy.body(body.id).orbit) {
+        body.removeReferenceLine();
         continue;
       }
-      const line = this.ensureReferenceLine(id);
-      const el = this.orbitElementsFor(id, simTime);
-      line.sync(el, fo, camera);
-      const dist = len(sub(this.ephemeris.stateOf(id, simTime).r, cameraPos));
-      line.setOpacity(this.referenceLineOpacityAt(id, dist));
+      body.syncReferenceLine(this.scene, simTime, fo, camera, cameraPos);
     }
   }
 
-  // 静止軌道に沿った半透明の小さなテキスト文字ラベルを描画する。
-  private syncGeoLabels(
-    displayTime: number,
-    overviewMode: boolean,
-    geostationaryOrbitVisible: boolean,
-    cameraSystem: CameraSystem,
-    markerManager: MarkerManager | null,
-    celestialBodies: readonly CelestialBody[],
-  ): void {
-    const keys = ['geolabel-0', 'geolabel-1', 'geolabel-2', 'geolabel-3'];
-    if (!markerManager || !overviewMode || !geostationaryOrbitVisible || !this.geoElements || !('earth' in this.ephemeris.registry)) {
-      if (markerManager) {
-        for (const key of keys) markerManager.hide(key);
-      }
-      return;
-    }
-
-    const earthPos = this.ephemeris.positionOf('earth', displayTime);
-    const cameraPos = cameraSystem.activeCameraPos;
-    const distToEarth = len(sub(earthPos, cameraPos));
-    // フェードアウト距離をさらに2倍(240,000km〜720,000km)にし、視認性を維持(0.90 * geoFade)
-    const geoFade = 1.0 - Math.min(1, Math.max(0, (distToEarth - 2.4e8) / 4.8e8));
-    const labelOpacity = 0.90 * geoFade;
-
-    if (labelOpacity <= 0.02) {
-      for (const key of keys) markerManager.hide(key);
-      return;
-    }
-
-    const project = cameraSystem.activeCameraProjection;
-    const rGeo = this.geoElements.a;
-    const pHat = this.geoElements.pHat;
-    const qHat = this.geoElements.qHat;
-
-    const numLabels = 1;
-    for (let i = 1; i < 4; i++) markerManager.hide(keys[i]!);
-    for (let i = 0; i < numLabels; i++) {
-      const key = keys[i]!;
-      const theta = Math.PI / 4;
-      const cosT = Math.cos(theta);
-      const sinT = Math.sin(theta);
-
-      const pos = add(earthPos, add(scale(pHat, rGeo * cosT), scale(qHat, rGeo * sinT)));
-
-      const p0 = project(pos);
-      if (!p0.front || isOccluded(cameraPos, pos, celestialBodies)) {
-        markerManager.hide(key);
-        continue;
-      }
-
-      markerManager.set(
-        key,
-        'mk-geolabel',
-        'GEO (35,786km)',
-        p0.x,
-        p0.y,
-        p0.front,
-        '',
-        labelOpacity,
-        undefined,
-        undefined,
-        false,
-        true,
-        C.MARKER_PRIORITY.ORBITAL_NODE,
-        len(sub(pos, cameraPos)),
-      );
-    }
-  }
-
-  // カメラから天体までの距離 dist に応じた参照軌道線の不透明度。惑星と衛星でフェード距離が
-  // 異なる。
-  private referenceLineOpacityAt(id: string, dist: number): number {
-    const isSatellite = this.ephemeris.motionOf(id).kind === 'satellite';
-    const nearDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : PLANET_ORBIT_LINE_FADE_NEAR_DIST;
-    const farDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_FAR_DIST : PLANET_ORBIT_LINE_FADE_FAR_DIST;
-    const t = Math.min(1, Math.max(0, (dist - nearDist) / (farDist - nearDist)));
-    return t * REFERENCE_LINE_OPACITY;
-  }
-
-  // 点群はマップを一度も開かないプレイでは不要。最初のマップ更新時にだけ生成・登録する。
-  private ensurePointField(): PointFieldView {
-    if (this.pointFieldView === null) {
-      this.pointFieldView = new PointFieldView();
-      this.pointFieldView.build(this.scene);
-    }
-    return this.pointFieldView;
-  }
-
-  private ensureReferenceLine(id: string): OrbitLine {
-    const existing = this.referenceLines.get(id);
-    if (existing) return existing;
-    const color = this.ephemeris.motionOf(id).kind === 'satellite'
-      ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
-    const line = new OrbitLine({ color, opacity: REFERENCE_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.reference });
-    this.scene.add(line.line);
-    this.referenceLines.set(id, line);
-    return line;
-  }
-
-  private removeReferenceLine(id: string): void {
-    const line = this.referenceLines.get(id);
-    if (!line) return;
-    line.line.removeFromParent();
-    line.dispose();
-    this.referenceLines.delete(id);
-  }
-
-  // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も
-  // ECI 上を動くので、固定 CelestialBody ではなくその時刻の状態を毎回引いて組む。
-  private orbitElementsFor(id: string, simTime: number): OrbitalElements | null {
-    const centerMotion = this.ephemeris.motionOf(id).primary;
-    if (centerMotion === null) return null;
-    const centerId = centerMotion.id;
-    const centerDef = centerMotion.def;
-    const center: CelestialBody = {
-      id: centerId, mu: centerDef.mu, radius: centerDef.radius, state: this.ephemeris.stateOf(centerId, simTime),
-      accel: v3(), degree2: null, atmosphere: null, isStar: centerMotion.kind === 'star',
-    };
-    return orbitalElementsOf(this.ephemeris.stateOf(id, simTime), center);
+  // 点群はマップを一度も開かないプレイでは不要。最初のマップ更新時にだけシーンへ登録する。
+  private buildPointField(pointField: PointFieldView): void {
+    if (this.pointFieldBuilt) return;
+    this.pointFieldBuilt = true;
+    pointField.build(this.scene);
   }
 
   // 天体ビュー・星殻・グリッド・点群・参照線・照明を残さず解放する。
   dispose(): void {
-    // 静止軌道参照リングと公転天体ぶんの参照軌道線。
-    this.geoLine.line.removeFromParent();
-    this.geoLine.dispose();
-    for (const id of [...this.referenceLines.keys()]) this.removeReferenceLine(id);
     this.orbitGuideLines.dispose();
     this.zeroVelocityLines.dispose();
     // ライティングモデルを組ませるためだけの光源。
@@ -576,8 +545,11 @@ export class CelestialSystem {
     this.stars.dispose();
     this.celestialGrid.dispose();
     this.scaleGrid.dispose();
-    // 各天体ビューと、マップを一度でも開いていれば生成済みの小天体点群。
-    for (const body of this.bodies) body.dispose();
-    this.pointFieldView?.dispose();
+    // 各天体ビュー(参照軌道線を含む)と、マップを一度でも開いていれば生成済みの小天体点群。
+    for (const body of this.entities) {
+      body.removeReferenceLine();
+      body.dispose();
+    }
+    if (this.pointFieldBuilt) this.pointFieldView?.dispose();
   }
 }

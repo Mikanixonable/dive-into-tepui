@@ -1,7 +1,6 @@
-import { bodyClassOf } from '../../celestial/body-class';
-import { LAGRANGE_ID, lagrangePoint } from '../object-groups';
-import type { Ephemeris } from '../../../physics/ephemeris';
-import type { BodyClass } from '../../celestial/body-class';
+import { isLagrangeId, lagrangePointOf } from '../../celestial/lagrange-id';
+import type { CelestialClass } from '../../celestial/celestial-entity/celestial-entity-def';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable, MapPickKind } from '../../pickable/map-pickable';
 
 // 1区画ぶんの表示順と親子構造を id で持つ。表示値(距離・詳細)は毎フレーム
@@ -12,7 +11,7 @@ export interface SectionOrder {
   readonly childIds: Map<string, string[]>;
 }
 
-export type PhysicalObjectListFilter = 'artifact' | 'enemy' | 'lagrange' | Exclude<BodyClass, 'star'>;
+export type PhysicalObjectListFilter = 'artifact' | 'enemy' | 'lagrange' | Exclude<CelestialClass, 'star'>;
 
 export const FILTERS: readonly (readonly [PhysicalObjectListFilter, string])[] = [
   ['planet', '惑星'],
@@ -32,7 +31,7 @@ export const SORTS: readonly (readonly [PhysicalObjectListSort, string])[] = [
   ['name', '名前'],
 ];
 
-type LagrangeSortKey = ReturnType<typeof lagrangePoint>;
+type LagrangeSortKey = ReturnType<typeof lagrangePointOf>;
 
 // refreshInputs() が変化検知に使う、前フレームの候補1件ぶんの記録。id をキーにした別配列で
 // 対応付けると増減のたびに整合性が崩れるので、1件を1レコードにまとめて保持する。
@@ -78,7 +77,7 @@ export class PhysicalObjectListOrder {
   private readonly idsInSectionScratch = new Set<string>();
   private readonly clusterParentSeenScratch = new Set<string>();
 
-  public constructor(private readonly ephemeris: Ephemeris) {}
+  public constructor(private readonly celestialSystem: CelestialSystem) {}
 
   public get filteringActive(): boolean {
     return this.query !== '' || this.filter !== null;
@@ -92,8 +91,9 @@ export class PhysicalObjectListOrder {
       return (item.kind === 'player' || item.kind === 'ammo' || item.kind === 'fuel' || item.kind === 'base') && item.inFocusedSystem !== false;
     }
     if (this.filter === 'enemy') return item.kind === 'ship' && item.inFocusedSystem !== false;
-    if (this.filter === 'lagrange') return item.kind === 'body' && LAGRANGE_ID.test(item.id);
-    return item.kind === 'body' && !LAGRANGE_ID.test(item.id) && bodyClassOf(this.ephemeris, item.id) === this.filter;
+    if (this.filter === 'lagrange') return item.kind === 'body' && isLagrangeId(item.id);
+    return item.kind === 'body' && !isLagrangeId(item.id)
+      && this.celestialSystem.entityOf(item.id).bodyClass === this.filter;
   }
 
   // 並べ替え・親子構造を決める入力(候補の顔ぶれ・表示名・種別・親・絞り込みの通過可否と
@@ -142,7 +142,7 @@ export class PhysicalObjectListOrder {
     matched.sort((a, b) => this.compare(a, b));
     order.ids.length = 0;
     for (const item of matched) order.ids.push(item.id);
-    // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(bodyClassOf が
+    // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(親の bodyClass が
     // 'planet' のため)。親を惑星ごとのクラスタ見出しとして拾い出す — フィルタの一致件数
     // (ヘッダーの (N))には含めないので、order.ids は素通しのまま、木を組む先だけ displayIds へ分ける。
     const displayIds = this.displayIdsScratch;
@@ -189,7 +189,7 @@ export class PhysicalObjectListOrder {
     return (distanceTie ? 0 : dist) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
   }
 
-  // lagrangePoint() は正規表現 exec とオブジェクト割り当てを伴うが、id は不変なので結果は
+  // lagrangePointOf() は正規表現 exec とオブジェクト割り当てを伴うが、id は不変なので結果は
   // 変わらない。orderStillSorted() が毎フレーム全 ids ぶん compare() を呼ぶので、id ごとに
   // 一度だけ計算して使い回す。ラグランジュ点は天体だけが持つので、他の種別はキャッシュへ
   // 載せずに弾く — 使い捨ての id で器が膨らむのを防ぐ。
@@ -197,7 +197,7 @@ export class PhysicalObjectListOrder {
     if (item.kind !== 'body') return null;
     const cached = this.lagrangeSortKeyCache.get(item.id);
     if (cached !== undefined) return cached;
-    const key = lagrangePoint(item.id);
+    const key = lagrangePointOf(item.id);
     this.lagrangeSortKeyCache.set(item.id, key);
     return key;
   }

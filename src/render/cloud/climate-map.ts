@@ -2,7 +2,7 @@
 // 標本化する。雲より桁で低周波な、その天体固有の分布だけを持つ。
 import * as THREE from 'three/webgpu';
 import { texture, vec2 } from 'three/tsl';
-import { R_EARTH } from '../../physics/solar-system/constants';
+import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { equirectUvFromDirection } from './field-projection';
 import { eastAt, northAt } from './sphere-frame';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';

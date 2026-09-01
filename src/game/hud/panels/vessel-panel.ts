@@ -15,7 +15,7 @@ import type { KeyBinding } from '../../input/key-mapping';
 import { Player } from '../../player/player';
 import type { RadiatorSide } from '../../player/radiator';
 import type { SolarSide } from '../../player/power';
-import { Base } from '../../game-entity/base';
+import { Base } from '../../dynamic/dynamic-entity/base';
 
 const SYNC_INTERVAL_MS = 100;
 

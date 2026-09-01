@@ -1,7 +1,7 @@
 // 全ステージ共通の骨格。撃破数による勝利判定・常時解放・HUD補助表示なしを既定実装として持ち、
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
-import { Enemy } from '../game-entity/enemy';
+import { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import { Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
@@ -12,22 +12,28 @@ import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { ClearCounts, UnlockManager } from '../unlock-manager';
-import type { EntityManager } from '../simulation/entity-manager';
-import { SimSpeedManager } from '../simulation/sim-speed-manager';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
-import { Ephemeris } from '../../physics/ephemeris';
-import type { Simulator } from '../simulation/simulator';
+import type { Simulator } from '../dynamic/simulator';
 import type { StageSaveData } from '../save/save-data';
-import type { MapVisibilityPolicy } from '../celestial/map-visibility';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ObjectType } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ActivePlayerController } from '../active-controllable-controller';
-import { loadAbsoluteEphemeris } from '../../physics/ephemeris-catalog';
-import { profileAtOrNull } from '../../physics/ephemeris-profile';
-import { SIM_EPOCH_ET, SIM_EPOCH_JD_TDB } from '../simulation/sim-epoch';
-import { solarSystemMotions } from '../../physics/solar-system/solar-system';
+import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
+import { profileAtOrNull } from '../../physics/ephemeris/profile';
+import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
+
+// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
+// 自分の epoch としてこれを宣言する — ステージに別の日時を与えるのはその1行を変えるだけ。
+// **この定数を stage.ts の外から import しない**(元期は共有の定数ではなく、ステージの宣言)。
+export const STORY_EPOCH: TdbJulianDate =
+  calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
+import { solarSystem } from '../celestial/solar-system/solar-system';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { PhaseOffsets } from '../../physics/celestial-motion';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
@@ -53,11 +59,11 @@ export type StageDeps = [
   worldSfx: WorldSfx,
   uiSfx: UiSfx,
   scene: THREE.Scene,
-  entities: EntityManager,
+  entities: DynamicSystem,
   unlockManager: UnlockManager,
   fx: EffectsSystem,
   markerManager: MarkerManager,
-  ephemeris: Ephemeris,
+  celestialSystem: CelestialSystem,
   simulator: Simulator,
   activePlayers: ActivePlayerController,
 ];
@@ -65,10 +71,15 @@ export type StageDeps = [
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
   readonly id: StageId;
-  createEphemeris(
-    phaseOffsets: PhaseOffsets, onProgress?: (ratio: number) => void,
-    startSimTime?: number,
-  ): Promise<Ephemeris>;
+  createCelestialSystem(
+    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
+    onProgress?: (ratio: number) => void,
+  ): Promise<CelestialSystem>;
+  // simTime=0 に置く絶対時刻。**基底に既定値は無く、全ステージが自分で宣言する** —
+  // 置くと宣言し忘れが型検査に落ちなくなり、元期が共有の定数へ静かに戻る。
+  readonly epoch: TdbJulianDate;
+  // 開始前にプレイヤーへ開始日時を選ばせるか(GAME.md 9.0)。選ばせないステージは epoch で始まる。
+  readonly picksStartEpoch: boolean;
   // 選択画面が読む項目。
   readonly selectLabel: string;
   readonly selectSub: string;
@@ -98,29 +109,25 @@ export type StageResult = {
 };
 
 export abstract class Stage {
-  // 起動時に1度だけ組む天体暦。既定は現実の太陽系で、開始時刻(startSimTime、省略時は
-  // ゲーム既定のエポック)が近未来/遠未来いずれかの高精度期間に入っていれば精密暦パックを
-  // 読み込み、どちらにも入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
-  public static async createEphemeris(
-    phaseOffsets: PhaseOffsets, onProgress?: (ratio: number) => void,
-    startSimTime = 0,
-  ): Promise<Ephemeris> {
-    const startJdTdb = SIM_EPOCH_JD_TDB + startSimTime / 86400;
-    const profile = profileAtOrNull(startJdTdb);
-    if (profile === null) {
-      const motions = solarSystemMotions('earth', phaseOffsets, SIM_EPOCH_ET, null, SIM_EPOCH_JD_TDB);
-      return new Ephemeris(motions.all, 'earth', phaseOffsets);
-    }
-    const pack = await loadAbsoluteEphemeris(
-      profile.id, profile.validStartJdTdb, profile.validEndJdTdb, onProgress,
+  // 起動時に1度だけ組む星系。既定は現実の太陽系で、元期(simTime=0 が指す絶対時刻)が
+  // 近未来/遠未来いずれかの数値暦の期間に入っていれば暦パックを読み込み、どちらにも
+  // 入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
+  public static async createCelestialSystem(
+    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
+    onProgress?: (ratio: number) => void,
+  ): Promise<CelestialSystem> {
+    const profile = profileAtOrNull(epoch.value);
+    const ephemerisPoints = profile === null ? null : await loadEphemerisPoints(
+      profile.id, epoch, profile.validEndJdTdb, onProgress,
     );
-    const motions = solarSystemMotions('earth', phaseOffsets, SIM_EPOCH_ET, pack, SIM_EPOCH_JD_TDB);
-    return new Ephemeris(motions.all, 'earth', phaseOffsets);
+    return solarSystem('earth', phaseOffsets, earthSpinPhase0, ephemerisPoints, epoch);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;
   // タイトルのステージ選択ボタン列に並べない。
   public static readonly hiddenFromSelect: boolean = false;
+  // 開始前に開始日時の指定画面を挟まない。挟むステージだけが true を宣言する。
+  public static readonly picksStartEpoch: boolean = false;
   // 選択画面でこのステージを並べるタブの名前。表示のまとまりだけを決め、挙動には影響しない。
   public static readonly selectGroup: string = 'ステージモード';
 
@@ -152,9 +159,9 @@ export abstract class Stage {
   protected readonly _scene: THREE.Scene;
   protected readonly _fx: EffectsSystem;
   protected readonly _unlockManager: UnlockManager;
-  protected readonly _entities: EntityManager;
+  protected readonly _entities: DynamicSystem;
   protected readonly _markerManager: MarkerManager;
-  protected readonly _ephemeris: Ephemeris;
+  protected readonly _celestialSystem: CelestialSystem;
   protected readonly _simulator: Simulator;
   protected readonly _activePlayers: ActivePlayerController;
 
@@ -174,7 +181,7 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, ephemeris, simulator, activePlayers] = deps;
+    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, celestialSystem, simulator, activePlayers] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -183,7 +190,7 @@ export abstract class Stage {
     this._fx = fx;
     this._entities = entities;
     this._markerManager = markerManager;
-    this._ephemeris = ephemeris;
+    this._celestialSystem = celestialSystem;
     this._simulator = simulator;
     this._activePlayers = activePlayers;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
@@ -232,29 +239,29 @@ export abstract class Stage {
   }
 
   // 敵を entities へ登録し、出撃数をスコアへ記録する。
-  protected addEnemy(enemy: Enemy, entities: EntityManager): void {
+  protected addEnemy(enemy: Enemy, entities: DynamicSystem): void {
     entities.addEnemy(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
   // タンパク質アセットの fetch 待ちで実体化を遅らせうる敵を登録する。準備が整い次第
   // entities へ登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
-  protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, entities: EntityManager): void {
+  protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, entities: DynamicSystem): void {
     entities.spawnEnemyWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。
-  protected behaveAllEnemies(player: Player, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void {
+  protected behaveAllEnemies(player: Player, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     for (const e of entities.enemies) {
-      if (e.alive) e.behave(simTime, player, entities, simSpeed, this._ephemeris);
+      if (e.alive) e.behave(simTime, player, entities, simSpeed, this._celestialSystem);
     }
   }
 
   protected abstract briefingHtml(): string;
   // 初期配置。既定では何も置かない。
-  protected init(_entities: EntityManager): void { }
+  protected init(_entities: DynamicSystem): void { }
   // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
-  public abstract update(dt: number, player: Player | null, entities: EntityManager, simTime: number, simSpeed: SimSpeedManager): void;
+  public abstract update(dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
   public nextSimulationEventTime(_simTime: number): number | null { return null; }

@@ -6,7 +6,7 @@ import {
 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
-import { R_EARTH } from '../../physics/solar-system/constants';
+import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { BakedField } from './baked-field';
 import { CirculatingNoise, coarsenessFor } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';

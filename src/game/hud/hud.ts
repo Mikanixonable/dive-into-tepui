@@ -12,7 +12,6 @@ import { TopBar } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
 import type { Input } from '../input/input';
-import type { CelestialBody } from '../../physics/celestial-body';
 import type { Game } from '../game';
 import type { OverlayLayers } from './overlay-layer';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from './overlay-manager';
@@ -85,8 +84,8 @@ export class Hud {
   }
 
   // 戦闘/マップ HUD コントローラの sync から呼ばれる。窓が無ければ何もしない。
-  public syncOrbitAnalysis(game: Game, celestialBodies: readonly CelestialBody[]): void {
-    this.orbitAnalysisWindow?.sync(game, celestialBodies);
+  public syncOrbitAnalysis(game: Game): void {
+    this.orbitAnalysisWindow?.sync(game);
   }
 
   // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。

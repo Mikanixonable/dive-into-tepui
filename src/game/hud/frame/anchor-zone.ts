@@ -1,13 +1,14 @@
 // マップの座標系UIのうち「何に固定/追随するか」を選ばせるゾーン。上段は登録天体・自艦・
 // 敵・基地・弾薬まで含む全候補から選ぶプルダウン(ObjectPicker)、下段はいまカメラがいる
 // 系の天体だけに絞ったクイックボタン(SegmentedControl)。
-import { Ephemeris } from '../../../physics/ephemeris';
 import { FRAME_ROLES } from '../../../physics/frame';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable } from '../../pickable/map-pickable';
 import { SegmentedControl } from '../widgets';
 import { injectOnce } from '../widgets/inject-style';
 import { frameRoleAnchorId, frameRoleName } from './frame-labels';
-import { groupPickables, LAGRANGE_ID, lagrangeParentId } from '../object-groups';
+import { isLagrangeId, lagrangeParentId } from '../../celestial/lagrange-id';
+import { groupPickables } from '../object-groups';
 import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
 import type { OverlayManager } from '../overlay-manager';
 
@@ -29,16 +30,15 @@ export class AnchorZone {
 
   private readonly picker: ObjectPicker<string | null>;
   private readonly quick: SegmentedControl<string | null>;
-  private readonly ephemeris: Ephemeris;
 
   // popupRoot は ObjectPicker のポップアップの親、title はプルダウンの見出し。releaseLabel が
   // null なら「解除」の選択肢そのものを出さない(プルダウン先頭・クイックボタン先頭の両方)。
   public constructor(
-    popupRoot: HTMLElement, title: string, ephemeris: Ephemeris, private readonly releaseLabel: string | null,
+    popupRoot: HTMLElement, title: string, private readonly celestialSystem: CelestialSystem,
+    private readonly releaseLabel: string | null,
     overlayManager: OverlayManager,
   ) {
     injectOnce('anchor-zone', STYLE);
-    this.ephemeris = ephemeris;
 
     this.element = document.createElement('div');
     this.element.className = 'hud-anchor-zone';
@@ -55,7 +55,7 @@ export class AnchorZone {
     const groups: ObjectPickerGroup<string | null>[] = [
       ...(this.releaseLabel !== null ? [{ label: '', items: [[null, this.releaseLabel] as const] }] : []),
       ROLE_GROUP,
-      ...groupPickables(this.ephemeris, pickables, includeAllCelestialBodies),
+      ...groupPickables(this.celestialSystem, pickables, includeAllCelestialBodies),
     ];
     this.picker.setGroups(groups);
   }
@@ -72,7 +72,7 @@ export class AnchorZone {
     // 絞った天体を親に持つラグランジュ点も、クイックボタンの対象へ加える。
     const lagrangeIds: string[] = [];
     for (const p of pickables) {
-      if (p.kind !== 'body' || !LAGRANGE_ID.test(p.id)) continue;
+      if (p.kind !== 'body' || !isLagrangeId(p.id)) continue;
       if (baseIdSet.has(lagrangeParentId(p.id))) lagrangeIds.push(p.id);
     }
 

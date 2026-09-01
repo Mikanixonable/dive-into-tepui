@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { add, cross, dot, len, norm, scale, sub, type Vec3, v3 } from '../../math/vec3';
 import { qInvert, qRotate, type Quat } from '../../physics/attitude';
-import type { SphereHit, Triangle } from '../game-entity/base-collision';
+import type { SphereHit, Triangle } from '../dynamic/dynamic-entity/base-collision';
 
 interface BVHNode {
   readonly min: Vec3;
