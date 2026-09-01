@@ -25,7 +25,7 @@ import { LIT_OPAQUE_LAYER, SUN_SHADOW_CASTER_LAYER } from '../../src/render/pipe
 import { v3 } from '../../src/math/vec3';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, PROTEIN_COLOR_LABELS,
-  proteinColorModesFor, proteinDisplayFromLegacyColorMode,
+  proteinColorModesFor,
 } from '../../src/game/protein/protein-display';
 
 const asset = rawAsset as unknown as ProteinAssetDefinition;
@@ -308,12 +308,6 @@ export function register(): void {
     assert.equal(state.serialize().modifications['phosphate-1'], 'empty');
   });
 
-  test('protein combat: new and legacy-restored integrity starts at the authoritative 320 HP', () => {
-    assert.equal(new ProteinCombatState(asset).integrityHp, asset.integrity.maxHp);
-    assert.equal(new ProteinCombatState(asset, undefined, 6).integrityHp, asset.integrity.maxHp);
-    assert.equal(new ProteinCombatState(asset, undefined, 3).integrityHp, asset.integrity.maxHp / 2);
-  });
-
   test('protein combat: active modification scales protein projectile damage and clears cleanly', () => {
     const state = new ProteinCombatState(asset);
     assert.equal(state.projectileDamage(10), 11);
@@ -361,7 +355,7 @@ export function register(): void {
     const baseRootPosition = root.position.clone();
     const baseRootQuaternion = root.quaternion.clone();
     const baseRootScale = root.scale.clone();
-    const runtime = new ProteinRuntime(root, asset, motion, undefined, undefined, 'enemy-42');
+    const runtime = new ProteinRuntime(root, asset, motion, undefined, 'enemy-42');
     const active = asset.sites.find((entry) => entry.id === 'primary-active-site')!;
     const origin = v3(100, 200, 300);
     const activeWorld = runtime.activeSiteWorldPosition(origin, { x: 0, y: 0, z: 0, w: 1 });
@@ -419,22 +413,4 @@ export function register(): void {
     assert.ok(!isProteinDisplaySettings({ representation: 'molecular', colorMode: 'chain' }));
   });
 
-  test('protein display: legacy color modes restore without losing valid ribbon choices', () => {
-    assert.deepEqual(proteinDisplayFromLegacyColorMode(undefined), { representation: 'ribbon', colorMode: 'chain' });
-    for (const colorMode of [
-      'chain', 'b-factor', 'rainbow', 'secondary-structure', 'component',
-    ] as const) {
-      assert.deepEqual(proteinDisplayFromLegacyColorMode(colorMode), {
-        representation: 'ribbon',
-        colorMode,
-      });
-    }
-    // 未知の着色モードは鎖別着色として復元する。
-    for (const unknownMode of ['publication', 'entity', 'component-role'] as const) {
-      assert.deepEqual(
-        proteinDisplayFromLegacyColorMode(unknownMode as unknown as Parameters<typeof proteinDisplayFromLegacyColorMode>[0]),
-        { representation: 'ribbon', colorMode: 'chain' },
-      );
-    }
-  });
 }

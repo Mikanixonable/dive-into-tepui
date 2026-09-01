@@ -1,4 +1,4 @@
-// 個々の敵機を、kind・座標・色などのパラメータから直接生成する。
+// 個々の敵機を、座標・色・機種などのパラメータから直接生成する。
 // 中間データ(spec/preset)は持たない — 呼び出し側(各 Stage、stages/)がこの関数を直接呼んで
 // Enemy を得る。意図的に異なる2つの姿勢方針(無秩序に漂う/プログレードで接近する)を
 // この1ファイルに並べて置き、互いを見比べやすくする。
@@ -9,7 +9,7 @@
 // 寄せていない — 緯度による基準面のずれ(赤道 +7km / 極 -14km)は、出現高度に持たせた余裕に
 // 埋もれる大きさに収まる。地球以外を主星とするステージで敵を出すなら、この前提ごと組み直す。
 import * as THREE from 'three/webgpu';
-import { qFromForwardUp, randomQuat } from '../../../physics/attitude';
+import { qFromForwardUp, randomQuat, type Quat } from '../../../physics/attitude';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../celestial/solar-system/constants';
 import { stateFromOrbitalElements } from '../../../physics/elements';
@@ -17,7 +17,9 @@ import { randSym } from '../../../math/random';
 import { addScaled, len, norm, rotateAxis, scale, v3, type Vec3 } from '../../../math/vec3';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
-import { Enemy, inertiaForEnemyKind, type EnemyKind } from '../../dynamic/dynamic-entity/enemy';
+import { Enemy } from '../../dynamic/dynamic-entity/enemy';
+import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
+import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import type { FormationRole } from '../../save/save-data';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
@@ -29,40 +31,33 @@ function phasedState(base: KinematicState, dAlong: number): KinematicState {
   return kinematicState<'eci'>(base.t, rotateAxis(base.r, hHat, ang), rotateAxis(base.v, hHat, ang));
 }
 
-// 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体): ランダム姿勢+角速度。
+// 自由回転で漂う敵に共通の初期姿勢: ランダムな姿勢・角速度を与える。
+function driftingAttitude(): { q: Quat; w: Vec3 } {
+  return { q: randomQuat(), w: v3(randSym(0.12), randSym(0.12), randSym(0.12)) };
+}
+
+// 無秩序に漂う敵(訓練クラスタ・通常ステージのプリセット敵の生成本体)。
 export function generateDriftingEnemy(name: string, state: KinematicState, _hp: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
-  return generateFreeEnemy(name, state, accent, orbitLineColor, { kind: 'drifting' }, worldSfx, fx, scene);
+  return new MetalEnemy(
+    { name, state, ...driftingAttitude(), accent, orbitLineColor, typeIndex: null },
+    worldSfx, fx, scene,
+  );
 }
 
-// 登録されたタンパク質アセットを、現在の表示設定で描画する敵。
-export function generateProteinEnemy(name: string, state: KinematicState, assetId: ProteinAssetId, display: ProteinDisplaySettings, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene): Enemy {
-  return generateFreeEnemy(name, state, 0xffffff, 0xffffff, { kind: 'protein', assetId, display }, worldSfx, fx, scene);
-}
-
-function generateFreeEnemy(
-  name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, enemyKind: EnemyKind,
+// 登録されたタンパク質アセットを、現在の表示設定で描画する敵。陣形に属する個体だけが
+// formationId と役割を持ち、属さない個体は単体敵になる。
+export function generateProteinEnemy(
+  name: string, state: KinematicState, assetId: ProteinAssetId, display: ProteinDisplaySettings,
   worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
   formationId?: string, formationRole?: FormationRole,
 ): Enemy {
-  return new Enemy(
+  return new ProteinEnemy(
     {
-      name,
-      state,
-      enemyKind,
-      att: {
-        // ランダムな姿勢・角速度を与える
-        q: randomQuat(),
-        w: v3(randSym(0.12), randSym(0.12), randSym(0.12)),
-        inertia: inertiaForEnemyKind(enemyKind),
-      },
-      accent,
-      orbitLineColor,
-      formationId,
-      formationRole,
+      name, state, ...driftingAttitude(),
+      accent: 0xffffff, orbitLineColor: 0xffffff,
+      assetId, display, formationId, formationRole,
     },
-    worldSfx,
-    fx,
-    scene,
+    worldSfx, fx, scene,
   );
 }
 
@@ -82,15 +77,15 @@ export function proteinFormationSpawns(
   return [
     {
       assetId: 'pdb-5i4r',
-      build: () => generateFreeEnemy(`${name}-ATTACKER`, centerState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-5i4r', display }, worldSfx, fx, scene, formationId, 'attacker'),
+      build: () => generateProteinEnemy(`${name}-ATTACKER`, centerState, 'pdb-5i4r', display, worldSfx, fx, scene, formationId, 'attacker'),
     },
     {
       assetId: 'pdb-8ruc-rubisco',
-      build: () => generateFreeEnemy(`${name}-SHIELD`, shieldState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-8ruc-rubisco', display }, worldSfx, fx, scene, formationId, 'shield'),
+      build: () => generateProteinEnemy(`${name}-SHIELD`, shieldState, 'pdb-8ruc-rubisco', display, worldSfx, fx, scene, formationId, 'shield'),
     },
     {
       assetId: 'pdb-6n2y-atp-synthase',
-      build: () => generateFreeEnemy(`${name}-ENERGY`, energyState, 0xffffff, 0xffffff, { kind: 'protein', assetId: 'pdb-6n2y-atp-synthase', display }, worldSfx, fx, scene, formationId, 'energy'),
+      build: () => generateProteinEnemy(`${name}-ENERGY`, energyState, 'pdb-6n2y-atp-synthase', display, worldSfx, fx, scene, formationId, 'energy'),
     },
   ];
 }
@@ -149,20 +144,17 @@ export function generateMolniyaEnemy(
 export function generateApproachingEnemy(
   name: string, state: KinematicState, _hp: number, accent: number, orbitLineColor: number, typeIndex: number, waveId: number | undefined, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): Enemy {
-  return new Enemy(
+  return new MetalEnemy(
     {
       name,
       state,
-      enemyKind: { kind: 'stage0', typeIndex },
-      att: {
-        // 機首をプログレードへ向ける
-        q: qFromForwardUp(state.v, state.r) ?? randomQuat(),
-        w: v3(0, 0, 0),
-        inertia: inertiaForEnemyKind({ kind: 'stage0', typeIndex }),
-      },
+      // 機首をプログレードへ向ける
+      q: qFromForwardUp(state.v, state.r) ?? randomQuat(),
+      w: v3(0, 0, 0),
       accent,
       orbitLineColor,
       waveId,
+      typeIndex,
     },
     worldSfx,
     fx,
