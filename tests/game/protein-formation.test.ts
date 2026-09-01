@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { isFormationEnergyAvailable, type FormationRole } from '../../src/game/dynamic/dynamic-entity/enemy-formation';
+import { isFormationEnergyAvailable } from '../../src/game/dynamic/dynamic-entity/protein-enemy';
+import type { FormationRole } from '../../src/game/dynamic/dynamic-entity/enemy';
 
 type FormationMember = {
   readonly alive: boolean;
