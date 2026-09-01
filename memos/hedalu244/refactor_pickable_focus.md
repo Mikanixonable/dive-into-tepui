@@ -165,7 +165,7 @@ Player」が並立する。
 **覆されたとき:** 手順2〜5 を「具象クラスを作る」「実体へ畳む」の2段に割り直す。
 手順6以降は変わらない。
 
-### 2. 実体でないものはマーカークラスにする
+### 2. 実体でないものはマーカークラスにする(実施済み — ff2531a1)
 
 `apsis` / `relnode` / `eqnode` / ラグランジュ点は実体ではない(積分の対象でもメッシュの
 持ち主でもない)が、**画面上に存在し、右クリックの挙動を持つ**。これは1つのオブジェクトの
@@ -180,8 +180,38 @@ Player」が並立する。
 最終的に `pickable/` に残る `MapPickable` 専用の具象型は、どれにも当たらなかったときへ落ちる
 `EmptySpacePickable` だけになる。
 
-**覆されたとき:** マーカー4種は `pickable/` の具象クラスのまま残し、手順9(描画責務の集約)を
-落とす。手順2〜6 の内容は変わらない。
+いまコードは次の状態にある。
+
+- `marker/apsis-marker.ts` / `relative-node-marker.ts` / `equator-node-marker.ts` /
+  `lagrange-point-marker.ts` と `pickable/empty-space-pickable.ts` があり、
+  `ApsisIcon` / `EqNodeIcon` は無い。
+- **マーカーは生成元が持ち続ける長命オブジェクト。** 毎フレーム `place(...)` で解を書き込み、
+  解けなかったフレームを `gone` で表す。プロパティウィンドウの生存判定がこれを読む。
+- `MapPickable` は identity / 位置 / 可視 / 存否 / 一覧向けの値を持つ interface で、
+  `Player` / `Enemy` / `Base` / `AmmoPickup` / `RcsFuelPickup` / `CelestialEntity` と
+  上記5クラスが実装している。`kind` は手順5まで残る。
+- 「画面に出ているか」の正本は `MarkerManager.shows(key)` ひとつ。
+  `GroupedMarkers.isPickable` / `visibleKeys`・`FocusMarkers.isBodyPickable`・
+  `MapPickables.syncVisibility` は無い。
+- 一覧の派生値は `PhysicalObjectListOrder` の `ListSortKey` が1フレーム1回導く。
+- `MapPropertyRows.rowsFor` / `PhysicalObjectListPanel.sync` / `MapContextActions.sync` は
+  `displayTime` を受け取る。`MapContextActions` は `MarkerManager` を受け取る。
+- `NavTarget.passTimeOf` / `PlanDisplay.apsisTimeOf` は呼び出し元が消えたので無い。
+- 新設: `pickable/body-search-text.ts`(天体区画の行が検索に使う文字列)。
+
+**この手順で変わった挙動。** 以降の目視確認はこの状態を基準にする。
+
+- 弾薬・RCS燃料も、マーカーが出ていないフレームは掴めない(従来は常に掴めた)。
+- 名前トグルを閉じた実体でも、アイコンが出ていれば掴める(従来は掴めなかった)。
+- クラスタ代表に吸収された実体も、アイコンが描かれていれば掴める(従来は代表だけ)。
+- 近点/遠点・AN/DN・赤道交点は、天体遮蔽でフェードしている間は掴めない(従来は掴めた)。
+- 表示トグル・ラベル衝突で候補列から外れた天体・ラグランジュ点のプロパティウィンドウは、
+  閉じずに残る(消滅・撃破・回収では閉じる)。手順6が目指す形を先に満たしている。
+- 赤道交点は「直前の sync 以降に update が書き込んだか」で捨てるため、更新が止まった最初の
+  1フレームだけ候補列に古い交点が残る(描画は従来どおり即座に消える)。
+
+**覆されたとき:** マーカー4種は `pickable/` の具象クラスへ移し、手順9(描画責務の集約)を
+落とす。手順3〜6 の内容は変わらない。
 
 ### 3. 種別語彙は `DynamicEntityKind` 1つ(実施済み — a77c1cc4)
 
@@ -324,69 +354,6 @@ interface ListSortKey {
 
 ## 手順
 
-### 手順 2. `MapPickable` を interface にして、実体・マーカーに実装させる
-
-**目的**
-
-被選択物の**同一性・位置・可視性・存否**を、その物体自身が答える形にする。振る舞い
-(メニュー・行・一覧)はまだ移さない — この手順は器を差し替えるだけで、**挙動を変えない。**
-`kind` は各実装が `readonly kind` として持ち続け、外側の分岐もそのまま残る。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `pickable/map-pickable.ts` | `MapPickable` を下記の interface へ。`pickNearest` は `{ readonly pos: Vec3 }` を取る形をやめ、位置を取り出す関数を受ける形にする |
-| `player/player.ts` | `implements MapPickable`。`mapPosAt` = `stateAt(t)?.r`、`gone` = `findPlayer` 相当の除去判定、`mapState` = `state` |
-| `dynamic/dynamic-entity/enemy.ts` / `base.ts` / `ammo-pickup.ts` / `rcs-fuel-pickup.ts` | 同上。`gone` = `!alive` |
-| `celestial/celestial-entity/celestial-entity.ts` | `implements MapPickable`。`mapPosAt` = `stateAt(t).r`、`gone` = `false`、`mapState` = `stateAt(t)` |
-| `marker/apsis-marker.ts` | **(新規)** `plan-display.ts:48-50` の `ApsisIcon` を昇格。`id` / `name` / `pos` / `time` / `ownerName` / `label` を持つ |
-| `marker/relative-node-marker.ts` | **(新規)** `nav-target.ts:301-311` が組んでいる AN / DN / 再接近点のリテラルを昇格 |
-| `marker/equator-node-marker.ts` | **(新規)** `equator-node-marker-pair.ts:17-19` の `EqNodeIcon` を昇格 |
-| `marker/lagrange-point-marker.ts` | **(新規)** `focus-markers.ts` がラグランジュ点として組んでいる候補を昇格。`parentId` と点番号(1〜5)を値として持ち、id からの正規表現解決に頼らない |
-| `pickable/empty-space-pickable.ts` | **(新規)** `map-context-actions.ts:446` のリテラルを昇格 |
-| `pickable/map-pickables.ts` | `MutableMapPickable` / `itemRecords` / `activeRecordKeys` / `addCandidate` / `appendPickable` を削除。候補列は各供給元が返す `MapPickable` をそのまま積む。`syncVisibility()`(51-63)を削除し、`pickable` の参照を `shownOnMap()` の問い合わせへ置き換える |
-| `camera/focus-markers.ts:271-325` | `bodyPickables` は `CelestialEntity` と `LagrangePointMarker` を返すだけにする。`cachedBodyPickables*` / `bodyPickableRecords` / `cacheBodyPickable` を削除 |
-| `plan/plan-display.ts:48-50,88,116,130,169-176,233-,323` | `ApsisIcon` を `ApsisMarker` へ差し替え |
-| `nav-target.ts:301-311` | `RelativeNodeMarker` を返す |
-| `marker/equator-node-marker-pair.ts:17-19,93-113` | `EqNodeIcon` を `EquatorNodeMarker` へ差し替え |
-| `camera/focus-target.ts:26-33` | `FocusCandidate` は `{ id, pos }` を要求している。`pos` がメソッドになるので `{ id: string; mapPosAt(t: number): Vec3 \| null }` へ変えるか、`map-camera.ts` 側で解決済みの位置を渡す。**`focus-target.ts` は `tsconfig.test.json` の include に入っているので、`MapPickable` 型そのものを import してはいけない**(既存コメントの理由がそのまま生きる) |
-| `camera/map-camera.ts:443,499` / `camera/camera-system.ts:217` | 候補列の型に追随 |
-| `hud/frame/frame-controls.ts:98` / `anchor-zone.ts:54,65` / `camera-frame-panel.ts:122` / `trajectory-frame-panel.ts:69` | 同上 |
-
-```ts
-// src/game/pickable/map-pickable.ts
-// この手順では identity/位置/可視/存否まで。手順3〜5で口が増える。
-export interface MapPickable {
-  readonly id: string;
-  readonly name: string;
-  // 表示時刻の ECI 位置。予測地平の外などで求まらないフレームは null(その回は候補に出ない)。
-  mapPosAt(displayTime: number): Vec3 | null;
-  // 表示トグルによる可否。activePlayer は「操作中の自艦はカテゴリを閉じても残す」例外の判定に使う。
-  mapVisibility(policy: MapVisibilityPolicy, activePlayer: Player | null): MapVisibility;
-  // 直前のフレームで画面にマーカーが出ていたか。ラベル衝突・遮蔽で消えた対象を掴めなくする。
-  shownOnMap(markers: MarkerManager): boolean;
-  // 対象そのものが消滅したか(true でプロパティウィンドウを閉じる)。
-  readonly gone: boolean;
-  // 軌道要素の導出に使う現在状態。実体を持たないマーカーは null。
-  readonly mapState: KinematicState | null;
-}
-```
-
-**達成条件と検証**
-
-- `grep -rn "MutableMapPickable\|itemRecords\|cachedBodyPickables\|syncVisibility" src/` が 0 件。
-- `npm run typecheck` / `npm run test:game`。
-- `npm run dev`:
-  - マップで天体・自艦・敵艦・基地・弾薬・RCS燃料・近点/遠点・AN/DN・赤道交点をそれぞれ
-    右クリックしてプロパティウィンドウが開く。
-  - ラベルが混雑して消えた天体を右クリックしても掴めない(手前のラベルが拾われない)。
-  - 敵艦を撃破するとその敵のプロパティウィンドウが閉じる。未来ゴーストのスライダーを先へ
-    出して位置が求まらないフレームでは閉じない。
-  - 負荷確認ウィンドウの `mapItems` と frame time が手順前と同じ桁。
-
----
-
 ### 手順 3. メニュー項目と実行を実体・マーカーへ移す
 
 **目的**
@@ -402,7 +369,7 @@ export interface MapPickable {
 | `pickable/map-commands.ts` | **(新規)** `MapCommands` インターフェース(決めたこと 5 の署名) |
 | `pickable/map-pickable.ts` | `mapMenuItems(commands, celestialSystem, simTime)` / `runMapMenu(act, commands)` を追加 |
 | `pickable/map-pickable-menu.ts` | **削除。** `bodyParentId`(38-45)は `celestial/lagrange-id.ts` か `celestial-system.ts` へ移す(`map-context-actions.ts:648` が使う) |
-| `pickable/map-context-actions.ts` | `implements MapCommands`。`pickableMenu` フィールドを削除し、`this.menu.onSelect`(121)・`w.onSelect`(209)・`windowParts`(605)を `target.runMapMenu(act, this)` / `target.mapMenuItems(this, …)` へ。`isTargetGone`(546-558)・`renameHandlerFor` の呼び出し・`relatedTitleFor`(672-675)・`stateOfPickable`(677-685)を削除 |
+| `pickable/map-context-actions.ts` | `implements MapCommands`。`pickableMenu` フィールドを削除し、`this.menu.onSelect`(121)・`w.onSelect`(209)・`windowParts`(605)を `target.runMapMenu(act, this)` / `target.mapMenuItems(this, …)` へ。`renameHandlerFor` の呼び出しと `relatedTitleFor` を削除 |
 | `player/player.ts` | `map-pickable-menu.ts:227-294` の `'player'` ハンドラを移す |
 | `dynamic/dynamic-entity/enemy.ts` | 同 `'ship'` ハンドラ(115-141) |
 | `dynamic/dynamic-entity/base.ts` | 同 `'base'` ハンドラ(315-382) |
@@ -441,7 +408,7 @@ export interface MapPickable {
 
 | ファイル | 何をするか |
 | --- | --- |
-| `pickable/map-pickable.ts` | `mapPropertyRows(celestialSystem, celestialBodies, pivot, viewer: Player \| null, simTime): readonly PropertyRow[]` と `readonly mapRename: ((name: string) => void) \| null` を追加 |
+| `pickable/map-pickable.ts` | `mapPropertyRows(celestialSystem, celestialBodies, pivot, viewer: Player \| null, simTime, displayTime): readonly PropertyRow[]` と `readonly mapRename: ((name: string) => void) \| null` を追加。`displayTime` は位置を引き直すマーカー・天体の行に要る |
 | `pickable/orbit-rows.ts` | **(新規)** `map-property-rows.ts:50-73` の `orbitRows` を関数として切り出す。`DynamicEntity` を受け、基準天体・高度・速度・AP/PE/INC/PRD を返す |
 | `pickable/map-property-rows.ts` | **削除** |
 | `pickable/map-context-actions.ts:578-603` | `propertyRows` フィールドを削除。`syncRows` は `entry.target.mapPropertyRows(...)`、`buildContent` の `onRename` は `target.mapRename` |
@@ -484,8 +451,6 @@ export interface MapPickable {
 | `hud/panels/physical-object-list-tree.ts:75,82,89,91` | `pickGlyphSvg` / `pickGlyphText` を `item.mapGlyphSvg` / `item.mapGlyph` へ。`item.kind === 'body'` による detail の出し分け(89,91)は、天体の `listDetail` が空文字を返すことで消える |
 | `marker/pick-glyphs.ts` | **削除。** `TEXT_GLYPHS` / `SVG_GLYPHS` の各行は対応する実体・マーカーの `mapGlyph` / `mapGlyphSvg` へ。「一覧とプロパティウィンドウで同じ種別が別の形に見えない」という不変は、値が1箇所になることで自動的に保たれる |
 | `pickable/map-context-actions.ts:581` | `pickGlyph(target.kind, …)` → `target.mapGlyphSvg ?? target.mapGlyph` |
-| `pickable/map-pickables.ts:152-181` | `detail` / `approaching` / `collectable` / `priority` / `distance` / `distanceFromStar` / `inFocusedSystem` を組み立てる部分を削除 |
-| `hud/panels/physical-object-list-order.ts:210-217` | `matchText` は `listSearchText` を読む。キャッシュの古さ判定に使っている `name`/`detail` の保持も `listSearchText` の結果1本にする |
 | (全実装) | `mapGlyph` / `mapGlyphSvg` / `listSection` / `pickerGenre` / `listDetail` / `listSearchText` / `listCounted` / `listPriority` を実装。中身は `map-pickables.ts:168-172` の三項演算子の連鎖を種別ごとに割ったもの。**表示と検索が分かれるのは天体だけ**で、他の種別は `listSearchText` が `listDetail` をそのまま返す |
 
 **達成条件と検証**
@@ -520,7 +485,6 @@ export interface MapPickable {
 | `pickable/map-pickables.ts` | `refresh`(76-200)を、供給元が返す `MapPickable` を積むだけの形へ。可視・遮蔽の絞り込み(183-197)は残す |
 | `pickable/map-context-actions.ts:55,192-222,228-230,502-506` | `WindowEntry.target` を `readonly` にし、`sync` の `byKey` 引き直しを削除。`windowKey` は `${target.id}` だけで足りるか確認する — 天体・実体・マーカーの id 空間が衝突しないなら種別込みをやめる |
 | `pickable/line-pickable.ts:21` / `line-pickables.ts:42,52,92` | `ownerKeys` の `${kind}:${id}` を `windowKey` の変更に追随させる |
-| `hud/panels/physical-object-list-order.ts` | `ListSortKey` を1フレーム1回導出する |
 
 **達成条件と検証**
 
@@ -636,7 +600,6 @@ export interface MapPickable {
 
 | 手順 | 導出 | 見積り |
 | --- | --- | --- |
-| 2 | 新規 5 ファイル + 実装 6 クラス + 供給元 5 ファイル + 型追随 8 ファイル + キャッシュ削除 2 箇所 | 約 4 時間 |
 | 3 | 分岐 10 種 × 7.5 分 + `MapCommands` 23 メンバー × 3 分 + 目視 40 分 | 約 3 時間 |
 | 4 | 分岐 9 種 × 7.5 分 + `orbit-rows` 切り出し + 目視 30 分 | 約 2 時間 |
 | 5 | 分岐 24 箇所 × 7.5 分 + `ListSortKey` の導入 + 目視 40 分 | 約 4 時間 |
@@ -644,7 +607,7 @@ export interface MapPickable {
 | 7 | `markerItem` 5 箇所 + 読み手 3 箇所 + 目視 20 分 | 約 1.5 時間 |
 | 8 | 609 行を 3 モジュールへ分割 + 呼び出し元 7 ファイル + 目視 40 分 | 約 4 時間 |
 | 9 | sync 4 種 × 20 分 + 目視 30 分 | 約 2 時間 |
-| **合計** | | **約 22 時間** |
+| **合計** | | **約 18 時間** |
 
 per-frame の費用の見積り: 候補列の再生成は `mapItems`(負荷確認ウィンドウで観測できる)ぶんの
 オブジェクト生成になる。天体 + ラグランジュ点 + 実体で 200 件規模なら
