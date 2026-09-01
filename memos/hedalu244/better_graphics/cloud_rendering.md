@@ -7,7 +7,7 @@
 **前提は [`pipeline.md`](pipeline.md)。** とくに §1-2(深度は位置復元の器)・§1-4(遮蔽の入口は
 1 本)・§2-8(大気は画面空間のフィルタ)。
 
-**相方は [`cloud_generation.md`](cloud_generation.md)。** 向こうが**場に何を持たせるか**、
+**相方は [`../cloud-generation/current-pipeline.md`](../cloud-generation/current-pipeline.md)。** 向こうが**場に何を持たせるか**、
 こちらが**その場をどう描くか**。本文の数値は `ddd480bc` のコードと定数から出した。
 
 **いまどこに居るか。** 天気のモデルは `src/render/cloud/` にあって `cloud-lab` の中だけで動いて
@@ -53,7 +53,7 @@ HG(g ≈ 0.8)は後方(太陽を背に見下ろす構図)で 0.1 以下。実際
 | **3. 雲影**(§3) | 遮蔽関数へ雲殻の源を 1 つ足す | §1 の最初の一手の直後 |
 
 **どれも、生成側の出力契約 — 被覆率・雲頂高度・薄い雲の光学的厚み — が固まってから始まる**
-([`cloud_generation.md`](cloud_generation.md))。**契約が動くと、ここの見積りは全部やり直しに
+([`../cloud-generation/current-pipeline.md`](../cloud-generation/current-pipeline.md))。**契約が動くと、ここの見積りは全部やり直しに
 なる。**
 
 ---
@@ -212,7 +212,7 @@ HG(g ≈ 0.8)は後方(太陽を背に見下ろす構図)で 0.1 以下。実際
    - 巻雲を薄い雲、積雲〜積乱雲を厚い雲として名指すか。それとも種類の割り当ては実装側に置くか。
    - `SAVE.md` は追記なし(雲は時刻の閉じた関数のまま)。
 5. `pipeline.md` の「各計画ファイル」の一覧に、この文書と
-   [`cloud_generation.md`](cloud_generation.md) が無い。載せるかどうか。
+   [`../cloud-generation/current-pipeline.md`](../cloud-generation/current-pipeline.md) が無い。載せるかどうか。
 
 ---
 
