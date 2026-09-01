@@ -150,6 +150,7 @@ export class CelestialMarkers {
     const display = new Map<string, { icon: boolean; label: boolean }>();
     this.bodyPickableItems.length = 0;
 
+    // 登録天体。
     for (const body of this.celestialSystem.entities) {
       const visibility = visibilityPolicy.body(body.id);
       if (!visibility.pickable) continue;
@@ -158,6 +159,7 @@ export class CelestialMarkers {
       display.set(body.id, { icon: visibility.icon, label: visibility.label });
       this.bodyPickableItems.push(body);
     }
+    // ラグランジュ点。回転系が組めない期間は座標を失うので、place(null) で位置を降ろす。
     if (toggles.lagrangeVisible && toggles.lagrangeName) {
       for (const { motion, markers } of this.lagrangeSources) {
         if (!visibilityPolicy.body(markers[0]!.parentId).category) continue;
@@ -176,6 +178,7 @@ export class CelestialMarkers {
       }
     }
 
+    // 求まった座標をラベルへ写し、sync 位相が読む一覧を差し替える。
     const shown: CelestialLabel[] = [];
     for (const label of this.labels) {
       const pos = positions.get(label.item.id);

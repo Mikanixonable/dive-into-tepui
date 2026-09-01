@@ -34,7 +34,7 @@ export type MapDisplayMode = 'orbit' | 'label' | 'hidden';
 
 // 軌道線(Orbit)は面積を食う——全登録天体ぶん描くと内側太陽系がその天体の軌道線で埋まる
 // ため、数の多いクラス(dwarf・smallBody・satellite)は既定 off にする。planet だけは数が
-// 少なく太陽系の骨格をなすので軌道線まで既定 on。一方 Name は focus-markers.ts の混雑抑制
+// 少なく太陽系の骨格をなすので軌道線まで既定 on。一方 Name は天体ラベルの混雑抑制
 // (画面上で近すぎるラベルを間引く)が効くので溢れる心配が無く、planet と同様 dwarf・
 // smallBody・satellite も既定 on にする。lagrange は力学的に意味を持つ点(共線点の余裕・
 // 三角点の安定性を満たすもの)だけに絞り込まれていて同じ懸念が当たらないため、既定 on にする。
