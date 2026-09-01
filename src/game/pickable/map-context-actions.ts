@@ -48,11 +48,11 @@ const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・�
 const MAP_PICK_PX_SQ_COARSE = 1936;
 const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 
-// 開いているプロパティウィンドウ本体と、開いた時点の対象。rows/items の再導出はこの target
-// (毎フレーム候補列から更新されうる)を経由するので、対象が消滅したかどうかの判定にも使える。
+// 開いているプロパティウィンドウ本体と、その対象。対象は同じ同一性を保ち続けるので、
+// 行・項目の再導出も消滅の判定もこの参照を経由する。
 interface WindowEntry {
   readonly win: PropertyWindow<MenuAction>;
-  target: MapPickable;
+  readonly target: MapPickable;
 }
 
 interface PartWindowEntry {
@@ -483,12 +483,8 @@ export class MapContextActions implements MapCommands {
       this.physicalObjectListPanel.sync(items, this.lastFocusId, parentOf, player, displayTime);
     }
 
-    const byKey = new Map(items.map((i) => [this.windowKey(i), i]));
     for (const [key, entry] of [...this.windows]) {
       if (entry.target.gone) { this.closeWindow(key); continue; }
-      // 候補列に載っていれば最新の位置を反映し、載っていなければ開いた時点の対象のまま
-      // 据え置く(rows の導出はどの種別も実体の state を直接読むので、位置の鮮度は無関係)。
-      entry.target = byKey.get(key) ?? entry.target;
       const { title, subtitle, items: menuItems } = this.windowParts(entry.target, simTime);
       entry.win.syncHeader(title, subtitle);
       entry.win.syncRelatedItems(
