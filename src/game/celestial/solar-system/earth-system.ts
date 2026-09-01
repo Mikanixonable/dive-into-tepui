@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
 import cloudsTextureUrl from '../../../assets/8k_clouds.jpg';
+import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import { AtmosphereDef } from '../../../physics/atmosphere';
 import {
@@ -186,7 +187,7 @@ export function earthSystem(
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
-      CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl),
+      CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl, earthSmoothnessUrl),
       EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
       GeostationaryOverlay.of(earth.body),
     ),
