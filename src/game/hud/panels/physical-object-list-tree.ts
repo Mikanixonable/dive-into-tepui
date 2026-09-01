@@ -1,7 +1,6 @@
 // 軌道物体一覧パネルの行ツリー: 種別ごとの一覧行を、既存 DOM を使い回しながら id 差分だけで
 // 同期・剪定する。見出し・検索欄・フィルタ UI の組み立てはパネル本体が持つ。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../hud-root';
-import { pickGlyphSvg, pickGlyphText } from '../../marker/pick-glyphs';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable } from '../../pickable/map-pickable';
 import type { Player } from '../../player/player';
@@ -82,16 +81,15 @@ export class PhysicalObjectListTree {
       container.appendChild(node.row);
       container.appendChild(node.childrenContainer);
     }
-    const svgGlyph = pickGlyphSvg(item.kind);
+    const svgGlyph = item.mapGlyphSvg;
     if (svgGlyph !== null) {
       if (node.glyph.dataset.svgGlyph !== svgGlyph) {
         node.glyph.innerHTML = svgGlyph;
         node.glyph.dataset.svgGlyph = svgGlyph;
       }
     } else {
-      const glyph = pickGlyphText(item.kind, item.id, this.celestialSystem);
-      if (node.glyph.textContent !== glyph) {
-        node.glyph.textContent = glyph;
+      if (node.glyph.textContent !== item.mapGlyph) {
+        node.glyph.textContent = item.mapGlyph;
         delete node.glyph.dataset.svgGlyph;
       }
     }

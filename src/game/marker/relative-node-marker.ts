@@ -4,6 +4,7 @@ import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy'
 import { ORBIT_ELEMENT_LABELS, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { fmtTime } from '../hud/utils';
+import { ORBIT_POINT_GLYPH } from './marker-identity';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapCommands } from '../pickable/map-commands';
@@ -20,11 +21,16 @@ const RELATIVE_NODE_LABELS = {
 } as const;
 
 export class RelativeNodeMarker implements MapPickable {
-  public readonly kind = 'relnode';
   public readonly id: string;
   public readonly name: string;
   public readonly markerLabel: string;
   public readonly mapState = null;
+  public readonly mapGlyph = ORBIT_POINT_GLYPH.ascendingNode;
+  public readonly mapGlyphSvg = null;
+  public readonly listSection = null;
+  public readonly pickerGenre = null;
+  public readonly hiddenBehindBodies = true;
+  public readonly onlyInFocusedSystem = false;
 
   private readonly spec: OrbitLabelSpec;
   private pos: Vec3 | null = null;

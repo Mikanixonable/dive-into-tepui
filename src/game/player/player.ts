@@ -42,7 +42,8 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
-import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
+import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
+import { shipMarkerSvg } from '../marker/marker-shapes';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
@@ -54,10 +55,12 @@ import { apsisAltitudes } from '../../physics/elements';
 import { fmtAmmoStatus, fmtDist, fmtEnergy } from '../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitRows } from '../pickable/orbit-rows';
-import type { MapPickKind, MapPickable } from '../pickable/map-pickable';
+import type { MapPickable } from '../pickable/map-pickable';
 import type { MapCommands } from '../pickable/map-commands';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../hud/windows/property-window';
+import type { MapListSection } from '../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../hud/object-groups';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
@@ -643,11 +646,16 @@ export class Player extends Ship implements MapPickable {
   }
 
   // マップ上の被選択物としての振る舞い。
-  public readonly kind: MapPickKind = 'player';
   public readonly ownerName = null;
   public readonly mapTime = null;
   public get gone(): boolean { return !this.alive; }
   public get mapState(): KinematicState { return this.state; }
+  public readonly mapGlyph = ENTITY_GLYPH.ship;
+  public get mapGlyphSvg(): string { return shipMarkerSvg(true); }
+  public readonly listSection: MapListSection = 'player';
+  public readonly pickerGenre: ObjectPickerGenre = '自艦';
+  public readonly hiddenBehindBodies = true;
+  public readonly onlyInFocusedSystem = true;
   public listCounted(): boolean { return false; }
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。

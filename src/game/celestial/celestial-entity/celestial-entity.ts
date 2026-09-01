@@ -13,6 +13,7 @@ import { FloatingOrigin } from '../../camera/floating-origin';
 import { apparentSizePx } from '../../../math/projection';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
 import { len, sub } from '../../../math/vec3';
+import { bodyEntityGlyph } from '../../marker/marker-identity';
 import { bodySearchText } from '../../pickable/body-search-text';
 import { fmtDist, fmtTime } from '../../hud/utils';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
@@ -27,10 +28,12 @@ import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
 import type { CelestialSystem } from '../celestial-system';
-import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
+import type { MapPickable } from '../../pickable/map-pickable';
 import type { MapCommands } from '../../pickable/map-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
+import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../../hud/object-groups';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Player } from '../../player/player';
 
@@ -48,6 +51,15 @@ const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 
 // 参照軌道線が完全表示のときの不透明度。
 const REFERENCE_LINE_OPACITY = 0.3;
+
+// 天体分類ごとの、選択ウィジェットの見出し。
+const BODY_PICKER_GENRES: Readonly<Record<CelestialClass, ObjectPickerGenre>> = {
+  star: '恒星',
+  planet: '惑星',
+  dwarf: '準惑星',
+  satellite: '衛星',
+  smallBody: '小天体',
+};
 
 export abstract class CelestialEntity implements MapPickable {
   // マップ専用の参照軌道線(衛星は親惑星中心、惑星は主星中心)。実体も濃さの決め方も個体が
@@ -192,11 +204,16 @@ export abstract class CelestialEntity implements MapPickable {
   }
 
   // マップ上の被選択物としての振る舞い。
-  public readonly kind: MapPickKind = 'body';
   public readonly ownerName = null;
   public readonly mapTime = null;
   public readonly gone = false;
   public readonly mapState = null;
+  public get mapGlyph(): string { return bodyEntityGlyph(this.bodyClass); }
+  public readonly mapGlyphSvg = null;
+  public readonly listSection: MapListSection = 'body';
+  public get pickerGenre(): ObjectPickerGenre { return BODY_PICKER_GENRES[this.bodyClass]; }
+  public readonly hiddenBehindBodies = false;
+  public readonly onlyInFocusedSystem = false;
   public listPriority(): number { return 0; }
   public listCounted(): boolean { return false; }
   public listDetail(): string { return ''; }

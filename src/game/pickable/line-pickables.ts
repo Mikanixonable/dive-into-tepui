@@ -39,12 +39,12 @@ export class LinePickables {
     for (const { id, line } of this.celestialSystem.referenceEllipseLines) {
       const points = line.samplePoints(ORBIT_PICK_SAMPLES);
       if (points.length < 2) continue;
-      this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [`body:${id}`], points });
+      this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [id], points });
     }
 
-    for (const ship of this.entities.players) this.addShipOrbit('player', ship, frame, displayTime, frameAnchors);
-    for (const enemy of this.entities.enemies) this.addShipOrbit('enemy', enemy, frame, displayTime, frameAnchors);
-    for (const base of this.entities.bases) this.addShipOrbit('base', base, frame, displayTime, frameAnchors);
+    for (const ship of this.entities.players) this.addShipOrbit(ship, frame, displayTime, frameAnchors);
+    for (const enemy of this.entities.enemies) this.addShipOrbit(enemy, frame, displayTime, frameAnchors);
+    for (const base of this.entities.bases) this.addShipOrbit(base, frame, displayTime, frameAnchors);
 
     for (const guide of this.celestialSystem.orbitGuide.visibleLines(ORBIT_PICK_SAMPLES)) {
       this.items.push({
@@ -57,19 +57,18 @@ export class LinePickables {
   // ガイド線1本の当たり判定の所有者。地球専用参照軌道(system が無い)は系トグルの対象外
   // なので地球1つだけ、CR3BP の族・リサジューは主星・副星(・ラグランジュ点)になる。
   private guideOwnerKeys(guide: VisibleGuideLine): readonly string[] {
-    if (guide.system === null) return ['body:earth'];
+    if (guide.system === null) return ['earth'];
     const secondary = guideSecondary(guide.system);
     const primary = this.celestialSystem.entityOf(secondary).motion.primary?.id ?? secondary;
-    if (guide.point === null) return [`body:${primary}`, `body:${secondary}`];
+    if (guide.point === null) return [primary, secondary];
     const pointId = lagrangeId(secondary, Number(guide.point.slice(1)) as LagrangePointNumber);
-    return [`body:${pointId}`, `body:${primary}`, `body:${secondary}`];
+    return [pointId, primary, secondary];
   }
 
   // 船(自艦・敵・基地)1隻ぶんの軌道線を候補へ積む。表示方式(解析楕円 or 予測線・過去線)は
   // EntityLineManager が既に決めているので、ここではどちらが出ているかを読むだけ。
   private addShipOrbit(
-    ownerKind: 'player' | 'enemy' | 'base', entity: DynamicEntity,
-    frame: ReferenceFrame, displayTime: number, frameAnchors: FrameAnchorSource,
+    entity: DynamicEntity, frame: ReferenceFrame, displayTime: number, frameAnchors: FrameAnchorSource,
   ): void {
     if (!entity.alive) return;
     let method: LineCalcMethod;
@@ -89,7 +88,7 @@ export class LinePickables {
     }
     if (points.length < 2) return;
     this.items.push({
-      key: `orbit-ship:${entity.id}`, kind: 'orbit-ship', method, ownerKeys: [`${ownerKind}:${entity.id}`], points,
+      key: `orbit-ship:${entity.id}`, kind: 'orbit-ship', method, ownerKeys: [entity.id], points,
     });
   }
 }

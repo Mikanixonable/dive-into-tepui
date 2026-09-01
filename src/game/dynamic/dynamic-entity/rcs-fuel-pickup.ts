@@ -15,10 +15,12 @@ import { MARKER_PRIORITY, type MarkerManager } from '../../marker/marker-manager
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapPickKind, MapPickable } from '../../pickable/map-pickable';
+import type { MapPickable } from '../../pickable/map-pickable';
 import type { MapCommands } from '../../pickable/map-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
+import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../../hud/object-groups';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Player } from '../../player/player';
 
@@ -97,11 +99,16 @@ export class RcsFuelPickup extends DynamicEntity implements MapPickable {
   }
 
   // マップ上の被選択物としての振る舞い。
-  public readonly kind: MapPickKind = 'fuel';
   public readonly ownerName = null;
   public readonly mapTime = null;
   public get gone(): boolean { return !this.alive; }
   public get mapState(): KinematicState { return this.state; }
+  public readonly mapGlyph = ENTITY_GLYPH.fuel;
+  public readonly mapGlyphSvg = null;
+  public readonly listSection: MapListSection = 'fuel';
+  public readonly pickerGenre: ObjectPickerGenre = 'RCS燃料';
+  public readonly hiddenBehindBodies = true;
+  public readonly onlyInFocusedSystem = false;
   public listPriority(): number { return 0; }
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。

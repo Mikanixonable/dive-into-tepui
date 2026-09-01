@@ -11,13 +11,18 @@ import type { MarkerManager } from '../marker/marker-manager';
 const ORIGIN = v3(0, 0, 0); // ECI [m]
 
 export class EmptySpacePickable implements MapPickable {
-  public readonly kind = 'empty-space';
   public readonly id = 'empty';
   public readonly name = '宇宙空間';
   public readonly ownerName = null;
   public readonly mapTime = null;
   public readonly mapState = null;
   public readonly gone = false;
+  public readonly mapGlyph = '·';
+  public readonly mapGlyphSvg = null;
+  public readonly listSection = null;
+  public readonly pickerGenre = null;
+  public readonly hiddenBehindBodies = true;
+  public readonly onlyInFocusedSystem = false;
 
   // 宇宙空間そのものを指すので、いつでも原点を返す。
   public mapPosAt(): Vec3 { return ORIGIN; }

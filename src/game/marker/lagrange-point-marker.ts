@@ -6,7 +6,10 @@ import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-polic
 import { bodySearchText } from '../pickable/body-search-text';
 import { fmtDist } from '../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { ENTITY_GLYPH } from './marker-identity';
 import type { CelestialSystem } from '../celestial/celestial-system';
+import type { MapListSection } from '../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../hud/object-groups';
 import type { MapCommands } from '../pickable/map-commands';
 import type { MapPickable } from '../pickable/map-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
@@ -15,7 +18,6 @@ import type { PropertyRow } from '../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
 export class LagrangePointMarker implements MapPickable {
-  public readonly kind = 'body';
   public readonly id: string;
   public readonly name: string;
   // 地点名を上、所属天体を下の行に置く二行表記。
@@ -23,6 +25,12 @@ export class LagrangePointMarker implements MapPickable {
   public readonly ownerName = null;
   public readonly mapTime = null;
   public readonly mapState = null;
+  public readonly mapGlyph = ENTITY_GLYPH.lagrange;
+  public readonly mapGlyphSvg = null;
+  public readonly listSection: MapListSection = 'body';
+  public readonly pickerGenre: ObjectPickerGenre = 'ラグランジュ点';
+  public readonly hiddenBehindBodies = false;
+  public readonly onlyInFocusedSystem = false;
 
   private pos: Vec3 | null = null;
 

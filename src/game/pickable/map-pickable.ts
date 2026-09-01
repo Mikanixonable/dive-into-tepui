@@ -9,14 +9,13 @@ import type { Player } from '../player/player';
 import type { MapCommands } from './map-commands';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
+import type { MapListSection } from '../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../hud/object-groups';
 import type { PropertyRow } from '../hud/windows/property-window';
-
-export type MapPickKind = 'body' | 'enemy' | 'player' | 'apsis' | 'relnode' | 'ammo' | 'fuel' | 'empty-space' | 'eqnode' | 'base';
 
 export interface MapPickable {
   readonly id: string;
   readonly name: string;
-  readonly kind: MapPickKind;
   // 所属する軌道の持ち主の名前。軌道上の点マーカーだけが持ち、他は null。
   readonly ownerName: string | null;
   // 通過時刻 [s]。時刻を持たない対象は null。
@@ -25,6 +24,18 @@ export interface MapPickable {
   readonly gone: boolean;
   // 軌道要素の導出に使う現在状態。天体と、実体を持たないマーカーは null。
   readonly mapState: KinematicState | null;
+  // 一覧・プロパティウィンドウに添える形態記号。SVG を描ける場所は mapGlyphSvg を優先する。
+  readonly mapGlyph: string;
+  readonly mapGlyphSvg: string | null;
+  // 軌道物体一覧のどの区画へ出すか。一覧に出さない対象は null。
+  readonly listSection: MapListSection | null;
+  // 選択ウィジェット(ObjectPicker)のどのジャンルへ出すか。出さない対象は null。
+  readonly pickerGenre: ObjectPickerGenre | null;
+  // 天体に遮られている間は選べなくなるか。天体自身は遮蔽で候補から外さない
+  // (公転・カメラ移動のたびに一覧の行が明滅するため)。
+  readonly hiddenBehindBodies: boolean;
+  // フォーカス中の惑星系に属するときだけ候補に出すか。
+  readonly onlyInFocusedSystem: boolean;
 
   // 表示時刻の ECI 位置。求まらないフレームは null で、その回は候補に出ない。
   mapPosAt(displayTime: number): Vec3 | null;
