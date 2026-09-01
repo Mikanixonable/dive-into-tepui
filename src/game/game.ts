@@ -563,7 +563,7 @@ export class Game {
     }
     // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは
     // 最新値を表示し続ける必要がある。MapContextActions 側で窓が無ければ即時 return する。
-    this.mapActions.sync(simTime, displayTime, celestialBodies, player);
+    this.mapActions.sync(simTime, displayTime, player);
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。

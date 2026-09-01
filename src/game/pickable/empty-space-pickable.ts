@@ -5,6 +5,7 @@ import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { MapCommands } from './map-commands';
 import type { MapPickable } from './map-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
+import type { PropertyRow } from '../hud/windows/property-window';
 import type { MarkerManager } from '../marker/marker-manager';
 
 const ORIGIN = v3(0, 0, 0); // ECI [m]
@@ -44,6 +45,11 @@ export class EmptySpacePickable implements MapPickable {
       commands.openSettings();
     }
   }
+
+  // 宇宙空間そのものを指すので、示せる値は空になる。
+  public mapPropertyRows(): readonly PropertyRow[] { return []; }
+
+  public readonly mapRename = null;
 
   public listDetail(): string { return ''; }
   public listSearchText(): string { return ''; }

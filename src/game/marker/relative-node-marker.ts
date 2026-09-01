@@ -3,10 +3,13 @@
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
 import { ORBIT_ELEMENT_LABELS, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { fmtTime } from '../hud/utils';
 import type { Vec3 } from '../../math/vec3';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapCommands } from '../pickable/map-commands';
 import type { MapPickable } from '../pickable/map-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
+import type { PropertyRow } from '../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
 // 交点種別ごとの、一覧やマーカーで名乗る呼称と、軌道要素としてのラベル。
@@ -27,6 +30,8 @@ export class RelativeNodeMarker implements MapPickable {
   private pos: Vec3 | null = null;
   private time: number | null = null;
   private owner: string | null = null;
+  // 交点を定める相手(航法ターゲット)の表示名。
+  private targetName: string | null = null;
 
   // node はこのマーカーが指す交点。昇交点・降交点・再接近点それぞれに1つずつ作る。
   public constructor(node: 'an' | 'dn' | 'ca') {
@@ -37,10 +42,11 @@ export class RelativeNodeMarker implements MapPickable {
   }
 
   // 今フレームの解を記録する。求まらなかったフレームは位置と時刻に null を渡す。
-  public place(pos: Vec3 | null, time: number | null, ownerName: string | null): void {
+  public place(pos: Vec3 | null, time: number | null, ownerName: string | null, targetName: string | null): void {
     this.pos = pos;
     this.time = time;
     this.owner = ownerName;
+    this.targetName = targetName;
   }
 
   public get gone(): boolean { return this.pos === null; }
@@ -77,6 +83,19 @@ export class RelativeNodeMarker implements MapPickable {
       commands.toggleNavTarget(this.id, this.name);
     }
   }
+
+  // 所属軌道・交点を定める相手の名前・通過までの残り時間。
+  public mapPropertyRows(
+    _commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  ): readonly PropertyRow[] {
+    const rows: PropertyRow[] = [];
+    if (this.owner !== null) rows.push({ key: 'owner', label: '所属軌道', value: this.owner });
+    rows.push({ key: 'target', label: '対象', value: this.targetName ?? '対象' });
+    if (this.time !== null) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(this.time - simTime)}` });
+    return rows;
+  }
+
+  public readonly mapRename = null;
 
   public listDetail(): string { return ''; }
   public listSearchText(): string { return ''; }

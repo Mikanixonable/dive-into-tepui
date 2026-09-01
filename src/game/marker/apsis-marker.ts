@@ -3,10 +3,13 @@
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
 import { getApsisLabelSpec, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import type { Vec3 } from '../../math/vec3';
+import { fmtDist, fmtTime } from '../hud/utils';
+import { len, sub, type Vec3 } from '../../math/vec3';
+import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapCommands } from '../pickable/map-commands';
 import type { MapPickable } from '../pickable/map-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
+import type { PropertyRow } from '../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
 export class ApsisMarker implements MapPickable {
@@ -71,6 +74,27 @@ export class ApsisMarker implements MapPickable {
       commands.toggleNavTarget(this.id, this.name);
     }
   }
+
+  // 所属軌道・中心天体の表面からの高度・通過までの残り時間。位置が解けていなければ行は無く、
+  // 中心天体が引けないフレームは高度が落ちる。
+  public mapPropertyRows(
+    _commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly PropertyRow[] {
+    const pos = this.mapPosAt();
+    if (pos === null) return [];
+    const rows: PropertyRow[] = [];
+    if (this.owner !== null) rows.push({ key: 'owner', label: '所属軌道', value: this.owner });
+    // 高度の基準は、place で受け取った中心天体の表面。
+    const center = this.centerId === null ? null : (celestialSystem.find(this.centerId)?.motion ?? null);
+    if (center !== null) {
+      const alt = len(sub(pos, center.positionAt(simTime))) - center.def.radius;
+      rows.push({ key: 'alt', label: '高度', value: fmtDist(alt) });
+    }
+    if (this.time !== null) rows.push({ key: 'time', label: '通過まで', value: `T+${fmtTime(this.time - simTime)}` });
+    return rows;
+  }
+
+  public readonly mapRename = null;
 
   public listDetail(): string { return ''; }
   public listSearchText(): string { return ''; }
