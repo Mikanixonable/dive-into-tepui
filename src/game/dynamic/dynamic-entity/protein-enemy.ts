@@ -45,8 +45,8 @@ export type ProteinSiteMarker = {
   readonly attackable: boolean;
 };
 
-// 陣形の攻撃担当だけが必要とする、同じ陣形内の生存エネルギー役を都度集計する。
-// formationId が無い敵は単体敵として、従来どおり供給条件を満たすものとする。
+// 同じ陣形に生存中のエネルギー役がいるかを答える。攻撃担当以外と、陣形に属さない敵
+// (formationId なし)は常に true。
 export function isFormationEnergyAvailable(
   formationRole: FormationRole | undefined,
   formationId: string | undefined,
@@ -71,8 +71,8 @@ function displayOf(init: ProteinEnemyPlacement | EnemyRestore): ProteinDisplaySe
   return isProteinDisplaySettings(saved) ? saved : DEFAULT_PROTEIN_DISPLAY;
 }
 
-// タンパク質の敵。機能部位ごとに破壊できる被弾モデル(ProteinCombatState)を持ち、判定形状は
-// 表示形態によらず静止したリボンに固定する。HP の正本は combat 側なので、艦のパーツは持たない。
+// タンパク質の敵。機能部位ごとに破壊できる被弾モデル(ProteinCombatState)が HP の正本で、
+// 判定形状は表示形態によらず静止したリボンに固定する。
 export class ProteinEnemy extends Enemy {
   public static readonly kind = 'protein-enemy';
   public static pendingAssetId(saved: EnemySaveData): ProteinAssetId {
@@ -84,8 +84,8 @@ export class ProteinEnemy extends Enemy {
   private readonly ribbonCollision: ProteinRibbonCollisionGeometry;
   private displaySettings: ProteinDisplaySettings;
 
-  // アセットの取得が済んでいることを前提に、表示メッシュとリボン衝突形状を組む。まだなら投げる —
-  // 呼び出し側は EnemyClass.pendingAssetId で準備完了を待ってから構築する。
+  // 表示メッシュとリボン衝突形状を組む。アセットが未取得なら投げるので、
+  // EnemyClass.pendingAssetId で準備完了を待ってから構築すること。
   public constructor(
     init: ProteinEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
@@ -102,8 +102,7 @@ export class ProteinEnemy extends Enemy {
     );
     const renderObject = definition.buildRenderObject(display, motionBinding);
     renderObject.scale.setScalar(ENEMY_SCALE);
-    // 表示が原子模型へ切り替わっていても判定形状は常に同じリボンに固定する。専用の
-    // 一時メッシュから三角形を抽出し、抽出後は GPU/CPU 資源をただちに解放する。
+    // 表示が原子模型へ切り替わっても、判定形状は常に同じリボンに固定する。
     const collisionSource = definition.buildCollisionObject();
     const ribbonCollision = new ProteinRibbonCollisionGeometry(collisionSource, ENEMY_SCALE);
     disposeOwnedRenderResources(collisionSource);
@@ -122,7 +121,7 @@ export class ProteinEnemy extends Enemy {
     );
   }
 
-  // HP の正本は combat 側。艦のパーツ HP は使わないので、既定パーツも積まない。
+  // HP の正本は combat 側なので、艦の既定パーツは積まない。
   protected override initDefaultParts(): void {}
 
   public override get hp(): number { return this.runtime.combat.integrityHp; }
@@ -147,8 +146,8 @@ export class ProteinEnemy extends Enemy {
     return { cpuMs: this.runtime.cpuMs, uploadBytes: this.runtime.uploadBytes, lod: this.runtime.lod };
   }
 
-  // 3km 以内マーカー用に、各機能部位の投影元位置と HUD 表示情報を並べる。displayPos は
-  // markerItem と同じ表示時刻の位置(displayState 経由)を渡すこと。
+  // 各機能部位の投影元位置と HUD 表示情報を並べる。displayPos には markerItem と同じ
+  // 表示時刻の位置(displayState 経由)を渡すこと。
   public siteMarkers(displayPos: Vec3): readonly ProteinSiteMarker[] {
     return this.runtime.hudSnapshot.sites.map((site) => ({
       id: site.id,
@@ -161,6 +160,8 @@ export class ProteinEnemy extends Enemy {
     }));
   }
 
+  // 表示物を displayTime の状態へ合わせる。viewer を渡すと投影サイズからゆらぎの LOD を決め、
+  // proteinVibrationEnabled が false なら静止した構造で描く。
   public override sync(
     fo: FloatingOrigin, displayTime: number, viewer?: Viewpoint, proteinVibrationEnabled = true,
   ): void {
@@ -170,8 +171,7 @@ export class ProteinEnemy extends Enemy {
     const projectedDiameterPx = viewer && displayed
       ? apparentSizePx(this.radius * 2, metersPerPixel(viewer, displayed.r, window.innerHeight))
       : Number.POSITIVE_INFINITY;
-    // marker LOD(投影サイズがゆらぎを描かない大きさ)まで落ちた敵は、部位・修飾・
-    // 結合線の更新と残基投影を止める。LOD 判定自体は ProteinRuntime に一本化してある。
+    // marker LOD(ゆらぎが見えない投影サイズ)まで落ちた敵は、ゆらぎの更新を止める。
     if (this.runtime.updateLod(projectedDiameterPx) !== 'marker') {
       this.runtime.updateVisual(displayTime, proteinVibrationEnabled);
     }
