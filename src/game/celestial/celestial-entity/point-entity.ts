@@ -12,6 +12,7 @@ import { lambertSphereIrradiance } from '../../../physics/lambert-sphere';
 import { STAR_SHELL_RADIUS } from '../../../render/stars';
 import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../../render/billboard';
 import { CelestialSurface } from '../../../render/celestial-surface';
+import type { CumulusShell } from '../../../render/cumulus-shell';
 import { BodyGraticule } from '../../../render/body-graticule';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
@@ -76,7 +77,8 @@ export class PointEntity extends CelestialEntity {
   // surface はマップビューで見せる実体。実半径・歪みの形状・環は motion の定義から引き、
   // 環はマップビューでのみ描く(戦闘ビューの輝点に環はない)。surfaceMarkings は模式図で
   // だけ見せる天体固有の表面ライン、auroras は極を囲むカーテン(層ごとに1枚)、
-  // mapOverlay はマップ専用の同期軌道リング。持たない天体では null / 空。
+  // mapOverlay はマップ専用の同期軌道リング、cumulus は地表の上に浮く不透明な積雲の殻。
+  // 持たない天体では null / 空。
   constructor(
     motion: OrbitingMotion,
     name: string,
@@ -86,6 +88,7 @@ export class PointEntity extends CelestialEntity {
     private readonly surfaceMarkings: LineOverlay | null = null,
     private readonly auroras: readonly Aurora[] = [],
     private readonly mapOverlay: GeostationaryOverlay | null = null,
+    private readonly cumulus: CumulusShell | null = null,
   ) {
     super(motion, name, bodyClass, atmosphereOptics);
     const def = motion.def;
@@ -107,6 +110,7 @@ export class PointEntity extends CelestialEntity {
     // 色はテクスチャ平均色を狙わず単色の白 — 恒星状の光点として過剰演出しない。
     this.billboard = new Billboard(0xffffff, -9);
     this.surface.addTo(this.shapeGroup);
+    this.cumulus?.addTo(this.shapeGroup);
     this.graticule.addTo(this.shapeGroup);
     this.surfaceMarkings?.addTo(this.shapeGroup);
     this.group.add(this.shapeGroup);
@@ -150,6 +154,8 @@ export class PointEntity extends CelestialEntity {
     }
     this.surface.syncLod(apparentDiameterPx);
     this.surface.setCloudAmount(graphics.clouds ? 1 : 0);
+    if (graphics.clouds) this.cumulus?.syncLod(apparentDiameterPx);
+    else this.cumulus?.hide();
     this.graticule.setVisible(style === 'schematic');
     this.surfaceMarkings?.setVisible(style === 'schematic');
     this.syncAuroras(displayTime, graphics.aurora);
@@ -190,6 +196,7 @@ export class PointEntity extends CelestialEntity {
   // 見かけ直径が閾値未満のときの共通後始末: 実体メッシュと環を隠す。
   private hidePhysical(): void {
     this.surface.hide();
+    this.cumulus?.hide();
     this.graticule.setVisible(false);
     this.surfaceMarkings?.setVisible(false);
     for (const aurora of this.auroras) aurora.mesh.visible = false;
@@ -221,10 +228,11 @@ export class PointEntity extends CelestialEntity {
     );
   }
 
-  // 表面・環・オーロラ・輝点ビルボードを解放する。
+  // 表面・積雲の殻・環・オーロラ・輝点ビルボードを解放する。
   dispose(): void {
     this.group.removeFromParent();
     this.surface.dispose();
+    this.cumulus?.dispose();
     this.graticule.dispose();
     this.surfaceMarkings?.dispose();
     for (const aurora of this.auroras) aurora.dispose();
