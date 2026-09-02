@@ -2,10 +2,10 @@
 // 両方が同じ向きを指すこと、姿勢追従中の生の値が対象姿勢からの相対値であることは、この中だけで
 // 担保する。**極軸の選び方は持たない** — 天体から選ぶのはカメラの仕事なので、書き換えのたびに
 // 受け取る。
-import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../math/quat';
 import {
-  LOCAL_FORWARD, LOCAL_UP, POLAR_PITCH_LIMIT, PolarEuler, eulerFromRotation, rotationFromEuler,
-} from '../../math/orientation';
+  LOCAL_FORWARD, LOCAL_UP, Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate,
+} from '../../math/quat';
+import { POLAR_PITCH_LIMIT, PolarEuler, eulerFromRotation, rotationFromEuler } from '../../math/polar-euler';
 import { addScaled, cross, norm, scale, type Vec3 } from '../../math/vec3';
 
 // 視点の回し方。オイラーは極軸を天頂とした方位・仰角で、クォータニオンは画面基準で回す。
