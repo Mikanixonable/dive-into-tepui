@@ -239,7 +239,7 @@ export class CameraSystem {
     this.viewResetBtn?.addEventListener('pointerdown', this.handleViewReset);
   }
 
-  // 表示パネルを取り除き、追従リセットボタンへの配線を解く。
+  // 表示パネルを取り除き、視点リセットボタンへの配線を解く。
   dispose(): void {
     this.viewResetBtn?.removeEventListener('pointerdown', this.handleViewReset);
     this.viewOptionsPanel.dispose();
