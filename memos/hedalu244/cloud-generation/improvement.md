@@ -31,7 +31,7 @@
   (波長は帯の中央緯度の周長で換算)と cap(正射影・等スケール)で測る。
 
 **リファレンスの分離はここまでで一区切り**(`0398ddc9`。仮テクスチャ =
-`src/assets/cloud-coverage.png` / `cloud-top.png` / `cloud-translucent.png`、目視調整済みの
+`src/assets/cloud-field.png` の 1 枚 — R = 被覆率 / G = 雲頂 / B = τ、目視調整済みの
 規定値で生成)。ただし分離は完全ではない — thick に僅かな巻雲らしい靄が残る・雲頂は輝度からの
 推定・トーンは sRGB のまま、など(癖の一覧と残件は `reference-separation.md`)。**生成側はこの
 仮テクスチャを 100% の目標にしない** — 数値は比 0.5〜1.5 の幅で当て、最終判定は目視
