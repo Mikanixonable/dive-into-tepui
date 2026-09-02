@@ -44,8 +44,8 @@ function createHudElement(tag: string, id: string, parent: HTMLElement, classNam
 interface HudDomRefs {
   readonly root: HTMLElement;
   readonly layers: OverlayLayers;
-  readonly combatRoot: HudWorldRoot;
-  readonly mapRoot: HudWorldRoot;
+  readonly combatRoot: HudViewRoot;
+  readonly mapRoot: HudViewRoot;
   readonly svgOverlay: SVGSVGElement;
   readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
@@ -53,7 +53,7 @@ interface HudDomRefs {
 }
 
 /** 戦闘/マップそれぞれが所有する HUD の DOM ルート。 */
-interface HudWorldRoot {
+interface HudViewRoot {
   readonly element: HTMLElement;
   readonly leftRail: HTMLElement;
   readonly rightRail: HTMLElement;
@@ -92,9 +92,9 @@ function buildRailToggle(
 }
 
 // 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
-function buildWorldRoot(parent: HTMLElement, id: string, view: View): HudWorldRoot {
+function buildViewRoot(parent: HTMLElement, id: string, view: View): HudViewRoot {
   // ビューのルート要素を作る。
-  const element = createHudElement('div', id, parent, `hud-world-root hud-${view}-root`);
+  const element = createHudElement('div', id, parent, `hud-view-root hud-${view}-root`);
   // 左右のレールを子として組む。
   const leftRail = createHudElement(
     'div', `${id}-rail-left`, element, 'hud-rail hud-rail-left',
@@ -407,8 +407,8 @@ export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
   renderStyle.subscribe((style) => { root.dataset['renderStyle'] = style; });
   const layers = buildOverlayLayers(root);
   const svgOverlay = buildSvgOverlay(layers.marker);
-  const combatRoot = buildWorldRoot(layers.panel, 'hud-combat-root', 'combat');
-  const mapRoot = buildWorldRoot(layers.panel, 'hud-map-root', 'map');
+  const combatRoot = buildViewRoot(layers.panel, 'hud-combat-root', 'combat');
+  const mapRoot = buildViewRoot(layers.panel, 'hud-map-root', 'map');
 
   // 常設パネル群を組む。
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);
