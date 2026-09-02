@@ -15,6 +15,7 @@ import { ActiveControllableController } from './active-controllable-controller';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
+import { PlanTrajectory } from './plan/plan-trajectory';
 import { DisplayWindowManager } from './display-window-manager';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
@@ -75,7 +76,7 @@ export class Game {
   }
   readonly simSpeedManager: SimSpeedManager;
 
-  private readonly editor: PlanEditor;
+  private readonly planTrajectory: PlanTrajectory;
   // このフレームの表示座標系・表示時刻窓と、表示側の重力源窓。update で確定させ sync でも読む。
   // HUD(軌道分析パネルの投影タブなど)が current 経由で表示期間を読むため公開する。
   readonly displayWindowManager: DisplayWindowManager;
@@ -194,17 +195,19 @@ export class Game {
       onToggleIgnition: () => { this.player?.boosters.toggleIgnition(); },
       onDecouple: () => { this.player?.boosters.decouple(this.dynamicSystem); },
     });
-    this.editor = new PlanEditor(
+    this.planTrajectory = new PlanTrajectory(
+      this._scene, this.markerManager, celestialSystem, this.displayWindowManager, this.activePlayers,
+    );
+    const editor = new PlanEditor(
       this._hud,
       this._uiSfx,
       this.simSpeedManager,
       celestialSystem,
       this._scene,
-      this.markerManager,
       this.activePlayers,
       this.displayWindowManager,
       this.frameControls,
-      () => this.viewManager.isMapView,
+      this.planTrajectory.planDisplay.path,
     );
     this.guide = new PlanGuide(this._hud, this._uiSfx, this.markerManager);
 
@@ -228,12 +231,12 @@ export class Game {
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
       this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
-      this.celestialMarkers, this.editor, this.frameAnchors,
+      this.celestialMarkers, this.planTrajectory.planDisplay, this.frameAnchors,
     );
     this.linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
     this.mapActions = new MapContextActions(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
-      this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.linePickables,
+      this.cameraSystem, editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.linePickables,
       this.activePlayers, this.frameControls, this.activeStage, this.targeter, this.markerManager,
       this.celestialMarkers,
     );
@@ -252,10 +255,10 @@ export class Game {
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.mapActions, this.dynamicSystem,
       this.mapPickables, this.linePickables, this.celestialMarkers, this.touchControls,
-      this.activePlayers, dockingGuide,
+      this.activePlayers, dockingGuide, this.simSpeedManager, this._hud,
     );
     const mapView = new MapView(
-      this.input, this.cameraSystem, this.targeter, this.editor, this.mapActions,
+      this.input, this.cameraSystem, this.targeter, editor, this.mapActions,
       this.dynamicSystem, celestialSystem, this.mapPickables, this.linePickables,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.activePlayers,
@@ -311,7 +314,7 @@ export class Game {
     this._worldSfx.setRcs(false);
     this.touchControls?.dispose();
     this.input.dispose();
-    this.editor.dispose();
+    this.planTrajectory.dispose();
     this._celestialSystem.dispose();
     this.frameControls.dispose();
     this.cameraSystem.dispose();
@@ -346,14 +349,14 @@ export class Game {
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._celestialSystem.update(displayWindow.displayTime, view, graphics);
     this.sections.enter(SECTION.plan);
-    this.editor.update(displayWindow, this.frameAnchors);
+    this.planTrajectory.update(displayWindow, this.frameAnchors, view);
     this.sections.exit(SECTION.plan);
     // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間はサブステップも進まず、
     // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
       this.simulator.simTime, this.simulator.lastSimDt, this.player, displayWindow.duration,
-      canDisplayFuture, this.editor.growableArcs(),
+      canDisplayFuture, this.planTrajectory.growableArcs(view),
     );
     this.sections.exit(SECTION.predict);
     this.sections.enter(SECTION.camera);
@@ -442,7 +445,7 @@ export class Game {
 
     this.sections.enter(SECTION.plan);
     this.guide.update(
-      this.player, this.simulator.simTime, this.editor.editMode,
+      this.player, this.simulator.simTime, this.viewManager.isMapView,
       this.celestialSystem.celestialMotions,
     );
     this.sections.exit(SECTION.plan);
@@ -476,8 +479,8 @@ export class Game {
     if (this._hud.overlayManager.isInputGated()) return;
     this.simSpeedManager.handleInput(this.input);
     this.viewManager.handleInput(this.input);
-    // 計画キー([N] 自動ワープ・[Del] 破棄)は戦闘ビューでも効くので、ビューでゲートしない。
-    this.editor.handleInput(this.input, dt);
+    // ビュー固有のキー(戦闘=計画破棄/自動ワープ、マップ=Δv 編集)は現在のビューが持つ。
+    this.viewManager.activeView.handleInput(this.input, dt, this.simulator.simTime);
   }
 
   // ------------------------------------------------------------------ sync
@@ -560,7 +563,7 @@ export class Game {
     // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは
     // 最新値を表示し続ける必要がある。MapContextActions 側で窓が無ければ即時 return する。
     this.mapActions.sync(simTime, displayTime, player);
-    this.editor.sync(this.cameraSystem, simTime, fo);
+    this.planTrajectory.sync(this.cameraSystem, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(
@@ -574,7 +577,7 @@ export class Game {
     this._hud.syncPanels(this.viewManager.current, this);
     this._hud.tick();
 
-    this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
+    this.guide.sync(player, simTime, this.viewManager.isMapView, project, this.planTrajectory.planDisplay.path);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions(this.viewManager.current);
@@ -594,7 +597,7 @@ export class Game {
       ...this.dynamicSystem.perfCounts(),
       ...this.predictor.perfCounts(),
       ...this.simulator.perfCounts(),
-      ...this.editor.perfCounts(),
+      ...this.planTrajectory.perfCounts(),
       ...this.celestialSystem.perfCounts(),
       ...this.mapPickables.perfCounts(),
       displayDurationSec: this.displayWindowManager.current.duration,

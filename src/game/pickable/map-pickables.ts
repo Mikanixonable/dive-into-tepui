@@ -8,7 +8,7 @@ import { NavTarget } from '../nav-target';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { CameraSystem } from '../camera/camera-system';
 import type { CelestialMarkers } from '../marker/celestial-markers';
-import { PlanEditor } from '../plan/plan-editor';
+import { PlanDisplay } from '../plan/plan-display';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import { isOccluded } from '../../physics/occlusion';
 import { NearbySystemTracker } from '../celestial/nearby-system-tracker';
@@ -44,7 +44,7 @@ export class MapPickables {
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
     private readonly celestialMarkers: CelestialMarkers,
-    private readonly editor: PlanEditor,
+    private readonly planDisplay: PlanDisplay,
     private readonly frameAnchors: FrameAnchorSource,
   ) {}
 
@@ -101,7 +101,7 @@ export class MapPickables {
     for (const fuelPickup of this.entities.rcsFuelPickups) append(fuelPickup);
     for (const base of this.entities.bases) append(base);
     for (const node of this.navTarget.mapPickables()) append(node);
-    for (const apsis of this.editor.planDisplay.apsisMarkers) append(apsis);
+    for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
     for (const e of this.entities.all()) {
       if (e.equatorNodes) for (const node of e.equatorNodes.mapPickables()) append(node);
     }

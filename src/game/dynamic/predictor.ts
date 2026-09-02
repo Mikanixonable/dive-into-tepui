@@ -63,7 +63,7 @@ export class Predictor {
   // horizon は simTime から先に予測する長さ [s]。canDisplayFuture は表示時刻が現在より先へ
   // 動けるかで、未来ゴーストが伸長理由として成り立つかを決める。planArcs は
   // plan/plan-path.ts の PlanPath が owned で持つ弧を時刻順に渡したもの
-  // (PlanEditor.growableArcs 経由) — requiredEnd/retainFrom は渡す前に書き込み済みなので、
+  // (PlanTrajectory.growableArcs 経由) — requiredEnd/retainFrom は渡す前に書き込み済みなので、
   // ここでは step() を呼ぶだけでよい。
   update(
     simTime: number, simDt: number, player: Player | null, horizon: number, canDisplayFuture: boolean,
@@ -157,7 +157,7 @@ export class Predictor {
   }
 
   // 負荷確認ウィンドウが読む、直近フレームの予測伸長の集計値。planSteps は計画の弧ぶんの
-  // 積分step数 — 区間の再生成数(planArcs)は plan/plan-editor.ts が答える。
+  // 積分step数 — 区間の再生成数(planArcs)は plan/plan-trajectory.ts が答える。
   perfCounts(): Pick<PerfCounts,
   'predicted' | 'predictComplete' | 'predictorSteps' | 'planSteps'
   | 'arcCelestialBodies' | 'arcRevisits' | 'arcLead'> {
