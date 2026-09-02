@@ -1,6 +1,5 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
-import { v3 } from '../math/vec3';
 import type { PerfCounts } from '../perf-meter';
 import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
 import { FrameSections, SECTION } from '../frame-sections';
@@ -463,7 +462,6 @@ export class Game {
   // ------------------------------------------------------------------ sync
 
   sync(graphics: GraphicsSettingsData, style: RenderStyle): void {
-    const activeControllable = this.activeControllableEntity;
     const player = this.player;
     // update() と sync() は同一の animate() 呼び出し内で同期的に実行されるため、
     // update() が確定させた表示窓をそのまま読める。
@@ -480,9 +478,8 @@ export class Game {
     this.frameAnchors.update(displayTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
-    // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
     this.cameraSystem.sync();
-    const fo = this.cameraSystem.getFloatingOrigin(activeControllable?.state.v ?? v3());
+    const fo = this.cameraSystem.getFloatingOrigin();
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
     this.viewManager.activeView.syncLabels();
 
