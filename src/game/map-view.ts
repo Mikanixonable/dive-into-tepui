@@ -9,7 +9,8 @@ import type { ObjectPickables } from './pickable/object-pickables';
 import type { MapVisibilityPolicy } from './map/visibility-policy';
 import type { PerfCounts } from '../perf-meter';
 import type { LinePickables } from './pickable/line-pickables';
-import type { MapContextActions } from './pickable/map-context-actions';
+import type { ObjectWindows } from './pickable/object-windows';
+import type { MapPicking } from './pickable/map-picking';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import type { MarkerManager } from './marker/marker-manager';
 import type { Targeter } from './targeter';
@@ -27,7 +28,8 @@ export class MapView implements WorldViewFrame {
     private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
     private readonly editor: PlanEditor,
-    private readonly mapActions: MapContextActions,
+    private readonly objectWindows: ObjectWindows,
+    private readonly picking: MapPicking,
     private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly objectPickables: ObjectPickables,
@@ -65,7 +67,8 @@ export class MapView implements WorldViewFrame {
   onLeave(): void {
     this.editor.onMapClosed();
     this.editor.closeMenu();
-    this.mapActions.close();
+    this.objectWindows.close();
+    this.picking.close();
     this.objectPickables.clear();
     this.linePickables.clear();
   }
@@ -77,12 +80,12 @@ export class MapView implements WorldViewFrame {
 
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。
   handlePointer(simTime: number): void {
-    this.mapActions.handleMapRightClick(this.input, simTime);
-    this.mapActions.handleLeftClick(this.input);
-    this.mapActions.handleDoubleClick(this.input);
+    this.picking.handleRightClick(this.input, simTime);
+    this.picking.handleLeftClick(this.input);
+    this.picking.handleDoubleClick(this.input);
     this.editor.handleMapPointer(this.input);
-    this.mapActions.handleLineRightClick(this.input);
-    this.mapActions.handleEmptySpaceRightClick(this.input, simTime);
+    this.picking.handleLineRightClick(this.input);
+    this.picking.handleEmptySpaceRightClick(this.input, simTime);
   }
 
   // 赤道交点(ターゲット・基地)を求め直し、選択候補と可視性ポリシーを組む。
@@ -99,11 +102,12 @@ export class MapView implements WorldViewFrame {
     this.celestialMarkers.syncLabels(this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos);
   }
 
-  // マップ専用の編集 UI と常設パネル(未来表示・座標系)・天体ラベルのサブ行・
+  // マップ専用の編集 UI と常設パネル(未来表示・座標系・軌道物体一覧)・天体ラベルのサブ行・
   // 軌道線の右クリック候補。
   syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
     this.editor.sync(this.cameraSystem, displayWindow.simTime, fo);
     this.displayWindowManager.sync(this.activePlayers.current);
+    this.picking.sync(displayWindow.displayTime, this.activePlayers.current);
     this.frameControls.sync(
       this.objectPickables.pickables, this.cameraSystem.activeCameraPos,
       displayWindow.simTime, displayWindow.displayTime, true,
@@ -117,5 +121,6 @@ export class MapView implements WorldViewFrame {
 
   dispose(): void {
     this.editor.dispose();
+    this.picking.dispose();
   }
 }

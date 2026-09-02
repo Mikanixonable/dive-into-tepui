@@ -8,7 +8,7 @@ import { Base, BASE_MAX_VESSELS } from '../dynamic/dynamic-entity/base';
 import { Player } from '../player/player';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
-import type { MapContextActions } from '../pickable/map-context-actions';
+import type { ObjectWindows } from '../pickable/object-windows';
 import type { CameraSystem } from '../camera/camera-system';
 import type { WorldView } from '../world-view';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
@@ -71,7 +71,7 @@ export class Docking {
     private readonly effects: EffectsSystem,
     private readonly markerManager: MarkerManager,
     private readonly entities: DynamicSystem,
-    private readonly mapActions: MapContextActions,
+    private readonly objectWindows: ObjectWindows,
     private readonly cameraSystem: CameraSystem,
     // ビュー遷移の口(ViewManager.setView)。ViewManager より先に生成されるため、
     // 参照でなく閉包で受ける。
@@ -265,7 +265,7 @@ export class Docking {
     base.attachDockedVesselMesh(ship, selectedSlot);
 
     const wasActive = this.activePlayers.current === ship;
-    this.mapActions.close();
+    this.objectWindows.close();
     this.cameraSystem.mapCamera.clearFocusIf(ship.id);
     if (wasActive) {
       ship.clearTransientCommands();
