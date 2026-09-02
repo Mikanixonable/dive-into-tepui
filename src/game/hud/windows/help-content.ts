@@ -5,7 +5,7 @@ import { KEY_MAPPING as K, type KeyBinding } from '../../input/key-mapping';
 import { MAX_PHYS_SIM_SPEED } from '../../dynamic/sim-speed-manager';
 import { THROTTLE_LABELS } from '../../player/player-throttle';
 import { MAG_ROUNDS } from '../../player/player-fire';
-import type { View } from '../../view';
+import type { View } from '../../view/view';
 
 export type HelpInput = 'keyboard' | 'mouse' | 'touch';
 export type HelpCategory = 'basic' | 'combat' | 'camera' | 'time' | 'map' | 'ui' | 'gesture';

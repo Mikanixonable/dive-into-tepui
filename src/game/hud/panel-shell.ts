@@ -8,7 +8,7 @@ import {
   syncCollapseToggle,
   type CollapseToggleLabels,
 } from './widgets';
-import type { View } from '../view';
+import type { View } from '../view/view';
 
 const STORAGE_KEY = 'tepui.panelCollapsed.v2';
 const LEGACY_STORAGE_KEY = 'tepui.panelCollapsed';

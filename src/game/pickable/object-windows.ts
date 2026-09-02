@@ -2,7 +2,7 @@
 // 最新化し、被選択物が組んだメニュー項目の実行先として、ゲーム側の操作一式を ObjectCommands の
 // 形で差し出す。どのクリックがどの対象に当たったかは、ビュー側が決めて open() へ渡す。
 import { Hud } from '../hud/hud';
-import type { View } from '../view';
+import type { View } from '../view/view';
 import type { Base } from '../dynamic/dynamic-entity/base';
 import {
   ContextMenu, PropertyWindow, PropertyWindowContent, PropertyWindowItem,

@@ -1,5 +1,5 @@
-import type { ViewManager } from '../view-manager';
-import type { View } from '../view';
+import type { ViewManager } from '../view/view-manager';
+import type { View } from '../view/view';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from './overlay-manager';
 import { Button, ToggleSwitch } from './widgets';
