@@ -1,5 +1,5 @@
 // ライティングパスの全光源が共有する、1 画素ぶんのシェーディング入力。法線・粗さ・深度は
-// 同じ 1 つの面から揃って引く必要があるので、G バッファの読み出しはすべてここの uv を通す。
+// 同じ 1 つの面から揃って引く必要があるので、光源からの G バッファ読み出しはここへ集める。
 import * as THREE from 'three/webgpu';
 import { screenSize, screenUV, select, texture, uniform, vec2, vec4 } from 'three/tsl';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
@@ -13,9 +13,9 @@ function isCovered(depthTexture: THREE.Texture, uv: Vec2Node): BoolNode {
 
 // 照度を組み立てる画素の uv。面が写っている画素はそのまま、虚空の画素は十字に隣接する面へ寄せる。
 //
-// **寄せるのはマルチサンプルとの辻褄合わせである。** 照度を読む側はマルチサンプルされた被覆で
-// 断片を出すため、画素の中心が面の外に落ちた断片が縁に生じる。その断片が読む先へ隣の面の照度を
-// 置いておかないと、材質だけが面から来て照度が虚空のものになり、縁が1画素だけ別の明るさになる。
+// TODO: 寄せる根拠だったマルチサンプルは廃止済みで、虚空の画素の照度はマテリアルパスが捨てる。
+// それでも外すと 1 画素幅の構造の陰影が動く(render-lab の 32/35 ケース、画素の 0.1% 未満、
+// 最大 67/255)。面が写っている画素で恒等写像にならない理由が付くまで残す。
 function shadingUV(depthTexture: THREE.Texture, uv: Vec2Node): Vec2Node {
   const texel: Vec2Node = vec2(1).div(screenSize);
   // 自分 → 左右 → 上下の順に、最初に面が写っている候補を採る。
