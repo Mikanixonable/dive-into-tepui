@@ -157,8 +157,12 @@ export class PointEntity extends CelestialEntity {
     }
     this.surface.syncLod(apparentDiameterPx);
     this.surface.setCloudAmount(graphics.clouds ? 1 : 0);
-    if (graphics.clouds) this.cumulus?.syncLod(apparentDiameterPx);
-    else this.cumulus?.hide();
+    if (graphics.clouds) {
+      this.cumulus?.setDetail(graphics.cumulusDetail);
+      this.cumulus?.syncLod(apparentDiameterPx);
+    } else {
+      this.cumulus?.hide();
+    }
     this.graticule.setVisible(style === 'schematic');
     this.surfaceMarkings?.setVisible(style === 'schematic');
     this.syncAuroras(displayTime, graphics.aurora);
