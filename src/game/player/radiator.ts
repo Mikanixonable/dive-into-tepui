@@ -2,7 +2,8 @@
 // 今フレームの放熱面積と太陽入射を答える。機体温度そのものは知らない
 // (温度の4乗則を持つのは DynamicEntity の熱収支のみ)。
 import * as THREE from 'three/webgpu';
-import { Attitude, qFromAxisAngle, qRotate } from '../../physics/attitude';
+import { Attitude } from '../../physics/attitude';
+import { qFromAxisAngle, qRotate } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, cross, dot, v3 } from '../../math/vec3';
 import {
