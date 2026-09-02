@@ -182,4 +182,6 @@ export class RcsFuelPickup extends DynamicEntity implements MapPickable {
   }
 
   public readonly mapRename = null;
+  public readonly onMapSelect = null;
+  public readonly onMapFocus = null;
 }
