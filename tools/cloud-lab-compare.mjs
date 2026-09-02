@@ -2,20 +2,20 @@
 // 全球と地域別 cap の両面を撮って、帯状平均・階調・行方向スペクトルの表を出す。
 //
 // 実写は低い厚い雲と高層の巻雲が 1 枚に重なっていて、生成側の被覆率(厚い雲)・薄い雲(巻雲)と
-// 成分ごとに比べられないので、tools/cloud-separation.mjs の推定分離を通してから比べる(方法と
-// 癖はそちらのコメント)。**分離の判定素材(細かい起伏)は解像度に強く依存し、撮影の面
-// (全球 39 km/texel、cap はミップで鈍る)では veil 側へ寄りすぎる。** 成分別の正は原寸で分離する
-// `npm run cloud-lab:separate` の出力(.cloud-lab/separated/)にあり、ここの実写厚・実写薄の列は
-// 傾向を見る目安に留める。分離した thick / veil は画像でも .cloud-lab/compare/ に残る。
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+// 成分ごとに比べられないので、分離した成分と比べる。分離の実装は
+// tools/cloud-lab/separation-pipeline.ts(TSL 版)の一本だけ — ここでは再分離せず、
+// `npm run cloud-lab:separate` が書いた原寸の出力(.cloud-lab/separated/)を読み込んで、
+// 撮影の面(全球の正距円筒と cap の正射影)へ再標本化する。**先に separate を実行しておく。**
+// 再標本化した実写厚・実写薄も画像で .cloud-lab/compare/ に残る。
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { cropField, decodeRedPng, fieldToGrayPng } from './gray-image.mjs';
-import { separateClouds } from './cloud-separation.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.cloud-lab');
 const outDir = path.join(buildDir, 'compare');
+const separatedDir = path.join(buildDir, 'separated');
 const port = 8769;
 const debugPort = 9446;
 
@@ -37,9 +37,84 @@ const REGIONS = [
 ];
 const VIEWS = ['photo', 'composite', 'coverage', 'translucent'];
 
-// 実写の 1 px が張る長さ [km]。全球面は赤道での値(横は緯度で cos 倍に縮む)。
-const GLOBE_KM_PER_PX = 40075 / GLOBE_W / 2;
 const CAP_KM_PER_PX = (2 * Math.sin((CAP_RADIUS * Math.PI) / 180) * 6371) / CAP_W;
+
+// 分離済みの成分(原寸の正距円筒)。無ければ手順ごと伝える。
+function loadSeparated(file) {
+  try {
+    return decodeRedPng(readFileSync(path.join(separatedDir, file)));
+  } catch (e) {
+    throw new Error(
+      `${path.join('.cloud-lab', 'separated', file)} を読めない — 先に npm run cloud-lab:separate を実行する (${e.message})`);
+  }
+}
+
+// 全球面への箱の縮小(整数倍を前提にした平均)。
+function downsampleTo(field, width, height) {
+  const factor = Math.round(field.width / width);
+  const out = new Float32Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let sum = 0;
+      for (let dy = 0; dy < factor; dy++) {
+        for (let dx = 0; dx < factor; dx++) {
+          sum += field.data[(y * factor + dy) * field.width + (x * factor + dx)];
+        }
+      }
+      out[y * width + x] = sum / (factor * factor);
+    }
+  }
+  return { width, height, data: out };
+}
+
+// 経度で巻き付く双一次標本化。u, v は texel 座標。
+function sampleBilinear(field, u, v) {
+  const x0 = Math.floor(u);
+  const y0 = Math.min(field.height - 2, Math.max(0, Math.floor(v)));
+  const fx = u - x0;
+  const fy = Math.min(1, Math.max(0, v - y0));
+  const xa = ((x0 % field.width) + field.width) % field.width;
+  const xb = (xa + 1) % field.width;
+  const row0 = y0 * field.width;
+  const row1 = (y0 + 1) * field.width;
+  return (field.data[row0 + xa] * (1 - fx) + field.data[row0 + xb] * fx) * (1 - fy)
+    + (field.data[row1 + xa] * (1 - fx) + field.data[row1 + xb] * fx) * fy;
+}
+
+// cap の面(正射影)の中央 362×362 を、原寸の正距円筒から再標本化する。式は
+// src/render/cloud/field-projection.ts の OrthographicCap / equirectUvFromDirection と対。
+function resampleCap(field, latitudeDeg, longitudeDeg) {
+  const latitude = (latitudeDeg * Math.PI) / 180;
+  const longitude = (longitudeDeg * Math.PI) / 180;
+  const cosLat = Math.cos(latitude);
+  const sinLat = Math.sin(latitude);
+  const cosLon = Math.cos(longitude);
+  const sinLon = Math.sin(longitude);
+  const center = [cosLat * sinLon, sinLat, cosLat * cosLon];
+  const east = [cosLon, 0, -sinLon];
+  const north = [-sinLat * sinLon, cosLat, -sinLat * cosLon];
+  const sinRadius = Math.sin((CAP_RADIUS * Math.PI) / 180);
+  const margin = (CAP_W - CAP_BOX) / 2;
+  const out = new Float32Array(CAP_BOX * CAP_BOX);
+  for (let by = 0; by < CAP_BOX; by++) {
+    const v = (margin + by + 0.5) / CAP_W;
+    for (let bx = 0; bx < CAP_BOX; bx++) {
+      const u = (margin + bx + 0.5) / CAP_W;
+      const px = (u * 2 - 1) * sinRadius;
+      const py = (1 - v * 2) * sinRadius;
+      const along = Math.sqrt(Math.max(1 - px * px - py * py, 0));
+      const dir = [
+        east[0] * px + north[0] * py + center[0] * along,
+        east[1] * px + north[1] * py + center[1] * along,
+        east[2] * px + north[2] * py + center[2] * along,
+      ];
+      const eu = Math.atan2(dir[0], dir[2]) / (2 * Math.PI) + 0.5;
+      const ev = 0.5 - Math.asin(Math.min(1, Math.max(-1, dir[1]))) / Math.PI;
+      out[by * CAP_BOX + bx] = sampleBilinear(field, eu * field.width - 0.5, ev * field.height - 0.5);
+    }
+  }
+  return { width: CAP_BOX, height: CAP_BOX, data: out };
+}
 
 function saveGray(name, field) {
   writeFileSync(path.join(outDir, name), fieldToGrayPng(field));
@@ -111,6 +186,10 @@ function printSpectrumTable(header, wavelengthOf, reference, generated, referenc
 }
 
 async function main() {
+  // 分離済みの成分を先に読む(無いなら撮影の前に気付かせる)。
+  const separatedThick = loadSeparated('coverage.png');
+  const separatedVeil = loadSeparated('veil.png');
+
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-cloud-compare-', onEvent,
@@ -154,44 +233,35 @@ async function main() {
     width: field.width, height: field.height, data: Float32Array.from(field.data, (t) => 1 - Math.exp(-t)),
   });
 
-  const globePhoto = globeOf('photo');
-  const globeKmPerPx = (y) => {
-    const latitude = ((HEIGHT / 2 - y) / HEIGHT) * Math.PI;
-    return { x: GLOBE_KM_PER_PX * Math.max(0.2, Math.cos(latitude)), y: GLOBE_KM_PER_PX };
-  };
-  const globeSeparated = separateClouds(globePhoto, globeKmPerPx, true);
-  saveGray('globe-thick.png', globeSeparated.thick);
-  saveGray('globe-veil.png', globeSeparated.veil);
   const globe = {
-    photo: globePhoto,
-    thick: globeSeparated.thick,
-    veil: globeSeparated.veil,
+    photo: globeOf('photo'),
+    thick: downsampleTo(separatedThick, GLOBE_W, HEIGHT),
+    veil: downsampleTo(separatedVeil, GLOBE_W, HEIGHT),
     coverage: globeOf('coverage'),
     translucent: brightnessOf(globeOf('translucent')),
     composite: globeOf('composite'),
   };
+  saveGray('globe-thick.png', globe.thick);
+  saveGray('globe-veil.png', globe.veil);
 
-  const capKmPerPx = () => ({ x: CAP_KM_PER_PX, y: CAP_KM_PER_PX });
   const boxX0 = GLOBE_W + (CAP_W - CAP_BOX) / 2;
   const boxY0 = (HEIGHT - CAP_BOX) / 2;
   const caps = new Map();
   for (const region of REGIONS) {
-    const photo = cropField(shots.get(`${region.name}-photo`), boxX0, boxY0, CAP_BOX, CAP_BOX);
-    const separated = separateClouds(photo, capKmPerPx, false);
-    saveGray(`${region.name}-thick.png`, separated.thick);
-    saveGray(`${region.name}-veil.png`, separated.veil);
+    const thick = resampleCap(separatedThick, region.latitude, region.longitude);
+    const veil = resampleCap(separatedVeil, region.latitude, region.longitude);
+    saveGray(`${region.name}-thick.png`, thick);
+    saveGray(`${region.name}-veil.png`, veil);
     caps.set(region.name, {
-      photo,
-      thick: separated.thick,
-      veil: separated.veil,
+      photo: cropField(shots.get(`${region.name}-photo`), boxX0, boxY0, CAP_BOX, CAP_BOX),
+      thick,
+      veil,
       coverage: cropField(shots.get(`${region.name}-coverage`), boxX0, boxY0, CAP_BOX, CAP_BOX),
       translucent: brightnessOf(cropField(shots.get(`${region.name}-translucent`), boxX0, boxY0, CAP_BOX, CAP_BOX)),
       composite: cropField(shots.get(`${region.name}-composite`), boxX0, boxY0, CAP_BOX, CAP_BOX),
     });
   }
 
-  console.log('\n注: 実写厚・実写薄の列は撮影解像度での再分離で、veil 側へ寄りすぎる傾向がある。');
-  console.log('成分別の正は npm run cloud-lab:separate の原寸の出力(.cloud-lab/separated/)。');
   console.log('\n=== 帯状平均(全球面・5.625° 刻み) ===');
   console.log('緯度      実写計  実写厚  実写薄  被覆率  薄い雲  合成   被覆率/実写厚');
   for (let band = 0; band < 32; band++) {
