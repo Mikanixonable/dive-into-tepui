@@ -81,7 +81,6 @@ export class Game {
   // HUD(軌道分析パネルの投影タブなど)が current 経由で表示期間を読むため公開する。
   readonly displayWindowManager: DisplayWindowManager;
   readonly viewManager: ViewManager;
-  private readonly objectPickables: ObjectPickables;
   private readonly mapActions: MapContextActions;
 
   readonly activeStage: Stage;
@@ -225,14 +224,14 @@ export class Game {
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
-    this.objectPickables = new ObjectPickables(
+    const objectPickables = new ObjectPickables(
       this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
       this.celestialMarkers, this.planDisplay, this.frameAnchors,
     );
     const linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
     this.mapActions = new MapContextActions(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
-      this.cameraSystem, editor, this.simSpeedManager, this.pauseMenu, this.objectPickables, linePickables,
+      this.cameraSystem, editor, this.simSpeedManager, this.pauseMenu, objectPickables, linePickables,
       this.activePlayers, this.frameControls, this.activeStage, this.targeter, this.markerManager,
       this.celestialMarkers,
     );
@@ -257,7 +256,7 @@ export class Game {
     );
     const mapView = new MapView(
       this.input, this.cameraSystem, this.targeter, editor, this.mapActions,
-      this.dynamicSystem, celestialSystem, this.objectPickables, linePickables,
+      this.dynamicSystem, celestialSystem, objectPickables, linePickables,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.activePlayers,
     );
@@ -359,15 +358,15 @@ export class Game {
     this.sections.exit(SECTION.predict);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
-      activeControllable, displayWindow.displayTime, this.input, dt, this.objectPickables.pickables,
+      activeControllable, displayWindow.displayTime, this.input, dt, this.viewManager.activeView.pickables,
       this.frameAnchors,
     );
     this.sections.exit(SECTION.camera);
-    // カメラ更新の後に置く: objectPickables.refresh が読む近傍系抽出・遮蔽判定・可視マーカー更新は
+    // カメラ更新の後に置く: 候補列の組み直しが読む近傍系抽出・遮蔽判定・可視マーカー更新は
     // cameraSystem.activeCameraPos を使うので、先に組むとこのフレームの sync が1フレーム古い
     // カメラ位置基準の判定を読むことになる。フォーカス解決(候補配列を機体の位置として読むこと)
     // はこの順序に依存しない — resolveFocusTarget が機体・役割トークンを frameAnchors.stateOf
-    // で直接解決するため、objectPickables.refresh を先に呼んでも遅延は生じない。
+    // で直接解決するため、カメラへ渡る候補列が1フレーム古くても遅延は生じない。
     this.sections.enter(SECTION.mapPick);
     this.viewManager.activeView.update(displayWindow);
     this.sections.exit(SECTION.mapPick);
@@ -387,7 +386,7 @@ export class Game {
     // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。
     this.entityLines.update(
       this.player, this.targeter.aliveTarget,
-      view, displayWindow, this.objectPickables.visibilityPolicy, this.orbitRef,
+      view, displayWindow, this.viewManager.activeView.visibilityPolicy, this.orbitRef,
     );
   }
 
@@ -481,7 +480,7 @@ export class Game {
   // まず現在の ObjectPickable と実体を引き、最後に id を表示することで、マップ候補が更新されていない
   // 戦闘ビューや一時的に非表示の対象でもステータス表示を空欄にしない。
   private objectName(id: string): string {
-    const pickable = this.objectPickables.pickables.find((item) => item.id === id);
+    const pickable = this.viewManager.activeView.pickables.find((item) => item.id === id);
     if (pickable) return pickable.name;
     const entity = this.dynamicSystem.all().find((item) => item.id === id);
     if (entity) return entity.name;
@@ -520,9 +519,9 @@ export class Game {
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
     this.viewManager.activeView.syncLabels();
 
-    // 表示・選択可否はこのフレームの update フェーズで ObjectPickables が確定させたものを読む
+    // 表示・選択可否はこのフレームの update フェーズで現在のビューが確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
-    const visibilityPolicy = this.objectPickables.visibilityPolicy;
+    const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
     // マーカー描画は操作艦自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
     // 別に、除外なしの一覧を使う。
     const combatTargets = this.dynamicSystem.getCombatTargets(null);
@@ -588,7 +587,7 @@ export class Game {
       ...this.simulator.perfCounts(),
       ...this.planDisplay.perfCounts(),
       ...this.celestialSystem.perfCounts(),
-      ...this.objectPickables.perfCounts(),
+      ...this.viewManager.activeView.perfCounts(),
       displayDurationSec: this.displayWindowManager.current.duration,
       warp: this.simSpeedManager.simSpeed,
     };

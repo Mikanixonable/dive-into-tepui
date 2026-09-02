@@ -4,7 +4,10 @@ import type { Input } from './input/input';
 import type { CameraSystem } from './camera/camera-system';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { DynamicSystem } from './dynamic/dynamic-system';
+import type { ObjectPickable } from './pickable/object-pickable';
 import type { ObjectPickables } from './pickable/object-pickables';
+import type { MapVisibilityPolicy } from './map/visibility-policy';
+import type { PerfCounts } from '../perf-meter';
 import type { LinePickables } from './pickable/line-pickables';
 import type { MapContextActions } from './pickable/map-context-actions';
 import type { CelestialMarkers } from './marker/celestial-markers';
@@ -36,6 +39,17 @@ export class MapView implements WorldViewFrame {
     private readonly frameAnchors: FrameAnchors,
     private readonly activePlayers: ActiveControllableController,
   ) {}
+
+  get pickables(): readonly ObjectPickable[] { return this.objectPickables.pickables; }
+  get visibilityPolicy(): MapVisibilityPolicy | null { return this.objectPickables.visibilityPolicy; }
+
+  perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
+    return {
+      mapMode: true,
+      mapItems: this.objectPickables.pickables.length,
+      mapLabels: this.celestialMarkers.shownLabelCount,
+    };
+  }
 
   // マップビューはいつでも入れる。
   canEnter(): boolean {

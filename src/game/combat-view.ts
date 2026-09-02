@@ -18,6 +18,8 @@ import type { CelestialSystem } from './celestial/celestial-system';
 import type { DisplayWindow } from './display-window-manager';
 import type { FloatingOrigin } from './camera/floating-origin';
 import type { WorldViewFrame } from './world-view';
+import type { ObjectPickable } from './pickable/object-pickable';
+import type { PerfCounts } from '../perf-meter';
 
 export class CombatView implements WorldViewFrame {
   constructor(
@@ -36,6 +38,14 @@ export class CombatView implements WorldViewFrame {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly hud: Hud,
   ) {}
+
+  // 戦闘ビューは表示トグルによる間引きを持たないので、候補列も可視性ポリシーも持たない。
+  readonly pickables: readonly ObjectPickable[] = [];
+  readonly visibilityPolicy = null;
+
+  perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
+    return { mapMode: false, mapItems: 0, mapLabels: 0 };
+  }
 
   // 戦闘ビューは操作対象(艦または基地)が必要。
   canEnter(): boolean {
