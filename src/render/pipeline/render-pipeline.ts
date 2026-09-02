@@ -1,7 +1,7 @@
 // フレームの描画パス構成を制御する。render/** 配下の個々の描画物モジュールとは別に、
 // 「何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか」をここへ集約する。
 // 現在は11段: 影パス(恒星の直射光を遮るメッシュをライト空間の深度マップへ描く)→ G バッファパス
-// (深度・法線・ラフネスを MRT へ描く)→ 遮蔽パス(G バッファ深度から
+// (深度・法線・ラフネス・ベース色・金属度・自己発光を MRT へ描く)→ 遮蔽パス(G バッファ深度から
 // 復元した位置に届く恒星の直射光の透過率を1枚へ描く)→ ライティングパス(その2枚だけを読み、
 // 拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(lit-opaque 層をライティングパスの照度で描き、
 // world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ 大気パス(不透明の
@@ -16,7 +16,7 @@
 // 普通に深度テストするだけで不透明物の奥へ隠れる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { float, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import type { GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
@@ -187,6 +187,16 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       roughness: this.buildCompositeMaterial(
         vec4(vec3(texture(this.gbuffer.roughnessTexture, screenUV).r), 1),
       ),
+      basecolor: this.buildCompositeMaterial(
+        vec4(texture(this.gbuffer.basecolorTexture, screenUV).rgb, 1),
+      ),
+      // 金属度はベース色の α に同居している(gbuffer.ts)。何も描かれていない画素の α は
+      // クリア値の 1 なので、深度で物体の有無を判定して落とす。
+      metalness: this.buildCompositeMaterial(vec4(vec3(this.metalnessDebugNode()), 1)),
+      // 自己発光は 1 を超えうる HDR 値なので、照度と同じくトーンマッピングを通して出す。
+      emissive: this.buildCompositeMaterial(
+        vec4(this.toneMapped(texture(this.gbuffer.emissiveTexture, screenUV).rgb), 1),
+      ),
       depth: this.buildCompositeMaterial(vec4(vec3(this.logDepthNode()), 1)),
       // 4 枚のスロットを 2x2 に並べて画面いっぱいへ映す。線形深度なのでそのまま濃淡として
       // 読め(遠いほど白)、使われていないスロットは真っ白のまま残る。
@@ -247,6 +257,12 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     material.colorNode = colorNode;
     material.depthNode = texture(this.gbuffer.depthTexture, screenUV).r;
     return material;
+  }
+
+  // G バッファのベース色の α に載っている金属度。物体の無い画素(深度が反転 Z の far)は 0。
+  private metalnessDebugNode(): FloatNode {
+    const metalness = texture(this.gbuffer.basecolorTexture, screenUV).a;
+    return select(texture(this.gbuffer.depthTexture, screenUV).r.greaterThan(0), metalness, float(0));
   }
 
   // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。スロットは独立した
