@@ -2,7 +2,7 @@
 // 軌道ウィンドウのライフサイクル管理。被選択物が組んだメニュー項目の実行先として、ゲーム側の
 // 操作一式を MapCommands の形で差し出す。
 import { Hud } from '../hud/hud';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import type { Base } from '../dynamic/dynamic-entity/base';
 import {
   ContextMenu, PropertyWindow, PropertyWindowContent, PropertyWindowItem,

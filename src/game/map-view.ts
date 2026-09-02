@@ -1,4 +1,5 @@
-// マップビュー専用のフレーム処理(WorldViewFrame の具象)。呼ぶ位置と順序は Game が持つ。
+// マップビュー専用のフレーム処理と遷移フック(WorldViewFrame の具象)。呼ぶ位置と順序は
+// Game / ViewManager が持つ。
 import type { Input } from './input/input';
 import type { CameraSystem } from './camera/camera-system';
 import type { CelestialSystem } from './celestial/celestial-system';

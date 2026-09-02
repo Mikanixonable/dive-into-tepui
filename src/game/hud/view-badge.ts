@@ -1,4 +1,5 @@
-import type { WorldView, ViewManager } from '../view-manager';
+import type { ViewManager } from '../view-manager';
+import type { WorldView } from '../world-view';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from './overlay-manager';
 import { Button, ToggleSwitch } from './widgets';

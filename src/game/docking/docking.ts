@@ -10,7 +10,7 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { MapContextActions } from '../pickable/map-context-actions';
 import type { CameraSystem } from '../camera/camera-system';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
