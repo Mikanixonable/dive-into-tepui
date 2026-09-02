@@ -481,7 +481,8 @@ export class Game {
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
-    const fo = this.cameraSystem.sync(activeControllable?.state.v ?? v3());
+    this.cameraSystem.sync();
+    const fo = this.cameraSystem.getFloatingOrigin(activeControllable?.state.v ?? v3());
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
     this.viewManager.activeView.syncLabels();
 
