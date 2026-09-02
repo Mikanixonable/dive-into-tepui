@@ -61,7 +61,7 @@ export class OrbitPanel {
       el?.classList.add('hidden');
       return;
     }
-    el?.classList.toggle('hidden', hideInOverview && game.cameraSystem.overviewMode);
+    el?.classList.toggle('hidden', hideInOverview && game.viewManager.isMapView);
 
     if (!this.throttle.due()) return;
 

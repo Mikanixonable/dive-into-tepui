@@ -2,6 +2,7 @@
 // 軌道ウィンドウのライフサイクル管理。被選択物が組んだメニュー項目の実行先として、ゲーム側の
 // 操作一式を MapCommands の形で差し出す。
 import { Hud } from '../hud/hud';
+import type { WorldView } from '../view-manager';
 import type { Base } from '../dynamic/dynamic-entity/base';
 import {
   ContextMenu, PropertyWindow, PropertyWindowContent, PropertyWindowItem,
@@ -302,9 +303,9 @@ export class MapContextActions implements MapCommands {
   // 未来ゴースト時刻で位置が求まらないだけのフレーム(stateAt が null)は候補列
   // (pickables.pickables)から外れるだけで消滅ではないので、生存判定は対象の alive で行う。
   sync(simTime: number, displayTime: number, player: Player | null): void {
-    const overviewMode = this.cameraSystem.overviewMode;
-    this.physicalObjectListPanel.setVisible(overviewMode);
-    if (overviewMode) {
+    const mapView = this.cameraSystem.worldView === 'map';
+    this.physicalObjectListPanel.setVisible(mapView);
+    if (mapView) {
       const items = this.pickables.pickables;
       // 親が無ければ(恒星、もしくは主天体が未登録)載せず、根として扱う。
       const parentOf = new Map<string, string>();
@@ -369,7 +370,7 @@ export class MapContextActions implements MapCommands {
     const header = all.find((it) => it.type === 'header');
     // 戦闘ビューで開いたウィンドウは項目ショートカットを持たせない — [F]/[T] は自機の
     // 進行方向リセット/ターゲット選択が既に使っており、同じキーを両方へは配れない。
-    const showShortcuts = this.cameraSystem.overviewMode;
+    const showShortcuts = this.cameraSystem.worldView === 'map';
     const items = all
       .filter((it) => it.type !== 'header' && it.act !== undefined)
       .map((it) => ({
@@ -431,7 +432,7 @@ export class MapContextActions implements MapCommands {
   // フォーカスをその対象へ移す。マップは座標系パネル連動(計画中心の追随)込みの経路、
   // 戦闘はその場のカメラだけを動かす。
   focus(id: string, name: string): void {
-    if (this.cameraSystem.overviewMode) {
+    if (this.cameraSystem.worldView === 'map') {
       this.frameControls.setFocus({ kind: 'object', id });
     } else {
       this.cameraSystem.combatCamera.setFocusTarget({ kind: 'object', id });
@@ -526,7 +527,7 @@ export class MapContextActions implements MapCommands {
   get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
   get canAuthor(): boolean { return this.activeStage.authoring !== null; }
   get executesPlans(): boolean { return this.activeStage.executesPlans; }
-  get overviewMode(): boolean { return this.cameraSystem.overviewMode; }
+  get worldView(): WorldView { return this.cameraSystem.worldView; }
 
   isNavTarget(id: string): boolean {
     return this.navTarget.id === id;
