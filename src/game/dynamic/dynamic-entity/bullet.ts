@@ -45,7 +45,6 @@ export class Bullet extends DynamicEntity {
     private readonly lifetime: number;
     private readonly _worldSfx: WorldSfx;
 
-    // accent: plasma 弾のみ使う発光色(未指定なら buildPlasmaMesh の既定色)。normal 弾では無視する。
     // damage は着弾時に与える HP。撃った側の武装で決まるので、弾自身が持ち歩く。
     public constructor(
         state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number,
