@@ -6,7 +6,7 @@ import { buildOverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
 import { HelpPanel } from './windows/help-panel';
 import { PanelShell, wirePanelCollapse } from './panel-shell';
-import type { View } from '../view';
+import type { View } from '../view/view';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
 import { PANEL_CONTENT_STYLE } from './style/panel-content-style';

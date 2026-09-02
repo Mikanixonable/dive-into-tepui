@@ -11,7 +11,7 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { CameraSystem } from '../camera/camera-system';
-import type { View } from '../view';
+import type { View } from '../view/view';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';

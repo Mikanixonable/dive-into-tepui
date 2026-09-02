@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { View } from '../../view';
+import type { View } from '../../view/view';
 import { Ship, MUZZLE_SPEED } from './ship';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 import { DynamicEntity } from './dynamic-entity';
