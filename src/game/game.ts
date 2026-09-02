@@ -50,7 +50,6 @@ import { GameSaveData } from './save/save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { frameRoleOf } from '../physics/frame';
 import { Docking } from './docking/docking';
-import { DockingGuide } from './docking/docking-guide';
 import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 
@@ -242,14 +241,11 @@ export class Game {
     );
     this.objectWindows.setDocking(this.docking);
 
-    const dockingGuide = new DockingGuide(
-      this._scene, this.markerManager, this.dynamicSystem, this.docking,
-    );
     const guide = new PlanGuide(this._hud, this._uiSfx, this.markerManager);
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      this.activePlayers, dockingGuide, guide, this.planDisplay.path, celestialSystem,
+      this.activePlayers, this.docking.guide, guide, this.planDisplay.path, celestialSystem,
       this.simSpeedManager, this._hud,
     );
     const mapPicking = new MapPicking(
