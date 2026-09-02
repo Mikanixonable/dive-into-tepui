@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
-import cloudsTextureUrl from '../../src/assets/8k_clouds.jpg';
+import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
@@ -46,7 +46,8 @@ import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
 import type { ProteinLabCaseMetadata } from './protein-cases';
-import type { ProteinMotionFrameSample } from '../../src/protein-motion-metrics';import { HULL_EMISS } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
+import type { ProteinMotionFrameSample } from '../../src/protein-motion-metrics';
+import { HULL_EMISS } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
 
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
@@ -606,7 +607,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle): THREE.Object3D {
   group.position.copy(center);
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
-  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl, earthSmoothnessUrl);
+  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cloudFieldUrl, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
   surface.setCloudAmount(1);

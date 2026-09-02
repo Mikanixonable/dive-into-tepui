@@ -1,7 +1,7 @@
 // 地球系(地球・月)。静的事実・運動・見た目を1体につき1箇所で組む。
 import * as THREE from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
-import cloudsTextureUrl from '../../../assets/8k_clouds.jpg';
+import cloudFieldUrl from '../../../assets/cloud-field.png';
 import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import { AtmosphereDef } from '../../../physics/atmosphere';
@@ -187,7 +187,7 @@ export function earthSystem(
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
-      CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl, earthSmoothnessUrl),
+      CelestialSurface.clouded(EARTH_TEXTURE, cloudFieldUrl, earthSmoothnessUrl),
       EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
       GeostationaryOverlay.of(earth.body),
     ),
