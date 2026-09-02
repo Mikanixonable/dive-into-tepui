@@ -3,7 +3,8 @@
 // フローティングオリジンに依存せず、カメラの絶対 ECI 視点状態と対象の絶対 ECI 位置
 // だけから完結する。THREE.Object3D.lookAt / PerspectiveCamera と同じ基底構築・
 // 透視除算の数式を踏襲しており、fov は垂直画角 [deg]。
-import { Vec3, cross, dot, norm, sub } from './vec3';
+import { Vec3, add, cross, dot, norm, scale, sub } from './vec3';
+import type { Ray } from './ray';
 
 export type Projected = { x: number; y: number; front: boolean };
 export type ProjectionMode = 'perspective' | 'orthographic';
@@ -96,4 +97,26 @@ export function metersPerPixelAtDistance(view: Viewpoint, distance: number, view
 export function metersPerPixel(view: Viewpoint, worldPos: Vec3, viewportHeight: number): number {
   const forward = norm(sub(view.lookTarget, view.position));
   return metersPerPixelAtDistance(view, dot(sub(worldPos, view.position), forward), viewportHeight);
+}
+
+// width×height のピクセル矩形の (x, y) を通る視線。projectToNdc + ndcToScreen の逆で、
+// **カメラ基底の組み方(up の再直交化)も投影側と揃える** — 揃えないと、画面上で当たって
+// 見える点が視線側では外れる。直交投影では画面上の位置に応じて始点がずれ、向きは一定になる。
+export function rayThroughScreen(view: Viewpoint, x: number, y: number, width: number, height: number): Ray {
+  const forward = norm(sub(view.lookTarget, view.position));
+  const right = norm(cross(forward, view.up));
+  const camUp = cross(right, forward);
+  const ndcX = (x / width) * 2 - 1;
+  const ndcY = 1 - (y / height) * 2;
+
+  if (view.projection === 'orthographic' && view.orthographicHalfHeight !== undefined) {
+    const halfHeight = Math.max(MIN_DEPTH, view.orthographicHalfHeight);
+    const offset = add(
+      scale(right, ndcX * view.aspect * halfHeight), scale(camUp, ndcY * halfHeight));
+    return { origin: add(view.position, offset), dir: forward };
+  }
+  const tanHalfFov = Math.tan((view.fovDeg * Math.PI) / 360);
+  const dir = add(forward, add(
+    scale(right, ndcX * view.aspect * tanHalfFov), scale(camUp, ndcY * tanHalfFov)));
+  return { origin: view.position, dir: norm(dir) };
 }

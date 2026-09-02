@@ -13,7 +13,7 @@ import type { Base } from './dynamic/dynamic-entity/base';
 
 export type WorldView = 'combat' | 'map';
 
-export interface ViewMenuItem {
+interface ViewMenuItem {
   readonly id: string;
   readonly label: string;
   readonly viewId: WorldView;

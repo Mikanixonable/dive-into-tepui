@@ -3,7 +3,7 @@ import { SnapshotService } from './snapshot-service';
 
 // 「いつ自動で撮るか」だけを持つ。実際の撮影(GameSaveData の組み立て・永続化)は
 // SnapshotService に委ねる。
-export const AUTOSAVE_INTERVAL_REAL_SEC = 60;
+const AUTOSAVE_INTERVAL_REAL_SEC = 60;
 
 export class AutoSave {
   private lastCaptureReal = performance.now();

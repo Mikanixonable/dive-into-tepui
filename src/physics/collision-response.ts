@@ -16,7 +16,7 @@ export interface Sphere {
 }
 
 // 接触の反作用を受ける球。
-export interface SphereView extends Sphere {
+interface SphereView extends Sphere {
   readonly invMass: number; // 0 = 無限質量(動かない)、Infinity = 質量 0(試験粒子)
 }
 

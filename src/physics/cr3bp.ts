@@ -1,9 +1,9 @@
 // 無次元の円制限三体問題(CR3BP)そのもの。回転系・重心原点で、主天体を (−μ,0,0)、副天体を
 // (1−μ,0,0) に置き、長さの単位を両天体間距離、時間の単位を平均運動の逆数(n=1)に取る。
-// 運動方程式・ヤコビ定数つき数値積分を持つ。質量比 μ だけで閉じた力学として書かれている。
+// 運動方程式と数値積分を持つ。質量比 μ だけで閉じた力学として書かれている。
 
 // 回転系の状態 [x, y, z, ẋ, ẏ, ż](いずれも無次元)。
-export type Cr3bpState = readonly [number, number, number, number, number, number];
+type Cr3bpState = readonly [number, number, number, number, number, number];
 
 // 無次元の位置 [x, y, z]。
 export type Vec3Tuple = readonly [number, number, number];
@@ -32,7 +32,7 @@ function attraction(mu: number, x: number, y: number, z: number) {
 }
 
 // 状態の時間微分。回転系の遠心力項 (x,y) とコリオリ項 (±2ẏ, ∓2ẋ) を含む。
-export function cr3bpDerivative(mu: number, s: Cr3bpState): Cr3bpState {
+function cr3bpDerivative(mu: number, s: Cr3bpState): Cr3bpState {
   const [x, y, z, vx, vy, vz] = s;
   const { dx1, dx2, a, b } = attraction(mu, x, y, z);
   return [
@@ -41,14 +41,6 @@ export function cr3bpDerivative(mu: number, s: Cr3bpState): Cr3bpState {
     -2 * vx + y - a * y - b * y,
     -a * z - b * z,
   ];
-}
-
-// ヤコビ定数 C = 2Ω − v²。閉軌道に沿って保存するので、積分誤差の目安にも使える。
-export function cr3bpJacobi(mu: number, s: Cr3bpState): number {
-  const [x, y, z, vx, vy, vz] = s;
-  const { r1, r2 } = attraction(mu, x, y, z);
-  const omega = (x * x + y * y) / 2 + (1 - mu) / r1 + mu / r2;
-  return 2 * omega - (vx * vx + vy * vy + vz * vz);
 }
 
 // 6 変数の RK4 一段。
@@ -114,20 +106,12 @@ function pointAt(path: readonly Vec3Tuple[], i: number): Vec3Tuple {
   return p;
 }
 
-// 周期軌道を弧長等間隔の点列にする。近点で速度が上がる NRHO でも折れ線の粗密が偏らない。
-// 返す点列は閉曲線を一巡し、終点は始点と重ならない。steps は1周を追う積分の刻み数。
-export function sampleOrbitByArcLength(
-  mu: number, s: Cr3bpState, period: number, samples: number, steps = 4000,
-): Vec3Tuple[] {
-  return sampleOrbitByArcLengthWithTime(mu, s, period, samples, steps)
-    .map(([x, y, z]) => [x, y, z]);
-}
-
 // 位置 [x, y, z]、その点までの経過時刻を周期で割った割合 [0, 1)、速度 [vx, vy, vz] を並べた
 // 7要素。速度は無次元時間に対する値で、周期を掛ければ割合パラメータに対する接線になる。
-export type Vec3TimeStateTuple = readonly [number, number, number, number, number, number, number];
+type Vec3TimeStateTuple = readonly [number, number, number, number, number, number, number];
 
-// sampleOrbitByArcLength と同じく弧長等間隔の点列を作るが、各点に「その点までの経過時刻 ÷ 周期」
+// 周期軌道を弧長等間隔の点列にする。近点で速度が上がる NRHO でも折れ線の粗密が偏らない。
+// 返す点列は閉曲線を一巡し、終点は始点と重ならない。各点には「その点までの経過時刻 ÷ 周期」
 // (0..1)と速度を併記する。時刻は進行方向マーカーを実際の軌道速度に比例して動かすために、
 // 速度は点と点の間をエルミート補間で埋めるために使う。steps は1周を追う積分の刻み数。
 export function sampleOrbitByArcLengthWithTime(

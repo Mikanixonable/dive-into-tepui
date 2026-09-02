@@ -12,13 +12,13 @@ import type { Albedo } from '../../celestial-albedo';
 
 // 光源になりうる天体 1 体。**恒星や半径 0 の天体を含む星系の全天体を渡すこと** — 天体自身の
 // 食(sunlitFactor)が、光源にならない天体にも遮られるため。albedo は色つきのボンドアルベド。
-export type PlanetLightCandidate = {
+type PlanetLightCandidate = {
   readonly celestialBody: CelestialMotion;
   readonly albedo: Albedo;
 };
 
 // 光源として選ばれた天体 1 体。位置・半径は celestialBody(ECI)から読む。
-export type PlanetLight = {
+type PlanetLight = {
   readonly celestialBody: CelestialMotion;
   // 一様球としての放射輝度(色つき)。位相(満ち欠け)と天体の食(sunlitFactor)も掛けてある。
   readonly radiance: Albedo;

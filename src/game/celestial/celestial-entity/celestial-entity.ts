@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
-import { OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
+import { apsisAltitudes, OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
@@ -13,15 +13,31 @@ import { FloatingOrigin } from '../../camera/floating-origin';
 import { apparentSizePx } from '../../../math/projection';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
 import { len, sub } from '../../../math/vec3';
+import { bodyEntityGlyph } from '../../marker/marker-identity';
+import { MARKER_PRIORITY } from '../../marker/marker-manager';
+import { bodySearchText } from '../../pickable/body-search-text';
+import { fmtDist, fmtTime } from '../../hud/utils';
+import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
+import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { AtmosphereCandidate, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
+import { hitsSphere, type Ray } from '../../../math/ray';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { SunLight } from '../../../render/pipeline/sun-light';
 import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
+import type { CelestialSystem } from '../celestial-system';
+import type { MapPickable } from '../../pickable/map-pickable';
+import type { MapCommands } from '../../pickable/map-commands';
+import type { MenuItem } from '../../hud/windows/context-menu';
+import type { PropertyRow } from '../../hud/windows/property-window';
+import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../../hud/object-groups';
+import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { Player } from '../../player/player';
 
 // 公転天体の参照軌道線の色: 衛星は月軌道線の色、惑星は木星軌道線の色を踏襲し、
 // 同じ種別の天体はすべて同じ色で引く。
@@ -38,7 +54,25 @@ const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 // 参照軌道線が完全表示のときの不透明度。
 const REFERENCE_LINE_OPACITY = 0.3;
 
-export abstract class CelestialEntity {
+// 天体分類ごとの、選択ウィジェットの見出し。
+const BODY_PICKER_GENRES: Readonly<Record<CelestialClass, ObjectPickerGenre>> = {
+  star: '恒星',
+  planet: '惑星',
+  dwarf: '準惑星',
+  satellite: '衛星',
+  smallBody: '小天体',
+};
+
+// 惑星 > 準惑星 > 衛星・小惑星・彗星。恒星は太陽系の基準点なので、惑星と同じ最上位に置く。
+const BODY_LABEL_PRIORITY: Readonly<Record<CelestialClass, number>> = {
+  star: MARKER_PRIORITY.STAR_PLANET,
+  planet: MARKER_PRIORITY.STAR_PLANET,
+  dwarf: MARKER_PRIORITY.DWARF_PLANET,
+  satellite: MARKER_PRIORITY.SATELLITE_SMALL_BODY,
+  smallBody: MARKER_PRIORITY.SATELLITE_SMALL_BODY,
+};
+
+export abstract class CelestialEntity implements MapPickable {
   // マップ専用の参照軌道線(衛星は親惑星中心、惑星は主星中心)。実体も濃さの決め方も個体が
   // 持ち、出す/消すの判断だけを所有者(CelestialSystem)が sync/remove の呼び分けで行う。
   referenceLine: EllipseLine | null = null;
@@ -179,4 +213,113 @@ export abstract class CelestialEntity {
   ): number {
     return apparentSizePx(diameterMeters, metersPerPixel) * graphics.lodBias;
   }
+
+  // 天体ラベルとしての振る舞い。
+  // マップのマーカーへ描く表記。
+  public get markerLabel(): string { return this.name; }
+  // マーカーの CSS クラス。
+  public readonly markerClass = 'mk-poi';
+  // ラベルが混雑したときに優先して残す度合い。大きいほど残る。
+  public get labelPriority(): number { return BODY_LABEL_PRIORITY[this.bodyClass]; }
+
+  // マップ上の被選択物としての振る舞い。
+  public readonly ownerName = null;
+  public readonly mapTime = null;
+  public readonly gone = false;
+  public readonly mapState = null;
+  public get mapGlyph(): string { return bodyEntityGlyph(this.bodyClass); }
+  public readonly mapGlyphSvg = null;
+  public readonly listSection: MapListSection = 'body';
+  public get pickerGenre(): ObjectPickerGenre { return BODY_PICKER_GENRES[this.bodyClass]; }
+  public readonly hiddenBehindBodies = false;
+  public readonly onlyInFocusedSystem = false;
+  public listPriority(): number { return 0; }
+  public listCounted(): boolean { return false; }
+  public listDetail(): string { return ''; }
+
+  // 表示時刻の ECI 位置。
+  public mapPosAt(displayTime: number): Vec3 {
+    return this.stateAt(displayTime).r;
+  }
+
+  // 天体の本体は表面半径の球。
+  public hitBodyByRay(ray: Ray, pos: Vec3): boolean {
+    return hitsSphere(ray, pos, this.def.radius);
+  }
+
+  // 分類・名前トグルによる可否。
+  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
+    return policy.body(this.id);
+  }
+
+  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+
+  // 一覧の検索が照合する、自艦からの距離と中心天体の名前。
+  public listSearchText(
+    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+  ): string {
+    return bodySearchText(celestialSystem, this.mapPosAt(displayTime), activePlayer, displayTime);
+  }
+
+  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
+  public mapMenuItems(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[] {
+    const subLabel = this.id === celestialSystem.origin.id ? '母星 (中心天体)'
+      : this.id === 'moon' ? '衛星 (月)'
+        : this.id === celestialSystem.star?.id ? `恒星 (${this.name})`
+          : '天体・ラグランジュ点';
+    return [
+      { type: 'header', label: this.name, subLabel },
+      MenuCommon.focus(),
+      ...MenuCommon.targetItems(commands, this.id, simTime),
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // mapMenuItems が出した操作を、すべて commands を通して実行する。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    if (act === 'focus') commands.focus(this.id, this.name);
+    else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
+  }
+
+  // プロパティウィンドウに出す行。種別・μ・半径を主要行とし、公転していれば軌道要素を
+  // 「軌道」グループの下に畳む。viewer が null なら距離の行は落ちる。
+  public mapPropertyRows(
+    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number, displayTime: number,
+  ): readonly PropertyRow[] {
+    const viewer = commands.activePlayer;
+    const motion = this.motion;
+    const def = motion.def;
+    const rows: PropertyRow[] = [];
+    if (viewer !== null) {
+      const dist = len(sub(this.mapPosAt(displayTime), viewer.state.r));
+      rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(dist) });
+    }
+    const kindLabel = motion.kind === 'star' ? '恒星' : motion.kind === 'planet' ? '惑星' : '衛星';
+    rows.push(
+      { key: 'kind', label: '種別', value: kindLabel },
+      { key: 'mu', label: 'μ', value: `${def.mu.toExponential(3)} m³/s²` },
+      { key: 'radius', label: '半径', value: fmtDist(def.radius) },
+    );
+    // 軌道要素は公転天体だけが持つ。
+    if (motion.kind === 'star') return rows;
+    const primary = motion.primary;
+    const el = primary !== null ? orbitalElementsOf(motion.stateAt(simTime), primary, simTime) : null;
+    if (el === null) return rows;
+    const apsis = apsisAltitudes(el);
+    const apSpec = getApsisLabelSpec('ap', el.center.id);
+    const peSpec = getApsisLabelSpec('pe', el.center.id);
+    rows.push(
+      { key: 'ap', label: apSpec.full, value: fmtDist(apsis.ap), group: '軌道' },
+      { key: 'pe', label: peSpec.full, value: fmtDist(apsis.pe), group: '軌道' },
+      { key: 'inc', label: ORBIT_ELEMENT_LABELS.inc.full, value: `${el.incDeg.toFixed(2)}°`, group: '軌道' },
+      { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(el.period), group: '軌道' },
+    );
+    return rows;
+  }
+
+  public readonly mapRename = null;
+  public readonly onMapSelect = null;
+  public readonly onMapFocus = null;
 }

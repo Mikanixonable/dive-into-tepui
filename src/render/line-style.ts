@@ -15,7 +15,7 @@ export const LINE_RENDER_ORDER = {
 } as const;
 
 // 破線パターン。dashSize/gapSize は線が描かれる座標系での実距離 [m]。
-export type LineDash = { readonly dashSize: number; readonly gapSize: number };
+type LineDash = { readonly dashSize: number; readonly gapSize: number };
 
 // 線の見た目を決める値。
 export type LineStyle = {

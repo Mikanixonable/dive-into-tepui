@@ -22,9 +22,9 @@ import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/player-throttle';
 export const SHIP_BCINV = 3.3e-3; // Cd≈2.2, A≈12m², m≈8t
 export const SHIP_SRP_COEFF = 1.56e-2; // C_R≈1.3, A≈12m², m=PLAYER_MASS
 // 宇宙機の実効密度で、曲率半径 0.6 m を与える値。
-export const SHIP_BULK_DENSITY = 833; // [kg/m^3]
+const SHIP_BULK_DENSITY = 833; // [kg/m^3]
 // PLAYER_MASS と掛けて外殻の熱容量 0.1 MJ/K。射撃・被弾の発熱量はこれを基準に決めてある。
-export const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
+const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
 // 艦体自体の放熱面積 70 m² を PLAYER_MASS で割った値。放熱板の展開ぶんはこれに上乗せする。
 export const SHIP_RADIATING_AREA_PER_MASS = 0.07; // [m^2/kg]
 export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]

@@ -5,9 +5,10 @@ import { secondaryFrameFor, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
-  HaloParams, LissajousParams, CollinearPoint,
+  HaloParams, LissajousParams,
   collinearFrame, haloAmplitudeX, haloState, lissajousState,
 } from '../../src/physics/halo';
+import { CollinearPoint } from '../../src/physics/lagrange';
 import { dot, len, sub } from '../../src/math/vec3';
 
 const SECONDARIES: string[] = ['moon', 'earth'];

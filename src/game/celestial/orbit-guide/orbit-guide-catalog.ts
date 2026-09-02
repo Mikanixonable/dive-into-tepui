@@ -1,6 +1,7 @@
 // CR3BP 周期軌道カタログの読み込み。地球-月・太陽-地球はバンドルへ静的 import 済み、残り5系は
 // その系が初めて必要になったときに動的 import で取りに行く(webpack が自動でコード分割する)。
-import { lagrangeJacobi, type LagrangeLabel } from '../../../physics/zero-velocity';
+import { lagrangeJacobi } from '../../../physics/zero-velocity';
+import type { LagrangeLabel } from '../../../physics/lagrange';
 import type { CatalogSystem, CatalogSystemId, OrbitCatalog } from '../../../physics/orbit-catalog';
 import staticTable from '../../../assets/orbits/lagrange-orbits.json';
 

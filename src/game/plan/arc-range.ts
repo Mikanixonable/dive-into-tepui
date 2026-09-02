@@ -4,7 +4,7 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 
 // 積分の終端は要求時刻に対して丸め誤差ぶん手前に落ちうる。この幅までは終端そのものとみなす。
-export const EPOCH_EPS = 1e-6;
+const EPOCH_EPS = 1e-6;
 
 // 時刻 t が答える範囲の終端 end 以内(丸め誤差込み)か。積分中に見つけた到達点・極値を
 // 答える前に、それが今の範囲に残っているかを判定するために使う。
