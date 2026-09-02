@@ -87,4 +87,6 @@ export class MapView implements WorldViewFrame {
     );
     this.linePickables.refresh(displayWindow, this.frameAnchors);
   }
+
+  dispose(): void {}
 }

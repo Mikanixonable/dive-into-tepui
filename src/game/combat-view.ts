@@ -1,4 +1,5 @@
-// 戦闘ビュー専用のフレーム処理(WorldViewFrame の具象)。呼ぶ位置と順序は Game が持つ。
+// 戦闘ビュー専用のフレーム処理と遷移フック(WorldViewFrame の具象)。呼ぶ位置と順序は
+// Game / ViewManager が持つ。
 import type { Input } from './input/input';
 import type { TouchControls } from './input/touch';
 import type { CameraSystem } from './camera/camera-system';
@@ -9,6 +10,9 @@ import type { MapContextActions } from './pickable/map-context-actions';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import type { Targeter } from './targeter';
 import type { ActiveControllableController } from './active-controllable-controller';
+import type { DockingGuide } from './docking/docking-guide';
+import type { DisplayWindow } from './display-window-manager';
+import type { FloatingOrigin } from './camera/floating-origin';
 import type { WorldViewFrame } from './world-view';
 
 export class CombatView implements WorldViewFrame {
@@ -23,6 +27,7 @@ export class CombatView implements WorldViewFrame {
     private readonly celestialMarkers: CelestialMarkers,
     private readonly touchControls: TouchControls | null,
     private readonly activePlayers: ActiveControllableController,
+    private readonly dockingGuide: DockingGuide,
   ) {}
 
   // 戦闘ビューは操作対象(艦または基地)が必要。
@@ -32,7 +37,10 @@ export class CombatView implements WorldViewFrame {
 
   onEnter(): void {}
 
-  onLeave(): void {}
+  // 戦闘専用の表示物を畳む。
+  onLeave(): void {
+    this.dockingGuide.hide();
+  }
 
   // 照準キーと右クリックの配分。操作艦がいなければ照準先が無いので配らない。
   handlePointer(simTime: number): void {
@@ -54,8 +62,8 @@ export class CombatView implements WorldViewFrame {
     this.celestialMarkers.hideLabels();
   }
 
-  // 戦闘ビュー専用の常設表示(タッチのモードボタン)と、軌道線候補の後始末。
-  syncPanels(): void {
+  // 戦闘ビュー専用の常設表示(タッチのモードボタン・ドッキングガイド)と、軌道線候補の後始末。
+  syncPanels(_displayWindow: DisplayWindow, fo: FloatingOrigin): void {
     this.linePickables.clear();
     const player = this.activePlayers.current;
     if (player) {
@@ -64,5 +72,10 @@ export class CombatView implements WorldViewFrame {
         (key) => player.throttle.isThrustLatched(key),
       );
     }
+    this.dockingGuide.sync(player, fo, this.cameraSystem.activeCameraProjection);
+  }
+
+  dispose(): void {
+    this.dockingGuide.dispose();
   }
 }
