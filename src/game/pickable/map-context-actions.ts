@@ -152,7 +152,6 @@ export class MapContextActions implements MapCommands {
   // 右クリック位置の被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
   // 当たらなければ消費せず、handleEmptySpaceRightClick へ読み進める。
   handleMapRightClick(input: Input, simTime: number): void {
-    if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
       const target = this.pickAt(this.pickables.pickables, p.x, p.y);
       if (!target) return false;
@@ -166,7 +165,6 @@ export class MapContextActions implements MapCommands {
   // ウィンドウを開いて消費する。handleEmptySpaceRightClick より前、editor.handleMapPointer
   // より後に呼ぶ(11節の判定順序)。
   handleLineRightClick(input: Input): void {
-    if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
       const orbit = pickNearestLine(
         this.linePickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
@@ -238,9 +236,8 @@ export class MapContextActions implements MapCommands {
 
   // 左クリック位置の、選択に応じる被選択物を選ぶ。当たらなければ消費せず、PlanEditor の
   // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
-  // マーカーへの命中をノード配置より優先する)。マップ視点でなければ何もしない。
+  // マーカーへの命中をノード配置より優先する)。
   handleLeftClick(input: Input): void {
-    if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
       const target = this.pickAt(
         this.pickables.pickables.filter((i) => i.onMapSelect !== null), p.x, p.y);
@@ -253,7 +250,6 @@ export class MapContextActions implements MapCommands {
   // ダブルクリック位置の被選択物へフォーカスを移し、自艦であれば操作対象にも切り替える。
   // 種別を問わず候補列全体から探す。マップ視点でなければ何もしない。
   handleDoubleClick(input: Input): void {
-    if (!this.cameraSystem.overviewMode) return;
     input.takeDoubleClicks((p) => {
       const target = this.pickAt(this.pickables.pickables, p.x, p.y);
       if (!target) return false;
@@ -274,7 +270,6 @@ export class MapContextActions implements MapCommands {
   // 何も当たらなかった場合、「空域」として扱う(他のハンドラの後に呼ぶ)。マップ・戦闘の
   // どちらの右クリックも空振りしたら最終的にここへ落ちる — 実装は1つだけ持つ(openEmptySpaceMenu)。
   handleEmptySpaceRightClick(input: Input, simTime: number): void {
-    if (!this.cameraSystem.overviewMode) return;
     input.takeRightClicks((p) => {
       this.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
@@ -288,10 +283,7 @@ export class MapContextActions implements MapCommands {
 
   // 戦闘ビューの右クリック。ヒットした実体があればそのプロパティウィンドウを、なければ
   // 空域設定メニューを開く。
-  handleCombatRightClick(
-    input: Input, simTime: number, overviewMode: boolean,
-  ): void {
-    if (overviewMode) return;
+  handleCombatRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
       const hitEntity = pickCombatEntityAtPoint(
         this.entities, this.cameraSystem.activeViewpoint, this.cameraSystem.activeCameraProjection, p.x, p.y,

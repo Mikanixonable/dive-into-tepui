@@ -67,21 +67,19 @@ export class Targeter {
 
   // Tキーで照準中心に最も近い敵をターゲットにする。オート選定は行わない — 右クリックでの
   // 設定/解除は MapContextActions が開くプロパティウィンドウの項目(target)から
-  // navTarget.toggleTarget を呼ぶ。ビューはここでは持たないので毎フレーム引数で受け取り、
-  // マップ視点では何もしない。
-  handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn, overviewMode: boolean): void {
-    if (overviewMode) return;
+  // navTarget.toggleTarget を呼ぶ。
+  handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
     this.navTarget.setCombatTarget(pickNearest(
       targets.filter((e) => e.alive), (target) => project(target.state.r),
       window.innerWidth * 0.5, window.innerHeight * 0.5, Infinity));
   }
 
-  // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
+  // 戦闘ターゲットの赤道交点マーカーを求め直す。求め直されなかったフレームの交点は
+  // 同期側が自動的に隠す。
   updateEquatorNodes(
-    overviewMode: boolean, displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
+    displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
-    if (!overviewMode) return;
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
       .updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
