@@ -9,7 +9,7 @@ import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH } from '../marker/marker-identity';
 
-// 戦闘ビュー専用のマーカー(広範囲視点ではまとめて隠す)。
+// 戦闘ビュー専用のマーカー。マップビューではまとめて隠す。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
 
 export class PlayerMarkers {

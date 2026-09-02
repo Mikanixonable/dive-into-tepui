@@ -89,7 +89,7 @@ export class Hud {
     const map = view === 'map';
     this.burnManagementPanel.sync(game.player?.boosters.managementViewModel() ?? null);
     this.topBar.sync(game);
-    this.orbitPanel.sync(game, !map);
+    this.orbitPanel.sync(game);
     if (map) {
       this.mapScaleBadge.sync(game);
     } else {

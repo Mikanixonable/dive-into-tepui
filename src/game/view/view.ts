@@ -1,6 +1,5 @@
-// ビュー(戦闘/マップ)固有の処理の口。フレーム処理は Game が update/sync の固定位置で
-// 現在のビューの実装だけを呼び、遷移フックは ViewManager が setView() の中で呼ぶ。
-// 両ビュー共通のフレーム処理は Game が地の文で持つ。
+// ビュー(戦闘/マップ)固有の処理の口。フレーム処理は update/sync の固定位置で現在のビューの
+// 実装だけが呼ばれ、遷移フックは setView() の中で呼ばれる。
 import type { DisplayWindow } from '../display-window-manager';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { Input } from '../input/input';

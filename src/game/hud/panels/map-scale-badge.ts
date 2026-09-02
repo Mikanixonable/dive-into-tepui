@@ -1,4 +1,4 @@
-// マップ視点の縮尺バー(#hud-map-scale)の要素へ、計算済みの縮尺値を書き込む。
+// マップビューの縮尺バー(#hud-map-scale)の要素へ、計算済みの縮尺値を書き込む。
 import { formatMapScaleDistance, mapScaleFor } from '../map-scale';
 import type { Game } from '../../game';
 
@@ -13,7 +13,7 @@ export class MapScaleBadge {
     panel.prepend(label);
   }
 
-  // マップ視点の縮尺は、カメラから画面中心までではなく、現在フォーカスしている対象の
+  // マップビューの縮尺は、カメラから画面中心までではなく、現在フォーカスしている対象の
   // 深度における meters-per-pixel から求める。パンしてもフォーカス対象を基準にするため、
   // 同じ天体を見続ける限り、表示値はスクロールズームだけに対応して変化する。
   public sync(game: Game): void {

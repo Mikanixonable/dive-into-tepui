@@ -309,7 +309,7 @@ export class CelestialMarkers {
     };
   }
 
-  // マップモードを抜けたときの後始末(戦闘ビューには天体ラベルを出さない)。
+  // マップビューを抜けたときの後始末。天体ラベルはマップビューだけの表示物。
   hideLabels(): void {
     this.activeCelestialLabels.length = 0;
     for (const label of this.labels) this.markerManager.hide(label.item.id);

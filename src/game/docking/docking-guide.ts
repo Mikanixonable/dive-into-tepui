@@ -4,8 +4,7 @@ import { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Docking, DockingCandidate } from './docking';
-import type { Projected } from '../../math/projection';
-import type { Vec3 } from '../../math/vec3';
+import type { ProjectFn } from '../camera/camera-system';
 import { currentThemePalette } from '../theme';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { MARKER_PRIORITY } from '../marker/marker-manager';
@@ -16,8 +15,6 @@ const GUIDE_MARKER_KEY = 'docking-guide';
 const AXIS_LENGTH = 32;
 const RING_RADIUS = 8;
 const RING_SEGMENTS = 64;
-
-type ProjectFn = (worldPos: Vec3) => Projected;
 
 const escapeLabelHtml = (value: string): string => value
   .replaceAll('&', '&amp;')

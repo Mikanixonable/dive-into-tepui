@@ -1,4 +1,4 @@
-// マップモードの「カメラ」「軌道フレーム」パネル オーケストレーター。
+// マップビューの「カメラ」「軌道フレーム」パネル オーケストレーター。
 // マップカメラの視点 (CameraFramePanel) と未来表示の描画基準 (TrajectoryFramePanel) を所有し、
 // カメラフォーカス変更時の軌道フレーム自動追随などの連動を疎結合に調停する。
 import { bodyAnchorSource } from '../../../physics/attractor';

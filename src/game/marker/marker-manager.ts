@@ -452,7 +452,6 @@ export class MarkerManager {
     return activeRecords;
   }
 
-  // thin のときのみ、画面上の近接に基づく優先度間引きを行う。
   // 隠す/再び出すしきい値をそれぞれの対象自身の直前フレームの状態(prevLabelHiddenByPriority)
   // で分ける(ヒステリシス)。周期が数時間の衛星どうしなど、タイムワープ中に画面距離が
   // しきい値付近で急変する組で、間引きが毎フレーム反転する明滅を防ぐ。

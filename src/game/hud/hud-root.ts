@@ -320,7 +320,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   buildEnemiesPanel(rightRail);
 }
 
-// マップ視点の縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
+// マップビューの縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
 function buildMapScale(root: HTMLElement): void {
   // 縮尺表示の要素を作る。
   const mapScale = createHudElement('div', 'hud-map-scale', root);

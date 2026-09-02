@@ -104,8 +104,8 @@ export class PointFieldView {
   private groups: readonly PointFieldGroupView[] = [];
   // 現在の星系に恒星が実在するか。無ければ点群は太陽中心の座標を持てないので非表示にする。
   private hasStar = true;
-  // update は map の表示中だけ呼ばれるため、false から true へ戻るフレームを再入場とみなす。
-  private mapActive = false;
+  // update は描かれるフレームでだけ呼ばれるため、false から true へ戻るフレームを再入場とみなす。
+  private updated = false;
 
   // field はこの星系に付随する生成済みの点群。どんな分布から作られたかはここでは問わない。
   constructor(private readonly field: PointField) {}
@@ -117,16 +117,16 @@ export class PointFieldView {
   }
 
   // 表示時刻 t の点の位置を引き直す。starPos はこの星系の恒星の ECI 位置で、恒星を持たない星系では
-  // null。active でない間は何もしない — 描かれないので位置を求める意味がない。
-  update(t: number, active: boolean, starPos: Vec3 | null): void {
+  // null。
+  update(t: number, starPos: Vec3 | null): void {
     this.hasStar = starPos !== null;
-    if (!active || starPos === null) {
-      this.mapActive = false;
+    if (starPos === null) {
+      this.updated = false;
       return;
     }
     const sunPos = starPos;
-    const reentered = !this.mapActive;
-    this.mapActive = true;
+    const reentered = !this.updated;
+    this.updated = true;
     for (const group of this.groups) group.update(t, sunPos, reentered);
   }
 

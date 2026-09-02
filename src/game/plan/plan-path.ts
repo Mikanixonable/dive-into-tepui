@@ -361,8 +361,7 @@ export class PlanPath {
         const pos = celestialSystem && unbakeTf
           ? toInertialPoint(unbakeTf, toFramePoint(celestialSystem.frames.transformAt(this.frame, s.t, this.frameAnchors), s.r))
           : v3(s.r.x, s.r.y, s.r.z);
-        // 天体に遮蔽されて画面上見えていない点は候補から除く — マップ右クリックの
-        // ピック候補(map-picker.ts)と同じ判定を通す。
+        // 天体に遮蔽されて画面上見えていない点は候補から除く。
         if (cameraPos && celestialBodies
           && isOccluded(cameraPos, pos, celestialBodies, this.frameAnchors.bodiesPivot)) continue;
         const p = this.project ? this.project(pos) : OFFSCREEN;

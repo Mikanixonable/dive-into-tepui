@@ -58,7 +58,7 @@ export class CreativeStage extends Stage {
   readonly authoring: ObjectAuthoring = this;
 
   private readonly placerPanel: ObjectPlacerPanel;
-  // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
+  // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップビューでだけ出す。
   private readonly stageControlsPanel: StageControlsPanel;
   private readonly waveAttack: WaveAttack;
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。

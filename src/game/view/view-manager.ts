@@ -11,15 +11,14 @@ import type { View, ViewFrame } from './view';
 export class ViewManager {
   private view: View;
 
-  get current(): View { return this.view; }
+  public get current(): View { return this.view; }
 
-  get isMapView(): boolean { return this.view === 'map'; }
-  get isCombatView(): boolean { return this.view === 'combat'; }
+  public get isMapView(): boolean { return this.view === 'map'; }
 
   // 現在のビューの実装。ビューによるフレーム処理の分岐はこの1箇所に閉じる。
-  get activeView(): ViewFrame { return this.views[this.view]; }
+  public get activeView(): ViewFrame { return this.views[this.view]; }
 
-  constructor(
+  public constructor(
     private readonly hud: Hud,
     private readonly touchControls: TouchControls | null,
     private readonly displayWindow: DisplayWindowManager,
@@ -38,7 +37,7 @@ export class ViewManager {
   // ビュー遷移の唯一の入口。next にいる状態で終われたかを返し、入れないビューなら何もしない。
   // 既に next にいる場合でも applyChrome() は必ず走らせ、「この呼び出しの後、HUD・タッチ・
   // 未来表示の各フラグは現在のビューに揃っている」という保証を遷移の有無に依らず成り立たせる。
-  setView(next: View): boolean {
+  public setView(next: View): boolean {
     if (next === this.current) { this.applyChrome(); return true; }
     if (!this.views[next].canEnter()) return false;
 
@@ -50,20 +49,15 @@ export class ViewManager {
     return true;
   }
 
-  serializeView(): View {
-    return this.view;
-  }
-
   // 保持する両ビューの表示物・DOM を片付ける。
-  dispose(): void {
-    this.views.map.dispose();
-    this.views.combat.dispose();
+  public dispose(): void {
+    for (const view of Object.values(this.views)) view.dispose();
   }
 
   // ビュー選択 UI に並べる遷移先。現在のビュー自身と、いま入れないビューは含まない。
-  selectableViews(): readonly View[] {
-    const all: readonly View[] = ['combat', 'map'];
-    return all.filter((v) => v !== this.current && this.views[v].canEnter());
+  public selectableViews(): readonly View[] {
+    return (Object.keys(this.views) as View[])
+      .filter((v) => v !== this.view && this.views[v].canEnter());
   }
 
   // 現在のビューに合わせて HUD の見た目と、未来表示・収納状態の各フラグを揃える。
@@ -75,7 +69,7 @@ export class ViewManager {
   }
 
   // [M] による戦闘⇔マップの切り替えを受ける。
-  handleInput(input: Input): void {
+  public handleInput(input: Input): void {
     if (!input.takeKey(K.toggleMapMode)) return;
 
     if (this.current === 'map') {

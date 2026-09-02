@@ -29,7 +29,7 @@ export class CombatView implements ViewFrame {
 
   // 直近ノードの実行ガイドは戦闘ビューにいる間しか出さないので、受け取った材料から
   // ここで組んで持つ。
-  constructor(
+  public constructor(
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
@@ -49,28 +49,27 @@ export class CombatView implements ViewFrame {
     this.planGuide = new PlanGuide(hud, uiSfx, markerManager);
   }
 
-  // 戦闘ビューは表示トグルによる間引きを持たないので、候補列も可視性ポリシーも持たない。
-  readonly pickables: readonly ObjectPickable[] = [];
-  readonly visibilityPolicy = null;
+  public readonly pickables: readonly ObjectPickable[] = [];
+  public readonly visibilityPolicy = null;
 
-  perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
+  public perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
     return { mapMode: false, mapItems: 0, mapLabels: 0 };
   }
 
   // 戦闘ビューは操作対象(艦または基地)が必要。
-  canEnter(): boolean {
+  public canEnter(): boolean {
     return this.activePlayers.currentControllable !== null;
   }
 
-  onEnter(): void {}
+  public onEnter(): void {}
 
   // 戦闘専用の表示物を畳む。
-  onLeave(): void {
+  public onLeave(): void {
     this.dockingGuide.hide();
   }
 
   // 計画キー: [Del] は計画全体の破棄、[N] は直近ノードへの自動ワープのトグル。
-  handleInput(input: Input, _dt: number, simTime: number): void {
+  public handleInput(input: Input, _dt: number, simTime: number): void {
     if (input.takeKey(K.deleteNode)) this.clearPlan();
     if (input.takeKey(K.autoWarpToNode)) {
       const plan = this.activePlayers.currentControllable?.plan;
@@ -89,7 +88,7 @@ export class CombatView implements ViewFrame {
 
   // 照準キーと右クリックの配分。操作艦がいなければ照準先が無いので配らない。
   // 右クリックは実体に当たればそのプロパティウィンドウを、外れれば空域メニューを開く。
-  handlePointer(simTime: number): void {
+  public handlePointer(simTime: number): void {
     const player = this.activePlayers.current;
     if (!player) return;
     const project = this.cameraSystem.activeCameraProjection;
@@ -105,19 +104,19 @@ export class CombatView implements ViewFrame {
   }
 
   // 直近ノードの消化・接近通知を進める。
-  update(displayWindow: DisplayWindow): void {
+  public update(displayWindow: DisplayWindow): void {
     this.planGuide.update(
       this.activePlayers.current, displayWindow.simTime, this.celestialSystem.celestialMotions,
     );
   }
 
   // 天体ラベルはマップ専用の表示なので、戦闘ビューの間は畳んでおく。
-  syncLabels(): void {
+  public syncLabels(): void {
     this.celestialMarkers.hideLabels();
   }
 
   // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド・ドッキングガイド)。
-  syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
+  public syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
     const player = this.activePlayers.current;
     if (player) {
       this.touchControls?.syncModeButtons(
@@ -130,5 +129,5 @@ export class CombatView implements ViewFrame {
     this.dockingGuide.sync(player, fo, project);
   }
 
-  dispose(): void {}
+  public dispose(): void {}
 }

@@ -295,8 +295,8 @@ export interface SlotExport {
   snapshots: Record<string, GameSaveData>;
 }
 
-// 統合前の戦闘視点カメラの保存形。読み込み時は捨てられ、既定視点で復元される。
-export interface LegacyChaseSaveData {
+// chase にこの形が入っている保存データは読み捨て、戦闘視点を既定で組む。
+export interface ChaseSaveDataV1 {
   rot: QuatSaveData;
   dist: number;
   pan: Vec3SaveData;
@@ -328,7 +328,7 @@ export interface FocusCameraSaveData {
   focus: FocusTargetSaveData;
   // 旧セーブデータには無い。無ければ既定のオイラー操作。
   rotationMode?: 'quaternion' | 'euler';
-  // 旧セーブデータには無い。無ければ既定の広範囲視点 FOV。
+  // 省略されている保存データでは既定の FOV を使う。
   fovDeg?: number;
   // 旧セーブデータには無い。無ければ赤道面。
   referencePlane?: 'ecliptic' | 'equator' | 'moonOrbit';
@@ -338,8 +338,9 @@ export interface FocusCameraSaveData {
 
 export interface CameraSaveData {
   view: 'combat' | 'map';
-  // 戦闘ビューの視点。旧セーブは LegacyChaseSaveData 形で、その場合は読み捨てられる。
-  chase: FocusCameraSaveData | LegacyChaseSaveData;
+  // 戦闘ビューの視点。ChaseSaveDataV1 形なら読み捨てられる。
+  chase: FocusCameraSaveData | ChaseSaveDataV1;
+  // マップビューの視点。
   overview: FocusCameraSaveData;
 }
 
