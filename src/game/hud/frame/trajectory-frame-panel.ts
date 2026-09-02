@@ -64,14 +64,11 @@ export class TrajectoryFramePanel {
     return `基準: ${planCenter}・${rotationSourceLabel(this.celestialSystem, planRot)}`;
   }
 
-  // パネルの表示と各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。
+  // 各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。
   public sync(
     pickables: readonly ObjectPickable[], members: readonly string[], displayTime: number,
-    validRoles: readonly FrameRole[], isVisible: boolean,
+    validRoles: readonly FrameRole[],
   ): void {
-    this.panel.classList.toggle('hidden', !isVisible);
-    if (!isVisible) return;
-
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
     this.planCenterZone.setSelected(this.displayWindow.frame.center);

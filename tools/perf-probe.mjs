@@ -330,10 +330,10 @@ async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {
       await clearSavedState(devTools, baseUrl);
       await devTools.send('Page.navigate', { url });
       await bootAndWaitReady(devTools);
-      // ビュー切替・ノード配置は等速(×1)の落ち着いた軌道のうちに行う — マップビュー中は
-      // editMode=true で PlanGuide.update が早期 return するため consumeNodesUpTo は走らず
-      // (plan-guide.ts)、置いたノードはワープを上げても消費されない。それでも「操作」自体は
-      // 軌道が暴れていない自然な状態でやるほうが確実なので、ワープ増速は最後に回す。
+      // ビュー切替・ノード配置は等速(×1)の落ち着いた軌道のうちに行う — PlanGuide.update は
+      // CombatView からしか呼ばれないので、マップビュー中は consumeNodesUpTo が走らず、
+      // 置いたノードはワープを上げても消費されない。それでも「操作」自体は軌道が暴れて
+      // いない自然な状態でやるほうが確実なので、ワープ増速は最後に回す。
       const actualView = await ensureView(devTools, view);
       let durationResult = null;
       if (view === 'map' && duration) {
