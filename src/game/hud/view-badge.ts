@@ -30,7 +30,7 @@ export class ViewBadge {
   private readonly styleToggle: ToggleSwitch;
   private readonly contextEls: Record<keyof ViewBadgeContext, HTMLElement>;
   // ビュー遷移メニューは特定の対象を持たないので、target には固定で true を使う。
-  private readonly menu: ContextMenu<true, string>;
+  private readonly menu: ContextMenu<true, WorldView>;
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
   private readonly unsubscribeRenderStyle: () => void;
 
@@ -39,7 +39,7 @@ export class ViewBadge {
     container: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
     overlayManager: OverlayManager, renderStyle: RenderStyleSetting,
   ) {
-    this.menu = new ContextMenu<true, string>(popupLayer, overlayManager);
+    this.menu = new ContextMenu<true, WorldView>(popupLayer, overlayManager);
     // タイトル・モード名・ビュー切替ボタンと、現在の対象コンテキストを横に並べる。
     container.setAttribute('role', 'navigation');
     container.setAttribute('aria-label', 'ビュー切り替え');
@@ -91,10 +91,7 @@ export class ViewBadge {
     }
     this.el = container;
 
-    this.menu.onSelect = (act) => {
-      const item = this.viewManager.getSelectableMenuItems().find((m) => m.id === act);
-      if (item) this.viewManager.selectMenuItem(item);
-    };
+    this.menu.onSelect = (act) => { this.viewManager.setView(act); };
     this.menu.onClose = () => this.viewButton.element.setAttribute('aria-expanded', 'false');
     this.unsubscribeRenderStyle = renderStyle.subscribe((style) => this.styleToggle.setOn(style === 'schematic'));
   }
@@ -119,8 +116,8 @@ export class ViewBadge {
 
   // 遷移できるビューが1つも無ければメニュー自体を開かない。
   private openMenu(): void {
-    const selectable = this.viewManager.getSelectableMenuItems();
-    const items: MenuItem<string>[] = selectable.map((item) => ({ label: item.label, act: item.id }));
+    const items: MenuItem<WorldView>[] = this.viewManager.selectableViews()
+      .map((v) => ({ label: VIEW_LABELS[v], act: v }));
     if (items.length === 0) return;
     const rect = this.viewButton.element.getBoundingClientRect();
     this.viewButton.element.setAttribute('aria-expanded', 'true');
