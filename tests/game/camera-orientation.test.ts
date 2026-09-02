@@ -4,8 +4,8 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { CameraOrientation } from '../../src/game/camera/camera-orientation';
-import { LOCAL_FORWARD, LOCAL_UP, rotationFromEuler } from '../../src/math/orientation';
-import { Quat, qFromAxisAngle, qRotate } from '../../src/math/quat';
+import { rotationFromEuler } from '../../src/math/polar-euler';
+import { LOCAL_FORWARD, LOCAL_UP, Quat, qFromAxisAngle, qRotate } from '../../src/math/quat';
 import { len, norm, sub, v3 } from '../../src/math/vec3';
 
 const POLAR = norm(v3(0.2, 0.9, -0.1));

@@ -1,15 +1,11 @@
 // 向き(Quat)を、極軸まわりの方位角・仰角・ロールへ分解し、また組み直す。極軸の選び方
 // (自転軸・軌道面法線・黄道面法線など)は呼び出し側が決めるので、この分解の意味は
 // 「その軸を天頂としたときに、どちらをどれだけ向いているか」になる。
-//
-// 回転が写す局所基底は LOCAL_FORWARD(+Z)・LOCAL_UP(+Y)・LOCAL_RIGHT(+X) の3本で、
 // yaw/pitch が決めるのは LOCAL_FORWARD の向き、roll がその軸まわりの傾き。
 import { Vec3, addScaled, cross, dot, lenSq, norm, projectOntoPlane, scale, v3 } from './vec3';
-import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from './quat';
-
-export const LOCAL_FORWARD = v3(0, 0, 1);
-export const LOCAL_UP = v3(0, 1, 0);
-export const LOCAL_RIGHT = v3(1, 0, 0);
+import {
+  LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, Quat, qFromAxisAngle, qFromBasis, qMul, qNormalize, qRotate,
+} from './quat';
 
 // 真上・真下では方位が定まらないので、仰角をここまでに抑える。
 export const POLAR_PITCH_LIMIT = Math.PI / 2 - 1e-3;
@@ -27,12 +23,6 @@ function polarBasis(polar: Vec3): { reference: Vec3; east: Vec3 } {
   if (lenSq(reference) < 1e-8) reference = projectOntoPlane(LOCAL_FORWARD, polar);
   reference = norm(reference);
   return { reference, east: norm(cross(reference, polar)) };
-}
-
-// offset を LOCAL_FORWARD、up を LOCAL_UP へ写す回転。組めない入力(平行・零ベクトル)には
-// 単位回転を返す。
-export function rotationFromBasis(offset: Vec3, up: Vec3): Quat {
-  return qFromForwardUp(norm(offset), norm(up)) ?? { x: 0, y: 0, z: 0, w: 1 };
 }
 
 // 極軸を天頂とする方位・仰角・ロールへ分解する。仰角は POLAR_PITCH_LIMIT で抑える。
@@ -62,12 +52,13 @@ export function rotationFromEuler(euler: PolarEuler, polar: Vec3): Quat {
   );
   let referenceUp = projectOntoPlane(polar, offset);
   if (lenSq(referenceUp) < 1e-8) referenceUp = projectOntoPlane(basis.reference, offset);
-  return qNormalize(qMul(qFromAxisAngle(offset, euler.roll), rotationFromBasis(offset, norm(referenceUp))));
+  return qNormalize(qMul(qFromAxisAngle(offset, euler.roll), qFromBasis(offset, referenceUp)));
 }
 
-// 方位角 yaw・仰角 pitch・距離 dist の球面座標を、+Y を天頂とする直交座標へ直す。
-export function sphericalOffset(yaw: number, pitch: number, dist: number): Vec3 {
-  const cp = Math.cos(pitch);
-  return scale(v3(cp * Math.cos(yaw), Math.sin(pitch), cp * Math.sin(yaw)), dist);
+// 方位角・仰角が指す向きの、距離 dist の位置ベクトル(+Y を天頂とする球面座標)。
+// 位置は視線まわりの傾きに依らないので、roll は結果に効かない。
+export function sphericalOffset(euler: PolarEuler, dist: number): Vec3 {
+  const cp = Math.cos(euler.pitch);
+  return scale(v3(cp * Math.cos(euler.yaw), Math.sin(euler.pitch), cp * Math.sin(euler.yaw)), dist);
 }
 
