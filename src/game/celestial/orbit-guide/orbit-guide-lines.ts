@@ -15,7 +15,7 @@ import { FloatingOrigin } from '../../camera/floating-origin';
 import { CurveColorSampler } from '../../../render/curve';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import type { RenderStyle } from '../../../render/render-style';
-import type { WorldView } from '../../view-manager';
+import type { WorldView } from '../../world-view';
 import { SCHEMATIC_LINE } from '../../../render/schematic-style';
 import { GuideCurve } from './guide-curve';
 import {

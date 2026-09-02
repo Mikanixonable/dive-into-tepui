@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { WorldView } from '../../view-manager';
+import type { WorldView } from '../../world-view';
 import { kinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { buildAmmoPickup } from '../../../render/ships';

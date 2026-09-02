@@ -6,7 +6,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { ActivePlayerController } from '../active-controllable-controller';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { PredictedArc } from '../dynamic/predicted-arc';
 import type { PerfCounts } from '../../perf-meter';
