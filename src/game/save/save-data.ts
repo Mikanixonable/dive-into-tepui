@@ -308,6 +308,10 @@ export interface FrameRotationSourceSaveData {
   id: string;
 }
 
+// カメラの回転追従の保存形。'attitude' はフォーカス機体の姿勢追従(対象は id でなく
+// フォーカスから決まる)。
+export type CameraRotationFollowSaveData = FrameRotationSourceSaveData | { kind: 'attitude' };
+
 // MapCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
 // (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は
 // 旧セーブでは文字列(公転対象の id)または null だったので、読み込み側がその形も受け付ける。
@@ -319,7 +323,7 @@ export interface MapCameraSaveData {
   offset: Vec3SaveData;
   pan: Vec3SaveData;
   up: Vec3SaveData;
-  rotatingWith: FrameRotationSourceSaveData | string | null;
+  rotatingWith: CameraRotationFollowSaveData | string | null;
   focus: FocusTargetSaveData;
   // 旧セーブデータには無い。無ければ既定のオイラー操作。
   rotationMode?: 'quaternion' | 'euler';
