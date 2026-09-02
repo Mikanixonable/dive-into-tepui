@@ -34,7 +34,7 @@ import { EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial
 import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
 import type { RenderStyle } from '../../src/render/render-style';
-import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
+import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/astronomical-unit';
 import { MARS } from '../../src/game/celestial/solar-system/mars-system';
@@ -121,6 +121,10 @@ export type LabCase = {
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
   // 遮蔽パスへ渡す積雲の殻。
   readonly cumulusShadow?: CumulusShadow;
+  // 描画品質設定のうち、**パイプラインではなくケースの部品が読むもの**を押し込む口。
+  // 毎フレーム呼ばれるので、ゲーム本体の sync と同じように同値なら何もしないこと。
+  // 持たないケースは、パイプラインが読む項目にだけ従う。
+  readonly applyGraphics?: (graphics: GraphicsSettingsData) => void;
   // Optional benchmark metadata. Rendering itself does not inspect it; the measurement harness
   // uses it to attach future protein-motion telemetry to a stable case identity.
   readonly proteinMotion?: ProteinLabCaseMetadata;
@@ -606,9 +610,11 @@ function marchSlab(): LabCase {
 // 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。薄い雲を合成した地表と積雲の
 // 殻、模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。殻が落とす影は
 // 遮蔽パスへ別途渡すので、置いた球と一緒に返す。
-function earthAt(
-  center: THREE.Vector3, style: RenderStyle,
-): { readonly object: THREE.Object3D; readonly cumulusShadow: CumulusShadow } {
+function earthAt(center: THREE.Vector3, style: RenderStyle): {
+  readonly object: THREE.Object3D;
+  readonly cumulusShadow: CumulusShadow;
+  readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
+} {
   const group = new THREE.Group();
   group.position.copy(center);
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
@@ -619,7 +625,6 @@ function earthAt(
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
   surface.setCloudAmount(1);
   cumulus.addTo(group);
-  cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
   const graticule = new BodyGraticule();
   graticule.addTo(group);
   graticule.setVisible(style === 'schematic');
@@ -635,6 +640,17 @@ function earthAt(
       // ケースの地球は自転を持たないので、天体固定の向きは描画座標のまま。
       bodyFromWorld: new THREE.Matrix4(),
       field: cumulus.field,
+    },
+    // 雲の項目の受け方は point-entity.ts の sync と同じ。分割段は寄り切った 1 段に固定
+    // (ケースのカメラ距離は観察のつまみで動くが、絵の比較は最も細かい段で行う)。
+    applyGraphics: (graphics) => {
+      surface.setCloudAmount(graphics.clouds ? 1 : 0);
+      if (graphics.clouds) {
+        cumulus.setDetail(graphics.cumulusDetail);
+        cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
+      } else {
+        cumulus.hide();
+      }
     },
   };
 }
@@ -666,6 +682,7 @@ function earth(style: RenderStyle): LabCase {
     atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
     cumulusShadow: earthSphere.cumulusShadow,
+    applyGraphics: earthSphere.applyGraphics,
   };
 }
 
@@ -680,6 +697,7 @@ function earthOblique(style: RenderStyle): LabCase {
     atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
     cumulusShadow: earthSphere.cumulusShadow,
+    applyGraphics: earthSphere.applyGraphics,
   };
 }
 
@@ -732,9 +750,10 @@ function earthMars(style: RenderStyle): LabCase {
   const marsCenter = new THREE.Vector3(0, 0, -EARTH_MARS_DISTANCE);
   const margin = EARTH_MARS_HORIZON_CLEARANCE * Math.asin(MARS_RADIUS / EARTH_MARS_DISTANCE);
   const earthCenter = earthCenterBelowHorizon(EARTH_MARS_CAMERA_ALTITUDE, margin);
+  const earthSphere = earthAt(earthCenter, style);
   return {
     objects: [
-      earthAt(earthCenter, style).object,
+      earthSphere.object,
       texturedSphere(MARS_TEXTURE, MARS_RADIUS, marsCenter, CLOSE_UP_DIAMETER_PX),
     ],
     camera,
@@ -743,6 +762,7 @@ function earthMars(style: RenderStyle): LabCase {
       { center: earthCenter, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS },
       { center: marsCenter, surfaceRadius: MARS_RADIUS, optics: MARS_ATMOSPHERE_OPTICS },
     ],
+    applyGraphics: earthSphere.applyGraphics,
   };
 }
 
@@ -915,10 +935,6 @@ function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLig
   const center = new THREE.Vector3(0, -0.15 * distance, -distance);
   const axis = v3(0.3, 0.9, 0.32);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(
-    center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT,
-    QUALITY_PRESETS.high, style,
-  );
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -928,6 +944,11 @@ function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLig
       axis: new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
       bands: occlusionBands(SATURN_RINGS.bands),
     },
+    // 環はゲーム本体と同じく毎フレーム同期する — 「惑星の環」も帯の見かけ幅の段も、
+    // RingView.sync が設定から引き直す。
+    applyGraphics: (graphics) => view.sync(
+      center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, graphics, style,
+    ),
   };
 }
 
@@ -952,15 +973,14 @@ function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: 
   camera.updateMatrixWorld(true);
   const axis = v3(0, 1, 0);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(
-    center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT,
-    QUALITY_PRESETS.high, style,
-  );
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
     occluders: [{ center, radius }],
     rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: occlusionBands(SATURN_RINGS.bands) },
+    applyGraphics: (graphics) => view.sync(
+      center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, graphics, style,
+    ),
   };
 }
 
