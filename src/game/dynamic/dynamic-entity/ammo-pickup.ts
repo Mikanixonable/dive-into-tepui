@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { WorldView } from '../../world-view';
+import type { View } from '../../view';
 import { kinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { buildAmmoPickup } from '../../../render/ships';
@@ -85,7 +85,7 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
 
   // Targeter がクラスタ化・天体ラベル下サブ行の集合へ渡すためのマーカー情報。
   // 弾薬はターゲット化されないので役割・優先度は常に固定値。
-  markerItem(viewerPos: Vec3, view: WorldView): GroupedMarkerItem {
+  markerItem(viewerPos: Vec3, view: View): GroupedMarkerItem {
     const dist = len(sub(this.state.r, viewerPos));
     return {
       key: this.markerKey,

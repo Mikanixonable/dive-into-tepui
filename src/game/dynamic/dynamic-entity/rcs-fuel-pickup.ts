@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { WorldView } from '../../world-view';
+import type { View } from '../../view';
 import { kinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { buildRcsFuelPickup } from '../../../render/ships';
@@ -81,7 +81,7 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   private get markerKey(): string { return `rcs-fuel-${this.id}`; }
 
   // 燃料補給のマーカー表示項目。viewerPos は距離ラベルを測る基準点。
-  markerItem(viewerPos: Vec3, view: WorldView): GroupedMarkerItem {
+  markerItem(viewerPos: Vec3, view: View): GroupedMarkerItem {
     const dist = len(sub(this.state.r, viewerPos));
     return {
       key: this.markerKey,
