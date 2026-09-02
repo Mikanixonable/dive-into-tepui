@@ -2,7 +2,7 @@
 // 軌道ウィンドウのライフサイクル管理。被選択物が組んだメニュー項目の実行先として、ゲーム側の
 // 操作一式を MapCommands の形で差し出す。
 import { Hud } from '../hud/hud';
-import { Base } from '../dynamic/dynamic-entity/base';
+import type { Base } from '../dynamic/dynamic-entity/base';
 import {
   ContextMenu, PropertyWindow, PropertyWindowContent, PropertyWindowItem,
   type PropertyWindowRelatedItem,
@@ -27,7 +27,7 @@ import type { Docking } from '../docking/docking';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { Stage } from '../stages/stage';
-import { Player } from '../player/player';
+import type { Player } from '../player/player';
 import type { Targeter } from '../targeter';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { CelestialMarkers } from '../marker/celestial-markers';
@@ -202,10 +202,6 @@ export class MapContextActions implements MapCommands {
     // 操作項目のクリックは、クリップ済みか keepOpen(排他選択肢の切り替え)なら開いたままにする。
     // 「削除」は対象自体が消えるのでどちらでも閉じる。
     w.onSelect = (act, keepOpen) => {
-      if (act === 'toggleBasePanel' && entry.target instanceof Base) {
-        this.toggleBasePanel(key, entry);
-        return;
-      }
       entry.target.runMapMenu(act, this);
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
@@ -214,7 +210,7 @@ export class MapContextActions implements MapCommands {
         this.expandedBaseWindowKey = null;
         this.docking?.closePanel();
       }
-      if (entry.target instanceof Player) this.partWindows.closeForShip(entry.target);
+      this.partWindows.closeFor(entry.target.id);
       this.forgetWindow(key);
     };
   }
@@ -232,19 +228,6 @@ export class MapContextActions implements MapCommands {
     entry.win.close();
   }
 
-  private toggleBasePanel(key: string, entry: WindowEntry): void {
-    if (this.expandedBaseWindowKey === key) {
-      this.collapseBasePanel();
-      return;
-    }
-    const base = entry.target;
-    if (!(base instanceof Base) || !this.docking) return;
-    this.collapseBasePanel();
-    entry.win.setExpandedPanel(this.docking.openPanel(base));
-    this.expandedBaseWindowKey = key;
-    entry.win.bringToFront();
-  }
-
   private collapseBasePanel(): void {
     if (this.expandedBaseWindowKey !== null) {
       this.windows.get(this.expandedBaseWindowKey)?.win.setExpandedPanel(null);
@@ -253,16 +236,16 @@ export class MapContextActions implements MapCommands {
     this.docking?.closePanel();
   }
 
-  // 左クリック位置の自艦・基地を選択する。当たらなければ消費せず、PlanEditor の
+  // 左クリック位置の、選択に応じる被選択物を選ぶ。当たらなければ消費せず、PlanEditor の
   // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
   // マーカーへの命中をノード配置より優先する)。マップ視点でなければ何もしない。
   handleLeftClick(input: Input): void {
     if (!this.cameraSystem.overviewMode) return;
     input.takeClicks((p) => {
       const target = this.pickAt(
-        this.pickables.pickables.filter((i) => i instanceof Player || i instanceof Base), p.x, p.y);
+        this.pickables.pickables.filter((i) => i.onMapSelect !== null), p.x, p.y);
       if (!target) return false;
-      this.selectPickable(target, p.x, p.y);
+      target.onMapSelect?.(this, p.x, p.y);
       return true;
     });
   }
@@ -285,22 +268,7 @@ export class MapContextActions implements MapCommands {
   private focusTarget(id: string, target: MapPickable | undefined): void {
     this.frameControls.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`);
-    if (target instanceof Player) {
-      this.activePlayers.set(target);
-      this.hud.hint(`${target.name} を操作対象に設定`);
-    }
-  }
-
-  // 単クリックは選択までに留める: 自艦はプロパティウィンドウを開くだけで操作対象は変えず、
-  // 基地も selectBase のみ呼んで基地パネルは展開しない。取り消せない操作は明示の項目
-  // (プロパティウィンドウ)かダブルクリックに限る。
-  private selectPickable(target: MapPickable, clientX: number, clientY: number): void {
-    if (target instanceof Player) {
-      this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
-    } else if (target instanceof Base) {
-      this.docking?.selectBase(target);
-      this.hud.hint(`${target.name} を選択`);
-    }
+    target?.onMapFocus?.(this);
   }
 
   // 何も当たらなかった場合、「空域」として扱う(他のハンドラの後に呼ぶ)。マップ・戦闘の
@@ -464,9 +432,36 @@ export class MapContextActions implements MapCommands {
 
   // ------------------------------------------------------------- MapCommands
 
+  hint(text: string): void {
+    this.hud.hint(text);
+  }
+
   focus(id: string, name: string): void {
     this.frameControls.setFocus({ kind: 'object', id });
     this.hud.hint(`${name} にフォーカス`);
+  }
+
+  openProperties(target: MapPickable, clientX: number, clientY: number): void {
+    this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
+  }
+
+  selectBase(base: Base): void {
+    this.docking?.selectBase(base);
+  }
+
+  // 展開済みの基地パネルを畳むか、その基地のプロパティウィンドウへ新しく開く。基地パネルは
+  // 同時に1枚だけなので、別の基地のものが開いていれば先に畳む。
+  toggleBasePanel(base: Base): void {
+    if (this.expandedBaseWindowKey === base.id) {
+      this.collapseBasePanel();
+      return;
+    }
+    const entry = this.windows.get(base.id);
+    if (!entry || !this.docking) return;
+    this.collapseBasePanel();
+    entry.win.setExpandedPanel(this.docking.openPanel(base));
+    this.expandedBaseWindowKey = base.id;
+    entry.win.bringToFront();
   }
 
   toggleNavTarget(id: string, name: string): void {
@@ -512,7 +507,7 @@ export class MapContextActions implements MapCommands {
     if (ship) this.docking?.undock(ship);
   }
 
-  transferResources(target: DynamicEntity): void {
+  transferResources(target: Player): void {
     const ship = this.activePlayers.current;
     if (ship) this.docking?.openTransfer(ship, target);
   }

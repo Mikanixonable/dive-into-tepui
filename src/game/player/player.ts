@@ -56,6 +56,7 @@ import { fmtAmmoStatus, fmtDist, fmtEnergy } from '../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitRows } from '../pickable/orbit-rows';
 import type { MapPickable } from '../pickable/map-pickable';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { MapCommands } from '../pickable/map-commands';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../hud/windows/property-window';
@@ -104,7 +105,7 @@ export type PlayerInit =
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、それらを反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
-export class Player extends Ship implements MapPickable {
+export class Player extends Ship implements Controllable, MapPickable {
   public readonly mapKind: DynamicEntityKind = 'player';
 
   readonly throttle: PlayerThrottle;
@@ -774,4 +775,15 @@ export class Player extends Ship implements MapPickable {
   }
 
   public readonly mapRename = (name: string): void => { this.name = name; };
+
+  // 単クリックはプロパティウィンドウを開くだけに留め、操作対象は変えない。
+  public readonly onMapSelect = (commands: MapCommands, clientX: number, clientY: number): void => {
+    commands.openProperties(this, clientX, clientY);
+  };
+
+  // 注視されたら操作対象にもなる(操作艦を切り替える最速の手段)。
+  public readonly onMapFocus = (commands: MapCommands): void => {
+    commands.setActivePlayer(this);
+    commands.hint(`${this.name} を操作対象に設定`);
+  };
 }

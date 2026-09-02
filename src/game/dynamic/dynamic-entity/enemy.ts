@@ -534,4 +534,6 @@ export abstract class Enemy extends Ship implements MapPickable {
   }
 
   public readonly mapRename = null;
+  public readonly onMapSelect = null;
+  public readonly onMapFocus = null;
 }
