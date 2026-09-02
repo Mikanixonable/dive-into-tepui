@@ -7,12 +7,21 @@
 **前提は [`pipeline.md`](pipeline.md)。** とくに §1-2(深度は位置復元の器)・§1-4(遮蔽の入口は
 1 本)・§2-8(大気は画面空間のフィルタ)。
 
-**相方は [`cloud_generation.md`](cloud_generation.md)。** 向こうが**場に何を持たせるか**、
+**相方は [`../cloud-generation/current-pipeline.md`](../cloud-generation/current-pipeline.md)。** 向こうが**場に何を持たせるか**、
 こちらが**その場をどう描くか**。本文の数値は `ddd480bc` のコードと定数から出した。
 
 **いまどこに居るか。** 天気のモデルは `src/render/cloud/` にあって `cloud-lab` の中だけで動いて
 いる。**ゲーム本体の地球はまだ `8k_clouds.jpg` を地表アルベドへ焼き込んだままで、生成した場は
 1 texel も届いていない。** 描画側の論点はすべて、この接続の前後にある。
+
+**仮テクスチャができた — 生成の完成を待たずに着手できる。** 実写 8k_clouds を層境界の
+3 チャンネルへ推定分離したリファレンスが `src/assets/` にある:
+`cloud-coverage.png`(被覆率 0..1)・`cloud-top.png`(雲頂 0..1 = 0..15000 m)・
+`cloud-translucent.png`(鉛直光学的厚み τ 0..1)。正距円筒 4096×2048・グレースケール 8bit、
+v = 0 が北、経度原点は 8k_clouds と同じ。§1〜§3 はこの 3 枚を入力として組み、あとで生成側の
+出力に差し替える。再生成は `npm run cloud-lab:separate`、分離の癖(雲頂は輝度からの推定・
+極域は信用できない等)と残件は
+[`../cloud-generation/reference-separation.md`](../cloud-generation/reference-separation.md)。
 
 ---
 
@@ -53,8 +62,9 @@ HG(g ≈ 0.8)は後方(太陽を背に見下ろす構図)で 0.1 以下。実際
 | **3. 雲影**(§3) | 遮蔽関数へ雲殻の源を 1 つ足す | §1 の最初の一手の直後 |
 
 **どれも、生成側の出力契約 — 被覆率・雲頂高度・薄い雲の光学的厚み — が固まってから始まる**
-([`cloud_generation.md`](cloud_generation.md))。**契約が動くと、ここの見積りは全部やり直しに
-なる。**
+([`../cloud-generation/current-pipeline.md`](../cloud-generation/current-pipeline.md))。**契約が動くと、ここの見積りは全部やり直しに
+なる。** → チャンネルの意味はこの 3 つで確定し、仮テクスチャ(冒頭)が実体として置かれたので
+先行着手できる。動きうるのは解像度と格納(1 枚に詰めるか 3 枚か)だけ。
 
 ---
 
@@ -212,7 +222,7 @@ HG(g ≈ 0.8)は後方(太陽を背に見下ろす構図)で 0.1 以下。実際
    - 巻雲を薄い雲、積雲〜積乱雲を厚い雲として名指すか。それとも種類の割り当ては実装側に置くか。
    - `SAVE.md` は追記なし(雲は時刻の閉じた関数のまま)。
 5. `pipeline.md` の「各計画ファイル」の一覧に、この文書と
-   [`cloud_generation.md`](cloud_generation.md) が無い。載せるかどうか。
+   [`../cloud-generation/current-pipeline.md`](../cloud-generation/current-pipeline.md) が無い。載せるかどうか。
 
 ---
 
