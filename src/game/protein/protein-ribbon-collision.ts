@@ -5,7 +5,7 @@ import {
   type BVHNode, type SphereHit, type Triangle,
   buildBVH, sphereCollideTriangles,
 } from '../../math/triangle-mesh';
-import { qInvert, qRotate, type Quat } from '../../physics/attitude';
+import { qInvert, qRotate, type Quat } from '../../math/quat';
 
 export class ProteinRibbonCollisionGeometry {
   readonly outerRadius: number;

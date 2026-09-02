@@ -10,7 +10,7 @@ import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frame
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { Quat, qFromAxisAngle, qFromForwardUp, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
+import { Quat, qFromAxisAngle, qFromForwardUp, qInvert, qMul, qNormalize, qRotate } from '../../math/quat';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { FocusTarget, focusTargetId, resolveFocusTarget, type FocusCandidate } from './focus-target';
 import { CameraRotationFollowSaveData, FrameRotationSourceSaveData, FocusCameraSaveData } from '../save/save-data';

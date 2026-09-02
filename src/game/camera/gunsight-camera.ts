@@ -1,7 +1,7 @@
 // 照準ズーム視点: 機体位置から機首方向を狙う固定カメラ(画面中心 = 照準先)。
 // yaw/pitch/dist のような内部状態を持たず、機体姿勢のみから毎フレーム視点を求める。
 import { addScaled, norm, v3 } from '../../math/vec3';
-import { qRotate } from '../../physics/attitude';
+import { qRotate } from '../../math/quat';
 import { Player } from '../player/player';
 import { Viewpoint } from '../../math/projection';
 

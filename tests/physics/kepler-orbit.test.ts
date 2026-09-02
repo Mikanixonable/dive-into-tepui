@@ -7,7 +7,7 @@ import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
-import { qRotate } from '../../src/physics/attitude';
+import { qRotate } from '../../src/math/quat';
 import { dot, len, scale, sub, v3 } from '../../src/math/vec3';
 
 const EARTH: CelestialMotion = fixedMotion({ id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null });

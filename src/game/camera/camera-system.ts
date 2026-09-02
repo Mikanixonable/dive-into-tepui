@@ -17,7 +17,7 @@ import {
   metersPerPixel, metersPerPixelAtDistance, ndcToScreen, Projected, projectToNdc, Viewpoint,
 } from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
-import type { Quat } from '../../physics/attitude';
+import type { Quat } from '../../math/quat';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { View } from '../view/view';
 import { CameraSaveData } from '../save/save-data';

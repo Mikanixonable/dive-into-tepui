@@ -9,7 +9,7 @@ import { frameOfCelestialBody } from '../physics/frame';
 import { LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { OrbitingMotion } from '../physics/celestial-motion';
-import { qRotate } from '../physics/attitude';
+import { qRotate } from '../math/quat';
 import { goldenSectionMin } from '../math/optimize';
 import { Player } from './player/player';
 import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';

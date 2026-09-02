@@ -4,7 +4,7 @@
 // 質量と慣性は自機のものを直接書き換える。段の増減と燃焼のたびに追随させる必要があり、
 // 自機側から呼び直させると正本が二重になるため。
 import * as THREE from 'three/webgpu';
-import { qRotate } from '../../physics/attitude';
+import { qRotate } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add, scale, v3, Vec3 } from '../../math/vec3';
 import type { FloatingOrigin } from '../camera/floating-origin';

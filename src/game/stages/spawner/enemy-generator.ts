@@ -7,7 +7,7 @@
 // 寄せていない — 緯度による基準面のずれ(赤道 +7km / 極 -14km)は、出現高度に持たせた余裕に
 // 埋もれる大きさに収まる。地球以外を主星とするステージで敵を出すなら、この前提ごと組み直す。
 import * as THREE from 'three/webgpu';
-import { qFromForwardUp, randomQuat, type Quat } from '../../../physics/attitude';
+import { qFromForwardUp, randomQuat, type Quat } from '../../../math/quat';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../celestial/solar-system/constants';
 import { stateFromOrbitalElements } from '../../../physics/elements';

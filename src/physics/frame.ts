@@ -13,7 +13,7 @@
 import type { CelestialMotion } from './celestial-motion';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { add, cross, sub, v3, Vec3 } from '../math/vec3';
-import { Quat, qInvert, qRotate } from './attitude';
+import { Quat, qInvert, qRotate } from '../math/quat';
 
 // 座標系 = 「どの天体を原点に置くか」×「何の回転(公転か自転)に合わせて回すか
 // (null = 回さない)」。値は必ず ReferenceFrames の frames/frameFor/frameOf の要素を参照する —

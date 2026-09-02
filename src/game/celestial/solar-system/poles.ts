@@ -1,5 +1,5 @@
 // 惑星の IAU 自転極と、衛星の軌道要素が基準面に取る回転。
-import { Quat } from '../../../physics/attitude';
+import { Quat } from '../../../math/quat';
 import { equatorBasisToEci } from '../../../physics/body-orientation';
 import { raDecToEci } from '../../../physics/ecliptic';
 import { PoleModel } from '../../../physics/celestial-body-def';

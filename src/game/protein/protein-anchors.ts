@@ -1,4 +1,4 @@
-import { qInvert, qRotate, type Quat } from '../../physics/attitude';
+import { qInvert, qRotate, type Quat } from '../../math/quat';
 import { add, sub, type Vec3, v3 } from '../../math/vec3';
 import type {
   ProteinModificationDefinition,

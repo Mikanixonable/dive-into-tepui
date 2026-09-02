@@ -20,7 +20,7 @@ import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { shipMarkerSvg } from '../../marker/marker-shapes';
 import { currentThemePalette } from '../../theme';
 import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
-import type { Quat } from '../../../physics/attitude';
+import type { Quat } from '../../../math/quat';
 import type { DynamicEntityKind } from './entity-kind';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { CelestialSystem } from '../../celestial/celestial-system';
