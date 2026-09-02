@@ -430,7 +430,7 @@ export class CelestialSystem implements CelestialMotions {
     } else if (this.pointFieldBuilt) {
       pointField?.sync(floatingOrigin, false, true, fixedBrightnessScale);
     }
-    this.syncStars(cameraSystem, fixedBrightnessScale, gridVisibility.stars);
+    this.syncStars(fixedBrightnessScale, gridVisibility.stars);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(
       displayTime, floatingOrigin, visibilityPolicy,
@@ -445,7 +445,7 @@ export class CelestialSystem implements CelestialMotions {
     this.zeroVelocityLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       style, gridVisibility, cameraSystem.activeCamera,
-      celestialShellScale(cameraSystem.overviewMode));
+      celestialShellScale());
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, gridVisibility);
   }
 
@@ -526,9 +526,9 @@ export class CelestialSystem implements CelestialMotions {
   }
 
   // 星球は描画原点(= カメラ)に固定した半径の殻。
-  private syncStars(cameraSystem: CameraSystem, fixedBrightnessScale: number, visible: boolean): void {
+  private syncStars(fixedBrightnessScale: number, visible: boolean): void {
     this.stars.mesh.position.set(0, 0, 0);
-    this.stars.mesh.scale.setScalar(celestialShellScale(cameraSystem.overviewMode));
+    this.stars.mesh.scale.setScalar(celestialShellScale());
     this.stars.mesh.visible = visible;
     this.stars.setFixedBrightnessScale(fixedBrightnessScale);
   }
