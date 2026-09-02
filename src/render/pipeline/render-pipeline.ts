@@ -42,9 +42,6 @@ import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 import { FilmLut } from './film-lut';
 
-// マルチサンプリングを入れるときの標本数。
-const MSAA_SAMPLES = 4;
-
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly renderer: WebGPURenderer;
   private readonly gbuffer: GBufferPass;
@@ -129,8 +126,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
-    // 大気パスが読む、不透明の絵のスナップショット。マルチサンプルの解決済みの絵を写すので、
-    // スナップショット自身はサンプル 1 でよく、深度も持たない。
+    // 大気パスが読む、不透明の絵のスナップショット。共有ターゲットの中身を写すだけなので、
+    // 深度は持たない。
     this.backdropTarget = new THREE.RenderTarget(1, 1, {
       type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false,
     });
@@ -143,7 +140,6 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       type: THREE.HalfFloatType,
       format: THREE.RGBAFormat,
       depthBuffer: true,
-      samples: graphics.msaa ? MSAA_SAMPLES : 0,
     });
     // G バッファと同じく、深度を 32bit 浮動小数点にするには明示が要る(gbuffer.ts 参照)。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
@@ -310,8 +306,6 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this._planetLight.setCount(graphics.planetLightCount);
     this.antialiasPass.setMethod(graphics.antialias);
     this.filmLut.select(graphics.filmLut);
-    // 標本数を変えると、three が次の描画までに色と深度のテクスチャを作り直す。
-    this.target.samples = graphics.msaa ? MSAA_SAMPLES : 0;
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
