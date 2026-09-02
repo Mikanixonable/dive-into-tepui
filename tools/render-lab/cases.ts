@@ -639,6 +639,11 @@ function earthAt(
   };
 }
 
+// 斜視ケースのカメラ高度 [m] と、地平線を視線から下げる角 [rad]。負なので地平線は視線の上へ
+// 来る — 画面中央の地表を入射角およそ 45° で見下ろす向きで、雲頂の起伏と塔の側面が同時に写る。
+const EARTH_OBLIQUE_ALTITUDE = 420e3;
+const EARTH_OBLIQUE_MARGIN = -0.49;
+
 // カメラ(原点)から見て、地球の地平線が視線から margin [rad] だけ下へ来る向きの地球中心。
 // 高度 altitude [m] のカメラから地球へ接する視線の角が、そのまま中心の向きの傾きになる。
 function earthCenterBelowHorizon(altitude: number, margin: number): THREE.Vector3 {
@@ -658,6 +663,20 @@ function earth(style: RenderStyle): LabCase {
       sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER),
     ],
     camera,
+    atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
+    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    cumulusShadow: earthSphere.cumulusShadow,
+  };
+}
+
+// 斜視の地球: earth と同じ高度から、地平線を視線より下げて地表を斜めに見下ろす。**積雲の塔を
+// 真上からでも真横からでもなく見る向き**なので、雲頂の起伏と塔の側面はここで読む。
+function earthOblique(style: RenderStyle): LabCase {
+  const center = earthCenterBelowHorizon(EARTH_OBLIQUE_ALTITUDE, EARTH_OBLIQUE_MARGIN);
+  const earthSphere = earthAt(center, style);
+  return {
+    objects: [earthSphere.object],
+    camera: labCamera(6e7),
     atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
     cumulusShadow: earthSphere.cumulusShadow,
@@ -1013,6 +1032,7 @@ export const CASES = {
   'eclipse': eclipse,
   'march-slab': marchSlab,
   'earth': earth,
+  'earth-oblique': earthOblique,
   'earth-terminator': earthTerminator,
   'earth-eclipse': earthEclipse,
   'earth-mars': earthMars,
