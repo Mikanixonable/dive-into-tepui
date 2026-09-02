@@ -142,7 +142,11 @@ export class Game {
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
-    this.cameraSystem = new CameraSystem(this._hud, celestialSystem, initialSave?.camera);
+    // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
+    // ViewManager 生成前にカメラの update/sync は呼ばれない。
+    this.cameraSystem = new CameraSystem(
+      this._hud, celestialSystem, () => this.viewManager.current, initialSave?.camera,
+    );
     this.celestialMarkers = new CelestialMarkers(this.markerManager, celestialSystem);
     this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
@@ -223,7 +227,7 @@ export class Game {
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
     this.viewManager = new ViewManager(
-      this._hud, this.editor, this.cameraSystem, this.displayWindowManager, this.mapActions,
+      this._hud, this.editor, this.displayWindowManager, this.mapActions,
       this.activePlayers, this.touchControls,
       initialSave?.camera?.view,
     );
