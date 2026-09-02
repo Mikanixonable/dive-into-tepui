@@ -10,7 +10,7 @@ import type { CelestialMarkers } from './marker/celestial-markers';
 import type { MarkerManager } from './marker/marker-manager';
 import type { Targeter } from './targeter';
 import type { PlanEditor } from './plan/plan-editor';
-import type { Player } from './player/player';
+import type { ActiveControllableController } from './active-controllable-controller';
 import type { DisplayWindow, DisplayWindowManager } from './display-window-manager';
 import type { FrameControls } from './hud/frame/frame-controls';
 import type { FrameAnchors } from './frame-anchors';
@@ -32,8 +32,24 @@ export class MapView implements WorldViewFrame {
     private readonly displayWindowManager: DisplayWindowManager,
     private readonly frameControls: FrameControls,
     private readonly frameAnchors: FrameAnchors,
-    private readonly player: () => Player | null,
+    private readonly activePlayers: ActiveControllableController,
   ) {}
+
+  canEnter(): boolean {
+    return true;
+  }
+
+  // ノードの選択状態は編集セッションを跨いで持ち越さない。
+  onEnter(): void {
+    this.editor.selectedNodeIdx = null;
+  }
+
+  // 開いたままの編集 UI とメニューを畳む。
+  onLeave(): void {
+    this.editor.onMapClosed();
+    this.editor.closeMenu();
+    this.mapActions.close();
+  }
 
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。
   handlePointer(simTime: number): void {
@@ -60,7 +76,7 @@ export class MapView implements WorldViewFrame {
 
   // マップ専用の常設パネル(未来表示・座標系)・天体ラベルのサブ行・軌道線の右クリック候補。
   syncPanels(displayWindow: DisplayWindow): void {
-    this.displayWindowManager.sync(this.player());
+    this.displayWindowManager.sync(this.activePlayers.current);
     this.frameControls.sync(
       this.mapPickables.pickables, this.cameraSystem.activeCameraPos,
       displayWindow.simTime, displayWindow.displayTime, true,
