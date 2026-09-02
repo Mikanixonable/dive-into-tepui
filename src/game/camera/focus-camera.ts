@@ -1,7 +1,7 @@
 // フォーカス対象を注視点に置く広範囲の軌道カメラ。フォーカスの毎フレーム解決と、
 // フォーカス対象から導かれる回転追従(慣性系・公転・自転・姿勢)を持つ。
 import * as THREE from 'three/webgpu';
-import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../math/vec3';
+import { Vec3, add, addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, sub, v3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
@@ -10,7 +10,11 @@ import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frame
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { Quat, qFromAxisAngle, qFromForwardUp, qInvert, qMul, qNormalize, qRotate } from '../../math/quat';
+import { Quat, qInvert, qMul, qNormalize, qRotate } from '../../math/quat';
+import {
+  LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, POLAR_PITCH_LIMIT, PolarEuler,
+  eulerFromRotation, rotateByScreenDrag, rotationFromBasis, rotationFromEuler, sphericalOffset,
+} from '../../math/orientation';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { FocusTarget, focusTargetId, resolveFocusTarget, type FocusCandidate } from './focus-target';
 import { CameraRotationFollowSaveData, FrameRotationSourceSaveData, FocusCameraSaveData } from '../save/save-data';
@@ -54,6 +58,7 @@ const FOCUS_CAMERA_FAR_MAX = 1e16;
 
 // ホイール1目盛りのズーム率。exp(wheel × この値) を注視距離に掛ける(両ビュー共通)。
 const WHEEL_ZOOM_RATE = 0.0015;
+const DRAG_RAD_PER_PX = 0.005; // ドラッグ1pxあたりの視点回転量 [rad]
 
 // 機体・固定点フォーカスでの最小注視距離 [m](艦を間近に見る寄り)。
 const ENTITY_MIN_DIST = 12;
@@ -116,27 +121,9 @@ function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | string
 
 const WORLD_UP = v3(0, 1, 0);
 const FOCUS_CAMERA_FOV = 50;
-const FRAME_FORWARD = v3(0, 0, 1);
-const FRAME_UP = v3(0, 1, 0);
-const FRAME_RIGHT = v3(1, 0, 0);
-const EULER_PITCH_LIMIT = Math.PI / 2 - 1e-3;
-
 type CameraRotationMode = 'quaternion' | 'euler';
 export type CameraReferencePlane = 'ecliptic' | 'equator' | 'moonOrbit';
 export type CameraReferenceView = 'above' | 'side';
-
-interface CameraEuler {
-  yaw: number;
-  pitch: number;
-  roll: number;
-}
-
-// 注視点 → カメラの相対位置ベクトルを、方位角・仰角・距離から組む。回転軸 Y まわりの
-// 方位 yaw と、そこからの仰角 pitch。初期状態の視点を名前の付いた角度で置くための純粋関数。
-function sphericalOffset(yaw: number, pitch: number, dist: number): Vec3 {
-  const cp = Math.cos(pitch);
-  return scale(v3(cp * Math.cos(yaw), Math.sin(pitch), cp * Math.sin(yaw)), dist);
-}
 
 function frameDirVector(value: FrameDir): Vec3 {
   return v3(value.x, value.y, value.z);
@@ -153,7 +140,7 @@ export class FocusCamera {
   // rotationQ はカメラのローカル(+Z=注視点からカメラ、+Y=画面上)を cameraFrame へ
   // 写すクォータニオン。オイラー操作も最終的には必ずこの値へ変換して描画する。
   private rotationQ: Quat;
-  private euler: CameraEuler;
+  private euler: PolarEuler;
 
   // offset_r … 注視点 → カメラの相対位置ベクトル(方位・仰角・距離を兼ねる)
   // pan_r    … focus → 注視点のパン変位
@@ -254,8 +241,8 @@ export class FocusCamera {
       this.pan_r = frameDir(0, 0, 0);
       this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
     }
-    this.rotationQ = this.rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r));
-    this.euler = this.eulerFromRotation(this.rotationQ);
+    this.rotationQ = rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r));
+    this.euler = this.toEuler(this.rotationQ);
     const defaultHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
     const savedHalfHeight = saved?.orthographicHalfHeight;
     const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight) ? savedHalfHeight : defaultHalfHeight;
@@ -277,10 +264,6 @@ export class FocusCamera {
   private clampFov(fovDeg: number): number {
     return Math.max(FOCUS_CAMERA_FOV_MIN, Math.min(FOCUS_CAMERA_FOV_MAX,
       Number.isFinite(fovDeg) ? fovDeg : FOCUS_CAMERA_FOV));
-  }
-
-  private rotationFromBasis(offset: Vec3, up: Vec3): Quat {
-    return qFromForwardUp(norm(offset), norm(up)) ?? { x: 0, y: 0, z: 0, w: 1 };
   }
 
   // カメラの位置に応じて、ロールリセットおよびオイラー極軸の基準ベクトル(ECI 座標系)を返す。
@@ -308,48 +291,21 @@ export class FocusCamera {
     return norm(frameDirVector(toFrameDir(tf, this.referenceUpAxisEci())));
   }
 
-  private eulerBasis(polar: Vec3): { reference: Vec3; east: Vec3 } {
-    let reference = sub(FRAME_RIGHT, scale(polar, dot(FRAME_RIGHT, polar)));
-    if (lenSq(reference) < 1e-8) reference = sub(FRAME_FORWARD, scale(polar, dot(FRAME_FORWARD, polar)));
-    reference = norm(reference);
-    return { reference, east: norm(cross(reference, polar)) };
+  // 分解と組み立ては math/polar-euler が持つ。カメラが与えるのは極軸だけ。
+  private toEuler(rotation: Quat): PolarEuler {
+    return eulerFromRotation(rotation, this.eulerPolarAxis());
   }
 
-  private eulerFromRotation(rotation: Quat, polar = this.eulerPolarAxis()): CameraEuler {
-    const offset = qRotate(rotation, FRAME_FORWARD);
-    const basis = this.eulerBasis(polar);
-    const pitch = Math.asin(Math.max(-1, Math.min(1, dot(offset, polar))));
-    const horizontal = sub(offset, scale(polar, dot(offset, polar)));
-    const yaw = Math.atan2(dot(horizontal, basis.east), dot(horizontal, basis.reference));
-    const up = qRotate(rotation, FRAME_UP);
-    let referenceUp = sub(polar, scale(offset, dot(polar, offset)));
-    if (lenSq(referenceUp) < 1e-8) referenceUp = sub(basis.reference, scale(offset, dot(basis.reference, offset)));
-    referenceUp = norm(referenceUp);
-    const roll = Math.atan2(dot(offset, cross(referenceUp, up)), dot(referenceUp, up));
-    return { yaw, pitch: Math.max(-EULER_PITCH_LIMIT, Math.min(EULER_PITCH_LIMIT, pitch)), roll };
-  }
-
-  private rotationFromEuler(euler: CameraEuler, polar = this.eulerPolarAxis()): Quat {
-    const pitch = Math.max(-EULER_PITCH_LIMIT, Math.min(EULER_PITCH_LIMIT, euler.pitch));
-    const basis = this.eulerBasis(polar);
-    const cp = Math.cos(pitch);
-    const offset = addScaled(
-      addScaled(scale(basis.reference, cp * Math.cos(euler.yaw)), basis.east, cp * Math.sin(euler.yaw)),
-      polar,
-      Math.sin(pitch),
-    );
-    let referenceUp = sub(polar, scale(offset, dot(polar, offset)));
-    if (lenSq(referenceUp) < 1e-8) referenceUp = sub(basis.reference, scale(offset, dot(basis.reference, offset)));
-    const base = this.rotationFromBasis(offset, norm(referenceUp));
-    return qNormalize(qMul(qFromAxisAngle(offset, euler.roll), base));
+  private fromEuler(euler: PolarEuler): Quat {
+    return rotationFromEuler(euler, this.eulerPolarAxis());
   }
 
   // 実効回転(姿勢追従を掛けた後の向き)を offset/up の基底で置き直す。
   private setRotationBasis(offset: Vec3, up: Vec3): void {
-    this.storeEffectiveRotation(this.rotationFromBasis(offset, up));
+    this.storeEffectiveRotation(rotationFromBasis(offset, up));
     this.offset_r = frameDir(offset.x * this.dist, offset.y * this.dist, offset.z * this.dist);
     this.up_r = frameDir(up.x, up.y, up.z);
-    this.euler = this.eulerFromRotation(this.rotationQ);
+    this.euler = this.toEuler(this.rotationQ);
   }
 
   private framePlaneNormal(plane: CameraReferencePlane): Vec3 {
@@ -363,10 +319,6 @@ export class FocusCamera {
       return earth.motion.orientationAt(this.displayTime)?.axis ?? ECI_POLE;
     }
     return ECL_POLE_ECI;
-  }
-
-  private projectOntoPlane(vector: Vec3, planeNormal: Vec3): Vec3 {
-    return sub(vector, scale(planeNormal, dot(vector, planeNormal)));
   }
 
   // 注視点からカメラまでの距離を返す。
@@ -428,8 +380,8 @@ export class FocusCamera {
 
   public setCameraRotationMode(mode: CameraRotationMode): void {
     if (mode === this.rotationMode) return;
-    if (mode === 'euler') this.euler = this.eulerFromRotation(this.rotationQ);
-    else this.rotationQ = this.rotationFromEuler(this.euler);
+    if (mode === 'euler') this.euler = this.toEuler(this.rotationQ);
+    else this.rotationQ = this.fromEuler(this.euler);
     this.rotationMode = mode;
   }
 
@@ -443,17 +395,17 @@ export class FocusCamera {
   public setReferenceView(view: CameraReferenceView): void {
     const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const normal = norm(frameDirVector(toFrameDir(tf, this.framePlaneNormal(this._referencePlane))));
-    const currentOffset = qRotate(this.composeAttitude(this.rotationQ), FRAME_FORWARD);
+    const currentOffset = qRotate(this.composeAttitude(this.rotationQ), LOCAL_FORWARD);
     let offset: Vec3;
     let up: Vec3;
     if (view === 'above') {
       offset = normal;
-      up = this.projectOntoPlane(frameDirVector(toFrameDir(tf, ECL_VERNAL)), normal);
-      if (lenSq(up) < 1e-8) up = this.projectOntoPlane(FRAME_RIGHT, normal);
+      up = projectOntoPlane(frameDirVector(toFrameDir(tf, ECL_VERNAL)), normal);
+      if (lenSq(up) < 1e-8) up = projectOntoPlane(LOCAL_RIGHT, normal);
     } else {
-      offset = this.projectOntoPlane(currentOffset, normal);
-      if (lenSq(offset) < 1e-8) offset = this.projectOntoPlane(frameDirVector(toFrameDir(tf, ECL_VERNAL)), normal);
-      if (lenSq(offset) < 1e-8) offset = this.projectOntoPlane(FRAME_RIGHT, normal);
+      offset = projectOntoPlane(currentOffset, normal);
+      if (lenSq(offset) < 1e-8) offset = projectOntoPlane(frameDirVector(toFrameDir(tf, ECL_VERNAL)), normal);
+      if (lenSq(offset) < 1e-8) offset = projectOntoPlane(LOCAL_RIGHT, normal);
       up = normal;
     }
     offset = norm(offset);
@@ -494,10 +446,10 @@ export class FocusCamera {
   // ずれていた注視点もフォーカス位置へ戻す。
   reset(): void {
     const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
-    const offset = qRotate(this.composeAttitude(this.rotationQ), FRAME_FORWARD);
+    const offset = qRotate(this.composeAttitude(this.rotationQ), LOCAL_FORWARD);
     const upAxisEci = this.referenceUpAxisEci();
     const up = norm(frameDirVector(toFrameDir(tf, upAxisEci)));
-    const projectedUp = norm(this.projectOntoPlane(up, offset));
+    const projectedUp = norm(projectOntoPlane(up, offset));
     this.setRotationBasis(offset, projectedUp);
     this.resetPan();
     this._hud.hint('マップビューの視点をリセット');
@@ -589,7 +541,7 @@ export class FocusCamera {
       this.rotationQ = qNormalize(qMul(qInvert(att), this.rotationQ));
       this.lastAttitudeQ = att;
       this._attitudeFollow = true;
-      this.euler = this.eulerFromRotation(this.rotationQ);
+      this.euler = this.toEuler(this.rotationQ);
       return;
     }
     this.setCameraRotation(valid);
@@ -616,8 +568,8 @@ export class FocusCamera {
     const offset = sphericalOffset(init.yaw, init.pitch, init.dist);
     this.offset_r = frameDir(offset.x, offset.y, offset.z);
     this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
-    this.rotationQ = this.rotationFromBasis(offset, WORLD_UP);
-    this.euler = this.eulerFromRotation(this.rotationQ);
+    this.rotationQ = rotationFromBasis(offset, WORLD_UP);
+    this.euler = this.toEuler(this.rotationQ);
     this.fovDeg = this.clampFov(init.fovDeg);
     this.resetPan();
   }
@@ -646,7 +598,7 @@ export class FocusCamera {
     }
     this._attitudeFollow = false;
     this.lastAttitudeQ = null;
-    this.euler = this.eulerFromRotation(this.rotationQ);
+    this.euler = this.toEuler(this.rotationQ);
   }
 
   // 選択中の追従が選択肢から外れていれば慣性系へ落とす。一時的な解決失敗
@@ -704,8 +656,8 @@ export class FocusCamera {
     this.pan_r = toFrameDir(tfTo, panEci);
     this.up_r = toFrameDir(tfTo, upEci);
     this._cameraFrame = frame;
-    this.rotationQ = this.rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r));
-    this.euler = this.eulerFromRotation(this.rotationQ);
+    this.rotationQ = rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r));
+    this.euler = this.toEuler(this.rotationQ);
   }
 
   // マウス/キー入力から viewpoint を1フレーム分更新する。displayTime は線・メッシュが描かれる
@@ -728,18 +680,13 @@ export class FocusCamera {
     // オイラー操作の極軸は座標系の幾何で定義されるので、姿勢追従中はクォータニオン経路で回す。
     const eulerActive = this.rotationMode === 'euler' && !this._attitudeFollow;
     if (eulerActive) {
-      this.rotationQ = this.rotationFromEuler(this.euler);
+      this.rotationQ = this.fromEuler(this.euler);
     }
     // q は姿勢追従を掛けた実効回転。入力はこれに対して適用し、末尾で rotationQ へ書き戻す。
     let q = this.composeAttitude(this.rotationQ);
-    let offFrame = qRotate(q, FRAME_FORWARD);
-    let upFrame = qRotate(q, FRAME_UP);
-    let offEci = toInertialDir(tf, frameDir(offFrame.x, offFrame.y, offFrame.z));
     let panEci = toInertialDir(tf, this.pan_r);
-    let upEci = toInertialDir(tf, frameDir(upFrame.x, upFrame.y, upFrame.z));
 
-    // ホイールで距離を、ドラッグ/キーで視点方向を更新する。ヨー/ピッチはワールド軸ではなく
-    // 現在の上/右軸まわりに回す — ロールで上方向が傾いても、画面上の動きと入力方向が一致する。
+    // ホイールで距離を、ドラッグ/キーで視点方向を更新する。
     const zoomFactor = Math.exp(mouse.wheel * WHEEL_ZOOM_RATE);
     const dist = this.projectionMode === 'orthographic'
       ? this.dist
@@ -748,48 +695,24 @@ export class FocusCamera {
       this.orthographicHalfHeight = Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6,
         Math.min(FOCUS_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
     }
-    upEci = norm(addScaled(upEci, offEci, -dot(upEci, offEci) / dot(offEci, offEci)));
-    const yaw = mouse.dx * 0.005 - keyYawRad;
-    const pitch = mouse.dy * 0.005 + keyPitchRad;
-    if (!eulerActive) {
-      // q の +Z は注視点からカメラへ向く軸。ドラッグの回転軸は、戦闘ビューと
-      // 同じくドラッグ方向とこの視線軸の外積にする。cameraForward(-offFrame)を使うと
-      // 左右ドラッグの回転符号が反転する。
-      if (keyYawRad !== 0) {
-        q = qNormalize(qMul(qFromAxisAngle(upFrame, -keyYawRad), q));
-      }
-      offFrame = qRotate(q, FRAME_FORWARD);
-      upFrame = qRotate(q, FRAME_UP);
-      if (keyPitchRad !== 0) {
-        const right = norm(cross(norm(offFrame), upFrame));
-        q = qNormalize(qMul(qFromAxisAngle(right, keyPitchRad), q));
-      }
-
-      offFrame = qRotate(q, FRAME_FORWARD);
-      upFrame = qRotate(q, FRAME_UP);
-      const screenRight = norm(cross(scale(offFrame, -1), upFrame));
-      const dragVec = addScaled(scale(screenRight, mouse.dx), upFrame, -mouse.dy);
-      const dragLen = Math.hypot(dragVec.x, dragVec.y, dragVec.z);
-      if (dragLen > 1e-9) {
-        const axis = norm(cross(dragVec, offFrame));
-        q = qNormalize(qMul(qFromAxisAngle(axis, dragLen * 0.005), q));
-      }
-
-      offFrame = qRotate(q, FRAME_FORWARD);
-      if (mouse.roll !== 0) q = qNormalize(qMul(qFromAxisAngle(offFrame, mouse.roll), q));
-    } else {
+    const yaw = mouse.dx * DRAG_RAD_PER_PX - keyYawRad;
+    const pitch = mouse.dy * DRAG_RAD_PER_PX + keyPitchRad;
+    if (eulerActive) {
       this.euler.yaw += yaw;
-      this.euler.pitch = Math.max(-EULER_PITCH_LIMIT, Math.min(EULER_PITCH_LIMIT, this.euler.pitch + pitch));
+      this.euler.pitch = Math.max(-POLAR_PITCH_LIMIT, Math.min(POLAR_PITCH_LIMIT, this.euler.pitch + pitch));
       this.euler.roll += mouse.roll;
-      q = this.rotationFromEuler(this.euler);
+      q = this.fromEuler(this.euler);
+    } else {
+      q = rotateByScreenDrag(
+        q, mouse.dx * DRAG_RAD_PER_PX, -mouse.dy * DRAG_RAD_PER_PX, mouse.roll, keyYawRad, keyPitchRad,
+      );
     }
     this.storeEffectiveRotation(q);
-    offFrame = qRotate(q, FRAME_FORWARD);
-    upFrame = qRotate(q, FRAME_UP);
-    offEci = scale(toInertialDir(tf, frameDir(offFrame.x, offFrame.y, offFrame.z)), dist);
+    const offFrame = qRotate(q, LOCAL_FORWARD);
+    const upFrame = qRotate(q, LOCAL_UP);
+    const offEci = scale(toInertialDir(tf, frameDir(offFrame.x, offFrame.y, offFrame.z)), dist);
     const newDir = norm(offEci);
-    upEci = toInertialDir(tf, frameDir(upFrame.x, upFrame.y, upFrame.z));
-    upEci = norm(addScaled(upEci, newDir, -dot(upEci, newDir)));
+    const upEci = norm(projectOntoPlane(toInertialDir(tf, frameDir(upFrame.x, upFrame.y, upFrame.z)), newDir));
 
     // 中ボタンドラッグ/2本指ドラッグでパン変位を更新する
     if (mouse.panDx !== 0 || mouse.panDy !== 0) {
@@ -817,7 +740,7 @@ export class FocusCamera {
     this.up_r = toFrameDir(tf, upEci);
     this.offset_r = toFrameDir(tf, offEci);
     this.pan_r = toFrameDir(tf, panEci);
-    this.euler = this.eulerFromRotation(this.rotationQ);
+    this.euler = this.toEuler(this.rotationQ);
   }
 
   // offset_r/pan_r/up_r・視点の座標系・フォーカス対象をセーブデータへ書き出す。
