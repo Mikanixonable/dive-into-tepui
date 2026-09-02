@@ -209,23 +209,24 @@ export class CumulusShell {
     return select(present.greaterThan(0.5), clearance, float(1));
   }
 
-  // 交点における雲頂面の法線(物体空間)。**交点そのものの高さは測り直さない** — レイマーチが
-  // 締めた交点は雲頂の上に乗っているので、中心距離がそのまま雲頂の高さになる。**覆いの有無は
-  // 勾配へ入れない** — 柱ごとに断ち切られた崖ではなく、雲頂そのものの起伏を法線に出す。
+  // 交点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに断ち切られた
+  // 崖ではなく、雲頂そのものの起伏を法線に出す。
   private cloudTopNormalAt(hitPoint: Vec3Node, grainAmplitude: FloatNode): Vec3Node {
-    const here = max(length(hitPoint), 1e-6);
-    const up = hitPoint.div(here);
+    const up = hitPoint.div(max(length(hitPoint), 1e-6));
     const east = eastAt(up);
     const north = northAt(up);
-    // up から offset だけ振った向きの雲頂(物体空間の半径)。
-    const heightAt = (offset: Vec3Node): FloatNode => {
-      const direction = normalize(up.add(offset));
-      return this.cloudTopRadiusOf(
-        this.cloudTopOf(this.fieldAt(direction).g, this.grainAt(direction, grainAmplitude)));
-    };
+    // その向きの雲頂(物体空間の半径)。
+    const topAt = (direction: Vec3Node): FloatNode => this.cloudTopRadiusOf(
+      this.cloudTopOf(this.fieldAt(direction).g, this.grainAt(direction, grainAmplitude)));
+    // **中心の高さは交点の中心距離ではなく雲頂を引き直して測る** — 締めた交点は雲頂より内側へ
+    // 食い込んでいて、中心距離を高さに使うと食い込みが両方向の傾きへ同じ下駄として乗る。掠める
+    // 視線ほど刻みが長く食い込みも深いので、リム際で法線が倒れて夜側の雲が光る。
+    const here = topAt(up);
     // 東と北へ粒の半波長ぶん振った雲頂との差が、そのまま接平面での傾き。
-    const slopeEast = heightAt(east.mul(this.gradientAngle)).sub(here).div(this.gradientAngle);
-    const slopeNorth = heightAt(north.mul(this.gradientAngle)).sub(here).div(this.gradientAngle);
+    const slopeEast = topAt(normalize(up.add(east.mul(this.gradientAngle))))
+      .sub(here).div(this.gradientAngle);
+    const slopeNorth = topAt(normalize(up.add(north.mul(this.gradientAngle))))
+      .sub(here).div(this.gradientAngle);
     return normalize(up.sub(east.mul(slopeEast)).sub(north.mul(slopeNorth)));
   }
 
