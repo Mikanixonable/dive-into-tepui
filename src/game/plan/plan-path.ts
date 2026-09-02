@@ -19,7 +19,6 @@ import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { ProjectFn, ScaleFn } from '../camera/camera-system';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
-import type { FutureCelestialBodyProvider } from '../dynamic/arc-celestial-bodies';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../math/optimize';
@@ -122,8 +121,7 @@ export class PlanPath {
   update(
     planData: PlanData, ship: Controllable | null,
     celestialSystem: CelestialSystem, frame: ReferenceFrame, simTime: number, displayTime: number,
-    frameAnchors: FrameAnchorSource, celestialBodyProvider: FutureCelestialBodyProvider,
-    displayDurationSec: number,
+    frameAnchors: FrameAnchorSource, displayDurationSec: number,
   ): void {
     this.frame = frame;
     this.celestialSystem = celestialSystem;
@@ -153,7 +151,7 @@ export class PlanPath {
         // SHIP_SRP_COEFF)で積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを
         // 置くと、実際に積分し直した次のノードと繋がらなくなるため。
         arc = new PredictedArc(
-          seg.state0, celestialBodyProvider, PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
+          seg.state0, celestialSystem, PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
           /* keplerTail */ false, /* consumable */ false,
         );
         this.lastRebuiltArcs++;

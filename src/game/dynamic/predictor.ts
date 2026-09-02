@@ -63,7 +63,7 @@ export class Predictor {
   // horizon は simTime から先に予測する長さ [s]。canDisplayFuture は表示時刻が現在より先へ
   // 動けるかで、未来ゴーストが伸長理由として成り立つかを決める。planArcs は
   // plan/plan-path.ts の PlanPath が owned で持つ弧を時刻順に渡したもの
-  // (PlanTrajectory.growableArcs 経由) — requiredEnd/retainFrom は渡す前に書き込み済みなので、
+  // (PlanDisplay.growableArcs 経由) — requiredEnd/retainFrom は渡す前に書き込み済みなので、
   // ここでは step() を呼ぶだけでよい。
   update(
     simTime: number, simDt: number, player: Player | null, horizon: number, canDisplayFuture: boolean,
