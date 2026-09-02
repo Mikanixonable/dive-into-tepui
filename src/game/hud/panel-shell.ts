@@ -8,7 +8,7 @@ import {
   syncCollapseToggle,
   type CollapseToggleLabels,
 } from './widgets';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 
 const STORAGE_KEY = 'tepui.panelCollapsed.v2';
 const LEGACY_STORAGE_KEY = 'tepui.panelCollapsed';

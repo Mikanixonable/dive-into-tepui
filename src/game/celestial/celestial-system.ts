@@ -17,7 +17,7 @@ import { EllipseLine } from '../lines/ellipse-line';
 import { celestialShellScale, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { ScaleGridView } from './scale-grid-view';

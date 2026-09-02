@@ -6,9 +6,7 @@ import { KEY_MAPPING as K } from './input/key-mapping';
 import { DisplayWindowManager } from './display-window-manager';
 import type { ActiveControllableController } from './active-controllable-controller';
 import { setPanelCollapsedView } from './hud/panel-shell';
-import type { WorldViewFrame } from './world-view';
-
-export type WorldView = 'combat' | 'map';
+import type { WorldView, WorldViewFrame } from './world-view';
 
 export class ViewManager {
   private worldView: WorldView;

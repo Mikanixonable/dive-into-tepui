@@ -19,7 +19,7 @@ import {
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Quat } from '../../physics/attitude';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import { CameraSaveData } from '../save/save-data';
 
 const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.mapDisplayToggles';
