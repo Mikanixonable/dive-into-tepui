@@ -105,16 +105,13 @@ export class FrameControls {
     // — 見えていないあいだ空扱いにすると、パネルを畳んだだけで下の巻き戻しが走り、選択が消える。
     const validRoles = this.validRevolutionRoles(displayTime);
 
-    // 選択中の役割の公転が条件を崩したら、既存の onSelect と同じ経路(カメラは
-    // setCameraRotation、軌道フレームは frame の差し替え)で慣性系へ落とす。
-    if (this.isStaleRole(this.mapCamera.cameraFrame.rotatingWith, validRoles)) {
-      this.mapCamera.setCameraRotation(null);
-    }
+    // 軌道フレームで選択中の役割の公転が条件を崩したら、既存の onSelect と同じ経路
+    // (frame の差し替え)で慣性系へ落とす。カメラ側の同種の検査はカメラ自身が持つ。
     if (this.isStaleRole(this.displayWindow.frame.rotatingWith, validRoles)) {
       this.displayWindow.frame = this.celestialSystem.frames.frameOf(this.displayWindow.frame.center, null);
     }
 
-    this.cameraPanel.sync(pickables, members, displayTime, validRoles, visible);
+    this.cameraPanel.sync(pickables, members, displayTime, visible);
     this.trajectoryPanel.sync(pickables, members, displayTime, validRoles, visible);
   }
 
