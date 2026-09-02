@@ -109,11 +109,11 @@ export class MapPickables {
 
   // 負荷確認ウィンドウが読む、マップ視点かどうかとその候補列/ラベル数。
   perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
-    const overviewMode = this.cameraSystem.overviewMode;
+    const mapView = this.cameraSystem.worldView === 'map';
     return {
-      mapMode: overviewMode,
+      mapMode: mapView,
       mapItems: this.candidateItems.length,
-      mapLabels: overviewMode ? this.celestialMarkers.shownLabelCount : 0,
+      mapLabels: mapView ? this.celestialMarkers.shownLabelCount : 0,
     };
   }
 }

@@ -1,6 +1,7 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決める。
 // update が出す/消す/スタイルを決め、sync は既に出ている線の形状と変換を合わせる。
 import * as THREE from 'three/webgpu';
+import type { WorldView } from '../view-manager';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -63,13 +64,13 @@ export class EntityLineManager {
   // このフレームの確定値になった後に呼ぶ。
   update(
     activePlayer: Player | null, primaryTarget: CombatTarget | null,
-    overviewMode: boolean, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
+    view: WorldView, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined,
   ): void {
     const { pastDuration } = displayWindow;
     // マップビューは軌道情報パネルの固定設定に従わず、常に自動選択(最も強く引く天体)で描く
     // (ORBIT.md「軌道線(3D描画)の基準天体」)。数値表示・軌道要素アイコンはこの絞り込みを受けない。
-    const lineOrbitRef = overviewMode ? undefined : orbitRef;
+    const lineOrbitRef = view === 'map' ? undefined : orbitRef;
     const palette = currentThemePalette();
     const primaryStyle: LineStyle = { color: palette.signal, opacity: TARGET_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.target };
     const targetStyleOf = (e: CombatTarget): LineStyle | null => e === primaryTarget ? primaryStyle : null;
@@ -93,8 +94,8 @@ export class EntityLineManager {
       // 予測線・過去線を使う条件が揃っているか。
       const showLines = trajectoryEligible && visibleWhenUntargeted && asTarget === null;
       // 戦闘ビューの自艦・使用条件を満たさない機体は、積分線の代わりに解析楕円で描く。
-      const ownEllipse = showLines && !overviewMode;
-      const fallbackEllipse = !trajectoryEligible && overviewMode && visibleWhenUntargeted && asTarget === null;
+      const ownEllipse = showLines && view !== 'map';
+      const fallbackEllipse = !trajectoryEligible && view === 'map' && visibleWhenUntargeted && asTarget === null;
       const orbitLineStyle = asTarget !== null && lineVisible
         ? asTarget
         : (ownEllipse || fallbackEllipse ? styles.ellipse : null);
@@ -111,7 +112,7 @@ export class EntityLineManager {
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       // マップビューでは操作艦だけが既定で予測線・過去線を使う。それ以外の自艦は、
       // プロパティウィンドウのトグル(showTrajectoryLine)がONのときだけ同様に使う。
-      const trajectoryEligible = isActive || (overviewMode && ship.showTrajectoryLine);
+      const trajectoryEligible = isActive || (view === 'map' && ship.showTrajectoryLine);
       applyEntityLines(
         ship, targetStyleOf(ship), lineVisible, lineVisible, trajectoryEligible,
         { ellipse: playerOrbitStyleOf(isActive), predicted: playerPredictedStyleOf(isActive), actual: playerActualStyleOf(isActive) },
@@ -122,14 +123,14 @@ export class EntityLineManager {
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
       applyEntityLines(
-        enemy, targetStyleOf(enemy), lineVisible, lineVisible && enemy.alive, overviewMode && enemy.showTrajectoryLine,
+        enemy, targetStyleOf(enemy), lineVisible, lineVisible && enemy.alive, view === 'map' && enemy.showTrajectoryLine,
         sameTrajectoryStyle(enemyLineStyle),
       );
     }
     for (const base of this.entities.bases) {
       const lineVisible = visibilityPolicy?.entity('base').orbit ?? false;
       applyEntityLines(
-        base, targetStyleOf(base), lineVisible, lineVisible, overviewMode && base.showTrajectoryLine,
+        base, targetStyleOf(base), lineVisible, lineVisible, view === 'map' && base.showTrajectoryLine,
         sameTrajectoryStyle(LINE_STYLE.baseLine),
       );
     }

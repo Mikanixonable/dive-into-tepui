@@ -30,12 +30,12 @@ export class ScaleGridView {
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, celestialSystem: CelestialSystem,
     gridVisibility: CelestialGridVisibility,
   ): void {
-    const overviewMode = cameraSystem.overviewMode;
+    const mapView = cameraSystem.worldView === 'map';
     const visibility: ScaleGridVisibility = {
-      ecliptic: overviewMode && gridVisibility.eclipticScaleGrid,
-      equator: overviewMode && gridVisibility.equatorScaleGrid,
-      moonOrbit: overviewMode && gridVisibility.moonOrbitScaleGrid,
-      moonEquator: overviewMode && gridVisibility.moonEquatorScaleGrid,
+      ecliptic: mapView && gridVisibility.eclipticScaleGrid,
+      equator: mapView && gridVisibility.equatorScaleGrid,
+      moonOrbit: mapView && gridVisibility.moonOrbitScaleGrid,
+      moonEquator: mapView && gridVisibility.moonEquatorScaleGrid,
     };
     const moon = celestialSystem.find('moon')?.motion ?? null;
     const moonPole = moon === null ? null : moon.orientationAt(displayTime);

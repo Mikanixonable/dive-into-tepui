@@ -216,10 +216,10 @@ export class CreativeStage extends Stage {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
     this.activePlayer = player;
     this.stageControlsPanel.setSpawnButtonsEnabled(player !== null && player.alive);
-    this.mountStageControlsPanel(cameraSystem.overviewMode);
+    this.mountStageControlsPanel(cameraSystem.worldView === 'map');
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
-      cameraSystem.overviewMode, cameraSystem.activeCameraPos,
+      cameraSystem.worldView === 'map', cameraSystem.activeCameraPos,
       this._celestialSystem.celestialMotions, displayTime,
     );
     this.placerPanel.setIssues(this.issues);
@@ -293,7 +293,7 @@ export class CreativeStage extends Stage {
   // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
   private syncPreview(
     fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
-    overviewMode: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
+    mapView: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
     displayTime: number,
   ): void {
     if (!this.preview) {
@@ -302,7 +302,7 @@ export class CreativeStage extends Stage {
       return;
     }
     this.previewEllipseLine.sync(this.preview.elements, fo, camera);
-    if (overviewMode
+    if (mapView
       && isOccluded(cameraPos, this.preview.pos, celestialBodies, displayTime)) {
       this._markerManager.hide('creative-preview');
       return;

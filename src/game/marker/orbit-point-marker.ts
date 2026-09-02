@@ -69,13 +69,13 @@ export abstract class OrbitPointMarker implements MapPickable {
   // マーカーを解いた位置へ置く。解けていないフレームと、天体に遮られたフレームは隠す。
   public sync(
     markers: MarkerManager, project: ProjectFn, cameraPos: Vec3,
-    celestialBodies: readonly CelestialMotion[], pivot: number, overviewMode: boolean,
+    celestialBodies: readonly CelestialMotion[], pivot: number, occludeByBodies: boolean,
     timeLabel: TimeLabelSetting,
   ): void {
     if (this.pos === null) { markers.hide(this.id); return; }
     markers.setNodePosition(
       this.id, this.markerClass, this.markerGlyph, this.pos, project, cameraPos, celestialBodies, pivot,
-      overviewMode, orbitPointLabel(this.markerLabel, this.time, timeLabel),
+      occludeByBodies, orbitPointLabel(this.markerLabel, this.time, timeLabel),
     );
   }
 

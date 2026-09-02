@@ -209,6 +209,7 @@ export class Game {
       this.activePlayers,
       this.displayWindowManager,
       this.frameControls,
+      () => this.viewManager.isMapView,
     );
     this.guide = new PlanGuide(this._hud, this._uiSfx, this.markerManager);
 
@@ -346,13 +347,13 @@ export class Game {
     // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
     const activeControllable = this.activeControllableEntity;
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
-    const overviewMode = this.cameraSystem.overviewMode;
+    const view = this.viewManager.current;
     const canDisplayFuture = !this.displayWindowManager.forceCurrent;
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
-    this._celestialSystem.update(displayWindow.displayTime, overviewMode, graphics);
+    this._celestialSystem.update(displayWindow.displayTime, view, graphics);
     this.sections.enter(SECTION.plan);
     this.editor.update(displayWindow, this.frameAnchors);
     this.sections.exit(SECTION.plan);
@@ -394,7 +395,7 @@ export class Game {
     // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。
     this.entityLines.update(
       this.player, this.targeter.aliveTarget,
-      overviewMode, displayWindow, this.mapPickables.visibilityPolicy, this.orbitRef,
+      view, displayWindow, this.mapPickables.visibilityPolicy, this.orbitRef,
     );
   }
 
@@ -587,7 +588,7 @@ export class Game {
     this.dockingGuide.sync(player, fo, project);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
-    this.markerManager.resolveCollisions(this.cameraSystem.overviewMode);
+    this.markerManager.resolveCollisions(this.viewManager.current);
   }
 
   // ------------------------------------------------------------------ render
