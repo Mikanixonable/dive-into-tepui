@@ -5,6 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
+import { CumulusShell } from '../../src/render/cumulus-shell';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
@@ -600,17 +601,20 @@ function marchSlab(): LabCase {
   return { objects: [plane], camera };
 }
 
-// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。雲を合成した地表と、模式図で
-// だけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。
+// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。薄い雲を合成した地表と積雲の
+// 殻、模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。
 function earthAt(center: THREE.Vector3, style: RenderStyle): THREE.Object3D {
   const group = new THREE.Group();
   group.position.copy(center);
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
-  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cloudFieldUrl, earthSmoothnessUrl);
+  const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
+  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cumulus.field, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
   surface.setCloudAmount(1);
+  cumulus.addTo(group);
+  cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
   const graticule = new BodyGraticule();
   graticule.addTo(group);
   graticule.setVisible(style === 'schematic');
