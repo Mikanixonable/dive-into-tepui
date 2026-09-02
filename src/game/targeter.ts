@@ -66,7 +66,7 @@ export class Targeter {
   }
 
   // Tキーで照準中心に最も近い敵をターゲットにする。オート選定は行わない — 右クリックでの
-  // 設定/解除は MapContextActions が開くプロパティウィンドウの項目(target)から
+  // 設定/解除はプロパティウィンドウの項目(target)から
   // navTarget.toggleTarget を呼ぶ。
   handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
