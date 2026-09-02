@@ -10,9 +10,10 @@ import { SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
+import { GraphicsSettings } from '../../src/render/graphics-settings';
+import { castsCumulusShadow } from '../../src/render/pipeline/sun-occlusion-select';
 import { atmosphereDraws } from '../../src/render/atmosphere';
-import type { ChoiceValue, GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { GraphicsSettingsData, GraphicsTarget } from '../../src/render/graphics-settings';
 import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
@@ -57,13 +58,6 @@ const ORIGIN_TO_LIGHT = new THREE.Vector3();
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
 
-// つまみを出す描画品質設定の項目。**ここを変えたときだけ、この環境が描くものが変わる** —
-// 残りの項目はゲーム本体の側(天体の組み立て・HUD)が読むので、ここでは動かしても何も起きない。
-export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'antialias', 'exposureCompensation', 'filmLut', 'atmosphere', 'sunLightModel',
-  'planetLightCount', 'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
-] as const satisfies readonly GraphicsOptionKey[];
-
 // カメラのズーム(画角を狭める倍率)の常用対数の上限。0 がケース既定の画角。
 export const MAX_CAMERA_ZOOM_LOG = 2;
 
@@ -103,7 +97,7 @@ function anglesFromDirection(v: THREE.Vector3): { azimuthDeg: number; elevationD
   };
 }
 
-export class LabView {
+export class LabView implements GraphicsTarget {
   private readonly scene = new THREE.Scene();
   // 撮影先。合成パスが既に sRGB へ変換した値を書くので、素の RGBA8 で受ける
   // (-srgb フォーマットにすると二重変換になり、撮った PNG だけが白っぽくなる)。
@@ -130,9 +124,9 @@ export class LabView {
     sunAzimuthDeg: 0, sunElevationDeg: 0, sunDistanceLogAu: 0,
     cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraDistanceLog: 0, cameraZoomLog: 0,
   };
-  // 描画品質設定のうち、パイプラインが読むものだけを操作の対象にする。ゲーム本体と保存先を
-  // 分けるため、ここが値の正本を持つ(ブラウザへは残さない)。
-  private graphicsData: GraphicsSettingsData = QUALITY_PRESETS.high;
+  // このフレームを描くのに使う描画品質設定。**正本は呼び出し側の GraphicsSettings** で、
+  // 押し出しを受けてここへ写す。
+  private graphicsData: GraphicsSettingsData;
   private readonly scratchBox = new THREE.Box3();
   private readonly caseCenterVector = new THREE.Vector3();
   private readonly scratchVector = new THREE.Vector3();
@@ -142,13 +136,17 @@ export class LabView {
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
     private readonly gpu: GpuTimings,
+    graphics: GraphicsSettingsData,
   ) {
+    this.graphicsData = graphics;
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
   }
 
-  static async create(canvas: HTMLCanvasElement): Promise<LabView> {
+  // graphics は描画品質設定の正本。**押し出し先として bind するのは呼び出し側の仕事** —
+  // ここで自分を登録すると、パネルとの登録順が呼び出し側から見えなくなる。
+  static async create(canvas: HTMLCanvasElement, graphics: GraphicsSettings): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
@@ -160,9 +158,9 @@ export class LabView {
     await renderer.init();
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
-    const pipeline = new RenderPipeline(renderer, QUALITY_PRESETS.high, gpu);
+    const pipeline = new RenderPipeline(renderer, graphics.current, gpu);
     pipeline.ambient.setFraction(AMBIENT_WEAK);
-    return new LabView(renderer, pipeline, gpu);
+    return new LabView(renderer, pipeline, gpu, graphics.current);
   }
 
   // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
@@ -194,14 +192,15 @@ export class LabView {
     built.star?.addTo(this.scene);
     this.current = built;
     this.currentName = name;
+    // **カメラの既定を引く前に一度押し込む** — 環はここで姿勢が決まるので、押し込む前に
+    // 物体を包む箱を測ると注視点が原点へ寄る。
+    built.applyGraphics?.(this.graphicsData);
   }
 
-  get graphics(): GraphicsSettingsData { return this.graphicsData; }
-
-  // 描画品質設定の項目を1つ差し替え、パイプラインへ押し出してその場で描き直す。
-  setGraphicsOption(key: GraphicsOptionKey, value: boolean | ChoiceValue): void {
-    this.graphicsData = withGraphicsOption(this.graphicsData, key, value);
-    this.pipeline.applyGraphics(this.graphicsData);
+  // 描画品質設定の押し出し先。受け取った値をパイプラインへ配り、その場で描き直す。
+  applyGraphics(graphics: GraphicsSettingsData): void {
+    this.graphicsData = graphics;
+    this.pipeline.applyGraphics(graphics);
     this.render();
   }
 
@@ -289,6 +288,8 @@ export class LabView {
   // 動くものが無いので、描くのはケースを差し替えたときと、表示を切り替えたときと、撮影のとき。
   render(): void {
     if (this.current === null) return;
+    // ケースの部品が読む設定は、この1フレームを組む前に押し込む。
+    this.current.applyGraphics?.(this.graphicsData);
     const sunDirection = directionFromAngles(
       this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,
     );
@@ -330,7 +331,8 @@ export class LabView {
     this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    this.pipeline.sunOcclusion.setCumulusShadow(this.current.cumulusShadow ?? null);
+    this.pipeline.sunOcclusion.setCumulusShadow(
+      castsCumulusShadow(this.graphicsData) ? this.current.cumulusShadow ?? null : null);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
       (this.current.atmospheres ?? []).map((body) => {
