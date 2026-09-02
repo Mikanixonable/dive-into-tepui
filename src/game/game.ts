@@ -110,7 +110,6 @@ export class Game {
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
   private readonly docking: Docking;
-  private readonly dockingGuide: DockingGuide;
   private readonly viewBadge: ViewBadge;
   readonly frameControls: FrameControls;
   // 計測区間の境界を打つ先。集計と保持はこのオブジェクトが持つ。
@@ -247,10 +246,13 @@ export class Game {
     );
     this.mapActions.setDocking(this.docking);
 
+    const dockingGuide = new DockingGuide(
+      this._scene, this.markerManager, this.dynamicSystem, this.docking,
+    );
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.mapActions, this.dynamicSystem,
       this.mapPickables, this.linePickables, this.celestialMarkers, this.touchControls,
-      this.activePlayers,
+      this.activePlayers, dockingGuide,
     );
     const mapView = new MapView(
       this.input, this.cameraSystem, this.targeter, this.editor, this.mapActions,
@@ -267,9 +269,6 @@ export class Game {
     );
 
     this.nanWatchdog = new NanWatchdog(this._hud);
-    this.dockingGuide = new DockingGuide(
-      this._scene, this.markerManager, this.dynamicSystem, this.docking, this.viewManager,
-    );
     this.viewBadge = new ViewBadge(
       this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager,
       this._hud.renderStyle,
@@ -298,7 +297,7 @@ export class Game {
   // dispose の中で自分のキーを外していくのを先に済ませるため。
   dispose(): void {
     this.viewBadge.dispose();
-    this.dockingGuide.dispose();
+    this.viewManager.dispose();
     this.docking.dispose();
     this.mapActions.dispose();
     this.activeStage.dispose();
@@ -568,7 +567,7 @@ export class Game {
       displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this._celestialSystem);
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
-    this.viewManager.activeView.syncPanels(displayWindow);
+    this.viewManager.activeView.syncPanels(displayWindow, fo);
 
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
@@ -576,8 +575,6 @@ export class Game {
     this._hud.tick();
 
     this.guide.sync(player, simTime, this.editor.editMode, project, this.editor.planDisplay.path);
-    // カメラ/FloatingOrigin の確定後にのみガイドの3D位置とラベルを同期する。
-    this.dockingGuide.sync(player, fo, project);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions(this.viewManager.current);

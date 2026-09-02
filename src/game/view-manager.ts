@@ -56,6 +56,12 @@ export class ViewManager {
     return this.worldView;
   }
 
+  // 保持する両ビューの表示物・DOM を片付ける。
+  dispose(): void {
+    this.views.map.dispose();
+    this.views.combat.dispose();
+  }
+
   // ビュー選択 UI に並べる遷移先。現在のビュー自身と、いま入れないビューは含まない。
   selectableViews(): readonly WorldView[] {
     const all: readonly WorldView[] = ['combat', 'map'];
