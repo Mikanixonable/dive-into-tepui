@@ -11,7 +11,9 @@ import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CUMULUS_DETAIL } from './cumulus-shell';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
-const STORAGE_KEY = 'tepui.settings.graphics';
+// ゲーム本体の設定の保存先。**実験環境はここへ書かない** — 撮影した絵が「人間が最後に押した
+// 状態」に依存して黙って変わるので、保存先を持たない GraphicsSettings を別に組む。
+export const GRAPHICS_STORAGE_KEY = 'tepui.settings.graphics';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
 
@@ -236,9 +238,9 @@ function acceptValue(
 }
 
 // 保存値は利用者がいつ書いたか分からないので、既知の項目だけを既定の上へ重ねる。
-function loadStored(): GraphicsSettingsData {
+function loadStored(storageKey: string): GraphicsSettingsData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (raw === null) return DEFAULTS;
     const saved = JSON.parse(raw) as Record<string, unknown>;
     // 表に無いキーは読まず、表にあって保存に無いキーは既定で埋まる。
@@ -258,8 +260,14 @@ export interface GraphicsTarget {
 }
 
 export class GraphicsSettings {
-  private data: GraphicsSettingsData = loadStored();
+  private data: GraphicsSettingsData;
   private readonly targets: GraphicsTarget[] = [];
+
+  // storageKey は設定を残すブラウザ側の鍵。**null を渡すと読みも書きもせず**、毎回既定から
+  // 始まってこのセッションの中だけで生きる(実験環境がこちらを使う)。
+  public constructor(private readonly storageKey: string | null = GRAPHICS_STORAGE_KEY) {
+    this.data = storageKey === null ? DEFAULTS : loadStored(storageKey);
+  }
 
   public get current(): GraphicsSettingsData { return this.data; }
 
@@ -283,8 +291,9 @@ export class GraphicsSettings {
   private apply(data: GraphicsSettingsData): void {
     this.data = data;
     for (const target of this.targets) target.applyGraphics(data);
+    if (this.storageKey === null) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+      localStorage.setItem(this.storageKey, JSON.stringify(this.data));
     } catch {
       // 保存できなくてもこのセッションの設定は生きている。
     }
