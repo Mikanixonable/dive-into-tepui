@@ -45,6 +45,10 @@ async function main() {
       console.log(`wrote ${file}`);
     }
     if (fatalEvents.length > 0) throw new Error(`Page reported errors:\n${fatalEvents.join('\n')}`);
+    // 分離の質の指標(意味は tools/cloud-lab/separate-main.ts)。調整の前後比較の記録用。
+    const metrics = await devTools.evaluate('window.cloudSeparate.metrics()');
+    console.log(`相関 全体 ${metrics.corrAll.toFixed(3)} / 150-600km ${metrics.corrBand.toFixed(3)}`
+      + ` | 平均 veil ${metrics.veilMean.toFixed(3)} / thick ${metrics.thickMean.toFixed(3)}`);
     console.log(`Wrote ${SHOTS.length} PNGs to ${path.relative(root, outDir)}`);
   } finally {
     await session.close();
