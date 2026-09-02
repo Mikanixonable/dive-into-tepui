@@ -10,9 +10,11 @@ import type { MapVisibilityPolicy } from './map/visibility-policy';
 import type { PerfCounts } from '../perf-meter';
 import type { LinePickables } from './pickable/line-pickables';
 import type { ObjectWindows } from './pickable/object-windows';
-import type { MapPicking } from './pickable/map-picking';
+import { MapPicking } from './pickable/map-picking';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import type { MarkerManager } from './marker/marker-manager';
+import type { Hud } from './hud/hud';
+import type { NavTarget } from './nav-target';
 import type { Targeter } from './targeter';
 import type { PlanEditor } from './plan/plan-editor';
 import type { ActiveControllableController } from './active-controllable-controller';
@@ -23,13 +25,15 @@ import type { FloatingOrigin } from './camera/floating-origin';
 import type { WorldViewFrame } from './world-view';
 
 export class MapView implements WorldViewFrame {
+  // マップ上のクリックの当て先と軌道物体一覧。どちらもマップビューでしか出さないので、ここが持つ。
+  private readonly picking: MapPicking;
+
   constructor(
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
     private readonly editor: PlanEditor,
     private readonly objectWindows: ObjectWindows,
-    private readonly picking: MapPicking,
     private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly objectPickables: ObjectPickables,
@@ -40,7 +44,14 @@ export class MapView implements WorldViewFrame {
     private readonly frameControls: FrameControls,
     private readonly frameAnchors: FrameAnchors,
     private readonly activePlayers: ActiveControllableController,
-  ) {}
+    hud: Hud,
+    navTarget: NavTarget,
+  ) {
+    this.picking = new MapPicking(
+      hud, cameraSystem, dynamicSystem, celestialSystem, celestialMarkers, markerManager,
+      navTarget, frameControls, objectPickables, linePickables, objectWindows,
+    );
+  }
 
   get pickables(): readonly ObjectPickable[] { return this.objectPickables.pickables; }
   get visibilityPolicy(): MapVisibilityPolicy | null { return this.objectPickables.visibilityPolicy; }
