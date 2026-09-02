@@ -121,7 +121,5 @@ export class CombatView implements WorldViewFrame {
     this.dockingGuide.sync(player, fo, project);
   }
 
-  dispose(): void {
-    this.dockingGuide.dispose();
-  }
+  dispose(): void {}
 }
