@@ -3,7 +3,7 @@
 ## この文書について
 
 `src/game/hud/panels/physical-object-list-panel.ts` を中心に、`physical-object-list-order.ts`・
-供給側(`map-context-actions.ts` / `map-pickables.ts` / `focus-markers.ts`)・スタイル
+供給側(`map-picking.ts` / `object-pickables.ts` / `focus-markers.ts`)・スタイル
 (`panel-content-style.ts` / `map-view-style.ts`)まで広げて点検した結果の**指摘一覧**。
 実装は行っていない。
 
@@ -61,7 +61,7 @@ CSS は `.css` ファイルではなく `src/game/hud/style/*.ts` のテンプ�
 操作が毎回要る。`focusAncestors` はフォーカスが変化した回にしか効かないので、ここでは救えない。
 
 [推測] 同じことは絞り込みと無関係にも起こりうる。`items` は可視性で絞られた
-`MapPickables.visibleItems` なので、ある惑星が可視性規則から外れたフレームでは、その衛星が
+`ObjectPickables.visibleItems` なので、ある惑星が可視性規則から外れたフレームでは、その衛星が
 根に昇格して親ノードが prune される。可視性が戻った次のフレームには全部作り直しになり、
 **開いていた枝が勝手に畳まれる。** 再現条件は詰めていない。
 
@@ -130,15 +130,15 @@ e.stopPropagation();
 
 ### 1.5 [確認] 一覧からの操作が `pickable` を無視する — マップ上の操作との挙動差
 
-`MapPickable.pickable` は「表示上のラベル衝突で隠された対象は、ダブルクリックのフォーカス候補
-からも外す」ためのフラグ(`map-pickable.ts:24-26`)。
+`ObjectPickable.pickable` は「表示上のラベル衝突で隠された対象は、ダブルクリックのフォーカス候補
+からも外す」ためのフラグ(`object-pickable.ts:24-26`)。
 
 マップ上の直接操作は必ずこれを通す:
-- 右クリック `map-context-actions.ts:167`
-- 左クリック `map-context-actions.ts:392`
-- ダブルクリック `map-context-actions.ts:407`
+- 右クリック `map-picking.ts:167`
+- 左クリック `map-picking.ts:392`
+- ダブルクリック `map-picking.ts:407`
 
-一覧パネルの3経路は**どれも通さない**(`map-context-actions.ts:137-150` はいずれも
+一覧パネルの3経路は**どれも通さない**(`map-picking.ts:137-150` はいずれも
 `pickables.find((i) => i.id === id)` だけ)。`physical-object-list-panel.ts` /
 `physical-object-list-order.ts` に `pickable` の文字列は現れない。
 
@@ -150,8 +150,8 @@ e.stopPropagation();
 `DEVELOP/SPEC/MAP.md` §10 は「ダブルクリックはその対象へマップ視点のフォーカスを移す
 (**対象が自艦なら操作対象にもなる**)」と書いている。
 
-- マップ上のダブルクリック `map-context-actions.ts:412-419` は `activePlayers.set(ship)` を持つ。
-- 一覧パネルの `onFocus` `map-context-actions.ts:137-140` は `setFocus()` と `hint()` だけ。
+- マップ上のダブルクリック `map-picking.ts:412-419` は `activePlayers.set(ship)` を持つ。
+- 一覧パネルの `onFocus` `map-picking.ts:137-140` は `setFocus()` と `hint()` だけ。
 
 同じ「ダブルクリック=フォーカス」の入口が2つあって、片方だけ自艦の分岐を持っている。
 
@@ -249,8 +249,8 @@ CODING-RULE 1.7 は同一参照の中身を書き換えての転用を禁じ、�
 相当のパフォーマンス上の理由がある場合のみ**」に限っている。
 
 供給側を調べると、その理由が薄い:
-- `MapPickables.visibleItems` は配列を使い回し、`itemRecords` で `MapPickable` レコード自体も
-  id ごとに使い回している(`map-pickables.ts:157-198, 211-239`)。天体側も
+- `ObjectPickables.visibleItems` は配列を使い回し、`itemRecords` で `ObjectPickable` レコード自体も
+  id ごとに使い回している(`object-pickables.ts:157-198, 211-239`)。天体側も
   `FocusMarkers.bodyPickableRecords` で同じ(`focus-markers.ts:180, 302-314`)。
 - つまり**定常状態で GC 圧を作っているのは候補列ではない。** パネルの scratch はその上に
   重ねられているだけで、削減量は小さい。
@@ -311,20 +311,20 @@ if (this.itemsByIdScratch.get(id)?.detail?.includes(summary.needle)) count++;
 ```
 (`physical-object-list-panel.ts:39-43, 356`)
 
-`detail` は表示用の文章(`map-pickables.ts` が組み立てる)。その**日本語の部分文字列**を
+`detail` は表示用の文章(`object-pickables.ts` が組み立てる)。その**日本語の部分文字列**を
 数え上げの判定に使っている。`detail` の文言を1文字変えた瞬間に、警告なしにカウントが 0 になる。
 
-`MapPickable` に真偽のフィールド(例: `approaching?: boolean` / `collectable?: boolean`)を
+`ObjectPickable` に真偽のフィールド(例: `approaching?: boolean` / `collectable?: boolean`)を
 足して、表示と判定の正本を分けるべき。
 
 ### 2.5 [確認] `MapPickKind → グリフ` の写像が2箇所に独立実装されている
 
 - `physical-object-list-panel.ts:57-74`(`OBJECT_GLYPHS` / `OBJECT_GLYPH_SVGS`)+ `bodyGlyph()`(364-366)
-- `map-context-actions.ts:1006-1020`(`iconFor()`、プロパティウィンドウのタイトルアイコン)
+- `object-windows.ts:1006-1020`(`iconFor()`、プロパティウィンドウのタイトルアイコン)
 
 body 分岐は**文字通り同じ式**:
 `LAGRANGE_ID.test(id) ? ENTITY_GLYPH.lagrange : bodyEntityGlyph(bodyClassOf(registry, id))`
-(`physical-object-list-panel.ts:365` と `map-context-actions.ts:1008-1009`)。
+(`physical-object-list-panel.ts:365` と `object-windows.ts:1008-1009`)。
 apsis/relnode/eqnode の対応も同一。
 
 `marker-glyphs.ts` / `marker-shapes.ts` は「族ごとの記号」の正本として既に切り出されている。
@@ -425,7 +425,7 @@ CSS は `display: none !important`(`panel-content-style.ts:105`)。**完全に�
 なので、フィールドに保持する必要がある)。左右レールごと畳んだ場合
 (`.hud-rail.collapsed > .panel { display: none }`)も同様。
 
-`setVisible()` 側は問題ない — `map-context-actions.ts:545,550` が `overviewMode` で
+`setVisible()` 側は問題ない — `map-picking.ts:545,550` が `overviewMode` で
 `setVisible` と `sync` の両方を切っている。
 
 ### 3.2 [確認] `orderStillSorted()` が毎フレーム数百回の正規表現を実行する
@@ -442,7 +442,7 @@ CSS は `display: none !important`(`panel-content-style.ts:105`)。**完全に�
 オブジェクト割り当て。** 2.1 の「GC を抑える」という主張と正面から矛盾する。
 
 id は不変なので、`lagrangeSortKey` の結果は id をキーにキャッシュできる(あるいは
-`MapPickable` 側に持たせる)。
+`ObjectPickable` 側に持たせる)。
 
 ### 3.3 [確認] `syncRow()` が行ごとに `new Set` を作る
 
@@ -480,7 +480,7 @@ if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().inclu
 - `syncRow()` — **表示中の全行に1回ずつ**(`physical-object-list-panel.ts:408`、`cluster` クラスの判定)
 
 検索語が空のときは短絡するので割り当ては起きない。**検索中だけ、行数の2〜3倍の文字列が毎フレーム
-生成される。** 小文字化した検索対象を `MapPickable` 側かキャッシュに持つのが素直。
+生成される。** 小文字化した検索対象を `ObjectPickable` 側かキャッシュに持つのが素直。
 
 なお `syncRow()` の `cluster` 判定は、`filter === 'satellite'` のとき以外は常に `matches()` が
 真になる行しか描かれない(`rebuildOrder` が一致行しか `ids` に積まないため)。**クラスタ親を
@@ -488,7 +488,7 @@ if (this.query && !`${item.name} ${item.detail ?? ''}`.toLocaleLowerCase().inclu
 
 ### 3.6 [確認] `body` の `detail` が作られて捨てられる
 
-`map-pickables.ts:174` は body ごとに
+`object-pickables.ts:174` は body ごとに
 `` `${fmtDist(d)} · ${celestialBodyName(strongestAttractor(...).id)}` `` を毎フレーム組み立てる。
 一覧側は `item.kind === 'body' ? '' : (item.detail ?? '')`(`physical-object-list-panel.ts:402`)
 で無条件に捨て、`detail` 要素自体も `hidden` にする(404行)。
@@ -551,7 +551,7 @@ toggle.addEventListener('click', ...);
 `onNavTarget` はキーボードの `T` からしか呼ばれない(`physical-object-list-panel.ts:469`)。
 
 マウス経路が皆無なわけではない — 行を右クリック → プロパティウィンドウ → 「対象」項目、で
-`navTarget.toggleTarget` に届く(`map-context-actions.ts:1308, 1317`、`targeter.ts:57-58` の
+`navTarget.toggleTarget` に届く(`map-picking.ts:1308, 1317`、`targeter.ts:57-58` の
 コメントがこの経路を正本として説明している)。ただし**2段階**で、一覧の上には手掛かりが無い。
 
 `title` 属性(`physical-object-list-panel.ts:462`)は `T: ナビ対象` と書いているのに、

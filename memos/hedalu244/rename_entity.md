@@ -69,7 +69,7 @@
 両方が同じファイルに出てくるのが **8 ファイル**:
 `camera/focus-markers.ts` / `celestial/celestial-system.ts` / `creative/orbit-form-fields.ts` /
 `hud/object-groups.ts` / `nav-target.ts` / `pickable/line-pickables.ts` /
-`pickable/map-context-actions.ts` / `stages/creative-stage.ts`。
+`pickable/object-windows.ts` / `stages/creative-stage.ts`。
 
 ```ts
 // src/game/pickable/line-pickables.ts — 同じクラスの中で
