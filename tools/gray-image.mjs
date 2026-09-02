@@ -1,5 +1,5 @@
-// 雲の統計ツール(cloud-lab-compare)が使う、グレースケール画像(0..1 の Float32 場
-// {width, height, data})の入出力と切り出し。
+// 雲のツール(cloud-lab-compare / cloud-lab-separate)が共有する、グレースケール画像
+// (0..1 の Float32 場 {width, height, data})の入出力と切り出し。
 import { inflateSync } from 'node:zlib';
 import { encodeGrayPng } from './png.mjs';
 
