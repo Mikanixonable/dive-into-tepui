@@ -100,7 +100,7 @@ function buildCombinedId(
 }
 
 // 小題 id からその小題が持つ軸を引く。未知の小題 id なら null。
-export function axesFor(combinedKey: string): CombinedKindAxes | null {
+function axesFor(combinedKey: string): CombinedKindAxes | null {
   const base = combinedKey.slice(combinedKey.indexOf('-') + 1);
   return COMBINED_BASE_AXES[base] ?? null;
 }
