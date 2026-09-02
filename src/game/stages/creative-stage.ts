@@ -226,13 +226,13 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 
-  // オブジェクト配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
+  // オブジェクト配置モーダルを開く。focusId はマップの現在フォーカスで、
   // 基準天体になれる ID なら基準天体の初期選択に使う。
   openObjectPlacer(focusId?: string): void {
     this.placerPanel.open(focusId !== undefined ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
   }
 
-  // 右クリックメニューの「複製」(MapContextActions から呼ばれる)。state を軌道要素へ逆算でき、
+  // 右クリックメニューの「複製」。state を軌道要素へ逆算でき、
   // かつ基地の基準天体制約(validateBaseReferenceFields — 月基準かラグランジュ点のみ)を
   // 満たす値が求まったときだけ、その値をプリセットして開く。逆算できない状態(双曲線軌道など)や、
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
