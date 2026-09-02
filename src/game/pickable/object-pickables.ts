@@ -14,7 +14,6 @@ import { isOccluded } from '../../physics/occlusion';
 import { NearbySystemTracker } from '../celestial/nearby-system-tracker';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DisplayWindow } from '../display-window-manager';
-import type { PerfCounts } from '../../perf-meter';
 
 export class ObjectPickables {
   private readonly candidateItems: ObjectPickable[] = [];
@@ -48,8 +47,7 @@ export class ObjectPickables {
     private readonly frameAnchors: FrameAnchorSource,
   ) {}
 
-  // マップの天体ラベル(表示のみ)と航法ターゲットの AN/DN を求め直したうえで、このフレームの
-  // 候補列と可視性ポリシーを空にする(候補を持たないビューで呼ぶ。表示・選択は null 経路で判定される)。
+  // 候補列と可視性ポリシーを空へ戻す。マップを離れるときに呼ぶ。
   clear(): void {
     this.candidateItems.length = 0;
     this._visibilityPolicy = null;
@@ -105,15 +103,5 @@ export class ObjectPickables {
     for (const e of this.entities.all()) {
       if (e.equatorNodes) for (const node of e.equatorNodes.pickables()) append(node);
     }
-  }
-
-  // 負荷確認ウィンドウが読む、マップ視点かどうかとその候補列/ラベル数。
-  perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
-    const mapView = this.cameraSystem.worldView === 'map';
-    return {
-      mapMode: mapView,
-      mapItems: this.candidateItems.length,
-      mapLabels: mapView ? this.celestialMarkers.shownLabelCount : 0,
-    };
   }
 }
