@@ -1,20 +1,21 @@
 // 積雲(雲の場の R = 被覆率、G = 雲頂高度)を、地表の上に立つ不透明な雲として描くメッシュ。
 // 分割段ラダーの各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて1段だけを見せる。殻の面へ
-// 届いた視線は雲頂の高さ場まで下ろして交点を探し、そこの深度と法線を書く。陰影・遮蔽・逆二乗の
-// 減衰はすべてパイプラインが与える。
+// 届いた視線は雲頂の高さ場まで下ろして交点を探し、そこの深度と法線を書く。場の texel より細かい
+// 粒は天体固定のノイズで足す。陰影・遮蔽・逆二乗の減衰はすべてパイプラインが与える。
 import * as THREE from 'three/webgpu';
 import {
   Discard, Fn, If, cameraPosition, cameraProjectionMatrix, clamp, dot, float, length, max,
-  modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, sqrt, step,
-  texture as textureNode, transformNormalToView, vec3, vec4,
+  modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep, sqrt,
+  step, texture as textureNode, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
 import { DeferredTexture } from './deferred-texture';
 import { sphereMeshUv, unitSphereGeometry } from './celestial-surface';
+import { gradientNoise } from './cloud/gradient-noise';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitOpaque } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
-import type { FloatNode, Vec3Node, Vec4Node } from './tsl-types';
+import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
 
 // 雲の場の G(雲頂高度)が張る高さ [m]。殻はその上限へ置く(`render/cloud/cloud-field.ts`)。
 const CLOUD_TOP_SPAN = 15000;
@@ -41,9 +42,17 @@ const DITHER_LEVELS = 256;
 const MARCH_STEPS = 8;
 const REFINE_STEPS = 4;
 
-// 雲頂の勾配を測る差分の幅 [rad]。場の 1 texel が張る角(赤道 9.8 km ≈ 0.0015 rad)と同じ桁に
-// 取る — これより細かく取っても、双一次補間した同じ斜面をなぞるだけになる。
-const CLOUD_TOP_GRADIENT_ANGLE = 0.0015;
+// 積雲の粒の一辺 [m]。場の texel(赤道 9.8 km)より細かい形を作るので、実際の積雲の塊と同じ
+// 大きさに取る。**場ではなく天体の半径から決まる**ので、場の解像度が変わっても粒は動かない。
+const CUMULUS_GRAIN_SIZE = 2000;
+// 粒が被覆率と雲頂高度をそれぞれどれだけ振るか(どちらも場と同じ 0..1 の目盛り)。生成側が
+// 高周波を持つようになったら、この 2 つを縮めて譲る。
+const GRAIN_COVERAGE_DEPTH = 0.5;
+const GRAIN_TOP_RELIEF = 0.15;
+// 粒の 1 波長が何画素を切ったら消し始め、何画素まで残すか。標本化できない粒はモアレにしか
+// ならないので、Nyquist の 2 画素へ落ちるまでに振幅を 0 へ渡す。
+const GRAIN_FADE_MIN_PIXELS = 2;
+const GRAIN_FADE_FULL_PIXELS = 4;
 
 export class CumulusShell {
   private readonly fieldMap: DeferredTexture;
@@ -51,6 +60,12 @@ export class CumulusShell {
   private readonly blueNoise = new BlueNoise();
   // 殻を半径 1 とする物体空間での地表の半径。レイマーチの下端になる。
   private readonly groundRadius: number;
+  // 粒の 1 rad あたりの山の数と、雲頂の勾配を測る差分の幅 [rad]。差分は粒の半波長ぶんなので、
+  // 場の起伏と粒の起伏が同じ 1 つの法線に出る。
+  private readonly grainFrequency: number;
+  private readonly gradientAngle: number;
+  // 画面の 1 画素が天体の上で張る角 [rad]。粒を解像できるかの判定に使う。
+  private readonly pixelAngle: FloatUniform = uniform(1);
   // 段ごとの球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
@@ -63,6 +78,8 @@ export class CumulusShell {
     this.fieldMap.texture.wrapS = THREE.RepeatWrapping;
     const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
     this.groundRadius = 1 / shellScale;
+    this.grainFrequency = bodyRadius / CUMULUS_GRAIN_SIZE;
+    this.gradientAngle = 0.5 / this.grainFrequency;
     this.material = this.buildMaterial();
 
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
@@ -88,8 +105,10 @@ export class CumulusShell {
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
-  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。粒をどこまで見せるかも
+  // この直径から決まる。
   public syncLod(apparentDiameterPx: number): void {
+    this.pixelAngle.value = 2 / Math.max(apparentDiameterPx, 1);
     const level = sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
@@ -175,10 +194,13 @@ export class CumulusShell {
   // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。
   private clearanceAt(point: Vec3Node, threshold: FloatNode): FloatNode {
     const radius = max(length(point), 1e-6);
-    const cloud = this.fieldAt(point.div(radius));
-    // 覆いの無い柱は雲頂を地表まで落とし、視線をそのまま通す。
-    const present = step(threshold, this.opaqueFractionOf(cloud.r));
-    return radius.sub(this.cloudTopRadiusOf(cloud.g.mul(present)));
+    const direction = point.div(radius);
+    const cloud = this.fieldAt(direction);
+    const grain = this.grainAt(direction);
+    // 粒は覆いの縁を texel より細かく千切る。覆いの無い柱は雲頂を地表まで落として視線を通す。
+    const present = step(
+      threshold, this.opaqueFractionOf(cloud.r).sub(grain.mul(GRAIN_COVERAGE_DEPTH)));
+    return radius.sub(this.cloudTopRadiusOf(this.cloudTopOf(cloud.g, grain).mul(present)));
   }
 
   // 物体空間の点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに
@@ -187,18 +209,24 @@ export class CumulusShell {
     const up = normalize(point);
     const east = eastAt(up);
     const north = northAt(up);
-    const heightAt = (direction: Vec3Node): FloatNode =>
-      this.cloudTopRadiusOf(this.fieldAt(normalize(direction)).g);
-    // 東と北へ 1 texel ぶん振った雲頂との差が、そのまま接平面での傾き。
-    const here = heightAt(up);
-    const slopeEast = heightAt(up.add(east.mul(CLOUD_TOP_GRADIENT_ANGLE)))
-      .sub(here).div(CLOUD_TOP_GRADIENT_ANGLE);
-    const slopeNorth = heightAt(up.add(north.mul(CLOUD_TOP_GRADIENT_ANGLE)))
-      .sub(here).div(CLOUD_TOP_GRADIENT_ANGLE);
+    // up から offset だけ振った向きの雲頂(物体空間の半径)。
+    const heightAt = (offset: Vec3Node): FloatNode => {
+      const direction = normalize(up.add(offset));
+      return this.cloudTopRadiusOf(this.cloudTopOf(this.fieldAt(direction).g, this.grainAt(direction)));
+    };
+    // 東と北へ粒の半波長ぶん振った雲頂との差が、そのまま接平面での傾き。
+    const here = heightAt(vec3(0, 0, 0));
+    const slopeEast = heightAt(east.mul(this.gradientAngle)).sub(here).div(this.gradientAngle);
+    const slopeNorth = heightAt(north.mul(this.gradientAngle)).sub(here).div(this.gradientAngle);
     return normalize(up.sub(east.mul(slopeEast)).sub(north.mul(slopeNorth)));
   }
 
-  // 場の雲頂高度 0..1 を、殻を半径 1 とする物体空間の半径へ直す。
+  // 場の雲頂高度へ粒の起伏を重ねた雲頂高度 0..1。
+  private cloudTopOf(fieldTop: FloatNode, grain: FloatNode): FloatNode {
+    return clamp(fieldTop.add(grain.mul(GRAIN_TOP_RELIEF)), 0, 1);
+  }
+
+  // 雲頂高度 0..1 を、殻を半径 1 とする物体空間の半径へ直す。
   private cloudTopRadiusOf(cloudTop: FloatNode): FloatNode {
     return cloudTop.mul(1 - this.groundRadius).add(this.groundRadius);
   }
@@ -206,6 +234,14 @@ export class CumulusShell {
   // 天体固定の単位方向における場の値。
   private fieldAt(direction: Vec3Node): Vec4Node {
     return textureNode(this.fieldMap.texture, sphereMeshUv(direction));
+  }
+
+  // 天体固定の単位方向における粒、おおむね −1..1。画面で解像できない細かさになったら 0 へ
+  // 落ちるので、引きの構図では場の分布だけが残る。
+  private grainAt(direction: Vec3Node): FloatNode {
+    const wavelengthPixels = this.pixelAngle.mul(this.grainFrequency).reciprocal();
+    const amplitude = smoothstep(GRAIN_FADE_MIN_PIXELS, GRAIN_FADE_FULL_PIXELS, wavelengthPixels);
+    return gradientNoise(direction.mul(this.grainFrequency)).mul(amplitude);
   }
 
   // 被覆率を、覆い尽くされている割合 0..1 へ伸ばしたもの。
