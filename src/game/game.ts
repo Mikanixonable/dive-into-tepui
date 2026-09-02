@@ -51,10 +51,8 @@ import { KEY_MAPPING as K } from './input/key-mapping';
 import { frameRoleOf } from '../physics/frame';
 import { Docking } from './docking/docking';
 import { DockingGuide } from './docking/docking-guide';
-import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
+import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
-import { frameRoleName } from './hud/frame/frame-labels';
-import { focusTargetId } from './camera/focus-target';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -276,7 +274,7 @@ export class Game {
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.viewBadge = new ViewBadge(
       this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager,
-      this._hud.renderStyle,
+      this._hud.renderStyle, this.dynamicSystem, celestialSystem,
     );
 
     // ロード復元時の focus は FocusCamera が直接持つだけで frameControls.setFocus() を経由しないため、
@@ -481,36 +479,16 @@ export class Game {
 
   // ------------------------------------------------------------------ sync
 
-  // フォーカス対象は天体・エンティティだけでなく、アプシス/交点などの一時マーカーも指しうる。
-  // まず現在の ObjectPickable と実体を引き、最後に id を表示することで、マップ候補が更新されていない
-  // 戦闘ビューや一時的に非表示の対象でもステータス表示を空欄にしない。
-  private objectName(id: string): string {
-    const pickable = this.viewManager.activeView.pickables.find((item) => item.id === id);
-    if (pickable) return pickable.name;
-    const entity = this.dynamicSystem.all().find((item) => item.id === id);
-    if (entity) return entity.name;
-    return this.celestialSystem.nameOf(id);
-  }
-
-  private viewBadgeContext(): ViewBadgeContext {
-    const focus = this.cameraSystem.activeFocus;
-    const focusId = focusTargetId(focus);
-    const focusRole = focusId !== undefined ? frameRoleOf(focusId) : null;
-    return {
-      focus: focusId === undefined ? '固定点'
-        : focusRole !== null ? frameRoleName(focusRole) : this.objectName(focusId),
-      control: (this.controlledBase ?? this.player)?.name ?? null,
-      target: this.navTarget.name,
-    };
-  }
-
   sync(graphics: GraphicsSettingsData, style: RenderStyle): void {
     const activeControllable = this.activeControllableEntity;
     const player = this.player;
     // update() と sync() は同一の animate() 呼び出し内で同期的に実行されるため、
     // update() が確定させた表示窓をそのまま読める。
     const displayWindow = this.displayWindowManager.current;
-    this.viewBadge.sync(this.activeStage.stageClass.selectLabel, this.viewBadgeContext());
+    this.viewBadge.sync(
+      this.activeStage.stageClass.selectLabel, this.cameraSystem.activeFocus,
+      this.controlledBase ?? this.player, this.navTarget.name,
+    );
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
