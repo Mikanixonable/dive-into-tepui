@@ -1,18 +1,19 @@
-// マップモードの地球中心広範囲視点カメラ。太陽回転系への切替とフォーカス対象の選択を持つ。
+// フォーカス対象を注視点に置く広範囲の軌道カメラ。フォーカスの毎フレーム解決と、
+// フォーカス対象から導かれる回転追従(慣性系・公転・自転・姿勢)を持つ。
 import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, dot, len, lenSq, norm, scale, sub, v3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
-import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, toFrameDir, toInertialDir } from '../../physics/frame';
+import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, rotationSourceKey, toFrameDir, toInertialDir } from '../../physics/frame';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { Quat, qFromAxisAngle, qFromForwardUp, qMul, qNormalize, qRotate } from '../../physics/attitude';
+import { Quat, qFromAxisAngle, qFromForwardUp, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
-import { FocusTarget, resolveFocusTarget, type FocusCandidate } from './focus-target';
-import { FrameRotationSourceSaveData, MapCameraSaveData } from '../save/save-data';
+import { FocusTarget, focusTargetId, resolveFocusTarget, type FocusCandidate } from './focus-target';
+import { CameraRotationFollowSaveData, FrameRotationSourceSaveData, MapCameraSaveData } from '../save/save-data';
 
 // 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
 // 視界に収められる引きの上限。
@@ -42,14 +43,40 @@ const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
 // 事実上ゼロ。
 const OVERVIEW_CAMERA_FAR_RATIO = 100;
 
-// 最小ズーム(dist = OVERVIEW_CAMERA_MIN_DIST)でも月(3.8e8m)や星球シェルが
-// far の外に出ないための下限。
-const OVERVIEW_CAMERA_FAR_MIN = 1.5e10;
+// 艦至近(dist = ENTITY_MIN_DIST)まで寄っても、見かけ直径が残る最遠の天体
+// (直径 1.4e9 m の恒星を LOD 上限で見た 1.4e12 m)が far の外に出ないための下限。
+const OVERVIEW_CAMERA_FAR_MIN = 2e12;
 
 // OVERVIEW_CAMERA_MAX_DIST × OVERVIEW_CAMERA_FAR_RATIO と等しい値。これより小さいと
 // 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
 // 注視点より奥にある軌道線・天体が far 平面でクリップされる。
 const OVERVIEW_CAMERA_FAR_MAX = 1e16;
+
+// ホイール1目盛りのズーム率。exp(wheel × この値) を注視距離に掛ける(両ビュー共通)。
+const WHEEL_ZOOM_RATE = 0.0015;
+
+// 機体・固定点フォーカスでの最小注視距離 [m](艦を間近に見る寄り)。
+const ENTITY_MIN_DIST = 12;
+
+// 回転追従の選択(null は慣性系)。選択肢はフォーカス対象から導かれる —
+// availableRotationFollows() が唯一の出所。'attitude' はフォーカス機体の姿勢への追従で、
+// ReferenceFrame ではなくカメラ内の合成で実現される。
+export type CameraRotationFollow = FrameRotationSource | { readonly kind: 'attitude' };
+
+// 選択の同一性の照合キー(選択 UI・妥当性検査が使う)。
+export function rotationFollowKey(follow: CameraRotationFollow | null): string {
+  if (follow === null) return '';
+  return follow.kind === 'attitude' ? 'attitude' : rotationSourceKey(follow);
+}
+
+// カメラのビュー差(フォーカス喪失時の振る舞い)と、姿勢の解決の差し込み口。
+export interface FocusCameraConfig {
+  // 'hold' は解決失敗が続いても最後に解決できた位置に留まる(戦闘ビュー)。
+  // 'fallToOrigin' は2フレーム連続で失敗したら原点天体へフォーカスを戻す(マップビュー)。
+  readonly focusLossPolicy: 'hold' | 'fallToOrigin';
+  // フォーカス id(機体・役割トークン)の時刻 t における姿勢。天体・解決不能は null。
+  readonly attitudeOf: (id: string, t: number) => Quat | null;
+}
 
 // セーブデータの rotatingWith を FrameRotationSource へ変換する。旧セーブは公転対象の id を
 // 文字列(または回さないなら null)でそのまま持っていたので、その形は公転として受ける。
@@ -57,6 +84,12 @@ function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | string 
   if (saved === null) return null;
   if (typeof saved === 'string') return { kind: 'revolution', id: saved };
   return { kind: saved.kind, id: saved.id };
+}
+
+// セーブデータの rotatingWith を CameraRotationFollow へ変換する(姿勢追従も受ける)。
+function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | string | null): CameraRotationFollow | null {
+  if (saved !== null && typeof saved === 'object' && saved.kind === 'attitude') return { kind: 'attitude' };
+  return rotationSourceFromSaveData(saved);
 }
 
 const WORLD_UP = v3(0, 1, 0);
@@ -111,8 +144,16 @@ export class MapCamera {
   private offset_r: FrameDir;
   private pan_r: FrameDir;
   private up_r: FrameDir;
-  // カメラ視点を固定する座標系。
+  // カメラ視点を固定する座標系。姿勢追従中は慣性系に固定し、姿勢は rotationQ への合成で掛ける。
   private _cameraFrame: ReferenceFrame;
+  // 姿勢追従(rotationFollow = 'attitude')の状態。rotationQ は追従中、対象姿勢からの相対値になる。
+  // lastAttitudeQ が null の間は絶対値のまま扱い、初めて姿勢が引けたときに相対値へ読み替える
+  // (ロード直後がこの状態 — 保存された向きは絶対値で、保存時の姿勢は残っていない)。
+  private _attitudeFollow = false;
+  private lastAttitudeQ: Quat | null = null;
+  // 選択中の追従が選択肢から外れた連続フレーム数。役割・機体の一時的な解決失敗に、
+  // フォーカスと同じ2フレームの猶予を与える。
+  private staleFollowFrames = 0;
   private displayTime = 0; // set cameraFrame の座標変換に使う。線・メッシュと同じ表示時刻に揃える。
   // 最新の update 呼び出しが受け取った FrameAnchorSource。reset/resetPan/cameraFrame setter は
   // フレームの外(入力ハンドラ)から呼ばれるため、update と同じ値をここから読む。
@@ -124,11 +165,14 @@ export class MapCamera {
   get focus(): FocusTarget { return this._focus; }
 
   // target が 'point'(座標系に焼き込んだ固定点)で frame が回転系なら、その天体の
-  // 公転に追随する固定点になる。
+  // 公転に追随する固定点になる。フォーカスが変わると回転追従の選択肢も変わるので、
+  // 外れた選択は慣性系へ落とす。
   setFocusTarget(target: FocusTarget, resetPan = true): void {
     this._focus = target;
     this.missingFocusFrames = 0;
     if (resetPan) this.resetPan();
+    const follow = this.rotationFollow;
+    if (follow !== null && !this.isFollowAvailable(follow)) this.setRotationFollow(null);
   }
 
   clearFocusIf(id: string): void {
@@ -152,6 +196,7 @@ export class MapCamera {
   constructor(
     private readonly _hud: Hud,
     private readonly celestialSystem: CelestialSystem,
+    private readonly config: FocusCameraConfig,
     saved?: MapCameraSaveData,
   ) {
     this.rotationMode = saved?.rotationMode ?? 'euler';
@@ -161,7 +206,13 @@ export class MapCamera {
     this.fovDeg = this.clampFov(saved?.fovDeg ?? OVERVIEW_CAMERA_FOV);
     const frames = celestialSystem.frames;
     if (saved) {
-      this._cameraFrame = frames.frameOf(celestialSystem.origin.id, rotationSourceFromSaveData(saved.rotatingWith));
+      const savedFollow = rotationFollowFromSaveData(saved.rotatingWith);
+      if (savedFollow?.kind === 'attitude') {
+        this._cameraFrame = frames.inertialFrame;
+        this._attitudeFollow = true;
+      } else {
+        this._cameraFrame = frames.frameOf(celestialSystem.origin.id, savedFollow ?? null);
+      }
       this.offset_r = frameDir(saved.offset.x, saved.offset.y, saved.offset.z);
       this.pan_r = frameDir(saved.pan.x, saved.pan.y, saved.pan.z);
       this.up_r = frameDir(saved.up.x, saved.up.y, saved.up.z);
@@ -270,8 +321,9 @@ export class MapCamera {
     return qNormalize(qMul(qFromAxisAngle(offset, euler.roll), base));
   }
 
+  // 実効回転(姿勢追従を掛けた後の向き)を offset/up の基底で置き直す。
   private setRotationBasis(offset: Vec3, up: Vec3): void {
-    this.rotationQ = this.rotationFromBasis(offset, up);
+    this.storeEffectiveRotation(this.rotationFromBasis(offset, up));
     this.offset_r = frameDir(offset.x * this.dist, offset.y * this.dist, offset.z * this.dist);
     this.up_r = frameDir(up.x, up.y, up.z);
     this.euler = this.eulerFromRotation(this.rotationQ);
@@ -368,7 +420,7 @@ export class MapCamera {
   public setReferenceView(view: CameraReferenceView): void {
     const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const normal = norm(frameDirVector(toFrameDir(tf, this.framePlaneNormal(this._referencePlane))));
-    const currentOffset = qRotate(this.rotationQ, FRAME_FORWARD);
+    const currentOffset = qRotate(this.composeAttitude(this.rotationQ), FRAME_FORWARD);
     let offset: Vec3;
     let up: Vec3;
     if (view === 'above') {
@@ -408,10 +460,10 @@ export class MapCamera {
   }
 
   // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
-  // フォーカスが天体でなければ通常の下限をそのまま使う。
+  // 天体は半径まで、機体・固定点は艦を間近に見る距離まで寄れる。
   private get minDist(): number {
     const body = this._focus.kind === 'object' ? this.celestialSystem.find(this._focus.id) : null;
-    if (body === null) return OVERVIEW_CAMERA_MIN_DIST;
+    if (body === null) return ENTITY_MIN_DIST;
     return Math.max(OVERVIEW_CAMERA_MIN_DIST, body.def.radius);
   }
 
@@ -419,7 +471,7 @@ export class MapCamera {
   // ずれていた注視点もフォーカス位置へ戻す。
   reset(): void {
     const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
-    const offset = qRotate(this.rotationQ, FRAME_FORWARD);
+    const offset = qRotate(this.composeAttitude(this.rotationQ), FRAME_FORWARD);
     const upAxisEci = this.referenceUpAxisEci();
     const up = norm(frameDirVector(toFrameDir(tf, upAxisEci)));
     const projectedUp = norm(this.projectOntoPlane(up, offset));
@@ -451,6 +503,8 @@ export class MapCamera {
     this.missingFocusFrames = result.missingFocusFrames;
     this.lastResolvedFocus = result.lastResolvedFocus;
     if (result.fallToOrigin) {
+      // 'hold' は注視点を最後に解決できた位置に留める。対象が再び解決できれば追従が戻る。
+      if (this.config.focusLossPolicy === 'hold') return this.lastResolvedFocus;
       this.setFocusTarget({ kind: 'object', id: this.celestialSystem.origin.id });
       return v3();
     }
@@ -467,10 +521,119 @@ export class MapCamera {
     return this.lastResolvedFocus;
   }
 
+  // 選択中の回転追従(null は慣性系)。
+  get rotationFollow(): CameraRotationFollow | null {
+    return this._attitudeFollow ? { kind: 'attitude' } : this._cameraFrame.rotatingWith;
+  }
+
+  // いま選べる回転追従の選択肢(慣性系は常に選べるので含めない)。フォーカスが天体なら
+  // 自分の公転・子の公転・自分の自転、機体・役割なら(周回中のみ)公転と姿勢。固定点は空。
+  availableRotationFollows(displayTime: number): readonly CameraRotationFollow[] {
+    if (this._focus.kind === 'point') return [];
+    const id = this._focus.id;
+    const out: CameraRotationFollow[] = [];
+    const body = this.celestialSystem.find(id);
+    if (body !== null) {
+      if (body.motion.primary !== null) out.push({ kind: 'revolution', id });
+      for (const motion of this.celestialSystem.celestialMotions) {
+        if (motion.primary?.id === id) out.push({ kind: 'revolution', id: motion.id });
+      }
+      if (body.motion.spinRotationAt(displayTime) !== null) out.push({ kind: 'spin', id });
+    } else {
+      if (this.frameAnchors.attractorOf(id, displayTime) !== null) out.push({ kind: 'revolution', id });
+      if (this.config.attitudeOf(id, displayTime) !== null) out.push({ kind: 'attitude' });
+    }
+    return out;
+  }
+
+  private isFollowAvailable(follow: CameraRotationFollow): boolean {
+    const key = rotationFollowKey(follow);
+    return this.availableRotationFollows(this.displayTime).some((f) => rotationFollowKey(f) === key);
+  }
+
+  // 回転追従を切り替える。選択肢に無い値は慣性系として扱う。どの切替でも視点は跳ばない —
+  // 保持していた向きを新しい基準へ読み替える。
+  setRotationFollow(follow: CameraRotationFollow | null): void {
+    const valid = follow !== null && this.isFollowAvailable(follow) ? follow : null;
+    this.bakeOutAttitude();
+    if (valid?.kind === 'attitude') {
+      const id = focusTargetId(this._focus);
+      const att = id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null;
+      if (att === null) return;
+      this.setCameraRotation(null);
+      this.rotationQ = qNormalize(qMul(qInvert(att), this.rotationQ));
+      this.lastAttitudeQ = att;
+      this._attitudeFollow = true;
+      this.euler = this.eulerFromRotation(this.rotationQ);
+      return;
+    }
+    this.setCameraRotation(valid);
+  }
+
+  // [G] の実体: フォーカスが機体なら姿勢追従⇄慣性系をトグルして true。それ以外は何もせず false。
+  toggleAttitudeFollow(): boolean {
+    if (this._attitudeFollow) {
+      this.bakeOutAttitude();
+      return true;
+    }
+    if (!this.isFollowAvailable({ kind: 'attitude' })) return false;
+    this.setRotationFollow({ kind: 'attitude' });
+    return this._attitudeFollow;
+  }
+
+  // 姿勢追従を解き、rotationQ を絶対の向きへ読み替える(掛かっていなければ何もしない)。
+  private bakeOutAttitude(): void {
+    if (!this._attitudeFollow) return;
+    if (this.lastAttitudeQ !== null) {
+      this.rotationQ = qNormalize(qMul(this.lastAttitudeQ, this.rotationQ));
+    }
+    this._attitudeFollow = false;
+    this.lastAttitudeQ = null;
+    this.euler = this.eulerFromRotation(this.rotationQ);
+  }
+
+  // 選択中の追従が選択肢から外れていれば慣性系へ落とす。一時的な解決失敗
+  // (役割の乗り換え中など)に2フレームの猶予を与える。
+  private dropStaleRotationFollow(): void {
+    const follow = this.rotationFollow;
+    if (follow === null || this.isFollowAvailable(follow)) {
+      this.staleFollowFrames = 0;
+      return;
+    }
+    this.staleFollowFrames++;
+    if (this.staleFollowFrames < 2) return;
+    this.staleFollowFrames = 0;
+    this.setRotationFollow(null);
+  }
+
+  // 姿勢追従の合成に使う姿勢を最新へ。解決できないフレームは直前の姿勢を保つ(視点が跳ねない)。
+  private refreshAttitude(): void {
+    if (!this._attitudeFollow) return;
+    const id = focusTargetId(this._focus);
+    const att = id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null;
+    if (att === null) return;
+    if (this.lastAttitudeQ === null) {
+      // 絶対値で持っていた向き(ロード直後)を、初めて引けた姿勢からの相対値へ読み替える。
+      this.rotationQ = qNormalize(qMul(qInvert(att), this.rotationQ));
+    }
+    this.lastAttitudeQ = att;
+  }
+
+  // rotationQ に姿勢追従を掛けた、描画・入力に使う実効回転。
+  private composeAttitude(rot: Quat): Quat {
+    return this._attitudeFollow && this.lastAttitudeQ !== null ? qMul(this.lastAttitudeQ, rot) : rot;
+  }
+
+  // 実効回転から rotationQ へ書き戻す(姿勢追従中は相対値へ読み替える)。
+  private storeEffectiveRotation(q: Quat): void {
+    this.rotationQ = this._attitudeFollow && this.lastAttitudeQ !== null
+      ? qNormalize(qMul(qInvert(this.lastAttitudeQ), q)) : qNormalize(q);
+  }
+
   // カメラ視点の回転対象を切り替える。中心は常に ECI 中心天体 — offset_r/pan_r/up_r は
   // 方向(FrameDir)しか持たず原点移動の影響を受けないので、中心をどれにしても視点は変わらない。
   // 切替の瞬間にカメラ視点(ECI)を跳ばせないよう、現在の座標系から新しい座標系へ変換し直す。
-  setCameraRotation(rotatingWith: FrameRotationSource | null): void {
+  private setCameraRotation(rotatingWith: FrameRotationSource | null): void {
     const frames = this.celestialSystem.frames;
     const frame = frames.frameOf(this.celestialSystem.origin.id, rotatingWith);
     const from = this._cameraFrame;
@@ -501,24 +664,26 @@ export class MapCamera {
   ): void {
     this.displayTime = displayTime;
     this.frameAnchors = frameAnchors;
+    this.dropStaleRotationFollow();
+    this.refreshAttitude();
     const focus = this.resolveFocus(candidates, displayTime, frameAnchors);
     const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, displayTime, frameAnchors);
-    let offFrame: Vec3;
-    let upFrame: Vec3;
-    if (this.rotationMode === 'euler') {
+    // オイラー操作の極軸は座標系の幾何で定義されるので、姿勢追従中はクォータニオン経路で回す。
+    const eulerActive = this.rotationMode === 'euler' && !this._attitudeFollow;
+    if (eulerActive) {
       this.rotationQ = this.rotationFromEuler(this.euler);
     }
-    offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
-    upFrame = qRotate(this.rotationQ, FRAME_UP);
+    // q は姿勢追従を掛けた実効回転。入力はこれに対して適用し、末尾で rotationQ へ書き戻す。
+    let q = this.composeAttitude(this.rotationQ);
+    let offFrame = qRotate(q, FRAME_FORWARD);
+    let upFrame = qRotate(q, FRAME_UP);
     let offEci = toInertialDir(tf, frameDir(offFrame.x, offFrame.y, offFrame.z));
     let panEci = toInertialDir(tf, this.pan_r);
     let upEci = toInertialDir(tf, frameDir(upFrame.x, upFrame.y, upFrame.z));
 
     // ホイールで距離を、ドラッグ/キーで視点方向を更新する。ヨー/ピッチはワールド軸ではなく
     // 現在の上/右軸まわりに回す — ロールで上方向が傾いても、画面上の動きと入力方向が一致する。
-    // マップビューはトラックパッドの細かいスクロールでも操作しやすいよう、
-    // スクロールによるズーム感度を combat の基準値から 1.5 倍にする。
-    const zoomFactor = Math.exp(mouse.wheel * 0.0018);
+    const zoomFactor = Math.exp(mouse.wheel * WHEEL_ZOOM_RATE);
     const dist = this.projectionMode === 'orthographic'
       ? this.dist
       : Math.max(this.minDist, Math.min(OVERVIEW_CAMERA_MAX_DIST, this.dist * zoomFactor));
@@ -529,40 +694,41 @@ export class MapCamera {
     upEci = norm(addScaled(upEci, offEci, -dot(upEci, offEci) / dot(offEci, offEci)));
     const yaw = mouse.dx * 0.005 - keyYawRad;
     const pitch = mouse.dy * 0.005 + keyPitchRad;
-    if (this.rotationMode === 'quaternion') {
-      // rotationQ の +Z は注視点からカメラへ向く軸。ドラッグの回転軸は、戦闘ビューと
+    if (!eulerActive) {
+      // q の +Z は注視点からカメラへ向く軸。ドラッグの回転軸は、戦闘ビューと
       // 同じくドラッグ方向とこの視線軸の外積にする。cameraForward(-offFrame)を使うと
       // 左右ドラッグの回転符号が反転する。
       if (keyYawRad !== 0) {
-        this.rotationQ = qNormalize(qMul(qFromAxisAngle(upFrame, -keyYawRad), this.rotationQ));
+        q = qNormalize(qMul(qFromAxisAngle(upFrame, -keyYawRad), q));
       }
-      offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
-      upFrame = qRotate(this.rotationQ, FRAME_UP);
+      offFrame = qRotate(q, FRAME_FORWARD);
+      upFrame = qRotate(q, FRAME_UP);
       if (keyPitchRad !== 0) {
         const right = norm(cross(norm(offFrame), upFrame));
-        this.rotationQ = qNormalize(qMul(qFromAxisAngle(right, keyPitchRad), this.rotationQ));
+        q = qNormalize(qMul(qFromAxisAngle(right, keyPitchRad), q));
       }
 
-      offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
-      upFrame = qRotate(this.rotationQ, FRAME_UP);
+      offFrame = qRotate(q, FRAME_FORWARD);
+      upFrame = qRotate(q, FRAME_UP);
       const screenRight = norm(cross(scale(offFrame, -1), upFrame));
       const dragVec = addScaled(scale(screenRight, mouse.dx), upFrame, -mouse.dy);
       const dragLen = Math.hypot(dragVec.x, dragVec.y, dragVec.z);
       if (dragLen > 1e-9) {
         const axis = norm(cross(dragVec, offFrame));
-        this.rotationQ = qNormalize(qMul(qFromAxisAngle(axis, dragLen * 0.005), this.rotationQ));
+        q = qNormalize(qMul(qFromAxisAngle(axis, dragLen * 0.005), q));
       }
 
-      offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
-      if (mouse.roll !== 0) this.rotationQ = qNormalize(qMul(qFromAxisAngle(offFrame, mouse.roll), this.rotationQ));
+      offFrame = qRotate(q, FRAME_FORWARD);
+      if (mouse.roll !== 0) q = qNormalize(qMul(qFromAxisAngle(offFrame, mouse.roll), q));
     } else {
       this.euler.yaw += yaw;
       this.euler.pitch = Math.max(-EULER_PITCH_LIMIT, Math.min(EULER_PITCH_LIMIT, this.euler.pitch + pitch));
       this.euler.roll += mouse.roll;
-      this.rotationQ = this.rotationFromEuler(this.euler);
+      q = this.rotationFromEuler(this.euler);
     }
-    offFrame = qRotate(this.rotationQ, FRAME_FORWARD);
-    upFrame = qRotate(this.rotationQ, FRAME_UP);
+    this.storeEffectiveRotation(q);
+    offFrame = qRotate(q, FRAME_FORWARD);
+    upFrame = qRotate(q, FRAME_UP);
     offEci = scale(toInertialDir(tf, frameDir(offFrame.x, offFrame.y, offFrame.z)), dist);
     const newDir = norm(offEci);
     upEci = toInertialDir(tf, frameDir(upFrame.x, upFrame.y, upFrame.z));
@@ -611,7 +777,7 @@ export class MapCamera {
       offset: { x: this.offset_r.x, y: this.offset_r.y, z: this.offset_r.z },
       pan: { x: this.pan_r.x, y: this.pan_r.y, z: this.pan_r.z },
       up: { x: this.up_r.x, y: this.up_r.y, z: this.up_r.z },
-      rotatingWith: this._cameraFrame.rotatingWith,
+      rotatingWith: this._attitudeFollow ? { kind: 'attitude' } : this._cameraFrame.rotatingWith,
       focus,
       rotationMode: this.rotationMode,
       fovDeg: this.fovDeg,
