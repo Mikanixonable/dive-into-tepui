@@ -295,6 +295,7 @@ export interface SlotExport {
   snapshots: Record<string, GameSaveData>;
 }
 
+// 統合前の戦闘視点カメラの保存形。読み込み時は捨てられ、既定視点で復元される。
 export interface ChaseCameraSaveData {
   rot: QuatSaveData;
   dist: number;
@@ -337,7 +338,8 @@ export interface MapCameraSaveData {
 
 export interface CameraSaveData {
   view: 'combat' | 'map';
-  chase: ChaseCameraSaveData;
+  // 戦闘ビューの視点。旧セーブは ChaseCameraSaveData 形で、その場合は読み捨てられる。
+  chase: MapCameraSaveData | ChaseCameraSaveData;
   overview: MapCameraSaveData;
 }
 

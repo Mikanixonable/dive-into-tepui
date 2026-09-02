@@ -49,6 +49,7 @@ import { Docking } from './docking/docking';
 import { DockingGuide } from './docking/docking-guide';
 import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
+import { frameRoleName } from './hud/frame/frame-labels';
 import { focusTargetId } from './camera/focus-target';
 
 export class Game {
@@ -507,9 +508,12 @@ export class Game {
   }
 
   private viewBadgeContext(): ViewBadgeContext {
-    const focus = this.cameraSystem.mapCamera.focus;
+    const focus = this.cameraSystem.activeFocus;
+    const focusId = focusTargetId(focus);
+    const focusRole = focusId !== undefined ? frameRoleOf(focusId) : null;
     return {
-      focus: focus.kind === 'object' ? this.objectName(focusTargetId(focus)!) : '固定点',
+      focus: focusId === undefined ? '固定点'
+        : focusRole !== null ? frameRoleName(focusRole) : this.objectName(focusId),
       control: (this.controlledBase ?? this.player)?.name ?? null,
       target: this.navTarget.name,
     };
