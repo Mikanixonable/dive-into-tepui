@@ -12,7 +12,7 @@ import { CrowdingGrid, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, type Projected
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapDisplayToggles } from '../map/display-toggles';
-import type { MapPickable } from '../pickable/map-pickable';
+import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ProjectFn } from '../camera/camera-system';
 import type { GroupedMarkers } from './grouped-markers';
@@ -30,7 +30,7 @@ interface CelestialMarkerItem {
   // マップのマーカーへ描く表記。
   readonly markerLabel: string;
   // アイコンの字形。
-  readonly mapGlyph: string;
+  readonly glyph: string;
   readonly markerClass: string;
   // ラベルが混雑したときに優先して残す度合い。大きいほど残る。
   readonly labelPriority: number;
@@ -87,7 +87,7 @@ export class CelestialMarkers {
   // update が天体を厳密に引いた時刻。sync での遮蔽判定に使う。
   private celestialBodiesPivot = 0;
   // update が座標を求めた天体とラグランジュ点マーカー。表示ポリシーを通ったものだけが並ぶ。
-  private readonly bodyPickableItems: MapPickable[] = [];
+  private readonly bodyPickableItems: ObjectPickable[] = [];
   private readonly frameScratch = new Map<string, LabelProjection>();
   private readonly distScratch = new Map<string, number>();
   private readonly projectedForLabel: ProjectedLabel[] = [];
@@ -104,7 +104,7 @@ export class CelestialMarkers {
   get activeLabels(): readonly ActiveCelestialLabel[] { return this.activeCelestialLabels; }
 
   // update が座標を求めた天体・ラグランジュ点マーカー。
-  get bodyPickables(): readonly MapPickable[] { return this.bodyPickableItems; }
+  get bodyPickables(): readonly ObjectPickable[] { return this.bodyPickableItems; }
 
   // 星系の全天体とラグランジュ点からラベルの全集合を1度だけ組む。ラグランジュ点は5点まとめてでは
   // なく、共線点・三角点それぞれの成立条件を満たす点だけを持たせる。
@@ -264,7 +264,7 @@ export class CelestialMarkers {
       });
     }
     this.markerManager.setPosition(
-      id, label.item.markerClass, iconVisible ? label.item.mapGlyph : '', label.pos, project,
+      id, label.item.markerClass, iconVisible ? label.item.glyph : '', label.pos, project,
       labelVisible ? label.item.markerLabel : '',
       projected.opacity, undefined, undefined, false, false, label.item.labelPriority, cameraPos,
     );
@@ -302,7 +302,7 @@ export class CelestialMarkers {
       labelShown: label.showLabel,
       markerClass: label.item.markerClass,
       markerLabel: label.item.markerLabel,
-      glyph: label.showIcon ? label.item.mapGlyph : '',
+      glyph: label.showIcon ? label.item.glyph : '',
       priority: label.item.labelPriority,
       opacity: projected?.opacity ?? 1,
       drawable: projected !== undefined && projected.front && !projected.occluded,

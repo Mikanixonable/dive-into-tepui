@@ -6,11 +6,11 @@ import { len, sub, type Vec3 } from '../../math/vec3';
 import { ORBIT_POINT_GLYPH } from './marker-identity';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { MapCommands } from '../pickable/map-commands';
+import type { ObjectCommands } from '../pickable/object-commands';
 import type { PropertyRow } from '../hud/windows/property-window';
 
 export class ApsisMarker extends OrbitPointMarker {
-  public readonly mapGlyph = ORBIT_POINT_GLYPH.apsis;
+  public readonly glyph = ORBIT_POINT_GLYPH.apsis;
   protected readonly markerGlyph = ORBIT_POINT_GLYPH.apsis;
   protected readonly markerClass = 'mk-apsis';
 
@@ -37,8 +37,8 @@ export class ApsisMarker extends OrbitPointMarker {
 
   // 所属軌道・中心天体の表面からの高度・通過までの残り時間。位置が解けていなければ行は無く、
   // 中心天体が引けないフレームは高度が落ちる。
-  public mapPropertyRows(
-    _commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  public propertyRows(
+    _commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
     const pos = this.pos;
     if (pos === null) return [];

@@ -5,7 +5,7 @@ import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../widgets';
 import { frameRoleName, rotationSourceLabel } from './frame-labels';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapPickable } from '../../pickable/map-pickable';
+import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../overlay-manager';
 import { buildPanel } from './frame-controls';
@@ -66,7 +66,7 @@ export class TrajectoryFramePanel {
 
   // パネルの表示と各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。
   public sync(
-    pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
+    pickables: readonly ObjectPickable[], members: readonly string[], displayTime: number,
     validRoles: readonly FrameRole[], isVisible: boolean,
   ): void {
     this.panel.classList.toggle('hidden', !isVisible);

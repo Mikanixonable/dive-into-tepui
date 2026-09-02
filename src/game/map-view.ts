@@ -4,7 +4,7 @@ import type { Input } from './input/input';
 import type { CameraSystem } from './camera/camera-system';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { DynamicSystem } from './dynamic/dynamic-system';
-import type { MapPickables } from './pickable/map-pickables';
+import type { ObjectPickables } from './pickable/object-pickables';
 import type { LinePickables } from './pickable/line-pickables';
 import type { MapContextActions } from './pickable/map-context-actions';
 import type { CelestialMarkers } from './marker/celestial-markers';
@@ -27,7 +27,7 @@ export class MapView implements WorldViewFrame {
     private readonly mapActions: MapContextActions,
     private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
-    private readonly mapPickables: MapPickables,
+    private readonly objectPickables: ObjectPickables,
     private readonly linePickables: LinePickables,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markerManager: MarkerManager,
@@ -52,7 +52,7 @@ export class MapView implements WorldViewFrame {
     this.editor.onMapClosed();
     this.editor.closeMenu();
     this.mapActions.close();
-    this.mapPickables.clear();
+    this.objectPickables.clear();
     this.linePickables.clear();
   }
 
@@ -72,11 +72,11 @@ export class MapView implements WorldViewFrame {
   }
 
   // 赤道交点(ターゲット・基地)を求め直し、選択候補と可視性ポリシーを組む。
-  // 交点アイコンは候補列に載るので、mapPickables.refresh より先に求める。
+  // 交点アイコンは候補列に載るので、objectPickables.refresh より先に求める。
   update(displayWindow: DisplayWindow): void {
     this.targeter.updateEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
     this.dynamicSystem.updateBaseEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
-    this.mapPickables.refresh(displayWindow);
+    this.objectPickables.refresh(displayWindow);
     this.editor.update(displayWindow);
   }
 
@@ -91,7 +91,7 @@ export class MapView implements WorldViewFrame {
     this.editor.sync(this.cameraSystem, displayWindow.simTime, fo);
     this.displayWindowManager.sync(this.activePlayers.current);
     this.frameControls.sync(
-      this.mapPickables.pickables, this.cameraSystem.activeCameraPos,
+      this.objectPickables.pickables, this.cameraSystem.activeCameraPos,
       displayWindow.simTime, displayWindow.displayTime, true,
     );
     this.celestialMarkers.syncSubLabels(

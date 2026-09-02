@@ -7,7 +7,7 @@ import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../widgets';
 import { frameRoleName, rotationFollowLabel } from './frame-labels';
-import type { MapPickable } from '../../pickable/map-pickable';
+import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { OverlayManager } from '../overlay-manager';
 import { buildPanel } from './frame-controls';
 
@@ -117,7 +117,7 @@ export class CameraFramePanel {
 
   // パネルの表示と各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
   public sync(
-    pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
+    pickables: readonly ObjectPickable[], members: readonly string[], displayTime: number,
     isVisible: boolean,
   ): void {
     this.panel.classList.toggle('hidden', !isVisible);

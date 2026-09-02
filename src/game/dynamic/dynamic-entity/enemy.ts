@@ -31,8 +31,8 @@ import type { EnemySaveData } from '../../save/save-data';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import { MARKER_PRIORITY, type MarkerManager } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
-import type { MapPickable } from '../../pickable/map-pickable';
-import type { MapCommands } from '../../pickable/map-commands';
+import type { ObjectPickable } from '../../pickable/object-pickable';
+import type { ObjectCommands } from '../../pickable/object-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
@@ -111,7 +111,7 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
 // 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
-export abstract class Enemy extends Ship implements MapPickable {
+export abstract class Enemy extends Ship implements ObjectPickable {
   public readonly mapKind: DynamicEntityKind = 'enemy';
 
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
@@ -434,13 +434,11 @@ export abstract class Enemy extends Ship implements MapPickable {
     };
   }
 
-  // マップ上の被選択物としての振る舞い。
-  public readonly ownerName = null;
-  public readonly mapTime = null;
+  // 被選択物(ObjectPickable)としての振る舞い。
   public get gone(): boolean { return !this.alive; }
-  public get mapState(): KinematicState { return this.state; }
-  public readonly mapGlyph = ENTITY_GLYPH.enemyShip;
-  public get mapGlyphSvg(): string { return shipMarkerSvg(false); }
+  public get orbitState(): KinematicState { return this.state; }
+  public readonly glyph = ENTITY_GLYPH.enemyShip;
+  public get glyphSvg(): string { return shipMarkerSvg(false); }
   public readonly listSection: MapListSection = 'enemy';
   public readonly pickerGenre: ObjectPickerGenre = '敵';
   public readonly hiddenBehindBodies = true;
@@ -448,7 +446,7 @@ export abstract class Enemy extends Ship implements MapPickable {
   public listPriority(): number { return 0; }
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
-  public mapPosAt(displayTime: number): Vec3 | null {
+  public posAt(displayTime: number): Vec3 | null {
     return this.stateAt(displayTime)?.r ?? null;
   }
 
@@ -465,7 +463,7 @@ export abstract class Enemy extends Ship implements MapPickable {
   ): string {
     if (activePlayer === null) return '';
     const viewer = activePlayer.state;
-    const d = len(sub(this.mapPosAt(displayTime) ?? this.state.r, viewer.r));
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.r));
     const label = this.listCounted(activePlayer, displayTime) ? '接近' : '距離';
     return `${label} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.state.v, viewer.v)))}`;
   }
@@ -480,13 +478,13 @@ export abstract class Enemy extends Ship implements MapPickable {
   // 自艦へ接近中と扱う距離まで寄っているか。
   public listCounted(activePlayer: Player | null, displayTime: number): boolean {
     if (activePlayer === null) return false;
-    const d = len(sub(this.mapPosAt(displayTime) ?? this.state.r, activePlayer.state.r));
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r));
     return d < ENEMY_APPROACH_DIST;
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
-  public mapMenuItems(
-    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  public menuItems(
+    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
     return [
       ...MenuCommon.targetItems(commands, this.id, simTime),
@@ -498,8 +496,8 @@ export abstract class Enemy extends Ship implements MapPickable {
     ];
   }
 
-  // mapMenuItems が出した操作を実行する。削除と軌道線の表示は自分の状態を、残りは commands を通す。
-  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+  // menuItems が出した操作を実行する。削除と軌道線の表示は自分の状態を、残りは commands を通す。
+  public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'delete') this.alive = false;
     else if (act === 'toggleTrajectoryLine') this.showTrajectoryLine = !this.showTrajectoryLine;
     else if (act === 'duplicate') commands.duplicate(this.mapKind, this.state);
@@ -509,8 +507,8 @@ export abstract class Enemy extends Ship implements MapPickable {
 
   // プロパティウィンドウに出す行。装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、
   // 軌道要素と相対傾斜角は「軌道」グループの下に畳む。viewer が null なら相対量の行は落ちる。
-  public mapPropertyRows(
-    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  public propertyRows(
+    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
     const viewer = commands.activePlayer;
     const rel = viewer ? relativeInfo(viewer, this, celestialSystem.celestialMotions, simTime) : null;
@@ -534,7 +532,7 @@ export abstract class Enemy extends Ship implements MapPickable {
     return rows;
   }
 
-  public readonly mapRename = null;
+  public readonly rename = null;
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
 }

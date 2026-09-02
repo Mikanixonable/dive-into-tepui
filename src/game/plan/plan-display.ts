@@ -15,7 +15,7 @@ import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
-import { MapPickable } from '../pickable/map-pickable';
+import { ObjectPickable } from '../pickable/object-pickable';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
@@ -217,7 +217,7 @@ export class PlanDisplay {
   }
 
   // 近地点・遠地点アイコンの右クリック候補(このフレームに求まったものだけ)。
-  get apsisMarkers(): readonly MapPickable[] {
+  get apsisMarkers(): readonly ObjectPickable[] {
     return [this.apsisPe, this.apsisAp].filter((marker) => !marker.gone);
   }
 
