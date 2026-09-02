@@ -195,7 +195,6 @@ export class BoosterStage extends THREE.Group {
 
     if (options.interstageCover !== false) this.addInterstageCover();
 
-    // MeshStandardMaterial の全サブメッシュを太陽光プリパスへ参加させる。
     markLitOpaque(this);
     markSunShadowCaster(this);
   }
