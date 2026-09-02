@@ -4,12 +4,12 @@
 // 側が渡す。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
-  lessThan, log, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
+  Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, fract, greaterThan, int, length,
+  lessThan, log, log2, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial-surface';
 import type {
-  BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform,
+  BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node,
 } from '../tsl-types';
 import type { SunShadowMaps, SunShadowSlot } from './sun-shadow-maps';
 import type { SunLight } from './sun-light';
@@ -56,9 +56,10 @@ type OcclusionSources = {
   // 暗くなる。一致の公差を深度からの位置復元の誤差から取るために視距離が要る。null なら
   // 外さない(環・大気の受け手は天体表面の陰影を持たない)。
   readonly selfViewDistance: FloatNode | null;
-  // 積雲の殻が落とす影を数えるか。光路のタップぶんフェッチが増えるので、雲の下に来る受け手
-  // だけが選ぶ。
-  readonly cumulusShadow: boolean;
+  // 積雲の殻が落とす影を数えるなら、受け手の位置で画面 1 px が張る実寸 [m]。**真偽ではなく
+  // 実寸で選ぶ** — 場を引く mip 段をここから決めるので、型の側で「実寸を持たずにこの源を
+  // 選ぶ」を塞ぐ。null なら数えない。
+  readonly cumulusFootprint: FloatNode | null;
 };
 
 type OccluderUniforms = { readonly center: Vec3Uniform; readonly radius: FloatUniform };
@@ -81,7 +82,13 @@ const CUMULUS_MAX_LIGHT_PATH = 3e5;
 const CUMULUS_MAX_COVERAGE = 0.999;
 
 // 雲の場を持たないフレームでも同じグラフが走るので、被覆率 0 の写しを結んでおく。
+// **読み方の契約は本物の場と揃える** — グラフはここに結んだテクスチャのフィルタと巻きから
+// 組まれるので、既定の Nearest のままだと補間の無い texel フェッチが焼き込まれ、あとで本物へ
+// 差し替えても格子が出たままになる。
 const EMPTY_CUMULUS_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+EMPTY_CUMULUS_FIELD.minFilter = THREE.LinearMipmapLinearFilter;
+EMPTY_CUMULUS_FIELD.magFilter = THREE.LinearFilter;
+EMPTY_CUMULUS_FIELD.wrapS = THREE.RepeatWrapping;
 EMPTY_CUMULUS_FIELD.needsUpdate = true;
 
 // メッシュの影のバイアス。受け手をこれだけ法線方向へずらしてからライト空間へ写し、残りを
@@ -287,8 +294,9 @@ export class SunOcclusion {
         );
       }
     }
-    if (sources.cumulusShadow) {
-      transmittance = transmittance.mul(this.cumulusTransmittance(worldPos, sunDir));
+    if (sources.cumulusFootprint !== null) {
+      transmittance = transmittance.mul(
+        this.cumulusTransmittance(worldPos, sunDir, sources.cumulusFootprint));
     }
     if (sources.meshNormal !== null) {
       transmittance = transmittance.mul(this.meshTransmittance(worldPos, sources.meshNormal, sunDir));
@@ -306,11 +314,14 @@ export class SunOcclusion {
   //
   // **殻より上に居る受け手では光路の長さが 0 になる** ので、殻の上面が自分自身を陰らせる
   // 心配は要らない。
-  private cumulusTransmittance(worldPos: Vec3Node, sunDir: Vec3Node): FloatNode {
+  private cumulusTransmittance(
+    worldPos: Vec3Node, sunDir: Vec3Node, footprint: FloatNode,
+  ): FloatNode {
     return Fn(() => {
       const transmittance = float(1).toVar();
       // 場を持たないフレームで、タップぶんのフェッチを丸ごと飛ばす。
       If(greaterThan(this.cumulusActive, 0.5), () => {
+        const lod = this.cumulusFieldLod(footprint);
         const offset = worldPos.sub(this.cumulusCenter);
         const shellRadius = this.cumulusSurfaceRadius.add(this.cumulusTopAltitude);
         const along = dot(offset, sunDir);
@@ -325,8 +336,7 @@ export class SunOcclusion {
           const up = sampleOffset.div(sampleRadius);
           // **高度に床を張る** — 基準半径は赤道半径なので、極の地表は中心距離のほうが小さい。
           const altitude = max(sampleRadius.sub(this.cumulusSurfaceRadius), 0);
-          const cloud = this.cumulusField.sample(
-            sphereMeshUv(this.cumulusBodyFromWorld.mul(vec4(up, 0)).xyz));
+          const cloud = this.cumulusFieldAt(this.cumulusBodyFromWorld.mul(vec4(up, 0)).xyz, lod);
           const cloudTop = cloud.g.mul(this.cumulusTopAltitude);
           const rise = max(dot(sunDir, up), 0).mul(stepLength);
           const columnDepth = log(min(cloud.r, CUMULUS_MAX_COVERAGE).oneMinus()).negate();
@@ -337,6 +347,22 @@ export class SunOcclusion {
       });
       return transmittance;
     })();
+  }
+
+  // 場を引く mip 段。画面 1 px が受け手の位置で張る実寸 footprint [m] を、場の texel が赤道で
+  // 覆う実寸と比べて決める。
+  private cumulusFieldLod(footprint: FloatNode): FloatNode {
+    // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
+    const fieldWidth = (this.cumulusField.size(int(0)) as THREE.Node<'uvec2'>).x;
+    const texelWorld = this.cumulusSurfaceRadius.mul(2 * Math.PI).div(float(fieldWidth));
+    return max(log2(footprint.div(max(texelWorld, 1))), 0);
+  }
+
+  // 天体固定の単位方向における場を、mip 段を指定して引く。**段は明示で渡す** — 光路のタップの
+  // uv は画面の隣の画素と続いていないので、画面微分から選ばれる段は当てにならない。
+  private cumulusFieldAt(direction: Vec3Node, lod: FloatNode): Vec4Node {
+    const uv = sphereMeshUv(direction);
+    return this.cumulusField.sample(vec2(fract(uv.x), uv.y)).level(lod);
   }
 
   // 描画座標の点が、そのスロットの柱(枠 × [near, near + coverDepth])に入っているか。
