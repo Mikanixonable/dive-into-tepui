@@ -80,7 +80,7 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 
 | # | 論点 | 診断 | 規模 | 優先 |
 | --- | --- | --- | --- | --- |
-| 1 | `MapPickable.kind` の 10 値 union | **多態で分ける** | 7モジュール 2,177行 / 分岐65箇所 | **実施済** |
+| 1 | `ObjectPickable.kind` の 10 値 union | **多態で分ける** | 7モジュール 2,177行 / 分岐65箇所 | **実施済** |
 | 2 | BVH・三角形衝突の重複実装 | **重複の解消 + 置き場所** | 2モジュール 825行 | **実施済** |
 | 3 | `base-station-model.ts` の 845 行 1 関数 | **手続きの切り出し** | 852行 | **実施済** |
 | 4 | `game/const.ts` の 104 定数 | **所有者へ戻す** | 319行 / 参照76モジュール | **実施済** |
@@ -103,70 +103,70 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 
 ---
 
-## 論点1 — `MapPickable.kind` の 10 値 union(実施済)
+## 論点1 — `ObjectPickable.kind` の 10 値 union(実施済)
 
 論点7・16 と合わせて1つの計画として実施した(`a77c1cc4` ‥ `57ffe943` の10手順)。
 `npm run typecheck` / `npm run test` 653件 通過。**実行時の目視確認は未実施。**
 
-- `MapPickKind`(10値)は消えた。`MapPickable` は identity / 位置 / 可視 / 一覧 / 操作の口を持つ
+- `MapPickKind`(10値)は消えた。`ObjectPickable` は identity / 位置 / 可視 / 一覧 / 操作の口を持つ
   interface になり、`Player` / `Enemy` / `Base` / `AmmoPickup` / `RcsFuelPickup` /
   `CelestialEntity` と、新設した `ApsisMarker` / `RelativeNodeMarker` / `EquatorNodeMarker` /
   `LagrangePointMarker` / `EmptySpacePickable` が実装する。冒頭の表の 86 箇所の `kind` 分岐は 0 件。
 - `pickable/map-pickable-menu.ts`(463)/ `map-property-rows.ts`(233)/ `marker/pick-glyphs.ts`(48)/
   `camera/focus-markers.ts`(517)は削除。天体ラベルは `marker/celestial-markers.ts` +
   `celestial-sub-labels.ts` へ移り、`camera/` から天体ラベルの知識が消えた(論点7)。
-- 操作の受け口は `pickable/map-commands.ts` の `MapCommands`。実体は `Docking` / `PlanEditor` /
+- 操作の受け口は `pickable/object-commands.ts` の `ObjectCommands`。実体は `Docking` / `PlanEditor` /
   `Hud` を値 import できない(実行時循環)ので、この口だけを見る。
 - 候補列のキャッシュ(`itemRecords` / `cachedBodyPickables` / `syncVisibility`)は全廃した。
   「画面に出ているか」の正本は `MarkerManager.shows(key)` 1つ。
-- ピックは「マーカー → 本体」の2段になった(SPEC/MAP.md §11)。`MapPickable.hitBodyByRay` と
+- ピックは「マーカー → 本体」の2段になった(SPEC/MAP.md §11)。`ObjectPickable.hitBodyByRay` と
   `math/ray.ts` を新設。
 
-行数(下の是正まで含めた現在値): `map-context-actions.ts` 687→556、`map-pickables.ts` 262→117、
-`focus-markers.ts` 517→0、`player.ts` 625→777、`base.ts` 376→512。**実体側が伸びるのは
-織り込み済み**(1ファイルが1つの物体を言い切る形になるための増加)。
-`map-context-actions.ts` だけが見込み(350前後)を外し、`MapCommands` の実装21メンバーが
-残って 550 行台で止まっている。
+行数(下の是正まで含めた現在値): `object-windows.ts` 687→407、`map-picking.ts` 174(新設)、
+`object-pickables.ts` 262→107、`focus-markers.ts` 517→0、`player.ts` 625→777、
+`base.ts` 376→512。**実体側が伸びるのは織り込み済み**(1ファイルが1つの物体を言い切る形に
+なるための増加)。ウィンドウ台帳側が見込み(350前後)を外して 550 行台で止まっていたのは、
+マップ専用のヒットテストと軌道物体一覧を `map-picking.ts` へ割って解消した。
 
 ### 実施後に `/refactor` / `/comment-cleanup` で直したもの
 
 - **軌道上の点マーカー3種の共通形を抽出。** `ApsisMarker` / `EquatorNodeMarker` /
-  `RelativeNodeMarker` は `runMapMenu` が一字一句同じで、`MapPickable` の定型フィールド・
-  `mapPosAt` / `hitBodyByRay` / `mapVisibility` / `shownOnMap` / `gone` / `sync` / `list*` も
+  `RelativeNodeMarker` は `runMenu` が一字一句同じで、`ObjectPickable` の定型フィールド・
+  `posAt` / `hitBodyByRay` / `mapVisibility` / `shownOnMap` / `gone` / `sync` / `list*` も
   同形だった。`marker/orbit-point-marker.ts` の `OrbitPointMarker` へ寄せて 391→297 行。
-- `MapPickables` の `items` が `candidateItems` と常に同一参照で、`refresh` 末尾が自己代入
+- `ObjectPickables` の `items` が `candidateItems` と常に同一参照で、`refresh` 末尾が自己代入
   だった(規約 1.6)。フィールドごと削除。
 - `LineOcclusion`(`cameraPos`/`celestialBodies`/`pivot` を束ねるだけの型、参照1箇所)を廃し、
   3引数を直接渡す形に(規約 1.6「情報をまとめるためだけの型を作らない」)。
 - `EquatorNodeMarkerPair.updateOnPath` が同一シグネチャの private `update` を呼ぶだけの
-  ラッパーだった。`MapContextActions.windowKey(target) => target.id` も同じ。どちらも畳んだ。
+  ラッパーだった。`ObjectWindows.windowKey(target) => target.id` も同じ。どちらも畳んだ。
 - 残骸: `focus-target.ts` のコメントが削除済みの `apsis`/`relnode`/`eqnode` を指していた。
   `marker-manager.ts` の `mk-relnode` / `mk-eqnode` はどこからも出力されない CSS クラス名。
-- コメント: `runMapMenu` の説明が5クラスで `MapPickable` の宣言と一字一句同じ(規約 3.3-12)。
+- コメント: `runMenu` の説明が5クラスで `ObjectPickable` の宣言と一字一句同じ(規約 3.3-12)。
   `line-pickable.ts` の命名の弁明(3.4)、`combat-pick.ts` の他モジュールとの対比(3.3-8)、
   モジュール冒頭の「〜は X が持つ」「〜だけを持つ」(3.3-2/8)を除去。
 
 ### 宿題 — この再編が残した問題
 
-**(a) `MapContextActions` の `Player`/`Base` 判別(実施済)。** 論点18 で片付いた。
+**(a) `ObjectWindows` の `Player`/`Base` 判別(実施済)。** 論点18 で片付いた。
 残る `instanceof` は `relatedItemsFor` の `CelestialEntity` 1箇所で、これは (b) 側。
 
 **(b) `PhysicalObjectListOrder.matches` が `instanceof LagrangePointMarker` /
 `instanceof CelestialEntity` で絞り込んでいる。** `PhysicalObjectListFilter` と
 `ObjectPickerGenre` がほぼ並行な軸を二重に持っている状態。
 
-**(c) `AmmoPickup` と `RcsFuelPickup` の `MapPickable` 実装がほぼ全同。**
-`mapMenuItems` / `runMapMenu` / `listCounted` / `listSearchText` / `mapPropertyRows` が
+**(c) `AmmoPickup` と `RcsFuelPickup` の `ObjectPickable` 実装がほぼ全同。**
+`menuItems` / `runMenu` / `listCounted` / `listSearchText` / `propertyRows` が
 半径と補給量以外は同じ。旧 `switch (kind)` を多態へ開いた副作用。共通の `Pickup` 基底は
 作れるが、規約 1.5 の判断(今後個別に調整されうるか)がコードからは決まらず、
 `SPEC/MAP.md` に「未確定の案」節も無い。**着手前にユーザーへ問う。**
 
-**(d) `MapContextActions.setDocking` は二段初期化**(規約 1.11)。`Docking` の生成順に依存する
+**(d) `ObjectWindows.setDocking` は二段初期化**(規約 1.11)。`Docking` の生成順に依存する
 ので、`Game` の配線を触らないと直らない。
 
 **(e) クロージャ注入が2つ**(規約 1.12)。`OrbitLineWindows` の `openOwnerWindow` と
 `CelestialSubLabels.sync` の `labelStateOf`。どちらも循環依存の回避策で、解くには所有関係の
-見直しが要る。あわせて `MapContextActions` のコンストラクタ引数は16個(規約 1.4)。
+見直しが要る。あわせて `ObjectWindows` のコンストラクタ引数は14個(規約 1.4)。
 
 **(f) 自ファイル内でしか使われていない `export`(実施済)。** `src/` 全体を走査し、他ファイル
 (`src/` `tests/` `tools/` `public/`、コメント中の言及は除く)から一度も参照されない宣言 259 件の
@@ -183,7 +183,7 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 モジュール冒頭が「leap second が要るなら SPICE/offset adapter を渡せ」と文書化している
 provider 拡張点ごと消える。**capability を消すかどうかの判断なので、機械的な (f) からは外した。**
 
-**(g) 戦闘ビューの古い候補列(実施済)。** `MapPickables.refresh` はマップ視点でない回に
+**(g) 戦闘ビューの古い候補列(実施済)。** `ObjectPickables.refresh` はマップ視点でない回に
 `candidateItems` を空にするようになった。`perfCounts` の `mapItems` にあった `overviewMode`
 ガードは冗長になったので外した。これに伴う表示上の帰結が2つ — 戦闘ビューで開いた
 プロパティウィンドウの関連項目は、古い列ではなく空になる。`Game.objectName` は候補列に
@@ -569,7 +569,7 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 | `game/targeter.ts` | 279 | 26 |
 | `game/camera/camera-system.ts` | 293 | 18 |
 | `game/plan/plan-display.ts` | 424 | 14 |
-| `game/pickable/map-context-actions.ts` | 687 | 12 |
+| `game/pickable/object-windows.ts` | 687 | 12 |
 | `game/game.ts` | 638 | 12 |
 | `game/celestial/celestial-system.ts` | 555 | 9 |
 | `game/marker/marker-manager.ts` | 659 | 8 |
@@ -704,9 +704,9 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 - **ダミー値を 2 つ消した。** `BASE_ARMOR_PLACEHOLDER`(基地の装甲を 1000 で埋めていた)は
   `Base.hp = null` にして TARGET パネルが行ごと畳むようにし、`EMPTY_METRICS` は消えた。
   `Base.fuel`/`maxFuel` は艦と同じ `totalFuel`/`totalMaxFuel` へ改名。
-- **論点1 の宿題 (a) も片付いた。** `MapPickable` に `onMapSelect` / `onMapFocus`
-  (`mapRename` と同じ「持たない対象は `null`」の形)を足し、`MapCommands` へ `hint` /
-  `openProperties` / `selectBase` / `toggleBasePanel` を追加。`MapContextActions` の
+- **論点1 の宿題 (a) も片付いた。** `ObjectPickable` に `onMapSelect` / `onMapFocus`
+  (`rename` と同じ「持たない対象は `null`」の形)を足し、`ObjectCommands` へ `hint` /
+  `openProperties` / `selectBase` / `toggleBasePanel` を追加。`ObjectWindows` の
   `instanceof` は 9 → 1(`CelestialEntity` だけ。これは宿題 (b) 側)。
   `PartWindows.closeForShip(ship)` は `closeFor(shipId)` にした。
 - **資源融通ダイアログの基地半分は到達不能だった。** 入口は自艦の右クリックメニュー1箇所だけで
@@ -812,7 +812,7 @@ RCS燃料の「満タン補給 / 均等」ボタンが「均等」に。
 | `instanceof OrbitingMotion`(13箇所) | 型の絞り込み | 8箇所が `if (!(x instanceof OrbitingMotion)) return/throw` のガードで、**能力の有無**を絞っている。`instanceof Player`/`Base` と違い、分岐の先で別の振る舞いを書いていない |
 | `CelestialClass`(5値)/ `CelestialKind`(3値) | 分類 union | 規約 1.8 が明示的に許可。分類が閉じているという主張そのもの。粒度が違うので2つあってよい |
 | `SolarSide` / `RadiatorSide`(ともに `'up' \| 'down'`) | 値が一致 | 別部品。片方だけ枚数が変わりうるので畳まない(論点19 参照) |
-| `MenuAction`(22値) | 22値 union | メニュー項目の識別子。分岐は**項目ごとの処理**であって、同じ処理が種別で分岐しているのではない。論点1 で各被選択物の `runMapMenu` へ分配済み |
+| `MenuAction`(22値) | 22値 union | メニュー項目の識別子。分岐は**項目ごとの処理**であって、同じ処理が種別で分岐しているのではない。論点1 で各被選択物の `runMenu` へ分配済み |
 
 ---
 
@@ -828,10 +828,10 @@ RCS燃料の「満タン補給 / 均等」ボタンが「均等」に。
    二重の軸をどう畳むかが本体。
 2. **論点1 の宿題 (c)(d)(e)(f')** — **(f)(g) は実施済。** (c) は規約 1.5 の判断が要るので
    **着手前にユーザーへ問う。**(f') も同じく判断待ち — `physics/time/index.ts` の TDB 変換一式を
-   capability ごと消すかどうか。(d)(e) は `Game` の配線に触るので、単独では割に合わない —
-   `map-context-actions.ts` を 400 行未満へ割る判断(= `MapCommands` の実装をウィンドウ台帳から
-   引き剥がすか。剥がすと台帳へのコールバックが増えるので、論点1 ではあえて同居させた)と
-   同時に決める。
+   capability ごと消すかどうか。(d)(e) は `Game` の配線に触るので、単独では割に合わない。
+   同時に決めるはずだった「`object-windows.ts` を 400 行未満へ割る」は先に片付いた —
+   マップ専用のヒットテストと軌道物体一覧を `map-picking.ts` へ出して 407 行になり、
+   `ObjectCommands` の実装は台帳へのコールバックを増やさないためウィンドウ台帳と同居のまま。
 3. **論点6**(`marker-manager` のラベル間引き)— **論点7 の完了で前提が変わった。**
    `focus-markers.CrowdingGrid` は `marker/crowding.ts`(122行)へ移り、間引きの実装は
    `marker-manager.thinByPriority` / `crowding.CrowdingGrid` / `grouped-markers` の3つ。
@@ -841,7 +841,7 @@ RCS燃料の「満タン補給 / 均等」ボタンが「均等」に。
 5. **論点9**(`plan-editor` 718行)— `plan/` 全体(`plan-path.ts` を含む)を見るときに。
 6. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。
    - **論点13** は論点15 の完了で議論の前提が揃った。ただし `overviewMode: boolean` は
-     署名 23 → 25 モジュールへ広がっている(再編で `MapCommands.overviewMode` が増えた)。
+     署名 23 → 25 モジュールへ広がっている(再編で `ObjectCommands.overviewMode` が増えた)。
      `boolean` のままにするか `WorldView` を渡すか、`ViewManager` 経由で経路ごと分けるか。
    - **論点20** は先に実測(`MapCamera` 625 行のうちどれだけが片方だけの経路か)が要る。
 

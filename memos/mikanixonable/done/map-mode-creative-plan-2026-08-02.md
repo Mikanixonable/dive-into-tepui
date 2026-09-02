@@ -59,7 +59,7 @@
 
 > **WP-A は他のすべての前提。単独で完了・レビューしてから WP-B 以降に進む。**
 
-### WP-A1: `MapPickable` — マップ上の被選択物の統一
+### WP-A1: `ObjectPickable` — マップ上の被選択物の統一
 
 **動機:** 右クリック対象が「ラグランジュ点ラベル」だけだったところに、自機/敵船・近地点/遠地点・相対 AN/DN が増える。各所に個別のヒットテストを書くと、優先順位と当たり半径が散らばる。
 
@@ -67,7 +67,7 @@
 
 ```ts
 // マップ上で右クリック対象になりうるものの共通形。
-export interface MapPickable {
+export interface ObjectPickable {
   readonly id: string;        // マーカーキーと共通。安定していること
   readonly name: string;      // メニュー見出しに出す表示名
   readonly pos: Vec3;         // 表示時刻における ECI 位置
@@ -77,12 +77,12 @@ export type MapPickKind = 'body' | 'ship' | 'apsis' | 'relnode';
 
 // 画面座標 (x,y) に最も近い候補を返す。許容半径外なら null。
 export function pickNearest(
-  items: readonly MapPickable[], x: number, y: number, project: ProjectFn, radiusPxSq: number,
-): MapPickable | null;
+  items: readonly ObjectPickable[], x: number, y: number, project: ProjectFn, radiusPxSq: number,
+): ObjectPickable | null;
 ```
 
 - 許容半径定数は `const.ts` に `MAP_PICK_PX_SQ` を新設(既存 `TARGET_LOCK_PICK_PX_SQ` と同じ値で始めてよいが、別の意味なので別定数)。
-- `FocusMarkers.FocusLabel` は `MapPickable`(`kind:'body'`)を満たす形に**改名なしで拡張**する(`kind` フィールドを足す)。`findLabel` はそのまま残す。
+- `FocusMarkers.FocusLabel` は `ObjectPickable`(`kind:'body'`)を満たす形に**改名なしで拡張**する(`kind` フィールドを足す)。`findLabel` はそのまま残す。
 - **`/add-feature` 該当:** `Targeter.pickTargetAt` の「画面射影して最近傍を探す」ループは `pickNearest` と同じ処理。`Targeter` 側も `pickNearest` を呼ぶ形に置き換えるところまでを同じ変更セットで行う。
 
 **検証:** `npm run typecheck`。
@@ -94,13 +94,13 @@ export function pickNearest(
 **動機:** 対象種別ごとにメニュー項目が異なる(船=フォーカス/ターゲット/アクティブ化、AN/DN=ワープ/ノード追加/フォーカス、apsis=ノード追加/フォーカス)。`FocusGizmo` は「フォーカスを移動」固定なので拡張が要る。
 
 **方針:**
-- `FocusGizmo` を **`MapPickable` を受け取り、項目リストを引数で受ける**形に一般化する。クラス名は `FocusGizmo` のままだと責務と合わなくなるので **`MapContextGizmo` に改名**(`src/game/map-context-gizmo.ts`、`game/` 直下)。旧名は全文検索 0 件にすること。
+- `FocusGizmo` を **`ObjectPickable` を受け取り、項目リストを引数で受ける**形に一般化する。クラス名は `FocusGizmo` のままだと責務と合わなくなるので **`MapContextGizmo` に改名**(`src/game/map-context-gizmo.ts`、`game/` 直下)。旧名は全文検索 0 件にすること。
 
 ```ts
 export interface MapMenuItem { readonly label: string; readonly act: string; }
 export class MapContextGizmo {
-  onSelect: ((act: string, target: MapPickable) => void) | null = null;
-  openMenu(clientX: number, clientY: number, target: MapPickable, items: readonly MapMenuItem[]): void;
+  onSelect: ((act: string, target: ObjectPickable) => void) | null = null;
+  openMenu(clientX: number, clientY: number, target: ObjectPickable, items: readonly MapMenuItem[]): void;
   closeMenu(): void;
 }
 ```
@@ -120,9 +120,9 @@ export class MapContextGizmo {
 
 **方針:**
 - `OverviewCamera.focus` は現在ラベル ID 文字列で、`resolveFocus()` が `FocusMarkers.findLabel` を引く。**エンティティは位置が毎フレーム変わるので、ID 文字列引きの仕組みを拡張する。**
-- **推奨案:** `OverviewCamera.focus` を `string` から `FocusTarget = { kind: 'label'; id: string } | { kind: 'entity'; entity: DynamicEntity }` にせず、**`focus: MapPickable | null`(null = 地球)**にする。`MapPickable.pos` を毎フレーム更新済みの値として読むだけで済み、ラベルもエンティティも同じ扱いになる。
-  - エンティティ側は `DynamicEntity` に `mapPickable(displayTime): MapPickable` を生やすのではなく、**マップ用の `MapPickable` を毎フレーム組み立てるのは `Game.sync` の担当**にする(`displayState(displayTime)` を引くのは `Game.sync` が既にやっている仕事)。
-  - `OverviewCamera` は保持した `MapPickable` の `id` を鍵に、そのフレームの候補配列から引き直す。参照を握りっぱなしにすると死亡エンティティを掴み続ける。**`focus` は `id: string` を保持し、`resolveFocus` は「そのフレームの `MapPickable[]`」から引く**形にする(引けなければ地球にフォールバック)。
+- **推奨案:** `OverviewCamera.focus` を `string` から `FocusTarget = { kind: 'label'; id: string } | { kind: 'entity'; entity: DynamicEntity }` にせず、**`focus: ObjectPickable | null`(null = 地球)**にする。`ObjectPickable.pos` を毎フレーム更新済みの値として読むだけで済み、ラベルもエンティティも同じ扱いになる。
+  - エンティティ側は `DynamicEntity` に `mapPickable(displayTime): ObjectPickable` を生やすのではなく、**マップ用の `ObjectPickable` を毎フレーム組み立てるのは `Game.sync` の担当**にする(`displayState(displayTime)` を引くのは `Game.sync` が既にやっている仕事)。
+  - `OverviewCamera` は保持した `ObjectPickable` の `id` を鍵に、そのフレームの候補配列から引き直す。参照を握りっぱなしにすると死亡エンティティを掴み続ける。**`focus` は `id: string` を保持し、`resolveFocus` は「そのフレームの `ObjectPickable[]`」から引く**形にする(引けなければ地球にフォールバック)。
 - 候補配列は `CameraSystem` が `sync` 時に受け取る(`Game.sync` から明示引数で渡す。`*Ctx` は禁止)。
 
 **価値判断が必要な点 → 提案:**
@@ -145,9 +145,9 @@ export class MapContextGizmo {
 1. `Targeter` のターゲット型を `Enemy` から広げる。**ここが最大の設計判断点。**
 
    **価値判断 → 提案(推奨案 A):**
-   - **A(推奨): ターゲットを二層に分ける。** `Targeter` は「戦闘ターゲット(`Enemy`)」を持ち続け、**マップ側の「航法ターゲット(任意の `MapPickable`)」は別クラス `NavTarget`(`src/game/nav-target.ts`)に持たせる。**
+   - **A(推奨): ターゲットを二層に分ける。** `Targeter` は「戦闘ターゲット(`Enemy`)」を持ち続け、**マップ側の「航法ターゲット(任意の `ObjectPickable`)」は別クラス `NavTarget`(`src/game/nav-target.ts`)に持たせる。**
      - 理由: `Targeter` の既存責務(リード計算、的通過マーク、敵 AI 連携、`LeadMarkers`)はすべて `Enemy` 前提であり、月をそこに流し込むと全経路に `instanceof` 分岐が入る。相対 AN/DN・軌道昇降点は「その天体の軌道面」だけを必要とするので、必要な情報は `Elements` あるいは位置+速度のみ。
-     - `NavTarget` の責務: 航法ターゲット(`MapPickable` の id + その軌道面法線を得る手段)の保持、相対 AN/DN の算出、その `▲`/`▽` マーカーの `sync`、`MapPickable` としての公開(右クリック対象になるため)。
+     - `NavTarget` の責務: 航法ターゲット(`ObjectPickable` の id + その軌道面法線を得る手段)の保持、相対 AN/DN の算出、その `▲`/`▽` マーカーの `sync`、`ObjectPickable` としての公開(右クリック対象になるため)。
      - `Targeter.syncNodeMarkers` はこの `NavTarget` へ移す(**移動であって複製ではない。`Targeter` 側から消す**)。敵をターゲットにした場合は `Game` が航法ターゲットにも同じ相手を設定する、のではなく、**ユーザーがメニューから明示的に設定する**(§WP-C1 でオート選択を廃止する方針と揃う)。
    - **B: `Targeter` をジェネリック化する。** 一見素直だが、上記の理由で分岐が全域に散る。**非推奨。**
 

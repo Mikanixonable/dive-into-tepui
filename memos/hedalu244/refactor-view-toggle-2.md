@@ -17,7 +17,7 @@
 3. **ビュー専用モジュールを Game が生成・保持している。** editor / guide / dockingGuide /
    combatView / mapView が Game のフィールドで、Game の import は 56 行・フィールドは約 30 個
    に達している。
-4. **ViewManager が遷移の中身(enterMap / leaveMap)を自分で持つ**ため、editor と mapActions
+4. **ViewManager が遷移の中身(enterMap / leaveMap)を自分で持つ**ため、editor と objectWindows
    に依存している。「そのビューに入れるか」「入るとき・出るときに何をするか」はビュー固有の
    知識なのに、ViewManager に集約されている。
 
@@ -31,14 +31,14 @@
 
 | # | 決定 | 根拠 | 覆すと変わる手順 |
 | --- | --- | --- | --- |
-| D1 | ViewManager の再設計は**両案の合成**: 遷移フック(canEnter / onEnter / onLeave)は各ビューの実装へ下ろし、**2ビューのインスタンスは ViewManager が保持**して `activeView` を出す | 「フックを下ろすだけ」だと ViewManager に editor / mapActions 依存が残る。「保持だけ下ろす」だと遷移の中身が ViewManager に残る。合成すると依存が使用箇所へ寄り、Game のフィールド2つと activeView getter が消え、ドッキング等の**強制遷移でも後始末が漏れない**(setView が常にフックを通る) | 手順1以降すべて |
+| D1 | ViewManager の再設計は**両案の合成**: 遷移フック(canEnter / onEnter / onLeave)は各ビューの実装へ下ろし、**2ビューのインスタンスは ViewManager が保持**して `activeView` を出す | 「フックを下ろすだけ」だと ViewManager に editor / objectWindows 依存が残る。「保持だけ下ろす」だと遷移の中身が ViewManager に残る。合成すると依存が使用箇所へ寄り、Game のフィールド2つと activeView getter が消え、ドッキング等の**強制遷移でも後始末が漏れない**(setView が常にフックを通る) | 手順1以降すべて |
 | D2 | PlanEditor は**丸ごとは下ろさない**。共有部(計画折れ線の駆動・growableArcs・操作艦の赤道交点)を **PlanTrajectory** として抽出して Game 常駐、残る編集部(ギズモ・パネル・ポインタ・Δv)を MapView 保持へ | 計画折れ線は戦闘ビューでも描く(計画どおりに機体を動かすのは戦闘ビュー)、predictor は両ビューで growableArcs を読む。**丸ごと MapView 案は再提案しない** — 戦闘の [N]/[Del]/折れ線が死ぬ。第一段階で一度死んだ回帰そのもの | 手順3 |
 | D3 | [N]/[Del] の戦闘側挙動(計画全破棄・直近ノードへの自動ワープ)は **CombatView が直接持つ**(plan / simSpeedManager / hud を触る十数行)。編集側([Del]=選択ノード削除・WASDQE Δv)は PlanEditor に残り MapView.handleInput から呼ぶ | 目的は editMode 分岐の削除。戦闘側を editor のメソッドとして残すと CombatView→(マップ専用の)editor という逆向き依存になる | 手順3 |
 | D4 | PlanGuide.update は advanceSimulation 内から **CombatView.update へ移す**。ポーズ中・決着後も呼ばれるようになるが、simTime が進まない限り消化(consumeNodesUpTo)も通知も冪等 | 厳密に「積分した時だけ」を保つにはビューに積分フェーズのフックを1本足すことになり、利用者1つのための口は過大 | 手順4 |
 | D5 | chrome(hud.setWorldView / touch / panel-shell / displayWindow.forceCurrent)は **ViewManager.applyChrome に残す** | ビュー id を対称に配るだけの配線で、ビュー固有の判断を含まない。「同一ビューへの setView でも chrome は揃う」保証も1箇所で保てる | 手順1 |
 | D6 | Docking の viewManager 依存は **`setView: (view: WorldView) => void` 閉包**に置き換える | 生成順の循環(docking→ViewManager→CombatView→DockingGuide→docking)を断つ。CameraSystem の view 閉包と同型の既存パターン | 手順1 |
 | D7 | interface 名は **WorldViewFrame のまま**とし、遷移フックを含む旨をコメントへ書く | 素直な名は WorldView だが id 型(`'combat' \| 'map'`)が既に約40出現で流通しており、入れ替え改名は churn が大きい | 手順1(改名のみ) |
-| D8 | mapPickables / mapActions / frameControls / navball / displayWindowManager は**下ろさない**(両ビューが読む・書く・開く)。linePickables だけ保持を MapView へ移し、combat 側の毎フレーム clear()(mapPickables 含む)は **MapView.onLeave の1回**に置き換える | mapPickables は cameraSystem.update・viewBadge・sync の可視性ポリシーが両ビューで読むため Game 常駐。clear は「マップで組んだものを出るとき壊す」が意味の実体 | 手順5 |
+| D8 | objectPickables / objectWindows / frameControls / navball / displayWindowManager は**下ろさない**(両ビューが読む・書く・開く)。linePickables だけ保持を MapView へ移し、combat 側の毎フレーム clear()(objectPickables 含む)は **MapView.onLeave の1回**に置き換える | objectPickables は cameraSystem.update・viewBadge・sync の可視性ポリシーが両ビューで読むため Game 常駐。clear は「マップで組んだものを出るとき壊す」が意味の実体 | 手順5 |
 
 ## 達成目標
 
@@ -46,7 +46,7 @@
    `activeView` getter が無い(game.ts 内 grep で 0件)。
 2. `grep -rn "editMode" src/` が **0件**(現在 plan-editor 10・plan-guide 4・game 2)。
 3. `grep -n "viewManager" src/game/docking/docking-guide.ts` が **0件**。
-4. view-manager.ts に `PlanEditor` / `MapContextActions` の import が無い。
+4. view-manager.ts に `PlanEditor` / `ObjectWindows` の import が無い。
 5. `grep -rn "setControlledBaseProvider" src/` が **0件**。
 6. game.ts 内の `isMapView` が **0件**(現在 2件: editor 閉包・activeView getter)。
 7. 各手順で `npm run typecheck`(ヒープ拡大)と `npm run test:game` が通る。
@@ -84,7 +84,7 @@
 | 1 | game.ts のビュー専用フィールド 0 | **達成**(残るのは構築ローカルのみ) |
 | 2 | editMode 0件 | **達成**(grep 0) |
 | 3 | docking-guide の viewManager 0件 | **達成**(grep 0) |
-| 4 | view-manager の editor/mapActions import 0 | **達成**(grep 0) |
+| 4 | view-manager の editor/objectWindows import 0 | **達成**(grep 0) |
 | 5 | setControlledBaseProvider 0件 | **達成**(grep 0) |
 | 6 | game.ts の isMapView 0件 | **達成**(grep 0) |
 | 7 | typecheck / test:game を各手順で | **達成**(161件、最終回は test:render 18件も) |
@@ -135,6 +135,6 @@
 | WASDQE の入力消費がビューを跨ぐ | 戦闘の操艦が Δv 編集に食われる(またはその逆) | 手順3(戦闘で操艦・マップで Δv 編集) |
 | guide.update のポーズ中実行で通知・ノード消化が漏れ出す | ポーズ中に hint が出る / ノードが黙って消える | 手順4(ポーズ→[M]往復) |
 | clear の onLeave 化で戦闘中の候補・可視性ポリシーが stale になる | 戦闘右クリックの候補に古いアプシス等が出る / viewBadge の名前が狂う | 手順5(戦闘右クリックと viewBadge 目視) |
-| mapPickables の参照差し替え漏れ(apsisMarkers) | マップでアプシスマーカーを右クリックできない | 手順3(マップでアプシス右クリック) |
+| objectPickables の参照差し替え漏れ(apsisMarkers) | マップでアプシスマーカーを右クリックできない | 手順3(マップでアプシス右クリック) |
 | dispose の順序崩れ・二重 dispose | リトライ・ステージ選択の再入で例外 | 手順2以降(ステージ再入を手順6バッチに含める) |
 | typecheck の OOM | 検証が回らない | 全手順(ヒープ拡大して実行) |

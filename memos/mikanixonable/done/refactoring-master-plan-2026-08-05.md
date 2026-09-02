@@ -208,7 +208,7 @@
 
 ### C-08 表示名がentity IDを兼ね、衝突できる
 
-- **根拠**: `findPlayer(name)`, `MapPickable.id = ship.name`, marker key、camera focus、NavTargetが文字列名を使う。フォームは重複名、敵名、`earth`, `moon`, `sun`, Lagrange IDを拒否しない。
+- **根拠**: `findPlayer(name)`, `ObjectPickable.id = ship.name`, marker key、camera focus、NavTargetが文字列名を使う。フォームは重複名、敵名、`earth`, `moon`, `sun`, Lagrange IDを拒否しない。
 - **影響**: activate/delete/focus/targetが先に見つかった別entityへ作用する。名称変更、保存、replay、multiplayerを阻害する。
 - **修正**: session内で決定的なopaque `EntityId`（例 `ship:17`）を発行し、`displayName`と分離する。random UUIDよりseed/replayに向く。D-05参照。
 - **受入条件**: 同名2隻を独立に選択・削除・target可能。予約名も表示名としては許可できる。
