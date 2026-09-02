@@ -8,7 +8,7 @@ import type { LinePickables } from './pickable/line-pickables';
 import type { MapContextActions } from './pickable/map-context-actions';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import type { Targeter } from './targeter';
-import type { Player } from './player/player';
+import type { ActiveControllableController } from './active-controllable-controller';
 import type { WorldViewFrame } from './world-view';
 
 export class CombatView implements WorldViewFrame {
@@ -22,12 +22,21 @@ export class CombatView implements WorldViewFrame {
     private readonly linePickables: LinePickables,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly touchControls: TouchControls | null,
-    private readonly player: () => Player | null,
+    private readonly activePlayers: ActiveControllableController,
   ) {}
+
+  // 戦闘ビューは操作対象の艦または基地が必要。
+  canEnter(): boolean {
+    return this.activePlayers.current !== null || this.activePlayers.controlledBase !== null;
+  }
+
+  onEnter(): void {}
+
+  onLeave(): void {}
 
   // 照準キーと右クリックの配分。操作艦がいなければ照準先が無いので配らない。
   handlePointer(simTime: number): void {
-    const player = this.player();
+    const player = this.activePlayers.current;
     if (!player) return;
     const project = this.cameraSystem.activeCameraProjection;
     const combatTargets = this.dynamicSystem.getCombatTargets(player);
@@ -48,7 +57,7 @@ export class CombatView implements WorldViewFrame {
   // 戦闘ビュー専用の常設表示(タッチのモードボタン)と、軌道線候補の後始末。
   syncPanels(): void {
     this.linePickables.clear();
-    const player = this.player();
+    const player = this.activePlayers.current;
     if (player) {
       this.touchControls?.syncModeButtons(
         player.rcsDamp, player.fineAttitude, player.progradeHold,
