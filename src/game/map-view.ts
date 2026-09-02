@@ -1,19 +1,18 @@
 // マップビュー専用のフレーム処理と遷移フック(WorldViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
+import { MapPicking } from './pickable/map-picking';
 import type { Input } from './input/input';
+import type { Hud } from './hud/hud';
 import type { CameraSystem } from './camera/camera-system';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { ObjectPickable } from './pickable/object-pickable';
 import type { ObjectPickables } from './pickable/object-pickables';
-import type { MapVisibilityPolicy } from './map/visibility-policy';
-import type { PerfCounts } from '../perf-meter';
 import type { LinePickables } from './pickable/line-pickables';
 import type { ObjectWindows } from './pickable/object-windows';
-import { MapPicking } from './pickable/map-picking';
+import type { MapVisibilityPolicy } from './map/visibility-policy';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import type { MarkerManager } from './marker/marker-manager';
-import type { Hud } from './hud/hud';
 import type { NavTarget } from './nav-target';
 import type { Targeter } from './targeter';
 import type { PlanEditor } from './plan/plan-editor';
@@ -23,11 +22,13 @@ import type { FrameControls } from './hud/frame/frame-controls';
 import type { FrameAnchors } from './frame-anchors';
 import type { FloatingOrigin } from './camera/floating-origin';
 import type { WorldViewFrame } from './world-view';
+import type { PerfCounts } from '../perf-meter';
 
 export class MapView implements WorldViewFrame {
-  // マップ上のクリックの当て先と軌道物体一覧。どちらもマップビューでしか出さないので、ここが持つ。
   private readonly picking: MapPicking;
 
+  // マップのクリックの当て先は、マップビューにいる間しか働かないので、受け取った材料から
+  // ここで組んで持つ。
   constructor(
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,

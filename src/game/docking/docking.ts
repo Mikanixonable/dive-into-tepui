@@ -339,7 +339,6 @@ export class Docking {
     this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);
   }
 
-  // 基地パネルの DOM と接続点ガイドの表示物を片付ける。
   dispose(): void {
     this.basePanel.dispose();
     this._guide.dispose();
