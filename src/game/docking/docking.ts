@@ -54,8 +54,8 @@ const alignmentErrorDeg = (alignment: number): number =>
 
 export class Docking {
   readonly basePanel: BasePanel;
-  readonly transferDialog: ResourceTransferDialog;
-  // 接続点ガイド。出すのは戦闘ビューの間だけなので、sync/hide はビュー側から呼ぶ。
+  private readonly transferDialog: ResourceTransferDialog;
+  // 接続点ガイド。
   private readonly _guide: DockingGuide;
   get guide(): DockingGuide { return this._guide; }
   // 選択中/基地パネルの対象基地。
@@ -65,8 +65,6 @@ export class Docking {
 
   // 船と船、船と基地の物理ドッキングペア (shipId -> targetEntity)
   private readonly dockedPairs = new Map<string, DynamicEntity>();
-
-  get activeBase(): Base | null { return this._activeBase; }
 
   constructor(
     private readonly hud: Hud,

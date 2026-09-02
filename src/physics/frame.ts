@@ -36,9 +36,7 @@ export type FrameRotationSource =
 // 役割トークンの全種。役割を列挙するときの唯一の出所。
 export const FRAME_ROLES: readonly FrameRole[] = ['activeShip', 'navTarget'];
 
-// id が指す役割。天体・機体の id と、'@' で始まっていても FRAME_ROLES に無いものは null
-// — 検証を挟まないと、解決できない役割が外から来た文字列のまま座標系へ入り込む。
-// 役割を参照フレームの基準 id として書いた形。
+// 役割を、参照フレームの基準 id として書いた形。
 export function frameRoleAnchorId(role: FrameRole): string {
   return `@${role}`;
 }

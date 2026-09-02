@@ -21,6 +21,7 @@ import type { Quat } from '../../physics/attitude';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { View } from '../view/view';
 import { CameraSaveData } from '../save/save-data';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.mapDisplayToggles';
 
@@ -45,8 +46,6 @@ function saveBodyClassToggles(v: MapDisplayToggles): void {
     /* localStorage 不可なら保存しない(次回リロード時は既定値に戻る) */
   }
 }
-
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 // 戦闘ビューの初期視点: 操作対象の後方やや上から見下ろす(役割フォーカス+姿勢追従)。
 const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
@@ -207,7 +206,7 @@ export class CameraSystem {
     attitudeOf: (id: string, t: number) => Quat | null,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
-    // 旧形式(LegacyChaseSaveData)の戦闘視点は読み捨て、既定視点で組む。
+    // ChaseSaveDataV1 形の戦闘視点は読み捨て、既定視点で組む。
     const savedChase = saved?.chase;
     const combatSaved = savedChase !== undefined && !('rot' in savedChase) ? savedChase : undefined;
     this.combatCamera = new FocusCamera(hud, celestialSystem, {
@@ -246,9 +245,13 @@ export class CameraSystem {
     this.viewOptionsPanel.dispose();
   }
 
-  // 現在アクティブなカメラ(広範囲視点/戦闘視点)を返す。
+  // 駆動・描画に使うカメラ実体。ビューの切替で、どちらの実体を通すかだけが変わる。
+  private get activeFocusCamera(): FocusCamera {
+    return this.mapActive ? this.mapCamera : this.combatCamera;
+  }
+
   get activeCamera(): THREE.Camera {
-    return this.mapActive ? this.mapCamera.camera : this.combatCamera.camera;
+    return this.activeFocusCamera.camera;
   }
 
   get activeViewpoint(): Viewpoint {
@@ -262,10 +265,10 @@ export class CameraSystem {
 
   // 現在のビューのカメラが注視しているフォーカス対象。
   get activeFocus(): FocusTarget {
-    return (this.mapActive ? this.mapCamera : this.combatCamera).focus;
+    return this.activeFocusCamera.focus;
   }
 
-  // 戦闘ビューでズーム視点(照準ズーム)が有効かどうか。広範囲視点では常に false。
+  // 戦闘ビューでズーム視点(照準ズーム)が有効かどうか。
   get zoomActive(): boolean {
     return !this.mapActive && this._zoomActive;
   }
@@ -289,7 +292,7 @@ export class CameraSystem {
 
     // [G]: フォーカスが機体のとき、姿勢追従⇄慣性系をトグルする(両ビュー)。
     if (input.takeKey(K.followAttitudeToggle)) {
-      const active = this.mapActive ? this.mapCamera : this.combatCamera;
+      const active = this.activeFocusCamera;
       if (active.toggleAttitudeFollow()) {
         const on = active.rotationFollow?.kind === 'attitude';
         this.hud.hint(`視点の姿勢追従: ${on ? 'ON(機体姿勢に追従)' : 'OFF(慣性系)'}`);
@@ -338,9 +341,9 @@ export class CameraSystem {
 
   // 視点状態をこのフレームの描画原点で補正し、アクティブカメラへ反映する。
   sync(): void {
-    const active = this.mapActive ? this.mapCamera : this.combatCamera;
+    const active = this.activeFocusCamera;
     syncCameraToViewpoint(active.camera, this.activeViewpoint, active.near, active.far, this.activeCameraPos);
-    // 広範囲視点のときだけ表示設定パネルを出す。
+    // マップビューのときだけ表示設定パネルを出す。
     this.viewOptionsPanel.setVisible(this.mapActive);
   }
 
@@ -355,7 +358,7 @@ export class CameraSystem {
   // 残像の速度基準はこれを使う — 注視点まわりの旋回・パン・ズームは含めない。
   // 速度を答えられない対象(点マーカー)を注視しているあいだは慣性系静止として扱う。
   private get activeFocusVelocity(): Vec3 {
-    return (this.mapActive ? this.mapCamera : this.combatCamera).focusVelocity ?? v3();
+    return this.activeFocusCamera.focusVelocity ?? v3();
   }
 
   // アクティブカメラの画面投影関数を返す。
