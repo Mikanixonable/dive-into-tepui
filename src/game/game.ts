@@ -43,7 +43,6 @@ import { OrbitReferenceSelector, type OrbitReference } from './orbit-reference';
 import { ObjectPickables } from './pickable/object-pickables';
 import { LinePickables } from './pickable/line-pickables';
 import { ObjectWindows } from './pickable/object-windows';
-import { MapPicking } from './pickable/map-picking';
 import { Navball } from './navball/navball';
 import { GameSaveData } from './save/save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
@@ -246,16 +245,11 @@ export class Game {
       this.activePlayers, this.docking.guide, this.planDisplay.path, celestialSystem,
       this.simSpeedManager, this._hud, this._uiSfx, this.markerManager,
     );
-    const mapPicking = new MapPicking(
-      this._hud, this.cameraSystem, this.dynamicSystem, celestialSystem, this.celestialMarkers,
-      this.markerManager, this.navTarget, this.frameControls, objectPickables, linePickables,
-      this.objectWindows,
-    );
     const mapView = new MapView(
-      this.input, this.cameraSystem, this.targeter, editor, this.objectWindows, mapPicking,
+      this.input, this.cameraSystem, this.targeter, editor, this.objectWindows,
       this.dynamicSystem, celestialSystem, objectPickables, linePickables,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
-      this.frameAnchors, this.activePlayers,
+      this.frameAnchors, this.activePlayers, this._hud, this.navTarget,
     );
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
