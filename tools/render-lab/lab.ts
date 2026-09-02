@@ -66,7 +66,7 @@ export const MAX_CAMERA_ELEVATION_DEG = 89;
 // つまみを出す描画品質設定の項目。**ここを変えたときだけ、この環境が描くものが変わる** —
 // 残りの項目はゲーム本体の側(天体の組み立て・HUD)が読むので、ここでは動かしても何も起きない。
 export const PIPELINE_GRAPHICS_KEYS = [
-  'lens', 'msaa', 'antialias', 'exposureCompensation', 'filmLut', 'atmosphere', 'sunLightModel',
+  'lens', 'antialias', 'exposureCompensation', 'filmLut', 'atmosphere', 'sunLightModel',
   'planetLightCount', 'meshShadow', 'shadowSlotCount', 'shadowSlotSize', 'shadowTexelsPerPixel',
 ] as const satisfies readonly GraphicsOptionKey[];
 

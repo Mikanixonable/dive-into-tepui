@@ -76,12 +76,6 @@ export const GRAPHICS_OPTIONS = {
     items: FILM_LUT_ITEMS,
     presets: { low: FILM_LUT_NONE, medium: FILM_LUT_NONE, high: FILM_LUT_NONE },
   },
-  // 光を受ける不透明物の縁を、画素より細かい被覆の割合として描くか。最終段のアンチエイリアスが
-  // 作れない中間調がここで入る。
-  msaa: {
-    kind: 'toggle', group: 'basic', label: 'マルチサンプリング',
-    presets: { low: false, medium: true, high: true },
-  },
   // 描画の最終段で、物体の縁と 3D UI の線のギザギザを均す方式。
   antialias: {
     kind: 'choice', group: 'basic', label: 'アンチエイリアス',
