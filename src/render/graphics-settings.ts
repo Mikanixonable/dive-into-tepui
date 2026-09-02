@@ -8,6 +8,7 @@
 // 選択肢で持つものは、品質と負荷を刻んで釣り合わせる値か、絵の見え方を選ばせる値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
+import { CUMULUS_DETAIL } from './cumulus-shell';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
 const STORAGE_KEY = 'tepui.settings.graphics';
@@ -112,6 +113,19 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: '雲',
     presets: { low: false, medium: true, high: true },
   },
+  // 積雲の殻を解くレイマーチの細かさ。段を上げるほど雲頂の起伏と縁が滑らかになり、G バッファ
+  // パスが場と粒を引く回数が増える。**高プリセットでも「精細」は選ばない** — 「標準」が絵の
+  // 粗さの見えなくなる段で、その上は雲が作る破綻を切り分けるために置いてある。
+  cumulusDetail: {
+    kind: 'choice', group: 'element', label: '積雲の精細さ',
+    items: [
+      [CUMULUS_DETAIL.coarse, '粗'], [CUMULUS_DETAIL.standard, '標準'],
+      [CUMULUS_DETAIL.fine, '精細'],
+    ],
+    presets: {
+      low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.standard, high: CUMULUS_DETAIL.standard,
+    },
+  },
   // レンズ効果(滲み・条・ゴースト)。
   lens: {
     kind: 'toggle', group: 'element', label: 'レンズ効果',
@@ -149,6 +163,12 @@ export const GRAPHICS_OPTIONS = {
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
+    presets: { low: false, medium: true, high: true },
+  },
+  // 積雲が地表・艦艇へ落とす影。オフでも積雲そのものは消えない — 遮蔽パスが光路をたどる
+  // タップぶんだけが減る。「雲」がオフなら、こちらの値によらず影は落ちない。
+  cumulusShadow: {
+    kind: 'toggle', group: 'shadow', label: '積雲の影',
     presets: { low: false, medium: true, high: true },
   },
   // 細かい影を同時に落とせる箇所の数。減らすほど影パスの描画命令が減り、要求の緩い受け手から
