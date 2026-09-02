@@ -97,17 +97,14 @@ export class EquatorNodeMarkerPair {
   }
 
   // △▽ マーカーを update が求めた位置に置く。求め直されなかったフレームは交点を捨てて隠す。
-  sync(project: ProjectFn, show: boolean, cameraPos: Vec3): void {
+  sync(project: ProjectFn, cameraPos: Vec3): void {
     if (!this.solvedSinceSync) this.clearCrossings();
     this.solvedSinceSync = false;
     for (const marker of [this.ascending, this.descending]) {
-      if (!show) this.markerManager.hide(marker.id);
-      else {
-        marker.sync(
-          this.markerManager, project, cameraPos, this.celestialBodies, this.celestialBodiesPivot,
-          true, this.timeLabel,
-        );
-      }
+      marker.sync(
+        this.markerManager, project, cameraPos, this.celestialBodies, this.celestialBodiesPivot,
+        true, this.timeLabel,
+      );
     }
   }
 

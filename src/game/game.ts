@@ -34,6 +34,9 @@ import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import type { RenderStyle } from '../render/render-style';
 import { CelestialSystem } from './celestial/celestial-system';
 import { ViewManager } from './view-manager';
+import type { WorldViewFrame } from './world-view';
+import { CombatView } from './combat-view';
+import { MapView } from './map-view';
 import { NanWatchdog } from './dynamic/nan-watchdog';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
@@ -79,6 +82,9 @@ export class Game {
   readonly displayWindowManager: DisplayWindowManager;
   private readonly guide: PlanGuide;
   readonly viewManager: ViewManager;
+  // ビュー固有のフレーム処理の2具象。どちらを呼ぶかは activeView の1箇所で決まる。
+  private readonly combatView: CombatView;
+  private readonly mapView: MapView;
   private readonly mapPickables: MapPickables;
   private readonly linePickables: LinePickables;
   private readonly mapActions: MapContextActions;
@@ -228,7 +234,7 @@ export class Game {
       this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
       this.celestialMarkers, this.editor, this.frameAnchors,
     );
-    this.linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem, this.cameraSystem);
+    this.linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
     this.mapActions = new MapContextActions(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.linePickables,
@@ -242,6 +248,17 @@ export class Game {
       this._hud, this.editor, this.displayWindowManager, this.mapActions,
       this.activePlayers, this.touchControls,
       initialSave?.camera?.view,
+    );
+    this.combatView = new CombatView(
+      this.input, this.cameraSystem, this.targeter, this.mapActions, this.dynamicSystem,
+      this.mapPickables, this.linePickables, this.celestialMarkers, this.touchControls,
+      () => this.player,
+    );
+    this.mapView = new MapView(
+      this.input, this.cameraSystem, this.targeter, this.editor, this.mapActions,
+      this.dynamicSystem, celestialSystem, this.mapPickables, this.linePickables,
+      this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
+      this.frameAnchors, () => this.player,
     );
 
     this.nanWatchdog = new NanWatchdog(this._hud);
@@ -308,6 +325,11 @@ export class Game {
 
   get simTime(): number { return this.simulator.simTime; }
 
+  // 現在のビューのフレーム処理。ビューによる分岐はこの1箇所に閉じる。
+  private get activeView(): WorldViewFrame {
+    return this.viewManager.isMapView ? this.mapView : this.combatView;
+  }
+
   // ------------------------------------------------------------ update
 
   update(dtRaw: number, graphics: GraphicsSettingsData): void {
@@ -342,10 +364,6 @@ export class Game {
       canDisplayFuture, this.editor.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
-    this.sections.enter(SECTION.plan);
-    this.targeter.updateEquatorNodes(overviewMode, displayWindow, this.celestialSystem, this.frameAnchors);
-    this.dynamicSystem.updateBaseEquatorNodes(overviewMode, displayWindow, this.celestialSystem, this.frameAnchors);
-    this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
       activeControllable, displayWindow.displayTime, this.input, dt, this.mapPickables.pickables,
@@ -358,7 +376,7 @@ export class Game {
     // はこの順序に依存しない — resolveFocusTarget が機体・役割トークンを frameAnchors.stateOf
     // で直接解決するため、mapPickables.refresh を先に呼んでも遅延は生じない。
     this.sections.enter(SECTION.mapPick);
-    this.mapPickables.refresh(displayWindow);
+    this.activeView.update(displayWindow);
     this.sections.exit(SECTION.mapPick);
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput();
@@ -438,36 +456,12 @@ export class Game {
     this.sections.exit(SECTION.plan);
   }
 
-  // ポインタ入力をビューに応じて配分する。各受け手はいまがマップ視点か・操作艦の有無かを
-  // 自分で見るので、ここで決めるのは順序だけ。このフレームの cameraSystem.update が終わって
+  // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって
   // 初めて投影がこのフレームの値になるので、update の末尾に置く。ポーズ中、または入力を
   // ゲートするオーバーレイ(セーブブラウザ・基地画面等)が開いている間は配らない(背景の誤操作を防ぐ)。
   private handlePointerInput(): void {
     if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
-    const simTime = this.simulator.simTime;
-    if (this.viewManager.isMapView) {
-      this.handleMapPointerInput(simTime);
-    } else {
-      this.handleCombatPointerInput(simTime);
-    }
-  }
-
-  private handleCombatPointerInput(simTime: number): void {
-    if (!this.player) return;
-    const project = this.cameraSystem.activeCameraProjection;
-    const overviewMode = this.cameraSystem.overviewMode;
-    const combatTargets = this.dynamicSystem.getCombatTargets(this.player);
-    this.targeter.handleTargetSelectKey(this.input, combatTargets, project, overviewMode);
-    this.mapActions.handleCombatRightClick(this.input, simTime, overviewMode);
-  }
-
-  private handleMapPointerInput(simTime: number): void {
-    this.mapActions.handleMapRightClick(this.input, simTime);
-    this.mapActions.handleLeftClick(this.input);
-    this.mapActions.handleDoubleClick(this.input);
-    this.editor.handleMapPointer(this.input);
-    this.mapActions.handleLineRightClick(this.input);
-    this.mapActions.handleEmptySpaceRightClick(this.input, simTime);
+    this.activeView.handlePointer(this.simulator.simTime);
   }
 
   // --------------------------------------------------------------- input
@@ -537,14 +531,9 @@ export class Game {
     // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
     const fo = this.cameraSystem.sync(activeControllable?.state.v ?? v3());
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
-    if (this.cameraSystem.overviewMode) {
-      this.celestialMarkers.syncLabels(this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos);
-    } else {
-      this.celestialMarkers.hideLabels();
-    }
+    this.activeView.syncLabels();
 
     const project = this.cameraSystem.activeCameraProjection;
-    const overviewMode = this.cameraSystem.overviewMode;
     // 表示・選択可否はこのフレームの update フェーズで MapPickables が確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
     const visibilityPolicy = this.mapPickables.visibilityPolicy;
@@ -573,19 +562,9 @@ export class Game {
       player, combatTargets, this.dynamicSystem.ammoPickups, this.dynamicSystem.rcsFuelPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
       celestialBodies, this.celestialMarkers,
     );
-    this.celestialMarkers.syncSubLabels(
-      this.markerManager.combatMarkers, celestialBodies, displayTime,
-      overviewMode, project, this.cameraSystem.activeCameraPos,
-    );
     this.navTarget.sync(this.cameraSystem);
     this.dynamicSystem.syncEquatorNodes(this.cameraSystem);
 
-    if (this.viewManager.isMapView) {
-      this.displayWindowManager.sync(player);
-      this.frameControls.sync(
-        this.mapPickables.pickables, this.cameraSystem.activeCameraPos, simTime, displayTime, overviewMode,
-      );
-    }
     // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは
     // 最新値を表示し続ける必要がある。MapContextActions 側で窓が無ければ即時 return する。
     this.mapActions.sync(simTime, displayTime, player);
@@ -594,16 +573,10 @@ export class Game {
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(
       displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this._celestialSystem);
-    // 軌道線の右クリック当たり判定向けの候補列。各軌道線が今フレーム焼いたサンプルを読むため、
-    // celestialSystem.sync/entityLines.sync の後に組む。
-    this.linePickables.refresh(displayWindow, this.frameAnchors);
+    // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
+    // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
+    this.activeView.syncPanels(displayWindow);
 
-    if (player) {
-      this.touchControls?.syncModeButtons(
-        player.rcsDamp, player.fineAttitude, player.progradeHold,
-        (key) => player.throttle.isThrustLatched(key),
-      );
-    }
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
     this._hud.syncPanels(this.viewManager.current, this);

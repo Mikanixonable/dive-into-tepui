@@ -285,9 +285,8 @@ export class CelestialMarkers {
   // 混雑で画面から消えた船・敵機・基地を、天体ラベルの下のサブ行として描き足す。
   syncSubLabels(
     groupedMarkers: GroupedMarkers, celestialBodies: readonly CelestialMotion[], pivot: number,
-    overviewMode: boolean, project: ProjectFn, cameraPos: Vec3,
+    project: ProjectFn, cameraPos: Vec3,
   ): void {
-    if (!overviewMode) return;
     this.subLabels.sync(
       groupedMarkers, (id) => this.labelStateOf(id), celestialBodies, pivot, project, cameraPos);
   }

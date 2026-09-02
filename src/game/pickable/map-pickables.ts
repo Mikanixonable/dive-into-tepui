@@ -49,16 +49,17 @@ export class MapPickables {
   ) {}
 
   // マップの天体ラベル(表示のみ)と航法ターゲットの AN/DN を求め直したうえで、このフレームの
+  // 候補列と可視性ポリシーを空にする(候補を持たないビューで呼ぶ。表示・選択は null 経路で判定される)。
+  clear(): void {
+    this.candidateItems.length = 0;
+    this._visibilityPolicy = null;
+  }
+
   // 候補列を組み直す(表示中の天体・ラグランジュ点 + 生存中の自艦・敵船・弾薬・基地 + AN/DN
   // アイコン + 近地点・遠地点アイコン)。天体側も表示と同じ MapVisibilityPolicy を通し、
   // 非表示にした対象を選べない状態にする。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
   refresh(displayWindow: DisplayWindow): void {
-    if (!this.cameraSystem.overviewMode) {
-      this.candidateItems.length = 0;
-      this._visibilityPolicy = null;
-      return;
-    }
     const { simTime, displayTime } = displayWindow;
     this._lastSimTime = simTime;
     this._lastDisplayTime = displayTime;
