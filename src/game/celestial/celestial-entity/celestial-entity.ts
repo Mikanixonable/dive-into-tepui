@@ -160,13 +160,6 @@ export abstract class CelestialEntity implements MapPickable {
     return 'rings' in def ? def.rings ?? null : null;
   }
 
-  // cameraPos から見たこの天体の視半径。影を落としうるか・環をどれで代表させるかの尺度で、
-  // 大きく見える天体ほどその影が画面に写っている何かへ落ちる見込みが高い。
-  apparentRadiusFrom(cameraPos: Vec3, simTime: number): number {
-    const center = this.stateAt(simTime).r;
-    return this.def.radius / Math.max(1, len(sub(center, cameraPos)));
-  }
-
   // 大気パスへ渡す1体ぶんの候補。大気を持たない・描かない天体では null。**尺度は直線距離で
   // 引く** — 深度で引くと、視点の背後にある天体が目の前にあるのと同じ尺度になり、画面に
   // 写っていないのに予算を総取りする。

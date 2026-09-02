@@ -15,18 +15,12 @@ export const BOOSTER_STAGE_DIMENSIONS = Object.freeze({
   frontZ: 0.08,
   aftZ: -7.92,
   length: 8.0,
-  tankFrontZ: -0.34,
-  tankAftZ: -5.72,
   tankLength: 5.38,
   tankRadius: 1.26,
   frontCouplerZ: 0,
   aftDecouplerZ: -5.86,
   nozzleExitZ: -7.78,
-  maximumRadius: 1.58,
 });
-
-/** 呼び出し側で寸法を参照しやすいようにした型。 */
-type BoosterStageDimensions = typeof BOOSTER_STAGE_DIMENSIONS;
 
 const BOOSTER_PLUME_CORE_COLOR = 0xaee6ff;
 const BOOSTER_PLUME_OUTER_COLOR = 0x4f9fff;
@@ -68,7 +62,6 @@ type OwnedMaterial = THREE.Material;
  * をもう一度呼ぶこと。
  */
 export class BoosterStage extends THREE.Group {
-  readonly dimensions: BoosterStageDimensions = BOOSTER_STAGE_DIMENSIONS;
   readonly plumeAnchor = new THREE.Object3D();
   readonly frontCoupler = new THREE.Object3D();
   readonly aftDecoupler = new THREE.Object3D();
