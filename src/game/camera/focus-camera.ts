@@ -1,5 +1,9 @@
-// フォーカス対象を注視点に置く広範囲の軌道カメラ。フォーカスの毎フレーム解決と、
-// フォーカス対象から導かれる回転追従(慣性系・公転・自転・姿勢)を持つ。
+// フォーカス対象を注視点に置く軌道カメラ。フォーカスの毎フレーム解決と、フォーカス対象から
+// 導かれる回転追従(慣性系・公転・自転・姿勢)を持つ。
+//
+// **chase は「動く実体を追っている視点」を指す語。** 天体や空間上の固定点ではなく機体
+// (艦・敵・基地・弾薬)をフォーカスしている状態のことで、DOM id(#hud-chase-reset)・
+// セーブキー(camera.chase)はこの意味で使う。カメラの実装が2つあった頃の名残ではない。
 import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, sub, v3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
