@@ -14,7 +14,7 @@ import type { TdbJulianDate } from '../../physics/time';
 import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EllipseLine } from '../lines/ellipse-line';
-import { celestialShellScale, createStars, Stars } from '../../render/stars';
+import { CELESTIAL_SHELL_SCALE, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
 import type { View } from '../view/view';
@@ -357,7 +357,7 @@ export class CelestialSystem implements CelestialMotions {
     const pointField = this.pointFieldView;
     if (view !== 'map' || star === null || pointField === null || !graphics.pointField) return;
     this.buildPointField(pointField);
-    pointField.update(t, true, this.stateAt(star.id, t).r);
+    pointField.update(t, this.stateAt(star.id, t).r);
   }
 
   // 軌道ガイドタブ(表示パネル5.2節)の設定。ゲーム側が変更のたびに渡す。
@@ -446,7 +446,7 @@ export class CelestialSystem implements CelestialMotions {
     this.zeroVelocityLines.sync(displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       style, gridVisibility, cameraSystem.activeCamera,
-      celestialShellScale());
+      CELESTIAL_SHELL_SCALE);
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, gridVisibility);
   }
 
@@ -529,7 +529,7 @@ export class CelestialSystem implements CelestialMotions {
   // 星球は描画原点(= カメラ)に固定した半径の殻。
   private syncStars(fixedBrightnessScale: number, visible: boolean): void {
     this.stars.mesh.position.set(0, 0, 0);
-    this.stars.mesh.scale.setScalar(celestialShellScale());
+    this.stars.mesh.scale.setScalar(CELESTIAL_SHELL_SCALE);
     this.stars.mesh.visible = visible;
     this.stars.setFixedBrightnessScale(fixedBrightnessScale);
   }
@@ -539,8 +539,8 @@ export class CelestialSystem implements CelestialMotions {
     return new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
   }
 
-  // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。実体も濃さも個体が
-  // 持ち、ここは表示ポリシーから「出すか」だけを決めて個体へ指示する。
+  // マップビューのときだけ参照軌道線を表示する。実体も濃さも個体が持ち、ここは表示ポリシー
+  // から「出すか」だけを決めて個体へ指示する。
   // cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
     simTime: number, fo: FloatingOrigin, visibilityPolicy: MapVisibilityPolicy | null,

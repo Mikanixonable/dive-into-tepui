@@ -104,7 +104,7 @@ function buildSaveData(game: Game): GameSaveData {
     detachedBoosters: game.dynamicSystem.detachedBoosters.map((booster) => booster.serialize()),
     bases: game.dynamicSystem.bases.map(b => b.serialize()),
     stage: game.activeStage.serialize(),
-    camera: { view: game.viewManager.serializeView(), ...game.cameraSystem.serialize() },
+    camera: { view: game.viewManager.current, ...game.cameraSystem.serialize() },
     navTarget: game.navTarget.id !== null ? { id: game.navTarget.id, name: game.navTarget.name! } : null,
   };
 }
