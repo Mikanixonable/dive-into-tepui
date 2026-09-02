@@ -14,6 +14,9 @@ import type { CelestialMarkers } from './marker/celestial-markers';
 import type { Targeter } from './targeter';
 import type { ActiveControllableController } from './active-controllable-controller';
 import type { DockingGuide } from './docking/docking-guide';
+import type { PlanGuide } from './plan/plan-guide';
+import type { PlanTrajectory } from './plan/plan-trajectory';
+import type { CelestialSystem } from './celestial/celestial-system';
 import type { DisplayWindow } from './display-window-manager';
 import type { FloatingOrigin } from './camera/floating-origin';
 import type { WorldViewFrame } from './world-view';
@@ -31,6 +34,9 @@ export class CombatView implements WorldViewFrame {
     private readonly touchControls: TouchControls | null,
     private readonly activePlayers: ActiveControllableController,
     private readonly dockingGuide: DockingGuide,
+    private readonly guide: PlanGuide,
+    private readonly planTrajectory: PlanTrajectory,
+    private readonly celestialSystem: CelestialSystem,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly hud: Hud,
   ) {}
@@ -75,9 +81,13 @@ export class CombatView implements WorldViewFrame {
     this.mapActions.handleCombatRightClick(this.input, simTime);
   }
 
-  // マップの選択候補と可視性ポリシーを空にする(戦闘ビューの表示・選択は null 経路で判定する)。
-  update(): void {
+  // マップの選択候補と可視性ポリシーを空にし(戦闘ビューの表示・選択は null 経路で判定する)、
+  // 直近ノードの消化・接近通知を進める。
+  update(displayWindow: DisplayWindow): void {
     this.mapPickables.clear();
+    this.guide.update(
+      this.activePlayers.current, displayWindow.simTime, this.celestialSystem.celestialMotions,
+    );
   }
 
   // 天体ラベルはマップ専用の表示なので、戦闘ビューの間は畳んでおく。
@@ -85,8 +95,9 @@ export class CombatView implements WorldViewFrame {
     this.celestialMarkers.hideLabels();
   }
 
-  // 戦闘ビュー専用の常設表示(タッチのモードボタン・ドッキングガイド)と、軌道線候補の後始末。
-  syncPanels(_displayWindow: DisplayWindow, fo: FloatingOrigin): void {
+  // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド・ドッキングガイド)と、
+  // 軌道線候補の後始末。
+  syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
     this.linePickables.clear();
     const player = this.activePlayers.current;
     if (player) {
@@ -95,7 +106,9 @@ export class CombatView implements WorldViewFrame {
         (key) => player.throttle.isThrustLatched(key),
       );
     }
-    this.dockingGuide.sync(player, fo, this.cameraSystem.activeCameraProjection);
+    const project = this.cameraSystem.activeCameraProjection;
+    this.guide.sync(player, displayWindow.simTime, project, this.planTrajectory.planDisplay.path);
+    this.dockingGuide.sync(player, fo, project);
   }
 
   dispose(): void {
