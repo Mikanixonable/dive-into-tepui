@@ -13,8 +13,10 @@ import type { CelestialMarkers } from './marker/celestial-markers';
 import type { Targeter } from './targeter';
 import type { ActiveControllableController } from './active-controllable-controller';
 import type { DockingGuide } from './docking/docking-guide';
-import type { PlanGuide } from './plan/plan-guide';
+import { PlanGuide } from './plan/plan-guide';
 import type { PlanPath } from './plan/plan-path';
+import type { UiSfx } from '../audio/sfx/ui-sfx';
+import type { MarkerManager } from './marker/marker-manager';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { DisplayWindow } from './display-window-manager';
 import type { FloatingOrigin } from './camera/floating-origin';
@@ -23,6 +25,9 @@ import type { ObjectPickable } from './pickable/object-pickable';
 import type { PerfCounts } from '../perf-meter';
 
 export class CombatView implements WorldViewFrame {
+  // 直近ノードの実行ガイドは戦闘ビューでしか出さないので、ここが持つ。
+  private readonly planGuide: PlanGuide;
+
   constructor(
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
@@ -33,12 +38,15 @@ export class CombatView implements WorldViewFrame {
     private readonly touchControls: TouchControls | null,
     private readonly activePlayers: ActiveControllableController,
     private readonly dockingGuide: DockingGuide,
-    private readonly guide: PlanGuide,
     private readonly planPath: PlanPath,
     private readonly celestialSystem: CelestialSystem,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly hud: Hud,
-  ) {}
+    uiSfx: UiSfx,
+    markerManager: MarkerManager,
+  ) {
+    this.planGuide = new PlanGuide(hud, uiSfx, markerManager);
+  }
 
   // 戦闘ビューは表示トグルによる間引きを持たないので、候補列も可視性ポリシーも持たない。
   readonly pickables: readonly ObjectPickable[] = [];
@@ -97,7 +105,7 @@ export class CombatView implements WorldViewFrame {
 
   // 直近ノードの消化・接近通知を進める。
   update(displayWindow: DisplayWindow): void {
-    this.guide.update(
+    this.planGuide.update(
       this.activePlayers.current, displayWindow.simTime, this.celestialSystem.celestialMotions,
     );
   }
@@ -117,7 +125,7 @@ export class CombatView implements WorldViewFrame {
       );
     }
     const project = this.cameraSystem.activeCameraProjection;
-    this.guide.sync(player, displayWindow.simTime, project, this.planPath);
+    this.planGuide.sync(player, displayWindow.simTime, project, this.planPath);
     this.dockingGuide.sync(player, fo, project);
   }
 
