@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { View } from '../view/view';
 import { Attitude } from '../../physics/attitude';
-import { qFromForwardUp, qRotate } from '../../math/quat';
+import { qFromBasis, qRotate } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
@@ -219,7 +219,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // state の速度方向を機首、位置方向を上として姿勢を組む。
   private static progradeAttitude(state: KinematicState): Attitude {
     return {
-      q: qFromForwardUp(state.v, state.r) ?? { x: 0, y: 0, z: 0, w: 1 },
+      q: qFromBasis(state.v, state.r),
       w: v3(),
       inertia: Player.INERTIA,
     };
