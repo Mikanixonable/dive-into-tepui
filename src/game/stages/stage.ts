@@ -222,7 +222,7 @@ export abstract class Stage {
     this.syncStatusPanel(player, cameraSystem.view === 'map');
   }
 
-  // hudSubStatus() が null のとき、またはマップ視点のときはパネルを畳む。
+  // hudSubStatus() が null のとき、またはマップビューのときはパネルを畳む。
   private syncStatusPanel(player: Player | null, mapView: boolean): void {
     const message = this.hudSubStatus();
     const show = message !== null && !mapView;

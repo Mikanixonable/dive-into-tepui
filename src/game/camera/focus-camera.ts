@@ -500,7 +500,7 @@ export class FocusCamera {
     const projectedUp = norm(this.projectOntoPlane(up, offset));
     this.setRotationBasis(offset, projectedUp);
     this.resetPan();
-    this._hud.hint('マップ視点をリセット');
+    this._hud.hint('マップビューの視点をリセット');
   }
 
   // パン変位をゼロに戻す。

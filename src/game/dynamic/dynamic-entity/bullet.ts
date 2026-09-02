@@ -1,4 +1,4 @@
-// Shooter / BulletType は public フィールドの型なので、外から名指しできるよう export したままにする。
+// 実体弾とプラズマ弾。飛翔と寿命・接触の帰結を持ち、残像として見える向きを毎フレーム組む。
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
 import { KinematicState } from '../../../physics/kinematic-state';
@@ -34,7 +34,6 @@ type BulletType = 'normal' | 'plasma';
 // geometry/material はビルダーが弾種ごとに共有するため、traverse による個別 dispose は行わない。
 export class Bullet extends DynamicEntity {
     public override readonly bcInv = BULLET_BCINV;
-    // 弾は姿勢を持たず、速度方向を向く(sync)。
     public readonly hasAttitude = false;
 
     private readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
@@ -110,7 +109,7 @@ export class Bullet extends DynamicEntity {
         if (simTime >= this.expiresAt) this.alive = false;
     }
 
-    // 姿勢を持たないため、att.q ではなく残像として見る側に対する相対速度の向きを向く。
+    // 弾は姿勢を持たず、見る側に対する相対速度の向きへ伸びて見える(SPEC/COMBAT.md)。
     public sync(fo: FloatingOrigin, displayTime: number): void {
         // 表示できる時刻の範囲外なら非表示にする
         const s = this.stateAt(displayTime);

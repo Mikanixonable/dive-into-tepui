@@ -274,7 +274,7 @@ export class OrbitGuideLines {
     this.markers.endFrame();
   }
 
-  // 表示中のガイド線を、当たり判定向けの識別情報付きで返す(マップ視点外・0本の間は空)。
+  // 表示中のガイド線を、当たり判定向けの識別情報付きで返す(マップビュー外・0本の間は空)。
   // sampleCount は1本を何分割して点列に落とすか — クリック位置を拾う細かさを決めるだけで、
   // 描かれる線の細かさとは無関係。
   public visibleLines(sampleCount: number): readonly VisibleGuideLine[] {

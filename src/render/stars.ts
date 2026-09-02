@@ -6,15 +6,12 @@ import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
 
-// 星野・天球グリッドを置く殻の半径 [m]。カメラの near はこの殻に収まるよう決まる
-// (focus-camera.ts の near 参照)。殻は視点中心なので、半径を拡げても見え方は変わらない。
+// 星野・天球グリッドを置く殻の半径 [m]。殻は視点中心なので、半径を拡げても見え方は変わらない。
 export const CELESTIAL_SHELL_RADIUS = 1.35e10;
 
-// 星殻・天球グリッドへ掛ける倍率。CELESTIAL_SHELL_RADIUS まで拡げる
-// (far は視距離に連動して毎フレーム変わるので、殻の拡大率はそこから独立させる)。
-export function celestialShellScale(): number {
-  return CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS;
-}
+// 星殻・天球グリッドへ掛ける倍率。far は視距離に連動して毎フレーム変わるので、
+// 殻の拡大率はそこから独立させる。
+export const CELESTIAL_SHELL_SCALE = CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS;
 
 export interface Stars {
   readonly mesh: THREE.Mesh;

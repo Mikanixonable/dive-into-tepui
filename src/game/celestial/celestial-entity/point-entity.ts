@@ -129,7 +129,7 @@ export class PointEntity extends CelestialEntity {
   }
 
   // displayTime 時点の位置へ実体メッシュか輝点ビルボードのどちらかを同期する(常に片方は
-  // 隠す)。見かけ直径が閾値未満では実体を隠す(戦闘視点は輝点へ切り替え、広範囲視点は
+  // 隠す)。見かけ直径が閾値未満では実体を隠す(戦闘ビューは輝点へ切り替え、マップビューは
   // 輝点も出さない)。
   sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, star: StarEntity | null,

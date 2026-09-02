@@ -17,7 +17,7 @@ export class LeadMarkers {
 
   constructor(private readonly markerManager: MarkerManager) { }
 
-  // 射撃できない状況(マップモード・自機喪失)では表示せず、保持していたロック履歴も捨てる。
+  // 射撃できない状況(マップビュー・自機喪失)では表示せず、保持していたロック履歴も捨てる。
   sync(
     player: Player,
     targetsArray: readonly CombatTarget[],
@@ -50,7 +50,7 @@ export class LeadMarkers {
   }
 
   // key は敵ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
-  // マップモード突入・自機喪失のたびに sync が retire([]) を呼んで全消去するが、
+  // マップビュー突入・自機喪失のたびに sync が retire([]) を呼んで全消去するが、
   // マーカーの生成自体はマップの開閉ごとに一度きりで毎フレームではないため、
   // 戦闘ビューへ戻った際の再生成コストは無視できる。
   private retire(keys: readonly string[]): void {
