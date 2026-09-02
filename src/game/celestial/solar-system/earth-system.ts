@@ -18,6 +18,7 @@ import {
 import { Aurora, type AuroraOptics } from '../../../render/aurora';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import { CelestialSurface } from '../../../render/celestial-surface';
+import { CumulusShell } from '../../../render/cumulus-shell';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import { EarthCoastline } from '../../../render/earth-coastline';
 import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
@@ -133,13 +134,14 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   mieAnisotropy: 0.8,
 };
 
-// 地表・雲・雲影を合成したアルベドの測光。平均輝度 0.3104 は合成後の式で測った値で、
-// A_B=0.306 との比が倍率。averageHue も合成後の式で測った色み。
+// 地表・薄い雲・積雲の殻を合わせたアルベドの測光。倍率は、殻に覆われずに残る地表の平均輝度
+// 0.1937 へこれを掛け、殻(アルベド 0.8)が覆う 0.1274 ぶんを足すと A_B=0.306 になる値。
+// averageHue はその合成の色み。平均はどれもテクスチャ上を緯度余弦で重み付けて測る。
 export const EARTH_TEXTURE: CelestialTexture = {
   url: earthTextureUrl,
-  albedoScale: 0.9858,
+  albedoScale: 1.0536,
   bondAlbedo: 0.306,
-  averageHue: [0.9695, 0.9937, 1.1519],
+  averageHue: [0.9611, 0.9927, 1.1863],
 };
 
 // 地球のオーロラ。オーバル緯度は磁極の配置、発光高度は降り込む粒子が大気を励起する層、
@@ -184,12 +186,14 @@ export function earthSystem(
   earthSpinPhase0 = 0,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
+  // 雲の場は殻が持ち、地表はその実体を借りて薄い雲を焼き込む。
+  const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
-      CelestialSurface.clouded(EARTH_TEXTURE, cloudFieldUrl, earthSmoothnessUrl),
+      CelestialSurface.clouded(EARTH_TEXTURE, cumulus.field, earthSmoothnessUrl),
       EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
-      GeostationaryOverlay.of(earth.body),
+      GeostationaryOverlay.of(earth.body), cumulus,
     ),
     moon: new SphereEntity(
       new SatelliteMotion(satelliteDefForSimZero(MOON, phases, simZeroEt), earth),
