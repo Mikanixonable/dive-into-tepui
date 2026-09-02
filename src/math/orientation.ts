@@ -1,6 +1,6 @@
-// 向き(Quat)と、人が操作できる量との行き来。極軸まわりの方位角・仰角・ロールへの分解と、
-// 画面ドラッグ・回転キーを今の向きへ積む操作を持つ。極軸の選び方(自転軸・軌道面法線・黄道面
-// 法線など)と入力の感度は、呼び出し側が決める。
+// 向き(Quat)を、極軸まわりの方位角・仰角・ロールへ分解し、また組み直す。極軸の選び方
+// (自転軸・軌道面法線・黄道面法線など)は呼び出し側が決めるので、この分解の意味は
+// 「その軸を天頂としたときに、どちらをどれだけ向いているか」になる。
 //
 // 回転が写す局所基底は LOCAL_FORWARD(+Z)・LOCAL_UP(+Y)・LOCAL_RIGHT(+X) の3本で、
 // yaw/pitch が決めるのは LOCAL_FORWARD の向き、roll がその軸まわりの傾き。
@@ -71,26 +71,3 @@ export function sphericalOffset(yaw: number, pitch: number, dist: number): Vec3 
   return scale(v3(cp * Math.cos(yaw), Math.sin(pitch), cp * Math.sin(yaw)), dist);
 }
 
-// 画面ドラッグと回転キーを、いまの向き rotation へ積む。すべて [rad] で受け、感度の換算は
-// 呼び出し側が済ませておく。ヨー/ピッチは固定のワールド軸ではなく現在の上軸/右軸まわりに
-// 回すので、ロールで上方向が傾いても画面上の動きと入力方向が一致し続ける。
-export function rotateByScreenDrag(
-  rotation: Quat, dragRight: number, dragUp: number, roll: number, keyYaw: number, keyPitch: number,
-): Quat {
-  let q = rotation;
-  if (keyYaw !== 0) q = qNormalize(qMul(qFromAxisAngle(qRotate(q, LOCAL_UP), -keyYaw), q));
-  if (keyPitch !== 0) {
-    const right = norm(cross(norm(qRotate(q, LOCAL_FORWARD)), qRotate(q, LOCAL_UP)));
-    q = qNormalize(qMul(qFromAxisAngle(right, keyPitch), q));
-  }
-  // +Z は注視点からカメラへ向く軸。ドラッグの回転軸はドラッグ方向とこの視線軸の外積にする —
-  // 逆向き(-forward)を使うと左右ドラッグの回転符号が反転する。
-  const forward = qRotate(q, LOCAL_FORWARD);
-  const up = qRotate(q, LOCAL_UP);
-  const screenRight = norm(cross(scale(forward, -1), up));
-  const dragVec = addScaled(scale(screenRight, dragRight), up, dragUp);
-  const dragLen = Math.hypot(dragVec.x, dragVec.y, dragVec.z);
-  if (dragLen > 1e-9) q = qNormalize(qMul(qFromAxisAngle(norm(cross(dragVec, forward)), dragLen), q));
-  if (roll !== 0) q = qNormalize(qMul(qFromAxisAngle(qRotate(q, LOCAL_FORWARD), roll), q));
-  return q;
-}
