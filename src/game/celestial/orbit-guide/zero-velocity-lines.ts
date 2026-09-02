@@ -10,7 +10,7 @@ import { CurveKnots } from '../../../render/curve';
 import { OrbitingMotion } from '../../../physics/celestial-motion';
 import { secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialSystem } from '../celestial-system';
-import type { WorldView } from '../../view-manager';
+import type { WorldView } from '../../world-view';
 import { Vec3 } from '../../../math/vec3';
 import { guideSecondary, rotatingFrame } from '../../../physics/orbit-guide';
 import { zeroVelocityCurveSet, SectionPlane } from '../../../physics/zero-velocity';

@@ -1,7 +1,7 @@
 // LEAD(見越し)マーカー: 自機の弾がその敵に命中する未来位置を示す。自機と敵の双方の
 // 状態に依存するため、Enemy にも Targeter にも属さない独立責務として切り出してある。
 import { leadPoint } from '../../physics/intercept';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from './marker-manager';
 import type { CombatTarget } from '../targeter';

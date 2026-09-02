@@ -1,7 +1,7 @@
 // 自機の姿勢だけから決まる戦闘ビュー専用 HUD マーカー(軌道基準の方向マーカーと機首ボアサイト)。
 // マップ上の自機位置マーカーは他の船と同じく Targeter → GroupedMarkers が描く。
 import { Attitude, qRotate } from '../../physics/attitude';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, sub, v3 } from '../../math/vec3';
 import type { OrbitReference } from '../orbit-reference';
