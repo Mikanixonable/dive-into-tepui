@@ -59,8 +59,8 @@ export class OverlayPass {
     this.depthCopyMaterial.colorNode = vec4(0, 0, 0, 0);
     this.depthCopyMaterial.depthNode = texture(depthTexture, screenUV).r;
 
-    // アルファはプリマルチプライド前提。線はアンチエイリアスで縁が半透明になるため、
-    // 素朴な (src.a, 1-src.a) 合成では縁の色が薄まった上へさらにアルファが掛かって二重に霞む。
+    // アルファはプリマルチプライド前提。不透明度を持つ線が半透明の画素を残すので、素朴な
+    // (src.a, 1-src.a) 合成では色が薄まった上へさらにアルファが掛かって二重に霞む。
     this.compositeMaterial = new MeshBasicNodeMaterial({
       transparent: true,
       depthTest: false,
@@ -85,8 +85,8 @@ export class OverlayPass {
     const dilated = neighbors.reduce((acc: Vec4Node, n) => max(acc, n), sampleAt(screenUV));
 
     // ターゲットの rgb はアルファを掛けた後の値。色を触るにはいったんアルファを外し、
-    // 暗くしてから掛け直す — 掛かったまま暗くすると、線の縁(半透明な画素)だけ余計に
-    // 変換されてアンチエイリアスの縁が背景へ溶ける。
+    // 暗くしてから掛け直す — 掛かったまま暗くすると、半透明な画素だけ余計に変換されて
+    // 背景へ溶ける。
     const sample = dilated;
     const unpremultiplied = sample.rgb.div(max(sample.a, 1e-4));
     const alpha = min(sample.a.mul(SCHEMATIC_OVERLAY_ALPHA_GAIN), 1);
