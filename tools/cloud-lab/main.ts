@@ -14,6 +14,7 @@ declare global {
       views: readonly CloudLabViewId[];
       show: (id: CloudLabViewId) => void;
       setTime: (hours: number) => void;
+      aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
     };
   }
@@ -72,6 +73,12 @@ async function init(): Promise<void> {
     views: CLOUD_LAB_VIEWS.map((view) => view.id),
     show: (id) => { markView(id); canvas.show(id); },
     setTime: (hours) => { canvas.setTime(hours); setSlider(hours); },
+    aimCap: (latitude, longitude, radius) => {
+      canvas.aimCap(latitude, longitude, radius);
+      setCapLatitude(latitude);
+      setCapLongitude(longitude);
+      setCapRadius(radius);
+    },
     capture: () => canvas.capture(),
   };
 }
