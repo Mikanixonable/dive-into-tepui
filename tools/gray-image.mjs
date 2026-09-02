@@ -1,5 +1,5 @@
-// 雲の統計・分離ツール(cloud-lab-compare / cloud-lab-separate)が共有する、グレースケール画像
-// (0..1 の Float32 場 {width, height, data})の入出力と基本演算。
+// 雲の統計ツール(cloud-lab-compare)が使う、グレースケール画像(0..1 の Float32 場
+// {width, height, data})の入出力と切り出し。
 import { inflateSync } from 'node:zlib';
 import { encodeGrayPng } from './png.mjs';
 
@@ -71,31 +71,3 @@ export function cropField(field, x0, y0, w, h) {
   return { width: w, height: h, data: out };
 }
 
-// 半径 radius の箱ぼかしを縦横に 1 回ずつ。移動平均なので半径によらず O(画素数)。
-// wrapX は経度の巻き付き(正距円筒)用で、縦と wrap しない横は端の値を伸ばす。
-export function boxBlur(field, radius, wrapX) {
-  const { width, height, data } = field;
-  const n = 2 * radius + 1;
-  const clampW = (x) => (wrapX ? (x + width * 4) % width : Math.min(width - 1, Math.max(0, x)));
-  const tmp = new Float32Array(width * height);
-  for (let y = 0; y < height; y++) {
-    const row = y * width;
-    let sum = 0;
-    for (let dx = -radius; dx <= radius; dx++) sum += data[row + clampW(dx)];
-    for (let x = 0; x < width; x++) {
-      tmp[row + x] = sum / n;
-      sum += data[row + clampW(x + 1 + radius)] - data[row + clampW(x - radius)];
-    }
-  }
-  const clampH = (y) => Math.min(height - 1, Math.max(0, y));
-  const out = new Float32Array(width * height);
-  for (let x = 0; x < width; x++) {
-    let sum = 0;
-    for (let dy = -radius; dy <= radius; dy++) sum += tmp[clampH(dy) * width + x];
-    for (let y = 0; y < height; y++) {
-      out[y * width + x] = sum / n;
-      sum += tmp[clampH(y + 1 + radius) * width + x] - tmp[clampH(y - radius) * width + x];
-    }
-  }
-  return { width, height, data: out };
-}
