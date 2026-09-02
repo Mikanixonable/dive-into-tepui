@@ -1,6 +1,5 @@
 // どのワールドビューを表示しているかの正本。遷移は必ず setView() を通る。
 import { Hud } from './hud/hud';
-import { CameraSystem } from './camera/camera-system';
 import { TouchControls } from './input/touch';
 import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
@@ -31,7 +30,6 @@ export class ViewManager {
   constructor(
     private readonly hud: Hud,
     private readonly editor: PlanEditor,
-    private readonly cameraSystem: CameraSystem,
     private readonly displayWindow: DisplayWindowManager,
     private readonly mapActions: MapContextActions,
     private readonly activePlayers: ActiveControllableController,
@@ -106,13 +104,12 @@ export class ViewManager {
     return true;
   }
 
-  // 現在のビューに合わせて HUD の見た目と、カメラ・計画編集・未来表示・収納状態の各フラグを揃える。
+  // 現在のビューに合わせて HUD の見た目と、計画編集・未来表示・収納状態の各フラグを揃える。
   private applyChrome(): void {
     setPanelCollapsedView(this.worldView);
     this.hud.setWorldView(this.worldView);
     const map = this.worldView === 'map';
     this.touchControls?.setMapMode(map);
-    this.cameraSystem.setMapMode(map);
     this.editor.setMapMode(map);
     this.displayWindow.forceCurrent = !map;
   }
