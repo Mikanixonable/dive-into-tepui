@@ -330,6 +330,7 @@ export class LabView {
     this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
     const rings = this.current.rings;
     this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
+    this.pipeline.sunOcclusion.setCumulusShadow(this.current.cumulusShadow ?? null);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
       (this.current.atmospheres ?? []).map((body) => {

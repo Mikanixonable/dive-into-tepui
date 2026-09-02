@@ -113,44 +113,6 @@
 
 ## 手順
 
-### 手順 2. 雲影を遮蔽関数の源として足す
-
-**目的**: u + 0.001 の固定ずらしを廃し、`SunOcclusion` へ 4 つ目の源「球殻と光路の交点で場から
-τ を引く」を足す。足した時点で地表・艦艇・雲どうし・大気のすべてへ同時に落ち、「太陽が低いほど
-長く伸びる」(SPEC RENDERING.md:408-409)が実体を持つ。
-
-環の帯(`sun-occlusion.ts:124-149`)が同型の前例 — 平面との交点が球殻との交点に、一様 τ が
-テクスチャの τ に変わるだけで、返す形(exp(−τ_slant))と合成(透過率の積)は同じ。既存の
-作法どおり「型 + uniform 群 + setter + hasActive 判定 + transmittance のブロック」の 5 点セットで
-足す。
-
-- **長い影**: 光路が層を横切る水平距離 L = Δh / tan(太陽高度)(塔 10 km は高度 5° で 114 km)。
-  テクスチャ空間の線分に沿って 4〜8 タップ、τᵢ = −ln(1 − cᵢ) を Beer–Lambert で掛ける。
-  L の上限は 300 km(昼夜境界の真上で発散するため)。半影のぼかしは要らない
-  (半影幅 93 m ≪ texel)。
-- **姿勢**: 正距円筒を世界座標から引くには自転位相込みの姿勢が要る。既存の前例は軸 1 本
-  (`setRings`)のみなので、姿勢の uniform は新設。
-- **自己影**: 受け手が殻上のその点そのものである場合だけ除外(球の自己遮蔽と同じ公差)。
-  雲どうしの影は数える。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-|---|---|
-| `src/render/pipeline/sun-occlusion.ts` | :34-44 `OcclusionSources` へ雲殻フィールド、:208-241 `transmittance` へ 4 つ目のブロック、uniform・setter・hasActive の 5 点セット |
-| `src/render/pipeline/occlusion.ts` | :49-59 のマテリアル作り分けが rings × cloud の 2×2 へ増えないよう、雲は「テクスチャが結ばれていれば有効(既定 1×1 黒)」の常時 1 系統にする |
-| `src/render/ring.ts` :91 / `src/render/pipeline/atmosphere-pass.ts` :350 | `sources` の新フィールドを埋める(必須プロパティなので型で強制される) |
-| `src/game/celestial/celestial-system.ts` | :472-514 `syncOcclusion` で場テクスチャ + 姿勢(`orientationAt` — 軸でなく位相込み)を供給。`clouds` オフで源ごと切る |
-| `tools/render-lab/lab.ts` | :345-347 の同期に雲殻の源を足す |
-| `src/render/celestial-surface.ts` | :18-23 の `CLOUD_SHADOW_OFFSET_U` ほか焼き込み影の定数と :131-134 の適用を削除 |
-
-**達成条件と検証**
-- `npm run typecheck`・`npm run test:render`・`npm run test:game`。
-- grep `CLOUD_SHADOW_OFFSET_U` が `src/` から 0 件。
-- `npm run render-lab` の `earth-terminator`: 影が太陽と逆側へ伸び、昼夜境界へ近いほど長い。
-  `earth`(実機でも): 雲とその影の位置関係が自転で崩れない(姿勢の検算)。
-- F3「遮蔽」増分 ≤ 0.2 ms(現況 0.22 ms 比)。
-
 ### 手順 3. 視差レイマーチで雲頂の起伏を立てる
 
 **目的**: 殻を最大雲頂(15 km)に置いたまま、画素ごとに視線を高さ場(G)へ下ろして交点を探し

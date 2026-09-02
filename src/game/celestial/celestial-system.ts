@@ -469,6 +469,17 @@ export class CelestialSystem implements CelestialMotions {
         { center: fo.RtoThreeV3(body.positionAt(displayTime)), radius: body.def.radius }
       )));
     this.syncRingShadow(fo, displayTime, graphics);
+    this.syncCumulusShadow(fo, displayTime, graphics);
+  }
+
+  // 積雲の殻を持つ天体を遮蔽パスへ渡す。持つ天体が無いか雲を描かない設定なら源ごと切る。
+  private syncCumulusShadow(
+    fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData,
+  ): void {
+    const casters = graphics.clouds
+      ? this.entities.flatMap((body) => body.cumulusShadowAt(fo, displayTime) ?? [])
+      : [];
+    this.sunOcclusion.setCumulusShadow(casters[0] ?? null);
   }
 
   // 環を持つ天体を候補として選定へ回し、選ばれた1体の帯を遮蔽パスへ渡す。選ばれなければ
