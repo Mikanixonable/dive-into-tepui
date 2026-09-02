@@ -1,16 +1,11 @@
 // 天体ID・役割・回転ゾーンの選択から、パネルへ表示する日本語ラベルを引き当てる。
 import { frameRoleOf, FrameRole, FrameRotationSource } from '../../../physics/frame';
-import type { CameraRotationFollow } from '../../camera/map-camera';
+import type { CameraRotationFollow } from '../../camera/focus-camera';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 
 // 役割の日本語表示名。
 export function frameRoleName(role: FrameRole): string {
   return role === 'activeShip' ? '操作対象の船' : 'ターゲット';
-}
-
-// 役割を参照フレームの基準 id として書いた形。
-export function frameRoleAnchorId(role: FrameRole): string {
-  return `@${role}`;
 }
 
 // 回転ゾーンの選択を日本語表記へ変換する。天体を指す選択の表示名は celestialSystem から引く。
