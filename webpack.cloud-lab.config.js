@@ -6,7 +6,11 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 
 module.exports = {
-  entry: './tools/cloud-lab/main.ts',
+  // main が実験環境(index.html)、separate が実写の分離環境(separate.html)。
+  entry: {
+    main: './tools/cloud-lab/main.ts',
+    separate: './tools/cloud-lab/separate-main.ts',
+  },
   resolve: {
     extensions: ['.ts', '.js'],
   },
@@ -25,9 +29,11 @@ module.exports = {
     ],
   },
   output: {
-    filename: 'cloud-lab.[contenthash].js',
+    filename: 'cloud-lab.[name].[contenthash].js',
     path: path.resolve(__dirname, '.cloud-lab'),
-    clean: true,
+    // separated/ は cloud-lab:separate の生成物で、cloud-lab:compare が別のビルドをまたいで
+    // 読む。ビルドの掃除で消さない。
+    clean: { keep: /^separated[\\/]/ },
   },
   optimization: {
     minimizer: [
@@ -40,6 +46,12 @@ module.exports = {
   plugins: [
     new HtmlWebpackPlugin({
       template: './tools/cloud-lab/index.html',
+      chunks: ['main'],
+    }),
+    new HtmlWebpackPlugin({
+      template: './tools/cloud-lab/separate.html',
+      filename: 'separate.html',
+      chunks: ['separate'],
     }),
   ],
   devServer: {
