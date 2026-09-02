@@ -7,7 +7,8 @@ import type { SimSpeedManager } from './dynamic/sim-speed-manager';
 import type { TouchControls } from './input/touch';
 import type { CameraSystem } from './camera/camera-system';
 import type { DynamicSystem } from './dynamic/dynamic-system';
-import type { MapContextActions } from './pickable/map-context-actions';
+import type { ObjectWindows } from './pickable/object-windows';
+import { pickCombatEntityAtPoint } from './pickable/combat-pick';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import type { Targeter } from './targeter';
 import type { ActiveControllableController } from './active-controllable-controller';
@@ -26,7 +27,7 @@ export class CombatView implements WorldViewFrame {
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
-    private readonly mapActions: MapContextActions,
+    private readonly objectWindows: ObjectWindows,
     private readonly dynamicSystem: DynamicSystem,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly touchControls: TouchControls | null,
@@ -78,13 +79,20 @@ export class CombatView implements WorldViewFrame {
   }
 
   // 照準キーと右クリックの配分。操作艦がいなければ照準先が無いので配らない。
+  // 右クリックは実体に当たればそのプロパティウィンドウを、外れれば空域メニューを開く。
   handlePointer(simTime: number): void {
     const player = this.activePlayers.current;
     if (!player) return;
     const project = this.cameraSystem.activeCameraProjection;
     const combatTargets = this.dynamicSystem.getCombatTargets(player);
     this.targeter.handleTargetSelectKey(this.input, combatTargets, project);
-    this.mapActions.handleCombatRightClick(this.input, simTime);
+    this.input.takeRightClicks((p) => {
+      const hit = pickCombatEntityAtPoint(
+        this.dynamicSystem, this.cameraSystem.activeViewpoint, project, p.x, p.y);
+      if (hit) this.objectWindows.open(p.x, p.y, hit, simTime);
+      else this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);
+      return true;
+    });
   }
 
   // 直近ノードの消化・接近通知を進める。
