@@ -23,14 +23,14 @@ export function focusPoint(
   return { kind: 'point', frame, point: toFramePoint(tf, pos) };
 }
 
-// 注視点の候補。MapPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。
-// **MapPickable 型そのものを受け取ってはいけない** — map-pickable.ts は camera-system.ts を
+// 注視点の候補。ObjectPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。
+// **ObjectPickable 型そのものを受け取ってはいけない** — object-pickable.ts は camera-system.ts を
 // 型 import しており、それが three/webgpu を引き込む。tsconfig.test.json の include へ
-// map-pickable.ts が入ると型検査が DOM 定義を要求して壊れる。
+// object-pickable.ts が入ると型検査が DOM 定義を要求して壊れる。
 export interface FocusCandidate {
   readonly id: string;
   // 表示時刻の ECI 位置。求まらないフレームは null。
-  mapPosAt(displayTime: number): Vec3 | null;
+  posAt(displayTime: number): Vec3 | null;
 }
 
 export interface FocusResolveState {
@@ -78,7 +78,7 @@ export function resolveFocusTarget(
   if (anchored !== null) {
     return { pos: anchored.r, missingFocusFrames: 0, lastResolvedFocus: anchored.r, fallToOrigin: false };
   }
-  const candidatePos = candidates.find((c) => c.id === focus.id)?.mapPosAt(displayTime) ?? null;
+  const candidatePos = candidates.find((c) => c.id === focus.id)?.posAt(displayTime) ?? null;
   if (candidatePos !== null) {
     return { pos: candidatePos, missingFocusFrames: 0, lastResolvedFocus: candidatePos, fallToOrigin: false };
   }

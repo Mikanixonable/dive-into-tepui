@@ -1,4 +1,4 @@
-// マップ上のターゲット(任意の MapPickable — 月・ラグランジュ点なども含む)の保持と、
+// マップ上のターゲット(任意の ObjectPickable — 月・ラグランジュ点なども含む)の保持と、
 // 自機軌道との相対 AN/DN(昇交点・降交点)・再接近点の算出・マーカー表示・被選択物としての公開。
 // ターゲットが敵・自艦・基地(CombatTarget)の場合は、Targeter の射撃・照準補助の基準にもなる。
 import { Vec3, v3, add, len, sub } from '../math/vec3';
@@ -20,7 +20,7 @@ import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
 import { RelativeNodeMarker } from './marker/relative-node-marker';
 import { CameraSystem } from './camera/camera-system';
-import { MapPickable } from './pickable/map-pickable';
+import { ObjectPickable } from './pickable/object-pickable';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialSystem } from './celestial/celestial-system';
 import { lagrangePointOf } from './celestial/lagrange-id';
@@ -282,7 +282,7 @@ export class NavTarget {
   }
 
   // 右クリック対象として公開する AN/DN・再接近点アイコン。計算できているぶんだけ返す。
-  mapPickables(): readonly MapPickable[] {
+  pickables(): readonly ObjectPickable[] {
     return this.nodeMarkers.filter((marker) => !marker.gone);
   }
 
