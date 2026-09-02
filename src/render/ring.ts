@@ -89,7 +89,7 @@ function ringOpticsNodes(
   // ので、境界は半影の幅でぼける。**環の帯は源から外す** — 環のフラグメントは自分が乗って
   // いる帯の平面上に居るため、含めると自己遮蔽で刃こぼれする。
   const directLight = sunOcclusion.transmittance(positionWorld, {
-    rings: false, meshNormal: null, selfViewDistance: null, cumulusShadow: false,
+    rings: false, meshNormal: null, selfViewDistance: null, cumulusFootprint: null,
   });
 
   const denominator = float(1).add(phaseG.mul(phaseG)).sub(
