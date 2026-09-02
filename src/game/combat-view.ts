@@ -1,6 +1,9 @@
 // 戦闘ビュー専用のフレーム処理と遷移フック(WorldViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
 import type { Input } from './input/input';
+import { KEY_MAPPING as K } from './input/key-mapping';
+import type { Hud } from './hud/hud';
+import type { SimSpeedManager } from './dynamic/sim-speed-manager';
 import type { TouchControls } from './input/touch';
 import type { CameraSystem } from './camera/camera-system';
 import type { DynamicSystem } from './dynamic/dynamic-system';
@@ -28,6 +31,8 @@ export class CombatView implements WorldViewFrame {
     private readonly touchControls: TouchControls | null,
     private readonly activePlayers: ActiveControllableController,
     private readonly dockingGuide: DockingGuide,
+    private readonly simSpeedManager: SimSpeedManager,
+    private readonly hud: Hud,
   ) {}
 
   // 戦闘ビューは操作対象(艦または基地)が必要。
@@ -40,6 +45,24 @@ export class CombatView implements WorldViewFrame {
   // 戦闘専用の表示物を畳む。
   onLeave(): void {
     this.dockingGuide.hide();
+  }
+
+  // 計画キー: [Del] は計画全体の破棄、[N] は直近ノードへの自動ワープのトグル。
+  handleInput(input: Input, _dt: number, simTime: number): void {
+    if (input.takeKey(K.deleteNode)) this.clearPlan();
+    if (input.takeKey(K.autoWarpToNode)) {
+      const plan = this.activePlayers.currentControllable?.plan;
+      this.simSpeedManager.toggleAutoWarpToFirstNode(plan?.firstNode(), simTime);
+    }
+  }
+
+  // 確定済みのマニューバ計画を破棄し、進行中の自動ワープも解く。
+  private clearPlan(): void {
+    const plan = this.activePlayers.currentControllable?.plan;
+    if (!plan || plan.nodes.length <= 0) return;
+    plan.clear();
+    this.simSpeedManager.cancelAutoWarp();
+    this.hud.hint('マニューバ計画を破棄');
   }
 
   // 照準キーと右クリックの配分。操作艦がいなければ照準先が無いので配らない。

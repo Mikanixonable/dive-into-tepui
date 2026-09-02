@@ -14,6 +14,7 @@ import type { ActiveControllableController } from './active-controllable-control
 import type { DisplayWindow, DisplayWindowManager } from './display-window-manager';
 import type { FrameControls } from './hud/frame/frame-controls';
 import type { FrameAnchors } from './frame-anchors';
+import type { FloatingOrigin } from './camera/floating-origin';
 import type { WorldViewFrame } from './world-view';
 
 export class MapView implements WorldViewFrame {
@@ -51,6 +52,11 @@ export class MapView implements WorldViewFrame {
     this.mapActions.close();
   }
 
+  // Δv 編集キー([Del]=選択ノード削除・WASDQE・ラッチ)を編集セッションへ配る。
+  handleInput(input: Input, dt: number): void {
+    this.editor.handleInput(input, dt);
+  }
+
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。
   handlePointer(simTime: number): void {
     this.mapActions.handleMapRightClick(this.input, simTime);
@@ -67,6 +73,7 @@ export class MapView implements WorldViewFrame {
     this.targeter.updateEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
     this.dynamicSystem.updateBaseEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
     this.mapPickables.refresh(displayWindow);
+    this.editor.update(displayWindow);
   }
 
   // 天体ラベルの間引きと表示。この後のマーカー同期が近接判定に読む。
@@ -74,8 +81,10 @@ export class MapView implements WorldViewFrame {
     this.celestialMarkers.syncLabels(this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos);
   }
 
-  // マップ専用の常設パネル(未来表示・座標系)・天体ラベルのサブ行・軌道線の右クリック候補。
-  syncPanels(displayWindow: DisplayWindow): void {
+  // マップ専用の編集 UI と常設パネル(未来表示・座標系)・天体ラベルのサブ行・
+  // 軌道線の右クリック候補。
+  syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
+    this.editor.sync(this.cameraSystem, displayWindow.simTime, fo);
     this.displayWindowManager.sync(this.activePlayers.current);
     this.frameControls.sync(
       this.mapPickables.pickables, this.cameraSystem.activeCameraPos,
@@ -88,5 +97,7 @@ export class MapView implements WorldViewFrame {
     this.linePickables.refresh(displayWindow, this.frameAnchors);
   }
 
-  dispose(): void {}
+  dispose(): void {
+    this.editor.dispose();
+  }
 }
