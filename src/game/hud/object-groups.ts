@@ -1,7 +1,7 @@
-// MapPickable の列を、選択ウィジェット(ObjectPicker)向けのジャンル別グループへ組む純関数。
+// ObjectPickable の列を、選択ウィジェット(ObjectPicker)向けのジャンル別グループへ組む純関数。
 // どのジャンルへ入るかは候補自身(pickerGenre)が答えるので、ここは並べ替えと空グループの除去を行う。
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { MapPickable } from '../pickable/map-pickable';
+import type { ObjectPickable } from '../pickable/object-pickable';
 import type { ObjectPickerGroup } from './windows/object-picker';
 
 const GROUP_LABELS = ['恒星', '惑星', '準惑星', '衛星', '小天体', 'ラグランジュ点', '自艦', '敵', '基地', '弾薬', 'RCS燃料'] as const;
@@ -9,9 +9,9 @@ const GROUP_LABELS = ['恒星', '惑星', '準惑星', '衛星', '小天体', '�
 // 選択ウィジェットのジャンル。並びはこの表の順で、見出しの文字列がそのまま鍵になる。
 export type ObjectPickerGenre = typeof GROUP_LABELS[number];
 
-// items をジャンル別にグループ分けする。値は MapPickable.id。空のグループは返さない。
+// items をジャンル別にグループ分けする。値は ObjectPickable.id。空のグループは返さない。
 export function groupPickables(
-  celestialSystem: CelestialSystem, items: readonly MapPickable[], includeAllCelestialBodies = false,
+  celestialSystem: CelestialSystem, items: readonly ObjectPickable[], includeAllCelestialBodies = false,
 ): readonly ObjectPickerGroup<string>[] {
   const byGenre = new Map<ObjectPickerGenre, [string, string][]>();
   const shownIds = new Set<string>();

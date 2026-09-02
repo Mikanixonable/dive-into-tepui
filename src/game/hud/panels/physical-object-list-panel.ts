@@ -12,7 +12,7 @@ import { MQ_COARSE } from '../breakpoints';
 import { PhysicalObjectListTree } from './physical-object-list-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapPickable } from '../../pickable/map-pickable';
+import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DynamicEntityKind } from '../../dynamic/dynamic-entity/entity-kind';
 import type { Player } from '../../player/player';
 import type { RowNode } from './physical-object-list-tree';
@@ -122,7 +122,7 @@ export class PhysicalObjectListPanel {
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
   private readonly namesScratch = new Map<string, string>();
-  private readonly itemsByIdScratch = new Map<string, MapPickable>();
+  private readonly itemsByIdScratch = new Map<string, ObjectPickable>();
   private readonly crumbsScratch: string[] = [];
   private readonly focusAncestorsScratch = new Set<string>();
   private readonly matchAncestorsScratch = new Set<string>();
@@ -289,7 +289,7 @@ export class PhysicalObjectListPanel {
   // parentOf は id → 親 id(天体の親子関係のみ、他種別は載らない)。focusId が undefined
   // (フォーカス中の天体が無い)なら、どの行も強調しない。
   public sync(
-    items: readonly MapPickable[],
+    items: readonly ObjectPickable[],
     focusId: string | undefined,
     parentOf: ReadonlyMap<string, string>,
     activePlayer: Player | null,
