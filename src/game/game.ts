@@ -43,7 +43,8 @@ import { FrameAnchors } from './frame-anchors';
 import { OrbitReferenceSelector, type OrbitReference } from './orbit-reference';
 import { ObjectPickables } from './pickable/object-pickables';
 import { LinePickables } from './pickable/line-pickables';
-import { MapContextActions } from './pickable/map-context-actions';
+import { ObjectWindows } from './pickable/object-windows';
+import { MapPicking } from './pickable/map-picking';
 import { Navball } from './navball/navball';
 import { GameSaveData } from './save/save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
@@ -81,7 +82,7 @@ export class Game {
   // HUD(軌道分析パネルの投影タブなど)が current 経由で表示期間を読むため公開する。
   readonly displayWindowManager: DisplayWindowManager;
   readonly viewManager: ViewManager;
-  private readonly mapActions: MapContextActions;
+  private readonly objectWindows: ObjectWindows;
 
   readonly activeStage: Stage;
   // ポーズは Game 自身の状態として持つ。SIM_SPEED_LEVELS は離散段で 0 を表現できないうえ、
@@ -229,33 +230,37 @@ export class Game {
       this.celestialMarkers, this.planDisplay, this.frameAnchors,
     );
     const linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
-    this.mapActions = new MapContextActions(
+    this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, editor, this.simSpeedManager, this.pauseMenu, objectPickables, linePickables,
-      this.activePlayers, this.frameControls, this.activeStage, this.targeter, this.markerManager,
-      this.celestialMarkers,
+      this.activePlayers, this.frameControls, this.activeStage, this.targeter,
     );
 
     this.docking = new Docking(
       this._hud, this._worldSfx, this._scene, this.dynamicSystem.effects, this.markerManager,
-      this.dynamicSystem, this.mapActions, this.cameraSystem,
+      this.dynamicSystem, this.objectWindows, this.cameraSystem,
       (view) => this.viewManager.setView(view),
       this.activePlayers, this.activeStage,
     );
-    this.mapActions.setDocking(this.docking);
+    this.objectWindows.setDocking(this.docking);
 
     const dockingGuide = new DockingGuide(
       this._scene, this.markerManager, this.dynamicSystem, this.docking,
     );
     const guide = new PlanGuide(this._hud, this._uiSfx, this.markerManager);
     const combatView = new CombatView(
-      this.input, this.cameraSystem, this.targeter, this.mapActions, this.dynamicSystem,
+      this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
       this.activePlayers, dockingGuide, guide, this.planDisplay.path, celestialSystem,
       this.simSpeedManager, this._hud,
     );
+    const mapPicking = new MapPicking(
+      this._hud, this.cameraSystem, this.dynamicSystem, celestialSystem, this.celestialMarkers,
+      this.markerManager, this.navTarget, this.frameControls, objectPickables, linePickables,
+      this.objectWindows,
+    );
     const mapView = new MapView(
-      this.input, this.cameraSystem, this.targeter, editor, this.mapActions,
+      this.input, this.cameraSystem, this.targeter, editor, this.objectWindows, mapPicking,
       this.dynamicSystem, celestialSystem, objectPickables, linePickables,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.activePlayers,
@@ -299,7 +304,7 @@ export class Game {
     this.viewBadge.dispose();
     this.viewManager.dispose();
     this.docking.dispose();
-    this.mapActions.dispose();
+    this.objectWindows.dispose();
     this.activeStage.dispose();
     // Hud・効果音はこのゲームより長生きするので、書き換えたクラス・差し込んだ参照・鳴らしている
     // 継続音を元へ戻す。BGM は周回の外側が決めるものなので触らない。
@@ -550,9 +555,8 @@ export class Game {
     this.navTarget.sync(this.cameraSystem);
     this.dynamicSystem.syncEquatorNodes(this.cameraSystem);
 
-    // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは
-    // 最新値を表示し続ける必要がある。MapContextActions 側で窓が無ければ即時 return する。
-    this.mapActions.sync(simTime, displayTime, player);
+    // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
+    this.objectWindows.sync(simTime, displayTime);
     this.planDisplay.sync(this.cameraSystem, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
