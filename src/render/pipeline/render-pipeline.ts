@@ -3,8 +3,8 @@
 // 現在は11段: 影パス(恒星の直射光を遮るメッシュをライト空間の深度マップへ描く)→ G バッファパス
 // (深度・法線・ラフネス・ベース色・金属度・自己発光を MRT へ描く)→ 遮蔽パス(G バッファ深度から
 // 復元した位置に届く恒星の直射光の透過率を1枚へ描く)→ ライティングパス(その2枚だけを読み、
-// 拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(lit-opaque 層をライティングパスの照度で描き、
-// world パスと共有する HDR ターゲットの最初の書き込みとしてクリアする)→ 大気パス(不透明の
+// 拡散/鏡面の照度を MRT へ描く)→ マテリアルパス(照度と G バッファの素材を掛けた陰影を、
+// world パスと共有する HDR ターゲットの最初の書き込みとして描く)→ 大気パス(不透明の
 // 絵のスナップショットを読み、大気と合成し終えた絵を同じターゲットへ上書きする)→ world パス
 // (シーンを同じ HDR ターゲットへ重ね描きする)
 // → レンズ効果パス(明るい画素の光を画面上の角度で決まる広がりへ配り直す)→ composite パス
@@ -125,7 +125,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
     ], gpu);
-    this.materialPass = new MaterialPass(renderer, this.lightPrepass, gpu);
+    this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
     // 大気パスが読む、不透明の絵のスナップショット。共有ターゲットの中身を写すだけなので、
     // 深度は持たない。
     this.backdropTarget = new THREE.RenderTarget(1, 1, {
@@ -348,8 +348,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.schematicComposite.update(width, height);
       this.quad.material = this.schematicMaterial;
     } else {
-      // マテリアルパス。LIT_OPAQUE_LAYER のオブジェクトと背景専用レイヤーを this.target(このあとの
-      // world パスと共有 — 最初の書き込みなのでクリアする)へ描く。
+      // マテリアルパス。背景専用レイヤーと陰影を this.target(このあとの world パスと共有 —
+      // 最初の書き込みなのでクリアする)へ描く。
       this.materialPass.render(scene, camera, this.target);
 
       // 大気パス。大気が写るフレームだけ、不透明の絵のスナップショットを撮ってから、下地と
@@ -369,7 +369,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       }
       if (atmosphereVisible) this.atmospherePass.render(camera, this.target);
 
-      // world パス。マテリアルパスが LIT_OPAQUE_LAYER と背景専用レイヤーをチャンネル0から外しているので、
+      // world パス。LIT_OPAQUE_LAYER と背景専用レイヤーはチャンネル0から外れているので、
       // 既定のカメラマスクで描く限りここでは自動的に重複しない。autoClear を落として
       // マテリアルパスの描画(色・深度とも)を残したまま重ね描きする — world パスは透明物
       // (オービットライン・プルーム・ビルボードなど)を自分の描画順の最後に描くため、不透明な
@@ -425,6 +425,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.occlusionPass.dispose();
     this.sunShadowMaps.dispose();
     this.lightPrepass.dispose();
+    this.materialPass.dispose();
     this.atmospherePass.dispose();
     this.backdropTarget.dispose();
     this.backdropMaterial.dispose();
