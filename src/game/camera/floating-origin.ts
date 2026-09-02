@@ -12,8 +12,8 @@ import { sub, Vec3 } from '../../math/vec3';
 //       起こし、カメラが動くたびに丸め先が飛んで描画対象が振動して見える。原点をカメラに
 //       揃えれば、残る誤差は「原点からの距離 × f32相対精度」で頭打ちになり、距離によらず
 //       常にサブピクセルに収まる。
-//   v … 相対速度で向きを決める描画(弾・リードマーカー等)が差し引く速度基準。r とは別の
-//       concern であり、自機の速度を使う(弾の相対速度描画・再突入エフェクト等の前提)。
+//   v … 残像として描かれる物(弾)が差し引く速度基準。r とは別の concern であり、カメラが
+//       注視している点の速度を使う — 見る側に対する相対運動が残像の向きを決める。
 export class FloatingOrigin {
   readonly r: Vec3;
   private readonly v: Vec3;
@@ -31,7 +31,6 @@ export class FloatingOrigin {
   }
 
   // 慣性系の絶対速度を、描画フレーム(速度基準 = v)相対の THREE.Vector3 へ変換する。
-  // 相対速度で向きを決める描画(弾のモーションブラー的表現等)に使う。
   VtoThreeV3(vec: Vec3): THREE.Vector3 {
     const v2 = sub(vec, this.v);
     return new THREE.Vector3(v2.x, v2.y, v2.z);
