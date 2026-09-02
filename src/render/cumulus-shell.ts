@@ -38,9 +38,22 @@ const COVERAGE_DITHER_WIDTH = 0.04;
 // 画素が抜ける。
 const DITHER_LEVELS = 256;
 
-// 視線を雲頂へ下ろす刻み数と、雲頂をまたいだ区間を締める二分の回数。**どちらも 1 増やすと
-// 場と粒を 1 回ずつ余分に引く**ので、G バッファパスの費用はここで決まる。
-const MARCH_STEPS = 6;
+// 積雲の精細さの段。**値は保存された設定を読む鍵なので、段を足すときも既存の値を動かさない**
+// — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
+export const CUMULUS_DETAIL = { coarse: 1, standard: 2, fine: 3 } as const;
+export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL];
+
+// 段ごとの、視線を雲頂へ下ろす刻み数。**1 増やすと場と粒を 1 回ずつ余分に引く**ので、
+// G バッファパスの費用はここで決まる。粗い段では刻みが雲頂をまたぐ幅も広く、二分で締めても
+// 縁と雲頂は段に割れて残る。
+const MARCH_STEPS_OF_DETAIL: Readonly<Record<CumulusDetail, number>> = {
+  [CUMULUS_DETAIL.coarse]: 3,
+  [CUMULUS_DETAIL.standard]: 6,
+  [CUMULUS_DETAIL.fine]: 12,
+};
+
+// 雲頂をまたいだ区間を締める二分の回数。1 回が刻み 1 回ぶんの費用だが、**段では動かさない**
+// — 縁の粗さは締める前の区間の広さが決めるので、刻みを減らした段でここまで削ると二重に粗くなる。
 const REFINE_STEPS = 3;
 
 // 積雲の粒の一辺 [m]。場の texel(赤道 9.8 km)より細かく、かつ低軌道から見下ろして解像できる
@@ -60,7 +73,9 @@ const GRAIN_FADE_FULL_PIXELS = 4;
 
 export class CumulusShell {
   private readonly fieldMap: DeferredTexture;
-  private readonly material: THREE.Material;
+  // 精細さの段と、その段の刻み数まで展開したマテリアル。段は表示側が毎フレーム押し込む。
+  private detail: CumulusDetail = CUMULUS_DETAIL.standard;
+  private material: THREE.Material;
   private readonly blueNoise = new BlueNoise();
   // 殻を半径 1 とする物体空間での地表の半径。レイマーチの下端になる。
   private readonly groundRadius: number;
@@ -105,6 +120,17 @@ export class CumulusShell {
   public addTo(parent: THREE.Object3D): void {
     this.fieldMap.request();
     for (const mesh of this.meshes.values()) parent.add(mesh);
+  }
+
+  // 積雲の精細さの段を置き直す。**段はレイマーチの刻み数としてグラフへ展開済み**なので、
+  // 変わったらマテリアルを組み直して全段のメッシュへ張り替える。
+  public setDetail(detail: CumulusDetail): void {
+    if (detail === this.detail) return;
+    this.detail = detail;
+    const previous = this.material;
+    this.material = this.buildMaterial();
+    for (const mesh of this.meshes.values()) mesh.material = this.material;
+    previous.dispose();
   }
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。
@@ -162,13 +188,14 @@ export class CumulusShell {
         along.negate().sub(sqrt(max(groundHalf, 0))),
         along.negate().add(sqrt(max(half.add(1), 0))),
       ), 0);
-      const stepLength = marchEnd.div(MARCH_STEPS);
+      const marchSteps = MARCH_STEPS_OF_DETAIL[this.detail];
+      const stepLength = marchEnd.div(marchSteps);
 
       // 雲頂より内側へ入った最初の刻みを、その手前の刻みと一緒に覚える。
       const hit = float(0).toVar();
       const above = float(0).toVar();
       const below = marchEnd.toVar();
-      for (let stepIndex = 1; stepIndex <= MARCH_STEPS; stepIndex++) {
+      for (let stepIndex = 1; stepIndex <= marchSteps; stepIndex++) {
         const distance = stepLength.mul(stepIndex);
         const inside = this.clearanceAt(
           entry.add(direction.mul(distance)), threshold, grainAmplitude).lessThan(0);

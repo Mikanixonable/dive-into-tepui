@@ -60,6 +60,11 @@ export function selectOccluders(
     .map(({ celestialBody }) => celestialBody);
 }
 
+// 積雲の殻を遮蔽の源として数える設定か。**雲そのものを描かない設定では、影だけを残さない。**
+export function castsCumulusShadow(graphics: GraphicsSettingsData): boolean {
+  return graphics.clouds && graphics.cumulusShadow;
+}
+
 // 環の影を落とす天体を1体選ぶ。画面に環付き天体が複数写る状況は実質起きないので、最も大きく
 // 見える1体だけを扱う。**候補は環を持つ天体だけを渡すこと。** 環を描かない設定では null。
 export function selectRingShadow(
