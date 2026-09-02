@@ -20,7 +20,7 @@ import { TrajectoryFramePanel } from './trajectory-frame-panel';
 export function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
   const panel = document.createElement('div');
   panel.id = id;
-  panel.className = 'panel hidden hud-frame-controls';
+  panel.className = 'panel hud-frame-controls';
   panel.addEventListener('pointerdown', (e) => e.stopPropagation());
   const title = document.createElement('h3');
   title.textContent = titleText;
@@ -93,16 +93,13 @@ export class FrameControls {
     }
   }
 
-  // パネルの表示と選択肢・選択表示を、他モジュールの状態へ合わせる。
+  // 両パネルの選択肢と選択表示を、他モジュールの状態へ合わせる。
   public sync(
     pickables: readonly ObjectPickable[], cameraPos: Vec3,
-    simTime: number, displayTime: number, visible: boolean,
+    simTime: number, displayTime: number,
   ): void {
     this.lastTime = simTime;
-    const members = visible
-      ? this.celestialSystem.systemMembersAt(cameraPos, displayTime) : [];
-    // 役割が周回しているかどうかはパネルが見えているかと関係がないので、非表示でも判定する
-    // — 見えていないあいだ空扱いにすると、パネルを畳んだだけで下の巻き戻しが走り、選択が消える。
+    const members = this.celestialSystem.systemMembersAt(cameraPos, displayTime);
     const validRoles = this.validRevolutionRoles(displayTime);
 
     // 軌道フレームで選択中の役割の公転が条件を崩したら、既存の onSelect と同じ経路
@@ -111,8 +108,8 @@ export class FrameControls {
       this.displayWindow.frame = this.celestialSystem.frames.frameOf(this.displayWindow.frame.center, null);
     }
 
-    this.cameraPanel.sync(pickables, members, displayTime, visible);
-    this.trajectoryPanel.sync(pickables, members, displayTime, validRoles, visible);
+    this.cameraPanel.sync(pickables, members, displayTime);
+    this.trajectoryPanel.sync(pickables, members, displayTime, validRoles);
   }
 
   // 両パネルと、保持している座標系選択ゾーンを片付ける。

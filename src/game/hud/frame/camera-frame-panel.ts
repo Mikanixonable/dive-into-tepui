@@ -115,14 +115,10 @@ export class CameraFramePanel {
     return `基準: ${camCenter}・${rotationText} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
   }
 
-  // パネルの表示と各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
+  // 各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
   public sync(
     pickables: readonly ObjectPickable[], members: readonly string[], displayTime: number,
-    isVisible: boolean,
   ): void {
-    this.panel.classList.toggle('hidden', !isVisible);
-    if (!isVisible) return;
-
     // カメラ基準は表示設定に左右されず、登録済みの全天体を選択できるようにする。
     this.cameraCenterZone.setItems(pickables, true);
     this.cameraCenterZone.setNearby(members, pickables);

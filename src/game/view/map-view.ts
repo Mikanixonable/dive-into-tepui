@@ -122,7 +122,7 @@ export class MapView implements ViewFrame {
     this.picking.sync(displayWindow.displayTime, this.activePlayers.current);
     this.frameControls.sync(
       this.objectPickables.pickables, this.cameraSystem.activeCameraPos,
-      displayWindow.simTime, displayWindow.displayTime, true,
+      displayWindow.simTime, displayWindow.displayTime,
     );
     this.celestialMarkers.syncSubLabels(
       this.markerManager.combatMarkers, this.celestialSystem.celestialMotions, displayWindow.displayTime,
