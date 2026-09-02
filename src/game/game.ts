@@ -44,6 +44,7 @@ import { MapContextActions } from './pickable/map-context-actions';
 import { Navball } from './navball/navball';
 import { GameSaveData } from './save/save-data';
 import { KEY_MAPPING as K } from './input/key-mapping';
+import { frameRoleOf } from '../physics/frame';
 import { Docking } from './docking/docking';
 import { DockingGuide } from './docking/docking-guide';
 import { ViewBadge, type ViewBadgeContext } from './hud/view-badge';
@@ -144,8 +145,18 @@ export class Game {
 
     // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
     // ViewManager 生成前にカメラの update/sync は呼ばれない。
+    // 姿勢は現在値しか持たないため、解決はフォーカス id → 生存エンティティの現在姿勢。
     this.cameraSystem = new CameraSystem(
-      this._hud, celestialSystem, () => this.viewManager.current, initialSave?.camera,
+      this._hud, celestialSystem, () => this.viewManager.current,
+      (id, t) => {
+        const role = frameRoleOf(id);
+        const entity = role === 'activeShip' ? this.activeControllableEntity
+          : role === 'navTarget'
+            ? this.navTarget.resolveState(this.dynamicSystem, celestialSystem, celestialSystem.celestialMotions, t)?.entity ?? null
+            : this.dynamicSystem.all().find((e) => e.id === id) ?? null;
+        return entity?.alive ? entity.att.q : null;
+      },
+      initialSave?.camera,
     );
     this.celestialMarkers = new CelestialMarkers(this.markerManager, celestialSystem);
     this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);

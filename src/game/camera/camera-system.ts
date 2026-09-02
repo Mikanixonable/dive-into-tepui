@@ -14,6 +14,7 @@ import {
   metersPerPixel, metersPerPixelAtDistance, ndcToScreen, Projected, projectToNdc, Viewpoint,
 } from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
+import type { Quat } from '../../physics/attitude';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { WorldView } from '../view-manager';
 import { CameraSaveData } from '../save/save-data';
@@ -154,14 +155,18 @@ export class CameraSystem {
   // 両カメラを構築し、常用ショートリストパネルの選択操作を配線する。
   // saved があれば両カメラをその視点から組む。view はビューの正本を引く関数 —
   // ViewManager より先に生成されるため、参照でなく遅延評価で受ける。
+  // attitudeOf はフォーカス機体の姿勢追従に使う解決関数(FocusCameraConfig 参照)。
   constructor(
     _hud: Hud,
     celestialSystem: CelestialSystem,
     private readonly view: () => WorldView,
+    attitudeOf: (id: string, t: number) => Quat | null,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
     this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
-    this.mapCamera = new MapCamera(_hud, celestialSystem, saved?.overview);
+    this.mapCamera = new MapCamera(
+      _hud, celestialSystem, { focusLossPolicy: 'fallToOrigin', attitudeOf }, saved?.overview,
+    );
     // 表示パネルと天体クラス側操作のコールバック
     this.viewOptionsPanel = new ViewOptionsPanel(_hud.mapRoot, catalogFamilyIndex());
     this.viewOptionsPanel.onBodyClassModeChange = (key, mode) => {
