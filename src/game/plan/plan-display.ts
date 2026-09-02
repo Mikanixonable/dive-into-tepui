@@ -1,6 +1,7 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動と、表示時刻の計画上の自機位置ゴースト
 // (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
+import type { WorldView } from '../view-manager';
 import { Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
@@ -138,17 +139,17 @@ export class PlanDisplay {
   // 折れ線の解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
   sync(
     fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn,
-    overviewMode: boolean, cameraPos: Vec3, camera: THREE.Camera,
+    view: WorldView, cameraPos: Vec3, camera: THREE.Camera,
   ): void {
     // ノードの無い計画は自機の現在軌道そのものを描くだけで情報を持たないので、折れ線は隠す。
     // path.sync 自体はノードの有無に関わらず毎フレーム呼ぶ — 画面判定に使う project を
     // 毎フレーム更新しておかないと、クリック当たり判定が古い視点のまま行われてしまう。
     this.path.setVisible(this.path.nodeCount > 0);
     this.path.sync(fo, project, scale, cameraPos, camera);
-    this.syncGhost(project, overviewMode, cameraPos);
-    this.syncApsisMarkers(project, overviewMode, cameraPos);
-    this.syncImpactMarkers(project, overviewMode, cameraPos);
-    this.syncTickMarkers(project, overviewMode, cameraPos);
+    this.syncGhost(project, view, cameraPos);
+    this.syncApsisMarkers(project, view, cameraPos);
+    this.syncImpactMarkers(project, view, cameraPos);
+    this.syncTickMarkers(project, view, cameraPos);
   }
 
   // 計画折れ線を片付ける。
@@ -186,12 +187,12 @@ export class PlanDisplay {
   }
 
   // ⬢ ゴーストマーカーを計画位置に置く。計画がそこまで届いていなければ隠す。
-  private syncGhost(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
+  private syncGhost(project: ProjectFn, view: WorldView, cameraPos: Vec3): void {
     if (!this.ghost) {
       this.markerManager.hide('plannedPlayer');
       return;
     }
-    if (overviewMode && this.occludedByCelestialBody(cameraPos, this.ghost.pos)) {
+    if (view === 'map' && this.occludedByCelestialBody(cameraPos, this.ghost.pos)) {
       this.markerManager.fadeOut('plannedPlayer');
       return;
     }
@@ -308,23 +309,23 @@ export class PlanDisplay {
   }
 
   // 近地点・遠地点のマーカーを、それぞれが解いた位置へ置く。
-  private syncApsisMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
+  private syncApsisMarkers(project: ProjectFn, view: WorldView, cameraPos: Vec3): void {
     const celestialBodies = this.celestialSystem.celestialMotions;
     for (const marker of [this.apsisPe, this.apsisAp]) {
       marker.sync(
         this.markerManager, project, cameraPos, celestialBodies, this.celestialBodiesPivot,
-        overviewMode, this.timeLabel,
+        view === 'map', this.timeLabel,
       );
     }
   }
 
   // ✕ 衝突マーカーを update が求めた位置に置き、出ていないものを隠す。
-  private syncImpactMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
+  private syncImpactMarkers(project: ProjectFn, view: WorldView, cameraPos: Vec3): void {
     for (const key of IMPACT_MARKER_KEYS) {
       const icon = this.impactIcons.find((m) => m.key === key);
       if (!icon) {
         this.markerManager.hide(key);
-      } else if (overviewMode && this.occludedByCelestialBody(cameraPos, icon.pos)) {
+      } else if (view === 'map' && this.occludedByCelestialBody(cameraPos, icon.pos)) {
         this.markerManager.fadeOut(key);
       } else {
         this.markerManager.setPosition(
@@ -339,7 +340,7 @@ export class PlanDisplay {
   // 採否を決め、既に採用済みの目盛から PLAN_TICK_MIN_PX 未満しか離れない候補は捨てる —
   // 離心軌道では近地点付近と遠地点付近で候補の画面間隔が桁違いになるため、区間全体で
   // 一つの単位に揃えず、この局所判定に任せることで区間ごとに異なる単位が選ばれてよい。
-  private syncTickMarkers(project: ProjectFn, overviewMode: boolean, cameraPos: Vec3): void {
+  private syncTickMarkers(project: ProjectFn, view: WorldView, cameraPos: Vec3): void {
     const icons = this.tickIcons;
     const n = icons.length;
     const projected = icons.map((icon) => project(icon.pos));
@@ -350,7 +351,7 @@ export class PlanDisplay {
     for (const rank of ranksDesc) {
       for (let i = 0; i < n; i++) {
         if (icons[i]!.rank !== rank || !projected[i]!.front
-          || (overviewMode && this.occludedByCelestialBody(cameraPos, icons[i]!.pos))) continue;
+          || (view === 'map' && this.occludedByCelestialBody(cameraPos, icons[i]!.pos))) continue;
         if (this.isFarFromShown(projected, shown, i, minPxSq)) shown[i] = true;
       }
     }
@@ -367,7 +368,7 @@ export class PlanDisplay {
 
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
-      const occluded = overviewMode && this.occludedByCelestialBody(cameraPos, icon.pos);
+      const occluded = view === 'map' && this.occludedByCelestialBody(cameraPos, icon.pos);
       if (!shown[i] || occluded) {
         if (occluded) this.markerManager.fadeOut(icon.key);
         else this.markerManager.hide(icon.key);

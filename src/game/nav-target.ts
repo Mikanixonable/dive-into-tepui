@@ -291,7 +291,7 @@ export class NavTarget {
     for (const marker of this.nodeMarkers) {
       marker.sync(
         this.markerManager, cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
-        this.celestialBodies, this.celestialBodiesPivot, cameraSystem.overviewMode, this.timeLabel,
+        this.celestialBodies, this.celestialBodiesPivot, cameraSystem.worldView === 'map', this.timeLabel,
       );
     }
   }
