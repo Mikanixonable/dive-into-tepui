@@ -58,13 +58,12 @@ export class Game {
   private readonly touchControls: TouchControls | null;
   private readonly _hud: Hud;
   private readonly _worldSfx: WorldSfx;
-  private readonly _uiSfx: UiSfx;
   private readonly pauseMenu: PauseMenu;
   private readonly markerManager: MarkerManager;
   private readonly celestialMarkers: CelestialMarkers;
   readonly cameraSystem: CameraSystem;
   // 操作対象艦(0..n 隻のうちどれを操作するか)の切替を持つ。
-  readonly activePlayers: ActiveControllableController;
+  private readonly activePlayers: ActiveControllableController;
   get player(): Player | null { return this.activePlayers.current; }
   get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
   get activeControllableEntity(): Controllable | null {
@@ -90,11 +89,9 @@ export class Game {
   get celestialSystem(): CelestialSystem { return this._celestialSystem; }
   private readonly navball: Navball;
 
-  private readonly unlockManager: UnlockManager;
-
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
-  readonly frameAnchors: FrameAnchors;
+  private readonly frameAnchors: FrameAnchors;
   readonly orbitReference = new OrbitReferenceSelector();
   // このフレームの軌道要素・軌道線の基準。update が確定させ、同じ animate() の sync が読む。
   private orbitRef: OrbitReference | undefined;
@@ -105,7 +102,7 @@ export class Game {
   private readonly nanWatchdog: NanWatchdog;
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
-  readonly frameControls: FrameControls;
+  private readonly frameControls: FrameControls;
   // 計測区間の境界を打つ先。集計と保持はこのオブジェクトが持つ。
   private readonly sections: FrameSections;
 
@@ -129,9 +126,7 @@ export class Game {
     this._celestialSystem = celestialSystem;
     this._hud = hud;
     this._worldSfx = worldSfx;
-    this._uiSfx = uiSfx;
     this.pauseMenu = pauseMenu;
-    this.unlockManager = unlockManager;
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
@@ -155,7 +150,7 @@ export class Game {
       initialSave?.camera,
     );
     this.celestialMarkers = new CelestialMarkers(this.markerManager, celestialSystem);
-    this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);
+    this.simSpeedManager = new SimSpeedManager(this._hud, uiSfx);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navTarget.restore(initialSave?.navTarget, this.dynamicSystem);
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
@@ -193,7 +188,7 @@ export class Game {
     );
     const editor = new PlanEditor(
       this._hud,
-      this._uiSfx,
+      uiSfx,
       this.simSpeedManager,
       celestialSystem,
       this._scene,
@@ -215,7 +210,7 @@ export class Game {
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
 
     this.activeStage = new stageClass(
-      initialSave?.stage, this._hud, this._worldSfx, this._uiSfx, this._scene, this.dynamicSystem, this.unlockManager,
+      initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem, unlockManager,
       this.dynamicSystem.effects, this.markerManager, celestialSystem, this.simulator, this.activePlayers,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
@@ -243,7 +238,7 @@ export class Game {
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
       this.activePlayers, this.docking.guide, this.planDisplay.path, celestialSystem,
-      this.simSpeedManager, this._hud, this._uiSfx, this.markerManager,
+      this.simSpeedManager, this._hud, uiSfx, this.markerManager,
     );
     const mapView = new MapView(
       this.input, this.cameraSystem, this.targeter, editor, this.objectWindows,
