@@ -17,7 +17,6 @@ import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
 import { PlanDisplay } from './plan/plan-display';
 import { DisplayWindowManager } from './display-window-manager';
-import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
 import { EntityLineManager } from './lines/entity-line-manager';
@@ -241,12 +240,11 @@ export class Game {
     );
     this.objectWindows.setDocking(this.docking);
 
-    const guide = new PlanGuide(this._hud, this._uiSfx, this.markerManager);
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      this.activePlayers, this.docking.guide, guide, this.planDisplay.path, celestialSystem,
-      this.simSpeedManager, this._hud,
+      this.activePlayers, this.docking.guide, this.planDisplay.path, celestialSystem,
+      this.simSpeedManager, this._hud, this._uiSfx, this.markerManager,
     );
     const mapPicking = new MapPicking(
       this._hud, this.cameraSystem, this.dynamicSystem, celestialSystem, this.celestialMarkers,
