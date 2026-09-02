@@ -2,6 +2,7 @@
 // 現在のビューの実装だけを呼び、遷移フックは ViewManager が setView() の中で呼ぶ。
 // 両ビュー共通のフレーム処理は Game が地の文で持つ。
 import type { DisplayWindow } from './display-window-manager';
+import type { FloatingOrigin } from './camera/floating-origin';
 
 export interface WorldViewFrame {
   // このビューへ遷移できるか。
@@ -17,5 +18,7 @@ export interface WorldViewFrame {
   // sync フェーズ前半: 天体ラベル。マーカー同期が近接判定に読むため、その前に呼ばれる。
   syncLabels(): void;
   // sync フェーズ後半: ビュー専用の常設パネル・表示物。軌道線の同期より後に呼ばれる。
-  syncPanels(displayWindow: DisplayWindow): void;
+  syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void;
+  // このビューが保持する表示物・DOM を片付ける。
+  dispose(): void;
 }

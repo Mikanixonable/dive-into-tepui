@@ -4,7 +4,6 @@ import { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Docking, DockingCandidate } from './docking';
-import type { ViewManager } from '../view-manager';
 import type { Projected } from '../../math/projection';
 import type { Vec3 } from '../../math/vec3';
 import { currentThemePalette } from '../theme';
@@ -41,7 +40,6 @@ export class DockingGuide {
     private readonly markerManager: MarkerManager,
     private readonly entities: DynamicSystem,
     private readonly docking: Docking,
-    private readonly viewManager: ViewManager,
   ) {
     this.root = new THREE.Group();
     this.root.name = 'docking-guide';
@@ -69,18 +67,10 @@ export class DockingGuide {
 
   sync(player: Player | null, fo: FloatingOrigin, project: ProjectFn): void {
     if (this.disposed) return;
-    const combat = this.viewManager.isCombatView;
-    const candidate = combat && player ? this.nearestCandidate(player) : null;
-    if (!candidate) {
-      this.root.visible = false;
-      this.markerManager.hide(GUIDE_MARKER_KEY);
-      return;
-    }
-
+    const candidate = player ? this.nearestCandidate(player) : null;
     // 軸線がカメラの背後へ回った候補は HUD ラベルと同じく非表示にする。
-    if (!project(candidate.position).front) {
-      this.root.visible = false;
-      this.markerManager.hide(GUIDE_MARKER_KEY);
+    if (!candidate || !project(candidate.position).front) {
+      this.hide();
       return;
     }
 
@@ -104,6 +94,12 @@ export class DockingGuide {
       GUIDE_MARKER_KEY, 'mk-docking-guide', '◎', candidate.position, project,
       label, 1, color, undefined, false, true, MARKER_PRIORITY.PRIMARY_TARGET,
     );
+  }
+
+  // ガイドの3D表示とマーカーを畳む。
+  hide(): void {
+    this.root.visible = false;
+    this.markerManager.hide(GUIDE_MARKER_KEY);
   }
 
   private nearestCandidate(player: Player): DockingCandidate | null {
