@@ -6,6 +6,7 @@ import { BasePanel } from '../hud/panels/base-view';
 import { ResourceTransferDialog } from '../hud/windows/resource-transfer-dialog';
 import { Base, BASE_MAX_VESSELS } from '../dynamic/dynamic-entity/base';
 import { Player } from '../player/player';
+import { DockingGuide } from './docking-guide';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ObjectWindows } from '../pickable/object-windows';
@@ -54,6 +55,9 @@ const alignmentErrorDeg = (alignment: number): number =>
 export class Docking {
   readonly basePanel: BasePanel;
   readonly transferDialog: ResourceTransferDialog;
+  // 接続点ガイド。出すのは戦闘ビューの間だけなので、sync/hide はビュー側から呼ぶ。
+  private readonly _guide: DockingGuide;
+  get guide(): DockingGuide { return this._guide; }
   // 選択中/基地パネルの対象基地。
   private _activeBase: Base | null = null;
   // 新造艦艇の連番。基地をまたいで一意な id/表示名を割り振るだけの用途。
@@ -84,6 +88,7 @@ export class Docking {
     this.basePanel.onBuildVessel = (base) => this.buildVessel(base);
 
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
+    this._guide = new DockingGuide(scene, markerManager, entities, this);
   }
 
   // 指定艦がドッキングしている対象を取得。ドッキングしていなければ null。
@@ -334,8 +339,9 @@ export class Docking {
     this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);
   }
 
-  // 基地パネルの DOM を片付ける。
+  // 基地パネルの DOM と接続点ガイドの表示物を片付ける。
   dispose(): void {
     this.basePanel.dispose();
+    this._guide.dispose();
   }
 }
