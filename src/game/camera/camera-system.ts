@@ -73,12 +73,17 @@ const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリッ�
 export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
 
-// 論理カメラの状態(Viewpoint)を THREE カメラへ反映する。near/far はサブカメラ自身の
-// near/far getter(固定値、または FocusCamera のように dist に比例する値)から毎フレーム渡される。
-function syncCameraToViewpoint(camera: THREE.Camera, view: Viewpoint, near: number, far: number, fo: FloatingOrigin): void {
-  camera.position.copy(fo.RtoThreeV3(view.position));
+// 論理カメラの状態(Viewpoint)を、描画原点 origin を差し引いて THREE カメラへ反映する。
+// near/far はサブカメラ自身の near/far getter(固定値、または FocusCamera のように dist に
+// 比例する値)から毎フレーム渡される。
+function syncCameraToViewpoint(
+  camera: THREE.Camera, view: Viewpoint, near: number, far: number, origin: Vec3,
+): void {
+  const position = sub(view.position, origin);
+  const lookTarget = sub(view.lookTarget, origin);
+  camera.position.set(position.x, position.y, position.z);
   camera.up.set(view.up.x, view.up.y, view.up.z);
-  camera.lookAt(fo.RtoThreeV3(view.lookTarget));
+  camera.lookAt(lookTarget.x, lookTarget.y, lookTarget.z);
   // アスペクト比・FOV・near・far が変わったときだけ投影行列を再計算する
   let projectionDirty = false;
   if (camera instanceof THREE.PerspectiveCamera) {
@@ -331,17 +336,20 @@ export class CameraSystem {
     this.combatViewpoint = lerpViewpointFov(this.combatViewpoint, target, dt);
   }
 
-  // このフレームの描画原点を組み立て、視点状態をそれで補正してアクティブカメラへ反映し、
-  // 組み立てた原点を返す。原点(位置)はアクティブカメラの ECI 位置 — カメラ自身の位置成分を
-  // ほぼ0にしておかないと、遠方の描画対象が f32 の桁落ちでカメラの動きに合わせて振動する。
-  // 速度基準 velocityReference は相対速度で向きを決める描画が差し引く値で、原点とは別 concern。
-  sync(velocityReference: Vec3): FloatingOrigin {
-    const fo = new FloatingOrigin(this.activeCameraPos, velocityReference);
+  // 視点状態をこのフレームの描画原点で補正し、アクティブカメラへ反映する。
+  sync(): void {
     const active = this.mapActive ? this.mapCamera : this.combatCamera;
-    syncCameraToViewpoint(active.camera, this.activeViewpoint, active.near, active.far, fo);
+    syncCameraToViewpoint(active.camera, this.activeViewpoint, active.near, active.far, this.activeCameraPos);
     // 広範囲視点のときだけ表示設定パネルを出す。
     this.viewOptionsPanel.setVisible(this.mapActive);
-    return fo;
+  }
+
+  // このフレームの描画原点を組み立てて返す。原点(位置)はアクティブカメラの ECI 位置 —
+  // カメラ自身の位置成分をほぼ0にしておかないと、遠方の描画対象が f32 の桁落ちでカメラの
+  // 動きに合わせて振動する。速度基準 velocityReference は相対速度で向きを決める描画が
+  // 差し引く値で、原点とは別 concern。
+  getFloatingOrigin(velocityReference: Vec3): FloatingOrigin {
+    return new FloatingOrigin(this.activeCameraPos, velocityReference);
   }
 
   // アクティブカメラの画面投影関数を返す。
