@@ -13,7 +13,7 @@ import type { GroupedMarkerItem } from './marker/grouped-markers';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import { MarkerManager, MARKER_PRIORITY } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
-import { pickNearest } from './pickable/map-pickable';
+import { pickNearest } from './pickable/object-pickable';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
 import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';

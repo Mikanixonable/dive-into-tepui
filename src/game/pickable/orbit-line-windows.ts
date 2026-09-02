@@ -6,9 +6,9 @@ import type { MenuAction } from '../hud/windows/menu-actions';
 import type { Hud } from '../hud/hud';
 import type { LinePickable } from './line-pickable';
 import type { LinePickables } from './line-pickables';
-import type { MapCommands } from './map-commands';
-import type { MapPickable } from './map-pickable';
-import type { MapPickables } from './map-pickables';
+import type { ObjectCommands } from './object-commands';
+import type { ObjectPickable } from './object-pickable';
+import type { ObjectPickables } from './object-pickables';
 
 const KIND_LABEL: Record<LinePickable['kind'], string> = {
   'orbit-body': '公転軌道', 'orbit-ship': '船の軌道', 'orbit-guide': '軌道ガイド',
@@ -24,9 +24,9 @@ export class OrbitLineWindows {
   constructor(
     private readonly hud: Hud,
     private readonly linePickables: LinePickables,
-    private readonly pickables: MapPickables,
-    private readonly commands: MapCommands,
-    private readonly openOwnerWindow: (clientX: number, clientY: number, target: MapPickable) => void,
+    private readonly pickables: ObjectPickables,
+    private readonly commands: ObjectCommands,
+    private readonly openOwnerWindow: (clientX: number, clientY: number, target: ObjectPickable) => void,
   ) {}
 
   // 軌道線のウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。

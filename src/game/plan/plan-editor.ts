@@ -5,7 +5,7 @@ import type * as THREE from 'three/webgpu';
 import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { Projected } from '../../math/projection';
-import { pickNearest } from '../pickable/map-pickable';
+import { pickNearest } from '../pickable/object-pickable';
 import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { Hud } from '../hud/hud';
