@@ -76,34 +76,6 @@ G パスとマテリアルパスの両方で走り、さらに「両パスで同
 
 ## 手順
 
-### 手順 2. G バッファへベース色・金属度・自己発光を足す
-
-**目的**: MRT を 2 枚から 4 枚にし、素材の全情報を G バッファで確定させる。読者はまだ
-デバッグ表示だけで、**通常表示の絵は変えない**。three の仕組み上の要は、`renderer.setMRT` で
-出力が MRT ノードへ置き換わっても `diffuseColor`・`metalness`・`emissive` のプロパティノードに
-値が入っていること — 現行の `roughness` と同じく、`NodeMaterial.setup` が MRT 置換より前に
-積む代入で確定する(emissive は `setupLighting` 内
-`node_modules/three/src/materials/nodes/NodeMaterial.js:1111` の `emissive.assign`)。
-この見込みをデバッグ表示で最初に確かめ、外れていたら mrt ノードへ `materialEmissive` 等を
-直接結ぶ形へ差し替える。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-|---|---|
-| `src/render/pipeline/gbuffer.ts` | :58 ターゲットを count 4 へ。basecolor(RGBA8・rgb=ベース色・a=金属度)と emissive(RGBA16F)を追加。:71-74 の mrt ノードへ `basecolor: vec4(diffuseColor.rgb, metalness)` と `emissive` を追加。アクセサ `basecolorTexture` / `emissiveTexture` を追加(:77-79 に並べる) |
-| `src/render/pipeline/debug-target.ts` | :6 の DebugTargetId と :9-22 の DEBUG_TARGETS へ 'basecolor'(ベース色)・'metalness'(金属度)・'emissive'(自己発光)の 3 行(「粗さ」の後ろ) |
-| `src/render/pipeline/render-pipeline.ts` | :180-215 compositeMaterials へ 3 表示を追加。ベース色は素通し、金属度は `.a` のグレースケール、自己発光は HDR なのでトーンマッピング経由(:200-205 の diffuse/specular と同型) |
-
-**達成条件と検証**
-- `npm run typecheck`・`npm run test:render`。
-- `npm run render-lab`(対話。撮影はテクスチャ読み込みを待たないので目視で):
-  デバッグ表示「ベース色」で地球の模様と艦の色、「金属度」で金属の艦体が白く地表・雲が黒、
-  「自己発光」で基地の窓明かり・自己発光部品が写る。**「自己発光」に中身が出ることが、
-  MRT 置換で emissive が確定する見込みの検証そのもの。**
-- 通常表示は before と一致(目視)。
-- F3「G バッファ」増分 ≤ 0.2 ms。
-
 ### 手順 3. MSAA を設定項目ごと廃止する
 
 **目的**: 共有 HDR ターゲットの標本数を常に 0 にし、設定項目「マルチサンプリング」を消す。
@@ -165,11 +137,14 @@ GPU(1080p ≈ 2.07 Mpx、帯域 200 GB/s 級を仮定。数字は各手順の F3
 
 | 手順 | 導出 | 増分 |
 |---|---|---|
-| 2 | 書き込み +12 B/px(RGBA8 4 B + RGBA16F 8 B)× 2.07 Mpx ≈ 25 MB/frame ÷ 200 GB/s | +0.1 ms 級 |
 | 3 | HDR ターゲットの確保 (色 8 B + 深度 4 B) × 標本 4→1 で −75 MB 級、material/大気/world の色書き帯域 1/4 | −数百 µs 級 |
 | 4 | 板ポリ ≈ 2.07 Mpx × (読 34 B + 書 12 B) ≈ 95 MB/frame ≈ 0.5 ms を上限に足し、全メッシュ再ラスタライズ(現況 F3「マテリアル」の大半)を引く | ほぼ相殺〜減 |
 
 手順 2〜3 の間だけ、素材の書き込みと従来のメッシュ描画が併走して一時的に重い(恒久化しない)。
+
+**手順 2 の実測**(render-lab 960x540 / p50、`window.renderLab.measure`):「G バッファ」が
+earth +0.156 ms・ship-cluster +0.072 ms・ship-crowd +0.077 ms(いずれも達成条件の +0.2 ms 以内)。
+「マテリアル」は ±0.01 ms で変わらず、通常表示は before と画素単位で一致した。
 
 実装規模: `gbuffer.ts` +30 行 / `render-pipeline.ts` ±20 行 / `material-pass.ts` 書き換え
 (−60/+40 行)/ `graphics-settings.ts` −5 行 / `debug-target.ts` +4 行 / `lab.ts` −1 語 /
