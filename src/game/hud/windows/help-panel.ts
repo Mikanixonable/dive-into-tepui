@@ -8,7 +8,7 @@ import {
   entryCodes, entryMatchesCode, normalize, scopeMatches,
   type HelpCategory, type HelpEntry, type HelpInput, type KeyboardKeyDefinition,
 } from './help-content';
-import type { View } from '../../view';
+import type { View } from '../../view/view';
 
 // HTML 属性値へ差し込む文字列をエスケープする。ラベル・説明文はユーザー操作の結果ではないが、
 // `<`/`&` を含む語(不等号表記など)が構造を壊さないようにする。

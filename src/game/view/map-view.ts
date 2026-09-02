@@ -1,28 +1,28 @@
 // マップビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
-import { MapPicking } from './pickable/map-picking';
-import type { Input } from './input/input';
-import type { Hud } from './hud/hud';
-import type { CameraSystem } from './camera/camera-system';
-import type { CelestialSystem } from './celestial/celestial-system';
-import type { DynamicSystem } from './dynamic/dynamic-system';
-import type { ObjectPickable } from './pickable/object-pickable';
-import type { ObjectPickables } from './pickable/object-pickables';
-import type { LinePickables } from './pickable/line-pickables';
-import type { ObjectWindows } from './pickable/object-windows';
-import type { MapVisibilityPolicy } from './map/visibility-policy';
-import type { CelestialMarkers } from './marker/celestial-markers';
-import type { MarkerManager } from './marker/marker-manager';
-import type { NavTarget } from './nav-target';
-import type { Targeter } from './targeter';
-import type { PlanEditor } from './plan/plan-editor';
-import type { ActiveControllableController } from './active-controllable-controller';
-import type { DisplayWindow, DisplayWindowManager } from './display-window-manager';
-import type { FrameControls } from './hud/frame/frame-controls';
-import type { FrameAnchors } from './frame-anchors';
-import type { FloatingOrigin } from './camera/floating-origin';
+import { MapPicking } from '../pickable/map-picking';
+import type { Input } from '../input/input';
+import type { Hud } from '../hud/hud';
+import type { CameraSystem } from '../camera/camera-system';
+import type { CelestialSystem } from '../celestial/celestial-system';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { ObjectPickable } from '../pickable/object-pickable';
+import type { ObjectPickables } from '../pickable/object-pickables';
+import type { LinePickables } from '../pickable/line-pickables';
+import type { ObjectWindows } from '../pickable/object-windows';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
+import type { CelestialMarkers } from '../marker/celestial-markers';
+import type { MarkerManager } from '../marker/marker-manager';
+import type { NavTarget } from '../nav-target';
+import type { Targeter } from '../targeter';
+import type { PlanEditor } from '../plan/plan-editor';
+import type { ActiveControllableController } from '../active-controllable-controller';
+import type { DisplayWindow, DisplayWindowManager } from '../display-window-manager';
+import type { FrameControls } from '../hud/frame/frame-controls';
+import type { FrameAnchors } from '../frame-anchors';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { ViewFrame } from './view';
-import type { PerfCounts } from '../perf-meter';
+import type { PerfCounts } from '../../perf-meter';
 
 export class MapView implements ViewFrame {
   private readonly picking: MapPicking;
