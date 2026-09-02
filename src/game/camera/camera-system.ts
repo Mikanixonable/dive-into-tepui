@@ -346,10 +346,16 @@ export class CameraSystem {
 
   // このフレームの描画原点を組み立てて返す。原点(位置)はアクティブカメラの ECI 位置 —
   // カメラ自身の位置成分をほぼ0にしておかないと、遠方の描画対象が f32 の桁落ちでカメラの
-  // 動きに合わせて振動する。速度基準 velocityReference は相対速度で向きを決める描画が
-  // 差し引く値で、原点とは別 concern。
-  getFloatingOrigin(velocityReference: Vec3): FloatingOrigin {
-    return new FloatingOrigin(this.activeCameraPos, velocityReference);
+  // 動きに合わせて振動する。速度基準は注視点の速度で、原点とは別 concern。
+  getFloatingOrigin(): FloatingOrigin {
+    return new FloatingOrigin(this.activeCameraPos, this.activeFocusVelocity);
+  }
+
+  // アクティブカメラが注視している点の ECI 速度。カメラの並進はこの点が決めるので、
+  // 残像の速度基準はこれを使う — 注視点まわりの旋回・パン・ズームは含めない。
+  // 速度を答えられない対象(点マーカー)を注視しているあいだは慣性系静止として扱う。
+  private get activeFocusVelocity(): Vec3 {
+    return (this.mapActive ? this.mapCamera : this.combatCamera).focusVelocity ?? v3();
   }
 
   // アクティブカメラの画面投影関数を返す。
