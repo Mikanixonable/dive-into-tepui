@@ -30,7 +30,7 @@ const PARAM_ROWS: Record<SeparationParamId, string> = {
 // 分離の質の指標。veil と thick の相関が低いほど「積雲側に巻雲らしい情報が残っていない」。
 // 帯の相関は 150〜600 km(veil の特徴的な帯)へバンドパスしてから取る。天気そのものの相関が
 // あるので 0 が正解ではない — 調整の相対比較にだけ使う。
-export type SeparationMetrics = {
+type SeparationMetrics = {
   readonly veilMean: number;
   readonly thickMean: number;
   readonly corrAll: number;
