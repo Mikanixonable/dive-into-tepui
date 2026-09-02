@@ -3,14 +3,10 @@
 import { fmtDist, fmtSpeed, setElementText } from '../utils';
 import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../orbit/orbit-info';
-import { Ship } from '../../dynamic/dynamic-entity/ship';
 import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { Game } from '../../game';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
-
-// 基地は装甲を持たないため、ロック時の装甲バーへ出す満タン相当の目安値。
-const BASE_ARMOR_PLACEHOLDER = 1000;
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -19,8 +15,9 @@ interface TargetPanelData {
   readonly distanceM: number;
   readonly closingMps: number; // 正 = 近づいている。
   readonly relativeSpeedMps: number;
-  readonly hp: number;
-  readonly maxHp: number;
+  // 装甲を持たない対象(基地)では null。
+  readonly hp: number | null;
+  readonly maxHp: number | null;
   readonly protein: ProteinHudSnapshot | null;
 }
 
@@ -58,9 +55,8 @@ export class TargetPanel {
       distanceM: relative.dist,
       closingMps: relative.closing,
       relativeSpeedMps: relative.relSpeed,
-      // 基地は装甲を持たないので、ロック中は満タン相当の目安値を出す。
-      hp: target instanceof Ship ? target.hp : BASE_ARMOR_PLACEHOLDER,
-      maxHp: target instanceof Ship ? target.maxHp : BASE_ARMOR_PLACEHOLDER,
+      hp: target.hp,
+      maxHp: target.maxHp,
       protein: target instanceof ProteinEnemy ? target.hudSnapshot : null,
     });
   }
@@ -79,20 +75,24 @@ export class TargetPanel {
     setElementText(this.els, 'tgt-closing', fmtSpeed(target.closingMps));
     setElementText(this.els, 'tgt-relative-speed', fmtSpeed(target.relativeSpeedMps));
 
-    // 装甲メーターと数値表示。
-    const clampedHp = Math.max(0, Math.min(target.maxHp, target.hp));
-    const armorPercent = target.maxHp > 0 ? clampedHp / target.maxHp * 100 : 0;
-    const armorValue = `${Math.floor(clampedHp)} / ${target.maxHp}`;
-    const armorMeter = this.els.get('tgt-armor-meter');
-    armorMeter?.setAttribute('aria-valuemax', String(target.maxHp));
-    armorMeter?.setAttribute('aria-valuenow', String(clampedHp));
-    armorMeter?.setAttribute('aria-valuetext', armorValue);
-    const armorFill = this.els.get('tgt-armor-fill');
-    if (armorFill) {
-      armorFill.style.width = `${armorPercent}%`;
-      armorFill.classList.toggle('danger', target.hp <= target.maxHp * 0.3);
+    // 装甲メーターと数値表示。装甲を持たない対象では行ごと畳む。
+    const { hp, maxHp } = target;
+    this.els.get('tgt-armor-row')?.classList.toggle('hidden', hp === null || maxHp === null);
+    if (hp !== null && maxHp !== null) {
+      const clampedHp = Math.max(0, Math.min(maxHp, hp));
+      const armorPercent = maxHp > 0 ? clampedHp / maxHp * 100 : 0;
+      const armorValue = `${Math.floor(clampedHp)} / ${maxHp}`;
+      const armorMeter = this.els.get('tgt-armor-meter');
+      armorMeter?.setAttribute('aria-valuemax', String(maxHp));
+      armorMeter?.setAttribute('aria-valuenow', String(clampedHp));
+      armorMeter?.setAttribute('aria-valuetext', armorValue);
+      const armorFill = this.els.get('tgt-armor-fill');
+      if (armorFill) {
+        armorFill.style.width = `${armorPercent}%`;
+        armorFill.classList.toggle('danger', hp <= maxHp * 0.3);
+      }
+      setElementText(this.els, 'tgt-armor-value', armorValue);
     }
-    setElementText(this.els, 'tgt-armor-value', armorValue);
     // タンパク質構造を持つ標的なら、フェーズと部位ごとの状態も表示する。
     const proteinPanel = this.els.get('tgt-protein');
     if (proteinPanel) {

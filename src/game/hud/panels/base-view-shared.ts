@@ -144,7 +144,7 @@ export function buildSectionHeader(titleText: string, descriptionText: string, c
   return header;
 }
 
-export type DockBtnVariant = 'primary' | 'service' | 'quiet';
+type DockBtnVariant = 'primary' | 'service' | 'quiet';
 
 // dock-btn の外見クラスを付与する。complete を渡すと、料金が0になった完了状態の見た目も切り替える。
 export function styleDockBtn(el: HTMLElement, variant: DockBtnVariant, complete?: boolean): void {

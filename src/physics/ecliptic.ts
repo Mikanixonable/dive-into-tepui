@@ -15,7 +15,7 @@ export const ECI_POLE: Vec3 = v3(0, 1, 0);
 
 // 標準赤道座標 (X=春分点, Z=北極, 右手系) → ECI (Y=北極)。
 // Xstd→X, Zstd→Y, Ystd→-Z(行列式 +1 の回転)。
-export function stdToEci(xs: number, ys: number, zs: number): Vec3 {
+function stdToEci(xs: number, ys: number, zs: number): Vec3 {
   return v3(xs, zs, -ys);
 }
 

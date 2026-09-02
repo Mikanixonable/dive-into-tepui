@@ -1,16 +1,16 @@
 // 軌道物体一覧パネルの行ツリー: 種別ごとの一覧行を、既存 DOM を使い回しながら id 差分だけで
 // 同期・剪定する。見出し・検索欄・フィルタ UI の組み立てはパネル本体が持つ。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../hud-root';
-import { pickGlyphSvg, pickGlyphText } from '../../marker/pick-glyphs';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable } from '../../pickable/map-pickable';
+import type { Player } from '../../player/player';
 import type { PhysicalObjectListOrder } from './physical-object-list-order';
 
 const EMPTY_IDS: readonly string[] = [];
 
 // 行のダブルクリック/F/T/右クリックの通知先。呼び出し側が随時差し替えるため、生成時に
 // コピーせずフィールドそのものを読む。
-export interface RowTreeActions {
+interface RowTreeActions {
   onFocus: ((id: string) => void) | null;
   onNavTarget: ((id: string) => void) | null;
   onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null;
@@ -46,6 +46,15 @@ export class PhysicalObjectListTree {
     private readonly actions: RowTreeActions,
   ) {}
 
+  // 補助表示の導出に要る今フレームの自艦と表示時刻。syncRow より先に渡すこと。
+  private activePlayer: Player | null = null;
+  private displayTime = 0;
+
+  public setFrame(activePlayer: Player | null, displayTime: number): void {
+    this.activePlayer = activePlayer;
+    this.displayTime = displayTime;
+  }
+
   // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
   // rows はその区画の全行を持つ平坦な台帳で、木の形が変わっても行は作り直さず DOM を付け替える
   // だけにする — 作り直すとプレイヤーが開いた枝と savedExpanded が毎回失われる。
@@ -72,23 +81,22 @@ export class PhysicalObjectListTree {
       container.appendChild(node.row);
       container.appendChild(node.childrenContainer);
     }
-    const svgGlyph = pickGlyphSvg(item.kind);
+    const svgGlyph = item.mapGlyphSvg;
     if (svgGlyph !== null) {
       if (node.glyph.dataset.svgGlyph !== svgGlyph) {
         node.glyph.innerHTML = svgGlyph;
         node.glyph.dataset.svgGlyph = svgGlyph;
       }
     } else {
-      const glyph = pickGlyphText(item.kind, item.id, this.celestialSystem);
-      if (node.glyph.textContent !== glyph) {
-        node.glyph.textContent = glyph;
+      if (node.glyph.textContent !== item.mapGlyph) {
+        node.glyph.textContent = item.mapGlyph;
         delete node.glyph.dataset.svgGlyph;
       }
     }
     if (node.label.textContent !== item.name) node.label.textContent = item.name;
-    const detailText = item.kind === 'body' ? '' : (item.detail ?? '');
+    const detailText = item.listDetail(this.celestialSystem, this.activePlayer, this.displayTime);
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
-    node.detail.classList.toggle('hidden', item.kind === 'body');
+    node.detail.classList.toggle('hidden', detailText === '');
     node.row.classList.toggle('tgt', item.id === focusId);
     // 衛星フィルタで添えたクラスタ見出し(親惑星自身はフィルタを通っていない)を淡色化する。
     node.row.classList.toggle('cluster', !this.order.matches(item));

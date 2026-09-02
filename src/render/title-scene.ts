@@ -6,9 +6,9 @@ import * as THREE from 'three/webgpu';
 import { ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, BG } from '../game/theme';
 
 export const TITLE_SCENE_PATTERNS = ['mosaic', 'helix', 'orbital', 'lattice'] as const;
-export type TitleScenePattern = typeof TITLE_SCENE_PATTERNS[number];
+type TitleScenePattern = typeof TITLE_SCENE_PATTERNS[number];
 
-export interface TitleSceneOptions {
+interface TitleSceneOptions {
   readonly pattern?: TitleScenePattern;
   readonly seed?: number;
 }

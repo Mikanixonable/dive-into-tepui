@@ -8,6 +8,7 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { Ship, SHIP_RADIATING_AREA_PER_MASS, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
@@ -41,13 +42,27 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import { Plan } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
-import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
+import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
+import { shipMarkerSvg } from '../marker/marker-shapes';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
 } from '../../render/vfx-style';
 import { PlayerBoosters } from './player-boosters';
 import { MARKER_PRIORITY } from '../marker/marker-manager';
+import { strongestAttractor } from '../../physics/attractor';
+import { apsisAltitudes } from '../../physics/elements';
+import { fmtAmmoStatus, fmtDist, fmtEnergy } from '../hud/utils';
+import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { orbitRows } from '../pickable/orbit-rows';
+import type { MapPickable } from '../pickable/map-pickable';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { MapCommands } from '../pickable/map-commands';
+import type { MenuItem } from '../hud/windows/context-menu';
+import type { PropertyRow } from '../hud/windows/property-window';
+import type { MapListSection } from '../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../hud/object-groups';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
@@ -71,10 +86,13 @@ const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 // 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
 export type PlanExecutionMode = 'off' | 'instant';
 
+// 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
+const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
+
 const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = { off: 'OFF', instant: '自動実行' };
 
 // mode の表示ラベル(HUDのメニュー項目・プロパティ行が共有する)。
-export function planExecutionLabel(mode: PlanExecutionMode): string {
+function planExecutionLabel(mode: PlanExecutionMode): string {
   return PLAN_EXECUTION_LABELS[mode];
 }
 
@@ -87,7 +105,9 @@ export type PlayerInit =
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、それらを反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
-export class Player extends Ship {
+export class Player extends Ship implements Controllable, MapPickable {
+  public readonly mapKind: DynamicEntityKind = 'player';
+
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
   readonly belt: Belt;
@@ -550,6 +570,9 @@ export class Player extends Ship {
   // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
   private disposed: boolean = false;
 
+  // 画面マーカーと被選択判定が同じ艦を指すためのキー。
+  private get markerKey(): string { return `player-${this.id}`; }
+
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
   // isActive はこの艦が操作対象かどうか(マップ上の自艦マーカーを他の僚艦と塗り分けるため)。
   markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean, isActive: boolean): GroupedMarkerItem {
@@ -558,7 +581,8 @@ export class Player extends Ship {
     const kindCls = isActive ? 'mk-self' : 'mk-ally';
     const color = role === 'primary' ? currentThemePalette().signal : isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY;
     return {
-      key: `player-${this.id}`,
+      key: this.markerKey,
+      kind: this.mapKind,
       cls: role === 'primary' ? `${kindCls} mk-target` : kindCls,
       sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
@@ -622,4 +646,144 @@ export class Player extends Ship {
       nodes: nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
     };
   }
+
+  // マップ上の被選択物としての振る舞い。
+  public readonly ownerName = null;
+  public readonly mapTime = null;
+  public get gone(): boolean { return !this.alive; }
+  public get mapState(): KinematicState { return this.state; }
+  public readonly mapGlyph = ENTITY_GLYPH.ship;
+  public get mapGlyphSvg(): string { return shipMarkerSvg(true); }
+  public readonly listSection: MapListSection = 'player';
+  public readonly pickerGenre: ObjectPickerGenre = '自艦';
+  public readonly hiddenBehindBodies = true;
+  public readonly onlyInFocusedSystem = true;
+  public listCounted(): boolean { return false; }
+
+  // 表示時刻の ECI 位置。予測が届かない時刻では null。
+  public mapPosAt(displayTime: number): Vec3 | null {
+    return this.stateAt(displayTime)?.r ?? null;
+  }
+
+  // 自艦カテゴリの表示トグルによる可否。操作中の自艦は例外扱いになる。
+  public mapVisibility(policy: MapVisibilityPolicy, activePlayer: Player | null): MapVisibility {
+    return policy.entity(this.mapKind, this === activePlayer);
+  }
+
+  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
+
+  // 残 HP と、いま最も強く引かれている天体を中心とした近地点高度。
+  public listDetail(celestialSystem: CelestialSystem): string {
+    const center = strongestAttractor(this.state.r, celestialSystem.celestialMotions, this.state.t);
+    const el = this.orbitalElementsAround(center, this.state.t);
+    const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
+    return `HP ${Math.round(this.hp)}/${Math.round(this.maxHp)} · PE ${pe}`;
+  }
+
+  // 検索が照合する文字列。行の補助表示と同じ。
+  public listSearchText(celestialSystem: CelestialSystem): string {
+    return this.listDetail(celestialSystem);
+  }
+
+  // 操作中の自艦を一覧の先頭へ出す。
+  public listPriority(activePlayer: Player | null): number {
+    return this === activePlayer ? -100 : 0;
+  }
+
+  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
+  public mapMenuItems(
+    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[] {
+    const isActive = this === commands.activePlayer;
+    const activate: MenuItem<MenuAction> = isActive
+      ? { label: '操作対象を解除', act: 'deactivate' }
+      : { label: '操作対象にする', act: 'activate' };
+    const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
+    const planExecLabel = `軌道計画の実行: ${planExecutionLabel(this.planExecution)}`;
+    const planExec: readonly MenuItem<MenuAction>[] = commands.executesPlans
+      ? [{ label: planExecLabel, act: 'planExecCycle', keepOpen: true }]
+      : [];
+
+    const dockState = commands.dockState(this);
+    const dockItems: readonly MenuItem<MenuAction>[] =
+      dockState === 'docked' ? [MenuCommon.transferResources(), MenuCommon.undock()]
+        : dockState === 'dockable' ? [MenuCommon.dock()]
+          : [];
+
+    // 操作対象の自艦は常に予測線・過去線固定なのでトグル自体を出さない。
+    const trajectoryItem: readonly MenuItem<MenuAction>[] = isActive
+      ? [] : [MenuCommon.trajectoryLine(this.showTrajectoryLine)];
+
+    return [
+      ...MenuCommon.targetItems(commands, this.id, simTime),
+      ...dockItems,
+      ...planExec,
+      activate,
+      MenuCommon.focus(),
+      ...trajectoryItem,
+      ...MenuCommon.duplicateItems(commands),
+      ...remove,
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // mapMenuItems が出した操作を実行する。軌道線の表示と計画実行モードは自分の状態を、残りは commands を通す。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    if (act === 'toggleTrajectoryLine') {
+      this.showTrajectoryLine = !this.showTrajectoryLine;
+    } else if (act === 'dock') {
+      commands.dock(this);
+    } else if (act === 'undock') {
+      commands.undock();
+    } else if (act === 'transferResources') {
+      commands.transferResources(this);
+    } else if (act === 'activate') {
+      commands.setActivePlayer(this);
+    } else if (act === 'deactivate') {
+      if (this === commands.activePlayer) commands.setActivePlayer(null);
+    } else if (act === 'planExecCycle') {
+      const i = PLAN_EXECUTION_MODES.indexOf(this.planExecution);
+      this.planExecution = PLAN_EXECUTION_MODES[(i + 1) % PLAN_EXECUTION_MODES.length]!;
+    } else if (act === 'duplicate') {
+      commands.duplicate(this.mapKind, this.state);
+    } else if (act === 'delete') {
+      commands.removePlayer(this);
+    } else if (act === 'focus') {
+      commands.focus(this.id, this.name);
+    } else if (act === 'target') {
+      commands.toggleNavTarget(this.id, this.name);
+    }
+  }
+
+  // プロパティウィンドウに出す行。装甲・温度・電力・弾薬を主要行とし、操作対象か・計画実行は
+  // 詳細トグル、軌道要素は「軌道」グループの下に畳む。
+  public mapPropertyRows(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly PropertyRow[] {
+    return [
+      {
+        key: 'operated', label: '操作対象か',
+        value: this === commands.activePlayer ? 'はい' : 'いいえ', collapsible: true,
+      },
+      { key: 'follow', label: '計画実行', value: planExecutionLabel(this.planExecution), collapsible: true },
+      { key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` },
+      { key: 'temp', label: '温度', value: `${this.temperature.toFixed(0)} K` },
+      { key: 'power', label: '電力', value: fmtEnergy(this.power.chargeJ) },
+      { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.roundsInMag, this.magsLeft, this.reloadTimer) },
+      ...orbitRows(this, celestialSystem, simTime),
+    ];
+  }
+
+  public readonly mapRename = (name: string): void => { this.name = name; };
+
+  // 単クリックはプロパティウィンドウを開くだけに留め、操作対象は変えない。
+  public readonly onMapSelect = (commands: MapCommands, clientX: number, clientY: number): void => {
+    commands.openProperties(this, clientX, clientY);
+  };
+
+  // 注視されたら操作対象にもなる(操作艦を切り替える最速の手段)。
+  public readonly onMapFocus = (commands: MapCommands): void => {
+    commands.setActivePlayer(this);
+    commands.hint(`${this.name} を操作対象に設定`);
+  };
 }

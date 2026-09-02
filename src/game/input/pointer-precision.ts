@@ -4,11 +4,6 @@
 // マウスも使う等)を追いかけ始めるとピック半径が操作の途中で変わりかねない。
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
-// 主たるポインタが pointer:coarse かどうかを返す。
-export function isCoarsePointer(): boolean {
-  return COARSE;
-}
-
 // pointer:coarse なら coarse、そうでなければ fine を返す。ピック半径・ヒット領域など
 // coarse 環境でだけ広げたい閾値の選択に使う。
 export function pickRadiusSq(fine: number, coarse: number): number {
