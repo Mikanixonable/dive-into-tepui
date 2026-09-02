@@ -1,5 +1,5 @@
-// 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動と、表示時刻の計画上の自機位置ゴースト
-// (⬢ plannedPlayer マーカー)。
+// 操作対象の軌道計画の姿の表示(両ビュー常駐)。どの計画をいつ描くかを決め、計画折れ線
+// (PlanPath)を駆動して、表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)を置く。
 import * as THREE from 'three/webgpu';
 import type { WorldView } from '../world-view';
 import { Vec3, len, sub } from '../../math/vec3';
@@ -13,7 +13,7 @@ import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hu
 import { ApsisMarker } from '../marker/apsis-marker';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
-import { ProjectFn, ScaleFn } from '../camera/camera-system';
+import { CameraSystem, ProjectFn } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { MapPickable } from '../pickable/map-pickable';
 import { DisplayDurationSource, PlanData } from './plan';
@@ -21,8 +21,10 @@ import { PlanPath } from './plan-path';
 import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { FutureCelestialBodyProvider } from '../dynamic/arc-celestial-bodies';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { ActivePlayerController } from '../active-controllable-controller';
+import type { PredictedArc } from '../dynamic/predicted-arc';
+import type { PerfCounts } from '../../perf-meter';
 
 // 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。両方見つかった
 // ときの (遠地点距離-近地点距離)/(遠地点距離+近地点距離) と比較する — これ未満は円に
@@ -89,6 +91,8 @@ export class PlanDisplay {
   private tickIcons: readonly PlanTickIcon[] = [];
   private lastTickKeys: readonly string[] = [];
   private ghost: { readonly pos: Vec3; readonly label: string } | null = null;
+  // このフレームに描く計画の材料。update が決め、sync と growableArcs が読む。
+  private displayedPlan: PlanData | null = null;
   // update が天体を厳密に引いた時刻。sync でのマップビュー遮蔽判定に使う。
   private celestialBodiesPivot = 0;
   // 通過時刻ラベルの設定。update ごとに表示窓から組み直し、sync のラベル組み立てで読む。
@@ -102,30 +106,75 @@ export class PlanDisplay {
     private readonly markerManager: MarkerManager,
     private readonly celestialSystem: CelestialSystem,
     displayDuration: DisplayDurationSource,
+    private readonly activePlayers: ActivePlayerController,
   ) {
     this.path = new PlanPath(scene, displayDuration);
   }
 
-  // 計画折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。
-  // 起点が null のときは何も求めない — 出さない計画の位置は持たない。ship はノードの無い
-  // 唯一の区間を PlanPath が操作対象の予測列として答えるために渡す。
-  update(
-    planData: PlanData | null, displayWindow: DisplayWindow, celestialBodyProvider: FutureCelestialBodyProvider, ship: Controllable | null,
+  // 計画折れ線を再積分し、ゴースト位置・アプシスアイコン・操作対象の赤道交点を求め直す。
+  // 折れ線は戦闘ビューでも描く — 計画どおりに機体を動かすのは戦闘ビューだから。
+  update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: WorldView): void {
+    const ship = this.activePlayers.currentControllable;
+    this.displayedPlan = this.planToDisplay(ship, view);
+    if (this.displayedPlan === null) this.clearDisplay();
+    else this.updateDisplay(this.displayedPlan, displayWindow, ship, frameAnchors);
+    this.updateEquatorNodes(displayWindow, frameAnchors, ship);
+  }
+
+  // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。
+  sync(cameraSystem: CameraSystem, fo: FloatingOrigin): void {
+    if (this.displayedPlan === null) { this.hide(); return; }
+    const project = cameraSystem.activeCameraProjection;
+    const view = cameraSystem.worldView;
+    const cameraPos = cameraSystem.activeCameraPos;
+    // ノードの無い計画は自機の現在軌道そのものを描くだけで情報を持たないので、折れ線は隠す。
+    // path.sync 自体はノードの有無に関わらず毎フレーム呼ぶ — 画面判定に使う project を
+    // 毎フレーム更新しておかないと、クリック当たり判定が古い視点のまま行われてしまう。
+    this.path.setVisible(this.path.nodeCount > 0);
+    this.path.sync(
+      fo, project, cameraSystem.activeCameraScale, cameraPos, cameraSystem.activeCamera,
+    );
+    this.syncGhost(project, view, cameraPos);
+    this.syncApsisMarkers(project, view, cameraPos);
+    this.syncImpactMarkers(project, view, cameraPos);
+    this.syncTickMarkers(project, view, cameraPos);
+  }
+
+  // Predictor の予算パスへ渡す、このフレーム owned な計画区間の弧。表示していない計画の弧は
+  // 伸ばさない。
+  growableArcs(): readonly PredictedArc[] {
+    return this.displayedPlan === null ? [] : this.path.growableArcs();
+  }
+
+  // 負荷確認ウィンドウが読む、直近フレームに作り直した計画区間の本数。
+  perfCounts(): Pick<PerfCounts, 'planArcs'> {
+    return { planArcs: this.path.lastRebuiltArcs };
+  }
+
+  // 計画折れ線を片付ける。
+  dispose(): void {
+    this.path.dispose();
+  }
+
+  // このフレームに出す折れ線の材料。出す価値のある折れ線が無ければ null — ノードの無い計画は
+  // 操作対象の現在軌道そのものなので、ノードを置ける編集中(マップビュー)だけ出す。
+  private planToDisplay(ship: Controllable | null, view: WorldView): PlanData | null {
+    if (ship === null) return null;
+    if (view !== 'map' && ship.plan.nodes.length === 0) return null;
+    return ship.plan.displayData(ship.state);
+  }
+
+  // 折れ線を再積分し、表示時刻のゴースト位置と近地点・遠地点アイコンを求め直す。ship はノードの
+  // 無い唯一の区間を PlanPath が操作対象の予測列として答えるために渡す。
+  private updateDisplay(
+    planData: PlanData, displayWindow: DisplayWindow, ship: Controllable | null,
     frameAnchors: FrameAnchorSource,
   ): void {
-    if (planData === null) {
-      this.path.clear();
-      this.ghost = null;
-      this.placeApsisMarkers(null);
-      this.impactIcons = [];
-      this.tickIcons = [];
-      return;
-    }
     const { simTime, displayTime } = displayWindow;
     this.celestialBodiesPivot = displayTime;
     this.path.update(
       planData, ship, this.celestialSystem, displayWindow.frame, simTime, displayTime, frameAnchors,
-      celestialBodyProvider, displayWindow.duration,
+      displayWindow.duration,
     );
     this.ghost = this.ghostAt(displayTime, simTime);
     // 時刻併記の可否・表記は PREDICT パネルの設定(displayWindow 経由)にそのまま従う。
@@ -135,30 +184,29 @@ export class PlanDisplay {
     this.tickIcons = this.tickIconsOf(this.timeLabel);
   }
 
-  // 計画折れ線・ゴーストマーカー・アプシスアイコンを update が求めた値へ同期する。camera は
-  // 折れ線の解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
-  sync(
-    fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn,
-    view: WorldView, cameraPos: Vec3, camera: THREE.Camera,
-  ): void {
-    // ノードの無い計画は自機の現在軌道そのものを描くだけで情報を持たないので、折れ線は隠す。
-    // path.sync 自体はノードの有無に関わらず毎フレーム呼ぶ — 画面判定に使う project を
-    // 毎フレーム更新しておかないと、クリック当たり判定が古い視点のまま行われてしまう。
-    this.path.setVisible(this.path.nodeCount > 0);
-    this.path.sync(fo, project, scale, cameraPos, camera);
-    this.syncGhost(project, view, cameraPos);
-    this.syncApsisMarkers(project, view, cameraPos);
-    this.syncImpactMarkers(project, view, cameraPos);
-    this.syncTickMarkers(project, view, cameraPos);
+  // 出さない計画の位置は持たない。
+  private clearDisplay(): void {
+    this.path.clear();
+    this.ghost = null;
+    this.placeApsisMarkers(null);
+    this.impactIcons = [];
+    this.tickIcons = [];
   }
 
-  // 計画折れ線を片付ける。
-  dispose(): void {
-    this.path.dispose();
+  // 操作対象の赤道交点マーカーを、いま描かれている計画の折れ線の上で求め直す。折れ線が
+  // 出ていない間は現在の軌道要素から求める。
+  private updateEquatorNodes(
+    displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, ship: Controllable | null,
+  ): void {
+    if (!ship) return;
+    ship.ensureEquatorNodes(this.markerManager).updateOnPath(
+      displayWindow.frame, displayWindow.displayTime, this.celestialSystem, frameAnchors,
+      ship.state, this.path.displayedSamples(), timeLabelSettingOf(displayWindow),
+    );
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコンを非表示にする。
-  hide(): void {
+  private hide(): void {
     this.path.setVisible(false);
     this.markerManager.hide('plannedPlayer');
     this.markerManager.hide(this.apsisPe.id);

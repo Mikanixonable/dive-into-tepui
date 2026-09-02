@@ -15,7 +15,7 @@ import { ActiveControllableController } from './active-controllable-controller';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
-import { PlanTrajectory } from './plan/plan-trajectory';
+import { PlanDisplay } from './plan/plan-display';
 import { DisplayWindowManager } from './display-window-manager';
 import { PlanGuide } from './plan/plan-guide';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
@@ -76,7 +76,7 @@ export class Game {
   }
   readonly simSpeedManager: SimSpeedManager;
 
-  private readonly planTrajectory: PlanTrajectory;
+  private readonly planDisplay: PlanDisplay;
   // このフレームの表示座標系・表示時刻窓と、表示側の重力源窓。update で確定させ sync でも読む。
   // HUD(軌道分析パネルの投影タブなど)が current 経由で表示期間を読むため公開する。
   readonly displayWindowManager: DisplayWindowManager;
@@ -193,7 +193,7 @@ export class Game {
       onToggleIgnition: () => { this.player?.boosters.toggleIgnition(); },
       onDecouple: () => { this.player?.boosters.decouple(this.dynamicSystem); },
     });
-    this.planTrajectory = new PlanTrajectory(
+    this.planDisplay = new PlanDisplay(
       this._scene, this.markerManager, celestialSystem, this.displayWindowManager, this.activePlayers,
     );
     const editor = new PlanEditor(
@@ -205,7 +205,7 @@ export class Game {
       this.activePlayers,
       this.displayWindowManager,
       this.frameControls,
-      this.planTrajectory.planDisplay.path,
+      this.planDisplay.path,
     );
     this.input = new Input(gs.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
@@ -227,7 +227,7 @@ export class Game {
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
       this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
-      this.celestialMarkers, this.planTrajectory.planDisplay, this.frameAnchors,
+      this.celestialMarkers, this.planDisplay, this.frameAnchors,
     );
     const linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
     this.mapActions = new MapContextActions(
@@ -252,7 +252,7 @@ export class Game {
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.mapActions, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      this.activePlayers, dockingGuide, guide, this.planTrajectory, celestialSystem,
+      this.activePlayers, dockingGuide, guide, this.planDisplay.path, celestialSystem,
       this.simSpeedManager, this._hud,
     );
     const mapView = new MapView(
@@ -312,7 +312,7 @@ export class Game {
     this._worldSfx.setRcs(false);
     this.touchControls?.dispose();
     this.input.dispose();
-    this.planTrajectory.dispose();
+    this.planDisplay.dispose();
     this._celestialSystem.dispose();
     this.frameControls.dispose();
     this.cameraSystem.dispose();
@@ -347,14 +347,14 @@ export class Game {
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this._celestialSystem.update(displayWindow.displayTime, view, graphics);
     this.sections.enter(SECTION.plan);
-    this.planTrajectory.update(displayWindow, this.frameAnchors, view);
+    this.planDisplay.update(displayWindow, this.frameAnchors, view);
     this.sections.exit(SECTION.plan);
     // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間はサブステップも進まず、
     // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
       this.simulator.simTime, this.simulator.lastSimDt, this.player, displayWindow.duration,
-      canDisplayFuture, this.planTrajectory.growableArcs(view),
+      canDisplayFuture, this.planDisplay.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
     this.sections.enter(SECTION.camera);
@@ -554,7 +554,7 @@ export class Game {
     // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは
     // 最新値を表示し続ける必要がある。MapContextActions 側で窓が無ければ即時 return する。
     this.mapActions.sync(simTime, displayTime, player);
-    this.planTrajectory.sync(this.cameraSystem, fo);
+    this.planDisplay.sync(this.cameraSystem, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(
@@ -586,7 +586,7 @@ export class Game {
       ...this.dynamicSystem.perfCounts(),
       ...this.predictor.perfCounts(),
       ...this.simulator.perfCounts(),
-      ...this.planTrajectory.perfCounts(),
+      ...this.planDisplay.perfCounts(),
       ...this.celestialSystem.perfCounts(),
       ...this.mapPickables.perfCounts(),
       displayDurationSec: this.displayWindowManager.current.duration,

@@ -13,7 +13,7 @@ import type { Targeter } from './targeter';
 import type { ActiveControllableController } from './active-controllable-controller';
 import type { DockingGuide } from './docking/docking-guide';
 import type { PlanGuide } from './plan/plan-guide';
-import type { PlanTrajectory } from './plan/plan-trajectory';
+import type { PlanPath } from './plan/plan-path';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { DisplayWindow } from './display-window-manager';
 import type { FloatingOrigin } from './camera/floating-origin';
@@ -31,7 +31,7 @@ export class CombatView implements WorldViewFrame {
     private readonly activePlayers: ActiveControllableController,
     private readonly dockingGuide: DockingGuide,
     private readonly guide: PlanGuide,
-    private readonly planTrajectory: PlanTrajectory,
+    private readonly planPath: PlanPath,
     private readonly celestialSystem: CelestialSystem,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly hud: Hud,
@@ -99,7 +99,7 @@ export class CombatView implements WorldViewFrame {
       );
     }
     const project = this.cameraSystem.activeCameraProjection;
-    this.guide.sync(player, displayWindow.simTime, project, this.planTrajectory.planDisplay.path);
+    this.guide.sync(player, displayWindow.simTime, project, this.planPath);
     this.dockingGuide.sync(player, fo, project);
   }
 
