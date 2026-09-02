@@ -73,7 +73,7 @@ export interface KindDef {
   readonly index: number;
 }
 
-export interface CombinedKindMember {
+interface CombinedKindMember {
   readonly id: string;
   readonly point?: string;
   readonly branch?: 'N' | 'S';

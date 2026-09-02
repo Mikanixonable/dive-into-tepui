@@ -11,19 +11,17 @@ import { Vec3, add, cross, len, sub, v3 } from '../math/vec3';
 // 27mu(1−mu) < 1 の解で、同値な表現は m1/m2 > (25+3√69)/2 ≈ 24.96。
 export const TRIANGULAR_STABILITY_MASS_RATIO = (27 - Math.sqrt(621)) / 54;
 
-export type LagrangePoints = {
-  readonly L1: Vec3;
-  readonly L2: Vec3;
-  readonly L3: Vec3;
-  readonly L4: Vec3;
-  readonly L5: Vec3;
-};
+// ラグランジュ点5点の呼び名。共線点(L1/L2/L3)だけを受ける口は、その部分集合で表す。
+export type LagrangeLabel = 'L1' | 'L2' | 'L3' | 'L4' | 'L5';
+export type CollinearPoint = Extract<LagrangeLabel, 'L1' | 'L2' | 'L3'>;
+
+export type LagrangePoints = Readonly<Record<LagrangeLabel, Vec3>>;
 
 // 共線点の、最も近い天体からの距離(軌道半径比 gamma)。L1/L2 は副天体から、L3 は主天体から
 // 測る。回転系での釣り合いはどれも gamma の5次方程式になり、閉じた形では解けないので
 // Newton 法で解く — L1/L2 の初期値である Hill 半径 (mu/3)^(1/3) は地球-月系で真の解から
 // 5%(約 5,000 km)ずれるため、反復して詰める。
-export function collinearGamma(mu: number, point: 'L1' | 'L2' | 'L3'): number {
+export function collinearGamma(mu: number, point: CollinearPoint): number {
   if (point === 'L3') return collinearGammaL3(mu);
   const sign = point === 'L1' ? -1 : 1;
   let g = Math.cbrt(mu / 3);
@@ -123,7 +121,7 @@ export function lagrangePointsOf(frame: SecondaryFrame): LagrangePoints {
 // ラグランジュ点1点の ECI 状態。回転系の角速度 omega と主天体の速度から
 // v = v_primary + omega × (r − r_primary) として合成する(5点とも同じ剛体回転系に乗って
 // いるため omega は共通)。
-export function lagrangeStateOf(point: keyof LagrangePoints, frame: SecondaryFrame): KinematicState {
+export function lagrangeStateOf(point: LagrangeLabel, frame: SecondaryFrame): KinematicState {
   const { rotation } = frame;
   const r = lagrangePointsOf(frame)[point];
   return kinematicState<'eci'>(

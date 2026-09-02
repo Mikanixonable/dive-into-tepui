@@ -2,18 +2,18 @@ import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../
 import { CelestialMotion } from '../physics/celestial-motion';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
-import { Base } from './dynamic/dynamic-entity/base';
+import type { Base } from './dynamic/dynamic-entity/base';
 import type { AmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
 import type { RcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
-import { Input, PointerPoint } from './input/input';
+import { Input } from './input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
+import type { CelestialMarkers } from './marker/celestial-markers';
 import { MarkerManager, MARKER_PRIORITY } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/map-pickable';
-import { pickRadiusSq } from './input/pointer-precision';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
 import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
@@ -31,9 +31,6 @@ const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録し
 
 const MAP_AMMO_FADE_START = 5e7;
 const MAP_AMMO_FADE_END = 1e8;
-const TARGET_LOCK_PICK_PX_SQ = 600; // 右クリックによるターゲット固定のヒット判定半径の2乗 [px^2](~24px半径)
-
-const TARGET_LOCK_PICK_PX_SQ_COARSE = 1936;
 
 const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
 
@@ -75,17 +72,9 @@ export class Targeter {
   handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn, overviewMode: boolean): void {
     if (overviewMode) return;
     if (!input.takeKey(K.targetSelect)) return;
-    const next = targets
-      .filter((e) => e.alive)
-      .map((target) => {
-        const p = project(target.state.r);
-        const dx = p.x - window.innerWidth * 0.5;
-        const dy = p.y - window.innerHeight * 0.5;
-        return { target, d2: dx * dx + dy * dy, front: p.front };
-      })
-      .filter((x) => x.front)
-      .sort((a, b) => a.d2 - b.d2)[0]?.target ?? null;
-    this.navTarget.setCombatTarget(next);
+    this.navTarget.setCombatTarget(pickNearest(
+      targets.filter((e) => e.alive), (target) => project(target.state.r),
+      window.innerWidth * 0.5, window.innerHeight * 0.5, Infinity));
   }
 
   // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
@@ -146,7 +135,7 @@ export class Targeter {
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
-    celestialBodies: readonly CelestialMotion[],
+    celestialBodies: readonly CelestialMotion[], celestialMarkers: CelestialMarkers,
   ): void {
     const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
@@ -159,7 +148,7 @@ export class Targeter {
       this.aliveScratch.push(tgt);
       const ds = tgt.stateAt(displayTime);
       if (!ds) continue;
-      const visibility = visibilityPolicy?.entity(tgt instanceof Player ? 'player' : (tgt instanceof Base ? 'base' : 'ship'), tgt === player);
+      const visibility = visibilityPolicy?.entity(tgt.mapKind, tgt === player);
       if (visibility && !visibility.pickable) continue;
       // 戦闘ビューではカメラ直下の自機をマーカーで重ねて表示しない。マップビューでは
       // 他の自機と同じ位置マーカーが必要なので、操作対象かつ戦闘ビューのときだけ除外する。
@@ -199,7 +188,7 @@ export class Targeter {
       const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
       this.pushMarkerItem(fuel.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
     }
-    const celestialLabels = overviewMode ? cameraSystem.focusMarkers.activeLabels : [];
+    const celestialLabels = overviewMode ? celestialMarkers.activeLabels : [];
     this.markerManager.combatMarkers.sync(
       this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, celestialBodies,
       cameraSystem.activeCameraPos,
@@ -266,13 +255,5 @@ export class Targeter {
     const tgtDir = norm(sub(tgt.state.r, player.state.r));
     this.markerManager.setDirection('tgtdir', 'mk-tgtdir', DIRECTION_GLYPH.target, player.state.r, tgtDir, project);
     this.markerManager.setDirection('atgdir', 'mk-tgtdir', DIRECTION_GLYPH.antiTarget, player.state.r, scale(tgtDir, -1), project);
-  }
-
-  // クリック位置の許容半径内で画面上最も近い生存ターゲットを返す。範囲外なら null。
-  // MapContextActions の戦闘ビュー右クリック(プロパティウィンドウを開く対象探し)が読む。
-  pickTargetAt(click: PointerPoint, targets: readonly CombatTarget[], project: ProjectFn): CombatTarget | null {
-    const pickables = targets.filter((e) => e.alive).map((target) => ({ pos: target.state.r, target }));
-    const picked = pickNearest(pickables, click.x, click.y, project, pickRadiusSq(TARGET_LOCK_PICK_PX_SQ, TARGET_LOCK_PICK_PX_SQ_COARSE));
-    return picked?.target ?? null;
   }
 }

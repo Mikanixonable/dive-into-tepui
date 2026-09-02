@@ -2,7 +2,7 @@
 // Primitive (色相・明度の値) と Semantic (UI上の意味) を同じパレットで公開する。
 // ゲーム世界(マーカー・演出・船体など)の Material 色は const.ts が持ち、ここには含まない。
 
-export interface ThemePalette {
+interface ThemePalette {
   readonly id: string;
   readonly name: string;
   readonly description: string;
@@ -125,7 +125,7 @@ export function currentThemePalette(): ThemePalette {
   return activePalette;
 }
 
-export function getThemePalette(id: string): ThemePalette | undefined {
+function getThemePalette(id: string): ThemePalette | undefined {
   return THEME_PRESETS.find((palette) => palette.id === id);
 }
 
@@ -211,27 +211,27 @@ export const ACCENT_SOFT = ACTIVE_THEME.accentNear;
 export const SIGNAL = ACTIVE_THEME.signal;
 /** @deprecated Use SIGNAL. Kept for non-UI renderers during migration. */
 export const ACCENT_SECONDARY = SIGNAL;
-export const SUCCESS = ACTIVE_THEME.success;
-export const WARNING = ACTIVE_THEME.warning;
-export const DANGER = ACTIVE_THEME.error;
-export const INFO = ACTIVE_THEME.info;
-export const FOCUS = ACTIVE_THEME.focus;
-export const FOCUS_CONTRAST = ACTIVE_THEME.focusContrast;
-export const SUCCESS_FILL = rgba(SUCCESS, 0.12);
-export const WARNING_FILL = rgba(WARNING, 0.12);
-export const DANGER_FILL = rgba(DANGER, 0.12);
-export const INFO_FILL = rgba(INFO, 0.12);
+const SUCCESS = ACTIVE_THEME.success;
+const WARNING = ACTIVE_THEME.warning;
+const DANGER = ACTIVE_THEME.error;
+const INFO = ACTIVE_THEME.info;
+const FOCUS = ACTIVE_THEME.focus;
+const FOCUS_CONTRAST = ACTIVE_THEME.focusContrast;
+const SUCCESS_FILL = rgba(SUCCESS, 0.12);
+const WARNING_FILL = rgba(WARNING, 0.12);
+const DANGER_FILL = rgba(DANGER, 0.12);
+const INFO_FILL = rgba(INFO, 0.12);
 
 export const BG = ACTIVE_THEME.page;
 export const SURFACE_0 = ACTIVE_THEME.surface0;
 export const SURFACE_1 = ACTIVE_THEME.surface1;
 export const SURFACE_2 = ACTIVE_THEME.surface2;
 export const SURFACE_3 = ACTIVE_THEME.surface3;
-export const SURFACE_WEAK = rgba(SURFACE_0, 0.52); // 背後を強く透かすラベル地
-export const SURFACE = rgba(SURFACE_1, 0.64); // Quiet Glass
+const SURFACE_WEAK = rgba(SURFACE_0, 0.52); // 背後を強く透かすラベル地
+const SURFACE = rgba(SURFACE_1, 0.64); // Quiet Glass
 export const SURFACE_OPAQUE = rgba(SURFACE_1, 0.96); // Solid に近い全画面表示用
-export const GLASS_QUIET = rgba(SURFACE_1, 0.64);
-export const GLASS_FOCUS = rgba(SURFACE_1, 0.76);
+const GLASS_QUIET = rgba(SURFACE_1, 0.64);
+const GLASS_FOCUS = rgba(SURFACE_1, 0.76);
 export const EDGE = rgba(ACTIVE_THEME.title, 0.16);
 
 export const TEXT_STRONG = ACTIVE_THEME.bright;
@@ -242,26 +242,26 @@ export const TEXT_DIM = ACTIVE_THEME.muted;
 export const TEXT_FAINT = ACTIVE_THEME.faint;
 
 // アクセントの薄膜。値が大きいほど強く主張する。
-export const ACCENT_FILL_WEAK = rgba(ACCENT, 0.08); // 選択されていない行の背景など、ごく控えめな地色
-export const ACCENT_FILL = rgba(ACCENT, 0.16); // 選択中・ホバー中の地色
-export const ACCENT_FILL_STRONG = rgba(ACCENT, 0.24); // 押下中・強調表示の地色
-export const ACCENT_EDGE_SOFT = rgba(ACCENT, 0.22); // 見出し下線などの控えめな縁
-export const ACCENT_EDGE = rgba(ACCENT, 0.4); // ボタン・パネルの通常の縁
+const ACCENT_FILL_WEAK = rgba(ACCENT, 0.08); // 選択されていない行の背景など、ごく控えめな地色
+const ACCENT_FILL = rgba(ACCENT, 0.16); // 選択中・ホバー中の地色
+const ACCENT_FILL_STRONG = rgba(ACCENT, 0.24); // 押下中・強調表示の地色
+const ACCENT_EDGE_SOFT = rgba(ACCENT, 0.22); // 見出し下線などの控えめな縁
+const ACCENT_EDGE = rgba(ACCENT, 0.4); // ボタン・パネルの通常の縁
 
 // 中立の薄膜。値が大きいほど強く主張する。EDGE と同じオフホワイトを基調とする。
-export const FILL_1 = rgba(TEXT, 0.04);
-export const FILL_2 = rgba(TEXT, 0.09);
-export const FILL_3 = rgba(TEXT, 0.16);
+const FILL_1 = rgba(TEXT, 0.04);
+const FILL_2 = rgba(TEXT, 0.09);
+const FILL_3 = rgba(TEXT, 0.16);
 export const FILL_4 = rgba(TEXT, 0.32);
 
-export const SHADE_1 = 'rgba(0, 0, 0, 0.18)'; // 弱い落とし影
-export const SCRIM = 'rgba(6, 7, 9, 0.82)'; // 全画面表示の背後を覆う膜
-export const BAR_BG = ACTIVE_THEME.surface3; // ゲージ類の不透明な地(背後を透かさない)
+const SHADE_1 = 'rgba(0, 0, 0, 0.18)'; // 弱い落とし影
+const SCRIM = 'rgba(6, 7, 9, 0.82)'; // 全画面表示の背後を覆う膜
+const BAR_BG = ACTIVE_THEME.surface3; // ゲージ類の不透明な地(背後を透かさない)
 
 // グロー(text-shadow)を任意の色から作るための混合率。
 // `color-mix(in srgb, <色> ${GLOW_STRONG}, transparent)` の形で使う。
-export const GLOW_STRONG = '60%'; // 通常のグロー
-export const GLOW_WEAK = '35%'; // 淡い外側のグロー
+const GLOW_STRONG = '60%'; // 通常のグロー
+const GLOW_WEAK = '35%'; // 淡い外側のグロー
 
 // Δv 編集の3軸。plan-editor.ts の DOM パネルと plan-gizmo-3d.ts の3D矢印が共有する。
 export const AXIS_PROGRADE = '#3b82f6';
@@ -271,52 +271,52 @@ export const AXIS_RADIAL = '#ef4444';
 // 文字サイズ。8段。マーカーのグリフサイズ(GLYPH_*)はこれとは別スケール。
 export const FONT_XXS = '11px';
 export const FONT_XS = '12px';
-export const FONT_S = '13px';
+const FONT_S = '13px';
 export const FONT_M = '14px';
 export const FONT_L = '15px';
 export const FONT_XL = '18px';
 export const FONT_2XL = '24px';
-export const FONT_3XL = '34px';
+const FONT_3XL = '34px';
 
 // 世界座標マーカーの字形に合わせた調整値。UI の文字スケール(FONT_*)とは独立。
-export const GLYPH_BASE = '22px'; // .mk .sym の基準
-export const GLYPH_POI = '5px'; // 天体ラベルの点(.mk-poi)
-export const GLYPH_BORESIGHT = '36px'; // .mk-boresight
+const GLYPH_BASE = '22px'; // .mk .sym の基準
+const GLYPH_POI = '5px'; // 天体ラベルの点(.mk-poi)
+const GLYPH_BORESIGHT = '36px'; // .mk-boresight
 
 // 角丸。役割名を正本とし、旧3段名は既存UIとの互換用に対応させる。
-export const RADIUS_MICRO = '8px';
+const RADIUS_MICRO = '8px';
 export const RADIUS_CONTROL = '11px';
 export const RADIUS_PANEL = '16px';
 export const RADIUS_WINDOW = '22px';
 export const RADIUS_S = RADIUS_MICRO;
 export const RADIUS_M = RADIUS_CONTROL;
 export const RADIUS_L = RADIUS_PANEL;
-export const RADIUS_PILL = '999px'; // トラックなど、完全な角丸ピル
+const RADIUS_PILL = '999px'; // トラックなど、完全な角丸ピル
 
 // 余白。6段。
 export const SPACE_1 = '2px';
 export const SPACE_2 = '4px';
-export const SPACE_3 = '6px';
+const SPACE_3 = '6px';
 export const SPACE_4 = '8px';
-export const SPACE_5 = '12px';
+const SPACE_5 = '12px';
 export const SPACE_6 = '18px';
 
 // トランジション。操作への即応(FAST)と、フェード・バーの伸縮など見せる変化(SLOW)の2段。
-export const TRANSITION_FAST = '0.15s';
+const TRANSITION_FAST = '0.15s';
 export const TRANSITION_SLOW = '0.24s';
 
-export const HIT_TARGET_MIN = '44px'; // タップ最小寸法
+const HIT_TARGET_MIN = '44px'; // タップ最小寸法
 
 // ページ直下(body の子)の要素間の重なり順。#hud の子(パネル/ウィンドウ/ポップアップ等)の
 // 重なりはここではなく overlay-layer.ts の8層(OverlayLayerName、z-index 10〜17)が持つ——
 // Z_HUD が同じ「10」に見えるのは別のスタッキング文脈(ページ直下 vs #hud 内部)だからで、衝突ではない。
 export const Z_TOUCH_UI = 9;
-export const Z_HUD = 10;
+const Z_HUD = 10;
 export const Z_HUD_NODE_GIZMO = 5; // #hud 内部だが overlay-layer の層を経由しない特例
-export const Z_HUD_RAIL_TOGGLE = 20; // 同上
-export const Z_HUD_TITLE_MENU = 110;
+const Z_HUD_RAIL_TOGGLE = 20; // 同上
+const Z_HUD_TITLE_MENU = 110;
 export const Z_STAGE_SELECT = 100;
-export const Z_RESOURCE_TRANSFER_DIALOG = 100;
+const Z_RESOURCE_TRANSFER_DIALOG = 100;
 export const Z_LOADING_OVERLAY = 200;
 export const Z_FATAL_ERROR = 1000;
 
@@ -453,7 +453,7 @@ function relativeLuminance(hex: string): number {
   return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
 }
 
-export function contrastRatio(foreground: string, background: string): number {
+function contrastRatio(foreground: string, background: string): number {
   const foregroundLuminance = relativeLuminance(foreground);
   const backgroundLuminance = relativeLuminance(background);
   const lighter = Math.max(foregroundLuminance, backgroundLuminance);
@@ -461,7 +461,7 @@ export function contrastRatio(foreground: string, background: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-export interface ThemeContrastIssue {
+interface ThemeContrastIssue {
   readonly themeId: string;
   readonly pair: string;
   readonly ratio: number;
@@ -470,7 +470,7 @@ export interface ThemeContrastIssue {
 
 // 全プリセットのSemantic文字/非文字ペアに対するWCAG準拠の検査。tools/verify-theme-contrast.mjs
 // がビルド外から呼ぶため、src/ 内に参照が無くても消さない。
-export function themeContrastIssues(palette: ThemePalette): readonly ThemeContrastIssue[] {
+function themeContrastIssues(palette: ThemePalette): readonly ThemeContrastIssue[] {
   const textPairs = [
     ['text', palette.title, palette.surface1],
     ['body', palette.body, palette.surface1],

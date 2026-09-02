@@ -8,14 +8,16 @@
 import { Vec3, len, sub } from '../../math/vec3';
 import { Projected } from '../../math/projection';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
-import type { ActiveCelestialLabel } from '../camera/focus-markers';
+import type { ActiveCelestialLabel } from './celestial-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-identity';
 import { CelestialMotion } from '../../physics/celestial-motion';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
 
 export interface GroupedMarkerItem {
   key: string; // 対象を一意に識別するマーカーキー
+  readonly kind: DynamicEntityKind; // 天体ラベル下のサブ行が内訳を数えるための種別
   cls: string; // 画面内マーカーの CSS クラス
   sym: string; // 画面内マーカーの記号
   pos: Vec3; // ワールド位置 (ECI)
@@ -48,14 +50,9 @@ interface PlacedItem {
 export class GroupedMarkers {
   // 前フレームに出したキー。集合から消えた対象のマーカーを片付けるために覚えておく。
   private shownKeys: readonly string[] = [];
-  private readonly visibleKeys = new Set<string>();
   private readonly hiddenItemsList: GroupedMarkerItem[] = [];
   // 天体ラベルとの近接で前フレームに隠したキー(depth-guard のヒステリシス用)。
   private prevHiddenByCelestialLabel = new Set<string>();
-
-  isPickable(key: string): boolean {
-    return this.visibleKeys.has(key);
-  }
 
   getHiddenItems(): readonly GroupedMarkerItem[] {
     return this.hiddenItemsList;
@@ -113,15 +110,10 @@ export class GroupedMarkers {
       );
     }
 
-    this.visibleKeys.clear();
     this.hiddenItemsList.length = 0;
     const addedKeys = new Set<string>();
 
     for (const m of placed) {
-      const opacity = m.item.opacity ?? 1;
-      if (m.labeled && opacity > 0 && !m.item.occluded && m.p.front) {
-        this.visibleKeys.add(m.item.key);
-      }
       // 天体ラベルと近接してマーカーが非表示化され、かつ惑星に遮蔽(掩蔽)されていないオブジェクトのみを天体サブ行の候補とする
       if (m.hiddenByCelestialLabel && !m.item.occluded && m.p.front) {
         if (m.groupMembers && m.groupMembers.length > 0) {
@@ -169,7 +161,7 @@ export class GroupedMarkers {
         if (!m.labeled || !m.p.front) continue;
         for (const c of celestialLabels) {
           if (!c.labelVisible || Math.hypot(m.p.x - c.x, m.p.y - c.y) >= this.clusterRadiusPx) continue;
-          // 天体ラベル側(c)の前フレームの間引き状態はここでは追跡していない(focus-markers.ts が
+          // 天体ラベル側(c)の前フレームの間引き状態はここでは追跡していない(CelestialMarkers が
           // 別に持つ)ため、常に基準の depthGuardRatio を使う(false)。
           const pick = resolveCrowdingWinner(
             m.item.key, m.item.priority, m.dist, this.prevHiddenByCelestialLabel.has(m.item.key),

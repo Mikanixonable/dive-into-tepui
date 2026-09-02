@@ -25,7 +25,7 @@ export interface MouseDelta {
 }
 
 // 画面座標のポインタイベント1件(クリック・右クリック)。
-export interface PointerPoint {
+interface PointerPoint {
   x: number;
   y: number;
 }

@@ -5,7 +5,7 @@ import { createJulianDate, TdbJulianDate } from '../../physics/time';
 // Keep this small compatibility module independent from entity save types. In
 // particular, the physics test build can exercise it without pulling the DOM
 // and Three.js dependent game graph into its Node-only compiler target.
-export interface EphemerisContextValue {
+interface EphemerisContextValue {
   // このランの元期(simTime=0 が指す絶対時刻)。**照合の対象ではなく、継承する値。**
   epochJdTdb: number;
   // その元期が選ぶ暦プロファイルと暦パック。数値暦を持たない時代では両方 null。
@@ -41,7 +41,7 @@ export function isEphemerisContextRestorable(saved: unknown): boolean {
   return isEphemerisContextCompatible(saved, ephemerisContextFor(createJulianDate('TDB', saved.epochJdTdb)));
 }
 
-export type EphemerisContextStatus = 'legacy' | 'compatible' | 'incompatible';
+type EphemerisContextStatus = 'legacy' | 'compatible' | 'incompatible';
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);

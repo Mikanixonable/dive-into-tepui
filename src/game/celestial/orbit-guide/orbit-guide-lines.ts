@@ -3,11 +3,11 @@
 // (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion } from '../../../physics/celestial-motion';
-import { SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
+import { CollinearPoint, SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialSystem } from '../celestial-system';
 import { Vec3 } from '../../../math/vec3';
 import {
-  catalogLoop, dawnDuskGuideLoop, GuideLoop, GuidePoint, guideSecondary, lissajousLoop,
+  catalogLoop, dawnDuskGuideLoop, GuideLoop, guideSecondary, lissajousLoop,
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
 } from '../../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
@@ -297,7 +297,7 @@ export class OrbitGuideLines {
       const system = this.guideFrameOf(entry.system as CatalogSystemId, t);
       if (system === null) return null;
       return lissajousLoop(
-        system, entry.point as GuidePoint,
+        system, entry.point as CollinearPoint,
         l.inPlane, l.outOfPlane, l.inPlanePhase, l.outOfPlanePhase, l.cycles,
       );
     }
@@ -443,7 +443,7 @@ export class OrbitGuideLines {
     }
 
     if (settings.lissajous.on) {
-      const points: readonly ['l1' | 'l2' | 'l3', GuidePoint][] = [['l1', 'L1'], ['l2', 'L2'], ['l3', 'L3']];
+      const points: readonly ['l1' | 'l2' | 'l3', CollinearPoint][] = [['l1', 'L1'], ['l2', 'L2'], ['l3', 'L3']];
       for (const system of activeSystems(settings)) {
         for (const [flag, point] of points) {
           if (settings.lissajous[flag]) this.addLissajousLine(system, point);
@@ -466,7 +466,7 @@ export class OrbitGuideLines {
   }
 
   // リサジュー軌道の1本ぶんを組んでシーンへ加える。
-  private addLissajousLine(system: CatalogSystemId, point: GuidePoint): void {
+  private addLissajousLine(system: CatalogSystemId, point: CollinearPoint): void {
     const curve = new GuideCurve({ color: 0xffffff, opacity: 0.4, renderOrder: LINE_RENDER_ORDER.reference }, LISSAJOUS_VERTEX_BUDGET);
     this.scene.add(curve.line);
     this.lines.push({ curve, familyId: 'lissajous', system, point, index: 0, count: 1, lastLoop: null });

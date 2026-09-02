@@ -25,7 +25,7 @@ export interface ProteinAssetBundle {
   readonly motion: ProteinMotionAsset;
 }
 
-export const PROTEIN_ASSETS = Object.fromEntries(
+const PROTEIN_ASSETS = Object.fromEntries(
   Object.entries(PROTEIN_ASSET_SOURCES).map(([id, source]) => [id, source.semantic]),
 ) as { readonly [Id in keyof typeof PROTEIN_ASSET_SOURCES]: ProteinAssetDefinition };
 

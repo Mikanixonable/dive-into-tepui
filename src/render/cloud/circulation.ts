@@ -17,7 +17,7 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 // 1 本の帯で模様が進む角速度 [°/日]。east が東向き(経度の進み)、north が北向き(緯度の進み)。
 // **速さ [m/s] ではなく角速度で持つ。** この流れは伸びではなく見えの動きを作るもので、移流が
 // 使う風とは別の系統にある(突き合わせない)。角速度なら、帯が何日で 1 周するかを直接決められる。
-export type CirculationBand = { readonly east: number; readonly north: number };
+type CirculationBand = { readonly east: number; readonly north: number };
 
 // 帯の表は北から南へ並び、中心緯度は FIRST_LATITUDE から BAND_SPACING 刻みで番号から出る。
 const FIRST_LATITUDE = THREE.MathUtils.degToRad(75);

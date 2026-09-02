@@ -16,7 +16,7 @@ export const DIRECTION_ITEMS: readonly (readonly [DirectionMarkerMode, string])[
 ];
 
 
-export interface ValueMapping {
+interface ValueMapping {
   readonly sliderMin: number;
   readonly sliderMax: number;
   readonly sliderStep: number;

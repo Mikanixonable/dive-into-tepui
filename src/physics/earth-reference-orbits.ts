@@ -9,7 +9,7 @@ import { orbitalElementsFromClassical, OrbitalElements } from './elements';
 const TROPICAL_YEAR_SEC = 365.2422 * 86400;
 
 // 臨界傾斜角(近地点引数の長期摂動が止まる傾斜角、cos²i = 1/5) [deg]。モルニヤ・ツンドラ軌道が使う。
-export const CRITICAL_INCLINATION_DEG = (Math.acos(1 / Math.sqrt(5)) * 180) / Math.PI;
+const CRITICAL_INCLINATION_DEG = (Math.acos(1 / Math.sqrt(5)) * 180) / Math.PI;
 
 // 回帰日数 repeatDays の間に revsPerRepeat 回(いずれも正の整数)中心天体を周回し、かつ昇交点が
 // 太陽と同じ角速度で歳差する円軌道の高度・傾斜角を解く。raanOffsetDeg は昇交点の初期位置

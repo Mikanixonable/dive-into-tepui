@@ -20,8 +20,8 @@ export type MapDisplayToggles = {
   readonly lagrangeName: boolean;
   readonly playerVisible: boolean;
   readonly playerName: boolean; readonly playerOrbit: boolean;
-  readonly shipVisible: boolean;
-  readonly shipName: boolean; readonly shipOrbit: boolean;
+  readonly enemyVisible: boolean;
+  readonly enemyName: boolean; readonly enemyOrbit: boolean;
   readonly ammoVisible: boolean;
   readonly ammoName: boolean; readonly ammoOrbit: boolean;
   readonly fuelVisible: boolean;
@@ -34,7 +34,7 @@ export type MapDisplayMode = 'orbit' | 'label' | 'hidden';
 
 // 軌道線(Orbit)は面積を食う——全登録天体ぶん描くと内側太陽系がその天体の軌道線で埋まる
 // ため、数の多いクラス(dwarf・smallBody・satellite)は既定 off にする。planet だけは数が
-// 少なく太陽系の骨格をなすので軌道線まで既定 on。一方 Name は focus-markers.ts の混雑抑制
+// 少なく太陽系の骨格をなすので軌道線まで既定 on。一方 Name は天体ラベルの混雑抑制
 // (画面上で近すぎるラベルを間引く)が効くので溢れる心配が無く、planet と同様 dwarf・
 // smallBody・satellite も既定 on にする。lagrange は力学的に意味を持つ点(共線点の余裕・
 // 三角点の安定性を満たすもの)だけに絞り込まれていて同じ懸念が当たらないため、既定 on にする。
@@ -51,8 +51,8 @@ export const DEFAULT_MAP_DISPLAY_TOGGLES: MapDisplayToggles = {
   lagrangeName: true,
   playerVisible: true,
   playerName: true, playerOrbit: true,
-  shipVisible: true,
-  shipName: true, shipOrbit: true,
+  enemyVisible: true,
+  enemyName: true, enemyOrbit: true,
   ammoVisible: true,
   ammoName: true, ammoOrbit: false,
   fuelVisible: true,
@@ -80,7 +80,7 @@ const MAP_DISPLAY_CATEGORIES: readonly MapDisplayCategory[] = [
   { category: 'smallBodyVisible', name: 'smallBodyName', orbit: 'smallBodyOrbit', children: ['smallBodyName', 'smallBodyOrbit'] },
   { category: 'lagrangeVisible', name: 'lagrangeName', orbit: null, children: ['lagrangeName'] },
   { category: 'playerVisible', name: 'playerName', orbit: 'playerOrbit', children: ['playerName', 'playerOrbit'] },
-  { category: 'shipVisible', name: 'shipName', orbit: 'shipOrbit', children: ['shipName', 'shipOrbit'] },
+  { category: 'enemyVisible', name: 'enemyName', orbit: 'enemyOrbit', children: ['enemyName', 'enemyOrbit'] },
   { category: 'ammoVisible', name: 'ammoName', orbit: 'ammoOrbit', children: ['ammoName', 'ammoOrbit'] },
   { category: 'fuelVisible', name: 'fuelName', orbit: 'fuelOrbit', children: ['fuelName', 'fuelOrbit'] },
   { category: 'baseVisible', name: 'baseName', orbit: 'baseOrbit', children: ['baseName', 'baseOrbit'] },

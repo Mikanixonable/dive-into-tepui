@@ -10,7 +10,7 @@ import type { CelestialSystem } from './celestial/celestial-system';
 
 // 解決に要る問い合わせをまとめた受け口。ゲーム側の型ではなく状態だけを受け取ることで、
 // 参照フレームの解決がエンティティ管理や航法ターゲットの都合から独立する。
-export interface AnchorTargets {
+interface AnchorTargets {
   // 生存中のエンティティ id の時刻 t における状態。見つからなければ null。
   entityState(id: string, t: number): KinematicState | null;
   // 操作対象の船の時刻 t における状態。乗り換え中などで定まらなければ null。

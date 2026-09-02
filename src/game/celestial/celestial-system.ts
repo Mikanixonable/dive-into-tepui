@@ -7,6 +7,7 @@ import { strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
+import { isLagrangeId, lagrangeParentId } from './lagrange-id';
 import { addTimeCacheStats } from '../../physics/time-ring';
 import { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
@@ -66,6 +67,27 @@ function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisP
   }
 }
 
+// 星系は実行時に差し替えられるので、親子関係が循環していても停止し、同じ天体が一度だけ
+// 並ぶよう追加済みを覚えておく。主星を持たない孤立した天体(親が登録されていない星系・
+// 循環した星系)も落とさない。
+function orderedEntitiesOf(
+  entities: readonly CelestialEntity[],
+): readonly { readonly entity: CelestialEntity; readonly depth: number }[] {
+  const ordered: { entity: CelestialEntity; depth: number }[] = [];
+  const added = new Set<string>();
+  const append = (entity: CelestialEntity, depth: number): void => {
+    if (added.has(entity.id)) return;
+    added.add(entity.id);
+    ordered.push({ entity, depth });
+    for (const child of entities) {
+      if (child.motion.primary?.id === entity.id) append(child, depth + 1);
+    }
+  };
+  for (const entity of entities) if (entity.motion.primary === null) append(entity, 0);
+  for (const entity of entities) append(entity, 0);
+  return ordered;
+}
+
 export class CelestialSystem implements CelestialMotions {
   private scene!: THREE.Scene;
   // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
@@ -86,6 +108,8 @@ export class CelestialSystem implements CelestialMotions {
   private readonly entitiesById: ReadonlyMap<string, CelestialEntity>;
   // 全登録天体の運動(entities と同じ宣言順)。重力源配列・一覧の順序もこの並びで決まる。
   readonly celestialMotions: readonly CelestialMotion[];
+  // 親を先に、その子を続けて並べた天体の列と、主星を 0 とする階層の深さ。
+  readonly orderedEntities: readonly { readonly entity: CelestialEntity; readonly depth: number }[];
   // 主星の個体。恒星を持たない星系では null。
   private readonly starEntity: StarEntity | null;
   // 天体の値を ECI へ移す変換器。**どの天体を原点に置くかは系レベルの選択**なので正本はここが
@@ -135,6 +159,7 @@ export class CelestialSystem implements CelestialMotions {
     for (const motion of this.celestialMotions) motion.bindEciTransform(this.eciTransform);
     if (ephemerisPoints !== null) bindEphemerides(this.celestialMotions, ephemerisPoints);
     this.entitiesById = new Map(entities.map((b) => [b.id, b]));
+    this.orderedEntities = orderedEntitiesOf(entities);
     this.starEntity = entities.find((b): b is StarEntity => b instanceof StarEntity) ?? null;
   }
 
@@ -225,6 +250,14 @@ export class CelestialSystem implements CelestialMotions {
     // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
     if (this.find(initial)?.motion.kind === 'star') return true;
     return this.ancestorsOf(initial).includes(systemFocusId);
+  }
+
+  // 天体 id あるいはラグランジュ点 id の親。undefined は id が不正/古いこと、null は恒星など
+  // 親を持たない天体を表す。ラグランジュ点は id の親部分へ戻してから引く。
+  bodyParentId(id: string): string | null | undefined {
+    const lagrangeParent = isLagrangeId(id) ? lagrangeParentId(id) : undefined;
+    if (lagrangeParent !== undefined) return this.has(lagrangeParent) ? lagrangeParent : undefined;
+    return this.find(id)?.motion.primary?.id ?? (this.has(id) ? null : undefined);
   }
 
   // focusId の親を辿って主星まで遡った id の列(focusId 自身を含む)。

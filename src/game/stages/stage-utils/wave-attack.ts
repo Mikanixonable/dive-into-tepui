@@ -44,7 +44,7 @@ const STAGE00_FLYBY_SPEED_MAX = 400.0;
 const STAGE00_MIN_PERIGEE_MARGIN = 40e3;
 const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横ブレ最大 [m/s]
 
-export type WaveState = 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
+type WaveState = 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
 
 export interface WaveAttackSaveData {
   waveState: WaveState;

@@ -3,8 +3,9 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
-  pseudoPotential, lagrangeJacobi, zeroVelocityCurves, LagrangeLabel,
+  pseudoPotential, lagrangeJacobi, zeroVelocityCurves,
 } from '../../src/physics/zero-velocity';
+import { LagrangeLabel } from '../../src/physics/lagrange';
 
 // 検算用の質量比。地球-月は非対称性(mu が小さくない)、太陽-地球は極端に小さい mu を持つので
 // 両方でネックの開閉順序や停留点の判定が崩れないことを確かめる。

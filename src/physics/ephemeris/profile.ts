@@ -3,7 +3,7 @@
 
 export type EphemerisProfileId = 'modern-de440' | 'far-future-20000';
 
-export type EphemerisProfile = {
+type EphemerisProfile = {
   readonly id: EphemerisProfileId;
   readonly sourceModel: string;
   readonly validStartJdTdb: number;

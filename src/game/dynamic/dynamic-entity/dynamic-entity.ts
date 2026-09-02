@@ -16,6 +16,7 @@ import { sunlitFactor } from '../../../physics/shadow';
 import { SOLAR_CONSTANT } from '../../../physics/srp';
 import { ApsisTrack } from '../../../physics/trajectory-features';
 import { Vec3, len, scale, sub, v3 } from '../../../math/vec3';
+import { hitsSphere, type Ray } from '../../../math/ray';
 import type { Viewpoint } from '../../../math/projection';
 import type { SphereHit } from '../../../math/triangle-mesh';
 import { FloatingOrigin } from '../../camera/floating-origin';
@@ -59,7 +60,7 @@ export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
 
 // エンティティ1体が出している軌道線。楕円と対象への直線は排他で、同時には持たない。
 // center が null なら、毎フレームその瞬間最も強く引いている天体を中心に描く。
-export type OrbitLine =
+type OrbitLine =
   | { readonly kind: 'ellipse'; readonly line: EllipseLine; readonly center: CelestialMotion | null }
   | { readonly kind: 'relative'; readonly line: TargetRelativeLine; readonly target: DynamicEntity };
 
@@ -105,6 +106,11 @@ export class DynamicEntity {
   // 剛体接触で反作用を受け持つ質量 [kg]。0 なら相手に力を及ぼさず自分だけが跳ね返り、
   // 無限大なら押されない。
   get contactMass(): number { return this.mass; }
+  // 視線が、pos に描かれているこの実体の本体へ当たるか。既定は半径 radius の球で当て、
+  // それより細かい形を持つ種別が override する。
+  hitBodyByRay(ray: Ray, pos: Vec3): boolean {
+    return hitsSphere(ray, pos, this.radius);
+  }
   // 特定の艦に取り付いた実体(ベルトの節点・放熱板の折りなど)であれば、その艦自身。
   // 独立した実体なら既定 null。
   attachedTo: DynamicEntity | null = null;

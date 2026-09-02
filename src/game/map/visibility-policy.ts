@@ -4,8 +4,7 @@ import { celestialClassVisible, celestialNameVisible, type MapDisplayToggles } f
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
-
-export type DynamicEntityKind = 'player' | 'ship' | 'ammo' | 'fuel' | 'base';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 
 export type MapVisibility = {
   readonly category: boolean;
@@ -21,7 +20,7 @@ const ENTITY_KEYS: Record<DynamicEntityKind, {
   readonly orbit: keyof MapDisplayToggles;
 }> = {
   player: { category: 'playerVisible', name: 'playerName', orbit: 'playerOrbit' },
-  ship: { category: 'shipVisible', name: 'shipName', orbit: 'shipOrbit' },
+  enemy: { category: 'enemyVisible', name: 'enemyName', orbit: 'enemyOrbit' },
   ammo: { category: 'ammoVisible', name: 'ammoName', orbit: 'ammoOrbit' },
   fuel: { category: 'fuelVisible', name: 'fuelName', orbit: 'fuelOrbit' },
   base: { category: 'baseVisible', name: 'baseName', orbit: 'baseOrbit' },
@@ -80,6 +79,11 @@ export function alwaysFullyVisibleIds(
   }
   return ids;
 }
+
+// 表示トグルを持たない対象(軌道上の点マーカー)の判定。軌道線は元から引かない。
+export const MARKER_VISIBILITY: MapVisibility = {
+  category: true, icon: true, label: true, orbit: false, pickable: true,
+};
 
 // すべての項目を伏せた判定。カテゴリが閉じていれば、残りの項目は問わずこれになる。
 function noVisibility(): MapVisibility {

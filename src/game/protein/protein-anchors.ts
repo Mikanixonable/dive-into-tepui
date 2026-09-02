@@ -76,16 +76,3 @@ export function proteinLocalImpactPoint(worldPoint: Vec3, origin: Vec3, attitude
   const oriented = qRotate(qInvert(attitude), sub(worldPoint, origin));
   return v3(oriented.x / rootScale, oriented.y / rootScale, oriented.z / rootScale);
 }
-
-/** Apply a residue-driven anchor displacement to a runtime marker. */
-export function setProteinAnchorPosition(
-  mesh: { readonly position: { set(x: number, y: number, z: number): void } },
-  base: { readonly x: number; readonly y: number; readonly z: number },
-  group: readonly number[],
-  residueOffsets: ArrayLike<number>,
-  residueCount: number,
-  scale: number,
-): void {
-  const offset = proteinAnchorOffset(group, residueOffsets, residueCount);
-  mesh.position.set(base.x + offset[0] * scale, base.y + offset[1] * scale, base.z + offset[2] * scale);
-}

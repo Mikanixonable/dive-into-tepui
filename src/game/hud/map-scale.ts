@@ -1,11 +1,11 @@
 // マップビューの縮尺バーに使う、DOM/カメラ非依存の数値計算。
 
-export interface MapScaleData {
+interface MapScaleData {
   readonly distanceM: number;
   readonly widthPx: number;
 }
 
-export const MAP_SCALE_TARGET_PX = 120;
+const MAP_SCALE_TARGET_PX = 120;
 
 // 縮尺バーの長さが連続的に伸縮し、表示値だけが 1/2/5 の見やすい値になるようにする。
 const SQRT_2 = Math.sqrt(2);

@@ -155,7 +155,7 @@ export function register(): void {
     assert.ok(visible.has('ceres'), '準惑星は既定のトグルで見える');
   });
 
-  // 一覧の並び順は FocusMarkers が組むラベル配列そのものなので、階層の導出だけを固定する。
+  // 天体ラベルの並びと字下げはこの深さで決まるので、その導出だけを固定する。
   test('visibility: 親子の深さは主星を 0 として数えられる', () => {
     const depth = (id: string): number => {
       let d = 0;

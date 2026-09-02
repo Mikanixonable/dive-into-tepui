@@ -13,7 +13,7 @@ export type CatalogSystemId =
 // 例: 'lyapunov-L1'、'halo-L2-N'、'dro'、'resonant-12'(1:2 共鳴)。
 // 1本の連続した列にならない族は連続区間ごとに分かれ、末尾に `#1` `#2` … が付く
 // (例: 'axial-L1#2')。分かれなかった族には付かない。
-export type CatalogFamilyId = string;
+type CatalogFamilyId = string;
 
 // 族に属する軌道1本ぶんの諸元。点列そのものは CatalogFamily.points がまとめて持つ。
 export interface CatalogMember {
