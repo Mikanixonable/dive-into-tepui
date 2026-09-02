@@ -26,7 +26,7 @@ import type { Vec3 } from '../../../math/vec3';
 import { hitsSphere, type Ray } from '../../../math/ray';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { SunLight } from '../../../render/pipeline/sun-light';
-import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
+import type { CumulusShadow, SunOcclusion } from '../../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
 import type { CelestialSystem } from '../celestial-system';
@@ -158,6 +158,11 @@ export abstract class CelestialEntity implements MapPickable {
   get rings(): RingSystemDef | null {
     const def = this.def;
     return 'rings' in def ? def.rings ?? null : null;
+  }
+
+  // 遮蔽パスへ渡す積雲の殻 1 体ぶん。殻を持たない天体では null。
+  cumulusShadowAt(_fo: FloatingOrigin, _displayTime: number): CumulusShadow | null {
+    return null;
   }
 
   // 大気パスへ渡す1体ぶんの候補。大気を持たない・描かない天体では null。**尺度は直線距離で

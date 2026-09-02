@@ -2,27 +2,30 @@
 // 1段だけを見せる。艦艇と同じライトプリパスの受け手として立ち、陰影・遮蔽・逆二乗の減衰は
 // すべてパイプラインが与える。**画像の取得は addTo まで遅らせる。**
 import * as THREE from 'three/webgpu';
-import { texture as textureNode, exp, mix, uniform, uv, vec2, vec3 } from 'three/tsl';
+import { texture as textureNode, asin, atan, clamp, exp, mix, uniform, uv, vec2, vec3 } from 'three/tsl';
 import { DeferredTexture } from './deferred-texture';
 import { markLitOpaque } from './pipeline/lit-layer';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from './celestial-albedo';
 import type { CelestialTexture } from './celestial-textures';
-import type { FloatNode, FloatUniform, Vec2Node } from './tsl-types';
+import type { FloatUniform, Vec2Node, Vec3Node } from './tsl-types';
 import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 
 // 球の開始方位 [rad]。正距円筒図法のテクスチャは経度 0 を u=0.5 へ置くので、その経線が
 // モデルの本初子午線(+Z)へ来る向きから分割を始める。
 const PRIME_MERIDIAN_PHI = -Math.PI / 2;
 
-// 雲を地表アルベドへ合成するときの、雲影の落とし方。雲を太陽方向へ SHADOW_OFFSET_U だけ
-// ずらして参照し、そこを最大 SHADOW_DEPTH まで暗くする(SHADOW_STRENGTH は影の濃さ)。
-// いずれも合成手法の定数で、天体ごとの物理量ではない。
-const CLOUD_SHADOW_OFFSET_U = 0.001;
-const CLOUD_SHADOW_DEPTH = 0.2;
-const CLOUD_SHADOW_STRENGTH = 0.8;
-
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
 const CLOUD_ROUGHNESS = 1;
+
+// 天体固定の単位方向を、球メッシュが持つ uv へ写す(分割の逆写像)。u は 0..1 へ畳まないので、
+// この uv でテクスチャを読む側は経度方向を巻いておく。
+export function sphereMeshUv(direction: Vec3Node): Vec2Node {
+  const longitude = atan(direction.z, direction.x.negate());
+  return vec2(
+    longitude.sub(PRIME_MERIDIAN_PHI).div(2 * Math.PI),
+    asin(clamp(direction.y, -1, 1)).div(Math.PI).add(0.5),
+  );
+}
 
 // 分割段ごとの単位球ジオメトリを、その段を使う全天体で共有する。
 const sharedLodGeometries = new Map<SphereLodLevel, THREE.BufferGeometry>();
@@ -36,12 +39,6 @@ export function unitSphereGeometry(level: SphereLodLevel): THREE.BufferGeometry 
     sharedLodGeometries.set(level, geometry);
   }
   return geometry;
-}
-
-// 雲の場の座標 coord における、薄い雲が地表を覆う不透明度。場の B が持つ鉛直の光学的厚み τ を
-// Beer–Lambert で 1 − exp(−τ) の不透明度へ直したもの(成分の並びは `render/cloud/cloud-field.ts`)。
-function thinCloudOpacityAt(field: THREE.Texture, coord: Vec2Node): FloatNode {
-  return exp(textureNode(field, coord).b.negate()).oneMinus();
 }
 
 // 表面の測光値。bondAlbedo は輝点の明るさを引くスカラ、lightSourceAlbedo はこの天体を
@@ -94,21 +91,19 @@ export class CelestialSurface {
     return new CelestialSurface(material, [map], null, photometryOf(texture), texture.url);
   }
 
-  // 地表テクスチャへ薄い雲と雲影を焼き込んだ球面。cloudField は雲の場のテクスチャ(解放は
-  // 渡した側が持つ)、smoothnessUrl は地表の滑らかさ(1 − 粗さ)を赤チャンネルに持つ、
-  // 地表と同じ正距円筒のテクスチャ。texture の測光は合成後のアルベドとして測ったものを渡す。
+  // 地表テクスチャへ薄い雲を焼き込んだ球面。cloudField は雲の場のテクスチャ(解放は渡した側が
+  // 持つ)、smoothnessUrl は地表の滑らかさ(1 − 粗さ)を赤チャンネルに持つ、地表と同じ正距円筒の
+  // テクスチャ。texture の測光は合成後のアルベドとして測ったものを渡す。
   static clouded(texture: CelestialTexture, cloudField: THREE.Texture, smoothnessUrl: string): CelestialSurface {
     const surfaceMap = new DeferredTexture(texture.url, THREE.SRGBColorSpace);
     const smoothnessMap = new DeferredTexture(smoothnessUrl, THREE.NoColorSpace);
     const material = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
     const cloudAmount = uniform(1);
     const surfaceSample = textureNode(surfaceMap.texture, uv());
-    // 雲そのものと、雲を太陽方向へずらして参照した地表側の影。
-    const cloudAlpha = thinCloudOpacityAt(cloudField, uv()).mul(cloudAmount);
-    const shadowAlpha = thinCloudOpacityAt(
-      cloudField, uv().add(vec2(CLOUD_SHADOW_OFFSET_U, 0.0))).mul(cloudAmount);
-    const shaded = mix(surfaceSample, surfaceSample.mul(CLOUD_SHADOW_DEPTH), shadowAlpha.mul(CLOUD_SHADOW_STRENGTH));
-    material.colorNode = mix(shaded, vec3(1, 1, 1), cloudAlpha).mul(texture.albedoScale);
+    // 薄い雲の不透明度。場の B が持つ鉛直の光学的厚み τ を Beer–Lambert で 1 − exp(−τ) へ直す
+    // (成分の並びは `render/cloud/cloud-field.ts`)。
+    const cloudAlpha = exp(textureNode(cloudField, uv()).b.negate()).oneMinus().mul(cloudAmount);
+    material.colorNode = mix(surfaceSample, vec3(1, 1, 1), cloudAlpha).mul(texture.albedoScale);
     // **粗さではなく滑らかさで持つ** — 画像が届くまでテクスチャは 0 を返すので、0 が拡散側へ
     // 来る向きでなければ、届くまでの数フレームだけ地表が鏡面になる。
     const smoothness = textureNode(smoothnessMap.texture, uv()).r;
@@ -134,7 +129,7 @@ export class CelestialSurface {
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
-  // 地表へ焼き込む雲と、雲が地表へ落とす影の濃さ [0..1]。雲を合成しない表面では効かない。
+  // 地表へ焼き込む雲の濃さ [0..1]。雲を合成しない表面では効かない。
   setCloudAmount(amount: number): void {
     if (this.cloudAmount !== null) this.cloudAmount.value = amount;
   }

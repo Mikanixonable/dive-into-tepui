@@ -25,7 +25,7 @@ import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { LineOverlay } from '../../../render/line-overlay';
 import type { MarkerManager } from '../../marker/marker-manager';
 import type { SunLight } from '../../../render/pipeline/sun-light';
-import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
+import type { CumulusShadow, SunOcclusion } from '../../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../../render/render-style';
 import { RingView } from './ring-view';
 import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../../render/celestial-albedo';
@@ -56,6 +56,7 @@ const AURORA_PHASE_RATE = 0.02;
 
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
+const tmpSpin = new THREE.Quaternion();
 
 export class PointEntity extends CelestialEntity {
   // 位置と自転姿勢だけを載せる入れ物。扁平のスケールは shapeGroup が持つ — オーロラは実寸 [m]
@@ -73,6 +74,8 @@ export class PointEntity extends CelestialEntity {
   private readonly axes: THREE.Vector3;
   // 模式図スタイルでだけ見せる経緯度グリッド。姿勢は group の子として自然に追従する。
   private readonly graticule = new BodyGraticule();
+  // 描画座標のベクトルを天体固定の向きへ戻す回転。遮蔽パスへ渡すあいだだけ生きていればよい。
+  private readonly bodyFromWorld = new THREE.Matrix4();
 
   // surface はマップビューで見せる実体。実半径・歪みの形状・環は motion の定義から引き、
   // 環はマップビューでのみ描く(戦闘ビューの輝点に環はない)。surfaceMarkings は模式図で
@@ -173,6 +176,25 @@ export class PointEntity extends CelestialEntity {
       graphics,
       style,
     );
+  }
+
+  // 遮蔽パスへ渡す積雲の殻。姿勢は自転位相まで込みで組む — 軸だけでは場が地表と一緒に回らない。
+  override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): CumulusShadow | null {
+    if (this.cumulus === null) return null;
+    const orientation = this.motion.orientationAt(displayTime);
+    const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
+    if (q === null) {
+      this.bodyFromWorld.identity();
+    } else {
+      this.bodyFromWorld.makeRotationFromQuaternion(tmpSpin.set(q.x, q.y, q.z, q.w).invert());
+    }
+    return {
+      center: fo.RtoThreeV3(this.stateAt(displayTime).r),
+      surfaceRadius: this.radius,
+      topAltitude: this.cumulus.topAltitude,
+      bodyFromWorld: this.bodyFromWorld,
+      field: this.cumulus.field,
+    };
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。

@@ -26,7 +26,7 @@ import {
   attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
 } from '../../src/render/thermal-emissive';
 
-import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
+import type { CumulusShadow, Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import type { FloatNode } from '../../src/render/tsl-types';
 import { type AtmosphereBody } from '../../src/render/atmosphere';
@@ -119,6 +119,8 @@ export type LabCase = {
   readonly occluders?: readonly Occluder[];
   // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
+  // 遮蔽パスへ渡す積雲の殻。
+  readonly cumulusShadow?: CumulusShadow;
   // Optional benchmark metadata. Rendering itself does not inspect it; the measurement harness
   // uses it to attach future protein-motion telemetry to a stable case identity.
   readonly proteinMotion?: ProteinLabCaseMetadata;
@@ -602,8 +604,11 @@ function marchSlab(): LabCase {
 }
 
 // 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。薄い雲を合成した地表と積雲の
-// 殻、模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。
-function earthAt(center: THREE.Vector3, style: RenderStyle): THREE.Object3D {
+// 殻、模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。殻が落とす影は
+// 遮蔽パスへ別途渡すので、置いた球と一緒に返す。
+function earthAt(
+  center: THREE.Vector3, style: RenderStyle,
+): { readonly object: THREE.Object3D; readonly cumulusShadow: CumulusShadow } {
   const group = new THREE.Group();
   group.position.copy(center);
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
@@ -621,7 +626,17 @@ function earthAt(center: THREE.Vector3, style: RenderStyle): THREE.Object3D {
   const coastline = new EarthCoastline();
   coastline.addTo(group);
   coastline.setVisible(style === 'schematic');
-  return group;
+  return {
+    object: group,
+    cumulusShadow: {
+      center,
+      surfaceRadius: R_EARTH_EQ,
+      topAltitude: cumulus.topAltitude,
+      // ケースの地球は自転を持たないので、天体固定の向きは描画座標のまま。
+      bodyFromWorld: new THREE.Matrix4(),
+      field: cumulus.field,
+    },
+  };
 }
 
 // カメラ(原点)から見て、地球の地平線が視線から margin [rad] だけ下へ来る向きの地球中心。
@@ -636,14 +651,16 @@ function earthCenterBelowHorizon(altitude: number, margin: number): THREE.Vector
 function earth(style: RenderStyle): LabCase {
   const camera = labCamera(6e7);
   const center = earthCenterBelowHorizon(420e3, 0);
+  const earthSphere = earthAt(center, style);
   return {
     objects: [
-      earthAt(center, style),
+      earthSphere.object,
       sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER),
     ],
     camera,
     atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    cumulusShadow: earthSphere.cumulusShadow,
   };
 }
 
@@ -698,7 +715,7 @@ function earthMars(style: RenderStyle): LabCase {
   const earthCenter = earthCenterBelowHorizon(EARTH_MARS_CAMERA_ALTITUDE, margin);
   return {
     objects: [
-      earthAt(earthCenter, style),
+      earthAt(earthCenter, style).object,
       texturedSphere(MARS_TEXTURE, MARS_RADIUS, marsCenter, CLOSE_UP_DIAMETER_PX),
     ],
     camera,

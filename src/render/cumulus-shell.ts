@@ -61,6 +61,9 @@ export class CumulusShell {
   // 雲の場のテクスチャ。解放までこの殻が持つ。
   public get field(): THREE.Texture { return this.fieldMap.texture; }
 
+  // 殻の高度 [m]。場の雲頂高度 0..1 が張る高さでもある。
+  public get topAltitude(): number { return CLOUD_TOP_SPAN; }
+
   // 全段のメッシュを parent の下へ置き、場の画像の取得を始める。
   public addTo(parent: THREE.Object3D): void {
     this.fieldMap.request();

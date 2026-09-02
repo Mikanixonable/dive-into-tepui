@@ -1,12 +1,16 @@
 // 恒星の直射光がどれだけ届くかを答える唯一の場。transmittance() が描画座標の点に対する透過率の
-// TSL グラフを返す。遮蔽するのは天体の球・惑星の環の帯・シャドウアトラスへ描かれたメッシュで、
-// 複数の遮蔽は透過率の積で合成する。遮蔽器と環の帯は毎フレーム呼び出し側が渡す。
+// TSL グラフを返す。遮蔽するのは天体の球・惑星の環の帯・積雲の殻・シャドウアトラスへ描かれた
+// メッシュで、複数の遮蔽は透過率の積で合成する。遮蔽器・環の帯・積雲の殻は毎フレーム呼び出し
+// 側が渡す。
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, greaterThan, length,
-  lessThan, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
+  lessThan, log, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
-import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
+import { sphereMeshUv } from '../celestial-surface';
+import type {
+  BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform,
+} from '../tsl-types';
 import type { SunShadowMaps, SunShadowSlot } from './sun-shadow-maps';
 import type { SunLight } from './sun-light';
 
@@ -29,6 +33,17 @@ export type Occluder = {
   readonly radius: number;
 };
 
+// 積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準となる半径 [m]、
+// topAltitude は殻の高さ [m]、bodyFromWorld は描画座標のベクトルを天体固定の向きへ回す行列、
+// field は雲の場(R = 被覆率、G = 雲頂高度 / topAltitude)。
+export type CumulusShadow = {
+  readonly center: THREE.Vector3;
+  readonly surfaceRadius: number;
+  readonly topAltitude: number;
+  readonly bodyFromWorld: THREE.Matrix4;
+  readonly field: THREE.Texture;
+};
+
 // グラフへ畳み込む遮蔽源の選択。TSL のグラフは静的に展開されるので実行時の分岐にはできず、
 // 受け手ごとに要る源が違う(環は自分の帯を外す必要がある)ため、構築時に呼び出し側が決める。
 type OcclusionSources = {
@@ -41,6 +56,9 @@ type OcclusionSources = {
   // 暗くなる。一致の公差を深度からの位置復元の誤差から取るために視距離が要る。null なら
   // 外さない(環・大気の受け手は天体表面の陰影を持たない)。
   readonly selfViewDistance: FloatNode | null;
+  // 積雲の殻が落とす影を数えるか。光路のタップぶんフェッチが増えるので、雲の下に来る受け手
+  // だけが選ぶ。
+  readonly cumulusShadow: boolean;
 };
 
 type OccluderUniforms = { readonly center: Vec3Uniform; readonly radius: FloatUniform };
@@ -53,6 +71,18 @@ type RingBandUniforms = {
 
 // 環面と視線の交差判定が発散しないよう、環面と恒星方向のなす角の余弦へ入れる下限。
 const RING_GRAZING_MIN = 0.015;
+
+// 積雲の殻が落とす影を引くときの、光路のタップ数。
+const CUMULUS_SHADOW_TAPS = 6;
+// 光路をたどる長さの上限 [m]。恒星が地平線へ寄るほど層を抜けるまでの距離は伸び、昼夜境界の
+// 真上で発散する。
+const CUMULUS_MAX_LIGHT_PATH = 3e5;
+// 被覆率から柱の光学的厚みへ直すときの上限。被覆率 1 では厚みが発散する。
+const CUMULUS_MAX_COVERAGE = 0.999;
+
+// 雲の場を持たないフレームでも同じグラフが走るので、被覆率 0 の写しを結んでおく。
+const EMPTY_CUMULUS_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+EMPTY_CUMULUS_FIELD.needsUpdate = true;
 
 // メッシュの影のバイアス。受け手をこれだけ法線方向へずらしてからライト空間へ写し、残りを
 // 傾きに比例した深度バイアスで吸収する。単位はどちらもそのスロットの 1 texel。
@@ -154,6 +184,13 @@ export class SunOcclusion {
   private readonly ringAxis: Vec3Uniform;
   private readonly ringBands: readonly RingBandUniforms[];
   private activeRingBands = 0;
+  private readonly cumulusCenter: Vec3Uniform;
+  private readonly cumulusSurfaceRadius: FloatUniform;
+  private readonly cumulusTopAltitude: FloatUniform;
+  private readonly cumulusBodyFromWorld: Mat4Uniform;
+  private readonly cumulusActive: FloatUniform;
+  // 雲の場。setCumulusShadow が value を差し替えると、sample() で枝分かれした先へも同じ写しが届く。
+  private readonly cumulusField = texture(EMPTY_CUMULUS_FIELD);
 
   // 遮蔽器と環の帯ぶんの uniform を確保する。件数は固定なので、遮蔽器や帯が増減しても
   // transmittance() が返すグラフの形は変わらない。
@@ -173,6 +210,11 @@ export class SunOcclusion {
       tau: uniform(0),
       active: uniform(0),
     }));
+    this.cumulusCenter = uniform(new THREE.Vector3());
+    this.cumulusSurfaceRadius = uniform(0);
+    this.cumulusTopAltitude = uniform(0);
+    this.cumulusBodyFromWorld = uniform(new THREE.Matrix4());
+    this.cumulusActive = uniform(0);
   }
 
   // このフレームで遮蔽器として扱う天体の列(描画座標)。MAX_OCCLUDERS を超えた分は捨てる。
@@ -201,6 +243,17 @@ export class SunOcclusion {
       slot.outer.value = band.outerRadius;
       slot.tau.value = band.normalOpticalDepth;
     }
+  }
+
+  // 積雲の殻が落とす影を、このフレームの 1 体ぶんへ置き直す。null なら雲の影は落ちない。
+  setCumulusShadow(shadow: CumulusShadow | null): void {
+    this.cumulusActive.value = shadow === null ? 0 : 1;
+    if (shadow === null) return;
+    this.cumulusCenter.value.copy(shadow.center);
+    this.cumulusSurfaceRadius.value = shadow.surfaceRadius;
+    this.cumulusTopAltitude.value = shadow.topAltitude;
+    this.cumulusBodyFromWorld.value.copy(shadow.bodyFromWorld);
+    this.cumulusField.value = shadow.field;
   }
 
   // 描画座標の点 worldPos へ恒星の直射光が届く割合 0..1 を組む。sources で選ばれた源だけを
@@ -234,10 +287,56 @@ export class SunOcclusion {
         );
       }
     }
+    if (sources.cumulusShadow) {
+      transmittance = transmittance.mul(this.cumulusTransmittance(worldPos, sunDir));
+    }
     if (sources.meshNormal !== null) {
       transmittance = transmittance.mul(this.meshTransmittance(worldPos, sources.meshNormal, sunDir));
     }
     return transmittance;
+  }
+
+  // 積雲の殻が落とす影。受け手から恒星へ向かう光路を、雲の層(天体中心から surfaceRadius +
+  // topAltitude まで)を抜けるまでたどり、その柱の雲頂より下に居るタップだけ消散を積む。
+  //
+  // **柱の光学的厚みは被覆率から出す** — 場の階調は濃さではなく「その texel が雲に覆われて
+  // いる割合」なので、覆われた割合 c を通り抜けない確率と読んで τ = −ln(1 − c) を取る。厚みは
+  // 光路長ではなく **稼いだ高度** で配るので、柱を 1 本抜ける合計はどれだけ斜めでも τ に
+  // 一致する。恒星が低いほど光路は横へ伸び、影も同じだけ離れた所へ落ちる。
+  //
+  // **殻より上に居る受け手では光路の長さが 0 になる** ので、殻の上面が自分自身を陰らせる
+  // 心配は要らない。
+  private cumulusTransmittance(worldPos: Vec3Node, sunDir: Vec3Node): FloatNode {
+    return Fn(() => {
+      const transmittance = float(1).toVar();
+      // 場を持たないフレームで、タップぶんのフェッチを丸ごと飛ばす。
+      If(greaterThan(this.cumulusActive, 0.5), () => {
+        const offset = worldPos.sub(this.cumulusCenter);
+        const shellRadius = this.cumulusSurfaceRadius.add(this.cumulusTopAltitude);
+        const along = dot(offset, sunDir);
+        // 光路が殻を出るまでの距離。殻より上の受け手では負になり、影は落ちない。
+        const exit = sqrt(max(shellRadius.mul(shellRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
+          .sub(along);
+        const stepLength = clamp(exit, 0, CUMULUS_MAX_LIGHT_PATH).div(CUMULUS_SHADOW_TAPS);
+        const opticalDepth = float(0).toVar();
+        for (let tap = 0; tap < CUMULUS_SHADOW_TAPS; tap++) {
+          const sampleOffset = offset.add(sunDir.mul(stepLength.mul(tap + 0.5)));
+          const sampleRadius = max(length(sampleOffset), 1);
+          const up = sampleOffset.div(sampleRadius);
+          // **高度に床を張る** — 基準半径は赤道半径なので、極の地表は中心距離のほうが小さい。
+          const altitude = max(sampleRadius.sub(this.cumulusSurfaceRadius), 0);
+          const cloud = this.cumulusField.sample(
+            sphereMeshUv(this.cumulusBodyFromWorld.mul(vec4(up, 0)).xyz));
+          const cloudTop = cloud.g.mul(this.cumulusTopAltitude);
+          const rise = max(dot(sunDir, up), 0).mul(stepLength);
+          const columnDepth = log(min(cloud.r, CUMULUS_MAX_COVERAGE).oneMinus()).negate();
+          opticalDepth.addAssign(select(
+            lessThan(altitude, cloudTop), columnDepth.mul(rise).div(max(cloudTop, 1)), float(0)));
+        }
+        transmittance.assign(exp(opticalDepth.negate()));
+      });
+      return transmittance;
+    })();
   }
 
   // 描画座標の点が、そのスロットの柱(枠 × [near, near + coverDepth])に入っているか。
