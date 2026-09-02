@@ -14,8 +14,8 @@ import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frame
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { Quat, qRotate } from '../../math/quat';
-import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, rotationFromBasis, sphericalOffset } from '../../math/orientation';
+import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, Quat, qFromBasis, qRotate } from '../../math/quat';
+import { PolarEuler, sphericalOffset } from '../../math/polar-euler';
 import { CameraOrientation, type CameraRotationMode } from './camera-orientation';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { FocusTarget, focusTargetId, resolveFocusTarget, type FocusCandidate } from './focus-target';
@@ -76,12 +76,11 @@ export function rotationFollowKey(follow: CameraRotationFollow | null): string {
   return follow.kind === 'attitude' ? 'attitude' : rotationSourceKey(follow);
 }
 
-// 保存が無いときの初期状態。yaw/pitch/dist は注視点まわりの初期視点(sphericalOffset 参照)。
-// follow は選択肢の検査を通さず適用される — 対象が未解決でも選択は保持され、成立可否は
-// update の猶予検査に委ねられる。
+// 保存が無いときの初期状態。angles/dist が注視点まわりの初期視点で、上方向はワールド上に
+// 取るので angles.roll は 0 でよい。follow は選択肢の検査を通さず適用される — 対象が
+// 未解決でも選択は保持され、成立可否は update の猶予検査に委ねられる。
 export interface FocusCameraInitial {
-  readonly yaw: number;
-  readonly pitch: number;
+  readonly angles: PolarEuler;
   readonly dist: number;
   readonly fovDeg: number;
   readonly focus: FocusTarget;
@@ -101,7 +100,7 @@ export interface FocusCameraConfig {
 // マップビュー用の初期状態(地球を見下ろす従来の既定)。
 export function defaultMapViewInitial(celestialSystem: CelestialSystem): FocusCameraInitial {
   return {
-    yaw: 0.7, pitch: 0.45, dist: 4.5e7, fovDeg: FOCUS_CAMERA_FOV,
+    angles: { yaw: 0.7, pitch: 0.45, roll: 0 }, dist: 4.5e7, fovDeg: FOCUS_CAMERA_FOV,
     focus: { kind: 'object', id: celestialSystem.origin.id },
     follow: null,
   };
@@ -232,13 +231,13 @@ export class FocusCamera {
       this._focus = init.focus;
       this._cameraFrame = frames.inertialFrame;
       followAttitude = this.applyInitialFrame(init.follow);
-      const offset = sphericalOffset(init.yaw, init.pitch, init.dist);
+      const offset = sphericalOffset(init.angles, init.dist);
       this.offset_r = frameDir(offset.x, offset.y, offset.z);
       this.pan_r = frameDir(0, 0, 0);
       this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
     }
     this.orientation = new CameraOrientation(
-      rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)),
+      qFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)),
       this.eulerPolarAxis(), saved?.rotationMode ?? 'euler', followAttitude, null,
     );
     const defaultHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
@@ -291,7 +290,7 @@ export class FocusCamera {
 
   // 実効回転(姿勢追従を掛けた後の向き)を offset/up の基底で置き直す。
   private setRotationBasis(offset: Vec3, up: Vec3): void {
-    this.orientation.store(rotationFromBasis(offset, up));
+    this.orientation.store(qFromBasis(offset, up));
     this.offset_r = frameDir(offset.x * this.dist, offset.y * this.dist, offset.z * this.dist);
     this.up_r = frameDir(up.x, up.y, up.z);
     this.orientation.rebase(this.eulerPolarAxis());
@@ -548,10 +547,10 @@ export class FocusCamera {
     this._focus = init.focus;
     this.missingFocusFrames = 0;
     this.orientation.restoreFollow(this.applyInitialFrame(init.follow));
-    const offset = sphericalOffset(init.yaw, init.pitch, init.dist);
+    const offset = sphericalOffset(init.angles, init.dist);
     this.offset_r = frameDir(offset.x, offset.y, offset.z);
     this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
-    this.orientation.set(rotationFromBasis(offset, WORLD_UP), this.eulerPolarAxis());
+    this.orientation.set(qFromBasis(offset, WORLD_UP), this.eulerPolarAxis());
     this.fovDeg = this.clampFov(init.fovDeg);
     this.resetPan();
   }
@@ -607,7 +606,7 @@ export class FocusCamera {
     this.up_r = toFrameDir(tfTo, upEci);
     this._cameraFrame = frame;
     this.orientation.set(
-      rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)), this.eulerPolarAxis());
+      qFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)), this.eulerPolarAxis());
   }
 
   // マウス/キー入力から viewpoint を1フレーム分更新する。displayTime は線・メッシュが描かれる

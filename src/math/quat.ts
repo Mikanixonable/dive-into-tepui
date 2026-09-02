@@ -2,6 +2,12 @@
 // 何を回すか(剛体・カメラ・座標系)は知らない。
 import { Vec3, cross, dot, lenSq, norm, v3 } from './vec3';
 
+// 回転が写す局所基底。qFromForwardUp / qFromBasis が組む回転は、この3本を渡された
+// 前方向・上方向・右方向へ写す。
+export const LOCAL_FORWARD = v3(0, 0, 1);
+export const LOCAL_UP = v3(0, 1, 0);
+export const LOCAL_RIGHT = v3(1, 0, 0);
+
 // Vec3 と同じく不変。回転を更新するときは新しい Quat を作って差し替える。
 export interface Quat {
   readonly x: number;
@@ -98,6 +104,11 @@ export function qFromForwardUp(fwd: Vec3, up: Vec3): Quat | null {
   }
   const s = 2 * Math.sqrt(1 + m22 - m00 - m11);
   return { x: (m02 + m20) / s, y: (m12 + m21) / s, z: 0.25 * s, w: (m10 - m01) / s };
+}
+
+// qFromForwardUp と同じ回転。基底が定まらない入力(平行・零ベクトル)には単位回転を返す。
+export function qFromBasis(fwd: Vec3, up: Vec3): Quat {
+  return qFromForwardUp(fwd, up) ?? { x: 0, y: 0, z: 0, w: 1 };
 }
 
 // 一様分布のランダムな回転クォータニオンを返す。rand は [0,1) の乱数生成器。

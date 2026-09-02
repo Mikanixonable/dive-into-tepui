@@ -49,8 +49,7 @@ function saveBodyClassToggles(v: MapDisplayToggles): void {
 
 // 戦闘ビューの初期視点: 操作対象の後方やや上から見下ろす(役割フォーカス+姿勢追従)。
 const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
-const COMBAT_CAMERA_INIT_YAW = -Math.PI / 2;
-const COMBAT_CAMERA_INIT_PITCH = 0.3 - (10 * Math.PI) / 180;
+const COMBAT_CAMERA_INIT_ANGLES = { yaw: -Math.PI / 2, pitch: 0.3 - (10 * Math.PI) / 180, roll: 0 };
 const COMBAT_CAMERA_INIT_DIST = 38;
 
 const ZOOM_LERP_RATE = 9; // ガンサイトとの画角遷移の追従速度 [1/s]
@@ -212,8 +211,7 @@ export class CameraSystem {
     this.combatCamera = new FocusCamera(hud, celestialSystem, {
       focusLossPolicy: 'hold',
       initial: {
-        yaw: COMBAT_CAMERA_INIT_YAW,
-        pitch: COMBAT_CAMERA_INIT_PITCH,
+        angles: COMBAT_CAMERA_INIT_ANGLES,
         dist: COMBAT_CAMERA_INIT_DIST,
         fovDeg: COMBAT_CAMERA_FOV,
         focus: { kind: 'object', id: frameRoleAnchorId('activeShip') },

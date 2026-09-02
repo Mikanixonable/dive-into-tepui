@@ -3,7 +3,7 @@
 // 答える。座標系そのものの値の変換は physics/frame.ts の純関数群が担い、ここは
 // 「どの座標系があるか」と「その原点・姿勢・角速度が時刻 t で何になるか」を答える。
 // THREE/DOM 非依存。
-import { Quat, qFromForwardUp } from '../../math/quat';
+import { Quat, qFromBasis } from '../../math/quat';
 import { CelestialMotion, OrbitingMotion, SatelliteMotion } from '../../physics/celestial-motion';
 import { EciTransform } from '../../physics/eci-transform';
 import {
@@ -102,7 +102,7 @@ export class ReferenceFrames {
     const h = cross(rel, sub(target.v, primary.v));
     if (lenSq(rel) < 1 || lenSq(h) < 1e-9) return null;
     const zHat = norm(h);
-    const q = qFromForwardUp(zHat, cross(zHat, norm(rel))) ?? IDENTITY_ROTATION.q;
+    const q = qFromBasis(zHat, cross(zHat, norm(rel)));
     return { q, omega: scale(zHat, len(h) / (len(rel) * len(rel))) };
   }
 
