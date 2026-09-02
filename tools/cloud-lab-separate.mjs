@@ -6,7 +6,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
-import { decodeRedPng, fieldToGrayPng } from './gray-image.mjs';
+import { decodeRedPng, fieldToGrayPng, quantize } from './gray-image.mjs';
 import { encodeRgbPng } from './png.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -37,10 +37,6 @@ function packRgb(fields) {
     rgb[i * 3 + 2] = quantize(b.data[i]);
   }
   return encodeRgbPng(r.width, r.height, rgb);
-}
-
-function quantize(value) {
-  return Math.round(Math.min(1, Math.max(0, value)) * 255);
 }
 
 async function main() {
