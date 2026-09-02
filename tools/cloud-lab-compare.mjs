@@ -15,7 +15,6 @@ import { cropField, decodeRedPng, fieldToGrayPng } from './gray-image.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.cloud-lab');
 const outDir = path.join(buildDir, 'compare');
-const separatedDir = path.join(buildDir, 'separated');
 const port = 8769;
 const debugPort = 9446;
 
@@ -39,13 +38,13 @@ const VIEWS = ['photo', 'composite', 'coverage', 'translucent'];
 
 const CAP_KM_PER_PX = (2 * Math.sin((CAP_RADIUS * Math.PI) / 180) * 6371) / CAP_W;
 
-// 分離済みの成分(原寸の正距円筒)。無ければ手順ごと伝える。
+// 分離済みの成分(原寸の正距円筒)。厚い雲は src/assets の仮テクスチャ、veil は検分用の出力に
+// ある。無ければ手順ごと伝える。
 function loadSeparated(file) {
   try {
-    return decodeRedPng(readFileSync(path.join(separatedDir, file)));
+    return decodeRedPng(readFileSync(path.join(root, file)));
   } catch (e) {
-    throw new Error(
-      `${path.join('.cloud-lab', 'separated', file)} を読めない — 先に npm run cloud-lab:separate を実行する (${e.message})`);
+    throw new Error(`${file} を読めない — 先に npm run cloud-lab:separate を実行する (${e.message})`);
   }
 }
 
@@ -187,8 +186,8 @@ function printSpectrumTable(header, wavelengthOf, reference, generated, referenc
 
 async function main() {
   // 分離済みの成分を先に読む(無いなら撮影の前に気付かせる)。
-  const separatedThick = loadSeparated('coverage.png');
-  const separatedVeil = loadSeparated('veil.png');
+  const separatedThick = loadSeparated(path.join('src', 'assets', 'cloud-coverage.png'));
+  const separatedVeil = loadSeparated(path.join('.cloud-lab', 'separated', 'veil.png'));
 
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
