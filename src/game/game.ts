@@ -82,7 +82,6 @@ export class Game {
   readonly displayWindowManager: DisplayWindowManager;
   readonly viewManager: ViewManager;
   private readonly mapPickables: MapPickables;
-  private readonly linePickables: LinePickables;
   private readonly mapActions: MapContextActions;
 
   readonly activeStage: Stage;
@@ -230,10 +229,10 @@ export class Game {
       this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
       this.celestialMarkers, this.planTrajectory.planDisplay, this.frameAnchors,
     );
-    this.linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
+    const linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
     this.mapActions = new MapContextActions(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
-      this.cameraSystem, editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.linePickables,
+      this.cameraSystem, editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, linePickables,
       this.activePlayers, this.frameControls, this.activeStage, this.targeter, this.markerManager,
       this.celestialMarkers,
     );
@@ -252,13 +251,13 @@ export class Game {
     const guide = new PlanGuide(this._hud, this._uiSfx, this.markerManager);
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.mapActions, this.dynamicSystem,
-      this.mapPickables, this.linePickables, this.celestialMarkers, this.touchControls,
+      this.celestialMarkers, this.touchControls,
       this.activePlayers, dockingGuide, guide, this.planTrajectory, celestialSystem,
       this.simSpeedManager, this._hud,
     );
     const mapView = new MapView(
       this.input, this.cameraSystem, this.targeter, editor, this.mapActions,
-      this.dynamicSystem, celestialSystem, this.mapPickables, this.linePickables,
+      this.dynamicSystem, celestialSystem, this.mapPickables, linePickables,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.activePlayers,
     );
