@@ -56,10 +56,14 @@ export function decodeRedPng(png) {
   return { width, height, data: red };
 }
 
+// 0..1 の値を 8bit へ丸める。範囲の外は端で止める。
+export function quantize(value) {
+  return Math.round(Math.min(1, Math.max(0, value)) * 255);
+}
+
 // 場を 0..255 に量子化したグレースケール PNG のバイト列。
 export function fieldToGrayPng(field) {
-  const bytes = Uint8Array.from(field.data, (v) => Math.round(Math.min(1, Math.max(0, v)) * 255));
-  return encodeGrayPng(field.width, field.height, bytes);
+  return encodeGrayPng(field.width, field.height, Uint8Array.from(field.data, quantize));
 }
 
 // 場から (x0, y0) 起点の w × h を切り出す。
