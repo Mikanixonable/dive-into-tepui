@@ -14,7 +14,7 @@ import { haloState, lissajousState } from '../../physics/halo';
 import { secondaryFrameOf } from '../../physics/lagrange';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import { qRotate } from '../../physics/attitude';
+import { qRotate } from '../../math/quat';
 import { Vec3, add, addScaled, v3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { hudRail } from '../hud/hud-root';

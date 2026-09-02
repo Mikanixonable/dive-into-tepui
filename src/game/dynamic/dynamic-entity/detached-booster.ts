@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { qRotate, type Attitude } from '../../../physics/attitude';
+import { type Attitude } from '../../../physics/attitude';
+import { qRotate } from '../../../math/quat';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { add, scale, v3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';

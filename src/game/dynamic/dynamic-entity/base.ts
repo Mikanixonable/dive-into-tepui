@@ -6,7 +6,7 @@ import type { DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
-import { qRotate } from '../../../physics/attitude';
+import { qRotate } from '../../../math/quat';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Ray } from '../../../math/ray';
 import type { AnyPart, Part } from './parts';

@@ -1,6 +1,7 @@
 // RCS パフ(姿勢制御スラスタの噴射煙)。指令トルクに寄与するノズルを選び、その先へ噴射煙を置く。
 import * as THREE from 'three/webgpu';
-import { Attitude, qRotate } from '../../physics/attitude';
+import { Attitude } from '../../physics/attitude';
+import { qRotate } from '../../math/quat';
 import { Vec3, add, cross, dot, lenSq, scale, v3 } from '../../math/vec3';
 import { Billboard } from '../../render/billboard';
 import {

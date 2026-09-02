@@ -5,7 +5,7 @@ import {
   BVHNode, RayHit, SphereHit, Triangle,
   buildBVH, raycastTriangles, rayIntersectsAABB, sphereCollideTriangles,
 } from '../../../math/triangle-mesh';
-import { Quat, qRotate, qInvert } from '../../../physics/attitude';
+import { Quat, qRotate, qInvert } from '../../../math/quat';
 import { buildBaseModel } from '../../../render/base-station-model';
 
 // 軸並行の箱。center / halfSizes とも基地ローカル座標 [m]。
