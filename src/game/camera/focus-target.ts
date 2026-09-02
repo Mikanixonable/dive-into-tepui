@@ -1,4 +1,4 @@
-// MapCamera の注視対象と、その解決。対象を id で指す 'object' と、座標系に焼き込んだ固定点を
+// FocusCamera の注視対象と、その解決。対象を id で指す 'object' と、座標系に焼き込んだ固定点を
 // 表す 'point' の判別共用体を持ち、毎フレームそれを ECI 位置へ解決する。
 import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint, toInertialPoint } from '../../physics/frame';
 import { Vec3, v3 } from '../../math/vec3';
