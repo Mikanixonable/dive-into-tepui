@@ -1,12 +1,12 @@
 // マップの座標系UIのうち「何に固定/追随するか」を選ばせるゾーン。上段は登録天体・自艦・
 // 敵・基地・弾薬まで含む全候補から選ぶプルダウン(ObjectPicker)、下段はいまカメラがいる
 // 系の天体だけに絞ったクイックボタン(SegmentedControl)。
-import { FRAME_ROLES } from '../../../physics/frame';
+import { FRAME_ROLES, frameRoleAnchorId } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapPickable } from '../../pickable/map-pickable';
 import { SegmentedControl } from '../widgets';
 import { injectOnce } from '../widgets/inject-style';
-import { frameRoleAnchorId, frameRoleName } from './frame-labels';
+import { frameRoleName } from './frame-labels';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { groupPickables } from '../object-groups';
 import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
