@@ -239,6 +239,14 @@ export class Game {
       this.celestialMarkers,
     );
 
+    this.docking = new Docking(
+      this._hud, this._worldSfx, this._scene, this.dynamicSystem.effects, this.markerManager,
+      this.dynamicSystem, this.mapActions, this.cameraSystem,
+      (view) => this.viewManager.setView(view),
+      this.activePlayers, this.activeStage,
+    );
+    this.mapActions.setDocking(this.docking);
+
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.mapActions, this.dynamicSystem,
       this.mapPickables, this.linePickables, this.celestialMarkers, this.touchControls,
@@ -259,13 +267,6 @@ export class Game {
     );
 
     this.nanWatchdog = new NanWatchdog(this._hud);
-    this.docking = new Docking(
-      this._hud, this._worldSfx, this._scene, this.dynamicSystem.effects, this.markerManager,
-      this.dynamicSystem, this.mapActions, this.cameraSystem,
-      (view) => this.viewManager.setView(view),
-      this.activePlayers, this.activeStage,
-    );
-    this.mapActions.setDocking(this.docking);
     this.dockingGuide = new DockingGuide(
       this._scene, this.markerManager, this.dynamicSystem, this.docking, this.viewManager,
     );

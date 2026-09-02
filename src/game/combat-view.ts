@@ -25,9 +25,9 @@ export class CombatView implements WorldViewFrame {
     private readonly activePlayers: ActiveControllableController,
   ) {}
 
-  // 戦闘ビューは操作対象の艦または基地が必要。
+  // 戦闘ビューは操作対象(艦または基地)が必要。
   canEnter(): boolean {
-    return this.activePlayers.current !== null || this.activePlayers.controlledBase !== null;
+    return this.activePlayers.currentControllable !== null;
   }
 
   onEnter(): void {}

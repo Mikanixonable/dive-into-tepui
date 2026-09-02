@@ -6,9 +6,9 @@ import type { DisplayWindow } from './display-window-manager';
 export interface WorldViewFrame {
   // このビューへ遷移できるか。
   canEnter(): boolean;
-  // このビューへ入るときの支度。実遷移時のみで、構築時の初期ビューでは呼ばれない。
+  // このビューへ入るときの支度。
   onEnter(): void;
-  // このビューから出るときの後始末。実遷移時のみ。
+  // このビューから出るときの後始末。
   onLeave(): void;
   // ポーズ・入力ゲートの判定後に呼ばれる。ポインタ入力の配分。
   handlePointer(simTime: number): void;

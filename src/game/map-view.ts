@@ -35,11 +35,11 @@ export class MapView implements WorldViewFrame {
     private readonly activePlayers: ActiveControllableController,
   ) {}
 
+  // マップビューはいつでも入れる。
   canEnter(): boolean {
     return true;
   }
 
-  // ノードの選択状態は編集セッションを跨いで持ち越さない。
   onEnter(): void {
     this.editor.selectedNodeIdx = null;
   }
