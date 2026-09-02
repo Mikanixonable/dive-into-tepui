@@ -51,7 +51,7 @@
     "cloud-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.cloud-lab.config.js --mode development",
     "cloud-lab:shot": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-shot.mjs",
     "cloud-lab:compare": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-compare.mjs",
-    "cloud-lab:separate": "node tools/cloud-lab-separate.mjs"
+    "cloud-lab:separate": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-separate.mjs"
   },
   "devDependencies": {
     "@types/three": "0.185.4",
