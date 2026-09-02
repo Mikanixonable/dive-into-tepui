@@ -34,7 +34,6 @@ import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import type { RenderStyle } from '../render/render-style';
 import { CelestialSystem } from './celestial/celestial-system';
 import { ViewManager } from './view-manager';
-import type { WorldViewFrame } from './world-view';
 import { CombatView } from './combat-view';
 import { MapView } from './map-view';
 import { NanWatchdog } from './dynamic/nan-watchdog';
@@ -82,9 +81,6 @@ export class Game {
   readonly displayWindowManager: DisplayWindowManager;
   private readonly guide: PlanGuide;
   readonly viewManager: ViewManager;
-  // ビュー固有のフレーム処理の2具象。どちらを呼ぶかは activeView の1箇所で決まる。
-  private readonly combatView: CombatView;
-  private readonly mapView: MapView;
   private readonly mapPickables: MapPickables;
   private readonly linePickables: LinePickables;
   private readonly mapActions: MapContextActions;
@@ -243,33 +239,33 @@ export class Game {
       this.celestialMarkers,
     );
 
-    // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
-    // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
-    this.viewManager = new ViewManager(
-      this._hud, this.editor, this.displayWindowManager, this.mapActions,
-      this.activePlayers, this.touchControls,
-      initialSave?.camera?.view,
-    );
-    this.combatView = new CombatView(
+    const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.mapActions, this.dynamicSystem,
       this.mapPickables, this.linePickables, this.celestialMarkers, this.touchControls,
-      () => this.player,
+      this.activePlayers,
     );
-    this.mapView = new MapView(
+    const mapView = new MapView(
       this.input, this.cameraSystem, this.targeter, this.editor, this.mapActions,
       this.dynamicSystem, celestialSystem, this.mapPickables, this.linePickables,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
-      this.frameAnchors, () => this.player,
+      this.frameAnchors, this.activePlayers,
+    );
+    // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
+    // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
+    this.viewManager = new ViewManager(
+      this._hud, this.touchControls, this.displayWindowManager, this.activePlayers,
+      { combat: combatView, map: mapView },
+      initialSave?.camera?.view,
     );
 
     this.nanWatchdog = new NanWatchdog(this._hud);
     this.docking = new Docking(
       this._hud, this._worldSfx, this._scene, this.dynamicSystem.effects, this.markerManager,
-      this.dynamicSystem, this.mapActions, this.cameraSystem, this.viewManager,
+      this.dynamicSystem, this.mapActions, this.cameraSystem,
+      (view) => this.viewManager.setView(view),
       this.activePlayers, this.activeStage,
     );
     this.mapActions.setDocking(this.docking);
-    this.viewManager.setControlledBaseProvider(() => this.controlledBase);
     this.dockingGuide = new DockingGuide(
       this._scene, this.markerManager, this.dynamicSystem, this.docking, this.viewManager,
     );
@@ -326,11 +322,6 @@ export class Game {
 
   get simTime(): number { return this.simulator.simTime; }
 
-  // 現在のビューのフレーム処理。ビューによる分岐はこの1箇所に閉じる。
-  private get activeView(): WorldViewFrame {
-    return this.viewManager.isMapView ? this.mapView : this.combatView;
-  }
-
   // ------------------------------------------------------------ update
 
   update(dtRaw: number, graphics: GraphicsSettingsData): void {
@@ -377,7 +368,7 @@ export class Game {
     // はこの順序に依存しない — resolveFocusTarget が機体・役割トークンを frameAnchors.stateOf
     // で直接解決するため、mapPickables.refresh を先に呼んでも遅延は生じない。
     this.sections.enter(SECTION.mapPick);
-    this.activeView.update(displayWindow);
+    this.viewManager.activeView.update(displayWindow);
     this.sections.exit(SECTION.mapPick);
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput();
@@ -462,7 +453,7 @@ export class Game {
   // ゲートするオーバーレイ(セーブブラウザ・基地画面等)が開いている間は配らない(背景の誤操作を防ぐ)。
   private handlePointerInput(): void {
     if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
-    this.activeView.handlePointer(this.simulator.simTime);
+    this.viewManager.activeView.handlePointer(this.simulator.simTime);
   }
 
   // --------------------------------------------------------------- input
@@ -532,7 +523,7 @@ export class Game {
     // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
     const fo = this.cameraSystem.sync(activeControllable?.state.v ?? v3());
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
-    this.activeView.syncLabels();
+    this.viewManager.activeView.syncLabels();
 
     const project = this.cameraSystem.activeCameraProjection;
     // 表示・選択可否はこのフレームの update フェーズで MapPickables が確定させたものを読む
@@ -576,7 +567,7 @@ export class Game {
       displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this._celestialSystem);
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
-    this.activeView.syncPanels(displayWindow);
+    this.viewManager.activeView.syncPanels(displayWindow);
 
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 

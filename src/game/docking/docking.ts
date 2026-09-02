@@ -10,7 +10,7 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { MapContextActions } from '../pickable/map-context-actions';
 import type { CameraSystem } from '../camera/camera-system';
-import type { ViewManager } from '../view-manager';
+import type { WorldView } from '../view-manager';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
@@ -73,7 +73,9 @@ export class Docking {
     private readonly entities: DynamicSystem,
     private readonly mapActions: MapContextActions,
     private readonly cameraSystem: CameraSystem,
-    private readonly viewManager: ViewManager,
+    // ビュー遷移の要求口(ViewManager.setView)。ViewManager より先に生成されるため、
+    // 参照でなく閉包で受ける。
+    private readonly requestView: (view: WorldView) => void,
     private readonly activePlayers: ActivePlayerController,
     private readonly activeStage: Stage,
   ) {
@@ -273,7 +275,7 @@ export class Docking {
     this.entities.parkPlayer(ship);
     if (wasActive) {
       this.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
-      if (this.activePlayers.current === null) this.viewManager.setView('map');
+      if (this.activePlayers.current === null) this.requestView('map');
     }
     this.hud.hint(`${ship.name} を基地のドック ${selectedSlot + 1} に収納しました`);
   }
@@ -328,7 +330,7 @@ export class Docking {
     ship.state = kinematicState<'eci'>(base.state.t, launchPos, launchVel);
     this.entities.addPlayer(ship);
     this.activePlayers.set(ship);
-    this.viewManager.setView('combat');
+    this.requestView('combat');
     this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);
   }
 
