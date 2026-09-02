@@ -1,12 +1,16 @@
 // フレーム最初のパス: lit-opaque 層(lit-layer.ts)のオブジェクトだけを対象に、深度・法線・
-// ラフネスを MRT(複数レンダーターゲット)へ描く。
+// ラフネス・ベース色・金属度・自己発光を MRT(複数レンダーターゲット)へ描く。**物体のメッシュを
+// ラスタライズするパスはこれだけで、素材は画素ごとにここで確定する。**
 //
 // シーンの実マテリアルをそのまま描く。renderer.setMRT を張った状態では NodeMaterial が
 // 自前の出力ノードを MRT ノードで置き換えるため、ライティングのグラフは生成されないまま
-// roughness などのシェーダ変数だけが確定する — overrideMaterial もマテリアルの改変も要らない。
+// diffuseColor / metalness / roughness / emissive のシェーダ変数だけが確定する
+// — overrideMaterial もマテリアルの改変も要らない。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
-import { abs, float, mrt, normalize, normalView, roughness, select, step, vec3 } from 'three/tsl';
+import {
+  abs, diffuseColor, emissive, float, metalness, mrt, normalize, normalView, roughness, select, step, vec3, vec4,
+} from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { LIT_OPAQUE_LAYER } from './lit-layer';
 import type { Vec2Node, Vec3Node } from '../tsl-types';
@@ -48,34 +52,54 @@ export class GBufferPass {
   private readonly target: THREE.RenderTarget;
   private readonly mrtNode: ReturnType<typeof mrt>;
 
-  // normal/roughness の2枚 MRT ターゲットとそれぞれのフォーマットを構築し、出力ノード
-  // (法線は octEncodeNormal 経由、ラフネスはそのまま)を一度だけ組み立てる。
+  // 4枚 MRT ターゲットとそれぞれのフォーマットを構築し、出力ノード(法線は octEncodeNormal
+  // 経由、残りはそのまま)を一度だけ組み立てる。
   constructor(renderer: WebGPURenderer, private readonly gpu: GpuTimings) {
     this.renderer = renderer;
 
     // モデル間の境界をマルチサンプルで平均すると、法線がどちらの面にも属さない方向に
     // なってしまうため、G バッファはマルチサンプルしない。
-    this.target = new THREE.RenderTarget(1, 1, { count: 2, depthBuffer: true, samples: 0 });
-    const [normalTex, roughnessTex] = this.target.textures;
+    this.target = new THREE.RenderTarget(1, 1, { count: 4, depthBuffer: true, samples: 0 });
+    const [normalTex, roughnessTex, basecolorTex, emissiveTex] = this.target.textures;
     normalTex!.name = 'normal';
     normalTex!.format = THREE.RGFormat;
     normalTex!.type = THREE.HalfFloatType;
     roughnessTex!.name = 'roughness';
     roughnessTex!.format = THREE.RedFormat;
     roughnessTex!.type = THREE.UnsignedByteType;
+    // ベース色は線形の 8bit。α へ金属度を同居させるのは、この2つを読む側が常に同時に使うため。
+    // 暗部にバンディングが見えたら符号化か 10bit へ上げる(表示用ターゲットと違い、ここは
+    // `-srgb` フォーマットにすると読み側で線形へ戻る点に注意 — 二重変換にはならない)。
+    // **何も描かれなかった画素の α は 1 になる** — three は MRT の 2 枚目以降を
+    // (0,0,0,1) 固定でクリアし、レンダラのクリア色を見ない。読み手は深度で物体の有無を
+    // 判定すること(クリア値 0 が反転 Z の far)。
+    basecolorTex!.name = 'basecolor';
+    basecolorTex!.format = THREE.RGBAFormat;
+    basecolorTex!.type = THREE.UnsignedByteType;
+    // 自己発光は 1 を超えうる HDR 値なので半精度浮動小数点で持つ。
+    emissiveTex!.name = 'emissive';
+    emissiveTex!.format = THREE.RGBAFormat;
+    emissiveTex!.type = THREE.HalfFloatType;
     // 深度は 32bit 浮動小数点。RenderTarget の深度が自動で depth32float になるのは
     // キャンバス直描きのときだけで、明示しないと depth24plus のまま — 絵は正常なのに
     // 精度だけ落ちる。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
+    // MRT の名前はターゲットのテクスチャ名で添付先へ結び付く。成分数も添付のフォーマットに
+    // 合わせる — 自己発光は vec3 だが、rgba16float の添付には 4 成分の出力が要る。
     this.mrtNode = mrt({
       normal: octEncodeNormal(normalView),
       roughness,
+      basecolor: vec4(diffuseColor.rgb, metalness),
+      emissive: vec4(emissive, 1),
     });
   }
 
   get normalTexture(): THREE.Texture { return this.target.textures[0]!; }
   get roughnessTexture(): THREE.Texture { return this.target.textures[1]!; }
+  // rgb がベース色(線形)、a が金属度。
+  get basecolorTexture(): THREE.Texture { return this.target.textures[2]!; }
+  get emissiveTexture(): THREE.Texture { return this.target.textures[3]!; }
   get depthTexture(): THREE.DepthTexture { return this.target.depthTexture!; }
 
   // lit-opaque 層のオブジェクトだけを G バッファへ描く。camera はこのあと world パスでも
