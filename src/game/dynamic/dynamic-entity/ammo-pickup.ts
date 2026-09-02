@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { WorldView } from '../../view-manager';
 import { kinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { buildAmmoPickup } from '../../../render/ships';
@@ -84,7 +85,7 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
 
   // Targeter がクラスタ化・天体ラベル下サブ行の集合へ渡すためのマーカー情報。
   // 弾薬はターゲット化されないので役割・優先度は常に固定値。
-  markerItem(viewerPos: Vec3, overviewMode: boolean): GroupedMarkerItem {
+  markerItem(viewerPos: Vec3, view: WorldView): GroupedMarkerItem {
     const dist = len(sub(this.state.r, viewerPos));
     return {
       key: this.markerKey,
@@ -95,7 +96,7 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
       vel: this.state.v,
       priority: MARKER_PRIORITY.AMMO,
       name: this.name,
-      detail: overviewMode ? '' : fmtMarkerDist(dist),
+      detail: view === 'map' ? '' : fmtMarkerDist(dist),
       bearingColor: 'var(--color-primary-hover)',
       bearingSym: DIRECTION_GLYPH.bearing,
       bearingClass: 'mk-ammo mk-bearing-triangle',

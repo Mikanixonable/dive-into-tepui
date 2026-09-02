@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { WorldView } from '../../view-manager';
 import { Ship, MUZZLE_SPEED } from './ship';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 import { DynamicEntity } from './dynamic-entity';
@@ -213,7 +214,7 @@ export abstract class Enemy extends Ship implements MapPickable {
 
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
   // (stateAt 経由)を渡すこと。
-  public markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
+  public markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, view: WorldView): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
     // 代表選出の優先度: ターゲット > 距離が近い順 (天体 > 船・エンティティ)
@@ -222,12 +223,12 @@ export abstract class Enemy extends Ship implements MapPickable {
       key: this.markerKey,
       kind: this.mapKind,
       cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
-      sym: overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
+      sym: view === 'map' ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
       vel,
       priority,
       name: this.name,
-      detail: overviewMode ? '' : fmtMarkerDist(dist),
+      detail: view === 'map' ? '' : fmtMarkerDist(dist),
       // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。ターゲット中は第二アクセントカラーで強調する。
       bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.enemyShip,

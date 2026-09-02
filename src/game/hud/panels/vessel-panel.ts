@@ -187,7 +187,7 @@ export class VesselPanel {
     // 通常のマップビューでは艦固有の情報をプロパティウィンドウで参照するので畳む。
     // クリエイティブでは配置後の艦を常に操作できるため、マップビューでも VESSEL を表示する。
     // CSS 側でも同じ条件を持つが、未配置状態からの復帰時は JS で明示的に戻す。
-    if (!game.cameraSystem.overviewMode || game.activeStage.id === 'creative') {
+    if (!game.viewManager.isMapView || game.activeStage.id === 'creative') {
       this.els.get('hud-vessel-status')?.classList.remove('hidden');
     }
 
