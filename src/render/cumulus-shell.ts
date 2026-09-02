@@ -1,13 +1,20 @@
-// 積雲(雲の場の R = 被覆率)を、地表の上に浮く不透明な殻として描くメッシュ。分割段ラダーの
-// 各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて1段だけを見せる。被覆率は二値化し、
-// 覆われていない画素は捨てる。陰影・遮蔽・逆二乗の減衰はすべてパイプラインが与える。
+// 積雲(雲の場の R = 被覆率、G = 雲頂高度)を、地表の上に立つ不透明な雲として描くメッシュ。
+// 分割段ラダーの各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて1段だけを見せる。殻の面へ
+// 届いた視線は雲頂の高さ場まで下ろして交点を探し、そこの深度と法線を書く。陰影・遮蔽・逆二乗の
+// 減衰はすべてパイプラインが与える。
 import * as THREE from 'three/webgpu';
-import { Discard, Fn, clamp, texture as textureNode, uv, vec3 } from 'three/tsl';
+import {
+  Discard, Fn, If, cameraPosition, cameraProjectionMatrix, clamp, dot, float, length, max,
+  modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, sqrt, step,
+  texture as textureNode, transformNormalToView, vec3, vec4,
+} from 'three/tsl';
 import { BlueNoise } from './blue-noise';
 import { DeferredTexture } from './deferred-texture';
-import { unitSphereGeometry } from './celestial-surface';
+import { sphereMeshUv, unitSphereGeometry } from './celestial-surface';
+import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitOpaque } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
+import type { FloatNode, Vec3Node, Vec4Node } from './tsl-types';
 
 // 雲の場の G(雲頂高度)が張る高さ [m]。殻はその上限へ置く(`render/cloud/cloud-field.ts`)。
 const CLOUD_TOP_SPAN = 15000;
@@ -30,10 +37,20 @@ const COVERAGE_SOLID = 0.45;
 // 画素が抜ける。
 const DITHER_LEVELS = 256;
 
+// 視線を雲頂へ下ろす刻み数と、雲頂をまたいだ区間を締める二分の回数。
+const MARCH_STEPS = 8;
+const REFINE_STEPS = 4;
+
+// 雲頂の勾配を測る差分の幅 [rad]。場の 1 texel が張る角(赤道 9.8 km ≈ 0.0015 rad)と同じ桁に
+// 取る — これより細かく取っても、双一次補間した同じ斜面をなぞるだけになる。
+const CLOUD_TOP_GRADIENT_ANGLE = 0.0015;
+
 export class CumulusShell {
   private readonly fieldMap: DeferredTexture;
   private readonly material: THREE.Material;
   private readonly blueNoise = new BlueNoise();
+  // 殻を半径 1 とする物体空間での地表の半径。レイマーチの下端になる。
+  private readonly groundRadius: number;
   // 段ごとの球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
@@ -44,9 +61,10 @@ export class CumulusShell {
     this.fieldMap = new DeferredTexture(fieldUrl, THREE.NoColorSpace);
     // 正距円筒の経度は周期的なので、場は経度方向へ巻く。
     this.fieldMap.texture.wrapS = THREE.RepeatWrapping;
+    const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
+    this.groundRadius = 1 / shellScale;
     this.material = this.buildMaterial();
 
-    const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     for (const level of SPHERE_LOD_LADDER) {
       const mesh = new THREE.Mesh(unitSphereGeometry(level), this.material);
@@ -92,21 +110,112 @@ export class CumulusShell {
     this.blueNoise.dispose();
   }
 
-  // 被覆率で二値化した不透明な白の標準マテリアル。覆われていない画素はここで捨てる。
+  // 雲頂の交点を書く不透明な白の標準マテリアル。深度と法線は 1 本のレイマーチを共有する。
   private buildMaterial(): THREE.Material {
     const material = new THREE.MeshStandardNodeMaterial({
       roughness: CUMULUS_ROUGHNESS, metalness: 0,
     });
-    material.colorNode = Fn(() => {
-      // 被覆率を帯の中で 0..1 へ伸ばし、画素ごとに固定のディザ閾値と比べて雲の有無を決める。
-      const coverage = textureNode(this.fieldMap.texture, uv()).r;
-      const opaqueFraction = clamp(
-        coverage.sub(COVERAGE_CLEAR).div(COVERAGE_SOLID - COVERAGE_CLEAR), 0, 1);
-      const threshold = this.blueNoise.atScreenPixel()
-        .mul((DITHER_LEVELS - 1) / DITHER_LEVELS).add(0.5 / DITHER_LEVELS);
-      Discard(opaqueFraction.lessThan(threshold));
-      return vec3(CUMULUS_ALBEDO);
-    })();
+    const marched = this.marchedSurface().toVar();
+    material.depthNode = marched.w;
+    material.normalNode = marched.xyz;
+    material.colorNode = vec3(CUMULUS_ALBEDO);
     return material;
+  }
+
+  // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、交点の view 空間法線(xyz)と深度(w)を返す。
+  //
+  // **標本化は分岐の外で済ませ、捨てるのは最後にする** — テクスチャのミップ段は隣接画素との
+  // 差から決まるので、条件分岐や discard のあとで読むと段が決まらない。
+  private marchedSurface(): Vec4Node {
+    return Fn(() => {
+      const entry = positionLocal.toVar();
+      const origin = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
+      const direction = normalize(entry.sub(origin)).toVar();
+      const threshold = this.ditherThreshold().toVar();
+
+      // 殻に入ってから地表の球へ達するまで(掠めるなら殻を出るまで)を等分してたどる。
+      const along = dot(entry, direction);
+      const half = along.mul(along).sub(dot(entry, entry));
+      const groundHalf = half.add(this.groundRadius * this.groundRadius);
+      const marchEnd = max(select(
+        groundHalf.greaterThan(0),
+        along.negate().sub(sqrt(max(groundHalf, 0))),
+        along.negate().add(sqrt(max(half.add(1), 0))),
+      ), 0);
+      const stepLength = marchEnd.div(MARCH_STEPS);
+
+      // 雲頂より内側へ入った最初の刻みを、その手前の刻みと一緒に覚える。
+      const hit = float(0).toVar();
+      const above = float(0).toVar();
+      const below = marchEnd.toVar();
+      for (let stepIndex = 1; stepIndex <= MARCH_STEPS; stepIndex++) {
+        const distance = stepLength.mul(stepIndex);
+        const inside = this.clearanceAt(entry.add(direction.mul(distance)), threshold).lessThan(0);
+        If(inside.and(hit.lessThan(0.5)), () => {
+          hit.assign(1);
+          below.assign(distance);
+        });
+        If(hit.lessThan(0.5), () => { above.assign(distance); });
+      }
+      // 雲頂をまたいだ区間を二分して縁を締める。
+      for (let refineIndex = 0; refineIndex < REFINE_STEPS; refineIndex++) {
+        const middle = above.add(below).mul(0.5);
+        const inside = this.clearanceAt(entry.add(direction.mul(middle)), threshold).lessThan(0);
+        If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
+      }
+
+      const hitPoint = entry.add(direction.mul(below)).toVar();
+      const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
+      const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint)));
+      Discard(hit.lessThan(0.5));
+      return vec4(viewNormal, clip.z.div(clip.w));
+    })();
+  }
+
+  // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。
+  private clearanceAt(point: Vec3Node, threshold: FloatNode): FloatNode {
+    const radius = max(length(point), 1e-6);
+    const cloud = this.fieldAt(point.div(radius));
+    // 覆いの無い柱は雲頂を地表まで落とし、視線をそのまま通す。
+    const present = step(threshold, this.opaqueFractionOf(cloud.r));
+    return radius.sub(this.cloudTopRadiusOf(cloud.g.mul(present)));
+  }
+
+  // 物体空間の点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに
+  // 断ち切られた崖ではなく、雲頂そのものの起伏を法線に出す。
+  private cloudTopNormalAt(point: Vec3Node): Vec3Node {
+    const up = normalize(point);
+    const east = eastAt(up);
+    const north = northAt(up);
+    const heightAt = (direction: Vec3Node): FloatNode =>
+      this.cloudTopRadiusOf(this.fieldAt(normalize(direction)).g);
+    // 東と北へ 1 texel ぶん振った雲頂との差が、そのまま接平面での傾き。
+    const here = heightAt(up);
+    const slopeEast = heightAt(up.add(east.mul(CLOUD_TOP_GRADIENT_ANGLE)))
+      .sub(here).div(CLOUD_TOP_GRADIENT_ANGLE);
+    const slopeNorth = heightAt(up.add(north.mul(CLOUD_TOP_GRADIENT_ANGLE)))
+      .sub(here).div(CLOUD_TOP_GRADIENT_ANGLE);
+    return normalize(up.sub(east.mul(slopeEast)).sub(north.mul(slopeNorth)));
+  }
+
+  // 場の雲頂高度 0..1 を、殻を半径 1 とする物体空間の半径へ直す。
+  private cloudTopRadiusOf(cloudTop: FloatNode): FloatNode {
+    return cloudTop.mul(1 - this.groundRadius).add(this.groundRadius);
+  }
+
+  // 天体固定の単位方向における場の値。
+  private fieldAt(direction: Vec3Node): Vec4Node {
+    return textureNode(this.fieldMap.texture, sphereMeshUv(direction));
+  }
+
+  // 被覆率を、覆い尽くされている割合 0..1 へ伸ばしたもの。
+  private opaqueFractionOf(coverage: FloatNode): FloatNode {
+    return clamp(coverage.sub(COVERAGE_CLEAR).div(COVERAGE_SOLID - COVERAGE_CLEAR), 0, 1);
+  }
+
+  // 画素ごとに固定の、覆い尽くされている割合と比べるディザの閾値。
+  private ditherThreshold(): FloatNode {
+    return this.blueNoise.atScreenPixel()
+      .mul((DITHER_LEVELS - 1) / DITHER_LEVELS).add(0.5 / DITHER_LEVELS);
   }
 }
