@@ -5,10 +5,7 @@ import { WebGPURenderer } from 'three/webgpu';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/gpu-timings';
 import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '../../src/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
-import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
-import {
-  REFERENCE_STAR_RADIANT_INTENSITY, SUN_IRRADIANCE_1AU, irradianceAtDistance,
-} from '../../src/render/pipeline/sun-light';
+import { REFERENCE_STAR_RADIANT_INTENSITY, irradianceAtDistance } from '../../src/render/pipeline/sun-light';
 import { SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
@@ -49,9 +46,6 @@ const UP = new THREE.Vector3(0, 1, 0);
 // ゲーム本体と同じ放射強度を渡すので、そこで受ける放射照度もゲーム本体の同じ距離と一致する。
 // 毎フレーム書き込む。
 const SUN_POSITION = new THREE.Vector3();
-
-// シーン光源(平行光)を置く距離 [m]。向きだけが意味を持つので、ケースの広がりより十分遠ければよい。
-const SUN_LIGHT_DISTANCE = 1e5;
 
 // 恒星方向とカメラ位置を毎フレーム組み立てる書き込み先。
 const SUN_DIRECTION = new THREE.Vector3();
@@ -111,8 +105,6 @@ function anglesFromDirection(v: THREE.Vector3): { azimuthDeg: number; elevationD
 
 export class LabView {
   private readonly scene = new THREE.Scene();
-  // ケースの太陽方向へ向け直すために持つ。恒星の位置と同じ向きを指す。
-  private readonly sun = new THREE.DirectionalLight(SUN_LIGHT_COLOR.getHex(), SUN_IRRADIANCE_1AU);
   // 撮影先。合成パスが既に sRGB へ変換した値を書くので、素の RGBA8 で受ける
   // (-srgb フォーマットにすると二重変換になり、撮った PNG だけが白っぽくなる)。
   // 深度は 3D UI パスが要る — 合成パスが G バッファの深度をここへ複製し、線はそれに対して
@@ -154,10 +146,6 @@ export class LabView {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
-    // NodeMaterial はカメラのチャンネルと重なる光源が1つも無いと照明モデルを組まない。
-    // マテリアルパスはカメラを LIT_OPAQUE_LAYER 単独へ絞るので、光源も同チャンネルへ属させる。
-    this.sun.layers.enable(LIT_OPAQUE_LAYER);
-    this.scene.add(this.sun);
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<LabView> {
@@ -301,12 +289,9 @@ export class LabView {
   // 動くものが無いので、描くのはケースを差し替えたときと、表示を切り替えたときと、撮影のとき。
   render(): void {
     if (this.current === null) return;
-    // 恒星の位置とシーン光源の向きは、必ず同じ向きから引く。片方だけを更新すると、影の向きと
-    // 明暗の境界の向きが食い違ったまま「それらしく」写る。
     const sunDirection = directionFromAngles(
       this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,
     );
-    this.sun.position.copy(sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE);
     const sunDistance = this.sunDistance;
     SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
     this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_LIGHT_COLOR, REFERENCE_STAR_RADIANT_INTENSITY);
