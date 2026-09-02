@@ -12,11 +12,15 @@ import { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
-import { fmtMarkerDist } from '../../hud/utils';
+import { fmtDist, fmtMarkerDist, fmtSpeed } from '../../hud/utils';
+import { relativeInfo } from '../../hud/orbit/orbit-info';
+import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
+import { shipMarkerSvg } from '../../marker/marker-shapes';
 import { currentThemePalette } from '../../theme';
 import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
 import type { Quat } from '../../../physics/attitude';
+import type { DynamicEntityKind } from './entity-kind';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
@@ -24,7 +28,15 @@ import type { DynamicSystem } from '../../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { EnemySaveData } from '../../save/save-data';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
-import { MARKER_PRIORITY } from '../../marker/marker-manager';
+import { MARKER_PRIORITY, type MarkerManager } from '../../marker/marker-manager';
+import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
+import type { MapPickable } from '../../pickable/map-pickable';
+import type { MapCommands } from '../../pickable/map-commands';
+import type { MenuItem } from '../../hud/windows/context-menu';
+import type { PropertyRow } from '../../hud/windows/property-window';
+import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
+import type { ObjectPickerGenre } from '../../hud/object-groups';
+import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
 // 達するのは、地球の大気では高度 80 km 付近。
@@ -48,6 +60,9 @@ const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃す
 const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
 const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
+
+// 軌道物体一覧で接近中として扱う、自艦との距離 [m]。
+const ENEMY_APPROACH_DIST = 2e5;
 
 // タンパク質陣形における敵の役割。
 export type FormationRole = 'attacker' | 'shield' | 'energy';
@@ -95,7 +110,9 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
 // 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
-export abstract class Enemy extends Ship {
+export abstract class Enemy extends Ship implements MapPickable {
+  public readonly mapKind: DynamicEntityKind = 'enemy';
+
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
   protected readonly maxTemperature = ENEMY_MAX_TEMP;
   public readonly accent: string | number; // マーカー色・集団識別。全敵が保持する
@@ -191,15 +208,19 @@ export abstract class Enemy extends Ship {
     return '#' + this.accent.toString(16).padStart(6, '0');
   }
 
+  // 画面マーカーと被選択判定が同じ個体を指すためのキー。表示名は敵どうしで重なりうるので id から作る。
+  private get markerKey(): string { return `enemy-${this.id}`; }
+
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
-  // (stateAt 経由)を渡すこと。key を id から作るのは、表示名が敵どうしで重なりうるため。
+  // (stateAt 経由)を渡すこと。
   public markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
     // 代表選出の優先度: ターゲット > 距離が近い順 (天体 > 船・エンティティ)
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
-      key: `enemy-${this.id}`,
+      key: this.markerKey,
+      kind: this.mapKind,
       cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
       sym: overviewMode ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
@@ -411,4 +432,108 @@ export abstract class Enemy extends Ship {
       showTrajectoryLine: this.showTrajectoryLine,
     };
   }
+
+  // マップ上の被選択物としての振る舞い。
+  public readonly ownerName = null;
+  public readonly mapTime = null;
+  public get gone(): boolean { return !this.alive; }
+  public get mapState(): KinematicState { return this.state; }
+  public readonly mapGlyph = ENTITY_GLYPH.enemyShip;
+  public get mapGlyphSvg(): string { return shipMarkerSvg(false); }
+  public readonly listSection: MapListSection = 'enemy';
+  public readonly pickerGenre: ObjectPickerGenre = '敵';
+  public readonly hiddenBehindBodies = true;
+  public readonly onlyInFocusedSystem = false;
+  public listPriority(): number { return 0; }
+
+  // 表示時刻の ECI 位置。予測が届かない時刻では null。
+  public mapPosAt(displayTime: number): Vec3 | null {
+    return this.stateAt(displayTime)?.r ?? null;
+  }
+
+  // 敵カテゴリの表示トグルによる可否。
+  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
+    return policy.entity(this.mapKind);
+  }
+
+  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
+
+  // 自艦から見た距離と相対速度。自艦がいなければ空。
+  public listDetail(
+    _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+  ): string {
+    if (activePlayer === null) return '';
+    const viewer = activePlayer.state;
+    const d = len(sub(this.mapPosAt(displayTime) ?? this.state.r, viewer.r));
+    const label = this.listCounted(activePlayer, displayTime) ? '接近' : '距離';
+    return `${label} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.state.v, viewer.v)))}`;
+  }
+
+  // 検索が照合する文字列。行の補助表示と同じ。
+  public listSearchText(
+    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+  ): string {
+    return this.listDetail(celestialSystem, activePlayer, displayTime);
+  }
+
+  // 自艦へ接近中と扱う距離まで寄っているか。
+  public listCounted(activePlayer: Player | null, displayTime: number): boolean {
+    if (activePlayer === null) return false;
+    const d = len(sub(this.mapPosAt(displayTime) ?? this.state.r, activePlayer.state.r));
+    return d < ENEMY_APPROACH_DIST;
+  }
+
+  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
+  public mapMenuItems(
+    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  ): readonly MenuItem<MenuAction>[] {
+    return [
+      ...MenuCommon.targetItems(commands, this.id, simTime),
+      MenuCommon.focus(),
+      MenuCommon.trajectoryLine(this.showTrajectoryLine),
+      ...MenuCommon.duplicateItems(commands),
+      { label: '削除', act: 'delete' },
+      MenuCommon.cancel(),
+    ];
+  }
+
+  // mapMenuItems が出した操作を実行する。削除と軌道線の表示は自分の状態を、残りは commands を通す。
+  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+    if (act === 'delete') this.alive = false;
+    else if (act === 'toggleTrajectoryLine') this.showTrajectoryLine = !this.showTrajectoryLine;
+    else if (act === 'duplicate') commands.duplicate(this.mapKind, this.state);
+    else if (act === 'focus') commands.focus(this.id, this.name);
+    else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
+  }
+
+  // プロパティウィンドウに出す行。装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、
+  // 軌道要素と相対傾斜角は「軌道」グループの下に畳む。viewer が null なら相対量の行は落ちる。
+  public mapPropertyRows(
+    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  ): readonly PropertyRow[] {
+    const viewer = commands.activePlayer;
+    const rel = viewer ? relativeInfo(viewer, this, celestialSystem.celestialMotions, simTime) : null;
+    const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` }];
+    // 自艦との相対量。
+    if (rel) {
+      rows.push(
+        { key: 'dist', label: '距離', value: fmtDist(rel.dist) },
+        { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing) },
+        { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), collapsible: true },
+      );
+    }
+    rows.push(...orbitRows(this, celestialSystem, simTime));
+    // 相対傾斜角は自艦の軌道面が基準なので、軌道要素と同じグループへ並べる。
+    if (rel) {
+      rows.push({
+        key: 'relinc', label: '相対傾斜 [AN/DN]',
+        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: '軌道',
+      });
+    }
+    return rows;
+  }
+
+  public readonly mapRename = null;
+  public readonly onMapSelect = null;
+  public readonly onMapFocus = null;
 }

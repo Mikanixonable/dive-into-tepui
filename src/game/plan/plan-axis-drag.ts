@@ -10,7 +10,7 @@ export const NODE_DV_RATE = 300; // Δv 調整速度 [m/s per 実秒]
 export const NODE_DV_RATE_FINE = 30; // 微調整モード時
 
 const DV_RATE_MIN = 1; // 長押し開始時のΔv加算レート [m/s per 実秒]
-export const DV_RATE_MAX = 400; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
+const DV_RATE_MAX = 400; // 長押し継続後に到達するΔv加算レート [m/s per 実秒]
 const DV_RATE_RAMP_SEC = 3.0; // DV_RATE_MIN から DV_RATE_MAX への指数的ランプ時間 [s]
 
 // ホールド継続時間 [s] から Δv 加算レートを指数的に求める。押し始めは細かく、長押しで粗くなる。

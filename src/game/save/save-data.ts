@@ -7,20 +7,20 @@ import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
 import type { BoosterStackData, BoosterStageData } from '../player/booster-stack';
 
-export interface Vec3SaveData {
+interface Vec3SaveData {
   x: number;
   y: number;
   z: number;
 }
 
-export interface QuatSaveData {
+interface QuatSaveData {
   x: number;
   y: number;
   z: number;
   w: number;
 }
 
-export interface EntitySaveData {
+interface EntitySaveData {
   id: string;
   name?: string;
   // 具象クラスのタグ。
@@ -31,7 +31,7 @@ export interface EntitySaveData {
   w: Vec3SaveData;
 }
 
-export interface KinematicStateSaveData {
+interface KinematicStateSaveData {
   t: number;
   r: Vec3SaveData;
   v: Vec3SaveData;
@@ -54,11 +54,11 @@ export interface FireSaveData {
   muzzleIdx: number;
 }
 
-export interface ThermalSaveData {
+interface ThermalSaveData {
   hullTemp: number;
 }
 
-export interface RadiatorPanelSaveData {
+interface RadiatorPanelSaveData {
   deployTarget: 0 | 1;
   deploy: number;
 }
@@ -239,7 +239,7 @@ export interface SnapshotMeta {
 // 天体暦を使うスナップショットが、どの絶対時刻・プロファイル・packで生成されたか。
 // このフィールドは後方互換のため GameSaveData では任意とする。旧形式には無く、
 // 旧スナップショットは SnapshotService が従来どおり復元を試みる。
-export interface EphemerisContext {
+interface EphemerisContext {
   // このランの元期(simTime=0 が指す絶対時刻)。読み込み側はこれを継承する。
   epochJdTdb: number;
   // その元期が選ぶ暦プロファイルと暦パック。数値暦を持たない時代では両方 null。
@@ -311,7 +311,7 @@ export interface FrameRotationSourceSaveData {
 // MapCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
 // (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は
 // 旧セーブでは文字列(公転対象の id)または null だったので、読み込み側がその形も受け付ける。
-export type FocusTargetSaveData =
+type FocusTargetSaveData =
   | { kind: 'object'; id: string }
   | { kind: 'point'; center: string; rotatingWith: FrameRotationSourceSaveData | string | null; point: Vec3SaveData };
 
@@ -337,7 +337,7 @@ export interface CameraSaveData {
   overview: MapCameraSaveData;
 }
 
-export interface NavTargetSaveData {
+interface NavTargetSaveData {
   id: string;
   name: string;
 }

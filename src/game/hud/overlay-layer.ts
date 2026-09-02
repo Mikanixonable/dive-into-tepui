@@ -4,7 +4,7 @@
 // ゲートの対象(marker/panel/window/popup)より上、ゲートを開く側になり得るモーダル
 // (system のヘルプ・一時停止・セーブブラウザ)より下に置く —
 // 遮蔽幕自身がモーダルの上に乗って操作を奪うことがないようにするため。
-export type OverlayLayerName = 'marker' | 'panel' | 'window' | 'popup' | 'gate' | 'view' | 'notify' | 'system';
+type OverlayLayerName = 'marker' | 'panel' | 'window' | 'popup' | 'gate' | 'view' | 'notify' | 'system';
 
 export type OverlayLayers = Readonly<Record<OverlayLayerName, HTMLDivElement>>;
 

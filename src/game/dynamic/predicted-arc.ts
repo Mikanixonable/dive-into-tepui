@@ -26,13 +26,13 @@ const ARC_MAX_SAMPLE_COARSENING = 8;
 // 天体接近時、1ステップで表面までの残距離を跨がないための安全率。動径接近率(表面までの
 // 距離の減り方)に掛かる上限係数で、相対速さそのものではなく接近している成分だけを見る
 // — でないと円軌道でも常に効いて粗化項(ARC_MAX_STEPS)を不当に上書きしてしまう。
-export const ARC_APPROACH_SAFETY = 0.5;
+const ARC_APPROACH_SAFETY = 0.5;
 
 // 消費される弧が、消費前線の近くで毎歩サンプルを残す歩数。この範囲では at() の補間誤差が
 // 1歩ぶん(20s 刻みで 4.5mm)まで落ちる。前線がここを抜けると周期基準の間引きへ移り、
 // 補間誤差は LEO で 20〜26m になる。512 は ×1 で 512×20s = 2.8 時間ぶん、最高ワープで
 // 512×34.1s = 8フレームぶんの前線をこの精度で覆う。
-export const ARC_FINE_STEPS = 512;
+const ARC_FINE_STEPS = 512;
 
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
 export const DEFAULT_HISTORY_DURATION = 10 * 86400; // 過去列を持つ種別(Ship・Base)の既定保持時間 [s]

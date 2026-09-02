@@ -53,7 +53,7 @@ const SNAPSHOT_KIND_LABEL: Record<SnapshotMeta['kind'], string> = {
   auto: '自動', manual: '手動', checkpoint: '決着',
 };
 
-export interface SnapshotPaneCallbacks {
+interface SnapshotPaneCallbacks {
   readonly onCaptureNow: () => void;
   readonly onSelectStage: (stageId: string) => void;
   readonly onLoadSnapshot: (snapshotId: string, loadable: boolean) => void;

@@ -6,7 +6,7 @@ import { HUD_BADGE_STYLE } from './hud-badge-style';
 import { MARKER_STYLE } from './marker-style';
 import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../breakpoints';
 
-export const RESPONSIVE_SKELETON_STYLE = `
+const RESPONSIVE_SKELETON_STYLE = `
 /* モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる */
 @media ${MQ_MEDIUM_DOWN} {
   #hud { font-size: var(--font-s); }
