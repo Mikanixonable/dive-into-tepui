@@ -14,11 +14,11 @@ import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frame
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { Quat, qInvert, qMul, qNormalize, qRotate } from '../../math/quat';
+import { Quat, qRotate } from '../../math/quat';
 import {
-  LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, POLAR_PITCH_LIMIT, PolarEuler,
-  eulerFromRotation, rotateByScreenDrag, rotationFromBasis, rotationFromEuler, sphericalOffset,
+  LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, rotateByScreenDrag, rotationFromBasis, sphericalOffset,
 } from '../../math/orientation';
+import { CameraOrientation, type CameraRotationMode } from './camera-orientation';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { FocusTarget, focusTargetId, resolveFocusTarget, type FocusCandidate } from './focus-target';
 import { CameraRotationFollowSaveData, FrameRotationSourceSaveData, FocusCameraSaveData } from '../save/save-data';
@@ -125,7 +125,6 @@ function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | string
 
 const WORLD_UP = v3(0, 1, 0);
 const FOCUS_CAMERA_FOV = 50;
-type CameraRotationMode = 'quaternion' | 'euler';
 export type CameraReferencePlane = 'ecliptic' | 'equator' | 'moonOrbit';
 export type CameraReferenceView = 'above' | 'side';
 
@@ -138,13 +137,11 @@ export class FocusCamera {
   private readonly perspectiveCamera: THREE.PerspectiveCamera;
   private readonly orthographicCamera: THREE.OrthographicCamera;
   private fovDeg = FOCUS_CAMERA_FOV;
-  private rotationMode: CameraRotationMode;
   private projectionMode: ProjectionMode;
   private orthographicHalfHeight = 1;
-  // rotationQ はカメラのローカル(+Z=注視点からカメラ、+Y=画面上)を cameraFrame へ
-  // 写すクォータニオン。オイラー操作も最終的には必ずこの値へ変換して描画する。
-  private rotationQ: Quat;
-  private euler: PolarEuler;
+  // カメラのローカル(+Z=注視点からカメラ、+Y=画面上)を cameraFrame へ写す向き。
+  // 二表現の同期と姿勢追従の合成は CameraOrientation が担う。
+  private readonly orientation: CameraOrientation;
 
   // offset_r … 注視点 → カメラの相対位置ベクトル(方位・仰角・距離を兼ねる)
   // pan_r    … focus → 注視点のパン変位
@@ -152,13 +149,8 @@ export class FocusCamera {
   private offset_r: FrameDir;
   private pan_r: FrameDir;
   private up_r: FrameDir;
-  // カメラ視点を固定する座標系。姿勢追従中は慣性系に固定し、姿勢は rotationQ への合成で掛ける。
+  // カメラ視点を固定する座標系。姿勢追従中は慣性系に固定し、姿勢は向きへの合成で掛ける。
   private _cameraFrame: ReferenceFrame;
-  // 姿勢追従(rotationFollow = 'attitude')の状態。rotationQ は追従中、対象姿勢からの相対値になる。
-  // lastAttitudeQ が null の間は絶対値のまま扱い、初めて姿勢が引けたときに相対値へ読み替える
-  // (ロード直後がこの状態 — 保存された向きは絶対値で、保存時の姿勢は残っていない)。
-  private _attitudeFollow = false;
-  private lastAttitudeQ: Quat | null = null;
   // 選択中の追従が選択肢から外れた連続フレーム数。役割・機体の一時的な解決失敗に、
   // フォーカスと同じ2フレームの猶予を与える。
   private staleFollowFrames = 0;
@@ -211,17 +203,19 @@ export class FocusCamera {
     private readonly config: FocusCameraConfig,
     saved?: FocusCameraSaveData,
   ) {
-    this.rotationMode = saved?.rotationMode ?? 'euler';
     this.projectionMode = saved?.projectionMode === 'orthographic' ? 'orthographic' : 'perspective';
     this._referencePlane = saved?.referencePlane === 'ecliptic' || saved?.referencePlane === 'moonOrbit'
       ? saved.referencePlane : 'equator';
     this.fovDeg = this.clampFov(saved?.fovDeg ?? config.initial.fovDeg);
     const frames = celestialSystem.frames;
+    // 追従の有無は向きの読み方(絶対値か、対象姿勢からの相対値か)を決めるので、
+    // CameraOrientation を組むより先に確定させる。
+    let followAttitude = false;
     if (saved) {
       const savedFollow = rotationFollowFromSaveData(saved.rotatingWith);
       if (savedFollow?.kind === 'attitude') {
         this._cameraFrame = frames.inertialFrame;
-        this._attitudeFollow = true;
+        followAttitude = true;
       } else {
         this._cameraFrame = frames.frameOf(celestialSystem.origin.id, savedFollow ?? null);
       }
@@ -239,14 +233,16 @@ export class FocusCamera {
       const init = config.initial;
       this._focus = init.focus;
       this._cameraFrame = frames.inertialFrame;
-      this.applyInitialFollow(init.follow);
+      followAttitude = this.applyInitialFrame(init.follow);
       const offset = sphericalOffset(init.yaw, init.pitch, init.dist);
       this.offset_r = frameDir(offset.x, offset.y, offset.z);
       this.pan_r = frameDir(0, 0, 0);
       this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
     }
-    this.rotationQ = rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r));
-    this.euler = this.toEuler(this.rotationQ);
+    this.orientation = new CameraOrientation(
+      rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)),
+      this.eulerPolarAxis(), saved?.rotationMode ?? 'euler', followAttitude, null,
+    );
     const defaultHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
     const savedHalfHeight = saved?.orthographicHalfHeight;
     const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight) ? savedHalfHeight : defaultHalfHeight;
@@ -295,21 +291,12 @@ export class FocusCamera {
     return norm(frameDirVector(toFrameDir(tf, this.referenceUpAxisEci())));
   }
 
-  // 分解と組み立ては math/polar-euler が持つ。カメラが与えるのは極軸だけ。
-  private toEuler(rotation: Quat): PolarEuler {
-    return eulerFromRotation(rotation, this.eulerPolarAxis());
-  }
-
-  private fromEuler(euler: PolarEuler): Quat {
-    return rotationFromEuler(euler, this.eulerPolarAxis());
-  }
-
   // 実効回転(姿勢追従を掛けた後の向き)を offset/up の基底で置き直す。
   private setRotationBasis(offset: Vec3, up: Vec3): void {
-    this.storeEffectiveRotation(rotationFromBasis(offset, up));
+    this.orientation.store(rotationFromBasis(offset, up));
     this.offset_r = frameDir(offset.x * this.dist, offset.y * this.dist, offset.z * this.dist);
     this.up_r = frameDir(up.x, up.y, up.z);
-    this.euler = this.toEuler(this.rotationQ);
+    this.orientation.rebase(this.eulerPolarAxis());
   }
 
   private framePlaneNormal(plane: CameraReferencePlane): Vec3 {
@@ -335,7 +322,7 @@ export class FocusCamera {
   }
 
   public get cameraRotationMode(): CameraRotationMode {
-    return this.rotationMode;
+    return this.orientation.rotationMode;
   }
 
   public get projection(): ProjectionMode {
@@ -383,10 +370,7 @@ export class FocusCamera {
   }
 
   public setCameraRotationMode(mode: CameraRotationMode): void {
-    if (mode === this.rotationMode) return;
-    if (mode === 'euler') this.euler = this.toEuler(this.rotationQ);
-    else this.rotationQ = this.fromEuler(this.euler);
-    this.rotationMode = mode;
+    this.orientation.setMode(mode, this.eulerPolarAxis());
   }
 
   // 真上/真横の基準面。セーブ対象ではなく、次回の操作状態を示すHUD表示用の状態。
@@ -399,7 +383,7 @@ export class FocusCamera {
   public setReferenceView(view: CameraReferenceView): void {
     const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const normal = norm(frameDirVector(toFrameDir(tf, this.framePlaneNormal(this._referencePlane))));
-    const currentOffset = qRotate(this.composeAttitude(this.rotationQ), LOCAL_FORWARD);
+    const currentOffset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
     let offset: Vec3;
     let up: Vec3;
     if (view === 'above') {
@@ -450,7 +434,7 @@ export class FocusCamera {
   // ずれていた注視点もフォーカス位置へ戻す。
   reset(): void {
     const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
-    const offset = qRotate(this.composeAttitude(this.rotationQ), LOCAL_FORWARD);
+    const offset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
     const upAxisEci = this.referenceUpAxisEci();
     const up = norm(frameDirVector(toFrameDir(tf, upAxisEci)));
     const projectedUp = norm(projectOntoPlane(up, offset));
@@ -504,7 +488,7 @@ export class FocusCamera {
 
   // 選択中の回転追従(null は慣性系)。
   get rotationFollow(): CameraRotationFollow | null {
-    return this._attitudeFollow ? { kind: 'attitude' } : this._cameraFrame.rotatingWith;
+    return this.orientation.followingAttitude ? { kind: 'attitude' } : this._cameraFrame.rotatingWith;
   }
 
   // いま選べる回転追従の選択肢(慣性系は常に選べるので含めない)。フォーカスが天体なら
@@ -536,16 +520,13 @@ export class FocusCamera {
   // 保持していた向きを新しい基準へ読み替える。
   setRotationFollow(follow: CameraRotationFollow | null): void {
     const valid = follow !== null && this.isFollowAvailable(follow) ? follow : null;
-    this.bakeOutAttitude();
+    this.orientation.endAttitudeFollow(this.eulerPolarAxis());
     if (valid?.kind === 'attitude') {
       const id = focusTargetId(this._focus);
       const att = id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null;
       if (att === null) return;
       this.setCameraRotation(null);
-      this.rotationQ = qNormalize(qMul(qInvert(att), this.rotationQ));
-      this.lastAttitudeQ = att;
-      this._attitudeFollow = true;
-      this.euler = this.toEuler(this.rotationQ);
+      this.orientation.beginAttitudeFollow(att, this.eulerPolarAxis());
       return;
     }
     this.setCameraRotation(valid);
@@ -553,13 +534,13 @@ export class FocusCamera {
 
   // [G] の実体: フォーカスが機体なら姿勢追従⇄慣性系をトグルして true。それ以外は何もせず false。
   toggleAttitudeFollow(): boolean {
-    if (this._attitudeFollow) {
-      this.bakeOutAttitude();
+    if (this.orientation.followingAttitude) {
+      this.orientation.endAttitudeFollow(this.eulerPolarAxis());
       return true;
     }
     if (!this.isFollowAvailable({ kind: 'attitude' })) return false;
     this.setRotationFollow({ kind: 'attitude' });
-    return this._attitudeFollow;
+    return this.orientation.followingAttitude;
   }
 
   // フォーカス・回転追従・視点・画角を初期状態(config.initial)へ戻す。
@@ -568,41 +549,25 @@ export class FocusCamera {
     const init = this.config.initial;
     this._focus = init.focus;
     this.missingFocusFrames = 0;
-    this.applyInitialFollow(init.follow);
+    this.orientation.restoreFollow(this.applyInitialFrame(init.follow));
     const offset = sphericalOffset(init.yaw, init.pitch, init.dist);
     this.offset_r = frameDir(offset.x, offset.y, offset.z);
     this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
-    this.rotationQ = rotationFromBasis(offset, WORLD_UP);
-    this.euler = this.toEuler(this.rotationQ);
+    this.orientation.set(rotationFromBasis(offset, WORLD_UP), this.eulerPolarAxis());
     this.fovDeg = this.clampFov(init.fovDeg);
     this.resetPan();
   }
 
-  // 初期の回転追従を、選択肢の検査を通さず適用する。対象が未解決でも選択は保持され、
-  // 成立可否は update の猶予検査に委ねられる。姿勢追従中に姿勢追従を再適用したときは
-  // 基準の姿勢を保つ(rotationQ を相対値として解釈し続けるため)。
-  private applyInitialFollow(follow: CameraRotationFollow | null): void {
-    const keepAttitude = follow?.kind === 'attitude' && this._attitudeFollow ? this.lastAttitudeQ : null;
+  // 初期の回転追従へ座標系を合わせ、姿勢追従にするかを返す。選択肢の検査は通さない —
+  // 対象が未解決でも選択は保持され、成立可否は update の猶予検査に委ねる。
+  private applyInitialFrame(follow: CameraRotationFollow | null): boolean {
     this.staleFollowFrames = 0;
-    this.lastAttitudeQ = keepAttitude;
     if (follow?.kind === 'attitude') {
       this._cameraFrame = this.celestialSystem.frames.inertialFrame;
-      this._attitudeFollow = true;
-      return;
+      return true;
     }
-    this._attitudeFollow = false;
     this._cameraFrame = this.celestialSystem.frames.frameOf(this.celestialSystem.origin.id, follow ?? null);
-  }
-
-  // 姿勢追従を解き、rotationQ を絶対の向きへ読み替える(掛かっていなければ何もしない)。
-  private bakeOutAttitude(): void {
-    if (!this._attitudeFollow) return;
-    if (this.lastAttitudeQ !== null) {
-      this.rotationQ = qNormalize(qMul(this.lastAttitudeQ, this.rotationQ));
-    }
-    this._attitudeFollow = false;
-    this.lastAttitudeQ = null;
-    this.euler = this.toEuler(this.rotationQ);
+    return false;
   }
 
   // 選択中の追従が選択肢から外れていれば慣性系へ落とす。一時的な解決失敗
@@ -619,28 +584,11 @@ export class FocusCamera {
     this.setRotationFollow(null);
   }
 
-  // 姿勢追従の合成に使う姿勢を最新へ。解決できないフレームは直前の姿勢を保つ(視点が跳ねない)。
+  // 合成に使う姿勢を、いまフォーカスしている対象から引き直す。
   private refreshAttitude(): void {
-    if (!this._attitudeFollow) return;
+    if (!this.orientation.followingAttitude) return;
     const id = focusTargetId(this._focus);
-    const att = id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null;
-    if (att === null) return;
-    if (this.lastAttitudeQ === null) {
-      // 絶対値で持っていた向き(ロード直後)を、初めて引けた姿勢からの相対値へ読み替える。
-      this.rotationQ = qNormalize(qMul(qInvert(att), this.rotationQ));
-    }
-    this.lastAttitudeQ = att;
-  }
-
-  // rotationQ に姿勢追従を掛けた、描画・入力に使う実効回転。
-  private composeAttitude(rot: Quat): Quat {
-    return this._attitudeFollow && this.lastAttitudeQ !== null ? qMul(this.lastAttitudeQ, rot) : rot;
-  }
-
-  // 実効回転から rotationQ へ書き戻す(姿勢追従中は相対値へ読み替える)。
-  private storeEffectiveRotation(q: Quat): void {
-    this.rotationQ = this._attitudeFollow && this.lastAttitudeQ !== null
-      ? qNormalize(qMul(qInvert(this.lastAttitudeQ), q)) : qNormalize(q);
+    this.orientation.refreshAttitude(id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null);
   }
 
   // カメラ視点の回転対象を切り替える。中心は常に ECI 中心天体 — offset_r/pan_r/up_r は
@@ -660,8 +608,8 @@ export class FocusCamera {
     this.pan_r = toFrameDir(tfTo, panEci);
     this.up_r = toFrameDir(tfTo, upEci);
     this._cameraFrame = frame;
-    this.rotationQ = rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r));
-    this.euler = this.toEuler(this.rotationQ);
+    this.orientation.set(
+      rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)), this.eulerPolarAxis());
   }
 
   // マウス/キー入力から viewpoint を1フレーム分更新する。displayTime は線・メッシュが描かれる
@@ -682,12 +630,10 @@ export class FocusCamera {
     const focus = this.resolveFocus(candidates, displayTime, frameAnchors);
     const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, displayTime, frameAnchors);
     // オイラー操作の極軸は座標系の幾何で定義されるので、姿勢追従中はクォータニオン経路で回す。
-    const eulerActive = this.rotationMode === 'euler' && !this._attitudeFollow;
-    if (eulerActive) {
-      this.rotationQ = this.fromEuler(this.euler);
-    }
-    // q は姿勢追従を掛けた実効回転。入力はこれに対して適用し、末尾で rotationQ へ書き戻す。
-    let q = this.composeAttitude(this.rotationQ);
+    const eulerActive = this.orientation.usesEuler;
+    if (eulerActive) this.orientation.restoreFromEuler(this.eulerPolarAxis());
+    // q は姿勢追従を掛けた実効回転。入力はこれに対して適用し、末尾で向きへ書き戻す。
+    let q = this.orientation.effective();
     let panEci = toInertialDir(tf, this.pan_r);
 
     // ホイールで距離を、ドラッグ/キーで視点方向を更新する。
@@ -702,16 +648,13 @@ export class FocusCamera {
     const yaw = mouse.dx * DRAG_RAD_PER_PX - keyYawRad;
     const pitch = mouse.dy * DRAG_RAD_PER_PX + keyPitchRad;
     if (eulerActive) {
-      this.euler.yaw += yaw;
-      this.euler.pitch = Math.max(-POLAR_PITCH_LIMIT, Math.min(POLAR_PITCH_LIMIT, this.euler.pitch + pitch));
-      this.euler.roll += mouse.roll;
-      q = this.fromEuler(this.euler);
+      q = this.orientation.turn(yaw, pitch, mouse.roll, this.eulerPolarAxis());
     } else {
       q = rotateByScreenDrag(
         q, mouse.dx * DRAG_RAD_PER_PX, -mouse.dy * DRAG_RAD_PER_PX, mouse.roll, keyYawRad, keyPitchRad,
       );
     }
-    this.storeEffectiveRotation(q);
+    this.orientation.store(q);
     const offFrame = qRotate(q, LOCAL_FORWARD);
     const upFrame = qRotate(q, LOCAL_UP);
     const offEci = scale(toInertialDir(tf, frameDir(offFrame.x, offFrame.y, offFrame.z)), dist);
@@ -744,7 +687,7 @@ export class FocusCamera {
     this.up_r = toFrameDir(tf, upEci);
     this.offset_r = toFrameDir(tf, offEci);
     this.pan_r = toFrameDir(tf, panEci);
-    this.euler = this.toEuler(this.rotationQ);
+    this.orientation.rebase(this.eulerPolarAxis());
   }
 
   // offset_r/pan_r/up_r・視点の座標系・フォーカス対象をセーブデータへ書き出す。
@@ -761,9 +704,9 @@ export class FocusCamera {
       offset: { x: this.offset_r.x, y: this.offset_r.y, z: this.offset_r.z },
       pan: { x: this.pan_r.x, y: this.pan_r.y, z: this.pan_r.z },
       up: { x: this.up_r.x, y: this.up_r.y, z: this.up_r.z },
-      rotatingWith: this._attitudeFollow ? { kind: 'attitude' } : this._cameraFrame.rotatingWith,
+      rotatingWith: this.orientation.followingAttitude ? { kind: 'attitude' } : this._cameraFrame.rotatingWith,
       focus,
-      rotationMode: this.rotationMode,
+      rotationMode: this.orientation.rotationMode,
       fovDeg: this.fovDeg,
       projectionMode: this.projectionMode,
       orthographicHalfHeight: this.orthographicHalfHeight,
