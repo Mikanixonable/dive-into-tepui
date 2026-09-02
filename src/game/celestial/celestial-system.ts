@@ -38,7 +38,6 @@ import {
 } from '../../render/pipeline/sun-occlusion-select';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { atmosphereDraws } from '../../render/atmosphere';
-import { LIT_OPAQUE_LAYER } from '../../render/pipeline/lit-layer';
 import { CelestialEntity } from './celestial-entity/celestial-entity';
 import { StarEntity } from './celestial-entity/star-entity';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
@@ -90,12 +89,6 @@ function orderedEntitiesOf(
 
 export class CelestialSystem implements CelestialMotions {
   private scene!: THREE.Scene;
-  // **絵に出ない光源。** three はカメラのチャンネルと重なる光源が 1 つも無いとライティング
-  // モデルごと組まないので(NodeMaterial.setupLighting)、受け手を真っ黒にしないために
-  // 1 個だけ置いてある。マテリアルパスは direct() を無効化し indirect() を照度バッファの
-  // 読み出しへ差し替えるため、この光源の色も強度もどこからも読まれない — 光の値の正本は
-  // SunLight ただ 1 つ。
-  private lightingAnchor!: THREE.AmbientLight;
   private stars!: Stars;
   celestialGrid!: CelestialGrid;
   private scaleGrid!: ScaleGridView;
@@ -164,7 +157,7 @@ export class CelestialSystem implements CelestialMotions {
   }
 
   // シーンとライティングパスの値オブジェクト(RenderPipeline が所有)を受け取り、全天体の
-  // メッシュ・星野・グリッド・光源アンカーをシーンへ登録する。Game の構築中に1度だけ呼ぶ —
+  // メッシュ・星野・グリッドをシーンへ登録する。Game の構築中に1度だけ呼ぶ —
   // update / sync はこの後でないと呼べない。
   build(
     scene: THREE.Scene, sunLight: SunLight, exposure: Exposure, sunOcclusion: SunOcclusion,
@@ -179,12 +172,6 @@ export class CelestialSystem implements CelestialMotions {
     this.atmosphere = atmosphere;
     this.orbitGuideLines = new OrbitGuideLines(scene, this);
     this.zeroVelocityLines = new ZeroVelocityLines(scene, this);
-    this.lightingAnchor = new THREE.AmbientLight();
-    scene.add(this.lightingAnchor);
-    // レンダラーは光源自身の layers とカメラの layers が重ならないと光源をそのカメラの描画対象
-    // から除外する(ライティングモデルの呼び出し自体が起きなくなる)。マテリアルパスは自身の
-    // render() の間だけカメラを LIT_OPAQUE_LAYER 単独へ絞るため、同チャンネルへも加えておく。
-    this.lightingAnchor.layers.enable(LIT_OPAQUE_LAYER);
     this.stars = createStars();
     scene.add(this.stars.mesh);
     this.celestialGrid = new CelestialGrid(scene);
@@ -566,13 +553,10 @@ export class CelestialSystem implements CelestialMotions {
     pointField.build(this.scene);
   }
 
-  // 天体ビュー・星殻・グリッド・点群・参照線・照明を残さず解放する。
+  // 天体ビュー・星殻・グリッド・点群・参照線を残さず解放する。
   dispose(): void {
     this.orbitGuideLines.dispose();
     this.zeroVelocityLines.dispose();
-    // ライティングモデルを組ませるためだけの光源。
-    this.lightingAnchor.removeFromParent();
-    this.lightingAnchor.dispose();
     // 星殻・天球グリッド・縮尺グリッド。
     this.stars.mesh.removeFromParent();
     this.stars.dispose();
