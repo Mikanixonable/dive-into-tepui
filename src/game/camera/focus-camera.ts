@@ -15,9 +15,7 @@ import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { Quat, qRotate } from '../../math/quat';
-import {
-  LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, rotateByScreenDrag, rotationFromBasis, sphericalOffset,
-} from '../../math/orientation';
+import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, rotationFromBasis, sphericalOffset } from '../../math/orientation';
 import { CameraOrientation, type CameraRotationMode } from './camera-orientation';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { FocusTarget, focusTargetId, resolveFocusTarget, type FocusCandidate } from './focus-target';
@@ -632,8 +630,6 @@ export class FocusCamera {
     // オイラー操作の極軸は座標系の幾何で定義されるので、姿勢追従中はクォータニオン経路で回す。
     const eulerActive = this.orientation.usesEuler;
     if (eulerActive) this.orientation.restoreFromEuler(this.eulerPolarAxis());
-    // q は姿勢追従を掛けた実効回転。入力はこれに対して適用し、末尾で向きへ書き戻す。
-    let q = this.orientation.effective();
     let panEci = toInertialDir(tf, this.pan_r);
 
     // ホイールで距離を、ドラッグ/キーで視点方向を更新する。
@@ -647,14 +643,12 @@ export class FocusCamera {
     }
     const yaw = mouse.dx * DRAG_RAD_PER_PX - keyYawRad;
     const pitch = mouse.dy * DRAG_RAD_PER_PX + keyPitchRad;
-    if (eulerActive) {
-      q = this.orientation.turn(yaw, pitch, mouse.roll, this.eulerPolarAxis());
-    } else {
-      q = rotateByScreenDrag(
-        q, mouse.dx * DRAG_RAD_PER_PX, -mouse.dy * DRAG_RAD_PER_PX, mouse.roll, keyYawRad, keyPitchRad,
+    // 回した後の実効回転。どちらの経路も向きへ書き戻したうえでこれを返す。
+    const q = eulerActive
+      ? this.orientation.turn(yaw, pitch, mouse.roll, this.eulerPolarAxis())
+      : this.orientation.turnByDrag(
+        mouse.dx * DRAG_RAD_PER_PX, -mouse.dy * DRAG_RAD_PER_PX, mouse.roll, keyYawRad, keyPitchRad,
       );
-    }
-    this.orientation.store(q);
     const offFrame = qRotate(q, LOCAL_FORWARD);
     const upFrame = qRotate(q, LOCAL_UP);
     const offEci = scale(toInertialDir(tf, frameDir(offFrame.x, offFrame.y, offFrame.z)), dist);

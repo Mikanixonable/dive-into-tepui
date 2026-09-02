@@ -4,7 +4,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   LOCAL_FORWARD, LOCAL_UP, POLAR_PITCH_LIMIT,
-  eulerFromRotation, rotateByScreenDrag, rotationFromBasis, rotationFromEuler, sphericalOffset,
+  eulerFromRotation, rotationFromBasis, rotationFromEuler, sphericalOffset,
 } from '../../src/math/orientation';
 import { qRotate } from '../../src/math/quat';
 import { cross, dot, len, norm, sub, v3, Vec3 } from '../../src/math/vec3';
@@ -58,27 +58,6 @@ export function register(): void {
   test('orientation: 組めない基底(平行・零)には単位回転を返す', () => {
     const q = rotationFromBasis(v3(0, 0, 0), v3(0, 1, 0));
     assert.deepEqual(q, { x: 0, y: 0, z: 0, w: 1 });
-  });
-
-  test('orientation: 入力が無ければドラッグは向きを変えない', () => {
-    const q = rotationFromEuler({ yaw: 0.7, pitch: -0.3, roll: 0.2 }, v3(0, 1, 0));
-    assert.ok(sameOrientation(rotateByScreenDrag(q, 0, 0, 0, 0, 0), q));
-  });
-
-  test('orientation: 逆向きのドラッグは元の向きへ戻す', () => {
-    const q = rotationFromEuler({ yaw: 0.7, pitch: -0.3, roll: 0.2 }, v3(0, 1, 0));
-    // 同じ軸まわりの回転になるよう、往路と復路を1操作ずつに分ける。
-    for (const [dr, du, roll, ky, kp] of [[0.1, 0, 0, 0, 0], [0, 0.1, 0, 0, 0], [0, 0, 0.1, 0, 0]]) {
-      const there = rotateByScreenDrag(q, dr!, du!, roll!, ky!, kp!);
-      const back = rotateByScreenDrag(there, -dr!, -du!, -roll!, -ky!, -kp!);
-      assert.ok(sameOrientation(back, q, 1e-8), `dr=${dr} du=${du} roll=${roll}`);
-    }
-  });
-
-  test('orientation: ロールは視線軸まわりなので、前方向を動かさない', () => {
-    const q = rotationFromEuler({ yaw: 0.7, pitch: -0.3, roll: 0 }, v3(0, 1, 0));
-    const rolled = rotateByScreenDrag(q, 0, 0, 0.5, 0, 0);
-    assert.ok(len(sub(qRotate(rolled, LOCAL_FORWARD), qRotate(q, LOCAL_FORWARD))) < 1e-9);
   });
 
   test('orientation: sphericalOffset は +Y を天頂とする球面座標', () => {

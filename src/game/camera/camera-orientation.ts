@@ -2,14 +2,38 @@
 // 両方が同じ向きを指すこと、姿勢追従中の生の値が対象姿勢からの相対値であることは、この中だけで
 // 担保する。**極軸の選び方は持たない** — 天体から選ぶのはカメラの仕事なので、書き換えのたびに
 // 受け取る。
-import { Quat, qInvert, qMul, qNormalize } from '../../math/quat';
+import { Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate } from '../../math/quat';
 import {
-  POLAR_PITCH_LIMIT, PolarEuler, eulerFromRotation, rotationFromEuler,
+  LOCAL_FORWARD, LOCAL_UP, POLAR_PITCH_LIMIT, PolarEuler, eulerFromRotation, rotationFromEuler,
 } from '../../math/orientation';
-import type { Vec3 } from '../../math/vec3';
+import { addScaled, cross, norm, scale, type Vec3 } from '../../math/vec3';
 
 // 視点の回し方。オイラーは極軸を天頂とした方位・仰角で、クォータニオンは画面基準で回す。
 export type CameraRotationMode = 'quaternion' | 'euler';
+
+// 画面ドラッグと回転キーを、いまの向き rotation へ積む。すべて [rad] で受け、感度の換算は
+// 呼び出し側が済ませておく。ヨー/ピッチは固定のワールド軸ではなく現在の上軸/右軸まわりに
+// 回すので、ロールで上方向が傾いても画面上の動きと入力方向が一致し続ける。
+function rotateByScreenDrag(
+  rotation: Quat, dragRight: number, dragUp: number, roll: number, keyYaw: number, keyPitch: number,
+): Quat {
+  let q = rotation;
+  if (keyYaw !== 0) q = qNormalize(qMul(qFromAxisAngle(qRotate(q, LOCAL_UP), -keyYaw), q));
+  if (keyPitch !== 0) {
+    const right = norm(cross(norm(qRotate(q, LOCAL_FORWARD)), qRotate(q, LOCAL_UP)));
+    q = qNormalize(qMul(qFromAxisAngle(right, keyPitch), q));
+  }
+  // +Z は注視点からカメラへ向く軸。ドラッグの回転軸はドラッグ方向とこの視線軸の外積にする —
+  // 逆向き(-forward)を使うと左右ドラッグの回転符号が反転する。
+  const forward = qRotate(q, LOCAL_FORWARD);
+  const up = qRotate(q, LOCAL_UP);
+  const screenRight = norm(cross(scale(forward, -1), up));
+  const dragVec = addScaled(scale(screenRight, dragRight), up, dragUp);
+  const dragLen = Math.hypot(dragVec.x, dragVec.y, dragVec.z);
+  if (dragLen > 1e-9) q = qNormalize(qMul(qFromAxisAngle(norm(cross(dragVec, forward)), dragLen), q));
+  if (roll !== 0) q = qNormalize(qMul(qFromAxisAngle(qRotate(q, LOCAL_FORWARD), roll), q));
+  return q;
+}
 
 export class CameraOrientation {
   private euler: PolarEuler;
@@ -64,13 +88,24 @@ export class CameraOrientation {
     this.rotation = rotationFromEuler(this.euler, polar);
   }
 
-  // オイラー角へ増分を積み、組み直した向きを返す。仰角は真上・真下の手前で止める。
+  // オイラー角へ増分を積み、組み直した実効回転を返す。仰角は真上・真下の手前で止める。
+  // 姿勢追従中は極軸が定まらないので、この経路は通らない(usesEuler)。
   public turn(dYaw: number, dPitch: number, dRoll: number, polar: Vec3): Quat {
     this.euler.yaw += dYaw;
     this.euler.pitch = Math.max(-POLAR_PITCH_LIMIT, Math.min(POLAR_PITCH_LIMIT, this.euler.pitch + dPitch));
     this.euler.roll += dRoll;
     this.rotation = rotationFromEuler(this.euler, polar);
     return this.rotation;
+  }
+
+  // 画面ドラッグと回転キーで実効回転を回し、書き戻して返す。すべて [rad] で、感度の換算は
+  // 呼び出し側が済ませておく。オイラー角は揃えない(rebase() の役目)。
+  public turnByDrag(
+    dragRight: number, dragUp: number, roll: number, keyYaw: number, keyPitch: number,
+  ): Quat {
+    const turned = rotateByScreenDrag(this.effective(), dragRight, dragUp, roll, keyYaw, keyPitch);
+    this.store(turned);
+    return turned;
   }
 
   // 回し方を切り替える。切り替えた瞬間の向きは変えない。
