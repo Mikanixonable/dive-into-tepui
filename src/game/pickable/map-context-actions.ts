@@ -436,8 +436,14 @@ export class MapContextActions implements MapCommands {
     this.hud.hint(text);
   }
 
+  // フォーカスをその対象へ移す。マップは座標系パネル連動(計画中心の追随)込みの経路、
+  // 戦闘はその場のカメラだけを動かす。
   focus(id: string, name: string): void {
-    this.frameControls.setFocus({ kind: 'object', id });
+    if (this.cameraSystem.overviewMode) {
+      this.frameControls.setFocus({ kind: 'object', id });
+    } else {
+      this.cameraSystem.combatCamera.setFocusTarget({ kind: 'object', id });
+    }
     this.hud.hint(`${name} にフォーカス`);
   }
 
