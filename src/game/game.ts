@@ -6,7 +6,7 @@ import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
 import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { Base } from './dynamic/dynamic-entity/base';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
@@ -66,7 +66,7 @@ export class Game {
   readonly activePlayers: ActiveControllableController;
   get player(): Player | null { return this.activePlayers.current; }
   get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
-  get activeControllableEntity(): DynamicEntity | null {
+  get activeControllableEntity(): Controllable | null {
     return this.controlledBase ?? this.player ?? this.dynamicSystem.bases.find((b) => b.alive) ?? null;
   }
   readonly simSpeedManager: SimSpeedManager;

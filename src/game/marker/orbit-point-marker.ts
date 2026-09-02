@@ -23,6 +23,8 @@ export abstract class OrbitPointMarker implements MapPickable {
   public readonly hiddenBehindBodies = true;
   public readonly onlyInFocusedSystem = false;
   public readonly mapRename = null;
+  public readonly onMapSelect = null;
+  public readonly onMapFocus = null;
 
   // 一覧・プロパティウィンドウに添える記号。
   public abstract readonly mapGlyph: string;

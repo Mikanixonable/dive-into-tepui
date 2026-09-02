@@ -107,10 +107,23 @@ export function resolveTarget(
   };
 }
 
+// ship と target が同じ主天体を周回しているならその天体、別々の天体を回っているなら null。
+// 位相差は共通の主天体まわりでしか測れないので、これが接近タブの成立条件そのものになる。
+export function sharedAttractor(
+  ship: DynamicEntity,
+  target: ApproachTargetSource,
+  celestialBodies: readonly CelestialMotion[],
+  celestialSystem: CelestialSystem,
+  now: number,
+): CelestialMotion | null {
+  const targetR = resolveTarget(target, celestialSystem, now).currentR;
+  const shipCenter = strongestAttractor(ship.state.r, celestialBodies, now);
+  return shipCenter.id === strongestAttractor(targetR, celestialBodies, now).id ? shipCenter : null;
+}
+
 // 接近タブ: ship と target が同じ主天体 C を周回しているときだけ、C まわりの位相差を
 // 「target と同じ周期の真円軌道」の弧長へ換算した水平距離と、相対高度の点列を返す。
 //
-// 「同じ天体を周回しているか」は双方に strongestAttractor を当てて id を比較して判定する。
 // center が一致した後に求める selfEl/targetEl の hHat が、そのまま relIncDeg の材料になる。
 //
 // 位相差の符号は target の hHat まわり(pHat→qHat の向き。trueAnomalyAt と同じ基底)で取り、
@@ -129,11 +142,9 @@ export function approachSeries(
   spanSec: number,
   sampleCount: number,
 ): ApproachSeries | null {
+  const center = sharedAttractor(ship, target, celestialBodies, celestialSystem, now);
+  if (center === null) return null;
   const resolved = resolveTarget(target, celestialSystem, now);
-  const selfCenter = strongestAttractor(ship.state.r, celestialBodies, now);
-  const targetCenter = strongestAttractor(resolved.currentR, celestialBodies, now);
-  if (selfCenter.id !== targetCenter.id) return null;
-  const center = selfCenter;
 
   const selfEl = ship.orbitalElementsAround(center, now);
   const targetEl = target.kind === 'entity'

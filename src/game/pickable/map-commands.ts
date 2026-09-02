@@ -5,13 +5,22 @@ import type { Base } from '../dynamic/dynamic-entity/base';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { Player } from '../player/player';
+import type { MapPickable } from './map-pickable';
 
 // 操作中の自艦から見た、その対象とのドッキング状態。
 export type DockState = 'docked' | 'dockable' | 'none';
 
 export interface MapCommands {
+  // 画面へ通知を出す。
+  hint(text: string): void;
   // マップの注視点を id へ移し、name で通知する。
   focus(id: string, name: string): void;
+  // target のプロパティウィンドウを (clientX, clientY) へ開く。
+  openProperties(target: MapPickable, clientX: number, clientY: number): void;
+  // 基地を選択状態にする。
+  selectBase(base: Base): void;
+  // その基地のプロパティウィンドウが抱えている基地パネルを開閉する。
+  toggleBasePanel(base: Base): void;
   // 航法ターゲットを設定・解除する。
   toggleNavTarget(id: string, name: string): void;
   // 時刻 t まで時間を加速する。既に通過していれば通知だけ出す。
@@ -31,7 +40,7 @@ export interface MapCommands {
   // 操作中の自艦のドッキングを解除する。
   undock(): void;
   // 操作中の自艦と target の間で物資・電力を融通するダイアログを開く。
-  transferResources(target: DynamicEntity): void;
+  transferResources(target: Player): void;
   // state の軌道要素をプリセットした物体配置パネルを、kind の種類で開く。
   duplicate(kind: DynamicEntityKind, state: KinematicState): void;
   // 現在のフォーカスを基準天体の初期値として物体配置パネルを開く。

@@ -16,11 +16,6 @@ export function rcsFuelTotals(tanks: readonly RcsTankPart[]): { readonly fuel: n
   };
 }
 
-// 指定した艦の RCS タンクをすべて満タンにする。
-export function refillRcsFuel(ship: Player): void {
-  for (const t of rcsTanksOf(ship)) t.fuel = t.maxFuel;
-}
-
 // from のタンクを残量がある順に消費し、to のタンクへ空き容量がある順に注ぐことで、
 // 複数タンクをまたいだ amountKg [kg] の移送を行う。to が null なら from から失うだけにする。
 export function transferRcsFuel(from: Player, to: Player | null, amountKg: number): void {
