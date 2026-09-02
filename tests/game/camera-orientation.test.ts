@@ -105,4 +105,41 @@ export function register(): void {
     o.turn(-0.3, 0.2, -0.1, POLAR);
     assert.ok(sameOrientation(o.effective(), before));
   });
+
+  test('camera-orientation: 入力が無ければドラッグは向きを変えない', () => {
+    const o = orientation('quaternion');
+    const before = o.effective();
+    assert.ok(sameOrientation(o.turnByDrag(0, 0, 0, 0, 0), before));
+  });
+
+  test('camera-orientation: 逆向きのドラッグは元の向きへ戻す', () => {
+    // 同じ軸まわりの回転になるよう、往路と復路を1操作ずつに分ける。
+    for (const [dr, du, roll, ky, kp] of [
+      [0.1, 0, 0, 0, 0], [0, 0.1, 0, 0, 0], [0, 0, 0.1, 0, 0], [0, 0, 0, 0.1, 0], [0, 0, 0, 0, 0.1],
+    ]) {
+      const o = orientation('quaternion');
+      const before = o.effective();
+      o.turnByDrag(dr!, du!, roll!, ky!, kp!);
+      o.turnByDrag(-dr!, -du!, -roll!, -ky!, -kp!);
+      assert.ok(sameOrientation(o.effective(), before), `dr=${dr} du=${du} roll=${roll} ky=${ky} kp=${kp}`);
+    }
+  });
+
+  test('camera-orientation: ロールは視線軸まわりなので、前方向を動かさない', () => {
+    const o = orientation('quaternion');
+    const before = qRotate(o.effective(), LOCAL_FORWARD);
+    o.turnByDrag(0, 0, 0.5, 0, 0);
+    assert.ok(len(sub(qRotate(o.effective(), LOCAL_FORWARD), before)) < 1e-9);
+  });
+
+  test('camera-orientation: 追従中のドラッグは、対象の姿勢を保ったまま視点だけ回す', () => {
+    const o = orientation('quaternion');
+    const attitude = qFromAxisAngle(norm(v3(1, 0, 1)), 0.8);
+    o.beginAttitudeFollow(attitude, POLAR);
+    const before = o.effective();
+    const turned = o.turnByDrag(0.2, 0, 0, 0, 0);
+    // 実効回転は回り、書き戻した生の値から読み返しても同じ向きになる。
+    assert.ok(!sameOrientation(turned, before));
+    assert.ok(sameOrientation(o.effective(), turned));
+  });
 }
