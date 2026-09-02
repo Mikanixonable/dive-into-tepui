@@ -178,8 +178,12 @@ export class FocusCamera {
   private _focus: FocusTarget;
   private missingFocusFrames = 0;
   private lastResolvedFocus = v3();
+  private _focusVelocity: Vec3 | null = null;
 
   get focus(): FocusTarget { return this._focus; }
+
+  // 注視点の ECI 速度。速度を答えられない対象を注視しているあいだは null。
+  get focusVelocity(): Vec3 | null { return this._focusVelocity; }
 
   // target が 'point'(座標系に焼き込んだ固定点)で frame が回転系なら、その天体の
   // 公転に追随する固定点になる。フォーカスが変わると回転追従の選択肢も変わるので、
@@ -510,7 +514,8 @@ export class FocusCamera {
     this.celestialSystem.find(id)?.motion ?? null
   );
 
-  // 候補が一時的に欠けたフレームでは直前の注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
+  // 注視点の位置を返し、速度は focusVelocity へ残す。候補が一時的に欠けたフレームでは直前の
+  // 注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
   // point は座標系が回っていれば ECI 座標が動くため、毎フレーム焼き直す。
   private resolveFocus(candidates: readonly FocusCandidate[], displayTime: number, frameAnchors: FrameAnchorSource): Vec3 {
     const result = resolveFocusTarget(
@@ -521,6 +526,7 @@ export class FocusCamera {
     );
     this.missingFocusFrames = result.missingFocusFrames;
     this.lastResolvedFocus = result.lastResolvedFocus;
+    this._focusVelocity = result.vel;
     if (result.fallToOrigin) {
       // 'hold' は注視点を最後に解決できた位置に留める。対象が再び解決できれば追従が戻る。
       if (this.config.focusLossPolicy === 'hold') return this.lastResolvedFocus;

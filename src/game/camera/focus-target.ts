@@ -1,7 +1,7 @@
 // FocusCamera の注視対象と、その解決。対象を id で指す 'object' と、座標系に焼き込んだ固定点を
 // 表す 'point' の判別共用体を持ち、毎フレームそれを ECI 位置へ解決する。
 import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint, toInertialPoint } from '../../physics/frame';
-import { Vec3, v3 } from '../../math/vec3';
+import { add, cross, sub, Vec3, v3 } from '../../math/vec3';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ReferenceFrames } from '../celestial/reference-frames';
@@ -40,6 +40,9 @@ export interface FocusResolveState {
 
 interface FocusResolveResult {
   readonly pos: Vec3;
+  // 注視点の ECI 速度。位置しか答えられない対象(候補配列の点マーカー)と、
+  // 位置を直前の解へ保っているフレームでは null。
+  readonly vel: Vec3 | null;
   readonly missingFocusFrames: number;
   readonly lastResolvedFocus: Vec3;
   // true なら焦点そのものを origin へ差し戻す(2フレーム連続の解決失敗)。
@@ -63,28 +66,33 @@ export function resolveFocusTarget(
   if (focus.kind === 'point') {
     const tf = frames.transformAt(focus.frame, displayTime, frameAnchors);
     const pos = toInertialPoint(tf, focus.point);
-    return { pos, missingFocusFrames: state.missingFocusFrames, lastResolvedFocus: pos, fallToOrigin: false };
+    // 座標系に固定された点なので、ECI 速度は原点の並進と系の回転だけで決まる。
+    const vel = add(tf.originVel, cross(tf.omega, sub(pos, tf.origin)));
+    return { pos, vel, missingFocusFrames: state.missingFocusFrames, lastResolvedFocus: pos, fallToOrigin: false };
   }
   if (focus.id === frames.inertialFrame.center) {
     const pos = v3();
-    return { pos, missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
+    return { pos, vel: v3(), missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
   }
   const motion = celestialMotionOf(focus.id);
   if (motion !== null) {
-    const pos = celestialStateOf(focus.id, displayTime).r;
-    return { pos, missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
+    const { r, v } = celestialStateOf(focus.id, displayTime);
+    return { pos: r, vel: v, missingFocusFrames: 0, lastResolvedFocus: r, fallToOrigin: false };
   }
   const anchored = frameAnchors.stateOf(focus.id, displayTime);
   if (anchored !== null) {
-    return { pos: anchored.r, missingFocusFrames: 0, lastResolvedFocus: anchored.r, fallToOrigin: false };
+    return { pos: anchored.r, vel: anchored.v, missingFocusFrames: 0, lastResolvedFocus: anchored.r, fallToOrigin: false };
   }
   const candidatePos = candidates.find((c) => c.id === focus.id)?.posAt(displayTime) ?? null;
   if (candidatePos !== null) {
-    return { pos: candidatePos, missingFocusFrames: 0, lastResolvedFocus: candidatePos, fallToOrigin: false };
+    return { pos: candidatePos, vel: null, missingFocusFrames: 0, lastResolvedFocus: candidatePos, fallToOrigin: false };
   }
   const missingFocusFrames = state.missingFocusFrames + 1;
   if (missingFocusFrames >= 2) {
-    return { pos: v3(), missingFocusFrames, lastResolvedFocus: state.lastResolvedFocus, fallToOrigin: true };
+    return { pos: v3(), vel: null, missingFocusFrames, lastResolvedFocus: state.lastResolvedFocus, fallToOrigin: true };
   }
-  return { pos: state.lastResolvedFocus, missingFocusFrames, lastResolvedFocus: state.lastResolvedFocus, fallToOrigin: false };
+  return {
+    pos: state.lastResolvedFocus, vel: null, missingFocusFrames,
+    lastResolvedFocus: state.lastResolvedFocus, fallToOrigin: false,
+  };
 }
