@@ -1,7 +1,7 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決める。
 // update が出す/消す/スタイルを決め、sync は既に出ている線の形状と変換を合わせる。
 import * as THREE from 'three/webgpu';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -64,7 +64,7 @@ export class EntityLineManager {
   // このフレームの確定値になった後に呼ぶ。
   update(
     activePlayer: Player | null, primaryTarget: CombatTarget | null,
-    view: WorldView, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
+    view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined,
   ): void {
     const { pastDuration } = displayWindow;

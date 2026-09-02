@@ -17,7 +17,7 @@ import { EllipseLine } from '../lines/ellipse-line';
 import { celestialShellScale, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { ScaleGridView } from './scale-grid-view';
@@ -352,7 +352,7 @@ export class CelestialSystem implements CelestialMotions {
   }
 
   // 表示時刻 t の点群の位置を更新する。
-  update(t: number, view: WorldView, graphics: GraphicsSettingsData): void {
+  update(t: number, view: View, graphics: GraphicsSettingsData): void {
     const star = this.starEntity;
     const pointField = this.pointFieldView;
     if (view !== 'map' || star === null || pointField === null || !graphics.pointField) return;
@@ -416,14 +416,14 @@ export class CelestialSystem implements CelestialMotions {
     this.sunLight.set(
       sunPos, star?.def.radius ?? STARLESS_SUN_RADIUS,
       star?.color ?? STARLESS_SUN_COLOR, starIntensity);
-    this.ambient.setFraction(ambientFraction(cameraSystem.worldView === 'map', graphics));
+    this.ambient.setFraction(ambientFraction(cameraSystem.view === 'map', graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem, graphics);
 
     const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
     const pointField = this.pointFieldView;
-    if (pointField !== null && cameraSystem.worldView === 'map' && star !== null && graphics.pointField) {
+    if (pointField !== null && cameraSystem.view === 'map' && star !== null && graphics.pointField) {
       this.buildPointField(pointField);
       pointField.sync(
         floatingOrigin, true, cameraSystem.mapDisplayToggles.smallBodyVisible, fixedBrightnessScale,
@@ -440,10 +440,10 @@ export class CelestialSystem implements CelestialMotions {
     for (const body of this.entities) {
       body.syncMapOverlay(
         floatingOrigin, displayTime, cameraSystem, markerManager, this.celestialMotions,
-        cameraSystem.worldView === 'map' && geostationaryOrbitVisible);
+        cameraSystem.view === 'map' && geostationaryOrbitVisible);
     }
-    this.orbitGuideLines.sync(style, displayTime, cameraSystem.worldView, floatingOrigin, cameraSystem.activeCamera);
-    this.zeroVelocityLines.sync(displayTime, cameraSystem.worldView, floatingOrigin, cameraSystem.activeCamera);
+    this.orbitGuideLines.sync(style, displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
+    this.zeroVelocityLines.sync(displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       style, gridVisibility, cameraSystem.activeCamera,
       celestialShellScale());

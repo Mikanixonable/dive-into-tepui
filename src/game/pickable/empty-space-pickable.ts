@@ -32,7 +32,7 @@ export class EmptySpacePickable implements ObjectPickable {
 
   // メニューに出す操作項目。物体を置けるステージのマップ視点では、配置の項目が加わる。
   public menuItems(commands: ObjectCommands): readonly MenuItem<MenuAction>[] {
-    const placeItem: readonly MenuItem<MenuAction>[] = commands.canAuthor && commands.worldView === 'map'
+    const placeItem: readonly MenuItem<MenuAction>[] = commands.canAuthor && commands.view === 'map'
       ? [{ label: 'オブジェクトを配置する', act: 'openObjectPlacer', shortcut: 'Enter' }]
       : [];
     return [

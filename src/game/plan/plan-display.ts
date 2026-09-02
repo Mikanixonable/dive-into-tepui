@@ -1,7 +1,7 @@
 // 操作対象の軌道計画の姿の表示(両ビュー常駐)。どの計画をいつ描くかを決め、計画折れ線
 // (PlanPath)を駆動して、表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)を置く。
 import * as THREE from 'three/webgpu';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import { Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
@@ -113,7 +113,7 @@ export class PlanDisplay {
 
   // 計画折れ線を再積分し、ゴースト位置・アプシスアイコン・操作対象の赤道交点を求め直す。
   // 折れ線は戦闘ビューでも描く — 計画どおりに機体を動かすのは戦闘ビューだから。
-  update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: WorldView): void {
+  update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: View): void {
     const ship = this.activePlayers.currentControllable;
     this.displayedPlan = this.planToDisplay(ship, view);
     if (this.displayedPlan === null) this.clearDisplay();
@@ -125,7 +125,7 @@ export class PlanDisplay {
   sync(cameraSystem: CameraSystem, fo: FloatingOrigin): void {
     if (this.displayedPlan === null) { this.hide(); return; }
     const project = cameraSystem.activeCameraProjection;
-    const view = cameraSystem.worldView;
+    const view = cameraSystem.view;
     const cameraPos = cameraSystem.activeCameraPos;
     // ノードの無い計画は自機の現在軌道そのものを描くだけで情報を持たないので、折れ線は隠す。
     // path.sync 自体はノードの有無に関わらず毎フレーム呼ぶ — 画面判定に使う project を
@@ -158,7 +158,7 @@ export class PlanDisplay {
 
   // このフレームに出す折れ線の材料。出す価値のある折れ線が無ければ null — ノードの無い計画は
   // 操作対象の現在軌道そのものなので、ノードを置ける編集中(マップビュー)だけ出す。
-  private planToDisplay(ship: Controllable | null, view: WorldView): PlanData | null {
+  private planToDisplay(ship: Controllable | null, view: View): PlanData | null {
     if (ship === null) return null;
     if (view !== 'map' && ship.plan.nodes.length === 0) return null;
     return ship.plan.displayData(ship.state);
@@ -235,7 +235,7 @@ export class PlanDisplay {
   }
 
   // ⬢ ゴーストマーカーを計画位置に置く。計画がそこまで届いていなければ隠す。
-  private syncGhost(project: ProjectFn, view: WorldView, cameraPos: Vec3): void {
+  private syncGhost(project: ProjectFn, view: View, cameraPos: Vec3): void {
     if (!this.ghost) {
       this.markerManager.hide('plannedPlayer');
       return;
@@ -357,7 +357,7 @@ export class PlanDisplay {
   }
 
   // 近地点・遠地点のマーカーを、それぞれが解いた位置へ置く。
-  private syncApsisMarkers(project: ProjectFn, view: WorldView, cameraPos: Vec3): void {
+  private syncApsisMarkers(project: ProjectFn, view: View, cameraPos: Vec3): void {
     const celestialBodies = this.celestialSystem.celestialMotions;
     for (const marker of [this.apsisPe, this.apsisAp]) {
       marker.sync(
@@ -368,7 +368,7 @@ export class PlanDisplay {
   }
 
   // ✕ 衝突マーカーを update が求めた位置に置き、出ていないものを隠す。
-  private syncImpactMarkers(project: ProjectFn, view: WorldView, cameraPos: Vec3): void {
+  private syncImpactMarkers(project: ProjectFn, view: View, cameraPos: Vec3): void {
     for (const key of IMPACT_MARKER_KEYS) {
       const icon = this.impactIcons.find((m) => m.key === key);
       if (!icon) {
@@ -388,7 +388,7 @@ export class PlanDisplay {
   // 採否を決め、既に採用済みの目盛から PLAN_TICK_MIN_PX 未満しか離れない候補は捨てる —
   // 離心軌道では近地点付近と遠地点付近で候補の画面間隔が桁違いになるため、区間全体で
   // 一つの単位に揃えず、この局所判定に任せることで区間ごとに異なる単位が選ばれてよい。
-  private syncTickMarkers(project: ProjectFn, view: WorldView, cameraPos: Vec3): void {
+  private syncTickMarkers(project: ProjectFn, view: View, cameraPos: Vec3): void {
     const icons = this.tickIcons;
     const n = icons.length;
     const projected = icons.map((icon) => project(icon.pos));

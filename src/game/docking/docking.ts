@@ -11,7 +11,7 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { CameraSystem } from '../camera/camera-system';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
@@ -79,7 +79,7 @@ export class Docking {
     private readonly cameraSystem: CameraSystem,
     // ビュー遷移の口(ViewManager.setView)。ViewManager より先に生成されるため、
     // 参照でなく閉包で受ける。
-    private readonly setView: (view: WorldView) => void,
+    private readonly setView: (view: View) => void,
     private readonly activePlayers: ActivePlayerController,
     private readonly activeStage: Stage,
   ) {
