@@ -13,7 +13,7 @@ import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import {
   JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitNormal, keplerOrbitState,
 } from '../../src/physics/kepler-orbit';
-import { qInvert, qMul, qRotate } from '../../src/physics/attitude';
+import { qInvert, qMul, qRotate } from '../../src/math/quat';
 import { meridianDirection } from '../../src/physics/body-orientation';
 import { Vec3, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { icrfToGameEci } from '../../src/physics/icrf';

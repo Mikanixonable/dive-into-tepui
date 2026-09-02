@@ -1,5 +1,6 @@
 // プレイヤーの並進スロットル・姿勢制御(RCS)・プログレードホールド。
-import { Attitude, attitudeAlignTorque, qRotate } from '../../physics/attitude';
+import { Attitude, attitudeAlignTorque } from '../../physics/attitude';
+import { qRotate } from '../../math/quat';
 import { Vec3, add, norm, scale, v3 } from '../../math/vec3';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';

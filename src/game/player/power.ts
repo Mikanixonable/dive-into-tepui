@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { Attitude, qRotate } from '../../physics/attitude';
+import { Attitude } from '../../physics/attitude';
+import { qRotate } from '../../math/quat';
 import { Vec3, dot, v3 } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/srp';
 import type { PowerSaveData } from '../save/save-data';

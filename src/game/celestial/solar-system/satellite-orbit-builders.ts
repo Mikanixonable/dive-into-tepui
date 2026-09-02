@@ -1,5 +1,5 @@
 // 公開された衛星平均要素表の列から SatelliteOrbit を組む補助。
-import { Quat } from '../../../physics/attitude';
+import { Quat } from '../../../math/quat';
 import { keplerPeriod } from '../../../physics/elements';
 import { SatelliteOrbit, satelliteOrbit } from '../../../physics/satellite-orbit';
 import { IauPole, equatorBasis } from './poles';

@@ -1,6 +1,6 @@
 // 円制限三体問題のラグランジュ点。共線点 γ の求解と、回転系での5点の無次元座標、および
 // 5点それぞれが力学的に意味を持つかの判定。
-import { qRotate } from './attitude';
+import { qRotate } from '../math/quat';
 import type { CelestialMotion } from './celestial-motion';
 import type { OrbitingMotion } from './celestial-motion';
 import type { FrameRotation } from './kepler-orbit';

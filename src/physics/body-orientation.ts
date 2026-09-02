@@ -1,6 +1,6 @@
 // 天体そのものの向き — 自転軸と、その軸まわりの自転位相(本初子午線の向き)。
 // 「天体がどこにいるか」とは別の問い。THREE/DOM 非依存の純関数。
-import { Quat, qFromAxisAngle, qFromForwardUp, qRotate } from './attitude';
+import { Quat, qFromAxisAngle, qFromForwardUp, qRotate } from '../math/quat';
 import { ECI_POLE } from './ecliptic';
 import { Vec3, addScaled, cross, dot, len, norm, v3 } from '../math/vec3';
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { Attitude, qRotate, randomQuat } from '../../physics/attitude';
+import { Attitude } from '../../physics/attitude';
+import { qRotate, randomQuat } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../math/random';
 import { add, addScaled, randVec, scale, v3, Vec3 } from '../../math/vec3';

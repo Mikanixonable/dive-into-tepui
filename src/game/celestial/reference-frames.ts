@@ -3,7 +3,7 @@
 // 答える。座標系そのものの値の変換は physics/frame.ts の純関数群が担い、ここは
 // 「どの座標系があるか」と「その原点・姿勢・角速度が時刻 t で何になるか」を答える。
 // THREE/DOM 非依存。
-import { Quat, qFromForwardUp } from '../../physics/attitude';
+import { Quat, qFromForwardUp } from '../../math/quat';
 import { CelestialMotion, OrbitingMotion, SatelliteMotion } from '../../physics/celestial-motion';
 import { EciTransform } from '../../physics/eci-transform';
 import {
