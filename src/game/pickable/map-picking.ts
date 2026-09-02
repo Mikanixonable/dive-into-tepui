@@ -20,11 +20,11 @@ import type { FrameControls } from '../hud/frame/frame-controls';
 import type { Player } from '../player/player';
 import { rayThroughScreen } from '../../math/projection';
 
-const PICK_PX_SQ = 600; // 被選択物(ObjectPickable)の右クリック判定半径の2乗 [px^2]
+const OBJECT_PICK_PX_SQ = 600; // 被選択物(ObjectPickable)の右クリック判定半径の2乗 [px^2]
 const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
 
 // pointer:coarse(指先)環境で使う、同じ2つの判定半径の2乗 [px^2]。
-const PICK_PX_SQ_COARSE = 1936;
+const OBJECT_PICK_PX_SQ_COARSE = 1936;
 const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 
 export class MapPicking {
@@ -42,7 +42,7 @@ export class MapPicking {
     private readonly frameControls: FrameControls,
     private readonly pickables: ObjectPickables,
     private readonly linePickables: LinePickables,
-    private readonly windows: ObjectWindows,
+    private readonly objectWindows: ObjectWindows,
   ) {
     this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialSystem);
     // 一覧の行は隠れている対象でも操作できる(SPEC/MAP.md §10) — pickable によるマップ上の
@@ -58,7 +58,7 @@ export class MapPicking {
     };
     this.listPanel.onSelectRight = (id, clientX, clientY) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target) this.windows.open(clientX, clientY, target, this.pickables.lastSimTime);
+      if (target) this.objectWindows.open(clientX, clientY, target, this.pickables.lastSimTime);
     };
   }
 
@@ -71,7 +71,7 @@ export class MapPicking {
     const marker = pickNearest(
       candidates.filter((item) => item.shownOnMap(this.markerManager)),
       (item) => projectMarker(item, displayTime, project),
-      x, y, pickRadiusSq(PICK_PX_SQ, PICK_PX_SQ_COARSE),
+      x, y, pickRadiusSq(OBJECT_PICK_PX_SQ, OBJECT_PICK_PX_SQ_COARSE),
     );
     if (marker !== null) return marker;
     const ray = rayThroughScreen(
@@ -85,7 +85,7 @@ export class MapPicking {
     input.takeRightClicks((p) => {
       const target = this.pickAt(this.pickables.pickables, p.x, p.y);
       if (!target) return false;
-      this.windows.open(p.x, p.y, target, simTime);
+      this.objectWindows.open(p.x, p.y, target, simTime);
       return true;
     });
   }
@@ -103,7 +103,7 @@ export class MapPicking {
         this.pickables.lastDisplayTime,
       );
       if (!orbit) return false;
-      this.windows.openLine(p.x, p.y, orbit);
+      this.objectWindows.openLine(p.x, p.y, orbit);
       return true;
     });
   }
@@ -116,7 +116,7 @@ export class MapPicking {
       const target = this.pickAt(
         this.pickables.pickables.filter((i) => i.onMapSelect !== null), p.x, p.y);
       if (!target) return false;
-      target.onMapSelect?.(this.windows, p.x, p.y);
+      target.onMapSelect?.(this.objectWindows, p.x, p.y);
       return true;
     });
   }
@@ -135,7 +135,7 @@ export class MapPicking {
   // 何も当たらなかった右クリックを「空域」として扱う(他のハンドラの後に呼ぶ)。
   handleEmptySpaceRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
-      this.windows.openEmptySpaceMenu(p.x, p.y, simTime);
+      this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
     });
   }
@@ -146,7 +146,7 @@ export class MapPicking {
   private focusTarget(id: string, target: ObjectPickable | undefined): void {
     this.frameControls.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`);
-    target?.onMapFocus?.(this.windows);
+    target?.onMapFocus?.(this.objectWindows);
   }
 
   // 軌道物体一覧を、このフレームの候補列で組み直す。
