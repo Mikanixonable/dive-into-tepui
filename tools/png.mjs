@@ -71,13 +71,14 @@ export function encodeRgbPng(width, height, rgb) {
   return encodePng(width, height, rgb, 3, 2);
 }
 
-// channels byte/画素の走査線を、colorType の PNG として符号化する。行フィルタは使わない。
+// channels byte/画素の走査線を、colorType の PNG として符号化する。
 function encodePng(width, height, pixels, channels, colorType) {
   const stride = width * channels;
   const raw = Buffer.alloc((stride + 1) * height);
   for (let y = 0; y < height; y++) {
-    raw[y * (stride + 1)] = 0;
-    raw.set(pixels.subarray(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
+    const row = filterRow(pixels, y, stride, channels);
+    raw[y * (stride + 1)] = row.filter;
+    row.bytes.copy(raw, y * (stride + 1) + 1);
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
@@ -89,6 +90,35 @@ function encodePng(width, height, pixels, channels, colorType) {
     chunk('IDAT', deflateSync(raw, { level: 9 })),
     chunk('IEND', Buffer.alloc(0)),
   ]);
+}
+
+// 行 y を 5 通りの行フィルタで差分化し、絶対差の和が最小のものを選ぶ(PNG 標準の発見的手法)。
+// 差分を取らないと、生成する場のような滑らかな画像でも deflate は隣接画素の相関を使えない。
+function filterRow(pixels, y, stride, channels) {
+  const current = pixels.subarray(y * stride, (y + 1) * stride);
+  const previous = y > 0 ? pixels.subarray((y - 1) * stride, y * stride) : null;
+  let best = null;
+  for (let filter = 0; filter < 5; filter++) {
+    const bytes = Buffer.alloc(stride);
+    let score = 0;
+    for (let i = 0; i < stride; i++) {
+      const left = i >= channels ? current[i - channels] : 0;
+      const up = previous ? previous[i] : 0;
+      const upLeft = previous && i >= channels ? previous[i - channels] : 0;
+      let predictor;
+      if (filter === 0) predictor = 0;
+      else if (filter === 1) predictor = left;
+      else if (filter === 2) predictor = up;
+      else if (filter === 3) predictor = (left + up) >> 1;
+      else predictor = paeth(left, up, upLeft);
+      const value = (current[i] - predictor) & 0xff;
+      bytes[i] = value;
+      // 符号付きの差分としての大きさ。0 の近くへ寄った行ほど deflate が縮められる。
+      score += value < 128 ? value : 256 - value;
+    }
+    if (best === null || score < best.score) best = { filter, bytes, score };
+  }
+  return best;
 }
 
 function chunk(type, body) {
