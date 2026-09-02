@@ -4,34 +4,27 @@
 // 粒は天体固定のノイズで足す。陰影・遮蔽・逆二乗の減衰はすべてパイプラインが与える。
 import * as THREE from 'three/webgpu';
 import {
-  Discard, Fn, If, cameraPosition, cameraProjectionMatrix, clamp, dFdx, dFdy, dot, float, length,
+  Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
   max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
   sqrt, step, texture as textureNode, transformNormalToView, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
 import { DeferredTexture } from './deferred-texture';
 import { sphereMeshUv, unitSphereGeometry } from './celestial-surface';
+import {
+  CLOUD_TOP_SPAN, GRAIN_COVERAGE_DEPTH, cloudTopOf, opaqueFractionOf,
+} from './cloud/cumulus-shape';
 import { gradientNoise } from './cloud/gradient-noise';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitOpaque } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 import type { FloatNode, Vec3Node, Vec4Node } from './tsl-types';
 
-// 雲の場の G(雲頂高度)が張る高さ [m]。殻はその上限へ置く(`render/cloud/cloud-field.ts`)。
-const CLOUD_TOP_SPAN = 15000;
-
 // 不透明な積雲のアルベド。厚い雲の白さは多重散乱の産物で、単散乱アルベド ≈ 1・光学的厚みが
 // 十分に大きい層の反射は拡散反射の極限へ漸近する。
 const CUMULUS_ALBEDO = 0.8;
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
 const CUMULUS_ROUGHNESS = 1;
-
-// 被覆率を二値化する境目と、その周りでディザへ渡す幅。**境目は場の被覆率の平均を動かさない
-// ように選ぶ** — 実写を分離した `src/assets/cloud-field.png` では、これを超える texel の面積が
-// 被覆率の平均 0.125(緯度余弦で重みを付けた面積平均)に一致する。場を差し替えたら測り直す。
-// 幅は粒が届かない遠さでの縁の当たりを和らげるだけなので、狭く取って粒へ譲る。
-const COVERAGE_THRESHOLD = 0.347;
-const COVERAGE_DITHER_WIDTH = 0.04;
 
 // ディザの閾値の段数。blue noise は 0..1 の両端を含むので、閾値は半段ぶん内側へ寄せて使う
 // — 寄せないと、覆いの無い空へ閾値 0 の画素だけが雲として残り、覆い尽くされた面から閾値 1 の
@@ -61,11 +54,6 @@ const REFINE_STEPS = 3;
 // 軌道上のどの構図でも 1 画素を切って消える。**場ではなく天体の半径から決まる**ので、場の解像度が
 // 変わっても粒は動かない。
 const CUMULUS_GRAIN_SIZE = 6000;
-// 粒が被覆率と雲頂高度をそれぞれどれだけ振るか(どちらも場と同じ 0..1 の目盛り)。**被覆率へは
-// 境目を通す前に足す** — 通したあとに足すと、覆いの無い空にも粒が雲を生やす。生成側が高周波を
-// 持つようになったら、この 2 つを縮めて譲る。
-const GRAIN_COVERAGE_DEPTH = 0.25;
-const GRAIN_TOP_RELIEF = 0.15;
 // 粒の 1 波長が何画素を切ったら消し始め、何画素まで残すか。標本化できない粒はモアレにしか
 // ならないので、Nyquist の 2 画素へ落ちるまでに振幅を 0 へ渡す。
 const GRAIN_FADE_MIN_PIXELS = 2;
@@ -229,10 +217,10 @@ export class CumulusShell {
     const grain = this.grainAt(direction, grainAmplitude);
     // 粒は覆いの縁を texel より細かく千切る。
     const present = step(
-      threshold, this.opaqueFractionOf(cloud.r.add(grain.mul(GRAIN_COVERAGE_DEPTH))));
+      threshold, opaqueFractionOf(cloud.r.add(grain.mul(GRAIN_COVERAGE_DEPTH))));
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに粒が湧く。
-    const clearance = radius.sub(this.cloudTopRadiusOf(this.cloudTopOf(cloud.g, grain)));
+    const clearance = radius.sub(this.cloudTopRadiusOf(cloudTopOf(cloud.g, grain)));
     return select(present.greaterThan(0.5), clearance, float(1));
   }
 
@@ -244,7 +232,7 @@ export class CumulusShell {
     const north = northAt(up);
     // その向きの雲頂(物体空間の半径)。
     const topAt = (direction: Vec3Node): FloatNode => this.cloudTopRadiusOf(
-      this.cloudTopOf(this.fieldAt(direction).g, this.grainAt(direction, grainAmplitude)));
+      cloudTopOf(this.fieldAt(direction).g, this.grainAt(direction, grainAmplitude)));
     // **中心の高さは交点の中心距離ではなく雲頂を引き直して測る** — 締めた交点は雲頂より内側へ
     // 食い込んでいて、中心距離を高さに使うと食い込みが両方向の傾きへ同じ下駄として乗る。掠める
     // 視線ほど刻みが長く食い込みも深いので、リム際で法線が倒れて夜側の雲が光る。
@@ -255,11 +243,6 @@ export class CumulusShell {
     const slopeNorth = topAt(normalize(up.add(north.mul(this.gradientAngle))))
       .sub(here).div(this.gradientAngle);
     return normalize(up.sub(east.mul(slopeEast)).sub(north.mul(slopeNorth)));
-  }
-
-  // 場の雲頂高度へ粒の起伏を重ねた雲頂高度 0..1。
-  private cloudTopOf(fieldTop: FloatNode, grain: FloatNode): FloatNode {
-    return clamp(fieldTop.add(grain.mul(GRAIN_TOP_RELIEF)), 0, 1);
   }
 
   // 雲頂高度 0..1 を、殻を半径 1 とする物体空間の半径へ直す。
@@ -284,12 +267,6 @@ export class CumulusShell {
     const pixelAngle = max(length(dFdx(entryDirection)), length(dFdy(entryDirection)));
     const wavelengthPixels = max(pixelAngle.mul(this.grainFrequency), 1e-9).reciprocal();
     return smoothstep(GRAIN_FADE_MIN_PIXELS, GRAIN_FADE_FULL_PIXELS, wavelengthPixels);
-  }
-
-  // 被覆率を、覆い尽くされている割合 0..1 へ伸ばしたもの。
-  private opaqueFractionOf(coverage: FloatNode): FloatNode {
-    return clamp(
-      coverage.sub(COVERAGE_THRESHOLD - COVERAGE_DITHER_WIDTH / 2).div(COVERAGE_DITHER_WIDTH), 0, 1);
   }
 
   // 画素ごとに固定の、覆い尽くされている割合と比べるディザの閾値。

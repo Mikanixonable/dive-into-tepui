@@ -8,6 +8,7 @@ import {
   lessThan, log, log2, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial-surface';
+import { meanOpaqueFractionOf } from '../cloud/cumulus-shape';
 import type {
   BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node,
 } from '../tsl-types';
@@ -78,8 +79,8 @@ const CUMULUS_SHADOW_TAPS = 6;
 // 光路をたどる長さの上限 [m]。恒星が地平線へ寄るほど層を抜けるまでの距離は伸び、昼夜境界の
 // 真上で発散する。
 const CUMULUS_MAX_LIGHT_PATH = 3e5;
-// 被覆率から柱の光学的厚みへ直すときの上限。被覆率 1 では厚みが発散する。
-const CUMULUS_MAX_COVERAGE = 0.999;
+// 覆われている割合から柱の光学的厚みへ直すときの上限。割合 1 では厚みが発散する。
+const CUMULUS_MAX_COVERAGE = 0.99;
 
 // 雲の場を持たないフレームでも同じグラフが走るので、被覆率 0 の写しを結んでおく。
 // **読み方の契約は本物の場と揃える** — グラフはここに結んだテクスチャのフィルタと巻きから
@@ -307,10 +308,11 @@ export class SunOcclusion {
   // 積雲の殻が落とす影。受け手から恒星へ向かう光路を、雲の層(天体中心から surfaceRadius +
   // topAltitude まで)を抜けるまでたどり、その柱の雲頂より下に居るタップだけ消散を積む。
   //
-  // **柱の光学的厚みは被覆率から出す** — 場の階調は濃さではなく「その texel が雲に覆われて
-  // いる割合」なので、覆われた割合 c を通り抜けない確率と読んで τ = −ln(1 − c) を取る。厚みは
-  // 光路長ではなく **稼いだ高度** で配るので、柱を 1 本抜ける合計はどれだけ斜めでも τ に
-  // 一致する。恒星が低いほど光路は横へ伸び、影も同じだけ離れた所へ落ちる。
+  // **柱の光学的厚みは覆われている割合から出す** — 覆われた割合 c を通り抜けない確率と読んで
+  // τ = −ln(1 − c) を取る。割合は殻が雲を立てるのと同じ規則(`cloud/cumulus-shape.ts`)から
+  // 引くので、影は殻のシルエットの下へ落ちる。厚みは光路長ではなく **稼いだ高度** で配るので、
+  // 柱を 1 本抜ける合計はどれだけ斜めでも τ に一致する。恒星が低いほど光路は横へ伸び、影も
+  // 同じだけ離れた所へ落ちる。
   //
   // **殻より上に居る受け手では光路の長さが 0 になる** ので、殻の上面が自分自身を陰らせる
   // 心配は要らない。
@@ -339,7 +341,8 @@ export class SunOcclusion {
           const cloud = this.cumulusFieldAt(this.cumulusBodyFromWorld.mul(vec4(up, 0)).xyz, lod);
           const cloudTop = cloud.g.mul(this.cumulusTopAltitude);
           const rise = max(dot(sunDir, up), 0).mul(stepLength);
-          const columnDepth = log(min(cloud.r, CUMULUS_MAX_COVERAGE).oneMinus()).negate();
+          const columnDepth = log(
+            min(meanOpaqueFractionOf(cloud.r), CUMULUS_MAX_COVERAGE).oneMinus()).negate();
           opticalDepth.addAssign(select(
             lessThan(altitude, cloudTop), columnDepth.mul(rise).div(max(cloudTop, 1)), float(0)));
         }
