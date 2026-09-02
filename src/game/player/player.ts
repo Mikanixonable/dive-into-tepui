@@ -56,9 +56,9 @@ import { apsisAltitudes } from '../../physics/elements';
 import { fmtAmmoStatus, fmtDist, fmtEnergy } from '../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitRows } from '../pickable/orbit-rows';
-import type { MapPickable } from '../pickable/map-pickable';
+import type { ObjectPickable } from '../pickable/object-pickable';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { MapCommands } from '../pickable/map-commands';
+import type { ObjectCommands } from '../pickable/object-commands';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../hud/windows/property-window';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
@@ -106,7 +106,7 @@ export type PlayerInit =
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、それらを反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
-export class Player extends Ship implements Controllable, MapPickable {
+export class Player extends Ship implements Controllable, ObjectPickable {
   public readonly mapKind: DynamicEntityKind = 'player';
 
   readonly throttle: PlayerThrottle;
@@ -648,13 +648,11 @@ export class Player extends Ship implements Controllable, MapPickable {
     };
   }
 
-  // マップ上の被選択物としての振る舞い。
-  public readonly ownerName = null;
-  public readonly mapTime = null;
+  // 被選択物(ObjectPickable)としての振る舞い。
   public get gone(): boolean { return !this.alive; }
-  public get mapState(): KinematicState { return this.state; }
-  public readonly mapGlyph = ENTITY_GLYPH.ship;
-  public get mapGlyphSvg(): string { return shipMarkerSvg(true); }
+  public get orbitState(): KinematicState { return this.state; }
+  public readonly glyph = ENTITY_GLYPH.ship;
+  public get glyphSvg(): string { return shipMarkerSvg(true); }
   public readonly listSection: MapListSection = 'player';
   public readonly pickerGenre: ObjectPickerGenre = '自艦';
   public readonly hiddenBehindBodies = true;
@@ -662,7 +660,7 @@ export class Player extends Ship implements Controllable, MapPickable {
   public listCounted(): boolean { return false; }
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
-  public mapPosAt(displayTime: number): Vec3 | null {
+  public posAt(displayTime: number): Vec3 | null {
     return this.stateAt(displayTime)?.r ?? null;
   }
 
@@ -692,8 +690,8 @@ export class Player extends Ship implements Controllable, MapPickable {
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
-  public mapMenuItems(
-    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  public menuItems(
+    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
     const isActive = this === commands.activePlayer;
     const activate: MenuItem<MenuAction> = isActive
@@ -728,8 +726,8 @@ export class Player extends Ship implements Controllable, MapPickable {
     ];
   }
 
-  // mapMenuItems が出した操作を実行する。軌道線の表示と計画実行モードは自分の状態を、残りは commands を通す。
-  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+  // menuItems が出した操作を実行する。軌道線の表示と計画実行モードは自分の状態を、残りは commands を通す。
+  public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
     } else if (act === 'dock') {
@@ -758,8 +756,8 @@ export class Player extends Ship implements Controllable, MapPickable {
 
   // プロパティウィンドウに出す行。装甲・温度・電力・弾薬を主要行とし、操作対象か・計画実行は
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。
-  public mapPropertyRows(
-    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  public propertyRows(
+    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
     return [
       {
@@ -775,15 +773,15 @@ export class Player extends Ship implements Controllable, MapPickable {
     ];
   }
 
-  public readonly mapRename = (name: string): void => { this.name = name; };
+  public readonly rename = (name: string): void => { this.name = name; };
 
   // 単クリックはプロパティウィンドウを開くだけに留め、操作対象は変えない。
-  public readonly onMapSelect = (commands: MapCommands, clientX: number, clientY: number): void => {
+  public readonly onMapSelect = (commands: ObjectCommands, clientX: number, clientY: number): void => {
     commands.openProperties(this, clientX, clientY);
   };
 
   // 注視されたら操作対象にもなる(操作艦を切り替える最速の手段)。
-  public readonly onMapFocus = (commands: MapCommands): void => {
+  public readonly onMapFocus = (commands: ObjectCommands): void => {
     commands.setActivePlayer(this);
     commands.hint(`${this.name} を操作対象に設定`);
   };

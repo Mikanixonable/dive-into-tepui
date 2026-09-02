@@ -1,6 +1,6 @@
-// 被選択物(MapPickable)への右クリック/左クリック/ダブルクリックの解決と、プロパティ/パーツ/
+// 被選択物(ObjectPickable)への右クリック/左クリック/ダブルクリックの解決と、プロパティ/パーツ/
 // 軌道ウィンドウのライフサイクル管理。被選択物が組んだメニュー項目の実行先として、ゲーム側の
-// 操作一式を MapCommands の形で差し出す。
+// 操作一式を ObjectCommands の形で差し出す。
 import { Hud } from '../hud/hud';
 import type { WorldView } from '../world-view';
 import type { Base } from '../dynamic/dynamic-entity/base';
@@ -11,7 +11,7 @@ import {
 } from '../hud/windows';
 import { TEMP_WINDOW_GROUP } from '../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
-import { MapPickable, pickFrontmostBody, pickNearest, projectMarker } from './map-pickable';
+import { ObjectPickable, pickFrontmostBody, pickNearest, projectMarker } from './object-pickable';
 import { pickNearestLine } from './line-pickable';
 import type { LinePickables } from './line-pickables';
 import { focusTargetId } from '../camera/focus-target';
@@ -34,17 +34,17 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import { EmptySpacePickable } from './empty-space-pickable';
 import { orbitingAttractorOf } from '../../physics/attractor';
-import type { MapPickables } from './map-pickables';
+import type { ObjectPickables } from './object-pickables';
 import { pickCombatEntityAtPoint } from './combat-pick';
 import { PartWindows } from './part-windows';
 import { OrbitLineWindows } from './orbit-line-windows';
-import type { DockState, MapCommands } from './map-commands';
+import type { DockState, ObjectCommands } from './object-commands';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { rayThroughScreen } from '../../math/projection';
 
-const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(MapPickable)の右クリック判定半径の2乗 [px^2]
+const MAP_PICK_PX_SQ = 600; // マップ上の被選択物(ObjectPickable)の右クリック判定半径の2乗 [px^2]
 const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
 
 // pointer:coarse(指先)環境で使う、同じ2つの判定半径の2乗 [px^2]。
@@ -55,12 +55,12 @@ const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 // 行・項目の再導出も消滅の判定もこの参照を経由する。
 interface WindowEntry {
   readonly win: PropertyWindow<MenuAction>;
-  readonly target: MapPickable;
+  readonly target: ObjectPickable;
 }
 
-export class MapContextActions implements MapCommands {
+export class MapContextActions implements ObjectCommands {
   // 宇宙空間そのものはプロパティを持たないので、右クリックの落ち先には ContextMenu を使う。
-  private readonly menu: ContextMenu<MapPickable, MenuAction>;
+  private readonly menu: ContextMenu<ObjectPickable, MenuAction>;
   // 開いているプロパティウィンドウ。対象の id でオブジェクト1つにつき高々1枚に保つ
   // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
@@ -69,7 +69,7 @@ export class MapContextActions implements MapCommands {
   private readonly physicalObjectListPanel: PhysicalObjectListPanel;
   private expandedBaseWindowKey: string | null = null;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
-  private readonly emptySpace: MapPickable = new EmptySpacePickable();
+  private readonly emptySpace: ObjectPickable = new EmptySpacePickable();
   // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
   // 最後にマップ視点だった時点の値のまま据え置く。
   private lastFocusId: string | undefined = undefined;
@@ -91,7 +91,7 @@ export class MapContextActions implements MapCommands {
     private readonly editor: PlanEditor,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly pauseMenu: PauseMenu,
-    private readonly pickables: MapPickables,
+    private readonly pickables: ObjectPickables,
     private readonly linePickables: LinePickables,
     private readonly activePlayers: ActivePlayerController,
     private readonly frameControls: FrameControls,
@@ -100,8 +100,8 @@ export class MapContextActions implements MapCommands {
     private readonly markerManager: MarkerManager,
     private readonly celestialMarkers: CelestialMarkers,
   ) {
-    this.menu = new ContextMenu<MapPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
-    this.menu.onSelect = (act, target) => target.runMapMenu(act, this);
+    this.menu = new ContextMenu<ObjectPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
+    this.menu.onSelect = (act, target) => target.runMenu(act, this);
     this.partWindows = new PartWindows(hud, activePlayers);
     this.orbitLineWindows = new OrbitLineWindows(
       hud, linePickables, pickables, this,
@@ -136,7 +136,7 @@ export class MapContextActions implements MapCommands {
   // 画面上の (x, y) に当たった被選択物。マーカーへ一定のピクセル半径で当て、外れたら
   // 描かれている本体へ視線を通す(SPEC/MAP.md §11)。マーカー段はラベル衝突で非表示に
   // なった対象を外すが、本体段は外さない — 円盤が見えているのに掴めないのは嘘になる。
-  private pickAt(candidates: readonly MapPickable[], x: number, y: number): MapPickable | null {
+  private pickAt(candidates: readonly ObjectPickable[], x: number, y: number): ObjectPickable | null {
     const project = this.cameraSystem.activeCameraProjection;
     const displayTime = this.pickables.lastDisplayTime;
     const marker = pickNearest(
@@ -182,7 +182,7 @@ export class MapContextActions implements MapCommands {
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
   // 新規には開かない。一時ウィンドウ(非クリップ)どうしの排他は PropertyWindow 自身が
   // OverlayManager の TEMP_WINDOW_GROUP を通じて保つ。
-  private openPropertyWindow(clientX: number, clientY: number, target: MapPickable, simTime: number): void {
+  private openPropertyWindow(clientX: number, clientY: number, target: ObjectPickable, simTime: number): void {
     const key = target.id;
     const existing = this.windows.get(key);
     if (existing) {
@@ -201,7 +201,7 @@ export class MapContextActions implements MapCommands {
     // 操作項目のクリックは、クリップ済みか keepOpen(排他選択肢の切り替え)なら開いたままにする。
     // 「削除」は対象自体が消えるのでどちらでも閉じる。
     w.onSelect = (act, keepOpen) => {
-      entry.target.runMapMenu(act, this);
+      entry.target.runMenu(act, this);
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => {
@@ -262,7 +262,7 @@ export class MapContextActions implements MapCommands {
   // マップ視点のフォーカスを対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md §10)。
   // マップのダブルクリックと一覧パネルのフォーカス行はどちらもここを通す。id は一覧側が候補列に
   // 頼らず持っている値、target は見つかっていれば名前・種別の解決に使う。
-  private focusTarget(id: string, target: MapPickable | undefined): void {
+  private focusTarget(id: string, target: ObjectPickable | undefined): void {
     this.frameControls.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`);
     target?.onMapFocus?.(this);
@@ -279,7 +279,7 @@ export class MapContextActions implements MapCommands {
 
   private openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
     const target = this.emptySpace;
-    this.menu.open(clientX, clientY, target, target.mapMenuItems(this, this.celestialSystem, simTime));
+    this.menu.open(clientX, clientY, target, target.menuItems(this, this.celestialSystem, simTime));
   }
 
   // 戦闘ビューの右クリック。ヒットした実体があればそのプロパティウィンドウを、なければ
@@ -324,7 +324,7 @@ export class MapContextActions implements MapCommands {
       entry.win.syncRelatedItems(
         this.relatedItemsFor(entry.target, simTime), this.relatedTitleFor(entry.target));
       entry.win.syncRows(
-        entry.target.mapPropertyRows(this, this.celestialSystem, simTime, displayTime));
+        entry.target.propertyRows(this, this.celestialSystem, simTime, displayTime));
       entry.win.syncItems(menuItems);
       entry.win.syncBadge(entry.target.id === this.lastFocusId);
     }
@@ -349,13 +349,13 @@ export class MapContextActions implements MapCommands {
 
   // itemsFor の出力をプロパティウィンドウの形へ組み替える: header 項目はタイトル/サブタイトルへ
   // 抜き出す。開いた直後から sync 時と同じ経路(windowParts)で求める。
-  private buildContent(target: MapPickable, simTime: number): PropertyWindowContent<MenuAction> {
+  private buildContent(target: ObjectPickable, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
     return {
-      title, subtitle, icon: target.mapGlyphSvg ?? target.mapGlyph, rows: [], items,
+      title, subtitle, icon: target.glyphSvg ?? target.glyph, rows: [], items,
       relatedItems: this.relatedItemsFor(target, simTime),
       relatedTitle: this.relatedTitleFor(target),
-      onRename: target.mapRename ?? undefined,
+      onRename: target.rename ?? undefined,
     };
   }
 
@@ -364,9 +364,9 @@ export class MapContextActions implements MapCommands {
   // 必要があるが、呼び出しは1回にまとめる(header 項目からタイトル/サブタイトルを抜き出し、
   // 残りを操作項目とする)。
   private windowParts(
-    target: MapPickable, simTime: number,
+    target: ObjectPickable, simTime: number,
   ): { title: string; subtitle?: string; items: PropertyWindowItem<MenuAction>[] } {
-    const all = target.mapMenuItems(this, this.celestialSystem, simTime);
+    const all = target.menuItems(this, this.celestialSystem, simTime);
     const header = all.find((it) => it.type === 'header');
     // 戦闘ビューで開いたウィンドウは項目ショートカットを持たせない — [F]/[T] は自機の
     // 進行方向リセット/ターゲット選択が既に使っており、同じキーを両方へは配れない。
@@ -383,7 +383,7 @@ export class MapContextActions implements MapCommands {
 
   // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
   // 天体は静的な primaryOf、人工物は現在状態から orbitingAttractorOf で判定する。
-  private relatedItemsFor(target: MapPickable, pivot: number): readonly PropertyWindowRelatedItem[] {
+  private relatedItemsFor(target: ObjectPickable, pivot: number): readonly PropertyWindowRelatedItem[] {
     const activeShip = this.activePlayers.current;
     if (activeShip !== null && target === activeShip) {
       return activeShip.parts.map((part) => ({
@@ -394,11 +394,11 @@ export class MapContextActions implements MapCommands {
       }));
     }
     if (!(target instanceof CelestialEntity)) return [];
-    const related: { item: MapPickable; label: string }[] = [];
+    const related: { item: ObjectPickable; label: string }[] = [];
     for (const item of this.pickables.pickables) {
       if (item.id === target.id) continue;
       // 天体・ラグランジュ点の親は静的に決まる。人工物は現在状態から引く。
-      const state = item.mapState;
+      const state = item.orbitState;
       const isOrbiting = state === null
         ? this.celestialSystem.bodyParentId(item.id) === target.id
         : orbitingAttractorOf(state, this.celestialSystem.celestialMotions, pivot)?.id === target.id;
@@ -419,11 +419,11 @@ export class MapContextActions implements MapCommands {
     }));
   }
 
-  private relatedTitleFor(target: MapPickable): string {
+  private relatedTitleFor(target: ObjectPickable): string {
     return target === this.activePlayers.current ? '搭載部品' : '周回物体';
   }
 
-  // ------------------------------------------------------------- MapCommands
+  // ------------------------------------------------------------- ObjectCommands
 
   hint(text: string): void {
     this.hud.hint(text);
@@ -440,7 +440,7 @@ export class MapContextActions implements MapCommands {
     this.hud.hint(`${name} にフォーカス`);
   }
 
-  openProperties(target: MapPickable, clientX: number, clientY: number): void {
+  openProperties(target: ObjectPickable, clientX: number, clientY: number): void {
     this.openPropertyWindow(clientX, clientY, target, this.pickables.lastSimTime);
   }
 
