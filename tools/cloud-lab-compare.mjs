@@ -186,7 +186,8 @@ function printSpectrumTable(header, wavelengthOf, reference, generated, referenc
 
 async function main() {
   // 分離済みの成分を先に読む(無いなら撮影の前に気付かせる)。
-  const separatedThick = loadSeparated(path.join('src', 'assets', 'cloud-coverage.png'));
+  // 仮テクスチャの R が被覆率(loadSeparated は R 成分を返す)。
+  const separatedThick = loadSeparated(path.join('src', 'assets', 'cloud-field.png'));
   const separatedVeil = loadSeparated(path.join('.cloud-lab', 'separated', 'veil.png'));
 
   const { fatalEvents, onEvent } = collectFatalEvents();
