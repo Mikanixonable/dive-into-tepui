@@ -402,7 +402,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
 
     const pb = new Bullet(
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma', this.plasmaDamage(),
-      this._worldSfx, this.scene, this,
+      this._worldSfx, this.scene,
     );
     this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
 
