@@ -98,7 +98,7 @@ export class DraggableWindow {
   `223-234`(📌/✕ の組み立て)、`280-291`(`currentSpec`)、`485-490`(`setClipped`)、
   `onResize`/`onViewportChange` の購読。
 - **`PropertyWindow` は行(rows)と操作項目(items)の担当に痩せ、外枠は `DraggableWindow` を持つ。**
-  外から見た `PropertyWindow` の API は変えない — `map-context-actions.ts:152` と
+  外から見た `PropertyWindow` の API は変えない — `object-windows.ts:152` と
   `perf-meter.ts:132` の呼び出しは無改造で通る。
 - CSS も `prop-window-*` のうち外枠ぶん(`.prop-window` / `-header` / `-title*` / `-btn`)を
   `draggable-window.ts` の `STYLE` へ移し、クラス名を `dg-window-*` へ改める。
