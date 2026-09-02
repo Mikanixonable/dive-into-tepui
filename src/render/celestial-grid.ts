@@ -377,7 +377,7 @@ export class CelestialGrid {
   }
 
   // 星殻と同じく描画原点(= カメラ)に固定した半径殻として、2 面ぶんの可視状態を反映する。
-  // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(stars.ts の celestialShellScale)。
+  // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(stars.ts の CELESTIAL_SHELL_SCALE)。
   sync(style: RenderStyle, visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {
     this.equator.sync(
       style, visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole,

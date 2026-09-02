@@ -29,7 +29,7 @@ export class MapView implements ViewFrame {
 
   // マップのクリックの当て先は、マップビューにいる間しか働かないので、受け取った材料から
   // ここで組んで持つ。
-  constructor(
+  public constructor(
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
@@ -54,10 +54,10 @@ export class MapView implements ViewFrame {
     );
   }
 
-  get pickables(): readonly ObjectPickable[] { return this.objectPickables.pickables; }
-  get visibilityPolicy(): MapVisibilityPolicy | null { return this.objectPickables.visibilityPolicy; }
+  public get pickables(): readonly ObjectPickable[] { return this.objectPickables.pickables; }
+  public get visibilityPolicy(): MapVisibilityPolicy | null { return this.objectPickables.visibilityPolicy; }
 
-  perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
+  public perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
     return {
       mapMode: true,
       mapItems: this.objectPickables.pickables.length,
@@ -66,17 +66,17 @@ export class MapView implements ViewFrame {
   }
 
   // マップビューはいつでも入れる。
-  canEnter(): boolean {
+  public canEnter(): boolean {
     return true;
   }
 
-  onEnter(): void {
+  public onEnter(): void {
     this.editor.selectedNodeIdx = null;
   }
 
   // 開いたままの編集 UI とメニューを畳み、マップで組んだ選択候補・可視性ポリシー・
-  // 軌道線候補を空へ戻す(戦闘ビューの表示・選択は null 経路で判定する)。
-  onLeave(): void {
+  // 軌道線候補を空へ戻す。
+  public onLeave(): void {
     this.editor.onMapClosed();
     this.editor.closeMenu();
     this.objectWindows.close();
@@ -86,12 +86,12 @@ export class MapView implements ViewFrame {
   }
 
   // Δv 編集キー([Del]=選択ノード削除・WASDQE・ラッチ)を編集セッションへ配る。
-  handleInput(input: Input, dt: number): void {
+  public handleInput(input: Input, dt: number): void {
     this.editor.handleInput(input, dt);
   }
 
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。
-  handlePointer(simTime: number): void {
+  public handlePointer(simTime: number): void {
     this.picking.handleRightClick(this.input, simTime);
     this.picking.handleLeftClick(this.input);
     this.picking.handleDoubleClick(this.input);
@@ -102,7 +102,7 @@ export class MapView implements ViewFrame {
 
   // 赤道交点(ターゲット・基地)を求め直し、選択候補と可視性ポリシーを組む。
   // 交点アイコンは候補列に載るので、objectPickables.refresh より先に求める。
-  update(displayWindow: DisplayWindow): void {
+  public update(displayWindow: DisplayWindow): void {
     this.targeter.updateEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
     this.dynamicSystem.updateBaseEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
     this.objectPickables.refresh(displayWindow);
@@ -110,13 +110,13 @@ export class MapView implements ViewFrame {
   }
 
   // 天体ラベルの間引きと表示。この後のマーカー同期が近接判定に読む。
-  syncLabels(): void {
+  public syncLabels(): void {
     this.celestialMarkers.syncLabels(this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos);
   }
 
   // マップ専用の編集 UI と常設パネル(未来表示・座標系・軌道物体一覧)・天体ラベルのサブ行・
   // 軌道線の右クリック候補。
-  syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
+  public syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
     this.editor.sync(this.cameraSystem, displayWindow.simTime, fo);
     this.displayWindowManager.sync(this.activePlayers.current);
     this.picking.sync(displayWindow.displayTime, this.activePlayers.current);
@@ -131,7 +131,7 @@ export class MapView implements ViewFrame {
     this.linePickables.refresh(displayWindow, this.frameAnchors);
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.editor.dispose();
     this.picking.dispose();
   }
