@@ -3,7 +3,7 @@ import farFuturePackUrl from '../../assets/ephemeris/far-future-20115-10y.epk';
 import { EphemerisPoints } from './point';
 import { EphemerisProfileId, profileAt } from './profile';
 import { ephemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../time';
-import { loadPackEphemeris } from './pack';
+import { PackEphemeris } from './pack';
 
 const PACK_URLS: Readonly<Record<EphemerisProfileId, string>> = {
   'modern-de440': modernPackUrl,
@@ -13,9 +13,11 @@ const PACK_URLS: Readonly<Record<EphemerisProfileId, string>> = {
 // 応答本文をチャンク単位で読み、Content-Length に対する受信比率を都度 onProgress へ渡す。
 async function readWithProgress(response: Response, onProgress?: (ratio: number) => void): Promise<Uint8Array> {
   const total = Number(response.headers.get('content-length'));
+  // 比率を出せない応答は一括で読む。
   if (!response.body || !onProgress || !Number.isFinite(total) || total <= 0) {
     return new Uint8Array(await response.arrayBuffer());
   }
+  // チャンクを溜めつつ、受信のたびに比率を報告する。
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let received = 0;
@@ -26,6 +28,7 @@ async function readWithProgress(response: Response, onProgress?: (ratio: number)
     received += value.byteLength;
     onProgress(received / total);
   }
+  // 溜めたチャンクを1本に繋ぐ。
   const buffer = new Uint8Array(received);
   let offset = 0;
   for (const chunk of chunks) {
@@ -50,7 +53,7 @@ export async function loadEphemerisPoints(
   const response = await fetch(PACK_URLS[profileId]);
   if (!response.ok) throw new Error(`天体暦packの取得に失敗: ${response.status} ${response.statusText}`);
   const buffer = await readWithProgress(response, onProgress);
-  const source = await loadPackEphemeris(buffer, epoch);
+  const source = PackEphemeris.fromBytes(buffer, epoch);
   const expectedSha256 = profile.packId.slice(profile.packId.lastIndexOf('@') + 1);
   if (source.payloadSha256 !== expectedSha256) {
     throw new Error(
