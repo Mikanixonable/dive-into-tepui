@@ -14,8 +14,8 @@ export interface GameScene {
 // 描画は自機中心のフローティングオリジン(単位: m)。宇宙船(数m)から
 // 地球(半径6,371km)・星空シェル(3.5e7m)までを1つの深度レンジに収める。深度は反転
 // (near=1 / far=0)して 32bit 浮動小数点で持つので、相対誤差は距離に依らず一定になる。
-// カメラ(CombatCameraSystem / MapCamera)はそれぞれ自身の near/far を持ち、この
-// モジュールでは生成しない — アスペクト比も各カメラが毎フレーム自己補正する。
+// カメラ(MapCamera)は自身の near/far を持ち、このモジュールでは生成しない —
+// アスペクト比も各カメラが毎フレーム自己補正する。
 export async function createGameScene(canvas: HTMLCanvasElement, graphics: GraphicsSettingsData): Promise<GameScene> {
   const scene = new THREE.Scene();
   // RenderPipeline はカメラのレイヤーを一時的に不透明物/背景へ絞る。Scene 自身が既定の

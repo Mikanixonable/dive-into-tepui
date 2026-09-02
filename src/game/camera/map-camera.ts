@@ -69,13 +69,35 @@ export function rotationFollowKey(follow: CameraRotationFollow | null): string {
   return follow.kind === 'attitude' ? 'attitude' : rotationSourceKey(follow);
 }
 
-// カメラのビュー差(フォーカス喪失時の振る舞い)と、姿勢の解決の差し込み口。
+// 保存が無いときの初期状態。yaw/pitch/dist は注視点まわりの初期視点(sphericalOffset 参照)。
+// follow は選択肢の検査を通さず適用される — 対象が未解決でも選択は保持され、成立可否は
+// update の猶予検査に委ねられる。
+export interface FocusCameraInitial {
+  readonly yaw: number;
+  readonly pitch: number;
+  readonly dist: number;
+  readonly fovDeg: number;
+  readonly focus: FocusTarget;
+  readonly follow: CameraRotationFollow | null;
+}
+
+// カメラのビュー差(フォーカス喪失時の振る舞い・初期状態)と、姿勢の解決の差し込み口。
 export interface FocusCameraConfig {
   // 'hold' は解決失敗が続いても最後に解決できた位置に留まる(戦闘ビュー)。
   // 'fallToOrigin' は2フレーム連続で失敗したら原点天体へフォーカスを戻す(マップビュー)。
   readonly focusLossPolicy: 'hold' | 'fallToOrigin';
+  readonly initial: FocusCameraInitial;
   // フォーカス id(機体・役割トークン)の時刻 t における姿勢。天体・解決不能は null。
   readonly attitudeOf: (id: string, t: number) => Quat | null;
+}
+
+// マップビュー用の初期状態(地球を見下ろす従来の既定)。
+export function defaultMapCameraInitial(celestialSystem: CelestialSystem): FocusCameraInitial {
+  return {
+    yaw: 0.7, pitch: 0.45, dist: 4.5e7, fovDeg: OVERVIEW_CAMERA_FOV,
+    focus: { kind: 'object', id: celestialSystem.origin.id },
+    follow: null,
+  };
 }
 
 // セーブデータの rotatingWith を FrameRotationSource へ変換する。旧セーブは公転対象の id を
@@ -108,11 +130,6 @@ interface CameraEuler {
   pitch: number;
   roll: number;
 }
-
-// 初期視点(注視点まわりの方位角・仰角・距離)。offset_r の初期値の組み立てにだけ使う。
-const INIT_YAW = 0.7;
-const INIT_PITCH = 0.45;
-const INIT_DIST = 4.5e7;
 
 // 注視点 → カメラの相対位置ベクトルを、方位角・仰角・距離から組む。回転軸 Y まわりの
 // 方位 yaw と、そこからの仰角 pitch。初期状態の視点を名前の付いた角度で置くための純粋関数。
@@ -203,7 +220,7 @@ export class MapCamera {
     this.projectionMode = saved?.projectionMode === 'orthographic' ? 'orthographic' : 'perspective';
     this._referencePlane = saved?.referencePlane === 'ecliptic' || saved?.referencePlane === 'moonOrbit'
       ? saved.referencePlane : 'equator';
-    this.fovDeg = this.clampFov(saved?.fovDeg ?? OVERVIEW_CAMERA_FOV);
+    this.fovDeg = this.clampFov(saved?.fovDeg ?? config.initial.fovDeg);
     const frames = celestialSystem.frames;
     if (saved) {
       const savedFollow = rotationFollowFromSaveData(saved.rotatingWith);
@@ -224,12 +241,14 @@ export class MapCamera {
           point: framePoint(saved.focus.point.x, saved.focus.point.y, saved.focus.point.z),
         };
     } else {
+      const init = config.initial;
+      this._focus = init.focus;
       this._cameraFrame = frames.inertialFrame;
-      const tf0 = frames.transformAt(this._cameraFrame, 0, bodyAnchorSource([], 0));
-      this.offset_r = toFrameDir(tf0, sphericalOffset(INIT_YAW, INIT_PITCH, INIT_DIST));
-      this.pan_r = toFrameDir(tf0, v3());
-      this.up_r = toFrameDir(tf0, WORLD_UP);
-      this._focus = { kind: 'object', id: celestialSystem.origin.id };
+      this.applyInitialFollow(init.follow);
+      const offset = sphericalOffset(init.yaw, init.pitch, init.dist);
+      this.offset_r = frameDir(offset.x, offset.y, offset.z);
+      this.pan_r = frameDir(0, 0, 0);
+      this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
     }
     this.rotationQ = this.rotationFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r));
     this.euler = this.eulerFromRotation(this.rotationQ);
@@ -579,6 +598,38 @@ export class MapCamera {
     if (!this.isFollowAvailable({ kind: 'attitude' })) return false;
     this.setRotationFollow({ kind: 'attitude' });
     return this._attitudeFollow;
+  }
+
+  // フォーカス・回転追従・視点・画角を初期状態(config.initial)へ戻す。
+  // 姿勢追従中にリセットすると、既定の視点は追従基準に対して置かれる(= 対象の後方見下ろしへ戻る)。
+  resetToInitial(): void {
+    const init = this.config.initial;
+    this._focus = init.focus;
+    this.missingFocusFrames = 0;
+    this.applyInitialFollow(init.follow);
+    const offset = sphericalOffset(init.yaw, init.pitch, init.dist);
+    this.offset_r = frameDir(offset.x, offset.y, offset.z);
+    this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
+    this.rotationQ = this.rotationFromBasis(offset, WORLD_UP);
+    this.euler = this.eulerFromRotation(this.rotationQ);
+    this.fovDeg = this.clampFov(init.fovDeg);
+    this.resetPan();
+  }
+
+  // 初期の回転追従を、選択肢の検査を通さず適用する。対象が未解決でも選択は保持され、
+  // 成立可否は update の猶予検査に委ねられる。姿勢追従中に姿勢追従を再適用したときは
+  // 基準の姿勢を保つ(rotationQ を相対値として解釈し続けるため)。
+  private applyInitialFollow(follow: CameraRotationFollow | null): void {
+    const keepAttitude = follow?.kind === 'attitude' && this._attitudeFollow ? this.lastAttitudeQ : null;
+    this.staleFollowFrames = 0;
+    this.lastAttitudeQ = keepAttitude;
+    if (follow?.kind === 'attitude') {
+      this._cameraFrame = this.celestialSystem.frames.inertialFrame;
+      this._attitudeFollow = true;
+      return;
+    }
+    this._attitudeFollow = false;
+    this._cameraFrame = this.celestialSystem.frames.frameOf(this.celestialSystem.origin.id, follow ?? null);
   }
 
   // 姿勢追従を解き、rotationQ を絶対の向きへ読み替える(掛かっていなければ何もしない)。
