@@ -46,6 +46,10 @@ export type SeparationParamId = keyof typeof SEPARATION_PARAMS;
 const INFILL_ITERATIONS = 12;
 const BOUND_ITERATIONS = 8;
 
+// 相関の計測に使う縮んだ写しの大きさ。1 texel ≈ 78 km で、見たい帯(百〜数百 km)が残る。
+const METRIC_W = 512;
+const METRIC_H = 256;
+
 export type SeparationView =
   | 'photo' | 'selection' | 'veil' | 'coverage' | 'cloudTop' | 'translucent' | 'recomposed';
 export const SEPARATION_VIEWS: readonly (readonly [SeparationView, string])[] = [
@@ -74,6 +78,10 @@ export class SeparationPipeline {
   private readonly thick: THREE.RenderTarget;
   private readonly top: THREE.RenderTarget;
   private readonly captureTarget: THREE.RenderTarget;
+  // 相関の計測用に veil と thick を縮めて並べる写しと、それを焼くパス。読み出しを軽くするため
+  // 8bit で持つ(相関の材料には足りる)。
+  private readonly metricTarget: THREE.RenderTarget;
+  private readonly metricPass: THREE.MeshBasicNodeMaterial;
 
   private readonly passes: readonly { material: THREE.MeshBasicNodeMaterial; target: THREE.RenderTarget }[];
   private readonly displays = new Map<SeparationView, THREE.MeshBasicNodeMaterial>();
@@ -99,8 +107,36 @@ export class SeparationPipeline {
     this.captureTarget = new THREE.RenderTarget(width, height, {
       format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false, samples: 0,
     });
+    this.metricTarget = new THREE.RenderTarget(METRIC_W, METRIC_H, {
+      format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false, samples: 0,
+    });
+    this.metricTarget.textures[0]!.name = 'metric';
+    this.metricPass = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
+    this.metricPass.mrtNode = mrt({
+      metric: vec4(
+        texture(this.veil.textures[0]!, screenUV).r, texture(this.thick.textures[0]!, screenUV).r, 0, 1),
+    });
     this.passes = this.buildPasses();
     for (const [view] of SEPARATION_VIEWS) this.displays.set(view, this.displayMaterial(view));
+  }
+
+  // veil と thick の縮んだ写し(相関の計測の材料)。run() のあとに呼ぶ。
+  public async readComponents(): Promise<{
+    width: number; height: number; veil: Float32Array; thick: Float32Array;
+  }> {
+    this.quad.material = this.metricPass;
+    this.renderer.setRenderTarget(this.metricTarget);
+    this.quad.render(this.renderer);
+    this.renderer.setRenderTarget(null);
+    const pixels = new Uint8Array((await this.renderer.readRenderTargetPixelsAsync(
+      this.metricTarget, 0, 0, METRIC_W, METRIC_H)).buffer);
+    const veil = new Float32Array(METRIC_W * METRIC_H);
+    const thick = new Float32Array(METRIC_W * METRIC_H);
+    for (let i = 0; i < veil.length; i++) {
+      veil[i] = pixels[i * 4]! / 255;
+      thick[i] = pixels[i * 4 + 1]! / 255;
+    }
+    return { width: METRIC_W, height: METRIC_H, veil, thick };
   }
 
   public setParam(id: SeparationParamId, value: number): void {
