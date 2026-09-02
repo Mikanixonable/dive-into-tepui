@@ -112,7 +112,7 @@ export class EllipseLine {
     }
 
     // EllipseLine の頂点はECI相対、シーンもECI基準なので、回転クォータニオンは恒等にする。
-    // 回転座標系はMapCameraの視点・姿勢で表現する。ここへ現在時刻のフレーム回転を掛けると、
+    // 回転座標系はFocusCameraの視点・姿勢で表現する。ここへ現在時刻のフレーム回転を掛けると、
     // 焼いた軌道形状だけが回転し続け、船の現在位置から外れていく。
     this.curve.setTransform(fo.RtoThreeV3(el.centerState.r));
 

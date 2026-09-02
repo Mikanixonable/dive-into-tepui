@@ -40,6 +40,7 @@ export class CombatView implements WorldViewFrame {
     this.mapPickables.clear();
   }
 
+  // 天体ラベルはマップ専用の表示なので、戦闘ビューの間は畳んでおく。
   syncLabels(): void {
     this.celestialMarkers.hideLabels();
   }

@@ -13,44 +13,44 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import { Quat, qFromAxisAngle, qFromForwardUp, qInvert, qMul, qNormalize, qRotate } from '../../physics/attitude';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { FocusTarget, focusTargetId, resolveFocusTarget, type FocusCandidate } from './focus-target';
-import { CameraRotationFollowSaveData, FrameRotationSourceSaveData, MapCameraSaveData } from '../save/save-data';
+import { CameraRotationFollowSaveData, FrameRotationSourceSaveData, FocusCameraSaveData } from '../save/save-data';
 
 // 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
 // 視界に収められる引きの上限。
-export const OVERVIEW_CAMERA_MIN_DIST = 1e3; // 広範囲視点カメラの注視点までの距離 [m]
-export const OVERVIEW_CAMERA_FOV_MIN = 15; // 広範囲視点の最小垂直画角 [deg]
-export const OVERVIEW_CAMERA_FOV_MAX = 120; // 広範囲視点の最大垂直画角 [deg]
-const OVERVIEW_CAMERA_MAX_DIST = 1e14;
+export const FOCUS_CAMERA_MIN_DIST = 1e3; // 天体フォーカス時の注視距離の下限 [m]
+export const FOCUS_CAMERA_FOV_MIN = 15; // 最小垂直画角 [deg]
+export const FOCUS_CAMERA_FOV_MAX = 120; // 最大垂直画角 [deg]
+const FOCUS_CAMERA_MAX_DIST = 1e14;
 
-// 広範囲視点の near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
-// (near = dist / OVERVIEW_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
+// near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
+// (near = dist / FOCUS_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
 // 手前がクリップされにくくなる。反転 32bit 深度では分解能が near に依らないので、
 // この比が深度精度と取引になることはない。
-const OVERVIEW_CAMERA_NEAR_RATIO = 1000;
+const FOCUS_CAMERA_NEAR_RATIO = 1000;
 
-// near = dist / OVERVIEW_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
+// near = dist / FOCUS_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
 // 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
 // near クリップは光軸からの角度 θ に対して球殻上の点を R·cosθ まで切り詰めるので、
 // R そのものでなく画面対角の半視野角 θ_diag での R·cosθ_diag を上限に取らないと、
-// 画面中心だけ残して周辺・四隅の星が消える(MapCamera.near 参照)。
+// 画面中心だけ残して周辺・四隅の星が消える(FocusCamera.near 参照)。
 // 1 未満のこの係数はその余弦にさらに掛ける安全マージン。
-const OVERVIEW_CAMERA_NEAR_SHELL_MARGIN = 0.9;
+const FOCUS_CAMERA_NEAR_SHELL_MARGIN = 0.9;
 
-// 広範囲視点の far も near と同様に固定値ではなく dist に連動させる
-// (far = clamp(dist × OVERVIEW_CAMERA_FAR_RATIO, OVERVIEW_CAMERA_FAR_MIN, OVERVIEW_CAMERA_FAR_MAX))。
+// far も near と同様に固定値ではなく dist に連動させる
+// (far = clamp(dist × FOCUS_CAMERA_FAR_RATIO, FOCUS_CAMERA_FAR_MIN, FOCUS_CAMERA_FAR_MAX))。
 // far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
 // far 平面の外に出て消える。逆に近距離域で far を大きく取ることの費用は、反転 32bit 深度では
 // 事実上ゼロ。
-const OVERVIEW_CAMERA_FAR_RATIO = 100;
+const FOCUS_CAMERA_FAR_RATIO = 100;
 
 // 艦至近(dist = ENTITY_MIN_DIST)まで寄っても、見かけ直径が残る最遠の天体
 // (直径 1.4e9 m の恒星を LOD 上限で見た 1.4e12 m)が far の外に出ないための下限。
-const OVERVIEW_CAMERA_FAR_MIN = 2e12;
+const FOCUS_CAMERA_FAR_MIN = 2e12;
 
-// OVERVIEW_CAMERA_MAX_DIST × OVERVIEW_CAMERA_FAR_RATIO と等しい値。これより小さいと
+// FOCUS_CAMERA_MAX_DIST × FOCUS_CAMERA_FAR_RATIO と等しい値。これより小さいと
 // 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
 // 注視点より奥にある軌道線・天体が far 平面でクリップされる。
-const OVERVIEW_CAMERA_FAR_MAX = 1e16;
+const FOCUS_CAMERA_FAR_MAX = 1e16;
 
 // ホイール1目盛りのズーム率。exp(wheel × この値) を注視距離に掛ける(両ビュー共通)。
 const WHEEL_ZOOM_RATE = 0.0015;
@@ -92,9 +92,9 @@ export interface FocusCameraConfig {
 }
 
 // マップビュー用の初期状態(地球を見下ろす従来の既定)。
-export function defaultMapCameraInitial(celestialSystem: CelestialSystem): FocusCameraInitial {
+export function defaultMapViewInitial(celestialSystem: CelestialSystem): FocusCameraInitial {
   return {
-    yaw: 0.7, pitch: 0.45, dist: 4.5e7, fovDeg: OVERVIEW_CAMERA_FOV,
+    yaw: 0.7, pitch: 0.45, dist: 4.5e7, fovDeg: FOCUS_CAMERA_FOV,
     focus: { kind: 'object', id: celestialSystem.origin.id },
     follow: null,
   };
@@ -115,7 +115,7 @@ function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | string
 }
 
 const WORLD_UP = v3(0, 1, 0);
-const OVERVIEW_CAMERA_FOV = 50;
+const FOCUS_CAMERA_FOV = 50;
 const FRAME_FORWARD = v3(0, 0, 1);
 const FRAME_UP = v3(0, 1, 0);
 const FRAME_RIGHT = v3(1, 0, 0);
@@ -142,11 +142,11 @@ function frameDirVector(value: FrameDir): Vec3 {
   return v3(value.x, value.y, value.z);
 }
 
-export class MapCamera {
-  // 軌道計画モード用の地球中心カメラ(モルニヤ級軌道全体が収まる遠方まで)
+export class FocusCamera {
+  // 透視/平行の THREE カメラ実体。どちらを描画に使うかは projectionMode で決まる。
   private readonly perspectiveCamera: THREE.PerspectiveCamera;
   private readonly orthographicCamera: THREE.OrthographicCamera;
-  private fovDeg = OVERVIEW_CAMERA_FOV;
+  private fovDeg = FOCUS_CAMERA_FOV;
   private rotationMode: CameraRotationMode;
   private projectionMode: ProjectionMode;
   private orthographicHalfHeight = 1;
@@ -202,7 +202,7 @@ export class MapCamera {
     position: v3(),
     lookTarget: v3(),
     up: WORLD_UP,
-    fovDeg: OVERVIEW_CAMERA_FOV,
+    fovDeg: FOCUS_CAMERA_FOV,
     aspect: window.innerWidth / window.innerHeight,
     projection: 'perspective',
   };
@@ -214,7 +214,7 @@ export class MapCamera {
     private readonly _hud: Hud,
     private readonly celestialSystem: CelestialSystem,
     private readonly config: FocusCameraConfig,
-    saved?: MapCameraSaveData,
+    saved?: FocusCameraSaveData,
   ) {
     this.rotationMode = saved?.rotationMode ?? 'euler';
     this.projectionMode = saved?.projectionMode === 'orthographic' ? 'orthographic' : 'perspective';
@@ -255,8 +255,8 @@ export class MapCamera {
     const defaultHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
     const savedHalfHeight = saved?.orthographicHalfHeight;
     const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight) ? savedHalfHeight : defaultHalfHeight;
-    this.orthographicHalfHeight = Math.max(OVERVIEW_CAMERA_MIN_DIST * 1e-6,
-      Math.min(OVERVIEW_CAMERA_MAX_DIST, halfHeight));
+    this.orthographicHalfHeight = Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6,
+      Math.min(FOCUS_CAMERA_MAX_DIST, halfHeight));
     this.perspectiveCamera = new THREE.PerspectiveCamera(
       this.fovDeg,
       window.innerWidth / window.innerHeight,
@@ -271,8 +271,8 @@ export class MapCamera {
   }
 
   private clampFov(fovDeg: number): number {
-    return Math.max(OVERVIEW_CAMERA_FOV_MIN, Math.min(OVERVIEW_CAMERA_FOV_MAX,
-      Number.isFinite(fovDeg) ? fovDeg : OVERVIEW_CAMERA_FOV));
+    return Math.max(FOCUS_CAMERA_FOV_MIN, Math.min(FOCUS_CAMERA_FOV_MAX,
+      Number.isFinite(fovDeg) ? fovDeg : FOCUS_CAMERA_FOV));
   }
 
   private rotationFromBasis(offset: Vec3, up: Vec3): Quat {
@@ -398,7 +398,7 @@ export class MapCamera {
   }
 
   public resetFov(): void {
-    this.setFovDeg(OVERVIEW_CAMERA_FOV);
+    this.setFovDeg(FOCUS_CAMERA_FOV);
   }
 
   public setProjectionMode(mode: ProjectionMode): void {
@@ -413,7 +413,7 @@ export class MapCamera {
 
   private setDistance(distance: number): void {
     const current = this.dist;
-    const next = Math.max(this.minDist, Math.min(OVERVIEW_CAMERA_MAX_DIST, distance));
+    const next = Math.max(this.minDist, Math.min(FOCUS_CAMERA_MAX_DIST, distance));
     if (!(current > 0) || next === current) return;
     this.offset_r = frameDir(
       this.offset_r.x * next / current,
@@ -460,7 +460,7 @@ export class MapCamera {
   }
 
   // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
-  // 注視点を切り落とさない(OVERVIEW_CAMERA_NEAR_RATIO 参照)。
+  // 注視点を切り落とさない(FOCUS_CAMERA_NEAR_RATIO 参照)。
   // near クリップは光軸からの角度 θ の点を R·cosθ で切り詰める平面なので、画面対角の
   // 半視野角(fov・aspect から求まる)での R·cosθ_diag を超えないようクランプし、
   // 星球シェル・天球グリッドの周辺・四隅がクリップされないようにする。
@@ -468,14 +468,14 @@ export class MapCamera {
     const halfV = THREE.MathUtils.degToRad(this.fov * 0.5);
     const halfH = Math.atan(Math.tan(halfV) * window.innerWidth / window.innerHeight);
     const halfDiag = Math.atan(Math.hypot(Math.tan(halfV), Math.tan(halfH)));
-    const nearMax = CELESTIAL_SHELL_RADIUS * Math.cos(halfDiag) * OVERVIEW_CAMERA_NEAR_SHELL_MARGIN;
-    return Math.min(nearMax, this.dist / OVERVIEW_CAMERA_NEAR_RATIO);
+    const nearMax = CELESTIAL_SHELL_RADIUS * Math.cos(halfDiag) * FOCUS_CAMERA_NEAR_SHELL_MARGIN;
+    return Math.min(nearMax, this.dist / FOCUS_CAMERA_NEAR_RATIO);
   }
 
   // CameraSystem.sync が読む遠クリップ距離。dist に比例させることで、引いたカメラでも
-  // 太陽・木星のような遠方天体が far の外に出て消えない(OVERVIEW_CAMERA_FAR_RATIO 参照)。
+  // 太陽・木星のような遠方天体が far の外に出て消えない(FOCUS_CAMERA_FAR_RATIO 参照)。
   get far(): number {
-    return Math.min(OVERVIEW_CAMERA_FAR_MAX, Math.max(OVERVIEW_CAMERA_FAR_MIN, this.dist * OVERVIEW_CAMERA_FAR_RATIO));
+    return Math.min(FOCUS_CAMERA_FAR_MAX, Math.max(FOCUS_CAMERA_FAR_MIN, this.dist * FOCUS_CAMERA_FAR_RATIO));
   }
 
   // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
@@ -483,7 +483,7 @@ export class MapCamera {
   private get minDist(): number {
     const body = this._focus.kind === 'object' ? this.celestialSystem.find(this._focus.id) : null;
     if (body === null) return ENTITY_MIN_DIST;
-    return Math.max(OVERVIEW_CAMERA_MIN_DIST, body.def.radius);
+    return Math.max(FOCUS_CAMERA_MIN_DIST, body.def.radius);
   }
 
   // ロールを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻し、パンでフォーカスから
@@ -737,10 +737,10 @@ export class MapCamera {
     const zoomFactor = Math.exp(mouse.wheel * WHEEL_ZOOM_RATE);
     const dist = this.projectionMode === 'orthographic'
       ? this.dist
-      : Math.max(this.minDist, Math.min(OVERVIEW_CAMERA_MAX_DIST, this.dist * zoomFactor));
+      : Math.max(this.minDist, Math.min(FOCUS_CAMERA_MAX_DIST, this.dist * zoomFactor));
     if (this.projectionMode === 'orthographic' && mouse.wheel !== 0) {
-      this.orthographicHalfHeight = Math.max(OVERVIEW_CAMERA_MIN_DIST * 1e-6,
-        Math.min(OVERVIEW_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
+      this.orthographicHalfHeight = Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6,
+        Math.min(FOCUS_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
     }
     upEci = norm(addScaled(upEci, offEci, -dot(upEci, offEci) / dot(offEci, offEci)));
     const yaw = mouse.dx * 0.005 - keyYawRad;
@@ -815,8 +815,8 @@ export class MapCamera {
   }
 
   // offset_r/pan_r/up_r・視点の座標系・フォーカス対象をセーブデータへ書き出す。
-  serialize(): MapCameraSaveData {
-    const focus: MapCameraSaveData['focus'] = this._focus.kind === 'object'
+  serialize(): FocusCameraSaveData {
+    const focus: FocusCameraSaveData['focus'] = this._focus.kind === 'object'
       ? { kind: 'object', id: this._focus.id }
       : {
         kind: 'point',

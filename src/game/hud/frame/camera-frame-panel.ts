@@ -1,7 +1,7 @@
 // マップモードの「カメラ」パネル。カメラの注視対象・回転追従・平行/透視投影・画角・基準面設定を担当する。
 import { frameRoleOf } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import { CameraReferencePlane, CameraReferenceView, MapCamera, OVERVIEW_CAMERA_FOV_MIN, OVERVIEW_CAMERA_FOV_MAX } from '../../camera/map-camera';
+import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX } from '../../camera/focus-camera';
 import { focusTargetId } from '../../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
@@ -11,7 +11,7 @@ import type { MapPickable } from '../../pickable/map-pickable';
 import type { OverlayManager } from '../overlay-manager';
 import { buildPanel } from './frame-controls';
 
-const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
+const FOCUS_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
 
 const ANGLE_COLUMNS = [
   { description: '面', items: [['ecliptic', '黄道面'], ['equator', '赤道面'], ['moonOrbit', '月軌道面']] },
@@ -37,7 +37,7 @@ export class CameraFramePanel {
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly celestialSystem: CelestialSystem,
-    private readonly mapCamera: MapCamera,
+    private readonly mapCamera: FocusCamera,
     overlayManager: OverlayManager,
   ) {
     this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
@@ -69,16 +69,16 @@ export class CameraFramePanel {
     fovLabel.textContent = '画角';
     fovGroup.appendChild(fovLabel);
     this.fovSlider = new Slider({
-      min: OVERVIEW_CAMERA_FOV_MIN,
-      max: OVERVIEW_CAMERA_FOV_MAX,
-      step: OVERVIEW_CAMERA_FOV_STEP,
+      min: FOCUS_CAMERA_FOV_MIN,
+      max: FOCUS_CAMERA_FOV_MAX,
+      step: FOCUS_CAMERA_FOV_STEP,
     }, (value) => mapCamera.setFovDeg(value));
     fovGroup.appendChild(this.fovSlider.element);
     this.fovInput = new ValueInput({
       type: 'number',
-      min: OVERVIEW_CAMERA_FOV_MIN,
-      max: OVERVIEW_CAMERA_FOV_MAX,
-      step: OVERVIEW_CAMERA_FOV_STEP,
+      min: FOCUS_CAMERA_FOV_MIN,
+      max: FOCUS_CAMERA_FOV_MAX,
+      step: FOCUS_CAMERA_FOV_STEP,
     }, (text) => mapCamera.setFovDeg(Number(text)));
     fovGroup.appendChild(this.fovInput.element);
     const fovUnit = document.createElement('span');

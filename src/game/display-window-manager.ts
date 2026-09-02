@@ -140,7 +140,7 @@ export class DisplayWindowManager {
     };
   }
 
-  // 未来の軌道・マーカーを描く座標系。カメラが固定される座標系(MapCamera.cameraFrame)
+  // 未来の軌道・マーカーを描く座標系。カメラが固定される座標系(FocusCamera.cameraFrame)
   // とは独立にプレイヤーが選ぶ。
   get frame(): ReferenceFrame {
     return this._frame;

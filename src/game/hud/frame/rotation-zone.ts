@@ -7,7 +7,7 @@ import { frameRoleName } from './frame-labels';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import type { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import { rotationFollowKey, type CameraRotationFollow } from '../../camera/map-camera';
+import { rotationFollowKey, type CameraRotationFollow } from '../../camera/focus-camera';
 
 export class RotationZone {
   public readonly element: HTMLElement;

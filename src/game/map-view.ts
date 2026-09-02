@@ -53,6 +53,7 @@ export class MapView implements WorldViewFrame {
     this.mapPickables.refresh(displayWindow);
   }
 
+  // 天体ラベルの間引きと表示。この後のマーカー同期が近接判定に読む。
   syncLabels(): void {
     this.celestialMarkers.syncLabels(this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos);
   }

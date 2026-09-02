@@ -6,7 +6,7 @@ import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import { MapCamera } from '../../camera/map-camera';
+import { FocusCamera } from '../../camera/focus-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
 import type { MapPickable } from '../../pickable/map-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
@@ -40,7 +40,7 @@ export class FrameControls {
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly celestialSystem: CelestialSystem,
-    private readonly mapCamera: MapCamera,
+    private readonly mapCamera: FocusCamera,
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,

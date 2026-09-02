@@ -296,7 +296,7 @@ export interface SlotExport {
 }
 
 // 統合前の戦闘視点カメラの保存形。読み込み時は捨てられ、既定視点で復元される。
-export interface ChaseCameraSaveData {
+export interface LegacyChaseSaveData {
   rot: QuatSaveData;
   dist: number;
   pan: Vec3SaveData;
@@ -313,14 +313,14 @@ export interface FrameRotationSourceSaveData {
 // フォーカスから決まる)。
 export type CameraRotationFollowSaveData = FrameRotationSourceSaveData | { kind: 'attitude' };
 
-// MapCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
+// FocusCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
 // (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は
 // 旧セーブでは文字列(公転対象の id)または null だったので、読み込み側がその形も受け付ける。
 type FocusTargetSaveData =
   | { kind: 'object'; id: string }
   | { kind: 'point'; center: string; rotatingWith: FrameRotationSourceSaveData | string | null; point: Vec3SaveData };
 
-export interface MapCameraSaveData {
+export interface FocusCameraSaveData {
   offset: Vec3SaveData;
   pan: Vec3SaveData;
   up: Vec3SaveData;
@@ -338,9 +338,9 @@ export interface MapCameraSaveData {
 
 export interface CameraSaveData {
   view: 'combat' | 'map';
-  // 戦闘ビューの視点。旧セーブは ChaseCameraSaveData 形で、その場合は読み捨てられる。
-  chase: MapCameraSaveData | ChaseCameraSaveData;
-  overview: MapCameraSaveData;
+  // 戦闘ビューの視点。旧セーブは LegacyChaseSaveData 形で、その場合は読み捨てられる。
+  chase: FocusCameraSaveData | LegacyChaseSaveData;
+  overview: FocusCameraSaveData;
 }
 
 interface NavTargetSaveData {

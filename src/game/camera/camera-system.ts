@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
 import { Hud } from '../hud/hud';
 import { GunsightCamera } from './gunsight-camera';
-import { defaultMapCameraInitial, MapCamera, OVERVIEW_CAMERA_MIN_DIST } from './map-camera';
+import { defaultMapViewInitial, FocusCamera, FOCUS_CAMERA_MIN_DIST } from './focus-camera';
 import type { FocusTarget } from './focus-target';
 import { Player } from '../player/player';
-import { frameRoleAnchorId } from '../hud/frame/frame-labels';
+import { frameRoleAnchorId } from '../../physics/frame';
 import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { catalogFamilyIndex } from '../celestial/orbit-guide/orbit-guide-catalog';
 import { applyMapDisplayMode, MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, normalizeMapDisplayToggles } from '../map/display-toggles';
@@ -74,7 +74,7 @@ export type ProjectFn = (worldPos: Vec3) => Projected;
 export type ScaleFn = (worldPos: Vec3) => number;
 
 // 論理カメラの状態(Viewpoint)を THREE カメラへ反映する。near/far はサブカメラ自身の
-// near/far getter(固定値、または MapCamera のように dist に比例する値)から毎フレーム渡される。
+// near/far getter(固定値、または FocusCamera のように dist に比例する値)から毎フレーム渡される。
 function syncCameraToViewpoint(camera: THREE.Camera, view: Viewpoint, near: number, far: number, fo: FloatingOrigin): void {
   camera.position.copy(fo.RtoThreeV3(view.position));
   camera.up.set(view.up.x, view.up.y, view.up.z);
@@ -99,7 +99,7 @@ function syncCameraToViewpoint(camera: THREE.Camera, view: Viewpoint, near: numb
       projectionDirty = true;
     }
   } else if (camera instanceof THREE.OrthographicCamera) {
-    const halfHeight = Math.max(OVERVIEW_CAMERA_MIN_DIST * 1e-6, view.orthographicHalfHeight ?? 1);
+    const halfHeight = Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6, view.orthographicHalfHeight ?? 1);
     const halfWidth = halfHeight * view.aspect;
     if (Math.abs(camera.left + halfWidth) > halfWidth * 1e-6
       || Math.abs(camera.right - halfWidth) > halfWidth * 1e-6
@@ -143,11 +143,11 @@ function radialScaleFromViewpoint(view: Viewpoint): ScaleFn {
   return (worldPos) => metersPerPixelAtDistance(view, len(sub(worldPos, view.position)), window.innerHeight);
 }
 
-// 同じ注視カメラ(MapCamera)の戦闘用・マップ用の2インスタンスを、ビューに応じて切り替えて
+// 同じ注視カメラ(FocusCamera)の戦闘用・マップ用の2インスタンスを、ビューに応じて切り替えて
 // 駆動する。戦闘ビューではガンサイトズーム([Z])と画角遷移をその上に重ねる。
 export class CameraSystem {
-  readonly combatCamera: MapCamera;
-  readonly mapCamera: MapCamera;
+  readonly combatCamera: FocusCamera;
+  readonly mapCamera: FocusCamera;
   private readonly gunsightCamera = new GunsightCamera();
   private _zoomActive = false;
   // 戦闘ビューの表示視点。軌道視点とガンサイトの間で fovDeg だけを指数的に遷移させた後の値。
@@ -172,10 +172,10 @@ export class CameraSystem {
   private _bodyClassToggles: MapDisplayToggles = loadBodyClassToggles();
   get mapDisplayToggles(): MapDisplayToggles { return this._bodyClassToggles; }
 
-  private readonly chaseResetBtn: HTMLElement | null;
+  private readonly viewResetBtn: HTMLElement | null;
 
-  // 追従リセットボタン押下で、現在のビューに応じたカメラをリセットする。
-  private readonly handleChaseReset = (e: PointerEvent): void => {
+  // 視点リセットボタン押下で、現在のビューに応じたカメラをリセットする。
+  private readonly handleViewReset = (e: PointerEvent): void => {
     e.stopPropagation();
     this.resetActiveCamera();
   };
@@ -202,10 +202,10 @@ export class CameraSystem {
     attitudeOf: (id: string, t: number) => Quat | null,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
-    // 旧形式(ChaseCameraSaveData)の戦闘視点は読み捨て、既定視点で組む。
+    // 旧形式(LegacyChaseSaveData)の戦闘視点は読み捨て、既定視点で組む。
     const savedChase = saved?.chase;
     const combatSaved = savedChase !== undefined && !('rot' in savedChase) ? savedChase : undefined;
-    this.combatCamera = new MapCamera(hud, celestialSystem, {
+    this.combatCamera = new FocusCamera(hud, celestialSystem, {
       focusLossPolicy: 'hold',
       initial: {
         yaw: COMBAT_CAMERA_INIT_YAW,
@@ -217,9 +217,9 @@ export class CameraSystem {
       },
       attitudeOf,
     }, combatSaved);
-    this.mapCamera = new MapCamera(
+    this.mapCamera = new FocusCamera(
       hud, celestialSystem,
-      { focusLossPolicy: 'fallToOrigin', initial: defaultMapCameraInitial(celestialSystem), attitudeOf },
+      { focusLossPolicy: 'fallToOrigin', initial: defaultMapViewInitial(celestialSystem), attitudeOf },
       saved?.overview,
     );
     // 表示パネルと天体クラス側操作のコールバック
@@ -231,13 +231,13 @@ export class CameraSystem {
     };
     this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
 
-    this.chaseResetBtn = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
-    this.chaseResetBtn?.addEventListener('pointerdown', this.handleChaseReset);
+    this.viewResetBtn = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
+    this.viewResetBtn?.addEventListener('pointerdown', this.handleViewReset);
   }
 
   // 表示パネルを取り除き、追従リセットボタンへの配線を解く。
   dispose(): void {
-    this.chaseResetBtn?.removeEventListener('pointerdown', this.handleChaseReset);
+    this.viewResetBtn?.removeEventListener('pointerdown', this.handleViewReset);
     this.viewOptionsPanel.dispose();
   }
 
