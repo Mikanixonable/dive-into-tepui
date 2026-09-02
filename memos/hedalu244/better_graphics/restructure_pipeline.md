@@ -76,47 +76,14 @@ G パスとマテリアルパスの両方で走り、さらに「両パスで同
 
 ## 手順
 
-### 手順 4. マテリアルパスを板ポリ合成へ置き換える
+## 実測
 
-**目的**: マテリアルパスの全メッシュ再描画を「星野 + 全画面板ポリ 1 枚」へ置き換える。
-板ポリは現行のライティングモデル(`material-pass.ts:43-55`)と**同一の式**を G バッファの
-素材で組む — 拡散照度 × BRDF_Lambert(ベース色 × (1−金属度)) + 鏡面照度 ×
-mix(0.04, ベース色, 金属度) + 自己発光。深度は `depthNode` で G バッファ深度を複製し
-(depthTest false / depthWrite true / NoBlending — 合成パスの
-`buildCompositeMaterial`(`render-pipeline.ts:245-250`)と同じ作法)、深度がクリア値 0
-(反転 Z の far)の画素は discard して先に描いた星野を残す。
-手順 3 で MSAA が消えているので、**この commit の前後で絵は画素単位でほぼ一致するはず** —
-それをそのまま検証に使う。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-|---|---|
-| `src/render/pipeline/material-pass.ts` | 書き換え。MaterialPassLightingModel・`upgrade`/`scene.traverse`・`toStandardNodeMaterial` 依存(:19, :59-89)を削除。render は (1) 背景レイヤーのみの `renderer.render`(クリア込み)→ (2) 板ポリ、の 2 発行(beginPass は両方 GPU_PASS.material — 複数回ぶんは計測側が合算する)。コンストラクタへ GBufferPass を足す |
-| `src/render/pipeline/render-pipeline.ts` | :131 MaterialPass の構築へ `this.gbuffer` を渡す |
-| `src/render/pipeline/lit-layer.ts` | :20-23 `setOpaquePassLayers` を背景レイヤーのみに直す(か material-pass 内へ畳んで削除)。冒頭コメントの「マテリアルパスが見るチャンネル」の記述を追随 |
-
-`standard-node-material.ts` は残す(`thermal-emissive.ts:87` が独立に使う)。
-
-**達成条件と検証**
-- `npm run typecheck`・`npm run test:render`。
-- 前後比較: ヘッドレス本番ビルド(creative ステージ)の地球矩形平均輝度が手順 3 時点比 ±数 %
-  (実行ごと ±200 LSB 級で揺れるため画素差ではなく平均で)。
-- `npm run render-lab`(対話)目視: 星空が写る・基地の窓明かりが残る・金属の艦体の
-  ハイライトが変わらない・デバッグ表示「マテリアル」が従来どおり最終陰影を映す。
-- 実機: 噴射炎・ビルボードが自艦の手前/奥で正しく隠れる(深度複製の検証)。
-- F3: 「マテリアル」が構図のメッシュ数に依らずほぼ一定になる。「G バッファ」+「マテリアル」の
-  合計が手順 3 時点から +0.2 ms 以内。
-
-## 見積り
-
-GPU(1080p ≈ 2.07 Mpx、帯域 200 GB/s 級を仮定。数字は各手順の F3 実測で置き換える):
-
-| 手順 | 導出 | 増分 |
-|---|---|---|
-| 4 | 板ポリ ≈ 2.07 Mpx × (読 34 B + 書 12 B) ≈ 95 MB/frame ≈ 0.5 ms を上限に足し、全メッシュ再ラスタライズ(現況 F3「マテリアル」の大半)を引く | ほぼ相殺〜減 |
-
-手順 2〜3 の間だけ、素材の書き込みと従来のメッシュ描画が併走して一時的に重い(恒久化しない)。
+**手順 4 の実測**(同上):「マテリアル」が earth 0.502→0.168 ms・ship-cluster 0.272→0.130 ms・
+ship-crowd 0.442→0.139 ms で、構図のメッシュ数に依らずほぼ一定になった。「G バッファ」+
+「マテリアル」の合計は再構成前(手順 2 以前)の earth 1.198 / ship-cluster 0.446 /
+ship-crowd 0.711 ms に対して 0.768 / 0.319 / 0.401 ms。CPU 側の render も ship-crowd で
+13.8→11.8 ms。絵は render-lab の全ケースで平均輝度が ±0.11 % 以内、画素差はほぼ全て 0〜1 LSB
+(ベース色 8bit の量子化)で、8 LSB を超えるのはケースあたり 20 画素未満の z ファイト境界のみ。
 
 **手順 3 の実測**(同上):「マテリアル」が earth −0.234 ms・ship-cluster −0.069 ms・
 ship-crowd −0.085 ms。「ワールド」は変わらず(±0.001 ms)。絵の差は縁だけで、画素が変わったのは
