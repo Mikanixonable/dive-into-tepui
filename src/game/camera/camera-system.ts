@@ -15,6 +15,7 @@ import {
 } from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { CelestialSystem } from '../celestial/celestial-system';
+import type { WorldView } from '../view-manager';
 import { CameraSaveData } from '../save/save-data';
 
 const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.mapDisplayToggles';
@@ -129,17 +130,14 @@ export class CameraSystem {
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。天球グリッド・
   // 軌道ガイド側の配線は Navball が行う。
   readonly viewOptionsPanel: ViewOptionsPanel;
-  // 広範囲視点に切り替わっているか(視点・描画側の判定に使う)。
-  private _overviewMode = false;
-  get overviewMode(): boolean { return this._overviewMode; }
+  // 広範囲視点に切り替わっているか。ビューの正本(ViewManager)から毎回読む。
+  get overviewMode(): boolean { return this.view() === 'map'; }
 
   // クラスごとの天体表示トグル。マップのラベル・軌道物体一覧・配置UIの基準天体が
   // この1つの状態を共有する(map/visibility-policy.ts へ渡す)。フォーカスと
   // 太陽系パネルを既に所有しているこのクラスが、同じ場所で持つ。
   private _bodyClassToggles: MapDisplayToggles = loadBodyClassToggles();
   get mapDisplayToggles(): MapDisplayToggles { return this._bodyClassToggles; }
-
-  setMapMode(open: boolean): void { this._overviewMode = open; }
 
   private readonly chaseResetBtn: HTMLElement | null;
 
@@ -154,10 +152,12 @@ export class CameraSystem {
   };
 
   // 両カメラを構築し、常用ショートリストパネルの選択操作を配線する。
-  // saved があれば両カメラをその視点から組む。
+  // saved があれば両カメラをその視点から組む。view はビューの正本を引く関数 —
+  // ViewManager より先に生成されるため、参照でなく遅延評価で受ける。
   constructor(
     _hud: Hud,
     celestialSystem: CelestialSystem,
+    private readonly view: () => WorldView,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {
     this.combatCamera = new CombatCameraSystem(_hud, saved?.chase);
