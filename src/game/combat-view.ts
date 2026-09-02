@@ -7,8 +7,6 @@ import type { SimSpeedManager } from './dynamic/sim-speed-manager';
 import type { TouchControls } from './input/touch';
 import type { CameraSystem } from './camera/camera-system';
 import type { DynamicSystem } from './dynamic/dynamic-system';
-import type { MapPickables } from './pickable/map-pickables';
-import type { LinePickables } from './pickable/line-pickables';
 import type { MapContextActions } from './pickable/map-context-actions';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import type { Targeter } from './targeter';
@@ -28,8 +26,6 @@ export class CombatView implements WorldViewFrame {
     private readonly targeter: Targeter,
     private readonly mapActions: MapContextActions,
     private readonly dynamicSystem: DynamicSystem,
-    private readonly mapPickables: MapPickables,
-    private readonly linePickables: LinePickables,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly touchControls: TouchControls | null,
     private readonly activePlayers: ActiveControllableController,
@@ -81,10 +77,8 @@ export class CombatView implements WorldViewFrame {
     this.mapActions.handleCombatRightClick(this.input, simTime);
   }
 
-  // マップの選択候補と可視性ポリシーを空にし(戦闘ビューの表示・選択は null 経路で判定する)、
   // 直近ノードの消化・接近通知を進める。
   update(displayWindow: DisplayWindow): void {
-    this.mapPickables.clear();
     this.guide.update(
       this.activePlayers.current, displayWindow.simTime, this.celestialSystem.celestialMotions,
     );
@@ -95,10 +89,8 @@ export class CombatView implements WorldViewFrame {
     this.celestialMarkers.hideLabels();
   }
 
-  // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド・ドッキングガイド)と、
-  // 軌道線候補の後始末。
+  // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド・ドッキングガイド)。
   syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
-    this.linePickables.clear();
     const player = this.activePlayers.current;
     if (player) {
       this.touchControls?.syncModeButtons(
