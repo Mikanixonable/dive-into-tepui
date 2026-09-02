@@ -609,14 +609,16 @@ function marchSlab(): LabCase {
 
 // 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。薄い雲を合成した地表と積雲の
 // 殻、模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。殻が落とす影は
-// 遮蔽パスへ別途渡すので、置いた球と一緒に返す。
-function earthAt(center: THREE.Vector3, style: RenderStyle): {
+// 遮蔽パスへ別途渡すので、置いた球と一緒に返す。spin は天体固定の姿勢で、地表も殻も場も
+// 一緒に回る。
+function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Quaternion()): {
   readonly object: THREE.Object3D;
   readonly cumulusShadow: CumulusShadow;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
 } {
   const group = new THREE.Group();
   group.position.copy(center);
+  group.quaternion.copy(spin);
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
   const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
@@ -637,8 +639,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle): {
       center,
       surfaceRadius: R_EARTH_EQ,
       topAltitude: cumulus.topAltitude,
-      // ケースの地球は自転を持たないので、天体固定の向きは描画座標のまま。
-      bodyFromWorld: new THREE.Matrix4(),
+      bodyFromWorld: new THREE.Matrix4().makeRotationFromQuaternion(spin.clone().invert()),
       field: cumulus.field,
     },
     // 雲の項目の受け方は point-entity.ts の sync と同じ。分割段は寄り切った 1 段に固定
@@ -694,6 +695,31 @@ function earthOblique(style: RenderStyle): LabCase {
   return {
     objects: [earthSphere.object],
     camera: labCamera(6e7),
+    atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
+    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    cumulusShadow: earthSphere.cumulusShadow,
+    applyGraphics: earthSphere.applyGraphics,
+  };
+}
+
+// 極ケースの地球の視直径が画面の高さに占める割合と、恒星の向き。恒星は極を斜め上から
+// 照らす向きへ置き、雲の影が極域いっぱいに伸びるようにする。
+const EARTH_POLAR_SCREEN_FRACTION = 0.8;
+const EARTH_POLAR_SUN_DIR = new THREE.Vector3(1, 0, 1).normalize();
+
+// 北極を真上から見下ろす地球: 自転軸をカメラへ向け、極を中心に見下ろす。**正距円筒の場は極で
+// 経度が 1 点へ集まる**ので、場の引き方の破綻はこの構図に出る。
+function earthPolar(style: RenderStyle): LabCase {
+  // 地球の視半径 [rad]。半画角に割合を掛けたものが、そのまま視半径になる。
+  const apparentRadius = THREE.MathUtils.degToRad(FOV_DEG / 2) * EARTH_POLAR_SCREEN_FRACTION;
+  const center = new THREE.Vector3(0, 0, -R_EARTH / Math.sin(apparentRadius));
+  // 天体固定の +Y(北極)を、カメラの居る +Z へ倒す。
+  const spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+  const earthSphere = earthAt(center, style, spin);
+  return {
+    objects: [earthSphere.object],
+    camera: labCamera(6e7),
+    sunDirection: EARTH_POLAR_SUN_DIR,
     atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
     cumulusShadow: earthSphere.cumulusShadow,
@@ -1053,6 +1079,7 @@ export const CASES = {
   'march-slab': marchSlab,
   'earth': earth,
   'earth-oblique': earthOblique,
+  'earth-polar': earthPolar,
   'earth-terminator': earthTerminator,
   'earth-eclipse': earthEclipse,
   'earth-mars': earthMars,
