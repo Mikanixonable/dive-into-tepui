@@ -13,10 +13,10 @@ export class PackEphemeris {
   private readonly evaluator: ChebyshevEphemeris;
   private readonly bodyPoints: Readonly<Record<string, EphemerisPointKind>>;
 
-  // pack が実際に覆う絶対時刻の範囲(J2000 ET 秒)。**catalog が要求期間との被覆を判定する。**
+  // pack が実際に覆う絶対時刻の範囲(J2000 ET 秒)。要求期間がこの中に収まるかの判定に使う。
   readonly validStartEt: number;
   readonly validEndEt: number;
-  // manifest が宣言する payload の SHA-256。catalog が profile の packId と突き合わせる。
+  // manifest が宣言する payload の SHA-256。profile の packId と突き合わせる識別子。
   readonly payloadSha256: string | undefined;
 
   // **decoded は保持しない。** 係数は評価器が payload へのビューとして持ち、ここで要るのは
