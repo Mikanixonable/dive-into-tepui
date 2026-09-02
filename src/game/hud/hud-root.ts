@@ -354,7 +354,8 @@ function buildTopBar(root: HTMLElement): void {
     </div>`;
 }
 
-// 追従カメラの視点リセットボタンを組む。
+// 視点リセットボタンを組む。id の chase は「動く実体を追っている視点」の意味
+// (camera/focus-camera.ts) — 押したときにどちらのビューのカメラを戻すかは CameraSystem が決める。
 function buildChaseReset(root: HTMLElement): void {
   // リセットボタン本体を作る。
   const chaseReset = createHudElement('button', 'hud-chase-reset', root);
