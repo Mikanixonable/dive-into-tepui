@@ -2,7 +2,7 @@
 // root/svgOverlay の公開・常設パネル群の所有と毎フレームの同期を担う。
 import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
@@ -67,7 +67,7 @@ export class Hud {
     // 初期表示の配線。
     this.burnManagementPanel.sync(null);
     this.orbitPanel.setOpenAnalysisHandler(() => this.openOrbitAnalysis());
-    this.setWorldView('combat');
+    this.setView('combat');
   }
 
   // 軌道分析パネルを開く。既に開いていれば最前面へ持ち上げるだけで、2枚目は開かない。
@@ -84,8 +84,8 @@ export class Hud {
   }
 
   // アクティブなビューの常設パネル一式を game の現在状態へ合わせる。DOM ルートの表示切替は
-  // setWorldView が持ち、ここでは表に出ているパネルだけを毎フレーム更新する。
-  public syncPanels(view: WorldView, game: Game): void {
+  // setView が持ち、ここでは表に出ているパネルだけを毎フレーム更新する。
+  public syncPanels(view: View, game: Game): void {
     const map = view === 'map';
     this.burnManagementPanel.sync(game.player?.boosters.managementViewModel() ?? null);
     this.topBar.sync(game);
@@ -101,9 +101,9 @@ export class Hud {
   }
 
   // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
-  public setWorldView(view: WorldView): void {
+  public setView(view: View): void {
     const map = view === 'map';
-    this.helpPanel.setWorldView(view);
+    this.helpPanel.setView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
     const burnManagement = this.root.querySelector<HTMLElement>('#burn-management-panel');
     const leftRail = (map ? this.mapRoot : this.combatRoot)

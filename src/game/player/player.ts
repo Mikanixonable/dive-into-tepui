@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
@@ -537,7 +537,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.stateAt(displayTime);
-    const mapEntityVisible = camera.worldView !== 'map' || visibility === null || visibility.category;
+    const mapEntityVisible = camera.view !== 'map' || visibility === null || visibility.category;
     this.renderObject.visible = displayState !== null && mapEntityVisible && !(isActive && camera.zoomActive);
     if (displayState !== null) {
       this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
@@ -563,7 +563,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
     this.markers.sync(
-      this.state, this.att, camera.worldView, isActive, camera.activeCameraProjection,
+      this.state, this.att, camera.view, isActive, camera.activeCameraProjection,
       this.roundsInMag, this.magsLeft, this.averageMuzzleVelocity, orbitRef,
     );
   }
@@ -576,7 +576,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
   // isActive はこの艦が操作対象かどうか(マップ上の自艦マーカーを他の僚艦と塗り分けるため)。
-  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, view: WorldView, isActive: boolean): GroupedMarkerItem {
+  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.PLAYER;
     const kindCls = isActive ? 'mk-self' : 'mk-ally';

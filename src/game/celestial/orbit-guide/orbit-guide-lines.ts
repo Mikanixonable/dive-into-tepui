@@ -15,7 +15,7 @@ import { FloatingOrigin } from '../../camera/floating-origin';
 import { CurveColorSampler } from '../../../render/curve';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import type { RenderStyle } from '../../../render/render-style';
-import type { WorldView } from '../../world-view';
+import type { View } from '../../view';
 import { SCHEMATIC_LINE } from '../../../render/schematic-style';
 import { GuideCurve } from './guide-curve';
 import {
@@ -221,7 +221,7 @@ export class OrbitGuideLines {
   }
 
   public sync(
-    style: RenderStyle, displayTime: number, view: WorldView, fo: FloatingOrigin, camera: THREE.Camera,
+    style: RenderStyle, displayTime: number, view: View, fo: FloatingOrigin, camera: THREE.Camera,
   ): void {
     if (view !== 'map' || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
