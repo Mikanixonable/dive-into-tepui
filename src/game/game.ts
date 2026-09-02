@@ -80,7 +80,6 @@ export class Game {
   // このフレームの表示座標系・表示時刻窓と、表示側の重力源窓。update で確定させ sync でも読む。
   // HUD(軌道分析パネルの投影タブなど)が current 経由で表示期間を読むため公開する。
   readonly displayWindowManager: DisplayWindowManager;
-  private readonly guide: PlanGuide;
   readonly viewManager: ViewManager;
   private readonly mapPickables: MapPickables;
   private readonly linePickables: LinePickables;
@@ -209,8 +208,6 @@ export class Game {
       this.frameControls,
       this.planTrajectory.planDisplay.path,
     );
-    this.guide = new PlanGuide(this._hud, this._uiSfx, this.markerManager);
-
     this.input = new Input(gs.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
@@ -252,10 +249,12 @@ export class Game {
     const dockingGuide = new DockingGuide(
       this._scene, this.markerManager, this.dynamicSystem, this.docking,
     );
+    const guide = new PlanGuide(this._hud, this._uiSfx, this.markerManager);
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.mapActions, this.dynamicSystem,
       this.mapPickables, this.linePickables, this.celestialMarkers, this.touchControls,
-      this.activePlayers, dockingGuide, this.simSpeedManager, this._hud,
+      this.activePlayers, dockingGuide, guide, this.planTrajectory, celestialSystem,
+      this.simSpeedManager, this._hud,
     );
     const mapView = new MapView(
       this.input, this.cameraSystem, this.targeter, editor, this.mapActions,
@@ -443,12 +442,6 @@ export class Game {
     this.dynamicSystem.effects.update(dt, this.simulator.simTime);
     this.sections.exit(SECTION.effects);
 
-    this.sections.enter(SECTION.plan);
-    this.guide.update(
-      this.player, this.simulator.simTime, this.viewManager.isMapView,
-      this.celestialSystem.celestialMotions,
-    );
-    this.sections.exit(SECTION.plan);
   }
 
   // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって
@@ -528,7 +521,6 @@ export class Game {
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
     this.viewManager.activeView.syncLabels();
 
-    const project = this.cameraSystem.activeCameraProjection;
     // 表示・選択可否はこのフレームの update フェーズで MapPickables が確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
     const visibilityPolicy = this.mapPickables.visibilityPolicy;
@@ -576,8 +568,6 @@ export class Game {
 
     this._hud.syncPanels(this.viewManager.current, this);
     this._hud.tick();
-
-    this.guide.sync(player, simTime, this.viewManager.isMapView, project, this.planTrajectory.planDisplay.path);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions(this.viewManager.current);
