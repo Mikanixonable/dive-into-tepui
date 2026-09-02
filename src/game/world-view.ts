@@ -3,6 +3,7 @@
 // 両ビュー共通のフレーム処理は Game が地の文で持つ。
 import type { DisplayWindow } from './display-window-manager';
 import type { FloatingOrigin } from './camera/floating-origin';
+import type { Input } from './input/input';
 
 export interface WorldViewFrame {
   // このビューへ遷移できるか。
@@ -11,6 +12,8 @@ export interface WorldViewFrame {
   onEnter(): void;
   // このビューから出るときの後始末。
   onLeave(): void;
+  // ビュー固有のキー入力の配分。ポーズ中・決着後も効くべき操作を持つ。
+  handleInput(input: Input, dt: number, simTime: number): void;
   // ポーズ・入力ゲートの判定後に呼ばれる。ポインタ入力の配分。
   handlePointer(simTime: number): void;
   // update フェーズ: カメラ更新の後。選択候補と可視性ポリシーの確定。
