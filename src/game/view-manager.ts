@@ -108,10 +108,8 @@ export class ViewManager {
   private applyChrome(): void {
     setPanelCollapsedView(this.worldView);
     this.hud.setWorldView(this.worldView);
-    const map = this.worldView === 'map';
-    this.touchControls?.setMapMode(map);
-    this.editor.setMapMode(map);
-    this.displayWindow.forceCurrent = !map;
+    this.touchControls?.setWorldView(this.worldView);
+    this.displayWindow.forceCurrent = this.worldView !== 'map';
   }
 
   // マップへ入るときの支度。

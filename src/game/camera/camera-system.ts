@@ -161,8 +161,10 @@ export class CameraSystem {
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。天球グリッド・
   // 軌道ガイド側の配線は Navball が行う。
   readonly viewOptionsPanel: ViewOptionsPanel;
-  // 広範囲視点に切り替わっているか。ビューの正本(ViewManager)から毎回読む。
-  get overviewMode(): boolean { return this.view() === 'map'; }
+  // 現在のワールドビュー。ビューの正本(ViewManager)から毎回読む。
+  get worldView(): WorldView { return this.view(); }
+  // マップビューのインスタンスがアクティブか。
+  private get mapActive(): boolean { return this.view() === 'map'; }
 
   // クラスごとの天体表示トグル。マップのラベル・軌道物体一覧・配置UIの基準天体が
   // この1つの状態を共有する(map/visibility-policy.ts へ渡す)。フォーカスと
@@ -181,7 +183,7 @@ export class CameraSystem {
   // 現在のビューの視点をリセットする。戦闘は初期状態(操作対象へフォーカス・姿勢追従・
   // 既定の後方見下ろし)へ、マップはロールとパンだけを戻す。
   private resetActiveCamera(): void {
-    if (this.overviewMode) {
+    if (this.mapActive) {
       this.mapCamera.reset();
       return;
     }
@@ -241,11 +243,11 @@ export class CameraSystem {
 
   // 現在アクティブなカメラ(広範囲視点/戦闘視点)を返す。
   get activeCamera(): THREE.Camera {
-    return this.overviewMode ? this.mapCamera.camera : this.combatCamera.camera;
+    return this.mapActive ? this.mapCamera.camera : this.combatCamera.camera;
   }
 
   get activeViewpoint(): Viewpoint {
-    return this.overviewMode ? this.mapCamera.viewpoint : this.combatViewpoint;
+    return this.mapActive ? this.mapCamera.viewpoint : this.combatViewpoint;
   }
 
   // アクティブカメラの位置(描画原点になる値)を返す。
@@ -255,12 +257,12 @@ export class CameraSystem {
 
   // 現在のビューのカメラが注視しているフォーカス対象。
   get activeFocus(): FocusTarget {
-    return (this.overviewMode ? this.mapCamera : this.combatCamera).focus;
+    return (this.mapActive ? this.mapCamera : this.combatCamera).focus;
   }
 
   // 戦闘ビューでズーム視点(照準ズーム)が有効かどうか。広範囲視点では常に false。
   get zoomActive(): boolean {
-    return !this.overviewMode && this._zoomActive;
+    return !this.mapActive && this._zoomActive;
   }
 
   // 入力からカメラの向き・ズームを更新する。ビューに応じてどちらか一方のインスタンスだけを
@@ -282,7 +284,7 @@ export class CameraSystem {
 
     // [G]: フォーカスが機体のとき、姿勢追従⇄慣性系をトグルする(両ビュー)。
     if (input.takeKey(K.followAttitudeToggle)) {
-      const active = this.overviewMode ? this.mapCamera : this.combatCamera;
+      const active = this.mapActive ? this.mapCamera : this.combatCamera;
       if (active.toggleAttitudeFollow()) {
         const on = active.rotationFollow?.kind === 'attitude';
         this.hud.hint(`視点の姿勢追従: ${on ? 'ON(機体姿勢に追従)' : 'OFF(慣性系)'}`);
@@ -299,7 +301,7 @@ export class CameraSystem {
     
     // /_ の同時押し（ロール左右の同時入力）でマップカメラのロールをリセット
     if (keyRollLeft && keyRollRight) {
-      if (this.overviewMode) this.mapCamera.reset();
+      if (this.mapActive) this.mapCamera.reset();
     }
     const keyRoll = (keyRollLeft ? 1 : 0) + (keyRollRight ? -1 : 0);
     const keyPanX = (input.down(K.cameraPanLeft) ? 1 : 0) + (input.down(K.cameraPanRight) ? -1 : 0);
@@ -309,7 +311,7 @@ export class CameraSystem {
     mouse.panDy += keyPanY * CAM_KEY_PAN_RATE * dt;
     mouse.roll += keyRoll * CAM_KEY_ROLL_RATE * dt;
 
-    if (this.overviewMode) {
+    if (this.mapActive) {
       this.mapCamera.update(mouse, keyYawRad, keyPitchRad, displayTime, focusCandidates, frameAnchors);
       return;
     }
@@ -335,10 +337,10 @@ export class CameraSystem {
   // 速度基準 velocityReference は相対速度で向きを決める描画が差し引く値で、原点とは別 concern。
   sync(velocityReference: Vec3): FloatingOrigin {
     const fo = new FloatingOrigin(this.activeCameraPos, velocityReference);
-    const active = this.overviewMode ? this.mapCamera : this.combatCamera;
+    const active = this.mapActive ? this.mapCamera : this.combatCamera;
     syncCameraToViewpoint(active.camera, this.activeViewpoint, active.near, active.far, fo);
     // 広範囲視点のときだけ表示設定パネルを出す。
-    this.viewOptionsPanel.setVisible(this.overviewMode);
+    this.viewOptionsPanel.setVisible(this.mapActive);
     return fo;
   }
 

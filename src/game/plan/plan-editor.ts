@@ -78,9 +78,8 @@ export class PlanEditor {
   // 直近の update() が組んだ計画区間列の終端時刻(表示窓でクリップしない)。一度も
   // update していなければ NaN。
 
-  private _editMode = false;
-  get editMode(): boolean { return this._editMode; }
-  setMapMode(open: boolean): void { this._editMode = open; }
+  // 編集モード = マップビュー。正本は ViewManager で、遅延評価のクロージャから毎回読む。
+  get editMode(): boolean { return this.isMapView(); }
 
   // Δv 編集中かどうか。編集モードで、かつノードを1つ選択している間だけ真。
   private get dvEditActive(): boolean { return this.editMode && this.selectedNodeIdx !== null; }
@@ -105,6 +104,9 @@ export class PlanEditor {
     private readonly activePlayers: ActivePlayerController,
     private readonly displayDuration: DisplayDurationSource,
     private readonly frameControls: FrameControls,
+    // 編集モード(= マップビュー)の正本を引く関数。ViewManager より先に生成されるため、
+    // 参照でなく遅延評価で受ける。
+    private readonly isMapView: () => boolean,
   ) {
     this.planDisplay = new PlanDisplay(scene, markerManager, celestialSystem, displayDuration);
     this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup, this._hud.overlayManager);
@@ -667,7 +669,7 @@ export class PlanEditor {
     if (this.displayedPlan !== null) {
       this.planDisplay.sync(
         fo, cameraSystem.activeCameraProjection, cameraSystem.activeCameraScale,
-        cameraSystem.overviewMode, cameraSystem.activeCameraPos, cameraSystem.activeCamera,
+        cameraSystem.worldView, cameraSystem.activeCameraPos, cameraSystem.activeCamera,
       );
     }
     else {

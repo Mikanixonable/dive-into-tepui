@@ -117,10 +117,10 @@ export class PointFieldView {
   }
 
   // 表示時刻 t の点の位置を引き直す。starPos はこの星系の恒星の ECI 位置で、恒星を持たない星系では
-  // null。広範囲視点でないときは何もしない — 戦闘視点では描かれないので位置を求める意味がない。
-  update(t: number, overviewMode: boolean, starPos: Vec3 | null): void {
+  // null。active でない間は何もしない — 描かれないので位置を求める意味がない。
+  update(t: number, active: boolean, starPos: Vec3 | null): void {
     this.hasStar = starPos !== null;
-    if (!overviewMode || starPos === null) {
+    if (!active || starPos === null) {
       this.mapActive = false;
       return;
     }
@@ -133,8 +133,8 @@ export class PointFieldView {
   // update が求めた位置へ各インスタンスを置く。太陽の平行移動は mesh.position、個々の点の
   // 更新は instanceMatrix に分担させる。fixedBrightnessScale は露出の順応を打ち消す倍率で、
   // 読ませるために選んだ明るさをどこから見ても同じに保つ。
-  sync(fo: FloatingOrigin, overviewMode: boolean, smallBodyVisible: boolean, fixedBrightnessScale: number): void {
-    const visible = overviewMode && this.hasStar && smallBodyVisible;
+  sync(fo: FloatingOrigin, show: boolean, smallBodyVisible: boolean, fixedBrightnessScale: number): void {
+    const visible = show && this.hasStar && smallBodyVisible;
     for (const group of this.groups) group.sync(fo, visible, fixedBrightnessScale);
   }
 
