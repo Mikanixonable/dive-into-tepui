@@ -45,11 +45,14 @@ export class MapView implements WorldViewFrame {
     this.editor.selectedNodeIdx = null;
   }
 
-  // 開いたままの編集 UI とメニューを畳む。
+  // 開いたままの編集 UI とメニューを畳み、マップで組んだ選択候補・可視性ポリシー・
+  // 軌道線候補を空へ戻す(戦闘ビューの表示・選択は null 経路で判定する)。
   onLeave(): void {
     this.editor.onMapClosed();
     this.editor.closeMenu();
     this.mapActions.close();
+    this.mapPickables.clear();
+    this.linePickables.clear();
   }
 
   // Δv 編集キー([Del]=選択ノード削除・WASDQE・ラッチ)を編集セッションへ配る。
