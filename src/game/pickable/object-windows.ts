@@ -2,7 +2,7 @@
 // 最新化し、被選択物が組んだメニュー項目の実行先として、ゲーム側の操作一式を ObjectCommands の
 // 形で差し出す。どのクリックがどの対象に当たったかは、ビュー側が決めて open() へ渡す。
 import { Hud } from '../hud/hud';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import type { Base } from '../dynamic/dynamic-entity/base';
 import {
   ContextMenu, PropertyWindow, PropertyWindowContent, PropertyWindowItem,
@@ -171,7 +171,7 @@ export class ObjectWindows implements ObjectCommands {
   // (撃破・回収・削除)閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム
   // (posAt が null)は候補列から外れるだけで消滅ではないので、生存判定は対象の gone で行う。
   sync(simTime: number, displayTime: number): void {
-    if (this.cameraSystem.worldView === 'map') {
+    if (this.cameraSystem.view === 'map') {
       this.lastFocusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     }
     for (const [key, entry] of [...this.windows]) {
@@ -227,7 +227,7 @@ export class ObjectWindows implements ObjectCommands {
     const header = all.find((it) => it.type === 'header');
     // 戦闘ビューで開いたウィンドウは項目ショートカットを持たせない — [F]/[T] は自機の
     // 進行方向リセット/ターゲット選択が既に使っており、同じキーを両方へは配れない。
-    const showShortcuts = this.cameraSystem.worldView === 'map';
+    const showShortcuts = this.cameraSystem.view === 'map';
     const items = all
       .filter((it) => it.type !== 'header' && it.act !== undefined)
       .map((it) => ({
@@ -289,7 +289,7 @@ export class ObjectWindows implements ObjectCommands {
   // フォーカスをその対象へ移す。マップは座標系パネル連動(計画中心の追随)込みの経路、
   // 戦闘はその場のカメラだけを動かす。
   focus(id: string, name: string): void {
-    if (this.cameraSystem.worldView === 'map') {
+    if (this.cameraSystem.view === 'map') {
       this.frameControls.setFocus({ kind: 'object', id });
     } else {
       this.cameraSystem.combatCamera.setFocusTarget({ kind: 'object', id });
@@ -384,7 +384,7 @@ export class ObjectWindows implements ObjectCommands {
   get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
   get canAuthor(): boolean { return this.activeStage.authoring !== null; }
   get executesPlans(): boolean { return this.activeStage.executesPlans; }
-  get worldView(): WorldView { return this.cameraSystem.worldView; }
+  get view(): View { return this.cameraSystem.view; }
 
   isNavTarget(id: string): boolean {
     return this.navTarget.id === id;

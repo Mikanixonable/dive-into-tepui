@@ -69,7 +69,7 @@ export class StarEntity extends CelestialEntity {
     this.outline.line.visible = false;
     // マップビューでは実球体だけを使う。**点像を置く星殻がカメラの近平面より手前にあるとは
     // 限らない** — 引いたマップビューでは近平面が星殻より遠く、置いても写らない。
-    if (cameraSystem.worldView === 'map') {
+    if (cameraSystem.view === 'map') {
       this.star.syncSphere(p, this.radius);
       return;
     }

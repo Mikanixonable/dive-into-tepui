@@ -19,7 +19,7 @@ import {
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Quat } from '../../physics/attitude';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import { CameraSaveData } from '../save/save-data';
 
 const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.mapDisplayToggles';
@@ -161,10 +161,10 @@ export class CameraSystem {
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。天球グリッド・
   // 軌道ガイド側の配線は Navball が行う。
   readonly viewOptionsPanel: ViewOptionsPanel;
-  // 現在のワールドビュー。ビューの正本(ViewManager)から毎回読む。
-  get worldView(): WorldView { return this.view(); }
+  // 現在のビュー。ビューの正本(ViewManager)から毎回読む。
+  get view(): View { return this.currentView(); }
   // マップビューのインスタンスがアクティブか。
-  private get mapActive(): boolean { return this.view() === 'map'; }
+  private get mapActive(): boolean { return this.currentView() === 'map'; }
 
   // クラスごとの天体表示トグル。マップのラベル・軌道物体一覧・配置UIの基準天体が
   // この1つの状態を共有する(map/visibility-policy.ts へ渡す)。フォーカスと
@@ -192,13 +192,13 @@ export class CameraSystem {
   }
 
   // 両カメラを構築し、常用ショートリストパネルの選択操作を配線する。
-  // saved があれば両カメラをその視点から組む。view はビューの正本を引く関数 —
+  // saved があれば両カメラをその視点から組む。currentView はビューの正本を引く関数 —
   // ViewManager より先に生成されるため、参照でなく遅延評価で受ける。
   // attitudeOf はフォーカス機体の姿勢追従に使う解決関数(FocusCameraConfig 参照)。
   constructor(
     private readonly hud: Hud,
     celestialSystem: CelestialSystem,
-    private readonly view: () => WorldView,
+    private readonly currentView: () => View,
     attitudeOf: (id: string, t: number) => Quat | null,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
   ) {

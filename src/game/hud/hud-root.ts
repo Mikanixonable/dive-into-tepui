@@ -6,7 +6,7 @@ import { buildOverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
 import { HelpPanel } from './windows/help-panel';
 import { PanelShell, wirePanelCollapse } from './panel-shell';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
 import { PANEL_CONTENT_STYLE } from './style/panel-content-style';
@@ -78,7 +78,7 @@ function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
 // レールの折りたたみ状態は PanelShell と同じビュー別 localStorage を共有する。一度も操作
 // されていなければ、初回表示の既定として compact 幅でだけ畳んでおく。
 function buildRailToggle(
-  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: WorldView,
+  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: View,
 ): void {
   wirePanelCollapse({
     toggleRoot: root,
@@ -92,7 +92,7 @@ function buildRailToggle(
 }
 
 // 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
-function buildWorldRoot(parent: HTMLElement, id: string, view: WorldView): HudWorldRoot {
+function buildWorldRoot(parent: HTMLElement, id: string, view: View): HudWorldRoot {
   // ビューのルート要素を作る。
   const element = createHudElement('div', id, parent, `hud-world-root hud-${view}-root`);
   // 左右のレールを子として組む。

@@ -141,7 +141,7 @@ export class PointEntity extends CelestialEntity {
       2 * this.outerRadius, cameraSystem.activeCameraScale(pos), graphics);
     if (!showsPhysicalSphere(apparentDiameterPx)) {
       this.hidePhysical();
-      if (cameraSystem.worldView === 'map') {
+      if (cameraSystem.view === 'map') {
         this.billboard.hide();
       } else {
         this.syncBillboard(fo.RtoThreeV3(pos), pos, displayTime, star, cameraSystem.activeCamera.quaternion);

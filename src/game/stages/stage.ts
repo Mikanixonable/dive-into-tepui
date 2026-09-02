@@ -219,7 +219,7 @@ export abstract class Stage {
     player: Player | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
     _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    this.syncStatusPanel(player, cameraSystem.worldView === 'map');
+    this.syncStatusPanel(player, cameraSystem.view === 'map');
   }
 
   // hudSubStatus() が null のとき、またはマップ視点のときはパネルを畳む。

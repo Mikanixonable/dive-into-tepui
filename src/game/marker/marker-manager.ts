@@ -8,7 +8,7 @@
 // 向くグリフの回転角を求める。camera-system.ts が MarkerManager に依存しているため、
 // ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
 import { Vec3, addScaled, len, norm, sub } from '../../math/vec3';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import { Projected } from '../../math/projection';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
@@ -429,7 +429,7 @@ export class MarkerManager {
 
   // 全マーカーの優先度に基づくアイコン/ラベル間引きと、残ったラベルどうしの衝突緩和。
   // マップビューでのみ優先度間引きを行う。戦闘ビューでは照準や敵アイコン等を隠さない。
-  resolveCollisions(view: WorldView): void {
+  resolveCollisions(view: View): void {
     const activeRecords = this.collectActiveMarkerRecords();
     this.thinByPriority(activeRecords, view === 'map');
     this.relaxLabelRects(activeRecords);

@@ -1,6 +1,6 @@
 // 被選択物が起動できる操作と、項目のラベル・可否を決めるために要る現在の操作状態を差し出す口。
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import type { Base } from '../dynamic/dynamic-entity/base';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -55,8 +55,8 @@ export interface ObjectCommands {
   readonly canAuthor: boolean;
   // 軌道計画の実行を持つステージか。
   readonly executesPlans: boolean;
-  // 現在のワールドビュー。
-  readonly worldView: WorldView;
+  // 現在のビュー。
+  readonly view: View;
   isNavTarget(id: string): boolean;
   // 航法ターゲットに設定できるか。軌道面が定まらない対象では false。
   canNavTarget(id: string, simTime: number): boolean;

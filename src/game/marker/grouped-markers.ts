@@ -6,7 +6,7 @@
 // を行う。どちらも「対象 1 体では決められない = 集合の側の責務」であり、逆に対象ごとの
 // 見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
 import { Vec3, len, sub } from '../../math/vec3';
-import type { WorldView } from '../world-view';
+import type { View } from '../view';
 import { Projected } from '../../math/projection';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { ActiveCelestialLabel } from './celestial-markers';
@@ -71,7 +71,7 @@ export class GroupedMarkers {
   sync(
     items: readonly GroupedMarkerItem[],
     project: ProjectFn,
-    view: WorldView,
+    view: View,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
     celestialBodies: readonly CelestialMotion[] = [],

@@ -1,4 +1,4 @@
-// 戦闘ビュー専用のフレーム処理と遷移フック(WorldViewFrame の具象)。呼ぶ位置と順序は
+// 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { pickCombatEntityAtPoint } from './pickable/combat-pick';
@@ -20,11 +20,11 @@ import type { UiSfx } from '../audio/sfx/ui-sfx';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { DisplayWindow } from './display-window-manager';
 import type { FloatingOrigin } from './camera/floating-origin';
-import type { WorldViewFrame } from './world-view';
+import type { ViewFrame } from './view';
 import type { ObjectPickable } from './pickable/object-pickable';
 import type { PerfCounts } from '../perf-meter';
 
-export class CombatView implements WorldViewFrame {
+export class CombatView implements ViewFrame {
   private readonly planGuide: PlanGuide;
 
   // 直近ノードの実行ガイドは戦闘ビューにいる間しか出さないので、受け取った材料から

@@ -1,4 +1,4 @@
-// マップビュー専用のフレーム処理と遷移フック(WorldViewFrame の具象)。呼ぶ位置と順序は
+// マップビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
 import { MapPicking } from './pickable/map-picking';
 import type { Input } from './input/input';
@@ -21,10 +21,10 @@ import type { DisplayWindow, DisplayWindowManager } from './display-window-manag
 import type { FrameControls } from './hud/frame/frame-controls';
 import type { FrameAnchors } from './frame-anchors';
 import type { FloatingOrigin } from './camera/floating-origin';
-import type { WorldViewFrame } from './world-view';
+import type { ViewFrame } from './view';
 import type { PerfCounts } from '../perf-meter';
 
-export class MapView implements WorldViewFrame {
+export class MapView implements ViewFrame {
   private readonly picking: MapPicking;
 
   // マップのクリックの当て先は、マップビューにいる間しか働かないので、受け取った材料から

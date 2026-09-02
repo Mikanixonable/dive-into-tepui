@@ -8,9 +8,9 @@ import type { ObjectPickable } from './pickable/object-pickable';
 import type { MapVisibilityPolicy } from './map/visibility-policy';
 import type { PerfCounts } from '../perf-meter';
 
-export type WorldView = 'combat' | 'map';
+export type View = 'combat' | 'map';
 
-export interface WorldViewFrame {
+export interface ViewFrame {
   // このビューが直近の update で確定させた被選択物の候補列。候補を持たないビューは空。
   readonly pickables: readonly ObjectPickable[];
   // 同じ回の表示・選択可否。表示トグルを持たないビューは null。

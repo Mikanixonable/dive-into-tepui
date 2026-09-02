@@ -123,7 +123,7 @@ export class Targeter {
   sync(player: Player | null, cameraSystem: CameraSystem): void {
     const project = cameraSystem.activeCameraProjection;
     this.syncBoardMarkers(project);
-    this.syncTargetDirMarkers(player, cameraSystem.worldView === 'map', project);
+    this.syncTargetDirMarkers(player, cameraSystem.view === 'map', project);
   }
 
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。
@@ -134,7 +134,7 @@ export class Targeter {
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
     celestialBodies: readonly CelestialMotion[], celestialMarkers: CelestialMarkers,
   ): void {
-    const view = cameraSystem.worldView;
+    const view = cameraSystem.view;
     const mapView = view === 'map';
     const project = cameraSystem.activeCameraProjection;
     const screenScale = cameraSystem.activeCameraScale;

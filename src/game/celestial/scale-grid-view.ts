@@ -30,7 +30,7 @@ export class ScaleGridView {
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, celestialSystem: CelestialSystem,
     gridVisibility: CelestialGridVisibility,
   ): void {
-    const mapView = cameraSystem.worldView === 'map';
+    const mapView = cameraSystem.view === 'map';
     const visibility: ScaleGridVisibility = {
       ecliptic: mapView && gridVisibility.eclipticScaleGrid,
       equator: mapView && gridVisibility.equatorScaleGrid,

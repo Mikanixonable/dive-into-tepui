@@ -1,4 +1,4 @@
-// どのワールドビューを表示しているかの正本と、2ビューの実装の保持。遷移は必ず setView() を通る。
+// どのビューを表示しているかの正本と、2ビューの実装の保持。遷移は必ず setView() を通る。
 import { Hud } from './hud/hud';
 import { TouchControls } from './input/touch';
 import type { Input } from './input/input';
@@ -6,52 +6,52 @@ import { KEY_MAPPING as K } from './input/key-mapping';
 import { DisplayWindowManager } from './display-window-manager';
 import type { ActiveControllableController } from './active-controllable-controller';
 import { setPanelCollapsedView } from './hud/panel-shell';
-import type { WorldView, WorldViewFrame } from './world-view';
+import type { View, ViewFrame } from './view';
 
 export class ViewManager {
-  private worldView: WorldView;
+  private view: View;
 
-  get current(): WorldView { return this.worldView; }
+  get current(): View { return this.view; }
 
-  get isMapView(): boolean { return this.worldView === 'map'; }
-  get isCombatView(): boolean { return this.worldView === 'combat'; }
+  get isMapView(): boolean { return this.view === 'map'; }
+  get isCombatView(): boolean { return this.view === 'combat'; }
 
   // 現在のビューの実装。ビューによるフレーム処理の分岐はこの1箇所に閉じる。
-  get activeView(): WorldViewFrame { return this.views[this.worldView]; }
+  get activeView(): ViewFrame { return this.views[this.view]; }
 
   constructor(
     private readonly hud: Hud,
     private readonly touchControls: TouchControls | null,
     private readonly displayWindow: DisplayWindowManager,
     private readonly activePlayers: ActiveControllableController,
-    private readonly views: Record<WorldView, WorldViewFrame>,
-    requestedView?: WorldView,
+    private readonly views: Record<View, ViewFrame>,
+    requestedView?: View,
   ) {
     // セーブ由来の値は検証されていないため、ビュー id として読めるものだけを受ける。
     // 入れないビューが要求されたら、遷移と同じ規則でマップへ落とす。
-    const requested: WorldView = requestedView === 'map' ? 'map' : 'combat';
-    this.worldView = this.views[requested].canEnter() ? requested : 'map';
-    this.views[this.worldView].onEnter();
+    const requested: View = requestedView === 'map' ? 'map' : 'combat';
+    this.view = this.views[requested].canEnter() ? requested : 'map';
+    this.views[this.view].onEnter();
     this.applyChrome();
   }
 
   // ビュー遷移の唯一の入口。next にいる状態で終われたかを返し、入れないビューなら何もしない。
   // 既に next にいる場合でも applyChrome() は必ず走らせ、「この呼び出しの後、HUD・タッチ・
   // 未来表示の各フラグは現在のビューに揃っている」という保証を遷移の有無に依らず成り立たせる。
-  setView(next: WorldView): boolean {
+  setView(next: View): boolean {
     if (next === this.current) { this.applyChrome(); return true; }
     if (!this.views[next].canEnter()) return false;
 
-    const prev = this.worldView;
-    this.worldView = next;
+    const prev = this.view;
+    this.view = next;
     this.views[prev].onLeave();
     this.views[next].onEnter();
     this.applyChrome();
     return true;
   }
 
-  serializeView(): WorldView {
-    return this.worldView;
+  serializeView(): View {
+    return this.view;
   }
 
   // 保持する両ビューの表示物・DOM を片付ける。
@@ -61,17 +61,17 @@ export class ViewManager {
   }
 
   // ビュー選択 UI に並べる遷移先。現在のビュー自身と、いま入れないビューは含まない。
-  selectableViews(): readonly WorldView[] {
-    const all: readonly WorldView[] = ['combat', 'map'];
+  selectableViews(): readonly View[] {
+    const all: readonly View[] = ['combat', 'map'];
     return all.filter((v) => v !== this.current && this.views[v].canEnter());
   }
 
   // 現在のビューに合わせて HUD の見た目と、未来表示・収納状態の各フラグを揃える。
   private applyChrome(): void {
-    setPanelCollapsedView(this.worldView);
-    this.hud.setWorldView(this.worldView);
-    this.touchControls?.setWorldView(this.worldView);
-    this.displayWindow.forceCurrent = this.worldView !== 'map';
+    setPanelCollapsedView(this.view);
+    this.hud.setView(this.view);
+    this.touchControls?.setView(this.view);
+    this.displayWindow.forceCurrent = this.view !== 'map';
   }
 
   // [M] による戦闘⇔マップの切り替えを受ける。

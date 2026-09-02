@@ -1,6 +1,6 @@
 // 軌道上の拠点。艦艇のドッキングと格納、部品と資金の保有、そこからの発艦を持つ。
 import * as THREE from 'three/webgpu';
-import type { WorldView } from '../../world-view';
+import type { View } from '../../view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
@@ -338,7 +338,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     visibility: MapVisibility | null = null,
   ): void {
     const displayState = this.stateAt(displayTime);
-    const mapEntityVisible = camera.worldView !== 'map' || visibility === null || visibility.category;
+    const mapEntityVisible = camera.view !== 'map' || visibility === null || visibility.category;
     this.renderObject.visible = displayState !== null && mapEntityVisible;
     if (displayState !== null) {
       this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
@@ -356,7 +356,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   private get markerKey(): string { return `base-${this.id}`; }
 
   // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
-  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: WorldView): GroupedMarkerItem {
+  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {

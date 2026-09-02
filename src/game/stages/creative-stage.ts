@@ -198,7 +198,7 @@ export class CreativeStage extends Stage {
     }
   }
 
-  // ステージ操作パネルは、表示中のワールドビューの右ドックへ追従させる。
+  // ステージ操作パネルは、表示中のビューの右ドックへ追従させる。
   private mountStageControlsPanel(inMapView: boolean): void {
     const root = inMapView ? this._hud.mapRoot : this._hud.combatRoot;
     const rightRail = hudRail(root, 'right');
@@ -216,10 +216,10 @@ export class CreativeStage extends Stage {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
     this.activePlayer = player;
     this.stageControlsPanel.setSpawnButtonsEnabled(player !== null && player.alive);
-    this.mountStageControlsPanel(cameraSystem.worldView === 'map');
+    this.mountStageControlsPanel(cameraSystem.view === 'map');
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
-      cameraSystem.worldView === 'map', cameraSystem.activeCameraPos,
+      cameraSystem.view === 'map', cameraSystem.activeCameraPos,
       this._celestialSystem.celestialMotions, displayTime,
     );
     this.placerPanel.setIssues(this.issues);
