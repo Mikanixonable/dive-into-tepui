@@ -34,7 +34,7 @@ import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import type { Occluder, SunOcclusion } from '../../render/pipeline/sun-occlusion';
 import {
-  selectOccluders, selectRingShadow, type RingShadowCandidate,
+  castsCumulusShadow, selectOccluders, selectRingShadow, type RingShadowCandidate,
 } from '../../render/pipeline/sun-occlusion-select';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import { atmosphereDraws } from '../../render/atmosphere';
@@ -472,11 +472,12 @@ export class CelestialSystem implements CelestialMotions {
     this.syncCumulusShadow(fo, displayTime, graphics);
   }
 
-  // 積雲の殻を持つ天体を遮蔽パスへ渡す。持つ天体が無いか雲を描かない設定なら源ごと切る。
+  // 積雲の殻を持つ天体を遮蔽パスへ渡す。持つ天体が無いか、雲そのものか雲の影を切る設定なら
+  // 源ごと切る。
   private syncCumulusShadow(
     fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData,
   ): void {
-    const casters = graphics.clouds
+    const casters = castsCumulusShadow(graphics)
       ? this.entities.flatMap((body) => body.cumulusShadowAt(fo, displayTime) ?? [])
       : [];
     this.sunOcclusion.setCumulusShadow(casters[0] ?? null);
