@@ -50,7 +50,7 @@ export class OcclusionPass {
       const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
       material.colorNode = vec4(
         vec3(sunOcclusion.transmittance(worldPos, {
-          rings, meshNormal, selfViewDistance: length(viewPos),
+          rings, meshNormal, selfViewDistance: length(viewPos), cumulusShadow: true,
         })), 1,
       );
       return material;
