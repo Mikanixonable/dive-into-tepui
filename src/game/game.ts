@@ -474,7 +474,8 @@ export class Game {
     if (this._hud.overlayManager.isInputGated()) return;
     this.simSpeedManager.handleInput(this.input);
     this.viewManager.handleInput(this.input);
-    if (this.viewManager.isMapView) this.editor.handleInput(this.input, dt);
+    // 計画キー([N] 自動ワープ・[Del] 破棄)は戦闘ビューでも効くので、ビューでゲートしない。
+    this.editor.handleInput(this.input, dt);
   }
 
   // ------------------------------------------------------------------ sync
