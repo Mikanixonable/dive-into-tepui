@@ -38,9 +38,10 @@ const COVERAGE_SOLID = 0.45;
 // 画素が抜ける。
 const DITHER_LEVELS = 256;
 
-// 視線を雲頂へ下ろす刻み数と、雲頂をまたいだ区間を締める二分の回数。
-const MARCH_STEPS = 8;
-const REFINE_STEPS = 4;
+// 視線を雲頂へ下ろす刻み数と、雲頂をまたいだ区間を締める二分の回数。**どちらも 1 増やすと
+// 場と粒を 1 回ずつ余分に引く**ので、G バッファパスの費用はここで決まる。
+const MARCH_STEPS = 6;
+const REFINE_STEPS = 3;
 
 // 積雲の粒の一辺 [m]。場の texel(赤道 9.8 km)より細かい形を作るので、実際の積雲の塊と同じ
 // 大きさに取る。**場ではなく天体の半径から決まる**ので、場の解像度が変わっても粒は動かない。
@@ -203,10 +204,12 @@ export class CumulusShell {
     return radius.sub(this.cloudTopRadiusOf(this.cloudTopOf(cloud.g, grain).mul(present)));
   }
 
-  // 物体空間の点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに
-  // 断ち切られた崖ではなく、雲頂そのものの起伏を法線に出す。
-  private cloudTopNormalAt(point: Vec3Node): Vec3Node {
-    const up = normalize(point);
+  // 交点における雲頂面の法線(物体空間)。**交点そのものの高さは測り直さない** — レイマーチが
+  // 締めた交点は雲頂の上に乗っているので、中心距離がそのまま雲頂の高さになる。**覆いの有無は
+  // 勾配へ入れない** — 柱ごとに断ち切られた崖ではなく、雲頂そのものの起伏を法線に出す。
+  private cloudTopNormalAt(hitPoint: Vec3Node): Vec3Node {
+    const here = max(length(hitPoint), 1e-6);
+    const up = hitPoint.div(here);
     const east = eastAt(up);
     const north = northAt(up);
     // up から offset だけ振った向きの雲頂(物体空間の半径)。
@@ -215,7 +218,6 @@ export class CumulusShell {
       return this.cloudTopRadiusOf(this.cloudTopOf(this.fieldAt(direction).g, this.grainAt(direction)));
     };
     // 東と北へ粒の半波長ぶん振った雲頂との差が、そのまま接平面での傾き。
-    const here = heightAt(vec3(0, 0, 0));
     const slopeEast = heightAt(east.mul(this.gradientAngle)).sub(here).div(this.gradientAngle);
     const slopeNorth = heightAt(north.mul(this.gradientAngle)).sub(here).div(this.gradientAngle);
     return normalize(up.sub(east.mul(slopeEast)).sub(north.mul(slopeNorth)));
