@@ -29,7 +29,8 @@ export function focusPoint(
 // map-pickable.ts が入ると型検査が DOM 定義を要求して壊れる。
 export interface FocusCandidate {
   readonly id: string;
-  readonly pos: Vec3;
+  // 表示時刻の ECI 位置。求まらないフレームは null。
+  mapPosAt(displayTime: number): Vec3 | null;
 }
 
 export interface FocusResolveState {
@@ -37,7 +38,7 @@ export interface FocusResolveState {
   readonly lastResolvedFocus: Vec3;
 }
 
-export interface FocusResolveResult {
+interface FocusResolveResult {
   readonly pos: Vec3;
   readonly missingFocusFrames: number;
   readonly lastResolvedFocus: Vec3;
@@ -47,8 +48,8 @@ export interface FocusResolveResult {
 
 // 注視点を解決する。天体・原点・役割トークン・機体(自艦/敵/基地/弾薬)はその場で直接解決する。
 // celestialMotionOf は天体 id の運動を引く関数で、登録されていない id には null を返すこと。
-// candidates は apsis/relnode/eqnode マーカーやラグランジュ点など、frameAnchors にも
-// 天体にも実体を持たない対象のためだけのフォールバックとして残る。
+// candidates は、frameAnchors にも天体にも実体を持たない対象(軌道上の点マーカー・
+// ラグランジュ点)の位置を引く一覧。
 export function resolveFocusTarget(
   focus: FocusTarget,
   candidates: readonly FocusCandidate[],
@@ -77,9 +78,9 @@ export function resolveFocusTarget(
   if (anchored !== null) {
     return { pos: anchored.r, missingFocusFrames: 0, lastResolvedFocus: anchored.r, fallToOrigin: false };
   }
-  const candidate = candidates.find((c) => c.id === focus.id);
-  if (candidate) {
-    return { pos: candidate.pos, missingFocusFrames: 0, lastResolvedFocus: candidate.pos, fallToOrigin: false };
+  const candidatePos = candidates.find((c) => c.id === focus.id)?.mapPosAt(displayTime) ?? null;
+  if (candidatePos !== null) {
+    return { pos: candidatePos, missingFocusFrames: 0, lastResolvedFocus: candidatePos, fallToOrigin: false };
   }
   const missingFocusFrames = state.missingFocusFrames + 1;
   if (missingFocusFrames >= 2) {

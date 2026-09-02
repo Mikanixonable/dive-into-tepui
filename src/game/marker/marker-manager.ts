@@ -88,16 +88,12 @@ function defaultPriorityForClass(key: string, cls: string): number {
   }
   if (cls.includes('mk-target')) return MARKER_PRIORITY.PRIMARY_TARGET;
   if (cls.includes('mk-impact')) return MARKER_PRIORITY.IMPACT;
-  // 陣営種別は combatMarkerKindOf の分類を正本とし、ここで独自に cls を読み直さない。
-  const combatKind = combatMarkerKindOf(cls);
-  if (combatKind === 'base') return MARKER_PRIORITY.BASE;
-  if (combatKind === 'self' || combatKind === 'ally') return MARKER_PRIORITY.PLAYER;
-  if (combatKind === 'enemy') return MARKER_PRIORITY.ENEMY;
-  if (combatKind === 'ammo' || combatKind === 'fuel') return MARKER_PRIORITY.AMMO;
+  if (cls.includes('mk-base')) return MARKER_PRIORITY.BASE;
+  if (cls.includes('mk-self') || cls.includes('mk-ally')) return MARKER_PRIORITY.PLAYER;
+  if (cls.includes('mk-enemy')) return MARKER_PRIORITY.ENEMY;
+  if (cls.includes('mk-ammo') || cls.includes('mk-fuel')) return MARKER_PRIORITY.AMMO;
   if (cls.includes('mk-mnode') || cls.includes('mk-burn')) return MARKER_PRIORITY.MANEUVER_NODE;
-  if (cls.includes('mk-node') || cls.includes('mk-relnode') || cls.includes('mk-eqnode') || cls.includes('mk-boardpass')) {
-    return MARKER_PRIORITY.ORBITAL_NODE;
-  }
+  if (cls.includes('mk-node') || cls.includes('mk-boardpass')) return MARKER_PRIORITY.ORBITAL_NODE;
   return 0;
 }
 
@@ -114,26 +110,16 @@ function canHideIconByPriority(m: MarkerRecord): boolean {
   return true;
 }
 
-export type CombatMarkerKind = 'self' | 'ally' | 'enemy' | 'base' | 'ammo' | 'fuel';
-
-// マーカーの CSS クラス文字列から陣営種別を判定する。cls に複数クラスが並んでいるときは
-// 先に一致した種別を返す。
-export function combatMarkerKindOf(cls: string): CombatMarkerKind | null {
-  if (cls.includes('mk-self')) return 'self';
-  if (cls.includes('mk-ally')) return 'ally';
-  if (cls.includes('mk-enemy')) return 'enemy';
-  if (cls.includes('mk-base')) return 'base';
-  if (cls.includes('mk-ammo')) return 'ammo';
-  if (cls.includes('mk-fuel')) return 'fuel';
-  return null;
-}
-
 // GroupedMarkers が管理する船・弾薬のクラス。この集合どうしのペアはクラスタ化(近接まとめ)で
 // 既にアイコンを残す/ラベルを合体する判断が付いているため、下の優先度間引きで重ねてアイコンを
 // 消さない(消すと GroupedMarkers が残したはずのアイコンが消える)。
+const COMBAT_MARKER_CLASSES = [
+  'mk-self', 'mk-ally', 'mk-enemy', 'mk-base', 'mk-ammo', 'mk-fuel', 'mk-target',
+];
+
 function isCombatMarker(m: MarkerRecord): boolean {
   const cls = m.root.className;
-  return combatMarkerKindOf(cls) !== null || cls.includes('mk-target');
+  return COMBAT_MARKER_CLASSES.some((c) => cls.includes(c));
 }
 
 // ラベルの概算矩形を入れる画面空間グリッドのセル幅。ラベルの幅は文字数に
@@ -378,6 +364,12 @@ export class MarkerManager {
   //          要素を消さずプールに残し、次に出すときの再生成コストを省く。
   // remove = 対象ごとにキーが増え続けるマーカー(敵・LEAD など)。対象が消えたら
   //          要素ごと捨てないと DOM とラベル衝突判定の走査対象が単調増加する。
+  // そのキーのマーカーを直前のフレームで画面へ出したか。遮蔽で薄れている途中も出していない扱い。
+  shows(key: string): boolean {
+    const m = this.markerDictionary.get(key);
+    return m !== undefined && !m.hidden && !m.occlusionHidden && !this.occlusionFadeTimers.has(key);
+  }
+
   hide(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m) return;
@@ -613,8 +605,8 @@ export class MarkerManager {
           }
         }
 
-        // バケットの巡回順はセル配置に依存するため、元の全ペア走査と同じ
-        // i→j の順序に戻す。押し出しの累積結果を従来から変えにくくするため。
+        // 押し出しは累積するので結果が処理順に依る。バケットの巡回順はセル配置に依存して
+        // 揺れるため、添字の昇順へ均してから解決する。
         candidates.sort((left, right) => left - right);
         for (const j of candidates) {
           const b = active[j]!;

@@ -22,7 +22,7 @@ export function orthogonalizedTo(pole: Vec3, reference: Vec3): Vec3 {
 
 // 自転位相 0 が指す方向(単位ベクトル、ECI)。IAU の自転位相 W と同じく、天体の赤道が
 // ECI の赤道に対して持つ昇交点を基準に取る。
-export function spinPhaseRef(axis: Vec3): Vec3 {
+function spinPhaseRef(axis: Vec3): Vec3 {
   const node = cross(ECI_POLE, axis);
   return len(node) < 1e-9 ? orthogonalizedTo(axis, VERNAL) : norm(node);
 }

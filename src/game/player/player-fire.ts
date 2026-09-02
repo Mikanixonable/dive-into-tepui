@@ -27,7 +27,7 @@ const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 // 1発あたりに砲身へ入る熱量 [J]。発射ガスの熱の大半は砲身の側が受け取る。
 const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
 
-export const BARREL_MASS = 300; // [kg]
+const BARREL_MASS = 300; // [kg]
 
 export const MAG_ROUNDS = 32; // 1 マガジンの装弾数
 export const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
@@ -40,14 +40,14 @@ const RECOIL_DV = 0.04; // 反動 [m/s]
 const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
 const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 
-export type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
+type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
 
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export type AmmoLoad = { readonly mags: number; readonly rounds: number };
 
 // スナップショットからの復元か、新規配置の初期積載か。どちらも省略すればフィールド初期化子の
 // 既定積載で始まる。
-export type FireInit =
+type FireInit =
   | { readonly saved: FireSaveData }
   | { readonly ammo?: AmmoLoad };
 

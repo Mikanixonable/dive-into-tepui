@@ -17,12 +17,12 @@ import { Vec3, add, cross, norm, sub, v3 } from '../math/vec3';
 // - `primaryRel` — 何かを中心に測った相対量。**中心が誰かは型に現れない**ので、
 //   足し先を取り違えても型検査は通る。組む側が中心を知っている必要がある。
 // - `icrf` — 太陽系重心中心・ICRF 軸。暦パックの生の座標。
-export type FrameTag = 'eci' | 'analytic' | 'primaryRel' | 'numeric' | 'icrf';
+type FrameTag = 'eci' | 'analytic' | 'primaryRel' | 'numeric' | 'icrf';
 
 // 原点(と供給源)の札を付けた位置ベクトル。**`Vec3` の部分型**なので既存のベクトル演算へ
 // そのまま渡せる。演算の結果は素の `Vec3` に戻る(位置 − 位置は変位であって位置ではない)ので、
 // 位置として名乗り直すには `kinematicState` を通す。
-export type FramedVec3<F extends FrameTag> = Vec3 & { readonly __originOf: F };
+type FramedVec3<F extends FrameTag> = Vec3 & { readonly __originOf: F };
 
 // ある時刻における位置・速度(エポック付き状態ベクトル)。不変で、進めるときは新しい
 // KinematicState を作って差し替える(参照を共有したまま書き換えると、保持側が変化を検知
@@ -69,7 +69,7 @@ export function addPrimaryRelative<F extends FrameTag>(
 // 軌道基底: 進行方向・軌道面法線・面内で進行方向に直交する向きからなる正規直交系。
 // radOut が動径外向き r̂ と一致するのは r⊥v のとき(円軌道)だけで、離心軌道では
 // 動径から傾く — マーカーの RADIAL OUT/IN や Δv の OUT/IN はこの軸を指す。
-export type OrbitAxes = {
+type OrbitAxes = {
   readonly pro: Vec3; // 進行方向
   readonly nrm: Vec3; // 軌道面法線
   readonly radOut: Vec3; // 面内・進行方向に直交(外向き)

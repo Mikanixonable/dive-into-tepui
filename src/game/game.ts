@@ -6,10 +6,11 @@ import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
 import { FrameSections, SECTION } from '../frame-sections';
 import { Player } from './player/player';
 import { Base } from './dynamic/dynamic-entity/base';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
+import { CelestialMarkers } from './marker/celestial-markers';
 import { ActiveControllableController } from './active-controllable-controller';
 import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
@@ -59,12 +60,13 @@ export class Game {
   private readonly _uiSfx: UiSfx;
   private readonly pauseMenu: PauseMenu;
   private readonly markerManager: MarkerManager;
+  private readonly celestialMarkers: CelestialMarkers;
   readonly cameraSystem: CameraSystem;
   // 操作対象艦(0..n 隻のうちどれを操作するか)の切替を持つ。
   readonly activePlayers: ActiveControllableController;
   get player(): Player | null { return this.activePlayers.current; }
   get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
-  get activeControllableEntity(): DynamicEntity | null {
+  get activeControllableEntity(): Controllable | null {
     return this.controlledBase ?? this.player ?? this.dynamicSystem.bases.find((b) => b.alive) ?? null;
   }
   readonly simSpeedManager: SimSpeedManager;
@@ -140,12 +142,8 @@ export class Game {
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
-    this.cameraSystem = new CameraSystem(
-      this._hud,
-      this.markerManager,
-      celestialSystem,
-      initialSave?.camera,
-    );
+    this.cameraSystem = new CameraSystem(this._hud, celestialSystem, initialSave?.camera);
+    this.celestialMarkers = new CelestialMarkers(this.markerManager, celestialSystem);
     this.simSpeedManager = new SimSpeedManager(this._hud, this._uiSfx);
     this.navTarget = new NavTarget(this._hud, this.markerManager);
     this.navTarget.restore(initialSave?.navTarget, this.dynamicSystem);
@@ -211,14 +209,15 @@ export class Game {
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
     this.mapPickables = new MapPickables(
-      this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem, this.editor,
-      this.markerManager, this.frameAnchors,
+      this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
+      this.celestialMarkers, this.editor, this.frameAnchors,
     );
     this.linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem, this.cameraSystem);
     this.mapActions = new MapContextActions(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, this.editor, this.simSpeedManager, this.pauseMenu, this.mapPickables, this.linePickables,
-      this.activePlayers, this.frameControls, this.activeStage, this.targeter,
+      this.activePlayers, this.frameControls, this.activeStage, this.targeter, this.markerManager,
+      this.celestialMarkers,
     );
 
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
@@ -236,10 +235,6 @@ export class Game {
       this.activePlayers, this.activeStage,
     );
     this.mapActions.setDocking(this.docking);
-    this.mapActions.setControlledBaseHandler(
-      (b) => this.setControlledBase(b),
-      () => this.controlledBase,
-    );
     this.viewManager.setControlledBaseProvider(() => this.controlledBase);
     this.dockingGuide = new DockingGuide(
       this._scene, this.markerManager, this.dynamicSystem, this.docking, this.viewManager,
@@ -252,10 +247,6 @@ export class Game {
     // ロード復元時の focus は MapCamera が直接持つだけで frameControls.setFocus() を経由しないため、
     // ここで明示的に同期しないと軌道表示の基準系がフォーカス天体に追随しない。
     this.frameControls.setFocus(this.cameraSystem.mapCamera.focus);
-  }
-
-  setControlledBase(base: Base | null): void {
-    this.activePlayers.setBase(base);
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -525,6 +516,12 @@ export class Game {
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     // 速度基準は自機の速度(弾の相対速度描画・再突入エフェクトが前提とする値)。
     const fo = this.cameraSystem.sync(activeControllable?.state.v ?? v3());
+    // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
+    if (this.cameraSystem.overviewMode) {
+      this.celestialMarkers.syncLabels(this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos);
+    } else {
+      this.celestialMarkers.hideLabels();
+    }
 
     const project = this.cameraSystem.activeCameraProjection;
     const overviewMode = this.cameraSystem.overviewMode;
@@ -554,15 +551,14 @@ export class Game {
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
       player, combatTargets, this.dynamicSystem.ammoPickups, this.dynamicSystem.rcsFuelPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
-      celestialBodies,
+      celestialBodies, this.celestialMarkers,
     );
-    this.cameraSystem.focusMarkers.syncSubLabels(
+    this.celestialMarkers.syncSubLabels(
       this.markerManager.combatMarkers, celestialBodies, displayTime,
       overviewMode, project, this.cameraSystem.activeCameraPos,
     );
     this.navTarget.sync(this.cameraSystem);
     this.dynamicSystem.syncEquatorNodes(this.cameraSystem);
-    this.mapPickables.syncVisibility();
 
     if (this.viewManager.isMapView) {
       this.displayWindowManager.sync(player);
@@ -572,7 +568,7 @@ export class Game {
     }
     // マップの常設一覧はマップ時だけ更新するが、戦闘中に開いたプロパティウィンドウは
     // 最新値を表示し続ける必要がある。MapContextActions 側で窓が無ければ即時 return する。
-    this.mapActions.sync(simTime, celestialBodies, player);
+    this.mapActions.sync(simTime, displayTime, player);
     this.editor.sync(this.cameraSystem, simTime, fo);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
