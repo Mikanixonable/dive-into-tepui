@@ -52,10 +52,9 @@ export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
 
 export { RADIATOR_HINGE } from './radiator-hinge';
 
-// マガジン寸法(機体座標系)。ベルト連結間隔(MAG_BELT_PITCH)は game.ts が
-// マガジンリンクの並びを計算するのに使う。純粋な数値なので JSON 化はしない。
-export const MAG_THICKNESS = 1.0;
-export const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3); // ベルト方向(X)
+// マガジン寸法(機体座標系)。
+const MAG_THICKNESS = 1.0;
+const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3); // ベルト方向(X)
 export const MAG_BELT_PITCH = MAG_WIDTH + 0.18; // 連結間隔
 
 // ベルトが機体へ入っていく給弾口の位置(機体座標系 X)。ベルトの節点は継手(マガジンの端面)
