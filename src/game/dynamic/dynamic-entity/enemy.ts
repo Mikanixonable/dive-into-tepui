@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { WorldView } from '../../view-manager';
+import type { WorldView } from '../../world-view';
 import { Ship, MUZZLE_SPEED } from './ship';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 import { DynamicEntity } from './dynamic-entity';

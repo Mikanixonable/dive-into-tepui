@@ -8,7 +8,7 @@
 // 向くグリフの回転角を求める。camera-system.ts が MarkerManager に依存しているため、
 // ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
 import { Vec3, addScaled, len, norm, sub } from '../../math/vec3';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import { Projected } from '../../math/projection';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';

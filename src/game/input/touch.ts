@@ -3,7 +3,7 @@
 // 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を同じ仕組みで扱える。
 // 常設で構築し、表示そのものは setPointerKind が渡す直近の入力種別に従う。
 import { Input, PointerKind } from '../input/input';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
 import {

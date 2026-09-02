@@ -2,7 +2,7 @@
 // root/svgOverlay の公開・常設パネル群の所有と毎フレームの同期を担う。
 import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';

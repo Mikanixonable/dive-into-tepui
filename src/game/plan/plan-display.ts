@@ -1,7 +1,7 @@
 // 軌道計画の姿の表示: 計画折れ線(PlanPath)の駆動と、表示時刻の計画上の自機位置ゴースト
 // (⬢ plannedPlayer マーカー)。
 import * as THREE from 'three/webgpu';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import { Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';

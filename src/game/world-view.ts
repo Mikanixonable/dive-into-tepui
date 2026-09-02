@@ -5,6 +5,8 @@ import type { DisplayWindow } from './display-window-manager';
 import type { FloatingOrigin } from './camera/floating-origin';
 import type { Input } from './input/input';
 
+export type WorldView = 'combat' | 'map';
+
 export interface WorldViewFrame {
   // このビューへ遷移できるか。
   canEnter(): boolean;

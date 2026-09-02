@@ -1,7 +1,7 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決める。
 // update が出す/消す/スタイルを決め、sync は既に出ている線の形状と変換を合わせる。
 import * as THREE from 'three/webgpu';
-import type { WorldView } from '../view-manager';
+import type { WorldView } from '../world-view';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { FloatingOrigin } from '../camera/floating-origin';
