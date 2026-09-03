@@ -1,10 +1,5 @@
 // フレーム最初のパス: lit-opaque 層(lit-layer.ts)のオブジェクトだけを対象に、深度・法線・
 // ラフネス・ベース色・金属度・自己発光を MRT(複数レンダーターゲット)へ描く。
-//
-// シーンの実マテリアルをそのまま描く。renderer.setMRT を張った状態では NodeMaterial が
-// 自前の出力ノードを MRT ノードで置き換えるため、ライティングのグラフは生成されないまま
-// diffuseColor / metalness / roughness / emissive のシェーダ変数だけが確定する
-// — overrideMaterial もマテリアルの改変も要らない。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import {
@@ -47,15 +42,11 @@ export function octDecodeNormal(raw: Vec2Node): Vec3Node {
 }
 
 export class GBufferPass {
-  private readonly renderer: WebGPURenderer;
   private readonly target: THREE.RenderTarget;
   private readonly mrtNode: ReturnType<typeof mrt>;
 
-  // 4枚 MRT ターゲットとそれぞれのフォーマットを構築し、出力ノード(法線は octEncodeNormal
-  // 経由、残りはそのまま)を一度だけ組み立てる。
-  constructor(renderer: WebGPURenderer, private readonly gpu: GpuTimings) {
-    this.renderer = renderer;
-
+  // ターゲットは 1×1 で作り、render() が画面寸法へ合わせる。
+  public constructor(private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings) {
     // モデル間の境界をマルチサンプルで平均すると、法線がどちらの面にも属さない方向に
     // なってしまうため、G バッファはマルチサンプルしない。
     this.target = new THREE.RenderTarget(1, 1, { count: 4, depthBuffer: true, samples: 0 });
@@ -67,10 +58,6 @@ export class GBufferPass {
     roughnessTex!.format = THREE.RedFormat;
     roughnessTex!.type = THREE.UnsignedByteType;
     // ベース色は線形の 8bit。α へ金属度を同居させるのは、この2つを読む側が常に同時に使うため。
-    // 暗部にバンディングが見えたら符号化か 10bit へ上げる(表示用ターゲットと違い、ここは
-    // `-srgb` フォーマットにすると読み側で線形へ戻る点に注意 — 二重変換にはならない)。
-    // **何も描かれなかった画素の α は 1 になる**(three は MRT の 2 枚目以降を (0,0,0,1)
-    // 固定でクリアする)。物体の有無は深度で判定する — クリア値 0 が反転 Z の far。
     basecolorTex!.name = 'basecolor';
     basecolorTex!.format = THREE.RGBAFormat;
     basecolorTex!.type = THREE.UnsignedByteType;
@@ -93,16 +80,17 @@ export class GBufferPass {
     });
   }
 
-  get normalTexture(): THREE.Texture { return this.target.textures[0]!; }
-  get roughnessTexture(): THREE.Texture { return this.target.textures[1]!; }
-  // rgb がベース色(線形)、a が金属度。
-  get basecolorTexture(): THREE.Texture { return this.target.textures[2]!; }
-  get emissiveTexture(): THREE.Texture { return this.target.textures[3]!; }
-  get depthTexture(): THREE.DepthTexture { return this.target.depthTexture!; }
+  public get normalTexture(): THREE.Texture { return this.target.textures[0]!; }
+  public get roughnessTexture(): THREE.Texture { return this.target.textures[1]!; }
+  // rgb がベース色(線形)、a が金属度。何も描かれなかった画素は a が 1 のままなので、物体の
+  // 有無は depthTexture(クリア値 0 が反転 Z の far)で判定する。
+  public get basecolorTexture(): THREE.Texture { return this.target.textures[2]!; }
+  public get emissiveTexture(): THREE.Texture { return this.target.textures[3]!; }
+  public get depthTexture(): THREE.DepthTexture { return this.target.depthTexture!; }
 
   // lit-opaque 層のオブジェクトだけを G バッファへ描く。camera はこのあと world パスでも
   // 使う同一インスタンスなので、layers.mask は呼び出し前の値へ必ず戻す。
-  render(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number): void {
+  public render(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number): void {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
 
     const savedMask = camera.layers.mask;
@@ -110,7 +98,6 @@ export class GBufferPass {
 
     this.renderer.setMRT(this.mrtNode);
     this.renderer.setRenderTarget(this.target);
-    // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
     this.gpu.beginPass(GPU_PASS.gbuffer);
     this.renderer.render(scene, camera);
     this.renderer.setRenderTarget(null);
@@ -120,7 +107,7 @@ export class GBufferPass {
   }
 
   // 保持している GPU 資源を解放する。
-  dispose(): void {
+  public dispose(): void {
     this.target.dispose();
   }
 }

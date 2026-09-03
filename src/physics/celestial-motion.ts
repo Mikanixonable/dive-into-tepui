@@ -1,14 +1,10 @@
 // 天体1体の運動。解析暦・数値暦のどちらでも太陽系重心中心の位置・速度・加速度を合成し、
-// 自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。**答えるのは自分1体ぶんの
-// 値**で、他天体との関係はここより上の層が組む。数値暦が惑星系の重心しか収録していない
-// 系では、惑星本体と衛星はそこから重心オフセットを介して組む。
-// 恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
-// 評価結果は時刻 t をキーにした固定長リング(TimeRing)でメモ化する。
-// THREE/DOM 非依存。
+// 自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。答えるのは自分1体ぶんの値。
+// 数値暦が惑星系の重心しか収録していない系では、惑星本体と衛星はそこから重心オフセットを介して
+// 組む。恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
 import { Atmosphere, AtmosphereDef } from './atmosphere';
 import { qFromForwardUp } from '../math/quat';
 import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
-import type { EciTransform } from './eci-transform';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import {
@@ -16,7 +12,6 @@ import {
   keplerOrbitForSimZero, keplerOrbitRotation, keplerOrbitState,
 } from './kepler-orbit';
 import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
-import type { PlanetSystem } from './planet-system';
 import { SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
 import {
   Degree2Gravity, Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelForSimZero,
@@ -27,22 +22,26 @@ import {
 import { SECONDS_PER_DAY } from './time';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../math/vec3';
+import type { EciTransform } from './eci-transform';
+import type { PlanetSystem } from './planet-system';
 
 // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
-export type BodyOrientation = { readonly axis: Vec3; readonly spinAngle: number };
+export interface BodyOrientation {
+  readonly axis: Vec3;
+  readonly spinAngle: number;
+}
 
 // 天体1体の、ある時刻での ECI の値ひとそろい。位置・速度とその2階微分が近傍時刻への外挿を
 // 支え、向きの量は姿勢を解決済みの形で持つ。
-type EciValues = {
+interface EciValues {
   readonly state: KinematicState;
   readonly accel: Vec3; // ECI 加速度 [m/s²]
   readonly degree2: Degree2Gravity | null;
   readonly atmosphere: Atmosphere | null;
-};
+}
 
 // state.t と accel から時刻 t での位置を弾道外挿する。天体は実質的に弾道運動しており、
 // 1ステップぶんの時間幅では3次以上の項が無視できるので2次で足りる。
-// **この外挿の唯一の定義箇所** — 他所で同じ式を書かないこと。
 function extrapolatedPosition(eci: EciValues, t: number): Vec3 {
   const { r, v } = eci.state;
   const s = t - eci.state.t;
@@ -64,8 +63,12 @@ function extrapolatedState(eci: EciValues, t: number): KinematicState {
 // 天体ごとの平均黄経の初期位相 [rad]。未指定の天体は 0 として扱う。
 export type PhaseOffsets = Partial<Record<string, number>>;
 
-export type StarDef = { readonly id: string; readonly mu: number; readonly radius: number };
-export type PlanetDef = {
+export interface StarDef {
+  readonly id: string;
+  readonly mu: number;
+  readonly radius: number;
+}
+export interface PlanetDef {
   readonly id: string;
   readonly mu: number;
   readonly radius: number;
@@ -78,7 +81,7 @@ export type PlanetDef = {
   // ラグランジュ点をフォーカス対象のラベルとして出すかどうか(省略時 = 出さない)。全公転天体で
   // 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
   readonly lagrangeLabels?: boolean;
-};
+}
 // 中心は必ず惑星で、その関係は SatelliteMotion が持つ参照が表す。
 export type SatelliteDef = Omit<PlanetDef, 'orbit'> & { readonly orbit: SatelliteOrbit };
 export type CelestialBodyDef = StarDef | PlanetDef | SatelliteDef;
@@ -90,7 +93,7 @@ export interface CelestialMotions {
   readonly celestialMotions: readonly CelestialMotion[];
   // mu が 0 でない天体。
   readonly gravityMotions: readonly CelestialMotion[];
-  // 大気を持つ天体。抗力を掛ける1体を選ぶ側が引く。
+  // 大気を持つ天体。
   readonly atmosphereMotions: readonly CelestialMotion[];
 }
 
@@ -162,7 +165,7 @@ export abstract class CelestialMotion {
   protected constructor(
     // 自転の初期位相 [rad]。eciPole の自転モデルの位相原点をこれだけ進める(iau は w0 が、
     // 同期回転は軌道が位相を持つ)。
-    readonly spinPhase0: number = 0,
+    public readonly spinPhase0: number = 0,
   ) {}
 
   // 自分の暦を結ぶ。結ぶまでの間と、null を結んだ後は、解析暦が位置を答える。
@@ -181,8 +184,8 @@ export abstract class CelestialMotion {
     return extrapolatedState(this.eciAt(pivot), t);
   }
 
-  // 同じ外挿で位置だけを答える。**毎ステップ全エンティティぶん走る経路なので、位置だけで
-  // 足りるところではこちらを使う** — stateAt は Vec3 を1つ余分に作る。
+  // 同じ外挿で位置だけを答える。毎ステップ全エンティティぶん走る経路なので、位置だけで足りる
+  // ところではこちらを使う(stateAt より割り当てが 1 つ少ない)。
   positionAt(pivot: number, t: number = pivot): Vec3 {
     return extrapolatedPosition(this.eciAt(pivot), t);
   }
@@ -282,7 +285,7 @@ export class StarMotion extends CelestialMotion {
   private readonly analyticCache = new TimeRing<KinematicState<'analytic'>>();
 
   // 惑星-衛星系は addPlanetSystem で後から登録する。
-  constructor(readonly def: StarDef) {
+  constructor(public readonly def: StarDef) {
     super();
   }
 
@@ -405,7 +408,7 @@ export abstract class OrbitingMotion extends CelestialMotion {
     return mu !== null && mu > 0 && hasStableTriangularPoints(mu);
   }
 
-  // 分岐は PoleModel の分類だけで、固有名は持たない。
+  // 時刻 t の自転軸と自転位相を、PoleModel の分類ごとに解く。
   orientationAt(t: number): BodyOrientation | null {
     const model = this.def.pole;
     if (model === undefined) return null;
@@ -483,9 +486,8 @@ export abstract class OrbitingMotion extends CelestialMotion {
   // 数値暦が自分の軌道の中心天体と、その軌道が乗っている点の両方を直接収録している
   // 有効期間での相対位置・速度。引けなければ null。
   private numericOrbitRelStateAt(t: number): KinematicState<'primaryRel'> | null {
-    // 合成した numericStateAt を使わないのは、未収録の衛星に「収録済みの親 + 解析の相対」を
-    // 足し込むと、主天体を引いた差が結局その解析の相対そのものになるため — パック由来と
-    // 名乗る値が実は解析由来になる。引けないなら解析経路だと分かる形にしておく。
+    // 合成した numericStateAt は使わない — 未収録の衛星では「収録済みの親 + 解析の相対」から
+    // 主天体を引いた差が解析の相対そのものになり、数値暦由来と名乗る値が解析由来になる。
     const own = this.orbitPointNumericStateAt(t);
     const primaryState = this.primary.ownNumericStateAt(t);
     if (own === null || primaryState === null) return null;
@@ -496,11 +498,11 @@ export abstract class OrbitingMotion extends CelestialMotion {
 export class PlanetMotion extends OrbitingMotion {
   readonly kind: CelestialKind = 'planet';
 
-  // star は主星。system は自分が属する惑星-衛星系で、軌道と衛星の一覧はそちらが持つ。
-  // spinPhase0 は自転の初期位相 [rad](eciPole の自転モデルを持つ惑星だけが意味を持つ)。**組むときは planet-system.ts の planetSystem()
-  // を使う** — 系と本体を結び忘れずに作れる唯一の入口。
+  // star は主星。system は自分が属する惑星-衛星系で、軌道と衛星の一覧はそちらが持つ。spinPhase0 は
+  // 自転の初期位相 [rad](eciPole の自転モデルを持つ惑星だけが意味を持つ)。**組むときは
+  // planet-system.ts の planetSystem() を使う** — 系と本体を結び忘れずに作れる唯一の入口。
   constructor(
-    readonly def: PlanetDef, readonly star: StarMotion, readonly system: PlanetSystem,
+    public readonly def: PlanetDef, public readonly star: StarMotion, public readonly system: PlanetSystem,
     spinPhase0 = 0,
   ) {
     super(spinPhase0);
@@ -558,7 +560,7 @@ export class SatelliteMotion extends OrbitingMotion {
 
   // system は自分が属する惑星-衛星系。自分をその重心補正の対象として登録するので、惑星本体の
   // 絶対位置を初めて引く前に全衛星を作り終えていなければならない。
-  constructor(readonly def: SatelliteDef, readonly system: PlanetSystem) {
+  constructor(public readonly def: SatelliteDef, public readonly system: PlanetSystem) {
     super();
     this.index = system.addSatellite(this);
   }

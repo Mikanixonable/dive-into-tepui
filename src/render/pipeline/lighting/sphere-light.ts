@@ -3,9 +3,9 @@
 // 切られる場合を含み、視半径が小さくなると点光源へ連続に縮退するので、近距離用・遠距離用の
 // 分岐を持たない。
 import { Fn, acos, atan, clamp, float, max, select, sqrt, texture } from 'three/tsl';
-import type { FloatNode, Vec3Node } from '../../tsl-types';
 import { ltcEvaluate, ltcInverseTransform, ltcUv, sphereOctagonPoints } from './ltc';
 import { createLtcTables } from './ltc-table.generated';
+import type { FloatNode, Vec3Node } from '../../tsl-types';
 import type { ShadingSample } from './shading-sample';
 
 // 放射照度の係数 0..1。cosBeta は面の法線と光源中心方向のなす角の余弦(負も受ける)、
@@ -38,7 +38,7 @@ export class SphereSpecular {
 
   // 球光源(中心・半径は view 空間)の放射輝度へ掛ける鏡面の係数。粗さと視線の傾きで係数表を
   // 引き、輪郭円盤と同じ視半径の多角形が張る立体角を積分する。F0=1 で仮に評価した値。
-  factor(sample: ShadingSample, center: Vec3Node, radius: FloatNode): FloatNode {
+  public factor(sample: ShadingSample, center: Vec3Node, radius: FloatNode): FloatNode {
     const uv = ltcUv(sample.normal, sample.viewDir, sample.roughness);
     const inverseTransform = ltcInverseTransform(texture(this.tables.ltc1, uv));
     const formFactor = ltcEvaluate(
@@ -49,7 +49,8 @@ export class SphereSpecular {
     return texture(this.tables.ltc2, uv).x.mul(formFactor);
   }
 
-  dispose(): void {
+  // 係数表のテクスチャを解放する。
+  public dispose(): void {
     this.tables.ltc1.dispose();
     this.tables.ltc2.dispose();
   }

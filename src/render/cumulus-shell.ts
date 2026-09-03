@@ -39,13 +39,10 @@ export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL]
 // refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を決める)。
 type CumulusSampling = { readonly march: number; readonly refine: number };
 
-// 段ごとの標本の配り方。**費用は march + refine 回の標本化**、深さの分解能は march と 2^refine の
-// 積で決まる。march 0 は「どの視線も雲頂と交わらない」に落ちる。
-//
-// **いちばん粗い段の march は 1 本に留める** — 2 本以上あると、手前の刻みで拾った雲頂と奥の
-// 刻みで拾った雲頂が 2 枚の層として重なって読める。1 本なら殻の内側に層は立たず、雲頂の高さ
-// だけを持つ一枚の不透明な面になる。**そのぶん二分の回数はここだけ増やす** — 締める前の区間が
-// 殻の端から端まで広がるので、他の段と同じ回数では雲頂が深さの段へ割れて縞に見える。
+// 段ごとの標本の配り方。費用は march + refine 回の標本化。march 0 は殻を描かない。
+// **いちばん粗い段は march 1 本に留め、そのぶん二分を増やす** — 刻みが 2 本以上あると手前と奥で
+// 拾った雲頂が 2 枚の層として重なって読め、締める前の区間が殻の端から端まで広がるので、二分が
+// 他の段と同じ回数では雲頂が深さの段へ割れて縞に見える。
 const SAMPLING_OF_DETAIL = {
   [CUMULUS_DETAIL.off]: { march: 0, refine: 0 },
   [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5 },
@@ -60,7 +57,7 @@ const GRAIN_FADE_FULL_PIXELS = 4;
 
 export class CumulusShell {
   private readonly fieldMap: DeferredTexture;
-  // 標本の配り方と、その回数まで展開したマテリアル。配り方は表示側が毎フレーム押し込む。
+  // 標本の配り方と、その回数まで展開したマテリアル。
   private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
   private material: THREE.Material;
   private readonly blueNoise = new BlueNoise();

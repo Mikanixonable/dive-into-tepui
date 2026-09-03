@@ -6,13 +6,12 @@
 import * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../math/projection';
 
-
 // 大気の描き方の段。上げるほど、大気ぜんぶへ配れる精細さの合計が増える。
 export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
 type AtmosphereQuality = (typeof ATMOSPHERE_QUALITY)[keyof typeof ATMOSPHERE_QUALITY];
 
 // 大気 1 つぶんの光学パラメータ。散乱係数はいずれも基準球面(天体半径)での値 [1/m]。
-export type AtmosphereOptics = {
+export interface AtmosphereOptics {
   // レイリー散乱係数 [1/m]。空の青も夕焼けの赤も、この3成分の比が決める。
   readonly rayleigh: THREE.Vector3;
   readonly rayleighScaleHeight: number; // [m]
@@ -21,7 +20,7 @@ export type AtmosphereOptics = {
   readonly mieScaleHeight: number; // [m]
   // ミー散乱の非対称因子 0..1。大きいほど前方へ強く散り、太陽のまわりのグローが締まる。
   readonly mieAnisotropy: number;
-};
+}
 
 // 同時に大気を描ける天体の数。
 export const MAX_ATMOSPHERE_BODIES = 4;
@@ -75,11 +74,8 @@ function verticalOpticalDepth(optics: AtmosphereOptics): number {
 
 // その天体の大気が画面で覆う画素の数を、効きの深さで重み付けした量。**画角と解像度がここから
 // 入る** — 同じ天体でも、覗き込めば影響は増える。裾球の縁までが大気を通る視線なので、覆う範囲は
-// 裾球の円盤で採る。
-//
-// **カメラが裾球の中にいる構図では、これは必ず画面 1 枚ぶんを超える** — 視点からの直線距離が
-// 裾半径を下回るので、円盤の半径が画面の高さの半分を超える。地表から空を見上げて地面が画面に
-// 無い構図でも、空の色が予算から落ちることはない。
+// 裾球の円盤で採る。**カメラが裾球の中にいる構図では必ず画面 1 枚ぶんを超える**ので、地表から
+// 空を見上げて地面が画面に無い構図でも、空の色は予算に残る。
 function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPerPixel: number): number {
   const cutoffRadius = surfaceRadius + cutoffAltitude(optics, surfaceRadius);
   const radiusPx = apparentSizePx(cutoffRadius, metersPerPixel);
@@ -89,29 +85,29 @@ function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPer
 // 大気を持つ天体 1 体。中心は描画座標、半径は [m]。**地表も大気の等密度面も、自転軸まわりの
 // 相似な回転楕円体**で、surfaceRadius は赤道半径、polarRatio は極半径をそれで割った比。
 // polarAxis は潰す向き(描画座標の単位ベクトル)で、真球(polarRatio = 1)では効かない。
-export type AtmosphereBody = {
+export interface AtmosphereBody {
   readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
   readonly polarAxis: THREE.Vector3;
   readonly polarRatio: number;
   readonly optics: AtmosphereOptics;
-};
+}
 
 // 大気を描く候補 1 体。distance は視点から天体中心までの距離 [m] で、重ねる順序を決める。
 // metersPerPixel はその距離での画面 1 画素ぶんの実距離 [m] で、影響の大きさを決める。
 // **視線方向の深度ではなく直線距離で測ったものを渡すこと** — 深度は視点の背後で床打ちされ、
 // 画面に写らない天体が目の前の天体と同じ影響を主張する。
-export type AtmosphereCandidate = {
+export interface AtmosphereCandidate {
   readonly body: AtmosphereBody;
   readonly distance: number;
   readonly metersPerPixel: number;
-};
+}
 
 // 大気を描く指示 1 体ぶん。steps はその大気を解くサンプル点の数で、整数でない値も採る。
-export type AtmosphereDraw = {
+export interface AtmosphereDraw {
   readonly body: AtmosphereBody;
   readonly steps: number;
-};
+}
 
 // 予算 budget サンプルを、影響の大きい順に配る。**返す並びは視点に近い順**(合成の順序)。
 // 予算で賄えない数の候補は、影響の小さい側から落ちる。

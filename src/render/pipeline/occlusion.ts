@@ -1,18 +1,16 @@
 // G バッファの深度から画素ごとの描画座標を復元し、そこへ恒星の直射光がどれだけ届くかを 1 枚の
 // 透過率へ書く。透過率を決めるのは sun-occlusion.ts で、このパスはその関数を画面の全画素で
-// 評価してキャッシュするだけ。ライティングパスはこの 1 枚を読んで恒星の放射照度へ掛ける。
-//
-// マテリアルは環の項を持つものと持たないものの 2 枚で、フレームごとに差し替える。**1 枚を
-// uniform で分岐させると、環付き天体が画面に無いフレームでも 13 帯ぶんの演算列を毎画素通る**
-// (TSL のグラフは静的に展開される) — render-pipeline.ts の compositeMaterials と同じ形。
+// 評価してキャッシュする。マテリアルは環の項を持つものと持たないものの 2 枚で、フレームごとに
+// 差し替える — 1 枚を uniform で分岐させると、環付き天体が画面に無いフレームでも 13 帯ぶんの
+// 演算列を毎画素通る(TSL のグラフは静的に展開される)。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { dot, length, max, normalize, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
-import type { FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
 import { octDecodeNormal, type GBufferPass } from './gbuffer';
-import type { SunOcclusion } from './sun-occlusion';
 import { viewPositionAt } from './view-ray';
+import type { FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
+import type { SunOcclusion } from './sun-occlusion';
 
 // 画素の覆う実寸を伸ばす入射角の余弦の下限。地平線では 0 へ落ちるので、伸びしろに天井を張る。
 const MIN_INCIDENCE_COSINE = 0.05;
@@ -23,7 +21,7 @@ export class OcclusionPass {
   private readonly spheresOnlyMaterial: THREE.MeshBasicNodeMaterial;
   private readonly withRingsMaterial: THREE.MeshBasicNodeMaterial;
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と view→描画座標の行列は
-  // 毎フレーム自前で書き込む(light-prepass.ts の逆射影行列と同じ理由)。
+  // 毎フレーム自前で書き込む。
   private readonly projMatrixInverse: Mat4Uniform;
   private readonly viewToWorld: Mat4Uniform;
   // 画面 1 px が 1 m 先で張る実寸 [m]。受け手までの視距離を掛けると、その画素が地表で覆う
