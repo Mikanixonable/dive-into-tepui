@@ -43,6 +43,8 @@ import { LinePickables } from './pickable/line-pickables';
 import { ObjectWindows } from './pickable/object-windows';
 import { Navball } from './navball/navball';
 import { GameSaveData } from './save/save-data';
+import { LoadingProgress } from './loading-progress';
+import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { frameRoleOf } from '../physics/frame';
 import { Docking } from './docking/docking';
@@ -104,8 +106,42 @@ export class Game {
   // 計測区間の境界を打つ先。集計と保持はこのオブジェクトが持つ。
   private readonly sections: FrameSections;
 
-  // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
-  constructor(
+  // 星系を組んでから、このランを組み立てる。段の切れ目で描画を明け渡すので、
+  // 組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
+  static async create(
+    gs: GameScene,
+    stageClass: StageClass,
+    hud: Hud,
+    worldSfx: WorldSfx,
+    uiSfx: UiSfx,
+    pauseMenu: PauseMenu,
+    sections: FrameSections,
+    initialSave: GameSaveData | undefined,
+    startEpoch: TdbJulianDate | undefined,
+    progress: LoadingProgress,
+  ): Promise<Game> {
+    await progress.enter('system');
+    // このランの元期。スナップショットを読むならその元期をそのまま継ぐ(照合はしない) —
+    // 保存されている simTime はその元期からの経過秒なので、別の元期で組むと全天体がずれる。
+    // 次に開始日時の指定、最後にステージの宣言。**星系を組む前に決まっていなければならない。**
+    const savedJdTdb = initialSave?.ephemerisContext?.epochJdTdb;
+    const epoch = savedJdTdb !== undefined ? createJulianDate('TDB', savedJdTdb) : startEpoch ?? stageClass.epoch;
+    // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
+    const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
+    const celestialSystem = await stageClass.createCelestialSystem(
+      initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch, (ratio) => progress.within(ratio),
+    );
+    await progress.enter('bodies');
+    celestialSystem.build(
+      gs.scene, gs.pipeline.sunLight, gs.pipeline.exposure, gs.pipeline.sunOcclusion,
+      gs.pipeline.planetLight, gs.pipeline.ambient, gs.pipeline.atmosphere,
+    );
+    await progress.enter('run');
+    return new Game(gs, stageClass, hud, worldSfx, uiSfx, pauseMenu, sections, celestialSystem, initialSave);
+  }
+
+  // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。星系は実体化済みで渡る。
+  private constructor(
     gs: GameScene,
     stageClass: StageClass,
     hud: Hud,
@@ -162,9 +198,6 @@ export class Game {
     );
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.dynamicSystem);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
-    this._celestialSystem.build(
-      this._scene, this.pipeline.sunLight, this.pipeline.exposure,
-      this.pipeline.sunOcclusion, this.pipeline.planetLight, this.pipeline.ambient, this.pipeline.atmosphere);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
     this._celestialSystem.setOrbitGuideSettings(this.navball.orbitGuideSettings);
     // 線が増えすぎたときの警告を UI へ戻す。
