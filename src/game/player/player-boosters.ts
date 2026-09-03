@@ -134,7 +134,7 @@ export class PlayerBoosters {
     const t = player.state.t;
     player.state = kinematicState<'eci'>(t, player.state.r, separated.player);
     this._fx.spawnBoosterSeparation(t, jointR, separated.player, separated.booster, player.att);
-    entities.addDetachedBooster(new DetachedBooster({
+    entities.add(new DetachedBooster({
       stage: detachedStage,
       state: kinematicState<'eci'>(t, boosterR, separated.booster),
       att: {

@@ -36,6 +36,7 @@ type DetachedBoosterInit =
 // 分離後の一段。接続時の燃料・点火状態を引き継ぎ、燃料切れまで自律的に燃焼する。
 export class DetachedBooster extends DynamicEntity {
   override readonly bcInv = 0.006;
+  override readonly capKind = 'booster';
   protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;
   protected readonly specificHeat = SMALL_DEBRIS_SPECIFIC_HEAT;
   protected readonly bulkDensity = SMALL_DEBRIS_BULK_DENSITY;
