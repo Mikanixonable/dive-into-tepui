@@ -1,4 +1,3 @@
-// 弾薬状態の表記。
 import { MAG_ROUNDS } from '../player/player-fire';
 
 // 弾薬状態の表記(例: "RELOADING..." / "弾切れ" / "18/32 +2連")。バレル交換中は

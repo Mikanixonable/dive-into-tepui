@@ -15,7 +15,7 @@ const STYLE = `
   pointer-events: auto; z-index: var(--z-resource-transfer-dialog);
 }
 #resource-transfer-dialog .rt-panel {
-  width: min(900px, 94vw); max-height: min(720px, 90vh);
+  width: min(900px, 94vw); max-height: min(720px, 90vh); max-height: min(720px, 90dvh);
   display: flex; flex-direction: column;
   background: var(--surface-1); border: 1px solid var(--edge);
   border-radius: var(--radius-window); overflow: hidden;

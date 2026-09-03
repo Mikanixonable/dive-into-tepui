@@ -1,5 +1,4 @@
-// ランの外側が一覧へ描くための、いまのランの要約。索引の形は知らない — 素の値だけを持ち、
-// どう並べてどう見せるかは受け取った側が決める。組み立てるのは Game.runSummary()。
+// いまのランの要約。
 import type { GamePhase } from './stages/stage';
 
 export interface RunSummary {

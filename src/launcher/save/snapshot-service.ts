@@ -8,7 +8,8 @@ import { isEphemerisContextRestorable } from '../../physics/ephemeris/ephemeris-
 import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData } from '../../game/save/save-data';
 import type { SnapshotKind, SnapshotMeta } from './slot-data';
 
-// Game の実行状態と GameSaveData の相互変換、およびストア/スロットへの出し入れを担う。
+// スナップショットの出し入れを担う。撮るときは索引のメタを組んでスロットへ収め、読むときは
+// 保存形式を検証して正規化する。
 export class SnapshotService {
   constructor(private readonly store: SaveStore, private readonly slots: SaveSlots) {}
 
