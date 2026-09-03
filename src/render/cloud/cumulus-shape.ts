@@ -18,7 +18,14 @@ const COVERAGE_DITHER_WIDTH = 0.04;
 // 境目を通す前に足す** — 通したあとに足すと、覆いの無い空にも粒が雲を生やす。生成側が高周波を
 // 持つようになったら、この 2 つを縮めて譲る。
 export const GRAIN_COVERAGE_DEPTH = 0.25;
-export const GRAIN_TOP_RELIEF = 0.15;
+const GRAIN_TOP_RELIEF = 0.15;
+
+// 場の G が 8bit で持つ刻み(場と同じ 0..1 の目盛り)。
+const FIELD_TOP_STEP = 1 / 256;
+
+// 粒を引かない読み手から見た、雲頂の高さの不確かさ(場と同じ 0..1 の目盛り)。粒が雲頂を振る
+// 幅と、場の刻みの和。**この幅に入る受け手は雲頂に立っていると見なしてよい。**
+export const CLOUD_TOP_UNCERTAINTY = GRAIN_TOP_RELIEF + FIELD_TOP_STEP;
 
 // 被覆率を、画素ごとのディザと比べる「覆い尽くされている割合」0..1 へ伸ばしたもの。
 export function opaqueFractionOf(coverage: FloatNode): FloatNode {
