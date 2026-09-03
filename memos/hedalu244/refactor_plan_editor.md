@@ -88,57 +88,6 @@
 
 ## 手順
 
-### 手順6. 到着基準ローカル Δv の導出を1つにする
-
-**目的.** 「ノードの Δv を到着状態の軌道基準枠へ分解する」が2箇所にあり、片方(`syncPanel`)は
-中心天体相対の差から組んでいる。`nodeDv` のコメントが述べているとおり、この差は ECI で取って
-到着状態の基底へ射影するのが正しい形なので、そちらへ寄せて1つにする。
-
-`syncPanel` 側の中心天体相対の差は、`arr.t` がノード時刻と厳密に一致する
-(`plan-path.ts:500` が `end: node.t` で区間を切り、`arrivalStates()` がその時刻の状態を返す)ため、
-同じ中心・同じ時刻の並進フレームが両辺で打ち消し合い、ECI 差と一致する。**表示値は変わらない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `plan-editor.ts`(`nodeDv` の隣) | `private nodeDvLocal(i: number, arriving: readonly (KinematicState \| null)[]): Vec3 \| null` を新設する(下記) |
-| `plan-editor.ts:372,380-387` | `rebuildDraggedNode` の `dvWorldOld` / `axesOld` / `dvLocal` を `nodeDvLocal(idx, arriving)` の呼び出し1回に置き換える。`null` なら `return null`。使われなくなる `node` / `arr` の局所変数も落とす |
-| `plan-editor.ts:559-576` | `syncPanel` の `centerState` / `plan.anchorOr` 経由をやめ、`center` は選択中ノードがあるときだけ `strongestAttractor(node.r, …, node.t)` で求める。`localDv` は `nodeDvLocal` から取る |
-| `plan-editor.ts:582-584` | `warnAtmosphere` は `center !== null && center.id === 'earth'` にする(この式そのものは手順8 で置き換わる) |
-| `plan-editor.ts:444-449` | 呼び出し元が1つになる `relativeToBody` を `bodyState` へインライン展開して消す |
-
-新設するメソッド:
-
-```ts
-// i 番目のノードの Δv を、到着状態の軌道基準枠(PRO/NRM/RAD)成分へ分解する。
-// ノードか到着状態が求まっていなければ null。
-private nodeDvLocal(i: number, arriving: readonly (KinematicState | null)[]): Vec3 | null {
-  const arr = arriving[i];
-  if (!this.plan?.nodes[i] || !arr) return null;
-  const dvWorld = this.nodeDv(i, arriving);
-  const axes = orbitAxes(this.bodyState(arr));
-  return v3(dot(dvWorld, axes.pro), dot(dvWorld, axes.nrm), dot(dvWorld, axes.radOut));
-}
-```
-
-**`anchorOr` 経由を落としてよい根拠.** 落とすことで `warnAtmosphere` が「選択なしのとき常に false」
-へ変わるが、`plan-panel.ts:85-98` はこの値を `if (selEl)` の中でしか読まない。選択が無ければ
-`selEl` は `null` なので、出力される HTML は変わらない。
-
-**達成条件と検証**
-
-- `grep -n "relativeToBody|anchorOr" src/game/plan/plan-editor.ts` が 0件。
-- `grep -n "radOut" src/game/plan/plan-editor.ts` が 1件。
-- `syncPanel` が 36行以下。
-- `npm run typecheck` と `npm run test:game` が通る。
-- `npm run dev` でノードに Δv を入れ、TRAJECTORY パネルの PRO / NRM / RAD 欄が、矢印ハンドルで
-  加えた向きと符号どおりに動くこと、矢印ハンドルで加えた量とパネルの `m/s` 表示が一致することを
-  目で見る。**月の影響圏の内側と外側のノードで両方見る** — 中心天体相対から ECI へ寄せた変更なので、
-  影響圏の境界を跨ぐケースが差の出る場所。
-
----
-
 ### 手順7. 選択の正本を1つにして `PlanPanel` へ渡す
 
 **目的.** いま `PlanPanel.sync` は「行ごとの `selected`」と「`hasSelection`」という、同じ1つの

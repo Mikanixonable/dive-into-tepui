@@ -361,12 +361,9 @@ export class PlanEditor {
     arriving: readonly (KinematicState | null)[],
   ): KinematicState | null {
     const plan = this.plan;
-    if (!plan) return null;
-    const node = plan.nodes[idx];
-    const arr = arriving[idx];
-    if (!node || !arr) return null;
+    const dvLocal = this.nodeDvLocal(idx, arriving);
+    if (!plan || dvLocal === null) return null;
 
-    const dvWorldOld = sub(node.v, arr.v);
     // ノードより後ろの arc のサンプルは、そこへ至るまでに実行されたノードの Δv をすべて
     // 含んだ速度になっているので、加算前(プレバーン)の速度へ戻してから改めて Δv を組み立てる。
     // 置ける時刻範囲は直前の状態から表示期間ぶん伸びるため、2つ以上先の arc の
@@ -380,14 +377,7 @@ export class PlanEditor {
       baseV = sub(baseV, sub(passed.v, passedArr.v));
     }
 
-    // 到着軌道基準のローカル Δv 成分を求め、移動先のプレバーン状態基準へ組み直す。
-    const axesOld = orbitAxes(this.bodyState(arr));
-    const dvLocal = v3(
-      dot(dvWorldOld, axesOld.pro),
-      dot(dvWorldOld, axesOld.nrm),
-      dot(dvWorldOld, axesOld.radOut),
-    );
-
+    // 到着軌道基準のローカル Δv 成分を、移動先のプレバーン状態基準へ組み直す。
     const newPreBurnState = kinematicState<'eci'>(sample.t, sample.r, baseV);
     const newDvWorld = fromOrbitAxes(this.bodyState(newPreBurnState), dvLocal);
 
@@ -442,17 +432,22 @@ export class PlanEditor {
     return node && arr ? sub(node.v, arr.v) : v3();
   }
 
-  // center 相対状態。orbitAxes が KinematicState を要求するので、座標系相対の r/v を
-  // state の時刻のまま KinematicState へ包み直す。
-  private relativeToBody(state: KinematicState, center: CelestialMotion): KinematicState {
-    const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
-    return kinematicState<'eci'>(state.t, rel.r, rel.v);
+  // i 番目のノードの Δv を、到着状態の軌道基準枠(PRO/NRM/RAD)成分へ分解する。
+  // ノードか到着状態が求まっていなければ null。
+  private nodeDvLocal(i: number, arriving: readonly (KinematicState | null)[]): Vec3 | null {
+    const arr = arriving[i];
+    if (!this.plan?.nodes[i] || !arr) return null;
+    const dvWorld = this.nodeDv(i, arriving);
+    const axes = orbitAxes(this.bodyState(arr));
+    return v3(dot(dvWorld, axes.pro), dot(dvWorld, axes.nrm), dot(dvWorld, axes.radOut));
   }
 
   // 軌道要素とΔv方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
+  // orbitAxes が KinematicState を要求するので、相対の r/v を state の時刻のまま包み直す。
   private bodyState(state: KinematicState): KinematicState {
-    return this.relativeToBody(
-      state, strongestAttractor(state.r, this.celestialSystem.celestialMotions, state.t));
+    const center = strongestAttractor(state.r, this.celestialSystem.celestialMotions, state.t);
+    const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
+    return kinematicState<'eci'>(state.t, rel.r, rel.v);
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
@@ -532,35 +527,20 @@ export class PlanEditor {
       dvMag: len(this.nodeDv(i, arriving)),
       selected: i === this.selectedNodeIdx,
     }));
-    // 選択中ノードの Δv と噴射後軌道要素を求める
+    const idx = this.selectedNodeIdx;
+    const node = idx === null ? null : plan.nodes[idx];
+    const localDv = idx === null ? null : this.nodeDvLocal(idx, arriving);
     let selEl: OrbitalElements | null = null;
-    let localDv: Vec3 | null = null;
     let nodeSecondsFromNow: number | null = null;
-    // 高度・大気圏警告の基準は、選択中ノード(無ければ計画の起点)で最も強く引く天体。
-    const centerState = (this.selectedNodeIdx !== null ? plan.nodes[this.selectedNodeIdx] : null) ?? plan.anchorOr(ship.state);
-    const center = strongestAttractor(
-      centerState.r, this.celestialSystem.celestialMotions, centerState.t);
-    if (this.selectedNodeIdx !== null) {
-      const node = plan.nodes[this.selectedNodeIdx];
-      const arr = arriving[this.selectedNodeIdx];
-      if (node && arr) {
-        nodeSecondsFromNow = node.t - this.simTime;
-        const bodyNode = this.relativeToBody(node, center);
-        const bodyArr = this.relativeToBody(arr, center);
-        selEl = orbitalElementsOf(node, center, node.t);
-
-        // 到着時基準でのローカルΔv成分を計算
-        const dvWorld = sub(bodyNode.v, bodyArr.v);
-        const axes = orbitAxes(bodyArr);
-        localDv = v3(dot(dvWorld, axes.pro), dot(dvWorld, axes.nrm), dot(dvWorld, axes.radOut));
-      }
+    let center: CelestialMotion | null = null;
+    // 到着状態が求まっている選択中ノードについて、噴射後の軌道要素と現在時刻からの秒数を出す
+    if (node && localDv) {
+      nodeSecondsFromNow = node.t - this.simTime;
+      center = strongestAttractor(node.r, this.celestialSystem.celestialMotions, node.t);
+      selEl = orbitalElementsOf(node, center, node.t);
     }
-    // 大気圏警告は「このゲームで大気を持つのは地球だけ」という物理モデル自体の意図的な
-    // 簡略化に基づく(CLAUDE.md 既述)ので、ECI 原点ではなく
-    // 地球という天体そのものへの一致で判定する — レジストリに地球が無ければ常に false になり、
-    // クラッシュも誤警告もしない。
     this.panel.sync(
-      nodes, selEl, localDv, nodeSecondsFromNow, center.id === 'earth', this.selectedNodeIdx !== null,
+      nodes, selEl, localDv, nodeSecondsFromNow, center !== null && center.id === 'earth', idx !== null,
     );
   }
 
