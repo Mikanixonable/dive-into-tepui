@@ -120,7 +120,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
     this.sunSource = new SunSource(this._sunLight, this.occlusionPass, graphics.sunLightModel);
-    this._planetLight = new PlanetLightSource(graphics.planetLightCount);
+    this._planetLight = new PlanetLightSource(this._sunLight, graphics.planetLightCount);
     this._ambient = new AmbientSource(this._sunLight);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
