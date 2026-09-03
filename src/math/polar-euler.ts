@@ -55,6 +55,25 @@ export function rotationFromEuler(euler: PolarEuler, polar: Vec3): Quat {
   return qNormalize(qMul(qFromAxisAngle(offset, euler.roll), qFromBasis(offset, referenceUp)));
 }
 
+// 画面ドラッグを積んだ後の方位・仰角を返す(ロールは変えない)。dragX/dragY は画面右・画面下を
+// 正とする画面上の変位で、ドラッグした向きへ視線が動くように積む。
+//
+// 方位を1変えたときの視線の移動量は cos(仰角) 倍しかないので、仰角側を同じだけ縮めて釣り合わせる
+// (方位側を伸ばすと真上で発散する)。その縮小を厳密に積分したものが、仰角を asinh(tan) で写した
+// 座標 — メルカトル図法の緯度 — の平行移動になる。この座標でなら往路と復路の増分が状態に依らず、
+// ドラッグを往復させると元の向きへ厳密に戻る。
+export function eulerAfterDrag(euler: PolarEuler, dragX: number, dragY: number): PolarEuler {
+  const c = Math.cos(euler.roll);
+  const s = Math.sin(euler.roll);
+  const merc = Math.asinh(Math.tan(euler.pitch)) + (dragY * c - dragX * s);
+  const pitch = Math.atan(Math.sinh(merc));
+  return {
+    yaw: euler.yaw + (dragX * c + dragY * s),
+    pitch: Math.max(-POLAR_PITCH_LIMIT, Math.min(POLAR_PITCH_LIMIT, pitch)),
+    roll: euler.roll,
+  };
+}
+
 // 方位角・仰角が指す向きの、距離 dist の位置ベクトル(+Y を天頂とする球面座標)。
 // 位置は視線まわりの傾きに依らないので、roll は結果に効かない。
 export function sphericalOffset(euler: PolarEuler, dist: number): Vec3 {

@@ -6,9 +6,10 @@ import { test } from '../harness';
 import { CameraOrientation } from '../../src/game/camera/camera-orientation';
 import { rotationFromEuler } from '../../src/math/polar-euler';
 import { LOCAL_FORWARD, LOCAL_UP, Quat, qFromAxisAngle, qRotate } from '../../src/math/quat';
-import { len, norm, sub, v3 } from '../../src/math/vec3';
+import { cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const POLAR = norm(v3(0.2, 0.9, -0.1));
+const DRAG = 1e-5; // 1次の応答だけを見るための微小ドラッグ量 [rad]
 
 // 実効回転が同じ向きを表すか。局所基底の写り先で比べる(q と -q を同一視するため)。
 function sameOrientation(a: Quat, b: Quat, tol = 1e-8): boolean {
@@ -19,6 +20,27 @@ function sameOrientation(a: Quat, b: Quat, tol = 1e-8): boolean {
 function orientation(mode: 'euler' | 'quaternion' = 'euler'): CameraOrientation {
   const q = rotationFromEuler({ yaw: 0.6, pitch: 0.3, roll: -0.2 }, POLAR);
   return new CameraOrientation(q, POLAR, mode, false, null);
+}
+
+// 微小ドラッグに対するカメラ方向の変位を、画面の右軸・上軸の成分で返す。
+// dragX/dragY は画面右・画面下を正とする画面上の変位。
+function dragResponse(o: CameraOrientation, dragX: number, dragY: number, euler: boolean): [number, number] {
+  const before = o.effective();
+  const forward = qRotate(before, LOCAL_FORWARD);
+  const up = qRotate(before, LOCAL_UP);
+  const right = norm(cross(scale(forward, -1), up));
+  if (euler) o.turn(dragX * DRAG, dragY * DRAG, 0, POLAR);
+  else o.turnByDrag(dragX * DRAG, -dragY * DRAG, 0, 0, 0);
+  const moved = sub(qRotate(o.effective(), LOCAL_FORWARD), forward);
+  return [dot(moved, right) / DRAG, dot(moved, up) / DRAG];
+}
+
+// 2つの応答が同じ向きを指すか。大きさは問わない(不変条件は方向だけを要求する)。
+function sameDirection(a: [number, number], b: [number, number], tol = 1e-4): boolean {
+  const na = Math.hypot(...a);
+  const nb = Math.hypot(...b);
+  if (na < 1e-9 || nb < 1e-9) return false;
+  return Math.abs((a[0] * b[1] - a[1] * b[0]) / (na * nb)) < tol && (a[0] * b[0] + a[1] * b[1]) > 0;
 }
 
 export function register(): void {
@@ -99,11 +121,15 @@ export function register(): void {
   });
 
   test('camera-orientation: オイラー入力の往復は元の向きへ戻る', () => {
-    const o = orientation('euler');
-    const before = o.effective();
-    o.turn(0.3, -0.2, 0.1, POLAR);
-    o.turn(-0.3, 0.2, -0.1, POLAR);
-    assert.ok(sameOrientation(o.effective(), before));
+    // ドラッグはロールの向きに合わせて分解されるので、ロールと同時に積むと往路と復路で分解が
+    // 変わる。同じ分解になるよう、ロールだけ分けて往復させる(クォータニオン側と同じ制限)。
+    for (const [dragX, dragY, roll] of [[0.3, 0, 0], [0, -0.2, 0], [0.3, -0.2, 0], [0, 0, 0.1]]) {
+      const o = orientation('euler');
+      const before = o.effective();
+      o.turn(dragX!, dragY!, roll!, POLAR);
+      o.turn(-dragX!, -dragY!, -roll!, POLAR);
+      assert.ok(sameOrientation(o.effective(), before), `dragX=${dragX} dragY=${dragY} roll=${roll}`);
+    }
   });
 
   test('camera-orientation: 入力が無ければドラッグは向きを変えない', () => {
@@ -142,4 +168,21 @@ export function register(): void {
     assert.ok(!sameOrientation(turned, before));
     assert.ok(sameOrientation(o.effective(), turned));
   });
+
+  // 「ドラッグした向きへカメラが動く」は両方の回し方に共通の不変条件で、オイラー角のほうは
+  // ロールと仰角で軸が傾くぶんを分解して打ち消さないと満たせない。
+  test('camera-orientation: ドラッグの向きとカメラの動く向きが、回し方によらず一致する', () => {
+    for (const pitch of [0, 0.3, 0.9, 1.4]) {
+      for (const roll of [0, Math.PI / 4, Math.PI / 2, Math.PI]) {
+        for (const [dragX, dragY] of [[1, 0], [0, 1], [1, 1], [-2, 1]]) {
+          const q = rotationFromEuler({ yaw: 0.6, pitch, roll }, POLAR);
+          const byEuler = dragResponse(new CameraOrientation(q, POLAR, 'euler', false, null), dragX, dragY, true);
+          const byQuat = dragResponse(new CameraOrientation(q, POLAR, 'quaternion', false, null), dragX, dragY, false);
+          assert.ok(sameDirection(byEuler, byQuat),
+            `pitch=${pitch} roll=${roll} drag=(${dragX},${dragY}) euler=${byEuler} quaternion=${byQuat}`);
+        }
+      }
+    }
+  });
+
 }

@@ -640,11 +640,12 @@ export class FocusCamera {
       this.orthographicHalfHeight = Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6,
         Math.min(FOCUS_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
     }
-    const yaw = mouse.dx * DRAG_RAD_PER_PX - keyYawRad;
-    const pitch = mouse.dy * DRAG_RAD_PER_PX + keyPitchRad;
+    // 回転キーはドラッグと同じ画面上の変位として畳む(どちらも画面基準で視点を回す)。
+    const dragX = mouse.dx * DRAG_RAD_PER_PX - keyYawRad;
+    const dragY = mouse.dy * DRAG_RAD_PER_PX + keyPitchRad;
     // 回した後の実効回転。どちらの経路も向きへ書き戻したうえでこれを返す。
     const q = eulerActive
-      ? this.orientation.turn(yaw, pitch, mouse.roll, this.eulerPolarAxis())
+      ? this.orientation.turn(dragX, dragY, mouse.roll, this.eulerPolarAxis())
       : this.orientation.turnByDrag(
         mouse.dx * DRAG_RAD_PER_PX, -mouse.dy * DRAG_RAD_PER_PX, mouse.roll, keyYawRad, keyPitchRad,
       );

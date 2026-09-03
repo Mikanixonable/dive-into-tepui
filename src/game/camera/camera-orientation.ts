@@ -5,7 +5,7 @@
 import {
   LOCAL_FORWARD, LOCAL_UP, Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate,
 } from '../../math/quat';
-import { POLAR_PITCH_LIMIT, PolarEuler, eulerFromRotation, rotationFromEuler } from '../../math/polar-euler';
+import { PolarEuler, eulerAfterDrag, eulerFromRotation, rotationFromEuler } from '../../math/polar-euler';
 import { addScaled, cross, norm, scale, type Vec3 } from '../../math/vec3';
 
 // 視点の回し方。オイラーは極軸を天頂とした方位・仰角で、クォータニオンは画面基準で回す。
@@ -88,11 +88,11 @@ export class CameraOrientation {
     this.rotation = rotationFromEuler(this.euler, polar);
   }
 
-  // オイラー角へ増分を積み、組み直した実効回転を返す。仰角は真上・真下の手前で止める。
-  // 姿勢追従中は極軸が定まらないので、この経路は通らない(usesEuler)。
-  public turn(dYaw: number, dPitch: number, dRoll: number, polar: Vec3): Quat {
-    this.euler.yaw += dYaw;
-    this.euler.pitch = Math.max(-POLAR_PITCH_LIMIT, Math.min(POLAR_PITCH_LIMIT, this.euler.pitch + dPitch));
+  // 画面ドラッグと回転キーの変位をオイラー角へ積み、組み直した実効回転を返す。dragX/dragY は
+  // 画面右・画面下を正とする画面上の変位 [rad] で、ドラッグした向きへカメラが動くよう分解する。
+  // 仰角は真上・真下の手前で止める。姿勢追従中は極軸が定まらないので、この経路は通らない(usesEuler)。
+  public turn(dragX: number, dragY: number, dRoll: number, polar: Vec3): Quat {
+    this.euler = eulerAfterDrag(this.euler, dragX, dragY);
     this.euler.roll += dRoll;
     this.rotation = rotationFromEuler(this.euler, polar);
     return this.rotation;
