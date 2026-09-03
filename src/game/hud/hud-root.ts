@@ -1,12 +1,10 @@
 // HUD の静的 DOM/スタイル構築。
-import type { RenderStyleSetting } from '../../render/render-style';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { injectThemeVariables } from '../theme';
 import { buildOverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
 import { HelpPanel } from './windows/help-panel';
 import { PanelShell, wirePanelCollapse } from './panel-shell';
-import type { View } from '../view/view';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
 import { MARKER_STYLE } from './style/marker-style';
@@ -20,6 +18,8 @@ import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { isCompactViewport } from './breakpoints';
 import { startViewportTracking } from './viewport';
 import { WIDGET_STYLE } from './widgets';
+import type { RenderStyleSetting } from '../../render/render-style';
+import type { View } from '../view/view';
 import type { OverlayLayers } from './overlay-layer';
 import type { CollapseToggleLabels } from './widgets';
 export {
