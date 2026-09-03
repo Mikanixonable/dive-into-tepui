@@ -8,7 +8,7 @@ import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, sub, v3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
 import { Hud } from '../hud/hud';
-import { MouseDelta } from '../input/input';
+import { MouseDelta } from '../../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
 import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, rotationSourceKey, toFrameDir, toInertialDir } from '../../physics/frame';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';

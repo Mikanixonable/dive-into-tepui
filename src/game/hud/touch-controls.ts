@@ -2,10 +2,10 @@
 // Input.setVirtualKey へ物理キーボードと同じキーコードを流し込む。
 // 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を同じ仕組みで扱える。
 // 常設で構築し、表示そのものは setPointerKind が渡す直近の入力種別に従う。
-import { Input, PointerKind } from '../input/input';
+import { Input, PointerKind } from '../../input/input';
 import type { View } from '../view/view';
-import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
-import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
+import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
+import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from './breakpoints';
 import {
   FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
 } from '../../theme';
