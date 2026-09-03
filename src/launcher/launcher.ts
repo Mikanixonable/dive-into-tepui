@@ -16,8 +16,6 @@ import type { SnapshotService } from './save/snapshot-service';
 import type { GameSaveData } from '../game/save/save-data';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
-import type { WorldSfx } from '../audio/sfx/world-sfx';
-import type { UiSfx } from '../audio/sfx/ui-sfx';
 import type { GameScene } from '../render/scene';
 import type { FrameSections } from '../game/frame-sections';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
@@ -58,8 +56,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly gs: GameScene,
     private readonly audioEngine: AudioEngine,
     private readonly bgm: Bgm,
-    private readonly worldSfx: WorldSfx,
-    private readonly uiSfx: UiSfx,
     private readonly pauseMenu: PauseMenu,
     private readonly settingsView: SettingsView,
     private readonly unlockManager: UnlockManager,
@@ -121,7 +117,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     showLoading();
     try {
       this.game = await Game.create(
-        this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu,
+        this.gs, stageClass, this.hud, this.audioEngine, this.pauseMenu,
         this.sections, initialSave, startEpoch, new LoadingProgress(setLoadingProgress),
       );
     } finally {
