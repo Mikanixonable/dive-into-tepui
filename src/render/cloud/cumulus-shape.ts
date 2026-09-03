@@ -1,19 +1,26 @@
 // 雲の場(R = 被覆率、G = 雲頂高度)を、不透明な積雲の形として読む規則。場の階調は濃さではなく
 // 「その texel が雲に覆われている割合」なので、どこから不透明な雲になるかと、雲頂がどの高さに
 // 立つかをここが決める。雲を描く側と、その雲が落とす影を引く側が、同じ形を見るための場。
-import { clamp, float, smoothstep } from 'three/tsl';
+import { clamp, smoothstep, uniform } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
-import type { FloatNode, Vec3Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
 
 // 場の G(雲頂高度)が張る高さ [m]。
 export const CLOUD_TOP_SPAN = 15000;
 
-// 被覆率を二値化する境目と、その周りでディザへ渡す幅。**境目は場の被覆率の平均を動かさない
-// ように選ぶ** — 実写を分離した `src/assets/cloud-field.png` では、これを超える texel の面積が
-// 被覆率の平均 0.125(緯度余弦で重みを付けた面積平均)に一致する。場を差し替えたら測り直す。
-// 幅は粒が届かない遠さでの縁の当たりを和らげるだけなので、狭く取って粒へ譲る。
-const COVERAGE_THRESHOLD = 0.347;
-const COVERAGE_DITHER_WIDTH = 0.04;
+// 被覆率を二値化する境目(center)と、その前後でディザへ渡す半幅(halfWidth)。被覆率が
+// center±halfWidth に入る柱だけがディザに掛かり、外は 0 か 1 へ飽和する。**境目は場の被覆率の
+// 平均を動かさないように選ぶ** — 実写を分離した `src/assets/cloud-field.png` では、これを
+// 超える texel の面積が被覆率の平均 0.125(緯度余弦で重みを付けた面積平均)に一致する。場を
+// 差し替えたら測り直す。
+//
+// **仮設**: 半透明がどこまで出せるかを目で決めるあいだ、render-lab のつまみ
+// (tools/render-lab/main.ts)から動かせるよう uniform にしてある。値が決まったら const へ
+// 書き戻し、この節ごと畳む。
+export const CUMULUS_DITHER_KNOB: {
+  readonly center: FloatUniform;
+  readonly halfWidth: FloatUniform;
+} = { center: uniform(0.347), halfWidth: uniform(0.02) };
 
 // 粒が被覆率と雲頂高度をそれぞれどれだけ振るか(どちらも場と同じ 0..1 の目盛り)。**被覆率へは
 // 境目を通す前に足す** — 通したあとに足すと、覆いの無い空にも粒が雲を生やす。生成側が高周波を
@@ -65,7 +72,7 @@ export function grainAmplitudeForWidth(width: FloatNode): FloatNode {
 export function opaqueFractionOf(
   coverage: FloatNode, grain: FloatNode, smoothedGrain: FloatNode,
 ): FloatNode {
-  const band = smoothedGrain.mul(2 * GRAIN_COVERAGE_DEPTH).add(COVERAGE_DITHER_WIDTH);
+  const band = smoothedGrain.mul(2 * GRAIN_COVERAGE_DEPTH).add(CUMULUS_DITHER_KNOB.halfWidth.mul(2));
   return saturatedBand(coverage.add(grain.mul(GRAIN_COVERAGE_DEPTH)), band);
 }
 
@@ -74,7 +81,7 @@ export function cloudTopOf(fieldTop: FloatNode, grain: FloatNode): FloatNode {
   return clamp(fieldTop.add(grain.mul(GRAIN_TOP_RELIEF)), 0, 1);
 }
 
-// 境目の前後 band で 0 から 1 へ渡す。
+// 境目の前後 band で 0 から 1 へ渡す。band は 0 を取れない(割り算が NaN へ落ちる)。
 function saturatedBand(coverage: FloatNode, band: FloatNode): FloatNode {
-  return clamp(coverage.sub(float(COVERAGE_THRESHOLD).sub(band.mul(0.5))).div(band), 0, 1);
+  return clamp(coverage.sub(CUMULUS_DITHER_KNOB.center.sub(band.mul(0.5))).div(band), 0, 1);
 }
