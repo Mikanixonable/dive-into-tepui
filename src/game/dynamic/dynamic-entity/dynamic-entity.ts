@@ -66,7 +66,7 @@ type OrbitLine =
   | { readonly kind: 'ellipse'; readonly line: EllipseLine; readonly center: CelestialMotion | null }
   | { readonly kind: 'relative'; readonly line: TargetRelativeLine; readonly target: DynamicEntity };
 
-// 接触代理を持たない個体が返す共有の空配列。
+// collisionFolds の既定の返り値。全個体で共有するので書き換えない。
 const NO_COLLISION_FOLDS: readonly DynamicEntity[] = [];
 
 const identityAttitude = (): Attitude => ({
@@ -100,10 +100,10 @@ export class DynamicEntity {
   // 生存しているか。死に伴う演出(音・閃光・破片)は、これを false にした側が同じ場で起こす。
   alive = true;
   // 同時に存在してよい数のどの枠から取るか。null = 上限なし。
-  readonly capKind: CapKind | null = null;
-  // 死亡しても顔ぶれに残り、所有者が明示的に取り除くまで破棄されないか。各所に散った参照の
-  // 掃除や次の個体への引き継ぎが要る種別が宣言する。
-  readonly reclaimedByOwner: boolean = false;
+  public readonly capKind: CapKind | null = null;
+  // 死亡しても顔ぶれに残り、所有者が取り除くまで破棄されないか。散った参照の掃除や次の個体への
+  // 引き継ぎが要る種別が立てる。
+  public readonly reclaimedByOwner: boolean = false;
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。CelestialMotion.radius と同じ量
   collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか
@@ -127,7 +127,7 @@ export class DynamicEntity {
   attachedTo: DynamicEntity | null = null;
 
   // simTime における、この個体に取り付いた接触代理の一覧。既定は空。
-  collisionFolds(_simTime: number): readonly DynamicEntity[] {
+  public collisionFolds(_simTime: number): readonly DynamicEntity[] {
     return NO_COLLISION_FOLDS;
   }
   private _thrust: Vec3 | null = null;

@@ -53,13 +53,13 @@ export class DynamicSystem {
 
   // 自機。操作対象(Game.player)も他の艦と対等に、積分・衝突・寿命判定・予測を通る。
   // ステージモードでは1隻だけが入る。
-  get players(): readonly Player[] { return this.entities.filter((e): e is Player => e instanceof Player); }
-  get enemies(): readonly Enemy[] { return this.entities.filter((e): e is Enemy => e instanceof Enemy); }
-  get bases(): readonly Base[] { return this.entities.filter((e): e is Base => e instanceof Base); }
-  get bullets(): readonly Bullet[] { return this.entities.filter((e): e is Bullet => e instanceof Bullet); }
-  get ammoPickups(): readonly AmmoPickup[] { return this.entities.filter((e): e is AmmoPickup => e instanceof AmmoPickup); }
-  get rcsFuelPickups(): readonly RcsFuelPickup[] { return this.entities.filter((e): e is RcsFuelPickup => e instanceof RcsFuelPickup); }
-  get detachedBoosters(): readonly DetachedBooster[] { return this.entities.filter((e): e is DetachedBooster => e instanceof DetachedBooster); }
+  public get players(): readonly Player[] { return this.entities.filter((e): e is Player => e instanceof Player); }
+  public get enemies(): readonly Enemy[] { return this.entities.filter((e): e is Enemy => e instanceof Enemy); }
+  public get bases(): readonly Base[] { return this.entities.filter((e): e is Base => e instanceof Base); }
+  public get bullets(): readonly Bullet[] { return this.entities.filter((e): e is Bullet => e instanceof Bullet); }
+  public get ammoPickups(): readonly AmmoPickup[] { return this.entities.filter((e): e is AmmoPickup => e instanceof AmmoPickup); }
+  public get rcsFuelPickups(): readonly RcsFuelPickup[] { return this.entities.filter((e): e is RcsFuelPickup => e instanceof RcsFuelPickup); }
+  public get detachedBoosters(): readonly DetachedBooster[] { return this.entities.filter((e): e is DetachedBooster => e instanceof DetachedBooster); }
 
   // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するため、
   // 個別の scene 追加ではなく InstancedMesh 1本ずつのプールで描画する(sync が push する)。
@@ -141,7 +141,7 @@ export class DynamicSystem {
   private readonly cachedCombatTargetsByExcludedPlayer = new Map<Player, CombatTarget[]>();
 
   // エンティティを登録する。上限を持つ枠の超過分は、次の cleanup で古いものから落ちる。
-  add(entity: DynamicEntity): void {
+  public add(entity: DynamicEntity): void {
     this.entities.push(entity);
     if (entity.capKind !== null) this.capsUncheckedSinceAdd = true;
     this.invalidateCaches();
@@ -176,14 +176,14 @@ export class DynamicSystem {
   }
 
   // エンティティを取り除き、メッシュを破棄する。
-  remove(entity: DynamicEntity): void {
+  public remove(entity: DynamicEntity): void {
     if (!this.detach(entity)) return;
     entity.dispose();
   }
 
   // 艦を取り除くが破棄はしない(基地への収容など、後で add で復帰させる場合)。
   // 顔ぶれから外れると毎フレームの同期が届かなくなるので、マーカーはここで畳む。
-  park(entity: DynamicEntity): void {
+  public park(entity: DynamicEntity): void {
     if (!this.detach(entity)) return;
     entity.equatorNodes?.dispose();
     entity.equatorNodes = null;
@@ -241,8 +241,8 @@ export class DynamicSystem {
       ?? null;
   }
 
-  // 上限付きの個体が追加されてから、まだ上限を確かめていないか。追加以外で枠が増えることは
-  // ないので、これが false の間は全件を数え直さない。
+  // 上限付きの個体が追加されてから、まだ上限を確かめていないか。枠が増えるのは追加のときだけ
+  // なので、走査はこれが立っている間に限れる。
   private capsUncheckedSinceAdd = false;
 
   // 上限を超えた個体を、枠ごとに古いものから落とす。配列は追加順なので、末尾から数えて上限を
@@ -268,13 +268,12 @@ export class DynamicSystem {
   }
 
   // 保持する全エンティティを追加順に返す。呼び出し側は読み取り専用として扱う。
-  all(): readonly DynamicEntity[] {
+  public all(): readonly DynamicEntity[] {
     return this.entities;
   }
 
-  // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。自機だけは各所の
-  // 参照掃除と次艦への引き継ぎが要るため、除去は ActivePlayerController.reclaimDead が担う。
-  cleanup(
+  // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
+  public cleanup(
     dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
     atmosphereBodies: readonly CelestialMotion[],
   ): void {
