@@ -1,6 +1,6 @@
 // 描画テスト環境の画面。ケースと、表示スタイルと、画面へ出す中間バッファを選ぶと、その絵を
 // ゲーム本体と同じ描画経路で描く。
-import { startProteinAssetPreload } from '../../src/game/protein/protein-asset-loader';
+import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { AMBIENT_STRONG, AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
@@ -33,7 +33,7 @@ declare global {
 
 async function init(): Promise<void> {
   // タンパク質のケースは fetch で来る構造・motion を同期的に読むので、器を組む前に待つ。
-  await startProteinAssetPreload();
+  await Promise.all(PROTEIN_ASSET_IDS.map((id) => requestProteinAsset(id)));
   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement);
 
   // つまみの位置は表示だけを担い、値の正本は LabView が持つ。**つまみの刻みへ丸めた値を

@@ -1,7 +1,7 @@
 import type { Base } from '../../dynamic/dynamic-entity/base';
 import { createPart } from '../../dynamic/dynamic-entity/parts';
 import type { AnyPart } from '../../dynamic/dynamic-entity/parts';
-import { Button } from '../widgets';
+import { Button } from '../../../hud/widgets';
 import type { BasePanel } from './base-view';
 import {
   buildSectionHeader, costLabel, formatCatalogProperty, PART_TYPE_LABELS, SHOP_CATALOG, styleDockBtn,

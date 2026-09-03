@@ -1,14 +1,11 @@
+import { hudRail } from '../hud-root';
 import {
-  COLLAPSE_COLLAPSED_GLYPH,
-  COLLAPSE_EXPANDED_GLYPH,
-  hudRail,
-  type CollapseToggleLabels,
-} from '../hud-root';
-import { Button, SegmentedControl } from '../widgets';
-import { expandHitTarget, stopDragPropagation } from '../widgets/widget-base';
-import { injectOnce } from '../widgets/inject-style';
+  Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
+} from '../../../hud/widgets';
+import { expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
+import { injectOnce } from '../../../hud/widgets/inject-style';
 import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../panel-shell';
-import { MQ_COARSE } from '../breakpoints';
+import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListTree } from './physical-object-list-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialSystem } from '../../celestial/celestial-system';

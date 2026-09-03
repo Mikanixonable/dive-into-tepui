@@ -1,8 +1,8 @@
 // HUD の静的 DOM/スタイル構築。
-import { KEY_MAPPING as K } from '../input/key-mapping';
-import { injectThemeVariables } from '../theme';
-import { buildOverlayLayers } from './overlay-layer';
-import { OverlayManager } from './overlay-manager';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { injectThemeVariables } from '../../theme';
+import type { HudShell } from '../../hud/hud-shell';
+import { createHudElement } from '../../hud/hud-element';
 import { HelpPanel } from './windows/help-panel';
 import { PanelShell, wirePanelCollapse } from './panel-shell';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
@@ -10,51 +10,32 @@ import { SKELETON_STYLE } from './style/skeleton-style';
 import { MARKER_STYLE } from './style/marker-style';
 import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
 import { MAP_PANEL_STYLE } from './style/map-panel-style';
-import { SCREEN_STYLE } from './style/screen-style';
+import { STAGE_STATUS_STYLE } from './style/stage-status-style';
+import { PAUSE_MENU_STYLE } from '../../hud/style/pause-menu-style';
 import { HELP_PANEL_STYLE } from './style/help-panel-style';
-import { SETTINGS_VIEW_STYLE } from './style/settings-view-style';
+import { SETTINGS_VIEW_STYLE } from '../../hud/style/settings-view-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
-import { isCompactViewport } from './breakpoints';
-import { startViewportTracking } from './viewport';
-import { WIDGET_STYLE } from './widgets';
+import { isCompactViewport } from '../../hud/breakpoints';
+import { startViewportTracking } from '../../hud/viewport';
+import { WIDGET_STYLE } from '../../hud/widgets';
 import type { RenderStyleSetting } from '../../render/render-style';
 import type { View } from '../view/view';
-import type { OverlayLayers } from './overlay-layer';
-import type { CollapseToggleLabels } from './widgets';
-export {
-  buildCollapseToggle,
-  type CollapseToggleLabels,
-  COLLAPSE_EXPANDED_GLYPH,
-  COLLAPSE_COLLAPSED_GLYPH,
-  PREDICT_TOGGLE_LABELS,
-} from './widgets';
+import type { CollapseToggleLabels } from '../../hud/widgets';
 
 // トークン→骨格→マーカー→パネル群→ビュー→ウィジェット共通の順に結合する。
 // カスケードの後勝ちを利用する箇所（同一セレクタの再定義）は各ファイル内で完結させてある。
 const STYLE =
   LAYOUT_TOKENS_STYLE + SKELETON_STYLE + MARKER_STYLE
-  + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + SCREEN_STYLE
+  + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE + PAUSE_MENU_STYLE
   + HELP_PANEL_STYLE + SETTINGS_VIEW_STYLE
   + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE;
 
 
-// 指定タグ・id・class の要素を作り、parent に追加して返す。
-function createHudElement(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
-  const element = document.createElement(tag);
-  element.id = id;
-  if (className) element.className = className;
-  parent.appendChild(element);
-  return element;
-}
-
 interface HudDomRefs {
-  readonly root: HTMLElement;
-  readonly layers: OverlayLayers;
   readonly combatRoot: HudViewRoot;
   readonly mapRoot: HudViewRoot;
   readonly svgOverlay: SVGSVGElement;
-  readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
   readonly els: Map<string, HTMLElement>;
 }
@@ -405,15 +386,14 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
 }
 
 // HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを構築し、DOM 参照をまとめて返す。
-export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
+export function buildHudDom(shell: HudShell, renderStyle: RenderStyleSetting): HudDomRefs {
   injectThemeVariables();
   injectStyle();
   startViewportTracking();
-  const root = createHudElement('div', 'hud', document.body);
+  const { root, layers } = shell;
   // 模式図では白背景になるため、マーカー配色をそれに合わせて切り替える手掛かりとして
   // 現在のスタイルをルート要素の属性で公開する。
   renderStyle.subscribe((style) => { root.dataset['renderStyle'] = style; });
-  const layers = buildOverlayLayers(root);
   const svgOverlay = buildSvgOverlay(layers.marker);
   const combatRoot = buildViewRoot(layers.panel, 'hud-combat-root', 'combat');
   const mapRoot = buildViewRoot(layers.panel, 'hud-map-root', 'map');
@@ -423,16 +403,11 @@ export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
   buildTopBar(layers.panel);
   buildChaseReset(layers.panel);
   buildMapScale(mapRoot.element);
-  const overlayShield = createHudElement('div', 'hud-overlay-shield', layers.gate);
-  const overlayManager = new OverlayManager(overlayShield, layers.gate);
-
   createHudElement('div', 'hud-toast', layers.notify);
 
-  const helpPanel = new HelpPanel(layers.system, overlayManager);
+  const helpPanel = new HelpPanel(layers.system, shell.overlayManager);
   buildHelpBadge(layers.panel, helpPanel);
 
-  createHudElement('div', 'hud-result', layers.system);
-
   const els = collectDataIdElements(root);
-  return { root, layers, combatRoot, mapRoot, svgOverlay, overlayManager, helpPanel, els };
+  return { combatRoot, mapRoot, svgOverlay, helpPanel, els };
 }

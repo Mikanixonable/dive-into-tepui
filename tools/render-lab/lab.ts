@@ -2,8 +2,8 @@
 // 絵の撮影(PNG)と、CPU / GPU それぞれの所要時間の計測もここが担う。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
-import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/gpu-timings';
-import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '../../src/protein-motion-metrics';
+import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
+import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '../../src/game/protein/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { LIT_OPAQUE_LAYER } from '../../src/render/pipeline/lit-layer';
 import {

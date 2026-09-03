@@ -25,8 +25,8 @@ import { NextEventTime } from './next-event-time';
 import { v3 } from '../../math/vec3';
 import { simulationMaxStep, simulationStepDuration, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import type { NanWatchdog } from './nan-watchdog';
-import { FrameSections, SECTION } from '../../frame-sections';
-import type { PerfCounts } from '../../perf-meter';
+import { FrameSections, SECTION } from '../frame-sections';
+import type { PerfCounts } from '../perf-counts';
 
 // ゼロ長サブステップ(丸めで刻みが0になったイベント消費)が連続してこの回数を超えたら
 // Simulator.advance が simTime を強制前進させる。イベント予告と実際の消滅判定が
