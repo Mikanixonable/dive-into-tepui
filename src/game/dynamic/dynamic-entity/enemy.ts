@@ -409,7 +409,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     );
     this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
 
-    entities.addBullet(pb);
+    entities.add(pb);
   }
 
   // セーブデータへ変換する。具象は super.serialize() へ自分の項目を足して override する。

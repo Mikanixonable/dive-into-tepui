@@ -176,7 +176,7 @@ export class EffectsSystem {
   // 各 spawnXxx はすべてこれの薄いラッパー — kind ごとの見た目・寿命判定の違いは
   // DebrisPiece/DebrisKind(debris-piece.ts)側の責務。
   private spawnDebrisPiece(state: KinematicState, kind: DebrisKind, att: Attitude, radius?: number): void {
-    this.entities.addDebris(new DebrisPiece(state, kind, att, this._worldSfx, this, radius, this._scene));
+    this.entities.add(new DebrisPiece(state, kind, att, this._worldSfx, this, radius, this._scene));
   }
 
   // t は発生時刻(破片 state のエポック)。破壊された entity の state.t をそのまま渡す。
