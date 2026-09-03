@@ -1,4 +1,5 @@
 import { Game } from '../game/game';
+import { LoadingProgress } from '../game/loading-progress';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { PauseMenu, SettingsView } from '../hud/windows/index';
@@ -19,10 +20,9 @@ import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { UiSfx } from '../audio/sfx/ui-sfx';
 import type { GameScene } from '../render/scene';
 import type { FrameSections } from '../game/frame-sections';
-import type { CelestialSystem } from '../game/celestial/celestial-system';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
-import { createJulianDate, TdbJulianDate } from '../physics/time';
+import type { TdbJulianDate } from '../physics/time';
 
 // アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
 // そのステージクラスを返す。再開できる情報が無ければ null。
@@ -38,25 +38,6 @@ function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): St
 // 見出しだけを phase から復元する。内訳は残っていない。
 function fallbackResult(phase: GamePhase): StageResult {
   return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
-}
-
-// スナップショットが持つ元期。無い(旧形式)なら null。
-function savedEpoch(save: GameSaveData | undefined): TdbJulianDate | null {
-  const jdTdb = save?.ephemerisContext?.epochJdTdb;
-  return jdTdb === undefined ? null : createJulianDate('TDB', jdTdb);
-}
-
-// ローディング表示の下で、このステージの星系を組む。
-async function initCelestialSystem(
-  stageClass: StageClass, phaseOffsets: Partial<Record<string, number>>, earthSpinPhase0: number,
-  epoch: TdbJulianDate,
-): Promise<CelestialSystem> {
-  showLoading();
-  try {
-    return await stageClass.createCelestialSystem(phaseOffsets, earthSpinPhase0, epoch, setLoadingProgress);
-  } finally {
-    hideLoading();
-  }
 }
 
 // 再出撃・タイトル復帰・スナップショットのロード・スロット切替 — 「Game インスタンスを
@@ -137,19 +118,15 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   private async startRun(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): Promise<void> {
     this.endRun();
     const initialSave = this.initialSaveFor(stageClass, snapshotId, startEpoch);
-    // このランの元期。スナップショットを読むならその元期をそのまま継ぐ(照合はしない) —
-    // 保存されている simTime はその元期からの経過秒なので、別の元期で組むと全天体がずれる。
-    // 次に開始日時の指定、最後にステージの宣言。**星系を組む前に決まっていなければならない。**
-    const epoch = savedEpoch(initialSave) ?? startEpoch ?? stageClass.epoch;
-    // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
-    const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
-    const celestialSystem = await initCelestialSystem(
-      stageClass, initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch,
-    );
-    this.game = new Game(
-      this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu,
-      this.sections, celestialSystem, initialSave,
-    );
+    showLoading();
+    try {
+      this.game = await Game.create(
+        this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu,
+        this.sections, initialSave, startEpoch, new LoadingProgress(setLoadingProgress),
+      );
+    } finally {
+      hideLoading();
+    }
     // AudioContext は実際のユーザー操作でしか作れないため、unlock は入力エッジの発火点へ配線する。
     // Input は周回ごとに作り直されるので、配線もそのたびに張り直す。
     this.game.input.onUserGesture = () => {
