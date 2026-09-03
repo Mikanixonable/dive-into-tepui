@@ -456,29 +456,33 @@ function leo(): LabCase {
   };
 }
 
-// 地球照: 低軌道の艦を、満相の地球が下から照らす。恒星は真上から差すので、艦の上面だけが
-// 直射を受け、下面は地球照だけで照らされる。横を向いた面はどちらの光も受けず桁で暗い。
-function earthshine(): LabCase {
-  const camera = labCamera(6e7);
-  const center = new THREE.Vector3(0, -6.791e6, 0);
+// 地球を centerDistance [m] だけ真下へ置き、その天体照で下面が照らされる艦を組む。
+function earthLitShip(centerDistance: number, sunDirection: THREE.Vector3): LabCase {
+  const center = new THREE.Vector3(0, -centerDistance, 0);
   const shipPosition = new THREE.Vector3(0, -1, -10);
   return {
     objects: [sphere(BLUE_SPHERE_ALBEDO, R_EARTH, center), shipAt(shipPosition, SHIP_ROTATION_PORT)],
-    camera,
-    sunDirection: new THREE.Vector3(0, 1, 0),
+    camera: labCamera(6e7),
+    sunDirection,
     viewTarget: shipPosition,
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
   };
 }
 
-// 三日月: earthshine と同じ低軌道で、恒星を横へ倒して位相角 120°(地球が三日月形に見える
-// 位置)にする。天体照は満相の Φ(0)=1 から Φ(120°)≈0.11 まで弱まる。
+// 地球照: 低軌道(高度 420km)の艦を、満相の地球が下から照らす。恒星は真上から差すので、艦の
+// 上面だけが直射を受け、下面は地球照だけで照らされる。横を向いた面はどちらの光も受けず桁で暗い。
+function earthshine(): LabCase {
+  return earthLitShip(6.791e6, new THREE.Vector3(0, 1, 0));
+}
+
+// 三日月: 位相角 120°(地球が三日月形に見える向き)から地球照を受ける艦。**低軌道ではなく
+// 中心距離 1.5 地球半径へ置く** — 天体照は受け手から見えている地表の日照で決まるので、位相角
+// 120° で光が残るには可視キャップの半角 acos(R/d) が 30° を超える必要があり、低軌道の 19.8°
+// では真下の地表が全部夜になって届かない。1.5 倍では 48.2° で、地球の縁に沿った三日月が見える。
 function crescent(): LabCase {
-  const base = earthshine();
-  return {
-    ...base,
-    sunDirection: new THREE.Vector3(Math.sin((Math.PI * 2) / 3), Math.cos((Math.PI * 2) / 3), 0),
-  };
+  const phase = (Math.PI * 2) / 3;
+  return earthLitShip(
+    1.5 * R_EARTH, new THREE.Vector3(Math.sin(phase), Math.cos(phase), 0));
 }
 
 // 典型的な天体表面・艦の外殻の反射率。
