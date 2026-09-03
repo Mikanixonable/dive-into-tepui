@@ -84,7 +84,7 @@ export class ActiveControllableController {
       ship.clearTransientCommands();
       this._current = null;
     }
-    this.entities.removePlayer(ship);
+    this.entities.remove(ship);
     if (wasActive) this.reclaimAfterLoss();
   }
 
