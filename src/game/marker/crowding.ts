@@ -41,6 +41,7 @@ export function resolveCrowdingWinner(
   tieBreakOnEqualPriority: boolean,
   aDepth = 0, bDepth = 0,
 ): 'a' | 'b' | undefined {
+  // 片方が著しく奥にあるなら、優先度より先に奥側を隠す。
   if (aDist !== undefined && bDist !== undefined) {
     const aRatio = aWasHidden ? depthGuardExitRatio : depthGuardRatio;
     const bRatio = bWasHidden ? depthGuardExitRatio : depthGuardRatio;
@@ -49,6 +50,7 @@ export function resolveCrowdingWinner(
   }
   if (aPriority > bPriority) return 'b';
   if (bPriority > aPriority) return 'a';
+  // 優先度が並んだ組は、フレームをまたいで選び直さないよう不変の値で順序を付ける。
   if (!tieBreakOnEqualPriority) return undefined;
   if (aDepth > bDepth) return 'a';
   if (bDepth > aDepth) return 'b';
