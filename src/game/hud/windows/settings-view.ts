@@ -175,9 +175,6 @@ export class SettingsView implements OverlayHandle {
     this._isOpen = show;
     saveSettingsViewOpen(show);
     this.panel.style.display = show ? 'block' : 'none';
-    this.panel.closest<HTMLElement>('#hud')?.classList.toggle(
-      'title-menu-open', show && document.getElementById('stage-select') !== null,
-    );
     // 開いている間はゲーム中の BGM を伏せ、試聴だけが聞こえる状態にする。閉じるときは試聴を
     // 止めてゲーム中の BGM へ戻す。
     if (show) {
