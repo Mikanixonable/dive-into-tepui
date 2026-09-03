@@ -66,6 +66,9 @@ type OrbitLine =
   | { readonly kind: 'ellipse'; readonly line: EllipseLine; readonly center: CelestialMotion | null }
   | { readonly kind: 'relative'; readonly line: TargetRelativeLine; readonly target: DynamicEntity };
 
+// 接触代理を持たない個体が返す共有の空配列。
+const NO_COLLISION_FOLDS: readonly DynamicEntity[] = [];
+
 const identityAttitude = (): Attitude => ({
   q: Q_IDENTITY,
   w: v3(),
@@ -119,6 +122,11 @@ export class DynamicEntity {
   // 特定の艦に取り付いた実体(ベルトの節点・放熱板の折りなど)であれば、その艦自身。
   // 独立した実体なら既定 null。
   attachedTo: DynamicEntity | null = null;
+
+  // simTime における、この個体に取り付いた接触代理の一覧。既定は空。
+  collisionFolds(_simTime: number): readonly DynamicEntity[] {
+    return NO_COLLISION_FOLDS;
+  }
   private _thrust: Vec3 | null = null;
   // 自身が出している ECI 加速度 [m/s²]。null = 噴射していない。噴射している間の弧は現実を
   // 表さないので、非 null を書いた時点で無効化する — 実シミュレーションはそこから積分へ落ち、
