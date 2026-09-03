@@ -10,7 +10,7 @@ import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
 import { Hud } from '../hud/hud';
 import { MouseDelta } from '../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
-import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, rotationSourceKey, toFrameDir, toInertialDir } from '../../physics/frame';
+import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, toFrameDir, toInertialDir } from '../../physics/frame';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -19,7 +19,11 @@ import { PolarEuler, sphericalOffset } from '../../math/polar-euler';
 import { CameraOrientation, type CameraRotationMode } from './camera-orientation';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { FocusTarget, focusTargetId, resolveFocusTarget, type FocusCandidate } from './focus-target';
-import { CameraRotationFollowSaveData, FrameRotationSourceSaveData, FocusCameraSaveData } from '../save/save-data';
+import {
+  availableRotationFollows, rotationFollowFromSaveData, rotationFollowKey, rotationSourceFromSaveData,
+  type CameraRotationFollow,
+} from './rotation-follow';
+import { FocusCameraSaveData } from '../save/save-data';
 
 // 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
 // 視界に収められる引きの上限。
@@ -65,17 +69,6 @@ const DRAG_RAD_PER_PX = 0.005; // ドラッグ1pxあたりの視点回転量 [ra
 // 機体・固定点フォーカスでの最小注視距離 [m](艦を間近に見る寄り)。
 const ENTITY_MIN_DIST = 12;
 
-// 回転追従の選択(null は慣性系)。選択肢はフォーカス対象から導かれる —
-// availableRotationFollows() が唯一の出所。'attitude' はフォーカス機体の姿勢への追従で、
-// ReferenceFrame ではなくカメラ内の合成で実現される。
-export type CameraRotationFollow = FrameRotationSource | { readonly kind: 'attitude' };
-
-// 選択の同一性の照合キー(選択 UI・妥当性検査が使う)。
-export function rotationFollowKey(follow: CameraRotationFollow | null): string {
-  if (follow === null) return '';
-  return follow.kind === 'attitude' ? 'attitude' : rotationSourceKey(follow);
-}
-
 // 保存が無いときの初期状態。angles/dist が注視点まわりの初期視点で、上方向はワールド上に
 // 取るので angles.roll は 0 でよい。follow は選択肢の検査を通さず適用される — 対象が
 // 未解決でも選択は保持され、成立可否は update の猶予検査に委ねられる。
@@ -104,20 +97,6 @@ export function defaultMapViewInitial(celestialSystem: CelestialSystem): FocusCa
     focus: { kind: 'object', id: celestialSystem.origin.id },
     follow: null,
   };
-}
-
-// セーブデータの rotatingWith を FrameRotationSource へ変換する。旧セーブは公転対象の id を
-// 文字列(または回さないなら null)でそのまま持っていたので、その形は公転として受ける。
-function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | string | null): FrameRotationSource | null {
-  if (saved === null) return null;
-  if (typeof saved === 'string') return { kind: 'revolution', id: saved };
-  return { kind: saved.kind, id: saved.id };
-}
-
-// セーブデータの rotatingWith を CameraRotationFollow へ変換する(姿勢追従も受ける)。
-function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | string | null): CameraRotationFollow | null {
-  if (saved !== null && typeof saved === 'object' && saved.kind === 'attitude') return { kind: 'attitude' };
-  return rotationSourceFromSaveData(saved);
 }
 
 const WORLD_UP = v3(0, 1, 0);
@@ -488,24 +467,10 @@ export class FocusCamera {
     return this.orientation.followingAttitude ? { kind: 'attitude' } : this._cameraFrame.rotatingWith;
   }
 
-  // いま選べる回転追従の選択肢(慣性系は常に選べるので含めない)。フォーカスが天体なら
-  // 自分の公転・子の公転・自分の自転、機体・役割なら(周回中のみ)公転と姿勢。固定点は空。
+  // いま選べる回転追従の選択肢(慣性系は常に選べるので含めない)。
   availableRotationFollows(displayTime: number): readonly CameraRotationFollow[] {
-    if (this._focus.kind === 'point') return [];
-    const id = this._focus.id;
-    const out: CameraRotationFollow[] = [];
-    const body = this.celestialSystem.find(id);
-    if (body !== null) {
-      if (body.motion.primary !== null) out.push({ kind: 'revolution', id });
-      for (const motion of this.celestialSystem.celestialMotions) {
-        if (motion.primary?.id === id) out.push({ kind: 'revolution', id: motion.id });
-      }
-      if (body.motion.spinRotationAt(displayTime) !== null) out.push({ kind: 'spin', id });
-    } else {
-      if (this.frameAnchors.attractorOf(id, displayTime) !== null) out.push({ kind: 'revolution', id });
-      if (this.config.attitudeOf(id, displayTime) !== null) out.push({ kind: 'attitude' });
-    }
-    return out;
+    return availableRotationFollows(
+      this._focus, this.celestialSystem, this.frameAnchors, this.config.attitudeOf, displayTime);
   }
 
   private isFollowAvailable(follow: CameraRotationFollow): boolean {

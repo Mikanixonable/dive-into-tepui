@@ -1,6 +1,6 @@
 // 天体ID・役割・回転ゾーンの選択から、パネルへ表示する日本語ラベルを引き当てる。
 import { frameRoleOf, FrameRole, FrameRotationSource } from '../../../physics/frame';
-import type { CameraRotationFollow } from '../../camera/focus-camera';
+import type { CameraRotationFollow } from '../../camera/rotation-follow';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 
 // 役割の日本語表示名。
