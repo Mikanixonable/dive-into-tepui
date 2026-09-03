@@ -195,6 +195,7 @@ export class PointEntity extends CelestialEntity {
     return {
       center: fo.RtoThreeV3(this.stateAt(displayTime).r),
       surfaceRadius: this.radius,
+      axes: this.axes,
       topAltitude: this.cumulus.topAltitude,
       bodyFromWorld: this.bodyFromWorld,
       field: this.cumulus.field,

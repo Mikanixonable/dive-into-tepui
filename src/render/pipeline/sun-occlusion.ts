@@ -37,9 +37,14 @@ export type Occluder = {
 // 積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準となる半径 [m]、
 // topAltitude は殻の高さ [m]、bodyFromWorld は描画座標のベクトルを天体固定の向きへ回す行列、
 // field は雲の場(R = 被覆率、G = 雲頂高度 / topAltitude)。
+//
+// **axes は天体固定の半軸 [m]** — 殻は半径 1 の球をこの 3 軸ぶん非一様に伸ばしたものなので、
+// これが無いと影は真球を仮定することになり、扁平な天体では高度の目盛りが緯度ぶんずれる
+// (地球の赤道半径と極半径の差 21 km は雲の層 15 km より厚い)。
 export type CumulusShadow = {
   readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
+  readonly axes: THREE.Vector3;
   readonly topAltitude: number;
   readonly bodyFromWorld: THREE.Matrix4;
   readonly field: THREE.Texture;
@@ -197,6 +202,7 @@ export class SunOcclusion {
   private activeRingBands = 0;
   private readonly cumulusCenter: Vec3Uniform;
   private readonly cumulusSurfaceRadius: FloatUniform;
+  private readonly cumulusAxes: Vec3Uniform;
   private readonly cumulusTopAltitude: FloatUniform;
   private readonly cumulusBodyFromWorld: Mat4Uniform;
   private readonly cumulusActive: FloatUniform;
@@ -223,6 +229,8 @@ export class SunOcclusion {
     }));
     this.cumulusCenter = uniform(new THREE.Vector3());
     this.cumulusSurfaceRadius = uniform(0);
+    // 場を持たないフレームでも殻の空間への写しは走るので、半軸は 0 で割らない値から始める。
+    this.cumulusAxes = uniform(new THREE.Vector3(1, 1, 1));
     this.cumulusTopAltitude = uniform(0);
     this.cumulusBodyFromWorld = uniform(new THREE.Matrix4());
     this.cumulusActive = uniform(0);
@@ -262,6 +270,7 @@ export class SunOcclusion {
     if (shadow === null) return;
     this.cumulusCenter.value.copy(shadow.center);
     this.cumulusSurfaceRadius.value = shadow.surfaceRadius;
+    this.cumulusAxes.value.copy(shadow.axes);
     this.cumulusTopAltitude.value = shadow.topAltitude;
     this.cumulusBodyFromWorld.value.copy(shadow.bodyFromWorld);
     this.cumulusField.value = shadow.field;
@@ -308,8 +317,8 @@ export class SunOcclusion {
     return transmittance;
   }
 
-  // 積雲の殻が落とす影。受け手から恒星へ向かう光路を、雲の層(天体中心から surfaceRadius +
-  // topAltitude まで)を抜けるまでたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
+  // 積雲の殻が落とす影。受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜ける
+  // まで **殻の空間**(toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
   //
   // **柱の光学的厚みは覆われている割合から出す** — 覆われた割合 c を通り抜けない確率と読んで
   // τ = −ln(1 − c) を取る。割合は殻が雲を立てるのと同じ規則(`cloud/cumulus-shape.ts`)から
@@ -326,25 +335,32 @@ export class SunOcclusion {
       const transmittance = float(1).toVar();
       // 場を持たないフレームで、タップぶんのフェッチを丸ごと飛ばす。
       If(greaterThan(this.cumulusActive, 0.5), () => {
-        const offset = worldPos.sub(this.cumulusCenter);
-        const shellRadius = this.cumulusSurfaceRadius.add(this.cumulusTopAltitude);
-        const along = dot(offset, sunDir);
-        // 光路が殻を出るまでの距離。殻より上の受け手では負になり、影は落ちない。
+        const bodyRadius = max(this.cumulusSurfaceRadius, 1);
+        const offset = this.toShellSpace(worldPos.sub(this.cumulusCenter));
+        // **光路の向きも殻の空間で取り直す** — 半軸で割ると向きが傾くので、描画座標の恒星方向を
+        // そのまま使うと、光路が層を斜めに横切る量が緯度ぶんずれる。
+        const rayDir = normalize(this.toShellSpace(sunDir));
+        // 殻の上端の半径。地表が 1 なので、高さは基準半径で割った目盛りで乗る。
+        const shellRadius = float(1).add(this.cumulusTopAltitude.div(bodyRadius));
+        const along = dot(offset, rayDir);
+        // 光路が殻を出るまでの距離。殻より上の受け手では負になり、影は落ちない。長さは殻の
+        // 空間の半径 1 を基準半径として測る(真の実寸との差は扁平率ぶんで、mip 段と上限にしか
+        // 効かない)。
         const exit = sqrt(max(shellRadius.mul(shellRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
-          .sub(along);
+          .sub(along).mul(bodyRadius);
         const stepLength = clamp(exit, 0, CUMULUS_MAX_LIGHT_PATH).div(CUMULUS_SHADOW_TAPS);
         const lod = this.cumulusFieldLod(footprint, stepLength);
-        const floorAltitude = this.receiverFloorAltitude(offset, lod);
+        const floorAltitude = this.receiverFloorAltitude(offset, lod, bodyRadius);
+        const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
         for (let tap = 0; tap < CUMULUS_SHADOW_TAPS; tap++) {
-          const sampleOffset = offset.add(sunDir.mul(stepLength.mul(tap + 0.5)));
-          const sampleRadius = max(length(sampleOffset), 1);
+          const sampleOffset = offset.add(rayDir.mul(stepRadius.mul(tap + 0.5)));
+          const sampleRadius = max(length(sampleOffset), 1e-6);
           const up = sampleOffset.div(sampleRadius);
-          // **高度に床を張る** — 基準半径は赤道半径なので、極の地表は中心距離のほうが小さい。
-          const altitude = max(sampleRadius.sub(this.cumulusSurfaceRadius), floorAltitude);
+          const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
           const cloud = this.cumulusFieldAt(up, lod);
           const cloudTop = cloud.g.mul(this.cumulusTopAltitude);
-          const rise = max(dot(sunDir, up), 0).mul(stepLength);
+          const rise = max(dot(rayDir, up), 0).mul(stepLength);
           const columnDepth = log(
             min(meanOpaqueFractionOf(cloud.r), CUMULUS_MAX_COVERAGE).oneMinus()).negate();
           // **1 歩が雲頂をまたぐ割合で配る** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
@@ -358,9 +374,25 @@ export class SunOcclusion {
     })();
   }
 
+  // 描画座標のベクトルを、殻が雲を立てるのと同じ空間へ写す — 地表が半径 1、雲頂が
+  // 半径 1 + 雲頂高度 / 基準半径 の球面に乗る空間。殻は半径 1 の球を天体固定の半軸ぶん
+  // 非一様に伸ばしたものなので、天体固定の向きへ回してから半軸で割ると戻る。
+  //
+  // **これは天体の形が入れる歪みの補正であって、場の図法とは関係しない。** 真球のつもりで
+  // 中心距離から高度を測ると、扁平な天体では緯度ぶんの下駄が乗る(地球なら極で 21 km ——
+  // 雲の層 15 km より厚いので、極の雲頂が自分の柱の内側に沈み、恒星の向きによらず影になる)。
+  // 図法を差し替えても要るのはこちらで、図法に依るのは cumulusFieldAt と cumulusFieldLod。
+  private toShellSpace(worldVec: Vec3Node): Vec3Node {
+    return this.cumulusBodyFromWorld.mul(vec4(worldVec, 0)).xyz.div(this.cumulusAxes);
+  }
+
   // 場を引く mip 段。画面 1 px が受け手の位置で張る実寸 footprint [m] と、光路 1 歩の長さ
-  // stepLength [m] のうち **粗いほう** を、場の texel が赤道で覆う実寸と比べて決める。歩が
+  // stepLength [m] のうち **粗いほう** を、場の texel が覆う実寸と比べて決める。歩が
   // またいだ柱は 1 タップが代表するので、恒星が低いほど影は柔らかく長く伸びる。
+  //
+  // **texel の実寸は図法から出す** — 下の式は正距円筒に固有で、赤道の 1 行(2πR を幅で割る)を
+  // 基準に取っている。極では 1 texel の経度方向の実寸がこれより cos(緯度) ぶん狭いので、段は
+  // そのぶん細かい側へ寄る。図法を差し替えるならここも差し替える。
   private cumulusFieldLod(footprint: FloatNode, stepLength: FloatNode): FloatNode {
     // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
     const fieldWidth = (this.cumulusField.size(int(0)) as THREE.Node<'uvec2'>).x;
@@ -368,18 +400,22 @@ export class SunOcclusion {
     return max(log2(max(footprint, stepLength.mul(CUMULUS_STEP_BLUR)).div(max(texelWorld, 1))), 0);
   }
 
-  // 描画座標の単位方向 up における場を、mip 段を指定して引く。**段は明示で渡す** — 光路の
+  // 殻の空間の単位方向 up における場を、mip 段を指定して引く。**段は明示で渡す** — 光路の
   // タップの uv は画面の隣の画素と続いていないので、画面微分から選ばれる段は当てにならない。
+  //
+  // **向きから uv への写しは図法に固有。** いまの場は正距円筒で、殻が読むのと同じ球メッシュの
+  // uv(sphereMeshUv)で引く — 殻と影が別の規則で同じ場を読むと、影が雲のシルエットから外れる。
   private cumulusFieldAt(up: Vec3Node, lod: FloatNode): Vec4Node {
-    const uv = sphereMeshUv(this.cumulusBodyFromWorld.mul(vec4(up, 0)).xyz);
+    const uv = sphereMeshUv(up);
     return this.cumulusField.sample(vec2(fract(uv.x), uv.y)).level(lod);
   }
 
   // 光路のタップの高度に張る床 [m]。受け手が自分の柱の雲頂の高さにあるなら、その雲頂の高さ。
-  // offset は天体中心から受け手へのベクトル(描画座標)。
-  private receiverFloorAltitude(offset: Vec3Node, lod: FloatNode): FloatNode {
-    const radius = max(length(offset), 1);
-    const altitude = max(radius.sub(this.cumulusSurfaceRadius), 0);
+  // offset は天体中心から受け手へのベクトル(殻の空間)、bodyRadius は殻の空間の半径 1 が
+  // 張る高度の目盛り [m]。
+  private receiverFloorAltitude(offset: Vec3Node, lod: FloatNode, bodyRadius: FloatNode): FloatNode {
+    const radius = max(length(offset), 1e-6);
+    const altitude = max(radius.sub(1), 0).mul(bodyRadius);
     const top = this.cumulusFieldAt(offset.div(radius), lod).g.mul(this.cumulusTopAltitude);
     const uncertainty = this.cumulusTopAltitude.mul(CLOUD_TOP_UNCERTAINTY);
     return select(greaterThan(altitude, top.sub(uncertainty)), top, float(0));
