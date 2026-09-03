@@ -14,7 +14,7 @@
 
 ## 実施済みの前提
 
-**手順1〜4 は実施済み。** 間引きは `src/game/marker/label-declutter.ts`(103行)、ラベルの
+**手順1〜5 は実施済み。残っているのは手順6だけで、それは挙動が変わる。** 間引きは `src/game/marker/label-declutter.ts`(103行)、ラベルの
 押し出しと引き出し線は `src/game/marker/label-layout.ts`(233行)にある。`MarkerManager` は
 表示中のレコードを集めて `LabelDeclutter.compute` を呼び、返ったキー集合で `priority-hidden` を
 トグルして `prevLabelHidden` を書き戻し、`LabelLayout.sync` へ渡す。`svgOverlay` は
@@ -23,6 +23,8 @@
 `label-declutter.MARKER_CROWDING_PX`(間引きの近接半径)/
 `grouped-markers.CLUSTER_RADIUS_PX`(まとめの半径)/
 `celestial-markers.LABEL_CROWDING_PX`(天体ラベルの名前用半径)の3つに分かれている。
+`MARKER_PRIORITY` は `crowding.ts`(139行、import 0 行の最下層)にあり、`marker-manager` を
+値として import するモジュールは無くなった。
 `npm run typecheck` / `npm run test:game`(175件)通過。
 
 **この worktree には `node_modules` のジャンクションが要る。** 無いと
@@ -112,13 +114,11 @@ N = そのフレームに表示中のマーカー数。上限は天体・ラグ�
 `label-declutter.ts` に自前のグリッドを持たせる(`CrowdingGrid` を一般化するのではなく)。
 手順1で間引きが独立したモジュールになっているので、後から差し替えられる。
 
-### 5. `MARKER_PRIORITY` は `crowding.ts` へ移す(手順5・単独で落とせる)
+### 5. `MARKER_PRIORITY` は `crowding.ts` が持つ
 
 優先度を消費する規則(`resolveCrowdingWinner`)の隣が所有者。規約 1.6「定数は概念の所有者が持つ」。
-現在は 10 モジュールが `marker-manager` から import しており、**うち 6 つは `MARKER_PRIORITY`
-だけのために import している** —— レジストリへの不要な依存になっている。
-
-**覆されたとき:** 手順5を落とす。他の手順は影響を受けない。
+これで `marker-manager` を**値として** import するモジュールは無くなり、10 モジュールに残るのは
+`import type { MarkerManager }` だけになる(型は消えるので実行時の依存にならない)。
 
 ### 6. `combatMarkers` / `leadMarkers` の所有者移動は範囲外
 
@@ -151,36 +151,6 @@ N = そのフレームに表示中のマーカー数。上限は天体・ラグ�
 ---
 
 ## 手順
-
-### 手順5. `MARKER_PRIORITY` を `crowding.ts` へ移す
-
-**目的:** 優先度を消費する規則の隣へ定数を置き、レジストリへの不要な依存を 6 モジュールから外す。
-**挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/marker/crowding.ts` | `MARKER_PRIORITY`(`marker-manager.ts` 23-38)を受け入れる。 |
-| `src/game/marker/marker-manager.ts` | 定義を削除し、`defaultPriorityForClass`(86-99)のために import する。`defaultPriorityForClass` 自体は `set()` からしか呼ばれない登録時の既定値なので**移さない**。 |
-| `src/game/celestial/celestial-entity/celestial-entity.ts` | import 元を差し替え(17行)。`marker-manager` への依存が消える。 |
-| `src/game/celestial/celestial-entity/geostationary-overlay.ts` | 同上(13行)。依存が消える。 |
-| `src/game/docking/docking-guide.ts` | 同上(12行)。依存が消える。 |
-| `src/game/dynamic/dynamic-entity/base.ts` | 同上(44行)。依存が消える。 |
-| `src/game/player/player.ts` | 同上(54行)。依存が消える。 |
-| `src/game/marker/lagrange-point-marker.ts` | 同上(10行)。依存が消える。 |
-| `src/game/dynamic/dynamic-entity/ammo-pickup.ts` | `MARKER_PRIORITY` だけ差し替え(15行)。`type MarkerManager` の import は残る。 |
-| `src/game/dynamic/dynamic-entity/enemy.ts` | 同上(32行)。 |
-| `src/game/dynamic/dynamic-entity/rcs-fuel-pickup.ts` | 同上(15行)。 |
-| `src/game/targeter.ts` | 同上(14行)。 |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `npm run test:game` が通る。
-- `grep -rn "MARKER_PRIORITY" src/ | grep "marker-manager'" ` が 0 件。
-- `crowding.ts` がプロジェクト内のどのモジュールも import していない(最下層のまま)
-  —— `grep -n "^import" src/game/marker/crowding.ts` が 0 件。
 
 ### 手順6(挙動が変わる。実施はユーザーが決める). 反発の 5 反復が 1 反復ぶんしか効いていない
 
