@@ -3,7 +3,7 @@
 // 抽象化して多数配置する。ゲーム世界とは無関係な表示専用の場面なので physics/ も参照しない。
 // ゲーム世界とは無関係な表示専用の場面なので、physics/ も game/ も参照しない。
 import * as THREE from 'three/webgpu';
-import { ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, BG } from '../game/theme';
+import { ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, BG } from '../theme';
 
 export const TITLE_SCENE_PATTERNS = ['mosaic', 'helix', 'orbital', 'lattice'] as const;
 type TitleScenePattern = typeof TITLE_SCENE_PATTERNS[number];

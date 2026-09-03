@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { qFromBasis } from '../../math/quat';
 import { Vec3 } from '../../math/vec3';
-import { AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../theme';
+import { AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../../theme';
 import { markOverlay } from '../../render/pipeline/lit-layer';
 
 // 選択中ノードの Δv アーム6本(PRO/RET・NRM/ANM・OUT/IN)を表す3D矢印ギズモ。
