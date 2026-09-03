@@ -14,10 +14,12 @@
 
 ## 実施済みの前提
 
-**手順1 は実施済み。** 間引きは `src/game/marker/label-declutter.ts`(103行)にあり、
-`MarkerManager` は表示中のレコードを集めて `LabelDeclutter.compute` を呼び、返った
-キー集合で `priority-hidden` をトグルし、`prevLabelHidden` を書き戻す形になっている。
-`marker-manager.ts` は 599 行。`npm run typecheck` / `npm run test:game`(175件)通過。
+**手順1・2 は実施済み。** 間引きは `src/game/marker/label-declutter.ts`(103行)、ラベルの
+押し出しと引き出し線は `src/game/marker/label-layout.ts`(233行)にある。`MarkerManager` は
+表示中のレコードを集めて `LabelDeclutter.compute` を呼び、返ったキー集合で `priority-hidden` を
+トグルして `prevLabelHidden` を書き戻し、`LabelLayout.sync` へ渡す。`svgOverlay` は
+`LabelLayout` が持つ。`marker-manager.ts` は 400 行。
+`npm run typecheck` / `npm run test:game`(175件)通過。
 
 **この worktree には `node_modules` のジャンクションが要る。** 無いと
 `tsconfig.test.json` の `paths`(`./node_modules/@types/three/...`)が解決できず、
@@ -145,27 +147,6 @@ N = そのフレームに表示中のマーカー数。上限は天体・ラグ�
 ---
 
 ## 手順
-
-### 手順2. 反発と引き出し線を `label-layout.ts` へ移す
-
-**目的:** `marker-manager` から「残ったラベルをどこへ置くか」を抜く。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/marker/label-layout.ts`(新規) | `LabelLayout` クラス。`marker-manager.ts` から `ActiveLabel`(74-82)、`COLLISION_BUCKET_SIZE` / `COLLISION_PADDING`(126-129)、`activeScratch` / `activeCount` / `candidateStamp` / `candidatesScratch` / `collisionBuckets` / `bucketPool` / `bucketRowPool` / `svgLinePool`(143-152)、`relaxLabelRects`(501-635)、`applyLabelOffsets`(639-669)を移す。コンストラクタで `svgOverlay: SVGSVGElement` を受ける。公開するのは `sync(targets, hiddenLabels)` と `dispose()`。入力インターフェース `LayoutTarget` は `key` / `x` / `y` / `fixedLabel` / `lbl: HTMLElement` / `root: HTMLElement` を読む(`root` は引き出し線の不透明度合わせ 655 行のため)。 |
-| `src/game/marker/marker-manager.ts` | 上記を削除。コンストラクタ(161-167)で `LabelLayout` を組み、`svgOverlay` の保持をそちらへ譲る(`MarkerManager` は `svgOverlay` を持たなくなる)。`dispose()`(413-421)の `svgLinePool` の後始末(419-420)を `labelLayout.dispose()` の呼び出しへ置き換える。`resolveCollisions` は `labelLayout.sync(active, hiddenLabels)` を呼ぶ。 |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `npm run test:game` が通る。
-- `grep -n 'COLLISION_BUCKET_SIZE\|COLLISION_PADDING\|svgOverlay\|svgLinePool\|SVGLineElement'
-  src/game/marker/marker-manager.ts` が 0 件。
-- `wc -l src/game/marker/marker-manager.ts` が 500 未満。
-- **目視(マップビュー):** ラベルが重なる位置までズームし、押し出しと引き出し線が現状と同じに
-  出ること。マップビューを抜けて入り直しても引き出し線が増えていかないこと。
 
 ### 手順3. `relaxLabelRects` を 100 行未満の関数へ割る
 
