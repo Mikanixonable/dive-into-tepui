@@ -1,9 +1,6 @@
 // 描画テスト環境の画面。ケースと、表示スタイルと、画面へ出す中間バッファを選ぶと、その絵を
-// ゲーム本体と同じ描画経路で描く。
-//
-// **描画品質設定はゲーム本体の設定パネル(GraphicsPanel)をそのまま組む。** 項目の並び・群の
-// 見出し・ウィジェットの選び方は GRAPHICS_OPTIONS の表だけが決めるので、項目を足したときに
-// ここへ書き足すものは無い。
+// ゲーム本体と同じ描画経路で描く。描画品質設定の操作はゲーム本体の設定パネル(GraphicsPanel)を
+// そのまま組む。
 import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { AMBIENT_STRONG, AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
@@ -19,12 +16,11 @@ import {
 } from './lab';
 import { AU } from '../../src/physics/astronomical-unit';
 import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
-import type { FloatUniform } from '../../src/render/tsl-types';
 import { buildSlider } from '../lab-controls';
+import type { FloatUniform } from '../../src/render/tsl-types';
 
-// 設定パネルに出さない項目。**ここが空でないのは、この環境が原理的に効かせられないときだけ** —
-// 効かせられるものは cases.ts / lab.ts の側で受けること。並べて何も起きないと、絵の違いの
-// 出どころを読み違える。
+// 設定パネルに出さない項目。この環境が原理的に効かせられないものだけを入れる — 並べて何も
+// 起きないと、絵の違いの出どころを読み違える。
 const HIDDEN_GRAPHICS_KEYS: ReadonlySet<GraphicsOptionKey> = new Set<GraphicsOptionKey>([
   // 描画は 960x540 固定(撮影した PNG の大きさを決め打ちにするため)。
   'resolutionScale',
@@ -34,7 +30,7 @@ const HIDDEN_GRAPHICS_KEYS: ReadonlySet<GraphicsOptionKey> = new Set<GraphicsOpt
 
 declare global {
   interface Window {
-    // 撮影の駆動(tools/render-lab-shot.mjs)が CDP から読む入口。
+    // CDP から撮影と計測を駆動するための入口。
     renderLab?: {
       cases: readonly CaseName[];
       shoot: (name: CaseName) => Promise<string>;
@@ -48,9 +44,9 @@ declare global {
   }
 }
 
+// 画面を組み、最初のケースを描き、CDP の入口を window へ生やす。
 async function init(): Promise<void> {
-  // ゲーム本体のウィジェットを組む前に、その CSS が読むトークンと規則を入れる
-  // (src/game/hud/hud-root.ts が起動時に行うのと同じ)。
+  // ゲーム本体のウィジェットを組む前に、その CSS が読むトークンと規則を入れる。
   injectThemeVariables();
   injectOnce('widget-style', WIDGET_STYLE);
 
@@ -92,6 +88,7 @@ async function init(): Promise<void> {
       setSunDistance(view.viewAngles.sunDistanceLogAu);
     });
 
+  // 観察のつまみの位置を LabView の現在値へ合わせる。
   const syncAngles = (): void => {
     const current = view.viewAngles;
     setSunAzimuth(current.sunAzimuthDeg);
@@ -126,8 +123,7 @@ async function init(): Promise<void> {
   const styles = new SegmentedControl<RenderStyle>('スタイル', RENDER_STYLES, selectStyle);
   document.getElementById('modes')!.append(styles.element, targets.element);
 
-  // 描画品質設定。パネル自身が押し出し先として登録されるので、撮影の駆動が UI を通さずに
-  // 項目を書き換えても点灯が追随する。
+  // 描画品質設定のパネル(押し出し先への登録はパネル自身が行う)。
   const panel = new GraphicsPanel(graphics, HIDDEN_GRAPHICS_KEYS);
   document.getElementById('graphics')!.appendChild(panel.element);
   graphics.bind(view);
@@ -171,7 +167,7 @@ async function init(): Promise<void> {
   };
 }
 
-// 失敗は握り潰さない。canvas が黒いまま無言で残ると、器の不備を絵の問題と読み違える。
+// 失敗は画面へ出す — canvas が黒いまま無言で残ると、器の不備を絵の問題と読み違える。
 init().catch((e: unknown) => {
   document.getElementById('error')!.textContent = String(e);
 });
