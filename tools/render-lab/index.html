@@ -34,7 +34,7 @@
 
   .row { display: flex; gap: var(--space-4, 8px); flex-wrap: wrap; margin-bottom: var(--space-5, 12px); }
   /* 観察のつまみは側柱で縦に積む — 横並びだと1本あたりの幅が読み取れる長さを切る。 */
-  #view-angles { flex-direction: column; gap: var(--space-3, 6px); margin-bottom: 0; }
+  #view-angles, #cumulus-dither { flex-direction: column; gap: var(--space-3, 6px); margin-bottom: 0; }
 
   .field { display: flex; align-items: center; gap: var(--space-3, 6px); }
   .field > span { min-width: 5.5em; color: var(--text-dim, #8a939e); }
@@ -76,6 +76,11 @@
       <section>
         <h2>環境光(ビュー種別の代わり)</h2>
         <div id="ambient"></div>
+      </section>
+      <!-- 仮設: 積雲の飽和とディザの幅を決めるまでの実験用。決まったら節ごと消す。 -->
+      <section>
+        <h2>積雲のディザ(仮設)</h2>
+        <div class="row" id="cumulus-dither"></div>
       </section>
     </aside>
   </div>
