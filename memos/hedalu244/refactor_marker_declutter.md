@@ -14,12 +14,12 @@
 
 ## 実施済みの前提
 
-**手順1・2 は実施済み。** 間引きは `src/game/marker/label-declutter.ts`(103行)、ラベルの
+**手順1・2・3 は実施済み。** 間引きは `src/game/marker/label-declutter.ts`(103行)、ラベルの
 押し出しと引き出し線は `src/game/marker/label-layout.ts`(233行)にある。`MarkerManager` は
 表示中のレコードを集めて `LabelDeclutter.compute` を呼び、返ったキー集合で `priority-hidden` を
 トグルして `prevLabelHidden` を書き戻し、`LabelLayout.sync` へ渡す。`svgOverlay` は
-`LabelLayout` が持つ。`marker-manager.ts` は 400 行。
-`npm run typecheck` / `npm run test:game`(175件)通過。
+`LabelLayout` が持つ。`marker-manager.ts` は 400 行。`label-layout.ts` の最長メソッドは
+`pushApartFromNeighbors` の 61 行。`npm run typecheck` / `npm run test:game`(175件)通過。
 
 **この worktree には `node_modules` のジャンクションが要る。** 無いと
 `tsconfig.test.json` の `paths`(`./node_modules/@types/three/...`)が解決できず、
@@ -148,24 +148,6 @@ N = そのフレームに表示中のマーカー数。上限は天体・ラグ�
 
 ## 手順
 
-### 手順3. `relaxLabelRects` を 100 行未満の関数へ割る
-
-**目的:** 規約 1.2 の「関数は 100 行」を満たす。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/marker/label-layout.ts` | 「決めたこと 3」の表のとおり、`relaxLabelRects` を4つの private メソッドへ割る。反復ごとのグリッド再構築は**反復の内側に置いたまま**にする(ラベルが前の反復で別セルへ移るため、反復をまたいでバケットを再利用できない)。候補の添字昇順ソート(610行)も**残す**(押し出しが累積するので処理順に結果が依存する)。対象外のラベルへ `transform = 'translateX(-50%)'` を書く副作用(508行)は矩形収集側に残す。 |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `src/game/marker/` の全関数が 100 行未満
-  (`awk` などで測るか、`label-layout.ts` を目で読んで最長のメソッドを数える)。
-- **目視(マップビュー):** ラベルが重なる位置で押し出しの結果が現状と同じで、フレームごとに
-  位置が揺れないこと。混雑が解けたあとにラベルが元の位置へ戻ること。
-
 ### 手順4. 「40px」を3つの所有者へ分ける
 
 **目的:** `MARKER_CLUSTER_PX` は現在、間引きの近接半径(472行)と `GroupedMarkers` のクラスタ半径
@@ -219,6 +201,34 @@ N = そのフレームに表示中のマーカー数。上限は天体・ラグ�
 - `grep -rn "MARKER_PRIORITY" src/ | grep "marker-manager'" ` が 0 件。
 - `crowding.ts` がプロジェクト内のどのモジュールも import していない(最下層のまま)
   —— `grep -n "^import" src/game/marker/crowding.ts` が 0 件。
+
+### 手順6(挙動が変わる。実施はユーザーが決める). 反発の 5 反復が 1 反復ぶんしか効いていない
+
+**症状:** `label-layout.ts` の `relaxOverlaps` は、候補の重複除去に使う `candidateStamp` を
+**5 反復の前に一度しか 0 で埋めていない。** 添字 i に対するスタンプ値は毎反復 `i + 1` で同じ
+なので、反復1で候補に採った組 (i, j) は反復2以降で `candidateStamp[j] !== stamp` を満たさず、
+**候補から落ちて押し出されない。** 「5反復で反発させて緩和する」という意図に対し、実際には
+ほぼ1反復ぶんしか働いていない(どの組が生き残るかは、別の i' がスタンプを上書きしたかどうか
+に依存するので、順序にも左右される)。
+
+**直し方:** `candidateStamp.fill(0, 0, this.activeCount)` を反復ループの内側へ移す。
+あるいはスタンプを `iter * activeCount + i + 1` のように反復をまたいで一意にする。
+
+**なぜ別手順なのか:** 直すと押し出しが今より強く効き、**ラベルの位置と引き出し線の見た目が
+変わる。** リファクタリングの手順に混ぜて黙って変えるべきではない。手順3 では現状の挙動を
+そのまま保存してある。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/game/marker/label-layout.ts` | `relaxOverlaps` の `candidateStamp` の初期化位置を直す。 |
+
+**達成条件と検証**
+
+- `npm run typecheck` / `npm run test:game` が通る。
+- **目視(マップビュー):** ラベルが3枚以上重なる位置で、押し出し後に重なりが残らないこと。
+  反復が効くぶん押し出し量が増えるので、引き出し線が長くなる。
 
 ---
 
