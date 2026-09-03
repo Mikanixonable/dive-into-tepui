@@ -120,7 +120,7 @@ SHIP STATUS(`#hud-status`)を非表示にする。艦固有の情報は艦を右
 
 ## 6. 種別ごとのプロパティ
 
-`MapPickable['kind']` の9種に対する表示内容。
+`ObjectPickable['kind']` の9種に対する表示内容。
 
 | kind | プロパティ |
 | --- | --- |

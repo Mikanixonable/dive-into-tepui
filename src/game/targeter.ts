@@ -7,17 +7,18 @@ import type { AmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
 import type { RcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
-import { Input } from './input/input';
+import { Input } from '../input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
 import type { CelestialMarkers } from './marker/celestial-markers';
-import { MarkerManager, MARKER_PRIORITY } from './marker/marker-manager';
+import { MARKER_PRIORITY } from './marker/crowding';
+import type { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
-import { pickNearest } from './pickable/map-pickable';
+import { pickNearest } from './pickable/object-pickable';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
 import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
-import { KEY_MAPPING as K } from './input/key-mapping';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
@@ -66,22 +67,20 @@ export class Targeter {
   }
 
   // Tキーで照準中心に最も近い敵をターゲットにする。オート選定は行わない — 右クリックでの
-  // 設定/解除は MapContextActions が開くプロパティウィンドウの項目(target)から
-  // navTarget.toggleTarget を呼ぶ。ビューはここでは持たないので毎フレーム引数で受け取り、
-  // マップ視点では何もしない。
-  handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn, overviewMode: boolean): void {
-    if (overviewMode) return;
+  // 設定/解除はプロパティウィンドウの項目(target)から
+  // navTarget.toggleTarget を呼ぶ。
+  handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
     this.navTarget.setCombatTarget(pickNearest(
       targets.filter((e) => e.alive), (target) => project(target.state.r),
       window.innerWidth * 0.5, window.innerHeight * 0.5, Infinity));
   }
 
-  // マップ表示中だけ、戦闘ターゲットの赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。
+  // 戦闘ターゲットの赤道交点マーカーを求め直す。求め直されなかったフレームの交点は
+  // 同期側が自動的に隠す。
   updateEquatorNodes(
-    overviewMode: boolean, displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
+    displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
-    if (!overviewMode) return;
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
       .updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
@@ -123,10 +122,9 @@ export class Targeter {
   // ターゲットに紐づく表示物(的通過マーク・方位マーカー)をまとめて更新する。
   // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
   sync(player: Player | null, cameraSystem: CameraSystem): void {
-    const overviewMode = cameraSystem.overviewMode;
     const project = cameraSystem.activeCameraProjection;
     this.syncBoardMarkers(project);
-    this.syncTargetDirMarkers(player, overviewMode, project);
+    this.syncTargetDirMarkers(player, cameraSystem.view === 'map', project);
   }
 
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。
@@ -137,7 +135,8 @@ export class Targeter {
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
     celestialBodies: readonly CelestialMotion[], celestialMarkers: CelestialMarkers,
   ): void {
-    const overviewMode = cameraSystem.overviewMode;
+    const view = cameraSystem.view;
+    const mapView = view === 'map';
     const project = cameraSystem.activeCameraProjection;
     const screenScale = cameraSystem.activeCameraScale;
     const viewerPos = player?.state.r ?? v3();
@@ -152,15 +151,15 @@ export class Targeter {
       if (visibility && !visibility.pickable) continue;
       // 戦闘ビューではカメラ直下の自機をマーカーで重ねて表示しない。マップビューでは
       // 他の自機と同じ位置マーカーが必要なので、操作対象かつ戦闘ビューのときだけ除外する。
-      if (!overviewMode && tgt === player) continue;
+      if (!mapView && tgt === player) continue;
       const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
       const item = tgt instanceof Player
-        ? tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode, tgt === player)
-        : tgt.markerItem(role, viewerPos, ds.r, ds.v, overviewMode);
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies, displayTime);
+        ? tgt.markerItem(role, viewerPos, ds.r, ds.v, view, tgt === player)
+        : tgt.markerItem(role, viewerPos, ds.r, ds.v, view);
+      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies, displayTime);
       const mapOpacity = mapOccluded
         ? 0
-        : tgt instanceof Enemy && overviewMode
+        : tgt instanceof Enemy && mapView
           ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, celestialBodies, displayTime))
           : 1;
       this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
@@ -170,31 +169,31 @@ export class Targeter {
     for (const tgt of targets) {
       if (!(tgt instanceof ProteinEnemy)) continue;
       const ds = tgt.alive ? tgt.stateAt(displayTime) : null;
-      this.syncProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, overviewMode, project, cameraSystem.activeCameraPos);
+      this.syncProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, mapView, project, cameraSystem.activeCameraPos);
     }
     for (const ammo of ammoPickups) {
       if (!ammo.alive) continue;
       const visibility = visibilityPolicy?.entity('ammo');
       if (visibility && !visibility.pickable) continue;
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, celestialBodies, displayTime);
-      const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(ammo.state.r, viewerPos))) : 1;
-      this.pushMarkerItem(ammo.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
+      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, celestialBodies, displayTime);
+      const mapOpacity = mapOccluded ? 0 : mapView ? ammoFadeOpacity(len(sub(ammo.state.r, viewerPos))) : 1;
+      this.pushMarkerItem(ammo.markerItem(viewerPos, view), visibility, mapOpacity, mapOccluded);
     }
     for (const fuel of fuelPickups) {
       if (!fuel.alive) continue;
       const visibility = visibilityPolicy?.entity('fuel');
       if (visibility && !visibility.pickable) continue;
-      const mapOccluded = overviewMode && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, celestialBodies, displayTime);
-      const mapOpacity = mapOccluded ? 0 : overviewMode ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
-      this.pushMarkerItem(fuel.markerItem(viewerPos, overviewMode), visibility, mapOpacity, mapOccluded);
+      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, celestialBodies, displayTime);
+      const mapOpacity = mapOccluded ? 0 : mapView ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
+      this.pushMarkerItem(fuel.markerItem(viewerPos, view), visibility, mapOpacity, mapOccluded);
     }
-    const celestialLabels = overviewMode ? celestialMarkers.activeLabels : [];
+    const celestialLabels = mapView ? celestialMarkers.activeLabels : [];
     this.markerManager.combatMarkers.sync(
-      this.markerItemScratch, project, overviewMode, screenScale, celestialLabels, celestialBodies,
+      this.markerItemScratch, project, view, screenScale, celestialLabels, celestialBodies,
       cameraSystem.activeCameraPos,
     );
     if (player) {
-      this.markerManager.leadMarkers.sync(player, this.aliveScratch, this.aliveTarget, simTime, overviewMode, project);
+      this.markerManager.leadMarkers.sync(player, this.aliveScratch, this.aliveTarget, simTime, view, project);
     }
   }
 
@@ -215,9 +214,9 @@ export class Targeter {
   // タンパク質敵が自機から PROTEIN_SITE_MARKER_RANGE 以内にある間、通常の敵マーカーへ加えて
   // 各機能部位の HP・名称マーカーを表示する。ロック中ターゲット情報とは独立して出す。
   private syncProteinSiteMarkers(
-    enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3, overviewMode: boolean, project: ProjectFn, cameraPos: Vec3,
+    enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3, mapView: boolean, project: ProjectFn, cameraPos: Vec3,
   ): void {
-    const inRange = !overviewMode && displayPos !== null && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
+    const inRange = !mapView && displayPos !== null && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
     const sites = enemy.siteMarkers(displayPos ?? enemy.state.r);
     for (const site of sites) {
       const key = `psite-${enemy.id}-${site.id}`;
@@ -245,9 +244,9 @@ export class Targeter {
 
   // ターゲット/その反対方向を指す方向マーカー(戦闘ビューのみ)。自機の軌道基準方向マーカー
   // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。
-  private syncTargetDirMarkers(player: Player | null, overviewMode: boolean, project: ProjectFn): void {
+  private syncTargetDirMarkers(player: Player | null, mapView: boolean, project: ProjectFn): void {
     const tgt = this.aliveTarget;
-    if (overviewMode || !tgt || !player) {
+    if (mapView || !tgt || !player) {
       this.markerManager.hide('tgtdir');
       this.markerManager.hide('atgdir');
       return;

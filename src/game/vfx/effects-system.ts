@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { Attitude, qRotate, randomQuat } from '../../physics/attitude';
+import { Attitude } from '../../physics/attitude';
+import { LOCAL_FORWARD, qRotate, randomQuat } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../math/random';
 import { add, addScaled, randVec, scale, v3, Vec3 } from '../../math/vec3';
@@ -122,7 +123,7 @@ export class EffectsSystem {
           tangent,
           randSym(2.0),
         ),
-        qRotate(att.q, v3(0, 0, 1)),
+        qRotate(att.q, LOCAL_FORWARD),
         randSym(2.5),
       );
       this.spawnDebrisPiece(
@@ -175,7 +176,7 @@ export class EffectsSystem {
   // 各 spawnXxx はすべてこれの薄いラッパー — kind ごとの見た目・寿命判定の違いは
   // DebrisPiece/DebrisKind(debris-piece.ts)側の責務。
   private spawnDebrisPiece(state: KinematicState, kind: DebrisKind, att: Attitude, radius?: number): void {
-    this.entities.addDebris(new DebrisPiece(state, kind, att, this._worldSfx, this, radius, this._scene));
+    this.entities.add(new DebrisPiece(state, kind, att, this._worldSfx, this, radius, this._scene));
   }
 
   // t は発生時刻(破片 state のエポック)。破壊された entity の state.t をそのまま渡す。

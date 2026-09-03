@@ -1,7 +1,7 @@
-// MapCamera の注視対象と、その解決。対象を id で指す 'object' と、座標系に焼き込んだ固定点を
-// 表す 'point' の判別共用体を持ち、毎フレームそれを ECI 位置へ解決する。
+// FocusCamera の注視対象と、その解決。対象を id で指す 'object' と、座標系に焼き込んだ固定点を
+// 表す 'point' の判別共用体を持ち、毎フレームそれを ECI の位置と速度へ解決する。
 import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint, toInertialPoint } from '../../physics/frame';
-import { Vec3, v3 } from '../../math/vec3';
+import { add, cross, sub, Vec3, v3 } from '../../math/vec3';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ReferenceFrames } from '../celestial/reference-frames';
@@ -23,14 +23,14 @@ export function focusPoint(
   return { kind: 'point', frame, point: toFramePoint(tf, pos) };
 }
 
-// 注視点の候補。MapPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。
-// **MapPickable 型そのものを受け取ってはいけない** — map-pickable.ts は camera-system.ts を
+// 注視点の候補。ObjectPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。
+// **ObjectPickable 型そのものを受け取ってはいけない** — object-pickable.ts は camera-system.ts を
 // 型 import しており、それが three/webgpu を引き込む。tsconfig.test.json の include へ
-// map-pickable.ts が入ると型検査が DOM 定義を要求して壊れる。
+// object-pickable.ts が入ると型検査が DOM 定義を要求して壊れる。
 export interface FocusCandidate {
   readonly id: string;
   // 表示時刻の ECI 位置。求まらないフレームは null。
-  mapPosAt(displayTime: number): Vec3 | null;
+  posAt(displayTime: number): Vec3 | null;
 }
 
 export interface FocusResolveState {
@@ -40,6 +40,9 @@ export interface FocusResolveState {
 
 interface FocusResolveResult {
   readonly pos: Vec3;
+  // 注視点の ECI 速度。位置しか答えられない対象(候補配列の点マーカー)と、
+  // 位置を直前の解へ保っているフレームでは null。
+  readonly vel: Vec3 | null;
   readonly missingFocusFrames: number;
   readonly lastResolvedFocus: Vec3;
   // true なら焦点そのものを origin へ差し戻す(2フレーム連続の解決失敗)。
@@ -63,28 +66,33 @@ export function resolveFocusTarget(
   if (focus.kind === 'point') {
     const tf = frames.transformAt(focus.frame, displayTime, frameAnchors);
     const pos = toInertialPoint(tf, focus.point);
-    return { pos, missingFocusFrames: state.missingFocusFrames, lastResolvedFocus: pos, fallToOrigin: false };
+    // 座標系に固定された点なので、ECI 速度は原点の並進と系の回転だけで決まる。
+    const vel = add(tf.originVel, cross(tf.omega, sub(pos, tf.origin)));
+    return { pos, vel, missingFocusFrames: state.missingFocusFrames, lastResolvedFocus: pos, fallToOrigin: false };
   }
   if (focus.id === frames.inertialFrame.center) {
     const pos = v3();
-    return { pos, missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
+    return { pos, vel: v3(), missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
   }
   const motion = celestialMotionOf(focus.id);
   if (motion !== null) {
-    const pos = celestialStateOf(focus.id, displayTime).r;
-    return { pos, missingFocusFrames: 0, lastResolvedFocus: pos, fallToOrigin: false };
+    const { r, v } = celestialStateOf(focus.id, displayTime);
+    return { pos: r, vel: v, missingFocusFrames: 0, lastResolvedFocus: r, fallToOrigin: false };
   }
   const anchored = frameAnchors.stateOf(focus.id, displayTime);
   if (anchored !== null) {
-    return { pos: anchored.r, missingFocusFrames: 0, lastResolvedFocus: anchored.r, fallToOrigin: false };
+    return { pos: anchored.r, vel: anchored.v, missingFocusFrames: 0, lastResolvedFocus: anchored.r, fallToOrigin: false };
   }
-  const candidatePos = candidates.find((c) => c.id === focus.id)?.mapPosAt(displayTime) ?? null;
+  const candidatePos = candidates.find((c) => c.id === focus.id)?.posAt(displayTime) ?? null;
   if (candidatePos !== null) {
-    return { pos: candidatePos, missingFocusFrames: 0, lastResolvedFocus: candidatePos, fallToOrigin: false };
+    return { pos: candidatePos, vel: null, missingFocusFrames: 0, lastResolvedFocus: candidatePos, fallToOrigin: false };
   }
   const missingFocusFrames = state.missingFocusFrames + 1;
   if (missingFocusFrames >= 2) {
-    return { pos: v3(), missingFocusFrames, lastResolvedFocus: state.lastResolvedFocus, fallToOrigin: true };
+    return { pos: v3(), vel: null, missingFocusFrames, lastResolvedFocus: state.lastResolvedFocus, fallToOrigin: true };
   }
-  return { pos: state.lastResolvedFocus, missingFocusFrames, lastResolvedFocus: state.lastResolvedFocus, fallToOrigin: false };
+  return {
+    pos: state.lastResolvedFocus, vel: null, missingFocusFrames,
+    lastResolvedFocus: state.lastResolvedFocus, fallToOrigin: false,
+  };
 }

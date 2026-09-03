@@ -6,7 +6,7 @@
 // 評価結果は時刻 t をキーにした固定長リング(TimeRing)でメモ化する。
 // THREE/DOM 非依存。
 import { Atmosphere, AtmosphereDef } from './atmosphere';
-import { qFromForwardUp } from './attitude';
+import { qFromForwardUp } from '../math/quat';
 import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import type { EciTransform } from './eci-transform';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';

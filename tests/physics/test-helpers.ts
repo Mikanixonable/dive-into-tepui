@@ -27,7 +27,7 @@ import type { CelestialSystem } from '../../src/game/celestial/celestial-system'
 import { solarSystem } from '../../src/game/celestial/solar-system/solar-system';
 import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../../src/physics/time';
 import { Vec3, addScaled, cross, len, scale, sub, v3 } from '../../src/math/vec3';
-import { qRotate } from '../../src/physics/attitude';
+import { qRotate } from '../../src/math/quat';
 
 // 地球原点で組んだ現実の太陽系。天体は宣言順(重力源配列・一覧の順序もこの並び)に並び、
 // 1体ずつは id で引く。同一時刻の集合を答える系と、座標系も一緒に持つ。

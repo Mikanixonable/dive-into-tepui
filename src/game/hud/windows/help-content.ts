@@ -1,15 +1,15 @@
 // 操作説明として何が存在するかのデータを持つ — カテゴリ・個々の操作定義
 // (helpEntries)・キーボード配列図・状態ラベルの一覧と、それらに対する
 // 検索・フィルタ判定の純関数。
-import { KEY_MAPPING as K, type KeyBinding } from '../../input/key-mapping';
+import { KEY_MAPPING as K, type KeyBinding } from '../../../input/key-mapping';
 import { MAX_PHYS_SIM_SPEED } from '../../dynamic/sim-speed-manager';
 import { THROTTLE_LABELS } from '../../player/player-throttle';
 import { MAG_ROUNDS } from '../../player/player-fire';
-import type { WorldView } from '../../view-manager';
+import type { View } from '../../view/view';
 
 export type HelpInput = 'keyboard' | 'mouse' | 'touch';
 export type HelpCategory = 'basic' | 'combat' | 'camera' | 'time' | 'map' | 'ui' | 'gesture';
-type HelpScope = WorldView | 'both';
+type HelpScope = View | 'both';
 type HelpBehavior = 'press' | 'hold' | 'toggle' | 'drag' | 'gesture';
 
 export interface HelpEntry {
@@ -365,6 +365,6 @@ export function entryMatchesCode(entry: HelpEntry, code: string): boolean {
 }
 
 // エントリの scope が現在の表示モードで見せるべきものかを判定する。both は常に一致する。
-export function scopeMatches(entry: HelpEntry, mode: WorldView): boolean {
+export function scopeMatches(entry: HelpEntry, mode: View): boolean {
   return entry.scope === 'both' || entry.scope === mode;
 }
