@@ -477,10 +477,7 @@ export class PlanEditor {
         nodeFor3D = node;
         arrFor3D = arriving[this.selectedNodeIdx] || null;
         const p = this.nodeScreenPos(node);
-        if (p.front) {
-          const dirs = this.axisDrag.computeAxisScreenDirs(arrFor3D || node, mapDist);
-          axisSpecs = this.axisDrag.buildAxisHandles(p.x, p.y, dirs);
-        }
+        if (p.front) axisSpecs = this.axisDrag.buildAxisHandles(p.x, p.y, arrFor3D ?? node, mapDist);
       }
     }
     this.nodeGizmo.sync(nodeSpecs, axisSpecs);

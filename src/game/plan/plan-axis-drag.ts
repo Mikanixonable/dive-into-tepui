@@ -25,14 +25,14 @@ export class AxisDragGizmo {
   // 6 方向それぞれのホールド継続時間 [s]。index は axis*2 + (sign<0 ? 1 : 0)。
   private readonly dvHoldTime: number[] = [0, 0, 0, 0, 0, 0];
 
-  constructor(
+  public constructor(
     private readonly bodyStateOf: (state: KinematicState) => KinematicState,
     private readonly projectPoint: (r: Vec3, t: number) => Projected,
     private readonly onApplyDv: (axis: 0 | 1 | 2, sign: 1 | -1, amount: number) => void,
   ) {}
 
   // Δv アーム 6 個の画面方向をノード位置と微小先の投影差分から求める。
-  computeAxisScreenDirs(
+  private computeAxisScreenDirs(
     node: KinematicState,
     mapDist: number,
   ): { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; } {
@@ -52,12 +52,10 @@ export class AxisDragGizmo {
     return { pro: dirFor(pro), nrm: dirFor(nrm), rad: dirFor(radOut) };
   }
 
-  // ノード周囲に PRO/RET・NRM/ANM・OUT/IN 6 方向の Δv アームハンドル仕様を配置する。
-  buildAxisHandles(
-    nx: number,
-    ny: number,
-    dirs: { pro: { x: number; y: number; }; nrm: { x: number; y: number; }; rad: { x: number; y: number; }; },
-  ): AxisHandleSpec[] {
+  // 画面座標 (nx, ny) のノード周囲に PRO/RET・NRM/ANM・OUT/IN 6 方向の Δv アームハンドル仕様を
+  // 配置する。軸の向きは node の軌道基準から、ハンドルの間隔はマップカメラ距離 mapDist から決まる。
+  public buildAxisHandles(nx: number, ny: number, node: KinematicState, mapDist: number): AxisHandleSpec[] {
+    const dirs = this.computeAxisScreenDirs(node, mapDist);
     const R = NODE_GIZMO_HANDLE_PX;
     // 軸・符号・画面方向からハンドル1個分の位置とラベルを組む
     const mk = (axis: 0 | 1 | 2, sign: 1 | -1, d: { x: number; y: number; }, label: string): AxisHandleSpec => ({
@@ -80,14 +78,14 @@ export class AxisDragGizmo {
   }
 
   // Δv アームのラッチ前ドラッグ量を選択中ノードの Δv へ加算する。
-  applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
+  public applyAxisDrag(axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number, fineAttitude: boolean): void {
     const rate = (fineAttitude ? NODE_DV_RATE_FINE : NODE_DV_RATE) / 200;
     this.onApplyDv(axis, sign, deltaPx * rate);
   }
 
   // axis/sign 方向のキー/ボタンが held の間ホールド時間を積み上げ、そのレートで dt 秒分の
   // Δv を加算する。held が false ならホールド時間をリセットするだけで加算はしない。
-  applyHeldDv(axis: 0 | 1 | 2, sign: 1 | -1, held: boolean, dt: number, fineAttitude: boolean): void {
+  public applyHeldDv(axis: 0 | 1 | 2, sign: 1 | -1, held: boolean, dt: number, fineAttitude: boolean): void {
     const idx = axis * 2 + (sign < 0 ? 1 : 0);
     if (!held) {
       this.dvHoldTime[idx] = 0;
@@ -99,7 +97,7 @@ export class AxisDragGizmo {
   }
 
   // 編集対象がない間、6方向すべてのホールド時間をリセットする。
-  resetHold(): void {
+  public resetHold(): void {
     this.dvHoldTime.fill(0);
   }
 }

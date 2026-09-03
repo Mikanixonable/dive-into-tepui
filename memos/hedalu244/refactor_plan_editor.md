@@ -88,29 +88,6 @@
 
 ## 手順
 
-### 手順5. 軸ハンドルの2段呼びを `AxisDragGizmo` の中へ畳む
-
-**目的.** `computeAxisScreenDirs` は `buildAxisHandles` へ渡すためだけに1箇所から呼ばれていて、
-戻り値の構造型が2つの署名に書かれている(規約1.6「同一の意味、同一の情報量を持つ型を複数作らない」)。
-順序を持ち主の中へ移し、型の重複を消す。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `plan-axis-drag.ts:35-53` | `computeAxisScreenDirs` を `private` にする |
-| `plan-axis-drag.ts:56-80` | `public buildAxisHandles(nx: number, ny: number, node: KinematicState, mapDist: number): AxisHandleSpec[]` へ変え、中で `computeAxisScreenDirs` を呼ぶ |
-| `plan-editor.ts:479-480` | `axisSpecs = this.axisDrag.buildAxisHandles(p.x, p.y, arrFor3D ?? node, mapDist)` の1行にする |
-
-**達成条件と検証**
-
-- `grep -rn "computeAxisScreenDirs" src/` が `plan-axis-drag.ts` の中だけで 2件(宣言と呼び出し)。
-- `{ pro: { x: number; y: number; }` の構造型が `plan-axis-drag.ts` に1回だけ現れる。
-- `npm run typecheck` が通る。
-- `npm run dev` でノードを選び、6方向のハンドルがノードの周りに現状どおり並ぶことを目で見る。
-
----
-
 ### 手順6. 到着基準ローカル Δv の導出を1つにする
 
 **目的.** 「ノードの Δv を到着状態の軌道基準枠へ分解する」が2箇所にあり、片方(`syncPanel`)は
