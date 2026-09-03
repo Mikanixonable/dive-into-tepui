@@ -43,7 +43,11 @@ import { ObjectPickables } from './pickable/object-pickables';
 import { LinePickables } from './pickable/line-pickables';
 import { ObjectWindows } from './pickable/object-windows';
 import { Navball } from './navball/navball';
-import { GameSaveData } from './save/save-data';
+import { GameSaveData, SAVE_VERSION } from './save/save-data';
+import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
+import type { RunSummary } from './run-summary';
+import { orbitInfo } from './orbit-info';
+import { autoOrbitReference } from './orbit-reference';
 import { LoadingProgress } from './loading-progress';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -138,6 +142,57 @@ export class Game {
     );
     await progress.enter('run');
     return new Game(gs, stageClass, hud, audioEngine, pauseMenu, sections, celestialSystem, initialSave);
+  }
+
+  // このランを1件ぶんのセーブ本体へ畳む。各サブシステム自身の serialize を集める —
+  // 何を持っているかを知っているのは持ち主だけなので、dispose と同じくここに書く。
+  // どこへ何件残すかはランの外側が決める。
+  serialize(): GameSaveData {
+    const { phaseOffsets, earthSpinPhase0 } = this._celestialSystem.serialize();
+    return {
+      version: SAVE_VERSION,
+      stageId: this.activeStage.id,
+      simTime: this.simTime,
+      ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
+      phaseOffsets,
+      earthSpinPhase0,
+      players: this.dynamicSystem.players.map((p) => p.serialize()),
+      activePlayerId: this.player ? this.player.id : null,
+      enemies: this.dynamicSystem.enemies.map((e) => e.serialize()),
+      ammoPickups: this.dynamicSystem.ammoPickups.map((pickup) => pickup.serialize()),
+      rcsFuelPickups: this.dynamicSystem.rcsFuelPickups.map((pickup) => pickup.serialize()),
+      detachedBoosters: this.dynamicSystem.detachedBoosters.map((booster) => booster.serialize()),
+      bases: this.dynamicSystem.bases.map((b) => b.serialize()),
+      stage: this.activeStage.serialize(),
+      camera: { view: this.viewManager.current, ...this.cameraSystem.serialize() },
+      navTarget: this.navTarget.id !== null ? { id: this.navTarget.id, name: this.navTarget.name! } : null,
+    };
+  }
+
+  // ランの外側が一覧へ描くための要約。自機が居ない周回でも値が欠けないよう、
+  // 軌道の項は星系の原点へ寄せる。
+  runSummary(): RunSummary {
+    const player = this.player;
+    const celestial = this._celestialSystem;
+    const info = player === null ? null : orbitInfo(
+      player,
+      autoOrbitReference(player.state.r, celestial.celestialMotions, player.state.t),
+      player.state.t, (id: string) => celestial.nameOf(id),
+    );
+    return {
+      simTime: this.simTime,
+      phase: this.activeStage.phase,
+      centerBodyId: info ? info.centerId : celestial.origin.id,
+      centerBodyName: info ? info.centerName : celestial.nameOf(celestial.origin.id),
+      altitude: info ? info.alt : 0,
+      speed: info ? info.spd : 0,
+      hpRatio: player !== null && player.maxHp > 0 ? Math.max(0, player.hp) / player.maxHp : 0,
+      maxHp: player ? player.maxHp : 0,
+      magazines: player ? player.magsLeft : 0,
+      money: this.dynamicSystem.bases.reduce((sum, b) => sum + b.baseState.money, 0),
+      playerCount: this.dynamicSystem.players.length,
+      enemyAliveCount: this.dynamicSystem.enemies.filter((e) => e.alive).length,
+    };
   }
 
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。星系は実体化済みで渡る。
