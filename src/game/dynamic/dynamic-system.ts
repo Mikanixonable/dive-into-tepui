@@ -247,12 +247,12 @@ export class DynamicSystem {
       ?? null;
   }
 
-  // 弾を登録する。上限を超えた分は古いものから破棄する。
+  // 弾を登録する。
   addBullet(bullet: Bullet): void {
     this.addCapped(this.bullets, bullet);
   }
 
-  // 破片を種別(薬莢/その他)ごとの配列へ登録する。上限を超えた分は古いものから破棄する。
+  // 破片を種別(薬莢/その他)ごとの配列へ登録する。
   addDebris(piece: DebrisPiece): void {
     if (piece.kind === 'casing') this.addCapped(this.casings, piece);
     else this.addCapped(this.debris, piece);
@@ -270,7 +270,7 @@ export class DynamicSystem {
     this.invalidateCaches();
   }
 
-  // 分離済みブースターを登録する。上限を超えた分は古いものから破棄する。
+  // 分離済みブースターを登録する。
   addDetachedBooster(booster: DetachedBooster): void {
     this.addCapped(this.detachedBoosters, booster);
   }
@@ -286,11 +286,33 @@ export class DynamicSystem {
     return this.bases.find(b => b.id === id) ?? null;
   }
 
-  // 配列へ追加し、その個体の枠が上限を超えたら先頭(最古)を1件破棄する。
+  // 上限を持つ枠の個体を配列へ追加する。超過分は次の cleanup で古いものから落ちる。
   private addCapped<T extends DynamicEntity>(arr: T[], entity: T): void {
     arr.push(entity);
-    if (entity.capKind !== null && arr.length > CAP[entity.capKind]) arr.shift()!.dispose();
+    this.capsUncheckedSinceAdd = true;
     this.invalidateCaches();
+  }
+
+  // 上限付きの個体が追加されてから、まだ上限を確かめていないか。追加以外で枠が増えることは
+  // ないので、これが false の間は全件を数え直さない。
+  private capsUncheckedSinceAdd = false;
+
+  // 上限を超えた個体を、枠ごとに古いものから落とす。配列は追加順なので、末尾から数えて上限を
+  // 超えたところがその枠の最古になる。
+  // ここで演出を起こすと、1体落とすたびに新しい個体が生まれて上限が発振する。
+  private enforceCaps(): void {
+    if (!this.capsUncheckedSinceAdd) return;
+    this.capsUncheckedSinceAdd = false;
+    const live: Record<CapKind, number> = { bullet: 0, casing: 0, debris: 0, booster: 0 };
+    const entities = this.all();
+    for (let i = entities.length - 1; i >= 0; i--) {
+      const entity = entities[i]!;
+      const cap = entity.capKind;
+      if (cap === null || !entity.alive) continue;
+      const rank = live[cap] + 1;
+      live[cap] = rank;
+      if (rank > CAP[cap]) entity.alive = false;
+    }
   }
 
   private invalidateCaches(): void {
@@ -327,14 +349,15 @@ export class DynamicSystem {
     return this.cachedAllEntities;
   }
 
-  // 全エンティティの寿命判定を行い、死亡したものを破棄・除去する。自機だけは各所の参照掃除と
-  // 次艦への引き継ぎが要るため、除去は ActivePlayerController.reclaimDead が担う。
+  // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。自機だけは各所の
+  // 参照掃除と次艦への引き継ぎが要るため、除去は ActivePlayerController.reclaimDead が担う。
   cleanup(
     dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
     atmosphereBodies: readonly CelestialMotion[],
   ): void {
     this.processPendingEnemySpawns();
     for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
+    this.enforceCaps();
     this.prune(this.enemies);
     this.prune(this.bullets);
     this.prune(this.casings);
