@@ -27,6 +27,7 @@ import { TrajectoryLine } from '../../lines/trajectory-line';
 import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CapKind } from './entity-kind';
 import { PredictedArc, trajectorySampleInterval } from '../../dynamic/predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../../dynamic/time-step';
 import type { FutureCelestialBodyProvider } from '../../dynamic/arc-celestial-bodies';
@@ -93,7 +94,10 @@ export class DynamicEntity {
   // (弾は速度方向を向く)。
   readonly hasAttitude: boolean = true;
   public readonly renderObject: THREE.Object3D;
+  // 生存しているか。死に伴う演出(音・閃光・破片)は、これを false にした側が同じ場で起こす。
   alive = true;
+  // 同時に存在してよい数のどの枠から取るか。null = 上限なし。
+  readonly capKind: CapKind | null = null;
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。CelestialMotion.radius と同じ量
   collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか
