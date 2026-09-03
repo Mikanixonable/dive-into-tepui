@@ -1,18 +1,18 @@
 // セーブデータブラウザ: 複数のセーブデータ(スロット)とそのスナップショット履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
 // 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
-import type { Game } from '../../game';
-import { solarSystemBodyName } from '../../celestial/solar-system/solar-system';
-import { SaveSlots } from '../../save/save-slots';
-import { SnapshotService } from '../../save/snapshot-service';
-import { exportSlotToFile, pickAndImportSlot } from '../../save/save-transfer';
-import type { SaveSlotMeta } from '../../save/save-data';
-import type { OverlayHandle, OverlayManager } from '../overlay-manager';
-import { CloseButton, TabBar } from '../widgets';
-import { injectOnce } from '../widgets/inject-style';
-import { MQ_COMPACT } from '../breakpoints';
-import { buildSlotsPane } from './save-browser-slot-pane';
-import { buildSnapshotPane } from './save-browser-snapshot-pane';
+import type { Game } from '../../game/game';
+import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
+import { SaveSlots } from '../../game/save/save-slots';
+import { SnapshotService } from '../../game/save/snapshot-service';
+import { exportSlotToFile, pickAndImportSlot } from '../../game/save/save-transfer';
+import type { SaveSlotMeta } from '../../game/save/save-data';
+import type { OverlayHandle, OverlayManager } from '../../game/hud/overlay-manager';
+import { CloseButton, TabBar } from '../../game/hud/widgets';
+import { injectOnce } from '../../game/hud/widgets/inject-style';
+import { MQ_COMPACT } from '../../game/hud/breakpoints';
+import { buildSlotsPane } from './slot-pane';
+import { buildSnapshotPane } from './snapshot-pane';
 
 const STYLE = `
 #save-browser {
