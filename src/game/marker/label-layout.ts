@@ -94,8 +94,10 @@ export class LabelLayout {
   private relaxOverlaps(): void {
     const ITER = 5;
     if (this.candidateStamp.length < this.activeCount) this.candidateStamp = new Int32Array(this.activeCount);
-    this.candidateStamp.fill(0, 0, this.activeCount);
     for (let iter = 0; iter < ITER; iter++) {
+      // 重複除去の印は添字から作るので、反復をまたぐと同じ値になる。反復のたびに消さないと、
+      // 前の反復で一度採った組が「もう採った」と見なされて押し出されない。
+      this.candidateStamp.fill(0, 0, this.activeCount);
       this.rebuildRectGrid();
       for (let i = 0; i < this.activeCount; i++) this.pushApartFromNeighbors(i);
     }
