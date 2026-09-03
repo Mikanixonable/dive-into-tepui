@@ -57,8 +57,7 @@ async function main() {
 
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
-    // 撮影はキャンバス由来の RGBA PNG を返す。仮テクスチャは 3 つの量を RGB へ詰め直した 1 枚、
-    // 検分用はグレースケール 8bit — どちらも R 成分だけが量を持つ。
+    // view の量を撮って場にする。撮影はキャンバス由来の RGBA PNG で、量は R 成分にある。
     const capture = async (view) => {
       const dataUrl = await devTools.evaluate(`window.cloudSeparate.capture(${JSON.stringify(view)})`);
       return decodeRedPng(Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));

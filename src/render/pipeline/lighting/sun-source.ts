@@ -2,12 +2,12 @@
 // 選ぶ。どちらも遮蔽パスの透過率を掛けて出す。
 import * as THREE from 'three/webgpu';
 import { PI, clamp, dot, length, max, normalize, saturate, texture } from 'three/tsl';
-import type { FloatNode, Vec3Node } from '../../tsl-types';
-import type { OcclusionPass } from '../occlusion';
-import type { SunLight } from '../sun-light';
 import { ggxSpecularFactor } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
+import type { FloatNode, Vec3Node } from '../../tsl-types';
+import type { OcclusionPass } from '../occlusion';
+import type { SunLight } from '../sun-light';
 import type { ShadingSample } from './shading-sample';
 
 // 光源モデルの選択値。graphics-settings.ts の sunLightModel の選択肢と対応する。
@@ -18,7 +18,7 @@ export class SunSource implements LightSource {
   // フレームを止める。
   private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
 
-  constructor(
+  public constructor(
     private readonly sunLight: SunLight,
     private readonly occlusion: OcclusionPass,
     private readonly sphereSpecular: SphereSpecular,
@@ -26,12 +26,12 @@ export class SunSource implements LightSource {
   ) {}
 
   // 描画設定 sunLightModel の値をそのまま受ける。次の material() から効く。
-  setModel(model: number): void { this.model = model; }
+  public setModel(model: number): void { this.model = model; }
 
-  hasContribution(): boolean { return true; }
+  public hasContribution(): boolean { return true; }
 
   // 現在の光源モデルのマテリアル。モードごとに初回だけ組む。
-  material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
+  public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
     const cached = this.materials.get(this.model);
     if (cached !== undefined) return cached;
     const contribution = this.model === SUN_LIGHT_MODEL.sphere
@@ -46,17 +46,15 @@ export class SunSource implements LightSource {
     const toSun = sample.viewPositionOf(this.sunLight.position).sub(sample.position);
     const lightDir = normalize(toSun);
     const dotNL: FloatNode = saturate(dot(sample.normal, lightDir));
-    // 恒星から届く放射照度(遮蔽込み)。拡散・鏡面の両方がこれを基準に BRDF を掛ける。
-    // 恒星の直射は遮蔽パスの透過率で落ち、本影では 0 になる。
+    // 恒星から届く放射照度(遮蔽込み)。拡散・鏡面の両方がこれへ BRDF を掛ける。
     const irradiance: Vec3Node = this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
       .mul(dotNL).mul(texture(this.occlusion.texture, sample.uv).r);
     return { diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)) };
   }
 
-  // 恒星を視半径を持つ一様球として扱う寄与。拡散は閉じた解(sphere-light.ts)、鏡面は
-  // 面積を合わせた 8 角形の LTC 積分(ltc.ts)。1 天文単位では点光源の値と一致し、
-  // 視半径が効く近距離で終端の柔らかさと円盤のハイライトが出る。
+  // 恒星を視半径を持つ一様球として扱う寄与(sphere-light.ts)。1 天文単位では点光源の値と
+  // 一致し、視半径が効く近距離で終端の柔らかさと円盤のハイライトが出る。
   private sphereContribution(sample: ShadingSample): LightContribution {
     const center = sample.viewPositionOf(this.sunLight.position);
     const toSun = center.sub(sample.position);
@@ -80,7 +78,7 @@ export class SunSource implements LightSource {
   }
 
   // 組んだマテリアルを解放する。
-  dispose(): void {
+  public dispose(): void {
     for (const material of this.materials.values()) material.dispose();
   }
 }

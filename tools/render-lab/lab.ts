@@ -10,18 +10,18 @@ import { SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { GraphicsSettings } from '../../src/render/graphics-settings';
+import { GraphicsSettings, type GraphicsSettingsData, type GraphicsTarget } from '../../src/render/graphics-settings';
 import { castsCumulusShadow } from '../../src/render/pipeline/sun-occlusion-select';
 import { atmosphereDraws } from '../../src/render/atmosphere';
-import type { GraphicsSettingsData, GraphicsTarget } from '../../src/render/graphics-settings';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
 import { R_SUN } from '../../src/game/celestial/solar-system/constants';
-import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
-import type { RenderStyle } from '../../src/render/render-style';
 import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
 import { pixelsToPngDataUrl } from '../lab-png';
+import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
+import type { RenderStyle } from '../../src/render/render-style';
 
+// 所要時間 [ms] の分布。
 export interface LabDistribution {
   readonly avg: number;
   readonly p50: number;
@@ -29,6 +29,7 @@ export interface LabDistribution {
   readonly max: number;
 }
 
+// 1 ケースの計測結果。gpuPassMs はパスのラベルごと。
 export interface LabMeasurement {
   readonly caseName: CaseName;
   readonly frames: number;
@@ -42,9 +43,7 @@ export interface LabMeasurement {
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
-// 恒星を置く位置。向きも距離も観察のつまみが正本(ケースの sunDistance はその初期値)で、
-// ゲーム本体と同じ放射強度を渡すので、そこで受ける放射照度もゲーム本体の同じ距離と一致する。
-// 毎フレーム書き込む。
+// 恒星を置く位置(描画座標)。向きも距離も観察のつまみが正本で、毎フレーム書き込む。
 const SUN_POSITION = new THREE.Vector3();
 
 // 恒星方向とカメラ位置を毎フレーム組み立てる書き込み先。
@@ -66,7 +65,7 @@ export const MAX_SUN_DISTANCE_LOG_AU = 2;
 // 観察の向き。角度は度、sunDistanceLogAu は恒星までの距離(天文単位)の常用対数、
 // cameraDistanceLog はケース既定の距離に対する倍率の常用対数、cameraZoomLog はケース既定の
 // 画角を狭める倍率の常用対数。
-export type LabViewAngles = {
+export interface LabViewAngles {
   readonly sunAzimuthDeg: number;
   readonly sunElevationDeg: number;
   readonly sunDistanceLogAu: number;
@@ -74,7 +73,7 @@ export type LabViewAngles = {
   readonly cameraElevationDeg: number;
   readonly cameraDistanceLog: number;
   readonly cameraZoomLog: number;
-};
+}
 
 // 方位角・仰角 [deg] から単位ベクトルを組む。方位角 0 が +Z、+90 度が +X。
 function directionFromAngles(azimuthDeg: number, elevationDeg: number, out: THREE.Vector3): THREE.Vector3 {
@@ -95,10 +94,8 @@ function anglesFromDirection(v: THREE.Vector3): { azimuthDeg: number; elevationD
 
 export class LabView implements GraphicsTarget {
   private readonly scene = new THREE.Scene();
-  // 撮影先。合成パスが既に sRGB へ変換した値を書くので、素の RGBA8 で受ける
-  // (-srgb フォーマットにすると二重変換になり、撮った PNG だけが白っぽくなる)。
-  // 深度は 3D UI パスが要る — 合成パスが G バッファの深度をここへ複製し、線はそれに対して
-  // 深度テストする。持たせないと線が不透明物を貫通して常に手前へ出る。
+  // 撮影先。合成パスは sRGB へ変換済みの値を書くので素の RGBA8 で受ける(-srgb にすると二重変換で
+  // 白っぽくなる)。深度は 3D UI パスの線が深度テストに使うので持たせる(無いと線が不透明物を貫通する)。
   private readonly captureTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
     format: THREE.RGBAFormat,
     type: THREE.UnsignedByteType,
@@ -120,29 +117,26 @@ export class LabView implements GraphicsTarget {
     sunAzimuthDeg: 0, sunElevationDeg: 0, sunDistanceLogAu: 0,
     cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraDistanceLog: 0, cameraZoomLog: 0,
   };
-  // このフレームを描くのに使う描画品質設定。**正本は呼び出し側の GraphicsSettings** で、
-  // 押し出しを受けてここへ写す。
-  private graphicsData: GraphicsSettingsData;
   private readonly scratchBox = new THREE.Box3();
   private readonly caseCenterVector = new THREE.Vector3();
   private readonly scratchVector = new THREE.Vector3();
   private readonly forward = new THREE.Vector3();
 
+  // graphicsData はこのフレームを描くのに使う描画品質設定。正本は呼び出し側の GraphicsSettings で、
+  // 押し出しを受けてここへ写す。
   private constructor(
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
     private readonly gpu: GpuTimings,
-    graphics: GraphicsSettingsData,
+    private graphicsData: GraphicsSettingsData,
   ) {
-    this.graphicsData = graphics;
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
   }
 
-  // graphics は描画品質設定の正本。**押し出し先として bind するのは呼び出し側の仕事** —
-  // ここで自分を登録すると、パネルとの登録順が呼び出し側から見えなくなる。
-  static async create(canvas: HTMLCanvasElement, graphics: GraphicsSettings): Promise<LabView> {
+  // graphics は描画品質設定の正本。押し出し先としての bind は呼び出し側が行う。
+  public static async create(canvas: HTMLCanvasElement, graphics: GraphicsSettings): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
@@ -160,23 +154,23 @@ export class LabView implements GraphicsTarget {
   }
 
   // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
-  show(name: CaseName): void {
+  public show(name: CaseName): void {
     this.build(name);
     this.resetView();
     this.render();
   }
 
-  // 表示スタイルを差し替え、いま出ているケースをそのスタイルで組み直す。**観察の向きは戻さない**
-  // — 写実と模式図を同じ構図で見比べるための切り替えなので、既定へ戻すと見比べられない。
-  setStyle(style: RenderStyle): void {
+  // 表示スタイルを差し替え、いま出ているケースをそのスタイルで組み直す。観察の向きは保つ —
+  // 写実と模式図を同じ構図で見比べるための切り替え。
+  public setStyle(style: RenderStyle): void {
     this.style = style;
     if (this.currentName !== null) this.build(this.currentName);
     this.render();
   }
 
-  // ケースをいまのスタイルで組み直してシーンへ載せ、それを現在のケースにする。前のケースは
-  // シーンから外すだけで解放しない — 球の単位ジオメトリは LOD 段ごとに全利用元で共有されて
-  // いて、ここで捨てると次のケースが壊れる。
+  // ケースをいまのスタイルで組み直してシーンへ載せ、それを現在のケースにする。前のケースの
+  // 物体は、ownsGeometry / ownsMaterial を立てたものだけ解放する — 球の単位ジオメトリは
+  // LOD 段ごとに全利用元で共有されていて、捨てると次のケースが壊れる。
   private build(name: CaseName): void {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
@@ -194,7 +188,7 @@ export class LabView implements GraphicsTarget {
   }
 
   // 描画品質設定の押し出し先。受け取った値をパイプラインへ配り、その場で描き直す。
-  applyGraphics(graphics: GraphicsSettingsData): void {
+  public applyGraphics(graphics: GraphicsSettingsData): void {
     this.graphicsData = graphics;
     this.pipeline.applyGraphics(graphics);
     this.render();
@@ -202,36 +196,37 @@ export class LabView implements GraphicsTarget {
 
   // 一様な環境光の割合。ゲーム本体はビューの種別から強弱を決めるが、ここには種別が無いので
   // 直に選ぶ。起動時は弱(戦闘ビュー)。
-  get ambientFraction(): number { return this.pipeline.ambient.fraction; }
+  public get ambientFraction(): number { return this.pipeline.ambient.fraction; }
 
-  setAmbientFraction(fraction: number): void {
+  // 一様な環境光の割合を差し替え、その場で描き直す。
+  public setAmbientFraction(fraction: number): void {
     this.pipeline.ambient.setFraction(fraction);
     this.render();
   }
 
   // 画面へ出す中間バッファを選び、その場で描き直す。
-  showDebugTarget(target: DebugTargetId): void {
+  public showDebugTarget(target: DebugTargetId): void {
     this.pipeline.debugTarget = target;
     this.render();
   }
 
   // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
-  get viewAngles(): LabViewAngles { return this.angles; }
+  public get viewAngles(): LabViewAngles { return this.angles; }
 
   // 現在のカメラ距離 [m]。cameraDistanceLog は倍率の対数なので、実寸はここから読む。
-  get cameraDistance(): number { return this.defaultCameraDistance * 10 ** this.angles.cameraDistanceLog; }
+  public get cameraDistance(): number { return this.defaultCameraDistance * 10 ** this.angles.cameraDistanceLog; }
 
   // 現在の画角 [deg]。ズームは画角を倍率ぶん狭めるので、半画角の正接を割って求める。
-  get cameraFovDeg(): number {
+  public get cameraFovDeg(): number {
     const halfTangent = Math.tan(THREE.MathUtils.degToRad(this.defaultCameraFovDeg / 2));
     return THREE.MathUtils.radToDeg(2 * Math.atan(halfTangent / 10 ** this.angles.cameraZoomLog));
   }
 
   // 現在の恒星までの距離 [m]。sunDistanceLogAu は天文単位の対数なので、実寸はここから読む。
-  get sunDistance(): number { return AU * 10 ** this.angles.sunDistanceLogAu; }
+  public get sunDistance(): number { return AU * 10 ** this.angles.sunDistanceLogAu; }
 
   // 観察の向きを部分的に差し替え、その場で描き直す。仰角は姿勢が決まる範囲へ丸める。
-  setViewAngles(changes: Partial<LabViewAngles>): void {
+  public setViewAngles(changes: Partial<LabViewAngles>): void {
     const merged = { ...this.angles, ...changes };
     this.angles = {
       ...merged,
@@ -247,6 +242,7 @@ export class LabView implements GraphicsTarget {
   private resetView(): void {
     const built = this.current;
     if (built === null) return;
+    // ケースのカメラから、周回の中心と既定の距離・画角を引く。
     const camera = built.camera;
     camera.updateMatrixWorld(true);
     camera.getWorldDirection(this.forward);
@@ -255,6 +251,7 @@ export class LabView implements GraphicsTarget {
     this.defaultCameraDistance = Math.max(depth, camera.near);
     this.defaultCameraFovDeg = camera.fov;
     this.pivot.copy(camera.position).addScaledVector(this.forward, this.defaultCameraDistance);
+    // 恒星とカメラの向きを角度へ直す。
     const sun = anglesFromDirection(built.sunDirection ?? SUN_DIR);
     const eye = anglesFromDirection(this.scratchVector.copy(this.forward).negate());
     this.angles = {
@@ -281,8 +278,8 @@ export class LabView implements GraphicsTarget {
     return this.scratchBox.getCenter(this.caseCenterVector);
   }
 
-  // 動くものが無いので、描くのはケースを差し替えたときと、表示を切り替えたときと、撮影のとき。
-  render(): void {
+  // いまのケースを、観察の向きと描画品質設定の現在値で 1 フレーム描く。
+  public render(): void {
     if (this.current === null) return;
     // ケースの部品が読む設定は、この1フレームを組む前に押し込む。
     this.current.applyGraphics?.(this.graphicsData);
@@ -292,8 +289,7 @@ export class LabView implements GraphicsTarget {
     const sunDistance = this.sunDistance;
     SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
     this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_LIGHT_COLOR, REFERENCE_STAR_RADIANT_INTENSITY);
-    // 天体照。ケースが置いた光源をスロットへ書く。放射輝度は恒星のつまみの距離に追随し、
-    // 満ち欠けは受け手ごとにライティングパスが引く。
+    // 天体照。ケースが置いた光源をスロットへ書く。放射輝度は恒星のつまみの距離に追随する。
     this.pipeline.planetLight.set((this.current.planetLights ?? []).map((light) => ({
       center: light.center,
       radius: light.radius,
@@ -338,7 +334,7 @@ export class LabView implements GraphicsTarget {
   }
 
   // ケースを表示して測る。angles を渡すと、ケース既定の観察の向きへそれを重ねてから測る。
-  async measure(
+  public async measure(
     name: CaseName, angles: Partial<LabViewAngles> = {}, warmupFrames = 6, sampleFrames = 30,
   ): Promise<LabMeasurement> {
     this.show(name);
@@ -346,6 +342,7 @@ export class LabView implements GraphicsTarget {
     await this.gpu.waitForResolve();
     this.gpu.reset();
 
+    // 暖機。計測に入れないフレームを回して、シェーダのコンパイルや初回の転送を済ませる。
     for (let frame = 0; frame < warmupFrames; frame++) {
       this.current?.updateProteinMotion?.((frame + 1) / 60);
       this.render();
@@ -353,6 +350,7 @@ export class LabView implements GraphicsTarget {
     }
     this.gpu.reset();
 
+    // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
     const cpuSamples: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
     const motion = new ProteinMotionMetricsRecorder();
@@ -377,16 +375,16 @@ export class LabView implements GraphicsTarget {
     };
   }
 
-  // キャンバスへ出るのと同じ絵を PNG のデータ URL で返す。合成パスが「キャンバスへ」と書いた
-  // 出力先が撮影ターゲットへ差し替わるだけなので、トーンマッピングも sRGB 変換も同じに掛かる。
-  async shoot(name: CaseName): Promise<string> {
+  // ケースを表示し、キャンバスへ出るのと同じ絵(トーンマッピングと sRGB 変換込み)を PNG の
+  // データ URL で返す。
+  public async shoot(name: CaseName): Promise<string> {
     this.show(name);
     this.current?.updateProteinMotion?.(1);
     return this.capture();
   }
 
   // いま画面に出ているものを、ケースも観察の向きも変えずに撮る。
-  async capture(): Promise<string> {
+  public async capture(): Promise<string> {
     this.renderer.setOutputRenderTarget(this.captureTarget);
     try {
       this.render();
@@ -399,6 +397,8 @@ export class LabView implements GraphicsTarget {
   }
 }
 
+// ケースが握る資源を解放する。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を
+// 立てた物体のものだけ捨てる。
 function disposeCaseObjects(built: LabCase): void {
   built.disposeProteinMotion?.();
   for (const root of built.objects) {
@@ -414,12 +414,14 @@ function disposeCaseObjects(built: LabCase): void {
   }
 }
 
+// 昇順に並んだ sorted の、割合 ratio(0..1)の位置にある値。空なら 0。
 function percentile(sorted: readonly number[], ratio: number): number {
   if (sorted.length === 0) return 0;
   const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
   return sorted[index] ?? 0;
 }
 
+// 標本の平均・中央値・95 パーセンタイル・最大。空なら全部 0。
 function distribution(values: readonly number[]): LabDistribution {
   if (values.length === 0) return { avg: 0, p50: 0, p95: 0, max: 0 };
   const sorted = [...values].sort((a, b) => a - b);

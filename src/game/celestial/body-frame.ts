@@ -1,5 +1,5 @@
-// 天体固定の基準系を、描画が受け取る行列へ解決する。歪んだ形を持つ天体は半軸を天体固定の
-// 軸で持つので、その形を使う描画(積雲の殻が落とす影・遮蔽器)には必ずこの向きが要る。
+// 天体固定の基準系を、描画が受け取る行列へ解決する。歪んだ形を持つ天体は半軸を天体固定の軸で
+// 持つので、その形を使う描画にはこの向きが要る。
 import * as THREE from 'three/webgpu';
 import { spinOrientation } from '../../physics/body-orientation';
 import type { CelestialMotion } from '../../physics/celestial-motion';
