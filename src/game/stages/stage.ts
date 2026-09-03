@@ -170,10 +170,16 @@ export abstract class Stage {
   public get isPlaying(): boolean { return this._phase === 'playing'; }
   private _result: StageResult | null = null;
   public get result(): StageResult | null { return this._result; }
-  // 勝敗と結果画面の内容を同時に確定させる。表示は呼び出し側(Launcher)の役目。
+  // decide() が決着を確定させた瞬間に一度だけ呼ぶ。
+  public onDecided: (() => void) | null = null;
+  // 勝敗と結果画面の内容を同時に確定させ、鳴らし続けている継続音を畳む。
   protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
     this._phase = phase;
     this._result = result;
+    // 決着後は積分が止まるため、ここで畳まないと噴射音・RCS 音が鳴り続ける。
+    this._worldSfx.setThrust(false);
+    this._worldSfx.setRcs(false);
+    this.onDecided?.();
   }
   private readonly restored: boolean;
 
