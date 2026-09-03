@@ -1,6 +1,6 @@
 // 軌道上の弾薬/RCS燃料補給ピックアップの投入・回収・デスポーンを担う。
 import * as THREE from 'three/webgpu';
-import { randomQuat } from '../../../physics/attitude';
+import { randomQuat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
 import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec3';
 import { AmmoPickup, AMMO_PICKUP_RADIUS } from '../../dynamic/dynamic-entity/ammo-pickup';
@@ -77,7 +77,7 @@ export class Logistics {
       this._scene,
     );
     // 投入して演出とヒントを出す
-    this.entities.addAmmoPickup(ammoPickup);
+    this.entities.add(ammoPickup);
     this._uiSfx.warp();
     this._hud.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
   }
@@ -107,7 +107,7 @@ export class Logistics {
       },
       this._scene,
     );
-    this.entities.addRcsFuelPickup(fuelPickup);
+    this.entities.add(fuelPickup);
     this._uiSfx.warp();
     this._hud.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000);
   }

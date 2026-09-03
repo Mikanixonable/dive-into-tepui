@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { BRDF_Lambert, Discard, Fn, mix, screenUV, texture, vec3, vec4 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { WORLD_BACKGROUND_LAYER } from './lit-layer';
 import type { GBufferPass } from './gbuffer';
 import type { LightPrepass } from './light-prepass';

@@ -14,9 +14,9 @@ import type { ShadingSample } from './shading-sample';
 export const AMBIENT_STRONG = 0.06;
 export const AMBIENT_WEAK = 0.03;
 
-// ビューの種別と描画設定から、この場面で使う割合を選ぶ。描画設定で切ったビューでは 0。
-export function ambientFraction(overviewMode: boolean, graphics: GraphicsSettingsData): number {
-  if (overviewMode) return graphics.overviewAmbient ? AMBIENT_STRONG : 0;
+// ビューと描画設定から、この場面で使う割合を選ぶ。描画設定で切ったビューでは 0。
+export function ambientFraction(mapView: boolean, graphics: GraphicsSettingsData): number {
+  if (mapView) return graphics.overviewAmbient ? AMBIENT_STRONG : 0;
   return graphics.combatAmbient ? AMBIENT_WEAK : 0;
 }
 

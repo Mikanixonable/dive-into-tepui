@@ -1,14 +1,14 @@
 // プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の演出もここで組み立てる。
 import * as THREE from 'three/webgpu';
-import { qRotate, randomQuat } from '../../physics/attitude';
+import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../celestial/solar-system/constants';
 import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { Input } from '../../input/input';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { Ship, PLAYER_MASS } from '../dynamic/dynamic-entity/ship';
@@ -278,7 +278,7 @@ export class PlayerFire {
     entities: DynamicSystem,
     celestialSystem: CelestialSystem,
   ): void {
-    const fwd = qRotate(this.player.att.q, v3(0, 0, 1));
+    const fwd = qRotate(this.player.att.q, LOCAL_FORWARD);
 
     // 縦二連の砲口から交互に発射する
     const mo = MUZZLE_OFFSETS[this.muzzleIdx]!;
@@ -322,17 +322,16 @@ export class PlayerFire {
       ship.weaponDamage,
       this._worldSfx,
       this._scene,
-      ship,
     );
-    entities.addBullet(bullet);
+    entities.add(bullet);
   }
 
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
   // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
   private dropCasing(ship: Ship, muzzle: Vec3): void {
     // 機体姿勢基準の左右・上方向
-    const right = qRotate(ship.att.q, v3(1, 0, 0));
-    const up = qRotate(ship.att.q, v3(0, 1, 0));
+    const right = qRotate(ship.att.q, LOCAL_RIGHT);
+    const up = qRotate(ship.att.q, LOCAL_UP);
     this._fx.spawnCasing(
       kinematicState<'eci'>(
         ship.state.t,
@@ -388,7 +387,7 @@ export class PlayerFire {
         add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
       ),
       {
-        q: { x: ship.att.q.x, y: ship.att.q.y, z: ship.att.q.z, w: ship.att.q.w },
+        q: ship.att.q,
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
@@ -404,7 +403,7 @@ export class PlayerFire {
   // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
   private spawnEjectedMagazineFrame(ship: Ship): void {
     // 排出ポートの位置と初速
-    const right = qRotate(ship.att.q, v3(1, 0, 0));
+    const right = qRotate(ship.att.q, LOCAL_RIGHT);
     const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));
     this._fx.spawnMagazineFrame(
       kinematicState<'eci'>(
@@ -413,7 +412,7 @@ export class PlayerFire {
         add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
       ),
       {
-        q: { x: ship.att.q.x, y: ship.att.q.y, z: ship.att.q.z, w: ship.att.q.w },
+        q: ship.att.q,
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },

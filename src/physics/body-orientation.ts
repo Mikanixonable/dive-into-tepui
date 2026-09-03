@@ -1,8 +1,8 @@
 // 天体そのものの向き — 自転軸と、その軸まわりの自転位相(本初子午線の向き)。
 // 「天体がどこにいるか」とは別の問い。THREE/DOM 非依存の純関数。
-import { Quat, qFromAxisAngle, qFromForwardUp, qRotate } from './attitude';
+import { Quat, qFromAxisAngle, qFromForwardUp, qRotate } from '../math/quat';
 import { ECI_POLE } from './ecliptic';
-import { Vec3, addScaled, cross, dot, len, norm, v3 } from '../math/vec3';
+import { Vec3, cross, dot, len, norm, projectOntoPlane, v3 } from '../math/vec3';
 
 // 自転軸が ECI の極と平行なとき、赤道の交線が定まらない代わりに使う基準方向(春分点)。
 const VERNAL: Vec3 = v3(1, 0, 0);
@@ -17,7 +17,7 @@ export function cassiniSpinAxis(eclipticPole: Vec3, orbitNormal: Vec3, obliquity
 
 // reference を pole に直交する成分だけ残して正規化した単位ベクトル(ECI)。
 export function orthogonalizedTo(pole: Vec3, reference: Vec3): Vec3 {
-  return norm(addScaled(reference, pole, -dot(reference, pole)));
+  return norm(projectOntoPlane(reference, pole));
 }
 
 // 自転位相 0 が指す方向(単位ベクトル、ECI)。IAU の自転位相 W と同じく、天体の赤道が

@@ -9,7 +9,7 @@ import {
   COLLAPSE_EXPANDED_GLYPH,
   TabBar,
   type CollapseToggleLabels,
-} from '../widgets';
+} from '../../../hud/widgets';
 import {
   mapDisplayModeOf,
   nextMapDisplayMode,

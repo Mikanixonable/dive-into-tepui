@@ -2,7 +2,7 @@
 // root/svgOverlay の公開・常設パネル群の所有と毎フレームの同期を担う。
 import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
-import type { WorldView } from '../view-manager';
+import type { View } from '../view/view';
 import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
@@ -11,10 +11,11 @@ import { BurnManagementPanel } from './panels/burn-management-panel';
 import { TopBar } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
-import type { Input } from '../input/input';
+import type { Input } from '../../input/input';
 import type { Game } from '../game';
-import type { OverlayLayers } from './overlay-layer';
-import { TEMP_WINDOW_GROUP, type OverlayManager } from './overlay-manager';
+import type { OverlayLayers } from '../../hud/overlay-layer';
+import type { HudShell } from '../../hud/hud-shell';
+import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
 
 // 軌道分析パネルを開く既定位置。ドラッグ可能ウィンドウなのでビューポート内へクランプされる。
@@ -22,12 +23,12 @@ const ANALYSIS_WINDOW_OPEN_X = 320;
 const ANALYSIS_WINDOW_OPEN_Y = 100;
 
 export class Hud {
-  public readonly root: HTMLElement;
-  public readonly layers: OverlayLayers;
+  public get root(): HTMLElement { return this.shell.root; }
+  public get layers(): OverlayLayers { return this.shell.layers; }
+  public get overlayManager(): OverlayManager { return this.shell.overlayManager; }
   public readonly combatRoot: HTMLElement;
   public readonly mapRoot: HTMLElement;
   public readonly svgOverlay: SVGSVGElement;
-  public readonly overlayManager: OverlayManager;
   public readonly helpPanel: HelpPanel;
   public readonly topBar: TopBar;
   public readonly viewBadgeRow: HTMLElement;
@@ -40,18 +41,15 @@ export class Hud {
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   private toastUntil = 0;
 
-  // HUD の DOM を構築する。
-  public constructor(public readonly renderStyle: RenderStyleSetting) {
-    const {
-      root, layers, combatRoot, mapRoot, svgOverlay, overlayManager, helpPanel, els,
-    } = buildHudDom(renderStyle);
+  // 画面の器の上に、ゲームの HUD の DOM を組む。
+  public constructor(
+    private readonly shell: HudShell, public readonly renderStyle: RenderStyleSetting,
+  ) {
+    const { combatRoot, mapRoot, svgOverlay, helpPanel, els } = buildHudDom(shell, renderStyle);
     // 構築済みの DOM 参照を受け取る。
-    this.root = root;
-    this.layers = layers;
     this.combatRoot = combatRoot.element;
     this.mapRoot = mapRoot.element;
     this.svgOverlay = svgOverlay;
-    this.overlayManager = overlayManager;
     this.helpPanel = helpPanel;
 
     // data-id で引ける要素だけを各パネルへ渡し、DOM の組み立て方を持ち込ませない。
@@ -67,7 +65,7 @@ export class Hud {
     // 初期表示の配線。
     this.burnManagementPanel.sync(null);
     this.orbitPanel.setOpenAnalysisHandler(() => this.openOrbitAnalysis());
-    this.setWorldView('combat');
+    this.setView('combat');
   }
 
   // 軌道分析パネルを開く。既に開いていれば最前面へ持ち上げるだけで、2枚目は開かない。
@@ -84,12 +82,12 @@ export class Hud {
   }
 
   // アクティブなビューの常設パネル一式を game の現在状態へ合わせる。DOM ルートの表示切替は
-  // setWorldView が持ち、ここでは表に出ているパネルだけを毎フレーム更新する。
-  public syncPanels(view: WorldView, game: Game): void {
+  // setView が持ち、ここでは表に出ているパネルだけを毎フレーム更新する。
+  public syncPanels(view: View, game: Game): void {
     const map = view === 'map';
     this.burnManagementPanel.sync(game.player?.boosters.managementViewModel() ?? null);
     this.topBar.sync(game);
-    this.orbitPanel.sync(game, !map);
+    this.orbitPanel.sync(game);
     if (map) {
       this.mapScaleBadge.sync(game);
     } else {
@@ -101,9 +99,9 @@ export class Hud {
   }
 
   // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
-  public setWorldView(view: WorldView): void {
+  public setView(view: View): void {
     const map = view === 'map';
-    this.helpPanel.setWorldView(view);
+    this.helpPanel.setView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
     const burnManagement = this.root.querySelector<HTMLElement>('#burn-management-panel');
     const leftRail = (map ? this.mapRoot : this.combatRoot)
