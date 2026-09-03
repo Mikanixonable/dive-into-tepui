@@ -14,9 +14,10 @@ import type { TdbJulianDate } from '../../physics/time';
 import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import type { MarkerManager } from '../marker/marker-manager';
 import { EllipseLine } from '../lines/ellipse-line';
-import { celestialShellScale, createStars, Stars } from '../../render/stars';
+import { CELESTIAL_SHELL_SCALE, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
+import type { View } from '../view/view';
 import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { ScaleGridView } from './scale-grid-view';
@@ -351,12 +352,12 @@ export class CelestialSystem implements CelestialMotions {
   }
 
   // 表示時刻 t の点群の位置を更新する。
-  update(t: number, overviewMode: boolean, graphics: GraphicsSettingsData): void {
+  update(t: number, view: View, graphics: GraphicsSettingsData): void {
     const star = this.starEntity;
     const pointField = this.pointFieldView;
-    if (!overviewMode || star === null || pointField === null || !graphics.pointField) return;
+    if (view !== 'map' || star === null || pointField === null || !graphics.pointField) return;
     this.buildPointField(pointField);
-    pointField.update(t, true, this.stateAt(star.id, t).r);
+    pointField.update(t, this.stateAt(star.id, t).r);
   }
 
   // 軌道ガイドタブ(表示パネル5.2節)の設定。ゲーム側が変更のたびに渡す。
@@ -415,14 +416,14 @@ export class CelestialSystem implements CelestialMotions {
     this.sunLight.set(
       sunPos, star?.def.radius ?? STARLESS_SUN_RADIUS,
       star?.color ?? STARLESS_SUN_COLOR, starIntensity);
-    this.ambient.setFraction(ambientFraction(cameraSystem.overviewMode, graphics));
+    this.ambient.setFraction(ambientFraction(cameraSystem.view === 'map', graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem, graphics);
 
     const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
     const pointField = this.pointFieldView;
-    if (pointField !== null && cameraSystem.overviewMode && star !== null && graphics.pointField) {
+    if (pointField !== null && cameraSystem.view === 'map' && star !== null && graphics.pointField) {
       this.buildPointField(pointField);
       pointField.sync(
         floatingOrigin, true, cameraSystem.mapDisplayToggles.smallBodyVisible, fixedBrightnessScale,
@@ -430,7 +431,7 @@ export class CelestialSystem implements CelestialMotions {
     } else if (this.pointFieldBuilt) {
       pointField?.sync(floatingOrigin, false, true, fixedBrightnessScale);
     }
-    this.syncStars(cameraSystem, fixedBrightnessScale, gridVisibility.stars);
+    this.syncStars(fixedBrightnessScale, gridVisibility.stars);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(
       displayTime, floatingOrigin, visibilityPolicy,
@@ -439,13 +440,13 @@ export class CelestialSystem implements CelestialMotions {
     for (const body of this.entities) {
       body.syncMapOverlay(
         floatingOrigin, displayTime, cameraSystem, markerManager, this.celestialMotions,
-        cameraSystem.overviewMode && geostationaryOrbitVisible);
+        cameraSystem.view === 'map' && geostationaryOrbitVisible);
     }
-    this.orbitGuideLines.sync(style, displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
-    this.zeroVelocityLines.sync(displayTime, cameraSystem.overviewMode, floatingOrigin, cameraSystem.activeCamera);
+    this.orbitGuideLines.sync(style, displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
+    this.zeroVelocityLines.sync(displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
       style, gridVisibility, cameraSystem.activeCamera,
-      celestialShellScale(cameraSystem.overviewMode));
+      CELESTIAL_SHELL_SCALE);
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, gridVisibility);
   }
 
@@ -526,9 +527,9 @@ export class CelestialSystem implements CelestialMotions {
   }
 
   // 星球は描画原点(= カメラ)に固定した半径の殻。
-  private syncStars(cameraSystem: CameraSystem, fixedBrightnessScale: number, visible: boolean): void {
+  private syncStars(fixedBrightnessScale: number, visible: boolean): void {
     this.stars.mesh.position.set(0, 0, 0);
-    this.stars.mesh.scale.setScalar(celestialShellScale(cameraSystem.overviewMode));
+    this.stars.mesh.scale.setScalar(CELESTIAL_SHELL_SCALE);
     this.stars.mesh.visible = visible;
     this.stars.setFixedBrightnessScale(fixedBrightnessScale);
   }
@@ -538,8 +539,8 @@ export class CelestialSystem implements CelestialMotions {
     return new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
   }
 
-  // 広範囲視点のときだけ参照軌道線を表示する(戦闘ビューでは非表示)。実体も濃さも個体が
-  // 持ち、ここは表示ポリシーから「出すか」だけを決めて個体へ指示する。
+  // マップビューのときだけ参照軌道線を表示する。実体も濃さも個体が持ち、ここは表示ポリシー
+  // から「出すか」だけを決めて個体へ指示する。
   // cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
     simTime: number, fo: FloatingOrigin, visibilityPolicy: MapVisibilityPolicy | null,

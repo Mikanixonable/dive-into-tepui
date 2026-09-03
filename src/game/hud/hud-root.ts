@@ -6,7 +6,7 @@ import { buildOverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
 import { HelpPanel } from './windows/help-panel';
 import { PanelShell, wirePanelCollapse } from './panel-shell';
-import type { WorldView } from '../view-manager';
+import type { View } from '../view/view';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
 import { PANEL_CONTENT_STYLE } from './style/panel-content-style';
@@ -44,8 +44,8 @@ function createHudElement(tag: string, id: string, parent: HTMLElement, classNam
 interface HudDomRefs {
   readonly root: HTMLElement;
   readonly layers: OverlayLayers;
-  readonly combatRoot: HudWorldRoot;
-  readonly mapRoot: HudWorldRoot;
+  readonly combatRoot: HudViewRoot;
+  readonly mapRoot: HudViewRoot;
   readonly svgOverlay: SVGSVGElement;
   readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
@@ -53,7 +53,7 @@ interface HudDomRefs {
 }
 
 /** 戦闘/マップそれぞれが所有する HUD の DOM ルート。 */
-interface HudWorldRoot {
+interface HudViewRoot {
   readonly element: HTMLElement;
   readonly leftRail: HTMLElement;
   readonly rightRail: HTMLElement;
@@ -78,7 +78,7 @@ function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
 // レールの折りたたみ状態は PanelShell と同じビュー別 localStorage を共有する。一度も操作
 // されていなければ、初回表示の既定として compact 幅でだけ畳んでおく。
 function buildRailToggle(
-  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: WorldView,
+  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: View,
 ): void {
   wirePanelCollapse({
     toggleRoot: root,
@@ -92,9 +92,9 @@ function buildRailToggle(
 }
 
 // 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
-function buildWorldRoot(parent: HTMLElement, id: string, view: WorldView): HudWorldRoot {
+function buildViewRoot(parent: HTMLElement, id: string, view: View): HudViewRoot {
   // ビューのルート要素を作る。
-  const element = createHudElement('div', id, parent, `hud-world-root hud-${view}-root`);
+  const element = createHudElement('div', id, parent, `hud-view-root hud-${view}-root`);
   // 左右のレールを子として組む。
   const leftRail = createHudElement(
     'div', `${id}-rail-left`, element, 'hud-rail hud-rail-left',
@@ -320,7 +320,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   buildEnemiesPanel(rightRail);
 }
 
-// マップ視点の縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
+// マップビューの縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
 function buildMapScale(root: HTMLElement): void {
   // 縮尺表示の要素を作る。
   const mapScale = createHudElement('div', 'hud-map-scale', root);
@@ -354,7 +354,8 @@ function buildTopBar(root: HTMLElement): void {
     </div>`;
 }
 
-// 追従カメラの視点リセットボタンを組む。
+// 視点リセットボタンを組む。id の chase は「動く実体を追っている視点」の意味
+// (camera/focus-camera.ts) — 押したときにどちらのビューのカメラを戻すかは CameraSystem が決める。
 function buildChaseReset(root: HTMLElement): void {
   // リセットボタン本体を作る。
   const chaseReset = createHudElement('button', 'hud-chase-reset', root);
@@ -407,8 +408,8 @@ export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
   renderStyle.subscribe((style) => { root.dataset['renderStyle'] = style; });
   const layers = buildOverlayLayers(root);
   const svgOverlay = buildSvgOverlay(layers.marker);
-  const combatRoot = buildWorldRoot(layers.panel, 'hud-combat-root', 'combat');
-  const mapRoot = buildWorldRoot(layers.panel, 'hud-map-root', 'map');
+  const combatRoot = buildViewRoot(layers.panel, 'hud-combat-root', 'combat');
+  const mapRoot = buildViewRoot(layers.panel, 'hud-map-root', 'map');
 
   // 常設パネル群を組む。
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);

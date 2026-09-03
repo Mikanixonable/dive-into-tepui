@@ -1,11 +1,12 @@
 // 軌道上の拠点。艦艇のドッキングと格納、部品と資金の保有、そこからの発艦を持つ。
 import * as THREE from 'three/webgpu';
+import type { View } from '../../view/view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
-import { qRotate } from '../../../physics/attitude';
+import { qRotate } from '../../../math/quat';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Ray } from '../../../math/ray';
 import type { AnyPart, Part } from './parts';
@@ -44,8 +45,8 @@ import { MARKER_PRIORITY } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapPickable } from '../../pickable/map-pickable';
-import type { MapCommands } from '../../pickable/map-commands';
+import type { ObjectPickable } from '../../pickable/object-pickable';
+import type { ObjectCommands } from '../../pickable/object-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
@@ -103,7 +104,7 @@ type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
-export class Base extends DynamicEntity implements Controllable, MapPickable {
+export class Base extends DynamicEntity implements Controllable, ObjectPickable {
   public readonly mapKind: DynamicEntityKind = 'base';
 
   readonly collisionGeom = new BaseCollisionGeometry();
@@ -337,7 +338,7 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
     visibility: MapVisibility | null = null,
   ): void {
     const displayState = this.stateAt(displayTime);
-    const mapEntityVisible = !camera.overviewMode || visibility === null || visibility.category;
+    const mapEntityVisible = camera.view !== 'map' || visibility === null || visibility.category;
     this.renderObject.visible = displayState !== null && mapEntityVisible;
     if (displayState !== null) {
       this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
@@ -355,7 +356,7 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
   private get markerKey(): string { return `base-${this.id}`; }
 
   // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
-  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean): GroupedMarkerItem {
+  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {
@@ -367,7 +368,7 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
       vel,
       priority,
       name: this.name,
-      detail: overviewMode ? '' : fmtMarkerDist(dist),
+      detail: view === 'map' ? '' : fmtMarkerDist(dist),
       bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
       bearingSym: ENTITY_GLYPH.base,
       bearingClass: 'mk-dir mk-ally-dir',
@@ -408,13 +409,11 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
     };
   }
 
-  // マップ上の被選択物としての振る舞い。
-  public readonly ownerName = null;
-  public readonly mapTime = null;
+  // 被選択物(ObjectPickable)としての振る舞い。
   public get gone(): boolean { return !this.alive; }
-  public get mapState(): KinematicState { return this.state; }
-  public readonly mapGlyph = ENTITY_GLYPH.base;
-  public get mapGlyphSvg(): string { return baseMarkerSvg(); }
+  public get orbitState(): KinematicState { return this.state; }
+  public readonly glyph = ENTITY_GLYPH.base;
+  public get glyphSvg(): string { return baseMarkerSvg(); }
   public readonly listSection: MapListSection = 'base';
   public readonly pickerGenre: ObjectPickerGenre = '基地';
   public readonly hiddenBehindBodies = true;
@@ -423,7 +422,7 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
   public listCounted(): boolean { return false; }
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
-  public mapPosAt(displayTime: number): Vec3 | null {
+  public posAt(displayTime: number): Vec3 | null {
     return this.stateAt(displayTime)?.r ?? null;
   }
 
@@ -439,7 +438,7 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
     _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
   ): string {
     if (activePlayer === null) return `格納 ${this.baseState.dockedVessels.length} 艇`;
-    return fmtDist(len(sub(this.mapPosAt(displayTime) ?? this.state.r, activePlayer.state.r)));
+    return fmtDist(len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r)));
   }
 
   // 検索が照合する文字列。行の補助表示と同じ。
@@ -450,8 +449,8 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
-  public mapMenuItems(
-    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  public menuItems(
+    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
     const { money, dockedVessels } = this.baseState;
     const subLabel = `基地 / 所持金: ${money.toLocaleString()} Cr / 格納艦艇: ${dockedVessels.length}隻`;
@@ -478,8 +477,8 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
     ];
   }
 
-  // mapMenuItems が出した操作を実行する。軌道線の表示だけ自分の状態を書き換え、残りは commands を通す。
-  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+  // menuItems が出した操作を実行する。軌道線の表示だけ自分の状態を書き換え、残りは commands を通す。
+  public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'activate') {
       commands.setControlledBase(this);
     } else if (act === 'deactivate') {
@@ -503,8 +502,8 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
 
   // プロパティウィンドウに出す行。所持金・格納艦艇数・自艦からの距離を主要行とし、操作対象かは
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。自艦がいなければ距離の行は落ちる。
-  public mapPropertyRows(
-    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  public propertyRows(
+    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
     const viewer = commands.activePlayer;
     const rows: PropertyRow[] = [
@@ -520,10 +519,10 @@ export class Base extends DynamicEntity implements Controllable, MapPickable {
     return rows;
   }
 
-  public readonly mapRename = (name: string): void => { this.name = name; };
+  public readonly rename = (name: string): void => { this.name = name; };
 
   // 単クリックは選択までに留め、基地パネルは展開しない。
-  public readonly onMapSelect = (commands: MapCommands): void => {
+  public readonly onMapSelect = (commands: ObjectCommands): void => {
     commands.selectBase(this);
     commands.hint(`${this.name} を選択`);
   };

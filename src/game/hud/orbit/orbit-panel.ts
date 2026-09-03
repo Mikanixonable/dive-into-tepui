@@ -52,7 +52,7 @@ export class OrbitPanel {
   private game: Game | null = null;
 
   // 操作対象の基準・高度・速度・遠地点/近地点・傾斜角・周期・動圧・機体温度を DOM へ反映する。
-  public sync(game: Game, hideInOverview = true): void {
+  public sync(game: Game): void {
     this.game = game;
     const celestialBodies = game.celestialSystem.celestialMotions;
     const entity = game.activeControllableEntity;
@@ -61,7 +61,7 @@ export class OrbitPanel {
       el?.classList.add('hidden');
       return;
     }
-    el?.classList.toggle('hidden', hideInOverview && game.cameraSystem.overviewMode);
+    el?.classList.remove('hidden');
 
     if (!this.throttle.due()) return;
 

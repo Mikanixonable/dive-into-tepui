@@ -1,16 +1,17 @@
 import * as THREE from 'three/webgpu';
-import { v3, len, sub, dot, norm } from '../../math/vec3';
+import { addScaled, dot, len, norm, sub, v3 } from '../../math/vec3';
 import { kinematicState } from '../../physics/kinematic-state';
 import { Hud } from '../hud/hud';
 import { BasePanel } from '../hud/panels/base-view';
 import { ResourceTransferDialog } from '../hud/windows/resource-transfer-dialog';
 import { Base, BASE_MAX_VESSELS } from '../dynamic/dynamic-entity/base';
 import { Player } from '../player/player';
+import { DockingGuide } from './docking-guide';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
-import type { MapContextActions } from '../pickable/map-context-actions';
+import type { ObjectWindows } from '../pickable/object-windows';
 import type { CameraSystem } from '../camera/camera-system';
-import type { ViewManager } from '../view-manager';
+import type { View } from '../view/view';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
@@ -51,9 +52,15 @@ export interface DockingCandidate {
 const alignmentErrorDeg = (alignment: number): number =>
   Math.acos(Math.max(-1, Math.min(1, alignment))) * 180 / Math.PI;
 
+const LAUNCH_CLEARANCE = 15; // 発進時にスロット法線方向へ離す距離 [m]
+const LAUNCH_SEPARATION_SPEED = 2.5; // 発進時にスロット法線方向へ与える相対速度 [m/s]
+
 export class Docking {
   readonly basePanel: BasePanel;
-  readonly transferDialog: ResourceTransferDialog;
+  private readonly transferDialog: ResourceTransferDialog;
+  // 接続点ガイド。
+  private readonly _guide: DockingGuide;
+  get guide(): DockingGuide { return this._guide; }
   // 選択中/基地パネルの対象基地。
   private _activeBase: Base | null = null;
   // 新造艦艇の連番。基地をまたいで一意な id/表示名を割り振るだけの用途。
@@ -62,8 +69,6 @@ export class Docking {
   // 船と船、船と基地の物理ドッキングペア (shipId -> targetEntity)
   private readonly dockedPairs = new Map<string, DynamicEntity>();
 
-  get activeBase(): Base | null { return this._activeBase; }
-
   constructor(
     private readonly hud: Hud,
     private readonly worldSfx: WorldSfx,
@@ -71,9 +76,11 @@ export class Docking {
     private readonly effects: EffectsSystem,
     private readonly markerManager: MarkerManager,
     private readonly entities: DynamicSystem,
-    private readonly mapActions: MapContextActions,
+    private readonly objectWindows: ObjectWindows,
     private readonly cameraSystem: CameraSystem,
-    private readonly viewManager: ViewManager,
+    // ビュー遷移の口(ViewManager.setView)。ViewManager より先に生成されるため、
+    // 参照でなく閉包で受ける。
+    private readonly setView: (view: View) => void,
     private readonly activePlayers: ActivePlayerController,
     private readonly activeStage: Stage,
   ) {
@@ -82,6 +89,7 @@ export class Docking {
     this.basePanel.onBuildVessel = (base) => this.buildVessel(base);
 
     this.transferDialog = new ResourceTransferDialog(this.hud.layers.view, this.hud.overlayManager);
+    this._guide = new DockingGuide(scene, markerManager, entities, this);
   }
 
   // 指定艦がドッキングしている対象を取得。ドッキングしていなければ null。
@@ -263,7 +271,7 @@ export class Docking {
     base.attachDockedVesselMesh(ship, selectedSlot);
 
     const wasActive = this.activePlayers.current === ship;
-    this.mapActions.close();
+    this.objectWindows.close();
     this.cameraSystem.mapCamera.clearFocusIf(ship.id);
     if (wasActive) {
       ship.clearTransientCommands();
@@ -273,7 +281,7 @@ export class Docking {
     this.entities.parkPlayer(ship);
     if (wasActive) {
       this.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
-      if (this.activePlayers.current === null) this.viewManager.setView('map');
+      if (this.activePlayers.current === null) this.setView('map');
     }
     this.hud.hint(`${ship.name} を基地のドック ${selectedSlot + 1} に収納しました`);
   }
@@ -314,26 +322,18 @@ export class Docking {
     const slotPos = base.getSlotWorldPos(slotIndex);
     const slotNormal = base.getSlotWorldNormal(slotIndex);
 
-    const launchPos = v3(
-      slotPos.x + slotNormal.x * 15,
-      slotPos.y + slotNormal.y * 15,
-      slotPos.z + slotNormal.z * 15,
-    );
-    const launchVel = v3(
-      base.state.v.x + slotNormal.x * 2.5,
-      base.state.v.y + slotNormal.y * 2.5,
-      base.state.v.z + slotNormal.z * 2.5,
-    );
+    const launchPos = addScaled(slotPos, slotNormal, LAUNCH_CLEARANCE);
+    const launchVel = addScaled(base.state.v, slotNormal, LAUNCH_SEPARATION_SPEED);
 
     ship.state = kinematicState<'eci'>(base.state.t, launchPos, launchVel);
     this.entities.addPlayer(ship);
     this.activePlayers.set(ship);
-    this.viewManager.setView('combat');
+    this.setView('combat');
     this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);
   }
 
-  // 基地パネルの DOM を片付ける。
   dispose(): void {
     this.basePanel.dispose();
+    this._guide.dispose();
   }
 }

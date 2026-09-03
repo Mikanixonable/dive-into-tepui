@@ -6,6 +6,7 @@
 // を行う。どちらも「対象 1 体では決められない = 集合の側の責務」であり、逆に対象ごとの
 // 見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
 import { Vec3, len, sub } from '../../math/vec3';
+import type { View } from '../view/view';
 import { Projected } from '../../math/projection';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { ActiveCelestialLabel } from './celestial-markers';
@@ -64,13 +65,13 @@ export class GroupedMarkers {
   ) { }
 
   // items が空なら前フレームのマーカーをすべて片付けるだけになる(非表示にしたいときは
-  // 空配列を渡せばよく、専用の hide は要らない)。overviewMode 中は対象そのものが
+  // 空配列を渡せばよく、専用の hide は要らない)。マップビュー中は対象そのものが
   // 画面内に見えているので、画面端の方位マーカーは出さず、代わりに vel から進行方向を
   // 求めてマーカー自体を回す(円軌道では静止画から回転方向が読めないための対策)。
   sync(
     items: readonly GroupedMarkerItem[],
     project: ProjectFn,
-    overviewMode: boolean,
+    view: View,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
     celestialBodies: readonly CelestialMotion[] = [],
@@ -94,7 +95,7 @@ export class GroupedMarkers {
         continue;
       }
       const label = m.labeled ? this.label(m.item, m.count, m.groupMembers) : '';
-      const rotationDeg = overviewMode
+      const rotationDeg = view === 'map'
         ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, celestialBodies)
         : undefined;
       this.markerManager.set(
@@ -103,7 +104,7 @@ export class GroupedMarkers {
       );
       // 画面外(背面を含む)の対象は、画面端の方位マーカーで方位だけを示す。
       // bearingVisible は味方機など、距離によって方位マーカーを抑制する対象に使う。
-      if (overviewMode || m.item.bearingVisible === false) this.markerManager.hide(bearingKey(m.item.key));
+      if (view === 'map' || m.item.bearingVisible === false) this.markerManager.hide(bearingKey(m.item.key));
       else this.markerManager.setBearing(
         bearingKey(m.item.key), m.item.bearingClass ?? 'mk-dir', m.item.bearingSym ?? DIRECTION_GLYPH.bearing,
         m.p, '', 1, m.item.bearingColor,

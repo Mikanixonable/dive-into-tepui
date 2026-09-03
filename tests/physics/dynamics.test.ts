@@ -11,7 +11,7 @@ import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { orbitalElementsOf } from '../../src/physics/elements';
 import { degree2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';
 import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
-import { qFromAxisAngle, qRotate } from '../../src/physics/attitude';
+import { qFromAxisAngle, qRotate } from '../../src/math/quat';
 
 const EARTH_POLE = v3(0, 1, 0);
 const EARTH_DEGREE2: Degree2Gravity = { j2: J2_EARTH, refRadius: R_EARTH_EQ, pole: EARTH_POLE, tesseral: null };

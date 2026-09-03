@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { Attitude, qRotate, randomQuat } from '../../physics/attitude';
+import { Attitude } from '../../physics/attitude';
+import { LOCAL_FORWARD, qRotate, randomQuat } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../math/random';
 import { add, addScaled, randVec, scale, v3, Vec3 } from '../../math/vec3';
@@ -122,7 +123,7 @@ export class EffectsSystem {
           tangent,
           randSym(2.0),
         ),
-        qRotate(att.q, v3(0, 0, 1)),
+        qRotate(att.q, LOCAL_FORWARD),
         randSym(2.5),
       );
       this.spawnDebrisPiece(

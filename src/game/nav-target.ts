@@ -1,7 +1,7 @@
-// マップ上のターゲット(任意の MapPickable — 月・ラグランジュ点なども含む)の保持と、
+// マップ上のターゲット(任意の ObjectPickable — 月・ラグランジュ点なども含む)の保持と、
 // 自機軌道との相対 AN/DN(昇交点・降交点)・再接近点の算出・マーカー表示・被選択物としての公開。
 // ターゲットが敵・自艦・基地(CombatTarget)の場合は、Targeter の射撃・照準補助の基準にもなる。
-import { Vec3, v3, add, len, sub } from '../math/vec3';
+import { Vec3, add, len, sub } from '../math/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { strongestAttractor } from '../physics/attractor';
 import { CelestialMotion } from '../physics/celestial-motion';
@@ -9,7 +9,7 @@ import { frameOfCelestialBody } from '../physics/frame';
 import { LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { OrbitingMotion } from '../physics/celestial-motion';
-import { qRotate } from '../physics/attitude';
+import { LOCAL_FORWARD, qRotate } from '../math/quat';
 import { goldenSectionMin } from '../math/optimize';
 import { Player } from './player/player';
 import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
@@ -20,13 +20,11 @@ import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
 import { RelativeNodeMarker } from './marker/relative-node-marker';
 import { CameraSystem } from './camera/camera-system';
-import { MapPickable } from './pickable/map-pickable';
+import { ObjectPickable } from './pickable/object-pickable';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialSystem } from './celestial/celestial-system';
 import { lagrangePointOf } from './celestial/lagrange-id';
 import type { OrbitReference } from './orbit-reference';
-
-const Z_HAT: Vec3 = v3(0, 0, 1);
 
 // 再接近点探索: 自艦とターゲットの相対距離を今から何秒先まで走査するか。低軌道の
 // 数周ぶんに相当する1日。
@@ -273,7 +271,7 @@ export class NavTarget {
     const lagrange = lagrangePointOf(id);
     const secondaryMotion = lagrange === null ? undefined : celestialSystem.find(lagrange.parentId)?.motion;
     if (secondaryMotion instanceof OrbitingMotion) {
-      return qRotate(secondaryMotion.orbitFrameRotationAt(t).q, Z_HAT);
+      return qRotate(secondaryMotion.orbitFrameRotationAt(t).q, LOCAL_FORWARD);
     }
     const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
@@ -282,7 +280,7 @@ export class NavTarget {
   }
 
   // 右クリック対象として公開する AN/DN・再接近点アイコン。計算できているぶんだけ返す。
-  mapPickables(): readonly MapPickable[] {
+  pickables(): readonly ObjectPickable[] {
     return this.nodeMarkers.filter((marker) => !marker.gone);
   }
 
@@ -291,7 +289,7 @@ export class NavTarget {
     for (const marker of this.nodeMarkers) {
       marker.sync(
         this.markerManager, cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
-        this.celestialBodies, this.celestialBodiesPivot, cameraSystem.overviewMode, this.timeLabel,
+        this.celestialBodies, this.celestialBodiesPivot, cameraSystem.view === 'map', this.timeLabel,
       );
     }
   }

@@ -1,4 +1,4 @@
-// マップモードの「カメラ」「軌道フレーム」パネル オーケストレーター。
+// マップビューの「カメラ」「軌道フレーム」パネル オーケストレーター。
 // マップカメラの視点 (CameraFramePanel) と未来表示の描画基準 (TrajectoryFramePanel) を所有し、
 // カメラフォーカス変更時の軌道フレーム自動追随などの連動を疎結合に調停する。
 import { bodyAnchorSource } from '../../../physics/attractor';
@@ -6,9 +6,9 @@ import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import { MapCamera } from '../../camera/map-camera';
+import { FocusCamera } from '../../camera/focus-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
-import type { MapPickable } from '../../pickable/map-pickable';
+import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../overlay-manager';
 import { hudRail } from '../hud-root';
@@ -20,7 +20,7 @@ import { TrajectoryFramePanel } from './trajectory-frame-panel';
 export function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
   const panel = document.createElement('div');
   panel.id = id;
-  panel.className = 'panel hidden hud-frame-controls';
+  panel.className = 'panel hud-frame-controls';
   panel.addEventListener('pointerdown', (e) => e.stopPropagation());
   const title = document.createElement('h3');
   title.textContent = titleText;
@@ -40,7 +40,7 @@ export class FrameControls {
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly celestialSystem: CelestialSystem,
-    private readonly mapCamera: MapCamera,
+    private readonly mapCamera: FocusCamera,
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
@@ -93,29 +93,23 @@ export class FrameControls {
     }
   }
 
-  // パネルの表示と選択肢・選択表示を、他モジュールの状態へ合わせる。
+  // 両パネルの選択肢と選択表示を、他モジュールの状態へ合わせる。
   public sync(
-    pickables: readonly MapPickable[], cameraPos: Vec3,
-    simTime: number, displayTime: number, visible: boolean,
+    pickables: readonly ObjectPickable[], cameraPos: Vec3,
+    simTime: number, displayTime: number,
   ): void {
     this.lastTime = simTime;
-    const members = visible
-      ? this.celestialSystem.systemMembersAt(cameraPos, displayTime) : [];
-    // 役割が周回しているかどうかはパネルが見えているかと関係がないので、非表示でも判定する
-    // — 見えていないあいだ空扱いにすると、パネルを畳んだだけで下の巻き戻しが走り、選択が消える。
+    const members = this.celestialSystem.systemMembersAt(cameraPos, displayTime);
     const validRoles = this.validRevolutionRoles(displayTime);
 
-    // 選択中の役割の公転が条件を崩したら、既存の onSelect と同じ経路(カメラは
-    // setCameraRotation、軌道フレームは frame の差し替え)で慣性系へ落とす。
-    if (this.isStaleRole(this.mapCamera.cameraFrame.rotatingWith, validRoles)) {
-      this.mapCamera.setCameraRotation(null);
-    }
+    // 軌道フレームで選択中の役割の公転が条件を崩したら、既存の onSelect と同じ経路
+    // (frame の差し替え)で慣性系へ落とす。カメラ側の同種の検査はカメラ自身が持つ。
     if (this.isStaleRole(this.displayWindow.frame.rotatingWith, validRoles)) {
       this.displayWindow.frame = this.celestialSystem.frames.frameOf(this.displayWindow.frame.center, null);
     }
 
-    this.cameraPanel.sync(pickables, members, displayTime, validRoles, visible);
-    this.trajectoryPanel.sync(pickables, members, displayTime, validRoles, visible);
+    this.cameraPanel.sync(pickables, members, displayTime);
+    this.trajectoryPanel.sync(pickables, members, displayTime, validRoles);
   }
 
   // 両パネルと、保持している座標系選択ゾーンを片付ける。

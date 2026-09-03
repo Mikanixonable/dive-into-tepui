@@ -1,14 +1,14 @@
 // マガジンベルトの表示メッシュを管理する。物理演算結果から各リンクの位置・向きを導出してメッシュへ反映する。
 import * as THREE from 'three/webgpu';
-import { Attitude, Quat, qFromAxisAngle, qFromUnitVectors, qMul, qRotate } from '../../physics/attitude';
+import { Attitude } from '../../physics/attitude';
+import { LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qFromUnitVectors, qMul, qRotate, Quat } from '../../math/quat';
 import { Vec3, len, scale, sub } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH, buildMagazineMesh } from '../../render/ships';
-import { BeltPhysics, BeltSection, X_AXIS } from './belt-physics';
+import { BeltPhysics, BeltSection } from './belt-physics';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { MAG_ROUNDS } from './player-fire';
 
 const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
-const IDENTITY_Q: Quat = { x: 0, y: 0, z: 0, w: 1 };
 
 export class Belt {
   private readonly links: THREE.Group[] = [];
@@ -53,7 +53,7 @@ export class Belt {
   sync(): void {
     const { beltPos, beltTwist, anchor } = this.physics;
     let prevPoint = anchor;
-    let prevQ: Quat = IDENTITY_Q;
+    let prevQ: Quat = Q_IDENTITY;
     for (let i = 0; i < this.links.length; i++) {
       const link = this.links[i]!;
       link.visible = i < this.visibleCount;
@@ -68,12 +68,12 @@ export class Belt {
       let bendQ = prevQ;
       if (segLen > 1e-6) {
         const dirUnit = scale(dir, 1 / segLen);
-        const localX = qRotate(prevQ, X_AXIS);
+        const localX = qRotate(prevQ, LOCAL_RIGHT);
         bendQ = qMul(qFromUnitVectors(localX, dirUnit), prevQ);
       }
 
       // ロールを掛け合わせて最終姿勢にする
-      const twistQ = qFromAxisAngle(X_AXIS, beltTwist[i]!);
+      const twistQ = qFromAxisAngle(LOCAL_RIGHT, beltTwist[i]!);
       const q = qMul(bendQ, twistQ);
       link.quaternion.set(q.x, q.y, q.z, q.w);
 

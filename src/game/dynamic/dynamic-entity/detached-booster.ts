@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { qRotate, type Attitude } from '../../../physics/attitude';
+import { type Attitude } from '../../../physics/attitude';
+import { LOCAL_FORWARD, qRotate } from '../../../math/quat';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { add, scale, v3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
@@ -112,7 +113,7 @@ export class DetachedBooster extends DynamicEntity {
       this.thrust = null;
       return;
     }
-    const forward = qRotate(this.att.q, v3(0, 0, 1));
+    const forward = qRotate(this.att.q, LOCAL_FORWARD);
     this.thrust = scale(forward, averageAcceleration);
   }
 

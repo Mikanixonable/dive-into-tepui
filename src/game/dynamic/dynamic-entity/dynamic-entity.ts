@@ -1,4 +1,5 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
+import { Q_IDENTITY } from '../../../math/quat';
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { OrbitalElements } from '../../../physics/elements';
@@ -65,7 +66,7 @@ type OrbitLine =
   | { readonly kind: 'relative'; readonly line: TargetRelativeLine; readonly target: DynamicEntity };
 
 const identityAttitude = (): Attitude => ({
-  q: { x: 0, y: 0, z: 0, w: 1 },
+  q: Q_IDENTITY,
   w: v3(),
   inertia: v3(1, 1, 1),
 });

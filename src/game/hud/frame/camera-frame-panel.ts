@@ -1,17 +1,17 @@
-// マップモードの「カメラ」パネル。カメラの注視対象・回転系・平行/透視投影・画角・基準面設定を担当する。
-import { FrameRole, frameRoleOf } from '../../../physics/frame';
+// マップビューの「カメラ」パネル。カメラの注視対象・回転追従・平行/透視投影・画角・基準面設定を担当する。
+import { frameRoleOf } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import { CameraReferencePlane, CameraReferenceView, MapCamera, OVERVIEW_CAMERA_FOV_MIN, OVERVIEW_CAMERA_FOV_MAX } from '../../camera/map-camera';
+import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX } from '../../camera/focus-camera';
 import { focusTargetId } from '../../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
-import { RotationZone } from './rotation-zone';
+import { CameraRotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../widgets';
-import { frameRoleName, rotationSourceLabel } from './frame-labels';
-import type { MapPickable } from '../../pickable/map-pickable';
+import { frameRoleName, rotationFollowLabel } from './frame-labels';
+import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { OverlayManager } from '../overlay-manager';
 import { buildPanel } from './frame-controls';
 
-const OVERVIEW_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
+const FOCUS_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
 
 const ANGLE_COLUMNS = [
   { description: '面', items: [['ecliptic', '黄道面'], ['equator', '赤道面'], ['moonOrbit', '月軌道面']] },
@@ -21,7 +21,7 @@ const ANGLE_COLUMNS = [
 export class CameraFramePanel {
   private readonly panel: HTMLElement;
   private readonly cameraCenterZone: AnchorZone;
-  private readonly cameraRotationZone: RotationZone;
+  private readonly cameraRotationZone: CameraRotationZone;
   private readonly cameraRotationModeToggle: ToggleSwitch;
   private readonly projectionToggle: ToggleSwitch;
   private readonly fovSlider: Slider;
@@ -37,7 +37,7 @@ export class CameraFramePanel {
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly celestialSystem: CelestialSystem,
-    private readonly mapCamera: MapCamera,
+    private readonly mapCamera: FocusCamera,
     overlayManager: OverlayManager,
   ) {
     this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
@@ -47,9 +47,9 @@ export class CameraFramePanel {
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
     this.panel.appendChild(this.cameraCenterZone.element);
 
-    this.cameraRotationZone = new RotationZone('回転追従', celestialSystem);
+    this.cameraRotationZone = new CameraRotationZone('回転追従', celestialSystem);
     this.cameraRotationZone.element.classList.add('hud-frame-rotation-zone');
-    this.cameraRotationZone.onSelect = (rotatingWith) => mapCamera.setCameraRotation(rotatingWith);
+    this.cameraRotationZone.onSelect = (follow) => mapCamera.setRotationFollow(follow);
     this.panel.appendChild(this.cameraRotationZone.element);
 
     this.cameraRotationModeToggle = new ToggleSwitch('クオータニオン操作', (on) => {
@@ -69,16 +69,16 @@ export class CameraFramePanel {
     fovLabel.textContent = '画角';
     fovGroup.appendChild(fovLabel);
     this.fovSlider = new Slider({
-      min: OVERVIEW_CAMERA_FOV_MIN,
-      max: OVERVIEW_CAMERA_FOV_MAX,
-      step: OVERVIEW_CAMERA_FOV_STEP,
+      min: FOCUS_CAMERA_FOV_MIN,
+      max: FOCUS_CAMERA_FOV_MAX,
+      step: FOCUS_CAMERA_FOV_STEP,
     }, (value) => mapCamera.setFovDeg(value));
     fovGroup.appendChild(this.fovSlider.element);
     this.fovInput = new ValueInput({
       type: 'number',
-      min: OVERVIEW_CAMERA_FOV_MIN,
-      max: OVERVIEW_CAMERA_FOV_MAX,
-      step: OVERVIEW_CAMERA_FOV_STEP,
+      min: FOCUS_CAMERA_FOV_MIN,
+      max: FOCUS_CAMERA_FOV_MAX,
+      step: FOCUS_CAMERA_FOV_STEP,
     }, (text) => mapCamera.setFovDeg(Number(text)));
     fovGroup.appendChild(this.fovInput.element);
     const fovUnit = document.createElement('span');
@@ -109,29 +109,24 @@ export class CameraFramePanel {
     const camRole = camId === undefined ? null : frameRoleOf(camId);
     const camCenter = camId === undefined ? '固定なし'
       : camRole !== null ? frameRoleName(camRole) : this.celestialSystem.nameOf(camId);
-    const camRot = this.mapCamera.cameraFrame.rotatingWith;
     const modeText = this.mapCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
     const projectionText = this.mapCamera.projection === 'orthographic' ? '平行' : '透視';
-    const rotationText = rotationSourceLabel(this.celestialSystem, camRot);
+    const rotationText = rotationFollowLabel(this.celestialSystem, this.mapCamera.rotationFollow);
     return `基準: ${camCenter}・${rotationText} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
   }
 
-  // パネルの表示と各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
+  // 各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
   public sync(
-    pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
-    validRoles: readonly FrameRole[], isVisible: boolean,
+    pickables: readonly ObjectPickable[], members: readonly string[], displayTime: number,
   ): void {
-    this.panel.classList.toggle('hidden', !isVisible);
-    if (!isVisible) return;
-
     // カメラ基準は表示設定に左右されず、登録済みの全天体を選択できるようにする。
     this.cameraCenterZone.setItems(pickables, true);
     this.cameraCenterZone.setNearby(members, pickables);
     this.cameraCenterZone.setSelected(focusTargetId(this.mapCamera.focus) ?? null);
 
     // 回転追従の選択肢と、クオータニオン/オイラーの操作モード表示を合わせる。
-    this.cameraRotationZone.setNearby(members, displayTime, validRoles);
-    this.cameraRotationZone.setSelected(this.mapCamera.cameraFrame.rotatingWith);
+    this.cameraRotationZone.setChoices(this.mapCamera.availableRotationFollows(displayTime));
+    this.cameraRotationZone.setSelected(this.mapCamera.rotationFollow);
     this.cameraRotationModeToggle.setOn(this.mapCamera.cameraRotationMode === 'quaternion');
 
     // 平行投影は画角という概念自体を欠くため、画角の操作系一式を無効化して案内を出す。

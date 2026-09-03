@@ -186,7 +186,7 @@ collideWithCelestialBody(_body: CelestialMotion, ...)
   1語**。中身は天体クラス → 字形なので、この計画で `body` も `entity` も落とす。
   参照先の定数 `ENTITY_GLYPH` の改名は `rename_entity.md`。
 
-**(4) `MapPickKind` の `'body'`**(`pickable/map-pickable.ts:5`、約 30 行)。
+**(4) `MapPickKind` の `'body'`**(`pickable/object-pickable.ts:5`、約 30 行)。
 `'body' | 'ship' | 'player' | 'apsis' | ...` の第1項で、**ラグランジュ点も `'body'` に含まれる**
 (`map-pickable-menu.ts:36` が明言、`object-groups.ts:41` / `anchor-zone.ts:74` /
 `physical-object-list-order.ts:94` が `LAGRANGE_ID` で再分岐している)。

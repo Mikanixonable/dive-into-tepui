@@ -30,7 +30,7 @@ function saveSettingsViewOpen(open: boolean): void {
 }
 
 // タイトル画面とゲーム中の両方から開く、システム設定の共通ビュー。
-// 3D の ViewManager とは独立した DOM ビューなので、閉じると開く前のワールドビューへ戻る。
+// 3D の ViewManager とは独立した DOM ビューなので、閉じると開く前のビューへ戻る。
 export class SettingsView implements OverlayHandle {
   private readonly panel: HTMLElement;
   private readonly overlayManager: OverlayManager;

@@ -13,7 +13,7 @@
 import type { CelestialMotion } from './celestial-motion';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { add, cross, sub, v3, Vec3 } from '../math/vec3';
-import { Quat, qInvert, qRotate } from './attitude';
+import { Q_IDENTITY, Quat, qInvert, qRotate } from '../math/quat';
 
 // 座標系 = 「どの天体を原点に置くか」×「何の回転(公転か自転)に合わせて回すか
 // (null = 回さない)」。値は必ず ReferenceFrames の frames/frameFor/frameOf の要素を参照する —
@@ -35,6 +35,11 @@ export type FrameRotationSource =
 
 // 役割トークンの全種。役割を列挙するときの唯一の出所。
 export const FRAME_ROLES: readonly FrameRole[] = ['activeShip', 'navTarget'];
+
+// 役割を、参照フレームの基準 id として書いた形。
+export function frameRoleAnchorId(role: FrameRole): string {
+  return `@${role}`;
+}
 
 // id が指す役割。天体・機体の id と、'@' で始まっていても FRAME_ROLES に無いものは null
 // — 検証を挟まないと、解決できない役割が外から来た文字列のまま座標系へ入り込む。
@@ -151,5 +156,5 @@ export function unbakeToDisplayPoint(
 // ({center: center.id, rotatingWith: null}) と等価な変換を、天体1体から直に組む。
 export function frameOfCelestialBody(center: CelestialMotion, pivot: number): FrameTransform {
   const state = center.stateAt(pivot);
-  return { origin: state.r, originVel: state.v, q: { x: 0, y: 0, z: 0, w: 1 }, omega: v3() };
+  return { origin: state.r, originVel: state.v, q: Q_IDENTITY, omega: v3() };
 }

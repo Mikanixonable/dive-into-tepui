@@ -30,8 +30,8 @@ import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
 import type { CelestialSystem } from '../celestial-system';
-import type { MapPickable } from '../../pickable/map-pickable';
-import type { MapCommands } from '../../pickable/map-commands';
+import type { ObjectPickable } from '../../pickable/object-pickable';
+import type { ObjectCommands } from '../../pickable/object-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
@@ -72,7 +72,7 @@ const BODY_LABEL_PRIORITY: Readonly<Record<CelestialClass, number>> = {
   smallBody: MARKER_PRIORITY.SATELLITE_SMALL_BODY,
 };
 
-export abstract class CelestialEntity implements MapPickable {
+export abstract class CelestialEntity implements ObjectPickable {
   // マップ専用の参照軌道線(衛星は親惑星中心、惑星は主星中心)。実体も濃さの決め方も個体が
   // 持ち、出す/消すの判断だけを所有者(CelestialSystem)が sync/remove の呼び分けで行う。
   referenceLine: EllipseLine | null = null;
@@ -222,13 +222,11 @@ export abstract class CelestialEntity implements MapPickable {
   // ラベルが混雑したときに優先して残す度合い。大きいほど残る。
   public get labelPriority(): number { return BODY_LABEL_PRIORITY[this.bodyClass]; }
 
-  // マップ上の被選択物としての振る舞い。
-  public readonly ownerName = null;
-  public readonly mapTime = null;
+  // 被選択物(ObjectPickable)としての振る舞い。
   public readonly gone = false;
-  public readonly mapState = null;
-  public get mapGlyph(): string { return bodyEntityGlyph(this.bodyClass); }
-  public readonly mapGlyphSvg = null;
+  public readonly orbitState = null;
+  public get glyph(): string { return bodyEntityGlyph(this.bodyClass); }
+  public readonly glyphSvg = null;
   public readonly listSection: MapListSection = 'body';
   public get pickerGenre(): ObjectPickerGenre { return BODY_PICKER_GENRES[this.bodyClass]; }
   public readonly hiddenBehindBodies = false;
@@ -238,7 +236,7 @@ export abstract class CelestialEntity implements MapPickable {
   public listDetail(): string { return ''; }
 
   // 表示時刻の ECI 位置。
-  public mapPosAt(displayTime: number): Vec3 {
+  public posAt(displayTime: number): Vec3 {
     return this.stateAt(displayTime).r;
   }
 
@@ -258,12 +256,12 @@ export abstract class CelestialEntity implements MapPickable {
   public listSearchText(
     celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
   ): string {
-    return bodySearchText(celestialSystem, this.mapPosAt(displayTime), activePlayer, displayTime);
+    return bodySearchText(celestialSystem, this.posAt(displayTime), activePlayer, displayTime);
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
-  public mapMenuItems(
-    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  public menuItems(
+    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
     const subLabel = this.id === celestialSystem.origin.id ? '母星 (中心天体)'
       : this.id === 'moon' ? '衛星 (月)'
@@ -277,23 +275,23 @@ export abstract class CelestialEntity implements MapPickable {
     ];
   }
 
-  // mapMenuItems が出した操作を、すべて commands を通して実行する。
-  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+  // menuItems が出した操作を、すべて commands を通して実行する。
+  public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'focus') commands.focus(this.id, this.name);
     else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
   }
 
   // プロパティウィンドウに出す行。種別・μ・半径を主要行とし、公転していれば軌道要素を
   // 「軌道」グループの下に畳む。viewer が null なら距離の行は落ちる。
-  public mapPropertyRows(
-    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number, displayTime: number,
+  public propertyRows(
+    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number, displayTime: number,
   ): readonly PropertyRow[] {
     const viewer = commands.activePlayer;
     const motion = this.motion;
     const def = motion.def;
     const rows: PropertyRow[] = [];
     if (viewer !== null) {
-      const dist = len(sub(this.mapPosAt(displayTime), viewer.state.r));
+      const dist = len(sub(this.posAt(displayTime), viewer.state.r));
       rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(dist) });
     }
     const kindLabel = motion.kind === 'star' ? '恒星' : motion.kind === 'planet' ? '惑星' : '衛星';
@@ -319,7 +317,7 @@ export abstract class CelestialEntity implements MapPickable {
     return rows;
   }
 
-  public readonly mapRename = null;
+  public readonly rename = null;
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
 }

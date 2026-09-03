@@ -42,7 +42,7 @@ export function register(): void {
 
   test('focus-target: 機体 id は候補配列の古い位置ではなく frameAnchors.stateOf の値を返す(振動バグ回帰)', () => {
     const freshState = kinematicState<'eci'>(0, v3(1e7, 2e7, 3e7), v3());
-    const staleCandidates: readonly FocusCandidate[] = [{ id: 'Ship-1', mapPosAt: () => v3(1, 1, 1) }];
+    const staleCandidates: readonly FocusCandidate[] = [{ id: 'Ship-1', posAt: () => v3(1, 1, 1) }];
     const anchors = stubAnchors({ 'Ship-1': freshState });
     const result = resolveFocusTarget(
       { kind: 'object', id: 'Ship-1' }, staleCandidates, 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
@@ -50,13 +50,23 @@ export function register(): void {
     assert.notDeepEqual(result.pos, v3(1, 1, 1));
   });
 
+  test('focus-target: 役割トークンは frameAnchors.stateOf の速度も返す', () => {
+    const shipState = kinematicState<'eci'>(0, v3(7e6, 0, 0), v3(0, 7500, 0));
+    const anchors = stubAnchors({ '@activeShip': shipState });
+    const result = resolveFocusTarget(
+      { kind: 'object', id: '@activeShip' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
+    assert.deepEqual(result.vel, shipState.v);
+  });
+
   test('focus-target: 機体でも天体でも役割トークンでもない id は候補配列の位置を返す(ラグランジュ点等)', () => {
-    const candidates: readonly FocusCandidate[] = [{ id: 'apsis-1', mapPosAt: () => v3(9, 8, 7) }];
+    const candidates: readonly FocusCandidate[] = [{ id: 'apsis-1', posAt: () => v3(9, 8, 7) }];
     const anchors = stubAnchors({});
     const result = resolveFocusTarget(
       { kind: 'object', id: 'apsis-1' }, candidates, 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
     assert.deepEqual(result.pos, v3(9, 8, 7));
     assert.equal(result.missingFocusFrames, 0);
+    // 候補配列は位置しか答えられない。
+    assert.equal(result.vel, null);
   });
 
   test('focus-target: 2フレーム連続で全経路が null なら fallToOrigin', () => {

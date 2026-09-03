@@ -6,8 +6,8 @@
 
 タイムワープ倍率が高いとき、マップビューでフォーカスした船が注視点から離れて画面上で振動する。
 原因は `MapCamera.resolveFocus`(`src/game/camera/map-camera.ts:395-433`)が機体の位置を
-`MapPickables.pickables` という候補配列経由で読んでおり、その配列は **前フレームの
-`mapPickables.refresh` が書いたもの** だからである(`src/game/game.ts:328` のカメラ更新が
+`ObjectPickables.pickables` という候補配列経由で読んでおり、その配列は **前フレームの
+`objectPickables.refresh` が書いたもの** だからである(`src/game/game.ts:328` のカメラ更新が
 `game.ts:336` の `refresh` より前に呼ばれる)。低軌道・高倍率ワープでは1ステップの位置変化が
 100km 超になり、フォーカスの注視点だけがその分だけ遅れて船体メッシュから外れ、位相とともに
 振動して見える。
@@ -22,7 +22,7 @@
    前フレームの位置を読むことがなくなる。
 2. `update()` と `sync()` が同一フレーム内で読む表示窓(`DisplayWindow`)が、同一の
    `resolve()` 呼び出し結果(同一インスタンス)に揃う。冗長な再計算をしない。
-3. `mapPickables.refresh` とカメラ更新の順序制約が、フォーカス解決に関する限り不要になったことを
+3. `objectPickables.refresh` とカメラ更新の順序制約が、フォーカス解決に関する限り不要になったことを
    コード上のコメントで明示する(無理に入れ替えはしない)。
 
 ## 変更が必要な箇所
@@ -48,7 +48,7 @@
 - `tests/physics/focus-target.test.ts`(新規)
   - 新しい純粋関数の単体テスト。`tsconfig.test.json` の `include` へ
     `src/game/camera/focus-target.ts` を追加する(`tests/physics/**/*.ts` は既に入っている)。
-    **`src/game/map-pickable.ts` は絶対に include へ入れない。**
+    **`src/game/object-pickable.ts` は絶対に include へ入れない。**
 - `tests/physics/index.ts`
   - 新テストの `register` を import・呼び出しに追加する。
 
@@ -57,10 +57,10 @@
 ### 新しい純粋関数(`focus-target.ts` に追加)
 
 ```ts
-// 注視点の候補。MapPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。
-// **MapPickable 型そのものを受け取ってはいけない** — map-pickable.ts は camera-system.ts を
+// 注視点の候補。ObjectPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。
+// **ObjectPickable 型そのものを受け取ってはいけない** — object-pickable.ts は camera-system.ts を
 // 型 import しており、それが three/webgpu を引き込む。tsconfig.test.json の include へ
-// map-pickable.ts が入ると型検査が DOM 定義を要求して 887 件のエラーになる(実測)。
+// object-pickable.ts が入ると型検査が DOM 定義を要求して 887 件のエラーになる(実測)。
 export interface FocusCandidate {
   readonly id: string;
   readonly pos: Vec3;
@@ -171,8 +171,8 @@ export function resolveFocusTarget(
 > カメラ更新の後に置く: 候補集合と表示可否はカメラ位置から出るので、先に組むと
 > このフレームの sync が1フレーム古いカメラ位置基準の判定を読むことになる。
 
-これは `mapPickables.refresh` がカメラ位置(`cameraSystem.activeCameraPos`)を読む2箇所
-(`map-pickables.ts:98` の `nearbyTracker.membersAt`、`map-pickables.ts:184` の
+これは `objectPickables.refresh` がカメラ位置(`cameraSystem.activeCameraPos`)を読む2箇所
+(`object-pickables.ts:98` の `nearbyTracker.membersAt`、`object-pickables.ts:184` の
 `isOccluded`)と `focusMarkers.update` に対する制約であり、正しく残る制約である。手順1の変更は
 「カメラがフォーカス解決のために候補配列を読む」逆方向の依存を切るだけで、この順方向の依存
 (refresh がカメラ位置を読む)には触れない。
@@ -180,11 +180,11 @@ export function resolveFocusTarget(
 よってコメントを次のように書き直す(意味を変えず、フォーカス解決には効かないことを明示する):
 
 ```
-// カメラ更新の後に置く: mapPickables.refresh が読む近傍系抽出・遮蔽判定・可視マーカー更新は
+// カメラ更新の後に置く: objectPickables.refresh が読む近傍系抽出・遮蔽判定・可視マーカー更新は
 // cameraSystem.activeCameraPos を使うので、先に組むとこのフレームの sync が1フレーム古い
 // カメラ位置基準の判定を読むことになる。フォーカス解決(候補配列を機体の位置として読むこと)
 // はこの順序に依存しない — resolveFocusTarget が機体・役割トークンを frameAnchors.stateOf
-// で直接解決するため、mapPickables.refresh を先に呼んでも遅延は生じない。
+// で直接解決するため、objectPickables.refresh を先に呼んでも遅延は生じない。
 ```
 
 **この計画では順序の入れ替え自体は行わない。** 制約はカメラ位置→refresh の一方向で実在し続けるため、
@@ -192,8 +192,8 @@ export function resolveFocusTarget(
 
 ## 達成目標
 
-1. `MapCamera.resolveFocus` の機体分岐(自艦・敵・基地・弾薬)が `MapPickables.pickables` を
-   参照しなくなる — `map-camera.ts` から `mapPickables` 型・候補配列への機体 id 一致を目的に
+1. `MapCamera.resolveFocus` の機体分岐(自艦・敵・基地・弾薬)が `ObjectPickables.pickables` を
+   参照しなくなる — `map-camera.ts` から `objectPickables` 型・候補配列への機体 id 一致を目的に
    した参照が消え、`candidates.find` は apsis/relnode/eqnode/ラグランジュ点の id にしか
    ヒットしなくなる(コードレビューで確認)。
 2. `tests/physics/focus-target.test.ts` に「候補配列に古い位置しか無くても、
@@ -275,7 +275,7 @@ export function resolveFocusTarget(
 | ラグランジュ点の id が偶然 `frameRoleOf` にマッチしてしまう命名(将来 id 命名規則が変わった場合) | ラグランジュ点フォーカスが役割トークン扱いされ `frameAnchors.stateOf` が `null` を返し、候補配列へ正しくフォールバックはするが `missingFocusFrames` の増減パターンが変わりうる | 通常の使用では気付きにくい。ラグランジュ点を2フレーム以上連続でフォーカスし続ける手動確認でしか出ない |
 | `advanceSimulation` 末尾の `resolve()` 削除により、`_current` の更新タイミングが1呼び出し分だけ遅れる副作用に依存したコードが他にある | 見つかっていない依存があれば、削除後にその消費者だけが古い値を読み続ける(型エラーにならず無言で壊れる) | `grep -rn "displayWindowManager"` は本計画作成時点で `game.ts` 以外に無いことを確認済みだが、今後追加された参照は typecheck では検知できない |
 | `sync()` が `resolve()` を呼ばなくなることで、`update()` と `sync()` の間に(将来)非同期処理や別スレッドの介入が入った場合に古い `_current` を読む | 現時点では JS シングルスレッド・同一 `animate()` 呼び出し内のため安全だが、将来 `sync()` が `requestAnimationFrame` を跨ぐ呼び出しに変わると同じ保証が崩れる | 将来のリファクタリングでしか露見しない。コード上のコメントで前提(同一 animate() 呼び出し内であること)を明記しておく必要がある |
-| 純粋関数の候補配列の型に `MapPickable` を使ってしまう | `map-pickable.ts` が `camera-system.ts` を型 import し、それが `three/webgpu` を引き込むため、`tsconfig.test.json` の型検査が DOM 定義を要求して壊れる。**実測で 887 件のエラー** | `npm run test:physics`(`tsc -p tsconfig.test.json`)。`npm run typecheck` は本体の tsconfig を使うので**通ってしまい、気付けない** |
+| 純粋関数の候補配列の型に `ObjectPickable` を使ってしまう | `object-pickable.ts` が `camera-system.ts` を型 import し、それが `three/webgpu` を引き込むため、`tsconfig.test.json` の型検査が DOM 定義を要求して壊れる。**実測で 887 件のエラー** | `npm run test:physics`(`tsc -p tsconfig.test.json`)。`npm run typecheck` は本体の tsconfig を使うので**通ってしまい、気付けない** |
 | ステップ1のテストを、修正後のコードだけで書いて通して満足する | 候補配列と `frameAnchors.stateOf` が同じ位置を返すスタブを書くと、順序をどちらにしても通る。バグを当てないテストが残り、同じ退行を将来素通りさせる | 着手時に修正前のコードで落ちることを確認しないと、どこにも現れない |
 
 ## 未確定の案(戦闘ビュー)

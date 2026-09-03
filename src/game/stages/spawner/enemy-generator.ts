@@ -7,12 +7,12 @@
 // 寄せていない — 緯度による基準面のずれ(赤道 +7km / 極 -14km)は、出現高度に持たせた余裕に
 // 埋もれる大きさに収まる。地球以外を主星とするステージで敵を出すなら、この前提ごと組み直す。
 import * as THREE from 'three/webgpu';
-import { qFromForwardUp, randomQuat, type Quat } from '../../../physics/attitude';
+import { qFromForwardUp, randomQuat, type Quat } from '../../../math/quat';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../celestial/solar-system/constants';
 import { stateFromOrbitalElements } from '../../../physics/elements';
 import { randSym } from '../../../math/random';
-import { addScaled, len, norm, rotateAxis, scale, v3, type Vec3 } from '../../../math/vec3';
+import { addScaled, len, norm, rotateAxis, scale, sub, v3, type Vec3 } from '../../../math/vec3';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
@@ -67,7 +67,7 @@ export function proteinFormationSpawns(
   name: string, centerState: KinematicState, playerPosition: Vec3, display: ProteinDisplaySettings, formationId: string,
   worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene,
 ): readonly { assetId: ProteinAssetId; build: () => Enemy }[] {
-  const towardPlayer = norm(v3(playerPosition.x - centerState.r.x, playerPosition.y - centerState.r.y, playerPosition.z - centerState.r.z));
+  const towardPlayer = norm(sub(playerPosition, centerState.r));
   const offset = 450;
   const shieldState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, offset), centerState.v);
   const energyState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);

@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
-import { Attitude, qRotate } from '../../physics/attitude';
-import { Vec3, dot, v3 } from '../../math/vec3';
+import { Attitude } from '../../physics/attitude';
+import { LOCAL_UP, qRotate } from '../../math/quat';
+import { Vec3, dot } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/srp';
 import type { PowerSaveData } from '../save/save-data';
 import { RADIATOR_DEPLOY_TIME } from './radiator';
@@ -60,7 +61,7 @@ export class PowerSystem {
 
     const deployMult = (this.panels.up.deploy + this.panels.down.deploy) / 2;
 
-    const normal = qRotate(att.q, v3(0, 1, 0));
+    const normal = qRotate(att.q, LOCAL_UP);
     // 裏面(法線が太陽と反対を向く)では発電しないため負値を0に切り詰める
     const cosIncidence = Math.max(0, dot(normal, sunDir));
     // 展開度 deployMult を掛けて、収納時は発電しないようにする

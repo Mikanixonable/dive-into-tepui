@@ -15,6 +15,7 @@ import { FloatingOrigin } from '../../camera/floating-origin';
 import { CurveColorSampler } from '../../../render/curve';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import type { RenderStyle } from '../../../render/render-style';
+import type { View } from '../../view/view';
 import { SCHEMATIC_LINE } from '../../../render/schematic-style';
 import { GuideCurve } from './guide-curve';
 import {
@@ -220,9 +221,9 @@ export class OrbitGuideLines {
   }
 
   public sync(
-    style: RenderStyle, displayTime: number, overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera,
+    style: RenderStyle, displayTime: number, view: View, fo: FloatingOrigin, camera: THREE.Camera,
   ): void {
-    if (!overviewMode || !this.settings) {
+    if (view !== 'map' || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
       // マーカーは InstancedPool が前のフレームの行列を保つので、空のフレームを1つ流して消す。
       this.markers.beginFrame();
@@ -273,7 +274,7 @@ export class OrbitGuideLines {
     this.markers.endFrame();
   }
 
-  // 表示中のガイド線を、当たり判定向けの識別情報付きで返す(マップ視点外・0本の間は空)。
+  // 表示中のガイド線を、当たり判定向けの識別情報付きで返す(マップビュー外・0本の間は空)。
   // sampleCount は1本を何分割して点列に落とすか — クリック位置を拾う細かさを決めるだけで、
   // 描かれる線の細かさとは無関係。
   public visibleLines(sampleCount: number): readonly VisibleGuideLine[] {

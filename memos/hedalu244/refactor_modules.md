@@ -80,7 +80,7 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 
 | # | 論点 | 診断 | 規模 | 優先 |
 | --- | --- | --- | --- | --- |
-| 1 | `MapPickable.kind` の 10 値 union | **多態で分ける** | 7モジュール 2,177行 / 分岐65箇所 | **実施済** |
+| 1 | `ObjectPickable.kind` の 10 値 union | **多態で分ける** | 7モジュール 2,177行 / 分岐65箇所 | **実施済** |
 | 2 | BVH・三角形衝突の重複実装 | **重複の解消 + 置き場所** | 2モジュール 825行 | **実施済** |
 | 3 | `base-station-model.ts` の 845 行 1 関数 | **手続きの切り出し** | 852行 | **実施済** |
 | 4 | `game/const.ts` の 104 定数 | **所有者へ戻す** | 319行 / 参照76モジュール | **実施済** |
@@ -92,81 +92,84 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 | 10 | 「ラベル付き入力行」の重複 | **共通化(要判断)** | 4箇所 | 中 |
 | 11 | `view-hud-controller.ts` | **たらい回し。畳む** | 32行 | **実施済** |
 | 12 | `partFromSaveData` の8分岐 | **全腕同一。畳む** | parts.ts:79-90 | **実施済** |
-| 13 | `overviewMode` が23モジュールの署名に漏れる | **要判断(保留)** | 署名23 / 分岐28 | 要相談 |
+| 13 | `overviewMode` が23モジュールの署名に漏れる | **経路ごとに分ける** | 署名23 / 分岐28 | **実施済** |
 | 14 | `DynamicSystem` の種別手展開 | **要判断(保留)** | 575行 | 要相談 |
 | 15 | 「戦闘/マップ」の軸に**5つの語彙** | **型の重複。1つに畳む** | 型4 + boolean 1 | **実施済**(型4→1。boolean は論点13) |
 | 16 | エンティティ種別の語彙が**5つ** | **型の重複。1つに畳む** | 型5 | **実施済** |
 | 17 | `OrbitAnalysisWindow` のタブが**半分だけ切り出し** | **多態で分ける** | 466行 / 分岐約30 | **実施済** |
 | 18 | `Player`/`Base` を消費側が `instanceof` で判別し直す | **多態の復元** | 26箇所 / 11モジュール | **実施済** |
 | 19 | その他の重複 union(`L1..L3` 等) | **型の重複。1つに畳む** | 3組 | **実施済** |
-| 20 | `MapCamera` の2つの非 on/off 2分 | **要検討** | 531行 / 分岐12 | 低 |
+| 20 | `MapCamera` の2つの非 on/off 2分 | **実測し、残すと判定** | 531行 / 分岐12 | **決着** |
+| 21 | 大気の有無を天体 id で判定し、根拠に存在しない記述を引く | **仕様どおりデータへ問う** | plan-editor.ts 1箇所 | 要相談(挙動が変わる) |
+| 22 | 「どの基地のパネルが出ているか」が3箇所にある | **正本を1つにする** | 3モジュール | 中 |
+| 23 | カメラの回転追従が6モジュールに散り、表示名が2実装 | **正本を1つにする** | 6モジュール / 約120行 | 中 |
 
 ---
 
-## 論点1 — `MapPickable.kind` の 10 値 union(実施済)
+## 論点1 — `ObjectPickable.kind` の 10 値 union(実施済)
 
 論点7・16 と合わせて1つの計画として実施した(`a77c1cc4` ‥ `57ffe943` の10手順)。
 `npm run typecheck` / `npm run test` 653件 通過。**実行時の目視確認は未実施。**
 
-- `MapPickKind`(10値)は消えた。`MapPickable` は identity / 位置 / 可視 / 一覧 / 操作の口を持つ
+- `MapPickKind`(10値)は消えた。`ObjectPickable` は identity / 位置 / 可視 / 一覧 / 操作の口を持つ
   interface になり、`Player` / `Enemy` / `Base` / `AmmoPickup` / `RcsFuelPickup` /
   `CelestialEntity` と、新設した `ApsisMarker` / `RelativeNodeMarker` / `EquatorNodeMarker` /
   `LagrangePointMarker` / `EmptySpacePickable` が実装する。冒頭の表の 86 箇所の `kind` 分岐は 0 件。
 - `pickable/map-pickable-menu.ts`(463)/ `map-property-rows.ts`(233)/ `marker/pick-glyphs.ts`(48)/
   `camera/focus-markers.ts`(517)は削除。天体ラベルは `marker/celestial-markers.ts` +
   `celestial-sub-labels.ts` へ移り、`camera/` から天体ラベルの知識が消えた(論点7)。
-- 操作の受け口は `pickable/map-commands.ts` の `MapCommands`。実体は `Docking` / `PlanEditor` /
+- 操作の受け口は `pickable/object-commands.ts` の `ObjectCommands`。実体は `Docking` / `PlanEditor` /
   `Hud` を値 import できない(実行時循環)ので、この口だけを見る。
 - 候補列のキャッシュ(`itemRecords` / `cachedBodyPickables` / `syncVisibility`)は全廃した。
   「画面に出ているか」の正本は `MarkerManager.shows(key)` 1つ。
-- ピックは「マーカー → 本体」の2段になった(SPEC/MAP.md §11)。`MapPickable.hitBodyByRay` と
+- ピックは「マーカー → 本体」の2段になった(SPEC/MAP.md §11)。`ObjectPickable.hitBodyByRay` と
   `math/ray.ts` を新設。
 
-行数(下の是正まで含めた現在値): `map-context-actions.ts` 687→556、`map-pickables.ts` 262→117、
-`focus-markers.ts` 517→0、`player.ts` 625→777、`base.ts` 376→512。**実体側が伸びるのは
-織り込み済み**(1ファイルが1つの物体を言い切る形になるための増加)。
-`map-context-actions.ts` だけが見込み(350前後)を外し、`MapCommands` の実装21メンバーが
-残って 550 行台で止まっている。
+行数(下の是正まで含めた現在値): `object-windows.ts` 687→407、`map-picking.ts` 174(新設)、
+`object-pickables.ts` 262→107、`focus-markers.ts` 517→0、`player.ts` 625→777、
+`base.ts` 376→512。**実体側が伸びるのは織り込み済み**(1ファイルが1つの物体を言い切る形に
+なるための増加)。ウィンドウ台帳側が見込み(350前後)を外して 550 行台で止まっていたのは、
+マップ専用のヒットテストと軌道物体一覧を `map-picking.ts` へ割って解消した。
 
 ### 実施後に `/refactor` / `/comment-cleanup` で直したもの
 
 - **軌道上の点マーカー3種の共通形を抽出。** `ApsisMarker` / `EquatorNodeMarker` /
-  `RelativeNodeMarker` は `runMapMenu` が一字一句同じで、`MapPickable` の定型フィールド・
-  `mapPosAt` / `hitBodyByRay` / `mapVisibility` / `shownOnMap` / `gone` / `sync` / `list*` も
+  `RelativeNodeMarker` は `runMenu` が一字一句同じで、`ObjectPickable` の定型フィールド・
+  `posAt` / `hitBodyByRay` / `mapVisibility` / `shownOnMap` / `gone` / `sync` / `list*` も
   同形だった。`marker/orbit-point-marker.ts` の `OrbitPointMarker` へ寄せて 391→297 行。
-- `MapPickables` の `items` が `candidateItems` と常に同一参照で、`refresh` 末尾が自己代入
+- `ObjectPickables` の `items` が `candidateItems` と常に同一参照で、`refresh` 末尾が自己代入
   だった(規約 1.6)。フィールドごと削除。
 - `LineOcclusion`(`cameraPos`/`celestialBodies`/`pivot` を束ねるだけの型、参照1箇所)を廃し、
   3引数を直接渡す形に(規約 1.6「情報をまとめるためだけの型を作らない」)。
 - `EquatorNodeMarkerPair.updateOnPath` が同一シグネチャの private `update` を呼ぶだけの
-  ラッパーだった。`MapContextActions.windowKey(target) => target.id` も同じ。どちらも畳んだ。
+  ラッパーだった。`ObjectWindows.windowKey(target) => target.id` も同じ。どちらも畳んだ。
 - 残骸: `focus-target.ts` のコメントが削除済みの `apsis`/`relnode`/`eqnode` を指していた。
   `marker-manager.ts` の `mk-relnode` / `mk-eqnode` はどこからも出力されない CSS クラス名。
-- コメント: `runMapMenu` の説明が5クラスで `MapPickable` の宣言と一字一句同じ(規約 3.3-12)。
+- コメント: `runMenu` の説明が5クラスで `ObjectPickable` の宣言と一字一句同じ(規約 3.3-12)。
   `line-pickable.ts` の命名の弁明(3.4)、`combat-pick.ts` の他モジュールとの対比(3.3-8)、
   モジュール冒頭の「〜は X が持つ」「〜だけを持つ」(3.3-2/8)を除去。
 
 ### 宿題 — この再編が残した問題
 
-**(a) `MapContextActions` の `Player`/`Base` 判別(実施済)。** 論点18 で片付いた。
+**(a) `ObjectWindows` の `Player`/`Base` 判別(実施済)。** 論点18 で片付いた。
 残る `instanceof` は `relatedItemsFor` の `CelestialEntity` 1箇所で、これは (b) 側。
 
 **(b) `PhysicalObjectListOrder.matches` が `instanceof LagrangePointMarker` /
 `instanceof CelestialEntity` で絞り込んでいる。** `PhysicalObjectListFilter` と
 `ObjectPickerGenre` がほぼ並行な軸を二重に持っている状態。
 
-**(c) `AmmoPickup` と `RcsFuelPickup` の `MapPickable` 実装がほぼ全同。**
-`mapMenuItems` / `runMapMenu` / `listCounted` / `listSearchText` / `mapPropertyRows` が
+**(c) `AmmoPickup` と `RcsFuelPickup` の `ObjectPickable` 実装がほぼ全同。**
+`menuItems` / `runMenu` / `listCounted` / `listSearchText` / `propertyRows` が
 半径と補給量以外は同じ。旧 `switch (kind)` を多態へ開いた副作用。共通の `Pickup` 基底は
 作れるが、規約 1.5 の判断(今後個別に調整されうるか)がコードからは決まらず、
 `SPEC/MAP.md` に「未確定の案」節も無い。**着手前にユーザーへ問う。**
 
-**(d) `MapContextActions.setDocking` は二段初期化**(規約 1.11)。`Docking` の生成順に依存する
+**(d) `ObjectWindows.setDocking` は二段初期化**(規約 1.11)。`Docking` の生成順に依存する
 ので、`Game` の配線を触らないと直らない。
 
 **(e) クロージャ注入が2つ**(規約 1.12)。`OrbitLineWindows` の `openOwnerWindow` と
 `CelestialSubLabels.sync` の `labelStateOf`。どちらも循環依存の回避策で、解くには所有関係の
-見直しが要る。あわせて `MapContextActions` のコンストラクタ引数は16個(規約 1.4)。
+見直しが要る。あわせて `ObjectWindows` のコンストラクタ引数は14個(規約 1.4)。
 
 **(f) 自ファイル内でしか使われていない `export`(実施済)。** `src/` 全体を走査し、他ファイル
 (`src/` `tests/` `tools/` `public/`、コメント中の言及は除く)から一度も参照されない宣言 259 件の
@@ -183,7 +186,7 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 モジュール冒頭が「leap second が要るなら SPICE/offset adapter を渡せ」と文書化している
 provider 拡張点ごと消える。**capability を消すかどうかの判断なので、機械的な (f) からは外した。**
 
-**(g) 戦闘ビューの古い候補列(実施済)。** `MapPickables.refresh` はマップ視点でない回に
+**(g) 戦闘ビューの古い候補列(実施済)。** `ObjectPickables.refresh` はマップ視点でない回に
 `candidateItems` を空にするようになった。`perfCounts` の `mapItems` にあった `overviewMode`
 ガードは冗長になったので外した。これに伴う表示上の帰結が2つ — 戦闘ビューで開いた
 プロパティウィンドウの関連項目は、古い列ではなく空になる。`Game.objectName` は候補列に
@@ -470,8 +473,15 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 `relativeToBody` / `bodyState` を移す。`PlanEditor` は「入力を受けて、選択を管理して、
 編集を呼び、表示を同期する」だけになる。
 
-**単独では優先度が低い。** 論点1〜4 を終えてから、`plan/` 全体(`plan-path.ts` 508行を含む)
+**単独では優先度が低い。** 論点1〜4 を終えてから、`plan/` 全体(`plan-path.ts` 507行を含む)
 をまとめて見るほうが効率がよい。
+
+### 前提の更新(ビュー分離の後)
+
+`plan-editor.ts` は 640 行。計画折れ線・ゴースト・アプシス/接地マーカーは `PlanDisplay`
+(457行、Game 常駐)が持ち、`PlanEditor` はマップ専用の編集だけを持って `MapView` の所有に
+なった。ビュー分岐(`editMode`)は 0 件。**上の5責務の表のうち「ギズモの配線と同期」
+「パネルの同期」「入力の受け口」は残っている** — 症状は縮んだが消えてはいない。
 
 ---
 
@@ -546,53 +556,34 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 
 ---
 
-## 論点13 — `overviewMode` が23モジュールの署名に漏れている(要判断)
+## 論点13 — `overviewMode` が23モジュールの署名に漏れている(実施済)
 
-### 症状
+**`overviewMode` は src/ から 0 件。** 判断が要る点に挙げた3案のうち、
+**「モードを引数で配る」のをやめて「モードごとに違う同期経路を通す」**を採った。
+多態(`CombatTargeter` / `MapTargeter`)は採っていないので、共有状態の正本割れも起きていない。
 
-「マップビューか戦闘ビューか」を表す `overviewMode: boolean` が、引数として層を横断している。
-**boolean 引数の名前を全部集めて署名の出現モジュール数で並べたとき、これが単独で首位。**
-2位の `visible`(22モジュール)は純粋な on/off なのでどこにあっても読めるが、
-`overviewMode` は「AとBのどちらの画面か」という**on/off でない2分**を boolean で表している。
+ビューの軸は `View = 'combat' | 'map'` 1つ(所有者は `game/view/view.ts`)。同じモジュールが
+`ViewFrame` — 遷移フック(canEnter / onEnter / onLeave)・入力とポインタの配分・update / sync の
+各位置・候補列・可視性ポリシー — を宣言し、`CombatView` / `MapView` が実装する。
+`Game` はフレームの固定位置で `viewManager.activeView.<フック>` を呼ぶだけになった。
 
-| 引数 | 署名に現れるモジュール | 分岐箇所 | 判定 |
-| --- | --- | --- | --- |
-| `overviewMode` | 23 | 28 | **疑わしい** — on/off でない2分 |
-| `visible` | 22 | 9 | 容認 — 純粋な on/off |
-| `on` | 10 | 2 | 容認 |
-| `enabled` | 5 | 1 | 容認 |
+旧表の上位モジュールで、ビューを見る分岐がどこへ行ったか:
 
-モジュール別の出現(識別子の全出現):
-
-| モジュール | 行数 | 出現 |
+| モジュール | 旧(`overviewMode` 出現) | 現(`view === …` の箇所) |
 | --- | --- | --- |
-| `game/targeter.ts` | 279 | 26 |
-| `game/camera/camera-system.ts` | 293 | 18 |
-| `game/plan/plan-display.ts` | 424 | 14 |
-| `game/pickable/map-context-actions.ts` | 687 | 12 |
-| `game/game.ts` | 638 | 12 |
-| `game/celestial/celestial-system.ts` | 555 | 9 |
-| `game/marker/marker-manager.ts` | 659 | 8 |
-| `game/lines/entity-line-manager.ts` | 158 | 7 |
+| `game/targeter.ts` | 26 | 2(局所 `mapView` を1回作り、以降は不透明度・遮蔽の値の選択) |
+| `game/camera/camera-system.ts` | 18 | 1(`mapActive` — 2つのカメラ実体のどちらを使うかの選択に閉じた) |
+| `game/plan/plan-display.ts` | 14 | 6 |
+| `game/pickable/object-windows.ts` | 12 | 3 |
+| `game/game.ts` | 12 | **0** |
+| `game/celestial/celestial-system.ts` | 9 | 4 |
+| `game/marker/marker-manager.ts` | 8 | 1 |
+| `game/lines/entity-line-manager.ts` | 7 | 6 |
 
-`targeter.ts` は特に露骨で、`handleTargetSelectKey` は `if (overviewMode) return;` で始まり、
-`updateEquatorNodes` は `if (!overviewMode) return;` で始まり、`syncTargetDirMarkers` は
-`if (overviewMode || …) return;` で始まる。**値を固定すると通らない行が半分近くある。**
-
-### 判断が要る点
-
-- これは**エンティティの種別ではなく、実行時に切り替わる画面モード。**
-  多態にすると `CombatTargeter` / `MapTargeter` の2インスタンスを持ち、
-  ビュー切替のたびに使い分けることになる。**両者が共有する状態
-  (`aliveTarget` / `boardMarks` / マーカーレジストリ)をどちらが持つかを先に決めないと、
-  正本が割れて論点8 と同じ病気になる。**
-- `ViewManager` が既にビューの正本を持っているので、**「モードを引数で配る」のをやめて
-  「モードごとに違う同期経路を通す」形**(論点11 の `Hud.syncPanels` と同じ発想)なら、
-  多態にしなくても分岐は減る。
-- **論点15 と同じ軸なので、先に型を1つに畳んでから考える。** `boolean` のままにするか
-  `WorldView` を渡すかは、型が1つになった後でないと議論できない。
-
-**この論点は、修正方針をユーザーへ問うてから着手する。** 保留。
+**`view: View` を署名に持つモジュールは 24 残っている。** ただし残った分岐はマーカー・線・
+表示物の**値の選択**(記号・不透明度・遮蔽・可視性)で、`RenderStyle`(2値 union、23モジュール、
+各所1〜2箇所)と同じ形 — 下の「分割が正しいと判定したもの」の基準で容認する。
+**振る舞いを分けていた経路はビュー実装へ移り終えた。**
 
 ---
 
@@ -629,8 +620,8 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 同じ2値を組み直していた)も消し、`setPanelCollapsedView` / `hud.setWorldView` へ `this.worldView`
 をそのまま渡す。
 
-**論点13 には触れていない。** `setMapMode(open: boolean)` 3箇所と `overviewMode: boolean` は
-そのまま残してある — 型を `WorldView` へ置き換えるかは論点13 の判断待ち。
+**この時点では論点13 に触れていない。** `overviewMode: boolean` はそのまま残していた —
+その後の決着(型は `View` へ改名、モードは経路ごとに分けた)は論点13 を見る。
 
 型定義だけの変更なので振る舞いは変わらない。`npm run typecheck` / `test:game` 161件 通過。
 
@@ -704,9 +695,9 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 - **ダミー値を 2 つ消した。** `BASE_ARMOR_PLACEHOLDER`(基地の装甲を 1000 で埋めていた)は
   `Base.hp = null` にして TARGET パネルが行ごと畳むようにし、`EMPTY_METRICS` は消えた。
   `Base.fuel`/`maxFuel` は艦と同じ `totalFuel`/`totalMaxFuel` へ改名。
-- **論点1 の宿題 (a) も片付いた。** `MapPickable` に `onMapSelect` / `onMapFocus`
-  (`mapRename` と同じ「持たない対象は `null`」の形)を足し、`MapCommands` へ `hint` /
-  `openProperties` / `selectBase` / `toggleBasePanel` を追加。`MapContextActions` の
+- **論点1 の宿題 (a) も片付いた。** `ObjectPickable` に `onMapSelect` / `onMapFocus`
+  (`rename` と同じ「持たない対象は `null`」の形)を足し、`ObjectCommands` へ `hint` /
+  `openProperties` / `selectBase` / `toggleBasePanel` を追加。`ObjectWindows` の
   `instanceof` は 9 → 1(`CelestialEntity` だけ。これは宿題 (b) 側)。
   `PartWindows.closeForShip(ship)` は `closeFor(shipId)` にした。
 - **資源融通ダイアログの基地半分は到達不能だった。** 入口は自艦の右クリックメニュー1箇所だけで
@@ -753,31 +744,117 @@ RCS燃料の「満タン補給 / 均等」ボタンが「均等」に。
 
 ---
 
-## 論点20 — `MapCamera` の2つの非 on/off 2分(要検討)
+## 論点20 — `MapCamera` の2つの非 on/off 2分(実測して決着)
 
-`game/camera/map-camera.ts`(ファイル625行、`MapCamera` クラス531行・36メソッド)は
-2値の union を2本持っている。
+**対象の名前と規模が変わった。** `MapCamera` は両ビュー共通の `FocusCamera`
+(`game/camera/focus-camera.ts` 846行)になり、`CameraSystem` が戦闘用・マップ用の2インスタンスを
+持つ(`ChaseCamera` / `CombatCameraSystem` は消えた)。**`projectionMode` / `rotationMode` の
+2分はそのまま残っている** — この論点が要求していた実測を取り、残すと判定した。
 
-| フィールド | 型 | 分岐 |
+| 2分 | 片方だけの経路 | 内訳 |
 | --- | --- | --- |
-| `projectionMode` | `ProjectionMode = 'perspective' \| 'orthographic'` | 8 |
-| `rotationMode` | `CameraRotationMode = 'quaternion' \| 'euler'` | 4 |
+| `projectionMode` | 約 35 行 | 平行投影カメラの実体と `orthographicHalfHeight`、`setProjectionMode`、`setFovDeg` の透視ガード、ホイールズームと `metersPerPixel` の各1箇所 |
+| `rotationMode` | 約 60 行 | `CameraEuler` と `eulerPolarAxis` / `eulerBasis` / `eulerFromRotation` / `rotationFromEuler`、`update` のオイラー積分 |
 
-どちらも on/off ではなく「**2つの違うやり方のどちらか**」。とくに `rotationMode` は
-ドラッグ処理(508行・532行)で**別々の積分方式**に分かれる。
-`perspectiveCamera` と `orthographicCamera` の実体も両方保持している。
+**「回転の積分を2つの実装に分ければ 100 行前後が抜ける」という見込みは外れている。** 846 行の
+うち約 60 行で、しかも `eulerFromRotation` はクォータニオン経路でも euler 側を同期するために
+呼ばれるので、切り出しても両方から参照される。投影方式は THREE の2クラスに対応していて両方
+保持を避けにくい、という当初の判定も変わらない。**どちらも「そのままでよい」**(規約 1.2 の
+第3分類)として下の表へ記録し、この論点は閉じる。
+
+---
+
+## 論点21 — 大気の有無を天体 id で判定している(要相談)
+
+`game/plan/plan-editor.ts` の `syncPanel` は、マニューバノードの大気圏警告を
+`center.id === 'earth'` で出している。コメントは根拠として「`CLAUDE.md` 既述」を引くが、
+**`CLAUDE.md` にその記述は無い。** 実際の正本は `SPEC/ORBIT.md`「大気」で、そこは
+**「大気の有無と密度モデルは天体ごとのパラメータである」**と定めている
+(「既定の太陽系では地球だけが大気を持つ」はその上のデータの話)。
+
+つまりコードは、**データが答えるべきことを id のリテラルで先回りしている。**
+`CelestialMotion.atmosphereAt()` が既にあるので、問い合わせに替えられる。
 
 ### 判断が要る点
 
-- 投影方式は THREE の2クラスに対応しているので、**両方保持すること自体は避けにくい。**
-  分岐8箇所のうち「どちらのカメラを返すか」は1箇所に閉じているので、実質の分岐は
-  ズーム操作(522-525)と縮尺計算(578)。**大きくはない。**
-- `rotationMode` のほうが本命。回転の積分だけを2つの実装に分けられるなら、
-  `MapCamera` から 100 行前後が抜ける。
-- **625行のうちどれだけが実際に片方だけの経路か**を測ってから決める。
-  この文書の時点では測っていない。
+- 既定の太陽系では地球だけが大気を持つので、**いま見える挙動は変わらない。** 変わるのは
+  「地球以外に大気を持つ天体を足したとき」で、そのときこの分岐だけが追随しない。
+- 直すと大気を持つ天体すべてで警告が出るようになる。これは仕様に沿う変更だが**挙動の変更**
+  なので、`/modify-feature` を通す。
+- 同種の id リテラルは `pickable/line-pickables.ts` の `return ['earth']`(地球専用の
+  参照軌道)にもある。こちらは「地球に閉じた概念」なので妥当な可能性が高い。
 
-**優先度は低い。** 論点1〜4 を終えてから測り直す。
+**この論点は `/modify-feature` へ回す。** 直す前に、警告の文言が天体名を含むべきかを決める。
+
+---
+
+## 論点22 — 「どの基地のパネルが出ているか」が3箇所にある
+
+同じ事実が3つのモジュールに分かれて持たれている。
+
+| 持ち主 | フィールド |
+| --- | --- |
+| `pickable/object-windows.ts` | `expandedBaseWindowKey: string | null` |
+| `docking/docking.ts` | `_activeBase: Base | null` |
+| `hud/panels/base-view.ts` | `currentBase: Base | null` |
+
+**巻き戻しが片側しか通らない。** `ObjectWindows.collapseBasePanel()` は
+`expandedBaseWindowKey` を null にして `docking.closePanel()` を呼ぶが、`closePanel()` は
+`basePanel.close()` だけで `_activeBase` を戻さない。畳んだ後も `Docking` は基地を指したまま
+残る。`_activeBase` を戻すのは `clearActiveBaseIf()`(艦・基地の消滅経路)だけ。
+
+規約 1.6 の「複数箇所が一定の整合性を保つことを要求されるデータ」で、整合性を保つ責務が
+呼び出し側(`ObjectWindows`)へ漏れている。
+
+### 修正(案。着手前に再検討する)
+
+正本を `BasePanel` が持つものへ寄せ、`Docking._activeBase` を消す。`_activeBase` の読み手は
+`clearActiveBaseIf` 1箇所だけなので、`basePanel` へ問い合わせれば足りる
+(`Docking.activeBase` getter は参照0件だったので既に削除済み)。
+
+**範囲は3モジュール。** `base-view.ts` を含むので、UI の開閉規則(`SPEC/UI-DESIGN.md`)を
+先に読む。
+
+---
+
+## 論点23 — カメラの回転追従が6モジュールに散っている
+
+「視点の向きを何に固定するか」(`CameraRotationFollow` = 公転・自転・姿勢・慣性系)を扱う実装が
+6モジュールにまたがっている。
+
+| モジュール | 持っているもの |
+| --- | --- |
+| `camera/focus-camera.ts` | 型・照合キー・セーブ変換・選択肢の導出(`availableRotationFollows`)・妥当性検査・2フレームの猶予・座標系の差し替え(`setCameraRotation`)。約120行 |
+| `camera/camera-orientation.ts` | 姿勢追従の合成と、生の値の相対/絶対の読み替え |
+| `hud/frame/rotation-zone.ts` | 選択 UI(`CameraRotationZone`)と**表示名** |
+| `hud/frame/frame-labels.ts` | **もう1つの表示名**(`rotationFollowLabel`) |
+| `hud/frame/camera-frame-panel.ts` | 両者の配線 |
+| `hud/panels/vessel-panel.ts` | `combatCamera.rotationFollow?.kind === 'attitude'` の3段掘り |
+
+### 症状 — 同じ選択に2つの表示名が付いている
+
+同じ `CameraRotationFollow` を、座標系パネルの2箇所が別の語彙で表示する。
+
+| 選択 | 要約行(`frame-labels.rotationFollowLabel`) | ボタン(`rotation-zone.followLabel`) |
+| --- | --- | --- |
+| 天体の公転 | 「〈天体名〉回転系」 | 「〈主星〉-〈天体〉回転座標系」 |
+| 天体の自転 | 「〈天体名〉回転系」 | 「〈天体名〉自転座標系」 |
+| 役割の公転 | 「〈役割名〉公転系」 | 「公転」 |
+
+規約 2.1 の「類義語の混雑」で、**利用者から見える差**になっている。公転と自転が要約行では
+同じ「回転系」に潰れる点も、区別すべきものを同じ名前で指している。
+
+### 判断が要る点
+
+- **表示名をどちらの語彙へ寄せるか**は UI の決定なので、`SPEC/MAP.md`「座標系パネル」と
+  `SPEC/CONTROLS.md`「基準フレーム」を先に読む。1つに寄せた後、実装も1つにする。
+- **型・照合キー・セーブ変換を独立したモジュールへ出すか。** いまは `focus-camera.ts` が
+  持っていて、HUD 3モジュールがそこから import している。カメラの実装ではなく
+  「何に追従するかの選択」という値なので、置き場所が `focus-camera.ts` である理由は薄い。
+- **`vessel-panel.ts` の3段掘り**(他モジュールの union の内部タグまで掘って真偽値を組む)は、
+  カメラ側に「姿勢へ追従しているか」を答える口を置けば消える。
+
+ビューの分離とカメラの統合が済んだ後の整理として、次の機会に見る。
 
 ---
 
@@ -812,38 +889,41 @@ RCS燃料の「満タン補給 / 均等」ボタンが「均等」に。
 | `instanceof OrbitingMotion`(13箇所) | 型の絞り込み | 8箇所が `if (!(x instanceof OrbitingMotion)) return/throw` のガードで、**能力の有無**を絞っている。`instanceof Player`/`Base` と違い、分岐の先で別の振る舞いを書いていない |
 | `CelestialClass`(5値)/ `CelestialKind`(3値) | 分類 union | 規約 1.8 が明示的に許可。分類が閉じているという主張そのもの。粒度が違うので2つあってよい |
 | `SolarSide` / `RadiatorSide`(ともに `'up' \| 'down'`) | 値が一致 | 別部品。片方だけ枚数が変わりうるので畳まない(論点19 参照) |
-| `MenuAction`(22値) | 22値 union | メニュー項目の識別子。分岐は**項目ごとの処理**であって、同じ処理が種別で分岐しているのではない。論点1 で各被選択物の `runMapMenu` へ分配済み |
+| `projectionMode`(`'perspective' \| 'orthographic'`、`camera/focus-camera.ts`) | 2値 union | THREE の2クラスに対応していて、両方の実体を持つのは避けにくい。片方だけの経路は 846 行中 35 行(論点20) |
+| `rotationMode`(`'quaternion' \| 'euler'`、`camera/focus-camera.ts`) | 2値 union | オイラー専用は約 60 行。その変換はクォータニオン経路も同期に使うので、切り出しても両方から参照される(論点20) |
+| `MenuAction`(22値) | 22値 union | メニュー項目の識別子。分岐は**項目ごとの処理**であって、同じ処理が種別で分岐しているのではない。論点1 で各被選択物の `runMenu` へ分配済み |
 
 ---
 
 ## 実施順序
 
-**実施済: 論点1 / 2 / 3 / 4 / 7 / 8 / 11 / 12 / 15 / 16 / 17 / 18 / 19。** 残りは 5 / 6 / 9 /
-10 / 13 / 14 / 20。
-
-**論点15 の完了で、ビューの型は `WorldView` 1本になっている。** 論点13 はその前提の上にある。
+**実施済: 論点1 / 2 / 3 / 4 / 7 / 8 / 11 / 12 / 13 / 15 / 16 / 17 / 18 / 19。論点20 は実測して
+「残す」で決着。** 残りは 5 / 6 / 9 / 10 / 14 / 21 / 22 / 23。
 
 1. **論点1 の宿題 (b)** — `PhysicalObjectListOrder.matches` の `instanceof`。論点18 で (a) を
    片付けたときに残した唯一の型判別で、`PhysicalObjectListFilter` と `ObjectPickerGenre` の
    二重の軸をどう畳むかが本体。
 2. **論点1 の宿題 (c)(d)(e)(f')** — **(f)(g) は実施済。** (c) は規約 1.5 の判断が要るので
    **着手前にユーザーへ問う。**(f') も同じく判断待ち — `physics/time/index.ts` の TDB 変換一式を
-   capability ごと消すかどうか。(d)(e) は `Game` の配線に触るので、単独では割に合わない —
-   `map-context-actions.ts` を 400 行未満へ割る判断(= `MapCommands` の実装をウィンドウ台帳から
-   引き剥がすか。剥がすと台帳へのコールバックが増えるので、論点1 ではあえて同居させた)と
-   同時に決める。
+   capability ごと消すかどうか。(d)(e) は `Game` の配線に触るので、単独では割に合わない。
+   同時に決めるはずだった「`object-windows.ts` を 400 行未満へ割る」は先に片付いた —
+   マップ専用のヒットテストと軌道物体一覧を `map-picking.ts` へ出して 407 行になり、
+   `ObjectCommands` の実装は台帳へのコールバックを増やさないためウィンドウ台帳と同居のまま。
 3. **論点6**(`marker-manager` のラベル間引き)— **論点7 の完了で前提が変わった。**
    `focus-markers.CrowdingGrid` は `marker/crowding.ts`(122行)へ移り、間引きの実装は
    `marker-manager.thinByPriority` / `crowding.CrowdingGrid` / `grouped-markers` の3つ。
    `marker-manager.ts` は 670 行で `relaxLabelRects` の 134 行 1 メソッドも残っている。
    **切り出しと、3実装の統合可否(先に SPEC/MAP.md 7.2 を読む)を1回で決める。**
 4. **論点5**(`hud/style/` 22→10)/ **論点10**(ラベル付き入力行)— 独立。手が空いたときに。
-5. **論点9**(`plan-editor` 718行)— `plan/` 全体(`plan-path.ts` を含む)を見るときに。
-6. **論点13 / 14 / 20** — 方針をユーザーへ問うてから。
-   - **論点13** は論点15 の完了で議論の前提が揃った。ただし `overviewMode: boolean` は
-     署名 23 → 25 モジュールへ広がっている(再編で `MapCommands.overviewMode` が増えた)。
-     `boolean` のままにするか `WorldView` を渡すか、`ViewManager` 経由で経路ごと分けるか。
-   - **論点20** は先に実測(`MapCamera` 625 行のうちどれだけが片方だけの経路か)が要る。
+5. **論点9**(`plan-editor` 640行)— ビュー分離で編集専用まで縮んだので、残るのは
+   ギズモ・パネル・入力の受け口の同居。`plan/` 全体(`plan-path.ts` を含む)を見るときに。
+6. **論点22**(基地パネル状態の三重持ち)— 巻き戻しが片側しか通らないので、実挙動に効く。
+   `SPEC/UI-DESIGN.md` の開閉規則を読んでから。
+7. **論点23**(回転追従の散らばり)— 表示名の食い違いが利用者から見えるので、まず語彙を
+   `SPEC/` で決める。実装の集約はその後。
+8. **論点14** — 方針をユーザーへ問うてから。`SPEC/` の「未確定の案」に、エンティティ種別が
+   今後増えるかの記述があるかを先に見る。
+9. **論点21** — `/modify-feature` 案件。仕様は既に決まっているので、決めるのは警告文言だけ。
 
 各段階の検証は変更箇所に対応させる(`npm run typecheck` は常に。`src/game/` を触ったら
 `npm run test:game`、`src/physics/`・`src/math/` を触ったら該当層)。**main へ送る前は

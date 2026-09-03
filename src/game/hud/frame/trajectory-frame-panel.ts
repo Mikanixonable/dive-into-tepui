@@ -1,11 +1,11 @@
-// マップモードの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
+// マップビューの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
 import { FrameRole, frameRoleOf } from '../../../physics/frame';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../widgets';
 import { frameRoleName, rotationSourceLabel } from './frame-labels';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapPickable } from '../../pickable/map-pickable';
+import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../overlay-manager';
 import { buildPanel } from './frame-controls';
@@ -64,14 +64,11 @@ export class TrajectoryFramePanel {
     return `基準: ${planCenter}・${rotationSourceLabel(this.celestialSystem, planRot)}`;
   }
 
-  // パネルの表示と各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。
+  // 各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。
   public sync(
-    pickables: readonly MapPickable[], members: readonly string[], displayTime: number,
-    validRoles: readonly FrameRole[], isVisible: boolean,
+    pickables: readonly ObjectPickable[], members: readonly string[], displayTime: number,
+    validRoles: readonly FrameRole[],
   ): void {
-    this.panel.classList.toggle('hidden', !isVisible);
-    if (!isVisible) return;
-
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
     this.planCenterZone.setSelected(this.displayWindow.frame.center);
