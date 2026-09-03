@@ -88,37 +88,6 @@
 
 ## 手順
 
-### 手順3. `sync()` の引数を、実際に読む値まで絞る
-
-**目的.** `CameraSystem` を丸ごと受けて `mapCamera.dist` しか読まず、`simTime` を引数と
-フィールドの両方に持っている状態をやめる。正データを1箇所にする(規約1.6)。
-**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `plan-editor.ts:613` | `public sync(mapDist: number, fo: FloatingOrigin): void` へ変える。`simTime` 引数を消し、`syncPanel` は `this.simTime` を読む |
-| `plan-editor.ts:547` | `private syncPanel(ship: Controllable): void` へ変える |
-| `plan-editor.ts:15` | `import type { CameraSystem }` を消す |
-| `src/game/view/map-view.ts:120` | `this.editor.sync(this.cameraSystem.mapCamera.dist, fo)` へ変える |
-
-**この変更が成り立つ根拠(着手前に再確認する).** `Game.update()` が
-`viewManager.activeView.update(displayWindow)`(`game.ts:439`)で `PlanEditor.simTime` を書き、
-同じ `animate()` の中で `Game.sync()` が `displayWindowManager.current` の同じ `displayWindow` を
-`syncPanels` へ渡す(`game.ts:547-551` のコメントが同一呼び出し内であることを明記している)。
-ビュー切替は `handleInput`(`game.ts:400`)で終わっているので、`MapView.syncPanels` が走る
-フレームでは必ず `MapView.update` が先に走っている。
-
-**達成条件と検証**
-
-- `grep -n "CameraSystem" src/game/plan/plan-editor.ts` が 0件。
-- `npm run typecheck` が通る。
-- `npm run dev` でマップモードへ入り、カメラをズームイン/アウトして矢印ハンドルの間隔と
-  3D 矢印の見かけサイズが変わることを目で見る(`mapDist` が届いていることの確認)。
-
----
-
 ### 手順4. Δv アームのドラッグ状態を1つにし、伸縮の演出を `PlanGizmo3D` へ下ろす
 
 **目的.** `latch` と `activeAxis` が保つべき不変条件を読む側から取り除き、「どれだけ伸ばすか」を
