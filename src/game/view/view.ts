@@ -5,7 +5,7 @@ import type { FloatingOrigin } from '../camera/floating-origin';
 import type { Input } from '../../input/input';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { PerfCounts } from '../../perf-meter';
+import type { PerfCounts } from '../perf-counts';
 
 export type View = 'combat' | 'map';
 

@@ -12,7 +12,7 @@
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { positionView, uniform, vec3, vec4 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { extentForTexel } from '../shadow-demand';
 import type { FloatNode, FloatUniform, Mat4Uniform } from '../tsl-types';
 import { SUN_SHADOW_CASTER_LAYER } from './lit-layer';

@@ -19,7 +19,7 @@ import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { UiSfx } from '../audio/sfx/ui-sfx';
 import type { GameScene } from '../render/scene';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
-import type { FrameSections } from '../frame-sections';
+import type { FrameSections } from '../game/frame-sections';
 import type { CelestialSystem } from '../game/celestial/celestial-system';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';

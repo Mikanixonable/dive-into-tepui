@@ -22,7 +22,7 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { ViewFrame } from './view';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { PerfCounts } from '../../perf-meter';
+import type { PerfCounts } from '../perf-counts';
 
 export class CombatView implements ViewFrame {
   private readonly planGuide: PlanGuide;

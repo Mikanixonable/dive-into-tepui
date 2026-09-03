@@ -151,6 +151,17 @@ src/
 | 2. `theme.ts` を `src/` 直下へ移す | `a1fe33f1` |
 | 3. `input/` を `src/` 直下へ、`TouchControls` を `game/hud/` へ | `f0c12eaa` |
 | 4. `src/hud/` を作り、共有の画面部品を移す | `50831e04` |
+| 5. 画面の器を `HudShell` として切り出す | `9165c170` |
+
+**計画から外れた点(手順5)。** 2 つ。
+
+- **`Hud` は `root` / `layers` / `overlayManager` を捨てず、`shell` を返す getter として残した。**
+  捨てると `game/` の 20 箇所が `hud.shell.layers.popup` になる。器のレイヤはゲームの HUD の
+  レイヤでもあるので、ゲーム側の呼び出しは変えない。保持はしないので正本は器の側だけにある。
+- **`HudShell` は CSS を注入しない。** 器のぶんだけを切り出すには `skeleton-style.ts`
+  (`#hud` の骨格とゲームのレール/バッジが同居)と `layout-tokens.ts` を割る必要があり、
+  カスケードの順序を崩す risk に見合わない。スタイルシートはいまどおり `hud-root.ts` が
+  1 枚にまとめて注入する。**共有部品だけを載せる画面が現れたときに割る。**
 
 ## 残った目視確認
 
@@ -169,77 +180,13 @@ src/
    ③設定ビューの 3 タブ(配色・描画・BGM)、④F9 のセーブブラウザ、⑤負荷確認ウィンドウ
    (`?perf=1`)、⑥タイトル画面、⑦**決着後の結果画面**(CSS の注入元が `ResultScreen` へ移った)、
    ⑧ステージ状態表示(画面下中央)。いずれも枠線・余白・配置が従来どおりであること。
+5. **(手順5)** 重なり順を目で見る。①ゲーム中に軌道解析ウィンドウを開き、その上へ ESC メニューが
+   出る、②ESC メニューを開いている間、背後の HUD がクリックを受けない、③F9 のセーブブラウザが
+   ESC メニューと同じ帯に出て、開くと ESC メニューが閉じる、④決着後の結果画面が全ての窓より
+   前に出る、⑤トーストが結果画面より手前に出ない、⑥タイトル画面(`?title=1`)で ESC メニューが
+   選択画面の上に出る。
 
 ## 手順
-
-### 手順5. `HudShell` を切り出し、ランの外側の画面が `Hud` を持たなくなるようにする
-
-**目的.** `game/hud/hud.ts` の `Hud` は `:15` で `import type { Game }` しているので、
-`launcher/` がこれを持つと launcher → game 内部の依存になる。しかし launcher が実際に使うのは
-`layers.system` `layers.window` `overlayManager` の 3 つだけ(`main.ts:123,124,182,193`、
-`result-screen.ts:34,53`、`launcher.ts:121`)。**`#hud` ルート・レイヤ台帳・OverlayManager を
-`HudShell` として切り出し、`main.ts` がこれを作って `Hud` と launcher 側の双方へ渡す。**
-`Hud` の寿命も、`Hud.hint()/toast()` の 87 箇所の呼び出しも変えない。
-**この時点で挙動は変えない。**
-
-**新しい API**
-
-```ts
-// src/hud/hud-shell.ts (新規)
-// #hud ルートと重なり順のレイヤ、モーダルの排他制御を持つ画面の器。
-// ゲームの HUD もランの外側の画面も、この上に載る。
-export class HudShell {
-  readonly root: HTMLElement;
-  readonly layers: OverlayLayers;
-  readonly overlayManager: OverlayManager;
-  constructor(renderStyle: RenderStyleSetting);
-}
-
-// src/hud/hud-element.ts (新規) — hud-root.ts:43 の createHudElement を共有へ出す
-export function createHudElement(
-  tag: string, id: string, parent: HTMLElement, className?: string,
-): HTMLElement;
-```
-
-```ts
-// src/game/hud/hud.ts
-export class Hud {
-  constructor(shell: HudShell, renderStyle: RenderStyleSetting);
-  readonly shell: HudShell;
-  // root / layers / overlayManager は shell 経由で読む。Hud からは公開しない。
-}
-
-// src/game/hud/hud-root.ts
-export function buildHudDom(shell: HudShell, renderStyle: RenderStyleSetting): HudDomRefs;
-```
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/hud/hud-shell.ts`(新規) | `hud-root.ts:409-416` の `injectThemeVariables` / `injectStyle` / `startViewportTracking` / `#hud` 生成 / `renderStyle.subscribe` / `buildOverlayLayers` と、`:426-427` の `#hud-overlay-shield` + `OverlayManager` 生成をここへ移す。注入するスタイルは `LAYOUT_TOKENS_STYLE` `SKELETON_STYLE` `OVERLAY_LAYER_STYLE` `WIDGET_STYLE` と手順4 で割った共有ぶんの `SCREEN_STYLE` `SETTINGS_VIEW_STYLE` |
-| `src/hud/hud-element.ts`(新規) | `hud-root.ts:43` の `createHudElement` を移し、`hud-root.ts` と `HudShell` の双方から使う |
-| `src/game/hud/hud-root.ts` | `buildHudDom(shell, renderStyle)` に変え、上記を削る。残るゲーム側のスタイル(`MARKER_STYLE` `COMBAT_PANEL_ROWS_STYLE` `MAP_PANEL_STYLE` `HELP_PANEL_STYLE` `COMBAT_VIEW_STYLE` `MAP_VIEW_STYLE` + 割った `SCREEN_STYLE` のゲームぶん)は**シェルの注入より後**に注入する。`:434` の `#hud-result` 生成は削る |
-| `src/game/hud/hud.ts` | コンストラクタで `shell` を受け、`root`/`layers`/`overlayManager` の再公開をやめる。`game/` 内でこれらを読んでいる箇所(`game.ts:128,161,256,445`・`plan-editor.ts:96,97`・`pickable/object-windows.ts:86,115`・`pickable/orbit-line-windows.ts:41`・`pickable/part-windows.ts:57`・`docking/docking.ts:91`・`stages/creative-stage.ts:103`)を `hud.shell.*` へ |
-| `src/launcher/result-screen.ts` | `Hud` を受けるのをやめて `HudShell` を受ける。`#hud-result` を自分で `shell.layers.system` へ生成し、手順4 で割った CSS を自分で注入する(`:24,29,39` の `getElementById` はそのまま使えるが、生成元が移る) |
-| `src/launcher/launcher.ts:7,88,121` | `resultScreen` へ渡すのを `shell` にする。`:121` の `this.hud.overlayManager` を `this.shell.overlayManager` へ。`hud` は `new Game(...)` へ渡すためだけに残る |
-| `src/launcher/save-browser/save-browser.ts` | `OverlayManager` の import 元は手順4 で `src/hud/` へ移っている。受け取る引数は変えない |
-| `src/main.ts:120-127,182,193` | `const shell = new HudShell(renderStyle);` を先に作り、`new Hud(shell, renderStyle)`、`PauseMenu` / `SettingsView` / `SaveBrowser` / `PerfMeter` へは `shell.layers.*` `shell.overlayManager` を渡す |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -rn "game/hud/hud'" src/launcher/ src/main.ts` が **`launcher.ts` と `main.ts` の
-  `new Game(...)` 経路だけ**になる(`result-screen.ts` から消える)。
-- `grep -rn "hud-result" src/game/` が 0 件。
-- `npm run test:game` が通る。
-- `npm run dev` で**重なり順を目で確かめる**: ①ゲーム中に軌道解析ウィンドウを開き、その上へ
-  ESC メニューが出る、②ESC メニューを開いている間、背後の HUD がクリックを受けない
-  (遮蔽幕が効いている)、③F9 のセーブブラウザが ESC メニューと同じ帯に出て、開くと
-  ESC メニューが閉じる、④決着後の結果画面が全ての窓より前に出る、⑤トーストが結果画面より
-  手前に出ない。⑥タイトル画面(`?title=1`)で ESC メニューが選択画面の上に出る。
-
----
 
 ### 手順6. `src/` 直下の残りを、それぞれの層へ配る
 

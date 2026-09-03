@@ -26,7 +26,8 @@ export const PROTEIN_MOTION_PHASE_GAINS: Readonly<Record<ProteinPhase, number>> 
 };
 
 // LOD ごとの最小投影直径 [px]。並びは細かい方から粗い方(near→marker)。
-const LODS_FINE_TO_COARSE: readonly ProteinMotionLod[] = ['near', 'medium', 'far', 'marker'];
+// 細かい方から粗い方への並び。LOD の切り替えも計測の集計もこの並びで走る。
+export const LODS_FINE_TO_COARSE: readonly ProteinMotionLod[] = ['near', 'medium', 'far', 'marker'];
 const LOD_MIN_PROJECTED_PX: Readonly<Record<ProteinMotionLod, number>> = {
   near: 160, medium: 40, far: 8, marker: 0,
 };

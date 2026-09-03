@@ -46,7 +46,7 @@ import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
 import type { ProteinLabCaseMetadata } from './protein-cases';
-import type { ProteinMotionFrameSample } from '../../src/protein-motion-metrics';import { HULL_EMISS } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
+import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';import { HULL_EMISS } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
 
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
