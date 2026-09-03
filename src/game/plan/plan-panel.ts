@@ -1,6 +1,5 @@
 // 軌道計画パネル(#hud-plan)の DOM: ノード一覧・噴射後軌道要素・Δv 手動入力欄(数値入力+
-// 長押しボタン)を組み立て、値を書き込む。何を書き込むかの計算(状態から表示値を導く・
-// 入力値をノードへ反映する)は PlanEditor が持ち、このクラスは表示専用。
+// 長押しボタン)を組み立て、渡された表示値を書き込む。
 import { OrbitalElements, apsisAltitudes } from '../../physics/elements';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { Vec3 } from '../../math/vec3';
@@ -28,6 +27,7 @@ interface PlanPanelNodeRow {
 function buildDvButtons(): { row: HTMLElement; buttons: DvButtons } {
   const row = document.createElement('div');
   row.className = 'w-group';
+  // ラベルは「方向 [キー]」
   const mk = (dir: string, key: string): HoldButton => new HoldButton(`${dir} [${key}]`);
   const buttons: DvButtons = {
     pro: mk('PRO', K.dvPrograde.label),
@@ -48,6 +48,7 @@ function buildNumericInput(row: HTMLElement, label: string, color: string, onCom
   line.style.width = '100%';
   line.style.gap = SPACE_2;
   line.style.alignItems = 'center';
+  // 色付きの短いラベル
   const k = document.createElement('span');
   k.className = 'k';
   k.style.width = '28px';
@@ -55,6 +56,7 @@ function buildNumericInput(row: HTMLElement, label: string, color: string, onCom
   k.style.fontWeight = 'bold';
   k.textContent = label;
   line.appendChild(k);
+  // 残り幅いっぱいの数値入力
   const input = new ValueInput({ type: 'number', step: 0.1 }, onCommit);
   input.element.style.flex = '1';
   input.element.style.width = '0';
@@ -116,6 +118,7 @@ export class PlanPanel {
 
   // パネルの DOM を組み立て、右レールへ追加する。
   public constructor(panelRoot: HTMLElement) {
+    // 見出し・本文・編集フォームの器
     this.panel = document.createElement('div');
     this.panel.id = 'hud-plan';
     this.panel.className = 'panel hidden';
@@ -129,6 +132,7 @@ export class PlanPanel {
     this.body = this.panel.querySelector<HTMLElement>('[data-id="planbody"]')!;
     this.editForm = this.panel.querySelector<HTMLElement>('[data-id="planedit"]')!;
 
+    // ノード位置(ΔT)の入力行
     const positionRow = document.createElement('div');
     positionRow.className = 'w-group';
     this.positionInput = buildNumericInput(positionRow, 'ΔT', 'var(--text)', () => {
@@ -136,6 +140,7 @@ export class PlanPanel {
     });
     this.editForm.appendChild(positionRow);
 
+    // Δv の PRO/NRM/RAD 入力行
     const dvTitle = document.createElement('div');
     dvTitle.style.fontSize = FONT_XXS;
     dvTitle.style.color = 'var(--text-dim)';
@@ -143,6 +148,7 @@ export class PlanPanel {
     dvTitle.textContent = 'マニューバ Δv (m/s)';
     this.editForm.appendChild(dvTitle);
 
+    // 3成分をまとめて通知する(空欄は 0)
     const onInputChange = () => {
       this.onDvInputChange?.(
         parseFloat(this.proInput.element.value) || 0,
@@ -157,6 +163,7 @@ export class PlanPanel {
     this.radInput = buildNumericInput(dvRow, 'RAD', AXIS_RADIAL, onInputChange);
     this.editForm.appendChild(dvRow);
 
+    // 長押しボタン
     const { buttons } = buildDvButtons();
     this.dvButtons = buttons;
 
