@@ -13,6 +13,7 @@ import { Projected } from '../../math/projection';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
+import { MARKER_PRIORITY } from './crowding';
 import { LabelDeclutter, canHideIconClass, isCombatClass } from './label-declutter';
 import { LabelLayout } from './label-layout';
 import { strongestAttractor } from '../../physics/attractor';
@@ -20,23 +21,6 @@ import { CelestialMotion } from '../../physics/celestial-motion';
 
 // 方向マーカーを投影する仮想距離 [m]。実在の位置ではなく方向のみを示す。
 export const MARKER_DIR_DIST = 5e4;
-
-// マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
-export const MARKER_PRIORITY = {
-  STAR_PLANET: 5000,
-  DWARF_PLANET: 4000,
-  SATELLITE_SMALL_BODY: 3000,
-  LAGRANGE: 2000,
-  PRIMARY_TARGET: 900,
-  IMPACT: 850,
-  BASE: 700,
-  PLAYER: 600,
-  ENEMY: 500,
-  AMMO: 300,
-  MANEUVER_NODE: 150,
-  ORBITAL_NODE: 100,
-  PROTEIN_SITE: 50,
-} as const;
 
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 const MARKER_BEARING_RING_RATIO = 0.8;
