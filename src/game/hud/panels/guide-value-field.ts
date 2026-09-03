@@ -1,6 +1,6 @@
 // 軌道ガイドの設定行に使う「スライダー+数値入力」と色入力の部品。値そのものの意味(0〜1 の
 // 族範囲、対数の振幅、位相のラジアン)は写像として持ち、行の組み立てと同期を1箇所へ集約する。
-import { Button, Slider, ValueInput } from '../widgets';
+import { buildLabeledRow, Button, Slider, ValueInput } from '../widgets';
 import {
   MAX_LINES_PER_KIND, MAX_ZERO_VELOCITY_CURVES, type DirectionMarkerMode,
 } from '../../celestial/orbit-guide/orbit-guide-settings';
@@ -107,12 +107,7 @@ export interface ValueField {
 // ラベル+スライダー+数値入力の1行を組む。mapping が値⇔スライダー生値⇔表示文字列の変換を
 // 持ち、どちらを操作しても他方とonCommitへ揃った値が伝わる。
 export function buildValueField(label: string, mapping: ValueMapping, onCommit: (value: number) => void): ValueField {
-  const row = document.createElement('div');
-  row.className = 'w-group orbit-guide-value-row';
-  const heading = document.createElement('span');
-  heading.className = 'w-group-title';
-  heading.textContent = label;
-  row.appendChild(heading);
+  const row = buildLabeledRow(label, 'w-group orbit-guide-value-row');
 
   const sliderCol = document.createElement('div');
   sliderCol.className = 'slider-col';
@@ -176,12 +171,7 @@ export function buildKindRowHeading(
 
 // ラベル+色入力(<input type=color>)の1行を組む。
 export function buildColorField(label: string, value: number, onCommit: (value: number) => void): { readonly row: HTMLElement; readonly input: ValueInput } {
-  const row = document.createElement('div');
-  row.className = 'w-group orbit-guide-color-row';
-  const heading = document.createElement('span');
-  heading.className = 'w-group-title';
-  heading.textContent = label;
-  row.appendChild(heading);
+  const row = buildLabeledRow(label, 'w-group orbit-guide-color-row');
   const input = new ValueInput({ type: 'color' }, (text) => onCommit(Number.parseInt(text.slice(1), 16)));
   input.setValue(hexColorString(value));
   row.appendChild(input.element);

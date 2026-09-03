@@ -7,7 +7,7 @@
 // 族 id(焼き込みカタログのキー)から画面に出す群・表示名を導く対応表は、実在する族を
 // 呼び出し側から受け取った availableFamilies から作る——族の集合を推測でここへ書き写さない。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../widgets';
+import { buildLabeledRow, Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../widgets';
 import {
   AMPLITUDE_MAPPING, COUNT_MAPPING, CYCLES_MAPPING, DIRECTION_ITEMS, OPACITY_MAPPING,
   PHASE_MAPPING, RANGE_MAPPING,
@@ -387,12 +387,7 @@ export class OrbitGuideTab {
     // 軸1つぶんのボタン行。def が持たない軸(entries が空)は行ごと出さない。
     const buildAxisRow = (label: string, entries: readonly (readonly [string, string])[]): void => {
       if (entries.length === 0) return;
-      const row = document.createElement('div');
-      row.className = 'w-group orbit-guide-toggle-row';
-      const rowLabel = document.createElement('span');
-      rowLabel.className = 'w-group-title';
-      rowLabel.textContent = label;
-      row.appendChild(rowLabel);
+      const row = buildLabeledRow(label, 'w-group orbit-guide-toggle-row');
       for (const [value, displayLabel] of entries) {
         const btn = new Button(displayLabel, () => this.commitCombinedAxis(def.key, value, !this.isAxisValueOn(def.key, value)));
         row.appendChild(btn.element);
@@ -469,12 +464,7 @@ export class OrbitGuideTab {
     });
 
     // 起動する共線点(L1〜L3)の複数選択トグル。
-    const pointRow = document.createElement('div');
-    pointRow.className = 'w-group orbit-guide-toggle-row';
-    const pointHeading = document.createElement('span');
-    pointHeading.className = 'w-group-title';
-    pointHeading.textContent = '点';
-    pointRow.appendChild(pointHeading);
+    const pointRow = buildLabeledRow('点', 'w-group orbit-guide-toggle-row');
     const pointButtons = new Map<'l1' | 'l2' | 'l3', Button>();
     for (const [key, label] of [['l1', 'L1'], ['l2', 'L2'], ['l3', 'L3']] as const) {
       const btn = new Button(label, () => this.commitLissajous({ [key]: !this.current.lissajous[key] } as Partial<LissajousSettings>));
