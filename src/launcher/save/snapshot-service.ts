@@ -4,7 +4,7 @@ import type { RunSummary } from '../../game/run-summary';
 import { fmtDist, fmtTime } from '../../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
-import { isEphemerisContextRestorable } from '../../game/save/ephemeris-context';
+import { isEphemerisContextRestorable } from '../../physics/ephemeris/ephemeris-context';
 import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData } from '../../game/save/save-data';
 import type { SnapshotKind, SnapshotMeta } from './slot-data';
 
