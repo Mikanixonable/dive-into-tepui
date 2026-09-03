@@ -14,12 +14,16 @@
 
 ## 実施済みの前提
 
-**手順1・2・3 は実施済み。** 間引きは `src/game/marker/label-declutter.ts`(103行)、ラベルの
+**手順1〜4 は実施済み。** 間引きは `src/game/marker/label-declutter.ts`(103行)、ラベルの
 押し出しと引き出し線は `src/game/marker/label-layout.ts`(233行)にある。`MarkerManager` は
 表示中のレコードを集めて `LabelDeclutter.compute` を呼び、返ったキー集合で `priority-hidden` を
 トグルして `prevLabelHidden` を書き戻し、`LabelLayout.sync` へ渡す。`svgOverlay` は
 `LabelLayout` が持つ。`marker-manager.ts` は 400 行。`label-layout.ts` の最長メソッドは
-`pushApartFromNeighbors` の 61 行。`npm run typecheck` / `npm run test:game`(175件)通過。
+`pushApartFromNeighbors` の 61 行。同値 40px は
+`label-declutter.MARKER_CROWDING_PX`(間引きの近接半径)/
+`grouped-markers.CLUSTER_RADIUS_PX`(まとめの半径)/
+`celestial-markers.LABEL_CROWDING_PX`(天体ラベルの名前用半径)の3つに分かれている。
+`npm run typecheck` / `npm run test:game`(175件)通過。
 
 **この worktree には `node_modules` のジャンクションが要る。** 無いと
 `tsconfig.test.json` の `paths`(`./node_modules/@types/three/...`)が解決できず、
@@ -147,30 +151,6 @@ N = そのフレームに表示中のマーカー数。上限は天体・ラグ�
 ---
 
 ## 手順
-
-### 手順4. 「40px」を3つの所有者へ分ける
-
-**目的:** `MARKER_CLUSTER_PX` は現在、間引きの近接半径(472行)と `GroupedMarkers` のクラスタ半径
-(165行)を兼ねている。MAP.md 上は別々の挙動なので、たまたま同じ値なだけである(規約 1.6「たまたま
-同時に切り替わるフラグは別個にする」)。**値は変えないので挙動は変わらない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/marker/label-declutter.ts` | 間引きの近接半径として `MARKER_CLUSTER_PX` / `MARKER_CLUSTER_RELEASE_PX` を持つ(手順1で移設済み)。名前を責務に合わせて見直す。 |
-| `src/game/marker/grouped-markers.ts` | クラスタ半径 40px を自前の定数として持ち、コンストラクタ引数 `clusterRadiusPx`(62-65)を落とす。参照は `isNear`(184-186)と天体ラベル近接判定(164行)の2箇所のみで、どちらもクラス内。 |
-| `src/game/marker/marker-manager.ts` | `new GroupedMarkers(this, MARKER_CLUSTER_PX)`(165行)から第2引数を落とす。 |
-
-`celestial-markers.ts` の `LABEL_CROWDING_PX = 40`(22行)は既に所有者の側にあるので触らない。
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `npm run test:game` が通る。
-- `grep -rn '= 40;' src/game/marker/` が 3 件(`label-declutter.ts` / `grouped-markers.ts` /
-  `celestial-markers.ts`)で、`marker-manager.ts` に現れない。
-- **目視(マップビュー):** 敵機を3隻以上近づけて代表マーカーに "×N" が出ること。
 
 ### 手順5. `MARKER_PRIORITY` を `crowding.ts` へ移す
 
