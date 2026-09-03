@@ -2,7 +2,7 @@
 // 呼ばず、ボタンを押した時点の各選択値をまとめて一度だけ通知する(値入力の確定契約とは別の
 // 規約)。添えなければ選び直した時点で通知する。
 import { Button } from './button';
-import { expandHitTarget, stopDragPropagation } from './widget-base';
+import { buildLabeledRow, expandHitTarget, stopDragPropagation } from './widget-base';
 
 export interface PulldownColumn<T> {
   readonly items: readonly (readonly [T, string])[];
@@ -30,14 +30,7 @@ export class Pulldown<Cols extends readonly PulldownColumn<unknown>[]> {
   // applyLabel に null を渡すと反映ボタンを持たず、選び直した時点で onApply を呼ぶ。
   public constructor(title: string, columns: Cols, applyLabel: string | null, onApply: (values: ColumnValues<Cols>) => void) {
     this.columns = columns;
-    this.element = document.createElement('div');
-    this.element.className = 'w-group';
-    if (title !== '') {
-      const heading = document.createElement('span');
-      heading.className = 'w-group-title';
-      heading.textContent = title;
-      this.element.appendChild(heading);
-    }
+    this.element = buildLabeledRow(title);
     this.selects = columns.map((column) => {
       const select = document.createElement('select');
       select.className = 'w-select';
