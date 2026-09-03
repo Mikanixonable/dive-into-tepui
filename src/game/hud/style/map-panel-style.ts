@@ -161,9 +161,8 @@ export const MAP_PANEL_STYLE = `
 #hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
 
-/* 軌道ガイドタブ(.orbit-guide-*)。 */
-/* 軌道ガイドタブ: 種類ごとの区画(見出し+軸行+値行)。独立トグル行(系/点/南北)は
-   見出し+ボタン列を折り返す。 */
+/* 軌道ガイドタブ(.orbit-guide-*): 種類ごとの区画(見出し+軸行+値行)。
+   独立トグル行(系/点/南北)は見出し+ボタン列を折り返す。 */
 .orbit-guide-tab {
   /* スライダー列の最小幅と、それに添える数値入力欄の幅。 */
   --orbit-guide-slider-min-w: 60px;
@@ -222,8 +221,8 @@ export const MAP_PANEL_STYLE = `
 #hud-stage-controls .stage-control-select .w-select { min-width: 86px; }
 #hud-stage-controls .stage-control-select .w-input { width: 72px; text-align: right; }
 
-/* 物体配置パネル(#hud-object-placer、クリエイティブモード限定)。 */
-/* 物体配置パネル(クリエイティブモード限定): MANEUVER PLAN の下、右上に縦積みする。 */
+/* 物体配置パネル(#hud-object-placer、クリエイティブモード限定): MANEUVER PLAN の下、
+   右上に縦積みする。 */
 #hud-object-placer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
 #hud-object-placer .w-close { border-radius: 50%; }
 #hud-object-placer .shipplacer-btn-row { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
