@@ -13,7 +13,7 @@ import { DebrisPiece } from './dynamic-entity/debris-piece';
 import { Enemy } from './dynamic-entity/enemy';
 import { findEnemyClass } from './dynamic-entity/enemy-dictionary';
 import { ProteinEnemy } from './dynamic-entity/protein-enemy';
-import { isProteinAssetReady, type ProteinAssetId } from '../protein/protein-asset-loader';
+import { isProteinAssetReady, requestProteinAsset, type ProteinAssetId } from '../protein/protein-asset-loader';
 import { Bullet } from './dynamic-entity/bullet';
 import { Base } from './dynamic-entity/base';
 import { DetachedBooster } from './dynamic-entity/detached-booster';
@@ -159,6 +159,8 @@ export class DynamicSystem {
       onSpawned?.();
       return;
     }
+    // 積むだけでは誰も取りに行かないので、待ちに入れるのと同時に取得を起こす。
+    void requestProteinAsset(assetId);
     this.pendingEnemySpawns.push({ assetId, build, onSpawned });
   }
 
