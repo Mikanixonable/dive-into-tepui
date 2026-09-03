@@ -1,7 +1,7 @@
 // マップビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
 import { MapPicking } from '../pickable/map-picking';
-import type { Input } from '../input/input';
+import type { Input } from '../../input/input';
 import type { Hud } from '../hud/hud';
 import type { CameraSystem } from '../camera/camera-system';
 import type { CelestialSystem } from '../celestial/celestial-system';

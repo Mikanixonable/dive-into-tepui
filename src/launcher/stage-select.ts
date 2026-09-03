@@ -8,7 +8,7 @@ import { Button, TabBar, ValueInput } from '../game/hud/widgets';
 import {
   calendarDateToJulianDate, julianDateToCalendarDate, parseCalendarDate, TdbJulianDate,
 } from '../physics/time';
-import { KEY_MAPPING as K } from '../game/input/key-mapping';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { MQ_COMPACT, MQ_SHORT } from '../game/hud/breakpoints';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import {
