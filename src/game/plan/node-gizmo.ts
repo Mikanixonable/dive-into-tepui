@@ -58,11 +58,12 @@ export interface AxisHandleSpec {
   label: string;
 }
 
-// ラッチ中の Δv アーム。呼び出し側は毎フレーム読み、excessPx に応じたレートで積分する。
-interface AxisLatchState {
+// ドラッグ中の Δv アーム。ラッチ前は変位をそのまま onAxisDrag へ流すので excessPx は null、
+// ラッチ後は基点からの超過量 [px] を載せる(レートでの積分は毎フレーム読み手が行う)。
+export interface AxisHandleDrag {
   readonly axis: 0 | 1 | 2;
   readonly sign: 1 | -1;
-  readonly excessPx: number;
+  readonly excessPx: number | null;
 }
 
 interface NodeEntry {
@@ -88,8 +89,8 @@ export class NodeGizmo {
   onMenuDelete: ((idx: number) => void) | null = null;
   onMenuFocus: ((idx: number) => void) | null = null;
 
-  latch: AxisLatchState | null = null;
-  activeAxis: { axis: 0 | 1 | 2, sign: 1 | -1 } | null = null;
+  // ドラッグ中の Δv アーム。ドラッグしていなければ null。
+  public axisHandleDrag: AxisHandleDrag | null = null;
 
   // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ、
   // popupLayer はノードのコンテキストメニューを置くレイヤ(overlay-layer.ts のレイヤ構造に従う)。
@@ -167,9 +168,8 @@ export class NodeGizmo {
     const count = axes?.length ?? 0;
     while (this.axisEls.length > count) {
       this.axisEls.pop()!.remove();
-      // ラッチを解除できるのは要素自身の pointer イベントだけなので、要素の消滅とラッチ状態は必ず同時に切り替える。
-      this.latch = null;
-      this.activeAxis = null;
+      // ドラッグを終えられるのは要素自身の pointer イベントだけなので、要素の消滅とドラッグ状態は必ず同時に切り替える。
+      this.axisHandleDrag = null;
     }
     if (axes) {
       axes.forEach((a, i) => {
@@ -257,12 +257,11 @@ export class NodeGizmo {
       totalProj = 0;
       lastX = e.clientX;
       lastY = e.clientY;
-      this.activeAxis = { axis, sign };
+      this.axisHandleDrag = { axis, sign, excessPx: null };
       el.setPointerCapture(e.pointerId);
     });
-    // 基点からの累積変位が DV_DRAG_LATCH_PX を超えるとラッチへ入る。ラッチ前は従来通り
-    // 変位そのものを onAxisDrag へ渡し、ラッチ後は超過量を latch として公開するだけにする
-    // (レートでの積分は毎フレーム呼び出し側が行う)。
+    // 基点からの累積変位が DV_DRAG_LATCH_PX を超えるとラッチへ入る。ラッチ前は変位そのものを
+    // onAxisDrag へ渡し、ラッチ後は超過量を axisHandleDrag に載せる。
     el.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       const dx = e.clientX - lastX;
@@ -279,15 +278,14 @@ export class NodeGizmo {
       if (!latched) {
         this.onAxisDrag?.(axis, sign, proj);
       } else {
-        this.latch = { axis, sign, excessPx: Math.abs(totalProj) - DV_DRAG_LATCH_PX };
+        this.axisHandleDrag = { axis, sign, excessPx: Math.abs(totalProj) - DV_DRAG_LATCH_PX };
       }
     });
-    // ドラッグ終了時にポインタキャプチャを解放し、ラッチを解除する。
+    // ドラッグ終了時にポインタキャプチャを解放し、ドラッグ状態を消す。
     const end = (e: PointerEvent): void => {
       dragging = false;
       latched = false;
-      this.latch = null;
-      this.activeAxis = null;
+      this.axisHandleDrag = null;
       try {
         el.releasePointerCapture(e.pointerId);
       } catch {
