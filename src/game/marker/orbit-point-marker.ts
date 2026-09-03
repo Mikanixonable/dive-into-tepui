@@ -4,7 +4,7 @@
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
-import { fmtTime } from '../hud/utils';
+import { fmtTime } from '../../hud/utils';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -12,7 +12,7 @@ import type { ProjectFn } from '../camera/camera-system';
 import type { ObjectCommands } from '../pickable/object-commands';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
-import type { PropertyRow } from '../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
 export abstract class OrbitPointMarker implements ObjectPickable {

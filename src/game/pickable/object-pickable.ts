@@ -14,7 +14,7 @@ import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../hud/object-groups';
-import type { PropertyRow } from '../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window';
 
 export interface ObjectPickable {
   readonly id: string;

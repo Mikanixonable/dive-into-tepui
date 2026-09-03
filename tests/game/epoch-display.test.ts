@@ -1,6 +1,6 @@
 // 表示用 unix 秒への変換。作中日時ラベル(トップバー・PREDICT・目盛り)はすべてここを通る。
 import assert from 'node:assert/strict';
-import { epochUnixSeconds, fmtDateTime } from '../../src/game/hud/utils';
+import { epochUnixSeconds, fmtDateTime } from '../../src/hud/utils';
 import { calendarDateToJulianDate, parseCalendarDate } from '../../src/physics/time';
 import { test } from '../harness';
 

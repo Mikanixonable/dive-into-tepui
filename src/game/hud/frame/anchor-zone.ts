@@ -4,13 +4,13 @@
 import { FRAME_ROLES, frameRoleAnchorId } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import { SegmentedControl } from '../widgets';
-import { injectOnce } from '../widgets/inject-style';
+import { SegmentedControl } from '../../../hud/widgets';
+import { injectOnce } from '../../../hud/widgets/inject-style';
 import { frameRoleName } from './frame-labels';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { groupPickables } from '../object-groups';
 import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
-import type { OverlayManager } from '../overlay-manager';
+import type { OverlayManager } from '../../../hud/overlay-manager';
 
 // プルダウン先頭に置く役割グループ。役割は毎フレーム対象へ解決されるので、乗り換え・付け替えを
 // またいで選択が保たれる(MAP.md 3節)。

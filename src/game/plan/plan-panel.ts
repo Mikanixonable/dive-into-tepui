@@ -5,8 +5,8 @@ import { OrbitalElements, apsisAltitudes } from '../../physics/elements';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { Vec3 } from '../../math/vec3';
 import { AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL } from '../../theme';
-import { HoldButton, ValueInput } from '../hud/widgets';
-import { fmtDist, fmtTime } from '../hud/utils';
+import { HoldButton, ValueInput } from '../../hud/widgets';
+import { fmtDist, fmtTime } from '../../hud/utils';
 import { hudRail } from '../hud/hud-root';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 

@@ -2,7 +2,7 @@
 // 検索・フィルタ・選択ハイライトの状態遷移と DOM 描画を担当する。
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
-import type { OverlayHandle, OverlayManager } from '../overlay-manager';
+import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 import {
   ARROW_KEYS, AUXILIARY_KEYS, BEHAVIOR_LABELS, HELP_CATEGORIES, helpEntries, INPUT_LABELS, KEYBOARD_ROWS,
   entryCodes, entryMatchesCode, normalize, scopeMatches,

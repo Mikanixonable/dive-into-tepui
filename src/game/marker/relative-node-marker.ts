@@ -6,7 +6,7 @@ import { OrbitPointMarker } from './orbit-point-marker';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ObjectCommands } from '../pickable/object-commands';
-import type { PropertyRow } from '../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window';
 
 // 交点種別ごとの、一覧やマーカーで名乗る呼称と、軌道要素としてのラベル。
 const RELATIVE_NODE_LABELS = {
