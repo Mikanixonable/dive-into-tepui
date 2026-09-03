@@ -150,6 +150,7 @@ src/
 | 1. HUD ウィンドウからタイトル画面の知識を落とす | `6f5ec302` |
 | 2. `theme.ts` を `src/` 直下へ移す | `a1fe33f1` |
 | 3. `input/` を `src/` 直下へ、`TouchControls` を `game/hud/` へ | `f0c12eaa` |
+| 4. `src/hud/` を作り、共有の画面部品を移す | `50831e04` |
 
 ## 残った目視確認
 
@@ -164,62 +165,12 @@ src/
 3. **(手順3)** WASD・マウスドラッグ・ホイールズーム・ESC・[R] が従来どおり効く。
    DevTools のデバイスエミュレーションでタッチ端末にし、画面下部の操作パッドが出て、
    戦闘/マップ切替でボタン構成が切り替わる。
+4. **(手順4)** CSS の欠落を目で見る。①ゲーム中 HUD の左右レール・上部バー、②ESC メニュー、
+   ③設定ビューの 3 タブ(配色・描画・BGM)、④F9 のセーブブラウザ、⑤負荷確認ウィンドウ
+   (`?perf=1`)、⑥タイトル画面、⑦**決着後の結果画面**(CSS の注入元が `ResultScreen` へ移った)、
+   ⑧ステージ状態表示(画面下中央)。いずれも枠線・余白・配置が従来どおりであること。
 
 ## 手順
-
-### 手順4. `src/hud/` を作り、共有の部品を移す
-
-**目的.** `game/hud/` の 101 ファイルのうち **30 ファイル(約 1,750 行)は、ゲーム内部への依存を
-1 本も持たず、`launcher/` 側から直接使われている。** これらが `game/` に居るせいで、launcher が
-自分の画面を組むために `game/` を引いている。共有部品として `src/hud/` へ出す。
-**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-移すもの(`git mv`。中身は下記 3 件の切り分けを除き変更しない):
-
-| 移動元 | 移動先 | 根拠 |
-| --- | --- | --- |
-| `game/hud/widgets/` 16 ファイル(860 行) | `src/hud/widgets/` | `widgets/index.ts` を launcher 5 ファイル + `perf-meter.ts:5` が引く。16 ファイルすべて hud 内部で閉じている |
-| `game/hud/overlay-manager.ts`(155) | `src/hud/overlay-manager.ts` | import 0 本。`result-screen.ts:5` `save-browser.ts:10` `perf-meter.ts:11` が引く |
-| `game/hud/overlay-layer.ts`(34) | `src/hud/overlay-layer.ts` | import 0 本。手順5 で `HudShell` が使う |
-| `game/hud/layout.ts`(19) | `src/hud/layout.ts` | import 0 本。`draggable-window` `pause-menu` 等の土台 |
-| `game/hud/viewport.ts`(60) | `src/hud/viewport.ts` | 依存は theme のみ |
-| `game/hud/breakpoints.ts`(26) | `src/hud/breakpoints.ts` | import 0 本。launcher 3 ファイルが引く |
-| `game/hud/windows/property-window*.ts` 5 ファイル(683) | `src/hud/windows/` | `perf-meter.ts:4` が引く。ゲーム内部依存なし |
-| `game/hud/windows/draggable-window.ts`(324) | `src/hud/windows/` | property-window の外枠。唯一の game 依存 `:14` の `CLICK_MOVE_THRESHOLD` は手順3 で `src/input/` へ移っている |
-| `game/hud/windows/shortcut-hint.ts`(7) | `src/hud/windows/` | import 0 本 |
-| `game/hud/windows/pause-menu.ts`(264) | `src/hud/windows/` | 所有者は `main.ts:123`。`game.ts:445` は注入された参照を toggle するだけ |
-| `game/hud/windows/settings-view.ts`(195) | `src/hud/windows/` | 所有者は `main.ts:124`。`game/` からの参照 0 |
-| `game/hud/panels/bgm-settings-panel.ts`(178) `graphics-panel.ts`(92) `theme-panel.ts`(42) | `src/hud/panels/` | SettingsView 専用タブ。依存は `audio/bgm` `render/graphics-settings` `theme` のみ |
-| `game/hud/style/settings-view-style.ts`(167) | `src/hud/style/` | SettingsView の CSS。依存は breakpoints のみ |
-
-切り分けが要るもの(3 件):
-
-| ファイル | 何をするか |
-| --- | --- |
-| `game/hud/utils.ts`(101) | `fmtAmmoStatus`(:87-91)だけが `:3` の `MAG_ROUNDS`(`player/player-fire`)に依存する。**この 1 関数を `src/game/hud/ammo-status.ts` へ切り出し**、呼び手 2 箇所(`panels/vessel-panel.ts:255`・`player/player.ts:775`)を書き換える。残りを `src/hud/utils.ts` へ移す |
-| `game/hud/windows/index.ts`(14) | バレルが `HelpPanel`(view/input 依存)・`ResourceTransferDialog`(player 依存)・`MenuCommon`(pickable 依存)まで再 export しており、**このバレル 1 本で launcher → game 内部の依存が生えている**。`src/hud/windows/index.ts`(PauseMenu / SettingsView / DraggableWindow / PropertyWindow / ShortcutHint)と `src/game/hud/windows/index.ts`(残り)へ割る |
-| `game/hud/style/screen-style.ts`(85) | `:6-23` が `#hud-result`(launcher の画面)、`:51-84` が `#hud-pause-menu`(共有)、`:25-49` が `#hud-stagestatus`(ゲーム)。3 つへ割り、順に `src/launcher/result-screen.ts` の注入・`src/hud/style/`・`src/game/hud/style/` へ置く |
-
-呼び出し元の書き換え: 上記モジュールを指す import は **191 行 / 102 ファイル**
-(内訳: widgets 66・utils 33・overlay-manager 22・property-window 21・breakpoints 19・
-overlay-layer 7・draggable-window 6・layout 4・viewport 4・その他 9)。
-**判断の余地がない一括編集なので、ディレクトリ単位でサブエージェントへ配る**(`/delegate`)。
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -rn "from '.*game/" src/hud/` が 0 件。
-- `grep -rn "game/hud/widgets\|game/hud/utils\|game/hud/breakpoints\|game/hud/overlay-manager\|game/hud/windows/property-window" src/launcher/ src/main.ts src/perf-meter.ts` が 0 件。
-- `find src/hud -name '*.ts' | wc -l` が 31(移した 30 + 切り出した utils の分割先)。
-- `npm run test:game` `npm run test:render` が通る。
-- `npm run dev` で **CSS の欠落を目で確かめる**: ①ゲーム中 HUD の左右レール・上部バー、
-  ②ESC メニュー、③設定ビューの 3 タブ(BGM・描画・テーマ)、④F9 のセーブブラウザ、
-  ⑤負荷確認ウィンドウ(`?perf=1`)、⑥タイトル画面。いずれもボタン・タブ・スライダの
-  枠線と余白が従来どおりであること。
-
----
 
 ### 手順5. `HudShell` を切り出し、ランの外側の画面が `Hud` を持たなくなるようにする
 

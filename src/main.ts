@@ -13,6 +13,7 @@ import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-s
 import { RenderPipeline } from './render/pipeline/render-pipeline';
 import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
+import { HudShell } from './hud/hud-shell';
 import { PauseMenu, SettingsView } from './hud/windows/index';
 import { startProteinAssetPreload } from './game/protein/protein-asset-loader';
 import { AudioEngine } from './audio/audio-engine';
@@ -112,19 +113,20 @@ function startAnimationLoop(
 // pauseMenu も同様に main.ts が所有し、開閉に応じた一時停止の反映
 // (launcher.current?.pause()/resume())も持ち主である main.ts がここで配線する。
 function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting): {
-  hud: Hud; audioEngine: AudioEngine; bgm: Bgm; worldSfx: WorldSfx; uiSfx: UiSfx;
+  shell: HudShell; hud: Hud; audioEngine: AudioEngine; bgm: Bgm; worldSfx: WorldSfx; uiSfx: UiSfx;
   pauseMenu: PauseMenu; settingsView: SettingsView;
 } {
-  const hud = new Hud(renderStyle);
+  const shell = new HudShell();
+  const hud = new Hud(shell, renderStyle);
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine);
   const worldSfx = new WorldSfx(audioEngine);
   const uiSfx = new UiSfx(audioEngine);
-  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager);
-  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm, graphics);
+  const pauseMenu = new PauseMenu(shell.layers.system, shell.overlayManager);
+  const settingsView = new SettingsView(shell.layers.system, shell.overlayManager, bgm, graphics);
   pauseMenu.setBgmVolume(bgm.getVolume());
   pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
-  return { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView };
+  return { shell, hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView };
 }
 
 // 索引を読み、旧セーブを取り込み、遊ぶ先のスロットが必ず1つある状態にする。
@@ -154,11 +156,11 @@ async function main() {
   // 描画品質設定の押し出し先の登録は、設定を持っている側の配線。
   graphics.bind(gs);
   graphics.bind(pipeline);
-  const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, renderStyle);
+  const { shell, hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
-    hud, gs, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView, unlockmanager, sections,
+    shell, hud, gs, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView, unlockmanager, sections,
     pipeline, slots, snapshotService,
   );
 
@@ -179,7 +181,7 @@ async function main() {
     else launcher.current?.resume();
   };
 
-  const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, launcher, hud.overlayManager);
+  const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
@@ -190,7 +192,7 @@ async function main() {
 
   // pipeline は負荷確認ウィンドウのデバッグ表示の選択欄が書き込む先。
   const perf = new PerfMeter(
-    hud.layers.window, gs.renderer, sections, gpu, hud.overlayManager, pipeline, renderStyle,
+    shell.layers.window, gs.renderer, sections, gpu, shell.overlayManager, pipeline, renderStyle,
   );
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   pauseMenu.onOpenPerfWindow = () => {
