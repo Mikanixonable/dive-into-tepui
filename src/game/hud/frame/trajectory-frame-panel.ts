@@ -1,10 +1,10 @@
 // マップビューの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
-import { FrameRole } from '../../../physics/frame';
+import { FrameRole, FrameRotationSource } from '../../../physics/frame';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../widgets';
 import { objectName } from '../object-name';
-import { rotationFollowShortName } from '../../camera/rotation-follow';
+import { availableFrameRotations, rotationFollowShortName } from '../../camera/rotation-follow';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
@@ -14,7 +14,7 @@ import { buildPanel } from './frame-controls';
 export class TrajectoryFramePanel {
   private readonly panel: HTMLElement;
   private readonly planCenterZone: AnchorZone;
-  private readonly planRotationZone: RotationZone;
+  private readonly planRotationZone: RotationZone<FrameRotationSource>;
   private readonly followToggle: ToggleSwitch;
   private readonly orbitSummary: HTMLElement;
 
@@ -40,7 +40,7 @@ export class TrajectoryFramePanel {
     };
     this.panel.appendChild(this.planCenterZone.element);
 
-    this.planRotationZone = new RotationZone('回転', celestialSystem);
+    this.planRotationZone = new RotationZone<FrameRotationSource>('回転', celestialSystem);
     this.planRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.planRotationZone.onSelect = (rotatingWith) => {
       this.displayWindow.frame = celestialSystem.frames.frameOf(this.displayWindow.frame.center, rotatingWith);
@@ -74,7 +74,8 @@ export class TrajectoryFramePanel {
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
     this.planCenterZone.setSelected(this.displayWindow.frame.center);
-    this.planRotationZone.setNearby(members, displayTime, validRoles);
+    this.planRotationZone.setChoices(
+      availableFrameRotations(members, this.celestialSystem, validRoles, displayTime));
     this.planRotationZone.setSelected(this.displayWindow.frame.rotatingWith);
 
     this.followToggle.setOn(this.followCamera);

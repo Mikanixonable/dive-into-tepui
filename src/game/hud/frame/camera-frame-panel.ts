@@ -3,7 +3,7 @@ import type { CelestialSystem } from '../../celestial/celestial-system';
 import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX } from '../../camera/focus-camera';
 import { focusTargetId } from '../../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
-import { CameraRotationZone } from './rotation-zone';
+import { RotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../widgets';
 import { objectName } from '../object-name';
 import { rotationFollowShortName } from '../../camera/rotation-follow';
@@ -21,7 +21,7 @@ const ANGLE_COLUMNS = [
 export class CameraFramePanel {
   private readonly panel: HTMLElement;
   private readonly cameraCenterZone: AnchorZone;
-  private readonly cameraRotationZone: CameraRotationZone;
+  private readonly cameraRotationZone: RotationZone;
   private readonly cameraRotationModeToggle: ToggleSwitch;
   private readonly projectionToggle: ToggleSwitch;
   private readonly fovSlider: Slider;
@@ -47,7 +47,7 @@ export class CameraFramePanel {
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
     this.panel.appendChild(this.cameraCenterZone.element);
 
-    this.cameraRotationZone = new CameraRotationZone('回転', celestialSystem);
+    this.cameraRotationZone = new RotationZone('回転', celestialSystem);
     this.cameraRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.cameraRotationZone.onSelect = (follow) => mapCamera.setRotationFollow(follow);
     this.panel.appendChild(this.cameraRotationZone.element);

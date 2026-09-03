@@ -1,7 +1,9 @@
 // カメラの視点の向きを何に固定するかという選択。型・照合キー・セーブ形からの変換と、
 // フォーカス対象から選択肢を導く規則を持つ。向きをどう合成するかは持たない —
 // 選択に応じて座標系を差し替えるのも、姿勢を掛け合わせるのも FocusCamera の仕事。
-import { FrameAnchorSource, FrameRotationSource, rotationSourceKey } from '../../physics/frame';
+import {
+  FrameAnchorSource, FrameRole, FrameRotationSource, frameRoleAnchorId, rotationSourceKey,
+} from '../../physics/frame';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { Quat } from '../../math/quat';
 import type { FocusTarget } from './focus-target';
@@ -75,6 +77,26 @@ export function availableRotationFollows(
     if (attitudeOf(id, displayTime) !== null) out.push({ kind: 'attitude' });
   }
   return out;
+}
+
+// 計画軌道の描画基準に選べる回転(慣性系は常に選べるので含めない)。members はいまカメラが
+// いる系の天体で、そのうち主星を持つものの公転と、自転モデルを持つものの自転を並べる。
+// validRoles には、周回軌道にあって公転を固定できる役割だけを渡す。
+export function availableFrameRotations(
+  members: readonly string[], celestial: CelestialRegistry,
+  validRoles: readonly FrameRole[], displayTime: number,
+): readonly FrameRotationSource[] {
+  // 主星を持つ天体だけが公転回転系を持つ(恒星と、恒星の無い星系の惑星はここで外れる)。
+  const revolvable = members
+    .map((id) => celestial.find(id)?.motion ?? null)
+    .filter((motion): motion is CelestialMotion => motion !== null && motion.primary !== null);
+  return [
+    ...revolvable.map((motion): FrameRotationSource => ({ kind: 'revolution', id: motion.id })),
+    ...revolvable
+      .filter((motion) => motion.spinRotationAt(displayTime) !== null)
+      .map((motion): FrameRotationSource => ({ kind: 'spin', id: motion.id })),
+    ...validRoles.map((role): FrameRotationSource => ({ kind: 'revolution', id: frameRoleAnchorId(role) })),
+  ];
 }
 
 // 選択肢のボタンに出す正式名。天体を指す選択は座標系の名前で、機体・役割は対象の名前で書く。
