@@ -1,11 +1,11 @@
 // 大気を、幾何形状ではなく画面空間のフィルタとして不透明の絵の上へ重ねる。G バッファの深度から
 // 復元した位置と視線で、指数分布の大気を通る区間の透過率と内部散乱を解き、不透明の絵の
 // スナップショットへ「下地 × 透過率(波長別)+ 内部散乱」をパスの中で合成する。天体本体による
-// 遮蔽も同じ視線のレイ・スフィア交差で解くので、深度テストの精度には依存しない。大気を持つ
-// 天体を同時に MAX_ATMOSPHERE_BODIES 体まで受け、視点に近い順に重ねる。
+// 遮蔽も同じ視線と地表との交差で解くので、深度テストの精度には依存しない。大気を持つ天体を
+// 同時に MAX_ATMOSPHERE_BODIES 体まで受け、視点に近い順に重ねる。
 //
 // どの天体の見えも同じ「視線に沿った散乱の積分」で解き、違うのは呼び出し側が配ったサンプル点の
-// 数だけ。
+// 数だけ。**扁平な天体は、自転軸方向へ引き伸ばして真球にした空間で解く**(toSphereSpace)。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
@@ -26,13 +26,19 @@ import { viewPositionAt, viewRayAt } from './view-ray';
 // 消散係数の下限 [1/m]。散乱の割合を消散で割るときの 0/0 を塞ぐ。
 const MIN_EXTINCTION = 1e-30;
 
-// 天体 1 体ぶんの uniform。cutoffRadius は大気の裾を打ち切る半径(天体半径 + 打ち切り高度)、
-// steps はこの層を解くサンプル点の数。
+// 極半径/赤道半径の下限。潰し量はこの逆数なので、0 を塞ぐ。太陽系で最も扁平な土星でも 0.90。
+const MIN_POLAR_RATIO = 1e-3;
+
+// 天体 1 体ぶんの uniform。surfaceRadius は赤道半径、cutoffRadius は大気の裾を打ち切る半径
+// (赤道半径 + 打ち切り高度)、steps はこの層を解くサンプル点の数。polarAxis は扁平を潰す軸の
+// 単位ベクトル、polarStretch はその向きへ引き伸ばす量(赤道半径/極半径 − 1。真球で 0)。
 type BodySlot = {
   readonly steps: FloatUniform;
   readonly center: Vec3Uniform;
   readonly surfaceRadius: FloatUniform;
   readonly cutoffRadius: FloatUniform;
+  readonly polarAxis: Vec3Uniform;
+  readonly polarStretch: FloatUniform;
   readonly rayleigh: Vec3Uniform;
   readonly rayleighScaleHeight: FloatUniform;
   readonly mie: FloatUniform;
@@ -133,6 +139,8 @@ export class AtmospherePass {
       center: uniform(new THREE.Vector3()),
       surfaceRadius: uniform(0),
       cutoffRadius: uniform(0),
+      polarAxis: uniform(new THREE.Vector3(0, 1, 0)),
+      polarStretch: uniform(0),
       rayleigh: uniform(new THREE.Vector3()),
       rayleighScaleHeight: uniform(1),
       mie: uniform(0),
@@ -194,38 +202,52 @@ export class AtmospherePass {
     return { transmittance, inscatter };
   }
 
+  // 描画座標のベクトルを、自転軸方向へ引き伸ばして天体を真球にした空間へ写す。地表も裾も
+  // 大気の等密度面も、この空間では中心を共有する球面になるので、区間も高度も光路もここで解ける。
+  //
+  // **この空間の長さは描画座標の長さではない。** 引き伸ばした向きぶん伸びているので、距離を
+  // 実寸として使う値は、その向きの伸び率で割ってから返すこと。
+  private toSphereSpace(slot: BodySlot, vector: Vec3Node): Vec3Node {
+    return vector.add(slot.polarAxis.mul(dot(vector, slot.polarAxis).mul(slot.polarStretch)));
+  }
+
   // 視線が 1 つの天体の大気を通る区間。奥は大気の裾・不透明面・地表のうち最も手前で止まる。
+  // 距離はどれも描画座標の実寸で返す。
   // **地表を解析で解くのは、地平線すれすれの視線で深度の量子化が縁を刻むため。**
   private raySegment(
     slot: BodySlot, rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode,
   ): RaySegment {
-    const toOrigin = sub(rayOrigin, slot.center);
-    const alongRay = dot(toOrigin, rayDir);
+    const toOrigin = this.toSphereSpace(slot, sub(rayOrigin, slot.center));
+    // 引き伸ばした視線の長さが、実寸 1 m あたりこの空間を何進むかになる。
+    const stretchedDir = this.toSphereSpace(slot, rayDir);
+    const unitsPerMeter = max(length(stretchedDir), 1e-6);
+    const unitDir = stretchedDir.div(unitsPerMeter);
+    const alongRay = dot(toOrigin, unitDir);
 
     // **判別式は「半径² − 最接近距離²」の形で解く。** 教科書の b² − c の形は、天体を惑星間
     // 距離から見る視線で ~1e19 同士の引き算になり、f32 の桁落ちが交点距離に数十 km(スケール
     // ハイトの桁上)のノイズを載せる — 円盤全面が z-fighting 様の縞になる。最接近点への垂線
     // ベクトルは成分ごとの引き算なので、この桁落ちを持たない。
-    const perpOffset = sub(toOrigin, rayDir.mul(alongRay));
+    const perpOffset = sub(toOrigin, unitDir.mul(alongRay));
     const perpSq = dot(perpOffset, perpOffset);
     const cutoff = slot.cutoffRadius;
     const cutoffDisc = cutoff.mul(cutoff).sub(perpSq);
     const cutoffSpan = sqrt(max(cutoffDisc, 0));
-    const near = max(alongRay.negate().sub(cutoffSpan), 0);
+    const near = max(alongRay.negate().sub(cutoffSpan).div(unitsPerMeter), 0);
     const surface = slot.surfaceRadius;
     const surfaceDisc = surface.mul(surface).sub(perpSq);
-    const surfaceT = alongRay.negate().sub(sqrt(max(surfaceDisc, 0)));
+    const surfaceT = alongRay.negate().sub(sqrt(max(surfaceDisc, 0))).div(unitsPerMeter);
     const opaqueOrSurface = select(
       and(greaterThan(surfaceDisc, 0), greaterThan(surfaceT, near)), min(surfaceT, opaqueDist), opaqueDist,
     );
     // **区間は空でも順序を保つ** — 奥が手前より手前へ回ると、この先の clamp が下限と上限を
     // 逆に受け、値が未定義になる。大気に掛からない視線はここで長さ 0 の区間になる。
-    const far = max(min(alongRay.negate().add(cutoffSpan), opaqueOrSurface), near);
+    const far = max(min(alongRay.negate().add(cutoffSpan).div(unitsPerMeter), opaqueOrSurface), near);
 
     return {
       near,
       far,
-      densest: clamp(alongRay.negate(), near, far),
+      densest: clamp(alongRay.negate().div(unitsPerMeter), near, far),
       hitsAtmosphere: and(greaterThan(surface, 0), and(greaterThan(cutoffDisc, 0), greaterThan(far, near))),
     };
   }
@@ -292,17 +314,19 @@ export class AtmospherePass {
   private sunsetDistance(
     slot: BodySlot, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
   ): FloatNode {
-    const sunDir = normalize(sub(this.sunLight.position, slot.center));
-    const densestOffset = sub(rayOrigin.add(rayDir.mul(segment.densest)), slot.center);
+    const sunDir = normalize(this.toSphereSpace(slot, sub(this.sunLight.position, slot.center)));
+    const densestOffset = this.toSphereSpace(
+      slot, sub(rayOrigin.add(rayDir.mul(segment.densest)), slot.center));
     const densestRadius = max(length(densestOffset), max(slot.surfaceRadius, 1));
     const sunsetOffset = sqrt(
       max(densestRadius.mul(densestRadius).sub(slot.surfaceRadius.mul(slot.surfaceRadius)), 0),
     );
     // **分母には符号を保ったまま床を張る** — 視線が恒星方向と直交すると 0 になる。そのとき解は
-    // 区間の遥か外へ飛ぶので、呼び出し側の判定がそのまま弾く。
-    const alongSun = dot(rayDir, sunDir);
+    // 区間の遥か外へ飛ぶので、呼び出し側の判定がそのまま弾く。**視線は正規化せずに写す** —
+    // 引き伸ばした長さが実寸 1 m あたりの進みなので、商がそのまま実寸の距離になる。
+    const alongSun = dot(this.toSphereSpace(slot, rayDir), sunDir);
     const towardSun = select(greaterThan(alongSun, 0), float(1), float(-1));
-    return sunsetOffset.negate().sub(dot(sub(rayOrigin, slot.center), sunDir))
+    return sunsetOffset.negate().sub(dot(this.toSphereSpace(slot, sub(rayOrigin, slot.center)), sunDir))
       .div(towardSun.mul(max(abs(alongSun), 1e-6)));
   }
 
@@ -311,7 +335,7 @@ export class AtmospherePass {
   // 重みそのものになる。
   private mediumAt(slot: BodySlot, point: Vec3Node, rayDir: Vec3Node): MediumSample {
     // 高度から成分ごとの散乱係数を引く。消散はその和で、吸収を持たないので散乱と等しい。
-    const offset = sub(point, slot.center);
+    const offset = this.toSphereSpace(slot, sub(point, slot.center));
     const radius = max(length(offset), max(slot.surfaceRadius, 1));
     const altitude = radius.sub(slot.surfaceRadius);
     const rayleigh: Vec3Node = slot.rayleigh.mul(exp(altitude.div(slot.rayleighScaleHeight).negate()));
@@ -338,13 +362,17 @@ export class AtmospherePass {
   // 太陽へ正対した濃い大気は、同じ場所のアルベド 1 の拡散面と同じ表示値になる。
   private sunRadianceAt(slot: BodySlot, point: Vec3Node): Vec3Node {
     // 太陽光がその点まで通ってきた大気の光学的厚み。天頂角の余弦だけで決まる。
-    const offset = sub(point, slot.center);
+    const offset = this.toSphereSpace(slot, sub(point, slot.center));
     const radius = max(length(offset), max(slot.surfaceRadius, 1));
     const toSun = sub(this.sunLight.position, point);
-    const sunMu = dot(offset.div(radius), normalize(toSun));
+    const stretchedToSun = this.toSphereSpace(slot, toSun);
+    const sunMu = dot(offset.div(radius), normalize(stretchedToSun));
+    // 厚みは引き伸ばした空間の長さで出るので、その向きの伸び率で実寸へ戻す。
+    const sunPathScale = max(length(toSun), 1).div(max(length(stretchedToSun), 1));
     const sunDepth: Vec3Node = slot.rayleigh
-      .mul(depthToSpace(radius, sunMu, slot.surfaceRadius, slot.rayleighScaleHeight))
-      .add(vec3(slot.mie.mul(depthToSpace(radius, sunMu, slot.surfaceRadius, slot.mieScaleHeight))));
+      .mul(depthToSpace(radius, sunMu, slot.surfaceRadius, slot.rayleighScaleHeight).mul(sunPathScale))
+      .add(vec3(slot.mie
+        .mul(depthToSpace(radius, sunMu, slot.surfaceRadius, slot.mieScaleHeight)).mul(sunPathScale)));
     const irradiance = this.sunLight.intensity.div(max(dot(toSun, toSun), 1));
     const occlusion = this.sunOcclusion
       .transmittance(point, {
@@ -397,6 +425,9 @@ export class AtmospherePass {
       this.bodySpheres[index]!.set(body.center, cutoffRadius);
       slot.center.value.copy(body.center);
       slot.cutoffRadius.value = cutoffRadius;
+      // **軸は単位長でなければならない** — 長さが乗ると潰し量がその2乗で効く。
+      slot.polarAxis.value.copy(body.polarAxis).normalize();
+      slot.polarStretch.value = 1 / Math.max(body.polarRatio, MIN_POLAR_RATIO) - 1;
       slot.rayleigh.value.copy(body.optics.rayleigh);
       slot.rayleighScaleHeight.value = body.optics.rayleighScaleHeight;
       slot.mie.value = body.optics.mie;

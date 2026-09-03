@@ -2,6 +2,7 @@
 // 環など)をその運動へ同期する。位置・姿勢の正本は motion で、sync のたびにそこから引く。
 import * as THREE from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
+import { shapeSpheroidRadii } from '../../../physics/celestial-body-def';
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
 import { apsisAltitudes, OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
 import { KinematicState } from '../../../physics/kinematic-state';
@@ -174,8 +175,21 @@ export abstract class CelestialEntity implements MapPickable {
     const optics = this.atmosphereOptics;
     if (optics === null) return null;
     const center = this.stateAt(displayTime).r;
+    const def = this.def;
+    const radii = shapeSpheroidRadii(def.radius, 'shape' in def ? def.shape : undefined);
+    // 潰す軸は表面メッシュの +Y が向く先。姿勢を持たない天体のメッシュは姿勢を立てないので、
+    // そこでは ECI の極軸がそのまま軸になる。
+    const axis = this.motion.orientationAt(displayTime)?.axis ?? null;
     return {
-      body: { center: fo.RtoThreeV3(center), surfaceRadius: this.def.radius, optics },
+      body: {
+        center: fo.RtoThreeV3(center),
+        surfaceRadius: radii.equatorRadius,
+        polarAxis: axis === null
+          ? new THREE.Vector3(0, 1, 0)
+          : new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
+        polarRatio: radii.polarRadius / radii.equatorRadius,
+        optics,
+      },
       distance: len(sub(cameraPos, center)),
       metersPerPixel: radialScale(center),
     };
