@@ -6,6 +6,7 @@ import { CelestialMotion } from '../../physics/celestial-motion';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { CapKind } from './dynamic-entity/entity-kind';
 import { AmmoPickup } from './dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
 import { DebrisPiece } from './dynamic-entity/debris-piece';
@@ -36,11 +37,13 @@ import type { PerfCounts } from '../../perf-meter';
 import type { OrbitReference } from '../orbit-reference';
 import type { ProteinMotionFrameSample, ProteinMotionLod } from '../../protein-motion-metrics';
 
-const MAX_BULLETS = 400;
-const MAX_CASINGS = 260;
-const MAX_DETACHED_BOOSTERS = 64;
-
-const MAX_DEBRIS = 600;
+// 枠ごとに同時に存在してよい個体数。超えた分はその枠の古いものから落ちる。
+const CAP: Record<CapKind, number> = {
+  bullet: 1200,
+  casing: 260,
+  debris: 600,
+  booster: 64,
+};
 
 export class DynamicSystem {
   readonly enemies: Enemy[] = [];
@@ -81,13 +84,13 @@ export class DynamicSystem {
     const plasmaBody = plasmaBodyResources();
     const casingBody = casingBodyResources();
     const debrisFragment = debrisFragmentResources();
-    this.bulletBodyPool = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, MAX_BULLETS * 3);
-    this.bulletHaloPool = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, MAX_BULLETS * 3);
-    this.plasmaPool = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, MAX_BULLETS * 3);
+    this.bulletBodyPool = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, CAP.bullet);
+    this.bulletHaloPool = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, CAP.bullet);
+    this.plasmaPool = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, CAP.bullet);
     this.casingPool = new InstancedPool(
-      scene, casingBody.geometry, casingBody.material, MAX_CASINGS, false, 0, true);
+      scene, casingBody.geometry, casingBody.material, CAP.casing, false, 0, true);
     this.debrisFragmentPools = debrisFragment.geometries.map(
-      (geo) => new InstancedPool(scene, geo, debrisFragment.material, MAX_DEBRIS, true, 0, true));
+      (geo) => new InstancedPool(scene, geo, debrisFragment.material, CAP.debris, true, 0, true));
     this.effects = new EffectsSystem(scene, this, worldSfx);
     if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
   }
@@ -246,13 +249,13 @@ export class DynamicSystem {
 
   // 弾を登録する。上限を超えた分は古いものから破棄する。
   addBullet(bullet: Bullet): void {
-    this.addCapped(this.bullets, bullet, MAX_BULLETS * 3);
+    this.addCapped(this.bullets, bullet);
   }
 
   // 破片を種別(薬莢/その他)ごとの配列へ登録する。上限を超えた分は古いものから破棄する。
   addDebris(piece: DebrisPiece): void {
-    if (piece.kind === 'casing') this.addCapped(this.casings, piece, MAX_CASINGS);
-    else this.addCapped(this.debris, piece, MAX_DEBRIS);
+    if (piece.kind === 'casing') this.addCapped(this.casings, piece);
+    else this.addCapped(this.debris, piece);
   }
 
   // 弾薬ピックアップを登録する。
@@ -267,9 +270,9 @@ export class DynamicSystem {
     this.invalidateCaches();
   }
 
-  // 分離済みブースターを登録する。古いものから上限回収し、無制限に残骸を増やさない。
+  // 分離済みブースターを登録する。上限を超えた分は古いものから破棄する。
   addDetachedBooster(booster: DetachedBooster): void {
-    this.addCapped(this.detachedBoosters, booster, MAX_DETACHED_BOOSTERS);
+    this.addCapped(this.detachedBoosters, booster);
   }
 
   // 基地を登録する。
@@ -283,10 +286,10 @@ export class DynamicSystem {
     return this.bases.find(b => b.id === id) ?? null;
   }
 
-  // 配列へ追加し、cap を超えたら先頭(最古)を1件破棄する。
-  private addCapped<T extends DynamicEntity>(arr: T[], entity: T, cap: number): void {
+  // 配列へ追加し、その個体の枠が上限を超えたら先頭(最古)を1件破棄する。
+  private addCapped<T extends DynamicEntity>(arr: T[], entity: T): void {
     arr.push(entity);
-    if (arr.length > cap) arr.shift()!.dispose();
+    if (entity.capKind !== null && arr.length > CAP[entity.capKind]) arr.shift()!.dispose();
     this.invalidateCaches();
   }
 

@@ -7,6 +7,7 @@ import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { EffectsSystem } from '../../vfx/effects-system';
+import type { CapKind } from './entity-kind';
 import {
   buildBarrelMesh,
   buildCasingMesh,
@@ -106,6 +107,7 @@ export class DebrisPiece extends DynamicEntity {
   // per-instance color へ渡す色。DynamicSystem.sync が variant ごとのプールへ push する。
   readonly fragmentVariant: number;
   readonly fragmentColor: THREE.Color | null;
+  override readonly capKind: CapKind;
 
   // DebrisKind に応じたメッシュ・質量で初期化する。radius は剛体接触半径。fragment は
   // 剛体接触に参加しない(排莢直後の薬莢を弾いてしまう/破片が跳ね回るのを避ける)。
@@ -137,6 +139,7 @@ export class DebrisPiece extends DynamicEntity {
       && debrisKind.kind !== 'boosterCover'
       && debrisKind.kind !== 'boosterBolt';
     this.contactDamageWeight = 0;
+    this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
     if (debrisKind.kind === 'barrel') {
       this.temperature = debrisKind.bornTemperature;
       this.thermalDeviation = debrisKind.bornThermalDeviation;
