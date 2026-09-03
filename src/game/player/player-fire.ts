@@ -323,7 +323,7 @@ export class PlayerFire {
       this._worldSfx,
       this._scene,
     );
-    entities.addBullet(bullet);
+    entities.add(bullet);
   }
 
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。

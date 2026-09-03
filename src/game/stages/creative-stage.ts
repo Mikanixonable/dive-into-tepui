@@ -332,25 +332,25 @@ export class CreativeStage extends Stage {
       } else if (form.entityKind === 'enemy') {
         const finalName = name.trim() || generateRandomName('enemy');
         const enemy = generateDriftingEnemy(finalName, state, '#ff6a00', '#ff6a00', this._worldSfx, this._fx, this._scene);
-        this._entities.addEnemy(enemy);
+        this._entities.add(enemy);
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.entityKind === 'ammo') {
         const id = this.ammoPickupIdAllocator.next();
         const ammoPickup = new AmmoPickup({ state, id }, this._scene);
-        this._entities.addAmmoPickup(ammoPickup);
+        this._entities.add(ammoPickup);
         const finalName = name.trim() || generateRandomName('ammo');
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'fuel') {
         const id = this.rcsFuelPickupIdAllocator.next();
         const pickup = new RcsFuelPickup({ state, id }, this._scene);
-        this._entities.addRcsFuelPickup(pickup);
+        this._entities.add(pickup);
         const finalName = name.trim() || generateRandomName('fuel');
         pickup.name = finalName;
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'base') {
         const finalName = name.trim() || generateRandomName('base');
         const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._fx, this._markerManager);
-        this._entities.addBase(base);
+        this._entities.add(base);
         this._hud.hint(`${base.name} を配置`);
       }
     } catch (error) {

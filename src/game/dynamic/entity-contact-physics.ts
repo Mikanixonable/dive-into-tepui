@@ -96,7 +96,7 @@ export class EntityContactPhysics {
     dt: number,
     simTime: number,
     player: Player,
-    entities: DynamicEntity[],
+    entities: readonly DynamicEntity[],
     activeStage: Stage,
   ): void {
     if (!player.alive || dt <= 1e-6) return;
