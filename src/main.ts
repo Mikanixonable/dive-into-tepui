@@ -13,7 +13,6 @@ import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
 import { PauseMenu, SettingsView } from './hud/windows/index';
-import { startProteinAssetPreload } from './game/protein/protein-asset-loader';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { Launcher } from './launcher/launcher';
@@ -135,9 +134,6 @@ function initSaveSlots(store: LocalStorageSaveStore): SaveSlots {
 }
 
 async function main() {
-  // シーン初期化と並行して、タンパク質アセット(構造・モーション)の fetch を非同期に始める。
-  // 完了前にタンパク質型の敵を生成する側(DynamicSystem.spawnEnemyWhenReady)が待つ。
-  startProteinAssetPreload();
   const unlockmanager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
   const slots = initSaveSlots(saveStore);

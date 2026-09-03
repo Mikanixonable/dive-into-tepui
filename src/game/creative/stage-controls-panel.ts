@@ -3,7 +3,7 @@
 // 変更・敵の生成・表示の反映は、確定した値をコールバックで受け取った呼び出し側(CreativeStage)の
 // 責務。
 import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud/widgets';
-import { PROTEIN_ASSET_IDS, type ProteinAssetId } from '../protein/protein-asset-loader';
+import { PROTEIN_ASSET_IDS, requestProteinAsset, type ProteinAssetId } from '../protein/protein-asset-loader';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,
   proteinColorModesFor, proteinDisplayWithColor, type ProteinColorMode, type ProteinDisplaySettings,
@@ -167,6 +167,8 @@ export class StageControlsPanel {
   // (既存の敵への反映は呼び出し側の責務)。
   private buildProteinEnemySection(): { element: HTMLElement; spawnButton: Button; formationButton: Button } {
     const shapes = STAGE_CONTROL_ENEMY_SHAPES.filter(({ family }) => family === 'protein');
+    // 一覧に並べた時点で取得を始め、選んで置くまでの間に間に合わせる。
+    for (const shape of shapes) if (shape.kind === 'protein') void requestProteinAsset(shape.assetId);
     let selectedShape: EnemySpawnShape = shapes[0]!.id;
     const section = document.createElement('div');
     section.className = 'stage-control-section';
