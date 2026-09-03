@@ -117,7 +117,7 @@ export class MapView implements ViewFrame {
   // マップ専用の編集 UI と常設パネル(未来表示・座標系・軌道物体一覧)・天体ラベルのサブ行・
   // 軌道線の右クリック候補。
   public syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
-    this.editor.sync(this.cameraSystem, displayWindow.simTime, fo);
+    this.editor.sync(this.cameraSystem.mapCamera.dist, fo);
     this.displayWindowManager.sync(this.activePlayers.current);
     this.picking.sync(displayWindow.displayTime, this.activePlayers.current);
     this.frameControls.sync(

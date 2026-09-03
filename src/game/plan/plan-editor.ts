@@ -12,7 +12,6 @@ import { Hud } from '../hud/hud';
 import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import type { CameraSystem } from '../camera/camera-system';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
@@ -78,7 +77,7 @@ export class PlanEditor {
   private readonly axisDrag: AxisDragGizmo;
 
   private readonly panel: PlanPanel;
-  private simTime = 0;
+  private simTime = 0; // 現在の simTime [s]
 
   // ノードギズモと計画パネルの DOM を組み立て、両者のコールバックを配線する。
   // path は描かれている計画折れ線 — ノードの配置・移動・画面座標はそのサンプル列から解く。
@@ -545,11 +544,11 @@ export class PlanEditor {
   }
 
   // 現在のノード列と選択中ノードから、計画パネルへ渡す表示値を組み立てて反映する。
-  private syncPanel(ship: Controllable, simTime: number): void {
+  private syncPanel(ship: Controllable): void {
     const plan = ship.plan;
     const arriving = this.path.arrivalStates();
     const nodes = plan.nodes.map((n, i) => ({
-      tRel: n.t - simTime,
+      tRel: n.t - this.simTime,
       dvMag: len(this.nodeDv(i, arriving)),
       selected: i === this.selectedNodeIdx,
     }));
@@ -565,7 +564,7 @@ export class PlanEditor {
       const node = plan.nodes[this.selectedNodeIdx];
       const arr = arriving[this.selectedNodeIdx];
       if (node && arr) {
-        nodeSecondsFromNow = node.t - simTime;
+        nodeSecondsFromNow = node.t - this.simTime;
         const bodyNode = this.relativeToBody(node, center);
         const bodyArr = this.relativeToBody(arr, center);
         selEl = orbitalElementsOf(node, center, node.t);
@@ -611,11 +610,11 @@ export class PlanEditor {
   }
 
   // 操作 UI(ノードギズモ・Δv アーム・TRAJECTORY パネル)を現在の選択と画面座標で組み直す。
-  public sync(cameraSystem: CameraSystem, simTime: number, fo: FloatingOrigin): void {
+  public sync(mapDist: number, fo: FloatingOrigin): void {
     const ship = this.ship;
     if (ship === null) return;
-    this.syncGizmo(ship.plan, cameraSystem.mapCamera.dist, fo);
-    this.syncPanel(ship, simTime);
+    this.syncGizmo(ship.plan, mapDist, fo);
+    this.syncPanel(ship);
   }
 
   // パネルとギズモを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。
