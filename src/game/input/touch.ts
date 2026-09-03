@@ -78,17 +78,11 @@ const STYLE = `
   }
   #touch-mode-col .tbtn { width: 38px !important; }
   #touch-util { max-width: 42vw; }
-  #navball { bottom: 240px !important; left: 75% !important; }
   #hud-chase-reset { left: calc(50% + 20px) !important; }
 }
 
-/* 横画面(高さが低い端末): navball を画面下部中央に収め、パッドを詰めて
-   縦方向の衝突を避ける */
+/* 横画面(高さが低い端末): パッドを詰めて縦方向の衝突を避ける */
 @media ${MQ_SHORT} {
-  #navball {
-    top: auto !important; bottom: 44px !important; left: 50% !important;
-    transform: translateX(-50%) !important; width: 72px !important; height: 72px !important;
-  }
   #touch-pad-move, #touch-pad-rot {
     grid-template-columns: repeat(3, 40px) !important; grid-auto-rows: 40px !important; gap: 4px;
   }
@@ -113,7 +107,6 @@ const STYLE = `
     grid-template-rows: repeat(2, 36px) !important; gap: 4px;
   }
   #touch-mode-col .tbtn { width: 38px !important; }
-  #navball { bottom: 240px !important; left: 75% !important; }
   #hud-chase-reset { left: calc(50% + 20px) !important; }
 }
 `;
