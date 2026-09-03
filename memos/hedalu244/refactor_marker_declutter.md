@@ -1,36 +1,36 @@
 # marker-manager からラベル混雑の解決を切り出す
 
-`src/game/marker/marker-manager.ts` は 670 行で、2つの責務を持っている。
-
-| 責務 | 現在の位置 | 行数 |
-| --- | --- | --- |
-| マーカー DOM のレジストリ(生成・更新・遮蔽フェード・破棄) | 140-428 | 約 290 |
-| ラベル混雑の解決(間引き・反発・引き出し線) | 40-45 / 74-82 / 84-129 / 430-669 | 約 290 |
-
-後者のうち `relaxLabelRects`(501-635)は **134 行 1 メソッド**で、規約 1.2 の「関数は 100 行」を
-超えている。
-
-計測はすべて `a0bd179a` 時点。着手前に測り直す。
+**手順1〜5 は実施済み(`a0bd179a` → `87a46656`)。残っているのは手順6だけで、それは挙動が変わる
+ので実施の可否をユーザーが決める。** 以下の「目的」「決めたこと」「達成目標」「リスクと落とし穴」は
+実施の記録として残してある。
 
 ## 実施済みの前提
 
-**手順1〜5 は実施済み。残っているのは手順6だけで、それは挙動が変わる。** 間引きは `src/game/marker/label-declutter.ts`(103行)、ラベルの
-押し出しと引き出し線は `src/game/marker/label-layout.ts`(233行)にある。`MarkerManager` は
-表示中のレコードを集めて `LabelDeclutter.compute` を呼び、返ったキー集合で `priority-hidden` を
-トグルして `prevLabelHidden` を書き戻し、`LabelLayout.sync` へ渡す。`svgOverlay` は
-`LabelLayout` が持つ。`marker-manager.ts` は 400 行。`label-layout.ts` の最長メソッドは
-`pushApartFromNeighbors` の 61 行。同値 40px は
-`label-declutter.MARKER_CROWDING_PX`(間引きの近接半径)/
+670 行の `marker-manager.ts` が持っていた2つの責務は、次のように分かれている。
+
+| モジュール | 責務 | 行数 |
+| --- | --- | --- |
+| `marker-manager.ts` | マーカー DOM の生成・更新・遮蔽フェード・寿命 | 382 |
+| `label-declutter.ts` | 近接した組のどのラベル・アイコンを間引くか | 103 |
+| `label-layout.ts` | 残ったラベルの押し出しと、SVG 引き出し線 | 246 |
+| `crowding.ts` | 近接した2つのどちらを残すかの規則と `MARKER_PRIORITY` | 139 |
+
+`MarkerManager` は表示中のレコードを集めて `LabelDeclutter.compute` を呼び、返ったキー集合で
+`priority-hidden` をトグルして `prevLabelHidden` を書き戻し、`LabelLayout.sync` へ渡す。
+`svgOverlay` は `LabelLayout` が持つ。最長のメソッドは `pushApartFromNeighbors` の 61 行。
+
+同値 40px は `label-declutter.MARKER_CROWDING_PX`(間引きの近接半径)/
 `grouped-markers.CLUSTER_RADIUS_PX`(まとめの半径)/
 `celestial-markers.LABEL_CROWDING_PX`(天体ラベルの名前用半径)の3つに分かれている。
-`MARKER_PRIORITY` は `crowding.ts`(139行、import 0 行の最下層)にあり、`marker-manager` を
-値として import するモジュールは無くなった。
-`npm run typecheck` / `npm run test:game`(175件)通過。
+`marker-manager` を値として import するモジュールは無くなった。
+
+`npm run typecheck` / `npm run test:game`(175件)/ `npm run build` /
+`npm run smoke:browser` 通過。**マップビューの目視確認は未実施。**
 
 **この worktree には `node_modules` のジャンクションが要る。** 無いと
 `tsconfig.test.json` の `paths`(`./node_modules/@types/three/...`)が解決できず、
 `npm run test:*` が `three/webgpu` の TS2307 で落ちる(`npm run typecheck` は親ディレクトリを
-辿るので通ってしまい、気づきにくい)。**worktree を消すときは、先にジャンクションを外す** —
+辿るので通ってしまい、気づきにくい)。**worktree を消すときは、先にジャンクションを外す** ——
 外さずに削除すると本体の `node_modules` ごと消える。
 
 ---
