@@ -7,7 +7,6 @@ import { FRAME_CONTROLS_STYLE } from './frame-controls-style';
 import { ORBIT_GUIDE_STYLE } from './orbit-guide-style';
 import { STAGE_CONTROLS_STYLE } from './stage-controls-style';
 import { OBJECT_PLACER_STYLE } from './object-placer-style';
-import { NAVBALL_STYLE } from './navball-style';
 import { RESULT_SCREEN_STYLE } from './result-screen-style';
 import { HELP_PANEL_STYLE } from './help-panel-style';
 import { STAGE_STATUS_STYLE } from './stage-status-style';
@@ -17,5 +16,5 @@ import { SETTINGS_VIEW_STYLE } from './settings-view-style';
 export const PANEL_CONTENT_STYLE =
   COMBAT_PANEL_ROWS_STYLE + PLAN_PANEL_STYLE + VIEW_OPTIONS_STYLE + PREDICT_STYLE
   + FRAME_CONTROLS_STYLE + ORBIT_GUIDE_STYLE + STAGE_CONTROLS_STYLE + OBJECT_PLACER_STYLE
-  + NAVBALL_STYLE + RESULT_SCREEN_STYLE + HELP_PANEL_STYLE + STAGE_STATUS_STYLE
+  + RESULT_SCREEN_STYLE + HELP_PANEL_STYLE + STAGE_STATUS_STYLE
   + PAUSE_MENU_STYLE + SETTINGS_VIEW_STYLE;
