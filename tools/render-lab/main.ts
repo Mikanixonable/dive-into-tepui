@@ -143,8 +143,8 @@ async function init(): Promise<void> {
   ambient.setSelected(view.ambientFraction);
 
   // **仮設**: 積雲の飽和とディザの幅。被覆率が 中央値±半幅 に入る柱だけがディザに掛かるので、
-  // 半幅を広げるほど半透明として読める画素が増える。値が決まったら
-  // src/render/cloud/cumulus-shape.ts へ定数として書き戻し、この節ごと消す。
+  // 半幅を広げるほど半透明として読める画素が増える。生成側の場へ差し替えたあとにもう一段の
+  // 追い込みが要るので、それまでは畳まない。
   const dither = CUMULUS_DITHER_KNOB;
   const redraw = (knob: FloatUniform, value: number): void => { knob.value = value; view.render(); };
   buildSlider('cumulus-dither', '中央値', 0, 1, 0.001,
