@@ -1,10 +1,10 @@
 // 自機の姿勢だけから決まる戦闘ビュー専用 HUD マーカー(軌道基準の方向マーカーと機首ボアサイト)。
 // マップ上の自機位置マーカーは他の船と同じく Targeter → GroupedMarkers が描く。
 import { Attitude } from '../../physics/attitude';
-import { qRotate } from '../../math/quat';
+import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import type { View } from '../view/view';
 import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
-import { scale, sub, v3 } from '../../math/vec3';
+import { scale, sub } from '../../math/vec3';
 import type { OrbitReference } from '../orbit-reference';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from '../marker/marker-manager';
@@ -61,7 +61,7 @@ export class PlayerMarkers {
 
   // 機首方向にボアサイトマーカーを置く。
   private syncBoresight(state: KinematicState, att: Attitude, project: ProjectFn, rounds: number, beltLinks: number, muzzleSpeed: number): void {
-    const fwd = qRotate(att.q, v3(0, 0, 1));
+    const fwd = qRotate(att.q, LOCAL_FORWARD);
     // 中央に切り欠きを残した、細い線だけの三尖星(120度間隔)。
     // 塗りつぶしや長方形の輪郭は使わず、各アームを独立した線分として描く。
     const star = '<svg viewBox="0 0 24 24" width="48" height="48" aria-label="照準"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 9.7V2"/><path d="M12 9.7V2" transform="rotate(120 12 12)"/><path d="M12 9.7V2" transform="rotate(240 12 12)"/></g></svg>';

@@ -387,12 +387,7 @@ export class PlanEditor {
     );
 
     const newPreBurnState = kinematicState<'eci'>(sample.t, sample.r, baseV);
-    const axesNew = orbitAxes(this.bodyState(newPreBurnState));
-    const newDvWorld = v3(
-      axesNew.pro.x * dvLocal.x + axesNew.nrm.x * dvLocal.y + axesNew.radOut.x * dvLocal.z,
-      axesNew.pro.y * dvLocal.x + axesNew.nrm.y * dvLocal.y + axesNew.radOut.y * dvLocal.z,
-      axesNew.pro.z * dvLocal.x + axesNew.nrm.z * dvLocal.y + axesNew.radOut.z * dvLocal.z,
-    );
+    const newDvWorld = fromOrbitAxes(this.bodyState(newPreBurnState), dvLocal);
 
     return kinematicState<'eci'>(sample.t, sample.r, add(baseV, newDvWorld));
   }
@@ -497,7 +492,7 @@ export class PlanEditor {
       pro = this.path.toDisplayDir(pro, nodeFor3D.t);
       nrm = this.path.toDisplayDir(nrm, nodeFor3D.t);
       radOut = this.path.toDisplayDir(radOut, nodeFor3D.t);
-      this.gizmo3d.setPositionAndRotation(scenePos, pro, nrm, radOut, mapDist * 0.002);
+      this.gizmo3d.setPositionAndRotation(scenePos, pro, nrm, mapDist * 0.002);
       
       // ドラッグ・ラッチ時のアニメーション
       let activeAxis: 0 | 1 | 2 | null = null;

@@ -1,4 +1,6 @@
 import * as THREE from 'three/webgpu';
+import { lenSq } from '../../math/vec3';
+import { LOCAL_FORWARD, qFromUnitVectors } from '../../math/quat';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
@@ -73,8 +75,10 @@ export class DockingGuide {
 
     this.root.visible = true;
     this.root.position.copy(fo.RtoThreeV3(candidate.position));
-    const n = new THREE.Vector3(candidate.normal.x, candidate.normal.y, candidate.normal.z);
-    if (n.lengthSq() > 1e-12) this.root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n.normalize());
+    if (lenSq(candidate.normal) > 1e-12) {
+      const q = qFromUnitVectors(LOCAL_FORWARD, candidate.normal);
+      this.root.quaternion.set(q.x, q.y, q.z, q.w);
+    }
     const color = candidate.canDock ? currentThemePalette().success : currentThemePalette().warning;
     this.axisMaterial.color.set(color);
     this.ringMaterial.color.set(color);

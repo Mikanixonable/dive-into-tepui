@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { View } from '../view/view';
 import { Attitude } from '../../physics/attitude';
-import { qFromBasis, qRotate } from '../../math/quat';
+import { LOCAL_FORWARD, qFromBasis, qRotate } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
@@ -249,7 +249,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   getPortWorldNormal(): Vec3 {
-    return qRotate(this.att.q, v3(0, 0, 1));
+    return qRotate(this.att.q, LOCAL_FORWARD);
   }
 
   // 弾薬ピックアップで得たマグ数を加算する。
