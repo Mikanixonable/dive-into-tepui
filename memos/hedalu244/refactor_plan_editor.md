@@ -88,61 +88,6 @@
 
 ## 手順
 
-### 手順4. Δv アームのドラッグ状態を1つにし、伸縮の演出を `PlanGizmo3D` へ下ろす
-
-**目的.** `latch` と `activeAxis` が保つべき不変条件を読む側から取り除き、「どれだけ伸ばすか」を
-矢印を持つ `PlanGizmo3D` の中へ移す。伸縮の見かけは変えない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `node-gizmo.ts:61-66,91-92` | `AxisLatchState` と `activeAxis` を1つの公開型へ統合する(下記) |
-| `node-gizmo.ts:168-173,250-298` | `latch` / `activeAxis` への代入をすべて新しい単一フィールドへ書き換える。要素破棄時・ドラッグ終了時に `null` へ戻すのは現状どおり |
-| `plan-gizmo-3d.ts:84-103` | `setStretch` を `public setActiveDrag(drag: AxisHandleDrag \| null): void` へ置き換え、伸び率の計算をこの中に入れる。係数は名前付き定数として同ファイルへ置く |
-| `plan-gizmo-3d.ts:86` | `for (let s of [1, -1])` を `for (const s of [1, -1] as const)` にする(規約1.12) |
-| `plan-editor.ts:496-513` | ブロックごと `this.gizmo3d.setActiveDrag(this.nodeGizmo.axisHandleDrag)` の1行へ置き換える |
-| `plan-editor.ts:535-543` | `this.nodeGizmo.latch` の読みを新しいフィールドへ読み替える。ラッチ中の判定は `drag.excessPx !== null` |
-
-新設する型(`node-gizmo.ts`。`AxisHandleSpec` と同じ場所に置く — Δv アームの語彙はこのモジュールが
-持っている):
-
-```ts
-// ドラッグ中の Δv アーム。ラッチ前は変位をそのまま onAxisDrag へ流すので excessPx は null、
-// ラッチ後は基点からの超過量を載せる(レートでの積分は毎フレーム読み手が行う)。
-export interface AxisHandleDrag {
-  readonly axis: 0 | 1 | 2;
-  readonly sign: 1 | -1;
-  readonly excessPx: number | null;
-}
-```
-
-`NodeGizmo` 側のフィールド:
-
-```ts
-public axisHandleDrag: AxisHandleDrag | null = null;
-```
-
-`PlanGizmo3D` 側へ移す定数:
-
-```ts
-const DRAG_STRETCH = 0.2;          // ラッチ前のドラッグ中に矢印を伸ばす割合
-const LATCH_STRETCH_PER_PX = 0.01; // ラッチ超過 1px あたりの伸び
-const LATCH_STRETCH_MAX = 0.5;     // ラッチで伸ばす割合の上限
-```
-
-**達成条件と検証**
-
-- `grep -rn "\.latch\b|activeAxis" src/` が 0件。
-- 伸縮の係数 `0.01` / `0.5` / `0.2` が `plan-editor.ts` に残っていない。
-- `syncGizmo` が 45行以下。
-- `npm run typecheck` と `npm run test:game` が通る。
-- `npm run dev` でマップモードのノードを選び、矢印ハンドルを **60px 未満**ドラッグしたときに
-  その矢印が少し伸び、**60px を超えて**ドラッグし続けたときにさらに伸びて上限で止まり、
-  離すと元へ戻ることを目で見る。
-
----
-
 ### 手順5. 軸ハンドルの2段呼びを `AxisDragGizmo` の中へ畳む
 
 **目的.** `computeAxisScreenDirs` は `buildAxisHandles` へ渡すためだけに1箇所から呼ばれていて、
