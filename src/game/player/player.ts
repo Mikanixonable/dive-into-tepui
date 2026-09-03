@@ -453,7 +453,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // この艦の放熱板の、今フレームの接触代理一覧(展開中かつ健在な折りのみ)。
-  collisionFolds(simTime: number): DynamicEntity[] {
+  override collisionFolds(simTime: number): readonly DynamicEntity[] {
     return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
   }
 
