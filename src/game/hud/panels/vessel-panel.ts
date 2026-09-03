@@ -3,13 +3,14 @@
 // 装填/姿勢リセット/視点追従切替/ターゲット選択の4操作と、タッチ時のみのスロットル段は、
 // キー押下と同じ経路(Input.tapKey)で発火するボタンとしてここに持つ — タッチでも到達できるよう
 // にするための、キー入力の代替 UI。
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { Button, SegmentedControl } from '../widgets';
-import { fmtAmmoStatus, setElementText } from '../utils';
+import { KEY_MAPPING as K } from '../../../input/key-mapping';
+import { Button, SegmentedControl } from '../../../hud/widgets';
+import { fmtAmmoStatus } from '../ammo-status';
+import { setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
 import type { Game } from '../../game';
-import type { Input } from '../../input/input';
-import type { KeyBinding } from '../../input/key-mapping';
+import type { Input } from '../../../input/input';
+import type { KeyBinding } from '../../../input/key-mapping';
 import type { RadiatorSide, RadiatorSystem } from '../../player/radiator';
 import type { SolarSide, PowerSystem } from '../../player/power';
 import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/player-throttle';
@@ -187,7 +188,7 @@ export class VesselPanel {
     // 通常のマップビューでは艦固有の情報をプロパティウィンドウで参照するので畳む。
     // クリエイティブでは配置後の艦を常に操作できるため、マップビューでも VESSEL を表示する。
     // CSS 側でも同じ条件を持つが、未配置状態からの復帰時は JS で明示的に戻す。
-    if (!game.cameraSystem.overviewMode || game.activeStage.id === 'creative') {
+    if (!game.viewManager.isMapView || game.activeStage.id === 'creative') {
       this.els.get('hud-vessel-status')?.classList.remove('hidden');
     }
 
@@ -225,7 +226,7 @@ export class VesselPanel {
 
     // 微調整・視点追従・進行方向ホールドの状態語。
     this.syncState('fine', target.fineAttitude, 'near');
-    const cameraFollowsAttitude = game.cameraSystem.combatCamera.camFollowAttitude;
+    const cameraFollowsAttitude = game.cameraSystem.combatCamera.rotationFollow?.kind === 'attitude';
     this.syncState('camfollow', cameraFollowsAttitude, 'signal');
     this.followButton?.setOn(cameraFollowsAttitude);
     this.syncState('prohold', target.throttle.progradeHold, 'near');

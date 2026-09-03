@@ -8,7 +8,7 @@ import { MU_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/cons
 import { bodyAnchorSource } from '../../src/physics/attractor';
 import { FrameAnchors } from '../../src/game/frame-anchors';
 import { FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
-import { qRotate } from '../../src/physics/attitude';
+import { qRotate } from '../../src/math/quat';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Vec3, add, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 

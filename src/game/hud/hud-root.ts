@@ -1,59 +1,47 @@
 // HUD の静的 DOM/スタイル構築。
-import type { RenderStyleSetting } from '../../render/render-style';
-import { KEY_MAPPING as K } from '../input/key-mapping';
-import { injectThemeVariables } from '../theme';
-import { buildOverlayLayers } from './overlay-layer';
-import { OverlayManager } from './overlay-manager';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { injectThemeVariables } from '../../theme';
+import type { HudShell } from '../../hud/hud-shell';
+import { createHudElement } from '../../hud/hud-element';
 import { HelpPanel } from './windows/help-panel';
 import { PanelShell, wirePanelCollapse } from './panel-shell';
-import type { WorldView } from '../view-manager';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
-import { PANEL_CONTENT_STYLE } from './style/panel-content-style';
+import { MARKER_STYLE } from './style/marker-style';
+import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
+import { MAP_PANEL_STYLE } from './style/map-panel-style';
+import { STAGE_STATUS_STYLE } from './style/stage-status-style';
+import { PAUSE_MENU_STYLE } from '../../hud/style/pause-menu-style';
+import { HELP_PANEL_STYLE } from './style/help-panel-style';
+import { SETTINGS_VIEW_STYLE } from '../../hud/style/settings-view-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
-import { isCompactViewport } from './breakpoints';
-import { startViewportTracking } from './viewport';
-import { WIDGET_STYLE } from './widgets';
-import type { OverlayLayers } from './overlay-layer';
-import type { CollapseToggleLabels } from './widgets';
-export {
-  buildCollapseToggle,
-  type CollapseToggleLabels,
-  COLLAPSE_EXPANDED_GLYPH,
-  COLLAPSE_COLLAPSED_GLYPH,
-  PREDICT_TOGGLE_LABELS,
-} from './widgets';
+import { isCompactViewport } from '../../hud/breakpoints';
+import { startViewportTracking } from '../../hud/viewport';
+import { WIDGET_STYLE } from '../../hud/widgets';
+import type { RenderStyleSetting } from '../../render/render-style';
+import type { View } from '../view/view';
+import type { CollapseToggleLabels } from '../../hud/widgets';
 
-// 置き場4種(層・レール・シェルフ / トークン / パネル個別 / ウィジェット共通)ごとに
-// 分割したスタイルを結合する。定義順はレイヤ→骨格→パネル→ビュー→ウィジェットで、
+// トークン→骨格→マーカー→パネル群→ビュー→ウィジェット共通の順に結合する。
 // カスケードの後勝ちを利用する箇所（同一セレクタの再定義）は各ファイル内で完結させてある。
 const STYLE =
-  LAYOUT_TOKENS_STYLE + SKELETON_STYLE + PANEL_CONTENT_STYLE + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE;
+  LAYOUT_TOKENS_STYLE + SKELETON_STYLE + MARKER_STYLE
+  + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE + PAUSE_MENU_STYLE
+  + HELP_PANEL_STYLE + SETTINGS_VIEW_STYLE
+  + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE;
 
-
-// 指定タグ・id・class の要素を作り、parent に追加して返す。
-function createHudElement(tag: string, id: string, parent: HTMLElement, className = ''): HTMLElement {
-  const element = document.createElement(tag);
-  element.id = id;
-  if (className) element.className = className;
-  parent.appendChild(element);
-  return element;
-}
 
 interface HudDomRefs {
-  readonly root: HTMLElement;
-  readonly layers: OverlayLayers;
-  readonly combatRoot: HudWorldRoot;
-  readonly mapRoot: HudWorldRoot;
+  readonly combatRoot: HudViewRoot;
+  readonly mapRoot: HudViewRoot;
   readonly svgOverlay: SVGSVGElement;
-  readonly overlayManager: OverlayManager;
   readonly helpPanel: HelpPanel;
   readonly els: Map<string, HTMLElement>;
 }
 
 /** 戦闘/マップそれぞれが所有する HUD の DOM ルート。 */
-interface HudWorldRoot {
+interface HudViewRoot {
   readonly element: HTMLElement;
   readonly leftRail: HTMLElement;
   readonly rightRail: HTMLElement;
@@ -78,7 +66,7 @@ function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
 // レールの折りたたみ状態は PanelShell と同じビュー別 localStorage を共有する。一度も操作
 // されていなければ、初回表示の既定として compact 幅でだけ畳んでおく。
 function buildRailToggle(
-  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: WorldView,
+  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: View,
 ): void {
   wirePanelCollapse({
     toggleRoot: root,
@@ -92,9 +80,9 @@ function buildRailToggle(
 }
 
 // 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
-function buildWorldRoot(parent: HTMLElement, id: string, view: WorldView): HudWorldRoot {
+function buildViewRoot(parent: HTMLElement, id: string, view: View): HudViewRoot {
   // ビューのルート要素を作る。
-  const element = createHudElement('div', id, parent, `hud-world-root hud-${view}-root`);
+  const element = createHudElement('div', id, parent, `hud-view-root hud-${view}-root`);
   // 左右のレールを子として組む。
   const leftRail = createHudElement(
     'div', `${id}-rail-left`, element, 'hud-rail hud-rail-left',
@@ -320,7 +308,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   buildEnemiesPanel(rightRail);
 }
 
-// マップ視点の縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
+// マップビューの縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
 function buildMapScale(root: HTMLElement): void {
   // 縮尺表示の要素を作る。
   const mapScale = createHudElement('div', 'hud-map-scale', root);
@@ -354,7 +342,8 @@ function buildTopBar(root: HTMLElement): void {
     </div>`;
 }
 
-// 追従カメラの視点リセットボタンを組む。
+// 視点リセットボタンを組む。id の chase は「動く実体を追っている視点」の意味
+// (camera/focus-camera.ts) — 押したときにどちらのビューのカメラを戻すかは CameraSystem が決める。
 function buildChaseReset(root: HTMLElement): void {
   // リセットボタン本体を作る。
   const chaseReset = createHudElement('button', 'hud-chase-reset', root);
@@ -397,34 +386,28 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
 }
 
 // HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを構築し、DOM 参照をまとめて返す。
-export function buildHudDom(renderStyle: RenderStyleSetting): HudDomRefs {
+export function buildHudDom(shell: HudShell, renderStyle: RenderStyleSetting): HudDomRefs {
   injectThemeVariables();
   injectStyle();
   startViewportTracking();
-  const root = createHudElement('div', 'hud', document.body);
+  const { root, layers } = shell;
   // 模式図では白背景になるため、マーカー配色をそれに合わせて切り替える手掛かりとして
   // 現在のスタイルをルート要素の属性で公開する。
   renderStyle.subscribe((style) => { root.dataset['renderStyle'] = style; });
-  const layers = buildOverlayLayers(root);
   const svgOverlay = buildSvgOverlay(layers.marker);
-  const combatRoot = buildWorldRoot(layers.panel, 'hud-combat-root', 'combat');
-  const mapRoot = buildWorldRoot(layers.panel, 'hud-map-root', 'map');
+  const combatRoot = buildViewRoot(layers.panel, 'hud-combat-root', 'combat');
+  const mapRoot = buildViewRoot(layers.panel, 'hud-map-root', 'map');
 
   // 常設パネル群を組む。
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);
   buildTopBar(layers.panel);
   buildChaseReset(layers.panel);
   buildMapScale(mapRoot.element);
-  const overlayShield = createHudElement('div', 'hud-overlay-shield', layers.gate);
-  const overlayManager = new OverlayManager(overlayShield, layers.gate);
-
   createHudElement('div', 'hud-toast', layers.notify);
 
-  const helpPanel = new HelpPanel(layers.system, overlayManager);
+  const helpPanel = new HelpPanel(layers.system, shell.overlayManager);
   buildHelpBadge(layers.panel, helpPanel);
 
-  createHudElement('div', 'hud-result', layers.system);
-
   const els = collectDataIdElements(root);
-  return { root, layers, combatRoot, mapRoot, svgOverlay, overlayManager, helpPanel, els };
+  return { combatRoot, mapRoot, svgOverlay, helpPanel, els };
 }

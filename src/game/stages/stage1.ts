@@ -1,6 +1,6 @@
 // Stage 1: 第一ステージ(LEO 戦域)。
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import {
   generateCoellipticEnemy,
   generateCrossingEnemy,

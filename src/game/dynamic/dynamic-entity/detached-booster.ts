@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { qRotate, type Attitude } from '../../../physics/attitude';
+import { type Attitude } from '../../../physics/attitude';
+import { LOCAL_FORWARD, qRotate } from '../../../math/quat';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { add, scale, v3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
@@ -35,6 +36,7 @@ type DetachedBoosterInit =
 // 分離後の一段。接続時の燃料・点火状態を引き継ぎ、燃料切れまで自律的に燃焼する。
 export class DetachedBooster extends DynamicEntity {
   override readonly bcInv = 0.006;
+  override readonly capKind = 'booster';
   protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;
   protected readonly specificHeat = SMALL_DEBRIS_SPECIFIC_HEAT;
   protected readonly bulkDensity = SMALL_DEBRIS_BULK_DENSITY;
@@ -112,7 +114,7 @@ export class DetachedBooster extends DynamicEntity {
       this.thrust = null;
       return;
     }
-    const forward = qRotate(this.att.q, v3(0, 0, 1));
+    const forward = qRotate(this.att.q, LOCAL_FORWARD);
     this.thrust = scale(forward, averageAcceleration);
   }
 

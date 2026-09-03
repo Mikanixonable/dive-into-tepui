@@ -4,31 +4,31 @@
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
-import { fmtTime } from '../hud/utils';
+import { fmtTime } from '../../hud/utils';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ProjectFn } from '../camera/camera-system';
-import type { MapCommands } from '../pickable/map-commands';
-import type { MapPickable } from '../pickable/map-pickable';
+import type { ObjectCommands } from '../pickable/object-commands';
+import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
-import type { PropertyRow } from '../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
-export abstract class OrbitPointMarker implements MapPickable {
-  public readonly mapState = null;
-  public readonly mapGlyphSvg = null;
+export abstract class OrbitPointMarker implements ObjectPickable {
+  public readonly orbitState = null;
+  public readonly glyphSvg = null;
   public readonly listSection = null;
   public readonly pickerGenre = null;
   public readonly hiddenBehindBodies = true;
   public readonly onlyInFocusedSystem = false;
-  public readonly mapRename = null;
+  public readonly rename = null;
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
 
   // 一覧・プロパティウィンドウに添える記号。
-  public abstract readonly mapGlyph: string;
-  // マップのマーカーへ描く字形。交点の昇降を描き分けるので mapGlyph とは別に持つ。
+  public abstract readonly glyph: string;
+  // マップのマーカーへ描く字形。交点の昇降を描き分けるので glyph とは別に持つ。
   protected abstract readonly markerGlyph: string;
   // マーカーの CSS クラス。
   protected abstract readonly markerClass: string;
@@ -55,11 +55,9 @@ export abstract class OrbitPointMarker implements MapPickable {
   }
 
   public get gone(): boolean { return this.pos === null; }
-  public get ownerName(): string | null { return this.owner; }
-  public get mapTime(): number | null { return this.time; }
 
   // 生成元が解いた時刻の位置。
-  public mapPosAt(): Vec3 | null { return this.pos; }
+  public posAt(): Vec3 | null { return this.pos; }
   // アイコンだけで示され、視線を通せる本体を持たない。
   public hitBodyByRay(): boolean { return false; }
 
@@ -69,18 +67,18 @@ export abstract class OrbitPointMarker implements MapPickable {
   // マーカーを解いた位置へ置く。解けていないフレームと、天体に遮られたフレームは隠す。
   public sync(
     markers: MarkerManager, project: ProjectFn, cameraPos: Vec3,
-    celestialBodies: readonly CelestialMotion[], pivot: number, overviewMode: boolean,
+    celestialBodies: readonly CelestialMotion[], pivot: number, occludeByBodies: boolean,
     timeLabel: TimeLabelSetting,
   ): void {
     if (this.pos === null) { markers.hide(this.id); return; }
     markers.setNodePosition(
       this.id, this.markerClass, this.markerGlyph, this.pos, project, cameraPos, celestialBodies, pivot,
-      overviewMode, orbitPointLabel(this.markerLabel, this.time, timeLabel),
+      occludeByBodies, orbitPointLabel(this.markerLabel, this.time, timeLabel),
     );
   }
 
   // メニューに出す操作項目。
-  public mapMenuItems(): readonly MenuItem<MenuAction>[] {
+  public menuItems(): readonly MenuItem<MenuAction>[] {
     return [
       { type: 'header', label: this.headerLabel, subLabel: this.headerSubLabel },
       MenuCommon.warp(),
@@ -91,7 +89,7 @@ export abstract class OrbitPointMarker implements MapPickable {
   }
 
   // 選ばれた操作を実行する。加速とノード追加は、通過時刻が求まっているフレームで効く。
-  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+  public runMenu(act: MenuAction, commands: ObjectCommands): void {
     const t = this.time;
     if (act === 'warp') {
       if (t !== null) commands.warpTo(t);
@@ -105,8 +103,8 @@ export abstract class OrbitPointMarker implements MapPickable {
   }
 
   // プロパティウィンドウに出す行。示す値は具象が決める。
-  public abstract mapPropertyRows(
-    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  public abstract propertyRows(
+    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[];
 
   // 所属軌道の行。持ち主が分からないフレームは行を作らない。

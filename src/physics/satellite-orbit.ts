@@ -11,7 +11,7 @@
 // との黄経差の最大値が約2.3°(採用14項の振幅和 ≈2.49° に対し実測はその9割強)、地心距離は
 // 近地点 356,400〜370,400 km・遠地点 404,000〜406,700 km の実測範囲にほぼ収まる
 // (遠地点のみ切り詰めによる高次相関項の欠如で最大 0.05% ほど超えることがある)。
-import { Quat } from './attitude';
+import { Quat } from '../math/quat';
 import { PlanetAngles } from './kepler-orbit';
 import { eclToEci, eciToEcl } from './ecliptic';
 import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState } from './kepler-orbit';

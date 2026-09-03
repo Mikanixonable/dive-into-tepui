@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { View } from '../../view/view';
 import { kinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { buildAmmoPickup } from '../../../render/ships';
@@ -6,19 +7,20 @@ import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS
 import { EntityIdAllocator } from './entity-id';
 import type { DynamicEntityKind } from './entity-kind';
 import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
-import { fmtDist, fmtMarkerDist } from '../../hud/utils';
+import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { AmmoPickupSaveData } from '../../save/save-data';
-import { MARKER_PRIORITY, type MarkerManager } from '../../marker/marker-manager';
+import { MARKER_PRIORITY } from '../../marker/crowding';
+import type { MarkerManager } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapPickable } from '../../pickable/map-pickable';
-import type { MapCommands } from '../../pickable/map-commands';
+import type { ObjectPickable } from '../../pickable/object-pickable';
+import type { ObjectCommands } from '../../pickable/object-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window';
+import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
@@ -37,7 +39,7 @@ type AmmoPickupInit =
   | { readonly saved: AmmoPickupSaveData; readonly simTime: number };
 
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
-export class AmmoPickup extends DynamicEntity implements MapPickable {
+export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   public readonly mapKind: DynamicEntityKind = 'ammo';
 
   override readonly bcInv = SMALL_DEBRIS_BCINV;
@@ -84,7 +86,7 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
 
   // Targeter がクラスタ化・天体ラベル下サブ行の集合へ渡すためのマーカー情報。
   // 弾薬はターゲット化されないので役割・優先度は常に固定値。
-  markerItem(viewerPos: Vec3, overviewMode: boolean): GroupedMarkerItem {
+  markerItem(viewerPos: Vec3, view: View): GroupedMarkerItem {
     const dist = len(sub(this.state.r, viewerPos));
     return {
       key: this.markerKey,
@@ -95,7 +97,7 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
       vel: this.state.v,
       priority: MARKER_PRIORITY.AMMO,
       name: this.name,
-      detail: overviewMode ? '' : fmtMarkerDist(dist),
+      detail: view === 'map' ? '' : fmtMarkerDist(dist),
       bearingColor: 'var(--color-primary-hover)',
       bearingSym: DIRECTION_GLYPH.bearing,
       bearingClass: 'mk-ammo mk-bearing-triangle',
@@ -103,13 +105,11 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
     };
   }
 
-  // マップ上の被選択物としての振る舞い。
-  public readonly ownerName = null;
-  public readonly mapTime = null;
+  // 被選択物(ObjectPickable)としての振る舞い。
   public get gone(): boolean { return !this.alive; }
-  public get mapState(): KinematicState { return this.state; }
-  public readonly mapGlyph = ENTITY_GLYPH.ammo;
-  public readonly mapGlyphSvg = null;
+  public get orbitState(): KinematicState { return this.state; }
+  public readonly glyph = ENTITY_GLYPH.ammo;
+  public readonly glyphSvg = null;
   public readonly listSection: MapListSection = 'ammo';
   public readonly pickerGenre: ObjectPickerGenre = '弾薬';
   public readonly hiddenBehindBodies = true;
@@ -117,7 +117,7 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
   public listPriority(): number { return 0; }
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
-  public mapPosAt(displayTime: number): Vec3 | null {
+  public posAt(displayTime: number): Vec3 | null {
     return this.stateAt(displayTime)?.r ?? null;
   }
 
@@ -133,7 +133,7 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
     _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
   ): string {
     if (activePlayer === null) return '';
-    const d = len(sub(this.mapPosAt(displayTime) ?? this.state.r, activePlayer.state.r));
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r));
     return `${fmtDist(d)}${this.listCounted(activePlayer, displayTime) ? ' · 回収可能' : ''}`;
   }
 
@@ -147,13 +147,13 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
   // 自艦が回収圏内に入っているか。
   public listCounted(activePlayer: Player | null, displayTime: number): boolean {
     if (activePlayer === null) return false;
-    const d = len(sub(this.mapPosAt(displayTime) ?? this.state.r, activePlayer.state.r));
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r));
     return d <= AMMO_PICKUP_RADIUS;
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
-  public mapMenuItems(
-    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  public menuItems(
+    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
     return [
       MenuCommon.focus(),
@@ -164,8 +164,8 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
     ];
   }
 
-  // mapMenuItems が出した操作を実行する。削除は自分の alive を落とし、残りは commands を通す。
-  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+  // menuItems が出した操作を実行する。削除は自分の alive を落とし、残りは commands を通す。
+  public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'delete') this.alive = false;
     else if (act === 'duplicate') commands.duplicate(this.mapKind, this.state);
     else if (act === 'focus') commands.focus(this.id, this.name);
@@ -174,8 +174,8 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
 
   // プロパティウィンドウに出す行。自艦からの距離を主要行とし、軌道要素は「軌道」グループの
   // 下に畳む。viewer が null なら距離の行は落ちる。
-  public mapPropertyRows(
-    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  public propertyRows(
+    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
     const viewer = commands.activePlayer;
     const rows: PropertyRow[] = [];
@@ -184,7 +184,7 @@ export class AmmoPickup extends DynamicEntity implements MapPickable {
     return rows;
   }
 
-  public readonly mapRename = null;
+  public readonly rename = null;
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
 }

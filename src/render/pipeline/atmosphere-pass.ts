@@ -13,7 +13,7 @@ import {
   max, min, mix, normalize, not, or, screenUV, select, smoothstep, sqrt, sub, texture, uniform,
   vec3, vec4,
 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffAltitude } from '../atmosphere';
 import { rayMarch, type MediumSample } from '../ray-march';

@@ -47,7 +47,7 @@ import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
 import type { ProteinLabCaseMetadata } from './protein-cases';
-import type { ProteinMotionFrameSample } from '../../src/protein-motion-metrics';
+import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 import { HULL_EMISS } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
 
 
@@ -402,7 +402,7 @@ function shipBodyShadow(_style: RenderStyle, sunOcclusion: SunOcclusion, sunLigh
   const sun = SMALL_BODY_SUN_DIR;
   // 恒星に直交する 2 つの向き。lateral はカメラ側を向き、edge は視線にも直交するので画面内で真横。
   const toCamera = new THREE.Vector3().subVectors(camera.position, center).normalize();
-  const lateral = toCamera.clone().addScaledVector(sun, -toCamera.dot(sun)).normalize();
+  const lateral = toCamera.clone().projectOnPlane(sun).normalize();
   const edge = new THREE.Vector3().crossVectors(toCamera, sun).normalize();
   const axis = sun.clone().multiplyScalar(Math.cos(SMALL_BODY_RING_TILT))
     .addScaledVector(lateral, -Math.sin(SMALL_BODY_RING_TILT));

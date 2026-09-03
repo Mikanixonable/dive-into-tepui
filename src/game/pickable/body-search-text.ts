@@ -2,7 +2,7 @@
 // その位置を最も強く引く天体の名前で絞り込めるようにする。
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
-import { fmtDist } from '../hud/utils';
+import { fmtDist } from '../../hud/utils';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { Player } from '../player/player';
 

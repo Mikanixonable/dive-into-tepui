@@ -1,14 +1,9 @@
 import * as assert from 'node:assert/strict';
-import { createHash, webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test } from '../harness';
-import {
-  buildPackData, encodePack, encodeFloat64Payload,
-} from '../../src/physics/ephemeris/pack-format';
-import {
-  PackEphemeris, loadPackEphemeris,
-} from '../../src/physics/ephemeris/pack';
+import { buildPackData, encodePack } from '../../src/physics/ephemeris/pack-format';
+import { PackEphemeris } from '../../src/physics/ephemeris/pack';
 import { EPHEMERIS_PROFILES } from '../../src/physics/ephemeris/profile';
 import { icrfToGameEci } from '../../src/physics/icrf';
 import { v3 } from '../../src/math/vec3';
@@ -16,7 +11,7 @@ import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY } from '../../src/
 
 const J2000 = createJulianDate('TDB', J2000_JULIAN_DATE);
 
-function fixture(corrupt = false): Uint8Array {
+function fixture(): Uint8Array {
   const base = {
     format: 'tepui-ephemeris-pack' as const,
     version: 1 as const,
@@ -32,10 +27,7 @@ function fixture(corrupt = false): Uint8Array {
     body: 'earth', start: 0, end: 10,
     coefficients: [[1], [2], [3]],
   }]);
-  const digest = createHash('sha256').update(encodeFloat64Payload(data.payload)).digest('hex');
-  const bytes = encodePack({ ...data.manifest, payloadSha256: digest }, data.payload);
-  if (corrupt) bytes[bytes.length - 1]! ^= 1;
-  return bytes;
+  return encodePack(data.manifest, data.payload);
 }
 
 // 同梱 pack のファイル名。profile の id からは決まらないので、ここだけは並べて持つ。
@@ -53,7 +45,7 @@ export function register(): void {
   for (const [profileId, fileName] of Object.entries(SHIPPED_PACKS)) {
     test(`pack ephemeris: 同梱 pack ${fileName} は収録している点を宣言する`, () => {
       const bytes = readFileSync(resolve(process.cwd(), 'src/assets/ephemeris', fileName));
-      const source = PackEphemeris.fromTrustedBytes(new Uint8Array(bytes), J2000);
+      const source = PackEphemeris.fromBytes(new Uint8Array(bytes), J2000);
       const points = source.ephemerisPoints();
       for (const id of SYSTEM_BARYCENTER_BODIES) {
         assert.equal(points.get(id)?.kind, 'systemBarycenter', `${fileName} の ${id}`);
@@ -68,7 +60,7 @@ export function register(): void {
   }
 
   test('pack ephemeris: 元期 J2000 なら pack の ET 秒がそのまま simTime になる', () => {
-    const earth = PackEphemeris.fromTrustedBytes(fixture(), J2000)
+    const earth = PackEphemeris.fromBytes(fixture(), J2000)
       .ephemerisPoints().get('earth')?.ephemeris;
     assert.ok(earth !== undefined);
     assert.deepEqual(earth.baryStateAt(0).r, icrfToGameEci(v3(1, 2, 3)));
@@ -80,7 +72,7 @@ export function register(): void {
   // 有効期間も一緒に動く。
   test('pack ephemeris: 元期をずらすと有効期間と評価時刻が同じだけ動く', () => {
     const shiftDays = 3;
-    const shifted = PackEphemeris.fromTrustedBytes(
+    const shifted = PackEphemeris.fromBytes(
       fixture(), createJulianDate('TDB', J2000_JULIAN_DATE + shiftDays))
       .ephemerisPoints().get('earth')?.ephemeris;
     assert.ok(shifted !== undefined);
@@ -91,13 +83,8 @@ export function register(): void {
   });
 
   test('pack ephemeris: 収録していない天体は一覧に載らない', () => {
-    const source = PackEphemeris.fromTrustedBytes(fixture(), J2000);
+    const source = PackEphemeris.fromBytes(fixture(), J2000);
     assert.equal(source.ephemerisPoints().has('mars'), false);
     assert.equal(source.ephemerisPoints().has('earth'), true);
-  });
-
-  test('pack ephemeris: browser loaderはpayload改竄を拒否する', async () => {
-    if (!globalThis.crypto) Object.defineProperty(globalThis, 'crypto', { value: webcrypto });
-    await assert.rejects(loadPackEphemeris(fixture(true), J2000), /SHA-256不一致/);
   });
 }

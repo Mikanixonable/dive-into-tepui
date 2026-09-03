@@ -1,6 +1,6 @@
 // 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
 import { len, sub } from '../../../math/vec3';
-import { fmtDist } from '../utils';
+import { fmtDist } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
 import type { Vec3 } from '../../../math/vec3';
 import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
@@ -66,7 +66,7 @@ export class EnemiesPanel {
 
     // 更新間隔中も直前の敵有無を維持する。ここで戦闘ビュー判定だけを行うと、
     // 敵0件で隠したパネルを次のフレームに再表示してしまう。
-    panel?.classList.toggle('hidden', game.cameraSystem.overviewMode || !this.hasContacts);
+    panel?.classList.toggle('hidden', game.viewManager.isMapView || !this.hasContacts);
   }
 
   // waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。

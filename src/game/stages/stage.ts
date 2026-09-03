@@ -11,7 +11,6 @@ import { EffectsSystem } from '../vfx/effects-system';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
-import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
@@ -60,7 +59,6 @@ export type StageDeps = [
   uiSfx: UiSfx,
   scene: THREE.Scene,
   entities: DynamicSystem,
-  unlockManager: UnlockManager,
   fx: EffectsSystem,
   markerManager: MarkerManager,
   celestialSystem: CelestialSystem,
@@ -97,6 +95,10 @@ export interface ObjectAuthoring {
   openObjectPlacer(focusId?: string): void;
   openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void;
 }
+
+// ステージ ID → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、
+// 「クリアしたか否か」ではなく回数を記録する。
+export type ClearCounts = Readonly<Record<string, number>>;
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
@@ -158,7 +160,6 @@ export abstract class Stage {
   protected readonly _uiSfx: UiSfx;
   protected readonly _scene: THREE.Scene;
   protected readonly _fx: EffectsSystem;
-  protected readonly _unlockManager: UnlockManager;
   protected readonly _entities: DynamicSystem;
   protected readonly _markerManager: MarkerManager;
   protected readonly _celestialSystem: CelestialSystem;
@@ -170,10 +171,16 @@ export abstract class Stage {
   public get isPlaying(): boolean { return this._phase === 'playing'; }
   private _result: StageResult | null = null;
   public get result(): StageResult | null { return this._result; }
-  // 勝敗と結果画面の内容を同時に確定させる。表示は呼び出し側(Launcher)の役目。
+  // decide() が決着を確定させた瞬間に一度だけ呼ぶ。
+  public onDecided: (() => void) | null = null;
+  // 勝敗と結果画面の内容を同時に確定させ、鳴らし続けている継続音を畳む。
   protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
     this._phase = phase;
     this._result = result;
+    // 決着後は積分が止まるため、ここで畳まないと噴射音・RCS 音が鳴り続ける。
+    this._worldSfx.setThrust(false);
+    this._worldSfx.setRcs(false);
+    this.onDecided?.();
   }
   private readonly restored: boolean;
 
@@ -181,12 +188,11 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, celestialSystem, simulator, activePlayers] = deps;
+    const [hud, worldSfx, uiSfx, scene, entities, fx, markerManager, celestialSystem, simulator, activePlayers] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
     this._scene = scene;
-    this._unlockManager = unlockManager;
     this._fx = fx;
     this._entities = entities;
     this._markerManager = markerManager;
@@ -219,13 +225,13 @@ export abstract class Stage {
     player: Player | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
     _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    this.syncStatusPanel(player, cameraSystem.overviewMode);
+    this.syncStatusPanel(player, cameraSystem.view === 'map');
   }
 
-  // hudSubStatus() が null のとき、またはマップ視点のときはパネルを畳む。
-  private syncStatusPanel(player: Player | null, overviewMode: boolean): void {
+  // hudSubStatus() が null のとき、またはマップビューのときはパネルを畳む。
+  private syncStatusPanel(player: Player | null, mapView: boolean): void {
     const message = this.hudSubStatus();
-    const show = message !== null && !overviewMode;
+    const show = message !== null && !mapView;
     this.statusPanel.sync(show ? player : null, message ?? '', this.scoreCounter.kills);
   }
 
@@ -233,14 +239,14 @@ export abstract class Stage {
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
     const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
-    this._entities.addPlayer(ship);
+    this._entities.add(ship);
     this._activePlayers.claimIfNone(ship);
     return ship;
   }
 
   // 敵を entities へ登録し、出撃数をスコアへ記録する。
   protected addEnemy(enemy: Enemy, entities: DynamicSystem): void {
-    entities.addEnemy(enemy);
+    entities.add(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
@@ -250,10 +256,12 @@ export abstract class Stage {
     entities.spawnEnemyWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
-  // 生存中の敵全てに AI 行動を1フレーム分実行させる。
+  // 生存中の敵全てに AI 行動を1フレーム分実行させる。同一集団の判定に使う母集団は、
+  // このフレームの顔ぶれを1度だけ取って全機で共有する。
   protected behaveAllEnemies(player: Player, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
-    for (const e of entities.enemies) {
-      if (e.alive) e.behave(simTime, player, entities, simSpeed, this._celestialSystem);
+    const enemies = entities.enemies;
+    for (const e of enemies) {
+      if (e.alive) e.behave(simTime, player, entities, enemies, simSpeed, this._celestialSystem);
     }
   }
 
@@ -296,10 +304,7 @@ export abstract class Stage {
     }
 
     // isPlaying ガード: 敗北後に残存敵が再突入で消えても勝利判定が上書きしないよう。
-    if (this.isPlaying && this.checkWin()) {
-      this._unlockManager.reportClear(this.id, this._hud);
-      this.onWin(simTime);
-    }
+    if (this.isPlaying && this.checkWin()) this.onWin(simTime);
   }
 
   // 敗北を記録し、reason を添えて決着を「敗北」で確定させる。

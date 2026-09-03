@@ -5,7 +5,7 @@ import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
-import { randomQuat } from '../../physics/attitude';
+import { randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../math/random';
 import { add, v3, Vec3 } from '../../math/vec3';
@@ -47,7 +47,7 @@ export class StageDebugLoad extends Stage {
       const state = kinematicState<'eci'>(player.state.t, add(player.state.r, offset), player.state.v);
       const size = DESTROY_FRAG_SIZE_MIN + rand() * (DESTROY_FRAG_SIZE_MAX - DESTROY_FRAG_SIZE_MIN);
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
-      entities.addDebris(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));
+      entities.add(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));
     }
   }
 
@@ -56,7 +56,7 @@ export class StageDebugLoad extends Stage {
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 
-  // 検証を継続できるよう、勝敗を発生させない(UnlockManager のクリア数にも入らない)。
+  // 検証を継続できるよう、勝敗を発生させない(クリア回数にも入らない)。
   checkWin(): boolean {
     return false;
   }

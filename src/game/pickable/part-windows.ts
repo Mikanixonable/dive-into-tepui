@@ -1,6 +1,6 @@
 // 自艦の搭載部品のプロパティウィンドウ。部品1つにつき高々1枚を保ち、展開できる部品の
 // 展開/収納を実行する。排他グループを持たせず、被選択物のウィンドウと共存させる。
-import { PropertyWindow, type PropertyWindowContent, type PropertyWindowItem } from '../hud/windows/property-window';
+import { PropertyWindow, type PropertyWindowContent, type PropertyWindowItem } from '../../hud/windows/property-window';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { Hud } from '../hud/hud';

@@ -10,7 +10,7 @@ import { WebGPURenderer } from 'three/webgpu';
 import {
   abs, diffuseColor, emissive, float, metalness, mrt, normalize, normalView, roughness, select, step, vec3, vec4,
 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { LIT_OPAQUE_LAYER } from './lit-layer';
 import type { Vec2Node, Vec3Node } from '../tsl-types';
 

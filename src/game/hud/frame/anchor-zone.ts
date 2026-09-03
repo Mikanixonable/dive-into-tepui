@@ -1,16 +1,16 @@
 // マップの座標系UIのうち「何に固定/追随するか」を選ばせるゾーン。上段は登録天体・自艦・
 // 敵・基地・弾薬まで含む全候補から選ぶプルダウン(ObjectPicker)、下段はいまカメラがいる
 // 系の天体だけに絞ったクイックボタン(SegmentedControl)。
-import { FRAME_ROLES } from '../../../physics/frame';
+import { FRAME_ROLES, frameRoleAnchorId } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapPickable } from '../../pickable/map-pickable';
-import { SegmentedControl } from '../widgets';
-import { injectOnce } from '../widgets/inject-style';
-import { frameRoleAnchorId, frameRoleName } from './frame-labels';
+import type { ObjectPickable } from '../../pickable/object-pickable';
+import { SegmentedControl } from '../../../hud/widgets';
+import { injectOnce } from '../../../hud/widgets/inject-style';
+import { frameRoleName } from './frame-labels';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { groupPickables } from '../object-groups';
 import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
-import type { OverlayManager } from '../overlay-manager';
+import type { OverlayManager } from '../../../hud/overlay-manager';
 
 // プルダウン先頭に置く役割グループ。役割は毎フレーム対象へ解決されるので、乗り換え・付け替えを
 // またいで選択が保たれる(MAP.md 3節)。
@@ -51,7 +51,7 @@ export class AnchorZone {
   }
 
   // 選べる対象の一覧を現在のマップ候補へ合わせる。releaseLabel があれば先頭に解除の選択肢を足す。
-  public setItems(pickables: readonly MapPickable[], includeAllCelestialBodies = false): void {
+  public setItems(pickables: readonly ObjectPickable[], includeAllCelestialBodies = false): void {
     const groups: ObjectPickerGroup<string | null>[] = [
       ...(this.releaseLabel !== null ? [{ label: '', items: [[null, this.releaseLabel] as const] }] : []),
       ROLE_GROUP,
@@ -62,7 +62,7 @@ export class AnchorZone {
 
   // クイックボタンを、渡された系の天体列(+その衛星・ラグランジュ点)へ合わせる。
   // 候補に無い id は出さない(押せてから拒否することになるため)。
-  public setNearby(members: readonly string[], pickables: readonly MapPickable[]): void {
+  public setNearby(members: readonly string[], pickables: readonly ObjectPickable[]): void {
     const byId = new Map(pickables.map((p) => [p.id, p] as const));
 
     // 渡された系メンバーのうち、実際に選べる候補にあるものだけへ絞る。

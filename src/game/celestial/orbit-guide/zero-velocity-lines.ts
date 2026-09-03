@@ -10,6 +10,7 @@ import { CurveKnots } from '../../../render/curve';
 import { OrbitingMotion } from '../../../physics/celestial-motion';
 import { secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialSystem } from '../celestial-system';
+import type { View } from '../../view/view';
 import { Vec3 } from '../../../math/vec3';
 import { guideSecondary, rotatingFrame } from '../../../physics/orbit-guide';
 import { zeroVelocityCurveSet, SectionPlane } from '../../../physics/zero-velocity';
@@ -127,8 +128,8 @@ export class ZeroVelocityLines {
 
   // マップビューのときだけ曲線を同期する。等高線の抽出(格子走査)は断面やヤコビ定数が
   // 変わったときだけ、ECI への埋め込みは回転基底が目に見えて回ったときだけ走る。
-  public sync(displayTime: number, overviewMode: boolean, fo: FloatingOrigin, camera: THREE.Camera): void {
-    if (!overviewMode || !this.settings) {
+  public sync(displayTime: number, view: View, fo: FloatingOrigin, camera: THREE.Camera): void {
+    if (view !== 'map' || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
       return;
     }

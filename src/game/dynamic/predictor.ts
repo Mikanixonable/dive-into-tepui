@@ -18,7 +18,7 @@ import { Player } from '../player/player';
 import { simulationMaxStep, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { PredictedArc } from './predicted-arc';
-import type { PerfCounts } from '../../perf-meter';
+import type { PerfCounts } from '../perf-counts';
 
 // 消費される弧が、消費前線より過去側にも保持しておく余裕 [s]。保持窓の左端が前線に一致すると
 // at(前線) を挟む補間区間が消える。予測線の下端は simTime なので、余分に保持しても描画は変わらない。
@@ -63,7 +63,7 @@ export class Predictor {
   // horizon は simTime から先に予測する長さ [s]。canDisplayFuture は表示時刻が現在より先へ
   // 動けるかで、未来ゴーストが伸長理由として成り立つかを決める。planArcs は
   // plan/plan-path.ts の PlanPath が owned で持つ弧を時刻順に渡したもの
-  // (PlanEditor.growableArcs 経由) — requiredEnd/retainFrom は渡す前に書き込み済みなので、
+  // (PlanDisplay.growableArcs 経由) — requiredEnd/retainFrom は渡す前に書き込み済みなので、
   // ここでは step() を呼ぶだけでよい。
   update(
     simTime: number, simDt: number, player: Player | null, horizon: number, canDisplayFuture: boolean,
@@ -157,7 +157,7 @@ export class Predictor {
   }
 
   // 負荷確認ウィンドウが読む、直近フレームの予測伸長の集計値。planSteps は計画の弧ぶんの
-  // 積分step数 — 区間の再生成数(planArcs)は plan/plan-editor.ts が答える。
+  // 積分step数 — 区間の再生成数(planArcs)は plan/plan-trajectory.ts が答える。
   perfCounts(): Pick<PerfCounts,
   'predicted' | 'predictComplete' | 'predictorSteps' | 'planSteps'
   | 'arcCelestialBodies' | 'arcRevisits' | 'arcLead'> {

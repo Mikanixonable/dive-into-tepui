@@ -1,12 +1,12 @@
 // シミュレーション速度(HUD ヒント・SFX 上は「ワープ」と呼ぶ)の段階管理と、
 // 「マニューバノードの実行時刻まで自動的に加速する」機能を担う。
-// マップモードの計画データそのものには依存しない — [N] キーの受け口と
-// どのノード時刻へ自動ワープするかは呼び出し側(PlanEditor)が決めて渡す。
+// マップビューの計画データそのものには依存しない — [N] キーの受け口と
+// どのノード時刻へ自動ワープするかは呼び出し側が決めて渡す。
 import { Hud } from '../hud/hud';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { KinematicState } from '../../physics/kinematic-state';
-import type { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import type { Input } from '../../input/input';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { NODE_APPROACH_LEAD } from '../plan/plan';
 
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。

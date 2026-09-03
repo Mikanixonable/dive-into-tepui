@@ -2,12 +2,12 @@
 // 登録天体ぶんの候補を並べると1行に収まらない。現在の選択を出すボタンを押すとポップアップが
 // 開き、上から「絞り込み入力」「グループ分けした全候補」の順に並ぶ。候補はグループごとに
 // 複数列のグリッドへ並べる(百件規模を縦一列に積むと画面高をはみ出すため)。
-import { clampOverlayPosition } from '../layout';
-import { Button } from '../widgets';
-import { injectOnce } from '../widgets/inject-style';
-import { bringToFront } from '../overlay-layer';
-import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
-import type { OverlayHandle, OverlayManager } from '../overlay-manager';
+import { clampOverlayPosition } from '../../../hud/layout';
+import { Button, buildLabeledRow } from '../../../hud/widgets';
+import { injectOnce } from '../../../hud/widgets/inject-style';
+import { bringToFront } from '../../../hud/overlay-layer';
+import { isCompactViewport, MQ_COMPACT } from '../../../hud/breakpoints';
+import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 
 const STYLE = `
 #hud .object-picker-pop {
@@ -91,12 +91,7 @@ export class ObjectPicker<T> implements OverlayHandle {
     this.onSelect = onSelect;
 
     // 見出しと現在の選択を表示するトリガーボタンを組み立てる。
-    this.element = document.createElement('div');
-    this.element.className = 'w-group';
-    const heading = document.createElement('span');
-    heading.className = 'w-group-title';
-    heading.textContent = title;
-    this.element.appendChild(heading);
+    this.element = buildLabeledRow(title);
     this.trigger = new Button('—', () => this.toggle());
     this.trigger.element.setAttribute('aria-haspopup', 'dialog');
     this.trigger.element.setAttribute('aria-expanded', 'false');

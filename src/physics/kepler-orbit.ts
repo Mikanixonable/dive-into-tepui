@@ -8,7 +8,7 @@
 // 上で測る。位置・速度だけでなく軌道法線・回転基準系もこの1つの回転を経由するので、
 // 基準面を変えても表示・ラグランジュ点・回転座標系が食い違うことはない。
 import { AU } from './astronomical-unit';
-import { Quat, qFromAxisAngle, qMul, qRotate } from './attitude';
+import { Quat, qFromAxisAngle, qMul, qRotate } from '../math/quat';
 import { Q_ECL_TO_ECI } from './ecliptic';
 import { eccentricAnomalyFromMean, positionFromOrbitalElements } from './elements';
 import { KinematicState, kinematicState } from './kinematic-state';

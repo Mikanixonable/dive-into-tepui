@@ -25,8 +25,8 @@ import { NextEventTime } from './next-event-time';
 import { v3 } from '../../math/vec3';
 import { simulationMaxStep, simulationStepDuration, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import type { NanWatchdog } from './nan-watchdog';
-import { FrameSections, SECTION } from '../../frame-sections';
-import type { PerfCounts } from '../../perf-meter';
+import { FrameSections, SECTION } from '../frame-sections';
+import type { PerfCounts } from '../perf-counts';
 
 // ゼロ長サブステップ(丸めで刻みが0になったイベント消費)が連続してこの回数を超えたら
 // Simulator.advance が simTime を強制前進させる。イベント予告と実際の消滅判定が
@@ -142,10 +142,9 @@ export class Simulator {
         // 放熱板の折りは DynamicSystem に登録された実体ではなく、艦の姿勢から毎 substep
         // 置き直す接触代理なので、参加者リストへこの場で合流させる。
         this.contactEntitiesScratch.length = 0;
-        this.contactEntitiesScratch.push(...this.entities.all());
-        for (const p of this.entities.players) {
-          if (!p.alive) continue;
-          this.contactEntitiesScratch.push(...p.collisionFolds(this.simTime));
+        for (const entity of this.entities.all()) {
+          this.contactEntitiesScratch.push(entity);
+          if (entity.alive) this.contactEntitiesScratch.push(...entity.collisionFolds(this.simTime));
         }
         this.sections.enter(SECTION.contact);
         this.entityContactPhysics.resolveEntityContacts(

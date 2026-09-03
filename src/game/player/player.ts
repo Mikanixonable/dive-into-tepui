@@ -1,9 +1,11 @@
 import * as THREE from 'three/webgpu';
-import { Attitude, qFromForwardUp, qRotate } from '../../physics/attitude';
+import type { View } from '../view/view';
+import { Attitude } from '../../physics/attitude';
+import { LOCAL_FORWARD, qFromBasis, qRotate } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
-import { fmtMarkerDist } from '../hud/utils';
+import { fmtMarkerDist } from '../../hud/utils';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { Ship, SHIP_RADIATING_AREA_PER_MASS, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
@@ -12,8 +14,8 @@ import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
-import { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { Input } from '../../input/input';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
@@ -28,7 +30,7 @@ import { PlayerFire, type AmmoLoad } from './player-fire';
 import { Belt } from './belt';
 import { AeroLoad } from './aero-load';
 import { AltitudeAlarm } from './altitude-alarm';
-import { currentThemePalette } from '../theme';
+import { currentThemePalette } from '../../theme';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
@@ -49,17 +51,18 @@ import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
 } from '../../render/vfx-style';
 import { PlayerBoosters } from './player-boosters';
-import { MARKER_PRIORITY } from '../marker/marker-manager';
+import { MARKER_PRIORITY } from '../marker/crowding';
 import { strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
-import { fmtAmmoStatus, fmtDist, fmtEnergy } from '../hud/utils';
+import { fmtAmmoStatus } from '../hud/ammo-status';
+import { fmtDist, fmtEnergy } from '../../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitRows } from '../pickable/orbit-rows';
-import type { MapPickable } from '../pickable/map-pickable';
+import type { ObjectPickable } from '../pickable/object-pickable';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { MapCommands } from '../pickable/map-commands';
+import type { ObjectCommands } from '../pickable/object-commands';
 import type { MenuItem } from '../hud/windows/context-menu';
-import type { PropertyRow } from '../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../hud/object-groups';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
@@ -105,8 +108,11 @@ export type PlayerInit =
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、それらを反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
-export class Player extends Ship implements Controllable, MapPickable {
+export class Player extends Ship implements Controllable, ObjectPickable {
   public readonly mapKind: DynamicEntityKind = 'player';
+  // 喪失した艦の除去は ActiveControllableController.reclaimDead が担う。注視・操作対象の
+  // 参照を掃除し、次の艦へ引き継いでから取り除く必要がある。
+  public override readonly reclaimedByOwner = true;
 
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
@@ -217,7 +223,7 @@ export class Player extends Ship implements Controllable, MapPickable {
   // state の速度方向を機首、位置方向を上として姿勢を組む。
   private static progradeAttitude(state: KinematicState): Attitude {
     return {
-      q: qFromForwardUp(state.v, state.r) ?? { x: 0, y: 0, z: 0, w: 1 },
+      q: qFromBasis(state.v, state.r),
       w: v3(),
       inertia: Player.INERTIA,
     };
@@ -247,7 +253,7 @@ export class Player extends Ship implements Controllable, MapPickable {
   }
 
   getPortWorldNormal(): Vec3 {
-    return qRotate(this.att.q, v3(0, 0, 1));
+    return qRotate(this.att.q, LOCAL_FORWARD);
   }
 
   // 弾薬ピックアップで得たマグ数を加算する。
@@ -451,7 +457,7 @@ export class Player extends Ship implements Controllable, MapPickable {
   }
 
   // この艦の放熱板の、今フレームの接触代理一覧(展開中かつ健在な折りのみ)。
-  collisionFolds(simTime: number): DynamicEntity[] {
+  override collisionFolds(simTime: number): readonly DynamicEntity[] {
     return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
   }
 
@@ -536,7 +542,7 @@ export class Player extends Ship implements Controllable, MapPickable {
   ): void {
     // メッシュ本体の位置・姿勢
     const displayState = this.stateAt(displayTime);
-    const mapEntityVisible = !camera.overviewMode || visibility === null || visibility.category;
+    const mapEntityVisible = camera.view !== 'map' || visibility === null || visibility.category;
     this.renderObject.visible = displayState !== null && mapEntityVisible && !(isActive && camera.zoomActive);
     if (displayState !== null) {
       this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
@@ -562,7 +568,7 @@ export class Player extends Ship implements Controllable, MapPickable {
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
     this.markers.sync(
-      this.state, this.att, camera.overviewMode, isActive, camera.activeCameraProjection,
+      this.state, this.att, camera.view, isActive, camera.activeCameraProjection,
       this.roundsInMag, this.magsLeft, this.averageMuzzleVelocity, orbitRef,
     );
   }
@@ -575,7 +581,7 @@ export class Player extends Ship implements Controllable, MapPickable {
 
   // ターゲットとして指定された際などのマーカー。Enemy の markerItem と互換性を持たせる。
   // isActive はこの艦が操作対象かどうか(マップ上の自艦マーカーを他の僚艦と塗り分けるため)。
-  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, overviewMode: boolean, isActive: boolean): GroupedMarkerItem {
+  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.PLAYER;
     const kindCls = isActive ? 'mk-self' : 'mk-ally';
@@ -584,12 +590,12 @@ export class Player extends Ship implements Controllable, MapPickable {
       key: this.markerKey,
       kind: this.mapKind,
       cls: role === 'primary' ? `${kindCls} mk-target` : kindCls,
-      sym: overviewMode ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
+      sym: view === 'map' ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
       vel,
       priority,
       name: this.name,
-      detail: overviewMode ? '' : fmtMarkerDist(dist),
+      detail: view === 'map' ? '' : fmtMarkerDist(dist),
       bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
@@ -647,13 +653,11 @@ export class Player extends Ship implements Controllable, MapPickable {
     };
   }
 
-  // マップ上の被選択物としての振る舞い。
-  public readonly ownerName = null;
-  public readonly mapTime = null;
+  // 被選択物(ObjectPickable)としての振る舞い。
   public get gone(): boolean { return !this.alive; }
-  public get mapState(): KinematicState { return this.state; }
-  public readonly mapGlyph = ENTITY_GLYPH.ship;
-  public get mapGlyphSvg(): string { return shipMarkerSvg(true); }
+  public get orbitState(): KinematicState { return this.state; }
+  public readonly glyph = ENTITY_GLYPH.ship;
+  public get glyphSvg(): string { return shipMarkerSvg(true); }
   public readonly listSection: MapListSection = 'player';
   public readonly pickerGenre: ObjectPickerGenre = '自艦';
   public readonly hiddenBehindBodies = true;
@@ -661,7 +665,7 @@ export class Player extends Ship implements Controllable, MapPickable {
   public listCounted(): boolean { return false; }
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
-  public mapPosAt(displayTime: number): Vec3 | null {
+  public posAt(displayTime: number): Vec3 | null {
     return this.stateAt(displayTime)?.r ?? null;
   }
 
@@ -691,8 +695,8 @@ export class Player extends Ship implements Controllable, MapPickable {
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
-  public mapMenuItems(
-    commands: MapCommands, _celestialSystem: CelestialSystem, simTime: number,
+  public menuItems(
+    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
     const isActive = this === commands.activePlayer;
     const activate: MenuItem<MenuAction> = isActive
@@ -727,8 +731,8 @@ export class Player extends Ship implements Controllable, MapPickable {
     ];
   }
 
-  // mapMenuItems が出した操作を実行する。軌道線の表示と計画実行モードは自分の状態を、残りは commands を通す。
-  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+  // menuItems が出した操作を実行する。軌道線の表示と計画実行モードは自分の状態を、残りは commands を通す。
+  public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
     } else if (act === 'dock') {
@@ -757,8 +761,8 @@ export class Player extends Ship implements Controllable, MapPickable {
 
   // プロパティウィンドウに出す行。装甲・温度・電力・弾薬を主要行とし、操作対象か・計画実行は
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。
-  public mapPropertyRows(
-    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  public propertyRows(
+    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
     return [
       {
@@ -774,15 +778,15 @@ export class Player extends Ship implements Controllable, MapPickable {
     ];
   }
 
-  public readonly mapRename = (name: string): void => { this.name = name; };
+  public readonly rename = (name: string): void => { this.name = name; };
 
   // 単クリックはプロパティウィンドウを開くだけに留め、操作対象は変えない。
-  public readonly onMapSelect = (commands: MapCommands, clientX: number, clientY: number): void => {
+  public readonly onMapSelect = (commands: ObjectCommands, clientX: number, clientY: number): void => {
     commands.openProperties(this, clientX, clientY);
   };
 
   // 注視されたら操作対象にもなる(操作艦を切り替える最速の手段)。
-  public readonly onMapFocus = (commands: MapCommands): void => {
+  public readonly onMapFocus = (commands: ObjectCommands): void => {
     commands.setActivePlayer(this);
     commands.hint(`${this.name} を操作対象に設定`);
   };

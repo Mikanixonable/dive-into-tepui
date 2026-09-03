@@ -14,8 +14,8 @@ import { haloState, lissajousState } from '../../physics/halo';
 import { secondaryFrameOf } from '../../physics/lagrange';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import { qRotate } from '../../physics/attitude';
-import { Vec3, add, addScaled, v3 } from '../../math/vec3';
+import { LOCAL_FORWARD, qRotate } from '../../math/quat';
+import { Vec3, add, addScaled } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
@@ -58,7 +58,7 @@ export class CreativeStage extends Stage {
   readonly authoring: ObjectAuthoring = this;
 
   private readonly placerPanel: ObjectPlacerPanel;
-  // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップ視点でだけ出す。
+  // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップビューでだけ出す。
   private readonly stageControlsPanel: StageControlsPanel;
   private readonly waveAttack: WaveAttack;
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
@@ -157,7 +157,7 @@ export class CreativeStage extends Stage {
       return;
     }
     const color = Number(colorValue);
-    const forward = qRotate(player.att.q, v3(0, 0, 1));
+    const forward = qRotate(player.att.q, LOCAL_FORWARD);
     const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
     const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
     const name = `MANUAL-${++this.manualEnemyCount}`;
@@ -188,7 +188,7 @@ export class CreativeStage extends Stage {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
-    const forward = qRotate(player.att.q, v3(0, 0, 1));
+    const forward = qRotate(player.att.q, LOCAL_FORWARD);
     const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
     const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
     const name = `FORMATION-${++this.manualFormationCount}`;
@@ -198,7 +198,7 @@ export class CreativeStage extends Stage {
     }
   }
 
-  // ステージ操作パネルは、表示中のワールドビューの右ドックへ追従させる。
+  // ステージ操作パネルは、表示中のビューの右ドックへ追従させる。
   private mountStageControlsPanel(inMapView: boolean): void {
     const root = inMapView ? this._hud.mapRoot : this._hud.combatRoot;
     const rightRail = hudRail(root, 'right');
@@ -216,23 +216,23 @@ export class CreativeStage extends Stage {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
     this.activePlayer = player;
     this.stageControlsPanel.setSpawnButtonsEnabled(player !== null && player.alive);
-    this.mountStageControlsPanel(cameraSystem.overviewMode);
+    this.mountStageControlsPanel(cameraSystem.view === 'map');
     this.syncPreview(
       fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
-      cameraSystem.overviewMode, cameraSystem.activeCameraPos,
+      cameraSystem.view === 'map', cameraSystem.activeCameraPos,
       this._celestialSystem.celestialMotions, displayTime,
     );
     this.placerPanel.setIssues(this.issues);
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 
-  // オブジェクト配置モーダルを開く (MapContextActions から呼ばれる)。focusId はマップの現在フォーカスで、
+  // オブジェクト配置モーダルを開く。focusId はマップの現在フォーカスで、
   // 基準天体になれる ID なら基準天体の初期選択に使う。
   openObjectPlacer(focusId?: string): void {
     this.placerPanel.open(focusId !== undefined ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
   }
 
-  // 右クリックメニューの「複製」(MapContextActions から呼ばれる)。state を軌道要素へ逆算でき、
+  // 右クリックメニューの「複製」。state を軌道要素へ逆算でき、
   // かつ基地の基準天体制約(validateBaseReferenceFields — 月基準かラグランジュ点のみ)を
   // 満たす値が求まったときだけ、その値をプリセットして開く。逆算できない状態(双曲線軌道など)や、
   // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
@@ -293,7 +293,7 @@ export class CreativeStage extends Stage {
   // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
   private syncPreview(
     fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
-    overviewMode: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
+    mapView: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
     displayTime: number,
   ): void {
     if (!this.preview) {
@@ -302,7 +302,7 @@ export class CreativeStage extends Stage {
       return;
     }
     this.previewEllipseLine.sync(this.preview.elements, fo, camera);
-    if (overviewMode
+    if (mapView
       && isOccluded(cameraPos, this.preview.pos, celestialBodies, displayTime)) {
       this._markerManager.hide('creative-preview');
       return;
@@ -332,25 +332,25 @@ export class CreativeStage extends Stage {
       } else if (form.entityKind === 'enemy') {
         const finalName = name.trim() || generateRandomName('enemy');
         const enemy = generateDriftingEnemy(finalName, state, '#ff6a00', '#ff6a00', this._worldSfx, this._fx, this._scene);
-        this._entities.addEnemy(enemy);
+        this._entities.add(enemy);
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.entityKind === 'ammo') {
         const id = this.ammoPickupIdAllocator.next();
         const ammoPickup = new AmmoPickup({ state, id }, this._scene);
-        this._entities.addAmmoPickup(ammoPickup);
+        this._entities.add(ammoPickup);
         const finalName = name.trim() || generateRandomName('ammo');
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'fuel') {
         const id = this.rcsFuelPickupIdAllocator.next();
         const pickup = new RcsFuelPickup({ state, id }, this._scene);
-        this._entities.addRcsFuelPickup(pickup);
+        this._entities.add(pickup);
         const finalName = name.trim() || generateRandomName('fuel');
         pickup.name = finalName;
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'base') {
         const finalName = name.trim() || generateRandomName('base');
         const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._fx, this._markerManager);
-        this._entities.addBase(base);
+        this._entities.add(base);
         this._hud.hint(`${base.name} を配置`);
       }
     } catch (error) {
