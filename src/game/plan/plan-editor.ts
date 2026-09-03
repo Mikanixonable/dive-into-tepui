@@ -3,7 +3,8 @@
 // パネルの DOM(ノード一覧・Δv 手動入力欄)は PlanPanel が持つ。
 import type * as THREE from 'three/webgpu';
 import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
-import { OrbitalElements } from '../../physics/elements';
+import { OrbitalElements, orbitalElementsOf, positionOnOrbit } from '../../physics/elements';
+import { atmosphericDensity, ellipsoidAltitude } from '../../physics/atmosphere';
 import { Projected } from '../../math/projection';
 import { pickNearest } from '../pickable/object-pickable';
 import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
@@ -26,8 +27,6 @@ import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import { focusPoint } from '../camera/focus-target';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion } from '../../physics/celestial-motion';
-import { orbitalElementsOf } from '../../physics/elements';
 import { frameOfCelestialBody } from '../../physics/frame';
 import { toFrameState } from '../../physics/frame';
 import { DisplayWindow } from '../display-window-manager';
@@ -38,6 +37,8 @@ const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを�
 const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
 
 const DV_LATCH_RATE_PER_PX = 3.0; // ラッチ中、閾値超過1pxあたりのΔv加算レート [m/s per 実秒 per px]
+
+const PE_WARN_DENSITY = 2.4e-8; // 噴射後の軌道の近点がこの大気密度に達したら警告する [kg/m^3]。地球の高度 120km 相当
 
 export class PlanEditor {
   // 編集対象として選択中のノード。ノードは不変オブジェクトで、編集のたびに新しい
@@ -450,6 +451,14 @@ export class PlanEditor {
     return kinematicState<'eci'>(state.t, rel.r, rel.v);
   }
 
+  // 噴射後の軌道 el の近点が、中心天体の大気の中にあるか。大気の高度は基準楕円体から測るので、
+  // 真球基準の近点高度ではなく近点の位置そのものから測る。大気を持たない天体では false。
+  private peInAtmosphere(el: OrbitalElements, t: number): boolean {
+    const atm = el.center.atmosphereAt(t);
+    if (atm === null) return false;
+    return atmosphericDensity(ellipsoidAltitude(positionOnOrbit(el, 0), atm), atm) >= PE_WARN_DENSITY;
+  }
+
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
   private syncGizmo(plan: Plan, mapDist: number, fo: FloatingOrigin): void {
     const arriving = this.path.arrivalStates();
@@ -528,14 +537,15 @@ export class PlanEditor {
     const localDv = idx === null ? null : this.nodeDvLocal(idx, arriving);
     let selEl: OrbitalElements | null = null;
     let nodeSecondsFromNow: number | null = null;
-    let center: CelestialMotion | null = null;
-    // 到着状態が求まっている選択中ノードについて、噴射後の軌道要素と現在時刻からの秒数を出す
+    let peInAtmosphere = false;
+    // 到着状態が求まっている選択中ノードについて、噴射後の軌道要素・近点の大気圏警告・現在時刻からの秒数を出す
     if (node && localDv) {
       nodeSecondsFromNow = node.t - this.simTime;
-      center = strongestAttractor(node.r, this.celestialSystem.celestialMotions, node.t);
+      const center = strongestAttractor(node.r, this.celestialSystem.celestialMotions, node.t);
       selEl = orbitalElementsOf(node, center, node.t);
+      peInAtmosphere = selEl !== null && this.peInAtmosphere(selEl, node.t);
     }
-    this.panel.sync(nodes, idx, selEl, localDv, nodeSecondsFromNow, center !== null && center.id === 'earth');
+    this.panel.sync(nodes, idx, selEl, localDv, nodeSecondsFromNow, peInAtmosphere);
   }
 
   // 計画パネルを非表示にする。

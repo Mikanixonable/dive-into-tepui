@@ -63,12 +63,12 @@ function buildNumericInput(row: HTMLElement, label: string, color: string, onCom
   return input;
 }
 
-// 計画パネルの定型 HTML。近地点が大気圏内(<120km)なら警告を添える。
+// 計画パネルの定型 HTML。噴射後の軌道の近点が大気圏内なら警告を添える。
 function planPanelHtml(
   nodes: readonly PlanPanelNodeRow[],
   selectedIdx: number | null,
   selEl: OrbitalElements | null,
-  warnAtmosphere: boolean,
+  peInAtmosphere: boolean,
 ): string {
   const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   let s = '';
@@ -92,7 +92,7 @@ function planPanelHtml(
       row(`${peSpec.nameJa} ${peSpec.short}`, fmtDist(apsis.pe)) +
       row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
       row('周期 PRD', fmtTime(selEl.period));
-    if (warnAtmosphere && isFinite(apsis.pe) && apsis.pe < 120e3) {
+    if (peInAtmosphere) {
       s += `<div style="color:var(--color-warning);margin-top:2px">⚠ ${peSpec.nameJa}が大気圏内</div>`;
     }
   }
@@ -170,9 +170,9 @@ export class PlanPanel {
   // 計画の順で渡し、selectedIdx はその中の選択中ノードの index。選択が無ければパネル全体を隠す。
   public sync(
     nodes: readonly PlanPanelNodeRow[], selectedIdx: number | null, selEl: OrbitalElements | null,
-    localDv: Vec3 | null, nodeSecondsFromNow: number | null, warnAtmosphere: boolean,
+    localDv: Vec3 | null, nodeSecondsFromNow: number | null, peInAtmosphere: boolean,
   ): void {
-    const html = planPanelHtml(nodes, selectedIdx, selEl, warnAtmosphere);
+    const html = planPanelHtml(nodes, selectedIdx, selEl, peInAtmosphere);
     this.panel.classList.toggle('hidden', selectedIdx === null);
     if (this.body.innerHTML !== html) this.body.innerHTML = html;
 

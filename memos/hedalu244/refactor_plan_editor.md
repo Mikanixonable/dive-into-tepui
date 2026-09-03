@@ -88,60 +88,6 @@
 
 ## 手順
 
-### 手順8. 大気圏警告を、天体 id ではなく近点での大気密度で判定する
-
-**目的.** 中心天体の id が `earth` かどうかで大気の有無を決めている箇所を、その天体の大気への
-問い合わせに替える。**この手順だけは挙動を変える** — 既定の太陽系では地球しか大気を持たないので
-出る/出ないの結果はほぼ同じだが、判定が近点での大気密度になるため、警告が出る近点高度の表示値が
-地心緯度で動く(手順1 で書いた仕様のとおり)。
-
-**新しい物理関数は作らない。** 必要な部品は既に `physics/` に揃っていて、再利用可能な形で
-正しいモジュールにある(規約 `/modify-feature` の2軸判定で ○/○):
-
-- `positionOnOrbit(el, 0)` — 真近点角 0 = 近点の、中心天体相対の位置。
-- `ellipsoidAltitude(rRel, atm)` — その位置の地心緯度における基準楕円体からの高度。
-- `atmosphericDensity(alt, atm)` — その高度の大気密度。
-- `CelestialMotion.atmosphereAt(pivot)` — 大気を持たない天体では `null`。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `plan-editor.ts`(`bodyState` の隣) | `private peInAtmosphere(el: OrbitalElements, t: number): boolean` を新設する(下記) |
-| `plan-editor.ts`(定数) | しきい値の密度を名前付き定数として置く |
-| `plan-editor.ts:578-584` | `center.id === 'earth'` をやめ、`selEl` があるときだけ `peInAtmosphere(selEl, node.t)` を呼ぶ。`CLAUDE.md` を根拠に引く4行のコメント(その記述は `CLAUDE.md` に無い)を削る |
-| `plan-editor.ts:4-35` | `positionOnOrbit` を `physics/elements` から、`atmosphericDensity` / `ellipsoidAltitude` を `physics/atmosphere` から import する |
-| `plan-panel.ts:95` | `warnAtmosphere && isFinite(apsis.pe) && apsis.pe < 120e3` を、渡された真偽値だけの判定にする。`120e3` はこのファイルから消える |
-| `plan-panel.ts:67,68-72,171-174` | 引数名を `warnAtmosphere` から `peInAtmosphere` へ改め、冒頭コメントの「(<120km)」を落とす |
-
-新設するメソッドと定数:
-
-```ts
-// 噴射後の軌道の近点がこの大気密度に達したら警告する [kg/m^3]。地球の高度 120km 相当。
-const PE_WARN_DENSITY = 2.4e-8;
-```
-
-```ts
-// 噴射後の軌道 el の近点が、中心天体の大気の中にあるか。大気の高度は基準楕円体から測るので、
-// パネルへ出している近点高度(真球基準)ではなく近点の位置そのものから測る。
-private peInAtmosphere(el: OrbitalElements, t: number): boolean {
-  const atm = el.center.atmosphereAt(t);
-  if (atm === null) return false;
-  return atmosphericDensity(ellipsoidAltitude(positionOnOrbit(el, 0), atm), atm) >= PE_WARN_DENSITY;
-}
-```
-
-**達成条件と検証**
-
-- `grep -rn "id === 'earth'" src/game/plan/` が 0件。
-- `grep -n "120e3" src/game/plan/plan-panel.ts` が 0件。
-- `npm run typecheck` と `npm run test:game` が通る。
-- `npm run dev` で地球周回の計画ノードを置き、レトログレード方向へ Δv を増やして近地点を下げると、
-  パネルの `近地点 Pe` が 120km を切るあたりで `⚠ 近地点が大気圏内` が出ることを目で見る。
-  **軌道傾斜角が 0° 付近の軌道と 90° 付近の軌道で両方見る** — 極寄りに近点がある軌道では、
-  表示値がより低くならないと出ないのが正しい。
-- 月周回のノードで近月点をどれだけ下げても警告が出ないことを目で見る。
-
 ## 見積り
 
 | 手順 | 触るファイル | 変更箇所 | 増減見込み(`plan-editor.ts`) |
