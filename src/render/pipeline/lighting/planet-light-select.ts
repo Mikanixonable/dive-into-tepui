@@ -6,24 +6,24 @@ import { dot, len, sub } from '../../../math/vec3';
 import { rec709Luminance } from '../../celestial-albedo';
 import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from './planet-light-source';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../sun-light';
-import { CelestialMotion } from '../../../physics/celestial-motion';
+import type { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Vec3 } from '../../../math/vec3';
 import type { Albedo } from '../../celestial-albedo';
 
 // 光源になりうる天体 1 体。**恒星や半径 0 の天体を含む星系の全天体を渡すこと** — 天体自身の
 // 食(sunlitFactor)が、光源にならない天体にも遮られるため。albedo は色つきのボンドアルベド。
-type PlanetLightCandidate = {
+interface PlanetLightCandidate {
   readonly celestialBody: CelestialMotion;
   readonly albedo: Albedo;
-};
+}
 
 // 光源として選ばれた天体 1 体。位置・半径は celestialBody(ECI)から読む。
-type PlanetLight = {
+interface PlanetLight {
   readonly celestialBody: CelestialMotion;
-  // 一様球としての放射輝度(色つき)。天体の食(sunlitFactor)を掛けてある。満ち欠けは
-  // 受け手ごとに決まるので、この値には入っていない。
+  // 一様球としての放射輝度(色つき)。天体の食(sunlitFactor)は掛けてあり、満ち欠けは
+  // 受け手ごとに決まるので受け手が掛ける。
   readonly radiance: Albedo;
-};
+}
 
 // 基準点 reference(ECI)へ強く届く順に天体光源を MAX_PLANET_LIGHT_SLOTS 体まで返す。
 // starIntensity は主星の放射強度で、主星を持たない星系では null。
@@ -49,8 +49,7 @@ export function selectPlanetLights(
     const sunlit = star === null
       ? 1 : sunlitFactor(pos, star, bodies.filter((b) => b !== celestialBody), pivot);
     const base = planetRadiance(albedo, sunIrradiance);
-    // 順位づけは基準点へ届く明るさで測るので位相を掛けるが、スロットへ渡す放射輝度には
-    // 掛けない — 満ち欠けは受け手ごとに決まる。
+    // 順位づけは基準点へ届く明るさで測るので、位相も掛ける。
     const irradiance = Math.PI * rec709Luminance(base) * (celestialBody.def.radius / dist) ** 2
       * phase * sunlit;
     scored.push({

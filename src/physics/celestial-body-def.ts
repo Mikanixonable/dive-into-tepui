@@ -1,5 +1,4 @@
 // 天体1体の静的な記述を組み立てる部品: 自転極モデル・2次重力場・形状・環系。
-// これらを束ねた StarDef / PlanetDef / SatelliteDef は celestial-motion.ts が持つ。
 import { JULIAN_CENTURY } from './kepler-orbit';
 import { SECONDS_PER_DAY } from './time';
 import { Vec3, v3 } from '../math/vec3';
@@ -44,28 +43,28 @@ function wrapDegrees(x: number): number {
   return x - 360 * Math.floor(x / 360);
 }
 
-// 2次の重力場の静的な記述。時刻ごとの自転軸・長軸の実ベクトルは CelestialMotion が組む。
-export type Degree2GravityDef = {
+// 2次の重力場の静的な記述。
+export interface Degree2GravityDef {
   readonly j2: number;
   readonly c22: number; // 0 なら軸対称
   readonly refRadius: number; // 係数が定義された基準半径 [m]
-};
+}
 
 // 2次重力場の非軸対称成分(赤道断面の楕円性)を、ある時刻の姿勢へ解決した形。主軸座標系で
 // 表すため S22 は恒等的に 0 になり、長軸の向きだけで姿勢が決まる。
-type TesseralGravity = {
+interface TesseralGravity {
   readonly c22: number;
   readonly longAxis: Vec3; // 主軸座標系の長軸(単位ベクトル、ECI)
-};
+}
 
 // 天体の2次(degree 2)の重力場を、ある時刻の姿勢へ解決した形。係数は非正規化。refRadius は
 // 係数が定義された基準半径で、地形としての表面半径とは別の量。
-export type Degree2Gravity = {
+export interface Degree2Gravity {
   readonly j2: number; // 極方向の扁平(= −C20)
   readonly refRadius: number; // [m]
   readonly pole: Vec3; // 自転軸(単位ベクトル、ECI)
   readonly tesseral: TesseralGravity | null; // null なら軸対称
-};
+}
 
 // 天体の形状(歪み)。省略時は `radius` による真球。'spheroid' は回転楕円体(赤道半径=極半径
 // の2値)、'triaxial' は三軸楕円体(a >= b >= c、a が最長の赤道軸、b が残りの赤道軸、
@@ -75,49 +74,49 @@ export type ShapeDef =
   | { readonly kind: 'spheroid'; readonly equatorRadius: number; readonly polarRadius: number }
   | { readonly kind: 'triaxial'; readonly a: number; readonly b: number; readonly c: number };
 
-// 環の光学特性。opacity は保持しない — normalOpticalDepth は環面に垂直な消散光学的厚さで、
-// 描画時に観測開き角から透過率へ変換する。値は可視光の代表値で、各bandコメントに出典と
-// 近似範囲を残す。
-export type RingOpticsDef = {
+// 環の光学特性。normalOpticalDepth は環面に垂直な消散光学的厚さ(可視光の代表値。各帯の出典と
+// 近似範囲は登録側のコメントが持つ)。
+export interface RingOpticsDef {
   readonly normalOpticalDepth: number;
   readonly singleScatteringAlbedo: number;
   readonly phaseG: number;
   readonly volumetric?: { readonly radialScale: number; readonly verticalScale: number };
-};
+}
 
-// arcs は基準bandへ重ね描きするのではなく、その区間の光学的厚さ倍率として適用する。
-export type RingArcDef = { readonly fromDeg: number; readonly toDeg: number; readonly opticalDepthScale: number };
-export type RingBandDef = {
+// 環の弧。区間 [fromDeg, toDeg] の光学的厚さに掛ける倍率。
+export interface RingArcDef {
+  readonly fromDeg: number;
+  readonly toDeg: number;
+  readonly opticalDepthScale: number;
+}
+// 環の帯 1 本。
+export interface RingBandDef {
   readonly innerRadius: number; // [m]
   readonly outerRadius: number; // [m]
   readonly thickness: number; // [m]
   readonly optics: RingOpticsDef;
   readonly arcs?: readonly RingArcDef[];
-};
-export type RingSystemDef = { readonly bands: readonly RingBandDef[] };
+}
+export interface RingSystemDef {
+  readonly bands: readonly RingBandDef[];
+}
 
-// ShapeDef をメッシュのローカル半軸 (x,y,z) へ変換する。ECI は Y が極軸だが、この変換は
-// メッシュへ自転姿勢(pole)を掛ける前のローカル座標を返す — 形状は天体固有の量であって
-// ECI 軸ではなく自転軸に固定されるため、呼び出し側は姿勢クォータニオンの内側でこの scale を
-// 適用する(THREE は scale をローカル軸で解釈するので、姿勢を先に立てても scale の意味は
-// 変わらない)。shape 省略時は `radius` による真球。
+// ShapeDef を天体固定座標の半軸 (x, y, z) [m] へ直す。y が自転軸(極半径)、x・z が赤道面の半軸で、
+// 三軸楕円体では x が最長軸。shape 省略時は `radius` による真球。
 export function shapeAxes(radius: number, shape: ShapeDef | undefined): Vec3 {
   if (shape === undefined) return v3(radius, radius, radius);
   if (shape.kind === 'spheroid') return v3(shape.equatorRadius, shape.polarRadius, shape.equatorRadius);
   return v3(shape.a, shape.c, shape.b);
 }
 
-// ShapeDef の楕円体に内接する最大の球の半径 [m]。**この球は天体の表面より内側で閉じる** —
-// 表面に乗った受け手がその内側へ入ることがないので、天体を1つの球で代表する計算が
-// 半径と中心距離の大小で破綻しない。自転軸方向へ伸びた形でも最短の半軸を返す。
+// ShapeDef の楕円体に内接する最大の球の半径 [m](最短の半軸)。shape 省略時は radius。
 export function shapeInscribedRadius(radius: number, shape: ShapeDef | undefined): number {
   const axes = shapeAxes(radius, shape);
   return Math.min(axes.x, axes.y, axes.z);
 }
 
-// ShapeDef を自転軸まわりの回転楕円体の半径 [m] へ丸める。**三軸楕円体では短いほうの赤道軸を
-// 赤道半径に採る** — 元の形へ内接する側なので、これを地表と見なす描画は地表メッシュの内側で
-// 閉じる。
+// ShapeDef を自転軸まわりの回転楕円体の半径 [m] へ丸める。三軸楕円体では短いほうの赤道軸を
+// 赤道半径に採り、元の形に内接する側へ丸める。
 export function shapeSpheroidRadii(
   radius: number, shape: ShapeDef | undefined,
 ): { readonly equatorRadius: number; readonly polarRadius: number } {

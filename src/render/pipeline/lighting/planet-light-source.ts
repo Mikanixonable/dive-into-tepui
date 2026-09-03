@@ -4,12 +4,12 @@
 import * as THREE from 'three/webgpu';
 import { Fn, PI, acos, clamp, cos, dot, float, length, max, normalize, sin, sqrt, uniform } from 'three/tsl';
 import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';
+import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
+import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { Albedo } from '../../celestial-albedo';
 import type { ColorUniform, FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
-import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import type { ShadingSample } from './shading-sample';
-import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 
 // 用意するスロットの本数。同時に使う本数は描画設定 planetLightCount(0〜この値)で決まる。
 // 3 体目が絵に効くほど明るい構図は、低いイオ周回軌道(イオ本体 + 木星)のような場合に
@@ -22,45 +22,45 @@ export const MAX_PLANET_LIGHT_SLOTS = 2;
 const MIN_VISIBLE_CAP_ANGLE = 1e-4;
 
 // スロット 1 本の値。中心・半径は描画座標、放射輝度は色つき(SUN_IRRADIANCE_1AU の目盛り)。
-type PlanetLightValue = {
+interface PlanetLightValue {
   readonly center: THREE.Vector3;
   readonly radius: number;
   readonly radiance: Albedo;
-};
+}
 
 // 一様球としての放射輝度(色つき)。albedo は輝度がボンドアルベドに一致する線形 RGB、
 // sunIrradiance はその天体の場所の太陽放射照度。満相のランバート球の全放射強度と一致する
-// 取り方(L̄ = (2/3)·A·E_b/π)なので、距離とともに点光源へ連続に縮退する。満ち欠けは
-// physics/lambert-sphere.ts の位相関数を別途掛ける。
+// 取り方(L̄ = (2/3)·A·E_b/π)なので、距離とともに点光源へ連続に縮退する。満相の値で、
+// 満ち欠けは受け手が掛ける。
 export function planetRadiance(albedo: Albedo, sunIrradiance: number): Albedo {
   const scale = LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO * sunIrradiance / Math.PI;
   return [albedo[0] * scale, albedo[1] * scale, albedo[2] * scale];
 }
 
-type SlotUniforms = {
+// スロット 1 本ぶんの uniform。
+interface SlotUniforms {
   readonly center: Vec3Uniform;
   readonly radius: FloatUniform;
   readonly radiance: ColorUniform;
-};
+}
 
 // 半角 capAngle のキャップのうち、日が当たっている面積の割合 0..1。alpha はキャップの中心が
 // 太陽直下点から離れた角で、昼夜境界は中心から π/2 − alpha の位置を通る。
 //
-// **球面のキャップを平面の円板と見なした近似。** 球面での厳密な面積は初等関数で書けないが、
-// キャップが広いほど誤差が乗るこの近似は、下の receiverPhase が遠方極限との比で使うので
-// 分子と分母で打ち消し合う。
-const sunlitCapFraction = Fn(([alpha, capAngle]: readonly FloatNode[]) => {
-  const u = clamp(PI.mul(0.5).sub(alpha!).div(capAngle!), -1, 1);
+// **球面のキャップを平面の円板と見なした近似。** キャップが広いほど乗る誤差は、receiverPhase が
+// 遠方極限との比で使うので分子と分母で打ち消し合う。
+const sunlitCapFraction = Fn(([alpha, capAngle]: readonly [FloatNode, FloatNode]) => {
+  const u = clamp(PI.mul(0.5).sub(alpha).div(capAngle), -1, 1);
   return acos(u.negate()).add(u.mul(sqrt(max(float(1).sub(u.mul(u)), 0)))).div(PI);
 });
 
 // 受け手ごとの満ち欠けの係数 0..1。遠方の円板として見たときのランバート位相
 // (physics/lambert-sphere.ts の lambertPhase と同じ式)を、その受け手から見えている地表の
 // 日照割合で頭打ちにする。キャップが半球まで広がる遠方と、昼側(alpha ≤ π/2)では位相そのもの。
-const receiverPhase = Fn(([alpha, capAngle]: readonly FloatNode[]) => {
-  const phase = sin(alpha!).add(PI.sub(alpha!).mul(cos(alpha!))).div(PI);
-  const visible = sunlitCapFraction(alpha!, capAngle!);
-  const whole = sunlitCapFraction(alpha!, float(Math.PI / 2));
+const receiverPhase = Fn(([alpha, capAngle]: readonly [FloatNode, FloatNode]) => {
+  const phase = sin(alpha).add(PI.sub(alpha).mul(cos(alpha))).div(PI);
+  const visible = sunlitCapFraction(alpha, capAngle);
+  const whole = sunlitCapFraction(alpha, float(Math.PI / 2));
   // visible / max(visible, whole) は min(1, visible/whole) と同値で、どちらも 0 の
   // 新相でも 0 を返す。
   return phase.mul(visible.div(max(max(visible, whole), 1e-6)));
@@ -72,15 +72,16 @@ class PlanetLightSlot implements LightSource {
   private cached: THREE.MeshBasicNodeMaterial | null = null;
 
   // sunLight からは、満ち欠けを測る恒星の位置を読む。
-  constructor(
+  public constructor(
     private readonly sunLight: SunLight,
     private readonly sphereSpecular: SphereSpecular,
     private readonly slot: SlotUniforms,
   ) {}
 
-  hasContribution(): boolean { return this.slot.radius.value > 0; }
+  public hasContribution(): boolean { return this.slot.radius.value > 0; }
 
-  material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
+  // このスロットの寄与を描くマテリアル。初回の呼び出しで組み、以後は同じ 1 枚を返す。
+  public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
     this.cached ??= contributionMaterial(sample, this.contribution(sample));
     return this.cached;
   }
@@ -110,7 +111,8 @@ class PlanetLightSlot implements LightSource {
     return { diffuse, specular };
   }
 
-  dispose(): void {
+  // 組んだマテリアルを解放する。
+  public dispose(): void {
     this.cached?.dispose();
   }
 }
@@ -124,19 +126,19 @@ export class PlanetLightSource {
 
   // sunLight は満ち欠けを測る恒星、count は同時に使うスロットの本数(描画設定
   // planetLightCount の値をそのまま受ける)。
-  constructor(sunLight: SunLight, sphereSpecular: SphereSpecular, private count: number) {
+  public constructor(sunLight: SunLight, sphereSpecular: SphereSpecular, private count: number) {
     this.slotSources = this.slots.map(
       (slot) => new PlanetLightSlot(sunLight, sphereSpecular, slot));
   }
 
   // 同時に使うスロットの本数を差し替える。次の set() から効く。
-  setCount(count: number): void { this.count = count; }
+  public setCount(count: number): void { this.count = count; }
 
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。
-  get lightSources(): readonly LightSource[] { return this.slotSources; }
+  public get lightSources(): readonly LightSource[] { return this.slotSources; }
 
   // このフレームの光源の列。本数を超えたぶんは捨て、足りないスロットは消灯する。
-  set(lights: readonly PlanetLightValue[]): void {
+  public set(lights: readonly PlanetLightValue[]): void {
     const used = lights.slice(0, this.count);
     for (const [i, slot] of this.slots.entries()) {
       const light = used[i];
