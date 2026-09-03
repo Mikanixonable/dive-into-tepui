@@ -1,9 +1,10 @@
 // マップビューの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
-import { FrameRole, frameRoleOf } from '../../../physics/frame';
+import { FrameRole } from '../../../physics/frame';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../widgets';
-import { frameRoleName, rotationSourceLabel } from './frame-labels';
+import { objectName } from '../object-name';
+import { rotationFollowShortName } from '../../camera/rotation-follow';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
@@ -39,7 +40,7 @@ export class TrajectoryFramePanel {
     };
     this.panel.appendChild(this.planCenterZone.element);
 
-    this.planRotationZone = new RotationZone('回転フレーム', celestialSystem);
+    this.planRotationZone = new RotationZone('回転', celestialSystem);
     this.planRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.planRotationZone.onSelect = (rotatingWith) => {
       this.displayWindow.frame = celestialSystem.frames.frameOf(this.displayWindow.frame.center, rotatingWith);
@@ -57,11 +58,12 @@ export class TrajectoryFramePanel {
 
   // パネル下部に表示するサマリ行の文字列を組み立てる。
   private orbitSummaryText(): string {
-    const centerId = this.displayWindow.frame.center;
-    const centerRole = frameRoleOf(centerId);
-    const planCenter = centerRole !== null ? frameRoleName(centerRole) : this.celestialSystem.nameOf(centerId);
-    const planRot = this.displayWindow.frame.rotatingWith;
-    return `基準: ${planCenter}・${rotationSourceLabel(this.celestialSystem, planRot)}`;
+    const nameOf = (id: string): string => objectName(id, (i) => this.celestialSystem.nameOf(i));
+    const planCenter = nameOf(this.displayWindow.frame.center);
+    // 描画基準の回転は基準ゾーンの選択とは独立に決まるので、機体・役割でも主語を残す。
+    const planRot = rotationFollowShortName(
+      this.displayWindow.frame.rotatingWith, this.celestialSystem, nameOf, false);
+    return `基準: ${planCenter}・${planRot}`;
   }
 
   // 各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。

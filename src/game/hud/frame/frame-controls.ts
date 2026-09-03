@@ -6,7 +6,7 @@ import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import { FocusCamera } from '../../camera/focus-camera';
+import type { FocusCamera } from '../../camera/focus-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';

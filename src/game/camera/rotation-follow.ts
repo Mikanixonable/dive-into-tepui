@@ -76,3 +76,32 @@ export function availableRotationFollows(
   }
   return out;
 }
+
+// 選択肢のボタンに出す正式名。天体を指す選択は座標系の名前で、機体・役割は対象の名前で書く。
+// objectName は id の表示名を返す(SPEC/CAMERA.md 3.1 の「対象の表示名」)。
+export function rotationFollowName(
+  follow: CameraRotationFollow | null, celestial: CelestialRegistry, objectName: (id: string) => string,
+): string {
+  if (follow === null) return '慣性系';
+  if (follow.kind === 'attitude') return '姿勢追従';
+  const name = objectName(follow.id);
+  if (follow.kind === 'spin') return `${name}自転座標系`;
+  const primary = celestial.find(follow.id)?.motion.primary ?? null;
+  return primary !== null ? `${objectName(primary.id)}-${name}回転座標系` : `${name}の公転`;
+}
+
+// サマリ行に出す短縮形。正式名から主星と「座標」を落としたもの。
+// omitSubject は機体・役割を指す選択から主語も落とす — カメラのサマリは基準欄に同じ名前が
+// 並ぶため(SPEC/CAMERA.md 3.1)。
+export function rotationFollowShortName(
+  follow: CameraRotationFollow | null, celestial: CelestialRegistry,
+  objectName: (id: string) => string, omitSubject: boolean,
+): string {
+  if (follow === null) return '慣性系';
+  if (follow.kind === 'attitude') return '姿勢追従';
+  // 自転を持つのは登録天体だけなので、自転系は必ず天体名を伴う。
+  if (celestial.find(follow.id) !== null) {
+    return follow.kind === 'spin' ? `${objectName(follow.id)}自転系` : `${objectName(follow.id)}回転系`;
+  }
+  return `${omitSubject ? '' : objectName(follow.id)}公転系`;
+}

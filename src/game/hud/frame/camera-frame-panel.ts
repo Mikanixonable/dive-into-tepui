@@ -1,12 +1,12 @@
 // マップビューの「カメラ」パネル。カメラの注視対象・回転追従・平行/透視投影・画角・基準面設定を担当する。
-import { frameRoleOf } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX } from '../../camera/focus-camera';
 import { focusTargetId } from '../../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../widgets';
-import { frameRoleName, rotationFollowLabel } from './frame-labels';
+import { objectName } from '../object-name';
+import { rotationFollowShortName } from '../../camera/rotation-follow';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { OverlayManager } from '../overlay-manager';
 import { buildPanel } from './frame-controls';
@@ -47,12 +47,12 @@ export class CameraFramePanel {
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
     this.panel.appendChild(this.cameraCenterZone.element);
 
-    this.cameraRotationZone = new CameraRotationZone('回転追従', celestialSystem);
+    this.cameraRotationZone = new CameraRotationZone('回転', celestialSystem);
     this.cameraRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.cameraRotationZone.onSelect = (follow) => mapCamera.setRotationFollow(follow);
     this.panel.appendChild(this.cameraRotationZone.element);
 
-    this.cameraRotationModeToggle = new ToggleSwitch('クオータニオン操作', (on) => {
+    this.cameraRotationModeToggle = new ToggleSwitch('クォータニオン操作', (on) => {
       mapCamera.setCameraRotationMode(on ? 'quaternion' : 'euler');
     });
     this.panel.appendChild(this.cameraRotationModeToggle.element);
@@ -103,15 +103,17 @@ export class CameraFramePanel {
     this.panel.appendChild(this.cameraSummary);
   }
 
-  // パネル下部に表示するサマリ行の文字列を組み立てる。
-  private cameraSummaryText(): string {
+  // パネル下部に表示するサマリ行の文字列を組み立てる。pickables は基準の表示名を引くための候補。
+  private cameraSummaryText(pickables: readonly ObjectPickable[]): string {
     const camId = focusTargetId(this.mapCamera.focus);
-    const camRole = camId === undefined ? null : frameRoleOf(camId);
-    const camCenter = camId === undefined ? '固定なし'
-      : camRole !== null ? frameRoleName(camRole) : this.celestialSystem.nameOf(camId);
+    const camCenter = camId === undefined ? '固定点'
+      : objectName(camId, (id) => this.celestialSystem.nameOf(id), pickables);
     const modeText = this.mapCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
     const projectionText = this.mapCamera.projection === 'orthographic' ? '平行' : '透視';
-    const rotationText = rotationFollowLabel(this.celestialSystem, this.mapCamera.rotationFollow);
+    // 機体を追っているときの固定先は必ずフォーカス対象自身なので、基準欄との重複を避けて主語を落とす。
+    const rotationText = rotationFollowShortName(
+      this.mapCamera.rotationFollow, this.celestialSystem,
+      (id) => objectName(id, (i) => this.celestialSystem.nameOf(i), pickables), true);
     return `基準: ${camCenter}・${rotationText} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
   }
 
@@ -124,7 +126,7 @@ export class CameraFramePanel {
     this.cameraCenterZone.setNearby(members, pickables);
     this.cameraCenterZone.setSelected(focusTargetId(this.mapCamera.focus) ?? null);
 
-    // 回転追従の選択肢と、クオータニオン/オイラーの操作モード表示を合わせる。
+    // 回転の固定先の選択肢と、クォータニオン/オイラーの操作モード表示を合わせる。
     this.cameraRotationZone.setChoices(this.mapCamera.availableRotationFollows(displayTime));
     this.cameraRotationZone.setSelected(this.mapCamera.rotationFollow);
     this.cameraRotationModeToggle.setOn(this.mapCamera.cameraRotationMode === 'quaternion');
@@ -144,7 +146,7 @@ export class CameraFramePanel {
 
     // 角度プルダウンの選択表示とサマリ行を最後に合わせる。
     this.angleControl.setSelected(0, this.mapCamera.referencePlane);
-    this.cameraSummary.textContent = this.cameraSummaryText();
+    this.cameraSummary.textContent = this.cameraSummaryText(pickables);
   }
 
   // 保持しているゾーンとパネル要素を片付ける。

@@ -1,6 +1,6 @@
 // 常設 VESSEL パネル(#hud-vessel-status)の同期: RCS燃料・出力・動圧・太陽電池パドル・放熱板・
-// RCS制動・微調整・進行方向ホールド・視点のRCS追従・弾薬。操作対象が無ければ隠す。
-// 装填/姿勢リセット/視点追従切替/ターゲット選択の4操作と、タッチ時のみのスロットル段は、
+// RCS制動・微調整・進行方向ホールド・姿勢追従・弾薬。操作対象が無ければ隠す。
+// 装填/姿勢リセット/姿勢追従切替/ターゲット選択の4操作と、タッチ時のみのスロットル段は、
 // キー押下と同じ経路(Input.tapKey)で発火するボタンとしてここに持つ — タッチでも到達できるよう
 // にするための、キー入力の代替 UI。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
@@ -114,8 +114,8 @@ export class VesselPanel {
       K.progradeReset,
     );
     this.followButton = addAction(
-      `視点追従 [${K.followAttitudeToggle.label}]`,
-      '視点のRCS追従を切り替える',
+      `姿勢追従 [${K.followAttitudeToggle.label}]`,
+      '視点を機体の姿勢へ追従させるかを切り替える',
       K.followAttitudeToggle,
     );
     addAction(
@@ -223,7 +223,7 @@ export class VesselPanel {
       );
     }
 
-    // 微調整・視点追従・進行方向ホールドの状態語。
+    // 微調整・姿勢追従・進行方向ホールドの状態語。
     this.syncState('fine', target.fineAttitude, 'near');
     const cameraFollowsAttitude = game.cameraSystem.combatCamera.rotationFollow?.kind === 'attitude';
     this.syncState('camfollow', cameraFollowsAttitude, 'signal');

@@ -4,8 +4,7 @@ import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from './overlay-manager';
 import { Button, ToggleSwitch } from './widgets';
 import type { RenderStyleSetting } from '../../render/render-style';
-import { frameRoleOf } from '../../physics/frame';
-import { frameRoleName } from './frame/frame-labels';
+import { objectName } from './object-name';
 import { focusTargetId, type FocusTarget } from '../camera/focus-target';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
@@ -127,13 +126,8 @@ export class ViewBadge {
   private focusName(focus: FocusTarget): string {
     const id = focusTargetId(focus);
     if (id === undefined) return '固定点';
-    const role = frameRoleOf(id);
-    if (role !== null) return frameRoleName(role);
-    const pickable = this.viewManager.activeView.pickables.find((item) => item.id === id);
-    if (pickable) return pickable.name;
-    const entity = this.dynamicSystem.all().find((item) => item.id === id);
-    if (entity) return entity.name;
-    return this.celestialSystem.nameOf(id);
+    return objectName(id, (i) => this.celestialSystem.nameOf(i),
+      this.viewManager.activeView.pickables, this.dynamicSystem.all());
   }
 
   // 遷移できるビューが1つも無ければメニュー自体を開かない。

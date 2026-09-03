@@ -293,7 +293,7 @@ export class CameraSystem {
       const active = this.activeFocusCamera;
       if (active.toggleAttitudeFollow()) {
         const on = active.rotationFollow?.kind === 'attitude';
-        this.hud.hint(`視点の姿勢追従: ${on ? 'ON(機体姿勢に追従)' : 'OFF(慣性系)'}`);
+        this.hud.hint(`姿勢追従: ${on ? 'ON(機体姿勢に追従)' : 'OFF(慣性系)'}`);
       }
     }
 

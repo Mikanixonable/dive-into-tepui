@@ -196,7 +196,7 @@ function buildVesselStatusPanel(rightRail: HTMLElement): void {
         <dd class="v"><output data-id="prohold">—</output></dd>
       </div>
       <div class="row metric">
-        <dt class="k">視点RCS追従 <kbd>${K.followAttitudeToggle.label}</kbd></dt>
+        <dt class="k">姿勢追従 <kbd>${K.followAttitudeToggle.label}</kbd></dt>
         <dd class="v"><output data-id="camfollow">—</output></dd>
       </div>
       <div class="row metric"><dt class="k">弾薬</dt><dd class="v"><output data-id="ammo">—</output></dd></div>

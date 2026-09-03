@@ -6,7 +6,7 @@ import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import { SegmentedControl } from '../widgets';
 import { injectOnce } from '../widgets/inject-style';
-import { frameRoleName } from './frame-labels';
+import { frameRoleName } from '../object-name';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { groupPickables } from '../object-groups';
 import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
@@ -76,8 +76,8 @@ export class AnchorZone {
       if (baseIdSet.has(p.parentId)) lagrangeIds.push(p.id);
     }
 
-    // 解除の選択肢(あれば)を先頭に、天体本体・ラグランジュ点の順で並べる。
-    const items: (readonly [string | null, string])[] = this.releaseLabel !== null ? [[null, '解除']] : [];
+    // 固定を解除する選択肢(あれば)を先頭に、天体本体・ラグランジュ点の順で並べる。
+    const items: (readonly [string | null, string])[] = this.releaseLabel !== null ? [[null, this.releaseLabel]] : [];
     for (const id of [...baseIds, ...lagrangeIds]) {
       const p = byId.get(id);
       if (p !== undefined) items.push([id, p.name]);
