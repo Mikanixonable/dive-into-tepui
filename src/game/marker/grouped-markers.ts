@@ -59,6 +59,7 @@ export class GroupedMarkers {
   // 天体ラベルとの近接で前フレームに隠したキー(depth-guard のヒステリシス用)。
   private prevHiddenByCelestialLabel = new Set<string>();
 
+  // 直前の sync で天体ラベルへラベルを譲った項目。天体ラベル下のサブ行の候補になる。
   getHiddenItems(): readonly GroupedMarkerItem[] {
     return this.hiddenItemsList;
   }

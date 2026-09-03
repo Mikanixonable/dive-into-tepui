@@ -248,6 +248,7 @@ export class MarkerManager {
     const center = celestialBodies.length > 0
       ? strongestAttractor(worldPos, celestialBodies, celestialBodiesPivot) : null;
     const relVel = center ? sub(vel, center.stateAt(celestialBodiesPivot).v) : vel;
+    // 進行方向へ少し進めた点を投影し、画面上の2点の差から方位を読む。
     const probe = Math.max(1, scale(worldPos) * 2);
     const p0 = project(worldPos);
     const p1 = project(addScaled(worldPos, norm(relVel), probe));
@@ -290,17 +291,14 @@ export class MarkerManager {
     );
   }
 
-  // hide と remove の使い分け:
-  // hide   = キーが有限で使い回すマーカー(方向マーカー・補給スロットなど)。
-  //          要素を消さずプールに残し、次に出すときの再生成コストを省く。
-  // remove = 対象ごとにキーが増え続けるマーカー(敵・LEAD など)。対象が消えたら
-  //          要素ごと捨てないと DOM とラベル衝突判定の走査対象が単調増加する。
   // そのキーのマーカーを直前のフレームで画面へ出したか。遮蔽で薄れている途中も出していない扱い。
   shows(key: string): boolean {
     const m = this.markerDictionary.get(key);
     return m !== undefined && !m.hidden && !m.occlusionHidden && !this.occlusionFadeTimers.has(key);
   }
 
+  // マーカーを隠す。要素は残るので、キーが有限で使い回す対象(方向マーカー・補給スロットなど)に
+  // 使う。キーが対象ごとに増え続けるものは remove で要素ごと捨てること。
   hide(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m) return;
@@ -320,6 +318,7 @@ export class MarkerManager {
     m.root.style.opacity = '0';
     const timer = setTimeout(() => {
       this.occlusionFadeTimers.delete(key);
+      // 待つあいだに同じキーが作り直されたか、再び描かれていれば畳まない。
       const current = this.markerDictionary.get(key);
       if (current !== m || current.root.style.opacity !== '0') return;
       current.occlusionHidden = true;
@@ -348,6 +347,7 @@ export class MarkerManager {
     this.labelLayout.dispose();
   }
 
+  // 進行中のフェードアウトを取り消す。フェードの完了で隠す処理は走らなくなる。
   private cancelOcclusionFade(key: string): void {
     const timer = this.occlusionFadeTimers.get(key);
     if (timer === undefined) return;
@@ -360,8 +360,7 @@ export class MarkerManager {
   resolveCollisions(view: View): void {
     const activeRecords = this.collectActiveMarkerRecords();
     const hidden = this.declutter.compute(activeRecords, view === 'map');
-    // 間引きの結果を priority-hidden クラスのトグル(CSS フェード)で反映し、
-    // 次フレームのヒステリシスが読む直前の状態として書き戻す。
+    // 間引きの結果を CSS へ渡し、次フレームのヒステリシスが読む直前の状態として書き戻す。
     for (const m of activeRecords) {
       m.prevLabelHidden = hidden.labels.has(m.key);
       m.sym.classList.toggle('priority-hidden', hidden.icons.has(m.key));
