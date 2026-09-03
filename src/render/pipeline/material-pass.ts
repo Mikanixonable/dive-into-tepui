@@ -11,12 +11,9 @@ import type { GBufferPass } from './gbuffer';
 import type { LightPrepass } from './light-prepass';
 import type { Vec3Node, Vec4Node } from '../tsl-types';
 
-// 画素の最終的な陰影。掛ける中身は three がフォワード経路の direct() で使うものと同一で、
-// 拡散が BRDF_Lambert(ベース色×(1−金属度)/π)、鏡面が F0(誘電体 0.04 と金属色を金属度で
-// 混ぜた値)。
-//
-// 照度バッファが持つのは放射照度なので、そこへ掛けるのは反射率ではなく BRDF である。
-// 拡散の 1/π を落とすと、それだけでフォワード経路より π 倍明るくなる。
+// 画素の最終的な陰影。拡散は BRDF_Lambert(ベース色×(1−金属度)/π)、鏡面は F0(誘電体 0.04 と
+// 金属色を金属度で混ぜた値)を照度へ掛け、自己発光を足す。照度バッファが持つのは放射照度なので、
+// 掛けるのは反射率ではなく BRDF — 拡散の 1/π を落とすと、それだけで π 倍明るくなる。
 function shadedColor(lightPrepass: LightPrepass, gbuffer: GBufferPass): Vec4Node {
   return Fn(() => {
     // 深度のクリア値 0 は反転 Z の far。物体の無い画素を捨てて、先に描いた星野を残す。
@@ -25,8 +22,7 @@ function shadedColor(lightPrepass: LightPrepass, gbuffer: GBufferPass): Vec4Node
     const material = texture(gbuffer.basecolorTexture, screenUV);
     const baseColor: Vec3Node = material.rgb;
     const metalness = material.a;
-    // BRDF_Lambert の @types/three 上の戻り値型 OperatorNode はメソッドチェインを持たない
-    // (light-prepass.ts の D_GGX 等と同じ型定義側の欠落)ため、Vec3Node へ読み替える。
+    // BRDF_Lambert の @types/three 上の戻り値型はメソッドチェインを持たないため、Vec3Node へ読み替える。
     const lambert = BRDF_Lambert({
       diffuseColor: baseColor.mul(metalness.oneMinus()),
     }) as unknown as Vec3Node;
@@ -44,7 +40,7 @@ export class MaterialPass {
   private readonly quad: QuadMesh;
 
   // 照度と素材を掛け合わせる全画面の板ポリを一度だけ組み立てる。
-  constructor(
+  public constructor(
     private readonly renderer: WebGPURenderer,
     lightPrepass: LightPrepass,
     gbuffer: GBufferPass,
@@ -54,21 +50,20 @@ export class MaterialPass {
       depthTest: false, depthWrite: true, transparent: false, blending: THREE.NoBlending,
     });
     this.material.colorNode = shadedColor(lightPrepass, gbuffer);
-    // 深度は G バッファのものをそのまま複製する(depthTest は切ったまま depthWrite を立てるので、
-    // 捨てなかった画素が無条件に書かれる)。
+    // 深度は G バッファのものを複製する。depthTest を切ったまま depthWrite を立てるので、
+    // 捨てなかった画素が無条件に書かれる。
     this.material.depthNode = texture(gbuffer.depthTexture, screenUV).r;
     this.quad = new QuadMesh(this.material);
   }
 
   // 背景専用レイヤーと陰影の板ポリを sharedTarget へ描く。camera はこのあと world パスでも
   // 使う同一インスタンスなので、layers.mask は呼び出し前の値へ必ず戻す。
-  render(scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget): void {
+  public render(scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget): void {
     const savedMask = camera.layers.mask;
     camera.layers.set(WORLD_BACKGROUND_LAYER);
 
     this.renderer.setRenderTarget(sharedTarget);
-    // beginPass は renderer.render() 呼び出しごとに申告する。同じパスの複数回ぶんは計測側が
-    // 足し合わせる。
+    // beginPass は描画命令ごとに申告する — 板ポリのぶんも同じパスへ計上する。
     this.gpu.beginPass(GPU_PASS.material);
     this.renderer.autoClear = true;
     this.renderer.render(scene, camera);
@@ -82,9 +77,8 @@ export class MaterialPass {
     camera.layers.mask = savedMask;
   }
 
-  // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
-  // 共有する単一の板なので、ここでは解放しない。
-  dispose(): void {
+  // 保持している GPU 資源を解放する。QuadMesh の板は three が全インスタンスで共有するので解放しない。
+  public dispose(): void {
     this.material.dispose();
   }
 }

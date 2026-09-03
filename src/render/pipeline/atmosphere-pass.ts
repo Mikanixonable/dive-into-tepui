@@ -14,14 +14,14 @@ import {
   vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
-import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffAltitude } from '../atmosphere';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
+import { viewPositionAt, viewRayAt } from './view-ray';
+import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { SunOcclusion } from './sun-occlusion';
 import type { SunLight } from './sun-light';
-import { viewPositionAt, viewRayAt } from './view-ray';
 
 // 消散係数の下限 [1/m]。散乱の割合を消散で割るときの 0/0 を塞ぐ。
 const MIN_EXTINCTION = 1e-30;
@@ -32,7 +32,7 @@ const MIN_POLAR_RATIO = 1e-3;
 // 天体 1 体ぶんの uniform。surfaceRadius は赤道半径、cutoffRadius は大気の裾を打ち切る半径
 // (赤道半径 + 打ち切り高度)、steps はこの層を解くサンプル点の数。polarAxis は扁平を潰す軸の
 // 単位ベクトル、polarStretch はその向きへ引き伸ばす量(赤道半径/極半径 − 1。真球で 0)。
-type BodySlot = {
+interface BodySlot {
   readonly steps: FloatUniform;
   readonly center: Vec3Uniform;
   readonly surfaceRadius: FloatUniform;
@@ -44,50 +44,49 @@ type BodySlot = {
   readonly mie: FloatUniform;
   readonly mieScaleHeight: FloatUniform;
   readonly mieAnisotropy: FloatUniform;
-};
+}
 
 // 視線が 1 つの天体の大気を通る区間。距離はすべて視線の起点から測った [m]。
-type RaySegment = {
+interface RaySegment {
   readonly near: FloatNode;
   readonly far: FloatNode;
   // 区間のうち大気が最も濃い距離。地表で終わる視線では区間の奥、掠める視線では最接近点。
   readonly densest: FloatNode;
   // 視線が大気に掛かるか。掛からない画素では素通しへ倒す。
   readonly hitsAtmosphere: BoolNode;
-};
+}
 
 // 天体 1 体ぶんの、視線区間の透過率と内部散乱。
-type LayerContribution = {
+interface LayerContribution {
   readonly transmittance: Vec3Node;
   readonly inscatter: Vec3Node;
-};
+}
 
 // 半径 r の点から天頂角余弦 mu(0 以上)の向きへ大気の外まで抜けるまでの、散乱係数 1 あたりの
 // 光学的厚み。Chapman 関数を Ch0/((Ch0−1)·mu+1) で近似する — mu=1 で 1、mu=0 で √(πr/2H) と
 // 両端で厳密値に一致し、その間を単調に埋める。
 const outwardDepth = Fn((
-  [radius, mu, surfaceRadius, scaleHeight]: readonly FloatNode[],
+  [radius, mu, surfaceRadius, scaleHeight]: readonly [FloatNode, FloatNode, FloatNode, FloatNode],
 ) => {
-  const chapmanZero = sqrt(PI.mul(radius!).div(scaleHeight!).mul(0.5));
-  const chapman = chapmanZero.div(chapmanZero.sub(1).mul(mu!).add(1));
-  return scaleHeight!.mul(exp(surfaceRadius!.sub(radius!).div(scaleHeight!))).mul(chapman);
+  const chapmanZero = sqrt(PI.mul(radius).div(scaleHeight).mul(0.5));
+  const chapman = chapmanZero.div(chapmanZero.sub(1).mul(mu).add(1));
+  return scaleHeight.mul(exp(surfaceRadius.sub(radius).div(scaleHeight))).mul(chapman);
 });
 
 // 半径 radius・天頂角余弦 mu の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。
-// 降る向き(mu<0)の経路は、最接近点で折り返す2本の上向きの経路として組む。最接近点が地表より
-// 内側へ落ちる向きでは地表で止まるので、そこで打ち切る。**打ち切った値を「そこまで光が来る」
-// と読んではいけない** — 経路が天体を貫いているので直射は届かず、遮るのは horizonVisibility の
-// 仕事である。ここが返すのは、地平線を掠める経路の厚みの続きでしかない。
+// 降る向き(mu<0)の経路は、最接近点で折り返す2本の上向きの経路として組み、最接近点が地表より
+// 内側へ落ちる向きでは地表で打ち切る。**打ち切った値は、地平線を掠める経路の厚みの続きである**
+// — 天体を貫く経路で直射を遮るのは horizonVisibility が解く。
 //
 // **どちらの枝も outwardDepth へ渡す余弦を非負に保つ** — select は選ばれない枝も評価するので、
 // 負の余弦を通すと Chapman 近似の分母が 0 を跨ぎ、選ばれない側で無限大が湧く。
 const depthToSpace = Fn((
-  [radius, mu, surfaceRadius, scaleHeight]: readonly FloatNode[],
+  [radius, mu, surfaceRadius, scaleHeight]: readonly [FloatNode, FloatNode, FloatNode, FloatNode],
 ) => {
-  const ascending = outwardDepth(radius!, abs(mu!), surfaceRadius!, scaleHeight!);
-  const perigee = max(radius!.mul(sqrt(max(float(1).sub(mu!.mul(mu!)), 0))), surfaceRadius!);
-  const descending = outwardDepth(perigee, float(0), surfaceRadius!, scaleHeight!).mul(2).sub(ascending);
-  return select(greaterThan(mu!, 0), ascending, descending);
+  const ascending = outwardDepth(radius, abs(mu), surfaceRadius, scaleHeight);
+  const perigee = max(radius.mul(sqrt(max(float(1).sub(mu.mul(mu)), 0))), surfaceRadius);
+  const descending = outwardDepth(perigee, float(0), surfaceRadius, scaleHeight).mul(2).sub(ascending);
+  return select(greaterThan(mu, 0), ascending, descending);
 });
 
 // レイリー散乱の位相関数。等方散乱を 1 とする目盛りなので、前後で 1.5、側方で 0.75 になる。
@@ -95,9 +94,9 @@ const rayleighPhase = (cosTheta: FloatNode): FloatNode => cosTheta.mul(cosTheta)
 
 // Henyey–Greenstein の位相関数。等方散乱を 1 とする目盛り。非対称因子 g が大きいほど
 // 前方へ尖り、太陽のまわりのグローが締まる。
-const miePhase = Fn(([cosTheta, anisotropy]: readonly FloatNode[]) => {
-  const squared = anisotropy!.mul(anisotropy!);
-  const denominator = max(squared.add(1).sub(anisotropy!.mul(cosTheta!).mul(2)), 1e-4);
+const miePhase = Fn(([cosTheta, anisotropy]: readonly [FloatNode, FloatNode]) => {
+  const squared = anisotropy.mul(anisotropy);
+  const denominator = max(squared.add(1).sub(anisotropy.mul(cosTheta).mul(2)), 1e-4);
   return float(1).sub(squared).div(denominator.mul(sqrt(denominator)));
 });
 
@@ -105,15 +104,15 @@ export class AtmospherePass {
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
   private readonly slots: readonly BodySlot[];
-  // 積分の刻みを画素ごとにずらす種。**このパスが持つ** — いまここだけが使う。
+  // 積分の刻みを画素ごとにずらす種。
   private readonly blueNoise: BlueNoise;
-  // 下地と合成する前の、大気が足す内部散乱だけ。「大気」デバッグ表示だけが読む。
+  // 下地と合成する前の、大気が足す内部散乱。
   private readonly scattered: Vec3Node;
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と view→描画座標の行列は
-  // 毎フレーム自前で書き込む(light-prepass.ts の逆射影行列と同じ理由)。
+  // 毎フレーム自前で書き込む。
   private readonly projMatrixInverse: Mat4Uniform;
   private readonly viewToWorld: Mat4Uniform;
-  // このフレームの各天体の裾球(CPU 側の写し)。カメラに写るかの判定だけが読む。
+  // このフレームの各天体の裾球(CPU 側の写し)。カメラに写るかの判定に使う。
   private readonly bodySpheres: readonly THREE.Sphere[];
   private bodyCount = 0;
   private readonly frustum = new THREE.Frustum();
@@ -123,7 +122,7 @@ export class AtmospherePass {
   // 解いた完成形を共有ターゲットへ上書きする。合成をブレンドではなくパスの中で行うのは、
   // 合成のアルファは 1 つしか無く、下地の波長別の減衰(厚い大気越しの下地が赤へ寄る)を
   // 表せないため。
-  constructor(
+  public constructor(
     private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
     backdrop: THREE.Texture,
@@ -162,8 +161,7 @@ export class AtmospherePass {
       const layers = this.accumulateLayers(rayOrigin, rayDir, opaqueDist);
       return layers.inscatter.add(texture(backdrop, screenUV).rgb.mul(layers.transmittance));
     })();
-    // デバッグ表示用の内部散乱だけの組は、合成パスのマテリアルの中でしか評価されない —
-    // このパス自身の負荷には乗らない。
+    // 内部散乱だけの組は、それを読むマテリアルの中でだけ評価される。
     this.scattered = Fn(() => this.accumulateLayers(rayOrigin, rayDir, opaqueDist).inscatter)();
 
     this.material = new THREE.MeshBasicNodeMaterial({
@@ -176,8 +174,8 @@ export class AtmospherePass {
   }
 
   // 全スロットを視点に近い順に重ねた、視線 1 本ぶんの透過率と内部散乱。手前の層が奥の層の
-  // 内部散乱も減衰させるので、透過率を累積しながら足していく。**どのスロットも同じ積分で解き、
-  // 違うのはサンプル点の数だけ。** Fn の中から呼ぶこと(toVar / If を使う)。
+  // 内部散乱も減衰させるので、透過率を累積しながら足していく。Fn の中から呼ぶこと
+  // (toVar / If を使う)。
   //
   // **重い側はすべて分岐の中に置く。** 大気に掛からない視線と空きスロットは区間の判定だけで
   // 抜け、サンプル点の数は uniform で選ぶ — select で混ぜると、捨てるぶんまで毎画素走る。
@@ -252,18 +250,13 @@ export class AtmospherePass {
     };
   }
 
-  // 区間を視線に沿って積分した透過率と内部散乱。サンプル点は区間の中の「山」へ寄せる —
-  // 被積分関数は高度と日照に対して指数で変わるので、等間隔に取ると山を数点で済ませてしまう。
-  // 区間が空でないことは呼び出し側が保証する。
+  // 区間を視線に沿って積分した透過率と内部散乱。被積分関数は高度と日照に対して指数で変わるので、
+  // サンプル点は区間の中の「山」へ寄せる。区間が空でないこと(near < far)が事前条件。
   //
-  // **山は 1 つだけ選び、鋭いものを優先する。** 候補は 3 つあるが、鋭さが桁で違う:
-  // 地表(または不透明面)での打ち切りと日没境界は**被積分関数がそこで断ち切られる**のに対し、
-  // 最接近点はただの滑らかな極大でしかない。鋭い側を外すと、その遷移が丸ごと 1 段の中へ
-  // 収まってしまい、絵に帯が立つ(段を増やすと消えるので、絵ではなく刻みの問題)。
-  //
-  // **最接近点しか無い視線では、寄せずに等間隔で取る。** 密度は高度の指数だが、高度は最接近点
-  // から距離の 2 乗でしか増えないので、そこに特異な振舞いは無い。寄せた分だけ山から離れた側が
-  // 粗くなる害のほうが勝ち、実測では 3 つの構図すべてで等間隔が最も良かった。
+  // **山は 1 つだけ選び、鋭いものを優先する。** 地表(または不透明面)での打ち切りと日没境界は
+  // 被積分関数がそこで断ち切られるのに対し、最接近点は滑らかな極大でしかない。鋭い側を外すと、
+  // その遷移が丸ごと 1 段の中へ収まって絵に帯が立つ。**最接近点しか無い視線では等間隔で取る**
+  // — 高度は最接近点から距離の 2 乗でしか増えず、寄せて山から離れた側を粗くする害のほうが勝つ。
   private integrated(
     slot: BodySlot, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
   ): LayerContribution {
@@ -277,15 +270,13 @@ export class AtmospherePass {
     const peak = select(takesSunset, sunset, segment.densest);
     const sharpness = select(or(truncated, takesSunset), float(1), float(0));
 
-    // 手前側は山へ向かって細かく、奥側はそこから離れるほど粗く。境目で刻みが途切れないよう、
-    // どちらの側も山を端に持つ。
-    //
-    // **段を分ける位置は、山が区間のどこに在るかで決める。** 段数を機械的に半分ずつ配ると、
-    // 山が区間の端に重なる視線(地表で終わる視線 = 天体が写る画素すべて)では片側へ配った段が
-    // 長さ 0 に潰れ、**サンプル点の半分が同じ 1 点に積まれて捨てられる。**
-    // 分割の位置は uniform 由来の値なのでグラフを組む時点では決まらず、段ごとに select で選ぶ。
+    // 手前側は山へ向かって細かく、奥側はそこから離れるほど粗く。**段を分ける位置は、山が区間の
+    // どこに在るかで決める** — 段数を機械的に半分ずつ配ると、山が区間の端に重なる視線(地表で
+    // 終わる視線 = 天体が写る画素すべて)で片側の段が長さ 0 に潰れ、サンプル点の半分が同じ 1 点に
+    // 積まれて捨てられる。
     const span = max(segment.far.sub(segment.near), 1);
     const split = clamp(peak.sub(segment.near).div(span), 0, 1);
+    // 区間の位置 fraction(0..1)を、山へ寄せた視線上の距離 [m] へ写す。
     const distanceAt = (fraction: FloatNode): FloatNode => {
       // **どちらの枝も 0 除算を踏まないよう分母に床を張る** — select は選ばれない枝も評価する。
       const nearFraction = clamp(fraction.div(max(split, 1e-6)), 0, 1);
@@ -334,7 +325,7 @@ export class AtmospherePass {
   // 位相関数 × そこへ届く太陽光」。散乱と消散が等しい(吸収を持たない)ので、割合は位相関数の
   // 重みそのものになる。
   private mediumAt(slot: BodySlot, point: Vec3Node, rayDir: Vec3Node): MediumSample {
-    // 高度から成分ごとの散乱係数を引く。消散はその和で、吸収を持たないので散乱と等しい。
+    // 高度から成分ごとの散乱係数を引く。
     const offset = this.toSphereSpace(slot, sub(point, slot.center));
     const radius = max(length(offset), max(slot.surfaceRadius, 1));
     const altitude = radius.sub(slot.surfaceRadius);
@@ -384,14 +375,12 @@ export class AtmospherePass {
 
   // 大気の中の 1 点から見て、恒星がその天体自身の地平線の上に出ている割合 0..1。
   //
-  // **この天体が遮蔽器の一覧に載っている保証は無い。** 一覧はカメラから見て恒星面を一定以上
-  // 隠せる天体だけを採るので、遠くに写っているだけの大気天体はそこから落ちる。落ちたままだと
-  // 夜側でも depthToSpace が地表で打ち切った有限の厚みを返し、**真夜中の半球ぜんぶが夕焼け色に
-  // 光る** — 光路が天体を貫いている以上、そこへ直射は届かない。
+  // **この天体自身の遮りはここで解く** — 遮蔽器の一覧に載っている保証が無く、載っていないと
+  // 夜側でも depthToSpace が地表で打ち切った有限の厚みを返し、真夜中の半球ぜんぶが夕焼け色に光る。
   //
   // 恒星は点ではないので、境目は縁を掠める帯の中で滑らかに変わる。帯の幅は恒星の視半径を
-  // 地平線の傾き sin で天頂角余弦へ直したもの。打ち切った厚みは、この帯の中で「まだ見えている
-  // 縁の一片が通ってくる経路の厚み」として意味を持つので、そのまま掛けてよい。
+  // 地平線の傾き sin で天頂角余弦へ直したもの。帯の中では、打ち切った厚みが「まだ見えている
+  // 縁の一片が通ってくる経路の厚み」として意味を持つ。
   private horizonVisibility(
     slot: BodySlot, radius: FloatNode, sunMu: FloatNode, toSun: Vec3Node,
   ): FloatNode {
@@ -403,14 +392,13 @@ export class AtmospherePass {
     return smoothstep(halfWidth.negate(), halfWidth, sunMu.sub(cosHorizon));
   }
 
-  // 下地と合成する前の、大気が重ねる内部散乱だけ。「大気」デバッグ表示の合成パスがこのノードを
-  // 組み直して映す — このパスは共有ターゲットへ直接重ねるので、単独で見せるための絵はどこにも
-  // 残っておらず、**それを残すためだけの描画は足さない**(lens-pass.ts の redistributedLight と同じ)。
-  scatteredLight(): Vec3Node { return this.scattered; }
+  // 下地と合成する前の、大気が重ねる内部散乱のノード。このパスは共有ターゲットへ直接重ねるので、
+  // 内部散乱だけを見せる絵は、読む側がこのノードを自分のマテリアルへ組み込んで作る。
+  public scatteredLight(): Vec3Node { return this.scattered; }
 
   // このフレームで大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数と一緒に渡す。
   // 合成の前後はこの並びで決まる。MAX_ATMOSPHERE_BODIES を超えた分と、空きスロットは描かれない。
-  setDraws(draws: readonly AtmosphereDraw[]): void {
+  public setDraws(draws: readonly AtmosphereDraw[]): void {
     this.bodyCount = Math.min(draws.length, MAX_ATMOSPHERE_BODIES);
     // 空きスロットは半径 0 で塞ぐ。区間の判定がそこで落ちて、以降の式は走らない。
     for (const [index, slot] of this.slots.entries()) {
@@ -439,7 +427,7 @@ export class AtmospherePass {
   // このフレームの大気がカメラに写りうるか。裾球のどれかが視錐台に掛かるかで判定する —
   // 裾の外の密度は打ち切り済みで絵に出ないので、全裾球が外れたフレームは何も描かなくてよい。
   // カメラが裾球の中にいる構図(地表から空を見上げて地面が画面に無い)は必ず真になる。
-  anyBodyInView(camera: THREE.Camera): boolean {
+  public anyBodyInView(camera: THREE.Camera): boolean {
     this.frustum.setFromProjectionMatrix(
       this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
       camera.coordinateSystem, camera.reversedDepth,
@@ -452,13 +440,13 @@ export class AtmospherePass {
 
   // 不透明の絵が入った共有ターゲットへ、下地と合成し終えた大気を上書きする。呼び出し側が
   // anyBodyInView と同じフレームの backdrop スナップショットを保証する。
-  render(camera: THREE.Camera, sharedTarget: THREE.RenderTarget): void {
+  public render(camera: THREE.Camera, sharedTarget: THREE.RenderTarget): void {
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
     this.viewToWorld.value.copy(camera.matrixWorld);
 
     this.renderer.setRenderTarget(sharedTarget);
     this.renderer.autoClear = false;
-    // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
+    // GPU 計測は、beginPass の直後の描画命令に付く。
     this.gpu.beginPass(GPU_PASS.atmosphere);
     this.quad.render(this.renderer);
     this.renderer.autoClear = true;
@@ -467,7 +455,7 @@ export class AtmospherePass {
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
-  dispose(): void {
+  public dispose(): void {
     this.material.dispose();
     this.blueNoise.dispose();
   }

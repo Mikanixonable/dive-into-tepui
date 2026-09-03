@@ -18,6 +18,7 @@ import type {
 import type { SunShadowMaps, SunShadowSlot } from './sun-shadow-maps';
 import type { SunLight } from './sun-light';
 
+// 同時に遮蔽器として扱う天体の上限(グラフのスロット数)。
 export const MAX_OCCLUDERS = 4;
 
 // 環の帯の上限。登録上の最大は天王星の 13 帯なので、それを超える
@@ -25,76 +26,68 @@ export const MAX_OCCLUDERS = 4;
 const MAX_RING_BANDS = 13;
 
 // 環の帯 1 本。半径は描画座標と同じメートル、tau は環面に垂直な光学的深さ。
-export type RingBand = {
+export interface RingBand {
   readonly innerRadius: number;
   readonly outerRadius: number;
   readonly normalOpticalDepth: number;
-};
+}
 
-// 遮蔽する天体 1 体。中心は描画座標で、形は積雲の殻(CumulusShadow)と同じ組で表す。
-//
-// **axes は天体固定の半軸 [m]** — 遮蔽器は半径 1 の球をこの 3 軸ぶん非一様に伸ばした
-// 楕円体で、bodyFromWorld が描画座標のベクトルを天体固定の向きへ回す。真球の遮蔽器は
+// 遮蔽する天体 1 体。center は描画座標、axes は天体固定の半軸 [m](半径 1 の球をこの 3 軸ぶん
+// 伸ばした楕円体)、bodyFromWorld は描画座標のベクトルを天体固定の向きへ回す行列。真球は
 // sphereOccluder() で作る。
-export type Occluder = {
+export interface Occluder {
   readonly center: THREE.Vector3;
   readonly axes: THREE.Vector3;
   readonly bodyFromWorld: THREE.Matrix4;
-};
+}
 
 // 向きを持たない遮蔽器の姿勢。setOccluders は値を写すだけなので、全スロットで共有してよい。
 const NO_ROTATION = new THREE.Matrix4();
 
-// 半径 radius の真球の遮蔽器。自転姿勢を持たない天体と、形を持たない試験用の球はこれで足りる。
+// 中心 center(描画座標)・半径 radius [m] の真球の遮蔽器。
 export function sphereOccluder(center: THREE.Vector3, radius: number): Occluder {
   return { center, axes: new THREE.Vector3(radius, radius, radius), bodyFromWorld: NO_ROTATION };
 }
 
-// 積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準となる半径 [m]、
-// topAltitude は殻の高さ [m]、bodyFromWorld は描画座標のベクトルを天体固定の向きへ回す行列、
-// field は雲の場(R = 被覆率、G = 雲頂高度 / topAltitude)。
-//
-// **axes は天体固定の半軸 [m]** — 殻は半径 1 の球をこの 3 軸ぶん非一様に伸ばしたものなので、
-// これが無いと影は真球を仮定することになり、扁平な天体では高度の目盛りが緯度ぶんずれる
-// (地球の赤道半径と極半径の差 21 km は雲の層 15 km より厚い)。
-export type CumulusShadow = {
+// 積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準半径 [m]、
+// axes は天体固定の半軸 [m]、topAltitude は殻の高さ [m]、bodyFromWorld は描画座標のベクトルを
+// 天体固定の向きへ回す行列、field は雲の場(R = 被覆率、G = 雲頂高度 / topAltitude)。
+export interface CumulusShadow {
   readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
   readonly axes: THREE.Vector3;
   readonly topAltitude: number;
   readonly bodyFromWorld: THREE.Matrix4;
   readonly field: THREE.Texture;
-};
+}
 
 // グラフへ畳み込む遮蔽源の選択。TSL のグラフは静的に展開されるので実行時の分岐にはできず、
 // 受け手ごとに要る源が違う(環は自分の帯を外す必要がある)ため、構築時に呼び出し側が決める。
-type OcclusionSources = {
+interface OcclusionSources {
   readonly rings: boolean;
-  // 艦艇・基地・デブリなどのメッシュ。**真偽ではなく受け手の法線で選ぶ** — バイアスを法線方向の
-  // オフセットで入れるので法線が要り、型の側で「法線を持たずにこの源を選ぶ」を塞ぐ。
+  // メッシュの影を数えるなら受け手の法線。バイアスを法線方向のオフセットで入れるので、真偽では
+  // なく法線そのもので選ぶ。null なら数えない。
   readonly meshNormal: Vec3Node | null;
-  // 受け手がその表面に乗っている天体(中心距離が半径に一致する遮蔽器)を外すための、受け手
-  // までの視距離。表面の自己遮蔽は N·L と光源の積分が表すので、ここでも数えると終端が二重に
-  // 暗くなる。一致の公差を深度からの位置復元の誤差から取るために視距離が要る。null なら
-  // 外さない(環・大気の受け手は天体表面の陰影を持たない)。
+  // 受け手がその表面に乗っている天体(中心距離が縁までの距離に一致する遮蔽器)を外すための、
+  // 受け手までの視距離。表面の自己遮蔽は N·L と光源の積分が表すので、ここでも数えると終端が
+  // 二重に暗くなる。一致の公差をこの視距離から取る。null なら外さない。
   readonly selfViewDistance: FloatNode | null;
-  // 積雲の殻が落とす影を数えるなら、受け手の位置で画面 1 px が張る実寸 [m]。**真偽ではなく
-  // 実寸で選ぶ** — 場を引く mip 段をここから決めるので、型の側で「実寸を持たずにこの源を
-  // 選ぶ」を塞ぐ。null なら数えない。
+  // 積雲の殻の影を数えるなら、受け手の位置で画面 1 px が張る実寸 [m]。場を引く mip 段を
+  // ここから決めるので、真偽ではなく実寸そのもので選ぶ。null なら数えない。
   readonly cumulusFootprint: FloatNode | null;
-};
+}
 
-type OccluderUniforms = {
+interface OccluderUniforms {
   readonly center: Vec3Uniform;
   readonly axes: Vec3Uniform;
   readonly bodyFromWorld: Mat4Uniform;
-};
-type RingBandUniforms = {
+}
+interface RingBandUniforms {
   readonly inner: FloatUniform;
   readonly outer: FloatUniform;
   readonly tau: FloatUniform;
   readonly active: FloatUniform;
-};
+}
 
 // 環面と視線の交差判定が発散しないよう、環面と恒星方向のなす角の余弦へ入れる下限。
 const RING_GRAZING_MIN = 0.015;
@@ -141,38 +134,36 @@ const SLOT_DEBUG_COLORS: readonly (readonly [number, number, number])[] = [
 const ZERO_AXES = new THREE.Vector3();
 
 // 半径 r1・r2 の 2 円が中心距離 d で重なる面積(すべて同じ角度単位)。
-const circleOverlapArea = Fn(([r1, r2, d]: readonly FloatNode[]) => {
-  const safeD = max(d!, 1e-12);
-  const d1 = safeD.mul(safeD).sub(r2!.mul(r2!)).add(r1!.mul(r1!)).div(safeD.mul(2));
+const circleOverlapArea = Fn(([r1, r2, d]: readonly [FloatNode, FloatNode, FloatNode]) => {
+  const safeD = max(d, 1e-12);
+  const d1 = safeD.mul(safeD).sub(r2.mul(r2)).add(r1.mul(r1)).div(safeD.mul(2));
   const d2 = safeD.sub(d1);
   const lens = (r: FloatNode, h: FloatNode) => r.mul(r).mul(acos(clamp(h.div(max(r, 1e-12)), -1, 1)))
     .sub(h.mul(sqrt(max(r.mul(r).sub(h.mul(h)), 0))));
-  const contained = PI.mul(min(r1!, r2!).mul(min(r1!, r2!)));
+  const contained = PI.mul(min(r1, r2).mul(min(r1, r2)));
   return select(
-    greaterThan(d!, r1!.add(r2!)), float(0),
-    select(lessThan(d!, abs(r1!.sub(r2!))), contained, lens(r1!, d1).add(lens(r2!, d2))),
+    greaterThan(d, r1.add(r2)), float(0),
+    select(lessThan(d, abs(r1.sub(r2))), contained, lens(r1, d1).add(lens(r2, d2))),
   );
 });
 
-// 点 p から見た恒星円盤のうち、楕円体 (center, axes, bodyFromWorld) に遮られずに残る
-// 面積比 0..1。physics/shadow.ts の occludedFraction と同じ式で、本影・金環・半影・完全日照が
-// 場合分け無しに1つの閉じた形から出る。selfTolerance は「受け手がこの天体の表面に乗って
-// いる」と見なす中心距離と縁までの距離の差の公差で、0 なら乗っていても外さない。
+// 点 p から見た恒星円盤のうち、楕円体 (center, axes, bodyFromWorld) に遮られずに残る面積比 0..1。
+// physics/shadow.ts の occludedFraction と同じ式で、本影・金環・半影・完全日照が場合分け無しに
+// 1つの閉じた形から出る。selfTolerance は「受け手がこの天体の表面に乗っている」と見なす中心距離と
+// 縁までの距離の差の公差で、0 なら乗っていても外さない。
 //
-// **扁平な天体を真球で代表しない。** 影の軸(中心を通る恒星方向の直線)から受け手へ向かう
-// 向き u に対する楕円体の縁までの距離を実効半径に採ると、そこから先は真球と同じ 2 円の
-// 重なりで解ける。受け手が地表に乗っているとき、この距離は受け手自身までの中心距離に
-// 一致する — 日没は測地地平線(面の法線と恒星方向が直交する瞬間)にちょうど重なり、
-// 緯度によって早まることも遅れることもない。
+// 扁平な天体は、影の軸(中心を通る恒星方向の直線)から受け手へ向かう向き u の縁までの距離を
+// 実効半径に採ると、真球と同じ 2 円の重なりで解ける。受け手が地表に乗っているときこの距離は
+// 受け手自身の中心距離に一致し、日没は測地地平線にちょうど重なる。
 const ellipsoidTransmittance = Fn((
   [p, sunDir, sunDist, sunAngRadius, center, axes, bodyFromWorld, selfTolerance]: readonly [Vec3Node, Vec3Node, FloatNode, FloatNode, Vec3Node, Vec3Node, Mat4Node, FloatNode],
 ) => {
   const toCenter = center.sub(p);
   const along = dot(toCenter, sunDir);
   const dist = max(length(toCenter), 1e-6);
-  // 影の軸から受け手へ向かう単位ベクトル。半径 1 の球を半軸ぶん伸ばした形なので、天体固定の
-  // 向きへ回して半軸を掛けた長さが、その向きの縁までの距離になる。**軸の上では向きが定まらない**
-  // ので、そこは任意の向きで代表する — 天体がまるごと恒星を覆う位置なので、どの向きでも本影になる。
+  // 影の軸から受け手へ向かう単位ベクトル。天体固定の向きへ回して半軸を掛けた長さが、その向きの
+  // 縁までの距離になる。軸の上では向きが定まらないが、そこは天体がまるごと恒星を覆う位置なので
+  // どの向きでも本影になる。
   const offAxis = sunDir.mul(along).sub(toCenter);
   const offAxisLength = length(offAxis);
   const u = select(greaterThan(offAxisLength, 1), offAxis.div(max(offAxisLength, 1)), vec3(1, 0, 0));
@@ -189,20 +180,18 @@ const ellipsoidTransmittance = Fn((
 
 // 半径 w の円盤のうち、半径座標が中心から u·w だけ離れた直線より内側にある面積の割合。
 // u = -1 で 0、u = 0 で 0.5、u = +1 で 1。
-const diskFractionBelow = Fn(([u]: readonly FloatNode[]) => {
-  const safeU = clamp(u!, -1, 1);
+const diskFractionBelow = Fn(([u]: readonly [FloatNode]) => {
+  const safeU = clamp(u, -1, 1);
   return acos(safeU.negate()).add(safeU.mul(sqrt(max(float(1).sub(safeU.mul(safeU)), 0)))).div(PI);
 });
 
 // 点 p から恒星へ向かう視線が環の帯 (inner, outer) を横切るときの透過率。
 //
-// **恒星は点ではなく円盤なので、帯の縁は 1 点の内外判定では決まらない。** 環面へ落ちる恒星
-// 円盤の footprint は楕円で、その径方向の半幅 w は入射角の余弦 μ と、交点の径方向と恒星方向の
-// 環面内成分のなす角の余弦 c から閉じた形で出る。帯の被覆率は「footprint のうち半径 outer より
-// 内側」から「inner より内側」を引いた面積比で、サンプリングは要らない。
-//
-// 近似として受け入れるもの: (a) footprint の中で環の環状構造の曲率を無視する、(b) 帯の縁を
-// footprint の中で直線と見なす。どちらも w << r0 が成り立つ限り誤差は二次で消える。
+// 恒星は円盤なので、帯の縁は 1 点の内外判定では決まらない。環面へ落ちる恒星円盤の footprint は
+// 楕円で、その径方向の半幅 w は入射角の余弦 μ と、交点の径方向と恒星方向の環面内成分のなす角の
+// 余弦 c から閉じた形で出る。帯の被覆率は「footprint のうち半径 outer より内側」から「inner より
+// 内側」を引いた面積比。footprint の中では環の曲率を無視し、帯の縁を直線と見なす — どちらも
+// w << r0 が成り立つ限り誤差は二次で消える。
 const ringTransmittance = Fn((
   [p, sunDir, sunAngRadius, center, axis, inner, outer, tau, active]: readonly [Vec3Node, Vec3Node, FloatNode, Vec3Node, Vec3Node, FloatNode, FloatNode, FloatNode, FloatNode],
 ) => {
@@ -285,8 +274,7 @@ export class SunOcclusion {
     }
   }
 
-  // このフレームで有効な帯が 1 本でもあるか。遮蔽パスが環の項を持つグラフと持たないグラフを
-  // 選び分けるのに使う。
+  // このフレームで有効な帯が 1 本でもあるか。
   hasActiveRings(): boolean { return this.activeRingBands > 0; }
 
   // 環の影を落とす天体 1 体ぶんの帯。center/axis は描画座標、bands が空なら影は落ちない。
@@ -294,6 +282,7 @@ export class SunOcclusion {
     this.activeRingBands = Math.min(bands.length, MAX_RING_BANDS);
     this.ringCenter.value.copy(center);
     this.ringAxis.value.copy(axis).normalize();
+    // 帯ごとのスロットへ写し、余ったスロットは active で消す。
     for (const [i, slot] of this.ringBands.entries()) {
       const band = bands[i];
       slot.active.value = band === undefined ? 0 : 1;
@@ -359,17 +348,13 @@ export class SunOcclusion {
     return transmittance;
   }
 
-  // 積雲の殻が落とす影。受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜ける
-  // まで **殻の空間**(toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
+  // 積雲の殻が落とす影。受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで
+  // 殻の空間(toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
   //
-  // **柱の光学的厚みは覆われている割合から出す** — 覆われた割合 c を通り抜けない確率と読んで
-  // τ = −ln(1 − c) を取る。割合は殻が雲を立てるのと同じ規則(`cloud/cumulus-shape.ts`)から
-  // 引くので、影は殻のシルエットの下へ落ちる。厚みは光路長ではなく **稼いだ高度** で配るので、
-  // 柱を 1 本抜ける合計はどれだけ斜めでも τ に一致する。恒星が低いほど光路は横へ伸び、影も
-  // 同じだけ離れた所へ落ちる。
-  //
-  // **受け手が自分の柱の雲頂に立っているときは、その柱で自分を陰らせない** — 殻の描く雲頂は
-  // 粒のぶん場の雲頂から上下にずれるので、ずれの幅に入る受け手は雲頂の高さから測る。
+  // 柱の光学的厚みは、覆われた割合 c を通り抜けない確率と読んで τ = −ln(1 − c) と取る。割合は殻が
+  // 雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、影は殻のシルエットの下へ落ちる。
+  // 厚みは光路長ではなく稼いだ高度で配るので、柱を 1 本抜ける合計はどれだけ斜めでも τ に一致する。
+  // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
   private cumulusTransmittance(
     worldPos: Vec3Node, sunDir: Vec3Node, footprint: FloatNode,
   ): FloatNode {
@@ -385,9 +370,8 @@ export class SunOcclusion {
         // 殻の上端の半径。地表が 1 なので、高さは基準半径で割った目盛りで乗る。
         const shellRadius = float(1).add(this.cumulusTopAltitude.div(bodyRadius));
         const along = dot(offset, rayDir);
-        // 光路が殻を出るまでの距離。殻より上の受け手では負になり、影は落ちない。長さは殻の
-        // 空間の半径 1 を基準半径として測る(真の実寸との差は扁平率ぶんで、mip 段と上限にしか
-        // 効かない)。
+        // 光路が殻を出るまでの距離。殻より上の受け手では負になり、影は落ちない。長さは殻の空間の
+        // 半径 1 を基準半径として測る(真の実寸との差は扁平率ぶんで、mip 段と上限にしか効かない)。
         const exit = sqrt(max(shellRadius.mul(shellRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
           .sub(along).mul(bodyRadius);
         const stepLength = clamp(exit, 0, CUMULUS_MAX_LIGHT_PATH).div(CUMULUS_SHADOW_TAPS);
@@ -406,9 +390,8 @@ export class SunOcclusion {
           const up = sampleOffset.div(sampleRadius);
           const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
           const cloud = this.cumulusFieldAt(up, lod);
-          // **粒は引けるときだけ引く。** 引くと影は殻の描く雲と同じ縁を持つが、タップの数だけ
-          // ノイズを引くので遮蔽パスの費用は倍以上になる。引けない遠さでは振幅が 0 になるので、
-          // そこは分岐ごと飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
+          // 粒は引けるときだけ引く。タップの数だけノイズを引くので、振幅が 0 になる遠さでは分岐ごと
+          // 飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
           const grain = float(0).toVar();
           If(greaterThan(grainAmplitude, 0), () => {
             grain.assign(grainAt(up, grainFrequency, grainAmplitude));
@@ -428,24 +411,17 @@ export class SunOcclusion {
     })();
   }
 
-  // 描画座標のベクトルを、殻が雲を立てるのと同じ空間へ写す — 地表が半径 1、雲頂が
-  // 半径 1 + 雲頂高度 / 基準半径 の球面に乗る空間。殻は半径 1 の球を天体固定の半軸ぶん
-  // 非一様に伸ばしたものなので、天体固定の向きへ回してから半軸で割ると戻る。
-  //
-  // **これは天体の形が入れる歪みの補正であって、場の図法とは関係しない。** 真球のつもりで
-  // 中心距離から高度を測ると、扁平な天体では緯度ぶんの下駄が乗る(地球なら極で 21 km ——
-  // 雲の層 15 km より厚いので、極の雲頂が自分の柱の内側に沈み、恒星の向きによらず影になる)。
-  // 図法を差し替えても要るのはこちらで、図法に依るのは cumulusFieldAt と cumulusFieldLod。
+  // 描画座標のベクトルを、殻が雲を立てるのと同じ空間へ写す — 地表が半径 1、雲頂が半径
+  // 1 + 雲頂高度 / 基準半径 の球面に乗る空間。天体固定の向きへ回してから半軸で割る。
+  // 真球のつもりで中心距離から高度を測ると、扁平な天体では緯度ぶんの下駄が乗る(地球なら極で
+  // 21 km — 雲の層 15 km より厚いので、極の雲頂が自分の柱の内側に沈み、恒星の向きによらず影になる)。
   private toShellSpace(worldVec: Vec3Node): Vec3Node {
     return this.cumulusBodyFromWorld.mul(vec4(worldVec, 0)).xyz.div(this.cumulusAxes);
   }
 
-  // 場を引く mip 段。タップ 1 回が代表する実寸 sampleWidth [m] を、場の texel が覆う実寸と
-  // 比べて決める。恒星が低いほど歩は長く、影は柔らかく長く伸びる。
-  //
-  // **texel の実寸は図法から出す** — 下の式は正距円筒に固有で、赤道の 1 行(2πR を幅で割る)を
-  // 基準に取っている。極では 1 texel の経度方向の実寸がこれより cos(緯度) ぶん狭いので、段は
-  // そのぶん細かい側へ寄る。図法を差し替えるならここも差し替える。
+  // 場を引く mip 段。タップ 1 回が代表する実寸 sampleWidth [m] を、場の texel が覆う実寸と比べて
+  // 決める。texel の実寸は正距円筒に固有の式で、赤道の 1 行(2πR を幅で割る)を基準に取る — 極では
+  // 1 texel の経度方向の実寸がこれより cos(緯度) ぶん狭いので、段はそのぶん細かい側へ寄る。
   private cumulusFieldLod(sampleWidth: FloatNode): FloatNode {
     // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
     const fieldWidth = (this.cumulusField.size(int(0)) as THREE.Node<'uvec2'>).x;
@@ -453,11 +429,9 @@ export class SunOcclusion {
     return max(log2(sampleWidth.div(max(texelWorld, 1))), 0);
   }
 
-  // 殻の空間の単位方向 up における場を、mip 段を指定して引く。**段は明示で渡す** — 光路の
-  // タップの uv は画面の隣の画素と続いていないので、画面微分から選ばれる段は当てにならない。
-  //
-  // **向きから uv への写しは図法に固有。** いまの場は正距円筒で、殻が読むのと同じ球メッシュの
-  // uv(sphereMeshUv)で引く — 殻と影が別の規則で同じ場を読むと、影が雲のシルエットから外れる。
+  // 殻の空間の単位方向 up における場を、mip 段を指定して引く。段を明示で渡すのは、光路のタップの
+  // uv が画面の隣の画素と続いておらず、画面微分から選ばれる段が当てにならないため。uv は殻が読むのと
+  // 同じ球メッシュの uv(sphereMeshUv)で引く — 別の規則で読むと、影が雲のシルエットから外れる。
   private cumulusFieldAt(up: Vec3Node, lod: FloatNode): Vec4Node {
     const uv = sphereMeshUv(up);
     return this.cumulusField.sample(vec2(fract(uv.x), uv.y)).level(lod);
@@ -474,12 +448,9 @@ export class SunOcclusion {
     return select(greaterThan(altitude, top.sub(uncertainty)), top, float(0));
   }
 
-  // 描画座標の点が、そのスロットの柱(枠 × [near, near + coverDepth])に入っているか。
-  // **遮蔽の合成とデバッグ表示が同じ判定を読む** — 別々に持つと、塗り分けは正しいのに影が
-  // 出ない絵が作れてしまう。
-  //
-  // 枠はフィルタの足のぶんだけ狭めて判定する。**選んだ時点で、法線オフセットぶんずらした位置も
-  // PCF の円盤も枠の内側に収まる**ので、引く側は縁の判定を持たなくてよい。
+  // 描画座標の点が、そのスロットの柱(枠 × [near, near + coverDepth])に入っているか。枠はフィルタの
+  // 足のぶんだけ狭めて判定するので、選んだ時点で法線オフセットぶんずらした位置も PCF の円盤も
+  // 枠の内側に収まり、引く側で縁を判じずに済む。
   private slotCovers(slot: SunShadowSlot, worldPos: Vec3Node): BoolNode {
     const margin = this.shadowMaps.uvPerTexel.mul(NORMAL_OFFSET_TEXELS + PCF_MAX_TEXELS);
     const inner = float(1).sub(margin);
@@ -512,6 +483,7 @@ export class SunOcclusion {
     return Fn(() => {
       const bestTexel = float(0).toVar();
       const bestIndex = float(-1).toVar();
+      // 覆っていて、いままでより texel が細かいスロットへ乗り換える。
       for (const [index, slot] of this.shadowMaps.slots.entries()) {
         const finer = bestIndex.lessThan(0).or(slot.texelWorld.lessThan(bestTexel));
         If(this.slotCovers(slot, worldPos).and(finer), () => {
@@ -535,13 +507,10 @@ export class SunOcclusion {
     })();
   }
 
-  // シャドウアトラスへ描かれたメッシュが落とす影。**選んだ 1 スロットだけを引く** — 透過率は
-  // 恒星円盤の遮られずに残る面積比なので、枠の重なったスロットの答えを掛け合わせると、同じ
-  // 遮蔽器の半影が二重に濃くなる。
-  //
-  // 判定は select ではなく If で書く。select は両辺を評価するので、画面のほとんどを占める
-  // 虚空の画素からもテクスチャフェッチが消えない。**選ぶ段と引く段を分けるのも同じ理由** —
-  // 1 段で書くと、より細かいスロットが見つかるたびに引き直すことになる。
+  // シャドウアトラスへ描かれたメッシュが落とす影。選んだ 1 スロットだけを引く — 透過率は恒星円盤の
+  // 遮られずに残る面積比なので、枠の重なったスロットの答えを掛け合わせると同じ遮蔽器の半影が二重に
+  // 濃くなる。判定を select ではなく If で書き、選ぶ段と引く段を分けるのは、虚空の画素からテクスチャ
+  // フェッチを消すため(select は両辺を評価する)。
   private meshTransmittance(worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node): FloatNode {
     // 恒星の視半径。半影の幅はここに遮蔽器までの距離を掛けたものになる。
     const sunAngRadius = this.sunLight.radius.div(max(length(this.sunLight.position.sub(worldPos)), 1));
@@ -574,10 +543,9 @@ export class SunOcclusion {
     const uvBase = this.slotUv(slot, offsetPos);
     const receiverDepth = this.slotDepth(slot, offsetPos);
 
-    // 半影の幅を物理から出す。遮蔽器までの距離 (receiver − blocker) に恒星の視半径を掛けた
-    // ものが world 空間での半径で、それを texel へ直す。**1 タップの探索は探索半径の外の
-    // 遮蔽器を見逃す**(PCSS の既知の限界)ので、細い部材の影の縁は硬いまま残る — 半影が
-    // 数 texel の範囲では画面上 2px の差にしかならないので許容する。
+    // 半影の幅を物理から出す。遮蔽器までの距離 (receiver − blocker) に恒星の視半径を掛けたものが
+    // world 空間での半径で、それを texel へ直す。1 タップの探索は探索半径の外の遮蔽器を見逃す
+    // (PCSS の既知の限界)ので細い部材の影の縁は硬いまま残るが、画面上 2px の差なので許容する。
     const blockerDepth = texture(slot.texture, uvBase).r;
     const blockerDistance = max(receiverDepth.sub(blockerDepth), 0);
     const radiusTexels = clamp(sunAngRadius.mul(blockerDistance).div(texel), PCF_MIN_TEXELS, PCF_MAX_TEXELS);
@@ -605,11 +573,9 @@ export class SunOcclusion {
     return select(receiverDepth.lessThan(0), float(1), visibility.mul(distantVisibility));
   }
 
-  // 遠層に写った遮蔽器が残す可視率。**近層と遠層に同じ遮蔽器が写ることはない**ので、2 つの
-  // 可視率はそのまま掛けられる。
-  //
-  // 遠層に居るのは本影を失った遮蔽器だけで、半影の幅は枠の 1 辺以上ある。**縁は元から硬くない
-  // ので PCF は要らず、遮られる面積比 (遮蔽器の角半径 / 恒星の角半径)² を 1 タップから返す。**
+  // 遠層に写った遮蔽器が残す可視率。近層と遠層に同じ遮蔽器が写ることはないので、2 つの可視率は
+  // そのまま掛けられる。遠層に居るのは本影を失った遮蔽器だけで半影の幅は枠の 1 辺以上あるので、
+  // PCF は要らず、遮られる面積比 (遮蔽器の角半径 / 恒星の角半径)² を 1 タップから返す。
   private distantVisibility(
     slot: SunShadowSlot, uv: Vec2Node, receiverDepth: FloatNode, casterSize: FloatNode,
     sunAngRadius: FloatNode,

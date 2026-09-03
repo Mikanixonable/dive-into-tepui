@@ -1,13 +1,7 @@
 // フレーム最後のパス: 3D 空間に居るが物理的な明るさを持たない表示物(軌道線・軌跡線・天球
 // グリッド・縮尺グリッド・Δv ギズモ)を、合成後の絵へ描き足す。物理量として描くものだけが
 // 露出とトーンマッピングを通るので、それらの外へ出す — 指定した色がそのまま画面へ出る。
-//
-// 深度は自前では書かない。合成パスが G バッファの深度を描画先の深度バッファへ複製しているので、
-// このパスは普通に深度テストするだけでよく、線のマテリアルをノード化する必要がない。
-// 帰結として、深度を書かない透ける物体(環・大気・オーロラ・噴射炎)には隠れない。
-//
-// 模式図スタイルは白背景なので、暗背景向けに定義された線の色はそのままでは見えない。線ごとの
-// 色定義を書き換える代わりに、このチャンネルだけを専用ターゲットへ描いてから、色相を保った
+// 模式図スタイルは白背景なので、このチャンネルだけを専用ターゲットへ描いてから、色相を保った
 // まま暗くして重ね描く。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
@@ -32,10 +26,9 @@ export class OverlayPass {
   private readonly dilateOffset: THREE.UniformNode<'vec2', THREE.Vector2>;
   private static readonly sizeScratch = new THREE.Vector2();
 
-  // 模式図スタイルが使う専用ターゲットと、それを暗くして画面へ合成するマテリアルを構築する。
-  // depthTexture は G バッファのもの — 描画のたびにノードを組み直すとシェーダごと作り直しに
-  // なるため、同一インスタンスであることを前提に一度だけ束ねる。
-  constructor(
+  // depthTexture は G バッファの深度。描画のたびにノードを組み直すとシェーダごと作り直しになる
+  // ため、同一インスタンスであり続けることを前提に一度だけ束ねる。
+  public constructor(
     private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings,
     depthTexture: THREE.DepthTexture,
   ) {
@@ -49,10 +42,9 @@ export class OverlayPass {
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
     this.dilateOffset = uniform(new THREE.Vector2());
 
-    // 深度は G バッファのものを共有せず複製する — テクスチャを共有すると、リサイズや解放の際に
-    // 一方の後始末がもう一方の描画中のテクスチャを破棄してしまう。全画素へ透明を書き込みながら
-    // 深度だけを立てるので、この板がターゲットのクリアも兼ねる。透明でない色を書くと線の無い
-    // 画素まで不透明になり、合成が画面全体を塗り潰す。
+    // 深度は G バッファのものを共有せず複製する — 共有すると、リサイズや解放で一方の後始末が
+    // もう一方の描画中のテクスチャを破棄する。全画素へ透明を書きながら深度だけを立てるので、
+    // この板がターゲットのクリアも兼ねる(不透明な色を書くと合成が画面全体を塗り潰す)。
     this.depthCopyMaterial = new MeshBasicNodeMaterial({
       depthTest: false, depthWrite: true, transparent: true, blending: THREE.NoBlending,
     });
@@ -98,7 +90,7 @@ export class OverlayPass {
   // 3D UI チャンネルのオブジェクトを描く。camera は他のパスと同じインスタンスなので、
   // layers.mask は呼び出し前の値へ必ず戻す。写実スタイルは合成パスの絵へ直接重ね描きし、模式図
   // スタイルは専用ターゲットへ描いてから明度反転して合成する。
-  render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
+  public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     const savedMask = camera.layers.mask;
     setOverlayPassLayers(camera);
 
@@ -127,8 +119,7 @@ export class OverlayPass {
 
     this.renderer.setRenderTarget(this.target);
     this.renderer.autoClear = false;
-    // 不透明物の深度テストを合成パスと同じ結果にするため、線を描く前に G バッファの深度を写す。
-    // 同じ板が色を透明で塗り潰すので、これがこのターゲットのクリアも兼ねる。
+    // 線を描く前に G バッファの深度を写す(この板がターゲットのクリアも兼ねる)。
     this.quad.material = this.depthCopyMaterial;
     this.gpu.beginPass(GPU_PASS.overlay);
     this.quad.render(this.renderer);
@@ -144,9 +135,8 @@ export class OverlayPass {
     this.renderer.autoClear = true;
   }
 
-  // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
-  // 共有する単一の板なので、ここでは解放しない。
-  dispose(): void {
+  // 保持している GPU 資源を解放する。QuadMesh の板は three が全インスタンスで共有するので解放しない。
+  public dispose(): void {
     this.target.dispose();
     this.compositeMaterial.dispose();
     this.depthCopyMaterial.dispose();

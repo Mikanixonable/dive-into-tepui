@@ -6,9 +6,9 @@ import { texture as textureNode, asin, atan, clamp, exp, mix, uniform, uv, vec2,
 import { DeferredTexture } from './deferred-texture';
 import { markLitOpaque } from './pipeline/lit-layer';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from './celestial-albedo';
+import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 import type { CelestialTexture } from './celestial-textures';
 import type { FloatUniform, Vec2Node, Vec3Node } from './tsl-types';
-import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 
 // 球の開始方位 [rad]。正距円筒図法のテクスチャは経度 0 を u=0.5 へ置くので、その経線が
 // モデルの本初子午線(+Z)へ来る向きから分割を始める。
@@ -67,8 +67,8 @@ export class CelestialSurface {
     private readonly material: THREE.Material,
     private readonly deferred: readonly DeferredTexture[],
     private readonly cloudAmount: FloatUniform | null,
-    readonly photometry: SurfacePhotometry | null,
-    readonly textureUrl: string | null,
+    public readonly photometry: SurfacePhotometry | null,
+    public readonly textureUrl: string | null,
   ) {
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     // 段ごとにメッシュを持つ — WebGPU では mesh.geometry の差し替えが効かない。
@@ -82,7 +82,7 @@ export class CelestialSurface {
   }
 
   // 実写テクスチャを貼った球面。テクスチャの明るさはその天体のアルベドへ合わせる倍率で正す。
-  static textured(texture: CelestialTexture): CelestialSurface {
+  public static textured(texture: CelestialTexture): CelestialSurface {
     const map = new DeferredTexture(texture.url, THREE.SRGBColorSpace);
     const scale = texture.albedoScale;
     const material = new THREE.MeshStandardMaterial({
@@ -94,7 +94,7 @@ export class CelestialSurface {
   // 地表テクスチャへ薄い雲を焼き込んだ球面。cloudField は雲の場のテクスチャ(解放は渡した側が
   // 持つ)、smoothnessUrl は地表の滑らかさ(1 − 粗さ)を赤チャンネルに持つ、地表と同じ正距円筒の
   // テクスチャ。texture の測光は合成後のアルベドとして測ったものを渡す。
-  static clouded(texture: CelestialTexture, cloudField: THREE.Texture, smoothnessUrl: string): CelestialSurface {
+  public static clouded(texture: CelestialTexture, cloudField: THREE.Texture, smoothnessUrl: string): CelestialSurface {
     const surfaceMap = new DeferredTexture(texture.url, THREE.SRGBColorSpace);
     const smoothnessMap = new DeferredTexture(smoothnessUrl, THREE.NoColorSpace);
     const material = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
@@ -114,7 +114,7 @@ export class CelestialSurface {
 
   // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド
   // (render/celestial-albedo.ts)で、sRGB の見た目色ではない。
-  static solid(albedo: Albedo): CelestialSurface {
+  public static solid(albedo: Albedo): CelestialSurface {
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color().setRGB(albedo[0], albedo[1], albedo[2], THREE.LinearSRGBColorSpace),
       roughness: 1, metalness: 0,
@@ -124,18 +124,18 @@ export class CelestialSurface {
   }
 
   // 全段のメッシュを parent の下へ置き、テクスチャ画像の取得を始める。
-  addTo(parent: THREE.Object3D): void {
+  public addTo(parent: THREE.Object3D): void {
     for (const deferred of this.deferred) deferred.request();
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
   // 地表へ焼き込む雲の濃さ [0..1]。雲を合成しない表面では効かない。
-  setCloudAmount(amount: number): void {
+  public setCloudAmount(amount: number): void {
     if (this.cloudAmount !== null) this.cloudAmount.value = amount;
   }
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。
-  syncLod(apparentDiameterPx: number): void {
+  public syncLod(apparentDiameterPx: number): void {
     const level = sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
@@ -143,14 +143,14 @@ export class CelestialSurface {
   }
 
   // 全段のメッシュを隠す。次の syncLod で段を選び直す。
-  hide(): void {
+  public hide(): void {
     this.activeLevel = null;
     for (const mesh of this.meshes.values()) mesh.visible = false;
   }
 
   // 全段のメッシュを親から外し、マテリアルとテクスチャを解放する。テクスチャは
   // マテリアル側から連鎖解放されないので個別に dispose する。
-  dispose(): void {
+  public dispose(): void {
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
     this.material.dispose();
     for (const deferred of this.deferred) deferred.dispose();

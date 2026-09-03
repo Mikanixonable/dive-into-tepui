@@ -11,8 +11,7 @@ import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CUMULUS_DETAIL } from './cumulus-shell';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
-// ゲーム本体の設定の保存先。**実験環境はここへ書かない** — 撮影した絵が「人間が最後に押した
-// 状態」に依存して黙って変わるので、保存先を持たない GraphicsSettings を別に組む。
+// ゲーム本体の設定の保存先(localStorage の鍵)。
 export const GRAPHICS_STORAGE_KEY = 'tepui.settings.graphics';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
@@ -115,10 +114,9 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: '雲',
     presets: { low: false, medium: true, high: true },
   },
-  // 積雲の殻を解くレイマーチの細かさ。段を上げるほど雲頂の起伏と縁が滑らかになり、G バッファ
-  // パスが場と粒を引く回数が増える。オフでは殻も、それが落とす影も消え、薄い雲を焼き込んだ
-  // 地表だけが残る — 積雲が作る破綻を、地表の側の破綻から切り分けるための段。**高プリセットでも
-  // 「精細」は選ばない** — 「標準」が絵の粗さの見えなくなる段で、その上も切り分けのために置く。
+  // 積雲の殻を解くレイマーチの細かさ。段を上げるほど雲頂の起伏と縁が滑らかになる。オフでは殻も、
+  // それが落とす影も消え、薄い雲を焼き込んだ地表だけが残る。「標準」が絵の粗さの見えなくなる段で、
+  // 「精細」は積雲の破綻を地表側の破綻から切り分けるための段。
   cumulusDetail: {
     kind: 'choice', group: 'element', label: '積雲の精細さ',
     items: [
@@ -168,9 +166,8 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
     presets: { low: false, medium: true, high: true },
   },
-  // 積雲が地表・艦艇へ落とす影。オフでも積雲そのものは消えない — 遮蔽パスが光路をたどる
-  // タップぶんだけが減る。積雲を描かない設定(「雲」がオフ、「積雲の精細さ」がオフ)では、
-  // こちらの値によらず影は落ちない。
+  // 積雲が地表・艦艇へ落とす影。積雲を描かない設定(「雲」がオフ、「積雲の精細さ」がオフ)では、
+  // この値によらず影は落ちない。
   cumulusShadow: {
     kind: 'toggle', group: 'shadow', label: '積雲の影',
     presets: { low: false, medium: true, high: true },
@@ -265,8 +262,8 @@ export class GraphicsSettings {
   private data: GraphicsSettingsData;
   private readonly targets: GraphicsTarget[] = [];
 
-  // storageKey は設定を残すブラウザ側の鍵。**null を渡すと読みも書きもせず**、毎回既定から
-  // 始まってこのセッションの中だけで生きる(実験環境がこちらを使う)。
+  // storageKey は設定を残すブラウザ側の鍵。null を渡すと読みも書きもせず、毎回既定から始まって
+  // このセッションの中だけで生きる。
   public constructor(private readonly storageKey: string | null = GRAPHICS_STORAGE_KEY) {
     this.data = storageKey === null ? DEFAULTS : loadStored(storageKey);
   }
