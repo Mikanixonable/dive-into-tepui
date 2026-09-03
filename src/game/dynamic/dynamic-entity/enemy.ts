@@ -14,7 +14,7 @@ import { Bullet } from './bullet';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
 import { fmtDist, fmtMarkerDist, fmtSpeed } from '../../../hud/utils';
-import { relativeInfo } from '../../hud/orbit/orbit-info';
+import { relativeInfo } from '../../orbit-info';
 import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { shipMarkerSvg } from '../../marker/marker-shapes';
