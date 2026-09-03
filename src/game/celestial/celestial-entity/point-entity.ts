@@ -16,6 +16,7 @@ import type { CumulusShell } from '../../../render/cumulus-shell';
 import { BodyGraticule } from '../../../render/body-graticule';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
+import { writeBodyFromWorld } from '../body-frame';
 import type { Aurora } from '../../../render/aurora';
 import type { CelestialClass } from './celestial-entity-def';
 import { CelestialMotion } from '../../../physics/celestial-motion';
@@ -56,7 +57,6 @@ const AURORA_PHASE_RATE = 0.02;
 
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
-const tmpSpin = new THREE.Quaternion();
 
 export class PointEntity extends CelestialEntity {
   // 位置と自転姿勢だけを載せる入れ物。扁平のスケールは shapeGroup が持つ — オーロラは実寸 [m]
@@ -185,13 +185,7 @@ export class PointEntity extends CelestialEntity {
   // 遮蔽パスへ渡す積雲の殻。姿勢は自転位相まで込みで組む — 軸だけでは場が地表と一緒に回らない。
   override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): CumulusShadow | null {
     if (this.cumulus === null) return null;
-    const orientation = this.motion.orientationAt(displayTime);
-    const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
-    if (q === null) {
-      this.bodyFromWorld.identity();
-    } else {
-      this.bodyFromWorld.makeRotationFromQuaternion(tmpSpin.set(q.x, q.y, q.z, q.w).invert());
-    }
+    writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
     return {
       center: fo.RtoThreeV3(this.stateAt(displayTime).r),
       surfaceRadius: this.radius,

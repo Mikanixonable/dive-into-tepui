@@ -107,6 +107,14 @@ export function shapeAxes(radius: number, shape: ShapeDef | undefined): Vec3 {
   return v3(shape.a, shape.c, shape.b);
 }
 
+// ShapeDef の楕円体に内接する最大の球の半径 [m]。**この球は天体の表面より内側で閉じる** —
+// 表面に乗った受け手がその内側へ入ることがないので、天体を1つの球で代表する計算が
+// 半径と中心距離の大小で破綻しない。自転軸方向へ伸びた形でも最短の半軸を返す。
+export function shapeInscribedRadius(radius: number, shape: ShapeDef | undefined): number {
+  const axes = shapeAxes(radius, shape);
+  return Math.min(axes.x, axes.y, axes.z);
+}
+
 // ShapeDef を自転軸まわりの回転楕円体の半径 [m] へ丸める。**三軸楕円体では短いほうの赤道軸を
 // 赤道半径に採る** — 元の形へ内接する側なので、これを地表と見なす描画は地表メッシュの内側で
 // 閉じる。

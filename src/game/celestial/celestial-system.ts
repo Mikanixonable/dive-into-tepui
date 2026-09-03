@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import {
   CelestialBodyDef, CelestialMotion, CelestialMotions, OrbitingMotion, PhaseOffsets, PlanetMotion,
+  shapeOf,
 } from '../../physics/celestial-motion';
 import { strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
@@ -32,7 +33,9 @@ import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-li
 import { ambientFraction, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
-import type { Occluder, SunOcclusion } from '../../render/pipeline/sun-occlusion';
+import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
+import { shapeAxes, shapeInscribedRadius } from '../../physics/celestial-body-def';
+import { writeBodyFromWorld } from './body-frame';
 import {
   castsCumulusShadow, selectOccluders, selectRingShadow, type RingShadowCandidate,
 } from '../../render/pipeline/sun-occlusion-select';
@@ -95,6 +98,10 @@ export class CelestialSystem implements CelestialMotions {
   private sunLight!: SunLight;
   private exposure!: Exposure;
   private sunOcclusion!: SunOcclusion;
+  // 遮蔽器へ渡す形の置き場。スロット本数ぶんを毎フレーム書き換えて使い回す。
+  private readonly occluderShapes = Array.from({ length: MAX_OCCLUDERS }, () => ({
+    axes: new THREE.Vector3(), bodyFromWorld: new THREE.Matrix4(),
+  }));
   private planetLight!: PlanetLightSource;
   private ambient!: AmbientSource;
   private atmosphere!: AtmospherePass;
@@ -448,7 +455,7 @@ export class CelestialSystem implements CelestialMotions {
       cameraSystem.activeViewpoint.lookTarget);
     this.planetLight.set(lights.map((light) => ({
       center: fo.RtoThreeV3(light.celestialBody.positionAt(displayTime)),
-      radius: light.celestialBody.def.radius,
+      radius: shapeInscribedRadius(light.celestialBody.def.radius, shapeOf(light.celestialBody.def)),
       radiance: light.radiance,
     })));
   }
@@ -465,9 +472,13 @@ export class CelestialSystem implements CelestialMotions {
       ? null
       : this.find(focusId)?.motion.positionAt(displayTime) ?? null;
     this.sunOcclusion.setOccluders(
-      selectOccluders(celestialBodies, displayTime, fo.r, focusPos).map((body): Occluder => (
-        { center: fo.RtoThreeV3(body.positionAt(displayTime)), radius: body.def.radius }
-      )));
+      selectOccluders(celestialBodies, displayTime, fo.r, focusPos).map((body, slot): Occluder => {
+        const shape = this.occluderShapes[slot]!;
+        const axes = shapeAxes(body.def.radius, shapeOf(body.def));
+        shape.axes.set(axes.x, axes.y, axes.z);
+        writeBodyFromWorld(shape.bodyFromWorld, body, displayTime);
+        return { center: fo.RtoThreeV3(body.positionAt(displayTime)), ...shape };
+      }));
     this.syncRingShadow(fo, displayTime, graphics);
     this.syncCumulusShadow(fo, displayTime, graphics);
   }

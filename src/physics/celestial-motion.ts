@@ -97,6 +97,11 @@ export interface CelestialMotions {
 // 天体の分類。網羅的な分岐を書きたい呼び出し側のための札で、運動の合成そのものはクラスが担う。
 export type CelestialKind = 'star' | 'planet' | 'satellite';
 
+// 天体の形(歪み)。恒星は形を持たず、`radius` による真球として扱う。
+export function shapeOf(def: CelestialBodyDef): ShapeDef | undefined {
+  return 'shape' in def ? def.shape : undefined;
+}
+
 // pole 定義から自転角速度 [rad/s] を取り出す。自転モデルを持たない天体は null。符号は自転の
 // 向きを表し、逆行自転する天体では負になる。同期回転の衛星は本初子午線が公転の平均黄経を追うので、
 // 自転角速度は公転の平均運動と一致する。歳差は自転の 10⁻⁷ 倍未満なので織り込まない。

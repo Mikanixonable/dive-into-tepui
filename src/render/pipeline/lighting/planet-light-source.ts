@@ -16,9 +16,9 @@ import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 // 限られる。
 export const MAX_PLANET_LIGHT_SLOTS = 2;
 
-// 受け手から見えている地表のキャップの半角へ張る床 [rad]。**扁平な天体では地表が基準半径の球の
-// 内側へ入る**(地球の極で 21.4 km)ので、床が無いと半角 0 の割り算が NaN を出す。床が効く幅は
-// 位相角にして 2 倍のこの値 — 地球の中心角で 1.3 km と、どの構図でも 1 画素を切る。
+// 受け手から見えている地表のキャップの半角へ張る床 [rad]。球に接する受け手ではキャップが
+// 1 点へ潰れるので、床が無いと半角 0 の割り算が NaN を出す。床が効く幅は位相角にして 2 倍の
+// この値 — 地球の中心角で 1.3 km と、どの構図でも 1 画素を切る。
 const MIN_VISIBLE_CAP_ANGLE = 1e-4;
 
 // スロット 1 本の値。中心・半径は描画座標、放射輝度は色つき(SUN_IRRADIANCE_1AU の目盛り)。
