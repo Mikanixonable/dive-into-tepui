@@ -12,9 +12,8 @@ import { BlueNoise } from './blue-noise';
 import { DeferredTexture } from './deferred-texture';
 import { sphereMeshUv, unitSphereGeometry } from './celestial-surface';
 import {
-  CLOUD_TOP_SPAN, GRAIN_COVERAGE_DEPTH, cloudTopOf, opaqueFractionOf,
+  CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE, cloudTopOf, grainAt, opaqueFractionOf,
 } from './cloud/cumulus-shape';
-import { gradientNoise } from './cloud/gradient-noise';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitOpaque } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
@@ -49,11 +48,6 @@ const MARCH_STEPS_OF_DETAIL: Readonly<Record<CumulusDetail, number>> = {
 // — 縁の粗さは締める前の区間の広さが決めるので、刻みを減らした段でここまで削ると二重に粗くなる。
 const REFINE_STEPS = 3;
 
-// 積雲の粒の一辺 [m]。場の texel(赤道 9.8 km)より細かく、かつ低軌道から見下ろして解像できる
-// 大きさ(高度 900km 以下で全振幅)に取る。これより細かくすると、実際の積雲の塊には近づく代わりに
-// 軌道上のどの構図でも 1 画素を切って消える。**場ではなく天体の半径から決まる**ので、場の解像度が
-// 変わっても粒は動かない。
-const CUMULUS_GRAIN_SIZE = 6000;
 // 粒の 1 波長が何画素を切ったら消し始め、何画素まで残すか。標本化できない粒はモアレにしか
 // ならないので、Nyquist の 2 画素へ落ちるまでに振幅を 0 へ渡す。
 const GRAIN_FADE_MIN_PIXELS = 2;
@@ -214,10 +208,10 @@ export class CumulusShell {
     const radius = max(length(point), 1e-6);
     const direction = point.div(radius);
     const cloud = this.fieldAt(direction);
-    const grain = this.grainAt(direction, grainAmplitude);
-    // 粒は覆いの縁を texel より細かく千切る。
-    const present = step(
-      threshold, opaqueFractionOf(cloud.r.add(grain.mul(GRAIN_COVERAGE_DEPTH))));
+    const grain = grainAt(direction, this.grainFrequency, grainAmplitude);
+    // 粒は覆いの縁を texel より細かく千切る。**引けなかった粒は均さない** — ディザが縁の内外へ
+    // 振り分けるので、均すと雲そのものが砂に散る。
+    const present = step(threshold, opaqueFractionOf(cloud.r, grain, float(0)));
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに粒が湧く。
     const clearance = radius.sub(this.cloudTopRadiusOf(cloudTopOf(cloud.g, grain)));
@@ -232,7 +226,7 @@ export class CumulusShell {
     const north = northAt(up);
     // その向きの雲頂(物体空間の半径)。
     const topAt = (direction: Vec3Node): FloatNode => this.cloudTopRadiusOf(
-      cloudTopOf(this.fieldAt(direction).g, this.grainAt(direction, grainAmplitude)));
+      cloudTopOf(this.fieldAt(direction).g, grainAt(direction, this.grainFrequency, grainAmplitude)));
     // **中心の高さは交点の中心距離ではなく雲頂を引き直して測る** — 締めた交点は雲頂より内側へ
     // 食い込んでいて、中心距離を高さに使うと食い込みが両方向の傾きへ同じ下駄として乗る。掠める
     // 視線ほど刻みが長く食い込みも深いので、リム際で法線が倒れて夜側の雲が光る。
@@ -253,11 +247,6 @@ export class CumulusShell {
   // 天体固定の単位方向における場の値。
   private fieldAt(direction: Vec3Node): Vec4Node {
     return textureNode(this.fieldMap.texture, sphereMeshUv(direction));
-  }
-
-  // 天体固定の単位方向における粒、おおむね −1..1 に amplitude を掛けたもの。
-  private grainAt(direction: Vec3Node, amplitude: FloatNode): FloatNode {
-    return gradientNoise(direction.mul(this.grainFrequency)).mul(amplitude);
   }
 
   // 粒の振幅。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
