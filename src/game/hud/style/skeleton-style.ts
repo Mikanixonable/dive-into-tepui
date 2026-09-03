@@ -221,8 +221,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .mode-tgt { color: var(--color-primary); }
 #hud .warn-hot { color: var(--color-error); }
 
-/* ブレークポイントごとの上書きと prefers-reduced-motion。 */
-/* モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる */
+/* ここから下はブレークポイントごとの上書きと prefers-reduced-motion。
+   モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる。 */
 @media ${MQ_MEDIUM_DOWN} {
   #hud { font-size: var(--font-s); }
   #hud .panel { padding: var(--space-3) var(--space-4); line-height: 1.4; }
