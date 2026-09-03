@@ -9,7 +9,7 @@ import type { Docking, DockingCandidate } from './docking';
 import type { ProjectFn } from '../camera/camera-system';
 import { currentThemePalette } from '../theme';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
-import { MARKER_PRIORITY } from '../marker/marker-manager';
+import { MARKER_PRIORITY } from '../marker/crowding';
 
 const DOCK_GUIDE_SHOW_DIST = 300;       // [m] ガイドを表示するポート接続点までの距離
 
