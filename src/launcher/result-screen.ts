@@ -2,7 +2,9 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { StageResult } from '../game/stages/stage';
 import { FONT_L, SPACE_6 } from '../theme';
 import type { Hud } from '../game/hud/hud';
-import type { OverlayHandle } from '../game/hud/overlay-manager';
+import type { OverlayHandle } from '../hud/overlay-manager';
+import { injectOnce } from '../hud/widgets/inject-style';
+import { RESULT_SCREEN_STYLE } from './result-screen-style';
 
 // 決着した周回の次(再出撃かタイトルへ戻るか)を決める契約。
 export interface RunTransitions {
@@ -17,7 +19,9 @@ export class ResultScreen implements OverlayHandle {
   public constructor(
     private readonly hud: Hud,
     private readonly transitions: RunTransitions,
-  ) {}
+  ) {
+    injectOnce('result-screen-style', RESULT_SCREEN_STYLE);
+  }
 
   // OverlayHandle 実装。target が結果画面の内部かどうかを返す。
   public contains(target: Node): boolean {

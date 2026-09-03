@@ -7,10 +7,10 @@ import { SaveSlots } from '../save/save-slots';
 import { SnapshotService } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta } from '../save/slot-data';
-import type { OverlayHandle, OverlayManager } from '../../game/hud/overlay-manager';
-import { CloseButton, TabBar } from '../../game/hud/widgets';
-import { injectOnce } from '../../game/hud/widgets/inject-style';
-import { MQ_COMPACT } from '../../game/hud/breakpoints';
+import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
+import { CloseButton, TabBar } from '../../hud/widgets';
+import { injectOnce } from '../../hud/widgets/inject-style';
+import { MQ_COMPACT } from '../../hud/breakpoints';
 import { buildSlotsPane } from './slot-pane';
 import { buildSnapshotPane } from './snapshot-pane';
 

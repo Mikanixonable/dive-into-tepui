@@ -1,6 +1,6 @@
-import faviconUrl from '../../../../public/favicon.svg';
-import type { Bgm } from '../../../audio/bgm/bgm';
-import type { GraphicsSettings } from '../../../render/graphics-settings';
+import faviconUrl from '../../../public/favicon.svg';
+import type { Bgm } from '../../audio/bgm/bgm';
+import type { GraphicsSettings } from '../../render/graphics-settings';
 import { BgmSettingsPanel } from '../panels/bgm-settings-panel';
 import { GraphicsPanel } from '../panels/graphics-panel';
 import { ThemePanel } from '../panels/theme-panel';

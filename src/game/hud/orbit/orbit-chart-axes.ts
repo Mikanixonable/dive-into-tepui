@@ -1,6 +1,6 @@
 // 軌道分析パネルの時間軸・距離軸を、OrbitChart が描ける ChartAxis の形へ組み立てる。
 // 目盛り間隔の候補ラダーと、時間 [s] / 距離 [m] それぞれの単位系に応じたラベル書式を持つ。
-import { fmtDuration } from '../utils';
+import { fmtDuration } from '../../../hud/utils';
 import type { ChartAxis, ChartTick } from './orbit-chart';
 import { chooseTickInterval, chooseTickIntervalFrom } from './tick-scale';
 

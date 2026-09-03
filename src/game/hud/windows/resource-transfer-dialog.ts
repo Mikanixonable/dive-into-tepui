@@ -1,9 +1,9 @@
 // ドッキング中の船同士で電力・物資(弾薬・RCS燃料)を融通するダイアログ。
 import type { Player } from '../../player/player';
-import { fmtEnergy } from '../utils';
-import { injectOnce } from '../widgets/inject-style';
+import { fmtEnergy } from '../../../hud/utils';
+import { injectOnce } from '../../../hud/widgets/inject-style';
 import { balanceRcsFuel, rcsFuelTotals, rcsTanksOf, transferRcsFuel } from './rcs-fuel-transfer';
-import type { OverlayManager } from '../overlay-manager';
+import type { OverlayManager } from '../../../hud/overlay-manager';
 import { POWER_CAPACITY } from '../../player/power';
 
 const STYLE = `
