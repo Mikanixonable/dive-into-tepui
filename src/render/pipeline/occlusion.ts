@@ -8,7 +8,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { length, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
 import { octDecodeNormal, type GBufferPass } from './gbuffer';
 import type { SunOcclusion } from './sun-occlusion';

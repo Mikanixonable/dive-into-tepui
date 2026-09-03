@@ -33,9 +33,10 @@ import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { PerfCounts } from '../../perf-meter';
+import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
-import type { ProteinMotionFrameSample, ProteinMotionLod } from '../../protein-motion-metrics';
+import type { ProteinMotionFrameSample } from '../protein/protein-motion-metrics';
+import type { ProteinMotionLod } from '../protein/protein-motion-controller';
 
 // 枠ごとに同時に存在してよい個体数。超えた分はその枠の古いものから落ちる。
 const CAP: Record<CapKind, number> = {

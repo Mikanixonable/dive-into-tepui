@@ -2,8 +2,7 @@
 //
 // Render Lab と runtime が同じ形式で controller CPU 時間・upload bytes・LOD 体数を記録する。
 
-export const PROTEIN_MOTION_LODS = ['near', 'medium', 'far', 'marker'] as const;
-export type ProteinMotionLod = (typeof PROTEIN_MOTION_LODS)[number];
+import { LODS_FINE_TO_COARSE, type ProteinMotionLod } from './protein-motion-controller';
 
 type ProteinMotionLodCounts = Readonly<Record<ProteinMotionLod, number>>;
 
@@ -76,7 +75,7 @@ export class ProteinMotionMetricsRecorder implements ProteinMotionMetricsSink {
   record(sample: ProteinMotionFrameSample): void {
     this.cpuSamples.push(finiteNonNegative(sample.cpuMs));
     this.uploadSamples.push(finiteNonNegative(sample.uploadBytes));
-    for (const lod of PROTEIN_MOTION_LODS) {
+    for (const lod of LODS_FINE_TO_COARSE) {
       this.lodTotals[lod] += finiteNonNegative(sample.lodCounts[lod]);
     }
   }
@@ -84,13 +83,13 @@ export class ProteinMotionMetricsRecorder implements ProteinMotionMetricsSink {
   reset(): void {
     this.cpuSamples.length = 0;
     this.uploadSamples.length = 0;
-    for (const lod of PROTEIN_MOTION_LODS) this.lodTotals[lod] = 0;
+    for (const lod of LODS_FINE_TO_COARSE) this.lodTotals[lod] = 0;
   }
 
   summary(): ProteinMotionMetricSummary {
     const frames = this.cpuSamples.length;
     const lodCounts = emptyLodCounts();
-    for (const lod of PROTEIN_MOTION_LODS) {
+    for (const lod of LODS_FINE_TO_COARSE) {
       lodCounts[lod] = frames === 0 ? 0 : this.lodTotals[lod]! / frames;
     }
     return {
