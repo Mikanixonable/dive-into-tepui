@@ -7,10 +7,9 @@ import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-
 import type { Albedo } from '../../celestial-albedo';
 import type { ColorUniform, FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
-import { ggxSpecularFactor } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import type { ShadingSample } from './shading-sample';
-import { sphereIrradianceFactor } from './sphere-light';
+import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 
 // 用意するスロットの本数。同時に使う本数は描画設定 planetLightCount(0〜この値)で決まる。
 // 3 体目が絵に効くほど明るい構図は、低いイオ周回軌道(イオ本体 + 木星)のような場合に
@@ -67,13 +66,17 @@ const receiverPhase = Fn(([alpha, capAngle]: readonly FloatNode[]) => {
   return phase.mul(visible.div(max(max(visible, whole), 1e-6)));
 });
 
-// スロット 1 本ぶんの光源。拡散は一様球の閉じた解(sphere-light.ts)、鏡面は点光源近似の GGX。
+// スロット 1 本ぶんの光源。拡散も鏡面も、視半径を持つ一様球として解く(sphere-light.ts)。
 // TODO: 遮蔽を受けない — 受け手と天体の間に別の天体や艦の構造があっても届く。
 class PlanetLightSlot implements LightSource {
   private cached: THREE.MeshBasicNodeMaterial | null = null;
 
   // sunLight からは、満ち欠けを測る恒星の位置を読む。
-  constructor(private readonly sunLight: SunLight, private readonly slot: SlotUniforms) {}
+  constructor(
+    private readonly sunLight: SunLight,
+    private readonly sphereSpecular: SphereSpecular,
+    private readonly slot: SlotUniforms,
+  ) {}
 
   hasContribution(): boolean { return this.slot.radius.value > 0; }
 
@@ -96,10 +99,15 @@ class PlanetLightSlot implements LightSource {
     const toStar = normalize(sample.viewPositionOf(this.sunLight.position).sub(center));
     const alpha = acos(clamp(dot(lightDir.negate(), toStar), -1, 1));
     const capAngle = max(acos(clamp(sqrt(sinSigmaSqr), 0, 1)), MIN_VISIBLE_CAP_ANGLE);
+    // 満ち欠けは「見えている面のうちどれだけが光っているか」なので、球の放射輝度を下げる形で
+    // 効かせる — 拡散と鏡面のどちらにも同じだけ掛かる。
+    const radiance: Vec3Node = this.slot.radiance.mul(receiverPhase(alpha, capAngle));
     // 一様球の放射照度 E = π·L̄·sin²σ × クリップ係数(全可視では saturate(cosβ) に一致)。
-    const irradiance: Vec3Node = this.slot.radiance.mul(PI).mul(sinSigmaSqr)
-      .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr)).mul(receiverPhase(alpha, capAngle));
-    return { diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)) };
+    const diffuse: Vec3Node = radiance.mul(PI).mul(sinSigmaSqr)
+      .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr));
+    const specular: Vec3Node = radiance
+      .mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
+    return { diffuse, specular };
   }
 
   dispose(): void {
@@ -116,8 +124,9 @@ export class PlanetLightSource {
 
   // sunLight は満ち欠けを測る恒星、count は同時に使うスロットの本数(描画設定
   // planetLightCount の値をそのまま受ける)。
-  constructor(sunLight: SunLight, private count: number) {
-    this.slotSources = this.slots.map((slot) => new PlanetLightSlot(sunLight, slot));
+  constructor(sunLight: SunLight, sphereSpecular: SphereSpecular, private count: number) {
+    this.slotSources = this.slots.map(
+      (slot) => new PlanetLightSlot(sunLight, sphereSpecular, slot));
   }
 
   // 同時に使うスロットの本数を差し替える。次の set() から効く。

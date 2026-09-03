@@ -27,6 +27,7 @@ import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
 import { AmbientSource } from './lighting/ambient-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
+import { SphereSpecular } from './lighting/sphere-light';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
@@ -49,6 +50,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly _sunOcclusion: SunOcclusion;
   private readonly sunShadowMaps: SunShadowMaps;
   private readonly lightPrepass: LightPrepass;
+  // 球光源の鏡面が引く係数表。太陽と天体照で 1 つを共有する。
+  private readonly sphereSpecular: SphereSpecular;
   // 光源モデルの設定を受けるため、光源の列とは別に太陽光源だけ手元にも持つ。
   private readonly sunSource: SunSource;
   private readonly _planetLight: PlanetLightSource;
@@ -119,8 +122,11 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
     this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
-    this.sunSource = new SunSource(this._sunLight, this.occlusionPass, graphics.sunLightModel);
-    this._planetLight = new PlanetLightSource(this._sunLight, graphics.planetLightCount);
+    this.sphereSpecular = new SphereSpecular();
+    this.sunSource = new SunSource(
+      this._sunLight, this.occlusionPass, this.sphereSpecular, graphics.sunLightModel);
+    this._planetLight = new PlanetLightSource(
+      this._sunLight, this.sphereSpecular, graphics.planetLightCount);
     this._ambient = new AmbientSource(this._sunLight);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
@@ -425,6 +431,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.occlusionPass.dispose();
     this.sunShadowMaps.dispose();
     this.lightPrepass.dispose();
+    this.sphereSpecular.dispose();
     this.materialPass.dispose();
     this.atmospherePass.dispose();
     this.backdropTarget.dispose();

@@ -7,9 +7,7 @@ import type { OcclusionPass } from '../occlusion';
 import type { SunLight } from '../sun-light';
 import { ggxSpecularFactor } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
-import { createLtcTables, type LtcTables } from './ltc-table.generated';
-import { ltcEvaluate, ltcInverseTransform, ltcUv, sphereOctagonPoints } from './ltc';
-import { sphereIrradianceFactor } from './sphere-light';
+import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { ShadingSample } from './shading-sample';
 
 // 光源モデルの選択値。graphics-settings.ts の sunLightModel の選択肢と対応する。
@@ -19,12 +17,11 @@ export class SunSource implements LightSource {
   // モードごとに 1 枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの再コンパイルが
   // フレームを止める。
   private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
-  // LTC 係数表。球光源のマテリアルを初めて組むときに 1 度だけ載せる。
-  private ltcTables: LtcTables | null = null;
 
   constructor(
     private readonly sunLight: SunLight,
     private readonly occlusion: OcclusionPass,
+    private readonly sphereSpecular: SphereSpecular,
     private model: number,
   ) {}
 
@@ -74,25 +71,16 @@ export class SunSource implements LightSource {
     const diffuse: Vec3Node = this.sunLight.color.mul(this.sunLight.intensity).div(distSqr)
       .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr)).mul(transmittance);
 
-    // 鏡面は一様球の放射輝度 L = 放射強度 / (π R²) に、係数表の正規化 t2.x と LTC 積分を掛ける。
-    const tables = this.ltcTables ??= createLtcTables();
-    const uv = ltcUv(sample.normal, sample.viewDir, sample.roughness);
-    const t1 = texture(tables.ltc1, uv);
-    const t2 = texture(tables.ltc2, uv);
-    const formFactor = ltcEvaluate(
-      sample.normal, sample.viewDir, sample.position, ltcInverseTransform(t1),
-      sphereOctagonPoints(center, radius, sample.position),
-    );
+    // 鏡面は一様球の放射輝度 L = 放射強度 / (π R²) に、球光源の鏡面の係数を掛ける。
     const radiance: Vec3Node = this.sunLight.color
       .mul(this.sunLight.intensity).div(radius.mul(radius).mul(PI));
-    const specular: Vec3Node = radiance.mul(t2.x).mul(formFactor).mul(transmittance);
+    const specular: Vec3Node = radiance
+      .mul(this.sphereSpecular.factor(sample, center, radius)).mul(transmittance);
     return { diffuse, specular };
   }
 
-  // 組んだマテリアルと係数表を解放する。
+  // 組んだマテリアルを解放する。
   dispose(): void {
     for (const material of this.materials.values()) material.dispose();
-    this.ltcTables?.ltc1.dispose();
-    this.ltcTables?.ltc2.dispose();
   }
 }
