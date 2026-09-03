@@ -1,4 +1,5 @@
 import { AnyPart } from '../dynamic/dynamic-entity/parts';
+import type { EphemerisContext } from '../../physics/ephemeris/ephemeris-context';
 import type { FormationRole } from '../dynamic/dynamic-entity/enemy';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../protein/protein-display';
@@ -208,18 +209,6 @@ export interface Stage00SaveData extends StageSaveData, WaveAttackSaveData {
 export interface CreativeStageSaveData extends StageSaveData {
   waveAttackEnabled: boolean;
   waveAttack: WaveAttackSaveData;
-}
-
-// 天体暦を使うスナップショットが、どの絶対時刻・プロファイル・packで生成されたか。
-// このフィールドは後方互換のため GameSaveData では任意とする。旧形式には無く、
-// 旧スナップショットは SnapshotService が従来どおり復元を試みる。
-interface EphemerisContext {
-  // このランの元期(simTime=0 が指す絶対時刻)。読み込み側はこれを継承する。
-  epochJdTdb: number;
-  // その元期が選ぶ暦プロファイルと暦パック。数値暦を持たない時代では両方 null。
-  profileId: string | null;
-  packId: string | null;
-  packFormatVersion: number;
 }
 
 // GameSaveData の形式バージョン。値が変わった時点で、それ以前に書かれたスナップショットは

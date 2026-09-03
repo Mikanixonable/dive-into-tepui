@@ -43,7 +43,7 @@ import { LinePickables } from './pickable/line-pickables';
 import { ObjectWindows } from './pickable/object-windows';
 import { Navball } from './navball/navball';
 import { GameSaveData, SAVE_VERSION } from './save/save-data';
-import { ephemerisContextFor } from './save/ephemeris-context';
+import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
 import { orbitInfo } from './orbit-info';
 import { autoOrbitReference } from './orbit-reference';
 import type { RunSummary } from './run-summary';
