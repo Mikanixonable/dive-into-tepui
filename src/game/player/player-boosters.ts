@@ -4,7 +4,7 @@
 // 質量と慣性は自機のものを直接書き換える。段の増減と燃焼のたびに追随させる必要があり、
 // 自機側から呼び直させると正本が二重になるため。
 import * as THREE from 'three/webgpu';
-import { qRotate } from '../../math/quat';
+import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add, scale, v3, Vec3 } from '../../math/vec3';
 import type { FloatingOrigin } from '../camera/floating-origin';
@@ -123,7 +123,7 @@ export class PlayerBoosters {
     const boosterMass = detachedStage.dryMass + detachedStage.fuel;
     this.refreshMassAndInertia();
 
-    const forward = qRotate(player.att.q, v3(0, 0, 1));
+    const forward = qRotate(player.att.q, LOCAL_FORWARD);
     const separated = boosterSeparationVelocities(
       player.state.v,
       forward,
@@ -140,8 +140,8 @@ export class PlayerBoosters {
       att: {
         // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
         // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
-        q: { ...player.att.q },
-        w: { ...player.att.w },
+        q: player.att.q,
+        w: player.att.w,
         inertia: v3(1, 1, 0.4),
       },
       collisionEnableAt: t + COLLISION_GRACE,
@@ -180,7 +180,7 @@ export class PlayerBoosters {
     this.lastBurnRatio = burn.burnRatio;
     const averageAcceleration = boosterAverageAcceleration(burn, massBefore, this.player.mass);
     this._thrust = averageAcceleration > 0
-      ? scale(qRotate(this.player.att.q, v3(0, 0, 1)), averageAcceleration)
+      ? scale(qRotate(this.player.att.q, LOCAL_FORWARD), averageAcceleration)
       : null;
   }
 
