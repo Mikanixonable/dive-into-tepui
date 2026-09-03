@@ -294,33 +294,28 @@ forward の 0.057° は `POLAR_PITCH_LIMIT`(π/2 − 1e-3)によるクランプ�
 
 ---
 
-### 手順2. `camera/rotation-follow.ts` を新設し、値と選択肢の導出を移す
+### 手順2. `camera/rotation-follow.ts` を新設し、値と選択肢の導出を移す(**実施済** `32fcb747`)
 
-**目的.** 「何に追従するかの選択」という値を、カメラの実装から切り離す。
-HUD が値のためにカメラを import しなくなり、`three/webgpu` を引き込む辺が消える。
-**この時点で挙動は変えない** — 表示名はまだ移さず、既存の呼び出し先を差し替えるだけ。
+**移したもの.** `CameraRotationFollow` / `rotationFollowKey` / セーブ変換2本 /
+`availableRotationFollows`(純関数化)。天体レジストリは `CelestialRegistry` という
+必要な口だけの構造的インターフェースで受け、`tsconfig.test.json` の include へ入れた。
+`tests/game/rotation-follow.test.ts` に6ケース。`hud/frame/rotation-zone.ts` と
+`frame-labels.ts` の import 元を差し替え、**HUD から `camera/focus-camera` への辺は消えた**
+(残る3ファイルは `FocusCamera` の実体を扱うので正しい)。
 
-**変更が必要な箇所.**
+**セーブ形の型を save-data.ts から import しなかった。** `save-data.ts` は装備・ステージまで
+型グラフへ引き込むので、`tsconfig.test.json` へ入れると壊れる。受け口を構造的な型として
+モジュール内に置き、`FocusCameraSaveData` からは構造的に代入される。
 
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/camera/rotation-follow.ts`(**新規**) | `CameraRotationFollow` 型(`focus-camera.ts:71`)、`rotationFollowKey`(`:74-77`)、`rotationSourceFromSaveData`(`:111-115`)、`rotationFollowFromSaveData`(`:118-121`)、`availableRotationFollows`(`:493-509` を純関数化)を置く。**`CelestialSystem` を型として受け取らない** — `find(id)` と `celestialMotions` だけの構造的インターフェースで受ける(D4) |
-| `src/game/camera/focus-camera.ts` | 上記を削除し、新モジュールへ委譲する。`availableRotationFollows(displayTime)` は自分の依存(`_focus` / `celestialSystem` / `frameAnchors` / `config.attitudeOf`)を渡す薄いメソッドとして残す — `resolveFocus`(`:457`)が `resolveFocusTarget` に対して取っているのと同じ形 |
-| `src/game/hud/frame/rotation-zone.ts:10` | import 元を `camera/focus-camera` → `camera/rotation-follow` へ |
-| `src/game/hud/frame/frame-labels.ts:3` | 同上 |
-| `tsconfig.test.json` の `include` | `src/game/camera/rotation-follow.ts` を足す |
-| `tests/game/rotation-follow.test.ts`(**新規**) | 選択肢の導出の回帰テスト。期待値の正本は `SPEC/CONTROLS.md`「基準フレーム」なので規約 4.1 の「書くもの」に当たる。天体フォーカス(自分の公転・子の公転・自分の自転)/ 恒星フォーカス(自分の公転が出ない)/ 機体フォーカス(周回中は公転+姿勢、周回していなければ姿勢のみ)/ 固定点フォーカス(空)の4ケース |
+**行数の見込みは外れた** — `709 → 675`(見込み 586)。見積りが使った「回転追従 138行」には
+`setRotationFollow` / `toggleAttitudeFollow` / `applyInitialFrame` / `dropStaleRotationFollow` /
+`refreshAttitude` / `setCameraRotation` の約90行が入っていたが、これらはカメラの状態を書き換える
+**振る舞い**なので手順2 の移送対象ではない(手順5 で正本を1フィールドへ寄せるだけで、置き場は
+`FocusCamera` のまま)。**達成条件の「600行未満」は導出が誤っていたので取り下げる** —
+`focus-camera.ts` が 500 行を超えたままであることは D6 で既に許容している。
 
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `npm run test:game` が通る(新規テストを含む)。
-- `grep -n "from '.*camera/focus-camera'" src/game/hud/frame/rotation-zone.ts src/game/hud/frame/frame-labels.ts`
-  が **0件**。
-- `wc -l src/game/camera/focus-camera.ts` が **600行未満**。
-- 実行時の挙動は変わっていない: `npm run dev` でマップビューを開き、地球にフォーカスした状態で
-  カメラパネルの「回転追従」に **地球-月回転座標系 / 太陽-地球回転座標系 / 地球自転座標系** が
-  並ぶこと(移送前と同じ並び)。
+**実機確認は行っていない。** 選択肢の導出は純粋な移送で、`tests/game/rotation-follow.test.ts` が
+天体・恒星・周回中の機体・漂流中の機体・姿勢の引けない機体・固定点の6ケースを固定している。
 
 ---
 
