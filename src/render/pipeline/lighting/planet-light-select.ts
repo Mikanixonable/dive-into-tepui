@@ -20,7 +20,8 @@ type PlanetLightCandidate = {
 // 光源として選ばれた天体 1 体。位置・半径は celestialBody(ECI)から読む。
 type PlanetLight = {
   readonly celestialBody: CelestialMotion;
-  // 一様球としての放射輝度(色つき)。位相(満ち欠け)と天体の食(sunlitFactor)も掛けてある。
+  // 一様球としての放射輝度(色つき)。天体の食(sunlitFactor)を掛けてある。満ち欠けは
+  // 受け手ごとに決まるので、この値には入っていない。
   readonly radiance: Albedo;
 };
 
@@ -48,10 +49,12 @@ export function selectPlanetLights(
     const sunlit = star === null
       ? 1 : sunlitFactor(pos, star, bodies.filter((b) => b !== celestialBody), pivot);
     const base = planetRadiance(albedo, sunIrradiance);
-    const scale = phase * sunlit;
-    const irradiance = Math.PI * rec709Luminance(base) * (celestialBody.def.radius / dist) ** 2 * scale;
+    // 順位づけは基準点へ届く明るさで測るので位相を掛けるが、スロットへ渡す放射輝度には
+    // 掛けない — 満ち欠けは受け手ごとに決まる。
+    const irradiance = Math.PI * rec709Luminance(base) * (celestialBody.def.radius / dist) ** 2
+      * phase * sunlit;
     scored.push({
-      light: { celestialBody, radiance: [base[0] * scale, base[1] * scale, base[2] * scale] },
+      light: { celestialBody, radiance: [base[0] * sunlit, base[1] * sunlit, base[2] * sunlit] },
       irradiance,
     });
   }
