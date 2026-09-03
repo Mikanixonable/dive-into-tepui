@@ -1,5 +1,7 @@
 // 未来表示の操作パネル(期間ピル・スクラバー・目盛り)。3行構成: 期間選択 / スクラブバー+T+読み値 / 目盛り。
-import { Button, PREDICT_TOGGLE_LABELS, SegmentedControl, Slider, ToggleSwitch, ValueInput } from '../widgets';
+import {
+  buildLabeledRow, Button, PREDICT_TOGGLE_LABELS, SegmentedControl, Slider, ToggleSwitch, ValueInput,
+} from '../widgets';
 import { wirePanelCollapse } from '../panel-shell';
 import { fmtDateTime, fmtDuration } from '../utils';
 import type { DisplayDurationKey, DisplayPastDurationKey } from '../../display-window-manager';
@@ -202,12 +204,7 @@ class DurationPillRow<K extends string, Kd extends K | 'custom'> {
     private readonly onSelect: (key: K) => void,
     onCustomConfirm: (sec: number) => void,
   ) {
-    this.element = document.createElement('div');
-    this.element.className = 'predict-row1';
-    const label = document.createElement('span');
-    label.className = 'w-group-title';
-    label.textContent = title;
-    this.element.appendChild(label);
+    this.element = buildLabeledRow(title, 'predict-row1');
 
     const pillsEl = document.createElement('span');
     pillsEl.className = 'predict-pills';
