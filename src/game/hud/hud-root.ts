@@ -22,13 +22,6 @@ import { WIDGET_STYLE } from '../../hud/widgets';
 import type { RenderStyleSetting } from '../../render/render-style';
 import type { View } from '../view/view';
 import type { CollapseToggleLabels } from '../../hud/widgets';
-export {
-  buildCollapseToggle,
-  type CollapseToggleLabels,
-  COLLAPSE_EXPANDED_GLYPH,
-  COLLAPSE_COLLAPSED_GLYPH,
-  PREDICT_TOGGLE_LABELS,
-} from '../../hud/widgets';
 
 // トークン→骨格→マーカー→パネル群→ビュー→ウィジェット共通の順に結合する。
 // カスケードの後勝ちを利用する箇所（同一セレクタの再定義）は各ファイル内で完結させてある。

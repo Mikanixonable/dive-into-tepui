@@ -2,7 +2,6 @@
 import { MQ_COARSE_SHORT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../../../hud/breakpoints';
 
 export const STAGE_STATUS_STYLE = `
-/* ステージ状態表示(#hud-stagestatus)。 */
 #hud-stagestatus {
   bottom: calc(12px + var(--safe-b)); left: 50%; transform: translateX(-50%);
   display: flex; align-items: flex-start; gap: var(--space-6);
