@@ -57,6 +57,7 @@ export class MapView implements ViewFrame {
   public get pickables(): readonly ObjectPickable[] { return this.objectPickables.pickables; }
   public get visibilityPolicy(): MapVisibilityPolicy | null { return this.objectPickables.visibilityPolicy; }
 
+  // 負荷確認ウィンドウが読む、マップの候補列の長さと表示中の天体ラベル数。
   public perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
     return {
       mapMode: true,
@@ -70,6 +71,7 @@ export class MapView implements ViewFrame {
     return true;
   }
 
+  // 前回の選択を引き継がず、ノード未選択で始める。
   public onEnter(): void {
     this.editor.selectedNodeIdx = null;
   }
@@ -106,7 +108,7 @@ export class MapView implements ViewFrame {
     this.targeter.updateEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
     this.dynamicSystem.updateBaseEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
     this.objectPickables.refresh(displayWindow);
-    this.editor.update(displayWindow);
+    this.editor.update(displayWindow.simTime);
   }
 
   // 天体ラベルの間引きと表示。この後のマーカー同期が近接判定に読む。
@@ -131,6 +133,7 @@ export class MapView implements ViewFrame {
     this.linePickables.refresh(displayWindow, this.frameAnchors);
   }
 
+  // 編集 UI とクリックの当て先を片付ける。
   public dispose(): void {
     this.editor.dispose();
     this.picking.dispose();

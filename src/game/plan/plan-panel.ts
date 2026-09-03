@@ -4,7 +4,7 @@
 import { OrbitalElements, apsisAltitudes } from '../../physics/elements';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { Vec3 } from '../../math/vec3';
-import { AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL } from '../../theme';
+import { AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL, FONT_XXS, SPACE_1, SPACE_2, SPACE_3, SPACE_4 } from '../../theme';
 import { HoldButton, ValueInput } from '../../hud/widgets';
 import { fmtDist, fmtTime } from '../../hud/utils';
 import { hudRail } from '../hud/hud-root';
@@ -46,7 +46,7 @@ function buildNumericInput(row: HTMLElement, label: string, color: string, onCom
   const line = document.createElement('div');
   line.className = 'row';
   line.style.width = '100%';
-  line.style.gap = '4px';
+  line.style.gap = SPACE_2;
   line.style.alignItems = 'center';
   const k = document.createElement('span');
   k.className = 'k';
@@ -71,35 +71,33 @@ function planPanelHtml(
   peInAtmosphere: boolean,
 ): string {
   const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
-  let s = '';
   // ノード一覧
-  if (nodes.length > 0) {
-    s += nodes
-      .map((n, i) => {
-        const sign = n.tRel >= 0 ? 'T-' : 'T+';
-        return `<div class="row"><span class="k">${i === selectedIdx ? '▸ ' : ''}◈ NODE${i + 1} ${sign}${fmtTime(Math.abs(n.tRel))}</span><span class="v">${n.dvMag.toFixed(1)} m/s</span></div>`;
-      })
-      .join('');
-  }
-  // 噴射後の軌道要素、近地点が大気圏内なら警告
+  let s = nodes
+    .map((n, i) => {
+      const sign = n.tRel >= 0 ? 'T-' : 'T+';
+      const mark = i === selectedIdx ? '▸ ' : '';
+      return row(`${mark}◈ NODE${i + 1} ${sign}${fmtTime(Math.abs(n.tRel))}`, `${n.dvMag.toFixed(1)} m/s`);
+    })
+    .join('');
+  // 噴射後の軌道要素、近点が大気圏内なら警告
   if (selEl) {
     const apsis = apsisAltitudes(selEl);
     const apSpec = getApsisLabelSpec('ap', selEl.center.id);
     const peSpec = getApsisLabelSpec('pe', selEl.center.id);
     s +=
-      '<div style="margin-top:4px;color:var(--text);font-size:11px;letter-spacing:1px">噴射後の軌道</div>' +
+      `<div style="margin-top:${SPACE_2};color:var(--text);font-size:${FONT_XXS};letter-spacing:1px">噴射後の軌道</div>` +
       row(`${apSpec.nameJa} ${apSpec.short}`, fmtDist(apsis.ap)) +
       row(`${peSpec.nameJa} ${peSpec.short}`, fmtDist(apsis.pe)) +
       row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
       row('周期 PRD', fmtTime(selEl.period));
     if (peInAtmosphere) {
-      s += `<div style="color:var(--color-warning);margin-top:2px">⚠ ${peSpec.nameJa}が大気圏内</div>`;
+      s += `<div style="color:var(--color-warning);margin-top:${SPACE_1}">⚠ ${peSpec.nameJa}が大気圏内</div>`;
     }
   }
   // 操作キーのヒント
   const dvKeys =
     `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
-  s += `<div style="margin-top:6px;color:var(--text-dim);font-size:11px">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動とマニューバ維持 [手動設定のΔT] 軌道上の位置を数値指定 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
+  s += `<div style="margin-top:${SPACE_3};color:var(--text-dim);font-size:${FONT_XXS}">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動とマニューバ維持 [手動設定のΔT] 軌道上の位置を数値指定 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
   return s;
 }
 
@@ -124,8 +122,8 @@ export class PlanPanel {
     this.panel.innerHTML = `
       <h3>軌道計画 [${K.toggleMapMode.label}]</h3>
       <div data-id="planbody"></div>
-      <div data-id="planedit" class="hidden" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--fill-2)">
-        <div style="font-size:10px; color:var(--text-dim); margin-bottom:4px;">ノード位置（現在時刻からの ΔT [s]）</div>
+      <div data-id="planedit" class="hidden" style="margin-top:${SPACE_4}; padding-top:${SPACE_4}; border-top:1px solid var(--fill-2)">
+        <div style="font-size:${FONT_XXS}; color:var(--text-dim); margin-bottom:${SPACE_2};">ノード位置（現在時刻からの ΔT [s]）</div>
       </div>
     `;
     this.body = this.panel.querySelector<HTMLElement>('[data-id="planbody"]')!;
@@ -136,13 +134,12 @@ export class PlanPanel {
     this.positionInput = buildNumericInput(positionRow, 'ΔT', 'var(--text)', () => {
       this.onPositionInputChange?.(Number(this.positionInput.element.value));
     });
-    this.positionInput.element.step = '0.1';
     this.editForm.appendChild(positionRow);
 
     const dvTitle = document.createElement('div');
-    dvTitle.style.fontSize = '10px';
+    dvTitle.style.fontSize = FONT_XXS;
     dvTitle.style.color = 'var(--text-dim)';
-    dvTitle.style.margin = '6px 0 4px';
+    dvTitle.style.margin = `${SPACE_3} 0 ${SPACE_2}`;
     dvTitle.textContent = 'マニューバ Δv (m/s)';
     this.editForm.appendChild(dvTitle);
 
@@ -167,27 +164,24 @@ export class PlanPanel {
   }
 
   // ノード一覧・噴射後軌道要素・Δv 手動入力欄を現在値へ合わせる。nodes は計画のノード全件を
-  // 計画の順で渡し、selectedIdx はその中の選択中ノードの index。選択が無ければパネル全体を隠す。
+  // 計画の順で渡し、selectedIdx はその中の選択中ノードの index。選択が無ければパネル全体を隠し、
+  // 選択中ノードの Δv 成分 localDv が求まっていなければ手動入力欄だけを隠す。
   public sync(
     nodes: readonly PlanPanelNodeRow[], selectedIdx: number | null, selEl: OrbitalElements | null,
-    localDv: Vec3 | null, nodeSecondsFromNow: number | null, peInAtmosphere: boolean,
+    localDv: Vec3 | null, peInAtmosphere: boolean,
   ): void {
     const html = planPanelHtml(nodes, selectedIdx, selEl, peInAtmosphere);
     this.panel.classList.toggle('hidden', selectedIdx === null);
     if (this.body.innerHTML !== html) this.body.innerHTML = html;
 
-    if (selectedIdx !== null && localDv) {
-      this.editForm.classList.remove('hidden');
-      // 入力フォームにフォーカスがない時だけ値を同期(ドラッグ操作での変動を反映)
-      if (nodeSecondsFromNow !== null && document.activeElement !== this.positionInput.element) {
-        this.positionInput.setValue(nodeSecondsFromNow.toFixed(1));
-      }
-      if (document.activeElement !== this.proInput.element) this.proInput.setValue(localDv.x.toFixed(1));
-      if (document.activeElement !== this.nrmInput.element) this.nrmInput.setValue(localDv.y.toFixed(1));
-      if (document.activeElement !== this.radInput.element) this.radInput.setValue(localDv.z.toFixed(1));
-    } else {
-      this.editForm.classList.add('hidden');
-    }
+    const selected = selectedIdx === null ? null : nodes[selectedIdx] ?? null;
+    this.editForm.classList.toggle('hidden', selected === null || localDv === null);
+    if (selected === null || localDv === null) return;
+    // 入力欄にフォーカスがない時だけ値を書き込む(ドラッグ操作での変動を反映する)
+    if (document.activeElement !== this.positionInput.element) this.positionInput.setValue(selected.tRel.toFixed(1));
+    if (document.activeElement !== this.proInput.element) this.proInput.setValue(localDv.x.toFixed(1));
+    if (document.activeElement !== this.nrmInput.element) this.nrmInput.setValue(localDv.y.toFixed(1));
+    if (document.activeElement !== this.radInput.element) this.radInput.setValue(localDv.z.toFixed(1));
   }
 
   // パネル全体を隠す。

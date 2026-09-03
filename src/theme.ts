@@ -296,7 +296,7 @@ const RADIUS_PILL = '999px'; // トラックなど、完全な角丸ピル
 // 余白。6段。
 export const SPACE_1 = '2px';
 export const SPACE_2 = '4px';
-const SPACE_3 = '6px';
+export const SPACE_3 = '6px';
 export const SPACE_4 = '8px';
 const SPACE_5 = '12px';
 export const SPACE_6 = '18px';

@@ -5,38 +5,34 @@ import type * as THREE from 'three/webgpu';
 import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { OrbitalElements, orbitalElementsOf, positionOnOrbit } from '../../physics/elements';
 import { atmosphericDensity, ellipsoidAltitude } from '../../physics/atmosphere';
+import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
+import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
 import { Projected } from '../../math/projection';
-import { pickNearest } from '../pickable/object-pickable';
 import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
-import type { CelestialSystem } from '../celestial/celestial-system';
+import { pickNearest } from '../pickable/object-pickable';
 import { Hud } from '../hud/hud';
 import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
-import type { FloatingOrigin } from '../camera/floating-origin';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { focusPoint } from '../camera/focus-target';
+import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
-import { AxisDragGizmo, NODE_DV_RATE, NODE_DV_RATE_FINE } from './plan-axis-drag';
+import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from './plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan } from './plan';
-import type { PlanPath } from './plan-path';
-import { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import type { CelestialSystem } from '../celestial/celestial-system';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
-import { focusPoint } from '../camera/focus-target';
-import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
-import { frameOfCelestialBody } from '../../physics/frame';
-import { toFrameState } from '../../physics/frame';
-import { DisplayWindow } from '../display-window-manager';
+import type { PlanPath } from './plan-path';
 
 const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 
 const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
 const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
-
-const DV_LATCH_RATE_PER_PX = 3.0; // ラッチ中、閾値超過1pxあたりのΔv加算レート [m/s per 実秒 per px]
 
 const PE_WARN_DENSITY = 2.4e-8; // 噴射後の軌道の近点がこの大気密度に達したら警告する [kg/m^3]。地球の高度 120km 相当
 
@@ -61,13 +57,13 @@ export class PlanEditor {
     this.selectedNode = idx === null ? null : this.plan?.nodes[idx] ?? null;
   }
 
-  // 操作対象（自機船または基地）。ノードの起点として状態が要るときだけ引く。
+  // 操作対象(自機船または基地)。ノードの起点として状態が要るときだけ引く。
   private get ship(): Controllable | null {
     return this.activePlayers.currentControllable;
   }
 
   // 操作対象自身の計画。操作対象を切り替えると編集対象もその計画へ切り替わる。
-  public get plan(): Plan | null { return this.activePlayers.currentControllable?.plan ?? null; }
+  private get plan(): Plan | null { return this.activePlayers.currentControllable?.plan ?? null; }
 
   private readonly gizmo3d: PlanGizmo3D;
 
@@ -83,8 +79,8 @@ export class PlanEditor {
   // ノードギズモと計画パネルの DOM を組み立て、両者のコールバックを配線する。
   // path は描かれている計画折れ線 — ノードの配置・移動・画面座標はそのサンプル列から解く。
   public constructor(
-    private readonly _hud: Hud,
-    private readonly _uiSfx: UiSfx,
+    private readonly hud: Hud,
+    private readonly uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly celestialSystem: CelestialSystem,
     scene: THREE.Scene,
@@ -93,8 +89,8 @@ export class PlanEditor {
     private readonly frameControls: FrameControls,
     private readonly path: PlanPath,
   ) {
-    this.nodeGizmo = new NodeGizmo(this._hud.layers.marker, this._hud.layers.popup, this._hud.overlayManager);
-    this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this._hud.layers.popup, this._hud.overlayManager);
+    this.nodeGizmo = new NodeGizmo(this.hud.layers.marker, this.hud.layers.popup, this.hud.overlayManager);
+    this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this.hud.layers.popup, this.hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D();
     scene.add(this.gizmo3d.group);
     this.axisDrag = new AxisDragGizmo(
@@ -103,7 +99,7 @@ export class PlanEditor {
       (axis, sign, amount) => this.applyDv(axis, sign, amount),
     );
 
-    this.panel = new PlanPanel(this._hud.mapRoot);
+    this.panel = new PlanPanel(this.hud.mapRoot);
     this.panel.onDvInputChange = (pro, nrm, rad) => this.setNodeDvLocal(pro, nrm, rad);
     this.panel.onPositionInputChange = (secondsFromNow) => this.setSelectedNodeTime(secondsFromNow);
 
@@ -115,8 +111,8 @@ export class PlanEditor {
 
   // 時刻 t まで自動ワープを始め、始まれば startedHint を出す。既に通過した時刻ならその旨を出す。
   private warpTo(t: number, startedHint: string): void {
-    if (this.simSpeedManager.startAutoWarpTo(t, this.simTime)) this._hud.hint(startedHint);
-    else this._hud.hint('この時刻は既に通過しています');
+    if (this.simSpeedManager.startAutoWarpTo(t, this.simTime)) this.hud.hint(startedHint);
+    else this.hud.hint('この時刻は既に通過しています');
   }
 
   // NodeGizmo の各種コールバックを配線する。
@@ -126,7 +122,7 @@ export class PlanEditor {
     g.onNodeSelect = (idx) => {
       this.selectedNodeIdx = idx;
       this.closeMenu();
-      this._uiSfx.warp();
+      this.uiSfx.warp();
     };
     g.onNodeDragMove = (idx, clientX, clientY) => {
       this.closeMenu();
@@ -146,8 +142,9 @@ export class PlanEditor {
     };
     g.onMenuFocus = (idx) => {
       const n = this.plan?.nodes[idx];
-      if (n) this.frameControls.setFocus(
-        focusPoint(this.celestialSystem.frames, this.celestialSystem.frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
+      if (!n) return;
+      const frames = this.celestialSystem.frames;
+      this.frameControls.setFocus(focusPoint(frames, frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
     };
   }
 
@@ -158,17 +155,17 @@ export class PlanEditor {
   }
 
   // idx 番目のノードを削除する。
-  public deleteNode(idx: number): void {
+  private deleteNode(idx: number): void {
     const plan = this.plan;
     if (!plan?.nodes[idx]) return;
     plan.removeNode(idx);
     this.closeMenu();
     this.simSpeedManager.cancelAutoWarp();
-    this._hud.hint('ノードを削除');
+    this.hud.hint('ノードを削除');
   }
 
   // 選択中のノードを削除する。
-  public deleteSelected(): void {
+  private deleteSelected(): void {
     if (this.selectedNodeIdx === null) return;
     this.deleteNode(this.selectedNodeIdx);
   }
@@ -218,7 +215,7 @@ export class PlanEditor {
     }
     if (bestNodeIdx !== null) {
       this.selectedNodeIdx = bestNodeIdx;
-      this._uiSfx.warp();
+      this.uiSfx.warp();
       return;
     }
 
@@ -237,10 +234,8 @@ export class PlanEditor {
   // i 番目のノードに有意な Δv が入っていないか。到達状態を再計算できない間は判定を保留し、
   // 空とは見なさない(消してよいかどうかがまだ分からないため)。
   private isEmptyNode(i: number, arriving: readonly (KinematicState | null)[]): boolean {
-    const node = this.plan?.nodes[i];
-    const arr = arriving[i];
-    if (!node || !arr) return false;
-    return len(sub(node.v, arr.v)) < NODE_MIN_DV;
+    const dv = this.nodeDv(i, arriving);
+    return dv !== null && len(dv) < NODE_MIN_DV;
   }
 
   // 選択中ノードが実質的に空なら削除する。
@@ -259,7 +254,7 @@ export class PlanEditor {
     if (!ship) return;
     const sample = this.path.sampleAt(t);
     if (!sample) {
-      this._hud.hint('この時刻の計画軌道が求まりません');
+      this.hud.hint('この時刻の計画軌道が求まりません');
       return;
     }
     this.selectNewNode(ship.plan.addNode(sample, ship.state));
@@ -268,11 +263,11 @@ export class PlanEditor {
   // addNode の結果を選択する。計画の起点より前は置けないので、その場合は理由を伝える。
   private selectNewNode(idx: number): void {
     if (idx < 0) {
-      this._hud.hint('計画の起点より前にはノードを置けません');
+      this.hud.hint('計画の起点より前にはノードを置けません');
       return;
     }
     this.selectedNodeIdx = idx;
-    this._uiSfx.warp();
+    this.uiSfx.warp();
   }
 
   // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。
@@ -333,14 +328,14 @@ export class PlanEditor {
     const range = plan.nodeTimeRange(idx, ship.state, this.celestialSystem, this.displayDuration);
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
-      this._hud.hint('ノード位置は許可された軌道区間内で指定してください');
+      this.hud.hint('ノード位置は許可された軌道区間内で指定してください');
       return;
     }
     if (Math.abs(targetT - node.t) <= epsilon) return;
 
     const picked = this.path.sampleAtWithArc(targetT);
     if (!picked) {
-      this._hud.hint('この時刻の計画軌道が求まりません');
+      this.hud.hint('この時刻の計画軌道が求まりません');
       return;
     }
 
@@ -349,8 +344,8 @@ export class PlanEditor {
     const replacement = plan.replaceNode(idx, rebuilt ?? picked.state);
     if (!replacement) return;
     this.selectedNode = replacement;
-    this._uiSfx.warp();
-    if (hasDownstreamNodes) this._hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
+    this.uiSfx.warp();
+    if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
   }
 
   // ドラッグで時刻を動かしても、ノードのΔv(機体座標系の加減速)は維持する。
@@ -405,40 +400,40 @@ export class PlanEditor {
   // 手動入力フォームから絶対的な Δv (PRO, NRM, RAD) を指定してノードの速度を上書きする。
   private setNodeDvLocal(pro: number, nrm: number, rad: number): void {
     const plan = this.plan;
-    if (!plan || this.selectedNodeIdx === null) return;
-    const arriving = this.path.arrivalStates();
-    const arr = arriving[this.selectedNodeIdx];
-    const node = plan.nodes[this.selectedNodeIdx];
+    const idx = this.selectedNodeIdx;
+    if (!plan || idx === null) return;
+    const arr = this.path.arrivalStates()[idx];
+    const node = plan.nodes[idx];
     if (!arr || !node) return;
 
     // 入力は「到着時の軌道基準枠」を基準とした絶対量とする。
-    const bodyArr = this.bodyState(arr);
-    const dvWorld = fromOrbitAxes(bodyArr, v3(pro, nrm, rad));
-    this.selectedNode = plan.replaceNode(this.selectedNodeIdx, kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld)));
-    this._uiSfx.warp();
+    const dvWorld = fromOrbitAxes(this.bodyState(arr), v3(pro, nrm, rad));
+    this.selectedNode = plan.replaceNode(idx, kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld)));
+    this.uiSfx.warp();
   }
 
-  // ノードギズモを非表示にする。
-  private hideGizmo(): void {
-    this.nodeGizmo.sync([], null);
-    this.gizmo3d.setVisible(false);
-  }
-
-  // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を ECI で返す。中心天体相対の差を取ると、
-  // 影響圏の境界付近で噴射前後がそれぞれ別の天体を中心に解決され、意味を持たない差になる。
-  // 軌道基準枠の成分が要るところでは、この ECI 差を到着状態の基底へ射影して使う。
-  private nodeDv(i: number, arriving: readonly (KinematicState | null)[]): Vec3 {
+  // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を ECI で返す。ノードか到着状態が求まって
+  // いなければ null。中心天体相対の差を取ると、影響圏の境界付近で噴射前後がそれぞれ別の天体を
+  // 中心に解決され、意味を持たない差になる。軌道基準枠の成分が要るところでは、この ECI 差を
+  // 到着状態の基底へ射影して使う。
+  private nodeDv(i: number, arriving: readonly (KinematicState | null)[]): Vec3 | null {
     const node = this.plan?.nodes[i];
     const arr = arriving[i];
-    return node && arr ? sub(node.v, arr.v) : v3();
+    return node && arr ? sub(node.v, arr.v) : null;
+  }
+
+  // i 番目のノードの Δv の大きさ [m/s]。到着状態が求まるまでは 0 と表示する。
+  private nodeDvMag(i: number, arriving: readonly (KinematicState | null)[]): number {
+    const dv = this.nodeDv(i, arriving);
+    return dv === null ? 0 : len(dv);
   }
 
   // i 番目のノードの Δv を、到着状態の軌道基準枠(PRO/NRM/RAD)成分へ分解する。
   // ノードか到着状態が求まっていなければ null。
   private nodeDvLocal(i: number, arriving: readonly (KinematicState | null)[]): Vec3 | null {
     const arr = arriving[i];
-    if (!this.plan?.nodes[i] || !arr) return null;
     const dvWorld = this.nodeDv(i, arriving);
+    if (!arr || dvWorld === null) return null;
     const axes = orbitAxes(this.bodyState(arr));
     return v3(dot(dvWorld, axes.pro), dot(dvWorld, axes.nrm), dot(dvWorld, axes.radOut));
   }
@@ -469,7 +464,9 @@ export class PlanEditor {
       const node = plan.nodes[i]!;
       const p = this.nodeScreenPos(node);
       if (!p.front) continue;
-      nodeSpecs.push({ idx: i, x: p.x, y: p.y, selected: i === this.selectedNodeIdx, dvMag: len(this.nodeDv(i, arriving)) });
+      nodeSpecs.push({
+        idx: i, x: p.x, y: p.y, selected: i === this.selectedNodeIdx, dvMag: this.nodeDvMag(i, arriving),
+      });
     }
     // 選択中ノードがあれば Δv アームも組む
     let axisSpecs: AxisHandleSpec[] | null = null;
@@ -479,7 +476,7 @@ export class PlanEditor {
       const node = plan.nodes[this.selectedNodeIdx];
       if (node) {
         nodeFor3D = node;
-        arrFor3D = arriving[this.selectedNodeIdx] || null;
+        arrFor3D = arriving[this.selectedNodeIdx] ?? null;
         const p = this.nodeScreenPos(node);
         if (p.front) axisSpecs = this.axisDrag.buildAxisHandles(p.x, p.y, arrFor3D ?? node, mapDist);
       }
@@ -517,40 +514,26 @@ export class PlanEditor {
 
     // ラッチ中の Δv アームは、閾値超過量に比例したレートで dt 秒分を加算し続ける。
     const drag = this.nodeGizmo.axisHandleDrag;
-    if (drag && drag.excessPx !== null) {
-      const fineScale = fine ? NODE_DV_RATE_FINE / NODE_DV_RATE : 1;
-      // ラッチ後は基点からの超過距離に比例させる。ここを DV_RATE_MAX で
-      // 飽和させると、一定距離以上のドラッグがすべて同じ Δv になり、
-      // 「大きくドラッグするほど加速が増える」という操作感が失われる。
-      const rate = drag.excessPx * DV_LATCH_RATE_PER_PX * fineScale;
-      this.applyDv(drag.axis, drag.sign, rate * dt);
-    }
+    if (drag && drag.excessPx !== null) this.axisDrag.applyLatchDv(drag.axis, drag.sign, drag.excessPx, dt, fine);
   }
 
   // 現在のノード列と選択中ノードから、計画パネルへ渡す表示値を組み立てて反映する。
   private syncPanel(ship: Controllable): void {
     const plan = ship.plan;
     const arriving = this.path.arrivalStates();
-    const nodes = plan.nodes.map((n, i) => ({ tRel: n.t - this.simTime, dvMag: len(this.nodeDv(i, arriving)) }));
+    const nodes = plan.nodes.map((n, i) => ({ tRel: n.t - this.simTime, dvMag: this.nodeDvMag(i, arriving) }));
     const idx = this.selectedNodeIdx;
     const node = idx === null ? null : plan.nodes[idx];
     const localDv = idx === null ? null : this.nodeDvLocal(idx, arriving);
+    // 到着状態が求まっている選択中ノードについて、噴射後の軌道要素と近点の大気圏警告を出す
     let selEl: OrbitalElements | null = null;
-    let nodeSecondsFromNow: number | null = null;
     let peInAtmosphere = false;
-    // 到着状態が求まっている選択中ノードについて、噴射後の軌道要素・近点の大気圏警告・現在時刻からの秒数を出す
     if (node && localDv) {
-      nodeSecondsFromNow = node.t - this.simTime;
       const center = strongestAttractor(node.r, this.celestialSystem.celestialMotions, node.t);
       selEl = orbitalElementsOf(node, center, node.t);
       peInAtmosphere = selEl !== null && this.peInAtmosphere(selEl, node.t);
     }
-    this.panel.sync(nodes, idx, selEl, localDv, nodeSecondsFromNow, peInAtmosphere);
-  }
-
-  // 計画パネルを非表示にする。
-  private hidePanel(): void {
-    this.panel.hide();
+    this.panel.sync(nodes, idx, selEl, localDv, peInAtmosphere);
   }
 
   // ノードギズモ・軌道右クリックメニュー・パネル・3D ギズモを片付ける。
@@ -562,7 +545,7 @@ export class PlanEditor {
   }
 
   // 操作対象の切り替えを検出してメニューを畳み、ワープメニューが使う現在時刻を差し込む。
-  public update(displayWindow: DisplayWindow): void {
+  public update(simTime: number): void {
     // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む(選択中ノードは
     // 参照で解決するので、計画が替われば同一性が外れて自然に選択なしになる)。
     const ship = this.ship;
@@ -570,7 +553,7 @@ export class PlanEditor {
       this.lastSeenShip = ship;
       this.closeMenu();
     }
-    this.simTime = displayWindow.simTime;
+    this.simTime = simTime;
   }
 
   // 操作 UI(ノードギズモ・Δv アーム・TRAJECTORY パネル)を現在の選択と画面座標で組み直す。
@@ -583,8 +566,9 @@ export class PlanEditor {
 
   // パネルとギズモを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。
   public onMapClosed(): void {
-    this.hidePanel();
-    this.hideGizmo();
+    this.panel.hide();
+    this.nodeGizmo.sync([], null);
+    this.gizmo3d.setVisible(false);
     const plan = this.plan;
     if (plan) {
       const arriving = this.path.arrivalStates();
