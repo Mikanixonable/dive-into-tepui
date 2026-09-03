@@ -4,14 +4,14 @@
 // **描画品質設定はゲーム本体の設定パネル(GraphicsPanel)をそのまま組む。** 項目の並び・群の
 // 見出し・ウィジェットの選び方は GRAPHICS_OPTIONS の表だけが決めるので、項目を足したときに
 // ここへ書き足すものは無い。
-import { startProteinAssetPreload } from '../../src/game/protein/protein-asset-loader';
+import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { AMBIENT_STRONG, AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import { GraphicsSettings, type ChoiceValue, type GraphicsOptionKey } from '../../src/render/graphics-settings';
-import { GraphicsPanel } from '../../src/game/hud/panels/graphics-panel';
-import { SegmentedControl, WIDGET_STYLE, injectOnce } from '../../src/game/hud/widgets';
-import { injectThemeVariables } from '../../src/game/theme';
+import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
+import { SegmentedControl, WIDGET_STYLE, injectOnce } from '../../src/hud/widgets';
+import { injectThemeVariables } from '../../src/theme';
 import { CASE_NAMES, MAX_CAMERA_DISTANCE_LOG, sunDiameterPx, type CaseName } from './cases';
 import {
   LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM_LOG, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
@@ -55,7 +55,7 @@ async function init(): Promise<void> {
   injectOnce('widget-style', WIDGET_STYLE);
 
   // タンパク質のケースは fetch で来る構造・motion を同期的に読むので、器を組む前に待つ。
-  await startProteinAssetPreload();
+  await Promise.all(PROTEIN_ASSET_IDS.map((id) => requestProteinAsset(id)));
   // **保存先を持たない設定**。残すと、撮影が「人間が最後に押した状態」に依存して黙って変わる。
   const graphics = new GraphicsSettings(null);
   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement, graphics);

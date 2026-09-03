@@ -12,7 +12,7 @@
 - **オーバーレイ**: `hud/overlay-manager.ts` の `OverlayManager` が全モーダル/ポップアップ/ウィンドウの ESC・外側クリック・排他・入力ゲートを一元管理(§4 施策5)。
 - **レイアウト**: レール/戦闘シェルフ/中央モーダル/画面固定バッジの4種の置き場に還元され、`hud/breakpoints.ts` の `compact`/`medium`/`wide` × `coarse`/`short` へブレークポイントを統一(§4 施策6)。
 - **タッチ**: `input/input.ts` が長押し=右クリック・二本指ドラッグ=パン・ダブルタップの3ジェスチャを合成し、タッチのみでゲームの全操作に到達できる(§4 施策2・8)。
-- **命名**: `map-picker.ts`(926行)は候補集合+visibility(`map-pickables.ts`、197行)とヒットテスト+メニュー(`map-context-actions.ts`、816行)へ、`hud/panel.ts` の `HudPanels` は `StatusPanel`/`OrbitPanel`/`TargetPanel`/`ContactsPanel`/`GlobalStatusBar`/`MapScaleBadge` の6クラスへ、`hud/dom.ts`(1036行)は骨格構築(`hud-root.ts`)/骨格CSS(`skeleton-style.ts`)/パネル内容CSS(`panel-content-style.ts`)/寸法変数(`layout-tokens.ts`)へ分割した(§4 施策7)。
+- **命名**: `map-picker.ts`(926行)は候補集合+visibility(`object-pickables.ts`、197行)とヒットテスト+メニュー(`object-windows.ts`、816行)へ、`hud/panel.ts` の `HudPanels` は `StatusPanel`/`OrbitPanel`/`TargetPanel`/`ContactsPanel`/`GlobalStatusBar`/`MapScaleBadge` の6クラスへ、`hud/dom.ts`(1036行)は骨格構築(`hud-root.ts`)/骨格CSS(`skeleton-style.ts`)/パネル内容CSS(`panel-content-style.ts`)/寸法変数(`layout-tokens.ts`)へ分割した(§4 施策7)。
 
 **完全にはやり切れなかった部分、既知の未検証範囲は §2 に列挙する。** 隠さず記録する——特に `creative/ship-placer-panel.ts`(844行)は分割の対象だったが未着手のまま残っている。
 
@@ -35,7 +35,7 @@
 ### 2-1. 未分割のまま残ったモジュール
 
 - **`creative/ship-placer-panel.ts`(844行)は分割していない。** 施策7で「軌道要素フォーム」と「ラグランジュ点フォーム」に分ける計画だったが未着手。`memos/hedalu244/refactoring_todo.md` の「巨大モジュールの分割」節にもまだ載ったままで、責務は1クラス(`ShipPlacerPanel`)に同居している。
-- **`map-context-actions.ts`(816行)は200行基準を大きく超えたまま。** `map-picker.ts`(926行)からの分割で候補集合構築とマップ visibility 判定は `map-pickables.ts`(197行)へ抜けたが、ヒットテスト・メニュー項目構築(`itemsFor`)・プロパティウィンドウの行/アクション構築・複製/リネームの実行が依然1ファイルに同居している。
+- **`object-windows.ts`(816行)は200行基準を大きく超えたまま。** `map-picker.ts`(926行)からの分割で候補集合構築とマップ visibility 判定は `object-pickables.ts`(197行)へ抜けたが、ヒットテスト・メニュー項目構築(`itemsFor`)・プロパティウィンドウの行/アクション構築・複製/リネームの実行が依然1ファイルに同居している。
 - **`plan/plan-editor.ts`(707行)もまだ大きい。** パネル DOM(`syncPanel` と Δv 数値入力欄)は `plan/plan-panel.ts`(173行)へ抜けたが、Δv 編集(キー/ボタン/ドラッグ/ラッチ)とノードギズモの配線は依然同居している。
 - `hud/dock-view.ts`(787行)・`hud/save-browser.ts`(599行)・`hud/property-window.ts`(555行)・`hud/object-list-panel.ts`(507行)も200行基準を超えているが、いずれも施策7の分割対象には元々入っていない(単一責務のまま行数が大きいだけと判断したもの)。
 
@@ -105,7 +105,7 @@
 - **長押し=右クリック**: `pointerType==='touch'` で `TOUCH_LONG_PRESS_MS`(500ms)静止したら `pendingRightClicks` へ積む。`TOUCH_LONG_PRESS_FEEDBACK_MS`(300ms)経過時点で `onLongPressFeedback` を呼び、`Game` がこれを `MarkerManager.set`/`.hide` へ配線してリング表示にする(`Input` 自身はマーカー層を知らない)。
 - **二本指ドラッグ=パン**: `onPointerMove` が2本指のとき、指間距離の変化を `wheel`(ズーム)へ、重心移動を `panDx`/`panDy` へ**同時に**折り込む(排他にしない)。
 - **ダブルタップ**: タッチ由来のクリック成立時のみ、`TOUCH_DOUBLE_TAP_MS`(400ms)・`TOUCH_DOUBLE_TAP_PX`(24px)以内の2連打を `pendingDoubleClicks` へ合成する。マウスの `dblclick` は既存経路のまま独立に処理する。
-- **投影ピック半径の coarse 拡大**: `input/pointer-precision.ts` の `isCoarsePointer()`(起動時に一度だけ `matchMedia('(pointer: coarse)')` を評価)と `pickRadiusSq(fine, coarse)` を新設。`const.ts` に `MAP_PICK_PX_SQ_COARSE`/`TARGET_LOCK_PICK_PX_SQ_COARSE`(いずれも1936、半径44px相当)を並置し、`map-context-actions.ts` の全ピック箇所がこれを経由する。
+- **投影ピック半径の coarse 拡大**: `input/pointer-precision.ts` の `isCoarsePointer()`(起動時に一度だけ `matchMedia('(pointer: coarse)')` を評価)と `pickRadiusSq(fine, coarse)` を新設。`const.ts` に `MAP_PICK_PX_SQ_COARSE`/`TARGET_LOCK_PICK_PX_SQ_COARSE`(いずれも1936、半径44px相当)を並置し、`object-windows.ts` の全ピック箇所がこれを経由する。
 - 右クリックのクリック判定閾値は `RIGHT_CLICK_MOVE_THRESHOLD`(50px)として `const.ts` に改名のみ行い、値は変更していない。
 
 **検証結果**: CDP `Input.dispatchTouchEvent` で長押し→プロパティウィンドウ・二本指ドラッグ→パン・ピンチ→ズーム・ダブルタップ→フォーカス移動の4本を確認。マウス由来のクリックとタッチ由来の合成クリックは `Input` の同じキューを共有し、消費側(30箇所超)は無改修で動いた。
@@ -147,11 +147,11 @@
 
 **ESC の意味は2つに確定**: 入力欄フォーカス中は `ValueInput` 自身の `keydown` が `stopPropagation()` して編集を破棄し、`Input` の `window` 購読へは届かない。それ以外は `Game.handleInput` が `input.takeKey(K.pauseMenu)` を取り `closeTopmostOnEscape()` を呼び、何も閉じなければ一時停止メニューを開く。
 
-**項目ショートカットはマップビューでのみ効く**: `dispatchShortcut` 自体にビュー判定は無く、`map-context-actions.ts` の `windowParts` が `showShortcuts = cameraSystem.overviewMode` によって戦闘ビューのプロパティウィンドウにショートカットそのものを載せないことで実現している(`[F]`/`[T]` は自機のRCS/ターゲット選択キーと衝突するため)。
+**項目ショートカットはマップビューでのみ効く**: `dispatchShortcut` 自体にビュー判定は無く、`object-windows.ts` の `windowParts` が `showShortcuts = cameraSystem.overviewMode` によって戦闘ビューのプロパティウィンドウにショートカットそのものを載せないことで実現している(`[F]`/`[T]` は自機のRCS/ターゲット選択キーと衝突するため)。
 
 **`tepui-release-touch-inputs` は入力ゲートの false→true 遷移時のみ発火**するよう直した(以前の「開いている間毎回発火」を修正)。`kind: 'modal'` の任意のエントリが開いていることが `body.hud-overlay-modal-open` クラス(タッチUI非表示)の駆動源。
 
-**ContextMenu=使い捨て、PropertyWindow=継続観察 の役割を確定**: **同じ対象への右クリックは戦闘ビュー・マップビューを問わず必ず `PropertyWindow` を開く**(`map-context-actions.ts`)。ContextMenu が残るのは空域(`'empty-space'`)右クリックのみ。`Targeter` は独自の `ContextMenu` を持たず(基地右クリックの `ContextMenu<Base>` のみ例外として残る——プロパティを持たない対象のため)。`ResultScreen`/`DockView` を含む全モーダルが台帳に登録される。`DockView` の開閉の正本は今も `ViewManager`(`isDockOpen`)のままで、`OverlayManager` へは一方向で通知するだけ、という設計判断は当初案どおり維持した。
+**ContextMenu=使い捨て、PropertyWindow=継続観察 の役割を確定**: **同じ対象への右クリックは戦闘ビュー・マップビューを問わず必ず `PropertyWindow` を開く**(`object-windows.ts`)。ContextMenu が残るのは空域(`'empty-space'`)右クリックのみ。`Targeter` は独自の `ContextMenu` を持たず(基地右クリックの `ContextMenu<Base>` のみ例外として残る——プロパティを持たない対象のため)。`ResultScreen`/`DockView` を含む全モーダルが台帳に登録される。`DockView` の開閉の正本は今も `ViewManager`(`isDockOpen`)のままで、`OverlayManager` へは一方向で通知するだけ、という設計判断は当初案どおり維持した。
 
 **検証結果**: `window.addEventListener('keydown'`/`document.addEventListener('pointerdown'` が規定の例外ファイル(`input.ts`/`input/touch.ts`/`stage-select.ts`/`overlay-manager.ts` 自身)以外で0件。`style.display ===` による状態判定も0件。
 
@@ -179,11 +179,11 @@
 
 **確定したファイル移設**: `object-list-panel.ts`/`display-time-panel.ts`(→`predict-panel.ts`)/`frame-controls.ts` を `hud/` 配下へ移設し、`anchor-zone.ts`/`rotation-zone.ts` と揃えた。
 
-**確定した改名**: `SettingsPanel`→`PauseMenu`。`ModalController`→`OverlayManager`。`hud/dom.ts`→`hud-root.ts`。`showEnd`/`#hud-end`→`ResultScreen`/`#hud-result`。`hud-dock-left/right`→`hud-rail-left/right`(`.hud-rail`)。`map-pick.ts`→`map-pickable.ts`。PREDICT の呼び名は id `hud-predict`/接頭辞 `predict-`/クラス名 `PredictPanel`/表示名 `PREDICT` の4つに統一し、状態所有者 `DisplayWindowManager` は当初案どおり改名しなかった(パネルではなく「表示座標系+表示時刻の窓」を持つクラスであるため)。
+**確定した改名**: `SettingsPanel`→`PauseMenu`。`ModalController`→`OverlayManager`。`hud/dom.ts`→`hud-root.ts`。`showEnd`/`#hud-end`→`ResultScreen`/`#hud-result`。`hud-dock-left/right`→`hud-rail-left/right`(`.hud-rail`)。`map-pick.ts`→`object-pickable.ts`。PREDICT の呼び名は id `hud-predict`/接頭辞 `predict-`/クラス名 `PredictPanel`/表示名 `PREDICT` の4つに統一し、状態所有者 `DisplayWindowManager` は当初案どおり改名しなかった(パネルではなく「表示座標系+表示時刻の窓」を持つクラスであるため)。
 
 **確定した統合**: `NavballPanel` を廃止し、天球グリッドトグルは `OverviewCameraPanel` を改めた `ViewOptionsPanel`(表示設定パネル)へ統合した。**`Navball.gridVisibility` の状態所有そのものは動かしていない**(§2-6参照——DOM の置き場だけを1つに統合し、状態の持ち主を決め直す論点は未決着のまま残した)。
 
-**確定した分割**: `map-picker.ts`(926行)→ `map-pickables.ts`(候補集合・visibility、197行)+ `map-context-actions.ts`(ヒットテスト・メニュー構築・アクション実行・ウィンドウ台帳、816行)。ウィンドウ台帳自体(一時ウィンドウの排他)は施策5で `OverlayManager` の `exclusiveGroup: 'property-window-temp'` へ移した。`hud/panel.ts` の `HudPanels`(351行)→ `StatusPanel`/`OrbitPanel`/`TargetPanel`/`ContactsPanel`/`GlobalStatusBar`/`MapScaleBadge` の6クラス(パネル単位に1クラス)。軌道情報は「戦闘=自艦は `OrbitPanel`、対象情報は `PropertyWindow`」の2系統に整理し、`TargetPanel` から軌道要素・相対傾斜角の行を削除してプロパティウィンドウへ誘導する案内行に置き換えた。`plan/plan-editor.ts`(844行)からパネルDOM(`syncPanel`とΔv数値入力)を `plan/plan-panel.ts`(173行)へ分離した。
+**確定した分割**: `map-picker.ts`(926行)→ `object-pickables.ts`(候補集合・visibility、197行)+ `object-windows.ts`(ヒットテスト・メニュー構築・アクション実行・ウィンドウ台帳、816行)。ウィンドウ台帳自体(一時ウィンドウの排他)は施策5で `OverlayManager` の `exclusiveGroup: 'property-window-temp'` へ移した。`hud/panel.ts` の `HudPanels`(351行)→ `StatusPanel`/`OrbitPanel`/`TargetPanel`/`ContactsPanel`/`GlobalStatusBar`/`MapScaleBadge` の6クラス(パネル単位に1クラス)。軌道情報は「戦闘=自艦は `OrbitPanel`、対象情報は `PropertyWindow`」の2系統に整理し、`TargetPanel` から軌道要素・相対傾斜角の行を削除してプロパティウィンドウへ誘導する案内行に置き換えた。`plan/plan-editor.ts`(844行)からパネルDOM(`syncPanel`とΔv数値入力)を `plan/plan-panel.ts`(173行)へ分離した。
 
 **未達**: `ShipPlacerPanel`(844行)の分割は着手していない(§2-1)。
 

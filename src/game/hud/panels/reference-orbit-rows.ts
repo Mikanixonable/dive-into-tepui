@@ -1,7 +1,7 @@
 // 軌道ガイドタブ「基本」群のうち、CR3BP の族を持たない地球専用参照軌道(太陽同期準回帰・
 // ドーンダスク・モルニヤ・ツンドラ)の行を組み立てる。族の kindRow(orbit-guide-tab.ts)とは
 // 構造が異なる(本数・族範囲・安定度を持たない)ので、共通の組み立て手続きをここへ集約する。
-import { Button, SegmentedControl, ToggleSwitch, ValueInput } from '../widgets';
+import { Button, SegmentedControl, ToggleSwitch, ValueInput } from '../../../hud/widgets';
 import {
   DIRECTION_ITEMS, OPACITY_MAPPING, PERIGEE_ALTITUDE_MAPPING, RAAN_MAPPING,
   REPEAT_DAYS_MAPPING, REVS_PER_REPEAT_MAPPING,

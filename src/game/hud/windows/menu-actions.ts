@@ -1,5 +1,5 @@
 import { MenuItem } from './context-menu';
-import type { MapCommands } from '../../pickable/map-commands';
+import type { ObjectCommands } from '../../pickable/object-commands';
 
 // 右クリックメニューの操作を表す act 識別子(MenuAction)と、頻出する項目を組み立てる
 // 共通ファクトリ(MenuCommon)を提供する。
@@ -46,12 +46,12 @@ export const MenuCommon = {
   storeInBase: (): MenuItem<MenuAction> => ({ label: '基地に収納', act: 'storeInBase' }),
   transferResources: (): MenuItem<MenuAction> => ({ label: '物資・電力の融通', act: 'transferResources' }),
   // ターゲットに設定/解除する項目。軌道面が定まらない対象では項目自体を出さない。
-  targetItems: (commands: MapCommands, id: string, simTime: number): readonly MenuItem<MenuAction>[] => {
+  targetItems: (commands: ObjectCommands, id: string, simTime: number): readonly MenuItem<MenuAction>[] => {
     if (commands.isNavTarget(id)) return [MenuCommon.target(true)];
     return commands.canNavTarget(id, simTime) ? [MenuCommon.target(false)] : [];
   },
   // 複製の項目。複製先が物体配置パネルなので、それを持つステージだけに出す。
-  duplicateItems: (commands: MapCommands): readonly MenuItem<MenuAction>[] => (
+  duplicateItems: (commands: ObjectCommands): readonly MenuItem<MenuAction>[] => (
     commands.canAuthor ? [MenuCommon.duplicate()] : []
   ),
 };

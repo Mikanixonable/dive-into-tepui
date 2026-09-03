@@ -2,11 +2,12 @@
 // 天体ぶんの公転・自転と、役割(操作対象の船/ターゲット)の公転を選択肢として並べ、
 // 選ばれた回転対象を返す。
 import { FrameRole, FrameRotationSource, rotationSourceKey } from '../../../physics/frame';
-import { SegmentedControl } from '../widgets';
+import { SegmentedControl } from '../../../hud/widgets';
 import { frameRoleName } from './frame-labels';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import type { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
 import type { CelestialSystem } from '../../celestial/celestial-system';
+import { rotationFollowKey, type CameraRotationFollow } from '../../camera/focus-camera';
 
 export class RotationZone {
   public readonly element: HTMLElement;
@@ -68,5 +69,57 @@ export class RotationZone {
   // 選択中の表示を合わせる。
   public setSelected(rotatingWith: FrameRotationSource | null): void {
     this.control.setSelected(rotationSourceKey(rotatingWith));
+  }
+}
+
+// カメラ区画の回転ゾーン。フォーカス対象から導かれた選択肢(公転・自転・姿勢)を並べ、
+// 選ばれた回転追従を返す。選択肢の導出はカメラ(availableRotationFollows)が持ち、
+// このゾーンは並べて選ばせるだけ。
+export class CameraRotationZone {
+  public readonly element: HTMLElement;
+  // null は「解除」= 回転させない(慣性系)。
+  public onSelect: ((follow: CameraRotationFollow | null) => void) | null = null;
+
+  // 照合キー → 選択肢。SegmentedControl は値を参照同一性で比べるので、組み直すたびに
+  // 新しくなるオブジェクトではなく安定した文字列を値に持たせる。
+  private readonly follows = new Map<string, CameraRotationFollow | null>([['', null]]);
+  private readonly control: SegmentedControl<string>;
+
+  // title は選択肢見出し。
+  public constructor(title: string, private readonly celestialSystem: CelestialSystem) {
+    this.control = new SegmentedControl<string>(
+      title, [['', '解除']], (key) => this.onSelect?.(this.follows.get(key) ?? null),
+    );
+    this.element = this.control.element;
+  }
+
+  // 選択肢を「解除 + follows」へ組み直す。
+  public setChoices(follows: readonly CameraRotationFollow[]): void {
+    this.follows.clear();
+    this.follows.set('', null);
+    const items: (readonly [string, string])[] = [['', '解除']];
+    for (const follow of follows) {
+      const key = rotationFollowKey(follow);
+      this.follows.set(key, follow);
+      items.push([key, this.followLabel(follow)]);
+    }
+    this.control.setItems(items);
+  }
+
+  // 天体は座標系の名前で、機体(天体レジストリに無い id)は種別の名前で書く。
+  private followLabel(follow: CameraRotationFollow): string {
+    if (follow.kind === 'attitude') return '姿勢追従';
+    const entity = this.celestialSystem.find(follow.id);
+    if (entity === null) return follow.kind === 'revolution' ? '公転' : '自転';
+    if (follow.kind === 'spin') return `${entity.name}自転座標系`;
+    const primary = entity.motion.primary;
+    return primary !== null
+      ? `${this.celestialSystem.nameOf(primary.id)}-${entity.name}回転座標系`
+      : `${entity.name}回転座標系`;
+  }
+
+  // 選択中の表示を合わせる。
+  public setSelected(follow: CameraRotationFollow | null): void {
+    this.control.setSelected(rotationFollowKey(follow));
   }
 }

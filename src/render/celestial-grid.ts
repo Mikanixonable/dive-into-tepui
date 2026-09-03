@@ -195,15 +195,12 @@ class GridPlane {
   private readonly labelLayer: HTMLDivElement;
   private readonly labels: HTMLDivElement[] = [];
   private readonly gridLabels: { el: HTMLDivElement; lat: number; lon: number }[] = [];
-  private basis: PlaneBasis;
-  private readonly initialBasis: PlaneBasis;
-  private readonly basisRotation = new THREE.Quaternion();
+  private readonly basis: PlaneBasis;
   private readonly realisticColor: string;
   private readonly styleGate = new RenderStyleGate();
 
   constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
     this.basis = basis;
-    this.initialBasis = basis;
     this.realisticColor = `#${color.toString(16).padStart(6, '0')}`;
     this.labelLayer = document.createElement('div');
     this.labelLayer.className = 'celestial-grid-labels';
@@ -272,20 +269,6 @@ class GridPlane {
     this.labelLayer.remove();
   }
 
-  setBasis(basis: PlaneBasis): void {
-    const poleDot = this.basis.pole.dot(basis.pole);
-    if (poleDot > 1 - 1e-10 && this.basis.e1.dot(basis.e1) > 1 - 1e-10) return;
-    this.basis = basis;
-    const initialRotation = new THREE.Matrix4().makeBasis(
-      this.initialBasis.e1, this.initialBasis.e2, this.initialBasis.pole,
-    );
-    const targetRotation = new THREE.Matrix4().makeBasis(basis.e1, basis.e2, basis.pole);
-    const initialQ = new THREE.Quaternion().setFromRotationMatrix(initialRotation);
-    const targetQ = new THREE.Quaternion().setFromRotationMatrix(targetRotation);
-    this.basisRotation.copy(targetQ).multiply(initialQ.invert());
-    for (const obj of [this.planeLine, this.gridLine, this.poleLine]) obj.quaternion.copy(this.basisRotation);
-  }
-
   // 模式図では区別の意味を持たない黒へ固定し、写実では元の色へ戻す。
   private applyStyle(style: RenderStyle): void {
     if (!this.styleGate.changed(style)) return;
@@ -310,7 +293,6 @@ class GridPlane {
     for (const obj of [this.planeLine, this.gridLine, this.poleLine]) {
       obj.position.set(0, 0, 0);
       obj.scale.setScalar(scale);
-      obj.quaternion.copy(this.basisRotation);
     }
     this.labels.forEach((el) => { el.style.display = 'none'; });
     const show = (el: HTMLDivElement, p: THREE.Vector3, below = false) => {
@@ -377,7 +359,7 @@ export class CelestialGrid {
   }
 
   // 星殻と同じく描画原点(= カメラ)に固定した半径殻として、2 面ぶんの可視状態を反映する。
-  // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(stars.ts の celestialShellScale)。
+  // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(stars.ts の CELESTIAL_SHELL_SCALE)。
   sync(style: RenderStyle, visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {
     this.equator.sync(
       style, visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole,

@@ -1,6 +1,7 @@
 // LEAD(見越し)マーカー: 自機の弾がその敵に命中する未来位置を示す。自機と敵の双方の
 // 状態に依存するため、Enemy にも Targeter にも属さない独立責務として切り出してある。
 import { leadPoint } from '../../physics/intercept';
+import type { View } from '../view/view';
 import type { ProjectFn } from '../camera/camera-system';
 import type { MarkerManager } from './marker-manager';
 import type { CombatTarget } from '../targeter';
@@ -16,16 +17,16 @@ export class LeadMarkers {
 
   constructor(private readonly markerManager: MarkerManager) { }
 
-  // 射撃できない状況(マップモード・自機喪失)では表示せず、保持していたロック履歴も捨てる。
+  // 射撃できない状況(マップビュー・自機喪失)では表示せず、保持していたロック履歴も捨てる。
   sync(
     player: Player,
     targetsArray: readonly CombatTarget[],
     target: CombatTarget | null,
     _simTime: number,
-    overviewMode: boolean,
+    view: View,
     project: ProjectFn,
   ): void {
-    if (overviewMode) {
+    if (view === 'map') {
       this.retire([]);
       return;
     }
@@ -49,7 +50,7 @@ export class LeadMarkers {
   }
 
   // key は敵ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
-  // マップモード突入・自機喪失のたびに sync が retire([]) を呼んで全消去するが、
+  // マップビュー突入・自機喪失のたびに sync が retire([]) を呼んで全消去するが、
   // マーカーの生成自体はマップの開閉ごとに一度きりで毎フレームではないため、
   // 戦闘ビューへ戻った際の再生成コストは無視できる。
   private retire(keys: readonly string[]): void {

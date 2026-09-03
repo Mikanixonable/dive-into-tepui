@@ -4,21 +4,21 @@ import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import { bodySearchText } from '../pickable/body-search-text';
-import { fmtDist } from '../hud/utils';
+import { fmtDist } from '../../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
-import { MARKER_PRIORITY } from './marker-manager';
+import { MARKER_PRIORITY } from './crowding';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../hud/object-groups';
-import type { MapCommands } from '../pickable/map-commands';
-import type { MapPickable } from '../pickable/map-pickable';
+import type { ObjectCommands } from '../pickable/object-commands';
+import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { Player } from '../player/player';
-import type { PropertyRow } from '../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
-export class LagrangePointMarker implements MapPickable {
+export class LagrangePointMarker implements ObjectPickable {
   public readonly id: string;
   public readonly name: string;
   // 地点名を上、所属天体を下の行に置く二行表記。
@@ -27,11 +27,9 @@ export class LagrangePointMarker implements MapPickable {
   public readonly markerClass = 'mk-poi mk-lagrange';
   // ラベルが混雑したときに優先して残す度合い。大きいほど残る。
   public readonly labelPriority = MARKER_PRIORITY.LAGRANGE;
-  public readonly ownerName = null;
-  public readonly mapTime = null;
-  public readonly mapState = null;
-  public readonly mapGlyph = ENTITY_GLYPH.lagrange;
-  public readonly mapGlyphSvg = null;
+  public readonly orbitState = null;
+  public readonly glyph = ENTITY_GLYPH.lagrange;
+  public readonly glyphSvg = null;
   public readonly listSection: MapListSection = 'body';
   public readonly pickerGenre: ObjectPickerGenre = 'ラグランジュ点';
   public readonly hiddenBehindBodies = false;
@@ -58,7 +56,7 @@ export class LagrangePointMarker implements MapPickable {
   public get gone(): boolean { return this.pos === null; }
 
   // 生成元が解いた時刻の位置。
-  public mapPosAt(): Vec3 | null { return this.pos; }
+  public posAt(): Vec3 | null { return this.pos; }
   // アイコンだけで示され、視線を通せる本体を持たない。
   public hitBodyByRay(): boolean { return false; }
 
@@ -67,8 +65,8 @@ export class LagrangePointMarker implements MapPickable {
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
 
   // メニューに出す操作項目。ヘッダーの副題には、この地点を定める2天体の対を出す。
-  public mapMenuItems(
-    commands: MapCommands, celestialSystem: CelestialSystem, simTime: number,
+  public menuItems(
+    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
     const primaryId = celestialSystem.bodyParentId(this.parentId);
     const subLabel = primaryId === undefined || primaryId === null
@@ -83,7 +81,7 @@ export class LagrangePointMarker implements MapPickable {
   }
 
   // 選ばれた操作を実行する。フォーカスの移動と航法ターゲットの設定・解除を持つ。
-  public runMapMenu(act: MenuAction, commands: MapCommands): void {
+  public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'focus') {
       commands.focus(this.id, this.name);
     } else if (act === 'target') {
@@ -92,9 +90,9 @@ export class LagrangePointMarker implements MapPickable {
   }
 
   // 自艦からの距離と種別。自艦がいない、あるいは位置が解けていないフレームは距離が落ちる。
-  public mapPropertyRows(commands: MapCommands): readonly PropertyRow[] {
+  public propertyRows(commands: ObjectCommands): readonly PropertyRow[] {
     const viewer = commands.activePlayer;
-    const pos = this.mapPosAt();
+    const pos = this.posAt();
     const rows: PropertyRow[] = [];
     if (viewer && pos) {
       rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(pos, viewer.state.r))) });
@@ -103,7 +101,7 @@ export class LagrangePointMarker implements MapPickable {
     return rows;
   }
 
-  public readonly mapRename = null;
+  public readonly rename = null;
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
 

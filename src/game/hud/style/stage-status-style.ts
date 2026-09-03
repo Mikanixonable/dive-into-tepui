@@ -1,5 +1,5 @@
 // ステージ状態表示(#hud-stagestatus)の CSS。
-import { MQ_COARSE_SHORT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../breakpoints';
+import { MQ_COARSE_SHORT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../../../hud/breakpoints';
 
 export const STAGE_STATUS_STYLE = `
 #hud-stagestatus {
@@ -25,5 +25,4 @@ export const STAGE_STATUS_STYLE = `
 }
 @media ${MQ_SHORT} {
   #hud-stagestatus { max-height: 46px; }
-}
-`;
+}`;

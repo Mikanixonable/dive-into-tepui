@@ -6,6 +6,7 @@
 // を行う。どちらも「対象 1 体では決められない = 集合の側の責務」であり、逆に対象ごとの
 // 見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
 import { Vec3, len, sub } from '../../math/vec3';
+import type { View } from '../view/view';
 import { Projected } from '../../math/projection';
 import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { ActiveCelestialLabel } from './celestial-markers';
@@ -35,6 +36,10 @@ export interface GroupedMarkerItem {
   occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
 }
 
+// これより画面上で近い対象どうしは、1つの代表マーカーへまとめる [px]。
+// 天体ラベルと近接した対象をそのラベルへ譲る判定にも同じ近さを使う。
+const CLUSTER_RADIUS_PX = 40;
+
 const bearingKey = (key: string): string => `${key}-bearing`;
 
 interface PlacedItem {
@@ -54,23 +59,21 @@ export class GroupedMarkers {
   // 天体ラベルとの近接で前フレームに隠したキー(depth-guard のヒステリシス用)。
   private prevHiddenByCelestialLabel = new Set<string>();
 
+  // 直前の sync で天体ラベルへラベルを譲った項目。天体ラベル下のサブ行の候補になる。
   getHiddenItems(): readonly GroupedMarkerItem[] {
     return this.hiddenItemsList;
   }
 
-  constructor(
-    private readonly markerManager: MarkerManager,
-    private readonly clusterRadiusPx: number,
-  ) { }
+  constructor(private readonly markerManager: MarkerManager) { }
 
   // items が空なら前フレームのマーカーをすべて片付けるだけになる(非表示にしたいときは
-  // 空配列を渡せばよく、専用の hide は要らない)。overviewMode 中は対象そのものが
+  // 空配列を渡せばよく、専用の hide は要らない)。マップビュー中は対象そのものが
   // 画面内に見えているので、画面端の方位マーカーは出さず、代わりに vel から進行方向を
   // 求めてマーカー自体を回す(円軌道では静止画から回転方向が読めないための対策)。
   sync(
     items: readonly GroupedMarkerItem[],
     project: ProjectFn,
-    overviewMode: boolean,
+    view: View,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
     celestialBodies: readonly CelestialMotion[] = [],
@@ -94,7 +97,7 @@ export class GroupedMarkers {
         continue;
       }
       const label = m.labeled ? this.label(m.item, m.count, m.groupMembers) : '';
-      const rotationDeg = overviewMode
+      const rotationDeg = view === 'map'
         ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, celestialBodies)
         : undefined;
       this.markerManager.set(
@@ -103,7 +106,7 @@ export class GroupedMarkers {
       );
       // 画面外(背面を含む)の対象は、画面端の方位マーカーで方位だけを示す。
       // bearingVisible は味方機など、距離によって方位マーカーを抑制する対象に使う。
-      if (overviewMode || m.item.bearingVisible === false) this.markerManager.hide(bearingKey(m.item.key));
+      if (view === 'map' || m.item.bearingVisible === false) this.markerManager.hide(bearingKey(m.item.key));
       else this.markerManager.setBearing(
         bearingKey(m.item.key), m.item.bearingClass ?? 'mk-dir', m.item.bearingSym ?? DIRECTION_GLYPH.bearing,
         m.p, '', 1, m.item.bearingColor,
@@ -160,7 +163,7 @@ export class GroupedMarkers {
       for (const m of placed) {
         if (!m.labeled || !m.p.front) continue;
         for (const c of celestialLabels) {
-          if (!c.labelVisible || Math.hypot(m.p.x - c.x, m.p.y - c.y) >= this.clusterRadiusPx) continue;
+          if (!c.labelVisible || Math.hypot(m.p.x - c.x, m.p.y - c.y) >= CLUSTER_RADIUS_PX) continue;
           // 天体ラベル側(c)の前フレームの間引き状態はここでは追跡していない(CelestialMarkers が
           // 別に持つ)ため、常に基準の depthGuardRatio を使う(false)。
           const pick = resolveCrowdingWinner(
@@ -181,7 +184,7 @@ export class GroupedMarkers {
 
   // a と b がクラスタ化する距離内にあるか判定する。
   private isNear(a: Projected, b: Projected): boolean {
-    return Math.hypot(a.x - b.x, a.y - b.y) < this.clusterRadiusPx;
+    return Math.hypot(a.x - b.x, a.y - b.y) < CLUSTER_RADIUS_PX;
   }
 
   // 代表のラベル文字列を組み立てる。
