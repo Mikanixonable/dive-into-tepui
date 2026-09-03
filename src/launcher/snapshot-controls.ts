@@ -2,13 +2,12 @@ import { Game } from '../game/game';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../game/hud/hud';
-import { PauseMenu } from '../hud/windows/index';
+import { PauseMenu } from '../hud/windows';
 import { SaveBrowser } from './save-browser/save-browser';
 import { SnapshotService } from './save/snapshot-service';
 
-// F5(クリップ)/F9(一覧開閉)の入力を担う。一覧表示中の Esc は OverlayManager の登録経由で
-// 閉じるので、ここでは扱わない。main.ts が rAF ループから Game.update の後に呼ぶ —
-// その回で Game 側が消費しなかった入力エッジだけが残っている。
+// F5(クリップ)/F9(一覧開閉)の入力を担う。handleInput は Game.update のあとに呼ぶ —
+// その回で Game が消費しなかった入力エッジだけを見る。
 export class SnapshotControls {
   constructor(
     private readonly hud: Hud,

@@ -13,14 +13,8 @@ export interface EphemerisContext {
   packFormatVersion: number;
 }
 
-// The catalog selects the pack by this profile id. Keeping that catalog key in
-// the save makes the context stable without copying any ephemeris coefficients
-// into save data. The format version additionally rejects packs that cannot be
-// interpreted by the current evaluator.
-//
-// This takes the run's epoch rather than reading a shared constant: the epoch is
-// a per-run value, and this module must stay free of the game graph so the
-// physics test build can exercise it.
+// その元期がいま選ぶ暦の素性。暦係数そのものではなくカタログの鍵を持つので、
+// パックを差し替えても保存された値は変わらない。
 export function ephemerisContextFor(epoch: TdbJulianDate): Readonly<EphemerisContext> {
   const profile = profileAtOrNull(epoch.value);
   return Object.freeze({
@@ -40,6 +34,7 @@ export function isEphemerisContextRestorable(saved: unknown): boolean {
   return isEphemerisContextCompatible(saved, ephemerisContextFor(createJulianDate('TDB', saved.epochJdTdb)));
 }
 
+// 'legacy' は暦情報を持たない古いスナップショット。'compatible' はそのまま復元してよい。
 type EphemerisContextStatus = 'legacy' | 'compatible' | 'incompatible';
 
 function isFiniteNumber(value: unknown): value is number {
@@ -51,6 +46,7 @@ function isProfileRef(value: unknown): value is string | null {
   return value === null || (typeof value === 'string' && value.length > 0);
 }
 
+// 保存された値が暦情報の形を満たしているか。欠けや型違いがあれば偽。
 function isValidContext(value: unknown): value is EphemerisContext {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const context = value as Record<string, unknown>;
@@ -62,13 +58,12 @@ function isValidContext(value: unknown): value is EphemerisContext {
     context.packFormatVersion > 0;
 }
 
+// 保存された暦情報を current と照合した結果。
 export function ephemerisContextStatus(
   saved: unknown,
   current: Readonly<EphemerisContext>,
 ): EphemerisContextStatus {
-  // Absence is the explicitly supported legacy migration path. null and any
-  // malformed value are explicit-but-invalid context and must not be treated
-  // as legacy data.
+  // 不在だけが移行経路。null や壊れた値は「暦情報を持つが読めない」ので legacy へ寄せない。
   if (saved === undefined) return 'legacy';
   if (!isValidContext(saved)) return 'incompatible';
 
@@ -80,6 +75,7 @@ export function ephemerisContextStatus(
     : 'incompatible';
 }
 
+// legacy と compatible をまとめて「復元してよい」と答える。
 export function isEphemerisContextCompatible(
   saved: unknown,
   current: Readonly<EphemerisContext>,

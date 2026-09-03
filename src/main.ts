@@ -12,7 +12,7 @@ import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-s
 import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
-import { PauseMenu, SettingsView } from './hud/windows/index';
+import { PauseMenu, SettingsView } from './hud/windows';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { Launcher } from './launcher/launcher';
@@ -103,10 +103,7 @@ function startAnimationLoop(
   });
 }
 
-// hud と AudioEngine/Bgm はタイトル(ステージ選択)画面の時点から使えるべきなので、
-// Game より先に main.ts が生成して所有し、Launcher には参照として渡す。
-// pauseMenu も同様に main.ts が所有し、開閉に応じた一時停止の反映
-// (launcher.current?.pause()/resume())も持ち主である main.ts がここで配線する。
+// タイトル(ステージ選択)画面の時点から使えるべき画面と音声を、Game より先に組む。
 function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting): {
   shell: HudShell; hud: Hud; audioEngine: AudioEngine; bgm: Bgm;
   pauseMenu: PauseMenu; settingsView: SettingsView;
@@ -134,7 +131,7 @@ function initSaveSlots(store: LocalStorageSaveStore): SaveSlots {
 }
 
 async function main() {
-  const unlockmanager = new UnlockManager();
+  const unlockManager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
   const slots = initSaveSlots(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
@@ -147,10 +144,9 @@ async function main() {
   const sections = new FrameSections();
 
   const launcher = new Launcher(
-    shell, hud, gs, audioEngine, bgm, pauseMenu, settingsView, unlockmanager, sections,
+    shell, hud, gs, audioEngine, bgm, pauseMenu, settingsView, unlockManager, sections,
     slots, snapshotService,
   );
-
 
   // 「ゲームを中断してタイトル画面に戻る」
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();

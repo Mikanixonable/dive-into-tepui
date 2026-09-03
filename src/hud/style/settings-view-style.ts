@@ -4,7 +4,7 @@ import { MQ_MEDIUM_DOWN } from '../breakpoints';
 export const SETTINGS_VIEW_STYLE = `
 #hud-settings-view {
   inset: 0; display: none; overflow-y: auto; pointer-events: auto;
-  padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw);
+  padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw); padding: clamp(24px, 7dvh, 72px) max(var(--space-6), 6vw);
   border-radius: 0; background: var(--scrim); box-shadow: none;
 }
 #hud-settings-view.settings-dock {

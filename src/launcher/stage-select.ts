@@ -1,5 +1,4 @@
 // 起動時のステージ選択画面 GUI。
-// DEVELOP/UI_DESIGN_REFERENCE_V6.md の Rich title window を起動導線へ適用する。
 import { STAGE_CLASSES } from '../game/stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import type { StageClass } from '../game/stages/stage';

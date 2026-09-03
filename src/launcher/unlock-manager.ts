@@ -1,5 +1,4 @@
-// ステージ解放の判定・記録を一元管理する。ステージクラスの静的 isUnlocked(clearCounts) は
-// 条件式を持つだけで、localStorage には触れない。
+// ステージ解放の判定と、クリア回数の永続化を一元管理する。
 import { Hud } from '../game/hud/hud';
 import type { ClearCounts, StageId } from '../game/stages/stage';
 import { findStageClass, STAGE_CLASSES } from '../game/stages/stage-dictionary';

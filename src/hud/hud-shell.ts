@@ -1,6 +1,4 @@
-// #hud ルート・重なり順のレイヤ・モーダルの排他制御を持つ画面の器。ゲームの HUD も
-// ランの外側の画面(結果画面・セーブブラウザ・負荷確認ウィンドウ)も、この上に載る。
-// スタイルシートは載る側が注入する。
+// #hud ルート・重なり順のレイヤ・モーダルの排他制御を持つ画面の器。
 import { buildOverlayLayers, type OverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
 import { createHudElement } from './hud-element';

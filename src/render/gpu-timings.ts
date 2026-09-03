@@ -157,20 +157,19 @@ export class GpuTimings {
         if (this.passByUid.size > PENDING_UID_CAP) this.passByUid.clear();
       })
       .catch(() => {
-        // Timestamp queries are optional. A lost query must not turn the render loop into an
-        // unhandled rejection; `supported` remains false until a query resolves successfully.
+        // 時刻印は取れないことがある。落ちたクエリで描画ループを未処理の rejection にしない —
+        // 一度も解決しない環境では supported が偽のままになるだけで済む。
       })
       .finally(() => { this.resolving = false; });
   }
 
-  // Render Lab and other offline profilers need a deterministic point at which the asynchronous
-  // timestamp result can be read. The game loop deliberately keeps using fire-and-forget resolve().
+  // 直近の resolve() が届くまで待つ。非同期の結果を決まった時点で読みたい計測用の口。
   async waitForResolve(): Promise<void> {
     await this.resolvePromise;
   }
 
-  // Discard the current window before a new benchmark case. Callers must waitForResolve() first so
-  // a late GPU result cannot repopulate an already-reset case.
+  // 溜めた読みを捨てて数え直す。**先に waitForResolve() を待つこと** —
+  // 待たずに呼ぶと、遅れて届いた前の窓の値が捨てたはずの器へ入る。
   reset(): void {
     this.elapsedMs.fill(0);
     this.available = false;
@@ -178,6 +177,7 @@ export class GpuTimings {
     this.passByUid.clear();
   }
 
+  // 全パスの直近の所要時間 [ms] を、パス id の並びのまま写して返す。
   snapshot(): GpuTimingSnapshot {
     return { supported: this.available, elapsedMs: Array.from(this.elapsedMs) };
   }

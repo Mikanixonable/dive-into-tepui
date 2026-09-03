@@ -8,7 +8,7 @@ import { ContextMenu, MenuAction } from '../hud/windows';
 import {
   PropertyWindow, PropertyWindowContent, PropertyWindowItem,
   type PropertyWindowRelatedItem, type PauseMenu,
-} from '../../hud/windows/index';
+} from '../../hud/windows';
 import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { ObjectPickable } from './object-pickable';

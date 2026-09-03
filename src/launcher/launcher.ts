@@ -2,7 +2,7 @@ import { Game } from '../game/game';
 import { LoadingProgress } from '../game/loading-progress';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import type { PauseMenu, SettingsView } from '../hud/windows/index';
+import type { PauseMenu, SettingsView } from '../hud/windows';
 import { ResultScreen, type RunTransitions } from './result-screen';
 import type { CurrentGameSource } from './save-browser/save-browser';
 import type { Hud } from '../game/hud/hud';
@@ -39,8 +39,7 @@ function fallbackResult(phase: GamePhase): StageResult {
 }
 
 // 再出撃・タイトル復帰・スナップショットのロード・スロット切替 — 「Game インスタンスを
-// 捨てて次の周回へ移る」判断を1箇所へ集約する。game/ 配下は location.* を一切知らない。
-// 今動いている周回の Game 自体もここが保持する。
+// 捨てて次の周回へ移る」判断を1箇所へ集約する。今動いている周回の Game 自体もここが保持する。
 export class Launcher implements RunTransitions, CurrentGameSource {
   private readonly resultScreen: ResultScreen;
   private game: Game | null = null;
@@ -156,8 +155,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 日時を新規開始の元期として使うべきなので自動復元の対象から外す — 外さないと直前セッションの
   // スナップショットの元期が指定日時を上書きしてしまう。
   // noteLaunched は Game 構築後に呼ばれるため、この時点の lastStageId は今回の起動より前の
-  // 値を指している。本体の欠損・バージョン不一致・ステージ不一致は SnapshotService.load() に
-  // 判定させ、復元できない場合は通常の新規起動状態をそのまま使う。
+  // 値を指している。復元できないスナップショットを指したときは undefined を返す。
   private initialSaveFor(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): GameSaveData | undefined {
     const activeSlotId = this.slots.activeSlotId;
     const resumesLastLaunchedStage = startEpoch === undefined

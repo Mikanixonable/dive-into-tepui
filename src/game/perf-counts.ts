@@ -1,5 +1,4 @@
-// 負荷確認ウィンドウが1フレームごとに読む、ランの規模の一式。数えるのはランの中身なので
-// 形もここが持ち、読む側(ランの外側の窓)は受け取るだけにする。
+// ランの規模の計測値。
 import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
 
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。

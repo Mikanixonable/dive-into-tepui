@@ -36,29 +36,27 @@ export async function createGameScene(canvas: HTMLCanvasElement, graphics: Graph
   renderer.setTransparentSort(reversedTransparentSort);
   // devicePixelRatio は表示先の切り替えで変わるので、倍率だけを覚えて掛け直す。
   let resolutionScale = graphics.resolutionScale;
-  // パイプラインはレンダラの初期化後にしか組めない。それより前の applyGraphics は解像度だけを見る。
-  let pipeline: RenderPipeline | null = null;
-  // 描画解像度の倍率とパスの品質を設定から取り直す。
-  const applyGraphics = (next: GraphicsSettingsData) => {
-    resolutionScale = next.resolutionScale;
-    renderer.setPixelRatio(window.devicePixelRatio * resolutionScale);
-    pipeline?.applyGraphics(next);
-  };
   // 画面サイズへ追従する。倍率は覚えているものを掛け直す。
   const resize = () => {
     renderer.setPixelRatio(window.devicePixelRatio * resolutionScale);
     renderer.setSize(window.innerWidth, window.innerHeight);
   };
 
-  applyGraphics(graphics);
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  resize();
   await renderer.init();
 
   window.addEventListener('resize', resize);
 
   // パスは初期化済みのレンダラでしか組めないので、init() のあとに作る。
   const gpu = new GpuTimings(renderer);
-  pipeline = new RenderPipeline(renderer, graphics, gpu);
+  const pipeline = new RenderPipeline(renderer, graphics, gpu);
+
+  // 描画解像度の倍率とパスの品質を設定から取り直す。
+  const applyGraphics = (next: GraphicsSettingsData) => {
+    resolutionScale = next.resolutionScale;
+    renderer.setPixelRatio(window.devicePixelRatio * resolutionScale);
+    pipeline.applyGraphics(next);
+  };
 
   return { scene, renderer, gpu, pipeline, applyGraphics };
 }
