@@ -9,7 +9,11 @@ import { PanelShell, wirePanelCollapse } from './panel-shell';
 import type { View } from '../view/view';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
-import { PANEL_CONTENT_STYLE } from './style/panel-content-style';
+import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
+import { MAP_PANEL_STYLE } from './style/map-panel-style';
+import { SCREEN_STYLE } from './style/screen-style';
+import { HELP_PANEL_STYLE } from './style/help-panel-style';
+import { SETTINGS_VIEW_STYLE } from './style/settings-view-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { isCompactViewport } from './breakpoints';
@@ -29,7 +33,10 @@ export {
 // 分割したスタイルを結合する。定義順はレイヤ→骨格→パネル→ビュー→ウィジェットで、
 // カスケードの後勝ちを利用する箇所（同一セレクタの再定義）は各ファイル内で完結させてある。
 const STYLE =
-  LAYOUT_TOKENS_STYLE + SKELETON_STYLE + PANEL_CONTENT_STYLE + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE;
+  LAYOUT_TOKENS_STYLE + SKELETON_STYLE
+  + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + SCREEN_STYLE
+  + HELP_PANEL_STYLE + SETTINGS_VIEW_STYLE
+  + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE;
 
 
 // 指定タグ・id・class の要素を作り、parent に追加して返す。
