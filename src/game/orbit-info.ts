@@ -1,11 +1,11 @@
 // 軌道エンティティの基準・軌道要素・相対情報を導出する純粋関数群。
-import { strongestAttractor } from '../../../physics/attractor';
-import { CelestialMotion } from '../../../physics/celestial-motion';
-import { apsisAltitudes } from '../../../physics/elements';
-import { kinematicState } from '../../../physics/kinematic-state';
-import { dot, len, sub, Vec3 } from '../../../math/vec3';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
-import type { OrbitReference } from '../../orbit-reference';
+import { strongestAttractor } from '../physics/attractor';
+import { CelestialMotion } from '../physics/celestial-motion';
+import { apsisAltitudes } from '../physics/elements';
+import { kinematicState } from '../physics/kinematic-state';
+import { dot, len, sub, Vec3 } from '../math/vec3';
+import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { OrbitReference } from './orbit-reference';
 
 export interface OrbitInfo {
   centerId: string;
