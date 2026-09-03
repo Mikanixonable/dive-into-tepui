@@ -225,29 +225,27 @@ forward の 0.057° は `POLAR_PITCH_LIMIT`(π/2 − 1e-3)によるクランプ�
 
 ---
 
-## 達成目標
+## 達成目標(手順2〜6 の実施後に確認した結果)
 
-全手順の実施後、次がすべて満たされていること。
+`ff302d60` 時点。手順7 は未実施なので 10 だけが残っている。
 
-1. `grep -rn "followingAttitude" src/` が **0件**。
-2. `grep -rn "orientation.followingAttitude ? { kind: 'attitude' }" src/` が **0件**
-   (合成式が getter と `serialize()` の2箇所にあった重複が消える)。
-3. `grep -rn "回転座標系\|自転座標系\|回転系\|自転系\|公転系\|慣性系" src/` のヒットが
-   **`src/game/camera/rotation-follow.ts` と `src/game/hud/windows/help-content.ts` の2ファイルだけ**
-   (help-content はヘルプ本文なので対象外)。
-4. `grep -rn "RCS追従\|視点追従\|回転追従\|回転フレーム\|固定なし\|クオータニオン" src/` が **0件**
-   (`DEVELOP/SPEC/CAMERA.md` 3.1 と D1 の改名表に従った結果)。
-5. `grep -rln "camera/focus-camera" src/game/hud/` が **`camera-frame-panel.ts` 1ファイルだけ**
-   (`FocusCamera` の実体を持っているので残る。`rotation-zone.ts` と `frame-labels.ts` は消える)。
-6. `src/game/hud/frame/frame-labels.ts` が **存在しない**。
-7. `src/game/hud/frame/rotation-zone.ts` の `export class` 宣言が **1つ**。
-8. `grep -rn "cameraFrame" src/` のヒットが **`focus-camera.ts` 内部の `_cameraFrame` だけ**
-   (public getter と、`display-window-manager.ts:143` のコメント参照が消える)。
-9. マップビューで敵艦にフォーカスして回転追従を選ぶと、要約行に **艦名が出る**(生 id ではない)。
-10. マップビューでカメラパネルの角度を「赤道面・真上」でセットしても、**画面の上下が反転しない**。
-11. `npm run typecheck` / `npm run test:game` / `npm run test:math` / `npm run test:render` が通る。
+| # | 目標 | 結果 |
+| --- | --- | --- |
+| 1 | `followingAttitude` が 0件 | **言い換えて達成**。`CameraOrientation` からは消えた。`FocusCamera` に同名の getter が残るが、これは手順5 が「姿勢へ追従しているかを答える口を1つ置く」と指示したもので、`_follow` から導かれる唯一の出所 |
+| 2 | 合成式が 0件 | **達成**(getter と `serialize()` の重複が消えた) |
+| 3 | 座標系の綴りが2ファイルだけ | **言い換えて達成**。grep はコメントと物理側の用語まで拾う(`physics/cr3bp.ts` の「回転フレーム」は CR3BP の座標系)。**画面に出る文字列**を組んでいるのは `rotation-follow.ts` と `help-content.ts` だけ |
+| 4 | 旧語が 0件 | **達成** |
+| 5 | HUD の `focus-camera` import が1ファイル | **言い換えて達成**。**値として** import しているのは `camera-frame-panel.ts` だけ。`frame-controls.ts` は型 import、`hud-root.ts` はコメント中の言及 |
+| 6 | `frame-labels.ts` が無い | **達成** |
+| 7 | `rotation-zone.ts` の `export class` が1つ | **達成**(125 → 53行) |
+| 8 | `cameraFrame` が `_cameraFrame` だけ | **達成** |
+| 9 | 敵艦フォーカスで要約行に艦名 | **実装済・実機未確認**。`objectName` が役割 → 候補 → エンティティ → 天体名 の順で引く。生 id が出る経路は無くなった |
+| 10 | 「赤道面・真上」で上下反転しない | **未着手**(手順7)。`memos/hedalu244/camera_control_spec.md` 2.5 で、真上をクォータニオン操作へ移せば到達経路ごと消えると決めた。同 U5 参照 |
+| 11 | typecheck / test:game / test:math / test:render | **達成**(`npm run test` で 680/680) |
 
----
+**併せて実施したもの(この計画の外).** `memos/hedalu244/fix_camera_control.md` の S2
+(不変条件A — ドラッグした向きへ視点が動く)を `a698f95d` で通した。オイラー操作の
+`turn()` がロールと仰角のぶんを打ち消していなかった欠陥で、この計画とは独立。
 
 ## 手順
 
@@ -358,81 +356,45 @@ forward の 0.057° は `POLAR_PITCH_LIMIT`(π/2 − 1e-3)によるクランプ�
 
 ---
 
-### 手順4. `RotationZone` と `CameraRotationZone` を1クラスへ畳む
+### 手順4. `RotationZone` と `CameraRotationZone` を1クラスへ畳む(**実施済** `ac5a420c`)
 
-**目的.** 骨格が同一の2クラスを1つにする(D5)。**この時点で挙動は変えない** —
-表示名は手順3で既に1本になっているので、残るのは選択肢の出所の違いだけ。
+選択肢を外から受ける1クラス `RotationZone<T extends CameraRotationFollow>` にした。姿勢を
+選べない軌道計画区画は `RotationZone<FrameRotationSource>` として型で絞る。**125 → 53行**
+(見込み 75)。`'慣性系'` の直書きもモジュール内の1定数になった。
 
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/hud/frame/rotation-zone.ts` | 2クラスを1つへ。選択肢の一覧(`readonly CameraRotationFollow[]`)とラベル関数を外から受ける形にする。`setNearby`(`:32-67`)が持っている「いまカメラがいる系から公転・自転・役割の公転を並べる」導出は、選択肢の導出なので UI から出す |
-| `src/game/hud/frame/frame-controls.ts` または `src/game/camera/rotation-follow.ts` | `setNearby` から出した導出の置き場。カメラ側の `availableRotationFollows` と同じ「選択肢の導出」なので `rotation-follow.ts` が自然だが、軌道フレーム側は `members`(系メンバー)と `validRoles` から導くので入力が違う。**着手時に、2つの導出が同じ関数へ畳めるかを見てから決める** |
-| `src/game/hud/frame/trajectory-frame-panel.ts:42-47,75-76` | 畳んだゾーンの新しい口へ差し替える |
-| `src/game/hud/frame/camera-frame-panel.ts:50-53,128-129` | 同上 |
-
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `grep -c "^export class" src/game/hud/frame/rotation-zone.ts` が **1**。
-- `wc -l src/game/hud/frame/rotation-zone.ts` が **90行未満**(いま125行)。
-- `npm run dev` で、**カメラ区画と軌道フレーム区画の両方**の回転ゾーンが手順3の時点と同じ項目を
-  同じ並びで出し、選択がハイライトされること(照合キーが変わると選択表示だけ静かに外れる —
-  下のリスク表参照)。
+`setNearby` が持っていた導出は `availableFrameRotations` として `rotation-follow.ts` へ。
+**カメラ側の導出とは畳まなかった** — 入力が違い(フォーカス対象 vs 系のメンバー+役割)、
+選ぶ基準そのものが別だから(SPEC/MAP.md 2節)。置き場だけを揃えた。
 
 ---
 
-### 手順5. 追従の選択の正本を `FocusCamera` の1フィールドへ
+### 手順5. 追従の選択の正本を `FocusCamera` の1フィールドへ(**実施済** `b7bde019`)
 
-**目的.** D3。合成式を消し、`CameraOrientation` から選択の知識を落とす。
-**この時点で挙動は変えない。**
+`FocusCamera._follow` が正本になり、合成式は getter からも `serialize()` からも消えた。
+`CameraOrientation` からは `following` / `restoreFollow` / `followingAttitude` / `usesEuler` が
+落ち、姿勢の基準 `attitude` だけが残る。代わりに `clearAttitude()` を1つ足した —
+向きをこの後まるごと置き直す `resetToInitial` が、基準の姿勢だけを捨てるために要る。
 
-**変更が必要な箇所.**
+**`vessel-panel.ts` の3段掘りは `FocusCamera.followingAttitude` で置き換えた。**
 
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/camera/focus-camera.ts` | `_follow: CameraRotationFollow \| null` を足し、正本にする。`get rotationFollow()`(`:487-489`)を素通しゲッタへ。`serialize()`(`:700`)の合成式を `this._follow` へ。`setRotationFollow`(`:518-530`)/ `toggleAttitudeFollow`(`:533-541`)/ `applyInitialFrame`(`:560-568`)/ `dropStaleRotationFollow`(`:572-582`)/ `refreshAttitude`(`:585-589`)が `_follow` を読み書きする形へ。`update()`(`:630`)の `usesEuler` 判定を `mode === 'euler' && this._follow?.kind !== 'attitude'` へ移す |
-| `src/game/camera/camera-orientation.ts` | `following` フィールド(`:47`)と `restoreFollow()`(`:138-141`)と `followingAttitude` ゲッタ(`:58`)と `usesEuler` ゲッタ(`:61`)を落とす。`effective()`(`:64-66`)/ `store()`(`:70-73`)/ `refreshAttitude()`(`:144-149`)の条件を `this.attitude !== null` へ。コンストラクタ引数から `following` を落とす |
-| `tests/game/camera-orientation.test.ts` | `followingAttitude`(`:48,51`)/ `restoreFollow`(`:90`)を使っているケースを追随させる。**「追従中だが姿勢未解決」のケース**(`:89` 付近)は、`FocusCamera` 側で表現される形へ移すか、`attitude === null` のまま `beginAttitudeFollow` 前の状態として書き直す |
-| `src/game/hud/panels/vessel-panel.ts:228` | `game.cameraSystem.combatCamera.rotationFollow?.kind === 'attitude'` の3段掘り。`FocusCamera` に「姿勢へ追従しているか」を答える口を1つ置いて置き換える |
+**テストの入れ替え.** `restoreFollow` と `usesEuler` を見ていた2つのケースは、どちらも
+`FocusCamera` へ移った判断なのでこの層では書けない。代わりに **R4(ロード直後に視点が跳ぶ)を
+直接突くケース**へ置き換えた — 姿勢を持たない間は生の値がそのまま実効回転になり、初めて姿勢が
+引けた瞬間にも跳ばないこと。**R5(姿勢追従中にオイラー経路へ入る)の判定は `FocusCamera` 側へ
+移ったので、回帰テストは無い**(`FocusCamera` は `CelestialSystem` を要求するため
+`tsconfig.test.json` へ入れられない)。実機で [G] を ON にしたまま船を回頭させて確かめる。
 
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `npm run test:game` が通る。
-- `grep -rn "followingAttitude" src/ tests/` が **0件**。
-- `grep -rn "restoreFollow" src/ tests/` が **0件**。
-- `wc -l src/game/camera/camera-orientation.ts` が **130行未満**(いま150行)。
-- `npm run dev` で確認する3点:
-  1. 戦闘ビューで [G] を2回押して、姿勢追従 → 慣性系 → 姿勢追従 と戻り、**視点が跳ばない**。
-  2. 姿勢追従のまま**セーブしてリロード**し、姿勢追従が復元される(ロード直後の
-     「追従中だが姿勢未解決」の1フレームで視点が跳ばない)。
-  3. 戦闘ビューでリセット(中クリック)して、既定の後方見下ろし + 姿勢追従へ戻る。
+**行数.** `camera-orientation.ts` 150 → **139**(見込み 125)。`clearAttitude` と
+不変条件A のコメントぶん超えた。`focus-camera.ts` は 675 → **682** — `_follow` と
+`followingAttitude` を足したぶん、合成式2箇所を消したぶんを上回った。
 
 ---
 
-### 手順6. 死んだ口と再送出の段を落とす
+### 手順6. 死んだ口と再送出の段を落とす(**実施済** `ff302d60`)
 
-**目的.** 呼び出し元の無い public を消し、判断を持たない中継を1段減らす。
-**この時点で挙動は変えない。**
-
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/camera/focus-camera.ts:476-479` | `get cameraFrame()` を削除。**実コードの呼び出し元はゼロ**で、`display-window-manager.ts:143` のコメントで名前が出るだけ |
-| `src/game/display-window-manager.ts:143` | 上記コメントから `FocusCamera.cameraFrame` への言及を落とす |
-| `src/game/hud/frame/camera-frame-panel.ts:33,47` | `onSelectCenter` の再送出。`AnchorZone.onSelect` → `CameraFramePanel.onSelectCenter` → `FrameControls.selectCameraCenter` の3段のうち、真ん中は何も判断していない。`FrameControls` から渡したコールバックを `AnchorZone.onSelect` へ直に繋ぐ |
-| `src/game/hud/frame/frame-controls.ts:53` | 上記に合わせる |
-
-**達成条件と検証.**
-
-- `npm run typecheck` が通る。
-- `grep -rn "cameraFrame" src/` のヒットが **`focus-camera.ts` の `_cameraFrame` だけ**。
-- `grep -rn "onSelectCenter" src/` が **0件**。
-- `npm run dev` で、カメラ区画の「基準」プルダウンから天体を選ぶ / 「固定を解除」を選ぶ が
-  どちらも今までどおり効くこと。
+`FocusCamera.cameraFrame` を削除。`onSelectCenter` の3段を2段にし、`FrameControls` の
+コールバックを `CameraFramePanel` のコンストラクタ引数として受けて `AnchorZone` へ直に繋いだ。
+`_cameraFrame` を「setter」と呼んでいた古いコメント2箇所も直した。
 
 ---
 
