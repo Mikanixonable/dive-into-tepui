@@ -18,7 +18,7 @@ import { relativeInfo } from '../../hud/orbit/orbit-info';
 import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { shipMarkerSvg } from '../../marker/marker-shapes';
-import { currentThemePalette } from '../../theme';
+import { currentThemePalette } from '../../../theme';
 import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
 import type { Quat } from '../../../math/quat';
 import type { DynamicEntityKind } from './entity-kind';

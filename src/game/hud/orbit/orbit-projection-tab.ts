@@ -3,7 +3,7 @@
 // このタブはスケール入力欄を持たない。
 import { strongestAttractor } from '../../../physics/attractor';
 import { PointerPanZoom } from '../widgets/pointer-pan-zoom';
-import { ACCENT, ACCENT_SECONDARY } from '../../theme';
+import { ACCENT, ACCENT_SECONDARY } from '../../../theme';
 import { projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { buildTabControls, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitProjectionChart } from './orbit-projection-chart';

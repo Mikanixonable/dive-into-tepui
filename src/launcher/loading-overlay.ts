@@ -3,7 +3,7 @@
 // 円形ゲージは実進捗(0..1)だけを表示する——取得できないフェーズは 0% のまま完了直前まで待つ。
 import {
   ACCENT, SURFACE_OPAQUE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_2XL, FONT_M, Z_LOADING_OVERLAY,
-} from '../game/theme';
+} from '../theme';
 
 const GAUGE_SIZE = 72;
 const GAUGE_THICKNESS = 6;

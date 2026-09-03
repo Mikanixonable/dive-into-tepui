@@ -1,7 +1,7 @@
 // visualViewport のサイズ変化を監視し、--vvh(実効ビューポート高さ)と --safe-*
 // を更新する唯一の購読者。PropertyWindow/ContextMenu 等、画面サイズ変化で
 // 再配置が要る側は window の resize を個別に張らず onViewportChange を購読する。
-import { SAFE_AREA_BOTTOM, SAFE_AREA_LEFT, SAFE_AREA_RIGHT, SAFE_AREA_TOP } from '../theme';
+import { SAFE_AREA_BOTTOM, SAFE_AREA_LEFT, SAFE_AREA_RIGHT, SAFE_AREA_TOP } from '../../theme';
 
 const listeners = new Set<() => void>();
 

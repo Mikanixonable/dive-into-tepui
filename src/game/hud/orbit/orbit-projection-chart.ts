@@ -1,6 +1,6 @@
 // 投影タブの描き手。円筒図法テクスチャを背景に、経緯度グリッド・複数系統の軌跡・現在位置を
 // canvas 2D へ描く。表示範囲(中心経緯度・ズーム)を自分で持ち、pan/zoom/resetView で操作する。
-import { EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM } from '../../theme';
+import { EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM } from '../../../theme';
 import { injectOnce } from '../widgets/inject-style';
 import {
   CHART_LINE_WIDTH, CHART_MARK_RADIUS, CHART_MARK_RING_WIDTH, chartCanvasStyle,

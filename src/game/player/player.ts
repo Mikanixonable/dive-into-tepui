@@ -30,7 +30,7 @@ import { PlayerFire, type AmmoLoad } from './player-fire';
 import { Belt } from './belt';
 import { AeroLoad } from './aero-load';
 import { AltitudeAlarm } from './altitude-alarm';
-import { currentThemePalette } from '../theme';
+import { currentThemePalette } from '../../theme';
 import { EffectsSystem } from '../vfx/effects-system';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';

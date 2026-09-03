@@ -1,6 +1,6 @@
 // HUD の静的 DOM/スタイル構築。
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { injectThemeVariables } from '../theme';
+import { injectThemeVariables } from '../../theme';
 import { buildOverlayLayers } from './overlay-layer';
 import { OverlayManager } from './overlay-manager';
 import { HelpPanel } from './windows/help-panel';

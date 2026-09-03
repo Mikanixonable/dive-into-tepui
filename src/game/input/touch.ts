@@ -8,7 +8,7 @@ import { KEY_MAPPING as K, KeyBinding } from '../input/key-mapping';
 import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
 import {
   FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
-} from '../theme';
+} from '../../theme';
 
 const STYLE = `
 /* システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く。

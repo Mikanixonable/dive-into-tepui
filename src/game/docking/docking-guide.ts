@@ -7,7 +7,7 @@ import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Docking, DockingCandidate } from './docking';
 import type { ProjectFn } from '../camera/camera-system';
-import { currentThemePalette } from '../theme';
+import { currentThemePalette } from '../../theme';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { MARKER_PRIORITY } from '../marker/marker-manager';
 
