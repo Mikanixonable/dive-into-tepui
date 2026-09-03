@@ -35,6 +35,7 @@ type BulletType = 'normal' | 'plasma';
 export class Bullet extends DynamicEntity {
     public override readonly bcInv = BULLET_BCINV;
     public readonly hasAttitude = false;
+    public override readonly capKind = 'bullet';
 
     private readonly bornSim: number; // 発射時刻。初期 state のエポックそのもの
     public readonly shooter: Shooter;
