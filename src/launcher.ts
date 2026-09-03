@@ -5,7 +5,7 @@ import {
   ResultScreen, type RunTransitions, type CurrentGameSource, type PauseMenu, type SettingsView,
 } from './game/hud/windows';
 import type { Hud } from './game/hud/hud';
-import type { GamePhase, StageClass, StageResult } from './game/stages/stage';
+import type { GamePhase, Stage, StageClass, StageResult } from './game/stages/stage';
 import { findStageClass } from './game/stages/stage-dictionary';
 import { selectStage } from './game/stage-select';
 import type { UnlockManager } from './game/unlock-manager';
@@ -66,7 +66,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   private readonly resultScreen: ResultScreen;
   private game: Game | null = null;
   private launchedStage: StageClass | null = null;
-  private resultShown = false;
   // 遷移中に再入すると、組み立て中の Game が dispose されないまま取り残される。
   private transitioning = false;
 
@@ -131,7 +130,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.game?.dispose();
     this.game = null;
     this.resultScreen.close();
-    this.resultShown = false;
     this.pauseMenu.toggle(false);
   }
 
@@ -158,8 +156,20 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.audioEngine.unlock();
       this.bgm.ensureStarted();
     };
+    const stage = this.game.activeStage;
+    stage.onDecided = () => this.showResult(stage);
     this.noteLaunched(stageClass);
     this.bgm.resume();
+    // 決着済みのスナップショットから始まったランは decide() を通らないため、ここで締める。
+    if (!stage.isPlaying) this.showResult(stage);
+  }
+
+  // 決着したランを締め、結果画面を出す。
+  private showResult(stage: Stage): void {
+    this.bgm.stop();
+    const activeSlotId = this.slots.activeSlotId;
+    if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
+    this.resultScreen.show(stage.result ?? fallbackResult(stage.phase));
   }
 
   // snapshotId を最優先で使う。無ければ、起動するステージがアクティブスロットの直前起動と
@@ -189,17 +199,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.launchedStage = stageClass;
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteLaunch(activeSlotId, stageClass.id);
-  }
-
-  // 決着した最初のフレームだけ、周回を締めて結果画面を出す。
-  update(): void {
-    if (this.game === null || this.resultShown || this.game.activeStage.isPlaying) return;
-    this.resultShown = true;
-    this.worldSfx.setThrust(false);
-    this.bgm.stop();
-    const activeSlotId = this.slots.activeSlotId;
-    if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
-    this.resultScreen.show(this.game.activeStage.result ?? fallbackResult(this.game.activeStage.phase));
   }
 
   // [R] は決着後だけ再出撃キーとして働く。この呼び出し時点で game.update が消費しなかった
