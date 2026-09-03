@@ -133,7 +133,7 @@ function findCrossing(
   // pole 方向の符号(赤道面のどちら側にいるか)。
   const sideOf = (s: KinematicState): number => {
     const rel = sub(s.r, centerPositionAt(s.t));
-    return rel.x * pole.x + rel.y * pole.y + rel.z * pole.z;
+    return dot(rel, pole);
   };
   for (let i = 0; i < samples.length - 1; i++) {
     const s0 = sideOf(samples[i]!);

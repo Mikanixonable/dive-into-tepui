@@ -3,7 +3,7 @@
 // マップビューでの軌道要素アイコンの表示可否とピック候補の選出可否は、この1関数を両方が
 // 呼ぶことで揃える — 見えているのに押せない/見えないのに押せる、という食い違いを防ぐ。
 import type { CelestialMotion } from './celestial-motion';
-import { addScaled, dot, len, lenSq, sub, Vec3 } from '../math/vec3';
+import { addScaled, dot, len, lenSq, scale, sub, Vec3 } from '../math/vec3';
 
 // 手前側交点が対象点よりこの距離以上カメラ寄りのときだけ遮蔽と判定する余裕。対象点自身が
 // その天体の表面上・近傍にある(その天体を回っている物体など)場合に、丸め誤差で
@@ -26,7 +26,7 @@ export function occlusionOpacity(
   const toPoint = sub(point, cameraPos);
   const dist = len(toPoint);
   if (dist < 1e-6) return 1;
-  const dir = { x: toPoint.x / dist, y: toPoint.y / dist, z: toPoint.z / dist } as Vec3;
+  const dir = scale(toPoint, 1 / dist);
   let opacity = 1;
 
   for (const celestialBody of celestialBodies) {
@@ -43,7 +43,7 @@ export function occlusionOpacity(
     // 外れた天体でも「対象より手前」にあるかを正しく判定できる。
     if (tca >= dist - OCCLUSION_MARGIN) continue;
 
-    const centerDir = { x: oc.x / centerDistance, y: oc.y / centerDistance, z: oc.z / centerDistance } as Vec3;
+    const centerDir = scale(oc, 1 / centerDistance);
     const separationCos = Math.max(-1, Math.min(1, dot(dir, centerDir)));
     const separation = Math.acos(separationCos);
     const apparentRadius = Math.asin(Math.min(1, radius / centerDistance));
@@ -67,7 +67,7 @@ export function isOccluded(
   const toPoint = sub(point, cameraPos);
   const dist = Math.sqrt(dot(toPoint, toPoint));
   if (dist < 1e-6) return false;
-  const dir = { x: toPoint.x / dist, y: toPoint.y / dist, z: toPoint.z / dist } as Vec3;
+  const dir = scale(toPoint, 1 / dist);
 
   for (const celestialBody of celestialBodies) {
     const bodyPos = celestialBody.positionAt(pivot);

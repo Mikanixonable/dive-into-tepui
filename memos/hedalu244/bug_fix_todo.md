@@ -78,3 +78,21 @@ LEADマーカーは「その方向に撃ったら対応する敵に当たるは�
 `MapView.syncPanels` は `displayWindowManager.sync` / `picking.sync` へ
 `activePlayers.current`(艦)を渡す。表示窓の解決対象は `currentControllable` なので、
 基地を操作している間だけ両者が食い違う。上の一件と同じ「艦 vs 操作対象」のずれ。
+
+## 天球グリッドの経度が、赤経と逆向きに増える
+
+`render/celestial-grid.ts` の `EQUATOR_BASIS` は `e1=(1,0,0)` / `e2=(0,0,1)` / `pole=(0,1,0)` で、
+`e1×e2 = -pole` の**左手系**。`planePoint` は `cos(lon)·e1 + sin(lon)·e2` なので、経度は +X から
++Z へ増える。一方 `physics/ecliptic.ts` の `raDecToEci` は `stdToEci(cos ra, sin ra, 0)` =
+`(cos ra, 0, -sin ra)` で、**赤経は +X から −Z へ**増える。**グリッドが「90°」と書く位置は、
+赤経では 270° にあたる。**
+
+グリッドは交点に `${lon}°/${lat}°` のラベルを実際に出している(`celestial-grid.ts` の
+`gridLabels`)ので、この向きは画面に出る。
+
+同名の `EQUATOR_BASIS` が `render/scale-grid.ts` では `planeBasisFromPole((0,1,0))` から
+組まれていて `e2=(0,0,-1)` の**右手系**。隣接する2モジュールに、同じ名前で逆向きの定数が
+並んでいる。
+
+`SPEC/RENDERING.md` は天球グリッドの経度の向きを決めていないので、まず「グリッドの経度は
+赤経なのか、独自の目盛りなのか」を決める必要がある。赤経なら `e2` の符号を反転する。

@@ -3,7 +3,7 @@
 // OrbitalElements を返し、実際の天体位置への配置は呼び出し側(orbit-guide.ts)が行う。
 // 中心天体の重力・扁平・自転周期は呼び出し側から受け取る。
 import type { CelestialMotion } from './celestial-motion';
-import { orbitalElementsFromClassical, OrbitalElements } from './elements';
+import { orbitalElementsFromClassical, OrbitalElements, semiMajorFromPeriod } from './elements';
 
 // 太陽に対する昇交点の歳差が一致すべき角速度の基準となる回帰年 [s]。
 const TROPICAL_YEAR_SEC = 365.2422 * 86400;
@@ -72,7 +72,7 @@ export function dawnDuskElements(
 function criticalInclinationElements(
   perigeeAltitude: number, raanDeg: number, period: number, planet: CelestialMotion, planetPivot: number,
 ): OrbitalElements {
-  const a = Math.cbrt((planet.def.mu * period * period) / (4 * Math.PI * Math.PI));
+  const a = semiMajorFromPeriod(period, planet.def.mu);
   const e = 1 - (planet.def.radius + perigeeAltitude) / a;
   return orbitalElementsFromClassical(
     a, e, CRITICAL_INCLINATION_DEG, raanDeg, 270, planet, planet.stateAt(planetPivot));
