@@ -1,12 +1,12 @@
 // セーブブラウザ右ペイン(スナップショット一覧)の DOM 構築。
 // クリップ済み/自動の区画分け、ステージ切替タブ、カード1件ごとの表示と操作ボタンを組み立てる。
 // 表示対象の状態やクリップ・改名・削除・分岐などの実処理は、コールバックを通じて呼び出し側へ委ねる。
-import { AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../../save/save-slots';
-import type { SaveSlotMeta, SnapshotMeta } from '../../save/save-data';
-import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../utils';
-import { Button, Meter, TabBar } from '../widgets';
-import { injectOnce } from '../widgets/inject-style';
-import { smallBtn, stageLabel } from './save-browser-shared';
+import { AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../../game/save/save-slots';
+import type { SaveSlotMeta, SnapshotMeta } from '../../game/save/save-data';
+import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../game/hud/utils';
+import { Button, Meter, TabBar } from '../../game/hud/widgets';
+import { injectOnce } from '../../game/hud/widgets/inject-style';
+import { smallBtn, stageLabel } from './shared';
 
 const STYLE = `
 /* このパネルで唯一の「押すと今の状態が増える」操作 — 注目させるためオレンジを残す。 */
