@@ -1,8 +1,8 @@
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { StageResult } from '../../stages/stage';
-import { FONT_L, SPACE_6 } from '../../theme';
-import type { Hud } from '../hud';
-import type { OverlayHandle } from '../overlay-manager';
+import { KEY_MAPPING as K } from '../game/input/key-mapping';
+import type { StageResult } from '../game/stages/stage';
+import { FONT_L, SPACE_6 } from '../game/theme';
+import type { Hud } from '../game/hud/hud';
+import type { OverlayHandle } from '../game/hud/overlay-manager';
 
 // 決着した周回の次(再出撃かタイトルへ戻るか)を決める契約。
 export interface RunTransitions {

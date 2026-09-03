@@ -8,8 +8,6 @@ export {
 } from './property-window';
 export { ObjectPicker, type ObjectPickerGroup } from './object-picker';
 export { ResourceTransferDialog } from './resource-transfer-dialog';
-export { ResultScreen, type RunTransitions } from './result-screen';
-export { SaveBrowser, type CurrentGameSource } from './save-browser';
 export { SettingsView } from './settings-view';
 export { HelpPanel } from './help-panel';
 export type { MenuAction } from './menu-actions';
