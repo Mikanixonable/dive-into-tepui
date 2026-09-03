@@ -1,4 +1,4 @@
-import { Game } from '../game';
+import { Game } from '../../game/game';
 import { SnapshotService } from './snapshot-service';
 
 // 「いつ自動で撮るか」だけを持つ。実際の撮影(GameSaveData の組み立て・永続化)は

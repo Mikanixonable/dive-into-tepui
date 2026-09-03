@@ -1,13 +1,14 @@
-import { Game } from '../game';
-import { SAVE_VERSION } from './save-data';
-import { orbitInfo } from '../hud/orbit/orbit-info';
-import { autoOrbitReference } from '../orbit-reference';
-import { fmtDist, fmtTime } from '../hud/utils';
+import { Game } from '../../game/game';
+import { SAVE_VERSION } from '../../game/save/save-data';
+import { orbitInfo } from '../../game/hud/orbit/orbit-info';
+import { autoOrbitReference } from '../../game/orbit-reference';
+import { fmtDist, fmtTime } from '../../game/hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
-import { ephemerisContextFor, isEphemerisContextRestorable } from './ephemeris-context';
-import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData, SnapshotKind, SnapshotMeta } from './save-data';
-import type { OrbitInfo } from '../hud/orbit/orbit-info';
+import { ephemerisContextFor, isEphemerisContextRestorable } from '../../game/save/ephemeris-context';
+import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData } from '../../game/save/save-data';
+import type { SnapshotKind, SnapshotMeta } from './slot-data';
+import type { OrbitInfo } from '../../game/hud/orbit/orbit-info';
 
 // Game の実行状態と GameSaveData の相互変換、およびストア/スロットへの出し入れを担う。
 export class SnapshotService {
