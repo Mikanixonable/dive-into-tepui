@@ -22,7 +22,7 @@ import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { ViewFrame } from './view';
-import type { PerfCounts } from '../../perf-meter';
+import type { PerfCounts } from '../perf-counts';
 
 export class MapView implements ViewFrame {
   private readonly picking: MapPicking;

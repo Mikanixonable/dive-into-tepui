@@ -14,7 +14,7 @@
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer, PhysicalLightingModel } from 'three/webgpu';
 import { BRDF_Lambert, diffuseColor, metalness, mix, screenUV, texture, vec3 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { LIT_OPAQUE_LAYER, isStandardMaterial, setOpaquePassLayers } from './lit-layer';
 import { toStandardNodeMaterial } from '../standard-node-material';
 import type { LightPrepass } from './light-prepass';

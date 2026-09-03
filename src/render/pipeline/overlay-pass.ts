@@ -12,7 +12,7 @@
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { max, min, screenUV, texture, uniform, vec2, vec4 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import {
   SCHEMATIC_OVERLAY_ALPHA_GAIN, SCHEMATIC_OVERLAY_DARKEN, SCHEMATIC_OVERLAY_DILATE_PX,
 } from '../schematic-style';
