@@ -14,8 +14,8 @@ import { haloState, lissajousState } from '../../physics/halo';
 import { secondaryFrameOf } from '../../physics/lagrange';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import { qRotate } from '../../math/quat';
-import { Vec3, add, addScaled, v3 } from '../../math/vec3';
+import { LOCAL_FORWARD, qRotate } from '../../math/quat';
+import { Vec3, add, addScaled } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem, ProjectFn } from '../camera/camera-system';
@@ -157,7 +157,7 @@ export class CreativeStage extends Stage {
       return;
     }
     const color = Number(colorValue);
-    const forward = qRotate(player.att.q, v3(0, 0, 1));
+    const forward = qRotate(player.att.q, LOCAL_FORWARD);
     const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
     const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
     const name = `MANUAL-${++this.manualEnemyCount}`;
@@ -188,7 +188,7 @@ export class CreativeStage extends Stage {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
-    const forward = qRotate(player.att.q, v3(0, 0, 1));
+    const forward = qRotate(player.att.q, LOCAL_FORWARD);
     const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
     const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
     const name = `FORMATION-${++this.manualFormationCount}`;

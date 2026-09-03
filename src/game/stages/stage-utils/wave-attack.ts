@@ -14,7 +14,7 @@ import { apsisAltitudes } from '../../../physics/elements';
 import { R_EARTH } from '../../celestial/solar-system/constants';
 import { strongestAttractor } from '../../../physics/attractor';
 import { orbitalElementsOf } from '../../../physics/elements';
-import { Vec3, add, addScaled, len, norm, randPerp, scale, sub, v3 } from '../../../math/vec3';
+import { add, addScaled, len, norm, randPerp, randVec, scale, sub, Vec3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
 
 const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m](wave-attack.ts)
@@ -264,7 +264,7 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
     const jitter = scale(randPerp(approachDir), (Math.random() - 0.5) * 200);
     pos = add(centerR, add(scale(approachDir, -offset), jitter));
   } else {
-    const randDir = norm(v3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5));
+    const randDir = norm(randVec(1));
     const randDist = Math.random() * STAGE00_FORMATION_SPACING * (shipCount / 2);
     pos = add(centerR, scale(randDir, randDist));
   }

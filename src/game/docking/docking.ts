@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { v3, len, sub, dot, norm } from '../../math/vec3';
+import { addScaled, dot, len, norm, sub, v3 } from '../../math/vec3';
 import { kinematicState } from '../../physics/kinematic-state';
 import { Hud } from '../hud/hud';
 import { BasePanel } from '../hud/panels/base-view';
@@ -51,6 +51,9 @@ export interface DockingCandidate {
 
 const alignmentErrorDeg = (alignment: number): number =>
   Math.acos(Math.max(-1, Math.min(1, alignment))) * 180 / Math.PI;
+
+const LAUNCH_CLEARANCE = 15; // 発進時にスロット法線方向へ離す距離 [m]
+const LAUNCH_SEPARATION_SPEED = 2.5; // 発進時にスロット法線方向へ与える相対速度 [m/s]
 
 export class Docking {
   readonly basePanel: BasePanel;
@@ -319,16 +322,8 @@ export class Docking {
     const slotPos = base.getSlotWorldPos(slotIndex);
     const slotNormal = base.getSlotWorldNormal(slotIndex);
 
-    const launchPos = v3(
-      slotPos.x + slotNormal.x * 15,
-      slotPos.y + slotNormal.y * 15,
-      slotPos.z + slotNormal.z * 15,
-    );
-    const launchVel = v3(
-      base.state.v.x + slotNormal.x * 2.5,
-      base.state.v.y + slotNormal.y * 2.5,
-      base.state.v.z + slotNormal.z * 2.5,
-    );
+    const launchPos = addScaled(slotPos, slotNormal, LAUNCH_CLEARANCE);
+    const launchVel = addScaled(base.state.v, slotNormal, LAUNCH_SEPARATION_SPEED);
 
     ship.state = kinematicState<'eci'>(base.state.t, launchPos, launchVel);
     this.entities.addPlayer(ship);
