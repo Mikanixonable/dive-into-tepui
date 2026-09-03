@@ -14,7 +14,6 @@ import { GraphicsSettings } from '../../src/render/graphics-settings';
 import { castsCumulusShadow } from '../../src/render/pipeline/sun-occlusion-select';
 import { atmosphereDraws } from '../../src/render/atmosphere';
 import type { GraphicsSettingsData, GraphicsTarget } from '../../src/render/graphics-settings';
-import { lambertPhase } from '../../src/physics/lambert-sphere';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
 import { R_SUN } from '../../src/game/celestial/solar-system/constants';
@@ -51,9 +50,6 @@ const SUN_POSITION = new THREE.Vector3();
 // 恒星方向とカメラ位置を毎フレーム組み立てる書き込み先。
 const SUN_DIRECTION = new THREE.Vector3();
 const CAMERA_OFFSET = new THREE.Vector3();
-// 天体照の位相角を測る差分ベクトルの書き込み先。
-const SUN_TO_LIGHT = new THREE.Vector3();
-const ORIGIN_TO_LIGHT = new THREE.Vector3();
 
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
@@ -296,21 +292,15 @@ export class LabView implements GraphicsTarget {
     const sunDistance = this.sunDistance;
     SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
     this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_LIGHT_COLOR, REFERENCE_STAR_RADIANT_INTENSITY);
-    // 天体照。ケースが置いた光源をスロットへ書く。放射輝度は恒星のつまみの距離と、
-    // 描画原点を基準点とした位相角に追随する。
-    this.pipeline.planetLight.set((this.current.planetLights ?? []).map((light) => {
-      const toSun = SUN_TO_LIGHT.copy(SUN_POSITION).sub(light.center);
-      const toOrigin = ORIGIN_TO_LIGHT.copy(ORIGIN).sub(light.center);
-      const phase = lambertPhase(toSun.angleTo(toOrigin));
-      const base = planetRadiance(
+    // 天体照。ケースが置いた光源をスロットへ書く。放射輝度は恒星のつまみの距離に追随し、
+    // 満ち欠けは受け手ごとにライティングパスが引く。
+    this.pipeline.planetLight.set((this.current.planetLights ?? []).map((light) => ({
+      center: light.center,
+      radius: light.radius,
+      radiance: planetRadiance(
         light.albedo, irradianceAtDistance(REFERENCE_STAR_RADIANT_INTENSITY, SUN_POSITION.distanceTo(light.center)),
-      );
-      return {
-        center: light.center,
-        radius: light.radius,
-        radiance: [base[0] * phase, base[1] * phase, base[2] * phase] as const,
-      };
-    }));
+      ),
+    })));
     // 順応の基準点は描画原点。**ケースの sunDistance はここから恒星までの距離**なので、
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
     this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION, REFERENCE_STAR_RADIANT_INTENSITY);
