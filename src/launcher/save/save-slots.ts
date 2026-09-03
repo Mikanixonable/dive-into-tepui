@@ -1,13 +1,13 @@
+import type { GameSaveData } from '../../game/save/save-data';
 import {
-  SaveIndex,
-  SaveSlotMeta,
-  StageHistoryMeta,
-  SnapshotMeta,
-  SlotExport,
-  GameSaveData,
+  type SaveIndex,
+  type SaveSlotMeta,
+  type StageHistoryMeta,
+  type SnapshotMeta,
+  type SlotExport,
   SLOT_EXPORT_FORMAT,
   SLOT_EXPORT_VERSION,
-} from './save-data';
+} from './slot-data';
 import { SaveStore, SAVE_INDEX_VERSION } from './save-store';
 
 export const AUTO_SNAPSHOT_LIMIT = 12;

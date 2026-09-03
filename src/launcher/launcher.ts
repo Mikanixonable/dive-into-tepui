@@ -9,8 +9,8 @@ import type { GamePhase, Stage, StageClass, StageResult } from '../game/stages/s
 import { findStageClass } from '../game/stages/stage-dictionary';
 import { selectStage } from './stage-select';
 import type { UnlockManager } from './unlock-manager';
-import type { SaveSlots } from '../game/save/save-slots';
-import type { SnapshotService } from '../game/save/snapshot-service';
+import type { SaveSlots } from './save/save-slots';
+import type { SnapshotService } from './save/snapshot-service';
 import type { GameSaveData } from '../game/save/save-data';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';

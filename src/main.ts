@@ -14,22 +14,22 @@ import { RenderPipeline } from './render/pipeline/render-pipeline';
 import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
 import { PauseMenu, SettingsView } from './game/hud/windows';
-import { SaveBrowser } from './launcher/save-browser/save-browser';
+import { startProteinAssetPreload } from './game/protein/protein-asset-loader';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { UiSfx } from './audio/sfx/ui-sfx';
 import { WorldSfx } from './audio/sfx/world-sfx';
-import { UnlockManager } from './launcher/unlock-manager';
-import { LocalStorageSaveStore } from './game/save/save-store';
-import { SaveSlots } from './game/save/save-slots';
-import { SnapshotService } from './game/save/snapshot-service';
-import { AutoSave } from './game/save/autosave';
-import { migrateLegacySave } from './game/save/legacy-save';
-import { SnapshotControls } from './launcher/snapshot-controls';
 import { Launcher } from './launcher/launcher';
+import { UnlockManager } from './launcher/unlock-manager';
+import { SnapshotControls } from './launcher/snapshot-controls';
+import { SaveBrowser } from './launcher/save-browser/save-browser';
+import { LocalStorageSaveStore } from './launcher/save/save-store';
+import { SaveSlots } from './launcher/save/save-slots';
+import { SnapshotService } from './launcher/save/snapshot-service';
+import { AutoSave } from './launcher/save/autosave';
+import { migrateLegacySave } from './launcher/save/legacy-save';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
-import { startProteinAssetPreload } from './game/protein/protein-asset-loader';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
