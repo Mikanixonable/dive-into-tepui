@@ -115,7 +115,7 @@ export class FocusCamera {
   private fovDeg = FOCUS_CAMERA_FOV;
   private projectionMode: ProjectionMode;
   private orthographicHalfHeight = 1;
-  // カメラのローカル(+Z=注視点からカメラ、+Y=画面上)を cameraFrame へ写す向き。
+  // カメラのローカル(+Z=注視点からカメラ、+Y=画面上)を _cameraFrame へ写す向き。
   // 二表現の同期と姿勢追従の合成は CameraOrientation が担う。
   private readonly orientation: CameraOrientation;
 
@@ -130,8 +130,8 @@ export class FocusCamera {
   // 選択中の追従が選択肢から外れた連続フレーム数。役割・機体の一時的な解決失敗に、
   // フォーカスと同じ2フレームの猶予を与える。
   private staleFollowFrames = 0;
-  private displayTime = 0; // set cameraFrame の座標変換に使う。線・メッシュと同じ表示時刻に揃える。
-  // 最新の update 呼び出しが受け取った FrameAnchorSource。reset/resetPan/cameraFrame setter は
+  private displayTime = 0; // 座標系変換に使う時刻。線・メッシュと同じ表示時刻に揃える。
+  // 最新の update 呼び出しが受け取った FrameAnchorSource。reset/resetPan/回転追従の切り替えは
   // フレームの外(入力ハンドラ)から呼ばれるため、update と同じ値をここから読む。
   private frameAnchors: FrameAnchorSource = bodyAnchorSource([], 0);
   private _focus: FocusTarget;
@@ -446,11 +446,6 @@ export class FocusCamera {
       return v3();
     }
     return result.pos;
-  }
-
-  // 現在視点を固定している座標系を返す。
-  get cameraFrame(): ReferenceFrame {
-    return this._cameraFrame;
   }
 
   // 最後に resolveFocus が解決した注視点の ECI 位置。

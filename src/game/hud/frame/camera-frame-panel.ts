@@ -30,21 +30,21 @@ export class CameraFramePanel {
   private readonly angleControl: Pulldown<typeof ANGLE_COLUMNS>;
   private readonly cameraSummary: HTMLElement;
 
-  public onSelectCenter: ((id: string | null) => void) | null = null;
-
   // panelRoot はパネル自身の設置先、popupRoot は AnchorZone のポップアップの親。
+  // selectCenter は基準ゾーンで対象が選ばれたときに呼ばれる(null は固定を解除)。
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly celestialSystem: CelestialSystem,
     private readonly mapCamera: FocusCamera,
     overlayManager: OverlayManager,
+    selectCenter: (id: string | null) => void,
   ) {
     this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
 
     this.cameraCenterZone = new AnchorZone(popupRoot, '基準', celestialSystem, '固定を解除', overlayManager);
     this.cameraCenterZone.element.classList.add('hud-frame-origin-zone');
-    this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
+    this.cameraCenterZone.onSelect = selectCenter;
     this.panel.appendChild(this.cameraCenterZone.element);
 
     this.cameraRotationZone = new RotationZone('回転', celestialSystem);

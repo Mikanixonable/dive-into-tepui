@@ -45,12 +45,13 @@ export class FrameControls {
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
-    this.cameraPanel = new CameraFramePanel(panelRoot, popupRoot, celestialSystem, mapCamera, overlayManager);
+    this.cameraPanel = new CameraFramePanel(
+      panelRoot, popupRoot, celestialSystem, mapCamera, overlayManager,
+      (id) => this.selectCameraCenter(id),
+    );
     this.trajectoryPanel = new TrajectoryFramePanel(
       panelRoot, popupRoot, celestialSystem, displayWindow, overlayManager,
     );
-
-    this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
   }
 
   // 離心率1未満の周回軌道にある役割だけを、回転ゾーンの「役割の公転」選択肢として返す。
