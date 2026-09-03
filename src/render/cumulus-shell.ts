@@ -30,23 +30,28 @@ const CUMULUS_ROUGHNESS = 1;
 // 画素が抜ける。
 const DITHER_LEVELS = 256;
 
-// 積雲の精細さの段。**値は保存された設定を読む鍵なので、段を足すときも既存の値を動かさない**
-// — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
-export const CUMULUS_DETAIL = { coarse: 1, standard: 2, fine: 3 } as const;
+// 積雲の精細さの段。オフは殻を描かない段。**値は保存された設定を読む鍵なので、段を足すときも
+// 既存の値を動かさない** — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
+export const CUMULUS_DETAIL = { off: 0, coarse: 1, standard: 2, fine: 3 } as const;
 export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL];
 
-// 段ごとの、視線を雲頂へ下ろす刻み数。**1 増やすと場と粒を 1 回ずつ余分に引く**ので、
-// G バッファパスの費用はここで決まる。粗い段では刻みが雲頂をまたぐ幅も広く、二分で締めても
-// 縁と雲頂は段に割れて残る。
-const MARCH_STEPS_OF_DETAIL: Readonly<Record<CumulusDetail, number>> = {
-  [CUMULUS_DETAIL.coarse]: 3,
-  [CUMULUS_DETAIL.standard]: 6,
-  [CUMULUS_DETAIL.fine]: 12,
-};
+// 雲頂を探す標本の配り方。march は殻の中を等間隔にたどる刻みの数(どの交点を見つけるかを決める)、
+// refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を決める)。
+type CumulusSampling = { readonly march: number; readonly refine: number };
 
-// 雲頂をまたいだ区間を締める二分の回数。1 回が刻み 1 回ぶんの費用だが、**段では動かさない**
-// — 縁の粗さは締める前の区間の広さが決めるので、刻みを減らした段でここまで削ると二重に粗くなる。
-const REFINE_STEPS = 3;
+// 段ごとの標本の配り方。**費用は march + refine 回の標本化**、深さの分解能は march と 2^refine の
+// 積で決まる。march 0 は「どの視線も雲頂と交わらない」に落ちる。
+//
+// **いちばん粗い段の march は 1 本に留める** — 2 本以上あると、手前の刻みで拾った雲頂と奥の
+// 刻みで拾った雲頂が 2 枚の層として重なって読める。1 本なら殻の内側に層は立たず、雲頂の高さ
+// だけを持つ一枚の不透明な面になる。**そのぶん二分の回数はここだけ増やす** — 締める前の区間が
+// 殻の端から端まで広がるので、他の段と同じ回数では雲頂が深さの段へ割れて縞に見える。
+const SAMPLING_OF_DETAIL = {
+  [CUMULUS_DETAIL.off]: { march: 0, refine: 0 },
+  [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5 },
+  [CUMULUS_DETAIL.standard]: { march: 6, refine: 3 },
+  [CUMULUS_DETAIL.fine]: { march: 12, refine: 3 },
+} as const satisfies Readonly<Record<CumulusDetail, CumulusSampling>>;
 
 // 粒の 1 波長が何画素を切ったら消し始め、何画素まで残すか。標本化できない粒はモアレにしか
 // ならないので、Nyquist の 2 画素へ落ちるまでに振幅を 0 へ渡す。
@@ -55,8 +60,8 @@ const GRAIN_FADE_FULL_PIXELS = 4;
 
 export class CumulusShell {
   private readonly fieldMap: DeferredTexture;
-  // 精細さの段と、その段の刻み数まで展開したマテリアル。段は表示側が毎フレーム押し込む。
-  private detail: CumulusDetail = CUMULUS_DETAIL.standard;
+  // 標本の配り方と、その回数まで展開したマテリアル。配り方は表示側が毎フレーム押し込む。
+  private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
   private material: THREE.Material;
   private readonly blueNoise = new BlueNoise();
   // 殻を半径 1 とする物体空間での地表の半径。レイマーチの下端になる。
@@ -104,20 +109,26 @@ export class CumulusShell {
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
-  // 積雲の精細さの段を置き直す。**段はレイマーチの刻み数としてグラフへ展開済み**なので、
-  // 変わったらマテリアルを組み直して全段のメッシュへ張り替える。
+  // 積雲の精細さの段を置き直す。
   public setDetail(detail: CumulusDetail): void {
-    if (detail === this.detail) return;
-    this.detail = detail;
+    this.setSampling(SAMPLING_OF_DETAIL[detail]);
+  }
+
+  // 標本の配り方を置き直す。**回数はレイマーチの展開としてグラフへ焼かれている**ので、
+  // 変わったらマテリアルを組み直して全段のメッシュへ張り替える。
+  private setSampling(sampling: CumulusSampling): void {
+    if (sampling.march === this.sampling.march && sampling.refine === this.sampling.refine) return;
+    this.sampling = sampling;
     const previous = this.material;
     this.material = this.buildMaterial();
     for (const mesh of this.meshes.values()) mesh.material = this.material;
     previous.dispose();
   }
 
-  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。刻みを持たない配り方では
+  // 全段を隠す。
   public syncLod(apparentDiameterPx: number): void {
-    const level = sphereLodLevel(apparentDiameterPx);
+    const level = this.sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
     for (const [meshLevel, mesh] of this.meshes) mesh.visible = meshLevel === level;
@@ -170,14 +181,14 @@ export class CumulusShell {
         along.negate().sub(sqrt(max(groundHalf, 0))),
         along.negate().add(sqrt(max(half.add(1), 0))),
       ), 0);
-      const marchSteps = MARCH_STEPS_OF_DETAIL[this.detail];
-      const stepLength = marchEnd.div(marchSteps);
+      const sampling = this.sampling;
+      const stepLength = marchEnd.div(sampling.march);
 
       // 雲頂より内側へ入った最初の刻みを、その手前の刻みと一緒に覚える。
       const hit = float(0).toVar();
       const above = float(0).toVar();
       const below = marchEnd.toVar();
-      for (let stepIndex = 1; stepIndex <= marchSteps; stepIndex++) {
+      for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
         const distance = stepLength.mul(stepIndex);
         const inside = this.clearanceAt(
           entry.add(direction.mul(distance)), threshold, grainAmplitude).lessThan(0);
@@ -188,7 +199,7 @@ export class CumulusShell {
         If(hit.lessThan(0.5), () => { above.assign(distance); });
       }
       // 雲頂をまたいだ区間を二分して縁を締める。
-      for (let refineIndex = 0; refineIndex < REFINE_STEPS; refineIndex++) {
+      for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
         const middle = above.add(below).mul(0.5);
         const inside = this.clearanceAt(
           entry.add(direction.mul(middle)), threshold, grainAmplitude).lessThan(0);
