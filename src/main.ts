@@ -13,7 +13,7 @@ import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-s
 import { RenderPipeline } from './render/pipeline/render-pipeline';
 import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
-import { PauseMenu, SettingsView } from './game/hud/windows';
+import { PauseMenu, SettingsView } from './hud/windows/index';
 import { startProteinAssetPreload } from './game/protein/protein-asset-loader';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';

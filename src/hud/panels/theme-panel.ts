@@ -1,4 +1,4 @@
-import { applyThemePalette, currentThemePalette, THEME_PRESETS } from '../../../theme';
+import { applyThemePalette, currentThemePalette, THEME_PRESETS } from '../../theme';
 import { Button } from '../widgets';
 
 // 設定ビューの「配色」タブ。テーマプリセットをボタン一覧で並べ、押したテーマを即座に適用する。

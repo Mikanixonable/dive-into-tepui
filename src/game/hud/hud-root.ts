@@ -1,8 +1,8 @@
 // HUD の静的 DOM/スタイル構築。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { injectThemeVariables } from '../../theme';
-import { buildOverlayLayers } from './overlay-layer';
-import { OverlayManager } from './overlay-manager';
+import { buildOverlayLayers } from '../../hud/overlay-layer';
+import { OverlayManager } from '../../hud/overlay-manager';
 import { HelpPanel } from './windows/help-panel';
 import { PanelShell, wirePanelCollapse } from './panel-shell';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
@@ -10,31 +10,32 @@ import { SKELETON_STYLE } from './style/skeleton-style';
 import { MARKER_STYLE } from './style/marker-style';
 import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
 import { MAP_PANEL_STYLE } from './style/map-panel-style';
-import { SCREEN_STYLE } from './style/screen-style';
+import { STAGE_STATUS_STYLE } from './style/stage-status-style';
+import { PAUSE_MENU_STYLE } from '../../hud/style/pause-menu-style';
 import { HELP_PANEL_STYLE } from './style/help-panel-style';
-import { SETTINGS_VIEW_STYLE } from './style/settings-view-style';
+import { SETTINGS_VIEW_STYLE } from '../../hud/style/settings-view-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
-import { isCompactViewport } from './breakpoints';
-import { startViewportTracking } from './viewport';
-import { WIDGET_STYLE } from './widgets';
+import { isCompactViewport } from '../../hud/breakpoints';
+import { startViewportTracking } from '../../hud/viewport';
+import { WIDGET_STYLE } from '../../hud/widgets';
 import type { RenderStyleSetting } from '../../render/render-style';
 import type { View } from '../view/view';
-import type { OverlayLayers } from './overlay-layer';
-import type { CollapseToggleLabels } from './widgets';
+import type { OverlayLayers } from '../../hud/overlay-layer';
+import type { CollapseToggleLabels } from '../../hud/widgets';
 export {
   buildCollapseToggle,
   type CollapseToggleLabels,
   COLLAPSE_EXPANDED_GLYPH,
   COLLAPSE_COLLAPSED_GLYPH,
   PREDICT_TOGGLE_LABELS,
-} from './widgets';
+} from '../../hud/widgets';
 
 // トークン→骨格→マーカー→パネル群→ビュー→ウィジェット共通の順に結合する。
 // カスケードの後勝ちを利用する箇所（同一セレクタの再定義）は各ファイル内で完結させてある。
 const STYLE =
   LAYOUT_TOKENS_STYLE + SKELETON_STYLE + MARKER_STYLE
-  + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + SCREEN_STYLE
+  + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE + PAUSE_MENU_STYLE
   + HELP_PANEL_STYLE + SETTINGS_VIEW_STYLE
   + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE;
 

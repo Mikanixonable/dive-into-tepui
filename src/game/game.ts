@@ -23,7 +23,7 @@ import { Predictor } from './dynamic/predictor';
 import { Input } from '../input/input';
 import { TouchControls } from './hud/touch-controls';
 import { Hud } from './hud/hud';
-import { PauseMenu } from './hud/windows/pause-menu';
+import { PauseMenu } from '../hud/windows/pause-menu';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import { GameScene } from '../render/scene';

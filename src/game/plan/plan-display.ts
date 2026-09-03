@@ -8,7 +8,7 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../math/projection';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { fmtMarkerDist } from '../hud/utils';
+import { fmtMarkerDist } from '../../hud/utils';
 import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
 import { MarkerManager } from '../marker/marker-manager';

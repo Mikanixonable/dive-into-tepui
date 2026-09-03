@@ -2,7 +2,7 @@
 // (距離・敵の形状/色・タンパク質表示設定)の DOM とその場の UI 状態だけを持つ。実際の補給状態の
 // 変更・敵の生成・表示の反映は、確定した値をコールバックで受け取った呼び出し側(CreativeStage)の
 // 責務。
-import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../hud/widgets';
+import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud/widgets';
 import { PROTEIN_ASSET_IDS, type ProteinAssetId } from '../protein/protein-asset-loader';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,

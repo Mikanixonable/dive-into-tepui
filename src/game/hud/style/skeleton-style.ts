@@ -1,11 +1,11 @@
 // HUD の骨格 CSS: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レールと、
 // 置き場を持たない画面固定バッジ・通知。末尾でブレークポイントごとの上書きと
 // prefers-reduced-motion を当てる。
-import { OVERLAY_LAYER_STYLE } from '../overlay-layer';
+import { OVERLAY_LAYER_STYLE } from '../../../hud/overlay-layer';
 import { LIGHT_PALETTE } from '../../../theme';
 import {
   MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
-} from '../breakpoints';
+} from '../../../hud/breakpoints';
 
 export const SKELETON_STYLE = `
 /* レイアウト骨格: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レール。 */

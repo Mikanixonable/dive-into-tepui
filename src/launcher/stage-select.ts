@@ -4,12 +4,12 @@ import { STAGE_CLASSES } from '../game/stages/stage-dictionary';
 import { UnlockManager } from './unlock-manager';
 import type { StageClass } from '../game/stages/stage';
 import { StageDebug } from '../game/stages/stage-debug';
-import { Button, TabBar, ValueInput } from '../game/hud/widgets';
+import { Button, TabBar, ValueInput } from '../hud/widgets';
 import {
   calendarDateToJulianDate, julianDateToCalendarDate, parseCalendarDate, TdbJulianDate,
 } from '../physics/time';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { MQ_COMPACT, MQ_SHORT } from '../game/hud/breakpoints';
+import { MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import {
   ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACTIVE_THEME, BG, SURFACE_0 as THEME_SURFACE_0,
