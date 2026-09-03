@@ -1,6 +1,6 @@
 // 折れ線グラフの描き手。渡された点列・軸・マークだけを canvas 2D へ描く汎用エンジンで、
 // 単位系や意味づけは軸構築側(orbit-chart-axes.ts)と呼び出し側が持つ。
-import { ACCENT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED } from '../../theme';
+import { ACCENT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED } from '../../../theme';
 import { injectOnce } from '../widgets/inject-style';
 import {
   CHART_LINE_WIDTH, CHART_MARK_RADIUS, CHART_MARK_RING_WIDTH, chartCanvasStyle,
