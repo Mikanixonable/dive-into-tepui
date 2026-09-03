@@ -1,11 +1,10 @@
-import { EPHEMERIS_PACK_VERSION } from '../../physics/ephemeris/pack-format';
-import { profileAtOrNull } from '../../physics/ephemeris/profile';
-import { createJulianDate, TdbJulianDate } from '../../physics/time';
+import { EPHEMERIS_PACK_VERSION } from './pack-format';
+import { profileAtOrNull } from './profile';
+import { createJulianDate, TdbJulianDate } from '../time';
 
-// Keep this small compatibility module independent from entity save types. In
-// particular, the physics test build can exercise it without pulling the DOM
-// and Three.js dependent game graph into its Node-only compiler target.
-interface EphemerisContextValue {
+// スナップショットが「どの元期・どの暦プロファイル・どの pack で作られたか」。
+// この形のまま GameSaveData の1フィールドとして保存される。
+export interface EphemerisContext {
   // このランの元期(simTime=0 が指す絶対時刻)。**照合の対象ではなく、継承する値。**
   epochJdTdb: number;
   // その元期が選ぶ暦プロファイルと暦パック。数値暦を持たない時代では両方 null。
@@ -22,7 +21,7 @@ interface EphemerisContextValue {
 // This takes the run's epoch rather than reading a shared constant: the epoch is
 // a per-run value, and this module must stay free of the game graph so the
 // physics test build can exercise it.
-export function ephemerisContextFor(epoch: TdbJulianDate): Readonly<EphemerisContextValue> {
+export function ephemerisContextFor(epoch: TdbJulianDate): Readonly<EphemerisContext> {
   const profile = profileAtOrNull(epoch.value);
   return Object.freeze({
     epochJdTdb: epoch.value,
@@ -52,7 +51,7 @@ function isProfileRef(value: unknown): value is string | null {
   return value === null || (typeof value === 'string' && value.length > 0);
 }
 
-function isValidContext(value: unknown): value is EphemerisContextValue {
+function isValidContext(value: unknown): value is EphemerisContext {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const context = value as Record<string, unknown>;
   return isFiniteNumber(context.epochJdTdb) &&
@@ -65,7 +64,7 @@ function isValidContext(value: unknown): value is EphemerisContextValue {
 
 export function ephemerisContextStatus(
   saved: unknown,
-  current: Readonly<EphemerisContextValue>,
+  current: Readonly<EphemerisContext>,
 ): EphemerisContextStatus {
   // Absence is the explicitly supported legacy migration path. null and any
   // malformed value are explicit-but-invalid context and must not be treated
@@ -83,7 +82,7 @@ export function ephemerisContextStatus(
 
 export function isEphemerisContextCompatible(
   saved: unknown,
-  current: Readonly<EphemerisContextValue>,
+  current: Readonly<EphemerisContext>,
 ): boolean {
   return ephemerisContextStatus(saved, current) !== 'incompatible';
 }

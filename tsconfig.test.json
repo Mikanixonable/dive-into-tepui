@@ -31,6 +31,7 @@
     "src/game/creative/placement-validation.ts",
     "src/game/celestial/solar-system/point-field.ts",
     "src/game/camera/focus-target.ts",
+    "src/physics/ephemeris/ephemeris-context.ts",
     "tests/*.ts",
     "tests/physics/**/*.ts",
     "tests/math/**/*.ts",
