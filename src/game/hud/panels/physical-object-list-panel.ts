@@ -1,10 +1,7 @@
+import { hudRail } from '../hud-root';
 import {
-  COLLAPSE_COLLAPSED_GLYPH,
-  COLLAPSE_EXPANDED_GLYPH,
-  hudRail,
-  type CollapseToggleLabels,
-} from '../hud-root';
-import { Button, SegmentedControl } from '../../../hud/widgets';
+  Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
+} from '../../../hud/widgets';
 import { expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { injectOnce } from '../../../hud/widgets/inject-style';
 import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../panel-shell';

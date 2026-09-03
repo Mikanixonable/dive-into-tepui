@@ -1,6 +1,5 @@
 // セーブブラウザの左右ペイン(スロット一覧・スナップショット一覧)が共通で使う表示部品。
 // 汎用ボタンの組み立てと、ステージ id から表示名への解決を持つ。
-// ペイン自身の状態・一覧の並び順には触れない。
 import { Button } from '../../hud/widgets';
 import { injectOnce } from '../../hud/widgets/inject-style';
 import { findStageClass } from '../../game/stages/stage-dictionary';
