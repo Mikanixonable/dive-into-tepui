@@ -41,7 +41,7 @@ export function createProteinEnemyDefinition(
   };
 }
 
-// asset の fetch 完了(protein-asset-loader.startProteinAssetPreload)を待ってから作るため、
+// asset の fetch 完了(protein-asset-loader.requestProteinAsset が起こす)を待ってから作るため、
 // 事前に全件は構築できない。id ごとに初回アクセス時に組み、以降は使い回す。
 const proteinEnemyDefinitionCache = new Map<ProteinAssetId, ProteinEnemyDefinition>();
 

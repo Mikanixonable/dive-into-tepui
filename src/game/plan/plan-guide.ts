@@ -6,7 +6,7 @@ import { CelestialMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf } from '../../physics/elements';
 import { addScaled, dot, len, norm, sub } from '../../math/vec3';
 import { Hud } from '../hud/hud';
-import { fmtDist, fmtSpeed, fmtTime } from '../hud/utils';
+import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager, MARKER_DIR_DIST } from '../marker/marker-manager';
@@ -39,8 +39,8 @@ export class PlanGuide {
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
   // ノードごとに一度だけ通知する。player がいなければ何もしない。
-  update(player: Player | null, simTime: number, editMode: boolean, celestialBodies: readonly CelestialMotion[]): void {
-    if (!player || editMode) return;
+  update(player: Player | null, simTime: number, celestialBodies: readonly CelestialMotion[]): void {
+    if (!player) return;
     const plan = player.plan;
     plan.consumeNodesUpTo(simTime - NODE_EXPIRE_GRACE, player.state);
 
@@ -56,9 +56,9 @@ export class PlanGuide {
   // 直近ノードの NODE・BURN マーカーを同期する。位置と方向は path の表示変換を通す —
   // 同じ計画を描いた折れ線とマーカーが同じ座標系に載っていなければ、線の上に立たない。
   sync(
-    player: Player | null, simTime: number, editMode: boolean, project: ProjectFn, path: PlanPath,
+    player: Player | null, simTime: number, project: ProjectFn, path: PlanPath,
   ): void {
-    const node = editMode || !player ? undefined : player.plan.firstNode();
+    const node = player?.plan.firstNode();
     if (!player || !node) {
       this.markerManager.hide('nd');
       this.markerManager.hide('burn');

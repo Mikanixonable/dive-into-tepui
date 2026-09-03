@@ -191,9 +191,9 @@
 | `src/game/celestial/point-field-view.ts` | `sunPos` / `hasStar` | **該当**。`sync` の引数へ移す。`dirtyIndices` / `positions` / `cursor` は数フレームに分けて再評価するラウンドロビンの状態なので例外1 |
 | `src/game/player/belt.ts` | `visibleCount` | **該当の疑い**。残弾から導けるので `sync` で引けるか確かめる |
 | `src/game/player/radiator.ts` | `wear` | **該当の疑い**。パーツ HP の写しなので `sync` で引けるか確かめる |
-| `src/game/pickable/map-pickables.ts` | `candidateItems` / `_lastSimTime` | 例外2。`map-context-actions.ts` の右クリック・プロパティウィンドウが `pickables` / `lastSimTime` をフレームの外から読む |
-| `src/game/plan/plan-display.ts` | `apsisIcons` / `impactIcons` / `tickIcons` / `ghost` | 例外2。`apsisMarkers` を `MapPickables.refresh` が、`apsisTimeOf` を `map-pickable-menu.ts` がフレームの外から読む |
-| `src/game/marker/equator-node-marker-pair.ts` | `icons` | 例外2。`mapPickables()` が右クリック候補として公開する |
+| `src/game/pickable/object-pickables.ts` | `candidateItems` / `_lastSimTime` | 例外2。`map-picking.ts` の右クリックと `object-windows.ts` のプロパティウィンドウが `pickables` / `lastSimTime` をフレームの外から読む |
+| `src/game/plan/plan-display.ts` | `apsisIcons` / `impactIcons` / `tickIcons` / `ghost` | 例外2。`apsisMarkers` を `ObjectPickables.refresh` が、`apsisTimeOf` を `map-pickable-menu.ts` がフレームの外から読む |
+| `src/game/marker/equator-node-marker-pair.ts` | `icons` | 例外2。`pickables()` が右クリック候補として公開する |
 | `src/game/nav-target.ts` | `anPos` / `anTime` / `dnPos` / `dnTime` / `closestPos` / `closestTime` / `timeLabel` | 例外2。同上 |
 | `src/game/plan/plan-path.ts` | `frame` / `frameAnchors` / `unbakeTime` / `sources` / `displayFrom` / `displayTo` / `activeCount` | 例外2。`toDisplay` / `toDisplayDir` / `nearestSample` がポインタイベント起点で呼ばれる(92〜96行のコメントが既に理由を書いている) |
 | `src/game/camera/focus-markers.ts` | `shownLabels` | 例外2。`bodyPickables` が候補を公開する |
@@ -248,7 +248,7 @@
 | `EquatorNodeMarkerPair.sync` の呼び出し元(`DynamicSystem.syncEquatorNodes`)が艦・基地の両方を回っていることを見落とし、片方だけ引数を通す | 基地の EqAN/EqDN だけ遮蔽が効かない | 手順2。基地を持つステージでマップを開く |
 | 手順3 で `computePreview` を `sync` へ移すとき、`update` 側に残った呼び出しを消し忘れて二重に走らせる | プレビューは正しく出るが、毎フレーム 2 回 `orbitalElementsOf` が走る | 手順3。`grep -n "computePreview\|computeFieldIssues" src/game/stages/creative-stage.ts` の呼び出しが各1箇所 |
 | 手順3 で `placerPanel.getForm()` を `sync` から呼ぶことを「`sync` が DOM を読んでいる」と見て避け、`update` に残す | 目的が達成されない。`sync` は DOM の**書き込み**を担う位相であり、読み取りは禁じられていない | 手順3 |
-| 手順4 で「`sync` だけが読む」の判定を、フレームの外から読む経路(ポインタ・右クリック・プロパティウィンドウ)を数えずに行う | 保持が要るフィールドを消し、右クリックメニューが空になる/古い値を出す | 手順4。`map-context-actions.ts` と `map-pickable-menu.ts` からの参照を全部たどる |
+| 手順4 で「`sync` だけが読む」の判定を、フレームの外から読む経路(ポインタ・右クリック・プロパティウィンドウ)を数えずに行う | 保持が要るフィールドを消し、右クリックメニューが空になる/古い値を出す | 手順4。`map-picking.ts` と `object-windows.ts` からの参照を全部たどる |
 | 手順4 で `point-field-view` の `dirtyIndices` まで消しにかかる | 全インスタンスを毎フレーム GPU へ書き戻すことになり、点群を出したマップのフレーム時間が跳ねる | 手順4。負荷確認ウィンドウのフレーム時間 |
 | 例外1・2 に当たるフィールドへ理由コメントを書かずに残す | 次に基準を当てる人が同じ判定をやり直す。基準を書いた意味が半分失われる | 手順4。表の「例外」行それぞれの宣言箇所 |
 | `DisplayWindow` を `sync` へ渡す形を、`dt` を渡してよい根拠として読まれる | `sync` がシミュレーションを進める経路が開く | 手順1。書き足す文へ「逆に `dt`・時間送り倍率・入力を `sync` へ渡してはならない」を必ず含める |

@@ -10,7 +10,7 @@ import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { EllipseLine } from '../../lines/ellipse-line';
 import type { MarkerManager } from '../../marker/marker-manager';
-import { MARKER_PRIORITY } from '../../marker/marker-manager';
+import { MARKER_PRIORITY } from '../../marker/crowding';
 
 // リングとラベルは中心天体から 240,000km で薄れ始め 720,000km で消える。
 const FADE_NEAR_DIST = 2.4e8;

@@ -104,8 +104,8 @@ export class PointFieldView {
   private groups: readonly PointFieldGroupView[] = [];
   // 現在の星系に恒星が実在するか。無ければ点群は太陽中心の座標を持てないので非表示にする。
   private hasStar = true;
-  // update は map の表示中だけ呼ばれるため、false から true へ戻るフレームを再入場とみなす。
-  private mapActive = false;
+  // update は描かれるフレームでだけ呼ばれるため、false から true へ戻るフレームを再入場とみなす。
+  private updated = false;
 
   // field はこの星系に付随する生成済みの点群。どんな分布から作られたかはここでは問わない。
   constructor(private readonly field: PointField) {}
@@ -117,24 +117,24 @@ export class PointFieldView {
   }
 
   // 表示時刻 t の点の位置を引き直す。starPos はこの星系の恒星の ECI 位置で、恒星を持たない星系では
-  // null。広範囲視点でないときは何もしない — 戦闘視点では描かれないので位置を求める意味がない。
-  update(t: number, overviewMode: boolean, starPos: Vec3 | null): void {
+  // null。
+  update(t: number, starPos: Vec3 | null): void {
     this.hasStar = starPos !== null;
-    if (!overviewMode || starPos === null) {
-      this.mapActive = false;
+    if (starPos === null) {
+      this.updated = false;
       return;
     }
     const sunPos = starPos;
-    const reentered = !this.mapActive;
-    this.mapActive = true;
+    const reentered = !this.updated;
+    this.updated = true;
     for (const group of this.groups) group.update(t, sunPos, reentered);
   }
 
   // update が求めた位置へ各インスタンスを置く。太陽の平行移動は mesh.position、個々の点の
   // 更新は instanceMatrix に分担させる。fixedBrightnessScale は露出の順応を打ち消す倍率で、
   // 読ませるために選んだ明るさをどこから見ても同じに保つ。
-  sync(fo: FloatingOrigin, overviewMode: boolean, smallBodyVisible: boolean, fixedBrightnessScale: number): void {
-    const visible = overviewMode && this.hasStar && smallBodyVisible;
+  sync(fo: FloatingOrigin, show: boolean, smallBodyVisible: boolean, fixedBrightnessScale: number): void {
+    const visible = show && this.hasStar && smallBodyVisible;
     for (const group of this.groups) group.sync(fo, visible, fixedBrightnessScale);
   }
 

@@ -28,7 +28,7 @@
 1. **`Physical` が対を持たない。** `NonPhysicalObject` は無く、`Physical` は何も区別していない。
    その上で**ラグランジュ点(質量を持たない幾何点)を含むので、事実としても誤り。**
 2. **`Object` が4つの無関係な概念に付いている**(次節)。CODING-RULE 2.1「類義語の混雑」。
-3. **一覧が扱うのは `MapPickable` であってエンティティではない。** `MapPickable` は
+3. **一覧が扱うのは `ObjectPickable` であってエンティティではない。** `ObjectPickable` は
    `id`/`name`/`pos`/`kind`/`detail` を毎フレーム組み直す表示用のレコードで、
    CODING-RULE 2.2 の `entity`(= 物体ひとつの動きと見た目を統合するもの)ではない。
    **`EntityListPanel` へ改名すると、いま無い誤りを新しく作る。**
@@ -37,15 +37,15 @@
 
 ## 空クリックには「2Dを3Dにする」処理が無い
 
-`map-context-actions.ts:448` が組んでいるのは
+`object-windows.ts:448` が組んでいるのは
 `{ id: 'empty', name: '宇宙空間', pos: v3(0, 0, 0), kind: 'empty-space' }` で、
 **`pos` は原点固定のダミー。** 逆投影もレイも無い。
 `map-pickable-menu.ts:295-315` の `itemsFor` / `run` は `target` を一切読まず、
 読まれるのは `name`(メニューの題名)だけである。
 
 **したがって `ClickRay` / `MouseRay` の類は当たらない** — 光線は存在しない。
-ここにあるのは `ContextMenu<MapPickable, MenuAction>` の型を満たすためだけに
-`MapPickable` を借りている状態で、CODING-RULE 1.7「オブジェクトの流用の禁止」に当たる。
+ここにあるのは `ContextMenu<ObjectPickable, MenuAction>` の型を満たすためだけに
+`ObjectPickable` を借りている状態で、CODING-RULE 1.7「オブジェクトの流用の禁止」に当たる。
 **改名ではなく、型の流用をやめることで直す**(手順1)。
 
 ## `Object` が指している4つの別概念
@@ -107,19 +107,19 @@
   CODING-RULE 2.2 が別の意味で固定済み、`object` は上の A〜D で既に4分裂、`body` は
   2.2 が無標での使用を禁止、字形での命名は上表のとおり事実に反する。
 
-## 決定2. `PhysicalObjectList*` は `MapPickableList*` にする
+## 決定2. `PhysicalObjectList*` は `ObjectPickableList*` にする
 
-一覧が消費しているのは `MapPickable` そのもの(`sync(items: readonly MapPickable[], ...)`)
+一覧が消費しているのは `ObjectPickable` そのもの(`sync(items: readonly ObjectPickable[], ...)`)
 なので、**中身の型で名乗る。** 新しい語を1つも導入しない。
 
-- `PhysicalObjectListPanel` → `MapPickableListPanel`(`map-pickable-list-panel.ts`)
+- `PhysicalObjectListPanel` → `ObjectPickableListPanel`(`object-pickable-list-panel.ts`)
 - `PhysicalObjectListOrder` / `-Tree` / `-Filter` / `-Sort` も同様
-- DOM id / CSS クラスの `physical-object-list` → `map-pickable-list`
+- DOM id / CSS クラスの `physical-object-list` → `object-pickable-list`
 - **日本語ラベル「軌道物体」は変えない。** SPEC/MAP.md 10節・UI-DESIGN.md 207/210 が持つ
   UI 用語で、変えるなら SPEC が先行する(`/modify-feature`)。
   本計画は**画面に出る文字を1文字も変えない。**
 
-`MapPickable` の全種別を出すわけではない(軌道点は出さない)という点でわずかに広く名乗るが、
+`ObjectPickable` の全種別を出すわけではない(軌道点は出さない)という点でわずかに広く名乗るが、
 **その除外はパネル自身の表示規則**(`SECTIONS`)であり、SPEC/MAP.md 10節が明文で持っている。
 
 - **覆された場合**: 日本語ラベルごと変える判断なら、SPEC/MAP.md 10節・UI-DESIGN.md 207/210 の
@@ -169,7 +169,7 @@
 
 1. `grep -rn "PhysicalObject\|physical-object\|physicalObject" src/` が **0 件**。
 2. `grep -rn "ENTITY_GLYPH" src/` が **0 件**。
-3. `grep -rn "empty-space" src/` が **0 件**。ダミーの `MapPickable`
+3. `grep -rn "empty-space" src/` が **0 件**。ダミーの `ObjectPickable`
    (`id: 'empty'` / `pos: v3(0, 0, 0)`)を組む行が `src/` に無い。
 4. `grep -rn "isLagrangeId" src/` が **`celestial/lagrange-id.ts` の定義 +
    `map/visibility-policy.ts` + `pickable/map-pickable-menu.ts` の3ファイルだけ**に減っている
@@ -192,7 +192,7 @@
 ### 目的
 
 `'empty-space'` は被選択物ではなく「**何にも当たらなかった**」という結果である。
-それを `MapPickable` として表すために中身が全部ダミーのレコードを組んでおり、
+それを `ObjectPickable` として表すために中身が全部ダミーのレコードを組んでおり、
 CODING-RULE 1.7「オブジェクトの流用の禁止」に当たる(冒頭「空クリックには…」節)。
 
 **この手順で挙動は変えない** — 空域メニューの項目と文言は同じ。
@@ -201,9 +201,9 @@ CODING-RULE 1.7「オブジェクトの流用の禁止」に当たる(冒頭「�
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/game/pickable/map-pickable.ts:5` | `MapPickKind` から `'empty-space'` を外す |
-| `src/game/pickable/map-context-actions.ts:77` `:447-450` | ダミー `MapPickable` の生成をやめる。空域メニューは `MapPickable` を経由せず項目列を直接渡して開く経路にする。`:77` のコメントもその形に合わせる |
-| `src/game/pickable/map-pickable-menu.ts:295-315` | `'empty-space'` の `itemsFor` / `run` を、`MapPickable` を受けない独立したメソッドへ出す。**現状どちらも `target` を一切読んでいない**ので引数を落とすだけで済む |
+| `src/game/pickable/object-pickable.ts:5` | `MapPickKind` から `'empty-space'` を外す |
+| `src/game/pickable/object-windows.ts:77` `:447-450` | ダミー `ObjectPickable` の生成をやめる。空域メニューは `ObjectPickable` を経由せず項目列を直接渡して開く経路にする。`:77` のコメントもその形に合わせる |
+| `src/game/pickable/map-pickable-menu.ts:295-315` | `'empty-space'` の `itemsFor` / `run` を、`ObjectPickable` を受けない独立したメソッドへ出す。**現状どちらも `target` を一切読んでいない**ので引数を落とすだけで済む |
 | `src/game/marker/pick-glyphs.ts:22` `:45-47` | `TEXT_GLYPHS` の `'empty-space': '·'` を削除。`pickGlyph()` の `if (kind === 'empty-space') return undefined;` も削除 |
 | `src/game/hud/object-groups.ts:41` | `case 'empty-space':` を落とす |
 | `src/game/pickable/map-property-rows.ts:44` | `case 'empty-space': return [];` を落とす |
@@ -225,7 +225,7 @@ CODING-RULE 1.7「オブジェクトの流用の禁止」に当たる(冒頭「�
 ### 目的
 
 `apsis` / `relnode` / `eqnode` が「他の対象の軌道から導かれた点であって物体ではない」という
-区別は、**3箇所に別々の形で書かれている** — `map-context-actions.ts:620` の直書き
+区別は、**3箇所に別々の形で書かれている** — `object-windows.ts:620` の直書き
 `isOrbitPoint`、`object-groups.ts:41` の素通し `case`、`physical-object-list-panel.ts` の
 `SECTIONS` に**入っていないこと**(暗黙)。1つ増えたときに3箇所とも直す保証が無い。
 
@@ -235,8 +235,8 @@ CODING-RULE 1.7「オブジェクトの流用の禁止」に当たる(冒頭「�
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/game/pickable/map-pickable.ts:5` | `OrbitPointPickKind = 'apsis' \| 'relnode' \| 'eqnode'` を定義し、`MapPickKind` をそれと物体側の union として組み直す。`isOrbitPointKind(kind)` を置く |
-| `src/game/pickable/map-context-actions.ts:620` | 直書きの3項比較を `isOrbitPointKind(target.kind)` に置換 |
+| `src/game/pickable/object-pickable.ts:5` | `OrbitPointPickKind = 'apsis' \| 'relnode' \| 'eqnode'` を定義し、`MapPickKind` をそれと物体側の union として組み直す。`isOrbitPointKind(kind)` を置く |
+| `src/game/pickable/object-windows.ts:620` | 直書きの3項比較を `isOrbitPointKind(target.kind)` に置換 |
 | `src/game/hud/object-groups.ts:23-41` | 素通しの `case` を `isOrbitPointKind` による early continue へ。ファイル見出しコメント(`:2`)もその形に合わせる |
 | `src/game/hud/panels/physical-object-list-panel.ts:19-26` | `SECTIONS` の直前に「軌道点は `OrbitPointPickKind` として除いてある」ことをコメントで示す。**表そのものは変えない** |
 | `src/game/pickable/map-property-rows.ts:41-44` | **触らない。** `apsis` だけ別メソッド(`apsisRows`)なので、括ると分岐が増える。触らない判断をコメントで残す |
@@ -278,13 +278,13 @@ CODING-RULE 1.7「オブジェクトの流用の禁止」に当たる(冒頭「�
 | `hud/panels/physical-object-list-panel.ts:20` `:260` | `SECTIONS` の天体区画 / ツリー操作ボタン | **区画は「天体」1つのまま。** ラグランジュ点も天体区画へ入れる(SPEC/MAP.md 10節が親天体の直下と定めている)ので、区画の割り当てだけ `'lagrange'` を `'body'` の区画へ寄せる |
 | `hud/panels/physical-object-list-tree.ts:89` `:91` | `kind === 'body'` なら detail を出さない | 含む |
 | `marker/pick-glyphs.ts:39-41` | `kind !== 'body'` → 表引き、`isLagrangeId` → lagrange 字形 | `'lagrange'` を表側へ移す |
-| `pickable/map-context-actions.ts:643` | `kind !== 'body' \|\| isLagrangeId(id) \|\| !has(id)` | `kind !== 'body'` |
-| `pickable/map-context-actions.ts:648` | 周回物体の絞り込み | 含めない(判定して確定させる) |
+| `pickable/object-windows.ts:643` | `kind !== 'body' \|\| isLagrangeId(id) \|\| !has(id)` | `kind !== 'body'` |
+| `pickable/object-windows.ts:648` | 周回物体の絞り込み | 含めない(判定して確定させる) |
 | `pickable/map-pickable-menu.ts:40` `:93` | `isLagrangeId(id)` で親を引く / `'body'` のメニュー表 | `'lagrange'` の表を独立させるか同じ表を共有するかを決める。**`:40` は id を受ける口なので `isLagrangeId` が残ってよい** |
-| `pickable/map-pickables.ts:53` | `pickable` の同期 | 含む |
-| `pickable/map-pickables.ts:179` | detail 文字列 | 含む |
-| `pickable/map-pickables.ts:186` | `inFocusedSystem` | 含む |
-| `pickable/map-pickables.ts:201` | `distanceFromStar` | 含む |
+| `pickable/object-pickables.ts:53` | `pickable` の同期 | 含む |
+| `pickable/object-pickables.ts:179` | detail 文字列 | 含む |
+| `pickable/object-pickables.ts:186` | `inFocusedSystem` | 含む |
+| `pickable/object-pickables.ts:201` | `distanceFromStar` | 含む |
 | `pickable/map-property-rows.ts:41` | `case 'body': bodyRows()` | 含む |
 
 `map/visibility-policy.ts:118` の `isLagrangeId` は **id を受ける口**(`body(id)`)で
@@ -347,7 +347,7 @@ CODING-RULE 1.7「オブジェクトの流用の禁止」に当たる(冒頭「�
   ラグランジュ点(`✦`)、PLAN のゴースト(`⬢`)、CREATIVE の配置プレビュー(`▷`)が
   従来どおり出ること。
 
-## 手順 5. `PhysicalObjectList*` → `MapPickableList*`
+## 手順 5. `PhysicalObjectList*` → `ObjectPickableList*`
 
 ### 目的
 
@@ -357,15 +357,15 @@ CODING-RULE 1.7「オブジェクトの流用の禁止」に当たる(冒頭「�
 
 | ファイル | 何をするか | 行 |
 | --- | --- | --- |
-| `src/game/hud/panels/physical-object-list-panel.ts` → `map-pickable-list-panel.ts` | ファイル改名 + 中身の置換 | 59 |
-| `src/game/hud/panels/physical-object-list-order.ts` → `map-pickable-list-order.ts` | 同上 | 9 |
-| `src/game/hud/panels/physical-object-list-tree.ts` → `map-pickable-list-tree.ts` | 同上 | 8 |
+| `src/game/hud/panels/physical-object-list-panel.ts` → `object-pickable-list-panel.ts` | ファイル改名 + 中身の置換 | 59 |
+| `src/game/hud/panels/physical-object-list-order.ts` → `object-pickable-list-order.ts` | 同上 | 9 |
+| `src/game/hud/panels/physical-object-list-tree.ts` → `object-pickable-list-tree.ts` | 同上 | 8 |
 | `src/game/hud/style/map-view-style.ts` | CSS セレクタ 28 行 | 28 |
-| `src/game/pickable/map-context-actions.ts` | import / フィールド `physicalObjectListPanel` / 生成・使用 | 9 |
-| `src/game/pickable/map-pickables.ts:177` | コメント中の `PhysicalObjectListOrder.matches()` | 1 |
+| `src/game/pickable/map-picking.ts` | import / フィールド `physicalObjectListPanel` / 生成・使用 | 9 |
+| `src/game/pickable/object-pickables.ts:177` | コメント中の `PhysicalObjectListOrder.matches()` | 1 |
 
-置換は3語のみ — `PhysicalObject` → `MapPickable` / `physicalObject` → `mapPickable` /
-`physical-object` → `map-pickable`。
+置換は3語のみ — `PhysicalObject` → `ObjectPickable` / `physicalObject` → `mapPickable` /
+`physical-object` → `object-pickable`。
 
 **`hud-physical-object-list` は `wirePanelCollapse` の `storageId`(`panel.ts:211`)であり、
 `hud-physical-object-list-section-${kind}`(`:219`)は区画ごとの開閉状態の localStorage キー
@@ -395,7 +395,7 @@ CODING-RULE 1.7「オブジェクトの流用の禁止」に当たる(冒頭「�
 | `src/game/creative/object-placer-panel.ts` | import + 型注釈 | 10 |
 | `src/game/creative/orbit-form-fields.ts` | `ObjectPickerGroup` | 2 |
 | `src/game/hud/frame/anchor-zone.ts` | import + 型注釈 | 8 |
-| `src/game/hud/object-groups.ts` → `pickable-groups.ts` | `ObjectPickerGroup` の参照 + ファイル改名(中身は `MapPickable` のグループ分けであって「オブジェクト」ではない)。**`groupPickables()` の名前は正しいので据置** | 3 |
+| `src/game/hud/object-groups.ts` → `pickable-groups.ts` | `ObjectPickerGroup` の参照 + ファイル改名(中身は `ObjectPickable` のグループ分けであって「オブジェクト」ではない)。**`groupPickables()` の名前は正しいので据置** | 3 |
 
 `object-groups.ts` を import しているのは `hud/frame/anchor-zone.ts:11` のみ(確認済み)。
 
@@ -474,7 +474,7 @@ SPEC/MAP.md 560-561 と 597-598 が持つ UI 用語(決定2 と同じ理由)。
 | **`hud-physical-object-list` は localStorage キー**(`storageId`、および区画ごとの `sectionId`)。改名すると既存プレイヤーの区画開閉状態が既定へ戻る | 保存された開閉状態が1回だけ失われる。**壊れはしないが、無言で起きる** | 手順5。**移行しないと決めるならその判断を残して通す**(既定は6区画とも開なので実害は小さい) |
 | **`map-view-style.ts` の 28 セレクタは別ファイルにある。** パネル側だけ改名すると、**型検査もテストも通ったまま見た目だけが崩れる** | sticky 見出しの背景が消える・行の色が当たらない・コンパクト幅のレイアウトが崩れる | 手順5。目視確認を達成条件に入れてある |
 | **手順3 で `physical-object-list-order.ts:151`(`kind === 'body' && filter === 'satellite'`)に `'lagrange'` を含めてしまう** | 衛星フィルタでラグランジュ点の親までクラスタ見出しとして出る。**件数 (N) は変わらないので見落としやすい** | 手順3。「衛星フィルタで親惑星が出る/ラグランジュ点の親は出ない」を目視 |
-| **手順3 で `map-pickables.ts:186`(`inFocusedSystem`)・`:201`(`distanceFromStar`)からラグランジュ点が落ちる** | 太陽系順の並びでラグランジュ点だけが先頭へ寄る。**例外も型エラーも出ない** | 手順3。太陽系順でラグランジュ点が親天体の近くに並ぶことを目視 |
+| **手順3 で `object-pickables.ts:186`(`inFocusedSystem`)・`:201`(`distanceFromStar`)からラグランジュ点が落ちる** | 太陽系順の並びでラグランジュ点だけが先頭へ寄る。**例外も型エラーも出ない** | 手順3。太陽系順でラグランジュ点が親天体の近くに並ぶことを目視 |
 | **手順3 で `order.ts:197` の `lagrangeSortKeyOf` の早期 return を `'body'` のまま残す** | `kind` が `'lagrange'` になった瞬間に全ラグランジュ点が `null` を返し、**L4/L5 の順序が浮動小数点誤差で毎フレーム反転する**(`compare()` のコメントが警告している状態そのもの) | 手順3。地球の L4/L5 が一覧でちらつかないことを目視 |
 | **手順4 で字形の値を写し間違える** | 別の記号が出る。**型は通る**(どれも `string`) | 手順4。分割前後で `grep -oE "'[^']'"` の結果が一致することを確認する |
 | **手順1 で `ContextMenu` の型を緩めすぎる** | 空域以外の右クリックでも対象なしのメニューが開けるようになり、後で誤用される | 手順1。型引数を弱める代わりに、空域専用の開き方を1つ足す形を優先する |
