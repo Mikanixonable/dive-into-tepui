@@ -7,7 +7,7 @@ import { bodySearchText } from '../pickable/body-search-text';
 import { fmtDist } from '../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
-import { MARKER_PRIORITY } from './marker-manager';
+import { MARKER_PRIORITY } from './crowding';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../hud/object-groups';
