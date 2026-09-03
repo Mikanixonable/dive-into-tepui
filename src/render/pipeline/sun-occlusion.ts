@@ -416,8 +416,7 @@ export class SunOcclusion {
           const cloudTop = cloudTopOf(cloud.g, grain).mul(this.cumulusTopAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
           const columnDepth = log(min(
-            opaqueFractionOf(cloud.r, grain, grainAmplitude.oneMinus()),
-            CUMULUS_MAX_COVERAGE).oneMinus()).negate();
+            opaqueFractionOf(cloud.r, grain), CUMULUS_MAX_COVERAGE).oneMinus()).negate();
           // **1 歩が雲頂をまたぐ割合で配る** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);

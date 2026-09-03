@@ -220,9 +220,8 @@ export class CumulusShell {
     const direction = point.div(radius);
     const cloud = this.fieldAt(direction);
     const grain = grainAt(direction, this.grainFrequency, grainAmplitude);
-    // 粒は覆いの縁を texel より細かく千切る。**引けなかった粒は均さない** — ディザが縁の内外へ
-    // 振り分けるので、均すと雲そのものが砂に散る。
-    const present = step(threshold, opaqueFractionOf(cloud.r, grain, float(0)));
+    // 粒は覆いの縁を texel より細かく千切る。
+    const present = step(threshold, opaqueFractionOf(cloud.r, grain));
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに粒が湧く。
     const clearance = radius.sub(this.cloudTopRadiusOf(cloudTopOf(cloud.g, grain)));
