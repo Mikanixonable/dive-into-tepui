@@ -7,7 +7,7 @@
 // 族 id(焼き込みカタログのキー)から画面に出す群・表示名を導く対応表は、実在する族を
 // 呼び出し側から受け取った availableFamilies から作る——族の集合を推測でここへ書き写さない。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { buildLabeledRow, Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../widgets';
+import { buildLabeledRow, Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../../hud/widgets';
 import {
   AMPLITUDE_MAPPING, COUNT_MAPPING, CYCLES_MAPPING, DIRECTION_ITEMS, OPACITY_MAPPING,
   PHASE_MAPPING, RANGE_MAPPING,

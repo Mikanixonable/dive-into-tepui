@@ -1,8 +1,8 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
-import type { PerfCounts } from '../perf-meter';
-import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
-import { FrameSections, SECTION } from '../frame-sections';
+import type { PerfCounts } from './perf-counts';
+import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
+import { FrameSections, SECTION } from './frame-sections';
 import { Player } from './player/player';
 import { Base } from './dynamic/dynamic-entity/base';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
@@ -11,7 +11,6 @@ import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
 import { CelestialMarkers } from './marker/celestial-markers';
 import { ActiveControllableController } from './active-controllable-controller';
-import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
 import { PlanDisplay } from './plan/plan-display';
@@ -21,15 +20,16 @@ import { DynamicSystem } from './dynamic/dynamic-system';
 import { EntityLineManager } from './lines/entity-line-manager';
 import { Simulator } from './dynamic/simulator';
 import { Predictor } from './dynamic/predictor';
-import { Input } from './input/input';
-import { TouchControls } from './input/touch';
+import { Input } from '../input/input';
+import { TouchControls } from './hud/touch-controls';
 import { Hud } from './hud/hud';
-import { PauseMenu } from './hud/windows/pause-menu';
+import { PauseMenu } from '../hud/windows/pause-menu';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
+import type { AudioEngine } from '../audio/audio-engine';
 import { GameScene } from '../render/scene';
-import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
+import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import { CelestialSystem } from './celestial/celestial-system';
 import { ViewManager } from './view/view-manager';
@@ -38,13 +38,18 @@ import { MapView } from './view/map-view';
 import { NanWatchdog } from './dynamic/nan-watchdog';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
-import { OrbitReferenceSelector, type OrbitReference } from './orbit-reference';
+import { autoOrbitReference, OrbitReferenceSelector, type OrbitReference } from './orbit-reference';
 import { ObjectPickables } from './pickable/object-pickables';
 import { LinePickables } from './pickable/line-pickables';
 import { ObjectWindows } from './pickable/object-windows';
 import { Navball } from './navball/navball';
-import { GameSaveData } from './save/save-data';
-import { KEY_MAPPING as K } from './input/key-mapping';
+import { GameSaveData, SAVE_VERSION } from './save/save-data';
+import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
+import type { RunSummary } from './run-summary';
+import { orbitInfo } from './orbit-info';
+import { LoadingProgress } from './loading-progress';
+import { createJulianDate, type TdbJulianDate } from '../physics/time';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { frameRoleOf } from '../physics/frame';
 import { Docking } from './docking/docking';
 import { ViewBadge } from './hud/view-badge';
@@ -105,26 +110,108 @@ export class Game {
   // 計測区間の境界を打つ先。集計と保持はこのオブジェクトが持つ。
   private readonly sections: FrameSections;
 
-  // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。
-  constructor(
+  // 星系を組んでから、このランを組み立てる。段の切れ目で描画を明け渡すので、
+  // 組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
+  static async create(
     gs: GameScene,
     stageClass: StageClass,
     hud: Hud,
-    worldSfx: WorldSfx,
-    uiSfx: UiSfx,
+    audioEngine: AudioEngine,
     pauseMenu: PauseMenu,
-    unlockManager: UnlockManager,
+    sections: FrameSections,
+    initialSave: GameSaveData | undefined,
+    startEpoch: TdbJulianDate | undefined,
+    progress: LoadingProgress,
+  ): Promise<Game> {
+    await progress.enter('system');
+    // このランの元期。スナップショットを読むならその元期をそのまま継ぐ(照合はしない) —
+    // 保存されている simTime はその元期からの経過秒なので、別の元期で組むと全天体がずれる。
+    // 次に開始日時の指定、最後にステージの宣言。**星系を組む前に決まっていなければならない。**
+    const savedJdTdb = initialSave?.ephemerisContext?.epochJdTdb;
+    const epoch = savedJdTdb !== undefined ? createJulianDate('TDB', savedJdTdb) : startEpoch ?? stageClass.epoch;
+    // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
+    const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
+    const celestialSystem = await stageClass.createCelestialSystem(
+      initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch, (ratio) => progress.within(ratio),
+    );
+    await progress.enter('bodies');
+    celestialSystem.build(
+      gs.scene, gs.pipeline.sunLight, gs.pipeline.exposure, gs.pipeline.sunOcclusion,
+      gs.pipeline.planetLight, gs.pipeline.ambient, gs.pipeline.atmosphere,
+    );
+    await progress.enter('run');
+    return new Game(gs, stageClass, hud, audioEngine, pauseMenu, sections, celestialSystem, initialSave);
+  }
+
+  // このランを1件ぶんのセーブ本体へ畳む。各サブシステム自身の serialize を集める —
+  // 何を持っているかを知っているのは持ち主だけなので、dispose と同じくここに書く。
+  // どこへ何件残すかはランの外側が決める。
+  serialize(): GameSaveData {
+    const { phaseOffsets, earthSpinPhase0 } = this._celestialSystem.serialize();
+    return {
+      version: SAVE_VERSION,
+      stageId: this.activeStage.id,
+      simTime: this.simTime,
+      ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
+      phaseOffsets,
+      earthSpinPhase0,
+      players: this.dynamicSystem.players.map((p) => p.serialize()),
+      activePlayerId: this.player ? this.player.id : null,
+      enemies: this.dynamicSystem.enemies.map((e) => e.serialize()),
+      ammoPickups: this.dynamicSystem.ammoPickups.map((pickup) => pickup.serialize()),
+      rcsFuelPickups: this.dynamicSystem.rcsFuelPickups.map((pickup) => pickup.serialize()),
+      detachedBoosters: this.dynamicSystem.detachedBoosters.map((booster) => booster.serialize()),
+      bases: this.dynamicSystem.bases.map((b) => b.serialize()),
+      stage: this.activeStage.serialize(),
+      camera: { view: this.viewManager.current, ...this.cameraSystem.serialize() },
+      navTarget: this.navTarget.id !== null ? { id: this.navTarget.id, name: this.navTarget.name! } : null,
+    };
+  }
+
+  // ランの外側が一覧へ描くための要約。自機が居ない周回でも値が欠けないよう、
+  // 軌道の項は星系の原点へ寄せる。
+  runSummary(): RunSummary {
+    const player = this.player;
+    const celestial = this._celestialSystem;
+    const info = player === null ? null : orbitInfo(
+      player,
+      autoOrbitReference(player.state.r, celestial.celestialMotions, player.state.t),
+      player.state.t, (id: string) => celestial.nameOf(id),
+    );
+    return {
+      simTime: this.simTime,
+      phase: this.activeStage.phase,
+      centerBodyId: info ? info.centerId : celestial.origin.id,
+      centerBodyName: info ? info.centerName : celestial.nameOf(celestial.origin.id),
+      altitude: info ? info.alt : 0,
+      speed: info ? info.spd : 0,
+      hpRatio: player !== null && player.maxHp > 0 ? Math.max(0, player.hp) / player.maxHp : 0,
+      maxHp: player ? player.maxHp : 0,
+      magazines: player ? player.magsLeft : 0,
+      money: this.dynamicSystem.bases.reduce((sum, b) => sum + b.baseState.money, 0),
+      playerCount: this.dynamicSystem.players.length,
+      enemyAliveCount: this.dynamicSystem.enemies.filter((e) => e.alive).length,
+    };
+  }
+
+  // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。星系は実体化済みで渡る。
+  private constructor(
+    gs: GameScene,
+    stageClass: StageClass,
+    hud: Hud,
+    audioEngine: AudioEngine,
+    pauseMenu: PauseMenu,
     sections: FrameSections,
     celestialSystem: CelestialSystem,
-    pipeline: RenderPipeline,
     initialSave?: GameSaveData,
   ) {
     this.sections = sections;
     this._scene = gs.scene;
-    this.pipeline = pipeline;
+    this.pipeline = gs.pipeline;
     this._celestialSystem = celestialSystem;
     this._hud = hud;
-    this._worldSfx = worldSfx;
+    this._worldSfx = new WorldSfx(audioEngine);
+    const uiSfx = new UiSfx(audioEngine);
     this.pauseMenu = pauseMenu;
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
@@ -165,9 +252,6 @@ export class Game {
     );
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.dynamicSystem);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
-    this._celestialSystem.build(
-      this._scene, pipeline.sunLight, pipeline.exposure,
-      pipeline.sunOcclusion, pipeline.planetLight, pipeline.ambient, pipeline.atmosphere);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
     this._celestialSystem.setOrbitGuideSettings(this.navball.orbitGuideSettings);
     // 線が増えすぎたときの警告を UI へ戻す。
@@ -209,7 +293,7 @@ export class Game {
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
 
     this.activeStage = new stageClass(
-      initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem, unlockManager,
+      initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem,
       this.dynamicSystem.effects, this.markerManager, celestialSystem, this.simulator, this.activePlayers,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
@@ -286,14 +370,13 @@ export class Game {
     this.docking.dispose();
     this.objectWindows.dispose();
     this.activeStage.dispose();
-    // Hud・効果音はこのゲームより長生きするので、書き換えたクラス・差し込んだ参照・鳴らしている
-    // 継続音を元へ戻す。BGM は周回の外側が決めるものなので触らない。
+    // Hud はこのゲームより長生きするので、書き換えたクラスと差し込んだ参照を元へ戻す。
+    // BGM は周回の外側が決めるものなので触らない。
     this._hud.root.classList.remove('creative-mode');
     this._hud.vesselPanel.setInput(null);
     this._hud.burnManagementPanel.setHandlers({});
     this._hud.burnManagementPanel.sync(null);
-    this._worldSfx.setThrust(false);
-    this._worldSfx.setRcs(false);
+    this._worldSfx.dispose();
     this.touchControls?.dispose();
     this.input.dispose();
     this.planDisplay.dispose();

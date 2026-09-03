@@ -1,8 +1,8 @@
 // 軌道分析パネルの接近タブ: ターゲットを原点として、操作対象との水平距離(位相差の弧長換算)と
 // 相対高度を折れ線で描き、相対傾斜角を1行併記する。縦横とも実距離なので、ドラッグは平行移動、
 // ホイール/ピンチは縦横同倍率のズームになる。
-import { injectOnce } from '../widgets';
-import { PointerPanZoom } from '../widgets/pointer-pan-zoom';
+import { injectOnce } from '../../../hud/widgets';
+import { PointerPanZoom } from '../../../hud/widgets/pointer-pan-zoom';
 import { approachSeries, sharedAttractor } from './orbit-analysis-data';
 import { ScaleField, buildTabControls, clampScaleKm, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitChart } from './orbit-chart';
