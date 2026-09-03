@@ -16,6 +16,9 @@ export interface Quat {
   readonly w: number;
 }
 
+// 回さない回転。
+export const Q_IDENTITY: Quat = { x: 0, y: 0, z: 0, w: 1 };
+
 // クォータニオンの積 a ⊗ b を返す。
 export function qMul(a: Quat, b: Quat): Quat {
   return {
@@ -29,7 +32,7 @@ export function qMul(a: Quat, b: Quat): Quat {
 // クォータニオンを単位長へ正規化する。ノルムがほぼ0なら単位クォータニオンを返す。
 export function qNormalize(q: Quat): Quat {
   const l = Math.sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
-  if (l < 1e-12) return { x: 0, y: 0, z: 0, w: 1 };
+  if (l < 1e-12) return Q_IDENTITY;
   return { x: q.x / l, y: q.y / l, z: q.z / l, w: q.w / l };
 }
 
@@ -48,7 +51,7 @@ export function qInvert(q: Quat): Quat {
 // a を b へ重ねる最小回転(a, b は単位ベクトル)
 export function qFromUnitVectors(a: Vec3, b: Vec3): Quat {
   const d = dot(a, b);
-  if (d > 1 - 1e-12) return { x: 0, y: 0, z: 0, w: 1 };
+  if (d > 1 - 1e-12) return Q_IDENTITY;
   if (d < -1 + 1e-6) {
     // ほぼ反平行: a と直交する任意軸まわりに 180° 回転
     let axis = cross(v3(1, 0, 0), a);
@@ -108,7 +111,7 @@ export function qFromForwardUp(fwd: Vec3, up: Vec3): Quat | null {
 
 // qFromForwardUp と同じ回転。基底が定まらない入力(平行・零ベクトル)には単位回転を返す。
 export function qFromBasis(fwd: Vec3, up: Vec3): Quat {
-  return qFromForwardUp(fwd, up) ?? { x: 0, y: 0, z: 0, w: 1 };
+  return qFromForwardUp(fwd, up) ?? Q_IDENTITY;
 }
 
 // 一様分布のランダムな回転クォータニオンを返す。rand は [0,1) の乱数生成器。

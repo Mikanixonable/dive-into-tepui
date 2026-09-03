@@ -1,7 +1,7 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
-import { Quat, qFromUnitVectors, qInvert, qMul, qRotate } from '../../math/quat';
+import { LOCAL_RIGHT, Q_IDENTITY, qFromUnitVectors, qInvert, qMul, qRotate, Quat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
@@ -13,9 +13,6 @@ const MAG_CHAIN_MAX_YAW_DEG = 15;   // ヨー上限(左右方向の折れ)
 const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
 const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
 
-// ベルトが機体座標系でたわみなく伸びる基準方向。
-export const X_AXIS: Vec3 = v3(1, 0, 0);
-const IDENTITY_Q: Quat = { x: 0, y: 0, z: 0, w: 1 }; // アンカー(機体)側の基準姿勢
 
 // v を [lo, hi] にクランプする。
 function clamp(v: number, lo: number, hi: number): number {
@@ -182,7 +179,7 @@ export class BeltPhysics {
     const secondLinkNarrowing = clamp(1 - feed, 0, 1);
     const rollLerp = Math.min(1, dt * MAG_CHAIN_ROLL_RATE);
     let prevPoint = this.anchor;
-    let prevQ: Quat = IDENTITY_Q; // アンカー(機体)側の基準姿勢: ベルトは+X方向へ伸びる
+    let prevQ: Quat = Q_IDENTITY; // アンカー(機体)側の基準姿勢: ベルトは+X方向へ伸びる
     let prevTwist = att.w.z * MAG_CHAIN_ROLL_GAIN; // ねじれの発生源: 機体のロール角速度
 
     for (let i = 0; i < this.linkCount; i++) {
@@ -202,7 +199,7 @@ export class BeltPhysics {
         this.beltPrevPos[i] = add(this.beltPrevPos[i]!, sub(newPos, oldPos));
         this.beltPos[i] = newPos;
 
-        const localX = qRotate(prevQ, X_AXIS); // 前リンクの進行方向(ワールド)
+        const localX = qRotate(prevQ, LOCAL_RIGHT); // 前リンクの進行方向(ワールド)
         bendQ = qMul(qFromUnitVectors(localX, clampedDir), prevQ); // 曲げぶんの最小回転を合成
       }
 

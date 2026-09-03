@@ -3,7 +3,7 @@
 // 答える。座標系そのものの値の変換は physics/frame.ts の純関数群が担い、ここは
 // 「どの座標系があるか」と「その原点・姿勢・角速度が時刻 t で何になるか」を答える。
 // THREE/DOM 非依存。
-import { Quat, qFromBasis } from '../../math/quat';
+import { Q_IDENTITY, qFromBasis } from '../../math/quat';
 import { CelestialMotion, OrbitingMotion, SatelliteMotion } from '../../physics/celestial-motion';
 import { EciTransform } from '../../physics/eci-transform';
 import {
@@ -14,7 +14,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { cross, len, lenSq, norm, scale, sub, v3 } from '../../math/vec3';
 
 // 回転しない座標系(ReferenceFrame.rotatingWith === null)の姿勢・角速度。
-const IDENTITY_ROTATION: FrameRotation = { q: { x: 0, y: 0, z: 0, w: 1 } as Quat, omega: v3() };
+const IDENTITY_ROTATION: FrameRotation = { q: Q_IDENTITY, omega: v3() };
 
 // 回転系(rotatingWith が非 null)の原点。衛星は惑星まわりの公転を止めて見せたいので
 // その惑星(例: 月回転系は地球中心)、惑星は自分自身(例: 太陽-地球回転系は地球中心のまま、
