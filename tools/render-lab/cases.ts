@@ -638,6 +638,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     cumulusShadow: {
       center,
       surfaceRadius: R_EARTH_EQ,
+      axes: new THREE.Vector3(axes.x, axes.y, axes.z),
       topAltitude: cumulus.topAltitude,
       bodyFromWorld: new THREE.Matrix4().makeRotationFromQuaternion(spin.clone().invert()),
       field: cumulus.field,
