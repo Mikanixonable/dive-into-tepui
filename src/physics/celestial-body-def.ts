@@ -106,3 +106,13 @@ export function shapeAxes(radius: number, shape: ShapeDef | undefined): Vec3 {
   if (shape.kind === 'spheroid') return v3(shape.equatorRadius, shape.polarRadius, shape.equatorRadius);
   return v3(shape.a, shape.c, shape.b);
 }
+
+// ShapeDef を自転軸まわりの回転楕円体の半径 [m] へ丸める。**三軸楕円体では短いほうの赤道軸を
+// 赤道半径に採る** — 元の形へ内接する側なので、これを地表と見なす描画は地表メッシュの内側で
+// 閉じる。
+export function shapeSpheroidRadii(
+  radius: number, shape: ShapeDef | undefined,
+): { readonly equatorRadius: number; readonly polarRadius: number } {
+  const axes = shapeAxes(radius, shape);
+  return { equatorRadius: Math.min(axes.x, axes.z), polarRadius: axes.y };
+}

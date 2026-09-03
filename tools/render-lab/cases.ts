@@ -11,7 +11,7 @@ import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import { shapeAxes, type RingBandDef } from '../../src/physics/celestial-body-def';
+import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/body-graticule';
 import { EarthCoastline } from '../../src/render/earth-coastline';
 import { Curve } from '../../src/render/curve';
@@ -612,11 +612,12 @@ function marchSlab(): LabCase {
 }
 
 // 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。薄い雲を合成した地表と積雲の
-// 殻、模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。殻が落とす影は
-// 遮蔽パスへ別途渡すので、置いた球と一緒に返す。spin は天体固定の姿勢で、地表も殻も場も
-// 一緒に回る。
+// 殻、模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。殻が落とす影と
+// 大気は別のパスへ渡すので、置いた球と一緒に返す。spin は天体固定の姿勢で、地表も殻も場も
+// 大気の扁平も一緒に回る。
 function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Quaternion()): {
   readonly object: THREE.Object3D;
+  readonly atmosphere: AtmosphereBody;
   readonly cumulusShadow: CumulusShadow;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
 } {
@@ -624,6 +625,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   group.position.copy(center);
   group.quaternion.copy(spin);
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
+  const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
   const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
   const surface = CelestialSurface.clouded(EARTH_TEXTURE, cumulus.field, earthSmoothnessUrl);
@@ -639,6 +641,15 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   coastline.setVisible(style === 'schematic');
   return {
     object: group,
+    // 大気の地表は地表メッシュと同じ楕円体に採る。**真球で渡すと**、極で地表と空のあいだに
+    // 隙間が開く。
+    atmosphere: {
+      center,
+      surfaceRadius: radii.equatorRadius,
+      polarAxis: new THREE.Vector3(0, 1, 0).applyQuaternion(spin),
+      polarRatio: radii.polarRadius / radii.equatorRadius,
+      optics: EARTH_ATMOSPHERE_OPTICS,
+    },
     cumulusShadow: {
       center,
       surfaceRadius: R_EARTH_EQ,
@@ -685,7 +696,7 @@ function earth(style: RenderStyle): LabCase {
       sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER),
     ],
     camera,
-    atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
+    atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
     cumulusShadow: earthSphere.cumulusShadow,
     applyGraphics: earthSphere.applyGraphics,
@@ -700,7 +711,7 @@ function earthOblique(style: RenderStyle): LabCase {
   return {
     objects: [earthSphere.object],
     camera: labCamera(6e7),
-    atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
+    atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
     cumulusShadow: earthSphere.cumulusShadow,
     applyGraphics: earthSphere.applyGraphics,
@@ -725,7 +736,7 @@ function earthPolar(style: RenderStyle): LabCase {
     objects: [earthSphere.object],
     camera: labCamera(6e7),
     sunDirection: EARTH_POLAR_SUN_DIR,
-    atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
+    atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
     cumulusShadow: earthSphere.cumulusShadow,
     applyGraphics: earthSphere.applyGraphics,
@@ -790,8 +801,14 @@ function earthMars(style: RenderStyle): LabCase {
     camera,
     viewTarget: marsCenter,
     atmospheres: [
-      { center: earthCenter, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS },
-      { center: marsCenter, surfaceRadius: MARS_RADIUS, optics: MARS_ATMOSPHERE_OPTICS },
+      earthSphere.atmosphere,
+      {
+        center: marsCenter,
+        surfaceRadius: MARS_RADIUS,
+        polarAxis: new THREE.Vector3(0, 1, 0),
+        polarRatio: 1,
+        optics: MARS_ATMOSPHERE_OPTICS,
+      },
     ],
     applyGraphics: earthSphere.applyGraphics,
   };

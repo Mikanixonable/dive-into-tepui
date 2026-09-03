@@ -86,10 +86,14 @@ function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPer
   return Math.PI * radiusPx * radiusPx * -Math.expm1(-verticalOpticalDepth(optics));
 }
 
-// 大気を持つ天体 1 体。中心は描画座標、半径は [m]。
+// 大気を持つ天体 1 体。中心は描画座標、半径は [m]。**地表も大気の等密度面も、自転軸まわりの
+// 相似な回転楕円体**で、surfaceRadius は赤道半径、polarRatio は極半径をそれで割った比。
+// polarAxis は潰す向き(描画座標の単位ベクトル)で、真球(polarRatio = 1)では効かない。
 export type AtmosphereBody = {
   readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
+  readonly polarAxis: THREE.Vector3;
+  readonly polarRatio: number;
   readonly optics: AtmosphereOptics;
 };
 
