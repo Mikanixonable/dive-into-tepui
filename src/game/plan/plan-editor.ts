@@ -50,14 +50,14 @@ export class PlanEditor {
   private lastSeenShip: Controllable | null = null;
 
   // 選択中ノードの現在の index。列に無ければ null。
-  get selectedNodeIdx(): number | null {
+  public get selectedNodeIdx(): number | null {
     const plan = this.plan;
     if (this.selectedNode === null || plan === null) return null;
     const idx = plan.nodes.indexOf(this.selectedNode);
     return idx < 0 ? null : idx;
   }
 
-  set selectedNodeIdx(idx: number | null) {
+  public set selectedNodeIdx(idx: number | null) {
     this.selectedNode = idx === null ? null : this.plan?.nodes[idx] ?? null;
   }
 
@@ -67,11 +67,11 @@ export class PlanEditor {
   }
 
   // 操作対象自身の計画。操作対象を切り替えると編集対象もその計画へ切り替わる。
-  get plan(): Plan | null { return this.activePlayers.currentControllable?.plan ?? null; }
+  public get plan(): Plan | null { return this.activePlayers.currentControllable?.plan ?? null; }
 
   private readonly gizmo3d: PlanGizmo3D;
 
-  readonly nodeGizmo: NodeGizmo;
+  private readonly nodeGizmo: NodeGizmo;
   // ノード以外の計画軌道上を右クリックしたときのメニュー。
   private readonly orbitMenu: ContextMenu<KinematicState, MenuAction>;
 
@@ -82,7 +82,7 @@ export class PlanEditor {
 
   // ノードギズモと計画パネルの DOM を組み立て、両者のコールバックを配線する。
   // path は描かれている計画折れ線 — ノードの配置・移動・画面座標はそのサンプル列から解く。
-  constructor(
+  public constructor(
     private readonly _hud: Hud,
     private readonly _uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
@@ -108,16 +108,21 @@ export class PlanEditor {
     this.panel.onPositionInputChange = (secondsFromNow) => this.setSelectedNodeTime(secondsFromNow);
 
     this.orbitMenu.onSelect = (act, state) => {
-      if (act !== 'warp') return;
-      if (this.simSpeedManager.startAutoWarpTo(state.t, this.simTime)) this._hud.hint('指定位置まで自動ワープ開始');
-      else this._hud.hint('この時刻は既に通過しています');
+      if (act === 'warp') this.warpTo(state.t, '指定位置まで自動ワープ開始');
     };
     this.wireNodeGizmo();
+  }
+
+  // 時刻 t まで自動ワープを始め、始まれば startedHint を出す。既に通過した時刻ならその旨を出す。
+  private warpTo(t: number, startedHint: string): void {
+    if (this.simSpeedManager.startAutoWarpTo(t, this.simTime)) this._hud.hint(startedHint);
+    else this._hud.hint('この時刻は既に通過しています');
   }
 
   // NodeGizmo の各種コールバックを配線する。
   private wireNodeGizmo(): void {
     const g = this.nodeGizmo;
+    // ノードハンドルと Δv アームのポインタ操作
     g.onNodeSelect = (idx) => {
       this.selectedNodeIdx = idx;
       this.closeMenu();
@@ -131,12 +136,10 @@ export class PlanEditor {
     g.onAxisDrag = (axis, sign, deltaPx) => {
       this.axisDrag.applyAxisDrag(axis, sign, deltaPx, this.ship?.fineAttitude ?? false);
     };
-    // 指定ノードの時刻まで自動ワープを開始する
+    // ノードのコンテキストメニューの項目
     g.onMenuWarpTo = (idx) => {
       const n = this.plan?.nodes[idx];
-      if (!n) return;
-      if (this.simSpeedManager.startAutoWarpTo(n.t, this.simTime)) this._hud.hint('指定時刻まで自動ワープ開始');
-      else this._hud.hint('この時刻は既に通過しています');
+      if (n) this.warpTo(n.t, '指定時刻まで自動ワープ開始');
     };
     g.onMenuDelete = (idx) => {
       this.deleteNode(idx);
@@ -149,13 +152,13 @@ export class PlanEditor {
   }
 
   // ノードのコンテキストメニューを閉じる。
-  closeMenu(): void {
+  public closeMenu(): void {
     this.nodeGizmo.closeMenu();
     this.orbitMenu.close();
   }
 
   // idx 番目のノードを削除する。
-  deleteNode(idx: number): void {
+  public deleteNode(idx: number): void {
     const plan = this.plan;
     if (!plan?.nodes[idx]) return;
     plan.removeNode(idx);
@@ -165,20 +168,20 @@ export class PlanEditor {
   }
 
   // 選択中のノードを削除する。
-  deleteSelected(): void {
+  public deleteSelected(): void {
     if (this.selectedNodeIdx === null) return;
     this.deleteNode(this.selectedNodeIdx);
   }
 
   // 選択ノードの削除キーと、WASDQE・長押しボタン・ラッチによる Δv 編集を進める。
-  handleInput(input: Input, dt: number): void {
+  public handleInput(input: Input, dt: number): void {
     if (input.takeKey(K.deleteNode)) this.deleteSelected();
     this.updateEditing(input, dt);
   }
 
   // マップ上のクリック・右クリックをノード選択/配置とコンテキストメニューへ振り分ける。
   // 艦がいなければ計画そのものが無いので、クリックはここで捨てる。
-  handleMapPointer(input: Input): void {
+  public handleMapPointer(input: Input): void {
     if (this.plan === null) return;
     input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
     input.takeClicks((p) => {
@@ -251,7 +254,7 @@ export class PlanEditor {
 
   // 時刻 t の計画軌道上の状態にノードを追加し、選択する。その時刻の計画軌道が
   // 求まらなければ(折れ線の届く範囲外など)ヒントを出すだけで何もしない。
-  addNodeAt(t: number): void {
+  public addNodeAt(t: number): void {
     const ship = this.ship;
     if (!ship) return;
     const sample = this.path.sampleAt(t);
@@ -487,11 +490,9 @@ export class PlanEditor {
       this.gizmo3d.setVisible(true);
       const r = this.path.toDisplay(nodeFor3D.r, nodeFor3D.t);
       const scenePos = fo.RtoThreeV3(r);
-      const bodyArr = this.bodyState(arrFor3D);
-      let { pro, nrm, radOut } = orbitAxes(bodyArr);
-      pro = this.path.toDisplayDir(pro, nodeFor3D.t);
-      nrm = this.path.toDisplayDir(nrm, nodeFor3D.t);
-      radOut = this.path.toDisplayDir(radOut, nodeFor3D.t);
+      const axes = orbitAxes(this.bodyState(arrFor3D));
+      const pro = this.path.toDisplayDir(axes.pro, nodeFor3D.t);
+      const nrm = this.path.toDisplayDir(axes.nrm, nodeFor3D.t);
       this.gizmo3d.setPositionAndRotation(scenePos, pro, nrm, mapDist * 0.002);
       
       // ドラッグ・ラッチ時のアニメーション
@@ -585,12 +586,12 @@ export class PlanEditor {
   }
 
   // 計画パネルを非表示にする。
-  hidePanel(): void {
+  private hidePanel(): void {
     this.panel.hide();
   }
 
   // ノードギズモ・軌道右クリックメニュー・パネル・3D ギズモを片付ける。
-  dispose(): void {
+  public dispose(): void {
     this.nodeGizmo.dispose();
     this.orbitMenu.dispose();
     this.panel.dispose();
@@ -598,7 +599,7 @@ export class PlanEditor {
   }
 
   // 操作対象の切り替えを検出してメニューを畳み、ワープメニューが使う現在時刻を差し込む。
-  update(displayWindow: DisplayWindow): void {
+  public update(displayWindow: DisplayWindow): void {
     // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む(選択中ノードは
     // 参照で解決するので、計画が替われば同一性が外れて自然に選択なしになる)。
     const ship = this.ship;
@@ -610,7 +611,7 @@ export class PlanEditor {
   }
 
   // 操作 UI(ノードギズモ・Δv アーム・TRAJECTORY パネル)を現在の選択と画面座標で組み直す。
-  sync(cameraSystem: CameraSystem, simTime: number, fo: FloatingOrigin): void {
+  public sync(cameraSystem: CameraSystem, simTime: number, fo: FloatingOrigin): void {
     const ship = this.ship;
     if (ship === null) return;
     this.syncGizmo(ship.plan, cameraSystem.mapCamera.dist, fo);
@@ -618,7 +619,7 @@ export class PlanEditor {
   }
 
   // パネルとギズモを隠し、実質 Δv がゼロの末尾ノードを間引いて計画を整理する。
-  onMapClosed(): void {
+  public onMapClosed(): void {
     this.hidePanel();
     this.hideGizmo();
     const plan = this.plan;

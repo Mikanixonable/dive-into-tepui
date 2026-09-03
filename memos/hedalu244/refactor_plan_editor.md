@@ -88,31 +88,6 @@
 
 ## 手順
 
-### 手順2. 死んだ計算・過剰な公開・ワープヒントの重複を落とす
-
-**目的.** 他の手順の見通しを悪くしている、単独で判断できる汚れを先に落とす。
-**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `plan-editor.ts:491,494` | `orbitAxes` の分解束縛から `radOut` を外し、`toDisplayDir` の呼び出しも消す。`pro` / `nrm` は再代入をやめて `const` で受け直す |
-| `plan-editor.ts:74` | `readonly nodeGizmo: NodeGizmo` を `private readonly` にする |
-| `plan-editor.ts:588` | `hidePanel()` を `private` にする |
-| `plan-editor.ts:110-115,135-140` | 自動ワープの成否分岐を `private warpTo(t: number, startedHint: string): void` へまとめ、`orbitMenu.onSelect` と `g.onMenuWarpTo` の双方から呼ぶ。失敗時のヒント文は共通、成功時の文だけ引数で渡す |
-| `plan-editor.ts` 全体 | クラスメンバーに `public` / `private` を明示する(規約1.12)。外部から呼ばれていないものは `private` にする |
-
-**達成条件と検証**
-
-- `grep -n "radOut" src/game/plan/plan-editor.ts` が 2件(`rebuildDraggedNode` と `syncPanel` の
-  分解式だけ)に減る。3D 姿勢の側からは消える。
-- `grep -rn "\.nodeGizmo|hidePanel" src/ --include=*.ts` が `plan-editor.ts` の外で 0件。
-- `grep -c "この時刻は既に通過しています" src/game/plan/plan-editor.ts` が 1。
-- `npm run typecheck` が通る。
-
----
-
 ### 手順3. `sync()` の引数を、実際に読む値まで絞る
 
 **目的.** `CameraSystem` を丸ごと受けて `mapCamera.dist` しか読まず、`simTime` を引数と
