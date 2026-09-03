@@ -278,7 +278,7 @@ export class Docking {
       this.worldSfx.setThrust(false);
       this.worldSfx.setRcs(false);
     }
-    this.entities.parkPlayer(ship);
+    this.entities.park(ship);
     if (wasActive) {
       this.activePlayers.setOrNull(this.entities.players.find((p) => p.alive) ?? null);
       if (this.activePlayers.current === null) this.setView('map');
@@ -326,7 +326,7 @@ export class Docking {
     const launchVel = addScaled(base.state.v, slotNormal, LAUNCH_SEPARATION_SPEED);
 
     ship.state = kinematicState<'eci'>(base.state.t, launchPos, launchVel);
-    this.entities.addPlayer(ship);
+    this.entities.add(ship);
     this.activePlayers.set(ship);
     this.setView('combat');
     this.hud.hint(`${ship.name} がドック ${slotIndex + 1} から切り離され発進しました`);

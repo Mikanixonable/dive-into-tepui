@@ -233,14 +233,14 @@ export abstract class Stage {
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
     const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
-    this._entities.addPlayer(ship);
+    this._entities.add(ship);
     this._activePlayers.claimIfNone(ship);
     return ship;
   }
 
   // 敵を entities へ登録し、出撃数をスコアへ記録する。
   protected addEnemy(enemy: Enemy, entities: DynamicSystem): void {
-    entities.addEnemy(enemy);
+    entities.add(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
