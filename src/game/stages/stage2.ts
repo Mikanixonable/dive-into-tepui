@@ -1,7 +1,6 @@
 // Stage 2: 第二ステージ(モルニヤ戦域)。ステージ1クリアで解放。
-import { Stage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type ClearCounts, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import type { ClearCounts } from '../unlock-manager';
 import {
   generateCoellipticEnemy,
   generateMolniyaEnemy,

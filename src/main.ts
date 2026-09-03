@@ -18,7 +18,7 @@ import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { UiSfx } from './audio/sfx/ui-sfx';
 import { WorldSfx } from './audio/sfx/world-sfx';
-import { UnlockManager } from './game/unlock-manager';
+import { UnlockManager } from './launcher/unlock-manager';
 import { LocalStorageSaveStore } from './game/save/save-store';
 import { SaveSlots } from './game/save/save-slots';
 import { SnapshotService } from './game/save/snapshot-service';

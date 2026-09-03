@@ -8,7 +8,7 @@ import type { Hud } from '../game/hud/hud';
 import type { GamePhase, Stage, StageClass, StageResult } from '../game/stages/stage';
 import { findStageClass } from '../game/stages/stage-dictionary';
 import { selectStage } from './stage-select';
-import type { UnlockManager } from '../game/unlock-manager';
+import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from '../game/save/save-slots';
 import type { SnapshotService } from '../game/save/snapshot-service';
 import type { GameSaveData } from '../game/save/save-data';
@@ -147,7 +147,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       stageClass, initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch,
     );
     this.game = new Game(
-      this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu, this.unlockManager,
+      this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu,
       this.sections, celestialSystem, this.pipeline, initialSave,
     );
     // AudioContext は実際のユーザー操作でしか作れないため、unlock は入力エッジの発火点へ配線する。
@@ -157,7 +157,12 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.bgm.ensureStarted();
     };
     const stage = this.game.activeStage;
-    stage.onDecided = () => this.showResult(stage);
+    stage.onDecided = () => {
+      // クリア回数はラン跨ぎの記録なので、決着した瞬間にランの外側が書く。決着済みのセーブを
+      // 読んだときはここを通らない — 読むたびに回数が増えないようにするため、これでよい。
+      if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.hud);
+      this.showResult(stage);
+    };
     this.noteLaunched(stageClass);
     this.bgm.resume();
     // 決着済みのスナップショットから始まったランは decide() を通らないため、ここで締める。

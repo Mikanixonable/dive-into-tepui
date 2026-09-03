@@ -11,7 +11,6 @@ import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
 import { CelestialMarkers } from './marker/celestial-markers';
 import { ActiveControllableController } from './active-controllable-controller';
-import { UnlockManager } from './unlock-manager';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
 import { PlanDisplay } from './plan/plan-display';
@@ -113,7 +112,6 @@ export class Game {
     worldSfx: WorldSfx,
     uiSfx: UiSfx,
     pauseMenu: PauseMenu,
-    unlockManager: UnlockManager,
     sections: FrameSections,
     celestialSystem: CelestialSystem,
     pipeline: RenderPipeline,
@@ -209,7 +207,7 @@ export class Game {
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
 
     this.activeStage = new stageClass(
-      initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem, unlockManager,
+      initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem,
       this.dynamicSystem.effects, this.markerManager, celestialSystem, this.simulator, this.activePlayers,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');

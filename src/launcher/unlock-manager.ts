@@ -1,12 +1,8 @@
 // ステージ解放の判定・記録を一元管理する。ステージクラスの静的 isUnlocked(clearCounts) は
 // 条件式を持つだけで、localStorage には触れない。
-import { Hud } from './hud/hud';
-import { StageId } from './stages/stage';
-import { findStageClass, STAGE_CLASSES } from './stages/stage-dictionary';
-
-// ステージ ID → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、
-// 「クリアしたか否か」ではなく回数を記録する。
-export type ClearCounts = Readonly<Record<string, number>>;
+import { Hud } from '../game/hud/hud';
+import type { ClearCounts, StageId } from '../game/stages/stage';
+import { findStageClass, STAGE_CLASSES } from '../game/stages/stage-dictionary';
 
 const STORAGE_KEY = 'tepui.clearCounts';
 
