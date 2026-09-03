@@ -10,6 +10,8 @@ const HIT_SOUND_DISTANCE_MAX = 10;
 export class WorldSfx {
   private thrustGain: GainNode | null = null;
   private rcsGain: GainNode | null = null;
+  // 組んだループ音の音源。止めて切り離すのは dispose だけ。
+  private readonly loopSources: AudioBufferSourceNode[] = [];
 
   constructor(private readonly engine: AudioEngine) { }
 
@@ -30,7 +32,21 @@ export class WorldSfx {
     gain.gain.value = 0;
     src.connect(filter).connect(gain).connect(ctx.destination);
     src.start();
+    this.loopSources.push(src);
     return gain;
+  }
+
+  // 鳴らしているループ音を止めて切り離す。以後このインスタンスは音を出さない。
+  dispose(): void {
+    for (const src of this.loopSources) {
+      src.stop();
+      src.disconnect();
+    }
+    this.loopSources.length = 0;
+    this.thrustGain?.disconnect();
+    this.rcsGain?.disconnect();
+    this.thrustGain = null;
+    this.rcsGain = null;
   }
 
   // 艦砲 CIWS 風の砲声: 低く重い胴鳴り + 鋭いクラック。
