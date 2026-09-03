@@ -41,7 +41,7 @@ import type { RenderStyle } from '../../../render/render-style';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import { currentThemePalette } from '../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
-import { MARKER_PRIORITY } from '../../marker/marker-manager';
+import { MARKER_PRIORITY } from '../../marker/crowding';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 import type { CelestialSystem } from '../../celestial/celestial-system';

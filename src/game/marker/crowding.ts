@@ -5,6 +5,23 @@
 // 近接判定そのもの(CrowdingGrid)と、隠す側を選ぶ規則(resolveCrowdingWinner)の両方を持つ。
 // 呼び出し頻度が高い(近接判定のペアごとに呼ばれる)ため、引数はオブジェクトではなくスカラーで渡す。
 
+// マーカーラベル優先度 (数値が大きいものが優先。天体 > 船・エンティティ)
+export const MARKER_PRIORITY = {
+  STAR_PLANET: 5000,
+  DWARF_PLANET: 4000,
+  SATELLITE_SMALL_BODY: 3000,
+  LAGRANGE: 2000,
+  PRIMARY_TARGET: 900,
+  IMPACT: 850,
+  BASE: 700,
+  PLAYER: 600,
+  ENEMY: 500,
+  AMMO: 300,
+  MANEUVER_NODE: 150,
+  ORBITAL_NODE: 100,
+  PROTEIN_SITE: 50,
+} as const;
+
 // 画面上で近接する2対象のカメラからの距離比がこれ以上なら、優先度に関わらず遠い側を隠す
 // (奥にあるだけの対象が手前の対象を消してしまう逆転を防ぐ)。
 export const DEPTH_GUARD_RATIO = 3;
