@@ -5,8 +5,8 @@
 import { Hud } from '../hud/hud';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { KinematicState } from '../../physics/kinematic-state';
-import type { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import type { Input } from '../../input/input';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { NODE_APPROACH_LEAD } from '../plan/plan';
 
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
