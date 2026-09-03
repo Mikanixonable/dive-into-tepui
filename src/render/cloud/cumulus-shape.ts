@@ -1,7 +1,7 @@
 // 雲の場(R = 被覆率、G = 雲頂高度)を、不透明な積雲の形として読む規則。場の階調は濃さではなく
 // 「その texel が雲に覆われている割合」なので、どこから不透明な雲になるかと、雲頂がどの高さに
 // 立つかをここが決める。雲を描く側と、その雲が落とす影を引く側が、同じ形を見るための場。
-import { clamp, smoothstep, uniform } from 'three/tsl';
+import { clamp, min, smoothstep, uniform } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
 
@@ -52,7 +52,7 @@ export function grainAt(
 
 // 標本 1 つが実寸 width [m] を張る読み手が引ける粒の振幅 0..1。**幅が粒の 1 波長ぶんまでは
 // 全振幅** — そこまでは引いた粒が形として残る。2 波長を超えると標本の中で粒が均されるだけなので
-// 0 へ落とし、引けなかったぶんは opaqueFractionOf が境目の幅へ回す。
+// 0 へ落とす。
 //
 // **画面の標本化(`cumulus-shell.ts` の grainAmplitudeAt)より緩い。** あちらは隣り合う画素の
 // あいだのモアレを避けるので Nyquist の 2 倍を要るが、こちらの標本は光路上に散っていて画面の
@@ -61,18 +61,13 @@ export function grainAmplitudeForWidth(width: FloatNode): FloatNode {
   return smoothstep(CUMULUS_GRAIN_SIZE, 2 * CUMULUS_GRAIN_SIZE, width).oneMinus();
 }
 
-// 粒を重ねた被覆率を、画素ごとのディザと比べる「覆い尽くされている割合」0..1 へ伸ばしたもの。
-// grain は amplitude を掛けたあとの粒、smoothedGrain は **引けなかった粒のうち均して境目の幅へ
-// 回す割合** 0..1。粒は境目を通す前に被覆率を ±GRAIN_COVERAGE_DEPTH 振るので、均した粒はその
-// 幅ぶん境目の前後へなだらかに広がる。
-//
-// **均すかどうかは読み手が決める。** 殻は画素ごとのディザを持つので、引けなかった粒は 0 を渡して
-// 縁の内外へ振り分けさせる(均すと雲そのものが砂に散る)。影はディザを持てない — 受け手の画素
-// ごとに散らすと影が砂になる — ので、引けなかったぶんを均して幅へ回す。
-export function opaqueFractionOf(
-  coverage: FloatNode, grain: FloatNode, smoothedGrain: FloatNode,
-): FloatNode {
-  const band = smoothedGrain.mul(2 * GRAIN_COVERAGE_DEPTH).add(CUMULUS_DITHER_KNOB.halfWidth.mul(2));
+// 粒を重ねた被覆率を、境目の前後 halfWidth で 0..1 へ伸ばした「覆い尽くされている割合」。grain は
+// amplitude を掛けたあとの粒。**殻も影も同じ斜面を通す** — 殻はこれを画素ごとのディザと比べて
+// 雲を置くか決め、影はこれを通り抜けない確率と読む。粒を引けない読み手は場の被覆率をそのまま
+// 通せばよい — 粒は釣鐘型に散るので、粒で千切った雲を均した平均は境目の周りに狭く立ち、この
+// 斜面がそのまま近似になる。
+export function opaqueFractionOf(coverage: FloatNode, grain: FloatNode): FloatNode {
+  const band = CUMULUS_DITHER_KNOB.halfWidth.mul(2);
   return saturatedBand(coverage.add(grain.mul(GRAIN_COVERAGE_DEPTH)), band);
 }
 
@@ -82,6 +77,12 @@ export function cloudTopOf(fieldTop: FloatNode, grain: FloatNode): FloatNode {
 }
 
 // 境目の前後 band で 0 から 1 へ渡す。band は 0 を取れない(割り算が NaN へ落ちる)。
+//
+// **斜面の下端は 0 より下へ伸ばさない。** 下端が負になると、覆いの無い柱(被覆率 0)まで正の
+// 割合を返し、影がそこへ τ を積む。幅を境目の 2 倍で止めれば下端がちょうど 0 で止まり、境目の
+// 位置(場の平均を保つ値)は動かない。
 function saturatedBand(coverage: FloatNode, band: FloatNode): FloatNode {
-  return clamp(coverage.sub(CUMULUS_DITHER_KNOB.center.sub(band.mul(0.5))).div(band), 0, 1);
+  const center = CUMULUS_DITHER_KNOB.center;
+  const clampedBand = min(band, center.mul(2));
+  return clamp(coverage.sub(center.sub(clampedBand.mul(0.5))).div(clampedBand), 0, 1);
 }
