@@ -52,8 +52,8 @@ export interface DeclutterTarget {
   readonly prevLabelHidden: boolean;
 }
 
-// 隠す対象のキー。どちらの集合も次回の compute まで有効。
-export interface DeclutterResult {
+// 間引きで隠すマーカーのキー。どちらの集合も次回の compute まで有効。
+export interface HiddenMarkerKeys {
   readonly labels: ReadonlySet<string>;
   readonly icons: ReadonlySet<string>;
 }
@@ -67,7 +67,7 @@ export class LabelDeclutter {
 
   // targets の全ペアのうち画面上で近接した組について、隠す側のキーを集める。
   // thin=false なら何も隠さない(戦闘ビューでは照準や敵アイコン等を間引かない)。
-  public compute(targets: readonly DeclutterTarget[], thin: boolean): DeclutterResult {
+  public compute(targets: readonly DeclutterTarget[], thin: boolean): HiddenMarkerKeys {
     const labels = this.hiddenLabels;
     const icons = this.hiddenIcons;
     labels.clear();

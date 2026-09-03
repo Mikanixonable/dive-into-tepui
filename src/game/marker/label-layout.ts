@@ -48,7 +48,8 @@ export class LabelLayout {
   // targets のラベルを重ならない位置へ置き直す。hiddenLabels に載るキーと、ラベルを持たない
   // 対象は既定位置へ戻す。全マーカーが出揃った後に一度だけ呼ぶこと。
   public sync(targets: readonly LayoutTarget[], hiddenLabels: ReadonlySet<string>): void {
-    this.relaxLabelRects(targets, hiddenLabels);
+    this.collectLabelRects(targets, hiddenLabels);
+    this.relaxOverlaps();
     this.applyLabelOffsets();
   }
 
@@ -56,14 +57,6 @@ export class LabelLayout {
   public dispose(): void {
     for (const line of this.svgLinePool) line.remove();
     this.svgLinePool.length = 0;
-  }
-
-  // 押し出しの対象になるラベルの推定矩形を集め、重なったものどうしを反発させて緩和する。
-  // 結果のオフセットは activeScratch/activeCount へ蓄積し、位置の反映と引き出し線の描画は
-  // applyLabelOffsets が行う。
-  private relaxLabelRects(targets: readonly LayoutTarget[], hiddenLabels: ReadonlySet<string>): void {
-    this.collectLabelRects(targets, hiddenLabels);
-    this.relaxOverlaps();
   }
 
   // 押し出しの対象になるラベルを選び、既定位置と概算矩形を activeScratch へ積む。
@@ -112,6 +105,7 @@ export class LabelLayout {
   // ラベルが前の反復で別セルへ移動しても候補から漏れないよう、反復をまたいでバケットを
   // 再利用しない。
   private rebuildRectGrid(): void {
+    // 前回のセルは中身を空にしてプールへ返し、次の登録で再利用する。
     for (const row of this.collisionBuckets.values()) {
       for (const bucket of row.values()) {
         bucket.length = 0;
@@ -123,6 +117,7 @@ export class LabelLayout {
     this.collisionBuckets.clear();
     const buckets = this.collisionBuckets;
     const active = this.activeScratch;
+    // 押し出し後の矩形が覆うセルの範囲を求め、その全セルへ自分の添字を置く。
     for (let i = 0; i < this.activeCount; i++) {
       const a = active[i]!;
       const cx = a.ox + a.dx;
