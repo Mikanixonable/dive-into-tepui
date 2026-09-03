@@ -38,8 +38,6 @@ export const MARKER_PRIORITY = {
   PROTEIN_SITE: 50,
 } as const;
 
-const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
-
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 const MARKER_BEARING_RING_RATIO = 0.8;
 
@@ -111,7 +109,7 @@ export class MarkerManager {
     svgOverlay: SVGSVGElement,
   ) {
     this.labelLayout = new LabelLayout(svgOverlay);
-    this.combatMarkers = new GroupedMarkers(this, MARKER_CLUSTER_PX);
+    this.combatMarkers = new GroupedMarkers(this);
     this.leadMarkers = new LeadMarkers(this);
   }
 
