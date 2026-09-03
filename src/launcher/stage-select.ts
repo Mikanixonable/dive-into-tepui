@@ -1,20 +1,20 @@
 // 起動時のステージ選択画面 GUI。
 // DEVELOP/UI_DESIGN_REFERENCE_V6.md の Rich title window を起動導線へ適用する。
-import { STAGE_CLASSES } from './stages/stage-dictionary';
-import { UnlockManager } from './unlock-manager';
-import type { StageClass } from './stages/stage';
-import { StageDebug } from './stages/stage-debug';
-import { Button, TabBar, ValueInput } from './hud/widgets';
+import { STAGE_CLASSES } from '../game/stages/stage-dictionary';
+import { UnlockManager } from '../game/unlock-manager';
+import type { StageClass } from '../game/stages/stage';
+import { StageDebug } from '../game/stages/stage-debug';
+import { Button, TabBar, ValueInput } from '../game/hud/widgets';
 import {
   calendarDateToJulianDate, julianDateToCalendarDate, parseCalendarDate, TdbJulianDate,
 } from '../physics/time';
-import { KEY_MAPPING as K } from './input/key-mapping';
-import { MQ_COMPACT, MQ_SHORT } from './hud/breakpoints';
+import { KEY_MAPPING as K } from '../game/input/key-mapping';
+import { MQ_COMPACT, MQ_SHORT } from '../game/hud/breakpoints';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import {
   ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACTIVE_THEME, BG, SURFACE_0 as THEME_SURFACE_0,
   SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT, Z_STAGE_SELECT,
-} from './theme';
+} from '../game/theme';
 import { TITLE_SCENE_PATTERNS, createTitleScene, type TitleScene } from '../render/title-scene';
 
 const PAGE = BG;
