@@ -1,15 +1,10 @@
-import { Slider, ValueInput } from '../hud/widgets';
+import { buildLabeledRow, Slider, ValueInput } from '../hud/widgets';
 
 // ラベル行(.w-group + .w-group-title)と数値入力を組み立てて返す。root への追加は呼び出し側の仕事
 // (numberField はそのまま追加するだけだが、sliderField はスライダー列を同じ行に足してから追加する)。
 // 値は打鍵のたびに(sliderField が)直接読み書きするので、ValueInput の commit 通知自体は使わない。
 function buildNumberRow(label: string, defaultValue: number, step: number, min?: number, max?: number): { row: HTMLElement; input: HTMLInputElement } {
-  const row = document.createElement('div');
-  row.className = 'w-group';
-  const heading = document.createElement('span');
-  heading.className = 'w-group-title';
-  heading.textContent = label;
-  row.appendChild(heading);
+  const row = buildLabeledRow(label);
   const valueInput = new ValueInput({ type: 'number', step, min, max }, () => {});
   valueInput.setValue(String(defaultValue));
   row.appendChild(valueInput.element);

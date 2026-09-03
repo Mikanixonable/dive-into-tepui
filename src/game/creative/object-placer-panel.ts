@@ -2,7 +2,9 @@
 // 指定のどちらかを選び、フォームで値を指定して、確定で1隻分の ShipPlacerForm を通知する。
 // 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
-import { Button, CloseButton, SegmentedControl, ValueInput } from '../hud/widgets';
+import {
+  buildGroupTitle, buildLabeledRow, Button, CloseButton, SegmentedControl, ValueInput,
+} from '../hud/widgets';
 import { ObjectPicker } from '../hud/windows/object-picker';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
@@ -345,10 +347,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
       const presets = PRESETS_BY_BODY[this.celestialBodyValue] ?? [];
       presetRow.classList.toggle('hidden', presets.length === 0);
       if (presets.length === 0) return;
-      const heading = document.createElement('span');
-      heading.className = 'w-group-title';
-      heading.textContent = 'プリセット';
-      presetRow.appendChild(heading);
+      presetRow.appendChild(buildGroupTitle('プリセット'));
       for (const preset of presets) {
         const btn = new Button(preset.label, () => {
           this.setSliderValue(peAlt, preset.peAltKm);
@@ -424,12 +423,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
   // 名称行(ラベル + テキスト入力)を組み立てて返す。
   private buildNameRow(): { element: HTMLElement; nameInput: HTMLInputElement } {
-    const nameRow = document.createElement('div');
-    nameRow.className = 'w-group';
-    const nameHeading = document.createElement('span');
-    nameHeading.className = 'w-group-title';
-    nameHeading.textContent = '名称';
-    nameRow.appendChild(nameHeading);
+    const nameRow = buildLabeledRow('名称');
     const nameField = new ValueInput({ type: 'text', placeholder: '空欄で自動命名' }, () => {});
     nameRow.appendChild(nameField.element);
     return { element: nameRow, nameInput: nameField.element };
