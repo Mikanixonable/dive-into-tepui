@@ -3,13 +3,13 @@
 // 装填/姿勢リセット/視点追従切替/ターゲット選択の4操作と、タッチ時のみのスロットル段は、
 // キー押下と同じ経路(Input.tapKey)で発火するボタンとしてここに持つ — タッチでも到達できるよう
 // にするための、キー入力の代替 UI。
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { Button, SegmentedControl } from '../widgets';
 import { fmtAmmoStatus, setElementText } from '../utils';
 import { SyncThrottle } from '../sync-throttle';
 import type { Game } from '../../game';
-import type { Input } from '../../input/input';
-import type { KeyBinding } from '../../input/key-mapping';
+import type { Input } from '../../../input/input';
+import type { KeyBinding } from '../../../input/key-mapping';
 import type { RadiatorSide, RadiatorSystem } from '../../player/radiator';
 import type { SolarSide, PowerSystem } from '../../player/power';
 import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/player-throttle';
