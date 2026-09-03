@@ -6,29 +6,26 @@ import '@sarap422/font-hackgen';
 // 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
 import { createGameScene, GameScene } from './render/scene';
-import { PerfMeter } from './perf-meter';
-import { FrameSections } from './frame-sections';
-import { GpuTimings } from './gpu-timings';
+import { PerfMeter } from './launcher/perf-meter';
+import { FrameSections } from './game/frame-sections';
 import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-settings';
-import { RenderPipeline } from './render/pipeline/render-pipeline';
 import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
-import { PauseMenu, SettingsView, SaveBrowser } from './game/hud/windows';
+import { HudShell } from './hud/hud-shell';
+import { PauseMenu, SettingsView } from './hud/windows';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
-import { UiSfx } from './audio/sfx/ui-sfx';
-import { WorldSfx } from './audio/sfx/world-sfx';
-import { UnlockManager } from './game/unlock-manager';
-import { LocalStorageSaveStore } from './game/save/save-store';
-import { SaveSlots } from './game/save/save-slots';
-import { SnapshotService } from './game/save/snapshot-service';
-import { AutoSave } from './game/save/autosave';
-import { migrateLegacySave } from './game/save/legacy-save';
-import { SnapshotControls } from './snapshot-controls';
-import { Launcher } from './launcher';
-import { showLoading, hideLoading } from './loading-overlay';
-import { showFatalError } from './fatal-error';
-import { startProteinAssetPreload } from './game/protein/protein-asset-loader';
+import { Launcher } from './launcher/launcher';
+import { UnlockManager } from './launcher/unlock-manager';
+import { SnapshotControls } from './launcher/snapshot-controls';
+import { SaveBrowser } from './launcher/save-browser/save-browser';
+import { LocalStorageSaveStore } from './launcher/save/save-store';
+import { SaveSlots } from './launcher/save/save-slots';
+import { SnapshotService } from './launcher/save/snapshot-service';
+import { AutoSave } from './launcher/save/autosave';
+import { migrateLegacySave } from './launcher/save/legacy-save';
+import { showLoading, hideLoading } from './launcher/loading-overlay';
+import { showFatalError } from './launcher/fatal-error';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
@@ -43,9 +40,9 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, graphics: GraphicsSettings, renderStyle: RenderStyleSetting,
+  launcher: Launcher, gs: GameScene, graphics: GraphicsSettings, renderStyle: RenderStyleSetting,
   perf: PerfMeter, sections: FrameSections,
-  gpu: GpuTimings, autoSave: AutoSave,
+  autoSave: AutoSave,
   snapshotControls: SnapshotControls,
 ): void {
   let lastTime = performance.now();
@@ -75,7 +72,6 @@ function startAnimationLoop(
       }
       perf.handleInput(game.input);
       autoSave.update(game);
-      launcher.update();
       const t1 = perf.on ? performance.now() : 0;
       game.sync(graphics.current, renderStyle.current);
       const t2 = perf.on ? performance.now() : 0;
@@ -83,7 +79,7 @@ function startAnimationLoop(
       const t3 = perf.on ? performance.now() : 0;
       // 時刻印クエリを溜めないため、窓の開閉によらず毎フレーム解決させる。計測自身の費用が
       // render 区間へ混ざらないよう、区間の外で呼ぶ。
-      gpu.resolve();
+      gs.gpu.resolve();
       if (perf.on) {
         perf.record(game, t1 - t0, t2 - t1, t3 - t2, t3);
       }
@@ -107,24 +103,20 @@ function startAnimationLoop(
   });
 }
 
-// hud と音声一式(AudioEngine/Bgm/WorldSfx/UiSfx)はタイトル(ステージ選択)画面の時点から
-// 使えるべきなので、Game より先に main.ts が生成して所有し、Launcher には参照として渡す。
-// pauseMenu も同様に main.ts が所有し、開閉に応じた一時停止の反映
-// (launcher.current?.pause()/resume())も持ち主である main.ts がここで配線する。
+// タイトル(ステージ選択)画面の時点から使えるべき画面と音声を、Game より先に組む。
 function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting): {
-  hud: Hud; audioEngine: AudioEngine; bgm: Bgm; worldSfx: WorldSfx; uiSfx: UiSfx;
+  shell: HudShell; hud: Hud; audioEngine: AudioEngine; bgm: Bgm;
   pauseMenu: PauseMenu; settingsView: SettingsView;
 } {
-  const hud = new Hud(renderStyle);
+  const shell = new HudShell();
+  const hud = new Hud(shell, renderStyle);
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine);
-  const worldSfx = new WorldSfx(audioEngine);
-  const uiSfx = new UiSfx(audioEngine);
-  const pauseMenu = new PauseMenu(hud.layers.system, hud.overlayManager);
-  const settingsView = new SettingsView(hud.layers.system, hud.overlayManager, bgm, graphics);
+  const pauseMenu = new PauseMenu(shell.layers.system, shell.overlayManager);
+  const settingsView = new SettingsView(shell.layers.system, shell.overlayManager, bgm, graphics);
   pauseMenu.setBgmVolume(bgm.getVolume());
   pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
-  return { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView };
+  return { shell, hud, audioEngine, bgm, pauseMenu, settingsView };
 }
 
 // 索引を読み、旧セーブを取り込み、遊ぶ先のスロットが必ず1つある状態にする。
@@ -139,29 +131,22 @@ function initSaveSlots(store: LocalStorageSaveStore): SaveSlots {
 }
 
 async function main() {
-  // シーン初期化と並行して、タンパク質アセット(構造・モーション)の fetch を非同期に始める。
-  // 完了前にタンパク質型の敵を生成する側(DynamicSystem.spawnEnemyWhenReady)が待つ。
-  startProteinAssetPreload();
-  const unlockmanager = new UnlockManager();
+  const unlockManager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
   const slots = initSaveSlots(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const graphics = new GraphicsSettings();
   const renderStyle = new RenderStyleSetting();
   const gs = await initScene(graphics.current);
-  const gpu = new GpuTimings(gs.renderer);
-  const pipeline = new RenderPipeline(gs.renderer, graphics.current, gpu);
   // 描画品質設定の押し出し先の登録は、設定を持っている側の配線。
   graphics.bind(gs);
-  graphics.bind(pipeline);
-  const { hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, renderStyle);
+  const { shell, hud, audioEngine, bgm, pauseMenu, settingsView } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
-    hud, gs, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView, unlockmanager, sections,
-    pipeline, slots, snapshotService,
+    shell, hud, gs, audioEngine, bgm, pauseMenu, settingsView, unlockManager, sections,
+    slots, snapshotService,
   );
-
 
   // 「ゲームを中断してタイトル画面に戻る」
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
@@ -179,7 +164,7 @@ async function main() {
     else launcher.current?.resume();
   };
 
-  const saveBrowser = new SaveBrowser(hud.layers.system, slots, snapshotService, launcher, hud.overlayManager);
+  const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
@@ -190,7 +175,7 @@ async function main() {
 
   // pipeline は負荷確認ウィンドウのデバッグ表示の選択欄が書き込む先。
   const perf = new PerfMeter(
-    hud.layers.window, gs.renderer, sections, gpu, hud.overlayManager, pipeline, renderStyle,
+    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline, renderStyle,
   );
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   pauseMenu.onOpenPerfWindow = () => {
@@ -204,7 +189,7 @@ async function main() {
   await launcher.start();
   settingsView.restorePersistedOpenState();
 
-  startAnimationLoop(launcher, graphics, renderStyle, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
+  startAnimationLoop(launcher, gs, graphics, renderStyle, perf, sections, new AutoSave(snapshotService), snapshotControls);
 }
 
 main().catch((err) => {

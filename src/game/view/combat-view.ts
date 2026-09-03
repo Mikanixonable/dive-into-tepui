@@ -1,12 +1,12 @@
 // 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
 import { PlanGuide } from '../plan/plan-guide';
-import type { Input } from '../input/input';
+import type { Input } from '../../input/input';
 import type { Hud } from '../hud/hud';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { TouchControls } from '../input/touch';
+import type { TouchControls } from '../hud/touch-controls';
 import type { CameraSystem } from '../camera/camera-system';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ObjectWindows } from '../pickable/object-windows';
@@ -22,7 +22,7 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { ViewFrame } from './view';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { PerfCounts } from '../../perf-meter';
+import type { PerfCounts } from '../perf-counts';
 
 export class CombatView implements ViewFrame {
   private readonly planGuide: PlanGuide;

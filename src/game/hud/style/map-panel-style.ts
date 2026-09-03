@@ -1,7 +1,7 @@
 // マップビューで開くパネル(MANEUVER PLAN・表示設定・予測軌道・座標系/カメラ・
 // 軌道ガイド・ステージ操作・物体配置)の CSS。パネルが共有する行部品
 // (.w-group / .w-toggle / .body-class-row)もここが持つ。
-import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN } from '../breakpoints';
+import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN } from '../../../hud/breakpoints';
 
 export const MAP_PANEL_STYLE = `
 /* MANEUVER PLAN パネルと、表示設定パネル群が共有する行部品。 */

@@ -2,12 +2,12 @@
 import { FrameRole, frameRoleOf } from '../../../physics/frame';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
-import { ToggleSwitch } from '../widgets';
+import { ToggleSwitch } from '../../../hud/widgets';
 import { frameRoleName, rotationSourceLabel } from './frame-labels';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DisplayWindowManager } from '../../display-window-manager';
-import type { OverlayManager } from '../overlay-manager';
+import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-controls';
 
 export class TrajectoryFramePanel {

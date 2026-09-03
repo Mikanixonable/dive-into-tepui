@@ -1,8 +1,8 @@
 // どのビューを表示しているかの正本と、2ビューの実装の保持。遷移は必ず setView() を通る。
 import { Hud } from '../hud/hud';
-import { TouchControls } from '../input/touch';
-import type { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { TouchControls } from '../hud/touch-controls';
+import type { Input } from '../../input/input';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { DisplayWindowManager } from '../display-window-manager';
 import type { ActiveControllableController } from '../active-controllable-controller';
 import { setPanelCollapsedView } from '../hud/panel-shell';

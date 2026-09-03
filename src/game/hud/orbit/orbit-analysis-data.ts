@@ -12,7 +12,7 @@ import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity'
 import type { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { OrbitReference } from '../../orbit-reference';
-import { relativeInclinationDeg } from './orbit-info';
+import { relativeInclinationDeg } from '../../orbit-info';
 
 interface AltitudeSample { readonly t: number; readonly alt: number }
 

@@ -1,6 +1,6 @@
 // 軌道ガイドの設定行に使う「スライダー+数値入力」と色入力の部品。値そのものの意味(0〜1 の
 // 族範囲、対数の振幅、位相のラジアン)は写像として持ち、行の組み立てと同期を1箇所へ集約する。
-import { buildLabeledRow, Button, Slider, ValueInput } from '../widgets';
+import { buildLabeledRow, Button, Slider, ValueInput } from '../../../hud/widgets';
 import {
   MAX_LINES_PER_KIND, MAX_ZERO_VELOCITY_CURVES, type DirectionMarkerMode,
 } from '../../celestial/orbit-guide/orbit-guide-settings';

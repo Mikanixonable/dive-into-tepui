@@ -1,20 +1,31 @@
-// PostToolUse フック: 横断的な責務境界のうち、機械的に検出できる違反を
-// 編集直後に指摘する。判定するのは以下の4つだけで、基準そのものは
-// DEVELOP/CODING-RULE.md が正本。
+// PostToolUse フック: 横断的な責務境界のうち、機械的に見つかるものを編集直後に
+// 指摘する。見るのは以下の4つだけで、基準そのものは DEVELOP/CODING-RULE.md が正本。
 //
-//   1. game.ts / main.ts に配線と呼び出し順以外のものが入った
-//   2. sync が update を呼ぶ / 論理値を書き換える
-//   3. update が THREE・DOM に触る / sync を呼ぶ
-//   4. physics/ が THREE・game/・フローティングオリジンに依存した
+//   1. sync が update を呼ぶ / 論理値を書き換える
+//   2. update が THREE・DOM に触る / sync を呼ぶ
+//   3. physics/ が THREE・game/・フローティングオリジンに依存した
+//   4. 配線で占められたモジュールに、配線でないメンバーが入った
 //
+// 上3つは白黒が付くので違反として、4つめは程度問題なので疑いとして報告する。
 // 構文解析はせず、メソッド単位のブロックを波括弧の対応で切り出して正規表現で見る。
 // 取りこぼしはあるが、誤検出したときも「見直せ」と言うだけで作業は止めない。
 
-// Game に置いてよいメンバー(生成・配線・呼び出し順・フレーム位相・自身の状態の切替)。
-const GAME_ALLOWED_MEMBERS = new Set([
-  'constructor', 'update', 'sync', 'render', 'handleInput',
-  'pause', 'resume', 'setActivePlayer', 'perfCounts',
+// 配線と呼び出し順の決定で占められたモジュールと、それが層の外へ約束している口。
+//
+// どのモジュールがここに来るかは固定ではない。上の層が肥大したら下へ責務を下ろす、を
+// 繰り返すので、配線で占められる位置は移っていく。移ったらこの表を書き換える —
+// 表から外すのも正しい直し方のうちで、外れたモジュールは普通のモジュールとして見る。
+const ORCHESTRATORS = new Map([
+  ['src/game/game.ts', ['pause', 'resume', 'handleInput', 'perfCounts', 'runSummary']],
 ]);
+
+// 持ち主にしか書けないもの。何をいくつ持っているかを知っているのは持ち主だけなので、
+// 生成・後始末・直列化は constructor と同格に本人が書く。二段初期化を避けるための
+// 静的な非同期ファクトリ(CODING-RULE 1.3)も同じ。
+const OWNER_LIFECYCLE = ['constructor', 'create', 'dispose', 'serialize'];
+
+// 毎フレームの位相(CODING-RULE 1.10)。
+const FRAME_PHASES = ['update', 'sync', 'render', 'build'];
 
 // sync の中にあってはいけないもの(論理値の前進・積分・寿命判定・update 呼び出し)。
 const SYNC_FORBIDDEN = [
@@ -77,38 +88,54 @@ function methodBodies(src, namePattern) {
 
 // src の全メソッド名(クラス直下の宣言)を返す。アクセサは値を読ませるだけなので除く。
 function memberNames(src) {
-  const decl = /^\s{2}(?:private |protected |public |readonly |static )*(\w+)\s*[(<]/gm;
+  const decl = /^\s{2}(?:private |protected |public |readonly |static |async )*(\w+)\s*[(<]/gm;
   return [...src.matchAll(decl)].map((m) => m[1]);
 }
 
-// path/src を4つの境界に照らし、見つかった違反の説明を返す。
+// posix が配線で占められたモジュールなら、そこに置いてよいメンバー名を返す。
+function orchestrationVocabulary(posix) {
+  for (const [file, exposed] of ORCHESTRATORS) {
+    if (posix === file || posix.endsWith(`/${file}`)) {
+      return new Set([...OWNER_LIFECYCLE, ...FRAME_PHASES, ...exposed]);
+    }
+  }
+  return null;
+}
+
+// path/src を4つの境界に照らし、見つかったものを { text, strict } で返す。
 function findViolations(posix, src) {
   const out = [];
 
   if (/(^|\/)src\/physics\//.test(posix)) {
     for (const [re, msg] of PHYSICS_FORBIDDEN) {
-      if (re.test(src)) out.push(`${msg}(CODING-RULE 1.3 フォルダの境界)`);
-    }
-  }
-
-  if (/(^|\/)src\/game\/game\.ts$/.test(posix)) {
-    const extra = memberNames(src).filter((n) => !GAME_ALLOWED_MEMBERS.has(n));
-    if (extra.length > 0) {
-      out.push(
-        `Game/main にオーケストレーション以外のメンバーがある: ${extra.join(', ')}` +
-        '(CODING-RULE 1.2 — どちらかの所有者へ寄せるか、その横断を責務とするモジュールを立てる)',
-      );
+      if (re.test(src)) out.push({ strict: true, text: `${msg}(CODING-RULE 1.3 フォルダの境界)` });
     }
   }
 
   for (const { name, body } of methodBodies(src, 'sync\\w*')) {
     for (const [re, msg] of SYNC_FORBIDDEN) {
-      if (re.test(body)) out.push(`${name}(): ${msg}(CODING-RULE 1.9 フレーム処理の位相)`);
+      if (re.test(body)) out.push({ strict: true, text: `${name}(): ${msg}(CODING-RULE 1.10 フレーム処理の位相)` });
     }
   }
   for (const { name, body } of methodBodies(src, 'update\\w*|behave')) {
     for (const [re, msg] of UPDATE_FORBIDDEN) {
-      if (re.test(body)) out.push(`${name}(): ${msg}(CODING-RULE 1.9 フレーム処理の位相)`);
+      if (re.test(body)) out.push({ strict: true, text: `${name}(): ${msg}(CODING-RULE 1.10 フレーム処理の位相)` });
+    }
+  }
+
+  const vocabulary = orchestrationVocabulary(posix);
+  if (vocabulary !== null) {
+    const extra = memberNames(src).filter((n) => !vocabulary.has(n));
+    if (extra.length > 0) {
+      out.push({
+        strict: false,
+        text:
+          `配線でないメンバーがある: ${extra.join(', ')}(CODING-RULE 1.2)\n` +
+          '  その関心を持つモジュールへ移すか、横断そのものを責務とするモジュールを立てる。\n' +
+          '  ただし持ち主にしか書けないもの(生成・後始末・直列化)は外へ出さない — 出すと持ち物の\n' +
+          '  一覧を公開して回る羽目になり、境界はかえって壊れる。このモジュールがもう配線で\n' +
+          '  占められていないなら、フックの ORCHESTRATORS を直すのが正しい直し方のこともある。',
+      });
     }
   }
 
@@ -140,16 +167,24 @@ process.stdin.on('end', async () => {
   const violations = findViolations(posix, src);
   if (violations.length === 0) process.exit(0);
 
+  const section = (kept, head) => {
+    const lines = violations.filter(kept).map((v) => `- ${v.text}`);
+    return lines.length === 0 ? '' : `\n${head}\n${lines.join('\n')}`;
+  };
+
   process.stdout.write(
     JSON.stringify({
       suppressOutput: true,
       hookSpecificOutput: {
         hookEventName: 'PostToolUse',
         additionalContext:
-          `【責務境界の違反を検出】${posix}\n` +
-          violations.map((v) => `- ${v}`).join('\n') +
-          '\nDEVELOP/CODING-RULE.md の該当節を読み、コードを直せ。' +
-          'ルールに例外を足して正当化しない。誤検出だと判断した場合はその理由を述べること。',
+          `【責務境界の点検】${posix}` +
+          section((v) => v.strict,
+            '■ 違反。DEVELOP/CODING-RULE.md の該当節を読んで直す。ルールに例外を足して正当化しない。' +
+            '誤検出だと判断した場合はその理由を述べること。') +
+          section((v) => !v.strict,
+            '■ 疑い(程度問題)。該当節を読み、当てはまるかを自分で判断する。' +
+            '当てはまらないと判断したならその理由を述べ、直さずに進めてよい。'),
       },
     }),
   );

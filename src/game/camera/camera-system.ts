@@ -9,8 +9,8 @@ import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { catalogFamilyIndex } from '../celestial/orbit-guide/orbit-guide-catalog';
 import { applyMapDisplayMode, MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, normalizeMapDisplayToggles } from '../map/display-toggles';
 import type { FocusCandidate } from './focus-target';
-import { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { Input } from '../../input/input';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { FloatingOrigin } from './floating-origin';
 import { Vec3, len, sub, v3 } from '../../math/vec3';
 import {

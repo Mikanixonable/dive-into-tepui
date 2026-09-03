@@ -11,7 +11,6 @@ import { EffectsSystem } from '../vfx/effects-system';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
-import type { ClearCounts, UnlockManager } from '../unlock-manager';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
@@ -60,7 +59,6 @@ export type StageDeps = [
   uiSfx: UiSfx,
   scene: THREE.Scene,
   entities: DynamicSystem,
-  unlockManager: UnlockManager,
   fx: EffectsSystem,
   markerManager: MarkerManager,
   celestialSystem: CelestialSystem,
@@ -97,6 +95,10 @@ export interface ObjectAuthoring {
   openObjectPlacer(focusId?: string): void;
   openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void;
 }
+
+// ステージ ID → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、
+// 「クリアしたか否か」ではなく回数を記録する。
+export type ClearCounts = Readonly<Record<string, number>>;
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
@@ -158,7 +160,6 @@ export abstract class Stage {
   protected readonly _uiSfx: UiSfx;
   protected readonly _scene: THREE.Scene;
   protected readonly _fx: EffectsSystem;
-  protected readonly _unlockManager: UnlockManager;
   protected readonly _entities: DynamicSystem;
   protected readonly _markerManager: MarkerManager;
   protected readonly _celestialSystem: CelestialSystem;
@@ -170,10 +171,16 @@ export abstract class Stage {
   public get isPlaying(): boolean { return this._phase === 'playing'; }
   private _result: StageResult | null = null;
   public get result(): StageResult | null { return this._result; }
-  // 勝敗と結果画面の内容を同時に確定させる。表示は呼び出し側(Launcher)の役目。
+  // decide() が決着を確定させた瞬間に一度だけ呼ぶ。
+  public onDecided: (() => void) | null = null;
+  // 勝敗と結果画面の内容を同時に確定させ、鳴らし続けている継続音を畳む。
   protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
     this._phase = phase;
     this._result = result;
+    // 決着後は積分が止まるため、ここで畳まないと噴射音・RCS 音が鳴り続ける。
+    this._worldSfx.setThrust(false);
+    this._worldSfx.setRcs(false);
+    this.onDecided?.();
   }
   private readonly restored: boolean;
 
@@ -181,12 +188,11 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, unlockManager, fx, markerManager, celestialSystem, simulator, activePlayers] = deps;
+    const [hud, worldSfx, uiSfx, scene, entities, fx, markerManager, celestialSystem, simulator, activePlayers] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
     this._scene = scene;
-    this._unlockManager = unlockManager;
     this._fx = fx;
     this._entities = entities;
     this._markerManager = markerManager;
@@ -298,10 +304,7 @@ export abstract class Stage {
     }
 
     // isPlaying ガード: 敗北後に残存敵が再突入で消えても勝利判定が上書きしないよう。
-    if (this.isPlaying && this.checkWin()) {
-      this._unlockManager.reportClear(this.id, this._hud);
-      this.onWin(simTime);
-    }
+    if (this.isPlaying && this.checkWin()) this.onWin(simTime);
   }
 
   // 敗北を記録し、reason を添えて決着を「敗北」で確定させる。

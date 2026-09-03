@@ -1,4 +1,4 @@
-import { Button } from '../widgets';
+import { Button } from '../../../hud/widgets';
 import type { AnyPart, Part, PartType, RcsTankPart } from '../../dynamic/dynamic-entity/parts';
 import { PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL, MUZZLE_SPEED, FIRE_INTERVAL, ENEMY_BULLET_DAMAGE } from '../../dynamic/dynamic-entity/ship';
 import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/player-throttle';

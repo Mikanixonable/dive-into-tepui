@@ -12,7 +12,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { Vec2Uniform, Vec3Node } from '../tsl-types';
 import { apertureGhosts, downsample, streakPass, tentUpsample } from './lens-kernels';
 

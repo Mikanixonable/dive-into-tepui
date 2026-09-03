@@ -1,6 +1,6 @@
 // チャート canvas 2D の下回り。devicePixelRatio 対応の backing store 調整、折れ線描画、
 // 現在地点/ターゲット点の丸マーク、16:9 表示とパン/ズームのカーソル制御の CSS を持つ。
-import { ACCENT, ACCENT_SOFT, TEXT_STRONG } from '../../theme';
+import { ACCENT, ACCENT_SOFT, TEXT_STRONG } from '../../../theme';
 
 export interface BackingStoreState {
   cssWidth: number;

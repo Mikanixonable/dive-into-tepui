@@ -18,7 +18,7 @@ import { Player } from '../player/player';
 import { simulationMaxStep, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { PredictedArc } from './predicted-arc';
-import type { PerfCounts } from '../../perf-meter';
+import type { PerfCounts } from '../perf-counts';
 
 // 消費される弧が、消費前線より過去側にも保持しておく余裕 [s]。保持窓の左端が前線に一致すると
 // at(前線) を挟む補間区間が消える。予測線の下端は simTime なので、余分に保持しても描画は変わらない。

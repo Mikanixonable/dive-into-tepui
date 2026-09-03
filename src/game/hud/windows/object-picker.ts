@@ -2,12 +2,12 @@
 // 登録天体ぶんの候補を並べると1行に収まらない。現在の選択を出すボタンを押すとポップアップが
 // 開き、上から「絞り込み入力」「グループ分けした全候補」の順に並ぶ。候補はグループごとに
 // 複数列のグリッドへ並べる(百件規模を縦一列に積むと画面高をはみ出すため)。
-import { clampOverlayPosition } from '../layout';
-import { Button, buildLabeledRow } from '../widgets';
-import { injectOnce } from '../widgets/inject-style';
-import { bringToFront } from '../overlay-layer';
-import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
-import type { OverlayHandle, OverlayManager } from '../overlay-manager';
+import { clampOverlayPosition } from '../../../hud/layout';
+import { Button, buildLabeledRow } from '../../../hud/widgets';
+import { injectOnce } from '../../../hud/widgets/inject-style';
+import { bringToFront } from '../../../hud/overlay-layer';
+import { isCompactViewport, MQ_COMPACT } from '../../../hud/breakpoints';
+import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 
 const STYLE = `
 #hud .object-picker-pop {

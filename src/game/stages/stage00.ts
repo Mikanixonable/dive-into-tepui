@@ -1,6 +1,6 @@
 // Stage 00: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く。
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { Player } from '../player/player';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';

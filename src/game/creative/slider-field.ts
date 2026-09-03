@@ -1,4 +1,4 @@
-import { buildLabeledRow, Slider, ValueInput } from '../hud/widgets';
+import { buildLabeledRow, Slider, ValueInput } from '../../hud/widgets';
 
 // ラベル行(.w-group + .w-group-title)と数値入力を組み立てて返す。root への追加は呼び出し側の仕事
 // (numberField はそのまま追加するだけだが、sliderField はスライダー列を同じ行に足してから追加する)。

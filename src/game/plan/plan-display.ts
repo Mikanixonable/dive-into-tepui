@@ -8,7 +8,7 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../math/projection';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { fmtMarkerDist } from '../hud/utils';
+import { fmtMarkerDist } from '../../hud/utils';
 import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
 import { MarkerManager } from '../marker/marker-manager';
@@ -24,7 +24,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { PredictedArc } from '../dynamic/predicted-arc';
-import type { PerfCounts } from '../../perf-meter';
+import type { PerfCounts } from '../perf-counts';
 
 // 近地点・遠地点アイコン(plan/plan-display.ts)を出す離心率相当値の下限。両方見つかった
 // ときの (遠地点距離-近地点距離)/(遠地点距離+近地点距離) と比較する — これ未満は円に

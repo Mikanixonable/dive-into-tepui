@@ -8,7 +8,7 @@
 // 面が写っていない画素の照度は 0 になる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { GBufferPass } from './gbuffer';
 import type { LightSource } from './lighting/light-source';
 import { ShadingSample } from './lighting/shading-sample';

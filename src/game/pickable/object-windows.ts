@@ -4,12 +4,12 @@
 import { Hud } from '../hud/hud';
 import type { View } from '../view/view';
 import type { Base } from '../dynamic/dynamic-entity/base';
+import { ContextMenu, MenuAction } from '../hud/windows';
 import {
-  ContextMenu, PropertyWindow, PropertyWindowContent, PropertyWindowItem,
-  type PropertyWindowRelatedItem,
-  MenuAction, type PauseMenu,
-} from '../hud/windows';
-import { TEMP_WINDOW_GROUP } from '../hud/overlay-manager';
+  PropertyWindow, PropertyWindowContent, PropertyWindowItem,
+  type PropertyWindowRelatedItem, type PauseMenu,
+} from '../../hud/windows';
+import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { ObjectPickable } from './object-pickable';
 import type { LinePickable } from './line-pickable';

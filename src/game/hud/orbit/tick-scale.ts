@@ -1,5 +1,5 @@
 // 表示時間軸の目盛り間隔を、期間の長さに応じて決める。
-import { fmtDuration } from '../utils';
+import { fmtDuration } from '../../../hud/utils';
 
 // 目盛り間隔の候補ラダー [秒]、小さい順。
 const TICK_INTERVALS_SEC = [

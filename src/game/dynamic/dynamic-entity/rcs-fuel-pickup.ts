@@ -7,7 +7,7 @@ import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS
 import { EntityIdAllocator } from './entity-id';
 import type { DynamicEntityKind } from './entity-kind';
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_FUEL } from '../../marker/marker-identity';
-import { fmtDist, fmtMarkerDist } from '../../hud/utils';
+import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
@@ -20,7 +20,7 @@ import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { ObjectCommands } from '../../pickable/object-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window';
+import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';

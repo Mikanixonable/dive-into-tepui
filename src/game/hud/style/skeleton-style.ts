@@ -1,11 +1,11 @@
 // HUD の骨格 CSS: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レールと、
 // 置き場を持たない画面固定バッジ・通知。末尾でブレークポイントごとの上書きと
 // prefers-reduced-motion を当てる。
-import { OVERLAY_LAYER_STYLE } from '../overlay-layer';
-import { LIGHT_PALETTE } from '../../theme';
+import { OVERLAY_LAYER_STYLE } from '../../../hud/overlay-layer';
+import { LIGHT_PALETTE } from '../../../theme';
 import {
   MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
-} from '../breakpoints';
+} from '../../../hud/breakpoints';
 
 export const SKELETON_STYLE = `
 /* レイアウト骨格: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レール。 */
@@ -16,8 +16,8 @@ export const SKELETON_STYLE = `
   color: var(--text); color-scheme: var(--theme-tone); user-select: text; z-index: var(--z-hud);
   font-size: var(--font-l);
 }
-/* ステージ選択画面より前面に出す既存の一時停止メニュー */
-#hud.title-menu-open { z-index: var(--z-hud-title-menu); }
+/* タイトル選択画面は #hud より前面にあるので、その上でシステム窓を開いている間だけ #hud を上げる。 */
+body.title-screen-open.hud-overlay-modal-open #hud { z-index: var(--z-hud-title-menu); }
 
 /* 明るい縁取りと暗い縁取りを重ね、背景の明暗によらずフォーカスを常に視認できるようにする。 */
 #hud :focus-visible, #touch-ui :focus-visible {

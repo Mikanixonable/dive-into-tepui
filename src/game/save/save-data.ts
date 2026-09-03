@@ -1,4 +1,5 @@
 import { AnyPart } from '../dynamic/dynamic-entity/parts';
+import type { EphemerisContext } from '../../physics/ephemeris/ephemeris-context';
 import type { FormationRole } from '../dynamic/dynamic-entity/enemy';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../protein/protein-display';
@@ -210,90 +211,9 @@ export interface CreativeStageSaveData extends StageSaveData {
   waveAttack: WaveAttackSaveData;
 }
 
-// スナップショットの由来。撮られ方であって、保持されるかどうか(SnapshotMeta.pinned)とは
-// 別の軸。クリップは pinned を立てるだけで kind は書き換えない — 由来を塗り替えると
-// どのトリガで撮られたかが失われる。
-export type SnapshotKind = 'auto' | 'manual' | 'checkpoint';
-
-// 一覧 UI がスナップショット本体を読まずに1件を描くための情報。すべて GameSaveData から
-// 導出でき、正本ではなく索引。
-export interface SnapshotMeta {
-  id: string;
-  kind: SnapshotKind;
-  pinned: boolean;
-  name: string;
-  createdAtReal: number;
-  simTime: number;
-  centerBodyId: string;
-  altitude: number;
-  speed: number;
-  hpRatio: number;
-  maxHp: number;
-  magazines: number;
-  money: number;
-  playerCount: number;
-  enemyAliveCount: number;
-  phase: GamePhase;
-}
-
-// 天体暦を使うスナップショットが、どの絶対時刻・プロファイル・packで生成されたか。
-// このフィールドは後方互換のため GameSaveData では任意とする。旧形式には無く、
-// 旧スナップショットは SnapshotService が従来どおり復元を試みる。
-interface EphemerisContext {
-  // このランの元期(simTime=0 が指す絶対時刻)。読み込み側はこれを継承する。
-  epochJdTdb: number;
-  // その元期が選ぶ暦プロファイルと暦パック。数値暦を持たない時代では両方 null。
-  profileId: string | null;
-  packId: string | null;
-  packFormatVersion: number;
-}
-
-// 1ステージぶんのスナップショット集合とクリア記録。スロットは遊んだステージごとに1件持つ。
-export interface StageHistoryMeta {
-  stageId: string;
-  clearCount: number;
-  lastPlayedAtReal: number;
-  // 新しい順。
-  snapshots: SnapshotMeta[];
-}
-
-// セーブデータ(歴史線)1件。
-export interface SaveSlotMeta {
-  id: string;
-  name: string;
-  createdAtReal: number;
-  lastPlayedAtReal: number;
-  lastStageId: string;
-  stages: StageHistoryMeta[];
-}
-
-// 全スロットのメタを束ねた索引。スナップショット本体は別キーに置き、一覧描画で
-// 本体を読まずに済むようにする。
-export interface SaveIndex {
-  version: number;
-  slots: SaveSlotMeta[];
-  activeSlotId: string | null;
-}
-
 // GameSaveData の形式バージョン。値が変わった時点で、それ以前に書かれたスナップショットは
 // 読めなくなる。
 export const SAVE_VERSION = 2;
-
-// 書き出しファイルの識別子と形式バージョン。組み立てる側(SaveSlots)と検証する側
-// (save-transfer)の両方が参照するので、どちらでもない型定義の場所に置く。
-export const SLOT_EXPORT_FORMAT = 'tepui.slot';
-export const SLOT_EXPORT_VERSION = 1;
-
-// スロット1件を書き出したファイルの中身。format は無関係な JSON を読ませたときに
-// 「壊れたセーブ」ではなく「セーブファイルではない」と判定するための識別子。
-export interface SlotExport {
-  format: typeof SLOT_EXPORT_FORMAT;
-  formatVersion: number;
-  exportedAtReal: number;
-  slot: SaveSlotMeta;
-  // スナップショット id → 本体。
-  snapshots: Record<string, GameSaveData>;
-}
 
 // chase にこの形が入っている保存データは読み捨て、戦闘視点を既定で組む。
 export interface ChaseSaveDataV1 {

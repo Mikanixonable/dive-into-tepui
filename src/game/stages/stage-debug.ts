@@ -2,7 +2,7 @@
 // 敵の射撃 ON/OFF をパネルから切り替えられる。タイトルの通常ボタン列には出ない。
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
-import { Button, ToggleSwitch } from '../hud/widgets';
+import { Button, ToggleSwitch } from '../../hud/widgets';
 import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';

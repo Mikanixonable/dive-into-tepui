@@ -1,13 +1,13 @@
 // ステージ固有の状況表示パネル(左部: ステージ補助メッセージ・撃墜数 / 中央部: 自機の装甲・温度・電力)。
-// 表示内容がステージごとに決まるので Stage が所有し、
-// hudSubStatus() を返すステージでだけ現れる。CSS(#hud-stagestatus)は hud/hud-root.ts の STYLE に一元管理されている。
+// 表示内容がステージごとに決まるので Stage が所有する。
 
-const LOW_HP_RATIO = 0.3;
 import type { Player } from '../../player/player';
-import { fmtEnergy } from '../../hud/utils';
-import { Meter } from '../../hud/widgets';
+import { fmtEnergy } from '../../../hud/utils';
+import { Meter } from '../../../hud/widgets';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
 import { POWER_CAPACITY } from '../../player/power';
+
+const LOW_HP_RATIO = 0.3;
 
 export class StatusPanel {
   private readonly panel: HTMLElement;
