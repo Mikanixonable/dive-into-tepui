@@ -4,12 +4,12 @@
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
 
 // これより画面上で近いマーカー同士は、優先度の低い側のラベルを間引く [px]
-const MARKER_CLUSTER_PX = 40;
+const MARKER_CROWDING_PX = 40;
 
-// 一度隠したラベル/アイコンを再び出す画面距離のしきい値(MARKER_CLUSTER_PX より緩い値)。
+// 一度隠したラベル/アイコンを再び出す画面距離のしきい値(MARKER_CROWDING_PX より緩い値)。
 // 同じ値だと境界ちょうどで距離が揺れたときに毎フレーム表示・非表示が反転する
 // (周期が数時間の衛星どうしなど、タイムワープ中に画面距離が急変する組で顕著)。
-const MARKER_CLUSTER_RELEASE_PX = 60;
+const MARKER_CROWDING_RELEASE_PX = 60;
 
 // 優先度の差がこれ以上ある組(例: 天体 > 船、船 > 弾薬、船 > 軌道要素)は、ラベルだけでなく
 // アイコンも隠す。同じ種別どうしの重なりではアイコンを残す。
@@ -85,7 +85,7 @@ export class LabelDeclutter {
         );
         if (pick === undefined) continue;
         const [loser, winner] = pick === 'a' ? [a, b] : [b, a];
-        const threshold = loser.prevLabelHidden ? MARKER_CLUSTER_RELEASE_PX : MARKER_CLUSTER_PX;
+        const threshold = loser.prevLabelHidden ? MARKER_CROWDING_RELEASE_PX : MARKER_CROWDING_PX;
         if (Math.hypot(a.x - b.x, a.y - b.y) >= threshold) continue;
 
         labels.add(loser.key);
