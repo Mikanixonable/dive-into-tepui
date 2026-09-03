@@ -319,43 +319,42 @@ forward の 0.057° は `POLAR_PITCH_LIMIT`(π/2 − 1e-3)によるクランプ�
 
 ---
 
-### 手順3. 表示名を1本にし、`frame-labels.ts` を消す
+### 手順3. 表示名を1本にし、`frame-labels.ts` を消す(**実施済** `8bf993e5`)
 
-**目的.** S1〜S5 を消す。**正本は `DEVELOP/SPEC/CAMERA.md`「3.1 画面に出す名前」の表**(D1 に再掲)。
-そこへ寄せるので、**この手順で画面の文字列が変わる。**
+**置き場は2つに分かれた.**
 
-**変更が必要な箇所.**
-
-| ファイル | 何をするか |
+| どこ | 何を |
 | --- | --- |
-| `src/game/camera/rotation-follow.ts` | 表示名2本を足す。正式名(ボタン用)と短縮形(要約行用)。`frame-labels.ts:12-19` の `rotationSourceLabel`、`:22-27` の `rotationFollowLabel`、`rotation-zone.ts:51,58,64` のインライン式、`:110-119` の `followLabel` を、この2本へ統合する |
-| `src/game/hud/frame/object-name.ts`(**新規**、または既存の適切な置き場) | 「id → 表示名」を1本にする。`view-badge.ts:127-137` の網羅度(役割 → 被選択物 → エンティティ → 天体)を正とする。`frameRoleName`(`frame-labels.ts:7-9`)もここへ移す — 参照元は `anchor-zone.ts:19`, `rotation-zone.ts:64`, `camera-frame-panel.ts:111`, `trajectory-frame-panel.ts:62`, `view-badge.ts:131` の5箇所 |
-| `src/game/hud/frame/frame-labels.ts` | **削除** |
-| `src/game/hud/frame/rotation-zone.ts` | `:51,58,64` と `:110-119` のラベル式を消し、新関数を呼ぶ |
-| `src/game/hud/frame/camera-frame-panel.ts:108-115` | 要約行の基準名解決を新関数へ差し替える |
-| `src/game/hud/frame/trajectory-frame-panel.ts:60-64` | 同上 |
-| `src/game/hud/view-badge.ts:127-137` | `focusName` を新関数へ差し替える |
-| `src/game/hud/panels/vessel-panel.ts:117-118` | `視点追従` / `視点のRCS追従を切り替える` を `姿勢追従` へ |
-| `src/game/hud/hud-root.ts:199` | `視点RCS追従` を `姿勢追従` へ |
-| `src/game/camera/camera-system.ts:296` | `視点の姿勢追従: ON(機体姿勢に追従) / OFF(慣性系)` を `姿勢追従` の語へ。`慣性系` の直書きも新関数へ寄せる |
-| `src/game/hud/frame/camera-frame-panel.ts:50,55,110` | ゾーン見出し `回転追従`→`回転`、`クオータニオン操作`→`クォータニオン操作`、`固定なし`→`固定点` |
-| `src/game/hud/frame/trajectory-frame-panel.ts:42` | ゾーン見出し `回転フレーム`→`回転` |
-| `src/game/hud/frame/anchor-zone.ts:80` | クイックボタンの `解除` を、プルダウンと同じ `releaseLabel`(=`固定を解除`)へ |
-| `src/game/hud/frame/rotation-zone.ts:113,118` | 到達不能な分岐2本(`'自転'` と 主星なしの `回転座標系`)を消す |
+| `camera/rotation-follow.ts` | `rotationFollowName`(正式名)と `rotationFollowShortName`(短縮形) |
+| `hud/object-name.ts`(**新規**) | `frameRoleName` と `objectName`(id → 表示名) |
 
-**達成条件と検証.**
+`objectName(id, celestialName, ...candidates)` は候補一覧を可変長で受ける。`ViewBadge` は
+マップ候補と生存中のエンティティを、フレーム区画はマップ候補だけを渡す(戦闘ビューに区画が無く、
+マップ候補は常に最新なので)。**R7 の穴はこの形で閉じた** — 候補が引けなくても天体名へ落ちる。
 
-- `npm run typecheck` が通る。
-- `grep -rn "回転座標系\|自転座標系\|回転系\|自転系\|公転系" src/` のヒットが
-  **`rotation-follow.ts` と `help-content.ts` だけ**。
-- `grep -rn "RCS追従\|視点追従" src/` が **0件**。
-- `ls src/game/hud/frame/frame-labels.ts` が存在しない。
-- `npm run dev` で確認する4点:
-  1. マップビューで**敵艦にフォーカス**して回転追従で「公転」を選ぶ →
-     ボタンが `〈艦名〉の公転`、要約行に**艦名**が出る(いまは `公転` と生 id)。
-  2. 地球にフォーカス → ボタンが `太陽-地球回転座標系`、要約行が `地球回転系`。
-  3. 戦闘ビューの船パネルの視点追従ボタンのラベルが、手順1で決めた語になっている。
-  4. [G] を押したときのヒント文が同じ語を使っている。
+**`frame-labels.ts` は削除。** `view-badge.ts` の `frameRoleOf` 直参照も `objectName` の中へ入った。
+
+**残った重複が1つ.** 回転ゾーン2クラスの `SegmentedControl` 初期化に `'慣性系'` の直書きが
+各2箇所(計4)ある。**手順4 で1クラスへ畳めば1箇所になる**ので、そこで消す。
+
+**達成目標の grep 2本は導出が誤っていたので言い換える.**
+
+- 目標3(座標系の綴り)は `慣性系` などを**コメントや物理側の用語**まで拾う。`physics/cr3bp.ts` の
+  「回転フレーム」は CR3BP の座標系そのもので、UI の語ではない。**画面に出る文字列**に限れば、
+  綴りを組んでいるのは `rotation-follow.ts` と `help-content.ts` だけになった(確認済)。
+- 目標5(HUD から `camera/focus-camera` への import)は 3ファイル残るが、`frame-controls.ts` は
+  型 import へ変えたので実行時グラフには乗らず、`hud-root.ts` はコメント中の言及だけ。
+  **値として import しているのは `camera-frame-panel.ts` の1つ**(`FocusCamera` の実体を持つので正しい)。
+
+**ユーザーへの確認事項 — 短縮形の主語.** `SPEC/CAMERA.md` 3.1 の表は「機体・役割の公転」の
+短縮形を `公転系`(主語なし)としているが、その根拠は「機体をフォーカスしているときの固定先は必ず
+フォーカス対象自身なので、サマリの基準欄と重複する」というカメラ側の事情。**軌道計画区画では
+役割の公転が基準ゾーンの選択と独立に決まる**(PLAN.md 5.1)ので、主語を落とすと
+`基準: 地球・公転系` が誰の公転か読めなくなる。
+
+→ **カメラ区画は主語を落とし、軌道計画区画は残す**ように実装した(`rotationFollowShortName` の
+`omitSubject`)。SPEC の記述はカメラ側の条件付きの規則として読める形になっているが、
+**表だけ見ると両区画に同じ短縮形を課しているように読める。** 3.1 に一言足すかどうかは判断待ち。
 
 ---
 
