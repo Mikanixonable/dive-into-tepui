@@ -3,9 +3,9 @@
 // (温度の4乗則を持つのは DynamicEntity の熱収支のみ)。
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
-import { qFromAxisAngle, qRotate } from '../../math/quat';
+import { LOCAL_FORWARD, LOCAL_UP, qFromAxisAngle, qRotate } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, cross, dot, v3 } from '../../math/vec3';
+import { add, cross, dot, rotateAxis, v3, Vec3 } from '../../math/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_HINGE,
@@ -36,7 +36,7 @@ function sideSign(side: RadiatorSide): number {
 
 // theta(Y軸回転)だけ振れた、機体座標系 X 方向長さ x の変位。
 function yRotatedOffset(theta: number, x: number): Vec3 {
-  return v3(x * Math.cos(theta), 0, -x * Math.sin(theta));
+  return rotateAxis(v3(x, 0, 0), LOCAL_UP, theta);
 }
 
 // side の fold 番目の折りの中心位置(機体座標系)。RADIATOR_HINGE から蛇腹を辿り、
@@ -180,8 +180,8 @@ export class RadiatorSystem {
 
   // theta で折れた放熱面の法線(world 座標、単位ベクトル)。
   private worldNormal(theta: number, att: Attitude): Vec3 {
-    const foldQ = qFromAxisAngle(v3(0, 1, 0), theta);
-    const shipNormal = qRotate(foldQ, v3(0, 0, 1));
+    const foldQ = qFromAxisAngle(LOCAL_UP, theta);
+    const shipNormal = qRotate(foldQ, LOCAL_FORWARD);
     return qRotate(att.q, shipNormal);
   }
 
