@@ -3,6 +3,13 @@ import { qFromBasis } from '../../math/quat';
 import { Vec3 } from '../../math/vec3';
 import { AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../../theme';
 import { markOverlay } from '../../render/pipeline/lit-layer';
+import type { AxisHandleDrag } from './node-gizmo';
+
+const APPARENT_SIZE_PER_MAP_DIST = 0.002; // マップカメラ距離 1 あたりのスケール(見かけの大きさを一定に保つ)
+
+const DRAG_STRETCH = 0.2; // ラッチ前のドラッグ中に矢印を伸ばす割合
+const LATCH_STRETCH_PER_PX = 0.01; // ラッチ超過 1px あたりの伸び
+const LATCH_STRETCH_MAX = 0.5; // ラッチで伸ばす割合の上限
 
 // 選択中ノードの Δv アーム6本(PRO/RET・NRM/ANM・OUT/IN)を表す3D矢印ギズモ。
 export class PlanGizmo3D {
@@ -70,31 +77,29 @@ export class PlanGizmo3D {
   }
 
   // ギズモをノード位置へ置き、ローカル軸(X=RAD, Y=PRO, Z=NRM)を軌道基準系 pro/nrm/rad に揃える。
-  // scale は画面上で一定の見かけサイズになるよう呼び出し側がカメラ距離から求める。
-  public setPositionAndRotation(pos: THREE.Vector3, pro: Vec3, nrm: Vec3, scale: number): void {
+  // mapDist はマップカメラの距離で、見かけの大きさが距離によらず一定になるようスケールを決める。
+  public setPositionAndRotation(pos: THREE.Vector3, pro: Vec3, nrm: Vec3, mapDist: number): void {
     this.group.position.copy(pos);
 
     // qFromBasis(nrm, pro) の列は (pro×nrm, pro, nrm) = (RAD, PRO, NRM)。
     const q = qFromBasis(nrm, pro);
     this.group.quaternion.set(q.x, q.y, q.z, q.w);
-    this.group.scale.setScalar(scale);
+    this.group.scale.setScalar(mapDist * APPARENT_SIZE_PER_MAP_DIST);
   }
 
-  // 特定の軸をドラッグ/ラッチしている時に矢印を伸ばす
-  public setStretch(activeAxis: 0 | 1 | 2 | null, activeSign: 1 | -1 | null, stretchFactor: number): void {
+  // ドラッグ中の Δv アームに当たる矢印を伸ばし、残りは素の長さへ戻す。drag が null なら全本を戻す。
+  public setActiveDrag(drag: AxisHandleDrag | null): void {
+    // ラッチ前は固定の割合、ラッチ後は超過量に比例させて上限で止める
+    const stretch = drag === null ? 0
+      : drag.excessPx === null ? DRAG_STRETCH
+      : Math.min(drag.excessPx * LATCH_STRETCH_PER_PX, LATCH_STRETCH_MAX);
     for (let i = 0; i < 3; i++) {
-      for (let s of [1, -1]) {
-        const idx = i * 2 + (s < 0 ? 1 : 0);
-        const part = this.parts[idx]!;
-        
-        // アクティブなら少し伸ばす (1.0 + stretchFactor)
-        const isActive = (i === activeAxis && s === activeSign);
-        const length = part.baseLen * (isActive ? 1.0 + stretchFactor : 1.0);
-        
+      for (const s of [1, -1] as const) {
+        const part = this.parts[i * 2 + (s < 0 ? 1 : 0)]!;
+        const isActive = drag !== null && i === drag.axis && s === drag.sign;
+        const length = part.baseLen * (isActive ? 1 + stretch : 1);
         const headLength = 4;
         const stemLength = length - headLength;
-        
-        // 再計算
         part.stem.scale.y = stemLength / (part.baseLen - headLength);
         part.stem.position.copy(part.dir).multiplyScalar(stemLength / 2);
         part.head.position.copy(part.dir).multiplyScalar(length - headLength / 2);

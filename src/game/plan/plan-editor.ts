@@ -492,25 +492,8 @@ export class PlanEditor {
       const axes = orbitAxes(this.bodyState(arrFor3D));
       const pro = this.path.toDisplayDir(axes.pro, nodeFor3D.t);
       const nrm = this.path.toDisplayDir(axes.nrm, nodeFor3D.t);
-      this.gizmo3d.setPositionAndRotation(scenePos, pro, nrm, mapDist * 0.002);
-      
-      // ドラッグ・ラッチ時のアニメーション
-      let activeAxis: 0 | 1 | 2 | null = null;
-      let activeSign: 1 | -1 | null = null;
-      let stretchFactor = 0;
-      
-      if (this.nodeGizmo.latch) {
-        activeAxis = this.nodeGizmo.latch.axis;
-        activeSign = this.nodeGizmo.latch.sign;
-        // ラッチ量は超過量に比例させる (最大 0.5 程度まで)
-        stretchFactor = Math.min(this.nodeGizmo.latch.excessPx * 0.01, 0.5);
-      } else if (this.nodeGizmo.activeAxis) {
-        activeAxis = this.nodeGizmo.activeAxis.axis;
-        activeSign = this.nodeGizmo.activeAxis.sign;
-        // ドラッグ中は固定で 0.2 程度伸ばす
-        stretchFactor = 0.2;
-      }
-      this.gizmo3d.setStretch(activeAxis, activeSign, stretchFactor);
+      this.gizmo3d.setPositionAndRotation(scenePos, pro, nrm, mapDist);
+      this.gizmo3d.setActiveDrag(this.nodeGizmo.axisHandleDrag);
     } else {
       this.gizmo3d.setVisible(false);
     }
@@ -532,14 +515,14 @@ export class PlanEditor {
     this.axisDrag.applyHeldDv(2, -1, input.takeHeld(K.dvRadialIn) || b.in.isHeld, dt, fine);
 
     // ラッチ中の Δv アームは、閾値超過量に比例したレートで dt 秒分を加算し続ける。
-    const latch = this.nodeGizmo.latch;
-    if (latch) {
+    const drag = this.nodeGizmo.axisHandleDrag;
+    if (drag && drag.excessPx !== null) {
       const fineScale = fine ? NODE_DV_RATE_FINE / NODE_DV_RATE : 1;
       // ラッチ後は基点からの超過距離に比例させる。ここを DV_RATE_MAX で
       // 飽和させると、一定距離以上のドラッグがすべて同じ Δv になり、
       // 「大きくドラッグするほど加速が増える」という操作感が失われる。
-      const rate = latch.excessPx * DV_LATCH_RATE_PER_PX * fineScale;
-      this.applyDv(latch.axis, latch.sign, rate * dt);
+      const rate = drag.excessPx * DV_LATCH_RATE_PER_PX * fineScale;
+      this.applyDv(drag.axis, drag.sign, rate * dt);
     }
   }
 
