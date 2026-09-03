@@ -14,7 +14,7 @@ import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import {
   ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACTIVE_THEME, BG, SURFACE_0 as THEME_SURFACE_0,
   SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT, Z_STAGE_SELECT,
-} from '../game/theme';
+} from '../theme';
 import { TITLE_SCENE_PATTERNS, createTitleScene, type TitleScene } from '../render/title-scene';
 
 const PAGE = BG;
