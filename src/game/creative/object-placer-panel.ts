@@ -4,11 +4,11 @@
 // 仕事なので、ここでは行わない。
 import {
   buildGroupTitle, buildLabeledRow, Button, CloseButton, SegmentedControl, ValueInput,
-} from '../hud/widgets';
+} from '../../hud/widgets';
 import { ObjectPicker } from '../hud/windows/object-picker';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
-import type { OverlayHandle, OverlayManager } from '../hud/overlay-manager';
+import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { CollinearPoint } from '../../physics/lagrange';
 import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../celestial/solar-system/constants';

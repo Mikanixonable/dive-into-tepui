@@ -3,7 +3,7 @@
 import {
   GRAPHICS_GROUPS, GRAPHICS_OPTIONS, GraphicsSettings, graphicsOptionKeys,
   type ChoiceValue, type GraphicsOptionKey, type QualityPreset,
-} from '../../../render/graphics-settings';
+} from '../../render/graphics-settings';
 import { Pulldown, SegmentedControl, ToggleSwitch, type PulldownColumn } from '../widgets';
 
 const PRESET_ITEMS: readonly (readonly [QualityPreset, string])[] = [

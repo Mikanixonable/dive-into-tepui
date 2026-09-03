@@ -6,7 +6,7 @@ import { CelestialMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf } from '../../physics/elements';
 import { addScaled, dot, len, norm, sub } from '../../math/vec3';
 import { Hud } from '../hud/hud';
-import { fmtDist, fmtSpeed, fmtTime } from '../hud/utils';
+import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager, MARKER_DIR_DIST } from '../marker/marker-manager';

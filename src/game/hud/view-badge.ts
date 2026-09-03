@@ -1,8 +1,8 @@
 import type { ViewManager } from '../view/view-manager';
 import type { View } from '../view/view';
 import { ContextMenu, MenuItem } from './windows/context-menu';
-import type { OverlayManager } from './overlay-manager';
-import { Button, ToggleSwitch } from './widgets';
+import type { OverlayManager } from '../../hud/overlay-manager';
+import { Button, ToggleSwitch } from '../../hud/widgets';
 import type { RenderStyleSetting } from '../../render/render-style';
 import { frameRoleOf } from '../../physics/frame';
 import { frameRoleName } from './frame/frame-labels';

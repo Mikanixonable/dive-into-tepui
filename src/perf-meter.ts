@@ -1,14 +1,14 @@
 // 負荷確認ウィンドウ: フレーム時間の計測・集計と、その表示、そして描画パスの中間結果を映す
 // デバッグ表示の選択。窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
-import { PropertyRow, PropertyWindow } from './game/hud/windows/property-window';
-import { SegmentedControl } from './game/hud/widgets';
+import { PropertyRow, PropertyWindow } from './hud/windows/property-window';
+import { SegmentedControl } from './hud/widgets';
 import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from './render/pipeline/debug-target';
 import type { RenderStyleSetting } from './render/render-style';
-import { fmtDuration } from './game/hud/utils';
+import { fmtDuration } from './hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from './frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from './gpu-timings';
-import type { OverlayManager } from './game/hud/overlay-manager';
+import type { OverlayManager } from './hud/overlay-manager';
 import type { Input } from './input/input';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { ProteinMotionMetricsRecorder, PROTEIN_MOTION_LODS, type ProteinMotionFrameSample } from './protein-motion-metrics';

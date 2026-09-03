@@ -1,7 +1,7 @@
 // 画面全体のトップバー(#hud-topbar)の同期: MET・時間加速・NODE WARP。
 // 自機の有無に関係なく常に出す画面全体の状態。
 import { SyncThrottle } from '../sync-throttle';
-import { fmtDateTime, fmtElapsedUnits, setElementText, fmtTime } from '../utils';
+import { fmtDateTime, fmtElapsedUnits, setElementText, fmtTime } from '../../../hud/utils';
 import type { Game } from '../../game';
 import { SIM_SPEED_LEVELS } from '../../dynamic/sim-speed-manager';
 

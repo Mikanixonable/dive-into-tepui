@@ -5,10 +5,10 @@ import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FO
 import { focusTargetId } from '../../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
-import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../widgets';
+import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../../../hud/widgets';
 import { frameRoleName, rotationFollowLabel } from './frame-labels';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { OverlayManager } from '../overlay-manager';
+import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-controls';
 
 const FOCUS_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]

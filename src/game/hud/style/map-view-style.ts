@@ -2,7 +2,7 @@
 // widgets/widget-style.ts が持ち、ここでは Quiet / Focus Glass とマップ内の意味色だけを上書きする。
 import {
   MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
-} from '../breakpoints';
+} from '../../../hud/breakpoints';
 
 export const MAP_VIEW_STYLE = `
 /* マップでは戦闘固有の棚とターゲット計器を外し、計画用のレールへ視線を集中させる。 */

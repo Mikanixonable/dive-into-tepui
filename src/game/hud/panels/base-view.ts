@@ -2,8 +2,8 @@
 // 格納されている船の一覧、部品の確認・修理・換装、ショップを提供する。
 import type { Base } from '../../dynamic/dynamic-entity/base';
 import type { Player } from '../../player/player';
-import { CloseButton, TabBar } from '../widgets';
-import { MQ_COMPACT, MQ_SHORT } from '../breakpoints';
+import { CloseButton, TabBar } from '../../../hud/widgets';
+import { MQ_COMPACT, MQ_SHORT } from '../../../hud/breakpoints';
 import { VesselsTabController } from './base-view-vessels-tab';
 import { PartsTabController } from './base-view-parts-tab';
 import { ShopTabController } from './base-view-shop-tab';

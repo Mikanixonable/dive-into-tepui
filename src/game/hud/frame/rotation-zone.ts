@@ -2,7 +2,7 @@
 // 天体ぶんの公転・自転と、役割(操作対象の船/ターゲット)の公転を選択肢として並べ、
 // 選ばれた回転対象を返す。
 import { FrameRole, FrameRotationSource, rotationSourceKey } from '../../../physics/frame';
-import { SegmentedControl } from '../widgets';
+import { SegmentedControl } from '../../../hud/widgets';
 import { frameRoleName } from './frame-labels';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import type { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';

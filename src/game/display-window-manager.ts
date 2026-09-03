@@ -6,7 +6,7 @@
 // メッシュとマーカーが別の瞬間を指す。
 import { PredictPanel } from './hud/panels/predict-panel';
 import { buildTicks } from './hud/orbit/tick-scale';
-import { epochUnixSeconds } from './hud/utils';
+import { epochUnixSeconds } from '../hud/utils';
 import type { TickLabelMode, TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
 import { ReferenceFrame } from '../physics/frame';

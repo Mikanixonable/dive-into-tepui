@@ -1,10 +1,10 @@
 // 軌道上の実体に共通する軌道要素の行(基準天体・高度・速度・AP/PE/INC/PRD)。
 // 「軌道」グループにまとめ、プロパティウィンドウ先頭の折り畳みセクションへ描かれる。
-import { fmtDist, fmtSpeed, fmtTime } from '../hud/utils';
+import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
 import { orbitInfo } from '../hud/orbit/orbit-info';
 import { autoOrbitReference } from '../orbit-reference';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
-import type { PropertyRow } from '../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 

@@ -1,5 +1,5 @@
 import type { Base, DockedVesselEntry } from '../../dynamic/dynamic-entity/base';
-import { Button } from '../widgets';
+import { Button } from '../../../hud/widgets';
 import type { BasePanel } from './base-view';
 import { buildSectionHeader, costLabel, NEW_VESSEL_COST, styleDockBtn } from './base-view-shared';
 import { BASE_MAX_VESSELS } from '../../dynamic/dynamic-entity/base';

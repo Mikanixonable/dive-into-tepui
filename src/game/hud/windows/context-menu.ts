@@ -2,12 +2,12 @@
 // 項目ショートカットで onSelect(act, target) を発火して閉じる。
 // #hud の子として popup レイヤへ置くため、`#hud, #hud *` の margin/padding リセットに
 // 勝てるよう全セレクタを `#hud` で始める。
-import { clampOverlayPosition } from '../layout';
-import { shortcutKeyLabel } from './shortcut-hint';
-import { bringToFront } from '../overlay-layer';
-import { onViewportChange } from '../viewport';
-import type { OverlayHandle, OverlayManager } from '../overlay-manager';
-import { injectOnce } from '../widgets/inject-style';
+import { clampOverlayPosition } from '../../../hud/layout';
+import { shortcutKeyLabel } from '../../../hud/windows/shortcut-hint';
+import { bringToFront } from '../../../hud/overlay-layer';
+import { onViewportChange } from '../../../hud/viewport';
+import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
+import { injectOnce } from '../../../hud/widgets/inject-style';
 
 const STYLE = `
 #hud .ctx-menu {

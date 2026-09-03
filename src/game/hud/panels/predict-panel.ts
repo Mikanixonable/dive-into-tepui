@@ -1,9 +1,9 @@
 // 未来表示の操作パネル(期間ピル・スクラバー・目盛り)。3行構成: 期間選択 / スクラブバー+T+読み値 / 目盛り。
 import {
   buildLabeledRow, Button, PREDICT_TOGGLE_LABELS, SegmentedControl, Slider, ToggleSwitch, ValueInput,
-} from '../widgets';
+} from '../../../hud/widgets';
 import { wirePanelCollapse } from '../panel-shell';
-import { fmtDateTime, fmtDuration } from '../utils';
+import { fmtDateTime, fmtDuration } from '../../../hud/utils';
 import type { DisplayDurationKey, DisplayPastDurationKey } from '../../display-window-manager';
 import type { TickLabelMode } from '../orbit/calendar-ticks';
 import type { DisplayTick } from '../orbit/tick-scale';

@@ -24,7 +24,7 @@ import type { PlanExecutionMode } from '../../player/player';
 import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { MarkerRole } from '../../targeter';
-import { fmtDist, fmtMarkerDist } from '../../hud/utils';
+import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import type { RayHit, SphereHit } from '../../../math/triangle-mesh';
@@ -48,7 +48,7 @@ import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { ObjectCommands } from '../../pickable/object-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window';
+import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
 

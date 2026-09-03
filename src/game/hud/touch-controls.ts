@@ -5,7 +5,7 @@
 import { Input, PointerKind } from '../../input/input';
 import type { View } from '../view/view';
 import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
-import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from './breakpoints';
+import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../../hud/breakpoints';
 import {
   FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
 } from '../../theme';

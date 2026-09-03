@@ -1,6 +1,6 @@
 import type { Base, DockedVesselEntry } from '../../dynamic/dynamic-entity/base';
 import type { AnyPart, Part, RcsTankPart } from '../../dynamic/dynamic-entity/parts';
-import { Button, Meter } from '../widgets';
+import { Button, Meter } from '../../../hud/widgets';
 import type { BasePanel } from './base-view';
 import {
   buildFeeButton, buildSectionHeader, formatPartMeta, isRcsTank, REPAIR_COST_PER_HP, refuelCost, sellPrice,

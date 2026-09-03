@@ -4,8 +4,9 @@
 // キー押下と同じ経路(Input.tapKey)で発火するボタンとしてここに持つ — タッチでも到達できるよう
 // にするための、キー入力の代替 UI。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
-import { Button, SegmentedControl } from '../widgets';
-import { fmtAmmoStatus, setElementText } from '../utils';
+import { Button, SegmentedControl } from '../../../hud/widgets';
+import { fmtAmmoStatus } from '../ammo-status';
+import { setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
 import type { Game } from '../../game';
 import type { Input } from '../../../input/input';

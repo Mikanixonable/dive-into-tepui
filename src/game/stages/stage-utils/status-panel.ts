@@ -4,8 +4,8 @@
 
 const LOW_HP_RATIO = 0.3;
 import type { Player } from '../../player/player';
-import { fmtEnergy } from '../../hud/utils';
-import { Meter } from '../../hud/widgets';
+import { fmtEnergy } from '../../../hud/utils';
+import { Meter } from '../../../hud/widgets';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
 import { POWER_CAPACITY } from '../../player/power';
 

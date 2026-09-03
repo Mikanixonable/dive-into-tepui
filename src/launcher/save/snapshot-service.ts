@@ -2,7 +2,7 @@ import { Game } from '../../game/game';
 import { SAVE_VERSION } from '../../game/save/save-data';
 import { orbitInfo } from '../../game/hud/orbit/orbit-info';
 import { autoOrbitReference } from '../../game/orbit-reference';
-import { fmtDist, fmtTime } from '../../game/hud/utils';
+import { fmtDist, fmtTime } from '../../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
 import { ephemerisContextFor, isEphemerisContextRestorable } from '../../game/save/ephemeris-context';
