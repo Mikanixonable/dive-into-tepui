@@ -5,6 +5,7 @@ import type { PauseMenu, SettingsView } from '../hud/windows/index';
 import { ResultScreen, type RunTransitions } from './result-screen';
 import type { CurrentGameSource } from './save-browser/save-browser';
 import type { Hud } from '../game/hud/hud';
+import type { HudShell } from '../hud/hud-shell';
 import type { GamePhase, Stage, StageClass, StageResult } from '../game/stages/stage';
 import { findStageClass } from '../game/stages/stage-dictionary';
 import { selectStage } from './stage-select';
@@ -72,6 +73,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   get current(): Game | null { return this.game; }
 
   constructor(
+    private readonly shell: HudShell,
     private readonly hud: Hud,
     private readonly gs: GameScene,
     private readonly audioEngine: AudioEngine,
@@ -86,7 +88,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
   ) {
-    this.resultScreen = new ResultScreen(hud, this);
+    this.resultScreen = new ResultScreen(shell, this);
   }
 
   // タイトル解決から Game の起動までを行う。
@@ -118,7 +120,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   private selectStageScreen(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
     return selectStage(
       this.unlockManager,
-      () => { if (!this.hud.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
+      () => { if (!this.shell.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
       () => this.pauseMenu.toggle(false),
       () => this.settingsView.toggle(true),
     );
