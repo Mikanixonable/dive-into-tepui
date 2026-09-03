@@ -1,6 +1,8 @@
 # launcher / game の境界に残る歪みの整理
 
-行番号・件数は **`720ff639`** 時点。着手時にずれていたら周辺を読み直す。
+**実施済み。** `720ff639` → `68f53bef` の 13 コミットで全手順を通した。
+以下は「何を・なぜ・どう決めたか」と、実機で確かめる残りの記録である。
+**目的と決めたことの節に出てくる行番号は着手前(`720ff639`)のもので、いまのコードは指さない。**
 
 ## 目的
 
@@ -103,45 +105,51 @@ src/
   `game/save/ephemeris-context.ts:8-15` が同じ 4 フィールドを独立に持っている。
   手順10 で `physics/` 側を正本にする。
 
-## 達成目標
+## 達成目標 — 全項目の判定(`68f53bef` 時点で実測)
 
-全手順の実施後、次がすべて満たされること。
-
-1. `ls src/*.ts` が **`main.ts` と `theme.ts` の 2 件だけ**になる。
+1. **達成。** `ls src/*.ts` が `main.ts` `theme.ts` の 2 件。
    `ls -d src/*/` が `assets/ audio/ game/ hud/ input/ launcher/ math/ physics/ render/ types/`。
-2. **`launcher/` が `game/` から取るものが「ステージ・ラン・セーブの形」だけになる。**
-   `grep -rn "game/hud\|game/theme\|game/input" src/launcher/ src/main.ts` が **0 件**。
-3. `grep -rn "from '.*game/" src/hud/ src/input/ src/render/ src/physics/ src/math/ src/audio/`
-   が **0 件**(共有層と下位層が `game/` を引かない)。`src/render/title-scene.ts:6` の
-   `game/theme` 参照も消える。
-4. `grep -rn "launcher/" src/game/ src/hud/ src/input/ src/render/ src/physics/ src/math/ src/audio/`
-   が **0 件**(いまも 0 件。維持されていること)。
-5. `grep -rn "location\." src/game/ src/hud/ src/input/` が **0 件**。
-6. **Launcher のコンストラクタ引数が 13 → 8 以下になる。** `grep -c "private readonly"
-   src/launcher/launcher.ts` で数える。`gs` 以外の描画・音声・計測の素通し
-   (`pipeline` `sections` `worldSfx` `uiSfx`)が消えている。
-7. `grep -n "createCelestialSystem\|earthSpinPhase0\|Math.random" src/launcher/launcher.ts` が
-   **0 件**。星系の構築は `src/game/game.ts` の `Game.create()` にだけある。
-8. `grep -n "game\.player\.\|game\.dynamicSystem\.\|game\.activeStage\." src/launcher/save/snapshot-service.ts`
-   が **0 件**。`Game.serialize()` と `Game.runSummary()` の 2 呼び出しに畳まれている。
-9. `grep -rn "ProteinMotionLod" src/ | grep -c "= \['near'\|= 'near'"` が **1** (定義が1箇所)。
-   `EphemerisContext` の形の定義も 1 箇所。
-10. `grep -rn "importSlotFromFile" src/` が `save-transfer.ts` の中だけになる
-    (使われていない export が落ちている)。
-11. **起動のローディングゲージが、暦パックの受信が終わったあとも進む。** `?stage=1` の起動で
-    0% から 100% まで段階的に描き変わり、途中で 1 秒以上止まる区間がない。
-    `grep -rn "startProteinAssetPreload" src/` が 0 件で、起動時に
-    `*Structure.json` `*Motion.json` を取りに行かない。
-12. `DEVELOP/CODING-RULE.md` 1.3 が `math/` `physics/` `render/` `input/` `hud/` `game/`
-    `launcher/` の 7 層で書かれ、どれがどれを import してよいかが書かれている。
-    `ephemeris-context` は `physics/ephemeris/` の中だけに入り、`physics/` の他の場所に
-    新しい export が生えていない。
-13. `npm run typecheck` `npm run test` `npm run build` が通る。
-14. **見た目と操作が変わっていない。** タイトル画面・ゲーム中 HUD・結果画面・セーブブラウザ・
-    負荷確認ウィンドウ・設定ビュー・タッチ操作パッドのいずれも、移行前と同じに描かれる。
-    **意図して変える挙動は 3 点だけ** — ①ローディングゲージが段階的に進むようになる(手順8)、
-    ②クリエイティブでタンパク質の敵を置くとき、初回だけ取得を待つ(手順12)、
-    ③ラン終了時に噴射音・RCS 音のループが破棄される(手順11)。
+2. **条件付きで達成。** `game/theme` `game/input` は 0 件。残る 4 件はすべて
+   `game/hud/hud` の **`Hud` 型**(`launcher.ts` `snapshot-controls.ts` `unlock-manager.ts`
+   `main.ts`)で、これは「決めたこと」で残すと決めたもの — `Hud` は `new Game(...)` へ渡す
+   構築依存であり、`hint()`/`toast()` はラン中のメッセージ表示。**自分の画面を組むための
+   参照は 0 件になった。**
+3. **未達。** `src/hud/` `src/input/` は 0 件だが、`src/render/` に **12 件**残る —
+   `render/cloud/*` が `game/celestial/solar-system/constants` の `R_EARTH` `SIDEREAL_DAY` を
+   引く 4 件と、`render/protein-*` が `game/protein/` の型を引く 8 件。
+   **どちらもこの整理の前から在り、launcher/game の境界とは別の軸。** `title-scene.ts` の
+   `game/theme` 参照は消えた。→ **残る仕事**(下の節)。
+4. **達成。** `grep -rn "launcher/" src/game/ src/hud/ src/input/ src/render/ src/physics/ src/math/ src/audio/`
+   が 0 件。
+5. **達成。** `grep -rn "location\." src/game/ src/hud/ src/input/` が 0 件。
+6. **達成。** `grep -c "private readonly" src/launcher/launcher.ts` が 12(引数 11 +
+   `resultScreen`)。素通しだった `pipeline` `worldSfx` `uiSfx` が消え、`shell` が1つ増えた。
+7. **達成。** `launcher.ts` に `createCelestialSystem` `earthSpinPhase0` `Math.random` が 0 件。
+   星系の構築は `Game.create()` にだけある。
+8. **達成。** `snapshot-service.ts` の `game.player.` `game.dynamicSystem.` `game.activeStage.`
+   が 0 件。`runSummaryOf(game)` と `serializeRun(game)` の 2 呼び出しに畳まれた。
+9. **達成。** `ProteinMotionLod` の定義は `protein-motion-controller.ts:11` の 1 箇所、
+   `EphemerisContext` の定義は `physics/ephemeris/ephemeris-context.ts:7` の 1 箇所。
+10. **達成。** `importSlotFromFile` は `save-transfer.ts` の中だけ。
+11. **達成。** `?stage=1` の起動でゲージが 0% → 45 → 62 → 72 → 83% と描き変わる(headless 実測)。
+    `startProteinAssetPreload` は 0 件で、`?stage=1` の起動時のアセット要求は
+    **8 件 → 0 件**(`?stage=creative` では従来どおり 8 件)。
+12. **達成。** `CODING-RULE.md` 1.3 が 7 層で書かれ、`ephemeris-context` は
+    `physics/ephemeris/` の中だけにある。
+13. **達成。** `npm run typecheck` / `npm run test`(674/674)/ `npm run build` が通る。
+14. **実機での確認待ち。** 下の「残った目視確認」。
+
+## 残る仕事(この整理では扱わなかった)
+
+- **`render/` → `game/` の import 12 件。** `render/cloud/*` が `R_EARTH` `SIDEREAL_DAY` を、
+  `render/protein-*` が `game/protein/` の型を引く。**この整理の前から在り、別の軸。**
+  前者は「天体の寸法を誰が持つか」、後者は「タンパク質の表示形式を誰が持つか」の問題。
+- **ローディング表示を畳んだあとの最初のフレームで約 2.7 秒止まる**(headless 実測)。
+  WGSL のコンパイルとパイプラインの構築で、ローディングの段とは別の区間。
+  畳む前に `renderer.compileAsync()` で温めるなどの手当てが要る。
+- **`launcher/save/` にテストが 1 本も無い。** `SaveSlots`(365 行、剪定・容量超過リトライ・
+  入出力の整合性を持つ)も `checkSlotExportShape` も無検証。`GameSaveData` を型でしか触らず
+  `localStorage` も `SaveStore` 越しなので、Node-only のテストビルドに載せられる。
 
 ## 実施済み
 
@@ -152,6 +160,40 @@ src/
 | 3. `input/` を `src/` 直下へ、`TouchControls` を `game/hud/` へ | `f0c12eaa` |
 | 4. `src/hud/` を作り、共有の画面部品を移す | `50831e04` |
 | 5. 画面の器を `HudShell` として切り出す | `9165c170` |
+| 6. `src/` 直下の残り 4 モジュールを層へ配る | `dd935999` |
+| 7. `RenderPipeline` / `GpuTimings` を `GameScene` の持ち物にする | `af7cbd4d` |
+| 8. 星系の構築を `Game.create()` へ、起動の進捗を段で報告する | `a25463f8` |
+| 9. ランの直列化と要約を `Game` の仕事にする | `102d2926` |
+| 10. 暦packの互換判定を `physics/ephemeris/` へ移す | `f896ca49` |
+| 11. 効果音をランの持ち物にする | `d4e5f6a0` |
+| 12. タンパク質アセットを要求された時点で読む | `9de275ee` |
+| 13. `CODING-RULE.md` 1.3 を 7 層へ書き直す | `68f53bef` |
+| — `/refactor` の是正(`runSummaryOf` → `summarizeRun`) | `def6e682` |
+
+**計画から外れた点(手順11)。** `Game.serialize()` / `Game.runSummary()` をメソッドとして
+足したところで、境界フックが CODING-RULE 1.2(トップレベルに実装を直接書かない)を指摘した。
+**指摘は正しい**ので、畳み方を `game/save/serialize-run.ts` の `serializeRun(game)` と
+`game/run-summary.ts` の `summarizeRun(game)` へ出し、`Game` はオーケストレーションだけを
+持つようにした。呼ぶのは launcher のままだが、**呼ぶ先が `game/` の関数になった**ので
+境界の目的は変わらない。
+
+**`/refactor` で見つけて直さなかったもの。** `game.ts` が 591 行(着手前 560 行)で 1.2 の
+500 行基準を超える。1.2 の診断に従うと「同じ関心の実装が単に多い」— サブシステムの生成・配線と
+毎フレームの呼び出し順で、分ける線が無い。手順11 で `serialize`/`runSummary` を外へ出した
+ぶんは既に減っている。`launcher/stage-select.ts` の 554 行も同様(大半が CSS のテンプレート)で、
+どちらもこの整理の前から在る。
+
+**計画から外れた点(手順8)。** 段は 4 つでなく **3 つ**にした。実測(headless Chrome /
+localhost 配信 / `?stage=1`)は 暦packの受信 501ms・展開 357ms・天体運動の構築 122ms・
+天体の実体化 156ms・ランの組み立て 233ms。受信と展開の間で描画を明け渡すには
+`physics/ephemeris/catalog.ts` の `loadEphemerisPoints` を2つへ割り、フレームの都合を
+`physics/` へ持ち込む必要がある。**`physics/` を汚さない方を採り**、受信〜天体運動の構築を
+`system` の1段にまとめた。残る無反応の最大区間は 868ms → 479ms。
+
+**手順8 で分かったこと(この計画では扱わない)。** ローディング表示を畳んだ**あと**、
+最初のフレームで **約 2.7 秒**メインスレッドが止まる(headless 実測)。WGSL の
+コンパイルとパイプラインの構築で、ローディングの段とは別の区間。畳む前に
+`renderer.compileAsync()` で温めるなどの手当てが要る。
 
 **計画から外れた点(手順5)。** 2 つ。
 
@@ -185,425 +227,51 @@ src/
    ESC メニューと同じ帯に出て、開くと ESC メニューが閉じる、④決着後の結果画面が全ての窓より
    前に出る、⑤トーストが結果画面より手前に出ない、⑥タイトル画面(`?title=1`)で ESC メニューが
    選択画面の上に出る。
-
-## 手順
-
-### 手順6. `src/` 直下の残りを、それぞれの層へ配る
-
-**目的.** `src/` 直下に残る 4 ファイルは、どれも `src/` 直下に居る理由がない。
-`perf-meter.ts` は `location.search` を読む(`:123`)ランの外側の窓、`gpu-timings.ts` は
-`render/pipeline/` の 11 ファイルが使う描画の計測、`protein-motion-metrics.ts` は
-`game/protein/` の話、`frame-sections.ts` の区間名(`SECTION`)は `game/` の update の位相
-そのものである。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/perf-meter.ts` → `src/launcher/perf-meter.ts` | `git mv`。import は手順3・手順4 で既に `src/input/` `src/hud/` を指している |
-| `src/game/perf-counts.ts`(新規) | `perf-meter.ts:17-29` の `PerfCounts` 型と `:30-33` の `PerfCountSource`(`perfCounts()` と `proteinMotionFrameSample()` を持つ口)をここへ切り出す。`game/` 8 ファイル(`game.ts:3` `dynamic-system.ts:36` `predictor.ts:21` `simulator.ts:29` `plan-display.ts:27` `combat-view.ts:25` `map-view.ts:25` `view.ts:8`)の import 先をここへ。`launcher/perf-meter.ts` はここから読む |
-| `src/gpu-timings.ts` → `src/render/gpu-timings.ts` | `git mv`。`render/pipeline/` 10 ファイル + `main.ts:10` + `launcher/perf-meter.ts:10` の import を書き換え |
-| `src/protein-motion-metrics.ts` → `src/game/protein/protein-motion-metrics.ts` | `git mv`。`:5-6` の `PROTEIN_MOTION_LODS` / `ProteinMotionLod` の定義を落とし、`./protein-motion-controller` の `ProteinMotionLod`(`:11`)を import する。`PROTEIN_MOTION_LODS` が要るなら `protein-motion-controller.ts:29` の `LODS_FINE_TO_COARSE` を export して使う |
-| `src/frame-sections.ts` → `src/game/frame-sections.ts` | `git mv`。`game.ts:5` `simulator.ts:28` `launcher.ts:21` `main.ts:11` `launcher/perf-meter.ts:9` の import を書き換え。**インスタンスは `main.ts` が持ったまま** — `PerfMeter` が参照を握り続けるので、ランごとに作り直すと再出撃後に静かに計測が止まる |
-| `src/main.ts:9,10,11,14` | 上記の import 先を書き換え |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `ls src/*.ts` が `main.ts` `theme.ts` の 2 件。
-- `grep -rn "ProteinMotionLod" src/ | grep "'near'"` が定義 1 箇所だけになる。
-- `grep -rn "location\." src/game/ src/hud/ src/input/ src/render/` が 0 件。
-- `npm run test` が通る。
-- `npm run dev` で `?perf=1` を開き、負荷確認ウィンドウの全行(区間・GPU パス・エンティティ数・
-  タンパク質モーションの LOD 内訳)に値が出ることを見る。ESC メニューの「負荷」からも開く。
-
----
-
-### 手順7. `RenderPipeline` と `GpuTimings` を `GameScene` の持ち物にする
-
-**目的.** `main.ts:152-155` が `GpuTimings` → `RenderPipeline` の順に作り、`graphics` へ 2 回
-`bind` し、Launcher がそれを素通しして `Game` へ渡している。どれも `gs.renderer` から作られる
-描画基盤で、`gs` と寿命が完全に一致する。`GameScene` に持たせれば **Launcher と Game の引数が
-1 つずつ、`main.ts` の bind が 1 つ減る。**
-
-**新しい API**
-
-```ts
-// src/render/scene.ts
-export interface GameScene {
-  scene: THREE.Scene;
-  renderer: WebGPURenderer;
-  gpu: GpuTimings;
-  pipeline: RenderPipeline;
-  applyGraphics: (graphics: GraphicsSettingsData) => void;  // pipeline へも押し出す
-}
-```
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/scene.ts:6-12,19-52` | `GpuTimings` と `RenderPipeline` を `createGameScene` の中で作って返す。`applyGraphics`(:35-38)から `pipeline.applyGraphics(next)` も呼ぶ。**使われていない `resize` の公開を落とす**(`window.addEventListener` は中で張っており、外からの呼び出しは 0 件) |
-| `src/main.ts:152-155` | `new GpuTimings(...)` `new RenderPipeline(...)` `graphics.bind(pipeline)` の 3 行を削除。`graphics.bind(gs)` だけ残す |
-| `src/main.ts:193` | `PerfMeter` へ `gs.renderer` `gs.gpu` `gs.pipeline` を渡す |
-| `src/launcher/launcher.ts:20,85,151` | `pipeline` のフィールドと引数を削除 |
-| `src/game/game.ts:31,54,117,122,166-168` | `pipeline` 引数を削除し、`gs.pipeline` を読む |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -n "RenderPipeline" src/launcher/` が 0 件。
-- `grep -c "private readonly" src/launcher/launcher.ts` が 1 減る。
-- `npm run test:render` が通る。
-- `npm run dev` で ①通常の描画(地球・大気・影・太陽)が従来どおり出る、②設定ビューの描画タブで
-  影の枚数・解像度倍率を変えると即座に反映される、③`?perf=1` の GPU パス行に値が出る、
-  ④負荷確認ウィンドウの「デバッグ表示」で G-Buffer などへ切り替わる。
-- `npm run render-lab:shot` で撮り直し、移行前と見比べる。**半影を含む絵は撮り直しで
-  ±4 LSB 揺れるので、差分を根拠にする前にもう一度撮る。**
-
----
-
-### 手順8. 星系の構築を `Game.create()` へ移す
-
-**目的.** `launcher.ts:49-60,142-152` が元期・地球自転初期位相・位相オフセットを決めて
-`stageClass.createCelestialSystem()` を呼び、できた `CelestialSystem` を `new Game(...)` へ
-渡している。**launcher はこれを一度も触らない。** どれも `initialSave`(ランの直列化形)から
-決まる値で、launcher が持つべき情報は「開始日時を選ばせるステージで選ばれた値」だけである。
-静的非同期ファクトリを入口にすれば、**半端に組み上がった `Game` を誰も観測しないまま**構築を
-`game/` へ寄せられ、ローディング画面の開閉は launcher が握ったままにできる。
-
-**あわせて、進捗を段で報告する。** いまゲージが動くのは暦パックの受信バイト数の間だけで
-(`physics/ephemeris/catalog.ts:14-29`)、その後の `PackEphemeris.fromBytes` → `ephemerisPoints()`
-→ `solarSystem()` → `new Game(...)` → `celestialSystem.build()` は**全部同期**なので、ゲージは
-止まったまま数える対象を失う。**同期のまま進捗だけ書いてもゲージは動かない** — ブラウザは実行中の
-タスクが終わるまで再描画しないので、段の切り替えで必ず一度描画機会を明け渡す。
-`Game.create()` の中はまだ `launcher.current` が `null`(`main.ts` の `animate()` が
-`game === null` で素通りする)なので、途中で `await` しても組み立て中の `Game` は誰にも触られない。
-
-**新しい API**
-
-```ts
-// src/game/loading-progress.ts (新規)
-// 起動の段と、実測から決めた所要時間の重み。合計は 1。
-export type LoadingPhase = 'ephemeris' | 'system' | 'celestial' | 'assemble';
-export const LOADING_PHASE_WEIGHTS: Readonly<Record<LoadingPhase, number>>;
-
-// 段の中の 0..1 を全体の 0..1 へ写して報告する。
-export class LoadingProgress {
-  constructor(report: (ratio: number) => void);
-  // 直前の段までを完了として報告し、ブラウザへ描画を1回明け渡してから phase へ入る。
-  enter(phase: LoadingPhase): Promise<void>;
-  // いまの段の中の進捗 [0,1]。同期処理の途中で呼んでも再描画はされない。
-  within(ratio: number): void;
-}
-
-// src/game/game.ts
-export class Game {
-  // 星系の構築を含む、このランの組み立て。
-  static async create(
-    gs: GameScene,
-    stageClass: StageClass,
-    hud: Hud,
-    worldSfx: WorldSfx,
-    uiSfx: UiSfx,
-    pauseMenu: PauseMenu,
-    sections: FrameSections,
-    initialSave: GameSaveData | undefined,
-    startEpoch: TdbJulianDate | undefined,
-    progress: LoadingProgress,
-  ): Promise<Game>;
-
-  private constructor(/* 上記 + celestialSystem: CelestialSystem */);
-}
-```
-
-**重みは実測で決める。** 着手時に `?stage=1` の起動へ一時的に `performance.now()` を挟み、
-4 段それぞれの所要時間を取る。**得た値を `LOADING_PHASE_WEIGHTS` に直書きし、いつ・どの機械で
-測ったかをそのファイルの先頭コメントに書く。** 測った share が 5% を切る段は隣へ畳んで段を減らす。
-**この実測は手順12 の判断材料でもある。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/loading-progress.ts`(新規) | 上記。`enter()` の描画明け渡しは `await new Promise(requestAnimationFrame)` |
-| `src/game/game.ts:108-119` | `constructor` を `private` にし、`celestialSystem` を引数の末尾へ。`static async create()` を足し、`launcher.ts:44-46`(`savedEpoch`)・`:143`(元期の解決)・`:145`(`earthSpinPhase0`)・`:147`(`phaseOffsets`)・`:49-60`(`createCelestialSystem` 呼び出し)の中身をここへ移す。**元期解決の順序(セーブ → 指定日時 → ステージ宣言)のコメントも一緒に移す** |
-| `src/game/game.ts:166-168` | `celestialSystem.build(...)` をコンストラクタから `Game.create()` へ移し、`'celestial'` の段にする。**`:169-174`(`setOrbitGuideSettings` と `setOnLineCountChange`)は build 済みであることが前提なので、コンストラクタに残したままでよい** |
-| `src/game/stages/stage.ts:117-123` | `createCelestialSystem` の `onProgress` へ渡すのは `'ephemeris'` 段の中の比率(`progress.within`)。署名は変えない |
-| `src/launcher/launcher.ts:22,25,42-60,140-152` | `initCelestialSystem` と `savedEpoch` を削除。`CelestialSystem` の import を落とす。`startRun()` は `showLoading()` → `await Game.create(..., new LoadingProgress(setLoadingProgress))` → `finally { hideLoading() }` の形にする |
-| `src/launcher/launcher.ts:25` | `createJulianDate` の import を落とす(`TdbJulianDate` は `startEpoch` の型として残る) |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -n "createCelestialSystem\|earthSpinPhase0\|phaseOffsets\|Math.random" src/launcher/launcher.ts` が 0 件。
-- `grep -n "new Game(" src/` が 0 件(`Game.create()` だけになる)。
-- `npm run test:game` が通る。
-- `npm run dev` で ①`?stage=1` の起動で**ゲージが 0% から 100% まで段階的に進む**(途中で止まって
-  跳ぶのでなく、4 段の境目で必ず一度描き変わる)、②[R] の再出撃でも同じ、③タイトルへ戻って
-  別ステージを選び直せる、④クリエイティブステージで開始日時を選ぶと**その日時**で始まる
-  (直前セッションのスナップショットの元期に上書きされない)、⑤既存のスナップショットを F9 から
-  読むと、天体配置が保存時と一致する。
-- 暦パックを読まない元期(解析暦だけで組む時代)でも、`'system'` 以降の段でゲージが進む。
-
----
-
-### 手順9. `Game.serialize()` と `Game.runSummary()` を作り、SnapshotService の掘り出しを畳む
-
-**目的.** ランの直列化形を組み立てる唯一の入口が `launcher/save/snapshot-service.ts:91` の
-`buildSaveData(game)` にあり、`Game` に `serialize()` が無い。そのうえ索引メタを作るために
-`snapshot-service.ts:23-46` が `game.player.maxHp` `game.dynamicSystem.bases[].baseState.money`
-`game.dynamicSystem.enemies.filter(...)` `game.activeStage.phase` を直接掘り、ついでに
-`game/hud/orbit/orbit-info` と `game/orbit-reference` まで引いている。**ランの中身の直列化と
-要約はランの仕事**にし、launcher は受け取った値を索引の形へ写すだけにする。
-
-**新しい API**
-
-```ts
-// src/game/run-summary.ts (新規)
-// ランの外側が一覧に描くための、いまのランの要約。索引の形(SnapshotMeta)は
-// 知らない — 素の値だけを返し、並べ替えるのは受け取った側の仕事。
-export interface RunSummary {
-  readonly simTime: number;
-  readonly phase: GamePhase;
-  readonly centerBodyId: string;
-  readonly centerBodyName: string;
-  readonly altitude: number;
-  readonly speed: number;
-  readonly hpRatio: number;
-  readonly maxHp: number;
-  readonly magazines: number;
-  readonly money: number;
-  readonly playerCount: number;
-  readonly enemyAliveCount: number;
-}
-
-// src/game/game.ts
-export class Game {
-  serialize(): GameSaveData;
-  runSummary(): RunSummary;
-}
-```
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/run-summary.ts`(新規) | `RunSummary` 型。`snapshot-service.ts:30-46` の導出のうち、素の値になる 12 項目 |
-| `src/game/game.ts` | `serialize()` を足し、`snapshot-service.ts:91-111` の `buildSaveData` をそのまま移す(各サブシステムの `serialize()` を集めるだけ)。`runSummary()` を足し、`:23-29,36-46` の導出を移す |
-| `src/game/hud/orbit/orbit-info.ts` → `src/game/orbit-info.ts` | `git mv`。冒頭コメントが自ら「純粋関数群」と宣言しており、import は `physics/*` と `math/vec3` と型 2 つだけで DOM にも THREE にも触れない。**HUD ではないので `hud/` から出す。** `hud/orbit/` 側の呼び手 7 ファイルの import を書き換え |
-| `src/launcher/save/snapshot-service.ts:1-11,19-49,91-118` | `capture()` を `game.runSummary()` + `game.serialize()` の 2 呼び出しへ畳む。`autoName()` は `RunSummary` を受ける形に直す(`fmtDist` `fmtTime` は手順4 で `src/hud/utils` へ移っている)。`orbitInfo` `autoOrbitReference` `OrbitInfo` の import を落とす |
-| `src/launcher/save/save-transfer.ts:52` | 外部利用者が 0 の `importSlotFromFile` の `export` を落とす(同ファイル `:104` からのみ呼ばれる) |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -n "game\.player\|game\.dynamicSystem\|game\.activeStage\|game\.celestialSystem" src/launcher/save/snapshot-service.ts` が 0 件。
-- `grep -rn "game/hud" src/launcher/save/` が 0 件。
-- `grep -rn "importSlotFromFile" src/ | wc -l` が 2(定義と自ファイル内の呼び出し)。
-- `npm run test:game` が通る。
-- `npm run dev` で ①F5 で手動スナップショットを撮り、F9 の一覧に
-  「MET ○○ ・ 地球 高度 ○○」の自動命名で出る、②同じ行の高度・速度・HP・弾倉・資金・敵数が
-  HUD の表示と一致する、③自動スナップショットも同じ形で溜まる、④**移行前に撮った
-  スナップショットが従来どおり読める**、⑤スロットの書き出しと取り込みが通る。
-
----
-
-### 手順10. `ephemeris-context` を `physics/` へ移し、`EphemerisContext` の重複を消す
-
-**目的.** `game/save/ephemeris-context.ts` は `src/game/` からの利用者が **0 件**
-(`grep -rn "ephemeris-context" src/game/` が該当なし)で、実行時の呼び手は
-`launcher/save/snapshot-service.ts` だけ。中身は `physics/ephemeris/*` と `physics/time` にしか
-依存しない暦パックの互換判定で、「ランの直列化形」でも「1ランの中身」でもない。
-そのうえ同じ 4 フィールドの型が `save-data.ts:216-223` と `ephemeris-context.ts:8-15` に
-独立して書かれ、型システム上の紐付けがない。
-
-**`physics/ephemeris/` の中に閉じ込める。** `physics/` は物理・軌道力学そのものの層で、
-セーブの互換判定を持ち込む場所ではない。**入るのは `physics/ephemeris/` の下だけ**とし、
-`physics/` の他のどこにも新しい export を生やさない。判定の対象は「その元期が選ぶ暦パックが
-いま手元にあるものと同じか」であって、暦パックのカタログを持っているのは
-`physics/ephemeris/catalog.ts` `profile.ts` `pack-format.ts` — **この 3 つと同じ棚に置くのが
-いちばん近い。** 名前も `ephemeris-context.ts` のままにして、暦の話であることを外から見えるようにする。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/save/ephemeris-context.ts` → `src/physics/ephemeris/ephemeris-context.ts` | `git mv`。import が `'./pack-format'` `'./profile'` `'../time'` になる。**冒頭コメント `:5-7` の「physics のテストビルドから DOM/Three を引かずに触れる」という制約は、移動先で自明になるので書き換える** |
-| `src/physics/ephemeris/ephemeris-context.ts:8-15` | `EphemerisContextValue` を `EphemerisContext` として **export** する |
-| `src/game/save/save-data.ts:216-223,289` | 重複定義を削除し、`physics/ephemeris/ephemeris-context` から `EphemerisContext` を type import する |
-| `src/launcher/save/snapshot-service.ts:8` | import 元を書き換え |
-| `tests/game/save-ephemeris-context.test.ts:7` → `tests/physics/` | テストを physics 層へ移す。`tests/run.ts` の層分けに従って登録し直す |
-| `tsconfig.test.json` | physics のテストビルドへ含める。個別ファイル列挙方式なので `src/physics/ephemeris/ephemeris-context.ts` を足す |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -rn "epochJdTdb" src/ | grep "interface\|type "` が 1 件だけ。
-- `ls src/game/save/` が `save-data.ts` の 1 件。
-- `npm run test:physics` と `npm run test:game` が通る。
-- `npm run dev` で、移行前に作ったスナップショットが F9 から読めることを再確認する。
-
----
-
-### 手順11. `WorldSfx` / `UiSfx` を `Game` の持ち物にする
-
-**目的.** `WorldSfx` と `UiSfx` は `game/` の 26 ファイルからしか使われず、タイトル画面では
-一度も鳴らない(タイトルで要るのは `AudioEngine.unlock()` と `Bgm` だけ)。にもかかわらず
-`main.ts:121-122` が作り、Launcher が 2 つのフィールドとして素通ししている。**ランの世界が出す
-音はランと同じ寿命であるべき**で、そうすれば `Game.dispose()`(`game.ts:287-294`)の
-「効果音はこのゲームより長生きするので継続音を元へ戻す」という後始末も要らなくなる。
-
-**この手順は他と独立している。落としてもよい。**
-
-**新しい API**
-
-```ts
-// src/audio/sfx/world-sfx.ts
-export class WorldSfx {
-  // ループ音チャンネル(噴射・RCS)を停止し、ノードを切り離す。
-  dispose(): void;
-}
-```
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/audio/sfx/world-sfx.ts:11-12` | `thrustGain` / `rcsGain` が握る `BufferSource` を止めて切り離す `dispose()` を足す。**`loopChannel()`(:17-33)が `src.start()` した `AudioBufferSourceNode` を保持していないので、保持する形に直す** |
-| `src/game/game.ts` | `worldSfx` / `uiSfx` の引数を `audioEngine: AudioEngine` 1 つに変え、`Game.create()` の中で `new WorldSfx(audioEngine)` `new UiSfx(audioEngine)` を作る。`dispose()`(:293-294)の `setThrust(false)` `setRcs(false)` を `this._worldSfx.dispose()` へ置き換える |
-| `src/launcher/launcher.ts:17,18,79,80,150` | `worldSfx` / `uiSfx` のフィールドと引数を削除。`audioEngine` は既にある |
-| `src/main.ts:114-127,161` | `WorldSfx` / `UiSfx` の生成と受け渡しを削除。`initHud` の戻り値からも外す |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -n "WorldSfx\|UiSfx" src/main.ts src/launcher/` が 0 件。
-- `grep -c "private readonly" src/launcher/launcher.ts` が 2 減る。
-- `npm run test:game` が通る。
-- `npm run dev` で **音の漏れを耳で確かめる**: ①噴射しっぱなし・RCS 回しっぱなしで撃墜され、
-  決着した瞬間に両方止まる、②そのまま [R] で再出撃 → 噴射音が正常に鳴る、
-  ③**再出撃を 5 回繰り返し、無音のはずの場面でノイズが重なっていない**(ループチャンネルの
-  取り残しがあるとここで積み上がる)、④タイトルへ戻ってから別ステージを始めても同じ、
-  ⑤UI 音(時間倍率の変更・計画ノードの編集)が鳴る。
-
----
-
-### 手順12. 起動時のタンパク質アセット先読みをやめ、要求された体だけを読む
-
-**目的.** `main.ts:144` の `startProteinAssetPreload()` が、**起動のたびに 4 体ぶんの
-structure/motion を 8 本の fetch で取りに行く。合計 93.6 MB。**
-
-| アセット | サイズ |
-| --- | --- |
-| `atpSynthase6n2yStructure.json` | 37.2 MB |
-| `atpSynthase6n2yMotion.json` | 17.6 MB |
-| `rubisco8rucStructure.json` | 16.4 MB |
-| `rubisco8rucMotion.json` | 8.6 MB |
-| `pdb5i4rStructure.json` | 8.0 MB |
-| `pdb5i4rMotion.json` | 4.1 MB |
-| `myoglobin1mbnStructure.json` / `Motion.json` | 1.2 / 0.6 MB |
-
-`fetchJson`(`protein-asset-loader.ts:39-43`)は `response.json()` なので **JSON の構文解析は
-メインスレッドで走る。** そのあと `assertProteinDisplayAsset`
-(`protein-display-asset.ts:53,60`)が表面とリボンの索引配列を `some()` で全走査し、
-`validateProteinMotionAsset` も続く。**ローディングのゲージが固まるのはここである** — これは
-`Game.create()` の経路の外で並行して走っているので、**手順8 で段を細かく報告しても直らない。**
-メインスレッドが解析で止まっている間、ブラウザは何も描き直せない。
-
-しかも**この 4 体を使うのはクリエイティブステージだけ**である
-(`grep -rn "ProteinEnemy" src/game/stages/` が `creative-stage.ts` と
-`spawner/enemy-generator.ts` のみ)。そこでもプレイヤーが配置したときにしか要らない。
-`DynamicSystem.spawnEnemyWhenReady`(`dynamic-system.ts:155-162`)は既に「準備が整うまで
-実体化を遅らせる」仕組みを持っているが、**キューに積むだけで読み込みを始めない** — 唯一の
-読み込み口が起動時の先読みなので、いまはそれで成立している。**要求された体を、要求された時点で
-読む形にする。**
-
-**着手前に `DEVELOP/SPEC/PROTEIN.md`「出現」節を読み、待ち時間の見せ方が仕様に収まっているかを
-確かめる。収まっていなければ `/modify-feature` を通してから書く。**
-
-**新しい API**
-
-```ts
-// src/game/protein/protein-asset-loader.ts
-// この体の取得を始める。始まっている・終わっているなら何もしない。
-// 完了は isProteinAssetReady() が答える — 待ちたい側はそれを見る。
-export function requestProteinAsset(id: ProteinAssetId): void;
-```
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/protein/protein-asset-loader.ts:90-95` | `startProteinAssetPreload` を削除し、`requestProteinAsset` を export する(中身は既存の `loadProteinAssetBundlePromise` を投げっぱなしで呼ぶだけ) |
-| `src/game/protein/protein-asset-loader.ts:88` | 「待たずに投げっぱなしにしてよい」のコメントを、要求時読み込みの説明へ書き直す |
-| `src/game/dynamic/dynamic-system.ts:155-162` | `spawnEnemyWhenReady` が、まだ準備できていない `assetId` をキューへ積むときに `requestProteinAsset(assetId)` を呼ぶ。**ここを落とすと、セーブ復元経路で積まれた敵が永久に現れない** |
-| `src/game/stages/creative-stage.ts:172,196` | 形状一覧を開いた時点で、並んでいる体の `requestProteinAsset` を呼ぶ。置く操作を待たずに取得を始める |
-| `src/game/protein/protein-enemy-registry.ts:44` | コメント中の `startProteinAssetPreload` への言及を直す |
-| `src/main.ts:17,144` | 呼び出しと import を削除 |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `grep -rn "startProteinAssetPreload" src/` が 0 件。
-- `npm run test:game` が通る。
-- `npm run dev` + DevTools の Network で ①`?stage=1` の起動時に `*Structure.json`
-  `*Motion.json` の要求が **0 件**、②起動のゲージが止まらずに進む(手順8 の検証①が、
-  先読みの解析に邪魔されずに通る)、③クリエイティブで形状一覧を開くと取得が始まり、
-  置いた敵が取得完了後に現れる、④**タンパク質の敵を含む既存のクリエイティブのセーブを読むと、
-  取得を待って敵が現れる**(永久に出てこないことがない)、⑤同じ体を 2 回置いても fetch は 1 回。
-
----
-
-### 手順13. `CODING-RULE.md` 1.3 を新しい層構成へ書き直す
-
-**目的.** `DEVELOP/CODING-RULE.md:81-93` は `math/ physics/ render/ game/ launcher/` の 5 層で
-書かれている。手順2〜4 で `input/` と `hud/` が層として立つので、**どれがどれを import して
-よいかを規則の側へ書く。** 書かなければ、次の変更でまた `game/` へ流れ込む。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `DEVELOP/CODING-RULE.md:81` | 見出しを `math/` / `physics/` / `render/` / `input/` / `hud/` / `game/` / `launcher/` へ |
-| `DEVELOP/CODING-RULE.md:82-93` | `input/`(キーの割り当てと生の入力。`game/` `launcher/` `hud/` を import しない)と `hud/`(画面の器と共通部品。`theme` `input/` `render/` までを import してよく、`game/` `launcher/` を import しない)の 2 項を足す。`game/` `launcher/` の項へ「自分の画面のために `game/` を引かない」を書き足す |
-| `DEVELOP/CODING-RULE.md` 1.3 の末尾 | 「**下位が自決できるものは下位が決める**」を小節として足す。素通しの引数(受け取って別の誰かへ渡すだけのもの)は、置き場所が間違っているサインである、と書く |
-
-**達成条件と検証**
-
-- 1.3 の層の並びが `src/` の実際のディレクトリと一致する(`ls -d src/*/`)。
-- 手順2〜12 の達成目標 2〜5(grep が 0 件)が、規則の文面から読み取れる。
-
-## 見積り
-
-**手掛かり: 先行する 5 手順の実測は 27 ファイル / +227 / −217 行**
-(`git diff --stat f7048b91~1..720ff639`)。移動 18 ファイルで、実質の書き換えは import と
-数十行の配線に収まった。今回も**大半が import パスの機械的な書き換え**なので、同じ比で見積もる。
-
-| 手順 | 移動/新規 | 書き換える import 行 | 実質の書き換え | 備考 |
-| --- | --- | --- | --- | --- |
-| 1 | 0 | 0 | 約 11 行 | 4 ファイルの削除と CSS セレクタ |
-| 2 | 1 | 25 | 0 | 純粋な移動 |
-| 3 | 4 | 58 | 約 10 行 | touch.ts の import 直し |
-| 4 | 30 + 3 分割 | **191**(102 ファイル) | 約 120 行 | 最大。3 件の切り分けが実質。サブエージェントへ配る |
-| 5 | 2 新規 | 約 15 | 約 90 行 | `hud-root.ts` から約 20 行を `HudShell` へ、`#hud-result` の生成を `result-screen.ts` へ |
-| 6 | 4 + 1 新規 | 約 35 | 約 30 行 | `PerfCounts` の切り出しと LOD 重複の解消 |
-| 7 | 0 | 約 8 | 約 25 行 | `scene.ts` へ 2 生成を移し、4 ファイルから引数を削る |
-| 8 | 1 新規 | 約 5 | 約 120 行 | `launcher.ts` から約 35 行が `game.ts` へ、`create()` の殻、`LoadingProgress`(約 40 行)、実測 |
-| 9 | 1 移動 + 1 新規 | 約 12 | 約 110 行 | `buildSaveData`(21 行)+ メタ導出(24 行)が `game.ts` へ、`RunSummary` 型が新規 |
-| 10 | 1 移動 + テスト 1 移動 | 約 4 | 約 15 行 | 重複型の削除 |
-| 11 | 0 | 約 6 | 約 40 行 | `WorldSfx.dispose()` の新規実装が主 |
-| 12 | 0 | 約 3 | 約 25 行 | `startProteinAssetPreload` を `requestProteinAsset` へ、呼び出し口 3 箇所 |
-| 13 | 0 | 0 | 約 30 行 | 文書のみ |
-| **計** | **43 移動 / 7 新規** | **約 362 行** | **約 615 行** | |
-
-**導出**: import 行数はすべて grep の実測(手順4 は widgets 66 + utils 33 + overlay-manager 22 +
-property-window 21 + breakpoints 19 + overlay-layer 7 + draggable-window 6 + layout 4 +
-viewport 4 + その他 9 = 191)。実質の書き換えは、移動しないコードのうち**引数の増減・型の
-切り出し・関数の移設**にあたる行を数えたもの。
-
-**手順4 が全体の 3 分の 1 を占める。** ここだけは `game/hud/` 内部の相対 import(`'./widgets'`
-`'../utils'` など)が大量に絡むので、ディレクトリ単位で分けてサブエージェントへ配る。
+6. **(手順7)** ①通常の描画(地球・大気・影・太陽)が従来どおり、②設定ビューの描画タブで
+   影の枚数・解像度倍率を変えると即座に反映される、③`?perf=1` の GPU パス行に値が出る、
+   ④負荷確認ウィンドウの「デバッグ表示」で G-Buffer などへ切り替わる。
+7. **(手順8)** ①`?stage=1` の起動でゲージが 0% → 45 → 62 → 72 → 83% と描き変わる
+   (headless では確認済み)、②[R] の再出撃でも同じ、③クリエイティブで開始日時を選ぶと
+   **その日時**で始まる、④既存のスナップショットを F9 から読むと天体配置が保存時と一致する。
+8. **(手順9・手順10)** ①F5 で手動スナップショットを撮り、F9 の一覧に
+   「MET ○○ ・ 地球 高度 ○○」の自動命名で出る、②同じ行の高度・速度・HP・弾倉・資金・敵数が
+   HUD の表示と一致する、③自動スナップショットも同じ形で溜まる、
+   ④**移行前に撮ったスナップショットが従来どおり読める**(HP・弾倉・資金・敵配置・カメラ・
+   計画が保存時と一致する)、⑤スロットの書き出しと取り込みが通る。
+9. **(手順11)** 音の漏れを耳で確かめる。①噴射しっぱなし・RCS 回しっぱなしで撃墜され、決着した
+   瞬間に両方止まる、②そのまま [R] で再出撃 → 噴射音が正常に鳴る、③**再出撃を 5 回繰り返し、
+   無音のはずの場面でノイズが重なっていない**(ループ音の取り残しがあるとここで積み上がる)、
+   ④タイトルへ戻ってから別ステージを始めても同じ、⑤UI 音(時間倍率の変更・計画ノードの編集)が鳴る。
+10. **(手順12)** ①クリエイティブの形状一覧を開くと取得が始まり、置いた敵が取得完了後に現れる、
+    ②**タンパク質の敵を含む既存のクリエイティブのセーブを読むと、待って敵が現れる**
+    (永久に出てこないことがない)、③同じ体を 2 回置いても fetch は 1 回。
+    ④**LAN の IP で実機から開いたときも同じ**(headless / localhost では確かめられない経路)。
+
+## 実測(見積りの置き換え)
+
+**合計 202 ファイル / +1,444 / −661 行**(`git diff --shortstat 720ff639..HEAD`)。
+移動が 44 ファイル、新規が 10 ファイル。
+
+| 手順 | files | +行 | −行 |
+| --- | --- | --- | --- |
+| 1. タイトル画面の知識を落とす | 4 | 4 | 10 |
+| 2. `theme.ts` を `src/` へ | 25 | 24 | 24 |
+| 3. `input/` を `src/` へ | 38 | 59 | 59 |
+| 4. `src/hud/` を作る | **134** | **1027** | **282** |
+| 5. `HudShell` を切り出す | 8 | 77 | 114 |
+| 6. `src/` 直下を層へ配る | 29 | 88 | 134 |
+| 7. `GameScene` へ畳む | 4 | 26 | 23 |
+| 8. `Game.create()` と進捗の段 | 3 | 91 | 39 |
+| 9. 直列化と要約を `Game` へ | 10 | 109 | 65 |
+| 10. `ephemeris-context` を `physics/` へ | 6 | 15 | 26 |
+| 11. 効果音をランの持ち物に | 7 | 92 | 81 |
+| 12. タンパク質の要求時読み込み | 7 | 21 | 19 |
+| 13. `CODING-RULE.md` 1.3 | 1 | 28 | 2 |
+
+**見積りとの差。** 手順4 は見積り「191 import 行 / 実質 120 行」に対し実測 +1027 −282 —
+git のリネーム検出が効かなかった移動が本文ごと計上されているためで、実際の書き換えは
+見積りどおり import と 3 件の切り分けに収まった。手順9・11 は見積りを超えた(それぞれ
++110 → +109 だが、`Game` から `serialize`/`runSummary` を外へ出す判断が後から入った)。
 
 ## リスクと落とし穴
 
