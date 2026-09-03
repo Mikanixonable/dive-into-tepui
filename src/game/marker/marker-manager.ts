@@ -13,7 +13,7 @@ import { Projected } from '../../math/projection';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
-import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
+import { LabelDeclutter, canHideIconClass, isCombatClass } from './label-declutter';
 import { strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion } from '../../physics/celestial-motion';
 
@@ -39,11 +39,6 @@ export const MARKER_PRIORITY = {
 
 const MARKER_CLUSTER_PX = 40; // これより画面上で近いマーカー同士は1つの代表にまとめる [px]
 
-// 優先度間引きで一度隠したラベル/アイコンを再び出す画面距離のしきい値(MARKER_CLUSTER_PX より
-// 緩い値)。同じ値だと境界ちょうどで距離が揺れたときに毎フレーム表示・非表示が反転する
-// (周期が数時間の衛星どうしなど、タイムワープ中に画面距離が急変する組で顕著)。
-const MARKER_CLUSTER_RELEASE_PX = 60;
-
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 const MARKER_BEARING_RING_RATIO = 0.8;
 
@@ -64,11 +59,11 @@ interface MarkerRecord {
   // カメラからの距離。setPosition/setNodePosition が worldPos を持つ呼び出し元でのみ
   // 埋まる(undefined なら resolveCollisions の depth-guard を評価しない)。
   dist: number | undefined;
-  iconHiddenByPriority: boolean;
-  labelHiddenByPriority: boolean;
+  // 間引きの可否を決める種別。className は要素の生成時にしか書かないので、生成時に確定させる。
+  readonly canHideIconClass: boolean;
+  readonly combatClass: boolean;
   // 直前フレームで優先度間引きにより隠れていたか(resolveCollisions のヒステリシス用)。
-  prevIconHiddenByPriority: boolean;
-  prevLabelHiddenByPriority: boolean;
+  prevLabelHidden: boolean;
 }
 
 interface ActiveLabel {
@@ -98,31 +93,6 @@ function defaultPriorityForClass(key: string, cls: string): number {
   return 0;
 }
 
-const NEVER_HIDE_ICON_CLASSES = [
-  'mk-boresight', 'mk-lead', 'mk-pro', 'mk-retro', 'mk-nrm', 'mk-rad', 'mk-tgtdir', 'mk-boardpass', 'mk-impact',
-];
-
-function canHideIconByPriority(m: MarkerRecord): boolean {
-  if (m.fixedLabel) return false;
-  const cls = m.root.className;
-  for (const c of NEVER_HIDE_ICON_CLASSES) {
-    if (cls.includes(c)) return false;
-  }
-  return true;
-}
-
-// GroupedMarkers が管理する船・弾薬のクラス。この集合どうしのペアはクラスタ化(近接まとめ)で
-// 既にアイコンを残す/ラベルを合体する判断が付いているため、下の優先度間引きで重ねてアイコンを
-// 消さない(消すと GroupedMarkers が残したはずのアイコンが消える)。
-const COMBAT_MARKER_CLASSES = [
-  'mk-self', 'mk-ally', 'mk-enemy', 'mk-base', 'mk-ammo', 'mk-fuel', 'mk-target',
-];
-
-function isCombatMarker(m: MarkerRecord): boolean {
-  const cls = m.root.className;
-  return COMBAT_MARKER_CLASSES.some((c) => cls.includes(c));
-}
-
 // ラベルの概算矩形を入れる画面空間グリッドのセル幅。ラベルの幅は文字数に
 // よって変わるため、各ラベルは矩形がまたがる全セルへ登録する。
 const COLLISION_BUCKET_SIZE = 64;
@@ -150,6 +120,7 @@ export class MarkerManager {
   private readonly bucketPool: number[][] = [];
   private readonly bucketRowPool: Map<number, number[]>[] = [];
   private readonly svgLinePool: SVGLineElement[] = [];
+  private readonly declutter = new LabelDeclutter();
 
   // 単独のオブジェクトでは決められないマーカー集合。敵マーカーは「画面上で近接するものを
   // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とする。
@@ -191,8 +162,9 @@ export class MarkerManager {
       const lblEl = el('span', `mk-${key}-l`, root, 'lbl');
       m = {
         key, root, sym: symEl, lbl: lblEl, fixedLabel, hidden: !visible, occlusionHidden: false,
-        x, y, priority: itemPriority, dist, iconHiddenByPriority: false, labelHiddenByPriority: false,
-        prevIconHiddenByPriority: false, prevLabelHiddenByPriority: false,
+        x, y, priority: itemPriority, dist,
+        canHideIconClass: canHideIconClass(cls), combatClass: isCombatClass(cls),
+        prevLabelHidden: false,
       };
       this.markerDictionary.set(key, m);
     }
@@ -204,8 +176,6 @@ export class MarkerManager {
     m.y = y;
     m.priority = itemPriority;
     m.dist = dist;
-    m.iconHiddenByPriority = false;
-    m.labelHiddenByPriority = false;
     m.sym.classList.remove('priority-hidden');
     m.lbl.classList.remove('priority-hidden');
     m.root.style.display = visible ? 'block' : 'none';
@@ -431,80 +401,38 @@ export class MarkerManager {
   // マップビューでのみ優先度間引きを行う。戦闘ビューでは照準や敵アイコン等を隠さない。
   resolveCollisions(view: View): void {
     const activeRecords = this.collectActiveMarkerRecords();
-    this.thinByPriority(activeRecords, view === 'map');
-    this.relaxLabelRects(activeRecords);
+    const hidden = this.declutter.compute(activeRecords, view === 'map');
+    // 間引きの結果を priority-hidden クラスのトグル(CSS フェード)で反映し、
+    // 次フレームのヒステリシスが読む直前の状態として書き戻す。
+    for (const m of activeRecords) {
+      m.prevLabelHidden = hidden.labels.has(m.key);
+      m.sym.classList.toggle('priority-hidden', hidden.icons.has(m.key));
+      m.lbl.classList.toggle('priority-hidden', m.prevLabelHidden);
+    }
+    this.relaxLabelRects(activeRecords, hidden.labels);
     this.applyLabelOffsets();
   }
 
-  // 現在表示中(hidden/occlusionHidden/フェードアウト完了のいずれでもない)のマーカーを集め、
-  // 前フレームの優先度間引き状態を消しておく。
+  // 現在表示中(hidden/occlusionHidden/フェードアウト完了のいずれでもない)のマーカーを集める。
   private collectActiveMarkerRecords(): MarkerRecord[] {
     const activeRecords: MarkerRecord[] = [];
     for (const m of this.markerDictionary.values()) {
       if (m.hidden || m.occlusionHidden || m.root.style.opacity === '0') continue;
-      // 間引き結果はこのフレームで thinByPriority が改めて決めるので、いったん消す。
-      m.iconHiddenByPriority = false;
-      m.labelHiddenByPriority = false;
-      m.sym.classList.remove('priority-hidden');
-      m.lbl.classList.remove('priority-hidden');
       activeRecords.push(m);
     }
     return activeRecords;
   }
 
-  // 隠す/再び出すしきい値をそれぞれの対象自身の直前フレームの状態(prevLabelHiddenByPriority)
-  // で分ける(ヒステリシス)。周期が数時間の衛星どうしなど、タイムワープ中に画面距離が
-  // しきい値付近で急変する組で、間引きが毎フレーム反転する明滅を防ぐ。
-  private thinByPriority(activeRecords: readonly MarkerRecord[], thin: boolean): void {
-    if (thin) {
-      for (let i = 0; i < activeRecords.length; i++) {
-        const a = activeRecords[i]!;
-        for (let j = i + 1; j < activeRecords.length; j++) {
-          const b = activeRecords[j]!;
-          const pick = resolveCrowdingWinner(
-            a.key, a.priority, a.dist, a.prevLabelHiddenByPriority,
-            b.key, b.priority, b.dist, b.prevLabelHiddenByPriority,
-            DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO, false,
-          );
-          if (pick === undefined) continue;
-          const [loser, winner] = pick === 'a' ? [a, b] : [b, a];
-          const threshold = loser.prevLabelHiddenByPriority ? MARKER_CLUSTER_RELEASE_PX : MARKER_CLUSTER_PX;
-          if (Math.hypot(a.x - b.x, a.y - b.y) >= threshold) continue;
-
-          loser.labelHiddenByPriority = true;
-          // 差が100以上の異なるカテゴリ間 (例: 天体 > 船, 船 > 弾薬, 船 > 軌道要素) はアイコンも非表示 (保護対象を除く)。
-          // 船・弾薬どうし (GroupedMarkers が既にクラスタ化を決めている組) は対象外。depth-guard で
-          // 優先度が逆転して隠れた側(手前の低優先度が奥の高優先度を隠した)でも、種別の隔たりの
-          // 大きさそのものは変わらないため絶対値で見る。
-          if (Math.abs(winner.priority - loser.priority) >= 100 && canHideIconByPriority(loser)
-            && !(isCombatMarker(winner) && isCombatMarker(loser))) {
-            loser.iconHiddenByPriority = true;
-          }
-        }
-      }
-    }
-    for (const m of activeRecords) {
-      m.prevIconHiddenByPriority = m.iconHiddenByPriority;
-      m.prevLabelHiddenByPriority = m.labelHiddenByPriority;
-    }
-
-    // アイコン/ラベルの間引き結果を反映 (priority-hidden クラスのトグルによる CSS フェード)
-    for (const m of activeRecords) {
-      m.sym.classList.toggle('priority-hidden', m.iconHiddenByPriority);
-      m.lbl.classList.toggle('priority-hidden', m.labelHiddenByPriority);
-    }
-  }
-
   // 優先度間引きを生き残ったラベルの推定矩形を集め、重なったものどうしをグリッドバケット +
   // 5反復で反発させて緩和する。結果のオフセットは activeScratch/activeCount へ蓄積し、
   // 位置の反映と引き出し線の描画は applyLabelOffsets が行う。
-  private relaxLabelRects(activeRecords: readonly MarkerRecord[]): void {
+  private relaxLabelRects(activeRecords: readonly MarkerRecord[], hiddenLabels: ReadonlySet<string>): void {
     const active = this.activeScratch;
     this.activeCount = 0;
 
     // 表示中のマーカーと、そのラベルの推定矩形を集める
     for (const m of activeRecords) {
-      if (m.labelHiddenByPriority || !m.lbl.textContent || m.fixedLabel) {
+      if (hiddenLabels.has(m.key) || !m.lbl.textContent || m.fixedLabel) {
         m.lbl.style.transform = 'translateX(-50%)';
         continue;
       }
