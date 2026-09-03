@@ -3,10 +3,10 @@
 // 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
 import type { Game } from '../../game/game';
 import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
-import { SaveSlots } from '../../game/save/save-slots';
-import { SnapshotService } from '../../game/save/snapshot-service';
-import { exportSlotToFile, pickAndImportSlot } from '../../game/save/save-transfer';
-import type { SaveSlotMeta } from '../../game/save/save-data';
+import { SaveSlots } from '../save/save-slots';
+import { SnapshotService } from '../save/snapshot-service';
+import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
+import type { SaveSlotMeta } from '../save/slot-data';
 import type { OverlayHandle, OverlayManager } from '../../game/hud/overlay-manager';
 import { CloseButton, TabBar } from '../../game/hud/widgets';
 import { injectOnce } from '../../game/hud/widgets/inject-style';
