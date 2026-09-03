@@ -26,7 +26,7 @@ import {
   attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
 } from '../../src/render/thermal-emissive';
 
-import type { CumulusShadow, Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
+import { sphereOccluder, type CumulusShadow, type Occluder, type RingBand, type SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import type { FloatNode } from '../../src/render/tsl-types';
 import { type AtmosphereBody } from '../../src/render/atmosphere';
@@ -427,7 +427,7 @@ function shipBodyShadow(_style: RenderStyle, sunOcclusion: SunOcclusion, sunLigh
     camera,
     sunDirection: sun,
     viewTarget: center,
-    occluders: [{ center, radius: SMALL_BODY_RADIUS }],
+    occluders: [sphereOccluder(center, SMALL_BODY_RADIUS)],
     rings: { center, axis, bands: occlusionBands(SMALL_BODY_RING_BANDS) },
   };
 }
@@ -619,6 +619,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly object: THREE.Object3D;
   readonly atmosphere: AtmosphereBody;
   readonly cumulusShadow: CumulusShadow;
+  readonly occluder: Occluder;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
 } {
   const group = new THREE.Group();
@@ -633,6 +634,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
   surface.setCloudAmount(1);
   cumulus.addTo(group);
+  const bodyFromWorld = new THREE.Matrix4().makeRotationFromQuaternion(spin.clone().invert());
   const graticule = new BodyGraticule();
   graticule.addTo(group);
   graticule.setVisible(style === 'schematic');
@@ -655,9 +657,12 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       surfaceRadius: R_EARTH_EQ,
       axes: new THREE.Vector3(axes.x, axes.y, axes.z),
       topAltitude: cumulus.topAltitude,
-      bodyFromWorld: new THREE.Matrix4().makeRotationFromQuaternion(spin.clone().invert()),
+      bodyFromWorld,
       field: cumulus.field,
     },
+    // 天体は自分自身も遮蔽器として持つ(ゲーム本体は必ず持たせる)。地表と雲頂と低い高度の
+    // 大気が直射を失う瞬間は、この遮蔽器が決める。
+    occluder: { center, axes: new THREE.Vector3(axes.x, axes.y, axes.z), bodyFromWorld },
     // 雲の項目の受け方は point-entity.ts の sync と同じ。分割段は寄り切った 1 段に固定
     // (ケースのカメラ距離は観察のつまみで動くが、絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {
@@ -698,6 +703,7 @@ function earth(style: RenderStyle): LabCase {
     camera,
     atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    occluders: [earthSphere.occluder],
     cumulusShadow: earthSphere.cumulusShadow,
     applyGraphics: earthSphere.applyGraphics,
   };
@@ -713,6 +719,7 @@ function earthOblique(style: RenderStyle): LabCase {
     camera: labCamera(6e7),
     atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    occluders: [earthSphere.occluder],
     cumulusShadow: earthSphere.cumulusShadow,
     applyGraphics: earthSphere.applyGraphics,
   };
@@ -738,9 +745,18 @@ function earthPolar(style: RenderStyle): LabCase {
     sunDirection: EARTH_POLAR_SUN_DIR,
     atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    occluders: [earthSphere.occluder],
     cumulusShadow: earthSphere.cumulusShadow,
     applyGraphics: earthSphere.applyGraphics,
   };
+}
+
+// 極の昼夜境界: earth-polar と同じ構図で、恒星を視線と直交させ、昼夜境界を極の上へ通す。
+// **扁平な天体でも影は地平線どおりに落ちる** — 境界は半影ぶんに滑らかで、緯度によらない
+// 直線の縁は出ない。天体自身が遮蔽器に載っていて、地表も雲頂も低い高度の大気も、その内側では
+// なく表面より外に居ることをここで読む。
+function earthPolarTerminator(style: RenderStyle): LabCase {
+  return { ...earthPolar(style), sunDirection: new THREE.Vector3(1, 0, 0) };
 }
 
 // 昼夜境界の地球: earth と同じ構図で、恒星を視線の先の地平線上へ置く。**太陽光が最も長く
@@ -767,8 +783,8 @@ function earthEclipse(style: RenderStyle): LabCase {
   return {
     ...base,
     occluders: [
-      { center: ground.clone().addScaledVector(SUN_DIR, ECLIPSE_OCCLUDER_DISTANCE), radius: ECLIPSE_OCCLUDER_RADIUS },
-      { center, radius: R_EARTH },
+      sphereOccluder(ground.clone().addScaledVector(SUN_DIR, ECLIPSE_OCCLUDER_DISTANCE), ECLIPSE_OCCLUDER_RADIUS),
+      ...base.occluders!,
     ],
   };
 }
@@ -830,7 +846,7 @@ function eclipse(): LabCase {
   return {
     objects: [receiver],
     camera,
-    occluders: [{ center: occluderCenter, radius: 50 }],
+    occluders: [sphereOccluder(occluderCenter, 50)],
     rings: {
       center: occluderCenter,
       axis: SUN_DIR.clone().add(new THREE.Vector3(0, 0.7, 0)).normalize(),
@@ -986,7 +1002,7 @@ function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLig
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
-    occluders: [{ center, radius }],
+    occluders: [sphereOccluder(center, radius)],
     rings: {
       center,
       axis: new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
@@ -1024,7 +1040,7 @@ function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: 
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
-    occluders: [{ center, radius }],
+    occluders: [sphereOccluder(center, radius)],
     rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: occlusionBands(SATURN_RINGS.bands) },
     applyGraphics: (graphics) => view.sync(
       center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, graphics, style,
@@ -1102,6 +1118,7 @@ export const CASES = {
   'earth': earth,
   'earth-oblique': earthOblique,
   'earth-polar': earthPolar,
+  'earth-polar-terminator': earthPolarTerminator,
   'earth-terminator': earthTerminator,
   'earth-eclipse': earthEclipse,
   'earth-mars': earthMars,
