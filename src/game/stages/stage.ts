@@ -233,14 +233,14 @@ export abstract class Stage {
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
     const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
-    this._entities.addPlayer(ship);
+    this._entities.add(ship);
     this._activePlayers.claimIfNone(ship);
     return ship;
   }
 
   // 敵を entities へ登録し、出撃数をスコアへ記録する。
   protected addEnemy(enemy: Enemy, entities: DynamicSystem): void {
-    entities.addEnemy(enemy);
+    entities.add(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
@@ -250,10 +250,12 @@ export abstract class Stage {
     entities.spawnEnemyWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
-  // 生存中の敵全てに AI 行動を1フレーム分実行させる。
+  // 生存中の敵全てに AI 行動を1フレーム分実行させる。同一集団の判定に使う母集団は、
+  // このフレームの顔ぶれを1度だけ取って全機で共有する。
   protected behaveAllEnemies(player: Player, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
-    for (const e of entities.enemies) {
-      if (e.alive) e.behave(simTime, player, entities, simSpeed, this._celestialSystem);
+    const enemies = entities.enemies;
+    for (const e of enemies) {
+      if (e.alive) e.behave(simTime, player, entities, enemies, simSpeed, this._celestialSystem);
     }
   }
 

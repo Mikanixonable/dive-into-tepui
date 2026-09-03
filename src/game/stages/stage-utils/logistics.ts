@@ -77,7 +77,7 @@ export class Logistics {
       this._scene,
     );
     // 投入して演出とヒントを出す
-    this.entities.addAmmoPickup(ammoPickup);
+    this.entities.add(ammoPickup);
     this._uiSfx.warp();
     this._hud.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
   }
@@ -107,7 +107,7 @@ export class Logistics {
       },
       this._scene,
     );
-    this.entities.addRcsFuelPickup(fuelPickup);
+    this.entities.add(fuelPickup);
     this._uiSfx.warp();
     this._hud.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000);
   }
