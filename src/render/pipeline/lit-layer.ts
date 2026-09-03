@@ -11,7 +11,7 @@ export const WORLD_BACKGROUND_LAYER = 2;
 // 指定した色がそのまま画面へ出る。LIT_OPAQUE_LAYER と同じくチャンネル0からは外す。
 const OVERLAY_LAYER = 3;
 // 太陽光の影を落とす不透明メッシュ(艦艇・基地・デブリなど)の層。**天体の球はここへ入れない** —
-// 球の影は遮蔽関数が解析式で厳密に解いており、シャドウマップにも入れると半影の途中で二重に効く。
+// 天体の影は遮蔽関数が解析式で厳密に解いており、シャドウマップにも入れると半影の途中で二重に効く。
 export const SUN_SHADOW_CASTER_LAYER = 4;
 
 // 3D UI パスが見るチャンネル。呼び出し側は camera.layers.mask を呼び出し前の値へ戻す責任を持つ。
