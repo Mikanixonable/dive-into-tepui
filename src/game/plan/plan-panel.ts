@@ -20,9 +20,8 @@ interface DvButtons {
 }
 
 interface PlanPanelNodeRow {
-  readonly tRel: number;
-  readonly dvMag: number;
-  readonly selected: boolean;
+  readonly tRel: number; // 現在時刻からノード時刻までの秒数 [s]
+  readonly dvMag: number; // ノードの Δv の大きさ [m/s]
 }
 
 // prograde/retrograde/normal/antinormal/radial out/in の長押しボタン6個を組み立てる。
@@ -67,6 +66,7 @@ function buildNumericInput(row: HTMLElement, label: string, color: string, onCom
 // 計画パネルの定型 HTML。近地点が大気圏内(<120km)なら警告を添える。
 function planPanelHtml(
   nodes: readonly PlanPanelNodeRow[],
+  selectedIdx: number | null,
   selEl: OrbitalElements | null,
   warnAtmosphere: boolean,
 ): string {
@@ -77,7 +77,7 @@ function planPanelHtml(
     s += nodes
       .map((n, i) => {
         const sign = n.tRel >= 0 ? 'T-' : 'T+';
-        return `<div class="row"><span class="k">${n.selected ? '▸ ' : ''}◈ NODE${i + 1} ${sign}${fmtTime(Math.abs(n.tRel))}</span><span class="v">${n.dvMag.toFixed(1)} m/s</span></div>`;
+        return `<div class="row"><span class="k">${i === selectedIdx ? '▸ ' : ''}◈ NODE${i + 1} ${sign}${fmtTime(Math.abs(n.tRel))}</span><span class="v">${n.dvMag.toFixed(1)} m/s</span></div>`;
       })
       .join('');
   }
@@ -104,9 +104,9 @@ function planPanelHtml(
 }
 
 export class PlanPanel {
-  readonly dvButtons: DvButtons;
-  onDvInputChange: ((pro: number, nrm: number, rad: number) => void) | null = null;
-  onPositionInputChange: ((secondsFromNow: number) => void) | null = null;
+  public readonly dvButtons: DvButtons;
+  public onDvInputChange: ((pro: number, nrm: number, rad: number) => void) | null = null;
+  public onPositionInputChange: ((secondsFromNow: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
   private readonly body: HTMLElement;
@@ -117,7 +117,7 @@ export class PlanPanel {
   private readonly positionInput: ValueInput;
 
   // パネルの DOM を組み立て、右レールへ追加する。
-  constructor(panelRoot: HTMLElement) {
+  public constructor(panelRoot: HTMLElement) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-plan';
     this.panel.className = 'panel hidden';
@@ -166,17 +166,17 @@ export class PlanPanel {
     hudRail(panelRoot, 'right').appendChild(this.panel);
   }
 
-  // ノード一覧・噴射後軌道要素・Δv 手動入力欄を現在値へ合わせる。選択中ノードが無ければ
-  // パネル全体を隠す。
-  sync(
-    nodes: readonly PlanPanelNodeRow[], selEl: OrbitalElements | null, localDv: Vec3 | null,
-    nodeSecondsFromNow: number | null, warnAtmosphere: boolean, hasSelection: boolean,
+  // ノード一覧・噴射後軌道要素・Δv 手動入力欄を現在値へ合わせる。nodes は計画のノード全件を
+  // 計画の順で渡し、selectedIdx はその中の選択中ノードの index。選択が無ければパネル全体を隠す。
+  public sync(
+    nodes: readonly PlanPanelNodeRow[], selectedIdx: number | null, selEl: OrbitalElements | null,
+    localDv: Vec3 | null, nodeSecondsFromNow: number | null, warnAtmosphere: boolean,
   ): void {
-    const html = planPanelHtml(nodes, selEl, warnAtmosphere);
-    this.panel.classList.toggle('hidden', !hasSelection);
+    const html = planPanelHtml(nodes, selectedIdx, selEl, warnAtmosphere);
+    this.panel.classList.toggle('hidden', selectedIdx === null);
     if (this.body.innerHTML !== html) this.body.innerHTML = html;
 
-    if (hasSelection && localDv) {
+    if (selectedIdx !== null && localDv) {
       this.editForm.classList.remove('hidden');
       // 入力フォームにフォーカスがない時だけ値を同期(ドラッグ操作での変動を反映)
       if (nodeSecondsFromNow !== null && document.activeElement !== this.positionInput.element) {
@@ -190,12 +190,13 @@ export class PlanPanel {
     }
   }
 
-  hide(): void {
+  // パネル全体を隠す。
+  public hide(): void {
     this.panel.classList.add('hidden');
   }
 
   // パネルの DOM を取り除く。
-  dispose(): void {
+  public dispose(): void {
     this.panel.remove();
   }
 }
