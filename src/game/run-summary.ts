@@ -23,7 +23,7 @@ export interface RunSummary {
 }
 
 // 自機が居ない周回でも値が欠けないよう、軌道の項は星系の原点へ寄せる。
-export function runSummaryOf(game: Game): RunSummary {
+export function summarizeRun(game: Game): RunSummary {
   const player = game.player;
   const celestial = game.celestialSystem;
   const info = player === null ? null : orbitInfo(

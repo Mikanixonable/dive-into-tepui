@@ -1,6 +1,6 @@
 import { Game } from '../../game/game';
 import { SAVE_VERSION } from '../../game/save/save-data';
-import { type RunSummary, runSummaryOf } from '../../game/run-summary';
+import { type RunSummary, summarizeRun } from '../../game/run-summary';
 import { serializeRun } from '../../game/save/serialize-run';
 import { fmtDist, fmtTime } from '../../hud/utils';
 import { SaveStore } from './save-store';
@@ -19,7 +19,7 @@ export class SnapshotService {
     const slotId = this.slots.activeSlotId;
     if (slotId === null) return null;
 
-    const summary = runSummaryOf(game);
+    const summary = summarizeRun(game);
     const meta: SnapshotMeta = {
       id: generateSnapshotId(),
       kind,
