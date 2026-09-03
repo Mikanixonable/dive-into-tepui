@@ -1,22 +1,22 @@
-// マップ上の被選択物が起動できる操作と、項目のラベル・可否を決めるために要る現在の操作状態を
-// 差し出す口。
+// 被選択物が起動できる操作と、項目のラベル・可否を決めるために要る現在の操作状態を差し出す口。
 import type { KinematicState } from '../../physics/kinematic-state';
+import type { View } from '../view/view';
 import type { Base } from '../dynamic/dynamic-entity/base';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { Player } from '../player/player';
-import type { MapPickable } from './map-pickable';
+import type { ObjectPickable } from './object-pickable';
 
 // 操作中の自艦から見た、その対象とのドッキング状態。
 export type DockState = 'docked' | 'dockable' | 'none';
 
-export interface MapCommands {
+export interface ObjectCommands {
   // 画面へ通知を出す。
   hint(text: string): void;
   // マップの注視点を id へ移し、name で通知する。
   focus(id: string, name: string): void;
   // target のプロパティウィンドウを (clientX, clientY) へ開く。
-  openProperties(target: MapPickable, clientX: number, clientY: number): void;
+  openProperties(target: ObjectPickable, clientX: number, clientY: number): void;
   // 基地を選択状態にする。
   selectBase(base: Base): void;
   // その基地のプロパティウィンドウが抱えている基地パネルを開閉する。
@@ -55,8 +55,8 @@ export interface MapCommands {
   readonly canAuthor: boolean;
   // 軌道計画の実行を持つステージか。
   readonly executesPlans: boolean;
-  // マップ視点か。
-  readonly overviewMode: boolean;
+  // 現在のビュー。
+  readonly view: View;
   isNavTarget(id: string): boolean;
   // 航法ターゲットに設定できるか。軌道面が定まらない対象では false。
   canNavTarget(id: string, simTime: number): boolean;

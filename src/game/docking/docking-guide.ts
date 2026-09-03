@@ -1,12 +1,12 @@
 import * as THREE from 'three/webgpu';
+import { lenSq } from '../../math/vec3';
+import { LOCAL_FORWARD, qFromUnitVectors } from '../../math/quat';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Docking, DockingCandidate } from './docking';
-import type { ViewManager } from '../view-manager';
-import type { Projected } from '../../math/projection';
-import type { Vec3 } from '../../math/vec3';
+import type { ProjectFn } from '../camera/camera-system';
 import { currentThemePalette } from '../theme';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import { MARKER_PRIORITY } from '../marker/marker-manager';
@@ -17,8 +17,6 @@ const GUIDE_MARKER_KEY = 'docking-guide';
 const AXIS_LENGTH = 32;
 const RING_RADIUS = 8;
 const RING_SEGMENTS = 64;
-
-type ProjectFn = (worldPos: Vec3) => Projected;
 
 const escapeLabelHtml = (value: string): string => value
   .replaceAll('&', '&amp;')
@@ -41,7 +39,6 @@ export class DockingGuide {
     private readonly markerManager: MarkerManager,
     private readonly entities: DynamicSystem,
     private readonly docking: Docking,
-    private readonly viewManager: ViewManager,
   ) {
     this.root = new THREE.Group();
     this.root.name = 'docking-guide';
@@ -69,25 +66,19 @@ export class DockingGuide {
 
   sync(player: Player | null, fo: FloatingOrigin, project: ProjectFn): void {
     if (this.disposed) return;
-    const combat = this.viewManager.isCombatView;
-    const candidate = combat && player ? this.nearestCandidate(player) : null;
-    if (!candidate) {
-      this.root.visible = false;
-      this.markerManager.hide(GUIDE_MARKER_KEY);
-      return;
-    }
-
+    const candidate = player ? this.nearestCandidate(player) : null;
     // 軸線がカメラの背後へ回った候補は HUD ラベルと同じく非表示にする。
-    if (!project(candidate.position).front) {
-      this.root.visible = false;
-      this.markerManager.hide(GUIDE_MARKER_KEY);
+    if (!candidate || !project(candidate.position).front) {
+      this.hide();
       return;
     }
 
     this.root.visible = true;
     this.root.position.copy(fo.RtoThreeV3(candidate.position));
-    const n = new THREE.Vector3(candidate.normal.x, candidate.normal.y, candidate.normal.z);
-    if (n.lengthSq() > 1e-12) this.root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n.normalize());
+    if (lenSq(candidate.normal) > 1e-12) {
+      const q = qFromUnitVectors(LOCAL_FORWARD, candidate.normal);
+      this.root.quaternion.set(q.x, q.y, q.z, q.w);
+    }
     const color = candidate.canDock ? currentThemePalette().success : currentThemePalette().warning;
     this.axisMaterial.color.set(color);
     this.ringMaterial.color.set(color);
@@ -104,6 +95,12 @@ export class DockingGuide {
       GUIDE_MARKER_KEY, 'mk-docking-guide', '◎', candidate.position, project,
       label, 1, color, undefined, false, true, MARKER_PRIORITY.PRIMARY_TARGET,
     );
+  }
+
+  // ガイドの3D表示とマーカーを畳む。
+  hide(): void {
+    this.root.visible = false;
+    this.markerManager.hide(GUIDE_MARKER_KEY);
   }
 
   private nearestCandidate(player: Player): DockingCandidate | null {

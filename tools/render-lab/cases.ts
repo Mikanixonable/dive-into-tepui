@@ -394,7 +394,7 @@ function shipBodyShadow(_style: RenderStyle, sunOcclusion: SunOcclusion, sunLigh
   const sun = SMALL_BODY_SUN_DIR;
   // 恒星に直交する 2 つの向き。lateral はカメラ側を向き、edge は視線にも直交するので画面内で真横。
   const toCamera = new THREE.Vector3().subVectors(camera.position, center).normalize();
-  const lateral = toCamera.clone().addScaledVector(sun, -toCamera.dot(sun)).normalize();
+  const lateral = toCamera.clone().projectOnPlane(sun).normalize();
   const edge = new THREE.Vector3().crossVectors(toCamera, sun).normalize();
   const axis = sun.clone().multiplyScalar(Math.cos(SMALL_BODY_RING_TILT))
     .addScaledVector(lateral, -Math.sin(SMALL_BODY_RING_TILT));

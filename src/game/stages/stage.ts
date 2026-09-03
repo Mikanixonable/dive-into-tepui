@@ -219,13 +219,13 @@ export abstract class Stage {
     player: Player | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
     _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    this.syncStatusPanel(player, cameraSystem.overviewMode);
+    this.syncStatusPanel(player, cameraSystem.view === 'map');
   }
 
-  // hudSubStatus() が null のとき、またはマップ視点のときはパネルを畳む。
-  private syncStatusPanel(player: Player | null, overviewMode: boolean): void {
+  // hudSubStatus() が null のとき、またはマップビューのときはパネルを畳む。
+  private syncStatusPanel(player: Player | null, mapView: boolean): void {
     const message = this.hudSubStatus();
-    const show = message !== null && !overviewMode;
+    const show = message !== null && !mapView;
     this.statusPanel.sync(show ? player : null, message ?? '', this.scoreCounter.kills);
   }
 

@@ -66,7 +66,7 @@ export class EnemiesPanel {
 
     // 更新間隔中も直前の敵有無を維持する。ここで戦闘ビュー判定だけを行うと、
     // 敵0件で隠したパネルを次のフレームに再表示してしまう。
-    panel?.classList.toggle('hidden', game.cameraSystem.overviewMode || !this.hasContacts);
+    panel?.classList.toggle('hidden', game.viewManager.isMapView || !this.hasContacts);
   }
 
   // waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。

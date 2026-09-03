@@ -8,6 +8,7 @@
 // 向くグリフの回転角を求める。camera-system.ts が MarkerManager に依存しているため、
 // ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
 import { Vec3, addScaled, len, norm, sub } from '../../math/vec3';
+import type { View } from '../view/view';
 import { Projected } from '../../math/projection';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
@@ -269,11 +270,11 @@ export class MarkerManager {
     cameraPos: Vec3,
     celestialBodies: readonly CelestialMotion[],
     celestialBodiesPivot: number,
-    overviewMode: boolean,
+    occludeByBodies: boolean,
     label = '',
     priority?: number,
   ): void {
-    if (overviewMode && isOccluded(cameraPos, worldPos, celestialBodies, celestialBodiesPivot)) {
+    if (occludeByBodies && isOccluded(cameraPos, worldPos, celestialBodies, celestialBodiesPivot)) {
       this.fadeOut(key);
     } else {
       this.setPosition(key, cls, sym, worldPos, project, label, 1, undefined, undefined, false, false, priority, cameraPos);
@@ -427,10 +428,10 @@ export class MarkerManager {
   }
 
   // 全マーカーの優先度に基づくアイコン/ラベル間引きと、残ったラベルどうしの衝突緩和。
-  // マップモード(overviewMode === true)でのみ優先度間引きを行う。戦闘ビュー(overviewMode === false)では照準や敵アイコン等を隠さない。
-  resolveCollisions(overviewMode = false): void {
+  // マップビューでのみ優先度間引きを行う。戦闘ビューでは照準や敵アイコン等を隠さない。
+  resolveCollisions(view: View): void {
     const activeRecords = this.collectActiveMarkerRecords();
-    this.thinByPriority(activeRecords, overviewMode);
+    this.thinByPriority(activeRecords, view === 'map');
     this.relaxLabelRects(activeRecords);
     this.applyLabelOffsets();
   }
@@ -451,12 +452,11 @@ export class MarkerManager {
     return activeRecords;
   }
 
-  // マップモード(overviewMode === true)のときのみ、画面上の近接に基づく優先度間引きを行う。
   // 隠す/再び出すしきい値をそれぞれの対象自身の直前フレームの状態(prevLabelHiddenByPriority)
   // で分ける(ヒステリシス)。周期が数時間の衛星どうしなど、タイムワープ中に画面距離が
   // しきい値付近で急変する組で、間引きが毎フレーム反転する明滅を防ぐ。
-  private thinByPriority(activeRecords: readonly MarkerRecord[], overviewMode: boolean): void {
-    if (overviewMode) {
+  private thinByPriority(activeRecords: readonly MarkerRecord[], thin: boolean): void {
+    if (thin) {
       for (let i = 0; i < activeRecords.length; i++) {
         const a = activeRecords[i]!;
         for (let j = i + 1; j < activeRecords.length; j++) {

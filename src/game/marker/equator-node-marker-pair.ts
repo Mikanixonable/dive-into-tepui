@@ -11,7 +11,7 @@ import { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
 import type { MarkerManager } from './marker-manager';
 import type { ProjectFn } from '../camera/camera-system';
-import { MapPickable } from '../pickable/map-pickable';
+import { ObjectPickable } from '../pickable/object-pickable';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 export class EquatorNodeMarkerPair {
@@ -92,22 +92,19 @@ export class EquatorNodeMarkerPair {
   }
 
   // 右クリック対象として公開する EqAN/EqDN アイコン(交点が求まっていなければ空)。
-  mapPickables(): readonly MapPickable[] {
+  pickables(): readonly ObjectPickable[] {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
   }
 
   // △▽ マーカーを update が求めた位置に置く。求め直されなかったフレームは交点を捨てて隠す。
-  sync(project: ProjectFn, show: boolean, cameraPos: Vec3): void {
+  sync(project: ProjectFn, cameraPos: Vec3): void {
     if (!this.solvedSinceSync) this.clearCrossings();
     this.solvedSinceSync = false;
     for (const marker of [this.ascending, this.descending]) {
-      if (!show) this.markerManager.hide(marker.id);
-      else {
-        marker.sync(
-          this.markerManager, project, cameraPos, this.celestialBodies, this.celestialBodiesPivot,
-          true, this.timeLabel,
-        );
-      }
+      marker.sync(
+        this.markerManager, project, cameraPos, this.celestialBodies, this.celestialBodiesPivot,
+        true, this.timeLabel,
+      );
     }
   }
 

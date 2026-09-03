@@ -2,7 +2,7 @@
 // 知らない。THREE 非依存に保つ(生成側・表示側の双方がここを読む)。
 import { Q_ECLY_TO_ECI } from '../../physics/ecliptic';
 import { positionFromOrbitalElements, trueAnomalyFromMean } from '../../physics/elements';
-import { qRotate } from '../../physics/attitude';
+import { qRotate } from '../../math/quat';
 import { Vec3 } from '../../math/vec3';
 
 // 1点の軌道。平均運動を要素と一緒に持つのは、位置評価が毎フレーム全点に及ぶため

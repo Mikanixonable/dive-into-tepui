@@ -39,8 +39,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 /* 表示/非表示ユーティリティ */
 #hud .hidden { display: none !important; }
-#hud .hud-world-root { position: absolute; inset: 0; display: none; pointer-events: none; }
-#hud .hud-world-root.active { display: block; }
+#hud .hud-view-root { position: absolute; inset: 0; display: none; pointer-events: none; }
+#hud .hud-view-root.active { display: block; }
 
 /* 模式図では3D世界の背景が白くなり、ガラス地が白を透かして文字が読みにくくなるため、
    ガラストークンだけ不透明寄りへ差し替える(参照側はどこも var(--glass-*) 経由なので
@@ -101,8 +101,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .rail-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 #hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: var(--z-hud-rail-toggle); }
 #hud:not(.base-mode) .rail-toggle { display: block; }
-#hud .hud-world-root .rail-toggle-left { left: 8px; }
-#hud .hud-world-root .rail-toggle-right { right: 8px; }
+#hud .hud-view-root .rail-toggle-left { left: 8px; }
+#hud .hud-view-root .rail-toggle-right { right: 8px; }
 #hud:not(.base-mode) .hud-rail.collapsed { width: 0; }
 #hud:not(.base-mode) .hud-rail.collapsed > .panel { display: none !important; }
 #hud.base-mode .rail-toggle { display: none; }

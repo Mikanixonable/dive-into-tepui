@@ -1,4 +1,4 @@
-// マップモードの「未来表示」がどこを・いつを指すかの管理と、その操作パネル。
+// マップビューの「未来表示」がどこを・いつを指すかの管理と、その操作パネル。
 //
 // ここでいう window は「どの座標系で(frame)・いつを(displayTime)見るか」を1フレーム分に
 // 束ねたもので、時間の窓だけを指す語ではない。どちらも画面全体で1つに揃っていなければ
@@ -140,7 +140,7 @@ export class DisplayWindowManager {
     };
   }
 
-  // 未来の軌道・マーカーを描く座標系。カメラが固定される座標系(MapCamera.cameraFrame)
+  // 未来の軌道・マーカーを描く座標系。カメラが固定される座標系(FocusCamera.cameraFrame)
   // とは独立にプレイヤーが選ぶ。
   get frame(): ReferenceFrame {
     return this._frame;

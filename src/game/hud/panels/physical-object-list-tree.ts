@@ -2,7 +2,7 @@
 // 同期・剪定する。見出し・検索欄・フィルタ UI の組み立てはパネル本体が持つ。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../hud-root';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapPickable } from '../../pickable/map-pickable';
+import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { Player } from '../../player/player';
 import type { PhysicalObjectListOrder } from './physical-object-list-order';
 
@@ -42,7 +42,7 @@ export class PhysicalObjectListTree {
   public constructor(
     private readonly celestialSystem: CelestialSystem,
     private readonly order: PhysicalObjectListOrder,
-    private readonly itemsById: ReadonlyMap<string, MapPickable>,
+    private readonly itemsById: ReadonlyMap<string, ObjectPickable>,
     private readonly actions: RowTreeActions,
   ) {}
 
@@ -81,15 +81,15 @@ export class PhysicalObjectListTree {
       container.appendChild(node.row);
       container.appendChild(node.childrenContainer);
     }
-    const svgGlyph = item.mapGlyphSvg;
+    const svgGlyph = item.glyphSvg;
     if (svgGlyph !== null) {
       if (node.glyph.dataset.svgGlyph !== svgGlyph) {
         node.glyph.innerHTML = svgGlyph;
         node.glyph.dataset.svgGlyph = svgGlyph;
       }
     } else {
-      if (node.glyph.textContent !== item.mapGlyph) {
-        node.glyph.textContent = item.mapGlyph;
+      if (node.glyph.textContent !== item.glyph) {
+        node.glyph.textContent = item.glyph;
         delete node.glyph.dataset.svgGlyph;
       }
     }
