@@ -13,8 +13,8 @@ import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
 import type { Input } from '../../input/input';
 import type { Game } from '../game';
-import type { OverlayLayers } from './overlay-layer';
-import { TEMP_WINDOW_GROUP, type OverlayManager } from './overlay-manager';
+import type { OverlayLayers } from '../../hud/overlay-layer';
+import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
 
 // 軌道分析パネルを開く既定位置。ドラッグ可能ウィンドウなのでビューポート内へクランプされる。

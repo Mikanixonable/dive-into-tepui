@@ -3,9 +3,9 @@
 // 表示対象の状態やクリップ・改名・削除・分岐などの実処理は、コールバックを通じて呼び出し側へ委ねる。
 import { AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
-import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../game/hud/utils';
-import { Button, Meter, TabBar } from '../../game/hud/widgets';
-import { injectOnce } from '../../game/hud/widgets/inject-style';
+import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/utils';
+import { Button, Meter, TabBar } from '../../hud/widgets';
+import { injectOnce } from '../../hud/widgets/inject-style';
 import { smallBtn, stageLabel } from './shared';
 
 const STYLE = `

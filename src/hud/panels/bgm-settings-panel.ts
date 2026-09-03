@@ -1,5 +1,5 @@
-import type { Bgm } from '../../../audio/bgm/bgm';
-import { BGM_TRACKS } from '../../../audio/bgm/tracks/tracks';
+import type { Bgm } from '../../audio/bgm/bgm';
+import { BGM_TRACKS } from '../../audio/bgm/tracks/tracks';
 import { Button, Slider } from '../widgets';
 
 const SEEK_REFRESH_MS = 100;
