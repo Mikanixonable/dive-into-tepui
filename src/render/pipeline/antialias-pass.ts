@@ -8,7 +8,7 @@ import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { colorSpaceToWorking, texture } from 'three/tsl';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { Vec4Node } from '../tsl-types';
 
 // 均し方の選択値。graphics-settings.ts の antialias の選択肢と対応する。
