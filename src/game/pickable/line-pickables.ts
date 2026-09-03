@@ -6,7 +6,6 @@ import { guideSecondary } from '../../physics/orbit-guide';
 import type { Vec3 } from '../../math/vec3';
 import type { DisplayWindow } from '../display-window-manager';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
-import type { CameraSystem } from '../camera/camera-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
@@ -26,14 +25,17 @@ export class LinePickables {
   constructor(
     private readonly entities: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
-    private readonly cameraSystem: CameraSystem,
   ) {}
 
-  // このフレームに表示されている軌道線の候補列を組み直す。マップ視点でなければ空にする。
+  // 候補列を空にする(軌道線が表示されないビューで呼ぶ)。
+  clear(): void {
+    this.items.length = 0;
+  }
+
+  // このフレームに表示されている軌道線の候補列を組み直す。
   // displayWindow.frame/displayTime は船の予測線・過去線の座標系相対 → ECI 変換に使う。
   refresh(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource): void {
     this.items.length = 0;
-    if (!this.cameraSystem.overviewMode) return;
     const { frame, displayTime } = displayWindow;
 
     for (const { id, line } of this.celestialSystem.referenceEllipseLines) {
