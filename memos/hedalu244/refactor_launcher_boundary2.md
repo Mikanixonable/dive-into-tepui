@@ -1,6 +1,6 @@
 # launcher / game の境界に残る歪みの整理
 
-**実施済み。** `720ff639` → `68f53bef` の 13 コミットで全手順を通した。
+**実施済み。** `720ff639` → `3e75009e` の 17 コミットで全手順を通した。
 以下は「何を・なぜ・どう決めたか」と、実機で確かめる残りの記録である。
 **目的と決めたことの節に出てくる行番号は着手前(`720ff639`)のもので、いまのコードは指さない。**
 
@@ -127,7 +127,7 @@ src/
 7. **達成。** `launcher.ts` に `createCelestialSystem` `earthSpinPhase0` `Math.random` が 0 件。
    星系の構築は `Game.create()` にだけある。
 8. **達成。** `snapshot-service.ts` の `game.player.` `game.dynamicSystem.` `game.activeStage.`
-   が 0 件。`runSummaryOf(game)` と `serializeRun(game)` の 2 呼び出しに畳まれた。
+   が 0 件。`game.runSummary()` と `game.serialize()` の 2 呼び出しに畳まれた。
 9. **達成。** `ProteinMotionLod` の定義は `protein-motion-controller.ts:11` の 1 箇所、
    `EphemerisContext` の定義は `physics/ephemeris/ephemeris-context.ts:7` の 1 箇所。
 10. **達成。** `importSlotFromFile` は `save-transfer.ts` の中だけ。
@@ -169,13 +169,19 @@ src/
 | 12. タンパク質アセットを要求された時点で読む | `9de275ee` |
 | 13. `CODING-RULE.md` 1.3 を 7 層へ書き直す | `68f53bef` |
 | — `/refactor` の是正(`runSummaryOf` → `summarizeRun`) | `def6e682` |
+| — `serialize` / `runSummary` を `Game` のメソッドへ戻す | `7c70522c` |
 
-**計画から外れた点(手順11)。** `Game.serialize()` / `Game.runSummary()` をメソッドとして
-足したところで、境界フックが CODING-RULE 1.2(トップレベルに実装を直接書かない)を指摘した。
-**指摘は正しい**ので、畳み方を `game/save/serialize-run.ts` の `serializeRun(game)` と
-`game/run-summary.ts` の `summarizeRun(game)` へ出し、`Game` はオーケストレーションだけを
-持つようにした。呼ぶのは launcher のままだが、**呼ぶ先が `game/` の関数になった**ので
-境界の目的は変わらない。
+**計画どおりに戻した点(手順11 → `7c70522c`)。** `Game.serialize()` / `Game.runSummary()` を
+メソッドとして足したとき、境界フックが CODING-RULE 1.2 を指摘したのでいったん
+`serializeRun(game)` / `summarizeRun(game)` へ外へ出した。**これは誤り。**
+**サブシステムを持っているのは `Game` なので、何を持っているかを知って畳めるのも `Game` だけ**で、
+`dispose()` と同じ形である。外へ出すと、畳むために中身を公開し続ける前提が固定されてしまう。
+メソッドへ戻し、`run-summary.ts` は要約の形(`RunSummary`)だけを持つ型モジュールにした。
+
+> **境界フックの許可リストは当てにしない。** `.claude/hooks/check-boundaries.mjs` の
+> `GAME_ALLOWED_MEMBERS` には `dispose` すら載っておらず、`advanceSimulation`
+> `handlePointerInput` `proteinMotionFrameSample` も併せて誤報する。
+> **持ち主が自分のサブシステムを畳む/組む/数えるメンバーは、Game に置いてよい。**
 
 **`/refactor` で見つけて直さなかったもの。** `game.ts` が 591 行(着手前 560 行)で 1.2 の
 500 行基準を超える。1.2 の診断に従うと「同じ関心の実装が単に多い」— サブシステムの生成・配線と
