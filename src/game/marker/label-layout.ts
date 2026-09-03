@@ -58,14 +58,20 @@ export class LabelLayout {
     this.svgLinePool.length = 0;
   }
 
-  // 押し出しの対象になるラベルの推定矩形を集め、重なったものどうしをグリッドバケット +
-  // 5反復で反発させて緩和する。結果のオフセットは activeScratch/activeCount へ蓄積し、
-  // 位置の反映と引き出し線の描画は applyLabelOffsets が行う。
+  // 押し出しの対象になるラベルの推定矩形を集め、重なったものどうしを反発させて緩和する。
+  // 結果のオフセットは activeScratch/activeCount へ蓄積し、位置の反映と引き出し線の描画は
+  // applyLabelOffsets が行う。
   private relaxLabelRects(targets: readonly LayoutTarget[], hiddenLabels: ReadonlySet<string>): void {
+    this.collectLabelRects(targets, hiddenLabels);
+    this.relaxOverlaps();
+  }
+
+  // 押し出しの対象になるラベルを選び、既定位置と概算矩形を activeScratch へ積む。
+  // 対象から外れたラベルは既定位置へ戻す。
+  private collectLabelRects(targets: readonly LayoutTarget[], hiddenLabels: ReadonlySet<string>): void {
     const active = this.activeScratch;
     this.activeCount = 0;
 
-    // 表示中のマーカーと、そのラベルの推定矩形を集める
     for (const m of targets) {
       if (hiddenLabels.has(m.key) || !m.lbl.textContent || m.fixedLabel) {
         m.lbl.style.transform = 'translateX(-50%)';
@@ -89,109 +95,121 @@ export class LabelLayout {
       a.dx = 0;
       a.dy = 0;
     }
+  }
 
-    // 重なったラベルどうしを反発させて緩和する
+  // 集めた矩形のうち重なったものどうしを、既定位置からの累積オフセットとして押し離す。
+  private relaxOverlaps(): void {
     const ITER = 5;
     if (this.candidateStamp.length < this.activeCount) this.candidateStamp = new Int32Array(this.activeCount);
     this.candidateStamp.fill(0, 0, this.activeCount);
+    for (let iter = 0; iter < ITER; iter++) {
+      this.rebuildRectGrid();
+      for (let i = 0; i < this.activeCount; i++) this.pushApartFromNeighbors(i);
+    }
+  }
+
+  // 現在の押し出し位置からグリッドを作り直し、各矩形をまたがる全セルへ添字で登録する。
+  // ラベルが前の反復で別セルへ移動しても候補から漏れないよう、反復をまたいでバケットを
+  // 再利用しない。
+  private rebuildRectGrid(): void {
+    for (const row of this.collisionBuckets.values()) {
+      for (const bucket of row.values()) {
+        bucket.length = 0;
+        this.bucketPool.push(bucket);
+      }
+      row.clear();
+      this.bucketRowPool.push(row);
+    }
+    this.collisionBuckets.clear();
+    const buckets = this.collisionBuckets;
+    const active = this.activeScratch;
+    for (let i = 0; i < this.activeCount; i++) {
+      const a = active[i]!;
+      const cx = a.ox + a.dx;
+      const cy = a.oy + a.dy;
+      const halfW = a.w / 2 + COLLISION_PADDING;
+      const halfH = a.h / 2 + COLLISION_PADDING;
+      const minCellX = Math.floor((cx - halfW) / COLLISION_BUCKET_SIZE);
+      const maxCellX = Math.floor((cx + halfW) / COLLISION_BUCKET_SIZE);
+      const minCellY = Math.floor((cy - halfH) / COLLISION_BUCKET_SIZE);
+      const maxCellY = Math.floor((cy + halfH) / COLLISION_BUCKET_SIZE);
+
+      for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
+        for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
+          let row = buckets.get(cellX);
+          if (!row) {
+            row = this.bucketRowPool.pop() ?? new Map<number, number[]>();
+            buckets.set(cellX, row);
+          }
+          let bucket = row.get(cellY);
+          if (!bucket) {
+            bucket = this.bucketPool.pop() ?? [];
+            row.set(cellY, bucket);
+          }
+          bucket.push(i);
+        }
+      }
+    }
+  }
+
+  // 添字 i の矩形と重なりうる後続の矩形を近傍セルから集め、重なった分だけ互いに押し離す。
+  private pushApartFromNeighbors(i: number): void {
+    const active = this.activeScratch;
+    const buckets = this.collisionBuckets;
     const candidateStamp = this.candidateStamp;
     const candidates = this.candidatesScratch;
-    for (let iter = 0; iter < ITER; iter++) {
-      // 現在の押し出し位置からグリッドを作り直す。ラベルが前の反復で別セルへ
-      // 移動しても候補から漏れないよう、反復をまたいでバケットを再利用しない。
-      for (const row of this.collisionBuckets.values()) {
-        for (const bucket of row.values()) {
-          bucket.length = 0;
-          this.bucketPool.push(bucket);
-        }
-        row.clear();
-        this.bucketRowPool.push(row);
-      }
-      this.collisionBuckets.clear();
-      const buckets = this.collisionBuckets;
-      for (let i = 0; i < this.activeCount; i++) {
-        const a = active[i]!;
-        const cx = a.ox + a.dx;
-        const cy = a.oy + a.dy;
-        const halfW = a.w / 2 + COLLISION_PADDING;
-        const halfH = a.h / 2 + COLLISION_PADDING;
-        const minCellX = Math.floor((cx - halfW) / COLLISION_BUCKET_SIZE);
-        const maxCellX = Math.floor((cx + halfW) / COLLISION_BUCKET_SIZE);
-        const minCellY = Math.floor((cy - halfH) / COLLISION_BUCKET_SIZE);
-        const maxCellY = Math.floor((cy + halfH) / COLLISION_BUCKET_SIZE);
+    const a = active[i]!;
+    const ax = a.ox + a.dx;
+    const ay = a.oy + a.dy;
 
-        for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
-          for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
-            let row = buckets.get(cellX);
-            if (!row) {
-              row = this.bucketRowPool.pop() ?? new Map<number, number[]>();
-              buckets.set(cellX, row);
-            }
-            let bucket = row.get(cellY);
-            if (!bucket) {
-              bucket = this.bucketPool.pop() ?? [];
-              row.set(cellY, bucket);
-            }
-            bucket.push(i);
+    // ラベルの押し出し判定に必要なセルだけを辿る。矩形をまたがる全セルへ
+    // 登録しているため、重なり得る2矩形は少なくとも1セルを共有する。
+    const halfW = a.w / 2 + COLLISION_PADDING;
+    const halfH = a.h / 2 + COLLISION_PADDING;
+    const minCellX = Math.floor((ax - halfW) / COLLISION_BUCKET_SIZE);
+    const maxCellX = Math.floor((ax + halfW) / COLLISION_BUCKET_SIZE);
+    const minCellY = Math.floor((ay - halfH) / COLLISION_BUCKET_SIZE);
+    const maxCellY = Math.floor((ay + halfH) / COLLISION_BUCKET_SIZE);
+
+    candidates.length = 0;
+    const stamp = i + 1;
+    for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
+      const row = buckets.get(cellX);
+      if (!row) continue;
+      for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
+        const bucket = row.get(cellY);
+        if (!bucket) continue;
+        for (const j of bucket) {
+          if (j > i && candidateStamp[j] !== stamp) {
+            candidateStamp[j] = stamp;
+            candidates.push(j);
           }
         }
       }
+    }
 
-      for (let i = 0; i < this.activeCount; i++) {
-        const a = active[i]!;
-        const ax = a.ox + a.dx;
-        const ay = a.oy + a.dy;
-
-        // ラベルの押し出し判定に必要なセルだけを辿る。矩形をまたがる全セルへ
-        // 登録しているため、重なり得る2矩形は少なくとも1セルを共有する。
-        const halfW = a.w / 2 + COLLISION_PADDING;
-        const halfH = a.h / 2 + COLLISION_PADDING;
-        const minCellX = Math.floor((ax - halfW) / COLLISION_BUCKET_SIZE);
-        const maxCellX = Math.floor((ax + halfW) / COLLISION_BUCKET_SIZE);
-        const minCellY = Math.floor((ay - halfH) / COLLISION_BUCKET_SIZE);
-        const maxCellY = Math.floor((ay + halfH) / COLLISION_BUCKET_SIZE);
-
-        candidates.length = 0;
-        const stamp = i + 1;
-        for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
-          const row = buckets.get(cellX);
-          if (!row) continue;
-          for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
-            const bucket = row.get(cellY);
-            if (!bucket) continue;
-            for (const j of bucket) {
-              if (j > i && candidateStamp[j] !== stamp) {
-                candidateStamp[j] = stamp;
-                candidates.push(j);
-              }
-            }
-          }
-        }
-
-        // 押し出しは累積するので結果が処理順に依る。バケットの巡回順はセル配置に依存して
-        // 揺れるため、添字の昇順へ均してから解決する。
-        candidates.sort((left, right) => left - right);
-        for (const j of candidates) {
-          const b = active[j]!;
-          const bx = b.ox + b.dx;
-          const by = b.oy + b.dy;
-          const minDistX = (a.w + b.w) / 2 + COLLISION_PADDING;
-          const minDistY = (a.h + b.h) / 2 + COLLISION_PADDING;
-          const dx = ax - bx;
-          const dy = ay - by;
-          if (Math.abs(dx) < minDistX && Math.abs(dy) < minDistY) {
-            const ex = minDistX - Math.abs(dx);
-            const ey = minDistY - Math.abs(dy);
-            if (ex < ey) {
-              const push = (ex / 2 + 0.5) * Math.sign(dx || 1);
-              a.dx += push;
-              b.dx -= push;
-            } else {
-              const push = (ey / 2 + 0.5) * Math.sign(dy || 1);
-              a.dy += push;
-              b.dy -= push;
-            }
-          }
+    // 押し出しは累積するので結果が処理順に依る。バケットの巡回順はセル配置に依存して
+    // 揺れるため、添字の昇順へ均してから解決する。
+    candidates.sort((left, right) => left - right);
+    for (const j of candidates) {
+      const b = active[j]!;
+      const bx = b.ox + b.dx;
+      const by = b.oy + b.dy;
+      const minDistX = (a.w + b.w) / 2 + COLLISION_PADDING;
+      const minDistY = (a.h + b.h) / 2 + COLLISION_PADDING;
+      const dx = ax - bx;
+      const dy = ay - by;
+      if (Math.abs(dx) < minDistX && Math.abs(dy) < minDistY) {
+        const ex = minDistX - Math.abs(dx);
+        const ey = minDistY - Math.abs(dy);
+        if (ex < ey) {
+          const push = (ex / 2 + 0.5) * Math.sign(dx || 1);
+          a.dx += push;
+          b.dx -= push;
+        } else {
+          const push = (ey / 2 + 0.5) * Math.sign(dy || 1);
+          a.dy += push;
+          b.dy -= push;
         }
       }
     }
