@@ -45,7 +45,7 @@ export const MAP_VIEW_STYLE = `
    上限をかける——無いと下に続くカメラパネルをレールの下方へ押し出し、隠れて見える。
    タブによって内容量が変わるため、内容が少ないタブでも隣の常設レールパネルより著しく
    縮まないよう最小高さも持つ。スクロールはタイトル行・タブ切替を巻き込まないよう、
-   本文側(view-options-body 以下、panel-content-style.ts)へ付ける。 */
+   本文側(view-options-body 以下、map-panel-style.ts)へ付ける。 */
 #hud .hud-map-root.active .hud-rail-left > #hud-view-options {
   display: flex;
   flex-direction: column;
