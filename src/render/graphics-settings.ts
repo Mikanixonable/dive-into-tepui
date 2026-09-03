@@ -116,13 +116,14 @@ export const GRAPHICS_OPTIONS = {
     presets: { low: false, medium: true, high: true },
   },
   // 積雲の殻を解くレイマーチの細かさ。段を上げるほど雲頂の起伏と縁が滑らかになり、G バッファ
-  // パスが場と粒を引く回数が増える。**高プリセットでも「精細」は選ばない** — 「標準」が絵の
-  // 粗さの見えなくなる段で、その上は雲が作る破綻を切り分けるために置いてある。
+  // パスが場と粒を引く回数が増える。オフでは殻も、それが落とす影も消え、薄い雲を焼き込んだ
+  // 地表だけが残る — 積雲が作る破綻を、地表の側の破綻から切り分けるための段。**高プリセットでも
+  // 「精細」は選ばない** — 「標準」が絵の粗さの見えなくなる段で、その上も切り分けのために置く。
   cumulusDetail: {
     kind: 'choice', group: 'element', label: '積雲の精細さ',
     items: [
-      [CUMULUS_DETAIL.coarse, '粗'], [CUMULUS_DETAIL.standard, '標準'],
-      [CUMULUS_DETAIL.fine, '精細'],
+      [CUMULUS_DETAIL.off, 'オフ'], [CUMULUS_DETAIL.coarse, '粗'],
+      [CUMULUS_DETAIL.standard, '標準'], [CUMULUS_DETAIL.fine, '精細'],
     ],
     presets: {
       low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.standard, high: CUMULUS_DETAIL.standard,
@@ -168,7 +169,8 @@ export const GRAPHICS_OPTIONS = {
     presets: { low: false, medium: true, high: true },
   },
   // 積雲が地表・艦艇へ落とす影。オフでも積雲そのものは消えない — 遮蔽パスが光路をたどる
-  // タップぶんだけが減る。「雲」がオフなら、こちらの値によらず影は落ちない。
+  // タップぶんだけが減る。積雲を描かない設定(「雲」がオフ、「積雲の精細さ」がオフ)では、
+  // こちらの値によらず影は落ちない。
   cumulusShadow: {
     kind: 'toggle', group: 'shadow', label: '積雲の影',
     presets: { low: false, medium: true, high: true },
