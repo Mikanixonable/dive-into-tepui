@@ -7,7 +7,7 @@ import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { FloatingOrigin } from '../camera/floating-origin';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { Player } from '../player/player';
-import { currentThemePalette } from '../theme';
+import { currentThemePalette } from '../../theme';
 import type { CombatTarget } from '../targeter';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { DisplayWindow } from '../display-window-manager';

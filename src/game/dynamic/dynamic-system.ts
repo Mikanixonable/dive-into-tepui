@@ -13,7 +13,7 @@ import { DebrisPiece } from './dynamic-entity/debris-piece';
 import { Enemy } from './dynamic-entity/enemy';
 import { findEnemyClass } from './dynamic-entity/enemy-dictionary';
 import { ProteinEnemy } from './dynamic-entity/protein-enemy';
-import { isProteinAssetReady, type ProteinAssetId } from '../protein/protein-asset-loader';
+import { isProteinAssetReady, requestProteinAsset, type ProteinAssetId } from '../protein/protein-asset-loader';
 import { Bullet } from './dynamic-entity/bullet';
 import { Base } from './dynamic-entity/base';
 import { DetachedBooster } from './dynamic-entity/detached-booster';
@@ -21,7 +21,7 @@ import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
 import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
-import type { Input } from '../input/input';
+import type { Input } from '../../input/input';
 import type { CombatTarget } from '../targeter';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
@@ -33,9 +33,10 @@ import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { PerfCounts } from '../../perf-meter';
+import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
-import type { ProteinMotionFrameSample, ProteinMotionLod } from '../../protein-motion-metrics';
+import type { ProteinMotionFrameSample } from '../protein/protein-motion-metrics';
+import type { ProteinMotionLod } from '../protein/protein-motion-controller';
 
 // 枠ごとに同時に存在してよい個体数。超えた分はその枠の古いものから落ちる。
 const CAP: Record<CapKind, number> = {
@@ -158,6 +159,8 @@ export class DynamicSystem {
       onSpawned?.();
       return;
     }
+    // 積むだけでは誰も取りに行かないので、待ちに入れるのと同時に取得を起こす。
+    void requestProteinAsset(assetId);
     this.pendingEnemySpawns.push({ assetId, build, onSpawned });
   }
 

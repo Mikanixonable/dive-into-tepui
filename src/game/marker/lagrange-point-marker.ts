@@ -4,7 +4,7 @@ import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import { bodySearchText } from '../pickable/body-search-text';
-import { fmtDist } from '../hud/utils';
+import { fmtDist } from '../../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './crowding';
@@ -15,7 +15,7 @@ import type { ObjectCommands } from '../pickable/object-commands';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { Player } from '../player/player';
-import type { PropertyRow } from '../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
 export class LagrangePointMarker implements ObjectPickable {

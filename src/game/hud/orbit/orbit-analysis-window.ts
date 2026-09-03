@@ -2,15 +2,15 @@
 // 選び直してタブバーへ出し、選択中のタブへ描画を委ねる。戦闘ビューでも未来の軌道が伸び続ける
 // よう、操作対象と接近タブのターゲットに analysisPanelReader を立てるのもここが持つ。
 import { SyncThrottle } from '../sync-throttle';
-import { DraggableWindow } from '../windows/draggable-window';
-import { MQ_COMPACT } from '../breakpoints';
-import { TabBar, injectOnce } from '../widgets';
+import { DraggableWindow } from '../../../hud/windows/draggable-window';
+import { MQ_COMPACT } from '../../../hud/breakpoints';
+import { TabBar, injectOnce } from '../../../hud/widgets';
 import { AltitudeTab } from './orbit-altitude-tab';
 import { ApproachTab } from './orbit-approach-tab';
 import { ProjectionTab } from './orbit-projection-tab';
 import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
-import type { OverlayManager } from '../overlay-manager';
+import type { OverlayManager } from '../../../hud/overlay-manager';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 import type { AnalysisTab } from './orbit-analysis-tab';
 

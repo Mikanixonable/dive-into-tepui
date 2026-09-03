@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { shortcutKeyLabel } from '../../src/game/hud/windows/shortcut-hint';
+import { shortcutKeyLabel } from '../../src/hud/windows/shortcut-hint';
 import { test } from '../harness';
 
 export function register(): void {
