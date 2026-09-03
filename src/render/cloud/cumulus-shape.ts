@@ -9,18 +9,15 @@ import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
 export const CLOUD_TOP_SPAN = 15000;
 
 // 被覆率を二値化する境目(center)と、その前後でディザへ渡す半幅(halfWidth)。被覆率が
-// center±halfWidth に入る柱だけがディザに掛かり、外は 0 か 1 へ飽和する。**境目は場の被覆率の
-// 平均を動かさないように選ぶ** — 実写を分離した `src/assets/cloud-field.png` では、これを
-// 超える texel の面積が被覆率の平均 0.125(緯度余弦で重みを付けた面積平均)に一致する。場を
-// 差し替えたら測り直す。
+// center±halfWidth に入る柱だけがディザに掛かり、外は 0 か 1 へ飽和する。どちらも目で追い込んだ
+// 値で、場を差し替えたら追い込み直す。
 //
-// **仮設**: 半透明がどこまで出せるかを目で決めるあいだ、render-lab のつまみ
-// (tools/render-lab/main.ts)から動かせるよう uniform にしてある。値が決まったら const へ
-// 書き戻し、この節ごと畳む。
+// **仮設**: render-lab のつまみ(tools/render-lab/main.ts)から動かせるよう uniform にしてある。
+// 生成側の場へ差し替えたあとにもう一段の追い込みが要るので、それまでは畳まない。
 export const CUMULUS_DITHER_KNOB: {
   readonly center: FloatUniform;
   readonly halfWidth: FloatUniform;
-} = { center: uniform(0.347), halfWidth: uniform(0.02) };
+} = { center: uniform(0.34), halfWidth: uniform(0.12) };
 
 // 粒が被覆率と雲頂高度をそれぞれどれだけ振るか(どちらも場と同じ 0..1 の目盛り)。**被覆率へは
 // 境目を通す前に足す** — 通したあとに足すと、覆いの無い空にも粒が雲を生やす。生成側が高周波を
