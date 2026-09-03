@@ -8,7 +8,10 @@ import {
   lessThan, log, log2, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial-surface';
-import { CLOUD_TOP_UNCERTAINTY, meanOpaqueFractionOf } from '../cloud/cumulus-shape';
+import {
+  CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, cloudTopOf, grainAmplitudeForWidth, grainAt,
+  opaqueFractionOf,
+} from '../cloud/cumulus-shape';
 import type {
   BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node,
 } from '../tsl-types';
@@ -349,7 +352,12 @@ export class SunOcclusion {
         const exit = sqrt(max(shellRadius.mul(shellRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
           .sub(along).mul(bodyRadius);
         const stepLength = clamp(exit, 0, CUMULUS_MAX_LIGHT_PATH).div(CUMULUS_SHADOW_TAPS);
-        const lod = this.cumulusFieldLod(footprint, stepLength);
+        // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
+        // 実寸と光路 1 歩の長さのうち粗いほうを取る。場の mip 段も粒の振幅もこの幅が決める。
+        const sampleWidth = max(footprint, stepLength.mul(CUMULUS_STEP_BLUR));
+        const lod = this.cumulusFieldLod(sampleWidth);
+        const grainAmplitude = grainAmplitudeForWidth(sampleWidth).toVar();
+        const grainFrequency = bodyRadius.div(CUMULUS_GRAIN_SIZE);
         const floorAltitude = this.receiverFloorAltitude(offset, lod, bodyRadius);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
@@ -359,10 +367,18 @@ export class SunOcclusion {
           const up = sampleOffset.div(sampleRadius);
           const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
           const cloud = this.cumulusFieldAt(up, lod);
-          const cloudTop = cloud.g.mul(this.cumulusTopAltitude);
+          // **粒は引けるときだけ引く。** 引くと影は殻の描く雲と同じ縁を持つが、タップの数だけ
+          // ノイズを引くので遮蔽パスの費用は倍以上になる。引けない遠さでは振幅が 0 になるので、
+          // そこは分岐ごと飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
+          const grain = float(0).toVar();
+          If(greaterThan(grainAmplitude, 0), () => {
+            grain.assign(grainAt(up, grainFrequency, grainAmplitude));
+          });
+          const cloudTop = cloudTopOf(cloud.g, grain).mul(this.cumulusTopAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
-          const columnDepth = log(
-            min(meanOpaqueFractionOf(cloud.r), CUMULUS_MAX_COVERAGE).oneMinus()).negate();
+          const columnDepth = log(min(
+            opaqueFractionOf(cloud.r, grain, grainAmplitude.oneMinus()),
+            CUMULUS_MAX_COVERAGE).oneMinus()).negate();
           // **1 歩が雲頂をまたぐ割合で配る** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
@@ -386,18 +402,17 @@ export class SunOcclusion {
     return this.cumulusBodyFromWorld.mul(vec4(worldVec, 0)).xyz.div(this.cumulusAxes);
   }
 
-  // 場を引く mip 段。画面 1 px が受け手の位置で張る実寸 footprint [m] と、光路 1 歩の長さ
-  // stepLength [m] のうち **粗いほう** を、場の texel が覆う実寸と比べて決める。歩が
-  // またいだ柱は 1 タップが代表するので、恒星が低いほど影は柔らかく長く伸びる。
+  // 場を引く mip 段。タップ 1 回が代表する実寸 sampleWidth [m] を、場の texel が覆う実寸と
+  // 比べて決める。恒星が低いほど歩は長く、影は柔らかく長く伸びる。
   //
   // **texel の実寸は図法から出す** — 下の式は正距円筒に固有で、赤道の 1 行(2πR を幅で割る)を
   // 基準に取っている。極では 1 texel の経度方向の実寸がこれより cos(緯度) ぶん狭いので、段は
   // そのぶん細かい側へ寄る。図法を差し替えるならここも差し替える。
-  private cumulusFieldLod(footprint: FloatNode, stepLength: FloatNode): FloatNode {
+  private cumulusFieldLod(sampleWidth: FloatNode): FloatNode {
     // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
     const fieldWidth = (this.cumulusField.size(int(0)) as THREE.Node<'uvec2'>).x;
     const texelWorld = this.cumulusSurfaceRadius.mul(2 * Math.PI).div(float(fieldWidth));
-    return max(log2(max(footprint, stepLength.mul(CUMULUS_STEP_BLUR)).div(max(texelWorld, 1))), 0);
+    return max(log2(sampleWidth.div(max(texelWorld, 1))), 0);
   }
 
   // 殻の空間の単位方向 up における場を、mip 段を指定して引く。**段は明示で渡す** — 光路の
