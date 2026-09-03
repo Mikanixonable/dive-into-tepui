@@ -19,7 +19,8 @@
 | 文書 | 範囲 |
 | --- | --- |
 | [GAME.md](GAME.md) | ステージ・勝敗・進行・時間加速・基地とドック・補給 |
-| [CONTROLS.md](CONTROLS.md) | キー割り当て・マウス・タッチ・視点操作 |
+| [CONTROLS.md](CONTROLS.md) | キー割り当て・マウス・タッチ |
+| [CAMERA.md](CAMERA.md) | 視点カメラ・フォーカス・回転の固定先・投影・ガンサイトズーム |
 | [FLIGHT.md](FLIGHT.md) | 自艦の艦システム(推進・姿勢・熱・電力・弾薬ベルト・部品) |
 | [COMBAT.md](COMBAT.md) | 射撃・被弾・敵・破片・戦闘エフェクト |
 | [ORBIT.md](ORBIT.md) | 軌道力学・摂動・大気・輻射圧・剛体接触 |
