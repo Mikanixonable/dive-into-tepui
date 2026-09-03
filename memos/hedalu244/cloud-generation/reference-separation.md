@@ -19,10 +19,11 @@
   (`src/render/cloud/cloud-field.ts` の `CloudField`)**と同じ** — 生成の写しへ差し替えても、
   読む側の成分の割り当ては動かない。正距円筒 4096×2048・8bit(13.6 MB)。v = 0 が北、
   経度原点は 8k_clouds と同じ。
-- **読み手**: `CelestialSurface.clouded`(ゲーム本体と render-lab の両方)。R と B から
-  「1 − exp(−τ) と被覆率のスクリーン合成」を作り、地表アルベドへ焼き込む雲の不透明度に使う
-  — 分離前の実写の濃さへ戻る合成なので、見えも較正も 8k_clouds のときのまま
-  ([`../better_graphics/cloud_rendering.md`](../better_graphics/cloud_rendering.md))。**G はまだ読み手が無い。**
+- **読み手**(ゲーム本体と render-lab の両方): R + G は積雲の殻(`src/render/cumulus-shell.ts`)
+  と雲影(`sun-occlusion.ts`)、B は `CelestialSurface.clouded` が 1 − exp(−τ) で地表アルベドへ
+  焼き込む。描画側の姿は [`../better_graphics/pipeline.md`](../better_graphics/pipeline.md) §2-9、
+  生成側に効く契約(二値化の境目・粒・影の光路)は [`improvement.md`](improvement.md)
+  「描画側との契約」。
 - **再生成**: `npm run cloud-lab:separate`。検分用の veil(巻雲の輝度)と recomposed
   (スクリーン再合成 — 入力と見比べて分離の癖を探す)は `.cloud-lab/separated/` へ出る。
 - **目視調整**: `npm run cloud-lab` → http://localhost:8083/separate.html。各段のビュー切り替え、
