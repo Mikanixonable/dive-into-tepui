@@ -109,6 +109,9 @@ export type PlayerInit =
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
 export class Player extends Ship implements Controllable, ObjectPickable {
   public readonly mapKind: DynamicEntityKind = 'player';
+  // 喪失した艦の除去は ActiveControllableController.reclaimDead が担う。注視・操作対象の
+  // 参照を掃除し、次の艦へ引き継いでから取り除く必要がある。
+  public override readonly reclaimedByOwner = true;
 
   readonly throttle: PlayerThrottle;
   readonly fire: PlayerFire;
@@ -453,7 +456,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // この艦の放熱板の、今フレームの接触代理一覧(展開中かつ健在な折りのみ)。
-  collisionFolds(simTime: number): DynamicEntity[] {
+  override collisionFolds(simTime: number): readonly DynamicEntity[] {
     return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
   }
 
