@@ -27,8 +27,8 @@ import { PauseMenu } from '../hud/windows/pause-menu';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import { GameScene } from '../render/scene';
-import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
+import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import { CelestialSystem } from './celestial/celestial-system';
 import { ViewManager } from './view/view-manager';
@@ -114,12 +114,11 @@ export class Game {
     pauseMenu: PauseMenu,
     sections: FrameSections,
     celestialSystem: CelestialSystem,
-    pipeline: RenderPipeline,
     initialSave?: GameSaveData,
   ) {
     this.sections = sections;
     this._scene = gs.scene;
-    this.pipeline = pipeline;
+    this.pipeline = gs.pipeline;
     this._celestialSystem = celestialSystem;
     this._hud = hud;
     this._worldSfx = worldSfx;
@@ -164,8 +163,8 @@ export class Game {
     this.targeter = new Targeter(this.markerManager, this.navTarget, this.dynamicSystem);
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this._celestialSystem.build(
-      this._scene, pipeline.sunLight, pipeline.exposure,
-      pipeline.sunOcclusion, pipeline.planetLight, pipeline.ambient, pipeline.atmosphere);
+      this._scene, this.pipeline.sunLight, this.pipeline.exposure,
+      this.pipeline.sunOcclusion, this.pipeline.planetLight, this.pipeline.ambient, this.pipeline.atmosphere);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
     this._celestialSystem.setOrbitGuideSettings(this.navball.orbitGuideSettings);
     // 線が増えすぎたときの警告を UI へ戻す。

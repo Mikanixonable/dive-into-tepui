@@ -18,7 +18,6 @@ import type { Bgm } from '../audio/bgm/bgm';
 import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { UiSfx } from '../audio/sfx/ui-sfx';
 import type { GameScene } from '../render/scene';
-import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import type { FrameSections } from '../game/frame-sections';
 import type { CelestialSystem } from '../game/celestial/celestial-system';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
@@ -84,7 +83,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly settingsView: SettingsView,
     private readonly unlockManager: UnlockManager,
     private readonly sections: FrameSections,
-    private readonly pipeline: RenderPipeline,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
   ) {
@@ -150,7 +148,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     );
     this.game = new Game(
       this.gs, stageClass, this.hud, this.worldSfx, this.uiSfx, this.pauseMenu,
-      this.sections, celestialSystem, this.pipeline, initialSave,
+      this.sections, celestialSystem, initialSave,
     );
     // AudioContext は実際のユーザー操作でしか作れないため、unlock は入力エッジの発火点へ配線する。
     // Input は周回ごとに作り直されるので、配線もそのたびに張り直す。

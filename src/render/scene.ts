@@ -2,12 +2,16 @@ import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import type { GraphicsSettingsData } from './graphics-settings';
 import { reversedOpaqueSort, reversedTransparentSort } from './pipeline/reversed-sort';
+import { RenderPipeline } from './pipeline/render-pipeline';
+import { GpuTimings } from './gpu-timings';
 
+// canvas と同じ寿命を持つ描画基盤一式。GPU 資源を確保するので、1つだけ作って使い回す。
 export interface GameScene {
   scene: THREE.Scene;
   renderer: WebGPURenderer;
-  resize: () => void;
-  // 描画解像度の倍率を設定から取り直す。リサイズをまたいでも維持される。
+  gpu: GpuTimings;
+  pipeline: RenderPipeline;
+  // 描画解像度の倍率とパスの品質を設定から取り直す。リサイズをまたいでも維持される。
   applyGraphics: (graphics: GraphicsSettingsData) => void;
 }
 
@@ -32,10 +36,13 @@ export async function createGameScene(canvas: HTMLCanvasElement, graphics: Graph
   renderer.setTransparentSort(reversedTransparentSort);
   // devicePixelRatio は表示先の切り替えで変わるので、倍率だけを覚えて掛け直す。
   let resolutionScale = graphics.resolutionScale;
-  // 描画解像度の倍率を設定から取り直す。
+  // パイプラインはレンダラの初期化後にしか組めない。それより前の applyGraphics は解像度だけを見る。
+  let pipeline: RenderPipeline | null = null;
+  // 描画解像度の倍率とパスの品質を設定から取り直す。
   const applyGraphics = (next: GraphicsSettingsData) => {
     resolutionScale = next.resolutionScale;
     renderer.setPixelRatio(window.devicePixelRatio * resolutionScale);
+    pipeline?.applyGraphics(next);
   };
   // 画面サイズへ追従する。倍率は覚えているものを掛け直す。
   const resize = () => {
@@ -49,5 +56,9 @@ export async function createGameScene(canvas: HTMLCanvasElement, graphics: Graph
 
   window.addEventListener('resize', resize);
 
-  return { scene, renderer, resize, applyGraphics };
+  // パスは初期化済みのレンダラでしか組めないので、init() のあとに作る。
+  const gpu = new GpuTimings(renderer);
+  pipeline = new RenderPipeline(renderer, graphics, gpu);
+
+  return { scene, renderer, gpu, pipeline, applyGraphics };
 }
