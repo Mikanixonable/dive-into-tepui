@@ -3,7 +3,7 @@
 import {
   ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
   Z_FATAL_ERROR,
-} from './game/theme';
+} from '../game/theme';
 import { hideLoading } from './loading-overlay';
 
 // title/message/error から画面全体のオーバーレイを組み立てて表示する。既に出ていれば何もしない。

@@ -24,10 +24,10 @@ import { SaveSlots } from './game/save/save-slots';
 import { SnapshotService } from './game/save/snapshot-service';
 import { AutoSave } from './game/save/autosave';
 import { migrateLegacySave } from './game/save/legacy-save';
-import { SnapshotControls } from './snapshot-controls';
-import { Launcher } from './launcher';
-import { showLoading, hideLoading } from './loading-overlay';
-import { showFatalError } from './fatal-error';
+import { SnapshotControls } from './launcher/snapshot-controls';
+import { Launcher } from './launcher/launcher';
+import { showLoading, hideLoading } from './launcher/loading-overlay';
+import { showFatalError } from './launcher/fatal-error';
 import { startProteinAssetPreload } from './game/protein/protein-asset-loader';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する

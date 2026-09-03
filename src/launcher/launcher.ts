@@ -1,28 +1,28 @@
-import { Game } from './game/game';
-import type { Input } from './game/input/input';
-import { KEY_MAPPING as K } from './game/input/key-mapping';
+import { Game } from '../game/game';
+import type { Input } from '../game/input/input';
+import { KEY_MAPPING as K } from '../game/input/key-mapping';
 import {
   ResultScreen, type RunTransitions, type CurrentGameSource, type PauseMenu, type SettingsView,
-} from './game/hud/windows';
-import type { Hud } from './game/hud/hud';
-import type { GamePhase, Stage, StageClass, StageResult } from './game/stages/stage';
-import { findStageClass } from './game/stages/stage-dictionary';
-import { selectStage } from './game/stage-select';
-import type { UnlockManager } from './game/unlock-manager';
-import type { SaveSlots } from './game/save/save-slots';
-import type { SnapshotService } from './game/save/snapshot-service';
-import type { GameSaveData } from './game/save/save-data';
-import type { AudioEngine } from './audio/audio-engine';
-import type { Bgm } from './audio/bgm/bgm';
-import type { WorldSfx } from './audio/sfx/world-sfx';
-import type { UiSfx } from './audio/sfx/ui-sfx';
-import type { GameScene } from './render/scene';
-import type { RenderPipeline } from './render/pipeline/render-pipeline';
-import type { FrameSections } from './frame-sections';
-import type { CelestialSystem } from './game/celestial/celestial-system';
+} from '../game/hud/windows';
+import type { Hud } from '../game/hud/hud';
+import type { GamePhase, Stage, StageClass, StageResult } from '../game/stages/stage';
+import { findStageClass } from '../game/stages/stage-dictionary';
+import { selectStage } from './stage-select';
+import type { UnlockManager } from '../game/unlock-manager';
+import type { SaveSlots } from '../game/save/save-slots';
+import type { SnapshotService } from '../game/save/snapshot-service';
+import type { GameSaveData } from '../game/save/save-data';
+import type { AudioEngine } from '../audio/audio-engine';
+import type { Bgm } from '../audio/bgm/bgm';
+import type { WorldSfx } from '../audio/sfx/world-sfx';
+import type { UiSfx } from '../audio/sfx/ui-sfx';
+import type { GameScene } from '../render/scene';
+import type { RenderPipeline } from '../render/pipeline/render-pipeline';
+import type { FrameSections } from '../frame-sections';
+import type { CelestialSystem } from '../game/celestial/celestial-system';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
-import { createJulianDate, TdbJulianDate } from './physics/time';
+import { createJulianDate, TdbJulianDate } from '../physics/time';
 
 // アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
 // そのステージクラスを返す。再開できる情報が無ければ null。
