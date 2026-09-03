@@ -1,5 +1,5 @@
 // 恒星の直射光がどれだけ届くかを答える唯一の場。transmittance() が描画座標の点に対する透過率の
-// TSL グラフを返す。遮蔽するのは天体の球・惑星の環の帯・積雲の殻・シャドウアトラスへ描かれた
+// TSL グラフを返す。遮蔽するのは天体・惑星の環の帯・積雲の殻・シャドウアトラスへ描かれた
 // メッシュで、複数の遮蔽は透過率の積で合成する。遮蔽器・環の帯・積雲の殻は毎フレーム呼び出し
 // 側が渡す。
 import * as THREE from 'three/webgpu';
@@ -13,7 +13,7 @@ import {
   opaqueFractionOf,
 } from '../cloud/cumulus-shape';
 import type {
-  BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node,
+  BoolNode, FloatNode, FloatUniform, Mat4Node, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node,
 } from '../tsl-types';
 import type { SunShadowMaps, SunShadowSlot } from './sun-shadow-maps';
 import type { SunLight } from './sun-light';
@@ -31,11 +31,24 @@ export type RingBand = {
   readonly normalOpticalDepth: number;
 };
 
-// 遮蔽する天体 1 体。中心は描画座標。
+// 遮蔽する天体 1 体。中心は描画座標で、形は積雲の殻(CumulusShadow)と同じ組で表す。
+//
+// **axes は天体固定の半軸 [m]** — 遮蔽器は半径 1 の球をこの 3 軸ぶん非一様に伸ばした
+// 楕円体で、bodyFromWorld が描画座標のベクトルを天体固定の向きへ回す。真球の遮蔽器は
+// sphereOccluder() で作る。
 export type Occluder = {
   readonly center: THREE.Vector3;
-  readonly radius: number;
+  readonly axes: THREE.Vector3;
+  readonly bodyFromWorld: THREE.Matrix4;
 };
+
+// 向きを持たない遮蔽器の姿勢。setOccluders は値を写すだけなので、全スロットで共有してよい。
+const NO_ROTATION = new THREE.Matrix4();
+
+// 半径 radius の真球の遮蔽器。自転姿勢を持たない天体と、形を持たない試験用の球はこれで足りる。
+export function sphereOccluder(center: THREE.Vector3, radius: number): Occluder {
+  return { center, axes: new THREE.Vector3(radius, radius, radius), bodyFromWorld: NO_ROTATION };
+}
 
 // 積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準となる半径 [m]、
 // topAltitude は殻の高さ [m]、bodyFromWorld は描画座標のベクトルを天体固定の向きへ回す行列、
@@ -71,7 +84,11 @@ type OcclusionSources = {
   readonly cumulusFootprint: FloatNode | null;
 };
 
-type OccluderUniforms = { readonly center: Vec3Uniform; readonly radius: FloatUniform };
+type OccluderUniforms = {
+  readonly center: Vec3Uniform;
+  readonly axes: Vec3Uniform;
+  readonly bodyFromWorld: Mat4Uniform;
+};
 type RingBandUniforms = {
   readonly inner: FloatUniform;
   readonly outer: FloatUniform;
@@ -120,6 +137,9 @@ const SLOT_DEBUG_COLORS: readonly (readonly [number, number, number])[] = [
   [1, 0.25, 0.2], [0.3, 1, 0.35], [0.35, 0.5, 1], [1, 0.85, 0.25],
 ];
 
+// 空きスロットの半軸。
+const ZERO_AXES = new THREE.Vector3();
+
 // 半径 r1・r2 の 2 円が中心距離 d で重なる面積(すべて同じ角度単位)。
 const circleOverlapArea = Fn(([r1, r2, d]: readonly FloatNode[]) => {
   const safeD = max(d!, 1e-12);
@@ -134,21 +154,34 @@ const circleOverlapArea = Fn(([r1, r2, d]: readonly FloatNode[]) => {
   );
 });
 
-// 点 p から見た恒星円盤のうち、球 (center, radius) に遮られずに残る面積比 0..1。
-// physics/shadow.ts の occludedFraction と同じ式で、本影・金環・半影・完全日照が
-// 場合分け無しに1つの閉じた形から出る。selfTolerance は「受け手がこの球の表面に乗って
-// いる」と見なす中心距離と半径の差の公差で、0 なら乗っていても外さない。
-const sphereTransmittance = Fn((
-  [p, sunDir, sunDist, sunAngRadius, center, radius, selfTolerance]: readonly [Vec3Node, Vec3Node, FloatNode, FloatNode, Vec3Node, FloatNode, FloatNode],
+// 点 p から見た恒星円盤のうち、楕円体 (center, axes, bodyFromWorld) に遮られずに残る
+// 面積比 0..1。physics/shadow.ts の occludedFraction と同じ式で、本影・金環・半影・完全日照が
+// 場合分け無しに1つの閉じた形から出る。selfTolerance は「受け手がこの天体の表面に乗って
+// いる」と見なす中心距離と縁までの距離の差の公差で、0 なら乗っていても外さない。
+//
+// **扁平な天体を真球で代表しない。** 影の軸(中心を通る恒星方向の直線)から受け手へ向かう
+// 向き u に対する楕円体の縁までの距離を実効半径に採ると、そこから先は真球と同じ 2 円の
+// 重なりで解ける。受け手が地表に乗っているとき、この距離は受け手自身までの中心距離に
+// 一致する — 日没は測地地平線(面の法線と恒星方向が直交する瞬間)にちょうど重なり、
+// 緯度によって早まることも遅れることもない。
+const ellipsoidTransmittance = Fn((
+  [p, sunDir, sunDist, sunAngRadius, center, axes, bodyFromWorld, selfTolerance]: readonly [Vec3Node, Vec3Node, FloatNode, FloatNode, Vec3Node, Vec3Node, Mat4Node, FloatNode],
 ) => {
   const toCenter = center.sub(p);
   const along = dot(toCenter, sunDir);
   const dist = max(length(toCenter), 1e-6);
+  // 影の軸から受け手へ向かう単位ベクトル。半径 1 の球を半軸ぶん伸ばした形なので、天体固定の
+  // 向きへ回して半軸を掛けた長さが、その向きの縁までの距離になる。**軸の上では向きが定まらない**
+  // ので、そこは任意の向きで代表する — 天体がまるごと恒星を覆う位置なので、どの向きでも本影になる。
+  const offAxis = sunDir.mul(along).sub(toCenter);
+  const offAxisLength = length(offAxis);
+  const u = select(greaterThan(offAxisLength, 1), offAxis.div(max(offAxisLength, 1)), vec3(1, 0, 0));
+  const radius = length(axes.mul(bodyFromWorld.mul(vec4(u, 0)).xyz));
   const occAngRadius = asin(clamp(radius.div(dist), 0, 1));
   const separation = acos(clamp(along.div(dist), -1, 1));
   const overlap = circleOverlapArea(sunAngRadius, occAngRadius, separation);
   const lit = clamp(float(1).sub(overlap.div(PI.mul(sunAngRadius).mul(sunAngRadius))), 0, 1);
-  // 半径 0 の空きスロット、恒星より遠い側/背後にある天体、受け手がその表面に乗っている天体。
+  // 半軸 0 の空きスロット、恒星より遠い側/背後にある天体、受け手がその表面に乗っている天体。
   const outOfPlay = lessThan(radius, 1).or(lessThan(along, 0)).or(greaterThan(along, sunDist))
     .or(lessThan(abs(dist.sub(radius)), selfTolerance));
   return select(outOfPlay, float(1), select(lessThan(dist, radius), float(0), lit));
@@ -220,7 +253,8 @@ export class SunOcclusion {
   ) {
     this.occluders = Array.from({ length: MAX_OCCLUDERS }, () => ({
       center: uniform(new THREE.Vector3()),
-      radius: uniform(0),
+      axes: uniform(new THREE.Vector3()),
+      bodyFromWorld: uniform(new THREE.Matrix4()),
     }));
     this.ringCenter = uniform(new THREE.Vector3());
     this.ringAxis = uniform(new THREE.Vector3(0, 1, 0));
@@ -243,8 +277,11 @@ export class SunOcclusion {
   setOccluders(occluders: readonly Occluder[]): void {
     for (const [i, slot] of this.occluders.entries()) {
       const occluder = occluders[i];
-      slot.radius.value = occluder === undefined ? 0 : occluder.radius;
-      if (occluder !== undefined) slot.center.value.copy(occluder.center);
+      // 空きスロットは半軸 0 で消す — 実効半径が 0 になり、遮蔽関数がそのまま素通しへ倒す。
+      slot.axes.value.copy(occluder?.axes ?? ZERO_AXES);
+      if (occluder === undefined) continue;
+      slot.center.value.copy(occluder.center);
+      slot.bodyFromWorld.value.copy(occluder.bodyFromWorld);
     }
   }
 
@@ -290,13 +327,15 @@ export class SunOcclusion {
     let transmittance: FloatNode = float(1);
     for (const occluder of this.occluders) {
       // 公差は深度からの位置復元の相対誤差(2⁻²⁴)から視距離の 1e-5、半径の桁落ちから
-      // 半径の 1e-6 を取る。
+      // 最長の半軸の 1e-6 を取る。
+      const longestAxis = max(max(occluder.axes.x, occluder.axes.y), occluder.axes.z);
       const selfTolerance = sources.selfViewDistance === null
         ? float(0)
-        : max(occluder.radius.mul(1e-6), sources.selfViewDistance.mul(1e-5));
+        : max(longestAxis.mul(1e-6), sources.selfViewDistance.mul(1e-5));
       transmittance = transmittance.mul(
-        sphereTransmittance(
-          worldPos, sunDir, sunDist, sunAngRadius, occluder.center, occluder.radius, selfTolerance,
+        ellipsoidTransmittance(
+          worldPos, sunDir, sunDist, sunAngRadius, occluder.center, occluder.axes,
+          occluder.bodyFromWorld, selfTolerance,
         ),
       );
     }
