@@ -8,9 +8,7 @@ import '@sarap422/font-hackgen';
 import { createGameScene, GameScene } from './render/scene';
 import { PerfMeter } from './launcher/perf-meter';
 import { FrameSections } from './game/frame-sections';
-import { GpuTimings } from './render/gpu-timings';
 import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-settings';
-import { RenderPipeline } from './render/pipeline/render-pipeline';
 import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
@@ -45,9 +43,9 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, graphics: GraphicsSettings, renderStyle: RenderStyleSetting,
+  launcher: Launcher, gs: GameScene, graphics: GraphicsSettings, renderStyle: RenderStyleSetting,
   perf: PerfMeter, sections: FrameSections,
-  gpu: GpuTimings, autoSave: AutoSave,
+  autoSave: AutoSave,
   snapshotControls: SnapshotControls,
 ): void {
   let lastTime = performance.now();
@@ -84,7 +82,7 @@ function startAnimationLoop(
       const t3 = perf.on ? performance.now() : 0;
       // 時刻印クエリを溜めないため、窓の開閉によらず毎フレーム解決させる。計測自身の費用が
       // render 区間へ混ざらないよう、区間の外で呼ぶ。
-      gpu.resolve();
+      gs.gpu.resolve();
       if (perf.on) {
         perf.record(game, t1 - t0, t2 - t1, t3 - t2, t3);
       }
@@ -151,17 +149,14 @@ async function main() {
   const graphics = new GraphicsSettings();
   const renderStyle = new RenderStyleSetting();
   const gs = await initScene(graphics.current);
-  const gpu = new GpuTimings(gs.renderer);
-  const pipeline = new RenderPipeline(gs.renderer, graphics.current, gpu);
   // 描画品質設定の押し出し先の登録は、設定を持っている側の配線。
   graphics.bind(gs);
-  graphics.bind(pipeline);
   const { shell, hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
     shell, hud, gs, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView, unlockmanager, sections,
-    pipeline, slots, snapshotService,
+    slots, snapshotService,
   );
 
 
@@ -192,7 +187,7 @@ async function main() {
 
   // pipeline は負荷確認ウィンドウのデバッグ表示の選択欄が書き込む先。
   const perf = new PerfMeter(
-    shell.layers.window, gs.renderer, sections, gpu, shell.overlayManager, pipeline, renderStyle,
+    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline, renderStyle,
   );
   // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   pauseMenu.onOpenPerfWindow = () => {
@@ -206,7 +201,7 @@ async function main() {
   await launcher.start();
   settingsView.restorePersistedOpenState();
 
-  startAnimationLoop(launcher, graphics, renderStyle, perf, sections, gpu, new AutoSave(snapshotService), snapshotControls);
+  startAnimationLoop(launcher, gs, graphics, renderStyle, perf, sections, new AutoSave(snapshotService), snapshotControls);
 }
 
 main().catch((err) => {
