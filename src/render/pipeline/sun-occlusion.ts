@@ -8,7 +8,7 @@ import {
   lessThan, log, log2, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial-surface';
-import { meanOpaqueFractionOf } from '../cloud/cumulus-shape';
+import { CLOUD_TOP_UNCERTAINTY, meanOpaqueFractionOf } from '../cloud/cumulus-shape';
 import type {
   BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node,
 } from '../tsl-types';
@@ -81,6 +81,9 @@ const CUMULUS_SHADOW_TAPS = 6;
 const CUMULUS_MAX_LIGHT_PATH = 3e5;
 // 覆われている割合から柱の光学的厚みへ直すときの上限。割合 1 では厚みが発散する。
 const CUMULUS_MAX_COVERAGE = 0.99;
+// 光路 1 歩が代表する幅を、場のぼかしへ何倍で写すか。**等倍では足りない** — 隣り合うタップの
+// 覆う範囲が接するだけなので、あいだに影の抜けた縞が残る。
+const CUMULUS_STEP_BLUR = 2;
 
 // 雲の場を持たないフレームでも同じグラフが走るので、被覆率 0 の写しを結んでおく。
 // **読み方の契約は本物の場と揃える** — グラフはここに結んだテクスチャのフィルタと巻きから
@@ -306,7 +309,7 @@ export class SunOcclusion {
   }
 
   // 積雲の殻が落とす影。受け手から恒星へ向かう光路を、雲の層(天体中心から surfaceRadius +
-  // topAltitude まで)を抜けるまでたどり、その柱の雲頂より下に居るタップだけ消散を積む。
+  // topAltitude まで)を抜けるまでたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
   //
   // **柱の光学的厚みは覆われている割合から出す** — 覆われた割合 c を通り抜けない確率と読んで
   // τ = −ln(1 − c) を取る。割合は殻が雲を立てるのと同じ規則(`cloud/cumulus-shape.ts`)から
@@ -314,8 +317,8 @@ export class SunOcclusion {
   // 柱を 1 本抜ける合計はどれだけ斜めでも τ に一致する。恒星が低いほど光路は横へ伸び、影も
   // 同じだけ離れた所へ落ちる。
   //
-  // **殻より上に居る受け手では光路の長さが 0 になる** ので、殻の上面が自分自身を陰らせる
-  // 心配は要らない。
+  // **受け手が自分の柱の雲頂に立っているときは、その柱で自分を陰らせない** — 殻の描く雲頂は
+  // 粒のぶん場の雲頂から上下にずれるので、ずれの幅に入る受け手は雲頂の高さから測る。
   private cumulusTransmittance(
     worldPos: Vec3Node, sunDir: Vec3Node, footprint: FloatNode,
   ): FloatNode {
@@ -323,7 +326,6 @@ export class SunOcclusion {
       const transmittance = float(1).toVar();
       // 場を持たないフレームで、タップぶんのフェッチを丸ごと飛ばす。
       If(greaterThan(this.cumulusActive, 0.5), () => {
-        const lod = this.cumulusFieldLod(footprint);
         const offset = worldPos.sub(this.cumulusCenter);
         const shellRadius = this.cumulusSurfaceRadius.add(this.cumulusTopAltitude);
         const along = dot(offset, sunDir);
@@ -331,20 +333,24 @@ export class SunOcclusion {
         const exit = sqrt(max(shellRadius.mul(shellRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
           .sub(along);
         const stepLength = clamp(exit, 0, CUMULUS_MAX_LIGHT_PATH).div(CUMULUS_SHADOW_TAPS);
+        const lod = this.cumulusFieldLod(footprint, stepLength);
+        const floorAltitude = this.receiverFloorAltitude(offset, lod);
         const opticalDepth = float(0).toVar();
         for (let tap = 0; tap < CUMULUS_SHADOW_TAPS; tap++) {
           const sampleOffset = offset.add(sunDir.mul(stepLength.mul(tap + 0.5)));
           const sampleRadius = max(length(sampleOffset), 1);
           const up = sampleOffset.div(sampleRadius);
           // **高度に床を張る** — 基準半径は赤道半径なので、極の地表は中心距離のほうが小さい。
-          const altitude = max(sampleRadius.sub(this.cumulusSurfaceRadius), 0);
-          const cloud = this.cumulusFieldAt(this.cumulusBodyFromWorld.mul(vec4(up, 0)).xyz, lod);
+          const altitude = max(sampleRadius.sub(this.cumulusSurfaceRadius), floorAltitude);
+          const cloud = this.cumulusFieldAt(up, lod);
           const cloudTop = cloud.g.mul(this.cumulusTopAltitude);
           const rise = max(dot(sunDir, up), 0).mul(stepLength);
           const columnDepth = log(
             min(meanOpaqueFractionOf(cloud.r), CUMULUS_MAX_COVERAGE).oneMinus()).negate();
-          opticalDepth.addAssign(select(
-            lessThan(altitude, cloudTop), columnDepth.mul(rise).div(max(cloudTop, 1)), float(0)));
+          // **1 歩が雲頂をまたぐ割合で配る** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
+          // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
+          const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
+          opticalDepth.addAssign(columnDepth.mul(rise).mul(inside).div(max(cloudTop, 1)));
         }
         transmittance.assign(exp(opticalDepth.negate()));
       });
@@ -352,20 +358,31 @@ export class SunOcclusion {
     })();
   }
 
-  // 場を引く mip 段。画面 1 px が受け手の位置で張る実寸 footprint [m] を、場の texel が赤道で
-  // 覆う実寸と比べて決める。
-  private cumulusFieldLod(footprint: FloatNode): FloatNode {
+  // 場を引く mip 段。画面 1 px が受け手の位置で張る実寸 footprint [m] と、光路 1 歩の長さ
+  // stepLength [m] のうち **粗いほう** を、場の texel が赤道で覆う実寸と比べて決める。歩が
+  // またいだ柱は 1 タップが代表するので、恒星が低いほど影は柔らかく長く伸びる。
+  private cumulusFieldLod(footprint: FloatNode, stepLength: FloatNode): FloatNode {
     // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
     const fieldWidth = (this.cumulusField.size(int(0)) as THREE.Node<'uvec2'>).x;
     const texelWorld = this.cumulusSurfaceRadius.mul(2 * Math.PI).div(float(fieldWidth));
-    return max(log2(footprint.div(max(texelWorld, 1))), 0);
+    return max(log2(max(footprint, stepLength.mul(CUMULUS_STEP_BLUR)).div(max(texelWorld, 1))), 0);
   }
 
-  // 天体固定の単位方向における場を、mip 段を指定して引く。**段は明示で渡す** — 光路のタップの
-  // uv は画面の隣の画素と続いていないので、画面微分から選ばれる段は当てにならない。
-  private cumulusFieldAt(direction: Vec3Node, lod: FloatNode): Vec4Node {
-    const uv = sphereMeshUv(direction);
+  // 描画座標の単位方向 up における場を、mip 段を指定して引く。**段は明示で渡す** — 光路の
+  // タップの uv は画面の隣の画素と続いていないので、画面微分から選ばれる段は当てにならない。
+  private cumulusFieldAt(up: Vec3Node, lod: FloatNode): Vec4Node {
+    const uv = sphereMeshUv(this.cumulusBodyFromWorld.mul(vec4(up, 0)).xyz);
     return this.cumulusField.sample(vec2(fract(uv.x), uv.y)).level(lod);
+  }
+
+  // 光路のタップの高度に張る床 [m]。受け手が自分の柱の雲頂の高さにあるなら、その雲頂の高さ。
+  // offset は天体中心から受け手へのベクトル(描画座標)。
+  private receiverFloorAltitude(offset: Vec3Node, lod: FloatNode): FloatNode {
+    const radius = max(length(offset), 1);
+    const altitude = max(radius.sub(this.cumulusSurfaceRadius), 0);
+    const top = this.cumulusFieldAt(offset.div(radius), lod).g.mul(this.cumulusTopAltitude);
+    const uncertainty = this.cumulusTopAltitude.mul(CLOUD_TOP_UNCERTAINTY);
+    return select(greaterThan(altitude, top.sub(uncertainty)), top, float(0));
   }
 
   // 描画座標の点が、そのスロットの柱(枠 × [near, near + coverDepth])に入っているか。
