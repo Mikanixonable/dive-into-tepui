@@ -1,5 +1,5 @@
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { SPACE_2, SPACE_4 } from '../../theme';
+import { SPACE_2, SPACE_4 } from '../../../theme';
 import { clampOverlayPosition, Point2 } from '../layout';
 import { onViewportChange } from '../viewport';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';

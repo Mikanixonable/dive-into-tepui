@@ -1,6 +1,6 @@
 import { KEY_MAPPING as K } from '../game/input/key-mapping';
 import type { StageResult } from '../game/stages/stage';
-import { FONT_L, SPACE_6 } from '../game/theme';
+import { FONT_L, SPACE_6 } from '../theme';
 import type { Hud } from '../game/hud/hud';
 import type { OverlayHandle } from '../game/hud/overlay-manager';
 
