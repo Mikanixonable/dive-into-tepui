@@ -42,7 +42,11 @@ import { ObjectPickables } from './pickable/object-pickables';
 import { LinePickables } from './pickable/line-pickables';
 import { ObjectWindows } from './pickable/object-windows';
 import { Navball } from './navball/navball';
-import { GameSaveData } from './save/save-data';
+import { GameSaveData, SAVE_VERSION } from './save/save-data';
+import { ephemerisContextFor } from './save/ephemeris-context';
+import { orbitInfo } from './orbit-info';
+import { autoOrbitReference } from './orbit-reference';
+import type { RunSummary } from './run-summary';
 import { LoadingProgress } from './loading-progress';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -138,6 +142,54 @@ export class Game {
     );
     await progress.enter('run');
     return new Game(gs, stageClass, hud, worldSfx, uiSfx, pauseMenu, sections, celestialSystem, initialSave);
+  }
+
+  // このランの状態を1件ぶんのセーブ本体へ畳む。各サブシステムの serialize を集めるだけで、
+  // どこへ何件残すかはランの外側が決める。
+  serialize(): GameSaveData {
+    const { phaseOffsets, earthSpinPhase0 } = this._celestialSystem.serialize();
+    return {
+      version: SAVE_VERSION,
+      stageId: this.activeStage.id,
+      simTime: this.simTime,
+      ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
+      phaseOffsets,
+      earthSpinPhase0,
+      players: this.dynamicSystem.players.map((p) => p.serialize()),
+      activePlayerId: this.player ? this.player.id : null,
+      enemies: this.dynamicSystem.enemies.map((e) => e.serialize()),
+      ammoPickups: this.dynamicSystem.ammoPickups.map((pickup) => pickup.serialize()),
+      rcsFuelPickups: this.dynamicSystem.rcsFuelPickups.map((pickup) => pickup.serialize()),
+      detachedBoosters: this.dynamicSystem.detachedBoosters.map((booster) => booster.serialize()),
+      bases: this.dynamicSystem.bases.map((b) => b.serialize()),
+      stage: this.activeStage.serialize(),
+      camera: { view: this.viewManager.current, ...this.cameraSystem.serialize() },
+      navTarget: this.navTarget.id !== null ? { id: this.navTarget.id, name: this.navTarget.name! } : null,
+    };
+  }
+
+  // ランの外側が一覧へ描くための要約。自機が居ない周回でも値が欠けないようにする。
+  runSummary(): RunSummary {
+    const player = this.player;
+    const info = player === null ? null : orbitInfo(
+      player,
+      autoOrbitReference(player.state.r, this._celestialSystem.celestialMotions, player.state.t),
+      player.state.t, (id: string) => this._celestialSystem.nameOf(id),
+    );
+    return {
+      simTime: this.simTime,
+      phase: this.activeStage.phase,
+      centerBodyId: info ? info.centerId : this._celestialSystem.origin.id,
+      centerBodyName: info ? info.centerName : this._celestialSystem.nameOf(this._celestialSystem.origin.id),
+      altitude: info ? info.alt : 0,
+      speed: info ? info.spd : 0,
+      hpRatio: player !== null && player.maxHp > 0 ? Math.max(0, player.hp) / player.maxHp : 0,
+      maxHp: player ? player.maxHp : 0,
+      magazines: player ? player.magsLeft : 0,
+      money: this.dynamicSystem.bases.reduce((sum, b) => sum + b.baseState.money, 0),
+      playerCount: this.dynamicSystem.players.length,
+      enemyAliveCount: this.dynamicSystem.enemies.filter((e) => e.alive).length,
+    };
   }
 
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。星系は実体化済みで渡る。

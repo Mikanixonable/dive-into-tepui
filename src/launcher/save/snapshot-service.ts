@@ -1,14 +1,12 @@
 import { Game } from '../../game/game';
 import { SAVE_VERSION } from '../../game/save/save-data';
-import { orbitInfo } from '../../game/hud/orbit/orbit-info';
-import { autoOrbitReference } from '../../game/orbit-reference';
+import type { RunSummary } from '../../game/run-summary';
 import { fmtDist, fmtTime } from '../../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
-import { ephemerisContextFor, isEphemerisContextRestorable } from '../../game/save/ephemeris-context';
+import { isEphemerisContextRestorable } from '../../game/save/ephemeris-context';
 import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData } from '../../game/save/save-data';
 import type { SnapshotKind, SnapshotMeta } from './slot-data';
-import type { OrbitInfo } from '../../game/hud/orbit/orbit-info';
 
 // Game の実行状態と GameSaveData の相互変換、およびストア/スロットへの出し入れを担う。
 export class SnapshotService {
@@ -20,33 +18,28 @@ export class SnapshotService {
     const slotId = this.slots.activeSlotId;
     if (slotId === null) return null;
 
-    const player = game.player;
-    const info = player
-      ? orbitInfo(
-        player,
-        autoOrbitReference(player.state.r, game.celestialSystem.celestialMotions, player.state.t),
-        player.state.t, (id: string) => game.celestialSystem.nameOf(id))
-      : null;
+    const summary = game.runSummary();
     const meta: SnapshotMeta = {
       id: generateSnapshotId(),
       kind,
       pinned,
-      name: name && name.length > 0 ? name : autoName(game.simTime, info),
+      name: name && name.length > 0 ? name : autoName(summary),
       createdAtReal: Date.now(),
-      simTime: game.simTime,
-      centerBodyId: info ? info.centerId : game.celestialSystem.origin.id,
-      altitude: info ? info.alt : 0,
-      speed: info ? info.spd : 0,
-      hpRatio: player && player.maxHp > 0 ? Math.max(0, player.hp) / player.maxHp : 0,
-      maxHp: player ? player.maxHp : 0,
-      magazines: player ? player.magsLeft : 0,
-      money: game.dynamicSystem.bases.reduce((sum, b) => sum + b.baseState.money, 0),
-      playerCount: game.dynamicSystem.players.length,
-      enemyAliveCount: game.dynamicSystem.enemies.filter(e => e.alive).length,
-      phase: game.activeStage.phase,
+      simTime: summary.simTime,
+      centerBodyId: summary.centerBodyId,
+      altitude: summary.altitude,
+      speed: summary.speed,
+      hpRatio: summary.hpRatio,
+      maxHp: summary.maxHp,
+      magazines: summary.magazines,
+      money: summary.money,
+      playerCount: summary.playerCount,
+      enemyAliveCount: summary.enemyAliveCount,
+      phase: summary.phase,
     };
 
-    return this.slots.addSnapshot(slotId, game.activeStage.id, meta, buildSaveData(game)) ? meta : null;
+    const save = game.serialize();
+    return this.slots.addSnapshot(slotId, save.stageId, meta, save) ? meta : null;
   }
 
   // snapshotId のスナップショット本体を取得する。本体欠損・バージョン不一致・
@@ -87,33 +80,12 @@ function normalizePickupKeys(data: GameSaveData): GameSaveData | null {
   return normalizedData;
 }
 
-// 各エンティティ・ステージ自身の serialize を集めて1件ぶんのセーブ本体にする。
-function buildSaveData(game: Game): GameSaveData {
-  const { phaseOffsets, earthSpinPhase0 } = game.celestialSystem.serialize();
-  return {
-    version: SAVE_VERSION,
-    stageId: game.activeStage.id,
-    simTime: game.simTime,
-    ephemerisContext: { ...ephemerisContextFor(game.celestialSystem.epoch) },
-    phaseOffsets,
-    earthSpinPhase0,
-    players: game.dynamicSystem.players.map(p => p.serialize()),
-    activePlayerId: game.player ? game.player.id : null,
-    enemies: game.dynamicSystem.enemies.map(e => e.serialize()),
-    ammoPickups: game.dynamicSystem.ammoPickups.map((ammoPickup) => ammoPickup.serialize()),
-    rcsFuelPickups: game.dynamicSystem.rcsFuelPickups.map((pickup) => pickup.serialize()),
-    detachedBoosters: game.dynamicSystem.detachedBoosters.map((booster) => booster.serialize()),
-    bases: game.dynamicSystem.bases.map(b => b.serialize()),
-    stage: game.activeStage.serialize(),
-    camera: { view: game.viewManager.current, ...game.cameraSystem.serialize() },
-    navTarget: game.navTarget.id !== null ? { id: game.navTarget.id, name: game.navTarget.name! } : null,
-  };
-}
-
-// 名前を付けずに撮ったスナップショットの表示名。
-function autoName(simTime: number, info: OrbitInfo | null): string {
-  const timeLabel = `MET ${fmtTime(simTime)}`;
-  return info ? `${timeLabel} ・ ${info.centerName} 高度 ${fmtDist(info.alt)}` : timeLabel;
+// 名前を付けずに撮ったスナップショットの表示名。自機が居ない周回では経過時間だけを出す。
+function autoName(summary: RunSummary): string {
+  const timeLabel = `MET ${fmtTime(summary.simTime)}`;
+  return summary.playerCount > 0
+    ? `${timeLabel} ・ ${summary.centerBodyName} 高度 ${fmtDist(summary.altitude)}`
+    : timeLabel;
 }
 
 // 同一ミリ秒の連続呼び出しでも衝突しないよう、時刻にランダムな尾部を付ける。

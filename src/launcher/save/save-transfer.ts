@@ -49,7 +49,7 @@ function formatTimestamp(d: Date): string {
 
 // ファイルを読んで検証し、新しいスロットとして取り込む。検証に落ちた場合は
 // slots.importSlot を一切呼ばない。
-export async function importSlotFromFile(slots: SaveSlots, file: File): Promise<ImportResult> {
+async function importSlotFromFile(slots: SaveSlots, file: File): Promise<ImportResult> {
   // パース → 形式検証 → 取り込みの順で、途中で落ちたら以降を実行しない。
   let text: string;
   try {

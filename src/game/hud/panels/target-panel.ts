@@ -2,7 +2,7 @@
 // 接近速度・相対速度を、ターゲットが固定されている間だけ表示する。
 import { fmtDist, fmtSpeed, setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
-import { relativeInfo } from '../orbit/orbit-info';
+import { relativeInfo } from '../../orbit-info';
 import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { Game } from '../../game';
