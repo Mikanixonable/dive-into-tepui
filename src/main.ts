@@ -16,8 +16,6 @@ import { PauseMenu, SettingsView } from './hud/windows/index';
 import { startProteinAssetPreload } from './game/protein/protein-asset-loader';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
-import { UiSfx } from './audio/sfx/ui-sfx';
-import { WorldSfx } from './audio/sfx/world-sfx';
 import { Launcher } from './launcher/launcher';
 import { UnlockManager } from './launcher/unlock-manager';
 import { SnapshotControls } from './launcher/snapshot-controls';
@@ -106,25 +104,23 @@ function startAnimationLoop(
   });
 }
 
-// hud と音声一式(AudioEngine/Bgm/WorldSfx/UiSfx)はタイトル(ステージ選択)画面の時点から
-// 使えるべきなので、Game より先に main.ts が生成して所有し、Launcher には参照として渡す。
+// hud と AudioEngine/Bgm はタイトル(ステージ選択)画面の時点から使えるべきなので、
+// Game より先に main.ts が生成して所有し、Launcher には参照として渡す。
 // pauseMenu も同様に main.ts が所有し、開閉に応じた一時停止の反映
 // (launcher.current?.pause()/resume())も持ち主である main.ts がここで配線する。
 function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting): {
-  shell: HudShell; hud: Hud; audioEngine: AudioEngine; bgm: Bgm; worldSfx: WorldSfx; uiSfx: UiSfx;
+  shell: HudShell; hud: Hud; audioEngine: AudioEngine; bgm: Bgm;
   pauseMenu: PauseMenu; settingsView: SettingsView;
 } {
   const shell = new HudShell();
   const hud = new Hud(shell, renderStyle);
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine);
-  const worldSfx = new WorldSfx(audioEngine);
-  const uiSfx = new UiSfx(audioEngine);
   const pauseMenu = new PauseMenu(shell.layers.system, shell.overlayManager);
   const settingsView = new SettingsView(shell.layers.system, shell.overlayManager, bgm, graphics);
   pauseMenu.setBgmVolume(bgm.getVolume());
   pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
-  return { shell, hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView };
+  return { shell, hud, audioEngine, bgm, pauseMenu, settingsView };
 }
 
 // 索引を読み、旧セーブを取り込み、遊ぶ先のスロットが必ず1つある状態にする。
@@ -151,11 +147,11 @@ async function main() {
   const gs = await initScene(graphics.current);
   // 描画品質設定の押し出し先の登録は、設定を持っている側の配線。
   graphics.bind(gs);
-  const { shell, hud, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView } = initHud(graphics, renderStyle);
+  const { shell, hud, audioEngine, bgm, pauseMenu, settingsView } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
-    shell, hud, gs, audioEngine, bgm, worldSfx, uiSfx, pauseMenu, settingsView, unlockmanager, sections,
+    shell, hud, gs, audioEngine, bgm, pauseMenu, settingsView, unlockmanager, sections,
     slots, snapshotService,
   );
 
