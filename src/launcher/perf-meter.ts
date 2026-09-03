@@ -1,35 +1,19 @@
 // 負荷確認ウィンドウ: フレーム時間の計測・集計と、その表示、そして描画パスの中間結果を映す
 // デバッグ表示の選択。窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
-import { PropertyRow, PropertyWindow } from './hud/windows/property-window';
-import { SegmentedControl } from './hud/widgets';
-import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from './render/pipeline/debug-target';
-import type { RenderStyleSetting } from './render/render-style';
-import { fmtDuration } from './hud/utils';
-import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from './frame-sections';
-import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from './gpu-timings';
-import type { OverlayManager } from './hud/overlay-manager';
-import type { Input } from './input/input';
-import { KEY_MAPPING as K } from './input/key-mapping';
-import { ProteinMotionMetricsRecorder, PROTEIN_MOTION_LODS, type ProteinMotionFrameSample } from './protein-motion-metrics';
-
-// 計測表示に載せるエンティティ数・シミュレーション規模の一式。
-export type PerfCounts = {
-  players: number; enemies: number; bullets: number; casings: number;
-  debris: number; ammoPickups: number; rcsFuelPickups: number; bases: number;
-  predicted: number; predictComplete: number; predictorSteps: number;
-  arcCelestialBodies: number; arcRevisits: number; arcLead: number | null;
-  mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
-  simSubsteps: number; simIntegrated: number; simFollowed: number; gravitySources: number;
-  planArcs: number; planSteps: number;
-  timeCacheHits: number; timeCacheMisses: number;
-  warp: number;
-};
-
-interface PerfCountSource {
-  perfCounts(): PerfCounts;
-  proteinMotionFrameSample(): ProteinMotionFrameSample;
-}
+import { PropertyRow, PropertyWindow } from '../hud/windows/property-window';
+import { SegmentedControl } from '../hud/widgets';
+import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../render/pipeline/debug-target';
+import type { RenderStyleSetting } from '../render/render-style';
+import { fmtDuration } from '../hud/utils';
+import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../game/frame-sections';
+import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from '../render/gpu-timings';
+import type { OverlayManager } from '../hud/overlay-manager';
+import type { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
+import { ProteinMotionMetricsRecorder } from '../game/protein/protein-motion-metrics';
+import { LODS_FINE_TO_COARSE } from '../game/protein/protein-motion-controller';
+import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
 
 // フレームごとに数え直される項目。集計期間の1フレームだけを覗くと実態を取り違えるので、
 // ms系と同じく毎フレーム積んで avg/max で出す。
@@ -330,7 +314,7 @@ export class PerfMeter {
         key: 'protein-motion-upload', label: 'Upload', group: 'タンパク質モーション',
         value: `avg ${(proteinSummary.uploadBytes.avg / 1024).toFixed(1)}KiB max ${(proteinSummary.uploadBytes.max / 1024).toFixed(1)}KiB`,
       },
-      ...PROTEIN_MOTION_LODS.map((lod) => ({
+      ...LODS_FINE_TO_COARSE.map((lod) => ({
         key: `protein-motion-lod-${lod}`, label: lod, group: 'タンパク質モーション',
         value: `${proteinSummary.lodCounts[lod].toFixed(1)}`,
       })),

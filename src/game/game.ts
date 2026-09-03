@@ -1,8 +1,8 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
-import type { PerfCounts } from '../perf-meter';
-import type { ProteinMotionFrameSample } from '../protein-motion-metrics';
-import { FrameSections, SECTION } from '../frame-sections';
+import type { PerfCounts } from './perf-counts';
+import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
+import { FrameSections, SECTION } from './frame-sections';
 import { Player } from './player/player';
 import { Base } from './dynamic/dynamic-entity/base';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';

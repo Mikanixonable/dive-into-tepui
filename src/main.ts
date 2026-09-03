@@ -6,9 +6,9 @@ import '@sarap422/font-hackgen';
 // 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
 import { createGameScene, GameScene } from './render/scene';
-import { PerfMeter } from './perf-meter';
-import { FrameSections } from './frame-sections';
-import { GpuTimings } from './gpu-timings';
+import { PerfMeter } from './launcher/perf-meter';
+import { FrameSections } from './game/frame-sections';
+import { GpuTimings } from './render/gpu-timings';
 import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-settings';
 import { RenderPipeline } from './render/pipeline/render-pipeline';
 import { RenderStyleSetting } from './render/render-style';
