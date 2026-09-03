@@ -14,7 +14,7 @@ import { apparentSizePx } from '../../../math/projection';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
 import { len, sub } from '../../../math/vec3';
 import { bodyEntityGlyph } from '../../marker/marker-identity';
-import { MARKER_PRIORITY } from '../../marker/marker-manager';
+import { MARKER_PRIORITY } from '../../marker/crowding';
 import { bodySearchText } from '../../pickable/body-search-text';
 import { fmtDist, fmtTime } from '../../hud/utils';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
