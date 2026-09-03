@@ -6,7 +6,6 @@ import type { OverlayManager } from '../../hud/overlay-manager';
 
 const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
 
-// Δv アームドラッグ・長押しボタンによる連続加算(plan-editor.ts の applyDv 系)
 const DV_DRAG_LATCH_PX = 60; // これを超えるアーム基点からの変位でドラッグがラッチ状態に入る [px]
 
 const STYLE = `
@@ -29,9 +28,8 @@ const STYLE = `
 }
 #node-gizmo .gz-axis {
   position: absolute; transform: translate(-50%, -50%);
-  width: 44px; height: 44px; border-radius: 22px; touch-action: none;
+  width: var(--hit-target-min); height: var(--hit-target-min); border-radius: 50%; touch-action: none;
   pointer-events: auto; cursor: grab;
-  /* 背景は透明にしつつ、ラベルのテキストは表示する */
   background: transparent; border: none;
   color: var(--text); font-size: ${FONT_XS}; font-weight: bold; letter-spacing: 1px;
   display: flex; align-items: center; justify-content: center;
@@ -40,34 +38,37 @@ const STYLE = `
 #node-gizmo .gz-axis:active { cursor: grabbing; color: var(--color-primary-hover); }
 `;
 
+// ノードハンドル1個の画面上の仕様。(x, y) は画面座標 [px]、dvMag はラベルに出す Δv [m/s]。
 export interface NodeHandleSpec {
-  idx: number;
-  x: number;
-  y: number;
-  selected: boolean;
-  dvMag: number;
+  readonly idx: number;
+  readonly x: number;
+  readonly y: number;
+  readonly selected: boolean;
+  readonly dvMag: number;
 }
 
+// Δv アームハンドル1個の画面上の仕様。(x, y) は画面座標 [px]、(dirx, diry) はドラッグ変位を
+// 射影する画面上の単位方向。
 export interface AxisHandleSpec {
-  axis: 0 | 1 | 2;
-  sign: 1 | -1;
-  x: number;
-  y: number;
-  dirx: number;
-  diry: number;
-  label: string;
-}
-
-// ラッチ中の Δv アーム。呼び出し側は毎フレーム読み、excessPx に応じたレートで積分する。
-interface AxisLatchState {
   readonly axis: 0 | 1 | 2;
   readonly sign: 1 | -1;
-  readonly excessPx: number;
+  readonly x: number;
+  readonly y: number;
+  readonly dirx: number;
+  readonly diry: number;
+  readonly label: string;
+}
+
+// ドラッグ中の Δv アーム。excessPx はラッチ前は null、ラッチ後は基点からの超過量 [px]。
+export interface AxisHandleDrag {
+  readonly axis: 0 | 1 | 2;
+  readonly sign: 1 | -1;
+  readonly excessPx: number | null;
 }
 
 interface NodeEntry {
-  el: HTMLDivElement;
-  lbl: HTMLDivElement;
+  readonly el: HTMLDivElement;
+  readonly lbl: HTMLDivElement;
 }
 
 let styleInjected = false;
@@ -80,20 +81,22 @@ export class NodeGizmo {
   private readonly nodeEls = new Map<number, NodeEntry>();
   private readonly axisEls: HTMLDivElement[] = [];
 
-  onNodeSelect: ((idx: number) => void) | null = null;
-  onNodeDragMove: ((idx: number, clientX: number, clientY: number) => void) | null = null;
-  onNodeContextMenu: ((clientX: number, clientY: number) => void) | null = null;
-  onAxisDrag: ((axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number) => void) | null = null;
-  onMenuWarpTo: ((idx: number) => void) | null = null;
-  onMenuDelete: ((idx: number) => void) | null = null;
-  onMenuFocus: ((idx: number) => void) | null = null;
+  public onNodeSelect: ((idx: number) => void) | null = null;
+  public onNodeDragMove: ((idx: number, clientX: number, clientY: number) => void) | null = null;
+  public onNodeContextMenu: ((clientX: number, clientY: number) => void) | null = null;
+  public onAxisDrag: ((axis: 0 | 1 | 2, sign: 1 | -1, deltaPx: number) => void) | null = null;
+  public onMenuWarpTo: ((idx: number) => void) | null = null;
+  public onMenuDelete: ((idx: number) => void) | null = null;
+  public onMenuFocus: ((idx: number) => void) | null = null;
 
-  latch: AxisLatchState | null = null;
-  activeAxis: { axis: 0 | 1 | 2, sign: 1 | -1 } | null = null;
+  private _axisHandleDrag: AxisHandleDrag | null = null;
+
+  // ドラッグ中の Δv アーム。ドラッグしていなければ null。
+  public get axisHandleDrag(): AxisHandleDrag | null { return this._axisHandleDrag; }
 
   // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ、
-  // popupLayer はノードのコンテキストメニューを置くレイヤ(overlay-layer.ts のレイヤ構造に従う)。
-  constructor(root: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager) {
+  // popupLayer はノードのコンテキストメニューを置くレイヤ。
+  public constructor(root: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager) {
     if (!styleInjected) {
       styleInjected = true;
       const style = document.createElement('style');
@@ -120,7 +123,7 @@ export class NodeGizmo {
   }
 
   // 指定ノードに対するコンテキストメニューを開く。
-  openMenu(clientX: number, clientY: number, idx: number): void {
+  public openMenu(clientX: number, clientY: number, idx: number): void {
     this.menu.open(clientX, clientY, idx, [
       MenuCommon.warp(),
       MenuCommon.deleteNode(),
@@ -130,18 +133,18 @@ export class NodeGizmo {
   }
 
   // コンテキストメニューを閉じる。
-  closeMenu(): void {
+  public closeMenu(): void {
     this.menu.close();
   }
 
   // コンテキストメニューを片付け、ノードハンドル・Δv アームの DOM を取り除く。
-  dispose(): void {
+  public dispose(): void {
     this.menu.dispose();
     this.root.remove();
   }
 
   // ノードハンドル・Δv アームの DOM を渡された仕様に同期する。仕様に無くなった要素は破棄する。
-  sync(nodes: NodeHandleSpec[], axes: AxisHandleSpec[] | null): void {
+  public sync(nodes: readonly NodeHandleSpec[], axes: readonly AxisHandleSpec[] | null): void {
     const seen = new Set<number>();
     // ノードハンドルを仕様に合わせて追加・更新する。
     for (const n of nodes) {
@@ -167,9 +170,9 @@ export class NodeGizmo {
     const count = axes?.length ?? 0;
     while (this.axisEls.length > count) {
       this.axisEls.pop()!.remove();
-      // ラッチを解除できるのは要素自身の pointer イベントだけなので、要素の消滅とラッチ状態は必ず同時に切り替える。
-      this.latch = null;
-      this.activeAxis = null;
+      // ドラッグを終えられるのは要素自身の pointer イベントだけなので、要素の消滅とドラッグ状態は
+      // 必ず同時に切り替える。
+      this._axisHandleDrag = null;
     }
     if (axes) {
       axes.forEach((a, i) => {
@@ -257,12 +260,11 @@ export class NodeGizmo {
       totalProj = 0;
       lastX = e.clientX;
       lastY = e.clientY;
-      this.activeAxis = { axis, sign };
+      this._axisHandleDrag = { axis, sign, excessPx: null };
       el.setPointerCapture(e.pointerId);
     });
-    // 基点からの累積変位が DV_DRAG_LATCH_PX を超えるとラッチへ入る。ラッチ前は従来通り
-    // 変位そのものを onAxisDrag へ渡し、ラッチ後は超過量を latch として公開するだけにする
-    // (レートでの積分は毎フレーム呼び出し側が行う)。
+    // 基点からの累積変位が DV_DRAG_LATCH_PX を超えるとラッチへ入る。ラッチ前は変位そのものを
+    // onAxisDrag へ渡し、ラッチ後は超過量を axisHandleDrag に載せる。
     el.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       const dx = e.clientX - lastX;
@@ -279,15 +281,14 @@ export class NodeGizmo {
       if (!latched) {
         this.onAxisDrag?.(axis, sign, proj);
       } else {
-        this.latch = { axis, sign, excessPx: Math.abs(totalProj) - DV_DRAG_LATCH_PX };
+        this._axisHandleDrag = { axis, sign, excessPx: Math.abs(totalProj) - DV_DRAG_LATCH_PX };
       }
     });
-    // ドラッグ終了時にポインタキャプチャを解放し、ラッチを解除する。
+    // ドラッグ終了時にポインタキャプチャを解放し、ドラッグ状態を消す。
     const end = (e: PointerEvent): void => {
       dragging = false;
       latched = false;
-      this.latch = null;
-      this.activeAxis = null;
+      this._axisHandleDrag = null;
       try {
         el.releasePointerCapture(e.pointerId);
       } catch {
