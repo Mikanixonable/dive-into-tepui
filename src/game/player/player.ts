@@ -51,7 +51,7 @@ import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
 } from '../../render/vfx-style';
 import { PlayerBoosters } from './player-boosters';
-import { MARKER_PRIORITY } from '../marker/marker-manager';
+import { MARKER_PRIORITY } from '../marker/crowding';
 import { strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
 import { fmtAmmoStatus } from '../hud/ammo-status';
