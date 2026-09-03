@@ -507,6 +507,7 @@ export function selectStage(
     };
 
     document.body.appendChild(root);
+    document.body.classList.add('title-screen-open');
 
     // 3D 場面は非同期に立ち上がる。選択が先に済んだ場合はでき次第そのまま破棄する。
     let scene: TitleScene | null = null;
@@ -527,6 +528,7 @@ export function selectStage(
       selected = true;
       scene?.dispose();
       root.remove();
+      document.body.classList.remove('title-screen-open');
       resolve({ stageClass, startEpoch });
     };
     // 解放済みステージのショートカットキーにマッチしたら選択確定する。タブに関係なく効く。

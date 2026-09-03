@@ -16,8 +16,8 @@ export const SKELETON_STYLE = `
   color: var(--text); color-scheme: var(--theme-tone); user-select: text; z-index: var(--z-hud);
   font-size: var(--font-l);
 }
-/* ステージ選択画面より前面に出す既存の一時停止メニュー */
-#hud.title-menu-open { z-index: var(--z-hud-title-menu); }
+/* タイトル選択画面は #hud より前面にあるので、その上でシステム窓を開いている間だけ #hud を上げる。 */
+body.title-screen-open.hud-overlay-modal-open #hud { z-index: var(--z-hud-title-menu); }
 
 /* 明るい縁取りと暗い縁取りを重ね、背景の明暗によらずフォーカスを常に視認できるようにする。 */
 #hud :focus-visible, #touch-ui :focus-visible {
