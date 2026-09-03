@@ -1,4 +1,4 @@
-// エンティティ配列の保持・追加・上限管理・寿命回収・描画同期。
+// エンティティの保持・追加・上限管理・寿命回収・描画同期。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../math/vec3';
 import type { Viewpoint } from '../../math/projection';
@@ -46,17 +46,20 @@ const CAP: Record<CapKind, number> = {
 };
 
 export class DynamicSystem {
-  readonly enemies: Enemy[] = [];
-  readonly bullets: Bullet[] = [];
-  readonly casings: DebrisPiece[] = [];
-  readonly debris: DebrisPiece[] = [];
-  public readonly ammoPickups: AmmoPickup[] = [];
-  public readonly rcsFuelPickups: RcsFuelPickup[] = [];
-  readonly detachedBoosters: DetachedBooster[] = [];
-  // 自機。操作対象(Game.player)もこの配列の1隻で、積分・衝突・寿命判定・予測では
-  // 他の艦と対等に扱う。ステージモードでは1隻だけが入る。
-  readonly players: Player[] = [];
-  readonly bases: Base[] = [];
+  // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
+  private readonly entities: DynamicEntity[] = [];
+
+  // 型別の絞り込み。呼ぶたびに数え直すので、フレームに何度も読む側は受けた配列を持ち回る。
+
+  // 自機。操作対象(Game.player)も他の艦と対等に、積分・衝突・寿命判定・予測を通る。
+  // ステージモードでは1隻だけが入る。
+  get players(): readonly Player[] { return this.entities.filter((e): e is Player => e instanceof Player); }
+  get enemies(): readonly Enemy[] { return this.entities.filter((e): e is Enemy => e instanceof Enemy); }
+  get bases(): readonly Base[] { return this.entities.filter((e): e is Base => e instanceof Base); }
+  get bullets(): readonly Bullet[] { return this.entities.filter((e): e is Bullet => e instanceof Bullet); }
+  get ammoPickups(): readonly AmmoPickup[] { return this.entities.filter((e): e is AmmoPickup => e instanceof AmmoPickup); }
+  get rcsFuelPickups(): readonly RcsFuelPickup[] { return this.entities.filter((e): e is RcsFuelPickup => e instanceof RcsFuelPickup); }
+  get detachedBoosters(): readonly DetachedBooster[] { return this.entities.filter((e): e is DetachedBooster => e instanceof DetachedBooster); }
 
   // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するため、
   // 個別の scene 追加ではなく InstancedMesh 1本ずつのプールで描画する(sync が push する)。
@@ -101,7 +104,7 @@ export class DynamicSystem {
   ): void {
     const simTime = save.simTime;
     for (const data of save.players) {
-      this.addPlayer(new Player(hud, worldSfx, scene, this.effects, markerManager, { saved: data, simTime }));
+      this.add(new Player(hud, worldSfx, scene, this.effects, markerManager, { saved: data, simTime }));
     }
     for (const data of save.enemies) {
       // 種別タグから具象クラスを引き、知らない種別の敵は読み飛ばす。
@@ -113,27 +116,20 @@ export class DynamicSystem {
       );
     }
     for (const data of save.ammoPickups) {
-      this.addAmmoPickup(new AmmoPickup({ saved: data, simTime }, scene));
+      this.add(new AmmoPickup({ saved: data, simTime }, scene));
     }
     for (const data of save.rcsFuelPickups ?? []) {
-      this.addRcsFuelPickup(new RcsFuelPickup({ saved: data, simTime }, scene));
+      this.add(new RcsFuelPickup({ saved: data, simTime }, scene));
     }
     for (const data of save.detachedBoosters ?? []) {
-      this.addDetachedBooster(new DetachedBooster({ saved: data, simTime }, scene));
+      this.add(new DetachedBooster({ saved: data, simTime }, scene));
     }
     for (const data of save.bases) {
-      this.addBase(new Base({ saved: data, simTime }, scene, hud, worldSfx, this.effects, markerManager));
+      this.add(new Base({ saved: data, simTime }, scene, hud, worldSfx, this.effects, markerManager));
     }
   }
 
-  // all()/otherEntities() はSimulatorの各substepから何度も呼ばれる。配列の内容が変わった
-  // ときだけ結合し、以降は同じ安定配列を返す。
   private _collectionRevision = 0;
-  private cachedRevision = -1;
-  private readonly cachedOtherEntities: DynamicEntity[] = [];
-  private readonly cachedAllEntities: DynamicEntity[] = [];
-  // Targeter/Game は取得した配列を読み取り専用として扱う(filter/sort等で破壊しない)ため、
-  // collectionRevision が変わるまで敵・自機の結合結果も再利用する。
   private combatTargetsRevision = -1;
 
   // 保持するエンティティの顔ぶれの世代。追加・除去・prune のいずれでも増える。
@@ -144,9 +140,10 @@ export class DynamicSystem {
   private readonly cachedCombatTargets: CombatTarget[] = [];
   private readonly cachedCombatTargetsByExcludedPlayer = new Map<Player, CombatTarget[]>();
 
-  // 敵を登録する。
-  addEnemy(enemy: Enemy): void {
-    this.enemies.push(enemy);
+  // エンティティを登録する。上限を持つ枠の超過分は、次の cleanup で古いものから落ちる。
+  add(entity: DynamicEntity): void {
+    this.entities.push(entity);
+    if (entity.capKind !== null) this.capsUncheckedSinceAdd = true;
     this.invalidateCaches();
   }
 
@@ -157,7 +154,7 @@ export class DynamicSystem {
 
   spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, onSpawned?: () => void): void {
     if (assetId === null || isProteinAssetReady(assetId)) {
-      this.addEnemy(build());
+      this.add(build());
       onSpawned?.();
       return;
     }
@@ -169,7 +166,7 @@ export class DynamicSystem {
     let w = 0;
     for (const pending of this.pendingEnemySpawns) {
       if (isProteinAssetReady(pending.assetId)) {
-        this.addEnemy(pending.build());
+        this.add(pending.build());
         pending.onSpawned?.();
       } else {
         this.pendingEnemySpawns[w++] = pending;
@@ -178,30 +175,27 @@ export class DynamicSystem {
     this.pendingEnemySpawns.length = w;
   }
 
-  // 自機を登録する。
-  addPlayer(player: Player): void {
-    this.players.push(player);
-    this.invalidateCaches();
+  // エンティティを取り除き、メッシュを破棄する。
+  remove(entity: DynamicEntity): void {
+    if (!this.detach(entity)) return;
+    entity.dispose();
   }
 
-  // 自機を取り除き、メッシュを破棄する。
-  removePlayer(player: Player): void {
-    const i = this.players.indexOf(player);
-    if (i < 0) return;
-    this.players.splice(i, 1);
-    this.invalidateCaches();
-    player.dispose();
+  // 艦を取り除くが破棄はしない(基地への収容など、後で add で復帰させる場合)。
+  // 顔ぶれから外れると毎フレームの同期が届かなくなるので、マーカーはここで畳む。
+  park(entity: DynamicEntity): void {
+    if (!this.detach(entity)) return;
+    entity.equatorNodes?.dispose();
+    entity.equatorNodes = null;
   }
 
-  // 自機を取り除くが破棄はしない(基地への収容など、後で addPlayer で復帰させる場合)。
-  // 配列から外れると毎フレームの同期が届かなくなるので、マーカーはここで畳む。
-  parkPlayer(player: Player): void {
-    const i = this.players.indexOf(player);
-    if (i < 0) return;
-    this.players.splice(i, 1);
-    player.equatorNodes?.dispose();
-    player.equatorNodes = null;
+  // 顔ぶれから外す。保持していなければ false。
+  private detach(entity: DynamicEntity): boolean {
+    const i = this.entities.indexOf(entity);
+    if (i < 0) return false;
+    this.entities.splice(i, 1);
     this.invalidateCaches();
+    return true;
   }
 
   // ターゲットとなり得るエンティティの一覧を取得する。
@@ -247,52 +241,6 @@ export class DynamicSystem {
       ?? null;
   }
 
-  // 弾を登録する。
-  addBullet(bullet: Bullet): void {
-    this.addCapped(this.bullets, bullet);
-  }
-
-  // 破片を種別(薬莢/その他)ごとの配列へ登録する。
-  addDebris(piece: DebrisPiece): void {
-    if (piece.kind === 'casing') this.addCapped(this.casings, piece);
-    else this.addCapped(this.debris, piece);
-  }
-
-  // 弾薬ピックアップを登録する。
-  public addAmmoPickup(ammoPickup: AmmoPickup): void {
-    this.ammoPickups.push(ammoPickup);
-    this.invalidateCaches();
-  }
-
-  // RCS燃料ピックアップを登録する。
-  public addRcsFuelPickup(pickup: RcsFuelPickup): void {
-    this.rcsFuelPickups.push(pickup);
-    this.invalidateCaches();
-  }
-
-  // 分離済みブースターを登録する。
-  addDetachedBooster(booster: DetachedBooster): void {
-    this.addCapped(this.detachedBoosters, booster);
-  }
-
-  // 基地を登録する。
-  addBase(base: Base): void {
-    this.bases.push(base);
-    this.invalidateCaches();
-  }
-
-  // ID で名指された基地を返す。見つからなければ null。
-  findBase(id: string): Base | null {
-    return this.bases.find(b => b.id === id) ?? null;
-  }
-
-  // 上限を持つ枠の個体を配列へ追加する。超過分は次の cleanup で古いものから落ちる。
-  private addCapped<T extends DynamicEntity>(arr: T[], entity: T): void {
-    arr.push(entity);
-    this.capsUncheckedSinceAdd = true;
-    this.invalidateCaches();
-  }
-
   // 上限付きの個体が追加されてから、まだ上限を確かめていないか。追加以外で枠が増えることは
   // ないので、これが false の間は全件を数え直さない。
   private capsUncheckedSinceAdd = false;
@@ -319,34 +267,9 @@ export class DynamicSystem {
     this._collectionRevision++;
   }
 
-  private rebuildCachesIfNeeded(): void {
-    if (this.cachedRevision === this._collectionRevision) return;
-    this.cachedOtherEntities.length = 0;
-    this.cachedOtherEntities.push(
-      ...this.enemies,
-      ...this.bullets,
-      ...this.ammoPickups,
-      ...this.rcsFuelPickups,
-      ...this.detachedBoosters,
-      ...this.casings,
-      ...this.debris,
-      ...this.bases,
-    );
-    this.cachedAllEntities.length = 0;
-    this.cachedAllEntities.push(...this.cachedOtherEntities, ...this.players);
-    this.cachedRevision = this._collectionRevision;
-  }
-
-  // 自機以外の保持エンティティを1つの配列にまとめて返す。
-  private otherEntities(): DynamicEntity[] {
-    this.rebuildCachesIfNeeded();
-    return this.cachedOtherEntities;
-  }
-
-  // 保持する全エンティティを1つの配列にまとめて返す。
-  all(): DynamicEntity[] {
-    this.rebuildCachesIfNeeded();
-    return this.cachedAllEntities;
+  // 保持する全エンティティを追加順に返す。呼び出し側は読み取り専用として扱う。
+  all(): readonly DynamicEntity[] {
+    return this.entities;
   }
 
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。自機だけは各所の
@@ -356,30 +279,23 @@ export class DynamicSystem {
     atmosphereBodies: readonly CelestialMotion[],
   ): void {
     this.processPendingEnemySpawns();
-    for (const e of this.all()) e.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
+    for (const e of this.entities) e.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
     this.enforceCaps();
-    this.prune(this.enemies);
-    this.prune(this.bullets);
-    this.prune(this.casings);
-    this.prune(this.debris);
-    this.prune(this.ammoPickups);
-    this.prune(this.rcsFuelPickups);
-    this.prune(this.detachedBoosters);
-    this.prune(this.bases);
+    this.prune();
   }
 
-  // in-place フィルタ: 配列の参照はそのまま保つ。
-  private prune<T extends DynamicEntity>(arr: T[]): void {
+  // 死亡した個体を破棄して取り除く。生存分は追加順のまま前へ詰める。
+  private prune(): void {
     let w = 0;
     let changed = false;
-    for (const x of arr) {
+    for (const x of this.entities) {
       if (!x.alive) {
         x.dispose();
         changed = true;
       }
-      else arr[w++] = x;
+      else this.entities[w++] = x;
     }
-    arr.length = w;
+    this.entities.length = w;
     if (changed) this.invalidateCaches();
   }
 
@@ -509,31 +425,20 @@ export class DynamicSystem {
   // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
   // 破片(fragment)の変換は各エンティティの renderObject に同期された後、InstancedPool へ push する。
   sync(fo: FloatingOrigin, displayTime: number, viewer?: Viewpoint, proteinVibrationEnabled = true): void {
-    for (const e of this.otherEntities()) {
-      if (!(e instanceof DetachedBooster)) e.sync(fo, displayTime, viewer, proteinVibrationEnabled);
-    }
-
     this.bulletBodyPool.beginFrame();
     this.bulletHaloPool.beginFrame();
     this.plasmaPool.beginFrame();
     this.casingPool.beginFrame();
     for (const pool of this.debrisFragmentPools) pool.beginFrame();
-    for (const b of this.bullets) {
-      if (!b.renderObject.visible) continue;
-      if (b.type === 'plasma') {
-        this.plasmaPool.push(b.renderObject);
-        continue;
-      }
-      // 本体+ハローの Group。シーン外なので matrixWorld は自前で更新する必要があり、
-      // 親で1回呼べば子(本体・ハロー)まで連鎖して更新される。
-      b.renderObject.updateMatrixWorld();
-      this.bulletBodyPool.push(b.renderObject.children[0]!);
-      this.bulletHaloPool.push(b.renderObject.children[1]!);
+
+    // 自機と分離ブースターは専用の同期パス(syncPlayers / syncDetachedBoosters)を持つ。
+    for (const e of this.entities) {
+      if (e instanceof Player || e instanceof DetachedBooster) continue;
+      e.sync(fo, displayTime, viewer, proteinVibrationEnabled);
+      if (e instanceof Bullet) this.pushBullet(e);
+      else if (e instanceof DebrisPiece) this.pushDebrisPiece(e);
     }
-    for (const c of this.casings) this.casingPool.push(c.renderObject);
-    for (const d of this.debris) {
-      if (d.kind === 'fragment') this.debrisFragmentPools[d.fragmentVariant]!.push(d.renderObject, d.fragmentColor!);
-    }
+
     this.bulletBodyPool.endFrame();
     this.bulletHaloPool.endFrame();
     this.plasmaPool.endFrame();
@@ -541,18 +446,33 @@ export class DynamicSystem {
     for (const pool of this.debrisFragmentPools) pool.endFrame();
   }
 
+  // 弾種に対応するプールへ、同期済みの変換を積む。
+  private pushBullet(bullet: Bullet): void {
+    if (!bullet.renderObject.visible) return;
+    if (bullet.type === 'plasma') {
+      this.plasmaPool.push(bullet.renderObject);
+      return;
+    }
+    // 本体+ハローの Group。シーン外なので matrixWorld は自前で更新する必要があり、
+    // 親で1回呼べば子(本体・ハロー)まで連鎖して更新される。
+    bullet.renderObject.updateMatrixWorld();
+    this.bulletBodyPool.push(bullet.renderObject.children[0]!);
+    this.bulletHaloPool.push(bullet.renderObject.children[1]!);
+  }
+
+  // 薬莢と破片(fragment)を、対応するプールへ積む。他の破片は個別に scene へ載っている。
+  private pushDebrisPiece(piece: DebrisPiece): void {
+    if (piece.kind === 'casing') this.casingPool.push(piece.renderObject);
+    else if (piece.kind === 'fragment') {
+      this.debrisFragmentPools[piece.fragmentVariant]!.push(piece.renderObject, piece.fragmentColor!);
+    }
+  }
+
   // 保持する全エンティティと描画資源プールを破棄する。cleanup/prune は死亡した
   // エンティティしか片付けないため、生存中のまま呼ばれるケースをここで担う。
   dispose(): void {
-    this.disposeAll(this.players);
-    this.disposeAll(this.enemies);
-    this.disposeAll(this.bullets);
-    this.disposeAll(this.casings);
-    this.disposeAll(this.debris);
-    this.disposeAll(this.ammoPickups);
-    this.disposeAll(this.rcsFuelPickups);
-    this.disposeAll(this.detachedBoosters);
-    this.disposeAll(this.bases);
+    for (const e of this.entities) e.dispose();
+    this.entities.length = 0;
 
     this.bulletBodyPool.dispose();
     this.bulletHaloPool.dispose();
@@ -564,24 +484,22 @@ export class DynamicSystem {
     this.invalidateCaches();
   }
 
-  // 配列内の各エンティティを破棄したうえで、配列自体も空にする。
-  private disposeAll<T extends DynamicEntity>(arr: T[]): void {
-    for (const e of arr) e.dispose();
-    arr.length = 0;
-  }
-
-  // 負荷確認ウィンドウが読む、保持配列ごとの現在の個体数。
+  // 負荷確認ウィンドウが読む、種別ごとの現在の個体数。
   perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'rcsFuelPickups' | 'bases'> {
-    return {
-      players: this.players.length,
-      enemies: this.enemies.length,
-      bullets: this.bullets.length,
-      casings: this.casings.length,
-      debris: this.debris.length,
-      ammoPickups: this.ammoPickups.length,
-      rcsFuelPickups: this.rcsFuelPickups.length,
-      bases: this.bases.length,
+    const counts = {
+      players: 0, enemies: 0, bullets: 0, casings: 0,
+      debris: 0, ammoPickups: 0, rcsFuelPickups: 0, bases: 0,
     };
+    for (const e of this.entities) {
+      if (e instanceof Player) counts.players++;
+      else if (e instanceof Enemy) counts.enemies++;
+      else if (e instanceof Bullet) counts.bullets++;
+      else if (e instanceof DebrisPiece) (e.kind === 'casing' ? counts.casings++ : counts.debris++);
+      else if (e instanceof AmmoPickup) counts.ammoPickups++;
+      else if (e instanceof RcsFuelPickup) counts.rcsFuelPickups++;
+      else if (e instanceof Base) counts.bases++;
+    }
+    return counts;
   }
 
   // 負荷確認ウィンドウが読む、直近 sync() 時点のタンパク質敵モーションの集計値。
