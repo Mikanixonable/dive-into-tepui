@@ -75,7 +75,6 @@ function startAnimationLoop(
       }
       perf.handleInput(game.input);
       autoSave.update(game);
-      launcher.update();
       const t1 = perf.on ? performance.now() : 0;
       game.sync(graphics.current, renderStyle.current);
       const t2 = perf.on ? performance.now() : 0;
