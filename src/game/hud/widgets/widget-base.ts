@@ -1,5 +1,22 @@
 // hud/widgets/ 全体で共有する土台。個々のウィジェットはここを経由して
-// pointerdown の伝播抑止とタップ領域の拡張を行う。
+// pointerdown の伝播抑止とタップ領域の拡張を行い、見出し付きの行もここが組む。
+
+// 行の見出し(.w-group-title)。
+export function buildGroupTitle(text: string): HTMLSpanElement {
+  const heading = document.createElement('span');
+  heading.className = 'w-group-title';
+  heading.textContent = text;
+  return heading;
+}
+
+// 見出し付きの行を組む。className は行そのもののクラスで、既定は横並びの行 .w-group。
+// title が空文字なら見出しを持たない行になる。中身は呼び出し側が append する。
+export function buildLabeledRow(title: string, className = 'w-group'): HTMLElement {
+  const row = document.createElement('div');
+  row.className = className;
+  if (title !== '') row.appendChild(buildGroupTitle(title));
+  return row;
+}
 
 // クリックがカメラドラッグ側へ伝播しないよう止める。全ウィジェットの対話要素がこれを呼ぶ。
 export function stopDragPropagation(el: HTMLElement): void {
