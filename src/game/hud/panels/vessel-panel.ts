@@ -225,7 +225,7 @@ export class VesselPanel {
 
     // 微調整・姿勢追従・進行方向ホールドの状態語。
     this.syncState('fine', target.fineAttitude, 'near');
-    const cameraFollowsAttitude = game.cameraSystem.combatCamera.rotationFollow?.kind === 'attitude';
+    const cameraFollowsAttitude = game.cameraSystem.combatCamera.followingAttitude;
     this.syncState('camfollow', cameraFollowsAttitude, 'signal');
     this.followButton?.setOn(cameraFollowsAttitude);
     this.syncState('prohold', target.throttle.progradeHold, 'near');

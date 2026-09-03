@@ -38,13 +38,11 @@ function rotateByScreenDrag(
 export class CameraOrientation {
   private euler: PolarEuler;
 
-  // rotation は追従中なら対象姿勢からの相対値。attitude が null の間は絶対値のまま扱い、
-  // 初めて姿勢が引けたときに相対値へ読み替える(ロード直後がこの状態)。
+  // rotation は attitude を持つあいだ対象姿勢からの相対値、持たなければ絶対値。
   public constructor(
     private rotation: Quat,
     polar: Vec3,
     private mode: CameraRotationMode,
-    private following: boolean,
     private attitude: Quat | null,
   ) {
     this.euler = eulerFromRotation(rotation, polar);
@@ -55,20 +53,15 @@ export class CameraOrientation {
 
   public get rotationMode(): CameraRotationMode { return this.mode; }
 
-  public get followingAttitude(): boolean { return this.following; }
-
-  // 入力をオイラー角として積むか。姿勢追従中は極軸が座標系の幾何で定まらないので積まない。
-  public get usesEuler(): boolean { return this.mode === 'euler' && !this.following; }
-
   // 姿勢追従を掛けた、描画・入力に使う実効回転。
   public effective(): Quat {
-    return this.following && this.attitude !== null ? qMul(this.attitude, this.rotation) : this.rotation;
+    return this.attitude !== null ? qMul(this.attitude, this.rotation) : this.rotation;
   }
 
   // 実効回転から生の値へ書き戻す(追従中は相対値へ読み替える)。オイラー角は揃えない —
   // 極軸はカメラが動いた後の位置で決まるので、揃えるのは rebase() の役目。
   public store(effective: Quat): void {
-    this.rotation = this.following && this.attitude !== null
+    this.rotation = this.attitude !== null
       ? qNormalize(qMul(qInvert(this.attitude), effective)) : qNormalize(effective);
   }
 
@@ -120,30 +113,26 @@ export class CameraOrientation {
   public beginAttitudeFollow(attitude: Quat, polar: Vec3): void {
     this.rotation = qNormalize(qMul(qInvert(attitude), this.rotation));
     this.attitude = attitude;
-    this.following = true;
     this.euler = eulerFromRotation(this.rotation, polar);
   }
 
   // 姿勢追従を解き、生の値を絶対の向きへ読み替える(掛かっていなければ何もしない)。
   public endAttitudeFollow(polar: Vec3): void {
-    if (!this.following) return;
-    if (this.attitude !== null) this.rotation = qNormalize(qMul(this.attitude, this.rotation));
-    this.following = false;
+    if (this.attitude === null) return;
+    this.rotation = qNormalize(qMul(this.attitude, this.rotation));
     this.attitude = null;
     this.euler = eulerFromRotation(this.rotation, polar);
   }
 
-  // 追従の選択だけを差し替える(向きは読み替えない)。初期状態へ戻すときに使い、
-  // 追従中に追従へ戻す場合だけ基準の姿勢を持ち越す。
-  public restoreFollow(following: boolean): void {
-    this.attitude = following && this.following ? this.attitude : null;
-    this.following = following;
+  // 姿勢の基準を捨てる(生の値は読み替えない)。向きをこの後まるごと置き直すときに使う。
+  public clearAttitude(): void {
+    this.attitude = null;
   }
 
-  // 合成に使う姿勢を最新へ。解決できないフレームは直前の姿勢を保つ(視点が跳ねない)。
+  // 合成に使う姿勢を最新へ。attitude が null なら、生の値が絶対の向きなので相対値へ読み替える
+  // (ロード直後がこの状態)。解決できないフレームは直前の姿勢を保つ(視点が跳ねない)。
   public refreshAttitude(attitude: Quat | null): void {
-    if (!this.following || attitude === null) return;
-    // 絶対値で持っていた向き(ロード直後)を、初めて引けた姿勢からの相対値へ読み替える。
+    if (attitude === null) return;
     if (this.attitude === null) this.rotation = qNormalize(qMul(qInvert(attitude), this.rotation));
     this.attitude = attitude;
   }

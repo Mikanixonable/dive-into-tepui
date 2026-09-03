@@ -19,7 +19,7 @@ function sameOrientation(a: Quat, b: Quat, tol = 1e-8): boolean {
 
 function orientation(mode: 'euler' | 'quaternion' = 'euler'): CameraOrientation {
   const q = rotationFromEuler({ yaw: 0.6, pitch: 0.3, roll: -0.2 }, POLAR);
-  return new CameraOrientation(q, POLAR, mode, false, null);
+  return new CameraOrientation(q, POLAR, mode, null);
 }
 
 // 微小ドラッグに対するカメラ方向の変位を、画面の右軸・上軸の成分で返す。
@@ -67,10 +67,10 @@ export function register(): void {
     const before = o.effective();
     const attitude = qFromAxisAngle(norm(v3(1, 2, 3)), 0.9);
     o.beginAttitudeFollow(attitude, POLAR);
-    assert.equal(o.followingAttitude, true);
+    assert.ok(!sameOrientation(o.stored, o.effective()), '追従中の生の値が相対値になっていない');
     assert.ok(sameOrientation(o.effective(), before), '追従開始で跳んだ');
     o.endAttitudeFollow(POLAR);
-    assert.equal(o.followingAttitude, false);
+    assert.ok(sameOrientation(o.stored, o.effective()), '解除後の生の値が絶対値に戻っていない');
     assert.ok(sameOrientation(o.effective(), before), '追従解除で跳んだ');
   });
 
@@ -103,21 +103,16 @@ export function register(): void {
     assert.ok(sameOrientation(o.effective(), target));
   });
 
-  test('camera-orientation: 追従へ戻すとき、追従していなければ基準の姿勢を持ち越さない', () => {
+  // 追従の選択は保たれているのに姿勢がまだ引けていない状態(ロード直後)を、姿勢を持たない
+  // まま生の値を絶対値として扱うことで表す。ここで視点が跳ぶとセーブ→リロードで一度だけ飛ぶ。
+  test('camera-orientation: 姿勢が引けるまでは生の値がそのまま実効回転になる', () => {
     const o = orientation();
-    o.beginAttitudeFollow(qFromAxisAngle(v3(0, 1, 0), 1.0), POLAR);
-    o.endAttitudeFollow(POLAR);
+    o.clearAttitude();
     const absolute = o.effective();
-    // 追従していない状態から追従へ戻すと、姿勢は次の refreshAttitude まで掛からない。
-    o.restoreFollow(true);
-    assert.ok(sameOrientation(o.effective(), absolute));
-  });
-
-  test('camera-orientation: 姿勢追従中はオイラー経路を使わない', () => {
-    const o = orientation('euler');
-    assert.equal(o.usesEuler, true);
-    o.beginAttitudeFollow(qFromAxisAngle(v3(0, 1, 0), 1.0), POLAR);
-    assert.equal(o.usesEuler, false);
+    assert.ok(sameOrientation(absolute, o.stored), '姿勢が無いのに合成が掛かっている');
+    // 初めて姿勢が引けた瞬間に生の値を相対値へ読み替えるので、実効回転は変わらない。
+    o.refreshAttitude(qFromAxisAngle(v3(0, 1, 0), 1.0));
+    assert.ok(sameOrientation(o.effective(), absolute), '姿勢の初回解決で跳んだ');
   });
 
   test('camera-orientation: オイラー入力の往復は元の向きへ戻る', () => {
@@ -176,8 +171,8 @@ export function register(): void {
       for (const roll of [0, Math.PI / 4, Math.PI / 2, Math.PI]) {
         for (const [dragX, dragY] of [[1, 0], [0, 1], [1, 1], [-2, 1]]) {
           const q = rotationFromEuler({ yaw: 0.6, pitch, roll }, POLAR);
-          const byEuler = dragResponse(new CameraOrientation(q, POLAR, 'euler', false, null), dragX, dragY, true);
-          const byQuat = dragResponse(new CameraOrientation(q, POLAR, 'quaternion', false, null), dragX, dragY, false);
+          const byEuler = dragResponse(new CameraOrientation(q, POLAR, 'euler', null), dragX, dragY, true);
+          const byQuat = dragResponse(new CameraOrientation(q, POLAR, 'quaternion', null), dragX, dragY, false);
           assert.ok(sameDirection(byEuler, byQuat),
             `pitch=${pitch} roll=${roll} drag=(${dragX},${dragY}) euler=${byEuler} quaternion=${byQuat}`);
         }
