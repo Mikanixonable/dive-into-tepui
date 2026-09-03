@@ -88,32 +88,6 @@
 
 ## 手順
 
-### 手順7. 選択の正本を1つにして `PlanPanel` へ渡す
-
-**目的.** いま `PlanPanel.sync` は「行ごとの `selected`」と「`hasSelection`」という、同じ1つの
-事実の別表現を2つ受け取っていて、呼び出し側が両者の整合を保っている。選択中の index を1つだけ
-渡し、行ごとの印とパネルの開閉は `PlanPanel` が導く。**表示は変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `plan-panel.ts:22-26` | `PlanPanelNodeRow` から `selected` を落とし、`tRel` / `dvMag` だけにする |
-| `plan-panel.ts:68-83` | `planPanelHtml` が `selectedIdx: number \| null` を受け、行の `▸` を `i === selectedIdx` で決める |
-| `plan-panel.ts:171-191` | `public sync(nodes: readonly PlanPanelNodeRow[], selectedIdx: number \| null, selEl: OrbitalElements \| null, localDv: Vec3 \| null, nodeSecondsFromNow: number \| null, warnAtmosphere: boolean): void` へ変え、`hasSelection` を `selectedIdx !== null` から導く |
-| `plan-editor.ts:551-556,582-584` | 行の組み立てから `selected` を外し、`sync` へ `this.selectedNodeIdx` を渡す |
-
-**達成条件と検証**
-
-- `grep -rn "hasSelection" src/game/plan/` が 0件。
-- `grep -n "selected" src/game/plan/plan-editor.ts` が `selectedNode` / `selectedNodeIdx` の
-  参照だけになる。
-- `npm run typecheck` が通る。
-- `npm run dev` でノードを2つ以上置き、選択を切り替えるたびにパネルの `▸` が移り、選択を外すと
-  パネル全体が消えることを目で見る。
-
----
-
 ### 手順8. 大気圏警告を、天体 id ではなく近点での大気密度で判定する
 
 **目的.** 中心天体の id が `earth` かどうかで大気の有無を決めている箇所を、その天体の大気への

@@ -522,11 +522,7 @@ export class PlanEditor {
   private syncPanel(ship: Controllable): void {
     const plan = ship.plan;
     const arriving = this.path.arrivalStates();
-    const nodes = plan.nodes.map((n, i) => ({
-      tRel: n.t - this.simTime,
-      dvMag: len(this.nodeDv(i, arriving)),
-      selected: i === this.selectedNodeIdx,
-    }));
+    const nodes = plan.nodes.map((n, i) => ({ tRel: n.t - this.simTime, dvMag: len(this.nodeDv(i, arriving)) }));
     const idx = this.selectedNodeIdx;
     const node = idx === null ? null : plan.nodes[idx];
     const localDv = idx === null ? null : this.nodeDvLocal(idx, arriving);
@@ -539,9 +535,7 @@ export class PlanEditor {
       center = strongestAttractor(node.r, this.celestialSystem.celestialMotions, node.t);
       selEl = orbitalElementsOf(node, center, node.t);
     }
-    this.panel.sync(
-      nodes, selEl, localDv, nodeSecondsFromNow, center !== null && center.id === 'earth', idx !== null,
-    );
+    this.panel.sync(nodes, idx, selEl, localDv, nodeSecondsFromNow, center !== null && center.id === 'earth');
   }
 
   // 計画パネルを非表示にする。
