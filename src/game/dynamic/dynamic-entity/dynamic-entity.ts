@@ -101,6 +101,9 @@ export class DynamicEntity {
   alive = true;
   // 同時に存在してよい数のどの枠から取るか。null = 上限なし。
   readonly capKind: CapKind | null = null;
+  // 死亡しても顔ぶれに残り、所有者が明示的に取り除くまで破棄されないか。各所に散った参照の
+  // 掃除や次の個体への引き継ぎが要る種別が宣言する。
+  readonly reclaimedByOwner: boolean = false;
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。CelestialMotion.radius と同じ量
   collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか

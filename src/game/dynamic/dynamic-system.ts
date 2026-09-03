@@ -279,17 +279,22 @@ export class DynamicSystem {
     atmosphereBodies: readonly CelestialMotion[],
   ): void {
     this.processPendingEnemySpawns();
-    for (const e of this.entities) e.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
+    // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
+    // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
+    for (let i = 0, n = this.entities.length; i < n; i++) {
+      this.entities[i]!.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
+    }
     this.enforceCaps();
     this.prune();
   }
 
-  // 死亡した個体を破棄して取り除く。生存分は追加順のまま前へ詰める。
+  // 死亡した個体を破棄して取り除く。生存分は追加順のまま前へ詰める。所有者が回収する種別は
+  // 死亡していても残す。
   private prune(): void {
     let w = 0;
     let changed = false;
     for (const x of this.entities) {
-      if (!x.alive) {
+      if (!x.alive && !x.reclaimedByOwner) {
         x.dispose();
         changed = true;
       }
