@@ -5,7 +5,7 @@ import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
-import { randomQuat } from '../../physics/attitude';
+import { randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../math/random';
 import { add, v3, Vec3 } from '../../math/vec3';

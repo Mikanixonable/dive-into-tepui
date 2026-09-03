@@ -3,7 +3,8 @@
 // 許容誤差は数値誤差起因の小さい値として設定する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { ATT_MAX_DYNAMIC_STEPS, Attitude, attitudeAlignError, attitudeAlignTorque, qFromAxisAngle, stepAttitude } from '../../src/physics/attitude';
+import { ATT_MAX_DYNAMIC_STEPS, Attitude, attitudeAlignError, attitudeAlignTorque, stepAttitude } from '../../src/physics/attitude';
+import { qFromAxisAngle } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
 
 function kineticEnergy(att: Attitude): number {

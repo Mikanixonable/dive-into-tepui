@@ -16,7 +16,7 @@ export class StarEntity extends CelestialEntity {
   // 模式図で恒星の代わりに出す、実位置・実半径の輪郭円。球のシルエットなので毎フレーム
   // カメラへ正対させる。
   private readonly outline: OutlineCircle = createOutlineCircle();
-  // 広範囲視点での実球体半径 [m]。
+  // マップビューでの実球体半径 [m]。
   private readonly radius: number;
 
   // color は恒星面と恒星光の色、radiantIntensity は距離の二乗で割ると放射照度になる量。
@@ -69,7 +69,7 @@ export class StarEntity extends CelestialEntity {
     this.outline.line.visible = false;
     // マップビューでは実球体だけを使う。**点像を置く星殻がカメラの近平面より手前にあるとは
     // 限らない** — 引いたマップビューでは近平面が星殻より遠く、置いても写らない。
-    if (cameraSystem.overviewMode) {
+    if (cameraSystem.view === 'map') {
       this.star.syncSphere(p, this.radius);
       return;
     }

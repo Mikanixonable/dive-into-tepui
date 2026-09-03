@@ -295,7 +295,8 @@ export interface SlotExport {
   snapshots: Record<string, GameSaveData>;
 }
 
-export interface ChaseCameraSaveData {
+// chase にこの形が入っている保存データは読み捨て、戦闘視点を既定で組む。
+export interface ChaseSaveDataV1 {
   rot: QuatSaveData;
   dist: number;
   pan: Vec3SaveData;
@@ -308,22 +309,26 @@ export interface FrameRotationSourceSaveData {
   id: string;
 }
 
-// MapCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
+// カメラの回転追従の保存形。'attitude' はフォーカス機体の姿勢追従(対象は id でなく
+// フォーカスから決まる)。
+export type CameraRotationFollowSaveData = FrameRotationSourceSaveData | { kind: 'attitude' };
+
+// FocusCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
 // (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は
 // 旧セーブでは文字列(公転対象の id)または null だったので、読み込み側がその形も受け付ける。
 type FocusTargetSaveData =
   | { kind: 'object'; id: string }
   | { kind: 'point'; center: string; rotatingWith: FrameRotationSourceSaveData | string | null; point: Vec3SaveData };
 
-export interface MapCameraSaveData {
+export interface FocusCameraSaveData {
   offset: Vec3SaveData;
   pan: Vec3SaveData;
   up: Vec3SaveData;
-  rotatingWith: FrameRotationSourceSaveData | string | null;
+  rotatingWith: CameraRotationFollowSaveData | string | null;
   focus: FocusTargetSaveData;
   // 旧セーブデータには無い。無ければ既定のオイラー操作。
   rotationMode?: 'quaternion' | 'euler';
-  // 旧セーブデータには無い。無ければ既定の広範囲視点 FOV。
+  // 省略されている保存データでは既定の FOV を使う。
   fovDeg?: number;
   // 旧セーブデータには無い。無ければ赤道面。
   referencePlane?: 'ecliptic' | 'equator' | 'moonOrbit';
@@ -333,8 +338,10 @@ export interface MapCameraSaveData {
 
 export interface CameraSaveData {
   view: 'combat' | 'map';
-  chase: ChaseCameraSaveData;
-  overview: MapCameraSaveData;
+  // 戦闘ビューの視点。ChaseSaveDataV1 形なら読み捨てられる。
+  chase: FocusCameraSaveData | ChaseSaveDataV1;
+  // マップビューの視点。
+  overview: FocusCameraSaveData;
 }
 
 interface NavTargetSaveData {

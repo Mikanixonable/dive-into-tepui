@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { Quat } from '../../physics/attitude';
+import type { Quat } from '../../math/quat';
 import type { Vec3 } from '../../math/vec3';
 import type {
   ProteinAssetDefinition,

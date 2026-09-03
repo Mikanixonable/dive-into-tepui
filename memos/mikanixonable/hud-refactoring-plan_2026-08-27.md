@@ -733,7 +733,7 @@ grep で確認済み)
 | `src/game/hud/orbit/orbit-panel.ts` | 3 | |
 | `src/game/hud/windows/resource-transfer-dialog.ts` | 3 | |
 | `src/game/hud/panels/top-bar.ts` | 2 | |
-| `src/game/hud/panels/enemies-panel.ts`・`target-panel.ts` | 2 | `onSelectRight`(`game/map-context-actions.ts` が代入) |
+| `src/game/hud/panels/enemies-panel.ts`・`target-panel.ts` | 2 | `onSelectRight`(`game/object-windows.ts` が代入) |
 | `src/game/hud/frame/frame-controls.ts` | 1 | |
 
 **要判断 5 件**(grep 上は外部参照ゼロだが、同種クラス群の慣習と食い違う。実装時にユーザーへ問う):

@@ -461,12 +461,11 @@ export class DynamicSystem {
     for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
   }
 
-  // マップ表示中だけ、全基地の赤道交点マーカーを求め直す(戦闘ビューでは誰も読まない)。基地は
-  // 常設の軌道構造物で、接近・ドッキングは軌道面合わせそのものなので、選択の有無に関わらず出す。
+  // 全基地の赤道交点マーカーを求め直す。基地は常設の軌道構造物で、接近・ドッキングは
+  // 軌道面合わせそのものなので、選択の有無に関わらず出す。
   updateBaseEquatorNodes(
-    overviewMode: boolean, displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
+    displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
-    if (!overviewMode) return;
     const timeLabel = timeLabelSettingOf(displayWindow);
     for (const base of this.bases) {
       if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
@@ -476,9 +475,8 @@ export class DynamicSystem {
   // このフレームに求まった赤道交点マーカーを置く。求め直されなかったものは自動的に隠れる。
   syncEquatorNodes(cameraSystem: CameraSystem): void {
     const project = cameraSystem.activeCameraProjection;
-    const overviewMode = cameraSystem.overviewMode;
     const cameraPos = cameraSystem.activeCameraPos;
-    for (const e of this.all()) e.equatorNodes?.sync(project, overviewMode, cameraPos);
+    for (const e of this.all()) e.equatorNodes?.sync(project, cameraPos);
   }
 
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・

@@ -34,9 +34,9 @@ export const HUD_BADGE_STYLE = `
 }
 #hud-viewbadge .vb-title { color: var(--color-primary); }
 #hud-viewbadge .vb-mode { color: var(--text-dim); }
-#hud-viewbadge .vb-context { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
-#hud-viewbadge .vb-context-k { color: var(--text-dim); }
-#hud-viewbadge .vb-context-v { color: var(--text); max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
+#hud-viewbadge .vb-field { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
+#hud-viewbadge .vb-field > span:first-child { color: var(--text-dim); }
+#hud-viewbadge .vb-field > span:last-child { color: var(--text); max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
 #hud-viewbadge .vb-sep { color: var(--edge); }
 #hud-viewbadge span.vb-view-btn {
   background: var(--surface-2);
