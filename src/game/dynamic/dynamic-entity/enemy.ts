@@ -321,15 +321,18 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     activeStage.recordEnemyDeath(this, this.state.t, 'burnup');
   }
 
-  // 行動関数(同一集団の同時攻撃数カウント・弾追加は entities を使う)。
-  public behave(simTime: number, player: Player, entities: DynamicSystem, simSpeed: SimSpeedManager, celestialSystem: CelestialSystem): void {
+  // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、entities は弾の追加先。
+  public behave(
+    simTime: number, player: Player, entities: DynamicSystem, enemies: readonly Enemy[],
+    simSpeed: SimSpeedManager, celestialSystem: CelestialSystem,
+  ): void {
     // 射撃間隔は simulation time で測る。wall dt を混ぜると、同じゲーム内時間でも
     // warp 段によって弾数が変わる。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
     this.lastBehaviorSim = simTime;
     if (!simSpeed.canShipAct) return;
     if (!this.fireEnabled) return;
-    if (!this.canFire(entities.enemies)) {
+    if (!this.canFire(enemies)) {
       this.burstLeft = undefined;
       this.burstDelay = undefined;
       return;
@@ -353,7 +356,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     this.lastFireSim = simTime;
 
     // 新規バーストを始めるかどうかを抽選する
-    const countInGroup = this.attackingCountInGroup(entities.enemies);
+    const countInGroup = this.attackingCountInGroup(enemies);
     if (countInGroup >= ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= ENEMY_ATTACK_CHANCE) return;
     const counts = ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
@@ -406,7 +409,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     );
     this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
 
-    entities.addBullet(pb);
+    entities.add(pb);
   }
 
   // セーブデータへ変換する。具象は super.serialize() へ自分の項目を足して override する。
