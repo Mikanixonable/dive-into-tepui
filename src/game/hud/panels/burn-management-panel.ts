@@ -1,6 +1,6 @@
 // ブースターの段構成・燃焼状態を表示する常設パネル。ゲーム側で作った表示用の
 // スナップショットを sync し、操作は setHandlers で注入されたコールバックへ渡す。
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { Button } from '../widgets';
 
 /** 燃焼管理パネルへ渡す、ゲーム状態から分離された表示モデル。 */

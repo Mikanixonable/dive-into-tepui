@@ -1,7 +1,7 @@
 // [H] で開閉する操作説明パネル。操作項目・キーボード配列のデータは help-content.ts を参照し、
 // 検索・フィルタ・選択ハイライトの状態遷移と DOM 描画を担当する。
-import type { Input } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import type { Input } from '../../../input/input';
+import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import {
   ARROW_KEYS, AUXILIARY_KEYS, BEHAVIOR_LABELS, HELP_CATEGORIES, helpEntries, INPUT_LABELS, KEYBOARD_ROWS,

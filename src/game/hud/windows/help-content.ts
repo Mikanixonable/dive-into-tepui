@@ -1,7 +1,7 @@
 // 操作説明として何が存在するかのデータを持つ — カテゴリ・個々の操作定義
 // (helpEntries)・キーボード配列図・状態ラベルの一覧と、それらに対する
 // 検索・フィルタ判定の純関数。
-import { KEY_MAPPING as K, type KeyBinding } from '../../input/key-mapping';
+import { KEY_MAPPING as K, type KeyBinding } from '../../../input/key-mapping';
 import { MAX_PHYS_SIM_SPEED } from '../../dynamic/sim-speed-manager';
 import { THROTTLE_LABELS } from '../../player/player-throttle';
 import { MAG_ROUNDS } from '../../player/player-fire';

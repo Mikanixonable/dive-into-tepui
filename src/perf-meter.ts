@@ -9,8 +9,8 @@ import { fmtDuration } from './game/hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from './frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from './gpu-timings';
 import type { OverlayManager } from './game/hud/overlay-manager';
-import type { Input } from './game/input/input';
-import { KEY_MAPPING as K } from './game/input/key-mapping';
+import type { Input } from './input/input';
+import { KEY_MAPPING as K } from './input/key-mapping';
 import { ProteinMotionMetricsRecorder, PROTEIN_MOTION_LODS, type ProteinMotionFrameSample } from './protein-motion-metrics';
 
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。

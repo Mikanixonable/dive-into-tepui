@@ -11,7 +11,7 @@ import { BurnManagementPanel } from './panels/burn-management-panel';
 import { TopBar } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
-import type { Input } from '../input/input';
+import type { Input } from '../../input/input';
 import type { Game } from '../game';
 import type { OverlayLayers } from './overlay-layer';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from './overlay-manager';

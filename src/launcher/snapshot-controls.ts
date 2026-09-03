@@ -1,6 +1,6 @@
 import { Game } from '../game/game';
-import type { Input } from '../game/input/input';
-import { KEY_MAPPING as K } from '../game/input/key-mapping';
+import type { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { Hud } from '../game/hud/hud';
 import { PauseMenu } from '../game/hud/windows';
 import { SaveBrowser } from './save-browser/save-browser';

@@ -21,7 +21,7 @@ import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
 import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
-import type { Input } from '../input/input';
+import type { Input } from '../../input/input';
 import type { CombatTarget } from '../targeter';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
