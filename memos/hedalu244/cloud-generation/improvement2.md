@@ -118,23 +118,6 @@ compare のように本番ビルド(2.5 分)を挟まない。
 
 ## 手順
 
-### 手順 6. ノイズの段を表で持つ
-
-**目的。** 段を [周波数, 振幅] の表にし、段ごとの波長と振幅を個別に置けるようにする。**この時点で挙動は
-変えない** — 表はいまの等比列(振幅 1, 0.65, 0.4225, 0.2746)を写す。
-
-**変更が必要な箇所。**
-
-| ファイル | 何をするか |
-|---|---|
-| `src/render/cloud/circulating-noise.ts` L12-15・L29-38・L51-64・L74-89 | `OCTAVE_PERSISTENCE` を消す。構築は `(circulation, octaves: readonly NoiseOctave[], texelAngle, shape)`、`NoiseOctave = { readonly frequency: number; readonly amplitude: number }`(frequency は 1 rad あたりの山の数、いままでと同じ)。段ごとのフェード `clamp(log2(OCTAVE_FADE_START / (texelAngle × frequency)) + 1, 0, 1)` を TS 側で段の数だけ展開し、`If(weight > 0)` の中で評価する(`Loop` と `partialFrequency` `partialAmplitude` `fullOctaves` は消える)。正規化は 1 / Σ amplitude。`coarsenessFor(projection, ...tables)` は表の最大周波数で判定 |
-| `src/render/cloud/weather-model.ts` L49-56 | `PRESSURE_NOISE` `HUMIDITY_NOISE` `CONVECTION_NOISE` `UPPER_HUMIDITY_NOISE` を表へ。周波数は 1.2 / 8, 16, 32, 64 / 80, 160 / 6, 12, 24, 48、振幅は等比列。コメントに波長 [km] を添える(800 km = 周波数 8) |
-| `src/render/cloud/convective-activity.ts` L17 | `INSTABILITY_NOISE` を表へ(6.4, 12.8) |
-
-**達成条件と検証。** `npm run typecheck`。`npm run cloud-lab:compare` の全表が手順 5 の結果と 3 LSB で一致
-する。cap 半径スライダー 1° → 90° で模様が跳ばない(段のフェードが連続)。
-`grep -n "OCTAVE_PERSISTENCE\|partialAmplitude\|fullOctaves" src/render/cloud` が 0 件。
-
 ### 手順 7. 低周波の段を足し、対流を二つの形で焼く
 
 **目的。** 湿度と上層湿度に 3000 km 級の段を足して大陸規模の濃淡(晴れ間)を作る。対流の源を smooth(粒)と
