@@ -60,12 +60,15 @@ const TYPHOON_EXCLUDE_DEG = 10;
 // 前線ビューの表示値が張る、圧縮の 1 を超えた分。tools/cloud-lab/views.ts の FRONT_SPAN と対。
 const FRONT_SPAN = 8;
 // 中緯度の低気圧の配置。時刻 0 の中心を CPU で引き直すためのもので、同時に持つ数、1 つの寿命 [s]、
-// 東進の速さ [m/s]、中心の緯度の範囲 [°]。src/render/cloud/cyclones.ts の同名の定数と対。
+// 東進の速さ [m/s]、中心の緯度の範囲 [°]、半球の中の順番から経度の枡へ進む歩幅、生まれる経度が枡の
+// 幅のうち揺れてよい割合。src/render/cloud/cyclones.ts の同名の定数と対。
 const LOW_COUNT = 10;
 const LOW_LIFETIME = 5 * 86400;
 const LOW_DRIFT = 12;
 const LOW_LATITUDE_MIN = 35;
 const LOW_LATITUDE_SPAN = 25;
+const LOW_SLOT_STRIDE = 2;
+const LOW_LONGITUDE_JITTER = 0.2;
 // 低気圧の周りで圧縮を読む範囲 [km]。背景はどの中心からも BACKGROUND_KM より遠い texel、環は最盛期
 // (深さの係数 ≥ RING_MATURITY)の中心から RING_INNER_KM..RING_OUTER_KM の texel。
 const BACKGROUND_KM = 2500;
@@ -545,11 +548,14 @@ function hash(n) {
 // 消える)、深さの係数 depth(最盛期で 1)。配置の式は src/render/cloud/cyclones.ts の
 // Cyclones.syncTime と対。
 function lowCentersAtZero() {
+  const slots = LOW_COUNT / 2;
+  const slotWidth = (2 * Math.PI) / slots;
   return Array.from({ length: LOW_COUNT }, (_, index) => {
     const life = index / LOW_COUNT;
     const hemisphere = index % 2 === 0 ? 1 : -1;
     const latitude = (hemisphere * (LOW_LATITUDE_MIN + hash(index) * LOW_LATITUDE_SPAN) * Math.PI) / 180;
-    const longitude = hash(index + 0.5) * 2 * Math.PI
+    const slot = ((Math.floor(index / 2) * LOW_SLOT_STRIDE) % slots) * slotWidth;
+    const longitude = slot + (hash(index + 0.5) - 0.5) * LOW_LONGITUDE_JITTER * slotWidth
       + (LOW_DRIFT / (EARTH_RADIUS_KM * 1e3 * Math.cos(latitude))) * life * LOW_LIFETIME;
     return { index, latitude, longitude, life, depth: Math.sin(Math.PI * life) };
   });
