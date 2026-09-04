@@ -4,9 +4,8 @@ import { markLitOpaque, markOverlay, markSunShadowCaster } from './pipeline/lit-
 import { INSTANCE_THERMAL_ATTRIBUTE, writeThermalState } from './thermal-emissive';
 import type { SunShadowExtent } from './pipeline/sun-shadow-casters';
 
-// three の InstanceNode は instanceMatrix の受け渡し方を InstancedMesh.count から決め、
-// その判断とバッファ長を最初の描画時に一度だけ確定する。よって count は容量に固定した
-// まま動かさず、未使用の枠はゼロ行列で潰して描画対象から外す。
+// three は instanceMatrix のバッファ長を最初の描画時に一度だけ確定する。よって count は
+// 容量に固定したまま動かさず、未使用の枠はゼロ行列で潰して描画対象から外す。
 const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 // capacity 体までを1本の InstancedMesh で描く。beginFrame → push(...) → endFrame の順に
@@ -43,6 +42,10 @@ export class InstancedPool {
     this.capacity = capacity;
     this.mesh = new THREE.InstancedMesh(geometry, material, this.capacity);
     this.mesh.renderOrder = renderOrder;
+    // 変換は storage バッファで渡す。既定の属性のままだと、three は容量ぶんの mat4 を
+    // uniform 配列として頂点シェーダへ焼き込むので、プールを1本足すたびに巨大な定数配列を
+    // 抱えたシェーダが1本増え、起動時のコンパイルがその本数ぶん伸びる。
+    this.mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(this.capacity, 16);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     if (perInstanceColor) {
       this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3);
