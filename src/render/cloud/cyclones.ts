@@ -28,6 +28,10 @@ const EYE_FRACTION = 0.4;
 const EYE_ANGLE_FULL = THREE.MathUtils.degToRad(12);
 const EYE_ANGLE_NONE = THREE.MathUtils.degToRad(16);
 
+// 金床(平らな天蓋)の広がりも谷自身の広がりに対する比で、目と同じく芯に貼り付く。台風
+// (広がり 220 km)で、中心濃密雲域の半径 250 km までがほぼ平らに残る比に取る。
+const ANVIL_FRACTION = 2.0;
+
 // 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、半径 [m]
 // (番号で最小から幅のあいだへ散らす)、中心の緯度の範囲 [rad]。寿命の中で深さは山形に変わり、
 // 次の寿命では別の経度に生まれる。
@@ -90,10 +94,20 @@ class Trough {
       .mul(this.depth).negate();
   }
 
-  // 単位方向 direction での目の濃さ 0..1(中心で最も濃く、外で 0)。気圧と違って裾を引かない
-  // ガウスで、谷の芯より内側にだけ効く。
+  // 単位方向 direction での目の濃さ 0..1(中心で最も濃く、外で 0)。
   public eyeAt(direction: Vec3Node): FloatNode {
-    const radius = this.radius * EYE_FRACTION;
+    return this.coreAt(direction, EYE_FRACTION);
+  }
+
+  // 単位方向 direction での金床の濃さ 0..1(中心で最も濃く、外で 0)。
+  public anvilAt(direction: Vec3Node): FloatNode {
+    return this.coreAt(direction, ANVIL_FRACTION);
+  }
+
+  // 芯に貼り付いた濃さ 0..1。fraction は谷の広がりに対する半径の比。気圧と違って裾を引かない
+  // ガウスなので、その半径より外へは効かない。目を持たない谷では全域で 0。
+  private coreAt(direction: Vec3Node, fraction: number): FloatNode {
+    const radius = this.radius * fraction;
     return exp(this.chordSquared(direction).mul(-((R_EARTH / radius) ** 2))).mul(this.eyeStrength);
   }
 }
@@ -144,5 +158,10 @@ export class Cyclones {
   // 単位方向 direction での目の濃さの合計 0..1。
   public eyeAt(direction: Vec3Node): FloatNode {
     return this.troughs.reduce<FloatNode>((sum, trough) => sum.add(trough.eyeAt(direction)), float(0));
+  }
+
+  // 単位方向 direction での金床の濃さの合計 0..1。
+  public anvilAt(direction: Vec3Node): FloatNode {
+    return this.troughs.reduce<FloatNode>((sum, trough) => sum.add(trough.anvilAt(direction)), float(0));
   }
 }

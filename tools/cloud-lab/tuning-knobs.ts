@@ -3,7 +3,8 @@
 // 追い込みが終わったら、この表ごと消して生成側を素の定数へ畳む。
 import {
   CLOUD_TOP_BIAS_KNOB, CLOUD_TOP_LIFT_KNOB, CLOUD_TOP_RELIEF_KNOB, CONVECTION_GAIN_KNOB,
-  COVERAGE_WIDTH_KNOB, COVERAGE_ONSET_KNOB, TRANSLUCENT_GAIN_KNOB, TRANSLUCENT_ONSET_KNOB,
+  COVERAGE_ONSET_KNOB, COVERAGE_WIDTH_KNOB, TOWER_ONSET_KNOB, TOWER_WIDTH_KNOB,
+  TRANSLUCENT_GAIN_KNOB, TRANSLUCENT_ONSET_KNOB,
 } from '../../src/render/cloud/condensation';
 import {
   CONVECTION_NOISE_AMPLITUDE_KNOB, HUMIDITY_BASE_KNOB, LIFT_HUMIDITY_KNOB, MEAN_CLOUDINESS_WEIGHT_KNOB,
@@ -37,6 +38,10 @@ export const CLOUD_TUNING_KNOBS: readonly CloudTuningKnob[] = [
     min: 0, max: 20, step: 0.1, value: CLOUD_TOP_RELIEF_KNOB },
   { id: 'cloudTopBias', row: 'condense', label: '雲頂 底',
     min: -5, max: 10, step: 0.1, value: CLOUD_TOP_BIAS_KNOB },
+  { id: 'towerOnset', row: 'condense', label: '塔の縁',
+    min: 0, max: 0.4, step: 0.005, value: TOWER_ONSET_KNOB },
+  { id: 'towerWidth', row: 'condense', label: '塔の幅',
+    min: 0.005, max: 0.3, step: 0.005, value: TOWER_WIDTH_KNOB },
   { id: 'translucentOnset', row: 'condense', label: '薄雲 しきい',
     min: 0, max: 1, step: 0.005, value: TRANSLUCENT_ONSET_KNOB },
   { id: 'translucentGain', row: 'condense', label: '薄雲 利得',

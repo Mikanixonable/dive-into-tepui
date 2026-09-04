@@ -13,7 +13,7 @@ export type CloudLabViewId =
   | 'elevation' | 'meanCloudiness' | 'meanWind'
   | 'pressure' | 'wind' | 'lift'
   | 'humiditySource' | 'upperHumiditySource' | 'convectionSource'
-  | 'humidity' | 'upperHumidity' | 'convection' | 'convectiveActivity'
+  | 'humidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
   | 'coverage' | 'cloudTop' | 'translucent' | 'composite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
@@ -30,12 +30,14 @@ export type CloudLabView = {
 );
 
 // 表示値 0..1 へ写すときの目盛り。雲頂高度は 0..15000 m、薄い雲の光学的厚みは 0..1、気圧は
-// −70..+30 hPa、上昇流は ±0.1 m/s を、対流は ±0.5 をそれぞれ 0.5 中心に、風は ±45 m/s(台風の芯の
-// 風速まで飽和させない幅)を 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
+// −70..+30 hPa、上昇流は ±0.1 m/s を、対流は ±0.5 をそれぞれ 0.5 中心に、対流の峰(対流 × 活発度、
+// 塔が立つかどうかを決める量)は 0..0.3、風は ±45 m/s(台風の芯の風速まで飽和させない幅)を
+// 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
 // 被覆率・湿度・対流の活発度はそのまま出す。**風と平均風は同じ目盛りに乗せる** — 大循環が運ぶ分と、
 // 気圧から出る分の大きさを見比べるため。
 const CLOUD_TOP_SPAN = 15000;
 const CONVECTION_SPAN = 0.5;
+const CONVECTIVE_DEPTH_SPAN = 0.3;
 const TRANSLUCENT_SPAN = 1;
 const PRESSURE_MIN = -70;
 const PRESSURE_SPAN = 100;
@@ -75,6 +77,11 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     color: (d, model) => vec3(model.weatherAt(d).convection.div(2 * CONVECTION_SPAN).add(0.5)) },
   { id: 'convectiveActivity', label: '対流の活発度', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).convectiveActivity) },
+  { id: 'convectiveDepth', label: '対流の峰', reads: 'weather',
+    color: (d, model) => {
+      const weather = model.weatherAt(d);
+      return vec3(weather.convection.mul(weather.convectiveActivity).div(CONVECTIVE_DEPTH_SPAN));
+    } },
   { id: 'coverage', label: '被覆率', reads: 'cloud',
     color: (d, cloud) => vec3(cloud.at(d).coverage) },
   { id: 'cloudTop', label: '雲頂高度', reads: 'cloud',

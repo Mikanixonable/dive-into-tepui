@@ -2,7 +2,8 @@
 // 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
 // 見えのための調整値。
 import {
-  abs, clamp, cos, dot, exp, float, fract, inverseSqrt, max, mix, normalize, tanh, uniform, vec2, vec4,
+  abs, clamp, cos, dot, exp, float, fract, inverseSqrt, max, mix, normalize, smoothstep, tanh, uniform,
+  vec2, vec4,
 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -22,7 +23,7 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、風は東向き・北向きの成分 [m/s]、
 // 上昇流は [m/s](地形と気圧による、負なら下降)、湿度は 0..1(humidity が地表付近、
 // upperHumidity が上層)、対流は対流セルの強弱(0 中心の高周波)、対流の活発度はその強弱が
-// どれだけ強く現れるか 0..1。
+// どれだけ強く現れるか 0..1、金床は平らな天蓋の濃さ 0..1、圏界面はその緯度の対流の天井 [m]。
 export type WeatherSample = {
   readonly pressure: FloatNode;
   readonly wind: Vec2Node;
@@ -31,6 +32,8 @@ export type WeatherSample = {
   readonly upperHumidity: FloatNode;
   readonly convection: FloatNode;
   readonly convectiveActivity: FloatNode;
+  readonly anvil: FloatNode;
+  readonly tropopause: FloatNode;
 };
 
 // 風で流したあとの場。地表付近と上層の湿度は 0..1、対流は 0 中心の高周波。
@@ -77,6 +80,14 @@ export const TERRAIN_LIFT_GAIN_KNOB: FloatUniform = uniform(0.35);
 // [per m/s]。
 export const LIFT_HUMIDITY_KNOB: FloatUniform = uniform(1.2);
 export const UPPER_LIFT_HUMIDITY_KNOB: FloatUniform = uniform(0.7);
+
+// 圏界面の高さ [m] とその緯度依存。熱帯で 16〜17 km、極で 9 km 前後で、亜熱帯のジェットの下で
+// 段をなして下がる(NCAR ACOM「Cloud Tops and Tropopause」)。深い対流はここに当たって横へ広がる
+// ので、対流の天井そのものになる。
+const TROPOPAUSE_EQUATOR = 17000;
+const TROPOPAUSE_POLE = 9000;
+const TROPOPAUSE_STEP_START = THREE.MathUtils.degToRad(15);
+const TROPOPAUSE_STEP_END = THREE.MathUtils.degToRad(60);
 
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
 export const PRESSURE_BAND_AMPLITUDE_KNOB: FloatUniform = uniform(8);
@@ -231,6 +242,8 @@ export class WeatherModel {
       upperHumidity,
       convection: advected.convection,
       convectiveActivity: this.convectiveActivity.at(direction, lift),
+      anvil: this.cyclones.anvilAt(direction),
+      tropopause: tropopauseAt(latitude),
     };
   }
 
@@ -301,6 +314,12 @@ export class WeatherModel {
     this.convectionSource.dispose();
     this.convectiveActivity.dispose();
   }
+}
+
+// 緯度 [rad] における圏界面の高さ [m]。
+function tropopauseAt(latitude: FloatNode): FloatNode {
+  const drop = smoothstep(TROPOPAUSE_STEP_START, TROPOPAUSE_STEP_END, abs(latitude));
+  return drop.mul(TROPOPAUSE_POLE - TROPOPAUSE_EQUATOR).add(TROPOPAUSE_EQUATOR);
 }
 
 // 気圧の偏差 [hPa] が生む上昇流 [m/s]。低気圧で正、高気圧で負。
