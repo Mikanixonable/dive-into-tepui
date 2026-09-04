@@ -238,10 +238,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     return material;
   }
 
-  // G バッファのベース色の α に載っている金属度。物体の無い画素(深度が反転 Z の far)は 0。
+  // G バッファのベース色の α に載っている金属度。物体の無い画素は 0。
   private metalnessDebugNode(): FloatNode {
     const metalness = texture(this.gbuffer.basecolorTexture, screenUV).a;
-    return select(texture(this.gbuffer.depthTexture, screenUV).r.greaterThan(0), metalness, float(0));
+    return select(this.gbuffer.covered(), metalness, float(0));
   }
 
   // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。スロットは独立した
