@@ -30,6 +30,8 @@ const ACTIVITY_BASE = 0.5;
 // 活発度が半分ぶん上がる高さに取る。
 const COLD_ACTIVITY = 1.4;
 const ACTIVITY_MIN = 0.3;
+// 陸の上で上がる分。日射で温まる地面の上は不安定で、雲は板ではなく粒になる。
+const LAND_ACTIVITY = 0.3;
 
 export class ConvectiveActivity {
   private readonly instability: BakedField;
@@ -48,12 +50,12 @@ export class ConvectiveActivity {
     this.instability.render(renderer);
   }
 
-  // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)における
-  // 対流の活発度 0..1。
-  public at(direction: Vec3Node, lift: FloatNode, warmth: FloatNode): FloatNode {
+  // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)、陸らしさ land
+  // 0..1 における対流の活発度 0..1。
+  public at(direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode): FloatNode {
     return clamp(
       this.instability.at(direction).r.add(lift.mul(LIFT_ACTIVITY)).sub(warmth.mul(COLD_ACTIVITY))
-        .add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
+        .add(land.mul(LAND_ACTIVITY)).add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
   }
 
   // 保持している GPU 資源を解放する。
