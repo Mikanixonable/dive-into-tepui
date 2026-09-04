@@ -28,17 +28,17 @@ export const CONVECTION_GAIN_KNOB: FloatUniform = uniform(1.2);
 const CLOUD_BASE_HEIGHT = 1000;
 const LAYER_TOP_SPAN = 6000;
 // 層状の深さを 0..1 へ収めるロジスティックの、上昇流 [per m/s] と対流の重み、そして底。
-// 上昇流が頭打ち(0.06 m/s)の谷の芯で 5.8 km、並の低気圧(0.02 m/s)で 3.1 km、上昇流の無い所で
-// 2.0 km(低い積雲の多数派)。**対流の重みは、同じ cap の中で雲頂が 1〜7 km に散る幅に取る**
+// 上昇流が頭打ち(0.06 m/s)の谷の芯で 5.6 km、並の低気圧(0.02 m/s)で 2.9 km、上昇流の無い所で
+// 1.9 km(低い積雲の多数派)。**対流の重みは、同じ cap の中で雲頂が 1〜7 km に散る幅に取る**
 // — 上昇流だけでは低気圧の上が一様な台地になる。ロジスティックは上端でも下端でも傾きが 0 に
 // ならないので、被覆率が飽和した所でも対流の起伏が雲頂に残る。
 export const CLOUD_TOP_LIFT_KNOB: FloatUniform = uniform(50);
 export const CLOUD_TOP_RELIEF_KNOB: FloatUniform = uniform(27);
-export const CLOUD_TOP_BIAS_KNOB: FloatUniform = uniform(1.6);
+export const CLOUD_TOP_BIAS_KNOB: FloatUniform = uniform(1.85);
 // 塔が立つ対流の峰(対流 × 活発度)の縁。ここを超えた峰だけが圏界面まで持ち上がるので、塔の
 // 割合はこの 2 つと、下の湿りの門が決める。
-export const TOWER_ONSET_KNOB: FloatUniform = uniform(0.03);
-export const TOWER_WIDTH_KNOB: FloatUniform = uniform(0.04);
+export const TOWER_ONSET_KNOB: FloatUniform = uniform(0.027);
+export const TOWER_WIDTH_KNOB: FloatUniform = uniform(0.045);
 // 薄い雲は、上層の湿度がしきい値を超えた分に比例して光学的厚みが増える。上端で 0.72 に届く
 // — 巻雲は厚みが 1 に届かず、下地が透けたまま見える。
 export const TRANSLUCENT_ONSET_KNOB: FloatUniform = uniform(0.44);
