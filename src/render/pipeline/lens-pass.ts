@@ -53,15 +53,21 @@ type Stage = Filter & { readonly target: THREE.RenderTarget };
 
 // 色を作るシェーダを 1 枚のフィルタにする。色は総和 1 でなければならない。additive を立てると
 // 書き込み先へ加算で積む(条の軸ごとの鎖を 1 枚へまとめるため)。
+//
+// **透過はどのフィルタでも立てる。** 不透明なマテリアルには three がアルファを 1 へ固定する行を
+// 足すので、そこだけで本文が食い違って条の鎖が 2 本のシェーダへ割れる。書き込みは NoBlending で
+// 置き換えのままにするので、絵は変わらない(加算合成は透過を立てないと効かない)。
 function createFilter(colorOf: (sourceTexel: Vec2Uniform) => Vec3Node, additive = false): Filter {
   const sourceTexel: Vec2Uniform = uniform(new THREE.Vector2());
   const material = new THREE.MeshBasicNodeMaterial({
-    depthTest: false, depthWrite: false, transparent: additive,
+    depthTest: false, depthWrite: false, transparent: true,
   });
   if (additive) {
     material.blending = THREE.CustomBlending;
     material.blendSrc = THREE.OneFactor;
     material.blendDst = THREE.OneFactor;
+  } else {
+    material.blending = THREE.NoBlending;
   }
   material.colorNode = vec4(colorOf(sourceTexel), 1);
   return { quad: new QuadMesh(material), material, sourceTexel };
