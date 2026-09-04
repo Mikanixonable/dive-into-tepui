@@ -100,9 +100,8 @@ export class CumulusShell {
   // 殻の高度 [m]。場の雲頂高度 0..1 が張る高さでもある。
   public get topAltitude(): number { return CLOUD_TOP_SPAN; }
 
-  // 全段のメッシュを parent の下へ置き、場の画像の取得を始める。
+  // 全段のメッシュを parent の下へ置く。
   public addTo(parent: THREE.Object3D): void {
-    this.fieldMap.request();
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
@@ -123,8 +122,10 @@ export class CumulusShell {
   }
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。刻みを持たない配り方では
-  // 全段を隠す。
+  // 全段を隠す。場の画像の取得もここで始める — この殻を持つ天体が球として描かれるまで
+  // 取りに行かないため(刻みを持たない配り方でも、地表へ焼き込む雲が同じ場を読む)。
   public syncLod(apparentDiameterPx: number): void {
+    this.fieldMap.request();
     const level = this.sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
