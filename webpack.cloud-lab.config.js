@@ -32,8 +32,9 @@ module.exports = {
     filename: 'cloud-lab.[name].[contenthash].js',
     path: path.resolve(__dirname, '.cloud-lab'),
     // separated/ は cloud-lab:separate の生成物で、cloud-lab:compare が別のビルドをまたいで読む。
-    // compare/ と shots/ は前の実行の表と絵で、次の実行の比較の根拠になる。ビルドの掃除で消さない。
-    clean: { keep: /^(separated|compare|shots)[\\/]/ },
+    // compare/ と shots/ は前の実行の表と絵で、次の実行の比較の根拠になる。reference/ は
+    // cloud-lab:reference が取り込んだ台風の実写で、compare が比較の相手に読む。ビルドの掃除で消さない。
+    clean: { keep: /^(separated|compare|shots|reference)[\\/]/ },
   },
   optimization: {
     minimizer: [
