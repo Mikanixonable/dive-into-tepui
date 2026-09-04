@@ -24,7 +24,8 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、風は東向き・北向きの成分 [m/s]、
 // 上昇流は [m/s](地形と気圧による、負なら下降)、湿度は 0..1(humidity が地表付近、
-// upperHumidity が上層)、対流は対流セルの強弱(0 中心の高周波)、対流の活発度はその強弱が
+// upperHumidity が上層)、対流は対流セルの強弱(0 中心の高周波、x が粒・y が網目)、対流の活発度は
+// その強弱が
 // どれだけ強く現れるか 0..1、圧縮は気団の境目の押し縮まり(1 で何も起きていない)、暖気の流入は
 // 出身地からの緯度の差 [rad](負で寒気)、金床は平らな天蓋の濃さ 0..1、圏界面はその緯度の
 // 対流の天井 [m]。
@@ -34,7 +35,7 @@ export type WeatherSample = {
   readonly lift: FloatNode;
   readonly humidity: FloatNode;
   readonly upperHumidity: FloatNode;
-  readonly convection: FloatNode;
+  readonly convection: Vec2Node;
   readonly convectiveActivity: FloatNode;
   readonly compression: FloatNode;
   readonly warmth: FloatNode;
@@ -51,11 +52,11 @@ type PressureField = {
   readonly bend: FloatNode;
 };
 
-// 風で流したあとの場。地表付近と上層の湿度は 0..1、対流は 0 中心の高周波。
+// 風で流したあとの場。地表付近と上層の湿度は 0..1、対流は 0 中心の高周波(x が粒、y が網目)。
 type AdvectedFields = {
   readonly humidity: FloatNode;
   readonly upperHumidity: FloatNode;
-  readonly convection: FloatNode;
+  readonly convection: Vec2Node;
 };
 
 // ノイズの段の表。周波数は 1 rad あたりの山の数で、角波長 [km] は 6371 ÷ 周波数。
@@ -68,8 +69,11 @@ const PRESSURE_NOISE: readonly NoiseOctave[] = [
 // 対流(80 km と 40 km)が積雲の粒の細かさを決める。**対流が載るかどうかは写しの texel が
 // 決める** — 40 km/texel より粗い写しでは 2 段とも落ちて湿度だけの滑らかな塊になり、10 km/texel
 // まで寄れば 2 段とも乗る。上層はこれ以上段を減らせない — 薄い雲は光学的厚みが 1 に届かず下地が
-// 透けるので、細かい段が縁ではなく繊維の濃淡として直に見える。
+// 透けるので、細かい段が縁ではなく繊維の濃淡として直に見える。**どちらの表も先頭に気団・気候の
+// 規模(3000〜4000 km)の段を置く** — 晴れと曇りの境がこの規模でも移る。取り分は基準の段より
+// 小さく取る — 大きく取ると惑星規模の濃淡が実写の数倍になり、空が数個の巨大な塊に割れる。
 const HUMIDITY_NOISE: readonly NoiseOctave[] = [
+  { frequency: 2, amplitude: 0.5 }, // 3200 km
   { frequency: 8, amplitude: 1 }, // 800 km
   { frequency: 16, amplitude: 0.65 }, // 400 km
   { frequency: 32, amplitude: 0.4225 }, // 200 km
@@ -80,6 +84,7 @@ const CONVECTION_NOISE: readonly NoiseOctave[] = [
   { frequency: 160, amplitude: 0.65 }, // 40 km
 ];
 const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
+  { frequency: 1.5, amplitude: 0.5 }, // 4200 km
   { frequency: 6, amplitude: 1 }, // 1100 km
   { frequency: 12, amplitude: 0.65 }, // 530 km
   { frequency: 24, amplitude: 0.4225 }, // 270 km
@@ -205,13 +210,11 @@ export class WeatherModel {
     const convectionCoarseness = coarsenessFor(projection, CONVECTION_NOISE);
     const humidityTexel = texel.mul(humidityCoarseness);
     const convectionTexel = texel.mul(convectionCoarseness);
-    this.pressureNoise = new CirculatingNoise(this.circulation, PRESSURE_NOISE, texel, 'smooth');
-    this.humidityNoise = new CirculatingNoise(this.circulation, HUMIDITY_NOISE, humidityTexel, 'smooth');
-    // 積雲の粒は細胞の網目なので、対流だけ段の形を変える。
-    this.convectionNoise = new CirculatingNoise(
-      this.circulation, CONVECTION_NOISE, convectionTexel, 'cellular');
+    this.pressureNoise = new CirculatingNoise(this.circulation, PRESSURE_NOISE, texel);
+    this.humidityNoise = new CirculatingNoise(this.circulation, HUMIDITY_NOISE, humidityTexel);
+    this.convectionNoise = new CirculatingNoise(this.circulation, CONVECTION_NOISE, convectionTexel);
     this.upperHumidityNoise = new CirculatingNoise(
-      this.upperCirculation, UPPER_HUMIDITY_NOISE, humidityTexel, 'smooth');
+      this.upperCirculation, UPPER_HUMIDITY_NOISE, humidityTexel);
     // 気圧の写しだけは段ではなく、読む側の中心差分の刻み(GRADIENT_STEP)が細かさを決める。
     this.pressure = new BakedField(
       'pressure', THREE.RedFormat, projection, 1, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
@@ -219,8 +222,8 @@ export class WeatherModel {
       'humiditySource', THREE.RGFormat, projection, humidityCoarseness,
       (direction) => vec4(this.humiditySourceAt(direction), 0, 1));
     this.convectionSource = new BakedField(
-      'convectionSource', THREE.RedFormat, projection, convectionCoarseness,
-      (direction) => vec4(this.convectionSourceAt(direction), 0, 0, 1));
+      'convectionSource', THREE.RGFormat, projection, convectionCoarseness,
+      (direction) => vec4(this.convectionSourceAt(direction), 0, 1));
     this.convectiveActivity = new ConvectiveActivity(this.circulation, projection);
     this.airMass = new AirMass(projection, (direction) => this.traceWindAt(direction));
     this.syncTime(0);
@@ -368,9 +371,10 @@ export class WeatherModel {
     return vec2(mean.x.mul(cos(latitudeOf(direction))), mean.y).mul(BAND_RATE_TO_SPEED);
   }
 
-  // 移流前の対流の強弱(0 中心の高周波)。湿度と別の写しへ焼き、別の風で流す。
-  public convectionSourceAt(direction: Vec3Node): FloatNode {
-    return this.convectionNoise.at(direction).mul(CONVECTION_NOISE_AMPLITUDE);
+  // 移流前の対流の強弱(0 中心の高周波)。x が粒(細胞の芯)、y が網目(細胞の壁)で、**同じ
+  // 勾配ノイズから出るので 1 回の評価で両方が積める。** 湿度と別の写しへ焼き、別の風で流す。
+  public convectionSourceAt(direction: Vec3Node): Vec2Node {
+    return this.convectionNoise.pairAt(direction).mul(CONVECTION_NOISE_AMPLITUDE);
   }
 
   // 移流前の写しを風で流したもの。周期の半分ずれた 2 位相を三角波で混ぜるので、流れの変位が
@@ -400,8 +404,8 @@ export class WeatherModel {
         sourceAt(humidity, upperWind, stepB.mul(UPPER_ADVECTION)).y,
         sourceAt(humidity, upperWind, stepA.mul(UPPER_ADVECTION)).y, weightA),
       convection: mix(
-        sourceAt(convection, convectionWind, stepB.mul(convectionStep)).r,
-        sourceAt(convection, convectionWind, stepA.mul(convectionStep)).r, weightA),
+        sourceAt(convection, convectionWind, stepB.mul(convectionStep)).rg,
+        sourceAt(convection, convectionWind, stepA.mul(convectionStep)).rg, weightA),
     };
   }
 
