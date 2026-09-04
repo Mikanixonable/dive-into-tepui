@@ -2,7 +2,7 @@
 // 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
 // 見えのための調整値。
 import {
-  abs, clamp, cos, dot, exp, float, fract, inverseSqrt, max, mix, normalize, smoothstep, tanh, uniform,
+  abs, clamp, cos, dot, exp, float, fract, inverseSqrt, max, mix, normalize, sin, smoothstep, tanh, uniform,
   vec2, vec4,
 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
@@ -84,6 +84,18 @@ const PRESSURE_LIFT_SCALE = 20;
 // 上昇流の頭打ち [m/s]。急な斜面へ強い風が当たる所と深い谷の芯では上昇流が並の何倍にもなり、
 // 線形のままだと湿度が 0/1 で切れて硬い縁の白い塊になる。漸近させて、並の上昇流はほぼ素通しにする。
 const LIFT_LIMIT = 0.06;
+// 前線の上昇流。気団の圧縮がこの効き始めを超えた分に比例して立つ [m/s /単位]。効き始めは、
+// 総観規模の擾乱が背景として持つ圧縮(中緯度の中央値 1.0〜1.3、90 パーセンタイル 1.5〜2.5)
+// より上に取る — ここを下げると気団の境目ではなく空の半分が前線になる。利得は、締まった
+// 気団の境目(圧縮 6)で並の低気圧の芯ぶんの上昇流になる高さ。
+const FRONT_LIFT = 0.005;
+const FRONT_ONSET = 2.2;
+// 前線が立つ緯度の門。**前線と、その両側の気団の性質はどちらもこの門を通る** — 前線は温帯の
+// ものなので、熱帯では貿易風の収束が緯線に沿った圧縮の環を作り、台風の周りでは圧縮が発散して
+// 上昇流が飽和した円盤になる。気団の流入も、熱帯では貿易風がどこでも高緯度から吹き込むので、
+// 門が無いと熱帯全体が一律に乾く。
+const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
+const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
 // 風が斜面を駆け上がる分の利得。等倍だと、偏西風や貿易風が山脈へ当たり続けるだけで上昇流が
 // 頭打ちに達し、気候と無関係な地形の縞が年中貼り付く。慢性的な湿潤・乾燥は平年の雲量が持つので、
 // ここは低気圧が山へぶつかったときだけ効く高さへ落とす。
@@ -101,7 +113,8 @@ const TROPOPAUSE_POLE = 9000;
 const TROPOPAUSE_STEP_START = THREE.MathUtils.degToRad(15);
 const TROPOPAUSE_STEP_END = THREE.MathUtils.degToRad(60);
 
-// 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
+// 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。緯度の 6 倍の余弦なので、緯度に
+// ついての微分は sin(6 φ) × 6 × 振幅 [hPa/rad]。
 const PRESSURE_BAND_AMPLITUDE = 8;
 
 // 大循環の帯の角速度 [°/日] を、この天体の表面での速さ [m/s] へ直す係数。
@@ -136,12 +149,16 @@ const CONVECTION_WINDING = 2.5;
 // 薄い雲の穴を厚い雲の目よりひとまわり広く開けるため。
 const EYE_DRYNESS = 0.55;
 const UPPER_EYE_DRYNESS = 2;
+// 暖気の流入が地表付近の湿度へ効く利得 [per rad]。48 h の追跡で気団は最大 0.4 rad ぶんの緯度を
+// 越えてくるので、並の流入(0.35 rad)で伝達関数の幅の半分ほど動く高さに取る。**この項は
+// 平均が 0 ではない** — 暖気の流入する所のほうが広いので、底上げをそのぶん下げて釣り合わせる。
+const WARM_HUMIDITY = 0.45;
 // 湿度の底上げ(移流前の源が持つ、平年の雲量を抜きにした値)と、移流後に足す平年の雲量の重み。
 // 地表付近と上層で別に持つ。重みは、雲量の地理的な差が凝結のしきい値をまたぐ幅に取る — 小さく
 // 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
 // 平年の雲量図がそのまま貼り付く。底上げは、重みを変えても平年並みの土地の湿度が動かないように
 // 取る(平年の雲量の中央値ぶんを差し引く)。
-const HUMIDITY_BASE = 0.424;
+const HUMIDITY_BASE = 0.414;
 const MEAN_CLOUDINESS_WEIGHT = 0.17;
 const UPPER_HUMIDITY_BASE = 0.400;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.15;
@@ -232,10 +249,14 @@ export class WeatherModel {
       turn: wind.turn,
     };
 
-    // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分。
+    // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
     const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
+    const airMass = this.airMass.at(direction, latitude);
+    const extratropical = smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
+    const warmth = airMass.warmth.mul(extratropical);
     const terrainLift = dot(components(wind.velocity), this.climate.slope(direction)).mul(TERRAIN_LIFT_GAIN);
-    const lift = limitLift(terrainLift.add(liftFromPressure(pressure)));
+    const frontalLift = max(airMass.compression.sub(FRONT_ONSET), 0).mul(FRONT_LIFT).mul(extratropical);
+    const lift = limitLift(terrainLift.add(liftFromPressure(pressure)).add(frontalLift));
 
     // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足し、渦の目のぶんを引いたもの。
     // 後の 3 つは移流を通らないので、気候と地形と渦に貼り付いたまま歪まない。
@@ -244,12 +265,11 @@ export class WeatherModel {
     const eye = this.cyclones.eyeAt(direction);
     const humidity = clamp(
       advected.humidity.add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT)).add(lift.mul(LIFT_HUMIDITY))
-        .sub(eye.mul(EYE_DRYNESS)), 0, 1);
+        .add(warmth.mul(WARM_HUMIDITY)).sub(eye.mul(EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
       advected.upperHumidity.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
-    const airMass = this.airMass.at(direction, latitude);
     return {
       pressure,
       wind: components(wind.velocity),
@@ -257,9 +277,9 @@ export class WeatherModel {
       humidity,
       upperHumidity,
       convection: advected.convection,
-      convectiveActivity: this.convectiveActivity.at(direction, lift),
+      convectiveActivity: this.convectiveActivity.at(direction, lift, warmth),
       compression: airMass.compression,
-      warmth: airMass.warmth,
+      warmth,
       anvil: this.cyclones.anvilAt(direction),
       tropopause: tropopauseAt(latitude),
     };
@@ -277,6 +297,7 @@ export class WeatherModel {
     const pressureSouth = this.pressure.at(normalize(direction.sub(northStep))).r;
     const gradient = east.mul(pressureEast.sub(pressureWest)).add(north.mul(pressureNorth.sub(pressureSouth)))
       .div(2 * GRADIENT_STEP);
+    // 曲がりは等圧線に沿って測る — 勾配の向きに測ると、谷の深さそのものを曲がりとして拾う。
     const isobar = isobarAt(direction, gradient);
     const isobarStep = isobar.mul(BEND_STEP);
     const pressureAhead = this.pressure.at(normalize(direction.add(isobarStep))).r;
@@ -284,16 +305,21 @@ export class WeatherModel {
     return { pressure, gradient, isobar, bend: pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2) };
   }
 
-  // 気団を風上へ遡らせる風。地表の釣り合い風へ、地表の帯の平均風の**東向きの成分だけ**を足す。
-  // 東西の流れが緯度で変わる分が、渦の作った気団の境目を南西–北東へ傾ける。**南北の成分は足さない**
-  // — 帯の南北の風は経度に依らないので、収束する緯度(赤道・±60°)に緯線に沿った圧縮の環を作る。
-  // **移流の風にはどちらも足さない** — 2 位相移流へ入れると、位相 A と B が数百 km ずれた別の模様を
-  // 混ぜることになり、背景が全域でぼける。
+  // 気団を風上へ遡らせる風。**経度に依らない流れをすべて落とし、渦と総観規模の擾乱だけで遡る。**
+  // 気圧の勾配からは大循環の気圧帯を差し引き、帯の平均風は東向きの成分だけを足す — どちらも
+  // 南北の成分は経度に依らないので、残すと収束する緯度に緯線に沿った圧縮の環と、緯度で決まる
+  // 気団の流入の偏りができる。東西の流れが緯度で変わる分は残す。渦の作った気団の境目を
+  // 南西–北東へ傾けるのがそれで、経度に依らない流れでも圧縮は作らない。
+  // **移流の風には平均風を足さない** — 2 位相移流へ入れると、位相 A と B が数百 km ずれた別の
+  // 模様を混ぜることになり、背景が全域でぼける。
   private traceWindAt(direction: Vec3Node): BalancedWind {
     const east = eastAt(direction);
     const north = northAt(direction);
-    const { gradient, isobar, bend } = this.pressureFieldAt(direction, east, north);
-    const wind = balancedWind(gradient, isobar, bend, latitudeOf(direction), FRICTION_RATE);
+    const latitude = latitudeOf(direction);
+    const { gradient, bend } = this.pressureFieldAt(direction, east, north);
+    // 気圧帯は緯度だけの関数なので、その勾配は解析的に差し引ける。
+    const eddy = gradient.sub(north.mul(sin(latitude.mul(6)).mul(6 * PRESSURE_BAND_AMPLITUDE)));
+    const wind = balancedWind(eddy, isobarAt(direction, eddy), bend, latitude, FRICTION_RATE);
     return {
       velocity: wind.velocity.add(east.mul(this.meanWindAt(direction).x)),
       turn: wind.turn,
