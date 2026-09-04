@@ -11,19 +11,18 @@ import {
   createAnnulusRing,
   createRingLine,
   createTorusRing,
+  RingLineVisual,
+  RingMaterials,
   RingVisual,
-  RingVisualState,
 } from '../../../render/ring';
 import { ringPixelCoverage } from '../../../render/screen-lod';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
-import type { SunLight } from '../../../render/pipeline/sun-light';
-import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
 import { ScaleFn } from '../../camera/camera-system';
 
 type CoverageBand = {
   readonly widthMeters: number;
   readonly annulus: RingVisual;
-  readonly line: RingVisual;
+  readonly line: RingLineVisual;
 };
 
 export class RingView {
@@ -41,11 +40,10 @@ export class RingView {
     rings: RingSystemDef,
     private readonly bodyRadius: number,
     renderOrder: number,
-    sunOcclusion: SunOcclusion,
-    sunLight: SunLight,
+    materials: RingMaterials,
   ) {
     for (const band of rings.bands) {
-      this.buildBand(band, bodyRadius, renderOrder, sunOcclusion, sunLight);
+      this.buildBand(band, bodyRadius, renderOrder, materials);
     }
     // 模式図で出す輪郭円は帯ごとではなく環全体の最内・最外の2本だけとする。
     const innerRadius = Math.min(...rings.bands.map((band) => band.innerRadius)) / bodyRadius;
@@ -64,16 +62,16 @@ export class RingView {
   // 換算して渡す。厚みのある帯は拡散した雲なので扁平トーラス1つ。厚み0の帯は annulus と line
   // の両方を組んでおき、sync() が見かけ幅(1px判定)でどちらを見せるか毎フレーム選び直す。
   private buildBand(
-    band: RingBandDef, bodyRadius: number, renderOrder: number, sunOcclusion: SunOcclusion, sunLight: SunLight,
+    band: RingBandDef, bodyRadius: number, renderOrder: number, materials: RingMaterials,
   ): void {
     const inner = band.innerRadius / bodyRadius;
     const outer = band.outerRadius / bodyRadius;
     if (band.thickness > 0) {
-      this.addVisual(createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius, sunOcclusion, sunLight), renderOrder);
+      this.addVisual(createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius, materials), renderOrder);
       return;
     }
-    const annulus = createAnnulusRing(band.optics, inner, outer, sunOcclusion, sunLight, band.arcs);
-    const line = createRingLine(band.optics, (inner + outer) / 2, sunOcclusion, sunLight, band.arcs);
+    const annulus = createAnnulusRing(band.optics, inner, outer, materials, band.arcs);
+    const line = createRingLine(band.optics, (inner + outer) / 2, materials, band.arcs);
     this.addVisual(annulus, renderOrder);
     this.addVisual(line, renderOrder);
     this.coverageBands.push({ widthMeters: band.outerRadius - band.innerRadius, annulus, line });
@@ -110,15 +108,11 @@ export class RingView {
     for (const visual of this.visuals) visual.object.visible = !schematic;
     this.group.position.copy(pos);
     this.group.scale.setScalar(this.bodyRadius);
-    const ringAxis = axis === null
-      ? new THREE.Vector3(0, 1, 0)
-      : new THREE.Vector3(axis.x, axis.y, axis.z).normalize();
+    // 環軸は group の姿勢が運ぶ — 帯のグラフはモデル行列から引き直す。
     if (axis !== null) {
       const q = spinOrientation(axis, 0);
       if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     }
-    const state: RingVisualState = { ringAxis, coverage: 1 };
-    for (const visual of this.visuals) visual.sync(state);
     if (this.coverageBands.length === 0) return;
     const mpp = metersPerPixelAt(bodyPos);
     // 見かけの幅(px、1を超えてもクランプしない生の値)が1を割った帯だけ line へ切り替える。
@@ -126,8 +120,7 @@ export class RingView {
       const showAnnulus = band.widthMeters / mpp >= 1;
       band.annulus.object.visible = showAnnulus && !schematic;
       band.line.object.visible = !showAnnulus && !schematic;
-      band.annulus.sync({ ...state, coverage: 1 });
-      band.line.sync({ ...state, coverage: ringPixelCoverage(band.widthMeters, mpp) });
+      band.line.setCoverage(ringPixelCoverage(band.widthMeters, mpp));
     }
   }
 

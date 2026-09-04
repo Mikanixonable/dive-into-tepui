@@ -13,6 +13,7 @@ import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pi
 import { GraphicsSettings, type GraphicsSettingsData, type GraphicsTarget } from '../../src/render/graphics-settings';
 import { castsCumulusShadow } from '../../src/render/pipeline/sun-occlusion-select';
 import { atmosphereDraws } from '../../src/render/atmosphere';
+import { RingMaterials } from '../../src/render/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
 import { R_SUN } from '../../src/game/celestial/solar-system/constants';
@@ -121,6 +122,8 @@ export class LabView implements GraphicsTarget {
   private readonly caseCenterVector = new THREE.Vector3();
   private readonly scratchVector = new THREE.Vector3();
   private readonly forward = new THREE.Vector3();
+  // 全ケースの環の帯が共有するマテリアル。ゲーム本体の CelestialSystem と同じく 1 つだけ持つ。
+  private readonly ringMaterials: RingMaterials;
 
   // graphicsData はこのフレームを描くのに使う描画品質設定。正本は呼び出し側の GraphicsSettings で、
   // 押し出しを受けてここへ写す。
@@ -133,6 +136,7 @@ export class LabView implements GraphicsTarget {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
+    this.ringMaterials = new RingMaterials(pipeline.sunOcclusion, pipeline.sunLight);
   }
 
   // graphics は描画品質設定の正本。押し出し先としての bind は呼び出し側が行う。
@@ -177,7 +181,7 @@ export class LabView implements GraphicsTarget {
       this.current.star?.dispose();
       disposeCaseObjects(this.current);
     }
-    const built = CASES[name](this.style, this.pipeline.sunOcclusion, this.pipeline.sunLight);
+    const built = CASES[name](this.style, this.ringMaterials);
     this.scene.add(...built.objects);
     built.star?.addTo(this.scene);
     this.current = built;

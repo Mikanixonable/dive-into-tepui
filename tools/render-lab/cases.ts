@@ -14,10 +14,10 @@ import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physi
 import { BodyGraticule } from '../../src/render/body-graticule';
 import { EarthCoastline } from '../../src/render/earth-coastline';
 import { Curve } from '../../src/render/curve';
-import { createAnnulusRing } from '../../src/render/ring';
+import { createAnnulusRing, RingMaterials } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
 import { createStarSphere, type StarSphere } from '../../src/render/star-sphere';
-import { REFERENCE_STAR_RADIANT_INTENSITY, type SunLight } from '../../src/render/pipeline/sun-light';
+import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
 import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
@@ -25,7 +25,7 @@ import {
   attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
 } from '../../src/render/thermal-emissive';
 import {
-  sphereOccluder, type CumulusShadow, type Occluder, type RingBand, type SunOcclusion,
+  sphereOccluder, type CumulusShadow, type Occluder, type RingBand,
 } from '../../src/render/pipeline/sun-occlusion';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
@@ -195,22 +195,20 @@ const RING_RENDER_ORDER = 1;
 // 天体の中心から測ったメートルで受ける。
 function ringDisc(
   bands: readonly RingBandDef[], bodyRadius: number, center: THREE.Vector3, axis: THREE.Vector3,
-  sunOcclusion: SunOcclusion, sunLight: SunLight,
+  ringMaterials: RingMaterials,
 ): THREE.Object3D {
   const group = new THREE.Group();
   group.position.copy(center);
   group.scale.setScalar(bodyRadius);
   group.quaternion.setFromUnitVectors(RING_LOCAL_AXIS, axis);
   for (const band of bands) {
-    // 半径は「本体半径 = 1」の単位へ直して渡す。被覆率 1 は、帯が画面上 1px より広く写ること。
+    // 半径は「本体半径 = 1」の単位へ直して渡す。面の帯は常に画面上 1px より広く写る扱い。
     const visual = createAnnulusRing(
-      band.optics, band.innerRadius / bodyRadius, band.outerRadius / bodyRadius, sunOcclusion, sunLight,
+      band.optics, band.innerRadius / bodyRadius, band.outerRadius / bodyRadius, ringMaterials,
     );
-    visual.sync({ ringAxis: axis, coverage: 1 });
     visual.object.traverse((object) => {
       object.renderOrder = RING_RENDER_ORDER;
       object.userData.ownsGeometry = true;
-      object.userData.ownsMaterial = true;
     });
     group.add(visual.object);
   }
@@ -392,7 +390,7 @@ const SMALL_BODY_SHADOW_DISTANCE = 100;
 // 小天体と艦: 環を持つ半径 30 m の天体のまわりへ艦を 2 隻置き、**影の 2 つの経路を同じ絵で
 // 読む**。昼面へ浮かべた艦は影の深度マップを通って天体の表面へ影を落とし、後方へ置いた艦は
 // 天体の球が解析式で解く影の柱の縁をまたぐ。環の帯の影は昼面を横切る縞として出る。
-function shipBodyShadow(_style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function shipBodyShadow(_style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   const camera = labCamera(6e7);
   const center = new THREE.Vector3(0, 0, -SMALL_BODY_DISTANCE);
   const sun = SMALL_BODY_SUN_DIR;
@@ -416,7 +414,7 @@ function shipBodyShadow(_style: RenderStyle, sunOcclusion: SunOcclusion, sunLigh
   return {
     objects: [
       sphere(GREY_SPHERE_ALBEDO, SMALL_BODY_RADIUS, center),
-      ringDisc(SMALL_BODY_RING_BANDS, SMALL_BODY_RADIUS, center, axis, sunOcclusion, sunLight),
+      ringDisc(SMALL_BODY_RING_BANDS, SMALL_BODY_RADIUS, center, axis, ringMaterials),
       shipAt(caster, SHIP_ROTATION_STARBOARD),
       shipAt(receiver, SHIP_ROTATION_STARBOARD),
     ],
@@ -993,13 +991,13 @@ function metalHighlight(): LabCase {
 // 放射照度は本体にも環にも同じだけ掛かる。本体を遮蔽器に、環の帯を遮蔽する環に登録するので、
 // **環が本体の影へ入る境界と、本体表面に落ちる環の影の境界の両方**が同じ 1 つの遮蔽関数から
 // 出る。どちらもぼけていることを見る。
-function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   const camera = labCamera(1e13);
   const radius = 6.0268e7;
   const distance = 1.2e9;
   const center = new THREE.Vector3(0, -0.15 * distance, -distance);
   const axis = v3(0.3, 0.9, 0.32);
-  const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
+  const view = new RingView(SATURN_RINGS, radius, 1, ringMaterials);
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -1020,7 +1018,7 @@ function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLig
 // (2px 未満)を目で読めない。**環面へ浅い角度で恒星が差す姿勢**(環軸を真上、恒星の仰角 17°)
 // で本体へ寄り、本体表面に落ちる環の影(カッシーニの間隙が明るい帯として出て、その縁は半影 4px
 // ぶんぼける)と、環が本体の影へ入る境界(天体の球の半影ぶんぼける)を同じ絵の中で読む。
-function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function saturnShadow(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   const distance = 1.9e8;
   const radius = 6.0268e7;
   // カメラは環面から 20° 傾けて、**恒星とは反対側**へ置く — 同じ側だと影が落ちる面は
@@ -1033,7 +1031,7 @@ function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: 
   camera.lookAt(center);
   camera.updateMatrixWorld(true);
   const axis = v3(0, 1, 0);
-  const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
+  const view = new RingView(SATURN_RINGS, radius, 1, ringMaterials);
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
@@ -1130,7 +1128,7 @@ export const CASES = {
   'blackbody': blackbody,
   ...PROTEIN_CASES,
 } as const satisfies Record<
-  string, (style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight) => LabCase
+  string, (style: RenderStyle, ringMaterials: RingMaterials) => LabCase
 >;
 
 export type CaseName = keyof typeof CASES;
