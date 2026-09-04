@@ -15,7 +15,7 @@ import type { FloatNode, Vec3Node } from '../tsl-types';
 // 活発度が振れると、粒が消え残るのではなく 1 つ 1 つが薄まる。振れ幅は、気団だけでは活発度が
 // 中間の階調に留まる高さに取る — 板と粒へ振り切るのは上昇流で、気団はそのあいだを配る。
 const INSTABILITY_NOISE = [6.4, 2] as const;
-const INSTABILITY_AMPLITUDE = 1;
+const INSTABILITY_AMPLITUDE = 1.5;
 // 上昇流が活発度へ効く利得 [per m/s] と、上昇流の無い所での活発度。並の低気圧(0.02 m/s)で
 // 気団に依らず 1 へ、高気圧の吹きおろし(−0.02 m/s)で 0 へ届く。
 const LIFT_ACTIVITY = 25;
@@ -28,7 +28,7 @@ export class ConvectiveActivity {
   public constructor(circulation: Circulation, projection: FieldProjection) {
     const coarseness = coarsenessFor(projection, INSTABILITY_NOISE);
     const noise = new CirculatingNoise(
-      circulation, ...INSTABILITY_NOISE, projection.texelAngle.mul(coarseness));
+      circulation, ...INSTABILITY_NOISE, projection.texelAngle.mul(coarseness), 'smooth');
     this.instability = new BakedField(
       'instability', THREE.RedFormat, projection, coarseness,
       (direction) => vec4(noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1));
