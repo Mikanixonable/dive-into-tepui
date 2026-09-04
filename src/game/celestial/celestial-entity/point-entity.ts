@@ -1,9 +1,7 @@
-// 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。視直径がピクセル未満に
-// なるので、戦闘ビューでは星殻上の輝点スプライトに切り替える。実体表示と輝点表示は別モデルの
-// 丸ごと差し替えであり、SphereEntity 側に視点モード分岐を足す形は取らない。見かけ直径が閾値
-// 未満なら(マップビューでは輝点も出さず)実体を隠す。
+// 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。見かけ直径が閾値未満なら実体を
+// 隠し、戦闘ビューでは星殻上の輝点スプライトへ切り替える。
 import * as THREE from 'three/webgpu';
-import { OrbitingMotion } from '../../../physics/celestial-motion';
+import { CelestialMotion, OrbitingMotion } from '../../../physics/celestial-motion';
 import { shapeAxes } from '../../../physics/celestial-body-def';
 import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
@@ -15,22 +13,23 @@ import { CelestialSurface } from '../../../render/celestial-surface';
 import { BodyGraticule } from '../../../render/body-graticule';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
+import { writeBodyFromWorld } from '../body-frame';
+import { RingView } from './ring-view';
+import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../../render/celestial-albedo';
+import { SUN_IRRADIANCE_1AU } from '../../../render/pipeline/sun-light';
+import { norm, sub, v3 } from '../../../math/vec3';
+import type { CumulusShell } from '../../../render/cumulus-shell';
 import type { Aurora } from '../../../render/aurora';
 import type { CelestialClass } from './celestial-entity-def';
-import { CelestialMotion } from '../../../physics/celestial-motion';
 import type { GeostationaryOverlay } from './geostationary-overlay';
 import type { StarEntity } from './star-entity';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { LineOverlay } from '../../../render/line-overlay';
 import type { MarkerManager } from '../../marker/marker-manager';
 import type { SunLight } from '../../../render/pipeline/sun-light';
-import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
+import type { CumulusShadow, SunOcclusion } from '../../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../../render/render-style';
-import { RingView } from './ring-view';
-import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../../render/celestial-albedo';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
-import { SUN_IRRADIANCE_1AU } from '../../../render/pipeline/sun-light';
-import { norm, sub, v3 } from '../../../math/vec3';
 import type { Vec3 } from '../../../math/vec3';
 
 // 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
@@ -61,7 +60,7 @@ export class PointEntity extends CelestialEntity {
   // の頂点を持つので、ここを拡大すると天体半径倍に膨らむ。
   private readonly group = new THREE.Group();
   private readonly shapeGroup = new THREE.Group();
-  private ring?: RingView;
+  private ring: RingView | null = null;
   // 輝点スプライト。グローテクスチャの生成が DOM を要するので build まで作らない。
   private billboard!: Billboard;
   private readonly bondAlbedo: number;
@@ -72,12 +71,15 @@ export class PointEntity extends CelestialEntity {
   private readonly axes: THREE.Vector3;
   // 模式図スタイルでだけ見せる経緯度グリッド。姿勢は group の子として自然に追従する。
   private readonly graticule = new BodyGraticule();
+  // 描画座標のベクトルを天体固定の向きへ戻す回転。遮蔽パスへ渡すあいだだけ生きていればよい。
+  private readonly bodyFromWorld = new THREE.Matrix4();
 
   // surface はマップビューで見せる実体。実半径・歪みの形状・環は motion の定義から引き、
   // 環はマップビューでのみ描く(戦闘ビューの輝点に環はない)。surfaceMarkings は模式図で
   // だけ見せる天体固有の表面ライン、auroras は極を囲むカーテン(層ごとに1枚)、
-  // mapOverlay はマップ専用の同期軌道リング。持たない天体では null / 空。
-  constructor(
+  // mapOverlay はマップ専用の同期軌道リング、cumulus は地表の上に浮く不透明な積雲の殻。
+  // 持たない天体では null / 空。
+  public constructor(
     motion: OrbitingMotion,
     name: string,
     bodyClass: CelestialClass,
@@ -86,6 +88,7 @@ export class PointEntity extends CelestialEntity {
     private readonly surfaceMarkings: LineOverlay | null = null,
     private readonly auroras: readonly Aurora[] = [],
     private readonly mapOverlay: GeostationaryOverlay | null = null,
+    private readonly cumulus: CumulusShell | null = null,
   ) {
     super(motion, name, bodyClass, atmosphereOptics);
     const def = motion.def;
@@ -93,20 +96,21 @@ export class PointEntity extends CelestialEntity {
     this.bondAlbedo = surface.photometry?.bondAlbedo ?? rec709Luminance(DEFAULT_ALBEDO);
     this.outerRadius = def.rings === undefined
       ? def.radius
-      : def.rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), def.radius);
+      : Math.max(def.radius, ...def.rings.bands.map((band) => band.outerRadius));
     const a = shapeAxes(def.radius, def.shape);
     this.axes = new THREE.Vector3(a.x, a.y, a.z);
   }
 
-  get lightSourceAlbedo(): Albedo | null { return this.surface.photometry?.lightSourceAlbedo ?? null; }
+  public get lightSourceAlbedo(): Albedo | null { return this.surface.photometry?.lightSourceAlbedo ?? null; }
 
-  get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
+  public get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
 
   // マップビュー用の実体表面と輝点用ビルボードをシーンへ一度だけ登録する。
-  build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void {
-    // 色はテクスチャ平均色を狙わず単色の白 — 恒星状の光点として過剰演出しない。
+  public build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void {
+    // 輝点は単色(SPEC/RENDERING.md「画面上の大きさに基づく詳細度」節)。
     this.billboard = new Billboard(0xffffff, -9);
     this.surface.addTo(this.shapeGroup);
+    this.cumulus?.addTo(this.shapeGroup);
     this.graticule.addTo(this.shapeGroup);
     this.surfaceMarkings?.addTo(this.shapeGroup);
     this.group.add(this.shapeGroup);
@@ -122,7 +126,8 @@ export class PointEntity extends CelestialEntity {
     this.mapOverlay?.build(scene);
   }
 
-  setVisible(visible: boolean): void {
+  // 実体・輝点・環をまとめて出す/消す。
+  public setVisible(visible: boolean): void {
     this.group.visible = visible;
     this.billboard.mesh.visible = visible;
     this.ring?.setVisible(visible);
@@ -131,7 +136,7 @@ export class PointEntity extends CelestialEntity {
   // displayTime 時点の位置へ実体メッシュか輝点ビルボードのどちらかを同期する(常に片方は
   // 隠す)。見かけ直径が閾値未満では実体を隠す(戦闘ビューは輝点へ切り替え、マップビューは
   // 輝点も出さない)。
-  sync(
+  public sync(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, star: StarEntity | null,
     graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
@@ -139,6 +144,7 @@ export class PointEntity extends CelestialEntity {
     const pos = this.stateAt(displayTime).r;
     const apparentDiameterPx = this.lodApparentDiameterPx(
       2 * this.outerRadius, cameraSystem.activeCameraScale(pos), graphics);
+    // 閾値未満は実体を畳み、戦闘ビューなら輝点だけを置く。
     if (!showsPhysicalSphere(apparentDiameterPx)) {
       this.hidePhysical();
       if (cameraSystem.view === 'map') {
@@ -148,11 +154,20 @@ export class PointEntity extends CelestialEntity {
       }
       return;
     }
+    // 表面の分割段と雲。
     this.surface.syncLod(apparentDiameterPx);
     this.surface.setCloudAmount(graphics.clouds ? 1 : 0);
+    if (graphics.clouds) {
+      this.cumulus?.setDetail(graphics.cumulusDetail);
+      this.cumulus?.syncLod(apparentDiameterPx);
+    } else {
+      this.cumulus?.hide();
+    }
+    // 模式図の重ね書きとオーロラ。
     this.graticule.setVisible(style === 'schematic');
     this.surfaceMarkings?.setVisible(style === 'schematic');
     this.syncAuroras(displayTime, graphics.aurora);
+    // 位置・扁平・自転姿勢。
     const orientation = this.motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     this.group.position.copy(fo.RtoThreeV3(pos));
@@ -169,8 +184,22 @@ export class PointEntity extends CelestialEntity {
     );
   }
 
+  // 遮蔽パスへ渡す積雲の殻。姿勢は自転位相まで込みで組む — 軸だけでは場が地表と一緒に回らない。
+  public override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): CumulusShadow | null {
+    if (this.cumulus === null) return null;
+    writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
+    return {
+      center: fo.RtoThreeV3(this.stateAt(displayTime).r),
+      surfaceRadius: this.radius,
+      axes: this.axes,
+      topAltitude: this.cumulus.topAltitude,
+      bodyFromWorld: this.bodyFromWorld,
+      field: this.cumulus.field,
+    };
+  }
+
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
-  override syncMapOverlay(
+  public override syncMapOverlay(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
     markerManager: MarkerManager | null, celestialBodies: readonly CelestialMotion[], visible: boolean,
   ): void {
@@ -190,6 +219,7 @@ export class PointEntity extends CelestialEntity {
   // 見かけ直径が閾値未満のときの共通後始末: 実体メッシュと環を隠す。
   private hidePhysical(): void {
     this.surface.hide();
+    this.cumulus?.hide();
     this.graticule.setVisible(false);
     this.surfaceMarkings?.setVisible(false);
     for (const aurora of this.auroras) aurora.mesh.visible = false;
@@ -221,13 +251,16 @@ export class PointEntity extends CelestialEntity {
     );
   }
 
-  // 表面・環・オーロラ・輝点ビルボードを解放する。
-  dispose(): void {
+  // 表面・積雲の殻・環・オーロラ・輝点ビルボードを解放する。
+  public dispose(): void {
+    // group の下に束ねた表示物。
     this.group.removeFromParent();
     this.surface.dispose();
+    this.cumulus?.dispose();
     this.graticule.dispose();
     this.surfaceMarkings?.dispose();
     for (const aurora of this.auroras) aurora.dispose();
+    // scene へ直接置いた表示物。
     this.mapOverlay?.dispose();
     this.ring?.dispose();
     this.billboard.mesh.removeFromParent();

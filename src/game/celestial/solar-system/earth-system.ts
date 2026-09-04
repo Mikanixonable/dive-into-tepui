@@ -1,7 +1,7 @@
 // 地球系(地球・月)。静的事実・運動・見た目を1体につき1箇所で組む。
 import * as THREE from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
-import cloudsTextureUrl from '../../../assets/8k_clouds.jpg';
+import cloudFieldUrl from '../../../assets/cloud-field.png';
 import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import { AtmosphereDef } from '../../../physics/atmosphere';
@@ -16,16 +16,17 @@ import {
   SIDEREAL_DAY,
 } from './constants';
 import { Aurora, type AuroraOptics } from '../../../render/aurora';
-import type { AtmosphereOptics } from '../../../render/atmosphere';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialTexture } from '../../../render/celestial-textures';
+import { CumulusShell } from '../../../render/cumulus-shell';
 import { EarthCoastline } from '../../../render/earth-coastline';
 import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
-import type { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { GeostationaryOverlay } from '../celestial-entity/geostationary-overlay';
 import { PointEntity } from '../celestial-entity/point-entity';
 import { SphereEntity } from '../celestial-entity/sphere-entity';
 import { MOON_DIST_TERMS, MOON_LAT_TERMS, MOON_LON_TERMS } from './moon-terms';
+import type { AtmosphereOptics } from '../../../render/atmosphere';
+import type { CelestialTexture } from '../../../render/celestial-textures';
+import type { CelestialEntity } from '../celestial-entity/celestial-entity';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type EarthSystemBodyId = 'earth' | 'moon';
@@ -73,8 +74,7 @@ export const EARTH_ATMOSPHERE: AtmosphereDef = {
 export const EARTH: PlanetDef = {
   id: 'earth',
   mu: MU_EARTH,
-  // 衝突球・高度基準は赤道半径(外接球) — R_EARTH(平均半径)は大気・熱等のゲームプレイ側が
-  // 引き続き使う別の量。
+  // 衝突球・高度基準は赤道半径(外接球)。
   radius: R_EARTH_EQ,
   lagrangeLabels: true,
   // 出典: pck00011.tpc BODY_RADII(Re=6378.1366km, Rp=6356.7519km)。
@@ -124,7 +124,7 @@ export const MOON: SatelliteDef = {
   degree2: { j2: J2_MOON, c22: C22_MOON, refRadius: R_MOON_GRAVITY },
 };
 
-// 標準大気の分子散乱と、視程 50km 相当のエーロゾル。render-lab の大気ケースも同じ値を読む。
+// 標準大気の分子散乱と、視程 50km 相当のエーロゾル。
 export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   rayleigh: new THREE.Vector3(5.802e-6, 13.558e-6, 33.1e-6),
   rayleighScaleHeight: 8.0e3,
@@ -133,13 +133,14 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   mieAnisotropy: 0.8,
 };
 
-// 地表・雲・雲影を合成したアルベドの測光。平均輝度 0.3104 は合成後の式で測った値で、
-// A_B=0.306 との比が倍率。averageHue も合成後の式で測った色み。
+// 地表・薄い雲・積雲の殻を合わせたアルベドの測光。倍率は、殻に覆われずに残る地表の平均輝度
+// 0.1937 へこれを掛け、殻(アルベド 0.8)が覆う 0.1274 ぶんを足すと A_B=0.306 になる値。
+// averageHue はその合成の色み。平均はどれもテクスチャ上を緯度余弦で重み付けて測る。
 export const EARTH_TEXTURE: CelestialTexture = {
   url: earthTextureUrl,
-  albedoScale: 0.9858,
+  albedoScale: 1.0536,
   bondAlbedo: 0.306,
-  averageHue: [0.9695, 0.9937, 1.1519],
+  averageHue: [0.9611, 0.9927, 1.1863],
 };
 
 // 地球のオーロラ。オーバル緯度は磁極の配置、発光高度は降り込む粒子が大気を励起する層、
@@ -184,18 +185,22 @@ export function earthSystem(
   earthSpinPhase0 = 0,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
+  // 雲の場は殻が持ち、地表はその実体を借りて薄い雲を焼き込む。
+  const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
-      CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl, earthSmoothnessUrl),
+      CelestialSurface.clouded(EARTH_TEXTURE, cumulus.field, earthSmoothnessUrl),
       EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
-      GeostationaryOverlay.of(earth.body),
+      GeostationaryOverlay.of(earth.body), cumulus,
     ),
     moon: new SphereEntity(
       new SatelliteMotion(satelliteDefForSimZero(MOON, phases, simZeroEt), earth),
       EARTH_SYSTEM_NAMES.moon, 'satellite',
-      // 平均輝度 0.3180(A_B は公表ボンド)
-      CelestialSurface.textured({ url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844] }),
+      // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。
+      CelestialSurface.textured({
+        url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
+      }),
       null, new MoonSurfaceMarkings(),
     ),
   };

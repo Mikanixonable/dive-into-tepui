@@ -31,18 +31,15 @@ export function createStars(): Stars {
     map: texture,
     side: THREE.BackSide,
     depthWrite: false,
-    // renderOrder -10 で最初に描くため深度テストは元々不要。殻がカメラから
-    // 0.9*far の距離にあり、深度クリア値付近の量子化丸めで LESS テストが
-    // 落ちて黒く抜けることがあるため明示的に無効化する。
+    // 殻がカメラから 0.9*far の距離にあり、深度クリア値付近の量子化丸めで LESS テストが
+    // 落ちて黒く抜けることがあるため、深度テストを明示的に無効化する。
     depthTest: false,
   });
 
   const mesh = new THREE.Mesh(geo, mat);
-  // CelestialSystem.sync が毎フレーム position をカメラ位置へ合わせる殻なので、
-  // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
+  // 視点中心に置かれる殻なので、外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
   mesh.frustumCulled = false;
   mesh.layers.set(WORLD_BACKGROUND_LAYER);
-  mesh.renderOrder = -10;
   return {
     mesh,
     setFixedBrightnessScale(scale: number): void {
