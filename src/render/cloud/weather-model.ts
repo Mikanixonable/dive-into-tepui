@@ -112,6 +112,9 @@ const ADVECTION_PERIOD = 20 * 3600;
 // 対流を流す 1 歩を、湿度の 1 歩の何倍の長さに取るか。1 周期の変位が写しに載る粒(80〜40 km)より
 // 大きいと、粒は流れの向きへ伸びる。
 const CONVECTION_ADVECTION = 1.3;
+// 上層の湿度の 1 歩を、地表付近の 1 歩の何倍に取るか。巻雲の繊維は、同じ風の場でも地表付近の
+// 雲より長く引き伸ばされる。
+const UPPER_ADVECTION = 2.0;
 // 対流の 1 歩が渦のまわりを巻く角の上限 [rad]。台風の芯では流れが 3 周ぶん巻き、半径ごとに違う角だけ
 // 捻れた粒が髪のような筋へ潰れる。1 歩をここへ漸近するまで縮めると、縮むのは芯から 600 km の内側だけで、
 // 巻きの浅い背景(0.9 rad)は 6% しか変わらない。
@@ -216,9 +219,17 @@ export class WeatherModel {
     const pressureBehind = this.pressure.at(normalize(direction.sub(isobarStep))).r;
     const bend = pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2);
 
-    // 湿度と対流は、摩擦の違う 2 本の風で流す。
+    // 湿度と対流は、摩擦の違う 2 本の風で流す。上層の湿度はそこへ上層の帯の平均風を足した風で流す
+    // — 巻雲の繊維はジェットに沿って伸びるので、地表付近の風で流すと向きが揃わない。
     const wind = balancedWind(gradient, isobar, bend, latitude, FRICTION_RATE);
     const convectionWind = balancedWind(gradient, isobar, bend, latitude, CONVECTION_FRICTION);
+    const upperMean = this.upperCirculation.meanWindAt(direction);
+    const upperWind: BalancedWind = {
+      velocity: wind.velocity
+        .add(east.mul(upperMean.x.mul(cos(latitude)).mul(BAND_RATE_TO_SPEED)))
+        .add(north.mul(upperMean.y.mul(BAND_RATE_TO_SPEED))),
+      turn: wind.turn,
+    };
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分。
     const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
@@ -227,7 +238,7 @@ export class WeatherModel {
 
     // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足し、渦の目のぶんを引いたもの。
     // 後の 3 つは移流を通らないので、気候と地形と渦に貼り付いたまま歪まない。
-    const advected = this.advected(direction, wind, convectionWind);
+    const advected = this.advected(direction, wind, upperWind, convectionWind);
     const meanCloudiness = this.climate.meanCloudiness(direction);
     const eye = this.cyclones.eyeAt(direction);
     const humidity = clamp(
@@ -282,9 +293,11 @@ export class WeatherModel {
   }
 
   // 移流前の写しを風で流したもの。周期の半分ずれた 2 位相を三角波で混ぜるので、流れの変位が
-  // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならない。湿度と対流は向きも速さも
-  // 違う風で流すので、伸びた先でも 2 枚の向きが揃わない。
-  private advected(direction: Vec3Node, wind: BalancedWind, convectionWind: BalancedWind): AdvectedFields {
+  // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならない。地表付近の湿度・上層の湿度・
+  // 対流は向きも速さも違う風で流すので、伸びた先でも 3 枚の向きが揃わない。
+  private advected(
+    direction: Vec3Node, wind: BalancedWind, upperWind: BalancedWind, convectionWind: BalancedWind,
+  ): AdvectedFields {
     const phaseA = this.advectionCycle;
     const phaseB = fract(phaseA.add(0.5));
     const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
@@ -300,10 +313,11 @@ export class WeatherModel {
     const convectionStep = inverseSqrt(winding.mul(winding).add(1)).mul(CONVECTION_ADVECTION);
     const humidity = this.humiditySource;
     const convection = this.convectionSource;
-    const humidities = mix(sourceAt(humidity, wind, stepB).xy, sourceAt(humidity, wind, stepA).xy, weightA);
     return {
-      humidity: humidities.x,
-      upperHumidity: humidities.y,
+      humidity: mix(sourceAt(humidity, wind, stepB).x, sourceAt(humidity, wind, stepA).x, weightA),
+      upperHumidity: mix(
+        sourceAt(humidity, upperWind, stepB.mul(UPPER_ADVECTION)).y,
+        sourceAt(humidity, upperWind, stepA.mul(UPPER_ADVECTION)).y, weightA),
       convection: mix(
         sourceAt(convection, convectionWind, stepB.mul(convectionStep)).r,
         sourceAt(convection, convectionWind, stepA.mul(convectionStep)).r, weightA),
