@@ -2,7 +2,7 @@
 // 前者がラテン字形を、後者が日本語を含む残り全てを担う。太さは 400 のみを読み込み、
 // bold 指定はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
-import '@sarap422/font-hackgen';
+import './hackgen-400.css';
 // 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
 import { createGameScene, GameScene } from './render/scene';
