@@ -338,6 +338,8 @@ export function register(): void {
     assert.equal(byEntity.get(4)?.source, 'author');
   });
 
+  const IDENTITY_ATTITUDE = { x: 0, y: 0, z: 0, w: 1 };
+
   test('protein runtime: visual motion preserves the physics root pose and cycles attack origins', () => {
     const root = new THREE.Group();
     root.position.set(11, -7, 3);
@@ -378,7 +380,8 @@ export function register(): void {
       z: active.position[2] * asset.coordinateScale,
     });
     runtime.updateVisual(12.5);
-    assert.ok(Array.from(runtime.motionBinding.coefficients.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
+    // 変形が生きていれば、サイトのアンカーは変形前の位置から動く。
+    assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
     assert.deepEqual(root.position, baseRootPosition);
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);
@@ -393,7 +396,7 @@ export function register(): void {
     assert.deepEqual(root.scale, baseRootScale);
     runtime.rebuildVisuals();
     runtime.updateVisual(12.5);
-    assert.ok(Array.from(runtime.motionBinding.coefficients.array as Float32Array).some((value) => Math.abs(value) > 1e-9));
+    assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
     assert.equal(root.rotation.z, rootRollBeforeRebuild);
     runtime.dispose();
   });
