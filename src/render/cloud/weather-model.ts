@@ -11,6 +11,7 @@ import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { AirMass } from './air-mass';
 import { BakedField } from './baked-field';
 import { CirculatingNoise, coarsenessFor } from './circulating-noise';
+import type { NoiseOctave } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
@@ -57,18 +58,33 @@ type AdvectedFields = {
   readonly convection: FloatNode;
 };
 
-// ノイズの段。段ごとに空間周波数(1 rad あたりの山の数)と段数を変える。
+// ノイズの段の表。周波数は 1 rad あたりの山の数で、角波長 [km] は 6371 ÷ 周波数。
 // 気圧は 1 段しか持たない。総観規模より細かい構造を実際に持たないうえ、上昇流が気圧そのものの
 // 関数なので、段を増やすとノイズの格子が雲へそのまま出る。
-const PRESSURE_NOISE = [1.2, 1] as const;
-// 地表付近は湿度と対流の 2 枚で周波数を分担する。湿度の基準の角波長(800 km)が雲塊の配置を、
-// 対流(80 km と 40 km の 2 段)が積雲の粒の細かさを決める。**対流が載るかどうかは写しの texel が
+const PRESSURE_NOISE: readonly NoiseOctave[] = [
+  { frequency: 1.2, amplitude: 1 }, // 5300 km
+];
+// 地表付近は湿度と対流の 2 枚で周波数を分担する。湿度の基準の段(800 km)が雲塊の配置を、
+// 対流(80 km と 40 km)が積雲の粒の細かさを決める。**対流が載るかどうかは写しの texel が
 // 決める** — 40 km/texel より粗い写しでは 2 段とも落ちて湿度だけの滑らかな塊になり、10 km/texel
-// まで寄れば 2 段とも乗る。上層はこれ以上段を減らせない — 薄い雲は光学的厚みが 1 に届かず下地が透けるので、
-// 細かい段が縁ではなく繊維の濃淡として直に見える。
-const HUMIDITY_NOISE = [8, 4] as const;
-const CONVECTION_NOISE = [80, 2] as const;
-const UPPER_HUMIDITY_NOISE = [6, 4] as const;
+// まで寄れば 2 段とも乗る。上層はこれ以上段を減らせない — 薄い雲は光学的厚みが 1 に届かず下地が
+// 透けるので、細かい段が縁ではなく繊維の濃淡として直に見える。
+const HUMIDITY_NOISE: readonly NoiseOctave[] = [
+  { frequency: 8, amplitude: 1 }, // 800 km
+  { frequency: 16, amplitude: 0.65 }, // 400 km
+  { frequency: 32, amplitude: 0.4225 }, // 200 km
+  { frequency: 64, amplitude: 0.274625 }, // 100 km
+];
+const CONVECTION_NOISE: readonly NoiseOctave[] = [
+  { frequency: 80, amplitude: 1 }, // 80 km
+  { frequency: 160, amplitude: 0.65 }, // 40 km
+];
+const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
+  { frequency: 6, amplitude: 1 }, // 1100 km
+  { frequency: 12, amplitude: 0.65 }, // 530 km
+  { frequency: 24, amplitude: 0.4225 }, // 270 km
+  { frequency: 48, amplitude: 0.274625 }, // 130 km
+];
 // 場の振れ幅。CirculatingNoise が段の振幅の総和で割って返すので、段数を変えてもここは動かない。
 const PRESSURE_NOISE_AMPLITUDE = 18;
 const HUMIDITY_NOISE_AMPLITUDE = 0.5625;
@@ -189,13 +205,13 @@ export class WeatherModel {
     const convectionCoarseness = coarsenessFor(projection, CONVECTION_NOISE);
     const humidityTexel = texel.mul(humidityCoarseness);
     const convectionTexel = texel.mul(convectionCoarseness);
-    this.pressureNoise = new CirculatingNoise(this.circulation, ...PRESSURE_NOISE, texel, 'smooth');
-    this.humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE, humidityTexel, 'smooth');
+    this.pressureNoise = new CirculatingNoise(this.circulation, PRESSURE_NOISE, texel, 'smooth');
+    this.humidityNoise = new CirculatingNoise(this.circulation, HUMIDITY_NOISE, humidityTexel, 'smooth');
     // 積雲の粒は細胞の網目なので、対流だけ段の形を変える。
     this.convectionNoise = new CirculatingNoise(
-      this.circulation, ...CONVECTION_NOISE, convectionTexel, 'cellular');
+      this.circulation, CONVECTION_NOISE, convectionTexel, 'cellular');
     this.upperHumidityNoise = new CirculatingNoise(
-      this.upperCirculation, ...UPPER_HUMIDITY_NOISE, humidityTexel, 'smooth');
+      this.upperCirculation, UPPER_HUMIDITY_NOISE, humidityTexel, 'smooth');
     // 気圧の写しだけは段ではなく、読む側の中心差分の刻み(GRADIENT_STEP)が細かさを決める。
     this.pressure = new BakedField(
       'pressure', THREE.RedFormat, projection, 1, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
