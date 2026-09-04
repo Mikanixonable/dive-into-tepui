@@ -105,7 +105,7 @@ export class Circulation {
   // **sample を書くのは 2 箇所まで。** sample はノイズの評価そのもので、書いた数だけシェーダが
   // 膨らむ。2 枚目を評価するのは混ざる範囲にいるときだけで、分岐の向きは緯度だけで決まるので、
   // 画面のまとまった範囲で揃う。
-  public carry(direction: Vec3Node, sample: (position: Vec3Node) => FloatNode): FloatNode {
+  public carry(direction: Vec3Node, sample: (position: Vec3Node) => Vec2Node): Vec2Node {
     return Fn(() => {
       const [near, far] = this.bandsAt(direction);
       // 呼吸を効かせる度合い。cos²(緯度) をもう一度掛けてあるのは、公転が既に法線を向いている

@@ -53,11 +53,12 @@ const TRANSLUCENT_GAIN = 1.7;
 // **対流の活発度が効くのは被覆率と塔で、層状の雲頂は活発度に依らず対流をそのまま受ける** —
 // 一面に覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
 export function condense(weather: WeatherSample): CloudSample {
-  const peak = weather.convection.mul(weather.convectiveActivity);
+  const convection = weather.convection.y;
+  const peak = convection.mul(weather.convectiveActivity);
   const granularity = peak.mul(CONVECTION_GAIN);
   // 層状の雲: 上昇流が持ち上げる高さに、対流の起伏が乗る。
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT)
-    .add(weather.convection.mul(CLOUD_TOP_RELIEF)).sub(CLOUD_TOP_BIAS);
+    .add(convection.mul(CLOUD_TOP_RELIEF)).sub(CLOUD_TOP_BIAS);
   const layered = float(1).add(exp(depth.negate())).reciprocal().mul(LAYER_TOP_SPAN).add(CLOUD_BASE_HEIGHT);
   // 塔と金床: どちらも圏界面まで届く。塔は対流の峰が立て、天蓋は眼を持つ渦の芯だけが敷く。
   // **塔は、その場が覆われるほど湿っている所にだけ立つ。** 乾いた土地では対流の峰が雲を作っても
