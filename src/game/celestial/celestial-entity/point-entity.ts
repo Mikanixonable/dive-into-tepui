@@ -14,6 +14,7 @@ import { BodyGraticule } from '../../../render/body-graticule';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
 import { writeBodyFromWorld } from '../body-frame';
+import type { RingMaterials } from '../../../render/ring';
 import { RingView } from './ring-view';
 import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../../render/celestial-albedo';
 import { SUN_IRRADIANCE_1AU } from '../../../render/pipeline/sun-light';
@@ -26,8 +27,7 @@ import type { StarEntity } from './star-entity';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { LineOverlay } from '../../../render/line-overlay';
 import type { MarkerManager } from '../../marker/marker-manager';
-import type { SunLight } from '../../../render/pipeline/sun-light';
-import type { CumulusShadow, SunOcclusion } from '../../../render/pipeline/sun-occlusion';
+import type { CumulusShadow } from '../../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../../render/render-style';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { Vec3 } from '../../../math/vec3';
@@ -106,7 +106,7 @@ export class PointEntity extends CelestialEntity {
   public get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
 
   // マップビュー用の実体表面と輝点用ビルボードをシーンへ一度だけ登録する。
-  public build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void {
+  public build(scene: THREE.Scene, ringMaterials: RingMaterials): void {
     // 輝点は単色(SPEC/RENDERING.md「画面上の大きさに基づく詳細度」節)。
     this.billboard = new Billboard(0xffffff, -9);
     this.surface.addTo(this.shapeGroup);
@@ -118,7 +118,7 @@ export class PointEntity extends CelestialEntity {
     scene.add(this.group);
     if (this.rings !== null) {
       this.ring = new RingView(
-        this.rings, this.radius, this.group.renderOrder + 1, sunOcclusion, sunLight,
+        this.rings, this.radius, this.group.renderOrder + 1, ringMaterials,
       );
       scene.add(this.ring.group);
     }
