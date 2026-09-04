@@ -7,7 +7,7 @@ import {
 } from '../../src/render/cloud/condensation';
 import {
   CONVECTION_NOISE_AMPLITUDE_KNOB, HUMIDITY_BASE_KNOB, LIFT_HUMIDITY_KNOB, MEAN_CLOUDINESS_WEIGHT_KNOB,
-  PRESSURE_BAND_AMPLITUDE_KNOB, TERRAIN_LIFT_GAIN_KNOB, UPPER_HUMIDITY_BASE_KNOB,
+  PRESSURE_BAND_AMPLITUDE_KNOB, TERRAIN_LIFT_GAIN_KNOB, UPPER_HUMIDITY_BASE_KNOB, UPPER_LIFT_HUMIDITY_KNOB,
   UPPER_MEAN_CLOUDINESS_WEIGHT_KNOB,
 } from '../../src/render/cloud/weather-model';
 import type { FloatUniform } from '../../src/render/tsl-types';
@@ -51,6 +51,8 @@ export const CLOUD_TUNING_KNOBS: readonly CloudTuningKnob[] = [
     min: 0, max: 1.5, step: 0.005, value: UPPER_MEAN_CLOUDINESS_WEIGHT_KNOB },
   { id: 'liftHumidity', row: 'weather', label: '上昇流→湿度',
     min: 0, max: 20, step: 0.1, value: LIFT_HUMIDITY_KNOB },
+  { id: 'upperLiftHumidity', row: 'weather', label: '上昇流→上層',
+    min: 0, max: 10, step: 0.05, value: UPPER_LIFT_HUMIDITY_KNOB },
   { id: 'terrainLiftGain', row: 'weather', label: '地形の上昇流',
     min: 0, max: 3, step: 0.01, value: TERRAIN_LIFT_GAIN_KNOB },
   { id: 'convectionNoiseAmplitude', row: 'weather', label: '対流の振幅',
