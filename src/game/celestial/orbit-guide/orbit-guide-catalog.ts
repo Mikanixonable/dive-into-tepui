@@ -1,24 +1,30 @@
-// CR3BP 周期軌道カタログの読み込み。地球-月・太陽-地球はバンドルへ静的 import 済み、残り5系は
-// その系が初めて必要になったときに動的 import で取りに行く(webpack が自動でコード分割する)。
+// CR3BP 周期軌道カタログの読み込み。族の点列は系ごとに1ファイルへ分かれていて、その系が
+// 初めて必要になったときに動的 import で取りに行く(webpack が自動でコード分割する)。
+// 起動時から同期で要る族 id 一覧と系の素性だけは、軽い索引を静的に読む。
 import { lagrangeJacobi } from '../../../physics/zero-velocity';
 import type { LagrangeLabel } from '../../../physics/lagrange';
-import type { CatalogSystem, CatalogSystemId, OrbitCatalog } from '../../../physics/orbit-catalog';
-import staticTable from '../../../assets/orbits/lagrange-orbits.json';
+import type {
+  CatalogSystem, CatalogSystemId, CatalogSystemScale, OrbitCatalog, OrbitCatalogIndex,
+} from '../../../physics/orbit-catalog';
+import indexTable from '../../../assets/orbits/lagrange-orbits-index.json';
 
-const STATIC_CATALOG = staticTable as unknown as OrbitCatalog;
+const CATALOG_INDEX = indexTable as unknown as OrbitCatalogIndex;
 
-// ゼロ速度曲線(表示パネル)が使う質量比。焼き込みカタログの mu をそのまま使う——
-// L1〜L5 のヤコビ定数は系ごとの mu で決まるため、静的バンドル済みの2系だけをここで直接引く。
-function zeroVelocityMu(system: 'earth-moon' | 'sun-earth'): number {
-  return STATIC_CATALOG.systems[system]?.mu ?? (system === 'earth-moon' ? 0.012150585 : 3.003e-6);
+// 系の質量比・単位。族の点列を待たずに引ける。
+export function catalogSystemScale(id: CatalogSystemId): CatalogSystemScale | null {
+  return CATALOG_INDEX.scales[id] ?? null;
 }
 
+// L1〜L5 のヤコビ定数は系ごとの mu で決まる。
 export function lagrangePointJacobi(system: 'earth-moon' | 'sun-earth', point: LagrangeLabel): number {
-  return lagrangeJacobi(zeroVelocityMu(system), point);
+  const fallback = system === 'earth-moon' ? 0.012150585 : 3.003e-6;
+  return lagrangeJacobi(catalogSystemScale(system)?.mu ?? fallback, point);
 }
 
-// 遅延ロード対象の系と、その取得関数。系ごとに1個の別ファイルを充てる。
-const LAZY_IMPORTS: Readonly<Partial<Record<CatalogSystemId, () => Promise<{ readonly default: unknown }>>>> = {
+// 系ごとの取得関数。系ごとに1個の別ファイルを充てる。
+const LAZY_IMPORTS: Readonly<Record<CatalogSystemId, () => Promise<{ readonly default: unknown }>>> = {
+  'earth-moon': () => import('../../../assets/orbits/lagrange-orbits-earth-moon.json'),
+  'sun-earth': () => import('../../../assets/orbits/lagrange-orbits-sun-earth.json'),
   'sun-mars': () => import('../../../assets/orbits/lagrange-orbits-sun-mars.json'),
   'jupiter-europa': () => import('../../../assets/orbits/lagrange-orbits-jupiter-europa.json'),
   'saturn-titan': () => import('../../../assets/orbits/lagrange-orbits-saturn-titan.json'),
@@ -28,11 +34,11 @@ const LAZY_IMPORTS: Readonly<Partial<Record<CatalogSystemId, () => Promise<{ rea
 
 type LoadState = 'loading' | 'loaded' | 'failed';
 
-// 焼き込みが持つ系ごとの族 id 一覧。遅延ロードする系のぶんも索引に入っているので、起動直後から
-// 全系の選択肢を組める。
+// 焼き込みが持つ系ごとの族 id 一覧。まだ読み込んでいない系のぶんも索引に入っているので、
+// 起動直後から全系の選択肢を組める。
 export function catalogFamilyIndex(): ReadonlyMap<CatalogSystemId, readonly string[]> {
   const out = new Map<CatalogSystemId, readonly string[]>();
-  for (const [id, families] of Object.entries(STATIC_CATALOG.familyIndex)) {
+  for (const [id, families] of Object.entries(CATALOG_INDEX.familyIndex)) {
     if (families !== undefined) out.set(id as CatalogSystemId, families);
   }
   return out;
@@ -41,16 +47,11 @@ export function catalogFamilyIndex(): ReadonlyMap<CatalogSystemId, readonly stri
 // 系ごとの軌道族カタログを保持し、未読み込みの系は取得しつつ null を返す。同じ系を
 // 二重に読み込まない。取得に失敗した系は一度だけログへ残し、以後は諦めて null を返し続ける。
 export class OrbitGuideCatalog {
-  private readonly systems: Partial<Record<CatalogSystemId, CatalogSystem>>;
+  private readonly systems: Partial<Record<CatalogSystemId, CatalogSystem>> = {};
   private readonly loadState = new Map<CatalogSystemId, LoadState>();
   // 系の読み込みが完了するたびに増える世代。呼び出し側はこれの変化を見て、通常の再計算間隔を
   // 待たずに読み込み完了した系をすぐ表示へ反映できる。
   public generation = 0;
-
-  public constructor() {
-    this.systems = { ...STATIC_CATALOG.systems };
-    for (const id of Object.keys(this.systems) as CatalogSystemId[]) this.loadState.set(id, 'loaded');
-  }
 
   public systemFor(id: CatalogSystemId): CatalogSystem | null {
     const existing = this.systems[id];
@@ -59,19 +60,14 @@ export class OrbitGuideCatalog {
     return null;
   }
 
-  // その系にその族があるか。焼き込みの索引を見るので、遅延ロード前でも判定できる。
+  // その系にその族があるか。索引を見るので、族の点列を読み込む前でも判定できる。
   public hasFamily(system: CatalogSystemId, familyId: string): boolean {
-    return STATIC_CATALOG.familyIndex[system]?.includes(familyId) ?? false;
+    return CATALOG_INDEX.familyIndex[system]?.includes(familyId) ?? false;
   }
 
   private startLoad(id: CatalogSystemId): void {
-    const loader = LAZY_IMPORTS[id];
-    if (!loader) {
-      this.loadState.set(id, 'failed');
-      return;
-    }
     this.loadState.set(id, 'loading');
-    loader()
+    LAZY_IMPORTS[id]()
       .then((mod) => {
         const catalog = mod.default as unknown as OrbitCatalog;
         const system = catalog.systems[id];
