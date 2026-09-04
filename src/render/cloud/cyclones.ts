@@ -1,5 +1,6 @@
 // 気圧へ書き込む低気圧の谷: 熱帯を西進する台風 1 つと、中緯度を東進する低気圧。どちらも寿命の
 // 中で生まれて発達して消える。中心と深さは時刻の閉じた関数で、どの時刻へ飛んでも同じ配置になる。
+// 中緯度の低気圧は前線の向き(北半球で南西–北東、南半球で北西–南東)へ長い楕円。
 import * as THREE from 'three/webgpu';
 import { dot, exp, float, inverseSqrt, uniform } from 'three/tsl';
 import { R_EARTH } from '../../game/celestial/solar-system/constants';
@@ -13,17 +14,19 @@ const TYPHOON_LATITUDE = THREE.MathUtils.degToRad(15);
 const TYPHOON_LONGITUDE = THREE.MathUtils.degToRad(169);
 const TYPHOON_DRIFT = -8;
 const TYPHOON_LIFETIME = 9 * 86400;
-// 台風の最深 [hPa] と広がり [m]。
+// 台風の最深 [hPa]、広がり [m]、長軸/短軸の比(1 で円)。
 const TYPHOON_DEPTH = 63;
 const TYPHOON_RADIUS = 220e3;
+const TYPHOON_ELONGATION = 1;
 
 // 谷の効きが届く限界 [m]。裾は距離に反比例するので、1 つでは薄くても谷の数だけ足すと全球の
-// 底上げになり、気圧から出る上昇流の基準がまるごと持ち上がる。ここで遠方を閉じる。
-const TROUGH_REACH = 2200e3;
+// 底上げになり、気圧から出る上昇流の基準がまるごと持ち上がる。ここで遠方を閉じる。最大の低気圧
+// (短軸の半径 1240 km)の裾を切らない長さに取る。
+const TROUGH_REACH = 2500e3;
 
 // 目。広がりは谷自身の広がりに対する比で、湿度はその内側で落ちる。目を持つかどうかは、谷の芯で
 // 風が等圧線を横切る角で決まる — この角より閉じた谷だけが目を持ち、あいだで滑らかに渡る。
-// 狭くて深い台風は 10° で全部持ち、中緯度の低気圧(21〜32°)は持たない。
+// 狭くて深い台風は 10° で全部持ち、中緯度の低気圧(21〜31°)は持たない。
 const EYE_FRACTION = 0.4;
 const EYE_ANGLE_FULL = THREE.MathUtils.degToRad(12);
 const EYE_ANGLE_NONE = THREE.MathUtils.degToRad(16);
@@ -32,18 +35,32 @@ const EYE_ANGLE_NONE = THREE.MathUtils.degToRad(16);
 // (広がり 220 km)で、中心濃密雲域の半径 250 km までがほぼ平らに残る比に取る。
 const ANVIL_FRACTION = 2.0;
 
-// 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、半径 [m]
-// (番号で最小から幅のあいだへ散らす)、中心の緯度の範囲 [rad]。寿命の中で深さは山形に変わり、
-// 次の寿命では別の経度に生まれる。**半径は目を持たない範囲で取る** — これより締めると芯の
-// 曲がりが台風の域に入り、中緯度の低気圧に眼と金床が開く。
+// 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、短軸の半径 [m]
+// (番号で最小から幅のあいだへ散らす)、長軸/短軸の比、中心の緯度の範囲 [rad]。寿命の中で深さは
+// 山形に変わり、次の寿命では自分の枡の中の揺れた経度に生まれ直す。**半径は目を持たない範囲で取る** — 最小の
+// 半径 700 km でも、芯で風が等圧線を横切る角は緯度 35° で 27°、60° で 21° と、眼の門(16°)より
+// 開いている。締めると芯の曲がりが台風の域に入り、中緯度の低気圧に眼と金床が開く。**大きい側は
+// 重なりで抑える** — 半球に 5 つ、およそ 5700 km おきに並ぶ低気圧が、それぞれ別の閉じた流れを
+// 保つ半径に留める。重なると暴風の道が 1 本の谷に溶け、折り目は傾きを失って東西に寝る。比は
+// 前線のため — 気団の境目は谷を囲む閉じた流れの縁に沿って折れるので、谷を前線の向きへ伸ばすと
+// 境目も同じ向きの浅い弧になる。
 const LOW_COUNT = 10;
 const LOW_LIFETIME = 5 * 86400;
 const LOW_DRIFT = 12;
-const LOW_DEPTH = 18;
-const LOW_RADIUS_MIN = 500e3;
+const LOW_DEPTH = 24;
+const LOW_RADIUS_MIN = 700e3;
 const LOW_RADIUS_SPAN = 600e3;
+const LOW_ELONGATION = 1.6;
 const LOW_LATITUDE_MIN = THREE.MathUtils.degToRad(35);
 const LOW_LATITUDE_SPAN = THREE.MathUtils.degToRad(25);
+// 半球の中の順番から枡の番号へ進む歩幅。枡の数(LOW_COUNT / 2)と互いに素に取り、どの枡も 1 度ずつ
+// 使う。寿命の位相が隣り合う低気圧は枡 2 つ離れて座るので、同じ緯度なら 1 つの寿命の中の東進
+// (緯度 45° で 66°)を挟んでも、隣どうしの経度の間隔はどの瞬間も 45° を下回らない。
+const LOW_SLOT_STRIDE = 2;
+// 生まれる経度が枡の幅のうち揺れてよい割合(枡の中心から ± 半分ずつ)。半球の低気圧は経度を等分した
+// 枡に生まれるので、隣どうしは別々の閉じた流れを保つ。揺れは世代ごとに同じ並びになるのを防ぎ、
+// 枡の並びが残す最小の間隔を食わない幅に取る(同じ緯度なら残りは 45° で 31° ≈ 2400 km)。
+const LOW_LONGITUDE_JITTER = 0.2;
 
 // 整数から 0..1 の決定的な擬似乱数。
 function hash(n: number): number {
@@ -51,25 +68,39 @@ function hash(n: number): number {
   return x - Math.floor(x);
 }
 
-// 谷 1 つ。中心の単位方向と深さ [hPa] は時刻ごとに書き換わり、広がり radius [m] と最盛期の
-// 落ち込み peakDepth [hPa] は固定。
+// 谷 1 つ。中心の単位方向、長軸の向き、深さ [hPa] は時刻ごとに書き換わり、短軸の半径 radius [m]、
+// 最盛期の落ち込み peakDepth [hPa]、長軸/短軸の比 elongation は固定。
 class Trough {
   private readonly center: Vec3Uniform = uniform(new THREE.Vector3());
+  // 長軸の向きの単位接ベクトル。
+  private readonly axis: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly depth: FloatUniform = uniform(0);
   // 目の濃さ 0..1。深さと広がりと緯度から出るので、同じ谷でも一生の中で現れて消える。
   private readonly eyeStrength: FloatUniform = uniform(0);
 
-  public constructor(private readonly radius: number, private readonly peakDepth: number) {}
+  public constructor(
+    private readonly radius: number, private readonly peakDepth: number, private readonly elongation: number,
+  ) {}
 
   // 中心を緯度・経度 [rad] へ置き、寿命の中の位置 life(0 で生まれ、0.5 で最盛期、1 で消える)に
-  // 応じた深さと目にする。
+  // 応じた深さと目にする。長軸は東と極側の北のあいだ — 北半球で南西–北東、南半球で北西–南東。
   public place(latitude: number, longitude: number, life: number): void {
     const cosLatitude = Math.cos(latitude);
     const sinLatitude = Math.sin(latitude);
-    this.center.value.set(cosLatitude * Math.sin(longitude), sinLatitude, cosLatitude * Math.cos(longitude));
+    const cosLongitude = Math.cos(longitude);
+    const sinLongitude = Math.sin(longitude);
+    this.center.value.set(cosLatitude * sinLongitude, sinLatitude, cosLatitude * cosLongitude);
+    // 東 (cos λ, 0, −sin λ) と北 (−sin φ sin λ, cos φ, −sin φ cos λ) の和。南半球では北の符号を返す。
+    const hemisphere = latitude >= 0 ? 1 : -1;
+    this.axis.value.set(
+      cosLongitude - hemisphere * sinLatitude * sinLongitude,
+      hemisphere * cosLatitude,
+      -sinLongitude - hemisphere * sinLatitude * cosLongitude,
+    ).normalize();
     const depth = this.peakDepth * Math.sin(Math.PI * life);
     this.depth.value = depth;
-    // 芯(勾配の消える点)での等圧線方向の 2 階微分 [hPa/rad²]。pressureAt の形を原点で開いたもの。
+    // 芯(勾配の消える点)での等圧線方向の 2 階微分 [hPa/rad²]。pressureAt の形を短軸の向きに原点で
+    // 開いたもの。長軸の向きの曲がりはこれより緩いので、目の判定は閉じた側で行う。
     const coreBend = depth
       * ((R_EARTH / this.radius) ** 2 + 2 * (R_EARTH / TROUGH_REACH) ** 2);
     this.eyeStrength.value = 1 - THREE.MathUtils.smoothstep(
@@ -77,14 +108,16 @@ class Trough {
   }
 
   // 中心からの弦の二乗。距離を弦で測るので、対蹠点に鏡像が出ない。弦は二乗のまま扱う — 長さを
-  // 取ってから二乗し直すと、平方根と累乗を 1 つずつ余計に踏む。
+  // 取ってから二乗し直すと、平方根と累乗を 1 つずつ余計に踏む。長軸に沿う成分は elongation 分の 1 に
+  // 縮めて測るので、谷はその向きへ elongation 倍に広がる。
   private chordSquared(direction: Vec3Node): FloatNode {
     const offset = direction.sub(this.center);
-    return dot(offset, offset);
+    const alongAxis = dot(offset, this.axis);
+    return dot(offset, offset).sub(alongAxis.mul(alongAxis).mul(1 - 1 / this.elongation ** 2));
   }
 
-  // 単位方向 direction での気圧の落ち込み [hPa](負)。芯は中心から radius で 1/√2 へ落ち、その先は
-  // 中心からの距離に反比例して裾を引き、TROUGH_REACH のガウスが遠方を閉じる。
+  // 単位方向 direction での気圧の落ち込み [hPa](負)。芯は短軸の向きに中心から radius で 1/√2 へ
+  // 落ち、その先は中心からの距離に反比例して裾を引き、TROUGH_REACH のガウスが遠方を閉じる。
   //
   // **裾の緩さを決めるのは対数傾き。** 反比例の裾は傾きが一桁ぶんの半径をかけて渡るので、風向も
   // 移流の伸びも半径に沿って滑らかに緩む。芯の巻きは 深さ/広がり² が単独で握り、裾と別に動かせる。
@@ -121,9 +154,9 @@ export class Cyclones {
 
   // 谷を組み、時刻 0 の配置で始める。
   public constructor() {
-    this.typhoon = new Trough(TYPHOON_RADIUS, TYPHOON_DEPTH);
+    this.typhoon = new Trough(TYPHOON_RADIUS, TYPHOON_DEPTH, TYPHOON_ELONGATION);
     this.lows = Array.from({ length: LOW_COUNT },
-      (_, i) => new Trough(LOW_RADIUS_MIN + (i / LOW_COUNT) * LOW_RADIUS_SPAN, LOW_DEPTH));
+      (_, i) => new Trough(LOW_RADIUS_MIN + (i / LOW_COUNT) * LOW_RADIUS_SPAN, LOW_DEPTH, LOW_ELONGATION));
     this.troughs = [this.typhoon, ...this.lows];
     this.syncTime(0);
   }
@@ -137,7 +170,10 @@ export class Cyclones {
       + (TYPHOON_DRIFT / (R_EARTH * Math.cos(TYPHOON_LATITUDE))) * typhoonLife * TYPHOON_LIFETIME;
     this.typhoon.place(TYPHOON_LATITUDE, typhoonLongitude, typhoonLife);
 
-    // 低気圧は寿命ごとに世代が進み、世代と番号のハッシュで生まれる経度・緯度が決まる。
+    // 低気圧は寿命ごとに世代が進む。偶数番が北、奇数番が南で、半球の中の順番が経度の枡を決め、
+    // 世代と番号のハッシュが緯度と枡の中の揺れを決める。
+    const slots = LOW_COUNT / 2;
+    const slotWidth = (2 * Math.PI) / slots;
     for (const [i, low] of this.lows.entries()) {
       const age = seconds / LOW_LIFETIME + i / LOW_COUNT;
       const generation = Math.floor(age);
@@ -145,7 +181,8 @@ export class Cyclones {
       const seed = generation * LOW_COUNT + i;
       const hemisphere = i % 2 === 0 ? 1 : -1;
       const latitude = hemisphere * (LOW_LATITUDE_MIN + hash(seed) * LOW_LATITUDE_SPAN);
-      const longitude = hash(seed + 0.5) * 2 * Math.PI
+      const slot = ((Math.floor(i / 2) * LOW_SLOT_STRIDE) % slots) * slotWidth;
+      const longitude = slot + (hash(seed + 0.5) - 0.5) * LOW_LONGITUDE_JITTER * slotWidth
         + (LOW_DRIFT / (R_EARTH * Math.cos(latitude))) * life * LOW_LIFETIME;
       low.place(latitude, longitude, life);
     }
