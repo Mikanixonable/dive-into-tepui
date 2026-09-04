@@ -157,6 +157,25 @@ export function register(): void {
     }
   });
 
+  test('shadow: maxOccludedFraction は観測点が天体を追い越しても跳ばない', () => {
+    const sun = star(0);
+    const earth = body('earth', MU_EARTH, R_EARTH, AU);
+    // 恒星と地球を結ぶ線上を、地球の反対側から恒星側へ抜けるまで動かす。上限は距離だけで
+    // 決まるので、地球を追い越す瞬間に段差は現れない。
+    const step = 1e7;
+    let previous: number | null = null;
+    for (let offset = 2e9; offset >= -2e9; offset -= step) {
+      const bound = maxOccludedFraction(v3(AU + offset, 0, 0), sun, earth, 0);
+      if (previous !== null) {
+        assert.ok(
+          Math.abs(bound - previous) < 0.05,
+          `上限が跳んだ (offset=${offset}): ${previous} -> ${bound}`,
+        );
+      }
+      previous = bound;
+    }
+  });
+
   test('shadow: maxOccludedFraction で閾値を切った天体を落としても、日照率は閾値以上ずれない', () => {
     // 恒星を原点に置いた太陽系の縮図。金星は地球から見て太陽の手前(太陽面通過)に、
     // 土星圏の衛星は土星のすぐ外側に並ぶ — どちらも「幾何としては確かに遮っているが、

@@ -1,6 +1,6 @@
-// 物理パラメータから環を描く。環のalphaは固定値ではなく、TSLで
+// 物理パラメータから環を描く。環の alpha は TSL で
 //   T = exp(-tauNormal / |N.V|)
-// と単一散乱を評価する。全てのThree importはWebGPU entry pointから行う。
+// と単一散乱を評価して決める。
 import * as THREE from 'three/webgpu';
 import {
   cameraProjectionMatrixInverse,
@@ -30,25 +30,28 @@ const D2R = Math.PI / 180;
 const FOUR_PI = 4 * Math.PI;
 const MU_MIN = 0.015;
 
-export type RingVisualState = {
+export interface RingVisualState {
   readonly ringAxis: THREE.Vector3;
   readonly coverage: number;
-};
+}
 
-export type RingVisual = {
+export interface RingVisual {
   readonly object: THREE.Object3D;
   readonly sync: (state: RingVisualState) => void;
   // 自前の geometry/material を解放する。object をシーンから外すのは呼び出し側の責務。
   readonly dispose: () => void;
-};
+}
 
-function colorNode(color: readonly [number, number, number]): Vec3Node {
-  return vec3(color[0], color[1], color[2]);
+// 光学的厚みのスケールが一定な扇形。start/length は [rad]。
+interface RingSector {
+  readonly start: number;
+  readonly length: number;
+  readonly scale: number;
 }
 
 // 環の代表色をノードにしたもの。全帯で同じ色を使う。
 function ringBaseColor(): Vec3Node {
-  return colorNode(RING_COLOR);
+  return vec3(RING_COLOR[0], RING_COLOR[1], RING_COLOR[2]);
 }
 
 // annulus/line 共通の光学TSLグラフ。coverage は帯の画面上被覆率(1px未満の細帯を
@@ -85,11 +88,11 @@ function ringOpticsNodes(
   const baseExtinction = float(1).sub(transmittance);
   const extinction = baseExtinction.mul(coverage);
 
-  // 直射散乱が受ける遮蔽。本体の球も他の天体も、遮蔽パスの受け手と同じ 1 つの関数から引く
+  // 直射散乱が受ける遮蔽。本体も他の天体も、遮蔽パスの受け手と同じ 1 つの関数から引く
   // ので、境界は半影の幅でぼける。**環の帯は源から外す** — 環のフラグメントは自分が乗って
   // いる帯の平面上に居るため、含めると自己遮蔽で刃こぼれする。
   const directLight = sunOcclusion.transmittance(positionWorld, {
-    rings: false, meshNormal: null, selfViewDistance: null,
+    rings: false, meshNormal: null, cumulusFootprint: null,
   });
 
   const denominator = float(1).add(phaseG.mul(phaseG)).sub(
@@ -152,22 +155,28 @@ function lineOpticsMaterial(
   return { material: mat, sync };
 }
 
-function sectorParts(arcs: readonly RingArcDef[] | undefined): readonly { start: number; length: number; scale: number }[] {
+// 角度 [deg] を 0 以上 360 未満へ折り返す。
+function wrapDeg(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
+
+// 帯を、アークの重なりが変わらない扇形へ切った並び。アークが無ければ全周 1 つ。
+function sectorParts(arcs: readonly RingArcDef[] | undefined): readonly RingSector[] {
   if (arcs === undefined || arcs.length === 0) return [{ start: 0, length: Math.PI * 2, scale: 1 }];
+  // 全アークの端点で全周を切る。
   const bounds = [0, 360];
-  for (const arc of arcs) {
-    bounds.push(((arc.fromDeg % 360) + 360) % 360, ((arc.toDeg % 360) + 360) % 360);
-  }
+  for (const arc of arcs) bounds.push(wrapDeg(arc.fromDeg), wrapDeg(arc.toDeg));
   const sorted = [...new Set(bounds)].sort((a, b) => a - b);
-  const parts: { start: number; length: number; scale: number }[] = [];
+  // 扇形ごとに、その中点を覆うアーク(0° を跨ぐものも含む)のスケールを掛け合わせる。
+  const parts: RingSector[] = [];
   for (let i = 0; i + 1 < sorted.length; i++) {
     const from = sorted[i]!;
     const to = sorted[i + 1]!;
     const mid = (from + to) * 0.5;
     let scale = 1;
     for (const arc of arcs) {
-      const a = ((arc.fromDeg % 360) + 360) % 360;
-      const b = ((arc.toDeg % 360) + 360) % 360;
+      const a = wrapDeg(arc.fromDeg);
+      const b = wrapDeg(arc.toDeg);
       if (a <= b ? mid >= a && mid < b : mid >= a || mid < b) scale *= arc.opticalDepthScale;
     }
     parts.push({ start: from * D2R, length: (to - from) * D2R, scale });
@@ -175,6 +184,7 @@ function sectorParts(arcs: readonly RingArcDef[] | undefined): readonly { start:
   return parts.length > 0 ? parts : [{ start: 0, length: Math.PI * 2, scale: 1 }];
 }
 
+// 複数の帯を 1 つの RingVisual へ束ねる。sync と dispose は全帯へ配る。
 function combineVisuals(visuals: readonly RingVisual[]): RingVisual {
   const group = new THREE.Group();
   for (const visual of visuals) group.add(visual.object);
@@ -228,6 +238,7 @@ function buildLineRingSegment(
   sunOcclusion: SunOcclusion,
   sunLight: SunLight,
 ): RingVisual {
+  // 円弧上の点列を XY 平面に置く(Z は 0)。
   const positions = new Float32Array((segments + 1) * 3);
   for (let i = 0; i <= segments; i++) {
     const a = thetaStart + (i / segments) * thetaLength;
@@ -236,6 +247,7 @@ function buildLineRingSegment(
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  // 面と同じ光学グラフを線のマテリアルへ載せる。
   const { material, sync } = lineOpticsMaterial(ringBaseColor(), optics, sunOcclusion, sunLight);
   const line = new THREE.Line(geo, material);
   line.rotation.x = RING_TILT;
@@ -257,10 +269,12 @@ export function createRingLine(
   return visuals.length === 1 ? visuals[0]! : combineVisuals(visuals);
 }
 
+// 内径・外径・高さを持つ角柱状の環(XY 平面に置き、Z が厚み)。上下の面と内外の側壁を張る。
 function annularPrism(innerRadius: number, outerRadius: number, height: number): THREE.BufferGeometry {
   const segments = 128;
   const positions: number[] = [];
   const indices: number[] = [];
+  // 下面(layer 0)と上面(layer 1)に、内周・外周の点を交互に並べる。
   for (let layer = 0; layer < 2; layer++) {
     const z = layer === 0 ? -height * 0.5 : height * 0.5;
     for (let i = 0; i < segments; i++) {
@@ -269,11 +283,19 @@ function annularPrism(innerRadius: number, outerRadius: number, height: number):
       positions.push(Math.cos(a) * outerRadius, Math.sin(a) * outerRadius, z);
     }
   }
-  const ringIndex = (layer: number, i: number, outer: boolean) => layer * segments * 2 + ((i + segments) % segments) * 2 + (outer ? 1 : 0);
+  // 区間ごとに上面・下面・外壁・内壁の 4 面を 2 三角形ずつ張る。
+  const ringIndex = (layer: number, i: number, outer: boolean): number =>
+    layer * segments * 2 + ((i + segments) % segments) * 2 + (outer ? 1 : 0);
   for (let i = 0; i < segments; i++) {
     const n = (i + 1) % segments;
-    const ti = ringIndex(1, i, false), tn = ringIndex(1, n, false), oi = ringIndex(1, i, true), on = ringIndex(1, n, true);
-    const bi = ringIndex(0, i, false), bn = ringIndex(0, n, false), boi = ringIndex(0, i, true), bon = ringIndex(0, n, true);
+    const ti = ringIndex(1, i, false);
+    const tn = ringIndex(1, n, false);
+    const oi = ringIndex(1, i, true);
+    const on = ringIndex(1, n, true);
+    const bi = ringIndex(0, i, false);
+    const bn = ringIndex(0, n, false);
+    const boi = ringIndex(0, i, true);
+    const bon = ringIndex(0, n, true);
     indices.push(oi, on, tn, oi, tn, ti, bi, bn, bon, bi, bon, boi);
     indices.push(oi, boi, bon, oi, bon, on, ti, tn, bn, ti, bn, bi);
   }

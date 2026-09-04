@@ -11,6 +11,7 @@ export type IntNode = THREE.Node<'int'>;
 export type UintNode = THREE.Node<'uint'>;
 export type BoolNode = THREE.Node<'bool'>;
 export type Mat3Node = THREE.Node<'mat3'>;
+export type Mat4Node = THREE.Node<'mat4'>;
 
 // CPU 側から毎フレーム値を書き込めるノード。`value` への代入がそのまま uniform 更新になる。
 export type FloatUniform = THREE.UniformNode<'float', number>;

@@ -4,46 +4,85 @@
 <meta charset="utf-8">
 <title>Render Lab</title>
 <style>
-  :root { --bg: #0b0d10; --panel: #14181d; --edge: #2a3038; --text: #d7dde5; --accent: #ff6a00; }
+  /* 色・余白・文字寸法はゲーム本体のトークン(src/theme.ts)を使う。設定パネルと
+     ウィジェットをそのまま借りるので、器の側だけ別の色体系を持つ意味がない。トークンは
+     起動時に injectThemeVariables() が :root へ書き込むまで空なので、フォールバックを併記する。 */
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 16px; background: var(--bg); color: var(--text);
+    margin: 0; padding: var(--space-5, 12px);
+    background: var(--bg, #0b0d10); color: var(--text, #d7dde5);
     font: 13px/1.6 "JetBrains Mono", ui-monospace, monospace;
   }
-  h1 { font-size: 15px; margin: 0 0 12px; font-weight: 600; letter-spacing: .04em; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-  .row button {
-    background: #1c2229; color: var(--text); border: 1px solid var(--edge);
-    border-radius: 4px; padding: 5px 14px; font: inherit; cursor: pointer;
+  h1 { font-size: var(--font-l, 15px); margin: 0 0 var(--space-5, 12px); font-weight: 600; letter-spacing: .04em; }
+  h2 {
+    margin: 0 0 var(--space-4, 8px); color: var(--color-primary, #ff6a00);
+    font-size: var(--font-xxs, 11px); font-weight: 600; letter-spacing: 0.12em;
   }
-  .row button:hover { border-color: #3d4650; }
-  .row button.active { background: var(--accent); border-color: var(--accent); color: #12151a; font-weight: 600; }
-  .row button:disabled { opacity: .35; cursor: default; }
-  .row button:disabled:hover { border-color: var(--edge); }
-  .row .field { display: flex; align-items: center; gap: 6px; }
-  .row .field span { opacity: .7; }
-  .row .field select {
-    background: #1c2229; color: var(--text); border: 1px solid var(--edge);
-    border-radius: 4px; padding: 4px 8px; font: inherit;
+
+  /* 左=舞台(ケース選択とキャンバス)、右=側柱(観察の向きと描画品質設定)。 */
+  #layout { display: flex; align-items: flex-start; gap: var(--space-5, 12px); }
+  /* 舞台の幅はキャンバス(960px 固定)が決める。**幅を与えないと**、ケースのボタン列が
+     折り返さずに一直線へ伸びて版面が数千 px になる。 */
+  #stage { flex: 0 0 auto; width: min-content; }
+  /* 側柱の幅は、いちばん広い操作行(露出補正の5択 ≒ 200px)+ 見出し + 節の左右余白。 */
+  #side { flex: 1 1 360px; min-width: 320px; max-width: 420px; }
+  #side section {
+    margin-bottom: var(--space-5, 12px); padding: var(--space-5, 12px);
+    background: var(--surface-1, #14181d); border: 1px solid var(--edge, #2a3038);
+    border-radius: var(--radius-panel, 16px);
   }
-  .row .field input[type=range] { width: 116px; accent-color: var(--accent); }
-  .row .field output { min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
-  #views { display: flex; gap: 12px; flex-wrap: wrap; }
-  #views figure { margin: 0; background: var(--panel); border: 1px solid var(--edge); padding: 8px; }
+
+  .row { display: flex; gap: var(--space-4, 8px); flex-wrap: wrap; margin-bottom: var(--space-5, 12px); }
+  /* 観察のつまみは側柱で縦に積む — 横並びだと1本あたりの幅が読み取れる長さを切る。 */
+  #view-angles, #cumulus-dither { flex-direction: column; gap: var(--space-3, 6px); margin-bottom: 0; }
+
+  .field { display: flex; align-items: center; gap: var(--space-3, 6px); }
+  .field > span { min-width: 5.5em; color: var(--text-dim, #8a939e); }
+  .field input[type=range] { flex: 1; min-width: 90px; accent-color: var(--color-primary, #ff6a00); }
+  .field output {
+    min-width: 8.5em; text-align: right; color: var(--text, #d7dde5);
+    font-variant-numeric: tabular-nums;
+  }
+
+  #views figure {
+    margin: 0; padding: var(--space-4, 8px);
+    background: var(--surface-1, #14181d); border: 1px solid var(--edge, #2a3038);
+    border-radius: var(--radius-panel, 16px);
+  }
   #views canvas { display: block; width: 960px; height: 540px; background: #000; }
-  #error { color: #ff8a5c; white-space: pre-wrap; }
+  #error { color: var(--color-error, #ff8a5c); white-space: pre-wrap; }
 </style>
 </head>
 <body>
   <h1>Render Lab</h1>
-  <div class="row" id="cases"></div>
-  <div class="row" id="styles"></div>
-  <div class="row" id="targets"></div>
-  <div class="row" id="graphics"></div>
-  <div class="row" id="view-angles"></div>
-  <div id="views">
-    <figure><canvas id="view"></canvas></figure>
+  <div id="layout">
+    <div id="stage">
+      <div class="row" id="cases"></div>
+      <div class="row" id="modes"></div>
+      <div id="views">
+        <figure><canvas id="view"></canvas></figure>
+      </div>
+      <p id="error"></p>
+    </div>
+    <aside id="side">
+      <section>
+        <h2>観察の向き</h2>
+        <div class="row" id="view-angles"></div>
+      </section>
+      <section>
+        <h2>描画品質設定</h2>
+        <div id="graphics"></div>
+      </section>
+      <section>
+        <h2>環境光(ビュー種別の代わり)</h2>
+        <div id="ambient"></div>
+      </section>
+      <!-- 仮設: 積雲の飽和とディザの幅の追い込み用。生成側の場へ差し替えたあとまで残す。 -->
+      <section>
+        <h2>積雲のディザ(仮設)</h2>
+        <div class="row" id="cumulus-dither"></div>
+      </section>
+    </aside>
   </div>
-  <p id="error"></p>
 </body>
 </html>
