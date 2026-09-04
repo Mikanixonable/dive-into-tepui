@@ -26,9 +26,9 @@ const INSTABILITY_AMPLITUDE = 0.8;
 // 気団に依らず 1 へ、高気圧の吹きおろし(−0.02 m/s)で床へ届く。
 const LIFT_ACTIVITY = 25;
 const ACTIVITY_BASE = 0.5;
-// 寒気の流入が活発度へ効く利得 [per rad] と、活発度の床。並の寒気の吹き出し(−0.35 rad)で
+// 寒気の流入が活発度へ効く利得 [per rad] と、活発度の床。並の寒気の吹き出し(−0.26 rad)で
 // 活発度が半分ぶん上がる高さに取る。
-const COLD_ACTIVITY = 1.4;
+const COLD_ACTIVITY = 1.9;
 const ACTIVITY_MIN = 0.3;
 // 陸の上で上がる分。日射で温まる地面の上は不安定で、雲は板ではなく粒になる。
 const LAND_ACTIVITY = 0.3;
