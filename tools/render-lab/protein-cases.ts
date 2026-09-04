@@ -50,6 +50,7 @@ function proteinCase(): LabCase {
   const binding = createProteinMotionBinding(
     source.motion.residueCount, proteinMotionModeDisplacements(source.motion), source.motion.modes.length,
   );
+  if (binding === null) throw new Error('Protein motion slots are exhausted');
   const object = buildProteinEnemyShip(source, DISPLAY, binding);
   object.position.set(0, 0, -MODEL_DEPTH);
 
