@@ -130,6 +130,9 @@ const LAND_HEIGHT_BIAS = 800;
 const LIFT_HUMIDITY = 2.2;
 const SUBSIDENCE_DRYING = 1.0;
 const UPPER_LIFT_HUMIDITY = 0.7;
+// 沈降が上層を乾かす利得 [per m/s]。上層には境界層のような湿りの溜まりが無いので、地表付近より
+// 強く乾く — 高気圧の吹きおろす所では薄い雲も消える。
+const UPPER_SUBSIDENCE_DRYING = 2;
 
 // 圏界面の高さ [m] とその緯度依存。熱帯で 16〜17 km、極で 9 km 前後で、亜熱帯のジェットの下で
 // 段をなして下がる(NCAR ACOM「Cloud Tops and Tropopause」)。深い対流はここに当たって横へ広がる
@@ -300,7 +303,8 @@ export class WeatherModel {
         .add(warmth.mul(WARM_HUMIDITY)).sub(eye.mul(EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
       advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
-        .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
+        .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
+        .sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
     return {
       pressure,
