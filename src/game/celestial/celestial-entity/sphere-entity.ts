@@ -15,10 +15,9 @@ import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
-import type { SunLight } from '../../../render/pipeline/sun-light';
-import type { SunOcclusion } from '../../../render/pipeline/sun-occlusion';
 import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
+import type { RingMaterials } from '../../../render/ring';
 import { RingView } from './ring-view';
 
 export class SphereEntity extends CelestialEntity {
@@ -58,14 +57,14 @@ export class SphereEntity extends CelestialEntity {
   get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
 
   // 表面メッシュと環をシーンへ一度だけ登録する。
-  build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void {
+  build(scene: THREE.Scene, ringMaterials: RingMaterials): void {
     this.surface.addTo(this.group);
     this.graticule.addTo(this.group);
     this.surfaceMarkings?.addTo(this.group);
     scene.add(this.group);
     if (this.rings !== null) {
       this.ring = new RingView(
-        this.rings, this.radius, this.group.renderOrder + 1, sunOcclusion, sunLight,
+        this.rings, this.radius, this.group.renderOrder + 1, ringMaterials,
       );
       scene.add(this.ring.group);
     }
