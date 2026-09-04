@@ -8,6 +8,7 @@ import {
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../game/celestial/solar-system/constants';
+import { AirMass } from './air-mass';
 import { BakedField } from './baked-field';
 import { CirculatingNoise, coarsenessFor } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
@@ -23,7 +24,9 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、風は東向き・北向きの成分 [m/s]、
 // 上昇流は [m/s](地形と気圧による、負なら下降)、湿度は 0..1(humidity が地表付近、
 // upperHumidity が上層)、対流は対流セルの強弱(0 中心の高周波)、対流の活発度はその強弱が
-// どれだけ強く現れるか 0..1、金床は平らな天蓋の濃さ 0..1、圏界面はその緯度の対流の天井 [m]。
+// どれだけ強く現れるか 0..1、圧縮は気団の境目の押し縮まり(1 で何も起きていない)、暖気の流入は
+// 出身地からの緯度の差 [rad](負で寒気)、金床は平らな天蓋の濃さ 0..1、圏界面はその緯度の
+// 対流の天井 [m]。
 export type WeatherSample = {
   readonly pressure: FloatNode;
   readonly wind: Vec2Node;
@@ -32,8 +35,19 @@ export type WeatherSample = {
   readonly upperHumidity: FloatNode;
   readonly convection: FloatNode;
   readonly convectiveActivity: FloatNode;
+  readonly compression: FloatNode;
+  readonly warmth: FloatNode;
   readonly anvil: FloatNode;
   readonly tropopause: FloatNode;
+};
+
+// 気圧の写しから読んだ、風を解くのに要る量。gradient は勾配の接ベクトル [hPa/rad]、isobar は
+// 等圧線方向の単位接ベクトル、bend は等圧線方向の 2 階微分 [hPa/rad²]。
+type PressureField = {
+  readonly pressure: FloatNode;
+  readonly gradient: Vec3Node;
+  readonly isobar: Vec3Node;
+  readonly bend: FloatNode;
 };
 
 // 風で流したあとの場。地表付近と上層の湿度は 0..1、対流は 0 中心の高周波。
@@ -145,6 +159,7 @@ export class WeatherModel {
   private readonly humiditySource: BakedField;
   private readonly convectionSource: BakedField;
   private readonly convectiveActivity: ConvectiveActivity;
+  private readonly airMass: AirMass;
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
@@ -174,12 +189,15 @@ export class WeatherModel {
       'convectionSource', THREE.RedFormat, projection, convectionCoarseness,
       (direction) => vec4(this.convectionSourceAt(direction), 0, 0, 1));
     this.convectiveActivity = new ConvectiveActivity(this.circulation, projection);
+    this.airMass = new AirMass(projection, (direction) => this.traceWindAt(direction));
     this.syncTime(0);
   }
 
   // いまの時刻の気圧と、移流前の場を写しへ焼く。syncTime のあと、weatherAt のグラフを描く前に呼ぶ。
   public bake(renderer: WebGPURenderer): void {
     this.pressure.render(renderer);
+    // 気団は気圧の写しを読んで遡るので、気圧の後に焼く。
+    this.airMass.bake(renderer);
     this.humiditySource.render(renderer);
     this.convectionSource.render(renderer);
     this.convectiveActivity.bake(renderer);
@@ -200,22 +218,7 @@ export class WeatherModel {
     const east = eastAt(direction);
     const north = northAt(direction);
 
-    // 気圧の写しの 4 点差分から勾配(接ベクトル [hPa/rad])、等圧線方向の 2 点差分からその向きの
-    // 2 階微分 [hPa/rad²]。
-    const pressure = this.pressure.at(direction).r;
-    const eastStep = east.mul(GRADIENT_STEP);
-    const northStep = north.mul(GRADIENT_STEP);
-    const pressureEast = this.pressure.at(normalize(direction.add(eastStep))).r;
-    const pressureWest = this.pressure.at(normalize(direction.sub(eastStep))).r;
-    const pressureNorth = this.pressure.at(normalize(direction.add(northStep))).r;
-    const pressureSouth = this.pressure.at(normalize(direction.sub(northStep))).r;
-    const gradient = east.mul(pressureEast.sub(pressureWest)).add(north.mul(pressureNorth.sub(pressureSouth)))
-      .div(2 * GRADIENT_STEP);
-    const isobar = isobarAt(direction, gradient);
-    const isobarStep = isobar.mul(BEND_STEP);
-    const pressureAhead = this.pressure.at(normalize(direction.add(isobarStep))).r;
-    const pressureBehind = this.pressure.at(normalize(direction.sub(isobarStep))).r;
-    const bend = pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2);
+    const { pressure, gradient, isobar, bend } = this.pressureFieldAt(direction, east, north);
 
     // 湿度と対流は、摩擦の違う 2 本の風で流す。上層の湿度はそこへ上層の帯の平均風を足した風で流す
     // — 巻雲の繊維はジェットに沿って伸びるので、地表付近の風で流すと向きが揃わない。
@@ -246,6 +249,7 @@ export class WeatherModel {
       advected.upperHumidity.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
+    const airMass = this.airMass.at(direction, latitude);
     return {
       pressure,
       wind: components(wind.velocity),
@@ -254,8 +258,45 @@ export class WeatherModel {
       upperHumidity,
       convection: advected.convection,
       convectiveActivity: this.convectiveActivity.at(direction, lift),
+      compression: airMass.compression,
+      warmth: airMass.warmth,
       anvil: this.cyclones.anvilAt(direction),
       tropopause: tropopauseAt(latitude),
+    };
+  }
+
+  // 単位方向 direction(接平面の東 east・北 north)における気圧の写しの読み。4 点差分から勾配を、
+  // 等圧線方向の 2 点差分からその向きの 2 階微分を取る。
+  private pressureFieldAt(direction: Vec3Node, east: Vec3Node, north: Vec3Node): PressureField {
+    const pressure = this.pressure.at(direction).r;
+    const eastStep = east.mul(GRADIENT_STEP);
+    const northStep = north.mul(GRADIENT_STEP);
+    const pressureEast = this.pressure.at(normalize(direction.add(eastStep))).r;
+    const pressureWest = this.pressure.at(normalize(direction.sub(eastStep))).r;
+    const pressureNorth = this.pressure.at(normalize(direction.add(northStep))).r;
+    const pressureSouth = this.pressure.at(normalize(direction.sub(northStep))).r;
+    const gradient = east.mul(pressureEast.sub(pressureWest)).add(north.mul(pressureNorth.sub(pressureSouth)))
+      .div(2 * GRADIENT_STEP);
+    const isobar = isobarAt(direction, gradient);
+    const isobarStep = isobar.mul(BEND_STEP);
+    const pressureAhead = this.pressure.at(normalize(direction.add(isobarStep))).r;
+    const pressureBehind = this.pressure.at(normalize(direction.sub(isobarStep))).r;
+    return { pressure, gradient, isobar, bend: pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2) };
+  }
+
+  // 気団を風上へ遡らせる風。地表の釣り合い風へ、地表の帯の平均風の**東向きの成分だけ**を足す。
+  // 東西の流れが緯度で変わる分が、渦の作った気団の境目を南西–北東へ傾ける。**南北の成分は足さない**
+  // — 帯の南北の風は経度に依らないので、収束する緯度(赤道・±60°)に緯線に沿った圧縮の環を作る。
+  // **移流の風にはどちらも足さない** — 2 位相移流へ入れると、位相 A と B が数百 km ずれた別の模様を
+  // 混ぜることになり、背景が全域でぼける。
+  private traceWindAt(direction: Vec3Node): BalancedWind {
+    const east = eastAt(direction);
+    const north = northAt(direction);
+    const { gradient, isobar, bend } = this.pressureFieldAt(direction, east, north);
+    const wind = balancedWind(gradient, isobar, bend, latitudeOf(direction), FRICTION_RATE);
+    return {
+      velocity: wind.velocity.add(east.mul(this.meanWindAt(direction).x)),
+      turn: wind.turn,
     };
   }
 
@@ -328,6 +369,7 @@ export class WeatherModel {
     this.humiditySource.dispose();
     this.convectionSource.dispose();
     this.convectiveActivity.dispose();
+    this.airMass.dispose();
   }
 }
 
