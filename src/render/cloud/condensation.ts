@@ -39,9 +39,9 @@ export const CLOUD_TOP_BIAS_KNOB: FloatUniform = uniform(1.85);
 // 割合はこの 2 つと、下の湿りの門が決める。
 export const TOWER_ONSET_KNOB: FloatUniform = uniform(0.027);
 export const TOWER_WIDTH_KNOB: FloatUniform = uniform(0.045);
-// 層積雲の板。沈降域で、湿度が凝結の効き始めに届かない所にだけ広く低く覆う。効き始める湿度は
-// 覆いの効き始めより下に取り、板が消える所で普通の凝結が引き継ぐ。沈降の利得 [per m/s] は
-// 亜熱帯高圧帯の吹きおろし(0.02 m/s)で板が飽和する高さ、上限は板が空を覆い尽くさない高さ。
+// 層積雲の板。沈降域では雲底が低く抑えられ、上の雲より薄い湿りで一枚の板として広がる。効き始める
+// 湿度は覆いの効き始めより下に取り、そこから上は同じ濃さの板が続く。沈降の利得 [per m/s] は
+// 亜熱帯高圧帯の吹きおろし(0.02 m/s)で板が飽和する高さ、上限は板が空を覆い尽くさない濃さ。
 export const DECK_HUMIDITY_ONSET_KNOB: FloatUniform = uniform(0.40);
 export const DECK_SUBSIDENCE_KNOB: FloatUniform = uniform(100);
 export const DECK_LIMIT_KNOB: FloatUniform = uniform(0.34);
@@ -74,8 +74,8 @@ export function condense(weather: WeatherSample): CloudSample {
   // 上端は 1 へ漸近するだけで飽和しない — 覆われた空にも湿度の差が階調として残る。
   const moistened = weather.humidity.add(granularity);
   const excess = max(moistened.sub(COVERAGE_ONSET_KNOB), 0).div(COVERAGE_WIDTH_KNOB);
-  // 層積雲の板。吹きおろしの強さで濃さが決まり、粒を足したあとの湿度で窓を切るので、板にも
-  // 細胞の質感が乗る。凝結の効き始めに届いた所では窓が閉じ、普通の凝結が引き継ぐ。
+  // 層積雲の板。濃さは吹きおろしの強さが決め、湿りの窓が乾いた土地で閉じる。窓には粒を足した
+  // 湿度を渡すので、板の縁は細胞の粒で千切れ、板より濃い所は上の伝達関数がそのまま引き継ぐ。
   const subsidence = max(weather.lift.negate(), 0);
   const deck = smoothstep(DECK_HUMIDITY_ONSET_KNOB, COVERAGE_ONSET_KNOB, moistened)
     .mul(exp(subsidence.mul(DECK_SUBSIDENCE_KNOB).negate()).oneMinus()).mul(DECK_LIMIT_KNOB);
