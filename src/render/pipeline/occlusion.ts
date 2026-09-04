@@ -54,14 +54,11 @@ export class OcclusionPass {
     const viewDistance = length(viewPos);
     const incidence = max(dot(normalize(viewPos).negate(), viewNormal), MIN_INCIDENCE_COSINE);
     const cumulusFootprint = this.pixelAngle.mul(viewDistance).div(incidence);
-    // 環の項を含める/含めないの 2 枚を、同じ位置と法線から組む。受け手は G バッファの面
-    // なので、乗っている天体の自己遮蔽を視距離の公差で外す。
+    // 環の項を含める/含めないの 2 枚を、同じ位置と法線から組む。
     const build = (rings: boolean): THREE.MeshBasicNodeMaterial => {
       const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
       material.colorNode = vec4(
-        vec3(sunOcclusion.transmittance(worldPos, {
-          rings, meshNormal, selfViewDistance: viewDistance, cumulusFootprint,
-        })), 1,
+        vec3(sunOcclusion.transmittance(worldPos, { rings, meshNormal, cumulusFootprint })), 1,
       );
       return material;
     };
