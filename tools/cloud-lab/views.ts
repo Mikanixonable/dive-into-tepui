@@ -11,7 +11,7 @@ import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
   | 'elevation' | 'landFraction' | 'meanCloudiness' | 'meanWind'
-  | 'pressure' | 'wind' | 'lift' | 'front' | 'airMass'
+  | 'pressure' | 'wind' | 'traceWind' | 'lift' | 'front' | 'airMass'
   | 'humiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'humidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
   | 'coverage' | 'cloudTop' | 'translucent' | 'composite' | 'photo';
@@ -35,8 +35,8 @@ export type CloudLabView = {
 // 暖気の流入は ±0.4 rad(48 h の追跡で気団が動く緯度差の上限)を 0.5 中心に、
 // 風は ±45 m/s(台風の芯の風速まで飽和させない幅)を
 // 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
-// 被覆率・湿度・対流の活発度はそのまま出す。**風と平均風は同じ目盛りに乗せる** — 大循環が運ぶ分と、
-// 気圧から出る分の大きさを見比べるため。
+// 被覆率・湿度・対流の活発度はそのまま出す。**風・平均風・追跡の風は同じ目盛りに乗せる** — 大循環が
+// 運ぶ分と、気圧から出る分と、気団を遡らせる分の大きさを見比べるため。
 const CLOUD_TOP_SPAN = 15000;
 const CONVECTION_SPAN = 0.5;
 const CONVECTIVE_DEPTH_SPAN = 0.3;
@@ -67,6 +67,8 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     color: (d, model) => vec3(model.weatherAt(d).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
   { id: 'wind', label: '風', reads: 'weather',
     color: (d, model) => windColor(model.weatherAt(d).wind) },
+  { id: 'traceWind', label: '追跡の風', reads: 'weather',
+    color: (d, model) => windColor(model.traceWindAt(d)) },
   { id: 'lift', label: '上昇流', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).lift.div(2 * LIFT_SPAN).add(0.5)) },
   { id: 'front', label: '前線', reads: 'weather',
