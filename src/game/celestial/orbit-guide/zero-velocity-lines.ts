@@ -19,7 +19,7 @@ import { FloatingOrigin } from '../../camera/floating-origin';
 import { GuideCurve } from './guide-curve';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import { ZeroVelocitySettings } from './orbit-guide-settings';
-import { OrbitGuideCatalog } from './orbit-guide-catalog';
+import { catalogSystemScale } from './orbit-guide-catalog';
 
 const COLOR_ZERO_VELOCITY_LINE = 0xd97a94;
 
@@ -112,7 +112,6 @@ function structuralKey(settings: ZeroVelocitySettings): string {
 }
 
 export class ZeroVelocityLines {
-  private readonly catalog = new OrbitGuideCatalog();
   private shapes: readonly ShapeEntry[] = [];
   private lines: LineEntry[] = [];
   private settings: ZeroVelocitySettings | null = null;
@@ -155,10 +154,9 @@ export class ZeroVelocityLines {
     }
   }
 
-  // 系ごとの μ。地球-月・太陽-地球はどちらも起動時から静的に読み込まれているカタログなので
-  // 常に取れる(読み込み待ちで null になることはない)。
+  // 系ごとの μ。索引から引くので、族の点列の読み込みを待たない。
   private muFor(system: CatalogSystemId): number | null {
-    return this.catalog.systemFor(system)?.mu ?? null;
+    return catalogSystemScale(system)?.mu ?? null;
   }
 
   // 断面×ヤコビ定数ごとにマーチングスクエア法で等高線を抽出し直す(重い処理、設定が

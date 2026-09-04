@@ -6,32 +6,43 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   CATALOG_STRIDE, CatalogFamily, CatalogMember, CatalogSystem, CatalogSystemId, OrbitCatalog,
-  decodeCatalogPoints,
+  OrbitCatalogIndex, decodeCatalogPoints,
 } from '../../src/physics/orbit-catalog';
 import { catalogLoop, guideSecondary, rotatingFrame } from '../../src/physics/orbit-guide';
 import { secondaryFrameOf } from '../../src/physics/lagrange';
 import { len, sub } from '../../src/math/vec3';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 // 焼き込みは数MBあり、import で型推論させると tsc が音を上げるので実行時に読む。
 // コンパイル後の位置(tests/dist/)から辿るのではなく、リポジトリ根から解決する。
-const CATALOG = JSON.parse(
-  readFileSync(resolve(process.cwd(), 'src/assets/orbits/lagrange-orbits.json'), 'utf8'),
-) as OrbitCatalog;
+const ORBITS_DIR = resolve(process.cwd(), 'src/assets/orbits');
+const readOrbitsJson = (file: string): unknown =>
+  JSON.parse(readFileSync(resolve(ORBITS_DIR, file), 'utf8'));
+
+const INDEX = readOrbitsJson('lagrange-orbits-index.json') as OrbitCatalogIndex;
+// 系ごとに分かれた焼き込みを1つの表へ集める。
+const SYSTEMS: Partial<Record<CatalogSystemId, CatalogSystem>> = {};
+for (const file of readdirSync(ORBITS_DIR)) {
+  if (!file.startsWith('lagrange-orbits-') || file === 'lagrange-orbits-index.json') continue;
+  Object.assign(SYSTEMS, (readOrbitsJson(file) as OrbitCatalog).systems);
+}
 
 export function register(): void {
   const PARTS = solarSystemParts();
   const t = 1e6;
-  const systemIds = Object.keys(CATALOG.systems) as CatalogSystemId[];
+  const systemIds = Object.keys(SYSTEMS) as CatalogSystemId[];
 
-  test('orbit-catalog: the bundled catalog carries the two main systems', () => {
-    assert.ok(systemIds.includes('earth-moon'), '地球-月系が無い');
-    assert.ok(systemIds.includes('sun-earth'), '太陽-地球系が無い');
+  test('orbit-catalog: the index covers every baked system', () => {
+    assert.ok(systemIds.length > 0, '焼き込まれた系が1つも無い');
+    for (const systemId of systemIds) {
+      assert.ok(INDEX.familyIndex[systemId] !== undefined, `${systemId}: 索引に族一覧が無い`);
+      assert.ok(INDEX.scales[systemId] !== undefined, `${systemId}: 索引に素性が無い`);
+    }
   });
 
   for (const systemId of systemIds) {
-    const system: CatalogSystem | undefined = CATALOG.systems[systemId];
+    const system: CatalogSystem | undefined = SYSTEMS[systemId];
     if (system === undefined) continue;
     const familyIds = Object.keys(system.families);
 
@@ -40,10 +51,12 @@ export function register(): void {
       for (const id of familyIds) {
         const family: CatalogFamily | undefined = system.families[id];
         assert.ok(family !== undefined, `${id}: 族が無い`);
-        assert.ok(family.members.length >= 2, `${id}: メンバーが少なすぎる`);
+        // 分ける必要が無かった種類は軌道が1本しか取れなくてもそのまま出す(SPEC/MAP.md
+        // 「ガイド線の正確さ」)。その1本は族の始端でも終端でもあるので s は 0 だけになる。
         const members: readonly CatalogMember[] = family.members;
+        assert.ok(members.length >= 1, `${id}: メンバーが無い`);
         assert.equal(members[0]?.s, 0, `${id}: 先頭の s が 0 でない`);
-        assert.equal(members[members.length - 1]?.s, 1, `${id}: 末尾の s が 1 でない`);
+        assert.equal(members[members.length - 1]?.s, members.length > 1 ? 1 : 0, `${id}: 末尾の s が想定と違う`);
         for (let i = 1; i < members.length; i++) {
           assert.ok((members[i]?.s ?? 0) > (members[i - 1]?.s ?? 0), `${id}: s が単調でない`);
         }
