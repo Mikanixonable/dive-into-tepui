@@ -35,8 +35,8 @@ export const CLOUD_TOP_RELIEF_KNOB: FloatUniform = uniform(3.3);
 export const CLOUD_TOP_BIAS_KNOB: FloatUniform = uniform(2);
 // 薄い雲は、上層の湿度がしきい値を超えた分に比例して光学的厚みが増える。上端で 0.72 に届く
 // — 巻雲は厚みが 1 に届かず、下地が透けたまま見える。
-export const TRANSLUCENT_ONSET_KNOB: FloatUniform = uniform(0.52);
-export const TRANSLUCENT_GAIN_KNOB: FloatUniform = uniform(1.5);
+export const TRANSLUCENT_ONSET_KNOB: FloatUniform = uniform(0.44);
+export const TRANSLUCENT_GAIN_KNOB: FloatUniform = uniform(1.7);
 
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した 1 本の伝達関数から、
 // 雲頂高度は上昇流と対流を別々の重みで混ぜたロジスティックから出る — 覆う広さは湿度が、

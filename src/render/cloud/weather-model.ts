@@ -75,8 +75,8 @@ const LIFT_LIMIT = 0.06;
 export const TERRAIN_LIFT_GAIN_KNOB: FloatUniform = uniform(0.35);
 // 上昇流の利得。上昇流は地表付近の湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く
 // [per m/s]。
-export const LIFT_HUMIDITY_KNOB: FloatUniform = uniform(5);
-const UPPER_LIFT_HUMIDITY = 3;
+export const LIFT_HUMIDITY_KNOB: FloatUniform = uniform(1.2);
+export const UPPER_LIFT_HUMIDITY_KNOB: FloatUniform = uniform(0.7);
 
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
 export const PRESSURE_BAND_AMPLITUDE_KNOB: FloatUniform = uniform(8);
@@ -115,10 +115,10 @@ const UPPER_EYE_DRYNESS = 2;
 // 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
 // 平年の雲量図がそのまま貼り付く。底上げは、重みを変えても平年並みの土地の湿度が動かないように
 // 取る(平年の雲量の中央値ぶんを差し引く)。
-export const HUMIDITY_BASE_KNOB: FloatUniform = uniform(0.246);
-export const MEAN_CLOUDINESS_WEIGHT_KNOB: FloatUniform = uniform(0.5);
-export const UPPER_HUMIDITY_BASE_KNOB: FloatUniform = uniform(0.227);
-export const UPPER_MEAN_CLOUDINESS_WEIGHT_KNOB: FloatUniform = uniform(0.4);
+export const HUMIDITY_BASE_KNOB: FloatUniform = uniform(0.394);
+export const MEAN_CLOUDINESS_WEIGHT_KNOB: FloatUniform = uniform(0.214);
+export const UPPER_HUMIDITY_BASE_KNOB: FloatUniform = uniform(0.400);
+export const UPPER_MEAN_CLOUDINESS_WEIGHT_KNOB: FloatUniform = uniform(0.15);
 
 export class WeatherModel {
   private readonly circulation = new Circulation(SURFACE_BANDS);
@@ -221,7 +221,7 @@ export class WeatherModel {
         .sub(eye.mul(EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
       advected.upperHumidity.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT_KNOB))
-        .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
+        .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY_KNOB)).sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
     return {
       pressure,
