@@ -2,7 +2,8 @@
 // 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
 // 見えのための調整値。
 import {
-  abs, clamp, cos, dot, exp, float, fract, inverseSqrt, max, mix, normalize, sin, smoothstep, tanh, uniform,
+  abs, clamp, cos, dot, exp, float, fract, inverseSqrt, max, min, mix, normalize, sin, smoothstep, tanh,
+  uniform,
   vec2, vec4,
 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
@@ -123,9 +124,11 @@ const TERRAIN_LIFT_GAIN = 0.35;
 // 陸へ上乗せする高さ [m]。海と陸の比熱の差を、海岸へ吹き込む風が駆け上がる斜面として代用する。
 // 地形の上昇流は釣り合い風(帯の平均風を含まない)から出るので、低気圧が海から吹き込むときだけ効く。
 const LAND_HEIGHT_BIAS = 800;
-// 上昇流の利得。上昇流は地表付近の湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く
-// [per m/s]。
+// 上昇流の利得 [per m/s]。上向きは地表付近と上層の両方を湿らせ、下向きは地表付近だけを乾かす。
+// **下降の利得は上昇より小さく取る。** 沈降は自由大気を乾かすが、その下の海洋境界層は湿ったまま
+// 層積雲を保つ — 同じ利得で乾かすと、亜熱帯高圧帯の下の海が丸ごと晴れる。
 const LIFT_HUMIDITY = 2.2;
+const SUBSIDENCE_DRYING = 1.0;
 const UPPER_LIFT_HUMIDITY = 0.7;
 
 // 圏界面の高さ [m] とその緯度依存。熱帯で 16〜17 km、極で 9 km 前後で、亜熱帯のジェットの下で
@@ -181,15 +184,15 @@ const WARM_HUMIDITY = 0.45;
 // 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
 // 平年の雲量図がそのまま貼り付く。底上げは、重みを変えても平年並みの土地の湿度が動かないように
 // 取る(平年の雲量の中央値 0.70 ぶんを差し引く)。
-const HUMIDITY_BASE = 0.424;
+const HUMIDITY_BASE = 0.415;
 const MEAN_CLOUDINESS_WEIGHT = 0.30;
-const UPPER_HUMIDITY_BASE = 0.418;
+const UPPER_HUMIDITY_BASE = 0.411;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.24;
 // 平年の雲量を湿度へ渡す S 字の裾と肩。**線形では乾燥帯だけを強く晴らせない** — 砂漠を晴らす
-// 重みでは、雲の多い海が覆われたまま動かなくなる。裾は砂漠(0.14)の側へ、肩は年中曇りの海
-// (0.89)の側へ置き、あいだを渡す — 幅を狭めると、乾いた大陸(0.43〜0.51)まで裾へ落ちて、
-// 内陸が丸ごと雲を失う。
-const MEAN_CLOUDINESS_DRY = 0.20;
+// 重みでは、雲の多い海が覆われたまま動かなくなる。裾は砂漠(0.14)より下、肩は年中曇りの海
+// (0.89)の側へ置き、あいだを広く渡す — 幅を狭めると、乾いた大陸(0.43〜0.51)や貿易風帯の海
+// (0.50〜0.65)まで裾へ落ちて、砂漠でない土地まで丸ごと雲を失う。
+const MEAN_CLOUDINESS_DRY = 0.10;
 const MEAN_CLOUDINESS_WET = 0.85;
 
 export class WeatherModel {
@@ -293,7 +296,7 @@ export class WeatherModel {
     const eye = this.cyclones.eyeAt(direction);
     const humidity = clamp(
       advected.humidity.add(cloudinessBias(meanCloudiness).mul(MEAN_CLOUDINESS_WEIGHT))
-        .add(lift.mul(LIFT_HUMIDITY))
+        .add(max(lift, 0).mul(LIFT_HUMIDITY)).add(min(lift, 0).mul(SUBSIDENCE_DRYING))
         .add(warmth.mul(WARM_HUMIDITY)).sub(eye.mul(EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
       advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
