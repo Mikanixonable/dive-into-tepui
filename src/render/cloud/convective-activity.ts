@@ -37,8 +37,7 @@ export class ConvectiveActivity {
   // circulation は気団を運ぶ流れ、projection は写しの持ち方。
   public constructor(circulation: Circulation, projection: FieldProjection) {
     const coarseness = coarsenessFor(projection, INSTABILITY_NOISE);
-    const noise = new CirculatingNoise(
-      circulation, INSTABILITY_NOISE, projection.texelAngle.mul(coarseness), 'smooth');
+    const noise = new CirculatingNoise(circulation, INSTABILITY_NOISE, projection.texelAngle.mul(coarseness));
     this.instability = new BakedField(
       'instability', THREE.RedFormat, projection, coarseness,
       (direction) => vec4(noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1));
