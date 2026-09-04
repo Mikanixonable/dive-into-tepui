@@ -27,6 +27,7 @@ import { ambientFraction, type AmbientSource } from '../../render/pipeline/light
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
+import { RingMaterials } from '../../render/ring';
 import { shapeAxes, shapeInscribedRadius } from '../../physics/celestial-body-def';
 import { writeBodyFromWorld } from './body-frame';
 import {
@@ -99,6 +100,8 @@ export class CelestialSystem implements CelestialMotions {
   private sunLight!: SunLight;
   private exposure!: Exposure;
   private sunOcclusion!: SunOcclusion;
+  // 全天体の環の帯が共有するマテリアル。
+  private ringMaterials!: RingMaterials;
   // 遮蔽器へ渡す形の置き場。スロット本数ぶんを毎フレーム書き換えて使い回す。
   private readonly occluderShapes = Array.from({ length: MAX_OCCLUDERS }, () => ({
     axes: new THREE.Vector3(), bodyFromWorld: new THREE.Matrix4(),
@@ -182,7 +185,8 @@ export class CelestialSystem implements CelestialMotions {
     scene.add(this.stars.mesh);
     this.celestialGrid = new CelestialGrid(scene);
     this.scaleGrid = new ScaleGridView(scene);
-    for (const body of this.entities) body.build(scene, sunOcclusion, sunLight);
+    this.ringMaterials = new RingMaterials(sunOcclusion, sunLight);
+    for (const body of this.entities) body.build(scene, this.ringMaterials);
   }
 
   // ---------------------------------------------------------------- 天体の口
@@ -591,5 +595,6 @@ export class CelestialSystem implements CelestialMotions {
       body.dispose();
     }
     if (this.pointFieldBuilt) this.pointFieldView?.dispose();
+    this.ringMaterials.dispose();
   }
 }
