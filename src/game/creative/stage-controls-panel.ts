@@ -166,10 +166,16 @@ export class StageControlsPanel {
   // 組み立てる。表示形態・着色の変更は onProteinDisplayChange で即座に呼び出し側へ通知する
   // (既存の敵への反映は呼び出し側の責務)。
   private buildProteinEnemySection(): { element: HTMLElement; spawnButton: Button; formationButton: Button } {
-    const shapes = STAGE_CONTROL_ENEMY_SHAPES.filter(({ family }) => family === 'protein');
-    // 一覧に並べた時点で取得を始め、選んで置くまでの間に間に合わせる。
-    for (const shape of shapes) if (shape.kind === 'protein') void requestProteinAsset(shape.assetId);
-    let selectedShape: EnemySpawnShape = shapes[0]!.id;
+    const shapes = STAGE_CONTROL_ENEMY_SHAPES.filter(
+      (shape): shape is Extract<EnemyShapeDefinition, { family: 'protein' }> => shape.family === 'protein',
+    );
+    let selectedShape: ProteinAssetId = shapes[0]!.assetId;
+    // 選択そのものが取得の起点(SPEC/PROTEIN.md「出現」)。既定の選択も選択として扱う。
+    const selectShape = (assetId: ProteinAssetId): void => {
+      selectedShape = assetId;
+      shapeControl.setSelected(assetId);
+      void requestProteinAsset(assetId);
+    };
     const section = document.createElement('div');
     section.className = 'stage-control-section';
     section.id = 'stage-control-panel-protein';
@@ -180,15 +186,11 @@ export class StageControlsPanel {
     title.textContent = 'タンパク質型の敵';
     section.appendChild(title);
     // 形状の選択。
-    const shapeControl = new SegmentedControl<EnemySpawnShape>(
-      '敵の形状', shapes.map(({ id }) => [id, id] as const),
-      (shape) => {
-        selectedShape = shape;
-        shapeControl.setSelected(shape);
-      },
+    const shapeControl = new SegmentedControl<ProteinAssetId>(
+      '敵の形状', shapes.map(({ assetId }) => [assetId, assetId] as const), selectShape,
     );
     shapeControl.element.classList.add('stage-control-shapes');
-    shapeControl.setSelected(selectedShape);
+    selectShape(selectedShape);
     section.appendChild(shapeControl.element);
 
     // 表示形態の選択。切り替えるたびその形態で前回選んだ着色へ復元し、着色の選択肢を差し替える。
