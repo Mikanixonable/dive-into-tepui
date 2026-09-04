@@ -239,7 +239,7 @@ export class WeatherModel {
       'convectionSource', THREE.RGFormat, projection, convectionCoarseness,
       (direction) => vec4(this.convectionSourceAt(direction), 0, 1));
     this.convectiveActivity = new ConvectiveActivity(this.circulation, projection);
-    this.airMass = new AirMass(projection, (direction) => this.traceWindAt(direction));
+    this.airMass = new AirMass(projection, (direction) => this.traceFlowAt(direction));
     this.syncTime(0);
   }
 
@@ -283,12 +283,11 @@ export class WeatherModel {
     };
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
-    const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
+    const windComponents = eastNorthComponents(wind.velocity, east, north);
     const airMass = this.airMass.at(direction, latitude);
     const extratropical = smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
     const warmth = airMass.warmth.mul(extratropical);
-    const terrainLift = dot(components(wind.velocity), this.climate.slope(direction, LAND_HEIGHT_BIAS))
-      .mul(TERRAIN_LIFT_GAIN);
+    const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS)).mul(TERRAIN_LIFT_GAIN);
     const frontalLift = max(airMass.compression.sub(FRONT_ONSET), 0).mul(FRONT_LIFT).mul(extratropical);
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)).add(frontalLift));
 
@@ -308,7 +307,7 @@ export class WeatherModel {
 
     return {
       pressure,
-      wind: components(wind.velocity),
+      wind: windComponents,
       lift,
       humidity,
       upperHumidity,
@@ -341,6 +340,11 @@ export class WeatherModel {
     return { pressure, gradient, isobar, bend: pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2) };
   }
 
+  // 単位方向 direction における気団を遡らせる風(東向き・北向きの成分 [m/s])。
+  public traceWindAt(direction: Vec3Node): Vec2Node {
+    return eastNorthComponents(this.traceFlowAt(direction).velocity, eastAt(direction), northAt(direction));
+  }
+
   // 気団を風上へ遡らせる風。**経度に依らない流れをすべて落とし、渦と総観規模の擾乱だけで遡る。**
   // 気圧の勾配からは大循環の気圧帯を差し引き、帯の平均風は東向きの成分だけを足す — どちらも
   // 南北の成分は経度に依らないので、残すと収束する緯度に緯線に沿った圧縮の環と、緯度で決まる
@@ -348,7 +352,7 @@ export class WeatherModel {
   // 南西–北東へ傾けるのがそれで、経度に依らない流れでも圧縮は作らない。
   // **移流の風には平均風を足さない** — 2 位相移流へ入れると、位相 A と B が数百 km ずれた別の
   // 模様を混ぜることになり、背景が全域でぼける。
-  private traceWindAt(direction: Vec3Node): BalancedWind {
+  private traceFlowAt(direction: Vec3Node): BalancedWind {
     const east = eastAt(direction);
     const north = northAt(direction);
     const latitude = latitudeOf(direction);
@@ -434,6 +438,11 @@ export class WeatherModel {
     this.convectiveActivity.dispose();
     this.airMass.dispose();
   }
+}
+
+// 接ベクトル v の東向き・北向きの成分。
+function eastNorthComponents(v: Vec3Node, east: Vec3Node, north: Vec3Node): Vec2Node {
+  return vec2(dot(v, east), dot(v, north));
 }
 
 // 平年の雲量 0..1 が湿度へ渡す偏り ±0.5。乾燥帯で −0.5、年中曇りの土地で +0.5 に振り切る。
