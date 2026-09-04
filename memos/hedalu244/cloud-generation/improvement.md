@@ -18,6 +18,11 @@ texel 密度が足りないという構造的な欠点があり、生成でそ�
 `src/assets/cloud-field.png` の R)と実写薄(`.cloud-lab/separated/veil.png`)を同じ面へ再標本化して
 並べ、帯状平均・階調・行方向スペクトルの表を出す。画像は `.cloud-lab/compare/` に残る。
 
+**調整するつまみ。** 凝結と天気の 16 個の定数は uniform(`src/render/cloud` の `*_KNOB`)で、
+cloud-lab のスライダーと JSON 欄、`npm run cloud-lab:compare -- --params <json>` から置き直せる。
+表(id・表示名・可動域)は `tools/cloud-lab/tuning-knobs.ts`。compare は使ったつまみを表の先頭へ
+印字する。**仮設なので、手順 11 で定数へ畳む。**
+
 **この計画で足す物差し**(手順 2 で実装。定義はそこに書く):
 
 - **構造の向き** — 多尺度の構造テンソルから、尺度ごとの「局所の伸び(coherence)」「向きの揃い(R)」
@@ -238,26 +243,6 @@ cap の 25〜50 km では逆に、実写厚の局所の伸び(coherence)0.5〜0.
 より先に回す** — どの cloud-lab スクリプトも先頭のビルドで `.cloud-lab/` を `separated/` 以外
 まるごと消す(手順 2 で直す)。
 
-### 手順 1. 仮設のつまみ — 調整する定数を cloud-lab から動かせるようにする
-
-**目的** 調整の 1 周を「スライダー → 再描画 → compare」に縮める。この時点で挙動は変えない
-(既定値は現状の定数)。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-|---|---|
-| `src/render/cloud/tuning-knobs.ts`(新規) | **仮設**と明記した uniform の表。`CUMULUS_DITHER_KNOB` と同じ流儀で、この計画が触る定数を id・表示名・範囲・既定値付きで持つ: 凝結(`COVERAGE_ONSET` `COVERAGE_FULL` `CONVECTION_GAIN` `CLOUD_TOP_LIFT` `CLOUD_TOP_RELIEF` `CLOUD_TOP_BIAS` `TRANSLUCENT_ONSET` `TRANSLUCENT_GAIN`)、天気(`HUMIDITY_BASE` `MEAN_CLOUDINESS_WEIGHT` `UPPER_HUMIDITY_BASE` `UPPER_MEAN_CLOUDINESS_WEIGHT` `LIFT_HUMIDITY` `TERRAIN_LIFT_GAIN` `CONVECTION_NOISE_AMPLITUDE` `PRESSURE_BAND_AMPLITUDE`)。手順 5 で足す雲頂の定数もここへ足す。CPU 側で使う定数(`ADVECTION_PERIOD`・谷の半径・段数)は uniform にできないので**入れない**(それらはビルドで回す) |
-| `src/render/cloud/condensation.ts` | 上の定数の読み出しを表の uniform へ差し替える(`condense` の中) |
-| `src/render/cloud/weather-model.ts` | 同上(`weatherAt` の湿度の式、`pressureSourceAt`、`humiditySourceAt`、`convectionSourceAt`) |
-| `tools/cloud-lab/main.ts` | 表からスライダー列を組む(`buildSlider`)。JSON のコピー/適用欄(`tools/cloud-lab/separate-main.ts` の `applyParams` と同じ形)。`window.cloudLab.setParams(json)` を足す |
-| `tools/cloud-lab/index.html` | スライダーの行と JSON 欄(`separate.html` の `params` 行と同じ CSS) |
-| `tools/cloud-lab-compare.mjs` | 引数 `--params <json ファイル>` を受け、撮影の前に `setParams` へ渡す。表の先頭に使った JSON を印字する(どの値の表か分かるように) |
-
-**達成条件と検証** `npm run typecheck`、`npm run test:render`。compare の全数値が手順前と 3 LSB
-(0.012)以内で一致する(uniform 化で値が動いていない)。cloud-lab でスライダーを動かすと再ビルド
-なしに絵が変わる。
-
 ### 手順 2. 物差しを足す — 構造の向き・地形の箱・雲頂の分布(ツールのみ)
 
 **目的** 目的 5〜7 の差を毎周の表で追えるようにする。挙動は変えない。
@@ -340,7 +325,7 @@ cap の 25〜50 km では逆に、実写厚の局所の伸び(coherence)0.5〜0.
 | `src/render/cloud/cyclones.ts` | `Trough.anvilAt`(芯のガウス × `eyeStrength`、半径 = radius × `ANVIL_FRACTION`(+1))と `Cyclones.anvilAt`(和)。`eyeAt` と同じ形で、移流を通らない |
 | `src/render/cloud/weather-model.ts` | `WeatherSample` に `anvil`(0..1)を足し、`weatherAt` で `cyclones.anvilAt` を入れる |
 | `tools/cloud-lab/views.ts` | 塔の材料(対流 × 活発度)を見るビュー `convectiveDepth` を足す(閾値を当てるのに要る) |
-| `src/render/cloud/tuning-knobs.ts` | 上の新しい定数をつまみに |
+| `tools/cloud-lab/tuning-knobs.ts` | 上の新しい定数をつまみに |
 
 **達成条件と検証** compare の雲頂の表で目標 8(暴風帯・収束帯・亜熱帯東岸沖・サハラの分位、金床
 ≤ 25%、四分位範囲 ≥ 2 km、台風の中心 250 km)。手順 7 のあとで塔の閾値だけ取り直す。目視: 雲頂ビューで
@@ -442,7 +427,7 @@ cloud-lab の再生(0〜72 h)で位相の混ぜ目の脈打ち・背景の過剰
 
 | ファイル | 何をするか |
 |---|---|
-| `src/render/cloud/tuning-knobs.ts` | 削除。各ファイルの定数へ最終値を書き戻す |
+| `tools/cloud-lab/tuning-knobs.ts` | 削除。各ファイルの `*_KNOB` を最終値の定数へ書き戻す |
 | `tools/cloud-lab/main.ts`、`index.html`、`tools/cloud-lab-compare.mjs` | スライダー・JSON 欄・`--params` を外す |
 | `src/render/cloud/cumulus-shape.ts` | `CUMULUS_DITHER_KNOB` の既定を生成の場で追い込み直す。生成が 48 km までの高周波を持つようになったので `GRAIN_COVERAGE_DEPTH`/`GRAIN_TOP_RELIEF` を縮める(契約 2)。ただし本番はまだ仮テクスチャを読むので、**仮テクスチャで見えが崩れない範囲**に留める |
 | `memos/hedalu244/cloud-generation/current-pipeline.md` | §3 の表の値を更新(指示があれば) |
@@ -458,7 +443,6 @@ cloud-lab の再生(0〜72 h)で位相の混ぜ目の脈打ち・背景の過剰
 
 | 手順 | 実装 | 調整ループ | 根拠 |
 |---|---|---|---|
-| 1 | 表 1 ファイル + 読み出し差し替え 16 箇所 + スライダー配線 ≈ 150 行 | 0 | 挙動を変えない |
 | 2 | 構造テンソル ≈ 120 行(試作済み)+ compare の表 3 つ ≈ 150 行 | 0 | 挙動を変えない。試作で定義と基準値は取ってある |
 | 3 | 式 1 つ + 定数の取り直し 2 個 | 4〜6 回 | 形・onset・利得の 3 自由度 |
 | 4 | 定数のみ(条件付きで式 1 + 定数 1) | 6〜10 回(+3〜5) | 帯 × 地域 × 薄い雲 × 箱の 4 目標の同時当て。対の規則で自由度 4 |
