@@ -13,10 +13,17 @@ import {
   createProteinMotionBinding,
   disposeProteinMotionBinding,
   registerProteinMotionRenderer,
-  updateProteinMotionCoefficients,
+  type ProteinMotionBinding,
 } from '../../src/render/protein-motion-material';
 
 const TEST_MODE_COUNT = 2;
+
+/** 借りられることを前提にした binding。スロットの枯渇そのものを見るテストでは使わない。 */
+function acquireBinding(residueCount: number, modeCount = TEST_MODE_COUNT): ProteinMotionBinding {
+  const binding = createProteinMotionBinding(residueCount, testModeDisplacements(residueCount, modeCount), modeCount);
+  assert.ok(binding, 'protein motion slots must be available');
+  return binding;
+}
 
 /** A throwaway ANM basis sized for a given residue count, used only to satisfy binding construction. */
 function testModeDisplacements(residueCount: number, modeCount = TEST_MODE_COUNT): Float32Array {
@@ -135,12 +142,13 @@ export function register(): void {
   });
 
   test('protein render: rejects mismatched bindings and accepts both catalog assets', () => {
-    const bad = createProteinMotionBinding(2, testModeDisplacements(2), TEST_MODE_COUNT);
+    const bad = acquireBinding(2);
     assert.throws(() => buildProteinEnemyShip(source, { representation: 'molecular', colorMode: 'element' }, bad), /residueCount/);
     disposeProteinMotionBinding(bad);
     for (const bundle of testProteinAssetBundles()) {
       const modeDisplacements = proteinMotionModeDisplacements(bundle.motion);
       const binding = createProteinMotionBinding(bundle.motion.residueCount, modeDisplacements, bundle.motion.modes.length);
+      assert.ok(binding);
       const root = buildProteinEnemyShip(bundle, { representation: 'ribbon', colorMode: 'chain' }, binding);
       assert.equal(root.children[0]?.scale.x, bundle.semantic.coordinateScale);
       disposeObject(root);
@@ -148,7 +156,7 @@ export function register(): void {
     }
   });
   test('protein render: all representations expose residue bindings and shared position nodes', () => {
-    const binding = createProteinMotionBinding(3, testModeDisplacements(3), TEST_MODE_COUNT);
+    const binding = acquireBinding(3);
     const displays = [
       { representation: 'molecular', colorMode: 'element' },
       { representation: 'ribbon', colorMode: 'chain' },
@@ -179,22 +187,44 @@ export function register(): void {
     }
   });
 
-  test('protein render: coefficient updates reuse one shared storage array', () => {
-    const binding = createProteinMotionBinding(3, testModeDisplacements(3), TEST_MODE_COUNT);
-    const root = buildProteinEnemyShip(source, { representation: 'molecular', colorMode: 'element' }, binding);
-    const atom = root.getObjectByProperty('isInstancedMesh', true) as THREE.InstancedMesh;
-    const before = binding.coefficients.array;
-    updateProteinMotionCoefficients(binding, [1, 2]);
-    assert.strictEqual(binding.coefficients.array, before);
-    assert.equal((before as Float32Array)[0], 1);
-    assert.equal((before as Float32Array)[1], 2);
-    assert.equal(atom.geometry.userData.proteinResidueBinding, true);
-    disposeObject(root);
+  test('protein motion slots: bodies take disjoint spans and give them back', () => {
+    const first = acquireBinding(3);
+    const second = acquireBinding(5);
+    const overlaps = (a: ProteinMotionBinding, b: ProteinMotionBinding): boolean =>
+      a.residueBase.value < b.residueBase.value + b.residueCount
+      && b.residueBase.value < a.residueBase.value + a.residueCount;
+    assert.equal(overlaps(first, second), false, 'two bodies must not share residue slots');
+    assert.notEqual(first.modeBase.value, second.modeBase.value);
+    const firstBase = first.residueBase.value;
+    disposeProteinMotionBinding(first);
+    const reused = acquireBinding(3);
+    assert.equal(reused.residueBase.value, firstBase, 'a returned span must be handed out again');
+    disposeProteinMotionBinding(reused);
+    disposeProteinMotionBinding(second);
   });
 
-  test('protein render: binding disposal releases each registered renderer storage buffer once', () => {
-    const binding = createProteinMotionBinding(3, testModeDisplacements(3), TEST_MODE_COUNT);
-    const ownedAttributes = new Set<THREE.StorageBufferAttribute>([binding.residueOffsets, binding.modeDisplacements]);
+  test('protein motion slots: a body that does not fit gets no binding, and leaks nothing', () => {
+    const probe = acquireBinding(3);
+    const base = probe.residueBase.value;
+    disposeProteinMotionBinding(probe);
+    // 空きが尽きるまで借り続ける。尽きた時点で null が返り、そこまでの確保は生きている。
+    const taken: ProteinMotionBinding[] = [];
+    for (;;) {
+      const binding = createProteinMotionBinding(1, testModeDisplacements(1, 1), 1);
+      if (binding === null) break;
+      taken.push(binding);
+    }
+    assert.ok(taken.length > 0);
+    for (const binding of taken) disposeProteinMotionBinding(binding);
+    // 全部返したあとは、最初と同じ区間からまた借りられる。
+    const again = acquireBinding(3);
+    assert.equal(again.residueBase.value, base);
+    disposeProteinMotionBinding(again);
+  });
+
+  test('protein render: binding disposal releases the shared mode basis once', () => {
+    const binding = acquireBinding(3);
+    const ownedAttributes = new Set<THREE.StorageBufferAttribute>([binding.modeDisplacements.attribute]);
     let deleteCount = 0;
     const renderer = {
       _attributes: {
@@ -209,8 +239,8 @@ export function register(): void {
 
     disposeProteinMotionBinding(binding);
     disposeProteinMotionBinding(binding);
-    assert.equal(deleteCount, 2);
-    assert.equal(binding.residueOffsets.array.length, 0);
+    assert.equal(deleteCount, 1);
+    assert.equal(binding.modeDisplacements.attribute.array.length, 0);
     unregister();
   });
 
