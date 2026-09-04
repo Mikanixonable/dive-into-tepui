@@ -25,10 +25,9 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 // 単位方向における天気。気圧は平年からの偏差 [hPa]、風は東向き・北向きの成分 [m/s]、
 // 上昇流は [m/s](地形と気圧による、負なら下降)、湿度は 0..1(humidity が地表付近、
 // upperHumidity が上層)、対流は対流セルの強弱(0 中心の高周波、x が粒・y が網目)、対流の活発度は
-// その強弱が
-// どれだけ強く現れるか 0..1、圧縮は気団の境目の押し縮まり(1 で何も起きていない)、暖気の流入は
-// 出身地からの緯度の差 [rad](負で寒気)、金床は平らな天蓋の濃さ 0..1、圏界面はその緯度の
-// 対流の天井 [m]。
+// その強弱がどれだけ強く現れるか 0..1、圧縮は気団の境目の押し縮まり(1 で何も起きていない)、
+// 暖気の流入は出身地からの緯度の差 [rad](負で寒気)、金床は平らな天蓋の濃さ 0..1、圏界面は
+// その緯度の対流の天井 [m]。
 export type WeatherSample = {
   readonly pressure: FloatNode;
   readonly wind: Vec2Node;
@@ -121,6 +120,9 @@ const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
 // 頭打ちに達し、気候と無関係な地形の縞が年中貼り付く。慢性的な湿潤・乾燥は平年の雲量が持つので、
 // ここは低気圧が山へぶつかったときだけ効く高さへ落とす。
 const TERRAIN_LIFT_GAIN = 0.35;
+// 陸へ上乗せする高さ [m]。海と陸の比熱の差を、海岸へ吹き込む風が駆け上がる斜面として代用する。
+// 地形の上昇流は釣り合い風(帯の平均風を含まない)から出るので、低気圧が海から吹き込むときだけ効く。
+const LAND_HEIGHT_BIAS = 800;
 // 上昇流の利得。上昇流は地表付近の湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く
 // [per m/s]。
 const LIFT_HUMIDITY = 2.2;
@@ -178,11 +180,17 @@ const WARM_HUMIDITY = 0.45;
 // 地表付近と上層で別に持つ。重みは、雲量の地理的な差が凝結のしきい値をまたぐ幅に取る — 小さく
 // 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
 // 平年の雲量図がそのまま貼り付く。底上げは、重みを変えても平年並みの土地の湿度が動かないように
-// 取る(平年の雲量の中央値ぶんを差し引く)。
-const HUMIDITY_BASE = 0.414;
-const MEAN_CLOUDINESS_WEIGHT = 0.17;
-const UPPER_HUMIDITY_BASE = 0.400;
-const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.15;
+// 取る(平年の雲量の中央値 0.70 ぶんを差し引く)。
+const HUMIDITY_BASE = 0.424;
+const MEAN_CLOUDINESS_WEIGHT = 0.30;
+const UPPER_HUMIDITY_BASE = 0.418;
+const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.24;
+// 平年の雲量を湿度へ渡す S 字の裾と肩。**線形では乾燥帯だけを強く晴らせない** — 砂漠を晴らす
+// 重みでは、雲の多い海が覆われたまま動かなくなる。裾は砂漠(0.14)の側へ、肩は年中曇りの海
+// (0.89)の側へ置き、あいだを渡す — 幅を狭めると、乾いた大陸(0.43〜0.51)まで裾へ落ちて、
+// 内陸が丸ごと雲を失う。
+const MEAN_CLOUDINESS_DRY = 0.20;
+const MEAN_CLOUDINESS_WET = 0.85;
 
 export class WeatherModel {
   private readonly circulation = new Circulation(SURFACE_BANDS);
@@ -273,7 +281,8 @@ export class WeatherModel {
     const airMass = this.airMass.at(direction, latitude);
     const extratropical = smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
     const warmth = airMass.warmth.mul(extratropical);
-    const terrainLift = dot(components(wind.velocity), this.climate.slope(direction)).mul(TERRAIN_LIFT_GAIN);
+    const terrainLift = dot(components(wind.velocity), this.climate.slope(direction, LAND_HEIGHT_BIAS))
+      .mul(TERRAIN_LIFT_GAIN);
     const frontalLift = max(airMass.compression.sub(FRONT_ONSET), 0).mul(FRONT_LIFT).mul(extratropical);
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)).add(frontalLift));
 
@@ -283,10 +292,11 @@ export class WeatherModel {
     const meanCloudiness = this.climate.meanCloudiness(direction);
     const eye = this.cyclones.eyeAt(direction);
     const humidity = clamp(
-      advected.humidity.add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT)).add(lift.mul(LIFT_HUMIDITY))
+      advected.humidity.add(cloudinessBias(meanCloudiness).mul(MEAN_CLOUDINESS_WEIGHT))
+        .add(lift.mul(LIFT_HUMIDITY))
         .add(warmth.mul(WARM_HUMIDITY)).sub(eye.mul(EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
-      advected.upperHumidity.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
+      advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
     return {
@@ -296,7 +306,7 @@ export class WeatherModel {
       humidity,
       upperHumidity,
       convection: advected.convection,
-      convectiveActivity: this.convectiveActivity.at(direction, lift, warmth),
+      convectiveActivity: this.convectiveActivity.at(direction, lift, warmth, this.climate.landFraction(direction)),
       compression: airMass.compression,
       warmth,
       anvil: this.cyclones.anvilAt(direction),
@@ -417,6 +427,11 @@ export class WeatherModel {
     this.convectiveActivity.dispose();
     this.airMass.dispose();
   }
+}
+
+// 平年の雲量 0..1 が湿度へ渡す偏り ±0.5。乾燥帯で −0.5、年中曇りの土地で +0.5 に振り切る。
+function cloudinessBias(meanCloudiness: FloatNode): FloatNode {
+  return smoothstep(MEAN_CLOUDINESS_DRY, MEAN_CLOUDINESS_WET, meanCloudiness).sub(0.5);
 }
 
 // 緯度 [rad] における圏界面の高さ [m]。
