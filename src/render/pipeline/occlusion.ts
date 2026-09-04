@@ -1,25 +1,46 @@
 // G バッファの深度から画素ごとの描画座標を復元し、そこへ恒星の直射光がどれだけ届くかを 1 枚の
-// 透過率へ書く。透過率を決めるのは sun-occlusion.ts で、このパスはその関数を画面の全画素で
-// 評価してキャッシュする。マテリアルは環の項を持つものと持たないものの 2 枚で、フレームごとに
-// 差し替える — 1 枚を uniform で分岐させると、環付き天体が画面に無いフレームでも 13 帯ぶんの
-// 演算列を毎画素通る(TSL のグラフは静的に展開される)。
+// 透過率へ書く。透過率を決めるのは sun-occlusion.ts で、このパスはその源ごとの関数を画面の
+// 全画素で評価してキャッシュする。
+//
+// **源ごとにフルスクリーン 1 枚を乗算合成で積む。** 遮蔽の合成は積なので、1 本のシェーダへ全源を
+// 静的展開する必要はない。分けておくと、源が増えてもマテリアルの組み合わせが増えず、そのフレームに
+// 遮るものが無い源は描画命令ごと落とせる(無効な源はどれも素通しの 1 を返すので、答えは変わらない)。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { dot, length, max, normalize, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { octDecodeNormal, type GBufferPass } from './gbuffer';
 import { viewPositionAt } from './view-ray';
-import type { FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { SunOcclusion } from './sun-occlusion';
 
 // 画素の覆う実寸を伸ばす入射角の余弦の下限。地平線では 0 へ落ちるので、伸びしろに天井を張る。
 const MIN_INCIDENCE_COSINE = 0.05;
 
+// 遮蔽源 1 つぶんの、透過率のターゲットへ積む 1 枚。
+interface OcclusionSource {
+  // このフレームに遮るものがあるか。偽なら描画命令は発行されない。
+  occludes(): boolean;
+  readonly material: THREE.MeshBasicNodeMaterial;
+}
+
+// 透過率のノードを、ターゲットにいま入っている値へ掛け合わせるマテリアルに包む。
+function multiplyingMaterial(transmittance: FloatNode): THREE.MeshBasicNodeMaterial {
+  const material = new THREE.MeshBasicNodeMaterial({
+    depthTest: false, depthWrite: false, transparent: true,
+  });
+  // 乗算合成(src × dst)。
+  material.blending = THREE.CustomBlending;
+  material.blendSrc = THREE.DstColorFactor;
+  material.blendDst = THREE.ZeroFactor;
+  material.colorNode = vec4(vec3(transmittance), 1);
+  return material;
+}
+
 export class OcclusionPass {
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
-  private readonly spheresOnlyMaterial: THREE.MeshBasicNodeMaterial;
-  private readonly withRingsMaterial: THREE.MeshBasicNodeMaterial;
+  private readonly sources: readonly OcclusionSource[];
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と view→描画座標の行列は
   // 毎フレーム自前で書き込む。
   private readonly projMatrixInverse: Mat4Uniform;
@@ -27,12 +48,15 @@ export class OcclusionPass {
   // 画面 1 px が 1 m 先で張る実寸 [m]。受け手までの視距離を掛けると、その画素が地表で覆う
   // 実寸になる。
   private readonly pixelAngle: FloatUniform;
+  // クリア色の退避先。毎フレーム確保しないよう 1 つだけ持つ。
+  private readonly savedClearColor = new THREE.Color();
 
-  // 透過率の書き込み先を確保し、深度から復元した位置で遮蔽関数を評価するグラフを一度だけ組む。
+  // 透過率の書き込み先を確保し、深度から復元した位置で源ごとの遮蔽関数を評価するグラフを
+  // 一度だけ組む。
   constructor(
     private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
-    private readonly sunOcclusion: SunOcclusion,
+    sunOcclusion: SunOcclusion,
     private readonly gpu: GpuTimings,
   ) {
     this.target = new THREE.RenderTarget(1, 1, {
@@ -54,25 +78,30 @@ export class OcclusionPass {
     const viewDistance = length(viewPos);
     const incidence = max(dot(normalize(viewPos).negate(), viewNormal), MIN_INCIDENCE_COSINE);
     const cumulusFootprint = this.pixelAngle.mul(viewDistance).div(incidence);
-    // 環の項を含める/含めないの 2 枚を、同じ位置と法線から組む。
-    const build = (rings: boolean): THREE.MeshBasicNodeMaterial => {
-      const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
-      let transmittance = sunOcclusion.occluderTransmittance(worldPos);
-      if (rings) transmittance = transmittance.mul(sunOcclusion.ringTransmittance(worldPos));
-      transmittance = transmittance
-        .mul(sunOcclusion.cumulusTransmittance(worldPos, cumulusFootprint))
-        .mul(sunOcclusion.meshTransmittance(worldPos, meshNormal));
-      material.colorNode = vec4(vec3(transmittance), 1);
-      return material;
-    };
-    this.spheresOnlyMaterial = build(false);
-    this.withRingsMaterial = build(true);
-    this.quad = new QuadMesh(this.spheresOnlyMaterial);
+    this.sources = [
+      {
+        occludes: () => sunOcclusion.hasOccluders(),
+        material: multiplyingMaterial(sunOcclusion.occluderTransmittance(worldPos)),
+      },
+      {
+        occludes: () => sunOcclusion.hasRingShadow(),
+        material: multiplyingMaterial(sunOcclusion.ringTransmittance(worldPos)),
+      },
+      {
+        occludes: () => sunOcclusion.hasCumulusShadow(),
+        material: multiplyingMaterial(sunOcclusion.cumulusTransmittance(worldPos, cumulusFootprint)),
+      },
+      {
+        occludes: () => sunOcclusion.hasMeshShadow(),
+        material: multiplyingMaterial(sunOcclusion.meshTransmittance(worldPos, meshNormal)),
+      },
+    ];
+    this.quad = new QuadMesh();
   }
 
   get texture(): THREE.Texture { return this.target.texture; }
 
-  // G バッファの深度だけを読んで透過率を書く(フルスクリーン1枚)。camera は逆射影行列と
+  // 遮るものがある源だけを、素通しの 1 へ順に掛け合わせる。camera は逆射影行列と
   // view→描画座標の行列を毎フレーム引き直すためだけに使う。
   render(camera: THREE.Camera, width: number, height: number): void {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
@@ -81,21 +110,33 @@ export class OcclusionPass {
     this.viewToWorld.value.copy(camera.matrixWorld);
     // 射影行列の [1][1] は半画角の正接の逆数なので、画面の高さで割ると 1 画素の張る角になる。
     this.pixelAngle.value = 2 / (camera.projectionMatrix.elements[5]! * height);
-    this.quad.material = this.sunOcclusion.hasRingShadow()
-      ? this.withRingsMaterial : this.spheresOnlyMaterial;
 
+    // 乗算合成の土台は 1。クリア色は共有状態なので退避して戻す(light-prepass.ts と同じ)。
+    const savedClearAlpha = this.renderer.getClearAlpha();
+    this.renderer.getClearColor(this.savedClearColor);
+    this.renderer.setClearColor(0xffffff, 1);
     this.renderer.setRenderTarget(this.target);
-    // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
-    this.gpu.beginPass(GPU_PASS.occlusion);
-    this.quad.render(this.renderer);
+    let cleared = false;
+    for (const source of this.sources) {
+      if (!source.occludes()) continue;
+      this.quad.material = source.material;
+      this.renderer.autoClear = !cleared;
+      cleared = true;
+      // beginPass は render() 呼び出しごとに申告する。同じパスの複数回ぶんは計測側が足し合わせる。
+      this.gpu.beginPass(GPU_PASS.occlusion);
+      this.quad.render(this.renderer);
+    }
+    // 遮る源が 1 つも無いフレームでも、前のフレームの透過率を残さない。
+    if (!cleared) this.renderer.clear(true, false, false);
+    this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);
+    this.renderer.setClearColor(this.savedClearColor, savedClearAlpha);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
   dispose(): void {
     this.target.dispose();
-    this.spheresOnlyMaterial.dispose();
-    this.withRingsMaterial.dispose();
+    for (const source of this.sources) source.material.dispose();
   }
 }
