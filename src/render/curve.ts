@@ -144,9 +144,8 @@ export class Curve {
   // 適応分割で焼いた頂点(sample の座標系のまま)。GPU へ渡す positions(f32)は常にこの配列
   // から pivot を差し引いて書くので、pivot 自体の精度を落とさないよう倍精度で持つ。
   private readonly bakedLocal: Float64Array;
-  // 頂点ごとの色(colorAt が指定されたときだけ埋める)。位置と同じ生成順。
+  // 頂点ごとの色。位置と同じ生成順。
   private readonly bakedColor: Float32Array;
-  private hasVertexColors = false;
   // 各頂点の曲線上の位置 t。位置と同じ生成順。
   private readonly ts: Float64Array;
   // 焼いた頂点を t 昇順に繋ぐ連結リスト(終端は -1)。頂点は生成順に置いたまま動かさないので、
@@ -215,12 +214,16 @@ export class Curve {
       this.lineDistances = null;
     }
 
+    // 頂点カラーは常に有効。実行中に切り替えるとマテリアルのキャッシュ鍵が変わり、そこで
+    // シェーダが組み直される。色を渡されない曲線には白を焼くので、乗算は恒等になる。
     this.mat = dash
       ? new THREE.LineDashedMaterial({
-        color, transparent: true, opacity, depthWrite: false,
+        color, transparent: true, opacity, depthWrite: false, vertexColors: true,
         dashSize: dash.dashSize, gapSize: dash.gapSize,
       })
-      : new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+      : new THREE.LineBasicMaterial({
+        color, transparent: true, opacity, depthWrite: false, vertexColors: true,
+      });
 
     this.line = new THREE.LineSegments(this.geom, this.mat);
     // 折れ線は表示値であって物理的な明るさを持たないので、3D UI パスへ置く。
@@ -262,13 +265,14 @@ export class Curve {
     this.bakedLocal[o] = x;
     this.bakedLocal[o + 1] = y;
     this.bakedLocal[o + 2] = z;
-    if (colorAt) this.bakeColor(i, t, colorAt);
+    this.bakeColor(i, t, colorAt);
     return i;
   }
 
-  // 頂点 i の色を、その t で colorAt を評価して色バッファへ書く。
-  private bakeColor(i: number, t: number, colorAt: CurveColorSampler): void {
-    colorAt(t, this.scratchColor);
+  // 頂点 i の色を色バッファへ書く。colorAt が無ければ白を焼く。
+  private bakeColor(i: number, t: number, colorAt?: CurveColorSampler): void {
+    if (colorAt) colorAt(t, this.scratchColor);
+    else this.scratchColor.setScalar(1);
     const o = i * 3;
     this.bakedColor[o] = this.scratchColor.r;
     this.bakedColor[o + 1] = this.scratchColor.g;
@@ -366,21 +370,10 @@ export class Curve {
   ): void {
     this.sampler = sample;
     const cam = new CameraScale(camera);
-    // 頂点カラーを使うのをやめたときは、焼いてある色がマテリアル色に掛かり続けないよう外す。
-    const wantsVertexColors = colorAt !== undefined;
-    if (wantsVertexColors !== this.hasVertexColors) this.useVertexColors(wantsVertexColors);
-
     this.rebake(sample, ts, cam, colorAt);
     this.pivot.copy(this.localCameraPos(cam, this.scratchLocalCam));
     this.applyTransform();
     this.writePositions();
-  }
-
-  // マテリアルが頂点カラーを乗算するかどうかを切り替える。
-  private useVertexColors(enabled: boolean): void {
-    this.hasVertexColors = enabled;
-    (this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial).vertexColors = enabled;
-    this.mat.needsUpdate = true;
   }
 
   // 焼いた頂点(pivot 差し引き後)と描画範囲を GPU へ反映する。
@@ -394,7 +387,7 @@ export class Curve {
     }
     this.vertexCount = n;
     (this.geom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-    if (this.hasVertexColors) (this.geom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
+    (this.geom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
     const segments = this.writeSegments();
     (this.geom.getIndex() as THREE.BufferAttribute).needsUpdate = true;
     this.geom.setDrawRange(0, segments * 2);
