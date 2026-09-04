@@ -40,6 +40,9 @@ type AdvectedFields = {
   readonly convection: FloatNode;
 };
 
+// **仮設**: 末尾が _KNOB の定数は、cloud-lab のつまみ(tools/cloud-lab/tuning-knobs.ts)から
+// 動かせるよう uniform にしてある。生成の場を実写へ寄せる追い込みが終わるまでは畳まない。
+
 // ノイズの段。段ごとに空間周波数(1 rad あたりの山の数)と段数を変える。
 // 気圧は 1 段しか持たない。総観規模より細かい構造を実際に持たないうえ、上昇流が気圧そのものの
 // 関数なので、段を増やすとノイズの格子が雲へそのまま出る。
@@ -54,7 +57,7 @@ const CONVECTION_NOISE = [80, 2] as const;
 const UPPER_HUMIDITY_NOISE = [6, 4] as const;
 const PRESSURE_NOISE_AMPLITUDE = 18;
 const HUMIDITY_NOISE_AMPLITUDE = 0.3;
-const CONVECTION_NOISE_AMPLITUDE = 0.15;
+export const CONVECTION_NOISE_AMPLITUDE_KNOB: FloatUniform = uniform(0.15);
 const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
 
 // 気圧の偏差から出る上昇流。利得 [m/s] が高気圧側の吹きおろしの上限で、低気圧側は圧力の尺度
@@ -69,14 +72,14 @@ const LIFT_LIMIT = 0.06;
 // 風が斜面を駆け上がる分の利得。等倍だと、偏西風や貿易風が山脈へ当たり続けるだけで上昇流が
 // 頭打ちに達し、気候と無関係な地形の縞が年中貼り付く。慢性的な湿潤・乾燥は平年の雲量が持つので、
 // ここは低気圧が山へぶつかったときだけ効く高さへ落とす。
-const TERRAIN_LIFT_GAIN = 0.35;
+export const TERRAIN_LIFT_GAIN_KNOB: FloatUniform = uniform(0.35);
 // 上昇流の利得。上昇流は地表付近の湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く
 // [per m/s]。
-const LIFT_HUMIDITY = 5;
+export const LIFT_HUMIDITY_KNOB: FloatUniform = uniform(5);
 const UPPER_LIFT_HUMIDITY = 3;
 
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。
-const PRESSURE_BAND_AMPLITUDE = 8;
+export const PRESSURE_BAND_AMPLITUDE_KNOB: FloatUniform = uniform(8);
 
 // 大循環の帯の角速度 [°/日] を、この天体の表面での速さ [m/s] へ直す係数。
 const BAND_RATE_TO_SPEED = (THREE.MathUtils.degToRad(1) / 86400) * R_EARTH;
@@ -112,10 +115,10 @@ const UPPER_EYE_DRYNESS = 2;
 // 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
 // 平年の雲量図がそのまま貼り付く。底上げは、重みを変えても平年並みの土地の湿度が動かないように
 // 取る(平年の雲量の中央値ぶんを差し引く)。
-const HUMIDITY_BASE = 0.246;
-const MEAN_CLOUDINESS_WEIGHT = 0.5;
-const UPPER_HUMIDITY_BASE = 0.227;
-const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.4;
+export const HUMIDITY_BASE_KNOB: FloatUniform = uniform(0.246);
+export const MEAN_CLOUDINESS_WEIGHT_KNOB: FloatUniform = uniform(0.5);
+export const UPPER_HUMIDITY_BASE_KNOB: FloatUniform = uniform(0.227);
+export const UPPER_MEAN_CLOUDINESS_WEIGHT_KNOB: FloatUniform = uniform(0.4);
 
 export class WeatherModel {
   private readonly circulation = new Circulation(SURFACE_BANDS);
@@ -205,7 +208,7 @@ export class WeatherModel {
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分。
     const components = (v: Vec3Node): Vec2Node => vec2(dot(v, east), dot(v, north));
-    const terrainLift = dot(components(wind.velocity), this.climate.slope(direction)).mul(TERRAIN_LIFT_GAIN);
+    const terrainLift = dot(components(wind.velocity), this.climate.slope(direction)).mul(TERRAIN_LIFT_GAIN_KNOB);
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)));
 
     // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足し、渦の目のぶんを引いたもの。
@@ -214,10 +217,10 @@ export class WeatherModel {
     const meanCloudiness = this.climate.meanCloudiness(direction);
     const eye = this.cyclones.eyeAt(direction);
     const humidity = clamp(
-      advected.humidity.add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT)).add(lift.mul(LIFT_HUMIDITY))
+      advected.humidity.add(meanCloudiness.mul(MEAN_CLOUDINESS_WEIGHT_KNOB)).add(lift.mul(LIFT_HUMIDITY_KNOB))
         .sub(eye.mul(EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
-      advected.upperHumidity.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
+      advected.upperHumidity.add(meanCloudiness.mul(UPPER_MEAN_CLOUDINESS_WEIGHT_KNOB))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
     return {
@@ -233,7 +236,7 @@ export class WeatherModel {
 
   // 気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。
   private pressureSourceAt(direction: Vec3Node): FloatNode {
-    const band = cos(latitudeOf(direction).mul(6)).mul(-PRESSURE_BAND_AMPLITUDE);
+    const band = cos(latitudeOf(direction).mul(6)).mul(PRESSURE_BAND_AMPLITUDE_KNOB.negate());
     return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE))
       .add(this.cyclones.pressureAt(direction));
   }
@@ -245,8 +248,8 @@ export class WeatherModel {
   // 流れていくものではない。
   public humiditySourceAt(direction: Vec3Node): Vec2Node {
     return vec2(
-      float(HUMIDITY_BASE).add(this.humidityNoise.at(direction).mul(HUMIDITY_NOISE_AMPLITUDE)),
-      float(UPPER_HUMIDITY_BASE).add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)),
+      HUMIDITY_BASE_KNOB.add(this.humidityNoise.at(direction).mul(HUMIDITY_NOISE_AMPLITUDE)),
+      UPPER_HUMIDITY_BASE_KNOB.add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)),
     );
   }
 
@@ -259,7 +262,7 @@ export class WeatherModel {
 
   // 移流前の対流の強弱(0 中心の高周波)。湿度と別の写しへ焼き、別の風で流す。
   public convectionSourceAt(direction: Vec3Node): FloatNode {
-    return this.convectionNoise.at(direction).mul(CONVECTION_NOISE_AMPLITUDE);
+    return this.convectionNoise.at(direction).mul(CONVECTION_NOISE_AMPLITUDE_KNOB);
   }
 
   // 移流前の写しを風で流したもの。周期の半分ずれた 2 位相を三角波で混ぜるので、流れの変位が
