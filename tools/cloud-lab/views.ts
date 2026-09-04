@@ -10,7 +10,7 @@ import type { WeatherModel } from '../../src/render/cloud/weather-model';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
-  | 'elevation' | 'meanCloudiness' | 'meanWind'
+  | 'elevation' | 'landFraction' | 'meanCloudiness' | 'meanWind'
   | 'pressure' | 'wind' | 'lift' | 'front' | 'airMass'
   | 'humiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'humidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
@@ -57,6 +57,8 @@ function windColor(wind: Vec2Node): Vec3Node {
 export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'elevation', label: '標高', reads: 'weather',
     color: (d, _model, climate) => vec3(climate.elevation(d).div(ELEVATION_SPAN)) },
+  { id: 'landFraction', label: '陸らしさ', reads: 'weather',
+    color: (d, _model, climate) => vec3(climate.landFraction(d)) },
   { id: 'meanCloudiness', label: '平年の雲量', reads: 'weather',
     color: (d, _model, climate) => vec3(climate.meanCloudiness(d)) },
   { id: 'meanWind', label: '平均風', reads: 'weather',
