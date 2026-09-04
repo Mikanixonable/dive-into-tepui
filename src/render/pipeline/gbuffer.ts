@@ -3,11 +3,12 @@
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import {
-  abs, diffuseColor, emissive, float, metalness, mrt, normalize, normalView, roughness, select, step, vec3, vec4,
+  abs, diffuseColor, emissive, float, metalness, mrt, normalize, normalView, roughness, screenUV, select, step,
+  texture, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { LIT_OPAQUE_LAYER } from './lit-layer';
-import type { Vec2Node, Vec3Node } from '../tsl-types';
+import type { BoolNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 // v の各成分が 0 以上なら +1、そうでなければ -1 を返す。TSL の sign() は 0 で 0 を返すため、
 // 下記 octEncodeNormal の折り返しがそこで壊れる — 自前で書く。
@@ -83,10 +84,15 @@ export class GBufferPass {
   public get normalTexture(): THREE.Texture { return this.target.textures[0]!; }
   public get roughnessTexture(): THREE.Texture { return this.target.textures[1]!; }
   // rgb がベース色(線形)、a が金属度。何も描かれなかった画素は a が 1 のままなので、物体の
-  // 有無は depthTexture(クリア値 0 が反転 Z の far)で判定する。
+  // 有無は covered() で判定する。
   public get basecolorTexture(): THREE.Texture { return this.target.textures[2]!; }
   public get emissiveTexture(): THREE.Texture { return this.target.textures[3]!; }
   public get depthTexture(): THREE.DepthTexture { return this.target.depthTexture!; }
+
+  // その画素に面が写っているか。反転 Z の far がクリア値 0 なので、素の深度がそのまま虚空を表す。
+  public covered(uv: Vec2Node = screenUV): BoolNode {
+    return texture(this.depthTexture, uv).r.greaterThan(0);
+  }
 
   // lit-opaque 層のオブジェクトだけを G バッファへ描く。camera はこのあと world パスでも
   // 使う同一インスタンスなので、layers.mask は呼び出し前の値へ必ず戻す。
