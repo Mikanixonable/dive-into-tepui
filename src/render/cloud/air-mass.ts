@@ -14,10 +14,10 @@ import type { FieldProjection } from './field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
-// 風上へ遡る時間 [s]。並の低気圧の周りの差回転(600 km で角速度 2.5e-5 rad/s)は、48 h で
-// 600 km に圧縮 8.6、1500 km に 1.4 を作る — 腕は 1200〜1500 km 伸びる。腕は時間の平方根で
-// 伸びるが、長く取るほど芯での 1 歩の巻きが増え、windStep の弦近似が破れて芯へ巻き込みすぎる。
-const TRACE_SECONDS = 48 * 3600;
+// 風上へ遡る時間 [s]。腕の巻きは流れの角速度 × 追跡時間 — 並の低気圧(短軸の半径 1200 km、
+// 24 hPa)の半径の所で、折り目は 36 h に 0.7〜0.8 rad 巻いて浅い弧に留まる。長く取るほど巻きが
+// 深まって腕が芯へ絡み、windStep の弦近似も破れるので、腕を伸ばすのは追跡ではなく低気圧の半径で行う。
+const TRACE_SECONDS = 36 * 3600;
 
 // 出身地の勾配を取る中心差分の刻み [rad]。**この刻みが前線帯の幅を決める** — 気団の境目は
 // 折り畳まれて厚みを持たない面になるので、細かく取ると 1 texel の線しか残らない。実際の前線帯の
