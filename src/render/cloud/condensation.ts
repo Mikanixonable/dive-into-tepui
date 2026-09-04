@@ -48,7 +48,7 @@ const SHAPE_NETWORK_HUMIDITY = 0.45;
 const SHAPE_GRAIN_HUMIDITY = 0.70;
 // 薄い雲は、上層の湿度がしきい値を超えた分に比例して光学的厚みが増える。上端でも 0.95 までしか
 // 行かない — 巻雲は厚みが 1 に届かず、下地が透けたまま見える。
-const TRANSLUCENT_ONSET = 0.44;
+const TRANSLUCENT_ONSET = 0.42;
 const TRANSLUCENT_GAIN = 1.7;
 
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
