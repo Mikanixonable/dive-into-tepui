@@ -128,11 +128,17 @@ const TERRAIN_LIFT_GAIN = 0.35;
 // 地形の上昇流は釣り合い風(帯の平均風を含まない)から出るので、低気圧が海から吹き込むときだけ効く。
 const LAND_HEIGHT_BIAS = 800;
 // 上昇流の利得 [per m/s]。上向きは地表付近と上層の両方を湿らせ、下向きは地表付近だけを乾かす。
-// **下降の利得は上昇より小さく取る。** 沈降は自由大気を乾かすが、その下の海洋境界層は湿ったまま
-// 層積雲を保つ — 同じ利得で乾かすと、亜熱帯高圧帯の下の海が丸ごと晴れる。
-const LIFT_HUMIDITY = 2.6;
+// **地表付近の上向きの湿りは、足す分(ここ)と、移流した湿度の偏差を増幅する分(VORTEX_CONTRAST)に
+// 分けて持つ。** 足すだけでは渦の上に飽和した円盤を塗り、流入が巻き込んだ筋を消す — 増幅は
+// 螺旋を残し、湿った筋をより白く、乾いた隙間をより晴らす。**下降の利得は上昇より小さく取る。**
+// 沈降は自由大気を乾かすが、その下の海洋境界層は湿ったまま層積雲を保つ — 同じ利得で乾かすと、
+// 亜熱帯高圧帯の下の海が丸ごと晴れる。
+const LIFT_HUMIDITY = 1.3;
 const SUBSIDENCE_DRYING = 1.0;
 const UPPER_LIFT_HUMIDITY = 0.7;
+// 上昇流が、移流した地表付近の湿度の偏差(源の底上げ HUMIDITY_BASE からの揺れ)を増幅する利得。
+// 頭打ち(LIFT_LIMIT)に張り付いた所で偏差は (1 + 利得) 倍 — 1 で 2 倍になる。
+const VORTEX_CONTRAST = 1.0;
 // 沈降が上層を乾かす利得 [per m/s]。上層には境界層のような湿りの溜まりが無いので、地表付近より
 // 強く乾く — 高気圧の吹きおろす所では薄い雲も消える。
 const UPPER_SUBSIDENCE_DRYING = 2;
@@ -177,10 +183,13 @@ const UPPER_ADVECTION = 2.0;
 // 巻きの浅い背景(0.9 rad)は 6% しか変わらない。
 const CONVECTION_WINDING = 2.5;
 // 渦の目。移流の後の湿度をこれだけ下げる。目は渦とともに動く定常の構造なので、風に流さない。
-// 眼壁は上昇流が頭打ちに張り付いて飽和しているので、そこを貫く深さが要る。上層を深く引くのは、
-// 薄い雲の穴を厚い雲の目よりひとまわり広く開けるため。
-const EYE_DRYNESS = 0.55;
+// 眼壁は上昇流が頭打ちに張り付いて飽和し、その上に金床の天蓋(ANVIL_HUMIDITY)が乗るので、
+// 両方を貫く深さが要る。上層を深く引くのは、薄い雲の穴を厚い雲の目よりひとまわり広く開けるため。
+const EYE_DRYNESS = 0.8;
 const UPPER_EYE_DRYNESS = 2;
+// 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の下の円盤は隙間なく埋まるべきなので、並の湿度からでも
+// 雲量が飽和する分を足す。目はこの後に引くので、天蓋を貫いて開く深さは EYE_DRYNESS が持つ。
+const ANVIL_HUMIDITY = 0.5;
 // 暖気の流入が地表付近の湿度へ効く利得 [per rad]。36 h の追跡で気団は最大 0.3 rad ぶんの緯度を
 // 越えてくるので、並の流入(0.26 rad)で伝達関数の幅の半分ほど動く高さに取る。**この項は
 // 平均が 0 ではない** — 暖気の流入する所のほうが広いので、底上げをそのぶん下げて釣り合わせる。
@@ -295,15 +304,19 @@ export class WeatherModel {
     const frontalLift = max(airMass.compression.sub(FRONT_ONSET), 0).mul(FRONT_LIFT).mul(extratropical);
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)).add(frontalLift));
 
-    // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流を足し、渦の目のぶんを引いたもの。
-    // 後の 3 つは移流を通らないので、気候と地形と渦に貼り付いたまま歪まない。
+    // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流と金床を足し、渦の目のぶんを引いたもの。
+    // 写しの偏差は上昇流が増幅する。写し以外は移流を通らないので、気候と地形と渦に貼り付いたまま
+    // 歪まない。
     const advected = this.advected(direction, wind, upperWind, convectionWind);
     const meanCloudiness = this.climate.meanCloudiness(direction);
     const eye = this.cyclones.eyeAt(direction);
+    const anvil = this.cyclones.anvilAt(direction);
+    const deviation = advected.humidity.sub(HUMIDITY_BASE);
     const humidity = clamp(
-      advected.humidity.add(cloudinessBias(meanCloudiness).mul(MEAN_CLOUDINESS_WEIGHT))
+      advected.humidity.add(deviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
+        .add(cloudinessBias(meanCloudiness).mul(MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(LIFT_HUMIDITY)).add(min(lift, 0).mul(SUBSIDENCE_DRYING))
-        .add(warmth.mul(WARM_HUMIDITY)).sub(eye.mul(EYE_DRYNESS)), 0, 1);
+        .add(warmth.mul(WARM_HUMIDITY)).add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
       advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
@@ -319,7 +332,7 @@ export class WeatherModel {
       convectiveActivity: this.convectiveActivity.at(direction, lift, warmth, this.climate.landFraction(direction)),
       compression: airMass.compression,
       warmth,
-      anvil: this.cyclones.anvilAt(direction),
+      anvil,
       tropopause: tropopauseAt(latitude),
     };
   }
