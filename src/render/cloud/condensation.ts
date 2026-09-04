@@ -39,12 +39,19 @@ export const CLOUD_TOP_BIAS_KNOB: FloatUniform = uniform(1.85);
 // 割合はこの 2 つと、下の湿りの門が決める。
 export const TOWER_ONSET_KNOB: FloatUniform = uniform(0.027);
 export const TOWER_WIDTH_KNOB: FloatUniform = uniform(0.045);
+// 層積雲の板。沈降域で、湿度が凝結の効き始めに届かない所にだけ広く低く覆う。効き始める湿度は
+// 覆いの効き始めより下に取り、板が消える所で普通の凝結が引き継ぐ。沈降の利得 [per m/s] は
+// 亜熱帯高圧帯の吹きおろし(0.02 m/s)で板が飽和する高さ、上限は板が空を覆い尽くさない高さ。
+export const DECK_HUMIDITY_ONSET_KNOB: FloatUniform = uniform(0.40);
+export const DECK_SUBSIDENCE_KNOB: FloatUniform = uniform(100);
+export const DECK_LIMIT_KNOB: FloatUniform = uniform(0.34);
 // 薄い雲は、上層の湿度がしきい値を超えた分に比例して光学的厚みが増える。上端で 0.72 に届く
 // — 巻雲は厚みが 1 に届かず、下地が透けたまま見える。
 export const TRANSLUCENT_ONSET_KNOB: FloatUniform = uniform(0.44);
 export const TRANSLUCENT_GAIN_KNOB: FloatUniform = uniform(1.7);
 
-// weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した 1 本の伝達関数から、
+// weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した 1 本の伝達関数と、
+// 沈降域の層積雲の板の、濃いほうから、
 // 雲頂高度は 層状の雲・塔・金床 の 3 つの高さのうち最も高いものから出る — 覆う広さは湿度が、
 // 層の高さは上昇流が、塔は対流の峰が、平らな天蓋は渦の芯が決める。**対流の活発度が効くのは
 // 被覆率と塔で、層状の雲頂は活発度に依らず対流をそのまま受ける** — 一面に覆われた空も一様な
@@ -65,9 +72,15 @@ export function condense(weather: WeatherSample): CloudSample {
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が効き始めを超えた分を幅で割った t の 1 − exp(−t²)。下端は傾き 0 で 0 から離れ、
   // 上端は 1 へ漸近するだけで飽和しない — 覆われた空にも湿度の差が階調として残る。
-  const excess = max(weather.humidity.add(granularity).sub(COVERAGE_ONSET_KNOB), 0).div(COVERAGE_WIDTH_KNOB);
+  const moistened = weather.humidity.add(granularity);
+  const excess = max(moistened.sub(COVERAGE_ONSET_KNOB), 0).div(COVERAGE_WIDTH_KNOB);
+  // 層積雲の板。吹きおろしの強さで濃さが決まり、粒を足したあとの湿度で窓を切るので、板にも
+  // 細胞の質感が乗る。凝結の効き始めに届いた所では窓が閉じ、普通の凝結が引き継ぐ。
+  const subsidence = max(weather.lift.negate(), 0);
+  const deck = smoothstep(DECK_HUMIDITY_ONSET_KNOB, COVERAGE_ONSET_KNOB, moistened)
+    .mul(exp(subsidence.mul(DECK_SUBSIDENCE_KNOB).negate()).oneMinus()).mul(DECK_LIMIT_KNOB);
   return {
-    coverage: exp(excess.mul(excess).negate()).oneMinus(),
+    coverage: max(exp(excess.mul(excess).negate()).oneMinus(), deck),
     cloudTop: max(max(layered, tower), anvil),
     translucent: max(weather.upperHumidity.sub(TRANSLUCENT_ONSET_KNOB), 0).mul(TRANSLUCENT_GAIN_KNOB),
   };
