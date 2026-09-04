@@ -1,54 +1,48 @@
-// 描画テスト環境が描くケースの表。ゲーム本体と同じ球・艦・線を組んでカメラと一緒に返すだけで、
-// シーンへ足すのもチャンネルを振るのも呼び出し側の仕事。ケースを増やすのはこの表への追記で済む。
-// 表示スタイルで組み方が変わるケース(環・地球)は、受け取った style をゲーム本体と同じ
-// sync / setVisible へそのまま流す — スタイルの切り替えは呼び出し側がケースを組み直して行う。
+// 描画テスト環境が描くケースの表。ゲーム本体と同じ球・艦・線を組み、カメラと光源・大気・遮蔽器の
+// 配置と一緒に返す。ケースを増やすのはこの表への追記で済む。style を受けるケースは、その表示
+// スタイルで組んだ姿を返す。
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
+import { CumulusShell } from '../../src/render/cumulus-shell';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
-import cloudsTextureUrl from '../../src/assets/8k_clouds.jpg';
+import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
-import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import { shapeAxes, type RingBandDef } from '../../src/physics/celestial-body-def';
+import { EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
+import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/body-graticule';
 import { EarthCoastline } from '../../src/render/earth-coastline';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
 import { createStarSphere, type StarSphere } from '../../src/render/star-sphere';
-import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
+import { REFERENCE_STAR_RADIANT_INTENSITY, type SunLight } from '../../src/render/pipeline/sun-light';
 import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
   attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
 } from '../../src/render/thermal-emissive';
-
-import type { Occluder, RingBand, SunOcclusion } from '../../src/render/pipeline/sun-occlusion';
+import {
+  sphereOccluder, type CumulusShadow, type Occluder, type RingBand, type SunOcclusion,
+} from '../../src/render/pipeline/sun-occlusion';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
-import type { FloatNode } from '../../src/render/tsl-types';
-import { type AtmosphereBody } from '../../src/render/atmosphere';
-import { EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
-import type { LineStyle } from '../../src/render/line-style';
 import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
-import type { RenderStyle } from '../../src/render/render-style';
-import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
-import type { SunLight } from '../../src/render/pipeline/sun-light';
 import { AU } from '../../src/physics/astronomical-unit';
-import { MARS } from '../../src/game/celestial/solar-system/mars-system';
-import { SATURN } from '../../src/game/celestial/solar-system/saturn-system';
-import { type CelestialTexture } from '../../src/render/celestial-textures';
-import { MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
-import { SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
+import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
+import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
 import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection';
 import { v3 } from '../../src/math/vec3';
-import { LINE_RENDER_ORDER } from '../../src/render/line-style';
-import { PROTEIN_CASES } from './protein-cases';
-import type { ProteinLabCaseMetadata } from './protein-cases';
-import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
+import { PROTEIN_CASES, type ProteinLabCaseMetadata } from './protein-cases';
 import { HULL_EMISS } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
-
+import type { FloatNode } from '../../src/render/tsl-types';
+import type { AtmosphereBody } from '../../src/render/atmosphere';
+import type { RenderStyle } from '../../src/render/render-style';
+import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { CelestialTexture } from '../../src/render/celestial-textures';
+import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -94,15 +88,14 @@ const EYE = new THREE.Vector3(0, 0, 0);
 const AHEAD = new THREE.Vector3(0, 0, -1);
 const NEAR = 2;
 
-export type LabCase = {
+export interface LabCase {
   readonly objects: readonly THREE.Object3D[];
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
   // 恒星を置く距離 [m]。省略すると 1 天文単位。つまみで上書きできるので、ここに書くのは既定値。
   readonly sunDistance?: number;
-  // 恒星の見た目。持たせると、恒星の向きと距離のつまみに合わせて毎フレーム同期される
-  // (持たないケースでは、つまみは光源と露出だけを動かす)。
+  // 恒星の見た目。持たせると、恒星の向きと距離のつまみに合わせて毎フレーム同期される。
   readonly star?: StarSphere;
   // 天体照の光源として置く天体。中心は描画座標、albedo は輝度がボンドアルベドに一致する
   // 線形 RGB。省略すると天体照は無い。
@@ -118,13 +111,20 @@ export type LabCase = {
   readonly occluders?: readonly Occluder[];
   // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
-  // Optional benchmark metadata. Rendering itself does not inspect it; the measurement harness
-  // uses it to attach future protein-motion telemetry to a stable case identity.
+  // 遮蔽パスへ渡す積雲の殻。
+  readonly cumulusShadow?: CumulusShadow;
+  // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
+  // 同値なら何もしないこと。
+  readonly applyGraphics?: (graphics: GraphicsSettingsData) => void;
+  // 計測結果へ添える、タンパク質ケースの識別。
   readonly proteinMotion?: ProteinLabCaseMetadata;
+  // 表示時刻 displayTime [s] まで残基 motion を進め、そのフレームの計測値を返す。
   readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
+  // 残基 motion が握る資源を解放する。
   readonly disposeProteinMotion?: () => void;
-};
+}
 
+// 原点から -Z を見るケース共通のカメラ。far [m] だけをケースが選ぶ。
 function labCamera(far: number): THREE.PerspectiveCamera {
   const camera = new THREE.PerspectiveCamera(FOV_DEG, VIEW_WIDTH / VIEW_HEIGHT, NEAR, far);
   camera.position.copy(EYE);
@@ -133,6 +133,7 @@ function labCamera(far: number): THREE.PerspectiveCamera {
   return camera;
 }
 
+// 識別色 albedo の球を、半径 radius [m] で center(描画座標)へ置く。
 function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Object3D {
   const group = new THREE.Group();
   group.position.copy(center);
@@ -245,6 +246,7 @@ function debrisPool(center: THREE.Vector3, count: number): THREE.Object3D {
   const geometry = new THREE.BoxGeometry(DEBRIS_SIZE, DEBRIS_SIZE, DEBRIS_SIZE);
   const material = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.8, metalness: 0 });
   const pool = new InstancedPool(host, geometry, material, count);
+  // 1 フレームぶんの個体を、決定的な乱数で位置と姿勢を散らして積む。
   const random = lcg(20260825);
   const piece = new THREE.Object3D();
   pool.beginFrame();
@@ -258,6 +260,7 @@ function debrisPool(center: THREE.Vector3, count: number): THREE.Object3D {
     pool.push(piece);
   }
   pool.endFrame();
+  // 積んだ InstancedMesh を仮の親から外し、ケースの物体として返す。
   const mesh = host.children[0]!;
   host.remove(mesh);
   mesh.userData.ownsGeometry = true;
@@ -420,7 +423,7 @@ function shipBodyShadow(_style: RenderStyle, sunOcclusion: SunOcclusion, sunLigh
     camera,
     sunDirection: sun,
     viewTarget: center,
-    occluders: [{ center, radius: SMALL_BODY_RADIUS }],
+    occluders: [sphereOccluder(center, SMALL_BODY_RADIUS)],
     rings: { center, axis, bands: occlusionBands(SMALL_BODY_RING_BANDS) },
   };
 }
@@ -449,29 +452,33 @@ function leo(): LabCase {
   };
 }
 
-// 地球照: 低軌道の艦を、満相の地球が下から照らす。恒星は真上から差すので、艦の上面だけが
-// 直射を受け、下面は地球照だけで照らされる。横を向いた面はどちらの光も受けず桁で暗い。
-function earthshine(): LabCase {
-  const camera = labCamera(6e7);
-  const center = new THREE.Vector3(0, -6.791e6, 0);
+// 地球を centerDistance [m] だけ真下へ置き、その天体照で下面が照らされる艦を組む。
+function earthLitShip(centerDistance: number, sunDirection: THREE.Vector3): LabCase {
+  const center = new THREE.Vector3(0, -centerDistance, 0);
   const shipPosition = new THREE.Vector3(0, -1, -10);
   return {
     objects: [sphere(BLUE_SPHERE_ALBEDO, R_EARTH, center), shipAt(shipPosition, SHIP_ROTATION_PORT)],
-    camera,
-    sunDirection: new THREE.Vector3(0, 1, 0),
+    camera: labCamera(6e7),
+    sunDirection,
     viewTarget: shipPosition,
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
   };
 }
 
-// 三日月: earthshine と同じ低軌道で、恒星を横へ倒して位相角 120°(地球が三日月形に見える
-// 位置)にする。天体照は満相の Φ(0)=1 から Φ(120°)≈0.11 まで弱まる。
+// 地球照: 低軌道(高度 420km)の艦を、満相の地球が下から照らす。恒星は真上から差すので、艦の
+// 上面だけが直射を受け、下面は地球照だけで照らされる。横を向いた面はどちらの光も受けず桁で暗い。
+function earthshine(): LabCase {
+  return earthLitShip(6.791e6, new THREE.Vector3(0, 1, 0));
+}
+
+// 三日月: 位相角 120°(地球が三日月形に見える向き)から地球照を受ける艦。**低軌道ではなく
+// 中心距離 1.5 地球半径へ置く** — 天体照は受け手から見えている地表の日照で決まるので、位相角
+// 120° で光が残るには可視キャップの半角 acos(R/d) が 30° を超える必要があり、低軌道の 19.8°
+// では真下の地表が全部夜になって届かない。1.5 倍では 48.2° で、地球の縁に沿った三日月が見える。
 function crescent(): LabCase {
-  const base = earthshine();
-  return {
-    ...base,
-    sunDirection: new THREE.Vector3(Math.sin((Math.PI * 2) / 3), Math.cos((Math.PI * 2) / 3), 0),
-  };
+  const phase = (Math.PI * 2) / 3;
+  return earthLitShip(
+    1.5 * R_EARTH, new THREE.Vector3(Math.sin(phase), Math.cos(phase), 0));
 }
 
 // 典型的な天体表面・艦の外殻の反射率。
@@ -497,16 +504,18 @@ function outer(sunDistance: number): LabCase {
   };
 }
 
-// 描画順: 同じ深度に置いた 5 本の円が LINE_RENDER_ORDER の順に重なるか。
-// 交差点でどちらが上に出るかがそのまま答えになる。
+// 描画順ケースの円の識別色。LINE_RENDER_ORDER の並びと同じ順で当てる。
 const ORDER_COLORS = [0x5a6572, 0x4f8fd0, 0x59c3a5, 0xd8c24a, 0xff6a00] as const;
 
+// 描画順: 同じ深度に置いた 5 本の円が LINE_RENDER_ORDER の順に重なるか。
+// 交差点でどちらが上に出るかがそのまま答えになる。
 function order(): LabCase {
   const camera = labCamera(6e7);
   const depth = 1e4;
   const radius = 3e3;
   const u = new THREE.Vector3(1, 0, 0);
   const v = new THREE.Vector3(0, 1, 0);
+  // 円を横へ少しずつずらして重ね、交差点を作る。
   const objects: THREE.Object3D[] = [backdrop(5e4)];
   for (const [i, renderOrder] of Object.values(LINE_RENDER_ORDER).entries()) {
     const center = new THREE.Vector3((i - 2) * radius * 0.06, 0, -depth);
@@ -526,13 +535,14 @@ function backdrop(depth: number): THREE.Object3D {
   return mesh;
 }
 
-// 深度プローブ: 距離 z に半径 z/10 の球を2個、視線方向へ δ = z·ε だけずらして重ねる。
-// 深度分解能が δ を下回る組だけが斑になる。見かけの大きさは z に依らない。
+// 深度プローブで試す、距離に対するずれの比 ε。
 const PROBE_EPSILONS = [1e-3, 1e-4, 1e-5, 1e-6, 1e-7] as const;
 // 手前と奥をひと目で見分けるための赤・青。深度の判定だけが目的で、実在天体の値ではない。
 const PROBE_NEAR_ALBEDO: Albedo = [1.0, 0.0908, 0.0578];
 const PROBE_FAR_ALBEDO: Albedo = [0.0578, 0.2462, 1.0];
 
+// 深度プローブ: 距離 z に半径 z/10 の球を2個、視線方向へ δ = z·ε だけずらして重ねる。
+// 深度分解能が δ を下回る組だけが斑になる。見かけの大きさは z に依らない。
 function depthProbe(z: number, far: number): LabCase {
   const camera = labCamera(far);
   const objects: THREE.Object3D[] = [];
@@ -600,25 +610,75 @@ function marchSlab(): LabCase {
   return { objects: [plane], camera };
 }
 
-// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。雲を合成した地表と、模式図で
-// だけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。
-function earthAt(center: THREE.Vector3, style: RenderStyle): THREE.Object3D {
+// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。薄い雲を合成した地表と積雲の
+// 殻、模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。殻が落とす影と
+// 大気は別のパスへ渡すので、置いた球と一緒に返す。spin は天体固定の姿勢で、地表も殻も場も
+// 大気の扁平も一緒に回る。
+function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Quaternion()): {
+  readonly object: THREE.Object3D;
+  readonly atmosphere: AtmosphereBody;
+  readonly cumulusShadow: CumulusShadow;
+  readonly occluder: Occluder;
+  readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
+} {
   const group = new THREE.Group();
   group.position.copy(center);
+  group.quaternion.copy(spin);
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
+  const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
-  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cloudsTextureUrl, earthSmoothnessUrl);
+  const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
+  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cumulus.field, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
   surface.setCloudAmount(1);
+  cumulus.addTo(group);
+  const bodyFromWorld = new THREE.Matrix4().makeRotationFromQuaternion(spin.clone().invert());
   const graticule = new BodyGraticule();
   graticule.addTo(group);
   graticule.setVisible(style === 'schematic');
   const coastline = new EarthCoastline();
   coastline.addTo(group);
   coastline.setVisible(style === 'schematic');
-  return group;
+  return {
+    object: group,
+    // 大気の地表は地表メッシュと同じ楕円体に採る。**真球で渡すと**、極で地表と空のあいだに
+    // 隙間が開く。
+    atmosphere: {
+      center,
+      surfaceRadius: radii.equatorRadius,
+      polarAxis: new THREE.Vector3(0, 1, 0).applyQuaternion(spin),
+      polarRatio: radii.polarRadius / radii.equatorRadius,
+      optics: EARTH_ATMOSPHERE_OPTICS,
+    },
+    cumulusShadow: {
+      center,
+      surfaceRadius: R_EARTH_EQ,
+      axes: new THREE.Vector3(axes.x, axes.y, axes.z),
+      topAltitude: cumulus.topAltitude,
+      bodyFromWorld,
+      field: cumulus.field,
+    },
+    // 天体自身の遮蔽器。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
+    occluder: { center, axes: new THREE.Vector3(axes.x, axes.y, axes.z), bodyFromWorld },
+    // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
+    // 絵の比較は最も細かい段で行う)。
+    applyGraphics: (graphics) => {
+      surface.setCloudAmount(graphics.clouds ? 1 : 0);
+      if (graphics.clouds) {
+        cumulus.setDetail(graphics.cumulusDetail);
+        cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
+      } else {
+        cumulus.hide();
+      }
+    },
+  };
 }
+
+// 斜視ケースのカメラ高度 [m] と、地平線を視線から下げる角 [rad]。負なので地平線は視線の上へ
+// 来る — 画面中央の地表を入射角およそ 45° で見下ろす向きで、雲頂の起伏と塔の側面が同時に写る。
+const EARTH_OBLIQUE_ALTITUDE = 420e3;
+const EARTH_OBLIQUE_MARGIN = -0.49;
 
 // カメラ(原点)から見て、地球の地平線が視線から margin [rad] だけ下へ来る向きの地球中心。
 // 高度 altitude [m] のカメラから地球へ接する視線の角が、そのまま中心の向きの傾きになる。
@@ -632,15 +692,69 @@ function earthCenterBelowHorizon(altitude: number, margin: number): THREE.Vector
 function earth(style: RenderStyle): LabCase {
   const camera = labCamera(6e7);
   const center = earthCenterBelowHorizon(420e3, 0);
+  const earthSphere = earthAt(center, style);
   return {
     objects: [
-      earthAt(center, style),
+      earthSphere.object,
       sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER),
     ],
     camera,
-    atmospheres: [{ center, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS }],
+    atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    occluders: [earthSphere.occluder],
+    cumulusShadow: earthSphere.cumulusShadow,
+    applyGraphics: earthSphere.applyGraphics,
   };
+}
+
+// 斜視の地球: earth と同じ高度から、地平線を視線より下げて地表を斜めに見下ろす。**積雲の塔を
+// 真上からでも真横からでもなく見る向き**なので、雲頂の起伏と塔の側面はここで読む。
+function earthOblique(style: RenderStyle): LabCase {
+  const center = earthCenterBelowHorizon(EARTH_OBLIQUE_ALTITUDE, EARTH_OBLIQUE_MARGIN);
+  const earthSphere = earthAt(center, style);
+  return {
+    objects: [earthSphere.object],
+    camera: labCamera(6e7),
+    atmospheres: [earthSphere.atmosphere],
+    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    occluders: [earthSphere.occluder],
+    cumulusShadow: earthSphere.cumulusShadow,
+    applyGraphics: earthSphere.applyGraphics,
+  };
+}
+
+// 極ケースの地球の視直径が画面の高さに占める割合と、恒星の向き。恒星は極を斜め上から
+// 照らす向きへ置き、雲の影が極域いっぱいに伸びるようにする。
+const EARTH_POLAR_SCREEN_FRACTION = 0.8;
+const EARTH_POLAR_SUN_DIR = new THREE.Vector3(1, 0, 1).normalize();
+
+// 北極を真上から見下ろす地球: 自転軸をカメラへ向け、極を中心に見下ろす。**正距円筒の場は極で
+// 経度が 1 点へ集まる**ので、場の引き方の破綻はこの構図に出る。
+function earthPolar(style: RenderStyle): LabCase {
+  // 地球の視半径 [rad]。半画角に割合を掛けたものが、そのまま視半径になる。
+  const apparentRadius = THREE.MathUtils.degToRad(FOV_DEG / 2) * EARTH_POLAR_SCREEN_FRACTION;
+  const center = new THREE.Vector3(0, 0, -R_EARTH / Math.sin(apparentRadius));
+  // 天体固定の +Y(北極)を、カメラの居る +Z へ倒す。
+  const spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+  const earthSphere = earthAt(center, style, spin);
+  return {
+    objects: [earthSphere.object],
+    camera: labCamera(6e7),
+    sunDirection: EARTH_POLAR_SUN_DIR,
+    atmospheres: [earthSphere.atmosphere],
+    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    occluders: [earthSphere.occluder],
+    cumulusShadow: earthSphere.cumulusShadow,
+    applyGraphics: earthSphere.applyGraphics,
+  };
+}
+
+// 極の昼夜境界: earth-polar と同じ構図で、恒星を視線と直交させ、昼夜境界を極の上へ通す。
+// **扁平な天体でも影は地平線どおりに落ちる** — 境界は半影ぶんに滑らかで、緯度によらない
+// 直線の縁は出ない。天体自身が遮蔽器に載っていて、地表も雲頂も低い高度の大気も、その内側では
+// なく表面より外に居ることをここで読む。
+function earthPolarTerminator(style: RenderStyle): LabCase {
+  return { ...earthPolar(style), sunDirection: new THREE.Vector3(1, 0, 0) };
 }
 
 // 昼夜境界の地球: earth と同じ構図で、恒星を視線の先の地平線上へ置く。**太陽光が最も長く
@@ -667,8 +781,8 @@ function earthEclipse(style: RenderStyle): LabCase {
   return {
     ...base,
     occluders: [
-      { center: ground.clone().addScaledVector(SUN_DIR, ECLIPSE_OCCLUDER_DISTANCE), radius: ECLIPSE_OCCLUDER_RADIUS },
-      { center, radius: R_EARTH },
+      sphereOccluder(ground.clone().addScaledVector(SUN_DIR, ECLIPSE_OCCLUDER_DISTANCE), ECLIPSE_OCCLUDER_RADIUS),
+      ...base.occluders!,
     ],
   };
 }
@@ -692,17 +806,26 @@ function earthMars(style: RenderStyle): LabCase {
   const marsCenter = new THREE.Vector3(0, 0, -EARTH_MARS_DISTANCE);
   const margin = EARTH_MARS_HORIZON_CLEARANCE * Math.asin(MARS_RADIUS / EARTH_MARS_DISTANCE);
   const earthCenter = earthCenterBelowHorizon(EARTH_MARS_CAMERA_ALTITUDE, margin);
+  const earthSphere = earthAt(earthCenter, style);
   return {
     objects: [
-      earthAt(earthCenter, style),
+      earthSphere.object,
       texturedSphere(MARS_TEXTURE, MARS_RADIUS, marsCenter, CLOSE_UP_DIAMETER_PX),
     ],
     camera,
     viewTarget: marsCenter,
+    // 火星の大気は真球で渡す。
     atmospheres: [
-      { center: earthCenter, surfaceRadius: R_EARTH, optics: EARTH_ATMOSPHERE_OPTICS },
-      { center: marsCenter, surfaceRadius: MARS_RADIUS, optics: MARS_ATMOSPHERE_OPTICS },
+      earthSphere.atmosphere,
+      {
+        center: marsCenter,
+        surfaceRadius: MARS_RADIUS,
+        polarAxis: new THREE.Vector3(0, 1, 0),
+        polarRatio: 1,
+        optics: MARS_ATMOSPHERE_OPTICS,
+      },
     ],
+    applyGraphics: earthSphere.applyGraphics,
   };
 }
 
@@ -718,11 +841,12 @@ function eclipse(): LabCase {
   );
   receiver.position.copy(center);
   markLitOpaque(receiver);
+  // 遮蔽する球と環は、受ける球から恒星方向へ 1e4 m の位置に置く。
   const occluderCenter = center.clone().addScaledVector(SUN_DIR, 1e4);
   return {
     objects: [receiver],
     camera,
-    occluders: [{ center: occluderCenter, radius: 50 }],
+    occluders: [sphereOccluder(occluderCenter, 50)],
     rings: {
       center: occluderCenter,
       axis: SUN_DIR.clone().add(new THREE.Vector3(0, 0.7, 0)).normalize(),
@@ -734,13 +858,10 @@ function eclipse(): LabCase {
   };
 }
 
-// 温度による自照を読むケース。**球はすべて同じ 1 つのマテリアルを共有し、温度だけが個体ごとに
-// 違う** — 明るさが球ごとに違って見えることが、個体ごとの温度が届いていることの唯一の印で、
-// 全部同じ明るさなら配線が死んでいる。恒星は斜めから差すので、反射に埋もれる昼側と自照だけの
-// 夜側が同じ球の上に並ぶ。**円柱は頂点ごとの温度勾配**(左端が平均温度、右端が +550 K)で、
-// 赤熱が部品の切れ目ではなく勾配として終わることを見る。
+// 球の列の温度 [K] と、列を置く奥行き [m]。
 const BLACKBODY_TEMPERATURES = [900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000];
 const BLACKBODY_DEPTH = 30;
+// 温度勾配の円柱の平均温度 [K] と、右端が平均より高い温度差 [K]。
 const BLACKBODY_GRADIENT_AVERAGE = 950;
 const BLACKBODY_GRADIENT_DEVIATION = 550;
 // 艦が喪失する温度(1,300 K)の少し上。夜側で赤熱として読める明るさになる。
@@ -778,6 +899,7 @@ function blackbodyInstancedRow(center: THREE.Vector3, spacing: number): THREE.Ob
   const material = blackbodyMaterial(false, 'instance');
   const count = BLACKBODY_INSTANCE_TEMPERATURES.length;
   const pool = new InstancedPool(host, geometry, material, count, false, 0, true);
+  // 個体を横一列に並べ、それぞれの温度を属性として積む。
   const piece = new THREE.Object3D();
   pool.beginFrame();
   for (const [i, temperature] of BLACKBODY_INSTANCE_TEMPERATURES.entries()) {
@@ -787,6 +909,7 @@ function blackbodyInstancedRow(center: THREE.Vector3, spacing: number): THREE.Ob
     pool.push(piece);
   }
   pool.endFrame();
+  // 積んだ InstancedMesh を仮の親から外し、ケースの物体として返す。
   const mesh = host.children[0]!;
   host.remove(mesh);
   mesh.userData.ownsGeometry = true;
@@ -794,7 +917,13 @@ function blackbodyInstancedRow(center: THREE.Vector3, spacing: number): THREE.Ob
   return mesh;
 }
 
+// 温度による自照を読むケース。**球はすべて同じ 1 つのマテリアルを共有し、温度だけが個体ごとに
+// 違う** — 明るさが球ごとに違って見えることが、個体ごとの温度が届いていることの唯一の印で、
+// 全部同じ明るさなら配線が死んでいる。恒星は斜めから差すので、反射に埋もれる昼側と自照だけの
+// 夜側が同じ球の上に並ぶ。**円柱は頂点ごとの温度勾配**(左端が平均温度、右端が +550 K)で、
+// 赤熱が部品の切れ目ではなく勾配として終わることを見る。
 function blackbody(): LabCase {
+  // 温度の違う球の列。ジオメトリとマテリアルは先頭の球が所有する。
   const sphereGeometry = new THREE.SphereGeometry(1.1, 32, 16);
   const sphereMaterial = blackbodyMaterial(false);
   const objects: THREE.Object3D[] = [];
@@ -808,6 +937,7 @@ function blackbody(): LabCase {
     markLitOpaque(mesh);
     objects.push(mesh);
   }
+  // 温度勾配の円柱と、個体ごとの温度を持つ枝。
   const barMaterial = blackbodyMaterial(true);
   const bar = blackbodyGradientBar(barMaterial, 30, 1.0);
   bar.position.set(0, -3.4, -BLACKBODY_DEPTH);
@@ -832,11 +962,8 @@ function blackbody(): LabCase {
 // 較正: アルベド 1 の完全拡散面を 1 天文単位に置く。**放射照度の単位が「1 AU で π」に取れて
 // いれば、太陽へ正対した面のトーンマッピング前の線形値は 1.0 になる** — ランバート BRDF の
 // 1/π が単位を打ち消すため。ここが動いたら光の単位か BRDF のどちらかが崩れている。
-// 天体照の光源は置かない — 較正はこの 1 本の光だけで読む。
-//
-// 画面へ出るのはそこから 2 段ぶん先で、**最も明るい画素は sRGB (240, 229, 210)**:
-// 恒星光の色 (1, 0.905, 0.761) に誘電体の鏡面(F0=0.04、粗さ 1)のわずかな持ち上がりが乗り、
-// PBR Neutral と sRGB 符号化を通した値。
+// 画面上の**最も明るい画素は sRGB (240, 229, 210)**: 恒星光の色 (1, 0.905, 0.761) に誘電体の
+// 鏡面(F0=0.04、粗さ 1)のわずかな持ち上がりが乗り、PBR Neutral と sRGB 符号化を通した値。
 function albedo(): LabCase {
   const camera = labCamera(6e7);
   const surface = new THREE.Mesh(
@@ -863,11 +990,9 @@ function metalHighlight(): LabCase {
 }
 
 // 土星: 本体の球と実データの環を並べ、**環だけが本体より桁で明るくないか**を見る。恒星の
-// 放射照度は本体(ライティングパスが画素ごとに逆二乗を掛ける)にも環(sync が受け取る)にも
-// 同じだけ掛かる。恒星は他のケースと同じ 1 天文単位に置く。
-//
-// 本体を遮蔽器に、環の帯を遮蔽する環に登録するので、**環が本体の影へ入る境界と、本体表面に
-// 落ちる環の影の境界の両方**が同じ 1 つの遮蔽関数から出る。どちらもぼけていることを見る。
+// 放射照度は本体にも環にも同じだけ掛かる。本体を遮蔽器に、環の帯を遮蔽する環に登録するので、
+// **環が本体の影へ入る境界と、本体表面に落ちる環の影の境界の両方**が同じ 1 つの遮蔽関数から
+// 出る。どちらもぼけていることを見る。
 function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   const camera = labCamera(1e13);
   const radius = 6.0268e7;
@@ -875,29 +1000,26 @@ function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLig
   const center = new THREE.Vector3(0, -0.15 * distance, -distance);
   const axis = v3(0.3, 0.9, 0.32);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(
-    center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT,
-    QUALITY_PRESETS.high, style,
-  );
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
-    occluders: [{ center, radius }],
+    occluders: [sphereOccluder(center, radius)],
     rings: {
       center,
       axis: new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
       bands: occlusionBands(SATURN_RINGS.bands),
     },
+    // 環の見え方(表示の有無・帯の見かけ幅の段)は設定で変わるので、押し込みのたびに同期する。
+    applyGraphics: (graphics) => view.sync(
+      center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, graphics, style,
+    ),
   };
 }
 
-// 土星(近接): 影の境界だけを見るための構図。saturn は本体が画面上 62px しかなく、半影
-// (そこでは 2px 未満)を目で読めない。**環面へ浅い角度で恒星が差す姿勢**(環軸を真上に取り、
-// 恒星の仰角を 17° にする)で本体へ寄り、次の 2 つを同じ絵の中で読む:
-//
-// - **本体表面に落ちる環の影**: カッシーニの間隙が明るい帯として出る。恒星が円盤である以上、
-//   その帯の縁は硬くならない(半影 4px 対 帯 19px)。
-// - **環が本体の影へ入る境界**: 環の帯を横切る影の縁も、天体の球の半影ぶんだけぼける。
+// 土星(近接): 影の境界だけを見るための構図。saturn では本体が画面上 62px しかなく、半影
+// (2px 未満)を目で読めない。**環面へ浅い角度で恒星が差す姿勢**(環軸を真上、恒星の仰角 17°)
+// で本体へ寄り、本体表面に落ちる環の影(カッシーニの間隙が明るい帯として出て、その縁は半影 4px
+// ぶんぼける)と、環が本体の影へ入る境界(天体の球の半影ぶんぼける)を同じ絵の中で読む。
 function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
   const distance = 1.9e8;
   const radius = 6.0268e7;
@@ -912,15 +1034,14 @@ function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: 
   camera.updateMatrixWorld(true);
   const axis = v3(0, 1, 0);
   const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
-  view.sync(
-    center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT,
-    QUALITY_PRESETS.high, style,
-  );
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
-    occluders: [{ center, radius }],
+    occluders: [sphereOccluder(center, radius)],
     rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: occlusionBands(SATURN_RINGS.bands) },
+    applyGraphics: (graphics) => view.sync(
+      center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, graphics, style,
+    ),
   };
 }
 
@@ -953,9 +1074,9 @@ export function sunDiameterPx(distance: number, fovDeg: number): number {
   return apparentSizePx(2 * R_SUN, metersPerPixelAtDepth(fovDeg, distance, VIEW_HEIGHT));
 }
 
-// 太陽: 恒星の実球体を distance [m] に置く。**遠ざかると見かけ径が 1px を切り**、総光量が
-// ラスタライズの被覆率へ量子化される — サブピクセルの移動に対する画面のちらつきを、この構図で測る。
-// 距離はここで決めるのは既定値だけで、球を実際に置くのは恒星のつまみを読む側(lab.ts)。
+// 太陽: 恒星の実球体を distance [m](既定値。つまみで動く)に置く。**遠ざかると見かけ径が 1px を
+// 切り**、総光量がラスタライズの被覆率へ量子化される — サブピクセルの移動に対する画面のちらつきを、
+// この構図で測る。
 function sunAt(distance: number): LabCase {
   const camera = labCamera(1e13);
   return {
@@ -992,6 +1113,9 @@ export const CASES = {
   'eclipse': eclipse,
   'march-slab': marchSlab,
   'earth': earth,
+  'earth-oblique': earthOblique,
+  'earth-polar': earthPolar,
+  'earth-polar-terminator': earthPolarTerminator,
   'earth-terminator': earthTerminator,
   'earth-eclipse': earthEclipse,
   'earth-mars': earthMars,

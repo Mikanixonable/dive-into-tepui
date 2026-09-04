@@ -14,9 +14,16 @@
 
 ## 置き場と使い方
 
-- **仮テクスチャ**: `src/assets/cloud-coverage.png`(被覆率 0..1)/ `cloud-top.png`
-  (雲頂 0..1 = 0..15000 m)/ `cloud-translucent.png`(鉛直光学的厚み τ 0..1)。
-  正距円筒 4096×2048・グレースケール 8bit。v = 0 が北、経度原点は 8k_clouds と同じ。
+- **仮テクスチャ**: `src/assets/cloud-field.png` の 1 枚。R = 被覆率 0..1 / G = 雲頂 0..1
+  (= 0..15000 m)/ B = 鉛直光学的厚み τ 0..1 で、**並びは生成側の出力規約**
+  (`src/render/cloud/cloud-field.ts` の `CloudField`)**と同じ** — 生成の写しへ差し替えても、
+  読む側の成分の割り当ては動かない。正距円筒 4096×2048・8bit(13.6 MB)。v = 0 が北、
+  経度原点は 8k_clouds と同じ。
+- **読み手**(ゲーム本体と render-lab の両方): R + G は積雲の殻(`src/render/cumulus-shell.ts`)
+  と雲影(`sun-occlusion.ts`)、B は `CelestialSurface.clouded` が 1 − exp(−τ) で地表アルベドへ
+  焼き込む。描画側の姿は [`../better_graphics/pipeline.md`](../better_graphics/pipeline.md) §2-9、
+  生成側に効く契約(二値化の境目・粒・影の光路)は [`improvement.md`](improvement.md)
+  「描画側との契約」。
 - **再生成**: `npm run cloud-lab:separate`。検分用の veil(巻雲の輝度)と recomposed
   (スクリーン再合成 — 入力と見比べて分離の癖を探す)は `.cloud-lab/separated/` へ出る。
 - **目視調整**: `npm run cloud-lab` → http://localhost:8083/separate.html。各段のビュー切り替え、
@@ -70,5 +77,8 @@
 - **実写のリニア化**(sRGB 逆変換)と、それに伴う基準値の取り直し(improvement.md の決定 5 と
   セット)。
 - **極域の扱いの合意**: 別ソースで補完するか、生成側が極域を独自に決めるか。
+- **配信サイズの扱い**: 可逆 8bit 3ch なので 13.6 MB を配信物へ足す(`8k_clouds.jpg` 2.78 MB と
+  入れ替わって差し引き **+10.9 MB**)。生成の場へ移れば 0 になる性質のものなので、それまでの
+  暫定として許すか、非可逆へ落とすかを決める(`memos/mikanixonable/軽量化/軽量化計画_第五版.md`)。
 - 契約(解像度・チャンネル割り当て)が動いたときの再生成と、描画側の読み替えの段取り。
 - (必要が出たら)伝播・侵食の反復数の GUI 化(現状はコード内の偶数の定数)。

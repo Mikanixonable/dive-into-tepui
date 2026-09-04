@@ -8,9 +8,11 @@
 // 選択肢で持つものは、品質と負荷を刻んで釣り合わせる値か、絵の見え方を選ばせる値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
+import { CUMULUS_DETAIL } from './cumulus-shell';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
-const STORAGE_KEY = 'tepui.settings.graphics';
+// ゲーム本体の設定の保存先(localStorage の鍵)。
+export const GRAPHICS_STORAGE_KEY = 'tepui.settings.graphics';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
 
@@ -76,12 +78,6 @@ export const GRAPHICS_OPTIONS = {
     items: FILM_LUT_ITEMS,
     presets: { low: FILM_LUT_NONE, medium: FILM_LUT_NONE, high: FILM_LUT_NONE },
   },
-  // 光を受ける不透明物の縁を、画素より細かい被覆の割合として描くか。最終段のアンチエイリアスが
-  // 作れない中間調がここで入る。
-  msaa: {
-    kind: 'toggle', group: 'basic', label: 'マルチサンプリング',
-    presets: { low: false, medium: true, high: true },
-  },
   // 描画の最終段で、物体の縁と 3D UI の線のギザギザを均す方式。
   antialias: {
     kind: 'choice', group: 'basic', label: 'アンチエイリアス',
@@ -117,6 +113,19 @@ export const GRAPHICS_OPTIONS = {
   clouds: {
     kind: 'toggle', group: 'element', label: '雲',
     presets: { low: false, medium: true, high: true },
+  },
+  // 積雲の殻を解くレイマーチの細かさ。段を上げるほど雲頂の起伏と縁が滑らかになる。オフでは殻も、
+  // それが落とす影も消え、薄い雲を焼き込んだ地表だけが残る。「標準」が絵の粗さの見えなくなる段で、
+  // 「精細」は積雲の破綻を地表側の破綻から切り分けるための段。
+  cumulusDetail: {
+    kind: 'choice', group: 'element', label: '積雲の精細さ',
+    items: [
+      [CUMULUS_DETAIL.off, 'オフ'], [CUMULUS_DETAIL.coarse, '粗'],
+      [CUMULUS_DETAIL.standard, '標準'], [CUMULUS_DETAIL.fine, '精細'],
+    ],
+    presets: {
+      low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.standard, high: CUMULUS_DETAIL.standard,
+    },
   },
   // レンズ効果(滲み・条・ゴースト)。
   lens: {
@@ -155,6 +164,12 @@ export const GRAPHICS_OPTIONS = {
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
+    presets: { low: false, medium: true, high: true },
+  },
+  // 積雲が地表・艦艇へ落とす影。積雲を描かない設定(「雲」がオフ、「積雲の精細さ」がオフ)では、
+  // この値によらず影は落ちない。
+  cumulusShadow: {
+    kind: 'toggle', group: 'shadow', label: '積雲の影',
     presets: { low: false, medium: true, high: true },
   },
   // 細かい影を同時に落とせる箇所の数。減らすほど影パスの描画命令が減り、要求の緩い受け手から
@@ -222,9 +237,9 @@ function acceptValue(
 }
 
 // 保存値は利用者がいつ書いたか分からないので、既知の項目だけを既定の上へ重ねる。
-function loadStored(): GraphicsSettingsData {
+function loadStored(storageKey: string): GraphicsSettingsData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (raw === null) return DEFAULTS;
     const saved = JSON.parse(raw) as Record<string, unknown>;
     // 表に無いキーは読まず、表にあって保存に無いキーは既定で埋まる。
@@ -244,8 +259,14 @@ export interface GraphicsTarget {
 }
 
 export class GraphicsSettings {
-  private data: GraphicsSettingsData = loadStored();
+  private data: GraphicsSettingsData;
   private readonly targets: GraphicsTarget[] = [];
+
+  // storageKey は設定を残すブラウザ側の鍵。null を渡すと読みも書きもせず、毎回既定から始まって
+  // このセッションの中だけで生きる。
+  public constructor(private readonly storageKey: string | null = GRAPHICS_STORAGE_KEY) {
+    this.data = storageKey === null ? DEFAULTS : loadStored(storageKey);
+  }
 
   public get current(): GraphicsSettingsData { return this.data; }
 
@@ -269,8 +290,9 @@ export class GraphicsSettings {
   private apply(data: GraphicsSettingsData): void {
     this.data = data;
     for (const target of this.targets) target.applyGraphics(data);
+    if (this.storageKey === null) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+      localStorage.setItem(this.storageKey, JSON.stringify(this.data));
     } catch {
       // 保存できなくてもこのセッションの設定は生きている。
     }

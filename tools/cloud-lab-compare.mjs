@@ -1,11 +1,8 @@
 // 雲の実験環境の生成と実写(8k_clouds)の統計比較。ヘッドレス Chrome で .cloud-lab/ を開き、
 // 全球と地域別 cap の両面を撮って、帯状平均・階調・行方向スペクトルの表を出す。
-//
-// 実写は低い厚い雲と高層の巻雲が 1 枚に重なっていて、生成側の被覆率(厚い雲)・薄い雲(巻雲)と
-// 成分ごとに比べられないので、分離した成分と比べる。分離の実装は
-// tools/cloud-lab/separation-pipeline.ts(TSL 版)の一本だけ — ここでは再分離せず、
-// `npm run cloud-lab:separate` が書いた原寸の出力(.cloud-lab/separated/)を読み込んで、
-// 撮影の面(全球の正距円筒と cap の正射影)へ再標本化する。**先に separate を実行しておく。**
+// 実写は低い厚い雲と高層の巻雲が 1 枚に重なっているので、`npm run cloud-lab:separate` が
+// 分離した成分(src/assets の仮テクスチャと .cloud-lab/separated/)を読み、撮影の面(全球の
+// 正距円筒と cap の正射影)へ再標本化して成分ごとに比べる。**先に separate を実行しておく。**
 // 再標本化した実写厚・実写薄も画像で .cloud-lab/compare/ に残る。
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -38,8 +35,8 @@ const VIEWS = ['photo', 'composite', 'coverage', 'translucent'];
 
 const CAP_KM_PER_PX = (2 * Math.sin((CAP_RADIUS * Math.PI) / 180) * 6371) / CAP_W;
 
-// 分離済みの成分(原寸の正距円筒)。厚い雲は src/assets の仮テクスチャ、veil は検分用の出力に
-// ある。無ければ手順ごと伝える。
+// 分離済みの成分(原寸の正距円筒)を file(リポジトリ相対)から読む。無ければ、先に走らせる手順を
+// 添えて投げる。
 function loadSeparated(file) {
   try {
     return decodeRedPng(readFileSync(path.join(root, file)));
@@ -115,6 +112,7 @@ function resampleCap(field, latitudeDeg, longitudeDeg) {
   return { width: CAP_BOX, height: CAP_BOX, data: out };
 }
 
+// 場をグレースケール PNG として .cloud-lab/compare/ へ書く。
 function saveGray(name, field) {
   writeFileSync(path.join(outDir, name), fieldToGrayPng(field));
 }
@@ -172,6 +170,8 @@ function rowAtLatitude(latitude) {
   return Math.round(((90 - latitude) / 180) * HEIGHT);
 }
 
+// 実写と生成のオクターブ束スペクトルを波長帯ごとに並べ、比を添えて出す。wavelengthOf は
+// 波数 → 波長 [km]。
 function printSpectrumTable(header, wavelengthOf, reference, generated, referenceLabel, generatedLabel) {
   console.log(header);
   console.log(`波長帯 [km]      ${referenceLabel}   ${generatedLabel}   比(生成/実写)`);
@@ -185,8 +185,8 @@ function printSpectrumTable(header, wavelengthOf, reference, generated, referenc
 }
 
 async function main() {
-  // 分離済みの成分を先に読む(無いなら撮影の前に気付かせる)。
-  const separatedThick = loadSeparated(path.join('src', 'assets', 'cloud-coverage.png'));
+  // 分離済みの成分を先に読む(無いなら撮影の前に気付かせる)。仮テクスチャは R が被覆率。
+  const separatedThick = loadSeparated(path.join('src', 'assets', 'cloud-field.png'));
   const separatedVeil = loadSeparated(path.join('.cloud-lab', 'separated', 'veil.png'));
 
   const { fatalEvents, onEvent } = collectFatalEvents();

@@ -49,13 +49,13 @@ function occludedFraction(
   return 1 - overlap / (Math.PI * sunAngRadius * sunAngRadius);
 }
 
-// r から見て body が恒星を隠しうる面積比の上限 0..1。両円盤が最も都合よく重なったとき —
+// r のまわりへ body が落としうる影の濃さの上限 0..1。両円盤が最も都合よく重なったとき —
 // すなわち視半径の比の二乗(遮蔽円盤が恒星円盤を覆いきるなら 1)— を返すので、**この値が
-// 小さい天体は、どの向きでも絵に出るほどの影を落とさない。** 遮蔽器を有限個へ打ち切る側が、
-// 落としてよいかどうかの根拠にこれを使う。
+// 小さい天体は、r のまわりのどこにも絵に出るほどの影を落とせない。**
 //
-// 場合分けは occludedFraction と同じ: 恒星自身と半径 0 の天体は遮蔽器にならず、r より恒星から
-// 遠い側や背後にある天体も隠さない。天体の内側からは恒星が完全に隠れる。
+// 上限は r と body の距離だけで決まる。r から見て body が恒星の手前にあるかどうかで値が
+// 変わると、body 自身の夜側のように影の落ちた先が見えている位置関係でも 0 になってしまう。
+// 恒星自身と半径 0 の天体は遮蔽器にならず、天体の内側からは恒星が完全に隠れる。
 export function maxOccludedFraction(
   r: Vec3, star: CelestialMotion, body: CelestialMotion, pivot: number,
 ): number {
@@ -66,8 +66,6 @@ export function maxOccludedFraction(
   if (sunDist < 1) return 0; // 位置が恒星に一致(退化)
   const b = body.positionAt(pivot);
   const dx = b.x - r.x, dy = b.y - r.y, dz = b.z - r.z;
-  const along = (dx * tx + dy * ty + dz * tz) / sunDist;
-  if (along <= 0 || along >= sunDist) return 0;
   const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
   if (dist <= body.def.radius) return 1;
   const occAngRadius = Math.asin(body.def.radius / dist);

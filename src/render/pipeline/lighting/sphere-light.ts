@@ -1,8 +1,12 @@
-// 一様な放射輝度の球光源がランバート面へ届ける放射照度の閉じた解(Snyder の解析解)。
-// 球の見かけが地平線で切られる場合を含み、視半径が小さくなると点光源の N·L へ連続に
-// 縮退するので、近距離用・遠距離用の分岐を持たない。
-import { Fn, acos, atan, clamp, float, max, select, sqrt } from 'three/tsl';
-import type { FloatNode } from '../../tsl-types';
+// 一様な放射輝度の球光源が届ける照度。拡散はランバート面への放射照度の閉じた解(Snyder の
+// 解析解)、鏡面は同じ視半径を張る多角形の LTC 積分(ltc.ts)。どちらも球の見かけが地平線で
+// 切られる場合を含み、視半径が小さくなると点光源へ連続に縮退するので、近距離用・遠距離用の
+// 分岐を持たない。
+import { Fn, acos, atan, clamp, float, max, select, sqrt, texture } from 'three/tsl';
+import { ltcEvaluate, ltcInverseTransform, ltcUv, sphereOctagonPoints } from './ltc';
+import { createLtcTables } from './ltc-table.generated';
+import type { FloatNode, Vec3Node } from '../../tsl-types';
+import type { ShadingSample } from './shading-sample';
 
 // 放射照度の係数 0..1。cosBeta は面の法線と光源中心方向のなす角の余弦(負も受ける)、
 // sinSigmaSqr は視半径 σ の正弦の 2 乗(= (R/d)²)。点光源の放射照度 I/d² にこれを
@@ -27,3 +31,27 @@ export const sphereIrradianceFactor = Fn(
     );
   },
 );
+
+// 球光源の鏡面。係数表をテクスチャとして持つので、生成した側が dispose() で解放する。
+export class SphereSpecular {
+  private readonly tables = createLtcTables();
+
+  // 球光源(中心・半径は view 空間)の放射輝度へ掛ける鏡面の係数。粗さと視線の傾きで係数表を
+  // 引き、輪郭円盤と同じ視半径の多角形が張る立体角を積分する。F0=1 で仮に評価した値。
+  public factor(sample: ShadingSample, center: Vec3Node, radius: FloatNode): FloatNode {
+    const uv = ltcUv(sample.normal, sample.viewDir, sample.roughness);
+    const inverseTransform = ltcInverseTransform(texture(this.tables.ltc1, uv));
+    const formFactor = ltcEvaluate(
+      sample.normal, sample.viewDir, sample.position, inverseTransform,
+      sphereOctagonPoints(center, radius, sample.position),
+    );
+    // 表 2 の x が、逆変換で歪めた立体角を元へ戻す正規化係数。
+    return texture(this.tables.ltc2, uv).x.mul(formFactor);
+  }
+
+  // 係数表のテクスチャを解放する。
+  public dispose(): void {
+    this.tables.ltc1.dispose();
+    this.tables.ltc2.dispose();
+  }
+}

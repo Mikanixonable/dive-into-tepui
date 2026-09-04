@@ -2,13 +2,31 @@
 // 並びも見出しも GRAPHICS_GROUPS・GRAPHICS_OPTIONS の表からそのまま組む。
 import {
   GRAPHICS_GROUPS, GRAPHICS_OPTIONS, GraphicsSettings, graphicsOptionKeys,
-  type ChoiceValue, type GraphicsOptionKey, type QualityPreset,
+  type ChoiceValue, type GraphicsOptionKey, type GraphicsTarget, type QualityPreset,
 } from '../../render/graphics-settings';
-import { Pulldown, SegmentedControl, ToggleSwitch, type PulldownColumn } from '../widgets';
+import { Pulldown, SegmentedControl, ToggleSwitch, injectOnce, type PulldownColumn } from '../widgets';
+
+// このパネル自身の CSS。余白を持つ規則は `#hud` を冠した枝を併記する — HUD は `#hud, #hud *` で
+// margin/padding を 0 へ落としており、素のクラス 1 つでは詳細度で負けて群の間隔が潰れる。
+const STYLE = `
+.gp-body, #hud .gp-body {
+  display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4);
+}
+.gp-group, #hud .gp-group {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  padding-top: var(--space-4); border-top: 1px solid var(--edge);
+}
+.gp-group-title {
+  margin: 0; color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: 0.12em;
+}
+`;
 
 const PRESET_ITEMS: readonly (readonly [QualityPreset, string])[] = [
   ['low', '低'], ['medium', '中'], ['high', '高'],
 ];
+
+// hidden の既定。全項目を並べる。
+const NO_HIDDEN_KEYS: ReadonlySet<GraphicsOptionKey> = new Set();
 
 // プルダウンで選ぶ項目の列。描画設定の項目はどれも1列しか持たない。
 type SelectColumns = readonly [PulldownColumn<ChoiceValue>];
@@ -19,28 +37,33 @@ interface OptionControl {
   readonly show: (value: boolean | ChoiceValue) => void;
 }
 
-export class GraphicsPanel {
+// 点灯は GraphicsTarget として引き直す — 設定は UI の外からも書き換わるので、自分の操作だけを
+// 起点にすると表示がずれる。
+export class GraphicsPanel implements GraphicsTarget {
   public readonly element: HTMLElement;
 
   private readonly preset: SegmentedControl<QualityPreset>;
   private readonly controls: readonly OptionControl[];
 
-  // プリセットの列を先頭へ置き、続けて群ごとの節を並べる。どの操作も graphics へ書いてから
-  // sync() で全コントロールの点灯を引き直すので、点灯の正本は常にそちら側にある。
-  public constructor(private readonly graphics: GraphicsSettings) {
+  // hidden は伏せる項目(この置き場では切り替えても効かないもの)。項目の無くなった群は見出しごと
+  // 消える。点灯の正本は graphics 側にあり、書いた値は押し出しで戻ってきて表示へ反映される。
+  public constructor(
+    private readonly graphics: GraphicsSettings,
+    hidden: ReadonlySet<GraphicsOptionKey> = NO_HIDDEN_KEYS,
+  ) {
+    injectOnce('graphics-panel', STYLE);
     this.element = document.createElement('div');
     this.element.className = 'gp-body';
 
     this.preset = new SegmentedControl('品質プリセット', PRESET_ITEMS, (preset) => {
       this.graphics.applyPreset(preset);
-      this.sync();
     });
     this.element.appendChild(this.preset.element);
 
     // 空の群は見出しごと出さない。
     const controls: OptionControl[] = [];
     for (const [group, title] of GRAPHICS_GROUPS) {
-      const keys = graphicsOptionKeys(group);
+      const keys = graphicsOptionKeys(group).filter((key) => !hidden.has(key));
       if (keys.length === 0) continue;
       const section = document.createElement('div');
       section.className = 'gp-group';
@@ -53,6 +76,12 @@ export class GraphicsPanel {
     }
     this.controls = controls;
 
+    // bind は現在値を即座に押し出すので、引き直す先が揃ってから登録する。
+    graphics.bind(this);
+  }
+
+  // 設定が変わるたびに全コントロールの点灯を引き直す。
+  public applyGraphics(): void {
     this.sync();
   }
 
@@ -77,10 +106,9 @@ export class GraphicsPanel {
     return { key, show: (value) => widget.setSelected(typeof value === 'boolean' ? null : value) };
   }
 
-  // 項目1つを書き換えてから、全コントロールの点灯を引き直す。
+  // 項目1つを書き換える。点灯は押し出しが戻ってきたときに引き直る。
   private write(key: GraphicsOptionKey, value: boolean | ChoiceValue): void {
     this.graphics.setOption(key, value);
-    this.sync();
   }
 
   // 各コントロールの点灯を現在の設定値へ合わせる。プリセットはどれとも一致しなければ全消灯。
