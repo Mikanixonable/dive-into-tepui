@@ -13,15 +13,19 @@ import type { Circulation } from './circulation';
 import type { FieldProjection } from './field-projection';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
-// 気団のノイズの段の表と、その振れ幅。雲塊の配置(800 km)より粗い所から始めて、積雲の粒
-// (80〜40 km)には届かせない — 粒より細かい所で活発度が振れると、粒が消え残るのではなく
-// 1 つ 1 つが薄まる。振れ幅は、気団だけでは活発度が中間の階調に留まる高さに取る — 板と粒へ
-// 振り切るのは上昇流と気団の流入で、ノイズはそのあいだを配る。
+// 気団のノイズの段の表と、その振れ幅。雲塊の配置(800 km)より粗い所から始めて、粒(80 km)の
+// 3 倍の 250 km まで届かせる — 活発度が粒ごとではなく粒の群れごとに振れるので、粒は数百 km の
+// 塊に群れ、塊のあいだは静かな隙間として晴れる(`DEVELOP/SPEC/RENDERING.md`「粒は数百キロの
+// 塊に群れ、塊のあいだは晴れる」)。積雲の粒(80〜40 km)には届かせない — 粒より細かい所で
+// 活発度が振れると、粒が消え残るのではなく 1 つ 1 つが薄まる。振れ幅は、気団だけでは活発度が
+// 中間の階調に留まる高さに取る — 板と粒へ振り切るのは上昇流と気団の流入で、ノイズはそのあいだを
+// 配る。
 const INSTABILITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 6.4, amplitude: 1 }, // 1000 km
   { frequency: 12.8, amplitude: 0.65 }, // 500 km
+  { frequency: 25, amplitude: 0.65 }, // 250 km
 ];
-const INSTABILITY_AMPLITUDE = 0.8;
+const INSTABILITY_AMPLITUDE = 1.0;
 // 上昇流が活発度へ効く利得 [per m/s] と、上昇流の無い所での活発度。並の低気圧(0.02 m/s)で
 // 気団に依らず 1 へ、高気圧の吹きおろし(−0.02 m/s)で床へ届く。
 const LIFT_ACTIVITY = 25;
