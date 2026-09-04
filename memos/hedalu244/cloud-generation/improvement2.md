@@ -113,25 +113,6 @@ compare のように本番ビルド(2.5 分)を挟まない。
 
 ## 手順
 
-### 手順 2. 前線の尾を取り除く
-
-**目的。** 気圧へ足している異方ガウスの谷を消し、気圧の場を丸い谷だけに戻す。風の鞍点・異常風速・薄い雲の
-筋がこれで消える。**前線はこの時点で無くなる**(手順 5 で作り直す)。
-
-**変更が必要な箇所。**
-
-| ファイル | 何をするか |
-|---|---|
-| `src/render/cloud/cyclones.ts` L35-42 | `FRONT_AXIS_ANGLE` `FRONT_LENGTH` `FRONT_WIDTH` `FRONT_DEPTH` とその上のコメントを消す |
-| 同 L70-72・L84-98 | `Trough` の `tailCenter` `tailAxis` と、`place()` の尾の向き直し(接平面の軸・直交化)を消す |
-| 同 L124 | `pressureAt()` の `.add(this.tailAt(direction))` を消す |
-| 同 L127-138 | `tailAt()` を消す。冒頭コメント(L1-2)と `EYE_*` のコメントから尾への言及を消す |
-
-**達成条件と検証。** `npm run typecheck`。`grep -n "tail\|FRONT_" src/render/cloud/cyclones.ts` が 0 件。
-`npm run cloud-lab:shot` の `pressure-0h.png` の谷が全部丸い、`wind-0h.png` に筋状の色が無い、
-`translucent-0h.png` の南半球に斜めの筋が無い。`npm run cloud-lab:compare` で被覆率/実写厚 の帯状比が
-0.4〜1.6 に留まる(尾の上昇流ぶん中緯度が下がるので、下限側を見る)。
-
 ### 手順 3. 物差しを足す
 
 **目的。** 目視の訴え(晴れの無さ・平坦な灰色・風の異常・乾燥帯)を数で当てられるようにする。**この時点で
