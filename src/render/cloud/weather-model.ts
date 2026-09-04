@@ -59,9 +59,9 @@ const HUMIDITY_NOISE = [8, 4] as const;
 const CONVECTION_NOISE = [80, 2] as const;
 const UPPER_HUMIDITY_NOISE = [6, 4] as const;
 const PRESSURE_NOISE_AMPLITUDE = 18;
-const HUMIDITY_NOISE_AMPLITUDE = 0.3;
-export const CONVECTION_NOISE_AMPLITUDE_KNOB: FloatUniform = uniform(0.15);
-const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.35;
+const HUMIDITY_NOISE_AMPLITUDE = 0.5625;
+export const CONVECTION_NOISE_AMPLITUDE_KNOB: FloatUniform = uniform(0.30);
+const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.65625;
 
 // 気圧の偏差から出る上昇流。利得 [m/s] が高気圧側の吹きおろしの上限で、低気圧側は圧力の尺度
 // [hPa] ごとに e 倍に伸びる。上昇は狭く強く、下降は広く弱いので、写像は原点で非対称に取る。
@@ -156,10 +156,13 @@ export class WeatherModel {
     const convectionCoarseness = coarsenessFor(projection, CONVECTION_NOISE);
     const humidityTexel = texel.mul(humidityCoarseness);
     const convectionTexel = texel.mul(convectionCoarseness);
-    this.pressureNoise = new CirculatingNoise(this.circulation, ...PRESSURE_NOISE, texel);
-    this.humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE, humidityTexel);
-    this.convectionNoise = new CirculatingNoise(this.circulation, ...CONVECTION_NOISE, convectionTexel);
-    this.upperHumidityNoise = new CirculatingNoise(this.upperCirculation, ...UPPER_HUMIDITY_NOISE, humidityTexel);
+    this.pressureNoise = new CirculatingNoise(this.circulation, ...PRESSURE_NOISE, texel, 'smooth');
+    this.humidityNoise = new CirculatingNoise(this.circulation, ...HUMIDITY_NOISE, humidityTexel, 'smooth');
+    // 積雲の粒は細胞の網目なので、対流だけ段の形を変える。
+    this.convectionNoise = new CirculatingNoise(
+      this.circulation, ...CONVECTION_NOISE, convectionTexel, 'cellular');
+    this.upperHumidityNoise = new CirculatingNoise(
+      this.upperCirculation, ...UPPER_HUMIDITY_NOISE, humidityTexel, 'smooth');
     // 気圧の写しだけは段ではなく、読む側の中心差分の刻み(GRADIENT_STEP)が細かさを決める。
     this.pressure = new BakedField(
       'pressure', THREE.RedFormat, projection, 1, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
