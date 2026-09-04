@@ -24,16 +24,20 @@ const TYPHOON_ELONGATION = 1;
 // (短軸の半径 1240 km)の裾を切らない長さに取る。
 const TROUGH_REACH = 2500e3;
 
-// 目。広がりは谷自身の広がりに対する比で、湿度はその内側で落ちる。目を持つかどうかは、谷の芯で
-// 風が等圧線を横切る角で決まる — この角より閉じた谷だけが目を持ち、あいだで滑らかに渡る。
-// 狭くて深い台風は 10° で全部持ち、中緯度の低気圧(21〜31°)は持たない。
-const EYE_FRACTION = 0.4;
+// 目。広がりは谷自身の広がりに対する比で、湿度はその内側で落ちる。成熟した台風の眼は直径 600 km の
+// 円盤の中に開く数十 km の穴なので、台風(広がり 220 km)で半径 66 km になる比に取り、眼の外側で
+// 円盤が埋まったまま残るよう締めておく。目を持つかどうかは、谷の芯で風が等圧線を横切る角で決まる
+// — この角より閉じた谷だけが目を持ち、あいだで滑らかに渡る。狭くて深い台風は 10° で全部持ち、
+// 中緯度の低気圧(21〜31°)は持たない。
+const EYE_FRACTION = 0.3;
 const EYE_ANGLE_FULL = THREE.MathUtils.degToRad(12);
 const EYE_ANGLE_NONE = THREE.MathUtils.degToRad(16);
 
-// 金床(平らな天蓋)の広がりも谷自身の広がりに対する比で、目と同じく芯に貼り付く。台風
-// (広がり 220 km)で、中心濃密雲域の半径 250 km までがほぼ平らに残る比に取る。
-const ANVIL_FRACTION = 2.0;
+// 金床(平らな天蓋)の広がりも谷自身の広がりに対する比で、目と同じく芯に貼り付く。天蓋は
+// 中心濃密雲域 — 直径 600〜800 km の平らな白い円盤 — なので、台風(広がり 220 km)で半径 300 km
+// になる比に取る。anvilAt の形では、この半径の 2/3(200 km)まで 0.9 以上に残り、250 km で
+// 0.72、350 km で 0.08 に落ちる。
+const ANVIL_FRACTION = 1.36;
 
 // 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、短軸の半径 [m]
 // (番号で最小から幅のあいだへ散らす)、長軸/短軸の比、中心の緯度の範囲 [rad]。寿命の中で深さは
@@ -128,21 +132,23 @@ class Trough {
     return core.mul(this.depth).negate();
   }
 
-  // 単位方向 direction での目の濃さ 0..1(中心で最も濃く、外で 0)。
-  public eyeAt(direction: Vec3Node): FloatNode {
-    return this.coreAt(direction, EYE_FRACTION);
-  }
-
-  // 単位方向 direction での金床の濃さ 0..1(中心で最も濃く、外で 0)。
-  public anvilAt(direction: Vec3Node): FloatNode {
-    return this.coreAt(direction, ANVIL_FRACTION);
-  }
-
-  // 芯に貼り付いた濃さ 0..1。fraction は谷の広がりに対する半径の比。気圧と違って裾を引かない
+  // 単位方向 direction での目の濃さ 0..1(中心で最も濃く、外で 0)。気圧と違って裾を引かない
   // ガウスなので、その半径より外へは効かない。目を持たない谷では全域で 0。
-  private coreAt(direction: Vec3Node, fraction: number): FloatNode {
-    const radius = this.radius * fraction;
-    return exp(this.chordSquared(direction).mul(-((R_EARTH / radius) ** 2))).mul(this.eyeStrength);
+  public eyeAt(direction: Vec3Node): FloatNode {
+    return exp(this.normalizedChordSquared(direction, EYE_FRACTION).negate()).mul(this.eyeStrength);
+  }
+
+  // 単位方向 direction での金床の濃さ 0..1(中心で最も濃く、外で 0)。目と同じく芯に貼り付くが、
+  // 形は距離の 6 乗の超ガウス — ガウスには縁が無く丘のまま裾へ流れるが、天蓋は半径まで平らに
+  // 覆って縁で急に終わる。目を持たない谷では全域で 0。
+  public anvilAt(direction: Vec3Node): FloatNode {
+    const normalized = this.normalizedChordSquared(direction, ANVIL_FRACTION);
+    return exp(normalized.mul(normalized).mul(normalized).negate()).mul(this.eyeStrength);
+  }
+
+  // 中心からの弦の二乗を、谷の広がりの fraction 倍の半径で 1 になる尺で測ったもの。
+  private normalizedChordSquared(direction: Vec3Node, fraction: number): FloatNode {
+    return this.chordSquared(direction).mul((R_EARTH / (this.radius * fraction)) ** 2);
   }
 }
 
