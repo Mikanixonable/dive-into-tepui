@@ -32,15 +32,6 @@ const EYE_ANGLE_NONE = THREE.MathUtils.degToRad(16);
 // (広がり 220 km)で、中心濃密雲域の半径 250 km までがほぼ平らに残る比に取る。
 const ANVIL_FRACTION = 2.0;
 
-// 前線の尾。芯から赤道側・後方(北半球で南西、南半球で北西)へ伸びる細長い落ち込みで、
-// コンマの尾と寒冷前線に当たる。軸の角は東から測り、半球で鏡像になる。横断方向の広がりは
-// 気圧の 2 階差分の刻み(127 km)の 2 倍より広く取る — これより細いと曲がりが拾えず、風が
-// 尾を巻かなくなる。深さは芯に対する比。
-const FRONT_AXIS_ANGLE = THREE.MathUtils.degToRad(45);
-const FRONT_LENGTH = 1800e3;
-const FRONT_WIDTH = 350e3;
-const FRONT_DEPTH = 1.0;
-
 // 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、半径 [m]
 // (番号で最小から幅のあいだへ散らす)、中心の緯度の範囲 [rad]。寿命の中で深さは山形に変わり、
 // 次の寿命では別の経度に生まれる。**半径は目を持たない範囲で取る** — これより締めると芯の
@@ -67,35 +58,15 @@ class Trough {
   private readonly depth: FloatUniform = uniform(0);
   // 目の濃さ 0..1。深さと広がりと緯度から出るので、同じ谷でも一生の中で現れて消える。
   private readonly eyeStrength: FloatUniform = uniform(0);
-  // 前線の尾の中心と、尾が伸びる向きの逆を指す単位接ベクトル。
-  private readonly tailCenter: Vec3Uniform = uniform(new THREE.Vector3());
-  private readonly tailAxis: Vec3Uniform = uniform(new THREE.Vector3());
 
   public constructor(private readonly radius: number, private readonly peakDepth: number) {}
 
   // 中心を緯度・経度 [rad] へ置き、寿命の中の位置 life(0 で生まれ、0.5 で最盛期、1 で消える)に
-  // 応じた深さと目にする。前線の尾もここで向き直す。
+  // 応じた深さと目にする。
   public place(latitude: number, longitude: number, life: number): void {
     const cosLatitude = Math.cos(latitude);
     const sinLatitude = Math.sin(latitude);
-    const cosLongitude = Math.cos(longitude);
-    const sinLongitude = Math.sin(longitude);
-    this.center.value.set(cosLatitude * sinLongitude, sinLatitude, cosLatitude * cosLongitude);
-    // 尾の軸は、接平面の東と北を FRONT_AXIS_ANGLE で混ぜたもの。北を半球で裏返すと、尾の伸びる
-    // 向き(軸の逆)が北半球で南西、南半球で北西になる。
-    const alongEast = Math.cos(FRONT_AXIS_ANGLE);
-    const alongNorth = Math.sin(FRONT_AXIS_ANGLE) * (latitude >= 0 ? 1 : -1);
-    this.tailAxis.value.set(
-      alongEast * cosLongitude + alongNorth * -sinLatitude * sinLongitude,
-      alongNorth * cosLatitude,
-      alongEast * -sinLongitude + alongNorth * -sinLatitude * cosLongitude,
-    );
-    this.tailCenter.value.copy(this.center.value)
-      .addScaledVector(this.tailAxis.value, -FRONT_LENGTH / R_EARTH).normalize();
-    // 軸は芯の接平面で組んだので、尾の中心では接していない。**直交させないと横断距離の二乗が
-    // 負になり、異方ガウスの指数が発散する。**
-    this.tailAxis.value.addScaledVector(this.tailCenter.value, -this.tailAxis.value.dot(this.tailCenter.value))
-      .normalize();
+    this.center.value.set(cosLatitude * Math.sin(longitude), sinLatitude, cosLatitude * Math.cos(longitude));
     const depth = this.peakDepth * Math.sin(Math.PI * life);
     this.depth.value = depth;
     // 芯(勾配の消える点)での等圧線方向の 2 階微分 [hPa/rad²]。pressureAt の形を原点で開いたもの。
@@ -113,7 +84,7 @@ class Trough {
   }
 
   // 単位方向 direction での気圧の落ち込み [hPa](負)。芯は中心から radius で 1/√2 へ落ち、その先は
-  // 中心からの距離に反比例して裾を引き、TROUGH_REACH のガウスが遠方を閉じる。前線の尾はその上へ足す。
+  // 中心からの距離に反比例して裾を引き、TROUGH_REACH のガウスが遠方を閉じる。
   //
   // **裾の緩さを決めるのは対数傾き。** 反比例の裾は傾きが一桁ぶんの半径をかけて渡るので、風向も
   // 移流の伸びも半径に沿って滑らかに緩む。芯の巻きは 深さ/広がり² が単独で握り、裾と別に動かせる。
@@ -121,20 +92,7 @@ class Trough {
     const chordSquared = this.chordSquared(direction);
     const core = inverseSqrt(chordSquared.mul((R_EARTH / this.radius) ** 2).add(1))
       .mul(exp(chordSquared.mul(-((R_EARTH / TROUGH_REACH) ** 2))));
-    return core.add(this.tailAt(direction)).mul(this.depth).negate();
-  }
-
-  // 単位方向 direction での前線の尾の落ち込み(芯の深さに対する比)。軸に沿って長く横に狭い
-  // 異方ガウスで、接平面へ落としてから測るので、球面の曲がりで尾が横に太らない。**眼を持つ渦は
-  // 前線を持たない**ので、目の濃さの補で閉じる。
-  private tailAt(direction: Vec3Node): FloatNode {
-    const offset = direction.sub(this.tailCenter);
-    const along = dot(offset, this.tailAxis);
-    const radial = dot(offset, this.tailCenter);
-    const acrossSquared = dot(offset, offset).sub(along.mul(along)).sub(radial.mul(radial));
-    return exp(along.mul(along).mul(-((R_EARTH / FRONT_LENGTH) ** 2))
-      .sub(acrossSquared.mul((R_EARTH / FRONT_WIDTH) ** 2)))
-      .mul(FRONT_DEPTH).mul(this.eyeStrength.oneMinus());
+    return core.mul(this.depth).negate();
   }
 
   // 単位方向 direction での目の濃さ 0..1(中心で最も濃く、外で 0)。
