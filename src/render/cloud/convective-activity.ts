@@ -1,5 +1,7 @@
 // 対流がどれだけ活発かを表す 0..1 の場。低周波のノイズが持つ気団の対流のしやすさと、その場の
-// 上昇流から出る。凝結の側が対流の振幅へ掛ける利得で、1 で対流がそのまま乗り、0 で対流が消える。
+// 上昇流と、寒気の流入から出る — 冷たい空気が暖かい面の上を渡るところは不安定で、雲は粒へ千切れる。
+// 凝結の側が対流の振幅へ掛ける利得で、1 で対流がそのまま乗り、0 で対流が消える。**床から下へは
+// 落とさない** — 一枚板として覆う空にも細胞の起伏はあり、活発度が 0 まで落ちた所は平坦な灰色になる。
 // 値はすべて見えのための調整値。
 import * as THREE from 'three/webgpu';
 import { clamp, vec4 } from 'three/tsl';
@@ -15,11 +17,15 @@ import type { FloatNode, Vec3Node } from '../tsl-types';
 // 活発度が振れると、粒が消え残るのではなく 1 つ 1 つが薄まる。振れ幅は、気団だけでは活発度が
 // 中間の階調に留まる高さに取る — 板と粒へ振り切るのは上昇流で、気団はそのあいだを配る。
 const INSTABILITY_NOISE = [6.4, 2] as const;
-const INSTABILITY_AMPLITUDE = 1.5;
+const INSTABILITY_AMPLITUDE = 0.8;
 // 上昇流が活発度へ効く利得 [per m/s] と、上昇流の無い所での活発度。並の低気圧(0.02 m/s)で
-// 気団に依らず 1 へ、高気圧の吹きおろし(−0.02 m/s)で 0 へ届く。
+// 気団に依らず 1 へ、高気圧の吹きおろし(−0.02 m/s)で床へ届く。
 const LIFT_ACTIVITY = 25;
 const ACTIVITY_BASE = 0.5;
+// 寒気の流入が活発度へ効く利得 [per rad] と、活発度の床。並の寒気の吹き出し(−0.35 rad)で
+// 活発度が半分ぶん上がる高さに取る。
+const COLD_ACTIVITY = 1.4;
+const ACTIVITY_MIN = 0.3;
 
 export class ConvectiveActivity {
   private readonly instability: BakedField;
@@ -39,9 +45,12 @@ export class ConvectiveActivity {
     this.instability.render(renderer);
   }
 
-  // 単位方向 direction、上昇流 lift [m/s] における対流の活発度 0..1。
-  public at(direction: Vec3Node, lift: FloatNode): FloatNode {
-    return clamp(this.instability.at(direction).r.add(lift.mul(LIFT_ACTIVITY)).add(ACTIVITY_BASE), 0, 1);
+  // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)における
+  // 対流の活発度 0..1。
+  public at(direction: Vec3Node, lift: FloatNode, warmth: FloatNode): FloatNode {
+    return clamp(
+      this.instability.at(direction).r.add(lift.mul(LIFT_ACTIVITY)).sub(warmth.mul(COLD_ACTIVITY))
+        .add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
   }
 
   // 保持している GPU 資源を解放する。
