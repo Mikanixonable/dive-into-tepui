@@ -5,7 +5,6 @@
 // 分離した成分(src/assets の仮テクスチャと .cloud-lab/separated/)を読み、撮影の面(全球の
 // 正距円筒と cap の正射影)へ再標本化して成分ごとに比べる。**先に separate を実行しておく。**
 // 再標本化した実写厚・実写薄も画像で .cloud-lab/compare/ に残る。
-// `--params <json ファイル>` を与えると、撮影の前に cloud-lab のつまみをその値へ置き直す。
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
@@ -88,15 +87,6 @@ const TERRAIN_BOXES = [
   { label: 'サハラ(18-28N 0-25E)', north: 28, south: 18, west: 0, east: 25 },
   { label: '中央アジア(38-46N 55-85E)', north: 46, south: 38, west: 55, east: 85 },
 ];
-
-// --params が指す JSON のつまみ。与えられていなければ null。
-function knobOverrides() {
-  const at = process.argv.indexOf('--params');
-  if (at < 0) return null;
-  const file = process.argv[at + 1];
-  if (!file) throw new Error('--params にはつまみの JSON ファイルを渡す');
-  return JSON.parse(readFileSync(path.resolve(file), 'utf8'));
-}
 
 // 分離済みの成分(原寸の正距円筒)を file(リポジトリ相対)から読む。無ければ、先に走らせる手順を
 // 添えて投げる。
@@ -377,13 +367,11 @@ async function main() {
   const meanCloudiness = resampleEquirect(decodeChannelPng(climate, 1), GLOBE_W, HEIGHT);
   const elevation = resampleEquirect(decodeChannelPng(climate, 2), GLOBE_W, HEIGHT);
 
-  const overrides = knobOverrides();
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-cloud-compare-', onEvent,
   });
   const shots = new Map();
-  let knobs = null;
   try {
     const { devTools } = session;
     await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
@@ -394,9 +382,6 @@ async function main() {
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Cloud lab failed to initialise: ${failure}`);
-
-    if (overrides) await devTools.evaluate(`window.cloudLab.setParams(${JSON.stringify(overrides)})`);
-    knobs = await devTools.evaluate('window.cloudLab.params()');
 
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
@@ -460,8 +445,6 @@ async function main() {
     });
     capTops.set(region.name, metresOf(cropField(shots.get(`${region.name}-cloudTop`), boxX0, boxY0, CAP_BOX, CAP_BOX)));
   }
-
-  console.log(`\nつまみ: ${JSON.stringify(knobs)}`);
 
   console.log('\n=== 帯状平均(全球面・5.625° 刻み) ===');
   console.log('緯度      実写計  実写厚  実写薄  被覆率  薄い雲  合成   被覆率/実写厚');
