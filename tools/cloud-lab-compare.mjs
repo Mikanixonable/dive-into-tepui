@@ -36,7 +36,24 @@ const REGIONS = [
   { name: 'itcz-atl', label: '大西洋の収束帯(5N 25W)', latitude: 5, longitude: -25, coreRadiusKm: null },
   { name: 'typhoon', label: '台風(15N 140E・数値目標外)', latitude: 15, longitude: 140, coreRadiusKm: 250 },
 ];
-const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop'];
+const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop', 'wind'];
+
+// 風ビューの B が張る速さ [m/s]。tools/cloud-lab/views.ts の WIND_SPAN と対。
+const WIND_SPAN = 45;
+// 風の最大から外す台風の中心(緯度 [°]・時刻 0 の経度 [°])と、外す半径 [°]。眼壁の風は
+// 台風がいちばん強く巻いた渦である以上そこだけ速くてよいので、異常の判定には入れない。
+const TYPHOON_LATITUDE = 15;
+const TYPHOON_LONGITUDE_AT_0 = 140;
+const TYPHOON_EXCLUDE_DEG = 10;
+
+// 「のっぺり」の判定。この範囲の値を持ち、周り FLATNESS_WINDOW texel の標準偏差がこれ未満の
+// texel を、階調も起伏も持たない平坦な灰色と見なす。窓は全球面の 5 texel ≈ 200 km。
+const FLAT_VALUE_MIN = 0.06;
+const FLAT_VALUE_MAX = 0.25;
+const FLAT_DEVIATION = 0.02;
+const FLATNESS_WINDOW = 5;
+// 晴れと見なす値の上限(階調の表の <0.06 と同じ)。
+const CLEAR_LEVEL = 0.06;
 
 const CAP_KM_PER_PX = (2 * Math.sin((CAP_RADIUS * Math.PI) / 180) * 6371) / CAP_W;
 // 全球面の 1 texel が張る地表距離 [km]。経度方向は緯度の余弦で縮む。
@@ -177,13 +194,71 @@ function toneStats(field) {
   let high = 0;
   let sum = 0;
   for (const v of field.data) {
-    if (v < 0.06) low++;
+    if (v < CLEAR_LEVEL) low++;
     else if (v > 0.94) high++;
     else mid++;
     sum += v;
   }
   const n = field.data.length;
   return { low: low / n, mid: mid / n, high: high / n, mean: sum / n };
+}
+
+// 平坦な灰色の割合。中間の暗い階調(FLAT_VALUE_MIN..FLAT_VALUE_MAX)にいて、周り
+// FLATNESS_WINDOW² の標準偏差が FLAT_DEVIATION 未満の texel の割合。窓の統計は積算表から
+// 引くので、窓の広さに依らず一定の手数で済む。
+function flatnessOf(field) {
+  const { width, height, data } = field;
+  const stride = width + 1;
+  const sum = new Float64Array(stride * (height + 1));
+  const sumSquared = new Float64Array(stride * (height + 1));
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const v = data[y * width + x];
+      const i = (y + 1) * stride + (x + 1);
+      sum[i] = v + sum[i - 1] + sum[i - stride] - sum[i - stride - 1];
+      sumSquared[i] = v * v + sumSquared[i - 1] + sumSquared[i - stride] - sumSquared[i - stride - 1];
+    }
+  }
+  const boxSum = (table, x0, y0, x1, y1) => table[(y1 + 1) * stride + x1 + 1] - table[y0 * stride + x1 + 1]
+    - table[(y1 + 1) * stride + x0] + table[y0 * stride + x0];
+  const radius = (FLATNESS_WINDOW - 1) / 2;
+  let flat = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const v = data[y * width + x];
+      if (v < FLAT_VALUE_MIN || v > FLAT_VALUE_MAX) continue;
+      const x0 = Math.max(0, x - radius);
+      const y0 = Math.max(0, y - radius);
+      const x1 = Math.min(width - 1, x + radius);
+      const y1 = Math.min(height - 1, y + radius);
+      const count = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const mean = boxSum(sum, x0, y0, x1, y1) / count;
+      const variance = boxSum(sumSquared, x0, y0, x1, y1) / count - mean * mean;
+      if (Math.sqrt(Math.max(variance, 0)) < FLAT_DEVIATION) flat++;
+    }
+  }
+  return flat / data.length;
+}
+
+// 全球面の風の速さ [m/s] の最大と 99 パーセンタイル。台風の中心から TYPHOON_EXCLUDE_DEG 以内は
+// 数えない。speed は風ビューの B(速さ / WIND_SPAN)。
+function windAnomaly(speed) {
+  const centerLatitude = (TYPHOON_LATITUDE * Math.PI) / 180;
+  const centerLongitude = (TYPHOON_LONGITUDE_AT_0 * Math.PI) / 180;
+  const cosExclude = Math.cos((TYPHOON_EXCLUDE_DEG * Math.PI) / 180);
+  const speeds = [];
+  for (let y = 0; y < speed.height; y++) {
+    const latitude = ((0.5 - (y + 0.5) / speed.height) * Math.PI);
+    for (let x = 0; x < speed.width; x++) {
+      const longitude = ((x + 0.5) / speed.width - 0.5) * 2 * Math.PI;
+      const cosAngle = Math.sin(latitude) * Math.sin(centerLatitude)
+        + Math.cos(latitude) * Math.cos(centerLatitude) * Math.cos(longitude - centerLongitude);
+      if (cosAngle > cosExclude) continue;
+      speeds.push(speed.data[y * speed.width + x] * WIND_SPAN);
+    }
+  }
+  speeds.sort((a, b) => a - b);
+  return { max: speeds[speeds.length - 1], p99: speeds[Math.floor(speeds.length * 0.99)] };
 }
 
 // 行方向の 1 次元パワースペクトルをオクターブ束(波数 1-2, 2-4, ...)で。行は 1 本おきに間引く。
@@ -420,6 +495,9 @@ async function main() {
   };
   saveGray('globe-thick.png', globe.thick);
   saveGray('globe-veil.png', globe.veil);
+  // 風だけは B(速さ)を読むので、書いた PNG から取り直す。
+  const windSpeed = cropField(
+    decodeChannelPng(readFileSync(path.join(outDir, `${REGIONS[0].name}-wind.png`)), 2), 0, 0, GLOBE_W, HEIGHT);
 
   // 雲頂ビューの表示値は 0..CLOUD_TOP_SPAN を 0..1 に載せたもの。分位は [m] で取る。
   const metresOf = (field) => ({
@@ -461,20 +539,31 @@ async function main() {
   console.log('\n=== 階調(全球面・±60°): <0.06 / 中間 / >0.94 / 平均 ===');
   const y60 = rowAtLatitude(60);
   const bandHeight = rowAtLatitude(-60) - y60;
-  for (const [label, key] of [['実写計', 'photo'], ['実写厚', 'thick'], ['合成', 'composite'], ['被覆率', 'coverage']]) {
+  const TONE_FIELDS = [['実写計', 'photo'], ['実写厚', 'thick'], ['実写薄', 'veil'],
+    ['合成', 'composite'], ['被覆率', 'coverage'], ['薄い雲(輝度)', 'translucent']];
+  for (const [label, key] of TONE_FIELDS) {
     const t = toneStats(cropField(globe[key], 0, y60, GLOBE_W, bandHeight));
-    console.log(`${label}: ${(t.low * 100).toFixed(1)}% / ${(t.mid * 100).toFixed(1)}% / ${(t.high * 100).toFixed(1)}% / ${t.mean.toFixed(3)}`);
+    console.log(`${label.padEnd(6)}: ${(t.low * 100).toFixed(1)}% / ${(t.mid * 100).toFixed(1)}% / ${(t.high * 100).toFixed(1)}% / ${t.mean.toFixed(3)}`);
   }
 
-  console.log('\n=== 行方向スペクトル(全球面, 実写厚 vs 被覆率)===');
+  console.log('\n=== のっぺり率(全球面・±60°): 0.06〜0.25 かつ 5×5 texel の標準偏差 < 0.02 ===');
+  for (const [label, key] of [['実写計', 'photo'], ['実写厚', 'thick'], ['合成', 'composite'], ['被覆率', 'coverage']]) {
+    console.log(`${label}: ${(flatnessOf(cropField(globe[key], 0, y60, GLOBE_W, bandHeight)) * 100).toFixed(1)}%`);
+  }
+
+  console.log('\n=== 風の異常(全球面・台風の中心 10° 以内を除く) ===');
+  const wind = windAnomaly(windSpeed);
+  console.log(`最大 ${wind.max.toFixed(1)} m/s   99 パーセンタイル ${wind.p99.toFixed(1)} m/s`);
+
+  console.log('\n=== 行方向スペクトル(全球面)===');
   for (const band of BANDS) {
     const y0 = rowAtLatitude(band.north);
     const h = rowAtLatitude(band.south) - y0;
     const circumference = 40075 * Math.cos((((band.north + band.south) / 2) * Math.PI) / 180);
-    printSpectrumTable(
-      `--- ${band.label} ---`, (k) => circumference / k,
-      rowSpectrum(cropField(globe.thick, 0, y0, GLOBE_W, h)), rowSpectrum(cropField(globe.coverage, 0, y0, GLOBE_W, h)),
-      '実写厚', '被覆率');
+    const wavelengthOf = (k) => circumference / k;
+    const bandOf = (key) => rowSpectrum(cropField(globe[key], 0, y0, GLOBE_W, h));
+    printSpectrumTable(`--- ${band.label} ---`, wavelengthOf, bandOf('thick'), bandOf('coverage'), '実写厚', '被覆率');
+    printSpectrumTable(`--- ${band.label} ---`, wavelengthOf, bandOf('photo'), bandOf('composite'), '実写計', '合成  ');
   }
 
   console.log('\n=== 地域別 cap(中央 362×362)の平均 ===');
@@ -550,12 +639,14 @@ async function main() {
       + `${correlation(deviation, elevationDeviation).toFixed(3).padStart(6)}`);
   }
 
-  console.log('\n=== 地形の箱(平均) ===');
-  console.log('箱                              平年雲量  実写計  合成   被覆率  薄い雲');
+  console.log('\n=== 地形の箱(平均と、晴れ < 0.06 の割合) ===');
+  console.log('箱                              平年雲量  実写計  合成   被覆率  薄い雲  実写計の晴れ  合成の晴れ');
   for (const box of TERRAIN_BOXES) {
-    const meanIn = (field) => toneStats(cropLatLonBox(field, box.north, box.south, box.west, box.east)).mean;
+    const statsIn = (field) => toneStats(cropLatLonBox(field, box.north, box.south, box.west, box.east));
+    const meanIn = (field) => statsIn(field).mean;
     console.log(`${box.label.padEnd(26)}  ${meanIn(meanCloudiness).toFixed(3)}  ${meanIn(globe.photo).toFixed(3)}  `
-      + `${meanIn(globe.composite).toFixed(3)}  ${meanIn(globe.coverage).toFixed(3)}  ${meanIn(globe.translucent).toFixed(3)}`);
+      + `${meanIn(globe.composite).toFixed(3)}  ${meanIn(globe.coverage).toFixed(3)}  ${meanIn(globe.translucent).toFixed(3)}  `
+      + `${(statsIn(globe.photo).low * 100).toFixed(0).padStart(10)}%  ${(statsIn(globe.composite).low * 100).toFixed(0).padStart(8)}%`);
   }
 
   console.log('\n=== 雲頂(cap の中央 362×362・被覆率 > 0.3 の texel、生成のみ) ===');
