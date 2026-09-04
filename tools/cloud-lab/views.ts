@@ -11,7 +11,7 @@ import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
   | 'elevation' | 'meanCloudiness' | 'meanWind'
-  | 'pressure' | 'wind' | 'lift'
+  | 'pressure' | 'wind' | 'lift' | 'front' | 'airMass'
   | 'humiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'humidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
   | 'coverage' | 'cloudTop' | 'translucent' | 'composite' | 'photo';
@@ -31,7 +31,9 @@ export type CloudLabView = {
 
 // 表示値 0..1 へ写すときの目盛り。雲頂高度は 0..15000 m、薄い雲の光学的厚みは 0..1、気圧は
 // −70..+30 hPa、上昇流は ±0.1 m/s を、対流は ±0.5 をそれぞれ 0.5 中心に、対流の峰(対流 × 活発度、
-// 塔が立つかどうかを決める量)は 0..0.3、風は ±45 m/s(台風の芯の風速まで飽和させない幅)を
+// 塔が立つかどうかを決める量)は 0..0.3、前線(気団の圧縮の 1 を超えた分)は 0..8、
+// 暖気の流入は ±0.4 rad(48 h の追跡で気団が動く緯度差の上限)を 0.5 中心に、
+// 風は ±45 m/s(台風の芯の風速まで飽和させない幅)を
 // 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
 // 被覆率・湿度・対流の活発度はそのまま出す。**風と平均風は同じ目盛りに乗せる** — 大循環が運ぶ分と、
 // 気圧から出る分の大きさを見比べるため。
@@ -42,6 +44,8 @@ const TRANSLUCENT_SPAN = 1;
 const PRESSURE_MIN = -70;
 const PRESSURE_SPAN = 100;
 const LIFT_SPAN = 0.1;
+const FRONT_SPAN = 8;
+const WARMTH_SPAN = 0.4;
 const WIND_SPAN = 45;
 const ELEVATION_SPAN = 8000;
 
@@ -63,6 +67,10 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     color: (d, model) => windColor(model.weatherAt(d).wind) },
   { id: 'lift', label: '上昇流', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).lift.div(2 * LIFT_SPAN).add(0.5)) },
+  { id: 'front', label: '前線', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).compression.sub(1).div(FRONT_SPAN)) },
+  { id: 'airMass', label: '気団', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).warmth.div(2 * WARMTH_SPAN).add(0.5)) },
   { id: 'humiditySource', label: '移流前の湿度', reads: 'weather',
     color: (d, model) => vec3(model.humiditySourceAt(d).x) },
   { id: 'upperHumiditySource', label: '移流前の上層湿度', reads: 'weather',

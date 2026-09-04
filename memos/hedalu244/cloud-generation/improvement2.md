@@ -63,7 +63,7 @@ compare のように本番ビルド(2.5 分)を挟まない。
 | 1 | **前線の谷(尾)は削除し、弱めて残さない** | 谷として足す限り、平行な風・鞍点・足し合わせの異常は消えない。前線は低気圧ではない | — (ユーザーの指示) |
 | 2 | **前線は「気団の出身緯度」の圧縮から作る。** 各点から、地表付近の釣り合い風 + 地表の帯の平均風で一定時間だけ風上へ遡り、遡った先の緯度を「出身緯度」として焼く。その勾配の大きさ(何も無ければ 1)が 1 を超えた分 = 気団の境目が押し縮められた所 = 前線で、そこへ上昇流を置く。出身緯度と現在地の緯度の差(暖気の流入 / 寒気の流入)で湿度と対流の活発度を振る | 温度の場を持たなくても、緯度が気団の温度の代理になる。渦の風で運ばれた気団の境目は低気圧の周りを螺旋状に巻き、隣の低気圧の風の和で運ばれるので互いに絡む。同時に、寒気側の乾いた切れ込み(dry slot)と粒立ち、暖気側の板と高い雲頂が同じ量から出る | 上昇流の帯を手で置く(渦の中心から螺旋を描く関数)と、形は出るが隣の低気圧と相互作用しない。手順 4・5 が丸ごと替わる |
 | 3 | 出身緯度の追跡は **2 位相を使わず、固定時間(初期値 48 h)で 1 回だけ遡る** | 遡る先は緯度(解析的)でテクスチャを読まないので、2 位相移流が要った「模様が無限に細くなる」問題が無い。位相の混ぜ目で前線が 2 本に分かれて脈打つことも無い | 2 位相にすると前線が周期ごとに薄まる |
-| 4 | 追跡の風にだけ地表の帯の平均風を足す。**湿度・対流の移流の風は変えない** | 平均風の南北シアが前線を南西–北東へ傾ける。一方、湿度の 2 位相移流へ平均風を入れると、位相 A と B が 500 km ずれた別の模様を混ぜることになり全域がぼける | 全部の移流へ入れるなら、2 位相の混ぜ目のぼけを手順 5 で測り直す |
+| 4 | 追跡の風にだけ地表の帯の平均風の**東向きの成分だけ**を足す。南北の成分は足さない。**湿度・対流の移流の風は変えない** | 東西の流れの南北シアが前線を南西–北東へ傾ける。南北の成分は経度に依らないので、収束する緯度(赤道・±60°)に緯線に沿った圧縮の環を作る — 実測で ±60° の圧縮の中央値が 1.80(足す)→ 1.09(落とす)。湿度の 2 位相移流へ平均風を入れると、位相 A と B が 500 km ずれた別の模様を混ぜることになり全域がぼける | 南北の成分を戻すなら、±60° の環を `FRONT_ONSET` で消す |
 | 5 | 前線の上昇流は **緯度 15°→30° で開く門**の中だけに置く | 前線は温帯のもの。門が無いと、貿易風の収束(赤道)で圧縮の環が立ち収束帯が二重になり、台風(15°N)の周りで圧縮が発散して上昇流が飽和した円盤になる | 門を外すなら、赤道の環は圧縮の効き始めを上げて消す |
 | 6 | **層積雲の板(`DECK_*`)は削除する。** 冷たい海の層積雲は、平年雲量の非線形な重み(手順 8)で湿度を上げ、沈降で活発度を下げた「粒の弱い閉じた細胞」として、他の雲と同じ伝達関数から出す | 板を伝達関数の外で max すると平坦な灰色になる。実写の層積雲の板は細胞の質感を持つ | 板を残すなら細胞の質感を持たせる。手順 9 が替わる |
 | 7 | **対流の活発度は 0 に落とさない**(床 ≈ 0.3)。板になるかどうかは活発度ではなく、対流の**形**(網目 ↔ 粒)と振幅で決める | 活発度 0 の所は粒が完全に消えて平坦な灰色になる。実写の板にも細胞がある(仕様「板として覆った空も一様な白い面ではなく」) | 床を 0 に戻すと平坦な灰色が戻る |
@@ -117,27 +117,6 @@ compare のように本番ビルド(2.5 分)を挟まない。
 
 ## 手順
 
-### 手順 4. 気団の出身緯度を焼く
-
-**目的。** 各点から風上へ一定時間遡った先の緯度(出身緯度)を写しへ焼き、その勾配の大きさ(圧縮)と現在地との
-差(暖気/寒気の流入)を天気の量として出す。**この時点で雲は変えない** — ビューを 2 つ足して形を確かめるだけ。
-
-**変更が必要な箇所。**
-
-| ファイル | 何をするか |
-|---|---|
-| `src/render/cloud/air-mass.ts`(新規) | `AirMass` クラス。構成: `projection` と、単位方向から追跡の風(`BalancedWind`)を返す関数を受け取る。`bake(renderer)` で `BakedField`(RedFormat、投影と同じ細かさ)へ 出身緯度 [rad] を焼く: `latitudeOf(normalize(direction + windStep(wind, direction, −TRACE_SECONDS) / R_EARTH))`。`at(direction, latitude)` は写しを中心 + 東西南北 4 点(刻み `GRADIENT_STEP` と同じ 0.01 rad)読み、`compression = length(gradient)`(何も無ければ 1)と `warmth = |latitude| − |origin|`(正で暖気の流入)を返す。定数 `TRACE_SECONDS = 48 × 3600`(導出は見積り) |
-| `src/render/cloud/weather-model.ts` L27-37 `WeatherSample` | `compression: FloatNode`(前線の圧縮、1 が無風)と `warmth: FloatNode`(暖気の流入 [rad]、負で寒気)を足す |
-| 同 L152-195 構築・`bake()`・`syncTime()` | `AirMass` を持ち、`bake()` で気圧の直後に焼く。追跡の風は `balancedWind(…, FRICTION_RATE)` の速度に `meanWindAt(direction)`(地表の帯)を足したもの — 気圧の勾配の式を `weatherAt()` から private 関数へ切り出して両方から呼ぶ |
-| 同 L198-260 `weatherAt()` | `this.airMass.at(direction, latitude)` を読み、`WeatherSample` へ渡す |
-| `tools/cloud-lab/views.ts` L12-17・L64-65 | `'front'`(圧縮 − 1 を 0..3 → 0..1)と `'airMass'`(暖気の流入 ±0.2 rad を 0.5 中心)を `'lift'` の直後へ足す |
-
-**達成条件と検証。** `npm run typecheck`。`npm run cloud-lab` で前線ビュー: 各低気圧の周りに 2 本の腕が
-螺旋状に伸び、腕は隣の低気圧の腕と絡む。**赤道・±60° に緯度に沿った環が見える場合はその強さを読む**
-(門と効き始めの根拠。見積りの計算では 1.26)。気団ビュー: 低気圧の東側が暖(明)、西側が寒(暗)。
-全球面と cap で同じ低気圧の腕の位置・太さが一致する(写しの粗さで前線が動かない)。
-`npm run cloud-lab:compare` の被覆率・薄い雲・雲頂が手順 2 と 3 LSB で一致する(雲を変えていない)。
-
 ### 手順 5. 前線と気団を雲へ効かせる
 
 **目的。** 圧縮を前線の上昇流に、暖気/寒気の流入を湿度と対流の活発度に結び、前線帯・寒気側の切れ込みと粒・
@@ -147,9 +126,9 @@ compare のように本番ビルド(2.5 分)を挟まない。
 
 | ファイル | 何をするか |
 |---|---|
-| `src/render/cloud/weather-model.ts` L232-235 上昇流 | `lift = limitLift(terrainLift + liftFromPressure(pressure) + frontalLift)`。`frontalLift = FRONT_LIFT × max(compression − FRONT_ONSET, 0) × smoothstep(FRONT_LATITUDE_START 15°, FRONT_LATITUDE_FULL 30°, |latitude|)`。定数 3 つを気圧の上昇流の定数(L65-69)の並びへ。`FRONT_ONSET` は手順 4 で読んだ環の強さより上(初期値 1.4)。`FRONT_LIFT` は圧縮 3 で並の低気圧の芯(0.02 m/s)に届く値(0.0125 /単位) |
-| 同 L240-247 湿度 | `humidity += warmth × WARM_HUMIDITY`(初期値 1.5: 10° = 0.17 rad の流入で +0.26)。上層は前線の上昇流が既存の `max(lift, 0) × UPPER_LIFT_HUMIDITY` を通るので触らない |
-| `src/render/cloud/convective-activity.ts` L17-22・L43-46 | `at(direction, lift, warmth)`。活発度 = `clamp(気団 + lift × LIFT_ACTIVITY − warmth × COLD_ACTIVITY + ACTIVITY_BASE, ACTIVITY_MIN, 1)`。`COLD_ACTIVITY` 初期値 3(寒気 0.17 rad で +0.5)、`ACTIVITY_MIN` 0.3。`INSTABILITY_AMPLITUDE` 1.5 → 0.8(気団の差は出身緯度が担うので、ノイズの取り分を減らす) |
+| `src/render/cloud/weather-model.ts` L232-235 上昇流 | `lift = limitLift(terrainLift + liftFromPressure(pressure) + frontalLift)`。`frontalLift = FRONT_LIFT × max(compression − FRONT_ONSET, 0) × smoothstep(FRONT_LATITUDE_START 15°, FRONT_LATITUDE_FULL 30°, |latitude|)`。定数 3 つを気圧の上昇流の定数の並びへ。**手順 4 の実測**: 圧縮の中央値は 35-60° で 1.05〜1.89、赤道帯で 1.75〜2.36、90 パーセンタイルは 2.5〜6.6、腕の芯は 13 超。`FRONT_ONSET` は初期値 4.0(中緯度の上位 5〜10% が前線になる高さ)、`FRONT_LIFT` は圧縮 8 の腕で並の低気圧の芯(0.02 m/s)に届く 0.005 /単位 |
+| 同 L240-247 湿度 | `humidity += warmth × WARM_HUMIDITY`(**手順 4 の実測で流入は ±0.4 rad まで届く** — 初期値 0.6: 0.35 rad の流入で +0.21)。上層は前線の上昇流が既存の `max(lift, 0) × UPPER_LIFT_HUMIDITY` を通るので触らない |
+| `src/render/cloud/convective-activity.ts` L17-22・L43-46 | `at(direction, lift, warmth)`。活発度 = `clamp(気団 + lift × LIFT_ACTIVITY − warmth × COLD_ACTIVITY + ACTIVITY_BASE, ACTIVITY_MIN, 1)`。`COLD_ACTIVITY` 初期値 1.4(寒気 0.35 rad で +0.5)、`ACTIVITY_MIN` 0.3。`INSTABILITY_AMPLITUDE` 1.5 → 0.8(気団の差は出身緯度が担うので、ノイズの取り分を減らす) |
 | 同 冒頭コメント | 活発度の由来に寒気の流入を足し、床の理由(板にも細胞がある)を書く |
 
 **達成条件と検証。** `npm run typecheck`。`npm run cloud-lab` の北大西洋 cap(50N 30W)の被覆率で、低気圧の
