@@ -20,7 +20,7 @@ function apparentRadius(radius: number, center: Vec3, cameraPos: Vec3): number {
   return radius / Math.max(1, len(sub(center, cameraPos)));
 }
 
-// celestialBody が cameraPos か focusPos のどちらかから見て、絵に出るだけの影を落としうるか。
+// celestialBody が cameraPos か focusPos のまわりへ、絵に出るだけの影を落としうるか。
 // **カメラ位置だけで測ってはいけない** — 土星から引いたマップビューでは土星自身が閾値を
 // 切り、環の影が本体から消える。
 function castsVisibleShadow(
