@@ -68,10 +68,6 @@ interface OcclusionSources {
   // メッシュの影を数えるなら受け手の法線。バイアスを法線方向のオフセットで入れるので、真偽では
   // なく法線そのもので選ぶ。null なら数えない。
   readonly meshNormal: Vec3Node | null;
-  // 受け手がその表面に乗っている天体(中心距離が縁までの距離に一致する遮蔽器)を外すための、
-  // 受け手までの視距離。表面の自己遮蔽は N·L と光源の積分が表すので、ここでも数えると終端が
-  // 二重に暗くなる。一致の公差をこの視距離から取る。null なら外さない。
-  readonly selfViewDistance: FloatNode | null;
   // 積雲の殻の影を数えるなら、受け手の位置で画面 1 px が張る実寸 [m]。場を引く mip 段を
   // ここから決めるので、真偽ではなく実寸そのもので選ぶ。null なら数えない。
   readonly cumulusFootprint: FloatNode | null;
@@ -149,33 +145,35 @@ const circleOverlapArea = Fn(([r1, r2, d]: readonly [FloatNode, FloatNode, Float
 
 // 点 p から見た恒星円盤のうち、楕円体 (center, axes, bodyFromWorld) に遮られずに残る面積比 0..1。
 // physics/shadow.ts の occludedFraction と同じ式で、本影・金環・半影・完全日照が場合分け無しに
-// 1つの閉じた形から出る。selfTolerance は「受け手がこの天体の表面に乗っている」と見なす中心距離と
-// 縁までの距離の差の公差で、0 なら乗っていても外さない。
+// 1つの閉じた形から出る。
 //
-// 扁平な天体は、影の軸(中心を通る恒星方向の直線)から受け手へ向かう向き u の縁までの距離を
-// 実効半径に採ると、真球と同じ 2 円の重なりで解ける。受け手が地表に乗っているときこの距離は
-// 受け手自身の中心距離に一致し、日没は測地地平線にちょうど重なる。
+// **角度は「天体固定の向きへ回して半軸で割った空間」で測る。** その空間では楕円体が半径 1 の球へ
+// 戻るので、縁への接線条件が扁平な天体でも厳密に解ける — 日没は測地地平線(面の法線と恒星方向が
+// 直交する瞬間)にちょうど重なり、緯度によって早まることも遅れることもない。恒星の視半径だけは
+// 描画座標のまま渡してよい: この写像が角度を伸縮させる幅は扁平率ぶん(地球 0.3%・土星 10%)で、
+// 半影の幅にしか効かない。
+//
+// 表面より内側の受け手は表面に乗っているものとして扱う。天体は楕円体を折った多面体として描かれ、
+// 深度から復元した位置も誤差を持つので、地表の画素は普通に楕円体の内側へ入る — そこを本影と
+// 判じると、昼側の地表に真っ黒な斑が出る。
 const ellipsoidTransmittance = Fn((
-  [p, sunDir, sunDist, sunAngRadius, center, axes, bodyFromWorld, selfTolerance]: readonly [Vec3Node, Vec3Node, FloatNode, FloatNode, Vec3Node, Vec3Node, Mat4Node, FloatNode],
+  [p, sunDir, sunDist, sunAngRadius, center, axes, bodyFromWorld]: readonly [Vec3Node, Vec3Node, FloatNode, FloatNode, Vec3Node, Vec3Node, Mat4Node],
 ) => {
   const toCenter = center.sub(p);
-  const along = dot(toCenter, sunDir);
-  const dist = max(length(toCenter), 1e-6);
-  // 影の軸から受け手へ向かう単位ベクトル。天体固定の向きへ回して半軸を掛けた長さが、その向きの
-  // 縁までの距離になる。軸の上では向きが定まらないが、そこは天体がまるごと恒星を覆う位置なので
-  // どの向きでも本影になる。
-  const offAxis = sunDir.mul(along).sub(toCenter);
-  const offAxisLength = length(offAxis);
-  const u = select(greaterThan(offAxisLength, 1), offAxis.div(max(offAxisLength, 1)), vec3(1, 0, 0));
-  const radius = length(axes.mul(bodyFromWorld.mul(vec4(u, 0)).xyz));
-  const occAngRadius = asin(clamp(radius.div(dist), 0, 1));
-  const separation = acos(clamp(along.div(dist), -1, 1));
+  // 空きスロットの半軸 0 で割らないための床。実在の遮蔽器の半軸は km の桁なので効かない。
+  const safeAxes = max(axes, vec3(1));
+  const local = bodyFromWorld.mul(vec4(toCenter.negate(), 0)).xyz.div(safeAxes);
+  const sunLocal = normalize(bodyFromWorld.mul(vec4(sunDir, 0)).xyz.div(safeAxes));
+  // 半径 1 の球から見た受け手の動径。1 で頭を打たせると、内側の受け手が表面の答えを受け取る。
+  const radial = max(length(local), 1e-6);
+  const occAngRadius = asin(clamp(float(1).div(max(radial, 1)), 0, 1));
+  const separation = acos(clamp(dot(local.div(radial).negate(), sunLocal), -1, 1));
   const overlap = circleOverlapArea(sunAngRadius, occAngRadius, separation);
   const lit = clamp(float(1).sub(overlap.div(PI.mul(sunAngRadius).mul(sunAngRadius))), 0, 1);
-  // 半軸 0 の空きスロット、恒星より遠い側/背後にある天体、受け手がその表面に乗っている天体。
-  const outOfPlay = lessThan(radius, 1).or(lessThan(along, 0)).or(greaterThan(along, sunDist))
-    .or(lessThan(abs(dist.sub(radius)), selfTolerance));
-  return select(outOfPlay, float(1), select(lessThan(dist, radius), float(0), lit));
+  // 半軸 0 の空きスロットと、恒星より遠い側にある天体。
+  const outOfPlay = lessThan(max(max(axes.x, axes.y), axes.z), 1)
+    .or(greaterThan(dot(toCenter, sunDir), sunDist));
+  return select(outOfPlay, float(1), lit);
 });
 
 // 半径 w の円盤のうち、半径座標が中心から u·w だけ離れた直線より内側にある面積の割合。
@@ -313,18 +311,13 @@ export class SunOcclusion {
     const sunDir = normalize(toSun);
     const sunAngRadius = asin(clamp(this.sunLight.radius.div(sunDist), 1e-9, 1));
 
+    // 天体の遮蔽はどの受け手にも掛かるので、源の選択を待たずに畳み込む。
     let transmittance: FloatNode = float(1);
     for (const occluder of this.occluders) {
-      // 公差は深度からの位置復元の相対誤差(2⁻²⁴)から視距離の 1e-5、半径の桁落ちから
-      // 最長の半軸の 1e-6 を取る。
-      const longestAxis = max(max(occluder.axes.x, occluder.axes.y), occluder.axes.z);
-      const selfTolerance = sources.selfViewDistance === null
-        ? float(0)
-        : max(longestAxis.mul(1e-6), sources.selfViewDistance.mul(1e-5));
       transmittance = transmittance.mul(
         ellipsoidTransmittance(
           worldPos, sunDir, sunDist, sunAngRadius, occluder.center, occluder.axes,
-          occluder.bodyFromWorld, selfTolerance,
+          occluder.bodyFromWorld,
         ),
       );
     }
