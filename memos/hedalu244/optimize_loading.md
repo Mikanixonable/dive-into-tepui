@@ -4,7 +4,8 @@
 
 ## 実施状況(2026-09-04)
 
-**B・D・E は実施済み。G は実施したが効き目が出ていない。A・C・F は未着手。**
+**B・D・E は実施済み。G は実施したが効き目が出ていない。A は `optimize_shader_compile.md` へ
+引き継いだ。C・F は破棄した。**
 実施後のヘッドレス実測(素のサイズ): stage 1 が 47.13 → **38.77 MB**、
 creative が 140.75 → **60.31 MB**。
 
@@ -119,7 +120,7 @@ Resource Timing の実測。「転送」は公開先が実際に返している 
   `lagrange-orbits.json` 4.25 MB > three.js 3.53 MB > `models/ammo.json` 1.39 MB >
   `player.json` 0.52 MB > `moon-features.json` 0.47 MB。
 
-### 4. モデル JSON の minify と圧縮でどこまで減るか
+### 4. モデル JSON の minify と圧縮でどこまで減るか(→ 修正案 C は破棄)
 
 **structure は既に minify 済み。** 先頭の数十行だけが整形されていて、実体である巨大配列は
 1行に詰まっている(`JSON.parse` → `JSON.stringify` しても 100.0%)。
@@ -201,14 +202,6 @@ asset は要らない。**選ばれた1体だけを取りに行く**ようにす
 `dynamic-system.ts` の `spawnEnemyWhenReady` が「準備できるまで実体化を遅らせる」機構を既に
 持っているので、取得の起点を選択の側へ移すだけで足りるはず。
 
-### C. motion アセットの精度を落とし、minify して焼き直す
-
-`tools/protein-builder/` の生成側で、`modes[].displacements` を5桁・`residues.centers` を3桁に
-丸め、整形をやめる。structure の `ribbon.mesh.chain` / `surface.mesh.component` の表化も同時に。
-転送は 25.24 → 19.24 MB、素のサイズは 93.6 → 68.3 MB。
-**structure / motion の内容ハッシュが変わるので、`npm run protein:generate-structure` 以降を
-全部やり直すこと**(motion が両者のハッシュを参照している)。
-
 ### D. フォントの 700 を積まない
 
 `main.ts` のコメントどおり 400 だけを読む(`@sarap422/font-hackgen` のパッケージ CSS を
@@ -221,12 +214,6 @@ Bold の woff2 + woff = **4.18 MB** が消える。HUD には `font-weight: 600/
 他の5系と同じ扱いにする。ただし起動直後に要るのは `familyIndex`(数 KB)と各系の `mu` だけなので、
 **索引と本体を別ファイルに分ける**のが素直。`main.js` は 10.27 → 約 6 MB(転送 4.24 → 約 2.5 MB)。
 
-### F. `cloud-field.png`(13.00 MB)
-
-解像度を半分(2048×1024)にすると **3.58 MB**(実測、再エンコードして測った)。
-3チャンネルとも使っているのでチャンネルを削る手は無い。**見た目が変わる変更なので、
-cloud-lab / render-lab で見比べてから判断すること。** 判断できないなら触らない。
-
 ### G. 惑星・衛星テクスチャ(4.9 MB)の取得を遅らせる
 
 `CelestialSurface.addTo()` が全部の `DeferredTexture.request()` を呼んでいる。見かけ直径が
@@ -235,8 +222,8 @@ cloud-lab / render-lab で見比べてから判断すること。** 判断でき
 
 ## 未確定・要判断
 
-- **F と G は見た目が変わる。** やるかどうかはユーザー判断。
-- **A の「総時間そのものを縮める」側**(パイプラインの数を減らす)は別の調査が要る。
-  どのマテリアル・どのパスが何本のパイプラインを生んでいるかはまだ測っていない。
+- **G は見た目が変わる。** やるかどうかはユーザー判断。
+- **A は `optimize_shader_compile.md` へ引き継いだ。** どのパスが何本のパイプラインを生み、
+  何にどれだけかかっているかはそちらで実測済み。
 - protein の **メッシュ間引き**(三角形数を1桁減らす)は、見た目と当たり判定
   (`protein-ribbon-collision.ts`)の両方に効くので、単独の検討として切り出すべき。
