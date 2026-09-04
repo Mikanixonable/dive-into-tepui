@@ -167,6 +167,14 @@ const BEND_STEP = 0.02;
 // 対流を流す風の摩擦 [1/s]。湿度を流す風より強く取ると、等圧線を深く横切って 20〜30° 違う向きへ
 // 伸びる。同じ風で流すと 2 枚が同じ向きへ伸びて、掛け合わせても筋のままになる。
 const CONVECTION_FRICTION = 3 * FRICTION_RATE;
+// 風が等圧線を横切る角の上限 [rad]。湿度を流す風と対流を流す風で別に持つ。湿度の風の上限は中緯度で
+// 摩擦が作る角そのもの(45° で 30°)で、熱帯の外では 45° より低緯度の流れが高気圧性に曲がる所でだけ
+// 効く(実測: 45°N の低気圧の撮影で風の写しが動くのは texel の 2.6%、それも 5 LSB 以下で、35〜60° の
+// 帯の平均は動かない)。対流の風は中緯度で摩擦が作る 60° より内側の 50° に常に抑えられ、湿度の風と
+// 向きが 20° 離れたままになる — 2 枚の移流場は同じ向きへ筋を引かず交差する。熱帯(15°)では上限が
+// 57° と 78° の流入を切り、台風のまわりで粒が放射状の筋に引かれるのを止める。
+const WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(30);
+const CONVECTION_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
 
 // 移流の源を風で流す 2 位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が目に付く。
 // **背景の雲がどれだけ伸びるかを決めるのはここ。** 伸びは 1 歩のあいだに風が空間で変わる量から出る
@@ -285,8 +293,10 @@ export class WeatherModel {
 
     // 湿度と対流は、摩擦の違う 2 本の風で流す。上層の湿度はそこへ上層の帯の平均風を足した風で流す
     // — 巻雲の繊維はジェットに沿って伸びるので、地表付近の風で流すと向きが揃わない。
-    const wind = balancedWind(gradient, isobar, bend, latitude, FRICTION_RATE);
-    const convectionWind = balancedWind(gradient, isobar, bend, latitude, CONVECTION_FRICTION);
+    const wind = balancedWind(gradient, isobar, bend, latitude, FRICTION_RATE, WIND_CROSSING_LIMIT);
+    const convectionWind = balancedWind(
+      gradient, isobar, bend, latitude, CONVECTION_FRICTION, CONVECTION_CROSSING_LIMIT,
+    );
     const upperMean = this.upperCirculation.meanWindAt(direction);
     const upperWind: BalancedWind = {
       velocity: wind.velocity
@@ -376,7 +386,9 @@ export class WeatherModel {
     const { gradient, bend } = this.pressureFieldAt(direction, east, north);
     // 気圧帯は緯度だけの関数なので、その勾配は解析的に差し引ける。
     const eddy = gradient.sub(north.mul(sin(latitude.mul(6)).mul(6 * PRESSURE_BAND_AMPLITUDE)));
-    const wind = balancedWind(eddy, isobarAt(direction, eddy), bend, latitude, FRICTION_RATE);
+    const wind = balancedWind(
+      eddy, isobarAt(direction, eddy), bend, latitude, FRICTION_RATE, WIND_CROSSING_LIMIT,
+    );
     return {
       velocity: wind.velocity.add(east.mul(this.meanWindAt(direction).x)),
       turn: wind.turn,

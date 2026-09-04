@@ -2,7 +2,7 @@
 // 摩擦を足した定常の釣り合いを 1 本の式で解く。勾配が緩い所ではコリオリが釣り合いを受け持って
 // 地衡風の枝へ、谷が狭く深い所では遠心力が受け持って緯度に依らない枝へ落ちるので、**中緯度の
 // 低気圧も熱帯の台風も同じ式から出る。** 赤道でも高気圧側でも有限に留まる。
-import { abs, cos, cross, length, max, sin, sqrt, tanh } from 'three/tsl';
+import { abs, cos, cross, length, max, min, sin, sqrt, tanh } from 'three/tsl';
 import { R_EARTH, SIDEREAL_DAY } from '../../game/celestial/solar-system/constants';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
@@ -37,9 +37,11 @@ export type BalancedWind = {
 
 // gradient は気圧の勾配 [hPa/rad] の接ベクトル、isobar は isobarAt() の向き、bend は等圧線に沿う
 // 向きの 2 階微分 [hPa/rad²](= |∇p| ÷ 等圧線の曲率半径。低気圧で正)、friction は摩擦の減衰率
-// [1/s]。摩擦を強く取るほど風は遅く、等圧線を深く横切る。
+// [1/s]。摩擦を強く取るほど風は遅く、等圧線を深く横切る。maxCrossing は等圧線を横切る角の上限 [rad]
+// で、赤道から離れた所で向きだけを抑え、渦の向きが決まらない赤道へ向かって開く。
 export function balancedWind(
   gradient: Vec3Node, isobar: Vec3Node, bend: FloatNode, latitude: FloatNode, friction: number,
+  maxCrossing: number,
 ): BalancedWind {
   const sinLatitude = sin(latitude);
   const coriolis = sinLatitude.mul(CORIOLIS_RATE);
@@ -51,11 +53,21 @@ export function balancedWind(
   // 流れが渦の中心のまわりを回る角速度 [rad/s]。等圧線に沿う成分はコリオリとこれの和が受け持ち、
   // 受け持ち切れない残りを摩擦が受けて、等圧線を横切る流入になる。赤道で決まらなくなるのは向きだけ
   // なので、落とすのはここだけ — 速さを決める denominator は spinSquared を持ったままにする。
-  const spin = spinSquared.mul(2).div(denominator).mul(tanh(sinLatitude.div(SPIN_SENSE_WIDTH)));
+  const spinSense = tanh(sinLatitude.div(SPIN_SENSE_WIDTH));
+  const spin = spinSquared.mul(2).div(denominator).mul(spinSense);
   const along = coriolis.add(spin);
-  // 向きの長さは √(along² + friction²) で、勾配が消えても 0 にならない。normalize では NaN が出る。
-  const velocity = isobar.mul(along).sub(gradient.div(max(length(gradient), 1e-6)).mul(friction))
-    .div(sqrt(along.mul(along).add(friction ** 2))).mul(speed);
+  // 向きだけに効く摩擦。上限はコリオリ力の弱い所で低気圧へ流れ込む風の角を maxCrossing に抑えるためのもの
+  // で、赤道へ向かっては渦の向きが決まらない幅で開く — 開かないと along の消える赤道で向きの長さが 0 に
+  // なり(0/0)、along の符号が変わる所で風が 2 × maxCrossing 跳んで緯線に沿う継ぎ目が立つ。高気圧側では
+  // along が赤道の外でも 0 を通るので尺度を |coriolis| で下から支える — その流れは勾配をまっすぐ下って
+  // 連続に留まり、中緯度では |coriolis| tan θ が摩擦を超えるので風は釣り合いのまま。
+  const equatorial = abs(spinSense).oneMinus();
+  const crossingFriction = min(
+    friction, max(abs(along), abs(coriolis)).mul(Math.tan(maxCrossing)).add(equatorial.mul(friction)),
+  );
+  // 向きの長さは √(along² + crossingFriction²) で、勾配が消えても 0 にならない。normalize では NaN が出る。
+  const velocity = isobar.mul(along).sub(gradient.div(max(length(gradient), 1e-6)).mul(crossingFriction))
+    .div(sqrt(along.mul(along).add(crossingFriction.mul(crossingFriction)))).mul(speed);
   return { velocity, turn: spin };
 }
 
