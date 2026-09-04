@@ -4,6 +4,7 @@
 // 分離した成分(src/assets の仮テクスチャと .cloud-lab/separated/)を読み、撮影の面(全球の
 // 正距円筒と cap の正射影)へ再標本化して成分ごとに比べる。**先に separate を実行しておく。**
 // 再標本化した実写厚・実写薄も画像で .cloud-lab/compare/ に残る。
+// `--params <json ファイル>` を与えると、撮影の前に cloud-lab のつまみをその値へ置き直す。
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
@@ -34,6 +35,15 @@ const REGIONS = [
 const VIEWS = ['photo', 'composite', 'coverage', 'translucent'];
 
 const CAP_KM_PER_PX = (2 * Math.sin((CAP_RADIUS * Math.PI) / 180) * 6371) / CAP_W;
+
+// --params が指す JSON のつまみ。与えられていなければ null。
+function knobOverrides() {
+  const at = process.argv.indexOf('--params');
+  if (at < 0) return null;
+  const file = process.argv[at + 1];
+  if (!file) throw new Error('--params にはつまみの JSON ファイルを渡す');
+  return JSON.parse(readFileSync(path.resolve(file), 'utf8'));
+}
 
 // 分離済みの成分(原寸の正距円筒)を file(リポジトリ相対)から読む。無ければ、先に走らせる手順を
 // 添えて投げる。
@@ -189,11 +199,13 @@ async function main() {
   const separatedThick = loadSeparated(path.join('src', 'assets', 'cloud-field.png'));
   const separatedVeil = loadSeparated(path.join('.cloud-lab', 'separated', 'veil.png'));
 
+  const overrides = knobOverrides();
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-cloud-compare-', onEvent,
   });
   const shots = new Map();
+  let knobs = null;
   try {
     const { devTools } = session;
     await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
@@ -204,6 +216,9 @@ async function main() {
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Cloud lab failed to initialise: ${failure}`);
+
+    if (overrides) await devTools.evaluate(`window.cloudLab.setParams(${JSON.stringify(overrides)})`);
+    knobs = await devTools.evaluate('window.cloudLab.params()');
 
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
@@ -260,6 +275,8 @@ async function main() {
       composite: cropField(shots.get(`${region.name}-composite`), boxX0, boxY0, CAP_BOX, CAP_BOX),
     });
   }
+
+  console.log(`\nつまみ: ${JSON.stringify(knobs)}`);
 
   console.log('\n=== 帯状平均(全球面・5.625° 刻み) ===');
   console.log('緯度      実写計  実写厚  実写薄  被覆率  薄い雲  合成   被覆率/実写厚');

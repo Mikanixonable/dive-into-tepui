@@ -1,5 +1,6 @@
-// 雲の実験環境の画面。表示する量を選び、時刻を動かして、天気のモデルの写しを正距円筒で見る。
+// 雲の実験環境の画面。表示する量を選び、時刻とつまみを動かして、天気のモデルの写しを正距円筒で見る。
 import { CloudLabCanvas } from './lab';
+import { CLOUD_TUNING_KNOBS, cloudTuningValues } from './tuning-knobs';
 import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
 import { buildButtonRow, buildSlider, buildToggleField } from '../lab-controls';
 
@@ -9,13 +10,15 @@ const PLAY_HOURS_PER_SECOND = 1;
 
 declare global {
   interface Window {
-    // 撮影の駆動(tools/cloud-lab-shot.mjs)が CDP から読む入口。
+    // 撮影の駆動(tools/cloud-lab-shot.mjs・tools/cloud-lab-compare.mjs)が CDP から読む入口。
     cloudLab?: {
       views: readonly CloudLabViewId[];
       show: (id: CloudLabViewId) => void;
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
+      params: () => Record<string, number>;
+      setParams: (values: Readonly<Record<string, number>>) => void;
     };
   }
 }
@@ -62,12 +65,47 @@ async function init(): Promise<void> {
     () => `${canvas.capAngularRadius.toFixed(0)}°`,
     (radius) => canvas.aimCap(canvas.capCenterLatitude, canvas.capCenterLongitude, radius));
 
+  // つまみをまとめて置き直す入口。uniform・スライダー・JSON 欄を揃えてから 1 回だけ描き直す。
+  const setKnobs = new Map<string, (value: number) => void>();
+  const paramsBox = document.createElement('textarea');
+  const applyParams = (next: Readonly<Record<string, number>>): void => {
+    for (const knob of CLOUD_TUNING_KNOBS) {
+      const value = next[knob.id];
+      if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+      knob.value.value = value;
+      setKnobs.get(knob.id)!(value);
+    }
+    paramsBox.value = JSON.stringify(cloudTuningValues());
+    canvas.render();
+  };
+  for (const knob of CLOUD_TUNING_KNOBS) {
+    setKnobs.set(knob.id, buildSlider(knob.row, knob.label, knob.min, knob.max, knob.step,
+      () => String(knob.value.value), (value) => applyParams({ [knob.id]: value })));
+  }
+
+  // 調整の共有用: いまの全つまみの JSON。編集して「適用」で戻せる。
+  const paramsRow = document.getElementById('params')!;
+  paramsRow.appendChild(paramsBox);
+  const copyButton = document.createElement('button');
+  copyButton.textContent = 'コピー';
+  copyButton.addEventListener('click', () => { void navigator.clipboard.writeText(paramsBox.value); });
+  const applyButton = document.createElement('button');
+  applyButton.textContent = '適用';
+  applyButton.addEventListener('click', () => {
+    try {
+      applyParams(JSON.parse(paramsBox.value) as Record<string, number>);
+    } catch (e) {
+      document.getElementById('error')!.textContent = `つまみの JSON が読めない: ${String(e)}`;
+    }
+  });
+  paramsRow.append(copyButton, applyButton);
+
   markView(canvas.currentView);
   setSlider(canvas.hours);
   setCapLatitude(canvas.capCenterLatitude);
   setCapLongitude(canvas.capCenterLongitude);
   setCapRadius(canvas.capAngularRadius);
-  canvas.render();
+  applyParams(cloudTuningValues());
 
   window.cloudLab = {
     views: CLOUD_LAB_VIEWS.map((view) => view.id),
@@ -80,6 +118,8 @@ async function init(): Promise<void> {
       setCapRadius(radius);
     },
     capture: () => canvas.capture(),
+    params: cloudTuningValues,
+    setParams: applyParams,
   };
 }
 
