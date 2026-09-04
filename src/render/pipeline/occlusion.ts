@@ -1,17 +1,17 @@
 // G バッファの深度から画素ごとの描画座標を復元し、そこへ恒星の直射光がどれだけ届くかを 1 枚の
-// 透過率へ書く。透過率を決めるのは sun-occlusion.ts で、このパスはその源ごとの関数を画面の
-// 全画素で評価してキャッシュする。
+// 透過率へ書く。透過率を決めるのは sun-occlusion.ts で、このパスはその源ごとの関数を面の
+// 写っている画素で評価してキャッシュする。
 //
 // **源ごとにフルスクリーン 1 枚を乗算合成で積む。** 遮蔽の合成は積なので、1 本のシェーダへ全源を
 // 静的展開する必要はない。分けておくと、源が増えてもマテリアルの組み合わせが増えず、そのフレームに
 // 遮るものが無い源は描画命令ごと落とせる(無効な源はどれも素通しの 1 を返すので、答えは変わらない)。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { dot, length, max, normalize, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { Fn, If, dot, float, length, max, normalize, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { octDecodeNormal, type GBufferPass } from './gbuffer';
 import { viewPositionAt } from './view-ray';
-import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
+import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { SunOcclusion } from './sun-occlusion';
 
 // 画素の覆う実寸を伸ばす入射角の余弦の下限。地平線では 0 へ落ちるので、伸びしろに天井を張る。
@@ -24,8 +24,10 @@ interface OcclusionSource {
   readonly material: THREE.MeshBasicNodeMaterial;
 }
 
-// 透過率のノードを、ターゲットにいま入っている値へ掛け合わせるマテリアルに包む。
-function multiplyingMaterial(transmittance: FloatNode): THREE.MeshBasicNodeMaterial {
+// 透過率のノードを、ターゲットにいま入っている値へ掛け合わせるマテリアルに包む。面が写って
+// いない画素は素通しの 1 を返す — そこに受け手は居ないので、遮蔽の計算ごと分岐で飛ばす
+// (select では両辺が評価されて飛ばない)。
+function multiplyingMaterial(covered: BoolNode, transmittance: FloatNode): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial({
     depthTest: false, depthWrite: false, transparent: true,
   });
@@ -33,7 +35,11 @@ function multiplyingMaterial(transmittance: FloatNode): THREE.MeshBasicNodeMater
   material.blending = THREE.CustomBlending;
   material.blendSrc = THREE.DstColorFactor;
   material.blendDst = THREE.ZeroFactor;
-  material.colorNode = vec4(vec3(transmittance), 1);
+  material.colorNode = Fn(() => {
+    const value = float(1).toVar();
+    If(covered, () => { value.assign(transmittance); });
+    return vec4(vec3(value), 1);
+  })();
   return material;
 }
 
@@ -78,22 +84,23 @@ export class OcclusionPass {
     const viewDistance = length(viewPos);
     const incidence = max(dot(normalize(viewPos).negate(), viewNormal), MIN_INCIDENCE_COSINE);
     const cumulusFootprint = this.pixelAngle.mul(viewDistance).div(incidence);
+    const covered = gbuffer.covered();
     this.sources = [
       {
         occludes: () => sunOcclusion.hasOccluders(),
-        material: multiplyingMaterial(sunOcclusion.occluderTransmittance(worldPos)),
+        material: multiplyingMaterial(covered, sunOcclusion.occluderTransmittance(worldPos)),
       },
       {
         occludes: () => sunOcclusion.hasRingShadow(),
-        material: multiplyingMaterial(sunOcclusion.ringTransmittance(worldPos)),
+        material: multiplyingMaterial(covered, sunOcclusion.ringTransmittance(worldPos)),
       },
       {
         occludes: () => sunOcclusion.hasCumulusShadow(),
-        material: multiplyingMaterial(sunOcclusion.cumulusTransmittance(worldPos, cumulusFootprint)),
+        material: multiplyingMaterial(covered, sunOcclusion.cumulusTransmittance(worldPos, cumulusFootprint)),
       },
       {
         occludes: () => sunOcclusion.hasMeshShadow(),
-        material: multiplyingMaterial(sunOcclusion.meshTransmittance(worldPos, meshNormal)),
+        material: multiplyingMaterial(covered, sunOcclusion.meshTransmittance(worldPos, meshNormal)),
       },
     ];
     this.quad = new QuadMesh();

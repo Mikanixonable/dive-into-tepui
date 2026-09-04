@@ -16,8 +16,8 @@ import type { Vec3Node, Vec4Node } from '../tsl-types';
 // 掛けるのは反射率ではなく BRDF — 拡散の 1/π を落とすと、それだけで π 倍明るくなる。
 function shadedColor(lightPrepass: LightPrepass, gbuffer: GBufferPass): Vec4Node {
   return Fn(() => {
-    // 深度のクリア値 0 は反転 Z の far。物体の無い画素を捨てて、先に描いた星野を残す。
-    Discard(texture(gbuffer.depthTexture, screenUV).r.lessThanEqual(0));
+    // 物体の無い画素を捨てて、先に描いた星野を残す。
+    Discard(gbuffer.covered().not());
 
     const material = texture(gbuffer.basecolorTexture, screenUV);
     const baseColor: Vec3Node = material.rgb;

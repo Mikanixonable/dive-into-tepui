@@ -6,17 +6,12 @@ import { octDecodeNormal, type GBufferPass } from '../gbuffer';
 import { viewPositionAt, viewRayAt } from '../view-ray';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
 
-// その画素の G バッファに面が写っているか。反転深度では遠平面が 0 なので、そのままの値は虚空を表す。
-function isCovered(depthTexture: THREE.Texture, uv: Vec2Node): BoolNode {
-  return texture(depthTexture, uv).r.greaterThan(0);
-}
-
 // 照度を組み立てる画素の uv。面が写っている画素はそのまま、虚空の画素は十字に隣接する面へ寄せる。
 //
 // TODO: 虚空の画素の照度は読まれないので寄せる根拠が無いが、外すと 1 画素幅の構造の陰影が動く
 // (render-lab の 32/35 ケース、画素の 0.1% 未満、最大 67/255)。面が写っている画素で恒等写像に
 // ならない理由が付くまで残す。
-function shadingUV(depthTexture: THREE.Texture, uv: Vec2Node): Vec2Node {
+function shadingUV(gbuffer: GBufferPass, uv: Vec2Node): Vec2Node {
   const texel: Vec2Node = vec2(1).div(screenSize);
   // 自分 → 左右 → 上下の順に、最初に面が写っている候補を採る。
   const candidates: readonly Vec2Node[] = [
@@ -25,7 +20,7 @@ function shadingUV(depthTexture: THREE.Texture, uv: Vec2Node): Vec2Node {
     uv.sub(vec2(0, texel.y)), uv.add(vec2(0, texel.y)),
   ];
   return candidates.reduceRight(
-    (rest, candidate) => select(isCovered(depthTexture, candidate), candidate, rest),
+    (rest, candidate) => select(gbuffer.covered(candidate), candidate, rest),
     uv,
   );
 }
@@ -53,9 +48,9 @@ export class ShadingSample {
   public constructor(gbuffer: GBufferPass) {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewMatrix = uniform(new THREE.Matrix4());
-    const shadeUV = shadingUV(gbuffer.depthTexture, screenUV);
+    const shadeUV = shadingUV(gbuffer, screenUV);
     this.uv = shadeUV;
-    this.lit = isCovered(gbuffer.depthTexture, shadeUV);
+    this.lit = gbuffer.covered(shadeUV);
     this.normal = octDecodeNormal(texture(gbuffer.normalTexture, shadeUV).rg);
     this.roughness = texture(gbuffer.roughnessTexture, shadeUV).r;
     this.position = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse, shadeUV);
