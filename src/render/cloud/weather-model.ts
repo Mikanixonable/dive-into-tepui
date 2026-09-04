@@ -78,7 +78,7 @@ const LIFT_LIMIT = 0.06;
 export const TERRAIN_LIFT_GAIN_KNOB: FloatUniform = uniform(0.35);
 // 上昇流の利得。上昇流は地表付近の湿度へ(下降で乾く)、上向きの分だけが上層の湿度へ効く
 // [per m/s]。
-export const LIFT_HUMIDITY_KNOB: FloatUniform = uniform(1.2);
+export const LIFT_HUMIDITY_KNOB: FloatUniform = uniform(2.2);
 export const UPPER_LIFT_HUMIDITY_KNOB: FloatUniform = uniform(0.7);
 
 // 圏界面の高さ [m] とその緯度依存。熱帯で 16〜17 km、極で 9 km 前後で、亜熱帯のジェットの下で
@@ -126,8 +126,8 @@ const UPPER_EYE_DRYNESS = 2;
 // 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
 // 平年の雲量図がそのまま貼り付く。底上げは、重みを変えても平年並みの土地の湿度が動かないように
 // 取る(平年の雲量の中央値ぶんを差し引く)。
-export const HUMIDITY_BASE_KNOB: FloatUniform = uniform(0.394);
-export const MEAN_CLOUDINESS_WEIGHT_KNOB: FloatUniform = uniform(0.214);
+export const HUMIDITY_BASE_KNOB: FloatUniform = uniform(0.424);
+export const MEAN_CLOUDINESS_WEIGHT_KNOB: FloatUniform = uniform(0.17);
 export const UPPER_HUMIDITY_BASE_KNOB: FloatUniform = uniform(0.400);
 export const UPPER_MEAN_CLOUDINESS_WEIGHT_KNOB: FloatUniform = uniform(0.15);
 
