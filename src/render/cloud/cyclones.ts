@@ -34,13 +34,14 @@ const ANVIL_FRACTION = 2.0;
 
 // 中緯度の低気圧。同時に持つ数、1 つの寿命 [s]、東進の速さ [m/s]、最深 [hPa]、半径 [m]
 // (番号で最小から幅のあいだへ散らす)、中心の緯度の範囲 [rad]。寿命の中で深さは山形に変わり、
-// 次の寿命では別の経度に生まれる。
+// 次の寿命では別の経度に生まれる。**半径は目を持たない範囲で取る** — これより締めると芯の
+// 曲がりが台風の域に入り、中緯度の低気圧に眼と金床が開く。
 const LOW_COUNT = 10;
 const LOW_LIFETIME = 5 * 86400;
 const LOW_DRIFT = 12;
 const LOW_DEPTH = 18;
-const LOW_RADIUS_MIN = 800e3;
-const LOW_RADIUS_SPAN = 800e3;
+const LOW_RADIUS_MIN = 500e3;
+const LOW_RADIUS_SPAN = 600e3;
 const LOW_LATITUDE_MIN = THREE.MathUtils.degToRad(35);
 const LOW_LATITUDE_SPAN = THREE.MathUtils.degToRad(25);
 
