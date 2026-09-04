@@ -1,7 +1,7 @@
-// 恒星の直射光がどれだけ届くかを答える唯一の場。transmittance() が描画座標の点に対する透過率の
-// TSL グラフを返す。遮蔽するのは天体・惑星の環の帯・積雲の殻・シャドウアトラスへ描かれた
-// メッシュで、複数の遮蔽は透過率の積で合成する。遮蔽器・環の帯・積雲の殻は毎フレーム呼び出し
-// 側が渡す。
+// 恒星の直射光がどれだけ届くかを答える唯一の場。遮蔽するのは天体・惑星の環の帯・積雲の殻・
+// シャドウアトラスへ描かれたメッシュで、源ごとに描画座標の点に対する透過率の TSL グラフを返す。
+// **複数の源を合成するのは呼び出し側の仕事**で、遮蔽どうしに依存は無いので透過率の積で足りる。
+// 遮蔽器・環の帯・積雲の殻は毎フレーム呼び出し側が渡す。
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, fract, greaterThan, int, length,
@@ -59,18 +59,6 @@ export interface CumulusShadow {
   readonly topAltitude: number;
   readonly bodyFromWorld: THREE.Matrix4;
   readonly field: THREE.Texture;
-}
-
-// グラフへ畳み込む遮蔽源の選択。TSL のグラフは静的に展開されるので実行時の分岐にはできず、
-// 受け手ごとに要る源が違う(環は自分の帯を外す必要がある)ため、構築時に呼び出し側が決める。
-interface OcclusionSources {
-  readonly rings: boolean;
-  // メッシュの影を数えるなら受け手の法線。バイアスを法線方向のオフセットで入れるので、真偽では
-  // なく法線そのもので選ぶ。null なら数えない。
-  readonly meshNormal: Vec3Node | null;
-  // 積雲の殻の影を数えるなら、受け手の位置で画面 1 px が張る実寸 [m]。場を引く mip 段を
-  // ここから決めるので、真偽ではなく実寸そのもので選ぶ。null なら数えない。
-  readonly cumulusFootprint: FloatNode | null;
 }
 
 interface OccluderUniforms {
@@ -190,7 +178,7 @@ const diskFractionBelow = Fn(([u]: readonly [FloatNode]) => {
 // 余弦 c から閉じた形で出る。帯の被覆率は「footprint のうち半径 outer より内側」から「inner より
 // 内側」を引いた面積比。footprint の中では環の曲率を無視し、帯の縁を直線と見なす — どちらも
 // w << r0 が成り立つ限り誤差は二次で消える。
-const ringTransmittance = Fn((
+const ringBandTransmittance = Fn((
   [p, sunDir, sunAngRadius, center, axis, inner, outer, tau, active]: readonly [Vec3Node, Vec3Node, FloatNode, Vec3Node, Vec3Node, FloatNode, FloatNode, FloatNode, FloatNode],
 ) => {
   const cosIncidence = dot(axis, sunDir);
@@ -222,7 +210,6 @@ export class SunOcclusion {
   private readonly ringCenter: Vec3Uniform;
   private readonly ringAxis: Vec3Uniform;
   private readonly ringBands: readonly RingBandUniforms[];
-  private activeRingBands = 0;
   private readonly cumulusCenter: Vec3Uniform;
   private readonly cumulusSurfaceRadius: FloatUniform;
   private readonly cumulusAxes: Vec3Uniform;
@@ -233,7 +220,7 @@ export class SunOcclusion {
   private readonly cumulusField = texture(EMPTY_CUMULUS_FIELD);
 
   // 遮蔽器と環の帯ぶんの uniform を確保する。件数は固定なので、遮蔽器や帯が増減しても
-  // transmittance() が返すグラフの形は変わらない。
+  // 返す透過率のグラフの形は変わらない。
   constructor(
     private readonly sunLight: SunLight,
     private readonly shadowMaps: SunShadowMaps,
@@ -272,12 +259,11 @@ export class SunOcclusion {
     }
   }
 
-  // このフレームで有効な帯が 1 本でもあるか。
-  hasActiveRings(): boolean { return this.activeRingBands > 0; }
+  // このフレームに遮蔽器が 1 体でもあるか。**スロットは先頭から詰めるので先頭だけ見れば足りる。**
+  hasOccluders(): boolean { return this.occluders[0]!.axes.value.lengthSq() > 0; }
 
   // 環の影を落とす天体 1 体ぶんの帯。center/axis は描画座標、bands が空なら影は落ちない。
   setRings(center: THREE.Vector3, axis: THREE.Vector3, bands: readonly RingBand[]): void {
-    this.activeRingBands = Math.min(bands.length, MAX_RING_BANDS);
     this.ringCenter.value.copy(center);
     this.ringAxis.value.copy(axis).normalize();
     // 帯ごとのスロットへ写し、余ったスロットは active で消す。
@@ -291,6 +277,9 @@ export class SunOcclusion {
     }
   }
 
+  // このフレームに有効な帯が 1 本でもあるか。**スロットは先頭から詰めるので先頭だけ見れば足りる。**
+  hasRingShadow(): boolean { return this.ringBands[0]!.active.value > 0; }
+
   // 積雲の殻が落とす影を、このフレームの 1 体ぶんへ置き直す。null なら雲の影は落ちない。
   setCumulusShadow(shadow: CumulusShadow | null): void {
     this.cumulusActive.value = shadow === null ? 0 : 1;
@@ -303,15 +292,35 @@ export class SunOcclusion {
     this.cumulusField.value = shadow.field;
   }
 
-  // 描画座標の点 worldPos へ恒星の直射光が届く割合 0..1 を組む。sources で選ばれた源だけを
-  // 畳み込み、複数の遮蔽は透過率の積で合成する。
-  transmittance(worldPos: Vec3Node, sources: OcclusionSources): FloatNode {
-    const toSun = this.sunLight.position.sub(worldPos);
-    const sunDist = max(length(toSun), 1);
-    const sunDir = normalize(toSun);
-    const sunAngRadius = asin(clamp(this.sunLight.radius.div(sunDist), 1e-9, 1));
+  // このフレームに積雲の殻の影があるか。
+  hasCumulusShadow(): boolean { return this.cumulusActive.value > 0; }
 
-    // 天体の遮蔽はどの受け手にも掛かるので、源の選択を待たずに畳み込む。
+  // このフレームにメッシュの影があるか。
+  hasMeshShadow(): boolean {
+    return this.shadowMaps.slots.some((slot) => slot.active.value > 0);
+  }
+
+  // 受け手から恒星の中心までの距離 [m]。恒星の只中で 0 除算にならない床を張る。
+  private sunDistance(worldPos: Vec3Node): FloatNode {
+    return max(length(this.sunLight.position.sub(worldPos)), 1);
+  }
+
+  // 受け手から見た恒星の方向。
+  private sunDirection(worldPos: Vec3Node): Vec3Node {
+    return normalize(this.sunLight.position.sub(worldPos));
+  }
+
+  // 受け手から見た恒星の視半径 [rad]。半影の幅はこれに遮蔽器までの距離を掛けたものになる。
+  private sunAngularRadius(worldPos: Vec3Node): FloatNode {
+    return asin(clamp(this.sunLight.radius.div(this.sunDistance(worldPos)), 1e-9, 1));
+  }
+
+  // 描画座標の点 worldPos へ、遮蔽器の天体を通ってきた恒星の直射光が届く割合 0..1。
+  occluderTransmittance(worldPos: Vec3Node): FloatNode {
+    const sunDist = this.sunDistance(worldPos);
+    const sunDir = this.sunDirection(worldPos);
+    const sunAngRadius = this.sunAngularRadius(worldPos);
+    // 空きスロットも畳み込む。半軸 0 のスロットは素通しの 1 を返すので、有効な数で回す必要が無い。
     let transmittance: FloatNode = float(1);
     for (const occluder of this.occluders) {
       transmittance = transmittance.mul(
@@ -321,22 +330,25 @@ export class SunOcclusion {
         ),
       );
     }
-    if (sources.rings) {
-      for (const band of this.ringBands) {
-        transmittance = transmittance.mul(
-          ringTransmittance(
-            worldPos, sunDir, sunAngRadius, this.ringCenter, this.ringAxis,
-            band.inner, band.outer, band.tau, band.active,
-          ),
-        );
-      }
-    }
-    if (sources.cumulusFootprint !== null) {
+    return transmittance;
+  }
+
+  // 描画座標の点 worldPos へ、環の帯を通ってきた恒星の直射光が届く割合 0..1。
+  //
+  // **環そのものを描くフラグメントは源から外すこと** — 自分が乗っている帯の平面上に居るため、
+  // 含めると自己遮蔽で刃こぼれする。
+  ringTransmittance(worldPos: Vec3Node): FloatNode {
+    const sunDir = this.sunDirection(worldPos);
+    const sunAngRadius = this.sunAngularRadius(worldPos);
+    // 空きスロットも畳み込む。active が 0 のスロットは被覆率 0 = 素通しの 1 を返す。
+    let transmittance: FloatNode = float(1);
+    for (const band of this.ringBands) {
       transmittance = transmittance.mul(
-        this.cumulusTransmittance(worldPos, sunDir, sources.cumulusFootprint));
-    }
-    if (sources.meshNormal !== null) {
-      transmittance = transmittance.mul(this.meshTransmittance(worldPos, sources.meshNormal, sunDir));
+        ringBandTransmittance(
+          worldPos, sunDir, sunAngRadius, this.ringCenter, this.ringAxis,
+          band.inner, band.outer, band.tau, band.active,
+        ),
+      );
     }
     return transmittance;
   }
@@ -348,9 +360,9 @@ export class SunOcclusion {
   // 雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、影は殻のシルエットの下へ落ちる。
   // 厚みは光路長ではなく稼いだ高度で配るので、柱を 1 本抜ける合計はどれだけ斜めでも τ に一致する。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
-  private cumulusTransmittance(
-    worldPos: Vec3Node, sunDir: Vec3Node, footprint: FloatNode,
-  ): FloatNode {
+  // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、場を引く mip 段と粒の振幅を決める。
+  cumulusTransmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
+    const sunDir = this.sunDirection(worldPos);
     return Fn(() => {
       const transmittance = float(1).toVar();
       // 場を持たないフレームで、タップぶんのフェッチを丸ごと飛ばす。
@@ -503,10 +515,12 @@ export class SunOcclusion {
   // シャドウアトラスへ描かれたメッシュが落とす影。選んだ 1 スロットだけを引く — 透過率は恒星円盤の
   // 遮られずに残る面積比なので、枠の重なったスロットの答えを掛け合わせると同じ遮蔽器の半影が二重に
   // 濃くなる。判定を select ではなく If で書き、選ぶ段と引く段を分けるのは、虚空の画素からテクスチャ
-  // フェッチを消すため(select は両辺を評価する)。
-  private meshTransmittance(worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node): FloatNode {
+  // フェッチを消すため(select は両辺を評価する)。normal は受け手の面の法線で、バイアスを
+  // 法線方向のオフセットで入れるために要る。
+  meshTransmittance(worldPos: Vec3Node, normal: Vec3Node): FloatNode {
+    const sunDir = this.sunDirection(worldPos);
     // 恒星の視半径。半影の幅はここに遮蔽器までの距離を掛けたものになる。
-    const sunAngRadius = this.sunLight.radius.div(max(length(this.sunLight.position.sub(worldPos)), 1));
+    const sunAngRadius = this.sunLight.radius.div(this.sunDistance(worldPos));
     return Fn(() => {
       const selected = this.selectSlot(worldPos);
       const visibility = float(1).toVar();

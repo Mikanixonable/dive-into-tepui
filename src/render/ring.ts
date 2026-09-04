@@ -91,9 +91,7 @@ function ringOpticsNodes(
   // 直射散乱が受ける遮蔽。本体も他の天体も、遮蔽パスの受け手と同じ 1 つの関数から引く
   // ので、境界は半影の幅でぼける。**環の帯は源から外す** — 環のフラグメントは自分が乗って
   // いる帯の平面上に居るため、含めると自己遮蔽で刃こぼれする。
-  const directLight = sunOcclusion.transmittance(positionWorld, {
-    rings: false, meshNormal: null, cumulusFootprint: null,
-  });
+  const directLight = sunOcclusion.occluderTransmittance(positionWorld);
 
   const denominator = float(1).add(phaseG.mul(phaseG)).sub(
     phaseG.mul(float(2).mul(dot(sunDirection.negate(), viewDirection))),

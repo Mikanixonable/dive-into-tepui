@@ -366,9 +366,7 @@ export class AtmospherePass {
         .mul(depthToSpace(radius, sunMu, slot.surfaceRadius, slot.mieScaleHeight)).mul(sunPathScale)));
     const irradiance = this.sunLight.intensity.div(max(dot(toSun, toSun), 1));
     const occlusion = this.sunOcclusion
-      .transmittance(point, {
-        rings: false, meshNormal: null, cumulusFootprint: null,
-      })
+      .occluderTransmittance(point)
       .mul(this.horizonVisibility(slot, radius, sunMu, toSun));
     return exp(sunDepth.negate()).mul(irradiance.div(PI)).mul(occlusion).mul(this.sunLight.color);
   }
