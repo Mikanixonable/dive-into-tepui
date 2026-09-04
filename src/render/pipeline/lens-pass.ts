@@ -13,8 +13,8 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
-import type { Vec2Uniform, Vec3Node } from '../tsl-types';
-import { apertureGhosts, downsample, streakPass, tentUpsample } from './lens-kernels';
+import type { FloatUniform, Vec2Uniform, Vec3Node } from '../tsl-types';
+import { apertureGhosts, downsample, streakPass, streakStride, tentUpsample } from './lens-kernels';
 
 // 縮小チェーンの段数。いちばん粗い段の 1 テクセルが画面の 1/32 を覆う。
 const LEVELS = 5;
@@ -117,7 +117,7 @@ export class LensPass {
     for (let i = LEVELS - 2; i >= 0; i--) {
       const coarser = (i === LEVELS - 2 ? down[LEVELS - 1]! : up[i + 1]!).target.texture;
       const finer = down[i]!.target.texture;
-      const coarserWeight = (LEVELS - 1 - i) / (LEVELS - i);
+      const coarserWeight: FloatUniform = uniform((LEVELS - 1 - i) / (LEVELS - i));
       up[i] = createStage(
         (texel) => mix(texture(finer, screenUV).rgb, tentUpsample(coarser, texel), coarserWeight),
       );
@@ -126,18 +126,20 @@ export class LensPass {
     this.up = up;
     // 鎖は 1 本ずつ順に走らせるので、途中の作業用ターゲットは全鎖で使い回せる。
     this.streakScratch = Array.from({ length: STREAK_PASSES - 1 }, () => createTarget());
-    this.streakChain = Array.from({ length: STREAK_DIRECTIONS }, (_, direction) => {
-      const angle = (2 * Math.PI * direction) / STREAK_DIRECTIONS;
+    this.streakChain = Array.from({ length: STREAK_DIRECTIONS }, (_, axis) => {
+      const angle = (2 * Math.PI * axis) / STREAK_DIRECTIONS;
+      const direction: Vec2Uniform = uniform(
+        new THREE.Vector2(Math.cos(angle), Math.sin(angle)),
+      );
       return Array.from({ length: STREAK_PASSES }, (_, pass) => {
         const last = pass === STREAK_PASSES - 1;
         const from = pass === 0
           ? down[STREAK_LEVEL]!.target.texture
           : this.streakScratch[pass - 1]!.texture;
+        const stride: FloatUniform = uniform(streakStride(pass));
         // 最後のパスだけ本数で割る。鎖 1 本ぶんが 1/本数 を持ち、加算して総和 1 になる。
-        return createFilter(
-          (texel) => streakPass(from, texel, angle, pass).mul(last ? 1 / STREAK_DIRECTIONS : 1),
-          last,
-        );
+        const gain: FloatUniform = uniform(last ? 1 / STREAK_DIRECTIONS : 1);
+        return createFilter((texel) => streakPass(from, texel, direction, stride).mul(gain), last);
       });
     });
     this.ghosts = createStage(() => apertureGhosts([
@@ -171,12 +173,12 @@ export class LensPass {
   render(width: number, height: number): void {
     this.resize(width, height);
     for (const stage of this.down) this.draw(stage, stage.target);
-    for (const [direction, passes] of this.streakChain.entries()) {
+    for (const [axis, passes] of this.streakChain.entries()) {
       for (const [pass, filter] of passes.entries()) {
         const last = pass === STREAK_PASSES - 1;
         // 最後のパスは加算で積むので、**最初の 1 本だけがクリアする。** クリアを落とすと前の
         // フレームの上へ積み上がり、半精度の上限を越えて画面が NaN になる。
-        this.draw(filter, last ? this.streakTarget : this.streakScratch[pass]!, !last || direction === 0);
+        this.draw(filter, last ? this.streakTarget : this.streakScratch[pass]!, !last || axis === 0);
       }
     }
     for (let i = LEVELS - 2; i >= 0; i--) this.draw(this.up[i]!, this.up[i]!.target);
