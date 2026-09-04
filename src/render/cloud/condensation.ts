@@ -1,6 +1,6 @@
 // 天気から凝結する雲。地表付近の湿度と対流が不透明な雲に、上層の湿度が薄く透ける雲になる。
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
-import { exp, float, max, smoothstep, uniform } from 'three/tsl';
+import { exp, float, max, uniform } from 'three/tsl';
 import type { WeatherSample } from './weather-model';
 import type { FloatNode, FloatUniform } from '../tsl-types';
 
@@ -15,13 +15,14 @@ export type CloudSample = {
 // **仮設**: 末尾が _KNOB の定数は、cloud-lab のつまみ(tools/cloud-lab/tuning-knobs.ts)から
 // 動かせるよう uniform にしてある。生成の場を実写へ寄せる追い込みが終わるまでは畳まない。
 
-// 被覆率の足切りの縁と、そこへ足す対流の重み。湿度に対流の強弱を足したものを渡すので、湿度が上の
-// 縁を超えている所は対流が下がっても覆われたままで、**湿度が縁のあいだにある所だけが対流の周波数で
-// 千切れる。** 縁の幅は、活発度 1 の対流が振れる幅(±0.12)と同じに取る — 湿った所はすぐ飽和し、
-// そこから先の起伏は雲頂高度が持つ。
-export const COVERAGE_ONSET_KNOB: FloatUniform = uniform(0.62);
-export const COVERAGE_FULL_KNOB: FloatUniform = uniform(0.80);
-export const CONVECTION_GAIN_KNOB: FloatUniform = uniform(0.8);
+// 被覆率が効き始める湿度と、そこから先の 1 単位ぶんの幅。湿度に対流の強弱を足したものを渡すので、
+// **効き始めの近くにある所だけが対流の周波数で千切れ**、湿った所は幅の何倍も上へ行って伝達関数の
+// 傾きが寝るので、そこから先の起伏は雲頂高度が持つ。幅は、湿度の地域差が階調として出る広さに取る
+// — 狭く取ると、乾いた土地と湿った土地がどちらも一色へ潰れる。
+export const COVERAGE_ONSET_KNOB: FloatUniform = uniform(0.49);
+export const COVERAGE_WIDTH_KNOB: FloatUniform = uniform(0.28);
+// 湿度へ足す対流の重み。伝達関数の幅に対してどれだけ深く千切るかを決める。
+export const CONVECTION_GAIN_KNOB: FloatUniform = uniform(1.2);
 // 雲頂の高さ [m]。雲底から、対流の深さが 1 に漸近する高さまで。
 const CLOUD_BASE_HEIGHT = 1000;
 const CLOUD_TOP_SPAN = 14000;
@@ -37,7 +38,7 @@ export const CLOUD_TOP_BIAS_KNOB: FloatUniform = uniform(2);
 export const TRANSLUCENT_ONSET_KNOB: FloatUniform = uniform(0.52);
 export const TRANSLUCENT_GAIN_KNOB: FloatUniform = uniform(1.5);
 
-// weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した 1 本の足切りから、
+// weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した 1 本の伝達関数から、
 // 雲頂高度は上昇流と対流を別々の重みで混ぜたロジスティックから出る — 覆う広さは湿度が、
 // 高さは上昇流が決め、対流はどちらにも粒と起伏を与える。**対流の活発度が効くのは被覆率の側で、
 // 雲頂は活発度に依らず対流をそのまま受ける** — 一面に覆われた空も一様な白い面にはならない
@@ -46,8 +47,11 @@ export function condense(weather: WeatherSample): CloudSample {
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT_KNOB)
     .add(weather.convection.mul(CLOUD_TOP_RELIEF_KNOB)).sub(CLOUD_TOP_BIAS_KNOB);
   const granularity = weather.convection.mul(weather.convectiveActivity).mul(CONVECTION_GAIN_KNOB);
+  // 被覆率は、湿度が効き始めを超えた分を幅で割った t の 1 − exp(−t²)。下端は傾き 0 で 0 から離れ、
+  // 上端は 1 へ漸近するだけで飽和しない — 覆われた空にも湿度の差が階調として残る。
+  const excess = max(weather.humidity.add(granularity).sub(COVERAGE_ONSET_KNOB), 0).div(COVERAGE_WIDTH_KNOB);
   return {
-    coverage: smoothstep(COVERAGE_ONSET_KNOB, COVERAGE_FULL_KNOB, weather.humidity.add(granularity)),
+    coverage: exp(excess.mul(excess).negate()).oneMinus(),
     cloudTop: float(1).add(exp(depth.negate())).reciprocal().mul(CLOUD_TOP_SPAN).add(CLOUD_BASE_HEIGHT),
     translucent: max(weather.upperHumidity.sub(TRANSLUCENT_ONSET_KNOB), 0).mul(TRANSLUCENT_GAIN_KNOB),
   };

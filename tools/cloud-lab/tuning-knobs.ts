@@ -3,7 +3,7 @@
 // 追い込みが終わったら、この表ごと消して生成側を素の定数へ畳む。
 import {
   CLOUD_TOP_BIAS_KNOB, CLOUD_TOP_LIFT_KNOB, CLOUD_TOP_RELIEF_KNOB, CONVECTION_GAIN_KNOB,
-  COVERAGE_FULL_KNOB, COVERAGE_ONSET_KNOB, TRANSLUCENT_GAIN_KNOB, TRANSLUCENT_ONSET_KNOB,
+  COVERAGE_WIDTH_KNOB, COVERAGE_ONSET_KNOB, TRANSLUCENT_GAIN_KNOB, TRANSLUCENT_ONSET_KNOB,
 } from '../../src/render/cloud/condensation';
 import {
   CONVECTION_NOISE_AMPLITUDE_KNOB, HUMIDITY_BASE_KNOB, LIFT_HUMIDITY_KNOB, MEAN_CLOUDINESS_WEIGHT_KNOB,
@@ -25,10 +25,10 @@ export type CloudTuningKnob = {
 
 // 並びは凝結(被覆 → 雲頂 → 薄い雲)、天気(湿度の底上げ → 上昇流 → 場の振幅)の順。
 export const CLOUD_TUNING_KNOBS: readonly CloudTuningKnob[] = [
-  { id: 'coverageOnset', row: 'condense', label: '被覆 足切り下',
+  { id: 'coverageOnset', row: 'condense', label: '被覆 効き始め',
     min: 0, max: 1, step: 0.005, value: COVERAGE_ONSET_KNOB },
-  { id: 'coverageFull', row: 'condense', label: '足切り上',
-    min: 0, max: 1.5, step: 0.005, value: COVERAGE_FULL_KNOB },
+  { id: 'coverageWidth', row: 'condense', label: '被覆 幅',
+    min: 0.02, max: 1, step: 0.005, value: COVERAGE_WIDTH_KNOB },
   { id: 'convectionGain', row: 'condense', label: '対流の重み',
     min: 0, max: 3, step: 0.01, value: CONVECTION_GAIN_KNOB },
   { id: 'cloudTopLift', row: 'condense', label: '雲頂 上昇流',
