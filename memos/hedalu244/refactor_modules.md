@@ -84,12 +84,12 @@ PR #48(enemy の多態化)をモデルケースとして、**同じ病気が他�
 | 2 | BVH・三角形衝突の重複実装 | **重複の解消 + 置き場所** | 2モジュール 825行 | **実施済** |
 | 3 | `base-station-model.ts` の 845 行 1 関数 | **手続きの切り出し** | 852行 | **実施済** |
 | 4 | `game/const.ts` の 104 定数 | **所有者へ戻す** | 319行 / 参照76モジュール | **実施済** |
-| 5 | `hud/style/` の 22 ファイルと結合ハブ | **短すぎるモジュールの多数** | 22モジュール 1,980行 | 中 |
+| 5 | `hud/style/` の 22 ファイルと結合ハブ | **短すぎるモジュールの多数** | 22モジュール 1,980行 | **実施済** |
 | 6 | `marker-manager.ts` のラベル間引き同居 | **手続きの切り出し** | 670行 | **実施済** |
 | 7 | `camera/focus-markers.ts` の4責務 | **分割 + 置き場所** | 609行 | **実施済** |
 | 8 | Player のブースター運用が正本割れ | **責務の集約** | 818 + 201行 | 中 |
 | 9 | `plan-editor.ts` の5責務 | **下位へ下ろす。分割はしない** | 726行 → 599行 | **実施済** |
-| 10 | 「ラベル付き入力行」の重複 | **共通化(要判断)** | 4箇所 | 中 |
+| 10 | 「ラベル付き入力行」の重複 | **共通化(要判断)** | 4箇所 | **実施済**(組み立てのみ。部品への統合は見送り) |
 | 11 | `view-hud-controller.ts` | **たらい回し。畳む** | 32行 | **実施済** |
 | 12 | `partFromSaveData` の8分岐 | **全腕同一。畳む** | parts.ts:79-90 | **実施済** |
 | 13 | `overviewMode` が23モジュールの署名に漏れる | **経路ごとに分ける** | 署名23 / 分岐28 | **実施済** |
@@ -319,52 +319,53 @@ typecheck にも型テストにも出ない。そこで TypeScript の AST で�
 検証: `npm run typecheck` / `npm run test` 653件 / `npm run build` 通過。
 
 ---
-## 論点5 — `hud/style/` の 22 ファイルと 2 つの結合ハブ
+## 論点5 — `hud/style/` の 22 ファイルと 2 つの結合ハブ(実施済)
 
-### 症状
+**PR #55(`a0bd179a`)で 22 → 10 枚。** 責務ゼロのハブ `panel-content-style.ts`(21行・import 14本と
+連結式1つだけ)を削除し、ぶら下がっていた 13 枚を**画面のまとまり**で畳んだ。統合先は
+`hud-root.ts` が直接連結する。
 
-`game/hud/style/` は **22ファイル 1,980行**。中身は全部 CSS のテンプレート文字列。
-組み立てはハブ2枚を通る:
-
-- `panel-content-style.ts`(21行) — **import 14本 + 連結式1つだけ。** 責務ゼロ。
-- `skeleton-style.ts`(50行) — 3つを連結 + レスポンシブの追記。半分はハブ。
-- `hud-root.ts:35` が `LAYOUT_TOKENS_STYLE + SKELETON_STYLE + PANEL_CONTENT_STYLE
-  + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE` を注入。
-
-`panel-content-style.ts` にぶら下がる 14 枚のうち **10枚が 41行以下**
-(`view-options`18 / `object-placer`20 / `result-screen`22 / `navball`23 /
-`frame-controls`28 / `stage-controls`28 / `stage-status`29 / `orbit-guide`35 /
-`pause-menu`38 / `plan-panel`40)。うち6枚は **TypeScript 側の値を1つも参照していない**
-純粋な CSS 文字列(`view-options` / `object-placer` / `orbit-guide` / `frame-controls` /
-`stage-controls` / `combat-panel-rows`)。
-
-### 診断
-
-規約 1.2「短すぎるモジュールが多数あることは、長すぎるモジュールと同格の違反」+
-「不要なたらい回しをするだけの薄すぎるラッパー」。`panel-content-style.ts` は後者そのもの。
-
-**CSS を TS の文字列で持つこと自体は論点にしない。** webpack には `css-loader` が入っているが
-`.css` ファイルは1枚も無く、トークンやブレークポイントを TS 側から差し込んでいる箇所がある
-(`marker-style` 13箇所、`map-view-style` 6箇所)。**移行するなら別の判断が要るので、ここでは
-ファイル数だけを問題にする。**
-
-### 修正
-
-`panel-content-style.ts` を消し、14枚を **画面のまとまりで4枚**へ統合する。統合先は
-`hud-root.ts` が直接連結する:
-
-| 統合先(案) | 元 | 行数 |
+| 統合先 | 元 | 行数 |
 | --- | --- | --- |
-| `panel-rows-style.ts` | combat-panel-rows / navball / predict / plan-panel | 約220 |
-| `map-panel-style.ts` | view-options / orbit-guide / object-placer / stage-controls / frame-controls | 約130 |
-| `screen-style.ts` | pause-menu / result-screen / stage-status | 約90 |
-| `settings-view-style.ts` / `help-panel-style.ts` | そのまま(167 / 146) | — |
+| `map-panel-style.ts`(新設) | plan-panel / view-options / predict / frame-controls / orbit-guide / stage-controls / object-placer | 242 |
+| `screen-style.ts`(新設) | result-screen / stage-status / pause-menu | 85 |
+| `skeleton-style.ts` | hud-layout / hud-badge を取り込む | 263 |
 
-`skeleton-style.ts` も同様に、`hud-layout-style` / `hud-badge-style` / `marker-style` を
-畳めるか見る(3枚で380行なので、統合すると1枚が430行。**500行の上限内には収まるが、
-`marker-style` はマーカー意匠という独立した関心なので残してよい**)。
+`combat-panel-rows-style.ts`(77)・`help-panel-style.ts`(146)・`settings-view-style.ts`(167)は
+単独で責務を言えるのでそのまま。`marker-style.ts`(160)も当初の見立てどおり、マーカー意匠という
+独立した関心なので `skeleton-style.ts` へ入れなかった。統合先はいずれも 500 行の基準内。
 
-**目標は 22 → 10 前後。** 0にはしない。
+**当初案の `panel-rows-style.ts`(行の語彙で切る案)は作らなかった。** predict / plan-panel /
+combat-panel-rows の行は戦闘ビューとマップビューの両方に跨っていて、「行」で切ると1枚が2画面ぶんを
+抱えることになる。切り口を画面のまとまり一本に統一した。
+
+**`navball-style.ts`(23行)は統合先へ入れず削除した。** `#navball` 要素も `.nb-*` クラスも
+`src/` `public/` のどこにも作られていない。`src/game/navball/navball.ts` は表示設定を保持する
+クラスで、DOM は `ViewOptionsPanel` に同居すると自分で書いている。`input/touch.ts` にあった
+`#navball` の上書き規則も同じ理由で消した。
+
+**CSS を TS の文字列で持つことは、当初の方針どおり論点にしていない。** 移行するなら別の判断が要る。
+
+### 挙動不変の確かめ方(同種の統合をするとき再利用できる)
+
+`hud-root.ts` が注入する CSS を連結順どおりに文字列化し、コメントと空行を除いてベースライン
+(`a2df2f29`)と差分を取った。差は **navball の 16 行が消えた**のと、**92 行が同一内容のまま
+移動した**(stage-status + pause-menu 55 行が help-panel の前へ、レスポンシブ節 37 行が marker の
+前へ)の2つだけ。
+
+移動が無害であることは、全ブロック間で「同じ `@media`・同じプロパティ・同じ詳細度」——
+つまり**ソース順でしか勝敗が決まらない規則の組**——を機械的に列挙して確認した。marker と navball、
+help-panel と stage-status は衝突0件。help-panel と pause-menu の 8 件はすべて `#hud-help ...` と
+`#hud-pause-menu ...` の対で、入れ子でない別モーダルなので同じ要素には当たらない。
+
+### その後の異動と、残っている宿題
+
+- `src/hud/` の新設(`50831e04`)で `pause-menu-style.ts` と `settings-view-style.ts` が
+  `src/hud/style/` へ抜け、`screen-style.ts` は `stage-status-style.ts` へ戻った。
+  `d2e35c30` 時点で `game/hud/style/` 9枚 + `hud/style/` 2枚。枚数の意図は保たれている。
+- `map-panel-style.ts` はパネル共通の行部品(`#hud .w-group` / `.w-toggle` / `.body-class-row`)も
+  抱えている(元 `plan-panel-style.ts` からの持ち越し)。`skeleton-style.ts` へ移すほうが素直だが、
+  カスケード位置が動くので現状維持にした。
 
 ---
 
@@ -505,42 +506,47 @@ N ≤ 300 程度と見て 4.5 万ペア × 5〜20 ns ≒ **0.2〜0.9 ms/frame**(
 
 ---
 
-## 論点10 — 「ラベル付き入力行」の重複
+## 論点10 — 「ラベル付き入力行」の重複(実施済 — 組み立てだけ寄せ、部品への統合は見送り)
 
-### 症状
+**PR #55(`a0bd179a`)で、行 div を作って先頭に `.w-group-title` の見出し span を置く手順だけを
+`hud/widgets/widget-base.ts` へ寄せた。** `buildLabeledRow(title, className = 'w-group')` と
+`buildGroupTitle(text)` を足し、pulldown / segmented-control / object-picker / predict-panel /
+orbit-guide-tab ×2 / guide-value-field ×2 / slider-field / object-placer-panel ×2 の 10 箇所から
+呼ぶようにした。`.w-group` / `.w-group-title` のクラス名を知る TS は、それを定義する
+`widget-style.ts` の隣 1 箇所になった(`grep -rn "'w-group-title'" src/ --include=*.ts` が 1 件)。
+組み上がる DOM は同じ。
 
-`w-group` + 見出し + `ValueInput`(+ `Slider`)という**同じ形の行**が、少なくとも5箇所で
-別々に組まれている。
+**`LabeledField` / `SliderField` への統合は採らなかった。** 検出時に自分で付けていた条件
+(「先に `SPEC/UI-DESIGN.md` を見て、行の見た目が『個別に調整されうる要素』でないことを確認する。
+調整されうるなら共通化しない」)に照らして調べた結果、5箇所の行は**現に別々のクラス語彙で
+別々の CSS が当たっていた**:
 
-| 場所 | 行数 | 参照 |
+| 場所 | 行 | 見出し |
 | --- | --- | --- |
-| `creative/slider-field.ts` | 149 | `object-placer-panel.ts` のみ |
-| `hud/panels/guide-value-field.ts` | 240 | 軌道ガイドのみ |
-| `hud/panels/bgm-settings-panel.ts` | 178 | `new Slider` × 2 |
-| `hud/frame/camera-frame-panel.ts` | 161 | `new Slider` × 1 |
-| `hud/orbit/orbit-analysis-tab.ts` の `ScaleField` | 33 | 高度・接近タブ(論点17 で追加) |
+| `creative/slider-field.ts` / `hud/panels/guide-value-field.ts` | `.w-group`(`gap:--space-3`・`flex-wrap`・`margin-bottom`) | `.w-group-title`(`letter-spacing:1px`・`min-width:28px`) |
+| `hud/panels/bgm-settings-panel.ts` | `.sv-volume-row` | `.sv-label`(`width:4em`) |
+| `hud/frame/camera-frame-panel.ts` | `.camera-fov-control` | `.camera-control-label` |
+| `hud/orbit/orbit-analysis-tab.ts` の `ScaleField` | `.orbit-analysis-scale`(`gap:--space-2`) | `.orbit-analysis-scale-label` |
 
-`new ValueInput(` は 10 モジュールに散っている。
+子要素の順序も違う(slider-field は 入力欄→スライダー列、guide-value-field は スライダー列→入力欄。
+5箇所のうち slider-field だけが `.slider-field` ラッパと `.slider-ticks` を持つ)。1つの部品へ
+寄せれば必ず見た目が動くので、規約 1.5 に従って一般化しなかった。
 
-### 診断
+**つまり誤っていたのは診断のほうの前提** —「slider-field と bgm-settings-panel /
+camera-frame-panel の行は**同じ見た目であるべき**(UI-DESIGN の一貫性)だから共通化の対象」と
+していたが、**現状は同じ見た目ではない。** 揃えるなら共通化ではなく `SPEC/UI-DESIGN.md` 側の決定が
+先に要る。`guide-value-field` を「`ValueMapping` を持つので別物」と見た判定のほうは合っていた。
 
-規約 1.4「類似した形の式、類似した形の処理が異なるモジュールに分散」。
-ただし**規約 1.5 の分かれ目(「共通化した側が変更されたとき、参照側の挙動も変更されるべきか」)
-を先に決めないと一般化してよいか判定できない。**
+`creative/slider-field.ts` の `hud/widgets/` への移動も同じ理由で見送った — CSS が
+`#hud-object-placer .slider-field ...` と消費側 ID に固定されていて、公開境界へ置いても
+物体配置パネルの中でしか成立しない。
 
-- `slider-field` と `bgm-settings-panel` / `camera-frame-panel` の行は
-  **同じ見た目であるべき**(UI-DESIGN の一貫性)なので共通化の対象。
-- `guide-value-field` は `ValueMapping`(対数振幅・位相ラジアン・族範囲の写像)を持つ
-  ので**別物**。共通の行部品の上に写像を載せる形になら分けられる。
+### 残っている宿題
 
-### 修正
-
-`hud/widgets/` は規約 1.12 が認める「公開境界として意図的に設計したディレクトリ」なので、
-そこへ `LabeledField` / `SliderField` を置く。`creative/slider-field.ts` は移動して消える。
-`guide-value-field.ts` は `ValueMapping` を残したまま、行の組み立てだけ差し替える。
-
-**先に SPEC/UI-DESIGN.md を見て、行の見た目が「個別に調整されうる要素」でないことを
-確認する。** 調整されうるなら共通化しない(規約 1.5)。
+`plan/plan-panel.ts` の `buildNumericInput` と `hud/windows/pause-menu.ts` は `.row` + `.k` +
+インライン `style` という**4つ目の行の語彙**を持ち、規約 1.13 のリテラル直書きにも触れる。
+見た目が変わるので今回は触れていない。行の語彙を減らすなら、まず `SPEC/UI-DESIGN.md` で
+「ラベル付き入力行は何種類あるべきか」を決めるところから。
 
 ---
 
@@ -920,8 +926,8 @@ RCS燃料の「満タン補給 / 均等」ボタンが「均等」に。
 
 ## 実施順序
 
-**実施済: 論点1 / 2 / 3 / 4 / 6 / 7 / 8 / 9 / 11 / 12 / 13 / 15 / 16 / 17 / 18 / 19 / 21。論点20 は
-実測して「残す」で決着。** 残りは 5 / 10 / 14 / 22 / 23。
+**実施済: 論点1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9 / 10 / 11 / 12 / 13 / 15 / 16 / 17 / 18 / 19 / 21。
+論点20 は実測して「残す」で決着。** 残りは 14 / 22 / 23。
 
 1. **論点1 の宿題 (b)** — `PhysicalObjectListOrder.matches` の `instanceof`。論点18 で (a) を
    片付けたときに残した唯一の型判別で、`PhysicalObjectListFilter` と `ObjectPickerGenre` の
@@ -932,12 +938,11 @@ RCS燃料の「満タン補給 / 均等」ボタンが「均等」に。
    同時に決めるはずだった「`object-windows.ts` を 400 行未満へ割る」は先に片付いた —
    マップ専用のヒットテストと軌道物体一覧を `map-picking.ts` へ出して 407 行になり、
    `ObjectCommands` の実装は台帳へのコールバックを増やさないためウィンドウ台帳と同居のまま。
-3. **論点5**(`hud/style/` 22→10)/ **論点10**(ラベル付き入力行)— 独立。手が空いたときに。
-4. **論点22**(基地パネル状態の三重持ち)— 巻き戻しが片側しか通らないので、実挙動に効く。
+3. **論点22**(基地パネル状態の三重持ち)— 巻き戻しが片側しか通らないので、実挙動に効く。
    `SPEC/UI-DESIGN.md` の開閉規則を読んでから。
-5. **論点23**(回転追従の散らばり)— 表示名の食い違いが利用者から見えるので、まず語彙を
+4. **論点23**(回転追従の散らばり)— 表示名の食い違いが利用者から見えるので、まず語彙を
    `SPEC/` で決める。実装の集約はその後。
-6. **論点14** — 方針をユーザーへ問うてから。`SPEC/` の「未確定の案」に、エンティティ種別が
+5. **論点14** — 方針をユーザーへ問うてから。`SPEC/` の「未確定の案」に、エンティティ種別が
    今後増えるかの記述があるかを先に見る。
 
 各段階の検証は変更箇所に対応させる(`npm run typecheck` は常に。`src/game/` を触ったら
