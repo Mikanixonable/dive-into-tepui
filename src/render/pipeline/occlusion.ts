@@ -57,9 +57,12 @@ export class OcclusionPass {
     // 環の項を含める/含めないの 2 枚を、同じ位置と法線から組む。
     const build = (rings: boolean): THREE.MeshBasicNodeMaterial => {
       const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
-      material.colorNode = vec4(
-        vec3(sunOcclusion.transmittance(worldPos, { rings, meshNormal, cumulusFootprint })), 1,
-      );
+      let transmittance = sunOcclusion.occluderTransmittance(worldPos);
+      if (rings) transmittance = transmittance.mul(sunOcclusion.ringTransmittance(worldPos));
+      transmittance = transmittance
+        .mul(sunOcclusion.cumulusTransmittance(worldPos, cumulusFootprint))
+        .mul(sunOcclusion.meshTransmittance(worldPos, meshNormal));
+      material.colorNode = vec4(vec3(transmittance), 1);
       return material;
     };
     this.spheresOnlyMaterial = build(false);
@@ -78,7 +81,7 @@ export class OcclusionPass {
     this.viewToWorld.value.copy(camera.matrixWorld);
     // 射影行列の [1][1] は半画角の正接の逆数なので、画面の高さで割ると 1 画素の張る角になる。
     this.pixelAngle.value = 2 / (camera.projectionMatrix.elements[5]! * height);
-    this.quad.material = this.sunOcclusion.hasActiveRings()
+    this.quad.material = this.sunOcclusion.hasRingShadow()
       ? this.withRingsMaterial : this.spheresOnlyMaterial;
 
     this.renderer.setRenderTarget(this.target);
