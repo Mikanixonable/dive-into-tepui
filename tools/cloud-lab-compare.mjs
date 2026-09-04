@@ -1,15 +1,18 @@
 // 雲の実験環境の生成と実写(8k_clouds)の統計比較。ヘッドレス Chrome で .cloud-lab/ を開き、
-// 全球と地域別 cap の両面を撮って、帯状平均・階調・行方向スペクトル・構造の異方性・地形との関係・
-// 雲頂の分布の表を出す。
+// 全球と地域別 cap の両面を撮って、帯状平均・階調・圧縮の分位・行方向スペクトル・構造の異方性・
+// 地形との関係・雲頂の分布・台風の径方向プロファイルの表を出す。
 // 実写は低い厚い雲と高層の巻雲が 1 枚に重なっているので、`npm run cloud-lab:separate` が
 // 分離した成分(src/assets の仮テクスチャと .cloud-lab/separated/)を読み、撮影の面(全球の
 // 正距円筒と cap の正射影)へ再標本化して成分ごとに比べる。**先に separate を実行しておく。**
 // 再標本化した実写厚・実写薄も画像で .cloud-lab/compare/ に残る。
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+// 台風は 8k_clouds に写っていないので、`npm run cloud-lab:reference` が取り込んだ Worldview の実写
+// (.cloud-lab/reference/)を cap の面へ再標本化して比べる。無ければその節だけ飛ばす。
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
 import { cropField, cropLatLonBox, decodeChannelPng, decodeRedPng, fieldToGrayPng } from './gray-image.mjs';
+import { decodePng } from './png.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.cloud-lab');
@@ -25,18 +28,26 @@ const CAP_W = 512;
 const CAP_BOX = 362;
 // cap の照準。半径 20° の円板は 8.5 km/texel で、実写(赤道 4.9 km/texel)とほぼ同じ細かさになる。
 const CAP_RADIUS = 20;
-// 地域別 cap。数値目標を当てるのは前の 6 つで、台風は 8k_clouds に写っていないので目視で見る。
-// coreRadiusKm は、雲頂を内側と外側に分けて出す半径 [km](台風の中心濃密雲域)。
+// 地域別 cap。数値目標を当てるのは前の 6 つで、台風は 8k_clouds に写っていないので Worldview の実写と
+// 目視で見る。coreRadiusKm は、雲頂を内側と外側に分けて出す半径 [km](台風の中心濃密雲域)。
+// upperReadsOutside は、上層の移流が焼いた cap の外を読む地域 — 薄い雲と合成の統計が参考値にしかならない。
 const REGIONS = [
-  { name: 'npac-storm', label: '北太平洋の暴風帯(45N 170W)', latitude: 45, longitude: -170, coreRadiusKm: null },
-  { name: 'natl-storm', label: '北大西洋の暴風帯(50N 30W)', latitude: 50, longitude: -30, coreRadiusKm: null },
-  { name: 'so-ocean', label: '南大洋(55S 100E)', latitude: -55, longitude: 100, coreRadiusKm: null },
-  { name: 'sepac-subtrop', label: '南東太平洋の亜熱帯高圧帯(20S 85W)', latitude: -20, longitude: -85, coreRadiusKm: null },
-  { name: 'sahara', label: 'サハラ(22N 10E)', latitude: 22, longitude: 10, coreRadiusKm: null },
-  { name: 'itcz-atl', label: '大西洋の収束帯(5N 25W)', latitude: 5, longitude: -25, coreRadiusKm: null },
-  { name: 'typhoon', label: '台風(15N 140E・数値目標外)', latitude: 15, longitude: 140, coreRadiusKm: 250 },
+  { name: 'npac-storm', label: '北太平洋の暴風帯(45N 170W)', latitude: 45, longitude: -170,
+    coreRadiusKm: null, upperReadsOutside: true },
+  { name: 'natl-storm', label: '北大西洋の暴風帯(50N 30W)', latitude: 50, longitude: -30,
+    coreRadiusKm: null, upperReadsOutside: true },
+  { name: 'so-ocean', label: '南大洋(55S 100E)', latitude: -55, longitude: 100,
+    coreRadiusKm: null, upperReadsOutside: true },
+  { name: 'sepac-subtrop', label: '南東太平洋の亜熱帯高圧帯(20S 85W)', latitude: -20, longitude: -85,
+    coreRadiusKm: null, upperReadsOutside: false },
+  { name: 'sahara', label: 'サハラ(22N 10E)', latitude: 22, longitude: 10,
+    coreRadiusKm: null, upperReadsOutside: false },
+  { name: 'itcz-atl', label: '大西洋の収束帯(5N 25W)', latitude: 5, longitude: -25,
+    coreRadiusKm: null, upperReadsOutside: false },
+  { name: 'typhoon', label: '台風(15N 140E・数値目標外)', latitude: 15, longitude: 140,
+    coreRadiusKm: 250, upperReadsOutside: false },
 ];
-const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop', 'wind'];
+const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop', 'wind', 'front'];
 
 // 風ビューの B が張る速さ [m/s]。tools/cloud-lab/views.ts の WIND_SPAN と対。
 const WIND_SPAN = 45;
@@ -46,20 +57,45 @@ const TYPHOON_LATITUDE = 15;
 const TYPHOON_LONGITUDE_AT_0 = 140;
 const TYPHOON_EXCLUDE_DEG = 10;
 
+// 前線ビューの表示値が張る、圧縮の 1 を超えた分。tools/cloud-lab/views.ts の FRONT_SPAN と対。
+const FRONT_SPAN = 8;
+// 中緯度の低気圧の配置。時刻 0 の中心を CPU で引き直すためのもので、同時に持つ数、1 つの寿命 [s]、
+// 東進の速さ [m/s]、中心の緯度の範囲 [°]。src/render/cloud/cyclones.ts の同名の定数と対。
+const LOW_COUNT = 10;
+const LOW_LIFETIME = 5 * 86400;
+const LOW_DRIFT = 12;
+const LOW_LATITUDE_MIN = 35;
+const LOW_LATITUDE_SPAN = 25;
+// 低気圧の周りで圧縮を読む範囲 [km]。背景はどの中心からも BACKGROUND_KM より遠い texel、環は最盛期
+// (深さの係数 ≥ RING_MATURITY)の中心から RING_INNER_KM..RING_OUTER_KM の texel。
+const BACKGROUND_KM = 2500;
+const RING_INNER_KM = 500;
+const RING_OUTER_KM = 2000;
+const RING_MATURITY = 0.5;
+
 // 「のっぺり」の判定。この範囲の値を持ち、周り FLATNESS_WINDOW texel の標準偏差がこれ未満の
 // texel を、階調も起伏も持たない平坦な灰色と見なす。窓は全球面の 5 texel ≈ 200 km。
 const FLAT_VALUE_MIN = 0.06;
 const FLAT_VALUE_MAX = 0.25;
 const FLAT_DEVIATION = 0.02;
 const FLATNESS_WINDOW = 5;
-// 晴れと見なす値の上限(階調の表の <0.06 と同じ)。
+// 階調の刻み。これを境に 10 段へ分けて割合を数える。
+const TONE_LEVELS = [0.03, 0.06, 0.1, 0.15, 0.25, 0.4, 0.6, 0.8, 0.94];
+// 晴れと見なす値の上限と、真っ白と見なす値の下限。どちらも TONE_LEVELS の刻み。
 const CLEAR_LEVEL = 0.06;
+const WHITE_LEVEL = 0.94;
+// 局所コントラストを取る窓 [texel]。周りこの広さの標準偏差を全 texel で平均する。
+const CONTRAST_WINDOW = 5;
 
-const CAP_KM_PER_PX = (2 * Math.sin((CAP_RADIUS * Math.PI) / 180) * 6371) / CAP_W;
+// 地球の平均半径 [km]。
+const EARTH_RADIUS_KM = 6371;
+const CAP_KM_PER_PX = (2 * Math.sin((CAP_RADIUS * Math.PI) / 180) * EARTH_RADIUS_KM) / CAP_W;
 // 全球面の 1 texel が張る地表距離 [km]。経度方向は緯度の余弦で縮む。
 const GLOBE_KM_PER_PX = 40075 / GLOBE_W;
 // 横の縮みを補正する緯度の上限 [°]。極では補正が発散するので、判定に使わない緯度で止める。
 const SCALE_LATITUDE_LIMIT = 80;
+// 正距円筒の全球が張る範囲 [°]。
+const GLOBE_EXTENT = { north: 90, south: -90, west: -180, east: 180 };
 
 // 場の G(雲頂高度)が張る高さ [m]。tools/cloud-lab/views.ts の CLOUD_TOP_SPAN と対。
 const CLOUD_TOP_SPAN = 15000;
@@ -69,6 +105,14 @@ const CLOUD_TOP_COVERAGE = 0.3;
 // 超えているものを平らな天蓋と見なす。
 const ANVIL_HEIGHT = 9000;
 const ANVIL_RADIUS_KM = 100;
+
+// 台風の径方向プロファイル。中心からの距離を PROFILE_BIN_KM 刻みで PROFILE_MAX_KM まで方位平均する。
+const PROFILE_BIN_KM = 50;
+const PROFILE_MAX_KM = 1000;
+// 中間調と見なす被覆率の範囲。台風の中心濃密雲域の外(PROFILE_MAX_KM まで)で、この範囲の texel の
+// 割合を出す。
+const MID_TONE_MIN = 0.06;
+const MID_TONE_MAX = 0.25;
 
 // 構造テンソルを取る尺度 [km]。全球は総観規模から上、cap は積雲の粒から総観規模まで。
 const GLOBE_SCALES_KM = [100, 200, 400, 800];
@@ -147,9 +191,10 @@ function sampleBilinear(field, u, v) {
     + (field.data[row1 + xa] * (1 - fx) + field.data[row1 + xb] * fx) * fy;
 }
 
-// cap の面(正射影)の中央 362×362 を、原寸の正距円筒から再標本化する。式は
+// cap の面(正射影)の中央 362×362 を、緯度 extent.north..south・経度 extent.west..east [°] を張る
+// 正距円筒の場から再標本化する。cap は extent の内側に収まっていること。式は
 // src/render/cloud/field-projection.ts の OrthographicCap / equirectUvFromDirection と対。
-function resampleCap(field, latitudeDeg, longitudeDeg) {
+function resampleCap(field, extent, latitudeDeg, longitudeDeg) {
   const latitude = (latitudeDeg * Math.PI) / 180;
   const longitude = (longitudeDeg * Math.PI) / 180;
   const cosLat = Math.cos(latitude);
@@ -174,8 +219,10 @@ function resampleCap(field, latitudeDeg, longitudeDeg) {
         east[1] * px + north[1] * py + center[1] * along,
         east[2] * px + north[2] * py + center[2] * along,
       ];
-      const eu = Math.atan2(dir[0], dir[2]) / (2 * Math.PI) + 0.5;
-      const ev = 0.5 - Math.asin(Math.min(1, Math.max(-1, dir[1]))) / Math.PI;
+      const dirLatitude = Math.asin(Math.min(1, Math.max(-1, dir[1]))) * (180 / Math.PI);
+      const dirLongitude = Math.atan2(dir[0], dir[2]) * (180 / Math.PI);
+      const eu = (dirLongitude - extent.west) / (extent.east - extent.west);
+      const ev = (extent.north - dirLatitude) / (extent.north - extent.south);
       out[by * CAP_BOX + bx] = sampleBilinear(field, eu * field.width - 0.5, ev * field.height - 0.5);
     }
   }
@@ -187,26 +234,30 @@ function saveGray(name, field) {
   writeFileSync(path.join(outDir, name), fieldToGrayPng(field));
 }
 
-// 平均と、両端(<0.06 / >0.94)・中間調の割合。
+// 平均と、TONE_LEVELS で区切った段ごとの割合 shares(下から順)、その両端 — 晴れ(< CLEAR_LEVEL)の
+// 割合 low と真っ白(> WHITE_LEVEL)の割合 high。
 function toneStats(field) {
-  let low = 0;
-  let mid = 0;
-  let high = 0;
+  const counts = new Float64Array(TONE_LEVELS.length + 1);
   let sum = 0;
   for (const v of field.data) {
-    if (v < CLEAR_LEVEL) low++;
-    else if (v > 0.94) high++;
-    else mid++;
+    let bin = 0;
+    while (bin < TONE_LEVELS.length && v >= TONE_LEVELS[bin]) bin++;
+    counts[bin]++;
     sum += v;
   }
   const n = field.data.length;
-  return { low: low / n, mid: mid / n, high: high / n, mean: sum / n };
+  const shares = Array.from(counts, (count) => count / n);
+  const clearBins = TONE_LEVELS.indexOf(CLEAR_LEVEL) + 1;
+  return {
+    shares,
+    low: shares.slice(0, clearBins).reduce((a, b) => a + b, 0),
+    high: shares[TONE_LEVELS.indexOf(WHITE_LEVEL) + 1],
+    mean: sum / n,
+  };
 }
 
-// 平坦な灰色の割合。中間の暗い階調(FLAT_VALUE_MIN..FLAT_VALUE_MAX)にいて、周り
-// FLATNESS_WINDOW² の標準偏差が FLAT_DEVIATION 未満の texel の割合。窓の統計は積算表から
-// 引くので、窓の広さに依らず一定の手数で済む。
-function flatnessOf(field) {
+// 各 texel の周り window² の標準偏差。窓の統計は積算表から引くので、窓の広さに依らず一定の手数で済む。
+function windowDeviations(field, window) {
   const { width, height, data } = field;
   const stride = width + 1;
   const sum = new Float64Array(stride * (height + 1));
@@ -221,12 +272,10 @@ function flatnessOf(field) {
   }
   const boxSum = (table, x0, y0, x1, y1) => table[(y1 + 1) * stride + x1 + 1] - table[y0 * stride + x1 + 1]
     - table[(y1 + 1) * stride + x0] + table[y0 * stride + x0];
-  const radius = (FLATNESS_WINDOW - 1) / 2;
-  let flat = 0;
+  const radius = (window - 1) / 2;
+  const out = new Float32Array(data.length);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const v = data[y * width + x];
-      if (v < FLAT_VALUE_MIN || v > FLAT_VALUE_MAX) continue;
       const x0 = Math.max(0, x - radius);
       const y0 = Math.max(0, y - radius);
       const x1 = Math.min(width - 1, x + radius);
@@ -234,10 +283,50 @@ function flatnessOf(field) {
       const count = (x1 - x0 + 1) * (y1 - y0 + 1);
       const mean = boxSum(sum, x0, y0, x1, y1) / count;
       const variance = boxSum(sumSquared, x0, y0, x1, y1) / count - mean * mean;
-      if (Math.sqrt(Math.max(variance, 0)) < FLAT_DEVIATION) flat++;
+      out[y * width + x] = Math.sqrt(Math.max(variance, 0));
     }
   }
-  return flat / data.length;
+  return out;
+}
+
+// 平坦な灰色の割合。中間の暗い階調(FLAT_VALUE_MIN..FLAT_VALUE_MAX)にいて、周り
+// FLATNESS_WINDOW² の標準偏差が FLAT_DEVIATION 未満の texel の割合。
+function flatnessOf(field) {
+  const deviations = windowDeviations(field, FLATNESS_WINDOW);
+  let flat = 0;
+  for (let i = 0; i < field.data.length; i++) {
+    const v = field.data[i];
+    if (v >= FLAT_VALUE_MIN && v <= FLAT_VALUE_MAX && deviations[i] < FLAT_DEVIATION) flat++;
+  }
+  return flat / field.data.length;
+}
+
+// 局所コントラスト: 周り CONTRAST_WINDOW² の標準偏差の全 texel 平均。
+function localContrastOf(field) {
+  const deviations = windowDeviations(field, CONTRAST_WINDOW);
+  let sum = 0;
+  for (const deviation of deviations) sum += deviation;
+  return sum / deviations.length;
+}
+
+// 全球面の行 y・列 x の texel の中心の緯度・経度 [rad]。
+function latitudeOfRow(y, height) {
+  return (0.5 - (y + 0.5) / height) * Math.PI;
+}
+function longitudeOfColumn(x, width) {
+  return ((x + 0.5) / width - 0.5) * 2 * Math.PI;
+}
+
+// 2 点(緯度・経度 [rad])の中心角 [rad]。
+function centralAngle(latitude, longitude, otherLatitude, otherLongitude) {
+  const cosAngle = Math.sin(latitude) * Math.sin(otherLatitude)
+    + Math.cos(latitude) * Math.cos(otherLatitude) * Math.cos(longitude - otherLongitude);
+  return Math.acos(Math.min(1, Math.max(-1, cosAngle)));
+}
+
+// 昇順に並んだ値の fraction 分位。空なら 0。
+function quantile(sorted, fraction) {
+  return sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
 }
 
 // 全球面の風の速さ [m/s] の最大と 99 パーセンタイル。台風の中心から TYPHOON_EXCLUDE_DEG 以内は
@@ -245,20 +334,18 @@ function flatnessOf(field) {
 function windAnomaly(speed) {
   const centerLatitude = (TYPHOON_LATITUDE * Math.PI) / 180;
   const centerLongitude = (TYPHOON_LONGITUDE_AT_0 * Math.PI) / 180;
-  const cosExclude = Math.cos((TYPHOON_EXCLUDE_DEG * Math.PI) / 180);
+  const exclude = (TYPHOON_EXCLUDE_DEG * Math.PI) / 180;
   const speeds = [];
   for (let y = 0; y < speed.height; y++) {
-    const latitude = ((0.5 - (y + 0.5) / speed.height) * Math.PI);
+    const latitude = latitudeOfRow(y, speed.height);
     for (let x = 0; x < speed.width; x++) {
-      const longitude = ((x + 0.5) / speed.width - 0.5) * 2 * Math.PI;
-      const cosAngle = Math.sin(latitude) * Math.sin(centerLatitude)
-        + Math.cos(latitude) * Math.cos(centerLatitude) * Math.cos(longitude - centerLongitude);
-      if (cosAngle > cosExclude) continue;
+      const longitude = longitudeOfColumn(x, speed.width);
+      if (centralAngle(latitude, longitude, centerLatitude, centerLongitude) < exclude) continue;
       speeds.push(speed.data[y * speed.width + x] * WIND_SPAN);
     }
   }
   speeds.sort((a, b) => a - b);
-  return { max: speeds[speeds.length - 1], p99: speeds[Math.floor(speeds.length * 0.99)] };
+  return { max: speeds[speeds.length - 1], p99: quantile(speeds, 0.99) };
 }
 
 // 行方向の 1 次元パワースペクトルをオクターブ束(波数 1-2, 2-4, ...)で。行は 1 本おきに間引く。
@@ -405,12 +492,11 @@ function cloudTopStats(top, coverage, kmPerPx, mask) {
     }
   }
   tops.sort((a, b) => a - b);
-  const quantile = (fraction) => (tops.length === 0 ? 0 : tops[Math.min(tops.length - 1, Math.floor(tops.length * fraction))]);
   const share = (test) => tops.filter(test).length / Math.max(1, tops.length);
   return {
     area: tops.length / Math.max(1, considered),
-    median: quantile(0.5),
-    iqr: quantile(0.75) - quantile(0.25),
+    median: quantile(tops, 0.5),
+    iqr: quantile(tops, 0.75) - quantile(tops, 0.25),
     below3: share((v) => v <= 3000),
     middle: share((v) => v > 3000 && v <= 7000),
     above9: share((v) => v > 9000),
@@ -431,6 +517,134 @@ function printSpectrumTable(header, wavelengthOf, reference, generated, referenc
       `${fine.toFixed(0).padStart(5)}-${coarse.toFixed(0).padStart(5)}  ${reference[i].value.toExponential(2)}  `
       + `${generated[i].value.toExponential(2)}  ${(generated[i].value / reference[i].value).toFixed(3)}`);
   }
+}
+
+// 階調の表。rows は { label, field }。TONE_LEVELS で区切った段ごとの割合 [%]、平均、局所コントラスト、
+// 晴れ(< CLEAR_LEVEL)と真っ白(> WHITE_LEVEL)の割合 [%] を場ごとに 1 行で出す。
+function printToneTable(header, rows) {
+  console.log(header);
+  const marks = TONE_LEVELS.map((level) => level.toFixed(2).slice(1));
+  const bins = [`<${marks[0]}`, ...marks.slice(0, -1).map((mark, i) => `${mark}-${marks[i + 1]}`), `>${marks.at(-1)}`];
+  console.log(`${'場'.padEnd(12)}  ${bins.map((bin) => bin.padStart(8)).join('')}`
+    + `   平均  局所コントラスト  晴れ<${CLEAR_LEVEL}  >${WHITE_LEVEL}`);
+  for (const { label, field } of rows) {
+    const tone = toneStats(field);
+    console.log(`${label.padEnd(12)}  ${tone.shares.map((share) => (share * 100).toFixed(1).padStart(8)).join('')}`
+      + `  ${tone.mean.toFixed(3)}  ${localContrastOf(field).toFixed(4).padStart(14)}`
+      + `  ${(tone.low * 100).toFixed(1).padStart(8)}%  ${(tone.high * 100).toFixed(1).padStart(5)}%`);
+  }
+}
+
+// 整数から 0..1 の決定的な擬似乱数。src/render/cloud/cyclones.ts の hash と対。
+function hash(n) {
+  const x = Math.sin(n * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+// 時刻 0 の中緯度の低気圧。番号 index、中心の緯度・経度 [rad]、寿命の中の位置 life(0 で生まれ、1 で
+// 消える)、深さの係数 depth(最盛期で 1)。配置の式は src/render/cloud/cyclones.ts の
+// Cyclones.syncTime と対。
+function lowCentersAtZero() {
+  return Array.from({ length: LOW_COUNT }, (_, index) => {
+    const life = index / LOW_COUNT;
+    const hemisphere = index % 2 === 0 ? 1 : -1;
+    const latitude = (hemisphere * (LOW_LATITUDE_MIN + hash(index) * LOW_LATITUDE_SPAN) * Math.PI) / 180;
+    const longitude = hash(index + 0.5) * 2 * Math.PI
+      + (LOW_DRIFT / (EARTH_RADIUS_KM * 1e3 * Math.cos(latitude))) * life * LOW_LIFETIME;
+    return { index, latitude, longitude, life, depth: Math.sin(Math.PI * life) };
+  });
+}
+
+// 帯(緯度 north..south [°])の圧縮を昇順の 3 組に分ける。all は帯の全 texel、background はどの
+// 低気圧の中心からも BACKGROUND_KM より遠い texel、ring は最盛期(depth ≥ RING_MATURITY)の中心から
+// RING_INNER_KM..RING_OUTER_KM の texel。
+function compressionInBand(compression, band, lows) {
+  const { width, height, data } = compression;
+  const mature = lows.filter((low) => low.depth >= RING_MATURITY);
+  const all = [];
+  const background = [];
+  const ring = [];
+  for (let y = rowAtLatitude(band.north); y < rowAtLatitude(band.south); y++) {
+    const latitude = latitudeOfRow(y, height);
+    for (let x = 0; x < width; x++) {
+      const longitude = longitudeOfColumn(x, width);
+      const distanceTo = (low) => centralAngle(latitude, longitude, low.latitude, low.longitude) * EARTH_RADIUS_KM;
+      const inRing = (low) => {
+        const km = distanceTo(low);
+        return km >= RING_INNER_KM && km <= RING_OUTER_KM;
+      };
+      const v = data[y * width + x];
+      all.push(v);
+      if (lows.every((low) => distanceTo(low) > BACKGROUND_KM)) background.push(v);
+      if (mature.some(inRing)) ring.push(v);
+    }
+  }
+  const ascending = (values) => values.sort((a, b) => a - b);
+  return { all: ascending(all), background: ascending(background), ring: ascending(ring) };
+}
+
+// 場の中心からの距離を PROFILE_BIN_KM 刻みで PROFILE_MAX_KM まで方位平均した値の列(全 texel の平均)。
+function radialProfile(field, kmPerPx) {
+  const bins = PROFILE_MAX_KM / PROFILE_BIN_KM;
+  const sums = new Float64Array(bins);
+  const counts = new Float64Array(bins);
+  const centerX = (field.width - 1) / 2;
+  const centerY = (field.height - 1) / 2;
+  for (let y = 0; y < field.height; y++) {
+    for (let x = 0; x < field.width; x++) {
+      const bin = Math.floor((Math.hypot(x - centerX, y - centerY) * kmPerPx) / PROFILE_BIN_KM);
+      if (bin >= bins) continue;
+      sums[bin] += field.data[y * field.width + x];
+      counts[bin]++;
+    }
+  }
+  return Array.from(sums, (sum, bin) => sum / Math.max(1, counts[bin]));
+}
+
+// 場の中心から innerKm..outerKm [km] の texel のうち、値が min..max のものの割合。
+function annulusShare(field, kmPerPx, innerKm, outerKm, min, max) {
+  const centerX = (field.width - 1) / 2;
+  const centerY = (field.height - 1) / 2;
+  let inside = 0;
+  let matched = 0;
+  for (let y = 0; y < field.height; y++) {
+    for (let x = 0; x < field.width; x++) {
+      const km = Math.hypot(x - centerX, y - centerY) * kmPerPx;
+      if (km < innerKm || km > outerKm) continue;
+      inside++;
+      const v = field.data[y * field.width + x];
+      if (v >= min && v <= max) matched++;
+    }
+  }
+  return matched / Math.max(1, inside);
+}
+
+// 径方向プロファイルを刻みごとに並べる。columns は { label, values, digits }。
+function printRadialTable(header, columns) {
+  console.log(header);
+  console.log(`距離 [km]   ${columns.map((column) => column.label.padStart(8)).join('  ')}`);
+  for (let bin = 0; bin < PROFILE_MAX_KM / PROFILE_BIN_KM; bin++) {
+    const cells = columns.map((column) => column.values[bin].toFixed(column.digits).padStart(8));
+    const range = `${String(bin * PROFILE_BIN_KM).padStart(4)}-${String((bin + 1) * PROFILE_BIN_KM).padStart(4)}`;
+    console.log(`${range}   ${cells.join('  ')}`);
+  }
+}
+
+// sRGB の 8bit 値 → 線形の 0..1。
+function linearOf(srgb) {
+  const c = srgb / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+// 8bit・非インターレースの RGB / RGBA の PNG を、線形化した R・G・B の平均(輝度 0..1)の場で返す。
+function decodeLuminancePng(png) {
+  const { width, height, channels, data } = decodePng(png);
+  const out = new Float32Array(width * height);
+  for (let i = 0; i < width * height; i++) {
+    const p = i * channels;
+    out[i] = (linearOf(data[p]) + linearOf(data[p + 1]) + linearOf(data[p + 2])) / 3;
+  }
+  return { width, height, data: out };
 }
 
 async function main() {
@@ -509,8 +723,8 @@ async function main() {
   const caps = new Map();
   const capTops = new Map();
   for (const region of REGIONS) {
-    const thick = resampleCap(separatedThick, region.latitude, region.longitude);
-    const veil = resampleCap(separatedVeil, region.latitude, region.longitude);
+    const thick = resampleCap(separatedThick, GLOBE_EXTENT, region.latitude, region.longitude);
+    const veil = resampleCap(separatedVeil, GLOBE_EXTENT, region.latitude, region.longitude);
     saveGray(`${region.name}-thick.png`, thick);
     saveGray(`${region.name}-veil.png`, veil);
     caps.set(region.name, {
@@ -536,15 +750,13 @@ async function main() {
       + `${rowMeans.composite.toFixed(3)}  ${(rowMeans.coverage / Math.max(1e-6, rowMeans.thick)).toFixed(2)}`);
   }
 
-  console.log('\n=== 階調(全球面・±60°): <0.06 / 中間 / >0.94 / 平均 ===');
   const y60 = rowAtLatitude(60);
   const bandHeight = rowAtLatitude(-60) - y60;
-  const TONE_FIELDS = [['実写計', 'photo'], ['実写厚', 'thick'], ['実写薄', 'veil'],
-    ['合成', 'composite'], ['被覆率', 'coverage'], ['薄い雲(輝度)', 'translucent']];
-  for (const [label, key] of TONE_FIELDS) {
-    const t = toneStats(cropField(globe[key], 0, y60, GLOBE_W, bandHeight));
-    console.log(`${label.padEnd(6)}: ${(t.low * 100).toFixed(1)}% / ${(t.mid * 100).toFixed(1)}% / ${(t.high * 100).toFixed(1)}% / ${t.mean.toFixed(3)}`);
-  }
+  const TONE_FIELDS = [['実写計', 'photo'], ['合成', 'composite'], ['実写厚', 'thick'],
+    ['被覆率', 'coverage'], ['実写薄', 'veil'], ['薄い雲(輝度)', 'translucent']];
+  printToneTable(
+    `\n=== 階調(全球面・±60°): 段ごとの割合 [%]・平均・局所コントラスト(${CONTRAST_WINDOW}×${CONTRAST_WINDOW} texel の標準偏差の平均)・晴れ・真っ白 ===`,
+    TONE_FIELDS.map(([label, key]) => ({ label, field: cropField(globe[key], 0, y60, GLOBE_W, bandHeight) })));
 
   console.log('\n=== のっぺり率(全球面・±60°): 0.06〜0.25 かつ 5×5 texel の標準偏差 < 0.02 ===');
   for (const [label, key] of [['実写計', 'photo'], ['実写厚', 'thick'], ['合成', 'composite'], ['被覆率', 'coverage']]) {
@@ -555,6 +767,29 @@ async function main() {
   const wind = windAnomaly(windSpeed);
   console.log(`最大 ${wind.max.toFixed(1)} m/s   99 パーセンタイル ${wind.p99.toFixed(1)} m/s`);
 
+  console.log('\n=== 圧縮の分位(全球面・前線ビュー、低気圧の帯・時刻 0) ===');
+  // 前線ビューの表示値は、圧縮の 1 を超えた分を FRONT_SPAN で割ったもの。
+  const front = globeOf('front');
+  const compression = {
+    width: front.width, height: front.height, data: Float32Array.from(front.data, (v) => v * FRONT_SPAN + 1),
+  };
+  const lows = lowCentersAtZero();
+  console.log('低気圧    緯度      経度   寿命  深さの係数');
+  for (const low of lows) {
+    const longitudeDeg = ((((low.longitude * 180) / Math.PI + 180) % 360) + 360) % 360 - 180;
+    console.log(`${String(low.index).padStart(4)}   ${((low.latitude * 180) / Math.PI).toFixed(1).padStart(6)}°  `
+      + `${longitudeDeg.toFixed(1).padStart(6)}°  ${low.life.toFixed(1)}   ${low.depth.toFixed(2)}`);
+  }
+  console.log(`帯        中央値   90%    99%   背景 90%(中心から >${BACKGROUND_KM} km)`
+    + `  環の中央値  環 90%(最盛期の中心から ${RING_INNER_KM}-${RING_OUTER_KM} km)`);
+  // 低気圧が置かれる緯度の帯だけを見る。
+  for (const band of BANDS.filter((band) => Math.min(Math.abs(band.north), Math.abs(band.south)) >= LOW_LATITUDE_MIN)) {
+    const { all, background, ring } = compressionInBand(compression, band, lows);
+    console.log(`${band.label}   ${quantile(all, 0.5).toFixed(2)}  ${quantile(all, 0.9).toFixed(2)}`
+      + `  ${quantile(all, 0.99).toFixed(2)}  ${quantile(background, 0.9).toFixed(2).padStart(22)}`
+      + `  ${quantile(ring, 0.5).toFixed(2).padStart(10)}  ${quantile(ring, 0.9).toFixed(2).padStart(8)}`);
+  }
+
   console.log('\n=== 行方向スペクトル(全球面)===');
   for (const band of BANDS) {
     const y0 = rowAtLatitude(band.north);
@@ -564,24 +799,30 @@ async function main() {
     const bandOf = (key) => rowSpectrum(cropField(globe[key], 0, y0, GLOBE_W, h));
     printSpectrumTable(`--- ${band.label} ---`, wavelengthOf, bandOf('thick'), bandOf('coverage'), '実写厚', '被覆率');
     printSpectrumTable(`--- ${band.label} ---`, wavelengthOf, bandOf('photo'), bandOf('composite'), '実写計', '合成  ');
+    printSpectrumTable(`--- ${band.label} ---`, wavelengthOf, bandOf('veil'), bandOf('translucent'), '実写薄', '薄い雲');
   }
 
+  // 上層の移流が写しの外を読む地域は、薄い雲と合成の値が参考値であることを見出しで断る。
+  const capLabelOf = (region) => (region.upperReadsOutside
+    ? `${region.label}(薄い雲・合成は参考値: 上層が写しの外を読む)` : region.label);
+  const capLabelWidth = Math.max(...REGIONS.map((region) => capLabelOf(region).length));
   console.log('\n=== 地域別 cap(中央 362×362)の平均 ===');
-  console.log('地域                                  実写計  実写厚  実写薄  被覆率  薄い雲  合成');
+  console.log(`${'地域'.padEnd(capLabelWidth)}  実写計  実写厚  実写薄  被覆率  薄い雲  合成`);
   for (const region of REGIONS) {
     const cap = caps.get(region.name);
     const means = Object.fromEntries(Object.entries(cap).map(([key, field]) => [key, toneStats(field).mean]));
     console.log(
-      `${region.label.padEnd(24)}  ${means.photo.toFixed(3)}  ${means.thick.toFixed(3)}  ${means.veil.toFixed(3)}  `
-      + `${means.coverage.toFixed(3)}  ${means.translucent.toFixed(3)}  ${means.composite.toFixed(3)}`);
+      `${capLabelOf(region).padEnd(capLabelWidth)}  ${means.photo.toFixed(3)}  ${means.thick.toFixed(3)}  `
+      + `${means.veil.toFixed(3)}  ${means.coverage.toFixed(3)}  ${means.translucent.toFixed(3)}  `
+      + `${means.composite.toFixed(3)}`);
   }
 
   console.log('\n=== 地域別 cap: 行方向スペクトル(実写厚 vs 被覆率)===');
+  const capWavelengthOf = (k) => (CAP_BOX * CAP_KM_PER_PX) / k;
   for (const region of REGIONS) {
     const cap = caps.get(region.name);
     printSpectrumTable(
-      `--- ${region.label} ---`, (k) => (CAP_BOX * CAP_KM_PER_PX) / k,
-      rowSpectrum(cap.thick), rowSpectrum(cap.coverage), '実写厚', '被覆率');
+      `--- ${region.label} ---`, capWavelengthOf, rowSpectrum(cap.thick), rowSpectrum(cap.coverage), '実写厚', '被覆率');
   }
 
   console.log('\n=== 構造の異方性(全球面・帯 × 尺度): 局所の伸び / 向きの揃い / 卓越する筋の向き ===');
@@ -620,7 +861,7 @@ async function main() {
           structureToRgbPng(structures.get(field.key).get(scale)));
       }
     }
-    printStructureTable(`--- ${region.label} ---`, CAP_SCALES_KM.map((scale) => ({
+    printStructureTable(`--- ${capLabelOf(region)} ---`, CAP_SCALES_KM.map((scale) => ({
       scale,
       cells: STRUCTURE_FIELDS.map((field) =>
         summarizeStructure(structures.get(field.key).get(scale), 0, 0, CAP_BOX, CAP_BOX)),
@@ -672,6 +913,43 @@ async function main() {
     });
     printCloudTop(`${region.label} 中心 ${region.coreRadiusKm} km`, cloudTopStats(top, coverage, CAP_KM_PER_PX, maskFor(true)));
     printCloudTop(`${region.label} 外側`, cloudTopStats(top, coverage, CAP_KM_PER_PX, maskFor(false)));
+  }
+
+  console.log(`\n=== 台風の径方向プロファイル(cap の中央 362×362・${PROFILE_BIN_KM} km 刻みの方位平均、全 texel) ===`);
+  for (const region of REGIONS) {
+    if (region.coreRadiusKm === null) continue;
+    const cap = caps.get(region.name);
+    const topKm = radialProfile(capTops.get(region.name), CAP_KM_PER_PX).map((metres) => metres / 1000);
+    printRadialTable(`--- ${region.label} ---`, [
+      { label: '雲頂 [km]', values: topKm, digits: 2 },
+      { label: '被覆率', values: radialProfile(cap.coverage, CAP_KM_PER_PX), digits: 3 },
+      { label: '合成', values: radialProfile(cap.composite, CAP_KM_PER_PX), digits: 3 },
+    ]);
+    const midTones = annulusShare(
+      cap.coverage, CAP_KM_PER_PX, region.coreRadiusKm, PROFILE_MAX_KM, MID_TONE_MIN, MID_TONE_MAX);
+    console.log(`${region.coreRadiusKm}-${PROFILE_MAX_KM} km の被覆率のうち中間調(${MID_TONE_MIN}-${MID_TONE_MAX})の割合: `
+      + `${(midTones * 100).toFixed(1)}%`);
+  }
+
+  console.log('\n=== 台風リファレンス(Worldview の実写の輝度を cap へ再標本化、生成の台風 cap の合成と比較) ===');
+  const referenceDir = path.join(buildDir, 'reference');
+  const referenceIndex = path.join(referenceDir, 'reference.json');
+  if (!existsSync(referenceIndex)) {
+    console.log('.cloud-lab/reference/reference.json が無い — npm run cloud-lab:reference で取り込む');
+  } else {
+    const typhoon = REGIONS.find((region) => region.coreRadiusKm !== null);
+    const typhoonCap = caps.get(typhoon.name);
+    for (const entry of JSON.parse(readFileSync(referenceIndex, 'utf8'))) {
+      const luminance = decodeLuminancePng(readFileSync(path.join(root, entry.file)));
+      const referenceCap = resampleCap(luminance, entry.bbox, entry.center.latitude, entry.center.longitude);
+      saveGray(`typhoon-reference-${entry.name}.png`, referenceCap);
+      const header = `--- ${entry.name}(${entry.date}・${entry.center.latitude}N ${entry.center.longitude}E) ---`;
+      printToneTable(header, [{ label: '実写(輝度)', field: referenceCap }, { label: '合成', field: typhoonCap.composite }]);
+      printSpectrumTable(`${header} 行方向スペクトル`, capWavelengthOf,
+        rowSpectrum(referenceCap), rowSpectrum(typhoonCap.composite), '実写(輝度)', '合成  ');
+      printRadialTable(`${header} 径方向プロファイル`,
+        [{ label: '実写(輝度)', values: radialProfile(referenceCap, CAP_KM_PER_PX), digits: 3 }]);
+    }
   }
 }
 
