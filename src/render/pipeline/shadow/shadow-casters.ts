@@ -1,14 +1,14 @@
 // 恒星の直射光を遮る枝をシーンから集め、1 枝ぶんの箱・代表点・影の要求精度を測る。枝の単位は
-// シーン直下の子 1 つ(艦 1 隻・基地 1 つ・インスタンスプール 1 本)で、**遮蔽器であると同時に
+// シーン直下の子 1 つ(艦 1 隻・基地 1 つ・インスタンスプール 1 本)で、**影を落とす側であると同時に
 // 受け手の代理でもある** — 艦も基地もデブリも、影を落とすと同時に受ける。
 import * as THREE from 'three/webgpu';
 import { anchorAxis, castsOnto, insideBox, requiredTexel } from '../../shadow-demand';
 import { SHADOW_CASTER_LAYER } from '../lit-layer';
 import type { SunLight } from '../sun-light';
 
-// 遮蔽器の影が届く距離を、その差し渡しの何倍に取るか。差し渡し S の遮蔽器の本影は太陽の視半径
-// θ☉ = 4.65e-3 から D = S/(2·θ☉) = 107.5·S で消えるが、その先も遮蔽率は (107.5·S/D)² で残る
-// ので、ここまでを影の届く範囲として数える。打ち切り位置に残る遮蔽率は 1.2 % で、縁は段差に
+// 影が届く距離を、影を落とすものの差し渡しの何倍に取るか。差し渡し S のものの本影は太陽の視半径
+// θ☉ = 4.65e-3 から D = S/(2·θ☉) = 107.5·S で消えるが、その先も影の濃さは (107.5·S/D)² で残る
+// ので、ここまでを影の届く範囲として数える。打ち切り位置に残る濃さは 1.2 % で、縁は段差に
 // ならない。
 export const COLUMN_SPAN = 1000;
 
@@ -19,7 +19,7 @@ export type ShadowExtent = {
   readonly worldBounds: THREE.Box3;
 };
 
-// 枝 1 つぶんの遮蔽器。
+// 枝 1 つぶんの、影を落とすもの。
 export type ShadowCaster = {
   readonly box: THREE.Box3;
   readonly center: THREE.Vector3;
@@ -90,7 +90,7 @@ export class ShadowCasters {
     return this.casters;
   }
 
-  // 遮蔽器を受け手として見たときの要求 texel を書き込む。**画面に写らない受け手と、誰の影も
+  // 影を落とすものを受け手として見たときの要求 texel を書き込む。**画面に写らない受け手と、誰の影も
   // 落ちてこない受け手は要求を持たない** — 枠を 1 枚使う理由が無い。
   private scoreCasters(
     camera: THREE.Camera, viewportHeight: number, sun: SunLight, texelsPerPixel: number,
@@ -111,8 +111,8 @@ export class ShadowCasters {
     }
   }
 
-  // caster の影が receiver へ届くか。光の向きは遮蔽器ごとに取り直す — 恒星は点光源なので、
-  // 共通の向きで代用すると重心から離れた遮蔽器の柱が逸れる。
+  // caster の影が receiver へ届くか。光の向きは枝ごとに取り直す — 恒星は点光源なので、
+  // 共通の向きで代用すると重心から離れた枝の柱が逸れる。
   private castsOnto(caster: ShadowCaster, receiver: ShadowCaster, sun: SunLight): boolean {
     this.lightForward.copy(caster.center).sub(sun.position.value);
     const distance = this.lightForward.length();

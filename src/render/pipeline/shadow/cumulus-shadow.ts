@@ -56,6 +56,7 @@ export class CumulusShadow {
   // 雲の場。set が value を差し替えると、sample() で枝分かれした先へも同じ写しが届く。
   private readonly field = texture(EMPTY_FIELD);
 
+  // 殻 1 体ぶんの uniform を確保する。殻の有無は active で切るので、グラフの形は変わらない。
   constructor(private readonly sunLight: SunLight) {
     this.center = uniform(new THREE.Vector3());
     this.surfaceRadius = uniform(0);

@@ -1,5 +1,5 @@
 // 天体表面のメッシュ。分割段ラダーの各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて
-// 1段だけを見せる。艦艇と同じライトプリパスの受け手として立ち、陰影・遮蔽・逆二乗の減衰は
+// 1段だけを見せる。艦艇と同じライトプリパスの受け手として立ち、陰影・影・逆二乗の減衰は
 // すべてパイプラインが与える。**画像の取得は addTo まで遅らせる。**
 import * as THREE from 'three/webgpu';
 import { texture as textureNode, asin, atan, clamp, exp, mix, uniform, uv, vec2, vec3 } from 'three/tsl';

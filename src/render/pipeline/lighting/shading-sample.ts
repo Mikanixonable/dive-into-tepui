@@ -30,7 +30,7 @@ export class ShadingSample {
   // 毎フレーム自前で書き込む。
   private readonly projMatrixInverse: Mat4Uniform;
   private readonly viewMatrix: Mat4Uniform;
-  // G バッファを引く uv。遮蔽度など、面に揃えて読むべきテクスチャはすべてこれで引く。
+  // G バッファを引く uv。影の透過率など、面に揃えて読むべきテクスチャはすべてこれで引く。
   public readonly uv: Vec2Node;
   // 十字の隣まで探しても面が無い虚空の画素では偽。照らす面が存在しないので、光源は寄与を
   // 0 にすること — 遠平面に置いた架空の面の明るさが縁へ滲む。

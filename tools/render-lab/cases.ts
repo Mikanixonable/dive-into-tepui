@@ -1,4 +1,4 @@
-// 描画テスト環境が描くケースの表。ゲーム本体と同じ球・艦・線を組み、カメラと光源・大気・遮蔽器の
+// 描画テスト環境が描くケースの表。ゲーム本体と同じ球・艦・線を組み、カメラと光源・大気・影の源の
 // 配置と一緒に返す。ケースを増やすのはこの表への追記で済む。style を受けるケースは、その表示
 // スタイルで組んだ姿を返す。
 import * as THREE from 'three/webgpu';
@@ -59,7 +59,7 @@ const SATURN_RINGS = (() => {
   return SATURN.rings;
 })();
 
-// 環の帯を遮蔽パスへ渡す形へ直す。半径は描画座標と同じメートルのまま。
+// 環の帯を影パスへ渡す形へ直す。半径は描画座標と同じメートルのまま。
 function shadowBands(bands: readonly RingBandDef[]): readonly RingBand[] {
   return bands.map((band) => ({
     innerRadius: band.innerRadius,
@@ -107,11 +107,11 @@ export interface LabCase {
   // 大気パスへ渡す天体。中心は描画座標。並べ替えと濃い表現の重みは、カメラの位置から
   // 引き直される。
   readonly atmospheres?: readonly AtmosphereBody[];
-  // 遮蔽パスへ渡す球。中心は描画座標。
+  // 影パスへ渡す球。中心は描画座標。
   readonly shadowBodies?: readonly ShadowBody[];
-  // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
+  // 影パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
-  // 遮蔽パスへ渡す積雲の殻。
+  // 影パスへ渡す積雲の殻。
   readonly cumulus?: ShadowCumulus;
   // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
   // 同値なら何もしないこと。
@@ -305,7 +305,7 @@ function shipCluster(): LabCase {
   };
 }
 
-// スロットより遮蔽器が多い群: 艦をスロット数より多く並べ、カメラの背後にも置く。**枠が尽きた
+// スロットより影を落とすものが多い群: 艦をスロット数より多く並べ、カメラの背後にも置く。**枠が尽きた
 // ときに何が捨てられるか**を見るためのケースなので、艦の数はスロット数を上回っていなければ
 // 意味がない。
 function shipCrowd(): LabCase {
@@ -327,7 +327,7 @@ function shipCrowd(): LabCase {
 }
 
 // 遠くから伸びてくる影: 恒星方向へ 3 km 離した艦が、手前の艦へ影を落とす。**本影は艦の
-// 差し渡しの 107.5 倍(約 915 m)で消える**ので、3 km 先では遮蔽率が (915/3000)² まで落ちて
+// 差し渡しの 107.5 倍(約 915 m)で消える**ので、3 km 先では影の濃さが (915/3000)² まで落ちて
 // いなければならない。遠方の半影の減衰を見るためのケース。
 function shipFarShadow(): LabCase {
   const receiver = new THREE.Vector3(0, 0, -10);
@@ -552,7 +552,7 @@ function depthProbe(z: number, far: number): LabCase {
   return { objects, camera };
 }
 
-// 日食ケースの遮蔽器: 地表のどこへ影を落とすか(直下からの中心角 [rad])と、その球の半径・
+// 日食ケースで影を落とす球: 地表のどこへ影を落とすか(直下からの中心角 [rad])と、その球の半径・
 // 距離。距離に対する半径の比を太陽の視半径(4.65e-3)よりわずかに大きく取ると、本影を半影が
 // 縁取る金環直前の配置になる。
 const ECLIPSE_GROUND_ANGLE = 0.25;
@@ -657,7 +657,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       bodyFromWorld,
       field: cumulus.field,
     },
-    // 天体自身の遮蔽器。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
+    // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
     shadowBody: { center, axes: new THREE.Vector3(axes.x, axes.y, axes.z), bodyFromWorld },
     // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
     // 絵の比較は最も細かい段で行う)。
@@ -749,7 +749,7 @@ function earthPolar(style: RenderStyle): LabCase {
 
 // 極の昼夜境界: earth-polar と同じ構図で、恒星を視線と直交させ、昼夜境界を極の上へ通す。
 // **扁平な天体でも影は地平線どおりに落ちる** — 境界は半影ぶんに滑らかで、緯度によらない
-// 直線の縁は出ない。天体自身が遮蔽器に載っていて、地表も雲頂も低い高度の大気も、その内側では
+// 直線の縁は出ない。天体自身が影を落とす側に載っていて、地表も雲頂も低い高度の大気も、その内側では
 // なく表面より外に居ることをここで読む。
 function earthPolarTerminator(style: RenderStyle): LabCase {
   return { ...earthPolar(style), sunDirection: new THREE.Vector3(1, 0, 0) };
@@ -765,8 +765,8 @@ function earthTerminator(style: RenderStyle): LabCase {
   return { ...base, sunDirection: ahead };
 }
 
-// 日食下の地球: earth と同じ構図へ、地球自身と食を起こす球を遮蔽器として足す。**大気の明暗は
-// 入射角だけでなく遮蔽度にも比例する**ので、リムともやの両方へ影の落ちた斑が出る。遮蔽器の
+// 日食下の地球: earth と同じ構図へ、地球自身と食を起こす球を影の源として足す。**大気の明暗は
+// 入射角だけでなく影の濃さにも比例する**ので、リムともやの両方へ影の落ちた斑が出る。影を落とす球の
 // 視半径は太陽よりわずかに大きく取ってあり、本影(半径 60km)を半影(340km)が縁取る。
 function earthEclipse(style: RenderStyle): LabCase {
   const base = earth(style);
@@ -839,7 +839,7 @@ function eclipse(): LabCase {
   );
   receiver.position.copy(center);
   markLitOpaque(receiver);
-  // 遮蔽する球と環は、受ける球から恒星方向へ 1e4 m の位置に置く。
+  // 影を落とす球と環は、受ける球から恒星方向へ 1e4 m の位置に置く。
   const shadowBodyCenter = center.clone().addScaledVector(SUN_DIR, 1e4);
   return {
     objects: [receiver],
@@ -988,8 +988,8 @@ function metalHighlight(): LabCase {
 }
 
 // 土星: 本体の球と実データの環を並べ、**環だけが本体より桁で明るくないか**を見る。恒星の
-// 放射照度は本体にも環にも同じだけ掛かる。本体を遮蔽器に、環の帯を遮蔽する環に登録するので、
-// **環が本体の影へ入る境界と、本体表面に落ちる環の影の境界の両方**が同じ 1 つの遮蔽関数から
+// 放射照度は本体にも環にも同じだけ掛かる。本体を影を落とす天体に、環の帯を影を落とす環に登録するので、
+// **環が本体の影へ入る境界と、本体表面に落ちる環の影の境界の両方**が同じ 1 つの関数から
 // 出る。どちらもぼけていることを見る。
 function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   const camera = labCamera(1e13);
