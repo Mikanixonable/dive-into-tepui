@@ -19,7 +19,7 @@ import { PlanetLightSource } from './lighting/planet-light-source';
 import { SphereSpecular } from './lighting/sphere-light';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
-import { OcclusionPass } from './occlusion';
+import { ShadowPass } from './shadow/shadow-pass';
 import { BodyShadow } from './shadow/body-shadow';
 import { RingShadow } from './shadow/ring-shadow';
 import { CumulusShadow } from './shadow/cumulus-shadow';
@@ -30,7 +30,7 @@ import { SchematicComposite } from './schematic-composite';
 import { LensPass } from './lens-pass';
 import { Exposure } from './exposure';
 import { SunLight } from './sun-light';
-import { SunShadowMaps } from './sun-shadow-maps';
+import { ShadowMaps } from './shadow/shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 import { FilmLut } from './film-lut';
@@ -39,12 +39,12 @@ import { DeferredTexture } from '../deferred-texture';
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly gbuffer: GBufferPass;
-  private readonly occlusionPass: OcclusionPass;
+  private readonly shadowPass: ShadowPass;
   private readonly _bodyShadow: BodyShadow;
   private readonly _ringShadow: RingShadow;
   private readonly _cumulusShadow: CumulusShadow;
   private readonly meshShadow: MeshShadow;
-  private readonly sunShadowMaps: SunShadowMaps;
+  private readonly shadowMaps: ShadowMaps;
   private readonly lightPrepass: LightPrepass;
   // 球光源の鏡面が引く係数表。太陽と天体照で 1 つを共有する。
   private readonly sphereSpecular: SphereSpecular;
@@ -109,21 +109,21 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
     this._exposure = new Exposure();
-    this.sunShadowMaps = new SunShadowMaps(
+    this.shadowMaps = new ShadowMaps(
       renderer, gpu, graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
     this._bodyShadow = new BodyShadow(this._sunLight);
     this._ringShadow = new RingShadow(this._sunLight);
     this._cumulusShadow = new CumulusShadow(this._sunLight);
-    this.meshShadow = new MeshShadow(this._sunLight, this.sunShadowMaps);
-    this.occlusionPass = new OcclusionPass(
+    this.meshShadow = new MeshShadow(this._sunLight, this.shadowMaps);
+    this.shadowPass = new ShadowPass(
       renderer, this.gbuffer,
       this._bodyShadow, this._ringShadow, this._cumulusShadow, this.meshShadow, gpu,
     );
     this.sphereSpecular = new SphereSpecular();
     this.sunSource = new SunSource(
-      this._sunLight, this.occlusionPass, this.sphereSpecular, graphics.sunLightModel);
+      this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
       this._sunLight, this.sphereSpecular, graphics.planetLightCount);
     this._ambient = new AmbientSource(this._sunLight);
@@ -194,7 +194,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       shadow: this.buildCompositeMaterial(vec4(vec3(this.shadowSlotGridNode()), 1)),
       'shadow-slot': this.buildCompositeMaterial(vec4(this.shadowSlotColorNode(), 1)),
       occlusion: this.buildCompositeMaterial(
-        vec4(vec3(texture(this.occlusionPass.texture, screenUV).r), 1),
+        vec4(vec3(texture(this.shadowPass.texture, screenUV).r), 1),
       ),
       // 照度・陰影は 1 を超え得る HDR 値なので、通常表示と同じトーンマッピングを通してから
       // 画面へ出す(1 天文単位の放射照度は π を超えるため、通さないと全面白になる)。
@@ -248,14 +248,14 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。
   private shadowSlotGridNode(): FloatNode {
     const tileUV = screenUV.mul(2).fract();
-    const parameters = this.sunShadowMaps.uniformArrays.parameters;
+    const parameters = this.shadowMaps.uniformArrays.parameters;
     const left = screenUV.x.lessThan(0.5);
     // screenUV は上端が原点なので、y の小さいほうが画面の上段。
     const top = screenUV.y.lessThan(0.5);
     // 深度マップはメートルで持っているので、スロットごとの深度の幅(far − near)で割って濃淡へ直す。
     const tile = (layer: number): FloatNode => {
       const slot = parameters.element(layer);
-      return texture(this.sunShadowMaps.texture, tileUV).depth(int(layer)).r
+      return texture(this.shadowMaps.texture, tileUV).depth(int(layer)).r
         .div(max(slot.y.sub(slot.x), 1e-6));
     };
     const topRow = select(left, tile(0), tile(1));
@@ -304,7 +304,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // 描画品質設定のうち、GPU 資源の確保を伴うものを各パスへ配る。値が変わった時点で1回呼ばれる。
   public applyGraphics(graphics: GraphicsSettingsData): void {
     this.lensEnabled = graphics.lens;
-    this.sunShadowMaps.setQuality(
+    this.shadowMaps.setQuality(
       graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
@@ -328,9 +328,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
 
     // 描画順に並べる。スタイルによらず通る段。
     const passes: [string, () => Promise<void>][] = [
-      ['影', () => this.sunShadowMaps.compile(scene, camera, height, this._sunLight)],
+      ['影', () => this.shadowMaps.compile(scene, camera, height, this._sunLight)],
       ['G バッファ', () => this.gbuffer.compile(scene, camera, width, height)],
-      ['遮蔽', () => this.occlusionPass.compile(camera, width, height)],
+      ['遮蔽', () => this.shadowPass.compile(camera, width, height)],
       ['照明', () => this.lightPrepass.compile(camera, width, height)],
     ];
 
@@ -377,13 +377,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     flushProteinMotionComputes(this.renderer);
 
     // 太陽光の影パス。G バッファを必要としないので、その前に置く。
-    this.sunShadowMaps.render(scene, camera, height, this._sunLight);
+    this.shadowMaps.render(scene, camera, height, this._sunLight);
 
     // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
     this.gbuffer.render(scene, camera, width, height);
 
     // 遮蔽パス。G バッファ深度だけを読むので scene は渡さない。
-    this.occlusionPass.render(camera, width, height);
+    this.shadowPass.render(camera, width, height);
 
     // ライティングパス。G バッファと遮蔽度だけを読むので scene は渡さない。
     this.lightPrepass.render(camera, width, height);
@@ -447,8 +447,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   public dispose(): void {
     this.unregisterProteinMotionRenderer();
     this.gbuffer.dispose();
-    this.occlusionPass.dispose();
-    this.sunShadowMaps.dispose();
+    this.shadowPass.dispose();
+    this.shadowMaps.dispose();
     this.lightPrepass.dispose();
     this.sphereSpecular.dispose();
     this.materialPass.dispose();

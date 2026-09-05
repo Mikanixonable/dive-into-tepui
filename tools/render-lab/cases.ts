@@ -60,7 +60,7 @@ const SATURN_RINGS = (() => {
 })();
 
 // 環の帯を遮蔽パスへ渡す形へ直す。半径は描画座標と同じメートルのまま。
-function occlusionBands(bands: readonly RingBandDef[]): readonly RingBand[] {
+function shadowBands(bands: readonly RingBandDef[]): readonly RingBand[] {
   return bands.map((band) => ({
     innerRadius: band.innerRadius,
     outerRadius: band.outerRadius,
@@ -422,7 +422,7 @@ function shipBodyShadow(_style: RenderStyle, ringMaterials: RingMaterials): LabC
     sunDirection: sun,
     viewTarget: center,
     shadowBodies: [sphereShadowBody(center, SMALL_BODY_RADIUS)],
-    rings: { center, axis, bands: occlusionBands(SMALL_BODY_RING_BANDS) },
+    rings: { center, axis, bands: shadowBands(SMALL_BODY_RING_BANDS) },
   };
 }
 
@@ -1005,7 +1005,7 @@ function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
     rings: {
       center,
       axis: new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
-      bands: occlusionBands(SATURN_RINGS.bands),
+      bands: shadowBands(SATURN_RINGS.bands),
     },
     // 環の見え方(表示の有無・帯の見かけ幅の段)は設定で変わるので、押し込みのたびに同期する。
     applyGraphics: (graphics) => view.sync(
@@ -1036,7 +1036,7 @@ function saturnShadow(style: RenderStyle, ringMaterials: RingMaterials): LabCase
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
     shadowBodies: [sphereShadowBody(center, radius)],
-    rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: occlusionBands(SATURN_RINGS.bands) },
+    rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: shadowBands(SATURN_RINGS.bands) },
     applyGraphics: (graphics) => view.sync(
       center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, graphics, style,
     ),

@@ -34,7 +34,7 @@ import { shapeAxes, shapeInscribedRadius } from '../../physics/celestial-body-de
 import { writeBodyFromWorld } from './body-frame';
 import {
   castsCumulusShadow, selectRingShadow, selectShadowBodies, type RingShadowCandidate,
-} from '../../render/pipeline/sun-occlusion-select';
+} from '../../render/pipeline/shadow/shadow-select';
 import { atmosphereDraws } from '../../render/atmosphere';
 import { CelestialEntity } from './celestial-entity/celestial-entity';
 import { StarEntity } from './celestial-entity/star-entity';

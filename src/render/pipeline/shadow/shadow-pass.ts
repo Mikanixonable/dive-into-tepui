@@ -8,21 +8,21 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, If, dot, float, length, max, normalize, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../gpu-timings';
-import { octDecodeNormal, type GBufferPass } from './gbuffer';
-import { viewPositionAt } from './view-ray';
-import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
-import type { BodyShadow } from './shadow/body-shadow';
-import type { RingShadow } from './shadow/ring-shadow';
-import type { CumulusShadow } from './shadow/cumulus-shadow';
-import type { MeshShadow } from './shadow/mesh-shadow';
-import { compileInto } from './compile-into';
+import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { octDecodeNormal, type GBufferPass } from '../gbuffer';
+import { viewPositionAt } from '../view-ray';
+import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../../tsl-types';
+import type { BodyShadow } from './body-shadow';
+import type { RingShadow } from './ring-shadow';
+import type { CumulusShadow } from './cumulus-shadow';
+import type { MeshShadow } from './mesh-shadow';
+import { compileInto } from '../compile-into';
 
 // 画素の覆う実寸を伸ばす入射角の余弦の下限。地平線では 0 へ落ちるので、伸びしろに天井を張る。
 const MIN_INCIDENCE_COSINE = 0.05;
 
 // 影の源 1 つぶんの、透過率のターゲットへ積む 1 枚。
-interface OcclusionSource {
+interface ShadowSource {
   // このフレームに影を落とすものがあるか。偽なら描画命令は発行されない。
   casts(): boolean;
   readonly material: THREE.MeshBasicNodeMaterial;
@@ -47,10 +47,10 @@ function multiplyingMaterial(covered: BoolNode, transmittance: FloatNode): THREE
   return material;
 }
 
-export class OcclusionPass {
+export class ShadowPass {
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
-  private readonly sources: readonly OcclusionSource[];
+  private readonly sources: readonly ShadowSource[];
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と view→描画座標の行列は
   // 毎フレーム自前で書き込む。
   private readonly projMatrixInverse: Mat4Uniform;

@@ -1,8 +1,8 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
-import { markLitOpaque, markOverlay, markSunShadowCaster } from './pipeline/lit-layer';
+import { markLitOpaque, markOverlay, markShadowCaster } from './pipeline/lit-layer';
 import { INSTANCE_THERMAL_ATTRIBUTE, writeThermalState } from './thermal-emissive';
-import type { SunShadowExtent } from './pipeline/sun-shadow-casters';
+import type { ShadowExtent } from './pipeline/shadow/shadow-casters';
 
 // three は instanceMatrix のバッファ長を最初の描画時に一度だけ確定する。よって count は
 // 容量に固定したまま動かさず、未使用の枠はゼロ行列で潰して描画対象から外す。
@@ -22,7 +22,7 @@ export class InstancedPool {
   private readonly instanceRadius: number;
   // 今フレームに push された個体を包む描画座標の AABB。endFrame で公開用の箱へ移す。
   private readonly pending = new THREE.Box3();
-  private readonly extent: SunShadowExtent = { worldBounds: new THREE.Box3() };
+  private readonly extent: ShadowExtent = { worldBounds: new THREE.Box3() };
   // 個体ごとの熱の状態(温度・局所的な過熱・輻射率)。持たないプールでは null。
   private readonly thermal: THREE.InstancedBufferAttribute | null = null;
   // 今フレームに積んだ熱の状態が前フレームと違ったか。同じなら転送し直さない。
@@ -59,8 +59,8 @@ export class InstancedPool {
     // 個体が広い空間へ散らばるため、原点周りの外接球によるフラスタムカリングは意味を持たない。
     this.mesh.frustumCulled = false;
     markLitOpaque(this.mesh);
-    markSunShadowCaster(this.mesh);
-    this.mesh.userData.sunShadowExtent = this.extent;
+    markShadowCaster(this.mesh);
+    this.mesh.userData.shadowExtent = this.extent;
     geometry.computeBoundingSphere();
     this.instanceRadius = geometry.boundingSphere?.radius ?? 0;
     for (let i = 0; i < this.capacity; i++) this.mesh.setMatrixAt(i, PARKED);
