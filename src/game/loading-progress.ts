@@ -5,7 +5,7 @@
 // 起動の段。並びは実行順。
 export type LoadingPhase = 'system' | 'bodies' | 'run' | 'shaders';
 
-// 段ごとの所要時間の割合。合計 1。
+// 段ごとの所要時間の割合。合計 1。実測から取った比で、シェーダの事前コンパイルが大半を占める。
 export const LOADING_PHASE_WEIGHTS: Readonly<Record<LoadingPhase, number>> = {
   system: 0.018,
   bodies: 0.003,
