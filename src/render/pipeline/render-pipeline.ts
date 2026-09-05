@@ -5,7 +5,7 @@
 // (debug-target.ts)。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { float, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
@@ -230,8 +230,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     return select(this.gbuffer.covered(), metalness, float(0));
   }
 
-  // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。スロットは独立した
-  // レンダーターゲットなので、並べるのは表示のときだけの都合。
+  // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。
   private shadowSlotGridNode(): FloatNode {
     const tileUV = screenUV.mul(2).fract();
     const slots = this.sunShadowMaps.slots;
@@ -239,7 +238,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // screenUV は上端が原点なので、y の小さいほうが画面の上段。
     const top = screenUV.y.lessThan(0.5);
     // 深度マップはメートルで持っているので、スロットごとの深度の幅で割って濃淡へ直す。
-    const tile = (slot: SunShadowSlot): FloatNode => texture(slot.texture, tileUV).r
+    const tile = (slot: SunShadowSlot): FloatNode => texture(slot.texture, tileUV).depth(int(slot.layer)).r
       .div(max(slot.far.sub(slot.near), 1e-6));
     const topRow = select(left, tile(slots[0]!), tile(slots[1]!));
     const bottomRow = select(left, tile(slots[2]!), tile(slots[3]!));
