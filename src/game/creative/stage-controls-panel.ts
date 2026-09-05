@@ -83,7 +83,7 @@ export class StageControlsPanel {
     this.buildGeneralControls(body, resupplyEnabled, rcsFuelResupplyEnabled, waveAttackEnabled);
     const conventional = this.buildConventionalEnemySection();
     const protein = this.buildProteinEnemySection();
-    this.appendEnemyTabs(body, conventional.element, protein.element);
+    this.appendEnemyTabs(body, conventional.element, protein.element, protein.requestSelectedAsset);
     this.spawnEnemyButtons = [conventional.spawnButton, protein.spawnButton, protein.formationButton];
 
     this.element = panel;
@@ -165,12 +165,14 @@ export class StageControlsPanel {
   // タンパク質型の敵の形状・表示形態・着色選択と、単体/陣形スポーンボタンをまとめたセクションを
   // 組み立てる。表示形態・着色の変更は onProteinDisplayChange で即座に呼び出し側へ通知する
   // (既存の敵への反映は呼び出し側の責務)。
-  private buildProteinEnemySection(): { element: HTMLElement; spawnButton: Button; formationButton: Button } {
+  private buildProteinEnemySection(): {
+    element: HTMLElement; spawnButton: Button; formationButton: Button; requestSelectedAsset: () => void;
+  } {
     const shapes = STAGE_CONTROL_ENEMY_SHAPES.filter(
       (shape): shape is Extract<EnemyShapeDefinition, { family: 'protein' }> => shape.family === 'protein',
     );
     let selectedShape: ProteinAssetId = shapes[0]!.assetId;
-    // 選択そのものが取得の起点(SPEC/PROTEIN.md「出現」)。既定の選択も選択として扱う。
+    // 選択そのものが取得の起点(SPEC/PROTEIN.md「出現」)。
     const selectShape = (assetId: ProteinAssetId): void => {
       selectedShape = assetId;
       shapeControl.setSelected(assetId);
@@ -190,7 +192,7 @@ export class StageControlsPanel {
       '敵の形状', shapes.map(({ assetId }) => [assetId, assetId] as const), selectShape,
     );
     shapeControl.element.classList.add('stage-control-shapes');
-    selectShape(selectedShape);
+    shapeControl.setSelected(selectedShape);
     section.appendChild(shapeControl.element);
 
     // 表示形態の選択。切り替えるたびその形態で前回選んだ着色へ復元し、着色の選択肢を差し替える。
@@ -235,11 +237,19 @@ export class StageControlsPanel {
     section.appendChild(spawnButton.element);
     const formationButton = new Button('陣形をスポーン', () => this.onSpawnFormation?.());
     section.appendChild(formationButton.element);
-    return { element: section, spawnButton, formationButton };
+    return {
+      element: section, spawnButton, formationButton,
+      requestSelectedAsset: () => { void requestProteinAsset(selectedShape); },
+    };
   }
 
   // 従来型/タンパク質型のタブ切り替えを body へ追加し、選ばれた側のセクションだけを表示する。
-  private appendEnemyTabs(body: HTMLElement, conventionalSection: HTMLElement, proteinSection: HTMLElement): void {
+  // onProteinShown はタンパク質型のタブが選ばれるたびに呼ぶ — 選ぶ画面が開いた時点が、
+  // 既定で選ばれている体の取得の起点になる(SPEC/PROTEIN.md「出現」)。
+  private appendEnemyTabs(
+    body: HTMLElement, conventionalSection: HTMLElement, proteinSection: HTMLElement,
+    onProteinShown: () => void,
+  ): void {
     type EnemyFamily = 'conventional' | 'protein';
     const sections = new Map<EnemyFamily, HTMLElement>([['conventional', conventionalSection], ['protein', proteinSection]]);
     let selectedFamily: EnemyFamily = 'conventional';
@@ -253,6 +263,7 @@ export class StageControlsPanel {
           section.classList.toggle('hidden', !visible);
           section.setAttribute('aria-hidden', String(!visible));
         }
+        if (family === 'protein') onProteinShown();
       },
     );
     tabs.element.classList.add('stage-control-enemy-tabs');
