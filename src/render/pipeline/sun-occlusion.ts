@@ -16,6 +16,7 @@ import type {
   BoolNode, FloatNode, FloatUniform, IntNode, Mat4Node, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node,
 } from '../tsl-types';
 import { MAX_SHADOW_SLOTS, type SunShadowMaps } from './sun-shadow-maps';
+import { COLUMN_SPAN } from './sun-shadow-casters';
 import type { SunLight } from './sun-light';
 
 // 同時に遮蔽器として扱う天体の上限(グラフのスロット数)。
@@ -289,9 +290,7 @@ export class SunOcclusion {
   hasCumulusShadow(): boolean { return this.cumulusActive.value > 0; }
 
   // このフレームにメッシュの影があるか。
-  hasMeshShadow(): boolean {
-    return this.shadowMaps.slots.some((slot) => slot.active.value > 0);
-  }
+  hasMeshShadow(): boolean { return this.shadowMaps.casts(); }
 
   // 受け手から恒星の中心までの距離 [m]。恒星の只中で 0 除算にならない床を張る。
   private sunDistance(worldPos: Vec3Node): FloatNode {
@@ -458,10 +457,13 @@ export class SunOcclusion {
     const inner = float(1).sub(margin);
     const uv = this.slotUv(lightViewProjection, worldPos);
     const depth = this.slotDepth(lightView, parameters.x, worldPos);
+    // near から測った柱の長さ [m]。枠の 1 辺(= texel の実寸 × スロットの 1 辺)を、影が届く
+    // 距離の倍率 COLUMN_SPAN 倍したもの。
+    const coverDepth = parameters.z.mul(this.shadowMaps.texelsPerSlot).mul(COLUMN_SPAN);
     return greaterThan(parameters.w, 0.5)
       .and(uv.x.greaterThan(margin)).and(uv.x.lessThan(inner))
       .and(uv.y.greaterThan(margin)).and(uv.y.lessThan(inner))
-      .and(depth.greaterThan(0)).and(depth.lessThan(parameters.y));
+      .and(depth.greaterThan(0)).and(depth.lessThan(coverDepth));
   }
 
   // 描画座標の点を、そのスロットの深度マップの UV へ写す。**深度マップの v は上端が 0** —
@@ -558,7 +560,7 @@ export class SunOcclusion {
     // 半影の幅を物理から出す。遮蔽器までの距離 (receiver − blocker) に恒星の視半径を掛けたものが
     // world 空間での半径で、それを texel へ直す。1 タップの探索は探索半径の外の遮蔽器を見逃す
     // (PCSS の既知の限界)ので細い部材の影の縁は硬いまま残るが、画面上 2px の差なので許容する。
-    const blockerDepth = texture(this.shadowMaps.slots[0]!.texture, uvBase).depth(layer).r;
+    const blockerDepth = texture(this.shadowMaps.texture, uvBase).depth(layer).r;
     const blockerDistance = max(receiverDepth.sub(blockerDepth), 0);
     const radiusTexels = clamp(sunAngRadius.mul(blockerDistance).div(texel), PCF_MIN_TEXELS, PCF_MAX_TEXELS);
     // 遮蔽器から遠ざかるほど本影は細り、遮蔽器の角半径が恒星の角半径を下回ると影は消える。
@@ -577,7 +579,7 @@ export class SunOcclusion {
       const angle = tap.mul(VOGEL_GOLDEN_ANGLE);
       const spread = sqrt(tap.add(0.5).div(PCF_TAPS));
       const uv = uvBase.add(vec2(cos(angle).mul(spread), sin(angle).mul(spread)).mul(step));
-      const stored = texture(this.shadowMaps.slots[0]!.texture, uv).depth(layer).r;
+      const stored = texture(this.shadowMaps.texture, uv).depth(layer).r;
       lit.addAssign(select(receiverDepth.sub(depthBias).greaterThan(stored), float(0), float(1)));
     });
     const visibility = float(1).sub(float(1).sub(lit.div(PCF_TAPS)).mul(umbraFade));
@@ -593,7 +595,7 @@ export class SunOcclusion {
     layer: IntNode, uv: Vec2Node, receiverDepth: FloatNode, casterSize: FloatNode,
     sunAngRadius: FloatNode,
   ): FloatNode {
-    const blockerDepth = texture(this.shadowMaps.slots[0]!.farTexture, uv).depth(layer).r;
+    const blockerDepth = texture(this.shadowMaps.farTexture, uv).depth(layer).r;
     const blockerDistance = receiverDepth.sub(blockerDepth);
     const shrink = casterSize.div(max(sunAngRadius.mul(blockerDistance).mul(2), 1e-9));
     // 遮蔽器の居ない texel は受け手より奥の深度で埋まっているので、そのまま素通しになる。

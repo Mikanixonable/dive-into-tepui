@@ -11,10 +11,10 @@
 // 追い出す。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
-import { positionView, uniform, uniformArray, vec3, vec4 } from 'three/tsl';
+import { float, positionView, uniform, uniformArray, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { extentForTexel } from '../shadow-demand';
-import type { FloatNode, FloatUniform, Mat4Uniform } from '../tsl-types';
+import type { FloatNode, FloatUniform } from '../tsl-types';
 import { SUN_SHADOW_CASTER_LAYER } from './lit-layer';
 import { COLUMN_SPAN, ShadowCasters, type ShadowCaster } from './sun-shadow-casters';
 import type { SunLight } from './sun-light';
@@ -44,34 +44,15 @@ const EMPTY_DEPTH = 1e30;
 // 影を描かないフレームの遮蔽器の列。
 const NO_CASTERS: readonly ShadowCaster[] = [];
 
-// スロット 1 枚ぶんの、受け手が引く値。SunOcclusion がこれを読んでグラフを組む。
-export type SunShadowSlot = {
-  // 深度マップ配列内の層。
-  readonly layer: number;
-  // このスロットの近層の深度マップ。枠から見て本影が残る距離にある遮蔽器だけが写る。
-  readonly texture: THREE.Texture;
-  // 同じ枠・同じ uv の遠層の深度マップ。本影を失った遮蔽器だけが写る。**近層と写る遮蔽器が
-  // 排他なので、2 枚から出した透過率はそのまま掛けられる。**
-  readonly farTexture: THREE.Texture;
-  // 描画座標 → ライト空間クリップ。UV は xy だけを使う。
-  readonly lightViewProjection: Mat4Uniform;
-  // 描画座標 → ライト空間 view。深度は射影の規約(反転深度)に依らないこちらから測る。
-  readonly lightView: Mat4Uniform;
-  readonly near: FloatUniform;
-  readonly far: FloatUniform;
-  // near から測った柱の長さ [m]。受け手は枠の中でこれより手前に居れば遮蔽を引ける。
-  readonly coverDepth: FloatUniform;
-  // 1 texel が描画座標で何メートルか。バイアスとフィルタ半径の単位になる。
-  readonly texelWorld: FloatUniform;
-  // 0 ならこのスロットは空。
-  readonly active: FloatUniform;
-};
-
-// SunOcclusion が shader 内で動的にスロットを選ぶための uniform 配列。
+// 受け手が shader 内で動的にスロットを選ぶために引く、スロットごとの値。**スロットの値の
+// 正本はこの 3 本の配列だけで、個別の uniform を別に持たない。**
 export type SunShadowSlotUniformArrays = {
+  // 描画座標 → ライト空間クリップ。UV は xy だけを使う。
   readonly lightViewProjection: THREE.UniformArrayNode<'mat4'>;
+  // 描画座標 → ライト空間 view。深度は射影の規約(反転深度)に依らないこちらから測る。
   readonly lightView: THREE.UniformArrayNode<'mat4'>;
-  // (near, coverDepth, texelWorld, active)
+  // (near, far, texelWorld, active)。texelWorld は 1 texel が描画座標で張るメートルで、
+  // バイアスとフィルタ半径の単位になる。active が 0 ならそのスロットは空。
   readonly parameters: THREE.UniformArrayNode<'vec4'>;
 };
 
@@ -102,12 +83,13 @@ export class SunShadowMaps {
   private slotSize = 0;
   // 画面 1 px あたり何 texel を要求するか。
   private texelsPerPixel = 1;
-  // 受け手が texel を単位に幅を組むために引く、スロットの 1 辺 [texel] とその逆数。
+  // 受け手が texel を単位に幅を組むために引く、スロットの 1 辺 [texel]。
   private readonly slotTexels: FloatUniform;
-  private readonly slotTexelUv: FloatUniform;
   private readonly depthMaterial: THREE.MeshBasicNodeMaterial;
   private readonly lightCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
-  private readonly slotUniforms: readonly SunShadowSlot[];
+  // スロットの値の正本。uniform 配列がこの 3 本をそのまま包むので、書けば受け手へ届く。
+  private readonly lightViewProjections: THREE.Matrix4[];
+  private readonly lightViews: THREE.Matrix4[];
   private readonly slotParameters: THREE.Vector4[];
   private readonly slotUniformArrays: SunShadowSlotUniformArrays;
   // 深度マテリアルが引く、いま描いているスロットの near。深度はここからのメートルで書く。
@@ -149,27 +131,14 @@ export class SunShadowMaps {
     this.target = createDepthTarget(1, 'sun-shadow', MAX_SHADOW_SLOTS);
     this.farTarget = createDepthTarget(1, 'sun-shadow-far', MAX_SHADOW_SLOTS);
     this.slotTexels = uniform(1);
-    this.slotTexelUv = uniform(1);
 
     this.drawNear = uniform(0.1);
-    const lightViewProjections = Array.from({ length: MAX_SHADOW_SLOTS }, () => new THREE.Matrix4());
-    const lightViews = Array.from({ length: MAX_SHADOW_SLOTS }, () => new THREE.Matrix4());
-    this.slotParameters = Array.from({ length: MAX_SHADOW_SLOTS }, () => new THREE.Vector4(0.1, 1, 1, 0));
-    this.slotUniforms = lightViewProjections.map((lightViewProjection, index) => ({
-      layer: index,
-      texture: this.target.texture,
-      farTexture: this.farTarget.texture,
-      lightViewProjection: uniform(lightViewProjection),
-      lightView: uniform(lightViews[index]!),
-      near: uniform(0.1),
-      far: uniform(10),
-      coverDepth: uniform(1),
-      texelWorld: uniform(1),
-      active: uniform(0),
-    }));
+    this.lightViewProjections = Array.from({ length: MAX_SHADOW_SLOTS }, () => new THREE.Matrix4());
+    this.lightViews = Array.from({ length: MAX_SHADOW_SLOTS }, () => new THREE.Matrix4());
+    this.slotParameters = Array.from({ length: MAX_SHADOW_SLOTS }, () => new THREE.Vector4(0.1, 10, 1, 0));
     this.slotUniformArrays = {
-      lightViewProjection: uniformArray(lightViewProjections, 'mat4'),
-      lightView: uniformArray(lightViews, 'mat4'),
+      lightViewProjection: uniformArray(this.lightViewProjections, 'mat4'),
+      lightView: uniformArray(this.lightViews, 'mat4'),
       parameters: uniformArray(this.slotParameters, 'vec4'),
     };
 
@@ -185,7 +154,12 @@ export class SunShadowMaps {
     this.setQuality(enabled, slotCount, slotSize, texelsPerPixel);
   }
 
-  get slots(): readonly SunShadowSlot[] { return this.slotUniforms; }
+  // 近層の深度マップ。枠から見て本影が残る距離にある遮蔽器だけが、スロットの層へ写る。
+  get texture(): THREE.Texture { return this.target.texture; }
+
+  // 同じ枠・同じ uv の遠層の深度マップ。本影を失った遮蔽器だけが写る。**近層と写る遮蔽器が
+  // 排他なので、2 枚から出した透過率はそのまま掛けられる。**
+  get farTexture(): THREE.Texture { return this.farTarget.texture; }
 
   get uniformArrays(): SunShadowSlotUniformArrays { return this.slotUniformArrays; }
 
@@ -193,7 +167,10 @@ export class SunShadowMaps {
   get texelsPerSlot(): FloatNode { return this.slotTexels; }
 
   // 同じく、1 texel ぶんの uv 幅。
-  get uvPerTexel(): FloatNode { return this.slotTexelUv; }
+  get uvPerTexel(): FloatNode { return float(1).div(this.slotTexels); }
+
+  // このフレームに中身の入ったスロットが 1 つでもあるか。
+  casts(): boolean { return this.slotParameters.some((parameters) => parameters.w > 0); }
 
   // 影の品質を設定から受け取る。層付き深度マップは全層で同じ寸法を持つため、枠の数は
   // active の層数だけを変える。張り直しはテクスチャの実体を差し替えないので、受け手が既に
@@ -206,21 +183,18 @@ export class SunShadowMaps {
     this.slotCount = count;
     this.slotSize = slotSize;
     this.slotTexels.value = slotSize;
-    this.slotTexelUv.value = 1 / slotSize;
     this.target.setSize(slotSize, slotSize, MAX_SHADOW_SLOTS);
     this.farTarget.setSize(SHADOW_FAR_SLOT_SIZE, SHADOW_FAR_SLOT_SIZE, MAX_SHADOW_SLOTS);
     // 張り直した深度マップの中身は不定なので、全枠を空にし、次のフレームの空戻しを上限まで
     // 走らせる — 縮めた枠にも前フレームの絵が残ったままだと、デバッグ表示が読み手を欺く。
-    for (const slot of this.slotUniforms) slot.active.value = 0;
-    this.syncSlotParameters();
+    this.clearSlots();
     this.drawnSlots = MAX_SHADOW_SLOTS;
   }
 
   // 遮蔽器を枠へまとめ、枠ごとに 1 スロットを描く。影が切られているか、影を要求する受け手が
   // 1 つも無いフレームは、GPU 側の仕事がまったく発生しない。
   render(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
-    for (const slot of this.slotUniforms) slot.active.value = 0;
-    this.syncSlotParameters();
+    this.clearSlots();
     this.clusters.length = 0;
     this.clusterSizes.length = 0;
     this.clusterCaps.length = 0;
@@ -282,13 +256,11 @@ export class SunShadowMaps {
       scene.overrideMaterial = this.depthMaterial;
       this.lightCamera.layers.set(SUN_SHADOW_CASTER_LAYER);
       for (const [index, cluster] of this.clusters.entries()) {
-        const slot = this.slotUniforms[index]!;
-        if (!this.configureSlot(slot, cluster, this.clusterCaps[index]!, sun)) continue;
-        this.drawNear.value = slot.near.value;
+        if (!this.configureSlot(index, cluster, this.clusterCaps[index]!, sun)) continue;
+        this.drawNear.value = this.slotParameters[index]!.x;
         await compileInto(this.renderer, this.farTarget, scene, this.lightCamera);
         await compileInto(this.renderer, this.target, scene, this.lightCamera);
       }
-      this.syncSlotParameters();
     } finally {
       scene.overrideMaterial = savedOverride;
     }
@@ -302,22 +274,21 @@ export class SunShadowMaps {
   private drawSlot(
     scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3, extentCap: number,
   ): void {
-    const slot = this.slotUniforms[index]!;
     this.renderer.setRenderTarget(this.farTarget, index);
     this.renderer.clear(true, true, false);
-    if (!this.configureSlot(slot, box, extentCap, sun)) return;
+    if (!this.configureSlot(index, box, extentCap, sun)) return;
+    const parameters = this.slotParameters[index]!;
     // 深度マテリアルはスロット共有なので、深度の原点をこのスロットの near へ差し替える。
-    this.drawNear.value = slot.near.value;
-    if (this.bandSplit > slot.near.value) {
-      this.setLightDepthRange(slot.near.value, this.bandSplit);
+    this.drawNear.value = parameters.x;
+    if (this.bandSplit > parameters.x) {
+      this.setLightDepthRange(parameters.x, this.bandSplit);
       this.renderer.render(scene, this.lightCamera);
     }
-    this.setLightDepthRange(Math.max(slot.near.value, this.bandSplit), this.nearBandFar);
+    this.setLightDepthRange(Math.max(parameters.x, this.bandSplit), this.nearBandFar);
     this.renderer.setRenderTarget(this.target, index);
     this.renderer.clear(true, true, false);
     this.renderer.render(scene, this.lightCamera);
-    slot.active.value = 1;
-    this.syncSlotParameters();
+    parameters.w = 1;
   }
 
   // ライトカメラが撮る深度の範囲を差し替える。**枠(left/right/top/bottom)は動かさない** —
@@ -438,9 +409,9 @@ export class SunShadowMaps {
     return this.size.length();
   }
 
-  // 箱へ平行投影のライトカメラを合わせ、スロットの uniform を書く。恒星方向が取れなければ偽。
+  // 箱へ平行投影のライトカメラを合わせ、スロット index の値を書く。恒星方向が取れなければ偽。
   private configureSlot(
-    slot: SunShadowSlot, box: THREE.Box3, extentCap: number, sun: SunLight,
+    index: number, box: THREE.Box3, extentCap: number, sun: SunLight,
   ): boolean {
     box.getCenter(this.center);
     box.getSize(this.size);
@@ -485,14 +456,12 @@ export class SunShadowMaps {
     this.nearBandFar = far;
     this.setLightDepthRange(depths.near, far);
 
-    slot.near.value = depths.near;
-    slot.far.value = far;
-    slot.coverDepth.value = span;
-    slot.lightView.value.copy(this.lightCamera.matrixWorldInverse);
-    slot.lightViewProjection.value.multiplyMatrices(
+    // 中身を描き終えるまでは空のまま置く(active = 0)。
+    this.slotParameters[index]!.set(depths.near, far, (2 * extent) / this.slotSize, 0);
+    this.lightViews[index]!.copy(this.lightCamera.matrixWorldInverse);
+    this.lightViewProjections[index]!.multiplyMatrices(
       this.lightCamera.projectionMatrix, this.lightCamera.matrixWorldInverse,
     );
-    slot.texelWorld.value = (2 * extent) / this.slotSize;
     return true;
   }
 
@@ -511,13 +480,9 @@ export class SunShadowMaps {
     return near <= far ? { near, far } : null;
   }
 
-  // スロットの値を、受け手が読む uniform 配列へ写す。**configureSlot でスロットを書き換えたら必ず呼ぶ。**
-  private syncSlotParameters(): void {
-    for (const [index, slot] of this.slotUniforms.entries()) {
-      this.slotParameters[index]!.set(
-        slot.near.value, slot.coverDepth.value, slot.texelWorld.value, slot.active.value,
-      );
-    }
+  // 全スロットを空(active = 0)へ戻す。残りの値は次に配るときに上書きされる。
+  private clearSlots(): void {
+    for (const parameters of this.slotParameters) parameters.w = 0;
   }
 
   // 保持している GPU 資源を解放する。
