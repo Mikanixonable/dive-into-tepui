@@ -22,7 +22,7 @@ function circleOverlapArea(r1: number, r2: number, d: number): number {
 // r から見た太陽円盤のうち occluder に遮られていない面積比(0..1)。sunDir は太陽方向の単位
 // ベクトルを成分で、sinSunAng は sin(sunAngRadius)。毎ステップ全エンティティぶん、遮蔽体の
 // 数だけ走る経路なので、中間の Vec3 を作らずスカラで畳む。
-function occludedFraction(
+function shadowedFraction(
   r: Vec3,
   sunDirX: number, sunDirY: number, sunDirZ: number,
   sunDist: number, sinSunAng: number, sunAngRadius: number,
@@ -56,7 +56,7 @@ function occludedFraction(
 // 上限は r と body の距離だけで決まる。r から見て body が恒星の手前にあるかどうかで値が
 // 変わると、body 自身の夜側のように影の落ちた先が見えている位置関係でも 0 になってしまう。
 // 恒星自身と半径 0 の天体は遮蔽器にならず、天体の内側からは恒星が完全に隠れる。
-export function maxOccludedFraction(
+export function maxShadowedFraction(
   r: Vec3, star: CelestialMotion, body: CelestialMotion, pivot: number,
 ): number {
   if (body.kind === 'star' || body.def.radius <= 0) return 0;
@@ -89,7 +89,7 @@ export function sunlitFactor(
 
   let lit = 1;
   for (const occluder of celestialBodies) {
-    lit *= occludedFraction(
+    lit *= shadowedFraction(
       r, tx * inv, ty * inv, tz * inv, sunDist, sinSunAng, sunAngRadius, occluder, pivot);
     if (lit === 0) return 0; // 本影に入った時点で、以降の遮蔽体を見ても答えは変わらない
   }
