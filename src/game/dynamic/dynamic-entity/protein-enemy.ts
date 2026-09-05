@@ -100,7 +100,7 @@ export class ProteinEnemy extends Enemy {
       proteinMotionModeDisplacements(definition.motion),
       definition.motion.modes.length,
     );
-    const renderObject = definition.buildRenderObject(display, motionBinding);
+    const renderObject = definition.buildRenderObject(display, motionBinding ?? undefined);
     renderObject.scale.setScalar(ENEMY_SCALE);
     // 表示が原子模型へ切り替わっても、判定形状は常に同じリボンに固定する。
     const collisionSource = definition.buildCollisionObject();
@@ -135,7 +135,7 @@ export class ProteinEnemy extends Enemy {
   public setDisplay(display: ProteinDisplaySettings): void {
     this.displaySettings = display;
     this.runtime.clearVisuals();
-    definitionFor(this.assetId).recolorRenderObject(this.renderObject, display, this.runtime.motionBinding);
+    definitionFor(this.assetId).recolorRenderObject(this.renderObject, display, this.runtime.motionBinding ?? undefined);
     this.runtime.rebuildVisuals();
   }
 
