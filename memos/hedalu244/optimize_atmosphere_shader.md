@@ -92,101 +92,27 @@ Intel gen-9 内蔵 GPU の Chrome** で測ったもの。**絶対値は実機の
 
 ---
 
-## 達成目標
+## 達成目標と実測
 
-全手順の実施後、次を満たす。
+**全手順を実施済み**(c65e26cc「下地の控えを大気パスへ移す」/ 3ddd5fa0「1天体分の板 + ピンポン」)。
 
-1. **大気段の WGSL が 40 KB 以下**(現状 118.0 KB)。
-2. **大気段の事前コンパイルが 2.5 秒以下**(現状 6,083 ms)。
-3. **`atmosphere-pass.ts` に、天体スロットを複数並べる JS のループが 1 つも無い。**
-   `grep -n "MAX_ATMOSPHERE_BODIES" src/render/pipeline/atmosphere-pass.ts` が
-   「描画命令の上限」としての 1 箇所だけになる。
-4. **絵が変わらない。** `npm run render-lab:shot` を変更前後で撮り、**差が撮り直しの揺れの
-   範囲に収まる。** 判定は「変更前 vs 変更後」の差が「同じコードの run どうし」の差を超えない
-   こと。**バイト一致は判定に使えない**(下の実測)。
-5. **大気パスの GPU 時間が悪化していない。** `node tools/render-lab-measure.mjs 2` の中央値で、
-   `earth` / `far` は変更前以下、`earth-mars` / `earth-mars d=-2` は **+0.5 ms 以内**
-   (層が 2 つのときだけ全画面コピーが 1 回増えるため)。
-6. **描画デバッグ表示の「マテリアル」と「大気」が、SPEC どおりのものを映す。**
-   `earth-mars`(大気 2 体)で撮って確かめる。
-7. `npm run typecheck` と `npm run test:render` が通る。
-
----
-
-## 手順
-
-### 手順 2. スロットを1つにして、層ごとに1回描く
-
-**目的**: 大気の合成板が持つ天体スロットを 1 つにして、**複数の大気は描画を複数回に分ける。**
-これが本命の変更で、シェーダ本文が 1/4 前後になる。
-
-**合成の順序**: 大気が足す色は、視点に近い順の層 0..N−1 について
-
-```
-result = Σ_i ( inscatter_i · Π_{j<i} T_j ) + backdrop · Π_i T_i
-```
-
-で、これは `c_{k+1} = inscatter_k + T_k · c_k` を **奥の層から**回した結果に等しい。
-つまり **`atmosphereDraws` が返す「視点に近い順」を逆順にたどり**、各層で
-「共有ターゲット → 控えへコピー」「控えを読んで共有ターゲットへ上書き」を1回ずつ行う。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
+| 目標 | 結果 |
 | --- | --- |
-| `src/render/pipeline/atmosphere-pass.ts:107` | `slots: readonly BodySlot[]` を `slot: BodySlot` 1 つにする |
-| `src/render/pipeline/atmosphere-pass.ts:183-201` | `accumulateLayers` を削除する。合成板の色は「1 層ぶんの区間判定 → 積分 → 下地との合成」だけになる |
-| `src/render/pipeline/atmosphere-pass.ts:111` / `:161-167` / `:396` | 内部散乱だけを返すノード `scattered` と `scatteredLight()` を削除する。**重いノードグラフは合成板の 1 つだけ**になる |
-| `src/render/pipeline/atmosphere-pass.ts:400-427` | `setDraws` は uniform を書かず、**このフレームの層とその裾球を溜めるだけ**にする。uniform を書くのは描く直前(`render`) |
-| `src/render/pipeline/atmosphere-pass.ts:429-440` | `anyBodyInView` を「層 1 つが写るか」の判定へ分解する。視錐台の組み立ては `render` で1回 |
-| `src/render/pipeline/atmosphere-pass.ts:442-455` | `render` を層のループにする。**逆順(奥→手前)**、**層ごとに `gpu.beginPass(GPU_PASS.atmosphere)`**、**`autoClear = false` を層ごとの描画すべてに掛ける** |
-| `src/render/pipeline/atmosphere-pass.ts`(追加) | デバッグ表示用の控え 1 枚(既定 1×1、選ばれたときだけ画面寸法へ)と、そこから読むコピー板。`renderScattered` が黒い下地から同じ鎖を回して書く。**いまの `backdropTexture` はこの控えを指す `debugTexture` へ改名する** — 2 つの表示が同じ 1 枚を共有するので、下地専用の名前ではなくなる |
-| `src/render/pipeline/render-pipeline.ts:204-209` | 「マテリアル」と「大気」の材質を、どちらも `atmospherePass.debugTexture` を読む**同じ 1 枚**にする。`dispose`(`:474`)は `new Set(Object.values(...))` を回す形へ |
-| `src/render/pipeline/render-pipeline.ts:398-411` | 「大気」表示のときだけ `renderScattered(camera)` を、「マテリアル」表示のときだけ `captureBackdrop()` を呼ぶ |
-| `src/render/atmosphere.ts:26` | `MAX_ATMOSPHERE_BODIES` のコメントを「描画命令の上限」の意味へ直す。**値は 4 のまま** |
-| `src/render/pipeline/atmosphere-pass.ts:1-8` | 冒頭のコメントを、層をどう重ねるかの記述へ直す |
+| 大気段の WGSL が 40 KB 以下(変更前 119.0 KB) | **35.0 KB** — 達成 |
+| 大気段の事前コンパイルが 2.5 秒以下(変更前 6,290 / 5,647 ms) | **1,466 / 1,030 ms** — 達成 |
+| `atmosphere-pass.ts` に天体スロットを並べる JS のループが無い | 残る `for` は層を奥から辿る 1 本だけ — 達成 |
+| 絵が変わらない | render-lab 全 38 ケースを変更前後 2 run ずつ。「変更前 vs 変更後」の最大差が、どのケースでも「変更後どうし」の差を超えない(大気のケースは earth 2 / earth-mars 5 / far 1 LSB)— 達成 |
+| 大気パスの GPU 時間が悪化していない | earth は 25.5 → 23.8 ms でわずかに速い。**earth-mars は 33.4 → 36.6 ms(+2〜4 ms)で未達** — 下記 |
+| デバッグ表示「マテリアル」「大気」が SPEC どおり | earth / earth-mars の両方で変更前と同じものを映す。「大気」表示のあとに通常表示へ戻した絵も変更前とバイト一致(クリア色の退避が効いている)— 達成 |
+| `npm run typecheck` / `npm run test:render` | 通る — 達成 |
 
-この手順のあとの公開面:
+**未達の 1 件(大気 2 体のフレームの GPU 時間)について。** 層が 2 つのときだけ、全画面の
+コピーと描画が 1 回ずつ増える。計画では +0.5 ms と見積もったが、実測は +2〜4 ms
+(run 間の揺れも ±4 ms あるので、この桁より細かくは詰められない)。**「複数大気が必要なとき
+だけレンダーパスを増やすのは割に合う」という前提で選んだ形なので、そのまま受け入れている。**
+覆すなら、層ごとのコピーをやめて共有ターゲットと控えの間で交互に描く形(下地のテクスチャを
+差し替えられるようにする必要がある)か、`MAX_ATMOSPHERE_BODIES` を 1 へ落とす。
 
-```ts
-export class AtmospherePass {
-  // このフレームに大気を描く天体を、視点に近い順に受け取る。描く順はこの逆。
-  public setDraws(draws: readonly AtmosphereDraw[]): void;
-  // 視錐台に掛かる層だけを、奥から順に共有ターゲットへ重ねる。
-  public render(camera: THREE.Camera): void;
-  // デバッグ表示が読む 1 枚。「マテリアル」なら下地、「大気」なら内部散乱だけ。
-  public get debugTexture(): THREE.Texture;
-  // 下地(= マテリアルパスの出力)を debugTexture へ撮る。render より前に呼ぶ。
-  public captureBackdrop(): void;
-  // 黒い下地から同じ層の鎖を回し、内部散乱だけを debugTexture へ書く。render より後に呼ぶ。
-  public renderScattered(camera: THREE.Camera): void;
-  public compile(camera: THREE.Camera): Promise<void>;
-  public dispose(): void;
-}
-```
-
-`renderScattered` の1層目は控えを黒でクリアしてから読む。**クリア色はレンダラの共有状態
-なので、`occlusion.ts` / `light-prepass.ts` と同じく退避して戻すこと。**
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。`npm run test:render` が通る。
-- `grep -n "MAX_ATMOSPHERE_BODIES" src/render/pipeline/atmosphere-pass.ts` が、
-  **描画命令の上限を掛ける 1 箇所だけ**になる。
-- `grep -n "scatteredLight" src/` が **0 件**。
-- プローブで **大気段の WGSL が 40 KB 以下**、**事前コンパイルが 2.5 秒以下**。
-- `npm run render-lab:shot` の絵を変更後に 2 run 撮り、**「変更前 vs 変更後」の差が
-  「変更後どうし」の差を超えるケースが無い**こと。大気のケース(`earth` `earth-mars` `far`)の
-  run 間の揺れは 1〜5 LSB なので、そこは実質の判定になる。
-  撮影後は `memos/mikanixonable/protein-motion-baseline.json` を戻す。
-- `node tools/render-lab-measure.mjs 2` の「大気」行の中央値が、`earth` / `far` で変更前以下、
-  `earth-mars` / `earth-mars d=-2` で **+0.5 ms 以内**。
-- デバッグ表示の撮影スクリプトで `earth` / `earth-mars` × `off` / `material` / `atmosphere` を
-  変更前後で撮り、**「マテリアル」が地球と火星の陰影だけ**(大気の霞みが乗っていない)、
-  **「大気」が内部散乱だけ**(下地の地表が透けていない)であることを目で確かめる。
-- `npm run dev` で地球の低軌道から地平線を見て、大気の見えが変わっていないこと。
-
----
 
 ## 見積り
 
