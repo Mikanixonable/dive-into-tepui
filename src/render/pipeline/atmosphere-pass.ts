@@ -21,7 +21,7 @@ import { BlueNoise } from '../blue-noise';
 import { viewPositionAt, viewRayAt } from './view-ray';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
-import type { SunOcclusion } from './sun-occlusion';
+import type { BodyShadow } from './shadow/body-shadow';
 import type { SunLight } from './sun-light';
 import { compileInto } from './compile-into';
 
@@ -147,7 +147,7 @@ export class AtmospherePass {
     gbuffer: GBufferPass,
     private readonly sharedTarget: THREE.RenderTarget,
     private readonly sunLight: SunLight,
-    private readonly sunOcclusion: SunOcclusion,
+    private readonly bodyShadow: BodyShadow,
     private readonly gpu: GpuTimings,
   ) {
     this.blueNoise = new BlueNoise();
@@ -378,15 +378,15 @@ export class AtmospherePass {
       .add(vec3(this.slot.mie
         .mul(depthToSpace(radius, sunMu, this.slot.surfaceRadius, this.slot.mieScaleHeight)).mul(sunPathScale)));
     const irradiance = this.sunLight.intensity.div(max(dot(toSun, toSun), 1));
-    const occlusion = this.sunOcclusion
-      .occluderTransmittance(point)
+    const shadow = this.bodyShadow
+      .transmittance(point)
       .mul(this.horizonVisibility(radius, sunMu, toSun));
-    return exp(sunDepth.negate()).mul(irradiance.div(PI)).mul(occlusion).mul(this.sunLight.color);
+    return exp(sunDepth.negate()).mul(irradiance.div(PI)).mul(shadow).mul(this.sunLight.color);
   }
 
   // 大気の中の 1 点から見て、恒星がその天体自身の地平線の上に出ている割合 0..1。
   //
-  // **この天体自身の遮りはここで解く** — 遮蔽器の一覧に載っている保証が無く、載っていないと
+  // **この天体自身の遮りはここで解く** — 影を落とす天体の一覧に載っている保証が無く、載っていないと
   // 夜側でも depthToSpace が地表で打ち切った有限の厚みを返し、真夜中の半球ぜんぶが夕焼け色に光る。
   //
   // 恒星は点ではないので、境目は縁を掠める帯の中で滑らかに変わる。帯の幅は恒星の視半径を

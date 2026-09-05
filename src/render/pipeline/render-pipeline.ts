@@ -20,7 +20,10 @@ import { SphereSpecular } from './lighting/sphere-light';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
 import { OcclusionPass } from './occlusion';
-import { SunOcclusion } from './sun-occlusion';
+import { BodyShadow } from './shadow/body-shadow';
+import { RingShadow } from './shadow/ring-shadow';
+import { CumulusShadow } from './shadow/cumulus-shadow';
+import { MeshShadow } from './shadow/mesh-shadow';
 import { OverlayPass } from './overlay-pass';
 import { AntialiasPass } from './antialias-pass';
 import { SchematicComposite } from './schematic-composite';
@@ -37,7 +40,10 @@ import { DeferredTexture } from '../deferred-texture';
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly gbuffer: GBufferPass;
   private readonly occlusionPass: OcclusionPass;
-  private readonly _sunOcclusion: SunOcclusion;
+  private readonly _bodyShadow: BodyShadow;
+  private readonly _ringShadow: RingShadow;
+  private readonly _cumulusShadow: CumulusShadow;
+  private readonly meshShadow: MeshShadow;
   private readonly sunShadowMaps: SunShadowMaps;
   private readonly lightPrepass: LightPrepass;
   // 球光源の鏡面が引く係数表。太陽と天体照で 1 つを共有する。
@@ -84,11 +90,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // に戻るセッション限定の状態で、永続化しない。
   public debugTarget: DebugTargetId = 'off';
 
-  // 以下は、シーン側が毎フレームの値(恒星の位置・順応の基準点・遮蔽器・光源になる天体・
+  // 以下は、シーン側が毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・
   // 環境光の割合・大気を持つ天体)を書き込む先。
   public get sunLight(): SunLight { return this._sunLight; }
   public get exposure(): Exposure { return this._exposure; }
-  public get sunOcclusion(): SunOcclusion { return this._sunOcclusion; }
+  public get bodyShadow(): BodyShadow { return this._bodyShadow; }
+  public get ringShadow(): RingShadow { return this._ringShadow; }
+  public get cumulusShadow(): CumulusShadow { return this._cumulusShadow; }
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
@@ -105,8 +113,14 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       renderer, gpu, graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
-    this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
-    this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
+    this._bodyShadow = new BodyShadow(this._sunLight);
+    this._ringShadow = new RingShadow(this._sunLight);
+    this._cumulusShadow = new CumulusShadow(this._sunLight);
+    this.meshShadow = new MeshShadow(this._sunLight, this.sunShadowMaps);
+    this.occlusionPass = new OcclusionPass(
+      renderer, this.gbuffer,
+      this._bodyShadow, this._ringShadow, this._cumulusShadow, this.meshShadow, gpu,
+    );
     this.sphereSpecular = new SphereSpecular();
     this.sunSource = new SunSource(
       this._sunLight, this.occlusionPass, this.sphereSpecular, graphics.sunLightModel);
@@ -129,7 +143,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
     this.atmospherePass = new AtmospherePass(
-      renderer, this.gbuffer, this.target, this._sunLight, this._sunOcclusion, gpu,
+      renderer, this.gbuffer, this.target, this._sunLight, this._bodyShadow, gpu,
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
@@ -253,7 +267,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private shadowSlotColorNode(): Vec3Node {
     const viewPos = viewPositionAt(this.gbuffer.depthTexture, this.depthDebugProjInv);
     const worldPos: Vec3Node = this.debugViewToWorld.mul(vec4(viewPos, 1)).xyz;
-    return this._sunOcclusion.slotDebugColor(worldPos);
+    return this.meshShadow.slotDebugColor(worldPos);
   }
 
   // 深度バッファの生値を near/far 間の対数スケール(0=near, 1=far)へ変換する。素の深度値は
