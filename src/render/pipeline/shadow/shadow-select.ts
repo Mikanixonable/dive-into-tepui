@@ -1,13 +1,13 @@
 // 遮蔽パスがこの1フレームに扱う遮蔽器・環・積雲の殻を選ぶ。絵に出ない遮蔽を落とす閾値も、環を
 // 1体に絞る判断も、積雲の影を出す設定の読み方も、遮蔽パスのグラフの形が決めるものなのでここが持つ。
-import { maxShadowedFraction } from '../../physics/shadow';
-import { len, sub } from '../../math/vec3';
-import { MAX_SHADOW_BODIES } from './shadow/body-shadow';
-import { CUMULUS_DETAIL } from '../cumulus-shell';
-import type { CelestialMotion } from '../../physics/celestial-motion';
-import type { Vec3 } from '../../math/vec3';
-import type { RingBand } from './shadow/ring-shadow';
-import type { GraphicsSettingsData } from '../graphics-settings';
+import { maxShadowedFraction } from '../../../physics/shadow';
+import { len, sub } from '../../../math/vec3';
+import { MAX_SHADOW_BODIES } from './body-shadow';
+import { CUMULUS_DETAIL } from '../../cumulus-shell';
+import type { CelestialMotion } from '../../../physics/celestial-motion';
+import type { Vec3 } from '../../../math/vec3';
+import type { RingBand } from './ring-shadow';
+import type { GraphicsSettingsData } from '../../graphics-settings';
 
 // 遮蔽器として残す最大遮蔽率の下限。これを下回る天体は、どの向きでも恒星面の 1% 未満しか
 // 隠せないので、落としても絵に出ない(physics/shadow.ts の maxShadowedFraction)。
