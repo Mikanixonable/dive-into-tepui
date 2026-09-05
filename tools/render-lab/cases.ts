@@ -24,9 +24,9 @@ import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
   attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
 } from '../../src/render/thermal-emissive';
-import {
-  sphereOccluder, type CumulusShadow, type Occluder, type RingBand,
-} from '../../src/render/pipeline/sun-occlusion';
+import { sphereShadowBody, type ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
+import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cumulus-shadow';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
 import { AU } from '../../src/physics/astronomical-unit';
@@ -108,11 +108,11 @@ export interface LabCase {
   // 引き直される。
   readonly atmospheres?: readonly AtmosphereBody[];
   // 遮蔽パスへ渡す球。中心は描画座標。
-  readonly occluders?: readonly Occluder[];
+  readonly shadowBodies?: readonly ShadowBody[];
   // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
   // 遮蔽パスへ渡す積雲の殻。
-  readonly cumulusShadow?: CumulusShadow;
+  readonly cumulus?: ShadowCumulus;
   // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
   // 同値なら何もしないこと。
   readonly applyGraphics?: (graphics: GraphicsSettingsData) => void;
@@ -421,7 +421,7 @@ function shipBodyShadow(_style: RenderStyle, ringMaterials: RingMaterials): LabC
     camera,
     sunDirection: sun,
     viewTarget: center,
-    occluders: [sphereOccluder(center, SMALL_BODY_RADIUS)],
+    shadowBodies: [sphereShadowBody(center, SMALL_BODY_RADIUS)],
     rings: { center, axis, bands: occlusionBands(SMALL_BODY_RING_BANDS) },
   };
 }
@@ -556,8 +556,8 @@ function depthProbe(z: number, far: number): LabCase {
 // 距離。距離に対する半径の比を太陽の視半径(4.65e-3)よりわずかに大きく取ると、本影を半影が
 // 縁取る金環直前の配置になる。
 const ECLIPSE_GROUND_ANGLE = 0.25;
-const ECLIPSE_OCCLUDER_RADIUS = 2e5;
-const ECLIPSE_OCCLUDER_DISTANCE = 3e7;
+const ECLIPSE_SHADOW_BODY_RADIUS = 2e5;
+const ECLIPSE_SHADOW_BODY_DISTANCE = 3e7;
 
 // 大気の外に置く試験球の位置と半径。カメラと同じ高度帯(403km)に居るので、**カメラとの間に
 // 大気が無く、地表と違って霞んではならない。** 地平線を背にした輪郭で読む。
@@ -615,8 +615,8 @@ function marchSlab(): LabCase {
 function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Quaternion()): {
   readonly object: THREE.Object3D;
   readonly atmosphere: AtmosphereBody;
-  readonly cumulusShadow: CumulusShadow;
-  readonly occluder: Occluder;
+  readonly cumulus: ShadowCumulus;
+  readonly shadowBody: ShadowBody;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
 } {
   const group = new THREE.Group();
@@ -649,7 +649,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       polarRatio: radii.polarRadius / radii.equatorRadius,
       optics: EARTH_ATMOSPHERE_OPTICS,
     },
-    cumulusShadow: {
+    cumulus: {
       center,
       surfaceRadius: R_EARTH_EQ,
       axes: new THREE.Vector3(axes.x, axes.y, axes.z),
@@ -658,7 +658,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       field: cumulus.field,
     },
     // 天体自身の遮蔽器。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
-    occluder: { center, axes: new THREE.Vector3(axes.x, axes.y, axes.z), bodyFromWorld },
+    shadowBody: { center, axes: new THREE.Vector3(axes.x, axes.y, axes.z), bodyFromWorld },
     // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
     // 絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {
@@ -699,8 +699,8 @@ function earth(style: RenderStyle): LabCase {
     camera,
     atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
-    occluders: [earthSphere.occluder],
-    cumulusShadow: earthSphere.cumulusShadow,
+    shadowBodies: [earthSphere.shadowBody],
+    cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
   };
 }
@@ -715,8 +715,8 @@ function earthOblique(style: RenderStyle): LabCase {
     camera: labCamera(6e7),
     atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
-    occluders: [earthSphere.occluder],
-    cumulusShadow: earthSphere.cumulusShadow,
+    shadowBodies: [earthSphere.shadowBody],
+    cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
   };
 }
@@ -741,8 +741,8 @@ function earthPolar(style: RenderStyle): LabCase {
     sunDirection: EARTH_POLAR_SUN_DIR,
     atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
-    occluders: [earthSphere.occluder],
-    cumulusShadow: earthSphere.cumulusShadow,
+    shadowBodies: [earthSphere.shadowBody],
+    cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
   };
 }
@@ -778,9 +778,9 @@ function earthEclipse(style: RenderStyle): LabCase {
   const ground = center.clone().addScaledVector(groundDir, R_EARTH);
   return {
     ...base,
-    occluders: [
-      sphereOccluder(ground.clone().addScaledVector(SUN_DIR, ECLIPSE_OCCLUDER_DISTANCE), ECLIPSE_OCCLUDER_RADIUS),
-      ...base.occluders!,
+    shadowBodies: [
+      sphereShadowBody(ground.clone().addScaledVector(SUN_DIR, ECLIPSE_SHADOW_BODY_DISTANCE), ECLIPSE_SHADOW_BODY_RADIUS),
+      ...base.shadowBodies!,
     ],
   };
 }
@@ -840,13 +840,13 @@ function eclipse(): LabCase {
   receiver.position.copy(center);
   markLitOpaque(receiver);
   // 遮蔽する球と環は、受ける球から恒星方向へ 1e4 m の位置に置く。
-  const occluderCenter = center.clone().addScaledVector(SUN_DIR, 1e4);
+  const shadowBodyCenter = center.clone().addScaledVector(SUN_DIR, 1e4);
   return {
     objects: [receiver],
     camera,
-    occluders: [sphereOccluder(occluderCenter, 50)],
+    shadowBodies: [sphereShadowBody(shadowBodyCenter, 50)],
     rings: {
-      center: occluderCenter,
+      center: shadowBodyCenter,
       axis: SUN_DIR.clone().add(new THREE.Vector3(0, 0.7, 0)).normalize(),
       bands: [
         { innerRadius: 110, outerRadius: 170, normalOpticalDepth: 0.4 },
@@ -1001,7 +1001,7 @@ function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
-    occluders: [sphereOccluder(center, radius)],
+    shadowBodies: [sphereShadowBody(center, radius)],
     rings: {
       center,
       axis: new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
@@ -1035,7 +1035,7 @@ function saturnShadow(style: RenderStyle, ringMaterials: RingMaterials): LabCase
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
-    occluders: [sphereOccluder(center, radius)],
+    shadowBodies: [sphereShadowBody(center, radius)],
     rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: occlusionBands(SATURN_RINGS.bands) },
     applyGraphics: (graphics) => view.sync(
       center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, graphics, style,

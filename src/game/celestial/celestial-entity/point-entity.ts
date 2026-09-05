@@ -27,7 +27,7 @@ import type { StarEntity } from './star-entity';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { LineOverlay } from '../../../render/line-overlay';
 import type { MarkerManager } from '../../marker/marker-manager';
-import type { CumulusShadow } from '../../../render/pipeline/sun-occlusion';
+import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shadow';
 import type { RenderStyle } from '../../../render/render-style';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { Vec3 } from '../../../math/vec3';
@@ -185,7 +185,7 @@ export class PointEntity extends CelestialEntity {
   }
 
   // 遮蔽パスへ渡す積雲の殻。姿勢は自転位相まで込みで組む — 軸だけでは場が地表と一緒に回らない。
-  public override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): CumulusShadow | null {
+  public override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): ShadowCumulus | null {
     if (this.cumulus === null) return null;
     writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
     return {
