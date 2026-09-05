@@ -1,5 +1,7 @@
 // 画像の取得を遅らせたテクスチャ。実体は生成時からあるので、マテリアルもシェーダグラフも
 // 画像を待たずに組める。取得は DOM を要するため、生成だけなら DOM の無い環境でも通る。
+// 届いた画像の GPU への投入は全インスタンス共通の待ち行列を通り、publishOne が1回に1枚だけ
+// 進める — まとめて投入すると、その1回で JS スレッドが数百 ms 止まる。
 import * as THREE from 'three/webgpu';
 
 // 異方性フィルタ段数。斜めから見た球面の縞立ちを抑える。
@@ -35,6 +37,7 @@ export class DeferredTexture {
     });
   }
 
+  // 待ち行列の先頭1枚を GPU へ投入する。空なら何もしない。
   public static publishOne(renderer: THREE.WebGPURenderer): void {
     const deferredTexture = DeferredTexture.ready.shift();
     if (deferredTexture === undefined) return;
@@ -43,7 +46,8 @@ export class DeferredTexture {
     if (deferredTexture.publish()) renderer.initTexture(deferredTexture.texture);
   }
 
-  public static async publishOneForCompile(renderer: THREE.WebGPURenderer): Promise<void> {
+  // 1フレーム明け渡してから待ち行列の先頭1枚を投入する。空なら待たずに戻る。
+  public static async publishOneNextFrame(renderer: THREE.WebGPURenderer): Promise<void> {
     if (DeferredTexture.ready.length === 0) return;
 
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -62,6 +66,7 @@ export class DeferredTexture {
     this.texture.dispose();
   }
 
+  // 届いている画像をテクスチャへ載せる。まだ届いていないか解放済みなら偽を返す。
   private publish(): boolean {
     if (this.disposed || this.image === null) return false;
 

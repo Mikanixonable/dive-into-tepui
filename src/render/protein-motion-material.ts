@@ -219,14 +219,10 @@ export function flushProteinMotionComputes(renderer: THREE.WebGPURenderer): void
   dirtyBindings.clear();
 }
 
-/**
- * Register a renderer that may own protein storage buffers.
- *
- * Three r185 does not expose public disposal on StorageBufferAttribute. Its
- * internal attribute registry is the owner that destroys the backend buffer
- * and updates renderer.info, so the pinned renderer integration is isolated
- * here and reference-counted for pipelines that share one renderer.
- */
+// 残基バッファを持ちうるレンダラを登録し、登録を解く関数を返す。同じレンダラを共有する
+// パイプラインのために参照カウントで数える。**three は StorageBufferAttribute の解放口を
+// 公開していない** — バックエンドのバッファを壊して renderer.info を更新できるのは内部の
+// 属性レジストリだけなので、そこへ触れる箇所をこの登録へ閉じ込める。
 export function registerProteinMotionRenderer(renderer: THREE.WebGPURenderer): () => void {
   const internals = renderer as THREE.WebGPURenderer & ProteinMotionRendererInternals;
   proteinMotionRenderers.set(internals, (proteinMotionRenderers.get(internals) ?? 0) + 1);
@@ -273,11 +269,8 @@ function residueOffsetNode(binding: ProteinMotionBinding): THREE.Node<'vec3'> {
   return offsetA.mul(THREE.TSL.float(1).sub(residueT)).add(offsetB.mul(residueT));
 }
 
-/**
- * Attach the shared residue deformation to a NodeMaterial's local position.
- * Because the positionNode belongs to the source object material, Three's
- * G-buffer and override-material shadow paths can carry the same node through.
- */
+// 共有の残基変位をマテリアルのローカル位置へ結ぶ。positionNode は元の物体のマテリアルが
+// 持つので、G バッファと override マテリアルの影の経路が同じノードをそのまま運べる。
 function applyProteinMotionBinding<T extends ProteinMotionNodeMaterial>(
   material: T,
   binding: ProteinMotionBinding,
@@ -308,7 +301,7 @@ function assertAttributeLength(name: string, values: ArrayLike<number>, count: n
   if (values.length !== count) throw new RangeError(`${name} must match geometry vertex count`);
 }
 
-/** Attach interpolated residue indices to ordinary mesh/line geometry. */
+// 補間つきの残基インデックスを、通常のメッシュ/線のジオメトリへ結ぶ。
 export function attachProteinResidueBinding(
   geometry: THREE.BufferGeometry,
   residueA: ArrayLike<number>,
@@ -325,7 +318,7 @@ export function attachProteinResidueBinding(
   geometry.userData.proteinResidueBinding = true;
 }
 
-/** Attach interpolated residue indices to InstancedMesh instance data. */
+// 補間つきの残基インデックスを、InstancedMesh のインスタンスデータへ結ぶ。
 export function attachProteinInstancedResidueBinding(
   mesh: THREE.InstancedMesh,
   residueA: ArrayLike<number>,

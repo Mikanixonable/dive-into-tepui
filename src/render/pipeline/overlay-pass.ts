@@ -109,8 +109,11 @@ export class OverlayPass {
     setOverlayPassLayers(camera);
     try {
       if (style === 'schematic') {
+        // 板は描画時と同じ順で材質を差し替える — 深度を写す板と、重ね描く板は別のグラフになる。
+        this.quad.material = this.depthCopyMaterial;
         await compileInto(this.renderer, this.target, this.quad, this.quad.camera);
         await compileInto(this.renderer, this.target, scene, camera);
+        this.quad.material = this.compositeMaterial;
         await compileIntoOutput(this.renderer, outputTarget, this.quad, this.quad.camera);
       } else {
         await compileIntoOutput(this.renderer, outputTarget, scene, camera);

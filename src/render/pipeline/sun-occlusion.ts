@@ -21,8 +21,8 @@ import type { SunLight } from './sun-light';
 // 同時に遮蔽器として扱う天体の上限(グラフのスロット数)。
 export const MAX_OCCLUDERS = 4;
 
-// 環の帯の上限。登録上の最大は天王星の 13 帯なので、それを超える
-// スロットは常に空になる — グラフは静的に展開されるので、空きスロットも毎画素の演算を食う。
+// 環の帯の上限。登録上の最大は天王星の 13 帯なので、それを超えるスロットは常に空になる —
+// 空きスロットもループを回るので、上限を上げると毎画素の演算が増える。
 const MAX_RING_BANDS = 13;
 
 // 環の帯 1 本。半径は描画座標と同じメートル、tau は環面に垂直な光学的深さ。
@@ -356,7 +356,7 @@ export class SunOcclusion {
   // 厚みは光路長ではなく稼いだ高度で配るので、柱を 1 本抜ける合計はどれだけ斜めでも τ に一致する。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
   // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、場を引く mip 段と粒の振幅を決める。
-  cumulusTransmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
+  public cumulusTransmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
     const sunDir = this.sunDirection(worldPos);
     return Fn(() => {
       const transmittance = float(1).toVar();
@@ -518,7 +518,7 @@ export class SunOcclusion {
   // 濃くなる。判定を select ではなく If で書き、選ぶ段と引く段を分けるのは、虚空の画素からテクスチャ
   // フェッチを消すため(select は両辺を評価する)。normal は受け手の面の法線で、バイアスを
   // 法線方向のオフセットで入れるために要る。
-  meshTransmittance(worldPos: Vec3Node, normal: Vec3Node): FloatNode {
+  public meshTransmittance(worldPos: Vec3Node, normal: Vec3Node): FloatNode {
     const sunDir = this.sunDirection(worldPos);
     // 恒星の視半径。半影の幅はここに遮蔽器までの距離を掛けたものになる。
     const sunAngRadius = this.sunLight.radius.div(this.sunDistance(worldPos));

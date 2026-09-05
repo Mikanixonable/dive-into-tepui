@@ -40,7 +40,7 @@ export function showLoading(): void {
   noteText = div.children[2] as HTMLElement;
 }
 
-// 進捗(0..1)を円形ゲージへ反映する。表示中でなければ何もしない。
+// 進捗(0..1)を円形ゲージへ、note をゲージ下の注記へ反映する。表示中でなければ何もしない。
 export function setLoadingProgress(ratio: number, note?: string): void {
   if (!gauge || !percentText) return;
   const clamped = Math.max(0, Math.min(1, ratio));
