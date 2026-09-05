@@ -65,7 +65,7 @@ function render(configs) {
     return {
       config,
       semanticVariable: variable + 'Semantic',
-      backboneVariable: variable + 'Backbone',
+      backboneUrlVariable: variable + 'BackboneUrl',
       structureUrlVariable: variable + 'StructureUrl',
       motionUrlVariable: variable + 'MotionUrl',
       semanticImport: relativeImport(generatedDirectory, join(repositoryRoot, config.semanticAsset)),
@@ -74,21 +74,18 @@ function render(configs) {
       motionImport: relativeImport(generatedDirectory, join(repositoryRoot, config.motionAsset)),
     };
   });
-  // 構造・モーションは数十MBあるため webpack.config.js の asset/resource ルールでバンドルから
-  // 切り離す。import 自体は他の資産と同じ `.json` 参照だが、そのルールにより解決値は
-  // 実データではなく URL 文字列になる(tsc の resolveJsonModule 型とは食い違うため cast する)。
-  // 実データは protein-asset-loader.ts が実行時に fetch する。semantic・backbone は小さいので
-  // これまで通りバンドルへインライン化する。
+  // 主鎖・構造・モーションは webpack.config.js の asset/resource ルールで URL 文字列にする。
+  // 実データは protein-asset-loader.ts が fetch して読み込む。
   const imports = entries.flatMap((entry) => [
     "import " + entry.semanticVariable + " from '" + entry.semanticImport + "';",
-    "import " + entry.backboneVariable + " from '" + entry.backboneImport + "';",
+    "import " + entry.backboneUrlVariable + " from '" + entry.backboneImport + "';",
     "import " + entry.structureUrlVariable + " from '" + entry.structureImport + "';",
     "import " + entry.motionUrlVariable + " from '" + entry.motionImport + "';",
   ]);
-  const sources = entries.map(({ config, semanticVariable, backboneVariable, structureUrlVariable, motionUrlVariable }) => [
+  const sources = entries.map(({ config, semanticVariable, backboneUrlVariable, structureUrlVariable, motionUrlVariable }) => [
     "  '" + config.assetId + "': {",
     '    semantic: ' + semanticVariable + ' as unknown as ProteinAssetDefinition,',
-    '    backbone: ' + backboneVariable + ' as unknown as ProteinBackboneAsset,',
+    '    backboneUrl: ' + backboneUrlVariable + ' as unknown as string,',
     '    structureUrl: ' + structureUrlVariable + ' as unknown as string,',
     '    motionUrl: ' + motionUrlVariable + ' as unknown as string,',
     "    expectedId: '" + config.assetId + "',",
@@ -99,7 +96,6 @@ function render(configs) {
     '// Generated from assets-src/proteins/*/protein.config.json.',
     '// Run npm run protein:catalog after adding or renaming a protein asset.',
     ...imports,
-    "import type { ProteinBackboneAsset } from '../../render/protein-enemy-ship';",
     "import type { ProteinAssetDefinition } from './protein-schema';",
     "import type { ProteinAssetSource } from './protein-asset-loader';",
     '',
