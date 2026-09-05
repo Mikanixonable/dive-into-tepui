@@ -83,6 +83,8 @@ export class Simulator {
     this.lastGravitySourceCount = 0;
     this.lastIntegratedSteps = 0;
     this.lastFollowedSteps = 0;
+    this.surfaceContactPhysics.candidateBodies = 0;
+    this.entityContactPhysics.candidatePairs = 0;
     const targetTime = this.simTime + simDt;
     while (this.simTime < targetTime) {
       const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
@@ -124,8 +126,13 @@ export class Simulator {
       // (substep)。刻み幅を各自で積ませると、細分した個体の先端時刻が丸め誤差ぶん
       // simTime から外れ、履歴を持たない種別(弾・薬莢)が表示時刻と一致しなくなる。
       const endTime = this.simTime + subDt;
+      this.sections.exit(SECTION.orbit);
+      // 触れうる相手の絞り込みは天体接触の値段そのものなので、軌道積分とは別に計る。
+      this.sections.enter(SECTION.celestialContact);
       this.surfaceContactPhysics.beginSubstep(
         this.bodies.surface, this.bodies.pivot, this.simTime, endTime);
+      this.sections.exit(SECTION.celestialContact);
+      this.sections.enter(SECTION.orbit);
       this.substep(endTime, subDt, activeStage);
       this.simTime = endTime;
       this.sections.exit(SECTION.orbit);
@@ -134,11 +141,12 @@ export class Simulator {
       // 天体との接触は倍率にも種別にも依らず、物体どうしの接触より先に解く。細分した個体は
       // 内側の刻みで解き終えているので、ここで解くのは1歩で渡った側だけ — 二重に解くと反発が
       // 二度当たる。
-      this.sections.enter(SECTION.contact);
+      this.sections.enter(SECTION.celestialContact);
       this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, activeStage);
-      this.sections.exit(SECTION.contact);
+      this.sections.exit(SECTION.celestialContact);
       nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
       if (canResolveEntityContacts) {
+        this.sections.enter(SECTION.entityContact);
         // 放熱板の折りは DynamicSystem に登録された実体ではなく、艦の姿勢から毎 substep
         // 置き直す接触代理なので、参加者リストへこの場で合流させる。
         this.contactEntitiesScratch.length = 0;
@@ -146,10 +154,9 @@ export class Simulator {
           this.contactEntitiesScratch.push(entity);
           if (entity.alive) this.contactEntitiesScratch.push(...entity.collisionFolds(this.simTime));
         }
-        this.sections.enter(SECTION.contact);
         this.entityContactPhysics.resolveEntityContacts(
           this.simTime, this.contactEntitiesScratch, activeStage);
-        this.sections.exit(SECTION.contact);
+        this.sections.exit(SECTION.entityContact);
         nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
       }
       activeStage.applySimulationEvents(this.simTime);
@@ -161,11 +168,11 @@ export class Simulator {
     // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
     // フレームに1回だけ解決する。
     if (canResolveEntityContacts && player) {
-      this.sections.enter(SECTION.contact);
+      this.sections.enter(SECTION.beltContact);
       this.entityContactPhysics.resolveBelt(
         dt, this.simTime, player, this.entities.all(), activeStage,
       );
-      this.sections.exit(SECTION.contact);
+      this.sections.exit(SECTION.beltContact);
       nanWatchdog.checkPlayer('simulator.advance(ベルト)', player, this.simTime, dt, this.lastSimDt);
     }
 
@@ -212,19 +219,30 @@ export class Simulator {
           this.bodies.pivot, activeStage);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
-        if (divisions > 1) this.surfaceContactPhysics.resolveOne(e, activeStage);
+        if (divisions > 1) {
+          // 細分の各歩で解く天体接触も天体接触の値段なので、軌道積分を出てから計る。
+          this.sections.exit(SECTION.orbit);
+          this.sections.enter(SECTION.celestialContact);
+          this.surfaceContactPhysics.resolveOne(e, activeStage);
+          this.sections.exit(SECTION.celestialContact);
+          this.sections.enter(SECTION.orbit);
+        }
       }
       if (divisions === 1) this.sharedIntervalScratch.push(e);
     }
   }
 
-  // 負荷確認ウィンドウが読む、直近フレームの積分規模。
-  perfCounts(): Pick<PerfCounts, 'simSubsteps' | 'simIntegrated' | 'simFollowed' | 'gravitySources'> {
+  // 負荷確認ウィンドウが読む、直近フレームの積分規模と接触候補の件数。
+  perfCounts(): Pick<PerfCounts,
+  'simSubsteps' | 'simIntegrated' | 'simFollowed' | 'gravitySources'
+  | 'surfaceCandidates' | 'contactPairs'> {
     return {
       simSubsteps: this.lastSubsteps,
       simIntegrated: this.lastIntegratedSteps,
       simFollowed: this.lastFollowedSteps,
       gravitySources: this.lastGravitySourceCount,
+      surfaceCandidates: this.surfaceContactPhysics.candidateBodies,
+      contactPairs: this.entityContactPhysics.candidatePairs,
     };
   }
 }

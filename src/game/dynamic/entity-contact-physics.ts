@@ -82,6 +82,8 @@ export class EntityContactPhysics {
   private readonly neighborScratch: number[] = [];
   private readonly gridScratch = new SpatialGrid<number>(1);
   private readonly candidateScratch: Candidate[] = [];
+  // 負荷確認ウィンドウが読む、列挙した延べ候補ペア数。フレーム頭で Simulator が 0 へ戻す。
+  candidatePairs = 0;
 
   // 1 substep ぶんの物体どうしの接触解決。ワープ倍率によるゲートは呼び出し側の判断で、
   // ここには倍率を見る条件を持たない。
@@ -149,6 +151,7 @@ export class EntityContactPhysics {
     for (let k = 0; k < all.length; k++) grid.insert(k, working.get(all[k]!)!.r);
 
     const count = this.collectCandidates(all, attackerSet, simTime, working, grid);
+    this.candidatePairs += count;
     // 直前の解決で状態が変わった当事者。これを含まない候補の response は引き直しても同じ値に
     // なるので、含む候補だけを引き直す。
     let dirtyA: DynamicEntity | null = null;
