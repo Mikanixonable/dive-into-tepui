@@ -9,8 +9,8 @@ import type { Vec3 } from '../../../math/vec3';
 import type { RingBand } from './ring-shadow';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 
-// 影を落とす天体として残す、影の濃さの上限の下限。これを下回る天体は、どの向きでも恒星面の 1% 未満しか
-// 隠せないので、落としても絵に出ない(physics/shadow.ts の maxShadowedFraction)。
+// 天体を影の源として残すかを分ける、落としうる影の濃さ。これを下回る天体は、どの向きでも
+// 恒星面の 1% 未満しか隠せないので、落としても絵に出ない(physics/shadow.ts の maxShadowedFraction)。
 const MIN_SHADOWED_FRACTION = 1e-2;
 
 // 天体と環を順位づける尺度。視半径が大きい天体ほど、その影が画面に写っている何かへ落ちる
