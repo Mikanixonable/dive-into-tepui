@@ -4,8 +4,8 @@
 // 遮蔽器・環の帯・積雲の殻は毎フレーム呼び出し側が渡す。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, PI, abs, acos, and, asin, clamp, dot, exp, float, fract, greaterThan, int, length,
-  lessThan, log, log2, max, min, normalize, select, sqrt, texture, uniform, uniformArray, vec2, vec3, vec4,
+  Fn, If, Loop, PI, abs, acos, and, asin, clamp, cos, dot, exp, float, fract, greaterThan, int, length,
+  lessThan, log, log2, max, min, normalize, select, sin, sqrt, texture, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial-surface';
 import {
@@ -558,14 +558,15 @@ export class SunOcclusion {
 
     const step = radiusTexels.mul(this.shadowMaps.uvPerTexel);
     const lit = float(0).toVar();
-    for (let i = 0; i < PCF_TAPS; i++) {
+    Loop({ start: 0, end: PCF_TAPS, type: 'int', condition: '<' }, ({ i }) => {
       // Vogel disk: 黄金角で回しながら sqrt で半径を振ると、円盤上へ均等に散る。
-      const angle = i * VOGEL_GOLDEN_ANGLE;
-      const spread = Math.sqrt((i + 0.5) / PCF_TAPS);
-      const uv = uvBase.add(vec2(Math.cos(angle) * spread, Math.sin(angle) * spread).mul(step));
+      const tap = float(i);
+      const angle = tap.mul(VOGEL_GOLDEN_ANGLE);
+      const spread = sqrt(tap.add(0.5).div(PCF_TAPS));
+      const uv = uvBase.add(vec2(cos(angle).mul(spread), sin(angle).mul(spread)).mul(step));
       const stored = texture(slot.texture, uv).r;
       lit.addAssign(select(receiverDepth.sub(depthBias).greaterThan(stored), float(0), float(1)));
-    }
+    });
     const visibility = float(1).sub(float(1).sub(lit.div(PCF_TAPS)).mul(umbraFade));
     const distantVisibility = this.distantVisibility(slot, uvBase, receiverDepth.sub(depthBias), casterSize, sunAngRadius);
     // 法線オフセットが受け手を光源側へ押し出し、柱の手前へ抜けることがある。そこは遮られない。
