@@ -143,7 +143,7 @@ export class PointEntity extends CelestialEntity {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
     const pos = this.stateAt(displayTime).r;
     const apparentDiameterPx = this.lodApparentDiameterPx(
-      2 * this.outerRadius, cameraSystem.activeCameraScale(pos), graphics);
+      2 * this.outerRadius, cameraSystem.activeCameraRadialScale(pos), graphics);
     // 閾値未満は実体を畳み、戦闘ビューなら輝点だけを置く。
     if (!showsPhysicalSphere(apparentDiameterPx)) {
       this.hidePhysical();
