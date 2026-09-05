@@ -17,6 +17,7 @@ import type { GameSaveData } from '../game/save/save-data';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
 import type { GameScene } from '../render/scene';
+import type { GraphicsSettings } from '../render/graphics-settings';
 import type { FrameSections } from '../game/frame-sections';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
@@ -61,6 +62,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly sections: FrameSections,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
+    private readonly graphics: GraphicsSettings,
   ) {
     this.resultScreen = new ResultScreen(shell, this);
   }
@@ -117,7 +119,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     try {
       this.game = await Game.create(
         this.gs, stageClass, this.hud, this.audioEngine, this.pauseMenu,
-        this.sections, initialSave, startEpoch, new LoadingProgress(setLoadingProgress),
+        this.sections, initialSave, startEpoch, this.graphics.current,
+        new LoadingProgress(setLoadingProgress),
       );
     } finally {
       hideLoading();

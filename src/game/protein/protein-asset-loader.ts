@@ -7,11 +7,10 @@ import { PROTEIN_ASSET_SOURCES } from './protein-asset-catalog.generated';
 
 export { PROTEIN_ASSET_SOURCES };
 
-// 生成カタログ1体分。semantic・backbone はバンドルへ静的 import 済みの小さい定義、
-// structure・motion は数十MBあるため URL だけを持ち、実データは fetch で取りに行く。
+// 生成カタログ1体分。semantic はバンドルに含め、主鎖・構造・モーションは URL から取得する。
 export interface ProteinAssetSource {
   readonly semantic: ProteinAssetDefinition;
-  readonly backbone: ProteinBackboneAsset;
+  readonly backboneUrl: string;
   readonly structureUrl: string;
   readonly motionUrl: string;
   readonly expectedId: string;
@@ -42,16 +41,16 @@ async function fetchJson(url: string): Promise<unknown> {
   return response.json();
 }
 
-// 生成済みの semantic/backbone と、fetch 済みの structure/motion を突き合わせて検証する
-// (テストは実ファイルの内容を直接渡して同期的に呼べる)。
+// semantic と取得済みの主鎖・構造・モーションを突き合わせて検証する。
 export function buildProteinAssetBundle(
-  source: ProteinAssetSource, structureValue: unknown, motionValue: unknown,
+  source: ProteinAssetSource, backboneValue: unknown, structureValue: unknown, motionValue: unknown,
 ): ProteinAssetBundle {
-  const { semantic, backbone, expectedId, expectedPdbId } = source;
+  const { semantic, expectedId, expectedPdbId } = source;
   const issues = validateProteinAsset(semantic);
   if (semantic.id !== expectedId) issues.unshift('id must be ' + expectedId);
   if (issues.length > 0) throw new Error('Invalid protein asset ' + expectedId + ': ' + issues.join('; '));
 
+  const backbone = backboneValue as ProteinBackboneAsset;
   const structure = structureValue as ProteinDisplayAsset;
   assertProteinDisplayAsset(structure, expectedPdbId);
   const motion = motionValue as ProteinMotionAsset;
@@ -71,13 +70,14 @@ export function buildProteinAssetBundle(
   return { semantic, backbone, structure, motion };
 }
 
-// structure・motion を fetch してから検証する(ブラウザ実行時の入口)。
+// 主鎖・構造・モーションを取得してから検証する。
 async function loadProteinAssetBundle(source: ProteinAssetSource): Promise<ProteinAssetBundle> {
-  const [structureValue, motionValue] = await Promise.all([
+  const [backboneValue, structureValue, motionValue] = await Promise.all([
+    fetchJson(source.backboneUrl),
     fetchJson(source.structureUrl),
     fetchJson(source.motionUrl),
   ]);
-  return buildProteinAssetBundle(source, structureValue, motionValue);
+  return buildProteinAssetBundle(source, backboneValue, structureValue, motionValue);
 }
 
 // id ごとに1回だけ fetch する。準備が整うまでは resolvedProteinAssetBundles に現れない。

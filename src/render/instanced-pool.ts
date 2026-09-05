@@ -1,12 +1,11 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
-import { markLitOpaque, markOverlay, markSunShadowCaster } from './pipeline/lit-layer';
+import { markLitOpaque, markOverlay, markShadowCaster } from './pipeline/lit-layer';
 import { INSTANCE_THERMAL_ATTRIBUTE, writeThermalState } from './thermal-emissive';
-import type { SunShadowExtent } from './pipeline/sun-shadow-casters';
+import type { ShadowExtent } from './pipeline/shadow/shadow-casters';
 
-// three の InstanceNode は instanceMatrix の受け渡し方を InstancedMesh.count から決め、
-// その判断とバッファ長を最初の描画時に一度だけ確定する。よって count は容量に固定した
-// まま動かさず、未使用の枠はゼロ行列で潰して描画対象から外す。
+// three は instanceMatrix のバッファ長を最初の描画時に一度だけ確定する。よって count は
+// 容量に固定したまま動かさず、未使用の枠はゼロ行列で潰して描画対象から外す。
 const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 // capacity 体までを1本の InstancedMesh で描く。beginFrame → push(...) → endFrame の順に
@@ -23,7 +22,7 @@ export class InstancedPool {
   private readonly instanceRadius: number;
   // 今フレームに push された個体を包む描画座標の AABB。endFrame で公開用の箱へ移す。
   private readonly pending = new THREE.Box3();
-  private readonly extent: SunShadowExtent = { worldBounds: new THREE.Box3() };
+  private readonly extent: ShadowExtent = { worldBounds: new THREE.Box3() };
   // 個体ごとの熱の状態(温度・局所的な過熱・輻射率)。持たないプールでは null。
   private readonly thermal: THREE.InstancedBufferAttribute | null = null;
   // 今フレームに積んだ熱の状態が前フレームと違ったか。同じなら転送し直さない。
@@ -43,6 +42,10 @@ export class InstancedPool {
     this.capacity = capacity;
     this.mesh = new THREE.InstancedMesh(geometry, material, this.capacity);
     this.mesh.renderOrder = renderOrder;
+    // 変換は storage バッファで渡す。既定の属性のままだと、three は容量ぶんの mat4 を
+    // uniform 配列として頂点シェーダへ焼き込むので、プールを1本足すたびに巨大な定数配列を
+    // 抱えたシェーダが1本増え、起動時のコンパイルがその本数ぶん伸びる。
+    this.mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(this.capacity, 16);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     if (perInstanceColor) {
       this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3);
@@ -56,8 +59,8 @@ export class InstancedPool {
     // 個体が広い空間へ散らばるため、原点周りの外接球によるフラスタムカリングは意味を持たない。
     this.mesh.frustumCulled = false;
     markLitOpaque(this.mesh);
-    markSunShadowCaster(this.mesh);
-    this.mesh.userData.sunShadowExtent = this.extent;
+    markShadowCaster(this.mesh);
+    this.mesh.userData.shadowExtent = this.extent;
     geometry.computeBoundingSphere();
     this.instanceRadius = geometry.boundingSphere?.radius ?? 0;
     for (let i = 0; i < this.capacity; i++) this.mesh.setMatrixAt(i, PARKED);

@@ -10,14 +10,15 @@ import { WORLD_BACKGROUND_LAYER } from './lit-layer';
 import type { GBufferPass } from './gbuffer';
 import type { LightPrepass } from './light-prepass';
 import type { Vec3Node, Vec4Node } from '../tsl-types';
+import { compileInto } from './compile-into';
 
 // 画素の最終的な陰影。拡散は BRDF_Lambert(ベース色×(1−金属度)/π)、鏡面は F0(誘電体 0.04 と
 // 金属色を金属度で混ぜた値)を照度へ掛け、自己発光を足す。照度バッファが持つのは放射照度なので、
 // 掛けるのは反射率ではなく BRDF — 拡散の 1/π を落とすと、それだけで π 倍明るくなる。
 function shadedColor(lightPrepass: LightPrepass, gbuffer: GBufferPass): Vec4Node {
   return Fn(() => {
-    // 深度のクリア値 0 は反転 Z の far。物体の無い画素を捨てて、先に描いた星野を残す。
-    Discard(texture(gbuffer.depthTexture, screenUV).r.lessThanEqual(0));
+    // 物体の無い画素を捨てて、先に描いた星野を残す。
+    Discard(gbuffer.covered().not());
 
     const material = texture(gbuffer.basecolorTexture, screenUV);
     const baseColor: Vec3Node = material.rgb;
@@ -75,6 +76,20 @@ export class MaterialPass {
 
     this.renderer.setRenderTarget(null);
     camera.layers.mask = savedMask;
+  }
+
+  // 背景と陰影の板を共有ターゲットへ事前コンパイルする。
+  public async compile(
+    scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget,
+  ): Promise<void> {
+    const savedMask = camera.layers.mask;
+    camera.layers.set(WORLD_BACKGROUND_LAYER);
+    try {
+      await compileInto(this.renderer, sharedTarget, scene, camera);
+      await compileInto(this.renderer, sharedTarget, this.quad, this.quad.camera);
+    } finally {
+      camera.layers.mask = savedMask;
+    }
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の板は three が全インスタンスで共有するので解放しない。

@@ -13,6 +13,7 @@ import {
 import { setOverlayPassLayers } from './lit-layer';
 import type { RenderStyle } from '../render-style';
 import type { Vec2Node, Vec4Node } from '../tsl-types';
+import { compileInto, compileIntoOutput } from './compile-into';
 
 export class OverlayPass {
   // 模式図スタイルで 3D UI レイヤーを描く RGBA ターゲット。アルファはプリマルチプライドとして
@@ -98,6 +99,28 @@ export class OverlayPass {
     else this.renderRealistic(scene, camera);
 
     camera.layers.mask = savedMask;
+  }
+
+  // 現在の表示スタイルで使う 3D UI の描画経路を、outputTarget へ重ね描く前提で事前コンパイルする。
+  public async compile(
+    scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, outputTarget: THREE.RenderTarget,
+  ): Promise<void> {
+    const savedMask = camera.layers.mask;
+    setOverlayPassLayers(camera);
+    try {
+      if (style === 'schematic') {
+        // 板は描画時と同じ順で材質を差し替える — 深度を写す板と、重ね描く板は別のグラフになる。
+        this.quad.material = this.depthCopyMaterial;
+        await compileInto(this.renderer, this.target, this.quad, this.quad.camera);
+        await compileInto(this.renderer, this.target, scene, camera);
+        this.quad.material = this.compositeMaterial;
+        await compileIntoOutput(this.renderer, outputTarget, this.quad, this.quad.camera);
+      } else {
+        await compileIntoOutput(this.renderer, outputTarget, scene, camera);
+      }
+    } finally {
+      camera.layers.mask = savedMask;
+    }
   }
 
   // 合成パスが書いた色と深度を残したまま、3D UI チャンネルをそのまま重ね描く。

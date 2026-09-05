@@ -26,12 +26,15 @@ import {
 import { ambientFraction, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
-import { MAX_OCCLUDERS, type Occluder, type SunOcclusion } from '../../render/pipeline/sun-occlusion';
+import { MAX_SHADOW_BODIES, type BodyShadow, type ShadowBody } from '../../render/pipeline/shadow/body-shadow';
+import type { RingShadow } from '../../render/pipeline/shadow/ring-shadow';
+import type { CumulusShadow } from '../../render/pipeline/shadow/cumulus-shadow';
+import { RingMaterials } from '../../render/ring';
 import { shapeAxes, shapeInscribedRadius } from '../../physics/celestial-body-def';
 import { writeBodyFromWorld } from './body-frame';
 import {
-  castsCumulusShadow, selectOccluders, selectRingShadow, type RingShadowCandidate,
-} from '../../render/pipeline/sun-occlusion-select';
+  castsCumulusShadow, selectRingShadow, selectShadowBodies, type RingShadowCandidate,
+} from '../../render/pipeline/shadow/shadow-select';
 import { atmosphereDraws } from '../../render/atmosphere';
 import { CelestialEntity } from './celestial-entity/celestial-entity';
 import { StarEntity } from './celestial-entity/star-entity';
@@ -98,9 +101,13 @@ export class CelestialSystem implements CelestialMotions {
   private scaleGrid!: ScaleGridView;
   private sunLight!: SunLight;
   private exposure!: Exposure;
-  private sunOcclusion!: SunOcclusion;
-  // 遮蔽器へ渡す形の置き場。スロット本数ぶんを毎フレーム書き換えて使い回す。
-  private readonly occluderShapes = Array.from({ length: MAX_OCCLUDERS }, () => ({
+  private bodyShadow!: BodyShadow;
+  private ringShadow!: RingShadow;
+  private cumulusShadow!: CumulusShadow;
+  // 全天体の環の帯が共有するマテリアル。
+  private ringMaterials!: RingMaterials;
+  // 影を落とす天体へ渡す形の置き場。スロット本数ぶんを毎フレーム書き換えて使い回す。
+  private readonly shadowBodyShapes = Array.from({ length: MAX_SHADOW_BODIES }, () => ({
     axes: new THREE.Vector3(), bodyFromWorld: new THREE.Matrix4(),
   }));
   private planetLight!: PlanetLightSource;
@@ -165,13 +172,16 @@ export class CelestialSystem implements CelestialMotions {
   // メッシュ・星野・グリッドをシーンへ登録する。Game の構築中に1度だけ呼ぶ —
   // update / sync はこの後でないと呼べない。
   build(
-    scene: THREE.Scene, sunLight: SunLight, exposure: Exposure, sunOcclusion: SunOcclusion,
+    scene: THREE.Scene, sunLight: SunLight, exposure: Exposure,
+    bodyShadow: BodyShadow, ringShadow: RingShadow, cumulusShadow: CumulusShadow,
     planetLight: PlanetLightSource, ambient: AmbientSource, atmosphere: AtmospherePass,
   ): void {
     this.scene = scene;
     this.sunLight = sunLight;
     this.exposure = exposure;
-    this.sunOcclusion = sunOcclusion;
+    this.bodyShadow = bodyShadow;
+    this.ringShadow = ringShadow;
+    this.cumulusShadow = cumulusShadow;
     this.planetLight = planetLight;
     this.ambient = ambient;
     this.atmosphere = atmosphere;
@@ -182,7 +192,8 @@ export class CelestialSystem implements CelestialMotions {
     scene.add(this.stars.mesh);
     this.celestialGrid = new CelestialGrid(scene);
     this.scaleGrid = new ScaleGridView(scene);
-    for (const body of this.entities) body.build(scene, sunOcclusion, sunLight);
+    this.ringMaterials = new RingMaterials(bodyShadow, sunLight);
+    for (const body of this.entities) body.build(scene, this.ringMaterials);
   }
 
   // ---------------------------------------------------------------- 天体の口
@@ -369,7 +380,7 @@ export class CelestialSystem implements CelestialMotions {
     return pole?.motion.spinPhase0;
   }
 
-  // 天体ビュー・星・照明・遮蔽・参照線・天球グリッドを、この1フレームの表示状態に同期する。
+  // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。
   // visibilityPolicy は**マップビューのとき非 null、戦闘ビューのとき null** を渡す。描かれる
   // 対象と選べる対象が同じ判定から出るよう、同じフレームの update 位相で確定させたものを渡す。
   sync(
@@ -389,7 +400,7 @@ export class CelestialSystem implements CelestialMotions {
       body.sync(floatingOrigin, displayTime, cameraSystem, star, graphics, style);
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
-    // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。
+    // (基準強度どおりの放射照度が届き、影パスは誰も遮らないと答える)。
     const sunPos = starMotion === null
       ? this.toThreeNormal(this.sunDirFrom(floatingOrigin.r, displayTime))
         .multiplyScalar(STARLESS_SUN_DISTANCE)
@@ -405,7 +416,7 @@ export class CelestialSystem implements CelestialMotions {
       star?.color ?? STARLESS_SUN_COLOR, starIntensity);
     this.ambient.setFraction(ambientFraction(cameraSystem.view === 'map', graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
-    this.syncOcclusion(floatingOrigin, displayTime, cameraSystem, graphics);
+    this.syncShadowSources(floatingOrigin, displayTime, cameraSystem, graphics);
     this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem, graphics);
 
     const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
@@ -456,10 +467,10 @@ export class CelestialSystem implements CelestialMotions {
     })));
   }
 
-  // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。候補を組んで選定へ回し、**選ばれた
+  // 影パスへ、この1フレームの影を落とす天体と環の帯を渡す。候補を組んで選定へ回し、**選ばれた
   // ものだけ**を描画座標へ移す。focusPos はマップの注視点で、艦など天体でない対象を注視して
   // いるなら null。
-  private syncOcclusion(
+  private syncShadowSources(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
   ): void {
     const celestialBodies = this.celestialMotions;
@@ -469,9 +480,9 @@ export class CelestialSystem implements CelestialMotions {
       ? null
       : this.find(focusId)?.motion.positionAt(displayTime) ?? null;
     // 選ばれた天体の形を、天体固定の半軸と向きの行列にして渡す。
-    this.sunOcclusion.setOccluders(
-      selectOccluders(celestialBodies, displayTime, fo.r, focusPos).map((body, slot): Occluder => {
-        const shape = this.occluderShapes[slot]!;
+    this.bodyShadow.set(
+      selectShadowBodies(celestialBodies, displayTime, fo.r, focusPos).map((body, slot): ShadowBody => {
+        const shape = this.shadowBodyShapes[slot]!;
         const axes = shapeAxes(body.def.radius, shapeOf(body.def));
         shape.axes.set(axes.x, axes.y, axes.z);
         writeBodyFromWorld(shape.bodyFromWorld, body, displayTime);
@@ -481,7 +492,7 @@ export class CelestialSystem implements CelestialMotions {
     this.syncCumulusShadow(fo, displayTime, graphics);
   }
 
-  // 積雲の殻を持つ天体を遮蔽パスへ渡す。持つ天体が無いか、雲そのものか雲の影を切る設定なら
+  // 積雲の殻を持つ天体を影パスへ渡す。持つ天体が無いか、雲そのものか雲の影を切る設定なら
   // 源ごと切る。
   private syncCumulusShadow(
     fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData,
@@ -489,10 +500,10 @@ export class CelestialSystem implements CelestialMotions {
     const casters = castsCumulusShadow(graphics)
       ? this.entities.flatMap((body) => body.cumulusShadowAt(fo, displayTime) ?? [])
       : [];
-    this.sunOcclusion.setCumulusShadow(casters[0] ?? null);
+    this.cumulusShadow.set(casters[0] ?? null);
   }
 
-  // 環を持つ天体を候補として選定へ回し、選ばれた1体の帯を遮蔽パスへ渡す。選ばれなければ
+  // 環を持つ天体を候補として選定へ回し、選ばれた1体の帯を影パスへ渡す。選ばれなければ
   // 帯を空にする(影は落ちない)。
   private syncRingShadow(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
     // 環を持つ天体を候補に組む(ECI)。
@@ -513,10 +524,10 @@ export class CelestialSystem implements CelestialMotions {
     // 選ばれた 1 体を描画座標へ移す。
     const ringed = selectRingShadow(candidates, fo.r, graphics);
     if (ringed === null) {
-      this.sunOcclusion.setRings(ZERO_VECTOR, UP_VECTOR, []);
+      this.ringShadow.set(ZERO_VECTOR, UP_VECTOR, []);
       return;
     }
-    this.sunOcclusion.setRings(
+    this.ringShadow.set(
       fo.RtoThreeV3(ringed.center),
       ringed.axis === null ? UP_VECTOR : this.toThreeNormal(ringed.axis),
       ringed.bands,
@@ -591,5 +602,6 @@ export class CelestialSystem implements CelestialMotions {
       body.dispose();
     }
     if (this.pointFieldBuilt) this.pointFieldView?.dispose();
+    this.ringMaterials.dispose();
   }
 }

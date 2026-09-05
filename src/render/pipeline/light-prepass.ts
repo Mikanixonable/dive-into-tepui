@@ -12,6 +12,7 @@ import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { GBufferPass } from './gbuffer';
 import type { LightSource } from './lighting/light-source';
 import { ShadingSample } from './lighting/shading-sample';
+import { compileInto } from './compile-into';
 
 export class LightPrepass {
   private readonly renderer: WebGPURenderer;
@@ -74,6 +75,16 @@ export class LightPrepass {
     this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);
     this.renderer.setClearColor(this.savedClearColor, savedClearAlpha);
+  }
+
+  // 光源ごとの全マテリアルを照度ターゲットへ事前コンパイルする。
+  async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
+    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    this.sample.sync(camera);
+    for (const source of this.sources) {
+      this.quad.material = source.material(this.sample);
+      await compileInto(this.renderer, this.target, this.quad, this.quad.camera);
+    }
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで

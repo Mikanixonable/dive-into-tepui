@@ -36,20 +36,28 @@ export interface CatalogFamily {
   readonly points: string;
 }
 
-export interface CatalogSystem {
+// 族の点列を読まずに済ませたい場面(ゼロ速度曲線・選択肢の組み立て)が要る、系の素性。
+export interface CatalogSystemScale {
   readonly mu: number;
   // 両天体間距離 [km] と時間の単位 [s]。無次元量を実スケールへ戻すのに使う。
   readonly lunit: number;
   readonly tunit: number;
   readonly secondaryRadius: number; // [km]
+}
+
+export interface CatalogSystem extends CatalogSystemScale {
   readonly families: Readonly<Record<CatalogFamilyId, CatalogFamily>>;
 }
 
 export interface OrbitCatalog {
   readonly systems: Readonly<Partial<Record<CatalogSystemId, CatalogSystem>>>;
-  // 遅延ロードする系も含めた、系ごとの族 id 一覧。UI は起動時にこれを見て選択肢を組めるので、
-  // まだ読み込んでいない系の種類が後から現れることがない。
+}
+
+// 全系ぶんをまとめた軽い索引。族データを読み込む前から、選択肢の組み立てと実スケールへの
+// 換算がこれだけで済む。
+export interface OrbitCatalogIndex {
   readonly familyIndex: Readonly<Partial<Record<CatalogSystemId, readonly string[]>>>;
+  readonly scales: Readonly<Partial<Record<CatalogSystemId, CatalogSystemScale>>>;
 }
 
 // 1点あたりの値の数([x, y, z, tFrac, vx, vy, vz])。
