@@ -38,6 +38,9 @@ const CLOUD_TOP_BIAS = 2.05;
 // 暖気の流入が層状の雲を持ち上げる重み [per rad]。前線の暖気側(0.35 rad)で乱層雲の高さ
 // (4〜8 km)へ届く。
 const WARM_TOP = 3;
+// 前線の帯が層状の雲を持ち上げる量。暖気の流入が前線の暖気側で足すのと同じ大きさで、帯の中で
+// 乱層雲から積乱雲の高さ(5〜7 km)へ届く。
+const FRONT_TOP = 3;
 // 塔が立つ粒の峰(粒 × 活発度)の縁。**幅は峰の標準偏差(≈ 0.1)と同じ程度に広く取る** —
 // 縁を峰の頂点へ寄せると、塔は 1 texel の針になって数えるほどしか立たない。
 const TOWER_ONSET = 0.015;
@@ -65,7 +68,7 @@ const TRANSLUCENT_LIMIT = 3.0;
 
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
 // 雲頂高度は 層状の雲から立つ塔と、渦の芯が敷く金床の高いほうから出る — 覆う広さは湿度が、
-// 層の高さは上昇流と暖気の流入が、塔は粒の峰が、平らな天蓋は渦の芯が決める。
+// 層の高さは上昇流と暖気の流入と前線の帯が、塔は粒の峰が、平らな天蓋は渦の芯が決める。
 // **対流の活発度が効くのは被覆率と塔で、層状の雲頂は活発度に依らず対流をそのまま受ける** —
 // 一面に覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
 export function condense(weather: WeatherSample): CloudSample {
@@ -77,9 +80,9 @@ export function condense(weather: WeatherSample): CloudSample {
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
   const peak = convection.mul(weather.convectiveActivity);
   const granularity = peak.mul(CONVECTION_GAIN);
-  // 層状の雲: 上昇流と暖気の流入が持ち上げる高さに、対流の起伏が乗る。
+  // 層状の雲: 上昇流と暖気の流入と前線の帯が持ち上げる高さに、対流の起伏が乗る。
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT).add(weather.warmth.mul(WARM_TOP))
-    .add(convection.mul(CLOUD_TOP_RELIEF)).sub(CLOUD_TOP_BIAS);
+    .add(weather.frontal.mul(FRONT_TOP)).add(convection.mul(CLOUD_TOP_RELIEF)).sub(CLOUD_TOP_BIAS);
   const layered = float(1).add(exp(depth.negate())).reciprocal().mul(LAYER_TOP_SPAN).add(CLOUD_BASE_HEIGHT);
   // 塔: 粒の正の側(細胞の芯)が柱として立ち、いちばん高いものが圏界面へ届く。高さは層状の雲から
   // 圏界面までを二乗で渡すので、低い塔が多く高い塔は少ない。**塔は、その場が覆われるほど湿っていて、
