@@ -10,7 +10,7 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { Vec4Node } from '../tsl-types';
-import { compileInto } from './compile-into';
+import { compileIntoOutput } from './compile-into';
 
 // 均し方の選択値。graphics-settings.ts の antialias の選択肢と対応する。
 const ANTIALIAS_METHOD = { none: 0, fxaa: 1, smaa: 2 } as const;
@@ -59,7 +59,7 @@ export class AntialiasPass {
 
   // 現在選ばれている均し方を画面出力へ事前コンパイルする。
   public async compile(): Promise<void> {
-    await compileInto(this.renderer, null, this.quad, this.quad.camera);
+    await compileIntoOutput(this.renderer, null, this.quad, this.quad.camera);
   }
 
   // 現在の方式のマテリアル。方式ごとに初回だけ組む。
