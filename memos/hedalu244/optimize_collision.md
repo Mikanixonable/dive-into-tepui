@@ -33,6 +33,14 @@
 `--prof`(N = 2000, 600 回):`collectCandidates` 35% / `resolveInOrder` 14% /
 `FindOrderedHashMapEntry` 14% / `SpatialGrid.reset` 13% / `contactCellSize` 5%。
 
+**この `FindOrderedHashMapEntry` 14% の内訳を数え直した(手順3 の着手前)。** 1 substep に
+叩く Map 操作は N = 2000 で 41,469 回あり、`working`(entity 鍵)は set 2,000 + get 8,000 の
+10,000 回で **24% しかない**。残り 76% は `SpatialGrid` の `Map<number,…>` —
+`insert` が get 6,000 + set 5,852、`neighborsInto` が get 19,617。`changed` の `Set` は
+接触が起きない substep では 0 回で、そもそも働いていない。段ごとの実測(µs/substep)は
+参加者の抽出 280 / `working` の初期化 301 / `contactCellSize` 308 / `grid.reset` 958 /
+`grid.insert` 636 / 候補の列挙 1,297 で、**グリッドの3段だけで 76%**。
+
 **天体との接触**(天体 95 体、LEO 殻に散らした参加者)
 
 | N | `narrow` | `into` ×N | 計 |
@@ -112,7 +120,7 @@ substep が変われば pivot も変わるが、それは本当に別の時刻�
 
 → **セル一辺の決め方は変えない。** 手順1で足す `contactPairs`(候補ペア数)が参加者数の
 数倍を超えたら、この判断を覆して二階層グリッドを検討する。
-削るのは土台の値段 — **手順3**(`Map`/`Set` を添字配列へ)。
+削るのは土台の値段 — **手順3**(実施済み)。
 
 ### 5. メッシュの衝突 — **外接球の事前棄却はある。分割数が過大**
 
@@ -157,10 +165,13 @@ substep が変われば pivot も変わるが、それは本当に別の時刻�
 
 ## 手順
 
-### 実施済み(手順1・手順2)
+### 実施済み(手順1・手順2・手順3)
 
-手順1(区間の3分割と候補件数)は d8b44d22、手順2(ベルトを substep へ合流)は 96db44a3 で実施済み。
-**負荷ウィンドウでの実測はまだ控えていない。** 手順3・手順4 の達成条件はここで控えた値を基準に
+手順1(区間の3分割と候補件数)は d8b44d22、手順2(ベルトを substep へ合流)は 96db44a3、
+手順3(接触解決の土台)は c7609ee2(`SpatialGrid.reset` の器の回収をやめる)+ 8b7d8f52
+(作業集合を `Map`/`Set` から参加者列の添字へ)で実施済み。
+
+**負荷ウィンドウでの実測はまだ控えていない。** 手順4 の達成条件はここで控えた値を基準に
 するので、次の3条件で「天体接触」「物体接触」と `surfaceCandidates` / `contactPairs` を控え、
 下の見積りの表を実測値で置き換えてから着手すること。
 
@@ -170,46 +181,12 @@ substep が変われば pivot も変わるが、それは本当に別の時刻�
 
 手順2 の目視確認(倍率 ×1 でベルトが弾かれる / 倍率 ×4 で揺れが 4 倍速)も未了。
 
-### 手順 3. 接触解決の作業集合を `Map` / `Set` から添字配列へ
-
-#### 目的
-
-プロファイルで `FindOrderedHashMapEntry` が 14%、`SpatialGrid.reset` が 13%。
-`working` / `changed` は参加者列の添字で引けるのに `Map` / `Set` を通しており、グリッドが
-既に添字を持ち回っているので、索き直す理由が無い。手順2で参加者が1集団になっているので、
-添字はそのまま参加者列の添字で足りる。**挙動は変えない。**
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/entity-contact-physics.ts:75-76` | `workingScratch: Map<DynamicEntity, KinematicState>` を `KinematicState[]`、`changedScratch: Set<DynamicEntity>` を添字の配列へ |
-| `src/game/dynamic/entity-contact-physics.ts:52` | `contactCellSize` の第2引数を `readonly KinematicState[]` に |
-| `src/game/dynamic/entity-contact-physics.ts:36` | `replaceIfMoved` を添字で受ける形へ |
-| `src/game/dynamic/entity-contact-physics.ts:27-32` | `Candidate` へ `ai` / `bi`(参加者列の添字)を持たせる |
-| `src/game/dynamic/entity-contact-physics.ts:103,144,183,206` | `resolveInOrder` / `collectCandidates` / `earliestContact` / `applyCandidate` の `working.get(x)` を添字参照へ。`earliestContact` の dirty 判定も添字の比較へ |
-
-```ts
-// 書き換え後の署名
-private collectCandidates(
-  participants: readonly DynamicEntity[],
-  simTime: number,
-  working: readonly KinematicState[],
-  grid: SpatialGrid<number>,
-): number;
-
-private earliestContact(
-  count: number, dirtyA: number, dirtyB: number,   // 無いときは -1
-  working: readonly KinematicState[],
-): Candidate | null;
-```
-
-#### 達成条件と検証
-
-- `npm run typecheck`、`npm run test:game`(`contact.test.ts` が通ること)。
-- 手順1の条件2で「物体接触」が手順2の実施後に控えた値の **65% 以下**、
-  かつ `contactPairs` が手順2の実施後と**同じ値**(候補の顔ぶれが変わっていない証拠)。
-- `grep -n "Map<DynamicEntity\|Set<DynamicEntity" src/game/dynamic/entity-contact-physics.ts` が 0 件。
+**手順3 の達成条件のうち「65% 以下」は満たしていない。** node 実測(`resolveEntityContacts`
+1 substep、中央値)は疎な雲で 3.43 → 2.49 ms(N = 2000、**72%**)、密集で 5.11 → 4.34 ms
+(N = 1000、85%)。挙動の不変(密集 300 体 × 20 substep で候補件数一致・最終状態が bit 一致)と
+`grep` 0 件は満たしている。**残りを削るには broad phase そのものを変えるしかない** —
+`grid.insert` 約 500 µs + 近傍列挙 約 900 µs が、候補 0 件でも必ず出る底値になっている。
+負荷ウィンドウで測って足りなければ、下の「却下したが、条件が変われば戻ってくるもの」を見る。
 
 ### 手順 4. 天体候補の絞り込みから `Vec3` の割り当てを落とす
 
@@ -315,13 +292,12 @@ ribbon 側は縦 12 → 1 で 12 分の1(残基あたり 96 → 8 枚)、coil �
 | --- | --- | --- |
 | 現状 | 物体接触 4.37 + ベルト 4.72 + 天体接触 0.51 | **9.6 ms/frame**(予算の 58%) |
 | 手順2(実施済み) | 第2パスが区間ごと消える(−4.72)。単一パスへ 18 節点が加わるぶんは 18/2000 × 4.37 = +0.04 | **−4.7 ms** の見込み(実測は未取得) |
-| 手順3 | 物体接触 4.41 のうち `Map`/`Set` 由来が 14%(`FindOrderedHashMapEntry`)+ `SpatialGrid.reset` の一部 13% → 4.41 × 0.65 ≈ 2.9 ms | **−1.5 ms** |
+| 手順3(実施済み) | node 実測で 3.43 → 2.49 ms(N = 2000、疎)。効いたのは `SpatialGrid.reset` の器の回収をやめた分が大半で、`Map`/`Set` の添字化だけなら 1.05〜1.09 倍にとどまる。4.41 × 0.72 ≈ 3.2 ms | **−1.2 ms** |
 | 手順4 | 天体接触 = `narrow` + `into`。参加者1体あたり 10 個以上の `Vec3` 生成を落とすと、残るのは距離比較だけ → 506 µs → 約 200 µs/substep | 倍率 ×1 で **−0.3 ms**、最高倍率・破片 600 体では 64 × (150 → 60 µs) で **−5.8 ms** |
 | 手順5+6 | 三角形 647,000 → 43,000(縦 12→1、放射 12→6)、`buildBVH` は添字分割で三角形あたり約 1 µs → 43 ms。個体ごと → アセットごとで N 体目以降 0 | 生成時 **21 s → 0.05 s**、掃引1組 **10.4 ms → 約 0.2 ms** |
-| 合計(倍率 ×1) | 9.6 → 約 3.1 ms | **予算の 58% → 19%** |
+| 合計(倍率 ×1) | 9.6 → 約 3.4 ms | **予算の 58% → 21%** |
 
-手順ごとの作業量は、手順2 が5ファイルにまたがる受け渡しの付け替え(ただし正味では
-`EntityContactPhysics` から約 40 行が消える)、手順3・4 が既存ファイルの内部書き換え、
+残る手順の作業量は、手順4 が既存ファイルの内部書き換え、
 手順5 が `src/math/triangle-mesh.ts` 1 ファイルの作り直し、手順6 が3ファイルの付け替え。
 
 ## リスクと落とし穴
@@ -348,6 +324,11 @@ ribbon 側は縦 12 → 1 で 12 分の1(残基あたり 96 → 8 枚)、coil �
   300 以上でしか出ず、そこでは物体どうしの接触は走らない。倍率 ≤4 では一辺が 134 m 以下に
   なるので退化しない。**手順1 の `contactPairs` が参加者数の数倍を超え続けたら、この判断が
   崩れている。**
+- **物体どうしのグリッドを `Map` から TypedArray の開番地ハッシュへ。** 手順3 で試して
+  **遅くなった**(N = 2000 で 2,247 µs vs 2,122 µs)。いまの3段 `Map` は空の x 面・xy 面で
+  枝を刈るので、27 セルのうち実際に引くのは平均 9.8 回で済んでいる。平坦化すると 27 回
+  全部引くことになる。**手順3 のあとに残っている `grid.insert` 約 500 µs + 近傍列挙 約 900 µs
+  (N = 2000、候補 0 件)を削るなら、刈り込みを保ったまま平坦化する形でなければ意味がない。**
 - **天体側の空間グリッド。** 実測では 27 近傍の問い合わせ(1体 0.33 µs)がいまの
   `narrow` + `into`(1体 0.25 µs)より高く、割り当てを落とせば差はさらに開く。
   **手順1 の `surfaceCandidates` が参加者数の数倍を超え続けたら**(= `narrow` が候補を
