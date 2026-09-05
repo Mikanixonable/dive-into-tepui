@@ -121,6 +121,7 @@ export class Game {
     sections: FrameSections,
     initialSave: GameSaveData | undefined,
     startEpoch: TdbJulianDate | undefined,
+    graphics: GraphicsSettingsData,
     progress: LoadingProgress,
   ): Promise<Game> {
     await progress.enter('system');
@@ -141,13 +142,21 @@ export class Game {
     );
     await progress.enter('run');
     const game = new Game(gs, stageClass, hud, audioEngine, pauseMenu, sections, celestialSystem, initialSave);
+    // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を作る。時間の進まない 1 フレーム
+    // として通す — 天体表面の分割段やベルトのリンク数のように、update/sync が決めるまで
+    // 隠れている表示物は、通さなければ事前コンパイルから漏れる。
+    const style = hud.renderStyle.current;
+    game.update(0, graphics);
+    game.sync(graphics, style);
     await progress.enter('shaders');
     await gs.pipeline.compile(
       gs.scene,
       game.cameraSystem.activeCamera,
-      hud.renderStyle.current,
+      style,
       (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
     );
+    // 出力段の階調変換は three が実際に描いたときにしか組まないので、捨てる 1 フレームで組ませる。
+    game.render(style);
     return game;
   }
 
