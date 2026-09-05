@@ -26,7 +26,7 @@ import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
-import type { CumulusShadow } from '../../../render/pipeline/sun-occlusion';
+import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shadow';
 import type { RingMaterials } from '../../../render/ring';
 import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
@@ -171,7 +171,7 @@ export abstract class CelestialEntity implements ObjectPickable {
   }
 
   // 遮蔽パスへ渡す積雲の殻 1 体ぶん。殻を持たない天体では null。
-  public cumulusShadowAt(_fo: FloatingOrigin, _displayTime: number): CumulusShadow | null {
+  public cumulusShadowAt(_fo: FloatingOrigin, _displayTime: number): ShadowCumulus | null {
     return null;
   }
 

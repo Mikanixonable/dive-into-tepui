@@ -136,7 +136,7 @@ export class LabView implements GraphicsTarget {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
-    this.ringMaterials = new RingMaterials(pipeline.sunOcclusion, pipeline.sunLight);
+    this.ringMaterials = new RingMaterials(pipeline.bodyShadow, pipeline.sunLight);
   }
 
   // graphics は描画品質設定の正本。押し出し先としての bind は呼び出し側が行う。
@@ -318,11 +318,11 @@ export class LabView implements GraphicsTarget {
     this.current.star?.sync(
       SUN_POSITION, R_SUN, sunDiameterPx(sunDistance, camera.fov) * this.graphicsData.lodBias, camera.quaternion,
     );
-    this.pipeline.sunOcclusion.setOccluders(this.current.occluders ?? []);
+    this.pipeline.bodyShadow.set(this.current.shadowBodies ?? []);
     const rings = this.current.rings;
-    this.pipeline.sunOcclusion.setRings(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    this.pipeline.sunOcclusion.setCumulusShadow(
-      castsCumulusShadow(this.graphicsData) ? this.current.cumulusShadow ?? null : null);
+    this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
+    this.pipeline.cumulusShadow.set(
+      castsCumulusShadow(this.graphicsData) ? this.current.cumulus ?? null : null);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
       (this.current.atmospheres ?? []).map((body) => {
