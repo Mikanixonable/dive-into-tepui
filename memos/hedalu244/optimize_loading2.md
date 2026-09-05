@@ -217,31 +217,6 @@ creative: 34.2 → 33.9 秒)。compile 段が伸びたのは、初回フレー�
   写っているケースを必ず含める)。
 - `PerfMeter` の遮蔽パスの GPU 時間が悪化していない。
 
-### 手順 5. タンパク質の Backbone を `main.js` から外す
-
-**目的**: creative でしか使わない 0.53 MB(gzip 寄与 0.17 MB)を、全ステージの起動から外す。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `tools/protein-builder/generate-protein-catalog.mjs` | **生成側が正本。** `*Backbone.json` を値としてではなく URL として import するよう生成物を変える |
-| `src/game/protein/protein-asset-catalog.generated.ts` | 上の再生成物(`npm run protein:catalog`)。手で書き換えない |
-| `webpack.config.js:31-38` | `/(Structure|Motion)\.json$/` の `asset/resource` ルールへ `Backbone` を足す |
-| `src/game/protein/protein-asset-loader.ts:75-81` | `Promise.all` で Structure / Motion と一緒に Backbone も取る。**`isProteinAssetReady` が Backbone の到着も条件に含めること** |
-| `src/render/protein-enemy-ship.ts` | `ProteinBackboneAsset` を同期に受け取る前提が残っていないか確認する |
-
-`*Protein.json`(定義、計 0.01 MB)は形状一覧の組み立てに同期で要るので **バンドルに残す。**
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。`npm run test:game` が通る。
-- `npm run protein:catalog:check` が通る(生成物とツールが一致している)。
-- `npm run build` の出力で **`main.js` の gzip が 1.25 MB 以下**。
-- `grep -n "Backbone" src/game/protein/protein-asset-catalog.generated.ts` の結果が、
-  すべて URL 型(`string`)になっている。
-- creative でタンパク質の敵を置き、**当たり判定が効く**こと(`npm run dev` で撃って確認)。
-
 ### 手順 6. 初回テクスチャ投入の 1 秒ブロックを均す
 
 **目的**: 20.64 MB のテクスチャが揃った直後に JS スレッドが 1.0〜1.5 秒止まるのを解消する。
