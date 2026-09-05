@@ -145,7 +145,7 @@ async function main() {
 
   const launcher = new Launcher(
     shell, hud, gs, audioEngine, bgm, pauseMenu, settingsView, unlockManager, sections,
-    slots, snapshotService,
+    slots, snapshotService, graphics,
   );
 
   // 「ゲームを中断してタイトル画面に戻る」
