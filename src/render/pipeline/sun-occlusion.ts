@@ -4,8 +4,8 @@
 // 遮蔽器・環の帯・積雲の殻は毎フレーム呼び出し側が渡す。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, PI, abs, acos, and, asin, clamp, dot, exp, float, fract, greaterThan, int, length,
-  lessThan, log, log2, max, min, normalize, select, sqrt, texture, uniform, vec2, vec3, vec4,
+  Fn, If, Loop, PI, abs, acos, and, asin, clamp, dot, exp, float, fract, greaterThan, int, length,
+  lessThan, log, log2, max, min, normalize, select, sqrt, texture, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial-surface';
 import {
@@ -66,13 +66,6 @@ interface OccluderUniforms {
   readonly axes: Vec3Uniform;
   readonly bodyFromWorld: Mat4Uniform;
 }
-interface RingBandUniforms {
-  readonly inner: FloatUniform;
-  readonly outer: FloatUniform;
-  readonly tau: FloatUniform;
-  readonly active: FloatUniform;
-}
-
 // 環面と視線の交差判定が発散しないよう、環面と恒星方向のなす角の余弦へ入れる下限。
 const RING_GRAZING_MIN = 0.015;
 
@@ -209,7 +202,9 @@ export class SunOcclusion {
   private readonly occluders: readonly OccluderUniforms[];
   private readonly ringCenter: Vec3Uniform;
   private readonly ringAxis: Vec3Uniform;
-  private readonly ringBands: readonly RingBandUniforms[];
+  // 帯ごとの (inner, outer, tau, active)。書き換える配列から描画時に uniform 配列へ詰め直す。
+  private readonly ringBands: THREE.Vector4[];
+  private readonly ringBandArray: THREE.UniformArrayNode<'vec4'>;
   private readonly cumulusCenter: Vec3Uniform;
   private readonly cumulusSurfaceRadius: FloatUniform;
   private readonly cumulusAxes: Vec3Uniform;
@@ -232,12 +227,8 @@ export class SunOcclusion {
     }));
     this.ringCenter = uniform(new THREE.Vector3());
     this.ringAxis = uniform(new THREE.Vector3(0, 1, 0));
-    this.ringBands = Array.from({ length: MAX_RING_BANDS }, () => ({
-      inner: uniform(0),
-      outer: uniform(0),
-      tau: uniform(0),
-      active: uniform(0),
-    }));
+    this.ringBands = Array.from({ length: MAX_RING_BANDS }, () => new THREE.Vector4());
+    this.ringBandArray = uniformArray(this.ringBands, 'vec4');
     this.cumulusCenter = uniform(new THREE.Vector3());
     this.cumulusSurfaceRadius = uniform(0);
     // 場を持たないフレームでも殻の空間への写しは走るので、半軸は 0 で割らない値から始める。
@@ -269,16 +260,16 @@ export class SunOcclusion {
     // 帯ごとのスロットへ写し、余ったスロットは active で消す。
     for (const [i, slot] of this.ringBands.entries()) {
       const band = bands[i];
-      slot.active.value = band === undefined ? 0 : 1;
-      if (band === undefined) continue;
-      slot.inner.value = band.innerRadius;
-      slot.outer.value = band.outerRadius;
-      slot.tau.value = band.normalOpticalDepth;
+      if (band === undefined) {
+        slot.w = 0;
+        continue;
+      }
+      slot.set(band.innerRadius, band.outerRadius, band.normalOpticalDepth, 1);
     }
   }
 
   // このフレームに有効な帯が 1 本でもあるか。**スロットは先頭から詰めるので先頭だけ見れば足りる。**
-  hasRingShadow(): boolean { return this.ringBands[0]!.active.value > 0; }
+  hasRingShadow(): boolean { return this.ringBands[0]!.w > 0; }
 
   // 積雲の殻が落とす影を、このフレームの 1 体ぶんへ置き直す。null なら雲の影は落ちない。
   setCumulusShadow(shadow: CumulusShadow | null): void {
@@ -341,16 +332,17 @@ export class SunOcclusion {
     const sunDir = this.sunDirection(worldPos);
     const sunAngRadius = this.sunAngularRadius(worldPos);
     // 空きスロットも畳み込む。active が 0 のスロットは被覆率 0 = 素通しの 1 を返す。
-    let transmittance: FloatNode = float(1);
-    for (const band of this.ringBands) {
-      transmittance = transmittance.mul(
-        ringBandTransmittance(
+    return Fn(() => {
+      const transmittance = float(1).toVar();
+      Loop({ start: 0, end: MAX_RING_BANDS, type: 'int', condition: '<' }, ({ i }) => {
+        const band = this.ringBandArray.element(i);
+        transmittance.mulAssign(ringBandTransmittance(
           worldPos, sunDir, sunAngRadius, this.ringCenter, this.ringAxis,
-          band.inner, band.outer, band.tau, band.active,
-        ),
-      );
-    }
-    return transmittance;
+          band.x, band.y, band.z, band.w,
+        ));
+      });
+      return transmittance;
+    })();
   }
 
   // 積雲の殻が落とす影。受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで
