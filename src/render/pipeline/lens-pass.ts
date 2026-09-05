@@ -101,7 +101,7 @@ export class LensPass {
   private width = 0;
   private height = 0;
   // 直前のフレームで出力を書いたか。設定で切られたあと 1 度だけ空へ戻すために持つ
-  // (sun-shadow-maps.ts のスロットの空戻しと同じ)。
+  // (shadow/shadow-maps.ts のスロットの空戻しと同じ)。
   private drawn = false;
   // clear が退避する描画先の消去色。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly clearColor = new THREE.Color();
