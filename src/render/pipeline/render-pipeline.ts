@@ -31,7 +31,7 @@ import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 import { FilmLut } from './film-lut';
-import { compileInto } from './compile-into';
+import { compileInto, compileIntoOutput } from './compile-into';
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly gbuffer: GBufferPass;
@@ -341,16 +341,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     }
 
     passes.push(
-      ['合成', () => compileInto(this.renderer, this.displayTarget, this.quad, this.quad.camera)],
-      ['オーバーレイ', async () => {
-        const outputTarget = this.renderer.getOutputRenderTarget();
-        this.renderer.setOutputRenderTarget(this.displayTarget);
-        try {
-          await this.overlayPass.compile(scene, camera, style);
-        } finally {
-          this.renderer.setOutputRenderTarget(outputTarget);
-        }
-      }],
+      ['合成', () => compileIntoOutput(this.renderer, this.displayTarget, this.quad, this.quad.camera)],
+      ['オーバーレイ', () => this.overlayPass.compile(scene, camera, style, this.displayTarget)],
       ['アンチエイリアス', () => this.antialiasPass.compile()],
     );
 

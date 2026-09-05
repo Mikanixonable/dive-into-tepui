@@ -23,3 +23,21 @@ export async function compileInto(
     renderer.stencil = savedStencil;
   }
 }
+
+// 描画時に出力ターゲットを張って描くパスをコンパイルする。three は出力ターゲットへ書くときだけ
+// 階調変換の板を挟み、その手前を作業色空間の中間ターゲットへ描くので、同じ描画先でも
+// compileInto とは別のパイプラインになる。階調変換の板自体は実際に描くまで作られない。
+export async function compileIntoOutput(
+  renderer: WebGPURenderer,
+  outputTarget: THREE.RenderTarget | null,
+  object: THREE.Object3D,
+  camera: THREE.Camera,
+): Promise<void> {
+  const savedOutput = renderer.getOutputRenderTarget();
+  renderer.setOutputRenderTarget(outputTarget);
+  try {
+    await compileInto(renderer, null, object, camera);
+  } finally {
+    renderer.setOutputRenderTarget(savedOutput);
+  }
+}
