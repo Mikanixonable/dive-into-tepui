@@ -1,6 +1,6 @@
 // 天気から凝結する雲。地表付近の湿度と対流が不透明な雲に、上層の湿度が薄く透ける雲になる。
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
-import { exp, float, inverseSqrt, max, mix, smoothstep } from 'three/tsl';
+import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
 import type { WeatherSample } from './weather-model';
 import type { FloatNode } from '../tsl-types';
 
@@ -49,10 +49,19 @@ const TOWER_LIFT_GATE = 0.005;
 // ので、粒を足す前の湿度で決める。渡り始めは覆いの効き始めの少し下、渡り終わりはその 1 単位ぶん上。
 const SHAPE_NETWORK_HUMIDITY = 0.45;
 const SHAPE_GRAIN_HUMIDITY = 0.70;
-// 薄い雲は、上層の湿度がしきい値を超えた分に比例して光学的厚みが増える。上端でも 0.95 までしか
-// 行かない — 巻雲は厚みが 1 に届かず、下地が透けたまま見える。
-const TRANSLUCENT_ONSET = 0.42;
-const TRANSLUCENT_GAIN = 1.7;
+// 薄い雲の光学的厚み τ は 2 項の和。靄の項は、上層の湿度が靄の効き始めを超えた分に比例して、並に
+// 湿った所へ広くごく薄い幕を張る。筋の項は、筋の効き始めを超えた分の二乗で、湿度の峰にだけ濃い筋を
+// 立てる — 薄い雲の大半はごく薄い靄で、濃く見えるのは筋状に束ねられた所だけ(`DEVELOP/SPEC/
+// RENDERING.md`「高い雲は別の帯に乗る」)。二乗の項だけでは靄が消え、筋が黒地に浮く白い繊維になって
+// 厚い雲に読める。膝は、二乗の τ が筋の利得を傾きにした直線と交わる超過量。上層の湿度 0.5 で τ 0.08、
+// 0.6 で 0.24、0.7 で 0.60。上限は τ をそこへ漸近させる tanh の頭打ちで、1 以下の τ はほぼ素通し
+// — 下地が常に e^−τ ≥ 0.05 だけ透け、巻雲は不透明にならない。
+const TRANSLUCENT_HAZE_ONSET = 0.36;
+const TRANSLUCENT_HAZE_GAIN = 0.6;
+const TRANSLUCENT_STREAK_ONSET = 0.50;
+const TRANSLUCENT_STREAK_GAIN = 2.5;
+const TRANSLUCENT_KNEE = 0.25;
+const TRANSLUCENT_LIMIT = 3.0;
 
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
 // 雲頂高度は 層状の雲から立つ塔と、渦の芯が敷く金床の高いほうから出る — 覆う広さは湿度が、
@@ -86,9 +95,13 @@ export function condense(weather: WeatherSample): CloudSample {
   // 上端は 1 へ漸近するだけで飽和しない — 覆われた空にも湿度の差が階調として残る。
   const moistened = weather.humidity.add(granularity);
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
+  // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。
+  const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
+  const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
+  const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
   return {
     coverage: exp(excess.mul(excess).negate()).oneMinus(),
     cloudTop: max(tower, anvil),
-    translucent: max(weather.upperHumidity.sub(TRANSLUCENT_ONSET), 0).mul(TRANSLUCENT_GAIN),
+    translucent: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
   };
 }
