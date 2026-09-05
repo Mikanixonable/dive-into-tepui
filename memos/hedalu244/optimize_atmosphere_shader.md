@@ -1,4 +1,4 @@
-# 大気パスを1天体分のシェーダにして、層はピンポンで重ねる
+﻿# 大気パスを1天体分のシェーダにして、層はピンポンで重ねる
 
 ブランチ `optimize-load-and-runtime`、着手時点 `99e6f94a`。**数字はすべて `9ae4115e` で測った
 もので、以後 `src/render/` は変わっていない。**
@@ -80,6 +80,15 @@ Intel gen-9 内蔵 GPU の Chrome** で測ったもの。**絶対値は実機の
   あと `node tools/render-lab-measure.mjs 2`。earth / earth-mars / earth-mars d=-2 / far ×
   大気の段 4 通りで、パス別 GPU 時間の「大気」行を巡ごとの平均と中央値で出す。
 - **絵**: `npm run render-lab:shot`(`.render-lab/shots/*.png` に全ケース)。
+  **撮影は決定的でない。** 同じコードで 2 run 撮った差は最大 **51 LSB / 1157 px**(`order`)で、
+  `protein-5i4r-molecular-1` 46・`ship-cluster` / `ship-crowd` 39・`earth-polar` 26・
+  `earth-polar-terminator` 23 と続く。大気だけのケース(`earth` `earth-mars` `far`)は
+  1〜5 LSB に収まる。**±4 LSB という前提は成り立たない** — 判定は必ず、変更後どうしの
+  run 間の揺れと突き合わせて行う。
+  **撮影は `memos/mikanixonable/protein-motion-baseline.json`(追跡ファイル)を書き換えるので、
+  比較が済んだら `git checkout --` で戻す。**
+- **描画デバッグ表示の絵**: `.render-lab` のビルドを使い、`window.renderLab.shoot(<ケース>)` の
+  あと `setTarget('material' | 'atmosphere')` → `capture()` で 1 枚ずつ撮る使い捨てのスクリプト。
 
 ---
 
@@ -92,78 +101,19 @@ Intel gen-9 内蔵 GPU の Chrome** で測ったもの。**絶対値は実機の
 3. **`atmosphere-pass.ts` に、天体スロットを複数並べる JS のループが 1 つも無い。**
    `grep -n "MAX_ATMOSPHERE_BODIES" src/render/pipeline/atmosphere-pass.ts` が
    「描画命令の上限」としての 1 箇所だけになる。
-4. **絵が変わらない。** `npm run render-lab:shot` を変更前後で撮り、**大気が 1 体しか写らない
-   ケース(`earth` `earth-oblique` `earth-polar` `earth-polar-terminator` `earth-terminator`
-   `earth-eclipse`)はバイト一致**。大気が 2 体写る `earth-mars` だけは f16 の中間丸めのぶん
-   動いてよいが、**±4 LSB 以内**(撮り直しの揺れがこの幅なので、差を根拠にする前に撮り直す)。
+4. **絵が変わらない。** `npm run render-lab:shot` を変更前後で撮り、**差が撮り直しの揺れの
+   範囲に収まる。** 判定は「変更前 vs 変更後」の差が「同じコードの run どうし」の差を超えない
+   こと。**バイト一致は判定に使えない**(下の実測)。
 5. **大気パスの GPU 時間が悪化していない。** `node tools/render-lab-measure.mjs 2` の中央値で、
    `earth` / `far` は変更前以下、`earth-mars` / `earth-mars d=-2` は **+0.5 ms 以内**
    (層が 2 つのときだけ全画面コピーが 1 回増えるため)。
 6. **描画デバッグ表示の「マテリアル」と「大気」が、SPEC どおりのものを映す。**
-   `npm run render-lab` で `earth-mars`(大気 2 体)を出し、それぞれを選んで確かめる。
+   `earth-mars`(大気 2 体)で撮って確かめる。
 7. `npm run typecheck` と `npm run test:render` が通る。
 
 ---
 
 ## 手順
-
-### 手順 1. 下地の控えを大気パスへ移す
-
-**目的**: いま `render-pipeline.ts` が持っている「不透明の絵の控え」を、それを読む大気パス自身へ
-移す。手順 2 で控えを撮る回数が層の数で決まるようになるので、**回数を知っている側が持ち主で
-なければならない。** **この時点でシェーダも絵も変えない。**
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/render-pipeline.ts:124-130` | `backdropTarget` の生成と `AtmospherePass` の生成を入れ替える。**共有ターゲット `this.target`(`:132-140`)の生成を、`AtmospherePass` の生成より前へ動かす** — パスがコンストラクタで共有ターゲットを受け取るため |
-| `src/render/pipeline/render-pipeline.ts:142-146` | `backdropMaterial` / `backdropQuad` を削除する |
-| `src/render/pipeline/render-pipeline.ts:51-53` | `backdropTarget` / `backdropMaterial` / `backdropQuad` のフィールドを削除する |
-| `src/render/pipeline/render-pipeline.ts:204-206` | デバッグ表示「マテリアル」の材質が読むテクスチャを `this.atmospherePass.backdropTexture` へ替える |
-| `src/render/pipeline/render-pipeline.ts:331-337` | 事前コンパイルの「大気」段から、控えのサイズ合わせと `compileInto` を削る(パスの `compile` の中へ移る) |
-| `src/render/pipeline/render-pipeline.ts:398-411` | 控えのサイズ合わせ・`beginPass`・ブリットを削り、`this.atmospherePass.render(camera)` の1行にする。「マテリアル」表示のための控え撮りは `captureBackdrop()` の呼び出しへ |
-| `src/render/pipeline/render-pipeline.ts:465-467` | `backdropTarget` / `backdropMaterial` の解放を削る |
-| `src/render/pipeline/atmosphere-pass.ts:104-176` | コンストラクタの引数 `backdrop: THREE.Texture` を `sharedTarget: THREE.RenderTarget` へ替え、控えのターゲットとコピー板をパスの中で作る。合成板が読む下地は自前の控え |
-| `src/render/pipeline/atmosphere-pass.ts:442-462` | `render` / `compile` から `sharedTarget` 引数を落とし(コンストラクタで受けたものを使う)、控えのサイズ合わせ・コピー・`beginPass` をパスの中で行う |
-| `src/render/pipeline/atmosphere-pass.ts:464-468` | `dispose` で控えのターゲットとコピー板を解放する |
-
-新しい公開面(この手順の時点):
-
-```ts
-// src/render/pipeline/atmosphere-pass.ts
-export class AtmospherePass {
-  public constructor(
-    renderer: WebGPURenderer,
-    gbuffer: GBufferPass,
-    sharedTarget: THREE.RenderTarget,
-    sunLight: SunLight,
-    sunOcclusion: SunOcclusion,
-    gpu: GpuTimings,
-  );
-  // 大気が重なる直前の下地。デバッグ表示「マテリアル」だけが読む。
-  public get backdropTexture(): THREE.Texture;
-  // マテリアルパスの出力を控えへ撮る。大気が写らないフレームでもデバッグ表示のために撮る。
-  public captureBackdrop(): void;
-  public render(camera: THREE.Camera): void;
-  public compile(camera: THREE.Camera): Promise<void>;
-}
-```
-
-`render` は自身で `anyBodyInView` を見て、写らないフレームは何も描かずに戻る(呼び出し側の
-`if` が消える)。`anyBodyInView` は `private` へ落とす。
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。`npm run test:render` が通る。
-- `grep -n "backdropTarget\|backdropMaterial\|backdropQuad" src/render/pipeline/render-pipeline.ts`
-  が **0 件**(残るのは `atmospherePass.backdropTexture` を読む1行だけ)。
-- プローブで、**大気段のパイプライン 2 本 / WGSL 118.0 KB が変わらない**(移しただけなので
-  シェーダは同一のはず)。
-- `npm run render-lab:shot` の絵が**全ケースでバイト一致**。
-  **撮影は `memos/mikanixonable/protein-motion-baseline.json`(追跡ファイル)を書き換えるので、
-  比較が済んだら戻すこと。**
-- `npm run dev` で描画デバッグ表示「マテリアル」を選び、マテリアルパスの出力が映ること。
 
 ### 手順 2. スロットを1つにして、層ごとに1回描く
 
@@ -190,7 +140,7 @@ result = Σ_i ( inscatter_i · Π_{j<i} T_j ) + backdrop · Π_i T_i
 | `src/render/pipeline/atmosphere-pass.ts:400-427` | `setDraws` は uniform を書かず、**このフレームの層とその裾球を溜めるだけ**にする。uniform を書くのは描く直前(`render`) |
 | `src/render/pipeline/atmosphere-pass.ts:429-440` | `anyBodyInView` を「層 1 つが写るか」の判定へ分解する。視錐台の組み立ては `render` で1回 |
 | `src/render/pipeline/atmosphere-pass.ts:442-455` | `render` を層のループにする。**逆順(奥→手前)**、**層ごとに `gpu.beginPass(GPU_PASS.atmosphere)`**、**`autoClear = false` を層ごとの描画すべてに掛ける** |
-| `src/render/pipeline/atmosphere-pass.ts`(追加) | デバッグ表示用の控え 1 枚(既定 1×1、選ばれたときだけ画面寸法へ)と、そこから読むコピー板。`renderScattered` が黒い下地から同じ鎖を回して書く。**手順 1 の `backdropTexture` はこの控えを指す `debugTexture` へ改名する** — 2 つの表示が同じ 1 枚を共有するので、下地専用の名前ではなくなる |
+| `src/render/pipeline/atmosphere-pass.ts`(追加) | デバッグ表示用の控え 1 枚(既定 1×1、選ばれたときだけ画面寸法へ)と、そこから読むコピー板。`renderScattered` が黒い下地から同じ鎖を回して書く。**いまの `backdropTexture` はこの控えを指す `debugTexture` へ改名する** — 2 つの表示が同じ 1 枚を共有するので、下地専用の名前ではなくなる |
 | `src/render/pipeline/render-pipeline.ts:204-209` | 「マテリアル」と「大気」の材質を、どちらも `atmospherePass.debugTexture` を読む**同じ 1 枚**にする。`dispose`(`:474`)は `new Set(Object.values(...))` を回す形へ |
 | `src/render/pipeline/render-pipeline.ts:398-411` | 「大気」表示のときだけ `renderScattered(camera)` を、「マテリアル」表示のときだけ `captureBackdrop()` を呼ぶ |
 | `src/render/atmosphere.ts:26` | `MAX_ATMOSPHERE_BODIES` のコメントを「描画命令の上限」の意味へ直す。**値は 4 のまま** |
@@ -225,15 +175,15 @@ export class AtmospherePass {
   **描画命令の上限を掛ける 1 箇所だけ**になる。
 - `grep -n "scatteredLight" src/` が **0 件**。
 - プローブで **大気段の WGSL が 40 KB 以下**、**事前コンパイルが 2.5 秒以下**。
-- `npm run render-lab:shot` の絵が、**`earth` `earth-oblique` `earth-polar`
-  `earth-polar-terminator` `earth-terminator` `earth-eclipse` でバイト一致**、
-  **`earth-mars` は ±4 LSB 以内**(超えたら撮り直してから判断する)。
+- `npm run render-lab:shot` の絵を変更後に 2 run 撮り、**「変更前 vs 変更後」の差が
+  「変更後どうし」の差を超えるケースが無い**こと。大気のケース(`earth` `earth-mars` `far`)の
+  run 間の揺れは 1〜5 LSB なので、そこは実質の判定になる。
   撮影後は `memos/mikanixonable/protein-motion-baseline.json` を戻す。
 - `node tools/render-lab-measure.mjs 2` の「大気」行の中央値が、`earth` / `far` で変更前以下、
   `earth-mars` / `earth-mars d=-2` で **+0.5 ms 以内**。
-- `npm run render-lab` で `earth-mars` を出し、デバッグ表示を「マテリアル」→ 地球と火星の
-  陰影だけ(大気の霞みが乗っていない)、「大気」→ 2 つの大気の内部散乱だけ(下地の地表が
-  透けていない)であることを目で確かめる。
+- デバッグ表示の撮影スクリプトで `earth` / `earth-mars` × `off` / `material` / `atmosphere` を
+  変更前後で撮り、**「マテリアル」が地球と火星の陰影だけ**(大気の霞みが乗っていない)、
+  **「大気」が内部散乱だけ**(下地の地表が透けていない)であることを目で確かめる。
 - `npm run dev` で地球の低軌道から地平線を見て、大気の見えが変わっていないこと。
 
 ---
@@ -261,10 +211,9 @@ export class AtmospherePass {
 | デバッグ表示「マテリアル」「大気」が SPEC の記述から外れる(1 層目の控えを使い回す、内部散乱を 1 層ぶんしか映さない、など) | 大気 2 体の構図でだけ違うものが映る。無言で SPEC 違反 | 手順 2 / render-lab の `earth-mars` × デバッグ表示 |
 | ピンポンの各段で f16 へ丸められる(控えも共有ターゲットも `HalfFloatType`)。いまは 4 層ぶんが 1 本のシェーダの f32 レジスタで積まれている | 層が 2 つ以上のケースの絵が動く。`51f9a301` の同型の分割では最大 1 LSB だった | 手順 2 / `earth-mars` の撮影 |
 | `setDraws` が uniform を書かなくなるので、**`compile()` は 1 度も `setDraws` を通らない状態で走る** | `steps` の初期値が 0 だと積分の段幅が 0 除算になる。初期値 1 を保つこと | 手順 2 / 起動時の事前コンパイル |
-| 共有ターゲット `this.target` の生成をコンストラクタで動かし忘れる | `AtmospherePass` が `undefined.texture` を読み、起動時に例外か真っ黒な画面 | 手順 1 |
 | 層ごとに `gpu.beginPass(GPU_PASS.atmosphere)` を申告し忘れる | 2 層目以降の GPU 時間が別のパスへ計上されるか落ちる。**達成目標 5 の判断を誤る** | 手順 2 / `render-lab-measure.mjs` |
 | 視錐台での間引きは「裾球が視錐台に掛かるか」で、遠平面より奥の層も落とす | いまの `anyBodyInView` と同じ判定なので新しい危険ではないが、**層ごとに効くので落ち方が細かくなる**。遠平面のすぐ外にある大気が消える構図があれば、そこで初めて見える | 手順 2 / `far` と `earth-mars d=-2` の撮影 |
-| `npm run render-lab:shot` は `memos/mikanixonable/protein-motion-baseline.json`(追跡ファイル)を書き換える | 関係ない差分が commit へ混ざる | 手順 1・2 |
-| render-lab の撮影は決定的でない。半影を持つケースは撮り直しで ±4 LSB 揺れる | 揺れを変更の影響と読み違える | 手順 1・2(差を根拠にする前に撮り直す) |
+| `npm run render-lab:shot` は `memos/mikanixonable/protein-motion-baseline.json`(追跡ファイル)を書き換える | 関係ない差分が commit へ混ざる | 手順 2 |
+| render-lab の撮影は決定的でない。同じコードの run どうしでも最大 51 LSB 動く | 揺れを変更の影響と読み違える | 手順 2(必ず変更後を 2 run 撮って突き合わせる) |
 | WGSL の本文が変わると Chrome の GPU ディスクキャッシュが全部外れる | 配信し直した後、全プレイヤーが 1 回だけ冷キャッシュの構築を踏む。**避けられない**ので、リリースをまとめる理由にはなる | 手順 2 |
 | 測定機の GPU は Intel gen-9 の内蔵 GPU | 「2.5 秒以下」のような絶対値の達成条件を実機で当てようとすると合わない | 全手順(比で読む) |
