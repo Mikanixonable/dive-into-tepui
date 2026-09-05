@@ -150,6 +150,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.depthDebugProjInv = uniform(new THREE.Matrix4());
     this.debugViewToWorld = uniform(new THREE.Matrix4());
 
+    const inspectMaterial = this.buildCompositeMaterial(
+      vec4(this.toneMapped(texture(this.atmospherePass.inspectTexture, screenUV).rgb), 1),
+    );
     // 表示ごとに別マテリアルを持ち、quad.material の差し替えで切り替える。1 枚をユニフォームで
     // 分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを bind/sample することになる。
     this.compositeMaterials = {
@@ -186,14 +189,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       specular: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
-      // マテリアルパスの出力は大気と world に上書きされて残らないので、大気パスが控えた
-      // 下地を映す。
-      material: this.buildCompositeMaterial(
-        vec4(this.toneMapped(texture(this.atmospherePass.backdropTexture, screenUV).rgb), 1),
-      ),
-      atmosphere: this.buildCompositeMaterial(
-        vec4(this.toneMapped(this.atmospherePass.scatteredLight()), 1),
-      ),
+      // 「マテリアル」も「大気」も、大気パスが点検用に描く1枚を映すので、材質を共有する。
+      material: inspectMaterial,
+      atmosphere: inspectMaterial,
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
     };
     this.lensCompositeMaterial = this.buildCompositeMaterial(
@@ -374,10 +372,11 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       // 最初の書き込みなのでクリアする)へ描く。
       this.materialPass.render(scene, camera, this.target);
 
-      // 大気パス。「マテリアル」デバッグ表示は大気が読む下地を映すので、その間は大気が
-      // 写らないフレームでも控えを撮らせる。
-      if (this.debugTarget === 'material') this.atmospherePass.captureBackdrop();
+      // 大気パス。デバッグ表示が選ばれている間は、そこへ映す1枚も大気パスに描かせる
+      // (「マテリアル」は重ねる前の下地なので、大気を描く前に控える)。
+      if (this.debugTarget === 'material') this.atmospherePass.inspectBackdrop();
       this.atmospherePass.render(camera);
+      if (this.debugTarget === 'atmosphere') this.atmospherePass.inspectScattered(camera);
 
       // world パス。LIT_OPAQUE_LAYER と背景専用レイヤーはチャンネル0から外れているので、既定の
       // カメラマスクで描く限り重複しない。autoClear を落としてマテリアルパスの描画(色・深度とも)
@@ -439,7 +438,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.lensCompositeMaterial.dispose();
     this.target.dispose();
     this.displayTarget.dispose();
-    for (const material of Object.values(this.compositeMaterials)) material.dispose();
+    // 同じ1枚を複数の選択肢が共有するので、重複を畳んでから解放する。
+    for (const material of new Set(Object.values(this.compositeMaterials))) material.dispose();
     this.schematicMaterial.dispose();
     this.filmLut.dispose();
   }
