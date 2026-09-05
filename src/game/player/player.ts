@@ -123,6 +123,9 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   readonly power: PowerSystem;
   readonly boosters: PlayerBoosters;
 
+  // contactProxies が返す一覧。区間ごとに置き直すので使い回す。
+  private readonly contactProxyScratch: DynamicEntity[] = [];
+
   private readonly thrustEffects: ThrustEffects;
   private rcsThrust: Vec3 | null = null;
   private readonly rcsEffects: RcsEffects;
@@ -267,8 +270,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦はこのフレーム操作されないので、
-  // 次フレームへ持ち越してはならない連続指令をここで畳む。受動状態(ベルト物理・HP自然回復)は
-  // 操作の可否によらず進める。
+  // 次フレームへ持ち越してはならない連続指令をここで畳む。HP の自然回復は操作の可否によらず
+  // 進める。
   public updatePlayerControls(
     input: Input | null,
     dt: number,
@@ -277,7 +280,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     activeStage: Stage,
     celestialSystem: CelestialSystem,
   ): void {
-    this.updatePassive(dt);
+    this.hpRegen(dt);
     if (input !== null) this.handleEdgeInput(input, entities);
     // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
     if (input === null) {
@@ -301,18 +304,12 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     if (this.thrust !== null) this.invalidatePrediction();
   }
 
-  // 表示フレーム基準の受動状態。環境(熱・電力・ラジエータ)は stepEnvironment で
-  // simulation clock に合わせて進めるため、ここで重複させない。
-  private updatePassive(dt: number): void {
-    this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
-    this.hpRegen(dt);
-  }
-
   protected override stepEnvironment(
     dt: number, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
     sunlit: number, sunDir: Vec3,
   ): void {
     if (!this.alive) return;
+    this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
     this.radiator.update(dt, this.radiatorWear());
     this.fire.stepBarrelThermal(dt);
     this.aero.update(this.state.r, this.state.v, atmosphereBody, atmospherePivot);
@@ -456,9 +453,21 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.destroyEffect();
   }
 
-  // この艦の放熱板の、今フレームの接触代理一覧(展開中かつ健在な折りのみ)。
-  override collisionFolds(simTime: number): readonly DynamicEntity[] {
-    return this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime);
+  // この艦の接触代理一覧 — 放熱板の折り(展開中かつ健在なものだけ)と、ベルトの節点。
+  override contactProxies(simTime: number, dt: number): readonly DynamicEntity[] {
+    this.contactProxyScratch.length = 0;
+    for (const fold of this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime)) {
+      this.contactProxyScratch.push(fold);
+    }
+    for (const section of this.belt.collisionSections(dt, this.state.r, this.state.v, this.att)) {
+      this.contactProxyScratch.push(section);
+    }
+    return this.contactProxyScratch;
+  }
+
+  // ベルトは反発を節点の側で受け止めるので、解決後の状態を機体座標系の鎖へ書き戻す。
+  override applyContactProxies(dt: number): void {
+    this.belt.applyCollisionSections(dt, this.state.r, this.state.v, this.att);
   }
 
   // 動圧が構造限界を超えたことによる喪失。熱による焼失は burnUp が、天体の地表への到達は

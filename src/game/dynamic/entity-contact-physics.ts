@@ -7,7 +7,6 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { SpatialGrid } from '../../math/spatial-grid';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { Player } from '../player/player';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { entityContactResponse } from './entity-contact-response';
@@ -73,10 +72,6 @@ export class EntityContactPhysics {
   // 接触解決は Simulator の substep ごとに同期的に完了するため、入力の抽出・作業集合を
   // インスタンス単位で再利用できる。配列の詰め直しは元の配列走査順をそのまま保つ。
   private readonly participantScratch: DynamicEntity[] = [];
-  private readonly beltParticipantScratch: DynamicEntity[] = [];
-  private readonly otherScratch: DynamicEntity[] = [];
-  private readonly allScratch: DynamicEntity[] = [];
-  private readonly attackerSetScratch = new Set<DynamicEntity>();
   private readonly workingScratch = new Map<DynamicEntity, KinematicState>();
   private readonly changedScratch = new Set<DynamicEntity>();
   private readonly neighborScratch: number[] = [];
@@ -87,28 +82,11 @@ export class EntityContactPhysics {
 
   // 1 substep ぶんの物体どうしの接触解決。ワープ倍率によるゲートは呼び出し側の判断で、
   // ここには倍率を見る条件を持たない。
-  resolveEntityContacts(simTime: number, entities: DynamicEntity[], activeStage: Stage): void {
-    this.collectParticipants(entities, this.participantScratch);
-    this.resolveInOrder(this.participantScratch, [], simTime, activeStage);
-  }
-
-  // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
-  // フレームに1回だけ解決する。
-  resolveBelt(
-    dt: number,
-    simTime: number,
-    player: Player,
-    entities: readonly DynamicEntity[],
-    activeStage: Stage,
+  resolveEntityContacts(
+    simTime: number, entities: readonly DynamicEntity[], activeStage: Stage,
   ): void {
-    if (!player.alive || dt <= 1e-6) return;
-    this.beltParticipantScratch.length = 0;
-    for (const section of player.belt.collisionSections(dt, player.state.r, player.state.v, player.att)) {
-      if (isFiniteParticipant(section)) this.beltParticipantScratch.push(section);
-    }
-    this.collectParticipants(entities, this.otherScratch);
-    this.resolveInOrder(this.beltParticipantScratch, this.otherScratch, simTime, activeStage);
-    player.belt.applyCollisionSections(dt, player.state.r, player.state.v, player.att);
+    this.collectParticipants(entities, this.participantScratch);
+    this.resolveInOrder(this.participantScratch, simTime, activeStage);
   }
 
   private collectParticipants(source: readonly DynamicEntity[], out: DynamicEntity[]): void {
@@ -118,27 +96,16 @@ export class EntityContactPhysics {
     }
   }
 
-  // attackers 同士・attackers×others の接触候補を1回だけ列挙し、TOI が最小のものから1件ずつ
-  // 解決する。上限回数を超えた分は次回の呼び出し(次の substep / 次のフレーム)へ持ち越す。
+  // 参加者どうしの接触候補を1回だけ列挙し、TOI が最小のものから1件ずつ解決する。上限回数を
+  // 超えた分は次の substep へ持ち越す。
   // DynamicEntity.state への書き戻しは全解決が終わってから一括で行う — ループの途中で書き戻すと
   // state セッタ自身が prevState を書き換えてしまい、以降の反復が区間の始点を失う。
   private resolveInOrder(
-    attackers: readonly DynamicEntity[],
-    others: readonly DynamicEntity[],
+    all: readonly DynamicEntity[],
     simTime: number,
     activeStage: Stage,
   ): void {
-    if (attackers.length === 0) return;
-    // ベルト解決のように others がある場合だけ結合配列を使う。通常の substep では
-    // attackers 自身をそのまま使い、余分なコピーと走査を発生させない。
-    const all = others.length === 0 ? attackers : this.allScratch;
-    if (others.length !== 0) {
-      this.allScratch.length = 0;
-      this.allScratch.push(...attackers, ...others);
-    }
-    const attackerSet = this.attackerSetScratch;
-    attackerSet.clear();
-    for (const attacker of attackers) attackerSet.add(attacker);
+    if (all.length === 0) return;
     const working = this.workingScratch;
     working.clear();
     for (const e of all) working.set(e, e.state);
@@ -150,7 +117,7 @@ export class EntityContactPhysics {
     grid.reset(cellSize);
     for (let k = 0; k < all.length; k++) grid.insert(k, working.get(all[k]!)!.r);
 
-    const count = this.collectCandidates(all, attackerSet, simTime, working, grid);
+    const count = this.collectCandidates(all, simTime, working, grid);
     this.candidatePairs += count;
     // 直前の解決で状態が変わった当事者。これを含まない候補の response は引き直しても同じ値に
     // なるので、含む候補だけを引き直す。
@@ -167,18 +134,15 @@ export class EntityContactPhysics {
     for (const e of changed) e.state = working.get(e)!;
     working.clear();
     changed.clear();
-    attackerSet.clear();
     // 使わなかった末尾を落とす — 候補は当事者を参照で抱えるので、残すと消えたエンティティが
     // 候補列の中だけ生き続ける。
     this.candidateScratch.length = count;
   }
 
-  // grid の27近傍から、少なくとも一方が attackerSet に属するペアを集め、contactsWith を
-  // 通ったものだけを候補列へ詰め直して件数を返す。接触しない組み合わせも response=null の
-  // 候補として残す — 当事者の状態が変われば接触しうるため。
+  // grid の27近傍からペアを集め、contactsWith を通ったものだけを候補列へ詰め直して件数を返す。
+  // 接触しない組み合わせも response=null の候補として残す — 当事者の状態が変われば接触しうるため。
   private collectCandidates(
     all: readonly DynamicEntity[],
-    attackerSet: ReadonlySet<DynamicEntity>,
     simTime: number,
     working: ReadonlyMap<DynamicEntity, KinematicState>,
     grid: SpatialGrid<number>,
@@ -191,7 +155,6 @@ export class EntityContactPhysics {
         // j<=i は、(j,i) 側の反復で同じペアを二重に検討しないためのガード(自分自身も除く)。
         if (j <= i) continue;
         const b = all[j]!;
-        if (!attackerSet.has(a) && !attackerSet.has(b)) continue;
         if (!a.contactsWith(b, simTime) || !b.contactsWith(a, simTime)) continue;
         this.pushCandidate(
           count++, a, b, entityContactResponse(a, working.get(a)!, b, working.get(b)!));
