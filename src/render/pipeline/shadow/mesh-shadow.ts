@@ -1,5 +1,5 @@
 // 影マップへ描かれたメッシュ(艦艇・基地・デブリなど)が落とす影。描画座標の点へ恒星の直射光が
-// どれだけ届くかを、深度マップを引く TSL グラフとして返す。値の源は SunShadowMaps がフレームごとに
+// どれだけ届くかを、深度マップを引く TSL グラフとして返す。値の源は ShadowMaps がフレームごとに
 // 描く深度マップとスロットの uniform 配列で、ここが持つ状態は無い。
 import {
   Fn, If, Loop, clamp, cos, dot, float, int, max, min, select, sin, sqrt, texture, vec2, vec3, vec4,
@@ -7,8 +7,8 @@ import {
 import type {
   BoolNode, FloatNode, IntNode, Mat4Node, Vec2Node, Vec3Node, Vec4Node,
 } from '../../tsl-types';
-import { MAX_SHADOW_SLOTS, type SunShadowMaps } from '../sun-shadow-maps';
-import { COLUMN_SPAN } from '../sun-shadow-casters';
+import { MAX_SHADOW_SLOTS, type ShadowMaps } from './shadow-maps';
+import { COLUMN_SPAN } from './shadow-casters';
 import type { SunLight } from '../sun-light';
 
 // 影のバイアス。受け手をこれだけ法線方向へずらしてからライト空間へ写し、残りを傾きに比例した
@@ -31,7 +31,7 @@ const SLOT_DEBUG_COLORS: readonly (readonly [number, number, number])[] = [
 export class MeshShadow {
   constructor(
     private readonly sunLight: SunLight,
-    private readonly shadowMaps: SunShadowMaps,
+    private readonly shadowMaps: ShadowMaps,
   ) {}
 
   // このフレームにメッシュの影があるか。

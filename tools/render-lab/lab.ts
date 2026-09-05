@@ -11,7 +11,7 @@ import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { GraphicsSettings, type GraphicsSettingsData, type GraphicsTarget } from '../../src/render/graphics-settings';
-import { castsCumulusShadow } from '../../src/render/pipeline/sun-occlusion-select';
+import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
 import { atmosphereDraws } from '../../src/render/atmosphere';
 import { RingMaterials } from '../../src/render/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';

@@ -21,7 +21,7 @@ import {
   buildProteinEnemyShip, buildProteinRibbonShip, type ProteinBackboneAsset, type ProteinRenderSource,
 } from '../../src/render/protein-enemy-ship';
 import { proteinSecondaryKind } from '../../src/render/protein-ribbon-color';
-import { LIT_OPAQUE_LAYER, SUN_SHADOW_CASTER_LAYER } from '../../src/render/pipeline/lit-layer';
+import { LIT_OPAQUE_LAYER, SHADOW_CASTER_LAYER } from '../../src/render/pipeline/lit-layer';
 import { v3 } from '../../src/math/vec3';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, PROTEIN_COLOR_LABELS,
@@ -228,7 +228,7 @@ export function register(): void {
         shellFound = true;
         assert.equal(child.layers.isEnabled(0), true);
         assert.equal(child.layers.isEnabled(LIT_OPAQUE_LAYER), false);
-        assert.equal(child.layers.isEnabled(SUN_SHADOW_CASTER_LAYER), false);
+        assert.equal(child.layers.isEnabled(SHADOW_CASTER_LAYER), false);
       }
       if (!child.userData.proteinRibbon) return;
       ribbons += 1;
