@@ -8,6 +8,7 @@ import {
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { LIT_OPAQUE_LAYER } from './lit-layer';
+import { compileInto } from './compile-into';
 import type { BoolNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 // v の各成分が 0 以上なら +1、そうでなければ -1 を返す。TSL の sign() は 0 で 0 を返すため、
@@ -110,6 +111,20 @@ export class GBufferPass {
     this.renderer.setMRT(null);
 
     camera.layers.mask = savedMask;
+  }
+
+  // lit-opaque 層を G バッファの添付形式で事前コンパイルする。
+  public async compile(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number): Promise<void> {
+    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    const savedMask = camera.layers.mask;
+    camera.layers.set(LIT_OPAQUE_LAYER);
+    this.renderer.setMRT(this.mrtNode);
+    try {
+      await compileInto(this.renderer, this.target, scene, camera);
+    } finally {
+      this.renderer.setMRT(null);
+      camera.layers.mask = savedMask;
+    }
   }
 
   // 保持している GPU 資源を解放する。

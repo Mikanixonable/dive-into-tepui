@@ -31,6 +31,7 @@ import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 import { FilmLut } from './film-lut';
+import { compileInto } from './compile-into';
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly gbuffer: GBufferPass;
@@ -289,6 +290,75 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this._planetLight.setCount(graphics.planetLightCount);
     this.antialiasPass.setMethod(graphics.antialias);
     this.filmLut.select(graphics.filmLut);
+  }
+
+  // 初回描画で使うパイプラインをパス単位で構築し、完了数を通知する。
+  public async compile(
+    scene: THREE.Scene,
+    camera: THREE.Camera,
+    style: RenderStyle,
+    onPass: (name: string, done: number, total: number) => void,
+  ): Promise<void> {
+    this.renderer.getDrawingBufferSize(this.drawingBufferSize);
+    const width = this.drawingBufferSize.x;
+    const height = this.drawingBufferSize.y;
+    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    if (this.displayTarget.width !== width || this.displayTarget.height !== height) {
+      this.displayTarget.setSize(width, height);
+    }
+
+    this.depthDebugProjInv.value.copy(camera.projectionMatrixInverse);
+    this.debugViewToWorld.value.copy(camera.matrixWorld);
+    if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
+      this.depthDebugNear.value = camera.near;
+      this.depthDebugFar.value = camera.far;
+    }
+
+    const passes: [string, () => Promise<void>][] = [
+      ['影', () => this.sunShadowMaps.compile(scene, camera, height, this._sunLight)],
+      ['G バッファ', () => this.gbuffer.compile(scene, camera, width, height)],
+      ['遮蔽', () => this.occlusionPass.compile(camera, width, height)],
+      ['照明', () => this.lightPrepass.compile(camera, width, height)],
+    ];
+
+    if (style === 'schematic') {
+      this.schematicComposite.update(width, height);
+      this.quad.material = this.schematicMaterial;
+    } else {
+      this.quad.material = this.lensEnabled ? this.lensCompositeMaterial : this.compositeMaterials.off;
+      passes.push(
+        ['マテリアル', () => this.materialPass.compile(scene, camera, this.target)],
+        ['大気', async () => {
+          if (this.backdropTarget.width !== width || this.backdropTarget.height !== height) {
+            this.backdropTarget.setSize(width, height);
+          }
+          await compileInto(this.renderer, this.backdropTarget, this.backdropQuad, this.backdropQuad.camera);
+          await this.atmospherePass.compile(camera, this.target);
+        }],
+        ['ワールド', () => compileInto(this.renderer, this.target, scene, camera)],
+      );
+      if (this.lensEnabled) passes.push(['レンズ', () => this.lensPass.compile(width, height)]);
+    }
+
+    passes.push(
+      ['合成', () => compileInto(this.renderer, this.displayTarget, this.quad, this.quad.camera)],
+      ['オーバーレイ', async () => {
+        const outputTarget = this.renderer.getOutputRenderTarget();
+        this.renderer.setOutputRenderTarget(this.displayTarget);
+        try {
+          await this.overlayPass.compile(scene, camera, style);
+        } finally {
+          this.renderer.setOutputRenderTarget(outputTarget);
+        }
+      }],
+      ['アンチエイリアス', () => this.antialiasPass.compile()],
+    );
+
+    for (const [index, [name, compile]] of passes.entries()) {
+      onPass(name, index, passes.length);
+      await compile();
+    }
+    onPass('完了', passes.length, passes.length);
   }
 
   // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →

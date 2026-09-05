@@ -13,6 +13,7 @@ import {
 import { setOverlayPassLayers } from './lit-layer';
 import type { RenderStyle } from '../render-style';
 import type { Vec2Node, Vec4Node } from '../tsl-types';
+import { compileInto } from './compile-into';
 
 export class OverlayPass {
   // 模式図スタイルで 3D UI レイヤーを描く RGBA ターゲット。アルファはプリマルチプライドとして
@@ -98,6 +99,25 @@ export class OverlayPass {
     else this.renderRealistic(scene, camera);
 
     camera.layers.mask = savedMask;
+  }
+
+  // 現在の表示スタイルで使う 3D UI の描画経路を事前コンパイルする。
+  public async compile(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): Promise<void> {
+    const outputTarget = this.renderer.getOutputRenderTarget();
+    if (outputTarget === null) throw new Error('描画先を設定してからオーバーレイをコンパイルしてください');
+    const savedMask = camera.layers.mask;
+    setOverlayPassLayers(camera);
+    try {
+      if (style === 'schematic') {
+        await compileInto(this.renderer, this.target, this.quad, this.quad.camera);
+        await compileInto(this.renderer, this.target, scene, camera);
+        await compileInto(this.renderer, outputTarget, this.quad, this.quad.camera);
+      } else {
+        await compileInto(this.renderer, outputTarget, scene, camera);
+      }
+    } finally {
+      camera.layers.mask = savedMask;
+    }
   }
 
   // 合成パスが書いた色と深度を残したまま、3D UI チャンネルをそのまま重ね描く。
