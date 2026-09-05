@@ -27,7 +27,7 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 // 上昇流は [m/s](地形と気圧による、負なら下降)、湿度は 0..1(humidity が地表付近、
 // upperHumidity が上層)、対流は対流セルの強弱(0 中心の高周波、x が粒・y が網目)、対流の活発度は
 // その強弱がどれだけ強く現れるか 0..1、圧縮は気団の境目の押し縮まり(1 で何も起きていない)、
-// 前線は気団の境目に立つ帯の強さ 0..1(1 で帯として飽和)、
+// 帯は気団の折り目に立つ雲の帯の強さ 0..1(温帯では前線、眼を持つ渦のまわりでは雨帯。1 で飽和)、
 // 暖気の流入は出身地からの緯度の差 [rad](負で寒気)、金床は平らな天蓋の濃さ 0..1、圏界面は
 // その緯度の対流の天井 [m]。
 export type WeatherSample = {
@@ -39,7 +39,7 @@ export type WeatherSample = {
   readonly convection: Vec2Node;
   readonly convectiveActivity: FloatNode;
   readonly compression: FloatNode;
-  readonly frontal: FloatNode;
+  readonly band: FloatNode;
   readonly warmth: FloatNode;
   readonly anvil: FloatNode;
   readonly tropopause: FloatNode;
@@ -121,18 +121,26 @@ const LIFT_LIMIT = 0.06;
 // 長さ — ここを狭めると丘まで飽和して、帯は裾の無い硬い縁の白い盾になる。
 const FRONT_ONSET = 1.4;
 const FRONT_WIDTH = 1.0;
+// 雨帯。眼を持つ渦が周りの気団を巻き込んで折り畳んだ筋で、圧縮は前線の帯より桁が大きい(台風の芯から
+// ±1180 km では 45% が 2 を超え、腕の稜線は 5〜9)。効き始めは稜線の下端に置き、幅は稜線の中でいちばん
+// 押し縮まった区間だけが帯として飽和して、腕の先へ向けて連続に薄れる長さに取る — 芯のまわりのシアの丘
+// (2〜4)と、渦から離れた熱帯の背景(99.9 パーセンタイルの実測 3.2)には掛からない。ここを狭めると
+// 稜線が丸ごと飽和し、腕は太い真っ白な帯になって被覆率が実写の 2 倍を超える(`DEVELOP/SPEC/
+// RENDERING.md`「雨帯は、渦が周りの気団を巻き込んで折り畳んだ筋に沿う」)。
+const RAINBAND_ONSET = 5;
+const RAINBAND_WIDTH = 4;
 // 帯が飽和した所で立つ上昇流 [m/s]。頭打ち(LIFT_LIMIT)と同じ高さに取る — 帯の中は深い谷の芯と
 // 同じだけ持ち上がる。
-const FRONT_LIFT = 0.06;
+const BAND_LIFT = 0.06;
 // 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.20)の 1 つ半で、稜線(帯の
 // 強さ 1)では帯の上昇流が偏差を増幅する分(VORTEX_CONTRAST)と合わせて被覆率が飽和し、途切れない
 // 帯になる(`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
 // シアの丘(強さ 0.3〜0.5)では底上げが幅の半分に留まり、移流した湿度の濃淡が階調として残る。
-const FRONT_HUMIDITY = 0.3;
-// 前線が立つ緯度の門。**前線と、その両側の気団の性質はどちらもこの門を通る** — 前線は温帯の
-// ものなので、熱帯では貿易風の収束が緯線に沿った圧縮の環を作り、台風の周りでは圧縮が発散して
-// 上昇流が飽和した円盤になる。気団の流入も、熱帯では貿易風がどこでも高緯度から吹き込むので、
-// 門が無いと熱帯全体が一律に乾く。
+const BAND_HUMIDITY = 0.3;
+// 前線が立つ緯度の門。**前線と、その両側の気団の性質はどちらもこの門を通る** — 前線の伝達関数
+// (効き始め 1.4)は温帯だけに掛け、熱帯では貿易風の収束が緯線に沿った圧縮の環を作るので、代わりに
+// 雨帯の伝達関数(効き始め 4)が眼を持つ渦の腕の稜線だけを拾う。気団の流入も、熱帯では貿易風が
+// どこでも高緯度から吹き込むので、門が無いと熱帯全体が一律に乾く。
 const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
 const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
 // 風が斜面を駆け上がる分の利得。等倍だと、偏西風や貿易風が山脈へ当たり続けるだけで上昇流が
@@ -327,9 +335,13 @@ export class WeatherModel {
     const extratropical = smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
     const warmth = airMass.warmth.mul(extratropical);
     const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS)).mul(TERRAIN_LIFT_GAIN);
-    const frontal = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression).mul(extratropical);
-    const frontalLift = frontal.mul(FRONT_LIFT);
-    const lift = limitLift(terrainLift.add(liftFromPressure(pressure)).add(frontalLift));
+    // 折り目の帯: 温帯では前線の伝達関数が、熱帯では雨帯の伝達関数が、圧縮の稜線を帯の強さへ写す。
+    const front = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression).mul(extratropical);
+    const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
+      .mul(extratropical.oneMinus());
+    const band = min(front.add(rainband), 1);
+    const bandLift = band.mul(BAND_LIFT);
+    const lift = limitLift(terrainLift.add(liftFromPressure(pressure)).add(bandLift));
 
     // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流と金床を足し、渦の目のぶんを引いたもの。
     // 写しの偏差は上昇流が増幅する。写し以外は移流を通らないので、気候と地形と渦に貼り付いたまま
@@ -343,7 +355,7 @@ export class WeatherModel {
       advected.humidity.add(deviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
         .add(cloudinessBias(meanCloudiness).mul(MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(LIFT_HUMIDITY)).add(min(lift, 0).mul(SUBSIDENCE_DRYING))
-        .add(warmth.mul(WARM_HUMIDITY)).add(frontal.mul(FRONT_HUMIDITY))
+        .add(warmth.mul(WARM_HUMIDITY)).add(band.mul(BAND_HUMIDITY))
         .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
       advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
@@ -358,9 +370,9 @@ export class WeatherModel {
       upperHumidity,
       convection: advected.convection,
       convectiveActivity: this.convectiveActivity.at(
-        direction, lift, warmth, this.climate.landFraction(direction), frontal),
+        direction, lift, warmth, this.climate.landFraction(direction), band),
       compression: airMass.compression,
-      frontal,
+      band,
       warmth,
       anvil,
       tropopause: tropopauseAt(latitude),
