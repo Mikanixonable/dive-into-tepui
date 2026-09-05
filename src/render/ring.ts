@@ -40,12 +40,11 @@ const RING_COVERAGE_ATTRIBUTE = 'ringCoverage';
 
 export interface RingVisual {
   readonly object: THREE.Object3D;
-  // 自前の geometry だけを解放する(マテリアルは RingMaterials の持ち物)。object をシーンから
-  // 外すのは呼び出し側の責務。
+  // この表示物が組んだ geometry を解放する。object をシーンから外すのは呼び出し側が行う。
   readonly dispose: () => void;
 }
 
-// 線として描く帯。1px 未満へ痩せたぶんの減光を毎フレーム受ける。
+// 線として描く帯。1px 未満へ痩せたぶんの減光を setCoverage で受ける。
 export interface RingLineVisual extends RingVisual {
   readonly setCoverage: (coverage: number) => void;
 }
@@ -225,8 +224,7 @@ function buildAnnulusMesh(
   materials: RingMaterials,
 ): RingVisual {
   const geo = new THREE.RingGeometry(innerRadius, outerRadius, 128, 1, thetaStart, thetaLength);
-  // グラフが読むのは positionWorld だけ。**属性の並びを prism と揃えると、ジオメトリの鍵が
-  // 一致してシェーダグラフの構築が 1 回で済む。**
+  // **属性の並びを prism と揃える** — ジオメトリの鍵が一致して、シェーダグラフの構築が 1 回で済む。
   geo.deleteAttribute('normal');
   geo.deleteAttribute('uv');
   bakeRingOptics(geo, optics);
