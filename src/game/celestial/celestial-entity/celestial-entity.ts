@@ -26,8 +26,8 @@ import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
-import type { SunLight } from '../../../render/pipeline/sun-light';
-import type { CumulusShadow, SunOcclusion } from '../../../render/pipeline/sun-occlusion';
+import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shadow';
+import type { RingMaterials } from '../../../render/ring';
 import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';
 import type { CelestialSystem } from '../celestial-system';
@@ -102,9 +102,9 @@ export abstract class CelestialEntity implements ObjectPickable {
 
   public get def(): CelestialBodyDef { return this.motion.def; }
 
-  // 自分のメッシュ一式を組んでシーンへ登録する。sunOcclusion と sunLight は環が直射散乱の
-  // 遮蔽と明るさを引くために要る — 環を持たない天体でも、持ちうる形として受ける。
-  public abstract build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void;
+  // 自分のメッシュ一式を組んでシーンへ登録する。ringMaterials は環の帯が使う共有マテリアル
+  // — 環を持たない天体でも、持ちうる形として受ける。
+  public abstract build(scene: THREE.Scene, ringMaterials: RingMaterials): void;
   // build で登録した表示物一式を出す/消す。
   public abstract setVisible(visible: boolean): void;
   // star はこの星系の恒星。恒星を持たない星系では null。
@@ -170,8 +170,8 @@ export abstract class CelestialEntity implements ObjectPickable {
     return 'rings' in def ? def.rings ?? null : null;
   }
 
-  // 遮蔽パスへ渡す積雲の殻 1 体ぶん。殻を持たない天体では null。
-  public cumulusShadowAt(_fo: FloatingOrigin, _displayTime: number): CumulusShadow | null {
+  // 影パスへ渡す積雲の殻 1 体ぶん。殻を持たない天体では null。
+  public cumulusShadowAt(_fo: FloatingOrigin, _displayTime: number): ShadowCumulus | null {
     return null;
   }
 

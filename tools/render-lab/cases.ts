@@ -1,4 +1,4 @@
-// 描画テスト環境が描くケースの表。ゲーム本体と同じ球・艦・線を組み、カメラと光源・大気・遮蔽器の
+// 描画テスト環境が描くケースの表。ゲーム本体と同じ球・艦・線を組み、カメラと光源・大気・影の源の
 // 配置と一緒に返す。ケースを増やすのはこの表への追記で済む。style を受けるケースは、その表示
 // スタイルで組んだ姿を返す。
 import * as THREE from 'three/webgpu';
@@ -14,19 +14,19 @@ import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physi
 import { BodyGraticule } from '../../src/render/body-graticule';
 import { EarthCoastline } from '../../src/render/earth-coastline';
 import { Curve } from '../../src/render/curve';
-import { createAnnulusRing } from '../../src/render/ring';
+import { createAnnulusRing, RingMaterials } from '../../src/render/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
 import { createStarSphere, type StarSphere } from '../../src/render/star-sphere';
-import { REFERENCE_STAR_RADIANT_INTENSITY, type SunLight } from '../../src/render/pipeline/sun-light';
+import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
 import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
   attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
 } from '../../src/render/thermal-emissive';
-import {
-  sphereOccluder, type CumulusShadow, type Occluder, type RingBand, type SunOcclusion,
-} from '../../src/render/pipeline/sun-occlusion';
+import { sphereShadowBody, type ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
+import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cumulus-shadow';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
 import { AU } from '../../src/physics/astronomical-unit';
@@ -59,8 +59,8 @@ const SATURN_RINGS = (() => {
   return SATURN.rings;
 })();
 
-// 環の帯を遮蔽パスへ渡す形へ直す。半径は描画座標と同じメートルのまま。
-function occlusionBands(bands: readonly RingBandDef[]): readonly RingBand[] {
+// 環の帯を影パスへ渡す形へ直す。半径は描画座標と同じメートルのまま。
+function shadowBands(bands: readonly RingBandDef[]): readonly RingBand[] {
   return bands.map((band) => ({
     innerRadius: band.innerRadius,
     outerRadius: band.outerRadius,
@@ -107,12 +107,12 @@ export interface LabCase {
   // 大気パスへ渡す天体。中心は描画座標。並べ替えと濃い表現の重みは、カメラの位置から
   // 引き直される。
   readonly atmospheres?: readonly AtmosphereBody[];
-  // 遮蔽パスへ渡す球。中心は描画座標。
-  readonly occluders?: readonly Occluder[];
-  // 遮蔽パスへ渡す環。中心と法線軸は描画座標。
+  // 影パスへ渡す球。中心は描画座標。
+  readonly shadowBodies?: readonly ShadowBody[];
+  // 影パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
-  // 遮蔽パスへ渡す積雲の殻。
-  readonly cumulusShadow?: CumulusShadow;
+  // 影パスへ渡す積雲の殻。
+  readonly cumulus?: ShadowCumulus;
   // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
   // 同値なら何もしないこと。
   readonly applyGraphics?: (graphics: GraphicsSettingsData) => void;
@@ -195,22 +195,20 @@ const RING_RENDER_ORDER = 1;
 // 天体の中心から測ったメートルで受ける。
 function ringDisc(
   bands: readonly RingBandDef[], bodyRadius: number, center: THREE.Vector3, axis: THREE.Vector3,
-  sunOcclusion: SunOcclusion, sunLight: SunLight,
+  ringMaterials: RingMaterials,
 ): THREE.Object3D {
   const group = new THREE.Group();
   group.position.copy(center);
   group.scale.setScalar(bodyRadius);
   group.quaternion.setFromUnitVectors(RING_LOCAL_AXIS, axis);
   for (const band of bands) {
-    // 半径は「本体半径 = 1」の単位へ直して渡す。被覆率 1 は、帯が画面上 1px より広く写ること。
+    // 半径は「本体半径 = 1」の単位へ直して渡す。面の帯は常に画面上 1px より広く写る扱い。
     const visual = createAnnulusRing(
-      band.optics, band.innerRadius / bodyRadius, band.outerRadius / bodyRadius, sunOcclusion, sunLight,
+      band.optics, band.innerRadius / bodyRadius, band.outerRadius / bodyRadius, ringMaterials,
     );
-    visual.sync({ ringAxis: axis, coverage: 1 });
     visual.object.traverse((object) => {
       object.renderOrder = RING_RENDER_ORDER;
       object.userData.ownsGeometry = true;
-      object.userData.ownsMaterial = true;
     });
     group.add(visual.object);
   }
@@ -307,7 +305,7 @@ function shipCluster(): LabCase {
   };
 }
 
-// スロットより遮蔽器が多い群: 艦をスロット数より多く並べ、カメラの背後にも置く。**枠が尽きた
+// スロットより影を落とすものが多い群: 艦をスロット数より多く並べ、カメラの背後にも置く。**枠が尽きた
 // ときに何が捨てられるか**を見るためのケースなので、艦の数はスロット数を上回っていなければ
 // 意味がない。
 function shipCrowd(): LabCase {
@@ -329,7 +327,7 @@ function shipCrowd(): LabCase {
 }
 
 // 遠くから伸びてくる影: 恒星方向へ 3 km 離した艦が、手前の艦へ影を落とす。**本影は艦の
-// 差し渡しの 107.5 倍(約 915 m)で消える**ので、3 km 先では遮蔽率が (915/3000)² まで落ちて
+// 差し渡しの 107.5 倍(約 915 m)で消える**ので、3 km 先では影の濃さが (915/3000)² まで落ちて
 // いなければならない。遠方の半影の減衰を見るためのケース。
 function shipFarShadow(): LabCase {
   const receiver = new THREE.Vector3(0, 0, -10);
@@ -392,7 +390,7 @@ const SMALL_BODY_SHADOW_DISTANCE = 100;
 // 小天体と艦: 環を持つ半径 30 m の天体のまわりへ艦を 2 隻置き、**影の 2 つの経路を同じ絵で
 // 読む**。昼面へ浮かべた艦は影の深度マップを通って天体の表面へ影を落とし、後方へ置いた艦は
 // 天体の球が解析式で解く影の柱の縁をまたぐ。環の帯の影は昼面を横切る縞として出る。
-function shipBodyShadow(_style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function shipBodyShadow(_style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   const camera = labCamera(6e7);
   const center = new THREE.Vector3(0, 0, -SMALL_BODY_DISTANCE);
   const sun = SMALL_BODY_SUN_DIR;
@@ -416,15 +414,15 @@ function shipBodyShadow(_style: RenderStyle, sunOcclusion: SunOcclusion, sunLigh
   return {
     objects: [
       sphere(GREY_SPHERE_ALBEDO, SMALL_BODY_RADIUS, center),
-      ringDisc(SMALL_BODY_RING_BANDS, SMALL_BODY_RADIUS, center, axis, sunOcclusion, sunLight),
+      ringDisc(SMALL_BODY_RING_BANDS, SMALL_BODY_RADIUS, center, axis, ringMaterials),
       shipAt(caster, SHIP_ROTATION_STARBOARD),
       shipAt(receiver, SHIP_ROTATION_STARBOARD),
     ],
     camera,
     sunDirection: sun,
     viewTarget: center,
-    occluders: [sphereOccluder(center, SMALL_BODY_RADIUS)],
-    rings: { center, axis, bands: occlusionBands(SMALL_BODY_RING_BANDS) },
+    shadowBodies: [sphereShadowBody(center, SMALL_BODY_RADIUS)],
+    rings: { center, axis, bands: shadowBands(SMALL_BODY_RING_BANDS) },
   };
 }
 
@@ -554,12 +552,12 @@ function depthProbe(z: number, far: number): LabCase {
   return { objects, camera };
 }
 
-// 日食ケースの遮蔽器: 地表のどこへ影を落とすか(直下からの中心角 [rad])と、その球の半径・
+// 日食ケースで影を落とす球: 地表のどこへ影を落とすか(直下からの中心角 [rad])と、その球の半径・
 // 距離。距離に対する半径の比を太陽の視半径(4.65e-3)よりわずかに大きく取ると、本影を半影が
 // 縁取る金環直前の配置になる。
 const ECLIPSE_GROUND_ANGLE = 0.25;
-const ECLIPSE_OCCLUDER_RADIUS = 2e5;
-const ECLIPSE_OCCLUDER_DISTANCE = 3e7;
+const ECLIPSE_SHADOW_BODY_RADIUS = 2e5;
+const ECLIPSE_SHADOW_BODY_DISTANCE = 3e7;
 
 // 大気の外に置く試験球の位置と半径。カメラと同じ高度帯(403km)に居るので、**カメラとの間に
 // 大気が無く、地表と違って霞んではならない。** 地平線を背にした輪郭で読む。
@@ -617,8 +615,8 @@ function marchSlab(): LabCase {
 function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Quaternion()): {
   readonly object: THREE.Object3D;
   readonly atmosphere: AtmosphereBody;
-  readonly cumulusShadow: CumulusShadow;
-  readonly occluder: Occluder;
+  readonly cumulus: ShadowCumulus;
+  readonly shadowBody: ShadowBody;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
 } {
   const group = new THREE.Group();
@@ -651,7 +649,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       polarRatio: radii.polarRadius / radii.equatorRadius,
       optics: EARTH_ATMOSPHERE_OPTICS,
     },
-    cumulusShadow: {
+    cumulus: {
       center,
       surfaceRadius: R_EARTH_EQ,
       axes: new THREE.Vector3(axes.x, axes.y, axes.z),
@@ -659,8 +657,8 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       bodyFromWorld,
       field: cumulus.field,
     },
-    // 天体自身の遮蔽器。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
-    occluder: { center, axes: new THREE.Vector3(axes.x, axes.y, axes.z), bodyFromWorld },
+    // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
+    shadowBody: { center, axes: new THREE.Vector3(axes.x, axes.y, axes.z), bodyFromWorld },
     // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
     // 絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {
@@ -701,8 +699,8 @@ function earth(style: RenderStyle): LabCase {
     camera,
     atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
-    occluders: [earthSphere.occluder],
-    cumulusShadow: earthSphere.cumulusShadow,
+    shadowBodies: [earthSphere.shadowBody],
+    cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
   };
 }
@@ -717,8 +715,8 @@ function earthOblique(style: RenderStyle): LabCase {
     camera: labCamera(6e7),
     atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
-    occluders: [earthSphere.occluder],
-    cumulusShadow: earthSphere.cumulusShadow,
+    shadowBodies: [earthSphere.shadowBody],
+    cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
   };
 }
@@ -743,15 +741,15 @@ function earthPolar(style: RenderStyle): LabCase {
     sunDirection: EARTH_POLAR_SUN_DIR,
     atmospheres: [earthSphere.atmosphere],
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
-    occluders: [earthSphere.occluder],
-    cumulusShadow: earthSphere.cumulusShadow,
+    shadowBodies: [earthSphere.shadowBody],
+    cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
   };
 }
 
 // 極の昼夜境界: earth-polar と同じ構図で、恒星を視線と直交させ、昼夜境界を極の上へ通す。
 // **扁平な天体でも影は地平線どおりに落ちる** — 境界は半影ぶんに滑らかで、緯度によらない
-// 直線の縁は出ない。天体自身が遮蔽器に載っていて、地表も雲頂も低い高度の大気も、その内側では
+// 直線の縁は出ない。天体自身が影を落とす側に載っていて、地表も雲頂も低い高度の大気も、その内側では
 // なく表面より外に居ることをここで読む。
 function earthPolarTerminator(style: RenderStyle): LabCase {
   return { ...earthPolar(style), sunDirection: new THREE.Vector3(1, 0, 0) };
@@ -767,8 +765,8 @@ function earthTerminator(style: RenderStyle): LabCase {
   return { ...base, sunDirection: ahead };
 }
 
-// 日食下の地球: earth と同じ構図へ、地球自身と食を起こす球を遮蔽器として足す。**大気の明暗は
-// 入射角だけでなく遮蔽度にも比例する**ので、リムともやの両方へ影の落ちた斑が出る。遮蔽器の
+// 日食下の地球: earth と同じ構図へ、地球自身と食を起こす球を影の源として足す。**大気の明暗は
+// 入射角だけでなく影の濃さにも比例する**ので、リムともやの両方へ影の落ちた斑が出る。影を落とす球の
 // 視半径は太陽よりわずかに大きく取ってあり、本影(半径 60km)を半影(340km)が縁取る。
 function earthEclipse(style: RenderStyle): LabCase {
   const base = earth(style);
@@ -780,9 +778,9 @@ function earthEclipse(style: RenderStyle): LabCase {
   const ground = center.clone().addScaledVector(groundDir, R_EARTH);
   return {
     ...base,
-    occluders: [
-      sphereOccluder(ground.clone().addScaledVector(SUN_DIR, ECLIPSE_OCCLUDER_DISTANCE), ECLIPSE_OCCLUDER_RADIUS),
-      ...base.occluders!,
+    shadowBodies: [
+      sphereShadowBody(ground.clone().addScaledVector(SUN_DIR, ECLIPSE_SHADOW_BODY_DISTANCE), ECLIPSE_SHADOW_BODY_RADIUS),
+      ...base.shadowBodies!,
     ],
   };
 }
@@ -841,14 +839,14 @@ function eclipse(): LabCase {
   );
   receiver.position.copy(center);
   markLitOpaque(receiver);
-  // 遮蔽する球と環は、受ける球から恒星方向へ 1e4 m の位置に置く。
-  const occluderCenter = center.clone().addScaledVector(SUN_DIR, 1e4);
+  // 影を落とす球と環は、受ける球から恒星方向へ 1e4 m の位置に置く。
+  const shadowBodyCenter = center.clone().addScaledVector(SUN_DIR, 1e4);
   return {
     objects: [receiver],
     camera,
-    occluders: [sphereOccluder(occluderCenter, 50)],
+    shadowBodies: [sphereShadowBody(shadowBodyCenter, 50)],
     rings: {
-      center: occluderCenter,
+      center: shadowBodyCenter,
       axis: SUN_DIR.clone().add(new THREE.Vector3(0, 0.7, 0)).normalize(),
       bands: [
         { innerRadius: 110, outerRadius: 170, normalOpticalDepth: 0.4 },
@@ -990,24 +988,24 @@ function metalHighlight(): LabCase {
 }
 
 // 土星: 本体の球と実データの環を並べ、**環だけが本体より桁で明るくないか**を見る。恒星の
-// 放射照度は本体にも環にも同じだけ掛かる。本体を遮蔽器に、環の帯を遮蔽する環に登録するので、
-// **環が本体の影へ入る境界と、本体表面に落ちる環の影の境界の両方**が同じ 1 つの遮蔽関数から
+// 放射照度は本体にも環にも同じだけ掛かる。本体を影を落とす天体に、環の帯を影を落とす環に登録するので、
+// **環が本体の影へ入る境界と、本体表面に落ちる環の影の境界の両方**が同じ 1 つの関数から
 // 出る。どちらもぼけていることを見る。
-function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   const camera = labCamera(1e13);
   const radius = 6.0268e7;
   const distance = 1.2e9;
   const center = new THREE.Vector3(0, -0.15 * distance, -distance);
   const axis = v3(0.3, 0.9, 0.32);
-  const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
+  const view = new RingView(SATURN_RINGS, radius, 1, ringMaterials);
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
-    occluders: [sphereOccluder(center, radius)],
+    shadowBodies: [sphereShadowBody(center, radius)],
     rings: {
       center,
       axis: new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
-      bands: occlusionBands(SATURN_RINGS.bands),
+      bands: shadowBands(SATURN_RINGS.bands),
     },
     // 環の見え方(表示の有無・帯の見かけ幅の段)は設定で変わるので、押し込みのたびに同期する。
     applyGraphics: (graphics) => view.sync(
@@ -1020,7 +1018,7 @@ function saturn(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLig
 // (2px 未満)を目で読めない。**環面へ浅い角度で恒星が差す姿勢**(環軸を真上、恒星の仰角 17°)
 // で本体へ寄り、本体表面に落ちる環の影(カッシーニの間隙が明るい帯として出て、その縁は半影 4px
 // ぶんぼける)と、環が本体の影へ入る境界(天体の球の半影ぶんぼける)を同じ絵の中で読む。
-function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight): LabCase {
+function saturnShadow(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   const distance = 1.9e8;
   const radius = 6.0268e7;
   // カメラは環面から 20° 傾けて、**恒星とは反対側**へ置く — 同じ側だと影が落ちる面は
@@ -1033,12 +1031,12 @@ function saturnShadow(style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: 
   camera.lookAt(center);
   camera.updateMatrixWorld(true);
   const axis = v3(0, 1, 0);
-  const view = new RingView(SATURN_RINGS, radius, 1, sunOcclusion, sunLight);
+  const view = new RingView(SATURN_RINGS, radius, 1, ringMaterials);
   return {
     objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
     camera,
-    occluders: [sphereOccluder(center, radius)],
-    rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: occlusionBands(SATURN_RINGS.bands) },
+    shadowBodies: [sphereShadowBody(center, radius)],
+    rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: shadowBands(SATURN_RINGS.bands) },
     applyGraphics: (graphics) => view.sync(
       center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, graphics, style,
     ),
@@ -1130,7 +1128,7 @@ export const CASES = {
   'blackbody': blackbody,
   ...PROTEIN_CASES,
 } as const satisfies Record<
-  string, (style: RenderStyle, sunOcclusion: SunOcclusion, sunLight: SunLight) => LabCase
+  string, (style: RenderStyle, ringMaterials: RingMaterials) => LabCase
 >;
 
 export type CaseName = keyof typeof CASES;
