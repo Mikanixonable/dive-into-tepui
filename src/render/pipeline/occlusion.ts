@@ -2,9 +2,9 @@
 // 透過率へ書く。透過率を決めるのは sun-occlusion.ts で、このパスはその源ごとの関数を面の
 // 写っている画素で評価してキャッシュする。
 //
-// **源ごとにフルスクリーン 1 枚を乗算合成で積む。** 遮蔽の合成は積なので、1 本のシェーダへ全源を
-// 静的展開する必要はない。分けておくと、源が増えてもマテリアルの組み合わせが増えず、そのフレームに
-// 遮るものが無い源は描画命令ごと落とせる(無効な源はどれも素通しの 1 を返すので、答えは変わらない)。
+// **源ごとにフルスクリーン 1 枚を乗算合成で積む。** 遮蔽の合成は積なので、源ごとに 1 枚ずつ
+// 積んでも答えは同じになる。源が増えてもマテリアルの組み合わせは増えず、そのフレームに遮るものが
+// 無い源は描画命令ごと落とせる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, If, dot, float, length, max, normalize, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
@@ -112,14 +112,9 @@ export class OcclusionPass {
   // 遮るものがある源だけを、素通しの 1 へ順に掛け合わせる。camera は逆射影行列と
   // view→描画座標の行列を毎フレーム引き直すためだけに使う。
   render(camera: THREE.Camera, width: number, height: number): void {
-    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    this.writeCamera(camera, width, height);
 
-    this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
-    this.viewToWorld.value.copy(camera.matrixWorld);
-    // 射影行列の [1][1] は半画角の正接の逆数なので、画面の高さで割ると 1 画素の張る角になる。
-    this.pixelAngle.value = 2 / (camera.projectionMatrix.elements[5]! * height);
-
-    // 乗算合成の土台は 1。クリア色は共有状態なので退避して戻す(light-prepass.ts と同じ)。
+    // 乗算合成の土台は 1。クリア色は共有状態なので退避して戻す。
     const savedClearAlpha = this.renderer.getClearAlpha();
     this.renderer.getClearColor(this.savedClearColor);
     this.renderer.setClearColor(0xffffff, 1);
@@ -143,14 +138,20 @@ export class OcclusionPass {
 
   // 遮蔽源ごとの全マテリアルを透過率ターゲットへ事前コンパイルする。
   async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
-    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
-    this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
-    this.viewToWorld.value.copy(camera.matrixWorld);
-    this.pixelAngle.value = 2 / (camera.projectionMatrix.elements[5]! * height);
+    this.writeCamera(camera, width, height);
     for (const source of this.sources) {
       this.quad.material = source.material;
       await compileInto(this.renderer, this.target, this.quad, this.quad.camera);
     }
+  }
+
+  // 書き込み先を画面へ合わせ、深度から位置を復元するための行列と画素の張る角を書き込む。
+  private writeCamera(camera: THREE.Camera, width: number, height: number): void {
+    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
+    this.viewToWorld.value.copy(camera.matrixWorld);
+    // 射影行列の [1][1] は半画角の正接の逆数なので、画面の高さで割ると 1 画素の張る角になる。
+    this.pixelAngle.value = 2 / (camera.projectionMatrix.elements[5]! * height);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで

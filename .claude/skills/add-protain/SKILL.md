@@ -1,3 +1,8 @@
+---
+name: add-protain
+description: タンパク質アセットを1体追加する手順。原構造の取り込みから主鎖・全原子・残基 motion の生成、カタログ登録、検証までを順に通す。どう見せるか・どう振舞うかは DEVELOP/SPEC/PROTEIN.md が正本で、ここにあるのは生成の手順だけ。ユーザーがタンパク質の追加を求めた時点で自発的に起動する
+---
+
 ## タンパク質を1体追加する
 
 初回だけ Python の仮想環境が要る。`python3 -m venv .venv-protein-builder` のあと、
