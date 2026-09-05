@@ -381,8 +381,8 @@ export class SunOcclusion {
         const floorAltitude = this.receiverFloorAltitude(offset, lod, bodyRadius);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
-        for (let tap = 0; tap < CUMULUS_SHADOW_TAPS; tap++) {
-          const sampleOffset = offset.add(rayDir.mul(stepRadius.mul(tap + 0.5)));
+        Loop({ start: 0, end: CUMULUS_SHADOW_TAPS, type: 'int', condition: '<' }, ({ i }) => {
+          const sampleOffset = offset.add(rayDir.mul(stepRadius.mul(float(i).add(0.5))));
           const sampleRadius = max(length(sampleOffset), 1e-6);
           const up = sampleOffset.div(sampleRadius);
           const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
@@ -401,7 +401,7 @@ export class SunOcclusion {
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
           opticalDepth.addAssign(columnDepth.mul(rise).mul(inside).div(max(cloudTop, 1)));
-        }
+        });
         transmittance.assign(exp(opticalDepth.negate()));
       });
       return transmittance;
