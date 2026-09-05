@@ -27,6 +27,7 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 // 上昇流は [m/s](地形と気圧による、負なら下降)、湿度は 0..1(humidity が地表付近、
 // upperHumidity が上層)、対流は対流セルの強弱(0 中心の高周波、x が粒・y が網目)、対流の活発度は
 // その強弱がどれだけ強く現れるか 0..1、圧縮は気団の境目の押し縮まり(1 で何も起きていない)、
+// 前線は気団の境目に立つ帯の強さ 0..1(1 で帯として飽和)、
 // 暖気の流入は出身地からの緯度の差 [rad](負で寒気)、金床は平らな天蓋の濃さ 0..1、圏界面は
 // その緯度の対流の天井 [m]。
 export type WeatherSample = {
@@ -38,6 +39,7 @@ export type WeatherSample = {
   readonly convection: Vec2Node;
   readonly convectiveActivity: FloatNode;
   readonly compression: FloatNode;
+  readonly frontal: FloatNode;
   readonly warmth: FloatNode;
   readonly anvil: FloatNode;
   readonly tropopause: FloatNode;
@@ -111,14 +113,22 @@ const PRESSURE_LIFT_SCALE = 27;
 // 上昇流の頭打ち [m/s]。急な斜面へ強い風が当たる所と深い谷の芯では上昇流が並の何倍にもなり、
 // 線形のままだと湿度が 0/1 で切れて硬い縁の白い塊になる。漸近させて、並の上昇流はほぼ素通しにする。
 const LIFT_LIMIT = 0.06;
-// 前線の上昇流。気団の圧縮がこの効き始めを超えた分に比例して立つ [m/s /単位]。前線は低気圧を
-// 囲む閉じた流れ(猫の目)の縁に沿う浅い弧に立つ。効き始めは、低気圧から離れた 35〜60° の帯が
-// 背景として持つ圧縮(90 パーセンタイルの実測 1.3〜1.6)のすぐ上に取る — ここを下げると気団の
-// 境目ではなく空の半分が前線になる。利得は、最盛期の低気圧を囲む折り目の環で、圧縮の 90 パーセン
-// タイル(実測 1.8〜2.0)が効き始めを超える分(0.5)が、合成の中で折り目の線として読める上昇流
-// (0.05 m/s)になる高さ — 折り目は環の中の 1 本の線なので、環の中央値は効き始めの下に留まる。
-const FRONT_LIFT = 0.1;
+// 前線の帯。気団の圧縮が効き始めを超えてから幅ぶん進む所まで、帯の強さが 0 から 1 へ渡る。前線は
+// 低気圧を囲む閉じた流れ(猫の目)の縁に沿う浅い弧に立つ。効き始めは、低気圧から離れた 35〜60° の
+// 帯が背景として持つ圧縮(90 パーセンタイルの実測 1.3〜1.6)のすぐ上に取る — ここを下げると気団の
+// 境目ではなく空の半分が前線になる。幅は、折り目の稜線(圧縮の 99 パーセンタイルの実測 2.6〜2.8
+// 以上、最盛期で 2.5〜3.8)だけが飽和し、そのまわりのシアの丘(1.5〜2.5)が半端な強さで裾を引く
+// 長さ — ここを狭めると丘まで飽和して、帯は裾の無い硬い縁の白い盾になる。
 const FRONT_ONSET = 1.4;
+const FRONT_WIDTH = 1.0;
+// 帯が飽和した所で立つ上昇流 [m/s]。頭打ち(LIFT_LIMIT)と同じ高さに取る — 帯の中は深い谷の芯と
+// 同じだけ持ち上がる。
+const FRONT_LIFT = 0.06;
+// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.20)の 1 つ半で、稜線(帯の
+// 強さ 1)では帯の上昇流が偏差を増幅する分(VORTEX_CONTRAST)と合わせて被覆率が飽和し、途切れない
+// 帯になる(`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
+// シアの丘(強さ 0.3〜0.5)では底上げが幅の半分に留まり、移流した湿度の濃淡が階調として残る。
+const FRONT_HUMIDITY = 0.3;
 // 前線が立つ緯度の門。**前線と、その両側の気団の性質はどちらもこの門を通る** — 前線は温帯の
 // ものなので、熱帯では貿易風の収束が緯線に沿った圧縮の環を作り、台風の周りでは圧縮が発散して
 // 上昇流が飽和した円盤になる。気団の流入も、熱帯では貿易風がどこでも高緯度から吹き込むので、
@@ -317,7 +327,8 @@ export class WeatherModel {
     const extratropical = smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
     const warmth = airMass.warmth.mul(extratropical);
     const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS)).mul(TERRAIN_LIFT_GAIN);
-    const frontalLift = max(airMass.compression.sub(FRONT_ONSET), 0).mul(FRONT_LIFT).mul(extratropical);
+    const frontal = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression).mul(extratropical);
+    const frontalLift = frontal.mul(FRONT_LIFT);
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)).add(frontalLift));
 
     // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流と金床を足し、渦の目のぶんを引いたもの。
@@ -332,7 +343,8 @@ export class WeatherModel {
       advected.humidity.add(deviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
         .add(cloudinessBias(meanCloudiness).mul(MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(LIFT_HUMIDITY)).add(min(lift, 0).mul(SUBSIDENCE_DRYING))
-        .add(warmth.mul(WARM_HUMIDITY)).add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(EYE_DRYNESS)), 0, 1);
+        .add(warmth.mul(WARM_HUMIDITY)).add(frontal.mul(FRONT_HUMIDITY))
+        .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
       advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
@@ -345,8 +357,10 @@ export class WeatherModel {
       humidity,
       upperHumidity,
       convection: advected.convection,
-      convectiveActivity: this.convectiveActivity.at(direction, lift, warmth, this.climate.landFraction(direction)),
+      convectiveActivity: this.convectiveActivity.at(
+        direction, lift, warmth, this.climate.landFraction(direction), frontal),
       compression: airMass.compression,
+      frontal,
       warmth,
       anvil,
       tropopause: tropopauseAt(latitude),
