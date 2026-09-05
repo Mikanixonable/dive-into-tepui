@@ -69,7 +69,7 @@ export class Simulator {
   // 進めてから剛体接触(弾命中含む)を解く。
   // 物体どうしの接触を解決してよいかは呼び出し側が決めて canResolveEntityContacts で渡す
   // (天体との接触は倍率に依らず常に解く)。
-  // nanWatchdog は個体の前進・天体接触・物体どうしの接触・ベルトの各境界ごとに自機を検査する
+  // nanWatchdog は個体の前進・天体接触・物体どうしの接触の各境界ごとに自機を検査する
   // (checkPlayer は軽量なので substep ごとに呼んでよい)。
   advance(
     dt: number,
@@ -147,15 +147,23 @@ export class Simulator {
       nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
       if (canResolveEntityContacts) {
         this.sections.enter(SECTION.entityContact);
-        // 放熱板の折りは DynamicSystem に登録された実体ではなく、艦の姿勢から毎 substep
-        // 置き直す接触代理なので、参加者リストへこの場で合流させる。
+        // ベルトの節点と放熱板の折りは DynamicSystem に登録された実体ではなく、艦の姿勢から
+        // 毎 substep 置き直す接触代理なので、参加者リストへこの場で合流させる。反発を代理の
+        // 側で受け止める種別のために、解決の直後に持ち主へ書き戻す。
         this.contactEntitiesScratch.length = 0;
         for (const entity of this.entities.all()) {
           this.contactEntitiesScratch.push(entity);
-          if (entity.alive) this.contactEntitiesScratch.push(...entity.collisionFolds(this.simTime));
+          if (entity.alive) {
+            for (const proxy of entity.contactProxies(this.simTime, subDt)) {
+              this.contactEntitiesScratch.push(proxy);
+            }
+          }
         }
         this.entityContactPhysics.resolveEntityContacts(
           this.simTime, this.contactEntitiesScratch, activeStage);
+        for (const entity of this.entities.all()) {
+          if (entity.alive) entity.applyContactProxies(subDt);
+        }
         this.sections.exit(SECTION.entityContact);
         nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
       }
@@ -163,17 +171,6 @@ export class Simulator {
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
       this.entities.cleanup(
         subDt, this.simTime, activeStage, player?.state.r ?? v3(), this.atmosphereBodies());
-    }
-
-    // ベルトは実dtで解く艦にくっついた局所シミュレーションなので、substepループの外で
-    // フレームに1回だけ解決する。
-    if (canResolveEntityContacts && player) {
-      this.sections.enter(SECTION.beltContact);
-      this.entityContactPhysics.resolveBelt(
-        dt, this.simTime, player, this.entities.all(), activeStage,
-      );
-      this.sections.exit(SECTION.beltContact);
-      nanWatchdog.checkPlayer('simulator.advance(ベルト)', player, this.simTime, dt, this.lastSimDt);
     }
 
     this.lastSimDt = simDt;
