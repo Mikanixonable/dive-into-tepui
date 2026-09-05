@@ -1,6 +1,6 @@
 # simulation「衝突」の軽量化
 
-対象コミット: `a9eb1993`(この文書の行番号・実測はすべてこの時点)
+対象コミット: `96db44a3`(行番号はこの時点。実測は手順2の実施前 `a9eb1993` で採ったもの)
 
 ## 目的
 
@@ -112,8 +112,7 @@ substep が変われば pivot も変わるが、それは本当に別の時刻�
 
 → **セル一辺の決め方は変えない。** 手順1で足す `contactPairs`(候補ペア数)が参加者数の
 数倍を超えたら、この判断を覆して二階層グリッドを検討する。
-削るのは土台の値段 — **手順2**(ベルト専用の第2パスを消す)と
-**手順3**(`Map`/`Set` を添字配列へ)。
+削るのは土台の値段 — **手順3**(`Map`/`Set` を添字配列へ)。
 
 ### 5. メッシュの衝突 — **外接球の事前棄却はある。分割数が過大**
 
@@ -158,123 +157,18 @@ substep が変われば pivot も変わるが、それは本当に別の時刻�
 
 ## 手順
 
-### 手順 1. 「接触」区間を3つへ割り、候補の件数を数える
+### 実施済み(手順1・手順2)
 
-#### 目的
+手順1(区間の3分割と候補件数)は d8b44d22、手順2(ベルトを substep へ合流)は 96db44a3 で実施済み。
+**負荷ウィンドウでの実測はまだ控えていない。** 手順3・手順4 の達成条件はここで控えた値を基準に
+するので、次の3条件で「天体接触」「物体接触」と `surfaceCandidates` / `contactPairs` を控え、
+下の見積りの表を実測値で置き換えてから着手すること。
 
-いまの「接触」は天体接触・物体接触・ベルトの合算なので、どれを削れば効くのかが決められない。
-以降の手順の達成条件がすべてこの3行を参照するので、最初に置く。
-併せて件数を2つ数える — 時間だけでは「参加者が多い」のか「候補が爆発している」のかが
-分かれないため。`contactPairs` が参加者数の数倍で収まっているかが、決めたこと 4 の判断が
-まだ成り立っているかの唯一の証拠になる。**この時点で挙動は変えない。**
+1. creative、自機のみ、倍率 ×1
+2. 高負荷デバッグステージ(`DEBUG(高負荷)`、破片 500)+ 連射、倍率 ×1
+3. 同ステージ、最高倍率
 
-「ベルト」の区間は手順2で消える(ベルトが物体接触へ合流するため)。それでもここで一度
-立てるのは、手順2の効果を測る基準がこの値だけだからである。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/frame-sections.ts:5-32` | `contact: 5` を `celestialContact` / `entityContact` / `beltContact` の3つへ置き換え、以降の値を繰り下げる。`SECTION_LABELS`(:25)へ「　天体接触」「　物体接触」「　ベルト」を字下げして並べる |
-| `src/game/frame-sections.ts:71` | `otherMs()` の除外へ3つとも入れる(いまは `contact` 1つ) |
-| `src/game/dynamic/simulator.ts:118-131` | `beginSubstep`(:127)を `orbit` から出して `celestialContact` へ入れる — 候補の下ごしらえは天体接触の値段そのもので、いまの位置では天体接触の行が実際より小さく出る |
-| `src/game/dynamic/simulator.ts:215` | `substep()` の中の `resolveOne` も `celestialContact` へ入れる(いまは `orbit` に混ざっている) |
-| `src/game/dynamic/simulator.ts:137-139` | `resolveShared` を `celestialContact` へ |
-| `src/game/dynamic/simulator.ts:144-152` | `collisionFolds` の収集(:144-148)と `resolveEntityContacts` を `entityContact` へ |
-| `src/game/dynamic/simulator.ts:164-168` | `resolveBelt` を `beltContact` へ |
-| `src/game/dynamic/surface-contact-physics.ts` | 延べ候補天体数を数える。`resolveAgainstCandidates`(:67)が `candidates.into` の戻り長を足し込む |
-| `src/game/dynamic/entity-contact-physics.ts` | 候補ペア数を数える。`collectCandidates`(:176)の戻り値を控える |
-| `src/game/dynamic/simulator.ts:222` | 上2つをフレーム頭で 0 に戻し、`perfCounts()` へ載せる |
-| `src/game/perf-counts.ts:9-19` | `PerfCounts` へ `surfaceCandidates: number` と `contactPairs: number` を足す |
-| `src/launcher/perf-meter.ts:20-32` | `RATE_COUNTS` へ2行足す(group は `'衝突'`) |
-
-#### 達成条件と検証
-
-- `npm run typecheck`、`npm run test:game`。
-- `npm run dev` → F3。「update内訳」に「天体接触」「物体接触」「ベルト」の3行が出て、
-  「接触」が無い。`SECTION_LABELS` の並びが `SECTION` の値と1つずつ対応していることを目で確かめる
-  (添字がずれると別の区間の時間が別のラベルで出る)。
-- 次の3条件で3行と2件数を控え、この文書の実測欄の下へ**測定日と倍率を添えて**書き足す。
-  以降の手順の達成条件はこの値を基準にする。
-  1. creative、自機のみ、倍率 ×1
-  2. 高負荷デバッグステージ(`DEBUG(高負荷)`、破片 500)+ 連射、倍率 ×1
-  3. 同ステージ、最高倍率
-
-### 手順 2. ベルトを substep へ合流させ、専用パスを消す
-
-#### 目的
-
-ベルトの接触だけが substep ループの外の第2パスになっていて、参加者 18 節点のために全物体
-ぶんのグリッド構築と 27 近傍問い合わせを払っている。実測 N = 2000 で **4.72 ms/frame** —
-物体どうしの接触(4.37 ms)とほぼ同額を、フレームに1回、倍率 ≤4 では常に払っている。
-
-**別パスである理由は刻みではなく時計である。** 衝突を解く倍率(`simSpeed ≤ 4`)では
-`maxStep = max(SUBSTEP_MAX_DT=20, simDt/64) = 20 s` に対し `simDt ≤ 4/60 = 0.067 s` なので、
-subDt を切るのはイベント時刻だけ — つまり **substep はフレームに1回が原則**である
-(弾 240 s・薬莢 1800 s の寿命は、上限 1200 / 260 の culling が先に効くので滅多に来ない)。
-刻みのオーダーは同じ。違うのは `Player.updatePassive(dt)` が **実フレーム dt** でベルトの
-Verlet を回している点(`player.ts:306`)で、他はすべて simulation clock — 姿勢は
-`stepSimulation`(`dynamic-entity.ts:457`)、放熱板は `stepEnvironment`(`player.ts:316`)で
-substep 幅で進む。**ベルトだけが取り残されていて、倍率 ×4 では艦が 4 倍の速さで回るのに
-ベルトは実時間で揺れる。**
-
-ベルトを simulation clock へ移せば第2パスが要らなくなり、`resolveInOrder` の二集団機構
-(`allScratch` / `attackerSetScratch` / `j <= i` の除重)も丸ごと消える — あれはベルトのために
-だけ在る。放熱板の折りが既に同じ形(substep ごとに艦の姿勢から置き直して参加者へ合流)で
-通っているので、ベルトはその隣に並ぶだけになる。
-
-**挙動が変わるのは1点だけ:** 倍率 ×4 でベルトの揺れが 4 倍速くなる。世界全体が 4 倍で
-動いているので、これは食い違いの解消である。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/player/player.ts:306,311` | `updatePassive(dt)` から `belt.update(...)` を外し、`stepEnvironment` へ移す。ここは「受動的な環境を simulation clock で進める」ための口で、放熱板が既に通っている |
-| `src/game/dynamic/dynamic-entity/dynamic-entity.ts:130` | `collisionFolds(simTime)` を `contactProxies(simTime, dt)` へ改名し、対になる `applyContactProxies(dt)` を足す(既定は何もしない)。「折り」は放熱板由来の語で、ベルトの節点を指せない |
-| `src/game/player/player.ts:460` | `contactProxies` が放熱板の折りとベルトの節点を合わせて返す。`applyContactProxies` が `belt.applyCollisionSections` を呼ぶ |
-| `src/game/dynamic/simulator.ts:150-160` | `collisionFolds(this.simTime)` を `contactProxies(this.simTime, subDt)` へ。`resolveEntityContacts` の直後、同じ `entityContact` 区間の中で全個体へ `applyContactProxies(subDt)` を通す |
-| `src/game/dynamic/simulator.ts:169-177` | substep ループの外の `resolveBelt` 呼び出しと `SECTION.beltContact` の出入りを消す |
-| `src/game/dynamic/entity-contact-physics.ts:97-112` | `resolveBelt` を消す。`beltParticipantScratch` / `otherScratch` も消える |
-| `src/game/dynamic/entity-contact-physics.ts:78-79,125-141,179-185` | `resolveInOrder(attackers, others)` を1集団の `resolveInOrder(participants)` へ。`allScratch` / `attackerSetScratch` と、`collectCandidates` の `attackerSet` 判定が消える |
-| `src/game/frame-sections.ts:5-31` | `beltContact` を落とし、`SECTION_LABELS` から「　ベルト」を外して以降の値を繰り下げる。`otherMs()` の除外からも外す |
-
-新規 / 変更 API:
-
-```ts
-// src/game/dynamic/dynamic-entity/dynamic-entity.ts
-// この substep の接触判定へ差し出す接触代理(放熱板の折り・ベルトの節点)。
-// 区間 dt のあいだの位置・速度で置き直す。既定は空。
-contactProxies(simTime: number, dt: number): readonly DynamicEntity[];
-
-// 接触解決のあと、代理の状態を持ち主へ書き戻す。既定は何もしない — 放熱板の折りは
-// 帰結を collideWithEntity で受け取るので書き戻さない。ベルトだけが書き戻す。
-applyContactProxies(dt: number): void;
-
-// src/game/dynamic/entity-contact-physics.ts
-// 1 substep ぶんの物体どうしの接触解決。参加者は1集団だけになる。
-resolveEntityContacts(
-  simTime: number, entities: readonly DynamicEntity[], activeStage: Stage,
-): void;
-private resolveInOrder(
-  participants: readonly DynamicEntity[], simTime: number, activeStage: Stage,
-): void;
-```
-
-**`BeltSection.state.t` は据え置く。** `collisionSections` が `s.state.t` をそのまま使い回す
-ので、節点の時刻は生成時の 0 のまま動かない。その結果 `entityContactResponse` の `sweptValid`
-が常に false になり、ベルトは今日も重なり判定しか通っていない。ここを実時刻にすると掃引判定
-が有効になり、速い弾がベルトに当たるようになる — 改善ではあるが当たり方が変わるので、この
-手順では触らない(挙動の変更を「時計」の1点に保つ)。
-
-#### 達成条件と検証
-
-- `npm run typecheck`、`npm run test:game`。
-- 負荷ウィンドウの update内訳から「ベルト」の行が**消える**。手順1の条件2(破片 500 + 連射、
-  倍率 ×1)で「物体接触」が、手順1で控えた **(物体接触 + ベルト)の合計より小さい**。
-- 目視: 倍率 ×1 で、ベルトが破片や敵に触れて弾かれる挙動が今までどおり出る。
-  倍率 ×4 で揺れが 4 倍速くなる(意図した変化)。
-- `grep -rn "resolveBelt\|collisionFolds\|attackerSet\|beltContact" src/` が 0 件。
+手順2 の目視確認(倍率 ×1 でベルトが弾かれる / 倍率 ×4 で揺れが 4 倍速)も未了。
 
 ### 手順 3. 接触解決の作業集合を `Map` / `Set` から添字配列へ
 
@@ -289,11 +183,11 @@ private resolveInOrder(
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/game/dynamic/entity-contact-physics.ts:80-81` | `workingScratch: Map<DynamicEntity, KinematicState>` を `KinematicState[]`、`changedScratch: Set<DynamicEntity>` を添字の配列へ |
-| `src/game/dynamic/entity-contact-physics.ts:53` | `contactCellSize` の第2引数を `readonly KinematicState[]` に |
-| `src/game/dynamic/entity-contact-physics.ts:42` | `replaceIfMoved` を添字で受ける形へ |
-| `src/game/dynamic/entity-contact-physics.ts:26-31` | `Candidate` へ `ai` / `bi`(参加者列の添字)を持たせる |
-| `src/game/dynamic/entity-contact-physics.ts:123,176,217,236` | `resolveInOrder` / `collectCandidates` / `earliestContact` / `applyCandidate` の `working.get(x)` を添字参照へ。`earliestContact` の dirty 判定も添字の比較へ |
+| `src/game/dynamic/entity-contact-physics.ts:75-76` | `workingScratch: Map<DynamicEntity, KinematicState>` を `KinematicState[]`、`changedScratch: Set<DynamicEntity>` を添字の配列へ |
+| `src/game/dynamic/entity-contact-physics.ts:52` | `contactCellSize` の第2引数を `readonly KinematicState[]` に |
+| `src/game/dynamic/entity-contact-physics.ts:36` | `replaceIfMoved` を添字で受ける形へ |
+| `src/game/dynamic/entity-contact-physics.ts:27-32` | `Candidate` へ `ai` / `bi`(参加者列の添字)を持たせる |
+| `src/game/dynamic/entity-contact-physics.ts:103,144,183,206` | `resolveInOrder` / `collectCandidates` / `earliestContact` / `applyCandidate` の `working.get(x)` を添字参照へ。`earliestContact` の dirty 判定も添字の比較へ |
 
 ```ts
 // 書き換え後の署名
@@ -420,7 +314,7 @@ ribbon 側は縦 12 → 1 で 12 分の1(残基あたり 96 → 8 枚)、coil �
 | 手順 | 導出 | 効果 |
 | --- | --- | --- |
 | 現状 | 物体接触 4.37 + ベルト 4.72 + 天体接触 0.51 | **9.6 ms/frame**(予算の 58%) |
-| 手順2 | 第2パスが区間ごと消える(−4.72)。単一パスへ 18 節点が加わるぶんは 18/2000 × 4.37 = +0.04 | **−4.7 ms** |
+| 手順2(実施済み) | 第2パスが区間ごと消える(−4.72)。単一パスへ 18 節点が加わるぶんは 18/2000 × 4.37 = +0.04 | **−4.7 ms** の見込み(実測は未取得) |
 | 手順3 | 物体接触 4.41 のうち `Map`/`Set` 由来が 14%(`FindOrderedHashMapEntry`)+ `SpatialGrid.reset` の一部 13% → 4.41 × 0.65 ≈ 2.9 ms | **−1.5 ms** |
 | 手順4 | 天体接触 = `narrow` + `into`。参加者1体あたり 10 個以上の `Vec3` 生成を落とすと、残るのは距離比較だけ → 506 µs → 約 200 µs/substep | 倍率 ×1 で **−0.3 ms**、最高倍率・破片 600 体では 64 × (150 → 60 µs) で **−5.8 ms** |
 | 手順5+6 | 三角形 647,000 → 43,000(縦 12→1、放射 12→6)、`buildBVH` は添字分割で三角形あたり約 1 µs → 43 ms。個体ごと → アセットごとで N 体目以降 0 | 生成時 **21 s → 0.05 s**、掃引1組 **10.4 ms → 約 0.2 ms** |
