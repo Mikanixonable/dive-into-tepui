@@ -263,6 +263,27 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     return log(dist.div(this.depthDebugNear)).div(log(this.depthDebugFar.div(this.depthDebugNear)));
   }
 
+  // 共有ターゲットと表示用ターゲットを描画バッファの寸法へ合わせ、その寸法を返す。
+  private syncTargetSize(): THREE.Vector2 {
+    this.renderer.getDrawingBufferSize(this.drawingBufferSize);
+    const { x: width, y: height } = this.drawingBufferSize;
+    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    if (this.displayTarget.width !== width || this.displayTarget.height !== height) {
+      this.displayTarget.setSize(width, height);
+    }
+    return this.drawingBufferSize;
+  }
+
+  // 深度デバッグ表示が深度から距離を引き直すための、カメラ由来の値を書き込む。
+  private writeDepthDebugCamera(camera: THREE.Camera): void {
+    this.depthDebugProjInv.value.copy(camera.projectionMatrixInverse);
+    this.debugViewToWorld.value.copy(camera.matrixWorld);
+    if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
+      this.depthDebugNear.value = camera.near;
+      this.depthDebugFar.value = camera.far;
+    }
+  }
+
   // 描画品質設定のうち、GPU 資源の確保を伴うものを各パスへ配る。値が変わった時点で1回呼ばれる。
   public applyGraphics(graphics: GraphicsSettingsData): void {
     this.lensEnabled = graphics.lens;
@@ -284,21 +305,11 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     style: RenderStyle,
     onPass: (name: string, done: number, total: number) => void,
   ): Promise<void> {
-    this.renderer.getDrawingBufferSize(this.drawingBufferSize);
-    const width = this.drawingBufferSize.x;
-    const height = this.drawingBufferSize.y;
-    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
-    if (this.displayTarget.width !== width || this.displayTarget.height !== height) {
-      this.displayTarget.setSize(width, height);
-    }
+    const { x: width, y: height } = this.syncTargetSize();
 
-    this.depthDebugProjInv.value.copy(camera.projectionMatrixInverse);
-    this.debugViewToWorld.value.copy(camera.matrixWorld);
-    if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
-      this.depthDebugNear.value = camera.near;
-      this.depthDebugFar.value = camera.far;
-    }
+    this.writeDepthDebugCamera(camera);
 
+    // 描画順に並べる。スタイルによらず通る段。
     const passes: [string, () => Promise<void>][] = [
       ['影', () => this.sunShadowMaps.compile(scene, camera, height, this._sunLight)],
       ['G バッファ', () => this.gbuffer.compile(scene, camera, width, height)],
@@ -306,6 +317,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       ['照明', () => this.lightPrepass.compile(camera, width, height)],
     ];
 
+    // 合成板は描画時と同じものを載せてから組む。模式図は物理量の段を通らない。
     if (style === 'schematic') {
       this.schematicComposite.update(width, height);
       this.quad.material = this.schematicMaterial;
@@ -325,9 +337,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       ['アンチエイリアス', () => this.antialiasPass.compile()],
     );
 
+    // 段の切れ目でブラウザへ制御を返す。テクスチャの GPU 投入もここへ 1 フレーム 1 枚ずつ挟む。
     for (const [index, [name, compile]] of passes.entries()) {
       onPass(name, index, passes.length);
-      await DeferredTexture.publishOneForCompile(this.renderer);
+      await DeferredTexture.publishOneNextFrame(this.renderer);
       await compile();
     }
     onPass('完了', passes.length, passes.length);
@@ -341,13 +354,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // フレームでも撮る。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     DeferredTexture.publishOne(this.renderer);
-    this.renderer.getDrawingBufferSize(this.drawingBufferSize);
-    const width = this.drawingBufferSize.x;
-    const height = this.drawingBufferSize.y;
-    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
-    if (this.displayTarget.width !== width || this.displayTarget.height !== height) {
-      this.displayTarget.setSize(width, height);
-    }
+    const { x: width, y: height } = this.syncTargetSize();
 
     // 影パスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
     flushProteinMotionComputes(this.renderer);
@@ -403,12 +410,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     }
 
     // composite パス。
-    this.depthDebugProjInv.value.copy(camera.projectionMatrixInverse);
-    this.debugViewToWorld.value.copy(camera.matrixWorld);
-    if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
-      this.depthDebugNear.value = camera.near;
-      this.depthDebugFar.value = camera.far;
-    }
+    this.writeDepthDebugCamera(camera);
     // 出力先を差し替えると、描画先を指定しない2つのパスが表示用ターゲットへ向く。撮影のために
     // 呼び出し側が張った出力先を潰さないよう、退避してから戻す。
     const outputTarget = this.renderer.getOutputRenderTarget();

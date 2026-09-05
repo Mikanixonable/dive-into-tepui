@@ -286,6 +286,7 @@ export class SunShadowMaps {
         await compileInto(this.renderer, this.farTarget, scene, this.lightCamera);
         await compileInto(this.renderer, this.target, scene, this.lightCamera);
       }
+      this.syncSlotParameters();
     } finally {
       scene.overrideMaterial = savedOverride;
     }
@@ -508,6 +509,7 @@ export class SunShadowMaps {
     return near <= far ? { near, far } : null;
   }
 
+  // スロットの値を、受け手が読む uniform 配列へ写す。**configureSlot でスロットを書き換えたら必ず呼ぶ。**
   private syncSlotParameters(): void {
     for (const [index, slot] of this.slotUniforms.entries()) {
       this.slotParameters[index]!.set(

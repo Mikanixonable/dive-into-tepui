@@ -437,8 +437,7 @@ export function debrisFragmentResources(): { geometries: readonly THREE.BufferGe
   if (!debrisFragmentGeometries) {
     const rand = mulberry32(DEBRIS_FRAGMENT_SEED);
     debrisFragmentGeometries = [];
-    // 形の帯を等間隔に叩く。乱択だと本数が少ないときに「塊」「パネル」「桁」のどれかが
-    // 丸ごと落ちるが、こうすれば本数によらず3種類とも残る。
+    // 形の帯を等間隔に叩く。乱択だと本数が少ないときに同じ形へ偏る。
     for (let i = 0; i < DEBRIS_FRAGMENT_VARIANT_COUNT; i++) {
       debrisFragmentGeometries.push(
         buildDebrisFragmentGeometry(rand, (i + 0.5) / DEBRIS_FRAGMENT_VARIANT_COUNT));
