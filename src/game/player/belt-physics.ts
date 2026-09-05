@@ -41,7 +41,6 @@ export class BeltPhysics {
   // 機体座標系の節点位置。
   readonly beltPos: Vec3[] = [];
   private readonly beltPrevPos: Vec3[] = [];
-  private beltInit = false;
   // 各リンクのチェーン軸まわりのねじれ角 [rad]。常に ±MAG_CHAIN_MAX_ROLL_DEG に収まる。
   readonly beltTwist: number[] = [];
 
@@ -50,7 +49,16 @@ export class BeltPhysics {
   // 給弾進みに応じて動く根本の固定点(機体座標系)。
   anchor: Vec3 = v3(MAG_BELT_ANCHOR_X, 0, 0);
 
-  constructor(private readonly linkCount: number, private readonly owner: DynamicEntity) {}
+  // 節点はアンカーから等間隔に伸ばした形で始める。表示も接触も update より先に問われうるので、
+  // 「まだ並べていない」状態を持たせない。
+  constructor(private readonly linkCount: number, private readonly owner: DynamicEntity) {
+    for (let i = 0; i < linkCount; i++) {
+      const p = v3(MAG_BELT_ANCHOR_X + (i + 1) * MAG_BELT_PITCH, 0, 0);
+      this.beltPos.push(p);
+      this.beltPrevPos.push(p);
+      this.beltTwist.push(0);
+    }
+  }
 
   // リンクを1つ手前へ詰め、末尾に新しいリンクを継ぎ足す。
   shiftBeltNodes(): void {
@@ -78,8 +86,6 @@ export class BeltPhysics {
   // スピンが生む慣性力(並進慣性 -a、遠心力 -ω×(ω×r)、オイラー力 -α×r、コリオリ力 -2ω×v)
   // だけがベルトを機体座標系の中で揺らす。
   update(dt: number, att: Attitude, thrustAccelVec: Vec3, beltFeed: number): void {
-    this.initNodesOnce();
-
     const invDt = dt > 1e-6 ? 1 / dt : 0;
     this.estimateAngularAccel(att.w, invDt);
 
@@ -90,18 +96,6 @@ export class BeltPhysics {
     this.relaxDistanceConstraints();
 
     this.advanceOrientationConstraints(dt, att, beltFeed);
-  }
-
-  // 初回のみ、節点をアンカーから等間隔に並べて初期化する。
-  private initNodesOnce(): void {
-    if (this.beltInit) return;
-    this.beltInit = true;
-    for (let i = 0; i < this.linkCount; i++) {
-      const p = v3(MAG_BELT_ANCHOR_X + (i + 1) * MAG_BELT_PITCH, 0, 0);
-      this.beltPos.push(p);
-      this.beltPrevPos.push((p));
-      this.beltTwist.push(0);
-    }
   }
 
   // 前フレームとの角速度差から角加速度を推定する。
