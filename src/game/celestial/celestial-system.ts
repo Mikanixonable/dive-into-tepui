@@ -380,7 +380,7 @@ export class CelestialSystem implements CelestialMotions {
     return pole?.motion.spinPhase0;
   }
 
-  // 天体ビュー・星・照明・遮蔽・参照線・天球グリッドを、この1フレームの表示状態に同期する。
+  // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。
   // visibilityPolicy は**マップビューのとき非 null、戦闘ビューのとき null** を渡す。描かれる
   // 対象と選べる対象が同じ判定から出るよう、同じフレームの update 位相で確定させたものを渡す。
   sync(
@@ -400,7 +400,7 @@ export class CelestialSystem implements CelestialMotions {
       body.sync(floatingOrigin, displayTime, cameraSystem, star, graphics, style);
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
-    // (基準強度どおりの放射照度が届き、遮蔽パスは誰も遮らないと答える)。
+    // (基準強度どおりの放射照度が届き、影パスは誰も遮らないと答える)。
     const sunPos = starMotion === null
       ? this.toThreeNormal(this.sunDirFrom(floatingOrigin.r, displayTime))
         .multiplyScalar(STARLESS_SUN_DISTANCE)
@@ -467,7 +467,7 @@ export class CelestialSystem implements CelestialMotions {
     })));
   }
 
-  // 遮蔽パスへ、この1フレームの遮蔽器と環の帯を渡す。候補を組んで選定へ回し、**選ばれた
+  // 影パスへ、この1フレームの影を落とす天体と環の帯を渡す。候補を組んで選定へ回し、**選ばれた
   // ものだけ**を描画座標へ移す。focusPos はマップの注視点で、艦など天体でない対象を注視して
   // いるなら null。
   private syncShadowSources(
@@ -492,7 +492,7 @@ export class CelestialSystem implements CelestialMotions {
     this.syncCumulusShadow(fo, displayTime, graphics);
   }
 
-  // 積雲の殻を持つ天体を遮蔽パスへ渡す。持つ天体が無いか、雲そのものか雲の影を切る設定なら
+  // 積雲の殻を持つ天体を影パスへ渡す。持つ天体が無いか、雲そのものか雲の影を切る設定なら
   // 源ごと切る。
   private syncCumulusShadow(
     fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData,
@@ -503,7 +503,7 @@ export class CelestialSystem implements CelestialMotions {
     this.cumulusShadow.set(casters[0] ?? null);
   }
 
-  // 環を持つ天体を候補として選定へ回し、選ばれた1体の帯を遮蔽パスへ渡す。選ばれなければ
+  // 環を持つ天体を候補として選定へ回し、選ばれた1体の帯を影パスへ渡す。選ばれなければ
   // 帯を空にする(影は落ちない)。
   private syncRingShadow(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
     // 環を持つ天体を候補に組む(ECI)。
