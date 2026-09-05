@@ -6,7 +6,7 @@ import {
 } from './protein-atom-view';
 import { type ProteinMotionBinding } from './protein-motion-material';
 import { disposeOwnedRenderResources } from './dispose-owned-render-resources';
-import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
+import { markLitOpaque, markShadowCaster } from './pipeline/lit-layer';
 import { buildProteinSilhouette } from './protein-silhouette-view';
 import { buildProteinRibbon, type ProteinRenderSource } from './protein-ribbon';
 
@@ -38,7 +38,7 @@ export function buildProteinRibbonShip(
   if (source.semantic.ligands.length) structure.add(buildProteinLigands(source, motion));
   const root = proteinCoordinateRoot(structure, source.semantic.coordinateScale);
   markLitOpaque(root);
-  markSunShadowCaster(root);
+  markShadowCaster(root);
   return root;
 }
 
@@ -54,7 +54,7 @@ export function buildProteinEnemyShip(
   else return buildProteinRibbonShip(source, display.colorMode, null, motion);
   const root = proteinCoordinateRoot(structure, source.semantic.coordinateScale);
   markLitOpaque(root);
-  markSunShadowCaster(root);
+  markShadowCaster(root);
   // 半透明の外殻は world パスで合成する。不透明の G バッファに残すと、内部リボンの深度と
   // 法線を上書きしてしまう。
   if (display.representation === 'silhouette') {

@@ -12,7 +12,7 @@ export const WORLD_BACKGROUND_LAYER = 2;
 const OVERLAY_LAYER = 3;
 // 太陽光の影を落とす不透明メッシュ(艦艇・基地・デブリなど)の層。**天体の球はここへ入れない** —
 // 天体の影は遮蔽関数が解析式で厳密に解いており、シャドウマップにも入れると半影の途中で二重に効く。
-export const SUN_SHADOW_CASTER_LAYER = 4;
+export const SHADOW_CASTER_LAYER = 4;
 
 // 3D UI パスが見るチャンネル。呼び出し側は camera.layers.mask を呼び出し前の値へ戻す責任を持つ。
 export function setOverlayPassLayers(camera: THREE.Camera): void {
@@ -49,10 +49,10 @@ export function markLitOpaque(root: THREE.Object3D): void {
   });
 }
 
-// root 以下の標準マテリアルの Mesh を、太陽光の影を落とす遮蔽器として印す。いま属している
+// root 以下の標準マテリアルの Mesh を、太陽光の影を落とすものとして印す。いま属している
 // チャンネルはそのまま残す。
-export function markSunShadowCaster(root: THREE.Object3D): void {
+export function markShadowCaster(root: THREE.Object3D): void {
   root.traverse((obj) => {
-    if (isStandardMesh(obj)) obj.layers.enable(SUN_SHADOW_CASTER_LAYER);
+    if (isStandardMesh(obj)) obj.layers.enable(SHADOW_CASTER_LAYER);
   });
 }

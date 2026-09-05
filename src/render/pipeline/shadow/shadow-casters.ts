@@ -2,9 +2,9 @@
 // シーン直下の子 1 つ(艦 1 隻・基地 1 つ・インスタンスプール 1 本)で、**遮蔽器であると同時に
 // 受け手の代理でもある** — 艦も基地もデブリも、影を落とすと同時に受ける。
 import * as THREE from 'three/webgpu';
-import { anchorAxis, castsOnto, insideBox, requiredTexel } from '../shadow-demand';
-import { SUN_SHADOW_CASTER_LAYER } from './lit-layer';
-import type { SunLight } from './sun-light';
+import { anchorAxis, castsOnto, insideBox, requiredTexel } from '../../shadow-demand';
+import { SHADOW_CASTER_LAYER } from '../lit-layer';
+import type { SunLight } from '../sun-light';
 
 // 遮蔽器の影が届く距離を、その差し渡しの何倍に取るか。差し渡し S の遮蔽器の本影は太陽の視半径
 // θ☉ = 4.65e-3 から D = S/(2·θ☉) = 107.5·S で消えるが、その先も遮蔽率は (107.5·S/D)² で残る
@@ -13,8 +13,8 @@ import type { SunLight } from './sun-light';
 export const COLUMN_SPAN = 1000;
 
 // 大量の個体を 1 本のメッシュで描く枝が、自分の広がりを影パスへ渡す口。個体が毎フレーム動く枝は
-// メッシュ自身の外接箱が当てにならないので、userData.sunShadowExtent にこれを置く。
-export type SunShadowExtent = {
+// メッシュ自身の外接箱が当てにならないので、userData.shadowExtent にこれを置く。
+export type ShadowExtent = {
   // 今フレームの全個体を包む描画座標の AABB。
   readonly worldBounds: THREE.Box3;
 };
@@ -52,7 +52,7 @@ export class ShadowCasters {
   private branchDistance = Infinity;
   private branchDiffuse = false;
 
-  // シーン直下の枝ごとに、SUN_SHADOW_CASTER_LAYER のメッシュを包む描画座標の AABB を作り、
+  // シーン直下の枝ごとに、SHADOW_CASTER_LAYER のメッシュを包む描画座標の AABB を作り、
   // 要求 texel の厳しい(= 細かい)順に並べて返す。**返り値は次に呼ぶまでの間だけ有効** —
   // 同じ配列を毎フレーム詰め直す。scene のワールド行列は呼び出し側が確定させておく。
   //
@@ -130,8 +130,8 @@ export class ShadowCasters {
   private expandVisibleCasters(object: THREE.Object3D): void {
     if (!object.visible) return;
     const mesh = object as THREE.Mesh;
-    if (mesh.isMesh && mesh.layers.isEnabled(SUN_SHADOW_CASTER_LAYER)) {
-      const extent = mesh.userData.sunShadowExtent as SunShadowExtent | undefined;
+    if (mesh.isMesh && mesh.layers.isEnabled(SHADOW_CASTER_LAYER)) {
+      const extent = mesh.userData.shadowExtent as ShadowExtent | undefined;
       if (extent === undefined) {
         this.scratchBox.expandByObject(mesh);
         this.takeMeshAnchor(mesh);

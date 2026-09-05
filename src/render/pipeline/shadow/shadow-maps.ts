@@ -12,13 +12,13 @@
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { float, positionView, uniform, uniformArray, vec3, vec4 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../gpu-timings';
-import { extentForTexel } from '../shadow-demand';
-import type { FloatNode, FloatUniform } from '../tsl-types';
-import { SUN_SHADOW_CASTER_LAYER } from './lit-layer';
-import { COLUMN_SPAN, ShadowCasters, type ShadowCaster } from './sun-shadow-casters';
-import type { SunLight } from './sun-light';
-import { compileInto } from './compile-into';
+import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { extentForTexel } from '../../shadow-demand';
+import type { FloatNode, FloatUniform } from '../../tsl-types';
+import { SHADOW_CASTER_LAYER } from '../lit-layer';
+import { COLUMN_SPAN, ShadowCasters, type ShadowCaster } from './shadow-casters';
+import type { SunLight } from '../sun-light';
+import { compileInto } from '../compile-into';
 
 // 深度マップを確保するスロットの上限。設定で選べる枚数の上限でもある。
 export const MAX_SHADOW_SLOTS = 4;
@@ -46,7 +46,7 @@ const NO_CASTERS: readonly ShadowCaster[] = [];
 
 // 受け手が shader 内で動的にスロットを選ぶために引く、スロットごとの値。**スロットの値の
 // 正本はこの 3 本の配列だけで、個別の uniform を別に持たない。**
-export type SunShadowSlotUniformArrays = {
+export type ShadowSlotUniformArrays = {
   // 描画座標 → ライト空間クリップ。UV は xy だけを使う。
   readonly lightViewProjection: THREE.UniformArrayNode<'mat4'>;
   // 描画座標 → ライト空間 view。深度は射影の規約(反転深度)に依らないこちらから測る。
@@ -73,7 +73,7 @@ function createDepthTarget(size: number, name: string, layers = 1): THREE.Render
   return target;
 }
 
-export class SunShadowMaps {
+export class ShadowMaps {
   private readonly target: THREE.RenderTarget;
   private readonly farTarget: THREE.RenderTarget;
   // メッシュの影を描くか。
@@ -91,7 +91,7 @@ export class SunShadowMaps {
   private readonly lightViewProjections: THREE.Matrix4[];
   private readonly lightViews: THREE.Matrix4[];
   private readonly slotParameters: THREE.Vector4[];
-  private readonly slotUniformArrays: SunShadowSlotUniformArrays;
+  private readonly slotUniformArrays: ShadowSlotUniformArrays;
   // 深度マテリアルが引く、いま描いているスロットの near。深度はここからのメートルで書く。
   private readonly drawNear: FloatUniform;
   private readonly shadowCasters = new ShadowCasters();
@@ -128,8 +128,8 @@ export class SunShadowMaps {
     private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings,
     enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number,
   ) {
-    this.target = createDepthTarget(1, 'sun-shadow', MAX_SHADOW_SLOTS);
-    this.farTarget = createDepthTarget(1, 'sun-shadow-far', MAX_SHADOW_SLOTS);
+    this.target = createDepthTarget(1, 'shadow-map', MAX_SHADOW_SLOTS);
+    this.farTarget = createDepthTarget(1, 'shadow-map-far', MAX_SHADOW_SLOTS);
     this.slotTexels = uniform(1);
 
     this.drawNear = uniform(0.1);
@@ -161,7 +161,7 @@ export class SunShadowMaps {
   // 排他なので、2 枚から出した透過率はそのまま掛けられる。**
   get farTexture(): THREE.Texture { return this.farTarget.texture; }
 
-  get uniformArrays(): SunShadowSlotUniformArrays { return this.slotUniformArrays; }
+  get uniformArrays(): ShadowSlotUniformArrays { return this.slotUniformArrays; }
 
   // 受け手が texel を単位に幅を組むために引く、スロットの 1 辺 [texel]。
   get texelsPerSlot(): FloatNode { return this.slotTexels; }
@@ -217,7 +217,7 @@ export class SunShadowMaps {
     try {
       this.renderer.autoClear = true;
       scene.overrideMaterial = this.depthMaterial;
-      this.lightCamera.layers.set(SUN_SHADOW_CASTER_LAYER);
+      this.lightCamera.layers.set(SHADOW_CASTER_LAYER);
       // 遮蔽器の居ない範囲が影にならないよう、空の texel はどの受け手よりも遠い深度で埋める。
       this.renderer.setClearColor(this.emptyDepth, 1);
       // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
@@ -254,7 +254,7 @@ export class SunShadowMaps {
       this.clusterCaps.length = 0;
       if (this.enabled) this.buildClusters();
       scene.overrideMaterial = this.depthMaterial;
-      this.lightCamera.layers.set(SUN_SHADOW_CASTER_LAYER);
+      this.lightCamera.layers.set(SHADOW_CASTER_LAYER);
       for (const [index, cluster] of this.clusters.entries()) {
         if (!this.configureSlot(index, cluster, this.clusterCaps[index]!, sun)) continue;
         this.drawNear.value = this.slotParameters[index]!.x;
