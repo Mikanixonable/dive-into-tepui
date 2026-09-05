@@ -87,6 +87,8 @@ function createDepthTarget(size: number, name: string, layers = 1): THREE.Render
   });
   target.texture.name = name;
   target.texture.isArrayTexture = layers > 1;
+  // 深度を 32bit 浮動小数点にするには明示が要る — 省くと depth24plus のまま精度だけ落ちる。
+  target.depthTexture = new THREE.DepthTexture(size, size, THREE.FloatType);
   return target;
 }
 
