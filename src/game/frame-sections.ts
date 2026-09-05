@@ -8,23 +8,25 @@ export const SECTION = {
   stage: 2,
   integrate: 3,
   orbit: 4,
-  contact: 5,
-  attitude: 6,
-  predict: 7,
-  effects: 8,
-  plan: 9,
-  mapPick: 10,
-  camera: 11,
-  pointer: 12,
+  celestialContact: 5,
+  entityContact: 6,
+  beltContact: 7,
+  attitude: 8,
+  predict: 9,
+  effects: 10,
+  plan: 11,
+  mapPick: 12,
+  camera: 13,
+  pointer: 14,
 } as const;
 
 export type SectionId = (typeof SECTION)[keyof typeof SECTION];
 
-// 表示名。並びは SECTION の値の順。積分の内訳3区間は、合計が親を成さないことを崩さないまま
+// 表示名。並びは SECTION の値の順。積分の内訳5区間は、合計が親を成さないことを崩さないまま
 // 並びだけ字下げする。
 export const SECTION_LABELS: readonly string[] = [
   '入力', '自機', 'ステージ', '積分',
-  '　軌道積分', '　接触', '　姿勢',
+  '　軌道積分', '　天体接触', '　物体接触', '　ベルト', '　姿勢',
   '予測', '演出', '計画', 'マップ候補', 'カメラ', 'ポインタ',
 ];
 
@@ -71,7 +73,8 @@ export class FrameSections {
   otherMs(): number {
     let sum = 0;
     for (let i = 0; i < SECTION_COUNT; i++) {
-      if (i === SECTION.orbit || i === SECTION.contact || i === SECTION.attitude) continue;
+      if (i === SECTION.orbit || i === SECTION.celestialContact || i === SECTION.entityContact
+        || i === SECTION.beltContact || i === SECTION.attitude) continue;
       sum += this.elapsedMs[i]!;
     }
     return Math.max(0, this.frameMs - sum);
