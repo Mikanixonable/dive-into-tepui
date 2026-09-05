@@ -11,7 +11,7 @@ import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
   | 'elevation' | 'landFraction' | 'meanCloudiness' | 'meanWind'
-  | 'pressure' | 'wind' | 'traceWind' | 'lift' | 'front' | 'airMass'
+  | 'pressure' | 'wind' | 'traceWind' | 'front' | 'airMass' | 'lift'
   | 'humiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'humidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
   | 'coverage' | 'cloudTop' | 'translucent' | 'composite' | 'photo';
@@ -69,12 +69,12 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     color: (d, model) => windColor(model.weatherAt(d).wind) },
   { id: 'traceWind', label: '追跡の風', reads: 'weather',
     color: (d, model) => windColor(model.traceWindAt(d)) },
-  { id: 'lift', label: '上昇流', reads: 'weather',
-    color: (d, model) => vec3(model.weatherAt(d).lift.div(2 * LIFT_SPAN).add(0.5)) },
   { id: 'front', label: '前線', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).compression.sub(1).div(FRONT_SPAN)) },
   { id: 'airMass', label: '気団', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).warmth.div(2 * WARMTH_SPAN).add(0.5)) },
+  { id: 'lift', label: '上昇流', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).lift.div(2 * LIFT_SPAN).add(0.5)) },
   { id: 'humiditySource', label: '移流前の湿度', reads: 'weather',
     color: (d, model) => vec3(model.humiditySourceAt(d).x) },
   { id: 'upperHumiditySource', label: '移流前の上層湿度', reads: 'weather',
