@@ -27,7 +27,7 @@ import { SchematicComposite } from './schematic-composite';
 import { LensPass } from './lens-pass';
 import { Exposure } from './exposure';
 import { SunLight } from './sun-light';
-import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
+import { SunShadowMaps } from './sun-shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 import { FilmLut } from './film-lut';
@@ -234,15 +234,18 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。
   private shadowSlotGridNode(): FloatNode {
     const tileUV = screenUV.mul(2).fract();
-    const slots = this.sunShadowMaps.slots;
+    const parameters = this.sunShadowMaps.uniformArrays.parameters;
     const left = screenUV.x.lessThan(0.5);
     // screenUV は上端が原点なので、y の小さいほうが画面の上段。
     const top = screenUV.y.lessThan(0.5);
-    // 深度マップはメートルで持っているので、スロットごとの深度の幅で割って濃淡へ直す。
-    const tile = (slot: SunShadowSlot): FloatNode => texture(slot.texture, tileUV).depth(int(slot.layer)).r
-      .div(max(slot.far.sub(slot.near), 1e-6));
-    const topRow = select(left, tile(slots[0]!), tile(slots[1]!));
-    const bottomRow = select(left, tile(slots[2]!), tile(slots[3]!));
+    // 深度マップはメートルで持っているので、スロットごとの深度の幅(far − near)で割って濃淡へ直す。
+    const tile = (layer: number): FloatNode => {
+      const slot = parameters.element(layer);
+      return texture(this.sunShadowMaps.texture, tileUV).depth(int(layer)).r
+        .div(max(slot.y.sub(slot.x), 1e-6));
+    };
+    const topRow = select(left, tile(0), tile(1));
+    const bottomRow = select(left, tile(2), tile(3));
     return select(top, topRow, bottomRow);
   }
 
