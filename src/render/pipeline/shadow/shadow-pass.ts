@@ -129,7 +129,7 @@ export class ShadowPass {
       this.renderer.autoClear = !cleared;
       cleared = true;
       // beginPass は render() 呼び出しごとに申告する。同じパスの複数回ぶんは計測側が足し合わせる。
-      this.gpu.beginPass(GPU_PASS.occlusion);
+      this.gpu.beginPass(GPU_PASS.shadow);
       this.quad.render(this.renderer);
     }
     // 影を落とす源が 1 つも無いフレームでも、前のフレームの透過率を残さない。

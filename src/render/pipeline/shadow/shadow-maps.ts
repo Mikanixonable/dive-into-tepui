@@ -221,7 +221,7 @@ export class ShadowMaps {
       // 遮蔽器の居ない範囲が影にならないよう、空の texel はどの受け手よりも遠い深度で埋める。
       this.renderer.setClearColor(this.emptyDepth, 1);
       // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
-      this.gpu.beginPass(GPU_PASS.shadow);
+      this.gpu.beginPass(GPU_PASS.shadowMap);
       for (const [index, cluster] of this.clusters.entries()) {
         this.drawSlot(scene, sun, index, cluster, this.clusterCaps[index]!);
       }

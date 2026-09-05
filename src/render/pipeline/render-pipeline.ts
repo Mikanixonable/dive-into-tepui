@@ -191,9 +191,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       depth: this.buildCompositeMaterial(vec4(vec3(this.logDepthNode()), 1)),
       // 4 枚のスロットを 2x2 に並べて画面いっぱいへ映す。線形深度なのでそのまま濃淡として
       // 読め(遠いほど白)、使われていないスロットは真っ白のまま残る。
-      shadow: this.buildCompositeMaterial(vec4(vec3(this.shadowSlotGridNode()), 1)),
-      'shadow-slot': this.buildCompositeMaterial(vec4(this.shadowSlotColorNode(), 1)),
-      occlusion: this.buildCompositeMaterial(
+      'shadow-map': this.buildCompositeMaterial(vec4(vec3(this.shadowSlotGridNode()), 1)),
+      'shadow-map-slot': this.buildCompositeMaterial(vec4(this.shadowSlotColorNode(), 1)),
+      shadow: this.buildCompositeMaterial(
         vec4(vec3(texture(this.shadowPass.texture, screenUV).r), 1),
       ),
       // 照度・陰影は 1 を超え得る HDR 値なので、通常表示と同じトーンマッピングを通してから
@@ -328,9 +328,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
 
     // 描画順に並べる。スタイルによらず通る段。
     const passes: [string, () => Promise<void>][] = [
-      ['影', () => this.shadowMaps.compile(scene, camera, height, this._sunLight)],
+      ['影マップ', () => this.shadowMaps.compile(scene, camera, height, this._sunLight)],
       ['G バッファ', () => this.gbuffer.compile(scene, camera, width, height)],
-      ['遮蔽', () => this.shadowPass.compile(camera, width, height)],
+      ['影', () => this.shadowPass.compile(camera, width, height)],
       ['照明', () => this.lightPrepass.compile(camera, width, height)],
     ];
 
@@ -363,26 +363,26 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     onPass('完了', passes.length, passes.length);
   }
 
-  // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
+  // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → ライティング → マテリアル → 大気 →
   // world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは
   // マテリアル・大気・world・レンズの4段を飛ばす。デバッグ表示を選んでいてもパスは省略しない —
-  // 設定で切られている段(影・レンズ)を選べば、そのフレームが何も作っていないことがそのまま
+  // 設定で切られている段(影マップ・レンズ)を選べば、そのフレームが何も作っていないことがそのまま
   // 空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
   // フレームでも撮る。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
 
-    // 影パスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
+    // 影マップパスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
     flushProteinMotionComputes(this.renderer);
 
-    // 太陽光の影パス。G バッファを必要としないので、その前に置く。
+    // 太陽光の影マップパス。G バッファを必要としないので、その前に置く。
     this.shadowMaps.render(scene, camera, height, this._sunLight);
 
     // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
     this.gbuffer.render(scene, camera, width, height);
 
-    // 遮蔽パス。G バッファ深度だけを読むので scene は渡さない。
+    // 影パス。G バッファ深度だけを読むので scene は渡さない。
     this.shadowPass.render(camera, width, height);
 
     // ライティングパス。G バッファと遮蔽度だけを読むので scene は渡さない。
