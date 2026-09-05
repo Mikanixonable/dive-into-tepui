@@ -32,6 +32,7 @@ import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 import { FilmLut } from './film-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
+import { DeferredTexture } from '../deferred-texture';
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly gbuffer: GBufferPass;
@@ -326,6 +327,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
 
     for (const [index, [name, compile]] of passes.entries()) {
       onPass(name, index, passes.length);
+      await DeferredTexture.publishOneForCompile(this.renderer);
       await compile();
     }
     onPass('完了', passes.length, passes.length);
@@ -338,6 +340,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // 空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
   // フレームでも撮る。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
+    DeferredTexture.publishOne(this.renderer);
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const width = this.drawingBufferSize.x;
     const height = this.drawingBufferSize.y;

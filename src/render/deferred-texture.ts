@@ -6,9 +6,14 @@ import * as THREE from 'three/webgpu';
 const ANISOTROPY = 16;
 
 export class DeferredTexture {
+  private static readonly ready: DeferredTexture[] = [];
+
   // 画像が届くまで空のままのテクスチャ。読み手はこの実体を掴んでよい。
   public readonly texture: THREE.Texture;
   private requested = false;
+  private queued = false;
+  private disposed = false;
+  private image: HTMLImageElement | null = null;
 
   // colorSpace は届く画像の色空間。
   public constructor(private readonly url: string, colorSpace: string) {
@@ -22,13 +27,47 @@ export class DeferredTexture {
     if (this.requested) return;
     this.requested = true;
     new THREE.ImageLoader().load(this.url, (image) => {
-      this.texture.image = image;
-      this.texture.needsUpdate = true;
+      if (this.disposed) return;
+
+      this.image = image;
+      this.queued = true;
+      DeferredTexture.ready.push(this);
     });
+  }
+
+  public static publishOne(renderer: THREE.WebGPURenderer): void {
+    const deferredTexture = DeferredTexture.ready.shift();
+    if (deferredTexture === undefined) return;
+
+    deferredTexture.queued = false;
+    if (deferredTexture.publish()) renderer.initTexture(deferredTexture.texture);
+  }
+
+  public static async publishOneForCompile(renderer: THREE.WebGPURenderer): Promise<void> {
+    if (DeferredTexture.ready.length === 0) return;
+
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    DeferredTexture.publishOne(renderer);
   }
 
   // テクスチャを解放する。取得が飛んでいる最中でも呼んでよい。
   public dispose(): void {
+    this.disposed = true;
+    this.image = null;
+    if (this.queued) {
+      const index = DeferredTexture.ready.indexOf(this);
+      if (index !== -1) DeferredTexture.ready.splice(index, 1);
+      this.queued = false;
+    }
     this.texture.dispose();
+  }
+
+  private publish(): boolean {
+    if (this.disposed || this.image === null) return false;
+
+    this.texture.image = this.image;
+    this.texture.needsUpdate = true;
+    this.image = null;
+    return true;
   }
 }
