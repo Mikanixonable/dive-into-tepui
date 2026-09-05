@@ -1,6 +1,6 @@
 // 対流がどれだけ活発かを表す 0..1 の場。低周波のノイズが持つ気団の対流のしやすさと、その場の
-// 上昇流と、寒気の流入と、前線の帯から出る — 冷たい空気が暖かい面の上を渡るところは不安定で、雲は
-// 粒へ千切れる。
+// 上昇流と、寒気の流入と、気団の折り目の帯(前線・雨帯)から出る — 冷たい空気が暖かい面の上を渡る
+// ところは不安定で、雲は粒へ千切れる。
 // 凝結の側が対流の振幅へ掛ける利得で、1 で対流がそのまま乗り、0 で対流が消える。**床から下へは
 // 落とさない** — 一枚板として覆う空にも細胞の起伏はあり、活発度が 0 まで落ちた所は平坦な灰色になる。
 // 値はすべて見えのための調整値。
@@ -37,9 +37,9 @@ const COLD_ACTIVITY = 1.9;
 const ACTIVITY_MIN = 0.3;
 // 陸の上で上がる分。日射で温まる地面の上は不安定で、雲は板ではなく粒になる。
 const LAND_ACTIVITY = 0.3;
-// 前線の帯が活発度へ効く利得。帯の中の対流は活発で、粒立った塔が列をなす — 帯が飽和した所で
-// 活発度が半分ぶん上がる高さに取る。
-const FRONT_ACTIVITY = 0.5;
+// 気団の折り目の帯(前線・雨帯)が活発度へ効く利得。帯の中の対流は活発で、粒立った塔が列をなす —
+// 帯が飽和した所で活発度が半分ぶん上がる高さに取る。
+const BAND_ACTIVITY = 0.5;
 
 export class ConvectiveActivity {
   private readonly instability: BakedField;
@@ -59,13 +59,13 @@ export class ConvectiveActivity {
   }
 
   // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)、陸らしさ land
-  // 0..1、前線の帯の強さ frontal 0..1 における対流の活発度 0..1。
+  // 0..1、気団の折り目の帯の強さ band 0..1 における対流の活発度 0..1。
   public at(
-    direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode, frontal: FloatNode,
+    direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode, band: FloatNode,
   ): FloatNode {
     return clamp(
       this.instability.at(direction).r.add(lift.mul(LIFT_ACTIVITY)).sub(warmth.mul(COLD_ACTIVITY))
-        .add(land.mul(LAND_ACTIVITY)).add(frontal.mul(FRONT_ACTIVITY)).add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
+        .add(land.mul(LAND_ACTIVITY)).add(band.mul(BAND_ACTIVITY)).add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
   }
 
   // 保持している GPU 資源を解放する。
