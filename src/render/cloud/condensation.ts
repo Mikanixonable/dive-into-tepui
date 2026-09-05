@@ -12,15 +12,22 @@ export type CloudSample = {
   readonly translucent: FloatNode;
 };
 
-// 被覆率が効き始める湿度と、そこから先の 1 単位ぶんの幅(被覆率が 0 から 0.63 へ上がる湿度の
+// 被覆率が効き始める湿度と、そこから先の 1 単位ぶんの幅(被覆率が 0 から 0.56 へ上がる湿度の
 // 範囲)。湿度に対流の強弱を足したものを渡すので、**効き始めの近くにある所だけが対流の周波数で
 // 千切れ**、湿った所は幅の何倍も上へ行って伝達関数の傾きが寝るので、そこから先の起伏は雲頂高度が
 // 持つ。幅は、粒の塊が白く隙間が黒く割れる狭さに取る(`DEVELOP/SPEC/RENDERING.md`「白い塊と
 // 黒い隙間が交互に並ぶ」)— 広く取ると、塊も隙間も同じ灰色の網目に均される。湿度の地域差
 // (気候)の階調は、伝達関数の傾きではなく、湿度の源が中間の尺度(400〜100 km)に持つ濃淡が運ぶ。
-// 効き始めは、±60° の被覆率の平均が 0.10 付近になる高さに取る。
-const COVERAGE_ONSET = 0.52;
-const COVERAGE_WIDTH = 0.20;
+// 効き始めと幅は、±60° の被覆率の平均が実写(分離した厚い雲)の 0.115 に並ぶ 0.12、いちばん暗い段
+// (< 0.03)が 57%(実写 35%)になる高さに取る。
+const COVERAGE_ONSET = 0.50;
+const COVERAGE_WIDTH = 0.22;
+// 覆いの散らばり。texel の中では雲粒の湧く密度そのものが揺らぐので、晴れている割合は密度が一様な
+// ポアソンの exp(−t²) ではなく、密度をガンマ分布で混ぜた (1 + t²/散らばり)^(−散らばり) を取る。
+// **裾が代数なので、覆われた空の階調が上端で潰れない** — 指数の裾へ単純化すると、湿度が幅の 2 倍を
+// 超えたところから先が 8bit で数階調に収まり、前線と渦の芯が一様な白い台地になる。値は、湿度の
+// 上端で被覆率が 0.93 に収まる散らばりに取る。
+const COVERAGE_DISPERSION = 2;
 // 湿度へ足す対流の重み。伝達関数の幅に対してどれだけ深く千切るかを決める。
 const CONVECTION_GAIN = 1.2;
 // 層状の雲の高さ [m]。雲底から、上昇流の深さが 1 に漸近する高さまで。上限は前線の乱層雲
@@ -56,15 +63,16 @@ const SHAPE_GRAIN_HUMIDITY = 0.70;
 // 湿った所へ広くごく薄い幕を張る。筋の項は、筋の効き始めを超えた分の二乗で、湿度の峰にだけ濃い筋を
 // 立てる — 薄い雲の大半はごく薄い靄で、濃く見えるのは筋状に束ねられた所だけ(`DEVELOP/SPEC/
 // RENDERING.md`「高い雲は別の帯に乗る」)。二乗の項だけでは靄が消え、筋が黒地に浮く白い繊維になって
-// 厚い雲に読める。膝は、二乗の τ が筋の利得を傾きにした直線と交わる超過量。上層の湿度 0.5 で τ 0.08、
-// 0.6 で 0.24、0.7 で 0.60。上限は τ をそこへ漸近させる tanh の頭打ちで、1 以下の τ はほぼ素通し
-// — 下地が常に e^−τ ≥ 0.05 だけ透け、巻雲は不透明にならない。
-const TRANSLUCENT_HAZE_ONSET = 0.36;
-const TRANSLUCENT_HAZE_GAIN = 0.6;
-const TRANSLUCENT_STREAK_ONSET = 0.50;
+// 厚い雲に読める。膝は、二乗の τ が筋の利得を傾きにした直線と交わる超過量。効き始めと利得は、
+// 階調の分布が実写(分離した薄い雲)に重なる高さに取る — 上層の湿度 0.5 で τ 0.09、0.6 で 0.29、
+// 0.7 で 0.59。上限は τ をそこへ漸近させる tanh の頭打ちで、実写の輝度が 0.6 を超えない
+// (= τ が 0.92 を超えない)高さに取る — 下地が常に e^−τ ≥ 0.41 だけ透け、巻雲は不透明にならない。
+const TRANSLUCENT_HAZE_ONSET = 0.38;
+const TRANSLUCENT_HAZE_GAIN = 0.7;
+const TRANSLUCENT_STREAK_ONSET = 0.48;
 const TRANSLUCENT_STREAK_GAIN = 2.5;
 const TRANSLUCENT_KNEE = 0.25;
-const TRANSLUCENT_LIMIT = 3.0;
+const TRANSLUCENT_LIMIT = 0.9;
 
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
 // 雲頂高度は 層状の雲から立つ塔と、渦の芯が敷く金床の高いほうから出る — 覆う広さは湿度が、
@@ -94,16 +102,17 @@ export function condense(weather: WeatherSample): CloudSample {
   const reach = smoothstep(TOWER_ONSET, TOWER_ONSET + TOWER_WIDTH, grain);
   const tower = layered.add(weather.tropopause.sub(layered).mul(reach.mul(reach)).mul(moist).mul(rising));
   const anvil = weather.anvil.mul(weather.tropopause);
-  // 被覆率は、湿度が効き始めを超えた分を幅で割った t の 1 − exp(−t²)。下端は傾き 0 で 0 から離れ、
-  // 上端は 1 へ漸近するだけで飽和しない — 覆われた空にも湿度の差が階調として残る。
+  // 被覆率は、湿度が効き始めを超えた分を幅で割った t が張る、晴れている割合の補。下端は傾き 0 で
+  // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
   const moistened = weather.humidity.add(granularity);
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
+  const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
   return {
-    coverage: exp(excess.mul(excess).negate()).oneMinus(),
+    coverage: clear.oneMinus(),
     cloudTop: max(tower, anvil),
     translucent: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
   };
