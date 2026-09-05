@@ -68,11 +68,11 @@ const PRESSURE_NOISE: readonly NoiseOctave[] = [
   { frequency: 1.2, amplitude: 1 }, // 5300 km
 ];
 // 地表付近は湿度と対流の 2 枚で周波数を分担する。湿度の基準の段(800 km)が雲塊の配置を、中間の段
-// (400〜100 km)が雲塊を 100〜300 km の塊へ割る境目を、対流(80 km と 40 km)が積雲の粒の細かさを
+// (400〜100 km)が雲塊を 100〜300 km の塊へ割る境目を、対流(48 km と 24 km)が積雲の粒の細かさを
 // 決める。**中間の段の取り分は基準の段からなだらかにしか落とさない** — 薄いと雲塊は一様な灰色の
 // 網目に広がり、実写が白い塊と黒い隙間で持つ 100〜300 km の濃淡が出ない。**対流が載るかどうかは
-// 写しの texel が決める** — 40 km/texel より粗い写しでは 2 段とも落ちて湿度だけの滑らかな塊になり、
-// 10 km/texel まで寄れば 2 段とも乗る。上層の濃淡の主な尺度は、数千 km の板(4200 km と 1600 km の
+// 写しの texel が決める** — 24 km/texel より粗い写しでは 2 段とも落ちて湿度だけの滑らかな塊になり、
+// 6 km/texel まで寄れば 2 段とも乗る。上層の濃淡の主な尺度は、数千 km の板(4200 km と 1600 km の
 // 段)と、その中の 100 km 級の繊維(100 km の段)の 2 つ(`DEVELOP/SPEC/RENDERING.md`「薄い雲の濃淡の
 // 主な尺度は、数千キロの板と、その中の 100 km 級の繊維の 2 つで、あいだの数百キロの尺度は薄い」)。
 // 薄い雲は大半が下地の透ける靄なので、いちばん細かい段が縁ではなく繊維の濃淡として直に見える。
@@ -92,8 +92,8 @@ const HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 64, amplitude: 0.5 }, // 100 km
 ];
 const CONVECTION_NOISE: readonly NoiseOctave[] = [
-  { frequency: 80, amplitude: 1 }, // 80 km
-  { frequency: 160, amplitude: 0.65 }, // 40 km
+  { frequency: 133, amplitude: 1 }, // 48 km
+  { frequency: 266, amplitude: 0.65 }, // 24 km
 ];
 const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 1.5, amplitude: 0.45 }, // 4200 km
@@ -208,7 +208,7 @@ const CONVECTION_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
 // **背景の雲がどれだけ伸びるかを決めるのはここ。** 伸びは 1 歩のあいだに風が空間で変わる量から出る
 // ので、風そのものを速くしても増えず、歩を長く取ったぶんだけ増える。
 const ADVECTION_PERIOD = 20 * 3600;
-// 対流を流す 1 歩を、湿度の 1 歩の何倍の長さに取るか。1 周期の変位が写しに載る粒(80〜40 km)より
+// 対流を流す 1 歩を、湿度の 1 歩の何倍の長さに取るか。1 周期の変位が写しに載る粒(48〜24 km)より
 // 大きいと、粒は流れの向きへ伸びる。
 const CONVECTION_ADVECTION = 1.3;
 // 上層の湿度の 1 歩を、地表付近の 1 歩の何倍に取るか。巻雲の繊維は、同じ風の場でも地表付近の
