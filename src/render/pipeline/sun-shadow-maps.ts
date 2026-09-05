@@ -11,7 +11,7 @@
 // 追い出す。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
-import { positionView, uniform, vec3, vec4 } from 'three/tsl';
+import { positionView, uniform, uniformArray, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { extentForTexel } from '../shadow-demand';
 import type { FloatNode, FloatUniform, Mat4Uniform } from '../tsl-types';
@@ -20,10 +20,8 @@ import { COLUMN_SPAN, ShadowCasters, type ShadowCaster } from './sun-shadow-cast
 import type { SunLight } from './sun-light';
 import { compileInto } from './compile-into';
 
-// 深度マップを確保するスロットの上限。設定で選べる枚数の上限でもある。**受け手が引くグラフは
-// この数だけ静的に展開される**ので、上限を上げると、少ない枚数を選んだ受け手のグラフまで
-// 大きくなる — 実際に使う枚数はそこから動的分岐で絞るだけである。
-const MAX_SHADOW_SLOTS = 4;
+// 深度マップを確保するスロットの上限。設定で選べる枚数の上限でもある。
+export const MAX_SHADOW_SLOTS = 4;
 
 // 枠の縁へ取る余白 [texel]。受け手を法線方向へずらす量と PCF の半径ぶんあれば、選ばれた
 // スロットのフィルタの足が枠からはみ出さない。
@@ -48,6 +46,8 @@ const NO_CASTERS: readonly ShadowCaster[] = [];
 
 // スロット 1 枚ぶんの、受け手が引く値。SunOcclusion がこれを読んでグラフを組む。
 export type SunShadowSlot = {
+  // 深度マップ配列内の層。
+  readonly layer: number;
   // このスロットの近層の深度マップ。枠から見て本影が残る距離にある遮蔽器だけが写る。
   readonly texture: THREE.Texture;
   // 同じ枠・同じ uv の遠層の深度マップ。本影を失った遮蔽器だけが写る。**近層と写る遮蔽器が
@@ -67,23 +67,32 @@ export type SunShadowSlot = {
   readonly active: FloatUniform;
 };
 
+// SunOcclusion が shader 内で動的にスロットを選ぶための uniform 配列。
+export type SunShadowSlotUniformArrays = {
+  readonly lightViewProjection: THREE.UniformArrayNode<'mat4'>;
+  readonly lightView: THREE.UniformArrayNode<'mat4'>;
+  // (near, coverDepth, texelWorld, active)
+  readonly parameters: THREE.UniformArrayNode<'vec4'>;
+};
+
 // ライト空間の線形深度を書く 1 辺 size のレンダーターゲット。
 //
 // **r32float はレンダーターゲットとしては描けるがフィルタできない。** サンプラを明示して
 // おかないと three が線形フィルタを要求し、パイプライン生成が落ちて画面が丸ごと黒くなる。
-function createDepthTarget(size: number, name: string): THREE.RenderTarget {
+function createDepthTarget(size: number, name: string, layers = 1): THREE.RenderTarget {
   const target = new THREE.RenderTarget(size, size, {
     format: THREE.RedFormat, type: THREE.FloatType, depthBuffer: true, samples: 0,
     magFilter: THREE.NearestFilter, minFilter: THREE.NearestFilter,
+    depth: layers, useArrayDepthTexture: layers > 1,
   });
   target.texture.name = name;
-  target.depthTexture = new THREE.DepthTexture(size, size, THREE.FloatType);
+  target.texture.isArrayTexture = layers > 1;
   return target;
 }
 
 export class SunShadowMaps {
-  private readonly targets: readonly THREE.RenderTarget[];
-  private readonly farTargets: readonly THREE.RenderTarget[];
+  private readonly target: THREE.RenderTarget;
+  private readonly farTarget: THREE.RenderTarget;
   // メッシュの影を描くか。
   private enabled = false;
   // このフレームに使うスロットの数と、その 1 辺 [texel]。
@@ -97,6 +106,8 @@ export class SunShadowMaps {
   private readonly depthMaterial: THREE.MeshBasicNodeMaterial;
   private readonly lightCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
   private readonly slotUniforms: readonly SunShadowSlot[];
+  private readonly slotParameters: THREE.Vector4[];
+  private readonly slotUniformArrays: SunShadowSlotUniformArrays;
   // 深度マテリアルが引く、いま描いているスロットの near。深度はここからのメートルで書く。
   private readonly drawNear: FloatUniform;
   private readonly shadowCasters = new ShadowCasters();
@@ -133,29 +144,32 @@ export class SunShadowMaps {
     private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings,
     enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number,
   ) {
-    this.targets = Array.from(
-      { length: MAX_SHADOW_SLOTS },
-      (_slot, index) => createDepthTarget(1, `sun-shadow-${index}`),
-    );
-    this.farTargets = Array.from(
-      { length: MAX_SHADOW_SLOTS },
-      (_slot, index) => createDepthTarget(1, `sun-shadow-far-${index}`),
-    );
+    this.target = createDepthTarget(1, 'sun-shadow', MAX_SHADOW_SLOTS);
+    this.farTarget = createDepthTarget(1, 'sun-shadow-far', MAX_SHADOW_SLOTS);
     this.slotTexels = uniform(1);
     this.slotTexelUv = uniform(1);
 
     this.drawNear = uniform(0.1);
-    this.slotUniforms = this.targets.map((target, index) => ({
-      texture: target.texture,
-      farTexture: this.farTargets[index]!.texture,
-      lightViewProjection: uniform(new THREE.Matrix4()),
-      lightView: uniform(new THREE.Matrix4()),
+    const lightViewProjections = Array.from({ length: MAX_SHADOW_SLOTS }, () => new THREE.Matrix4());
+    const lightViews = Array.from({ length: MAX_SHADOW_SLOTS }, () => new THREE.Matrix4());
+    this.slotParameters = Array.from({ length: MAX_SHADOW_SLOTS }, () => new THREE.Vector4(0.1, 1, 1, 0));
+    this.slotUniforms = lightViewProjections.map((lightViewProjection, index) => ({
+      layer: index,
+      texture: this.target.texture,
+      farTexture: this.farTarget.texture,
+      lightViewProjection: uniform(lightViewProjection),
+      lightView: uniform(lightViews[index]!),
       near: uniform(0.1),
       far: uniform(10),
       coverDepth: uniform(1),
       texelWorld: uniform(1),
       active: uniform(0),
     }));
+    this.slotUniformArrays = {
+      lightViewProjection: uniformArray(lightViewProjections, 'mat4'),
+      lightView: uniformArray(lightViews, 'mat4'),
+      parameters: uniformArray(this.slotParameters, 'vec4'),
+    };
 
     // near からのメートルで書く。**正規化しない** — 空の texel を EMPTY_DEPTH で埋めることで、
     // 枠の far より遠い受け手も「遮蔽器が居ない」を区別して読めるようにする。
@@ -171,15 +185,17 @@ export class SunShadowMaps {
 
   get slots(): readonly SunShadowSlot[] { return this.slotUniforms; }
 
+  get uniformArrays(): SunShadowSlotUniformArrays { return this.slotUniformArrays; }
+
   // 受け手が texel を単位に幅を組むために引く、スロットの 1 辺 [texel]。
   get texelsPerSlot(): FloatNode { return this.slotTexels; }
 
   // 同じく、1 texel ぶんの uv 幅。
   get uvPerTexel(): FloatNode { return this.slotTexelUv; }
 
-  // 影の品質を設定から受け取る。枠の数か 1 辺が変わったときだけ深度マップを張り直す —
-  // **使わない枠は 1×1 へ縮めて確保を返す。** 張り直しはテクスチャの実体を差し替えないので、
-  // 受け手が既に組んだグラフはそのまま生きる。
+  // 影の品質を設定から受け取る。層付き深度マップは全層で同じ寸法を持つため、枠の数は
+  // active の層数だけを変える。張り直しはテクスチャの実体を差し替えないので、受け手が既に
+  // 組んだグラフはそのまま生きる。
   setQuality(enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number): void {
     this.enabled = enabled;
     this.texelsPerPixel = texelsPerPixel;
@@ -189,15 +205,12 @@ export class SunShadowMaps {
     this.slotSize = slotSize;
     this.slotTexels.value = slotSize;
     this.slotTexelUv.value = 1 / slotSize;
-    for (const [index, target] of this.targets.entries()) {
-      const used = index < count;
-      target.setSize(used ? slotSize : 1, used ? slotSize : 1);
-      const far = used ? SHADOW_FAR_SLOT_SIZE : 1;
-      this.farTargets[index]!.setSize(far, far);
-    }
+    this.target.setSize(slotSize, slotSize, MAX_SHADOW_SLOTS);
+    this.farTarget.setSize(SHADOW_FAR_SLOT_SIZE, SHADOW_FAR_SLOT_SIZE, MAX_SHADOW_SLOTS);
     // 張り直した深度マップの中身は不定なので、全枠を空にし、次のフレームの空戻しを上限まで
     // 走らせる — 縮めた枠にも前フレームの絵が残ったままだと、デバッグ表示が読み手を欺く。
     for (const slot of this.slotUniforms) slot.active.value = 0;
+    this.syncSlotParameters();
     this.drawnSlots = MAX_SHADOW_SLOTS;
   }
 
@@ -205,6 +218,7 @@ export class SunShadowMaps {
   // 1 つも無いフレームは、GPU 側の仕事がまったく発生しない。
   render(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
     for (const slot of this.slotUniforms) slot.active.value = 0;
+    this.syncSlotParameters();
     this.clusters.length = 0;
     this.clusterSizes.length = 0;
     this.clusterCaps.length = 0;
@@ -237,8 +251,8 @@ export class SunShadowMaps {
       }
       // 前フレームに使っていて今フレームは使わないスロットを空へ戻す。
       for (let index = this.clusters.length; index < this.drawnSlots; index++) {
-        for (const target of [this.targets[index]!, this.farTargets[index]!]) {
-          this.renderer.setRenderTarget(target);
+        for (const target of [this.target, this.farTarget]) {
+          this.renderer.setRenderTarget(target, index);
           this.renderer.clear(true, true, false);
         }
       }
@@ -269,8 +283,8 @@ export class SunShadowMaps {
         const slot = this.slotUniforms[index]!;
         if (!this.configureSlot(slot, cluster, this.clusterCaps[index]!, sun)) continue;
         this.drawNear.value = slot.near.value;
-        await compileInto(this.renderer, this.farTargets[index]!, scene, this.lightCamera);
-        await compileInto(this.renderer, this.targets[index]!, scene, this.lightCamera);
+        await compileInto(this.renderer, this.farTarget, scene, this.lightCamera);
+        await compileInto(this.renderer, this.target, scene, this.lightCamera);
       }
     } finally {
       scene.overrideMaterial = savedOverride;
@@ -286,7 +300,7 @@ export class SunShadowMaps {
     scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3, extentCap: number,
   ): void {
     const slot = this.slotUniforms[index]!;
-    this.renderer.setRenderTarget(this.farTargets[index]!);
+    this.renderer.setRenderTarget(this.farTarget, index);
     this.renderer.clear(true, true, false);
     if (!this.configureSlot(slot, box, extentCap, sun)) return;
     // 深度マテリアルはスロット共有なので、深度の原点をこのスロットの near へ差し替える。
@@ -296,10 +310,11 @@ export class SunShadowMaps {
       this.renderer.render(scene, this.lightCamera);
     }
     this.setLightDepthRange(Math.max(slot.near.value, this.bandSplit), this.nearBandFar);
-    this.renderer.setRenderTarget(this.targets[index]!);
+    this.renderer.setRenderTarget(this.target, index);
     this.renderer.clear(true, true, false);
     this.renderer.render(scene, this.lightCamera);
     slot.active.value = 1;
+    this.syncSlotParameters();
   }
 
   // ライトカメラが撮る深度の範囲を差し替える。**枠(left/right/top/bottom)は動かさない** —
@@ -493,9 +508,18 @@ export class SunShadowMaps {
     return near <= far ? { near, far } : null;
   }
 
+  private syncSlotParameters(): void {
+    for (const [index, slot] of this.slotUniforms.entries()) {
+      this.slotParameters[index]!.set(
+        slot.near.value, slot.coverDepth.value, slot.texelWorld.value, slot.active.value,
+      );
+    }
+  }
+
   // 保持している GPU 資源を解放する。
   dispose(): void {
-    for (const target of [...this.targets, ...this.farTargets]) target.dispose();
+    this.target.dispose();
+    this.farTarget.dispose();
     this.depthMaterial.dispose();
   }
 }

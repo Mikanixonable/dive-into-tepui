@@ -13,9 +13,9 @@ import {
   opaqueFractionOf,
 } from '../cloud/cumulus-shape';
 import type {
-  BoolNode, FloatNode, FloatUniform, Mat4Node, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node,
+  BoolNode, FloatNode, FloatUniform, IntNode, Mat4Node, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node,
 } from '../tsl-types';
-import type { SunShadowMaps, SunShadowSlot } from './sun-shadow-maps';
+import { MAX_SHADOW_SLOTS, type SunShadowMaps } from './sun-shadow-maps';
 import type { SunLight } from './sun-light';
 
 // 同時に遮蔽器として扱う天体の上限(グラフのスロット数)。
@@ -61,11 +61,6 @@ export interface CumulusShadow {
   readonly field: THREE.Texture;
 }
 
-interface OccluderUniforms {
-  readonly center: Vec3Uniform;
-  readonly axes: Vec3Uniform;
-  readonly bodyFromWorld: Mat4Uniform;
-}
 // 環面と視線の交差判定が発散しないよう、環面と恒星方向のなす角の余弦へ入れる下限。
 const RING_GRAZING_MIN = 0.015;
 
@@ -199,7 +194,13 @@ const ringBandTransmittance = Fn((
 });
 
 export class SunOcclusion {
-  private readonly occluders: readonly OccluderUniforms[];
+  // 遮蔽器ごとの値。動的な shader ループから uniform 配列で読む。
+  private readonly occluderCenters: THREE.Vector3[];
+  private readonly occluderAxes: THREE.Vector3[];
+  private readonly occluderBodyFromWorld: THREE.Matrix4[];
+  private readonly occluderCenterArray: THREE.UniformArrayNode<'vec3'>;
+  private readonly occluderAxesArray: THREE.UniformArrayNode<'vec3'>;
+  private readonly occluderBodyFromWorldArray: THREE.UniformArrayNode<'mat4'>;
   private readonly ringCenter: Vec3Uniform;
   private readonly ringAxis: Vec3Uniform;
   // 帯ごとの (inner, outer, tau, active)。書き換える配列から描画時に uniform 配列へ詰め直す。
@@ -220,11 +221,12 @@ export class SunOcclusion {
     private readonly sunLight: SunLight,
     private readonly shadowMaps: SunShadowMaps,
   ) {
-    this.occluders = Array.from({ length: MAX_OCCLUDERS }, () => ({
-      center: uniform(new THREE.Vector3()),
-      axes: uniform(new THREE.Vector3()),
-      bodyFromWorld: uniform(new THREE.Matrix4()),
-    }));
+    this.occluderCenters = Array.from({ length: MAX_OCCLUDERS }, () => new THREE.Vector3());
+    this.occluderAxes = Array.from({ length: MAX_OCCLUDERS }, () => new THREE.Vector3());
+    this.occluderBodyFromWorld = Array.from({ length: MAX_OCCLUDERS }, () => new THREE.Matrix4());
+    this.occluderCenterArray = uniformArray(this.occluderCenters, 'vec3');
+    this.occluderAxesArray = uniformArray(this.occluderAxes, 'vec3');
+    this.occluderBodyFromWorldArray = uniformArray(this.occluderBodyFromWorld, 'mat4');
     this.ringCenter = uniform(new THREE.Vector3());
     this.ringAxis = uniform(new THREE.Vector3(0, 1, 0));
     this.ringBands = Array.from({ length: MAX_RING_BANDS }, () => new THREE.Vector4());
@@ -240,18 +242,18 @@ export class SunOcclusion {
 
   // このフレームで遮蔽器として扱う天体の列(描画座標)。MAX_OCCLUDERS を超えた分は捨てる。
   setOccluders(occluders: readonly Occluder[]): void {
-    for (const [i, slot] of this.occluders.entries()) {
+    for (const [i, axes] of this.occluderAxes.entries()) {
       const occluder = occluders[i];
       // 空きスロットは半軸 0 で消す — 実効半径が 0 になり、遮蔽関数がそのまま素通しへ倒す。
-      slot.axes.value.copy(occluder?.axes ?? ZERO_AXES);
+      axes.copy(occluder?.axes ?? ZERO_AXES);
       if (occluder === undefined) continue;
-      slot.center.value.copy(occluder.center);
-      slot.bodyFromWorld.value.copy(occluder.bodyFromWorld);
+      this.occluderCenters[i]!.copy(occluder.center);
+      this.occluderBodyFromWorld[i]!.copy(occluder.bodyFromWorld);
     }
   }
 
   // このフレームに遮蔽器が 1 体でもあるか。**スロットは先頭から詰めるので先頭だけ見れば足りる。**
-  hasOccluders(): boolean { return this.occluders[0]!.axes.value.lengthSq() > 0; }
+  hasOccluders(): boolean { return this.occluderAxes[0]!.lengthSq() > 0; }
 
   // 環の影を落とす天体 1 体ぶんの帯。center/axis は描画座標、bands が空なら影は落ちない。
   setRings(center: THREE.Vector3, axis: THREE.Vector3, bands: readonly RingBand[]): void {
@@ -312,16 +314,17 @@ export class SunOcclusion {
     const sunDir = this.sunDirection(worldPos);
     const sunAngRadius = this.sunAngularRadius(worldPos);
     // 空きスロットも畳み込む。半軸 0 のスロットは素通しの 1 を返すので、有効な数で回す必要が無い。
-    let transmittance: FloatNode = float(1);
-    for (const occluder of this.occluders) {
-      transmittance = transmittance.mul(
-        ellipsoidTransmittance(
-          worldPos, sunDir, sunDist, sunAngRadius, occluder.center, occluder.axes,
-          occluder.bodyFromWorld,
-        ),
-      );
-    }
-    return transmittance;
+    return Fn(() => {
+      const transmittance = float(1).toVar();
+      Loop({ start: 0, end: MAX_OCCLUDERS, type: 'int', condition: '<' }, ({ i }) => {
+        transmittance.mulAssign(ellipsoidTransmittance(
+          worldPos, sunDir, sunDist, sunAngRadius,
+          this.occluderCenterArray.element(i), this.occluderAxesArray.element(i),
+          this.occluderBodyFromWorldArray.element(i),
+        ));
+      });
+      return transmittance;
+    })();
   }
 
   // 描画座標の点 worldPos へ、環の帯を通ってきた恒星の直射光が届く割合 0..1。
@@ -448,29 +451,31 @@ export class SunOcclusion {
   // 描画座標の点が、そのスロットの柱(枠 × [near, near + coverDepth])に入っているか。枠はフィルタの
   // 足のぶんだけ狭めて判定するので、選んだ時点で法線オフセットぶんずらした位置も PCF の円盤も
   // 枠の内側に収まり、引く側で縁を判じずに済む。
-  private slotCovers(slot: SunShadowSlot, worldPos: Vec3Node): BoolNode {
+  private slotCovers(
+    lightViewProjection: Mat4Node, lightView: Mat4Node, parameters: Vec4Node, worldPos: Vec3Node,
+  ): BoolNode {
     const margin = this.shadowMaps.uvPerTexel.mul(NORMAL_OFFSET_TEXELS + PCF_MAX_TEXELS);
     const inner = float(1).sub(margin);
-    const uv = this.slotUv(slot, worldPos);
-    const depth = this.slotDepth(slot, worldPos);
-    return greaterThan(slot.active, 0.5)
+    const uv = this.slotUv(lightViewProjection, worldPos);
+    const depth = this.slotDepth(lightView, parameters.x, worldPos);
+    return greaterThan(parameters.w, 0.5)
       .and(uv.x.greaterThan(margin)).and(uv.x.lessThan(inner))
       .and(uv.y.greaterThan(margin)).and(uv.y.lessThan(inner))
-      .and(depth.greaterThan(0)).and(depth.lessThan(slot.coverDepth));
+      .and(depth.greaterThan(0)).and(depth.lessThan(parameters.y));
   }
 
   // 描画座標の点を、そのスロットの深度マップの UV へ写す。**深度マップの v は上端が 0** —
   // 描いたとき NDC y=+1 の画素がテクスチャの 0 行目へ落ちるので、x と揃えて 0.5·y+0.5 に
   // すると鏡像になり、遮蔽器のシルエットが鏡に映した位置へ出る。
-  private slotUv(slot: SunShadowSlot, worldPos: Vec3Node): Vec2Node {
-    const clip = slot.lightViewProjection.mul(vec4(worldPos, 1));
+  private slotUv(lightViewProjection: Mat4Node, worldPos: Vec3Node): Vec2Node {
+    const clip = lightViewProjection.mul(vec4(worldPos, 1));
     const ndc = clip.xyz.div(clip.w);
     return vec2(ndc.x.mul(0.5).add(0.5), ndc.y.mul(-0.5).add(0.5));
   }
 
   // 描画座標の点の、そのスロットの near から測ったライト空間深度 [m]。深度マップの値と同じ単位。
-  private slotDepth(slot: SunShadowSlot, worldPos: Vec3Node): FloatNode {
-    return slot.lightView.mul(vec4(worldPos, 1)).z.negate().sub(slot.near);
+  private slotDepth(lightView: Mat4Node, near: FloatNode, worldPos: Vec3Node): FloatNode {
+    return lightView.mul(vec4(worldPos, 1)).z.negate().sub(near);
   }
 
   // 描画座標の点を覆うスロットのうち、texel がいちばん細かいものの番号。どれも覆っていなければ
@@ -480,14 +485,18 @@ export class SunOcclusion {
     return Fn(() => {
       const bestTexel = float(0).toVar();
       const bestIndex = float(-1).toVar();
+      const slots = this.shadowMaps.uniformArrays;
       // 覆っていて、いままでより texel が細かいスロットへ乗り換える。
-      for (const [index, slot] of this.shadowMaps.slots.entries()) {
-        const finer = bestIndex.lessThan(0).or(slot.texelWorld.lessThan(bestTexel));
-        If(this.slotCovers(slot, worldPos).and(finer), () => {
-          bestTexel.assign(slot.texelWorld);
-          bestIndex.assign(index);
+      Loop({ start: 0, end: MAX_SHADOW_SLOTS, type: 'int', condition: '<' }, ({ i }) => {
+        const parameters = slots.parameters.element(i);
+        const finer = bestIndex.lessThan(0).or(parameters.z.lessThan(bestTexel));
+        If(this.slotCovers(
+          slots.lightViewProjection.element(i), slots.lightView.element(i), parameters, worldPos,
+        ).and(finer), () => {
+          bestTexel.assign(parameters.z);
+          bestIndex.assign(float(i));
         });
-      }
+      });
       return bestIndex;
     })();
   }
@@ -516,11 +525,14 @@ export class SunOcclusion {
     return Fn(() => {
       const selected = this.selectSlot(worldPos);
       const visibility = float(1).toVar();
-      for (const [index, slot] of this.shadowMaps.slots.entries()) {
-        If(selected.equal(index), () => {
-          visibility.assign(this.slotVisibility(slot, worldPos, normal, sunDir, sunAngRadius));
-        });
-      }
+      const slots = this.shadowMaps.uniformArrays;
+      If(selected.greaterThanEqual(0), () => {
+        const layer = int(selected);
+        visibility.assign(this.slotVisibility(
+          layer, slots.lightViewProjection.element(layer), slots.lightView.element(layer), slots.parameters.element(layer),
+          worldPos, normal, sunDir, sunAngRadius,
+        ));
+      });
       return visibility;
     })();
   }
@@ -528,9 +540,10 @@ export class SunOcclusion {
   // スロット 1 つぶんの可視率。近層はブロッカー探索 1 タップで半影の幅を決め、その半径の
   // Vogel disk で PCF する。遠層のぶんは distantVisibility が返す。
   private slotVisibility(
-    slot: SunShadowSlot, worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node, sunAngRadius: FloatNode,
+    layer: IntNode, lightViewProjection: Mat4Node, lightView: Mat4Node, parameters: Vec4Node,
+    worldPos: Vec3Node, normal: Vec3Node, sunDir: Vec3Node, sunAngRadius: FloatNode,
   ): FloatNode {
-    const texel = slot.texelWorld;
+    const texel = parameters.z;
     // バイアスは 2 段構え。**無次元の定数は使えない** — スロットの広がりがフレームごとに
     // 変わるので、texel の実寸を単位に取る。法線方向のオフセットで受け手を遮蔽器から離し、
     // 残りを傾きに比例した深度バイアスで吸収する。
@@ -539,13 +552,13 @@ export class SunOcclusion {
     const offsetPos = worldPos.add(normal.mul(texel.mul(NORMAL_OFFSET_TEXELS)));
     const depthBias = min(texel.mul(slope).mul(2), texel.mul(MAX_SLOPE_BIAS_TEXELS));
 
-    const uvBase = this.slotUv(slot, offsetPos);
-    const receiverDepth = this.slotDepth(slot, offsetPos);
+    const uvBase = this.slotUv(lightViewProjection, offsetPos);
+    const receiverDepth = this.slotDepth(lightView, parameters.x, offsetPos);
 
     // 半影の幅を物理から出す。遮蔽器までの距離 (receiver − blocker) に恒星の視半径を掛けたものが
     // world 空間での半径で、それを texel へ直す。1 タップの探索は探索半径の外の遮蔽器を見逃す
     // (PCSS の既知の限界)ので細い部材の影の縁は硬いまま残るが、画面上 2px の差なので許容する。
-    const blockerDepth = texture(slot.texture, uvBase).r;
+    const blockerDepth = texture(this.shadowMaps.slots[0]!.texture, uvBase).depth(layer).r;
     const blockerDistance = max(receiverDepth.sub(blockerDepth), 0);
     const radiusTexels = clamp(sunAngRadius.mul(blockerDistance).div(texel), PCF_MIN_TEXELS, PCF_MAX_TEXELS);
     // 遮蔽器から遠ざかるほど本影は細り、遮蔽器の角半径が恒星の角半径を下回ると影は消える。
@@ -564,11 +577,11 @@ export class SunOcclusion {
       const angle = tap.mul(VOGEL_GOLDEN_ANGLE);
       const spread = sqrt(tap.add(0.5).div(PCF_TAPS));
       const uv = uvBase.add(vec2(cos(angle).mul(spread), sin(angle).mul(spread)).mul(step));
-      const stored = texture(slot.texture, uv).r;
+      const stored = texture(this.shadowMaps.slots[0]!.texture, uv).depth(layer).r;
       lit.addAssign(select(receiverDepth.sub(depthBias).greaterThan(stored), float(0), float(1)));
     });
     const visibility = float(1).sub(float(1).sub(lit.div(PCF_TAPS)).mul(umbraFade));
-    const distantVisibility = this.distantVisibility(slot, uvBase, receiverDepth.sub(depthBias), casterSize, sunAngRadius);
+    const distantVisibility = this.distantVisibility(layer, uvBase, receiverDepth.sub(depthBias), casterSize, sunAngRadius);
     // 法線オフセットが受け手を光源側へ押し出し、柱の手前へ抜けることがある。そこは遮られない。
     return select(receiverDepth.lessThan(0), float(1), visibility.mul(distantVisibility));
   }
@@ -577,10 +590,10 @@ export class SunOcclusion {
   // そのまま掛けられる。遠層に居るのは本影を失った遮蔽器だけで半影の幅は枠の 1 辺以上あるので、
   // PCF は要らず、遮られる面積比 (遮蔽器の角半径 / 恒星の角半径)² を 1 タップから返す。
   private distantVisibility(
-    slot: SunShadowSlot, uv: Vec2Node, receiverDepth: FloatNode, casterSize: FloatNode,
+    layer: IntNode, uv: Vec2Node, receiverDepth: FloatNode, casterSize: FloatNode,
     sunAngRadius: FloatNode,
   ): FloatNode {
-    const blockerDepth = texture(slot.farTexture, uv).r;
+    const blockerDepth = texture(this.shadowMaps.slots[0]!.farTexture, uv).depth(layer).r;
     const blockerDistance = receiverDepth.sub(blockerDepth);
     const shrink = casterSize.div(max(sunAngRadius.mul(blockerDistance).mul(2), 1e-9));
     // 遮蔽器の居ない texel は受け手より奥の深度で埋まっているので、そのまま素通しになる。
