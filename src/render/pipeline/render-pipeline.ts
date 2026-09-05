@@ -385,7 +385,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // 影パス。G バッファ深度だけを読むので scene は渡さない。
     this.shadowPass.render(camera, width, height);
 
-    // ライティングパス。G バッファと遮蔽度だけを読むので scene は渡さない。
+    // ライティングパス。G バッファと影の透過率だけを読むので scene は渡さない。
     this.lightPrepass.render(camera, width, height);
 
     // 模式図は G バッファの深度・法線だけから輪郭を出すため、マテリアルパス・大気パス・world

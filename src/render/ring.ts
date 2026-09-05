@@ -87,9 +87,9 @@ function ringOpticsNodes(
   const baseExtinction = float(1).sub(transmittance);
   const extinction = baseExtinction.mul(coverage);
 
-  // 直射散乱が受ける遮蔽。本体も他の天体も、遮蔽パスの受け手と同じ 1 つの関数から引く
+  // 直射散乱が受ける影。本体も他の天体も、影パスの受け手と同じ 1 つの関数から引く
   // ので、境界は半影の幅でぼける。**環の帯は源から外す** — 環のフラグメントは自分が乗って
-  // いる帯の平面上に居るため、含めると自己遮蔽で刃こぼれする。
+  // いる帯の平面上に居るため、含めると自分自身の影で刃こぼれする。
   const directLight = bodyShadow.transmittance(positionWorld);
 
   const denominator = float(1).add(phaseG.mul(phaseG)).sub(

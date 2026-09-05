@@ -1,13 +1,13 @@
 // 恒星の直射光を遮るメッシュ(艦艇・基地・デブリなど)を、恒星方向を向いた平行投影のライト空間へ
 // 描き、線形深度をスロットごとの深度マップへ書く。
 //
-// **スロットは視錐台の深度分割ではなく、遮蔽器の塊 1 つずつへ枠を合わせる。** 枠どうしは重なりうる
-// ので、**どのスロットも自分の枠に入る遮蔽器をすべて描く** — 受け手はそのうち 1 つを選ぶだけで
+// **スロットは視錐台の深度分割ではなく、メッシュの塊 1 つずつへ枠を合わせる。** 枠どうしは重なりうる
+// ので、**どのスロットも自分の枠に入るメッシュをすべて描く** — 受け手はそのうち 1 つを選ぶだけで
 // 答えが得られる。
 //
 // **1 スロットは深度マップを 2 枚持つ。** 光源にいちばん近いものが勝つ深度テストは 1 枚に 1 つの
-// 遮蔽器しか残せないので、枠から見て本影が残る遮蔽器と、本影を失って淡い減光しか残さない
-// 遮蔽器を、同じ枠・同じ uv の別の層へ分けて撮る。混ぜると、遠くて淡いものが至近の濃いものを
+// メッシュしか残せないので、枠から見て本影が残るメッシュと、本影を失って淡い減光しか残さない
+// メッシュを、同じ枠・同じ uv の別の層へ分けて撮る。混ぜると、遠くて淡いものが至近の濃いものを
 // 追い出す。
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
@@ -27,21 +27,21 @@ export const MAX_SHADOW_SLOTS = 4;
 // スロットのフィルタの足が枠からはみ出さない。
 const SLOT_MARGIN_TEXELS = 10;
 
-// 本影が消えるまでの距離を枠の 1 辺の何倍に取るか。差し渡し S の遮蔽器の本影は太陽の視半径
-// θ☉ = 4.65e-3 から D = S/(2·θ☉) = 107.5·S で消え、そこから先の遮蔽率は (107.5·S/D)² で落ちる。
-// **枠から見てここより手前に居る遮蔽器は、近層の深度テストへ参加させない**(下の farTargets)。
+// 本影が消えるまでの距離を枠の 1 辺の何倍に取るか。差し渡し S のメッシュの本影は太陽の視半径
+// θ☉ = 4.65e-3 から D = S/(2·θ☉) = 107.5·S で消え、そこから先の影の濃さは (107.5·S/D)² で落ちる。
+// **枠から見てここより手前に居るメッシュは、近層の深度テストへ参加させない**(下の farTargets)。
 const UMBRA_SPAN = 107.5;
 
-// 遠層の 1 辺 [texel]。遠層に写る遮蔽器は本影を失っていて、半影の幅は枠の 1 辺以上ある
+// 遠層の 1 辺 [texel]。遠層に写るメッシュは本影を失っていて、半影の幅は枠の 1 辺以上ある
 // (2·θ☉·D ≥ S)。**枠の 1 辺より広くぼけた影に、近層と同じ細かさは要らない。**
 const SHADOW_FAR_SLOT_SIZE = 256;
 
-// 遮蔽器が 1 つも写らなかった texel を埋める深度 [m]。**受け手のライト空間深度がこれを超える
-// ことはない**ので、受け手はそのまま「自分より奥に遮蔽器が居る = 遮られていない」と読める。
+// メッシュが 1 つも写らなかった texel を埋める深度 [m]。**受け手のライト空間深度がこれを超える
+// ことはない**ので、受け手はそのまま「自分より奥にメッシュが居る = 遮られていない」と読める。
 // 正規化した深度で空を 1.0 と表すと、枠の far より遠い受け手を区別できない。
 const EMPTY_DEPTH = 1e30;
 
-// 影を描かないフレームの遮蔽器の列。
+// 影を描かないフレームのメッシュの列。
 const NO_CASTERS: readonly ShadowCaster[] = [];
 
 // 受け手が shader 内で動的にスロットを選ぶために引く、スロットごとの値。**スロットの値の
@@ -143,7 +143,7 @@ export class ShadowMaps {
     };
 
     // near からのメートルで書く。**正規化しない** — 空の texel を EMPTY_DEPTH で埋めることで、
-    // 枠の far より遠い受け手も「遮蔽器が居ない」を区別して読めるようにする。
+    // 枠の far より遠い受け手も「メッシュが居ない」を区別して読めるようにする。
     const linearDepth: FloatNode = positionView.z.negate().sub(this.drawNear);
     this.depthMaterial = new MeshBasicNodeMaterial({
       depthTest: true, depthWrite: true, transparent: false,
@@ -154,10 +154,10 @@ export class ShadowMaps {
     this.setQuality(enabled, slotCount, slotSize, texelsPerPixel);
   }
 
-  // 近層の深度マップ。枠から見て本影が残る距離にある遮蔽器だけが、スロットの層へ写る。
+  // 近層の深度マップ。枠から見て本影が残る距離にあるメッシュだけが、スロットの層へ写る。
   get texture(): THREE.Texture { return this.target.texture; }
 
-  // 同じ枠・同じ uv の遠層の深度マップ。本影を失った遮蔽器だけが写る。**近層と写る遮蔽器が
+  // 同じ枠・同じ uv の遠層の深度マップ。本影を失ったメッシュだけが写る。**近層と写るメッシュが
   // 排他なので、2 枚から出した透過率はそのまま掛けられる。**
   get farTexture(): THREE.Texture { return this.farTarget.texture; }
 
@@ -191,7 +191,7 @@ export class ShadowMaps {
     this.drawnSlots = MAX_SHADOW_SLOTS;
   }
 
-  // 遮蔽器を枠へまとめ、枠ごとに 1 スロットを描く。影が切られているか、影を要求する受け手が
+  // メッシュを枠へまとめ、枠ごとに 1 スロットを描く。影が切られているか、影を要求する受け手が
   // 1 つも無いフレームは、GPU 側の仕事がまったく発生しない。
   render(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
     this.clearSlots();
@@ -199,7 +199,7 @@ export class ShadowMaps {
     this.clusterSizes.length = 0;
     this.clusterCaps.length = 0;
     if (this.enabled) {
-      // 遮蔽器の箱は親の変換込みで測る必要がある。**Box3.expandByObject は親の行列を更新しない**
+      // メッシュの箱は親の変換込みで測る必要がある。**Box3.expandByObject は親の行列を更新しない**
       // ので、このパスがフレームの先頭で走る限り、ここで確定させないと箱が前フレームの位置で作られる。
       scene.updateMatrixWorld();
       this.casters = this.shadowCasters.collect(scene, camera, viewportHeight, sun, this.texelsPerPixel);
@@ -218,7 +218,7 @@ export class ShadowMaps {
       this.renderer.autoClear = true;
       scene.overrideMaterial = this.depthMaterial;
       this.lightCamera.layers.set(SHADOW_CASTER_LAYER);
-      // 遮蔽器の居ない範囲が影にならないよう、空の texel はどの受け手よりも遠い深度で埋める。
+      // メッシュの居ない範囲が影にならないよう、空の texel はどの受け手よりも遠い深度で埋める。
       this.renderer.setClearColor(this.emptyDepth, 1);
       // beginPass はこのあとの renderer.render() 呼び出しの直前に呼び、GPU 計測の対象パスを申告する。
       this.gpu.beginPass(GPU_PASS.shadowMap);
@@ -266,11 +266,11 @@ export class ShadowMaps {
     }
   }
 
-  // 枠 1 つをスロット index へ描く。**枠に入る遮蔽器はすべて描く** — 枠の外は平行投影が落とす。
+  // 枠 1 つをスロット index へ描く。**枠に入るメッシュはすべて描く** — 枠の外は平行投影が落とす。
   //
-  // 撮るのは 2 枚。**本影が残る距離に居る遮蔽器と、本影を失った遮蔽器を、別の深度マップへ分ける**
-  // — 1 枚に混ぜると、光源にいちばん近いものが勝つ深度テストで、遠くて淡い遮蔽器が至近の濃い
-  // 遮蔽器を追い出してしまう。遠層に写るものが 1 つも無いときは空のまま残す。
+  // 撮るのは 2 枚。**本影が残る距離に居るメッシュと、本影を失ったメッシュを、別の深度マップへ分ける**
+  // — 1 枚に混ぜると、光源にいちばん近いものが勝つ深度テストで、遠くて淡いメッシュが至近の濃い
+  // メッシュを追い出してしまう。遠層に写るものが 1 つも無いときは空のまま残す。
   private drawSlot(
     scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3, extentCap: number,
   ): void {
@@ -300,12 +300,12 @@ export class ShadowMaps {
   }
 
   // 要求の厳しい受け手から順に枠を配る。**枠は受け手のまわりに、要求どおりの大きさで開く** —
-  // 影を落とす遮蔽器は平行投影でちょうどその枠に重なるものなので、枠が受け手を覆えば必要な
-  // 遮蔽器だけが入る。低い要求のために広げると、その枠を起こした受け手まで一緒に粗くなるので
+  // 影を落とすメッシュは平行投影でちょうどその枠に重なるものなので、枠が受け手を覆えば必要な
+  // メッシュだけが入る。低い要求のために広げると、その枠を起こした受け手まで一緒に粗くなるので
   // 広げない。既存の枠へ相乗りできるのは、枠の大きさを変えずに平行移動して収まるときだけで、
   // 枠が尽きていればその受け手は諦める(要求の緩い側から捨てられる)。
   //
-  // **最後の 1 枚は被覆に取っておく。** 要求どおりに縮めた枠は遮蔽器を覆いきれないので、
+  // **最後の 1 枚は被覆に取っておく。** 要求どおりに縮めた枠はメッシュを覆いきれないので、
   // はみ出した部分を拾う粗い枠が要る。
   private buildClusters(): void {
     const windowSlots = this.slotCount - 1;
@@ -442,16 +442,16 @@ export class ShadowMaps {
     this.lightCamera.top = extent;
     this.lightCamera.bottom = -extent;
 
-    // **near も far も枠から導出する。** 枠に交わる遮蔽器を光源寄りの端から遠い端まで漏れなく
+    // **near も far も枠から導出する。** 枠に交わるメッシュを光源寄りの端から遠い端まで漏れなく
     // 撮ることで、この 1 組だけで枠の中の答えが完結する。far は柱の終端で頭打ちにする — その先
-    // にある遮蔽器が影を落とす相手は、もうこのスロットの被覆の外に居る。
+    // にあるメッシュが影を落とす相手は、もうこのスロットの被覆の外に居る。
     // 柱の長さが深度の値域も抑える — 深度の数値精度はここから従属して決まり、この長さでも
     // float32 に 24 倍の余裕がある。
     const span = COLUMN_SPAN * 2 * extent;
     const depths = this.casterDepthRange(extent);
     if (depths === null) return false;
     const far = Math.min(Math.max(depths.far, eyeDistance + extent), depths.near + span);
-    // 枠から見て本影が残るのはここまで。これより光源寄りの遮蔽器は遠層が受け持つ。
+    // 枠から見て本影が残るのはここまで。これより光源寄りのメッシュは遠層が受け持つ。
     this.bandSplit = frameFront - UMBRA_SPAN * 2 * extent;
     this.nearBandFar = far;
     this.setLightDepthRange(depths.near, far);
@@ -465,8 +465,8 @@ export class ShadowMaps {
     return true;
   }
 
-  // いま構えているライトカメラの枠(半径 extent)に uv で交わる遮蔽器の、ライト空間での深度の
-  // 範囲。**枠から外れた遮蔽器は影を枠の中へ落とせない**ので数えない。1 つも交わらなければ null。
+  // いま構えているライトカメラの枠(半径 extent)に uv で交わるメッシュの、ライト空間での深度の
+  // 範囲。**枠から外れたメッシュは影を枠の中へ落とせない**ので数えない。1 つも交わらなければ null。
   private casterDepthRange(extent: number): { readonly near: number; readonly far: number } | null {
     let near = Infinity;
     let far = -Infinity;

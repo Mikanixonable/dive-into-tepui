@@ -1,5 +1,5 @@
-// 遮蔽パスがこの1フレームに扱う遮蔽器・環・積雲の殻を選ぶ。絵に出ない遮蔽を落とす閾値も、環を
-// 1体に絞る判断も、積雲の影を出す設定の読み方も、遮蔽パスのグラフの形が決めるものなのでここが持つ。
+// 影パスがこの1フレームに扱う天体・環・積雲の殻を選ぶ。絵に出ない影を落とす閾値も、環を
+// 1体に絞る判断も、積雲の影を出す設定の読み方も、影パスのグラフの形が決めるものなのでここが持つ。
 import { maxShadowedFraction } from '../../../physics/shadow';
 import { len, sub } from '../../../math/vec3';
 import { MAX_SHADOW_BODIES } from './body-shadow';
@@ -9,12 +9,12 @@ import type { Vec3 } from '../../../math/vec3';
 import type { RingBand } from './ring-shadow';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 
-// 遮蔽器として残す最大遮蔽率の下限。これを下回る天体は、どの向きでも恒星面の 1% 未満しか
+// 影を落とす天体として残す、影の濃さの上限の下限。これを下回る天体は、どの向きでも恒星面の 1% 未満しか
 // 隠せないので、落としても絵に出ない(physics/shadow.ts の maxShadowedFraction)。
 const MIN_SHADOWED_FRACTION = 1e-2;
 
-// 遮蔽器と環を順位づける尺度。視半径が大きい天体ほど、その影が画面に写っている何かへ落ちる
-// 見込みが高い。恒星の視半径が同じなら最大遮蔽率は視半径に比例するので、この並びは最大遮蔽率の
+// 天体と環を順位づける尺度。視半径が大きい天体ほど、その影が画面に写っている何かへ落ちる
+// 見込みが高い。恒星の視半径が同じなら影の濃さの上限は視半径に比例するので、この並びは濃さの
 // 降順と一致する。
 function apparentRadius(radius: number, center: Vec3, cameraPos: Vec3): number {
   return radius / Math.max(1, len(sub(center, cameraPos)));
@@ -41,7 +41,7 @@ export interface RingShadowCandidate {
   readonly bands: readonly RingBand[];
 }
 
-// このフレームに遮蔽器として扱う天体を、視半径の大きい順に MAX_SHADOW_BODIES 体まで返す。
+// このフレームに影を落とす天体として扱うものを、視半径の大きい順に MAX_SHADOW_BODIES 体まで返す。
 // **星系の全天体を渡すこと** — 恒星と半径 0 の天体はここで落とす。focusPos はマップの
 // 注視点(天体でない対象を注視しているなら null)。
 export function selectShadowBodies(
@@ -62,7 +62,7 @@ export function selectShadowBodies(
     .map(({ celestialBody }) => celestialBody);
 }
 
-// 積雲の殻を遮蔽の源として数える設定か。積雲を描かない設定(雲オフ・積雲の段オフ)では影も消える。
+// 積雲の殻を影の源として数える設定か。積雲を描かない設定(雲オフ・積雲の段オフ)では影も消える。
 export function castsCumulusShadow(graphics: GraphicsSettingsData): boolean {
   return graphics.clouds && graphics.cumulusShadow
     && graphics.cumulusDetail !== CUMULUS_DETAIL.off;

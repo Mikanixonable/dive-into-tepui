@@ -99,7 +99,7 @@ export class RingShadow {
   // 描画座標の点 worldPos へ、環の帯を通ってきた恒星の直射光が届く割合 0..1。
   //
   // **環そのものを描くフラグメントは源から外すこと** — 自分が乗っている帯の平面上に居るため、
-  // 含めると自己遮蔽で刃こぼれする。
+  // 含めると自分自身の影で刃こぼれする。
   transmittance(worldPos: Vec3Node): FloatNode {
     const sunDir = this.sunLight.directionFrom(worldPos);
     const sunAngRadius = this.sunLight.angularRadiusFrom(worldPos);
