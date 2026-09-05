@@ -238,15 +238,20 @@ function saveGray(name, field) {
 }
 
 // 平均と、TONE_LEVELS で区切った段ごとの割合 shares(下から順)、その両端 — 晴れ(< CLEAR_LEVEL)の
-// 割合 low と真っ白(> WHITE_LEVEL)の割合 high。
+// 割合 low と真っ白(> WHITE_LEVEL)の割合 high — そして 8bit の両端へ張り付いた割合 zero(= 0)と
+// full(= 1)。張り付きは伝達関数が階調を捨てた印で、段の割合からは読めない。
 function toneStats(field) {
   const counts = new Float64Array(TONE_LEVELS.length + 1);
   let sum = 0;
+  let zero = 0;
+  let full = 0;
   for (const v of field.data) {
     let bin = 0;
     while (bin < TONE_LEVELS.length && v >= TONE_LEVELS[bin]) bin++;
     counts[bin]++;
     sum += v;
+    if (v <= 0) zero++;
+    if (v >= 1) full++;
   }
   const n = field.data.length;
   const shares = Array.from(counts, (count) => count / n);
@@ -255,6 +260,8 @@ function toneStats(field) {
     shares,
     low: shares.slice(0, clearBins).reduce((a, b) => a + b, 0),
     high: shares[TONE_LEVELS.indexOf(WHITE_LEVEL) + 1],
+    zero: zero / n,
+    full: full / n,
     mean: sum / n,
   };
 }
@@ -522,19 +529,23 @@ function printSpectrumTable(header, wavelengthOf, reference, generated, referenc
   }
 }
 
-// 階調の表。rows は { label, field }。TONE_LEVELS で区切った段ごとの割合 [%]、平均、局所コントラスト、
-// 晴れ(< CLEAR_LEVEL)と真っ白(> WHITE_LEVEL)の割合 [%] を場ごとに 1 行で出す。
+// 階調の表。rows は { label, field, source }(source は張り付きを数える元の場。既定は field)。
+// TONE_LEVELS で区切った段ごとの割合 [%]、平均、局所コントラスト、
+// 晴れ(< CLEAR_LEVEL)と真っ白(> WHITE_LEVEL)の割合 [%]、8bit の両端へ張り付いた割合 [%] を
+// 場ごとに 1 行で出す。
 function printToneTable(header, rows) {
   console.log(header);
   const marks = TONE_LEVELS.map((level) => level.toFixed(2).slice(1));
   const bins = [`<${marks[0]}`, ...marks.slice(0, -1).map((mark, i) => `${mark}-${marks[i + 1]}`), `>${marks.at(-1)}`];
   console.log(`${'場'.padEnd(12)}  ${bins.map((bin) => bin.padStart(8)).join('')}`
-    + `   平均  局所コントラスト  晴れ<${CLEAR_LEVEL}  >${WHITE_LEVEL}`);
-  for (const { label, field } of rows) {
+    + `   平均  局所コントラスト  晴れ<${CLEAR_LEVEL}  >${WHITE_LEVEL}  黒潰れ=0  白飛び=1`);
+  for (const { label, field, source } of rows) {
     const tone = toneStats(field);
+    const ends = source === undefined ? tone : toneStats(source);
     console.log(`${label.padEnd(12)}  ${tone.shares.map((share) => (share * 100).toFixed(1).padStart(8)).join('')}`
       + `  ${tone.mean.toFixed(3)}  ${localContrastOf(field).toFixed(4).padStart(14)}`
-      + `  ${(tone.low * 100).toFixed(1).padStart(8)}%  ${(tone.high * 100).toFixed(1).padStart(5)}%`);
+      + `  ${(tone.low * 100).toFixed(1).padStart(8)}%  ${(tone.high * 100).toFixed(1).padStart(5)}%`
+      + `  ${(ends.zero * 100).toFixed(1).padStart(7)}%  ${(ends.full * 100).toFixed(1).padStart(7)}%`);
   }
 }
 
@@ -758,11 +769,16 @@ async function main() {
 
   const y60 = rowAtLatitude(60);
   const bandHeight = rowAtLatitude(-60) - y60;
+  // 薄い雲は輝度へ写したものを比べるので、張り付きは写す前の光学的厚み(撮影そのもの)で数える。
   const TONE_FIELDS = [['実写計', 'photo'], ['合成', 'composite'], ['実写厚', 'thick'],
-    ['被覆率', 'coverage'], ['実写薄', 'veil'], ['薄い雲(輝度)', 'translucent']];
+    ['被覆率', 'coverage'], ['実写薄', 'veil'], ['薄い雲(輝度)', 'translucent', globeOf('translucent')]];
   printToneTable(
-    `\n=== 階調(全球面・±60°): 段ごとの割合 [%]・平均・局所コントラスト(${CONTRAST_WINDOW}×${CONTRAST_WINDOW} texel の標準偏差の平均)・晴れ・真っ白 ===`,
-    TONE_FIELDS.map(([label, key]) => ({ label, field: cropField(globe[key], 0, y60, GLOBE_W, bandHeight) })));
+    `\n=== 階調(全球面・±60°): 段ごとの割合 [%]・平均・局所コントラスト(${CONTRAST_WINDOW}×${CONTRAST_WINDOW} texel の標準偏差の平均)・晴れ・真っ白・張り付き ===`,
+    TONE_FIELDS.map(([label, key, source]) => ({
+      label,
+      field: cropField(globe[key], 0, y60, GLOBE_W, bandHeight),
+      source: source && cropField(source, 0, y60, GLOBE_W, bandHeight),
+    })));
 
   console.log('\n=== のっぺり率(全球面・±60°): 0.06〜0.25 かつ 5×5 texel の標準偏差 < 0.02 ===');
   for (const [label, key] of [['実写計', 'photo'], ['実写厚', 'thick'], ['合成', 'composite'], ['被覆率', 'coverage']]) {
