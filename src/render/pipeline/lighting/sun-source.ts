@@ -1,5 +1,5 @@
 // 恒星の直射光の寄与。光源モデルの設定で「点光源 + GGX」と「一様球の閉じた解 + LTC」を
-// 選ぶ。どちらも遮蔽パスの透過率を掛けて出す。
+// 選ぶ。どちらも影パスの透過率を掛けて出す。
 import * as THREE from 'three/webgpu';
 import { PI, clamp, dot, length, max, normalize, saturate, texture } from 'three/tsl';
 import { ggxSpecularFactor } from './ggx';
@@ -46,7 +46,7 @@ export class SunSource implements LightSource {
     const toSun = sample.viewPositionOf(this.sunLight.position).sub(sample.position);
     const lightDir = normalize(toSun);
     const dotNL: FloatNode = saturate(dot(sample.normal, lightDir));
-    // 恒星から届く放射照度(遮蔽込み)。拡散・鏡面の両方がこれへ BRDF を掛ける。
+    // 恒星から届く放射照度(影込み)。拡散・鏡面の両方がこれへ BRDF を掛ける。
     const irradiance: Vec3Node = this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
       .mul(dotNL).mul(texture(this.shadow.texture, sample.uv).r);
