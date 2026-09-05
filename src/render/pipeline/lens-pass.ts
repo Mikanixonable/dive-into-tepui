@@ -15,6 +15,7 @@ import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { FloatUniform, Vec2Uniform, Vec3Node } from '../tsl-types';
 import { apertureGhosts, downsample, streakPass, streakStride, tentUpsample } from './lens-kernels';
+import { compileInto } from './compile-into';
 
 // 縮小チェーンの段数。いちばん粗い段の 1 テクセルが画面の 1/32 を覆う。
 const LEVELS = 5;
@@ -192,6 +193,19 @@ export class LensPass {
     this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);
     this.drawn = true;
+  }
+
+  // 各フィルタを実際の縮小ターゲットへ事前コンパイルする。
+  async compile(width: number, height: number): Promise<void> {
+    this.resize(width, height);
+    for (const stage of this.down) await compileInto(this.renderer, stage.target, stage.quad, stage.quad.camera);
+    for (const filters of this.streakChain) {
+      for (const filter of filters) {
+        await compileInto(this.renderer, this.streakTarget, filter.quad, filter.quad.camera);
+      }
+    }
+    for (const stage of this.up) await compileInto(this.renderer, stage.target, stage.quad, stage.quad.camera);
+    await compileInto(this.renderer, this.ghosts.target, this.ghosts.quad, this.ghosts.quad.camera);
   }
 
   // 設定でレンズ効果が切られている間、render の代わりに呼ぶ。**切り替わった最初の 1 フレーム

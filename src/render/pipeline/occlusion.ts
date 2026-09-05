@@ -13,6 +13,7 @@ import { octDecodeNormal, type GBufferPass } from './gbuffer';
 import { viewPositionAt } from './view-ray';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { SunOcclusion } from './sun-occlusion';
+import { compileInto } from './compile-into';
 
 // 画素の覆う実寸を伸ばす入射角の余弦の下限。地平線では 0 へ落ちるので、伸びしろに天井を張る。
 const MIN_INCIDENCE_COSINE = 0.05;
@@ -138,6 +139,18 @@ export class OcclusionPass {
     this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);
     this.renderer.setClearColor(this.savedClearColor, savedClearAlpha);
+  }
+
+  // 遮蔽源ごとの全マテリアルを透過率ターゲットへ事前コンパイルする。
+  async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
+    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
+    this.viewToWorld.value.copy(camera.matrixWorld);
+    this.pixelAngle.value = 2 / (camera.projectionMatrix.elements[5]! * height);
+    for (const source of this.sources) {
+      this.quad.material = source.material;
+      await compileInto(this.renderer, this.target, this.quad, this.quad.camera);
+    }
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで

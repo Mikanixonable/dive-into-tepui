@@ -140,7 +140,15 @@ export class Game {
       gs.pipeline.planetLight, gs.pipeline.ambient, gs.pipeline.atmosphere,
     );
     await progress.enter('run');
-    return new Game(gs, stageClass, hud, audioEngine, pauseMenu, sections, celestialSystem, initialSave);
+    const game = new Game(gs, stageClass, hud, audioEngine, pauseMenu, sections, celestialSystem, initialSave);
+    await progress.enter('shaders');
+    await gs.pipeline.compile(
+      gs.scene,
+      game.cameraSystem.activeCamera,
+      hud.renderStyle.current,
+      (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
+    );
+    return game;
   }
 
   // このランを1件ぶんのセーブ本体へ畳む。各サブシステム自身の serialize を集める —

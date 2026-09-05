@@ -10,6 +10,7 @@ import { WORLD_BACKGROUND_LAYER } from './lit-layer';
 import type { GBufferPass } from './gbuffer';
 import type { LightPrepass } from './light-prepass';
 import type { Vec3Node, Vec4Node } from '../tsl-types';
+import { compileInto } from './compile-into';
 
 // 画素の最終的な陰影。拡散は BRDF_Lambert(ベース色×(1−金属度)/π)、鏡面は F0(誘電体 0.04 と
 // 金属色を金属度で混ぜた値)を照度へ掛け、自己発光を足す。照度バッファが持つのは放射照度なので、
@@ -75,6 +76,20 @@ export class MaterialPass {
 
     this.renderer.setRenderTarget(null);
     camera.layers.mask = savedMask;
+  }
+
+  // 背景と陰影の板を共有ターゲットへ事前コンパイルする。
+  public async compile(
+    scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget,
+  ): Promise<void> {
+    const savedMask = camera.layers.mask;
+    camera.layers.set(WORLD_BACKGROUND_LAYER);
+    try {
+      await compileInto(this.renderer, sharedTarget, scene, camera);
+      await compileInto(this.renderer, sharedTarget, this.quad, this.quad.camera);
+    } finally {
+      camera.layers.mask = savedMask;
+    }
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の板は three が全インスタンスで共有するので解放しない。

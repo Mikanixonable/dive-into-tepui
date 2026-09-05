@@ -22,6 +22,7 @@ import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Unif
 import type { GBufferPass } from './gbuffer';
 import type { SunOcclusion } from './sun-occlusion';
 import type { SunLight } from './sun-light';
+import { compileInto } from './compile-into';
 
 // 消散係数の下限 [1/m]。散乱の割合を消散で割るときの 0/0 を塞ぐ。
 const MIN_EXTINCTION = 1e-30;
@@ -449,6 +450,13 @@ export class AtmospherePass {
     this.quad.render(this.renderer);
     this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);
+  }
+
+  // 大気の合成板を共有ターゲットへ事前コンパイルする。
+  public async compile(camera: THREE.Camera, sharedTarget: THREE.RenderTarget): Promise<void> {
+    this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
+    this.viewToWorld.value.copy(camera.matrixWorld);
+    await compileInto(this.renderer, sharedTarget, this.quad, this.quad.camera);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
