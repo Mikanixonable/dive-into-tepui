@@ -385,8 +385,9 @@ function displaceVertices(geo: THREE.BufferGeometry, map: (x: number, y: number,
 
 // 破片ジオメトリのバリアント本数。DebrisPiece がこの中から乱択して自分の形状とする。
 // バリアント1本につき InstancedPool が1本増え、G バッファと影パスのシェーダが1本ずつ
-// 起動時にコンパイルされるので、増やすほど起動が伸びる。
-export const DEBRIS_FRAGMENT_VARIANT_COUNT = 4;
+// 起動時にコンパイルされるので、増やすほど起動が伸びる。**7 を下回らせない** — 形の帯を
+// 等間隔に叩くので、これより少ないと 6 つの形のどれかが 1 本も出なくなる。
+export const DEBRIS_FRAGMENT_VARIANT_COUNT = 7;
 // バリアントの寸法を決める乱数のシード(起動のたびに形が変わらないよう固定する)。
 const DEBRIS_FRAGMENT_SEED = 0xdeb71;
 
