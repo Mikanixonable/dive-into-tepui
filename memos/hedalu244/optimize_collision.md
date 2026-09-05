@@ -311,6 +311,7 @@ ribbon 側は縦 12 → 1 で 12 分の1(残基あたり 96 → 8 枚)、coil �
 | ベルトを sim clock へ移したのに `contactProxies` へ渡す dt がフレーム dt のまま | 節点の速度が倍率ぶんずれ、接触の反発が過大/過小になる | 手順2。`belt.update` / `contactProxies` / `applyContactProxies` の3つが同じ subDt を受けているか、呼び出し元1箇所で確かめる |
 | ベルトと物体が `CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8` を分け合うようになる | 混戦で接触の解決が次 substep へ持ち越され、めり込みが見える | 手順2。目視で確かめ、足りなければ定数を上げる |
 | 添字化で参加者列の並びとグリッドの中身がずれる | 別の個体の状態で反発を解く。NaN ではなく「もっともらしく間違う」ので watchdog にも掛からない | 手順3。`contactPairs` が手順2の実施後と同値であることを確認する |
+| `SpatialGrid` が substep ごとにセルの器を作り捨てるようになった | 占有セル数ぶんの `Map` と配列が毎 substep 死ぬ。node では average mu = 0.999 で見えないが、ブラウザの GC は別物 | 手順3。実機の負荷ウィンドウで、フレーム時間の分布に周期的な跳ねが出ていないか見る |
 | スカラー化で非有限の扱いが変わる | NaN が絞り込みを素通りし、判定器の側で落ちる | 手順4。比較を `!(x <= y)` の否定形で書く(`sphere-contact.ts:75` と同じ規則) |
 | BVH の葉に入る三角形の並びが変わる | 同じ深さで複数枚に当たるとき、返る接触点が変わりうる | 手順5。`tests/math` の新規回帰と `protein-ribbon-collision.test.ts` |
 | アセットで共有した衝突形状を、どれかの個体が書き換える | 全個体の当たりが同時に狂う | 手順6。`ProteinRibbonCollisionGeometry` に可変フィールドを持たせない |
