@@ -170,7 +170,7 @@ export abstract class CelestialEntity implements ObjectPickable {
     return 'rings' in def ? def.rings ?? null : null;
   }
 
-  // 遮蔽パスへ渡す積雲の殻 1 体ぶん。殻を持たない天体では null。
+  // 影パスへ渡す積雲の殻 1 体ぶん。殻を持たない天体では null。
   public cumulusShadowAt(_fo: FloatingOrigin, _displayTime: number): ShadowCumulus | null {
     return null;
   }
