@@ -18,6 +18,7 @@ import type { FloatNode, FloatUniform, Mat4Uniform } from '../tsl-types';
 import { SUN_SHADOW_CASTER_LAYER } from './lit-layer';
 import { COLUMN_SPAN, ShadowCasters, type ShadowCaster } from './sun-shadow-casters';
 import type { SunLight } from './sun-light';
+import { compileInto } from './compile-into';
 
 // 深度マップを確保するスロットの上限。設定で選べる枚数の上限でもある。**受け手が引くグラフは
 // この数だけ静的に展開される**ので、上限を上げると、少ない枚数を選んだ受け手のグラフまで
@@ -247,6 +248,32 @@ export class SunShadowMaps {
       this.renderer.setRenderTarget(savedTarget);
       this.renderer.autoClear = savedAutoClear;
       this.renderer.setClearColor(savedClearColor, savedClearAlpha);
+    }
+  }
+
+  // 影キャスターを深度マップの添付形式で事前コンパイルする。
+  async compile(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): Promise<void> {
+    const savedOverride = scene.overrideMaterial;
+    try {
+      scene.updateMatrixWorld();
+      this.casters = this.enabled
+        ? this.shadowCasters.collect(scene, camera, viewportHeight, sun, this.texelsPerPixel)
+        : NO_CASTERS;
+      this.clusters.length = 0;
+      this.clusterSizes.length = 0;
+      this.clusterCaps.length = 0;
+      if (this.enabled) this.buildClusters();
+      scene.overrideMaterial = this.depthMaterial;
+      this.lightCamera.layers.set(SUN_SHADOW_CASTER_LAYER);
+      for (const [index, cluster] of this.clusters.entries()) {
+        const slot = this.slotUniforms[index]!;
+        if (!this.configureSlot(slot, cluster, this.clusterCaps[index]!, sun)) continue;
+        this.drawNear.value = slot.near.value;
+        await compileInto(this.renderer, this.farTargets[index]!, scene, this.lightCamera);
+        await compileInto(this.renderer, this.targets[index]!, scene, this.lightCamera);
+      }
+    } finally {
+      scene.overrideMaterial = savedOverride;
     }
   }
 
