@@ -137,7 +137,8 @@ export class Game {
     );
     await progress.enter('bodies');
     celestialSystem.build(
-      gs.scene, gs.pipeline.sunLight, gs.pipeline.exposure, gs.pipeline.sunOcclusion,
+      gs.scene, gs.pipeline.sunLight, gs.pipeline.exposure,
+      gs.pipeline.bodyShadow, gs.pipeline.ringShadow, gs.pipeline.cumulusShadow,
       gs.pipeline.planetLight, gs.pipeline.ambient, gs.pipeline.atmosphere,
     );
     await progress.enter('run');

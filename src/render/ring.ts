@@ -21,7 +21,7 @@ import {
 import { RingArcDef, RingOpticsDef } from '../physics/celestial-body-def';
 import { viewRayAt } from './pipeline/view-ray';
 import type { SunLight } from './pipeline/sun-light';
-import type { SunOcclusion } from './pipeline/sun-occlusion';
+import type { BodyShadow } from './pipeline/shadow/body-shadow';
 import type { FloatNode, Vec3Node } from './tsl-types';
 
 // 環粒子の代表アルベド色(線形 RGB)。氷と岩の混合で、可視域では中性よりわずかに黄色い。
@@ -59,7 +59,7 @@ interface RingSector {
 // annulus/line 共通の光学TSLグラフ。coverage は帯の画面上被覆率(1px未満の細帯を
 // 減光するための係数)で、面・線どちらのジオメトリへ載せても解釈は同じ。
 function ringOpticsNodes(
-  coverage: FloatNode, sunOcclusion: SunOcclusion, sunLight: SunLight,
+  coverage: FloatNode, bodyShadow: BodyShadow, sunLight: SunLight,
 ): { colorNode: Vec3Node; opacityNode: FloatNode } {
   const optics = THREE.TSL.attribute(RING_OPTICS_ATTRIBUTE, 'vec3') as Vec3Node;
   const tauNormal = optics.x as FloatNode;
@@ -90,7 +90,7 @@ function ringOpticsNodes(
   // 直射散乱が受ける遮蔽。本体も他の天体も、遮蔽パスの受け手と同じ 1 つの関数から引く
   // ので、境界は半影の幅でぼける。**環の帯は源から外す** — 環のフラグメントは自分が乗って
   // いる帯の平面上に居るため、含めると自己遮蔽で刃こぼれする。
-  const directLight = sunOcclusion.occluderTransmittance(positionWorld);
+  const directLight = bodyShadow.transmittance(positionWorld);
 
   const denominator = float(1).add(phaseG.mul(phaseG)).sub(
     phaseG.mul(float(2).mul(dot(sunDirection.negate(), viewDirection))),
@@ -125,10 +125,10 @@ export class RingMaterials {
   // (coverage が被覆率ぶん減光するので、遠方ほど濃くなることはない)。
   public readonly line: THREE.LineBasicNodeMaterial;
 
-  // sunOcclusion と sunLight は、帯が直射散乱の遮蔽と明るさを引く先。
-  public constructor(sunOcclusion: SunOcclusion, sunLight: SunLight) {
+  // bodyShadow と sunLight は、帯が直射散乱の影と明るさを引く先。
+  public constructor(bodyShadow: BodyShadow, sunLight: SunLight) {
     // 面は帯の幅がそのまま画面へ出るので、被覆率は常に 1。
-    const surfaceOptics = ringOpticsNodes(float(1), sunOcclusion, sunLight);
+    const surfaceOptics = ringOpticsNodes(float(1), bodyShadow, sunLight);
     this.surface = new THREE.MeshBasicNodeMaterial({
       transparent: true,
       side: THREE.DoubleSide,
@@ -138,7 +138,7 @@ export class RingMaterials {
     this.surface.opacityNode = surfaceOptics.opacityNode;
 
     const coverage = THREE.TSL.attribute(RING_COVERAGE_ATTRIBUTE, 'float') as FloatNode;
-    const lineOptics = ringOpticsNodes(coverage, sunOcclusion, sunLight);
+    const lineOptics = ringOpticsNodes(coverage, bodyShadow, sunLight);
     this.line = new THREE.LineBasicNodeMaterial({ transparent: true, depthWrite: false });
     this.line.colorNode = lineOptics.colorNode;
     this.line.opacityNode = lineOptics.opacityNode;

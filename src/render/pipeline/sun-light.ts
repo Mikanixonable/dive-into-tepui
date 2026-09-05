@@ -2,9 +2,9 @@
 // (法線・粗さ・アルベド)には関知しない — 光源と、それへ反射率を掛ける側との分業の境界そのもの。
 // 値は毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
-import { uniform } from 'three/tsl';
+import { asin, clamp, length, max, normalize, uniform } from 'three/tsl';
 import { AU } from '../../physics/astronomical-unit';
-import type { ColorUniform, FloatNode, FloatUniform, Vec3Uniform } from '../tsl-types';
+import type { ColorUniform, FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 // 描画が扱う放射照度の目盛り。1 天文単位で太陽から届く放射照度をこの値に取る。
 //
@@ -56,6 +56,22 @@ export class SunLight {
 
   // 恒星の半径 [m]。
   get radius(): FloatNode { return this.radiusUniform; }
+
+  // 描画座標の点 worldPos から恒星の中心までの距離 [m]。恒星の只中で 0 除算にならない床を張る。
+  distanceFrom(worldPos: Vec3Node): FloatNode {
+    return max(length(this.positionUniform.sub(worldPos)), 1);
+  }
+
+  // worldPos から見た恒星の方向。
+  directionFrom(worldPos: Vec3Node): Vec3Node {
+    return normalize(this.positionUniform.sub(worldPos));
+  }
+
+  // worldPos から見た恒星の視半径 [rad]。影の半影の幅は、これに影を落とすものまでの距離を
+  // 掛けたものになる。
+  angularRadiusFrom(worldPos: Vec3Node): FloatNode {
+    return asin(clamp(this.radiusUniform.div(this.distanceFrom(worldPos)), 1e-9, 1));
+  }
 
   get color(): ColorUniform { return this.colorUniform; }
 

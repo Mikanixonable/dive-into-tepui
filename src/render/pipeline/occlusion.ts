@@ -1,10 +1,10 @@
 // G バッファの深度から画素ごとの描画座標を復元し、そこへ恒星の直射光がどれだけ届くかを 1 枚の
-// 透過率へ書く。透過率を決めるのは sun-occlusion.ts で、このパスはその源ごとの関数を面の
+// 透過率へ書く。透過率を決めるのは shadow/ の源ごとのモジュールで、このパスはその関数を面の
 // 写っている画素で評価してキャッシュする。
 //
-// **源ごとにフルスクリーン 1 枚を乗算合成で積む。** 遮蔽の合成は積なので、源ごとに 1 枚ずつ
-// 積んでも答えは同じになる。源が増えてもマテリアルの組み合わせは増えず、そのフレームに遮るものが
-// 無い源は描画命令ごと落とせる。
+// **源ごとにフルスクリーン 1 枚を乗算合成で積む。** 影の合成は積なので、源ごとに 1 枚ずつ
+// 積んでも答えは同じになる。源が増えてもマテリアルの組み合わせは増えず、そのフレームに影を
+// 落とすものが無い源は描画命令ごと落とせる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, If, dot, float, length, max, normalize, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
@@ -12,21 +12,24 @@ import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { octDecodeNormal, type GBufferPass } from './gbuffer';
 import { viewPositionAt } from './view-ray';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
-import type { SunOcclusion } from './sun-occlusion';
+import type { BodyShadow } from './shadow/body-shadow';
+import type { RingShadow } from './shadow/ring-shadow';
+import type { CumulusShadow } from './shadow/cumulus-shadow';
+import type { MeshShadow } from './shadow/mesh-shadow';
 import { compileInto } from './compile-into';
 
 // 画素の覆う実寸を伸ばす入射角の余弦の下限。地平線では 0 へ落ちるので、伸びしろに天井を張る。
 const MIN_INCIDENCE_COSINE = 0.05;
 
-// 遮蔽源 1 つぶんの、透過率のターゲットへ積む 1 枚。
+// 影の源 1 つぶんの、透過率のターゲットへ積む 1 枚。
 interface OcclusionSource {
-  // このフレームに遮るものがあるか。偽なら描画命令は発行されない。
-  occludes(): boolean;
+  // このフレームに影を落とすものがあるか。偽なら描画命令は発行されない。
+  casts(): boolean;
   readonly material: THREE.MeshBasicNodeMaterial;
 }
 
 // 透過率のノードを、ターゲットにいま入っている値へ掛け合わせるマテリアルに包む。面が写って
-// いない画素は素通しの 1 を返す — そこに受け手は居ないので、遮蔽の計算ごと分岐で飛ばす
+// いない画素は素通しの 1 を返す — そこに受け手は居ないので、影の計算ごと分岐で飛ばす
 // (select では両辺が評価されて飛ばない)。
 function multiplyingMaterial(covered: BoolNode, transmittance: FloatNode): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial({
@@ -58,12 +61,12 @@ export class OcclusionPass {
   // クリア色の退避先。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
-  // 透過率の書き込み先を確保し、深度から復元した位置で源ごとの遮蔽関数を評価するグラフを
+  // 透過率の書き込み先を確保し、深度から復元した位置で源ごとの透過率を評価するグラフを
   // 一度だけ組む。
   constructor(
     private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
-    sunOcclusion: SunOcclusion,
+    bodyShadow: BodyShadow, ringShadow: RingShadow, cumulusShadow: CumulusShadow, meshShadow: MeshShadow,
     private readonly gpu: GpuTimings,
   ) {
     this.target = new THREE.RenderTarget(1, 1, {
@@ -88,20 +91,20 @@ export class OcclusionPass {
     const covered = gbuffer.covered();
     this.sources = [
       {
-        occludes: () => sunOcclusion.hasOccluders(),
-        material: multiplyingMaterial(covered, sunOcclusion.occluderTransmittance(worldPos)),
+        casts: () => bodyShadow.casts(),
+        material: multiplyingMaterial(covered, bodyShadow.transmittance(worldPos)),
       },
       {
-        occludes: () => sunOcclusion.hasRingShadow(),
-        material: multiplyingMaterial(covered, sunOcclusion.ringTransmittance(worldPos)),
+        casts: () => ringShadow.casts(),
+        material: multiplyingMaterial(covered, ringShadow.transmittance(worldPos)),
       },
       {
-        occludes: () => sunOcclusion.hasCumulusShadow(),
-        material: multiplyingMaterial(covered, sunOcclusion.cumulusTransmittance(worldPos, cumulusFootprint)),
+        casts: () => cumulusShadow.casts(),
+        material: multiplyingMaterial(covered, cumulusShadow.transmittance(worldPos, cumulusFootprint)),
       },
       {
-        occludes: () => sunOcclusion.hasMeshShadow(),
-        material: multiplyingMaterial(covered, sunOcclusion.meshTransmittance(worldPos, meshNormal)),
+        casts: () => meshShadow.casts(),
+        material: multiplyingMaterial(covered, meshShadow.transmittance(worldPos, meshNormal)),
       },
     ];
     this.quad = new QuadMesh();
@@ -109,7 +112,7 @@ export class OcclusionPass {
 
   get texture(): THREE.Texture { return this.target.texture; }
 
-  // 遮るものがある源だけを、素通しの 1 へ順に掛け合わせる。camera は逆射影行列と
+  // 影を落とすものがある源だけを、素通しの 1 へ順に掛け合わせる。camera は逆射影行列と
   // view→描画座標の行列を毎フレーム引き直すためだけに使う。
   render(camera: THREE.Camera, width: number, height: number): void {
     this.writeCamera(camera, width, height);
@@ -121,7 +124,7 @@ export class OcclusionPass {
     this.renderer.setRenderTarget(this.target);
     let cleared = false;
     for (const source of this.sources) {
-      if (!source.occludes()) continue;
+      if (!source.casts()) continue;
       this.quad.material = source.material;
       this.renderer.autoClear = !cleared;
       cleared = true;
@@ -129,14 +132,14 @@ export class OcclusionPass {
       this.gpu.beginPass(GPU_PASS.occlusion);
       this.quad.render(this.renderer);
     }
-    // 遮る源が 1 つも無いフレームでも、前のフレームの透過率を残さない。
+    // 影を落とす源が 1 つも無いフレームでも、前のフレームの透過率を残さない。
     if (!cleared) this.renderer.clear(true, false, false);
     this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);
     this.renderer.setClearColor(this.savedClearColor, savedClearAlpha);
   }
 
-  // 遮蔽源ごとの全マテリアルを透過率ターゲットへ事前コンパイルする。
+  // 源ごとの全マテリアルを透過率ターゲットへ事前コンパイルする。
   async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
     this.writeCamera(camera, width, height);
     for (const source of this.sources) {

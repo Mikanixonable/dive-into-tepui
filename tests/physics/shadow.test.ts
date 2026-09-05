@@ -2,7 +2,7 @@
 import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { maxOccludedFraction, sunlitFactor } from '../../src/physics/shadow';
+import { maxShadowedFraction, sunlitFactor } from '../../src/physics/shadow';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON, R_SUN } from '../../src/game/celestial/solar-system/constants';
@@ -137,7 +137,7 @@ export function register(): void {
     assert.equal(sunlitFactor(r, sun, [earth], 0), 0);
   });
 
-  test('shadow: maxOccludedFraction は実際の遮蔽率の上限になっている', () => {
+  test('shadow: maxShadowedFraction は実際の遮蔽率の上限になっている', () => {
     const sun = star(0);
     const earth = body('earth', MU_EARTH, R_EARTH, AU);
     const moon = body('moon', MU_MOON, R_MOON, AU + 3.844e8);
@@ -148,7 +148,7 @@ export function register(): void {
         const perp = (i / 40) * occluder.def.radius * 6;
         const r = v3(along, perp, 0);
         const occluded = 1 - sunlitFactor(r, sun, [occluder], 0);
-        const bound = maxOccludedFraction(r, sun, occluder, 0);
+        const bound = maxShadowedFraction(r, sun, occluder, 0);
         assert.ok(
           occluded <= bound + 1e-12,
           `上限を超えた (${occluder.id}, i=${i}): occluded=${occluded} > bound=${bound}`,
@@ -157,7 +157,7 @@ export function register(): void {
     }
   });
 
-  test('shadow: maxOccludedFraction は観測点が天体を追い越しても跳ばない', () => {
+  test('shadow: maxShadowedFraction は観測点が天体を追い越しても跳ばない', () => {
     const sun = star(0);
     const earth = body('earth', MU_EARTH, R_EARTH, AU);
     // 恒星と地球を結ぶ線上を、地球の反対側から恒星側へ抜けるまで動かす。上限は距離だけで
@@ -165,7 +165,7 @@ export function register(): void {
     const step = 1e7;
     let previous: number | null = null;
     for (let offset = 2e9; offset >= -2e9; offset -= step) {
-      const bound = maxOccludedFraction(v3(AU + offset, 0, 0), sun, earth, 0);
+      const bound = maxShadowedFraction(v3(AU + offset, 0, 0), sun, earth, 0);
       if (previous !== null) {
         assert.ok(
           Math.abs(bound - previous) < 0.05,
@@ -176,7 +176,7 @@ export function register(): void {
     }
   });
 
-  test('shadow: maxOccludedFraction で閾値を切った天体を落としても、日照率は閾値以上ずれない', () => {
+  test('shadow: maxShadowedFraction で閾値を切った天体を落としても、日照率は閾値以上ずれない', () => {
     // 恒星を原点に置いた太陽系の縮図。金星は地球から見て太陽の手前(太陽面通過)に、
     // 土星圏の衛星は土星のすぐ外側に並ぶ — どちらも「幾何としては確かに遮っているが、
     // 隠す面積が小さいので落としてよい」側に来る。
@@ -197,7 +197,7 @@ export function register(): void {
       ['土星圏', v3(saturnDist - saturn.def.radius * 3, 0, 0)],
     ];
     for (const [name, r] of scenes) {
-      const kept = all.filter((b) => maxOccludedFraction(r, sun, b, 0) >= threshold);
+      const kept = all.filter((b) => maxShadowedFraction(r, sun, b, 0) >= threshold);
       assert.ok(kept.length < all.length, `${name}: 落ちる天体が1つも無い(前提が成立しない)`);
       const exact = sunlitFactor(r, sun, all, 0);
       const truncated = sunlitFactor(r, sun, kept, 0);

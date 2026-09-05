@@ -1,17 +1,17 @@
 // 遮蔽パスがこの1フレームに扱う遮蔽器・環・積雲の殻を選ぶ。絵に出ない遮蔽を落とす閾値も、環を
 // 1体に絞る判断も、積雲の影を出す設定の読み方も、遮蔽パスのグラフの形が決めるものなのでここが持つ。
-import { maxOccludedFraction } from '../../physics/shadow';
+import { maxShadowedFraction } from '../../physics/shadow';
 import { len, sub } from '../../math/vec3';
-import { MAX_OCCLUDERS } from './sun-occlusion';
+import { MAX_SHADOW_BODIES } from './shadow/body-shadow';
 import { CUMULUS_DETAIL } from '../cumulus-shell';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { Vec3 } from '../../math/vec3';
-import type { RingBand } from './sun-occlusion';
+import type { RingBand } from './shadow/ring-shadow';
 import type { GraphicsSettingsData } from '../graphics-settings';
 
 // 遮蔽器として残す最大遮蔽率の下限。これを下回る天体は、どの向きでも恒星面の 1% 未満しか
-// 隠せないので、落としても絵に出ない(physics/shadow.ts の maxOccludedFraction)。
-const MIN_OCCLUDED_FRACTION = 1e-2;
+// 隠せないので、落としても絵に出ない(physics/shadow.ts の maxShadowedFraction)。
+const MIN_SHADOWED_FRACTION = 1e-2;
 
 // 遮蔽器と環を順位づける尺度。視半径が大きい天体ほど、その影が画面に写っている何かへ落ちる
 // 見込みが高い。恒星の視半径が同じなら最大遮蔽率は視半径に比例するので、この並びは最大遮蔽率の
@@ -27,9 +27,9 @@ function castsVisibleShadow(
   star: CelestialMotion, celestialBody: CelestialMotion, pivot: number,
   cameraPos: Vec3, focusPos: Vec3 | null,
 ): boolean {
-  if (maxOccludedFraction(cameraPos, star, celestialBody, pivot) >= MIN_OCCLUDED_FRACTION) return true;
+  if (maxShadowedFraction(cameraPos, star, celestialBody, pivot) >= MIN_SHADOWED_FRACTION) return true;
   return focusPos !== null
-    && maxOccludedFraction(focusPos, star, celestialBody, pivot) >= MIN_OCCLUDED_FRACTION;
+    && maxShadowedFraction(focusPos, star, celestialBody, pivot) >= MIN_SHADOWED_FRACTION;
 }
 
 // 環の影を落としうる天体 1 体ぶんの候補。すべて ECI。
@@ -41,10 +41,10 @@ export interface RingShadowCandidate {
   readonly bands: readonly RingBand[];
 }
 
-// このフレームに遮蔽器として扱う天体を、視半径の大きい順に MAX_OCCLUDERS 体まで返す。
+// このフレームに遮蔽器として扱う天体を、視半径の大きい順に MAX_SHADOW_BODIES 体まで返す。
 // **星系の全天体を渡すこと** — 恒星と半径 0 の天体はここで落とす。focusPos はマップの
 // 注視点(天体でない対象を注視しているなら null)。
-export function selectOccluders(
+export function selectShadowBodies(
   celestialBodies: readonly CelestialMotion[], pivot: number, cameraPos: Vec3, focusPos: Vec3 | null,
 ): readonly CelestialMotion[] {
   const star = celestialBodies.find((celestialBody) => celestialBody.kind === 'star') ?? null;
@@ -58,7 +58,7 @@ export function selectOccluders(
         celestialBody.def.radius, celestialBody.positionAt(pivot), cameraPos),
     }))
     .sort((a, b) => b.apparent - a.apparent)
-    .slice(0, MAX_OCCLUDERS)
+    .slice(0, MAX_SHADOW_BODIES)
     .map(({ celestialBody }) => celestialBody);
 }
 
