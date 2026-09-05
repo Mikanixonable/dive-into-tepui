@@ -105,6 +105,10 @@ export class AtmospherePass {
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
   private readonly slots: readonly BodySlot[];
+  // 大気が読む下地 — 共有ターゲットの中身を控えた1枚。
+  private readonly backdropTarget: THREE.RenderTarget;
+  private readonly backdropMaterial: THREE.MeshBasicNodeMaterial;
+  private readonly backdropQuad: QuadMesh;
   // 積分の刻みを画素ごとにずらす種。
   private readonly blueNoise: BlueNoise;
   // 下地と合成する前の、大気が足す内部散乱。
@@ -119,14 +123,14 @@ export class AtmospherePass {
   private readonly frustum = new THREE.Frustum();
   private readonly viewProjection = new THREE.Matrix4();
 
-  // 大気は、不透明の絵のスナップショット(backdrop)を読み、「下地 × 透過率 + 内部散乱」を
-  // 解いた完成形を共有ターゲットへ上書きする。合成をブレンドではなくパスの中で行うのは、
+  // 大気は、共有ターゲットに入った不透明の絵を下地として読み、「下地 × 透過率 + 内部散乱」を
+  // 解いた完成形で同じターゲットを上書きする。合成をブレンドではなくパスの中で行うのは、
   // 合成のアルファは 1 つしか無く、下地の波長別の減衰(厚い大気越しの下地が赤へ寄る)を
   // 表せないため。
   public constructor(
     private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
-    backdrop: THREE.Texture,
+    private readonly sharedTarget: THREE.RenderTarget,
     private readonly sunLight: SunLight,
     private readonly sunOcclusion: SunOcclusion,
     private readonly gpu: GpuTimings,
@@ -149,6 +153,16 @@ export class AtmospherePass {
     }));
     this.bodySpheres = Array.from({ length: MAX_ATMOSPHERE_BODIES }, () => new THREE.Sphere());
 
+    // 下地は共有ターゲットの色をそのまま写したものなので、深度を持たない。
+    this.backdropTarget = new THREE.RenderTarget(1, 1, {
+      type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false,
+    });
+    this.backdropMaterial = new THREE.MeshBasicNodeMaterial({
+      depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+    });
+    this.backdropMaterial.colorNode = texture(sharedTarget.texture, screenUV);
+    this.backdropQuad = new QuadMesh(this.backdropMaterial);
+
     const viewPos = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse);
     const opaquePos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
     // 視線は投影方式に依らない形(view-ray.ts)から取る — 平行投影の視線はカメラ位置から
@@ -160,7 +174,7 @@ export class AtmospherePass {
 
     const composed = Fn(() => {
       const layers = this.accumulateLayers(rayOrigin, rayDir, opaqueDist);
-      return layers.inscatter.add(texture(backdrop, screenUV).rgb.mul(layers.transmittance));
+      return layers.inscatter.add(texture(this.backdropTarget.texture, screenUV).rgb.mul(layers.transmittance));
     })();
     // 内部散乱だけの組は、それを読むマテリアルの中でだけ評価される。
     this.scattered = Fn(() => this.accumulateLayers(rayOrigin, rayDir, opaqueDist).inscatter)();
@@ -426,7 +440,7 @@ export class AtmospherePass {
   // このフレームの大気がカメラに写りうるか。裾球のどれかが視錐台に掛かるかで判定する —
   // 裾の外の密度は打ち切り済みで絵に出ないので、全裾球が外れたフレームは何も描かなくてよい。
   // カメラが裾球の中にいる構図(地表から空を見上げて地面が画面に無い)は必ず真になる。
-  public anyBodyInView(camera: THREE.Camera): boolean {
+  private anyBodyInView(camera: THREE.Camera): boolean {
     this.frustum.setFromProjectionMatrix(
       this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
       camera.coordinateSystem, camera.reversedDepth,
@@ -437,32 +451,58 @@ export class AtmospherePass {
     return false;
   }
 
-  // 不透明の絵が入った共有ターゲットへ、下地と合成し終えた大気を上書きする。呼び出し側が
-  // anyBodyInView と同じフレームの backdrop スナップショットを保証する。
-  public render(camera: THREE.Camera, sharedTarget: THREE.RenderTarget): void {
+  // 大気が読む下地として控えた1枚。
+  public get backdropTexture(): THREE.Texture { return this.backdropTarget.texture; }
+
+  // 共有ターゲットのいまの中身を、大気が読む下地として控える。
+  public captureBackdrop(): void {
+    this.syncBackdropSize();
+    // GPU 計測は、beginPass の直後の描画命令に付く。
+    this.gpu.beginPass(GPU_PASS.atmosphere);
+    this.renderer.setRenderTarget(this.backdropTarget);
+    this.backdropQuad.render(this.renderer);
+    this.renderer.setRenderTarget(null);
+  }
+
+  // 大気が写るフレームだけ、共有ターゲットの不透明の絵を下地と合成し終えた大気で上書きする。
+  public render(camera: THREE.Camera): void {
+    if (!this.anyBodyInView(camera)) return;
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
     this.viewToWorld.value.copy(camera.matrixWorld);
 
-    this.renderer.setRenderTarget(sharedTarget);
+    this.captureBackdrop();
+    // 色だけを上書きする — 共有ターゲットの深度はマテリアルパスが書いたものを後段も使う。
+    this.renderer.setRenderTarget(this.sharedTarget);
     this.renderer.autoClear = false;
-    // GPU 計測は、beginPass の直後の描画命令に付く。
     this.gpu.beginPass(GPU_PASS.atmosphere);
     this.quad.render(this.renderer);
     this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);
   }
 
-  // 大気の合成板を共有ターゲットへ事前コンパイルする。
-  public async compile(camera: THREE.Camera, sharedTarget: THREE.RenderTarget): Promise<void> {
+  // 下地の控えと大気の合成板を、描画時と同じターゲットへ事前コンパイルする。
+  public async compile(camera: THREE.Camera): Promise<void> {
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
     this.viewToWorld.value.copy(camera.matrixWorld);
-    await compileInto(this.renderer, sharedTarget, this.quad, this.quad.camera);
+    this.syncBackdropSize();
+    await compileInto(this.renderer, this.backdropTarget, this.backdropQuad, this.backdropQuad.camera);
+    await compileInto(this.renderer, this.sharedTarget, this.quad, this.quad.camera);
+  }
+
+  // 下地の控えを共有ターゲットと同じ寸法へ合わせる。
+  private syncBackdropSize(): void {
+    const { width, height } = this.sharedTarget;
+    if (this.backdropTarget.width !== width || this.backdropTarget.height !== height) {
+      this.backdropTarget.setSize(width, height);
+    }
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
   public dispose(): void {
     this.material.dispose();
+    this.backdropTarget.dispose();
+    this.backdropMaterial.dispose();
     this.blueNoise.dispose();
   }
 }
