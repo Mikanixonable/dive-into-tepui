@@ -309,7 +309,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     sunlit: number, sunDir: Vec3,
   ): void {
     if (!this.alive) return;
-    this.belt.update(dt, this.fire.mags, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
+    this.belt.update(dt, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
     this.radiator.update(dt, this.radiatorWear());
     this.fire.stepBarrelThermal(dt);
     this.aero.update(this.state.r, this.state.v, atmosphereBody, atmospherePivot);
@@ -572,7 +572,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     }
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isActive);
     this.reentryEffects.sync(fo, effectState.r, effectState.v, this.aero.qdyn, effectVisible, camera);
-    this.belt.sync();
+    this.belt.sync(this.magsLeft);
     this.radiator.sync();
     this.power.sync();
     // マーカー。方位マーカーは操作対象の軌道座標系を指すものなので操作対象だけが出す。
