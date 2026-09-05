@@ -184,9 +184,10 @@ export class PointEntity extends CelestialEntity {
     );
   }
 
-  // 影パスへ渡す積雲の殻。姿勢は自転位相まで込みで組む — 軸だけでは場が地表と一緒に回らない。
+  // 影パスへ渡す積雲の殻。**描いている殻だけが影を落とす。** 姿勢は自転位相まで込みで組む —
+  // 軸だけでは場が地表と一緒に回らない。
   public override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): ShadowCumulus | null {
-    if (this.cumulus === null) return null;
+    if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
     writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
     return {
       center: fo.RtoThreeV3(this.stateAt(displayTime).r),
