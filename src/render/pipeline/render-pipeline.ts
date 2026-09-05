@@ -47,10 +47,6 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly _ambient: AmbientSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
-  // 大気パスが読む、不透明の絵のスナップショットとそれを書き写す全画面クアッド。
-  private readonly backdropTarget: THREE.RenderTarget;
-  private readonly backdropMaterial: THREE.MeshBasicNodeMaterial;
-  private readonly backdropQuad: QuadMesh;
   private readonly overlayPass: OverlayPass;
   private readonly antialiasPass: AntialiasPass;
   private readonly lensPass: LensPass;
@@ -120,16 +116,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
-    // 大気パスが読む、不透明の絵のスナップショット。共有ターゲットの中身を写すだけなので、
-    // 深度は持たない。
-    this.backdropTarget = new THREE.RenderTarget(1, 1, {
-      type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false,
-    });
-    this.atmospherePass = new AtmospherePass(
-      renderer, this.gbuffer, this.backdropTarget.texture, this._sunLight, this._sunOcclusion, gpu,
-    );
-    this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
+    // マテリアルパス以降が共有する描画先。**大気パスの生成より先に作る** — 大気パスは自身が
+    // 読み書きする先としてこれを受け取る。
     this.target = new THREE.RenderTarget(1, 1, {
       type: THREE.HalfFloatType,
       format: THREE.RGBAFormat,
@@ -138,12 +127,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // 深度を 32bit 浮動小数点にするには明示が要る — 省くと depth24plus のまま精度だけ落ちる。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
-    // 共有ターゲットの中身(マテリアルパスの出力)をスナップショットへ書き写す全画面クアッド。
-    this.backdropMaterial = new THREE.MeshBasicNodeMaterial({
-      depthTest: false, depthWrite: false, blending: THREE.NoBlending,
-    });
-    this.backdropMaterial.colorNode = texture(this.target.texture, screenUV);
-    this.backdropQuad = new QuadMesh(this.backdropMaterial);
+    this.atmospherePass = new AtmospherePass(
+      renderer, this.gbuffer, this.target, this._sunLight, this._sunOcclusion, gpu,
+    );
+    this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
     // 表示用の絵は 8bit で足りる。**素の RGBA8 で受ける** — `-srgb` のフォーマットにすると、
     // 表示用色空間への変換が二重に掛かって画面全体が白く浮く。深度を持たせるのは、composite
@@ -199,10 +186,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       specular: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
-      // マテリアルパスの出力は大気と world に上書きされて残らないので、大気パスが読む
-      // スナップショット(backdropTarget)を映す。
+      // マテリアルパスの出力は大気と world に上書きされて残らないので、大気パスが控えた
+      // 下地を映す。
       material: this.buildCompositeMaterial(
-        vec4(this.toneMapped(texture(this.backdropTarget.texture, screenUV).rgb), 1),
+        vec4(this.toneMapped(texture(this.atmospherePass.backdropTexture, screenUV).rgb), 1),
       ),
       atmosphere: this.buildCompositeMaterial(
         vec4(this.toneMapped(this.atmospherePass.scatteredLight()), 1),
@@ -328,13 +315,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.quad.material = this.lensEnabled ? this.lensCompositeMaterial : this.compositeMaterials.off;
       passes.push(
         ['マテリアル', () => this.materialPass.compile(scene, camera, this.target)],
-        ['大気', async () => {
-          if (this.backdropTarget.width !== width || this.backdropTarget.height !== height) {
-            this.backdropTarget.setSize(width, height);
-          }
-          await compileInto(this.renderer, this.backdropTarget, this.backdropQuad, this.backdropQuad.camera);
-          await this.atmospherePass.compile(camera, this.target);
-        }],
+        ['大気', () => this.atmospherePass.compile(camera)],
         ['ワールド', () => compileInto(this.renderer, this.target, scene, camera)],
       );
       if (this.lensEnabled) passes.push(['レンズ', () => this.lensPass.compile(width, height)]);
@@ -393,21 +374,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       // 最初の書き込みなのでクリアする)へ描く。
       this.materialPass.render(scene, camera, this.target);
 
-      // 大気パス。大気が写るフレームだけ、不透明の絵のスナップショットを撮ってから、下地と
-      // 合成し終えた大気を共有ターゲットへ上書きする。スナップショットのブリットも大気パスの
-      // 計測枠に計上する。「マテリアル」デバッグ表示はスナップショットを映すので、その間は
-      // 大気が写らなくても撮る。
-      const atmosphereVisible = this.atmospherePass.anyBodyInView(camera);
-      if (atmosphereVisible || this.debugTarget === 'material') {
-        if (this.backdropTarget.width !== width || this.backdropTarget.height !== height) {
-          this.backdropTarget.setSize(width, height);
-        }
-        this.gpu.beginPass(GPU_PASS.atmosphere);
-        this.renderer.setRenderTarget(this.backdropTarget);
-        this.backdropQuad.render(this.renderer);
-        this.renderer.setRenderTarget(null);
-      }
-      if (atmosphereVisible) this.atmospherePass.render(camera, this.target);
+      // 大気パス。「マテリアル」デバッグ表示は大気が読む下地を映すので、その間は大気が
+      // 写らないフレームでも控えを撮らせる。
+      if (this.debugTarget === 'material') this.atmospherePass.captureBackdrop();
+      this.atmospherePass.render(camera);
 
       // world パス。LIT_OPAQUE_LAYER と背景専用レイヤーはチャンネル0から外れているので、既定の
       // カメラマスクで描く限り重複しない。autoClear を落としてマテリアルパスの描画(色・深度とも)
@@ -463,8 +433,6 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.sphereSpecular.dispose();
     this.materialPass.dispose();
     this.atmospherePass.dispose();
-    this.backdropTarget.dispose();
-    this.backdropMaterial.dispose();
     this.overlayPass.dispose();
     this.antialiasPass.dispose();
     this.lensPass.dispose();
