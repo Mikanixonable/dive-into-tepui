@@ -106,8 +106,8 @@ export class AtmospherePass {
   }
 
   // 種類ごとに、雲の殻を描くかを置き直す。
-  public setCloudShell(species: CloudSpecies, enabled: boolean): void {
-    this.layer.setCloudShell(species, enabled);
+  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
+    this.layer.setCloudShellEnabled(species, enabled);
   }
 
   // このフレームで大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数と一緒に渡す。
