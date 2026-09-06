@@ -1,7 +1,7 @@
 // 交戦圏の組み立て(SPEC/COMBAT.md「交戦圏」)。自機と基地のそれぞれを中心とする半径
 // ENGAGEMENT_RANGE の球で、重なる球は1つの交戦圏にまとめる。戦闘が起こりうる範囲そのものを
 // 表し、位置がその範囲に入るかと、その範囲の基準変位を答える。
-import { Vec3, sub } from '../../math/vec3';
+import { Vec3, sub, distSq } from '../../math/vec3';
 import type { KinematicState } from '../../physics/kinematic-state';
 
 // 交戦圏の半径 [m]。中心(自機・基地)からこの距離までが、敵の射撃・弾の飛翔・物体どうしの
@@ -18,10 +18,8 @@ export interface EngagementParticipant {
 
 // 2つの中心の球が重なるか(中心間距離が半径の2倍以内)。
 function overlaps(a: EngagementParticipant, b: EngagementParticipant): boolean {
-  const p = a.state.r, q = b.state.r;
-  const dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
   const reach = 2 * ENGAGEMENT_RANGE;
-  return dx * dx + dy * dy + dz * dz <= reach * reach;
+  return distSq(a.state.r, b.state.r) <= reach * reach;
 }
 
 // 中心の球が連結した1つの交戦圏。
@@ -38,9 +36,7 @@ export class EngagementZone<E extends EngagementParticipant> {
   // 位置 r [m, ECI] がこの交戦圏に入るか(いずれかの中心から ENGAGEMENT_RANGE 以内)。
   public contains(r: Vec3): boolean {
     for (const anchor of this.anchors) {
-      const c = anchor.state.r;
-      const dx = c.x - r.x, dy = c.y - r.y, dz = c.z - r.z;
-      if (dx * dx + dy * dy + dz * dz <= ENGAGEMENT_RANGE * ENGAGEMENT_RANGE) return true;
+      if (distSq(anchor.state.r, r) <= ENGAGEMENT_RANGE * ENGAGEMENT_RANGE) return true;
     }
     return false;
   }

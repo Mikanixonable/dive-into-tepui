@@ -1,7 +1,7 @@
 // vec3.ts のスモークテスト(基本演算)。理論値(解析的に自明な値)で検証。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { add, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../../src/math/vec3';
+import { add, cross, distSq, dot, len, norm, rotateAxis, scale, sub, v3 } from '../../src/math/vec3';
 
 export function register(): void {
   test('vec3: add/sub/scale', () => {
@@ -18,6 +18,11 @@ export function register(): void {
     const z = v3(0, 0, 1);
     assert.equal(dot(x, y), 0);
     assert.deepEqual(cross(x, y), z);
+  });
+
+  test('vec3: distSq は 2 点間の距離の 2 乗', () => {
+    assert.equal(distSq(v3(1, 2, 3), v3(4, 6, 3)), 25);
+    assert.equal(distSq(v3(-1, 0, 2), v3(-1, 0, 2)), 0);
   });
 
   test('vec3: len/norm', () => {
