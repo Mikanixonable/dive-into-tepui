@@ -23,30 +23,34 @@ type CirculationBand = { readonly east: number; readonly north: number };
 const FIRST_LATITUDE = THREE.MathUtils.degToRad(75);
 const BAND_SPACING = THREE.MathUtils.degToRad(30);
 
-// 地表付近の帯。極偏東風・偏西風・貿易風が赤道を挟んで鏡像に並ぶ。
+// 地表付近の帯。極偏東風・偏西風・貿易風が赤道を挟んで鏡像に並ぶ。**速さは、同じ場所で気圧から
+// 出る風より弱く取る。** 帯の風は経度に依らないので、これが勝つと空の模様は緯度で決まる縞へ
+// 揃い、渦と気団が作る構造がその下に埋もれる。
 export const SURFACE_BANDS: readonly CirculationBand[] = [
-  { east: -9, north: -1.6 }, // 極偏東風(北)
-  { east: 11, north: 2.3 }, // 偏西風(北)
-  { east: -5.6, north: -2.3 }, // 貿易風(北)
-  { east: -5.6, north: 2.3 }, // 貿易風(南)
-  { east: 11, north: -2.3 }, // 偏西風(南)
-  { east: -9, north: 1.6 }, // 極偏東風(南)
+  { east: -6, north: -1.0 }, // 極偏東風(北)
+  { east: 7, north: 1.5 }, // 偏西風(北)
+  { east: -3.6, north: -1.5 }, // 貿易風(北)
+  { east: -3.6, north: 1.5 }, // 貿易風(南)
+  { east: 7, north: -1.5 }, // 偏西風(南)
+  { east: -6, north: 1.0 }, // 極偏東風(南)
 ];
 
 // 巻雲の高さ(≈200 hPa)の帯。南北はどの帯でも地表付近と逆向きで、東西は中緯度だけが同じ西風の
-// まま亜熱帯ジェットまで速くなり、熱帯と極では逆向きになる。
+// まま亜熱帯ジェットまで速くなり、熱帯と極では逆向きになる。**地表付近より速いが、3 日で 4 分の 1
+// 周を超えない速さに留める** — それより速いと、薄い雲が形を変えずに滑って流れるだけに見える。
 export const UPPER_BANDS: readonly CirculationBand[] = [
-  { east: 18, north: 1.6 }, // 極(北)
-  { east: 33, north: -2.3 }, // 亜熱帯ジェット(北)
-  { east: 1.6, north: 2.3 }, // 熱帯(北)
-  { east: 1.6, north: -2.3 }, // 熱帯(南)
-  { east: 33, north: 2.3 }, // 亜熱帯ジェット(南)
-  { east: 18, north: -1.6 }, // 極(南)
+  { east: 12, north: 1.0 }, // 極(北)
+  { east: 20, north: -1.5 }, // 亜熱帯ジェット(北)
+  { east: 1.6, north: 1.5 }, // 熱帯(北)
+  { east: 1.6, north: -1.5 }, // 熱帯(南)
+  { east: 20, north: 1.5 }, // 亜熱帯ジェット(南)
+  { east: 12, north: -1.0 }, // 極(南)
 ];
 
 // 隣り合う帯を混ぜる幅(帯の間隔に対する比)。境目の 0°・±30°・±60° を中心に取る。狭いほど
-// 逆向きに流れる 2 枚が重なる範囲が狭まり、広いほど向きの変わり方が滑らかになる。
-const BLEND_WIDTH = 0.5;
+// 逆向きに流れる 2 枚が重なる範囲が狭まり、広いほど向きの変わり方が滑らかになる。**帯の全幅を
+// 使って渡す。** 狭く取ると境目に強い南北シアの線が立ち、気団の境目がその緯度へ貼り付く。
+const BLEND_WIDTH = 1;
 
 // 公転の半径(球の半径を 1 とする)。公転には進行方向が回ることに伴う「転がり」が付き、その速さは
 // 流れの速さの 1/半径 になる。大きく取るほど直進に近づき、ノイズ空間の座標が伸びる。
@@ -102,7 +106,7 @@ export class Circulation {
   // **sample を書くのは 2 箇所まで。** sample はノイズの評価そのもので、書いた数だけシェーダが
   // 膨らむ。2 枚目を評価するのは混ざる範囲にいるときだけで、分岐の向きは緯度だけで決まるので、
   // 画面のまとまった範囲で揃う。
-  public carry(direction: Vec3Node, sample: (position: Vec3Node) => FloatNode): FloatNode {
+  public carry(direction: Vec3Node, sample: (position: Vec3Node) => Vec2Node): Vec2Node {
     return Fn(() => {
       const [near, far] = this.bandsAt(direction);
       // 呼吸を効かせる度合い。cos²(緯度) をもう一度掛けてあるのは、公転が既に法線を向いている
