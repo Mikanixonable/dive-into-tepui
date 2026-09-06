@@ -9,8 +9,7 @@ import * as THREE from 'three/webgpu';
 import { abs, dot, exp, float, fract, greaterThan, int, max, sqrt, texture, uniform, vec2, vec4 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial-surface';
 import {
-  CLOUD_ALBEDO, EMPTY_CLOUD_FIELD, columnOpticalDepth, fieldLodForWidth, opaqueFractionOf,
-  residualCoverageOf,
+  CLOUD_ALBEDO, EMPTY_CLOUD_FIELD, columnOpticalDepth, fieldLodForWidth,
 } from '../cloud/cumulus-shape';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
@@ -37,15 +36,17 @@ export interface CloudShellSample {
   readonly radiance: Vec3Node;
 }
 
-// 殻の鉛直の光学的厚み。巻雲は場の B が厚みそのもので、積雲は R(被覆率)のうち不透明な殻が
-// ディザで立てなかった残りを柱の厚みへ直す。
+// 殻の鉛直の光学的厚み。巻雲は場の B が厚みそのもので、積雲は R(被覆率)を柱の厚みへ直す。
+//
+// **不透明な積雲として立てたぶんを引かない。** 不透明な殻は G バッファへ深度を書くので、その
+// 手前で終わる視線では殻の交点が区間の外へ落ちて寄与が消える — 引き算は同じ遮蔽を二重に効かせ、
+// 塔の周りに殻の抜けを作る。むしろ塔の側に残るディザの濃淡差を、この殻が跨いで埋める。
 function opticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode {
   switch (species) {
     case 'cirrus':
       return field.b;
     case 'cumulus':
-      return columnOpticalDepth(
-        residualCoverageOf(field.r, opaqueFractionOf(field.r, float(0))));
+      return columnOpticalDepth(field.r);
   }
 }
 
