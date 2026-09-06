@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { Vec3, v3, add, sub, scale, dot, len, lenSq, norm, cross } from '../../../math/vec3';
 import {
-  BVHNode, RayHit, SphereHit, Triangle,
+  RayHit, SphereHit, Triangle, TriangleBVH,
   buildBVH, raycastTriangles, rayIntersectsAABB, sphereCollideTriangles,
 } from '../../../math/triangle-mesh';
 import { Quat, qRotate, qInvert } from '../../../math/quat';
@@ -37,8 +37,8 @@ export class BaseCollisionGeometry {
   // 全 LOD を覆う外接球の半径 [m]。
   public readonly outerRadius = 330;
 
-  private readonly lod0BVH: BVHNode | null; // フルポリゴン
-  private readonly lod1BVH: BVHNode | null; // 低ポリゴン
+  private readonly lod0BVH: TriangleBVH | null; // フルポリゴン
+  private readonly lod1BVH: TriangleBVH | null; // 低ポリゴン
 
   // 構築コストが高いので、1つを基地ごとに使い回す。
   constructor() {
