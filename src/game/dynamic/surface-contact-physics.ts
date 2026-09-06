@@ -35,6 +35,8 @@ export class SurfaceContactPhysics {
   private readonly nearbyScratch: CelestialMotion[] = [];
   // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、その区間の解決すべてで使う。
   private pivot = 0;
+  // 負荷確認ウィンドウが読む、絞り込みを通した延べ候補天体数。フレーム頭で Simulator が 0 へ戻す。
+  public candidateBodies = 0;
 
   // 区間 [tStart, tEnd] で触れうる天体の下ごしらえ。判定できる天体を選び、各天体の表面が
   // その区間のあいだに届きうる範囲を求める。どちらも参加者に依らないので、区間を内側でさらに
@@ -66,6 +68,7 @@ export class SurfaceContactPhysics {
   // collideWithCelestialBody を呼ぶ。
   private resolveAgainstCandidates(e: DynamicEntity, activeStage: Stage): void {
     const candidates = this.candidates.into(e, this.nearbyScratch);
+    this.candidateBodies += candidates.length;
     const hit = firstSurfaceContact(e.prevState, e.state, e.radius, candidates, this.pivot);
     if (hit === null) return;
 

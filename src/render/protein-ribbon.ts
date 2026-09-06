@@ -1,4 +1,4 @@
-// タンパク質の表示用 Cartoon と衝突判定用リボンを生成する。
+// タンパク質の表示用 Cartoon リボンを生成する。
 import * as THREE from 'three/webgpu';
 import type { ProteinAssetDefinition, ProteinMotionAsset } from '../game/protein/protein-schema';
 import type { ProteinDisplayAsset } from '../game/protein/protein-display-asset';
@@ -12,7 +12,7 @@ import {
 export interface ProteinBackboneAsset {
   readonly backboneCount: number;
   readonly backboneCoordinates: readonly number[];
-  /** カルボニル酸素の座標。Ribbon の幅方向を定める。 */
+  /** カルボニル酸素の座標。 */
   readonly backboneOCoordinates?: readonly number[];
   readonly backboneSecondary: readonly string[];
   readonly backboneChains: readonly string[];
@@ -37,7 +37,7 @@ function ribbonMaterial(motion?: ProteinMotionBinding): THREE.MeshStandardNodeMa
   }, motion);
 }
 
-/** 鎖1本ぶんの geometry を、衝突判定が読むタグ付き Mesh として group へ追加する。material の dispose は最初の Mesh だけが持つ。 */
+/** 鎖1本ぶんの geometry を、リボンとして辿れるようタグ付けした Mesh として group へ追加する。material の dispose は最初の Mesh だけが持つ。 */
 function addChainMesh(
   group: THREE.Group,
   geometry: THREE.BufferGeometry,
@@ -119,4 +119,3 @@ export function buildProteinRibbon(
   return group;
 }
 
-export { buildProteinCollisionRibbon } from './protein-collision-ribbon';
