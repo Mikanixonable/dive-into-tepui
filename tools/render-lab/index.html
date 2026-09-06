@@ -33,8 +33,8 @@
   }
 
   .row { display: flex; gap: var(--space-4, 8px); flex-wrap: wrap; margin-bottom: var(--space-5, 12px); }
-  /* 観察のつまみは側柱で縦に積む — 横並びだと1本あたりの幅が読み取れる長さを切る。 */
-  #view-angles, #cumulus-dither { flex-direction: column; gap: var(--space-3, 6px); margin-bottom: 0; }
+  /* 側柱のつまみは縦に積む — 横並びだと1本あたりの幅が読み取れる長さを切る。 */
+  #side .row { flex-direction: column; gap: var(--space-3, 6px); margin-bottom: 0; }
 
   .field { display: flex; align-items: center; gap: var(--space-3, 6px); }
   .field > span { min-width: 5.5em; color: var(--text-dim, #8a939e); }
@@ -81,6 +81,15 @@
       <section>
         <h2>積雲のディザ(仮設)</h2>
         <div class="row" id="cumulus-dither"></div>
+      </section>
+      <!-- 仮設: 半透明な殻の濃さ・高度・反射率の追い込み用。不透明な積雲と馴染むまで残す。 -->
+      <section>
+        <h2>半透明な積雲(仮設)</h2>
+        <div class="row" id="cumulus-shell"></div>
+      </section>
+      <section>
+        <h2>巻雲(仮設)</h2>
+        <div class="row" id="cirrus-shell"></div>
       </section>
     </aside>
   </div>
