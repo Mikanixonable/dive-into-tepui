@@ -200,129 +200,30 @@ BVH が枝を刈れなくなるためである。
 8. 基地のカウンターウェイト側(中心から 400〜700 m)へ撃った弾が当たる。
 9. `npm run typecheck` が通り、`npm run test:game` `npm run test:math` `npm run test:physics` が通る。
 
-## 手順
-
-### 手順 1. タンパク質の判定形状を球の数珠つなぎへ置き換える
-
-#### 目的
-
-判定形状を、主鎖から直接組む球の列にする。三角形・BVH・THREE の群をすべて落とし、アセットごとに
-1つだけ持つ。同時に、判定形状の大きさが見た目と 11.1〜40.0 倍ずれている状態が消える。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/protein/protein-sphere-collision.ts`(新規) | 主鎖から球列を組む関数と、静止球・掃引球の判定を持つクラス |
-| `src/game/protein/protein-ribbon-collision.ts` | **削除**(158 行) |
-| `src/render/protein-collision-ribbon.ts` | **削除**(234 行)。判定形状のためだけに存在するメッシュ生成で、他に読み手がいない |
-| `src/render/protein-ribbon.ts:122` | `buildProteinCollisionRibbon` の再輸出を削除 |
-| `src/game/protein/protein-enemy-registry.ts:5,19,38-41` | `buildCollisionObject: () => THREE.Object3D` を `collisionSpheres: readonly ProteinCollisionSphere[]` へ。`PROTEIN_INTERNAL_RIBBON_COLOR`(:22)も落ちる |
-| `src/game/dynamic/dynamic-entity/protein-enemy.ts:11,84,105-108,122,180-190` | 自分で組むのをやめ、`definition.collisionSpheres` を受け取る。`disposeOwnedRenderResources` の呼び出し(:108)が要らなくなる |
-| `tests/game/protein-ribbon-collision.test.ts` | `tests/game/protein-sphere-collision.test.ts` へ書き直す |
-
-新しい API:
-
-```ts
-// src/game/protein/protein-sphere-collision.ts
-
-/** 判定用の球1個。中心・半径とも敵ローカル座標(表示リボンと同じ単位)。 */
-export interface ProteinCollisionSphere {
-  readonly cx: number;
-  readonly cy: number;
-  readonly cz: number;
-  readonly radius: number;
-}
-
-/**
- * 主鎖を球の数珠つなぎで覆う。隣り合う球は残基を1つ共有するので、球の和は主鎖の
- * 折れ線を切れ目なく含む。アセットごとに1度だけ呼ぶ。
- */
-export function buildProteinCollisionSpheres(
-  backbone: ProteinBackboneAsset,
-  coordinateScale: number,
-): readonly ProteinCollisionSphere[];
-
-/** 球列を敵の位置・姿勢へ当てて接触を返す。個体ごとに作ってよい(球列は共有する)。 */
-export class ProteinSphereCollisionGeometry {
-  /** 全球を覆うワールド外接半径 [m]。ProteinEnemy の radius はこれを使う。 */
-  readonly outerRadius: number;
-
-  constructor(spheres: readonly ProteinCollisionSphere[], rootScale: number);
-
-  testSphereCollision(
-    sphereCenter: Vec3, sphereRadius: number, center: Vec3, att: Quat,
-  ): SphereHit | null;
-
-  testSweptSphereCollision(
-    previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
-    previousSelfState: { readonly r: Vec3 }, selfState: { readonly r: Vec3 }, att: Quat,
-  ): { readonly hit: SphereHit; readonly toi: number } | null;
-}
-```
-
-```ts
-// src/game/protein/protein-enemy-registry.ts
-export interface ProteinEnemyDefinition {
-  // ...
-  /** 表示形態に依らない判定形状。アセットごとに1つで、個体は位置と姿勢だけを渡す。 */
-  readonly collisionSpheres: readonly ProteinCollisionSphere[];
-}
-```
-
-`buildProteinCollisionSpheres` の組み方:
-
-1. 主鎖を**鎖の切れ目だけ**で区間に分ける — 鎖 ID が変わるところと、隣の残基まで 8 Å を超えて
-   飛ぶところ。**二次構造の境界では分けない**(断面が変わるのは表示の都合で、判定には要らない)。
-2. 全残基からモデル原点までの最大距離 `R` を求め、球の半径上限を `R / 4` とする。
-3. 各区間で、先頭から連続する残基を、外接箱の半対角 + 1.02 Å が上限を超えない範囲まで貪欲に
-   伸ばす。1球は必ず2残基以上を含む。
-4. 球の中心は外接箱の中心、半径は半対角 + 1.02 Å。1.02 Å はリボン断面の半対角
-   (半幅 1.0 Å・半厚 0.16 Å)で、coil の管の半径 0.38 Å より大きいのでこれで両方を覆う。
-5. 次の球は前の球の最後の残基から始める。
-6. 座標には `coordinateScale` を掛けて返す — これが表示リボンと同じ単位になる。
-
-**外接箱は増分で持つ**(残基を1つ足すたびに 6 個の min/max を更新するだけ)。球ごとに区間を
-舐め直す素朴な形だと、ATP synthase で 35 ms 掛かる。増分なら残基あたり O(1) になる。
-
-判定の解き方:
-
-- **静止**: 球ごとにワールドのまま中心間距離を測り、めり込みが最も深い球を採る。接触点はその球の
-  表面上、法線は球の中心から相手へ向く向き。
-- **掃引**: 弾の両端を敵ローカルへ移し、球ごとに `linearSphereContact`
-  (`src/physics/sphere-contact.ts:56`)へ「静止した判定球」と「移動する弾」として渡し、
-  最小の `toi` を採る。**全球へ渡す前に、線分と球中心のスカラー距離で落とす** —
-  `sphere-contact.ts:108-109` と同じく、棄却されるところまでは `Vec3` を1つも作らない。
-- 非有限の扱いは `!(x <= y)` の否定形で書く(`sphere-contact.ts:74` と同じ規則)。
-
-#### 達成条件と検証
-
-- `npm run typecheck`、`npm run test:game`、`npm run test:physics`。
-- 新規 `tests/game/protein-sphere-collision.test.ts` が次を全アセットで通ること。
-  1. **覆い**: 全残基の Cα が、いずれかの球の内側にある。
-  2. **連続性**: 隣り合う残基を結ぶ線分が、いずれかの球に丸ごと含まれる。
-  3. **大きさ**: `outerRadius` が、その主鎖の最大原点距離 × `coordinateScale` × `rootScale` の
-     1.0〜1.3 倍に収まる(スケールのずれの回帰)。
-  4. **静止と掃引の整合**: 区間の終端で球が重なっているなら、掃引も必ず当たりを返す。
-- `grep -rn "buildProteinCollisionRibbon\|ProteinRibbonCollisionGeometry\|buildCollisionObject" src/`
-  が 0 件。
-- `npm run dev` で ATP synthase を含むタンパク質敵を4体置いたステージを開始し、
-  **F3 の update 合計に 0.1 s 級の跳ねが1回も出ない**こと。
-- 同ステージで、弾がタンパク質へ**当たる・掠める・外れる**の3通りを目で確かめる。
-  当たる位置が**見えている構造の上**であること(いまは構造の遥か外側で当たる)。
-
 ## 見積り
 
-### 手順 1(タンパク質)
+### 手順 1(タンパク質) — 実施済み。以下は実測
+
+球列は 42 / 70 / 122 / 73 個(myoglobin / 5I4R / rubisco / ATP synthase)。時間は 5 回の
+中央値、掃引は外接球を必ず横切る弾 2,000 本。
 
 | 何 | 導出 | 効果 |
 | --- | --- | --- |
-| 判定形状の組立 | 敵1体ごと 381 / 1,138 / 1,603 / 9,208 ms → アセットごと1回の球の当てはめ。残基あたり O(1) で 4,713 残基 → 5 ms 未満 | ATP synthase の1体目 **9.2 s → 5 ms 未満**、2体目以降 **9.2 s → 0** |
-| 常駐 | 敵1体ごと 9.0 / 72.9 / 181.6 / 317.6 MB → 球 34〜100 個(1個は数十バイト)= 数 KB(アセットごと) | ATP synthase 敵4体で **1,270 MB → 3 KB** |
-| 掃引1組 | 48 標本 + 7 分二分探索(最大 56 回の静止判定)→ 球ごとの二次方程式1本 | 255.0 / 78.6 / 94.0 / 110.5 µs → 2.18 / 1.32 / 2.37 / 2.10 µs = **40〜117 倍速** |
-| 1 substep あたり | ATP synthase の外接球へ弾が 20 発入っている場面で 20 × (110.5 − 2.10) µs | **−2.2 ms/substep** |
-| broad phase | `ProteinEnemy.radius` 2434 → 66 m。`contactCellSize` は最大到達量の2倍 | ATP synthase がいるときのセル一辺 **4868 → 132 m** |
-| 削る行 | `protein-ribbon-collision.ts` 158 行 + `protein-collision-ribbon.ts` 234 行 | **−392 行** |
+| 判定形状の組立 | 敵1体ごと 381 / 1,138 / 1,603 / 9,208 ms → アセットごと1回の球の当てはめ | **0.07 / 0.28 / 3.2 / 1.4 ms**(アセットごと1回)。ATP synthase の1体目 **9.2 s → 1.4 ms**、2体目以降 **0** |
+| 常駐 | 敵1体ごと 9.0 / 72.9 / 181.6 / 317.6 MB → 球列だけ(アセットごと) | **5.3 / 8.9 / 16.4 / 9.3 KB**。ATP synthase 敵4体で **1,270 MB → 9.3 KB** |
+| 掃引1組 | 48 標本 + 7 分二分探索(最大 56 回の静止判定)→ 球ごとの二次方程式1本 | 255.0 / 78.6 / 94.0 / 110.5 µs → **1.96 / 3.88 / 10.41 / 5.21 µs = 9〜130 倍速** |
+| 判定形状の大きさ | 判定の `outerRadius` ÷ リボンが画面上で占める外接半径 | 11.1〜40.0 倍 → **1.18 / 1.09 / 1.15 / 1.08 倍** |
+| broad phase | `ProteinEnemy.radius` 2434 → 65.5 m。`contactCellSize` は最大到達量の2倍 | ATP synthase だけがいるステージのセル一辺 **4868 → 131 m**(4体の最大は rubisco の 193 m)。基地が同席すると基地の 1429 m が上限になる |
+| 輪郭より外へ出る距離 | 球の和の支持関数 −(Cα + リボン断面 1.02 Å)の支持関数、2,000 方向 | **中央 3.8 / 7.8 / 10.0 / 6.6 m、最大 15.6 m** |
+| 削る行 | `protein-ribbon-collision.ts` 158 行 + `protein-collision-ribbon.ts` 234 行 − 新規 255 行 | 実行時のコード **−137 行** |
+
+**掃引は見込みほど速くならなかった。** 半径上限を「外接箱の半対角 + 1.02 Å が上限を超えない」で
+切ると球数が 42〜122 になり、見込んでいた 34〜100 より多い。1本あたり 1.32〜2.37 µs の見込みに
+対して 1.96〜10.41 µs だが、リボンの BVH に対しては桁で速い。
+
+**輪郭より外へ 中央 3.8〜10.0 m 膨らむ。** SPEC/PROTEIN.md の「輪郭の外を通る弾が当たっては
+ならない」に対して、球の列ではこれを 0 にできない。半径上限を 1/6 にすると球数 131〜240 で
+中央 2.4〜6.7 m まで落ちるが、**いまは速度を優先する** — プレイ体験が問題になってから絞る。
 
 ### 手順 2(基地) — 実施済み。以下は実測
 
