@@ -2,13 +2,13 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, clamp, dot, exp, float, fract, greaterThan, int, length, log, max, min,
-  normalize, select, sqrt, texture, uniform, vec2, vec4,
+  Fn, If, Loop, clamp, dot, exp, float, fract, greaterThan, int, length, max, normalize, select,
+  sqrt, texture, uniform, vec2, vec4,
 } from 'three/tsl';
 import { sphereMeshUv } from '../../celestial-surface';
 import {
-  CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, EMPTY_CLOUD_FIELD, cloudTopOf, fieldLodForWidth,
-  grainAmplitudeForWidth, grainAt, opaqueFractionOf,
+  CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, EMPTY_CLOUD_FIELD, cloudTopOf, columnOpticalDepth,
+  fieldLodForWidth, grainAmplitudeForWidth, grainAt, opaqueFractionOf,
 } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
@@ -30,8 +30,6 @@ const SHADOW_TAPS = 6;
 // 光路をたどる長さの上限 [m]。恒星が地平線へ寄るほど層を抜けるまでの距離は伸び、昼夜境界の
 // 真上で発散する。
 const MAX_LIGHT_PATH = 3e5;
-// 覆われている割合から柱の光学的厚みへ直すときの上限。割合 1 では厚みが発散する。
-const MAX_COVERAGE = 0.99;
 // 光路 1 歩が代表する幅を、場のぼかしへ何倍で写すか。**等倍では足りない** — 隣り合うタップの
 // 覆う範囲が接するだけなので、あいだに影の抜けた縞が残る。
 const STEP_BLUR = 2;
@@ -75,9 +73,9 @@ export class CumulusShadow {
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
   // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
   //
-  // 柱の光学的厚みは、覆われた割合 c を通り抜けない確率と読んで τ = −ln(1 − c) と取る。割合は殻が
-  // 雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、影は殻のシルエットの下へ落ちる。
-  // 厚みは光路長ではなく稼いだ高度で配るので、柱を 1 本抜ける合計はどれだけ斜めでも τ に一致する。
+  // 柱の光学的厚みも覆いの形も殻が雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、
+  // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配るので、柱を 1 本抜ける
+  // 合計はどれだけ斜めでも τ に一致する。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
   // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、場を引く mip 段と粒の振幅を決める。
   transmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
@@ -122,8 +120,7 @@ export class CumulusShadow {
           });
           const cloudTop = cloudTopOf(cloud.g, grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
-          const columnDepth = log(min(
-            opaqueFractionOf(cloud.r, grain), MAX_COVERAGE).oneMinus()).negate();
+          const columnDepth = columnOpticalDepth(opaqueFractionOf(cloud.r, grain));
           // **1 歩が雲頂をまたぐ割合で配る** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
