@@ -1,6 +1,6 @@
 // tests/perf/ 配下の各実験が共有する土台。ゲーム本体と同じ調整値の再 export、LEO の初期状態と
 // 天体窓の生成、刻み幅固定の積分、結果の比較と整形を持つ。
-import { solarSystemParts } from 'physics/test-helpers';
+import { solarSystemParts } from '../physics/test-helpers';
 import { nearestAtmosphereBody } from '../../src/physics/attractor';
 import { CelestialMotions } from '../../src/physics/celestial-motion';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
@@ -49,8 +49,8 @@ export function stepDynamicsAt(windows: CelestialMotions, state: KinematicState,
   const tMid = state.t + dt / 2;
   const celestialBodies = windows.gravityMotions;
   return stepDynamics(
-    state, dt, celestialBodies, 0, windows.celestialMotions,
-    nearestAtmosphereBody(state.r, windows.atmosphereMotions, 0),
+    state, dt, celestialBodies, windows.celestialMotions,
+    nearestAtmosphereBody(state.r, windows.atmosphereMotions, tMid), tMid,
     SHIP_BCINV, 0, null,
   );
 }
