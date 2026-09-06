@@ -25,10 +25,17 @@
   figure { margin: 0; background: var(--panel); border: 1px solid var(--edge); padding: 8px; width: fit-content; }
   figure canvas { display: block; width: 1536px; max-width: 100%; height: auto; background: #000; }
   #error { color: #ff8a5c; white-space: pre-wrap; }
+  #desc { opacity: .75; margin: 0 0 12px; max-width: 900px; }
 </style>
 </head>
 <body>
   <h1>Cloud Lab</h1>
+  <p id="desc">
+    動的な雲生成を試すためのテスト。流体など有状態シミュレーションは行わず、時刻からの決定的な
+    プロシージャルテクスチャとして生成している。<br>
+    実際に描画に使われる出力は「被覆率」(低層の積雲の濃さ)・「雲頂高度」(積雲の高さ)・
+    「薄い雲」(巻雲の濃さ)の3つ。
+  </p>
   <div class="row" id="views"></div>
   <div class="row" id="time"></div>
   <div class="row" id="cap"></div>
