@@ -30,9 +30,12 @@ function redirectAssets() {
     }
     return resolveFilename.call(this, request, parent, ...rest);
   };
-  createRequire(import.meta.url).extensions['.jpg'] = (module, filename) => {
-    module.exports = filename;
-  };
+  // 画像アセットの import は、webpack なら URL 文字列になる。ここではパスをそのまま返す。
+  for (const extension of ['.jpg', '.png']) {
+    createRequire(import.meta.url).extensions[extension] = (module, filename) => {
+      module.exports = filename;
+    };
+  }
 }
 
 // src/ の指定モジュール(`physics/cr3bp` のように src/ からの相対パスで指定)を、解決済みの
