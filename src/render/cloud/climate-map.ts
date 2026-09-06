@@ -1,7 +1,7 @@
 // 天体の気候の事前テクスチャ(正距円筒 RGB8: R 平均気温 / G 平年の雲量 / B 標高)を読み、単位方向で
 // 標本化する。雲より桁で低周波な、その天体固有の分布だけを持つ。
 import * as THREE from 'three/webgpu';
-import { texture, vec2 } from 'three/tsl';
+import { smoothstep, texture, vec2 } from 'three/tsl';
 import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { equirectUvFromDirection } from './field-projection';
 import { eastAt, northAt } from './sphere-frame';
@@ -9,6 +9,10 @@ import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
 // テクスチャの目盛り。B は 0..8000 m を 0..1 で持つ。
 const ELEVATION_SPAN = 8000;
+// 陸らしさが 1 に届く標高 [m]。**標高は海で 0、ぼかしの幅で海岸から立ち上がる**ので、低い値で
+// 切れば陸と、その近くの海が読める。海抜の低い平野が海の側へ寄るが、板と粒を分けるのに要る
+// のは大陸と大洋の区別なので足りる。
+const LAND_ELEVATION = 100;
 // 標高の勾配を取る中心差分の刻み [rad]。テクスチャの texel(2π/512)より大きく、山脈の幅より小さい。
 const SLOPE_STEP = 0.02;
 // その刻みが地表で張る長さ [m]。勾配を角あたりから長さあたりへ直すのに要る。
@@ -40,13 +44,20 @@ export class ClimateMap {
     return this.sample(direction).b.mul(ELEVATION_SPAN);
   }
 
-  // 標高の勾配(東向き・北向き成分)[m/m]。
-  public slope(direction: Vec3Node): Vec2Node {
+  // 陸らしさ 0..1(大洋で 0、大陸の内側で 1、海岸で渡る)。
+  public landFraction(direction: Vec3Node): FloatNode {
+    return smoothstep(0, LAND_ELEVATION, this.elevation(direction));
+  }
+
+  // 斜面の勾配(東向き・北向き成分)[m/m]。landHeight [m] は陸へ上乗せする高さで、海と陸の
+  // 比熱の差で海岸へ吹き込む風が持ち上げられる分を、人工の斜面として代用する。
+  public slope(direction: Vec3Node, landHeight: number): Vec2Node {
     const east = eastAt(direction).mul(SLOPE_STEP);
     const north = northAt(direction).mul(SLOPE_STEP);
+    const height = (d: Vec3Node): FloatNode => this.elevation(d).add(this.landFraction(d).mul(landHeight));
     return vec2(
-      this.elevation(direction.add(east)).sub(this.elevation(direction.sub(east))).div(SLOPE_STEP_METERS),
-      this.elevation(direction.add(north)).sub(this.elevation(direction.sub(north))).div(SLOPE_STEP_METERS),
+      height(direction.add(east)).sub(height(direction.sub(east))).div(SLOPE_STEP_METERS),
+      height(direction.add(north)).sub(height(direction.sub(north))).div(SLOPE_STEP_METERS),
     );
   }
 

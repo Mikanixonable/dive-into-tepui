@@ -22,6 +22,8 @@ const CLOUD_FRACTION_YEAR_FIRST = 2016;
 const CLOUD_FRACTION_YEAR_LAST = 2020;
 // 1 ファイルあたりの試行回数。
 const ATTEMPT_LIMIT = 5;
+// PNG の先頭 8 byte。取り込んだものが本当に PNG かを見るのに使う。
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 // url を path へ落とす。既にあるものは飛ばす — 雲量は 60 ファイル 300 MB あり、配信側は途中で
 // 接続を切ることがある。その場で数回試し、諦めたあとももう一度走らせれば続きから拾える。
@@ -32,6 +34,9 @@ async function download(url, path) {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const body = Buffer.from(await res.arrayBuffer());
+      // 配信が畳まれた先は、案内の HTML を 200 で返す。中身を見ないと 60 個の HTML が .png の名前で
+      // 残り、既にあるものを飛ばす次回以降の実行がそれを本物として扱う。
+      if (!body.subarray(0, 8).equals(PNG_SIGNATURE)) throw new Error(`not a PNG (${body.length} bytes)`);
       writeFileSync(path, body);
       console.log(`wrote ${path} (${body.length} bytes)`);
       return;
