@@ -311,83 +311,6 @@ export interface ProteinEnemyDefinition {
 - 同ステージで、弾がタンパク質へ**当たる・掠める・外れる**の3通りを目で確かめる。
   当たる位置が**見えている構造の上**であること(いまは構造の遥か外側で当たる)。
 
-### 手順 2. 基地の判定形状を、焼いたローポリメッシュへ置き換える
-
-#### 目的
-
-表示メッシュ 49,796 枚の BVH を実行時に組むのをやめ、**部品ごとの凸包を焼いたアセット**を読む。
-同時に、いまモデルの 61% を判定不能にしている `outerRadius = 330` を実寸へそろえ、到達不能な
-LOD 分岐を落とす。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `tools/export-base-collision.mjs`(新規) | `buildBaseModel()` から部品ごとの凸包を求め、`src/assets/models/baseCollision.json` へ焼く。`--check` で焼き直しても差分が出ないことだけを見る |
-| `src/assets/models/baseCollision.json`(新規・生成物) | 凸包メッシュ。頂点列と三角形の添字だけを持つ素の JSON(`Object3D.toJSON()` は使わない — UUID が毎回振り直されて差分がノイズになる) |
-| `package.json` | `base-collision` と `base-collision:check` の script を足し、`ci` の並びへ `base-collision:check` を入れる |
-| `src/game/dynamic/dynamic-entity/base-collision.ts` | 全面的に書き直す。焼いた JSON を読んで `buildBVH` を1度だけ通し、レイと球の判定を出す。`BaseCollisionGeometry` クラス・`collectModelTriangles`(:138)・`boxTriangles`(:175)・`raycastOBBs`(:208)・`sphereCollideOBBs`(:240)・`warpLevel` の分岐・`LOD1_BOXES`・`LOD2_OBBS`・`buildBaseModel` の呼び出しを落とす |
-| `src/game/dynamic/dynamic-entity/base.ts:110` | `readonly collisionGeom = new BaseCollisionGeometry()` を削除 |
-| `src/game/dynamic/dynamic-entity/base.ts:152-155` | `raycast`(呼び出し 0 件)を削除 |
-| `src/game/dynamic/dynamic-entity/base.ts:157-164` | `hitBodyByRay` と `testSphereCollision` を、モジュール関数へワールド↔基地ローカルの変換を掛けて呼ぶ形にする |
-| `src/game/dynamic/dynamic-entity/base.ts:202` | `this.radius = 330` を `BASE_COLLISION_RADIUS` にする |
-| `src/game/dynamic/entity-contact-response.ts:25-29` | `baseContactGeometry` が `contactPoint: hit.point` を返すようにする。いまは返していないので、接触エフェクトが基地中心から `radius` ぶん離れた空中に出る(`entity-contact-physics.ts:230`) |
-| `tests/game/base-collision.test.ts`(新規) | 覆い・浮き・外接半径・焼き直しの4条件 |
-
-新しい API:
-
-```ts
-// src/game/dynamic/dynamic-entity/base-collision.ts
-
-/** 全部品を覆う外接半径 [m]。Base.radius はこれを使う。 */
-export const BASE_COLLISION_RADIUS: number;
-
-/** 基地ローカル座標のレイ。maxDist 以内で最も手前の交差を返す。 */
-export function baseRaycast(origin: Vec3, dir: Vec3, maxDist: number): RayHit | null;
-
-/** 基地ローカル座標の球。最も深くめり込んだ接触を返す。 */
-export function baseSphereCollide(center: Vec3, radius: number): SphereHit | null;
-```
-
-ワールド↔ローカルの変換は `base.ts` の側へ移す(2箇所)。`base-collision.ts` は姿勢も
-エンティティも知らない、焼いたメッシュとその判定だけのモジュールになる。BVH はモジュールで
-1つだけ持ち、全 Base が共有する。
-
-焼く手順(`tools/export-base-collision.mjs`):
-
-1. `buildBaseModel()` を組み、`updateMatrixWorld(true)` してから全 Mesh をワールド座標で集める
-   (root の ×3 が入った状態)。
-2. 直下の子(部位)ごとに、メッシュを**連結成分**へ分ける — AABB が接しているメッシュ同士を
-   同じ塊にする(union-find)。現在のモデルで 64 部品になる。
-3. 塊ごとに、その全頂点の**凸包**を取る(`three/examples/jsm/math/ConvexHull.js`)。
-   `tools/export-models.mjs` と同じく、ツール側は素の `three` を使う。
-4. 全部品の三角形を1つの頂点列 + 添字列へまとめて JSON へ書く。現在のモデルで 3,416 枚。
-5. **部材の足切りはしない。** 小さいメッシュを落とすと、それが判定形状の外へはみ出す。
-
-`BASE_COLLISION_RADIUS` は焼いた頂点列から求める(手で書かない)。現在の形なら 715 前後になる。
-
-#### 達成条件と検証
-
-- `npm run typecheck`、`npm run test:game`。
-- 新規 `tests/game/base-collision.test.ts` が次を通ること。
-  1. **覆い**: `buildBaseModel()` の全頂点が、焼いた判定形状の**内側**にある(許容 0.5 m)。
-     凸包なら構成から成り立つが、部品の切り分けを間違えると崩れる。
-  2. **浮き**: 表示メッシュの外からレイを 6,000 本通し、両方に当たったレイについて
-     「判定形状が見えている面より手前で止まる距離」の**中央値 5 m 以下・90 パーセンタイル 20 m 以下**。
-     負の値(めり込み)が1本も無いこと。
-  3. **外接半径**: `BASE_COLLISION_RADIUS` が `buildBaseModel()` の最大頂点半径(714.7 m)以上。
-  4. **焼き直しの一致**: `node tools/export-base-collision.mjs --check` が差分なしで終わる。
-- `grep -n "buildBaseModel\|LOD1_BOXES\|LOD2_OBBS\|warpLevel\|OBB" src/game/dynamic/dynamic-entity/base-collision.ts`
-  が 0 件。`grep -rn "warpLevel" src/game/dynamic/` が 0 件。
-- `npm run dev` の creative ステージで基地を1つ置き、
-  - カウンターウェイト側(-Z、中心から 400〜700 m)へ弾を撃って**当たる**こと(いまは素通りする)。
-  - 自機をトラス側面・居住区・貨物区・ドックパレットの4面へそれぞれ寄せ、**見えている面に触れて
-    止まる**こと。何も無い空間で止まらないこと、面へめり込まないこと。
-  - 基地へ寄ってドッキングできること。ドッキングガイドが「ドッキング可」になる位置で、
-    艦が基地へめり込んでいないこと。
-  - 弾が基地へ当たったときの火花が、**当たった構造の上**に出ること(いまは中心から 330 m の空中)。
-
-
 ## 見積り
 
 ### 手順 1(タンパク質)
@@ -401,20 +324,28 @@ export function baseSphereCollide(center: Vec3, radius: number): SphereHit | nul
 | broad phase | `ProteinEnemy.radius` 2434 → 66 m。`contactCellSize` は最大到達量の2倍 | ATP synthase がいるときのセル一辺 **4868 → 132 m** |
 | 削る行 | `protein-ribbon-collision.ts` 158 行 + `protein-collision-ribbon.ts` 234 行 | **−392 行** |
 
-### 手順 2(基地)
+### 手順 2(基地) — 実施済み。以下は実測
+
+焼いた形状は 64 部品・3,416 枚・頂点 1,836・`BASE_COLLISION_RADIUS` = 714.67 m。時間は
+5 回の中央値、球とレイは broad phase が通す分布(中心から 715 m の球の中に一様)で 2,000 本。
 
 | 何 | 導出 | 効果 |
 | --- | --- | --- |
-| 判定形状の組立 | `buildBaseModel()` 287 + 三角形抽出 262 + `buildBVH` 234 = 780 ms(**Base 1体ごと**)→ 焼いた 3,416 枚の `buildBVH` 15.7 ms(**セッションに1度**、全 Base で共有) | Base 1体目 **780 → 16 ms**、2体目以降 **780 → 0 ms** |
+| 判定形状の組立 | `buildBaseModel()` 287 + 三角形抽出 262 + `buildBVH` 234 = 780 ms(**Base 1体ごと**)→ 焼いた 3,416 枚の三角形化 + `buildBVH` 15.5 ms(**セッションに1度**、全 Base で共有) | Base 1体目 **780 → 16 ms**、2体目以降 **780 → 0 ms** |
 | `buildBaseModel()` の呼び出し | 表示用と判定用で 2 回 → 表示用の 1 回 | Base 1体あたり **−287 ms** |
-| 常駐 | 49,796 枚 × 約 490 B(タンパク質の実測から外挿)≈ 24 MB(Base 1体ごと)→ 3,416 枚 ≈ 1.7 MB(全 Base で1つ) | Base 4体で **約 96 MB → 1.7 MB** |
-| 球判定1回 | BVH 49,796 枚 → BVH 3,416 枚。太った箱と違って部品どうしが重ならないので枝がよく刈れる | 1.44 → **0.08 µs** |
-| レイ1本 | 同上 | 24.09 → **4.27 µs**(部位ごとの箱と同等) |
-| 見た目とのずれ | 判定面が見えている面より手前に出る距離 | 部位ごとの箱なら中央 25.2 m → 凸包で **中央 2.8 m / 90% 13 m** |
-| アセット | 頂点 約 1,800 + 添字 3,416 × 3 の素の JSON | 約 100 KB(ATP synthase の主鎖 310 KB と同程度) |
+| 常駐 | 三角形 49,796 枚とその BVH(Base 1体ごと)→ 3,416 枚(全 Base で1つ) | BVH だけで 2.3 → **0.2 MB**、三角形を含めて Base 4体で数十 MB 級の削減 |
+| 球判定1回 | BVH 49,796 枚 → BVH 3,416 枚 | 0.72 → **1.24 µs**(**悪化**) |
+| レイ1本 | 同上 | 6.68 → **7.71 µs**(**悪化**) |
+| 見た目とのずれ | 判定面が見えている面より手前に出る距離(表示メッシュへ 6,000 本) | **中央 3.2 m / 90% 16.0 m**、めり込み 0 m |
+| アセット | 頂点 1,836 + 添字 3,416 × 3 の素の JSON | **79 KB** |
 | 判定できる範囲 | 重心が 330 m の外にある三角形 30,160 枚(61%)が判定に入る | 貨物区・放熱板・蒸留プラントへ**当たるようになる** |
-| セル一辺 | `radius` 330 → 715。`contactCellSize` は2倍 | 基地だけのステージで 660 → **1430 m**(悪化。受け入れる) |
-| 削る行 | `base-collision.ts` 259 → 約 80 行(OBB 判定・三角形抽出・LOD 分岐が全部消える)。焼き出しツールが約 120 行増える | 実行時のコード **−180 行** |
+| セル一辺 | `radius` 330 → 714.67。`contactCellSize` は2倍 | 基地だけのステージで 660 → **1429 m**(悪化。受け入れる) |
+| 削る行 | `base-collision.ts` 259 → **66 行**。焼き出しツールが **128 行**増える | 実行時のコード **−193 行** |
+
+**1回あたりの判定は速くならなかった。** 枚数は 1/15 だが、凸包の面は1枚が数十 m に及ぶので BVH の
+葉の AABB が緩く、細かい表示メッシュより枝が刈れない。見込んでいた 1.44 → 0.08 µs は出ない。
+効いているのは**組立(780 → 16 ms、しかも Base ごとから1回きりへ)と常駐**のほうで、
+1回あたりの 0.5〜1 µs の悪化はそれに対して無視できる。
 
 ## リスクと落とし穴
 
