@@ -119,3 +119,51 @@ return v3(shipR.x + worldPos.x, shipR.y + worldPos.y, shipR.z + worldPos.z);
 離れているほど破片の湧く位置がずれ、距離が伸びたぶん効果音も減衰する。
 
 直すこと自体は3行だが、見た目が変わるので実機で確かめてから入れる。
+
+## ベルトの節点に時刻が無く、掃引判定が一度も効いていない(速い弾がすり抜ける)
+
+`BeltPhysics.collisionSections`(`belt-physics.ts:233`)が節点の world 状態を
+
+```ts
+s.state = kinematicState<'eci'>(s.state.t, /* 位置 */, /* 速度 */);
+```
+
+と、**自分の古い `t` を読み直して**置いている。`BeltSection` は `kinematicState(0, …)` で
+生成される(`belt-physics.ts:26`)ので、節点の時刻は生成時の **0 のまま一度も進まない。**
+`state` セッタは `prevState` をいまの先端へ進める(`dynamic-trajectory.ts:100`)ので、
+`prevState.t` も 0。したがって `entity-contact-response.ts:92` の
+
+```ts
+const sweptValid = a.prevState.t < a.state.t && b.prevState.t < b.state.t && …
+```
+
+が **常に false** になり、ベルトの節点は掃引 TOI へ進まず、区間終端の重なり判定だけを
+通っている(`resolveSphereCollision` に `prevA`/`prevB` が渡らず、`sphereContactGeometry` が
+静止判定に落ちる)。
+
+**すり抜ける量:** 節点半径 0.8 m + 弾 0.02 m = 0.82 m の窓に対し、機関砲初速は 1000 m/s
+(`ship.ts:41`)。倍率 ×1 の substep 幅 1/60 s では弾が 16.7 m 進むので、終端の重なりで
+捕まるのは 2 × 0.82 / 16.7 ≈ **1 割**。9 割方は当たらずに抜ける。無言で当たらないので、
+「ベルトに当たり判定が無い」ようにしか見えない。
+
+**手本は同じ艦の放熱板の折りで、そちらは正しい。** `RadiatorSystem.collisionFolds`
+(`radiator.ts:203`)は時刻を引数で受け、`fold.state = kinematicState<'eci'>(t, …)`(:216)と
+置いている。呼び出し元の `Player.contactProxies(simTime, dt)`(`player.ts:457`)は既に
+`simTime` を受け取っており、`Simulator` はそれを **substep の終端まで進めた後**に呼ぶ
+(`simulator.ts:137` で `this.simTime = endTime`、:157 で `contactProxies`)。よって折りの
+`prevState.t` は前 substep の終端 = この区間の始点となり、他の個体と 1e-6 以内で揃う。
+**ベルトも `collisionSections` へ時刻を渡し、`s.state.t` の使い回しをやめれば同じ形になる**
+(`belt.ts:84` の委譲も署名を合わせる)。書き戻し側(`applyCollisionSections`)は `t` を
+読まないので変更不要。
+
+**これは当たり方が変わる変更なので、単独で入れて実機で見る。**
+
+- 速い弾が当たるようになる = 難易度が変わる。振り回したベルトが弾をはたく挙動も出るはず
+  (区間 `prevState.r → state.r` は Verlet 変位と姿勢回転を合わせた節点の実際の動きを結ぶ)。
+- 代理が前 substep に置き直されていない局面 — 自機の生成直後、節点数が増えた直後、
+  倍率が `MAX_PHYS_SIM_SPEED = 4` を超えて物体接触が止まっていた区間の直後
+  (`simulator.ts:148` の `canResolveEntityContacts`) — では `prevState.t` が相手とずれ、
+  `sweptValid` は false へ落ちて今までどおりの重なり判定に戻る。**壊れるとしても
+  「当たらない」側へしか倒れない**ので、この経路を特別扱いする必要はない。
+- ベルトの接触を見る回帰テストは無い(`tests/` に belt を触るものが1つも無い)。入れるなら
+  節点1つと高速な球を substep 2 回ぶん進める形で、掃引が効くことを直接見るものになる。
