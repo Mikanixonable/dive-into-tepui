@@ -7,12 +7,10 @@ import type { Vec3 } from './vec3';
 export class HierarchicalSpatialGrid<T> {
   // 段 level は一辺 minCellSize·2^level。要る段が現れた時点で末尾へ足し、reset を跨いで使い回す。
   private readonly grids: SpatialGrid<T>[] = [];
-  // 登録した要素を挿入順に並べ、同じ添字で段と、その段でのセル添字を引く。
+  // 登録した要素を挿入順に並べ、同じ添字で段と位置を引く。
   private readonly items: T[] = [];
   private readonly itemLevels: number[] = [];
-  private readonly itemCx: number[] = [];
-  private readonly itemCy: number[] = [];
-  private readonly itemCz: number[] = [];
+  private readonly itemPositions: Vec3[] = [];
   // pairsInto が使い回す作業領域。
   private readonly levelPairs: T[] = [];
   private readonly coarseNeighbors: T[] = [];
@@ -47,22 +45,17 @@ export class HierarchicalSpatialGrid<T> {
     for (let level = 0; level < this.grids.length; level++) this.grids[level]!.reset(this.cellSizeAt(level));
     this.items.length = 0;
     this.itemLevels.length = 0;
-    this.itemCx.length = 0;
-    this.itemCy.length = 0;
-    this.itemCz.length = 0;
+    this.itemPositions.length = 0;
   }
 
   // 要素 item を、一辺が 2·reach 以上になる最も細かい段の、pos の属するセルへ登録する。
   // reach は有限で 0 以上でなければならない。
   public insert(item: T, pos: Vec3, reach: number): void {
     const level = this.levelFor(reach);
-    const grid = this.gridAt(level);
-    grid.insert(item, pos);
+    this.gridAt(level).insert(item, pos);
     this.items.push(item);
     this.itemLevels.push(level);
-    this.itemCx.push(grid.cellIndex(pos.x));
-    this.itemCy.push(grid.cellIndex(pos.y));
-    this.itemCz.push(grid.cellIndex(pos.z));
+    this.itemPositions.push(pos);
   }
 
   // 中心距離が到達量の和以下になりうる順不同ペアを、各1回ずつ out へ平らに詰める
@@ -75,18 +68,11 @@ export class HierarchicalSpatialGrid<T> {
     }
     // 段をまたぐペアは、細かい側の要素が自分より粗い全ての段の27近傍を引いて集める。
     for (let i = 0; i < this.items.length; i++) {
-      const item = this.items[i]!;
-      const level = this.itemLevels[i]!;
-      for (let coarse = level + 1; coarse < this.grids.length; coarse++) {
-        const span = 2 ** (coarse - level);
-        this.coarseNeighbors.length = 0;
-        this.grids[coarse]!.appendCellNeighborsInto(
-          Math.floor(this.itemCx[i]! / span),
-          Math.floor(this.itemCy[i]! / span),
-          Math.floor(this.itemCz[i]! / span),
-          this.coarseNeighbors,
-        );
-        for (const neighbor of this.coarseNeighbors) out.push(item, neighbor);
+      const item = this.items[i]!, pos = this.itemPositions[i]!;
+      for (let coarse = this.itemLevels[i]! + 1; coarse < this.grids.length; coarse++) {
+        for (const neighbor of this.grids[coarse]!.neighborsInto(pos, this.coarseNeighbors)) {
+          out.push(item, neighbor);
+        }
       }
     }
     return out;
