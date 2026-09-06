@@ -199,11 +199,14 @@ export class PointEntity extends CelestialEntity {
   }
 
   // 大気の散乱へ立てる雲。**描いている殻だけが立つ。** 姿勢は自転位相まで込みで組む —
-  // 軸だけでは場が地表と一緒に回らない。
+  // 軸だけでは場が地表と一緒に回らない。**姿勢はこの1体ぶんの実体で返す** — 大気パスが読むのは
+  // 描画のときなので、影へ渡す使い回しの実体を渡すと、同期のあいだに書き換わる。
   public override atmosphereCloudsAt(displayTime: number): AtmosphereClouds | null {
     if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
-    writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
-    return { field: this.cumulus.field, bodyFromWorld: this.bodyFromWorld };
+    return {
+      field: this.cumulus.field,
+      bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), this.motion, displayTime),
+    };
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
