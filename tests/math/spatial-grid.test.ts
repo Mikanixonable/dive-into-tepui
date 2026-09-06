@@ -107,7 +107,7 @@ export function register(): void {
 
     grid.insert('new', v3(0, 0, 0));
     assert.deepEqual(grid.neighbors(v3(0, 0, 0)), ['new']);
-    // 使い回した中間構造に前回のセルが残っていないこと。
+    // 挿入し直しても、前回のセルが復活しないこと。
     assert.deepEqual(grid.neighbors(v3(100, -100, 100)), []);
   });
 

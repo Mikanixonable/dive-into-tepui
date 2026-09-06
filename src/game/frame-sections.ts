@@ -8,23 +8,24 @@ export const SECTION = {
   stage: 2,
   integrate: 3,
   orbit: 4,
-  contact: 5,
-  attitude: 6,
-  predict: 7,
-  effects: 8,
-  plan: 9,
-  mapPick: 10,
-  camera: 11,
-  pointer: 12,
+  celestialContact: 5,
+  entityContact: 6,
+  attitude: 7,
+  predict: 8,
+  effects: 9,
+  plan: 10,
+  mapPick: 11,
+  camera: 12,
+  pointer: 13,
 } as const;
 
 export type SectionId = (typeof SECTION)[keyof typeof SECTION];
 
-// 表示名。並びは SECTION の値の順。積分の内訳3区間は、合計が親を成さないことを崩さないまま
+// 表示名。並びは SECTION の値の順。積分の内訳4区間は、合計が親を成さないことを崩さないまま
 // 並びだけ字下げする。
 export const SECTION_LABELS: readonly string[] = [
   '入力', '自機', 'ステージ', '積分',
-  '　軌道積分', '　接触', '　姿勢',
+  '　軌道積分', '　天体接触', '　物体接触', '　姿勢',
   '予測', '演出', '計画', 'マップ候補', 'カメラ', 'ポインタ',
 ];
 
@@ -58,6 +59,14 @@ export class FrameSections {
     this.elapsedMs[id] = this.elapsedMs[id]! + (performance.now() - this.enteredAt[id]!);
   }
 
+  // 区間 from を抜けて、その同じ瞬間から区間 to へ入る。
+  switchTo(from: SectionId, to: SectionId): void {
+    if (!this.enabled) return;
+    const now = performance.now();
+    this.elapsedMs[from] = this.elapsedMs[from]! + (now - this.enteredAt[from]!);
+    this.enteredAt[to] = now;
+  }
+
   // フレーム末で呼び、update 全体の所要時間 [ms] を確定させる。
   endFrame(): void {
     if (!this.enabled) return;
@@ -71,7 +80,8 @@ export class FrameSections {
   otherMs(): number {
     let sum = 0;
     for (let i = 0; i < SECTION_COUNT; i++) {
-      if (i === SECTION.orbit || i === SECTION.contact || i === SECTION.attitude) continue;
+      if (i === SECTION.orbit || i === SECTION.celestialContact
+        || i === SECTION.entityContact || i === SECTION.attitude) continue;
       sum += this.elapsedMs[i]!;
     }
     return Math.max(0, this.frameMs - sum);
