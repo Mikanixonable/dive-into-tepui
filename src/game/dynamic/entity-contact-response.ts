@@ -26,6 +26,7 @@ function baseContactGeometry(
     normal: baseIsA ? hit.normal : scale(hit.normal, -1),
     toi: 1,
     pushOut: hit.depth,
+    contactPoint: hit.point,
   };
 }
 
