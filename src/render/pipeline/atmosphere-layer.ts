@@ -163,7 +163,7 @@ export class AtmosphereLayer {
   }
 
   // 種類ごとに、雲の殻を描くかを置き直す。
-  public setCloudShell(species: CloudSpecies, enabled: boolean): void {
+  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.clouds.setShellEnabled(species, enabled);
   }
 
