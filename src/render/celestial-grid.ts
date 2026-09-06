@@ -1,7 +1,7 @@
 // 赤道面・黄道面の目安グリッド(緯線・経線)と両極マーカー。頂点は ECI に固定した
 // 単位球面上の点(星殻と同じ半径)で、自機中心に追従する固定半径殻として描く。
 import * as THREE from 'three/webgpu';
-import { Q_ECL_TO_ECI } from '../physics/ecliptic';
+import { ECLIPTIC_BASIS, EQUATOR_BASIS, type PlaneBasis } from './plane-basis';
 import { STAR_SHELL_RADIUS } from './stars';
 import { markOverlay } from './pipeline/lit-layer';
 import { SCHEMATIC_LINE } from './schematic-style';
@@ -63,32 +63,6 @@ export function normalizeGridVisibility(visibility: CelestialGridVisibility): Ce
   }
   return next;
 }
-
-// 面を張る直交基底。e1/e2 が面内、pole が法線(北極方向)。
-interface PlaneBasis {
-  readonly e1: THREE.Vector3;
-  readonly e2: THREE.Vector3;
-  readonly pole: THREE.Vector3;
-}
-
-const eclToEciQuat = new THREE.Quaternion(Q_ECL_TO_ECI.x, Q_ECL_TO_ECI.y, Q_ECL_TO_ECI.z, Q_ECL_TO_ECI.w);
-
-function rotatedAxis(x: number, y: number, z: number): THREE.Vector3 {
-  return new THREE.Vector3(x, y, z).applyQuaternion(eclToEciQuat);
-}
-
-// 赤道面はゲーム ECI そのもの(Y軸 = 北極)。
-const EQUATOR_BASIS: PlaneBasis = {
-  e1: new THREE.Vector3(1, 0, 0),
-  e2: new THREE.Vector3(0, 0, 1),
-  pole: new THREE.Vector3(0, 1, 0),
-};
-// 黄道面は Q_ECL_TO_ECI で赤道基底から回転させて得る(傾斜角を直書きしない)。
-const ECLIPTIC_BASIS: PlaneBasis = {
-  e1: rotatedAxis(1, 0, 0),
-  e2: rotatedAxis(0, 1, 0),
-  pole: rotatedAxis(0, 0, 1),
-};
 
 const GRID_LAT_STEP_DEG = 15; // 交点の緯度間隔
 const GRID_LON_STEP_DEG = 15; // 交点の経度間隔
