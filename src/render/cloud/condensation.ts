@@ -30,6 +30,13 @@ const COVERAGE_WIDTH = 0.22;
 const COVERAGE_DISPERSION = 2;
 // 湿度へ足す対流の重み。伝達関数の幅に対してどれだけ深く千切るかを決める。
 const CONVECTION_GAIN = 1.2;
+// 気団の折り目の帯(前線・雨帯)の中で、その重みを弱める割合(1 で帯の芯の粒が消える)。**帯は
+// 隙間なく連なる面で、対流はそこでは穴ではなく雲頂の起伏と塔として出る**(`DEVELOP/SPEC/
+// RENDERING.md`「帯に沿って幅数百キロの雲が隙間なく連なり…粒立った塔が列をなす」)。帯の中は
+// 上昇流が頭打ちなので活発度も 1 に張り付き、粒の振れ幅(伝達関数の幅の ±1.6 倍)がそのまま乗る
+// — 弱めないと、帯が被覆率の効き始めをまたぐ縁で、面ではなく点描のほつれになる。塔は別の項が
+// 立てるので、ここを上げても帯の上の塔は残る。
+const BAND_GRAIN_FADE = 0.8;
 // 層状の雲の高さ [m]。雲底から、上昇流の深さが 1 に漸近する高さまで。上限は前線の乱層雲
 // (4〜8 km)に取る — 塔はここではなく対流の峰が立てる。
 const CLOUD_BASE_HEIGHT = 1000;
@@ -90,7 +97,7 @@ export function condense(weather: WeatherSample): CloudSample {
   const convection = mix(weather.convection.y, weather.convection.x, shape)
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
   const peak = convection.mul(weather.convectiveActivity);
-  const granularity = peak.mul(CONVECTION_GAIN);
+  const granularity = peak.mul(CONVECTION_GAIN).mul(weather.band.mul(BAND_GRAIN_FADE).oneMinus());
   // 層状の雲: 上昇流と暖気の流入と折り目の帯が持ち上げる高さに、対流の起伏が乗る。
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT).add(weather.warmth.mul(WARM_TOP))
     .add(weather.band.mul(BAND_TOP)).add(convection.mul(CLOUD_TOP_RELIEF)).sub(CLOUD_TOP_BIAS);
