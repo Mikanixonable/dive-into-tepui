@@ -62,12 +62,12 @@ const FRONT_SPAN = 8;
 // 中緯度の低気圧の配置。時刻 0 の中心を CPU で引き直すためのもので、同時に持つ数、1 つの寿命 [s]、
 // 東進の速さ [m/s]、中心の緯度の範囲 [°]、半球の中の順番から経度の枡へ進む歩幅、生まれる経度が枡の
 // 幅のうち揺れてよい割合。src/render/cloud/cyclones.ts の同名の定数と対。
-const LOW_COUNT = 10;
+const LOW_COUNT = 8;
 const LOW_LIFETIME = 5 * 86400;
 const LOW_DRIFT = 12;
 const LOW_LATITUDE_MIN = 35;
 const LOW_LATITUDE_SPAN = 25;
-const LOW_SLOT_STRIDE = 2;
+const LOW_SLOT_STRIDE = 3;
 const LOW_LONGITUDE_JITTER = 0.2;
 // 低気圧の周りで圧縮を読む範囲 [km]。背景はどの中心からも BACKGROUND_KM より遠い texel、環は最盛期
 // (深さの係数 ≥ RING_MATURITY)の中心から RING_INNER_KM..RING_OUTER_KM の texel。
