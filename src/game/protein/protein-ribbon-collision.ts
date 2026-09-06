@@ -2,14 +2,14 @@
 import * as THREE from 'three/webgpu';
 import { add, cross, dot, len, lenSq, norm, scale, sub, type Vec3, v3 } from '../../math/vec3';
 import {
-  type BVHNode, type SphereHit, type Triangle,
+  type SphereHit, type Triangle, type TriangleBVH,
   buildBVH, sphereCollideTriangles,
 } from '../../math/triangle-mesh';
 import { qInvert, qRotate, type Quat } from '../../math/quat';
 
 export class ProteinRibbonCollisionGeometry {
   readonly outerRadius: number;
-  private readonly bvh: BVHNode | null;
+  private readonly bvh: TriangleBVH | null;
   private readonly rootScale: number;
 
   /** タグ付き Ribbon Mesh を root-local BVH へ変換する。 */
