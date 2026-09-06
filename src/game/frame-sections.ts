@@ -59,6 +59,14 @@ export class FrameSections {
     this.elapsedMs[id] = this.elapsedMs[id]! + (performance.now() - this.enteredAt[id]!);
   }
 
+  // 区間 from を抜けて、その同じ瞬間から区間 to へ入る。
+  switchTo(from: SectionId, to: SectionId): void {
+    if (!this.enabled) return;
+    const now = performance.now();
+    this.elapsedMs[from] = this.elapsedMs[from]! + (now - this.enteredAt[from]!);
+    this.enteredAt[to] = now;
+  }
+
   // フレーム末で呼び、update 全体の所要時間 [ms] を確定させる。
   endFrame(): void {
     if (!this.enabled) return;
