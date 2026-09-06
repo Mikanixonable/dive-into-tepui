@@ -636,7 +636,7 @@ export class DynamicEntity {
   }
 
   // true の種別では、カスタム判定が null を返しても外接球へフォールバックしない。
-  // これを分けないと「リボンに触れていない空間」が球の当たり判定として残ってしまう。
+  // これを分けないと「判定形状に触れていない空間」が球の当たり判定として残ってしまう。
   usesCustomSphereCollision(): boolean {
     return false;
   }
