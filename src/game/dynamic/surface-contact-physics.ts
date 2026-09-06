@@ -36,7 +36,7 @@ export class SurfaceContactPhysics {
   // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、その区間の解決すべてで使う。
   private pivot = 0;
   // 負荷確認ウィンドウが読む、絞り込みを通した延べ候補天体数。フレーム頭で Simulator が 0 へ戻す。
-  candidateBodies = 0;
+  public candidateBodies = 0;
 
   // 区間 [tStart, tEnd] で触れうる天体の下ごしらえ。判定できる天体を選び、各天体の表面が
   // その区間のあいだに届きうる範囲を求める。どちらも参加者に依らないので、区間を内側でさらに

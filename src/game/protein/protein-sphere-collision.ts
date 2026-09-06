@@ -91,8 +91,7 @@ export class ProteinSphereCollisionGeometry {
   /** 全球を覆うワールド外接半径 [m]。ProteinEnemy の radius はこれを使う。 */
   public readonly outerRadius: number;
 
-  // 敵ローカルの向きのまま [m] へ直した球列。姿勢だけを掛ければワールドと比べられるので、
-  // 判定の中で長さを割り戻さない。
+  // 敵ローカルの向きのまま [m] へ直した球列。姿勢を掛けるだけでワールドと比べられる。
   private readonly spheres: readonly ProteinCollisionSphere[];
 
   /** 敵ローカルの球列と、そこからワールドへ掛かる一様倍率を受ける。 */
@@ -132,8 +131,7 @@ export class ProteinSphereCollisionGeometry {
     }
     if (deepest === null) return null;
 
-    // 法線は球の中心から相手へ向く。中心がちょうど重なった相手では向きが定まらないので、
-    // norm がゼロを返して押し戻しも反発も起きない。
+    // 法線は球の中心から相手へ向く。中心が重なった相手では向きが定まらず、norm がゼロを返す。
     const localNormal = norm(v3(local.x - deepest.cx, local.y - deepest.cy, local.z - deepest.cz));
     const localPoint = v3(
       deepest.cx + localNormal.x * deepest.radius,
@@ -211,8 +209,7 @@ function backboneOuterRadius(backbone: ProteinBackboneAsset): number {
   return outerRadius;
 }
 
-// 主鎖を、鎖が変わるところと隣の残基まで飛ぶところで区間 [begin, end) へ分ける。二次構造の
-// 境界では分けない — 断面が変わるのは表示の都合で、判定には要らない。
+// 主鎖を、鎖が変わるところと隣の残基まで飛ぶところで区間 [begin, end) へ分ける。
 function backboneRuns(
   backbone: ProteinBackboneAsset,
 ): readonly { readonly begin: number; readonly end: number }[] {
@@ -238,7 +235,7 @@ function continuesRun(backbone: ProteinBackboneAsset, index: number): boolean {
   return step <= CHAIN_BREAK_DISTANCE;
 }
 
-// 線分と球の中心の最短距離の2乗。棄却の判定にしか使わないので Vec3 を1つも作らない。
+// 線分と球の中心の最短距離の2乗。
 function segmentSphereDistanceSq(start: Vec3, end: Vec3, sphere: ProteinCollisionSphere): number {
   const dx = end.x - start.x;
   const dy = end.y - start.y;

@@ -456,10 +456,10 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // この艦の接触代理一覧 — 放熱板の折り(展開中かつ健在なものだけ)と、ベルトの節点。
   override contactProxies(simTime: number, dt: number): readonly DynamicEntity[] {
     this.contactProxyScratch.length = 0;
-    for (const fold of this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime)) {
+    for (const fold of this.radiator.contactFolds(this.state.r, this.state.v, this.att, simTime)) {
       this.contactProxyScratch.push(fold);
     }
-    for (const section of this.belt.collisionSections(simTime, dt, this.state.r, this.state.v, this.att)) {
+    for (const section of this.belt.contactSections(simTime, dt, this.state.r, this.state.v, this.att)) {
       this.contactProxyScratch.push(section);
     }
     return this.contactProxyScratch;
@@ -467,7 +467,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // ベルトは反発を節点の側で受け止めるので、解決後の状態を機体座標系の鎖へ書き戻す。
   override applyContactProxies(dt: number): void {
-    this.belt.applyCollisionSections(dt, this.state.r, this.state.v, this.att);
+    this.belt.applyContactSections(dt, this.state.r, this.state.v, this.att);
   }
 
   // 動圧が構造限界を超えたことによる喪失。熱による焼失は burnUp が、天体の地表への到達は

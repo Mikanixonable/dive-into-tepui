@@ -50,8 +50,7 @@ function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: 
   return add(origin, yRotatedOffset(fold % 2 === 0 ? even : odd, sign * RADIATOR_SEGMENT_LENGTH / 2));
 }
 
-// 蛇腹1折りぶんの接触代理。艦の姿勢と展開度から一意に決まる剛体の取り付けなので、
-// ベルトと違い Verlet 解法は要らず、区間ごとに RadiatorSystem.collisionFolds が置き直すだけでよい。
+// 蛇腹1折りぶんの接触代理。艦の姿勢と展開度から一意に決まる剛体の取り付け。
 class RadiatorFold extends DynamicEntity {
   // state は生成時点の実際の world 状態 — 仮の状態で始めると、最初に置き直した substep の
   // prevState がその仮位置になり、そこからの偽の区間を掃引してしまう。
@@ -201,7 +200,7 @@ export class RadiatorSystem {
 
   // RADIATOR_CONTACT_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を返す。
   // t は接触代理の KinematicState.t に使う現在時刻(swept 判定の区間を成す)。
-  collisionFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
+  contactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
     const result: RadiatorFold[] = [];
     for (const side of ['up', 'down'] as const) {
       if (this.panels[side].deploy < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
@@ -214,10 +213,11 @@ export class RadiatorSystem {
         const worldPos = add(shipR, qRotate(att.q, bodyOffset));
         const worldVel = add(shipV, qRotate(att.q, cross(att.w, bodyOffset)));
         const world = kinematicState<'eci'>(t, worldPos, worldVel);
-        const fold = proxies[i];
-        if (fold) fold.state = world;
-        else proxies.push(new RadiatorFold(side, this.owner, world));
-        result.push(proxies[i]!);
+        const known = proxies[i];
+        const fold = known ?? new RadiatorFold(side, this.owner, world);
+        if (known === undefined) proxies.push(fold);
+        else fold.state = world;
+        result.push(fold);
       }
     }
     return result;
