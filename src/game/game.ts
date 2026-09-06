@@ -487,7 +487,7 @@ export class Game {
     this.simSpeedManager.update(this.simulator.simTime);
     const simDt = dt * this.simSpeedManager.simSpeed;
     const canShipAct = this.simSpeedManager.canShipAct;
-    const canResolvePhysicalCollisions = this.simSpeedManager.canResolvePhysicalCollisions;
+    const canEngage = this.simSpeedManager.canEngage;
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     const playerInput = this.controlledBase !== null ? null : this.input;
@@ -513,7 +513,7 @@ export class Game {
     this.sections.enter(SECTION.integrate);
     this.simulator.advance(
       dt, simDt, this.player, this.activeStage,
-      canResolvePhysicalCollisions, this.nanWatchdog);
+      canEngage, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
     this.docking.updateDockedPhysics();
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。

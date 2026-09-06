@@ -107,6 +107,7 @@ export class DynamicEntity {
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。CelestialMotion.radius と同じ量
   collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか
+  engagementAnchor = false; // 交戦圏の中心になるか
   // 濃い大気の中を、抗力が要求する細かい刻みで積むか。true の個体はサブステップの内側で
   // さらに分割され、熱・動圧と天体表面への到達もその刻みで解かれる。false の個体は大気圏に
   // 入れば失われるだけで、いつどれだけの精度で失われるかは結果を変えない。
