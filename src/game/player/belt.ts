@@ -14,7 +14,6 @@ export class Belt {
   private readonly links: THREE.Group[] = [];
   private readonly physics: BeltPhysics;
   private feed = 0;
-  private visibleCount = 0;
 
   // リンクメッシュを renderObject の子として並べ、たわみ物理を初期化する。owner は接触判定で
   // 自身の節点との接触を除外するために使う吊り元の艦。
@@ -30,15 +29,13 @@ export class Belt {
     this.physics = new BeltPhysics(this.links.length, owner);
   }
 
-  // 見えているリンク数と給弾進み(beltFeed)を弾薬状態から導出し、たわみ物理を進める。
+  // 給弾進み(beltFeed)を弾薬状態から導出し、たわみ物理を進める。
   update(
     dt: number,
-    magsLeft: number,
     roundsInMag: number,
     att: Attitude,
     thrustAccelVec: Vec3,
   ): void {
-    this.visibleCount = Math.min(magsLeft, BELT_MAX_VISIBLE);
     const targetFeed = 1 - roundsInMag / MAG_ROUNDS;
     if (targetFeed < this.feed - 0.5) {
       this.physics.shiftBeltNodes();
@@ -49,14 +46,15 @@ export class Belt {
     this.physics.update(dt, att, thrustAccelVec, this.feed);
   }
 
-  // 物理演算で求めた各リンクの位置・向きをメッシュへ反映する。
-  sync(): void {
+  // 物理演算で求めた各リンクの位置・向きをメッシュへ反映する。残弾のあるぶんだけ見せる。
+  sync(magsLeft: number): void {
+    const visibleCount = Math.min(magsLeft, BELT_MAX_VISIBLE);
     const { beltPos, beltTwist, anchor } = this.physics;
     let prevPoint = anchor;
     let prevQ: Quat = Q_IDENTITY;
     for (let i = 0; i < this.links.length; i++) {
       const link = this.links[i]!;
-      link.visible = i < this.visibleCount;
+      link.visible = i < visibleCount;
 
       // 表示位置は前後端の中点
       const pos = beltPos[i]!;
@@ -83,12 +81,12 @@ export class Belt {
   }
 
   // 各リンクの体軸座標を ECI 絶対状態に変換し、衝突判定用の BeltSection として返す。
-  collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
-    return this.physics.collisionSections(dt, baseR, baseV, att);
+  contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
+    return this.physics.contactSections(t, dt, baseR, baseV, att);
   }
 
   // 衝突解決後の ECI 状態を体軸座標へ戻し、たわみ物理へ反映する。
-  applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
-    this.physics.applyCollisionSections(dt, baseR, baseV, att);
+  applyContactSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
+    this.physics.applyContactSections(dt, baseR, baseV, att);
   }
 }

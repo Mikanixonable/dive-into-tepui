@@ -26,10 +26,11 @@ function baseContactGeometry(
     normal: baseIsA ? hit.normal : scale(hit.normal, -1),
     toi: 1,
     pushOut: hit.depth,
+    contactPoint: hit.point,
   };
 }
 
-// タンパク質のリボンなど、球の外接半径ではなく種別固有メッシュを持つ側の狭域判定。
+// タンパク質の球列など、球の外接半径ではなく種別固有の当たり形状を持つ側の狭域判定。
 // 接触解決器へ渡す法線は常に a → b に揃える。
 function customContactGeometry(
   a: DynamicEntity, aWork: KinematicState, b: DynamicEntity, bWork: KinematicState,
