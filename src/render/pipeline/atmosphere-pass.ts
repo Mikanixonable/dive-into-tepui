@@ -18,7 +18,7 @@ import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereBody, type AtmosphereDraw, cutoffAltitude } from '../atmosphere';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
-import { CloudScattering } from './cloud-scattering';
+import { CLOUD_SHELL_ALTITUDE, CLOUD_SHELL_SPECIES, CloudScattering } from './cloud-scattering';
 import { viewPositionAt, viewRayAt } from './view-ray';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
@@ -380,7 +380,8 @@ export class AtmospherePass {
   }
 
   // 視線が雲の殻と交わる点。手前から順に並べ、手前の殻の透過率を奥の殻の放射輝度へ掛けながら
-  // 組む。**殻は天体と同心なので、入る点が出る点より手前であることは幾何が保証する。**
+  // 組む。**順序は幾何が決める** — 殻はどれも天体と同心なので、視線は外側の殻から順に入り、
+  // 内側の殻から順に出る。
   //
   // 交点が区間の外(大気の裾より手前、あるいは地表・不透明面より奥)へ落ちた画素では殻を捨てる
   // — 不透明な積雲の塔が写る画素で、その奥の殻が透けて出るのを防ぐ。
@@ -388,23 +389,29 @@ export class AtmospherePass {
     ray: SphereSpaceRay, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
     pixelAngle: FloatNode,
   ): readonly CloudShellLayer[] {
-    const shellRadius = this.slot.surfaceRadius.add(this.clouds.altitude);
-    const crossings = this.crossingsOf(ray, shellRadius);
+    const shells = CLOUD_SHELL_SPECIES.map((species) => {
+      const radius = this.slot.surfaceRadius.add(CLOUD_SHELL_ALTITUDE[species]);
+      return { species, radius, crossings: this.crossingsOf(ray, radius) };
+    });
+    const entries = shells.map((shell) => [shell, shell.crossings.entry] as const);
+    const exits = shells.map((shell) => [shell, shell.crossings.exit] as const).reverse();
+
     const originDepth = this.outwardDepthAt(ray, float(0)).toVar();
     const front = float(1).toVar();
     const layers: CloudShellLayer[] = [];
-    for (const crossing of [crossings.entry, crossings.exit]) {
+    for (const [shell, crossing] of [...entries, ...exits]) {
       const distance = crossing.toVar();
       const transmittance = float(1).toVar();
       const radiance = vec3(0, 0, 0).toVar();
       const inSegment = and(greaterThan(distance, segment.near), lessThan(distance, segment.far));
       // **重い側は分岐の中に置く** — 雲に掛からない視線は交点の判定だけで抜ける。
-      If(and(and(crossings.crosses, inSegment), this.clouds.present()), () => {
+      If(and(and(shell.crossings.crosses, inSegment), this.clouds.present()), () => {
         const point = rayOrigin.add(rayDir.mul(distance));
         const offset = ray.toOrigin.add(ray.unitDir.mul(ray.unitsPerMeter.mul(distance)));
         const sunDir = normalize(this.toSphereSpace(sub(this.sunLight.position, point)));
         const sample = this.clouds.scatteredAt(
-          shellRadius, offset, ray.unitDir, sunDir, this.sunRadianceAt(point), pixelAngle.mul(distance));
+          shell.species, shell.radius, offset, ray.unitDir, sunDir,
+          this.sunRadianceAt(point), pixelAngle.mul(distance));
         transmittance.assign(sample.transmittance);
         radiance.assign(sample.radiance.mul(front).mul(this.transmittanceTo(originDepth, ray, distance)));
       });

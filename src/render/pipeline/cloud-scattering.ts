@@ -1,6 +1,6 @@
-// 巻雲を、大気の視線積分へ挟む厚み 0 の球殻として解く。殻がどの高さに立つか、場のどの成分から
-// 鉛直の光学的厚みを引くか、掠める視線の光路をどこで頭打ちにするかを持ち、殻と交わる 1 点が
-// 視線へ与える透過率と放射輝度を返す。
+// 雲を、大気の視線積分へ挟む厚み 0 の球殻として解く。どの種類の雲がどの高さに立つか、場のどの
+// 成分から鉛直の光学的厚みを引くか、掠める視線の光路をどこで頭打ちにするかを持ち、殻と交わる
+// 1 点が視線へ与える透過率と放射輝度を返す。
 //
 // **輝度は多重散乱の極限で解く。** 場の階調は覆われている割合なので、殻は「その割合ぶんが
 // 拡散反射する層」として振舞う。届く光は呼び出し側が渡すので、入射の減衰・影・地平線は
@@ -8,13 +8,25 @@
 import * as THREE from 'three/webgpu';
 import { abs, dot, exp, float, fract, greaterThan, int, max, sqrt, texture, uniform, vec2, vec4 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial-surface';
-import { CLOUD_ALBEDO, EMPTY_CLOUD_FIELD, fieldLodForWidth } from '../cloud/cumulus-shape';
+import {
+  CLOUD_ALBEDO, EMPTY_CLOUD_FIELD, columnOpticalDepth, fieldLodForWidth, opaqueFractionOf,
+  residualCoverageOf,
+} from '../cloud/cumulus-shape';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 
-// 巻雲の殻の高度 [m]。圏界面付近(≈200 hPa)の 1 枚で近似する — 実際の巻雲は極域 3〜8 km、
-// 温帯 5〜13 km、熱帯 6〜18 km に張る。
-const CIRRUS_ALTITUDE = 10e3;
+// 大気の中へ殻として立てる雲の種類。**外側の殻から順に並べる** — 同心なので、視線が交わる
+// 順序は外へ入り、内へ入り、内から出て、外から出る、に決まる。
+export const CLOUD_SHELL_SPECIES = ['cirrus', 'cumulus'] as const;
+export type CloudSpecies = (typeof CLOUD_SHELL_SPECIES)[number];
+
+// 種類ごとの殻の高度 [m]。巻雲は圏界面付近(≈200 hPa)の 1 枚で近似する — 実際の巻雲は極域
+// 3〜8 km、温帯 5〜13 km、熱帯 6〜18 km に張る。積雲は雲底 1 km と、中間調が多い覆いの縁の
+// 代表の高さを採る。
+export const CLOUD_SHELL_ALTITUDE: Readonly<Record<CloudSpecies, number>> = {
+  cirrus: 10e3,
+  cumulus: 2e3,
+};
 
 // 殻が代表する層の厚み [m]。掠める視線の光路をこの厚みぶんの弦で頭打ちにする。
 const SHELL_THICKNESS = 1e3;
@@ -25,20 +37,29 @@ export interface CloudShellSample {
   readonly radiance: Vec3Node;
 }
 
+// 殻の鉛直の光学的厚み。巻雲は場の B が厚みそのもので、積雲は R(被覆率)のうち不透明な殻が
+// ディザで立てなかった残りを柱の厚みへ直す。
+function opticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode {
+  switch (species) {
+    case 'cirrus':
+      return field.b;
+    case 'cumulus':
+      return columnOpticalDepth(
+        residualCoverageOf(field.r, opaqueFractionOf(field.r, float(0))));
+  }
+}
+
 export class CloudScattering {
   // 雲の場。set が value を差し替えると、枝分かれした先へも同じ写しが届く。
   private readonly field = texture(EMPTY_CLOUD_FIELD);
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
 
-  // 殻 1 枚ぶんの uniform を確保する。雲の有無は active で切るので、グラフの形は変わらない。
+  // 天体 1 体ぶんの雲の uniform を確保する。雲の有無は active で切るので、グラフの形は変わらない。
   public constructor() {
     this.bodyFromWorld = uniform(new THREE.Matrix4());
     this.active = uniform(0);
   }
-
-  // 殻の高度 [m]。
-  public get altitude(): number { return CIRRUS_ALTITUDE; }
 
   // いま解く雲。null なら殻は立たない。
   public set(clouds: AtmosphereClouds | null): void {
@@ -56,11 +77,12 @@ export class CloudScattering {
   // 向きは単位長)。sunRadiance はその交点へ届く恒星の輝度、footprint はその交点で画面 1 px
   // が張る実寸 [m]。
   public scatteredAt(
-    shellRadius: FloatNode, offset: Vec3Node, rayDir: Vec3Node, sunDir: Vec3Node,
-    sunRadiance: Vec3Node, footprint: FloatNode,
+    species: CloudSpecies, shellRadius: FloatNode, offset: Vec3Node, rayDir: Vec3Node,
+    sunDir: Vec3Node, sunRadiance: Vec3Node, footprint: FloatNode,
   ): CloudShellSample {
     const up = offset.div(shellRadius);
-    const opticalDepth = this.fieldAt(up, footprint, shellRadius).b.mul(this.active);
+    const field = this.fieldAt(up, footprint, shellRadius);
+    const opticalDepth = opticalDepthOf(species, field).mul(this.active);
     // 視線が層を斜めに抜けるぶんの倍率。**水平では発散する**ので、層の厚みぶんの弦 √(2RΔh) を
     // 通る視線を上限に取る(地球の 1 km 厚なら光路 226 km、天頂の 113 倍)。
     const grazingCosine = sqrt(float(SHELL_THICKNESS / 2).div(shellRadius));

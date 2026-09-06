@@ -3,7 +3,7 @@
 // 細かさで引くかをここが決める。積雲の殻・その影・大気へ挟む散乱の層は、同じ形と同じ明るさを
 // ここから引く。
 import * as THREE from 'three/webgpu';
-import { clamp, float, log2, max, min, smoothstep, uniform } from 'three/tsl';
+import { clamp, float, log, log2, max, min, smoothstep, uniform } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
 
@@ -19,6 +19,9 @@ EMPTY_CLOUD_FIELD.minFilter = THREE.LinearMipmapLinearFilter;
 EMPTY_CLOUD_FIELD.magFilter = THREE.LinearFilter;
 EMPTY_CLOUD_FIELD.wrapS = THREE.RepeatWrapping;
 EMPTY_CLOUD_FIELD.needsUpdate = true;
+
+// 柱の光学的厚みへ直すときに割合へ張る上限。
+const MAX_COLUMN_COVERAGE = 0.99;
 
 // 場の G(雲頂高度)が張る高さ [m]。
 export const CLOUD_TOP_SPAN = 15000;
@@ -87,6 +90,19 @@ export function opaqueFractionOf(coverage: FloatNode, grain: FloatNode): FloatNo
 // 場の雲頂高度へ粒の起伏を重ねた雲頂高度 0..1。
 export function cloudTopOf(fieldTop: FloatNode, grain: FloatNode): FloatNode {
   return clamp(fieldTop.add(grain.mul(GRAIN_TOP_RELIEF)), 0, 1);
+}
+
+// 覆われている割合を、その柱を光が通り抜けない確率と読んだときの光学的厚み。割合 1 では
+// 発散するので、その手前で頭打ちにする。
+export function columnOpticalDepth(coverage: FloatNode): FloatNode {
+  return log(min(coverage, MAX_COLUMN_COVERAGE).oneMinus()).negate();
+}
+
+// 不透明な積雲として立てたぶんを差し引いて、その柱に残る覆いの割合。**ディザは覆い尽くされて
+// いる割合ぶんの画素を不透明にする**ので、残りの画素が受け持つのはこの残差になる — 同じ覆いを
+// 不透明な殻と薄い層が両方数えると、境目の帯が二重に濃くなる。
+export function residualCoverageOf(coverage: FloatNode, opaqueFraction: FloatNode): FloatNode {
+  return clamp(coverage.sub(opaqueFraction), 0, 1).div(max(opaqueFraction.oneMinus(), 1e-3));
 }
 
 // 境目の前後 band で 0 から 1 へ渡す。band は 0 を取れない(割り算が NaN へ落ちる)。
