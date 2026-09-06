@@ -7,17 +7,17 @@ import {
   vec2, vec4,
 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
-import type { WebGPURenderer } from 'three/webgpu';
 import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { AirMass } from './air-mass';
 import { BakedField } from './baked-field';
 import { CirculatingNoise, coarsenessFor } from './circulating-noise';
-import type { NoiseOctave } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { FRICTION_RATE, balancedWind, isobarAt, windStep } from './wind-law';
+import type { WebGPURenderer } from 'three/webgpu';
+import type { NoiseOctave } from './circulating-noise';
 import type { ClimateMap } from './climate-map';
 import type { FieldProjection } from './field-projection';
 import type { BalancedWind } from './wind-law';
@@ -411,7 +411,8 @@ export class WeatherModel {
     const isobarStep = isobar.mul(BEND_STEP);
     const pressureAhead = this.pressure.at(normalize(direction.add(isobarStep))).r;
     const pressureBehind = this.pressure.at(normalize(direction.sub(isobarStep))).r;
-    return { pressure, gradient, isobar, bend: pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2) };
+    const bend = pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2);
+    return { pressure, gradient, isobar, bend };
   }
 
   // 単位方向 direction における気団を遡らせる風(東向き・北向きの成分 [m/s])。
