@@ -75,7 +75,7 @@ export class StarEntity extends CelestialEntity {
     }
     this.star.sync(
       p, this.radius,
-      this.lodApparentDiameterPx(2 * this.radius, cameraSystem.activeCameraScale(pos), graphics),
+      this.lodApparentDiameterPx(2 * this.radius, cameraSystem.activeCameraRadialScale(pos), graphics),
       cameraSystem.activeCamera.quaternion,
     );
   }

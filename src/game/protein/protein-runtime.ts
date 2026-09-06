@@ -42,7 +42,8 @@ export class ProteinRuntime {
   public readonly combat: ProteinCombatState;
   private readonly motion: ProteinMotionAsset;
   private readonly controller: ProteinMotionController;
-  public readonly motionBinding: ProteinMotionBinding;
+  // 共有バッファのスロットが尽きていれば null。そのときは変形せず、静止した構造で描く。
+  public readonly motionBinding: ProteinMotionBinding | null;
   private readonly root: THREE.Object3D;
   private readonly baseSitePositions = new Map<string, THREE.Vector3>();
   private readonly siteResidueGroups = new Map<string, readonly number[]>();
@@ -63,7 +64,7 @@ export class ProteinRuntime {
     motion: ProteinMotionAsset,
     saved?: ProteinSaveData,
     seedKey = asset.id,
-    motionBinding?: ProteinMotionBinding,
+    motionBinding?: ProteinMotionBinding | null,
   ) {
     this.root = root;
     this.combat = new ProteinCombatState(asset, saved);
@@ -72,7 +73,7 @@ export class ProteinRuntime {
     this.motionBinding = motionBinding ?? createProteinMotionBinding(
       motion.residueCount, proteinMotionModeDisplacements(motion), motion.modes.length,
     );
-    if (this.motionBinding.residueCount !== motion.residueCount) {
+    if (this.motionBinding !== null && this.motionBinding.residueCount !== motion.residueCount) {
       throw new RangeError('Protein motion binding and asset residue counts must match');
     }
     this.trackedResidueOffsets = new Float32Array(motion.residueCount * 4);
@@ -153,7 +154,7 @@ export class ProteinRuntime {
     if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
       || this.uploadedPhase !== this.combat.phase) {
       const coefficients = this.controller.effectiveModeCoefficients;
-      updateProteinMotionCoefficients(this.motionBinding, coefficients);
+      if (this.motionBinding !== null) updateProteinMotionCoefficients(this.motionBinding, coefficients);
       this.uploadedLod = this.currentLod;
       this.uploadedSampleTime = this.controller.sampleTime;
       this.uploadedPhase = this.combat.phase;
@@ -211,6 +212,6 @@ export class ProteinRuntime {
   public dispose(): void {
     this.clearVisuals();
     this.bondMaterial.dispose();
-    disposeProteinMotionBinding(this.motionBinding);
+    if (this.motionBinding !== null) disposeProteinMotionBinding(this.motionBinding);
   }
 }
