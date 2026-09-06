@@ -10,36 +10,16 @@ type YLevel<T> = Map<number, ZLevel<T>>;
 export class SpatialGrid<T> {
   private readonly cells = new Map<number, YLevel<T>>();
   private invCellSize: number;
-  private readonly bucketPool: T[][] = [];
-  private readonly mapPool: Map<number, unknown>[] = [];
 
   // セルの一辺の長さ cellSize でグリッドを構築する。単位は呼び出し側の座標系に従う。
   constructor(cellSize: number) {
     this.invCellSize = 1 / cellSize;
   }
 
-  // 同じ所有者が同期的にグリッドを作り直す場合の再初期化。セルの挿入順と近傍走査順は
-  // 新規生成時と同じで、セル配列と中間 Map だけを再利用して一時オブジェクトを抑える。
+  // 同じ所有者が同期的にグリッドを作り直す場合の再初期化。
   reset(cellSize: number): void {
-    for (const yLevel of this.cells.values()) {
-      for (const zLevel of yLevel.values()) {
-        for (const bucket of zLevel.values()) {
-          bucket.length = 0;
-          this.bucketPool.push(bucket);
-        }
-        zLevel.clear();
-        this.mapPool.push(zLevel);
-      }
-      yLevel.clear();
-      this.mapPool.push(yLevel);
-    }
     this.cells.clear();
     this.invCellSize = 1 / cellSize;
-  }
-
-  // 空の Map を1つ得る。
-  private takeMap<V>(): Map<number, V> {
-    return (this.mapPool.pop() as Map<number, V> | undefined) ?? new Map<number, V>();
   }
 
   // 要素 item を位置 pos の属するセルへ登録する。
@@ -50,17 +30,17 @@ export class SpatialGrid<T> {
 
     let yLevel = this.cells.get(cx);
     if (yLevel === undefined) {
-      yLevel = this.takeMap<ZLevel<T>>();
+      yLevel = new Map<number, ZLevel<T>>();
       this.cells.set(cx, yLevel);
     }
     let zLevel = yLevel.get(cy);
     if (zLevel === undefined) {
-      zLevel = this.takeMap<T[]>();
+      zLevel = new Map<number, T[]>();
       yLevel.set(cy, zLevel);
     }
     let bucket = zLevel.get(cz);
     if (bucket === undefined) {
-      bucket = this.bucketPool.pop() ?? [];
+      bucket = [];
       zLevel.set(cz, bucket);
     }
     bucket.push(item);
