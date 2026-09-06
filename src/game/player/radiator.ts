@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_FORWARD, LOCAL_UP, qFromAxisAngle, qRotate } from '../../math/quat';
-import { kinematicState } from '../../physics/kinematic-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { add, cross, dot, rotateAxis, v3, Vec3 } from '../../math/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
@@ -53,9 +53,10 @@ function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: 
 // 蛇腹1折りぶんの接触代理。艦の姿勢と展開度から一意に決まる剛体の取り付けなので、
 // ベルトと違い Verlet 解法は要らず、区間ごとに RadiatorSystem.collisionFolds が置き直すだけでよい。
 class RadiatorFold extends DynamicEntity {
-  // 位置は区間ごとに collisionFolds が置き直すので、ここでは原点で仮生成する。
-  constructor(readonly side: RadiatorSide, readonly foldIndex: number, private readonly owner: Player) {
-    super(kinematicState<'eci'>(0, v3(), v3()), new THREE.Object3D());
+  // state は生成時点の実際の world 状態 — 仮の状態で始めると、最初に置き直した substep の
+  // prevState がその仮位置になり、そこからの偽の区間を掃引してしまう。
+  constructor(readonly side: RadiatorSide, private readonly owner: Player, state: KinematicState) {
+    super(state, new THREE.Object3D());
     this.mass = 5;
     this.radius = RADIATOR_SEGMENT_LENGTH / 2;
     this.collides = true;
@@ -205,16 +206,18 @@ export class RadiatorSystem {
     for (const side of ['up', 'down'] as const) {
       if (this.panels[side].deploy < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
       const proxies = this.foldProxies[side];
-      while (proxies.length < RADIATOR_FOLD_COUNT) proxies.push(new RadiatorFold(side, proxies.length, this.owner));
       const { even, odd } = this.foldThetas(side);
       // 各折りの機体座標系オフセットを、艦の位置・姿勢・角速度(回転による接線速度込み)で
       // world 座標へ変換する。
-      for (const fold of proxies) {
-        const bodyOffset = foldLocalPosition(side, fold.foldIndex, even, odd);
+      for (let i = 0; i < RADIATOR_FOLD_COUNT; i++) {
+        const bodyOffset = foldLocalPosition(side, i, even, odd);
         const worldPos = add(shipR, qRotate(att.q, bodyOffset));
         const worldVel = add(shipV, qRotate(att.q, cross(att.w, bodyOffset)));
-        fold.state = kinematicState<'eci'>(t, worldPos, worldVel);
-        result.push(fold);
+        const world = kinematicState<'eci'>(t, worldPos, worldVel);
+        const fold = proxies[i];
+        if (fold) fold.state = world;
+        else proxies.push(new RadiatorFold(side, this.owner, world));
+        result.push(proxies[i]!);
       }
     }
     return result;
