@@ -6,14 +6,14 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
+import { SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
 import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
+import type { Placements } from './cyclone-samples';
 
 const HOUR = 3600; // [s]
 const DAY = 24 * HOUR; // [s]
 const DEGREE = Math.PI / 180; // [rad]
 
-// 標本の刻み [s]。低気圧の一生(4 日以上)を数十点で追える細かさ。
-const STEP = HOUR;
 // 1 刻みで中心が動いてよい上限 [m] と、深さが変わってよい上限 [hPa]。若い低気圧の速さ(20 m/s)で
 // 1 時間に 72 km、最深 70 hPa の山を 7 日で登り降りしても 1 時間に 2 hPa 弱なので、どちらも
 // 生まれ・消えるときに谷が跳んで現れれば超える。
@@ -21,9 +21,6 @@ const STEP_DISTANCE_LIMIT = 300e3;
 const STEP_DEPTH_LIMIT = 4;
 // 隣の谷と溶けないことを見るときの、谷が居るとみなす深さ [hPa]。
 const PRESENT_DEPTH = 5;
-
-// 時刻 [s] → 配置の 1 系列。
-type Placements = (seconds: number) => CyclonePlacement | null;
 
 // 低気圧 8 つと熱帯低気圧の系列。名前は失敗の報告に出す。
 const SERIES: readonly { readonly name: string; readonly at: Placements }[] = [
@@ -39,30 +36,6 @@ function greatCircleDistance(a: CyclonePlacement, b: CyclonePlacement): number {
   const cosAngle = Math.sin(a.latitude) * Math.sin(b.latitude)
     + Math.cos(a.latitude) * Math.cos(b.latitude) * Math.cos(a.longitude - b.longitude);
   return R_EARTH * Math.acos(Math.min(Math.max(cosAngle, -1), 1));
-}
-
-// 系列を 0 から days 日ぶん STEP 刻みで辿った標本。
-function sampled(at: Placements, days: number): readonly (CyclonePlacement | null)[] {
-  return Array.from({ length: Math.floor((days * DAY) / STEP) + 1 }, (_, i) => at(i * STEP));
-}
-
-// 標本の中で生まれてから消えるまでを丸ごと含む一生(null に挟まれた non-null の連なり)。
-// 標本の端で切れている一生は含めない。
-function completeLives(samples: readonly (CyclonePlacement | null)[]): readonly (readonly CyclonePlacement[])[] {
-  const lives: CyclonePlacement[][] = [];
-  let current: CyclonePlacement[] = [];
-  // 最初の null を見るまでは、標本の頭で切れた一生の途中なので集めない。
-  let bornInside = false;
-  for (const sample of samples) {
-    if (sample === null) {
-      if (current.length > 0) lives.push(current);
-      current = [];
-      bornInside = true;
-    } else if (bornInside) {
-      current.push(sample);
-    }
-  }
-  return lives;
 }
 
 // 一生の最初の標本と最後の標本。
@@ -146,7 +119,7 @@ export function register(): void {
 
   test('cyclone-tracks: 同じ半球の低気圧は互いに溶けない', () => {
     // 3 年ぶん。偶数番が北、奇数番が南なので、同じ半球の組は番号の偶奇が揃う。
-    for (let seconds = 0; seconds <= 3 * 365 * DAY; seconds += STEP) {
+    for (let seconds = 0; seconds <= 3 * 365 * DAY; seconds += SAMPLE_STEP) {
       const placements = Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, seconds));
       for (let a = 0; a < LOW_COUNT; a++) {
         for (let b = a + 2; b < LOW_COUNT; b += 2) {

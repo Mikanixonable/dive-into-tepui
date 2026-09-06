@@ -2,6 +2,7 @@
 // 生まれて東へ走り、極側で止まって埋まる。熱帯低気圧は暖かい海に 1 つずつ生まれ、貿易風に西へ
 // 流されてから転向し、温帯低気圧へ変わって消える。進路と一生は世代ごとの乱数で決まり、どの時刻へ
 // 飛んでも同じ配置になる。
+import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { mulberry32, randSym } from '../../math/random';
 
@@ -127,12 +128,6 @@ const TROPICAL_COURSES: readonly Course[] = [
 // rand([0, 1) の生成器)から range の一様乱数。
 function uniformIn(range: Range, rand: () => number): number {
   return range[0] + rand() * (range[1] - range[0]);
-}
-
-// GLSL と同じ smoothstep。x が edge0 で 0、edge1 で 1 になる 3t² − 2t³。
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
-  return t * t * (3 - 2 * t);
 }
 
 // 進路の道のり s(0 で生まれ、1 で消える)の点。turn を s = 0.5 で通る 2 次ベジエで、制御点
@@ -268,7 +263,7 @@ export function tropicalPlacementAt(seconds: number): CyclonePlacement | null {
     latitude: point.latitude * DEGREE,
     longitude: point.longitude * DEGREE,
     depth: track.peakDepth * Math.sin(Math.PI * life ** TROPICAL_PEAK_SKEW),
-    radius: track.birthRadius * (1 + track.growth * smoothstep(TROPICAL_GROWTH_ONSET, 1, life)),
-    elongation: 1 + (track.finalElongation - 1) * smoothstep(TROPICAL_ELONGATION_ONSET, 1, life),
+    radius: track.birthRadius * (1 + track.growth * THREE.MathUtils.smoothstep(life, TROPICAL_GROWTH_ONSET, 1)),
+    elongation: 1 + (track.finalElongation - 1) * THREE.MathUtils.smoothstep(life, TROPICAL_ELONGATION_ONSET, 1),
   };
 }
