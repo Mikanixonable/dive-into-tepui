@@ -6,11 +6,11 @@
 // 拡散反射する層」として振舞う。届く光は呼び出し側が渡すので、入射の減衰・影・地平線は
 // 大気と同じ 1 本の式が解く。
 import * as THREE from 'three/webgpu';
-import { abs, dot, exp, float, fract, greaterThan, int, max, sqrt, texture, uniform, vec2, vec4 } from 'three/tsl';
-import { sphereMeshUv } from '../celestial-surface';
 import {
-  CLOUD_ALBEDO, EMPTY_CLOUD_FIELD, columnOpticalDepth, fieldLodForWidth,
-} from '../cloud/cumulus-shape';
+  abs, dot, exp, float, fract, greaterThan, int, max, min, sqrt, texture, uniform, vec2, vec4,
+} from 'three/tsl';
+import { sphereMeshUv } from '../celestial-surface';
+import { EMPTY_CLOUD_FIELD, columnOpticalDepth, fieldLodForWidth } from '../cloud/cumulus-shape';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 
@@ -19,16 +19,47 @@ import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node
 export const CLOUD_SHELL_SPECIES = ['cirrus', 'cumulus'] as const;
 export type CloudSpecies = (typeof CLOUD_SHELL_SPECIES)[number];
 
-// 種類ごとの殻の高度 [m]。巻雲は圏界面付近(≈200 hPa)の 1 枚で近似する — 実際の巻雲は極域
-// 3〜8 km、温帯 5〜13 km、熱帯 6〜18 km に張る。積雲は雲底 1 km と、中間調が多い覆いの縁の
-// 代表の高さを採る。
-export const CLOUD_SHELL_ALTITUDE: Readonly<Record<CloudSpecies, number>> = {
-  cirrus: 10e3,
-  cumulus: 2e3,
+// 鉛直の光学的厚みへ張る上限。ゲインを上げた柱はここで飽和する。積雲の柱が取りうる厚みの上限
+// (被覆率 0.99 で ≈4.6)の上に置き、ゲイン 1 では効かない。
+const MAX_SHELL_OPTICAL_DEPTH = 5;
+
+// 層の厚みへ張る下限 [m]。掠める視線の光路は厚みぶんの弦で頭打ちにするので、厚み 0 では
+// 地平線ぎわの視線が飽和する。
+const MIN_SHELL_THICKNESS = 1;
+
+// 殻 1 枚の見え方。鉛直の光学的厚みは、場から引いた厚みを cutoff で足切りし、gain を掛けたもの。
+// albedo は殻の拡散反射率、bottomAltitude と topAltitude はその殻が代表する層の高度 [m] で、
+// 殻は層の中央に立ち、層の厚みが掠める視線の光路を決める。
+export interface CloudShellKnob {
+  readonly cutoff: FloatUniform;
+  readonly gain: FloatUniform;
+  readonly albedo: FloatUniform;
+  readonly bottomAltitude: FloatUniform;
+  readonly topAltitude: FloatUniform;
+}
+
+// 種類ごとの殻。**どれも不透明な積雲との馴染みを目で追い込んだ値で、場を差し替えたら追い込み
+// 直す。** 巻雲は熱帯の圏界面付近(実際の巻雲は極域 3〜8 km、温帯 5〜13 km、熱帯 6〜18 km に
+// 張る)の 1 枚、積雲は雲底から中間調が多い覆いの縁までを 1 枚で代表する。
+//
+// **仮設**: render-lab のつまみ(tools/render-lab/main.ts)から動かせるよう uniform にしてある。
+// 生成側の場へ差し替えたあとにもう一段の追い込みが要るので、それまでは畳まない。
+export const CLOUD_SHELL_KNOB: Readonly<Record<CloudSpecies, CloudShellKnob>> = {
+  cirrus: {
+    cutoff: uniform(0), gain: uniform(1), albedo: uniform(1),
+    bottomAltitude: uniform(15e3), topAltitude: uniform(16e3),
+  },
+  cumulus: {
+    cutoff: uniform(0.05), gain: uniform(1), albedo: uniform(1),
+    bottomAltitude: uniform(0), topAltitude: uniform(2e3),
+  },
 };
 
-// 殻が代表する層の厚み [m]。掠める視線の光路をこの厚みぶんの弦で頭打ちにする。
-const SHELL_THICKNESS = 1e3;
+// 殻を立てる高度 [m]。
+export function shellAltitudeOf(species: CloudSpecies): FloatNode {
+  const knob = CLOUD_SHELL_KNOB[species];
+  return knob.bottomAltitude.add(knob.topAltitude).mul(0.5);
+}
 
 // 殻と交わる 1 点ぶんの、視線が受ける減衰と、その点が視線へ足す放射輝度。
 export interface CloudShellSample {
@@ -36,18 +67,25 @@ export interface CloudShellSample {
   readonly radiance: Vec3Node;
 }
 
-// 殻の鉛直の光学的厚み。巻雲は場の B が厚みそのもので、積雲は R(被覆率)を柱の厚みへ直す。
+// 場が持つ殻の鉛直の光学的厚み。巻雲は場の B が厚みそのもので、積雲は R(被覆率)を柱の厚みへ直す。
 //
 // **不透明な積雲として立てたぶんを引かない。** 不透明な殻は G バッファへ深度を書くので、その
 // 手前で終わる視線では殻の交点が区間の外へ落ちて寄与が消える — 引き算は同じ遮蔽を二重に効かせ、
 // 塔の周りに殻の抜けを作る。むしろ塔の側に残るディザの濃淡差を、この殻が跨いで埋める。
-function opticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode {
+function fieldOpticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode {
   switch (species) {
     case 'cirrus':
       return field.b;
     case 'cumulus':
       return columnOpticalDepth(field.r);
   }
+}
+
+// つまみを通した殻の鉛直の光学的厚み。足切りを引いた残りへゲインを掛け、上限で頭打ちにする。
+function opticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode {
+  const knob = CLOUD_SHELL_KNOB[species];
+  const raised = max(fieldOpticalDepthOf(species, field).sub(knob.cutoff), 0).mul(knob.gain);
+  return min(raised, MAX_SHELL_OPTICAL_DEPTH);
 }
 
 export class CloudScattering {
@@ -81,17 +119,19 @@ export class CloudScattering {
     species: CloudSpecies, shellRadius: FloatNode, offset: Vec3Node, rayDir: Vec3Node,
     sunDir: Vec3Node, sunRadiance: Vec3Node, footprint: FloatNode,
   ): CloudShellSample {
+    const knob = CLOUD_SHELL_KNOB[species];
     const up = offset.div(shellRadius);
     const field = this.fieldAt(up, footprint, shellRadius);
     const opticalDepth = opticalDepthOf(species, field).mul(this.active);
     // 視線が層を斜めに抜けるぶんの倍率。**水平では発散する**ので、層の厚みぶんの弦 √(2RΔh) を
     // 通る視線を上限に取る(地球の 1 km 厚なら光路 226 km、天頂の 113 倍)。
-    const grazingCosine = sqrt(float(SHELL_THICKNESS / 2).div(shellRadius));
+    const thickness = max(knob.topAltitude.sub(knob.bottomAltitude), MIN_SHELL_THICKNESS);
+    const grazingCosine = sqrt(thickness.mul(0.5).div(shellRadius));
     const airmass = max(abs(dot(up, rayDir)), grazingCosine).reciprocal();
     const covered = exp(opticalDepth.mul(airmass).negate()).oneMinus();
     return {
       transmittance: covered.oneMinus(),
-      radiance: sunRadiance.mul(covered.mul(max(dot(up, sunDir), 0)).mul(CLOUD_ALBEDO)),
+      radiance: sunRadiance.mul(covered.mul(max(dot(up, sunDir), 0)).mul(knob.albedo)),
     };
   }
 
