@@ -10,7 +10,9 @@ import {
 } from 'three/tsl';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
-import { CLOUD_SHELL_SPECIES, CloudScattering, shellAltitudeOf } from './cloud-scattering';
+import {
+  CLOUD_SHELL_SPECIES, CloudScattering, shellAltitudeOf, type CloudSpecies,
+} from './cloud-scattering';
 import type { AtmosphereBody } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { BodyShadow } from './shadow/body-shadow';
@@ -158,6 +160,11 @@ export class AtmosphereLayer {
       mieScaleHeight: uniform(1),
       mieAnisotropy: uniform(0),
     };
+  }
+
+  // 種類ごとに、雲の殻を描くかを置き直す。
+  public setCloudShell(species: CloudSpecies, enabled: boolean): void {
+    this.clouds.setShellEnabled(species, enabled);
   }
 
   // この層が解く天体 1 体ぶんの光学パラメータと雲を書き込む。cutoffRadius は大気の裾を
@@ -353,7 +360,7 @@ export class AtmosphereLayer {
       const radiance = vec3(0, 0, 0).toVar();
       const inSegment = and(greaterThan(distance, segment.near), lessThan(distance, segment.far));
       // **重い側は分岐の中に置く** — 雲に掛からない視線は交点の判定だけで抜ける。
-      If(and(and(shell.crossings.crosses, inSegment), this.clouds.present()), () => {
+      If(and(and(shell.crossings.crosses, inSegment), this.clouds.present(shell.species)), () => {
         const point = rayOrigin.add(rayDir.mul(distance));
         const offset = ray.toOrigin.add(ray.unitDir.mul(ray.unitsPerMeter.mul(distance)));
         const sunDir = normalize(this.toSphereSpace(sub(this.sunLight.position, point)));
