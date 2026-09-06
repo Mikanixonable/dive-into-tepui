@@ -47,9 +47,9 @@ const REGIONS = [
   { name: 'typhoon', label: '熱帯低気圧(19N 136E・時刻 0 の最盛期・数値目標外)', latitude: 19, longitude: 136,
     coreRadiusKm: 250, upperReadsOutside: false },
 ];
-const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop', 'wind', 'front'];
+const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop', 'surfaceWind', 'front'];
 
-// 風ビューの B が張る速さ [m/s]。tools/cloud-lab/views.ts の WIND_SPAN と対。
+// 地表の風ビューの B が張る速さ [m/s]。tools/cloud-lab/views.ts の WIND_SPAN と対。
 const WIND_SPAN = 45;
 // 風の最大から外す、熱帯低気圧の中心のまわりの半径 [°]。眼壁の風は熱帯低気圧がいちばん強く巻いた
 // 渦である以上そこだけ速くてよいので、異常の判定には入れない。中心は撮影のときにページから引く。
@@ -331,7 +331,7 @@ function quantile(sorted, fraction) {
 }
 
 // 全球面の風の速さ [m/s] の最大と 99 パーセンタイル。熱帯低気圧 tropical(緯度・経度 [rad]。居なければ
-// null)の中心から TROPICAL_EXCLUDE_DEG 以内は数えない。speed は風ビューの B(速さ / WIND_SPAN)。
+// null)の中心から TROPICAL_EXCLUDE_DEG 以内は数えない。speed は地表の風ビューの B(速さ / WIND_SPAN)。
 function windAnomaly(speed, tropical) {
   const exclude = (TROPICAL_EXCLUDE_DEG * Math.PI) / 180;
   const speeds = [];
@@ -695,9 +695,9 @@ async function main() {
   };
   saveGray('globe-thick.png', globe.thick);
   saveGray('globe-veil.png', globe.veil);
-  // 風だけは B(速さ)を読むので、書いた PNG から取り直す。
+  // 地表の風だけは B(速さ)を読むので、書いた PNG から取り直す。
   const windSpeed = cropField(
-    decodeChannelPng(readFileSync(path.join(outDir, `${REGIONS[0].name}-wind.png`)), 2), 0, 0, GLOBE_W, HEIGHT);
+    decodeChannelPng(readFileSync(path.join(outDir, `${REGIONS[0].name}-surfaceWind.png`)), 2), 0, 0, GLOBE_W, HEIGHT);
 
   // 雲頂ビューの表示値は 0..CLOUD_TOP_SPAN を 0..1 に載せたもの。分位は [m] で取る。
   const metresOf = (field) => ({
