@@ -92,7 +92,7 @@ const TRANSLUCENT_LIMIT = 0.63;
 export function condense(weather: WeatherSample): CloudSample {
   // 網目と粒を湿度で混ぜる。混ぜると振れ幅が落ちるので、二乗和の平方根で戻す — 戻さないと
   // 渡りの中間(半々)に、粒の消えた平坦な帯ができる。
-  const shape = smoothstep(SHAPE_NETWORK_HUMIDITY, SHAPE_GRAIN_HUMIDITY, weather.humidity);
+  const shape = smoothstep(SHAPE_NETWORK_HUMIDITY, SHAPE_GRAIN_HUMIDITY, weather.surfaceHumidity);
   const network = float(1).sub(shape);
   const convection = mix(weather.convection.y, weather.convection.x, shape)
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
@@ -107,14 +107,14 @@ export function condense(weather: WeatherSample): CloudSample {
   // かつ沈降していない所にだけ立つ** — 乾いた土地と高気圧の下では、粒の峰が雲を作っても深い対流に
   // ならない。金床は眼を持つ渦の芯だけが敷く平らな天蓋で、圏界面まで届く。
   const grain = max(weather.convection.x, 0).mul(weather.convectiveActivity);
-  const moist = smoothstep(COVERAGE_ONSET, COVERAGE_ONSET + COVERAGE_WIDTH, weather.humidity);
+  const moist = smoothstep(COVERAGE_ONSET, COVERAGE_ONSET + COVERAGE_WIDTH, weather.surfaceHumidity);
   const rising = smoothstep(-TOWER_LIFT_GATE, TOWER_LIFT_GATE, weather.lift);
   const reach = smoothstep(TOWER_ONSET, TOWER_ONSET + TOWER_WIDTH, grain);
   const tower = layered.add(weather.tropopause.sub(layered).mul(reach.mul(reach)).mul(moist).mul(rising));
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が効き始めを超えた分を幅で割った t が張る、晴れている割合の補。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
-  const moistened = weather.humidity.add(granularity);
+  const moistened = weather.surfaceHumidity.add(granularity);
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。

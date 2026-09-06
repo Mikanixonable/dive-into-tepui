@@ -11,9 +11,9 @@ import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
   | 'elevation' | 'landFraction' | 'meanCloudiness' | 'meanWind'
-  | 'pressure' | 'wind' | 'traceWind' | 'front' | 'airMass' | 'lift'
-  | 'humiditySource' | 'upperHumiditySource' | 'convectionSource'
-  | 'humidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
+  | 'pressure' | 'surfaceWind' | 'traceWind' | 'front' | 'airMass' | 'lift'
+  | 'surfaceHumiditySource' | 'upperHumiditySource' | 'convectionSource'
+  | 'surfaceHumidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
   | 'coverage' | 'cloudTop' | 'translucent' | 'composite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
@@ -35,7 +35,7 @@ export type CloudLabView = {
 // 暖気の流入は ±0.4 rad(48 h の追跡で気団が動く緯度差の上限)を 0.5 中心に、
 // 風は ±45 m/s(台風の芯の風速まで飽和させない幅)を
 // 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
-// 被覆率・湿度・対流の活発度はそのまま出す。**風・平均風・追跡の風は同じ目盛りに乗せる** — 大循環が
+// 被覆率・湿度・対流の活発度はそのまま出す。**地表の風・平均風・追跡の風は同じ目盛りに乗せる** — 大循環が
 // 運ぶ分と、気圧から出る分と、気団を遡らせる分の大きさを見比べるため。
 const CLOUD_TOP_SPAN = 15000;
 const CONVECTION_SPAN = 0.5;
@@ -65,8 +65,8 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     color: (d, model) => windColor(model.meanWindAt(d)) },
   { id: 'pressure', label: '気圧', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).pressure.sub(PRESSURE_MIN).div(PRESSURE_SPAN)) },
-  { id: 'wind', label: '風', reads: 'weather',
-    color: (d, model) => windColor(model.weatherAt(d).wind) },
+  { id: 'surfaceWind', label: '地表の風', reads: 'weather',
+    color: (d, model) => windColor(model.weatherAt(d).surfaceWind) },
   { id: 'traceWind', label: '追跡の風', reads: 'weather',
     color: (d, model) => windColor(model.traceWindAt(d)) },
   { id: 'front', label: '前線', reads: 'weather',
@@ -75,15 +75,15 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     color: (d, model) => vec3(model.weatherAt(d).warmth.div(2 * WARMTH_SPAN).add(0.5)) },
   { id: 'lift', label: '上昇流', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).lift.div(2 * LIFT_SPAN).add(0.5)) },
-  { id: 'humiditySource', label: '移流前の湿度', reads: 'weather',
+  { id: 'surfaceHumiditySource', label: '移流前の地表の湿度', reads: 'weather',
     color: (d, model) => vec3(model.humiditySourceAt(d).x) },
-  { id: 'upperHumiditySource', label: '移流前の上層湿度', reads: 'weather',
+  { id: 'upperHumiditySource', label: '移流前の上層の湿度', reads: 'weather',
     color: (d, model) => vec3(model.humiditySourceAt(d).y) },
   { id: 'convectionSource', label: '移流前の対流', reads: 'weather',
     color: (d, model) => vec3(model.convectionSourceAt(d).y.div(2 * CONVECTION_SPAN).add(0.5)) },
-  { id: 'humidity', label: '湿度', reads: 'weather',
-    color: (d, model) => vec3(model.weatherAt(d).humidity) },
-  { id: 'upperHumidity', label: '上層湿度', reads: 'weather',
+  { id: 'surfaceHumidity', label: '地表の湿度', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).surfaceHumidity) },
+  { id: 'upperHumidity', label: '上層の湿度', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).upperHumidity) },
   { id: 'convection', label: '対流', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).convection.y.div(2 * CONVECTION_SPAN).add(0.5)) },
