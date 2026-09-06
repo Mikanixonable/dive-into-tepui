@@ -108,94 +108,6 @@ CODING-RULE 1.6「同じ値へ入口を2つ作らない」。弾の消滅が「�
 
 ## 手順
 
-### 手順 4. 交戦圏を組み、その中でだけ接触を解く
-
-#### 目的
-
-参加者を交戦圏ごとに分け、交戦圏ごとに独立して解く。到達量の基準変位を参加者の平均から
-交戦圏の中心の変位に置き換え、遠方の物体が数で平均を引きずる経路を断つ。どの交戦圏にも
-入らない物体は参加者にならない。物体どうしの接触だけをワープ倍率で止めていたゲートは消し、
-「交戦できる倍率でなければ交戦圏が組まれない」に一本化する — 交戦圏が無ければ参加者も
-接触代理も無い。×4 超で解かれないのは今までどおりで、挙動は変わらない。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/engagement-zone.ts`(新規) | `ENGAGEMENT_RANGE`、`EngagementZone`、`engagementZones`(下の署名)。中心の球が重なるもの(中心間距離 ≤ 2·ENGAGEMENT_RANGE)を連結成分にまとめる |
-| `src/game/dynamic/dynamic-entity/dynamic-entity.ts:109` | `collides` の隣に `engagementAnchor = false; // 交戦圏の中心になるか` を足す |
-| `src/game/player/player.ts:166` | `this.engagementAnchor = true;` |
-| `src/game/dynamic/dynamic-entity/base.ts:207` | `this.engagementAnchor = true;` |
-| `src/game/dynamic/sim-speed-manager.ts:15-16,47-50` | `canResolvePhysicalCollisions` を `canEngage`(現在のワープ倍率で交戦圏が存在するか)に改名し、`MAX_PHYS_SIM_SPEED` のコメントの「衝突解決」を「交戦圏」に置き換える |
-| `src/game/game.ts:490,516` | `canEngage` を読んで `advance` へ渡す |
-| `src/game/dynamic/simulator.ts:70-79` | `advance` の引数 `canResolveEntityContacts` を `canEngage` にし、冒頭コメントの「物体どうしの接触を解決してよいかは呼び出し側が決めて…」を「交戦圏は canEngage のときだけ組まれる」に書き直す |
-| `src/game/dynamic/simulator.ts:146-164` | `if (canResolveEntityContacts)` を、`engagementZones(this.entities.all(), canEngage)` を組んで**空でなければ** 接触代理の収集 → `resolveEntityContacts(simTime, entities, zones, activeStage)` → 書き戻し、に置き換える。交戦圏が空なら代理の収集も書き戻しもしない |
-| `src/game/dynamic/entity-contact-physics.ts:86-87` | `resolveEntityContacts` が交戦圏の列を受け取り、交戦圏ごとに `collectParticipants`(`zone.contains(e.state.r)` を条件に足す)→ `resolveInOrder`(基準変位に `zone.referenceDisplacement` を渡す)を回す。平均変位の算出と「ワープ倍率によるゲートは呼び出し側の判断」のコメントを消す。`candidatePairs` の隣に参加者の延べ数 `participants` を数える |
-| `src/game/dynamic/dynamic-entity/enemy.ts:60,342` | `STAGE00_MAX_RANGE` を消し、`ENGAGEMENT_RANGE` を import して使う |
-| `src/game/stages/stage-utils/wave-attack.ts:5,115` | 同上 |
-| `src/game/dynamic/dynamic-entity/bullet.ts:20,109` | `BULLET_MAX_DIST` を消し、`ENGAGEMENT_RANGE` を使う |
-| `src/game/perf-counts.ts:12` | `contactParticipants: number` を足す |
-| `src/game/dynamic/simulator.ts:87` | フレーム頭で `candidatePairs` と並べて `participants` も 0 へ戻す |
-| `src/game/dynamic/simulator.ts:227-238` | `perfCounts()` に `contactParticipants` を足す |
-| `src/launcher/perf-meter.ts:33` | 「衝突」群に `{ key: 'contact-participants', label: '参加者', read: (c) => c.contactParticipants }` を足す |
-| `tests/game/engagement-zone.test.ts`(新規) | 「中心が無ければ空」「`canEngage` が偽なら中心がいても空」「中心間 50 km の 2 中心は 1 つ、70 km なら 2 つ」「3 中心が鎖状に 50 km ずつ並べば 1 つ」「`contains` は最寄りでない中心からでも 30 km 以内なら真」「`referenceDisplacement` は先頭の中心の state.r − prevState.r」 |
-
-```ts
-// src/game/dynamic/engagement-zone.ts
-// 交戦圏の半径 [m]。中心(自機・基地)からこの距離までが、敵の射撃・弾の飛翔・物体どうしの接触の範囲。
-export const ENGAGEMENT_RANGE = 30e3;
-
-// 交戦圏が読む個体の側面。中心になる個体も、所属を問われる個体もこれで足りる。
-export interface EngagementParticipant {
-  readonly alive: boolean;
-  readonly engagementAnchor: boolean;
-  readonly state: KinematicState;
-  readonly prevState: KinematicState;
-}
-
-// 中心の球が連結した1つの交戦圏。
-export class EngagementZone<E extends EngagementParticipant> {
-  // 中心になる個体。entities の並びを保ち、先頭が基準変位の持ち主。
-  readonly anchors: readonly E[];
-  // この区間の基準変位 [m](先頭の中心の state.r − prevState.r)。到達量はこれとの差で測る。
-  get referenceDisplacement(): Vec3;
-  // 位置 r [m, ECI] がこの交戦圏に入るか(いずれかの中心から ENGAGEMENT_RANGE 以内)。
-  contains(r: Vec3): boolean;
-}
-
-// 生存していて中心になる個体を、球が重なるものどうし連結成分にまとめて返す。
-// 中心が無いとき、および交戦できる倍率でないとき(canEngage が偽)は空。
-export function engagementZones<E extends EngagementParticipant>(
-  entities: readonly E[], canEngage: boolean,
-): readonly EngagementZone<E>[];
-
-// src/game/dynamic/entity-contact-physics.ts
-// 交戦圏ごとに、その内側にいる参加者どうしの 1 substep ぶんの接触を解く。
-resolveEntityContacts(
-  simTime: number, entities: readonly DynamicEntity[],
-  zones: readonly EngagementZone<DynamicEntity>[], activeStage: Stage,
-): void;
-```
-
-`EngagementParticipant` は `surface-candidates.ts:37` の `SurfaceParticipant` と同じ扱いで、
-`DynamicEntity` を引き込まずに node でテストするための読み取り面(`DynamicEntity` はこれを
-構造的に満たすので、実装宣言は要らない)。
-
-`CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8` は交戦圏ごとに掛かる(交戦圏どうしは独立した系)。
-
-#### 達成条件と検証
-
-- `npm run typecheck`、`npm run test:game`。上の新規テストが通る。
-- `grep -rn "STAGE00_MAX_RANGE\|BULLET_MAX_DIST\|canResolvePhysicalCollisions\|canResolveEntityContacts" src tests` が 0 件。
-- 条件 A で ×16 へ上げると「参加者」「候補ペア」が 0、×4 へ戻すと元の値。×4 では「参加者」が
-  放熱板の折りとベルトの節の数を含む(接触代理の収集が交戦圏の有無と一緒に切り替わっている)。
-  `grep -rn "ENGAGEMENT_RANGE" src` が `engagement-zone.ts` の定義 + `enemy.ts` `wave-attack.ts` `bullet.ts` `entity-contact-physics.ts` の参照だけ。
-- 条件 C で「参加者」が自機 + 接触代理(放熱板の折り最大 12・ベルトの節 18)の数まで落ちる。
-- 条件 A の「候補ペア」が手順3 の値以下(node 実測は 3,808 → 3,131)。
-- ステージ00 で敵が 30 km を越えたら「交戦圏を離脱」の文言で消える(定数の付け替えで射程・
-  離脱距離が変わっていない)。敵が 30 km 以内で撃ってくる。
-- 挙動不変の目視は手順3 と同じ。
-
 ## 見積り
 
 node 実測(9802a677、`tests/dist` の `SpatialGrid` / `resolveSphereCollision` を直に呼ぶ。
@@ -269,6 +181,39 @@ node 実測(9802a677、`tests/dist` の `SpatialGrid` / `resolveSphereCollision`
 ≈ 30 m にとどまるので、計画の node 見積り(38,470 → 3,808)はこの環境では手順3 単独で再現しない。
 **手順4 の基準変位の置き換え(平均 → 交戦圏の中心の変位)がこの経路を断つ**ので、達成目標 1 は手順4 の
 後に当てる。
+
+### 手順4 後の実測(同じ環境・同じ手順、コミット `feat(contact): 交戦圏を組み、物体どうしの接触をその内側でだけ解く`)
+
+| 条件 | 倍率 | 薬莢 / 弾 / 敵 / 基地 | 参加者 | 候補ペア [件/frame = substep] | 物体接触 [ms/frame] |
+| --- | --- | --- | --- | --- | --- |
+| A | ×1 | 249 / 267 / 2 / 0 | 545 | 4,602 | 10.1 |
+| A | ×4 | 260 / 151 / 1 / 0 | 444 | 3,560 | 7.5 |
+| A | ×16 | 260 / 6 / 1 / 0 | 0 | 0 | 0 |
+| A | ×4(×16 から戻す) | 260 / 75 / 1 / 0 | 346 | 2,918 | 6.7 |
+| B | ×1 | 260 / 271 / 0 / 1 | 559 | 4,292 | 8.8 |
+| B | ×4 | 260 / 188 / 0 / 1 | 483 | 6,616 | 10.3 |
+| C | ×1(連射後・噴射前) | 156 / 156 / 0 / 0 | 334 | 845 | 14.1 |
+| C | ×1(前進 15 s 噴射の直後) | 156 / 156 / 0 / 0 | 335 | 8,519 | 52.6 |
+| C | ×4 +30 s → +150 s | 156 / 0 / 0 / 0 | 177 | 9,102 → 2,579 | 56 → 13 |
+| C | ×4 +180 s 以降 | 156 / 0 / 0 / 0 | **19** | 0 | 0.8 |
+
+条件 C はクリエイティブで敵を出さず、薬莢 156 を作ってから前進を 15 s(並進出力「中」20 m/s² で
+約 300 m/s)噴射し、×4 で待ったもの。噴射直後は薬莢の到達量(自機基準の相対変位 ≈ 300 m/s × substep)が
+大きくなって候補ペアが一時的に増えるが、薬莢が 30 km の外へ出た +180 s で参加者は自機 1 + ベルトの節 18 =
+19 まで落ちる。5 s(≈ 100 m/s)の噴射では 150 s(sim ≈ 600 s)のあいだに 30 km を越えなかった。
+
+達成目標の当て込み(着手前 → 手順4 後):
+
+1. 条件 A ×4 の候補ペア 37,570 → 3,560(1/10.6)、物体接触 144 → 7.5 ms(1/19)。**達成。**
+2. 条件 B ×4 の候補ペア 6,616 は条件 A ×4 の 3,560 の 1.86 倍(着手前は 41,597 で 1.1 倍だが、これは
+   ヘッドレスでは条件 A も同じ退化を起こしていたため)。**達成。**
+3. 条件 C で参加者が 177 → 19(自機 1 + ベルトの節 18)まで落ち、薬莢 156 を含まない。**達成。**
+4. 挙動不変の目視(弾が敵に当たる演出・排出直後の薬莢が艦体に弾かれる)は、ヘッドレスでは行えて
+   いない。接触の答えを固定する回帰テスト(test:game 192 件)は通っている。**実機での目視は未実施。**
+5. 条件 A のまま ×16 で参加者 0・候補ペア 0、×4 へ戻すと非 0 に戻る。**達成。**
+6. 旧名の grep は `src` `tests` で 0 件(`.claude/worktrees/orbit-line-nocache/` は別ブランチの
+   worktree で対象外)。`j <= i` も 0 件。**達成。**
+7. typecheck、test:math(60/60)、test:game(192/192)。**達成。**
 
 ## リスクと落とし穴
 
