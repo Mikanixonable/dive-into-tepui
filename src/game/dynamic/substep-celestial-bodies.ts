@@ -1,4 +1,4 @@
-// 1フレームの時間送りぶんの天体の窓。重力源・表面/遮蔽体・大気天体を、その区間の中で1組だけ組む。
+// 1サブステップぶんの天体の窓。重力源・表面/遮蔽体・大気天体を、その区間の中で1組だけ組む。
 // 「どの天体が引くか」「どの大気が抗力を及ぼすか」という個体ごとの絞り込みも、この1組の上で
 // 答える — 分類を多数の問い合わせ位置で使い回すことが、絞り込みが得になる条件そのものだから。
 import { nearestAtmosphereBody } from '../../physics/attractor';
@@ -16,8 +16,8 @@ export class SubstepCelestialBodies {
   // 天体の位置を厳密に引く時刻。区間の中点に取るので、区間の両端までの外挿幅が dt/2 に収まる。
   private _pivot = 0;
 
-  // 1フレームの時間送り dt ぶんの区間 [simTime, simTime + dt] の窓を組み直す。重力源・大気・
-  // 表面・遮蔽体のすべてを区間の中点で解決する。
+  // 区間 [simTime, simTime + dt] の窓を組み直す。重力源・大気・表面・遮蔽体のすべてを
+  // 区間の中点で解決する。
   reset(windows: CelestialMotions, simTime: number, dt: number): void {
     this._pivot = simTime + dt / 2;
     const sources = windows.gravityMotions;

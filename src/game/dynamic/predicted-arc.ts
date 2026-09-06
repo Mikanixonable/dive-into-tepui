@@ -156,8 +156,8 @@ export class PredictedArc {
       ? (tip.t - this.retainFrom <= ARC_FINE_STEPS * dt ? 0 : trajectorySampleInterval(period, 0))
       : trajectorySampleInterval(period, span);
 
-    // RK4 の各ステップにはその中点時刻の重力源を渡す — 先端時刻で据え置くと外挿幅が1歩ぶん
-    // 片側へ偏る。
+    // RK4 の各ステップにはその中点時刻の重力源を渡す。実シミュレーションも各サブステップの
+    // 中点で重力源を解決しており、弧だけ過去の天体位置を据え置かないようにする。
     const mid = this.bodies.resolve(tip.t + dt / 2, tip, dt);
     // 遮蔽体には mid.collision を渡す — 弧が幾何の相手として追っている窓であり、重力を
     // 及ぼすかとは無関係に成員が決まる。登録天体の全数を毎歩解決することはできない。

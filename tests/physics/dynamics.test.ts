@@ -417,8 +417,8 @@ export function register(): void {
     const moon0 = earthMoonWindowAt(0).find((b) => b.id === 'moon')!;
     const initial = kinematicState<'eci'>(0, add(moon0.stateAt(0).r, v3(a, 0, 0)), add(moon0.stateAt(0).v, v3(0, 0, vc)));
 
-    // 各ステップで窓をステップ中点で1回だけ解決し、stepDynamics へ渡す(窓の解決時刻から
-    // 各段の時刻へ外挿する、実シミュレーションと同じ経路)。
+    // 各ステップで窓をステップ中点で1回だけ解決し、stepDynamics へ渡す
+    // (Simulator.substep が実運用で踏む経路そのもの)。
     function integrate(dt: number): KinematicState {
       const steps = Math.round(period / dt);
       const stepDt = period / steps;
