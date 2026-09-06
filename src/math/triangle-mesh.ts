@@ -16,7 +16,7 @@ export interface RayHit {
 }
 
 export interface SphereHit {
-  readonly point: Vec3; // 三角形上の最近点
+  readonly point: Vec3; // 当たり形状の上の最近点
   readonly normal: Vec3; // 球を押し戻す向き
   readonly depth: number; // めり込み深さ
 }
@@ -85,7 +85,7 @@ export function sphereCollideTriangles(
 }
 
 /** レイが maxDist 以内で AABB を横切るかを返す。 */
-export function rayIntersectsAABB(
+function rayIntersectsAABB(
   origin: Vec3, dir: Vec3, maxDist: number, min: Vec3, max: Vec3,
 ): boolean {
   let entry = 0;
@@ -125,8 +125,8 @@ function buildNode(
   const max = v3(maxX, maxY, maxZ);
   if (end - begin <= LEAF_TRIANGLE_COUNT) return { min, max, begin, end };
 
-  // 最長軸の重心中央値で分け、偏りにくい二分木を作る。区間を枚数で半分に割るので、
-  // 重心が全て同値でも両側が空にならず、深さに上限を置かなくても必ず葉へ届く。
+  // 最長軸の重心中央値で分け、偏りにくい二分木を作る。区間は枚数で半分に割るので、重心が
+  // 全て同値でも両側が空にならず、必ず葉へ届く。
   const extent = { x: maxX - minX, y: maxY - minY, z: maxZ - minZ };
   const axis: 'x' | 'y' | 'z' = extent.x >= extent.y && extent.x >= extent.z
     ? 'x' : extent.y >= extent.z ? 'y' : 'z';

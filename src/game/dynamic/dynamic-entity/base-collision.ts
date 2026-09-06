@@ -35,7 +35,7 @@ function bakedTriangles(): Triangle[] {
   return triangles;
 }
 
-/** 焼いた頂点列から外接半径を求める。手で書くと、モデルを変えたときに黙って覆いが崩れる。 */
+/** 焼いた頂点列を全て含む、基地ローカル原点まわりの半径 [m]。 */
 function outerRadius(): number {
   let maxSquared = 0;
   for (let i = 0; i < shape.positions.length; i += 3) {

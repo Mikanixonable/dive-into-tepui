@@ -132,8 +132,7 @@ export class DynamicEntity {
     return NO_CONTACT_PROXIES;
   }
 
-  // 接触解決後の代理の状態を、代理の持ち主へ書き戻す。反発を代理の側で受け止める種別だけが
-  // 実装する。既定は何もしない。
+  // 接触解決後の代理の状態を、代理の持ち主へ書き戻す。既定は何もしない。
   public applyContactProxies(_dt: number): void {}
   private _thrust: Vec3 | null = null;
   // 自身が出している ECI 加速度 [m/s²]。null = 噴射していない。噴射している間の弧は現実を

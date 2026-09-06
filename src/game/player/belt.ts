@@ -81,12 +81,12 @@ export class Belt {
   }
 
   // 各リンクの体軸座標を ECI 絶対状態に変換し、衝突判定用の BeltSection として返す。
-  collisionSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
-    return this.physics.collisionSections(t, dt, baseR, baseV, att);
+  contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
+    return this.physics.contactSections(t, dt, baseR, baseV, att);
   }
 
   // 衝突解決後の ECI 状態を体軸座標へ戻し、たわみ物理へ反映する。
-  applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
-    this.physics.applyCollisionSections(dt, baseR, baseV, att);
+  applyContactSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
+    this.physics.applyContactSections(dt, baseR, baseV, att);
   }
 }
