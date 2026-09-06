@@ -6,7 +6,7 @@ import { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialBodyDef } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../math/vec3';
-import { GRAVITY_NEGLIGIBLE_ACCEL } from './attractors';
+import { gravityReachOf } from './attractors';
 import { ARC_MIN_STEP_DT } from './time-step';
 
 // 一覧の外にある天体が「いつまで効き得ないか」を見積もるときの、相対速さの安全率と下限 [m/s]。
@@ -38,8 +38,7 @@ export type ArcCelestialBodyWindow = {
 type Watch = {
   readonly motion: CelestialMotion;
   readonly candidate: Pick<CelestialBodyDef, 'id' | 'mu' | 'radius'>;
-  // 引力が GRAVITY_NEGLIGIBLE_ACCEL を割ると言い切れる距離 [m]。直達項 mu/d² と ECI 原点補正項
-  // mu/D² の和は 2mu/min(d,D)² を超えないので、min(d,D) がこれを上回れば寄与は無視できる。
+  // 引力の寄与を無視できると言い切れる距離 [m]。
   readonly gravityReach: number;
   // 寄与が無視できても成員のままにする天体。中心天体の解決が空の一覧を引くのを防ぐ。
   readonly pinned: boolean;
@@ -90,7 +89,7 @@ export class ArcCelestialBodies {
     this.watches = sources.celestialMotions.map((motion) => ({
       motion,
       candidate: motion.def,
-      gravityReach: Math.sqrt(2 * motion.def.mu / GRAVITY_NEGLIGIBLE_ACCEL),
+      gravityReach: gravityReachOf(motion.def.mu),
       pinned: motion.id === pinnedId,
       member: false,
       nextVisitT: -Infinity,
