@@ -2,7 +2,7 @@
 // 異なり、呼び出し側が与えた1点を通る固定平面として描く。黄道面・赤道面は向きが固定で、
 // 月軌道面・月赤道面は毎フレーム法線を受け取る。
 import * as THREE from 'three/webgpu';
-import { Q_ECL_TO_ECI } from '../physics/ecliptic';
+import { ECLIPTIC_BASIS, EQUATOR_BASIS, planeBasisFromPole, type PlaneBasis } from './plane-basis';
 import { CameraScale } from './camera-scale';
 import { markOverlay } from './pipeline/lit-layer';
 
@@ -14,42 +14,11 @@ export interface ScaleGridVisibility {
   readonly moonEquator: boolean;
 }
 
-// 面を張る直交基底。e1/e2 が面内、pole が法線。
-interface PlaneBasis {
-  readonly e1: THREE.Vector3;
-  readonly e2: THREE.Vector3;
-  readonly pole: THREE.Vector3;
-}
-
 interface GridLevel {
   readonly spacing: number;
   readonly line: THREE.LineSegments;
   readonly material: THREE.LineBasicMaterial;
 }
-
-function planeBasisFromPole(poleInput: THREE.Vector3): PlaneBasis {
-  const pole = poleInput.clone().normalize();
-  const reference = new THREE.Vector3(1, 0, 0);
-  const e1 = reference.projectOnPlane(pole);
-  if (e1.lengthSq() < 1e-8) e1.set(0, 0, 1).projectOnPlane(pole);
-  e1.normalize();
-  // e1×e2=pole の右手系にする(makeBasis→setFromRotationMatrix は回転行列しか四元数化できない)。
-  const e2 = pole.clone().cross(e1).normalize();
-  return { e1, e2, pole };
-}
-
-const eclToEciQuat = new THREE.Quaternion(Q_ECL_TO_ECI.x, Q_ECL_TO_ECI.y, Q_ECL_TO_ECI.z, Q_ECL_TO_ECI.w);
-
-function rotatedAxis(x: number, y: number, z: number): THREE.Vector3 {
-  return new THREE.Vector3(x, y, z).applyQuaternion(eclToEciQuat);
-}
-
-const EQUATOR_BASIS: PlaneBasis = planeBasisFromPole(new THREE.Vector3(0, 1, 0));
-const ECLIPTIC_BASIS: PlaneBasis = {
-  e1: rotatedAxis(1, 0, 0),
-  e2: rotatedAxis(0, 1, 0),
-  pole: rotatedAxis(0, 0, 1),
-};
 
 // 縮尺の基準となる目盛り間隔。これ以上の段はラベルを ⊞、これ未満は ＋ で表す。
 const REFERENCE_SPACING = 1e8; // 100,000 km [m]
