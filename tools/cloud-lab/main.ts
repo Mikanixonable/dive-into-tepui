@@ -2,6 +2,8 @@
 import { CloudLabCanvas } from './lab';
 import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
 import { buildButtonRow, buildSlider, buildToggleField } from '../lab-controls';
+import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
+import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
 
 const HOURS_PER_DAY = 24;
 // 再生中に実時間 1 秒あたり進める時刻 [h]。
@@ -16,6 +18,11 @@ declare global {
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
+      // 時刻 [h] の低気圧の谷の配置。撮影の駆動が中心の位置を統計の範囲の切り分けに使う。
+      cyclonesAt: (hours: number) => {
+        readonly tropical: CyclonePlacement | null;
+        readonly lows: readonly (CyclonePlacement | null)[];
+      };
     };
   }
 }
@@ -127,6 +134,10 @@ async function init(): Promise<void> {
       setCapRadius(radius);
     },
     capture: () => canvas.capture(),
+    cyclonesAt: (hours) => ({
+      tropical: tropicalPlacementAt(hours * 3600),
+      lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * 3600)),
+    }),
   };
 }
 
