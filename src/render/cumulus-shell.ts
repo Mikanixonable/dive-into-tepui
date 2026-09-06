@@ -12,16 +12,13 @@ import { BlueNoise } from './blue-noise';
 import { DeferredTexture } from './deferred-texture';
 import { sphereMeshUv, unitSphereGeometry } from './celestial-surface';
 import {
-  CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE, cloudTopOf, grainAt, opaqueFractionOf,
+  CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE, cloudTopOf, grainAt, opaqueFractionOf,
 } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitOpaque } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
 
-// 不透明な積雲のアルベド。厚い雲の白さは多重散乱の産物で、単散乱アルベド ≈ 1・光学的厚みが
-// 十分に大きい層の反射は拡散反射の極限へ漸近する。
-const CUMULUS_ALBEDO = 0.8;
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
 const CUMULUS_ROUGHNESS = 1;
 
@@ -159,7 +156,7 @@ export class CumulusShell {
     const marched = this.marchedSurface().toVar();
     material.depthNode = marched.w;
     material.normalNode = marched.xyz;
-    material.colorNode = vec3(CUMULUS_ALBEDO);
+    material.colorNode = vec3(CLOUD_ALBEDO);
     return material;
   }
 
