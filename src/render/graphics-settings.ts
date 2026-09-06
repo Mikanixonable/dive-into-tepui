@@ -114,6 +114,16 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: '雲',
     presets: { low: false, medium: true, high: true },
   },
+  // 圏界面付近に薄く張る巻雲の層。
+  cirrus: {
+    kind: 'toggle', group: 'element', label: '巻雲',
+    presets: { low: true, medium: true, high: true },
+  },
+  // 積雲のうち、不透明な雲頂のまわりを埋める半透明の広がり。
+  translucentCumulus: {
+    kind: 'toggle', group: 'element', label: '半透明の積雲',
+    presets: { low: true, medium: true, high: true },
+  },
   // 積雲の殻を解くレイマーチの細かさ。段を上げるほど雲頂の起伏と縁が滑らかになる。オフでは殻も、
   // それが落とす影も消え、薄い雲を焼き込んだ地表だけが残る。「標準」が絵の粗さの見えなくなる段で、
   // 「精細」は積雲の破綻を地表側の破綻から切り分けるための段。

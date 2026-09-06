@@ -2,13 +2,13 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, clamp, dot, exp, float, fract, greaterThan, int, length, log, log2, max, min,
-  normalize, select, sqrt, texture, uniform, vec2, vec4,
+  Fn, If, Loop, clamp, dot, exp, float, fract, greaterThan, int, length, max, normalize, select,
+  sqrt, texture, uniform, vec2, vec4,
 } from 'three/tsl';
 import { sphereMeshUv } from '../../celestial-surface';
 import {
-  CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, cloudTopOf, grainAmplitudeForWidth, grainAt,
-  opaqueFractionOf,
+  CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, EMPTY_CLOUD_FIELD, cloudTopOf, columnOpticalDepth,
+  fieldLodForWidth, grainAmplitudeForWidth, grainAt, opaqueFractionOf,
 } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
@@ -30,21 +30,9 @@ const SHADOW_TAPS = 6;
 // 光路をたどる長さの上限 [m]。恒星が地平線へ寄るほど層を抜けるまでの距離は伸び、昼夜境界の
 // 真上で発散する。
 const MAX_LIGHT_PATH = 3e5;
-// 覆われている割合から柱の光学的厚みへ直すときの上限。割合 1 では厚みが発散する。
-const MAX_COVERAGE = 0.99;
 // 光路 1 歩が代表する幅を、場のぼかしへ何倍で写すか。**等倍では足りない** — 隣り合うタップの
 // 覆う範囲が接するだけなので、あいだに影の抜けた縞が残る。
 const STEP_BLUR = 2;
-
-// 雲の場を持たないフレームでも同じグラフが走るので、被覆率 0 の写しを結んでおく。
-// **読み方の契約は本物の場と揃える** — グラフはここに結んだテクスチャのフィルタと巻きから
-// 組まれるので、既定の Nearest のままだと補間の無い texel フェッチが焼き込まれ、あとで本物へ
-// 差し替えても格子が出たままになる。
-const EMPTY_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
-EMPTY_FIELD.minFilter = THREE.LinearMipmapLinearFilter;
-EMPTY_FIELD.magFilter = THREE.LinearFilter;
-EMPTY_FIELD.wrapS = THREE.RepeatWrapping;
-EMPTY_FIELD.needsUpdate = true;
 
 export class CumulusShadow {
   private readonly center: Vec3Uniform;
@@ -54,7 +42,7 @@ export class CumulusShadow {
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
   // 雲の場。set が value を差し替えると、sample() で枝分かれした先へも同じ写しが届く。
-  private readonly field = texture(EMPTY_FIELD);
+  private readonly field = texture(EMPTY_CLOUD_FIELD);
 
   // 殻 1 体ぶんの uniform を確保する。殻の有無は active で切るので、グラフの形は変わらない。
   constructor(private readonly sunLight: SunLight) {
@@ -85,9 +73,9 @@ export class CumulusShadow {
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
   // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
   //
-  // 柱の光学的厚みは、覆われた割合 c を通り抜けない確率と読んで τ = −ln(1 − c) と取る。割合は殻が
-  // 雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、影は殻のシルエットの下へ落ちる。
-  // 厚みは光路長ではなく稼いだ高度で配るので、柱を 1 本抜ける合計はどれだけ斜めでも τ に一致する。
+  // 柱の光学的厚みも覆いの形も殻が雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、
+  // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配るので、柱を 1 本抜ける
+  // 合計はどれだけ斜めでも τ に一致する。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
   // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、場を引く mip 段と粒の振幅を決める。
   transmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
@@ -132,8 +120,7 @@ export class CumulusShadow {
           });
           const cloudTop = cloudTopOf(cloud.g, grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
-          const columnDepth = log(min(
-            opaqueFractionOf(cloud.r, grain), MAX_COVERAGE).oneMinus()).negate();
+          const columnDepth = columnOpticalDepth(opaqueFractionOf(cloud.r, grain));
           // **1 歩が雲頂をまたぐ割合で配る** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
@@ -153,14 +140,11 @@ export class CumulusShadow {
     return this.bodyFromWorld.mul(vec4(worldVec, 0)).xyz.div(this.axes);
   }
 
-  // 場を引く mip 段。タップ 1 回が代表する実寸 sampleWidth [m] を、場の texel が覆う実寸と比べて
-  // 決める。texel の実寸は正距円筒に固有の式で、赤道の 1 行(2πR を幅で割る)を基準に取る — 極では
-  // 1 texel の経度方向の実寸がこれより cos(緯度) ぶん狭いので、段はそのぶん細かい側へ寄る。
+  // タップ 1 回が代表する実寸 sampleWidth [m] から場を引く mip 段。
   private fieldLod(sampleWidth: FloatNode): FloatNode {
     // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
     const fieldWidth = (this.field.size(int(0)) as THREE.Node<'uvec2'>).x;
-    const texelWorld = this.surfaceRadius.mul(2 * Math.PI).div(float(fieldWidth));
-    return max(log2(sampleWidth.div(max(texelWorld, 1))), 0);
+    return fieldLodForWidth(sampleWidth, this.surfaceRadius, float(fieldWidth));
   }
 
   // 殻の空間の単位方向 up における場を、mip 段を指定して引く。段を明示で渡すのは、光路のタップの
