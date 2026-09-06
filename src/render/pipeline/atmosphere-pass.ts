@@ -13,6 +13,7 @@ import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffAltitude } from '../atmosphere';
 import { AtmosphereLayer } from './atmosphere-layer';
 import { viewPositionAt, viewRayAt } from './view-ray';
+import type { CloudSpecies } from './cloud-scattering';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { BodyShadow } from './shadow/body-shadow';
@@ -102,6 +103,11 @@ export class AtmospherePass {
     });
     this.material.colorNode = composed;
     this.quad = new QuadMesh(this.material);
+  }
+
+  // 種類ごとに、雲の殻を描くかを置き直す。
+  public setCloudShell(species: CloudSpecies, enabled: boolean): void {
+    this.layer.setCloudShell(species, enabled);
   }
 
   // このフレームで大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数と一緒に渡す。
