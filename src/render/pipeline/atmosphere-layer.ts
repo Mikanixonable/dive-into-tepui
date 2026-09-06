@@ -10,7 +10,7 @@ import {
 } from 'three/tsl';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
-import { CLOUD_SHELL_ALTITUDE, CLOUD_SHELL_SPECIES, CloudScattering } from './cloud-scattering';
+import { CLOUD_SHELL_SPECIES, CloudScattering, shellAltitudeOf } from './cloud-scattering';
 import type { AtmosphereBody } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { BodyShadow } from './shadow/body-shadow';
@@ -338,7 +338,7 @@ export class AtmosphereLayer {
     pixelAngle: FloatNode,
   ): readonly CloudShellLayer[] {
     const shells = CLOUD_SHELL_SPECIES.map((species) => {
-      const radius = this.slot.surfaceRadius.add(CLOUD_SHELL_ALTITUDE[species]);
+      const radius = this.slot.surfaceRadius.add(shellAltitudeOf(species));
       return { species, radius, crossings: this.crossingsOf(ray, radius) };
     });
     const entries = shells.map((shell) => [shell, shell.crossings.entry] as const);
