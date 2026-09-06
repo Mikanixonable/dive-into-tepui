@@ -3,7 +3,6 @@
 // 自身の責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する — 参加者は互いの状態を
 // 書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業列と解決回数の
 // 上限が要る。
-// 参加者は一貫して参加者列の添字で指す — 空間グリッドも候補もこの添字だけを持ち回る。
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { SpatialGrid } from '../../math/spatial-grid';
@@ -35,8 +34,8 @@ interface Candidate {
 
 // 位置と速度がどちらも動いていない当事者は、working も changed も触らない。書き戻しは
 // 予測弧を捨てるので、質量 0 の相手に触れられただけの艦がそれで作り直しになるのを防ぐ。
-// 1つの当事者は substep 内で何度でも動きうるが、書き戻しは1回でなければならない
-// (state セッタが prevState を進めるため)ので、changed には重複を入れない。
+// changed へ重複を積まないのも同じ理由 — state セッタが prevState を進めるので、
+// 1つの当事者への書き戻しは substep 内で1回に限る。
 function replaceIfMoved(
   i: number,
   after: { readonly r: Vec3; readonly v: Vec3 },
@@ -82,7 +81,7 @@ export class EntityContactPhysics {
   private readonly gridScratch = new SpatialGrid<number>(1);
   private readonly candidateScratch: Candidate[] = [];
   // 負荷確認ウィンドウが読む、列挙した延べ候補ペア数。フレーム頭で Simulator が 0 へ戻す。
-  candidatePairs = 0;
+  public candidatePairs = 0;
 
   // 1 substep ぶんの物体どうしの接触解決。ワープ倍率によるゲートは呼び出し側の判断で、
   // ここには倍率を見る条件を持たない。
@@ -93,6 +92,7 @@ export class EntityContactPhysics {
     this.resolveInOrder(this.participantScratch, simTime, activeStage);
   }
 
+  // 接触を解ける個体だけを out へ詰め直す。out の元の中身は捨てる。
   private collectParticipants(source: readonly DynamicEntity[], out: DynamicEntity[]): void {
     out.length = 0;
     for (const entity of source) {

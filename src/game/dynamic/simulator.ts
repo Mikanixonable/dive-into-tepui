@@ -126,13 +126,11 @@ export class Simulator {
       // (substep)。刻み幅を各自で積ませると、細分した個体の先端時刻が丸め誤差ぶん
       // simTime から外れ、履歴を持たない種別(弾・薬莢)が表示時刻と一致しなくなる。
       const endTime = this.simTime + subDt;
-      this.sections.exit(SECTION.orbit);
       // 触れうる相手の絞り込みは天体接触の値段そのものなので、軌道積分とは別に計る。
-      this.sections.enter(SECTION.celestialContact);
+      this.sections.switchTo(SECTION.orbit, SECTION.celestialContact);
       this.surfaceContactPhysics.beginSubstep(
         this.bodies.surface, this.bodies.pivot, this.simTime, endTime);
-      this.sections.exit(SECTION.celestialContact);
-      this.sections.enter(SECTION.orbit);
+      this.sections.switchTo(SECTION.celestialContact, SECTION.orbit);
       this.substep(endTime, subDt, activeStage);
       this.simTime = endTime;
       this.sections.exit(SECTION.orbit);
@@ -147,9 +145,7 @@ export class Simulator {
       nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
       if (canResolveEntityContacts) {
         this.sections.enter(SECTION.entityContact);
-        // ベルトの節点と放熱板の折りは DynamicSystem に登録された実体ではなく、艦の姿勢から
-        // 毎 substep 置き直す接触代理なので、参加者リストへこの場で合流させる。反発を代理の
-        // 側で受け止める種別のために、解決の直後に持ち主へ書き戻す。
+        // 接触代理は DynamicSystem に載らないので、この場で参加者へ合流させ、解決後に戻す。
         this.contactEntitiesScratch.length = 0;
         for (const entity of this.entities.all()) {
           this.contactEntitiesScratch.push(entity);
@@ -218,11 +214,9 @@ export class Simulator {
         else this.lastFollowedSteps++;
         if (divisions > 1) {
           // 細分の各歩で解く天体接触も天体接触の値段なので、軌道積分を出てから計る。
-          this.sections.exit(SECTION.orbit);
-          this.sections.enter(SECTION.celestialContact);
+          this.sections.switchTo(SECTION.orbit, SECTION.celestialContact);
           this.surfaceContactPhysics.resolveOne(e, activeStage);
-          this.sections.exit(SECTION.celestialContact);
-          this.sections.enter(SECTION.orbit);
+          this.sections.switchTo(SECTION.celestialContact, SECTION.orbit);
         }
       }
       if (divisions === 1) this.sharedIntervalScratch.push(e);

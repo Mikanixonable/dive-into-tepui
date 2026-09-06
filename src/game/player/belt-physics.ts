@@ -232,44 +232,40 @@ export class BeltPhysics {
 
   // 各節点の機体座標系での位置・速度をワールド KinematicState に変換し、衝突判定用の
   // プロキシ配列を返す。t は接触代理の KinematicState.t に使う現在時刻(掃引判定の区間を成す)。
-  collisionSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
+  contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     const invDt = 1 / dt;
     for (const [i, bp] of this.beltPos.entries()) {
       const bpPrev = this.beltPrevPos[i]!;
-      // 機体座標系での速度: Verlet変位による速度 + 機体回転による接線速度
-      const v_verlet = v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt);
-      const v_tangential = cross(att.w, bp);
-      const v_body_total = add(v_verlet, v_tangential);
+      // 節点は機体座標系の中で Verlet 変位ぶん動き、機体そのものの回転で接線方向にも動く。
+      const verletVel = v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt);
+      const bodyVel = add(verletVel, cross(att.w, bp));
 
-      // ワールド座標系へ変換する
       const world = kinematicState<'eci'>(
         t,
         add(baseR, qRotate(att.q, bp)),
-        add(baseV, qRotate(att.q, v_body_total)),
+        add(baseV, qRotate(att.q, bodyVel)),
       );
       const section = this.sections[i];
-      if (section) section.state = world;
-      else this.sections.push(new BeltSection(this.owner, world));
+      if (section === undefined) this.sections.push(new BeltSection(this.owner, world));
+      else section.state = world;
     }
     return this.sections;
   }
 
   // 衝突解決後のワールド状態を機体座標系の節点位置・速度へ書き戻す。
-  applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
+  applyContactSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
     const qInv = qInvert(att.q);
     for (const [i, s] of this.sections.entries()) {
-      // ワールド座標系から機体座標系へ変換する
       const bpLocal = qRotate(qInv, sub(s.state.r, baseR));
-      const v_body_total = qRotate(qInv, sub(s.state.v, baseV));
-      const v_tangential = cross(att.w, bpLocal);
-      const v_verlet = sub(v_body_total, v_tangential);
+      const bodyVel = qRotate(qInv, sub(s.state.v, baseV));
+      const verletVel = sub(bodyVel, cross(att.w, bpLocal));
 
-      // Verlet 積分と整合する前フレーム位置へ戻す
+      // Verlet は前後2つの位置で速度を表すので、速度は前フレーム位置へ畳んで返す。
       this.beltPos[i] = bpLocal;
       this.beltPrevPos[i] = v3(
-        bpLocal.x - v_verlet.x * dt,
-        bpLocal.y - v_verlet.y * dt,
-        bpLocal.z - v_verlet.z * dt,
+        bpLocal.x - verletVel.x * dt,
+        bpLocal.y - verletVel.y * dt,
+        bpLocal.z - verletVel.z * dt,
       );
     }
   }
