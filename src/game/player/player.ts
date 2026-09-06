@@ -459,7 +459,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     for (const fold of this.radiator.collisionFolds(this.state.r, this.state.v, this.att, simTime)) {
       this.contactProxyScratch.push(fold);
     }
-    for (const section of this.belt.collisionSections(dt, this.state.r, this.state.v, this.att)) {
+    for (const section of this.belt.collisionSections(simTime, dt, this.state.r, this.state.v, this.att)) {
       this.contactProxyScratch.push(section);
     }
     return this.contactProxyScratch;

@@ -229,8 +229,8 @@ export class BeltPhysics {
   private readonly sections: BeltSection[] = [];
 
   // 各節点の機体座標系での位置・速度をワールド KinematicState に変換し、衝突判定用の
-  // プロキシ配列を返す。
-  collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
+  // プロキシ配列を返す。t は接触代理の KinematicState.t に使う現在時刻(掃引判定の区間を成す)。
+  collisionSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     // プロキシを節点数まで拡張する
     while (this.sections.length < this.beltPos.length) {
       this.sections.push(new BeltSection(this.sections.length, this.owner));
@@ -246,7 +246,7 @@ export class BeltPhysics {
 
       // ワールド座標系へ変換する
       s.state = kinematicState<'eci'>(
-        s.state.t,
+        t,
         add(baseR, qRotate(att.q, bp)),
         add(baseV, qRotate(att.q, v_body_total)),
       );
