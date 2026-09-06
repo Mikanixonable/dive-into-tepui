@@ -123,4 +123,34 @@ export function register(): void {
       assert.equal(found.length, new Set(found).size);
     }
   });
+
+  test('spatial-grid: pairsInto は距離<=セルサイズの全ペアを各1回ずつ返す', () => {
+    const rand = mulberry32(4);
+    const cellSize = 10;
+    const points = randomPoints(rand, 200, 60);
+    const grid = new SpatialGrid<number>(cellSize);
+    points.forEach((p, i) => grid.insert(i, p));
+
+    // -1 はどの点の添字でもないので、out の既存内容が捨てられたことも同時に見る。
+    const pairs = grid.pairsInto([-1]);
+    assert.equal(pairs.length % 2, 0, 'ペアが2要素ずつ平らに詰まっていない');
+
+    const found = new Set<string>();
+    for (let k = 0; k < pairs.length; k += 2) {
+      const a = pairs[k]!;
+      const b = pairs[k + 1]!;
+      assert.notEqual(a, b, `点 ${a} が自分自身とのペアで返っている`);
+      const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+      assert.ok(!found.has(key), `ペア ${key} を二度返している`);
+      found.add(key);
+    }
+
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        if (len(sub(points[j]!, points[i]!)) <= cellSize) {
+          assert.ok(found.has(`${i}-${j}`), `距離<=cellSize のペア ${i}-${j} が列挙されていない`);
+        }
+      }
+    }
+  });
 }
