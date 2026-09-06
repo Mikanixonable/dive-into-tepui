@@ -5,7 +5,7 @@
 // 上限が要る。
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
-import { SpatialGrid } from '../../math/spatial-grid';
+import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
@@ -17,10 +17,8 @@ import type { Stage } from '../stages/stage';
 // 明示的な繰越処理は不要)。
 const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
 
-// 27近傍グリッドのセル一辺の下限 [m]。全参加者の半径も相対変位も 0 という退化ケースで
-// 一辺が 0 になるのを避けるためだけの値で、そのとき接触しうる距離自体が 0 なのでどんな正数でも
-// 判定は正しい。セルを細かく取っても空セルは持たない構造なので、最小の実用値として 1m を取る。
-const CONTACT_GRID_CELL_SIZE_FLOOR = 1;
+// 接触の候補を引く階層グリッドの、最も細かい段の一辺 [m]。
+const CONTACT_GRID_MIN_CELL_SIZE = 1;
 
 // 1 substep 分の接触候補1件。当事者は参加者列の添字 ai / bi で指す。response が null なのは
 // 現在の状態では接触しないという意味で、当事者の状態が変われば非 null になりうる。
@@ -48,27 +46,15 @@ function replaceIfMoved(
   if (!changed.includes(i)) changed.push(i);
 }
 
-// 27近傍グリッドのセル一辺。接触の成否を決めるのは参加者どうしの相対変位なので、参加者集合に
-// 共通する変位(平均 Δ̄)を差し引いた量で測る。ペア (a,b) が区間内で接触するなら、区間終端の
-// 距離は 半径和 + |Δa−Δ̄| + |Δb−Δ̄| 以下 — つまり各参加者の到達量 半径+|Δ−Δ̄| の最大値の2倍を
-// 一辺に取れば、27近傍の外のペアはどちらの判定式でも接触しえない。
-function contactCellSize(all: readonly DynamicEntity[], working: readonly KinematicState[]): number {
-  const n = all.length;
-  let mx = 0, my = 0, mz = 0;
-  for (let i = 0; i < n; i++) {
-    const w = working[i]!.r, p = all[i]!.prevState.r;
-    mx += w.x - p.x; my += w.y - p.y; mz += w.z - p.z;
-  }
-  mx /= n; my /= n; mz /= n;
-
-  let maxReach = 0;
-  for (let i = 0; i < n; i++) {
-    const w = working[i]!.r, p = all[i]!.prevState.r;
-    const dx = w.x - p.x - mx, dy = w.y - p.y - my, dz = w.z - p.z - mz;
-    const reach = all[i]!.radius + Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (reach > maxReach) maxReach = reach;
-  }
-  return 2 * maxReach || CONTACT_GRID_CELL_SIZE_FLOOR;
+// 参加者 1 体の到達量 [m]。半径に、区間 prevState→working の変位から共通変位 Δ̄ = (mx, my, mz) を
+// 引いた大きさを足したもの。ペア (a,b) が区間内で接触するなら、区間終端の中心距離は両者の
+// 到達量の和以下になる。
+function contactReach(
+  entity: DynamicEntity, working: KinematicState, mx: number, my: number, mz: number,
+): number {
+  const w = working.r, p = entity.prevState.r;
+  const dx = w.x - p.x - mx, dy = w.y - p.y - my, dz = w.z - p.z - mz;
+  return entity.radius + Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 export class EntityContactPhysics {
@@ -77,15 +63,15 @@ export class EntityContactPhysics {
   private readonly participantScratch: DynamicEntity[] = [];
   private readonly workingScratch: KinematicState[] = [];
   private readonly changedScratch: number[] = [];
-  private readonly neighborScratch: number[] = [];
-  private readonly gridScratch = new SpatialGrid<number>(1);
+  private readonly pairScratch: number[] = [];
+  private readonly gridScratch = new HierarchicalSpatialGrid<number>(CONTACT_GRID_MIN_CELL_SIZE);
   private readonly candidateScratch: Candidate[] = [];
   // 負荷確認ウィンドウが読む、列挙した延べ候補ペア数。フレーム頭で Simulator が 0 へ戻す。
   public candidatePairs = 0;
 
   // 1 substep ぶんの物体どうしの接触解決。ワープ倍率によるゲートは呼び出し側の判断で、
   // ここには倍率を見る条件を持たない。
-  resolveEntityContacts(
+  public resolveEntityContacts(
     simTime: number, entities: readonly DynamicEntity[], activeStage: Stage,
   ): void {
     this.collectParticipants(entities, this.participantScratch);
@@ -109,19 +95,15 @@ export class EntityContactPhysics {
     simTime: number,
     activeStage: Stage,
   ): void {
-    const n = all.length;
-    if (n === 0) return;
+    if (all.length === 0) return;
     const working = this.workingScratch;
     working.length = 0;
     for (const e of all) working.push(e.state);
     const changed = this.changedScratch;
     changed.length = 0;
 
-    const grid = this.gridScratch;
-    grid.reset(contactCellSize(all, working));
-    for (let k = 0; k < n; k++) grid.insert(k, working[k]!.r);
-
-    const count = this.collectCandidates(all, simTime, working, grid);
+    this.insertParticipants(all, working);
+    const count = this.collectCandidates(all, simTime, working);
     this.candidatePairs += count;
     // 直前の解決で状態が変わった当事者。これを含まない候補の response は引き直しても同じ値に
     // なるので、含む候補だけを引き直す。-1 は「まだ無い」。
@@ -141,26 +123,45 @@ export class EntityContactPhysics {
     this.candidateScratch.length = count;
   }
 
-  // grid の27近傍からペアを集め、contactsWith を通ったものだけを候補列へ詰め直して件数を返す。
-  // 接触しない組み合わせも response=null の候補として残す — 当事者の状態が変われば接触しうるため。
+  // 参加者を到達量つきでグリッドへ登録し直す。接触の成否を決めるのは参加者どうしの相対変位なので、
+  // 到達量は参加者集合に共通する変位(平均 Δ̄)を差し引いた量で測る。
+  private insertParticipants(all: readonly DynamicEntity[], working: readonly KinematicState[]): void {
+    // 参加者全員の平均変位 Δ̄。
+    const n = all.length;
+    let mx = 0, my = 0, mz = 0;
+    for (let i = 0; i < n; i++) {
+      const w = working[i]!.r, p = all[i]!.prevState.r;
+      mx += w.x - p.x;
+      my += w.y - p.y;
+      mz += w.z - p.z;
+    }
+    mx /= n;
+    my /= n;
+    mz /= n;
+
+    // 各参加者を、Δ̄ を引いた到達量の段へ登録する。
+    this.gridScratch.reset();
+    for (let i = 0; i < n; i++) {
+      this.gridScratch.insert(i, working[i]!.r, contactReach(all[i]!, working[i]!, mx, my, mz));
+    }
+  }
+
+  // グリッドが返すペアのうち、contactsWith を両向きに通ったものだけを候補列へ詰め直して件数を
+  // 返す。接触しない組み合わせも response=null の候補として残す — 当事者の状態が変われば
+  // 接触しうるため。
   private collectCandidates(
     all: readonly DynamicEntity[],
     simTime: number,
     working: readonly KinematicState[],
-    grid: SpatialGrid<number>,
   ): number {
+    const pairs = this.gridScratch.pairsInto(this.pairScratch);
     let count = 0;
-    const n = all.length;
-    for (let i = 0; i < n; i++) {
-      const a = all[i]!;
-      for (const j of grid.neighborsInto(working[i]!.r, this.neighborScratch)) {
-        // j<=i は、(j,i) 側の反復で同じペアを二重に検討しないためのガード(自分自身も除く)。
-        if (j <= i) continue;
-        const b = all[j]!;
-        if (!a.contactsWith(b, simTime) || !b.contactsWith(a, simTime)) continue;
-        this.pushCandidate(
-          count++, i, j, entityContactResponse(a, working[i]!, b, working[j]!));
-      }
+    for (let k = 0; k < pairs.length; k += 2) {
+      // グリッドの返す順は不定で、a と b の役は対称でないので、a 側を参加者の並びで固定する。
+      const ai = Math.min(pairs[k]!, pairs[k + 1]!), bi = Math.max(pairs[k]!, pairs[k + 1]!);
+      const a = all[ai]!, b = all[bi]!;
+      if (!a.contactsWith(b, simTime) || !b.contactsWith(a, simTime)) continue;
+      this.pushCandidate(count++, ai, bi, entityContactResponse(a, working[ai]!, b, working[bi]!));
     }
 
     return count;
