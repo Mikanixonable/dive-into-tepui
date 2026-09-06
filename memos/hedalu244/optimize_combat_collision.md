@@ -106,8 +106,6 @@ CODING-RULE 1.6「同じ値へ入口を2つ作らない」。弾の消滅が「�
    が 0 件。`grep -n "j <= i" src/game/dynamic/entity-contact-physics.ts` が 0 件。
 7. `npm run typecheck`、`npm run test:math`、`npm run test:game` が通る。
 
-## 手順
-
 ## 見積り
 
 node 実測(9802a677、`tests/dist` の `SpatialGrid` / `resolveSphereCollision` を直に呼ぶ。
