@@ -29,7 +29,7 @@ import type { LineOverlay } from '../../../render/line-overlay';
 import type { MarkerManager } from '../../marker/marker-manager';
 import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shadow';
 import type { RenderStyle } from '../../../render/render-style';
-import type { AtmosphereOptics } from '../../../render/atmosphere';
+import type { AtmosphereClouds, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Vec3 } from '../../../math/vec3';
 
 // 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
@@ -156,7 +156,6 @@ export class PointEntity extends CelestialEntity {
     }
     // 表面の分割段と雲。
     this.surface.syncLod(apparentDiameterPx);
-    this.surface.setCloudAmount(graphics.clouds ? 1 : 0);
     if (graphics.clouds) {
       this.cumulus?.setDetail(graphics.cumulusDetail);
       this.cumulus?.syncLod(apparentDiameterPx);
@@ -197,6 +196,14 @@ export class PointEntity extends CelestialEntity {
       bodyFromWorld: this.bodyFromWorld,
       field: this.cumulus.field,
     };
+  }
+
+  // 大気の散乱へ立てる雲。**描いている殻だけが立つ。** 姿勢は自転位相まで込みで組む —
+  // 軸だけでは場が地表と一緒に回らない。
+  public override atmosphereCloudsAt(displayTime: number): AtmosphereClouds | null {
+    if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
+    writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
+    return { field: this.cumulus.field, bodyFromWorld: this.bodyFromWorld };
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。

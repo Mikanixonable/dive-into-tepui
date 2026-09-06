@@ -540,7 +540,8 @@ export class CelestialSystem implements CelestialMotions {
   ): void {
     const scale = cameraSystem.activeCameraRadialScale;
     const candidates = this.entities.flatMap((body) => {
-      const candidate = body.atmosphereCandidateAt(fo, displayTime, cameraSystem.activeCameraPos, scale);
+      const candidate = body.atmosphereCandidateAt(
+        fo, displayTime, cameraSystem.activeCameraPos, scale, graphics);
       return candidate === null ? [] : [candidate];
     });
     this.atmosphere.setDraws(atmosphereDraws(candidates, graphics.atmosphere));
