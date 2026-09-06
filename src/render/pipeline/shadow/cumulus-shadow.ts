@@ -2,13 +2,13 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, clamp, dot, exp, float, fract, greaterThan, int, length, log, log2, max, min,
+  Fn, If, Loop, clamp, dot, exp, float, fract, greaterThan, int, length, log, max, min,
   normalize, select, sqrt, texture, uniform, vec2, vec4,
 } from 'three/tsl';
 import { sphereMeshUv } from '../../celestial-surface';
 import {
-  CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, cloudTopOf, grainAmplitudeForWidth, grainAt,
-  opaqueFractionOf,
+  CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, EMPTY_CLOUD_FIELD, cloudTopOf, fieldLodForWidth,
+  grainAmplitudeForWidth, grainAt, opaqueFractionOf,
 } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
@@ -36,16 +36,6 @@ const MAX_COVERAGE = 0.99;
 // 覆う範囲が接するだけなので、あいだに影の抜けた縞が残る。
 const STEP_BLUR = 2;
 
-// 雲の場を持たないフレームでも同じグラフが走るので、被覆率 0 の写しを結んでおく。
-// **読み方の契約は本物の場と揃える** — グラフはここに結んだテクスチャのフィルタと巻きから
-// 組まれるので、既定の Nearest のままだと補間の無い texel フェッチが焼き込まれ、あとで本物へ
-// 差し替えても格子が出たままになる。
-const EMPTY_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
-EMPTY_FIELD.minFilter = THREE.LinearMipmapLinearFilter;
-EMPTY_FIELD.magFilter = THREE.LinearFilter;
-EMPTY_FIELD.wrapS = THREE.RepeatWrapping;
-EMPTY_FIELD.needsUpdate = true;
-
 export class CumulusShadow {
   private readonly center: Vec3Uniform;
   private readonly surfaceRadius: FloatUniform;
@@ -54,7 +44,7 @@ export class CumulusShadow {
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
   // 雲の場。set が value を差し替えると、sample() で枝分かれした先へも同じ写しが届く。
-  private readonly field = texture(EMPTY_FIELD);
+  private readonly field = texture(EMPTY_CLOUD_FIELD);
 
   // 殻 1 体ぶんの uniform を確保する。殻の有無は active で切るので、グラフの形は変わらない。
   constructor(private readonly sunLight: SunLight) {
@@ -153,14 +143,11 @@ export class CumulusShadow {
     return this.bodyFromWorld.mul(vec4(worldVec, 0)).xyz.div(this.axes);
   }
 
-  // 場を引く mip 段。タップ 1 回が代表する実寸 sampleWidth [m] を、場の texel が覆う実寸と比べて
-  // 決める。texel の実寸は正距円筒に固有の式で、赤道の 1 行(2πR を幅で割る)を基準に取る — 極では
-  // 1 texel の経度方向の実寸がこれより cos(緯度) ぶん狭いので、段はそのぶん細かい側へ寄る。
+  // タップ 1 回が代表する実寸 sampleWidth [m] から場を引く mip 段。
   private fieldLod(sampleWidth: FloatNode): FloatNode {
     // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
     const fieldWidth = (this.field.size(int(0)) as THREE.Node<'uvec2'>).x;
-    const texelWorld = this.surfaceRadius.mul(2 * Math.PI).div(float(fieldWidth));
-    return max(log2(sampleWidth.div(max(texelWorld, 1))), 0);
+    return fieldLodForWidth(sampleWidth, this.surfaceRadius, float(fieldWidth));
   }
 
   // 殻の空間の単位方向 up における場を、mip 段を指定して引く。段を明示で渡すのは、光路のタップの

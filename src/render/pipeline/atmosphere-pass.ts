@@ -10,16 +10,17 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, greaterThanEqual, length, lessThan,
-  max, min, mix, normalize, not, or, screenUV, select, smoothstep, sqrt, sub, texture, uniform,
-  vec3, vec4,
+  Fn, If, PI, abs, and, clamp, dFdx, dFdy, dot, exp, float, greaterThan, greaterThanEqual, length,
+  lessThan, max, min, mix, normalize, not, or, screenUV, select, smoothstep, sqrt, step, sub,
+  texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereBody, type AtmosphereDraw, cutoffAltitude } from '../atmosphere';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
+import { CloudScattering } from './cloud-scattering';
 import { viewPositionAt, viewRayAt } from './view-ray';
-import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../tsl-types';
+import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { BodyShadow } from './shadow/body-shadow';
 import type { SunLight } from './sun-light';
@@ -46,6 +47,35 @@ interface BodySlot {
   readonly mie: FloatUniform;
   readonly mieScaleHeight: FloatUniform;
   readonly mieAnisotropy: FloatUniform;
+}
+
+// 視線を、天体を自転軸方向へ引き伸ばして真球にした空間で見た形。**この空間の長さは描画座標の
+// 長さではない** — unitsPerMeter が実寸 1 m あたりこの空間を進む長さで、両者を行き来する。
+interface SphereSpaceRay {
+  // 天体中心から視線の起点へのベクトル。
+  readonly toOrigin: Vec3Node;
+  // 視線の向き(この空間の単位長)。
+  readonly unitDir: Vec3Node;
+  readonly unitsPerMeter: FloatNode;
+  // 起点から最接近点までの符号付き距離と、最接近距離の 2 乗。どちらもこの空間の長さ。
+  readonly alongRay: FloatNode;
+  readonly perpSq: FloatNode;
+}
+
+// 視線が天体と同心の球面に入る点と出る点。距離はどちらも視線の起点から測った実寸 [m] で、
+// 交わらない視線では両者が最接近点に潰れる。
+interface SphereCrossings {
+  readonly entry: FloatNode;
+  readonly exit: FloatNode;
+  readonly crosses: BoolNode;
+}
+
+// 視線が雲の殻と交わる 1 点。distance は視線の起点から測った実寸 [m]、transmittance はその点で
+// 視線が受ける減衰、radiance はその点が視線へ足す放射輝度(手前の大気と殻の減衰を含む)。
+interface CloudShellLayer {
+  readonly distance: FloatNode;
+  readonly transmittance: FloatNode;
+  readonly radiance: Vec3Node;
 }
 
 // 視線が 1 つの天体の大気を通る区間。距離はすべて視線の起点から測った [m]。
@@ -102,6 +132,15 @@ const miePhase = Fn(([cosTheta, anisotropy]: readonly [FloatNode, FloatNode]) =>
   return float(1).sub(squared).div(denominator.mul(sqrt(denominator)));
 });
 
+// 視線上の距離 distance の点から手前にある殻を通り抜ける透過率。
+function shellTransmittanceAt(shells: readonly CloudShellLayer[], distance: FloatNode): FloatNode {
+  const product = float(1).toVar();
+  for (const shell of shells) {
+    product.mulAssign(mix(float(1), shell.transmittance, step(shell.distance, distance)));
+  }
+  return product;
+}
+
 // 1 枚を画面いっぱいへ写すだけのマテリアル。
 function copyMaterial(source: THREE.Texture): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial({
@@ -126,6 +165,8 @@ export class AtmospherePass {
   private readonly inspectCopyQuad: QuadMesh;
   // 積分の刻みを画素ごとにずらす種。
   private readonly blueNoise: BlueNoise;
+  // いま描いている層の雲。層ごとに描く直前へ書き込む。
+  private readonly clouds = new CloudScattering();
   // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と view→描画座標の行列は
   // 毎フレーム自前で書き込む。
   private readonly projMatrixInverse: Mat4Uniform;
@@ -193,11 +234,16 @@ export class AtmospherePass {
     // **重い側はすべて分岐の中に置く。** 大気に掛からない視線は区間の判定だけで抜ける —
     // select で混ぜると、捨てるぶんまで毎画素走る。
     const composed = Fn(() => {
-      const segment = this.raySegment(rayOrigin, rayDir, opaqueDist);
+      // 場を引く細かさを決める、画面 1 px が張る角。**分岐の外で取る** — 画面微分は
+      // 条件分岐の中では決まらない。
+      const pixelAngle = max(length(dFdx(rayDir)), length(dFdy(rayDir))).toVar();
+      const ray = this.sphereSpaceRay(rayOrigin, rayDir);
+      const segment = this.raySegment(ray, opaqueDist);
       const transmittance = vec3(1, 1, 1).toVar();
       const inscatter = vec3(0, 0, 0).toVar();
       If(segment.hitsAtmosphere, () => {
-        const layer = this.integrated(segment, rayOrigin, rayDir);
+        const shells = this.cloudShells(ray, segment, rayOrigin, rayDir, pixelAngle);
+        const layer = this.integrated(ray, segment, rayOrigin, rayDir, shells);
         transmittance.assign(layer.transmittance);
         inscatter.assign(layer.inscatter);
       });
@@ -222,44 +268,55 @@ export class AtmospherePass {
     return vector.add(this.slot.polarAxis.mul(dot(vector, this.slot.polarAxis).mul(this.slot.polarStretch)));
   }
 
+  // 視線を真球にした空間へ写した形。この空間では地表も裾も等密度面も殻も中心を共有する
+  // 球面になるので、交点も高度も光路もここで解ける。
+  private sphereSpaceRay(rayOrigin: Vec3Node, rayDir: Vec3Node): SphereSpaceRay {
+    const toOrigin = this.toSphereSpace(sub(rayOrigin, this.slot.center)).toVar();
+    // 引き伸ばした視線の長さが、実寸 1 m あたりこの空間を何進むかになる。
+    const stretchedDir = this.toSphereSpace(rayDir);
+    const unitsPerMeter = max(length(stretchedDir), 1e-6).toVar();
+    const unitDir = stretchedDir.div(unitsPerMeter).toVar();
+    const alongRay = dot(toOrigin, unitDir).toVar();
+    const perpOffset = sub(toOrigin, unitDir.mul(alongRay));
+    return { toOrigin, unitDir, unitsPerMeter, alongRay, perpSq: dot(perpOffset, perpOffset).toVar() };
+  }
+
+  // 視線と、天体と同心の半径 radius の球面との交点。距離は描画座標の実寸で返す。
+  //
+  // **判別式は「半径² − 最接近距離²」の形で解く。** 教科書の b² − c の形は、天体を惑星間
+  // 距離から見る視線で ~1e19 同士の引き算になり、f32 の桁落ちが交点距離に数十 km(スケール
+  // ハイトの桁上)のノイズを載せる — 円盤全面が z-fighting 様の縞になる。最接近点への垂線
+  // ベクトルは成分ごとの引き算なので、この桁落ちを持たない。
+  private crossingsOf(ray: SphereSpaceRay, radius: FloatNode): SphereCrossings {
+    const discriminant = radius.mul(radius).sub(ray.perpSq);
+    const span = sqrt(max(discriminant, 0));
+    const closest = ray.alongRay.negate();
+    return {
+      entry: closest.sub(span).div(ray.unitsPerMeter),
+      exit: closest.add(span).div(ray.unitsPerMeter),
+      crosses: greaterThan(discriminant, 0),
+    };
+  }
+
   // 視線が 1 つの天体の大気を通る区間。奥は大気の裾・不透明面・地表のうち最も手前で止まる。
   // 距離はどれも描画座標の実寸で返す。
   // **地表を解析で解くのは、地平線すれすれの視線で深度の量子化が縁を刻むため。**
-  private raySegment(
-    rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode,
-  ): RaySegment {
-    const toOrigin = this.toSphereSpace(sub(rayOrigin, this.slot.center));
-    // 引き伸ばした視線の長さが、実寸 1 m あたりこの空間を何進むかになる。
-    const stretchedDir = this.toSphereSpace(rayDir);
-    const unitsPerMeter = max(length(stretchedDir), 1e-6);
-    const unitDir = stretchedDir.div(unitsPerMeter);
-    const alongRay = dot(toOrigin, unitDir);
-
-    // **判別式は「半径² − 最接近距離²」の形で解く。** 教科書の b² − c の形は、天体を惑星間
-    // 距離から見る視線で ~1e19 同士の引き算になり、f32 の桁落ちが交点距離に数十 km(スケール
-    // ハイトの桁上)のノイズを載せる — 円盤全面が z-fighting 様の縞になる。最接近点への垂線
-    // ベクトルは成分ごとの引き算なので、この桁落ちを持たない。
-    const perpOffset = sub(toOrigin, unitDir.mul(alongRay));
-    const perpSq = dot(perpOffset, perpOffset);
-    const cutoff = this.slot.cutoffRadius;
-    const cutoffDisc = cutoff.mul(cutoff).sub(perpSq);
-    const cutoffSpan = sqrt(max(cutoffDisc, 0));
-    const near = max(alongRay.negate().sub(cutoffSpan).div(unitsPerMeter), 0);
-    const surface = this.slot.surfaceRadius;
-    const surfaceDisc = surface.mul(surface).sub(perpSq);
-    const surfaceT = alongRay.negate().sub(sqrt(max(surfaceDisc, 0))).div(unitsPerMeter);
+  private raySegment(ray: SphereSpaceRay, opaqueDist: FloatNode): RaySegment {
+    const cutoff = this.crossingsOf(ray, this.slot.cutoffRadius);
+    const near = max(cutoff.entry, 0);
+    const surface = this.crossingsOf(ray, this.slot.surfaceRadius);
     const opaqueOrSurface = select(
-      and(greaterThan(surfaceDisc, 0), greaterThan(surfaceT, near)), min(surfaceT, opaqueDist), opaqueDist,
+      and(surface.crosses, greaterThan(surface.entry, near)), min(surface.entry, opaqueDist), opaqueDist,
     );
     // **区間は空でも順序を保つ** — 奥が手前より手前へ回ると、この先の clamp が下限と上限を
     // 逆に受け、値が未定義になる。大気に掛からない視線はここで長さ 0 の区間になる。
-    const far = max(min(alongRay.negate().add(cutoffSpan).div(unitsPerMeter), opaqueOrSurface), near);
+    const far = max(min(cutoff.exit, opaqueOrSurface), near);
 
     return {
       near,
       far,
-      densest: clamp(alongRay.negate().div(unitsPerMeter), near, far),
-      hitsAtmosphere: and(greaterThan(cutoffDisc, 0), greaterThan(far, near)),
+      densest: clamp(ray.alongRay.negate().div(ray.unitsPerMeter), near, far),
+      hitsAtmosphere: and(cutoff.crosses, greaterThan(far, near)),
     };
   }
 
@@ -271,13 +328,14 @@ export class AtmospherePass {
   // その遷移が丸ごと 1 段の中へ収まって絵に帯が立つ。**最接近点しか無い視線では等間隔で取る**
   // — 高度は最接近点から距離の 2 乗でしか増えず、寄せて山から離れた側を粗くする害のほうが勝つ。
   private integrated(
-    segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
+    ray: SphereSpaceRay, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
+    shells: readonly CloudShellLayer[],
   ): LayerContribution {
     // 奥端が地表や不透明面で切れている視線では、最も濃い点がその奥端に重なる — 打ち切りが
     // いちばん鋭いので、これを最優先の山に採る。切れていない視線でだけ日没境界を見て、それも
     // 区間の中に無ければ最接近点へ落ちる。
     const truncated = greaterThanEqual(segment.densest, segment.far);
-    const sunset = this.sunsetDistance(segment, rayOrigin, rayDir);
+    const sunset = this.sunsetDistance(ray, segment);
     const crossesSunset = and(greaterThan(sunset, segment.near), lessThan(sunset, segment.far));
     const takesSunset = and(crossesSunset, not(truncated));
     const peak = select(takesSunset, sunset, segment.densest);
@@ -303,10 +361,80 @@ export class AtmospherePass {
     };
     const march = rayMarch(
       this.slot.steps, distanceAt,
-      (distance) => this.mediumAt(rayOrigin.add(rayDir.mul(distance)), rayDir),
+      (distance) => this.mediumAt(
+        rayOrigin.add(rayDir.mul(distance)), rayDir, shellTransmittanceAt(shells, distance)),
       this.blueNoise.atScreenPixel(),
     );
-    return { transmittance: march.transmittance, inscatter: march.radiance };
+    // 殻は区間を刻まずに挟むので、下地には殻ぜんぶの透過率が、内部散乱には殻の放射輝度が
+    // それぞれ最後にまとめて掛かる・足される。
+    const shellTransmittance = float(1).toVar();
+    const shellRadiance = vec3(0, 0, 0).toVar();
+    for (const shell of shells) {
+      shellTransmittance.mulAssign(shell.transmittance);
+      shellRadiance.addAssign(shell.radiance);
+    }
+    return {
+      transmittance: march.transmittance.mul(shellTransmittance),
+      inscatter: march.radiance.add(shellRadiance),
+    };
+  }
+
+  // 視線が雲の殻と交わる点。手前から順に並べ、手前の殻の透過率を奥の殻の放射輝度へ掛けながら
+  // 組む。**殻は天体と同心なので、入る点が出る点より手前であることは幾何が保証する。**
+  //
+  // 交点が区間の外(大気の裾より手前、あるいは地表・不透明面より奥)へ落ちた画素では殻を捨てる
+  // — 不透明な積雲の塔が写る画素で、その奥の殻が透けて出るのを防ぐ。
+  private cloudShells(
+    ray: SphereSpaceRay, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
+    pixelAngle: FloatNode,
+  ): readonly CloudShellLayer[] {
+    const shellRadius = this.slot.surfaceRadius.add(this.clouds.altitude);
+    const crossings = this.crossingsOf(ray, shellRadius);
+    const originDepth = this.outwardDepthAt(ray, float(0)).toVar();
+    const front = float(1).toVar();
+    const layers: CloudShellLayer[] = [];
+    for (const crossing of [crossings.entry, crossings.exit]) {
+      const distance = crossing.toVar();
+      const transmittance = float(1).toVar();
+      const radiance = vec3(0, 0, 0).toVar();
+      const inSegment = and(greaterThan(distance, segment.near), lessThan(distance, segment.far));
+      // **重い側は分岐の中に置く** — 雲に掛からない視線は交点の判定だけで抜ける。
+      If(and(and(crossings.crosses, inSegment), this.clouds.present()), () => {
+        const point = rayOrigin.add(rayDir.mul(distance));
+        const offset = ray.toOrigin.add(ray.unitDir.mul(ray.unitsPerMeter.mul(distance)));
+        const sunDir = normalize(this.toSphereSpace(sub(this.sunLight.position, point)));
+        const sample = this.clouds.scatteredAt(
+          shellRadius, offset, ray.unitDir, sunDir, this.sunRadianceAt(point), pixelAngle.mul(distance));
+        transmittance.assign(sample.transmittance);
+        radiance.assign(sample.radiance.mul(front).mul(this.transmittanceTo(originDepth, ray, distance)));
+      });
+      front.mulAssign(transmittance);
+      layers.push({ distance, transmittance, radiance });
+    }
+    return layers;
+  }
+
+  // 視線上の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。x はレイリー、
+  // y はミーのスケールハイトで測ったもので、長さはどちらも真球空間の目盛り。
+  private outwardDepthAt(ray: SphereSpaceRay, distance: FloatNode): Vec2Node {
+    const offset = ray.toOrigin.add(ray.unitDir.mul(ray.unitsPerMeter.mul(distance)));
+    const radius = max(length(offset), max(this.slot.surfaceRadius, 1));
+    const mu = dot(offset.div(radius), ray.unitDir);
+    return vec2(
+      depthToSpace(radius, mu, this.slot.surfaceRadius, this.slot.rayleighScaleHeight),
+      depthToSpace(radius, mu, this.slot.surfaceRadius, this.slot.mieScaleHeight),
+    );
+  }
+
+  // 視線の起点から distance までに視線が受ける大気の透過率。**区間を刻まずに解く** —
+  // 指数分布を通る光路の厚みは、両端から大気の外へ抜ける厚みの差になる。originDepth は
+  // 起点での outwardDepthAt。
+  private transmittanceTo(
+    originDepth: Vec2Node, ray: SphereSpaceRay, distance: FloatNode,
+  ): Vec3Node {
+    const path = max(originDepth.sub(this.outwardDepthAt(ray, distance)), vec2(0, 0))
+      .div(ray.unitsPerMeter);
+    return exp(this.slot.rayleigh.mul(path.x).add(vec3(this.slot.mie.mul(path.y))).negate());
   }
 
   // 視線上で、太陽がその天体の地平線へ沈む距離。**区間の外に落ちることも、区間を跨がない視線で
@@ -315,12 +443,9 @@ export class AtmospherePass {
   // 高度 r の点から見た日没は、天体中心から測って恒星方向の座標が −√(r²−R²) の面で起きる
   // (地平線が高度のぶん下がる)。高度は最も濃い点のもので代表させる。恒星は十分遠いので、
   // 向きは天体中心から見た 1 本で足りる。
-  private sunsetDistance(
-    segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
-  ): FloatNode {
+  private sunsetDistance(ray: SphereSpaceRay, segment: RaySegment): FloatNode {
     const sunDir = normalize(this.toSphereSpace(sub(this.sunLight.position, this.slot.center)));
-    const densestOffset = this.toSphereSpace(
-      sub(rayOrigin.add(rayDir.mul(segment.densest)), this.slot.center));
+    const densestOffset = ray.toOrigin.add(ray.unitDir.mul(ray.unitsPerMeter.mul(segment.densest)));
     const densestRadius = max(length(densestOffset), max(this.slot.surfaceRadius, 1));
     const sunsetOffset = sqrt(
       max(densestRadius.mul(densestRadius).sub(this.slot.surfaceRadius.mul(this.slot.surfaceRadius)), 0),
@@ -328,16 +453,16 @@ export class AtmospherePass {
     // **分母には符号を保ったまま床を張る** — 視線が恒星方向と直交すると 0 になる。そのとき解は
     // 区間の遥か外へ飛ぶので、呼び出し側の判定がそのまま弾く。**視線は正規化せずに写す** —
     // 引き伸ばした長さが実寸 1 m あたりの進みなので、商がそのまま実寸の距離になる。
-    const alongSun = dot(this.toSphereSpace(rayDir), sunDir);
+    const alongSun = dot(ray.unitDir, sunDir).mul(ray.unitsPerMeter);
     const towardSun = select(greaterThan(alongSun, 0), float(1), float(-1));
-    return sunsetOffset.negate().sub(dot(this.toSphereSpace(sub(rayOrigin, this.slot.center)), sunDir))
+    return sunsetOffset.negate().sub(dot(ray.toOrigin, sunDir))
       .div(towardSun.mul(max(abs(alongSun), 1e-6)));
   }
 
   // 視線上の 1 点の媒質。消散はレイリーとミーの和で、視線へ足す量は「散乱が消散に占める割合 ×
   // 位相関数 × そこへ届く太陽光」。散乱と消散が等しい(吸収を持たない)ので、割合は位相関数の
-  // 重みそのものになる。
-  private mediumAt(point: Vec3Node, rayDir: Vec3Node): MediumSample {
+  // 重みそのものになる。shellTransmittance は、この点より手前にある雲の殻を通り抜ける割合。
+  private mediumAt(point: Vec3Node, rayDir: Vec3Node, shellTransmittance: FloatNode): MediumSample {
     // 高度から成分ごとの散乱係数を引く。
     const offset = this.toSphereSpace(sub(point, this.slot.center));
     const radius = max(length(offset), max(this.slot.surfaceRadius, 1));
@@ -354,7 +479,7 @@ export class AtmospherePass {
     return {
       extinction,
       source: scattered.div(max(extinction, vec3(MIN_EXTINCTION, MIN_EXTINCTION, MIN_EXTINCTION)))
-        .mul(this.sunRadianceAt(point)),
+        .mul(this.sunRadianceAt(point)).mul(shellTransmittance),
     };
   }
 
@@ -463,8 +588,9 @@ export class AtmospherePass {
     }
   }
 
-  // 板が解く1体ぶんの光学パラメータを書き込む。
+  // 板が解く1体ぶんの光学パラメータと雲を書き込む。
   private writeSlot(body: AtmosphereBody, steps: number, cutoffRadius: number): void {
+    this.clouds.set(body.clouds);
     this.slot.steps.value = steps;
     this.slot.center.value.copy(body.center);
     this.slot.surfaceRadius.value = body.surfaceRadius;
