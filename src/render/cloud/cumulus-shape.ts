@@ -98,13 +98,6 @@ export function columnOpticalDepth(coverage: FloatNode): FloatNode {
   return log(min(coverage, MAX_COLUMN_COVERAGE).oneMinus()).negate();
 }
 
-// 不透明な積雲として立てたぶんを差し引いて、その柱に残る覆いの割合。**ディザは覆い尽くされて
-// いる割合ぶんの画素を不透明にする**ので、残りの画素が受け持つのはこの残差になる — 同じ覆いを
-// 不透明な殻と薄い層が両方数えると、境目の帯が二重に濃くなる。
-export function residualCoverageOf(coverage: FloatNode, opaqueFraction: FloatNode): FloatNode {
-  return clamp(coverage.sub(opaqueFraction), 0, 1).div(max(opaqueFraction.oneMinus(), 1e-3));
-}
-
 // 境目の前後 band で 0 から 1 へ渡す。band は 0 を取れない(割り算が NaN へ落ちる)。
 // **幅は境目の 2 倍で止める** — 斜面の下端が負へ伸びると、覆いの無い柱(被覆率 0)まで正の割合を
 // 返す。2 倍なら下端がちょうど 0 で止まり、境目の位置は動かない。
