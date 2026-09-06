@@ -1,12 +1,12 @@
 // 積雲(雲の場の R = 被覆率、G = 雲頂高度)を、地表の上に立つ不透明な雲として描くメッシュ。
 // 分割段ラダーの各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて1段だけを見せる。殻の面へ
 // 届いた視線は雲頂の高さ場まで下ろして交点を探し、そこの深度と法線を書く。場の texel より細かい
-// 粒は天体固定のノイズで足す。陰影・遮蔽・逆二乗の減衰はすべてパイプラインが与える。
+// 粒は天体固定のノイズで足す。陰影・影・逆二乗の減衰はすべてパイプラインが与える。
 import * as THREE from 'three/webgpu';
 import {
   Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
   max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
-  sqrt, step, texture as textureNode, transformNormalToView, vec3, vec4,
+  sqrt, step, texture as textureNode, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
 import { DeferredTexture } from './deferred-texture';
@@ -17,7 +17,7 @@ import {
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitOpaque } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
-import type { FloatNode, Vec3Node, Vec4Node } from './tsl-types';
+import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
 
 // 不透明な積雲のアルベド。厚い雲の白さは多重散乱の産物で、単散乱アルベド ≈ 1・光学的厚みが
 // 十分に大きい層の反射は拡散反射の極限へ漸近する。
@@ -61,12 +61,13 @@ export class CumulusShell {
   private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
   private material: THREE.Material;
   private readonly blueNoise = new BlueNoise();
-  // 殻を半径 1 とする物体空間での地表の半径。レイマーチの下端になる。
-  private readonly groundRadius: number;
+  // 殻を半径 1 とする物体空間での地表の半径。レイマーチの下端になる。**天体ごとに違う値は
+  // uniform で渡す** — グラフへ焼くと、殻を持つ天体の数だけシェーダが増える。
+  private readonly groundRadius: FloatUniform;
   // 粒の 1 rad あたりの山の数と、雲頂の勾配を測る差分の幅 [rad]。差分は粒の半波長ぶんなので、
   // 場の起伏と粒の起伏が同じ 1 つの法線に出る。
-  private readonly grainFrequency: number;
-  private readonly gradientAngle: number;
+  private readonly grainFrequency: FloatUniform;
+  private readonly gradientAngle: FloatUniform;
   // 段ごとの球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
@@ -78,9 +79,10 @@ export class CumulusShell {
     // 正距円筒の経度は周期的なので、場は経度方向へ巻く。
     this.fieldMap.texture.wrapS = THREE.RepeatWrapping;
     const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
-    this.groundRadius = 1 / shellScale;
-    this.grainFrequency = bodyRadius / CUMULUS_GRAIN_SIZE;
-    this.gradientAngle = 0.5 / this.grainFrequency;
+    const grainFrequency = bodyRadius / CUMULUS_GRAIN_SIZE;
+    this.groundRadius = uniform(1 / shellScale);
+    this.grainFrequency = uniform(grainFrequency);
+    this.gradientAngle = uniform(0.5 / grainFrequency);
     this.material = this.buildMaterial();
 
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
@@ -97,12 +99,14 @@ export class CumulusShell {
   // 雲の場のテクスチャ。解放までこの殻が持つ。
   public get field(): THREE.Texture { return this.fieldMap.texture; }
 
+  // 殻を描いている段があるか。
+  public get visible(): boolean { return this.activeLevel !== null; }
+
   // 殻の高度 [m]。場の雲頂高度 0..1 が張る高さでもある。
   public get topAltitude(): number { return CLOUD_TOP_SPAN; }
 
-  // 全段のメッシュを parent の下へ置き、場の画像の取得を始める。
+  // 全段のメッシュを parent の下へ置く。
   public addTo(parent: THREE.Object3D): void {
-    this.fieldMap.request();
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
@@ -123,8 +127,10 @@ export class CumulusShell {
   }
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。刻みを持たない配り方では
-  // 全段を隠す。
+  // 全段を隠す。場の画像の取得もここで始める — この殻を持つ天体が球として描かれるまで
+  // 取りに行かないため(刻みを持たない配り方でも、地表へ焼き込む雲が同じ場を読む)。
   public syncLod(apparentDiameterPx: number): void {
+    this.fieldMap.request();
     const level = this.sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
@@ -172,7 +178,7 @@ export class CumulusShell {
       // 殻に入ってから地表の球へ達するまで(掠めるなら殻を出るまで)を等分してたどる。
       const along = dot(entry, direction);
       const half = along.mul(along).sub(dot(entry, entry));
-      const groundHalf = half.add(this.groundRadius * this.groundRadius);
+      const groundHalf = half.add(this.groundRadius.mul(this.groundRadius));
       const marchEnd = max(select(
         groundHalf.greaterThan(0),
         along.negate().sub(sqrt(max(groundHalf, 0))),
@@ -248,7 +254,7 @@ export class CumulusShell {
 
   // 雲頂高度 0..1 を、殻を半径 1 とする物体空間の半径へ直す。
   private cloudTopRadiusOf(cloudTop: FloatNode): FloatNode {
-    return cloudTop.mul(1 - this.groundRadius).add(this.groundRadius);
+    return cloudTop.mul(this.groundRadius.oneMinus()).add(this.groundRadius);
   }
 
   // 天体固定の単位方向における場の値。

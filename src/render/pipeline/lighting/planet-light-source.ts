@@ -67,7 +67,7 @@ const receiverPhase = Fn(([alpha, capAngle]: readonly [FloatNode, FloatNode]) =>
 });
 
 // スロット 1 本ぶんの光源。拡散も鏡面も、視半径を持つ一様球として解く(sphere-light.ts)。
-// TODO: 遮蔽を受けない — 受け手と天体の間に別の天体や艦の構造があっても届く。
+// TODO: 影を受けない — 受け手と天体の間に別の天体や艦の構造があっても届く。
 class PlanetLightSlot implements LightSource {
   private cached: THREE.MeshBasicNodeMaterial | null = null;
 

@@ -22,7 +22,7 @@ export interface AtmosphereOptics {
   readonly mieAnisotropy: number;
 }
 
-// 同時に大気を描ける天体の数。
+// 同時に大気を描ける天体の数。1 体につき描画が 1 回増えるので、ここは絵の負荷の上限を決める。
 export const MAX_ATMOSPHERE_BODIES = 4;
 
 // 品質の段ごとの、大気ぜんぶへ配れるサンプル点の合計。**段が現れるのはこの表だけで、配分は

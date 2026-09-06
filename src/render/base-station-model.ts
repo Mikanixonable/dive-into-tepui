@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
+import { markLitOpaque, markShadowCaster } from './pipeline/lit-layer';
 import { F0_STEEL } from './metal-f0';
 
 // 基地の造形。主トラスを挟んで、居住区(+Z)とカウンターウェイトの貨物区(-Z)が向かい合う。
@@ -86,7 +86,7 @@ export function buildBaseModel(): THREE.Group {
   g.scale.setScalar(3.0);
 
   markLitOpaque(g);
-  markSunShadowCaster(g);
+  markShadowCaster(g);
   return g;
 }
 

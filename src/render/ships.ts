@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../math/random';
-import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
+import { markLitOpaque, markShadowCaster } from './pipeline/lit-layer';
 import { attachThermalEmissive, makeThermallyEmissive, THERMAL_SHAPE_ATTRIBUTE } from './thermal-emissive';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
@@ -85,7 +85,7 @@ function cloneIndependent<T extends THREE.Object3D>(template: T): T {
   });
   makeThermallyEmissive(clone);
   markLitOpaque(clone);
-  markSunShadowCaster(clone);
+  markShadowCaster(clone);
   return clone;
 }
 
@@ -234,7 +234,7 @@ export function buildRcsFuelPickup(): THREE.Group {
   g.add(beacon);
   makeThermallyEmissive(g);
   markLitOpaque(g);
-  markSunShadowCaster(g);
+  markShadowCaster(g);
   return g;
 }
 
@@ -361,9 +361,9 @@ export function casingBodyResources(): { geometry: THREE.BufferGeometry; materia
 }
 
 // 破片(fragment): 撃破時の飛散と被弾欠片に使う。InstancedPool で個体をまとめて描くため、
-// 個体ごとに乱数でジオメトリを作ることはしない — 固定シードの乱数で起動時に一度だけ
-// DEBRIS_FRAGMENT_VARIANT_COUNT 種類のジオメトリ(単位スケール)を焼き、色は
-// InstancedPool の per-instance color で個体ごとに与える(debrisFragmentResources)。
+// 個体ごとに乱数でジオメトリを作ることはしない — 起動時に一度だけ
+// DEBRIS_FRAGMENT_VARIANT_COUNT 種類のジオメトリ(単位スケール)を焼き、色は InstancedPool の
+// per-instance color で個体ごとに与える(debrisFragmentResources)。
 
 // ジオメトリ・マテリアルの所有権をマークするヘルパー
 function withDispose(mesh: THREE.Mesh, ownsGeom = true, ownsMat = true): THREE.Mesh {
@@ -384,15 +384,17 @@ function displaceVertices(geo: THREE.BufferGeometry, map: (x: number, y: number,
 }
 
 // 破片ジオメトリのバリアント本数。DebrisPiece がこの中から乱択して自分の形状とする。
-export const DEBRIS_FRAGMENT_VARIANT_COUNT = 18;
-// バリアント生成用の乱数シード(起動のたびに形が変わらないよう固定する)。
+// バリアント1本につき InstancedPool が1本増え、G バッファと影パスのシェーダが1本ずつ
+// 起動時にコンパイルされるので、増やすほど起動が伸びる。**7 を下回らせない** — 形の帯を
+// 等間隔に叩くので、これより少ないと 6 つの形のどれかが 1 本も出なくなる。
+export const DEBRIS_FRAGMENT_VARIANT_COUNT = 7;
+// バリアントの寸法を決める乱数のシード(起動のたびに形が変わらないよう固定する)。
 const DEBRIS_FRAGMENT_SEED = 0xdeb71;
 
-// 破片ジオメトリを1つ、単位スケールで生成する。色は個体ごとに InstancedPool の
-// per-instance color が与えるため、ここでは決めない。size による最終的な大きさは
-// 個体ごとの最終的な大きさは表示ルートの scale で決まる。
-function buildDebrisFragmentGeometry(rand: () => number): THREE.BufferGeometry {
-  const kind = rand();
+// 破片ジオメトリを1つ、単位スケールで生成する。kind [0, 1) が6つの形のどれになるかを決め、
+// rand が寸法の細部を決める。色は個体ごとに InstancedPool の per-instance color が
+// 与えるため、ここでは決めない。個体ごとの最終的な大きさは表示ルートの scale で決まる。
+function buildDebrisFragmentGeometry(rand: () => number, kind: number): THREE.BufferGeometry {
   if (kind < 0.22) {
     // 破損した外殻チャンク
     const geo = deepCloneGeometry(parseDebrisChunk().geometry);
@@ -436,7 +438,11 @@ export function debrisFragmentResources(): { geometries: readonly THREE.BufferGe
   if (!debrisFragmentGeometries) {
     const rand = mulberry32(DEBRIS_FRAGMENT_SEED);
     debrisFragmentGeometries = [];
-    for (let i = 0; i < DEBRIS_FRAGMENT_VARIANT_COUNT; i++) debrisFragmentGeometries.push(buildDebrisFragmentGeometry(rand));
+    // 形の帯を等間隔に叩く。乱択だと本数が少ないときに同じ形へ偏る。
+    for (let i = 0; i < DEBRIS_FRAGMENT_VARIANT_COUNT; i++) {
+      debrisFragmentGeometries.push(
+        buildDebrisFragmentGeometry(rand, (i + 0.5) / DEBRIS_FRAGMENT_VARIANT_COUNT));
+    }
     debrisFragmentMaterial = attachThermalEmissive(
       new THREE.MeshStandardNodeMaterial({ color: 0xffffff, flatShading: true, roughness: 0.65, metalness: 0 }),
       'instance');
@@ -547,6 +553,6 @@ export function buildBarrelMesh(): THREE.Group {
   // layers.mask は Object3D.clone(true) が子孫までコピーするため、テンプレートへ一度だけ
   // 設定すれば以降の複製全てへ引き継がれる。
   markLitOpaque(g);
-  markSunShadowCaster(g);
+  markShadowCaster(g);
   return g;
 }

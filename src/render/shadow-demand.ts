@@ -1,9 +1,9 @@
 // 影のスロットに要る細かさと、その枠を置く場所を、受け手の側から決める純関数群。THREE にも
 // game/・physics/ の座標型にも依存しない(引数はスカラーのみ)。
 //
-// **粗が見えるのは受け手がカメラに近いときであって、遮蔽器が近いときではない。** 平行投影では
-// 影の実寸は遮蔽器の実寸に等しいので、画面上の粗さは影が落ちる面までの距離だけで決まる。
-// 遮蔽器も受け手も外接球で近似する — 偽陽性は「余分に細かい枠を作る」側へ倒れるので安全。
+// **粗が見えるのは受け手がカメラに近いときであって、影を落とすものが近いときではない。** 平行投影では
+// 影の実寸は影を落とすものの実寸に等しいので、画面上の粗さは影が落ちる面までの距離だけで決まる。
+// 影を落とすものも受け手も外接球で近似する — 偽陽性は「余分に細かい枠を作る」側へ倒れるので安全。
 import { metersPerPixelAtDepth } from '../math/projection';
 
 /**
@@ -21,11 +21,11 @@ export function requiredTexel(
 }
 
 /**
- * 半径 casterRadius の遮蔽器の影が、中心差 (dx, dy, dz) の位置にある半径 receiverRadius の
- * 受け手へ届くか。(lx, ly, lz) は遮蔽器の位置で光が進む向き(単位ベクトル)。
- * columnSpan は本影が消えるまでの距離を遮蔽器の差し渡しの何倍に取るか。
+ * 半径 casterRadius の影を落とすものの影が、中心差 (dx, dy, dz) の位置にある半径 receiverRadius の
+ * 受け手へ届くか。(lx, ly, lz) は影を落とすものの位置で光が進む向き(単位ベクトル)。
+ * columnSpan は本影が消えるまでの距離を影を落とすものの差し渡しの何倍に取るか。
  *
- * **自分自身(差 0)にも真を返す** — 自己遮蔽がいちばん頻度の高い経路である。
+ * **自分自身(差 0)にも真を返す** — 自分自身へ落ちる影がいちばん頻度の高い経路である。
  */
 export function castsOnto(
   dx: number, dy: number, dz: number, casterRadius: number, receiverRadius: number,
@@ -57,7 +57,7 @@ export function insideBox(
  * 窓の中心の 1 軸ぶん。retreat が真なら [min, max] の中点、偽なら p を [min, max] へ丸めた値。
  *
  * **カメラが箱の内側にあるときは retreat を立てる** — 丸めた値はカメラ位置そのものになるが、
- * そこに遮蔽器は無いので、窓の中心にすると必ず空を撮る。
+ * そこに影を落とすものは無いので、窓の中心にすると必ず空を撮る。
  */
 export function anchorAxis(p: number, min: number, max: number, retreat: boolean): number {
   if (retreat) return (min + max) / 2;

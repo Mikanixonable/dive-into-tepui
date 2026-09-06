@@ -5,7 +5,7 @@
 // (debug-target.ts)。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { float, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
@@ -19,24 +19,32 @@ import { PlanetLightSource } from './lighting/planet-light-source';
 import { SphereSpecular } from './lighting/sphere-light';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
-import { OcclusionPass } from './occlusion';
-import { SunOcclusion } from './sun-occlusion';
+import { ShadowPass } from './shadow/shadow-pass';
+import { BodyShadow } from './shadow/body-shadow';
+import { RingShadow } from './shadow/ring-shadow';
+import { CumulusShadow } from './shadow/cumulus-shadow';
+import { MeshShadow } from './shadow/mesh-shadow';
 import { OverlayPass } from './overlay-pass';
 import { AntialiasPass } from './antialias-pass';
 import { SchematicComposite } from './schematic-composite';
 import { LensPass } from './lens-pass';
 import { Exposure } from './exposure';
 import { SunLight } from './sun-light';
-import { SunShadowMaps, type SunShadowSlot } from './sun-shadow-maps';
+import { ShadowMaps } from './shadow/shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 import { FilmLut } from './film-lut';
+import { compileInto, compileIntoOutput } from './compile-into';
+import { DeferredTexture } from '../deferred-texture';
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly gbuffer: GBufferPass;
-  private readonly occlusionPass: OcclusionPass;
-  private readonly _sunOcclusion: SunOcclusion;
-  private readonly sunShadowMaps: SunShadowMaps;
+  private readonly shadowPass: ShadowPass;
+  private readonly _bodyShadow: BodyShadow;
+  private readonly _ringShadow: RingShadow;
+  private readonly _cumulusShadow: CumulusShadow;
+  private readonly meshShadow: MeshShadow;
+  private readonly shadowMaps: ShadowMaps;
   private readonly lightPrepass: LightPrepass;
   // 球光源の鏡面が引く係数表。太陽と天体照で 1 つを共有する。
   private readonly sphereSpecular: SphereSpecular;
@@ -46,10 +54,6 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly _ambient: AmbientSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
-  // 大気パスが読む、不透明の絵のスナップショットとそれを書き写す全画面クアッド。
-  private readonly backdropTarget: THREE.RenderTarget;
-  private readonly backdropMaterial: THREE.MeshBasicNodeMaterial;
-  private readonly backdropQuad: QuadMesh;
   private readonly overlayPass: OverlayPass;
   private readonly antialiasPass: AntialiasPass;
   private readonly lensPass: LensPass;
@@ -86,11 +90,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // に戻るセッション限定の状態で、永続化しない。
   public debugTarget: DebugTargetId = 'off';
 
-  // 以下は、シーン側が毎フレームの値(恒星の位置・順応の基準点・遮蔽器・光源になる天体・
+  // 以下は、シーン側が毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・
   // 環境光の割合・大気を持つ天体)を書き込む先。
   public get sunLight(): SunLight { return this._sunLight; }
   public get exposure(): Exposure { return this._exposure; }
-  public get sunOcclusion(): SunOcclusion { return this._sunOcclusion; }
+  public get bodyShadow(): BodyShadow { return this._bodyShadow; }
+  public get ringShadow(): RingShadow { return this._ringShadow; }
+  public get cumulusShadow(): CumulusShadow { return this._cumulusShadow; }
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
@@ -103,15 +109,21 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
     this._exposure = new Exposure();
-    this.sunShadowMaps = new SunShadowMaps(
+    this.shadowMaps = new ShadowMaps(
       renderer, gpu, graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
-    this._sunOcclusion = new SunOcclusion(this._sunLight, this.sunShadowMaps);
-    this.occlusionPass = new OcclusionPass(renderer, this.gbuffer, this._sunOcclusion, gpu);
+    this._bodyShadow = new BodyShadow(this._sunLight);
+    this._ringShadow = new RingShadow(this._sunLight);
+    this._cumulusShadow = new CumulusShadow(this._sunLight);
+    this.meshShadow = new MeshShadow(this._sunLight, this.shadowMaps);
+    this.shadowPass = new ShadowPass(
+      renderer, this.gbuffer,
+      this._bodyShadow, this._ringShadow, this._cumulusShadow, this.meshShadow, gpu,
+    );
     this.sphereSpecular = new SphereSpecular();
     this.sunSource = new SunSource(
-      this._sunLight, this.occlusionPass, this.sphereSpecular, graphics.sunLightModel);
+      this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
       this._sunLight, this.sphereSpecular, graphics.planetLightCount);
     this._ambient = new AmbientSource(this._sunLight);
@@ -119,16 +131,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
-    // 大気パスが読む、不透明の絵のスナップショット。共有ターゲットの中身を写すだけなので、
-    // 深度は持たない。
-    this.backdropTarget = new THREE.RenderTarget(1, 1, {
-      type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false,
-    });
-    this.atmospherePass = new AtmospherePass(
-      renderer, this.gbuffer, this.backdropTarget.texture, this._sunLight, this._sunOcclusion, gpu,
-    );
-    this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
+    // マテリアルパス以降が共有する描画先。**大気パスの生成より先に作る** — 大気パスは自身が
+    // 読み書きする先としてこれを受け取る。
     this.target = new THREE.RenderTarget(1, 1, {
       type: THREE.HalfFloatType,
       format: THREE.RGBAFormat,
@@ -137,12 +142,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // 深度を 32bit 浮動小数点にするには明示が要る — 省くと depth24plus のまま精度だけ落ちる。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
-    // 共有ターゲットの中身(マテリアルパスの出力)をスナップショットへ書き写す全画面クアッド。
-    this.backdropMaterial = new THREE.MeshBasicNodeMaterial({
-      depthTest: false, depthWrite: false, blending: THREE.NoBlending,
-    });
-    this.backdropMaterial.colorNode = texture(this.target.texture, screenUV);
-    this.backdropQuad = new QuadMesh(this.backdropMaterial);
+    this.atmospherePass = new AtmospherePass(
+      renderer, this.gbuffer, this.target, this._sunLight, this._bodyShadow, gpu,
+    );
+    this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
     // 表示用の絵は 8bit で足りる。**素の RGBA8 で受ける** — `-srgb` のフォーマットにすると、
     // 表示用色空間への変換が二重に掛かって画面全体が白く浮く。深度を持たせるのは、composite
@@ -162,6 +165,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.depthDebugProjInv = uniform(new THREE.Matrix4());
     this.debugViewToWorld = uniform(new THREE.Matrix4());
 
+    const inspectMaterial = this.buildCompositeMaterial(
+      vec4(this.toneMapped(texture(this.atmospherePass.inspectTexture, screenUV).rgb), 1),
+    );
     // 表示ごとに別マテリアルを持ち、quad.material の差し替えで切り替える。1 枚をユニフォームで
     // 分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを bind/sample することになる。
     this.compositeMaterials = {
@@ -185,10 +191,10 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       depth: this.buildCompositeMaterial(vec4(vec3(this.logDepthNode()), 1)),
       // 4 枚のスロットを 2x2 に並べて画面いっぱいへ映す。線形深度なのでそのまま濃淡として
       // 読め(遠いほど白)、使われていないスロットは真っ白のまま残る。
-      shadow: this.buildCompositeMaterial(vec4(vec3(this.shadowSlotGridNode()), 1)),
-      'shadow-slot': this.buildCompositeMaterial(vec4(this.shadowSlotColorNode(), 1)),
-      occlusion: this.buildCompositeMaterial(
-        vec4(vec3(texture(this.occlusionPass.texture, screenUV).r), 1),
+      'shadow-map': this.buildCompositeMaterial(vec4(vec3(this.shadowSlotGridNode()), 1)),
+      'shadow-map-slot': this.buildCompositeMaterial(vec4(this.shadowSlotColorNode(), 1)),
+      shadow: this.buildCompositeMaterial(
+        vec4(vec3(texture(this.shadowPass.texture, screenUV).r), 1),
       ),
       // 照度・陰影は 1 を超え得る HDR 値なので、通常表示と同じトーンマッピングを通してから
       // 画面へ出す(1 天文単位の放射照度は π を超えるため、通さないと全面白になる)。
@@ -198,14 +204,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       specular: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
-      // マテリアルパスの出力は大気と world に上書きされて残らないので、大気パスが読む
-      // スナップショット(backdropTarget)を映す。
-      material: this.buildCompositeMaterial(
-        vec4(this.toneMapped(texture(this.backdropTarget.texture, screenUV).rgb), 1),
-      ),
-      atmosphere: this.buildCompositeMaterial(
-        vec4(this.toneMapped(this.atmospherePass.scatteredLight()), 1),
-      ),
+      // 「マテリアル」も「大気」も、大気パスが点検用に描く1枚を映すので、材質を共有する。
+      material: inspectMaterial,
+      atmosphere: inspectMaterial,
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
     };
     this.lensCompositeMaterial = this.buildCompositeMaterial(
@@ -238,25 +239,27 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     return material;
   }
 
-  // G バッファのベース色の α に載っている金属度。物体の無い画素(深度が反転 Z の far)は 0。
+  // G バッファのベース色の α に載っている金属度。物体の無い画素は 0。
   private metalnessDebugNode(): FloatNode {
     const metalness = texture(this.gbuffer.basecolorTexture, screenUV).a;
-    return select(texture(this.gbuffer.depthTexture, screenUV).r.greaterThan(0), metalness, float(0));
+    return select(this.gbuffer.covered(), metalness, float(0));
   }
 
-  // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。スロットは独立した
-  // レンダーターゲットなので、並べるのは表示のときだけの都合。
+  // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。
   private shadowSlotGridNode(): FloatNode {
     const tileUV = screenUV.mul(2).fract();
-    const slots = this.sunShadowMaps.slots;
+    const parameters = this.shadowMaps.uniformArrays.parameters;
     const left = screenUV.x.lessThan(0.5);
     // screenUV は上端が原点なので、y の小さいほうが画面の上段。
     const top = screenUV.y.lessThan(0.5);
-    // 深度マップはメートルで持っているので、スロットごとの深度の幅で割って濃淡へ直す。
-    const tile = (slot: SunShadowSlot): FloatNode => texture(slot.texture, tileUV).r
-      .div(max(slot.far.sub(slot.near), 1e-6));
-    const topRow = select(left, tile(slots[0]!), tile(slots[1]!));
-    const bottomRow = select(left, tile(slots[2]!), tile(slots[3]!));
+    // 深度マップはメートルで持っているので、スロットごとの深度の幅(far − near)で割って濃淡へ直す。
+    const tile = (layer: number): FloatNode => {
+      const slot = parameters.element(layer);
+      return texture(this.shadowMaps.texture, tileUV).depth(int(layer)).r
+        .div(max(slot.y.sub(slot.x), 1e-6));
+    };
+    const topRow = select(left, tile(0), tile(1));
+    const bottomRow = select(left, tile(2), tile(3));
     return select(top, topRow, bottomRow);
   }
 
@@ -264,7 +267,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private shadowSlotColorNode(): Vec3Node {
     const viewPos = viewPositionAt(this.gbuffer.depthTexture, this.depthDebugProjInv);
     const worldPos: Vec3Node = this.debugViewToWorld.mul(vec4(viewPos, 1)).xyz;
-    return this._sunOcclusion.slotDebugColor(worldPos);
+    return this.meshShadow.slotDebugColor(worldPos);
   }
 
   // 深度バッファの生値を near/far 間の対数スケール(0=near, 1=far)へ変換する。素の深度値は
@@ -277,10 +280,31 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     return log(dist.div(this.depthDebugNear)).div(log(this.depthDebugFar.div(this.depthDebugNear)));
   }
 
+  // 共有ターゲットと表示用ターゲットを描画バッファの寸法へ合わせ、その寸法を返す。
+  private syncTargetSize(): THREE.Vector2 {
+    this.renderer.getDrawingBufferSize(this.drawingBufferSize);
+    const { x: width, y: height } = this.drawingBufferSize;
+    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    if (this.displayTarget.width !== width || this.displayTarget.height !== height) {
+      this.displayTarget.setSize(width, height);
+    }
+    return this.drawingBufferSize;
+  }
+
+  // 深度デバッグ表示が深度から距離を引き直すための、カメラ由来の値を書き込む。
+  private writeDepthDebugCamera(camera: THREE.Camera): void {
+    this.depthDebugProjInv.value.copy(camera.projectionMatrixInverse);
+    this.debugViewToWorld.value.copy(camera.matrixWorld);
+    if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
+      this.depthDebugNear.value = camera.near;
+      this.depthDebugFar.value = camera.far;
+    }
+  }
+
   // 描画品質設定のうち、GPU 資源の確保を伴うものを各パスへ配る。値が変わった時点で1回呼ばれる。
   public applyGraphics(graphics: GraphicsSettingsData): void {
     this.lensEnabled = graphics.lens;
-    this.sunShadowMaps.setQuality(
+    this.shadowMaps.setQuality(
       graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
@@ -291,34 +315,77 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.filmLut.select(graphics.filmLut);
   }
 
-  // 1 フレームぶんの描画を、影 → G バッファ → 遮蔽 → ライティング → マテリアル → 大気 →
+  // 初回描画で使うパイプラインをパス単位で構築し、完了数を通知する。
+  public async compile(
+    scene: THREE.Scene,
+    camera: THREE.Camera,
+    style: RenderStyle,
+    onPass: (name: string, done: number, total: number) => void,
+  ): Promise<void> {
+    const { x: width, y: height } = this.syncTargetSize();
+
+    this.writeDepthDebugCamera(camera);
+
+    // 描画順に並べる。スタイルによらず通る段。
+    const passes: [string, () => Promise<void>][] = [
+      ['影マップ', () => this.shadowMaps.compile(scene, camera, height, this._sunLight)],
+      ['G バッファ', () => this.gbuffer.compile(scene, camera, width, height)],
+      ['影', () => this.shadowPass.compile(camera, width, height)],
+      ['照明', () => this.lightPrepass.compile(camera, width, height)],
+    ];
+
+    // 合成板は描画時と同じものを載せてから組む。模式図は物理量の段を通らない。
+    if (style === 'schematic') {
+      this.schematicComposite.update(width, height);
+      this.quad.material = this.schematicMaterial;
+    } else {
+      this.quad.material = this.lensEnabled ? this.lensCompositeMaterial : this.compositeMaterials.off;
+      passes.push(
+        ['マテリアル', () => this.materialPass.compile(scene, camera, this.target)],
+        ['大気', () => this.atmospherePass.compile(camera)],
+        ['ワールド', () => compileInto(this.renderer, this.target, scene, camera)],
+      );
+      if (this.lensEnabled) passes.push(['レンズ', () => this.lensPass.compile(width, height)]);
+    }
+
+    passes.push(
+      ['合成', () => compileIntoOutput(this.renderer, this.displayTarget, this.quad, this.quad.camera)],
+      ['オーバーレイ', () => this.overlayPass.compile(scene, camera, style, this.displayTarget)],
+      ['アンチエイリアス', () => this.antialiasPass.compile()],
+    );
+
+    // 段の切れ目でブラウザへ制御を返す。テクスチャの GPU 投入もここへ 1 フレーム 1 枚ずつ挟む。
+    for (const [index, [name, compile]] of passes.entries()) {
+      onPass(name, index, passes.length);
+      await DeferredTexture.publishOneNextFrame(this.renderer);
+      await compile();
+    }
+    onPass('完了', passes.length, passes.length);
+  }
+
+  // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → ライティング → マテリアル → 大気 →
   // world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは
   // マテリアル・大気・world・レンズの4段を飛ばす。デバッグ表示を選んでいてもパスは省略しない —
-  // 設定で切られている段(影・レンズ)を選べば、そのフレームが何も作っていないことがそのまま
+  // 設定で切られている段(影マップ・レンズ)を選べば、そのフレームが何も作っていないことがそのまま
   // 空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
   // フレームでも撮る。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
-    this.renderer.getDrawingBufferSize(this.drawingBufferSize);
-    const width = this.drawingBufferSize.x;
-    const height = this.drawingBufferSize.y;
-    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
-    if (this.displayTarget.width !== width || this.displayTarget.height !== height) {
-      this.displayTarget.setSize(width, height);
-    }
+    DeferredTexture.publishOne(this.renderer);
+    const { x: width, y: height } = this.syncTargetSize();
 
-    // 影パスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
+    // 影マップパスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
     flushProteinMotionComputes(this.renderer);
 
-    // 太陽光の影パス。G バッファを必要としないので、その前に置く。
-    this.sunShadowMaps.render(scene, camera, height, this._sunLight);
+    // 太陽光の影マップパス。G バッファを必要としないので、その前に置く。
+    this.shadowMaps.render(scene, camera, height, this._sunLight);
 
     // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
     this.gbuffer.render(scene, camera, width, height);
 
-    // 遮蔽パス。G バッファ深度だけを読むので scene は渡さない。
-    this.occlusionPass.render(camera, width, height);
+    // 影パス。G バッファ深度だけを読むので scene は渡さない。
+    this.shadowPass.render(camera, width, height);
 
-    // ライティングパス。G バッファと遮蔽度だけを読むので scene は渡さない。
+    // ライティングパス。G バッファと影の透過率だけを読むので scene は渡さない。
     this.lightPrepass.render(camera, width, height);
 
     // 模式図は G バッファの深度・法線だけから輪郭を出すため、マテリアルパス・大気パス・world
@@ -331,21 +398,11 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       // 最初の書き込みなのでクリアする)へ描く。
       this.materialPass.render(scene, camera, this.target);
 
-      // 大気パス。大気が写るフレームだけ、不透明の絵のスナップショットを撮ってから、下地と
-      // 合成し終えた大気を共有ターゲットへ上書きする。スナップショットのブリットも大気パスの
-      // 計測枠に計上する。「マテリアル」デバッグ表示はスナップショットを映すので、その間は
-      // 大気が写らなくても撮る。
-      const atmosphereVisible = this.atmospherePass.anyBodyInView(camera);
-      if (atmosphereVisible || this.debugTarget === 'material') {
-        if (this.backdropTarget.width !== width || this.backdropTarget.height !== height) {
-          this.backdropTarget.setSize(width, height);
-        }
-        this.gpu.beginPass(GPU_PASS.atmosphere);
-        this.renderer.setRenderTarget(this.backdropTarget);
-        this.backdropQuad.render(this.renderer);
-        this.renderer.setRenderTarget(null);
-      }
-      if (atmosphereVisible) this.atmospherePass.render(camera, this.target);
+      // 大気パス。デバッグ表示が選ばれている間は、そこへ映す1枚も大気パスに描かせる
+      // (「マテリアル」は重ねる前の下地なので、大気を描く前に控える)。
+      if (this.debugTarget === 'material') this.atmospherePass.inspectBackdrop();
+      this.atmospherePass.render(camera);
+      if (this.debugTarget === 'atmosphere') this.atmospherePass.inspectScattered(camera);
 
       // world パス。LIT_OPAQUE_LAYER と背景専用レイヤーはチャンネル0から外れているので、既定の
       // カメラマスクで描く限り重複しない。autoClear を落としてマテリアルパスの描画(色・深度とも)
@@ -370,12 +427,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     }
 
     // composite パス。
-    this.depthDebugProjInv.value.copy(camera.projectionMatrixInverse);
-    this.debugViewToWorld.value.copy(camera.matrixWorld);
-    if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
-      this.depthDebugNear.value = camera.near;
-      this.depthDebugFar.value = camera.far;
-    }
+    this.writeDepthDebugCamera(camera);
     // 出力先を差し替えると、描画先を指定しない2つのパスが表示用ターゲットへ向く。撮影のために
     // 呼び出し側が張った出力先を潰さないよう、退避してから戻す。
     const outputTarget = this.renderer.getOutputRenderTarget();
@@ -395,21 +447,20 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   public dispose(): void {
     this.unregisterProteinMotionRenderer();
     this.gbuffer.dispose();
-    this.occlusionPass.dispose();
-    this.sunShadowMaps.dispose();
+    this.shadowPass.dispose();
+    this.shadowMaps.dispose();
     this.lightPrepass.dispose();
     this.sphereSpecular.dispose();
     this.materialPass.dispose();
     this.atmospherePass.dispose();
-    this.backdropTarget.dispose();
-    this.backdropMaterial.dispose();
     this.overlayPass.dispose();
     this.antialiasPass.dispose();
     this.lensPass.dispose();
     this.lensCompositeMaterial.dispose();
     this.target.dispose();
     this.displayTarget.dispose();
-    for (const material of Object.values(this.compositeMaterials)) material.dispose();
+    // 同じ1枚を複数の選択肢が共有するので、重複を畳んでから解放する。
+    for (const material of new Set(Object.values(this.compositeMaterials))) material.dispose();
     this.schematicMaterial.dispose();
     this.filmLut.dispose();
   }

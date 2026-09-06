@@ -6,7 +6,7 @@
 // 特別扱いせずに済む。
 import * as THREE from 'three/webgpu';
 import { Billboard } from './billboard';
-import { markLitOpaque, markSunShadowCaster } from './pipeline/lit-layer';
+import { markLitOpaque, markShadowCaster } from './pipeline/lit-layer';
 import { SchematicThrustCone } from './schematic-thrust-cone';
 import type { RenderStyle } from './render-style';
 
@@ -189,7 +189,7 @@ export class BoosterStage extends THREE.Group {
     if (options.interstageCover !== false) this.addInterstageCover();
 
     markLitOpaque(this);
-    markSunShadowCaster(this);
+    markShadowCaster(this);
   }
 
   private addInterstageCover(): void {
@@ -311,7 +311,7 @@ export function buildBoosterInterstageCoverPanelMesh(segment: number): THREE.Mes
   mesh.userData.ownsMaterial = true;
   mesh.userData.boosterOwned = true;
   markLitOpaque(mesh);
-  markSunShadowCaster(mesh);
+  markShadowCaster(mesh);
   return mesh;
 }
 
@@ -335,7 +335,7 @@ export function buildBoosterExplosiveBoltMesh(segment: number): THREE.Mesh {
   mesh.userData.ownsMaterial = true;
   mesh.userData.boosterOwned = true;
   markLitOpaque(mesh);
-  markSunShadowCaster(mesh);
+  markShadowCaster(mesh);
   return mesh;
 }
 

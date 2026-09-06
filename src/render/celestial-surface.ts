@@ -1,5 +1,5 @@
 // 天体表面のメッシュ。分割段ラダーの各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて
-// 1段だけを見せる。艦艇と同じライトプリパスの受け手として立ち、陰影・遮蔽・逆二乗の減衰は
+// 1段だけを見せる。艦艇と同じライトプリパスの受け手として立ち、陰影・影・逆二乗の減衰は
 // すべてパイプラインが与える。**画像の取得は addTo まで遅らせる。**
 import * as THREE from 'three/webgpu';
 import { texture as textureNode, asin, atan, clamp, exp, mix, uniform, uv, vec2, vec3 } from 'three/tsl';
@@ -123,9 +123,8 @@ export class CelestialSurface {
       material, [], null, { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
   }
 
-  // 全段のメッシュを parent の下へ置き、テクスチャ画像の取得を始める。
+  // 全段のメッシュを parent の下へ置く。
   public addTo(parent: THREE.Object3D): void {
-    for (const deferred of this.deferred) deferred.request();
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
@@ -134,8 +133,10 @@ export class CelestialSurface {
     if (this.cloudAmount !== null) this.cloudAmount.value = amount;
   }
 
-  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。テクスチャ画像の取得も
+  // ここで始める — 球として描く価値が出るまで、遠くの天体の画像を取りに行かないため。
   public syncLod(apparentDiameterPx: number): void {
+    for (const deferred of this.deferred) deferred.request();
     const level = sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;

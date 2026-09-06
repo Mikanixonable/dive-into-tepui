@@ -1,5 +1,5 @@
 // テストは webpack の asset/resource 変換(URL 文字列化)を経ずに直接 tsc/node で走るため、
-// 生成カタログの structureUrl/motionUrl には実データそのものが入っている。それを使って
+// 生成カタログの URL フィールドには実データそのものが入っている。それを使って
 // production の非同期 fetch 経路を経ずに bundle を組み立てる。
 import {
   buildProteinAssetBundle, PROTEIN_ASSET_IDS, PROTEIN_ASSET_SOURCES, type ProteinAssetBundle, type ProteinAssetId,
@@ -11,7 +11,7 @@ export function testProteinAssetBundleFor(id: ProteinAssetId): ProteinAssetBundl
   const cached = bundleCache.get(id);
   if (cached) return cached;
   const source = PROTEIN_ASSET_SOURCES[id];
-  const bundle = buildProteinAssetBundle(source, source.structureUrl, source.motionUrl);
+  const bundle = buildProteinAssetBundle(source, source.backboneUrl, source.structureUrl, source.motionUrl);
   bundleCache.set(id, bundle);
   return bundle;
 }

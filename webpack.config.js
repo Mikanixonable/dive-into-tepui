@@ -28,10 +28,10 @@ module.exports = {
         type: 'asset/source',
       },
       {
-        // タンパク質の構造・モーション JSON(数十MB)はバンドルへインライン化せず、
+        // タンパク質の主鎖・構造・モーション JSON はバンドルへインライン化せず、
         // 別ファイルとして書き出して import 元へは URL 文字列を渡す(起動時ダウンロード量を
-        // 抑えるため)。semantic/backbone など他の JSON は既定どおりバンドルへ含める。
-        test: /(Structure|Motion)\.json$/,
+        // 抑えるため)。semantic など他の JSON は既定どおりバンドルへ含める。
+        test: /(Backbone|Structure|Motion)\.json$/,
         include: path.resolve(__dirname, 'src/assets/models'),
         type: 'asset/resource',
         generator: { filename: 'assets/[hash][ext]' },
