@@ -179,7 +179,7 @@ export abstract class CelestialMotion {
   }
 
   // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと pivot 自身の
-  // 厳密な値。外挿は2次までなので、誤差は躍度 × |t − pivot|³ / 6 で増える。
+  // 厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
   stateAt(pivot: number, t: number = pivot): KinematicState {
     return extrapolatedState(this.eciAt(pivot), t);
   }
@@ -305,9 +305,8 @@ export class StarMotion extends CelestialMotion {
     return this.analyticCache.put(t, this.computeAnalyticStateAt(t));
   }
 
-  // 恒星が重心のまわりに描く運動は加速度としては入れない。用途は pivot からの2次外挿項で、
-  // 木星が恒星へ及ぼす 2e-7 m/s² を落とす残差 ½·2e-7·s² は、どの外挿幅 s でも2次外挿自体が
-  // 落とす3次項(ECI 原点の躍度 1.2e-9 m/s³ による s³/6)と同程度以下にとどまる。
+  // 恒星が重心のまわりに描く運動は加速度としては入れない。用途は積分1歩ぶんの2次外挿項で、
+  // 木星が恒星へ及ぼす 2e-7 m/s² は1歩の幅では mm に満たない。
   analyticAccelAt(): Vec3 {
     return v3();
   }

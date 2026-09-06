@@ -15,8 +15,8 @@ const ZERO = v3(0, 0, 0);
 const EARTH: CelestialMotion = fixedMotion({ id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, ZERO, ZERO), accel: ZERO, degree2: null, atmosphere: null });
 
 export function register(): void {
-  // 天体の外挿は state.t の前後どちらへも効く必要がある — 掃引はフレームの中点で組んだ
-  // 天体を、各サブステップの両端へ動かす。
+  // 天体の外挿は state.t の前後どちらへも効く必要がある — 掃引はサブステップの中点で
+  // 組んだ天体を、区間の始点(過去)と終点(未来)の両方へ動かす。
   test('celestialMotion: pivot の前後へ等加速度で外挿する', () => {
     const body: CelestialMotion = fixedMotion({
       id: 'body', mu: 0, radius: 1, accel: v3(0, 3, 0), degree2: null, atmosphere: null,
