@@ -2,10 +2,10 @@ import * as THREE from 'three/webgpu';
 import {
   buildProteinEnemyShip, replaceProteinEnemyShip, type ProteinRenderSource,
 } from '../../render/protein-enemy-ship';
-import { buildProteinCollisionRibbon } from '../../render/protein-ribbon';
 import {
   proteinAssetBundleFor, proteinAssetFor, type ProteinAssetId,
 } from './protein-asset-loader';
+import { buildProteinCollisionSpheres, type ProteinCollisionSphere } from './protein-sphere-collision';
 import type { ProteinAssetDefinition, ProteinMotionAsset } from './protein-schema';
 import type { ProteinDisplaySettings } from './protein-display';
 import type { ProteinMotionBinding } from '../../render/protein-motion-material';
@@ -16,17 +16,16 @@ export interface ProteinEnemyDefinition {
   readonly motion: ProteinMotionAsset;
   readonly buildRenderObject: (display: ProteinDisplaySettings, motion?: ProteinMotionBinding) => THREE.Object3D;
   readonly recolorRenderObject: (target: THREE.Object3D, display: ProteinDisplaySettings, motion?: ProteinMotionBinding) => void;
-  readonly buildCollisionObject: () => THREE.Object3D;
+  /** 表示形態に依らない判定形状。アセットごとに1つで、個体は位置と姿勢だけを渡す。 */
+  readonly collisionSpheres: readonly ProteinCollisionSphere[];
 }
 
-const PROTEIN_INTERNAL_RIBBON_COLOR = new THREE.Color(0xffffff);
-
-/** 描画と固定衝突形状を共有 asset へ束ねた敵定義を作る。 */
+/** 描画と判定形状を共有 asset へ束ねた敵定義を作る。 */
 export function createProteinEnemyDefinition(
   assetId: ProteinAssetId,
   source: ProteinRenderSource,
 ): ProteinEnemyDefinition {
-  // 表示の再構築だけが設定へ追従し、衝突形状は専用プロファイルに固定する。
+  // 表示の再構築だけが設定へ追従し、判定形状は表示形態に依らない1つに固定する。
   return {
     assetId,
     asset: source.semantic,
@@ -35,9 +34,7 @@ export function createProteinEnemyDefinition(
     recolorRenderObject: (target, display, motion) => replaceProteinEnemyShip(
       target, buildProteinEnemyShip(source, display, motion),
     ),
-    buildCollisionObject: () => buildProteinCollisionRibbon(
-      source, 'chain', PROTEIN_INTERNAL_RIBBON_COLOR,
-    ),
+    collisionSpheres: buildProteinCollisionSpheres(source.backbone, source.semantic.coordinateScale),
   };
 }
 
