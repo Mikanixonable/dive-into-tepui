@@ -324,10 +324,15 @@ export class LabView implements GraphicsTarget {
     this.pipeline.cumulusShadow.set(
       castsCumulusShadow(this.graphicsData) ? this.current.cumulus ?? null : null);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
+    // 雲を切る設定では、大気へ立てる殻もゲーム本体と同じように外す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
       (this.current.atmospheres ?? []).map((body) => {
         const distance = camera.position.distanceTo(body.center);
-        return { body, distance, metersPerPixel: metersPerPixelAtDepth(camera.fov, distance, VIEW_HEIGHT) };
+        return {
+          body: this.graphicsData.clouds ? body : { ...body, clouds: null },
+          distance,
+          metersPerPixel: metersPerPixelAtDepth(camera.fov, distance, VIEW_HEIGHT),
+        };
       }),
       this.graphicsData.atmosphere,
     ));

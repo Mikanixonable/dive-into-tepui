@@ -21,7 +21,7 @@ import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { hitsSphere, type Ray } from '../../../math/ray';
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
 import type { MarkerManager } from '../../marker/marker-manager';
-import type { AtmosphereCandidate, AtmosphereOptics } from '../../../render/atmosphere';
+import type { AtmosphereCandidate, AtmosphereClouds, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
@@ -175,11 +175,17 @@ export abstract class CelestialEntity implements ObjectPickable {
     return null;
   }
 
+  // 大気の中へ散乱の殻として立てる雲。雲を持たない天体では null。
+  public atmosphereCloudsAt(_displayTime: number): AtmosphereClouds | null {
+    return null;
+  }
+
   // 大気パスへ渡す1体ぶんの候補。大気を持たない・描かない天体では null。**尺度は直線距離で
   // 引く** — 深度で引くと、視点の背後にある天体が目の前にあるのと同じ尺度になり、画面に
   // 写っていないのに予算を総取りする。
   public atmosphereCandidateAt(
     fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, radialScale: (center: Vec3) => number,
+    graphics: GraphicsSettingsData,
   ): AtmosphereCandidate | null {
     const optics = this.atmosphereOptics;
     if (optics === null) return null;
@@ -198,6 +204,7 @@ export abstract class CelestialEntity implements ObjectPickable {
           : new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
         polarRatio: radii.polarRadius / radii.equatorRadius,
         optics,
+        clouds: graphics.clouds ? this.atmosphereCloudsAt(displayTime) : null,
       },
       distance: len(sub(cameraPos, center)),
       metersPerPixel: radialScale(center),

@@ -1,9 +1,27 @@
-// 雲の場(R = 被覆率、G = 雲頂高度)を、不透明な積雲の形として読む規則。場の階調は濃さではなく
-// 「その texel が雲に覆われている割合」なので、どこから不透明な雲になるかと、雲頂がどの高さに
-// 立つかをここが決める。殻とその影は同じ形をここから引く。
-import { clamp, min, smoothstep, uniform } from 'three/tsl';
+// 雲の場を読む規則と、雲を材質として見たときの明るさ。場の階調は濃さではなく「その texel が
+// 雲に覆われている割合」なので、どこから不透明な雲になるか・雲頂がどの高さに立つか・場をどの
+// 細かさで引くかをここが決める。積雲の殻・その影・大気へ挟む散乱の層は、同じ形と同じ明るさを
+// ここから引く。
+import * as THREE from 'three/webgpu';
+import { clamp, float, log, log2, max, min, smoothstep, uniform } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
+
+// 雲のアルベド。厚い雲の白さは多重散乱の産物で、単散乱アルベド ≈ 1・光学的厚みが十分に大きい
+// 層の反射は拡散反射の極限へ漸近する。
+export const CLOUD_ALBEDO = 0.8;
+
+// 場を持たない天体のスロットへ結ぶ、被覆率 0 の写し。**読み方の契約は本物の場と揃える** —
+// シェーダグラフはここに結んだテクスチャのフィルタと巻きから組まれるので、既定の Nearest の
+// ままだと補間の無い texel フェッチが焼き込まれ、あとで本物へ差し替えても格子が出たままになる。
+export const EMPTY_CLOUD_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+EMPTY_CLOUD_FIELD.minFilter = THREE.LinearMipmapLinearFilter;
+EMPTY_CLOUD_FIELD.magFilter = THREE.LinearFilter;
+EMPTY_CLOUD_FIELD.wrapS = THREE.RepeatWrapping;
+EMPTY_CLOUD_FIELD.needsUpdate = true;
+
+// 柱の光学的厚みへ直すときに割合へ張る上限。
+const MAX_COLUMN_COVERAGE = 0.99;
 
 // 場の G(雲頂高度)が張る高さ [m]。
 export const CLOUD_TOP_SPAN = 15000;
@@ -44,6 +62,15 @@ export function grainAt(
   return gradientNoise(direction.mul(frequency)).mul(amplitude);
 }
 
+// 標本 1 つが実寸 width [m] を張る読み手が場を引く mip 段。texel の実寸は正距円筒に固有の式で、
+// 半径 radius の赤道の 1 行(2πR を場の幅 fieldWidth [texel] で割る)を基準に取る — 極では
+// 1 texel の経度方向の実寸がこれより cos(緯度) ぶん狭いので、段はそのぶん細かい側へ寄る。
+export function fieldLodForWidth(
+  width: FloatNode, radius: FloatNode, fieldWidth: FloatNode,
+): FloatNode {
+  return max(log2(width.div(max(radius.mul(2 * Math.PI).div(fieldWidth), 1))), float(0));
+}
+
 // 標本 1 つが実寸 width [m] を張る読み手が引ける粒の振幅 0..1。幅が粒の 1 波長までは全振幅、
 // 2 波長を超えると標本の中で粒が均されるので 0。標本が光路上に散って画面の隣の画素と揃わない
 // 読み手向けなので、境目は画面の標本化の Nyquist より緩い。
@@ -63,6 +90,12 @@ export function opaqueFractionOf(coverage: FloatNode, grain: FloatNode): FloatNo
 // 場の雲頂高度へ粒の起伏を重ねた雲頂高度 0..1。
 export function cloudTopOf(fieldTop: FloatNode, grain: FloatNode): FloatNode {
   return clamp(fieldTop.add(grain.mul(GRAIN_TOP_RELIEF)), 0, 1);
+}
+
+// 覆われている割合を、その柱を光が通り抜けない確率と読んだときの光学的厚み。割合 1 では
+// 発散するので、その手前で頭打ちにする。
+export function columnOpticalDepth(coverage: FloatNode): FloatNode {
+  return log(min(coverage, MAX_COLUMN_COVERAGE).oneMinus()).negate();
 }
 
 // 境目の前後 band で 0 から 1 へ渡す。band は 0 を取れない(割り算が NaN へ落ちる)。
