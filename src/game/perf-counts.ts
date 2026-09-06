@@ -9,7 +9,7 @@ export type PerfCounts = {
   arcCelestialBodies: number; arcRevisits: number; arcLead: number | null;
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
   simSubsteps: number; simIntegrated: number; simFollowed: number; gravitySources: number;
-  surfaceCandidates: number; contactPairs: number;
+  surfaceCandidates: number; contactPairs: number; contactParticipants: number;
   planArcs: number; planSteps: number;
   timeCacheHits: number; timeCacheMisses: number;
   warp: number;
