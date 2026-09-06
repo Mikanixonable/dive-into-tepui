@@ -32,7 +32,7 @@ export class SpatialGrid<T> {
   }
 
   // 座標 coordinate [呼び出し側の単位] が属するセルの、その軸の添字。
-  public cellIndex(coordinate: number): number {
+  private cellIndex(coordinate: number): number {
     return Math.floor(coordinate * this.invCellSize);
   }
 
@@ -42,6 +42,7 @@ export class SpatialGrid<T> {
     const cy = this.cellIndex(pos.y);
     const cz = this.cellIndex(pos.z);
 
+    // x → y → z と段を降り、まだ無い段はその場で作りながら進む。
     let yLevel = this.cells.get(cx);
     if (yLevel === undefined) {
       yLevel = new Map<number, ZLevel<T>>();
@@ -65,26 +66,12 @@ export class SpatialGrid<T> {
     return this.cells.get(cx)?.get(cy)?.get(cz);
   }
 
-  // 点 pos を含むセルと、その26近傍セルに登録済みの要素を列挙する。
-  public neighbors(pos: Vec3): T[] {
-    return this.neighborsInto(pos, []);
-  }
-
   // 点 pos を含むセルと、その26近傍セルに登録済みの要素を out へ列挙する。
   // out は呼び出し側が所有し、このメソッドは既存内容を破棄してから詰め直す。
   public neighborsInto(pos: Vec3, out: T[]): T[] {
     out.length = 0;
-    return this.appendNeighborsInto(pos, out);
-  }
-
-  // neighborsInto と同じ近傍を out の末尾へ追加する。out はクリアしない。
-  public appendNeighborsInto(pos: Vec3, out: T[]): T[] {
-    return this.appendCellNeighborsInto(this.cellIndex(pos.x), this.cellIndex(pos.y), this.cellIndex(pos.z), out);
-  }
-
-  // セル添字 (cx, cy, cz) を含むセルとその26近傍に登録済みの要素を out の末尾へ追加する。
-  public appendCellNeighborsInto(cx: number, cy: number, cz: number, out: T[]): T[] {
     if (this.cells.size === 0) return out;
+    const cx = this.cellIndex(pos.x), cy = this.cellIndex(pos.y), cz = this.cellIndex(pos.z);
     for (let dx = -1; dx <= 1; dx++) {
       const yLevel = this.cells.get(cx + dx);
       if (yLevel === undefined) continue;
