@@ -82,15 +82,24 @@ function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPer
   return Math.PI * radiusPx * radiusPx * -Math.expm1(-verticalOpticalDepth(optics));
 }
 
+// 大気の中へ散乱の殻として立てる雲。field は雲の場(成分の並びは render/cloud/cloud-field.ts)、
+// bodyFromWorld は描画座標のベクトルを天体固定の向きへ回す行列。
+export interface AtmosphereClouds {
+  readonly field: THREE.Texture;
+  readonly bodyFromWorld: THREE.Matrix4;
+}
+
 // 大気を持つ天体 1 体。中心は描画座標、半径は [m]。**地表も大気の等密度面も、自転軸まわりの
 // 相似な回転楕円体**で、surfaceRadius は赤道半径、polarRatio は極半径をそれで割った比。
 // polarAxis は潰す向き(描画座標の単位ベクトル)で、真球(polarRatio = 1)では効かない。
+// clouds は大気の中に立てる雲で、雲を持たない天体では null。
 export interface AtmosphereBody {
   readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
   readonly polarAxis: THREE.Vector3;
   readonly polarRatio: number;
   readonly optics: AtmosphereOptics;
+  readonly clouds: AtmosphereClouds | null;
 }
 
 // 大気を描く候補 1 体。distance は視点から天体中心までの距離 [m] で、重ねる順序を決める。
