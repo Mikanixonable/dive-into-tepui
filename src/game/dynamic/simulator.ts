@@ -144,8 +144,8 @@ export class Simulator {
       this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, activeStage);
       this.sections.exit(SECTION.celestialContact);
       nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
-      // 物体どうしの接触は交戦圏の内側だけで解く。接触代理を組むのも交戦圏があるときだけで、
-      // 交戦圏の組まれない倍率で組むと、代理が substep 幅そのままの粗い刻みで解かれて発散する。
+      // 接触代理を組むのも交戦圏があるときだけ。交戦圏の組まれない倍率で組むと、代理が
+      // substep 幅そのままの粗い刻みで解かれて発散する。
       const zones = engagementZones(this.entities.all(), canEngage);
       if (zones.length > 0) {
         this.sections.enter(SECTION.entityContact);
