@@ -14,8 +14,7 @@ import { entityContactResponse } from './entity-contact-response';
 import type { Stage } from '../stages/stage';
 
 // 1 substep のあいだに1つの交戦圏で解決する接触の上限。TOI(接触時刻)昇順で解決し、これを
-// 超えた分は次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
-// 明示的な繰越処理は不要)。
+// 超えた分は次の substep でグリッドから列挙し直されて改めて候補になる。
 const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
 
 // 接触の候補を引く階層グリッドの、最も細かい段の一辺 [m]。
