@@ -312,6 +312,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.sunSource.setModel(graphics.sunLightModel);
     this._planetLight.setCount(graphics.planetLightCount);
     this.antialiasPass.setMethod(graphics.antialias);
+    this.atmospherePass.setCloudShell('cirrus', graphics.cirrus);
+    this.atmospherePass.setCloudShell('cumulus', graphics.translucentCumulus);
     this.filmLut.select(graphics.filmLut);
   }
 

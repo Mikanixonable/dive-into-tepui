@@ -93,8 +93,13 @@ export class CloudScattering {
   private readonly field = texture(EMPTY_CLOUD_FIELD);
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
+  // 種類ごとに、その殻を描くか。
+  private readonly enabled: Readonly<Record<CloudSpecies, FloatUniform>> = {
+    cirrus: uniform(1), cumulus: uniform(1),
+  };
 
-  // 天体 1 体ぶんの雲の uniform を確保する。雲の有無は active で切るので、グラフの形は変わらない。
+  // 天体 1 体ぶんの雲の uniform を確保する。雲の有無も殻の取捨も uniform で切るので、グラフの
+  // 形は変わらない。
   public constructor() {
     this.bodyFromWorld = uniform(new THREE.Matrix4());
     this.active = uniform(0);
@@ -108,8 +113,15 @@ export class CloudScattering {
     this.field.value = clouds.field;
   }
 
-  // 殻が立っているか。
-  public present(): BoolNode { return greaterThan(this.active, 0); }
+  // 種類ごとに、その殻を描くかを置き直す。
+  public setShellEnabled(species: CloudSpecies, enabled: boolean): void {
+    this.enabled[species].value = enabled ? 1 : 0;
+  }
+
+  // その種類の殻が立っているか。
+  public present(species: CloudSpecies): BoolNode {
+    return greaterThan(this.shellPresence(species), 0);
+  }
 
   // 殻と交わる 1 点が視線へ与える減衰と放射輝度。offset は天体中心から交点へのベクトル、
   // rayDir は視線の向き、sunDir は交点から恒星への向き(いずれも天体を真球にした空間で、
@@ -122,7 +134,7 @@ export class CloudScattering {
     const knob = CLOUD_SHELL_KNOB[species];
     const up = offset.div(shellRadius);
     const field = this.fieldAt(up, footprint, shellRadius);
-    const opticalDepth = opticalDepthOf(species, field).mul(this.active);
+    const opticalDepth = opticalDepthOf(species, field).mul(this.shellPresence(species));
     // 視線が層を斜めに抜けるぶんの倍率。**水平では発散する**ので、層の厚みぶんの弦 √(2RΔh) を
     // 通る視線を上限に取る(地球の 1 km 厚なら光路 226 km、天頂の 113 倍)。
     const thickness = max(knob.topAltitude.sub(knob.bottomAltitude), MIN_SHELL_THICKNESS);
@@ -133,6 +145,11 @@ export class CloudScattering {
       transmittance: covered.oneMinus(),
       radiance: sunRadiance.mul(covered.mul(max(dot(up, sunDir), 0)).mul(knob.albedo)),
     };
+  }
+
+  // その種類の殻が立っているなら 1、立っていないなら 0。
+  private shellPresence(species: CloudSpecies): FloatNode {
+    return this.active.mul(this.enabled[species]);
   }
 
   // 天体を真球にした空間の単位方向 up における場。uv は積雲の殻が読むのと同じ球メッシュの uv
