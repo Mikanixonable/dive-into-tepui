@@ -2,7 +2,8 @@
 // 交戦圏内数に応じた周期湧き(active_combat)の3フェーズを進めるフェーズ機械と、
 // ウェーブ1回分の隻数・編成・接近軌道の生成。
 import * as THREE from 'three/webgpu';
-import { Enemy, STAGE00_MAX_RANGE } from '../../dynamic/dynamic-entity/enemy';
+import { Enemy } from '../../dynamic/dynamic-entity/enemy';
+import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
 import { Player } from '../../player/player';
 import type { Stage } from '../stage';
 import type { Hud } from '../../hud/hud';
@@ -112,7 +113,7 @@ export class WaveAttack {
     dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
     activeStage: Stage, addEnemy: (enemy: Enemy) => void,
   ): void {
-    despawnOutOfRangeEnemies(enemies, player, STAGE00_MAX_RANGE, simTime, activeStage);
+    despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, activeStage);
     const activeGroups = countActiveWaveGroups(enemies);
     const limits = resolveWaveSpawnLimits(this._waveCount, activeGroups);
     if (activeGroups === 0) {

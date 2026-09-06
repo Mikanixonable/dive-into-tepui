@@ -1,19 +1,20 @@
-// 物体どうしの剛体接触の列挙・解決。collides を立てた DynamicEntity どうしを参加者とし、反発が
-// 起きた当事者へ collideWithEntity を呼ぶ。ダメージ・音・エフェクトはそれぞれの DynamicEntity
-// 自身の責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する — 参加者は互いの状態を
-// 書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業列と解決回数の
-// 上限が要る。
+// 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた DynamicEntity
+// どうしを参加者とし、反発が起きた当事者へ collideWithEntity を呼ぶ。ダメージ・音・エフェクトは
+// それぞれの DynamicEntity 自身の責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する —
+// 参加者は互いの状態を書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業列と
+// 解決回数の上限が要る。
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { EngagementZone } from './engagement-zone';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { entityContactResponse } from './entity-contact-response';
 import type { Stage } from '../stages/stage';
 
-// 1 substep あたりに解決する接触の上限。TOI(接触時刻)昇順で解決し、これを超えた分は
-// 次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
+// 1 substep のあいだに1つの交戦圏で解決する接触の上限。TOI(接触時刻)昇順で解決し、これを
+// 超えた分は次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
 // 明示的な繰越処理は不要)。
 const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
 
@@ -46,14 +47,12 @@ function replaceIfMoved(
   if (!changed.includes(i)) changed.push(i);
 }
 
-// 参加者 1 体の到達量 [m]。半径に、区間 prevState→working の変位から共通変位 Δ̄ = (mx, my, mz) を
-// 引いた大きさを足したもの。ペア (a,b) が区間内で接触するなら、区間終端の中心距離は両者の
-// 到達量の和以下になる。
-function contactReach(
-  entity: DynamicEntity, working: KinematicState, mx: number, my: number, mz: number,
-): number {
+// 参加者 1 体の到達量 [m]。半径に、区間 prevState→working の変位から基準変位 reference を引いた
+// 大きさを足したもの。ペア (a,b) が区間内で接触するなら、区間終端の中心距離は両者の到達量の和
+// 以下になる。
+function contactReach(entity: DynamicEntity, working: KinematicState, reference: Vec3): number {
   const w = working.r, p = entity.prevState.r;
-  const dx = w.x - p.x - mx, dy = w.y - p.y - my, dz = w.z - p.z - mz;
+  const dx = w.x - p.x - reference.x, dy = w.y - p.y - reference.y, dz = w.z - p.z - reference.z;
   return entity.radius + Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
@@ -68,21 +67,30 @@ export class EntityContactPhysics {
   private readonly candidateScratch: Candidate[] = [];
   // 負荷確認ウィンドウが読む、列挙した延べ候補ペア数。フレーム頭で Simulator が 0 へ戻す。
   public candidatePairs = 0;
+  // 負荷確認ウィンドウが読む、交戦圏ごとの参加者数の延べ数。フレーム頭で Simulator が 0 へ戻す。
+  public participants = 0;
 
-  // 1 substep ぶんの物体どうしの接触解決。ワープ倍率によるゲートは呼び出し側の判断で、
-  // ここには倍率を見る条件を持たない。
+  // 交戦圏ごとに、その内側にいる参加者どうしの 1 substep ぶんの接触を解く。交戦圏どうしは
+  // 独立した系なので、解決回数の上限も交戦圏ごとに掛かる。
   public resolveEntityContacts(
-    simTime: number, entities: readonly DynamicEntity[], activeStage: Stage,
+    simTime: number, entities: readonly DynamicEntity[],
+    zones: readonly EngagementZone<DynamicEntity>[], activeStage: Stage,
   ): void {
-    this.collectParticipants(entities, this.participantScratch);
-    this.resolveInOrder(this.participantScratch, simTime, activeStage);
+    for (const zone of zones) {
+      this.collectParticipants(entities, zone, this.participantScratch);
+      this.participants += this.participantScratch.length;
+      this.resolveInOrder(this.participantScratch, simTime, zone.referenceDisplacement, activeStage);
+    }
   }
 
-  // 接触を解ける個体だけを out へ詰め直す。out の元の中身は捨てる。
-  private collectParticipants(source: readonly DynamicEntity[], out: DynamicEntity[]): void {
+  // 交戦圏の内側にいて接触を解ける個体だけを out へ詰め直す。out の元の中身は捨てる。
+  private collectParticipants(
+    source: readonly DynamicEntity[], zone: EngagementZone<DynamicEntity>, out: DynamicEntity[],
+  ): void {
     out.length = 0;
     for (const entity of source) {
-      if (entity.alive && entity.collides && isFiniteParticipant(entity)) out.push(entity);
+      if (!entity.alive || !entity.collides || !isFiniteParticipant(entity)) continue;
+      if (zone.contains(entity.state.r)) out.push(entity);
     }
   }
 
@@ -93,6 +101,7 @@ export class EntityContactPhysics {
   private resolveInOrder(
     all: readonly DynamicEntity[],
     simTime: number,
+    reference: Vec3,
     activeStage: Stage,
   ): void {
     if (all.length === 0) return;
@@ -102,7 +111,7 @@ export class EntityContactPhysics {
     const changed = this.changedScratch;
     changed.length = 0;
 
-    this.insertParticipants(all, working);
+    this.insertParticipants(all, working, reference);
     const count = this.collectCandidates(all, simTime, working);
     this.candidatePairs += count;
     // 直前の解決で状態が変わった当事者。これを含まない候補の response は引き直しても同じ値に
@@ -124,25 +133,13 @@ export class EntityContactPhysics {
   }
 
   // 参加者を到達量つきでグリッドへ登録し直す。接触の成否を決めるのは参加者どうしの相対変位なので、
-  // 到達量は参加者集合に共通する変位(平均 Δ̄)を差し引いた量で測る。
-  private insertParticipants(all: readonly DynamicEntity[], working: readonly KinematicState[]): void {
-    // 参加者全員の平均変位 Δ̄。
-    const n = all.length;
-    let mx = 0, my = 0, mz = 0;
-    for (let i = 0; i < n; i++) {
-      const w = working[i]!.r, p = all[i]!.prevState.r;
-      mx += w.x - p.x;
-      my += w.y - p.y;
-      mz += w.z - p.z;
-    }
-    mx /= n;
-    my /= n;
-    mz /= n;
-
-    // 各参加者を、Δ̄ を引いた到達量の段へ登録する。
+  // 到達量は交戦圏の基準変位 reference を差し引いた量で測る。
+  private insertParticipants(
+    all: readonly DynamicEntity[], working: readonly KinematicState[], reference: Vec3,
+  ): void {
     this.gridScratch.reset();
-    for (let i = 0; i < n; i++) {
-      this.gridScratch.insert(i, working[i]!.r, contactReach(all[i]!, working[i]!, mx, my, mz));
+    for (let i = 0; i < all.length; i++) {
+      this.gridScratch.insert(i, working[i]!.r, contactReach(all[i]!, working[i]!, reference));
     }
   }
 
