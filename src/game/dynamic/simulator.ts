@@ -1,13 +1,12 @@
-// 実シミュレーションの更新。simTime/lastSimDt を保持し、サブステップの区切りと、フレームの
+// 実シミュレーションの更新。simTime/lastSimDt を保持し、サブステップの区切りと、その区間の
 // 天体窓を決める。個体1つを1区間進めること自体は DynamicEntity.stepSimulation の責務で、ここは
 // 「いつ区切るか」「その瞬間に何があるか」「誰と誰が相互作用するか」だけを持つ。
 //
 // 予測(game/dynamic/predictor.ts の Predictor)との役割の違いは2点で、二重性はこの2点に
 // 由来する。統一はできない。
 //  1. 同時性。こちらは生存する全個体(破片まで含めて多数)を、同じ1つの瞬間で同時に進める。
-//     同時だからこそ、天体の窓をフレームに1組、表面へ触れうる相手の絞り込みをサブステップに
-//     1組だけ組んで全個体で使い回せるし、個体どうしの剛体接触も解ける — 接触は両者が同じ瞬間に
-//     いて初めて意味を持つ。
+//     同時だからこそ、重力源と表面を持つ天体の絞り込みをサブステップに1つだけ組んで全個体で
+//     使い回せるし、個体どうしの剛体接触も解ける — 接触は両者が同じ瞬間にいて初めて意味を持つ。
 //  2. 刻みの決まり方。こちらは毎フレーム simTime + simDt へ必ず到達しなければならないので、
 //     刻みはそのフレームの時間送りから決まる。予測は追い越されない範囲で先へ伸びればよいので、
 //     1フレームの歩数を予算で切って足りなければ遅れる。
@@ -53,7 +52,7 @@ export class Simulator {
   private readonly contactEntitiesScratch: DynamicEntity[] = [];
   // このサブステップを1歩で渡った個体。区間が揃っているので、天体接触をまとめて解ける。
   private readonly sharedIntervalScratch: DynamicEntity[] = [];
-  // このフレームの天体窓。
+  // このサブステップの天体窓。
   private readonly bodies = new SubstepCelestialBodies();
 
   // entities/windows/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
@@ -81,14 +80,12 @@ export class Simulator {
     nanWatchdog: NanWatchdog,
   ): void {
     this.lastSubsteps = 0;
+    this.lastGravitySourceCount = 0;
     this.lastIntegratedSteps = 0;
     this.lastFollowedSteps = 0;
     this.surfaceContactPhysics.candidateBodies = 0;
     this.entityContactPhysics.candidatePairs = 0;
     const targetTime = this.simTime + simDt;
-    // 天体の窓はこのフレームで1組だけ組んで全個体で使い回す。
-    this.bodies.reset(this.windows, this.simTime, simDt);
-    this.lastGravitySourceCount = this.bodies.gravitySourceCount;
     while (this.simTime < targetTime) {
       const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
       const eventTime = this.nextEventTime.at(this.simTime, activeStage, this.entities);
@@ -121,13 +118,15 @@ export class Simulator {
       this.consecutiveZeroSteps = 0;
 
       this.sections.enter(SECTION.orbit);
+      // 天体の窓も、表面へ触れうる相手の絞り込みも、このサブステップで1組だけ組んで全個体で
+      // 使い回す。内側で細分する個体の各歩も同じ組で足りる。
+      this.bodies.reset(this.windows, this.simTime, subDt);
+      this.lastGravitySourceCount = this.bodies.gravitySourceCount;
       // このサブステップの終端は絶対時刻で1つだけ決め、全個体もこの値へ着地させる
       // (substep)。刻み幅を各自で積ませると、細分した個体の先端時刻が丸め誤差ぶん
       // simTime から外れ、履歴を持たない種別(弾・薬莢)が表示時刻と一致しなくなる。
       const endTime = this.simTime + subDt;
-      // 表面へ触れうる相手の絞り込みはこのサブステップで1組だけ組んで全個体で使い回す。内側で
-      // 細分する個体の各歩も同じ組で足りる。絞り込みは天体接触の値段そのものなので、軌道積分
-      // とは別に計る。
+      // 触れうる相手の絞り込みは天体接触の値段そのものなので、軌道積分とは別に計る。
       this.sections.switchTo(SECTION.orbit, SECTION.celestialContact);
       this.surfaceContactPhysics.beginSubstep(
         this.bodies.surface, this.bodies.pivot, this.simTime, endTime);
@@ -187,7 +186,7 @@ export class Simulator {
   // sharedIntervalScratch へ集めてまとめて解く。
   //
   // 重力源の絞り込みと大気天体の選択は個体ごとに1回。細分の内側では引き直さない — 天体位置は
-  // 各段の時刻へ外挿されるし、絞り込みの顔ぶれはフレームの中で変わらない。
+  // 各段の時刻へ外挿されるし、絞り込みの顔ぶれはサブステップの中で変わらない。
   //
   // **最後の1歩は endTime までの残りを刻み幅に採る。** 刻み幅を足し込むと、細分した個体の
   // 先端時刻が dt/divisions の丸めぶん endTime から外れる。履歴を持たない種別(弾・薬莢)は

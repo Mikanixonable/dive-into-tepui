@@ -86,7 +86,7 @@ export abstract class CelestialEntity implements ObjectPickable {
   ) {}
 
   // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと pivot 自身の
-  // 厳密な値。外挿は2次までなので、誤差は躍度 × |t − pivot|³ / 6 で増える。
+  // 厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
   public stateAt(pivot: number, t: number = pivot): KinematicState {
     return this.motion.stateAt(pivot, t);
   }
