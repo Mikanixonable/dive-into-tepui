@@ -34,7 +34,6 @@ export function cropField(field, x0, y0, w, h) {
   return { width: w, height: h, data: out };
 }
 
-
 // 正距円筒の場から、緯度 north..south・経度 west..east [°] の矩形を切り出す。経度は日付変更線を
 // またがない範囲だけを受ける。
 export function cropLatLonBox(field, north, south, west, east) {

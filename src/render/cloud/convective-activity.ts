@@ -1,9 +1,7 @@
-// 対流がどれだけ活発かを表す 0..1 の場。低周波のノイズが持つ気団の対流のしやすさと、その場の
-// 上昇流と、寒気の流入と、気団の折り目の帯(前線・雨帯)から出る — 冷たい空気が暖かい面の上を渡る
-// ところは不安定で、雲は粒へ千切れる。
-// 凝結の側が対流の振幅へ掛ける利得で、1 で対流がそのまま乗り、0 で対流が消える。**床から下へは
-// 落とさない** — 一枚板として覆う空にも細胞の起伏はあり、活発度が 0 まで落ちた所は平坦な灰色になる。
-// 値はすべて見えのための調整値。
+// 対流がどれだけ活発かを表す場。低周波のノイズが持つ気団の対流のしやすさと、その場の上昇流と、
+// 寒気の流入と、陸らしさと、気団の折り目の帯(前線・雨帯)から出る — 冷たい空気が暖かい面の上を
+// 渡るところは不安定で、雲は粒へ千切れる。いちばん穏やかな空でも床(ACTIVITY_MIN)に留まる —
+// 一枚板として覆う空にも細胞の起伏がある。値はすべて見えのための調整値。
 import * as THREE from 'three/webgpu';
 import { clamp, vec4 } from 'three/tsl';
 import { BakedField } from './baked-field';
@@ -59,7 +57,7 @@ export class ConvectiveActivity {
   }
 
   // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)、陸らしさ land
-  // 0..1、気団の折り目の帯の強さ band 0..1 における対流の活発度 0..1。
+  // 0..1、気団の折り目の帯の強さ band 0..1 における対流の活発度(ACTIVITY_MIN..1)。
   public at(
     direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode, band: FloatNode,
   ): FloatNode {
