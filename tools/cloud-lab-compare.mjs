@@ -44,37 +44,28 @@ const REGIONS = [
     coreRadiusKm: null, upperReadsOutside: false },
   { name: 'itcz-atl', label: '大西洋の収束帯(5N 25W)', latitude: 5, longitude: -25,
     coreRadiusKm: null, upperReadsOutside: false },
-  { name: 'typhoon', label: '台風(15N 140E・数値目標外)', latitude: 15, longitude: 140,
+  { name: 'typhoon', label: '熱帯低気圧(19N 136E・時刻 0 の最盛期・数値目標外)', latitude: 19, longitude: 136,
     coreRadiusKm: 250, upperReadsOutside: false },
 ];
 const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop', 'wind', 'front'];
 
 // 風ビューの B が張る速さ [m/s]。tools/cloud-lab/views.ts の WIND_SPAN と対。
 const WIND_SPAN = 45;
-// 風の最大から外す台風の中心(緯度 [°]・時刻 0 の経度 [°])と、外す半径 [°]。眼壁の風は
-// 台風がいちばん強く巻いた渦である以上そこだけ速くてよいので、異常の判定には入れない。
-const TYPHOON_LATITUDE = 15;
-const TYPHOON_LONGITUDE_AT_0 = 140;
-const TYPHOON_EXCLUDE_DEG = 10;
+// 風の最大から外す、熱帯低気圧の中心のまわりの半径 [°]。眼壁の風は熱帯低気圧がいちばん強く巻いた
+// 渦である以上そこだけ速くてよいので、異常の判定には入れない。中心は撮影のときにページから引く。
+const TROPICAL_EXCLUDE_DEG = 10;
 
 // 前線ビューの表示値が張る、圧縮の 1 を超えた分。tools/cloud-lab/views.ts の FRONT_SPAN と対。
 const FRONT_SPAN = 8;
-// 中緯度の低気圧の配置。時刻 0 の中心を CPU で引き直すためのもので、同時に持つ数、1 つの寿命 [s]、
-// 東進の速さ [m/s]、中心の緯度の範囲 [°]、半球の中の順番から経度の枡へ進む歩幅、生まれる経度が枡の
-// 幅のうち揺れてよい割合。src/render/cloud/cyclones.ts の同名の定数と対。
-const LOW_COUNT = 8;
-const LOW_LIFETIME = 5 * 86400;
-const LOW_DRIFT = 12;
-const LOW_LATITUDE_MIN = 35;
-const LOW_LATITUDE_SPAN = 25;
-const LOW_SLOT_STRIDE = 3;
-const LOW_LONGITUDE_JITTER = 0.2;
+// 低気圧の帯と見なす緯度の下限 [°](BANDS のうち 35-60° の 2 本)。
+const LOW_BAND_LATITUDE = 35;
 // 低気圧の周りで圧縮を読む範囲 [km]。背景はどの中心からも BACKGROUND_KM より遠い texel、環は最盛期
-// (深さの係数 ≥ RING_MATURITY)の中心から RING_INNER_KM..RING_OUTER_KM の texel。
+// (深さ ≥ RING_MATURITY_HPA)の中心から RING_INNER_KM..RING_OUTER_KM の texel。最盛期と見なす深さ [hPa]
+// は、低気圧の最深(16〜32 hPa)の中ほどの半分。中心はページから引く(時刻 0 の配置)。
 const BACKGROUND_KM = 2500;
 const RING_INNER_KM = 500;
 const RING_OUTER_KM = 2000;
-const RING_MATURITY = 0.5;
+const RING_MATURITY_HPA = 12;
 
 // 「のっぺり」の判定。この範囲の値を持ち、周り FLATNESS_WINDOW texel の標準偏差がこれ未満の
 // texel を、階調も起伏も持たない平坦な灰色と見なす。窓は全球面の 5 texel ≈ 200 km。
@@ -339,18 +330,16 @@ function quantile(sorted, fraction) {
   return sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
 }
 
-// 全球面の風の速さ [m/s] の最大と 99 パーセンタイル。台風の中心から TYPHOON_EXCLUDE_DEG 以内は
-// 数えない。speed は風ビューの B(速さ / WIND_SPAN)。
-function windAnomaly(speed) {
-  const centerLatitude = (TYPHOON_LATITUDE * Math.PI) / 180;
-  const centerLongitude = (TYPHOON_LONGITUDE_AT_0 * Math.PI) / 180;
-  const exclude = (TYPHOON_EXCLUDE_DEG * Math.PI) / 180;
+// 全球面の風の速さ [m/s] の最大と 99 パーセンタイル。熱帯低気圧 tropical(緯度・経度 [rad]。居なければ
+// null)の中心から TROPICAL_EXCLUDE_DEG 以内は数えない。speed は風ビューの B(速さ / WIND_SPAN)。
+function windAnomaly(speed, tropical) {
+  const exclude = (TROPICAL_EXCLUDE_DEG * Math.PI) / 180;
   const speeds = [];
   for (let y = 0; y < speed.height; y++) {
     const latitude = latitudeOfRow(y, speed.height);
     for (let x = 0; x < speed.width; x++) {
       const longitude = longitudeOfColumn(x, speed.width);
-      if (centralAngle(latitude, longitude, centerLatitude, centerLongitude) < exclude) continue;
+      if (tropical !== null && centralAngle(latitude, longitude, tropical.latitude, tropical.longitude) < exclude) continue;
       speeds.push(speed.data[y * speed.width + x] * WIND_SPAN);
     }
   }
@@ -549,35 +538,12 @@ function printToneTable(header, rows) {
   }
 }
 
-// 整数から 0..1 の決定的な擬似乱数。src/render/cloud/cyclones.ts の hash と対。
-function hash(n) {
-  const x = Math.sin(n * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-// 時刻 0 の中緯度の低気圧。番号 index、中心の緯度・経度 [rad]、寿命の中の位置 life(0 で生まれ、1 で
-// 消える)、深さの係数 depth(最盛期で 1)。配置の式は src/render/cloud/cyclones.ts の
-// Cyclones.syncTime と対。
-function lowCentersAtZero() {
-  const slots = LOW_COUNT / 2;
-  const slotWidth = (2 * Math.PI) / slots;
-  return Array.from({ length: LOW_COUNT }, (_, index) => {
-    const life = index / LOW_COUNT;
-    const hemisphere = index % 2 === 0 ? 1 : -1;
-    const latitude = (hemisphere * (LOW_LATITUDE_MIN + hash(index) * LOW_LATITUDE_SPAN) * Math.PI) / 180;
-    const slot = ((Math.floor(index / 2) * LOW_SLOT_STRIDE) % slots) * slotWidth;
-    const longitude = slot + (hash(index + 0.5) - 0.5) * LOW_LONGITUDE_JITTER * slotWidth
-      + (LOW_DRIFT / (EARTH_RADIUS_KM * 1e3 * Math.cos(latitude))) * life * LOW_LIFETIME;
-    return { index, latitude, longitude, life, depth: Math.sin(Math.PI * life) };
-  });
-}
-
 // 帯(緯度 north..south [°])の圧縮を昇順の 3 組に分ける。all は帯の全 texel、background はどの
-// 低気圧の中心からも BACKGROUND_KM より遠い texel、ring は最盛期(depth ≥ RING_MATURITY)の中心から
+// 低気圧の中心からも BACKGROUND_KM より遠い texel、ring は最盛期(深さ ≥ RING_MATURITY_HPA)の中心から
 // RING_INNER_KM..RING_OUTER_KM の texel。
 function compressionInBand(compression, band, lows) {
   const { width, height, data } = compression;
-  const mature = lows.filter((low) => low.depth >= RING_MATURITY);
+  const mature = lows.filter((low) => low.depth >= RING_MATURITY_HPA);
   const all = [];
   const background = [];
   const ring = [];
@@ -678,6 +644,8 @@ async function main() {
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-cloud-compare-', onEvent,
   });
   const shots = new Map();
+  // 時刻 0 の低気圧の谷の配置(緯度・経度 [rad]、深さ [hPa]、半径 [m])。ページの進路モジュールから引く。
+  let cyclonesAtZero = { tropical: null, lows: [] };
   try {
     const { devTools } = session;
     await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
@@ -692,6 +660,7 @@ async function main() {
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
     await devTools.evaluate('window.cloudLab.setTime(0)');
+    cyclonesAtZero = JSON.parse(await devTools.evaluate('JSON.stringify(window.cloudLab.cyclonesAt(0))'));
     for (const region of REGIONS) {
       await devTools.evaluate(
         `window.cloudLab.aimCap(${region.latitude}, ${region.longitude}, ${CAP_RADIUS})`);
@@ -785,8 +754,8 @@ async function main() {
     console.log(`${label}: ${(flatnessOf(cropField(globe[key], 0, y60, GLOBE_W, bandHeight)) * 100).toFixed(1)}%`);
   }
 
-  console.log('\n=== 風の異常(全球面・台風の中心 10° 以内を除く) ===');
-  const wind = windAnomaly(windSpeed);
+  console.log('\n=== 風の異常(全球面・熱帯低気圧の中心 10° 以内を除く) ===');
+  const wind = windAnomaly(windSpeed, cyclonesAtZero.tropical);
   console.log(`最大 ${wind.max.toFixed(1)} m/s   99 パーセンタイル ${wind.p99.toFixed(1)} m/s`);
 
   console.log('\n=== 圧縮の分位(全球面・前線ビュー、低気圧の帯・時刻 0) ===');
@@ -795,17 +764,18 @@ async function main() {
   const compression = {
     width: front.width, height: front.height, data: Float32Array.from(front.data, (v) => v * FRONT_SPAN + 1),
   };
-  const lows = lowCentersAtZero();
-  console.log('低気圧    緯度      経度   寿命  深さの係数');
+  // 時刻 0 に居る低気圧だけ(居ない枡は null)。
+  const lows = cyclonesAtZero.lows.flatMap((low, index) => (low === null ? [] : [{ index, ...low }]));
+  console.log('低気圧    緯度      経度   深さ [hPa]  半径 [km]');
   for (const low of lows) {
     const longitudeDeg = ((((low.longitude * 180) / Math.PI + 180) % 360) + 360) % 360 - 180;
     console.log(`${String(low.index).padStart(4)}   ${((low.latitude * 180) / Math.PI).toFixed(1).padStart(6)}°  `
-      + `${longitudeDeg.toFixed(1).padStart(6)}°  ${low.life.toFixed(1)}   ${low.depth.toFixed(2)}`);
+      + `${longitudeDeg.toFixed(1).padStart(6)}°  ${low.depth.toFixed(1).padStart(6)}   ${(low.radius / 1e3).toFixed(0).padStart(6)}`);
   }
   console.log(`帯        中央値   90%    99%   背景 90%(中心から >${BACKGROUND_KM} km)`
     + `  環の中央値  環 90%(最盛期の中心から ${RING_INNER_KM}-${RING_OUTER_KM} km)`);
   // 低気圧が置かれる緯度の帯だけを見る。
-  for (const band of BANDS.filter((band) => Math.min(Math.abs(band.north), Math.abs(band.south)) >= LOW_LATITUDE_MIN)) {
+  for (const band of BANDS.filter((band) => Math.min(Math.abs(band.north), Math.abs(band.south)) >= LOW_BAND_LATITUDE)) {
     const { all, background, ring } = compressionInBand(compression, band, lows);
     console.log(`${band.label}   ${quantile(all, 0.5).toFixed(2)}  ${quantile(all, 0.9).toFixed(2)}`
       + `  ${quantile(all, 0.99).toFixed(2)}  ${quantile(background, 0.9).toFixed(2).padStart(22)}`
