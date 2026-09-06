@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_RIGHT, Q_IDENTITY, qFromUnitVectors, qInvert, qMul, qRotate, Quat } from '../../math/quat';
-import { kinematicState } from '../../physics/kinematic-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
@@ -21,9 +21,11 @@ function clamp(v: number, lo: number, hi: number): number {
 
 // ベルトのリンク節点を剛体接触に参加させるためのプロキシ。
 export class BeltSection extends DynamicEntity {
-  // 節点インデックス beltIndex に対応するプロキシを、吊り元の艦 owner とともに生成する。
-  constructor(readonly beltIndex: number, private readonly owner: DynamicEntity) {
-    super(kinematicState<'eci'>(0, v3(), v3()), new THREE.Object3D());
+  // 吊り元の艦 owner にぶら下がる節点のプロキシを生成する。
+  // state は生成時点の実際の world 状態 — 仮の状態で始めると、最初に置き直した substep の
+  // prevState がその仮位置になり、そこからの偽の区間を掃引してしまう。
+  constructor(private readonly owner: DynamicEntity, state: KinematicState) {
+    super(state, new THREE.Object3D());
     this.mass = 5;
     this.radius = 0.8;
     this.collides = true;
@@ -231,25 +233,23 @@ export class BeltPhysics {
   // 各節点の機体座標系での位置・速度をワールド KinematicState に変換し、衝突判定用の
   // プロキシ配列を返す。t は接触代理の KinematicState.t に使う現在時刻(掃引判定の区間を成す)。
   collisionSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
-    // プロキシを節点数まで拡張する
-    while (this.sections.length < this.beltPos.length) {
-      this.sections.push(new BeltSection(this.sections.length, this.owner));
-    }
     const invDt = 1 / dt;
-    for (const s of this.sections) {
-      const bp = this.beltPos[s.beltIndex]!;
-      const bpPrev = this.beltPrevPos[s.beltIndex]!;
+    for (const [i, bp] of this.beltPos.entries()) {
+      const bpPrev = this.beltPrevPos[i]!;
       // 機体座標系での速度: Verlet変位による速度 + 機体回転による接線速度
       const v_verlet = v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt);
       const v_tangential = cross(att.w, bp);
       const v_body_total = add(v_verlet, v_tangential);
 
       // ワールド座標系へ変換する
-      s.state = kinematicState<'eci'>(
+      const world = kinematicState<'eci'>(
         t,
         add(baseR, qRotate(att.q, bp)),
         add(baseV, qRotate(att.q, v_body_total)),
       );
+      const section = this.sections[i];
+      if (section) section.state = world;
+      else this.sections.push(new BeltSection(this.owner, world));
     }
     return this.sections;
   }
@@ -257,7 +257,7 @@ export class BeltPhysics {
   // 衝突解決後のワールド状態を機体座標系の節点位置・速度へ書き戻す。
   applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
     const qInv = qInvert(att.q);
-    for (const s of this.sections) {
+    for (const [i, s] of this.sections.entries()) {
       // ワールド座標系から機体座標系へ変換する
       const bpLocal = qRotate(qInv, sub(s.state.r, baseR));
       const v_body_total = qRotate(qInv, sub(s.state.v, baseV));
@@ -265,8 +265,8 @@ export class BeltPhysics {
       const v_verlet = sub(v_body_total, v_tangential);
 
       // Verlet 積分と整合する前フレーム位置へ戻す
-      this.beltPos[s.beltIndex] = bpLocal;
-      this.beltPrevPos[s.beltIndex] = v3(
+      this.beltPos[i] = bpLocal;
+      this.beltPrevPos[i] = v3(
         bpLocal.x - v_verlet.x * dt,
         bpLocal.y - v_verlet.y * dt,
         bpLocal.z - v_verlet.z * dt,
