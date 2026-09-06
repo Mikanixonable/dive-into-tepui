@@ -626,10 +626,9 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
   const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
-  const surface = CelestialSurface.clouded(EARTH_TEXTURE, cumulus.field, earthSmoothnessUrl);
+  const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
-  surface.setCloudAmount(1);
   cumulus.addTo(group);
   const bodyFromWorld = new THREE.Matrix4().makeRotationFromQuaternion(spin.clone().invert());
   const graticule = new BodyGraticule();
@@ -648,6 +647,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       polarAxis: new THREE.Vector3(0, 1, 0).applyQuaternion(spin),
       polarRatio: radii.polarRadius / radii.equatorRadius,
       optics: EARTH_ATMOSPHERE_OPTICS,
+      clouds: { field: cumulus.field, bodyFromWorld },
     },
     cumulus: {
       center,
@@ -662,7 +662,6 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
     // 絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {
-      surface.setCloudAmount(graphics.clouds ? 1 : 0);
       if (graphics.clouds) {
         cumulus.setDetail(graphics.cumulusDetail);
         cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
@@ -821,6 +820,7 @@ function earthMars(style: RenderStyle): LabCase {
         polarAxis: new THREE.Vector3(0, 1, 0),
         polarRatio: 1,
         optics: MARS_ATMOSPHERE_OPTICS,
+        clouds: null,
       },
     ],
     applyGraphics: earthSphere.applyGraphics,
