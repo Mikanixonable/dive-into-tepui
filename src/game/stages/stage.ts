@@ -1,7 +1,7 @@
 // 全ステージ共通の骨格。撃破数による勝利判定・常時解放・HUD補助表示なしを既定実装として持ち、
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
-import { Enemy, isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { Enemy } from '../dynamic/dynamic-entity/enemy';
 import { isPlayer, Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
@@ -259,15 +259,6 @@ export abstract class Stage {
   // そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
   protected spawnEnemyWhenReady(gate: SpawnGate | null, build: () => Enemy): void {
     this._dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
-  }
-
-  // 生存中の敵全てに AI 行動を1フレーム分実行させる。同一集団の判定に使う母集団は、
-  // このフレームの顔ぶれを1度だけ取って全機で共有する。
-  protected behaveAllEnemies(player: Player, simTime: number, simSpeed: SimSpeedManager): void {
-    const enemies = this._dynamicSystem.all().filter(isEnemy);
-    for (const e of enemies) {
-      if (e.alive) e.behave(simTime, player, this._dynamicSystem, enemies, simSpeed, this._celestialSystem);
-    }
   }
 
   protected abstract briefingHtml(): string;

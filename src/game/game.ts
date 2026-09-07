@@ -470,9 +470,10 @@ export class Game {
     const canShipAct = this.simSpeedManager.canShipAct;
     const canEngage = this.simSpeedManager.canEngage;
     const controlled = this.activeControllable;
-    this.sections.enter(SECTION.player);
+    this.sections.enter(SECTION.command);
     this.nanWatchdog.checkControlled('frameStart', controlled, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    this.dynamicSystem.update(controlled, this.input, canShipAct, dt, simDt, this.activeStage);
+    this.dynamicSystem.update(
+      controlled, this.input, canShipAct, dt, simDt, this.simulator.simTime, this.activeStage);
     this.nanWatchdog.checkControlled(
       'controllable.updateControls',
       controlled,
@@ -480,7 +481,7 @@ export class Game {
       dt,
       this.simulator.lastSimDt,
     );
-    this.sections.exit(SECTION.player);
+    this.sections.exit(SECTION.command);
 
     this.sections.enter(SECTION.stage);
     this.activeStage.update(dt, this.simulator.simTime, this.simSpeedManager);

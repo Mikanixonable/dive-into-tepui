@@ -34,7 +34,6 @@ import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
 import type { EntityRegistry, SpawnGate } from '../dynamic-system';
-import type { SimSpeedManager } from '../sim-speed-manager';
 import type { EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerManager } from '../../marker/marker-manager';
@@ -344,16 +343,17 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     activeStage.recordEnemyDeath(this, this.state.t, 'burnup');
   }
 
-  // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、dynamicSystem は弾の追加先。
+  // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、registry は弾の追加先。
+  // operable が偽の間は指令を決めない。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
-    simSpeed: SimSpeedManager, celestialSystem: CelestialSystem,
+    operable: boolean, celestialSystem: CelestialSystem,
   ): void {
     // 射撃間隔は simulation time で測る。wall dt を混ぜると、同じゲーム内時間でも
     // warp 段によって弾数が変わる。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
     this.lastBehaviorSim = simTime;
-    if (!simSpeed.canShipAct) return;
+    if (!operable) return;
     if (!this.fireEnabled) return;
     if (!this.canFire(enemies)) {
       this.burstLeft = undefined;
