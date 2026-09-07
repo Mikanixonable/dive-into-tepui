@@ -42,7 +42,7 @@ export class EnemiesPanel {
     viewer: Controllable | null, activeStage: Stage, dynamicSystem: DynamicSystem,
     targeter: Targeter, isMapView: boolean,
   ): void {
-        const panel = this.els.get('hud-enemies');
+    const panel = this.els.get('hud-enemies');
     if (!viewer) {
       this.hasContacts = false;
       panel?.classList.add('hidden');
