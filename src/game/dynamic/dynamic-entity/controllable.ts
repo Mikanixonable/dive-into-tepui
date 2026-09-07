@@ -53,10 +53,10 @@ export interface Controllable extends DynamicEntity, ObjectPickable {
   consumeFuel(amount: number): number;
 
   // 毎フレーム1度だけ呼ぶ。input が null なら、このフレーム操作されない個体として指令を畳む。
-  // entities / activeStage / celestialSystem は射撃と補給の判定に要る — 使わない種別は無視する。
+  // dynamicSystem / activeStage / celestialSystem は射撃と補給の判定に要る — 使わない種別は無視する。
   updateControls(
     input: Input | null, dt: number, simDt: number,
-    entities: DynamicSystem, activeStage: Stage, celestialSystem: CelestialSystem,
+    dynamicSystem: DynamicSystem, activeStage: Stage, celestialSystem: CelestialSystem,
   ): void;
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。

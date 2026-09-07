@@ -58,7 +58,7 @@ export type StageDeps = [
   worldSfx: WorldSfx,
   uiSfx: UiSfx,
   scene: THREE.Scene,
-  entities: DynamicSystem,
+  dynamicSystem: DynamicSystem,
   fx: EffectsSystem,
   markerManager: MarkerManager,
   celestialSystem: CelestialSystem,
@@ -158,7 +158,7 @@ export abstract class Stage {
   protected readonly _uiSfx: UiSfx;
   protected readonly _scene: THREE.Scene;
   protected readonly _fx: EffectsSystem;
-  protected readonly _entities: DynamicSystem;
+  protected readonly _dynamicSystem: DynamicSystem;
   protected readonly _markerManager: MarkerManager;
   protected readonly _celestialSystem: CelestialSystem;
   protected readonly _simulator: Simulator;
@@ -186,13 +186,13 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, fx, markerManager, celestialSystem, simulator, controlSelection] = deps;
+    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, markerManager, celestialSystem, simulator, controlSelection] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
     this._scene = scene;
     this._fx = fx;
-    this._entities = entities;
+    this._dynamicSystem = dynamicSystem;
     this._markerManager = markerManager;
     this._celestialSystem = celestialSystem;
     this._simulator = simulator;
@@ -200,7 +200,7 @@ export abstract class Stage {
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
-    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, entities, saved?.logistics);
+    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, dynamicSystem, saved?.logistics);
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
@@ -208,7 +208,7 @@ export abstract class Stage {
   // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
   protected begin(): void {
     if (this.restored) return;
-    this.init(this._entities);
+    this.init(this._dynamicSystem);
     this._hud.toast(this.briefingHtml(), BRIEFING_TOAST_MS);
   }
 
@@ -238,44 +238,44 @@ export abstract class Stage {
   protected get ship(): Player | null {
     const controlled = this._controlSelection.current;
     if (controlled instanceof Player) return controlled;
-    return this._entities.players.find((p) => p.alive) ?? null;
+    return this._dynamicSystem.players.find((p) => p.alive) ?? null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
     const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
-    this._entities.add(ship);
+    this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;
   }
 
-  // 敵を entities へ登録し、出撃数をスコアへ記録する。
-  protected addEnemy(enemy: Enemy, entities: DynamicSystem): void {
-    entities.add(enemy);
+  // 敵を dynamicSystem へ登録し、出撃数をスコアへ記録する。
+  protected addEnemy(enemy: Enemy, dynamicSystem: DynamicSystem): void {
+    dynamicSystem.add(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
   // タンパク質アセットの fetch 待ちで実体化を遅らせうる敵を登録する。準備が整い次第
-  // entities へ登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
-  protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, entities: DynamicSystem): void {
-    entities.spawnEnemyWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
+  // dynamicSystem へ登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
+  protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, dynamicSystem: DynamicSystem): void {
+    dynamicSystem.spawnEnemyWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。同一集団の判定に使う母集団は、
   // このフレームの顔ぶれを1度だけ取って全機で共有する。
-  protected behaveAllEnemies(player: Player, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
-    const enemies = entities.enemies;
+  protected behaveAllEnemies(player: Player, dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+    const enemies = dynamicSystem.enemies;
     for (const e of enemies) {
-      if (e.alive) e.behave(simTime, player, entities, enemies, simSpeed, this._celestialSystem);
+      if (e.alive) e.behave(simTime, player, dynamicSystem, enemies, simSpeed, this._celestialSystem);
     }
   }
 
   protected abstract briefingHtml(): string;
   // 初期配置。既定では何も置かない。
-  protected init(_entities: DynamicSystem): void { }
+  protected init(_dynamicSystem: DynamicSystem): void { }
   // 毎フレーム呼ぶ。台本が相手にする自艦は this.ship から引く。
-  public abstract update(dt: number, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void;
+  public abstract update(dt: number, dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
   public nextSimulationEventTime(_simTime: number): number | null { return null; }
