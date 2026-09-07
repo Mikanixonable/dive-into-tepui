@@ -1,7 +1,7 @@
 // 同期軌道(自転と同じ周期で公転する赤道円軌道)の高度を示す、マップ専用のリングとラベル。
 // 実在の衛星や特定経度ではなく、高度の目盛りとして引く1本。
 import * as THREE from 'three/webgpu';
-import { CelestialMotion } from '../../../physics/celestial-motion';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import { OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
 import { isOccluded } from '../../../physics/occlusion';
 import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
@@ -42,14 +42,14 @@ export class GeostationaryOverlay {
   private readonly label: string;
 
   // semiMajorAxis [m] は of() が表面より外にあることを確かめた同期軌道の長半径。
-  private constructor(motion: CelestialMotion, semiMajorAxis: number) {
+  private constructor(motion: CelestialBody, semiMajorAxis: number) {
     this.semiMajorAxis = semiMajorAxis;
     this.label = altitudeLabel(semiMajorAxis - motion.def.radius);
   }
 
   // 天体の重力定数と自転周期から同期軌道を解く。自転モデルを持たない天体、あるいは解が
   // 表面より内側になる天体では同期軌道が引けないので null。
-  static of(motion: CelestialMotion): GeostationaryOverlay | null {
+  static of(motion: CelestialBody): GeostationaryOverlay | null {
     const spinRate = motion.spinRate;
     if (spinRate === null || spinRate === 0) return null;
     const period = Math.abs((2 * Math.PI) / spinRate);
@@ -66,8 +66,8 @@ export class GeostationaryOverlay {
   // リングとラベルをこのフレームの表示状態へ同期する。visible は所有者の判断
   // (マップ視点 かつ 同期軌道トグル ON)。
   sync(
-    center: CelestialMotion, pivot: number, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    markerManager: MarkerManager | null, celestialBodies: readonly CelestialMotion[], visible: boolean,
+    center: CelestialBody, pivot: number, fo: FloatingOrigin, cameraSystem: CameraSystem,
+    markerManager: MarkerManager | null, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     const centerPos = center.positionAt(pivot);
     const elements = this.elementsAround(center, pivot);
@@ -90,7 +90,7 @@ export class GeostationaryOverlay {
   }
 
   // 時刻 pivot の中心天体位置に置いた赤道面上の円軌道。
-  private elementsAround(center: CelestialMotion, pivot: number): OrbitalElements {
+  private elementsAround(center: CelestialBody, pivot: number): OrbitalElements {
     return orbitalElementsFromClassical(
       this.semiMajorAxis, NEAR_CIRCULAR_E, 0, 0, 0, center, center.stateAt(pivot));
   }
@@ -99,7 +99,7 @@ export class GeostationaryOverlay {
   private syncLabel(
     elements: OrbitalElements, centerPos: Vec3, pivot: number, fade: number,
     cameraSystem: CameraSystem, markerManager: MarkerManager | null,
-    celestialBodies: readonly CelestialMotion[], visible: boolean,
+    celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     if (markerManager === null) return;
     // 消えるほど薄いラベルは、射影も遮蔽判定もせずに畳む。

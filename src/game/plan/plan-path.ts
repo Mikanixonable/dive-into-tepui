@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../physics/kinematic-state';
 import { bodyAnchorSource } from '../../physics/attractor';
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { Vec3, v3 } from '../../math/vec3';
 import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -62,8 +62,8 @@ type SegmentSource = { arc: PredictedArc | null; from: number; to: number; owned
 interface FinalSegment {
   readonly periapsis: KinematicState | null;
   readonly apoapsis: KinematicState | null;
-  readonly periapsisCenter: CelestialMotion | null;
-  readonly apoapsisCenter: CelestialMotion | null;
+  readonly periapsisCenter: CelestialBody | null;
+  readonly apoapsisCenter: CelestialBody | null;
 }
 
 interface PlanPathSample {
@@ -259,8 +259,8 @@ export class PlanPath {
 
   // 天体衝突が検出された地点と、その相手の天体(区間ごとに高々1つ)。今フレーム表示中の
   // 区間だけを対象にする。
-  impactPoints(): readonly { readonly state: KinematicState; readonly body: CelestialMotion; readonly arcIdx: number }[] {
-    const out: { state: KinematicState; body: CelestialMotion; arcIdx: number }[] = [];
+  impactPoints(): readonly { readonly state: KinematicState; readonly body: CelestialBody; readonly arcIdx: number }[] {
+    const out: { state: KinematicState; body: CelestialBody; arcIdx: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const impact = this.impactOf(this.sources[i]!);
       if (impact) out.push({ state: impact.state, body: impact.body, arcIdx: i });

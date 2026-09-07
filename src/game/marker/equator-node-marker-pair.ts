@@ -1,7 +1,7 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る2点(EqAN/EqDN)の算出と、△▽ マーカー
 // としての表示・被選択物としての公開。
 import { strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { FrameAnchorSource, ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -109,7 +109,7 @@ export class EquatorNodeMarkerPair {
   // 求まっている交点へ △▽ マーカーを置き、求まっていない交点は隠す。celestialBodies は
   // 遮蔽判定に使う天体で、celestialBodiesPivot はその位置を引く時刻。
   sync(
-    project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
+    project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
     celestialBodiesPivot: number, occludeByBodies: boolean, timeLabel: TimeLabelSetting,
   ): void {
     for (const marker of [this.ascending, this.descending]) {

@@ -12,7 +12,7 @@ import type { ProjectFn, ScaleFn } from '../../math/projection';
 import type { ActiveCelestialLabel } from './celestial-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-identity';
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
 
@@ -79,7 +79,7 @@ export class GroupedMarkers {
     view: View,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
-    celestialBodies: readonly CelestialMotion[] = [],
+    celestialBodies: readonly CelestialBody[] = [],
     cameraPos?: Vec3,
   ): void {
     const placed: PlacedItem[] = items.map(
