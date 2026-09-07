@@ -263,7 +263,9 @@ export class Game {
       this._hud.mapRoot, this._hud.layers.popup, celestialSystem, this.cameraSystem.mapCamera,
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
-    this.targeter = new Targeter(this.markerManager, this.navTarget, this.dynamicSystem);
+    this.targeter = new Targeter(
+      this.markerManager, this.navTarget, this.dynamicSystem, celestialSystem, this.celestialMarkers,
+    );
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
     this._celestialSystem.setOrbitGuideSettings(this.navball.orbitGuideSettings);
@@ -496,7 +498,7 @@ export class Game {
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.advance', this.player, this.dynamicSystem, this.simulator.simTime, dt, simDt);
 
-    this.targeter.updateBoardMarks(dt, this.player, this.dynamicSystem);
+    this.targeter.updateBoardMarks(dt, this.player);
     this.activePlayers.reclaimDead();
 
     this.sections.enter(SECTION.effects);
@@ -559,9 +561,6 @@ export class Game {
     // 表示・選択可否はこのフレームの update フェーズで現在のビューが確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
     const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
-    // マーカー描画は操作艦自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
-    // 別に、除外なしの一覧を使う。
-    const combatTargets = this.dynamicSystem.getCombatTargets(null);
     // 軌道パネルと同じ基準で解く — player だけを見ると、基地操作中は常に undefined になり、
     // パネルの表示と3D軌道線の基準がずれる。
     const activeControllable = this.activeControllableEntity;
@@ -585,11 +584,7 @@ export class Game {
       orbitRef, this.frameAnchors, timeLabel, graphics.proteinVibration,
     );
 
-    this.targeter.sync(player, this.cameraSystem);
-    this.targeter.syncTargetMarkers(
-      player, combatTargets, this.dynamicSystem.ammoPickups, this.dynamicSystem.rcsFuelPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
-      celestialBodies, this.celestialMarkers,
-    );
+    this.targeter.sync(player, this.cameraSystem, displayTime, simTime, visibilityPolicy);
     this.navTarget.sync(
       this.cameraSystem, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel);
 
