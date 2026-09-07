@@ -10,14 +10,12 @@ import {
 import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { ObjectPickable } from './object-pickable';
-import type { LinePickable } from './line-pickable';
-import type { LinePickables } from './line-pickables';
 import { focusTargetId } from '../camera/focus-target';
 import { DynamicSystem } from '../dynamic/dynamic-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
-import { PlanEditor } from '../plan/plan-editor';
+import type { PlanEditor } from '../plan/plan-editor';
 import type { ControlSelection } from '../control-selection';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { ObjectAuthoring, Stage } from '../stages/stage';
@@ -26,9 +24,8 @@ import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import type { Targeter } from '../targeter';
 import { EmptySpacePickable } from './empty-space-pickable';
 import { orbitingAttractorOf } from '../../physics/attractor';
-import type { ObjectPickables } from './object-pickables';
+import type { ViewFrame } from '../view/view';
 import { PartWindows } from './part-windows';
-import { OrbitLineWindows } from './orbit-line-windows';
 import type { MenuItem } from '../hud/windows/context-menu';
 
 // 開いているプロパティウィンドウ本体と、その対象。対象は同じ同一性を保ち続けるので、
@@ -45,7 +42,6 @@ export class ObjectWindows {
   // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
   private readonly partWindows: PartWindows;
-  private readonly orbitLineWindows: OrbitLineWindows;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
   private readonly emptySpace: ObjectPickable = new EmptySpacePickable();
   // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
@@ -55,17 +51,16 @@ export class ObjectWindows {
   // ウィンドウを開くときの時刻に使う。
   private simTime = 0;
 
-  // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
+  // activeView はいまのビュー — 候補列と計画の編集口はビューによって変わるので、
+  // 構築時ではなく毎回そこから引く。
   constructor(
     private readonly hud: Hud,
     private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
-    private readonly editor: PlanEditor,
+    private readonly activeView: () => ViewFrame,
     private readonly pauseMenu: PauseMenu,
-    private readonly pickables: ObjectPickables,
-    linePickables: LinePickables,
     private readonly controlSelection: ControlSelection,
     private readonly frameControls: FrameControls,
     private readonly activeStage: Stage,
@@ -74,10 +69,6 @@ export class ObjectWindows {
     this.menu = new ContextMenu<ObjectPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
     this.partWindows = new PartWindows(hud, controlSelection);
-    this.orbitLineWindows = new OrbitLineWindows(
-      hud, linePickables, pickables, (id, name) => this.focus(id, name),
-      (clientX, clientY, target) => this.open(clientX, clientY, target, this.simTime),
-    );
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
       const enemy = this.dynamicSystem.all().filter(isEnemy).find((e) => e.id === id);
       if (enemy) this.open(clientX, clientY, enemy, this.simTime);
@@ -119,11 +110,6 @@ export class ObjectWindows {
     };
   }
 
-  // 軌道線1本のプロパティウィンドウを開く。
-  openLine(clientX: number, clientY: number, orbit: LinePickable): void {
-    this.orbitLineWindows.open(clientX, clientY, orbit);
-  }
-
   // 何にも当たらなかった右クリックの落ち先。マップ・戦闘のどちらもここへ落ちる。
   openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
     const target = this.emptySpace;
@@ -163,7 +149,6 @@ export class ObjectWindows {
       entry.win.syncBadge(entry.target.id === this.lastFocusId);
     }
     this.partWindows.sync();
-    this.orbitLineWindows.sync();
   }
 
   // 開いたままのメニュー・ウィンドウを畳む。マップビューを離れるときに呼ぶ。
@@ -171,7 +156,6 @@ export class ObjectWindows {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
     this.partWindows.close();
-    this.orbitLineWindows.close();
   }
 
   // 開いているメニュー・ウィンドウを畳んだうえで、自身のメニューを取り除く。
@@ -257,7 +241,7 @@ export class ObjectWindows {
   // 計画を編集できるならその口。ノードの追加も時間の加速もマップの操作面なので、
   // 戦闘ビューでは差し出さない。
   private get planEditor(): PlanEditor | null {
-    return this.cameraSystem.view === 'map' ? this.editor : null;
+    return this.activeView().planEditor;
   }
 
   // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
@@ -275,7 +259,7 @@ export class ObjectWindows {
     }
     if (!(target instanceof CelestialEntity)) return [];
     const related: { item: ObjectPickable; label: string }[] = [];
-    for (const item of this.pickables.pickables) {
+    for (const item of this.activeView().pickables) {
       if (item.id === target.id) continue;
       // 天体・ラグランジュ点の親は静的に決まる。人工物は現在状態から引く。
       const state = item.orbitState;
@@ -293,7 +277,7 @@ export class ObjectWindows {
         this.hud.hint(`${label} にフォーカス`);
       },
       onContextMenu: (clientX, clientY) => {
-        const current = this.pickables.pickables.find((candidate) => candidate.id === item.id);
+        const current = this.activeView().pickables.find((candidate) => candidate.id === item.id);
         if (current) this.open(clientX, clientY, current, this.simTime);
       },
     }));
