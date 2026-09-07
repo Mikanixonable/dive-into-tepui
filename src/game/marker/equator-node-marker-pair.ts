@@ -89,8 +89,14 @@ export class EquatorNodeMarkerPair {
       toDisplay(crossings.desc.r, crossings.desc.t), crossings.desc.t, this.owner.name, centerName);
   }
 
+  // 交点を出す理由が無くなったことを記録する。
+  retire(): void {
+    this.ascending.retire();
+    this.descending.retire();
+  }
+
   // 交点を、求まらなかった状態にする。
-  clearCrossings(): void {
+  private clearCrossings(): void {
     this.ascending.place(null, null, null, null);
     this.descending.place(null, null, null, null);
   }
@@ -116,6 +122,7 @@ export class EquatorNodeMarkerPair {
 
   // マーカー要素ごと取り除く。
   dispose(): void {
+    this.retire();
     this.markerManager.remove(this.ascending.id);
     this.markerManager.remove(this.descending.id);
   }

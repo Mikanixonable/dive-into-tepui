@@ -150,6 +150,11 @@ export class NavTarget {
     return [this.ascendingNode, this.descendingNode, this.closestApproach];
   }
 
+  // 相対交点を出す理由が無くなったことを、3つのマーカーへ記録する。
+  private retireNodeMarkers(): void {
+    for (const marker of this.nodeMarkers) marker.retire();
+  }
+
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や操作対象の軌道要素が無い場合は、
   // どちらの交点も解けていない状態にする。
@@ -160,10 +165,12 @@ export class NavTarget {
     const { simTime, displayTime, frame } = displayWindow;
     const ownerName = controlled?.name ?? null;
     for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, this.name);
-    if (!this.targetId) { this.setReaderEntity(null); return; }
+    // 相対交点はターゲットと操作対象の両方が揃って初めて定義できる。片方でも欠ければ
+    // 出す理由そのものが無い。
+    if (!this.targetId) { this.setReaderEntity(null); this.retireNodeMarkers(); return; }
     const target = entities.findAliveCombatTarget(this.targetId);
     this.setReaderEntity(target);
-    if (!controlled) return;
+    if (!controlled) { this.retireNodeMarkers(); return; }
     const stateCelestialBodies = celestialSystem.celestialMotions;
     const controlledCenter = strongestAttractor(controlled.state.r, stateCelestialBodies, simTime);
     const unbakeTf = celestialSystem.frames.transformAt(frame, displayTime, frameAnchors);

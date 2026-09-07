@@ -43,6 +43,9 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   protected pos: Vec3 | null = null;
   protected time: number | null = null;
   protected owner: string | null = null;
+  // この点を出す理由が無くなったか。解が求まらないだけのフレーム(pos が null)とは別物で、
+  // 一時的に位置を失った点は消滅として扱わない。
+  private retired = false;
 
   // id はマーカーのキーで、天体・実体と同じ名前空間に置く。
   protected constructor(public readonly id: string) {}
@@ -52,9 +55,17 @@ export abstract class OrbitPointMarker implements ObjectPickable {
     this.pos = pos;
     this.time = time;
     this.owner = ownerName;
+    this.retired = false;
   }
 
-  public get gone(): boolean { return this.pos === null; }
+  // この点を出す理由が無くなったことを記録する(対象の消滅・選択からの離脱)。解を置き直せば戻る。
+  public retire(): void {
+    this.pos = null;
+    this.time = null;
+    this.retired = true;
+  }
+
+  public get gone(): boolean { return this.retired; }
 
   // 生成元が解いた時刻の位置。
   public posAt(): Vec3 | null { return this.pos; }
