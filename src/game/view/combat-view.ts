@@ -1,6 +1,7 @@
 // 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
+import type { CelestialMotions } from '../../physics/celestial-motion';
 import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
 import { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input/input';
@@ -16,7 +17,7 @@ import type { Targeter } from '../targeter';
 import type { ControlSelection } from '../control-selection';
 import type { PlanPath } from '../plan/plan-path';
 import type { UiSfx } from '../../audio/sfx/ui-sfx';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import type { DisplayWindow } from '../display-window-manager';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { ViewFrame } from './view';
@@ -38,7 +39,7 @@ export class CombatView implements ViewFrame {
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialSystem: CelestialMotions,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly hud: Notifier,
     uiSfx: UiSfx,
