@@ -4,7 +4,7 @@
 import { FrameRole, FrameRotationSource, rotationSourceKey } from '../../../physics/frame';
 import { SegmentedControl } from '../../../hud/widgets';
 import { frameRoleName } from './frame-labels';
-import type { CelestialMotion } from '../../../physics/celestial-motion';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import type { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { rotationFollowKey, type CameraRotationFollow } from '../../camera/focus-camera';
@@ -37,7 +37,7 @@ export class RotationZone {
     const items: (readonly [string, string])[] = [['', '解除']];
 
     // 主天体を持つ天体だけが公転回転系を持つ(恒星と、恒星の無い星系の惑星はここで外れる)。
-    const revolvable: (readonly [CelestialEntity, CelestialMotion])[] = [];
+    const revolvable: (readonly [CelestialEntity, CelestialBody])[] = [];
     for (const id of members) {
       const entity = this.celestialSystem.find(id);
       const primary = entity?.motion.primary ?? null;

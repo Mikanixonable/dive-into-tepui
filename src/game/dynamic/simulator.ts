@@ -16,7 +16,8 @@
 import type { DynamicSystem } from './dynamic-system';
 import type { Controllable } from './dynamic-entity/controllable';
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import { CelestialMotion, CelestialMotions } from '../../physics/celestial-motion';
+import { CelestialMotions } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { Stage } from '../stages/stage';
 import { EntityContactPhysics } from './entity-contact-physics';
 import { engagementZones } from './engagement-zone';
@@ -178,7 +179,7 @@ export class Simulator {
   }
 
   // このサブステップで大気を持つ相手として扱う天体。焼失の判定に表面の窓は要らない。
-  private atmosphereBodies(): readonly CelestialMotion[] {
+  private atmosphereBodies(): readonly CelestialBody[] {
     return this.windows.atmosphereMotions;
   }
 

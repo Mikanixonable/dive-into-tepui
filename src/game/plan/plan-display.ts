@@ -21,7 +21,7 @@ import { ObjectPickable } from '../pickable/object-pickable';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
 import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
-import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
@@ -275,7 +275,7 @@ export class PlanDisplay {
 
   // 極値とその中心天体が揃っていれば、折れ線と同じ座標系へ写した位置を記録する。
   private placeApsisMarker(
-    marker: ApsisMarker, apsis: KinematicState | null, center: CelestialMotion | null, ownerName: string | null,
+    marker: ApsisMarker, apsis: KinematicState | null, center: CelestialBody | null, ownerName: string | null,
   ): void {
     if (!apsis || !center) {
       marker.place(null, null, null, null);

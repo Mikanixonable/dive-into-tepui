@@ -6,17 +6,18 @@
 // 距離の比較なので、判定距離へフレームの移動ぶんを織り込めばフレーム全体で使い回せる。物理が
 // 読む位置はサブステップの中点から引くので、外挿の幅は subDt/2 に収まる。
 import { nearestAtmosphereBody } from '../../physics/attractor';
-import { CelestialMotion, CelestialMotions } from '../../physics/celestial-motion';
+import { CelestialMotions } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { Vec3 } from '../../math/vec3';
 import { ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
 
 export class SubstepCelestialBodies {
   private classified: ClassifiedAttractors = classifyAttractors([], 0, 0, 0);
   private _gravitySourceCount = 0;
-  private _surface: readonly CelestialMotion[] = [];
-  private _atmosphere: readonly CelestialMotion[] = [];
-  private _star: CelestialMotion | null = null;
-  private readonly nearScratch: CelestialMotion[] = [];
+  private _surface: readonly CelestialBody[] = [];
+  private _atmosphere: readonly CelestialBody[] = [];
+  private _star: CelestialBody | null = null;
+  private readonly nearScratch: CelestialBody[] = [];
   // 天体の位置を厳密に引く時刻。区間の中点に取るので、区間の両端までの外挿幅が dt/2 に収まる。
   private _pivot = 0;
   // 顔ぶれを組んだフレームの中点。
@@ -46,24 +47,24 @@ export class SubstepCelestialBodies {
   get framePivot(): number { return this._framePivot; }
 
   // 表面を持ち、かつ太陽を隠しうる相手。半径と位置の幾何だけで決まるので、登録天体の全数。
-  get surface(): readonly CelestialMotion[] { return this._surface; }
+  get surface(): readonly CelestialBody[] { return this._surface; }
 
   // 大気を持つ天体の全数。抗力を及ぼす1体は個体ごとに選ぶ。
-  get atmosphere(): readonly CelestialMotion[] { return this._atmosphere; }
+  get atmosphere(): readonly CelestialBody[] { return this._atmosphere; }
 
   // 日照と受熱の光源になる恒星。無ければ null。
-  get star(): CelestialMotion | null { return this._star; }
+  get star(): CelestialBody | null { return this._star; }
 
   // この区間の重力源の本数。
   get gravitySourceCount(): number { return this._gravitySourceCount; }
 
   // 位置 r へ効く重力源。返る配列は次の呼び出しで上書きされるので、その場で使い切る。
-  attractorsNear(r: Vec3): readonly CelestialMotion[] {
+  attractorsNear(r: Vec3): readonly CelestialBody[] {
     return attractorsNearInto(r, this.classified, this.nearScratch);
   }
 
   // 位置 r に抗力を及ぼすただ1体の大気天体。無ければ null。
-  atmosphereBodyNear(r: Vec3): CelestialMotion | null {
+  atmosphereBodyNear(r: Vec3): CelestialBody | null {
     return nearestAtmosphereBody(r, this._atmosphere, this._pivot);
   }
 }

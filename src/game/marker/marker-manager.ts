@@ -16,7 +16,7 @@ import { MARKER_PRIORITY } from './crowding';
 import { LabelDeclutter, canHideIconClass, isCombatClass } from './label-declutter';
 import { LabelLayout } from './label-layout';
 import { strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // 方向マーカーを投影する仮想距離 [m]。実在の位置ではなく方向のみを示す。
 export const MARKER_DIR_DIST = 5e4;
@@ -194,7 +194,7 @@ export class MarkerManager {
     worldPos: Vec3,
     project: ProjectFn,
     cameraPos: Vec3,
-    celestialBodies: readonly CelestialMotion[],
+    celestialBodies: readonly CelestialBody[],
     celestialBodiesPivot: number,
     occludeByBodies: boolean,
     label = '',
@@ -238,7 +238,7 @@ export class MarkerManager {
     vel: Vec3,
     project: ProjectFn,
     scale: ScaleFn,
-    celestialBodies: readonly CelestialMotion[] = [],
+    celestialBodies: readonly CelestialBody[] = [],
     celestialBodiesPivot = 0,
   ): number | undefined {
     const center = celestialBodies.length > 0

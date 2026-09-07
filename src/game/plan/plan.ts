@@ -3,7 +3,8 @@
 import { kinematicState, KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion, CelestialMotions } from '../../physics/celestial-motion';
+import { CelestialMotions } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { orbitalElementsOf } from '../../physics/elements';
 
 // segmentDurationFrom が要求する表示窓の部分だけを切り出した形。
@@ -22,7 +23,7 @@ export interface DisplayDurationSource {
 // 起点状態を最も強く引く天体まわりの解析軌道の公転周期。
 // 有限な周期が求まらなければ(双曲線軌道など)NaN。
 export function orbitPeriodOf(
-  state: KinematicState, celestialBodies: readonly CelestialMotion[], pivot: number,
+  state: KinematicState, celestialBodies: readonly CelestialBody[], pivot: number,
 ): number {
   const center = strongestAttractor(state.r, celestialBodies, pivot);
   return orbitalElementsOf(state, center, pivot)?.period ?? NaN;
@@ -34,7 +35,7 @@ export function orbitPeriodOf(
 // 別々に定義すると描画範囲とノード配置可能範囲がずれる。
 export function segmentDurationFrom(
   state0: KinematicState,
-  celestialBodies: readonly CelestialMotion[],
+  celestialBodies: readonly CelestialBody[],
   displayDuration: DisplayDurationSource,
 ): number {
   return displayDuration.durationSec(orbitPeriodOf(state0, celestialBodies, state0.t));
