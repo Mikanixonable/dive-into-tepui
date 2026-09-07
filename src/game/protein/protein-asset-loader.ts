@@ -109,6 +109,13 @@ export function isProteinAssetReady(id: string): boolean {
   return resolvedProteinAssetBundles.has(id as ProteinAssetId);
 }
 
+// この体の取得を起こし、それが揃ったかを答える述語を返す。述語を持ち回るだけでは誰も取りに
+// 行かないので、取得はここで起こす。
+export function proteinAssetGate(id: ProteinAssetId): () => boolean {
+  void requestProteinAsset(id);
+  return () => isProteinAssetReady(id);
+}
+
 // 準備が整っている bundle だけを同期的に返す。未取得・取得中は null。
 export function proteinAssetBundleFor(id: string): ProteinAssetBundle | null {
   return resolvedProteinAssetBundles.get(id as ProteinAssetId) ?? null;

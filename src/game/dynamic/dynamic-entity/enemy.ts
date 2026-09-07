@@ -27,10 +27,9 @@ import type { DynamicEntityKind } from './entity-kind';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
-import type { DynamicSystem } from '../dynamic-system';
+import type { DynamicSystem, SpawnGate } from '../dynamic-system';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { EnemySaveData } from '../../save/save-data';
-import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerManager } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
@@ -90,8 +89,8 @@ export type EnemyPlacement = {
 export interface EnemyClass {
   // セーブへ書く具象タグ。
   readonly kind: EnemySaveData['kind'];
-  // 復元に fetch 済みアセットが要るなら、その id。要らなければ null。
-  pendingAssetId(saved: EnemySaveData): ProteinAssetId | null;
+  // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
+  spawnGate(saved: EnemySaveData): SpawnGate | null;
   new (init: EnemyRestore, worldSfx: WorldSfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy;
 }
 

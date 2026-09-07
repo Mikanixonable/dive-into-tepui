@@ -15,7 +15,6 @@ import { DebrisPiece } from './dynamic-entity/debris-piece';
 import { Enemy } from './dynamic-entity/enemy';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
 import { ProteinEnemy } from './dynamic-entity/protein-enemy';
-import { isProteinAssetReady, requestProteinAsset, type ProteinAssetId } from '../protein/protein-asset-loader';
 import { Bullet } from './dynamic-entity/bullet';
 import { Base } from './dynamic-entity/base';
 import { InstancedPool } from '../../render/instanced-pool';
@@ -47,6 +46,9 @@ const CAP: Record<CapKind, number> = {
   debris: 600,
   booster: 64,
 };
+
+// 個体を実体化してよいかを答える述語。何を待つかは、待つと決めた側だけが知っていればよい。
+export type SpawnGate = () => boolean;
 
 export class DynamicSystem {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
@@ -113,7 +115,7 @@ export class DynamicSystem {
       const restoration = restorationFor(
         data, save.simTime, scene, hud, worldSfx, markerManager, this.effects);
       if (restoration === null) continue;
-      this.spawnWhenReady(restoration.pendingAssetId, () => restoration.build());
+      this.spawnWhenReady(restoration.gate, () => restoration.build());
     }
   }
 
@@ -138,30 +140,28 @@ export class DynamicSystem {
     this.bumpCollectionRevision();
   }
 
-  // 生成に fetch 未完了のタンパク質アセットが要る個体の待ち行列。実体化(生成そのもの)は
-  // アセットが揃うまで遅らせる(SPEC/PROTEIN.md「出現」節)。
-  private readonly pendingSpawns: { readonly assetId: ProteinAssetId; readonly build: () => DynamicEntity; readonly onSpawned?: () => void }[] = [];
+  // 実体化に外部資源の取得が要る個体の待ち行列。生成そのものを gate が通るまで遅らせるので、
+  // その間その個体は顔ぶれのどこにも現れない。
+  private readonly pendingSpawns: { readonly gate: SpawnGate; readonly build: () => DynamicEntity; readonly onSpawned?: () => void }[] = [];
 
-  // 個体を1体足す。assetId のアセットがまだ揃っていなければ、取得を起こして待ち行列へ回す。
-  // onSpawned は実体化した直後に1度だけ呼ぶ。
-  public spawnWhenReady(assetId: ProteinAssetId | null, build: () => DynamicEntity, onSpawned?: () => void): void {
-    if (assetId === null || isProteinAssetReady(assetId)) {
+  // 個体を1体足す。gate がまだ通らなければ、通るまで待ち行列へ回す。onSpawned は実体化した
+  // 直後に1度だけ呼ぶ。待つものが無ければ gate は null。
+  public spawnWhenReady(gate: SpawnGate | null, build: () => DynamicEntity, onSpawned?: () => void): void {
+    if (gate === null || gate()) {
       this.add(build());
       onSpawned?.();
       return;
     }
-    // 積むだけでは誰も取りに行かないので、待ちに入れるのと同時に取得を起こす。
-    void requestProteinAsset(assetId);
-    this.pendingSpawns.push({ assetId, build, onSpawned });
+    this.pendingSpawns.push({ gate, build, onSpawned });
   }
 
-  // 待ち行列のうち、アセットが揃ったものを実体化して顔ぶれへ足す。
+  // 待ち行列のうち、gate が通ったものを実体化して顔ぶれへ足す。
   private processPendingSpawns(): void {
     if (this.pendingSpawns.length === 0) return;
     let w = 0;
-    // 揃わなかったものは前へ詰めて待ち行列に残す。
+    // 通らなかったものは前へ詰めて待ち行列に残す。
     for (const pending of this.pendingSpawns) {
-      if (isProteinAssetReady(pending.assetId)) {
+      if (pending.gate()) {
         this.add(pending.build());
         pending.onSpawned?.();
       } else {
@@ -419,6 +419,8 @@ export class DynamicSystem {
   dispose(): void {
     for (const e of this.entities) e.dispose();
     this.entities.length = 0;
+    // 待ち行列の build は scene などを掴んだままなので、実体化されないまま残さない。
+    this.pendingSpawns.length = 0;
 
     this.bulletBodyPool.dispose();
     this.bulletHaloPool.dispose();
