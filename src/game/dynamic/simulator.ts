@@ -87,6 +87,13 @@ export class Simulator {
     this.entityContactPhysics.candidatePairs = 0;
     this.entityContactPhysics.participants = 0;
     const targetTime = this.simTime + simDt;
+    // 天体の顔ぶれと表面候補の絞り込みはこのフレームで1組だけ組んで全サブステップで使い回す。
+    if (this.simTime < targetTime) {
+      this.bodies.resetFrame(this.windows, this.simTime, simDt);
+      this.lastGravitySourceCount = this.bodies.gravitySourceCount;
+      this.surfaceContactPhysics.beginFrame(
+        this.bodies.surface, this.bodies.framePivot, this.simTime, targetTime);
+    }
     while (this.simTime < targetTime) {
       const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
       const eventTime = this.nextEventTime.at(this.simTime, activeStage, this.entities);
@@ -119,19 +126,14 @@ export class Simulator {
       this.consecutiveZeroSteps = 0;
 
       this.sections.enter(SECTION.orbit);
-      // 天体の窓も、表面へ触れうる相手の絞り込みも、このサブステップで1組だけ組んで全個体で
-      // 使い回す。内側で細分する個体の各歩も同じ組で足りる。
-      this.bodies.reset(this.windows, this.simTime, subDt);
-      this.lastGravitySourceCount = this.bodies.gravitySourceCount;
+      // 天体の位置を厳密に引く時刻はこのサブステップの中点。顔ぶれはフレームの1組を使い回す
+      // ので、内側で細分する個体の各歩も同じ組で足りる。
+      this.bodies.beginSubstep(this.simTime, subDt);
       // このサブステップの終端は絶対時刻で1つだけ決め、全個体もこの値へ着地させる
       // (substep)。刻み幅を各自で積ませると、細分した個体の先端時刻が丸め誤差ぶん
       // simTime から外れ、履歴を持たない種別(弾・薬莢)が表示時刻と一致しなくなる。
       const endTime = this.simTime + subDt;
-      // 触れうる相手の絞り込みは天体接触の値段そのものなので、軌道積分とは別に計る。
-      this.sections.switchTo(SECTION.orbit, SECTION.celestialContact);
-      this.surfaceContactPhysics.beginSubstep(
-        this.bodies.surface, this.bodies.pivot, this.simTime, endTime);
-      this.sections.switchTo(SECTION.celestialContact, SECTION.orbit);
+      this.surfaceContactPhysics.beginSubstep(this.bodies.pivot);
       this.substep(endTime, subDt, activeStage);
       this.simTime = endTime;
       this.sections.exit(SECTION.orbit);
