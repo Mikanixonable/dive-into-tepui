@@ -90,7 +90,7 @@ export class DetachedBooster extends DynamicEntity {
     this.collisionEnableAt = restored
       ? (init.saved.collisionEnableAt ?? init.simTime)
       : init.collisionEnableAt;
-    this.name = '分離ブースター';
+    this.setName('分離ブースター');
     this.radius = BOOSTER_COLLISION_RADIUS;
     this.contactDamageWeight = 0.35;
     this.doPreciseReentry = true;

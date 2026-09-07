@@ -174,7 +174,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.radius = BASE_COLLISION_RADIUS;
     this.collides = true;
     this.engagementAnchor = true;
-    this.name = name;
+    this.setName(name);
     this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : BASE_MAX_FUEL;
     this.throttle = new Throttle(hud, 'saved' in init ? init.saved.throttle : undefined);
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
@@ -410,7 +410,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     return rows;
   }
 
-  public readonly rename = (name: string): void => { this.name = name; };
+  public readonly rename = (name: string): void => { this.setName(name); };
 
   public readonly onMapSelect = null;
 

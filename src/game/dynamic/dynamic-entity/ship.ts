@@ -83,7 +83,7 @@ export abstract class Ship extends DynamicEntity {
     id?: string,
   ) {
     super(state, renderObject, scene, att, id);
-    this.name = name;
+    this.setName(name);
     this.radius = radius;
     this.hp = hp;
     this.maxHp = hp;
