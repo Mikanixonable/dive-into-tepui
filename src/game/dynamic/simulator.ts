@@ -143,7 +143,7 @@ export class Simulator {
       // 内側の刻みで解き終えているので、ここで解くのは1歩で渡った側だけ — 二重に解くと反発が
       // 二度当たる。
       this.sections.enter(SECTION.celestialContact);
-      this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, activeStage);
+      this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, activeStage, this.dynamicSystem);
       this.sections.exit(SECTION.celestialContact);
       nanWatchdog.checkControlled('simulator.advance(天体接触)', controlled, this.simTime, dt, subDt);
       // 接触代理を組むのも交戦圏があるときだけ。交戦圏の組まれない倍率で組むと、代理が
@@ -162,7 +162,7 @@ export class Simulator {
           }
         }
         this.entityContactPhysics.resolveEntityContacts(
-          this.simTime, this.contactEntitiesScratch, zones, activeStage);
+          this.simTime, this.contactEntitiesScratch, zones, activeStage, this.dynamicSystem);
         for (const entity of this.dynamicSystem.all()) {
           if (entity.alive) entity.applyContactProxies(subDt);
         }
@@ -215,13 +215,13 @@ export class Simulator {
         const integrated = e.stepSimulation(
           i === divisions - 1 ? endTime - e.state.t : step,
           near, this.bodies.surface, atmosphereBody, this.bodies.star,
-          this.bodies.pivot, activeStage);
+          this.bodies.pivot, activeStage, this.dynamicSystem);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
         if (divisions > 1) {
           // 細分の各歩で解く天体接触も天体接触の値段なので、軌道積分を出てから計る。
           this.sections.switchTo(SECTION.orbit, SECTION.celestialContact);
-          this.surfaceContactPhysics.resolveOne(e, activeStage);
+          this.surfaceContactPhysics.resolveOne(e, activeStage, this.dynamicSystem);
           this.sections.switchTo(SECTION.celestialContact, SECTION.orbit);
         }
       }

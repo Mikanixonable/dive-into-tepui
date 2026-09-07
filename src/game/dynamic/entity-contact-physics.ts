@@ -7,6 +7,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { EntityRegistry } from './dynamic-system';
 import type { EngagementZone } from './engagement-zone';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
@@ -73,12 +74,13 @@ export class EntityContactPhysics {
   // 独立した系なので、解決回数の上限も交戦圏ごとに掛かる。
   public resolveEntityContacts(
     simTime: number, entities: readonly DynamicEntity[],
-    zones: readonly EngagementZone<DynamicEntity>[], activeStage: Stage,
+    zones: readonly EngagementZone<DynamicEntity>[], activeStage: Stage, registry: EntityRegistry,
   ): void {
     for (const zone of zones) {
       this.collectParticipants(entities, zone, this.participantScratch);
       this.participants += this.participantScratch.length;
-      this.resolveInOrder(this.participantScratch, simTime, zone.referenceDisplacement, activeStage);
+      this.resolveInOrder(
+        this.participantScratch, simTime, zone.referenceDisplacement, activeStage, registry);
     }
   }
 
@@ -102,6 +104,7 @@ export class EntityContactPhysics {
     simTime: number,
     reference: Vec3,
     activeStage: Stage,
+    registry: EntityRegistry,
   ): void {
     if (all.length === 0) return;
     const working = this.workingScratch;
@@ -120,7 +123,7 @@ export class EntityContactPhysics {
     for (let i = 0; i < CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP; i++) {
       const best = this.earliestContact(count, dirtyA, dirtyB, all, working);
       if (best === null) break;
-      this.applyCandidate(best, all, working, changed, activeStage);
+      this.applyCandidate(best, all, working, changed, activeStage, registry);
       best.resolved = true;
       dirtyA = best.ai;
       dirtyB = best.bi;
@@ -209,6 +212,7 @@ export class EntityContactPhysics {
     working: KinematicState[],
     changed: number[],
     activeStage: Stage,
+    registry: EntityRegistry,
   ): void {
     const { ai, bi } = candidate;
     const a = all[ai]!, b = all[bi]!;
@@ -228,9 +232,9 @@ export class EntityContactPhysics {
     const t = contactTime(a, response.toi);
     a.collideWithEntity(b, {
       t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
-    }, activeStage);
+    }, activeStage, registry);
     b.collideWithEntity(a, {
       t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
-    }, activeStage);
+    }, activeStage, registry);
   }
 }
