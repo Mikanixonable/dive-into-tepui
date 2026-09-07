@@ -1,7 +1,6 @@
 // エンティティの保持・追加・上限管理・寿命回収・描画同期。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../math/vec3';
-import type { Viewpoint } from '../../math/projection';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -14,6 +13,7 @@ import type { Stage } from '../stages/stage';
 import type { Input } from '../../input/input';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
@@ -238,81 +238,27 @@ export class DynamicSystem implements EntityRegistry {
     for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
 
-  // このフレームの表示物を同期する。可視性の上書きはメッシュを触る同期が可視にしたものを
-  // 伏せ直すので、それらより後に通す。
-  sync(
-    active: Controllable | null, fo: FloatingOrigin,
-    cameraSystem: CameraSystem, displayTime: number, style: RenderStyle,
-    visibilityPolicy: MapVisibilityPolicy | null, orbitRef: OrbitReference | undefined,
-    frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting, proteinVibrationEnabled: boolean,
+  // このフレームの表示物を同期する。何をどう出すかは個体が答えるので、ここは顔ぶれを1度だけ
+  // 辿るだけ。プールへ積むのも個体自身なので、その前後をこの走査で挟む。
+  public sync(
+    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, style: RenderStyle,
+    graphics: GraphicsSettingsData, orbitRef: OrbitReference | undefined,
+    frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
   ): void {
-    this.syncControllables(active, fo, cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
-    this.syncOtherEntities(fo, displayTime, cameraSystem.activeViewpoint, proteinVibrationEnabled);
-    this.applyVisibility(visibilityPolicy, active);
-    for (const entity of this.entities) entity.syncEffects(fo, displayTime, cameraSystem, style);
-    this.syncEquatorNodes(cameraSystem, frameAnchors, timeLabel);
-  }
-
-  // 操作されうる全個体のメッシュ・エフェクト・マーカーを、どれが操作対象かを添えて同期する
-  // (方向マーカー・照準ズーム・RCS 音は操作対象のもの)。
-  private syncControllables(
-    active: Controllable | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null,
-    orbitRef?: OrbitReference,
-  ): void {
-    for (const controllable of this.controllables) {
-      if (!controllable.alive) continue;
-      const isActive = controllable === active;
-      controllable.syncControllable(
-        fo, cameraSystem, displayTime, isActive, style,
-        visibilityPolicy?.entity(controllable.mapKind, isActive) ?? null, orbitRef,
-      );
+    this.instancedPools.beginFrame();
+    for (const e of this.entities) {
+      e.sync(
+        fo, displayTime, active, visibilityPolicy, this.instancedPools, cameraSystem, style,
+        graphics, orbitRef, frameAnchors, timeLabel);
     }
-  }
-
-  // 種別ごとの表示トグルに応じてメッシュ表示を揃える。トグルを持たない種別(mapKind が null)は
-  // 対象外。
-  private applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, active: Controllable | null): void {
-    if (!visibilityPolicy) return;
-    for (const entity of this.entities) {
-      const kind = entity.mapKind;
-      if (kind === null) continue;
-      if (!visibilityPolicy.entity(kind, entity === active).category) entity.renderObject.visible = false;
-    }
+    this.instancedPools.endFrame();
   }
 
   // 全個体の赤道交点マーカーを求め直す。出すかどうかも、どの線の上で解くかも個体が答えるので、
   // 折れ線を組み終えた後・選択候補を組む前に1度だけ通す。
   updateEquatorNodes(inputs: EquatorNodeInputs, controlled: Controllable | null): void {
     for (const e of this.all()) e.updateEquatorNodes(inputs, e === controlled);
-  }
-
-  // このフレームに求まった赤道交点マーカーを置く。天体の裏に隠れた交点を伏せるのは
-  // マップビューだけで、戦闘ビューでは地球の向こう側の交点も出す。
-  private syncEquatorNodes(
-    cameraSystem: CameraSystem, frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
-  ): void {
-    const project = cameraSystem.activeCameraProjection;
-    const cameraPos = cameraSystem.activeCameraPos;
-    const occludeByBodies = cameraSystem.view === 'map';
-    for (const e of this.all()) {
-      e.syncEquatorNodes(
-        project, cameraPos, frameAnchors.bodies, frameAnchors.bodiesPivot, occludeByBodies, timeLabel);
-    }
-  }
-
-  // 操作対象候補以外のメッシュを displayTime 時点の状態へ同期し、プールで描く種別は
-  // 対応する InstancedPool へ積ませる。
-  private syncOtherEntities(
-    fo: FloatingOrigin, displayTime: number, viewer: Viewpoint, proteinVibrationEnabled: boolean,
-  ): void {
-    this.instancedPools.beginFrame();
-    // 操作対象候補は専用の同期パス(syncControllables)を持つ。
-    for (const e of this.entities) {
-      if (isControllable(e)) continue;
-      e.sync(fo, displayTime, this.instancedPools, viewer, proteinVibrationEnabled);
-    }
-    this.instancedPools.endFrame();
   }
 
   // 保持する全エンティティと描画資源プールを、生死によらず破棄する。

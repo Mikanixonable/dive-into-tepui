@@ -21,8 +21,9 @@ import {
   buildBoosterInterstageCoverPanelMesh,
 } from '../../../render/booster';
 import type { FloatingOrigin } from '../../camera/floating-origin';
-import type { Viewpoint } from '../../../math/projection';
 import type { InstancedPools } from '../instanced-pools';
+import type { Controllable } from './controllable';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { EntityRegistry } from '../dynamic-system';
 import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import { Player } from '../../player/player';
@@ -166,11 +167,11 @@ export class DebrisPiece extends DynamicEntity {
 
   // 薬莢と破片(fragment)はプールで描くので、同期し終えた変換をそのまま積む。他の種別は
   // 自前のメッシュで描かれる。
-  override sync(
-    fo: FloatingOrigin, displayTime: number, pools: InstancedPools, viewer?: Viewpoint,
-    proteinVibrationEnabled = true,
+  protected override syncModel(
+    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, pools: InstancedPools,
   ): void {
-    super.sync(fo, displayTime, pools, viewer, proteinVibrationEnabled);
+    this.placeModel(fo, displayTime, active, visibilityPolicy);
     if (this.kind === 'casing') pools.pushCasing(this.renderObject);
     else if (this.kind === 'fragment') {
       pools.pushDebrisFragment(this.fragmentVariant, this.renderObject, this.fragmentColor!);

@@ -22,7 +22,9 @@ import { buildPlayerShip } from '../../render/ships';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
-import type { MapVisibility } from '../map/visibility-policy';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
+import type { InstancedPools } from '../dynamic/instanced-pools';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
 import { Throttle } from './throttle';
@@ -543,31 +545,27 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     );
   }
 
-  // 自機のメッシュ・エフェクト・ベルト・マーカーを displayTime の状態へ同期する。
-  // isActive はこの艦が操作対象かどうか(ガンサイト時の非表示・方位マーカー・RCS 音が変わる)。
-  syncControllable(
+  // 自機のメッシュ・エフェクト・ベルト・マーカーを displayTime の状態へ同期する。ガンサイト時の
+  // 非表示・方位マーカー・RCS 音は操作対象かどうかで変わるので、それを active から引く。
+  protected override syncModel(
     fo: FloatingOrigin,
-    camera: CameraSystem,
     displayTime: number,
-    isActive: boolean,
+    active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null,
+    _pools: InstancedPools,
+    camera: CameraSystem,
     style: RenderStyle,
-    visibility: MapVisibility | null,
-    orbitRef?: OrbitReference,
+    _graphics: GraphicsSettingsData,
+    orbitRef: OrbitReference | undefined,
   ): void {
-    // メッシュ本体の位置・姿勢
-    const displayState = this.stateAt(displayTime);
-    const mapEntityVisible = camera.view !== 'map' || visibility === null || visibility.category;
-    this.renderObject.visible = displayState !== null && mapEntityVisible && !(isActive && camera.zoomActive);
-    if (displayState !== null) {
-      this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
-      this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
-      this.syncThermalAppearance();
-    }
-
+    const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);
+    const isActive = this === active;
     // 推力/RCS エフェクトとベルト。機体メッシュと同じ displayState に載せる —
-    // 揃えないと「機体は未来位置、プルームは現在位置」に割れる。
+    // 揃えないと「機体は未来位置、プルームは現在位置」に割れる。エフェクトはガンサイト中も
+    // 出したままなので、機体だけを伏せるのはこれを控えた後。
     const effectState = displayState ?? this.state;
-    const effectVisible = displayState !== null && mapEntityVisible;
+    const effectVisible = this.renderObject.visible;
+    if (isActive && camera.zoomActive) this.renderObject.visible = false;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     const rcsThrust = len(this.throttle.thrustAccelVec) > 0 ? this.throttle.thrustAccelVec : null;
     this.thrustEffects.sync(fo, effectState.r, rcsThrust, maxAccel, effectVisible, false, camera, style);
