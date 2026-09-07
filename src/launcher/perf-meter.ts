@@ -31,6 +31,7 @@ const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (
   { key: 'sim-sources', label: '重力源', group: 'シミュレーション', read: (c) => c.gravitySources },
   { key: 'contact-bodies', label: '候補天体', group: '衝突', read: (c) => c.surfaceCandidates },
   { key: 'contact-pairs', label: '候補ペア', group: '衝突', read: (c) => c.contactPairs },
+  { key: 'contact-participants', label: '参加者', group: '衝突', read: (c) => c.contactParticipants },
 ];
 
 interface PhaseStats {
