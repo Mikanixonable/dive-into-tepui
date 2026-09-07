@@ -69,7 +69,6 @@ import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../hud/object-groups';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
@@ -682,11 +681,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
   public posAt(displayTime: number): Vec3 | null {
     return this.stateAt(displayTime)?.r ?? null;
-  }
-
-  // 自艦カテゴリの表示トグルによる可否。操作中の自艦は例外扱いになる。
-  public mapVisibility(policy: MapVisibilityPolicy, viewer: Controllable | null): MapVisibility {
-    return policy.entity(this.mapKind, this === viewer);
   }
 
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }

@@ -35,7 +35,7 @@ import { RcsEffects } from '../../player/rcs-effects';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../../render/render-style';
-import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { MapVisibility } from '../../map/visibility-policy';
 import { currentThemePalette } from '../../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/crowding';
@@ -326,11 +326,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
   public posAt(displayTime: number): Vec3 | null {
     return this.stateAt(displayTime)?.r ?? null;
-  }
-
-  // 基地カテゴリの表示トグルによる可否。
-  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
-    return policy.entity(this.mapKind);
   }
 
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
