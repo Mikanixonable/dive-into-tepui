@@ -1,10 +1,7 @@
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
-import { CelestialMotion } from '../physics/celestial-motion';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { Base } from './dynamic/dynamic-entity/base';
-import type { AmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
-import type { RcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
 import { Input } from '../input/input';
@@ -55,6 +52,8 @@ export class Targeter {
   constructor(
     private readonly markerManager: MarkerManager,
     private readonly navTarget: NavTarget, private readonly entities: DynamicSystem,
+    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialMarkers: CelestialMarkers,
   ) {}
 
   // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
@@ -81,7 +80,7 @@ export class Targeter {
   }
 
   // 発射弾が標的面を自機側から通過した点をターゲット相対で記録し、既存の記録の寿命を進める。
-  updateBoardMarks(dt: number, player: Player | null, entities: DynamicSystem): void {
+  updateBoardMarks(dt: number, player: Player | null): void {
     const target = this.aliveTarget;
     if (!player || !target) {
       this.boardMarks.length = 0;
@@ -95,7 +94,7 @@ export class Targeter {
     if (lenSq(n) < 0.5) return;
 
     // 各弾について、前フレームと今フレームの位置が的面をどちら向きに跨いだかを見る。
-    for (const b of entities.bullets) {
+    for (const b of this.entities.bullets) {
       if (b.type !== 'normal' || !b.alive) continue; // 的通過マーカーは通常弾のみ対象
       const prevR = b.prevState.r;
       const d0 = dot(sub(prevR, target.state.r), n);
@@ -110,20 +109,30 @@ export class Targeter {
     }
   }
 
-  // ターゲットに紐づく表示物(的通過マーク・方位マーカー)をまとめて更新する。
-  sync(player: Player | null, cameraSystem: CameraSystem): void {
+  // ターゲットに紐づく表示物(的通過マーク・方位マーカー)と、全戦闘対象のマーカー集合を
+  // まとめて更新する。
+  sync(
+    player: Player | null, cameraSystem: CameraSystem, displayTime: number, simTime: number,
+    visibilityPolicy: MapVisibilityPolicy | null,
+  ): void {
     const project = cameraSystem.activeCameraProjection;
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, cameraSystem.view === 'map', project);
+    this.syncTargetMarkers(player, displayTime, simTime, cameraSystem, visibilityPolicy);
   }
 
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。位置は
   // 機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
-  syncTargetMarkers(
-    player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
-    displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
-    celestialBodies: readonly CelestialMotion[], celestialMarkers: CelestialMarkers,
+  private syncTargetMarkers(
+    player: Player | null, displayTime: number, simTime: number, cameraSystem: CameraSystem,
+    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
+    // マーカーは操作艦自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
+    // 別に、除外なしの一覧を使う。
+    const targets = this.entities.getCombatTargets(null);
+    const ammoPickups = this.entities.ammoPickups;
+    const fuelPickups = this.entities.rcsFuelPickups;
+    const celestialBodies = this.celestialSystem.celestialMotions;
     const view = cameraSystem.view;
     const mapView = view === 'map';
     const project = cameraSystem.activeCameraProjection;
@@ -175,7 +184,7 @@ export class Targeter {
       const mapOpacity = mapOccluded ? 0 : mapView ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
       this.pushMarkerItem(fuel.markerItem(viewerPos, view), visibility, mapOpacity, mapOccluded);
     }
-    const celestialLabels = mapView ? celestialMarkers.activeLabels : [];
+    const celestialLabels = mapView ? this.celestialMarkers.activeLabels : [];
     this.markerManager.combatMarkers.sync(
       this.markerItemScratch, project, view, screenScale, celestialLabels, celestialBodies,
       cameraSystem.activeCameraPos,
