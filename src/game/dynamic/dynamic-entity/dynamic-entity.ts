@@ -1,5 +1,6 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import { Q_IDENTITY } from '../../../math/quat';
+import type { Viewer } from './viewer';
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { OrbitalElements } from '../../../physics/elements';
@@ -608,7 +609,7 @@ export class DynamicEntity {
 
   // マップの表示トグルがこの個体をどう扱うか。トグルを持たない種別(弾・薬莢・破片)は
   // すべて出す判定を返す。viewer はいま操作している個体。
-  public mapVisibility(policy: MapVisibilityPolicy, viewer: Controllable | null): MapVisibility {
+  public mapVisibility(policy: MapVisibilityPolicy, viewer: Viewer | null): MapVisibility {
     if (this.mapKind === null) return MARKER_VISIBILITY;
     // 多態 this 型は「Controllable も実装している」ことを約束しないので、同一性は基底型で比べる。
     const self: DynamicEntity = this;

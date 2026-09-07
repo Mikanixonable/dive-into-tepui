@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { Viewer } from './viewer';
 import type { View } from '../../view/view';
 import { Ship, MUZZLE_SPEED } from './ship';
 import type { CelestialBody } from '../../../physics/celestial-body';
@@ -11,7 +12,6 @@ import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub
 import { solveLeadTime } from '../../../physics/intercept';
 import { FlashEffects } from '../../vfx/flash-effects';
 import { buildDestroyFragments } from './debris-piece';
-import type { Controllable } from './controllable';
 import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
@@ -483,7 +483,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 自艦から見た距離と相対速度。自艦がいなければ空。
   public listDetail(
-    _celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
+    _celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
   ): string {
     if (viewer === null) return '';
     const viewerState = viewer.state;
@@ -494,13 +494,13 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
   ): string {
     return this.listDetail(celestialSystem, viewer, displayTime);
   }
 
   // 自艦へ接近中と扱う距離まで寄っているか。
-  public listCounted(viewer: Controllable | null, displayTime: number): boolean {
+  public listCounted(viewer: Viewer | null, displayTime: number): boolean {
     if (viewer === null) return false;
     const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
     return d < ENEMY_APPROACH_DIST;
@@ -508,7 +508,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    _celestialSystem: CelestialSystem, _viewer: Controllable | null, navTargetId: string | null,
+    _celestialSystem: CelestialSystem, _viewer: Viewer | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     return [
       MenuCommon.target(navTargetId === this.id),
@@ -532,7 +532,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // プロパティウィンドウに出す行。装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、
   // 軌道要素と相対傾斜角は「軌道」グループの下に畳む。viewer が null なら相対量の行は落ちる。
   public propertyRows(
-    celestialSystem: CelestialSystem, viewer: Controllable | null, simTime: number,
+    celestialSystem: CelestialSystem, viewer: Viewer | null, simTime: number,
   ): readonly PropertyRow[] {
     const rel = viewer ? relativeInfo(viewer, this, celestialSystem.celestialMotions, simTime) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` }];
