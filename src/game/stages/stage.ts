@@ -207,7 +207,7 @@ export abstract class Stage {
   // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
   protected begin(): void {
     if (this.restored) return;
-    this.init(this._dynamicSystem);
+    this.init();
     this._hud.toast(this.briefingHtml(), BRIEFING_TOAST_MS);
   }
 
@@ -249,32 +249,32 @@ export abstract class Stage {
     return ship;
   }
 
-  // 敵を dynamicSystem へ登録し、出撃数をスコアへ記録する。
-  protected addEnemy(enemy: Enemy, dynamicSystem: DynamicSystem): void {
-    dynamicSystem.add(enemy);
+  // 敵を登録し、出撃数をスコアへ記録する。
+  protected addEnemy(enemy: Enemy): void {
+    this._dynamicSystem.add(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
-  // 外部資源の取得待ちで実体化を遅らせうる敵を登録する。gate が通り次第 dynamicSystem へ
-  // 登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
-  protected spawnEnemyWhenReady(gate: SpawnGate | null, build: () => Enemy, dynamicSystem: DynamicSystem): void {
-    dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
+  // 外部資源の取得待ちで実体化を遅らせうる敵を登録する。gate が通り次第登録され、
+  // そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
+  protected spawnEnemyWhenReady(gate: SpawnGate | null, build: () => Enemy): void {
+    this._dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。同一集団の判定に使う母集団は、
   // このフレームの顔ぶれを1度だけ取って全機で共有する。
-  protected behaveAllEnemies(player: Player, dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
-    const enemies = dynamicSystem.all().filter(isEnemy);
+  protected behaveAllEnemies(player: Player, simTime: number, simSpeed: SimSpeedManager): void {
+    const enemies = this._dynamicSystem.all().filter(isEnemy);
     for (const e of enemies) {
-      if (e.alive) e.behave(simTime, player, dynamicSystem, enemies, simSpeed, this._celestialSystem);
+      if (e.alive) e.behave(simTime, player, this._dynamicSystem, enemies, simSpeed, this._celestialSystem);
     }
   }
 
   protected abstract briefingHtml(): string;
   // 初期配置。既定では何も置かない。
-  protected init(_dynamicSystem: DynamicSystem): void { }
+  protected init(): void { }
   // 毎フレーム呼ぶ。台本が相手にする自艦は this.ship から引く。
-  public abstract update(dt: number, dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void;
+  public abstract update(dt: number, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
   public nextSimulationEventTime(_simTime: number): number | null { return null; }
