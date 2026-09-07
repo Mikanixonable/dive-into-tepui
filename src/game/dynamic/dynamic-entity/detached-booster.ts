@@ -160,7 +160,7 @@ export class DetachedBooster extends DynamicEntity {
   }
 
   // セーブデータへ変換する。
-  override serialize(): DetachedBoosterSaveData {
+  public override serialize(): DetachedBoosterSaveData {
     return {
       id: this.id,
       name: this.name,
