@@ -137,35 +137,6 @@
 ## 手順
 
 
-### 手順 2. `Controllable` の口を広げ、`Player` 名指しでしか取れなかった値を通す
-
-#### 目的
-
-上位が `Player` を名指しする理由の一部は、**必要な値が `Controllable` に載っていないから**である。
-先に口を広げておかないと、後続の手順で名指しが消せない。**この時点で挙動は変えない** — 呼び出し側
-の型が `Player` から `Controllable` へ広がるだけで、基地では `null` / 空になり、いまと同じ結果になる。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-entity/controllable.ts` | `boosters: PlayerBoosters \| null` を足す。**`hp: number \| null` と `maxHp: number \| null` を足す**(`DynamicEntity` には無く `Ship` と `Base` が別々に宣言している。`Base` は既に `null`(`base.ts:95-96`)なので実装側の変更は不要)。`clearTransientCommands(): void` を宣言に足す(いま実装側にしかない)。`updateControls(input, dt, simDt, entities, activeStage, celestialSystem): void` と `syncControllable(fo, cameraSystem, displayTime, isActive, style, visibility, orbitRef?): void` を宣言する |
-| `src/game/player/player.ts` | `updatePlayerControls`(259)→`updateControls`、`syncPlayer`(521)→`syncControllable` へ改名。`rcsDamp`(237)/`progradeHold`(239) の getter を削除(唯一の呼び出し元は下の `combat-view.ts`) |
-| `src/game/dynamic/dynamic-entity/base.ts` | `readonly boosters = null` を足す。`updateBaseControls`(183)→`updateControls`(未使用の3引数を受けて無視する)、`syncBase`(220)→`syncControllable`(`orbitRef` を受けて無視する)へ改名 |
-| `src/game/view/combat-view.ts` | `syncPanels`(115-121)の `player.rcsDamp` / `player.progradeHold` を `throttle.rcsDamp` / `throttle.progradeHold` に置き換える |
-| `src/game/hud/hud.ts` | `syncPanels`(95)の `game.player?.boosters` → `game.activeControllableEntity?.boosters`(この手順の時点では `activeControllableEntity` はまだ存在するので、そのまま使う) |
-| `src/game/game.ts` | `burnManagementPanel.setHandlers`(279-283)の `this.player?.boosters` を `this.activeControllableEntity?.boosters` へ |
-
-#### 達成条件と検証
-
-- `grep -rn "updatePlayerControls\|updateBaseControls\|syncPlayer(\|syncBase(" src` が 0 件。
-- `grep -rn "\.rcsDamp\|\.progradeHold" src/game/view/` が 0 件。
-- `grep -n "get rcsDamp\|get progradeHold" src/game/player/player.ts` が 0 件。
-- `npm run typecheck`、`npm run test:game`。
-- 実機は不要(型と名前の移動のみ)。
-
----
-
 ### 手順 3. `DynamicSystem` の per-frame 処理を `Controllable` で束ねる
 
 #### 目的
