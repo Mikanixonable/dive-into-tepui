@@ -63,9 +63,10 @@ function metaFromSaveData(data: GameSaveData): SnapshotMeta {
     hpRatio: 0,
     maxHp: 0,
     magazines: 0,
-    money: data.bases.reduce((sum, b) => sum + b.money, 0),
-    playerCount: data.players.length,
-    enemyAliveCount: data.enemies.filter((e) => e.alive).length,
+    money: data.entities.reduce((sum, e) => sum + (e.kind === 'base' ? e.money : 0), 0),
+    playerCount: data.entities.filter((e) => e.kind === 'player').length,
+    enemyAliveCount: data.entities.filter(
+      (e) => (e.kind === 'metal-enemy' || e.kind === 'protein-enemy') && e.alive).length,
     phase: data.stage.phase,
   };
 }

@@ -15,7 +15,7 @@ import type {
   WeaponPart,
 } from './parts';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
-import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/player-throttle';
+import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/throttle';
 
 // 艦の材質・空力。大気抵抗は弾道係数の逆数 Cd·A/m [m^2/kg]、太陽輻射圧は輻射圧係数 ×
 // 断面積質量比 C_R·A/m [m^2/kg] で表す。
@@ -43,6 +43,7 @@ const FIRE_INTERVAL = 0.06; // 発射間隔 [s]
 const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
 export abstract class Ship extends DynamicEntity {
+  public override readonly combatTarget = true;
   public override readonly bcInv = SHIP_BCINV;
   protected readonly srpCoeff = SHIP_SRP_COEFF;
   protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
@@ -83,7 +84,7 @@ export abstract class Ship extends DynamicEntity {
     id?: string,
   ) {
     super(state, renderObject, scene, att, id);
-    this.name = name;
+    this.setName(name);
     this.radius = radius;
     this.hp = hp;
     this.maxHp = hp;

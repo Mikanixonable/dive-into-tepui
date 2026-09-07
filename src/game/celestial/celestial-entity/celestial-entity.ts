@@ -38,7 +38,7 @@ import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { Player } from '../../player/player';
+import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 
 // 公転天体の参照軌道線の色。同じ種別の天体はすべて同じ色で引く。
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
@@ -273,9 +273,9 @@ export abstract class CelestialEntity implements ObjectPickable {
 
   // 一覧の検索が照合する、自艦からの距離と中心天体の名前。
   public listSearchText(
-    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    return bodySearchText(celestialSystem, this.posAt(displayTime), activePlayer, displayTime);
+    return bodySearchText(celestialSystem, this.posAt(displayTime), viewer, displayTime);
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
@@ -306,7 +306,7 @@ export abstract class CelestialEntity implements ObjectPickable {
   public propertyRows(
     commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number, displayTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.activePlayer;
+    const viewer = commands.controlled;
     const motion = this.motion;
     const def = motion.def;
     const rows: PropertyRow[] = [];

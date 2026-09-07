@@ -1,6 +1,8 @@
 // 表示設定(天球グリッド・軌道ガイド)の状態を保持し、localStorage へ永続化する。
 // DOM は ViewOptionsPanel(表示パネル)に同居する — トグル・設定の配線だけをここが担う。
-import { applyGridToggle, CelestialGridVisibility, normalizeGridVisibility } from '../../render/celestial-grid';
+import {
+  applyGridToggle, CelestialGridVisibility, DEFAULT_GRID_VISIBILITY, normalizeGridVisibility,
+} from '../../render/celestial-grid';
 import {
   loadOrbitGuideSettings,
   normalizeOrbitGuideSettings,
@@ -8,18 +10,6 @@ import {
   saveOrbitGuideSettings,
 } from '../celestial/orbit-guide/orbit-guide-settings';
 import type { ViewOptionsPanel } from '../hud/panels/view-options-panel';
-
-const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
-  stars: true,
-  ecliptic: false,
-  eclipticPlane: false, eclipticPole: false, eclipticGrid: false,
-  equator: false,
-  equatorPlane: false, equatorPole: false, equatorGrid: false,
-  eclipticScaleGrid: false,
-  equatorScaleGrid: false,
-  moonOrbitScaleGrid: false,
-  moonEquatorScaleGrid: false,
-};
 
 const STORAGE_KEY = 'tepui.gridVisibility';
 
@@ -50,12 +40,15 @@ export class Navball {
   orbitGuideSettings: OrbitGuideSettings = loadOrbitGuideSettings();
   // 軌道ガイドタブの設定が変わるたびに呼ばれる(描画側が新しい設定を受け取るための口)。
   onOrbitGuideSettingsChange: ((settings: OrbitGuideSettings) => void) | null = null;
+  // 天球グリッドの表示設定が変わるたびに呼ばれる(同上)。
+  onGridVisibilityChange: ((visibility: CelestialGridVisibility) => void) | null = null;
 
   constructor(viewOptionsPanel: ViewOptionsPanel) {
     viewOptionsPanel.onGridToggle = (key, on) => {
       this.gridVisibility = applyGridToggle(this.gridVisibility, key, on);
       saveGridVisibility(this.gridVisibility);
       viewOptionsPanel.setGridVisibility(this.gridVisibility);
+      this.onGridVisibilityChange?.(this.gridVisibility);
     };
     viewOptionsPanel.setGridVisibility(this.gridVisibility);
 

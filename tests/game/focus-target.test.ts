@@ -34,9 +34,9 @@ export function register(): void {
 
   test('focus-target: 役割トークンは frameAnchors.stateOf の戻り値を返す', () => {
     const shipState = kinematicState<'eci'>(0, v3(7e6, 0, 0), v3(0, 7500, 0));
-    const anchors = stubAnchors({ '@activeShip': shipState });
+    const anchors = stubAnchors({ '@controlled': shipState });
     const result = resolveFocusTarget(
-      { kind: 'object', id: '@activeShip' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
+      { kind: 'object', id: '@controlled' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
     assert.equal(result.pos, shipState.r);
   });
 
@@ -52,9 +52,9 @@ export function register(): void {
 
   test('focus-target: 役割トークンは frameAnchors.stateOf の速度も返す', () => {
     const shipState = kinematicState<'eci'>(0, v3(7e6, 0, 0), v3(0, 7500, 0));
-    const anchors = stubAnchors({ '@activeShip': shipState });
+    const anchors = stubAnchors({ '@controlled': shipState });
     const result = resolveFocusTarget(
-      { kind: 'object', id: '@activeShip' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
+      { kind: 'object', id: '@controlled' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
     assert.deepEqual(result.vel, shipState.v);
   });
 

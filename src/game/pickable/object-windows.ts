@@ -3,7 +3,6 @@
 // 形で差し出す。どのクリックがどの対象に当たったかは、ビュー側が決めて open() へ渡す。
 import { Hud } from '../hud/hud';
 import type { View } from '../view/view';
-import type { Base } from '../dynamic/dynamic-entity/base';
 import { ContextMenu, MenuAction } from '../hud/windows';
 import {
   PropertyWindow, PropertyWindowContent, PropertyWindowItem,
@@ -21,10 +20,12 @@ import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
 import { PlanEditor } from '../plan/plan-editor';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { ActivePlayerController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { Stage } from '../stages/stage';
-import type { Player } from '../player/player';
+import { Player } from '../player/player';
+import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { Targeter } from '../targeter';
 import { EmptySpacePickable } from './empty-space-pickable';
 import { orbitingAttractorOf } from '../../physics/attractor';
@@ -59,7 +60,7 @@ export class ObjectWindows implements ObjectCommands {
   // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
   constructor(
     private readonly hud: Hud,
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
@@ -68,20 +69,20 @@ export class ObjectWindows implements ObjectCommands {
     private readonly pauseMenu: PauseMenu,
     private readonly pickables: ObjectPickables,
     linePickables: LinePickables,
-    private readonly activePlayers: ActivePlayerController,
+    private readonly controlSelection: ControlSelection,
     private readonly frameControls: FrameControls,
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
   ) {
     this.menu = new ContextMenu<ObjectPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => target.runMenu(act, this);
-    this.partWindows = new PartWindows(hud, activePlayers);
+    this.partWindows = new PartWindows(hud, controlSelection);
     this.orbitLineWindows = new OrbitLineWindows(
       hud, linePickables, pickables, this,
       (clientX, clientY, target) => this.open(clientX, clientY, target, pickables.lastSimTime),
     );
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
-      const enemy = this.entities.enemies.find((e) => e.id === id);
+      const enemy = this.dynamicSystem.all().filter(isEnemy).find((e) => e.id === id);
       if (enemy) this.open(clientX, clientY, enemy, this.pickables.lastSimTime);
     };
     this.hud.targetPanel.onSelectRight = (clientX, clientY) => {
@@ -218,13 +219,14 @@ export class ObjectWindows implements ObjectCommands {
   // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
   // 天体は静的な primaryOf、人工物は現在状態から orbitingAttractorOf で判定する。
   private relatedItemsFor(target: ObjectPickable, pivot: number): readonly PropertyWindowRelatedItem[] {
-    const activeShip = this.activePlayers.current;
-    if (activeShip !== null && target === activeShip) {
-      return activeShip.parts.map((part) => ({
+    const controlled = this.controlSelection.current;
+    // 搭載部品を持つのは艦だけなので、操作中の基地では周回物体の一覧へ落ちる。
+    if (controlled instanceof Player && target === controlled) {
+      return controlled.parts.map((part) => ({
         id: part.id,
         label: part.name,
-        onFocus: () => this.focus(activeShip.id, `${part.name} を搭載する ${activeShip.name}`),
-        onContextMenu: (clientX, clientY) => this.partWindows.open(activeShip, part, clientX, clientY),
+        onFocus: () => this.focus(controlled.id, `${part.name} を搭載する ${controlled.name}`),
+        onContextMenu: (clientX, clientY) => this.partWindows.open(controlled, part, clientX, clientY),
       }));
     }
     if (!(target instanceof CelestialEntity)) return [];
@@ -254,7 +256,8 @@ export class ObjectWindows implements ObjectCommands {
   }
 
   private relatedTitleFor(target: ObjectPickable): string {
-    return target === this.activePlayers.current ? '搭載部品' : '周回物体';
+    const controlled = this.controlSelection.current;
+    return controlled instanceof Player && target === controlled ? '搭載部品' : '周回物体';
   }
 
   // ------------------------------------------------------------- ObjectCommands
@@ -292,22 +295,13 @@ export class ObjectWindows implements ObjectCommands {
     this.editor.addNodeAt(t);
   }
 
-  setActivePlayer(ship: Player | null): void {
-    if (ship === null) this.activePlayers.setOrNull(null);
-    else this.activePlayers.set(ship);
+  setControlled(target: Controllable | null): void {
+    if (target === null) this.controlSelection.clear();
+    else this.controlSelection.select(target);
   }
 
-  removePlayer(ship: Player): void {
-    this.activePlayers.remove(ship);
-  }
-
-  setControlledBase(base: Base | null): void {
-    this.activePlayers.setBase(base);
-  }
-
-  removeBase(base: Base): void {
-    if (this.activePlayers.controlledBase === base) this.activePlayers.setBase(null);
-    base.alive = false;
+  removeControlled(target: Controllable): void {
+    this.controlSelection.remove(target);
   }
 
   duplicate(kind: DynamicEntityKind, state: KinematicState): void {
@@ -322,8 +316,7 @@ export class ObjectWindows implements ObjectCommands {
     this.pauseMenu.toggle(true);
   }
 
-  get activePlayer(): Player | null { return this.activePlayers.current; }
-  get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
+  get controlled(): Controllable | null { return this.controlSelection.current; }
   get canAuthor(): boolean { return this.activeStage.authoring !== null; }
   get executesPlans(): boolean { return this.activeStage.executesPlans; }
   get view(): View { return this.cameraSystem.view; }
@@ -333,6 +326,6 @@ export class ObjectWindows implements ObjectCommands {
   }
 
   canNavTarget(id: string, simTime: number): boolean {
-    return this.navTarget.canTarget(id, this.entities, this.celestialSystem, simTime);
+    return this.navTarget.canTarget(id, this.dynamicSystem, this.celestialSystem, simTime);
   }
 }
