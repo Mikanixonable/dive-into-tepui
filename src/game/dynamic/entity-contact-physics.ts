@@ -7,7 +7,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { EntityRegistry } from './dynamic-system';
+import type { EntityRegistry } from './entity-registry';
 import type { EngagementZone } from './engagement-zone';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';

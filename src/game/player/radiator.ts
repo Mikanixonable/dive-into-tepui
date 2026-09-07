@@ -13,7 +13,7 @@ import {
 import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
 import type { Stage } from '../stages/stage';
-import type { EntityRegistry } from '../dynamic/dynamic-system';
+import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { Player } from './player';
 import type { RadiatorSaveData } from '../save/save-data';
 

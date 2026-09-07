@@ -10,7 +10,7 @@ import type { AltitudeAlarm } from '../../player/altitude-alarm';
 import type { Input } from '../../../input/input';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { Stage } from '../../stages/stage';
-import type { EntityRegistry } from '../dynamic-system';
+import type { EntityRegistry } from '../entity-registry';
 import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
 

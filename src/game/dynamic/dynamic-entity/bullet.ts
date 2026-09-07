@@ -4,7 +4,7 @@ import { DynamicEntity } from './dynamic-entity';
 import type { InstancedPools } from '../instanced-pools';
 import type { Controllable } from './controllable';
 import type { MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { EntityRegistry } from '../dynamic-system';
+import type { EntityRegistry } from '../entity-registry';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { CelestialMotion } from '../../../physics/celestial-motion';

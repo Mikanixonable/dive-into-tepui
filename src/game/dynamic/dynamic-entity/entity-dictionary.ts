@@ -10,7 +10,7 @@ import { findEnemyClass } from './enemy-dictionary';
 import { Player } from '../../player/player';
 import type { DynamicEntity } from './dynamic-entity';
 import type { EntitySaveDataUnion } from '../../save/save-data';
-import type { SpawnGate } from '../dynamic-system';
+import type { SpawnGate } from '../entity-registry';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { Hud } from '../../hud/hud';
 import type { MarkerManager } from '../../marker/marker-manager';

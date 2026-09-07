@@ -11,7 +11,7 @@ import { Ship, SHIP_RADIATING_AREA_PER_MASS, PLAYER_MASS, PLAYER_INERTIA_PITCH, 
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { EntityRegistry } from '../dynamic/dynamic-system';
+import type { EntityRegistry } from '../dynamic/entity-registry';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { Input } from '../../input/input';

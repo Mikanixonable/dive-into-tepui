@@ -16,7 +16,7 @@ import type { RenderStyle } from '../../render/render-style';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { FlashEffects } from '../vfx/flash-effects';
-import type { EntityRegistry } from '../dynamic/dynamic-system';
+import type { EntityRegistry } from '../dynamic/entity-registry';
 import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
 import { PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';

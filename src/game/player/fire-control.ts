@@ -13,7 +13,7 @@ import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { Ship, PLAYER_MASS } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
-import type { EntityRegistry } from '../dynamic/dynamic-system';
+import type { EntityRegistry } from '../dynamic/entity-registry';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { FlashEffects } from '../vfx/flash-effects';
 import type { Stage } from '../stages/stage';

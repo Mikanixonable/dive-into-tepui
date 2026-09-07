@@ -25,7 +25,7 @@ import type { SphereHit } from '../../../math/triangle-mesh';
 import { BASE_COLLISION_RADIUS, baseRaycast, baseSphereCollide } from './base-collision';
 import { Throttle } from '../../player/throttle';
 import type { Controllable } from './controllable';
-import type { EntityRegistry } from '../dynamic-system';
+import type { EntityRegistry } from '../entity-registry';
 import type { Stage } from '../../stages/stage';
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
