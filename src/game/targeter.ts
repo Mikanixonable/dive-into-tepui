@@ -1,5 +1,8 @@
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
+import { isBullet } from './dynamic/dynamic-entity/bullet';
+import { isAmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
+import { isRcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
@@ -82,7 +85,7 @@ export class Targeter {
     if (lenSq(n) < 0.5) return;
 
     // 各弾について、前フレームと今フレームの位置が的面をどちら向きに跨いだかを見る。
-    for (const b of this.dynamicSystem.bullets) {
+    for (const b of this.dynamicSystem.all().filter(isBullet)) {
       if (b.type !== 'normal' || !b.alive) continue; // 的通過マーカーは通常弾のみ対象
       const prevR = b.prevState.r;
       const d0 = dot(sub(prevR, target.state.r), n);
@@ -118,8 +121,8 @@ export class Targeter {
     // マーカーは操作対象自身も他の船と同列に扱う。自分自身を候補から外すのは、ターゲット選定
     // (handleTargetSelectKey)の側だけ。
     const targets = this.dynamicSystem.all().filter(isCombatTarget);
-    const ammoPickups = this.dynamicSystem.ammoPickups;
-    const fuelPickups = this.dynamicSystem.rcsFuelPickups;
+    const ammoPickups = this.dynamicSystem.all().filter(isAmmoPickup);
+    const fuelPickups = this.dynamicSystem.all().filter(isRcsFuelPickup);
     const celestialBodies = this.celestialSystem.celestialMotions;
     const view = cameraSystem.view;
     const mapView = view === 'map';

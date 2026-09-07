@@ -1,6 +1,6 @@
 // マップ上で「何が選べるか」を1フレーム分組み立てる。被選択物(ObjectPickable)の候補集合と、
 // その回の表示可否(MapVisibilityPolicy)を答える。
-import { ObjectPickable } from './object-pickable';
+import { isObjectPickable, ObjectPickable } from './object-pickable';
 import { focusTargetId } from '../camera/focus-target';
 import { DynamicSystem } from '../dynamic/dynamic-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -93,7 +93,7 @@ export class ObjectPickables {
 
     this.candidateItems.length = 0;
     for (const body of this.celestialMarkers.bodyPickables) append(body);
-    for (const pickable of this.dynamicSystem.objectPickables) append(pickable);
+    for (const pickable of this.dynamicSystem.all().filter(isObjectPickable)) append(pickable);
     for (const node of this.navTarget.pickables()) append(node);
     for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
     for (const e of this.dynamicSystem.all()) {

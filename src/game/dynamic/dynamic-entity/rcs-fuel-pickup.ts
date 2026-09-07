@@ -188,3 +188,8 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
 }
+
+// この個体が RCS 燃料補給か。顔ぶれから RCS 燃料補給だけを絞るときに使う。
+export function isRcsFuelPickup(entity: DynamicEntity): entity is RcsFuelPickup {
+  return entity instanceof RcsFuelPickup;
+}

@@ -15,6 +15,9 @@ import { PlanDisplay } from './plan/plan-display';
 import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
+import { isEnemy } from './dynamic/dynamic-entity/enemy';
+import { isBase } from './dynamic/dynamic-entity/base';
+import { isPlayer } from './player/player';
 import { EntityLineManager } from './lines/entity-line-manager';
 import { Simulator } from './dynamic/simulator';
 import { Predictor } from './dynamic/predictor';
@@ -179,6 +182,7 @@ export class Game {
       autoOrbitReference(controlled.state.r, celestial.celestialMotions, controlled.state.t),
       controlled.state.t, (id: string) => celestial.nameOf(id),
     );
+    const entities = this.dynamicSystem.all();
     return {
       simTime: this.simTime,
       phase: this.activeStage.phase,
@@ -191,9 +195,9 @@ export class Game {
         : 0,
       maxHp: controlled?.maxHp ?? 0,
       magazines: controlled?.fire?.mags ?? 0,
-      money: this.dynamicSystem.bases.reduce((sum, b) => sum + b.baseState.money, 0),
-      playerCount: this.dynamicSystem.players.length,
-      enemyAliveCount: this.dynamicSystem.enemies.filter((e) => e.alive).length,
+      money: entities.filter(isBase).reduce((sum, b) => sum + b.baseState.money, 0),
+      playerCount: entities.filter(isPlayer).length,
+      enemyAliveCount: entities.filter(isEnemy).filter((e) => e.alive).length,
     };
   }
 

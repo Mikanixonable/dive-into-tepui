@@ -418,3 +418,8 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 注視されても操作対象にはならない。
   public readonly onMapFocus = null;
 }
+
+// この個体が基地か。顔ぶれから基地だけを絞るときに使う。
+export function isBase(entity: DynamicEntity): entity is Base {
+  return entity instanceof Base;
+}

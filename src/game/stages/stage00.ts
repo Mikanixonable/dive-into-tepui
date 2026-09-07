@@ -3,6 +3,7 @@ import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { WaveAttack } from './stage-utils/wave-attack';
 import type { Stage00SaveData, StageSaveData } from '../save/save-data';
 import { MAX_ACTIVE_AMMO_PICKUPS, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST } from './stage-utils/logistics';
@@ -53,7 +54,7 @@ export class Stage00 extends Stage {
 
     this.behaveAllEnemies(player, dynamicSystem, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed, true);
-    this.waveAttack.update(dt, player, dynamicSystem.enemies, simTime, this, (enemy) => this.addEnemy(enemy, dynamicSystem));
+    this.waveAttack.update(dt, player, dynamicSystem.all().filter(isEnemy), simTime, this, (enemy) => this.addEnemy(enemy, dynamicSystem));
   }
 
   checkWin(): boolean { return false; }

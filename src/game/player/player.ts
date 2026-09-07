@@ -765,3 +765,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     commands.hint(`${this.name} を操作対象に設定`);
   };
 }
+
+// この個体が自機か。顔ぶれから自機だけを絞るときに使う。
+export function isPlayer(entity: DynamicEntity): entity is Player {
+  return entity instanceof Player;
+}

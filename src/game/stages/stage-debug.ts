@@ -6,6 +6,7 @@ import { Button, ToggleSwitch } from '../../hud/widgets';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
+import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { MAG_ROUNDS } from '../player/fire-control';
 import { STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST } from './stage-utils/logistics';
 
@@ -66,7 +67,7 @@ export class StageDebug extends Stage {
   update(_dt: number, dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
-    for (const e of dynamicSystem.enemies) e.fireEnabled = this.enemyFireEnabled;
+    for (const e of dynamicSystem.all().filter(isEnemy)) e.fireEnabled = this.enemyFireEnabled;
     this.behaveAllEnemies(player, dynamicSystem, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }

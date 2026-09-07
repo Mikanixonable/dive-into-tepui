@@ -6,6 +6,9 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { FloatingOrigin } from '../camera/floating-origin';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { isBase } from '../dynamic/dynamic-entity/base';
+import { isPlayer } from '../player/player';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { currentThemePalette } from '../../theme';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
@@ -103,7 +106,7 @@ export class EntityLineManager {
       else entity.hideActualLine();
     };
 
-    for (const ship of this.dynamicSystem.players) {
+    for (const ship of this.dynamicSystem.all().filter(isPlayer)) {
       const isActive = ship === active;
       const visibility = visibilityPolicy?.entity('player', isActive);
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
@@ -113,7 +116,7 @@ export class EntityLineManager {
         { ellipse: playerOrbitStyleOf(isActive), predicted: playerPredictedStyleOf(isActive), actual: playerActualStyleOf(isActive) },
       );
     }
-    for (const enemy of this.dynamicSystem.enemies) {
+    for (const enemy of this.dynamicSystem.all().filter(isEnemy)) {
       const visibility = visibilityPolicy?.entity('enemy');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
@@ -122,7 +125,7 @@ export class EntityLineManager {
         sameTrajectoryStyle(enemyLineStyle),
       );
     }
-    for (const base of this.dynamicSystem.bases) {
+    for (const base of this.dynamicSystem.all().filter(isBase)) {
       const visibility = visibilityPolicy?.entity('base');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       applyEntityLines(
@@ -156,6 +159,7 @@ export class EntityLineManager {
 
   // 線を持ちうるエンティティ。
   private get lineOwners(): readonly (readonly DynamicEntity[])[] {
-    return [this.dynamicSystem.players, this.dynamicSystem.enemies, this.dynamicSystem.bases];
+    const entities = this.dynamicSystem.all();
+    return [entities.filter(isPlayer), entities.filter(isEnemy), entities.filter(isBase)];
   }
 }

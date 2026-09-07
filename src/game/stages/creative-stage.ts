@@ -17,13 +17,15 @@ import { Vec3, add, addScaled } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { hudRail } from '../hud/hud-root';
 import type { CameraSystem } from '../camera/camera-system';
-import { AmmoPickup } from '../dynamic/dynamic-entity/ammo-pickup';
-import { RcsFuelPickup } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
+import { AmmoPickup, isAmmoPickup } from '../dynamic/dynamic-entity/ammo-pickup';
+import { isRcsFuelPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
 import { Base } from '../dynamic/dynamic-entity/base';
 import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy, proteinFormationSpawns } from './spawner/enemy-generator';
 import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../protein/protein-display';
 import { proteinAssetGate } from '../protein/protein-asset-loader';
+import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
+import { isPlayer } from '../player/player';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
 import { ElementsForm, LagrangeForm, ReferenceCelestialBody, ObjectPlacerForm, ObjectPlacerPanel } from '../creative/object-placer-panel';
@@ -84,10 +86,11 @@ export class CreativeStage extends Stage {
     const savedCreative = saved as CreativeStageSaveData | undefined;
 
     // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦・補給の id を予約する。
-    for (const p of this._dynamicSystem.players) this.playerIdAllocator.next(p.id);
-    for (const ammoPickup of this._dynamicSystem.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
-    for (const pickup of this._dynamicSystem.rcsFuelPickups) this.rcsFuelPickupIdAllocator.next(pickup.id);
-    const restoredProtein = this._dynamicSystem.enemies.find((enemy) => enemy instanceof ProteinEnemy);
+    const entities = this._dynamicSystem.all();
+    for (const p of entities.filter(isPlayer)) this.playerIdAllocator.next(p.id);
+    for (const ammoPickup of entities.filter(isAmmoPickup)) this.ammoPickupIdAllocator.next(ammoPickup.id);
+    for (const pickup of entities.filter(isRcsFuelPickup)) this.rcsFuelPickupIdAllocator.next(pickup.id);
+    const restoredProtein = entities.find((entity) => entity instanceof ProteinEnemy);
     if (restoredProtein) this.proteinDisplay = restoredProtein.display;
 
     this.previewEllipseLine = new EllipseLine({ color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan });
@@ -122,8 +125,8 @@ export class CreativeStage extends Stage {
 
   // 出ているタンパク質の敵すべてへ、選ばれた表示設定を反映する。
   private applyProteinDisplay(display: ProteinDisplaySettings): void {
-    for (const enemy of this._dynamicSystem.enemies) {
-      if (enemy instanceof ProteinEnemy) enemy.setDisplay(display);
+    for (const entity of this._dynamicSystem.all()) {
+      if (entity instanceof ProteinEnemy) entity.setDisplay(display);
     }
   }
 
@@ -315,7 +318,7 @@ export class CreativeStage extends Stage {
 
   // フォーム値から KinematicState を組み立て、配置する。
   private placeObject(name: string, form: ObjectPlacerForm): void {
-    if (form.entityKind === 'player' && this._dynamicSystem.players.length >= MAX_PLACED_SHIPS) {
+    if (form.entityKind === 'player' && this._dynamicSystem.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
       this._hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
@@ -436,7 +439,9 @@ export class CreativeStage extends Stage {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
       this.behaveAllEnemies(player, this._dynamicSystem, simTime, simSpeed);
       if (this.waveAttackEnabled) {
-        this.waveAttack.update(dt, player, this._dynamicSystem.enemies, simTime, this, (enemy) => this.addEnemy(enemy, this._dynamicSystem));
+        this.waveAttack.update(
+          dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this,
+          (enemy) => this.addEnemy(enemy, this._dynamicSystem));
       }
     }
   }
@@ -445,7 +450,7 @@ export class CreativeStage extends Stage {
   // 待っているノードが1つも無ければ null。
   nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
-    for (const ship of this._dynamicSystem.players) {
+    for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
       const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t : undefined;
       if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
     }
@@ -454,7 +459,7 @@ export class CreativeStage extends Stage {
 
   // ノード時刻ちょうどでノードの絶対状態へ乗り移る。
   applySimulationEvents(simTime: number): void {
-    for (const ship of this._dynamicSystem.players) {
+    for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
       if (ship.planExecution !== 'instant') continue;
       const node = ship.plan.firstNode();
       if (!node || node.t > simTime + 1e-9) continue;
