@@ -643,7 +643,8 @@ export class Game {
   perfCounts(): PerfCounts {
     return {
       ...this.dynamicSystem.perfCounts(),
-      ...this.predictor.perfCounts(),
+      ...this.predictor.perfCounts(
+        this.simulator.simTime, this.displayWindowManager.current.duration, this.player),
       ...this.simulator.perfCounts(),
       ...this.planDisplay.perfCounts(),
       ...this.celestialSystem.perfCounts(),
