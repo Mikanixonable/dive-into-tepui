@@ -1,6 +1,5 @@
 // 計画軌道の近点・遠点を指す、実体を持たない被選択物。中心天体に応じた呼称(近地点/近月点…)
 // とマーカー用の略称を答え、その天体の表面からの高度を示す。
-import type { Viewer } from '../dynamic/dynamic-entity/viewer';
 import { getApsisLabelSpec, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
 import { fmtDist } from '../../hud/utils';
 import { len, sub, type Vec3 } from '../../math/vec3';
@@ -8,6 +7,7 @@ import { ORBIT_POINT_GLYPH } from './marker-identity';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
 export class ApsisMarker extends OrbitPointMarker {
   public readonly glyph = ORBIT_POINT_GLYPH.apsis;
@@ -37,7 +37,7 @@ export class ApsisMarker extends OrbitPointMarker {
   // 所属軌道・中心天体の表面からの高度・通過までの残り時間。位置が解けていなければ行は無く、
   // 中心天体が引けないフレームは高度が落ちる。
   public propertyRows(
-    celestialSystem: CelestialSystem, _viewer: Viewer | null, simTime: number,
+    celestialSystem: CelestialSystem, _viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     const pos = this.pos;
     if (pos === null) return [];

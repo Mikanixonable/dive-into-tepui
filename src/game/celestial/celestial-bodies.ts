@@ -1,7 +1,6 @@
-// 星系の天体について答える面。どの天体がどこに居て、何と呼ばれ、どの系に属するかを返す。
-// 天体の見た目(CelestialEntity)も描画資源も持たないので、この面で受ける側は THREE も
-// 描画パイプラインも引かない。
-import type { CelestialMotions } from '../../physics/celestial-motion';
+// 星系の天体を id で引く索引。天体の表示名・主天体・所属する系・時刻ごとの ECI 状態と、
+// 座標系の解決役を答える。
+import type { CelestialMotions } from '../../physics/celestial-body';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
@@ -16,6 +15,7 @@ export interface CelestialBodies extends CelestialMotions {
 
   // 天体 id の表示名。未登録の id はそのまま返す。
   nameOf(id: string): string;
+  // 天体 id が登録されているか。
   has(id: string): boolean;
   // 天体 id の運動。未登録の id を渡すと例外になる。
   motionOf(id: string): CelestialBody;
@@ -26,10 +26,16 @@ export interface CelestialBodies extends CelestialMotions {
 
   // 天体 id の主天体。未登録なら undefined、主天体を持たなければ null。
   bodyParentId(id: string): string | null | undefined;
+  // focusId から主星まで遡った先祖の id(近い順)。focusId 自身は含まない。
   ancestorsOf(focusId: string): readonly string[];
+  // focusId と同じ系に属する天体の id。focusId を省くと空集合。
   sameSystemIds(focusId: string | undefined): ReadonlySet<string>;
+  // id から主星までの系の鎖(内側から外側の順)。系に属さない id では空。
   chainFrom(id: string): readonly string[];
+  // 鎖の各段に属する天体の id をまとめたもの。重複は畳む。
   membersFrom(chain: readonly string[]): readonly string[];
+  // カメラ位置がいる系の成員の id。pivot は天体位置を厳密に引く時刻。
   systemMembersAt(cameraPos: Vec3, pivot: number): readonly string[];
+  // position が focusId の系の内側にあるか。focusId を省くと常に true。
   isPositionInFocusedSystem(focusId: string | undefined, position: Vec3, pivot: number): boolean;
 }

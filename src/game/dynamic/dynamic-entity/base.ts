@@ -1,7 +1,7 @@
 // 軌道上の拠点。自艦と同じく操作でき、資金を持つ。
 import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { Viewer } from './viewer';
+import type { OrbitingObject } from './orbiting-object';
 import type { View } from '../../view/view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
@@ -146,7 +146,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   constructor(
     init: BaseInit,
     scene: THREE.Scene,
-    hud: Notifier,
+    notifier: Notifier,
     worldSfx: WorldSfx,
     private readonly markerManager: MarkerManager,
   ) {
@@ -178,7 +178,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.engagementAnchor = true;
     this.setName(name);
     this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : BASE_MAX_FUEL;
-    this.throttle = new Throttle(hud, 'saved' in init ? init.saved.throttle : undefined);
+    this.throttle = new Throttle(notifier, 'saved' in init ? init.saved.throttle : undefined);
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);
 
@@ -193,7 +193,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
   updateControls(
     input: Input | null, dt: number, simDt: number,
-    _registry: EntityRegistry, _activeStage: Stage, _celestialSystem: CelestialBodies,
+    _registry: EntityRegistry, _activeStage: Stage, _celestialBodies: CelestialBodies,
   ): void {
     if (input === null) {
       this.clearTransientCommands();
@@ -326,7 +326,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 自艦がいれば自艦からの距離。いなければ出さない。
   public listDetail(
-    _celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
+    _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
   ): string {
     if (viewer === null) return '';
     return fmtDist(len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r)));
@@ -334,14 +334,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
+    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
   ): string {
-    return this.listDetail(celestialSystem, viewer, displayTime);
+    return this.listDetail(celestialBodies, viewer, displayTime);
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    _celestialSystem: CelestialBodies, viewer: Viewer | null, navTargetId: string | null,
+    _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     const subLabel = `基地 / 所持金: ${this.baseState.money.toLocaleString()} Cr`;
     const controlItem: MenuItem<MenuAction> = viewer === this
@@ -380,7 +380,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // プロパティウィンドウに出す行。所持金・自艦からの距離を主要行とし、操作対象かは
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。自艦がいなければ距離の行は落ちる。
   public propertyRows(
-    celestialSystem: CelestialBodies, viewer: Viewer | null, simTime: number,
+    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     const rows: PropertyRow[] = [
       {
@@ -390,7 +390,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       { key: 'money', label: '所持金', value: `${this.baseState.money.toLocaleString()} Cr` },
     ];
     if (viewer) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(this.state.r, viewer.state.r))) });
-    rows.push(...orbitRows(this, celestialSystem, simTime));
+    rows.push(...orbitRows(this, celestialBodies, simTime));
     return rows;
   }
 

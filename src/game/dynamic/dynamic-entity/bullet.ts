@@ -4,11 +4,8 @@ import { DynamicEntity } from './dynamic-entity';
 import type { InstancedPools } from '../instanced-pools';
 import type { Controllable } from './controllable';
 import type { MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { EntityRegistry } from '../entity-registry';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
-import type { CelestialBody } from '../../../physics/celestial-body';
-
 import { FloatingOrigin } from '../../camera/floating-origin';
 import type { Stage } from '../../stages/stage';
 import { Vec3, lenSq, sub } from '../../../math/vec3';
@@ -17,13 +14,14 @@ import { orientProjectile } from '../../../render/projectile-orientation';
 import { Enemy } from './enemy';
 import { Player } from '../../player/player';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
+import type { EntityRegistry } from '../entity-registry';
+import type { CelestialBody } from '../../../physics/celestial-body';
 
 const BULLET_BCINV = 2e-4; // 弾道係数の逆数 Cd·A/m [m^2/kg]。高弾道係数でほとんど減速しない
 const BULLET_MASS = 0.1; // 剛体接触用質量 [kg](実体弾・プラズマ弾とも共通)
 const BULLET_RADIUS = 0.02; // 剛体接触用半径 [m]
 const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
 const BULLET_CLOSE_PASS_DIST = 40; // 敵弾が艦の至近を通過したとみなす距離 [m]
-
 
 const tmpQuat = new THREE.Quaternion();
 

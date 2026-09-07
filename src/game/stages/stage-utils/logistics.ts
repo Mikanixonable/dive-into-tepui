@@ -37,7 +37,7 @@ export class Logistics {
 
   // saved があればその状態(次回投入判定時刻・自動投入の有効/無効)から始める。
   constructor(
-    private readonly _hud: Notifier,
+    private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _uiSfx: UiSfx,
     private readonly _scene: THREE.Scene,
@@ -79,7 +79,7 @@ export class Logistics {
     // 投入して演出とヒントを出す
     this.dynamicSystem.add(ammoPickup);
     this._uiSfx.warp();
-    this._hud.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
+    this._notifier.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
   }
 
   // 自機の軌道上、minDist〜maxDist 先の位相に RCS 燃料補給を1個投入する。
@@ -109,7 +109,7 @@ export class Logistics {
     );
     this.dynamicSystem.add(fuelPickup);
     this._uiSfx.warp();
-    this._hud.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000);
+    this._notifier.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000);
   }
 
   // 近傍の補給を回収し、遠方のものをデスポーンし、残弾が少なければ定期的に新規投入する。
@@ -175,7 +175,7 @@ export class Logistics {
       ammoPickup.alive = false;
       player.onPickup(AMMO_PICKUP_MAGS);
       this._worldSfx.pickup();
-      this._hud.hint(`補給取り込み — ベルト +${AMMO_PICKUP_MAGS} 連`, 3000);
+      this._notifier.hint(`補給取り込み — ベルト +${AMMO_PICKUP_MAGS} 連`, 3000);
     }
   }
 
@@ -190,7 +190,7 @@ export class Logistics {
       pickup.alive = false;
       const added = player.refuelFuel(RCS_FUEL_PICKUP_AMOUNT);
       this._worldSfx.pickup();
-      this._hud.hint(`補給取り込み — RCS燃料 +${Math.round(added)} kg`, 3000);
+      this._notifier.hint(`補給取り込み — RCS燃料 +${Math.round(added)} kg`, 3000);
     }
   }
 

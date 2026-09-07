@@ -86,7 +86,7 @@ export class PlanPath {
   private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
   // 折れ線が載っている座標系。
   get displayFrame(): ReferenceFrame { return this.frame; }
-  private celestialSystem: CelestialBodies | null = null;
+  private celestialBodies: CelestialBodies | null = null;
   private unbakeTime = 0;
   // un-bake は update() が受け取った displayTime に固定される。同じフレーム中に ghost/impact/apsis/tick と
   // 折れ線同期・ポインタ判定が何度も参照するため、update 単位で1回だけ組み立てる。天体を引く
@@ -123,19 +123,19 @@ export class PlanPath {
   // 参照)。表示変換の文脈(座標系・un-bake 時刻)もこのフレームのものに更新する。
   update(
     planData: PlanData, ship: Controllable | null,
-    celestialSystem: CelestialBodies, frame: ReferenceFrame, simTime: number, displayTime: number,
+    celestialBodies: CelestialBodies, frame: ReferenceFrame, simTime: number, displayTime: number,
     frameAnchors: FrameAnchorSource, displayDurationSec: number,
   ): void {
     this.frame = frame;
-    this.celestialSystem = celestialSystem;
+    this.celestialBodies = celestialBodies;
     this.unbakeTime = displayTime;
     this.displayFrom = simTime;
     this.displayTo = simTime + Math.max(0, displayDurationSec);
     this.frameAnchors = frameAnchors;
-    this.unbakeTransform = celestialSystem.frames.transformAt(frame, displayTime, frameAnchors);
+    this.unbakeTransform = celestialBodies.frames.transformAt(frame, displayTime, frameAnchors);
     this.lastRebuiltArcs = 0;
     // 起点→node…→末尾区間に分解する
-    const segments = buildSegments(planData, celestialSystem, this.displayDuration);
+    const segments = buildSegments(planData, celestialBodies, this.displayDuration);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const isFinal = i === segments.length - 1;
@@ -154,7 +154,7 @@ export class PlanPath {
         // SHIP_SRP_COEFF)で積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを
         // 置くと、実際に積分し直した次のノードと繋がらなくなるため。
         arc = new PredictedArc(
-          seg.state0, celestialSystem, PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
+          seg.state0, celestialBodies, PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
           /* keplerTail */ false, /* consumable */ false,
         );
         this.lastRebuiltArcs++;
@@ -225,7 +225,7 @@ export class PlanPath {
     // ノードの無い計画は操作対象の現在軌道そのものなので、折れ線は出さない。それでも
     // project の更新までは通す — 止めると、クリック当たり判定が古い視点のまま残る。
     this.setVisible(this._nodeCount > 0);
-    if (this.celestialSystem === null) return;
+    if (this.celestialBodies === null) return;
     for (let i = 0; i < this.activeCount; i++) {
       const source = this.sources[i]!;
       const line = this.lineAt(i);
@@ -249,9 +249,9 @@ export class PlanPath {
         source.arc.trajectory,
         Math.max(this.displayFrom, source.from),
         Math.min(this.displayTo, source.to),
-        this.frame, this.celestialSystem, this.frameAnchors,
+        this.frame, this.celestialBodies, this.frameAnchors,
       );
-      line.syncTransform(this.frame, this.unbakeTime, this.celestialSystem, fo, this.frameAnchors);
+      line.syncTransform(this.frame, this.unbakeTime, this.celestialBodies, fo, this.frameAnchors);
       line.sync(camera);
     }
     // 線プールは区間数が減っても捨てずに残すので、隠す範囲は sources でなく lines の本数まで見る。
@@ -320,8 +320,8 @@ export class PlanPath {
   // 時刻 t のサンプル位置 r を、現在の表示座標(ECI)へ変換する。座標系の原点・姿勢はサンプル
   // 時刻 t で bake し、表示時刻 unbakeTime で un-bake する(点なので FrameTransform を2つ引く)。
   toDisplay(r: Vec3, t: number): Vec3 {
-    if (!this.celestialSystem) return v3(r.x, r.y, r.z);
-    const bakeTf = this.celestialSystem.frames.transformAt(this.frame, t, this.frameAnchors);
+    if (!this.celestialBodies) return v3(r.x, r.y, r.z);
+    const bakeTf = this.celestialBodies.frames.transformAt(this.frame, t, this.frameAnchors);
     const unbakeTf = this.currentUnbakeTransform()!;
     return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
   }
@@ -329,8 +329,8 @@ export class PlanPath {
   // 時刻 t の方向ベクトル dir を、現在の表示座標(ECI)へ変換する。方向なので原点移動は掛からず、
   // サンプル時刻 t の bake 姿勢と表示時刻 unbakeTime の un-bake 姿勢の回転だけを受ける。
   toDisplayDir(dir: Vec3, t: number): Vec3 {
-    if (!this.celestialSystem) return v3(dir.x, dir.y, dir.z);
-    const bakeTf = this.celestialSystem.frames.transformAt(this.frame, t, this.frameAnchors);
+    if (!this.celestialBodies) return v3(dir.x, dir.y, dir.z);
+    const bakeTf = this.celestialBodies.frames.transformAt(this.frame, t, this.frameAnchors);
     const unbakeTf = this.currentUnbakeTransform()!;
     return toInertialDir(unbakeTf, toFrameDir(bakeTf, dir));
   }
@@ -353,23 +353,23 @@ export class PlanPath {
   nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: KinematicState, arcIdx: number } | null {
     const maxDSq = maxPx * maxPx;
     const cameraPos = this.cameraPos;
-    const celestialSystem = this.celestialSystem;
-    const celestialBodies = cameraPos && celestialSystem ? celestialSystem.celestialMotions : null;
+    const bodies = this.celestialBodies;
+    const motions = cameraPos && bodies ? bodies.celestialMotions : null;
     // 表示座標への変換をサンプルごとに1回だけ行い、遮蔽判定と投影で共有する。un-bake 側の
     // 変換は時刻が固定なのでループの外で1回だけ引く。
-    const unbakeTf = celestialSystem ? this.currentUnbakeTransform() : null;
+    const unbakeTf = bodies ? this.currentUnbakeTransform() : null;
     const candidates: { state: KinematicState; arcIdx: number; sampleIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const samples = this.samplesOf(i, this.sources[i]!);
       for (let j = 0; j < samples.length; j++) {
         const s = samples[j]!;
         if (range && (s.t < range.min || s.t > range.max)) continue;
-        const pos = celestialSystem && unbakeTf
-          ? toInertialPoint(unbakeTf, toFramePoint(celestialSystem.frames.transformAt(this.frame, s.t, this.frameAnchors), s.r))
+        const pos = bodies && unbakeTf
+          ? toInertialPoint(unbakeTf, toFramePoint(bodies.frames.transformAt(this.frame, s.t, this.frameAnchors), s.r))
           : v3(s.r.x, s.r.y, s.r.z);
         // 天体に遮蔽されて画面上見えていない点は候補から除く。
-        if (cameraPos && celestialBodies
-          && isOccluded(cameraPos, pos, celestialBodies, this.frameAnchors.bodiesPivot)) continue;
+        if (cameraPos && motions
+          && isOccluded(cameraPos, pos, motions, this.frameAnchors.bodiesPivot)) continue;
         const p = this.project ? this.project(pos) : OFFSCREEN;
         if (!p.front) continue;
         const dSq = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
@@ -420,9 +420,9 @@ export class PlanPath {
   // un-bake の座標系変換。無効化されていれば unbakeTime で組み直し、以後は同じものを返す。
   // 星系がまだ渡されていなければ null。
   private currentUnbakeTransform(): FrameTransform | null {
-    if (!this.celestialSystem) return null;
+    if (!this.celestialBodies) return null;
     if (this.unbakeTransform === null) {
-      this.unbakeTransform = this.celestialSystem.frames.transformAt(
+      this.unbakeTransform = this.celestialBodies.frames.transformAt(
         this.frame, this.unbakeTime, this.frameAnchors,
       );
     }
@@ -497,7 +497,7 @@ export class PlanPath {
 // 末尾の1本は segmentDurationFrom ぶん伸びる。
 function buildSegments(
   planData: PlanData,
-  celestialSystem: CelestialBodies, displayDuration: DisplayDurationSource,
+  celestialBodies: CelestialBodies, displayDuration: DisplayDurationSource,
 ): Segment[] {
   const segments: Segment[] = [];
   let state0 = planData.anchor;
@@ -506,7 +506,7 @@ function buildSegments(
     segments.push({ state0, end: node.t });
     state0 = node;
   }
-  const celestialBodies = celestialSystem.celestialMotions;
-  segments.push({ state0, end: state0.t + segmentDurationFrom(state0, celestialBodies, displayDuration) });
+  const motions = celestialBodies.celestialMotions;
+  segments.push({ state0, end: state0.t + segmentDurationFrom(state0, motions, displayDuration) });
   return segments;
 }

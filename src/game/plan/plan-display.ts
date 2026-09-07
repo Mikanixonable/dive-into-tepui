@@ -1,14 +1,12 @@
 // 操作対象の軌道計画の姿の表示(両ビュー常駐)。どの計画をいつ描くかを決め、計画折れ線
 // (PlanPath)を駆動して、表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)を置く。
 import * as THREE from 'three/webgpu';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { View } from '../view/view';
 import { Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../math/projection';
-
 import { fmtMarkerDist } from '../../hud/utils';
 import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
@@ -16,7 +14,6 @@ import type { DisplayedPath } from '../marker/equator-node-marker-pair';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import { CameraSystem } from '../camera/camera-system';
-import type { ProjectFn } from '../../math/projection';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { ObjectPickable } from '../pickable/object-pickable';
 import { DisplayDurationSource, PlanData } from './plan';
@@ -29,6 +26,8 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { ControlSelection } from '../control-selection';
 import type { PredictedArc } from '../dynamic/predicted-arc';
 import type { PerfCounts } from '../perf-counts';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { ProjectFn } from '../../math/projection';
 
 // 近地点・遠地点アイコンを出す離心率相当値の下限。両方見つかったときの
 // (遠地点距離-近地点距離)/(遠地点距離+近地点距離) と比較し、これ未満は円に近く
@@ -94,7 +93,7 @@ export class PlanDisplay {
   constructor(
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
-    private readonly celestialSystem: CelestialBodies,
+    private readonly celestialBodies: CelestialBodies,
     displayDuration: DisplayDurationSource,
     private readonly controlSelection: ControlSelection,
   ) {
@@ -165,7 +164,7 @@ export class PlanDisplay {
   ): void {
     const { simTime, displayTime } = displayWindow;
     this.path.update(
-      planData, ship, this.celestialSystem, displayWindow.frame, simTime, displayTime, frameAnchors,
+      planData, ship, this.celestialBodies, displayWindow.frame, simTime, displayTime, frameAnchors,
       displayWindow.duration,
     );
     this.placeApsisMarkers(ship?.name ?? null);
@@ -228,7 +227,7 @@ export class PlanDisplay {
 
   // pos が displayTime 時点の天体に隠れているか。
   private occludedByCelestialBody(cameraPos: Vec3, pos: Vec3, displayTime: number): boolean {
-    return isOccluded(cameraPos, pos, this.celestialSystem.celestialMotions, displayTime);
+    return isOccluded(cameraPos, pos, this.celestialBodies.celestialMotions, displayTime);
   }
 
   // ゴーストマーカーのラベル文字列(経過時間+高度)を組み立てる。現在時刻のゴーストは
@@ -236,7 +235,7 @@ export class PlanDisplay {
   // 高度はその位置で最も強く引く天体の表面からの高さ。
   private plannedPlayerLabel(displayTime: number, simTime: number, r: Vec3): string {
     const tRel = displayTime - simTime;
-    const center = strongestAttractor(r, this.celestialSystem.celestialMotions, displayTime);
+    const center = strongestAttractor(r, this.celestialBodies.celestialMotions, displayTime);
     const alt = len(sub(r, center.positionAt(displayTime))) - center.def.radius;
     if (tRel <= 0) return `計画位置 高度 ${fmtMarkerDist(alt, 0)}`;
     const h = Math.floor(tRel / 3600);
@@ -259,11 +258,11 @@ export class PlanDisplay {
     const apCenter = final.apoapsisCenter;
     let peDist = 0;
     if (pe && peCenter) {
-      peDist = len(sub(pe.r, this.celestialSystem.stateAt(peCenter.id, pe.t).r));
+      peDist = len(sub(pe.r, this.celestialBodies.stateAt(peCenter.id, pe.t).r));
     }
     let apDist = 0;
     if (ap && apCenter) {
-      apDist = len(sub(ap.r, this.celestialSystem.stateAt(apCenter.id, ap.t).r));
+      apDist = len(sub(ap.r, this.celestialBodies.stateAt(apCenter.id, ap.t).r));
     }
     // 円かどうかは、近地点と遠地点が同じ中心天体から測られているときだけ判定できる。
     if (pe && ap && peCenter && apCenter && peCenter.id === apCenter.id
@@ -297,7 +296,7 @@ export class PlanDisplay {
     return this.path.impactPoints().flatMap(({ state, body, arcIdx }) => {
       const key = IMPACT_MARKER_KEYS[arcIdx];
       if (key === undefined) return [];
-      return [{ key, pos: this.path.toDisplay(state.r, state.t), label: `衝突 ${this.celestialSystem.nameOf(body.id)}` }];
+      return [{ key, pos: this.path.toDisplay(state.r, state.t), label: `衝突 ${this.celestialBodies.nameOf(body.id)}` }];
     });
   }
 
@@ -331,7 +330,7 @@ export class PlanDisplay {
   private syncApsisMarkers(
     project: ProjectFn, view: View, cameraPos: Vec3, displayTime: number, timeLabel: TimeLabelSetting,
   ): void {
-    const celestialBodies = this.celestialSystem.celestialMotions;
+    const celestialBodies = this.celestialBodies.celestialMotions;
     for (const marker of [this.apsisPe, this.apsisAp]) {
       marker.sync(
         this.markerManager, project, cameraPos, celestialBodies, displayTime, view === 'map', timeLabel,

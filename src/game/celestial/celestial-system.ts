@@ -6,7 +6,6 @@ import { strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
-import type { CelestialBodies } from './celestial-bodies';
 import { isLagrangeId, lagrangeParentId } from './lagrange-id';
 import { addTimeCacheStats } from '../../physics/time-ring';
 import { KinematicState } from '../../physics/kinematic-state';
@@ -49,6 +48,7 @@ import type { Exposure } from '../../render/pipeline/exposure';
 import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
+import type { CelestialBodies } from './celestial-bodies';
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
