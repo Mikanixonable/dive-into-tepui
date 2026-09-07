@@ -10,6 +10,7 @@ import { ApproachTab } from './orbit-approach-tab';
 import { ProjectionTab } from './orbit-projection-tab';
 import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import { aliveCombatTarget } from '../../dynamic/dynamic-entity/combat-target';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 import type { AnalysisTab } from './orbit-analysis-tab';
@@ -38,7 +39,7 @@ function resolveApproachTarget(game: Game): ApproachTargetSource | null {
   if (id === null) return null;
   const body = game.celestialSystem.find(id)?.motion;
   if (body !== undefined) return { kind: 'celestialBody', body };
-  const entity = game.dynamicSystem.findAliveCombatTarget(id);
+  const entity = aliveCombatTarget(game.dynamicSystem.all(), id);
   return entity ? { kind: 'entity', entity } : null;
 }
 
