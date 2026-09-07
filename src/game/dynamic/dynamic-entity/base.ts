@@ -73,7 +73,8 @@ type BaseInit =
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
 export class Base extends DynamicEntity implements Controllable, ObjectPickable {
-  public readonly mapKind: DynamicEntityKind = 'base';
+  public override readonly mapKind: DynamicEntityKind = 'base';
+  public override readonly controllable = true;
 
   protected readonly predictedForGhost = true;
   protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
