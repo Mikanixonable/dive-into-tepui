@@ -17,14 +17,6 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 export class EquatorNodeMarkerPair {
   private readonly ascending: EquatorNodeMarker;
   private readonly descending: EquatorNodeMarker;
-  // update が求めた時点の CelestialMotion[]。sync でのマップビュー遮蔽判定に使う。
-  private celestialBodies: readonly CelestialMotion[] = [];
-  // celestialBodies の位置を厳密に引く時刻。
-  private celestialBodiesPivot = 0;
-  // 通過時刻ラベルの設定。update ごとに渡され、sync のラベル組み立てで読む。
-  private timeLabel: TimeLabelSetting = {
-    mode: 'absolute', show: false, nowSimTime: 0, epochUnixSec: 0,
-  };
   // 直前の sync 以降に update が交点を書き込んだか。求め直されなかったフレームで交点を
   // 捨てるために持つ。
   private solvedSinceSync = false;
@@ -39,11 +31,10 @@ export class EquatorNodeMarkerPair {
   // 慣性系で表示時刻へ写す。
   updateOnEllipse(
     displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
-    timeLabel: TimeLabelSetting,
   ): void {
     this.updateOnPath(
       null, displayTime, celestialSystem, frameAnchors,
-      this.owner.stateAt(displayTime, celestialSystem), [], timeLabel,
+      this.owner.stateAt(displayTime, celestialSystem), [],
     );
   }
 
@@ -53,12 +44,8 @@ export class EquatorNodeMarkerPair {
   updateOnPath(
     frame: ReferenceFrame | null, displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
     state: KinematicState | null, paths: readonly (readonly KinematicState[])[],
-    timeLabel: TimeLabelSetting,
   ): void {
     this.clearCrossings();
-    this.celestialBodies = frameAnchors.bodies;
-    this.celestialBodiesPivot = frameAnchors.bodiesPivot;
-    this.timeLabel = timeLabel;
     if (state === null) return;
     // 中心天体は state 自身の時刻の天体位置で選ぶ — 解析楕円は displayTime、折れ線は
     // simTime の状態ベクトルから作るので、時刻を揃えないと中心の選定だけが別の瞬間になる。
@@ -97,13 +84,17 @@ export class EquatorNodeMarkerPair {
   }
 
   // △▽ マーカーを update が求めた位置に置く。求め直されなかったフレームは交点を捨てて隠す。
-  sync(project: ProjectFn, cameraPos: Vec3): void {
+  // celestialBodies はマップビューの遮蔽判定に使う天体で、pivot はその位置を引く時刻。
+  sync(
+    project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
+    celestialBodiesPivot: number, timeLabel: TimeLabelSetting,
+  ): void {
     if (!this.solvedSinceSync) this.clearCrossings();
     this.solvedSinceSync = false;
     for (const marker of [this.ascending, this.descending]) {
       marker.sync(
-        this.markerManager, project, cameraPos, this.celestialBodies, this.celestialBodiesPivot,
-        true, this.timeLabel,
+        this.markerManager, project, cameraPos, celestialBodies, celestialBodiesPivot,
+        true, timeLabel,
       );
     }
   }
