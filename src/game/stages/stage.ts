@@ -7,7 +7,8 @@ import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
 import { FlashEffects } from '../vfx/flash-effects';
-import { Hud } from '../hud/hud';
+import type { HudLayers } from '../hud/hud-layers';
+import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -52,7 +53,7 @@ const BRIEFING_TOAST_MS = 12000;
 // 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
 // これをそのまま基底へ渡す。
 export type StageDeps = [
-  hud: Hud,
+  hud: HudLayers & Notifier,
   worldSfx: WorldSfx,
   uiSfx: UiSfx,
   scene: THREE.Scene,
@@ -150,7 +151,7 @@ export abstract class Stage {
   protected readonly logistics: Logistics;
   private readonly statusPanel: StatusPanel;
 
-  protected readonly _hud: Hud;
+  protected readonly _hud: HudLayers & Notifier;
   protected readonly _worldSfx: WorldSfx;
   protected readonly _uiSfx: UiSfx;
   protected readonly _scene: THREE.Scene;
