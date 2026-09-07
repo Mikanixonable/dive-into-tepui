@@ -603,7 +603,6 @@ export class Game {
     this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
 
     this._hud.syncPanels(this.viewManager.current, this);
-    this._hud.tick();
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions(this.viewManager.current);
