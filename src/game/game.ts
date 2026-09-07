@@ -228,7 +228,8 @@ export class Game {
 
     this.flashEffects = new FlashEffects(this._scene);
     this.dynamicSystem = new DynamicSystem(
-      this._scene, this._hud, this._worldSfx, this.flashEffects, this.markerManager, initialSave);
+      this._scene, this._hud, this._worldSfx, this.flashEffects, this.markerManager, celestialSystem,
+      initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
@@ -471,10 +472,7 @@ export class Game {
     const controlled = this.activeControllable;
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkControlled('frameStart', controlled, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    this.dynamicSystem.updateThrusts(simDt);
-    this.dynamicSystem.updateControllables(
-      controlled, this.input, canShipAct, dt, simDt, this.activeStage, this._celestialSystem,
-    );
+    this.dynamicSystem.update(controlled, this.input, canShipAct, dt, simDt, this.activeStage);
     this.nanWatchdog.checkControlled(
       'controllable.updateControls',
       controlled,
