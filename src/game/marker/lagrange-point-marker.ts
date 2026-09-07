@@ -53,7 +53,8 @@ export class LagrangePointMarker implements ObjectPickable {
     this.pos = pos;
   }
 
-  public get gone(): boolean { return this.pos === null; }
+  // ラグランジュ点は2天体が在る限り在る。回転系が組めず座標を失うフレームは消滅ではない。
+  public readonly gone = false;
 
   // 生成元が解いた時刻の位置。
   public posAt(): Vec3 | null { return this.pos; }
