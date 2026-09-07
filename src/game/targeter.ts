@@ -22,7 +22,7 @@ import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
 import type { NavTarget } from './nav-target';
-import type { CelestialMotions } from '../physics/celestial-body';
+import type { CelestialBody } from '../physics/celestial-body';
 import type { OrbitingObject } from './dynamic/dynamic-entity/orbiting-object';
 import type { ProjectFn } from '../math/projection';
 
@@ -53,7 +53,7 @@ export class Targeter {
   constructor(
     private readonly markerManager: MarkerManager,
     private readonly navTarget: NavTarget, private readonly dynamicSystem: DynamicSystem,
-    private readonly celestialBodies: CelestialMotions,
+    private readonly celestialBodies: readonly CelestialBody[],
     private readonly celestialMarkers: CelestialMarkers,
   ) {}
 
@@ -126,7 +126,6 @@ export class Targeter {
     const targets = this.dynamicSystem.all().filter(isCombatTarget);
     const ammoPickups = this.dynamicSystem.all().filter(isAmmoPickup);
     const fuelPickups = this.dynamicSystem.all().filter(isRcsFuelPickup);
-    const celestialBodies = this.celestialBodies.celestialMotions;
     const view = cameraSystem.view;
     const mapView = view === 'map';
     const project = cameraSystem.activeCameraProjection;
@@ -145,11 +144,11 @@ export class Targeter {
       if (!mapView && tgt === viewer) continue;
       const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
       const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, view, tgt === viewer);
-      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies, displayTime);
+      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ds.r, this.celestialBodies, displayTime);
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && mapView
-          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, celestialBodies, displayTime))
+          ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, this.celestialBodies, displayTime))
           : 1;
       this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
     }
@@ -164,7 +163,7 @@ export class Targeter {
       if (!ammo.alive) continue;
       const visibility = visibilityPolicy?.entity('ammo');
       if (visibility && !visibility.pickable) continue;
-      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, celestialBodies, displayTime);
+      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, this.celestialBodies, displayTime);
       const mapOpacity = mapOccluded ? 0 : mapView ? ammoFadeOpacity(len(sub(ammo.state.r, viewerPos))) : 1;
       this.pushMarkerItem(ammo.markerItem(viewerPos, view), visibility, mapOpacity, mapOccluded);
     }
@@ -172,13 +171,13 @@ export class Targeter {
       if (!fuel.alive) continue;
       const visibility = visibilityPolicy?.entity('fuel');
       if (visibility && !visibility.pickable) continue;
-      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, celestialBodies, displayTime);
+      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, this.celestialBodies, displayTime);
       const mapOpacity = mapOccluded ? 0 : mapView ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
       this.pushMarkerItem(fuel.markerItem(viewerPos, view), visibility, mapOpacity, mapOccluded);
     }
     const celestialLabels = mapView ? this.celestialMarkers.activeLabels : [];
     this.markerManager.combatMarkers.sync(
-      this.markerItemScratch, project, view, screenScale, celestialLabels, celestialBodies,
+      this.markerItemScratch, project, view, screenScale, celestialLabels, this.celestialBodies,
       cameraSystem.activeCameraPos,
     );
     // 見越し点は弾速から解くので、砲を積んでいる艦を操作している間だけ出る。

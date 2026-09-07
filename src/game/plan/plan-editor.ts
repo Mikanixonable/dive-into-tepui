@@ -304,7 +304,7 @@ export class PlanEditor {
     const arriving = this.path.arrivalStates();
     const picked = this.path.nearestSample(
       clientX, clientY, Infinity, node.t,
-      ship.plan.nodeTimeRange(idx, ship.state, this.celestialBodies, this.displayDuration),
+      ship.plan.nodeTimeRange(idx, ship.state, this.celestialBodies.celestialMotions, this.displayDuration),
     );
     // Δv を保ったまま移動先へ置き換える
     if (picked) {
@@ -328,7 +328,7 @@ export class PlanEditor {
     if (!node) return;
     const hasDownstreamNodes = idx < plan.nodes.length - 1;
     const targetT = this.simTime + secondsFromNow;
-    const range = plan.nodeTimeRange(idx, ship.state, this.celestialBodies, this.displayDuration);
+    const range = plan.nodeTimeRange(idx, ship.state, this.celestialBodies.celestialMotions, this.displayDuration);
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
       this.hud.hint('ノード位置は許可された軌道区間内で指定してください');

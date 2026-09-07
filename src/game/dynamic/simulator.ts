@@ -16,7 +16,7 @@
 import type { DynamicSystem } from './dynamic-system';
 import type { Controllable } from './dynamic-entity/controllable';
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import { CelestialMotions } from '../../physics/celestial-body';
+import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
 import type { Stage } from '../stages/stage';
 import { EntityContactPhysics } from './entity-contact-physics';
 import { engagementZones } from './engagement-zone';
@@ -60,7 +60,7 @@ export class Simulator {
   // initialSimTime はシミュレーションの開始時刻。
   constructor(
     private readonly dynamicSystem: DynamicSystem,
-    private readonly windows: CelestialMotions,
+    private readonly windows: FrameCelestialBodies,
     private readonly sections: FrameSections,
     initialSimTime = 0,
   ) {

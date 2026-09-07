@@ -1,5 +1,5 @@
 // 天体1体を外から見たときの契約。分類の札・自転姿勢・回転基準系・2次重力場と、時刻を与えると
-// ECI の位置・速度・大気を答える口。星系を役割ごとの一覧として答える窓もここに置く。
+// ECI の位置・速度・大気を答える口。
 import type { Quat } from '../math/quat';
 import type { Vec3 } from '../math/vec3';
 import type { Atmosphere } from './atmosphere';
@@ -56,17 +56,6 @@ export interface CelestialBody {
   spinRotationAt(t: number): FrameRotation | null;
   // 自転角速度 [rad/s]。逆行自転では負。自転モデルを持たない天体は null。
   readonly spinRate: number | null;
-}
-
-// 星系の天体を役割ごとの一覧として答える窓。積分・接触判定・抗力は個体ではなくこの一覧に
-// 対して回る。並びは天体の宣言順で、時刻ごとの解決は天体1体が畳む。
-export interface CelestialMotions {
-  // 全登録天体。中心天体は原点に静止。
-  readonly celestialMotions: readonly CelestialBody[];
-  // mu が 0 でない天体。
-  readonly gravityMotions: readonly CelestialBody[];
-  // 大気を持つ天体。
-  readonly atmosphereMotions: readonly CelestialBody[];
 }
 
 // 公転している天体。公転面と、それに乗る回転基準系を答える。
