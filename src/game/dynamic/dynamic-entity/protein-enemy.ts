@@ -12,9 +12,9 @@ import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-col
 import { createProteinMotionBinding } from '../../../render/protein-motion-material';
 import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../protein/protein-display';
 import {
-  Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE,
-  type EnemyPlacement, type EnemyRestore, type FormationRole,
+  Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
+import type { FormationRole } from './entity-kind';
 import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { InstancedPools } from '../instanced-pools';
 import type { Controllable } from './controllable';
