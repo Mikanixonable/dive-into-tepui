@@ -125,21 +125,17 @@ export class DynamicSystem {
   }
 
   private _collectionRevision = 0;
-  private combatTargetsRevision = -1;
 
   // 保持するエンティティの顔ぶれの世代。追加・除去・prune のいずれでも増える。
   get collectionRevision(): number {
     return this._collectionRevision;
   }
 
-  private readonly cachedCombatTargets: CombatTarget[] = [];
-  private readonly cachedCombatTargetsByExcluded = new Map<Controllable, CombatTarget[]>();
-
   // エンティティを登録する。上限を持つ枠の超過分は、次の cleanup で古いものから落ちる。
   public add(entity: DynamicEntity): void {
     this.entities.push(entity);
     if (entity.capKind !== null) this.capsUncheckedSinceAdd = true;
-    this.invalidateCaches();
+    this.bumpCollectionRevision();
   }
 
   // 生成に fetch 未完了のタンパク質アセットが要る個体の待ち行列。実体化(生成そのもの)は
@@ -186,30 +182,14 @@ export class DynamicSystem {
     const i = this.entities.indexOf(entity);
     if (i < 0) return false;
     this.entities.splice(i, 1);
-    this.invalidateCaches();
+    this.bumpCollectionRevision();
     return true;
   }
 
-  // ターゲットとなり得るエンティティ(敵・自機・基地)の一覧。返る配列は読み取り専用として扱う。
-  getCombatTargets(exclude: Controllable | null): CombatTarget[] {
-    this.rebuildCombatTargetsIfNeeded();
-    if (exclude === null) return this.cachedCombatTargets;
-
-    // 除外指定つきの一覧は、除く相手ごとに組んで憶える。
-    let targets = this.cachedCombatTargetsByExcluded.get(exclude);
-    if (targets) return targets;
-    targets = this.cachedCombatTargets.filter((t) => t !== exclude);
-    this.cachedCombatTargetsByExcluded.set(exclude, targets);
-    return targets;
-  }
-
-  // 顔ぶれの世代が進んでいれば、戦闘対象の一覧を組み直す。
-  private rebuildCombatTargetsIfNeeded(): void {
-    if (this.combatTargetsRevision === this._collectionRevision) return;
-    this.cachedCombatTargets.length = 0;
-    this.cachedCombatTargets.push(...this.enemies, ...this.controllables);
-    this.cachedCombatTargetsByExcluded.clear();
-    this.combatTargetsRevision = this._collectionRevision;
+  // ターゲットとなり得るエンティティ(敵・自機・基地)の一覧。呼ぶたびに組み直すので、
+  // フレームに何度も読む側は受けた配列を持ち回る。
+  getCombatTargets(): CombatTarget[] {
+    return [...this.enemies, ...this.controllables];
   }
 
   // id で名指しされた敵を返す。見つからなければ null。
@@ -249,7 +229,7 @@ export class DynamicSystem {
   }
 
   // 顔ぶれが変わったことを世代へ記録する。
-  private invalidateCaches(): void {
+  private bumpCollectionRevision(): void {
     this._collectionRevision++;
   }
 
@@ -286,7 +266,7 @@ export class DynamicSystem {
       else this.entities[w++] = x;
     }
     this.entities.length = w;
-    if (changed) this.invalidateCaches();
+    if (changed) this.bumpCollectionRevision();
   }
 
   // 過去表示に要る履歴の保持時間 [s] を全エンティティへ要求する。履歴を持たない種別は無視する。
@@ -447,7 +427,7 @@ export class DynamicSystem {
     for (const pool of this.debrisFragmentPools) pool.dispose();
 
     this.effects.dispose();
-    this.invalidateCaches();
+    this.bumpCollectionRevision();
   }
 
   // 種別ごとの現在の個体数。

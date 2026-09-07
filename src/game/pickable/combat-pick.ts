@@ -19,7 +19,7 @@ export function pickCombatEntityAtPoint(
   let bestEntity: CombatTarget | null = null;
   let minDepth = Infinity;
 
-  for (const entity of dynamicSystem.getCombatTargets(null)) {
+  for (const entity of dynamicSystem.getCombatTargets()) {
     if (!entity.alive) continue;
     const pos = entity.state.r;
     const proj = project(pos);

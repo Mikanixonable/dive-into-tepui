@@ -61,11 +61,12 @@ export class Targeter {
     return this.navTarget.resolveCombatTarget(this.dynamicSystem);
   }
 
-  // Tキーで、照準中心にもっとも近い対象をターゲットにする。
-  handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn): void {
+  // Tキーで、照準中心にもっとも近い対象をターゲットにする。操作中の艦自身は候補から外す。
+  handleTargetSelectKey(input: Input, viewer: Controllable, project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
+    const targets = this.dynamicSystem.getCombatTargets().filter((e) => e.alive && e !== viewer);
     this.navTarget.setCombatTarget(pickNearest(
-      targets.filter((e) => e.alive), (target) => project(target.state.r),
+      targets, (target) => project(target.state.r),
       window.innerWidth * 0.5, window.innerHeight * 0.5, Infinity));
   }
 
@@ -117,9 +118,9 @@ export class Targeter {
     viewer: Controllable | null, displayTime: number, simTime: number, cameraSystem: CameraSystem,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    // マーカーは操作対象自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
-    // 別に、除外なしの一覧を使う。
-    const targets = this.dynamicSystem.getCombatTargets(null);
+    // マーカーは操作対象自身も他の船と同列に扱う。自分自身を候補から外すのは、ターゲット選定
+    // (handleTargetSelectKey)の側だけ。
+    const targets = this.dynamicSystem.getCombatTargets();
     const ammoPickups = this.dynamicSystem.ammoPickups;
     const fuelPickups = this.dynamicSystem.rcsFuelPickups;
     const celestialBodies = this.celestialSystem.celestialMotions;
