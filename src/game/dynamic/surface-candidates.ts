@@ -51,21 +51,33 @@ export class SurfaceCandidates {
 
   // 区間 [tStart, tEnd] のあいだに各天体の表面が届きうる範囲を求める。以降の into と narrow は
   // この上で答えるので、区間の内側をさらに細かく割って解く個体も組み直しを要さない。
+  // reachMargin は掃引ぶんに掛ける倍率で、1 が掃引そのもの — **絞り込みは通す側へ外れてよい**
+  // ので、区間より細かい刻みで引き直した位置とのずれを覆いたい呼び出し側が大きく取る。
   resetSpan(
     bodies: readonly CelestialMotion[], pivot: number, tStart: number, tEnd: number,
+    reachMargin = 1,
   ): void {
     this.spanning.length = 0;
     this.reachable.length = 0;
     if (!(tStart <= tEnd)) return;
+    // 範囲は区間の始点から測る。into が測る距離も参加者の始点からなので、両者の基準が揃う。
     for (const body of bodies) {
       const start = body.stateAt(pivot, tStart);
-      const reach = body.def.radius + intervalReach(start, body.stateAt(pivot, tEnd));
+      const reach = body.def.radius
+        + reachMargin * intervalReach(start, body.stateAt(pivot, tEnd));
       this.spanning.push({ body, r0: start.r, reach });
     }
+    this.resetNarrow();
+  }
+
+  // narrow で狭めた選び先を、区間の全候補へ戻す。**参加者の顔ぶれや位置が変わる区切りごとに
+  // 呼ぶ** — 狭めた結果はある1組の参加者に対してだけ正しい。
+  resetNarrow(): void {
+    this.reachable.length = 0;
     for (const candidate of this.spanning) this.reachable.push(candidate);
   }
 
-  // into の選び先を、この顔ぶれの誰かが触れうる天体だけへ狭める。狭めた結果は次の resetSpan
+  // into の選び先を、この顔ぶれの誰かが触れうる天体だけへ狭める。狭めた結果は次の resetNarrow
   // まで残るので、**区間を共有する参加者へ続けて into を掛けるあいだにだけ掛ける。**
   narrow(participants: readonly SurfaceParticipant[]): void {
     this.reachable.length = 0;

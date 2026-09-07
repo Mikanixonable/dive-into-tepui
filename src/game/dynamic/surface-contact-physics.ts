@@ -13,6 +13,9 @@ import { contactTime, isFiniteParticipant } from './contact-participant';
 import { SurfaceCandidates } from './surface-candidates';
 import { CONTACT_RESTITUTION } from './entity-contact-response';
 
+// フレームの区間で取る到達範囲の倍率。1 は掃引そのもの。
+const SPAN_REACH_MARGIN = 2;
+
 // 天体との接触に参加するのは、独立した実体すべて。艦に取り付いた接触代理(ベルトの節点・
 // 放熱板の折り)は艦本体が代表するので参加しない。
 function isParticipant(e: DynamicEntity): boolean {
@@ -33,20 +36,30 @@ export class SurfaceContactPhysics {
   private readonly bodyScratch: CelestialMotion[] = [];
   private readonly candidates = new SurfaceCandidates();
   private readonly nearbyScratch: CelestialMotion[] = [];
-  // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、その区間の解決すべてで使う。
+  // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、そのサブステップの解決すべてで使う。
   private pivot = 0;
   // 負荷確認ウィンドウが読む、絞り込みを通した延べ候補天体数。フレーム頭で Simulator が 0 へ戻す。
   public candidateBodies = 0;
 
-  // 区間 [tStart, tEnd] で触れうる天体の下ごしらえ。判定できる天体を選び、各天体の表面が
-  // その区間のあいだに届きうる範囲を求める。どちらも参加者に依らないので、区間を内側でさらに
-  // 割って解く個体もこの1組で足りる。
-  beginSubstep(
-    celestialBodies: readonly CelestialMotion[], pivot: number, tStart: number, tEnd: number,
+  // フレームの区間 [tStart, tEnd] で触れうる天体の下ごしらえ。判定できる天体を選び、各天体の
+  // 表面がその区間のあいだに届きうる範囲を求める。どちらも区間だけで決まるので、フレームに
+  // 1組で足りる。
+  //
+  // **範囲は掃引の 2 倍を取る。** 絞り込みは通す側へ外れてよく、落としてはいけない。サブステップ
+  // 中点から引いた位置はフレーム中点から引いた位置と 3 次以上の項ぶんずれ、そのずれは掃引の
+  // (n·h)²/6 倍以下(最高段の月で 9%)なので、掃引ぶんの余裕がそれを覆う。
+  beginFrame(
+    celestialBodies: readonly CelestialMotion[], framePivot: number, tStart: number, tEnd: number,
   ): void {
+    this.collectCelestialBodies(celestialBodies, framePivot, this.bodyScratch);
+    this.candidates.resetSpan(this.bodyScratch, framePivot, tStart, tEnd, SPAN_REACH_MARGIN);
+  }
+
+  // このサブステップで天体の位置を厳密に引く時刻を受け取る。接触の幾何はこの時刻から解く。
+  // 参加者の位置で狭めた選び先は、参加者が進んだこの時点で捨てる。
+  beginSubstep(pivot: number): void {
     this.pivot = pivot;
-    this.collectCelestialBodies(celestialBodies, pivot, this.bodyScratch);
-    this.candidates.resetSpan(this.bodyScratch, pivot, tStart, tEnd);
+    this.candidates.resetNarrow();
   }
 
   // 個体1つの天体との接触。区間は beginSubstep へ渡した区間の内側であればよい。
