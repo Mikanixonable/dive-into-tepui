@@ -70,6 +70,8 @@ export class CumulusShell {
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
   private cloudVisible = false;
+  private cirrusVisible = true;
+  private translucentCumulusVisible = true;
 
   // cloudField は雲場、bodyRadius は殻を載せる天体の基準半径 [m]。親は半径 bodyRadius の球へ
   // 合わせたスケールを与えればよく、雲頂ぶんの膨らみはこの殻が持つ。
@@ -105,9 +107,9 @@ export class CumulusShell {
   // 殻の高度 [m]。場の雲頂高度 0..1 が張る高さでもある。
   public get topAltitude(): number { return CLOUD_TOP_SPAN; }
 
-  // 表示時刻の雲を焼く。厚い雲か薄い雲が可視のフレームだけ GPU の場を更新する。
+  // 雲場を読む描画物があるフレームだけ、表示時刻の雲を焼く。
   public bake(renderer: WebGPURenderer, displayTime: number): void {
-    if (!this.cloudVisible) return;
+    if (!this.fieldContributes) return;
     this.cloudField.bake(renderer, displayTime);
   }
 
@@ -125,6 +127,12 @@ export class CumulusShell {
   public setCloudsVisible(visible: boolean): void {
     this.cloudVisible = visible;
     if (!visible) this.hide();
+  }
+
+  // 大気へ立てる雲の種類ごとの表示可否を置き直す。
+  public setAtmosphereCloudsVisible(cirrusVisible: boolean, translucentCumulusVisible: boolean): void {
+    this.cirrusVisible = cirrusVisible;
+    this.translucentCumulusVisible = translucentCumulusVisible;
   }
 
   // 標本の配り方を置き直す。**回数はレイマーチの展開としてグラフへ焼かれている**ので、
@@ -151,6 +159,12 @@ export class CumulusShell {
   public hide(): void {
     this.activeLevel = null;
     for (const mesh of this.meshes.values()) mesh.visible = false;
+  }
+
+  // この殻の雲場を読む描画物があるか。
+  private get fieldContributes(): boolean {
+    return this.cloudVisible && (
+      this.visible || this.cirrusVisible || this.translucentCumulusVisible);
   }
 
   // 全段のメッシュを親から外し、マテリアル・場・ディザのタイルを解放する。
