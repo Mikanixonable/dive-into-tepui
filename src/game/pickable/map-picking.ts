@@ -2,7 +2,8 @@
 // パネルと軌道線のプロパティウィンドウは、どちらもマップにしか出ないのでここが持つ。
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
-import { ObjectPickable, pickFrontmostBody, pickNearest, projectMarker } from './object-pickable';
+import { pickFrontmostBody, pickNearest, projectMarker } from './object-pickable';
+import type { MapPickable } from './map-pickable';
 import { pickNearestLine } from './line-pickable';
 import type { LinePickables } from './line-pickables';
 import type { ObjectPickables } from './object-pickables';
@@ -76,7 +77,7 @@ export class MapPicking {
   // 画面上の (x, y) に当たった被選択物。マーカーへ一定のピクセル半径で当て、外れたら
   // 描かれている本体へ視線を通す(SPEC/MAP.md §11)。マーカー段はラベル衝突で非表示に
   // なった対象を外すが、本体段は外さない — 円盤が見えているのに掴めないのは嘘になる。
-  private pickAt(candidates: readonly ObjectPickable[], x: number, y: number): ObjectPickable | null {
+  private pickAt<T extends MapPickable>(candidates: readonly T[], x: number, y: number): T | null {
     const project = this.cameraSystem.activeCameraProjection;
     const displayTime = this.pickables.lastDisplayTime;
     const marker = pickNearest(
@@ -160,7 +161,7 @@ export class MapPicking {
   // マップ視点のフォーカスを対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md §10)。
   // ダブルクリックと一覧パネルのフォーカス行はどちらもここを通す。id は一覧側が候補列に
   // 頼らず持っている値、target は見つかっていれば名前・種別の解決に使う。
-  private focusTarget(id: string, target: ObjectPickable | undefined): void {
+  private focusTarget(id: string, target: MapPickable | undefined): void {
     this.frameControls.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`);
     target?.onMapFocus?.(this.controlSelection);
