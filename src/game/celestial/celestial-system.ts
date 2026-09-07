@@ -43,7 +43,6 @@ import { ZeroVelocityLines } from './orbit-guide/zero-velocity-lines';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide/orbit-guide-settings';
 import type { TdbJulianDate } from '../../physics/time';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { View } from '../view/view';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from './point-field-view';
@@ -349,15 +348,6 @@ export class CelestialSystem implements CelestialMotions {
     return { timeCacheHits: time.hits, timeCacheMisses: time.misses };
   }
 
-  // 表示時刻 t の点群の位置を更新する。
-  update(t: number, view: View, graphics: GraphicsSettingsData): void {
-    const star = this.starEntity;
-    const pointField = this.pointFieldView;
-    if (view !== 'map' || star === null || pointField === null || !graphics.pointField) return;
-    this.buildPointField(pointField);
-    pointField.update(t, this.stateAt(star.id, t).r);
-  }
-
   // 軌道ガイドタブ(表示パネル5.2節)の設定。変更のたびに渡す。
   setOrbitGuideSettings(settings: OrbitGuideSettings): void {
     this.orbitGuideSettings = settings;
@@ -401,10 +391,11 @@ export class CelestialSystem implements CelestialMotions {
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、影パスは誰も遮らないと答える)。
-    const sunPos = starMotion === null
+    const starPos = starMotion === null ? null : this.stateAt(starMotion.id, displayTime).r;
+    const sunPos = starPos === null
       ? this.toThreeNormal(this.sunDirFrom(floatingOrigin.r, displayTime))
         .multiplyScalar(STARLESS_SUN_DISTANCE)
-      : floatingOrigin.RtoThreeV3(this.stateAt(starMotion.id, displayTime).r);
+      : floatingOrigin.RtoThreeV3(starPos);
     // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = floatingOrigin.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
@@ -421,13 +412,13 @@ export class CelestialSystem implements CelestialMotions {
 
     const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
     const pointField = this.pointFieldView;
-    if (pointField !== null && cameraSystem.view === 'map' && star !== null && graphics.pointField) {
+    const pointFieldVisible = cameraSystem.view === 'map' && graphics.pointField
+      && cameraSystem.mapDisplayToggles.smallBodyVisible;
+    if (pointField !== null && pointFieldVisible && starPos !== null) {
       this.buildPointField(pointField);
-      pointField.sync(
-        floatingOrigin, true, cameraSystem.mapDisplayToggles.smallBodyVisible, fixedBrightnessScale,
-      );
+      pointField.sync(floatingOrigin, displayTime, starPos, fixedBrightnessScale);
     } else if (this.pointFieldBuilt) {
-      pointField?.sync(floatingOrigin, false, true, fixedBrightnessScale);
+      pointField?.hide();
     }
     this.syncStars(fixedBrightnessScale, gridVisibility.stars);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;

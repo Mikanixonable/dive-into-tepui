@@ -147,7 +147,7 @@ export class Game {
     // として通す — 天体表面の分割段やベルトのリンク数のように、update/sync が決めるまで
     // 隠れている表示物は、通さなければ事前コンパイルから漏れる。
     const style = hud.renderStyle.current;
-    game.update(0, graphics);
+    game.update(0);
     game.sync(graphics, style);
     await progress.enter('shaders');
     await gs.pipeline.compile(
@@ -410,7 +410,7 @@ export class Game {
 
   // ------------------------------------------------------------ update
 
-  update(dtRaw: number, graphics: GraphicsSettingsData): void {
+  update(dtRaw: number): void {
     this.sections.enter(SECTION.input);
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
@@ -430,7 +430,6 @@ export class Game {
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
-    this._celestialSystem.update(displayWindow.displayTime, view, graphics);
     this.sections.enter(SECTION.plan);
     this.planDisplay.update(displayWindow, this.frameAnchors, view);
     this.sections.exit(SECTION.plan);

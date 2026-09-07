@@ -60,7 +60,7 @@ function startAnimationLoop(
     const t0 = perf.on ? performance.now() : 0;
     try {
       sections.beginFrame();
-      game.update(dt, graphics.current);
+      game.update(dt);
       sections.endFrame();
       // このフレームで Game が消費しなかった入力エッジだけが残っている。
       snapshotControls.handleInput(game.input, game);
