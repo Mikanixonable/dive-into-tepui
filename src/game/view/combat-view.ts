@@ -39,7 +39,7 @@ export class CombatView implements ViewFrame {
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
-    private readonly celestialSystem: CelestialMotions,
+    private readonly celestialBodies: CelestialMotions,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly notifier: Notifier,
     uiSfx: UiSfx,
@@ -102,7 +102,7 @@ export class CombatView implements ViewFrame {
   // 直近ノードの消化・接近通知を進める。
   public update(displayWindow: DisplayWindow): void {
     this.planGuide.update(
-      this.controlSelection.current, displayWindow.simTime, this.celestialSystem.celestialMotions,
+      this.controlSelection.current, displayWindow.simTime, this.celestialBodies.celestialMotions,
     );
   }
 
