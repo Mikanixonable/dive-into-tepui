@@ -106,6 +106,7 @@ export class PlanetSystem {
     const members = this.membersAt(t);
     const muTotal = this.mu;
     let accel: Vec3 = v3();
+    // 符号は位置と同じ −w_i。本体は重心の反対側へ振れるので、加速度は衛星の側を向く。
     for (const index of this.offsettingMoons) {
       const moon = this.moons[index]!;
       const rel = this.relFrom(members, index, t);
