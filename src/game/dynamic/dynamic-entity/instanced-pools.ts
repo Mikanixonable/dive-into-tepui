@@ -20,6 +20,7 @@ export class InstancedPools {
   // 枠ごとの上限をそのままプールの容量にする。上限を超えた個体は顔ぶれから落ちるので、
   // 同時に積まれうる数はその枠を超えない。
   constructor(scene: THREE.Scene) {
+    // 弾・薬莢・破片が共有する描画資源。
     const bulletBody = bulletBodyResources();
     const bulletHalo = bulletHaloResources();
     const plasmaBody = plasmaBodyResources();
@@ -62,6 +63,7 @@ export class InstancedPools {
     this.debrisFragments[variant]!.push(renderObject, color);
   }
 
+  // 全プールの InstancedMesh と、それが握っている描画資源を解放する。
   dispose(): void {
     this.bulletBody.dispose();
     this.bulletHalo.dispose();
