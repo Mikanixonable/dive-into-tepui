@@ -435,7 +435,6 @@ export class CreativeStage extends Stage {
     const player = this.ship;
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
-      this.behaveAllEnemies(player, simTime, simSpeed);
       if (this.waveAttackEnabled) {
         this.waveAttack.update(
           dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this,
