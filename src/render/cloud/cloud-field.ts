@@ -1,11 +1,12 @@
 // 天気が凝結する雲を焼いた写し。焼くときと読むときの成分の割り当てを一手に持ち、
-// 出入りをどちらも CloudSample で受け渡す。
+// 出入りをどちらも CloudSample で受け渡す。テクスチャの G は雲頂高度を CLOUD_TOP_SPAN で
+// 正規化した値、CloudSample の cloudTop はメートルである。
 import * as THREE from 'three/webgpu';
 import { If, float, greaterThan, mix, texture, uniform, vec4 } from 'three/tsl';
 import { BakedField } from './baked-field';
 import { condense } from './condensation';
 import { ClimateMap } from './climate-map';
-import { EMPTY_CLOUD_FIELD, fieldLodForWidth } from './cumulus-shape';
+import { CLOUD_TOP_SPAN, EMPTY_CLOUD_FIELD, fieldLodForWidth } from './cumulus-shape';
 import { EquirectProjection, OrthographicCap } from './field-projection';
 import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -47,7 +48,7 @@ export class CloudField {
   public constructor(model: WeatherModel, projection: FieldProjection) {
     this.field = new BakedField('cloud', THREE.RGBAFormat, projection, 1, (direction) => {
       const cloud = condense(model.weatherAt(direction));
-      return vec4(cloud.coverage, cloud.cloudTop, cloud.translucent, 1);
+      return vec4(cloud.coverage, cloud.cloudTop.div(CLOUD_TOP_SPAN), cloud.translucent, 1);
     });
   }
 
@@ -62,7 +63,7 @@ export class CloudField {
   // 単位方向 direction での雲。
   public at(direction: Vec3Node): CloudSample {
     const texel = this.field.at(direction);
-    return { coverage: texel.r, cloudTop: texel.g, translucent: texel.b };
+    return { coverage: texel.r, cloudTop: texel.g.mul(CLOUD_TOP_SPAN), translucent: texel.b };
   }
 
   // 保持している GPU 資源を解放する。

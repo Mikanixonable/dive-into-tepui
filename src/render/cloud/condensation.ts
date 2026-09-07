@@ -94,8 +94,9 @@ const TRANSLUCENT_KNEE = 0.25;
 const TRANSLUCENT_LIMIT = 0.63;
 
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
-// 雲頂高度は 層状の雲から立つ塔と、渦の芯が敷く金床の高いほうから出る — 覆う広さは湿度が、
-// 層の高さは上昇流と暖気の流入と気団の折り目の帯が、塔は粒の峰が、平らな天蓋は渦の芯が決める。
+// 雲頂高度は層状の雲から立つ塔と、渦の芯が敷く金床の高いほうを雲底からの高さへ写して出す —
+// 覆う広さは湿度が、層の高さは上昇流と暖気の流入と気団の折り目の帯が、塔は粒の峰が、平らな
+// 天蓋は渦の芯が決める。**雲底からの高さは被覆率が低いほど縮み、広く覆う雲ほど元の高さを保つ**。
 // **対流の活発度は被覆率と塔へ効き、沈降する海洋性層積雲では層状の起伏も低くなる** — 一面に
 // 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
 export function condense(weather: WeatherSample): CloudSample {
@@ -148,13 +149,18 @@ export function condense(weather: WeatherSample): CloudSample {
   const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(COVERAGE_WIDTH));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
+  const coverage = clear.oneMinus();
+  // 小さな雲を高い柱にしないため、雲底からの高さだけを被覆率で縮める。被覆率 0 では雲底へ
+  // 落ちるが、その柱は opaqueFractionOf の門を通らないので晴天に雲や影が現れることはない。
+  const cloudTop = max(tower, anvil);
+  const scaledCloudTop = max(cloudTop.sub(CLOUD_BASE_HEIGHT), 0).mul(coverage).add(CLOUD_BASE_HEIGHT);
   // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
   return {
-    coverage: clear.oneMinus(),
-    cloudTop: max(tower, anvil),
+    coverage,
+    cloudTop: scaledCloudTop,
     translucent: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
   };
 }
