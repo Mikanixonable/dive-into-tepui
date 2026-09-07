@@ -34,12 +34,13 @@ import type { FutureCelestialBodyProvider } from '../arc-celestial-bodies';
 import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
-import { EquatorNodeMarkerPair } from '../../marker/equator-node-marker-pair';
-import type { MarkerManager } from '../../marker/marker-manager';
+import { EquatorNodeMarkerPair, type EquatorNodeInputs } from '../../marker/equator-node-marker-pair';
+import type { ObjectPickable } from '../../pickable/object-pickable';
+import type { TimeLabelSetting } from '../../hud/orbit/calendar-ticks';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../../render/thermal-emissive';
 import { DISPLAY_DURATION_MAX } from '../../display-window-manager';
-import type { CameraSystem } from '../../camera/camera-system';
+import type { CameraSystem, ProjectFn } from '../../camera/camera-system';
 import type { RenderStyle } from '../../../render/render-style';
 
 // 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
@@ -168,7 +169,7 @@ export class DynamicEntity {
   // 予測線・過去線を表示する。
   showTrajectoryLine = false;
   // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
-  equatorNodes: EquatorNodeMarkerPair | null = null;
+  private equatorNodes: EquatorNodeMarkerPair | null = null;
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。抗力が要求する刻みを外から引けるよう公開する。
   readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
@@ -673,9 +674,30 @@ export class DynamicEntity {
     this.alive = false;
   }
 
-  // 赤道交点マーカーを用意して返す。出す必要が生じた側が呼ぶ。
-  ensureEquatorNodes(markerManager: MarkerManager): EquatorNodeMarkerPair {
-    return this.equatorNodes ??= new EquatorNodeMarkerPair(this, markerManager);
+  // 赤道交点マーカーを出す条件を満たしているか。常設の軌道構造物、操作対象、航法/戦闘
+  // ターゲットの3つ。
+  private showsEquatorNodes(controlled: boolean): boolean {
+    return this.alive && (this.showsEquatorNodesAlways || controlled || this.navTargetReader);
+  }
+
+  // 赤道交点マーカーを、この個体について画面に出ている線の上で求め直す。出す条件を満たさない
+  // 個体は交点を伏せる。フレームに1度だけ呼ぶ。
+  updateEquatorNodes(inputs: EquatorNodeInputs, controlled: boolean): void {
+    if (!this.showsEquatorNodes(controlled)) { this.equatorNodes?.clearCrossings(); return; }
+    (this.equatorNodes ??= new EquatorNodeMarkerPair(this, inputs.markerManager)).update(inputs);
+  }
+
+  // このフレームに求まった赤道交点マーカーを置く。
+  syncEquatorNodes(
+    project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
+    celestialBodiesPivot: number, timeLabel: TimeLabelSetting,
+  ): void {
+    this.equatorNodes?.sync(project, cameraPos, celestialBodies, celestialBodiesPivot, timeLabel);
+  }
+
+  // 右クリック対象として公開する赤道交点アイコン。
+  equatorNodePickables(): readonly ObjectPickable[] {
+    return this.equatorNodes?.pickables() ?? [];
   }
 
   // メッシュを scene から、マーカーを HUD から取り除く。配下メッシュのジオメトリ・マテリアルも

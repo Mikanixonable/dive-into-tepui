@@ -13,7 +13,6 @@ import type { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/object-pickable';
 import type { CelestialSystem } from './celestial/celestial-system';
-import type { FrameAnchorSource } from '../physics/frame';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
@@ -68,15 +67,6 @@ export class Targeter {
     this.navTarget.setCombatTarget(pickNearest(
       targets.filter((e) => e.alive), (target) => project(target.state.r),
       window.innerWidth * 0.5, window.innerHeight * 0.5, Infinity));
-  }
-
-  // 戦闘ターゲットの赤道交点を、この表示時刻で解き直す。全件を伏せた
-  // (DynamicSystem.clearEquatorNodes)後の update 位相で呼ぶ。
-  updateEquatorNodes(
-    displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
-  ): void {
-    this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .updateOnEllipse(displayTime, celestialSystem, frameAnchors);
   }
 
   // 発射弾が標的面を自機側から通過した点をターゲット相対で記録し、既存の記録の寿命を進める。

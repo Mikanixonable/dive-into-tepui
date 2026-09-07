@@ -13,7 +13,6 @@ import { buildBaseModel } from '../../../render/base-station-model';
 import type { Hud } from '../../hud/hud';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { MarkerManager } from '../../marker/marker-manager';
-import { EquatorNodeMarkerPair } from '../../marker/equator-node-marker-pair';
 import type { BaseSaveData } from '../../save/save-data';
 import { Plan } from '../../plan/plan';
 import type { PlanExecutionMode } from '../../player/player';
@@ -86,8 +85,8 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   get controlHint(): string {
     return `基地「${this.name}」の操作モードに入りました (WASDQE: 噴射 / IJKLUO: 姿勢制御 / T: RCS減衰 / C: プログレード)`;
   }
-  // 基地は常に赤道交点マーカーを出すので、コンストラクタで必ず組む。
-  declare equatorNodes: EquatorNodeMarkerPair;
+  // 基地は常設の軌道構造物なので、選択の有無に関わらず赤道交点マーカーを出す。
+  public override readonly showsEquatorNodesAlways = true;
   public baseState: BaseState = { money: 100000 };
 
   // --- Controllable 実装 ---
@@ -179,7 +178,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.throttle = new Throttle(hud, 'saved' in init ? init.saved.throttle : undefined);
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);
-    this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
 
     if ('saved' in init) {
       this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;

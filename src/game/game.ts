@@ -327,7 +327,7 @@ export class Game {
       this.simSpeedManager, this._hud, uiSfx, this.markerManager,
     );
     const mapView = new MapView(
-      this.input, this.cameraSystem, this.targeter, editor, this.objectWindows,
+      this.input, this.cameraSystem, editor, this.objectWindows,
       this.dynamicSystem, celestialSystem, objectPickables, linePickables,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.controlSelection, this._hud, this.navTarget,
@@ -409,8 +409,6 @@ export class Game {
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
-    // 赤道交点は計画・ターゲット・基地がそれぞれ解くので、解き手より先に全件を伏せる。
-    this.dynamicSystem.clearEquatorNodes();
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this.sections.enter(SECTION.plan);
     this.planDisplay.update(displayWindow, this.frameAnchors, view);
@@ -425,6 +423,17 @@ export class Game {
       canDisplayFuture, this.planDisplay.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
+    // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
+    // 楕円が引く予測列を伸ばした後に通す。
+    this.sections.enter(SECTION.plan);
+    this.dynamicSystem.updateEquatorNodes({
+      displayTime: displayWindow.displayTime,
+      celestialSystem: this._celestialSystem,
+      frameAnchors: this.frameAnchors,
+      markerManager: this.markerManager,
+      paths: this.planDisplay,
+    }, activeControllable);
+    this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
       displayWindow.displayTime, this.input, dt, this.viewManager.activeView.pickables,

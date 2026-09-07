@@ -161,11 +161,8 @@ export class NavTarget {
     const ownerName = controlled?.name ?? null;
     for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, this.name);
     if (!this.targetId) { this.setReaderEntity(null); return; }
-    // ターゲット自身の赤道交点は、操作対象の軌道要素が求まるかどうかとは無関係に出す。
     const target = entities.findAliveCombatTarget(this.targetId);
     this.setReaderEntity(target);
-    target?.ensureEquatorNodes(this.markerManager)
-      .updateOnEllipse(displayTime, celestialSystem, frameAnchors);
     if (!controlled) return;
     const stateCelestialBodies = celestialSystem.celestialMotions;
     const controlledCenter = strongestAttractor(controlled.state.r, stateCelestialBodies, simTime);
