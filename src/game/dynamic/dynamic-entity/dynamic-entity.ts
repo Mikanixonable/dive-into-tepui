@@ -66,8 +66,8 @@ type OrbitLine =
   | { readonly kind: 'ellipse'; readonly line: EllipseLine; readonly center: CelestialMotion | null }
   | { readonly kind: 'relative'; readonly line: TargetRelativeLine; readonly target: DynamicEntity };
 
-// collisionFolds の既定の返り値。全個体で共有するので書き換えない。
-const NO_COLLISION_FOLDS: readonly DynamicEntity[] = [];
+// contactProxies の既定の返り値。全個体で共有するので書き換えない。
+const NO_CONTACT_PROXIES: readonly DynamicEntity[] = [];
 
 const identityAttitude = (): Attitude => ({
   q: Q_IDENTITY,
@@ -107,6 +107,7 @@ export class DynamicEntity {
   mass = 1; // 剛体接触の換算質量
   radius = 0; // 物理的な半径 [m]。0 = 点。CelestialMotion.radius と同じ量
   collides = false; // 物体どうしの剛体接触(EntityContactPhysics)に参加するか
+  engagementAnchor = false; // 交戦圏の中心になるか
   // 濃い大気の中を、抗力が要求する細かい刻みで積むか。true の個体はサブステップの内側で
   // さらに分割され、熱・動圧と天体表面への到達もその刻みで解かれる。false の個体は大気圏に
   // 入れば失われるだけで、いつどれだけの精度で失われるかは結果を変えない。
@@ -126,10 +127,14 @@ export class DynamicEntity {
   // 独立した実体なら既定 null。
   attachedTo: DynamicEntity | null = null;
 
-  // simTime における、この個体に取り付いた接触代理の一覧。既定は空。
-  public collisionFolds(_simTime: number): readonly DynamicEntity[] {
-    return NO_COLLISION_FOLDS;
+  // 区間 dt を渡り終えた simTime の姿勢で置き直した、この個体に取り付いた接触代理の一覧。
+  // 返る実体は呼び出しごとに置き直されるので、次の呼び出しまでの間に使い切ること。既定は空。
+  public contactProxies(_simTime: number, _dt: number): readonly DynamicEntity[] {
+    return NO_CONTACT_PROXIES;
   }
+
+  // 接触解決後の代理の状態を、代理の持ち主へ書き戻す。既定は何もしない。
+  public applyContactProxies(_dt: number): void {}
   private _thrust: Vec3 | null = null;
   // 自身が出している ECI 加速度 [m/s²]。null = 噴射していない。噴射している間の弧は現実を
   // 表さないので、非 null を書いた時点で無効化する — 実シミュレーションはそこから積分へ落ち、
@@ -631,7 +636,7 @@ export class DynamicEntity {
   }
 
   // true の種別では、カスタム判定が null を返しても外接球へフォールバックしない。
-  // これを分けないと「リボンに触れていない空間」が球の当たり判定として残ってしまう。
+  // これを分けないと「判定形状に触れていない空間」が球の当たり判定として残ってしまう。
   usesCustomSphereCollision(): boolean {
     return false;
   }
