@@ -6,18 +6,11 @@ import { CelestialMotion } from '../../physics/celestial-motion';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import { ENTITY_CAP, type CapKind } from './dynamic-entity/entity-kind';
+import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
-import { AmmoPickup } from './dynamic-entity/ammo-pickup';
-import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
-import { DebrisPiece } from './dynamic-entity/debris-piece';
-import { Enemy } from './dynamic-entity/enemy';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
 import { ProteinEnemy } from './dynamic-entity/protein-enemy';
-import { Bullet } from './dynamic-entity/bullet';
-import { Base } from './dynamic-entity/base';
 import { InstancedPools } from './dynamic-entity/instanced-pools';
-import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { Input } from '../../input/input';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
@@ -335,23 +328,17 @@ export class DynamicSystem {
     this.bumpCollectionRevision();
   }
 
-  // 種別ごとの現在の個体数。
-  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'rcsFuelPickups' | 'bases'> {
-    // 顔ぶれを1度だけ辿って数える。破片は薬莢とそれ以外に分ける。
-    const counts = {
-      players: 0, enemies: 0, bullets: 0, casings: 0,
-      debris: 0, ammoPickups: 0, rcsFuelPickups: 0, bases: 0,
-    };
+  // 枠ごとの現在の個体数。個体は自分がどの枠・どの種別に属するかを既に宣言しているので、
+  // 顔ぶれを1度だけ辿ってそのとおりに数える。枠を持つ個体を枠の側で数えるのは、切り離した
+  // ブースターのように「表示トグルは自機だが数は別に見たい」種別があるため。
+  perfCounts(): Pick<PerfCounts, 'entities'> {
+    const entities: Partial<Record<EntityCountKind, number>> = {};
     for (const e of this.entities) {
-      if (e instanceof Player) counts.players++;
-      else if (e instanceof Enemy) counts.enemies++;
-      else if (e instanceof Bullet) counts.bullets++;
-      else if (e instanceof DebrisPiece) (e.kind === 'casing' ? counts.casings++ : counts.debris++);
-      else if (e instanceof AmmoPickup) counts.ammoPickups++;
-      else if (e instanceof RcsFuelPickup) counts.rcsFuelPickups++;
-      else if (e instanceof Base) counts.bases++;
+      const kind = e.capKind ?? e.mapKind;
+      if (kind === null) continue;
+      entities[kind] = (entities[kind] ?? 0) + 1;
     }
-    return counts;
+    return { entities };
   }
 
   // 直近 sync() 時点のタンパク質敵モーションの集計値。

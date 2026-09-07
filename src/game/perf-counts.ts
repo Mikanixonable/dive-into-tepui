@@ -1,10 +1,11 @@
 // ランの規模の計測値。
+import type { EntityCountKind } from './dynamic/dynamic-entity/entity-kind';
 import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
 
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。
 export type PerfCounts = {
-  players: number; enemies: number; bullets: number; casings: number;
-  debris: number; ammoPickups: number; rcsFuelPickups: number; bases: number;
+  // 枠ごとの個体数。1体も出ていない枠は欠ける。
+  entities: Partial<Record<EntityCountKind, number>>;
   predicted: number; predictComplete: number; predictorSteps: number;
   arcCelestialBodies: number; arcRevisits: number; arcLead: number | null;
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;

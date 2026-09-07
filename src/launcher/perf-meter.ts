@@ -14,9 +14,23 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ProteinMotionMetricsRecorder } from '../game/protein/protein-motion-metrics';
 import { LODS_FINE_TO_COARSE } from '../game/protein/protein-motion-controller';
 import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
+import type { EntityCountKind } from '../game/dynamic/dynamic-entity/entity-kind';
 
 // フレームごとに数え直される項目。集計期間の1フレームだけを覗くと実態を取り違えるので、
 // ms系と同じく毎フレーム積んで avg/max で出す。
+// エンティティ数の行。並び順と表示名はここで決める。
+const ENTITY_COUNT_ROWS: readonly { key: EntityCountKind; label: string }[] = [
+  { key: 'player', label: 'players' },
+  { key: 'enemy', label: 'enemies' },
+  { key: 'bullet', label: 'bullets' },
+  { key: 'casing', label: 'casings' },
+  { key: 'debris', label: 'debris' },
+  { key: 'booster', label: 'boosters' },
+  { key: 'ammo', label: 'ammoPickups' },
+  { key: 'fuel', label: 'rcsFuelPickups' },
+  { key: 'base', label: 'bases' },
+];
+
 const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (c: PerfCounts) => number }[] = [
   { key: 'plan-arcs', label: '再生成区間', group: '計画軌道', read: (c) => c.planArcs },
   { key: 'plan-steps', label: '積分step', group: '計画軌道', read: (c) => c.planSteps },
@@ -297,14 +311,9 @@ export class PerfMeter {
         value: fmtDuration(c.displayDurationSec, c.displayDurationSec),
       },
 
-      { key: 'ent-players', label: 'players', value: `${c.players}`, group: 'エンティティ' },
-      { key: 'ent-enemies', label: 'enemies', value: `${c.enemies}`, group: 'エンティティ' },
-      { key: 'ent-bullets', label: 'bullets', value: `${c.bullets}`, group: 'エンティティ' },
-      { key: 'ent-casings', label: 'casings', value: `${c.casings}`, group: 'エンティティ' },
-      { key: 'ent-debris', label: 'debris', value: `${c.debris}`, group: 'エンティティ' },
-      { key: 'ent-ammo-pickups', label: 'ammoPickups', value: `${c.ammoPickups}`, group: 'エンティティ' },
-      { key: 'ent-rcs-fuel-pickups', label: 'rcsFuelPickups', value: `${c.rcsFuelPickups}`, group: 'エンティティ' },
-      { key: 'ent-bases', label: 'bases', value: `${c.bases}`, group: 'エンティティ' },
+      ...ENTITY_COUNT_ROWS.map((r) => ({
+        key: `ent-${r.key}`, label: r.label, value: `${c.entities[r.key] ?? 0}`, group: 'エンティティ',
+      })),
 
       { key: 'heap', label: 'JS heap', group: 'メモリ',
         value: mem ? `${(mem.usedJSHeapSize / 1048576).toFixed(1)} MB` : '--' },
